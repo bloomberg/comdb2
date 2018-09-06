@@ -1,0 +1,55 @@
+FROM ubuntu:xenial
+
+RUN apt-get update && \
+    apt-get install -y \
+    cmake \
+    bc \
+    bison \
+    build-essential \
+    flex \
+    gawk \
+    liblz4-dev \
+    libprotobuf-c-dev \
+    libreadline-dev \
+    libsqlite3-dev \
+    libssl-dev \
+    libunwind-dev \
+    libz-dev \
+    make \
+    ncurses-dev \
+    protobuf-c-compiler \
+    tcl \
+    tcl-dev \
+    uuid-dev \
+    libz1 \
+    liblz4-tool \
+    libprotobuf-c1 \
+    libsqlite3-0 \
+    libuuid1 \
+    libz1 \
+    tzdata \
+    iputils-ping \
+    net-tools \
+    netcat-openbsd \
+    iproute2 \
+    socat \
+    time \
+    strace \
+    gdb \
+    openssh-server
+
+COPY . /comdb2
+
+RUN cd /comdb2 &&  \
+    rm -rf build && \
+    mkdir build && \
+    cd build && \
+    cmake -DWITH_TCL=1 .. && \
+    make -j4 && \
+    make -j4 test-tools && \
+    make install &&  \
+    cp /comdb2/tests/docker/client / && \
+    cp /comdb2/tests/docker/server / && \
+    apt-get clean
+
+ENV PATH      $PATH:/opt/bb/bin

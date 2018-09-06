@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 dbname=$1
 
 function getmaster {
@@ -6,13 +6,8 @@ function getmaster {
 }
 
 while true; do
-    cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('bdb cluster')"
-    for i in $(seq 1 3); do
-        master=`getmaster`
-        echo "master is $master"
-        if [[ "$master" != "" ]] ; then
-            cdb2sql ${CDB2_OPTIONS} --host $master $dbname "exec procedure sys.cmd.send('downgrade')"
-        fi
+    for node in $CLUSTER ; do
+        cdb2sql ${CDB2_OPTIONS} --host $node $dbname "exec procedure sys.cmd.send('downgrade')"
     done
     sleep 10
 done

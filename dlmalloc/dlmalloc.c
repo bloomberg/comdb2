@@ -442,6 +442,8 @@ DEFAULT_MMAP_THRESHOLD       default: 256K
 
 */
 
+#include "dlmalloc_config.h"
+
 #ifndef WIN32
 #ifdef _WIN32
 #define WIN32 1
@@ -576,8 +578,6 @@ DEFAULT_MMAP_THRESHOLD       default: 256K
 #define MALLINFO_FIELD_TYPE size_t
 #endif  /* MALLINFO_FIELD_TYPE */
 
-#include "dlmalloc_config.h"
-
 #if !defined(__WORDSIZE) || (__WORDSIZE == 32)
 #define DEFAULT_MMAP_THRESHOLD_MAX ((size_t)512U * (size_t)1024U)
 #else
@@ -646,8 +646,6 @@ struct mallinfo {
 
 #endif /* HAVE_USR_INCLUDE_MALLOC_H */
 #endif /* NO_MALLINFO */
-
-#include <math.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -1078,6 +1076,12 @@ void mspace_free(mspace msp, void* mem);
   spaces.
 */
 void* mspace_realloc(mspace msp, void* mem, size_t newsize);
+
+/*
+  mspace_resize behaves as mspace_realloc, but does not memcpy
+  if it must reposition the memory block.
+*/
+void* mspace_resize(mspace msp, void* mem, size_t newsize);
 
 /*
   mspace_calloc behaves as calloc, but operates within
@@ -3413,12 +3417,105 @@ static void* sys_alloc(mstate m, size_t nb, int zeroout) {
 
   init_mparams();
 
-  if (m == NULL && allocfunc) {
-      void *mem;
-      mem = allocfunc(nb + SIX_SIZE_T_SIZES + CHUNK_ALIGN_MASK);
-      logmsg(LOGMSG_DEBUG, "+ INITIAL MALLOC %zu\n", nb + SIX_SIZE_T_SIZES + CHUNK_ALIGN_MASK);
-      if (mem != NULL)
-          return mem;
+  if (
+      (zeroout && m->alloc0func) ||
+      (!zeroout && m->allocfunc)
+     ) { /* Obtain memory from user allocation routines first. */
+    size_t rsize = granularity_align(nb + TOP_FOOT_SIZE + SIZE_T_ONE);
+    if (rsize > nb) { /* Check for wrap around 0. */
+      char *mp;
+
+      /*
+       * CONSERVATIVE: Round up the requested size to the nearest multiple of
+       *               page size.
+       *               Example:
+       *               8193B -> 12KB
+       *
+       * MODERATE:     Round up the requested size to the nearest multiple of
+       *               page size, and then grow the value exponentially up to
+       *               1MB. For requested size >= 1MB, fall back to
+       *               CONSERVATIVE. In addition, the exponential factor is
+       *               halved upon a successful sys_trim().
+       *               Example:
+       *               8193B -> 12KB (1st time)
+       *               8193B -> 12KB -> 24KB (2nd)
+       *               8193B -> 12KB -> 48KB (3rd)
+       *               8193B -> 12KB -> 96KB (4th)
+       *               ... successful sys_trim() ...
+       *               8193B -> 12KB -> 48KB (5th)
+       *
+       * AGGRESSIVE:   Round up the requested size to the nearest multiple
+       *               of page size, and then round it up to the nearest
+       *               power of 2, and furthermore grow the value exponentially
+       *               up to 1MB. For requested size >= 1MB, fall back to
+       *               CONSERVATIVE.
+       *               Example:
+       *               8193B -> 12KB -> 16KB (1st time)
+       *               8193B -> 12KB -> 32KB (2nd)
+       *               8193B -> 12KB -> 64KB (3rd)
+       *               8193B -> 12KB -> 128KB (4th)
+       *               ... successful sys_trim() ...
+       *               8193B -> 12KB -> 128KB (5th)
+       */
+
+      /* We may have more policies in the future so let's switch-case here. */
+      switch (mparams.nice) {
+        case NICE_AGGRESSIVE:
+          if (rsize < (1ULL << (20 - m->nallocs))) {
+            unsigned int power = 0;
+            --rsize;
+
+            // unroll the following loop to reduce overhead
+            // while (rsize >>= 1) ++power;
+
+#define ilg2(n) (rsize) & (1ULL << (n))
+            power = ilg2(19) ? 19 :
+              ilg2(18) ? 18 :
+              ilg2(17) ? 17 :
+              ilg2(16) ? 16 :
+              ilg2(15) ? 15 :
+              ilg2(14) ? 14 :
+              ilg2(13) ? 13 :
+              ilg2(12) ? 12 :
+              ilg2(11) ? 11 :
+              ilg2(10) ? 10 :
+              ilg2( 9) ?  9 :
+              ilg2( 8) ?  8 :
+              ilg2( 7) ?  7 :
+              ilg2( 6) ?  6 :
+              ilg2( 5) ?  5 :
+              ilg2( 4) ?  4 :
+              ilg2( 3) ?  3 :
+              ilg2( 2) ?  2 :
+              ilg2( 1) ?  1 : 0;
+            rsize = 1ULL << (power + 1 + m->nallocs);
+          } else if (rsize < (1ULL << 20)) {
+            rsize = (1ULL << 20);
+          }
+          break;
+        case NICE_MODERATE:
+          if (rsize < (1ULL << (20 - m->nallocs))) {
+            rsize *= (1ULL << m->nallocs);
+          } else if (rsize < (1ULL << 20)) {
+            rsize = (1ULL << 20);
+          }
+          break;
+        case NICE_CONSERVATIVE:
+        default:
+          break;
+      }
+
+      mp = zeroout ? m->alloc0func(1, rsize) : m->allocfunc(rsize);
+      if (mp == NULL)
+        tbase = CMFAIL;
+      else {
+        tbase = mp;
+        tsize = rsize;
+        mmap_flag = ALLOCFUNC_BIT;
+        if (mparams.nice < NICE_CONSERVATIVE && m->nallocs < 10)
+          ++(m->nallocs);
+      }
+    }
   }
 
   /* Directly map large chunks */
@@ -3536,104 +3633,6 @@ static void* sys_alloc(mstate m, size_t nb, int zeroout) {
     }
   }
 
-  if (
-       (zeroout && m->alloc0func) || 
-       (!zeroout && m->allocfunc) 
-     ) {
-      size_t rsize = granularity_align(nb + TOP_FOOT_SIZE + SIZE_T_ONE);
-      char *mp;
-
-      /* 
-       * CONSERVATIVE: Round up the requested size to the nearest multiple of
-       *               page size.
-       *               Example:
-       *               8193B -> 12KB
-       *      
-       * MODERATE:     Round up the requested size to the nearest multiple of
-       *               page size, and then grow the value exponentially up to
-       *               1MB. For requested size >= 1MB, fall back to
-       *               CONSERVATIVE. In addition, the exponential factor is
-       *               halved upon a successful sys_trim().
-       *               Example:
-       *               8193B -> 12KB (1st time)
-       *               8193B -> 12KB -> 24KB (2nd)
-       *               8193B -> 12KB -> 48KB (3rd)
-       *               8193B -> 12KB -> 96KB (4th)
-       *               ... successful sys_trim() ...
-       *               8193B -> 12KB -> 48KB (5th)
-       *                    
-       * AGGRESSIVE:   Round up the requested size to the nearest multiple
-       *               of page size, and then round it up to the nearest
-       *               power of 2, and furthermore grow the value exponentially
-       *               up to 1MB. For requested size >= 1MB, fall back to
-       *               CONSERVATIVE.
-       *               Example:
-       *               8193B -> 12KB -> 16KB (1st time)
-       *               8193B -> 12KB -> 32KB (2nd)
-       *               8193B -> 12KB -> 64KB (3rd)
-       *               8193B -> 12KB -> 128KB (4th)
-       *               ... successful sys_trim() ...
-       *               8193B -> 12KB -> 128KB (5th)
-       */
-
-      /* We may have more policies in the future so let's switch-case here. */
-      switch (mparams.nice) {
-      case NICE_AGGRESSIVE:
-          if (rsize < (1ULL << (20 - m->nallocs))) {
-              unsigned int power = 0;
-              --rsize;
-
-              // unroll the following loop to reduce overhead
-              // while (rsize >>= 1) ++power;
-
-#define ilg2(n) (rsize) & (1ULL << (n))
-              power = ilg2(19) ? 19 :
-                      ilg2(18) ? 18 :
-                      ilg2(17) ? 17 :
-                      ilg2(16) ? 16 :
-                      ilg2(15) ? 15 :
-                      ilg2(14) ? 14 :
-                      ilg2(13) ? 13 :
-                      ilg2(12) ? 12 :
-                      ilg2(11) ? 11 :
-                      ilg2(10) ? 10 :
-                      ilg2( 9) ?  9 :
-                      ilg2( 8) ?  8 :
-                      ilg2( 7) ?  7 :
-                      ilg2( 6) ?  6 :
-                      ilg2( 5) ?  5 :
-                      ilg2( 4) ?  4 :
-                      ilg2( 3) ?  3 :
-                      ilg2( 2) ?  2 :
-                      ilg2( 1) ?  1 : 0;
-              rsize = 1ULL << (power + 1 + m->nallocs);
-          } else if (rsize < (1ULL << 20)) {
-              rsize = (1ULL << 20);
-          }
-          break;
-      case NICE_MODERATE:
-          if (rsize < (1ULL << (20 - m->nallocs))) {
-              rsize *= (1ULL << m->nallocs);
-          } else if (rsize < (1ULL << 20)) {
-              rsize = (1ULL << 20);
-          }
-          break;
-      case NICE_CONSERVATIVE:
-      default:
-          break;
-      }
-
-      mp = zeroout ? m->alloc0func(1, rsize) : m->allocfunc(rsize);
-      if (mp == NULL)
-          tbase = CMFAIL;
-      else {
-          tbase = mp;
-          tsize = rsize;
-          mmap_flag = ALLOCFUNC_BIT;
-          if (mparams.nice != NICE_CONSERVATIVE && m->nallocs < 10)
-              ++(m->nallocs);
-      }
-  }
 
   if (tbase != CMFAIL) {
 
@@ -3653,6 +3652,16 @@ static void* sys_alloc(mstate m, size_t nb, int zeroout) {
         mchunkptr mn = next_chunk(mem2chunk(m));
         init_top(m, mn, (size_t)((tbase + tsize) - (char*)mn) -TOP_FOOT_SIZE);
       }
+    }
+
+    else if (mmap_flag == ALLOCFUNC_BIT) {
+      /* Segments obtained via allocfunc (system malloc) are
+         very unlikely to be contiguous. Even if they are,
+         we would leak memory in sys_trim by merging them. */
+      UPD_HIST(tsize, m, tbase);
+      if (tbase < m->least_addr)
+        m->least_addr = tbase;
+      add_segment(m, tbase, tsize, mmap_flag);
     }
 
     else {
@@ -3767,72 +3776,68 @@ static int sys_trim(mstate m, size_t pad, int force) {
                       SIZE_T_ONE) * unit;
       msegmentptr sp = segment_holding(m, (char*)m->top);
 
-      if (!force && IS_RECENT(m, sp->base)) {
-        /* Disable trim check on this top. */
-        m->trim_check = MAX_SIZE_T;
-        return 0;
-      }
+      if (force || !IS_RECENT(m, sp->base)) {
+        if (!is_extern_segment(sp)) {
+          if (is_allocfunc_segment(sp)) {
+            if (m->reallocfunc != NULL &&
+                sp->size >= extra &&
+                !has_segment_link(m, sp) && (m->topsize + TOP_FOOT_SIZE == sp->size)) {
+              /* 
+              ** Can't shrink if pinned or the segment is inuse.
+              ** Realloc may copy memory around even if size is smaller.
+              ** Thus shinking an in-use segment may cause addressing fault.
+              ** Memory may be wasted here if only a small portion of top segment
+              ** is inuse.
+              */
+              size_t ofs = (char *)m->top - sp->base;
+              size_t newsize = sp->size - extra;
+              char *rebase;
+              rebase = m->reallocfunc(sp->base, newsize);
+              if (rebase != NULL) {
+                if (rebase < m->least_addr)
+                  m->least_addr = rebase;
+                m->top = (mchunkptr)(rebase + ofs);
+                sp->base = rebase;
+                released = extra;
+              }
+            }
+          }
+          else if (is_mmapped_segment(sp)) {
+            if (HAVE_MMAP &&
+                sp->size >= extra &&
+                !has_segment_link(m, sp)) { /* can't shrink if pinned */
+              size_t newsize = sp->size - extra;
+              /* Prefer mremap, fall back to munmap */
+              if ((CALL_MREMAP(sp->base, sp->size, newsize, 0) != MFAIL) ||
+                  (CALL_MUNMAP(sp->base + newsize, extra) == 0)) {
+                released = extra;
+              }
+            }
+          }
+          else if (HAVE_MORECORE) {
+            if (extra >= HALF_MAX_SIZE_T) /* Avoid wrapping negative */
+              extra = (HALF_MAX_SIZE_T) + SIZE_T_ONE - unit;
+            ACQUIRE_MORECORE_LOCK();
+            {
+              /* Make sure end of memory is where we last set it. */
+              char* old_br = (char*)(CALL_MORECORE(0));
+              if (old_br == sp->base + sp->size) {
+                char* rel_br = (char*)(CALL_MORECORE(-extra));
+                char* new_br = (char*)(CALL_MORECORE(0));
+                if (rel_br != CMFAIL && new_br < old_br)
+                  released = old_br - new_br;
+              }
+            }
+            RELEASE_MORECORE_LOCK();
+          }
+        }
 
-      if (!is_extern_segment(sp)) {
-        if (is_allocfunc_segment(sp)) {
-          if (m->reallocfunc != NULL &&
-              sp->size >= extra &&
-              !has_segment_link(m, sp) && (m->topsize + TOP_FOOT_SIZE == sp->size)) {
-            /* 
-            ** Can't shrink if pinned or the segment is inuse.
-            ** Realloc may copy memory around even if size is smaller.
-            ** Thus shinking an in-use segment may cause addressing fault.
-            ** Memory may be wasted here if only a small portion of top segment
-            ** is inuse.
-            */
-            size_t ofs = (char *)m->top - sp->base;
-            size_t newsize = sp->size - extra;
-            char *rebase;
-            rebase = m->reallocfunc(sp->base, newsize);
-            if (rebase != NULL) {
-              if (rebase < m->least_addr)
-                m->least_addr = rebase;
-              m->top = (mchunkptr)(rebase + ofs);
-              sp->base = rebase;
-              released = extra;
-            }
-          }
+        if (released != 0) {
+          sp->size -= released;
+          m->footprint -= released;
+          init_top(m, m->top, m->topsize - released);
+          check_top_chunk(m, m->top);
         }
-        if (is_mmapped_segment(sp)) {
-          if (HAVE_MMAP &&
-              sp->size >= extra &&
-              !has_segment_link(m, sp)) { /* can't shrink if pinned */
-            size_t newsize = sp->size - extra;
-            /* Prefer mremap, fall back to munmap */
-            if ((CALL_MREMAP(sp->base, sp->size, newsize, 0) != MFAIL) ||
-                (CALL_MUNMAP(sp->base + newsize, extra) == 0)) {
-              released = extra;
-            }
-          }
-        }
-        else if (HAVE_MORECORE) {
-          if (extra >= HALF_MAX_SIZE_T) /* Avoid wrapping negative */
-            extra = (HALF_MAX_SIZE_T) + SIZE_T_ONE - unit;
-          ACQUIRE_MORECORE_LOCK();
-          {
-            /* Make sure end of memory is where we last set it. */
-            char* old_br = (char*)(CALL_MORECORE(0));
-            if (old_br == sp->base + sp->size) {
-              char* rel_br = (char*)(CALL_MORECORE(-extra));
-              char* new_br = (char*)(CALL_MORECORE(0));
-              if (rel_br != CMFAIL && new_br < old_br)
-                released = old_br - new_br;
-            }
-          }
-          RELEASE_MORECORE_LOCK();
-        }
-      }
-
-      if (released != 0) {
-        sp->size -= released;
-        m->footprint -= released;
-        init_top(m, m->top, m->topsize - released);
-        check_top_chunk(m, m->top);
       }
     }
 
@@ -3966,7 +3971,7 @@ static void* tmalloc_small(mstate m, size_t nb) {
 
 /* --------------------------- realloc support --------------------------- */
 
-static void* internal_realloc(mstate m, void* oldmem, size_t bytes) {
+static void* internal_realloc(mstate m, void* oldmem, size_t bytes, int cpymem) {
   if (bytes >= MAX_REQUEST) {
     MALLOC_FAILURE_ACTION;
     return 0;
@@ -4025,8 +4030,6 @@ static void* internal_realloc(mstate m, void* oldmem, size_t bytes) {
         size_t pofs = (char *)oldp - base;
         // offset of base of `top' to base of currently active segment
         size_t topofs = (char *)m->top - sp->base;
-        // new size of the segment
-        size_t rsize = granularity_align(pad_request(size + nb - oldsize) + TOP_FOOT_SIZE + SIZE_T_ONE);
         // offset of sp to the segment base
         size_t spofs = (char *)sp - base;
         // original dv and dvsize
@@ -4035,7 +4038,7 @@ static void* internal_realloc(mstate m, void* oldmem, size_t bytes) {
 
         /* Realloc */
         if (p == oldp && (size - oldsize - nextsize == TOP_FOOT_SIZE)) {
-          /* Extend base */
+          /* We may need to extend base to accommodate the request. */
 
           /* have to do the following before realloc().
              otherwise we may get a memory addressing fault as
@@ -4049,7 +4052,19 @@ static void* internal_realloc(mstate m, void* oldmem, size_t bytes) {
             unlink_chunk(m, next, nextsize);
           }
 
-          char *rebase = m->reallocfunc(base, rsize);
+          // new size of the segment
+          size_t rsize;
+          char *rebase;
+          if (oldsize + nextsize < nb) {
+            /* Not enough room, realloc the segment. */
+            rsize = granularity_align(pad_request(size + nb - oldsize) + TOP_FOOT_SIZE + SIZE_T_ONE);
+            rebase = m->reallocfunc(base, rsize);
+          } else {
+            /* The segment is already large enough. */
+            rebase = base;
+            rsize = size;
+          }
+
           if (rebase == NULL) { /* failed to extend. back out */
             if (next == origdv) {
               m->dv = origdv;
@@ -4123,8 +4138,10 @@ static void* internal_realloc(mstate m, void* oldmem, size_t bytes) {
     else {
       void* newmem = internal_malloc(m, bytes);
       if (newmem != 0) {
-        size_t oc = oldsize - overhead_for(oldp);
-        memcpy(newmem, oldmem, (oc < bytes)? oc : bytes);
+        if (cpymem) {
+          size_t oc = oldsize - overhead_for(oldp);
+          memcpy(newmem, oldmem, (oc < bytes)? oc : bytes);
+        }
         internal_free(m, oldmem);
       }
       return newmem;
@@ -4617,7 +4634,7 @@ void* dlrealloc(void* oldmem, size_t bytes) {
       return 0;
     }
 #endif /* FOOTERS */
-    return internal_realloc(m, oldmem, bytes);
+    return internal_realloc(m, oldmem, bytes, 1);
   }
 }
 
@@ -5057,7 +5074,7 @@ void* mspace_calloc(mspace msp, size_t n_elements, size_t elem_size) {
   return mem;
 }
 
-void* mspace_realloc(mspace msp, void* oldmem, size_t bytes) {
+static void* internal_mspace_realloc(mspace msp, void* oldmem, size_t bytes, int cpymem) {
   if (oldmem == 0)
     return mspace_malloc(msp, bytes);
 #ifdef REALLOC_ZERO_BYTES_FREES
@@ -5077,8 +5094,18 @@ void* mspace_realloc(mspace msp, void* oldmem, size_t bytes) {
       USAGE_ERROR_ACTION(ms,ms);
       return 0;
     }
-    return internal_realloc(ms, oldmem, bytes);
+    return internal_realloc(ms, oldmem, bytes, cpymem);
   }
+}
+
+void* mspace_realloc(mspace msp, void* oldmem, size_t bytes)
+{
+  return internal_mspace_realloc(msp, oldmem, bytes, 1);
+}
+
+void* mspace_resize(mspace msp, void* oldmem, size_t bytes)
+{
+  return internal_mspace_realloc(msp, oldmem, bytes, 0);
 }
 
 void* mspace_memalign(mspace msp, size_t alignment, size_t bytes) {
@@ -5158,6 +5185,27 @@ size_t mspace_max_footprint(mspace msp) {
   return result;
 }
 
+void mspace_for_each_chunk(mspace msp, void (*cb) (void*, void *), void *arg) {
+  mstate m = (mstate)msp;
+  if (!ok_magic(m)) {
+    USAGE_ERROR_ACTION(m,m);
+    return;
+  }
+  if (!PREACTION(m)) {
+    check_malloc_state(m);
+    msegmentptr s = &m->seg;
+    while (s != 0) {
+      mchunkptr q = align_as_chunk(s->base);
+      while (segment_holds(s, q) && q != m->top && q->head != FENCEPOST_HEAD) {
+        if (cinuse(q))
+          (*cb)(chunk2mem(q), arg);
+        q = next_chunk(q);
+      }
+      s = s->next;
+    }
+    POSTACTION(m);
+  }
+}
 
 #if !NO_MALLINFO
 struct mallinfo mspace_mallinfo(mspace msp) {

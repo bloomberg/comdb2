@@ -18,6 +18,9 @@
 #include <inttypes.h>
 #include <arpa/inet.h>
 
+#include "comdb2.h"
+#include "sql.h"
+
 #include "sqliteInt.h"
 #include "vdbeInt.h"
 #include <types.h>
@@ -35,7 +38,6 @@ int SERVER_DATETIME_to_CLIENT_DATETIME ( const void *in, int inlen,
         const struct field_conv_opts *outopts, blob_buffer_t *outblob);
 const uint8_t *client_datetime_get(cdb2_client_datetime_t *p_client_datetime,
         const uint8_t *p_buf, const uint8_t *p_buf_end);
-uint64_t flibc_htonll(uint64_t host_order);
 
 
 static void yearFunc(sqlite3_context *context, int argc, sqlite3_value **argv);
@@ -126,7 +128,7 @@ int convMem2ClientDatetime(Mem *pMem, void *out) {
         _convMem2ClientDatetime(pMem, out, sizeof(cdb2_client_datetime_t), &outdtsz, 0);
 }
 
-int convDttz2ClientDatetime(dttz_t *dttz, const char *tzname, void *out, int sqltype) {
+int convDttz2ClientDatetime(const dttz_t *dttz, const char *tzname, void *out, int sqltype) {
 
     int     outdtsz;
     Mem     mem;
@@ -335,6 +337,8 @@ static void currentTS(sqlite3_context *context, int argc, sqlite3_value **argv)
    sqlite3VdbeMemSetDatetime(context->pOut, &dt, NULL);
 }
 
+extern pthread_key_t query_info_key;
+
 static void nowFunc(sqlite3_context *context, int argc, sqlite3_value **argv)
 {
    struct timespec *tspec;
@@ -343,8 +347,16 @@ static void nowFunc(sqlite3_context *context, int argc, sqlite3_value **argv)
    const unsigned char *msus;
    assert(context->pVdbe);
 
-   if (argc == 0)
+   if (argc == 0) {
        precision = context->pVdbe->dtprec;
+       if (precision != DTTZ_PREC_MSEC
+               && precision != DTTZ_PREC_USEC) {
+           struct sql_thread *thd =pthread_getspecific(query_info_key);
+
+           if(thd && thd->clnt)
+               precision = thd->clnt->dtprec;
+       }
+   }
    else if (SQLITE_INTEGER == sqlite3_value_type(argv[0]))
        precision = sqlite3_value_int(argv[0]);
    else if (SQLITE_TEXT == sqlite3_value_type(argv[0])) {

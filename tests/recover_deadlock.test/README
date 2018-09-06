@@ -1,0 +1,1 @@
+Test to verify that we return error if table is schema changed during recover_deadlock

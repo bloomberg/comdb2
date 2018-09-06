@@ -7,13 +7,16 @@ ifeq ($(TEST_TIMEOUT),)
 	export TEST_TIMEOUT=1m
 endif
 
-LOCRAND=$(shell echo $(TESTID) | md5sum | cut -f1 -d' ')
-export DBNAME=reallylongnametotestfunctioning$(LOCRAND)
-export PMUXPORT=12345
+LOCRAND=$(shell echo $(TESTID) | sha256sum | cut -f1 -d' ')
+export DBNAME=$(shell echo "longdbname$(TESTID)$(LOCRAND)" | cut -b 1-63)
+#will start it's own pmux
+#export PMUXPORT=12345
 
 stop:
 	# shutdown pmux that was started for us at port $PMUXPORT
-	$(shell $(TESTSROOTDIR)/tools/send_msg_port.sh "exit" $(PMUXPORT) )
+	#$(shell $(TESTSROOTDIR)/tools/send_msg_port.sh "exit" $(PMUXPORT) )
+	#@$(foreach n, $(CLUSTER), ssh $(n) bash 'exec 3<>/dev/tcp/localhost/${PMUXPORT} && echo exit >&3' < /dev/null;)
+	#@$(foreach n, $(CLUSTER), ssh $(n) 'rm -rf /tmp/pmux.socket.$(PMUXPORT)' < /dev/null;)
 
 tool:
 	make -skC $(TESTSROOTDIR)/tools cdb2api_caller

@@ -42,6 +42,7 @@ include(${PROJECT_SOURCE_DIR}/sqlite/definitions.cmake)
 add_definitions(
   -DLUASP
   -DLUA_USE_POSIX
+  -DLUA_USE_DLOPEN
   ${SQLITE_FLAGS}
 )
 
@@ -49,7 +50,7 @@ include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}
   ${PROJECT_SOURCE_DIR}
-  ${PROJECT_SOURCE_DIR}/bb
+  ${PROJECT_SOURCE_DIR}/util
   ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/bdb
   ${PROJECT_SOURCE_DIR}/cdb2api
@@ -67,6 +68,7 @@ include_directories(
   ${PROJECT_BINARY_DIR}/protobuf
   ${PROJECT_SOURCE_DIR}/sqlite
   ${PROJECT_BINARY_DIR}/sqlite
+  ${PROJECT_SOURCE_DIR}/berkdb
   ${OPENSSL_INCLUDE_DIR}
   ${PROTOBUF_C_INCLUDE_DIR}
 )

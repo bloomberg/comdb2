@@ -458,7 +458,7 @@ int analyze_get_nrecs(int iTable)
 
     /* get client structures */
     thd = pthread_getspecific(query_info_key);
-    client = thd->sqlclntstate;
+    client = thd->clnt;
 
     /* comdb2-ize table-num and ixnum */
     db = get_sqlite_db(thd, iTable, &ixnum);
@@ -491,7 +491,7 @@ int64_t analyze_get_sampled_nrecs(const char *dbname, int ixnum)
 
     /* get client structures */
     thd = pthread_getspecific(query_info_key);
-    client = thd->sqlclntstate;
+    client = thd->clnt;
 
     /* Punt if this wasn't sampled. */
     if (NULL == client->sampled_idx_tbl || client->n_cmp_idx <= 0) {
@@ -686,7 +686,6 @@ int update_sav(sqlite3 *sqldb, struct sqlclntstate *client, SBUF2 *sb,
     ii++;
     return 0;
 }
-
 
 static int analyze_table_int(table_descriptor_t *td,
                              struct thr_handle *thr_self)
@@ -1151,6 +1150,28 @@ int analyze_set_sampling_threshold(void *context, void *thresh)
 
 /* get sampling threshold */
 long long analyze_get_sampling_threshold(void) { return sampling_threshold; }
+
+/* set maximum analyze compression threads */
+int analyze_set_max_comp_threads( int maxthd )
+{
+    /* must have at least 1 */
+    if( maxthd < 1 )
+    {
+        printf( "%s: invalid value for maxthd\n", __func__ );
+        return -1;
+    }
+    /* can have no more than hard-max */
+    if( maxthd > analyze_hard_max_comp_threads )
+    {
+        printf( "%s: hard-maximum is %d\n", __func__, 
+                analyze_hard_max_comp_threads );
+        return -1;
+    }
+    analyze_max_comp_threads = maxthd;
+    return 0;
+}
+
+
 
 /* set maximum analyze threads */
 int analyze_set_max_table_threads(void *context, void *maxthd)

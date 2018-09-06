@@ -412,7 +412,10 @@ int sqlite3InitTable(sqlite3 *db, char **pzErrMsg, const char *zName)
 
   ENC(db) = SCHEMA_ENC(db);
   for(i=0; rc==SQLITE_OK && i<db->nDb; i++){
-    if(i==1 || DbHasProperty(db, i, DB_SchemaLoaded) && (i==0 || (!zName && i>1))) continue;
+    if(i==1) continue; /* skip temp tables */
+    if(DbHasProperty(db, i, DB_SchemaLoaded) && i==0) continue; /* skip loaded local schemas */
+    if(!zName && i>1) continue; /* skip remote that are not doing a table prepare */
+
     /* remote tables are updated on a table basis; check if the schema for
     ** this table is actually present
     */
@@ -746,11 +749,6 @@ static int sqlite3Prepare(
     assert(!(*ppStmt));
   }else{
     *ppStmt = (sqlite3_stmt*)sParse.pVdbe;
-
-    /* COMDB2 MODIFICATION */
-    /* set time when the request is prepared, see now() function */
-    if( sParse.pVdbe )
-      clock_gettime(CLOCK_REALTIME, &sParse.pVdbe->tspec);
   }
 
   if( zErrMsg ){

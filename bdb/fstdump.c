@@ -410,7 +410,7 @@ static void *fstdump_thread_inner(fstdump_per_thread_t *fstdump, void *sendrec,
          * the buffer, instead returning ENOMEM to our caller.
          */
         bdb_reset_thread_stats();
-        ms_before = time_epochms();
+        ms_before = comdb2_time_epochms();
         data.data = databuf;
 
         flags = DB_MULTIPLE_KEY;
@@ -423,7 +423,7 @@ static void *fstdump_thread_inner(fstdump_per_thread_t *fstdump, void *sendrec,
             return NULL;
         }
 
-        ms_after = time_epochms();
+        ms_after = comdb2_time_epochms();
         ms_diff = ms_after - ms_before;
         if (ms_diff > common->bdb_parent_state->attr->fstdump_longreq) {
             const struct bdb_thread_stats *thread_stats =

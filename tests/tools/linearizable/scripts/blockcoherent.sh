@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 if [[ -z "$1" ]]; then
     echo "$0 requires a dbname as the first argument"

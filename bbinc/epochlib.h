@@ -26,16 +26,13 @@ extern "C" {
 
 /* RETURNS # SECONDS SINCE 1/1/1970 */
 void time_epoch_(int32_t *epoch);
-int time_epoch(void);
-
-
+int comdb2_time_epoch(void);
 
 /* RETURNS # MILLISECONDS SINCE STARTUP */
-void time_epochms_(int32_t *epochms);
-int time_epochms(void);
+int comdb2_time_epochms(void);
 
 /* Microseconds since start of epoch */
-int64_t time_epochus(void);
+int64_t comdb2_time_epochus(void);
 
 #ifdef __cplusplus
 }

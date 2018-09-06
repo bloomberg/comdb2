@@ -46,16 +46,13 @@ enum {
     NET_OSQL_SOCK_REQ_COST = 138,  /* like SOCK_REQ, but passes dbglog ids */
     NET_OSQL_SNAPISOL_REQ = 139,   /* this goes only on offload net */
     NET_OSQL_SNAPISOL_RPL = 140,   /* this goes only on offload net */
-    NET_RELOAD_LUA =
-        141, /* Delete the cached lua machines at the time of loading. */
+    NET_RELOAD_LUA = 141, /* Delete the cached lua machines at load time */
     NET_OSQL_MASTER_CHECK = 142,   /* this goes only on offload net */
     NET_OSQL_MASTER_CHECKED = 143, /* this goes only on offload net */
-    NET_BLOCK_REQ = 144, /* this is to process block request on master. */
-    NET_BLOCK_REPLY =
-        145, /* this is to process block request reply from master. */
-    NET_OSQL_SNAP_UID_REQ = 146, /* this is the request to check snapshot UID */
-    NET_OSQL_SNAP_UID_RPL =
-        147, /* this is the reply from master for uid check */
+    NET_BLOCK_REQ = 144,   /* this is to process block request on master. */
+    NET_BLOCK_REPLY = 145, /*  process block request reply from master. */
+    NET_OSQL_SNAP_UID_REQ = 146, /* the request to check snapshot UID */
+    NET_OSQL_SNAP_UID_RPL = 147, /* the reply from master for uid check */
     NET_TRIGGER_REGISTER = 148,
     NET_TRIGGER_UNREGISTER = 149,
     NET_TRIGGER_START = 150,

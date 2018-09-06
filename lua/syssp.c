@@ -79,6 +79,7 @@ static int db_cluster(Lua L)
  * dupes     int
  * recnums   int
  * primary   int
+ * uniqnulls int
  *
  */
 static int db_comdbg_tables(Lua L) {
@@ -124,6 +125,10 @@ static int db_comdbg_tables(Lua L) {
 
                 lua_pushstring(L, "primary");
                 lua_pushinteger(L, 0);
+                lua_settable(L, -3);
+
+                lua_pushstring(L, "uniqnulls");
+                lua_pushinteger(L, db->ix_nullsallowed[ix]);
                 lua_settable(L, -3);
 
                 lua_rawseti(L, -2, rownum++);
@@ -207,15 +212,9 @@ static int db_comdb_verify(Lua L) {
         tbl = (char *) lua_tostring(L, -1);
     }
 
-    struct column_info col;
-    col.type = SQLITE_TEXT;
-    strncpy(col.column_name, "out", sizeof(col.column_name));
-
-    CDB2SQLRESPONSE__Column **columns = newsql_alloc_row(1);
-    if(!columns)
-        return luaL_error(L, "Alloc error.");
-    newsql_send_column_info(sp->clnt, &col, 1, NULL, columns);
-    newsql_dealloc_row(columns,1);
+    char *cols[] = {"out"};
+    struct sqlclntstate *clnt = sp->clnt;
+    write_response(clnt, RESPONSE_COLUMNS_STR, &cols, 1);
 
     int rc = 0;
 
@@ -310,6 +309,7 @@ static const luaL_Reg sys_funcs[] = {
     { "cluster", db_cluster },
     { "comdbg_tables", db_comdbg_tables },
     { "send", db_send },
+    { "load", db_csvcopy},
     { "comdb_analyze", db_comdb_analyze },
     { "comdb_verify", db_comdb_verify },
     { NULL, NULL }
@@ -410,6 +410,12 @@ static struct sp_source syssps[] = {
         "sys.cmd.verify",
         "local function main(tbl)\n"
         "sys.comdb_verify(tbl)\n"
+        "end\n"
+    }
+    ,{
+        "sys.cmd.load",
+        "local function main(csv,tbl,seperator, header)\n"
+        "sys.load(db,csv,tbl,seperator,header)\n"
         "end\n"
     }
 };

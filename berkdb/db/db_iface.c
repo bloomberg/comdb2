@@ -229,12 +229,11 @@ __db_associate_arg(dbp, sdbp, callback, flags)
  * __db_close_pp --
  *	DB->close pre/post processing.
  *
- * PUBLIC: int __db_close_pp __P((DB *, DB_TXN *, u_int32_t));
+ * PUBLIC: int __db_close_pp __P((DB *, u_int32_t));
  */
 int
-__db_close_pp(dbp, txn, flags)
+__db_close_pp(dbp, flags)
 	DB *dbp;
-	DB_TXN *txn;
 	u_int32_t flags;
 {
 	DB_ENV *dbenv;
@@ -262,7 +261,7 @@ __db_close_pp(dbp, txn, flags)
 	    (t_ret = __db_rep_enter(dbp, 0, 0)) != 0 && ret == 0)
 		ret = t_ret;
 
-	if ((t_ret = __db_close(dbp, txn, flags)) != 0 && ret == 0)
+	if ((t_ret = __db_close(dbp, NULL, flags)) != 0 && ret == 0)
 		ret = t_ret;
 
 	/* Release replication block. */
@@ -1030,6 +1029,7 @@ __db_get_numpages(dbp, numpages)
 	case DB_UNKNOWN:
 	default:
 		ret = __db_unknown_type(dbp->dbenv, "__db_numpages", dbp->type);
+		abort();
 		goto err;
 	}
 

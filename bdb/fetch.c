@@ -77,7 +77,8 @@ static DB_TXN *resolve_db_txn(bdb_state_type *bdb_state, tran_type *tran)
     if (tran) {
         if (tran->tranclass == TRANCLASS_LOGICAL && !tran->reptxn) {
             tran_type ptxn, *pptr;
-            if ((rc = get_physical_transaction(bdb_state, tran, &pptr)) != 0) {
+            if ((rc = get_physical_transaction(bdb_state, tran, &pptr, 0)) !=
+                0) {
                 logmsg(LOGMSG_ERROR, "%s %d: error getting transaction, rc=%d\n",
                         __FILE__, __LINE__, rc);
                 abort();

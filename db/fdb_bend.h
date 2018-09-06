@@ -91,7 +91,7 @@ void fdb_svc_trans_destroy(struct sqlclntstate *clnt);
  * Retrieve a transaction, if any, for a cid
  *
  */
-int fdb_svc_trans_get_tid(const char *cid, char *tid, int isuuid);
+int fdb_svc_trans_get_tid(char *cid, char *tid, int isuuid);
 
 /**
  * Requests for the same transaction can come of differetn sockets

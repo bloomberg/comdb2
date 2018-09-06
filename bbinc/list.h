@@ -46,6 +46,7 @@ typedef struct {
         size_t diff;                                                           \
         int count;                                                             \
     }
+
 #define LINKC_T(type)                                                          \
     struct {                                                                   \
         type *next;                                                            \
@@ -90,6 +91,8 @@ extern void *listc_abl(void *list, void *obj);
 
 /* add to top of list. returns item added */
 extern void *listc_atl(void *list, void *obj);
+
+extern void *listc_add_after(void *list, void *obj, void *afterobj);
 
 /* number of elements in list */
 extern int listc_size(void *list);

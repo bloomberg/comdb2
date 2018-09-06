@@ -125,6 +125,7 @@ comdb2_tunable_type berkdb_to_tunable_type(int type)
 	case BERK_ATTR_TYPE_BOOLEAN: return TUNABLE_BOOLEAN;
 	default: assert(0);
 	}
+	return TUNABLE_INVALID;
 }
 
 /*

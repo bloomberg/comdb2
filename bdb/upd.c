@@ -276,13 +276,13 @@ static int bdb_prim_updkey_genid_int(bdb_state_type *bdb_state, tran_type *tran,
                                      void *key, int keylen, int ixnum,
                                      unsigned long long oldgenid,
                                      unsigned long long genid, void *dta,
-                                     int dtalen, int *bdberr)
+                                     int dtalen, int isnull, int *bdberr)
 {
     int rc;
     int stripe;
     int *iptr;
-    unsigned long long masked_genid;
-    unsigned char keymax[BDB_KEY_MAX + sizeof(unsigned long long)];
+    DBT dbt_key;
+    void *pKeyMaxBuf = 0;
 
     if (bdb_write_preamble(bdb_state, bdberr))
         return -1;
@@ -297,19 +297,16 @@ static int bdb_prim_updkey_genid_int(bdb_state_type *bdb_state, tran_type *tran,
         return 1;
     }
 
-    if (bdb_keycontainsgenid(bdb_state, ixnum)) {
-        assert(0 == bdb_inplace_cmp_genids(bdb_state, oldgenid, genid));
-        masked_genid = get_search_genid(bdb_state, genid);
-        memcpy(keymax, key, keylen);
-        memcpy(keymax + keylen, &masked_genid, sizeof(unsigned long long));
+    bdb_maybe_use_genid_for_key(bdb_state, &dbt_key, key, ixnum, genid, isnull, &pKeyMaxBuf);
 
-        rc = ll_key_upd(
-            bdb_state, tran, bdb_state->name, oldgenid, genid, keymax, ixnum,
-            bdb_state->ixlen[ixnum] + sizeof(unsigned long long), dta, dtalen);
-    } else {
-        rc = ll_key_upd(bdb_state, tran, bdb_state->name, oldgenid, genid, key,
-                        ixnum, bdb_state->ixlen[ixnum], dta, dtalen);
-    }
+    assert(!bdb_keycontainsgenid(bdb_state, ixnum) || !isnull ||
+           0 == bdb_inplace_cmp_genids(bdb_state, oldgenid, genid));
+
+    rc = ll_key_upd(bdb_state, tran, bdb_state->name, oldgenid, genid, dbt_key.data, ixnum,
+                    dbt_key.size, dta, dtalen);
+
+    if (pKeyMaxBuf)
+        free(pKeyMaxBuf);
 
     if (rc) {
         *bdberr = rc;
@@ -343,11 +340,12 @@ int bdb_prim_add_upd_genid(bdb_state_type *bdb_state, tran_type *tran,
 }
 
 int bdb_prim_updvrfy_genid(bdb_state_type *bdb_state, tran_type *tran,
-                           void *olddta, int oldlen, void *newdta, int newdtaln,
-                           int rrn, unsigned long long oldgenid,
-                           unsigned long long *newgenid, int verifydta,
-                           int participantstripeid, int use_new_genid,
-                           int *bdberr)
+                                  void *olddta, int oldlen, void *newdta,
+                                  int newdtaln, int rrn,
+                                  unsigned long long oldgenid,
+                                  unsigned long long *newgenid, int verifydta,
+                                  int participantstripeid, int use_new_genid,
+                                  int *bdberr)
 {
     int rc;
 
@@ -377,13 +375,13 @@ int bdb_upd_genid(bdb_state_type *bdb_state, tran_type *tran, int dtanum,
 int bdb_prim_updkey_genid(bdb_state_type *bdb_state, tran_type *tran, void *key,
                           int keylen, int ixnum, unsigned long long oldgenid,
                           unsigned long long genid, void *dta, int dtalen,
-                          int *bdberr)
+                          int isnull, int *bdberr)
 {
     int rc = 0;
     *bdberr = BDBERR_NOERROR;
 
     rc = bdb_prim_updkey_genid_int(bdb_state, tran, key, keylen, ixnum, genid,
-                                   oldgenid, dta, dtalen, bdberr);
+                                   oldgenid, dta, dtalen, isnull, bdberr);
 
     return rc;
 }

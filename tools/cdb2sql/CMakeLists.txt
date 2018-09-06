@@ -1,10 +1,10 @@
 add_executable(cdb2sql
-  cdb2sql.c
-  ${PROJECT_SOURCE_DIR}/bb/bb_getopt_long.c
+  cdb2sql.cpp
+  ${PROJECT_SOURCE_DIR}/util/bb_getopt_long.c
 )
 add_dependencies(cdb2sql cdb2api)
 include_directories(
-  ${PROJECT_SOURCE_DIR}/bb
+  ${PROJECT_SOURCE_DIR}/util
   ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/cdb2api
   ${OPENSSL_INCLUDE_DIR}
@@ -23,4 +23,9 @@ endif()
 list(APPEND libs ${UNWIND_LIBRARY})
 
 target_link_libraries(cdb2sql ${libs})
+
+if(COMDB2_BUILD_STATIC)
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
+endif()
+
 install(TARGETS cdb2sql RUNTIME DESTINATION bin)

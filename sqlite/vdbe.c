@@ -3980,8 +3980,11 @@ case OP_OpenWrite:
   pCur->pKeyInfo = pKeyInfo;
 
   /* Since it performs no memory allocation or IO, the only value that
-  ** sqlite3BtreeCursor() may return is SQLITE_OK. */
+  ** sqlite3BtreeCursor() may return is SQLITE_OK.
+  In COMDB2 this can fail!
   assert( rc==SQLITE_OK );
+  */
+  if( rc ) goto abort_due_to_error;
 
   /* Set the VdbeCursor.isTable variable. Previous versions of
   ** SQLite used to check if the root-page flags were sane at this point
@@ -5020,9 +5023,8 @@ case OP_InsertInt: {
     x.nZero = 0;
   }
   x.pKey = 0;
-  rc = sqlite3BtreeInsert(pC->uc.pCursor, &x,
-                          (pOp->p5 & OPFLAG_APPEND)!=0, seekResult
-  );
+  rc = sqlite3BtreeInsert(pC->uc.pCursor, &x, (pOp->p5 & OPFLAG_ISUPDATE)!=0,
+                          seekResult, (int) pOp->p5);
   pC->deferredMoveto = 0;
   pC->cacheStatus = CACHE_STALE;
 
@@ -5645,7 +5647,7 @@ next_tail:
   }
 
   /* COMDB2 MODIFICATION */
-  setCookCol(pC, 0);
+  if( pC->eCurType==CURTYPE_BTREE ) setCookCol(pC, 0);
   goto check_for_interrupt;
 }
 
@@ -5691,9 +5693,10 @@ case OP_IdxInsert: {        /* in2 */
   }else{
     x.nKey = pIn2->n;
     x.pKey = pIn2->z;
-    rc = sqlite3BtreeInsert(pC->uc.pCursor, &x, pOp->p3, 
-        ((pOp->p5 & OPFLAG_USESEEKRESULT) ? pC->seekResult : 0)
-        );
+    rc = sqlite3BtreeInsert(pC->uc.pCursor, &x, pOp->p3,
+                            ((pOp->p5 & OPFLAG_USESEEKRESULT) ?
+                             pC->seekResult : 0),
+                            (int) pOp->p5);
     assert( pC->deferredMoveto==0 );
     pC->cacheStatus = CACHE_STALE;
   }
@@ -6121,7 +6124,7 @@ case OP_ParseSchema: {
 
   iDb = pOp->p1;
   assert( iDb>=0 && iDb<db->nDb );
-  assert( DbHasProperty(db, iDb, DB_SchemaLoaded) );
+  assert( iDb>1 || DbHasProperty(db, iDb, DB_SchemaLoaded) );
   /* Used to be a conditional */ {
     zMaster = SCHEMA_TABLE(iDb);
     initData.db = db;

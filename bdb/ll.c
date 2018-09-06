@@ -93,9 +93,6 @@
 /* XXX delete after cleanup - we dont need this anymore .. */
 extern u_int32_t gbl_rep_lockid;
 
-/* Enable extra sanity checks while we're working on the rowlocks code. */
-extern int gbl_debug_rowlocks;
-
 /* Grab the rowlock for a record in this index */
 static int get_row_lock_ix(bdb_state_type *bdb_state, DBC *dbcp,
                            tran_type *tran, int ixnum, unsigned long long genid,
@@ -196,12 +193,15 @@ int ll_dta_add(bdb_state_type *bdb_state, unsigned long long genid, DB *dbp,
     /* fall through */
     case TRANCLASS_PHYSICAL:
 
-        rc = bdb_state->dbenv->lock_clear_tracked_writelocks(bdb_state->dbenv,
-                                                             tran->tid->txnid);
-        if (rc) {
-            logmsg(LOGMSG_FATAL, "%s:%d error clearing tracked writelocks: %d\n",
-                    __FILE__, __LINE__, rc);
-            abort();
+        if (add_snapisol_logging(bdb_state)) {
+            rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
+                bdb_state->dbenv, tran->tid->txnid);
+            if (rc) {
+                logmsg(LOGMSG_FATAL,
+                       "%s:%d error clearing tracked writelocks: %d\n",
+                       __FILE__, __LINE__, rc);
+                abort();
+            }
         }
 
         outrc = bdb_put_pack(bdb_state, dtafile > 0 ? 1 : 0, dbp,
@@ -248,11 +248,9 @@ int ll_dta_add(bdb_state_type *bdb_state, unsigned long long genid, DB *dbp,
     return outrc;
 }
 
-int ll_dta_del_rowlocks(bdb_state_type *bdb_state, tran_type *tran, int rrn,
-                        unsigned long long genid, DB *dbp, int dtafile,
-                        int dtastripe, DBT *dta_out,
-                        unsigned long long *pvgenid, DBT *pvlkname,
-                        DB_LOCK *prevlk)
+int ll_dta_del(bdb_state_type *bdb_state, tran_type *tran, int rrn,
+               unsigned long long genid, DB *dbp, int dtafile, int dtastripe,
+               DBT *dta_out)
 {
     int rc;
     DBT dbt_key = {0};
@@ -262,7 +260,6 @@ int ll_dta_del_rowlocks(bdb_state_type *bdb_state, tran_type *tran, int rrn,
     unsigned long long search_genid;
     int crc;
     int is_blob = 0;
-    struct odh odh = {0};
 
     if (dta_out) {
         bzero(dta_out, sizeof(DBT));
@@ -285,12 +282,15 @@ int ll_dta_del_rowlocks(bdb_state_type *bdb_state, tran_type *tran, int rrn,
     /* fall through */
     case TRANCLASS_PHYSICAL: {
 
-        rc = bdb_state->dbenv->lock_clear_tracked_writelocks(bdb_state->dbenv,
-                                                             tran->tid->txnid);
-        if (rc) {
-            logmsg(LOGMSG_FATAL, "%s:%d error clearing tracked writelocks: %d\n",
-                    __FILE__, __LINE__, rc);
-            abort();
+        if (add_snapisol_logging(bdb_state)) {
+            rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
+                bdb_state->dbenv, tran->tid->txnid);
+            if (rc) {
+                logmsg(LOGMSG_FATAL,
+                       "%s:%d error clearing tracked writelocks: %d\n",
+                       __FILE__, __LINE__, rc);
+                abort();
+            }
         }
 
         rc = dbp->cursor(dbp, tran->tid, &dbcp, 0);
@@ -319,6 +319,9 @@ int ll_dta_del_rowlocks(bdb_state_type *bdb_state, tran_type *tran, int rrn,
            fetch it */
         if (dta_out || bdb_state->attr->snapisol || is_blob) {
             /* This codepath does a direct lookup on a masked genid. */
+            int updateid = 0;
+            int od_updateid = 0;
+
             search_genid = get_search_genid(bdb_state, genid);
             dbt_key.data = &search_genid;
             dbt_key.size = sizeof(search_genid);
@@ -350,6 +353,28 @@ int ll_dta_del_rowlocks(bdb_state_type *bdb_state, tran_type *tran, int rrn,
                 dta_out->data = dta_out_si.data;
                 dta_out->size = dta_out_si.size;
             }
+
+            /* Verify updateid */
+            updateid = get_updateid_from_genid(bdb_state, genid);
+            od_updateid = bdb_retrieve_updateid(bdb_state, dta_out_si.data,
+                                                dta_out_si.size);
+            if (od_updateid >= 0) {
+                if (dtafile >= 1) {
+                    /* blobs */
+                    if (od_updateid > updateid)
+                        rc = DB_NOTFOUND;
+                } else {
+                    /* data */
+                    if (od_updateid != updateid)
+                        rc = DB_NOTFOUND;
+                }
+            } else {
+                logmsg(LOGMSG_ERROR,
+                       "%s:%d failed to get updateid from odh for genid %llx\n",
+                       __FILE__, __LINE__, genid);
+                rc = DB_ODH_CORRUPT;
+            }
+
         } /* dta_out || snapisol || is_blob */
         else {
             /* Use the normal genid. */
@@ -423,20 +448,8 @@ done:
     return rc;
 }
 
-int ll_dta_del(bdb_state_type *bdb_state, tran_type *tran, int rrn,
-               unsigned long long genid, DB *dbp, int dtafile, int dtastripe,
-               DBT *dta_out)
-{
-    return ll_dta_del_rowlocks(bdb_state, tran, rrn, genid, dbp, dtafile,
-                               dtastripe, dta_out, NULL, NULL, NULL);
-}
-
-int ll_key_del_rowlocks(bdb_state_type *bdb_state, tran_type *tran, int ixnum,
-                        void *key, int keylen, int rrn,
-                        unsigned long long genid, int *payloadsz,
-                        unsigned long long *pvgenid,
-                        unsigned long long *nxgenid, DBT *prevlock,
-                        DB_LOCK *pvlock, DBT *nextlock, DB_LOCK *nxlock)
+int ll_key_del(bdb_state_type *bdb_state, tran_type *tran, int ixnum, void *key,
+               int keylen, int rrn, unsigned long long genid, int *payloadsz)
 {
     int rc = 0;
     DB *dbp;
@@ -466,12 +479,15 @@ int ll_key_del_rowlocks(bdb_state_type *bdb_state, tran_type *tran, int ixnum,
     /* fall through */
     case TRANCLASS_PHYSICAL:
 
-        rc = bdb_state->dbenv->lock_clear_tracked_writelocks(bdb_state->dbenv,
-                                                             tran->tid->txnid);
-        if (rc) {
-            logmsg(LOGMSG_FATAL, "%s:%d error clearing tracked writelocks: %d\n",
-                    __FILE__, __LINE__, rc);
-            abort();
+        if (add_snapisol_logging(bdb_state)) {
+            rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
+                bdb_state->dbenv, tran->tid->txnid);
+            if (rc) {
+                logmsg(LOGMSG_FATAL,
+                       "%s:%d error clearing tracked writelocks: %d\n",
+                       __FILE__, __LINE__, rc);
+                abort();
+            }
         }
 
         if (bdb_state->attr->snapisol && !payloadsz)
@@ -590,17 +606,9 @@ done:
     return rc;
 }
 
-int ll_key_del(bdb_state_type *bdb_state, tran_type *tran, int ixnum, void *key,
-               int keylen, int rrn, unsigned long long genid, int *payloadsz)
-{
-    return ll_key_del_rowlocks(bdb_state, tran, ixnum, key, keylen, rrn, genid,
-                               payloadsz, NULL, NULL, NULL, NULL, NULL, NULL);
-}
-
-int ll_key_upd_rowlocks(bdb_state_type *bdb_state, tran_type *tran,
-                        char *table_name, unsigned long long oldgenid,
-                        unsigned long long genid, void *key, int ixnum,
-                        int keylen, void *dta, int dtalen)
+int ll_key_upd(bdb_state_type *bdb_state, tran_type *tran, char *table_name,
+               unsigned long long oldgenid, unsigned long long genid, void *key,
+               int ixnum, int keylen, void *dta, int dtalen)
 {
     int rc = 0;
     DB *dbp;
@@ -658,12 +666,15 @@ int ll_key_upd_rowlocks(bdb_state_type *bdb_state, tran_type *tran,
     /* fall through */
     case TRANCLASS_PHYSICAL:
 
-        rc = bdb_state->dbenv->lock_clear_tracked_writelocks(bdb_state->dbenv,
-                                                             tran->tid->txnid);
-        if (rc) {
-            logmsg(LOGMSG_FATAL, "%s:%d error clearing tracked writelocks: %d\n",
-                    __FILE__, __LINE__, rc);
-            abort();
+        if (add_snapisol_logging(bdb_state)) {
+            rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
+                bdb_state->dbenv, tran->tid->txnid);
+            if (rc) {
+                logmsg(LOGMSG_FATAL,
+                       "%s:%d error clearing tracked writelocks: %d\n",
+                       __FILE__, __LINE__, rc);
+                abort();
+            }
         }
 
         /* open a cursor on the index, find exact key to be deleted
@@ -787,14 +798,6 @@ done:
     return rc;
 }
 
-int ll_key_upd(bdb_state_type *bdb_state, tran_type *tran, char *table_name,
-               unsigned long long oldgenid, unsigned long long genid, void *key,
-               int ixnum, int keylen, void *dta, int dtalen)
-{
-    return ll_key_upd_rowlocks(bdb_state, tran, table_name, oldgenid, genid,
-                               key, ixnum, keylen, dta, dtalen);
-}
-
 
 int ll_key_add(bdb_state_type *bdb_state, unsigned long long ingenid,
                tran_type *tran, int ixnum, DBT *dbt_key, DBT *dbt_data)
@@ -815,12 +818,15 @@ int ll_key_add(bdb_state_type *bdb_state, unsigned long long ingenid,
     /* fall through */
     case TRANCLASS_PHYSICAL:
 
-        rc = bdb_state->dbenv->lock_clear_tracked_writelocks(bdb_state->dbenv,
-                                                             tran->tid->txnid);
-        if (rc) {
-            logmsg(LOGMSG_FATAL, "%s:%d error clearing tracked writelocks: %d\n",
-                    __FILE__, __LINE__, rc);
-            abort();
+        if (add_snapisol_logging(bdb_state)) {
+            rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
+                bdb_state->dbenv, tran->tid->txnid);
+            if (rc) {
+                logmsg(LOGMSG_FATAL,
+                       "%s:%d error clearing tracked writelocks: %d\n",
+                       __FILE__, __LINE__, rc);
+                abort();
+            }
         }
 
         rc = bdb_state->dbp_ix[ixnum]->put(bdb_state->dbp_ix[ixnum], tran->tid,
@@ -867,18 +873,17 @@ int ll_key_add(bdb_state_type *bdb_state, unsigned long long ingenid,
     return rc;
 }
 
-static int
-ll_dta_upd_int(bdb_state_type *bdb_state, int rrn, unsigned long long oldgenid,
-               unsigned long long *newgenid, DB *dbp, tran_type *tran,
-               int dtafile, int dtastripe, int participantstripid,
-               int use_new_genid, DBT *verify_dta, DBT *dta, DBT *old_dta_out,
-               int is_blob, DBT *lkname, DB_LOCK *newlk,
-               unsigned long long *pvgenid, DBT *pvlkname, DB_LOCK *wallk,
-               int has_blob_update_optimization, int keep_genid_intact)
+static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
+                          unsigned long long oldgenid,
+                          unsigned long long *newgenid, DB *dbp,
+                          tran_type *tran, int dtafile, int dtastripe,
+                          int participantstripid, int use_new_genid,
+                          DBT *verify_dta, DBT *dta, DBT *old_dta_out,
+                          int is_blob, int has_blob_update_optimization,
+                          int keep_genid_intact)
 {
     int rc;
     int inplace = 0;
-    int newupdateid = 0;
     int updateid = 0;
     DBC *dbcp = NULL;
     DBT dbt_key;
@@ -932,12 +937,15 @@ ll_dta_upd_int(bdb_state_type *bdb_state, int rrn, unsigned long long oldgenid,
     /* fall through */
     case TRANCLASS_PHYSICAL:
 
-        rc = bdb_state->dbenv->lock_clear_tracked_writelocks(bdb_state->dbenv,
-                                                             tran->tid->txnid);
-        if (rc) {
-            logmsg(LOGMSG_FATAL, "%s:%d error clearing tracked writelocks: %d\n",
-                    __FILE__, __LINE__, rc);
-            abort();
+        if (add_snapisol_logging(bdb_state)) {
+            rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
+                bdb_state->dbenv, tran->tid->txnid);
+            if (rc) {
+                logmsg(LOGMSG_FATAL,
+                       "%s:%d error clearing tracked writelocks: %d\n",
+                       __FILE__, __LINE__, rc);
+                abort();
+            }
         }
 
         /* open a cursor */
@@ -952,10 +960,9 @@ ll_dta_upd_int(bdb_state_type *bdb_state, int rrn, unsigned long long oldgenid,
             inplace = 1;
         } else if (0 == *newgenid) {
             if (ip_updates_enabled(bdb_state)) {
-                newupdateid =
-                    (1 + get_updateid_from_genid(bdb_state, oldgenid));
-                if (newupdateid <= max_updateid(bdb_state)) {
-                    *newgenid = set_updateid(bdb_state, newupdateid, oldgenid);
+                int newupd = (1 + get_updateid_from_genid(bdb_state, oldgenid));
+                if (newupd <= max_updateid(bdb_state)) {
+                    *newgenid = set_updateid(bdb_state, newupd, oldgenid);
                     inplace = 1;
                 }
             }
@@ -1387,8 +1394,7 @@ int ll_dta_upd_blob_w_opt(bdb_state_type *bdb_state, int rrn,
 {
     return ll_dta_upd_int(bdb_state, rrn, oldgenid, newgenid, dbp, tran,
                           dtafile, dtastripe, participantstripid, use_new_genid,
-                          verify_dta, dta, old_dta_out, 1, NULL, NULL, NULL,
-                          NULL, NULL, 1, 0);
+                          verify_dta, dta, old_dta_out, 1, 1, 0);
 }
 
 int ll_dta_upd(bdb_state_type *bdb_state, int rrn, unsigned long long oldgenid,
@@ -1398,23 +1404,7 @@ int ll_dta_upd(bdb_state_type *bdb_state, int rrn, unsigned long long oldgenid,
 {
     return ll_dta_upd_int(bdb_state, rrn, oldgenid, newgenid, dbp, tran,
                           dtafile, dtastripe, participantstripid, use_new_genid,
-                          verify_dta, dta, old_dta_out, 0, NULL, NULL, NULL,
-                          NULL, NULL, 0, 0);
-}
-
-int ll_dta_upd_rowlocks(bdb_state_type *bdb_state, int rrn,
-                        unsigned long long oldgenid,
-                        unsigned long long *newgenid, DB *dbp, tran_type *tran,
-                        int dtafile, int dtastripe, int participantstripid,
-                        int use_new_genid, DBT *verify_dta, DBT *dta,
-                        DBT *old_dta_out, DBT *lkname, DB_LOCK *newlk,
-                        unsigned long long *pvgenid, DBT *pvlkname,
-                        DB_LOCK *pvlk)
-{
-    return ll_dta_upd_int(bdb_state, rrn, oldgenid, newgenid, dbp, tran,
-                          dtafile, dtastripe, participantstripid, use_new_genid,
-                          verify_dta, dta, old_dta_out, (dtafile != 0), lkname,
-                          newlk, pvgenid, pvlkname, pvlk, 0, 0);
+                          verify_dta, dta, old_dta_out, (dtafile != 0), 0, 0);
 }
 
 int ll_dta_upd_blob(bdb_state_type *bdb_state, int rrn,
@@ -1425,7 +1415,7 @@ int ll_dta_upd_blob(bdb_state_type *bdb_state, int rrn,
     unsigned long long ngenid = newgenid;
     return ll_dta_upd_int(bdb_state, rrn, oldgenid, &ngenid, dbp, tran, dtafile,
                           dtastripe, participantstripid, 1, NULL, dta, NULL, 1,
-                          NULL, NULL, NULL, NULL, NULL, 0, 0);
+                          0, 0);
 }
 
 int ll_dta_upgrade(bdb_state_type *bdb_state, int rrn, unsigned long long genid,
@@ -1434,8 +1424,7 @@ int ll_dta_upgrade(bdb_state_type *bdb_state, int rrn, unsigned long long genid,
 {
     unsigned long long newgenid = 0ULL;
     return ll_dta_upd_int(bdb_state, rrn, genid, &newgenid, dbp, tran, dtafile,
-                          dtastripe, 0, 0, NULL, dta, NULL, 0, NULL, NULL, NULL,
-                          NULL, NULL, 0, 1);
+                          dtastripe, 0, 0, NULL, dta, NULL, 0, 0, 1);
 }
 
 int ll_commit_bench(bdb_state_type *bdb_state, tran_type *tran, int op,

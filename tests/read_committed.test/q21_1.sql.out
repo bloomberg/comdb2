@@ -1,0 +1,37 @@
+[set transaction read committed] rc 0
+(rows inserted=1)
+[insert into t5 values (1, 1)] rc 0
+[begin] rc 0
+[update t5 set b = 2] rc 0
+[update t5 set b = 3] rc 0
+[commit] rc 0
+(a=1, b=3)
+[select * from t5] rc 0
+(out='Verify succeeded.')
+[exec procedure sys.cmd.verify('t5')] rc 0
+[begin] rc 0
+[update t5 set b = 4] rc 0
+[update t5 set b = 5] rc 0
+[commit] rc 0
+(a=1, b=5)
+[select * from t5] rc 0
+(out='Verify succeeded.')
+[exec procedure sys.cmd.verify('t5')] rc 0
+[begin] rc 0
+[update t5 set b = 6] rc 0
+[update t5 set b = 7] rc 0
+[commit] rc 0
+(a=1, b=7)
+[select * from t5] rc 0
+(out='Verify succeeded.')
+[exec procedure sys.cmd.verify('t5')] rc 0
+[begin] rc 0
+[update t5 set b = 2] rc 0
+[update t5 set b = 3] rc 0
+[commit] rc 0
+(a=1, b=3)
+[select * from t5] rc 0
+(out='Verify succeeded.')
+[exec procedure sys.cmd.verify('t5')] rc 0
+[truncate t5] rc 0
+[select * from t5] rc 0

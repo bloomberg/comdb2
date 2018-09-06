@@ -30,6 +30,8 @@ public class SockIO implements IO {
     protected int port;
     protected int tcpbufsz;
     protected String pmuxrtedb = null;
+    protected int soTimeout;
+    protected int connectTimeout;
 
     protected boolean opened = false;
 
@@ -50,19 +52,25 @@ public class SockIO implements IO {
         opened = false;
     }
 
-    public SockIO(String host, int port, int tcpbufsz, String pmuxrtedb) {
+    public SockIO(String host, int port, int tcpbufsz, String pmuxrtedb, int soTimeout, int connectTimeout) {
         this.host = host;
         this.port = port;
         this.tcpbufsz = tcpbufsz;
         this.pmuxrtedb = pmuxrtedb;
+        this.soTimeout = soTimeout;
+        this.connectTimeout = connectTimeout;
     }
 
     public SockIO(String host, int port) {
-        this(host, port, 0, null);
+        this(host, port, 0, null, 0, 0);
     }
 
     public SockIO(String host, int port, String pmuxrtedb) {
-        this(host, port, 0, pmuxrtedb);
+        this(host, port, 0, pmuxrtedb, 0, 0);
+    }
+
+    public SockIO(String host, int port, String pmuxrtedb, int soTimeout, int connectTimeout) {
+        this(host, port, 0, pmuxrtedb, soTimeout, connectTimeout);
     }
 
     public SockIO() {
@@ -127,13 +135,13 @@ public class SockIO implements IO {
             sock = new Socket();
 
             sock.setSoLinger(true, 0); /* no lingering */
-            sock.setSoTimeout(60000); /* timeout 60 seconds */
+            sock.setSoTimeout(soTimeout);
             sock.setTcpNoDelay(true); /* no nagle */
             if (tcpbufsz > 0)
                 sock.setReceiveBufferSize(tcpbufsz);
 
             sock.bind(new InetSocketAddress(0));
-            sock.connect(new InetSocketAddress(host, port), 10000);
+            sock.connect(new InetSocketAddress(host, port), connectTimeout);
             out = new BufferedOutputStream(sock.getOutputStream());
             in = new BufferedInputStream(sock.getInputStream());
             opened = true;

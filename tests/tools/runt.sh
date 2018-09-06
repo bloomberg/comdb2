@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # set -x
 export CLUSTER="node1 node2 node3 node4 node5"

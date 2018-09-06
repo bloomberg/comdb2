@@ -17,11 +17,10 @@
 #ifndef INCLUDED_SP_H
 #define INCLUDED_SP_H
 
-struct schema;
+struct Mem;
 struct sqlthdstate;
 struct sqlclntstate;
 struct sqlite3_context;
-struct Mem;
 struct trigger_reg;
 
 struct spversion_t {
@@ -29,7 +28,7 @@ struct spversion_t {
     char *version_str;
 };
 
-int exec_procedure(const char *s, char **err, struct sqlthdstate *, struct schema *, struct sqlclntstate *);
+int exec_procedure(struct sqlthdstate *, struct sqlclntstate *, char **err);
 int exec_thread(struct sqlthdstate *, struct sqlclntstate *);
 void *exec_trigger(struct trigger_reg *);
 void close_sp(struct sqlclntstate *);

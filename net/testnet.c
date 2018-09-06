@@ -25,15 +25,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-
 #include <pthread.h>
-
 #include <epochlib.h>
 #include <db.h>
 #include <bsnodeusr.h>
 #include <lockmacro.h>
-
-#include <machine.h>
 
 #include "net.h"
 
@@ -368,7 +364,7 @@ int main(int argc, char *argv[])
                     netnodes[ii].node);
             exit(1);
         }
-        if (netnodes[ii].node == machine()) {
+        if (netnodes[ii].node == gbl_mynode) {
             if (mynetnode) {
                 fprintf(stderr, "I appear twice in node list!\n");
                 exit(1);

@@ -223,8 +223,8 @@ __log_archive(dbenv, listp, flags)
 	case 0:
 		if (start_recovery_at_dbregs) {
 			/* Remove any log files before the last stable LSN. */
-			ret = __db_find_recovery_start(dbenv, &stable_lsn);
-			if (ret && dbenv->attr.dbreg_errors_fatal) {
+			ret = __env_find_verify_recover_start(dbenv, &stable_lsn);
+			if (ret != 0 && dbenv->attr.dbreg_errors_fatal) {
 				*listp = NULL;
 
 				if (ret == DB_NOTFOUND)
@@ -238,30 +238,26 @@ __log_archive(dbenv, listp, flags)
 				/*
 				 * A failure return means that there's no checkpoint
 				 * in the log (so we are not going to be deleting
-			 * any log files).
-			 */
-			*listp = NULL;
-			goto err1;
-		}
-		if ((ret = __log_cursor(dbenv, &logc)) != 0)
+				 * any log files).
+				 */
+				*listp = NULL;
 				goto err1;
-			if ((ret =
-				__log_c_get(logc, &stable_lsn, &rec,
-				    DB_SET)) != 0 ||
-			    (ret =
-				__txn_ckp_read(dbenv, rec.data,
-				    &ckp_args)) != 0) {
+			}
+			if ((ret = __log_cursor(dbenv, &logc)) != 0)
+				goto err1;
+			if ((ret = __log_c_get(logc, &stable_lsn, &rec, DB_SET)) != 0 ||
+					(ret = __txn_ckp_read(dbenv, rec.data, &ckp_args)) != 0) {
 				/*
 				 * A return of DB_NOTFOUND may only mean that the
 				 * checkpoint LSN is before the beginning of the
 				 * log files that we still have.  This is not
 				 * an error;  it just means our work is done.
-			 */
-			if (ret == DB_NOTFOUND) {
-				*listp = NULL;
-				ret = 0;
-			}
-			(void)__log_c_close(logc);
+				 */
+				if (ret == DB_NOTFOUND) {
+					*listp = NULL;
+					ret = 0;
+				}
+				(void)__log_c_close(logc);
 				goto err1;
 			}
 			if ((ret = __log_c_close(logc)) != 0)

@@ -295,7 +295,7 @@ do_test where3-4.2 {
 #
 do_execsql_test where3-5.0 {
   CREATE TABLE aaa (id INTEGER PRIMARY KEY, type INTEGER,
-                    fk INTEGER DEFAULT NULL, parent INTEGER,
+                    fk INTEGER, parent INTEGER,
                     position INTEGER, title TEXT,
                     keyword_id INTEGER, folder_type TEXT,
                     dateAdded INTEGER, lastModified INTEGER);
@@ -303,7 +303,7 @@ do_execsql_test where3-5.0 {
   CREATE INDEX aaa_222 ON aaa (parent, position);
   CREATE INDEX aaa_333 ON aaa (fk, lastModified);
   CREATE TABLE bbb (id INTEGER PRIMARY KEY, type INTEGER,
-                    fk INTEGER DEFAULT NULL, parent INTEGER,
+                    fk INTEGER, parent INTEGER,
                     position INTEGER, title TEXT,
                     keyword_id INTEGER, folder_type TEXT,
                     dateAdded INTEGER, lastModified INTEGER);

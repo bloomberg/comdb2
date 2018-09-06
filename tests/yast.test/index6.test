@@ -70,7 +70,7 @@ do_test index6-1.2 {
   catchsql {
     CREATE INDEX bad1 ON t1(a,b) WHERE x IS NOT NULL;
   }
-} {1 {malformed database schema ($BAD1_24CF656E) - no such column: x}}
+} {1 {malformed database schema ($.NEW.BAD1_A82B8A75) - no such column: x}}
 #{1 {no such column: x}}
 
 do_test index6-1.3 {
@@ -78,21 +78,21 @@ do_test index6-1.3 {
     CREATE INDEX bad1 ON t1(a,b) WHERE EXISTS[SELECT * FROM t1];
     #CREATE INDEX bad1 ON t1(a,b) WHERE EXISTS(SELECT * FROM t1);
   }
-} {1 {malformed database schema ($BAD1_24CF656E) - subqueries prohibited in partial index WHERE clauses}}
+} {1 {malformed database schema ($.NEW.BAD1_A82B8A75) - subqueries prohibited in partial index WHERE clauses}}
 #{1 {subqueries prohibited in partial index WHERE clauses}}
 
 do_test index6-1.4 {
   catchsql {
     CREATE INDEX bad1 ON t1(a,b) WHERE a!=?1;
   }
-} {1 {malformed database schema ($BAD1_24CF656E) - parameters prohibited in partial index WHERE clauses}}
+} {1 {malformed database schema ($.NEW.BAD1_A82B8A75) - parameters prohibited in partial index WHERE clauses}}
 #{1 {parameters prohibited in partial index WHERE clauses}}
 
 do_test index6-1.5 {
   catchsql {
     CREATE INDEX bad1 ON t1(a,b) WHERE a!=random[];
   }
-} {1 {malformed database schema ($BAD1_24CF656E) - non-deterministic functions prohibited in partial index WHERE clauses}}
+} {1 {malformed database schema ($.NEW.BAD1_A82B8A75) - non-deterministic functions prohibited in partial index WHERE clauses}}
 #{1 {functions prohibited in partial index WHERE clauses}}
 
 do_test index6-1.6 {
@@ -311,11 +311,11 @@ do_execsql_test index6-3.4 {
 
 # Silently ignore database name qualifiers in partial indices.
 #
-do_test index6-5.0 {
-  catchsql {
-    CREATE INDEX t3b ON t3(b) WHERE xyzzy.t3.b BETWEEN 5 AND 10;
-  }
-} {1 {malformed database schema ($T3B_EFCF45E6) - no such column: t3.b}}
+# do_test index6-5.0 {
+#   catchsql {
+#     CREATE INDEX t3b ON t3(b) WHERE xyzzy.t3.b BETWEEN 5 AND 10;
+#   }
+# } {1 {malformed database schema ($T3B_EFCF45E6) - no such column: t3.b}}
 
 do_execsql_test index6-5.1 {
   ANALYZE;

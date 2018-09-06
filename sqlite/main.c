@@ -170,7 +170,9 @@ int sqlite3_initialize(void){
   /* If the following assert() fails on some obscure processor/compiler
   ** combination, the work-around is to set the correct pointer
   ** size at compile-time using -DSQLITE_PTRSIZE=n compile-time option */
+#ifndef SQLITE_BUILDING_FOR_COMDB2
   assert( SQLITE_PTRSIZE==sizeof(char*) );
+#endif
 
   /* If SQLite is already completely initialized, then this call
   ** to sqlite3_initialize() should be a no-op.  But the initialization
@@ -3153,10 +3155,14 @@ opendb_out:
 #endif
 
   /* COMDB2 MODIFICATION */
+  static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+  pthread_mutex_lock(&mutex);
+  /* these modify global structures */
   register_lua_sfuncs(db, thd);
   register_lua_afuncs(db, thd);
   register_date_functions(db); 
   db->should_fingerprint = 0;
+  pthread_mutex_unlock(&mutex);
 
 #if defined(SQLITE_HAS_CODEC)
   if( rc==SQLITE_OK ){

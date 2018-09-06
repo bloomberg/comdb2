@@ -67,45 +67,72 @@
 #define FDB_VER_CODE_VERSION 1
 #define FDB_VER_SOURCE_ID 2
 #define FDB_VER_WR_NAMES 3
+#define FDB_VER_SSL 4
 
-#define FDB_VER FDB_VER_WR_NAMES
+#define FDB_VER FDB_VER_SSL
 
 /* cc2 ftw */
 #define fdb_ver_encoded(ver) (-(ver + 1))
 #define fdb_ver_decoded(ver) (-(ver + 1))
 
 enum fdb_errors {
-    FDB_NOERR = 0,            /* NO ERROR */
-    FDB_ERR_GENERIC = -1,     /* failure, generic */
-    FDB_ERR_WRITE_IO = -2,    /* failure writing on a socket */
-    FDB_ERR_READ_IO = -3,     /* failure reading from a socket */
-    FDB_ERR_MALLOC = -4,      /* failed allocation */
-    FDB_ERR_UNSUPPORTED = -5, /* recognizing a protocol option */
+    FDB_NOERR = 0 /* NO ERROR */
+    ,
+    FDB_ERR_GENERIC = -1 /* failure, generic */
+    ,
+    FDB_ERR_WRITE_IO = -2 /* failure writing on a socket */
+    ,
+    FDB_ERR_READ_IO = -3 /* failure reading from a socket */
+    ,
+    FDB_ERR_MALLOC = -4 /* failed allocation */
+    ,
+    FDB_ERR_UNSUPPORTED = -5 /* recognizing a protocol option */
+    ,
     FDB_ERR_TRAN_IO =
-        -6, /* failed communication with a node involved in a transaction*/
+        -6 /* failed communication with a node involved in a transaction*/
+    ,
     FDB_ERR_FDB_VERSION =
-        -7, /* sent by FDB_VER_CODE_VERSION and above to downgrade protocol */
-    FDB_ERR_FDB_NOTFOUND = -8,     /* fdb name not found */
-    FDB_ERR_FDB_TBL_NOTFOUND = -9, /* fdb found but table not existing */
-    FDB_ERR_CLASS_UNKNOWN = -10, /* explicit class in fdb name, unrecognized */
+        -7 /* sent by FDB_VER_CODE_VERSION and above to downgrade protocol */
+    ,
+    FDB_ERR_FDB_NOTFOUND = -8 /* fdb name not found */
+    ,
+    FDB_ERR_FDB_TBL_NOTFOUND = -9 /* fdb found but table not existing */
+    ,
+    FDB_ERR_CLASS_UNKNOWN = -10 /* explicit class in fdb name, unrecognized */
+    ,
     FDB_ERR_CLASS_DENIED =
-        -11, /* denied access to the class, either implicit or explicit */
-    FDB_ERR_REGISTER_NOTFOUND = -12, /* unable to access comdb2db */
-    FDB_ERR_REGISTER_NODB = -13, /* no information about fdb name in comdb2db */
-    FDB_ERR_REGISTER_NONODES = -14,  /* no nodes available for the fdb */
-    FDB_ERR_REGISTER_IO = -15,       /* failure talking to comdb2db */
-    FDB_ERR_REGISTER_NORESCPU = -16, /* no known node is rescpu */
-    FDB_ERR_PTHR_LOCK = -17,         /* pthread locks are mashed */
-    FDB_ERR_CONNECT = -18,           /* failed to connect to db */
-    FDB_ERR_CONNECT_CLUSTER = -19,   /* failed to connect to cluster */
-    FDB_ERR_BUG = -20,               /* bug in the code, should not see this */
-    FDB_ERR_SOCKPOOL = -21,          /* sockpool return error */
-    FDB_ERR_PI_DISABLED = -22, /* foreign table has partial indexes but the
-                                  feature is disabled locally */
+        -11 /* denied access to the class, either implicit or explicit */
+    ,
+    FDB_ERR_REGISTER_NOTFOUND = -12 /* unable to access comdb2db */
+    ,
+    FDB_ERR_REGISTER_NODB = -13 /* no information about fdb name in comdb2db */
+    ,
+    FDB_ERR_REGISTER_NONODES = -14 /* no nodes available for the fdb */
+    ,
+    FDB_ERR_REGISTER_IO = -15 /* failure talking to comdb2db */
+    ,
+    FDB_ERR_REGISTER_NORESCPU = -16 /* no known node is rescpu */
+    ,
+    FDB_ERR_PTHR_LOCK = -17 /* pthread locks are mashed */
+    ,
+    FDB_ERR_CONNECT = -18 /* failed to connect to db */
+    ,
+    FDB_ERR_CONNECT_CLUSTER = -19 /* failed to connect to cluster */
+    ,
+    FDB_ERR_BUG = -20 /* bug in the code, should not see this */
+    ,
+    FDB_ERR_SOCKPOOL = -21 /* sockpool return error */
+    ,
+    FDB_ERR_PI_DISABLED = -22 /* foreign table has partial indexes but the
+                                 feature is disabled locally */
+    ,
     FDB_ERR_EXPRIDX_DISABLED =
-        -23, /* foreign table has expressions indexes but the feature is
-                disabled locally */
+        -23 /* foreign table has expressions indexes but the feature is
+               disabled locally */
+    ,
     FDB_ERR_INDEX_DESCRIBE = -24 /* failed to describe index */
+    ,
+    FDB_ERR_SSL = -25 /* SSL configuration error */
 };
 
 #define fdb_is_error(n) ((n) < FDB_NOERR)
@@ -245,7 +272,8 @@ char *fdb_sqlexplain_get_field_name(Vdbe *v, int rootpage, int ixnum,
  *
  */
 fdb_cursor_if_t *fdb_cursor_open(struct sqlclntstate *clnt, BtCursor *pCur,
-                                 int rootpage, fdb_tran_t *trans, int *ixnum);
+                                 int rootpage, fdb_tran_t *trans, int *ixnum,
+                                 int need_ssl);
 
 /**
  * Retrieve/create space for a Btree schema change (per foreign db)
@@ -277,7 +305,7 @@ int fdb_is_sqlite_stat(fdb_t *fdb, int rootpage);
 
 /* transactional api */
 fdb_tran_t *fdb_trans_begin_or_join(struct sqlclntstate *clnt, fdb_t *fdb,
-                                    char *ptid);
+                                    char *ptid, int use_ssl);
 fdb_tran_t *fdb_trans_join(struct sqlclntstate *clnt, fdb_t *fdb, char *ptid);
 int fdb_trans_commit(struct sqlclntstate *clnt);
 int fdb_trans_rollback(struct sqlclntstate *clnt, fdb_tran_t *trans);
@@ -373,6 +401,8 @@ void fdb_cursor_use_table(fdb_cursor_t *cur, struct fdb *fdb,
 int fdb_get_remote_version(const char *dbname, const char *table,
                            enum mach_class class, int local,
                            unsigned long long *version);
+
+int fdb_table_exists(int rootpage);
 
 #endif
 

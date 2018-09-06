@@ -1,0 +1,59 @@
+#!/bin/sh
+
+#############################################
+# Test dbname validation against SSL certs. #
+#############################################
+
+# The database is configured to validate the dbname in client certs (See lrl.options).
+# So if we get in here, it means db validating client is successful.
+# We're going to test client validating database next.
+
+bash -n "$0" | exit 1
+dbnm=$1
+
+cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("stat ssl")'
+
+# Client should reject server as the database name doesn't match UID in the certificate.
+cp $DBDIR/comdb2db.cfg $DBDIR/query1.cfg
+echo "comdb2_config:ssl_mode=VERIFY_DBNAME,UID" >>$DBDIR/query1.cfg
+expected='[SELECT "MISMATCHED DBNAME"] failed with rc -1 SSL Error: Certificate does not match database name.'
+actual=`cdb2sql --cdb2cfg $DBDIR/query1.cfg $dbnm default 'SELECT "MISMATCHED DBNAME"' 2>&1`
+echo $actual
+if [ "$expected" != "$actual" ]; then
+  echo "Client failed to validate database name." >&2
+  exit 1
+fi
+
+# Client should proceed as the database name match 'host' in the certificate.
+cp $DBDIR/comdb2db.cfg $DBDIR/query2.cfg
+echo "comdb2_config:ssl_mode=VERIFY_DBNAME,host" >>$DBDIR/query2.cfg
+expected='MATCHED DBNAME'
+actual=`cdb2sql --tabs --cdb2cfg $DBDIR/query2.cfg $dbnm default 'SELECT "MATCHED DBNAME"' 2>&1`
+echo $actual
+if [ "$expected" != "$actual" ]; then
+  echo "Client failed to validate database name." >&2
+  exit 1
+fi
+
+# Server should reject because the 'host' is all wildcard characters.
+openssl genrsa -out ${DBDIR}/wildcard.key 4096
+# Create signing request
+openssl req -new -key ${DBDIR}/wildcard.key -out ${DBDIR}/wildcard.key.csr \
+            -subj "/C=US/ST=New York/L=New York/O=Bloomberg/OU=Comdb2/CN=*.bloomberg.com/host=**?"
+# Sign the bad key
+openssl x509 -req -in ${DBDIR}/wildcard.key.csr -CA ${TESTDIR}/root.crt -CAkey ${TESTDIR}/root.key \
+             -CAserial ${TESTDIR}/root.srl -out ${DBDIR}/wildcard.crt -days 10
+chmod 400 ${DBDIR}/wildcard.key
+cp $DBDIR/comdb2db.cfg $DBDIR/query3.cfg
+echo "comdb2_config:ssl_key=$DBDIR/wildcard.key
+comdb2_config:ssl_cert=$DBDIR/wildcard.crt" >>$DBDIR/query3.cfg
+expected='[SELECT "ALL-WILDCARD"] failed with rc -1 Client certificate authentication failed.'
+actual=`cdb2sql --tabs --cdb2cfg $DBDIR/query3.cfg $dbnm default 'SELECT "ALL-WILDCARD"' 2>&1`
+echo $actual
+if [ "$expected" != "$actual" ]; then
+  echo "Client failed to validate database name." >&2
+  exit 1
+fi
+
+echo "Passed."
+exit 0

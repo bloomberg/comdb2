@@ -1,17 +1,17 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-debug=1
+#debug=1
 [[ "$debug" == "1" ]] && set -x
 
-BRANCH=${1:-master}
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+export DUMPLOCK_ON_TIMEOUT=1
 export CORE_ON_TIMEOUT=1
-#export NOKILL_ON_TIMEOUT=1
 email="mhannum72@gmail.com"
-tests="jepsen_atomic_writes jepsen_a6_nemesis jepsen_a6 jepsen_bank_nemesis jepsen_bank jepsen_dirty_reads jepsen_g2 jepsen_register_nemesis jepsen_register jepsen_sets_nemesis jepsen_sets cinsert_linearizable register_linearizable"
+tests=${TESTLOOPTESTS:-jepsen_atomic_writes jepsen_a6_nemesis jepsen_a6 jepsen_bank_nemesis jepsen_bank jepsen_dirty_reads jepsen_g2 jepsen_register_nemesis jepsen_register jepsen_sets_nemesis jepsen_sets cinsert_linearizable register_linearizable socksql_master_swings}
 
 # mailperiod=86400
-mailperiod=7200
-lasttime=0
+mailperiod=3600
+export lasttime=0
 
 i=0 
 
@@ -64,6 +64,7 @@ function mail_status
 function cleanup
 {
     [[ "$debug" == "1" ]] && set -x
+    ( cd ~/comdb2/tests && make clean )
     find ~/comdb2/tests/test_* -type d -mmin +$test_linger -exec rm -Rf {} \;
     find ~/comdb2/tests/tools/linearizable/jepsen/store -mtime 1 -exec rm -Rf {} \;
     find ~/comdb2/tests/test_* -mtime 1 -exec rm -Rf {} \;
@@ -92,7 +93,9 @@ function pull_and_recompile
 while :; do 
     let i=i+1 
     print_status
-    pull_and_recompile
+    if [[ ! -z $TESTLOOPCOMPILE ]]; then
+        pull_and_recompile
+    fi 
     echo "$(date) ITERATION $i" 
     for x in $tests 
     do print_status
@@ -155,6 +158,16 @@ while :; do
                 err=0
             fi
 
+            egrep "Connection refused" $l
+            if [[ $? == 0 ]]; then
+                egrep "ssh" $l
+                if [[ $? == 0 ]]; then
+                    echo "ssh: Connection refused error: continuing"
+                    let sshfail=sshfail+1
+                    err=0
+                fi
+            fi
+
             egrep "actual: java.sql.SQLNonTransientConnectionException: " $l
             if [[ $? == 0 ]]; then
                 echo "TransientConnectionException: continuing"
@@ -184,7 +197,7 @@ while :; do
 
     if [ $(( now - lasttime )) -gt $mailperiod ]; then
 
-        lasttime=now
+        lasttime=$now
         mail_status
     fi
 

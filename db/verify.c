@@ -293,9 +293,10 @@ static int get_tbl_and_lock_in_tran(const char *table, SBUF2 *sb,
     return bdb_lock_tablename_read(thedb->bdb_env, table, loctran);
 }
 
-int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
-             int attempt_fix, 
-             int (*lua_callback)(void *, const char *), void *lua_params)
+static int verify_table_int(const char *table, SBUF2 *sb,
+                            int progress_report_seconds, int attempt_fix,
+                            int (*lua_callback)(void *, const char *),
+                            void *lua_params)
 {
     int bdberr;
     int rc;
@@ -315,7 +316,7 @@ int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
         assert(db && "db is null but should not be");
         blob_buffer_t blob_buf[MAXBLOBS] = {0};
         rc = bdb_verify(
-            sb, db->handle, verify_formkey_callback, verify_blobsizes_callback,
+            sb, db->handle, db, verify_formkey_callback, verify_blobsizes_callback,
             (int (*)(void *, void *, int *, uint8_t))vtag_to_ondisk_vermap,
             verify_add_blob_buffer_callback, verify_free_blob_buffer_callback,
             verify_indexes_callback, db, lua_callback, lua_params, blob_buf,
@@ -334,4 +335,59 @@ int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
 
     sbuf2flush(sb);
     return rc;
+}
+
+struct verify_args {
+    pthread_t tid;
+    const char *table;
+    SBUF2 *sb;
+    int progress_report_seconds;
+    int attempt_fix;
+    int rcode;
+    int (*lua_callback)(void *, const char *);
+    void *lua_params;
+};
+
+static void *verify_td(void *arg)
+{
+    struct verify_args *v = (struct verify_args *)arg;
+    backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
+    v->rcode = verify_table_int(v->table, v->sb, v->progress_report_seconds,
+                                v->attempt_fix, v->lua_callback, v->lua_params);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+    return NULL;
+}
+
+int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
+                 int attempt_fix, int (*lua_callback)(void *, const char *),
+                 void *lua_params)
+{
+    int rc;
+    struct verify_args v;
+    pthread_attr_t attr;
+    size_t stacksize;
+    v.table = table;
+    v.sb = sb;
+    v.progress_report_seconds = progress_report_seconds;
+    v.attempt_fix = attempt_fix;
+    v.lua_callback = lua_callback;
+    v.lua_params = lua_params;
+    v.rcode = 0;
+
+    stacksize = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_VERIFY_THREAD_STACKSZ);
+    pthread_attr_init(&attr);
+    pthread_attr_setstacksize(&attr, stacksize);
+
+    if (rc = pthread_create(&v.tid, &attr, verify_td, &v)) {
+        logmsg(LOGMSG_ERROR, "%s unable to create thread for verify: %s\n",
+               __func__, strerror(errno));
+        sbuf2printf(sb, "FAILED\n");
+        pthread_attr_destroy(&attr);
+        return -1;
+    }
+
+    pthread_join(v.tid, NULL);
+
+    pthread_attr_destroy(&attr);
+    return v.rcode;
 }

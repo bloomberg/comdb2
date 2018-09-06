@@ -1,0 +1,22 @@
+create table t1 {
+schema
+        {
+                cstring name[10]
+                cstring value[10]
+                cstring time[10]
+        }
+}$$
+
+select sleep(1)
+
+exec procedure sys.cmd.load('/home/mk/data/mohitdb1/agg.csv', 't1')
+
+exec procedure sys.cmd.load('DBDIR/agg.csv', 't1')
+
+select * from t1 order by name
+
+delete from t1 where 1
+
+exec procedure sys.cmd.load('DBDIR/agg.csv', 't1', NULL, "value,time,name")
+
+select * from t1 order by name

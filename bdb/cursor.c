@@ -92,6 +92,7 @@ as long as there was a successful move in the past
 #include <plhash.h>
 #include "logmsg.h"
 #include "util.h"
+#include "tohex.h"
 
 #include "genid.h"
 #define MERGE_DEBUG (0)
@@ -100,19 +101,6 @@ struct datacopy_info {
     void *datacopy;
     int size;
 };
-
-
-static void hexdump(loglvl lvl, char *key, int keylen)
-{
-    if (key == NULL || keylen == 0) {
-        logmsg(LOGMSG_ERROR, "NULL(%d)\n", keylen);
-        return;
-    }
-    char *mem = alloca((2 * keylen) + 2);
-    char *output = util_tohex(mem, key, keylen);
-
-    logmsg(lvl, "%s\n", output);
-}
 
 
 pthread_mutex_t pr_lk = PTHREAD_MUTEX_INITIALIZER;
@@ -149,15 +137,21 @@ static pthread_mutex_t logfile_pglogs_repo_mutex;
 
 #ifdef NEWSI_STAT
 struct timeval logfile_relink_time;
-struct timeval logfile_insert_time;
-struct timeval client_insert_time;
-struct timeval client_relink_time;
-struct timeval ltran_insert_time;
-struct timeval ltran_relink_time;
-struct timeval txn_insert_time;
-struct timeval txn_relink_time;
+struct timeval logfile_pglog_time;
+struct timeval ltran_pglog_time;
+struct timeval txn_pglog_time;
+struct timeval queue_pglog_time;
+struct timeval queue_relink_time;
 struct timeval logical_undo_time;
-pthread_mutex_t newsi_stat_mutex;
+struct timeval client_copy_time;
+struct timeval log_read_time;
+struct timeval log_read_time2;
+struct timeval log_apply_time;
+struct timeval comprec_time;
+unsigned long long num_log_read = 0;
+unsigned long long num_log_applied_opt = 0;
+unsigned long long num_log_applied_unopt = 0;
+unsigned long long num_comprec = 0;
 #endif
 
 struct temp_table *bdb_gbl_timestamp_lsn;
@@ -175,7 +169,7 @@ extern pthread_mutex_t bdb_gbl_recoverable_lsn_mutex;
 extern DB_LSN bdb_gbl_recoverable_lsn;
 extern int32_t bdb_gbl_recoverable_timestamp;
 
-static hash_t *bdb_asof_ltran_hash;
+static hash_t *bdb_asof_cursor_hash;
 extern pthread_mutex_t bdb_asof_current_lsn_mutex;
 extern DB_LSN bdb_asof_current_lsn;
 extern DB_LSN bdb_latest_commit_lsn;
@@ -197,7 +191,7 @@ static int bdb_btree_merge(bdb_cursor_impl_t *cur, int stripe_rl, int page_rl,
                            int how);
 static int bdb_btree_update_shadows(bdb_cursor_impl_t *cur, int how,
                                     int *bdberr);
-static int bdb_btree_update_shadows_with_trn_pglogs(bdb_cursor_impl_t *cur,
+static int bdb_btree_update_shadows_with_pglogs_int(bdb_cursor_impl_t *cur,
                                                     db_pgno_t *inpgno,
                                                     unsigned char *infileid,
                                                     int *bdberr);
@@ -312,7 +306,7 @@ static void print_cursor_keys(bdb_cursor_impl_t *cur, int which)
         cur->rl->key(cur->rl, &loc_key_rl, &bdberr);
         cur->rl->keysize(cur->rl, &loc_keysize_rl, &bdberr);
 
-        hexdump(loc_key_rl, loc_keysize_rl);
+        hexdump(LOGMSG_USER, loc_key_rl, loc_keysize_rl);
         logmsg(LOGMSG_USER, "\n");
     }
     if (which & BDB_SHOW_SD && cur->sd) {
@@ -322,7 +316,7 @@ static void print_cursor_keys(bdb_cursor_impl_t *cur, int which)
         cur->sd->key(cur->sd, &loc_key_sd, &bdberr);
         cur->sd->keysize(cur->sd, &loc_keysize_sd, &bdberr);
 
-        hexdump(loc_key_sd, loc_keysize_sd);
+        hexdump(LOGMSG_USER, loc_key_sd, loc_keysize_sd);
         logmsg(LOGMSG_USER, "\n");
     }
 }
@@ -713,7 +707,8 @@ bdb_cursor_ifn_t *bdb_cursor_open(
         }
     }
 
-    if (type == BDB_OPEN_REAL || type == BDB_OPEN_BOTH) {
+    if (type == BDB_OPEN_REAL || type == BDB_OPEN_BOTH ||
+        type == BDB_OPEN_BOTH_CREATE) {
         cur->rl = bdb_berkdb_open(cur, BERKDB_REAL, maxdta, maxkey, bdberr);
         if (!cur->rl) {
             logmsg(LOGMSG_ERROR, "%s: fail to create index berkdb\n", __func__);
@@ -729,14 +724,16 @@ bdb_cursor_ifn_t *bdb_cursor_open(
 
     /* we only open if there is already one (we'll open when we insert, if any)
      */
-    if (type == BDB_OPEN_SHAD || type == BDB_OPEN_BOTH) {
+    if (type == BDB_OPEN_SHAD || type == BDB_OPEN_BOTH ||
+        type == BDB_OPEN_BOTH_CREATE) {
         int openhow = BERKDB_SHAD;
 
         /* Always create cur->sd for non-page order snapisol or you can lose
          * data in cursor_move_merge. */
         if (cur->shadow_tran &&
             (cur->shadow_tran->tranclass == TRANCLASS_SNAPISOL ||
-             cur->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE))
+             cur->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE ||
+             type == BDB_OPEN_BOTH_CREATE))
             openhow = BERKDB_SHAD_CREATE;
 
         /* open the cursor now */
@@ -834,10 +831,15 @@ int timestamp_lsn_keycmp(void *_, int key1len, const void *key1, int key2len,
     return 0;
 }
 
-static pool_t *shadows_fileid_pglogs_queue_pool = NULL;
+static LISTC_T(struct commit_list) pglogs_commit_list;
+static hash_t *pglogs_queue_fileid_hash;
+static pthread_mutex_t pglogs_queue_lk;
+
+#ifdef NEWSI_MEMPOOL
+static pool_t *fileid_pglogs_queue_pool = NULL;
 static pool_t *pglogs_queue_cursor_pool = NULL;
 static pool_t *ltran_pglogs_key_pool = NULL;
-static pool_t *shadows_asof_cursor_pool = NULL;
+static pool_t *asof_cursor_pool = NULL;
 static pool_t *pglogs_commit_list_pool = NULL;
 static pool_t *pglogs_queue_key_pool = NULL;
 static pool_t *pglogs_key_pool = NULL;
@@ -847,11 +849,10 @@ static pool_t *pglogs_lsn_commit_list_pool = NULL;
 static pool_t *pglogs_relink_key_pool = NULL;
 static pool_t *pglogs_relink_list_pool = NULL;
 
-static LISTC_T(struct commit_list) pglogs_commit_list;
-static pthread_mutex_t shadows_fileid_pglogs_queue_lk;
-static pthread_mutex_t pglogs_queue_cursor_lk;
-static pthread_mutex_t ltran_pglogs_key_lk;
-static pthread_mutex_t shadows_asof_cursor_lk;
+static pthread_mutex_t fileid_pglogs_queue_pool_lk;
+static pthread_mutex_t pglogs_queue_cursor_pool_lk;
+static pthread_mutex_t ltran_pglogs_key_pool_lk;
+static pthread_mutex_t asof_cursor_pool_lk;
 static pthread_mutex_t pglogs_commit_list_pool_lk;
 static pthread_mutex_t pglogs_queue_key_pool_lk;
 static pthread_mutex_t pglogs_key_pool_lk;
@@ -860,243 +861,401 @@ static pthread_mutex_t pglogs_lsn_list_pool_lk;
 static pthread_mutex_t pglogs_lsn_commit_list_pool_lk;
 static pthread_mutex_t pglogs_relink_key_pool_lk;
 static pthread_mutex_t pglogs_relink_list_pool_lk;
-static pthread_mutex_t pglogs_queue_lk;
-static hash_t *pglogs_fileid_hash;
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+static pool_t *logfile_tmptbl_hashkey_pool = NULL;
+static pthread_mutex_t logfile_tmptbl_hashkey_pool_lk;
+#endif
+#else
+static comdb2ma newsi_ma;
+#endif
+
+#ifdef NEWSI_MEMPOOL
+void bdb_newsi_mempool_stat()
+{
+    Pthread_mutex_lock(&fileid_pglogs_queue_pool_lk);
+    pool_dumpx(fileid_pglogs_queue_pool, "fileid_pglogs_queue_pool");
+    Pthread_mutex_unlock(&fileid_pglogs_queue_pool_lk);
+
+    Pthread_mutex_lock(&pglogs_queue_cursor_pool_lk);
+    pool_dumpx(pglogs_queue_cursor_pool, "pglogs_queue_cursor_pool");
+    Pthread_mutex_unlock(&pglogs_queue_cursor_pool_lk);
+
+    Pthread_mutex_lock(&ltran_pglogs_key_pool_lk);
+    pool_dumpx(ltran_pglogs_key_pool, "ltran_pglogs_key_pool");
+    Pthread_mutex_unlock(&ltran_pglogs_key_pool_lk);
+
+    Pthread_mutex_lock(&asof_cursor_pool_lk);
+    pool_dumpx(asof_cursor_pool, "asof_cursor_pool");
+    Pthread_mutex_unlock(&asof_cursor_pool_lk);
+
+    Pthread_mutex_lock(&pglogs_commit_list_pool_lk);
+    pool_dumpx(pglogs_commit_list_pool, "pglogs_commit_list_pool");
+    Pthread_mutex_unlock(&pglogs_commit_list_pool_lk);
+
+    Pthread_mutex_lock(&pglogs_queue_key_pool_lk);
+    pool_dumpx(pglogs_queue_key_pool, "pglogs_queue_key_pool");
+    Pthread_mutex_unlock(&pglogs_queue_key_pool_lk);
+
+    Pthread_mutex_lock(&pglogs_key_pool_lk);
+    pool_dumpx(pglogs_key_pool, "pglogs_key_pool");
+    Pthread_mutex_unlock(&pglogs_key_pool_lk);
+
+    Pthread_mutex_lock(&pglogs_logical_key_pool_lk);
+    pool_dumpx(pglogs_logical_key_pool, "pglogs_logical_key_pool");
+    Pthread_mutex_unlock(&pglogs_logical_key_pool_lk);
+
+    Pthread_mutex_lock(&pglogs_lsn_list_pool_lk);
+    pool_dumpx(pglogs_lsn_list_pool, "pglogs_lsn_list_pool");
+    Pthread_mutex_unlock(&pglogs_lsn_list_pool_lk);
+
+    Pthread_mutex_lock(&pglogs_lsn_commit_list_pool_lk);
+    pool_dumpx(pglogs_lsn_commit_list_pool, "pglogs_lsn_commit_list_pool");
+    Pthread_mutex_unlock(&pglogs_lsn_commit_list_pool_lk);
+
+    Pthread_mutex_lock(&pglogs_relink_key_pool_lk);
+    pool_dumpx(pglogs_relink_key_pool, "pglogs_relink_key_pool");
+    Pthread_mutex_unlock(&pglogs_relink_key_pool_lk);
+
+    Pthread_mutex_lock(&pglogs_relink_list_pool_lk);
+    pool_dumpx(pglogs_relink_list_pool, "pglogs_relink_list_pool");
+    Pthread_mutex_unlock(&pglogs_relink_list_pool_lk);
+
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+    Pthread_mutex_lock(&logfile_tmptbl_hashkey_pool_lk);
+    pool_dumpx(logfile_tmptbl_hashkey_pool, "logfile_tmptbl_hashkey_pool");
+    Pthread_mutex_unlock(&logfile_tmptbl_hashkey_pool_lk);
+#endif
+}
+#endif
 
 static pthread_mutex_t del_queue_lk = PTHREAD_MUTEX_INITIALIZER;
 
-static struct shadows_fileid_pglogs_queue *
-allocate_shadows_fileid_pglogs_queue()
+static struct fileid_pglogs_queue *allocate_fileid_pglogs_queue()
 {
-    struct shadows_fileid_pglogs_queue *q;
-    Pthread_mutex_lock(&shadows_fileid_pglogs_queue_lk);
-    q = pool_getablk(shadows_fileid_pglogs_queue_pool);
-    Pthread_mutex_unlock(&shadows_fileid_pglogs_queue_lk);
+    struct fileid_pglogs_queue *q;
+#ifdef NEWSI_MEMPOOL
+    Pthread_mutex_lock(&fileid_pglogs_queue_pool_lk);
+    q = pool_getablk(fileid_pglogs_queue_pool);
+    Pthread_mutex_unlock(&fileid_pglogs_queue_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
-    q->pool = shadows_fileid_pglogs_queue_pool;
+    q->pool = fileid_pglogs_queue_pool;
+#endif
+#else
+    q = comdb2_malloc(newsi_ma, sizeof(struct fileid_pglogs_queue));
 #endif
     return q;
 }
 
-void return_shadows_fileid_pglogs_queue(struct shadows_fileid_pglogs_queue *q)
+static void return_fileid_pglogs_queue(struct fileid_pglogs_queue *q)
 {
-    Pthread_mutex_lock(&shadows_fileid_pglogs_queue_lk);
+#ifdef NEWSI_MEMPOOL
+    Pthread_mutex_lock(&fileid_pglogs_queue_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
-    assert(q->pool == shadows_fileid_pglogs_queue_pool);
+    assert(q->pool == fileid_pglogs_queue_pool);
 #endif
-    pool_relablk(shadows_fileid_pglogs_queue_pool, q);
-    Pthread_mutex_unlock(&shadows_fileid_pglogs_queue_lk);
+    pool_relablk(fileid_pglogs_queue_pool, q);
+    Pthread_mutex_unlock(&fileid_pglogs_queue_pool_lk);
+#else
+    comdb2_free(q);
+#endif
 }
 
 static struct pglogs_queue_cursor *allocate_pglogs_queue_cursor(void)
 {
     struct pglogs_queue_cursor *c;
-    Pthread_mutex_lock(&pglogs_queue_cursor_lk);
+#ifdef NEWSI_MEMPOOL
+    Pthread_mutex_lock(&pglogs_queue_cursor_pool_lk);
     c = pool_getablk(pglogs_queue_cursor_pool);
-    Pthread_mutex_unlock(&pglogs_queue_cursor_lk);
+    Pthread_mutex_unlock(&pglogs_queue_cursor_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     c->pool = pglogs_queue_cursor_pool;
+#endif
+#else
+    c = comdb2_malloc(newsi_ma, sizeof(struct pglogs_queue_cursor));
 #endif
     return c;
 }
 
 void return_pglogs_queue_cursor(struct pglogs_queue_cursor *c)
 {
-    Pthread_mutex_lock(&pglogs_queue_cursor_lk);
+#ifdef NEWSI_MEMPOOL
+    Pthread_mutex_lock(&pglogs_queue_cursor_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     assert(c->pool == pglogs_queue_cursor_pool);
 #endif
     pool_relablk(pglogs_queue_cursor_pool, c);
-    Pthread_mutex_unlock(&pglogs_queue_cursor_lk);
+    Pthread_mutex_unlock(&pglogs_queue_cursor_pool_lk);
+#else
+    comdb2_free(c);
+#endif
 }
 
 static struct ltran_pglogs_key *allocate_ltran_pglogs_key(void)
 {
     struct ltran_pglogs_key *k;
-    Pthread_mutex_lock(&ltran_pglogs_key_lk);
+#ifdef NEWSI_MEMPOOL
+    Pthread_mutex_lock(&ltran_pglogs_key_pool_lk);
     k = pool_getablk(ltran_pglogs_key_pool);
-    Pthread_mutex_unlock(&ltran_pglogs_key_lk);
+    Pthread_mutex_unlock(&ltran_pglogs_key_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     k->pool = ltran_pglgos_key_pool;
+#endif
+#else
+    k = comdb2_malloc(newsi_ma, sizeof(struct ltran_pglogs_key));
 #endif
     return k;
 }
 
 static void return_ltran_pglogs_key(struct ltran_pglogs_key *k)
 {
-    Pthread_mutex_lock(&ltran_pglogs_key_lk);
+#ifdef NEWSI_MEMPOOL
+    Pthread_mutex_lock(&ltran_pglogs_key_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     assert(k->pool == ltran_pglogs_key_pool);
 #endif
     pool_relablk(ltran_pglogs_key_pool, k);
-    Pthread_mutex_unlock(&ltran_pglogs_key_lk);
+    Pthread_mutex_unlock(&ltran_pglogs_key_pool_lk);
+#else
+    comdb2_free(k);
+#endif
 }
 
-static struct shadows_asof_cursor *allocate_asof_cursor(void)
+static struct asof_cursor *allocate_asof_cursor(void)
 {
-    struct shadows_asof_cursor *a;
-    Pthread_mutex_lock(&shadows_asof_cursor_lk);
-    a = pool_getablk(shadows_asof_cursor_pool);
-    Pthread_mutex_unlock(&shadows_asof_cursor_lk);
+    struct asof_cursor *a;
+#ifdef NEWSI_MEMPOOL
+    Pthread_mutex_lock(&asof_cursor_pool_lk);
+    a = pool_getablk(asof_cursor_pool);
+    Pthread_mutex_unlock(&asof_cursor_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
-    a->pool = shadows_asof_cursor_pool;
+    a->pool = asof_cursor_pool;
+#endif
+#else
+    a = comdb2_malloc(newsi_ma, sizeof(struct asof_cursor));
 #endif
     return a;
 }
 
-static void return_asof_cursor(struct shadows_asof_cursor *a)
+static void return_asof_cursor(struct asof_cursor *a)
 {
-    Pthread_mutex_lock(&shadows_asof_cursor_lk);
+#ifdef NEWSI_MEMPOOL
+    Pthread_mutex_lock(&asof_cursor_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
-    assert(a->pool == shadows_asof_cursor_pool);
+    assert(a->pool == asof_cursor_pool);
 #endif
-    pool_relablk(shadows_asof_cursor_pool, a);
-    Pthread_mutex_unlock(&shadows_asof_cursor_lk);
+    pool_relablk(asof_cursor_pool, a);
+    Pthread_mutex_unlock(&asof_cursor_pool_lk);
+#else
+    comdb2_free(a);
+#endif
 }
 
 static struct commit_list *allocate_pglogs_commit_list(void)
 {
-    struct commit_list *q;
+    struct commit_list *c;
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_commit_list_pool_lk);
-    q = pool_getablk(pglogs_commit_list_pool);
+    c = pool_getablk(pglogs_commit_list_pool);
     Pthread_mutex_unlock(&pglogs_commit_list_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
-    q->pool = pglogs_commit_list_pool;
+    c->pool = pglogs_commit_list_pool;
 #endif
-    return q;
+#else
+    c = comdb2_malloc(newsi_ma, sizeof(struct commit_list));
+#endif
+    return c;
 }
 
 static void return_pglogs_commit_list(struct commit_list *c)
 {
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_commit_list_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     assert(r->pool == pglogs_commit_list_pool);
 #endif
     pool_relablk(pglogs_commit_list_pool, c);
     Pthread_mutex_unlock(&pglogs_commit_list_pool_lk);
+#else
+    comdb2_free(c);
+#endif
 }
 
-struct shadows_pglogs_queue_key *allocate_shadows_pglogs_queue_key(void)
+static struct pglogs_queue_key *allocate_pglogs_queue_key(void)
 {
-    struct shadows_pglogs_queue_key *q;
+    struct pglogs_queue_key *q;
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_queue_key_pool_lk);
     q = pool_getablk(pglogs_queue_key_pool);
     Pthread_mutex_unlock(&pglogs_queue_key_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     q->pool = pglogs_queue_key_pool;
 #endif
+#else
+    q = comdb2_malloc(newsi_ma, sizeof(struct pglogs_queue_key));
+#endif
     return q;
 }
 
-void return_pglogs_queue_key(struct shadows_pglogs_queue_key *qk)
+static void return_pglogs_queue_key(struct pglogs_queue_key *qk)
 {
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_queue_key_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     assert(r->pool == pglogs_queue_key_pool);
 #endif
     pool_relablk(pglogs_queue_key_pool, qk);
     Pthread_mutex_unlock(&pglogs_queue_key_pool_lk);
+#else
+    comdb2_free(qk);
+#endif
 }
 
-struct shadows_pglogs_key *allocate_shadows_pglogs_key(void)
+static struct pglogs_key *allocate_pglogs_key(void)
 {
-    struct shadows_pglogs_key *r;
+    struct pglogs_key *r;
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_key_pool_lk);
     r = pool_getablk(pglogs_key_pool);
     Pthread_mutex_unlock(&pglogs_key_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     r->pool = pglogs_key_pool;
 #endif
+#else
+    r = comdb2_malloc(newsi_ma, sizeof(struct pglogs_key));
+#endif
     return r;
 }
 
-struct shadows_pglogs_logical_key *allocate_shadows_pglogs_logical_key(void)
+static struct pglogs_logical_key *allocate_pglogs_logical_key(void)
 {
-    struct shadows_pglogs_logical_key *r;
+    struct pglogs_logical_key *r;
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_logical_key_pool_lk);
     r = pool_getablk(pglogs_logical_key_pool);
     Pthread_mutex_unlock(&pglogs_logical_key_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     r->pool = pglogs_logical_key_pool;
 #endif
+#else
+    r = comdb2_malloc(newsi_ma, sizeof(struct pglogs_logical_key));
+#endif
     return r;
 }
 
-struct lsn_list *allocate_lsn_list(void)
+static struct lsn_list *allocate_lsn_list(void)
 {
     struct lsn_list *r;
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_lsn_list_pool_lk);
     r = pool_getablk(pglogs_lsn_list_pool);
     Pthread_mutex_unlock(&pglogs_lsn_list_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     r->pool = pglogs_lsn_list_pool;
 #endif
+#else
+    r = comdb2_malloc(newsi_ma, sizeof(struct lsn_list));
+#endif
     return r;
 }
 
-void deallocate_lsn_list(struct lsn_list *r)
+static void deallocate_lsn_list(struct lsn_list *r)
 {
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_lsn_list_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     assert(r->pool == pglogs_lsn_list_pool);
 #endif
     pool_relablk(pglogs_lsn_list_pool, r);
     Pthread_mutex_unlock(&pglogs_lsn_list_pool_lk);
+#else
+    comdb2_free(r);
+#endif
 }
 
-struct lsn_commit_list *allocate_lsn_commit_list(void)
+static struct lsn_commit_list *allocate_lsn_commit_list(void)
 {
     struct lsn_commit_list *r;
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_lsn_commit_list_pool_lk);
     r = pool_getablk(pglogs_lsn_commit_list_pool);
     Pthread_mutex_unlock(&pglogs_lsn_commit_list_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     r->pool = pglogs_lsn_commit_list_pool;
 #endif
+#else
+    r = comdb2_malloc(newsi_ma, sizeof(struct lsn_commit_list));
+#endif
     return r;
 }
 
-struct pglogs_relink_key *allocate_pglogs_relink_key(void)
+static void deallocate_lsn_commit_list(struct lsn_commit_list *r)
+{
+#ifdef NEWSI_MEMPOOL
+    Pthread_mutex_lock(&pglogs_lsn_commit_list_pool_lk);
+#ifdef NEWSI_DEBUG_POOL
+    assert(r->pool == pglogs_lsn_commit_list_pool);
+#endif
+    pool_relablk(pglogs_lsn_commit_list_pool, r);
+    Pthread_mutex_unlock(&pglogs_lsn_commit_list_pool_lk);
+#else
+    comdb2_free(r);
+#endif
+}
+
+static struct pglogs_relink_key *allocate_pglogs_relink_key(void)
 {
     struct pglogs_relink_key *r;
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_relink_key_pool_lk);
     r = pool_getablk(pglogs_relink_key_pool);
     Pthread_mutex_unlock(&pglogs_relink_key_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     r->pool = pglogs_relink_key_pool;
 #endif
+#else
+    r = comdb2_malloc(newsi_ma, sizeof(struct pglogs_relink_key));
+#endif
     return r;
 }
 
-struct relink_list *allocate_relink_list(void)
+static struct relink_list *allocate_relink_list(void)
 {
     struct relink_list *r;
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_relink_list_pool_lk);
     r = pool_getablk(pglogs_relink_list_pool);
     Pthread_mutex_unlock(&pglogs_relink_list_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     r->pool = pglogs_relink_list_pool;
 #endif
+#else
+    r = comdb2_malloc(newsi_ma, sizeof(struct relink_list));
+#endif
     return r;
 }
 
-void deallocate_relink_list(struct relink_list *r)
+static void deallocate_relink_list(struct relink_list *r)
 {
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_relink_list_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     assert(r->pool == pglogs_relink_list_pool);
 #endif
     pool_relablk(pglogs_relink_list_pool, r);
     Pthread_mutex_unlock(&pglogs_relink_list_pool_lk);
+#else
+    comdb2_free(r);
+#endif
 }
 
-static int return_relinks(void *obj, void *arg)
+static int return_pglogs_relink_key(void *obj, void *arg)
 {
     char *list = (char *)obj + DB_FILE_ID_LEN * sizeof(unsigned char) +
                  sizeof(db_pgno_t);
     void *ent;
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_relink_list_pool_lk);
-    while ((ent = listc_rtl(list)) != NULL) {
+    while (list && ((ent = listc_rtl(list)) != NULL)) {
 #ifdef NEWSI_DEBUG_POOL
         assert(((struct relink_list *)ent)->pool == pglogs_relink_list_pool);
 #endif
@@ -1109,16 +1268,23 @@ static int return_relinks(void *obj, void *arg)
 #endif
     pool_relablk(pglogs_relink_key_pool, obj);
     Pthread_mutex_unlock(&pglogs_relink_key_pool_lk);
+#else
+    while (list && ((ent = listc_rtl(list)) != NULL)) {
+        comdb2_free(ent);
+    }
+    comdb2_free(obj);
+#endif
     return 0;
 }
 
-static int return_logical_txn_pglogs(void *obj, void *arg)
+static int return_pglogs_logical_key(void *obj, void *arg)
 {
     char *list = (char *)obj + DB_FILE_ID_LEN * sizeof(unsigned char) +
                  sizeof(db_pgno_t);
     void *ent;
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_lsn_commit_list_pool_lk);
-    while ((ent = listc_rtl(list)) != NULL) {
+    while (list && ((ent = listc_rtl(list)) != NULL)) {
 #ifdef NEWSI_DEBUG_POOL
         assert(((struct lsn_commit_list *)ent)->pool ==
                pglogs_lsn_commit_list_pool);
@@ -1128,33 +1294,27 @@ static int return_logical_txn_pglogs(void *obj, void *arg)
     Pthread_mutex_unlock(&pglogs_lsn_commit_list_pool_lk);
     Pthread_mutex_lock(&pglogs_logical_key_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
-    assert(((struct shadows_pglogs_logical_key *)obj)->pool ==
-           pglogs_logical_key_pool);
+    assert(((struct pglogs_logical_key *)obj)->pool == pglogs_logical_key_pool);
 #endif
     pool_relablk(pglogs_logical_key_pool, obj);
     Pthread_mutex_unlock(&pglogs_logical_key_pool_lk);
+#else
+    while (list && ((ent = listc_rtl(list)) != NULL)) {
+        comdb2_free(ent);
+    }
+    comdb2_free(obj);
+#endif
     return 0;
 }
 
 static int return_pglogs_key(void *obj, void *arg)
 {
-    struct shadows_pglogs_key *r = (struct shadows_pglogs_key *)obj;
-    Pthread_mutex_lock(&pglogs_key_pool_lk);
-#ifdef NEWSI_DEBUG_POOL
-    assert(r->pool == pglogs_key_pool);
-#endif
-    pool_relablk(pglogs_key_pool, r);
-    Pthread_mutex_unlock(&pglogs_key_pool_lk);
-    return 0;
-}
-
-static int return_txn_pglogs(void *obj, void *arg)
-{
     char *list = (char *)obj + DB_FILE_ID_LEN * sizeof(unsigned char) +
                  sizeof(db_pgno_t);
     void *ent;
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_lsn_list_pool_lk);
-    while ((ent = listc_rtl(list)) != NULL) {
+    while (list && ((ent = listc_rtl(list)) != NULL)) {
 #ifdef NEWSI_DEBUG_POOL
         assert(((struct lsn_list *)ent)->pool == pglogs_lsn_list_pool);
 #endif
@@ -1163,39 +1323,178 @@ static int return_txn_pglogs(void *obj, void *arg)
     Pthread_mutex_unlock(&pglogs_lsn_list_pool_lk);
     Pthread_mutex_lock(&pglogs_key_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
-    assert(((struct shadows_pglogs_key *)obj)->pool == pglogs_key_pool);
+    assert(((struct pglogs_key *)obj)->pool == pglogs_key_pool);
 #endif
     pool_relablk(pglogs_key_pool, obj);
     Pthread_mutex_unlock(&pglogs_key_pool_lk);
+#else
+    while (list && ((ent = listc_rtl(list)) != NULL)) {
+        comdb2_free(ent);
+    }
+    comdb2_free(obj);
+#endif
     return 0;
 }
 
-void bdb_return_relinks(hash_t *hashtbl)
+void bdb_return_pglogs_relink_hashtbl(hash_t *hashtbl)
 {
-    hash_for(hashtbl, return_relinks, hashtbl);
+    hash_for(hashtbl, return_pglogs_relink_key, hashtbl);
     hash_clear(hashtbl);
     hash_free(hashtbl);
 }
 
-void bdb_return_logical_pglogs_hashtbl(hash_t *hashtbl)
+static void bdb_return_pglogs_logical_hashtbl(hash_t *hashtbl)
 {
-    hash_for(hashtbl, return_logical_txn_pglogs, hashtbl);
+    hash_for(hashtbl, return_pglogs_logical_key, hashtbl);
     hash_clear(hashtbl);
     hash_free(hashtbl);
 }
 
-void bdb_return_txn_pglogs_hashtbl(hash_t *hashtbl)
-{
-    hash_for(hashtbl, return_txn_pglogs, hashtbl);
-    hash_clear(hashtbl);
-    hash_free(hashtbl);
-}
-
-void bdb_return_pglogs_key_hashtbl(hash_t *hashtbl)
+void bdb_return_pglogs_hashtbl(hash_t *hashtbl)
 {
     hash_for(hashtbl, return_pglogs_key, hashtbl);
     hash_clear(hashtbl);
     hash_free(hashtbl);
+}
+
+static logfile_pglog_hashkey *allocate_logfile_pglog_hashkey(void)
+{
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+    logfile_pglog_hashkey *r;
+#ifdef NEWSI_MEMPOOL
+    Pthread_mutex_lock(&logfile_tmptbl_hashkey_pool_lk);
+    r = pool_getablk(logfile_tmptbl_hashkey_pool);
+    Pthread_mutex_unlock(&logfile_tmptbl_hashkey_pool_lk);
+#ifdef NEWSI_DEBUG_POOL
+    r->pool = logfile_tmptbl_hashkey_pool;
+#endif
+#else
+    r = comdb2_malloc(newsi_ma, sizeof(logfile_pglog_hashkey));
+#endif
+    return r;
+#else
+    return allocate_pglogs_logical_key();
+#endif
+}
+
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+static int return_logfile_pglog_hashkey(void *obj, void *arg)
+{
+    int rc, bdberr;
+    logfile_pglog_hashkey *ent;
+    bdb_state_type *bdb_state = (bdb_state_type *)arg;
+    ent = (logfile_pglog_hashkey *)obj;
+    rc = bdberr = 0;
+    if (ent->tmpcur)
+        rc = bdb_temp_table_close_cursor(bdb_state, ent->tmpcur, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: error closing temp cursor %d %d\n", __func__,
+               rc, bdberr);
+        rc = 0;
+    }
+
+    if (ent->tmptbl)
+        rc = bdb_temp_table_close(bdb_state, ent->tmptbl, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: error closing temp table %d %d\n", __func__,
+               rc, bdberr);
+        rc = 0;
+    }
+    pthread_mutex_destroy(&ent->mtx);
+#ifdef NEWSI_MEMPOOL
+    Pthread_mutex_lock(&logfile_tmptbl_hashkey_pool_lk);
+#ifdef NEWSI_DEBUG_POOL
+    assert(ent->pool == logfile_tmptbl_hashkey_pool);
+#endif
+    pool_relablk(logfile_tmptbl_hashkey_pool, obj);
+    Pthread_mutex_unlock(&logfile_tmptbl_hashkey_pool_lk);
+#else
+    comdb2_free(obj);
+#endif
+    return 0;
+}
+#endif
+
+static void bdb_return_logfile_pglogs_hashtbl(hash_t *hashtbl,
+                                              bdb_state_type *bdb_state)
+{
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+    hash_for(hashtbl, return_logfile_pglog_hashkey, bdb_state);
+    hash_clear(hashtbl);
+    hash_free(hashtbl);
+#else
+    bdb_return_pglogs_logical_hashtbl(hashtbl);
+#endif
+}
+
+static logfile_relink_hashkey *allocate_logfile_relink_hashkey(void)
+{
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+    logfile_relink_hashkey *r;
+#ifdef NEWSI_MEMPOOL
+    Pthread_mutex_lock(&logfile_tmptbl_hashkey_pool_lk);
+    r = pool_getablk(logfile_tmptbl_hashkey_pool);
+    Pthread_mutex_unlock(&logfile_tmptbl_hashkey_pool_lk);
+#ifdef NEWSI_DEBUG_POOL
+    r->pool = logfile_tmptbl_hashkey_pool;
+#endif
+#else
+    r = comdb2_malloc(newsi_ma, sizeof(logfile_relink_hashkey));
+#endif
+    return r;
+#else
+    return allocate_pglogs_relink_key();
+#endif
+}
+
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+static int return_logfile_relink_hashkey(void *obj, void *arg)
+{
+    int rc, bdberr;
+    logfile_relink_hashkey *ent;
+    bdb_state_type *bdb_state = (bdb_state_type *)arg;
+    ent = (logfile_relink_hashkey *)obj;
+    rc = bdberr = 0;
+    if (ent->tmpcur)
+        rc = bdb_temp_table_close_cursor(bdb_state, ent->tmpcur, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: error closing temp cursor %d %d\n", __func__,
+               rc, bdberr);
+        rc = 0;
+    }
+
+    if (ent->tmptbl)
+        rc = bdb_temp_table_close(bdb_state, ent->tmptbl, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: error closing temp table %d %d\n", __func__,
+               rc, bdberr);
+        rc = 0;
+    }
+    pthread_mutex_destroy(&ent->mtx);
+#ifdef NEWSI_MEMPOOL
+    Pthread_mutex_lock(&logfile_tmptbl_hashkey_pool_lk);
+#ifdef NEWSI_DEBUG_POOL
+    assert(ent->pool == logfile_tmptbl_hashkey_pool);
+#endif
+    pool_relablk(logfile_tmptbl_hashkey_pool, obj);
+    Pthread_mutex_unlock(&logfile_tmptbl_hashkey_pool_lk);
+#else
+    comdb2_free(obj);
+#endif
+    return 0;
+}
+#endif
+
+static void bdb_return_logfile_relinks_hashtbl(hash_t *hashtbl,
+                                               bdb_state_type *bdb_state)
+{
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+    hash_for(hashtbl, return_logfile_relink_hashkey, bdb_state);
+    hash_clear(hashtbl);
+    hash_free(hashtbl);
+#else
+    bdb_return_pglogs_relink_hashtbl(hashtbl);
+#endif
 }
 
 int bdb_gbl_pglogs_mem_init(bdb_state_type *bdb_state)
@@ -1205,22 +1504,23 @@ int bdb_gbl_pglogs_mem_init(bdb_state_type *bdb_state)
     if (!gbl_new_snapisol)
         return 0;
 
-    shadows_fileid_pglogs_queue_pool = pool_setalloc_init(
-        sizeof(struct shadows_fileid_pglogs_queue), stepup, malloc, free);
+#ifdef NEWSI_MEMPOOL
+    fileid_pglogs_queue_pool = pool_setalloc_init(
+        sizeof(struct fileid_pglogs_queue), stepup, malloc, free);
     pglogs_queue_cursor_pool = pool_setalloc_init(
         sizeof(struct pglogs_queue_cursor), stepup, malloc, free);
     ltran_pglogs_key_pool = pool_setalloc_init(sizeof(struct ltran_pglogs_key),
                                                stepup, malloc, free);
-    shadows_asof_cursor_pool = pool_setalloc_init(
-        sizeof(struct shadows_asof_cursor), stepup, malloc, free);
+    asof_cursor_pool =
+        pool_setalloc_init(sizeof(struct asof_cursor), stepup, malloc, free);
     pglogs_commit_list_pool =
         pool_setalloc_init(sizeof(struct commit_list), stepup, malloc, free);
-    pglogs_queue_key_pool = pool_setalloc_init(
-        sizeof(struct shadows_pglogs_queue_key), stepup, malloc, free);
-    pglogs_key_pool = pool_setalloc_init(sizeof(struct shadows_pglogs_key),
-                                         stepup, malloc, free);
+    pglogs_queue_key_pool = pool_setalloc_init(sizeof(struct pglogs_queue_key),
+                                               stepup, malloc, free);
+    pglogs_key_pool =
+        pool_setalloc_init(sizeof(struct pglogs_key), stepup, malloc, free);
     pglogs_logical_key_pool = pool_setalloc_init(
-        sizeof(struct shadows_pglogs_logical_key), stepup, malloc, free);
+        sizeof(struct pglogs_logical_key), stepup, malloc, free);
     pglogs_lsn_list_pool =
         pool_setalloc_init(sizeof(struct lsn_list), stepup, malloc, free);
     pglogs_lsn_commit_list_pool = pool_setalloc_init(
@@ -1230,10 +1530,10 @@ int bdb_gbl_pglogs_mem_init(bdb_state_type *bdb_state)
     pglogs_relink_list_pool =
         pool_setalloc_init(sizeof(struct relink_list), stepup, malloc, free);
 
-    pthread_mutex_init(&shadows_fileid_pglogs_queue_lk, NULL);
-    pthread_mutex_init(&pglogs_queue_cursor_lk, NULL);
-    pthread_mutex_init(&ltran_pglogs_key_lk, NULL);
-    pthread_mutex_init(&shadows_asof_cursor_lk, NULL);
+    pthread_mutex_init(&fileid_pglogs_queue_pool_lk, NULL);
+    pthread_mutex_init(&pglogs_queue_cursor_pool_lk, NULL);
+    pthread_mutex_init(&ltran_pglogs_key_pool_lk, NULL);
+    pthread_mutex_init(&asof_cursor_pool_lk, NULL);
     pthread_mutex_init(&pglogs_commit_list_pool_lk, NULL);
     pthread_mutex_init(&pglogs_queue_key_pool_lk, NULL);
     pthread_mutex_init(&pglogs_key_pool_lk, NULL);
@@ -1242,6 +1542,15 @@ int bdb_gbl_pglogs_mem_init(bdb_state_type *bdb_state)
     pthread_mutex_init(&pglogs_lsn_commit_list_pool_lk, NULL);
     pthread_mutex_init(&pglogs_relink_key_pool_lk, NULL);
     pthread_mutex_init(&pglogs_relink_list_pool_lk, NULL);
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+    assert(sizeof(logfile_pglog_hashkey) == sizeof(logfile_relink_hashkey));
+    logfile_tmptbl_hashkey_pool =
+        pool_setalloc_init(sizeof(logfile_pglog_hashkey), stepup, malloc, free);
+    pthread_mutex_init(&logfile_tmptbl_hashkey_pool_lk, NULL);
+#endif
+#else
+    newsi_ma = comdb2ma_create(0, 0, "newsi", COMDB2MA_MT_SAFE);
+#endif
 
     return 0;
 }
@@ -1249,6 +1558,11 @@ int bdb_gbl_pglogs_mem_init(bdb_state_type *bdb_state)
 int bdb_insert_pglogs_logical_int(hash_t *pglogs_hashtbl, unsigned char *fileid,
                                   db_pgno_t pgno, DB_LSN lsn,
                                   DB_LSN commit_lsn);
+static int bdb_insert_logfile_pglog_int(bdb_state_type *bdb_state,
+                                        hash_t *pglogs_hashtbl,
+                                        logfile_pglog_hashkey *pglogs_ent,
+                                        unsigned char *fileid, db_pgno_t pgno,
+                                        DB_LSN lsn, DB_LSN commit_lsn);
 
 static int insert_ltran_pglog(bdb_state_type *bdb_state,
                               unsigned long long logical_tranid,
@@ -1258,6 +1572,11 @@ static int insert_ltran_pglog(bdb_state_type *bdb_state,
     struct ltran_pglogs_key *ltran_ent = NULL, ltran_key;
     int bdberr = 0;
     int rc = 0;
+
+#ifdef NEWSI_STAT
+    struct timeval before, after, diff;
+    gettimeofday(&before, NULL);
+#endif
 
     ltran_key.logical_tranid = logical_tranid;
     Pthread_mutex_lock(&bdb_gbl_ltran_pglogs_mutex);
@@ -1270,12 +1589,8 @@ static int insert_ltran_pglog(bdb_state_type *bdb_state,
             return -1;
         }
         ltran_ent->logical_tranid = logical_tranid;
-        ltran_ent->pglogs_hashtbl = hash_init_o(
-            offsetof(struct shadows_pglogs_logical_key, fileid),
-            DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
-        ltran_ent->relinks_hashtbl = hash_init_o(
-            offsetof(struct pglogs_relink_key, fileid),
-            DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
+        ltran_ent->pglogs_hashtbl =
+            hash_init_o(PGLOGS_LOGICAL_KEY_OFFSET, PAGE_KEY_SIZE);
         pthread_mutex_init(&ltran_ent->pglogs_mutex, NULL);
         ltran_ent->logical_commit_lsn.file = 0;
         ltran_ent->logical_commit_lsn.offset = 1;
@@ -1292,24 +1607,27 @@ static int insert_ltran_pglog(bdb_state_type *bdb_state,
 
     Pthread_mutex_unlock(&ltran_ent->pglogs_mutex);
     Pthread_mutex_unlock(&bdb_gbl_ltran_pglogs_mutex);
+
+#ifdef NEWSI_STAT
+    gettimeofday(&after, NULL);
+    timeval_diff(&before, &after, &diff);
+    timeval_add(&ltran_pglog_time, &diff, &ltran_pglog_time);
+#endif
+
     return 0;
 }
 
-int bdb_relink_gbl_ltran_pglogs(void *bdb_state, unsigned char *fileid,
-                                db_pgno_t pgno, db_pgno_t prev_pgno,
-                                db_pgno_t next_pgno, DB_LSN lsn);
-
-int bdb_update_logfile_pglogs_from_queue(
-    void *bdb_state, unsigned char *fid,
-    struct shadows_pglogs_queue_key *queuekey);
+int bdb_update_logfile_pglogs_from_queue(void *bdb_state, unsigned char *fid,
+                                         struct pglogs_queue_key *queuekey);
 
 int bdb_relink_logfile_pglogs(void *bdb_state, unsigned char *fileid,
                               db_pgno_t pgno, db_pgno_t prev_pgno,
-                              db_pgno_t next_pgno, DB_LSN lsn);
+                              db_pgno_t next_pgno, DB_LSN lsn,
+                              hash_t *fileid_tbl);
 
 static int copy_queue_key_to_global(bdb_state_type *bdb_state,
-                                    struct shadows_fileid_pglogs_queue *queue,
-                                    struct shadows_pglogs_queue_key *key)
+                                    struct fileid_pglogs_queue *queue,
+                                    struct pglogs_queue_key *key)
 {
     int ret;
 #ifdef ASOF_TRACE
@@ -1331,7 +1649,8 @@ static int copy_queue_key_to_global(bdb_state_type *bdb_state,
             typestr = "???";
             break;
         }
-        logmsg(LOGMSG_USER, "%s: processing %s commit-lsn [%d][%d] count %llu\n", __func__,
+        logmsg(LOGMSG_INFO,
+               "%s: processing %s commit-lsn [%d][%d] count %llu\n", __func__,
                typestr, key->commit_lsn.file, key->commit_lsn.offset, count);
         lastpr = now;
     }
@@ -1350,15 +1669,9 @@ static int copy_queue_key_to_global(bdb_state_type *bdb_state,
         break;
 
     case PGLOGS_QUEUE_RELINK:
-        if (key->logical_tranid) {
-            ret = bdb_relink_gbl_ltran_pglogs(bdb_state, queue->fileid,
-                                              key->pgno, key->prev_pgno,
-                                              key->next_pgno, key->lsn);
-        } else {
-            ret = bdb_relink_logfile_pglogs(bdb_state, queue->fileid, key->pgno,
-                                            key->prev_pgno, key->next_pgno,
-                                            key->lsn);
-        }
+        ret = bdb_relink_logfile_pglogs(bdb_state, queue->fileid, key->pgno,
+                                        key->prev_pgno, key->next_pgno,
+                                        key->lsn, NULL);
         break;
 
     default:
@@ -1375,8 +1688,7 @@ static int copy_queue_key_to_global(bdb_state_type *bdb_state,
 static int collect_queue_fileids(void *obj, void *arg)
 {
     struct pglogs_queue_heads *qh = (struct pglogs_queue_heads *)arg;
-    struct shadows_fileid_pglogs_queue *queue =
-        (struct shadows_fileid_pglogs_queue *)obj;
+    struct fileid_pglogs_queue *queue = (struct fileid_pglogs_queue *)obj;
     memcpy(qh->fileids[qh->index++], queue->fileid, DB_FILE_ID_LEN);
     return 0;
 }
@@ -1402,40 +1714,44 @@ int bdb_pglogs_min_lsn(bdb_state_type *bdb_state, DB_LSN *outlsn)
     return 0;
 }
 
-static struct shadows_fileid_pglogs_queue *
+static struct fileid_pglogs_queue *
 retrieve_fileid_pglogs_queue(unsigned char *fileid, int create)
 {
     unsigned char test_fileid[DB_FILE_ID_LEN] = {0};
-    struct shadows_fileid_pglogs_queue *fileid_queue;
+    struct fileid_pglogs_queue *fileid_queue;
 
     pthread_mutex_lock(&pglogs_queue_lk);
-    if (((fileid_queue = hash_find(pglogs_fileid_hash, fileid)) == NULL) &&
+    if (((fileid_queue = hash_find(pglogs_queue_fileid_hash, fileid)) ==
+         NULL) &&
         create) {
-        fileid_queue = allocate_shadows_fileid_pglogs_queue();
+        fileid_queue = allocate_fileid_pglogs_queue();
         fileid_queue->deleteme = 0;
         memcpy(fileid_queue->fileid, fileid, DB_FILE_ID_LEN);
         pthread_rwlock_init(&fileid_queue->queue_lk, NULL);
         listc_init(&fileid_queue->queue_keys,
-                   offsetof(struct shadows_pglogs_queue_key, lnk));
+                   offsetof(struct pglogs_queue_key, lnk));
         if (memcmp(fileid, test_fileid, DB_FILE_ID_LEN) == 0)
             abort();
-        hash_add(pglogs_fileid_hash, fileid_queue);
+        hash_add(pglogs_queue_fileid_hash, fileid_queue);
     }
 
     pthread_mutex_unlock(&pglogs_queue_lk);
     return fileid_queue;
 }
 
-int bdb_clean_pglog_queue(bdb_state_type *bdb_state,
-                          struct shadows_fileid_pglogs_queue *queue,
-                          DB_LSN minlsn)
+static int bdb_clean_pglog_queue(bdb_state_type *bdb_state,
+                                 struct fileid_pglogs_queue *queue,
+                                 DB_LSN minlsn, struct asof_cursor *cur)
 {
-    struct shadows_pglogs_queue_key *qe, *prev_qe, *del_qe = NULL;
+    struct pglogs_queue_key *qe, *prev_qe, *del_qe = NULL;
+    struct pglogs_queue_key *curqe = NULL;
 
     // Grab this in write mode
     // Consumers will grab in read-mode until they anchor against the list by
     // finding an LSN that is greater than their start LSN.
     pthread_rwlock_wrlock(&queue->queue_lk);
+    if (cur)
+        curqe = cur->cur;
     qe = LISTC_BOT(&queue->queue_keys);
 
     while (qe && (prev_qe = qe->lnk.prev)) {
@@ -1447,16 +1763,36 @@ int bdb_clean_pglog_queue(bdb_state_type *bdb_state,
         qe = prev_qe;
     }
 
+#ifdef ASOF_TRACE
+    char *buf;
+    unsigned count = 0;
+#endif
+
     if (!del_qe) {
-        pthread_rwlock_unlock(&queue->queue_lk);
-        return 0;
+        goto done;
     }
 
     /* Remove from the TOP of the list and return */
     do {
         qe = listc_rtl(&queue->queue_keys);
+        /* adjust asof queue cursor */
+        if (curqe == qe) {
+            assert(curqe == del_qe);
+            cur->cur = NULL;
+        }
         return_pglogs_queue_key(qe);
+#ifdef ASOF_TRACE
+        count++;
+#endif
     } while (qe != del_qe);
+
+done:
+#ifdef ASOF_TRACE
+    hexdumpbuf(queue->fileid, DB_FILE_ID_LEN, &buf);
+    logmsg(LOGMSG_INFO, "%s: fileid[%s], minlsn[%d][%d], count %u\n", __func__,
+           buf, minlsn.file, minlsn.offset, count);
+    free(buf);
+#endif
 
     pthread_rwlock_unlock(&queue->queue_lk);
 
@@ -1474,13 +1810,14 @@ int bdb_clean_pglogs_queues(bdb_state_type *bdb_state)
 
     pthread_mutex_lock(&pglogs_queue_lk);
 
-    if (!pglogs_fileid_hash) {
+    if (!pglogs_queue_fileid_hash) {
         pthread_mutex_unlock(&pglogs_queue_lk);
         pthread_mutex_unlock(&del_queue_lk);
         return 0;
     }
 
-    hash_info(pglogs_fileid_hash, NULL, NULL, NULL, NULL, &count, NULL, NULL);
+    hash_info(pglogs_queue_fileid_hash, NULL, NULL, NULL, NULL, &count, NULL,
+              NULL);
 
     qh.fileids = malloc(count * sizeof(unsigned char *));
     for (i = 0; i < count; i++)
@@ -1488,17 +1825,17 @@ int bdb_clean_pglogs_queues(bdb_state_type *bdb_state)
 
     qh.index = 0;
 
-    hash_for(pglogs_fileid_hash, collect_queue_fileids, &qh);
+    hash_for(pglogs_queue_fileid_hash, collect_queue_fileids, &qh);
     pthread_mutex_unlock(&pglogs_queue_lk);
 
     for (i = 0; i < count; i++) {
-        struct shadows_fileid_pglogs_queue *queue; //= qh.queue_heads[i];
+        struct fileid_pglogs_queue *queue; //= qh.queue_heads[i];
         unsigned char *fileid = qh.fileids[i];
 
         if (!(queue = retrieve_fileid_pglogs_queue(fileid, 0)))
             abort();
 
-        bdb_clean_pglog_queue(bdb_state, queue, lsn);
+        bdb_clean_pglog_queue(bdb_state, queue, lsn, NULL);
         free(qh.fileids[i]);
     }
 
@@ -1516,14 +1853,19 @@ retrieve_logfile_pglogs(unsigned int filenum, int create)
     if ((e = hash_find(logfile_pglogs_repo, &filenum)) == NULL && create) {
         e = malloc(sizeof(struct logfile_pglogs_entry));
         e->filenum = filenum;
-        e->pglogs_hashtbl = hash_init_o(
-            offsetof(struct shadows_pglogs_logical_key, fileid),
-            DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
-        e->relinks_hashtbl = hash_init_o(
-            offsetof(struct pglogs_relink_key, fileid),
-            DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
+        e->pglogs_hashtbl =
+            hash_init_o(LOGFILE_PGLOG_OFFSET, LOGFILE_PAGE_KEY_SIZE);
+        e->relinks_hashtbl =
+            hash_init_o(LOGFILE_RELINK_OFFSET, LOGFILE_PAGE_KEY_SIZE);
         pthread_mutex_init(&e->pglogs_mutex, NULL);
         hash_add(logfile_pglogs_repo, e);
+
+#ifdef NEWSI_DEBUG
+        logmsg(LOGMSG_DEBUG,
+               "%s filenum %d created ent %p, pglogs_hashtbl %p, "
+               "relinks_hashtbl %p\n",
+               __func__, filenum, e, e->pglogs_hashtbl, e->relinks_hashtbl);
+#endif
 
         if (!first_logfile)
             first_logfile = filenum;
@@ -1534,19 +1876,168 @@ retrieve_logfile_pglogs(unsigned int filenum, int create)
     return e;
 }
 
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+static int logfile_pglog_tmptbl_cmp(void *_, int key1len, const void *key1,
+                                    int key2len, const void *key2)
+{
+    int len;
+    int rc;
+    pglogs_tmptbl_key *pkey1;
+    pglogs_tmptbl_key *pkey2;
+    assert(key1len == key2len);
+    pkey1 = (pglogs_tmptbl_key *)key1;
+    pkey2 = (pglogs_tmptbl_key *)key2;
+    len = key1len;
+    if (pkey1->pgno != pkey2->pgno) {
+        if (pkey1->pgno < pkey2->pgno)
+            return -1;
+        else
+            return 1;
+    } else if ((rc = log_compare(&pkey1->commit_lsn, &pkey2->commit_lsn)) != 0)
+        return rc;
+    else
+        return log_compare(&pkey1->lsn, &pkey2->lsn);
+}
+
+static int logfile_relink_tmptbl_cmp(void *_, int key1len, const void *key1,
+                                     int key2len, const void *key2)
+{
+    int len;
+    int rc;
+    relinks_tmptbl_key *pkey1;
+    relinks_tmptbl_key *pkey2;
+    assert(key1len == key2len);
+    pkey1 = (relinks_tmptbl_key *)key1;
+    pkey2 = (relinks_tmptbl_key *)key2;
+    len = key1len;
+    if (pkey1->pgno != pkey2->pgno) {
+        if (pkey1->pgno < pkey2->pgno)
+            return -1;
+        else
+            return 1;
+    } else if ((rc = log_compare(&pkey1->lsn, &pkey2->lsn)) != 0) {
+        return rc;
+    } else if (pkey1->inh != pkey2->inh) {
+        if (pkey1->inh < pkey2->inh)
+            return -1;
+        else
+            return 1;
+    }
+    return 0;
+}
+#endif
+
+static logfile_pglog_hashkey *
+retrieve_logfile_pglog_hashkey(bdb_state_type *bdb_state,
+                               hash_t *pglogs_hashtbl, unsigned char *fileid,
+                               db_pgno_t pgno, int create)
+{
+    int bdberr = 0;
+    logfile_pglog_hashkey *ent = NULL;
+    logfile_pglog_hashkey key;
+    memcpy(key.fileid, fileid, DB_FILE_ID_LEN);
+#ifndef NEWSI_ASOF_USE_TEMPTABLE
+    key.pgno = pgno;
+#endif
+
+    if (((ent = hash_find(pglogs_hashtbl, &key)) == NULL) && create) {
+        ent = allocate_logfile_pglog_hashkey();
+        if (!ent) {
+            logmsg(LOGMSG_ERROR, "%s: failed to init hash key\n", __func__);
+            return NULL;
+        }
+        memcpy(ent->fileid, fileid, DB_FILE_ID_LEN);
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+        pthread_mutex_init(&ent->mtx, NULL);
+        ent->tmptbl = bdb_temp_table_create(bdb_state, &bdberr);
+        if (ent->tmptbl == NULL) {
+            logmsg(LOGMSG_ERROR, "%s: failed to init temp table\n", __func__);
+            return_logfile_pglog_hashkey(ent, bdb_state);
+            return NULL;
+        }
+        ent->tmpcur =
+            bdb_temp_table_cursor(bdb_state, ent->tmptbl, NULL, &bdberr);
+        if (ent->tmpcur == NULL) {
+            logmsg(LOGMSG_ERROR, "%s: failed to init temp cursor\n", __func__);
+            return_logfile_pglog_hashkey(ent, bdb_state);
+            return NULL;
+        }
+        bdb_temp_table_set_cmp_func(ent->tmptbl, logfile_pglog_tmptbl_cmp);
+#else
+        ent->pgno = pgno;
+        listc_init(&ent->lsns, offsetof(struct lsn_commit_list, lnk));
+#endif
+#ifdef NEWSI_DEBUG
+        char *buf;
+        hexdumpbuf(fileid, DB_FILE_ID_LEN, &buf);
+        logmsg(LOGMSG_DEBUG,
+               "%s: hash %p created ent %p for fileid[%s] pgno[%d]\n", __func__,
+               pglogs_hashtbl, ent, buf, pgno);
+        free(buf);
+#endif
+        hash_add(pglogs_hashtbl, ent);
+    }
+    return ent;
+}
+
+static logfile_relink_hashkey *
+retrieve_logfile_relink_hashkey(bdb_state_type *bdb_state,
+                                hash_t *relinks_hashtbl, unsigned char *fileid,
+                                db_pgno_t pgno, int create)
+{
+    int bdberr = 0;
+    logfile_relink_hashkey *ent = NULL;
+    logfile_relink_hashkey key;
+    memcpy(key.fileid, fileid, DB_FILE_ID_LEN);
+#ifndef NEWSI_ASOF_USE_TEMPTABLE
+    key.pgno = pgno;
+#endif
+    if (((ent = hash_find(relinks_hashtbl, &key)) == NULL) && create) {
+        ent = allocate_logfile_relink_hashkey();
+        if (!ent) {
+            logmsg(LOGMSG_ERROR, "%s: failed to init hash key\n", __func__);
+            return NULL;
+        }
+        memcpy(ent->fileid, fileid, DB_FILE_ID_LEN);
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+        pthread_mutex_init(&ent->mtx, NULL);
+        ent->tmptbl = bdb_temp_table_create(bdb_state, &bdberr);
+        if (ent->tmptbl == NULL) {
+            logmsg(LOGMSG_ERROR, "%s: failed to init temp table\n", __func__);
+            return_logfile_relink_hashkey(ent, bdb_state);
+            return NULL;
+        }
+        ent->tmpcur =
+            bdb_temp_table_cursor(bdb_state, ent->tmptbl, NULL, &bdberr);
+        if (ent->tmpcur == NULL) {
+            logmsg(LOGMSG_ERROR, "%s: failed to init temp cursor\n", __func__);
+            return_logfile_relink_hashkey(ent, bdb_state);
+            return NULL;
+        }
+        bdb_temp_table_set_cmp_func(ent->tmptbl, logfile_relink_tmptbl_cmp);
+#else
+        ent->pgno = pgno;
+        listc_init(&ent->relinks, offsetof(struct relink_list, lnk));
+#endif
+        hash_add(relinks_hashtbl, ent);
+    }
+    return ent;
+}
+
 void bdb_delete_logfile_pglogs(bdb_state_type *bdb_state, int filenum)
 {
     int i;
     pthread_mutex_lock(&logfile_pglogs_repo_mutex);
-    for (i = last_logfile; i <= filenum; i++) {
+    for (i = first_logfile; i <= filenum; i++) {
         struct logfile_pglogs_entry *e;
         if ((e = hash_find(logfile_pglogs_repo, &i)) != NULL) {
             hash_del(logfile_pglogs_repo, e);
             pthread_mutex_lock(&e->pglogs_mutex);
-            bdb_return_logical_pglogs_hashtbl(e->pglogs_hashtbl);
-            bdb_return_relinks(e->relinks_hashtbl);
+            bdb_return_logfile_pglogs_hashtbl(e->pglogs_hashtbl, bdb_state);
+            bdb_return_logfile_relinks_hashtbl(e->relinks_hashtbl, bdb_state);
             pthread_mutex_destroy(&e->pglogs_mutex);
             free(e);
+            logmsg(LOGMSG_INFO, "%s: deleted filenum %d\n", __func__, filenum);
         }
     }
     first_logfile = (filenum + 1);
@@ -1565,8 +2056,8 @@ int transfer_ltran_pglogs_to_gbl(bdb_state_type *bdb_state,
     struct ltran_pglogs_key key;
     void *hash_cur;
     unsigned int hash_cur_buk;
-    struct shadows_pglogs_logical_key *pglogs_ent = NULL;
-    struct shadows_pglogs_logical_key *logfile_pglogs_ent = NULL;
+    struct pglogs_logical_key *pglog_key = NULL;
+    logfile_pglog_hashkey *logfile_pglogs_ent = NULL;
     struct lsn_commit_list *lsn_ent = NULL;
     unsigned filenum;
 #ifdef NEWSI_DEBUG
@@ -1606,70 +2097,76 @@ int transfer_ltran_pglogs_to_gbl(bdb_state_type *bdb_state,
         Pthread_mutex_lock(&ltran_ent->pglogs_mutex);
 
         /* for each recorded page */
-        pglogs_ent =
+        pglog_key =
             hash_first(ltran_ent->pglogs_hashtbl, &hash_cur, &hash_cur_buk);
-        while (pglogs_ent) {
-            /* get the same page in the global structure */
-            if ((logfile_pglogs_ent =
-                     hash_find(l_entry->pglogs_hashtbl, pglogs_ent)) == NULL) {
-                /* add one if not exist */
-                logfile_pglogs_ent = allocate_shadows_pglogs_logical_key();
-                if (!logfile_pglogs_ent) {
-                    Pthread_mutex_unlock(&ltran_ent->pglogs_mutex);
-                    Pthread_mutex_unlock(&l_entry->pglogs_mutex);
-                    logmsg(LOGMSG_ERROR, "%s: fail malloc logfile_pglogs_ent\n",
-                            __func__);
-                    return -1;
-                }
-                memcpy(logfile_pglogs_ent, pglogs_ent,
-                       sizeof(struct shadows_pglogs_logical_key));
-                listc_init(&logfile_pglogs_ent->lsns,
-                           offsetof(struct lsn_commit_list, lnk));
-                hash_add(l_entry->pglogs_hashtbl, logfile_pglogs_ent);
-            }
-            /* for each recorded lsn */
-            while ((lsn_ent = listc_rtl(&pglogs_ent->lsns)) != NULL) {
-                lsn_ent->commit_lsn = logical_commit_lsn;
-#ifdef NEWSI_DEBUG
-                bot = LISTC_BOT(&logfile_pglogs_ent->lsns);
-                if (bot)
-                    assert((log_compare(&bot->commit_lsn,
-                                        &lsn_ent->commit_lsn) < 0) ||
-                           (log_compare(&bot->commit_lsn,
-                                        &lsn_ent->commit_lsn) == 0 &&
-                            log_compare(&bot->lsn, &lsn_ent->lsn) <= 0));
-#endif
-                listc_abl(&logfile_pglogs_ent->lsns, lsn_ent);
-            }
+        while (pglog_key) {
 
-            pglogs_ent =
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+            logfile_pglog_hashkey *pglog_ent = NULL;
+            /* find the page in the hash */
+            pglog_ent = retrieve_logfile_pglog_hashkey(
+                bdb_state, l_entry->pglogs_hashtbl, pglog_key->fileid,
+                pglog_key->pgno, 1);
+            if (!pglog_ent)
+                return ENOMEM;
+
+#endif
+
+            /* for each recorded lsn */
+            while ((lsn_ent = listc_rtl(&pglog_key->lsns)) != NULL) {
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+                Pthread_mutex_lock(&pglog_ent->mtx);
+#endif
+                rc = bdb_insert_logfile_pglog_int(
+                    bdb_state, l_entry->pglogs_hashtbl,
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+                    pglog_ent,
+#else
+                    NULL,
+#endif
+                    pglog_key->fileid, pglog_key->pgno, lsn_ent->lsn,
+                    logical_commit_lsn);
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+                Pthread_mutex_unlock(&pglog_ent->mtx);
+#endif
+                deallocate_lsn_commit_list(lsn_ent);
+                if (rc) {
+                    logmsg(LOGMSG_ERROR,
+                           "%s: fail to insert to global structure\n",
+                           __func__);
+                    goto unlock;
+                }
+            }
+            pglog_key =
                 hash_next(ltran_ent->pglogs_hashtbl, &hash_cur, &hash_cur_buk);
         }
 
+    unlock:
         Pthread_mutex_unlock(&ltran_ent->pglogs_mutex);
         Pthread_mutex_unlock(&l_entry->pglogs_mutex);
     }
 
     pthread_mutex_destroy(&ltran_ent->pglogs_mutex);
-    bdb_return_logical_pglogs_hashtbl(ltran_ent->pglogs_hashtbl);
-    bdb_return_relinks(ltran_ent->relinks_hashtbl);
+    bdb_return_pglogs_logical_hashtbl(ltran_ent->pglogs_hashtbl);
     return_ltran_pglogs_key(ltran_ent);
 
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
     timeval_diff(&before, &after, &diff);
-    Pthread_mutex_lock(&newsi_stat_mutex);
-    timeval_add(&logfile_insert_time, &diff, &logfile_insert_time);
-    Pthread_mutex_unlock(&newsi_stat_mutex);
+    timeval_add(&logfile_pglog_time, &diff, &logfile_pglog_time);
 #endif
 
-    return 0;
+    return rc;
 }
 
 static inline void set_del_lsn(const char *func, unsigned int line,
                                DB_LSN *old_del_lsn, DB_LSN *new_del_lsn)
 {
     *old_del_lsn = *new_del_lsn;
+#ifdef ASOF_TRACE
+    logmsg(LOGMSG_INFO, "%s:%d del_lsn[%d][%d]\n", func, line,
+           new_del_lsn->file, new_del_lsn->offset);
+#endif
 }
 
 static void *pglogs_asof_thread(void *arg)
@@ -1684,6 +2181,7 @@ static void *pglogs_asof_thread(void *arg)
         // Remove list
         int count, i, dont_poll = 0, drain_limit;
         DB_LSN new_asof_lsn, lsn, del_lsn = {0};
+        DB_LSN max_commit_lsn_in_queue = {0};
         // drain_limit = bdb_state->attr->asof_thread_drain_limit;
 
         // Get commit list
@@ -1702,8 +2200,8 @@ static void *pglogs_asof_thread(void *arg)
             set_del_lsn(__func__, __LINE__, &del_lsn, &lsn);
 
         pthread_mutex_lock(&pglogs_queue_lk);
-        hash_info(pglogs_fileid_hash, NULL, NULL, NULL, NULL, &count, NULL,
-                  NULL);
+        hash_info(pglogs_queue_fileid_hash, NULL, NULL, NULL, NULL, &count,
+                  NULL, NULL);
 
         // Realloc if I need to
         if (count > fileid_max_count) {
@@ -1718,30 +2216,31 @@ static void *pglogs_asof_thread(void *arg)
         qh.index = 0;
 
         // Collect the fileids
-        hash_for(pglogs_fileid_hash, collect_queue_fileids, &qh);
+        hash_for(pglogs_queue_fileid_hash, collect_queue_fileids, &qh);
         pthread_mutex_unlock(&pglogs_queue_lk);
 
         for (i = 0; i < qh.index; i++) {
-            struct shadows_fileid_pglogs_queue *queue;
+            struct fileid_pglogs_queue *queue;
             unsigned char *fileid = qh.fileids[i];
-            struct shadows_pglogs_queue_key *prev, *top, *current, *last;
-            struct shadows_asof_cursor *cur;
+            struct pglogs_queue_key *prev, *top, *current, *last;
+            struct asof_cursor *cur;
 
             int do_current = 0;
 
             if (!(queue = retrieve_fileid_pglogs_queue(fileid, 0)))
                 abort();
 
-            if ((cur = hash_find(bdb_asof_ltran_hash, fileid)) == NULL) {
+            if ((cur = hash_find(bdb_asof_cursor_hash, fileid)) == NULL) {
                 cur = allocate_asof_cursor();
                 memcpy(cur->fileid, fileid, DB_FILE_ID_LEN);
                 cur->cur = NULL;
-                hash_add(bdb_asof_ltran_hash, cur);
+                hash_add(bdb_asof_cursor_hash, cur);
             }
 
             pthread_rwlock_rdlock(&queue->queue_lk);
             last = LISTC_BOT(&queue->queue_keys);
             top = LISTC_TOP(&queue->queue_keys);
+            current = cur->cur;
 
             if ((current = cur->cur) == NULL) {
                 current = top;
@@ -1756,15 +2255,14 @@ static void *pglogs_asof_thread(void *arg)
             // this
             // code if the order were switched.
             if (last) {
-                struct shadows_pglogs_queue_key *fnd = last;
+                struct pglogs_queue_key *fnd = last;
 
                 while (fnd && fnd->type != PGLOGS_QUEUE_PAGE)
                     fnd = fnd->lnk.prev;
 
-                if (fnd && log_compare(&fnd->commit_lsn, &del_lsn) < 0) {
-                    assert(fnd->commit_lsn.file);
-                    set_del_lsn(__func__, __LINE__, &del_lsn, &fnd->commit_lsn);
-                }
+                if (fnd &&
+                    log_compare(&fnd->commit_lsn, &max_commit_lsn_in_queue) > 0)
+                    max_commit_lsn_in_queue = fnd->commit_lsn;
             }
 
             if (do_current && current) {
@@ -1788,30 +2286,43 @@ static void *pglogs_asof_thread(void *arg)
             cur->cur = current;
         }
 
+        if (max_commit_lsn_in_queue.file &&
+            log_compare(&max_commit_lsn_in_queue, &del_lsn) < 0)
+            set_del_lsn(__func__, __LINE__, &del_lsn, &max_commit_lsn_in_queue);
+
         // Loop again to delete
         for (i = 0; i < qh.index; i++) {
-            struct shadows_fileid_pglogs_queue *queue;
-            struct shadows_asof_cursor *cur;
+            struct fileid_pglogs_queue *queue;
+            struct asof_cursor *cur;
             unsigned char *fileid = qh.fileids[i];
 
             if (!(queue = retrieve_fileid_pglogs_queue(fileid, 0)))
                 abort();
 
             if (queue->deleteme &&
-                (cur = hash_find(bdb_asof_ltran_hash, fileid)) &&
+                (cur = hash_find(bdb_asof_cursor_hash, fileid)) &&
                 (cur->cur == LISTC_BOT(&queue->queue_keys))) {
-                struct shadows_pglogs_queue_key *qe;
+                struct pglogs_queue_key *qe;
                 pthread_mutex_lock(&pglogs_queue_lk);
-                hash_del(pglogs_fileid_hash, queue);
+                hash_del(pglogs_queue_fileid_hash, queue);
                 pthread_mutex_unlock(&pglogs_queue_lk);
-                while ((qe = listc_rtl(&queue->queue_keys)))
+#ifdef ASOF_TRACE
+                char *buf;
+                hexdumpbuf(queue->fileid, DB_FILE_ID_LEN, &buf);
+                logmsg(LOGMSG_INFO, "%s: delete queue fileid[%s]\n", __func__,
+                       buf);
+                free(buf);
+#endif
+                while ((qe = listc_rtl(&queue->queue_keys)) != NULL)
                     return_pglogs_queue_key(qe);
-                return_shadows_fileid_pglogs_queue(queue);
+                return_fileid_pglogs_queue(queue);
                 assert(cur);
-                hash_del(bdb_asof_ltran_hash, cur);
+                hash_del(bdb_asof_cursor_hash, cur);
                 return_asof_cursor(cur);
-            } else
-                bdb_clean_pglog_queue(bdb_state, queue, del_lsn);
+            } else {
+                cur = hash_find(bdb_asof_cursor_hash, fileid);
+                bdb_clean_pglog_queue(bdb_state, queue, del_lsn, cur);
+            }
         }
 
         // This should be the largest commit-lsn
@@ -1864,6 +2375,30 @@ static void *pglogs_asof_thread(void *arg)
     return NULL;
 }
 
+#ifdef NEWSI_STAT
+void bdb_newsi_stat_init()
+{
+    bzero(&logfile_relink_time, sizeof(struct timeval));
+    bzero(&logfile_pglog_time, sizeof(struct timeval));
+    bzero(&ltran_pglog_time, sizeof(struct timeval));
+    bzero(&txn_pglog_time, sizeof(struct timeval));
+    bzero(&queue_pglog_time, sizeof(struct timeval));
+    bzero(&queue_relink_time, sizeof(struct timeval));
+    bzero(&logical_undo_time, sizeof(struct timeval));
+    bzero(&client_copy_time, sizeof(struct timeval));
+    bzero(&log_read_time, sizeof(struct timeval));
+    bzero(&log_read_time2, sizeof(struct timeval));
+    bzero(&log_apply_time, sizeof(struct timeval));
+    bzero(&comprec_time, sizeof(struct timeval));
+}
+#endif
+
+static int my_fileid_free(void *obj, void *arg)
+{
+    free(obj);
+    return 0;
+}
+
 int bdb_gbl_pglogs_init(bdb_state_type *bdb_state)
 {
     int rc, i, bdberr;
@@ -1913,8 +2448,8 @@ int bdb_gbl_pglogs_init(bdb_state_type *bdb_state)
 
         logfile_pglogs_repo_ready = 1;
 
-        bdb_asof_ltran_hash =
-            hash_init_o(offsetof(struct shadows_asof_cursor, fileid),
+        bdb_asof_cursor_hash =
+            hash_init_o(offsetof(struct asof_cursor, fileid),
                         DB_FILE_ID_LEN * sizeof(unsigned char));
         pthread_mutex_init(&bdb_asof_current_lsn_mutex, NULL);
         pthread_cond_init(&bdb_asof_current_lsn_cond, NULL);
@@ -1922,23 +2457,14 @@ int bdb_gbl_pglogs_init(bdb_state_type *bdb_state)
     }
 
 #ifdef NEWSI_STAT
-    bzero(&logfile_relink_time, sizeof(struct timeval));
-    bzero(&logfile_insert_time, sizeof(struct timeval));
-    bzero(&client_relink_time, sizeof(struct timeval));
-    bzero(&client_insert_time, sizeof(struct timeval));
-    bzero(&ltran_relink_time, sizeof(struct timeval));
-    bzero(&ltran_insert_time, sizeof(struct timeval));
-    bzero(&txn_insert_time, sizeof(struct timeval));
-    bzero(&txn_relink_time, sizeof(struct timeval));
-    bzero(&logical_undo_time, sizeof(struct timeval));
-    pthread_mutex_init(&newsi_stat_mutex, NULL);
+    bdb_newsi_stat_init();
 #endif
 
     /* Init pglogs queue */
     pthread_mutex_init(&pglogs_queue_lk, NULL);
-    pglogs_fileid_hash =
-        hash_init_o(offsetof(struct shadows_fileid_pglogs_queue, fileid),
-                    sizeof(((struct shadows_fileid_pglogs_queue *)0)->fileid));
+    pglogs_queue_fileid_hash =
+        hash_init_o(offsetof(struct fileid_pglogs_queue, fileid),
+                    sizeof(((struct fileid_pglogs_queue *)0)->fileid));
 
     bdb_gbl_ltran_pglogs_hash =
         hash_init_o(offsetof(struct ltran_pglogs_key, logical_tranid),
@@ -1955,7 +2481,12 @@ int bdb_gbl_pglogs_init(bdb_state_type *bdb_state)
         pthread_attr_setstacksize(&thd_attr, 4 * 1024); /* 4K */
         pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
 
-        rc = __recover_logfile_pglogs(bdb_state->dbenv);
+        int bdb_list_all_fileids_for_newsi(bdb_state_type * bdb_state,
+                                           hash_t * fileid_tbl);
+        hash_t *fileid_tbl = NULL;
+        fileid_tbl = hash_init_o(0, DB_FILE_ID_LEN);
+        bdb_list_all_fileids_for_newsi(bdb_state, fileid_tbl);
+        rc = __recover_logfile_pglogs(bdb_state->dbenv, fileid_tbl);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: failed to bkfill gbl pglogs, new begin-as-of "
                             "snapshot might not work\n",
@@ -1969,6 +2500,9 @@ int bdb_gbl_pglogs_init(bdb_state_type *bdb_state)
                    bdb_gbl_recoverable_lsn.file,
                    bdb_gbl_recoverable_lsn.offset);
         }
+        hash_for(fileid_tbl, my_fileid_free, NULL);
+        hash_clear(fileid_tbl);
+        hash_free(fileid_tbl);
         bdb_get_current_lsn(bdb_state, &bdb_asof_current_lsn.file,
                             &bdb_asof_current_lsn.offset);
         bdb_gbl_ltran_pglogs_hash_processed = 1;
@@ -1985,21 +2519,13 @@ int bdb_gbl_pglogs_init(bdb_state_type *bdb_state)
 }
 
 int bdb_txn_pglogs_init(void *bdb_state, void **pglogs_hashtbl,
-                        void **relinks_hashtbl, pthread_mutex_t *mutexp)
+                        pthread_mutex_t *mutexp)
 {
     if (!gbl_new_snapisol)
         return 0;
 
-    *pglogs_hashtbl =
-        hash_init_o(offsetof(struct shadows_pglogs_key, fileid),
-                    DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
+    *pglogs_hashtbl = hash_init_o(PGLOGS_KEY_OFFSET, PAGE_KEY_SIZE);
     if (*pglogs_hashtbl == NULL)
-        return ENOMEM;
-
-    *relinks_hashtbl =
-        hash_init_o(offsetof(struct pglogs_relink_key, fileid),
-                    DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
-    if (*relinks_hashtbl == NULL)
         return ENOMEM;
 
     pthread_mutex_init(mutexp, NULL);
@@ -2008,14 +2534,13 @@ int bdb_txn_pglogs_init(void *bdb_state, void **pglogs_hashtbl,
 }
 
 int bdb_txn_pglogs_close(void *instate, void **pglogs_hashtbl,
-                         void **relinks_hashtbl, pthread_mutex_t *mutexp)
+                         pthread_mutex_t *mutexp)
 {
     bdb_state_type *bdb_state = (bdb_state_type *)instate;
     if (!gbl_new_snapisol)
         return 0;
 
-    bdb_return_txn_pglogs_hashtbl(*pglogs_hashtbl);
-    bdb_return_relinks(*relinks_hashtbl);
+    bdb_return_pglogs_hashtbl(*pglogs_hashtbl);
     pthread_mutex_destroy(mutexp);
 
     return 0;
@@ -2025,8 +2550,8 @@ int bdb_insert_pglogs_int(hash_t *pglogs_hashtbl, unsigned char *fileid,
                           db_pgno_t pgno, DB_LSN lsn)
 {
     int rc = 0;
-    struct shadows_pglogs_key key;
-    struct shadows_pglogs_key *pglogs_ent = NULL;
+    struct pglogs_key key;
+    struct pglogs_key *pglogs_ent = NULL;
     struct lsn_list *lsnent = NULL;
 #ifdef NEWSI_DEBUG
     struct lsn_list *bot = NULL;
@@ -2040,7 +2565,7 @@ int bdb_insert_pglogs_int(hash_t *pglogs_hashtbl, unsigned char *fileid,
 
     /* find the page in the hash */
     if ((pglogs_ent = hash_find(pglogs_hashtbl, &key)) == NULL) {
-        pglogs_ent = allocate_shadows_pglogs_key();
+        pglogs_ent = allocate_pglogs_key();
         if (!pglogs_ent)
             return ENOMEM;
         memcpy(pglogs_ent->fileid, fileid, DB_FILE_ID_LEN);
@@ -2067,8 +2592,8 @@ int bdb_insert_pglogs_logical_int(hash_t *pglogs_hashtbl, unsigned char *fileid,
                                   db_pgno_t pgno, DB_LSN lsn, DB_LSN commit_lsn)
 {
     int rc = 0;
-    struct shadows_pglogs_logical_key key;
-    struct shadows_pglogs_logical_key *pglogs_ent = NULL;
+    struct pglogs_logical_key key;
+    struct pglogs_logical_key *pglogs_ent = NULL;
     struct lsn_commit_list *lsnent = NULL;
 #ifdef NEWSI_DEBUG
     struct lsn_commit_list *bot = NULL;
@@ -2082,7 +2607,7 @@ int bdb_insert_pglogs_logical_int(hash_t *pglogs_hashtbl, unsigned char *fileid,
 
     /* find the page in the hash */
     if ((pglogs_ent = hash_find(pglogs_hashtbl, &key)) == NULL) {
-        pglogs_ent = allocate_shadows_pglogs_logical_key();
+        pglogs_ent = allocate_pglogs_logical_key();
         if (!pglogs_ent)
             return ENOMEM;
         memcpy(pglogs_ent->fileid, fileid, DB_FILE_ID_LEN);
@@ -2104,12 +2629,64 @@ int bdb_insert_pglogs_logical_int(hash_t *pglogs_hashtbl, unsigned char *fileid,
                 log_compare(&bot->lsn, &lsnent->lsn) <= 0));
 #endif
     listc_abl(&pglogs_ent->lsns, lsnent);
-    /* printf("%s: added lsn [%u][%u] addr %p to hash %p, ent %p list %p\n",
-       __func__,
-       lsn.file, lsn.offset, lsnent, pglogs_hashtbl, pglogs_ent,
-       &pglogs_ent->lsns); */
+#ifdef NEWSI_DEBUG
+    logmsg(LOGMSG_DEBUG,
+           "%s: added lsn [%u][%u] addr %p to hash %p, ent %p list %p\n",
+           __func__, lsn.file, lsn.offset, lsnent, pglogs_hashtbl, pglogs_ent,
+           &pglogs_ent->lsns);
+    char *buf;
+    hexdumpbuf(fileid, DB_FILE_ID_LEN, &buf);
+    logmsg(LOGMSG_DEBUG, "%s: FILEID: %s ", __func__, buf);
+    logmsg(LOGMSG_DEBUG, " PGNO: %d ", pgno);
+    logmsg(LOGMSG_DEBUG, " LSN: %d:%d ", lsn.file, lsn.offset);
+    logmsg(LOGMSG_DEBUG, " commit_lsn: %d:%d ", commit_lsn.file,
+           commit_lsn.offset);
+    logmsg(LOGMSG_DEBUG, "\n");
+    free(buf);
+#endif
 
     return 0;
+}
+
+static int bdb_insert_logfile_pglog_int(bdb_state_type *bdb_state,
+                                        hash_t *pglogs_hashtbl,
+                                        logfile_pglog_hashkey *pglogs_ent,
+                                        unsigned char *fileid, db_pgno_t pgno,
+                                        DB_LSN lsn, DB_LSN commit_lsn)
+{
+#ifdef NEWSI_DEBUG
+    char *buf;
+    hexdumpbuf(fileid, DB_FILE_ID_LEN, &buf);
+    logmsg(LOGMSG_DEBUG, "%s: adding lsn [%u][%u] to hash %p, ent %p", __func__,
+           lsn.file, lsn.offset, pglogs_hashtbl, pglogs_ent);
+    logmsg(LOGMSG_DEBUG, " FILEID[%s] ", buf);
+    logmsg(LOGMSG_DEBUG, " PGNO[%d] ", pgno);
+    logmsg(LOGMSG_DEBUG, " LSN[%d:%d] ", lsn.file, lsn.offset);
+    logmsg(LOGMSG_DEBUG, " COMMIT_LSN[%d:%d] ", commit_lsn.file,
+           commit_lsn.offset);
+    logmsg(LOGMSG_DEBUG, "\n");
+    free(buf);
+#endif
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+    pglogs_tmptbl_key rec = {0};
+    int bdberr;
+
+    if (pgno == 0)
+        return 0;
+
+    if (!pglogs_ent)
+        return -1;
+
+    rec.pgno = pgno;
+    rec.lsn = lsn;
+    rec.commit_lsn = commit_lsn;
+
+    return bdb_temp_table_insert(bdb_state, pglogs_ent->tmpcur, &rec,
+                                 sizeof(pglogs_tmptbl_key), NULL, 0, &bdberr);
+#else
+    return bdb_insert_pglogs_logical_int(pglogs_hashtbl, fileid, pgno, lsn,
+                                         commit_lsn);
+#endif
 }
 
 int bdb_insert_relinks_int(hash_t *relinks_hashtbl, unsigned char *fileid,
@@ -2191,20 +2768,56 @@ int bdb_insert_relinks_int(hash_t *relinks_hashtbl, unsigned char *fileid,
     return 0;
 }
 
-int bdb_shadows_pglogs_key_list_init(void **listp, int n)
+static int bdb_insert_logfile_relink_int(bdb_state_type *bdb_state,
+                                         hash_t *relinks_hashtbl,
+                                         unsigned char *fileid, db_pgno_t pgno,
+                                         db_pgno_t prev_pgno,
+                                         db_pgno_t next_pgno, DB_LSN lsn)
 {
-    static struct page_logical_lsn_key *key = NULL;
-    static int nelements = 0;
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+    logfile_relink_hashkey *relinks_ent = NULL;
+    relinks_tmptbl_key rec = {0};
+    int rc, bdberr;
 
+    if (pgno == 0)
+        return 0;
+
+    relinks_ent = retrieve_logfile_relink_hashkey(bdb_state, relinks_hashtbl,
+                                                  fileid, pgno, 1);
+    if (!relinks_ent)
+        return ENOMEM;
+
+    rec.inh = pgno;
+    rec.lsn = lsn;
+    if (prev_pgno) {
+        rec.pgno = prev_pgno;
+        rc =
+            bdb_temp_table_insert(bdb_state, relinks_ent->tmpcur, &rec,
+                                  sizeof(relinks_tmptbl_key), NULL, 0, &bdberr);
+        if (rc)
+            return rc;
+    }
+    if (next_pgno) {
+        rec.pgno = next_pgno;
+        rc =
+            bdb_temp_table_insert(bdb_state, relinks_ent->tmpcur, &rec,
+                                  sizeof(relinks_tmptbl_key), NULL, 0, &bdberr);
+        if (rc)
+            return rc;
+    }
+    return 0;
+#else
+    return bdb_insert_relinks_int(relinks_hashtbl, fileid, pgno, prev_pgno,
+                                  next_pgno, lsn);
+#endif
+}
+
+int bdb_pglogs_key_list_init(void **listp, int n)
+{
     assert(listp);
 
     if (n == 0) {
         *listp = NULL;
-        return 0;
-    }
-
-    if (n <= nelements) {
-        (*listp) = key;
         return 0;
     }
 
@@ -2217,17 +2830,12 @@ int bdb_shadows_pglogs_key_list_init(void **listp, int n)
         abort();
     }
 
-    if (key)
-        free(key);
-    key = (*listp);
-    nelements = n;
-
     return 0;
 }
 
-int bdb_update_add_pglogs_key_list(int i, void **listp, db_pgno_t pgno,
-                                   unsigned char *fileid, DB_LSN lsn,
-                                   DB_LSN commit_lsn)
+int bdb_add_pglogs_key_list(int i, void **listp, db_pgno_t pgno,
+                            unsigned char *fileid, DB_LSN lsn,
+                            DB_LSN commit_lsn)
 {
     struct page_logical_lsn_key *keylist =
         *(struct page_logical_lsn_key **)listp;
@@ -2242,13 +2850,13 @@ int bdb_update_ltran_pglogs_hash(void *bdb_state, void *pglogs,
                                  unsigned int nkeys,
                                  unsigned long long logical_tranid,
                                  int is_logical_commit,
-                                 DB_LSN logical_commit_lsn)
+                                 DB_LSN logical_commit_lsn, hash_t *fileid_tbl)
 {
     int rc = 0;
     int bdberr = 0;
     struct ltran_pglogs_key *ltran_ent = NULL;
     struct ltran_pglogs_key ltran_key;
-    struct shadows_pglogs_logical_key *pglogs_ent;
+    struct pglogs_logical_key *pglogs_ent;
     struct lsn_commit_list *lsnent;
     int i;
     struct page_logical_lsn_key *keylist =
@@ -2281,12 +2889,8 @@ int bdb_update_ltran_pglogs_hash(void *bdb_state, void *pglogs,
             return -1;
         }
         ltran_ent->logical_tranid = logical_tranid;
-        ltran_ent->pglogs_hashtbl = hash_init_o(
-            offsetof(struct shadows_pglogs_logical_key, fileid),
-            DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
-        ltran_ent->relinks_hashtbl = hash_init_o(
-            offsetof(struct pglogs_relink_key, fileid),
-            DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
+        ltran_ent->pglogs_hashtbl =
+            hash_init_o(PGLOGS_LOGICAL_KEY_OFFSET, PAGE_KEY_SIZE);
         pthread_mutex_init(&ltran_ent->pglogs_mutex, NULL);
         ltran_ent->logical_commit_lsn.file = 0;
         ltran_ent->logical_commit_lsn.offset = 1;
@@ -2302,16 +2906,29 @@ int bdb_update_ltran_pglogs_hash(void *bdb_state, void *pglogs,
     /* keylist was generated by master in reverse lsn order, so process it in
      * reverse order*/
     for (i = nkeys - 1; i >= 0; i--) {
-        rc = bdb_insert_pglogs_logical_int(
-            ltran_ent->pglogs_hashtbl, keylist[i].fileid, keylist[i].pgno,
-            keylist[i].lsn, keylist[i].commit_lsn);
-        if (rc)
-            abort();
-        /* fprintf(stderr, "%s: Inserted logical lsn [%d][%d] commit lsn
-           [%d][%d] to active logical tranid %llx\n",
-              __func__, keylist[i].lsn.file, keylist[i].lsn.offset,
-              keylist[i].commit_lsn.file, keylist[i].commit_lsn.offset,
-           logical_tranid); */
+        if (!fileid_tbl || hash_find(fileid_tbl, keylist[i].fileid) != NULL) {
+            rc = bdb_insert_pglogs_logical_int(
+                ltran_ent->pglogs_hashtbl, keylist[i].fileid, keylist[i].pgno,
+                keylist[i].lsn, keylist[i].commit_lsn);
+            if (rc)
+                abort();
+#ifdef NEWSI_DEBUG
+            logmsg(LOGMSG_DEBUG,
+                   "%s: Inserted logical lsn [%d][%d] commit lsn [%d][%d] to "
+                   "active logical tranid %llx\n",
+                   __func__, keylist[i].lsn.file, keylist[i].lsn.offset,
+                   keylist[i].commit_lsn.file, keylist[i].commit_lsn.offset,
+                   logical_tranid);
+#endif
+        }
+#ifdef NEWSI_DEBUG
+        else {
+            char *txt;
+            hexdumpbuf(keylist[i].fileid, DB_FILE_ID_LEN, &txt);
+            logmsg(LOGMSG_DEBUG, "%s: skipping fileid %s\n", __func__, txt);
+            free(txt);
+        }
+#endif
     }
     Pthread_mutex_unlock(&ltran_ent->pglogs_mutex);
 
@@ -2320,9 +2937,7 @@ int bdb_update_ltran_pglogs_hash(void *bdb_state, void *pglogs,
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
     timeval_diff(&before, &after, &diff);
-    Pthread_mutex_lock(&newsi_stat_mutex);
-    timeval_add(&ltran_insert_time, &diff, &ltran_insert_time);
-    Pthread_mutex_unlock(&newsi_stat_mutex);
+    timeval_add(&ltran_pglog_time, &diff, &ltran_pglog_time);
 #endif
 
     return 0;
@@ -2331,39 +2946,67 @@ int bdb_update_ltran_pglogs_hash(void *bdb_state, void *pglogs,
 #ifdef NEWSI_STAT
 void bdb_print_logfile_pglogs_stat()
 {
-    logmsg(LOGMSG_USER, "logfile_insert_time: %.3fms\n",
-           (double)logfile_insert_time.tv_sec * 1000 +
-               (double)logfile_insert_time.tv_usec / 1000);
+    logmsg(LOGMSG_USER, "logfile_pglog_time: %.3fms\n",
+           (double)logfile_pglog_time.tv_sec * 1000 +
+               (double)logfile_pglog_time.tv_usec / 1000);
     logmsg(LOGMSG_USER, "logfile_relink_time: %.3fms\n",
            (double)logfile_relink_time.tv_sec * 1000 +
                (double)logfile_relink_time.tv_usec / 1000);
-    logmsg(LOGMSG_USER, "client_insert_time: %.3fms\n",
-           (double)client_insert_time.tv_sec * 1000 +
-               (double)client_insert_time.tv_usec / 1000);
-    logmsg(LOGMSG_USER, "client_relink_time: %.3fms\n",
-           (double)client_relink_time.tv_sec * 1000 +
-               (double)client_relink_time.tv_usec / 1000);
-    logmsg(LOGMSG_USER, "ltran_insert_time: %.3fms\n",
-           (double)ltran_insert_time.tv_sec * 1000 +
-               (double)ltran_insert_time.tv_usec / 1000);
-    logmsg(LOGMSG_USER, "ltran_relink_time %.3fms\n",
-           (double)ltran_relink_time.tv_sec * 1000 +
-               (double)ltran_relink_time.tv_usec / 1000);
-    logmsg(LOGMSG_USER, "txn_insert_time: %.3fms\n",
-           (double)txn_insert_time.tv_sec * 1000 +
-               (double)txn_insert_time.tv_usec / 1000);
-    logmsg(LOGMSG_USER, "txn_relink_time %.3fms\n",
-           (double)txn_relink_time.tv_sec * 1000 +
-               (double)txn_relink_time.tv_usec / 1000);
-    logmsg(LOGMSG_USER, "logical_undo_time %.3fms\n",
+    logmsg(LOGMSG_USER, "ltran_pglog_time: %.3fms\n",
+           (double)ltran_pglog_time.tv_sec * 1000 +
+               (double)ltran_pglog_time.tv_usec / 1000);
+    logmsg(LOGMSG_USER, "txn_pglog_time: %.3fms\n",
+           (double)txn_pglog_time.tv_sec * 1000 +
+               (double)txn_pglog_time.tv_usec / 1000);
+    logmsg(LOGMSG_USER, "queue_pglog_time: %.3fms\n",
+           (double)queue_pglog_time.tv_sec * 1000 +
+               (double)queue_pglog_time.tv_usec / 1000);
+    logmsg(LOGMSG_USER, "queue_relink_time: %.3fms\n",
+           (double)queue_relink_time.tv_sec * 1000 +
+               (double)queue_relink_time.tv_usec / 1000);
+    logmsg(LOGMSG_USER, "logical_undo_time: %.3fms\n",
            (double)logical_undo_time.tv_sec * 1000 +
                (double)logical_undo_time.tv_usec / 1000);
+    logmsg(LOGMSG_USER, "client_copy_time: %.3fms\n",
+           (double)client_copy_time.tv_sec * 1000 +
+               (double)client_copy_time.tv_usec / 1000);
+    logmsg(LOGMSG_USER, "log_read_time: %.3fms\n",
+           (double)log_read_time.tv_sec * 1000 +
+               (double)log_read_time.tv_usec / 1000);
+    logmsg(LOGMSG_USER, "log_read_time2: %.3fms\n",
+           (double)log_read_time2.tv_sec * 1000 +
+               (double)log_read_time2.tv_usec / 1000);
+    logmsg(LOGMSG_USER, "log_apply_time: %.3fms\n",
+           (double)log_apply_time.tv_sec * 1000 +
+               (double)log_apply_time.tv_usec / 1000);
+    logmsg(LOGMSG_USER, "comprec_time: %.3fms\n",
+           (double)comprec_time.tv_sec * 1000 +
+               (double)comprec_time.tv_usec / 1000);
+    logmsg(LOGMSG_USER, "num_log_read: %llu\n", num_log_read);
+    logmsg(LOGMSG_USER, "num_log_applied_opt: %llu\n", num_log_applied_opt);
+    logmsg(LOGMSG_USER, "num_log_applied_unopt: %llu\n", num_log_applied_unopt);
+    logmsg(LOGMSG_USER, "num_comprec: %llu\n", num_comprec);
+}
+void bdb_clear_logfile_pglogs_stat()
+{
+    bzero(&logfile_relink_time, sizeof(struct timeval));
+    bzero(&logfile_pglog_time, sizeof(struct timeval));
+    bzero(&ltran_pglog_time, sizeof(struct timeval));
+    bzero(&txn_pglog_time, sizeof(struct timeval));
+    bzero(&queue_pglog_time, sizeof(struct timeval));
+    bzero(&queue_relink_time, sizeof(struct timeval));
+    bzero(&logical_undo_time, sizeof(struct timeval));
+    bzero(&client_copy_time, sizeof(struct timeval));
+    bzero(&log_read_time, sizeof(struct timeval));
+    bzero(&log_read_time2, sizeof(struct timeval));
+    bzero(&log_apply_time, sizeof(struct timeval));
+    bzero(&comprec_time, sizeof(struct timeval));
+    logmsg(LOGMSG_USER, "pglogs stat cleared\n");
 }
 #endif
 
-int bdb_update_logfile_pglogs_from_queue(
-    void *bdb_state, unsigned char *fid,
-    struct shadows_pglogs_queue_key *queuekey)
+int bdb_update_logfile_pglogs_from_queue(void *bdb_state, unsigned char *fid,
+                                         struct pglogs_queue_key *queuekey)
 {
     int rc = 0;
     int count = 0;
@@ -2371,7 +3014,6 @@ int bdb_update_logfile_pglogs_from_queue(
     int i, allocate = 0;
     unsigned filenum;
     struct logfile_pglogs_entry *l_entry;
-    struct shadows_pglogs_logical_key *pglogs_ent = NULL;
     struct lsn_commit_list *lsnent = NULL;
     DB_LSN logical_commit_lsn = queuekey->commit_lsn;
 
@@ -2390,28 +3032,47 @@ int bdb_update_logfile_pglogs_from_queue(
     Pthread_mutex_lock(&l_entry->pglogs_mutex);
     Pthread_mutex_unlock(&logfile_pglogs_repo_mutex);
 
-    rc = bdb_insert_pglogs_logical_int(l_entry->pglogs_hashtbl, fid,
-                                       queuekey->pgno, queuekey->lsn,
-                                       logical_commit_lsn);
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+    logfile_pglog_hashkey *pglog_ent = NULL;
+    /* find the page in the hash */
+    pglog_ent = retrieve_logfile_pglog_hashkey(
+        bdb_state, l_entry->pglogs_hashtbl, fid, queuekey->pgno, 1);
+    if (!pglog_ent)
+        return ENOMEM;
+
+    Pthread_mutex_lock(&pglog_ent->mtx);
+    Pthread_mutex_unlock(&l_entry->pglogs_mutex);
+#endif
+
+    rc = bdb_insert_logfile_pglog_int(bdb_state, l_entry->pglogs_hashtbl,
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+                                      pglog_ent,
+#else
+                                      NULL,
+#endif
+                                      fid, queuekey->pgno, queuekey->lsn,
+                                      logical_commit_lsn);
 
     if (rc)
         abort();
 
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+    Pthread_mutex_unlock(&pglog_ent->mtx);
+#else
     Pthread_mutex_unlock(&l_entry->pglogs_mutex);
+#endif
 
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
     timeval_diff(&before, &after, &diff);
-    Pthread_mutex_lock(&newsi_stat_mutex);
-    timeval_add(&logfile_insert_time, &diff, &logfile_insert_time);
-    Pthread_mutex_unlock(&newsi_stat_mutex);
+    timeval_add(&logfile_pglog_time, &diff, &logfile_pglog_time);
 #endif
 
     return 0;
 }
 
 int bdb_update_logfile_pglogs(void *bdb_state, void *pglogs, unsigned int nkeys,
-                              DB_LSN logical_commit_lsn)
+                              DB_LSN logical_commit_lsn, hash_t *fileid_tbl)
 {
     int rc = 0;
     int count = 0;
@@ -2422,7 +3083,6 @@ int bdb_update_logfile_pglogs(void *bdb_state, void *pglogs, unsigned int nkeys,
     struct page_logical_lsn_key *keylist =
         (struct page_logical_lsn_key *)pglogs;
     unsigned filenum, fileidx;
-    struct shadows_pglogs_logical_key *pglogs_ent = NULL;
     struct lsn_commit_list *lsnent = NULL;
 
 #ifdef NEWSI_STAT
@@ -2444,9 +3104,40 @@ int bdb_update_logfile_pglogs(void *bdb_state, void *pglogs, unsigned int nkeys,
     /* keylist was generated by master in reverse lsn order, so process it in
      * reverse order*/
     for (i = nkeys - 1; i >= 0; i--) {
-        rc = bdb_insert_pglogs_logical_int(l_entry->pglogs_hashtbl,
-                                           keylist[i].fileid, keylist[i].pgno,
-                                           keylist[i].lsn, logical_commit_lsn);
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+        logfile_pglog_hashkey *pglog_ent = NULL;
+        /* find the page in the hash */
+        pglog_ent = retrieve_logfile_pglog_hashkey(
+            bdb_state, l_entry->pglogs_hashtbl, keylist[i].fileid,
+            keylist[i].pgno, 1);
+        if (!pglog_ent)
+            return ENOMEM;
+
+        Pthread_mutex_lock(&pglog_ent->mtx);
+#endif
+
+        if (!fileid_tbl || hash_find(fileid_tbl, keylist[i].fileid) != NULL) {
+            rc = bdb_insert_logfile_pglog_int(
+                bdb_state, l_entry->pglogs_hashtbl,
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+                pglog_ent,
+#else
+                NULL,
+#endif
+                keylist[i].fileid, keylist[i].pgno, keylist[i].lsn,
+                logical_commit_lsn);
+        }
+#ifdef NEWSI_DEBUG
+        else {
+            char *txt;
+            hexdumpbuf(keylist[i].fileid, DB_FILE_ID_LEN, &txt);
+            logmsg(LOGMSG_DEBUG, "%s: skipping fileid %s\n", __func__, txt);
+            free(txt);
+        }
+#endif
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+        Pthread_mutex_unlock(&pglog_ent->mtx);
+#endif
         if (rc)
             abort();
     }
@@ -2455,9 +3146,7 @@ int bdb_update_logfile_pglogs(void *bdb_state, void *pglogs, unsigned int nkeys,
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
     timeval_diff(&before, &after, &diff);
-    Pthread_mutex_lock(&newsi_stat_mutex);
-    timeval_add(&logfile_insert_time, &diff, &logfile_insert_time);
-    Pthread_mutex_unlock(&newsi_stat_mutex);
+    timeval_add(&logfile_pglog_time, &diff, &logfile_pglog_time);
 #endif
 
     return 0;
@@ -2480,8 +3169,10 @@ int bdb_update_timestamp_lsn(void *bdb_state, int32_t timestamp, DB_LSN lsn,
     rc = bdb_temp_table_insert(bdb_state, bdb_gbl_timestamp_lsn_cur, &tlkey,
                                sizeof(struct timestamp_lsn_key), NULL, 0,
                                &bdberr);
-    /* fprintf(stderr, "%s: inserted timestamp %lld, lsn [%d][%d]\n", __func__,
-     * timestamp, lsn.file, lsn.offset); */
+#ifdef NEWSI_DEBUG
+    logmsg(LOGMSG_DEBUG, "%s: inserted timestamp %lld, lsn [%d][%d]\n",
+           __func__, timestamp, lsn.file, lsn.offset);
+#endif
     Pthread_mutex_unlock(&bdb_gbl_timestamp_lsn_mutex);
 
     return rc;
@@ -2502,9 +3193,11 @@ void bdb_delete_timestamp_lsn(bdb_state_type *bdb_state, int32_t timestamp)
         foundkey = bdb_temp_table_key(bdb_gbl_timestamp_lsn_cur);
         if (foundkey->timestamp > timestamp)
             break;
-        /* fprintf(stderr, "%s: deleted timestamp %lld, lsn [%d][%d]\n",
-           __func__,
-              foundkey->timestamp, foundkey->lsn.file, foundkey->lsn.offset); */
+#ifdef NEWSI_DEBUG
+        logmsg(LOGMSG_DEBUG, "%s: deleted timestamp %lld, lsn [%d][%d]\n",
+               __func__, foundkey->timestamp, foundkey->lsn.file,
+               foundkey->lsn.offset);
+#endif
         rc = bdb_temp_table_delete(bdb_state, bdb_gbl_timestamp_lsn_cur,
                                    &bdberr);
         if (rc) {
@@ -2524,11 +3217,11 @@ static int bdb_update_relinks_fileid_queues(void *bdb_state,
                                             db_pgno_t pgno, db_pgno_t prev_pgno,
                                             db_pgno_t next_pgno, DB_LSN lsn)
 {
-    struct shadows_fileid_pglogs_queue *fileid_queue = NULL;
-    struct shadows_pglogs_queue_key *qe;
+    struct fileid_pglogs_queue *fileid_queue = NULL;
+    struct pglogs_queue_key *qe;
 
     fileid_queue = retrieve_fileid_pglogs_queue(fileid, 1);
-    qe = allocate_shadows_pglogs_queue_key();
+    qe = allocate_pglogs_queue_key();
     qe->type = PGLOGS_QUEUE_RELINK;
     qe->prev_pgno = prev_pgno;
     qe->next_pgno = next_pgno;
@@ -2542,25 +3235,28 @@ static int bdb_update_relinks_fileid_queues(void *bdb_state,
     return 0;
 }
 
-static int bdb_update_pglogs_fileid_queues(
-    void *bdb_state, unsigned long long logical_tranid, int is_logical_commit,
-    DB_LSN commit_lsn, struct page_logical_lsn_key *keylist, unsigned int nkeys)
+static int bdb_update_pglogs_fileid_queues(void *bdb_state,
+                                           unsigned long long logical_tranid,
+                                           int is_logical_commit,
+                                           DB_LSN commit_lsn, uint32_t gen,
+                                           struct page_logical_lsn_key *keylist,
+                                           unsigned int nkeys)
 {
     int j, count;
-    struct shadows_fileid_pglogs_queue *fileid_queue = NULL;
-    struct shadows_pglogs_queue_key **qearray = NULL, *qe, *chk;
+    struct fileid_pglogs_queue *fileid_queue = NULL;
+    struct pglogs_queue_key **qearray = NULL, *qe, *chk;
     struct page_logical_lsn_key *key;
 
     if (nkeys <= 256)
-        qearray = (struct shadows_pglogs_queue_key **)alloca(
-            nkeys * sizeof(struct shadows_pglogs_queue_key *));
+        qearray = (struct pglogs_queue_key **)alloca(
+            nkeys * sizeof(struct pglogs_queue_key *));
     else
-        qearray = (struct shadows_pglogs_queue_key **)malloc(
-            nkeys * sizeof(struct shadows_pglogs_queue_key *));
+        qearray = (struct pglogs_queue_key **)malloc(
+            nkeys * sizeof(struct pglogs_queue_key *));
 
     for (j = 0; j < nkeys; j++) {
         key = &keylist[j];
-        qearray[j] = qe = allocate_shadows_pglogs_queue_key();
+        qearray[j] = qe = allocate_pglogs_queue_key();
         qe->logical_tranid = logical_tranid;
         qe->type = PGLOGS_QUEUE_PAGE;
         qe->prev_pgno = qe->next_pgno = 0;
@@ -2602,237 +3298,160 @@ static int bdb_update_pglogs_fileid_queues(
         lcommit->logical_tranid = logical_tranid;
         pthread_mutex_lock(&bdb_asof_current_lsn_mutex);
         listc_abl(&pglogs_commit_list, lcommit);
+        bdb_latest_commit_lsn = commit_lsn;
+        bdb_latest_commit_gen = gen;
         pthread_mutex_unlock(&bdb_asof_current_lsn_mutex);
     }
 
-    // lkprintf(stderr, "enque_global: enqueued commit_lsn [%d][%d]\n",
-    // commit_lsn.file, commit_lsn.offset);
+#ifdef NEWSI_DEBUG
+    lkprintf(LOGMSG_DEBUG, "enque_global: enqueued commit_lsn [%d][%d]\n",
+             commit_lsn.file, commit_lsn.offset);
+#endif
 
     return 0;
 }
 
 /* Called when the file itself is deleted. */
-int bdb_remove_fileid_pglogs_queue(bdb_state_type *bdb_state,
-                                   unsigned char *fileid, char *name)
+static int bdb_remove_fileid_pglogs_queue(bdb_state_type *bdb_state,
+                                          unsigned char *fileid)
 {
-    struct shadows_fileid_pglogs_queue *fileid_queue = NULL;
-    struct shadows_pglogs_queue_key *qe;
+    struct fileid_pglogs_queue *fileid_queue = NULL;
+    struct pglogs_queue_key *qe;
 
     pthread_mutex_lock(&del_queue_lk);
     pthread_mutex_lock(&pglogs_queue_lk);
 
-    if (pglogs_fileid_hash &&
-        (fileid_queue = hash_find(pglogs_fileid_hash, fileid))) {
+    if (pglogs_queue_fileid_hash &&
+        (fileid_queue = hash_find(pglogs_queue_fileid_hash, fileid))) {
         // asof thread will delete this
         if (gbl_new_snapisol_asof) {
             fileid_queue->deleteme = 1;
             fileid_queue = NULL;
         } else
-            hash_del(pglogs_fileid_hash, fileid_queue);
+            hash_del(pglogs_queue_fileid_hash, fileid_queue);
     }
 
     pthread_mutex_unlock(&pglogs_queue_lk);
     pthread_mutex_unlock(&del_queue_lk);
 
     if (fileid_queue) {
+#ifdef ASOF_TRACE
+        char *buf;
+        hexdumpbuf(fileid_queue->fileid, DB_FILE_ID_LEN, &buf);
+        logmsg(LOGMSG_INFO, "%s: delete queue fileid[%s]\n", __func__, buf);
+        free(buf);
+#endif
         while ((qe = listc_rtl(&fileid_queue->queue_keys)) != NULL)
             return_pglogs_queue_key(qe);
-        return_shadows_fileid_pglogs_queue(fileid_queue);
+        return_fileid_pglogs_queue(fileid_queue);
     }
 
     return 0;
 }
 
+/* Called when the file itself is deleted. */
+static int bdb_remove_logfile_fileid_pglogs(bdb_state_type *bdb_state,
+                                            unsigned char *fileid)
+{
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+    unsigned filenum, first_filenum;
+    logfile_pglog_hashkey *pglog_ent = NULL;
+    logfile_relink_hashkey *relink_ent = NULL;
+
+    Pthread_mutex_lock(&logfile_pglogs_repo_mutex);
+    first_filenum = first_logfile;
+    filenum = last_logfile;
+    Pthread_mutex_unlock(&logfile_pglogs_repo_mutex);
+
+    for (; filenum && filenum >= first_filenum; --filenum) {
+        struct logfile_pglogs_entry *l_entry;
+        Pthread_mutex_lock(&logfile_pglogs_repo_mutex);
+        l_entry = retrieve_logfile_pglogs(filenum, 0);
+
+        // No writes ..
+        if (!l_entry) {
+            Pthread_mutex_unlock(&logfile_pglogs_repo_mutex);
+            continue;
+        }
+
+        Pthread_mutex_lock(&l_entry->pglogs_mutex);
+        Pthread_mutex_unlock(&logfile_pglogs_repo_mutex);
+
+        pglog_ent = retrieve_logfile_pglog_hashkey(
+            bdb_state, l_entry->pglogs_hashtbl, fileid, 0, 0);
+        if (pglog_ent) {
+            hash_del(l_entry->pglogs_hashtbl, pglog_ent);
+            return_logfile_pglog_hashkey(pglog_ent, bdb_state);
+        }
+        relink_ent = retrieve_logfile_relink_hashkey(
+            bdb_state, l_entry->relinks_hashtbl, fileid, 0, 0);
+        if (relink_ent) {
+            hash_del(l_entry->relinks_hashtbl, relink_ent);
+            return_logfile_relink_hashkey(relink_ent, bdb_state);
+        }
+
+        Pthread_mutex_unlock(&l_entry->pglogs_mutex);
+    }
+#endif
+
+    return 0;
+}
+
+void bdb_remove_fileid_pglogs(bdb_state_type *bdb_state, unsigned char *fileid)
+{
+    if (!gbl_new_snapisol)
+        return;
+
+    bdb_remove_fileid_pglogs_queue(bdb_state, fileid);
+
+    if (!gbl_new_snapisol_asof)
+        return;
+    bdb_remove_logfile_fileid_pglogs(bdb_state, fileid);
+}
+
 struct pglog_queue_heads {
     int index;
-    struct shadows_fileid_pglogs_queue **queue_heads;
+    struct fileid_pglogs_queue **queue_heads;
 };
 
 int bdb_transfer_pglogs_to_queues(void *bdb_state, void *pglogs,
                                   unsigned int nkeys, int is_logical_commit,
                                   unsigned long long logical_tranid,
-                                  DB_LSN logical_commit_lsn, int32_t timestamp,
-                                  unsigned long long context)
+                                  DB_LSN logical_commit_lsn, uint32_t gen,
+                                  int32_t timestamp, unsigned long long context)
 {
     int rc = 0;
     int bdberr = 0;
     struct page_logical_lsn_key *keylist =
         (struct page_logical_lsn_key *)pglogs;
 
-    if (!gbl_new_snapisol || !bdb_gbl_ltran_pglogs_hash_ready || !bdb_gbl_ltran_pglogs_hash_processed)
+    if (!gbl_new_snapisol || !bdb_gbl_ltran_pglogs_hash_ready ||
+        !bdb_gbl_ltran_pglogs_hash_processed)
         return 0;
 
-    rc = bdb_update_timestamp_lsn(bdb_state, timestamp, logical_commit_lsn,
-                                  context);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s failed to update bdb_gbl_timestamp_lsn, rc = %d\n",
-                __func__, rc);
-        return rc;
-    }
-
-    bdb_update_pglogs_fileid_queues(bdb_state, logical_tranid,
-                                    is_logical_commit, logical_commit_lsn,
-                                    keylist, nkeys);
-
-    return 0;
-}
-
-static int transfer_txn_pglogs_to_ltran(hash_t *pglogs_hashtbl,
-                                        DB_LSN commit_lsn,
-                                        int is_logical_commit,
-                                        unsigned long long logical_tranid)
-{
-    struct ltran_pglogs_key *ltran_ent = NULL;
-    struct ltran_pglogs_key ltran_key;
-    void *hash_cur;
-    unsigned int hash_cur_buk;
-    struct shadows_pglogs_key *pglogs_ent = NULL;
-    struct shadows_pglogs_logical_key *ltran_pglogs_ent = NULL;
-    struct lsn_list *lsnent = NULL;
-    struct lsn_commit_list *add_lsnent = NULL;
-#ifdef NEWSI_DEBUG
-    struct lsn_commit_list *bot = NULL;
-#endif
 #ifdef NEWSI_STAT
     struct timeval before, after, diff;
     gettimeofday(&before, NULL);
 #endif
 
-    if (!bdb_gbl_ltran_pglogs_hash_ready)
-        return 0;
-
-    assert(logical_tranid);
-
-    ltran_key.logical_tranid = logical_tranid;
-
-    Pthread_mutex_lock(&bdb_gbl_ltran_pglogs_mutex);
-
-    if ((ltran_ent = hash_find(bdb_gbl_ltran_pglogs_hash, &ltran_key)) ==
-        NULL) {
-        ltran_ent = malloc(sizeof(struct ltran_pglogs_key));
-        if (!ltran_ent) {
-            Pthread_mutex_unlock(&bdb_gbl_ltran_pglogs_mutex);
-            logmsg(LOGMSG_ERROR, "%s: fail malloc ltran_ent\n", __func__);
-            return -1;
-        }
-        ltran_ent->logical_tranid = logical_tranid;
-        ltran_ent->pglogs_hashtbl = hash_init_o(
-            offsetof(struct shadows_pglogs_logical_key, fileid),
-            DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
-        ltran_ent->relinks_hashtbl = hash_init_o(
-            offsetof(struct pglogs_relink_key, fileid),
-            DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
-        pthread_mutex_init(&ltran_ent->pglogs_mutex, NULL);
-        ltran_ent->logical_commit_lsn.file = 0;
-        ltran_ent->logical_commit_lsn.offset = 1;
-        hash_add(bdb_gbl_ltran_pglogs_hash, ltran_ent);
+    rc = bdb_update_timestamp_lsn(bdb_state, timestamp, logical_commit_lsn,
+                                  context);
+    if (rc) {
+        logmsg(LOGMSG_ERROR,
+               "%s failed to update bdb_gbl_timestamp_lsn, rc = %d\n", __func__,
+               rc);
+        return rc;
     }
 
-    if (is_logical_commit)
-        ltran_ent->logical_commit_lsn = commit_lsn;
-
-    Pthread_mutex_unlock(&bdb_gbl_ltran_pglogs_mutex);
-
-    Pthread_mutex_lock(&ltran_ent->pglogs_mutex);
-
-    /* for each recorded page */
-    pglogs_ent = hash_first(pglogs_hashtbl, &hash_cur, &hash_cur_buk);
-    while (pglogs_ent) {
-        /* get the same page in the global structure */
-        if ((ltran_pglogs_ent =
-                 hash_find(ltran_ent->pglogs_hashtbl, pglogs_ent)) == NULL) {
-            /* add one if not exist */
-            ltran_pglogs_ent = allocate_shadows_pglogs_logical_key();
-            if (!ltran_pglogs_ent)
-                abort();
-            memcpy(ltran_pglogs_ent->fileid, pglogs_ent->fileid,
-                   DB_FILE_ID_LEN);
-            ltran_pglogs_ent->pgno = pglogs_ent->pgno;
-            listc_init(&ltran_pglogs_ent->lsns,
-                       offsetof(struct lsn_commit_list, lnk));
-            hash_add(ltran_ent->pglogs_hashtbl, ltran_pglogs_ent);
-        }
-        /* for each recorded lsn */
-        LISTC_FOR_EACH(&pglogs_ent->lsns, lsnent, lnk)
-        {
-            add_lsnent = allocate_lsn_commit_list();
-            if (!add_lsnent)
-                abort();
-            add_lsnent->lsn = lsnent->lsn;
-            add_lsnent->commit_lsn = commit_lsn;
-#ifdef NEWSI_DEBUG
-            bot = LISTC_BOT(&ltran_pglogs_ent->lsns);
-            if (bot)
-                assert((log_compare(&bot->commit_lsn, &add_lsnent->commit_lsn) <
-                        0) ||
-                       (log_compare(&bot->commit_lsn,
-                                    &add_lsnent->commit_lsn) == 0 &&
-                        log_compare(&bot->lsn, &add_lsnent->lsn) <= 0));
-#endif
-            listc_abl(&ltran_pglogs_ent->lsns, add_lsnent);
-        }
-
-        pglogs_ent = hash_next(pglogs_hashtbl, &hash_cur, &hash_cur_buk);
-    }
-
-    Pthread_mutex_unlock(&ltran_ent->pglogs_mutex);
+    bdb_update_pglogs_fileid_queues(bdb_state, logical_tranid,
+                                    is_logical_commit, logical_commit_lsn, gen,
+                                    keylist, nkeys);
 
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
     timeval_diff(&before, &after, &diff);
-    Pthread_mutex_lock(&newsi_stat_mutex);
-    timeval_add(&ltran_insert_time, &diff, &ltran_insert_time);
-    Pthread_mutex_unlock(&newsi_stat_mutex);
+    timeval_add(&queue_pglog_time, &diff, &queue_pglog_time);
 #endif
-
-    return 0;
-}
-
-static int transfer_txn_relinks_to_queues(void *bdb_state,
-                                          unsigned long long logical_tranid,
-                                          hash_t *relinks_hashtbl,
-                                          DB_LSN commit_lsn)
-{
-    void *hash_cur;
-    struct shadows_fileid_pglogs_queue *fileid_queue = NULL;
-    struct pglogs_relink_key *relinks_ent = NULL;
-    struct shadows_pglogs_queue_key *qe, *chk;
-    struct relink_list *rlent = NULL;
-    unsigned int hash_cur_buk;
-
-    relinks_ent = hash_first(relinks_hashtbl, &hash_cur, &hash_cur_buk);
-    while (relinks_ent) {
-        if (!fileid_queue ||
-            memcmp(fileid_queue->fileid, relinks_ent->fileid, DB_FILE_ID_LEN)) {
-            if (fileid_queue)
-                pthread_rwlock_unlock(&fileid_queue->queue_lk);
-            fileid_queue = retrieve_fileid_pglogs_queue(relinks_ent->fileid, 1);
-            pthread_rwlock_wrlock(&fileid_queue->queue_lk);
-        }
-
-        LISTC_FOR_EACH(&relinks_ent->relinks, rlent, lnk)
-        {
-            qe = allocate_shadows_pglogs_queue_key();
-            qe->logical_tranid = logical_tranid;
-            qe->type = PGLOGS_QUEUE_RELINK;
-            qe->prev_pgno = 0;
-            qe->next_pgno = rlent->inh;
-            qe->pgno = relinks_ent->pgno;
-            qe->lsn = rlent->lsn;
-            qe->commit_lsn = commit_lsn;
-
-            // Sanity
-            if ((chk = fileid_queue->queue_keys.top) != 0)
-                assert(log_compare(&qe->commit_lsn, &chk->commit_lsn) >= 0);
-
-            listc_abl(&fileid_queue->queue_keys, qe);
-        }
-
-        relinks_ent = hash_next(relinks_hashtbl, &hash_cur, &hash_cur_buk);
-    }
-
-    if (fileid_queue)
-        pthread_rwlock_unlock(&fileid_queue->queue_lk);
 
     return 0;
 }
@@ -2843,11 +3462,16 @@ static int transfer_txn_pglogs_to_queues(void *bdb_state,
                                          DB_LSN commit_lsn)
 {
     void *hash_cur;
-    struct shadows_fileid_pglogs_queue *fileid_queue = NULL;
-    struct shadows_pglogs_key *pglogs_ent = NULL;
-    struct shadows_pglogs_queue_key *qe, *chk;
+    struct fileid_pglogs_queue *fileid_queue = NULL;
+    struct pglogs_key *pglogs_ent = NULL;
+    struct pglogs_queue_key *qe, *chk;
     struct lsn_list *lsnent = NULL;
     unsigned int hash_cur_buk;
+
+#ifdef NEWSI_STAT
+    struct timeval before, after, diff;
+    gettimeofday(&before, NULL);
+#endif
 
     pglogs_ent = hash_first(pglogs_hashtbl, &hash_cur, &hash_cur_buk);
     while (pglogs_ent) {
@@ -2861,7 +3485,7 @@ static int transfer_txn_pglogs_to_queues(void *bdb_state,
 
         LISTC_FOR_EACH(&pglogs_ent->lsns, lsnent, lnk)
         {
-            qe = allocate_shadows_pglogs_queue_key();
+            qe = allocate_pglogs_queue_key();
             qe->logical_tranid = logical_tranid;
             qe->type = PGLOGS_QUEUE_PAGE;
             qe->prev_pgno = qe->next_pgno = 0;
@@ -2880,6 +3504,12 @@ static int transfer_txn_pglogs_to_queues(void *bdb_state,
     if (fileid_queue)
         pthread_rwlock_unlock(&fileid_queue->queue_lk);
 
+#ifdef NEWSI_STAT
+    gettimeofday(&after, NULL);
+    timeval_diff(&before, &after, &diff);
+    timeval_add(&queue_pglog_time, &diff, &queue_pglog_time);
+#endif
+
     return 0;
 }
 
@@ -2888,8 +3518,8 @@ int bdb_update_txn_pglogs(void *bdb_state, void *pglogs_hashtbl,
                           unsigned char *fileid, DB_LSN lsn)
 {
     int rc;
-    struct shadows_pglogs_key *pglogs_ent;
-    struct shadows_pglogs_key key;
+    struct pglogs_key *pglogs_ent;
+    struct pglogs_key key;
 #ifdef NEWSI_STAT
     struct timeval before, after, diff;
     gettimeofday(&before, NULL);
@@ -2911,60 +3541,7 @@ int bdb_update_txn_pglogs(void *bdb_state, void *pglogs_hashtbl,
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
     timeval_diff(&before, &after, &diff);
-    Pthread_mutex_lock(&newsi_stat_mutex);
-    timeval_add(&txn_insert_time, &diff, &txn_insert_time);
-    Pthread_mutex_unlock(&newsi_stat_mutex);
-#endif
-
-    return 0;
-}
-
-int bdb_relink_gbl_ltran_pglogs(void *bdb_state, unsigned char *fileid,
-                                db_pgno_t pgno, db_pgno_t prev_pgno,
-                                db_pgno_t next_pgno, DB_LSN lsn)
-{
-    int rc = 0;
-    void *hash_cur;
-    unsigned int hash_cur_buk;
-    struct ltran_pglogs_key *ltran_ent = NULL;
-    struct relink_list *rlent;
-    struct pglogs_relink_key *relinks_ent;
-    struct pglogs_relink_key key;
-
-#ifdef NEWSI_STAT
-    struct timeval before, after, diff;
-    gettimeofday(&before, NULL);
-#endif
-
-    if (!bdb_gbl_ltran_pglogs_hash_ready)
-        return 0;
-
-    memcpy(key.fileid, fileid, DB_FILE_ID_LEN);
-
-    Pthread_mutex_lock(&bdb_gbl_ltran_pglogs_mutex);
-
-    ltran_ent = hash_first(bdb_gbl_ltran_pglogs_hash, &hash_cur, &hash_cur_buk);
-    while (ltran_ent) {
-        Pthread_mutex_lock(&ltran_ent->pglogs_mutex);
-
-        rc = bdb_insert_relinks_int(ltran_ent->relinks_hashtbl, fileid, pgno,
-                                    prev_pgno, next_pgno, lsn);
-        if (rc)
-            abort();
-
-        Pthread_mutex_unlock(&ltran_ent->pglogs_mutex);
-        ltran_ent =
-            hash_next(bdb_gbl_ltran_pglogs_hash, &hash_cur, &hash_cur_buk);
-    }
-
-    Pthread_mutex_unlock(&bdb_gbl_ltran_pglogs_mutex);
-
-#ifdef NEWSI_STAT
-    gettimeofday(&after, NULL);
-    timeval_diff(&before, &after, &diff);
-    Pthread_mutex_lock(&newsi_stat_mutex);
-    timeval_add(&ltran_relink_time, &diff, &ltran_relink_time);
-    Pthread_mutex_unlock(&newsi_stat_mutex);
+    timeval_add(&txn_pglog_time, &diff, &txn_pglog_time);
 #endif
 
     return 0;
@@ -2972,7 +3549,8 @@ int bdb_relink_gbl_ltran_pglogs(void *bdb_state, unsigned char *fileid,
 
 int bdb_relink_logfile_pglogs(void *bdb_state, unsigned char *fileid,
                               db_pgno_t pgno, db_pgno_t prev_pgno,
-                              db_pgno_t next_pgno, DB_LSN lsn)
+                              db_pgno_t next_pgno, DB_LSN lsn,
+                              hash_t *fileid_tbl)
 {
     int rc = 0, allocate = 0;
     unsigned filenum, last_filenum;
@@ -2992,8 +3570,19 @@ int bdb_relink_logfile_pglogs(void *bdb_state, unsigned char *fileid,
     Pthread_mutex_lock(&l_entry->pglogs_mutex);
     Pthread_mutex_unlock(&logfile_pglogs_repo_mutex);
 
-    rc = bdb_insert_relinks_int(l_entry->relinks_hashtbl, fileid, pgno,
-                                prev_pgno, next_pgno, lsn);
+    if (fileid_tbl && hash_find(fileid_tbl, fileid) == NULL) {
+        Pthread_mutex_unlock(&l_entry->pglogs_mutex);
+#ifdef NEWSI_DEBUG
+        char *txt;
+        hexdumpbuf(fileid, DB_FILE_ID_LEN, &txt);
+        logmsg(LOGMSG_DEBUG, "%s: skipping fileid %s\n", __func__, txt);
+        free(txt);
+#endif
+        return 0;
+    }
+
+    rc = bdb_insert_logfile_relink_int(bdb_state, l_entry->relinks_hashtbl,
+                                       fileid, pgno, prev_pgno, next_pgno, lsn);
     if (rc)
         abort();
 
@@ -3002,9 +3591,7 @@ int bdb_relink_logfile_pglogs(void *bdb_state, unsigned char *fileid,
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
     timeval_diff(&before, &after, &diff);
-    Pthread_mutex_lock(&newsi_stat_mutex);
     timeval_add(&logfile_relink_time, &diff, &logfile_relink_time);
-    Pthread_mutex_unlock(&newsi_stat_mutex);
 #endif
 
     return 0;
@@ -3034,53 +3621,26 @@ int bdb_relink_pglogs(void *bdb_state, unsigned char *fileid, db_pgno_t pgno,
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
     timeval_diff(&before, &after, &diff);
-    Pthread_mutex_lock(&newsi_stat_mutex);
-    timeval_add(&txn_relink_time, &diff, &txn_relink_time);
-    Pthread_mutex_unlock(&newsi_stat_mutex);
-#endif
-
-    return 0;
-}
-
-int bdb_relink_txn_pglogs(void *bdb_state, void *relinks_hashtbl,
-                          pthread_mutex_t *mutexp, unsigned char *fileid,
-                          db_pgno_t pgno, db_pgno_t prev_pgno,
-                          db_pgno_t next_pgno, DB_LSN lsn)
-{
-    int rc = 0;
-
-    if (!gbl_new_snapisol || !bdb_gbl_ltran_pglogs_hash_ready)
-        return 0;
-
-    if (gbl_disable_new_snapisol_overhead)
-        return 0;
-
-#ifdef NEWSI_STAT
-    struct timeval before, after, diff;
-    gettimeofday(&before, NULL);
-#endif
-
-    Pthread_mutex_lock(mutexp);
-
-    rc = bdb_insert_relinks_int(relinks_hashtbl, fileid, pgno, prev_pgno,
-                                next_pgno, lsn);
-    if (rc)
-        abort();
-
-    Pthread_mutex_unlock(mutexp);
-
-#ifdef NEWSI_STAT
-    gettimeofday(&after, NULL);
-    timeval_diff(&before, &after, &diff);
-    Pthread_mutex_lock(&newsi_stat_mutex);
-    timeval_add(&txn_relink_time, &diff, &txn_relink_time);
-    Pthread_mutex_unlock(&newsi_stat_mutex);
+    timeval_add(&queue_relink_time, &diff, &queue_relink_time);
 #endif
 
     return 0;
 }
 
 #include "nodemap.h"
+
+int gbl_set_seqnum_trace = 0;
+
+static inline void set_seqnum_host(void *in_bdb_state, char *host, DB_LSN lsn,
+                                   const char *func, int line)
+{
+    bdb_state_type *bdb_state = (bdb_state_type *)in_bdb_state;
+    bdb_state->seqnum_info->seqnums[nodeix(host)].lsn = lsn;
+    if (gbl_set_seqnum_trace) {
+        logmsg(LOGMSG_USER, "%s line %d setting host %s lsn to %d:%d\n", func,
+               line, host, lsn.file, lsn.offset);
+    }
+}
 
 int bdb_push_pglogs_commit(void *in_bdb_state, DB_LSN commit_lsn, uint32_t gen,
                            unsigned long long ltranid, int push)
@@ -3089,6 +3649,9 @@ int bdb_push_pglogs_commit(void *in_bdb_state, DB_LSN commit_lsn, uint32_t gen,
     struct commit_list *lcommit = NULL;
     extern int gbl_durable_set_trace;
     char *master, *eid;
+
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
 
     if (gbl_new_snapisol_asof && push) {
         lcommit = allocate_pglogs_commit_list();
@@ -3101,13 +3664,10 @@ int bdb_push_pglogs_commit(void *in_bdb_state, DB_LSN commit_lsn, uint32_t gen,
         listc_abl(&pglogs_commit_list, lcommit);
     bdb_latest_commit_lsn = commit_lsn;
     bdb_latest_commit_gen = gen;
-    if (gbl_durable_set_trace)
-        logmsg(LOGMSG_USER, "Set commit lsn to [%d][%d] generation %u\n", commit_lsn.file,
-                commit_lsn.offset, gen);
 
     pthread_mutex_unlock(&bdb_asof_current_lsn_mutex);
 
-    bdb_state->dbenv->get_rep_master(bdb_state->dbenv, &master, NULL);
+    bdb_state->dbenv->get_rep_master(bdb_state->dbenv, &master, NULL, NULL);
     bdb_state->dbenv->get_rep_eid(bdb_state->dbenv, &eid);
 
     // We are under the log lock here.  If we are writing logs, there has to
@@ -3124,18 +3684,24 @@ int bdb_push_pglogs_commit(void *in_bdb_state, DB_LSN commit_lsn, uint32_t gen,
     }
 
     if (!strcmp(master, eid)) {
-        seqnum_type *seqnum = &bdb_state->seqnum_info->seqnums[nodeix(eid)];
         Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
-        seqnum->lsn = commit_lsn;
-        seqnum->commit_generation = seqnum->generation = gen;
+        if (commit_lsn.file == 0)
+            abort();
+
+        set_seqnum_host(bdb_state, master, commit_lsn, __func__, __LINE__);
+        bdb_state->seqnum_info->seqnums[nodeix(master)].generation =
+            bdb_state->seqnum_info->seqnums[nodeix(master)].commit_generation =
+                gen;
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
         bdb_set_commit_lsn_gen(bdb_state, &commit_lsn, gen);
         master_cnt++;
         if (doprint) {
-            logmsg(LOGMSG_USER, "%s: setting seqnum_info on master to [%d][%d] "
-                    "gen [%d] master-count=%llu not-master-count=%llu\n", 
-                    __func__, commit_lsn.file, commit_lsn.offset, gen, 
-                    master_cnt, notmaster_cnt);
+            logmsg(LOGMSG_USER,
+                   "%s: setting seqnum_info ptr %p on master to [%d][%d] gen "
+                   "[%d] master-count=%llu not-master-count=%llu\n",
+                   __func__, &bdb_state->seqnum_info->seqnums[nodeix(master)],
+                   commit_lsn.file, commit_lsn.offset, gen, master_cnt,
+                   notmaster_cnt);
         }
     }
     else {
@@ -3205,33 +3771,70 @@ done:
 int bdb_latest_commit_is_durable(void *in_bdb_state)
 {
     extern int gbl_durable_replay_test;
+    char *master;
     bdb_state_type *bdb_state = (bdb_state_type *)in_bdb_state;
+    seqnum_type ss = {0};
+    int timeoutms;
+    int needwait = 0;
+    int rc = 0;
     uint32_t durable_gen;
     uint32_t latest_gen;
     DB_LSN durable_lsn;
     DB_LSN latest_lsn;
 
+    bdb_get_rep_master(bdb_state, &master, NULL, NULL);
     bdb_latest_commit(bdb_state, &latest_lsn, &latest_gen);
     bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv, &durable_lsn,
                                       &durable_gen);
 
-    if (latest_gen < durable_gen)
-        return 0;
+    logmsg(LOGMSG_INFO, "%s line %d master=%s latest-commit=[%d][%d] gen %d, "
+                        "latest-durable=[%d][%d] gen %d\n",
+           __func__, __LINE__, master, latest_lsn.file, latest_lsn.offset,
+           latest_gen, durable_lsn.file, durable_lsn.offset, durable_gen);
+
+    if (durable_gen < latest_gen) {
+        logmsg(LOGMSG_INFO,
+               "%s line %d waiting because durable_gen %d < latest_gen %d\n",
+               __func__, __LINE__, durable_gen, latest_gen);
+        needwait = 1;
+    }
 
     if ((latest_gen == durable_gen) &&
-        log_compare(&durable_lsn, &latest_lsn) < 0)
-        return 0;
+        log_compare(&durable_lsn, &latest_lsn) < 0) {
+        logmsg(LOGMSG_INFO,
+               "%s line %d waiting because durable_lsn [%d][%d] < latest_lsn "
+               "[%d][%d]\n",
+               __func__, __LINE__, durable_lsn.file, durable_lsn.offset,
+               latest_lsn.file, latest_lsn.offset);
+        needwait = 1;
+    }
 
-    if (gbl_durable_replay_test && (0 == (rand() % 20)))
+    if (gbl_durable_replay_test && (0 == (rand() % 20))) {
+        logmsg(LOGMSG_INFO, "%s line %d returning 0 for durable_replay_test\n",
+               __func__, __LINE__);
         return 0;
+    }
+
+    if (needwait) {
+        ss.lsn = latest_lsn;
+        ss.generation = latest_gen;
+        rc = (bdb_wait_for_seqnum_from_all_adaptive_newcoh(bdb_state, &ss, 0,
+                                                           &timeoutms) == 0)
+                 ? 1
+                 : 0;
+        logmsg(LOGMSG_INFO, "%s line %d returning %d after waiting\n", __func__,
+               __LINE__, rc);
+        return rc;
+    }
+
+    logmsg(LOGMSG_INFO, "%s line %d returning 1\n", __func__, __LINE__);
 
     return 1;
 }
 
 int bdb_transfer_txn_pglogs(void *bdb_state, void *pglogs_hashtbl,
-                            void *relinks_hashtbl, pthread_mutex_t *mutexp,
-                            DB_LSN commit_lsn, uint32_t flags,
-                            unsigned long long logical_tranid,
+                            pthread_mutex_t *mutexp, DB_LSN commit_lsn,
+                            uint32_t flags, unsigned long long logical_tranid,
                             int32_t timestamp, unsigned long long context)
 {
     int rc, bdberr;
@@ -3257,10 +3860,6 @@ int bdb_transfer_txn_pglogs(void *bdb_state, void *pglogs_hashtbl,
 
     if ((rc = transfer_txn_pglogs_to_queues(bdb_state, logical_tranid,
                                             pglogs_hashtbl, commit_lsn)) != 0)
-        abort();
-
-    if ((rc = transfer_txn_relinks_to_queues(bdb_state, logical_tranid,
-                                             relinks_hashtbl, commit_lsn)) != 0)
         abort();
 
     return 0;
@@ -3372,7 +3971,7 @@ static int bdb_cursor_update_shadows_with_pglogs(bdb_cursor_ifn_t *pcur_ifn,
     int rc;
 
     rc =
-        bdb_btree_update_shadows_with_trn_pglogs(cur, inpgno, infileid, bdberr);
+        bdb_btree_update_shadows_with_pglogs_int(cur, inpgno, infileid, bdberr);
 
     return rc;
 }
@@ -3595,6 +4194,7 @@ static int bdb_cursor_find_last_dup(bdb_cursor_ifn_t *pcur_ifn, void *key,
 
         if (rc == IX_EMPTY)
             return IX_EMPTY;
+
     } else if (rc == IX_FND) {
         if (!dirLeft) {
             /* we are going Right because we got here from SeekGT,
@@ -3966,9 +4566,10 @@ static int bdb_cursor_move_and_skip(bdb_cursor_impl_t *cur,
         if (rc < 0)
             return rc;
 
-#if MERGE_DEBUG
-        fprintf(stderr, "%d %s:%d reordering rc=%d %llx\n", pthread_self(),
-                __FILE__, __LINE__, rc, *(unsigned long long *)key);
+#ifdef MERGE_DEBUG
+        logmsg(LOGMSG_DEBUG, "%d %s:%d reordering rc=%d %llx\n",
+               (int)pthread_self(), __FILE__, __LINE__, rc,
+               *(unsigned long long *)key);
 #endif
 
         /* if we have failed to reposition the cursor and this is a relative
@@ -3984,8 +4585,8 @@ static int bdb_cursor_move_and_skip(bdb_cursor_impl_t *cur,
     if (rc < 0)
         return rc;
 #if MERGE_DEBUG
-    fprintf(stderr, "%d %s:%d bdb_cursor_move_and_skip_int rc=%d\n",
-            pthread_self(), __FILE__, __LINE__, rc);
+    logmsg(LOGMSG_DEBUG, "%d %s:%d bdb_cursor_move_and_skip_int rc=%d\n",
+           pthread_self(), __FILE__, __LINE__, rc);
 #endif
 
     /* now update the out-of-order flag */
@@ -4043,8 +4644,8 @@ static int bdb_cursor_move_and_skip_int(bdb_cursor_impl_t *cur,
                 return rc;
 
 #if MERGE_DEBUG
-            fprintf(stderr, "%d %s:%d berkdb->move rc=%d\n", pthread_self(),
-                    __FILE__, __LINE__, rc);
+            logmsg(LOGMSG_DEBUG, "%d %s:%d berkdb->move rc=%d\n",
+                   pthread_self(), __FILE__, __LINE__, rc);
 #endif
         } else {
             /* Move the cursor for the next iteration. */
@@ -4058,10 +4659,11 @@ static int bdb_cursor_move_and_skip_int(bdb_cursor_impl_t *cur,
                 abort();
             }
             if (prev_pgno != pgno || pgno == 0) {
-                rc2 = bdb_btree_update_shadows_with_trn_pglogs(cur, &pgno,
+                rc2 = bdb_btree_update_shadows_with_pglogs_int(cur, &pgno,
                                                                fileid, bdberr);
                 if (rc2 < 0) {
-                    logmsg(LOGMSG_FATAL, "bdb_btree_update_shadows_with_trn_pglogs failed\n");
+                    logmsg(LOGMSG_FATAL,
+                           "bdb_btree_update_shadows_with_pglogs_int failed\n");
                     abort();
                 }
                 prev_pgno = pgno;
@@ -4096,8 +4698,8 @@ static int bdb_cursor_move_and_skip_int(bdb_cursor_impl_t *cur,
         }
 
 #if MERGE_DEBUG
-        fprintf(stderr, "%s ignored %llx\n",
-                (cur->sd == berkdb) ? "shadow" : "real", genid);
+        logmsg(LOGMSG_DEBUG, "%s ignored %llx\n",
+               (cur->sd == berkdb) ? "shadow" : "real", genid);
 #endif
 
         /* ok, the found row is marked deleted, try to get
@@ -4133,7 +4735,8 @@ static int bdb_cursor_find_and_skip(bdb_cursor_impl_t *cur,
     if (gbl_new_snapisol && cur->rl == berkdb && update_shadows) {
         rc2 = cur->rl->fileid(cur->rl, fileid, bdberr);
         if (rc2 < 0) {
-            printf("get fileid failed\n");
+            logmsg(LOGMSG_FATAL, "%s: get fileid failed, rc %d\n", __func__,
+                   rc2);
             abort();
         }
     }
@@ -4154,8 +4757,8 @@ static int bdb_cursor_find_and_skip(bdb_cursor_impl_t *cur,
 
         rc = berkdb->find(berkdb, key, keylen, howcrt, bdberr);
 #if MERGE_DEBUG
-        fprintf(stderr, "%d %s:%d find() how=%d returned rc=%d\n",
-                pthread_self(), __FILE__, __LINE__, how, rc);
+        logmsg(LOGMSG_DEBUG, "%d %s:%d find() how=%d returned rc=%d\n",
+               pthread_self(), __FILE__, __LINE__, how, rc);
 #endif
         if (rc < 0)
             return rc;
@@ -4183,10 +4786,11 @@ static int bdb_cursor_find_and_skip(bdb_cursor_impl_t *cur,
                     abort();
                 }
                 if (prev_pgno != pgno || pgno == 0) {
-                    rc2 = bdb_btree_update_shadows_with_trn_pglogs(
+                    rc2 = bdb_btree_update_shadows_with_pglogs_int(
                         cur, &pgno, fileid, bdberr);
                     if (rc2 < 0) {
-                        logmsg(LOGMSG_FATAL, "bdb_btree_update_shadows_with_trn_pglogs "
+                        logmsg(LOGMSG_FATAL,
+                               "bdb_btree_update_shadows_with_pglogs_int "
                                "failed\n");
                         abort();
                     }
@@ -4199,7 +4803,7 @@ static int bdb_cursor_find_and_skip(bdb_cursor_impl_t *cur,
             break;
         if (rc == IX_NOTFND) {
             /*
-            fprintf( stderr, "%d %s:%d returing %d\n",
+            logmsg(LOGMSG_DEBUG, "%d %s:%d returing %d\n",
                   pthread_self(), __FILE__, __LINE__, IX_PASTEOF);
              */
 
@@ -4265,10 +4869,11 @@ static int bdb_cursor_find_and_skip(bdb_cursor_impl_t *cur,
                 abort();
             }
             if (prev_pgno != pgno || pgno == 0) {
-                rc2 = bdb_btree_update_shadows_with_trn_pglogs(cur, &pgno,
+                rc2 = bdb_btree_update_shadows_with_pglogs_int(cur, &pgno,
                                                                fileid, bdberr);
                 if (rc2 < 0) {
-                    logmsg(LOGMSG_FATAL, "bdb_btree_update_shadows_with_trn_pglogs failed\n");
+                    logmsg(LOGMSG_FATAL,
+                           "bdb_btree_update_shadows_with_pglogs_int failed\n");
                     abort();
                 }
                 prev_pgno = pgno;
@@ -4387,8 +4992,8 @@ step1:
                                       bdberr);
 
 #if MERGE_DEBUG
-        fprintf(stderr, "%d %s:%d rc=%d used_rl=%d [%d]\n", pthread_self(),
-                __FILE__, __LINE__, rc, cur->used_rl, how);
+        logmsg(LOGMSG_DEBUG, "%d %s:%d rc=%d used_rl=%d [%d]\n", pthread_self(),
+               __FILE__, __LINE__, rc, cur->used_rl, how);
 
         print_cursor_keys(cur, BDB_SHOW_RL);
 #endif
@@ -4669,11 +5274,11 @@ step1:
         if (rc != IX_FND) {
             cur->used_sd = 1;
 #if MERGE_DEBUG
-            fprintf(stderr,
-                    "NOT FOUND rc=%d; left pointing at the last row key_sd=\n",
-                    rc);
+            logmsg(LOGMSG_DEBUG,
+                   "NOT FOUND rc=%d; left pointing at the last row key_sd=\n",
+                   rc);
             print_cursor_keys(cur, BDB_SHOW_SD);
-            fprintf(stderr, " -- marked SD used\n");
+            logmsg(LOGMSG_DEBUG, " -- marked SD used\n");
 #endif
         } else {
             cur->used_sd = 0;
@@ -4705,11 +5310,11 @@ step1:
                 logmsg(LOGMSG_USER, " in shadow table.\n");
             }
 #if MERGE_DEBUG
-            printf("FOUND:\n\tkeylen=%d\n\tkey=\"", keysize_sd);
-            hexdump(key_sd, keysize_sd);
-            printf("\"\n\tdatalen=%d\n\tdata=\"", dtasize_sd);
-            hexdump(dta_sd, dtasize_sd);
-            printf("\"\n");
+            logmsg(LOGMSG_DEBUG, "FOUND:\n\tkeylen=%d\n\tkey=\"", keysize_sd);
+            hexdump(LOGMSG_DEBUG, key_sd, keysize_sd);
+            logmsg(LOGMSG_DEBUG, "\"\n\tdatalen=%d\n\tdata=\"", dtasize_sd);
+            hexdump(LOGMSG_DEBUG, dta_sd, dtasize_sd);
+            logmsg(LOGMSG_DEBUG, "\"\n");
 #endif
         }
     } else {
@@ -4731,30 +5336,30 @@ step1:
          will have data. */
     if (cur->pageorder && cur->type == BDBC_DT) {
 #if MERGE_DEBUG
-        printf("find bdb_btree_merge RL_PO\n");
+        logmsg(LOGMSG_DEBUG, "find bdb_btree_merge RL_PO\n");
         if (dta_rl) {
-            printf("dta_rl == \n");
-            hexdump(dta_rl, dtasize_rl);
+            logmsg(LOGMSG_DEBUG, "dta_rl == \n");
+            hexdump(LOGMSG_DEBUG, dta_rl, dtasize_rl);
         } else {
-            printf("dta_rl == NULL\n");
+            logmsg(LOGMSG_DEBUG, "dta_rl == NULL\n");
         }
         if (dta_po) {
-            printf("dta_po == \n");
-            hexdump(dta_po, dtasize_po);
+            logmsg(LOGMSG_DEBUG, "dta_po == \n");
+            hexdump(LOGMSG_DEBUG, dta_po, dtasize_po);
         } else {
-            printf("dta_po == NULL\n");
+            logmsg(LOGMSG_DEBUG, "dta_po == NULL\n");
         }
         if (key_rl) {
-            printf("key_rl == \n");
-            hexdump(key_rl, keysize_rl);
+            logmsg(LOGMSG_DEBUG, "key_rl == \n");
+            hexdump(LOGMSG_DEBUG, key_rl, keysize_rl);
         } else {
-            printf("key_rl == NULL\n");
+            logmsg(LOGMSG_DEBUG, "key_rl == NULL\n");
         }
         if (key_po) {
-            printf("key_po == \n");
-            hexdump(key_po, keysize_po);
+            logmsg(LOGMSG_DEBUG, "key_po == \n");
+            hexdump(LOGMSG_DEBUG, key_po, keysize_po);
         } else {
-            printf("key_po == NULL\n");
+            logmsg(LOGMSG_DEBUG, "key_po == NULL\n");
         }
 #endif
         return bdb_btree_merge(cur, -1, -1, -1, dta_rl, dtasize_rl, dta_po,
@@ -4769,30 +5374,30 @@ step1:
        */
     else if (dta_po && cur->type == BDBC_DT) {
 #if MERGE_DEBUG
-        printf("find bdb_btree_merge PO_SD\n");
+        logmsg(LOGMSG_DEBUG, "find bdb_btree_merge PO_SD\n");
         if (dta_po) {
-            printf("dta_po == \n");
-            hexdump(dta_po, dtasize_po);
+            logmsg(LOGMSG_DEBUG, "dta_po == \n");
+            hexdump(LOGMSG_DEBUG, dta_po, dtasize_po);
         } else {
-            printf("dta_po == NULL\n");
+            logmsg(LOGMSG_DEBUG, "dta_po == NULL\n");
         }
         if (dta_sd) {
-            printf("dta_sd == \n");
-            hexdump(dta_sd, dtasize_sd);
+            logmsg(LOGMSG_DEBUG, "dta_sd == \n");
+            hexdump(LOGMSG_DEBUG, dta_sd, dtasize_sd);
         } else {
-            printf("dta_sd == NULL\n");
+            logmsg(LOGMSG_DEBUG, "dta_sd == NULL\n");
         }
         if (key_po) {
-            printf("key_po == \n");
-            hexdump(key_po, keysize_po);
+            logmsg(LOGMSG_DEBUG, "key_po == \n");
+            hexdump(LOGMSG_DEBUG, key_po, keysize_po);
         } else {
-            printf("key_po == NULL\n");
+            logmsg(LOGMSG_DEBUG, "key_po == NULL\n");
         }
         if (key_sd) {
-            printf("key_sd == \n");
-            hexdump(key_sd, keysize_sd);
+            logmsg(LOGMSG_DEBUG, "key_sd == \n");
+            hexdump(LOGMSG_DEBUG, key_sd, keysize_sd);
         } else {
-            printf("key_sd == NULL\n");
+            logmsg(LOGMSG_DEBUG, "key_sd == NULL\n");
         }
 #endif
         /* The '_sd' variables will be NULL for this case. */
@@ -4806,30 +5411,30 @@ step1:
     /* Normal case, before reaching the virtual stripe. */
     else if (cur->type == BDBC_DT) {
 #if MERGE_DEBUG
-        printf("find bdb_btree_merge BDBC_DT\n");
+        logmsg(LOGMSG_DEBUG, "find bdb_btree_merge BDBC_DT\n");
         if (dta_rl) {
-            printf("dta_rl == \n");
-            hexdump(dta_rl, dtasize_rl);
+            logmsg(LOGMSG_DEBUG, "dta_rl == \n");
+            hexdump(LOGMSG_DEBUG, dta_rl, dtasize_rl);
         } else {
-            printf("dta_rl == NULL\n");
+            logmsg(LOGMSG_DEBUG, "dta_rl == NULL\n");
         }
         if (dta_sd) {
-            printf("dta_sd == \n");
-            hexdump(dta_sd, dtasize_sd);
+            logmsg(LOGMSG_DEBUG, "dta_sd == \n");
+            hexdump(LOGMSG_DEBUG, dta_sd, dtasize_sd);
         } else {
-            printf("dta_sd == NULL\n");
+            logmsg(LOGMSG_DEBUG, "dta_sd == NULL\n");
         }
         if (key_rl) {
-            printf("key_rl == \n");
-            hexdump(key_rl, keysize_rl);
+            logmsg(LOGMSG_DEBUG, "key_rl == \n");
+            hexdump(LOGMSG_DEBUG, key_rl, keysize_rl);
         } else {
-            printf("key_rl == NULL\n");
+            logmsg(LOGMSG_DEBUG, "key_rl == NULL\n");
         }
         if (key_sd) {
-            printf("key_sd == \n");
-            hexdump(key_sd, keysize_sd);
+            logmsg(LOGMSG_DEBUG, "key_sd == \n");
+            hexdump(LOGMSG_DEBUG, key_sd, keysize_sd);
         } else {
-            printf("key_sd == NULL\n");
+            logmsg(LOGMSG_DEBUG, "key_sd == NULL\n");
         }
 #endif
         return bdb_btree_merge(cur, -1, -1, -1, dta_rl, dtasize_rl, dta_sd,
@@ -4852,30 +5457,30 @@ step1:
            cur->unpacked_datacopy = NULL;
         }
         */
-        printf("find bdb_btree_merge BDBC_IX\n");
+        logmsg(LOGMSG_DEBUG, "find bdb_btree_merge BDBC_IX\n");
         if (dta_rl) {
-            printf("dta_rl == \n");
-            hexdump(dta_rl, dtasize_rl);
+            logmsg(LOGMSG_DEBUG, "dta_rl == \n");
+            hexdump(LOGMSG_DEBUG, dta_rl, dtasize_rl);
         } else {
-            printf("dta_rl == NULL\n");
+            logmsg(LOGMSG_DEBUG, "dta_rl == NULL\n");
         }
         if (dta_sd) {
-            printf("dta_sd == \n");
-            hexdump(dta_sd, dtasize_sd);
+            logmsg(LOGMSG_DEBUG, "dta_sd == \n");
+            hexdump(LOGMSG_DEBUG, dta_sd, dtasize_sd);
         } else {
-            printf("dta_sd == NULL\n");
+            logmsg(LOGMSG_DEBUG, "dta_sd == NULL\n");
         }
         if (key_rl) {
-            printf("key_rl == \n");
-            hexdump(key_rl, keysize_rl);
+            logmsg(LOGMSG_DEBUG, "key_rl == \n");
+            hexdump(LOGMSG_DEBUG, key_rl, keysize_rl);
         } else {
-            printf("key_rl == NULL\n");
+            logmsg(LOGMSG_DEBUG, "key_rl == NULL\n");
         }
         if (key_sd) {
-            printf("key_sd == \n");
-            hexdump(key_sd, keysize_sd);
+            logmsg(LOGMSG_DEBUG, "key_sd == \n");
+            hexdump(LOGMSG_DEBUG, key_sd, keysize_sd);
         } else {
-            printf("key_sd == NULL\n");
+            logmsg(LOGMSG_DEBUG, "key_sd == NULL\n");
         }
 #endif
         return bdb_btree_merge(cur, -1, -1, -1, dta_rl, dtasize_rl, dta_sd,
@@ -4896,7 +5501,7 @@ static void set_datacopy(bdb_cursor_impl_t *cur, void *dta, int len)
         info->datacopy = dta;
         info->size = len;
         cur->unpacked_datacopy = NULL;
-        /*fprintf(stderr, "SETTING %p dta=%p sz=%d\n", cur, info->datacopy,
+        /*logmsg(LOGMSG_DEBUG, "SETTING %p dta=%p sz=%d\n", cur, info->datacopy,
          * info->size);*/
     }
 }
@@ -4968,9 +5573,9 @@ step1:
     /* STEP 1 */
     if (cur->rl) {
 #if MERGE_DEBUG
-        fprintf(stderr, "%d %s:%d used_rl=%d cur->genid=%llx [%d]\n",
-                pthread_self(), __FILE__, __LINE__, cur->used_rl, cur->genid,
-                how);
+        logmsg(LOGMSG_DEBUG, "%d %s:%d used_rl=%d cur->genid=%llx [%d]\n",
+               pthread_self(), __FILE__, __LINE__, cur->used_rl, cur->genid,
+               how);
 #endif
         if ((how != DB_NEXT && how != DB_PREV) || cur->used_rl) {
 
@@ -4980,8 +5585,8 @@ step1:
                 return rc;
 
 #if MERGE_DEBUG
-            fprintf(stderr, "%d %s:%d rc=%d used_rl=%d [%d]\n", pthread_self(),
-                    __FILE__, __LINE__, rc, cur->used_rl, how);
+            logmsg(LOGMSG_DEBUG, "%d %s:%d rc=%d used_rl=%d [%d]\n",
+                   pthread_self(), __FILE__, __LINE__, rc, cur->used_rl, how);
 
             print_cursor_keys(cur, BDB_SHOW_RL);
 #endif
@@ -5416,9 +6021,9 @@ step1:
 
     if (cur->sd && cur->shadow_tran->check_shadows) {
 #if MERGE_DEBUG
-        fprintf(stderr, "%d %s:%d used_sd=%d cur->genid=%llx [%d]\n",
-                pthread_self(), __FILE__, __LINE__, cur->used_sd, cur->genid,
-                how);
+        logmsg(LOGMSG_DEBUG, "%d %s:%d used_sd=%d cur->genid=%llx [%d]\n",
+               pthread_self(), __FILE__, __LINE__, cur->used_sd, cur->genid,
+               how);
         print_cursor_keys(cur, BDB_SHOW_BOTH);
 #endif
         if ((how != DB_NEXT && how != DB_PREV) || cur->used_sd) {
@@ -5429,8 +6034,8 @@ step1:
                 return rc;
 
 #if MERGE_DEBUG
-            fprintf(stderr, "%d %s:%d rc=%d used_sd=%d [%d]\n", pthread_self(),
-                    __FILE__, __LINE__, rc, cur->used_sd, how);
+            logmsg(LOGMSG_DEBUG, "%d %s:%d rc=%d used_sd=%d [%d]\n",
+                   pthread_self(), __FILE__, __LINE__, rc, cur->used_sd, how);
 
             print_cursor_keys(cur, BDB_SHOW_BOTH);
 #endif
@@ -5528,30 +6133,30 @@ step1:
     /* STEP 4 */
     if (cur->type == BDBC_DT) {
 #if MERGE_DEBUG
-        printf("move bdb_btree_merge BDBC_DT\n");
+        logmsg(LOGMSG_DEBUG, "move bdb_btree_merge BDBC_DT\n");
         if (dta_rl) {
-            printf("dta_rl == \n");
-            hexdump(dta_rl, dtasize_rl);
+            logmsg(LOGMSG_DEBUG, "dta_rl == \n");
+            hexdump(LOGMSG_DEBUG, dta_rl, dtasize_rl);
         } else {
-            printf("dta_rl == NULL\n");
+            logmsg(LOGMSG_DEBUG, "dta_rl == NULL\n");
         }
         if (dta_sd) {
-            printf("dta_sd == \n");
-            hexdump(dta_sd, dtasize_sd);
+            logmsg(LOGMSG_DEBUG, "dta_sd == \n");
+            hexdump(LOGMSG_DEBUG, dta_sd, dtasize_sd);
         } else {
-            printf("dta_sd == NULL\n");
+            logmsg(LOGMSG_DEBUG, "dta_sd == NULL\n");
         }
         if (key_rl) {
-            printf("key_rl == \n");
-            hexdump(key_rl, keysize_rl);
+            logmsg(LOGMSG_DEBUG, "key_rl == \n");
+            hexdump(LOGMSG_DEBUG, key_rl, keysize_rl);
         } else {
-            printf("key_rl == NULL\n");
+            logmsg(LOGMSG_DEBUG, "key_rl == NULL\n");
         }
         if (key_sd) {
-            printf("key_sd == \n");
-            hexdump(key_sd, keysize_sd);
+            logmsg(LOGMSG_DEBUG, "key_sd == \n");
+            hexdump(LOGMSG_DEBUG, key_sd, keysize_sd);
         } else {
-            printf("key_sd == NULL\n");
+            logmsg(LOGMSG_DEBUG, "key_sd == NULL\n");
         }
 #endif
         return bdb_btree_merge(cur, stripe_rl, page_rl, index_rl, dta_rl,
@@ -5562,30 +6167,30 @@ step1:
                                ver_rl, how);       /* bias */
     } else {
 #if MERGE_DEBUG
-        printf("move bdb_btree_merge BDBC_IX\n");
+        logmsg(LOGMSG_DEBUG, "move bdb_btree_merge BDBC_IX\n");
         if (dta_rl) {
-            printf("dta_rl == \n");
-            hexdump(dta_rl, dtasize_rl);
+            logmsg(LOGMSG_DEBUG, "dta_rl == \n");
+            hexdump(LOGMSG_DEBUG, dta_rl, dtasize_rl);
         } else {
-            printf("dta_rl == NULL\n");
+            logmsg(LOGMSG_DEBUG, "dta_rl == NULL\n");
         }
         if (dta_sd) {
-            printf("dta_sd == \n");
-            hexdump(dta_sd, dtasize_sd);
+            logmsg(LOGMSG_DEBUG, "dta_sd == \n");
+            hexdump(LOGMSG_DEBUG, dta_sd, dtasize_sd);
         } else {
-            printf("dta_sd == NULL\n");
+            logmsg(LOGMSG_DEBUG, "dta_sd == NULL\n");
         }
         if (key_rl) {
-            printf("key_rl == \n");
-            hexdump(key_rl, keysize_rl);
+            logmsg(LOGMSG_DEBUG, "key_rl == \n");
+            hexdump(LOGMSG_DEBUG, key_rl, keysize_rl);
         } else {
-            printf("key_rl == NULL\n");
+            logmsg(LOGMSG_DEBUG, "key_rl == NULL\n");
         }
         if (key_sd) {
-            printf("key_sd == \n");
-            hexdump(key_sd, keysize_sd);
+            logmsg(LOGMSG_DEBUG, "key_sd == \n");
+            hexdump(LOGMSG_DEBUG, key_sd, keysize_sd);
         } else {
-            printf("key_sd == NULL\n");
+            logmsg(LOGMSG_DEBUG, "key_sd == NULL\n");
         }
 #endif
         /*
@@ -5970,6 +6575,7 @@ again:
     return rc;
 }
 
+extern bdb_state_type *gbl_bdb_state;
 static int bdb_cursor_close(bdb_cursor_ifn_t *pcur_ifn, int *bdberr)
 {
     bdb_cursor_impl_t *cur = pcur_ifn->impl;
@@ -5982,7 +6588,7 @@ static int bdb_cursor_close(bdb_cursor_ifn_t *pcur_ifn, int *bdberr)
     }
 
     if (cur->skip) {
-        rc = bdb_temp_table_close_cursor(cur->state, cur->skip, bdberr);
+        rc = bdb_temp_table_close_cursor(gbl_bdb_state, cur->skip, bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: error closing skip table %d %d\n", __func__,
                     rc, *bdberr);
@@ -5991,13 +6597,13 @@ static int bdb_cursor_close(bdb_cursor_ifn_t *pcur_ifn, int *bdberr)
     }
 
     if (cur->vs_skip) {
-        rc = bdb_temp_table_close_cursor(cur->state, cur->vs_skip, bdberr);
+        rc = bdb_temp_table_close_cursor(gbl_bdb_state, cur->vs_skip, bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: error closing vs_skip cursor %d %d\n",
                     __func__, rc, *bdberr);
         }
 
-        rc = bdb_temp_table_close(cur->state, cur->vs_stab, bdberr);
+        rc = bdb_temp_table_close(gbl_bdb_state, cur->vs_stab, bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: error closing vs_stab table %d %d\n", __func__,
                     rc, *bdberr);
@@ -6007,32 +6613,10 @@ static int bdb_cursor_close(bdb_cursor_ifn_t *pcur_ifn, int *bdberr)
         cur->vs_stab = NULL;
     }
 
-#if 0
-   if (cur->cstripe)
-   {
-      rc = bdb_temp_table_close_cursor( cur->state, cur->cscur, bdberr );
-      if (rc)
-      {
-         fprintf( stderr, "%s: error closing cscur cursor %d %d\n",
-               __func__, rc, *bdberr);
-      }
-
-      rc = bdb_temp_table_close( cur->state, cur->cstripe, bdberr );
-      if (rc) 
-      {
-         fprintf( stderr, "%s: error closing cstripe table %d %d\n",
-               __func__, rc, *bdberr);
-      }
-
-      cur->cscur = NULL;
-      cur->cstripe = NULL;
-   }
-#endif
-
     /* close shadows as well*/
     if (cur->addcur) {
         /* We own this cursor: destroy it. */
-        rc = bdb_temp_table_close_cursor(cur->state, cur->addcur, bdberr);
+        rc = bdb_temp_table_close_cursor(gbl_bdb_state, cur->addcur, bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: error closing add table %d %d\n", __func__, rc,
                     *bdberr);
@@ -6041,7 +6625,6 @@ static int bdb_cursor_close(bdb_cursor_ifn_t *pcur_ifn, int *bdberr)
     }
 
     if (cur->rl) {
-        verify_pageorder_tablescan(cur);
         rc = cur->rl->close(cur->rl, bdberr);
         if (rc)
             logmsg(LOGMSG_ERROR, "%s:%d rc=%d bdberr=%d\n", __FILE__, __LINE__, rc,
@@ -6924,40 +7507,55 @@ static int bdb_copy_logfile_pglogs_to_shadow_tran(bdb_state_type *bdb_state,
 {
     int rc = 0;
 
-    struct shadows_pglogs_logical_key key;
-    struct shadows_pglogs_logical_key *pglogs_ent = NULL;
-    struct shadows_pglogs_key *client_pglogs_ent = NULL;
+    logfile_pglog_hashkey *pglog_ent = NULL;
+    struct pglogs_key client_pglog_key;
+    struct pglogs_key *client_pglog_ent = NULL;
     struct lsn_commit_list *lsnent = NULL;
     struct lsn_list *add_lsnent = NULL;
     struct lsn_list *add_before_lsnent = NULL;
 
-    struct pglogs_relink_key relink_key;
-    struct pglogs_relink_key *relinks_ent = NULL;
-    struct pglogs_relink_key *client_relinks_ent = NULL;
+    logfile_relink_hashkey *relink_ent = NULL;
+    struct pglogs_relink_key client_relink_key;
+    struct pglogs_relink_key *client_relink_ent = NULL;
     struct relink_list *rlent = NULL;
     struct relink_list *add_rlent = NULL;
     struct relink_list *add_before_rlent = NULL;
+    unsigned filenum, first_filenum;
 
-    unsigned filenum, last_filenum;
+    unsigned char *fileid;
+    db_pgno_t pgno;
 
-    bzero(&key, sizeof(struct shadows_pglogs_logical_key));
+#ifdef NEWSI_STAT
+    struct timeval before, after, diff;
+    gettimeofday(&before, NULL);
+#endif
 
     assert(inpgno);
     assert(infileid);
+    fileid = infileid;
+    pgno = *inpgno == 0 ? 1 : *inpgno;
 
-    key.pgno = *inpgno;
-    memcpy(key.fileid, infileid, DB_FILE_ID_LEN);
-    key.pgno = (key.pgno == 0) ? 1 : key.pgno;
-
-    relink_key.pgno = key.pgno;
-    memcpy(relink_key.fileid, infileid, DB_FILE_ID_LEN);
+    memcpy(client_pglog_key.fileid, fileid, DB_FILE_ID_LEN);
+    client_pglog_key.pgno = pgno;
+    memcpy(client_relink_key.fileid, fileid, DB_FILE_ID_LEN);
+    client_relink_key.pgno = pgno;
 
     Pthread_mutex_lock(&logfile_pglogs_repo_mutex);
-    filenum = first_logfile;
-    last_filenum = last_logfile;
+    first_filenum = first_logfile;
+    filenum = last_logfile;
     Pthread_mutex_unlock(&logfile_pglogs_repo_mutex);
 
-    for (; filenum <= last_filenum; ++filenum) {
+#ifdef NEWSI_DEBUG
+    char *buf = NULL;
+    hexdumpbuf(infileid, DB_FILE_ID_LEN, &buf);
+    logmsg(LOGMSG_DEBUG,
+           "%s: FILEID: %s, pgno %d, filenum %d, first_filenum %d\n", __func__,
+           buf, pgno, filenum, first_filenum);
+    free(buf);
+    buf = NULL;
+#endif
+
+    for (; filenum && filenum >= first_filenum; --filenum) {
         struct logfile_pglogs_entry *l_entry;
         Pthread_mutex_lock(&logfile_pglogs_repo_mutex);
         l_entry = retrieve_logfile_pglogs(filenum, 0);
@@ -6971,29 +7569,115 @@ static int bdb_copy_logfile_pglogs_to_shadow_tran(bdb_state_type *bdb_state,
         Pthread_mutex_lock(&l_entry->pglogs_mutex);
         Pthread_mutex_unlock(&logfile_pglogs_repo_mutex);
 
+        pglog_ent = retrieve_logfile_pglog_hashkey(
+            bdb_state, l_entry->pglogs_hashtbl, fileid, pgno, 0);
+        relink_ent = retrieve_logfile_relink_hashkey(
+            bdb_state, l_entry->relinks_hashtbl, fileid, pgno, 0);
+        if (!pglog_ent && !relink_ent) {
+            Pthread_mutex_unlock(&l_entry->pglogs_mutex);
+            continue;
+        }
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+        if (pglog_ent) {
+            Pthread_mutex_lock(&pglog_ent->mtx);
+        }
+        if (relink_ent) {
+            Pthread_mutex_lock(&relink_ent->mtx);
+        }
+        Pthread_mutex_unlock(&l_entry->pglogs_mutex);
+
+        pglogs_tmptbl_key pgrec = {0};
+        pglogs_tmptbl_key *pgfndkey = NULL;
+        if (pglog_ent) {
+            pgrec.pgno = pgno;
+            pgrec.lsn = (DB_LSN){.file = 0, .offset = 0};
+            pgrec.commit_lsn = shadow_tran->asof_lsn;
+            pgrec.commit_lsn.offset++;
+            bdb_temp_table_find(bdb_state, pglog_ent->tmpcur, &pgrec,
+                                sizeof(pglogs_tmptbl_key), NULL, bdberr);
+            pgfndkey = bdb_temp_table_key(pglog_ent->tmpcur);
+            /* nothing to copy */
+            if (!pgfndkey) {
+                Pthread_mutex_unlock(&pglog_ent->mtx);
+                pglog_ent = NULL;
+            }
+        }
+#endif
         /* copy pglogs */
-        /* for each recorded page */
-        pglogs_ent = hash_find(l_entry->pglogs_hashtbl, &key);
-        if (pglogs_ent) {
+        if (pglog_ent) {
             /* get the same page in the global structure */
-            if ((client_pglogs_ent = hash_find(shadow_tran->pglogs_hashtbl,
-                                               pglogs_ent)) == NULL) {
+            if ((client_pglog_ent = hash_find(shadow_tran->pglogs_hashtbl,
+                                              &client_pglog_key)) == NULL) {
                 /* add one if not exist */
-                client_pglogs_ent = allocate_shadows_pglogs_key();
-                if (!client_pglogs_ent) {
-                    logmsg(LOGMSG_FATAL, "%s: fail malloc client_pglogs_ent\n",
-                            __func__);
+                client_pglog_ent = allocate_pglogs_key();
+                if (!client_pglog_ent) {
+                    logmsg(LOGMSG_FATAL, "%s: fail malloc client_pglog_ent\n",
+                           __func__);
                     abort();
                 }
-                memcpy(client_pglogs_ent->fileid, pglogs_ent->fileid,
-                       DB_FILE_ID_LEN);
-                client_pglogs_ent->pgno = pglogs_ent->pgno;
-                listc_init(&client_pglogs_ent->lsns,
+                memcpy(client_pglog_ent->fileid, fileid, DB_FILE_ID_LEN);
+                client_pglog_ent->pgno = pgno;
+                listc_init(&client_pglog_ent->lsns,
                            offsetof(struct lsn_list, lnk));
-                hash_add(shadow_tran->pglogs_hashtbl, client_pglogs_ent);
+                hash_add(shadow_tran->pglogs_hashtbl, client_pglog_ent);
             }
             /* for each recorded lsn */
-            LISTC_FOR_EACH_REVERSE(&pglogs_ent->lsns, lsnent, lnk)
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+            pgrec.commit_lsn = shadow_tran->birth_lsn;
+            pgrec.commit_lsn.offset++;
+            bdb_temp_table_find(bdb_state, pglog_ent->tmpcur, &pgrec,
+                                sizeof(pglogs_tmptbl_key), NULL, bdberr);
+            pgfndkey = bdb_temp_table_key(pglog_ent->tmpcur);
+            if (pgfndkey && pgfndkey->pgno != pgno) {
+                bdb_temp_table_move(bdb_state, pglog_ent->tmpcur, DB_PREV,
+                                    bdberr);
+                pgfndkey = bdb_temp_table_key(pglog_ent->tmpcur);
+            } else if (!pgfndkey) {
+                bdb_temp_table_move(bdb_state, pglog_ent->tmpcur, DB_LAST,
+                                    bdberr);
+                pgfndkey = bdb_temp_table_key(pglog_ent->tmpcur);
+            }
+            while (pgfndkey != NULL && pgfndkey->pgno == pgno &&
+                   log_compare(&pgfndkey->commit_lsn, &shadow_tran->asof_lsn) >
+                       0) {
+                if (log_compare(&pgfndkey->commit_lsn,
+                                &shadow_tran->birth_lsn) <= 0) {
+                    add_lsnent = allocate_lsn_list();
+                    if (!add_lsnent)
+                        abort();
+                    add_lsnent->lsn = pgfndkey->lsn;
+                    /* add in order */
+                    LISTC_FOR_EACH(&client_pglog_ent->lsns, add_before_lsnent,
+                                   lnk)
+                    {
+                        if (log_compare(&add_lsnent->lsn,
+                                        &add_before_lsnent->lsn) <= 0) {
+                            listc_add_before(&client_pglog_ent->lsns,
+                                             add_lsnent, add_before_lsnent);
+                            break;
+                        }
+                    }
+                    if (add_before_lsnent == NULL) {
+                        listc_abl(&client_pglog_ent->lsns, add_lsnent);
+                    }
+#ifdef NEWSI_DEBUG
+                    logmsg(LOGMSG_DEBUG,
+                           "NEWSI COPY FROM GLOBAL: LSN[%d][%d] "
+                           "add_before_lsn[%d][%d]\n",
+                           add_lsnent->lsn.file, add_lsnent->lsn.offset,
+                           add_before_lsnent ? add_before_lsnent->lsn.file : 0,
+                           add_before_lsnent ? add_before_lsnent->lsn.offset
+                                             : 0);
+#endif
+                }
+
+                bdb_temp_table_move(bdb_state, pglog_ent->tmpcur, DB_PREV,
+                                    bdberr);
+                pgfndkey = bdb_temp_table_key(pglog_ent->tmpcur);
+            }
+            Pthread_mutex_unlock(&pglog_ent->mtx);
+#else
+            LISTC_FOR_EACH_REVERSE(&pglog_ent->lsns, lsnent, lnk)
             {
                 if (log_compare(&lsnent->commit_lsn, &shadow_tran->asof_lsn) <=
                     0)
@@ -7005,45 +7689,116 @@ static int bdb_copy_logfile_pglogs_to_shadow_tran(bdb_state_type *bdb_state,
                         abort();
                     add_lsnent->lsn = lsnent->lsn;
                     /* add in order */
-                    LISTC_FOR_EACH(&client_pglogs_ent->lsns, add_before_lsnent,
+                    LISTC_FOR_EACH(&client_pglog_ent->lsns, add_before_lsnent,
                                    lnk)
                     {
                         if (log_compare(&add_lsnent->lsn,
                                         &add_before_lsnent->lsn) <= 0) {
-                            listc_add_before(&client_pglogs_ent->lsns,
+                            listc_add_before(&client_pglog_ent->lsns,
                                              add_lsnent, add_before_lsnent);
                             break;
                         }
                     }
                     if (add_before_lsnent == NULL) {
-                        listc_abl(&client_pglogs_ent->lsns, add_lsnent);
+                        listc_abl(&client_pglog_ent->lsns, add_lsnent);
                     }
+#ifdef NEWSI_DEBUG
+                    logmsg(LOGMSG_DEBUG,
+                           "NEWSI COPY FROM GLOBAL: LSN[%d][%d] "
+                           "add_before_lsn[%d][%d]\n",
+                           add_lsnent->lsn.file, add_lsnent->lsn.offset,
+                           add_before_lsnent ? add_before_lsnent->lsn.file : 0,
+                           add_before_lsnent ? add_before_lsnent->lsn.offset
+                                             : 0);
+#endif
                 }
             }
+#endif
         }
 
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+        relinks_tmptbl_key rlrec = {0};
+        relinks_tmptbl_key *rlfndkey = NULL;
+        if (relink_ent) {
+            rlrec.pgno = pgno;
+            rlrec.lsn = shadow_tran->asof_ref_lsn;
+            rlrec.lsn.offset++;
+            bdb_temp_table_find(bdb_state, relink_ent->tmpcur, &rlrec,
+                                sizeof(relinks_tmptbl_key), NULL, bdberr);
+            rlfndkey = bdb_temp_table_key(relink_ent->tmpcur);
+            /* nothing to copy */
+            if (!rlfndkey) {
+                Pthread_mutex_unlock(&relink_ent->mtx);
+                relink_ent = NULL;
+            }
+        }
+#endif
         /* copy relinks */
-        /* for each recorded page */
-        relinks_ent = hash_find(l_entry->relinks_hashtbl, &relink_key);
-        if (relinks_ent) {
+        if (relink_ent) {
             /* get the same page in the global structure */
-            if ((client_relinks_ent = hash_find(shadow_tran->relinks_hashtbl,
-                                                relinks_ent)) == NULL) {
+            if ((client_relink_ent = hash_find(shadow_tran->relinks_hashtbl,
+                                               &client_relink_key)) == NULL) {
                 /* add one if not exist */
-                client_relinks_ent = allocate_pglogs_relink_key();
-                if (!client_relinks_ent) {
-                    logmsg(LOGMSG_FATAL, "%s: fail malloc client_relinks_ent\n",
-                            __func__);
+                client_relink_ent = allocate_pglogs_relink_key();
+                if (!client_relink_ent) {
+                    logmsg(LOGMSG_FATAL, "%s: fail malloc client_relink_ent\n",
+                           __func__);
                     abort();
                 }
-                memcpy(client_relinks_ent, relinks_ent,
-                       sizeof(struct pglogs_relink_key));
-                listc_init(&client_relinks_ent->relinks,
+                memcpy(client_relink_ent->fileid, fileid, DB_FILE_ID_LEN);
+                client_relink_ent->pgno = pgno;
+                listc_init(&client_relink_ent->relinks,
                            offsetof(struct relink_list, lnk));
-                hash_add(shadow_tran->relinks_hashtbl, client_relinks_ent);
+                hash_add(shadow_tran->relinks_hashtbl, client_relink_ent);
             }
             /* for each recorded lsn */
-            LISTC_FOR_EACH_REVERSE(&relinks_ent->relinks, rlent, lnk)
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+            rlrec.lsn = shadow_tran->birth_lsn;
+            rlrec.lsn.offset++;
+            bdb_temp_table_find(bdb_state, relink_ent->tmpcur, &rlrec,
+                                sizeof(relinks_tmptbl_key), NULL, bdberr);
+            rlfndkey = bdb_temp_table_key(relink_ent->tmpcur);
+            if (rlfndkey && rlfndkey->pgno != pgno) {
+                bdb_temp_table_move(bdb_state, relink_ent->tmpcur, DB_PREV,
+                                    bdberr);
+                rlfndkey = bdb_temp_table_key(relink_ent->tmpcur);
+            } else if (!rlfndkey) {
+                bdb_temp_table_move(bdb_state, relink_ent->tmpcur, DB_LAST,
+                                    bdberr);
+                rlfndkey = bdb_temp_table_key(relink_ent->tmpcur);
+            }
+            while (rlfndkey != NULL && rlfndkey->pgno == pgno &&
+                   log_compare(&rlfndkey->lsn, &shadow_tran->asof_ref_lsn) >
+                       0) {
+                if (log_compare(&rlfndkey->lsn, &shadow_tran->birth_lsn) <= 0) {
+                    add_rlent = allocate_relink_list();
+                    if (!add_rlent)
+                        abort();
+                    add_rlent->inh = rlfndkey->inh;
+                    add_rlent->lsn = rlfndkey->lsn;
+                    /* add in order */
+                    LISTC_FOR_EACH(&client_relink_ent->relinks,
+                                   add_before_rlent, lnk)
+                    {
+                        if (log_compare(&add_rlent->lsn,
+                                        &add_before_rlent->lsn) <= 0) {
+                            listc_add_before(&client_relink_ent->relinks,
+                                             add_rlent, add_before_rlent);
+                            break;
+                        }
+                    }
+                    if (add_before_rlent == NULL) {
+                        listc_abl(&client_relink_ent->relinks, add_rlent);
+                    }
+                }
+
+                bdb_temp_table_move(bdb_state, relink_ent->tmpcur, DB_PREV,
+                                    bdberr);
+                rlfndkey = bdb_temp_table_key(relink_ent->tmpcur);
+            }
+            Pthread_mutex_unlock(&relink_ent->mtx);
+#else
+            LISTC_FOR_EACH_REVERSE(&relink_ent->relinks, rlent, lnk)
             {
                 if (log_compare(&rlent->lsn, &shadow_tran->asof_ref_lsn) <= 0)
                     break;
@@ -7054,24 +7809,33 @@ static int bdb_copy_logfile_pglogs_to_shadow_tran(bdb_state_type *bdb_state,
                     add_rlent->inh = rlent->inh;
                     add_rlent->lsn = rlent->lsn;
                     /* add in order */
-                    LISTC_FOR_EACH(&client_relinks_ent->relinks,
+                    LISTC_FOR_EACH(&client_relink_ent->relinks,
                                    add_before_rlent, lnk)
                     {
                         if (log_compare(&add_rlent->lsn,
                                         &add_before_rlent->lsn) <= 0) {
-                            listc_add_before(&client_relinks_ent->relinks,
+                            listc_add_before(&client_relink_ent->relinks,
                                              add_rlent, add_before_rlent);
                             break;
                         }
                     }
                     if (add_before_rlent == NULL) {
-                        listc_abl(&client_relinks_ent->relinks, add_rlent);
+                        listc_abl(&client_relink_ent->relinks, add_rlent);
                     }
                 }
             }
+#endif
         }
+#ifndef NEWSI_ASOF_USE_TEMPTABLE
         Pthread_mutex_unlock(&l_entry->pglogs_mutex);
+#endif
     }
+
+#ifdef NEWSI_STAT
+    gettimeofday(&after, NULL);
+    timeval_diff(&before, &after, &diff);
+    timeval_add(&client_copy_time, &diff, &client_copy_time);
+#endif
 
     return rc;
 }
@@ -7084,16 +7848,16 @@ static int bdb_btree_update_shadows_for_page(bdb_cursor_impl_t *cur,
 {
     int rc = 0;
     DB_LSN maxlsn = {0};
-    struct shadows_pglogs_key key;
-    struct shadows_pglogs_key *hashent = NULL;
-    struct shadows_pglogs_key *pglogs_ent = NULL;
+    struct pglogs_key key;
+    struct pglogs_key *hashent = NULL;
+    struct pglogs_key *pglogs_ent = NULL;
     struct lsn_list *lsnent = NULL;
 
     struct pglogs_relink_key relink_key;
     struct pglogs_relink_key *relinks_ent = NULL;
     struct relink_list *rlent = NULL;
 
-    bzero(&key, sizeof(struct shadows_pglogs_key));
+    bzero(&key, sizeof(struct pglogs_key));
     bzero(&relink_key, sizeof(struct pglogs_relink_key));
 
     assert(inpgno);
@@ -7101,6 +7865,19 @@ static int bdb_btree_update_shadows_for_page(bdb_cursor_impl_t *cur,
     key.pgno = *inpgno;
     memcpy(key.fileid, infileid, DB_FILE_ID_LEN);
     key.pgno = (key.pgno == 0) ? 1 : key.pgno;
+
+#ifdef NEWSI_DEBUG
+    int len = (DB_FILE_ID_LEN * 2) + 1;
+    char hex_fid[(DB_FILE_ID_LEN * 2) + 1];
+    char *buf = NULL;
+    hexdumpbuf(infileid, DB_FILE_ID_LEN, &buf);
+    logmsg(LOGMSG_DEBUG,
+           "%s: shadow %p cur %p FILEID: %s, pgno %d, upto [%d][%d]\n",
+           __func__, cur->shadow_tran, cur, buf, key.pgno, upto.file,
+           upto.offset);
+    free(buf);
+    buf = NULL;
+#endif
 
     relink_key.pgno = key.pgno;
     memcpy(relink_key.fileid, infileid, DB_FILE_ID_LEN);
@@ -7112,12 +7889,12 @@ static int bdb_btree_update_shadows_for_page(bdb_cursor_impl_t *cur,
         rc = bdb_copy_logfile_pglogs_to_shadow_tran(
             cur->state, cur->shadow_tran, inpgno, infileid, bdberr);
         if (!rc) {
-            hashent = allocate_shadows_pglogs_key();
+            hashent = allocate_pglogs_key();
             if (!hashent) {
                 logmsg(LOGMSG_ERROR, "%s: fail malloc hashent\n", __func__);
                 return -1;
             }
-            memcpy(hashent, &key, sizeof(struct shadows_pglogs_key));
+            memcpy(hashent, &key, sizeof(struct pglogs_key));
             hash_add(cur->shadow_tran->asof_hashtbl, hashent);
         } else {
             logmsg(LOGMSG_ERROR, "%s failed to copy gbl pglogs to shadow tran\n",
@@ -7147,11 +7924,14 @@ static int bdb_btree_update_shadows_for_page(bdb_cursor_impl_t *cur,
                         __func__, __LINE__);
                 abort();
             }
+
             deallocate_lsn_list(lsnent);
-            /* printf("%s: freed lsn addr %p on hash %p ent %p list %p\n",
-               __func__,
-               lsnent, cur->shadow_tran->pglogs_hashtbl, pglogs_ent,
-               &pglogs_ent->lsns); */
+#ifdef NEWSI_DEBUG
+            logmsg(LOGMSG_DEBUG,
+                   "%s: freed lsn addr %p on hash %p ent %p list %p\n",
+                   __func__, lsnent, cur->shadow_tran->pglogs_hashtbl,
+                   pglogs_ent, &pglogs_ent->lsns);
+#endif
         } else {
             listc_atl(&pglogs_ent->lsns, lsnent);
             break;
@@ -7166,6 +7946,15 @@ do_relink:
     while ((rlent = listc_rtl(&relinks_ent->relinks)) != NULL) {
         if (upto.file == 0 || upto.offset == 1 ||
             (log_compare(&rlent->lsn, &upto) <= 0)) {
+#ifdef NEWSI_DEBUG
+            hexdumpbuf(infileid, DB_FILE_ID_LEN, &buf);
+            logmsg(LOGMSG_DEBUG,
+                   "NEWSI RELINK lsn[%d][%d], fileid[%s], pgno[%d], inh[%d]\n",
+                   rlent->lsn.file, rlent->lsn.offset, buf, relink_key.pgno,
+                   rlent->inh);
+            free(buf);
+            buf = NULL;
+#endif
             /* recursively call update shadows for relinked pages */
             rc = bdb_btree_update_shadows_for_page(cur, &rlent->inh, infileid,
                                                    rlent->lsn, dirty, bdberr);
@@ -7179,30 +7968,28 @@ do_relink:
     }
 
 out:
-#if 0
-   {
-      int len = (DB_FILE_ID_LEN * 2) + 1;
-      char hex_fid[(DB_FILE_ID_LEN * 2) + 1];
-      hex_fid[len - 1] = '\0';
-      util_tohex(hex_fid, infileid, DB_FILE_ID_LEN);
+#ifdef NEWSI_DEBUG
+    hex_fid[len - 1] = '\0';
+    util_tohex(hex_fid, infileid, DB_FILE_ID_LEN);
 
-      if (maxlsn.file)
-      {
-         lkprintf(stderr, "shadtrn %p cur %p upd_shad_for_page: updated %s page %d to lsn [%d][%d]\n",
-               cur->shadow_tran, cur, hex_fid, *inpgno, maxlsn.file, maxlsn.offset);
-      }
-      else
-      {
-         lkprintf(stderr, "shadtrn %p cur %p upd_shad_for_page: nothing to update for %s page %d\n", 
-               cur->shadow_tran, cur, hex_fid, *inpgno);
-      }
-   }
+    if (maxlsn.file) {
+        lkprintf(LOGMSG_DEBUG,
+                 "shadtrn %p cur %p upd_shad_for_page: updated %s page %d to "
+                 "lsn [%d][%d]\n",
+                 cur->shadow_tran, cur, hex_fid, *inpgno, maxlsn.file,
+                 maxlsn.offset);
+    } else {
+        lkprintf(LOGMSG_DEBUG,
+                 "shadtrn %p cur %p upd_shad_for_page: nothing to update for "
+                 "%s page %d\n",
+                 cur->shadow_tran, cur, hex_fid, *inpgno);
+    }
 #endif
 
     return 0;
 }
 
-static int bdb_btree_update_shadows_with_trn_pglogs(bdb_cursor_impl_t *cur,
+static int bdb_btree_update_shadows_with_pglogs_int(bdb_cursor_impl_t *cur,
                                                     db_pgno_t *inpgno,
                                                     unsigned char *infileid,
                                                     int *bdberr)
@@ -7250,9 +8037,7 @@ static int bdb_btree_update_shadows_with_trn_pglogs(bdb_cursor_impl_t *cur,
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
     timeval_diff(&before, &after, &diff);
-    Pthread_mutex_lock(&newsi_stat_mutex);
     timeval_add(&logical_undo_time, &diff, &logical_undo_time);
-    Pthread_mutex_unlock(&newsi_stat_mutex);
 #endif
 
     if (!dirty_shadow)
@@ -7341,8 +8126,7 @@ static struct pglogs_queue_cursor *retrieve_queue_cursor(bdb_cursor_impl_t *cur,
     return retrieve_queue_cursor_fileid(cur, fileid, bdberr);
 }
 
-static int should_update(tran_type *shadow_tran,
-                         struct shadows_pglogs_queue_key *key)
+static int should_update(tran_type *shadow_tran, struct pglogs_queue_key *key)
 {
     int i;
 
@@ -7362,7 +8146,7 @@ static int should_update(tran_type *shadow_tran,
 
 static int update_pglogs_from_queue(tran_type *shadow_tran,
                                     unsigned char *fileid,
-                                    struct shadows_pglogs_queue_key *key)
+                                    struct pglogs_queue_key *key)
 {
     int ret = 0;
 
@@ -7397,8 +8181,13 @@ static int update_pglogs_from_queue(tran_type *shadow_tran,
 static int update_pglogs_from_global_queues_int(
     bdb_cursor_impl_t *cur, struct pglogs_queue_cursor *qcur, int *bdberr)
 {
-    struct shadows_pglogs_queue_key *current, *prev, *last;
+    struct pglogs_queue_key *current, *prev, *last;
     DB_LSN last_lsn = {0};
+
+#ifdef NEWSI_STAT
+    struct timeval before, after, diff;
+    gettimeofday(&before, NULL);
+#endif
 
     pthread_rwlock_rdlock(&qcur->queue->queue_lk);
     last = LISTC_BOT(&qcur->queue->queue_keys);
@@ -7421,7 +8210,7 @@ static int update_pglogs_from_global_queues_int(
             current = current->lnk.prev;
         }
 
-        if (!current && prev && prev->type == PGLOGS_QUEUE_PAGE) {
+        if (!current && prev && found_greater) {
             update_pglogs_from_queue(cur->shadow_tran, qcur->fileid, prev);
             last_lsn = prev->commit_lsn;
             current = prev;
@@ -7444,18 +8233,33 @@ static int update_pglogs_from_global_queues_int(
             last_lsn = current->commit_lsn;
     }
 
+    if (qcur->last != current) {
+#ifdef NEWSI_DEBUG
+        int len = (DB_FILE_ID_LEN * 2) + 1;
+        char hex_fid[(DB_FILE_ID_LEN * 2) + 1];
+        hex_fid[len - 1] = '\0';
+        util_tohex(hex_fid, qcur->fileid, DB_FILE_ID_LEN);
+        logmsg(LOGMSG_DEBUG,
+               "shadtrn %p cur %p upd_pglogs_from_queue: %s last "
+               "[%d][%d] updated to [%d][%d]\n",
+               cur->shadow_tran, cur, hex_fid,
+               qcur->last ? qcur->last->commit_lsn.file : 0,
+               qcur->last ? qcur->last->commit_lsn.offset : 0,
+               current ? current->commit_lsn.file : 0,
+               current ? current->commit_lsn.offset : 0);
+#endif
+    } else if (current != last) {
+        assert(last == NULL || last->type == PGLOGS_QUEUE_RELINK ||
+               log_compare(&last->commit_lsn, &cur->shadow_tran->birth_lsn) <=
+                   0);
+    }
+
     qcur->last = current;
 
-#if 0
-   if (last_lsn.file)
-   {
-      int len = (DB_FILE_ID_LEN * 2) + 1;
-      char hex_fid[(DB_FILE_ID_LEN * 2) + 1];
-      hex_fid[len - 1] = '\0';
-      util_tohex(hex_fid, qcur->fileid, DB_FILE_ID_LEN);
-      lkprintf(stderr, "shadtrn %p cur %p upd_pglogs_from_queue: %s updated to [%d][%d]\n",
-            cur->shadow_tran, cur, hex_fid, last_lsn.file, last_lsn.offset);
-   }
+#ifdef NEWSI_STAT
+    gettimeofday(&after, NULL);
+    timeval_diff(&before, &after, &diff);
+    timeval_add(&client_copy_time, &diff, &client_copy_time);
 #endif
 
     return 0;
@@ -7506,7 +8310,7 @@ static int bdb_btree_update_shadows(bdb_cursor_impl_t *cur, int how,
     int dirty_shadow = 0;
     int rc = 0;
 
-    if (gbl_new_snapisol) {
+    if (gbl_new_snapisol && cur->rl) {
         if (!cur->shadow_tran ||
             (cur->shadow_tran->tranclass != TRANCLASS_SNAPISOL &&
              cur->shadow_tran->tranclass != TRANCLASS_SERIALIZABLE)) {
@@ -7551,19 +8355,31 @@ static int bdb_btree_update_shadows(bdb_cursor_impl_t *cur, int how,
                         cur);
             } else if (cur->shadow_tran->tranclass != TRANCLASS_SNAPISOL &&
                        cur->shadow_tran->tranclass != TRANCLASS_SERIALIZABLE) {
-                logmsg(LOGMSG_USER, "Cur %p skipping update shadows because it is "
-                                "the wrong tranclass (%d)\n",
-                        cur, cur->shadow_tran->tranclass);
+                logmsg(LOGMSG_USER,
+                       "Cur %p skipping update shadows because it is "
+                       "the wrong tranclass (%d)\n",
+                       cur, cur->shadow_tran->tranclass);
             }
         }
         return 0;
     }
+
+#ifdef NEWSI_STAT
+    struct timeval before, after, diff;
+    gettimeofday(&before, NULL);
+#endif
 
     /* we have shadows, recom or snapisol/serial.   We have to do this even if
      * we're on the virtual stripe
      * to support optimized blobs */
     rc = bdb_osql_update_shadows(cur->ifn, cur->shadow_tran->osql,
                                  &dirty_shadow, LOG_APPLY, bdberr);
+
+#ifdef NEWSI_STAT
+    gettimeofday(&after, NULL);
+    timeval_diff(&before, &after, &diff);
+    timeval_add(&logical_undo_time, &diff, &logical_undo_time);
+#endif
     if (rc)
         return rc;
 
@@ -7826,7 +8642,7 @@ static int bdb_cursor_reposition_noupdate_int(bdb_cursor_ifn_t *pcur_ifn,
             }
 
             /*
-            fprintf( stderr, "%d %s:%d returning rc=%d keylen=%d key=%llx
+            logmsg(LOGMSG_DEBUG, "%d %s:%d returning rc=%d keylen=%d key=%llx
             found_key=%llx\n",
                   pthread_self(), __FILE__, __LINE__, rc, keylen,
                   *(unsigned long long*)key, *(unsigned long long*)found_key
@@ -7835,7 +8651,7 @@ static int bdb_cursor_reposition_noupdate_int(bdb_cursor_ifn_t *pcur_ifn,
         }
         /*
         else
-           fprintf( stderr, "%d %s:%d returning rc=%d keylen=%d key=%llx\n",
+           logmsg(LOGMSG_DEBUG, "%d %s:%d returning rc=%d keylen=%d key=%llx\n",
                  pthread_self(), __FILE__, __LINE__, rc, keylen,
                  *(unsigned long long*)key);
          */
@@ -7852,11 +8668,10 @@ static int bdb_cursor_reposition_noupdate_int(bdb_cursor_ifn_t *pcur_ifn,
         rc = bdb_cursor_find_and_skip(cur, berkdb, key, keylen, DB_SET_RANGE,
                                       1 /* keylen incremented */, 1, bdberr);
 #if MERGE_DEBUG
-        fprintf(
-            stderr,
-            "%d %s:%d rc=%d, used_sd=%d, used_rl=%d, cur->genid=%llx [%d]\n",
-            pthread_self(), __FILE__, __LINE__, rc, cur->used_sd, cur->used_rl,
-            cur->genid, how);
+        logmsg(LOGMSG_DEBUG,
+               "%d %s:%d rc=%d, used_sd=%d, used_rl=%d, cur->genid=%llx [%d]\n",
+               pthread_self(), __FILE__, __LINE__, rc, cur->used_sd,
+               cur->used_rl, cur->genid, how);
 #endif
 
         if (rc < 0)
@@ -7867,8 +8682,8 @@ static int bdb_cursor_reposition_noupdate_int(bdb_cursor_ifn_t *pcur_ifn,
             if (((cur->rl == berkdb && cur->used_rl) ||
                  (cur->sd == berkdb && cur->used_sd))) {
 #if MERGE_DEBUG
-                fprintf(
-                    stderr,
+                logmsg(
+                    LOGMSG_DEBUG,
                     "%d %s:%d we used this value so for PREV need"
                     "to \nreturn rc=%d, berkdb is %s, used_sd=%d, used_rl=%d, "
                     "sd_eof=%d, rl_eof=%d, key=%x [%d]\n",

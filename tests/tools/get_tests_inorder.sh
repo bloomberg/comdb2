@@ -8,4 +8,3 @@ for i in ` ls -d *.test` ; do
     [ -z "$a" ] && a=$DEFAULT_TIMEOUT; 
     echo $a $i; 
 done | sort -nr | cut -d' ' -f2
-

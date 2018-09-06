@@ -1,0 +1,2236 @@
+###############################################################################
+#
+#   Copyright 2015 Bloomberg Finance L.P.
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+#
+###############################################################################
+
+if {[lsearch [namespace children] ::tcltest] == -1} then {
+  package require tcltest
+  namespace import ::tcltest::*
+}
+
+set path [file normalize [file dirname [info script]]]
+package require tclcdb2
+
+###############################################################################
+
+if {[llength [info commands appendArgs]] == 0} then {
+  proc appendArgs { args } {
+    set result ""; eval append result $args
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands isBinary]] == 0} then {
+  proc isBinary { value } {
+    return [regexp -- {[^\t\n\v\f\r[:print:]]} $value]
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands getTempPath]] == 0} then {
+  proc getTempPath {} {
+    global tcl_platform
+
+    set names [list]
+
+    foreach name [list TMPDIR TEMP TMP] {
+      lappend names \
+          [string toupper $name] \
+          [string tolower $name] \
+          [string totitle $name]
+    }
+
+    foreach name $names {
+      set value [getEnvVar $name]
+
+      if {[string length $value] > 0} then {
+        return [file normalize $value]
+      }
+    }
+
+    if {[info exists tcl_platform(platform)]} then {
+      if {$tcl_platform(platform) ne "windows"} then {
+        return /tmp; # TODO: Good default on Unix?
+      }
+    }
+
+    error "no temporary path is available"
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands writeFile]] == 0} then {
+  proc writeFile { fileName data } {
+    set channel [open $fileName {WRONLY CREAT TRUNC}]
+    fconfigure $channel -encoding binary -translation binary
+    puts -nonewline $channel $data
+    close $channel
+    return ""
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands hexList]] == 0} then {
+  proc hexList { value } {
+    set result ""
+    set length [string length $value]
+
+    for {set index 0} {$index < $length} {incr index} {
+      if {$index > 0} then {append result " "}
+      scan [string index $value $index] %c ordinal
+      append result 0x [format %02X $ordinal]
+    }
+
+    return $result
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands getEnvVar]] == 0} then {
+  proc getEnvVar { name {default ""} } {
+    if {![info exists ::env($name)]} then {
+      if {![info exists ::warn($name)]} then {
+        tcltest::Warn [appendArgs \
+            "missing environment variable \"" $name \
+            "\", using default \"" $default \"...]
+
+        set ::warn($name) 1
+      }
+
+      return $default
+    }
+
+    return $::env($name)
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands normalizeResult]] == 0} then {
+  proc normalizeResult { result {name ""} } {
+    if {[regexp -- {^cdb2_(?:0x)?[0-9A-Fa-f]+$} $result]} then {
+      return <connection_open>
+    }
+
+    if {[regexp -- {^connection ".*?" not found\n$} $result]} then {
+      return <connection_not_found>
+    }
+
+    if {[regexp -- {^cdb2_get_dbhosts: .*?$} $result]} then {
+      return <get_dbhosts_error>
+    }
+
+    set percentD {(?:-)?[0-9]{1,10}}
+
+    set pattern [appendArgs \
+        ^ $percentD - $percentD - $percentD - $percentD \$]
+
+    if {[regexp -- $pattern $result]} then {
+      return <cnonce>
+    }
+
+    regsub -all -- {( baddb_[0-9]+ )} $result { <bad_db> } result
+
+    set wrongNumArgs(open) [string trim {
+      wrong # args: should be "cdb2 open dbName ?type? ?flags?"
+    }]
+
+    set wrongNumArgs(close) [string trim {
+      wrong # args: should be "cdb2 close connection"
+    }]
+
+    return [string map [list \
+        [getDbName $name] <dbName> \
+        $wrongNumArgs(open) <wrong_open> \
+        $wrongNumArgs(close) <wrong_close> \
+        \r\n <crLf> \r <cr> \n <lf>] \
+        [string trim $result]]
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands getColumns]] == 0} then {
+  proc getColumns { connection {nullValue <null>} } {
+    set result [list]
+
+    for {set index 0} {$index < [cdb2 colcount $connection]} {incr index} {
+      tclcdb2::getNullableValue $connection $index null value
+
+      if {$null} then {
+        set value $nullValue
+      } elseif {[info exists value]} then {
+        if {[isBinary $value]} then {
+          set value [hexList $value]
+        }
+      } else {
+        error [appendArgs \
+            "missing non-NULL value for column " $index]
+      }
+
+      lappend result [list index $index \
+          type [cdb2 coltype $connection $index] \
+          size [cdb2 colsize $connection $index] \
+          name [cdb2 colname $connection $index] \
+          null $null value $value]
+    }
+
+    return $result
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands getValues]] == 0} then {
+  proc getValues { connection index {omitNulls false} {nullValue <null>} } {
+    set result [list]
+
+    while {[cdb2 next $connection]} {
+      tclcdb2::getNullableValue $connection $index null value
+
+      if {$null} then {
+        if {!$omitNulls} then {
+          lappend result $nullValue
+        }
+      } elseif {[info exists value]} then {
+        if {[isBinary $value]} then {
+          lappend result [hexList $value]
+        } else {
+          lappend result $value
+        }
+      } else {
+        error [appendArgs \
+            "missing non-NULL value for column " $index]
+      }
+    }
+
+    return $result
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands getRowsOfColumns]] == 0} then {
+  proc getRowsOfColumns { connection } {
+    set result [list]
+    set index 0
+
+    while {[cdb2 next $connection]} {
+      lappend result index [incr index] \
+          columns [getColumns $connection]
+    }
+
+    lappend result effects [cdb2 effects $connection]
+
+    return $result
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands getDbName]] == 0} then {
+  proc getDbName { {name ""} } {
+    if {[string length $name] == 0} then {
+      set name [getEnvVar TCLCDB2_DB_NAME]
+    }
+
+    return $name
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands getConfigInfo]] == 0} then {
+  proc getConfigInfo { good {name ""} } {
+    if {$good} then {
+      return [appendArgs \
+          [getDbName $name] " " localhost \n \
+          comdb2_config:default_type=local]
+    } else {
+      return [appendArgs \
+          [getDbName $name] " " nowhere]
+    }
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands resetConfig]] == 0} then {
+  proc resetConfig { {sockPool ""} } {
+    #
+    # NOTE: First, make sure the configuration buffer and file names are
+    #       reset -AND- the cached sockpool FD, if any, if closed.
+    #
+    cdb2 configure "" false true; # set buffer to NULL -AND- force reset.
+    cdb2 configure "" true false; # set file to empty string.
+
+    #
+    # NOTE: Finally, if requested by the caller, enable -OR- disable the
+    #       sockpool.
+    #
+    if {[string is true -strict $sockPool]} then {
+      cdb2 sockpool true
+    } elseif {[string is false -strict $sockPool]} then {
+      cdb2 sockpool false
+    }
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands openConnection]] == 0} then {
+  proc openConnection { {name ""} {flags ""} } {
+    set command [list cdb2 open [getDbName $name] local]
+
+    if {[string length $flags] > 0} then {
+      lappend command $flags
+    }
+
+    return [eval $command]
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands getTableName]] == 0} then {
+  proc getTableName { name } {
+    if {![regexp -nocase -- {[A-Z][0-9A-Z]*} $name]} then {
+      error "table name must be alphanumeric and start with a letter"
+    }
+
+    return [appendArgs tcl_cdb2_test_ [pid] _ $name]
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands cleanupDatabase]] == 0} then {
+  proc cleanupDatabase { global } {
+    set connection [openConnection]
+
+    if {$global} then {
+      #
+      # WARNING: This pattern will DROP all tables created by this
+      #          test suite from the test database, regardless of
+      #          which process was responsible for creating them.
+      #
+      set glob 'tcl_cdb2_test_%'
+    } else {
+      set glob [appendArgs 'tcl_cdb2_test_ [pid] _%']
+    }
+
+    set sql [string trim [subst {
+      SELECT name FROM sqlite_master WHERE name LIKE $glob
+    }]]
+
+    if {[catch {cdb2 run $connection $sql} error] == 0} then {
+      set names [list]
+
+      if {[catch {
+        while {[cdb2 next $connection]} {
+          lappend names [cdb2 colvalue $connection 0]
+        }
+      } error]} then {
+        tcltest::Warn [appendArgs \
+            "could not grab table names using connection \"" \
+            $connection "\": " $error]
+      }
+
+      foreach name $names {
+        set sql [subst {DROP TABLE $name}]
+
+        if {[catch {cdb2 run $connection $sql} error]} then {
+          tcltest::Warn [appendArgs \
+              "could not DROP table \"$name\" using connection \"" \
+              $connection "\": " $error]
+        }
+      }
+    } else {
+      tcltest::Warn [appendArgs \
+          "could not query table names using connection \"" \
+          $connection "\": " $error]
+    }
+
+    closeConnection $connection
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands closeConnection]] == 0} then {
+  proc closeConnection { connection } {
+    if {[catch {cdb2 close $connection} error]} then {
+      tcltest::Warn [appendArgs \
+          "could not close database connection \"" \
+          $connection "\": " $error]
+    }
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands getNumbers]] == 0} then {
+  proc getNumbers { type {wide false} {special false} } {
+    switch -exact $type {
+      integer {
+        set result [list]
+
+        if {$special} then {
+          lappend result NULL
+        } else {
+          lappend result \
+              -2147483648 -32768 -128 -1 0 1 127 255 32767 \
+              65535 2147483647 4294967295
+
+          if {$wide} then {
+            lappend result \
+                -9223372036854775808 9223372036854775807 \
+                18446744073709551615
+          }
+        }
+
+        return $result
+      }
+      real {
+        set result [list]
+
+        if {$special} then {
+          set pNaN 0x7ff8000000000000
+          set nNaN 0xfff8000000000000
+
+          lappend result NULL $nNaN $pNaN -Inf Inf +Inf
+        } else {
+          lappend result \
+              -3.4028234663852886e+38 -1.0 0.0 1.0 \
+              1.4012984643248171e-45 3.4028234663852886e+38
+
+          if {$wide} then {
+            lappend result \
+                -1.7976931348623155e+308 4.9406564584124654e-324 \
+                1.7976931348623155e+308
+          }
+        }
+
+        return $result
+      }
+      decimal {
+        switch -exact $wide {
+          32 {
+            set result [list]
+
+            if {$special} then {
+              lappend result NULL -NaN NaN +NaN -Inf Inf +Inf
+            } else {
+              lappend result -1.0 0.0 \
+                  0.000001 \
+                  0.00001 \
+                  0.0001 \
+                  0.001 \
+                  0.01 \
+                  0.1 \
+                  1.0 \
+                  1.000001 \
+                  1.00001 \
+                  1.0001 \
+                  1.001 \
+                  1.01 \
+                  1.1 \
+                  1.234567 \
+                  12.34567 \
+                  123.4567 \
+                  1234.567 \
+                  12345.67 \
+                  123456.7 \
+                  1234567
+            }
+
+            return $result
+          }
+          64 {
+            set result [list]
+
+            if {$special} then {
+              lappend result NULL -NaN NaN +NaN -Inf Inf +Inf
+            } else {
+              lappend result -1.0 0.0 \
+                  0.000000000000001 \
+                  0.00000000000001 \
+                  0.0000000000001 \
+                  0.000000000001 \
+                  0.00000000001 \
+                  0.0000000001 \
+                  0.000000001 \
+                  0.00000001 \
+                  0.0000001 \
+                  0.000001 \
+                  0.00001 \
+                  0.0001 \
+                  0.001 \
+                  0.01 \
+                  0.1 \
+                  1.0 \
+                  1.000000000000001 \
+                  1.00000000000001 \
+                  1.0000000000001 \
+                  1.000000000001 \
+                  1.00000000001 \
+                  1.0000000001 \
+                  1.000000001 \
+                  1.00000001 \
+                  1.0000001 \
+                  1.000001 \
+                  1.00001 \
+                  1.0001 \
+                  1.001 \
+                  1.01 \
+                  1.1 \
+                  1.234567890123456 \
+                  12.34567890123456 \
+                  123.4567890123456 \
+                  1234.567890123456 \
+                  12345.67890123456 \
+                  123456.7890123456 \
+                  1234567.890123456 \
+                  12345678.90123456 \
+                  123456789.0123456 \
+                  1234567890.123456 \
+                  12345678901.23456 \
+                  123456789012.3456 \
+                  1234567890123.456 \
+                  12345678901234.56 \
+                  123456789012345.6 \
+                  1234567890123456
+            }
+
+            return $result
+          }
+          128 {
+            set result [list]
+
+            if {$special} then {
+              lappend result NULL -NaN NaN +NaN -Inf Inf +Inf
+            } else {
+              lappend result -1.0 0.0 \
+                  0.000000000000000000000000000000001 \
+                  0.00000000000000000000000000000001 \
+                  0.0000000000000000000000000000001 \
+                  0.000000000000000000000000000001 \
+                  0.00000000000000000000000000001 \
+                  0.0000000000000000000000000001 \
+                  0.000000000000000000000000001 \
+                  0.00000000000000000000000001 \
+                  0.0000000000000000000000001 \
+                  0.000000000000000000000001 \
+                  0.00000000000000000000001 \
+                  0.0000000000000000000001 \
+                  0.000000000000000000001 \
+                  0.00000000000000000001 \
+                  0.0000000000000000001 \
+                  0.000000000000000001 \
+                  0.00000000000000001 \
+                  0.0000000000000001 \
+                  0.000000000000001 \
+                  0.00000000000001 \
+                  0.0000000000001 \
+                  0.000000000001 \
+                  0.00000000001 \
+                  0.0000000001 \
+                  0.000000001 \
+                  0.00000001 \
+                  0.0000001 \
+                  0.000001 \
+                  0.00001 \
+                  0.0001 \
+                  0.001 \
+                  0.01 \
+                  0.1 \
+                  1.0 \
+                  1.000000000000000000000000000000001 \
+                  1.00000000000000000000000000000001 \
+                  1.0000000000000000000000000000001 \
+                  1.000000000000000000000000000001 \
+                  1.00000000000000000000000000001 \
+                  1.0000000000000000000000000001 \
+                  1.000000000000000000000000001 \
+                  1.00000000000000000000000001 \
+                  1.0000000000000000000000001 \
+                  1.000000000000000000000001 \
+                  1.00000000000000000000001 \
+                  1.0000000000000000000001 \
+                  1.000000000000000000001 \
+                  1.00000000000000000001 \
+                  1.0000000000000000001 \
+                  1.000000000000000001 \
+                  1.00000000000000001 \
+                  1.0000000000000001 \
+                  1.000000000000001 \
+                  1.00000000000001 \
+                  1.0000000000001 \
+                  1.000000000001 \
+                  1.00000000001 \
+                  1.0000000001 \
+                  1.000000001 \
+                  1.00000001 \
+                  1.0000001 \
+                  1.000001 \
+                  1.00001 \
+                  1.0001 \
+                  1.001 \
+                  1.01 \
+                  1.1 \
+                  1.234567890123456789012345678901234 \
+                  12.34567890123456789012345678901234 \
+                  123.4567890123456789012345678901234 \
+                  1234.567890123456789012345678901234 \
+                  12345.67890123456789012345678901234 \
+                  123456.7890123456789012345678901234 \
+                  1234567.890123456789012345678901234 \
+                  12345678.90123456789012345678901234 \
+                  123456789.0123456789012345678901234 \
+                  1234567890.123456789012345678901234 \
+                  12345678901.23456789012345678901234 \
+                  123456789012.3456789012345678901234 \
+                  1234567890123.456789012345678901234 \
+                  12345678901234.56789012345678901234 \
+                  123456789012345.6789012345678901234 \
+                  1234567890123456.789012345678901234 \
+                  12345678901234567.89012345678901234 \
+                  123456789012345678.9012345678901234 \
+                  1234567890123456789.012345678901234 \
+                  12345678901234567890.12345678901234 \
+                  123456789012345678901.2345678901234 \
+                  1234567890123456789012.345678901234 \
+                  12345678901234567890123.45678901234 \
+                  123456789012345678901234.5678901234 \
+                  1234567890123456789012345.678901234 \
+                  12345678901234567890123456.78901234 \
+                  123456789012345678901234567.8901234 \
+                  1234567890123456789012345678.901234 \
+                  12345678901234567890123456789.01234 \
+                  123456789012345678901234567890.1234 \
+                  1234567890123456789012345678901.234 \
+                  12345678901234567890123456789012.34 \
+                  123456789012345678901234567890123.4 \
+                  1234567890123456789012345678901234
+            }
+
+            return $result
+          }
+          default {
+            error [appendArgs "unknown decimal width \"" $wide \"]
+          }
+        }
+      }
+      default {
+        error [appendArgs "unknown number type \"" $type \"]
+      }
+    }
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands getIntegers]] == 0} then {
+  proc getIntegers { {wide false} } {
+    set result [getNumbers integer $wide true]
+
+    foreach value [getNumbers integer $wide] {
+      if {[catch {
+        expr {wide($value)}
+      } wideValue] == 0 && $wideValue eq $value} then {
+        lappend result $value
+      }
+    }
+
+    return $result
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands getReals]] == 0} then {
+  proc getReals { {wide false} } {
+    set result [getNumbers real $wide true]
+    set savedPrecision $::tcl_precision
+    set ::tcl_precision 17; # max
+
+    foreach value [getNumbers real $wide] {
+      if {[catch {
+        expr double($value)
+      } doubleValue] == 0 && $doubleValue eq $value} then {
+        lappend result $value
+      }
+    }
+
+    set ::tcl_precision $savedPrecision
+    eval lappend result [getNumbers integer]
+    return $result
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands getDateTimes]] == 0} then {
+  proc getDateTimes { us } {
+    set result [list NULL [list]]
+
+    if {$us} then {
+      set subSecName usec; set subSecValue 999999
+    } else {
+      set subSecName msec; set subSecValue 999
+    }
+
+    lappend result \
+        [list sec 59 min 59 hour 23 mday 31 mon 11 year -11899 \
+        $subSecName $subSecValue tzname {UTC}]
+
+    lappend result \
+        [list sec 0 min 0 hour 0 mday 1 mon 0 year 0 \
+        $subSecName 0 tzname {UTC}]
+
+    lappend result \
+        [list sec 0 min 0 hour 19 mday 31 mon 11 year 69 \
+        $subSecName 0 tzname {America/New_York}]
+
+    lappend result \
+        [list sec 0 min 0 hour 0 mday 1 mon 0 year 70 \
+        $subSecName 0 tzname {UTC}]
+
+    lappend result \
+        [list sec 59 min 59 hour 23 mday 31 mon 11 year 8099 \
+        $subSecName $subSecValue tzname {UTC}]
+
+    return $result
+  }
+}
+
+###############################################################################
+
+if {[llength [info commands isTypeError]] == 0} then {
+  proc isTypeError { error } {
+    return [regexp -- \
+        {^incompatible values from .*? for table '.*?'$} $error]
+  }
+}
+
+###############################################################################
+
+test cdb2-1.1 {overall command usage} -body {
+  list [catch {cdb2} errMsg] $errMsg
+} -cleanup {
+  unset -nocomplain errMsg
+} -result {1 {wrong # args: should be "cdb2 option ?arg ...?"}}
+
+###############################################################################
+
+test cdb2-2.1 {ssl sub-command} -body {
+  list [catch {cdb2 ssl} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 ssl 1} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 ssl 1 1}  errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 ssl 1 1 1} errMsg] [normalizeResult $errMsg]
+} -cleanup {
+  unset -nocomplain errMsg
+} -result {1 {wrong # args: should be "cdb2 ssl initSsl initCrypto"} 1 {wrong\
+# args: should be "cdb2 ssl initSsl initCrypto"} 0 {} 1 {wrong # args: should\
+be "cdb2 ssl initSsl initCrypto"}}
+
+###############################################################################
+
+test cdb2-3.1 {open & close sub-commands} -body {
+  list [catch {
+        cdb2 open
+      } result(1)] [normalizeResult $result(1)] \
+      [catch {
+        cdb2 close $result(1)
+      } result(2)] [normalizeResult $result(2)] \
+      [catch {
+        cdb2 open baddb_[pid] local
+      } result(1)] [normalizeResult $result(1)] \
+      [catch {
+        cdb2 close $result(1)
+      } result(2)] [normalizeResult $result(2)] \
+      [catch {
+        cdb2 open [getDbName] local
+      } result(1)] [normalizeResult $result(1)] \
+      [catch {
+        cdb2 close $result(1) 1
+      } result(2)] [normalizeResult $result(2)] \
+      [catch {
+        cdb2 close
+      } result(2)] [normalizeResult $result(2)] \
+      [catch {
+        cdb2 close $result(1)
+      } result(2)] [normalizeResult $result(2)] \
+      [catch {
+        cdb2 close $result(1)
+      } result(2)] [normalizeResult $result(2)] \
+      [catch {
+        cdb2 close
+      } result(2)] [normalizeResult $result(2)] \
+      [catch {
+        cdb2 open [getDbName] local 0
+      } result(1)] [normalizeResult $result(1)] \
+      [catch {
+        cdb2 close $result(1)
+      } result(2)] [normalizeResult $result(2)] \
+      [catch {
+        cdb2 open [getDbName] local read_intrans_results
+      } result(1)] [normalizeResult $result(1)] \
+      [catch {
+        cdb2 close $result(1)
+      } result(2)] [normalizeResult $result(2)] \
+      [catch {
+        cdb2 open [getDbName] local {0 read_intrans_results}
+      } result(1)] [normalizeResult $result(1)] \
+      [catch {
+        cdb2 close $result(1)
+      } result(2)] [normalizeResult $result(2)] \
+      [catch {
+        cdb2 open [getDbName] local {random read_intrans_results}
+      } result(1)] [normalizeResult $result(1)] \
+      [catch {
+        cdb2 close $result(1)
+      } result(2)] [normalizeResult $result(2)] \
+      [catch {
+        cdb2 open [getDbName] local {bad read_intrans_results}
+      } result(1)] [normalizeResult $result(1)] \
+      [catch {
+        cdb2 close $result(1)
+      } result(2)] [normalizeResult $result(2)]
+} -cleanup {
+  unset -nocomplain result
+} -result {1 <wrong_open> 1 <connection_not_found> 1 <get_dbhosts_error> 1\
+<connection_not_found> 0 <connection_open> 1 <wrong_close> 1 <wrong_close> 0 {}\
+1 <connection_not_found> 1 <wrong_close> 0 <connection_open> 0 {} 0\
+<connection_open> 0 {} 0 <connection_open> 0 {} 0 <connection_open> 0 {} 1\
+{name "bad" not found<lf>value for name "bad" not found} 1\
+<connection_not_found>}
+
+###############################################################################
+
+test cdb2-4.1 {cnonce sub-command} -setup {
+  set db [openConnection]
+} -body {
+  list [catch {cdb2 cnonce} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 cnonce 1} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 cnonce 1 1}  errMsg] [normalizeResult $errMsg] \
+      [normalizeResult [cdb2 cnonce $db]] \
+      [normalizeResult [cdb2 run $db "SELECT 1"]] \
+      [normalizeResult [cdb2 cnonce $db]]
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain errMsg db
+} -result {1 {wrong # args: should be "cdb2 cnonce connection"} 1\
+<connection_not_found> 1 {wrong # args: should be "cdb2 cnonce connection"} {}\
+{} <cnonce>}
+
+###############################################################################
+
+test cdb2-5.1 {encrypted sub-command} -setup {
+  set db [openConnection]
+} -body {
+  list [catch {cdb2 encrypted} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 encrypted 1} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 encrypted 1 1} errMsg] [normalizeResult $errMsg] \
+      [normalizeResult [cdb2 encrypted $db]]
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain errMsg db
+} -match regexp -result {^1 \{wrong # args: should be "cdb2 encrypted\
+connection"\} 1 <connection_not_found> 1 \{wrong # args: should be "cdb2\
+encrypted connection"\} (0|1)$}
+
+###############################################################################
+
+test cdb2-6.1 {hint sub-command} -setup {
+  set db [openConnection]
+} -body {
+  list [catch {cdb2 hint} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 hint 1} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 hint $db}  errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 hint 1 1} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 hint $db 1}  errMsg] [normalizeResult $errMsg]
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain errMsg db
+} -result {1 {wrong # args: should be "cdb2 hint connection"} 1\
+<connection_not_found> 0 {} 1 {wrong # args: should be "cdb2 hint connection"}\
+1 {wrong # args: should be "cdb2 hint connection"}}
+
+###############################################################################
+
+test cdb2-7.1 {error sub-command} -setup {
+  set db [openConnection]
+} -body {
+  list [catch {cdb2 error} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 error 1} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 error $db} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 run $db bad} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 error $db} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 error 1 1} errMsg] [normalizeResult $errMsg]
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain errMsg db
+} -result {1 {wrong # args: should be "cdb2 error connection"} 1\
+<connection_not_found> 0 {} 1 {near "bad": syntax error} 0 {near "bad": syntax\
+error} 1 {wrong # args: should be "cdb2 error connection"}}
+
+###############################################################################
+
+test cdb2-8.1 {run sub-command errors} -setup {
+  set db [openConnection]
+} -body {
+  list [catch {cdb2 run} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 run 1} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 run $db}  errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 run $db 1} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 run $db "SELECT bad"} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 run $db 1 1} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 run $db 1 bad} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 run $db "SELECT bad" bad} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 run $db 1 1 1} errMsg] [normalizeResult $errMsg]
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain errMsg db
+} -result {1 {wrong # args: should be "cdb2 run connection sql ?types?"} 1\
+{wrong # args: should be "cdb2 run connection sql ?types?"} 1 {wrong # args:\
+should be "cdb2 run connection sql ?types?"} 1 {near "1": syntax error} 1 {no\
+such column: bad} 1 {near "1": syntax error} 1 {name "bad" not found<lf>value\
+for name "bad" not found} 1 {name "bad" not found<lf>value for name "bad" not\
+found} 1 {wrong # args: should be "cdb2 run connection sql ?types?"}}
+
+###############################################################################
+
+test cdb2-8.2 {simple run sub-command} -setup {
+  set db [openConnection]
+} -body {
+  list [catch {cdb2 run $db "SELECT 1"} errMsg] $errMsg \
+      [getRowsOfColumns $db]
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain errMsg db
+} -result {0 {} {index 1 columns {{index 0 type integer size 8 name 1 null\
+false value 1}} effects {affected 0 selected 1 updated 0 deleted 0 inserted 0}}}
+
+###############################################################################
+
+test cdb2-8.3 {run sub-command with results} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_83]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table (x INTEGER)
+  }]]
+
+  cdb2 run $db [string trim [subst {
+    INSERT INTO $table (x) VALUES (1)
+  }]]
+} -body {
+  list [catch {cdb2 run $db "SELECT x FROM $table"} errMsg] $errMsg \
+      [getRowsOfColumns $db]
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain errMsg table db
+} -result {0 {} {index 1 columns {{index 0 type integer size 8 name x null\
+false value 1}} effects {affected 0 selected 1 updated 0 deleted 0 inserted 0}}}
+
+###############################################################################
+
+test cdb2-8.4 {run sub-command with NULL results} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_84]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table (x INTEGER)
+  }]]
+
+  cdb2 run $db [string trim [subst {
+    INSERT INTO $table (x) VALUES (NULL)
+  }]]
+} -body {
+  list [catch {cdb2 run $db "SELECT x FROM $table"} errMsg] $errMsg \
+      [getRowsOfColumns $db]
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain errMsg table db
+} -result {0 {} {index 1 columns {{index 0 type integer size 0 name x null\
+true value <null>}} effects {affected 0 selected 1 updated 0 deleted 0 inserted\
+0}}}
+
+###############################################################################
+
+test cdb2-9.1 {bind/unbind sub-command errors} -setup {
+  set db [openConnection]
+} -body {
+  list [catch {
+        cdb2 bind $db 1 cstring ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db one cstring ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 1 cstring ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db one cstring ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 2 blob ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db two blob ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 3 integer 0
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db three integer 0
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 4 real 0
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db four real 0
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 5 datetime ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db five datetime ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 6 datetimeus ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db six datetimeus ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 7 intervalds ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db seven intervalds ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 8 intervaldsus ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db eight intervaldsus ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 9 intervalym ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db nine intervalym ""
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 unbind $db
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 unbind
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 unbind $db 1
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 unbind $db
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db -1
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db -1 null
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db -1 cstring
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db -1 cstring value
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 0
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 1
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 2 bad
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 3 bad value
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 4 cstring
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 5 blob
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 6 real
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 7 integer
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 8 real bad
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 9 integer bad
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 10 null bad
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 11 datetime bad
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 12 datetime bad value
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 13 datetimeus bad
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 14 datetimeus bad value
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 15 intervalds bad
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 16 intervalds bad value
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 17 intervaldsus bad
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 18 intervaldsus bad value
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 19 intervalym bad
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 20 intervalym bad value
+      } errMsg] [normalizeResult $errMsg] \
+      [catch {
+        cdb2 bind $db 2147483647 integer 0
+      } errMsg] [normalizeResult $errMsg]
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain errMsg db
+} -result {0 {} 0 {} 1 {parameter "1" was already bound} 1 {parameter "one" was\
+already bound} 0 {} 0 {} 0 {} 0 {} 0 {} 0 {} 0 {} 0 {} 0 {} 0 {} 0 {} 0 {} 0 {}\
+0 {} 0 {} 0 {} 0 {} 1 {wrong # args: should be "cdb2 unbind connection"} 1\
+{wrong # args: should be "cdb2 unbind connection"} 0 {} 1 {wrong # args: should\
+be "cdb2 bind connection nameOrIndex type ?value?"} 1 {wrong # args: should be\
+"cdb2 bind connection nameOrIndex type ?value?"} 1 {wrong # args: should be\
+"cdb2 bind connection nameOrIndex type ?value?"} 1 {cdb2_bind_index: bind index\
+starts at value 1} 1 {must specify a value for type "cstring"} 1\
+{cdb2_bind_index: bind index starts at value 1} 1 {wrong # args: should be\
+"cdb2 bind connection nameOrIndex type ?value?"} 1 {wrong # args: should be\
+"cdb2 bind connection nameOrIndex type ?value?"} 1 {name "bad" not\
+found<lf>value for name "bad" not found} 1 {name "bad" not found<lf>value for\
+name "bad" not found} 1 {must specify a value for type "cstring"} 1 {must\
+specify a value for type "blob"} 1 {must specify a value for type "real"} 1\
+{must specify a value for type "integer"} 1 {expected floating-point number but\
+got "bad"} 1 {expected integer but got "bad"} 1 {cannot specify a value for\
+type "null"} 1 {malformed value dictionary} 1 {wrong # args: should be "cdb2\
+bind connection nameOrIndex type ?value?"} 1 {malformed value dictionary} 1\
+{wrong # args: should be "cdb2 bind connection nameOrIndex type ?value?"} 1\
+{malformed value dictionary} 1 {wrong # args: should be "cdb2 bind connection\
+nameOrIndex type ?value?"} 1 {malformed value dictionary} 1 {wrong # args:\
+should be "cdb2 bind connection nameOrIndex type ?value?"} 1 {malformed value\
+dictionary} 1 {wrong # args: should be "cdb2 bind connection nameOrIndex type\
+?value?"} 0 {}}
+
+###############################################################################
+
+test cdb2-9.2 {bind sub-command w/short} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_92]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {short x null=yes}}
+  }]]
+} -body {
+  foreach value [getIntegers true] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 integer $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result {<null> -32768 -128 -1 0 1 127 255 32767}
+
+###############################################################################
+
+test cdb2-9.3 {bind sub-command w/u_short} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_93]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {u_short x null=yes}}
+  }]]
+} -body {
+  foreach value [getIntegers true] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 integer $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result {<null> 0 1 127 255 32767 65535}
+
+###############################################################################
+
+test cdb2-9.4 {bind sub-command w/int} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_94]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {int x null=yes}}
+  }]]
+} -body {
+  foreach value [getIntegers true] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 integer $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result {<null> -2147483648 -32768 -128 -1 0 1 127 255 32767 65535 2147483647}
+
+###############################################################################
+
+test cdb2-9.5 {bind sub-command w/u_int} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_95]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {u_int x null=yes}}
+  }]]
+} -body {
+  foreach value [getIntegers true] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 integer $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result {<null> 0 1 127 255 32767 65535 2147483647 4294967295}
+
+###############################################################################
+
+test cdb2-9.6 {bind sub-command w/longlong} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_96]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {longlong x null=yes}}
+  }]]
+} -body {
+  foreach value [getIntegers true] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 integer $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result {<null> -9223372036854775808 -2147483648 -32768 -128 -1 0 1 127 255\
+32767 65535 2147483647 4294967295 9223372036854775807}
+
+###############################################################################
+
+test cdb2-9.7 {bind sub-command w/float} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_97]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {float x null=yes}}
+  }]]
+} -body {
+  foreach value [getReals true] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 real $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result {<null> <null> <null> -Inf -Inf -3.4028234663852886e+38 -2147483648.0\
+-32768.0 -128.0 -1.0 -1.0 0.0 0.0 0.0 1.401298464324817e-45 1.0 1.0 127.0 255.0\
+32767.0 65535.0 2147483648.0 4294967296.0 3.4028234663852886e+38 Inf Inf Inf}
+
+###############################################################################
+
+test cdb2-9.8 {bind sub-command w/double} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_98]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {double x null=yes}}
+  }]]
+} -body {
+  foreach value [getReals true] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 real $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result {<null> <null> <null> -Inf -1.7976931348623155e+308\
+-3.4028234663852886e+38 -2147483648.0 -32768.0 -128.0 -1.0 -1.0 0.0 0.0 5e-324\
+1.401298464324817e-45 1.0 1.0 127.0 255.0 32767.0 65535.0 2147483647.0\
+4294967295.0 3.4028234663852886e+38 1.7976931348623155e+308 Inf Inf}
+
+###############################################################################
+
+test cdb2-9.9 {bind sub-command w/decimal32} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_99]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {decimal32 x null=yes}}
+  }]]
+} -body {
+  foreach value [concat \
+      [getNumbers decimal 32 true] [getNumbers decimal 32 false]] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 cstring $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -constraints {knownBug} -result {<null> <null> <null> <null> -Infinity -1.0\
+0.0 0.000001 0.00001 0.0001 0.001 0.01 0.1 1.0 1.000001 1.00001 1.0001 1.001\
+1.01 1.1 1.234567 12.34567 123.4567 1234.567 12345.67 123456.7 1234567 Infinity\
+Infinity}
+
+###############################################################################
+
+test cdb2-9.10 {bind sub-command w/decimal64} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_910]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {decimal64 x null=yes}}
+  }]]
+} -body {
+  foreach value [concat \
+      [getNumbers decimal 64 true] [getNumbers decimal 64 false]] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 cstring $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -constraints {knownBug} -result {<null> <null> <null> <null> -Infinity -1.0\
+0.0 1E-15 1E-14 1E-13 1E-12 1E-11 1E-10 1E-9 1E-8 1E-7 0.000001 0.00001 0.0001\
+0.001 0.01 0.1 1.0 1.000000000000001 1.00000000000001 1.0000000000001\
+1.000000000001 1.00000000001 1.0000000001 1.000000001 1.00000001 1.0000001\
+1.000001 1.00001 1.0001 1.001 1.01 1.1 1.234567890123456 12.34567890123456\
+123.4567890123456 1234.567890123456 12345.67890123456 123456.7890123456\
+1234567.890123456 12345678.90123456 123456789.0123456 1234567890.123456\
+12345678901.23456 123456789012.3456 1234567890123.456 12345678901234.56\
+123456789012345.6 1234567890123456 Infinity Infinity}
+
+###############################################################################
+
+test cdb2-9.11 {bind sub-command w/decimal128} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_911]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {decimal128 x null=yes}}
+  }]]
+} -body {
+  foreach value [concat \
+      [getNumbers decimal 128 true] [getNumbers decimal 128 false]] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 cstring $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -constraints {knownBug} -result {<null> <null> <null> <null> -Infinity -1.0\
+0.0 1E-33 1E-32 1E-31 1E-30 1E-29 1E-28 1E-27 1E-26 1E-25 1E-24 1E-23 1E-22\
+1E-21 1E-20 1E-19 1E-18 1E-17 1E-16 1E-15 1E-14 1E-13 1E-12 1E-11 1E-10 1E-9\
+1E-8 1E-7 0.000001 0.00001 0.0001 0.001 0.01 0.1 1.0\
+1.000000000000000000000000000000001 1.00000000000000000000000000000001\
+1.0000000000000000000000000000001 1.000000000000000000000000000001\
+1.00000000000000000000000000001 1.0000000000000000000000000001\
+1.000000000000000000000000001 1.00000000000000000000000001\
+1.0000000000000000000000001 1.000000000000000000000001\
+1.00000000000000000000001 1.0000000000000000000001 1.000000000000000000001\
+1.00000000000000000001 1.0000000000000000001 1.000000000000000001\
+1.00000000000000001 1.0000000000000001 1.000000000000001 1.00000000000001\
+1.0000000000001 1.000000000001 1.00000000001 1.0000000001 1.000000001\
+1.00000001 1.0000001 1.000001 1.00001 1.0001 1.001 1.01 1.1\
+1.234567890123456789012345678901234 12.34567890123456789012345678901234\
+123.4567890123456789012345678901234 1234.567890123456789012345678901234\
+12345.67890123456789012345678901234 123456.7890123456789012345678901234\
+1234567.890123456789012345678901234 12345678.90123456789012345678901234\
+123456789.0123456789012345678901234 1234567890.123456789012345678901234\
+12345678901.23456789012345678901234 123456789012.3456789012345678901234\
+1234567890123.456789012345678901234 12345678901234.56789012345678901234\
+123456789012345.6789012345678901234 1234567890123456.789012345678901234\
+12345678901234567.89012345678901234 123456789012345678.9012345678901234\
+1234567890123456789.012345678901234 12345678901234567890.12345678901234\
+123456789012345678901.2345678901234 1234567890123456789012.345678901234\
+12345678901234567890123.45678901234 123456789012345678901234.5678901234\
+1234567890123456789012345.678901234 12345678901234567890123456.78901234\
+123456789012345678901234567.8901234 1234567890123456789012345678.901234\
+12345678901234567890123456789.01234 123456789012345678901234567890.1234\
+1234567890123456789012345678901.234 12345678901234567890123456789012.34\
+123456789012345678901234567890123.4 1234567890123456789012345678901234\
+Infinity Infinity}
+
+###############################################################################
+
+test cdb2-9.12 {bind sub-command w/cstring} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_912]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {cstring x\[3\] null=yes}}
+  }]]
+} -body {
+  foreach value [list NULL "" \x00 \xFF 1 12 123] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 cstring $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result "<null> {} 1 12 0x00 \xFF"
+
+###############################################################################
+
+test cdb2-9.13 {bind sub-command w/blob} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_913]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {blob x null=yes}}
+  }]]
+} -body {
+  foreach value [list NULL "" \x00 \xFF 1 12 123] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 blob $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result "<null> {} 0x00 1 12 123 \xFF"
+
+###############################################################################
+
+test cdb2-9.14 {bind sub-command w/vutf8} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_914]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {vutf8 x null=yes}}
+  }]]
+} -body {
+  foreach value [list NULL "" \x00 \xFF 1 12 123] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 cstring $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result "<null> {} 1 12 123 \xFF"
+
+###############################################################################
+
+test cdb2-9.15 {bind sub-command w/no-size-byte} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_915]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {byte x null=yes}}
+  }]]
+} -body {
+  foreach value [list NULL "" \x00 \xFF 1 12 123] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 blob $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result "<null> 0x00 1 \xFF"
+
+###############################################################################
+
+test cdb2-9.16 {bind sub-command w/one-byte} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_916]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {byte x\[1\] null=yes}}
+  }]]
+} -body {
+  foreach value [list NULL "" \x00 \xFF 1 12 123] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 blob $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result "<null> 0x00 1 \xFF"
+
+###############################################################################
+
+test cdb2-9.17 {bind sub-command w/byte} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_917]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {byte x\[2\] null=yes}}
+  }]]
+} -body {
+  foreach value [list NULL "" \x00 \xFF 1 12 123] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 blob $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result "<null> 12"
+
+###############################################################################
+
+test cdb2-9.18 {bind sub-command w/datetime} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_918]
+
+  cdb2 run $db [string trim {
+    SET TIMEZONE UTC
+  }]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {datetime x null=yes}}
+  }]]
+} -body {
+  foreach value [getDateTimes false] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 datetime $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result {<null> {sec 59 min 59 hour 23 mday 31 mon 11 year -11899 wday 1\
+yday 364 isdst 0 msec 999 tzname {UTC}} {sec 0 min 0 hour 0 mday 31 mon 11\
+year -1 wday 0 yday 364 isdst 0 msec 0 tzname {UTC}} {sec 0 min 0 hour 0 mday\
+1 mon 0 year 0 wday 1 yday 0 isdst 0 msec 0 tzname {UTC}} {sec 0 min 0 hour 0\
+mday 1 mon 0 year 70 wday 4 yday 0 isdst 0 msec 0 tzname {UTC}} {sec 0 min 0\
+hour 0 mday 1 mon 0 year 70 wday 4 yday 0 isdst 0 msec 0 tzname {UTC}} {sec 59\
+min 59 hour 23 mday 31 mon 11 year 8099 wday 5 yday 364 isdst 0 msec 999\
+tzname {UTC}}}
+
+###############################################################################
+
+test cdb2-9.19 {bind sub-command w/datetimeus} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_919]
+
+  cdb2 run $db [string trim {
+    SET TIMEZONE UTC
+  }]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {datetimeus x null=yes}}
+  }]]
+} -body {
+  foreach value [getDateTimes true] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 datetimeus $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result {<null> {sec 59 min 59 hour 23 mday 31 mon 11 year -11899 wday 1\
+yday 364 isdst 0 usec 999999 tzname {UTC}} {sec 0 min 0 hour 0 mday 31 mon 11\
+year -1 wday 0 yday 364 isdst 0 usec 0 tzname {UTC}} {sec 0 min 0 hour 0 mday\
+1 mon 0 year 0 wday 1 yday 0 isdst 0 usec 0 tzname {UTC}} {sec 0 min 0 hour 0\
+mday 1 mon 0 year 70 wday 4 yday 0 isdst 0 usec 0 tzname {UTC}} {sec 0 min 0\
+hour 0 mday 1 mon 0 year 70 wday 4 yday 0 isdst 0 usec 0 tzname {UTC}} {sec 59\
+min 59 hour 23 mday 31 mon 11 year 8099 wday 5 yday 364 isdst 0 usec 999999\
+tzname {UTC}}}
+
+###############################################################################
+
+test cdb2-9.20 {bind sub-command w/intervalym} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_920]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {intervalym x null=yes}}
+  }]]
+} -body {
+  foreach value [list NULL [list] \
+      [list sign -1 years 178956970 months 7] \
+      [list sign -1 years 1 months 13] \
+      [list sign -1 years 1 months 1] \
+      [list sign -1 years 0 months 1] \
+      [list sign -1 years 0 months 0] \
+      [list sign 0 years 0 months 0] \
+      [list sign 1 years 0 months 0] \
+      [list sign 1 years 0 months 1] \
+      [list sign 1 years 1 months 1] \
+      [list sign 1 years 1 months 13] \
+      [list sign 1 years 178956970 months 7]] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 intervalym $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result {<null> {sign -1 years 178956970 months 7} {sign -1 years 2 months 1}\
+{sign -1 years 1 months 1} {sign -1 years 0 months 1} {sign 1 years 0 months 0}\
+{sign 1 years 0 months 0} {sign 1 years 0 months 0} {sign 1 years 0 months 0}\
+{sign 1 years 0 months 1} {sign 1 years 1 months 1} {sign 1 years 2 months 1}\
+{sign 1 years 178956970 months 7}}
+
+###############################################################################
+
+test cdb2-9.21 {bind sub-command w/intervalds} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_921]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {intervalds x null=yes}}
+  }]]
+} -body {
+  foreach value [list NULL [list] \
+      [list sign -1 days 49710 hours 23 mins 59 secs 59 msecs 999] \
+      [list sign -1 days 1 hours 0 mins 0 secs 0 msecs 0] \
+      [list sign -1 days 0 hours 1 mins 0 secs 0 msecs 0] \
+      [list sign -1 days 0 hours 0 mins 1 secs 0 msecs 0] \
+      [list sign -1 days 0 hours 0 mins 0 secs 1 msecs 0] \
+      [list sign -1 days 0 hours 0 mins 0 secs 0 msecs 1] \
+      [list sign -1 days 0 hours 0 mins 0 secs 0 msecs 0] \
+      [list sign 0 days 0 hours 0 mins 0 secs 0 msecs 0] \
+      [list sign 1 days 0 hours 0 mins 0 secs 0 msecs 1] \
+      [list sign 1 days 0 hours 0 mins 0 secs 1 msecs 0] \
+      [list sign 1 days 0 hours 0 mins 1 secs 0 msecs 0] \
+      [list sign 1 days 0 hours 1 mins 0 secs 0 msecs 0] \
+      [list sign 1 days 1 hours 0 mins 0 secs 0 msecs 0] \
+      [list sign 1 days 0 hours 0 mins 0 secs 0 msecs 0] \
+      [list sign 1 days 49710 hours 23 mins 59 secs 59 msecs 999]] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 intervalds $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result {<null> {sign -1 days 49710 hours 23 mins 59 secs 59 msecs 999}\
+{sign -1 days 1 hours 0 mins 0 secs 0 msecs 0} {sign -1 days 0 hours 1 mins 0\
+secs 0 msecs 0} {sign -1 days 0 hours 0 mins 1 secs 0 msecs 0} {sign -1 days 0\
+hours 0 mins 0 secs 1 msecs 0} {sign -1 days 0 hours 0 mins 0 secs 0 msecs 1}\
+{sign 1 days 0 hours 0 mins 0 secs 0 msecs 0} {sign 1 days 0 hours 0 mins 0\
+secs 0 msecs 0} {sign 1 days 0 hours 0 mins 0 secs 0 msecs 0} {sign 1 days 0\
+hours 0 mins 0 secs 0 msecs 0} {sign 1 days 0 hours 0 mins 0 secs 0 msecs 1}\
+{sign 1 days 0 hours 0 mins 0 secs 1 msecs 0} {sign 1 days 0 hours 0 mins 1\
+secs 0 msecs 0} {sign 1 days 0 hours 1 mins 0 secs 0 msecs 0} {sign 1 days 1\
+hours 0 mins 0 secs 0 msecs 0} {sign 1 days 49710 hours 23 mins 59 secs 59\
+msecs 999}}
+
+###############################################################################
+
+test cdb2-9.22 {bind sub-command w/intervaldsus} -setup {
+  set db [openConnection]
+  set table [getTableName cdb2_922]
+
+  cdb2 run $db [string trim [subst {
+    CREATE TABLE $table {schema {intervaldsus x null=yes}}
+  }]]
+} -body {
+  foreach value [list NULL [list] \
+      [list sign -1 days 49710 hours 23 mins 59 secs 59 usecs 999999] \
+      [list sign -1 days 1 hours 0 mins 0 secs 0 usecs 0] \
+      [list sign -1 days 0 hours 1 mins 0 secs 0 usecs 0] \
+      [list sign -1 days 0 hours 0 mins 1 secs 0 usecs 0] \
+      [list sign -1 days 0 hours 0 mins 0 secs 1 usecs 0] \
+      [list sign -1 days 0 hours 0 mins 0 secs 0 usecs 1] \
+      [list sign -1 days 0 hours 0 mins 0 secs 0 usecs 0] \
+      [list sign 0 days 0 hours 0 mins 0 secs 0 usecs 0] \
+      [list sign 1 days 0 hours 0 mins 0 secs 0 usecs 1] \
+      [list sign 1 days 0 hours 0 mins 0 secs 1 usecs 0] \
+      [list sign 1 days 0 hours 0 mins 1 secs 0 usecs 0] \
+      [list sign 1 days 0 hours 1 mins 0 secs 0 usecs 0] \
+      [list sign 1 days 1 hours 0 mins 0 secs 0 usecs 0] \
+      [list sign 1 days 0 hours 0 mins 0 secs 0 usecs 0] \
+      [list sign 1 days 49710 hours 23 mins 59 secs 59 usecs 999999]] {
+    cdb2 unbind $db
+
+    if {$value eq "NULL"} then {
+      cdb2 bind $db 1 null
+    } else {
+      cdb2 bind $db 1 intervaldsus $value
+    }
+
+    if {[catch {
+      cdb2 run $db [string trim [subst {
+        INSERT INTO $table (x) VALUES (?)
+      }]]
+    } error] && ![isTypeError $error]} then {
+      error $error; # FAIL: Unexpected error.
+    }
+  }
+
+  cdb2 unbind $db; cdb2 run $db [string trim [subst {
+    SELECT x FROM $table ORDER BY x
+  }]]
+
+  getValues $db 0
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain error value table db
+} -result {<null> {sign -1 days 49710 hours 23 mins 59 secs 59 usecs 999999}\
+{sign -1 days 1 hours 0 mins 0 secs 0 usecs 0} {sign -1 days 0 hours 1 mins 0\
+secs 0 usecs 0} {sign -1 days 0 hours 0 mins 1 secs 0 usecs 0} {sign -1 days 0\
+hours 0 mins 0 secs 1 usecs 0} {sign -1 days 0 hours 0 mins 0 secs 0 usecs 1}\
+{sign 1 days 0 hours 0 mins 0 secs 0 usecs 0} {sign 1 days 0 hours 0 mins 0\
+secs 0 usecs 0} {sign 1 days 0 hours 0 mins 0 secs 0 usecs 0} {sign 1 days 0\
+hours 0 mins 0 secs 0 usecs 0} {sign 1 days 0 hours 0 mins 0 secs 0 usecs 1}\
+{sign 1 days 0 hours 0 mins 0 secs 1 usecs 0} {sign 1 days 0 hours 0 mins 1\
+secs 0 usecs 0} {sign 1 days 0 hours 1 mins 0 secs 0 usecs 0} {sign 1 days 1\
+hours 0 mins 0 secs 0 usecs 0} {sign 1 days 49710 hours 23 mins 59 secs 59\
+usecs 999999}}
+
+###############################################################################
+
+#
+# NOTE: Cleanup test database before changing the configuration.  If the
+#       "TCLCDB2_GLOBAL_CLEANUP" environment variable is set to non-zero,
+#       DROP all test tables, regardless of their parent process.  This
+#       is useful when previous tests stopped before they had a chance to
+#       cleanup.
+#
+cleanupDatabase [string is true -strict [getEnvVar TCLCDB2_GLOBAL_CLEANUP]]
+
+###############################################################################
+
+test cdb2-89.1 {configure sub-command errors} -body {
+  list [catch {cdb2 configure} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 configure 1 1 1 1} errMsg] [normalizeResult $errMsg]
+} -cleanup {
+  unset -nocomplain errMsg
+} -result {1 {wrong # args: should be "cdb2 configure string ?useFile?\
+?reset?"} 1 {wrong # args: should be "cdb2 configure string ?useFile? ?reset?"}}
+
+###############################################################################
+
+catch {resetConfig false}; # Reset configuration and disable sockpool.
+
+###############################################################################
+
+test cdb2-89.2 {configure sub-command w/string} -body {
+  list [resetConfig false] [cdb2 configure [getConfigInfo false]] \
+      [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
+      [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)] \
+      [resetConfig false] [cdb2 configure [getConfigInfo true] 0] \
+      [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
+      [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)] \
+      [resetConfig false] \
+      [catch {cdb2 open [getDbName] local} result(1)] \
+      [normalizeResult $result(1)] \
+      [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)]
+} -cleanup {
+  catch {resetConfig}
+
+  unset -nocomplain result
+} -result {{} {} 1 <get_dbhosts_error> 1 <connection_not_found> {} {} 0\
+<connection_open> 0 {} {} 0 <connection_open> 0 {}}
+
+###############################################################################
+
+catch {resetConfig false}; # Reset configuration and disable sockpool.
+
+###############################################################################
+
+test cdb2-89.3 {configure sub-command w/file} -setup {
+  set fileName(bad) [file join [getTempPath] tclcdb2_89_3_bad.cfg]
+  writeFile $fileName(bad) [getConfigInfo false]
+
+  set fileName(good) [file join [getTempPath] tclcdb2_89_3_good.cfg]
+  writeFile $fileName(good) [getConfigInfo true]
+} -body {
+  list [resetConfig false] [cdb2 configure $fileName(bad) 1] \
+      [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
+      [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)] \
+      [resetConfig false] [cdb2 configure $fileName(good) 1] \
+      [catch {cdb2 open [getDbName]} result(1)] [normalizeResult $result(1)] \
+      [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)] \
+      [resetConfig false] \
+      [catch {cdb2 open [getDbName] local} result(1)] \
+      [normalizeResult $result(1)] \
+      [catch {cdb2 close $result(1)} result(2)] [normalizeResult $result(2)]
+} -cleanup {
+  catch {file delete $fileName(good)}
+  catch {file delete $fileName(bad)}
+
+  catch {resetConfig}
+
+  unset -nocomplain result fileName
+} -result {{} {} 1 <get_dbhosts_error> 1 <connection_not_found> {} {} 0\
+<connection_open> 0 {} {} 0 <connection_open> 0 {}}
+
+###############################################################################
+
+catch {resetConfig true}; # Reset configuration and enable sockpool.
+
+###############################################################################
+
+test cdb2-99.1 {debug sub-command} -setup {
+  set db [openConnection]
+} -body {
+  list [catch {cdb2 debug} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 debug 1} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 debug $db}  errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 debug 1 1} errMsg] [normalizeResult $errMsg] \
+      [catch {cdb2 debug $db 1}  errMsg] [normalizeResult $errMsg]
+} -cleanup {
+  closeConnection $db
+
+  unset -nocomplain errMsg db
+} -result {1 {wrong # args: should be "cdb2 debug connection"} 1\
+<connection_not_found> 0 {} 1 {wrong # args: should be "cdb2 debug connection"}\
+1 {wrong # args: should be "cdb2 debug connection"}}
+
+###############################################################################
+
+unset -nocomplain path
+::tcltest::cleanupTests

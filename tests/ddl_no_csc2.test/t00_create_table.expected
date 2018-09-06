@@ -96,20 +96,20 @@
 (tablename='t9', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
 (tablename='t10', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t10', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
-(tablename='t1', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t2', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t5', keyname='$KEY_3AE602D4', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t6', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t6', keyname='$KEY_88C200AD', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t9', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t10', keyname='$KEY_BFD493EE', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t1', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t2', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t5', keyname='$KEY_37A25A0B', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t6', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t6', keyname='$KEY_37496DB0', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t9', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t10', keyname='$KEY_FD8D4AAA', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='schema
 	{
 		int i 
 	}
 keys
 	{
-		"COMDB2_PK" = i 
+		uniqnulls "COMDB2_PK" = i 
 	}
 ')
 (type='index', name='$COMDB2_PK_5E8AC7D0', tbl_name='t1', rootpage=5, sql='create index "$COMDB2_PK_5E8AC7D0" on "t1" ("i");', csc2=NULL)
@@ -120,7 +120,7 @@ keys
 	}
 keys
 	{
-		"COMDB2_PK" = i 
+		uniqnulls "COMDB2_PK" = i 
 	}
 ')
 (type='index', name='$COMDB2_PK_75A79413', tbl_name='t2', rootpage=7, sql='create index "$COMDB2_PK_75A79413" on "t2" ("i");', csc2=NULL)
@@ -130,10 +130,10 @@ keys
 	}
 keys
 	{
-		"$KEY_3AE602D4" = i 
+		uniqnulls "$KEY_37A25A0B" = i 
 	}
 ')
-(type='index', name='$$KEY_3AE602D4_3AE602D4', tbl_name='t5', rootpage=9, sql='create index "$$KEY_3AE602D4_3AE602D4" on "t5" ("i");', csc2=NULL)
+(type='index', name='$$KEY_37A25A0B_3AE602D4', tbl_name='t5', rootpage=9, sql='create index "$$KEY_37A25A0B_3AE602D4" on "t5" ("i");', csc2=NULL)
 (type='table', name='t6', tbl_name='t6', rootpage=10, sql='create table "t6"("i" int, "j" int);', csc2='schema
 	{
 		int i 
@@ -141,12 +141,12 @@ keys
 	}
 keys
 	{
-		"COMDB2_PK" = i 
-		"$KEY_88C200AD" = j 
+		uniqnulls "COMDB2_PK" = i 
+		uniqnulls "$KEY_37496DB0" = j 
 	}
 ')
 (type='index', name='$COMDB2_PK_11CB5117', tbl_name='t6', rootpage=11, sql='create index "$COMDB2_PK_11CB5117" on "t6" ("i");', csc2=NULL)
-(type='index', name='$$KEY_88C200AD_88C200AD', tbl_name='t6', rootpage=12, sql='create index "$$KEY_88C200AD_88C200AD" on "t6" ("j");', csc2=NULL)
+(type='index', name='$$KEY_37496DB0_88C200AD', tbl_name='t6', rootpage=12, sql='create index "$$KEY_37496DB0_88C200AD" on "t6" ("j");', csc2=NULL)
 (type='table', name='t9', tbl_name='t9', rootpage=13, sql='create table "t9"("i" int, "j" int);', csc2='schema
 	{
 		int i 
@@ -154,7 +154,7 @@ keys
 	}
 keys
 	{
-		"COMDB2_PK" = i + j 
+		uniqnulls "COMDB2_PK" = i + j 
 	}
 ')
 (type='index', name='$COMDB2_PK_F7FB6E60', tbl_name='t9', rootpage=14, sql='create index "$COMDB2_PK_F7FB6E60" on "t9" ("i", "j");', csc2=NULL)
@@ -165,15 +165,15 @@ keys
 	}
 keys
 	{
-		"$KEY_BFD493EE" = i + j 
+		uniqnulls "$KEY_FD8D4AAA" = i + j 
 	}
 ')
-(type='index', name='$$KEY_BFD493EE_BFD493EE', tbl_name='t10', rootpage=16, sql='create index "$$KEY_BFD493EE_BFD493EE" on "t10" ("i", "j");', csc2=NULL)
+(type='index', name='$$KEY_FD8D4AAA_BFD493EE', tbl_name='t10', rootpage=16, sql='create index "$$KEY_FD8D4AAA_BFD493EE" on "t10" ("i", "j");', csc2=NULL)
 [DROP TABLE t3] failed with rc -3 no such table: t3
 [DROP TABLE t4] failed with rc -3 no such table: t4
 [DROP TABLE t7] failed with rc -3 no such table: t7
 [DROP TABLE t8] failed with rc -3 no such table: t8
-[CREATE TABLE t1(i INT, j INT, UNIQUE(i, j), UNIQUE(i, j))] failed with rc -3 Index '$KEY_F9E83FD8' already exists.
+[CREATE TABLE t1(i INT, j INT, UNIQUE(i, j), UNIQUE(i, j))] failed with rc -3 Index '$KEY_EB862766' already exists.
 (tablename='t2')
 (tablename='t3')
 (tablename='t4')
@@ -194,15 +194,15 @@ keys
 (tablename='t7', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t8', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t8', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
-(tablename='t2', keyname='$KEY_FBAE8181', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t2', keyname='$KEY_498A83F8', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t4', keyname='$KEY_92E6E53D', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t5', keyname='$KEY_3AE602D4', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t6', keyname='$KEY_66967FE9', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t7', keyname='$KEY_C62EE9BB', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t8', keyname='$KEY_E03FA74B', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t8', keyname='$KEY_F6390457', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t8', keyname='$KEY_36A904B4', keynumber=2, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t2', keyname='$KEY_9C18F596', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t2', keyname='$KEY_2E3CF7EF', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t4', keyname='$KEY_167DCD0B', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t5', keyname='$KEY_37A25A0B', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t6', keyname='$KEY_B9974512', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t7', keyname='$KEY_152B02D9', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t8', keyname='$KEY_4F831046', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t8', keyname='$KEY_762F1DF7', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t8', keyname='$KEY_9915B3B9', keynumber=2, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
 (type='table', name='t2', tbl_name='t2', rootpage=4, sql='create table "t2"("i" int, "j" int);', csc2='schema
 	{
 		int i null = yes 
@@ -210,12 +210,12 @@ keys
 	}
 keys
 	{
-		"$KEY_FBAE8181" = i + j 
-		"$KEY_498A83F8" = j + i 
+		uniqnulls "$KEY_9C18F596" = i + j 
+		uniqnulls "$KEY_2E3CF7EF" = j + i 
 	}
 ')
-(type='index', name='$$KEY_FBAE8181_FBAE8181', tbl_name='t2', rootpage=5, sql='create index "$$KEY_FBAE8181_FBAE8181" on "t2" ("i", "j");', csc2=NULL)
-(type='index', name='$$KEY_498A83F8_498A83F8', tbl_name='t2', rootpage=6, sql='create index "$$KEY_498A83F8_498A83F8" on "t2" ("j", "i");', csc2=NULL)
+(type='index', name='$$KEY_9C18F596_FBAE8181', tbl_name='t2', rootpage=5, sql='create index "$$KEY_9C18F596_FBAE8181" on "t2" ("i", "j");', csc2=NULL)
+(type='index', name='$$KEY_2E3CF7EF_498A83F8', tbl_name='t2', rootpage=6, sql='create index "$$KEY_2E3CF7EF_498A83F8" on "t2" ("j", "i");', csc2=NULL)
 (type='table', name='t3', tbl_name='t3', rootpage=7, sql='create table "t3"("i" int);', csc2='schema
 	{
 		int i null = yes 
@@ -228,10 +228,10 @@ keys
 	}
 keys
 	{
-		"$KEY_92E6E53D" = <DESCEND> i 
+		uniqnulls "$KEY_167DCD0B" = <DESCEND> i 
 	}
 ')
-(type='index', name='$$KEY_92E6E53D_92E6E53D', tbl_name='t4', rootpage=9, sql='create index "$$KEY_92E6E53D_92E6E53D" on "t4" ("i" DESC);', csc2=NULL)
+(type='index', name='$$KEY_167DCD0B_92E6E53D', tbl_name='t4', rootpage=9, sql='create index "$$KEY_167DCD0B_92E6E53D" on "t4" ("i" DESC);', csc2=NULL)
 (type='table', name='t5', tbl_name='t5', rootpage=10, sql='create table "t5"("i" int, "j" int);', csc2='schema
 	{
 		int i null = yes 
@@ -239,10 +239,10 @@ keys
 	}
 keys
 	{
-		"$KEY_3AE602D4" = i 
+		uniqnulls "$KEY_37A25A0B" = i 
 	}
 ')
-(type='index', name='$$KEY_3AE602D4_3AE602D4', tbl_name='t5', rootpage=11, sql='create index "$$KEY_3AE602D4_3AE602D4" on "t5" ("i");', csc2=NULL)
+(type='index', name='$$KEY_37A25A0B_3AE602D4', tbl_name='t5', rootpage=11, sql='create index "$$KEY_37A25A0B_3AE602D4" on "t5" ("i");', csc2=NULL)
 (type='table', name='t6', tbl_name='t6', rootpage=12, sql='create table "t6"("i" int, "j" int);', csc2='schema
 	{
 		int i null = yes 
@@ -250,10 +250,10 @@ keys
 	}
 keys
 	{
-		"$KEY_66967FE9" = i + <DESCEND> j 
+		uniqnulls "$KEY_B9974512" = i + <DESCEND> j 
 	}
 ')
-(type='index', name='$$KEY_66967FE9_66967FE9', tbl_name='t6', rootpage=13, sql='create index "$$KEY_66967FE9_66967FE9" on "t6" ("i", "j" DESC);', csc2=NULL)
+(type='index', name='$$KEY_B9974512_66967FE9', tbl_name='t6', rootpage=13, sql='create index "$$KEY_B9974512_66967FE9" on "t6" ("i", "j" DESC);', csc2=NULL)
 (type='table', name='t7', tbl_name='t7', rootpage=14, sql='create table "t7"("i" int, "j" int);', csc2='schema
 	{
 		int i null = yes 
@@ -261,10 +261,10 @@ keys
 	}
 keys
 	{
-		"$KEY_C62EE9BB" = <DESCEND> i + <DESCEND> j 
+		uniqnulls "$KEY_152B02D9" = <DESCEND> i + <DESCEND> j 
 	}
 ')
-(type='index', name='$$KEY_C62EE9BB_C62EE9BB', tbl_name='t7', rootpage=15, sql='create index "$$KEY_C62EE9BB_C62EE9BB" on "t7" ("i" DESC, "j" DESC);', csc2=NULL)
+(type='index', name='$$KEY_152B02D9_C62EE9BB', tbl_name='t7', rootpage=15, sql='create index "$$KEY_152B02D9_C62EE9BB" on "t7" ("i" DESC, "j" DESC);', csc2=NULL)
 (type='table', name='t8', tbl_name='t8', rootpage=16, sql='create table "t8"("i" int, "j" int);', csc2='schema
 	{
 		int i null = yes 
@@ -272,14 +272,14 @@ keys
 	}
 keys
 	{
-		"$KEY_E03FA74B" = <DESCEND> i + j 
-		"$KEY_F6390457" = i + j 
-		"$KEY_36A904B4" = i + <DESCEND> j 
+		uniqnulls "$KEY_4F831046" = <DESCEND> i + j 
+		uniqnulls "$KEY_762F1DF7" = i + j 
+		uniqnulls "$KEY_9915B3B9" = i + <DESCEND> j 
 	}
 ')
-(type='index', name='$$KEY_E03FA74B_E03FA74B', tbl_name='t8', rootpage=17, sql='create index "$$KEY_E03FA74B_E03FA74B" on "t8" ("i" DESC, "j");', csc2=NULL)
-(type='index', name='$$KEY_F6390457_F6390457', tbl_name='t8', rootpage=18, sql='create index "$$KEY_F6390457_F6390457" on "t8" ("i", "j");', csc2=NULL)
-(type='index', name='$$KEY_36A904B4_36A904B4', tbl_name='t8', rootpage=19, sql='create index "$$KEY_36A904B4_36A904B4" on "t8" ("i", "j" DESC);', csc2=NULL)
+(type='index', name='$$KEY_4F831046_E03FA74B', tbl_name='t8', rootpage=17, sql='create index "$$KEY_4F831046_E03FA74B" on "t8" ("i" DESC, "j");', csc2=NULL)
+(type='index', name='$$KEY_762F1DF7_F6390457', tbl_name='t8', rootpage=18, sql='create index "$$KEY_762F1DF7_F6390457" on "t8" ("i", "j");', csc2=NULL)
+(type='index', name='$$KEY_9915B3B9_36A904B4', tbl_name='t8', rootpage=19, sql='create index "$$KEY_9915B3B9_36A904B4" on "t8" ("i", "j" DESC);', csc2=NULL)
 [DROP TABLE t1] failed with rc -3 no such table: t1
 [CREATE TABLE t5(i INT PRIMARY KEY, FOREIGN KEY (i) REFERENCES t4(i))] failed with rc -3 A matching key for the FOREIGN KEY was not found in the parent (referenced) table 't4'.
 (tablename='t1', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
@@ -293,14 +293,14 @@ keys
 (tablename='t8', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
 (tablename='t9', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
 (tablename='t9', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
-(tablename='t1', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t2', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t3', keyname='$KEY_37248BBB', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t6', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t7', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t8', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t9', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t9', keyname='$KEY_827A0A22', keynumber=1, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t1', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t2', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t3', keyname='$KEY_37248BBB', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t6', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t7', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t8', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t9', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t9', keyname='$KEY_827A0A22', keynumber=1, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
 (name='$CONSTRAINT_C6A17957', tablename='t2', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
 (name='$CONSTRAINT_C6A17957', tablename='t3', keyname='$KEY_37248BBB', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
 (name='$CONSTRAINT_C6A17957', tablename='t6', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
@@ -312,7 +312,7 @@ keys
 	}
 keys
 	{
-		"COMDB2_PK" = i 
+		uniqnulls "COMDB2_PK" = i 
 	}
 ')
 (type='index', name='$COMDB2_PK_5E8AC7D0', tbl_name='t1', rootpage=5, sql='create index "$COMDB2_PK_5E8AC7D0" on "t1" ("i");', csc2=NULL)
@@ -322,7 +322,7 @@ keys
 	}
 keys
 	{
-		"COMDB2_PK" = i 
+		uniqnulls "COMDB2_PK" = i 
 	}
 constraints
 	{
@@ -355,7 +355,7 @@ constraints
 	}
 keys
 	{
-		"COMDB2_PK" = i 
+		uniqnulls "COMDB2_PK" = i 
 	}
 constraints
 	{
@@ -370,7 +370,7 @@ constraints
 	}
 keys
 	{
-		"COMDB2_PK" = i + j 
+		uniqnulls "COMDB2_PK" = i + j 
 	}
 ')
 (type='index', name='$COMDB2_PK_FD65436A', tbl_name='t7', rootpage=14, sql='create index "$COMDB2_PK_FD65436A" on "t7" ("i", "j");', csc2=NULL)
@@ -381,7 +381,7 @@ keys
 	}
 keys
 	{
-		"COMDB2_PK" = i + j 
+		uniqnulls "COMDB2_PK" = i + j 
 	}
 constraints
 	{
@@ -396,7 +396,7 @@ constraints
 	}
 keys
 	{
-		"COMDB2_PK" = i 
+		uniqnulls "COMDB2_PK" = i 
 		dup "$KEY_827A0A22" = i + j 
 	}
 constraints
@@ -534,11 +534,11 @@ constraints
 (tablename='t3', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
 (tablename='t4', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
 (tablename='t5', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
-(tablename='t1', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t2', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t3', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t4', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t5', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t1', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t2', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t3', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t4', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t5', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
 (name='$CONSTRAINT_C6A17957', tablename='t2', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
 (name='$CONSTRAINT_C6A17957', tablename='t3', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='Y', iscascadingupdate='N')
 (name='$CONSTRAINT_C6A17957', tablename='t4', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='Y', iscascadingupdate='Y')
@@ -549,7 +549,7 @@ constraints
 	}
 keys
 	{
-		"COMDB2_PK" = i 
+		uniqnulls "COMDB2_PK" = i 
 	}
 ')
 (type='index', name='$COMDB2_PK_5E8AC7D0', tbl_name='t1', rootpage=5, sql='create index "$COMDB2_PK_5E8AC7D0" on "t1" ("i");', csc2=NULL)
@@ -559,7 +559,7 @@ keys
 	}
 keys
 	{
-		"COMDB2_PK" = i 
+		uniqnulls "COMDB2_PK" = i 
 	}
 constraints
 	{
@@ -573,7 +573,7 @@ constraints
 	}
 keys
 	{
-		"COMDB2_PK" = i 
+		uniqnulls "COMDB2_PK" = i 
 	}
 constraints
 	{
@@ -587,7 +587,7 @@ constraints
 	}
 keys
 	{
-		"COMDB2_PK" = i 
+		uniqnulls "COMDB2_PK" = i 
 	}
 constraints
 	{
@@ -601,7 +601,7 @@ constraints
 	}
 keys
 	{
-		"COMDB2_PK" = i 
+		uniqnulls "COMDB2_PK" = i 
 	}
 constraints
 	{
@@ -609,11 +609,11 @@ constraints
 	}
 ')
 (type='index', name='$COMDB2_PK_3AE602D4', tbl_name='t5', rootpage=13, sql='create index "$COMDB2_PK_3AE602D4" on "t5" ("i");', csc2=NULL)
-[INSERT INTO t1 VALUES(NULL)] failed with rc 4 Null constraint violation for column 'i' on table 't1'. unable to add record rc = 318
-[INSERT INTO t2 VALUES(NULL)] failed with rc 4 Null constraint violation for column 'i' on table 't2'. unable to add record rc = 318
-[INSERT INTO t3 VALUES(1, NULL)] failed with rc 4 Null constraint violation for column 'j' on table 't3'. unable to add record rc = 318
-[INSERT INTO t3 VALUES(NULL, 1)] failed with rc 4 Null constraint violation for column 'i' on table 't3'. unable to add record rc = 318
-[INSERT INTO t3 VALUES(NULL, NULL)] failed with rc 4 Null constraint violation for column 'i' on table 't3'. unable to add record rc = 318
+[INSERT INTO t1 VALUES(NULL)] failed with rc 4 Null constraint violation for column 'i' on table 't1'. null constraint error data .ONDISK->.ONDISK 'null constraint violation from bint4 field 'i' to bint4 field 'i' for table 't1'' unable to add record rc = 318
+[INSERT INTO t2 VALUES(NULL)] failed with rc 4 Null constraint violation for column 'i' on table 't2'. null constraint error data .ONDISK->.ONDISK 'null constraint violation from bint4 field 'i' to bint4 field 'i' for table 't2'' unable to add record rc = 318
+[INSERT INTO t3 VALUES(1, NULL)] failed with rc 4 Null constraint violation for column 'j' on table 't3'. null constraint error data .ONDISK->.ONDISK 'null constraint violation from bint4 field 'j' to bint4 field 'j' for table 't3'' unable to add record rc = 318
+[INSERT INTO t3 VALUES(NULL, 1)] failed with rc 4 Null constraint violation for column 'i' on table 't3'. null constraint error data .ONDISK->.ONDISK 'null constraint violation from bint4 field 'i' to bint4 field 'i' for table 't3'' unable to add record rc = 318
+[INSERT INTO t3 VALUES(NULL, NULL)] failed with rc 4 Null constraint violation for column 'i' on table 't3'. null constraint error data .ONDISK->.ONDISK 'null constraint violation from bint4 field 'i' to bint4 field 'i' for table 't3'' unable to add record rc = 318
 (COUNT(*)=0=1)
 (COUNT(*)=0=1)
 (COUNT(*)=0=1)
@@ -621,16 +621,16 @@ constraints
 (tablename='t2', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
 (tablename='t3', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
 (tablename='t3', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
-(tablename='t1', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t2', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t3', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t1', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t2', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t3', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='schema
 	{
 		int i 
 	}
 keys
 	{
-		"COMDB2_PK" = i 
+		uniqnulls "COMDB2_PK" = i 
 	}
 ')
 (type='index', name='$COMDB2_PK_5E8AC7D0', tbl_name='t1', rootpage=5, sql='create index "$COMDB2_PK_5E8AC7D0" on "t1" ("i");', csc2=NULL)
@@ -640,7 +640,7 @@ keys
 	}
 keys
 	{
-		"COMDB2_PK" = i 
+		uniqnulls "COMDB2_PK" = i 
 	}
 ')
 (type='index', name='$COMDB2_PK_75A79413', tbl_name='t2', rootpage=7, sql='create index "$COMDB2_PK_75A79413" on "t2" ("i");', csc2=NULL)
@@ -651,7 +651,7 @@ keys
 	}
 keys
 	{
-		"COMDB2_PK" = i + j 
+		uniqnulls "COMDB2_PK" = i + j 
 	}
 ')
 (type='index', name='$COMDB2_PK_FA6CEBB6', tbl_name='t3', rootpage=9, sql='create index "$COMDB2_PK_FA6CEBB6" on "t3" ("i", "j");', csc2=NULL)
@@ -683,19 +683,19 @@ keys
 (tablename='t4', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t5', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t5', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
-(tablename='t1', keyname='$KEY_6E29884F', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t1', keyname='$KEY_DC0D8A36', keynumber=1, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t2', keyname='DUP1', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t2', keyname='DUP2', keynumber=1, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t3', keyname='$KEY_FA6CEBB6', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t3', keyname='$KEY_4848E9CF', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t4', keyname='UNIQ1', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t4', keyname='UNIQ2', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t5', keyname='$KEY_3AE602D4', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t5', keyname='$KEY_F5B8CA59', keynumber=1, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t5', keyname='$KEY_FEE19704', keynumber=2, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t5', keyname='DUP_KEY', keynumber=3, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t5', keyname='UNIQUE_KEY', keynumber=4, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t1', keyname='$KEY_6E29884F', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t1', keyname='$KEY_DC0D8A36', keynumber=1, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t2', keyname='DUP1', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t2', keyname='DUP2', keynumber=1, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t3', keyname='$KEY_7BDB9F9', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t3', keyname='$KEY_B599BB80', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t4', keyname='UNIQ1', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t4', keyname='UNIQ2', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t5', keyname='$KEY_37A25A0B', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t5', keyname='$KEY_F5B8CA59', keynumber=1, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t5', keyname='$KEY_E8801C19', keynumber=2, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t5', keyname='DUP_KEY', keynumber=3, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t5', keyname='UNIQUE_KEY', keynumber=4, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int, "j" int);', csc2='schema
 	{
 		int i null = yes 
@@ -729,12 +729,12 @@ keys
 	}
 keys
 	{
-		"$KEY_FA6CEBB6" = i + j 
-		"$KEY_4848E9CF" = j + i 
+		uniqnulls "$KEY_7BDB9F9" = i + j 
+		uniqnulls "$KEY_B599BB80" = j + i 
 	}
 ')
-(type='index', name='$$KEY_FA6CEBB6_FA6CEBB6', tbl_name='t3', rootpage=11, sql='create index "$$KEY_FA6CEBB6_FA6CEBB6" on "t3" ("i", "j");', csc2=NULL)
-(type='index', name='$$KEY_4848E9CF_4848E9CF', tbl_name='t3', rootpage=12, sql='create index "$$KEY_4848E9CF_4848E9CF" on "t3" ("j", "i");', csc2=NULL)
+(type='index', name='$$KEY_7BDB9F9_FA6CEBB6', tbl_name='t3', rootpage=11, sql='create index "$$KEY_7BDB9F9_FA6CEBB6" on "t3" ("i", "j");', csc2=NULL)
+(type='index', name='$$KEY_B599BB80_4848E9CF', tbl_name='t3', rootpage=12, sql='create index "$$KEY_B599BB80_4848E9CF" on "t3" ("j", "i");', csc2=NULL)
 (type='table', name='t4', tbl_name='t4', rootpage=13, sql='create table "t4"("i" int, "j" int);', csc2='schema
 	{
 		int i null = yes 
@@ -742,8 +742,8 @@ keys
 	}
 keys
 	{
-		"uniq1" = i + j 
-		"uniq2" = j + i 
+		uniqnulls "uniq1" = i + j 
+		uniqnulls "uniq2" = j + i 
 	}
 ')
 (type='index', name='$UNIQ1_FF23FD33', tbl_name='t4', rootpage=14, sql='create index "$UNIQ1_FF23FD33" on "t4" ("i", "j");', csc2=NULL)
@@ -755,16 +755,16 @@ keys
 	}
 keys
 	{
-		"$KEY_3AE602D4" = i 
+		uniqnulls "$KEY_37A25A0B" = i 
 		dup "$KEY_F5B8CA59" = i + j 
-		"$KEY_FEE19704" = i + j 
+		uniqnulls "$KEY_E8801C19" = i + j 
 		dup "dup_key" = i + j 
-		"unique_key" = j + i 
+		uniqnulls "unique_key" = j + i 
 	}
 ')
-(type='index', name='$$KEY_3AE602D4_3AE602D4', tbl_name='t5', rootpage=17, sql='create index "$$KEY_3AE602D4_3AE602D4" on "t5" ("i");', csc2=NULL)
+(type='index', name='$$KEY_37A25A0B_3AE602D4', tbl_name='t5', rootpage=17, sql='create index "$$KEY_37A25A0B_3AE602D4" on "t5" ("i");', csc2=NULL)
 (type='index', name='$$KEY_F5B8CA59_F5B8CA59', tbl_name='t5', rootpage=18, sql='create index "$$KEY_F5B8CA59_F5B8CA59" on "t5" ("i", "j");', csc2=NULL)
-(type='index', name='$$KEY_FEE19704_FEE19704', tbl_name='t5', rootpage=19, sql='create index "$$KEY_FEE19704_FEE19704" on "t5" ("i", "j");', csc2=NULL)
+(type='index', name='$$KEY_E8801C19_FEE19704', tbl_name='t5', rootpage=19, sql='create index "$$KEY_E8801C19_FEE19704" on "t5" ("i", "j");', csc2=NULL)
 (type='index', name='$DUP_KEY_F5B8CA59', tbl_name='t5', rootpage=20, sql='create index "$DUP_KEY_F5B8CA59" on "t5" ("i", "j");', csc2=NULL)
 (type='index', name='$UNIQUE_KEY_4CC5957D', tbl_name='t5', rootpage=21, sql='create index "$UNIQUE_KEY_4CC5957D" on "t5" ("j", "i");', csc2=NULL)
 (tablename='t1', columnname='c1', type='cstring', size=3, sqltype='char(2)', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
@@ -789,18 +789,18 @@ keys
 (tablename='t4', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t5', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t5', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
-(tablename='t1', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t2', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t3', keyname='$KEY_6CBCA552', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t4', keyname='$KEY_850457AB', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t5', keyname='$KEY_3FDDB096', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t1', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t2', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t3', keyname='$KEY_DF179048', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t4', keyname='$KEY_850457AB', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t5', keyname='$KEY_3FDDB096', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='schema
 	{
 		int i 
 	}
 keys
 	{
-		"COMDB2_PK" = i 
+		uniqnulls "COMDB2_PK" = i 
 	}
 ')
 (type='index', name='$COMDB2_PK_5E8AC7D0', tbl_name='t1', rootpage=5, sql='create index "$COMDB2_PK_5E8AC7D0" on "t1" ("i");', csc2=NULL)
@@ -810,7 +810,7 @@ keys
 	}
 keys
 	{
-		"COMDB2_PK" = <DESCEND> i 
+		uniqnulls "COMDB2_PK" = <DESCEND> i 
 	}
 ')
 (type='index', name='$COMDB2_PK_44BF0620', tbl_name='t2', rootpage=7, sql='create index "$COMDB2_PK_44BF0620" on "t2" ("i" DESC);', csc2=NULL)
@@ -820,10 +820,10 @@ keys
 	}
 keys
 	{
-		"$KEY_6CBCA552" = i 
+		uniqnulls "$KEY_DF179048" = i 
 	}
 ')
-(type='index', name='$$KEY_6CBCA552_6CBCA552', tbl_name='t3', rootpage=9, sql='create index "$$KEY_6CBCA552_6CBCA552" on "t3" ("i");', csc2=NULL)
+(type='index', name='$$KEY_DF179048_6CBCA552', tbl_name='t3', rootpage=9, sql='create index "$$KEY_DF179048_6CBCA552" on "t3" ("i");', csc2=NULL)
 (type='table', name='t4', tbl_name='t4', rootpage=10, sql='create table "t4"("i" int);', csc2='schema
 	{
 		int i null = yes 
@@ -849,18 +849,18 @@ keys
 [CREATE TABLE t1(key INT KEY)] failed with rc -3 near "key": syntax error
 (tablename='t1', columnname='unique', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t2', columnname='key', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
-(tablename='t1', keyname='$KEY_424C1931', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t2', keyname='$KEY_A82281A0', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t1', keyname='$KEY_A513E531', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t2', keyname='$KEY_A82281A0', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("unique" int);', csc2='schema
 	{
 		int unique null = yes 
 	}
 keys
 	{
-		"$KEY_424C1931" = unique 
+		uniqnulls "$KEY_A513E531" = unique 
 	}
 ')
-(type='index', name='$$KEY_424C1931_424C1931', tbl_name='t1', rootpage=5, sql='create index "$$KEY_424C1931_424C1931" on "t1" ("unique");', csc2=NULL)
+(type='index', name='$$KEY_A513E531_424C1931', tbl_name='t1', rootpage=5, sql='create index "$$KEY_A513E531_424C1931" on "t1" ("unique");', csc2=NULL)
 (type='table', name='t2', tbl_name='t2', rootpage=6, sql='create table "t2"("key" int);', csc2='schema
 	{
 		int key null = yes 
@@ -884,17 +884,17 @@ keys
 (tablename='t7', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t7', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t8', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
-(tablename='t1', keyname='IDX1', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t1', keyname='IDX2', keynumber=1, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t1', keyname='IDX3', keynumber=2, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t1', keyname='IDX4', keynumber=3, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t2', keyname='$KEY_A44A20B', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t3', keyname='$KEY_37248BBB', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t4', keyname='$KEY_3EE419FC', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t5', keyname='$KEY_20409382', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t6', keyname='$KEY_1DE18B7E', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t7', keyname='$KEY_AF5C9299', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t8', keyname='IDX1', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t1', keyname='IDX1', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t1', keyname='IDX2', keynumber=1, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t1', keyname='IDX3', keynumber=2, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t1', keyname='IDX4', keynumber=3, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t2', keyname='$KEY_A44A20B', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t3', keyname='$KEY_37248BBB', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t4', keyname='$KEY_3EE419FC', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t5', keyname='$KEY_20409382', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t6', keyname='$KEY_1DE18B7E', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t7', keyname='$KEY_AF5C9299', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t8', keyname='IDX1', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
 (name='$CONSTRAINT_8AAC02E5', tablename='t2', keyname='$KEY_A44A20B', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N')
 (name='$CONSTRAINT_64C1EA0', tablename='t3', keyname='$KEY_37248BBB', foreigntablename='t1', foreignkeyname='IDX2', iscascadingdelete='N', iscascadingupdate='N')
 (name='$CONSTRAINT_95177019', tablename='t4', keyname='$KEY_3EE419FC', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N')
@@ -1024,3 +1024,16 @@ constraints
 [CREATE TABLE t4(i INT, FOREIGN KEY (i) REFERENCES t1(i) CONSTRAINT "mycons3")] failed with rc -3 near ")": syntax error
 (name='mycons1', tablename='t2', keyname='$KEY_A44A20B', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
 (name='mycons2', tablename='t3', keyname='$KEY_37248BBB', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
+(rows inserted=1)
+[CREATE TABLE t2 AS SELECT * FROM t1] failed with rc -3 near "AS": syntax error
+[CREATE TABLE t1(i INT (100))] failed with rc -3 Invalid type specified.
+(csc2='schema
+	{
+		cstring v[101] null = yes 
+	}
+')
+(csc2='schema
+	{
+		cstring v[101] null = yes 
+	}
+')

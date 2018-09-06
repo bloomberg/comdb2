@@ -109,6 +109,13 @@ typedef struct intv {
     } u;
 } intv_t;
 
+typedef struct {
+    struct tm tm;
+    unsigned int frac;
+    unsigned int prec;
+    char tzname[CDB2_MAX_TZNAME];
+} datetime_t;
+
 /* Used for collecting blob data before a keyless add/upd/del.
  * An array of these also supplements */
 typedef struct blob_buffer {
@@ -472,7 +479,6 @@ int cstrlenlim(const char *s, int lim);
 int cstrlenlimflipped(const unsigned char *s, int lim);
 int validate_cstr(const char *s, int lim);
 int validate_pstr(const char *s, int lim);
-int pstr2lenlim(const char *s, int lim);
 int pstrlenlim(const char *s, int lim);
 int CLIENT_UINT_to_CLIENT_UINT(const void *in, int inlen,
                                const struct field_conv_opts *inopts,
@@ -1878,12 +1884,24 @@ int SERVER_INTVYM_to_CLIENT_INTVYM(const void *in, int inlen,
                                    int *outnull, int *outdtsz,
                                    const struct field_conv_opts *outopts,
                                    blob_buffer_t *outblob);
+int SERVER_INTVYM_to_CLIENT_CSTR(const void *in, int inlen,
+                                 const struct field_conv_opts *inopts,
+                                 blob_buffer_t *inblob, void *out, int outlen,
+                                 int *outnull, int *outdtsz,
+                                 const struct field_conv_opts *outopts,
+                                 blob_buffer_t *outblob);
 int SERVER_INTVDS_to_CLIENT_INTVDS(const void *in, int inlen,
                                    const struct field_conv_opts *inopts,
                                    blob_buffer_t *inblob, void *out, int outlen,
                                    int *outnull, int *outdtsz,
                                    const struct field_conv_opts *outopts,
                                    blob_buffer_t *outblob);
+int SERVER_INTVDS_to_CLIENT_CSTR(const void *in, int inlen,
+                                 const struct field_conv_opts *inopts,
+                                 blob_buffer_t *inblob, void *out, int outlen,
+                                 int *outnull, int *outdtsz,
+                                 const struct field_conv_opts *outopts,
+                                 blob_buffer_t *outblob);
 int SERVER_INTVDSUS_to_CLIENT_INTVDSUS(const void *in, int inlen,
                                        const struct field_conv_opts *inopts,
                                        blob_buffer_t *inblob, void *out,
@@ -1891,6 +1909,12 @@ int SERVER_INTVDSUS_to_CLIENT_INTVDSUS(const void *in, int inlen,
                                        const struct field_conv_opts *outopts,
                                        blob_buffer_t *outblob);
 
+int SERVER_INTVDSUS_to_CLIENT_CSTR(const void *in, int inlen,
+                                   const struct field_conv_opts *inopts,
+                                   blob_buffer_t *inblob, void *out, int outlen,
+                                   int *outnull, int *outdtsz,
+                                   const struct field_conv_opts *outopts,
+                                   blob_buffer_t *outblob);
 int CLIENT_DATETIME_to_SERVER_DATETIME(const void *in, int inlen, int isnull,
                                        const struct field_conv_opts *inopts,
                                        blob_buffer_t *inblob, void *out,
@@ -2027,20 +2051,6 @@ int client_datetimeus_to_dttz(const cdb2_client_datetimeus_t *, const char *tz,
                               dttz_t *, int little_endian);
 int timespec_to_dttz(const struct timespec *, dttz_t *, int);
 
-struct field;
-struct sqlclntstate;
-int get_int_field(struct field *, const uint8_t *buf, int64_t *out);
-int get_uint_field(struct field *, const uint8_t *buf, uint64_t *out);
-int get_real_field(struct field *, const uint8_t *buf, double *out);
-int get_str_field(struct field *, const uint8_t *buf, char **out, int *outlen);
-int get_byte_field(struct field *, const uint8_t *buf, void **out, int *outlen);
-int get_datetime_field(struct field *, const uint8_t *buf, const char *tz,
-                       dttz_t *out, int little_endian);
-int get_datetimeus_field(struct field *, const uint8_t *buf, const char *tz,
-                         dttz_t *out, int little_endian);
-int get_blob_field(int blobno, struct sqlclntstate *clnt, void **out,
-                   int *outlen);
-
 short decimal_quantum_get(char *pdec, int len, int *sign);
 void decimal_quantum_set(char *pdec, int len, short *quantum, int *sign);
 struct dbtable;
@@ -2063,4 +2073,23 @@ void add_dttz_intvds(const dttz_t *, const intv_t *, dttz_t *);
 void sub_dttz_intvds(const dttz_t *, const intv_t *, dttz_t *);
 void sub_dttz_dttz(const dttz_t *, const dttz_t *, intv_t *);
 
+struct param_data {
+    char *name;
+    int type;
+    int null;
+    int pos;
+    int len;
+    union {
+        int64_t i;
+        double r;
+        void *p;
+        dttz_t dt;
+        intv_t tv;
+    } u;
+};
+
+int get_type(struct param_data *out, void *in, int inlen, int intype,
+             const char *tzname, int little);
+
+int intv_to_str(const intv_t *, char *, int, int *);
 #endif

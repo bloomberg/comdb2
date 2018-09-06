@@ -3160,7 +3160,7 @@ split:	ret = stack = 0;
 		 * is in the case where C_RECNUM is set.
 		 */
 
-        /* Invalidate the cursor before releasing the pagelock */
+		/* Invalidate the cursor before releasing the pagelock */
 		if (own == 0) {
 			cp->pgno = PGNO_INVALID;
 			cp->indx = 0;

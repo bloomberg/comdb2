@@ -42,6 +42,7 @@ Describes all of the keys in the database.
 * `isdatacopy` - `Y` if the data is inlined with this key.
 * `isrecnum` - `Y` if this key has recnums.
 * `condition` - Where condition for this index.
+* `uniqnulls` - `Y` if this key treats NULL values as unique.
 
 ## comdb2_keycomponents
 

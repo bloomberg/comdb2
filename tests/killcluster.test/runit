@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Make sure we behave correctly if entire cluster goes down
 debug=1
@@ -7,7 +7,7 @@ debug=1
 
 [[ "$debug" == 1 ]] && set -x
 loadcount=2000000
-instest=${TESTSROOTDIR}/tools/insert
+instest=${TESTSBUILDDIR}/insert
 needcluster=0
 sleeptime=10
 db=$1

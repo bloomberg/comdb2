@@ -344,6 +344,13 @@ void *comdb2_calloc(comdb2ma ma, size_t n, size_t size);
 void *comdb2_realloc(comdb2ma ma, void *ptr, size_t n);
 
 /*
+** Resize a memory block.
+** The function behaves as comdb2_realloc(), but it does not memcpy
+** if it must reposition the memory block.
+*/
+void *comdb2_resize(comdb2ma cm, void *ptr, size_t n);
+
+/*
 ** Comdb2ma free.
 **
 ** comdb2_free doesn't need a comdb2ma parameter. The allocator address is kept
@@ -428,7 +435,7 @@ int comdb2_malloc_stats(comdb2ma ma, int verbose, int human_readable,
 */
 int comdb2_malloc_trim(comdb2ma ma, size_t pad);
 
-#endif
+#endif /* COMDB2MA_OMIT_DYNAMIC */
 
 #ifndef COMDB2MA_OMIT_STATIC
 
@@ -487,6 +494,11 @@ void *comdb2_calloc_static(int indx, size_t n, size_t size);
 */
 void *comdb2_realloc_static(int indx, void *ptr, size_t n);
 
+/*
+** resize in a static allocator.
+*/
+void *comdb2_resize_static(int indx, void *ptr, size_t n);
+
 /* Just an alias. */
 #define comdb2_free_static comdb2_free
 
@@ -516,7 +528,7 @@ int comdb2_malloc_stats_static(int indx, int verbose, int human_readable,
 */
 int comdb2_malloc_trim_static(int indx, size_t pad);
 
-#endif
+#endif /* COMDB2MA_OMIT_STATIC */
 
 /****************************************
 **                                     **
@@ -538,6 +550,8 @@ char *os_strdup(const char *);
 ** a thread will be given the privilege to proceed with out-of-bounds memory.
 */
 typedef struct comdb2bmspace *comdb2bma;
+
+#ifndef USE_SYS_ALLOC
 
 /* constructor/destructor */
 
@@ -638,7 +652,60 @@ void *comdb2_timedrealloc_nl(comdb2bma ma, void *ptr, size_t n,
 void comdb2_bfree(comdb2bma ma, void *ptr);
 void comdb2_bfree_nl(comdb2bma ma, void *ptr);
 /* } free */
+#else
+#define comdb2bma_create(init, cap, name, plock) ((void *)1)
+#define comdb2bma_create_trace(init, cap, name, lock, file, func, line) ((void *)1)
+#define comdb2bma_destroy(ma) 0
+#define comdb2bma_pass_priority_back(ma) 0
+#define comdb2bma_transfer_priority(ma, tid) 0
+#define comdb2bma_yield(ma) 0
+#define comdb2bma_yield_all() 0
+#define comdb2bma_mark_locked(ma) 0
+#define comdb2bma_mark_unlocked(ma) 0
+#define comdb2bma_nblocks(ma) 0
+#define comdb2bma_priotid(ma) 0
 
+#define comdb2_bmalloc(ma, n) malloc(n)
+#define comdb2_trymalloc(ma, n) malloc(n)
+#define comdb2_timedmalloc(ma, n, ms) malloc(n)
+#define comdb2_bmalloc_nl(ma, n) malloc(n)
+#define comdb2_trymalloc_nl(ma, n) malloc(n)
+#define comdb2_timedmalloc_nl(ma, n, ms) malloc(n)
+
+#define comdb2_bcalloc(ma, n, size) calloc(n, size)
+#define comdb2_trycalloc(ma, n, size) calloc(n, size)
+#define comdb2_timedcalloc(ma, n, size, ms) calloc(n, size)
+#define comdb2_bcalloc_nl(ma, n, size) calloc(n, size)
+#define comdb2_trycalloc_nl(ma, n, size) calloc(n, size)
+#define comdb2_timedcalloc_nl(ma, n, size, ms) calloc(n, size)
+
+#define comdb2_brealloc(ma, ptr, n) realloc(ptr, n)
+#define comdb2_tryrealloc(ma, ptr, n) realloc(ptr, n)
+#define comdb2_timedrealloc(ma, ptr, n, ms) realloc(ptr, n)
+#define comdb2_brealloc_nl(ma, ptr, n) realloc(ptr, n)
+#define comdb2_tryrealloc_nl(ma, ptr, n) realloc(ptr, n)
+#define comdb2_timedrealloc_nl(ma, ptr, n, ms) realloc(ptr, n)
+
+#define comdb2_bfree(ma, ptr) free(ptr)
+#define comdb2_bfree_nl(ma, ptr) free(ptr)
+
+#endif /* USE_SYS_ALLOC */
 #endif /* COMDB2_OMIT_BMEM */
-#endif /* INCLUDED_MEM_H */
 
+#ifndef COMDB2MA_OMIT_DEBUG
+/* Dump the specified allocators. When `unsafe' is set to true,
+   also dump those thread-unsafe allocators. */
+int comdb2ma_debug_dump(const char *, int unsafe);
+/* Start debugging. */
+void comdb2ma_debug_start(void);
+/* Manually stop debugging. */
+void comdb2ma_debug_stop(void);
+/* Turn on debugging on the specified allocators. */
+int comdb2ma_debug_on(const char *);
+/* Turn off debugging on the specified allocators. */
+int comdb2ma_debug_off(const char *);
+/* Print debug config. */
+void comdb2ma_debug_show_config(void);
+#endif /* COMDB2MA_OMIT_DEBUG */
+
+#endif /* INCLUDED_MEM_H */

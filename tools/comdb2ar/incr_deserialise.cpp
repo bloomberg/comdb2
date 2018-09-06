@@ -30,7 +30,7 @@
 #define write_size (1000*1024)
 
 void update_tree(const std::string& filename,
-    const std::pair<FileInfo, std::vector<uint32_t> >& file_data
+    const std::pair<FileInfo, std::vector<uint32_t> >& file_data, bool dryrun
 )
 // Given a filename and a vector of pages that have been changed in that file
 // overwrite the pages with the new data read in from STDIN
@@ -40,9 +40,6 @@ void update_tree(const std::string& filename,
     std::vector<uint32_t> pages = file_data.second;
 
     int flags = O_RDONLY;
-#   ifndef __APPLE__
-    flags |= O_LARGEFILE;
-#   endif
     int fd = open(filename.c_str(), flags);
 
     struct stat st;
@@ -82,8 +79,10 @@ void update_tree(const std::string& filename,
         }
 
         // Seek out the offset corresponding to the page number and overwrite
-        tree_file.seekp(pagesize * *it, tree_file.beg);
-        tree_file.write((char *) pagebuf, pagesize);
+        if (!dryrun) {
+            tree_file.seekp(pagesize * *it, tree_file.beg);
+            tree_file.write((char *) pagebuf, pagesize);
+        }
     }
 
     std::clog << "x " << file_info.get_filename() << " PARTIAL" << " Pages ";
@@ -107,7 +106,7 @@ void update_tree(const std::string& filename,
 void unpack_incr_data(
     const std::vector<std::string>& file_order,
     const std::map<std::string, std::pair<FileInfo, std::vector<uint32_t> > >& updated_files,
-    const std::string& datadestdir
+    const std::string& datadestdir, bool dryrun
 )
 // Driver for updating the BTree files
 // Iterates through changed files and calls update_tree on them
@@ -127,7 +126,19 @@ void unpack_incr_data(
             throw Error(ss);
         }
 
-        update_tree(abs_filepath, fd_it->second);
+        const FileInfo fi = fd_it->second.first;
+        if (fi.get_filesize() == 0)
+            abort();
+        update_tree(abs_filepath, fd_it->second, dryrun);
+        // zap the file size to what we expect
+        struct stat st;
+        int rc = stat(abs_filepath.c_str(), &st);
+        if (rc) {
+            abort();
+        }
+        std::cerr << "truncating to " << fi.get_filesize() << " current size " << st.st_size << std::endl;
+        if(truncate(abs_filepath.c_str(), fi.get_filesize()))
+            perror("truncating");
     }
 }
 

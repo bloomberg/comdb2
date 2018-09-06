@@ -223,7 +223,7 @@ static void *_cron_runner(void *arg)
     }
 
     locked = 0;
-    while (!gbl_exit) {
+    while (!gbl_exit && !db_is_stopped()) {
         secs_until_next_event = DEFAULT_SLEEP_IDLE_SCHEDULE;
 
         pthread_mutex_lock(&sched->mtx);
@@ -366,7 +366,7 @@ void cron_lock(cron_sched_t *sched)
 
     pthread_mutex_lock(&sched->mtx);
 
-    if (sched->running) {
+    while (sched->running) {
         clock_gettime(CLOCK_REALTIME, &now);
         now.tv_sec += 1;
         pthread_cond_timedwait(&sched->cond, &sched->mtx, &now);

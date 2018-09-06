@@ -161,19 +161,19 @@ extern int gbl_rowlocks_commit_on_waiters;
 extern int gbl_locks_check_waiters;
 
 int get_physical_transaction(bdb_state_type *bdb_state, tran_type *logical_tran,
-                             tran_type **outtran)
+                             tran_type **outtran, int force_commit)
 {
     extern unsigned long long check_waiters_skip_count;
     extern unsigned long long check_waiters_commit_count;
     int rc = 0;
 
     if (!logical_tran->single_physical_transaction &&
-        logical_tran->micro_commit && logical_tran->physical_tran) {
+        logical_tran->physical_tran) {
         int do_commit = 0;
 
-        if (!gbl_rowlocks_commit_on_waiters || !gbl_locks_check_waiters)
+        if (force_commit || logical_tran->micro_commit)
             do_commit = 1;
-        else {
+        else if (gbl_locks_check_waiters && gbl_rowlocks_commit_on_waiters) {
             rc = bdb_state->dbenv->lock_id_has_waiters(
                 bdb_state->dbenv, logical_tran->physical_tran->tid->txnid);
 
@@ -215,6 +215,7 @@ static inline int micro_retry_check(bdb_state_type *bdb_state, tran_type *tran)
     extern int gbl_micro_retry_on_deadlock;
 
     if (gbl_rowlocks && gbl_micro_retry_on_deadlock && tran->micro_commit &&
+        !tran->single_physical_transaction &&
         !(gbl_locks_check_waiters && gbl_rowlocks_commit_on_waiters))
         return 1;
     else
@@ -255,18 +256,63 @@ int phys_dta_add(bdb_state_type *bdb_state, tran_type *logical_tran,
     int max_poll = bdb_state->attr->pagedeadlock_maxpoll;
     tran_type *physical_tran = NULL;
 
+    DBT *addlkptr = NULL;
+    DB_LOCK *addrowlk = NULL;
+    DB_LSN last_regop_lsn = logical_tran->last_regop_lsn;
+
     /* Start transaction */
-    rc = get_physical_transaction(bdb_state, logical_tran, &physical_tran);
-    if (rc)
+    rc = get_physical_transaction(bdb_state, logical_tran, &physical_tran, 0);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s failed get physical tran rc %d\n", __func__,
+               rc);
         goto done;
+    }
+
+    if (gbl_rowlocks && dtafile == 0) {
+        int did_commit = 0;
+        rc = tran_allocate_rlptr(logical_tran, &addlkptr, &addrowlk);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s failed to allocate rlptr rc %d\n",
+                   __func__, rc);
+            goto done;
+        }
+
+        if (log_compare(&last_regop_lsn, &logical_tran->last_regop_lsn))
+            did_commit = 1;
+
+        rc = bdb_lock_row_write_getlock(bdb_state, logical_tran, -1, genid,
+                                        addrowlk, addlkptr, !did_commit);
+        if (rc == DB_LOCK_NOTGRANTED && !did_commit) {
+            /* trylock failed, let's commit here and wait again */
+            tran_deallocate_pop(logical_tran, 1);
+            rc = get_physical_transaction(bdb_state, logical_tran,
+                                          &physical_tran, 1);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s failed get physical tran rc %d\n",
+                       __func__, rc);
+                goto done;
+            }
+            tran_allocate_rlptr(logical_tran, &addlkptr, &addrowlk);
+            rc = bdb_lock_row_write_getlock(bdb_state, logical_tran, -1, genid,
+                                            addrowlk, addlkptr, 0);
+        }
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s failed to lock row write genid %llx rc %d\n", __func__,
+                   genid, rc);
+            goto done;
+        }
+    }
 
     micro_retry = micro_retry_check(bdb_state, logical_tran);
 
     do {
-        rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
-            bdb_state->dbenv, physical_tran->tid->txnid);
-        if (rc)
-            goto done;
+        if (gbl_rowlocks) {
+            rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
+                bdb_state->dbenv, physical_tran->tid->txnid);
+            if (rc)
+                goto done;
+        }
 
         /* Insert row */
         rc = ll_dta_add(bdb_state, genid, dbp, physical_tran, dtafile,
@@ -277,7 +323,7 @@ int phys_dta_add(bdb_state_type *bdb_state, tran_type *logical_tran,
             retry = 1;
             bdb_tran_abort_phys_retry(bdb_state, physical_tran);
             rc = get_physical_transaction(bdb_state, logical_tran,
-                                          &physical_tran);
+                                          &physical_tran, 0);
             if (rc)
                 goto done;
             if (max_poll > 0)
@@ -293,15 +339,17 @@ int phys_dta_add(bdb_state_type *bdb_state, tran_type *logical_tran,
     if (rc)
         goto done;
 
-    /* Logical log on success */
-    rc = bdb_llog_add_dta_lk(bdb_state, physical_tran, genid, dtafile,
-                             dtastripe);
-    if (rc)
-        goto done;
+    if (gbl_rowlocks) {
+        /* Logical log on success */
+        rc = bdb_llog_add_dta_lk(bdb_state, physical_tran, genid, dtafile,
+                                 dtastripe);
+        if (rc)
+            goto done;
 
-    rc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
-        bdb_state->dbenv, physical_tran->tid, physical_tran->tid->txnid,
-        physical_tran->logical_tran->last_logical_lsn);
+        rc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
+            bdb_state->dbenv, physical_tran->tid, physical_tran->tid->txnid,
+            physical_tran->logical_tran->last_logical_lsn);
+    }
 
 done:
 
@@ -324,41 +372,72 @@ int phys_dta_del(bdb_state_type *bdb_state, tran_type *logical_tran, int rrn,
     /* Delete row */
     DBT *dellkptr = NULL;
     DB_LOCK *delrowlk = NULL;
+    DB_LSN last_regop_lsn = logical_tran->last_regop_lsn;
 
     /* Start my transaction */
-    rc = get_physical_transaction(bdb_state, logical_tran, &physical_tran);
-    if (rc)
+    rc = get_physical_transaction(bdb_state, logical_tran, &physical_tran, 0);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s failed get physical tran rc %d\n", __func__,
+               rc);
         goto done;
+    }
 
-    if (dtafile == 0) {
-    reallocate:
+    if (gbl_rowlocks && dtafile == 0) {
+        int did_commit = 0;
         rc = tran_allocate_rlptr(logical_tran, &dellkptr, &delrowlk);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s failed to allocate rlptr rc %d\n",
+                   __func__, rc);
+            goto done;
+        }
+
+        if (log_compare(&last_regop_lsn, &logical_tran->last_regop_lsn))
+            did_commit = 1;
 
         rc = bdb_lock_row_write_getlock(bdb_state, logical_tran, -1, genid,
-                                        delrowlk, dellkptr);
-        if (rc)
+                                        delrowlk, dellkptr, !did_commit);
+        if (rc == DB_LOCK_NOTGRANTED && !did_commit) {
+            /* trylock failed, let's commit here and wait again */
+            tran_deallocate_pop(logical_tran, 1);
+            rc = get_physical_transaction(bdb_state, logical_tran,
+                                          &physical_tran, 1);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s failed get physical tran rc %d\n",
+                       __func__, rc);
+                goto done;
+            }
+            tran_allocate_rlptr(logical_tran, &dellkptr, &delrowlk);
+            rc = bdb_lock_row_write_getlock(bdb_state, logical_tran, -1, genid,
+                                            delrowlk, dellkptr, 0);
+        }
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s failed to lock row write genid %llx rc %d\n", __func__,
+                   genid, rc);
             goto done;
+        }
     }
 
     micro_retry = micro_retry_check(bdb_state, logical_tran);
 
     do {
-        rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
-            bdb_state->dbenv, physical_tran->tid->txnid);
-        if (rc)
-            goto done;
+        if (gbl_rowlocks) {
+            rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
+                bdb_state->dbenv, physical_tran->tid->txnid);
+            if (rc)
+                goto done;
+        }
 
         /* Call dta-del */
-        rc =
-            ll_dta_del_rowlocks(bdb_state, physical_tran, rrn, genid, dbp,
-                                dtafile, dtastripe, &dbt_dta, NULL, NULL, NULL);
+        rc = ll_dta_del(bdb_state, physical_tran, rrn, genid, dbp, dtafile,
+                        dtastripe, &dbt_dta);
 
         if (micro_retry && --retry_count > 0 &&
             (rc == BDBERR_DEADLOCK || rc == DB_LOCK_DEADLOCK)) {
             retry = 1;
             bdb_tran_abort_phys_retry(bdb_state, physical_tran);
             rc = get_physical_transaction(bdb_state, logical_tran,
-                                          &physical_tran);
+                                          &physical_tran, 0);
             if (rc)
                 goto done;
             if (max_poll > 0)
@@ -373,17 +452,17 @@ int phys_dta_del(bdb_state_type *bdb_state, tran_type *logical_tran, int rrn,
     if (rc)
         goto done;
 
-    /* Logical log successful delete */
-    rc = bdb_llog_del_dta_lk(bdb_state, physical_tran, genid, &dbt_dta, dtafile,
-                             dtastripe);
+    if (gbl_rowlocks) {
+        /* Logical log successful delete */
+        rc = bdb_llog_del_dta_lk(bdb_state, physical_tran, genid, &dbt_dta,
+                                 dtafile, dtastripe);
+        if (!rc)
+            rc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
+                bdb_state->dbenv, physical_tran->tid, physical_tran->tid->txnid,
+                physical_tran->logical_tran->last_logical_lsn);
+    }
     if (dbt_dta.size)
         free(dbt_dta.data);
-    if (rc)
-        goto done;
-
-    rc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
-        bdb_state->dbenv, physical_tran->tid, physical_tran->tid->txnid,
-        physical_tran->logical_tran->last_logical_lsn);
 
 done:
     /* Normalize deadlock rcode */
@@ -412,21 +491,51 @@ int phys_dta_upd(bdb_state_type *bdb_state, int rrn,
     unsigned long long maskedold;
     unsigned long long maskednew;
     unsigned long long orignew = *newgenid;
+    DB_LSN last_regop_lsn = logical_tran->last_regop_lsn;
 
     /* Start my transaction */
-    rc = get_physical_transaction(bdb_state, logical_tran, &physical_tran);
-    if (rc)
+    rc = get_physical_transaction(bdb_state, logical_tran, &physical_tran, 0);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s failed get physical tran rc %d\n", __func__,
+               rc);
         goto done;
+    }
 
-    if (dtafile == 0) {
-    reallocate:
+    if (gbl_rowlocks && dtafile == 0) {
+        int did_commit = 0;
         rc = tran_allocate_rlptr(logical_tran, &oldlkptr, &oldrowlk);
-
-        /* Get old-rowlock */
-        rc = bdb_lock_row_write_getlock(bdb_state, logical_tran, -1, oldgenid,
-                                        oldrowlk, oldlkptr);
-        if (rc)
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s failed to allocate rlptr rc %d\n",
+                   __func__, rc);
             goto done;
+        }
+
+        if (log_compare(&last_regop_lsn, &logical_tran->last_regop_lsn))
+            did_commit = 1;
+
+        /* trylock first if physical tran wasn't committed before */
+        rc = bdb_lock_row_write_getlock(bdb_state, logical_tran, -1, oldgenid,
+                                        oldrowlk, oldlkptr, !did_commit);
+        if (rc == DB_LOCK_NOTGRANTED && !did_commit) {
+            /* trylock failed, let's commit here and wait again */
+            tran_deallocate_pop(logical_tran, 1);
+            rc = get_physical_transaction(bdb_state, logical_tran,
+                                          &physical_tran, 1);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s failed get physical tran rc %d\n",
+                       __func__, rc);
+                goto done;
+            }
+            tran_allocate_rlptr(logical_tran, &oldlkptr, &oldrowlk);
+            rc = bdb_lock_row_write_getlock(bdb_state, logical_tran, -1,
+                                            oldgenid, oldrowlk, oldlkptr, 0);
+        }
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s failed to lock row write genid %llx rc %d\n", __func__,
+                   oldgenid, rc);
+            goto done;
+        }
     }
 
     /*
@@ -440,25 +549,26 @@ int phys_dta_upd(bdb_state_type *bdb_state, int rrn,
     micro_retry = micro_retry_check(bdb_state, logical_tran);
 
     do {
-        rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
-            bdb_state->dbenv, physical_tran->tid->txnid);
-        if (rc)
-            goto done;
+        if (gbl_rowlocks) {
+            rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
+                bdb_state->dbenv, physical_tran->tid->txnid);
+            if (rc)
+                goto done;
+        }
 
         *newgenid = orignew;
 
         /* Returns wall genid, wall rowlock, new genid & new rowlock */
-        rc = ll_dta_upd_rowlocks(
-            bdb_state, rrn, oldgenid, newgenid, dbp, physical_tran, dtafile,
-            dtastripe, 0 /*participantstripid*/, 0 /*use_new_genid*/,
-            verify_dta, dta, &old_dta, NULL, NULL, NULL, NULL, NULL);
+        rc = ll_dta_upd(bdb_state, rrn, oldgenid, newgenid, dbp, physical_tran,
+                        dtafile, dtastripe, 0 /*participantstripid*/,
+                        0 /*use_new_genid*/, verify_dta, dta, &old_dta);
 
         if (micro_retry && --retry_count > 0 &&
             (rc == BDBERR_DEADLOCK || rc == DB_LOCK_DEADLOCK)) {
             retry = 1;
             bdb_tran_abort_phys_retry(bdb_state, physical_tran);
             rc = get_physical_transaction(bdb_state, logical_tran,
-                                          &physical_tran);
+                                          &physical_tran, 0);
             if (rc)
                 goto done;
             if (max_poll > 0)
@@ -473,18 +583,18 @@ int phys_dta_upd(bdb_state_type *bdb_state, int rrn,
     if (rc)
         goto done;
 
-    /* Write the logical log for this update */
-    rc = bdb_llog_upd_dta_lk(bdb_state, physical_tran, oldgenid, *newgenid,
-                             dtafile, dtastripe, &old_dta);
-    if (rc)
-        goto done;
+    if (gbl_rowlocks) {
+        /* Write the logical log for this update */
+        rc = bdb_llog_upd_dta_lk(bdb_state, physical_tran, oldgenid, *newgenid,
+                                 dtafile, dtastripe, &old_dta);
+        if (!rc)
+            rc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
+                bdb_state->dbenv, physical_tran->tid, physical_tran->tid->txnid,
+                physical_tran->logical_tran->last_logical_lsn);
+    }
 
     if (old_dta.data)
         free(old_dta.data);
-
-    rc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
-        bdb_state->dbenv, physical_tran->tid, physical_tran->tid->txnid,
-        physical_tran->logical_tran->last_logical_lsn);
 
 done:
     /* Normalize deadlock rcode */
@@ -507,21 +617,52 @@ int phys_key_add(bdb_state_type *bdb_state, tran_type *logical_tran,
     /* New row */
     DBT *newlkptr = NULL;
     DB_LOCK *newrowlk = NULL;
+    DB_LSN last_regop_lsn = logical_tran->last_regop_lsn;
 
     /* Physical tran */
-    rc = get_physical_transaction(bdb_state, logical_tran, &physical_tran);
+    rc = get_physical_transaction(bdb_state, logical_tran, &physical_tran, 0);
     if (rc) {
+        logmsg(LOGMSG_ERROR, "%s failed get physical tran rc %d\n", __func__,
+               rc);
         line = __LINE__;
         goto done;
     }
 
     /* Master-only locks unique ix value to ensure we aren't colliding with a
      * delete */
-    if (!bdb_state->ixdups[ixnum]) {
-        tran_allocate_rlptr(logical_tran, &newlkptr, &newrowlk);
-        rc = bdb_lock_ix_value_write(bdb_state, logical_tran, ixnum, dbt_key,
-                                     newrowlk, newlkptr);
+    if (gbl_rowlocks && !bdb_state->ixdups[ixnum]) {
+        int did_commit = 0;
+        rc = tran_allocate_rlptr(logical_tran, &newlkptr, &newrowlk);
         if (rc) {
+            logmsg(LOGMSG_ERROR, "%s failed to allocate rlptr rc %d\n",
+                   __func__, rc);
+            goto done;
+        }
+
+        if (log_compare(&last_regop_lsn, &logical_tran->last_regop_lsn))
+            did_commit = 1;
+
+        rc = bdb_lock_ix_value_write(bdb_state, logical_tran, ixnum, dbt_key,
+                                     newrowlk, newlkptr, !did_commit);
+        if (rc == DB_LOCK_NOTGRANTED && !did_commit) {
+            /* trylock failed, let's commit here and wait again */
+            tran_deallocate_pop(logical_tran, 1);
+            rc = get_physical_transaction(bdb_state, logical_tran,
+                                          &physical_tran, 1);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s failed get physical tran rc %d\n",
+                       __func__, rc);
+                line = __LINE__;
+                goto done;
+            }
+            tran_allocate_rlptr(logical_tran, &newlkptr, &newrowlk);
+            rc = bdb_lock_ix_value_write(bdb_state, logical_tran, ixnum,
+                                         dbt_key, newrowlk, newlkptr, 0);
+        }
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s failed to lock row index write genid %llx rc %d\n",
+                   __func__, genid, rc);
             line = __LINE__;
             goto done;
         }
@@ -531,10 +672,12 @@ int phys_key_add(bdb_state_type *bdb_state, tran_type *logical_tran,
 
     /* Add key */
     do {
-        rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
-            bdb_state->dbenv, physical_tran->tid->txnid);
-        if (rc)
-            goto done;
+        if (gbl_rowlocks) {
+            rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
+                bdb_state->dbenv, physical_tran->tid->txnid);
+            if (rc)
+                goto done;
+        }
 
         rc = ll_key_add(bdb_state, genid, physical_tran, ixnum, dbt_key,
                         dbt_data);
@@ -544,7 +687,7 @@ int phys_key_add(bdb_state_type *bdb_state, tran_type *logical_tran,
             retry = 1;
             bdb_tran_abort_phys_retry(bdb_state, physical_tran);
             rc = get_physical_transaction(bdb_state, logical_tran,
-                                          &physical_tran);
+                                          &physical_tran, 0);
             if (rc)
                 goto done;
             if (max_poll > 0)
@@ -559,15 +702,17 @@ int phys_key_add(bdb_state_type *bdb_state, tran_type *logical_tran,
     if (rc)
         goto done;
 
-    /* Logical log on success */
-    rc = bdb_llog_add_ix_lk(bdb_state, physical_tran, ixnum, genid, dbt_key,
-                            dbt_data->size);
-    if (rc)
-        goto done;
+    if (gbl_rowlocks) {
+        /* Logical log on success */
+        rc = bdb_llog_add_ix_lk(bdb_state, physical_tran, ixnum, genid, dbt_key,
+                                dbt_data->size);
+        if (rc)
+            goto done;
 
-    rc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
-        bdb_state->dbenv, physical_tran->tid, physical_tran->tid->txnid,
-        physical_tran->logical_tran->last_logical_lsn);
+        rc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
+            bdb_state->dbenv, physical_tran->tid, physical_tran->tid->txnid,
+            physical_tran->logical_tran->last_logical_lsn);
+    }
 
 done:
     /* The value-lock for master-only rowlocks is txn duration:
@@ -590,54 +735,76 @@ int phys_key_del(bdb_state_type *bdb_state, tran_type *logical_tran,
     tran_type *physical_tran = NULL;
     int payloadsz;
 
-    /* Wall lock prev */
-    DBT *prevlkptr = NULL;
-    unsigned long long prevgenid = 0;
-    DB_LOCK *prevlk;
-
-    /* Wall lock next */
-    DBT *nextlkptr = NULL;
-    unsigned long long nextgenid = 0;
-    DB_LOCK *nextlk;
-
     /* Delete row */
     DBT *dellkptr = NULL;
     DB_LOCK *delrowlk;
+    DB_LSN last_regop_lsn = logical_tran->last_regop_lsn;
 
     /* Start my transaction */
-    rc = get_physical_transaction(bdb_state, logical_tran, &physical_tran);
-    if (rc)
+    rc = get_physical_transaction(bdb_state, logical_tran, &physical_tran, 0);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s failed get physical tran rc %d\n", __func__,
+               rc);
         goto done;
+    }
 
     /* Master-only locks unique ix values to prevent colliding inserts from
      * making this delete un-abortable */
-    if (!bdb_state->ixdups[ixnum]) {
-        tran_allocate_rlptr(logical_tran, &dellkptr, &delrowlk);
-        rc = bdb_lock_ix_value_write(bdb_state, logical_tran, ixnum, key,
-                                     delrowlk, dellkptr);
-        if (rc)
+    if (gbl_rowlocks && !bdb_state->ixdups[ixnum]) {
+        int did_commit = 0;
+        rc = tran_allocate_rlptr(logical_tran, &dellkptr, &delrowlk);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s failed to allocate rlptr rc %d\n",
+                   __func__, rc);
             goto done;
+        }
+
+        if (log_compare(&last_regop_lsn, &logical_tran->last_regop_lsn))
+            did_commit = 1;
+
+        rc = bdb_lock_ix_value_write(bdb_state, logical_tran, ixnum, key,
+                                     delrowlk, dellkptr, !did_commit);
+        if (rc == DB_LOCK_NOTGRANTED && !did_commit) {
+            /* trylock failed, let's commit here and wait again */
+            tran_deallocate_pop(logical_tran, 1);
+            rc = get_physical_transaction(bdb_state, logical_tran,
+                                          &physical_tran, 1);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s failed get physical tran rc %d\n",
+                       __func__, rc);
+                goto done;
+            }
+            tran_allocate_rlptr(logical_tran, &dellkptr, &delrowlk);
+            rc = bdb_lock_ix_value_write(bdb_state, logical_tran, ixnum, key,
+                                         delrowlk, dellkptr, 0);
+        }
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s failed to lock row index write genid %llx rc %d\n",
+                   __func__, genid, rc);
+            goto done;
+        }
     }
 
     micro_retry = micro_retry_check(bdb_state, logical_tran);
 
     /* Call key-delete */
     do {
-        rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
-            bdb_state->dbenv, physical_tran->tid->txnid);
-        if (rc)
-            goto done;
+        if (gbl_rowlocks) {
+            rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
+                bdb_state->dbenv, physical_tran->tid->txnid);
+            if (rc)
+                goto done;
+        }
 
-        rc = ll_key_del_rowlocks(bdb_state, physical_tran, ixnum, key->data,
-                                 key->size, 2, genid, &payloadsz, &prevgenid,
-                                 &nextgenid, prevlkptr, prevlk, nextlkptr,
-                                 nextlk);
+        rc = ll_key_del(bdb_state, physical_tran, ixnum, key->data, key->size,
+                        2, genid, &payloadsz);
         if (micro_retry && --retry_count > 0 &&
             (rc == BDBERR_DEADLOCK || rc == DB_LOCK_DEADLOCK)) {
             retry = 1;
             bdb_tran_abort_phys_retry(bdb_state, physical_tran);
             rc = get_physical_transaction(bdb_state, logical_tran,
-                                          &physical_tran);
+                                          &physical_tran, 0);
             if (rc)
                 goto done;
             if (max_poll > 0)
@@ -652,15 +819,17 @@ int phys_key_del(bdb_state_type *bdb_state, tran_type *logical_tran,
     if (rc)
         goto done;
 
-    /* Logical log successful delete */
-    rc = bdb_llog_del_ix_lk(bdb_state, physical_tran, ixnum, genid, key,
-                            payloadsz);
-    if (rc)
-        goto done;
+    if (gbl_rowlocks) {
+        /* Logical log successful delete */
+        rc = bdb_llog_del_ix_lk(bdb_state, physical_tran, ixnum, genid, key,
+                                payloadsz);
+        if (rc)
+            goto done;
 
-    rc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
-        bdb_state->dbenv, physical_tran->tid, physical_tran->tid->txnid,
-        physical_tran->logical_tran->last_logical_lsn);
+        rc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
+            bdb_state->dbenv, physical_tran->tid, physical_tran->tid->txnid,
+            physical_tran->logical_tran->last_logical_lsn);
+    }
 
 done:
     /* Normalize deadlock rcode */
@@ -687,7 +856,7 @@ int phys_key_upd(bdb_state_type *bdb_state, tran_type *logical_tran,
         abort();
 
     /* Start my transaction */
-    rc = get_physical_transaction(bdb_state, logical_tran, &physical_tran);
+    rc = get_physical_transaction(bdb_state, logical_tran, &physical_tran, 0);
     if (rc)
         goto done;
 
@@ -698,21 +867,23 @@ int phys_key_upd(bdb_state_type *bdb_state, tran_type *logical_tran,
     micro_retry = micro_retry_check(bdb_state, logical_tran);
 
     do {
-        rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
-            bdb_state->dbenv, physical_tran->tid->txnid);
-        if (rc)
-            goto done;
+        if (gbl_rowlocks) {
+            rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
+                bdb_state->dbenv, physical_tran->tid->txnid);
+            if (rc)
+                goto done;
+        }
 
         /* Call into ll */
-        rc = ll_key_upd_rowlocks(bdb_state, physical_tran, table_name, oldgenid,
-                                 newgenid, key, ix, keylen, dta, dtalen);
+        rc = ll_key_upd(bdb_state, physical_tran, table_name, oldgenid,
+                        newgenid, key, ix, keylen, dta, dtalen);
 
         if (micro_retry && --retry_count > 0 &&
             (rc == BDBERR_DEADLOCK || rc == DB_LOCK_DEADLOCK)) {
             retry = 1;
             bdb_tran_abort_phys_retry(bdb_state, physical_tran);
             rc = get_physical_transaction(bdb_state, logical_tran,
-                                          &physical_tran);
+                                          &physical_tran, 0);
             if (rc)
                 goto done;
             if (max_poll > 0)
@@ -726,15 +897,18 @@ int phys_key_upd(bdb_state_type *bdb_state, tran_type *logical_tran,
     if (rc)
         goto done;
 
-    /* Rowlocks logical logging */
-    rc = bdb_llog_upd_ix_lk(bdb_state, physical_tran, table_name, key, keylen,
-                            ix, llog_payload_len, oldgenid, newgenid);
-    if (rc)
-        goto done;
+    if (gbl_rowlocks) {
+        /* Rowlocks logical logging */
+        rc = bdb_llog_upd_ix_lk(bdb_state, physical_tran, table_name, key,
+                                keylen, ix, llog_payload_len, oldgenid,
+                                newgenid);
+        if (rc)
+            goto done;
 
-    rc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
-        bdb_state->dbenv, physical_tran->tid, physical_tran->tid->txnid,
-        physical_tran->logical_tran->last_logical_lsn);
+        rc = bdb_state->dbenv->lock_update_tracked_writelocks_lsn(
+            bdb_state->dbenv, physical_tran->tid, physical_tran->tid->txnid,
+            physical_tran->logical_tran->last_logical_lsn);
+    }
 
 done:
     /* Normalize deadlock rcode */
@@ -763,7 +937,7 @@ int ll_undo_add_ix_lk(bdb_state_type *bdb_state, tran_type *tran,
     dbt_key.data = key;
     dbt_key.size = keylen;
 
-    rc = get_physical_transaction(bdb_state, tran, &physical_tran);
+    rc = get_physical_transaction(bdb_state, tran, &physical_tran, 0);
     if (rc)
         goto done;
     dbp = table->dbp_ix[ixnum];
@@ -808,7 +982,7 @@ int ll_undo_add_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
     dbt_genid.data = &search_genid;
     dbt_genid.size = sizeof(unsigned long long);
 
-    rc = get_physical_transaction(bdb_state, tran, &physical_tran);
+    rc = get_physical_transaction(bdb_state, tran, &physical_tran, 0);
     if (rc)
         goto done;
 
@@ -854,7 +1028,7 @@ int ll_undo_del_ix_lk(bdb_state_type *bdb_state, tran_type *tran,
     dbt_data.data = dta;
     dbt_data.size = dtalen;
 
-    rc = get_physical_transaction(bdb_state, tran, &physical_tran);
+    rc = get_physical_transaction(bdb_state, tran, &physical_tran, 0);
     if (rc)
         goto done;
 
@@ -902,7 +1076,7 @@ int ll_undo_del_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
     dbt_dta.size = dtalen;
     dbp = table->dbp_data[dtafile][dtastripe];
 
-    rc = get_physical_transaction(bdb_state, tran, &physical_tran);
+    rc = get_physical_transaction(bdb_state, tran, &physical_tran, 0);
     if (rc)
         goto done;
     rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
@@ -946,7 +1120,7 @@ int ll_undo_inplace_upd_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
         abort();
     }
 
-    rc = get_physical_transaction(bdb_state, tran, &physical_tran);
+    rc = get_physical_transaction(bdb_state, tran, &physical_tran, 0);
     if (rc)
         goto done;
     dbp = table->dbp_data[dtafile][dtastripe];
@@ -1029,7 +1203,7 @@ int ll_undo_upd_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
         return -1;
     }
 
-    rc = get_physical_transaction(bdb_state, tran, &physical_tran);
+    rc = get_physical_transaction(bdb_state, tran, &physical_tran, 0);
     if (rc)
         goto done;
     dbp = table->dbp_data[dtafile][dtastripe];
@@ -1098,7 +1272,7 @@ int ll_undo_upd_ix_lk(bdb_state_type *bdb_state, tran_type *tran,
         return -1;
     }
 
-    rc = get_physical_transaction(bdb_state, tran, &physical_tran);
+    rc = get_physical_transaction(bdb_state, tran, &physical_tran, 0);
     if (rc)
         goto done;
     dbp = table->dbp_ix[ixnum];
@@ -1212,7 +1386,7 @@ int phys_rowlocks_log_bench_lk(bdb_state_type *bdb_state,
         ullarg2 = arg2;
         genid2 = (unsigned long long)~(ullarg1 << 32 | ullarg2);
         rc = bdb_lock_row_write_getlock(llmeta_bdb_state, logical_tran, -1,
-                                        genid2, &rowlk2, &lk2);
+                                        genid2, &rowlk2, &lk2, 0);
         if (rc)
             goto done;
         gotrowlock2 = 1;
@@ -1224,7 +1398,7 @@ int phys_rowlocks_log_bench_lk(bdb_state_type *bdb_state,
         ullarg2 = arg2;
         genid1 = (unsigned long long)(ullarg1 << 32 | ullarg2);
         rc = bdb_lock_row_write_getlock(llmeta_bdb_state, logical_tran, -1,
-                                        genid1, &rowlk1, &lk1);
+                                        genid1, &rowlk1, &lk1, 0);
         if (rc)
             goto done;
         gotrowlock1 = 1;
@@ -1236,7 +1410,7 @@ int phys_rowlocks_log_bench_lk(bdb_state_type *bdb_state,
         break;
     }
 
-    rc = get_physical_transaction(bdb_state, logical_tran, &physical_tran);
+    rc = get_physical_transaction(bdb_state, logical_tran, &physical_tran, 0);
     if (rc)
         goto done;
 

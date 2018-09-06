@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Makes sure we behave correctly if entire cluster is SIGSTOPPED
 # debug_trace="-D"
@@ -7,7 +7,7 @@
 #debug=1
 [[ "$debug" == 1 ]] && set -x
 loadcount=1000000
-instest=${TESTSROOTDIR}/tools/insert
+instest=${TESTSBUILDDIR}/insert
 needcluster=0
 maxsleep=20
 db=$1

@@ -9,7 +9,7 @@
 
 #include "chksum.h"
 
-static uint32_t myflip(uint32_t in)
+uint32_t myflip(uint32_t in)
 {
 	union intswp
 	{
@@ -32,7 +32,10 @@ DB_Wrap::DB_Wrap(const std::string& filename) : m_filename(filename)
 	// because db might be encrypted and we don't have passwd
 	uint8_t meta_buf[DBMETASIZE];
 	int fd = open(filename.c_str(), O_RDONLY);
-	read(fd, meta_buf, DBMETASIZE);
+	size_t n = read(fd, meta_buf, DBMETASIZE);
+	if (n == -1) {
+	    perror("read");
+	}
 	close(fd);
 	DBMETA *meta = (DBMETA *)meta_buf;
 	bool swapped = false;
@@ -120,14 +123,6 @@ void verify_checksum(uint8_t *page, size_t pagesize, bool crypto, bool swapped,
 // Also call storeIncrData to store the LSN + Checksum in a file to be
 // compared against
 {
-    if (pagesize <= 4096) {
-        *verify_bool = true;
-        uint32_t calc = IS_CRC32C(page) ? crc32c(page, pagesize)
-                                        : __ham_func4(page, pagesize);
-        *verify_cksum = calc;
-        return;
-    }
-
     PAGE *pagep = (PAGE *)page;
     uint8_t *chksum_ptr = page;
 

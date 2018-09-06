@@ -283,7 +283,7 @@ svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int code_release,
     }
 
     if (gbl_fdb_track)
-       logmsg(LOGMSG_ERROR, "added %p to tid=%llx cid=%llx\n", cur,
+        logmsg(LOGMSG_INFO, "added %p to tid=%llx cid=%llx\n", cur,
                *(unsigned long long *)cur->tid,
                *(unsigned long long *)cur->cid);
 
@@ -296,110 +296,6 @@ svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int code_release,
 
     return cur;
 }
-
-#if 0
-svc_cursor_t* fdb_svc_cursor_open(char *tid, char *cid, int rootpage, int version, int flags)
-{
-   struct dbtable      *db;
-   struct schema  *sc;
-   svc_cursor_t   *cur;
-   bdb_state_type *state;
-   int            bdberr = 0;
-   int            ixnum;
-   int            outlen;
-   int            rc;
-
-   if (flags != FDB_MSG_CURSOR_OPEN_SQL)
-   {
-      /* TODO lock the table pointed by rootpage as part of the transaction */
-      /* TODO: check the version here, after transaction is created */
-
-      struct sql_thread *thd = pthread_getspecific(query_info_key);
-      db = get_sqlite_db(thd, rootpage, &ixnum);
-
-      if (!db)
-      {
-         fprintf(stderr, "%s: failed to retrieve bdb_state for table rootpage=%d\n", 
-               __func__, rootpage);
-         return NULL;
-      }
-
-      sc = (ixnum<0)?db->schema:db->ixschema[ixnum];
-      state = thedb->dbs[tblnum]->handle;
-
-      outlen = schema_var_size(sc);
-   }
-   else
-   {
-      tblnum = -1;
-      ixnum = -1;
-
-      db = NULL;
-      sc = NULL;
-      state = NULL;
-      outlen = 0; /* ?*/
-   }
-
-
-   /* create cursor */
-   cur = (svc_cursor_t*)calloc(1, sizeof(svc_cursor_t) + outlen);
-   if(!cur)
-   {
-      fprintf(stderr, "%s failed to create cursor\n", __func__);
-      return NULL;
-   }
-
-   /* create a transaction for cursor */
-   rc = fdb_svc_trans_begin_2(cur);
-   if (rc)
-   {
-      free(cur);
-      return NULL;
-   }
-   cur->autocommit = 1; /* for read path */
-
-   memcpy(cur->cid, cid, sizeof(cur->cid));
-   memcpy(cur->tid, tid, sizeof(cur->tid));
-   cur->rootpage = rootpage;
-   cur->tblnum = tblnum;
-   cur->ixnum = ixnum;
-   if (gbl_fdb_track)
-      printf("added %p to tid=%llx cid=%llx\n",
-            cur,
-            *(unsigned long long*)cur->tid,
-            *(unsigned long long*)cur->cid);
-   cur->rid = cur->sid = 0;
-   cur->outbuf = ((char*)cur)+sizeof(svc_cursor_t);
-   cur->outbuflen = outlen;
-
-   if (flags != FDB_MSG_CURSOR_OPEN_SQL)
-   {
-      /* TODO: handle different transaction modes here */
-      cur->bdbc = bdb_cursor_open(state, 
-            cur->dbtran.cursor_tran, 
-            NULL /*trans->dbtran.shadow_tran*/, 
-            cur->ixnum,  
-            BDB_OPEN_REAL,
-            NULL, 
-            0, /*TODO : review page order scan */
-            gbl_rowlocks,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            0,
-            &bdberr
-            );
-   }
-
-   pthread_rwlock_wrlock(&center->cursors_rwlock);
-   hash_add(center->cursors_hash, cur);
-   pthread_rwlock_unlock(&center->cursors_rwlock);
-
-   return cur;
-}
-#endif
 
 int fdb_svc_cursor_close(char *cid, int isuuid, struct sqlclntstate **pclnt)
 {
@@ -425,7 +321,9 @@ int fdb_svc_cursor_close(char *cid, int isuuid, struct sqlclntstate **pclnt)
 
         hash_del(center->cursorsuuid_hash, cur);
     } else {
-        cur = hash_find(center->cursors_hash, cid);
+        svc_cursor_t curkey = {0};
+        curkey.cid = cid;
+        cur = hash_find(center->cursors_hash, &curkey);
         if (!cur) {
             pthread_rwlock_unlock(&center->cursors_rwlock);
 
@@ -540,7 +438,13 @@ int fdb_svc_cursor_move(enum svc_move_types type, char *cid, char **data,
 
     /* retrieve cursor */
     pthread_rwlock_rdlock(&center->cursors_rwlock);
-    cur = hash_find_readonly(center->cursors_hash, cid);
+    if (isuuid)
+        cur = hash_find_readonly(center->cursorsuuid_hash, cid);
+    else {
+        svc_cursor_t curkey = {0};
+        curkey.cid = cid;
+        cur = hash_find_readonly(center->cursors_hash, &curkey);
+    }
     pthread_rwlock_unlock(&center->cursors_rwlock);
 
     /* TODO: we assumed here nobody can close this cursor except ourselves; pls
@@ -1299,7 +1203,13 @@ int fdb_svc_cursor_find(char *cid, int keylen, char *key, int last,
 
     /* retrieve cursor */
     pthread_rwlock_rdlock(&center->cursors_rwlock);
-    cur = hash_find_readonly(center->cursors_hash, cid);
+    if (isuuid)
+        cur = hash_find_readonly(center->cursorsuuid_hash, cid);
+    else {
+        svc_cursor_t curkey = {0};
+        curkey.cid = cid;
+        cur = hash_find_readonly(center->cursors_hash, &curkey);
+    }
     pthread_rwlock_unlock(&center->cursors_rwlock);
 
     if (cur) {
@@ -1432,7 +1342,7 @@ void fdb_svc_trans_destroy(struct sqlclntstate *clnt)
  * Retrieve a transaction, if any, for a cid
  *
  */
-int fdb_svc_trans_get_tid(const char *cid, char *tid, int isuuid)
+int fdb_svc_trans_get_tid(char *cid, char *tid, int isuuid)
 {
     svc_cursor_t *cur;
 
@@ -1442,8 +1352,11 @@ int fdb_svc_trans_get_tid(const char *cid, char *tid, int isuuid)
     pthread_rwlock_rdlock(&center->cursors_rwlock);
     if (isuuid)
         cur = hash_find_readonly(center->cursorsuuid_hash, cid);
-    else
-        cur = hash_find_readonly(center->cursors_hash, cid);
+    else {
+        svc_cursor_t curkey = {0};
+        curkey.cid = cid;
+        cur = hash_find_readonly(center->cursors_hash, &curkey);
+    }
 
     if (cur) {
         if (isuuid)

@@ -34,6 +34,7 @@
 int is_comdb2_index_unique(const char *dbname, char *idx);
 const char* fdb_parse_comdb2_remote_dbname(const char *zDatabase, const char **fqDbname);
 char *fdb_get_alias(const char **p_tablename);
+extern int gbl_fdb_track;
 
 
 #ifndef SQLITE_OMIT_SHARED_CACHE
@@ -390,7 +391,6 @@ retry_after_fdb_creation:
   ** remotely
   */
   if( !already_searched_fdb ){
-    extern int gbl_fdb_track;
     int        version; 
     int        iNewDb;
     char       *zErrDyn = NULL;
@@ -402,7 +402,8 @@ retry_after_fdb_creation:
     rc = sqlite3AddAndLockTable(db, fqDbname, zName, &version,
           in_analysis_load);
     if( rc ){
-       logmsg(LOGMSG_ERROR, "No foreign table \"%s:%s\"\n", fqDbname, zName);
+        if( gbl_fdb_track )
+            logmsg(LOGMSG_USER, "No foreign table \"%s:%s\"\n", fqDbname, zName);
        assert(p==NULL);
        goto done;
     }
@@ -439,7 +440,8 @@ retry_after_fdb_creation:
   }else{
     /* if the remote table was checked already, we are done */
     assert(p==NULL);
-    logmsg(LOGMSG_ERROR, "No foreign table \"%s:%s\"\n", fqDbname, zName);
+    if( gbl_fdb_track )
+        logmsg(LOGMSG_USER, "No foreign table \"%s:%s\"\n", fqDbname, zName);
     goto done;
   }
 

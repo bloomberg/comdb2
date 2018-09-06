@@ -563,6 +563,14 @@ static int _views_do_partition_create(void *tran, timepart_views_t *views,
                  first_shard);
         goto error;
     }
+    if (db->n_rev_constraints > 0) {
+        err->errval = VIEW_ERR_PARAM;
+        snprintf(err->errstr, sizeof(err->errstr), "Table %s has constraints",
+                 first_shard);
+        goto error;
+    }
+
+    check_columns_null_and_dbstore(view->name, db);
 
     /* check to see if the name exists either as a table, or part of a
        different partition */
@@ -1120,7 +1128,7 @@ static int timepart_deserialize_cson_value(cson_value *cson_view,
 
     /* check for starttime */
     view->starttime = _cson_extract_datetime_string(obj, "STARTTIME", err);
-    _view_adjust_start_time(view, time_epoch());
+    _view_adjust_start_time(view, comdb2_time_epoch());
 
     tmp_str = _cson_extract_str(obj, "SOURCE_ID", err);
     if(!tmp_str)
@@ -1308,10 +1316,10 @@ char *convert_epoch_to_time_string(int epoch, char *buf, int buflen)
     }
 
     isnull = outlen = 0;
-    if(!thd || !thd->sqlclntstate)
+    if(!thd || !thd->clnt)
 	    strcpy(outopts.tzname, "UTC");
     else
-	    strcpy(outopts.tzname, thd->sqlclntstate->tzname);
+	    strcpy(outopts.tzname, thd->clnt->tzname);
     outopts.flags |= FLD_CONV_TZONE;
     rc = SERVER_DATETIME_to_CLIENT_CSTR(
         &dt, sizeof(dt), NULL, NULL, buf, buflen, &isnull, &outlen,
@@ -1333,10 +1341,10 @@ int convert_time_string_to_epoch(const char *time_str)
     int isnull = 0;
     struct sql_thread *thd =pthread_getspecific(query_info_key);
 
-    if(!thd || !thd->sqlclntstate)
+    if(!thd || !thd->clnt)
 	    strcpy(convopts.tzname, "UTC");
     else
-	    strcpy(convopts.tzname, thd->sqlclntstate->tzname);
+	    strcpy(convopts.tzname, thd->clnt->tzname);
     convopts.flags = FLD_CONV_TZONE;
 
     if (CLIENT_CSTR_to_SERVER_DATETIME(time_str, strlen(time_str) + 1, 0,

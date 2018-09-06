@@ -44,8 +44,63 @@
 
 int bdb_keycontainsgenid(bdb_state_type *bdb_state, int ixnum)
 {
-    return ((bdb_state->ixdups[ixnum]) ||
-            ((!bdb_state->ixdups[ixnum] && bdb_state->ixnulls[ixnum])));
+    return (bdb_state->ixdups[ixnum] || bdb_state->ixnulls[ixnum]);
+}
+
+int bdb_maybe_use_genid_for_key(
+                               bdb_state_type *bdb_state, DBT *p_dbt_key,
+                               void *ixdta, int ixnum,
+                               unsigned long long genid, int isnull,
+                               void **ppKeyMaxBuf)
+{
+    int rc = 0;
+
+    assert(ppKeyMaxBuf);
+
+    /* set up the dbt_key */
+    memset(p_dbt_key, 0, sizeof(DBT));
+
+    /* indexes with dupes get a genid tacked on, same for indexes that
+       dont allow dupes but allow for nulls.  the genid is the sanitized
+       'search' genid.  */
+
+    if (bdb_keycontainsgenid(bdb_state, ixnum)) {
+        unsigned long long tmpgenid;
+
+        tmpgenid = get_search_genid(bdb_state, genid);
+
+        /* use 0 as the genid if no null values to keep it unique */
+        if (bdb_state->ixnulls[ixnum] && !isnull)
+            tmpgenid = 0;
+        else
+            rc = 1;
+
+        assert(bdb_state->ixlen[ixnum] <= BDB_KEY_MAX);
+
+        *ppKeyMaxBuf = malloc(BDB_KEY_MAX + sizeof(unsigned long long));
+        memcpy(*ppKeyMaxBuf, ixdta, bdb_state->ixlen[ixnum]);
+
+        p_dbt_key->data = *ppKeyMaxBuf;
+        p_dbt_key->size = bdb_state->ixlen[ixnum];
+
+        memcpy(*ppKeyMaxBuf + bdb_state->ixlen[ixnum], &tmpgenid,
+               sizeof(unsigned long long));
+        p_dbt_key->size += sizeof(unsigned long long);
+    } else {
+        /* in place if we dont have dups */
+        *ppKeyMaxBuf = 0;
+
+        p_dbt_key->data = ixdta;
+        p_dbt_key->size = bdb_state->ixlen[ixnum];
+    }
+
+    assert(rc == 0 || *ppKeyMaxBuf != 0);
+#ifndef NDEBUG
+    unsigned long long test_genid = get_search_genid(bdb_state, genid);
+#endif
+    assert(rc == 0 || 0 == memcmp(*ppKeyMaxBuf + bdb_state->ixlen[ixnum],
+                                  &test_genid, sizeof(unsigned long long)));
+    return rc;
 }
 
 void timeval_to_timespec(struct timeval *tv, struct timespec *ts)
@@ -99,18 +154,6 @@ int setup_waittime(struct timespec *waittime, int waitms)
     add_millisecs_to_timespec(waittime, waitms);
 
     return 0;
-}
-
-void hexdumpdbt(DBT *dbt)
-{
-    unsigned char *s = dbt->data;
-    int len = dbt->size;
-
-    while (len) {
-        printf("%02x", *s);
-        s++;
-        len--;
-    }
 }
 
 /* Given a berkeley db lockid (i.e. some bytes of data), try to get

@@ -46,3 +46,7 @@
 #ifdef strndup
 #undef strndup
 #endif
+
+#ifdef malloc_resize
+#undef malloc_resize
+#endif

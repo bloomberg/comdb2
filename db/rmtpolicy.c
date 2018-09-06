@@ -25,13 +25,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
 #include <unistd.h>
-
 #include <plbitlib.h>
 #include <segstr.h>
-
-#include <machine.h>
 
 #include "comdb2.h"
 #include "intern_strings.h"
@@ -205,7 +201,7 @@ static int allow_action_from_remote(const char *host, const struct rmtpol *pol)
     if (btst(&pol->explicit_allow_classes, rmtclass))
         return 1;
 
-    if (pol->class_promotion) {
+    if (pol->class_promotion && rmtclass > CLASS_UNKNOWN) {
         while ((--rmtclass) > 0) {
             if (btst(&pol->explicit_allow_classes, rmtclass))
                 return 1;
@@ -222,7 +218,7 @@ int allow_write_from_remote(const char *host)
     rc = allow_action_from_remote(host, &write_pol);
     if (rc == -1) {
         /* default logic: allow writes from same or higher classes. */
-        if (get_mach_class(host) >= get_mach_class(machine()))
+        if (get_mach_class(host) >= get_mach_class(gbl_mynode))
             rc = 1;
         else
             rc = 0;
@@ -381,9 +377,9 @@ int process_allow_command(char *line, int lline)
         if (parse_mach_or_group(tok, ltok, &if_mach, &if_cls) != 0)
             goto bad;
 
-        if (if_mach > 0 && if_mach != machine())
+        if (if_mach > 0 && if_mach != gbl_mynode)
             goto ignore;
-        if (if_cls != CLASS_UNKNOWN && if_cls != get_mach_class(machine()))
+        if (if_cls != CLASS_UNKNOWN && if_cls != get_mach_class(gbl_mynode))
             goto ignore;
     }
 

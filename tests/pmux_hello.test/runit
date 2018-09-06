@@ -1,10 +1,10 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 debug=1
 [[ "$debug" == 1 ]] && set -x
 
 db=$1
-export COMDB2_PMUX_PORT=19500
+export COMDB2_PMUX_PORT=19900
 export pmux_pid=0
 export start_iters=10
 export start_sleep=5
@@ -21,6 +21,7 @@ failexit()
 {
     echo "$1"
     kill -9 $pmux_pid
+    rm /tmp/pmux.${COMDB2_PMUX_PORT}
     exit 1
 }
 
@@ -48,8 +49,7 @@ function empty_used_list_crash
     sleep 1
     kill -0 $pmux_pid
     if [[ $? != 0 ]]; then
-        echo "${FUNCNAME[0]} test failed: empty used list killed pmux"
-        exit 1
+        failexit "${FUNCNAME[0]} test failed: empty used list killed pmux"
     fi
 }
 
@@ -83,7 +83,7 @@ function verify_hello_reuse
     # Create a db
     DBDIR=$TESTDIR/$DBNAME
     mkdir $DBDIR
-    mkdir -p $DBDIR/var/log/cdb2/
+    mkdir -p $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2
 
     # Create config file
     echo "$db 0 localhost" > $CDB2_CONFIG
@@ -123,8 +123,7 @@ function verify_hello_reuse
 
         kill -0 $pmux_pid
         if [[ $? != 0 ]]; then
-            echo "${FUNCNAME[0]} rte test failed: empty used list killed pmux"
-            exit 1
+            failexit "${FUNCNAME[0]} rte test failed: empty used list killed pmux"
         fi
 
         kill -9 $dbpid
@@ -146,7 +145,7 @@ reg service             : obtain/discover port for new service
 del service             : forget port assignment for service
 use service port        : set specific port registration for service
 stat                    : dump some stats
-used                    : dump active port assignments
+used (or list)          : dump active port assignments
 rte                     : get route to instance service/port
 hello service           : keep active connection
 active                  : list active connections
@@ -260,7 +259,10 @@ function runtest
 {
     [[ "$debug" == 1 ]] && echo "STARTING ${FUNCNAME[0]}" && set -x
 
-    # Start pmux
+    echo Send exit in case previous pmux still running
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "exit" ${COMDB2_PMUX_PORT}
+
+    echo Start pmux
     ${PMUX_EXE} -n -r 22000:22090 -f -p ${COMDB2_PMUX_PORT} -b /tmp/pmux.${COMDB2_PMUX_PORT} &
     pmux_pid=$!
 
@@ -272,9 +274,17 @@ function runtest
     verify_hello_reuse
 
     kill -9 $pmux_pid
+    rm /tmp/pmux.${COMDB2_PMUX_PORT}
 }
 
 runtest
+
+
+#test is successful so we can cleanup
+if [ "$CLEANUPDBDIR" != "0" ] ; then
+    rm -rf $DBDIR
+    rm -f ${DBDIR} ${TESTDIR}/var/log/cdb2/${DBNAME}.* ${TESTDIR}/tmp/${DBNAME}.* ${TMPDIR}/cdb2/${DBNAME}.*
+fi
 
 echo "Success"
 exit 0

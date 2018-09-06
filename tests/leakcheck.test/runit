@@ -59,7 +59,7 @@ size=$(getrmtsize $master $rmtpid)
 maxsz=$(($size * 2))
 
 # Sqlcache test
-task=leakcheck
+task=${TESTSBUILDDIR}/leakcheck
 
 # Run the task for a while
 $task -d $dbname -i 100000

@@ -20,7 +20,7 @@ void write_incr_manifest_entry(std::ostream& os, const FileInfo& file,
     std::clog << "File " << file.get_filename();
 
     if(updated){
-        os << " Updated ";
+        os << " Updated FileSize " << file.get_filesize();
         std::clog << " Updated ";
     } else {
         os << " New ";
@@ -35,6 +35,9 @@ void write_incr_manifest_entry(std::ostream& os, const FileInfo& file,
     }
 
     if(updated){
+        if (file.get_filesize())
+            os << " FileSize " << file.get_filesize();
+
         os << " Pages [ ";
         std::clog << " Pages [ ";
         for(size_t i = 0; i < pages.size(); ++i){
@@ -193,20 +196,21 @@ bool process_incr_manifest(
                 } else if (tok == "Deleted"){
                     deleted_files.insert(filename);
                     file_order.pop_back();
-
                 } else {
-                    std::clog << "Bad File directive on line "
+                    std::clog << "Bad File \"" << tok << "\" directive on line "
                         << lineno << " of MANIFEST: "
                         << tok << std::endl;
                 }
-
             } else if (tok == "Option") {
                 while (ss >> tok) {
                     options.push_back(tok);
                 }
 
             } else if (tok == "PREV") {
-                if(!(ss >> manifest_sha)) return false;
+                if(!(ss >> manifest_sha)) {
+                    std::cerr << ">>>> missing sha" << std::endl;
+                    return false;
+                }
 
             } else {
                 std::clog << "Unknown directive '" << tok << "' on line "

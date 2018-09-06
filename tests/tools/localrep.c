@@ -322,7 +322,7 @@ int bind_value(cdb2_hndl_tp *db, void *opsp, int opsz, comdb2_field_type *fld, v
             case COMDB2_CSTR:
             case COMDB2_PSTR:
                 addr = ops + fld->off;
-                len = fld->len;
+                len = strlen(addr); //fld->len;
                 type = CDB2_CSTRING;
                 break;
 
@@ -439,6 +439,26 @@ done:
     return rc;
 }
 
+int apply_clear(cdb2_hndl_tp *db, void *opsp, int opsz)
+{
+    char *table = (char *)opsp;
+    int rc;
+    cdb2_clearbindings(db);
+
+    strbuf *sql = strbuf_new();
+    strbuf_appendf(sql, "truncate %s", table);
+    char *s;
+    s = strbuf_disown(sql);
+    strbuf_free(sql);
+
+    rc = cdb2_run_statement(db, s);
+    if (rc) {
+        fprintf(stderr, "failed truncating %s\n", table);
+        return 1;
+    }
+    return 0;
+}
+
 int apply_op(cdb2_hndl_tp *db, int64_t seqno, int64_t blkpos, int64_t type, void *ops, int opsz) {
     uint8_t *p;
     int rc;
@@ -478,6 +498,10 @@ int apply_op(cdb2_hndl_tp *db, int64_t seqno, int64_t blkpos, int64_t type, void
             break;
         /* TODO: others! */
         case LCL_OP_CLEAR:
+            rc = apply_clear(db, ops, opsz);
+            if (rc)
+                fprintf(stderr, "apply_clear seqno %lld rc %d %s\n", seqno, rc,
+                        cdb2_errstr(db));
             break;
         case LCL_OP_ANALYZE:
             break;

@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -x
+
+failexit()
+{
+    echo $1
+    exit 1
+}
+
+i=1
+DB=testdb${i}
+TSTDBDIR=$(pwd)/$DB
+
+echo "Check 1"
+${COMDB2_EXE} --create $DB --lrl $TSTDBDIR/${DB}.lrl &> out
+grep "lrl : No such file or directory" out || failexit "expected 'No such file or directory'"
+
+echo "Check 2"
+mkdir $TSTDBDIR
+touch $TSTDBDIR/${DB}.lrl
+#should not crash
+${COMDB2_EXE} --create $DB --lrl $TSTDBDIR/${DB}.lrl &> out
+grep "\[FATAL\] failed to open bdb_env for " out || failexit "expected '[FATAL] failed to open bdb_env for '"
+
+echo "Check 3"
+${COMDB2_EXE} $DB --lrl $TSTDBDIR/${DB}.lrl &> out
+grep "\[FATAL\] DB directory" out | grep "does not exist" || failexit "expected '[FATAL] DB directory does not exist'"
+
+echo "Check 4"
+echo "name    $DB" >> $TSTDBDIR/${DB}.lrl
+${COMDB2_EXE} $DB --lrl $TSTDBDIR/${DB}.lrl &> out
+grep "\[FATAL\] DB directory" out | grep "does not exist" || failexit "expected '[FATAL] DB directory does not exist'"
+
+echo "Check 5"
+echo "name    $DB
+dir     ${TSTDBDIR}_nonexistent " > $TSTDBDIR/${DB}.lrl
+${COMDB2_EXE} $DB --lrl $TSTDBDIR/${DB}.lrl &> out
+grep "\[FATAL\] DB directory '${TSTDBDIR}_nonexistent' does not exist" out || failexit "expected '[FATAL] DB directory does not exist'"
+
+echo "Check 6"
+echo "name    $DB
+dir     ${TSTDBDIR}" > $TSTDBDIR/${DB}.lrl
+${COMDB2_EXE} $DB --lrl $TSTDBDIR/${DB}.lrl &> out
+grep "No such file or directory" out | grep "logs:" || failexit "expected 'No such file or directory'"
+
+echo "Check 7"
+touch $TSTDBDIR/${DB}.lrl
+df $TSTDBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" > $TSTDBDIR/${DB}.lrl 
+${COMDB2_EXE} testdb${i} --create --dir $TSTDBDIR --lrl $TSTDBDIR/${DB}.lrl &> out
+grep "Created database" out || failexit "expected 'Created database'"
+
+rm -rf $TSTDBDIR
+
+exit 0

@@ -86,6 +86,8 @@ int remove_constraint_pointers(struct dbtable *db);
 int rename_constraint_pointers(struct dbtable *db, const char *newname);
 void fix_constraint_pointers(struct dbtable *db, struct dbtable *newdb);
 
+int self_referenced_only(struct dbtable *db);
+
 void change_schemas_recover(char *table);
 
 #endif

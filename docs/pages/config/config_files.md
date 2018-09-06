@@ -194,17 +194,14 @@ warn_cstr|  on |Warn on validation of cstrings
 scpushlogs|  on |Push to next log after a schema changes
 pfltverbose|  on |Verbose errors in prefaulting code
 plannedsc|  on |Use planned schema change by default
-pflt_readahead|  on |Enable prefaulting of readahead operations
 pflt_toblock_lcl|  on |Prefault toblock operations locally
 pflt_toblock_rep|  on |Prefault toblock operations on replicants
 dflt_livesc|  on |Use live schema change by default
 dflt_plansc|  on |Use planned schema change by default
 consumer_rtcpu|  on |Don't send update broadcasts to machines that are marked offline
-clnt_sql_stats|  on |Trace back fds to client machines
 sqlite3openserial|  on |Serialize calls to sqlite3_open to prevent excess CPU
 thread_stats|  on |Berkeley DB will keep stats on what its threads are doing
 lock_timing|  on |Berkeley DB will keep stats on time spent waiting for locks
-qdump_atexit|  on |Dump queue stats at exit
 memp_timing|  off |Berkeley DB will keep stats on time spent in __memp_fget
 memp_pg_timing|  on |Berkeley DB will keep stats on time spent in __memp_pg
 shalloc_timing|  on |Berkeley DB will keep stats on time 
@@ -483,7 +480,7 @@ next word determines which option to set, and the following word determines its 
 |MEMPTRICKLEPERCENT|99 (PERCENT) | Try to keep at least this percentage of the buffer pool clean.  Write pages periodically until that's achieved.
 |MEMPTRICKLEMSECS|1000 (MSECS) | Pause for this many ms between runs of the cache flusher.
 |LITTLE_ENDIAN_BTREES|1 (BOOLEAN) | Enabling this sets byte ordering for pages to little endian
-|COMMITDELAYMAX|8 (QUANTITY) | Caps the max transaction delay time.  `COMMITDELAY` won't set above this value, unless set manually.
+|COMMITDELAYMAX|0 (QUANTITY) | Caps the max transaction delay time.  `COMMITDELAY` won't set above this value, unless set manually.
 |LOWDISKTHRESHOLD |95 (PERCENT) | Sets the low headroom threshold (percent of filesystem full) above which Comdb2 will start removing logs against set policy.
 |SQLBULKSZ | 2097152 (BYTES) | For index/data scans, the database will retrieve data in bulk instead of singlestepping a cursor.  This set the buffer size for the bulk retrieval.
 |ZLIBLEVEL |  6 (QUANTITY) | If zlib compression is enabled, this determines the compression level.
@@ -721,7 +718,7 @@ These options are toggle-able at runtime.
 |osync                            |Off         | Enables `O_SYNC` on data files (reads still go through FS cache) if `directio` isn't set
 |nonames                          |Off         | Use database name for some environment files (older setting, should remain off)
 |checksums                        |On          | Checksum data pages.  Turning this off is highly discouraged.
-|commitdelaymax                   |8           | Introduce a delay after each transaction before returning control to the application.  Occasionally useful to allow replicants to catch up on startup with a very busy system.
+|commitdelaymax                   |0           | Introduce a delay after each transaction before returning control to the application.  Occasionally useful to allow replicants to catch up on startup with a very busy system.
 |lock_conflict_trace              |Off         | Dump count of lock conflicts every second
 |no_lock_conflict_trace           |On          | Turns off `lock_conflict_trace`
 |blocksql_grace                   |10 sec      | Let block transactions run this long if db is exiting before being killed (and returning an error).
@@ -784,7 +781,6 @@ These options are toggle-able at runtime.
 |update_shadows_interval | 0 | Set to higher than 0 to update snaphots on every Nth operation (default is for every operation)
 |enable_lowpri_snapisol | 0 | Give lower priority to locks acquired when updating snapshot state 
 |disable_lowpri_snapisol | |
-|sqlrdtimeout | 10000 (ms) | Set timeout for reading from an SQL connection.
 |sqlwrtimeout | 10000 (ms) | Set timeout for writing to an SQL connection.
 |log_delete_now | 1 | Set log deletion policy to delete logs as soon as possible.
 |log_delete_after_backup | 0 | Set log deletion policy to disable log deletion (can be set by backups, thought the default backups provided by copycomdb2 use a different mechanism)

@@ -1,0 +1,133 @@
+#!/bin/bash
+
+set -e
+nodeprefix="m"
+
+while [[ $1 = -* ]]; do
+    if [[ "$1" = "-s" ]] || [[ "$1" = "--source" ]]; then
+        shift
+        src=$1
+    elif [[ "$1" = "-p" ]] || [[ "$1" = "--nodeprefix" ]]; then
+        shift
+        nodeprefix=$1
+    elif [[ "$1" = "-n" ]] || [[ "$1" = "--numnodes" ]]; then
+        shift
+        numnodes=$1
+    elif [[ "$1" = "-c" ]] || [[ "$1" = "--commands" ]]; then
+        shift
+        commands=$1
+    elif [[ "$1" = "-f" ]] || [[ "$1" = "--file" ]]; then
+        shift
+        script=$1
+    fi
+    shift
+done
+
+
+if [[ "$src" = "" ]] || [[ "$numnodes" = "" ]]; then
+    echo "Usage: $0 -s source_directory -p nodeprefix -n numnodes [-c commands] [-f file]" >&2
+    exit 1
+fi
+
+prefix="$(git --git-dir "$src/.git" rev-parse --short HEAD)"
+if [[ "$prefix" = "" ]]; then
+    echo 'Could not get the revision.' >&2
+    exit 1
+fi
+export COMPOSE_PROJECT_NAME=$prefix
+
+rm -fr common
+mkdir common
+for node in $(seq 1 $numnodes); do
+    cluster="$cluster ${nodeprefix}${node}.${prefix}_default"
+    containers="$containers ${nodeprefix}$node"
+done
+
+if [[ -f /proc/sys/kernel/core_pattern ]]; then
+    # If core pattern is an absolute path, prepare to mount
+    abspath=$(grep '^/' /proc/sys/kernel/core_pattern) || true
+    if [[ "$abspath" != "" ]]; then
+        coredir=$(dirname $abspath)
+        mkdir -p common/c1/cores
+        for node in $(seq 1 $numnodes); do
+            mkdir -p common/${nodeprefix}${node}/cores
+        done
+    fi
+fi
+
+if [[ "$script" != "" ]]; then
+    cp $script common/user_script
+    chmod +x common/user_script
+fi
+docker build -t comdb2test:$prefix -f $src/tests/docker/Dockerfile.install $src
+
+echo $cluster >common/cluster
+ssh-keygen -N "" -f common/id_rsa
+
+compose=docker-compose.yml
+cat > $compose <<EOF
+version: '2'
+
+services:
+    client:
+        container_name: c1
+        hostname: c1.${prefix}_default
+        labels:
+            what: "testclient"
+        build:
+            context: .
+            dockerfile: $src/tests/docker/Dockerfile.db
+            args:
+                - REVISION=$prefix
+        volumes:
+            - ./common:/common
+            - ./common/c1:/dedicated
+EOF
+
+[[ "$coredir" != "" ]] && { cat >> $compose <<EOF
+            - ./common/c1/cores:$coredir
+EOF
+}
+
+cat >> $compose <<EOF
+        command: /client $commands
+        cap_add:
+            - SYS_PTRACE
+EOF
+
+for node in $containers; do
+cat >> $compose <<EOF
+    $node:
+        container_name: $node
+        hostname: $node.${prefix}_default
+        labels:
+            what: "testserver"
+        build:
+            context: .
+            dockerfile: $src/tests/docker/Dockerfile.db
+            args:
+                - REVISION=$prefix
+        volumes:
+            - ./common:/common
+            - ./common/$node:/dedicated
+EOF
+
+[[ "$coredir" != "" ]] && { cat >> $compose <<EOF
+            - ./common/$node/cores:$coredir
+EOF
+
+}
+cat >> $compose <<EOF
+        command: /server
+        cap_add:
+            - SYS_PTRACE
+EOF
+done
+
+# Make sure that root can access common/ under SELinux
+chmod 777 -R common
+
+docker-compose build
+docker-compose up --abort-on-container-exit
+docker-compose down --rmi all --volumes
+docker-compose rm -f

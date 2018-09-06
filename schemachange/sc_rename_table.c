@@ -24,9 +24,9 @@
 #include "sc_global.h"
 #include "sc_callbacks.h"
 
-int do_rename_table(struct ireq *iq, tran_type *tran)
+int do_rename_table(struct ireq *iq, struct schema_change_type *s,
+                    tran_type *tran)
 {
-    struct schema_change_type *s = iq->sc;
     struct dbtable *db;
     iq->usedb = db = s->db = get_dbtable_by_name(s->table);
     if (db == NULL) {
@@ -49,9 +49,9 @@ int do_rename_table(struct ireq *iq, tran_type *tran)
     return SC_OK;
 }
 
-int finalize_rename_table(struct ireq *iq, tran_type *tran)
+int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
+                          tran_type *tran)
 {
-    struct schema_change_type *s = iq->sc;
     struct dbtable *db = s->db;
     char *newname = strdup(s->newtable);
     int rc = 0;
@@ -67,6 +67,8 @@ int finalize_rename_table(struct ireq *iq, tran_type *tran)
     /* Before this handle is closed, lets wait for all the db reads to finish*/
     bdb_lock_table_write(db->handle, tran);
     bdb_lock_tablename_write(db->handle, newname, tran);
+
+    s->already_finalized = 1;
 
     /* renamed table schema gets bumped */
     rc = table_version_upsert(db, tran, &bdberr);
@@ -121,19 +123,17 @@ int finalize_rename_table(struct ireq *iq, tran_type *tran)
         goto tran_error;
     }
 
-    rc = create_sqlmaster_records(tran);
-    if (rc) {
-        sc_errf(s, "create_sqlmaster_records failed\n");
-        goto recover_memory;
+    if (s->finalize) {
+        if (create_sqlmaster_records(tran)) {
+            sc_errf(s, "create_sqlmaster_records failed\n");
+            goto recover_memory;
+        }
+        create_sqlite_master();
     }
-    create_sqlite_master(); /* create sql statements */
 
     gbl_sc_commit_count++;
 
     live_sc_off(db);
-
-    if (gbl_replicate_local)
-        local_replicant_write_clear(db);
 
     if (oldname)
         free(oldname);

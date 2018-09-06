@@ -16,46 +16,119 @@ package com.bloomberg.comdb2.jdbc;
 import java.sql.*;
 import java.util.*;
 import java.util.logging.*;
+import java.lang.reflect.*;
 
 /**
  * @author Rivers Zhang
  */
 public class Driver implements java.sql.Driver {
     private static Logger logger = Logger.getLogger(Driver.class.getName());
-
     public static final String PREFIX = "jdbc:comdb2:";
-    public static final String PROPERTY_TIMEOUT = "comdb2_timeout";
-    public static final String PROPERTY_USER = "user";
-    public static final String PROPERTY_PASSWORD = "password";
-    public static final String PROPERTY_DEFAULTTYPE = "default_type";
-    public static final String PROPERTY_ROOM = "room";
-    public static final String PROPERTY_PORTMUX = "portmuxport";
-    public static final String PROPERTY_COMDB2DBNAME = "comdb2dbname";
-    public static final String PROPERTY_TCPBUF = "tcpbufsz";
-    public static final String PROPERTY_DNSSUFFIX = "dnssuffix";
-    public static final String PROPERTY_POLICY = "load_balance";
-    public static final String PROPERTY_USEC = "microsecond_fraction";
-    public static final String PROPERTY_PREFERMACH = "preferred_machine";
-    public static final String PROPERTY_COMDB2DB_MAX_AGE = "comdb2db_max_age";
-    public static final String PROPERTY_DEBUG = "debug";
-    public static final String PROPERTY_MAXRETRIES = "max_retries";
-    public static final String PROPERTY_SSL_MODE = "ssl_mode";
-    public static final String PROPERTY_SSL_CRT = "key_store";
-    public static final String PROPERTY_SSL_CRTPASS = "key_store_password";
-    public static final String PROPERTY_SSL_CRTTYPE = "key_store_type";
-    public static final String PROPERTY_SSL_CA = "trust_store";
-    public static final String PROPERTY_SSL_CAPASS = "trust_store_password";
-    public static final String PROPERTY_SSL_CATYPE = "trust_store_type";
-    public static final String PROPERTY_PMUX_RTE = "allow_pmux_route";
-    public static final String PROPERTY_STMT_EFFECTS = "statement_query_effects";
-    public static final String PROPERTY_VERIFY_RETRY = "verify_retry";
+    protected HashMap<String, Option> options = new HashMap<String, Option>();
+    protected static Driver __instance = new Driver();
+
+    protected static abstract class Option {
+        Method m;
+        String opt;
+        abstract void set(Comdb2Connection conn, String val) throws Throwable;
+        public void process(Comdb2Connection conn, String val, Properties info) throws Throwable {
+            if (val == null)
+                val = info.getProperty(opt);
+            if (val != null) {
+                logger.log(Level.FINE, String.format("Setting %s to %s\n", opt, val));
+                set(conn, val);
+            }
+        }
+    }
+
+    protected static class StringOption extends Option {
+        void set(Comdb2Connection conn, String val) throws Throwable {
+            m.invoke(conn, val);
+        }
+        StringOption(String opt, String setter) throws Throwable {
+            Class<Comdb2Connection> cls = Comdb2Connection.class;
+            m = cls.getMethod("set" + setter, String.class);
+            this.opt = opt;
+        }
+    }
+
+    protected static class IntegerOption extends Option {
+        void set(Comdb2Connection conn, String val) throws Throwable {
+            int intval = Integer.parseInt(val);
+            m.invoke(conn, intval);
+        }
+        IntegerOption(String opt, String setter) throws Throwable {
+            Class<Comdb2Connection> cls = Comdb2Connection.class;
+            m = cls.getMethod("set" + setter, Integer.TYPE);
+            this.opt = opt;
+        }
+    }
+
+    protected static class BooleanOption extends Option {
+        void set(Comdb2Connection conn, String val) throws Throwable {
+            int intval = Integer.parseInt(val);
+            if ("true".equalsIgnoreCase(val)
+                    || "1".equalsIgnoreCase(val)
+                    || "T".equalsIgnoreCase(val)
+                    || "on".equalsIgnoreCase(val))
+                m.invoke(conn, true);
+            else
+                m.invoke(conn, false);
+        }
+        BooleanOption(String opt, String setter) throws Throwable {
+            Class<Comdb2Connection> cls = Comdb2Connection.class;
+            m = cls.getMethod("set" + setter, Boolean.TYPE);
+            this.opt = opt;
+        }
+    }
+
+    public static Driver getInstance() throws SQLException {
+        try {
+            __instance.options.put("maxquerytime", new IntegerOption("maxquerytime", "QueryTimeout"));
+            __instance.options.put("timeout", new IntegerOption("timeout", "Timeout"));
+            __instance.options.put("sotimeout", new IntegerOption("sotimeout", "SoTimeout"));
+            __instance.options.put("connect_timeout", new IntegerOption("connect_timeout", "ConnectTimeout"));
+            __instance.options.put("comdb2db_timeout", new IntegerOption("comdb2db_timeout", "Comdb2dbTimeout"));
+            __instance.options.put("dbinfo_timeout", new IntegerOption("dbinfo_timeout", "DbinfoTimeout"));
+            __instance.options.put("user", new StringOption("user", "User"));
+            __instance.options.put("password", new StringOption("password", "Password"));
+            __instance.options.put("default_type", new StringOption("default_type", "DefaultType"));
+            __instance.options.put("room", new StringOption("room", "MachineRoom"));
+            __instance.options.put("portmuxport", new IntegerOption("portmuxport", "PortMuxPort"));
+            __instance.options.put("comdb2dbname", new StringOption("comdb2dbname", "Comdb2dbName"));
+            __instance.options.put("tcpbufsz", new IntegerOption("tcpbufsz", "TcpBufSize"));
+            __instance.options.put("dnssuffix", new StringOption("dnssuffix", "DnsSuffix"));
+            __instance.options.put("load_balance", new StringOption("load_balance", "Policy"));
+            __instance.options.put("microsecond_fraction", new StringOption("microsecond_fraction", "MicroSecond"));
+            __instance.options.put("preferred_machine", new StringOption("preferred_machine", "PrefMach"));
+            __instance.options.put("comdb2db_max_age", new IntegerOption("comdb2db_max_age", "Comdb2dbMaxAge"));
+            __instance.options.put("debug", new BooleanOption("debug", "Debug"));
+            __instance.options.put("max_retries", new IntegerOption("max_retries", "MaxRetries"));
+            __instance.options.put("ssl_mode", new StringOption("ssl_mode", "SSLMode"));
+            __instance.options.put("key_store", new StringOption("key_store", "SSLCrt"));
+            __instance.options.put("key_store_password", new StringOption("key_store_password", "SSLCrtPass"));
+            __instance.options.put("key_store_type", new StringOption("key_store_type", "SSLCrtType"));
+            __instance.options.put("trust_store", new StringOption("trust_store", "SSLCA"));
+            __instance.options.put("trust_store_password", new StringOption("trust_store_password", "SSLCAPass"));
+            __instance.options.put("trust_store_type", new StringOption("trust_store_type", "SSLCAType"));
+            __instance.options.put("crl", new StringOption("crl", "SSLCRL"));
+            __instance.options.put("allow_pmux_route", new BooleanOption("allow_pmux_route", "AllowPmuxRoute"));
+            __instance.options.put("statement_query_effects",
+                    new BooleanOption("statement_query_effects", "StatementQueryEffects"));
+            __instance.options.put("verify_retry", new BooleanOption("verify_retry", "VerifyRetry"));
+            __instance.options.put("stack_at_open", new BooleanOption("stack_at_open", "StackAtOpen"));
+        } catch (Throwable e) {
+            throw new SQLException(e);
+        }
+        return __instance;
+    }
 
     /**
      * Register our driver statically.
      */
     static {
         try {
-            DriverManager.registerDriver(new Driver());
+            DriverManager.registerDriver(Driver.getInstance());
         } catch (SQLException e) {
             logger.log(Level.SEVERE, "Unable to register comdb2 driver", e);
         }
@@ -72,39 +145,12 @@ public class Driver implements java.sql.Driver {
 
         String[] tokens = url.split("\\/\\s*|\\s+");
 
-        /* Oh hi strings */
         Comdb2Connection ret = null;
         String clusterStr = null;
         String dbStr = null;
-
-        String timeout = null;
-        String user = null;
-        String password = null;
-        String default_type = null;
-        String room = null;
-        String portmux = null;
-        String comdb2dbname = null;
-        String tcpbufsz = null;
-        String dnssuffix = null;
         String port = null;
-        String usec = null;
-        String prefmach = null;
-        String comdb2db_max_age = null;
-        String debugmode = null;
-        String max_retries = null;
-        String sslmode = null;
-        String sslcrt = null;
-        String sslcrtpass = null;
-        String sslcrttype = null;
-        String sslca = null;
-        String sslcapass = null;
-        String sslcatype = null;
-        String pmuxrte = null;
-        String stmteffects = null;
-        String verifyretry = null;
         String attributes = null;
 
-        String policy = null;
         ArrayList<String> hosts = new ArrayList<String>();
         ArrayList<Integer> ports = new ArrayList<Integer>();
 
@@ -151,8 +197,28 @@ public class Driver implements java.sql.Driver {
             int indx = url.indexOf('?');
             if (indx > 0 && indx < url.length() - 1)
                 attributes = url.substring(indx + 1);
+        }
 
-            /* read attributes */
+        /* Don't look up. Just set attributes.
+           We will look up the database before returning. */
+        ret = new Comdb2Connection();
+        ret.setDatabase(dbStr);
+        ret.setCluster(clusterStr);
+
+        /* add user supplied hosts, if any */
+        ret.addHosts(hosts);
+        ret.addPorts(ports);
+
+        try {
+            /* The custom port isn't a URL parameter but part of the host string.
+               Handle it separately. */
+            if (port != null) {
+                int pval = Integer.parseInt(port);
+                logger.log(Level.FINE, String.format("Setting port to %d\n", pval));
+                ret.setOverriddenPort(pval);
+            }
+
+            /* process attributes */
             if (attributes != null) {
                 String[] keyvals = attributes.split("&");
                 for (String elem : keyvals) {
@@ -160,256 +226,15 @@ public class Driver implements java.sql.Driver {
                     if (keyval.length != 2)
                         continue;
 
-                    if (PROPERTY_TIMEOUT.equalsIgnoreCase(keyval[0]))
-                        timeout = keyval[1];
-                    else if (PROPERTY_USER.equalsIgnoreCase(keyval[0]))
-                        user = keyval[1];
-                    else if (PROPERTY_PASSWORD.equalsIgnoreCase(keyval[0]))
-                        password = keyval[1];
-                    else if (PROPERTY_DEFAULTTYPE.equalsIgnoreCase(keyval[0]))
-                        default_type = keyval[1];
-                    else if (PROPERTY_ROOM.equalsIgnoreCase(keyval[0]))
-                        room = keyval[1];
-                    else if (PROPERTY_PORTMUX.equalsIgnoreCase(keyval[0]))
-                        portmux = keyval[1];
-                    else if (PROPERTY_COMDB2DBNAME.equalsIgnoreCase(keyval[0]))
-                        comdb2dbname = keyval[1];
-                    else if (PROPERTY_TCPBUF.equalsIgnoreCase(keyval[0]))
-                        tcpbufsz = keyval[1];
-                    else if (PROPERTY_DNSSUFFIX.equalsIgnoreCase(keyval[0]))
-                        dnssuffix = keyval[1];
-                    else if (PROPERTY_POLICY.equalsIgnoreCase(keyval[0]))
-                        policy = keyval[1];
-                    else if (PROPERTY_USEC.equalsIgnoreCase(keyval[0]))
-                        usec = keyval[1];
-                    else if (PROPERTY_PREFERMACH.equalsIgnoreCase(keyval[0]))
-                        prefmach = keyval[1];
-                    else if (PROPERTY_COMDB2DB_MAX_AGE.equalsIgnoreCase(keyval[0]))
-                        comdb2db_max_age = keyval[1];
-                    else if (PROPERTY_DEBUG.equalsIgnoreCase(keyval[0]))
-                        debugmode = keyval[1];
-                    else if (PROPERTY_MAXRETRIES.equalsIgnoreCase(keyval[0]))
-                        max_retries = keyval[1];
-                    else if (PROPERTY_SSL_MODE.equalsIgnoreCase(keyval[0]))
-                        sslmode = keyval[1];
-                    else if (PROPERTY_SSL_CRT.equalsIgnoreCase(keyval[0]))
-                        sslcrt = keyval[1];
-                    else if (PROPERTY_SSL_CRTPASS.equalsIgnoreCase(keyval[0]))
-                        sslcrtpass = keyval[1];
-                    else if (PROPERTY_SSL_CRTTYPE.equalsIgnoreCase(keyval[0]))
-                        sslcrttype = keyval[1];
-                    else if (PROPERTY_SSL_CA.equalsIgnoreCase(keyval[0]))
-                        sslca = keyval[1];
-                    else if (PROPERTY_SSL_CAPASS.equalsIgnoreCase(keyval[0]))
-                        sslcapass = keyval[1];
-                    else if (PROPERTY_SSL_CATYPE.equalsIgnoreCase(keyval[0]))
-                        sslcatype = keyval[1];
-                    else if (PROPERTY_PMUX_RTE.equalsIgnoreCase(keyval[0]))
-                        pmuxrte = keyval[1];
-                    else if (PROPERTY_STMT_EFFECTS.equalsIgnoreCase(keyval[0]))
-                        stmteffects = keyval[1];
-                    else if (PROPERTY_VERIFY_RETRY.equalsIgnoreCase(keyval[0]))
-                        verifyretry = keyval[1];
+                    Option opt = options.get(keyval[0]);
+                    if (opt != null) {
+                        opt.process(ret, keyval[1], info);
+                    }
                 }
             }
-        }
-
-        ret = new Comdb2Connection(dbStr, clusterStr);
-        /* add user supplied hosts, if any */
-        ret.addHosts(hosts);
-        ret.addPorts(ports);
-
-        /* read properties if absent */
-        if (timeout == null)
-            timeout = info.getProperty(PROPERTY_TIMEOUT);
-        if (user == null)
-            user = info.getProperty(PROPERTY_USER);
-        if (password == null)
-            password = info.getProperty(PROPERTY_PASSWORD);
-        if (default_type == null)
-            default_type = info.getProperty(PROPERTY_DEFAULTTYPE);
-        if (room == null)
-            room = info.getProperty(PROPERTY_ROOM);
-        if (portmux == null)
-            portmux = info.getProperty(PROPERTY_PORTMUX);
-        if (comdb2dbname == null)
-            comdb2dbname = info.getProperty(PROPERTY_COMDB2DBNAME);
-        if (tcpbufsz == null)
-            tcpbufsz = info.getProperty(PROPERTY_TCPBUF);
-        if (dnssuffix == null)
-            dnssuffix = info.getProperty(PROPERTY_DNSSUFFIX);
-        if (policy == null)
-            policy = info.getProperty(PROPERTY_POLICY);
-        if (usec == null)
-            usec = info.getProperty(PROPERTY_USEC);
-        if (prefmach == null)
-            prefmach = info.getProperty(PROPERTY_PREFERMACH);
-        if (comdb2db_max_age == null)
-            comdb2db_max_age = info.getProperty(PROPERTY_COMDB2DB_MAX_AGE);
-        if (debugmode == null)
-            debugmode = info.getProperty(PROPERTY_DEBUG);
-        if (max_retries == null)
-            max_retries = info.getProperty(PROPERTY_MAXRETRIES);
-        if (sslmode == null)
-            sslmode = info.getProperty(PROPERTY_SSL_MODE);
-        if (sslcrt == null)
-            sslcrt = info.getProperty(PROPERTY_SSL_CRT);
-        if (sslcrtpass == null)
-            sslcrtpass = info.getProperty(PROPERTY_SSL_CRTPASS);
-        if (sslcrttype == null)
-            sslcrttype = info.getProperty(PROPERTY_SSL_CRTTYPE);
-        if (sslca == null)
-            sslca = info.getProperty(PROPERTY_SSL_CA);
-        if (sslcapass == null)
-            sslcapass = info.getProperty(PROPERTY_SSL_CAPASS);
-        if (sslcatype == null)
-            sslcatype = info.getProperty(PROPERTY_SSL_CATYPE);
-        if (pmuxrte == null)
-            pmuxrte = info.getProperty(PROPERTY_PMUX_RTE);
-        if (stmteffects == null)
-            stmteffects = info.getProperty(PROPERTY_STMT_EFFECTS);
-        if (verifyretry == null)
-            verifyretry = info.getProperty(PROPERTY_VERIFY_RETRY);
-
-        try {
-            if (port != null) {
-                int pval = Integer.parseInt(port);
-                logger.log(Level.FINE, String.format("Setting port to %d\n", pval));
-                ret.setOverriddenPort(pval);
-            }
-
-            if (timeout != null) {
-                int toval = Integer.parseInt(timeout);
-                logger.log(Level.FINE, String.format("Setting query timeout to %d s\n", toval));
-                ret.setQueryTimeout(toval);
-            }
-			if (user != null) {
-				logger.log(Level.FINE, String.format("Setting user to %s\n", user));
-				ret.setUser(user);
-			}
-
-            if (password != null) {
-                logger.log(Level.FINE, String.format("Setting password to %s\n", password));
-                ret.setPassword(password);
-            }
-
-            if (default_type != null) {
-                logger.log(Level.FINE, String.format("Setting default_type to %s\n", default_type));
-                ret.setDefaultType(default_type);
-            }
-
-            if (room != null) {
-                logger.log(Level.FINE, String.format("Setting room to %s\n", room));
-                ret.setMachineRoom(room);
-            }
-
-            if (portmux != null) {
-                int pmval = Integer.parseInt(portmux);
-                logger.log(Level.FINE, String.format("Setting pmux port to %d\n", pmval));
-                ret.setPortMuxPort(pmval);
-            }
-
-            if (comdb2dbname != null) {
-                logger.log(Level.FINE, String.format("Setting comdb2dbname to %s\n", comdb2dbname));
-                ret.setComdb2dbName(comdb2dbname);
-            }
-
-            if (tcpbufsz != null) {
-                int tbval = Integer.parseInt(tcpbufsz);
-                logger.log(Level.FINE, String.format("Setting TCP recv buffer size to %d\n", tbval));
-                ret.setTcpBufSize(tbval);
-            }
-
-            if (dnssuffix != null) {
-                logger.log(Level.FINE, String.format("Setting DNS suffix to %s\n", dnssuffix));
-                ret.setDnsSuffix(dnssuffix);
-            }
-
-            if (policy != null) {
-                logger.log(Level.FINE, String.format("Setting load balance policy to %s\n", policy));
-                ret.setPolicy(policy);
-            }
-
-            if (usec != null) {
-                logger.log(Level.FINE, String.format("Setting microsecond fraction to %s\n", usec));
-                ret.setMicroSecond(usec);
-            }
-
-            if (prefmach != null) {
-                logger.log(Level.FINE, String.format("Setting preferred machine to %s\n", prefmach));
-                ret.setPrefMach(prefmach);
-            }
-
-            if (comdb2db_max_age != null) {
-                int maxageval = Integer.parseInt(comdb2db_max_age);
-                logger.log(Level.FINE, String.format("Setting comdb2db max age to %d second(s)\n", maxageval));
-                ret.setComdb2dbMaxAge(maxageval);
-            }
-
-            if (debugmode != null) {
-                logger.log(Level.FINE, String.format("Setting debug to %s\n", debugmode));
-                ret.setDebug(debugmode);
-            }
-
-            if (max_retries != null) {
-                int maxretriesval = Integer.parseInt(max_retries);
-                logger.log(Level.FINE, String.format("Setting max retries to %d\n", maxretriesval));
-                ret.setMaxRetries(maxretriesval);
-            }
-
-            if (sslmode != null) {
-                logger.log(Level.FINE, String.format("Setting ssl mode to %s\n", sslmode));
-                ret.setSSLMode(sslmode);
-            }
-
-            if (sslcrt != null) {
-                logger.log(Level.FINE, String.format("Setting ssl keystore to %s\n", sslcrt));
-                ret.setSSLCrt(sslcrt);
-            }
-
-            if (sslcrtpass != null) {
-                logger.log(Level.FINE, String.format("Setting ssl kspass to %s\n", sslcrtpass));
-                ret.setSSLCrtPass(sslcrtpass);
-            }
-
-            if (sslcrttype != null) {
-                logger.log(Level.FINE, String.format("Setting ssl kstype to %s\n", sslcrttype));
-                ret.setSSLCrtType(sslcrttype);
-            }
-
-            if (sslca != null) {
-                logger.log(Level.FINE, String.format("Setting ssl truststore to %s\n", sslca));
-                ret.setSSLCA(sslca);
-            }
-
-            if (sslcapass != null) {
-                logger.log(Level.FINE, String.format("Setting ssl tspass to %s\n", sslcapass));
-                ret.setSSLCAPass(sslcapass);
-            }
-
-            if (sslcatype != null) {
-                logger.log(Level.FINE, String.format("Setting ssl tstype to %s\n", sslcatype));
-                ret.setSSLCAType(sslcatype);
-            }
-
-            if (pmuxrte != null) {
-                logger.log(Level.FINE, String.format("Setting pmux passthrouth to %s\n", pmuxrte));
-                ret.setAllowPmuxRoute(pmuxrte);
-            }
-
-            if (stmteffects != null) {
-                logger.log(Level.FINE, String.format("Setting statement query effects to %s\n", stmteffects));
-                ret.setStatementQueryEffects(stmteffects);
-            }
-
-            if (verifyretry != null) {
-                logger.log(Level.FINE, String.format("Setting verifyretry to %s\n", verifyretry));
-                ret.setVerifyRetry(verifyretry);
-            }
-        } catch (NumberFormatException e1) {
-            logger.log(Level.WARNING, "Incorrect configuration in: " + url, e1);
+        } catch (Throwable t) {
             ret.close();
-            throw new SQLException(e1);
+            throw new SQLException(t);
         }
 
         try {

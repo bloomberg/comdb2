@@ -30,8 +30,6 @@
 #include "comdb2systblInt.h"
 #include "comdb2_plugin.h"
 
-extern comdb2_plugin_t **gbl_plugins;
-
 typedef struct {
     sqlite3_vtab_cursor base; /* Base class - must be first */
     sqlite3_int64 rowid;      /* Row ID */

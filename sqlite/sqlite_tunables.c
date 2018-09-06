@@ -17,6 +17,7 @@ static inline comdb2_tunable_type sqlite_to_tunable_type(int type)
     case SQLITE_ATTR_BOOLEAN: return TUNABLE_BOOLEAN;
     default: assert(0);
     }
+    return TUNABLE_INVALID;
 }
 
 void sqlite3_tunables_init(void)

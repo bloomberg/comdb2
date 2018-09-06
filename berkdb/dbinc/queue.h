@@ -150,6 +150,7 @@ extern "C" {
 #undef STAILQ_ENTRY
 #undef STAILQ_FIRST
 #undef STAILQ_FOREACH
+#undef STAILQ_FOREACH_SAFE
 #undef STAILQ_HEAD
 #undef STAILQ_HEAD_INITIALIZER
 #undef STAILQ_INIT
@@ -318,6 +319,11 @@ struct {								\
 	for ((var) = STAILQ_FIRST((head));				\
 	   (var);							\
 	   (var) = STAILQ_NEXT((var), field))
+
+#define STAILQ_FOREACH_SAFE(var, head, field, tvar)			\
+	for ((var) = STAILQ_FIRST((head));				\
+	    (var) && ((tvar) = STAILQ_NEXT((var), field), 1);		\
+	    (var) = (tvar))
 
 #define	STAILQ_INIT(head) do {						\
 	STAILQ_FIRST((head)) = NULL;					\

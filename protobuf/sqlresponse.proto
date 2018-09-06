@@ -55,6 +55,7 @@ enum CDB2_ErrorCode {
 
     TRAN_MODE_UNSUPPORTED   = -107;
     MASTER_TIMEOUT          = -109;
+    APPSOCK_LIMIT           = -110;
     WRONG_DB                = -111;
 
     VERIFY_ERROR            = 2;
@@ -93,7 +94,7 @@ enum ResponseType {
 }
 
 enum CDB2ServerFeatures {
-    SKIP_ROWS    = 1;
+    SKIP_INTRANS_RESULTS = 1;
 }
 
 message CDB2_DBINFORESPONSE {

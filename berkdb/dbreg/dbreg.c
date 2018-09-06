@@ -21,6 +21,8 @@ static const char revid[] = "$Id: dbreg.c,v 11.81 2003/10/27 15:54:31 sue Exp $"
 #include "dbinc/log.h"
 #include "dbinc/txn.h"
 #include "dbinc/db_am.h"
+#include "cheapstack.h"
+#include "logmsg.h"
 
 /*
  * The dbreg subsystem, as its name implies, registers database handles so
@@ -225,6 +227,8 @@ __dbreg_new_id(dbp, txn)
 	return (ret);
 }
 
+pthread_rwlock_t gbl_dbreg_log_lock = PTHREAD_RWLOCK_INITIALIZER;
+
 /*
  * __dbreg_get_id --
  *	Assign an unused dbreg id to this database handle.
@@ -285,10 +289,11 @@ __dbreg_get_id(dbp, txn, idp)
 	}
 	fid_dbt.data = dbp->fileid;
 	fid_dbt.size = DB_FILE_ID_LEN;
+
 	if ((ret = __dbreg_register_log(dbenv, txn, &unused,
-	    F_ISSET(dbp, DB_AM_NOT_DURABLE) ? DB_LOG_NOT_DURABLE : 0,
-	    DBREG_OPEN, r_name.size == 0 ? NULL : &r_name, &fid_dbt, id,
-	    fnp->s_type, fnp->meta_pgno, fnp->create_txnid)) != 0)
+		F_ISSET(dbp, DB_AM_NOT_DURABLE) ? DB_LOG_NOT_DURABLE : 0,
+		DBREG_OPEN, r_name.size == 0 ? NULL : &r_name, &fid_dbt, id,
+		fnp->s_type, fnp->meta_pgno, fnp->create_txnid)) != 0)
 		goto err;
 	/*
 	 * Once we log the create_txnid, we need to make sure we never
@@ -507,10 +512,14 @@ __dbreg_close_id(dbp, txn)
 	fid_dbt.data = fnp->ufid;
 	__ufid_sanity_check(dbenv, fnp);
 	fid_dbt.size = DB_FILE_ID_LEN;
-	if ((ret = __dbreg_register_log(dbenv, txn, &r_unused,
-	    F_ISSET(dbp, DB_AM_NOT_DURABLE) ? DB_LOG_NOT_DURABLE : 0,
-	    DBREG_CLOSE, dbtp, &fid_dbt, fnp->id,
-	    fnp->s_type, fnp->meta_pgno, TXN_INVALID)) != 0)
+
+	pthread_rwlock_wrlock(&gbl_dbreg_log_lock);
+	ret = __dbreg_register_log(dbenv, txn, &r_unused,
+		F_ISSET(dbp, DB_AM_NOT_DURABLE) ? DB_LOG_NOT_DURABLE : 0,
+		DBREG_CLOSE, dbtp, &fid_dbt, fnp->id,
+		fnp->s_type, fnp->meta_pgno, TXN_INVALID);
+	pthread_rwlock_unlock(&gbl_dbreg_log_lock);
+    if (ret != 0)
 		goto err;
 
 	ret = __dbreg_revoke_id(dbp, 1, DB_LOGFILEID_INVALID);

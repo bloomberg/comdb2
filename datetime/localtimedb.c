@@ -3,6 +3,8 @@
 ** 1996-06-05 by Arthur David Olson.
 */
 
+#include "printformats.h"
+
 #ifndef lint
 #ifndef NOID
 static char elsieid[] = "@(#)localtime.c	8.5";
@@ -1539,6 +1541,8 @@ const int do_norm_secs;
     }
     if (long_increment_overflow(&y, -TM_YEAR_BASE)) return WRONG;
     yourtm.tm_year = y;
+    if (! (INT_MIN <= y && y < INT_MAX))
+        return WRONG;
     if (yourtm.tm_year != y) return WRONG;
     if (yourtm.tm_sec >= 0 && yourtm.tm_sec < SECSPERMIN)
         saved_seconds = 0;
@@ -1561,21 +1565,9 @@ const int do_norm_secs;
     /*
     ** Do a binary search (this works whatever time_t's type is).
     */
-    if (!TYPE_SIGNED(time_t)) {
-        lo = 0;
-        hi = lo - 1;
-    } else if (!TYPE_INTEGRAL(time_t)) {
-        if (sizeof(time_t) > sizeof(float))
-            hi = (time_t)DBL_MAX;
-        else
-            hi = (time_t)FLT_MAX;
-        lo = -hi;
-    } else {
-        lo = 1;
-        for (i = 0; i < (int)TYPE_BIT(time_t) - 1; ++i)
-            lo *= 2;
-        hi = -(lo + 1);
-    }
+
+    lo = LLONG_MIN;
+    hi = LLONG_MAX;
     for (;;) {
         t = lo / 2 + hi / 2;
         if (t < lo)
@@ -2251,10 +2243,11 @@ static int db_tzset(name) register const char *name;
         }
     }
 
+    lcl_is_set = strlen(name) < sizeof(lcl_TZname);
+    if (lcl_is_set) (void) strcpy(lcl_TZname, name);
+
     db_settzname();
 
-    lcl_is_set = strlen(name) < sizeof lcl_TZname;
-    if (lcl_is_set) (void)strcpy(lcl_TZname, name);
 
     return 0;
 }
@@ -2423,11 +2416,15 @@ struct tm *const tmp;
             register db_time_t newy;
 
             newy = tmp->tm_year;
+
+
             if (t < sp->ats[0])
                 newy -= icycles * YEARSPERREPEAT;
             else
                 newy += icycles * YEARSPERREPEAT;
+
             tmp->tm_year = newy;
+
             if (tmp->tm_year != newy) return NULL;
         }
         return result;
@@ -2556,7 +2553,8 @@ const int do_norm_secs;
     }
     if (long_increment_overflow(&y, -TM_YEAR_BASE)) return WRONG;
     yourtm.tm_year = y;
-    if (yourtm.tm_year != y) return WRONG;
+	if (! (INT_MIN <= y && y <= INT_MAX))
+		return WRONG;
     if (yourtm.tm_sec >= 0 && yourtm.tm_sec < SECSPERMIN)
         saved_seconds = 0;
     else if (y + TM_YEAR_BASE < EPOCH_YEAR) {
@@ -2578,21 +2576,8 @@ const int do_norm_secs;
     /*
     ** Do a binary search (this works whatever time_t's type is).
     */
-    if (!TYPE_SIGNED(db_time_t)) {
-        lo = 0;
-        hi = lo - 1;
-    } else if (!TYPE_INTEGRAL(db_time_t)) {
-        if (sizeof(db_time_t) > sizeof(float))
-            hi = (db_time_t)DBL_MAX;
-        else
-            hi = (db_time_t)FLT_MAX;
-        lo = -hi;
-    } else {
-        lo = 1;
-        for (i = 0; i < (int)TYPE_BIT(db_time_t) - 1; ++i)
-            lo *= 2;
-        hi = -(lo + 1);
-    }
+    lo = LLONG_MIN;
+    hi = LLONG_MAX;
     for (;;) {
         t = lo / 2 + hi / 2;
         if (t < lo)
@@ -2759,6 +2744,7 @@ db_time_t db_struct2time(name, tmp) register const char *const name;
 struct tm *const tmp;
 {
     db_time_t ret = -1;
+
 
     pthread_mutex_lock(&global_dt_mutex);
 

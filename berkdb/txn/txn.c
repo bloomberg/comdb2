@@ -87,7 +87,7 @@ void bdb_get_writelock(void *bdb_state,
 void bdb_rellock(void *bdb_state, const char *funcname, int line);
 int bdb_is_open(void *bdb_state);
 
-int time_epoch(void);
+int comdb2_time_epoch(void);
 void ctrace(char *format, ...);
 
 
@@ -235,9 +235,9 @@ __txn_begin_set_retries_pp(dbenv, parent, txnpp, flags, retries)
 }
 
 int bdb_txn_pglogs_init(void *bdb_state, void **pglogs_hashtbl,
-    void **relinks_hashtbl, pthread_mutex_t * mutexp);
+    pthread_mutex_t * mutexp);
 int bdb_txn_pglogs_close(void *bdb_state, void **pglogs_hashtbl,
-    void **relinks_hashtbl, pthread_mutex_t * mutexp);
+    pthread_mutex_t * mutexp);
 
 /*
  * __txn_begin --
@@ -327,9 +327,8 @@ __txn_begin_main(dbenv, parent, txnpp, flags, retries)
 				goto err;
 	}
 
-	ret =
-	    bdb_txn_pglogs_init(dbenv->app_private, &txn->pglogs_hashtbl,
-	    &txn->relinks_hashtbl, &txn->pglogs_mutex);
+	ret = bdb_txn_pglogs_init(dbenv->app_private, &txn->pglogs_hashtbl,
+		&txn->pglogs_mutex);
 	if (ret)
 		goto err;
 
@@ -847,11 +846,14 @@ __txn_deallocate_ltrans(dbenv, lt)
 extern int gbl_new_snapisol;
 extern int gbl_new_snapisol_logging;
 int bdb_transfer_txn_pglogs(void *bdb_state, void *pglogs_hashtbl, 
-    void *relinks_hashtbl,
     pthread_mutex_t *mutexp, DB_LSN commit_lsn, uint32_t flags,
     unsigned long long logical_tranid, int32_t timestamp,
     unsigned long long context);
 int __lock_set_parent_has_pglk_lsn(DB_ENV *dbenv, u_int32_t parentid, u_int32_t lockid);
+
+/* This prevents dbreg logs from being logged between the LOCK_PUT_READ and
+ * the commit record */
+extern pthread_rwlock_t gbl_dbreg_log_lock;
 
 /*
  * __txn_commit --
@@ -909,7 +911,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 		"DB_TXN->commit", flags,
 		DB_TXN_LOGICAL_BEGIN | DB_TXN_LOGICAL_COMMIT | DB_TXN_NOSYNC |
 		DB_TXN_SYNC | DB_TXN_REP_ACK | DB_TXN_DONT_GET_REPO_MTX |
-		DB_TXN_SCHEMA_LOCK) != 0)
+		DB_TXN_SCHEMA_LOCK | DB_TXN_LOGICAL_GEN) != 0)
 		flags = DB_TXN_SYNC;
 	if (__db_fcchk(dbenv,
 		"DB_TXN->commit", flags, DB_TXN_NOSYNC, DB_TXN_SYNC) != 0)
@@ -996,6 +998,8 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 			memset(&request, 0, sizeof(request));
 			memset(&list_dbt_rl, 0, sizeof(list_dbt_rl));
 
+			pthread_rwlock_rdlock(&gbl_dbreg_log_lock);
+
 			if (LOCKING_ON(dbenv)) {
 				request.op = DB_LOCK_PUT_READ;
 				if (IS_REP_MASTER(dbenv) &&
@@ -1037,6 +1041,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 							     ltranid,
 							     begin_lsn,
 							     &lt)) != 0) {
+							pthread_rwlock_unlock(&gbl_dbreg_log_lock);
 							goto err;
 						}
 					}
@@ -1046,12 +1051,13 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						    ltranid, &lt)) != 0) {
 						logmsg(LOGMSG_FATAL, "Couldn't find ltrans?");
 						abort();
+						pthread_rwlock_unlock(&gbl_dbreg_log_lock);
 						goto err;
 					}
 
 					assert(lsn_out);
 
-					timestamp = time_epoch();
+					timestamp = comdb2_time_epoch();
 
 					if (elect_highest_committed_gen) {
 						MUTEX_LOCK(dbenv,
@@ -1059,6 +1065,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						gen = rep->gen;
 						MUTEX_UNLOCK(dbenv,
 						    db_rep->rep_mutexp);
+						ltranflags |= DB_TXN_LOGICAL_GEN;
 					} else
 						gen = 0;
 
@@ -1092,7 +1099,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 					}
 				} else {
 					SET_LOG_FLAGS(dbenv, txnp, lflags);
-					timestamp = time_epoch();
+					timestamp = comdb2_time_epoch();
 
 					if (elect_highest_committed_gen) {
 
@@ -1132,6 +1139,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						    txnp->last_lsn.offset;
 					}
 				}
+				pthread_rwlock_unlock(&gbl_dbreg_log_lock);
 
 				if (gbl_new_snapisol) {
 					if (!txnp->pglogs_hashtbl) {
@@ -1142,7 +1150,6 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						bdb_transfer_txn_pglogs(
 						    dbenv->app_private,
 						    txnp->pglogs_hashtbl,
-						    txnp->relinks_hashtbl,
 						    &txnp->pglogs_mutex,
 						    txnp->last_lsn,
 						    (flags & 
@@ -1166,7 +1173,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 		} else {
 
 			/* Log the commit in the parent! */
-			timestamp = time_epoch();
+			timestamp = comdb2_time_epoch();
 			if (!IS_ZERO_LSN(txnp->last_lsn) &&
 			    (ret = __txn_child_log(dbenv,
 				    txnp->parent, &txnp->parent->last_lsn,
@@ -1190,7 +1197,6 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 					bdb_transfer_txn_pglogs(
 					    dbenv->app_private,
 					    txnp->pglogs_hashtbl,       
-					    txnp->relinks_hashtbl,
 					    &txnp->pglogs_mutex,
 					    txnp->parent->last_lsn,
 					    fl, 0, timestamp, 0);
@@ -1455,7 +1461,7 @@ __txn_abort(txnp)
 
 	if (DBENV_LOGGING(dbenv) && td->status == TXN_PREPARED &&
 	    (ret = __txn_regop_log(dbenv, txnp, &txnp->last_lsn, NULL,
-		    lflags, TXN_ABORT, (int32_t)time_epoch(), NULL)) != 0)
+		    lflags, TXN_ABORT, (int32_t)comdb2_time_epoch(), NULL)) != 0)
 		 return (__db_panic(dbenv, ret));
 
 	/* __txn_end always panics if it errors, so pass the return along. */
@@ -1522,8 +1528,8 @@ __txn_discard(txnp, flags)
 	if (freep != NULL) {
 		if (freep->pglogs_hashtbl)
 			bdb_txn_pglogs_close(dbenv->app_private,
-			    &freep->pglogs_hashtbl, &freep->relinks_hashtbl,
-			    &freep->pglogs_mutex);
+				&freep->pglogs_hashtbl,
+				&freep->pglogs_mutex);
 		__os_free(dbenv, freep);
 	}
 
@@ -1856,8 +1862,8 @@ __txn_end(txnp, is_commit)
 
 		if (txnp->pglogs_hashtbl)
 			bdb_txn_pglogs_close(dbenv->app_private,
-			    &txnp->pglogs_hashtbl, &txnp->relinks_hashtbl,
-			    &txnp->pglogs_mutex);
+				&txnp->pglogs_hashtbl,
+				&txnp->pglogs_mutex);
 
 		__os_free(dbenv, txnp);
 	}

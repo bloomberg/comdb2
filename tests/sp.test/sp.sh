@@ -366,7 +366,7 @@ exec procedure close()
 create procedure bound version 'sptest' {$(cat bound.lua)}\$\$
 put default procedure bound 'sptest'
 EOF
-${TESTSROOTDIR}/tools/bound "$CDB2_CONFIG" $DBNAME
+${TESTSBUILDDIR}/bound "$CDB2_CONFIG" $DBNAME
 
 
 cdb2sql $SP_OPTIONS - <<EOF
@@ -724,6 +724,8 @@ create procedure audit version 'sptest' {$(cat audit.lua)}\$\$
 put default procedure audit 'sptest' 
 create procedure cons version 'sptest' {$(cat cons.lua)}\$\$
 put default procedure cons 'sptest'
+create procedure cons_with_tid version 'sptest' {$(cat cons_with_tid.lua)}\$\$
+put default procedure cons_with_tid 'sptest'
 create lua trigger audit on (table foraudit for insert and update and delete)
 create lua consumer cons on (table foraudit for insert and update and delete)
 EOF
@@ -1103,7 +1105,7 @@ EOF
 
 cdb2sql $SP_OPTIONS "select name, version, client_versioned, \"default\" from comdb2_procedures order by name, version, client_versioned, \"default\""
 
-${TESTSROOTDIR}/tools/utf8 "$CDB2_CONFIG" $DBNAME
+${TESTSBUILDDIR}/utf8 "$CDB2_CONFIG" $DBNAME
 cdb2sql $SP_OPTIONS - <<'EOF'
 create procedure json_utf8 version 'sptest' {
 local function main(strategy)
@@ -1194,7 +1196,7 @@ local function main()
     local y = db:json_to_table(json, {type_annotate = true})
     local r0 = check(x, y)
     local r1 = check(y, x)
-    if r0 ~= 0 and r1 ~= 0 then
+    if (r0 ~= 0) or (r1 ~= 0) then
         return -1, "failed"
     else
         return 0

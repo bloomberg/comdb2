@@ -143,8 +143,8 @@ int bdb_llop_add(bdb_state_type *bdb_state, void *trans, int raw, int stripe,
             rc = bdb_prim_addkey_genid(bdb_state, t, dkey.data, ix, 2, genid,
                                        dtacopy, dtacopylen, 0, &bdberr);
             if (rc) {
-                *errstr = comdb2_asprintf("bdb_prim_addkey_int rc %d bdberr %d",
-                                          rc, bdberr);
+                *errstr = comdb2_asprintf(
+                    "bdb_prim_addkey_genid rc %d bdberr %d", rc, bdberr);
                 rc = -1;
                 goto done;
             }

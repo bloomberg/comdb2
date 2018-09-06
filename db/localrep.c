@@ -23,6 +23,39 @@
 #include "endian_core.h"
 #include <flibc.h>
 
+typedef struct {
+    char name[32];    /* name of field as a \0 terminated string */
+    int type;         /* one of the types in dynschematypes.h    */
+    unsigned int len; /* length of field in bytes                */
+    unsigned int off; /* offset of field in record structure     */
+    int reserved[5];
+} comdb2_field_type;
+
+static uint8_t *comdb2_field_type_put(const comdb2_field_type *field, uint8_t *p_buf,
+                               const uint8_t *p_buf_end)
+{
+    if ((p_buf = buf_no_net_put(&field->name, sizeof(field->name), p_buf,
+                                p_buf_end)) == NULL)
+        return NULL;
+    if ((p_buf = buf_put(&field->type, sizeof(field->type), p_buf,
+                         p_buf_end)) == NULL)
+        return NULL;
+    if ((p_buf = buf_put(&field->len, sizeof(field->len), p_buf, p_buf_end)) ==
+        NULL)
+        return NULL;
+    if ((p_buf = buf_put(&field->off, sizeof(field->off), p_buf, p_buf_end)) ==
+        NULL)
+        return NULL;
+    if ((p_buf = buf_put(&field->reserved[0], sizeof(field->reserved[0]), p_buf,
+                         p_buf_end)) == NULL)
+        return NULL;
+    if ((p_buf = buf_no_net_put(&field->reserved[1], 4 * sizeof(int), p_buf,
+                                p_buf_end)) == NULL)
+        return NULL;
+
+    return p_buf;
+}
+
 /* Local replicant logging routines */
 int local_replicant_log_add(struct ireq *iq, void *trans, void *od_dta,
                             blob_buffer_t *blobs, int *opfailcode)
@@ -674,7 +707,7 @@ int add_oplog_entry(struct ireq *iq, void *trans, int type, void *logrec,
     rc = add_record(&aiq, trans, p_buf_tag_name, p_buf_tag_name_end, p_buf_data,
                     p_buf_data_end, (unsigned char *)nulls, blobs, MAXBLOBS,
                     &err, &fix, &rrn, &genid, -1ULL, BLOCK2_ADDKL, 0,
-                    RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_NO_CONSTRAINTS);
+                    RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_NO_CONSTRAINTS, 0);
 
     iq->blkstate->pos++;
 
@@ -728,14 +761,15 @@ int add_local_commit_entry(struct ireq *iq, void *trans, long long seqno,
     rc = add_record(iq, trans, p_buf_tag_name, p_buf_tag_name_end, p_buf_data,
                     p_buf_data_end, nulls, blobs, MAXBLOBS, &err, &fix, &rrn,
                     &genid, -1ULL, BLOCK2_ADDKL, 0,
-                    RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_NO_CONSTRAINTS);
+                    RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_NO_CONSTRAINTS, 0);
 
     if (iq->debug)
         reqpopprefixes(iq, 1);
     return rc;
 }
 
-int local_replicant_write_clear(struct dbtable *db)
+int local_replicant_write_clear(struct ireq *in_iq, void *in_trans,
+                                struct dbtable *db)
 {
     struct schema *s;
     int rc;
@@ -764,6 +798,11 @@ int local_replicant_write_clear(struct dbtable *db)
     strncpy(table, db->tablename, sizeof(table));
 
     table[31] = 0;
+
+    if (in_iq && !in_iq->is_fake && in_trans) {
+        return add_oplog_entry(in_iq, in_trans, LCL_OP_CLEAR, table,
+                               sizeof(table));
+    }
 
     init_fake_ireq(thedb, &iq);
     iq.use_handle = thedb->bdb_env;

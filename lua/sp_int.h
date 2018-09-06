@@ -106,6 +106,8 @@ void datetime_t_to_dttz(const datetime_t *, dttz_t *);
 void init_sys_funcs(Lua);
 void dttz_to_datetime_t(const dttz_t *, const char *tz, datetime_t *);
 
+int db_csvcopy(Lua lua);
+
 char* find_syssp(const char *);
 
 #endif

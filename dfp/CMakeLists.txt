@@ -18,6 +18,8 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
     add_definitions(-DDECLITEND=1)
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL "AIX")
     add_definitions(-DDECLITEND=0)
+elseif(${CMAKE_SYSTEM_NAME} STREQUAL "SunOS")
+    add_definitions(-DDECLITEND=0)
 endif()
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/decNumber

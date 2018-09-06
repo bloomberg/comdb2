@@ -1,8 +1,9 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Runs the register linearizability test
 #debug=1
 #debug_trace="-D"
+export COMDB2_DEBUG=1
 export CDB2JDBC_STATEMENT_QUERYEFFECTS=1
 
 [[ "$debug" == 1 ]] && set -x
@@ -90,7 +91,9 @@ function runtestwithoptions
     outfile=$(pwd)/jepsen.$db.$dt.out
     export COMDB2_DBNAME=$db
     export COMDB2_DBSTAGE=$stage
-    export COMDB2_DEBUG=1
+    if [[ "$debug" == 1 ]]; then
+        export COMDB2_DEBUG=1
+    fi
     export CDB2_CONFIG_FILE=${CDB2_CONFIG}
     (
         cd ${TESTSROOTDIR}/tools/linearizable/jepsen

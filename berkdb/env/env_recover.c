@@ -75,7 +75,6 @@ int bdb_is_open(void *bdb_state);
 
 #include "printformats.h"
 
-static int __log_backup __P((DB_ENV *, DB_LOGC *, DB_LSN *, DB_LSN *));
 static int __log_earliest __P((DB_ENV *, DB_LOGC *, int32_t *, DB_LSN *));
 static double __lsn_diff __P((DB_LSN *, DB_LSN *, DB_LSN *, u_int32_t, int));
 static int __log_find_latest_checkpoint_before_lsn(DB_ENV *dbenv,
@@ -1532,6 +1531,7 @@ __test_last_checkpoint(DB_ENV * dbenv, int file, int offset)
 
 /*
  * __log_backup --
+ * PUBLIC: int __log_backup __P((DB_ENV *, DB_LOGC *, DB_LSN *, DB_LSN *));
  *
  * This is used to find the earliest log record to process when a client
  * is trying to sync up with a master whose max LSN is less than this
@@ -1539,7 +1539,7 @@ __test_last_checkpoint(DB_ENV * dbenv, int file, int offset)
  *
  * Find the latest checkpoint whose ckp_lsn is less than the max lsn.
  */
-static int
+int
 __log_backup(dbenv, logc, max_lsn, start_lsn)
 	DB_ENV *dbenv;
 	DB_LOGC *logc;
@@ -1656,6 +1656,7 @@ __env_openfiles(dbenv, logc, txninfo,
 	DB_LSN lsn;
 	u_int32_t log_size;
 	int progress, ret;
+   DB_LSN last_good_lsn = {0};
 
 	/*
 	 * XXX
@@ -1697,10 +1698,31 @@ __env_openfiles(dbenv, logc, txninfo,
 			break;
 		}
 		if ((ret = __log_c_get(logc, &lsn, data, DB_NEXT)) != 0) {
-			if (ret == DB_NOTFOUND)
+			if (ret == DB_NOTFOUND) {
+            /* if we fail to get this lsn, and this is NOT the last
+            record, it can be a corrupted record in the middle, abort! */
+            DB_LSN cmp_lsn;
+            if (last_lsn == NULL) {
+               /* get here the know tail of the log */
+               ret = __log_c_get(logc, &cmp_lsn, data, DB_LAST);
+               if (ret)
+                  abort();  
+            } else {
+               cmp_lsn = *last_lsn;
+            }
+            if (last_good_lsn.file != cmp_lsn.file || last_good_lsn.offset != cmp_lsn.offset) {
+               __db_err(dbenv,
+                     "Recovery open file failed in the middle lsn %d.%d\n",
+                     last_good_lsn.file, last_good_lsn.offset);
+               abort();
+            }
+
 				ret = 0;
-			break;
-		}
+         }
+         break;
+		} else  {
+         last_good_lsn = lsn;
+      }
 	}
 
 	return (ret);
@@ -1708,14 +1730,15 @@ __env_openfiles(dbenv, logc, txninfo,
 
 void bdb_set_gbl_recoverable_lsn(void *lsn, int32_t timestamp);
 int bdb_update_logfile_pglogs(void *bdb_state, void *pglogs, unsigned int nkeys,
-    DB_LSN logical_commit_lsn);
+    DB_LSN logical_commit_lsn, hash_t *fileid_tbl);
 int bdb_update_ltran_pglogs_hash(void *bdb_state, void *pglogs,
     unsigned int nkeys, unsigned long long logical_tranid,
-    int is_logical_commit, DB_LSN logical_commit_lsn);
+    int is_logical_commit, DB_LSN logical_commit_lsn, hash_t *fileid_tbl);
 int transfer_ltran_pglogs_to_gbl(void *bdb_state,
     unsigned long long logical_tranid, DB_LSN logical_commit_lsn);
 int bdb_relink_logfile_pglogs(void *bdb_state, unsigned char *fileid,
-    db_pgno_t pgno, db_pgno_t prev_pgno, db_pgno_t next_pgno, DB_LSN lsn);
+    db_pgno_t pgno, db_pgno_t prev_pgno, db_pgno_t next_pgno, DB_LSN lsn,
+    hash_t *fileid_tbl);
 int bdb_update_timestamp_lsn(void *bdb_state, int32_t timestamp, DB_LSN lsn,
     unsigned long long context);
 int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp);
@@ -1734,8 +1757,9 @@ extern int bdb_push_pglogs_commit(void *in_bdb_state, DB_LSN commit_lsn,
     uint32_t gen, unsigned long long ltranid, int push);
 
 int
-__recover_logfile_pglogs(dbenv)
+__recover_logfile_pglogs(dbenv, fileid_tbl)
 	DB_ENV *dbenv;
+   void *fileid_tbl;
 {
 	DB_LOGC *logc;
 	DB_LSN first_lsn, lsn;
@@ -1822,15 +1846,12 @@ __recover_logfile_pglogs(dbenv)
 		   ret = lock_list_parse_pglogs(dbenv, &txn_gen_args->locks, &lsn, 
                &keylist, &keycnt);
 			if (ret) {
-				logmsg(LOGMSG_ERROR, 
-                "%s line %d: couldn't parse pagelogs for regop at lsn %d:%d\n",
-				    __func__, __LINE__, lsn.file, lsn.offset);
 				not_newsi_log_format = 1;
 				break;
 			}
 			ret =
 			    bdb_update_logfile_pglogs(dbenv->app_private,
-			    keylist, keycnt, lsn);
+			    keylist, keycnt, lsn, fileid_tbl);
 			if (ret) {
 				GOTOERR;
          }
@@ -1854,15 +1875,12 @@ __recover_logfile_pglogs(dbenv)
 		   ret = lock_list_parse_pglogs(dbenv,
 				    &txn_args->locks, &lsn, &keylist, &keycnt);
 			if (ret) {
-				logmsg(LOGMSG_ERROR, 
-                "%s line %d: couldn't parse pagelogs for regop at lsn %d:%d\n",
-				    __func__, __LINE__, lsn.file, lsn.offset);
 				not_newsi_log_format = 1;
 				break;
 			}
 			ret =
 			    bdb_update_logfile_pglogs(dbenv->app_private,
-			    keylist, keycnt, lsn);
+			    keylist, keycnt, lsn, fileid_tbl);
 			if (ret) {
 				GOTOERR;
          }
@@ -1896,7 +1914,7 @@ __recover_logfile_pglogs(dbenv)
 			ret =
 			    bdb_update_ltran_pglogs_hash(dbenv->app_private,
 			    keylist, keycnt, txn_rl_args->ltranid,
-			    (txn_rl_args->lflags & DB_TXN_LOGICAL_COMMIT), lsn);
+			    (txn_rl_args->lflags & DB_TXN_LOGICAL_COMMIT), lsn, fileid_tbl);
 			if (ret) {
 				GOTOERR;
          }
@@ -1935,7 +1953,7 @@ __recover_logfile_pglogs(dbenv)
 					    bdb_relink_logfile_pglogs(dbenv->
 					    app_private, mpf->fileid,
 					    split_args->left, split_args->right,
-					    PGNO_INVALID, lsn);
+					    PGNO_INVALID, lsn, fileid_tbl);
 					if (ret) { 
 						GOTOERR;
                }
@@ -1964,7 +1982,7 @@ __recover_logfile_pglogs(dbenv)
 					    app_private, mpf->fileid,
 					    rsplit_args->pgno,
 					    rsplit_args->root_pgno,
-					    PGNO_INVALID, lsn);
+					    PGNO_INVALID, lsn, fileid_tbl);
 					if (ret) {
 						GOTOERR;
                }
@@ -1992,7 +2010,7 @@ __recover_logfile_pglogs(dbenv)
 					    app_private, mpf->fileid,
 					    relink_args->pgno,
 					    relink_args->prev,
-					    relink_args->next, lsn);
+					    relink_args->next, lsn, fileid_tbl);
 					if (ret) {
 						GOTOERR;
                }
@@ -2005,6 +2023,10 @@ __recover_logfile_pglogs(dbenv)
 				__os_free(dbenv, free_ptr);
 				free_ptr = NULL;
 			}
+			if (keylist)
+				__os_free(dbenv, keylist);
+			keylist = NULL;
+			keycnt = 0;
 		}
 
 		if (not_newsi_log_format) {
@@ -2024,11 +2046,113 @@ err:
 			free_ptr = NULL;
 		}
 
+		if (keylist)
+			__os_free(dbenv, keylist);
+		keylist = NULL;
+		keycnt = 0;
+
 		if (logc) {
 			logc->close(logc, 0);
 		}
 
 		return ret;
+}
+
+/*
+ * __env_find_verify_recover_start --
+ *  We need to be able to recover to the 1st matchable commit record
+ *  preceding the last sync LSN. The function returns the recovery
+ *  starting point in `lsnp'.
+ *
+ * PUBLIC: int __env_find_verify_recover_start __P((DB_ENV *, DB_LSN *));
+ */
+int
+__env_find_verify_recover_start(dbenv, lsnp)
+	DB_ENV *dbenv;
+	DB_LSN *lsnp;
+{
+	int ret;
+	u_int32_t rectype;
+	DB_LSN txnlsn, s_lsn;
+	__txn_ckp_args *ckp_args;
+	__db_debug_args *debug_args;
+	DBT rec = {0};
+	DB_LOGC *logc = NULL;
+	int optype = 0;
+
+	rec.flags = DB_DBT_REALLOC;
+
+	/* Step 1: Find the 1st matchable commit record
+	           lower than the last sync LSN. */
+	if ((ret = __log_sync_lsn(dbenv, &s_lsn)) != 0)
+		goto err;
+	if ((ret = __log_cursor(dbenv, &logc)) != 0)
+		goto err;
+	if ((ret = __log_c_get(logc, lsnp, &rec, DB_LAST)) != 0)
+		goto err;
+
+	do {
+		LOGCOPY_32(&rectype, rec.data);
+	} while ((!matchable_log_type(rectype) || log_compare(lsnp, &s_lsn) >= 0) &&
+	         (ret = __log_c_get(logc, lsnp, &rec, DB_PREV)) == 0);
+
+	if (ret != 0)
+		goto err;
+
+	/* Step 2: find the checkpoint LSN of the checkpoint
+	           preceding the commit record. */
+	if ((ret = __txn_getckp(dbenv, &txnlsn)) != 0)
+		goto err;
+
+	while ((ret = __log_c_get(logc, &txnlsn, &rec, DB_SET)) == 0) {
+		if ((ret = __txn_ckp_read(dbenv, rec.data, &ckp_args)) != 0)
+			return (ret);
+		if (log_compare(&txnlsn, lsnp) < 0) {
+			*lsnp = ckp_args->ckp_lsn;
+			txnlsn = ckp_args->last_ckp;
+			__os_free(dbenv, ckp_args);
+			break;
+		}
+
+		txnlsn = ckp_args->last_ckp;
+		if (IS_ZERO_LSN(txnlsn))
+			goto err;
+		__os_free(dbenv, ckp_args);
 	}
 
-/* vim: set ts=3 sw=3: */
+	/* Step 3: find the checkpoint preceding the ckp LSN from Step 2. */
+	while ((ret = __log_c_get(logc, &txnlsn, &rec, DB_SET)) == 0) {
+		if ((ret = __txn_ckp_read(dbenv, rec.data, &ckp_args)) != 0)
+			return (ret);
+		if (log_compare(&txnlsn, lsnp) < 0) {
+			*lsnp = txnlsn;
+			__os_free(dbenv, ckp_args);
+			break;
+		}
+
+		txnlsn = ckp_args->last_ckp;
+		if (IS_ZERO_LSN(txnlsn))
+			goto err;
+		__os_free(dbenv, ckp_args);
+	}
+
+	/* Step 4: find the start of DBREG records of the ckp from Step 3. */
+	do {
+		LOGCOPY_32(&rectype, rec.data);
+		optype = -1;
+		if (rectype == DB___db_debug) {
+			ret = __db_debug_read(dbenv, rec.data, &debug_args);
+			if (ret)
+				goto err;
+			LOGCOPY_32(&optype, debug_args->op.data);
+			__os_free(dbenv, debug_args);
+		}
+	} while ((rectype != DB___db_debug || optype != 2) &&
+			(ret = __log_c_get(logc, lsnp, &rec, DB_PREV)) == 0);
+
+err:
+	if (logc)
+		(void)__log_c_close(logc);
+	__os_ufree(dbenv, rec.data);
+	return (ret);
+}

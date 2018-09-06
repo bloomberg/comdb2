@@ -7,7 +7,7 @@ add_custom_command(
 add_library(mem mem.c mem_int.h)
 include_directories(
   ${CMAKE_CURRENT_BINARY_DIR}
-  ${PROJECT_SOURCE_DIR}/bb
+  ${PROJECT_SOURCE_DIR}/util
   ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/dlmalloc
 )

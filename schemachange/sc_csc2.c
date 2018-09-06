@@ -21,7 +21,6 @@
 #include "schemachange.h"
 #include "sc_csc2.h"
 #include "debug_switches.h"
-#include "machine.h"
 #include "logmsg.h"
 
 int load_db_from_schema(struct schema_change_type *s, struct dbenv *thedb,
@@ -101,7 +100,7 @@ int check_table_schema(struct dbenv *dbenv, const char *table,
             logmsg(LOGMSG_ERROR, "%s\n", meta_csc2);
             rc = -1;
         }
-    } else if (dbenv->master == machine()) {
+    } else if (dbenv->master == gbl_mynode) {
         /* on master node, store schema if we don't have one already. */
         file_csc2 = load_text_file(csc2file);
         if (!file_csc2) {
@@ -189,7 +188,7 @@ int load_new_table_schema_tran(struct dbenv *dbenv, tran_type *tran,
         version = db->sc_to->version;
     } else {
         version = get_csc2_version_tran(table, tran);
-        if (version < 0 || db == NULL) {
+        if (version < 0) {
             logmsg(LOGMSG_ERROR, "%s: error getting schema\n", __func__);
             return -1;
         }
@@ -200,7 +199,7 @@ int load_new_table_schema_tran(struct dbenv *dbenv, tran_type *tran,
          *
          * If we are creating tables, then there
          * is no llmeta version record. */
-        if (gbl_create_mode || !db->instant_schema_change) {
+        if (gbl_create_mode || (db && !db->instant_schema_change)) {
             ++version;
         }
     }

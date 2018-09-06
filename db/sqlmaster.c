@@ -24,8 +24,9 @@ struct master_entry {
 static master_entry_t *sqlmaster;
 static int sqlmaster_nentries;
 
-static void *create_sqlite_master_row(int rootpage, char *csc2_schema,
-                                      int tblnum, int ixnum, int *sz);
+static void *create_master_row(struct dbtable **dbs, int num_dbs, int rootpage,
+                               char *csc2_schema, int tblnum, int ixnum,
+                               int *sz);
 
 inline int destroy_sqlite_master(master_entry_t *arr, int arr_len)
 {
@@ -50,35 +51,34 @@ void cleanup_sqlite_master()
     sqlmaster_nentries = 0;
 }
 
-/**
- * Create sqlite_master row and populate the associated hash
- *
- */
-int create_sqlite_master()
+master_entry_t *create_master_entry_array(struct dbtable **dbs, int num_dbs,
+                                          int *nents)
 {
     int tblnum;
     int tbl_idx;
     int i;
     int local_nentries = 0;
 
+    *nents = 0;
     /* for each table, account for table and all its indices */
-    for (tblnum = 0; tblnum < thedb->num_dbs; tblnum++)
-        local_nentries += 1 + thedb->dbs[tblnum]->nsqlix;
+    for (tblnum = 0; tblnum < num_dbs; tblnum++)
+        local_nentries += 1 + dbs[tblnum]->nsqlix;
 
     master_entry_t *new_arr = calloc(local_nentries, sizeof(master_entry_t));
     if (!new_arr) {
-        fprintf(stderr, "MALLOC OOM\n");
-        return -1;
+        logmsg(LOGMSG_ERROR, "%s: MALLOC OOM\n", __func__);
+        return NULL;
     }
 
-    for (i = 0, tblnum = 0; tblnum < thedb->num_dbs; tblnum++) {
+    for (i = 0, tblnum = 0; tblnum < num_dbs; tblnum++) {
         master_entry_t *ent = &new_arr[i];
-        struct dbtable *tbl = thedb->dbs[tblnum];
+        struct dbtable *tbl = dbs[tblnum];
         ent->tblname = strdup(tbl->tablename);
         ent->isstrdup = 1;
         ent->ixnum = -1;
-        ent->entry = create_sqlite_master_row(
-            i + RTPAGE_START, tbl->csc2_schema, tblnum, -1, &ent->entry_size);
+        ent->entry =
+            create_master_row(dbs, num_dbs, i + RTPAGE_START, tbl->csc2_schema,
+                              tblnum, -1, &ent->entry_size);
         tbl_idx = i;
         i++;
 
@@ -91,20 +91,39 @@ int create_sqlite_master()
             assert(ent->tblname == NULL);
             ent->tblname = new_arr[tbl_idx].tblname;
             ent->ixnum = ixnum; /* comdb2 index number */
-            ent->entry = create_sqlite_master_row(
-                i + RTPAGE_START, NULL, tblnum, ixnum, &ent->entry_size);
+            ent->entry = create_master_row(dbs, num_dbs, i + RTPAGE_START, NULL,
+                                           tblnum, ixnum, &ent->entry_size);
             i++;
         }
     }
 
     assert(i == local_nentries);
 
+    *nents = local_nentries;
+
+    return new_arr;
+}
+
+/**
+ * Create sqlite_master row and populate the associated hash
+ *
+ */
+void create_sqlite_master()
+{
+    master_entry_t *new_arr = NULL;
+    int local_nentries = 0;
+
+    new_arr =
+        create_master_entry_array(thedb->dbs, thedb->num_dbs, &local_nentries);
+    if (!new_arr) {
+        logmsg(LOGMSG_ERROR, "%s: MALLOC OOM\n", __func__);
+        abort();
+    }
+
     destroy_sqlite_master(sqlmaster, sqlmaster_nentries);
 
     sqlmaster = new_arr;
     sqlmaster_nentries = local_nentries;
-
-    return 0;
 }
 
 inline static void fill_mem_str(Mem *m, char *str)
@@ -167,8 +186,9 @@ inline static int serialize_mems(Mem *m, int nmems, char **out, int *outlen)
     return 0;
 }
 
-static void *create_sqlite_master_row(int rootpage, char *csc2_schema,
-                                      int tblnum, int ixnum, int *sz)
+static void *create_master_row(struct dbtable **dbs, int num_dbs, int rootpage,
+                               char *csc2_schema, int tblnum, int ixnum,
+                               int *sz)
 {
     /* text type, text name, text tbl_name, integer rootpage, text sql, text
      * csc2 */
@@ -181,9 +201,9 @@ static void *create_sqlite_master_row(int rootpage, char *csc2_schema,
     char *rec;
     int rc;
 
-    assert(tblnum < thedb->num_dbs);
+    assert(tblnum < num_dbs);
 
-    tbl = thedb->dbs[tblnum];
+    tbl = dbs[tblnum];
     dbname = tbl->tablename;
 
     if (ixnum == -1) {
@@ -191,8 +211,7 @@ static void *create_sqlite_master_row(int rootpage, char *csc2_schema,
         sql = tbl->sql;
         etype = "table";
     } else {
-        snprintf(name, sizeof(name), ".ONDISK_ix_%d", ixnum);
-        struct schema *schema = find_tag_schema(dbname, name);
+        struct schema *schema = tbl->schema->ix[ixnum];
         if (schema->sqlitetag) {
             strcpy(name, schema->sqlitetag);
         } else {
@@ -253,32 +272,37 @@ void *get_sqlite_entry(struct sql_thread *thd, int n)
     return thd->rootpages[n].entry;
 }
 
-/* deep copy of sqlite master */
-int get_copy_rootpages_nolock(struct sql_thread *thd)
+int get_copy_rootpages_custom(struct sql_thread *thd, master_entry_t *ents,
+                              int nents)
 {
     int i;
     if (thd->rootpages)
         destroy_sqlite_master(thd->rootpages, thd->rootpage_nentries);
 
-    thd->rootpages = calloc(sqlmaster_nentries, sizeof(master_entry_t));
+    thd->rootpages = calloc(nents, sizeof(master_entry_t));
     if (!thd->rootpages)
         return -1;
-    memcpy(thd->rootpages, sqlmaster,
-           sqlmaster_nentries * sizeof(master_entry_t));
-    for (i = 0; i < sqlmaster_nentries; i++) {
-        thd->rootpages[i].tblname = strdup(sqlmaster[i].tblname);
+    memcpy(thd->rootpages, ents, nents * sizeof(master_entry_t));
+    for (i = 0; i < nents; i++) {
+        thd->rootpages[i].tblname = strdup(ents[i].tblname);
         if (!thd->rootpages[i].tblname)
             return -1;
         thd->rootpages[i].isstrdup = 1;
         thd->rootpages[i].entry = malloc(thd->rootpages[i].entry_size);
         if (!thd->rootpages[i].entry)
             return -1;
-        memcpy(thd->rootpages[i].entry, sqlmaster[i].entry,
+        memcpy(thd->rootpages[i].entry, ents[i].entry,
                thd->rootpages[i].entry_size);
     }
-    thd->rootpage_nentries = sqlmaster_nentries;
+    thd->rootpage_nentries = nents;
 
     return 0;
+}
+
+/* deep copy of sqlite master */
+int get_copy_rootpages_nolock(struct sql_thread *thd)
+{
+    return get_copy_rootpages_custom(thd, sqlmaster, sqlmaster_nentries);
 }
 
 /* copy rootpage info so a sql thread as a local copy

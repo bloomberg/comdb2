@@ -330,3 +330,16 @@ DROP TABLE t2;
 DROP TABLE t3;
 DROP TABLE t1;
 
+# CTAS is currently not supported.
+CREATE TABLE t1(i INT) $$
+INSERT INTO t1 VALUES(1);
+CREATE TABLE t2 AS SELECT * FROM t1 $$
+DROP TABLE t1;
+
+CREATE TABLE t1(i INT (100))$$
+CREATE TABLE t1(v VARCHAR (100))$$
+CREATE TABLE t2(v VARCHAR      (100)    )$$
+SELECT csc2 FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
+DROP TABLE t1;
+DROP TABLE t2;
+

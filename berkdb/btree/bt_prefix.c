@@ -30,7 +30,7 @@ struct pfx_type_t {
 };
 
 
-static void
+void
 print_hex(uint8_t * b, unsigned l, int newline)
 {
 	static char map[] = "0123456789abcdef";

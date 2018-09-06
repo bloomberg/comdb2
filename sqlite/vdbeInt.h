@@ -517,12 +517,11 @@ struct Vdbe {
   Table **tbls;           /* list of tables to be open. */ 
   u16 numTables;
   char tzname[TZNAME_MAX];/* timezone info for datetime support */
-  u8 doExplainTrace;
   char *explainTrace;
-  int explainTraceLen;
-  int explainTraceAlloced;
   int dtprec;             /* datetime precision - make it u32 to silence compiler */
   struct timespec tspec;  /* time of prepare, used for stable now() */
+  u8 oe_flag;             /* ON CONFLICT action */
+  u8 upsert_idx;          /* ON CONFLICT target */
 };
 
 /*
@@ -685,7 +684,7 @@ int sqlite3VdbeMemHandleBom(Mem *pMem);
 /* COMDB2 MODIFICATION */
 int convMem2ClientDatetime(Mem *pMem, void *out);
 int convMem2ClientDatetimeStr(Mem *pMem, void *out, int outlen, int *outdtsz);
-int convDttz2ClientDatetime(dttz_t *dttz, const char *tzname, void *out, int sqltype);
+int convDttz2ClientDatetime(const dttz_t *, const char *tzname, void *out, int sqltype);
 
 int sqliteVdbeMemDecimalBasicArithmetics(Mem *a, Mem *b, int opcode, Mem * res, int flipped);
 

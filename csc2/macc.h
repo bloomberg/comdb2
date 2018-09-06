@@ -218,7 +218,8 @@ enum INDEXFLAGS {
     DUPKEY = 0x00000001,  /* duplicate key flag */
     RECNUMS = 0x00000002, /* index has key sequence numbers (COMDB2) */
     PRIMARY = 0x00000004,
-    DATAKEY = 0x00000008 /* key flag to indicate index has data */
+    DATAKEY = 0x00000008, /* key flag to indicate index has data */
+    UNIQNULLS = 0x00000010 /* all NULL values are treated as UNIQUE */
 };
 
 extern int fncs[MAXFUNCS];          /* functions                         */
@@ -311,6 +312,7 @@ void key_setdup();
 void key_setrecnums(void);
 void key_setprimary(void);
 void key_setdatakey(void);
+void key_setuniqnulls(void);
 void reset_key_exprtype(void);
 void key_exprtype_add(int type, int arraysz);
 void key_piece_add(char *buf, int is_expr);

@@ -25,6 +25,11 @@ static inline void *comdb2_realloc_@module@(void *ptr, size_t n)
     return comdb2_realloc_static(COMDB2MA_STATIC_@MODULE@, ptr, n);
 }
 
+static inline void *comdb2_resize_@module@(void *ptr, size_t n)
+{
+    return comdb2_resize_static(COMDB2MA_STATIC_@MODULE@, ptr, n);
+}
+
 static inline char *comdb2_strdup_@module@(const char *s)
 {
     return comdb2_strdup_static(COMDB2MA_STATIC_@MODULE@, s);
@@ -67,5 +72,6 @@ static inline int  comdb2_attach_@module@(comdb2ma alloc)
 #  define comdb2_realloc_@module@ realloc
 #  define comdb2_free_@module@    free
 #  define comdb2_strdup_@module@  strdup
+#  define malloc_resize_@module@  realloc
 #endif /* USE_SYS_ALLOC */
 #endif

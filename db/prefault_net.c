@@ -412,11 +412,6 @@ int broadcast_prefault(struct dbenv *dbenv, pfrq_t *qdata)
 
     /* now send it to all nodes */
 
-    /*
-    fprintf(stderr, "sending %d bytes\n", dtalen);
-    hexdump(dta, dtalen);
-    */
-
     if (!err) {
         int dtalen = (p_buf - dta);
         send_to_all(dbenv, dta, dtalen, qdata->flush);
@@ -487,11 +482,6 @@ int process_broadcast_prefault(struct dbenv *dbenv, unsigned char *dta,
         free(qdata);
         return 0;
     }
-
-    /*
-    fprintf(stderr, "got %d bytes\n", dtalen);
-    hexdump(dta, dtalen);
-    */
 
     switch (qdata->type) {
     default:

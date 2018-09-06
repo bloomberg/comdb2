@@ -1,39 +1,61 @@
-all: basicops all_tests
-
 export TESTSROOTDIR:=$(shell pwd)
-
-SRCHOME:=$(shell readlink -f $(TESTSROOTDIR)/../ )
+SRCHOME:=$(shell readlink -f $(TESTSROOTDIR)/../)
 ifeq ($(SRCHOME),)
   SRCHOME:=$(TESTSROOTDIR)/..
 endif
 export SRCHOME
+ifeq ($(TESTID),)
+export TESTID:=$(shell $(TESTSROOTDIR)/tools/get_random.sh)
+endif
+include $(TESTSROOTDIR)/Makefile.common
 
-export TESTID:=$(shell tools/get_random.sh)
-export TESTDIR:=$(TESTSROOTDIR)/test_$(TESTID)
+
 # List of disabled tests
-export DISABLED_TESTS:=$(shell awk '/^DISABLED/{f=1;next};/<END>/{f=0}f' TODO | cut -d' ' -f1)
+DISABLED_TESTS:=$(shell awk '/^DISABLED/{f=1;next};/<END>/{f=0}f' TODO | cut -d' ' -f1)
+
+ifeq ($(SKIPSSL), 1)
+SKIPS:=$(shell grep ssl *.test/lrl*  | grep 'ssl_client_mode VERIFY' | cut -f1 -d'/' | sort -u)
+DISABLED_TESTS:="${DISABLED_TESTS} ${SKIPS}"
+endif
+
+ifeq ($(wildcard $(BUILDDIR)/tcl/libtclcdb2.so),)
+#if we have not compiled with tcl, skip tests that require tclcdb2
+SKIPS:=$(shell ls *.test/*.tcl | xargs grep 'package require tclcdb2' | cut -f1 -d'/' | sort -u)
+DISABLED_TESTS:="${DISABLED_TESTS} ${SKIPS}"
+endif
+
+export DISABLED_TESTS
+
+DOALL:=0
+
+ifeq ($(subst all,,$(MAKECMDGOALS)),) #if cmdgoals empty or 'all'
+DOALL:=1
+endif
+
+ifeq ($(DOALL),1)
+$(shell $(TESTSROOTDIR)/tools/create_generated_tests.sh)
+endif
+
 # List of all tests that need to run. This is essentially a list of all
 # non-disabled tests.
 export ALL_TESTS:=$(patsubst %.test, %, $(filter-out $(DISABLED_TESTS), \
-    $(shell tools/get_tests_inorder.sh)))
+    $(shell $(TESTSROOTDIR)/tools/get_tests_inorder.sh)))
 
-TOTAL=$(words $(MAKECMDGOALS))
-ifeq ($(TOTAL),0)
-TOTAL=$(words $(ALL_TESTS))
+
+TOTAL=$(words $(MAKECMDGOALS) )
+ifeq ($(DOALL),1)
+TOTAL=$(words $(ALL_TESTS) )
 endif
+
+all: init basicops all_tests
+
+init:
+	@mkdir -p ${TESTDIR}
 
 # Run all non-disabled tests.
 all_tests: $(ALL_TESTS)
 
-# get md5sum of executable use check when running every test in a series
-export COMDB2AR_EXE:=$(TESTDIR)/comdb2ar
-export COMDB2_EXE:=$(TESTDIR)/comdb2
-export CDB2SQL_EXE:=$(TESTDIR)/cdb2sql
-export COPYCOMDB2_EXE:=$(SRCHOME)/db/copycomdb2
-export CDB2_SQLREPLAY_EXE:=$(SRCHOME)/cdb2_sqlreplay
-export PMUX_EXE:=$(SRCHOME)/pmux
-
-basicops_nokey: executables
+basicops_nokey: init
 	$(shell which git > /dev/null 2>&1 && git rev-parse --abbrev-ref HEAD | xargs echo "Branch" >> ${TESTDIR}/test.log)
 	$(shell which git > /dev/null 2>&1 && git rev-parse --short HEAD | xargs echo "SHA " >> ${TESTDIR}/test.log)
 	$(shell echo "TESTID=${TESTID} " >> ${TESTDIR}/test.log)
@@ -42,44 +64,42 @@ basicops_nokey: executables
 	$(shell echo "TESTSROOTDIR=${TESTSROOTDIR} " >> ${TESTDIR}/test.log)
 	$(shell echo "TESTDIR=${TESTDIR} " >> ${TESTDIR}/test.log)
 	$(shell echo "DISABLED= $(sort ${DISABLED_TESTS}) " >> ${TESTDIR}/test.log)
+	$(shell echo "MAKECMDGOALS=${MAKECMDGOALS}" >> ${TESTDIR}/test.log)
 	$(shell echo "" >> ${TESTDIR}/test.log)
-	$(shell echo ${MAKECMDGOALS} >> ${TESTDIR}/test.log)
-
-executables:
-	@mkdir -p ${TESTDIR}
-	@cp ${SRCHOME}/comdb2 ${SRCHOME}/cdb2sql ${SRCHOME}/comdb2ar ${TESTDIR}/
-	@command -v ${COMDB2_EXE} > /dev/null || (echo "${COMDB2_EXE} missing "; exit 1)
-	@command -v ${CDB2_SQLREPLAY_EXE} > /dev/null || (echo "${CDB2_SQLREPLAY_EXE} missing "; exit 1)
-	@command -v ${CDB2SQL_EXE} > /dev/null || (echo "${CDB2SQL_EXE} missing "; exit 1)
-	@command -v ${COMDB2AR_EXE} > /dev/null || (echo "${COMDB2AR_EXE} missing "; exit 1)
-	@command -v ${COPYCOMDB2_EXE} > /dev/null || (echo "${COPYCOMDB2_EXE} missing "; exit 1)
-	@command -v ${PMUX_EXE} > /dev/null || (echo "${PMUX_EXE} missing "; exit 1)
-
 
 basicops: basicops_nokey
-	$(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" SKIPSSL="${SKIPSSL}" tools/keygen.sh)
-	$(shell TOTAL="${TOTAL}" tools/smalldelay.sh)
-
-
-.PHONY: tools
+	$(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" SKIPSSL="${SKIPSSL}" $(TESTSROOTDIR)/tools/keygen.sh)
+	$(shell TOTAL="${TOTAL}" $(TESTSROOTDIR)/tools/smalldelay.sh)
+	$(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" TESTSROOTDIR="${TESTSROOTDIR}" COMDB2_EXE=${COMDB2_EXE} CDB2SQL_EXE=${CDB2SQL_EXE} COMDB2AR_EXE=${COMDB2AR_EXE} PMUX_EXE=${PMUX_EXE} PMUXPORT=${PMUXPORT} ${TESTSROOTDIR}/tools/copy_files_to_cluster.sh > ${TESTDIR}/copy_files_to_cluster.log 2>&1 || echo "exit 1 copy_files_to_cluster failed" )
 
 showparams: 
+	@echo MAKECMDGOALS=${MAKECMDGOALS}
+	@echo DOALL=${DOALL}
 	@echo TESTSROOTDIR=${TESTSROOTDIR}
 	@echo SRCHOME=${SRCHOME}
 	@echo TESTID=${TESTID}
 	@echo TESTDIR=${TESTDIR}
 	@echo CLUSTER=${CLUSTER}
+	@echo COMDB2AR_EXE=${COMDB2AR_EXE}
+	@echo COMDB2_EXE=${COMDB2_EXE}
+	@echo CDB2SQL_EXE=${CDB2SQL_EXE}
+	@echo COPYCOMDB2_EXE=${COPYCOMDB2_EXE}
+	@echo CDB2_SQLREPLAY_EXE=${CDB2_SQLREPLAY_EXE}
+	@echo PMUX_EXE=${PMUX_EXE}
 
-tools:
-	@$(MAKE) -sC tools
 
-$(patsubst %.test,%,$(shell ls -d *.test | grep -v crle)): basicops tools
 
-crle: basicops_nokey tools
-	@$(MAKE) -sC crle.test
+%_generated: basicops %_generated.test 
+
+%_generated.test:
+	@N=`$(TESTSROOTDIR)/tools/get_test_counter.sh` && echo TESTID=${TESTID} running in $(TESTDIR) $< $$N/${TOTAL}
+	@cp -r $< $(TESTDIR)/
+	@$(MAKE) -skC $(TESTDIR)/$<
+
+$(patsubst %.test,%,$(ALL_TESTS)): basicops
 
 %: %.test
-	@N=`tools/get_test_counter.sh` && echo TESTID=${TESTID} running in $(TESTDIR) $< $$N/${TOTAL}
+	@N=`$(TESTSROOTDIR)/tools/get_test_counter.sh` && echo TESTID=${TESTID} running in $(TESTDIR) $< $$N/${TOTAL}
 	@cp -r $< $(TESTDIR)/
 	@$(MAKE) -skC $(TESTDIR)/$<
 
@@ -91,6 +111,9 @@ crle: basicops_nokey tools
 
 %.tool: %.test
 	+$(MAKE) -C $(patsubst %.tool,%,$<) tool
+
+generated_tests:
+	$(shell $(TESTSROOTDIR)/tools/create_generated_tests.sh)
 
 stop:
 	@./stopall
@@ -105,11 +128,9 @@ testtotalclean: $(patsubst %.test,%.clean,$(shell ls -d *.test))
 	rm -f .*.failed
 	rm -fr dbs
 	rm -f $(TMPDIR)/cdb2test*
-	$(MAKE) -C tools clean
 
 clean: testclean
 
 testclean:
-	@rm -rf test_[0-9]*
-	@$(foreach n, $(CLUSTER), ssh $(n) 'rm -rf *.trap; rm -rf $(TESTSROOTDIR)/test_[0-9]*' < /dev/null;)
-	@$(MAKE) -C tools clean
+	@rm -rf test_[0-9]* $(TESTDIR)/ *_generated.test/
+	@$(foreach n, $(CLUSTER), ssh $(n) 'rm -rf $(TESTSROOTDIR)/test_[0-9]* $(TESTDIR)/' < /dev/null;)

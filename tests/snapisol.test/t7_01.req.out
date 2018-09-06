@@ -47,8 +47,9 @@ done
 done
 done
 done
-[commit] failed with rc 2 unable to add record rc = 4
 done
+(a=1, b=10)
+(a=2, b=20)
 done
 done
 done
@@ -56,4 +57,6 @@ done
 done
 [commit] failed with rc -3 table "t70" was schema changed
 done
+(a=1, b=10)
+(a=2, b=20)
 done

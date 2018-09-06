@@ -1,7 +1,7 @@
 foreach(dir etc lib log var var/lib var/log)
-  file(MAKE_DIRECTORY ${CMAKE_INSTALL_PREFIX}/${dir}/cdb2)
+  file(MAKE_DIRECTORY $ENV{DESTDIR}/${CMAKE_INSTALL_PREFIX}/${dir}/cdb2)
 endforeach()
-file(MAKE_DIRECTORY ${CMAKE_INSTALL_PREFIX}/etc/cdb2/config/comdb2.d)
+file(MAKE_DIRECTORY $ENV{DESTDIR}/${CMAKE_INSTALL_PREFIX}/etc/cdb2/config/comdb2.d)
 set(ICTHX
 "
 Thank you for installing Comdb2.

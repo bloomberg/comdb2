@@ -13,7 +13,7 @@ enum CDB2RequestType {
 }
 
 enum CDB2ClientFeatures {
-    SKIP_ROWS            = 1;
+    SKIP_INTRANS_RESULTS = 1;
     ALLOW_MASTER_EXEC    = 2;
     ALLOW_MASTER_DBINFO  = 3;
     ALLOW_QUEUING        = 4;
@@ -50,7 +50,7 @@ message CDB2_SQLQUERY {
   }
   optional snapshotinfo snapshot_info = 11; 
   optional int64 skip_rows = 12; // number of rows to be skipped, -1 (skip all rows)
-  optional int32 retry = 13  [default = 0];
+  optional int32 retry = 13  [default = 0]; // query retry count for a disconnected connection
   // if begin retry < query retry then skip all the rows from server, if same then skip (skip_rows)
   repeated int32 features = 14; // Client can negotiate on this.
   message cinfo {
@@ -62,6 +62,11 @@ message CDB2_SQLQUERY {
   }
   optional cinfo client_info = 15;
   repeated string context    = 16; // Client context messages.
+  message reqinfo {
+      required int64 timestampus = 1; // client timestamp of this message.
+      required int32 num_retries = 2; // client retry count including hops to other nodes
+  }
+  optional reqinfo req_info = 17; //request info
 }
 
 

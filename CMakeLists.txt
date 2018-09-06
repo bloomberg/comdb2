@@ -7,10 +7,10 @@ set(CMAKE_C_STANDARD_REQUIRED TRUE)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
+set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "RelWithDebInfo" "Release")
 if(NOT CMAKE_BUILD_TYPE)
   get_property(helpstring CACHE CMAKE_BUILD_TYPE PROPERTY HELPSTRING)
-  set(CMAKE_BUILD_TYPE Debug CACHE STRING ${helpstring} FORCE)
-  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "RelWithDebInfo" "Release")
+  set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING ${helpstring} FORCE)
 endif()
 
 if(COMDB2_BUILD_STATIC)
@@ -41,11 +41,20 @@ find_package(OpenSSL REQUIRED)
 find_package(Protobuf_C REQUIRED)
 find_package(Readline REQUIRED)
 find_package(SQLite3 REQUIRED)
-find_package(UUID REQUIRED)
+if (NOT ${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
+  find_package(UUID REQUIRED)
+endif()
 find_package(ZLIB REQUIRED)
 if(${CMAKE_SYSTEM_NAME} STREQUAL Linux OR ${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
   find_package(Unwind REQUIRED)
 endif()
+
+option(WITH_TCL "Turn ON to compile with Tcl bindings" OFF)
+if(WITH_TCL)
+  find_package(Tcl REQUIRED)
+endif()
+
+option(COMDB2_LEGACY_DEFAULTS "Legacy defaults without lrl override" OFF)
 
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   set(prefix /opt/bb)
@@ -56,11 +65,17 @@ if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   set(CMAKE_INSTALL_PREFIX ${prefix} CACHE PATH ${helpstring} FORCE)
 endif()
 
+if(NOT DEFINED COMDB2_ROOT)
+    set(COMDB2_ROOT ${CMAKE_INSTALL_PREFIX})
+endif()
+set(COMDB2_ROOT ${COMDB2_ROOT} CACHE PATH "Directory for runtime files" FORCE)
+
 add_definitions(
-  -DCOMDB2_ROOT=${CMAKE_INSTALL_PREFIX}
+  -DCOMDB2_ROOT=${COMDB2_ROOT}
   -DCOMDB2_VERSION="2"
-  -DMONITOR_STACK
+  -D_FILE_OFFSET_BITS=64
 )
+
 option(COMDB2_PER_THREAD_MALLOC "Turn OFF to run under Valgrind" ON)
 if(COMDB2_PER_THREAD_MALLOC)
   add_definitions(-DPER_THREAD_MALLOC)
@@ -68,41 +83,40 @@ else()
   add_definitions(-DUSE_SYS_ALLOC)
 endif()
 
-if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL x86_64)
+add_definitions(-DNEWSI_ASOF_USE_TEMPTABLE)
+add_definitions(-DNEWSI_MEMPOOL)
+
+if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL x86_64 OR ${CMAKE_SYSTEM_PROCESSOR} STREQUAL armv7l)
   # This is mostly misused as little-endian
   add_definitions(-D_LINUX_SOURCE)
 endif()
-
-if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL armv7l)
-  # This is mostly misused as little-endian
-  add_definitions(-D_LINUX_SOURCE)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64")
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64")
-endif()
-
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL Linux)
   add_definitions(-D_GNU_SOURCE)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-strict-aliasing")
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pthread")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror=implicit-function-declaration")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror=return-type")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pthread -lrt")
+  if (${CMAKE_C_COMPILER_ID} STREQUAL Clang)
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -latomic")
+  endif()
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
   add_definitions(-D_DARWIN_C_SOURCE -D_XOPEN_SOURCE=600)
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL AIX)
-    add_definitions(-D_IBM_SOURCE)
-  #-qxflag=dircache:71,256 ??  #-bmaxdata:0xb0000000/dsa ??
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -qlanglvl=extc99 -qcpluscmt -qtls -qdfp")
+  add_definitions(-D_IBM_SOURCE)
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -qcpluscmt -qtls -qdfp -qchars=signed -Wl,-bmaxdata:0xb0000000/dsa")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lthread -lpthread")
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL SunOS)
   add_definitions(-D_SUN_SOURCE -D_POSIX_PTHREAD_SEMANTICS)
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -errfmt=error -mt=yes -fma=fused -xmemalign=8i -xc99=all")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -errfmt=error -mt=yes -fma=fused -xmemalign=8i")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lsocket -lnsl -lresolv -lpthread")
 endif()
 
-add_subdirectory(bb)
+add_subdirectory(util)
 add_subdirectory(bdb)
 add_subdirectory(berkdb)
 add_subdirectory(cdb2api)
@@ -120,18 +134,26 @@ add_subdirectory(protobuf)
 add_subdirectory(schemachange)
 add_subdirectory(sockpool)
 add_subdirectory(sqlite)
+if(WITH_TCL)
+  add_subdirectory(tcl)
+endif()
 add_subdirectory(tools)
-add_subdirectory(plugin)
+add_subdirectory(plugins)
 add_subdirectory(db)
 add_subdirectory(contrib/comdb2makecluster)
 add_subdirectory(tests/tools EXCLUDE_FROM_ALL)
 
 enable_testing()
-file(GLOB TESTS LIST_DIRECTORIES true "${PROJECT_SOURCE_DIR}/tests/*.test")
-foreach(TEST IN ITEMS ${TESTS}) 
-     get_filename_component(TEST ${TEST} NAME_WE)
-     add_test(NAME ${TEST} COMMAND make ${TEST} WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/tests/")
-endforeach()
+add_test(NAME tests-tools COMMAND make test-tools )
+add_test(NAME all-tests COMMAND make WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/tests/")
+
+######## TODO: Get testing framework to work with ctest #####
+#file(GLOB TESTS LIST_DIRECTORIES true "${PROJECT_SOURCE_DIR}/tests/*.test")
+#foreach(TEST IN ITEMS ${TESTS}) 
+#     get_filename_component(TEST ${TEST} NAME_WE)
+#     add_test(NAME ${TEST} COMMAND echo make ${TEST} WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/tests/")
+#endforeach()
+
 
 ########################
 ######## TODO ##########

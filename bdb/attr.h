@@ -72,10 +72,8 @@ DEF_ATTR(PAGESIZEDTA, pagesizedta, BYTES, 4096, NULL)
 DEF_ATTR(PAGESIZEIX, pagesizeix, BYTES, 4096, NULL)
 DEF_ATTR(ORDEREDRRNS, orderedrrns, BOOLEAN, 1, NULL)
 DEF_ATTR(GENIDS, genids, BOOLEAN, 0, NULL)
-DEF_ATTR(USEPHASE3, usephase3, BOOLEAN, 1, NULL)
 DEF_ATTR(I_AM_MASTER, i_am_master, BOOLEAN, 0, NULL)
 DEF_ATTR(SBUFTIMEOUT, sbuftimeout, SECS, 0, NULL)
-DEF_ATTR(TEMPHASH_CACHESZ, tmphashsz, MBYTES, 5, NULL) /* XXX deficated */
 DEF_ATTR(DTASTRIPE, dtastripe, QUANTITY, 0,
          "Partition each table's data into this many stripes. Note that this "
          "is ONLY settable at database creation time.")
@@ -93,9 +91,6 @@ DEF_ATTR(REPSLEEP, repsleep, QUANTITY, 0,
  *   optimisitic here.
  * - fudge it by adding 5 seconds to whatever we calculate.
  */
-DEF_ATTR(MINREPTIMEOUT, minreptimeoutms, MSECS, 10 * 1000,
-         "Wait at least for this long for a replication event before marking a "
-         "node incoherent.")
 DEF_ATTR(BLOBSTRIPE, blobstripe, BOOLEAN, 0,
          "Settable ONLY at database creation time. Create stripes for every "
          "variable length field (e.g. blobs).")
@@ -120,7 +115,6 @@ DEF_ATTR(SQLITE_SORTER_TEMPDIR_REQFREE, sqlite_sorter_tempdir_reqfree, PERCENT,
          6, "Refuse to create a sorter for queries if less than this percent "
             "of disk space is available (and return an error to the "
             "application).")
-DEF_ATTR(LONGBLOCKCACHE, longblockcache, MBYTES, 1, NULL)
 DEF_ATTR(DIRECTIO, directio, BOOLEAN, 1,
          "Bypass filesystem cache for page I/O.")
 /* keep the cache clean (written to disk) so that blocks can be
@@ -136,7 +130,7 @@ DEF_ATTR(CHECKSUMS, checksums, BOOLEAN, 1,
          "Checksum data pages. Turning this off is highly discouraged.")
 DEF_ATTR(LITTLE_ENDIAN_BTREES, little_endian_btrees, BOOLEAN, 1,
          "Enabling this sets byte ordering for pages to little endian.")
-DEF_ATTR(COMMITDELAYMAX, commitdelaymax, QUANTITY, 8,
+DEF_ATTR(COMMITDELAYMAX, commitdelaymax, QUANTITY, 0,
          "Introduce a delay after each transaction before returning control to "
          "the application. Occasionally useful to allow replicants to catch up "
          "on startup with a very busy system.")
@@ -170,7 +164,7 @@ DEF_ATTR(LOGSEGMENTS, logsegments, QUANTITY, 1,
          "being flushed.")
 
 #ifdef BERKDB_4_2
-#define REPLIMIT_DEFAULT (256 * 1024)
+#define REPLIMIT_DEFAULT (100 * 1024 * 1024)
 #elif defined(BERKDB_4_3) || defined(BERKDB_4_5) || defined(BERKDB_46)
 #define REPLIMIT_DEFAULT (1024 * 1024)
 #else
@@ -228,6 +222,8 @@ DEF_ATTR(FSTDUMP_THREAD_STACKSZ, fstdump_thread_stacksz, BYTES, 256 * 1024,
 DEF_ATTR(FSTDUMP_MAXTHREADS, fstdump_maxthreads, QUANTITY, 0,
          "Maximum number of fstdump threads. (0 for single-threaded, 16 for "
          "maximum database thrashing)")
+DEF_ATTR(VERIFY_THREAD_STACKSZ, verify_thread_stacksz, BYTES, 2 * 1024 * 1024,
+         "Size of the verify thread stack.")
 DEF_ATTR(REP_LONGREQ, rep_longreq, SECS, 1,
          "Warn if replication events are taking this long to process.")
 DEF_ATTR(COMMITDELAYBEHINDTHRESH, commitdelaybehindthresh, BYTES, 1048576,
@@ -261,7 +257,6 @@ DEF_ATTR(ROWLOCKS_PAGELOCK_OPTIMIZATION, rowlocks_pagelock_optimization,
          BOOLEAN, 1,
          "Upgrade rowlocks to pagelocks if possible on cursor traversals.")
 DEF_ATTR(ENABLECURSORSER, enable_cursor_ser, BOOLEAN, 0, NULL)
-DEF_ATTR(ENABLECURSORPAUSE, enable_cursor_pause, BOOLEAN, 0, NULL)
 DEF_ATTR(NONAMES, nonames, BOOLEAN, 1, "Use database name for some environment "
                                        "files (older setting, should remain "
                                        "off).")
@@ -301,9 +296,6 @@ DEF_ATTR(
 DEF_ATTR(MIN_KEEP_LOGS_AGE_HWM, min_keep_logs_age_hwm, QUANTITY, 0, NULL)
 DEF_ATTR(LOG_DEBUG_CTRACE_THRESHOLD, log_debug_ctrace_threshold, QUANTITY, 20,
          "Limit trace about log file deletion to this many events.")
-DEF_ATTR(GOOSE_REPLICATION_FOR_INCOHERENT_NODES,
-         goose_replication_for_incoherent_nodes, BOOLEAN, 0,
-         "Call for election for nodes affected by COMMITDELAYBEHINDTHRESH.")
 DEF_ATTR(DISABLE_UPDATE_STRIPE_CHANGE, disable_update_stripe_change, BOOLEAN, 1,
          "Enable to move records between stripes on an update.")
 DEF_ATTR(REP_SKIP_PHASE_3, rep_skip_phase_3, BOOLEAN, 0, NULL)
@@ -378,10 +370,10 @@ DEF_ATTR(SOSQL_MAX_COMMIT_WAIT_SEC, sosql_max_commit_wait_sec, SECS, 600,
 DEF_ATTR(SOSQL_DDL_MAX_COMMIT_WAIT_SEC, sosql_ddl_max_commit_wait_sec, SECS,
          24 * 3600 * 3,
          "Wait for the master to commit a DDL transaction for up to this long.")
-DEF_ATTR(SOSQL_POKE_TIMEOUT_SEC, sosql_poke_timeout_sec, QUANTITY, 12,
+DEF_ATTR(SOSQL_POKE_TIMEOUT_SEC, sosql_poke_timeout_sec, QUANTITY, 2,
          "On replicants, when checking on master for transaction status, retry "
          "the check after this many seconds.")
-DEF_ATTR(SOSQL_POKE_FREQ_SEC, sosql_poke_freq_sec, QUANTITY, 5,
+DEF_ATTR(SOSQL_POKE_FREQ_SEC, sosql_poke_freq_sec, QUANTITY, 1,
          "On replicants, check this often for transaction status.")
 DEF_ATTR(SQL_QUEUEING_DISABLE_TRACE, sql_queueing_disable, BOOLEAN, 0,
          "Disable trace when SQL requests are starting to queue.")
@@ -480,6 +472,12 @@ DEF_ATTR(SC_RESUME_AUTOCOMMIT, sc_resume_autocommit, BOOLEAN, 1,
 DEF_ATTR(SC_RESUME_WATCHDOG_TIMER, sc_resume_watchdog_timer, QUANTITY, 60,
          "sc_resuming_watchdog timer")
 DEF_ATTR(SC_DELAY_VERIFY_ERROR, sc_delay_verify_error, MSECS, 100, NULL)
+DEF_ATTR(SC_ASYNC, sc_async, BOOLEAN, 1,
+         "Run transactional schema changes asynchronously.")
+DEF_ATTR(SC_ASYNC_MAXTHREADS, sc_async_maxthreads, QUANTITY, 5,
+         "Max number of threads for asynchronous schema changes.")
+DEF_ATTR(SC_DONE_SAME_TRAN, sc_done_same_tran, BOOLEAN, 1,
+         "Write scdone record in the same logical transaction as DDLs.")
 DEF_ATTR(USE_VTAG_ONDISK_VERMAP, use_vtag_ondisk_vermap, BOOLEAN, 1,
          "Use vtag_to_ondisk_vermap conversion function from vtag_to_ondisk.")
 DEF_ATTR(UDP_DROP_DELTA_THRESHOLD, udp_drop_delta_threshold, QUANTITY, 10,
@@ -509,8 +507,6 @@ DEF_ATTR(PHYSICAL_ACK_INTERVAL, physical_ack_interval, QUANTITY, 0,
          "For logical transactions, have the slave send an 'ack' after this "
          "many physical operations.")
 DEF_ATTR(ACK_ON_REPLAG_THRESHOLD, ack_on_replag_threshold, QUANTITY, 0, NULL)
-DEF_ATTR(UNDO_DEADLOCK_THRESHOLD, undo_deadlock_threshold, QUANTITY, 1,
-         "Drop the undo interval to 1 after this many deadlocks.")
 /* temporary, as an emergency switch */
 DEF_ATTR(USE_RECOVERY_START_FOR_LOG_DELETION,
          use_recovery_start_for_log_deletion, BOOLEAN, 1, NULL)
@@ -565,10 +561,10 @@ DEF_ATTR(LEASE_RENEW_INTERVAL, lease_renew_interval, MSECS, 200,
          "How often we renew leases.")
 DEF_ATTR(DOWNGRADE_PENALTY, downgrade_penalty, MSECS, 10000,
          "Prevent upgrades for at least this many ms after a downgrade.")
-DEF_ATTR(CATCHUP_WINDOW, catchup_window, BYTES, 1000000,
+DEF_ATTR(CATCHUP_WINDOW, catchup_window, BYTES, 40000000,
          "Start waiting in waitforseqnum if replicant is within this many "
          "bytes of master.")
-DEF_ATTR(CATCHUP_ON_COMMIT, catchup_on_commit, BOOLEAN, 1,
+DEF_ATTR(CATCHUP_ON_COMMIT, catchup_on_commit, BOOLEAN, 0,
          "Replicant to INCOHERENT_WAIT rather than INCOHERENT on commit if "
          "within CATCHUP_WINDOW.")
 DEF_ATTR(
@@ -611,6 +607,8 @@ DEF_ATTR(TIMEPART_CHECK_SHARD_EXISTENCE, timepart_check_shard_existence,
 DEF_ATTR(
     IGNORE_BAD_TABLE, ignore_bad_table, BOOLEAN, 0,
     "Allow a database with a corrupt table to come up, without that table.")
+DEF_ATTR(TIMEPART_NO_ROLLOUT, timepart_no_rollout, BOOLEAN, 0,
+         "Prevent new rollouts for time partitions.")
 /* Keep enabled for the merge */
 DEF_ATTR(DURABLE_LSNS, durable_lsns, BOOLEAN, 0, NULL)
 /* Keep disabled:  we get it when we add to the trn_repo */
@@ -644,6 +642,8 @@ DEF_ATTR(DEBUG_TIMEPART_SQLITE, dbg_timepart_SQLITE, BOOLEAN, 0, NULL)
 DEF_ATTR(DELAY_FILE_OPEN, delay_file_open, MSECS, 0, NULL)
 DEF_ATTR(DELAY_LOCK_TABLE_RECORD_C, delay_lock_table_record_c, MSECS, 0, NULL)
 
+DEF_ATTR(NET_SEND_GBLCONTEXT, net_send_gblcontext, BOOLEAN, 0,
+         "Enable net_send for USER_TYPE_GBLCONTEXT.")
 /*
   BDB_ATTR_REPTIMEOUT
      amount of time to wait for acks.  when the time is exceeded,
@@ -703,12 +703,6 @@ DEF_ATTR(DELAY_LOCK_TABLE_RECORD_C, delay_lock_table_record_c, MSECS, 0, NULL)
      a replication group via a live copy of the current database.
      this should not be needed in other cases (perhaps necessary
      as an integrity check)
-  BDB_ATTR_RRNCACHESIZE
-     this is the number of rrn records from the freerec db that stay in
-     memory for fast rrn allocation
-  BDB_ATTR_RRNEXTENDAMOUNT
-     we add this many records in one batch transaction to the rrn freerec
-     db when the freerec is empty
   BDB_ATTR_REPALWAYSWAIT
      when this is set, bdb_wait_for_seqnum_from_all() and
      bdb_wait_for_seqnum_from_node() will wait for nodes that do not have
@@ -716,28 +710,13 @@ DEF_ATTR(DELAY_LOCK_TABLE_RECORD_C, delay_lock_table_record_c, MSECS, 0, NULL)
      if the node comes re-estabilishes comm.
   BDB_ATTR_PAGESIZEDTA
      the pagesize of the .dta file
-  BDB_ATTR_PAGESIZEFREEREC
-     the pagesize of the .freerec file
   BDB_ATTR_PAGESIZEIX
      the pagesize of the .ix[0-n] files
-  BDB_ATTR_RRNCACHELOWAT
-     try to keep this many rrns in the rrn cache.
-  BDB_ATTR_ORDEREDRRNS
-     keep rrn allocation sequentially ordered whenever possible
   BDB_ATTR_GENIDS
      do we internally maintain an 8 byte generation id associated with each
      record.
-  BDB_ATTR_DELRQUIRESGENIDS
-     if we are running in genid mode, do we allow access from clients that
-     dont understand genids for DELETE requests.
-  BDB_ATTR_UPDATEREQUIRESGENIDS
-     if we are running in genid mode, do we allow access from clients that
-     dont understand genids for UPDATE requests.
   BDB_ATTR_I_AM_MASTER
      become master on startup, do not elect.
-  BDB_ATTR_FREERECQUEUE
-     use alternate queue implementation of freerec.  can only be turned on
-     if all nodes in the cluster support this.
   BDB_ATTR_REPFAILCHK
      controls replicant check on failure feature:
         OFF: feature is ENABLED
@@ -754,8 +733,6 @@ DEF_ATTR(DELAY_LOCK_TABLE_RECORD_C, delay_lock_table_record_c, MSECS, 0, NULL)
         ON:  feature is DISABLED
   BDB_ATTR_ENABLECURSORSER
      if true bdb_fetch_int() will attempt to use cursor serialization
-  BDB_ATTR_ENABLECURSORPAUSE
-     if true bdb_cursor will attempt to use cursor pausing
 
   BDB_ATTR_SOSQL_MAX_COMMIT_WAIT_SEC
      maximum number of seconds we wait for a transaction to commit

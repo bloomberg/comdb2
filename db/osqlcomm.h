@@ -24,7 +24,6 @@
 #include "block_internal.h"
 #include "comdb2uuid.h"
 #include "schemachange.h"
-#include "bpfunc.pb-c.h"
 
 #define OSQL_SEND_ERROR_WRONGMASTER (-1234)
 /**
@@ -49,7 +48,7 @@ void osql_comm_destroy(void);
  * It is used mainly with blocksql
  *
  */
-int osql_comm_blkout_node(char *host);
+int osql_comm_blkout_node(const char *host);
 
 /* Offload upgrade record request. */
 int offload_comm_send_upgrade_record(const char *tbl, unsigned long long genid);
@@ -142,7 +141,7 @@ int osql_send_updrec(char *tonode, unsigned long long rqid, uuid_t uuid,
  */
 int osql_send_insrec(char *tohost, unsigned long long rqid, uuid_t uuid,
                      unsigned long long genid, unsigned long long dirty_keys,
-                     char *pData, int nData, int type, SBUF2 *logsb);
+                     char *pData, int nData, int type, SBUF2 *logsb, int flags);
 
 /**
  * Send DELREC op
@@ -222,6 +221,16 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                         int **updCols, blob_buffer_t blobs[MAXBLOBS], int step,
                         struct block_err *err, int *receivedrows, SBUF2 *logsb);
 
+/**
+ * Handles each packet and start schema change
+ *
+ */
+int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
+                              uuid_t uuid, void *trans, char *msg, int msglen,
+                              int *flags, int **updCols,
+                              blob_buffer_t blobs[MAXBLOBS], int step,
+                              struct block_err *err, int *receivedrows,
+                              SBUF2 *logsb);
 /**
  * Sends a user command to offload net (used by "osqlnet")
  *
@@ -317,14 +326,6 @@ int osql_send_dbglog(char *tohost, unsigned long long rqid, uuid_t uuid,
                      unsigned long long dbglog_cookie, int queryid, int type);
 
 /**
- * Copy and pack the host-ordered dbglog_header- used to write endianized
- * dbglogfiles.
- *
- */
-const uint8_t *dbglog_hdr_put(const struct dbglog_hdr *p_dbglog_hdr,
-                              uint8_t *p_buf, const uint8_t *p_buf_end);
-
-/**
  * Interprets each packet and log info
  * about it
  *
@@ -361,7 +362,7 @@ int osql_disable_net_test(void);
  * Check if we need the bdb lock to stop long term sql sessions
  *
  */
-int osql_comm_check_bdb_lock(void);
+int osql_comm_check_bdb_lock(const char *func, int line);
 
 int osql_send_updstat(char *tohost, unsigned long long rqid, uuid_t uuid,
                       unsigned long long seq, char *pData, int nData, int nStat,

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 dbname=$1
@@ -7,7 +7,7 @@ if [[ -z $dbname ]] ; then
     exit 1
 fi
 
-maxrecords=15000
+maxrecords=100000
 maxselectfail=20
 
 cdb2sql ${CDB2_OPTIONS} $dbname default "truncate jobs"
@@ -20,11 +20,15 @@ cdb2sql ${CDB2_OPTIONS} $dbname default "WITH RECURSIVE cnt(x) AS (SELECT 1 UNIO
 sleep 10
 
 # Run the executable
-exe=${TESTSROOTDIR}/tools/selectv
+exe=${TESTSBUILDDIR}/selectv
 
-$exe -d $dbname -t 5 > test.log 2>&1 &
+$exe -d $dbname -D -t 5 > test.log 2>&1 &
 tpid=$!
 echo "Test Thread PID $tpid"
+
+strace -tt -o test.strace -p $tpid &
+spid=$!
+echo "Strace Thread PID $spid"
 
 ./downgrade.sh $dbname > downgrade.log 2>&1 &
 dgpid=$!
@@ -54,6 +58,9 @@ prevnum=0
 num=0
 noprogress=0
 selecterror=0
+lastminute=0
+iteration=0
+
 while [[ $selecterror -lt $maxselectfail ]]; do
     num=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbname default "select count(*) from jobs where state = 0" 2>&1)
     if [[ $? != 0 ]]; then
@@ -67,11 +74,30 @@ while [[ $selecterror -lt $maxselectfail ]]; do
     fi
     echo "$num remaining"
 
+    let iteration=iteration+1
+
+    let selecterror=0
+
     if [[ $prevnum == $num ]]; then
         let noprogress=noprogress+1
     else
         let noprogress=0
     fi
+
+    if [[ $prevnum == 0 ]]; then
+        let prevnum=num
+    fi
+    lastminute=$(( lastminute + ( prevnum - num ) ))
+
+    if [[ $iteration == 12 ]]; then
+        if [[ $lastminute -lt 100 ]]; then
+            errquit "MAKING SLOW PROGRESS: ONLY $lastminute RECORDS IN THE LAST TWO MINUTES"
+        fi
+        iteration=0
+        lastminute=0
+    fi
+
+
     let prevnum=num
     if [[ $noprogress == 6 ]]; then
         errquit "NOT MAKING PROGRESS FOR A LONG TIME"
@@ -86,7 +112,9 @@ while [[ $selecterror -lt $maxselectfail ]]; do
 done
 
 kill -9 $tpid
+echo "Killed Test Thread PID $tpid"
 kill -9 $dgpid
+echo "Killed Downgrade Thread PID $dgpid"
 
 # Remove trap-command.
 trap - INT EXIT
@@ -97,7 +125,7 @@ if [[ $? == 0 ]]; then
     exit 1
 fi
 
-if [[ $selecterror -ge 20 ]]; then
+if [[ $selecterror -ge $maxselectfail ]]; then
     echo "SELECT FAILED $selecterror TIMES!!!"
     exit 1
 fi

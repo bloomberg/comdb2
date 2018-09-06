@@ -238,9 +238,13 @@ mempsync_thd(void *p)
 			break;
 		}
 		/* latch the lsn */
+		pthread_mutex_unlock(&mempsync_lk);
+		BDB_READLOCK("mempsync_thd");
+		pthread_mutex_lock(&mempsync_lk);
 		lsn = mempsync_lsn;
 		sync_lsn = lsn;
 		pthread_mutex_unlock(&mempsync_lk);
+		BDB_RELLOCK();
 
 		/*
 		 * When we do parallel recovery, there are "commit" records
@@ -290,20 +294,20 @@ mempsync_thd(void *p)
 			/* For the reference:  sync_lsn is the lsn of the txn_ckp in the log,
 			 * as provided by mempsync_sync_out_of_band(); 
 			 * Not sure if it safe to sync beyond ckp->ckp_lsn all the way to ckp lsn though */
-            rc = __log_flush_pp(dbenv, &sync_lsn);
+            BDB_READLOCK("mempsync_thd_ckp");
+            rc = __log_flush_pp(dbenv, NULL);
             if ((rc = __log_cursor(dbenv, &logc)) != 0)
                 goto err;
 
             memset(&data_dbt, 0, sizeof(data_dbt));
             data_dbt.flags = DB_DBT_REALLOC;
 
-            BDB_READLOCK("mempsync_thd_ckp");
             if ((rc = __log_c_get(logc, &sync_lsn, &data_dbt, DB_SET)) == 0) {
                 __txn_updateckp(dbenv, &sync_lsn);
                 __os_free(dbenv, data_dbt.data);
             }
-            BDB_RELLOCK();
             __log_c_close(logc);
+            BDB_RELLOCK();
 
 		} else {
 err:
@@ -1039,7 +1043,7 @@ init_trickle_threads(void)
 
 int gbl_parallel_memptrickle = 1;
 
-extern int time_epochms();
+extern int comdb2_time_epochms();
 void thdpool_process_message(struct thdpool *pool, char *line, int lline,
     int st);
 
@@ -1141,7 +1145,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 
 	do_parallel = gbl_parallel_memptrickle;
 
-	start = time_epochms();
+	start = comdb2_time_epochms();
 
 	pthread_once(&trickle_threads_once, init_trickle_threads);
 
@@ -1400,7 +1404,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 					pthread_mutex_unlock(&pt->lk);
 					
 					t_ret = thdpool_enqueue(trickle_thdpool,
-					    trickle_do_work, range, 0, NULL);
+					    trickle_do_work, range, 0, NULL, 0);
 					if (t_ret) {
 						pt->nwaits++;
 						poll(NULL, 0, 10);
@@ -1442,7 +1446,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 				pthread_mutex_unlock(&pt->lk);
 
 				t_ret = thdpool_enqueue(trickle_thdpool,
-				    trickle_do_work, range, 0, NULL);
+				    trickle_do_work, range, 0, NULL, 0);
 				if (t_ret) {
 					pt->nwaits++;
 					poll(NULL, 0, 10);
@@ -1498,9 +1502,9 @@ done:
         if (ret == 0 && (op == DB_SYNC_CACHE || op == DB_SYNC_FILE)) {
             if (dbmfp == NULL) {
                 int start, end;
-                start = time_epochms();
+                start = comdb2_time_epochms();
                 ret = __memp_sync_files(dbenv, dbmp);
-                end = time_epochms();
+                end = comdb2_time_epochms();
                 memp_sync_files_time = end - start;
             }
             else
@@ -1519,7 +1523,7 @@ err:	__os_free(dbenv, bharray);
 	if (wrotep != NULL)
 		*wrotep = wrote;
 
-	end = time_epochms();
+	end = comdb2_time_epochms();
 
 	if (wrote && ((end - start) > memp_sync_alarm_ms))
 		ctrace("memp_sync %d pages %d ms (memp_sync_files %d ms)\n",

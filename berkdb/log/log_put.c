@@ -44,6 +44,7 @@ static const char revid[] = "$Id: log_put.c,v 11.145 2003/09/13 19:20:39 bostic 
 #include <netinet/in.h>
 
 #include "logmsg.h"
+#include <poll.h>
 
 extern unsigned long long get_commit_context(const void *, uint32_t generation);
 extern int bdb_update_startlwm_berk(void *statearg, unsigned long long ltranid,
@@ -62,7 +63,6 @@ static int __log_put_next __P((DB_ENV *,
 	u_int8_t *key, u_int32_t));
 static int __log_putr __P((DB_LOG *, DB_LSN *, const DBT *, u_int32_t, HDR *));
 static int __log_write __P((DB_LOG *, void *, u_int32_t));
-void hexdump(unsigned char *key, int keylen);
 
 pthread_mutex_t log_write_lk = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t log_write_cond = PTHREAD_COND_INITIALIZER;
@@ -75,6 +75,8 @@ int __db_debug_log(DB_ENV *, DB_TXN *, DB_LSN *, u_int32_t, const DBT *,
     int32_t, const DBT *, const DBT *, u_int32_t);
 
 extern int gbl_inflate_log;
+pthread_cond_t gbl_logput_cond = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t gbl_logput_lk = PTHREAD_MUTEX_INITIALIZER;
 
 /*
  * __log_put_pp --
@@ -121,7 +123,22 @@ __log_put_pp(dbenv, lsnp, udbt, flags)
 	return (ret);
 }
 
+int gbl_commit_delay_trace = 0;
 
+static inline int is_commit_record(int rectype) {
+    switch(rectype) {
+        /* regop regop_gen regop_rowlocks */
+        case (DB___txn_regop): 
+        case (DB___txn_regop_gen):
+        case (DB___txn_regop_rowlocks):
+            return 1;
+            break;
+        default:
+            return 0;
+            break;
+    }
+}
+ 
 static int
 __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 	DB_ENV *dbenv;
@@ -143,6 +160,7 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 	u_int8_t *key;
 	unsigned long long ctx;
 	int rectype = 0;
+	int delay;
 
 	dblp = dbenv->lg_handle;
 	lp = dblp->reginfo.primary;
@@ -220,19 +238,14 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 
 	ZERO_LSN(old_lsn);
 
-	/*
-	 * if (rectype == DB___txn_regop)
-	 * {
-	 * fprintf(stderr, "Master (size=%d) PRECONTEXT\n", dbt->size);
-	 * hexdump(dbt->data, dbt->size);
-	 * fprintf(stderr, "\n");
-	 * }
-	 */
-
+    pthread_mutex_lock(&gbl_logput_lk);
 	if ((ret =
 		__log_put_next(dbenv, lsnp, contextp, dbt, udbt, &hdr, &old_lsn,
 		    off_context, key, flags)) != 0)
 		goto panic_check;
+
+    pthread_cond_broadcast(&gbl_logput_cond);
+    pthread_mutex_unlock(&gbl_logput_lk);
 
 	lsn = *lsnp;
 
@@ -352,6 +365,28 @@ err:
 		R_UNLOCK(dbenv, &dblp->reginfo);
 	if (need_free)
 		__os_free(dbenv, dbt->data);
+
+    int bdb_commitdelay(void *arg);
+
+	if (IS_REP_MASTER(dbenv) && is_commit_record(rectype) && 
+			(delay = bdb_commitdelay(dbenv->app_private))) {
+		static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
+		static unsigned long long count=0;
+		static int lastpr = 0;
+		int now;
+
+		/* Don't lock out anything else */
+		pthread_mutex_lock(&lk);
+		poll(NULL, 0, delay);
+		pthread_mutex_unlock(&lk);
+		count++;
+		if (gbl_commit_delay_trace && (now = time(NULL))-lastpr) {
+			logmsg(LOGMSG_USER, "%s line %d commit-delayed for %d ms, %llu "
+					"total-delays\n", __func__, __LINE__, delay, count);
+			lastpr = now;
+		}
+	}
+
 	/*
 	 * If auto-remove is set and we switched files, remove unnecessary
 	 * log files.
@@ -1288,7 +1323,8 @@ __log_flush_int(dblp, lsnp, release)
 		    "Database environment corrupt; the wrong log files may",
 		    "have been removed or incompatible database files imported",
 		    "from another environment");
-		return (EINVAL);
+        /* Abort immediately */
+        abort();
 	} else {
 		/*
 		 * See if we need to wait.  s_lsn is not locked so some

@@ -60,12 +60,12 @@ static void bdb_attr_set_int(bdb_state_type *bdb_state, bdb_attr_type *bdb_attr,
 
     case BDB_ATTR_COMMITDELAY:
         /* set delay */
-        bdb_attr->commitdelay = value;
-
-        /* if max is set, cap at max */
-        if ((bdb_attr->commitdelaymax > 0) &&
-            (bdb_attr->commitdelay > bdb_attr->commitdelaymax))
+        if (value > bdb_attr->commitdelaymax) {
+            logmsg(LOGMSG_USER, "Capping delay to commitdelaymax of %s ms\n",
+                   bdb_attr->commitdelaymax);
             bdb_attr->commitdelay = bdb_attr->commitdelaymax;
+        } else
+            bdb_attr->commitdelay = value;
         return;
 
     case BDB_ATTR_REP_WORKERS:
@@ -244,6 +244,7 @@ static inline comdb2_tunable_type bdb_to_tunable_type(int type)
     case BDB_ATTRTYPE_BOOLEAN: return TUNABLE_BOOLEAN;
     default: assert(0);
     }
+    return TUNABLE_INVALID;
 }
 
 static inline int bdb_to_tunable_flag(int type)
@@ -260,6 +261,7 @@ static inline int bdb_to_tunable_flag(int type)
     case BDB_ATTRTYPE_BOOLEAN: return NOARG;
     default: assert(0);
     }
+    return TUNABLE_INVALID;
 }
 
 void *bdb_attr_create(void)

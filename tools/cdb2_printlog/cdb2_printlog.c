@@ -363,7 +363,7 @@ shutdown:	exitval = 1;
 	if (dbc != NULL && (ret = dbc->c_close(dbc)) != 0)
 		exitval = 1;
 
-	if (dbp != NULL && (ret = dbp->close(dbp, NULL, 0)) != 0)
+	if (dbp != NULL && (ret = dbp->close(dbp, 0)) != 0)
 		exitval = 1;
 
 	/*
@@ -495,6 +495,6 @@ open_rep_db(dbenv, dbpp, dbcp)
 	return (0);
 
 err:	if (*dbpp != NULL)
-		(void)(*dbpp)->close(*dbpp, NULL, 0);
+		(void)(*dbpp)->close(*dbpp, 0);
 	return (ret);
 }

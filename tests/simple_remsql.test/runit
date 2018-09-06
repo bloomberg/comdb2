@@ -43,7 +43,7 @@ done
 
 
 #setup remode db
-$TESTSROOTDIR/setup
+$TESTSROOTDIR/setup &> $TESTDIR/logs/$DBNAME.setup
 
 function old()
 {
@@ -105,8 +105,8 @@ chmod +666 $srcdbdir/$srcdbname.tmpdbs/*
 chmod +666 $srcdbdir/$srcdbname.txn/*
 
 #echo "Creating archive"
-echo "/bb/bin/comdb2ar.tsk c $srclrl | /bb/bin/lz4 stdin stdout > ${srcdbdir}/db.lz4"
-/bb/bin/comdb2ar.tsk c $srclrl | /bb/bin/lz4 stdin stdout > ${srcdbdir}/db.lz4
+echo "$COMDB2AR_EXE c $srclrl | /bb/bin/lz4 stdin stdout > ${srcdbdir}/db.lz4"
+$COMDB2AR_EXE c $srclrl | /bb/bin/lz4 stdin stdout > ${srcdbdir}/db.lz4
 
 a_ssh=
 a_scp=
@@ -151,8 +151,8 @@ for node in `echo ${cluster} | tr ":" "\n"`; do
       echo "Failed to copy ${srcdbdir}/db.lz4 to $nodename"
       exit 1
    fi
-   echo $a_ssh $nodename "/bb/bin/lz4 -d ${srcdbdir}/db.lz4 stdout | /bb/bin/comdb2ar.tsk -C preserve x ${srcdbdir}"
-   $a_ssh $nodename "/bb/bin/lz4 -d ${srcdbdir}/db.lz4 stdout | /bb/bin/comdb2ar.tsk -C preserve x ${srcdbdir}"
+   echo $a_ssh $nodename "/bb/bin/lz4 -d ${srcdbdir}/db.lz4 stdout | $COMDB2AR_EXE -C preserve x ${srcdbdir}"
+   $a_ssh $nodename "/bb/bin/lz4 -d ${srcdbdir}/db.lz4 stdout | $COMDB2AR_EXE -C preserve x ${srcdbdir}"
    if (( $? != 0 )) ; then
       echo "Failed to extract ${srcdbdir}/db.lz4 on $nodename"
       exit 1
@@ -229,7 +229,12 @@ echo "Starting tests"
 ./remsql_curmoves.sh $dbname $cdb2config $srcdbname  $dbdir $testdir 
 result=$?
 
-$TESTSROOTDIR/unsetup
+if (( $result == 0 )) ; then
+   successful=1
+fi
+
+$TESTSROOTDIR/unsetup $successful &> $TESTDIR/logs/$DBNAME.unsetup
+
 
 function old_clenaup(){
 if (( $is_local == 0 )) ; then

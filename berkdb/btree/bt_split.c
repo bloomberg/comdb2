@@ -76,6 +76,9 @@ int genidcmp(const void *hash_genid, const void *genid);
 void genidcpy(void *dest, const void *src);
 void genidsetzero(void *g);
 
+int bdb_relink_pglogs(void *bdb_state, unsigned char *fileid, db_pgno_t pgno,
+	db_pgno_t prev_pgno, db_pgno_t next_pgno, DB_LSN lsn);
+
 /*
  * __bam_split --
  *	Split a page.
@@ -246,7 +249,7 @@ __bam_root(dbc, cp)
 	if ((ret = __bam_psplit(dbc, cp, lp, rp, &split)) != 0)
 		goto err;
 
-	++GET_BH_GEN(cp);
+	++GET_BH_GEN(cp->page);
 
 	/* Log the change. */
 	if (DBC_LOGGING(dbc)) {
@@ -257,10 +260,16 @@ __bam_root(dbc, cp)
 		opflags = F_ISSET(
 		    (BTREE_CURSOR *)dbc->internal, C_RECNUM) ? SPL_NRECS : 0;
 		if ((ret = __bam_split_log(dbp,
-		    dbc->txn, &LSN(cp->page), 0, PGNO(lp), &LSN(lp), PGNO(rp),
-		    &LSN(rp), (u_int32_t)NUM_ENT(lp), 0, &log_lsn,
-		    dbc->internal->root, &log_dbt, opflags)) != 0)
+			dbc->txn, &LSN(cp->page), 0, PGNO(lp), &LSN(lp), PGNO(rp),
+			&LSN(rp), (u_int32_t)NUM_ENT(lp), 0, &log_lsn,
+			dbc->internal->root, &log_dbt, opflags)) != 0)
 			goto err;
+		if (bdb_relink_pglogs(dbp->dbenv->app_private, mpf->fileid,
+			dbc->internal->root, PGNO(lp), PGNO(rp),
+			LSN(cp->page)) != 0) {
+			logmsg(LOGMSG_FATAL, "%s: failed relink pglogs\n", __func__);
+			abort();
+		}
 	} else
 		LSN_NOT_LOGGED(LSN(cp->page));
 	LSN(lp) = LSN(cp->page);
@@ -299,13 +308,6 @@ err:	if (lp != NULL)
         (void)__TLPUT(dbc, rplock);
 	return (ret);
 }
-
-int bdb_relink_txn_pglogs(void *bdb_state, void *relinks_hashtbl,
-	pthread_mutex_t * mutexp, unsigned char *fileid, db_pgno_t pgno,
-	db_pgno_t prev_pgno, db_pgno_t next_pgno, DB_LSN lsn);
-
-int bdb_relink_pglogs(void *bdb_state, unsigned char *fileid, db_pgno_t pgno,
-	db_pgno_t prev_pgno, db_pgno_t next_pgno, DB_LSN lsn);
 
 /*
  * __bam_page --
@@ -496,20 +498,14 @@ __bam_page(dbc, pp, cp)
 			ZERO_LSN(log_lsn);
 		opflags = F_ISSET(bc, C_RECNUM) ? SPL_NRECS : 0;
 		if ((ret = __bam_split_log(dbp, dbc->txn, &LSN(cp->page), 0,
-			    PGNO(cp->page), &LSN(cp->page), PGNO(alloc_rp),
-			    &LSN(alloc_rp), (u_int32_t)NUM_ENT(lp),
-			    tp == NULL ? 0 : PGNO(tp),
-			    tp == NULL ? &log_lsn : &LSN(tp),
-			    PGNO_INVALID, &log_dbt, opflags)) != 0)
+				PGNO(cp->page), &LSN(cp->page), PGNO(alloc_rp),
+				&LSN(alloc_rp), (u_int32_t)NUM_ENT(lp),
+				tp == NULL ? 0 : PGNO(tp),
+				tp == NULL ? &log_lsn : &LSN(tp),
+				PGNO_INVALID, &log_dbt, opflags)) != 0)
 			 goto err;
 
-		if (!dbc->txn->relinks_hashtbl) {
-			DB_ASSERT(F_ISSET(dbc->txn, TXN_COMPENSATE));
-		} else if (bdb_relink_txn_pglogs(dbp->dbenv->app_private,
-			dbc->txn->relinks_hashtbl, &dbc->txn->pglogs_mutex,
-			mpf->fileid, PGNO(cp->page), PGNO_INVALID,
-			PGNO(alloc_rp), LSN(cp->page)) != 0 ||
-		    bdb_relink_pglogs(dbp->dbenv->app_private, mpf->fileid,
+		if (bdb_relink_pglogs(dbp->dbenv->app_private, mpf->fileid,
 			PGNO(cp->page), PGNO_INVALID, PGNO(alloc_rp),
 			LSN(cp->page)) != 0) {
 			logmsg(LOGMSG_FATAL, "%s: failed relink pglogs\n", __func__);

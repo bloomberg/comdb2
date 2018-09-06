@@ -37,6 +37,7 @@
 #include <execinfo.h>
 #endif
 #include <logmsg.h>
+#include <tohex.h>
 #include "comdb2_atomic.h"
 
 /* One of the difference between using b-tree and hash is that in using hash, we
@@ -122,7 +123,7 @@ struct temp_table {
     int tblid;
     unsigned long long rowid;
 
-    int num_mem_entries;
+    unsigned long long num_mem_entries;
     int max_mem_entries;
     LISTC_T(struct temp_cursor) cursors;
     void *next;
@@ -244,7 +245,7 @@ static int bdb_temp_table_init_temp_db(bdb_state_type *bdb_state,
     int rc;
 
     if (tbl->tmpdb) {
-        rc = tbl->tmpdb->close(tbl->tmpdb, NULL, 0);
+        rc = tbl->tmpdb->close(tbl->tmpdb, 0);
         if (rc) {
             *bdberr = rc;
             rc = -1;
@@ -300,7 +301,7 @@ static int bdb_temp_table_env_close(bdb_state_type *bdb_state,
     int rc;
 
     if (tbl->tmpdb) {
-        rc = tbl->tmpdb->close(tbl->tmpdb, NULL, 0);
+        rc = tbl->tmpdb->close(tbl->tmpdb, 0);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s:%d close rc %d\n", __FILE__, __LINE__, rc);
             *bdberr = rc;
@@ -934,7 +935,7 @@ static int bdb_temp_table_next_prev_norewind(bdb_state_type *bdb_state,
     return IX_FND;
 }
 
-static int bdb_temp_table_next_prev(bdb_state_type *bdb_state,
+inline static int bdb_temp_table_next_prev(bdb_state_type *bdb_state,
                                     struct temp_cursor *cur, int *bdberr,
                                     int how)
 {
@@ -1303,8 +1304,8 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
         tbl = bdb_state->temp_list;
     if (!tbl) {
         *last = 1;
-        return 0;
         Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
+        return 0;
     }
     bdb_state->temp_list = tbl->next;
     *last = 0;
@@ -1399,7 +1400,7 @@ done:
     return rc;
 }
 
-int bdb_temp_table_destroy_pool_wrapper(void *tbl, void *bdb_state_arg)
+inline int bdb_temp_table_destroy_pool_wrapper(void *tbl, void *bdb_state_arg)
 {
     int last, bdberr;
     return bdb_temp_table_destroy_lru(tbl, bdb_state_arg, &last, &bdberr);
@@ -1469,20 +1470,9 @@ static int temp_table_compare(DB *db, const DBT *dbt1, const DBT *dbt2)
                         dbt2->data);
 }
 
-int bdb_temp_table_find(bdb_state_type *bdb_state, struct temp_cursor *cur,
-                        const void *key, int keylen, void *unpacked,
-                        int *bdberr)
+
+static int bdb_temp_table_find_hash(struct temp_cursor *cur, const void *key, int keylen)
 {
-    int rc;
-    DBT dkey, ddata;
-
-    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
-        logmsg(LOGMSG_ERROR, 
-                "bdb_temp_table_find operation not supported for temp list.\n");
-        return -1;
-    }
-
-    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_HASH) {
         char *data = NULL;
         cur->valid = 0;
         if (!cur->tbl->temp_hash_tbl) {
@@ -1521,6 +1511,23 @@ int bdb_temp_table_find(bdb_state_type *bdb_state, struct temp_cursor *cur,
             return IX_EMPTY;
         }
         return 0;
+    }
+
+
+int bdb_temp_table_find(bdb_state_type *bdb_state, struct temp_cursor *cur,
+                        const void *key, int keylen, void *unpacked,
+                        int *bdberr)
+{
+    int rc;
+    DBT dkey, ddata;
+
+    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
+        logmsg(LOGMSG_ERROR, 
+                "bdb_temp_table_find operation not supported for temp list.\n");
+        return -1;
+    }
+    else if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_HASH) {
+        return bdb_temp_table_find_hash(cur, key, keylen);
     }
 
     assert(cur->cur != NULL);
@@ -1580,6 +1587,43 @@ done:
     return rc;
 }
 
+
+static int bdb_temp_table_find_exact_hash(struct temp_cursor *cur, 
+                                             void *key, int keylen)
+{
+    struct hashobj *o;
+    int should_free = 0;
+
+    if (keylen < 64*1024)
+        o = alloca(keylen + sizeof(int));
+    else {
+        o = malloc(keylen + sizeof(int));
+        should_free = 1;
+    }
+
+    cur->valid = 0;
+    o->len = keylen;
+    memcpy(o->data, key, keylen);
+    char *data = hash_find(cur->tbl->temp_hash_tbl, o);
+    if (should_free)
+        free(o);
+
+    if (data) {
+        cur->keylen = *(int *)data;
+        cur->key = data + sizeof(int);
+        cur->datalen = *(int *)(data + cur->keylen + sizeof(int));
+        ;
+        cur->data = data + cur->keylen + 2 * sizeof(int);
+        cur->valid = 1;
+    } else {
+        return IX_NOTFND;
+    }
+    return 0;
+
+
+}
+
+
 int bdb_temp_table_find_exact(bdb_state_type *bdb_state,
                               struct temp_cursor *cur, void *key, int keylen,
                               int *bdberr)
@@ -1593,36 +1637,8 @@ int bdb_temp_table_find_exact(bdb_state_type *bdb_state,
                         "temp list.\n");
         return -1;
     }
-
-    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_HASH) {
-        struct hashobj *o;
-        int should_free = 0;
-
-        if (keylen < 64*1024)
-            o = alloca(keylen + sizeof(int));
-        else {
-            o = malloc(keylen + sizeof(int));
-            should_free = 1;
-        }
-
-        cur->valid = 0;
-        o->len = keylen;
-        memcpy(o->data, key, keylen);
-        char *data = hash_find(cur->tbl->temp_hash_tbl, o);
-        if (should_free)
-            free(o);
-
-        if (data) {
-            cur->keylen = *(int *)data;
-            cur->key = data + sizeof(int);
-            cur->datalen = *(int *)(data + cur->keylen + sizeof(int));
-            ;
-            cur->data = data + cur->keylen + 2 * sizeof(int);
-            cur->valid = 1;
-        } else {
-            return IX_NOTFND;
-        }
-        return 0;
+    else if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_HASH) {
+        return bdb_temp_table_find_exact_hash(cur, key, keylen);
     }
 
     /*pthread_setspecific(cur->tbl->curkey, cur);*/
@@ -1742,9 +1758,8 @@ int bdb_temp_table_close_cursor(bdb_state_type *bdb_state,
 /* Run this carefully, it basically leave the task of freeing the
    data pointer to the caller that should have called bdb_temp_table_data by now
  */
-void bdb_temp_table_reset_datapointers(struct temp_cursor *cur)
+inline void bdb_temp_table_reset_datapointers(struct temp_cursor *cur)
 {
-
     if (cur) {
         cur->datalen = 0;
         cur->data = NULL;
@@ -1752,7 +1767,7 @@ void bdb_temp_table_reset_datapointers(struct temp_cursor *cur)
 }
 
 /* the only move routine you should have */
-int bdb_temp_table_move(bdb_state_type *bdb_state, struct temp_cursor *cursor,
+inline int bdb_temp_table_move(bdb_state_type *bdb_state, struct temp_cursor *cursor,
                         int how, int *bdberr)
 {
     switch (how) {
@@ -1768,22 +1783,6 @@ int bdb_temp_table_move(bdb_state_type *bdb_state, struct temp_cursor *cursor,
     logmsg(LOGMSG_ERROR, "%s: argh?\n", __func__);
     *bdberr = BDBERR_BUG_KILLME;
     return -1;
-}
-
-static char hex(unsigned char a)
-{
-    if (a < 10)
-        return '0' + a;
-    return 'a' + (a - 10);
-}
-static void hexdump(char *key, int keylen)
-{
-    int i = 0;
-
-    for (i = 0; i < keylen; i++) {
-        logmsg(LOGMSG_USER, "%c%c", hex(((unsigned char)key[i]) / 16),
-                hex(((unsigned char)key[i]) % 16));
-    }
 }
 
 void bdb_temp_table_debug_dump(bdb_state_type *bdb_state, tmpcursor_t *cur)
@@ -1806,9 +1805,9 @@ void bdb_temp_table_debug_dump(bdb_state_type *bdb_state, tmpcursor_t *cur)
         dtasize_sd = bdb_temp_table_datasize(cur);
 
         logmsg(LOGMSG_USER, " ROW %d:\n\tkeylen=%d\n\tkey=\"", rowid, keysize_sd);
-        hexdump(key_sd, keysize_sd);
+        hexdump(LOGMSG_USER, key_sd, keysize_sd);
         logmsg(LOGMSG_USER, "\"\n\tdatalen=%d\n\tdata=\"", dtasize_sd);
-        hexdump(dta_sd, dtasize_sd);
+        hexdump(LOGMSG_USER, dta_sd, dtasize_sd);
         logmsg(LOGMSG_USER, "\"\n");
 
         rowid++;
@@ -1817,7 +1816,7 @@ void bdb_temp_table_debug_dump(bdb_state_type *bdb_state, tmpcursor_t *cur)
     }
 }
 
-int bdb_is_hashtable(struct temp_table *tt)
+inline int bdb_is_hashtable(struct temp_table *tt)
 {
     return (tt->temp_table_type == TEMP_TABLE_TYPE_HASH);
 }
@@ -1868,21 +1867,20 @@ static int bdb_temp_table_insert_put(bdb_state_type *bdb_state,
         return 0;
     }
 
-    if (tbl->temp_table_type == TEMP_TABLE_TYPE_BTREE) {
-        tbl->num_mem_entries++;
-    }
+    assert (tbl->temp_table_type == TEMP_TABLE_TYPE_BTREE);
+    tbl->num_mem_entries++;
 
     return 1;
 }
 
-const char *bdb_temp_table_filename(struct temp_table *tbl)
+inline const char *bdb_temp_table_filename(struct temp_table *tbl)
 {
     if (tbl)
         return tbl->filename;
     return NULL;
 }
 
-void bdb_temp_table_flush(struct temp_table *tbl)
+inline void bdb_temp_table_flush(struct temp_table *tbl)
 {
     DB *db = tbl->tmpdb;
     db->sync(db, 0);
@@ -1947,4 +1945,61 @@ int bdb_temp_table_stat(bdb_state_type *bdb_state, DB_MPOOL_STAT **gspp)
     sp->st_ckp_pages_skip = parent->temp_stats->st_ckp_pages_skip;
 
     return 0;
+}
+
+
+
+int bdb_temp_table_insert_test(bdb_state_type *bdb_state, int recsz, int maxins)
+{
+    bdb_state_type *parent;
+    if (bdb_state->parent)
+        parent = bdb_state->parent;
+    else
+        parent = bdb_state;
+
+    //create
+    int bdberr;
+    struct temp_table *db = bdb_temp_table_create(parent, &bdberr);
+    if (!db || bdberr) {
+        logmsg(LOGMSG_ERROR, "%s: failed to create temp table bdberr=%d\n",
+               __func__, bdberr);
+        return -1;
+    }
+
+    if (recsz < 8) recsz = 8; //force it to be min 8 bytes
+    if (recsz * maxins > 10000000) return -1; //limit the temptbl size
+
+    //read one random string into key, note that reading from urandom is
+    //slow so we get one full record from urandom, then override the first 
+    //4 byte from random()
+    int rc;
+    FILE *urandom;
+    if ((urandom = fopen("/dev/urandom", "r")) == NULL) {
+        logmsgperror("fopen");
+        return -2;
+    }
+
+    uint8_t rkey[recsz];
+    if ((rc = fread(rkey, sizeof(rkey), 1, urandom)) != 1 && ferror(urandom)) {
+        logmsgperror("fread");
+    }
+    fclose(urandom);
+
+    //insert: replace first 4 bytes with a new random value, payload is same val
+    for (int cnt = 0; cnt < maxins; cnt++) {
+        int x = rand();
+        *((int*)rkey) = x;
+        rc = bdb_temp_table_put(parent, db, &rkey, sizeof(rkey),
+                              &x, sizeof(x), NULL, &bdberr);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, 
+                    "%s: fail to put into temp tbl rc=%d bdberr=%d\n",
+                    __func__, rc, bdberr);
+            break; 
+        }
+    }
+
+    //cleanup
+    rc = bdb_temp_table_close(parent, db, &bdberr);
+    return rc;
 }

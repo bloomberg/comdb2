@@ -67,6 +67,10 @@ static inline void release_rebuild_thr(int *thrcount)
     ATOMIC_ADD((*thrcount), -1);
 }
 
+/* Return true if there were writes to table undergoing SC (data->from)
+ * Note that data is local to this thread so this accounting happens
+ * for each thread performing SC.
+ */
 static inline int tbl_had_writes(struct convert_record_data *data)
 {
     unsigned oldcount = data->write_count;
@@ -76,14 +80,24 @@ static inline int tbl_had_writes(struct convert_record_data *data)
     return (data->write_count - oldcount) != 0;
 }
 
+static inline void print_final_sc_stat(struct convert_record_data *data)
+{
+    sc_printf(
+        data->s,
+        "[%s] TOTAL converted %lld sc_adds %d sc_updates %d sc_deletess %d\n",
+        data->from->tablename,
+        data->from->sc_nrecs - (data->from->sc_adds + data->from->sc_updates +
+                                data->from->sc_deletes),
+        data->from->sc_adds, data->from->sc_updates, data->from->sc_deletes);
+}
+
 /* prints global stats if not printed in the last sc_report_freq,
  * returns 1 if successful
  */
-static inline int print_global_sc_stat(struct convert_record_data *data,
-                                       int now, int sc_report_freq)
+static inline int print_aggregate_sc_stat(struct convert_record_data *data,
+                                          int now, int sc_report_freq)
 {
-    static int total_lasttime = 0; /* used for global stats */
-    int copy_total_lasttime = total_lasttime;
+    int copy_total_lasttime = data->cmembers->total_lasttime;
 
     /* Do work without locking */
     if (now < copy_total_lasttime + sc_report_freq) return 0;
@@ -93,7 +107,7 @@ static inline int print_global_sc_stat(struct convert_record_data *data,
      * to print. If it failed, another thread is doing that work.
      */
 
-    bool res = CAS(total_lasttime, copy_total_lasttime, now);
+    bool res = CAS(data->cmembers->total_lasttime, copy_total_lasttime, now);
     if (!res) return 0;
 
     /* number of adds after schema cursor (by definition, all adds)
@@ -102,20 +116,25 @@ static inline int print_global_sc_stat(struct convert_record_data *data,
      * number of genids added since sc began (adds + updates)
      */
     if (data->live)
-        sc_printf(data->s, ">> adds %u upds %d dels %u extra genids "
-                           "%u\n",
-                  gbl_sc_adds, gbl_sc_updates, gbl_sc_deletes,
-                  gbl_sc_adds + gbl_sc_updates);
+        sc_printf(data->s,
+                  "[%s] >> adds %u upds %d dels %u extra genids "
+                  "%u\n",
+                  data->from->tablename, data->from->sc_adds,
+                  data->from->sc_updates, data->from->sc_deletes,
+                  data->from->sc_adds + data->from->sc_updates);
 
     /* totals across all threads */
     if (data->scanmode != SCAN_PARALLEL) return 1;
 
-    long long total_nrecs_diff = gbl_sc_nrecs - gbl_sc_prev_nrecs;
-    gbl_sc_prev_nrecs = gbl_sc_nrecs;
-    sc_printf(data->s, "progress TOTAL %lld +%lld actual "
-                       "progress total %lld rate %lld r/s\n",
-              gbl_sc_nrecs, total_nrecs_diff,
-              gbl_sc_nrecs - (gbl_sc_adds + gbl_sc_updates),
+    long long total_nrecs_diff =
+        data->from->sc_nrecs - data->from->sc_prev_nrecs;
+    data->from->sc_prev_nrecs = data->from->sc_nrecs;
+    sc_printf(data->s,
+              "[%s] progress TOTAL %lld +%lld actual "
+              "progress total %lld rate %lld r/s\n",
+              data->from->tablename, data->from->sc_nrecs, total_nrecs_diff,
+              data->from->sc_nrecs -
+                  (data->from->sc_adds + data->from->sc_updates),
               total_nrecs_diff / sc_report_freq);
     return 1;
 }
@@ -143,7 +162,7 @@ static inline void lkcounter_check(struct convert_record_data *data, int now)
      */
 
     int64_t ndeadlocks = 0, nlockwaits = 0;
-    bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlockwaits);
+    bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlockwaits, NULL);
 
     int64_t diff_deadlocks = ndeadlocks - data->cmembers->ndeadlocks;
     int64_t diff_lockwaits = nlockwaits - data->cmembers->nlockwaits;
@@ -151,22 +170,13 @@ static inline void lkcounter_check(struct convert_record_data *data, int now)
     data->cmembers->ndeadlocks = ndeadlocks;
     data->cmembers->nlockwaits = nlockwaits;
     logmsg(
-        LOGMSG_INFO,
+        LOGMSG_DEBUG,
         "%s: diff_deadlocks=%ld, diff_lockwaits=%ld, maxthr=%d, currthr=%d\n",
         __func__, diff_deadlocks, diff_lockwaits, data->cmembers->maxthreads,
         data->cmembers->thrcount);
     increase_max_threads(
         &data->cmembers->maxthreads,
         bdb_attr_get(data->from->dbenv->bdb_attr, BDB_ATTR_SC_USE_NUM_THREADS));
-}
-
-void live_sc_enter_exclusive_all(bdb_state_type *bdb_state, tran_type *trans)
-{
-    unsigned stripe;
-    for (stripe = 0; stripe < gbl_dtastripe; ++stripe) {
-        bdb_lock_stripe_write(bdb_state, stripe, trans);
-    }
-    return;
 }
 
 /* If the schema is resuming it sets sc_genids to be the last genid for each
@@ -233,8 +243,8 @@ int init_sc_genids(struct dbtable *db, struct schema_change_type *s)
             free(rec);
             return -1;
         }
-        sc_printf(s, "resuming stripe %2d from 0x%016llx\n", stripe,
-                  sc_genids[stripe]);
+        sc_printf(s, "[%s] resuming stripe %2d from 0x%016llx\n", db->tablename,
+                  stripe, sc_genids[stripe]);
     }
 
     free(rec);
@@ -319,9 +329,10 @@ void convert_record_data_cleanup(struct convert_record_data *data)
     }
 }
 
-static int convert_server_record(const void *inbufp, const char *from_tag,
-                                 struct dbrecord *db,
-                                 struct schema_change_type *s)
+static inline int convert_server_record(const void *inbufp,
+                                        const char *from_tag,
+                                        struct dbrecord *db,
+                                        struct schema_change_type *s)
 {
     return convert_server_record_blobs(inbufp, from_tag, db, s, NULL /*blobs*/,
                                        0 /*maxblobs*/);
@@ -385,13 +396,14 @@ static int report_sc_progress(struct convert_record_data *data, int now)
         data->prev_nrecs = data->nrecs;
 
         /* print thread specific stats */
-        sc_printf(data->s, "progress stripe %d changed genids %u progress %lld"
-                           " recs +%lld (%lld r/s)\n",
-                  data->stripe, data->n_genids_changed, data->nrecs, diff_nrecs,
-                  diff_nrecs / copy_sc_report_freq);
+        sc_printf(data->s,
+                  "[%s] progress stripe %d changed genids %u progress %lld"
+                  " recs +%lld (%lld r/s)\n",
+                  data->from->tablename, data->stripe, data->n_genids_changed,
+                  data->nrecs, diff_nrecs, diff_nrecs / copy_sc_report_freq);
 
         /* now do global sc data */
-        int res = print_global_sc_stat(data, now, copy_sc_report_freq);
+        int res = print_aggregate_sc_stat(data, now, copy_sc_report_freq);
         /* check headroom only if this thread printed the global stats */
         if (res && check_sc_headroom(data->s, data->from, data->to)) {
             if (data->s->force) {
@@ -416,6 +428,7 @@ static int convert_record(struct convert_record_data *data)
     int dtalen = 0, rc, rrn, opfailcode = 0, ixfailnum = 0;
     unsigned long long genid, ngenid, check_genid;
     void *dta = NULL;
+    int no_wait_rowlock = 0;
 
     if (gbl_sc_thd_failed) {
         if (!data->s->retry_bad_genids)
@@ -424,13 +437,14 @@ static int convert_record(struct convert_record_data *data)
                     data->stripe, gbl_sc_thd_failed - 1);
         return -1;
     }
-    if (gbl_sc_abort) {
+    if (gbl_sc_abort || data->from->sc_abort ||
+        (data->s->iq && data->s->iq->sc_should_abort)) {
         sc_errf(data->s, "Schema change aborted\n");
         return -1;
     }
     if (tbl_had_writes(data)) {
+        /* NB: if we return here, writes could block SC forever, so lets not */
         usleep(gbl_sc_usleep);
-        return 1;
     }
 
     if (data->trans == NULL) {
@@ -496,6 +510,15 @@ static int convert_record(struct convert_record_data *data)
                 data->s->retry_bad_genids = 1;
                 return -1;
             }
+            if (gbl_rowlocks) {
+                rc = bdb_trylock_row_write(data->from->handle, data->trans,
+                                           genid);
+                if (rc) {
+                    rc = RC_INTERNAL_RETRY;
+                    no_wait_rowlock = 1;
+                    goto err;
+                }
+            }
         } else if (rc == 1) {
             /* we have finished all the records in our stripe
              * set pointer to -1 so all insert/update/deletes will be
@@ -523,8 +546,9 @@ static int convert_record(struct convert_record_data *data)
                 if (rc != 0) rc = -1; // convert_record expects -1
             }
             sc_printf(data->s,
-                      "finished stripe %d, setting genid %llx, rc %d\n",
-                      data->stripe, data->sc_genids[data->stripe], rc);
+                      "[%s] finished stripe %d, setting genid %llx, rc %d\n",
+                      data->from->tablename, data->stripe,
+                      data->sc_genids[data->stripe], rc);
             return rc;
         } else if (rc == RC_INTERNAL_RETRY) {
             trans_abort(&data->iq, data->trans);
@@ -821,7 +845,7 @@ static int convert_record(struct convert_record_data *data)
             (gbl_partial_indexes && data->to->ix_partial) ? dirty_keys : -1ULL,
             BLOCK2_ADDKL, /* opcode */
             0,            /* blkpos */
-            addflags);
+            addflags, 0);
 
         if (rc) goto err;
     }
@@ -843,7 +867,8 @@ static int convert_record(struct convert_record_data *data)
     }
 
 err: /*if (is_schema_change_doomed())*/
-    if (gbl_sc_abort) {
+    if (gbl_sc_abort || data->from->sc_abort ||
+        (data->s->iq && data->s->iq->sc_should_abort)) {
         /*
         rc = ERR_CONSTR;
         break;
@@ -857,7 +882,7 @@ err: /*if (is_schema_change_doomed())*/
         data->trans = NULL;
         data->num_retry_errors++;
         data->totnretries++;
-        if (data->cmembers->is_decrease_thrds)
+        if (!no_wait_rowlock && data->cmembers->is_decrease_thrds)
             decrease_max_threads(&data->cmembers->maxthreads);
         else
             poll(0, 0, (rand() % 500 + 10));
@@ -943,9 +968,9 @@ err: /*if (is_schema_change_doomed())*/
 
     if (data->live) delay_sc_if_needed(data, &ss);
 
-    gbl_sc_nrecs++;
+    ATOMIC_ADD(data->from->sc_nrecs, 1);
 
-    int now = time_epoch();
+    int now = comdb2_time_epoch();
     if ((rc = report_sc_progress(data, now))) return rc;
 
     // do the following check every second or so
@@ -999,7 +1024,7 @@ void *convert_records_thd(struct convert_record_data *data)
 
     /* from this point onwards we must get to the cleanup code before
      * returning.  assume failure unless we explicitly succeed.  */
-    data->lasttime = time_epoch();
+    data->lasttime = comdb2_time_epoch();
 
     data->num_records_per_trans = gbl_num_record_converts;
     data->num_retry_errors = 0;
@@ -1062,11 +1087,13 @@ void *convert_records_thd(struct convert_record_data *data)
 cleanup:
     if (data->outrc == 0) {
         sc_printf(data->s,
-                  "successfully converted %lld records with %d retries "
+                  "[%s] successfully converted %lld records with %d retries "
                   "stripe %d\n",
-                  data->nrecs, data->totnretries, data->stripe);
+                  data->from->tablename, data->nrecs, data->totnretries,
+                  data->stripe);
     } else {
-        if (gbl_sc_abort) {
+        if (gbl_sc_abort || data->from->sc_abort ||
+            (data->s->iq && data->s->iq->sc_should_abort)) {
             sc_errf(data->s,
                     "conversion aborted after %lld records, while working on"
                     " stripe %d with %d retries\n",
@@ -1208,15 +1235,15 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
             threadData[ii].stripe = ii;
 
             if (sc_genids[ii] == -1ULL) {
-                sc_printf(threadData[ii].s, "stripe %d was done\n",
-                          threadData[ii].stripe);
+                sc_printf(threadData[ii].s, "[%s] stripe %d was done\n",
+                          from->tablename, threadData[ii].stripe);
                 threadSkipped[ii] = 1;
                 continue;
             } else
                 threadSkipped[ii] = 0;
 
-            sc_printf(threadData[ii].s, "starting thread for stripe: %d\n",
-                      threadData[ii].stripe);
+            sc_printf(threadData[ii].s, "[%s] starting thread for stripe: %d\n",
+                      from->tablename, threadData[ii].stripe);
 
             /* start thread */
             /* convert_records_thd( &threadData[ ii ]); |+ serialized calls +|*/
@@ -1226,9 +1253,10 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
 
             /* if thread creation failed */
             if (rc) {
-                sc_errf(threadData[ii].s, "starting thread failed for"
-                                          " stripe: %d with return code: %d\n",
-                        threadData[ii].stripe, rc);
+                sc_errf(threadData[ii].s,
+                        "[%s] starting thread failed for"
+                        " stripe: %d with return code: %d\n",
+                        from->tablename, threadData[ii].stripe, rc);
 
                 outrc = -1;
                 break;
@@ -1268,6 +1296,8 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         /* destroy attr */
         pthread_attr_destroy(&attr);
     }
+
+    print_final_sc_stat(&data);
 
     convert_record_data_cleanup(&data);
 
@@ -1309,7 +1339,8 @@ static int upgrade_records(struct convert_record_data *data)
     db_seqnum_type ss;
 
     // if sc has beed aborted, return
-    if (gbl_sc_abort) {
+    if (gbl_sc_abort || data->from->sc_abort ||
+        (data->s->iq && data->s->iq->sc_should_abort)) {
         sc_errf(data->s, "Schema change aborted\n");
         return -1;
     }
@@ -1468,13 +1499,15 @@ static int upgrade_records(struct convert_record_data *data)
             poll(NULL, 0, 100);
 
         /* snooze for a bit if writes have been coming in */
-        if (gbl_sc_last_writer_time >= time_epoch() - 5) usleep(gbl_sc_usleep);
+        if (gbl_sc_last_writer_time >= comdb2_time_epoch() - 5)
+            usleep(gbl_sc_usleep);
         break;
     } // end of rc check
 
-    ++gbl_sc_nrecs;
+    ATOMIC_ADD(data->from->sc_nrecs, 1);
+
     data->sc_genids[data->stripe] = genid;
-    now = time_epoch();
+    now = comdb2_time_epoch();
 
     if (copy_sc_report_freq > 0 &&
         now >= data->lasttime + copy_sc_report_freq) {
@@ -1492,7 +1525,7 @@ static int upgrade_records(struct convert_record_data *data)
             diff_nrecs / copy_sc_report_freq);
 
         /* now do global sc data */
-        int res = print_global_sc_stat(data, now, copy_sc_report_freq);
+        int res = print_aggregate_sc_stat(data, now, copy_sc_report_freq);
         /* check headroom only if this thread printed the global stats */
         if (res && check_sc_headroom(data->s, data->from, data->to)) {
             if (data->s->force) {
@@ -1536,7 +1569,7 @@ static void *upgrade_records_thd(void *vdata)
 
     // initialize convert_record_data
     data->outrc = -1;
-    data->lasttime = time_epoch();
+    data->lasttime = comdb2_time_epoch();
     data->num_records_per_trans = gbl_num_record_converts;
     data->num_records_per_trans = gbl_num_record_converts;
 
@@ -1569,7 +1602,8 @@ cleanup:
                   "successfully upgraded %lld records. skipped %lld records.\n",
                   data->nrecs, data->nrecskip);
     } else {
-        if (gbl_sc_abort) {
+        if (gbl_sc_abort || data->from->sc_abort ||
+            (data->s->iq && data->s->iq->sc_should_abort)) {
             sc_errf(data->s, "conversion aborted after %lld records upgraded "
                              "and %lld records skipped, "
                              "while working on stripe %d\n",
@@ -1631,7 +1665,8 @@ int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
         for (idx = 0; idx != gbl_dtastripe; ++idx) {
             thread_data[idx] = data;
             thread_data[idx].stripe = idx;
-            sc_printf(thread_data[idx].s, "starting thread for stripe: %d\n",
+            sc_printf(thread_data[idx].s,
+                      "[%s] starting thread for stripe: %d\n", db->tablename,
                       thread_data[idx].stripe);
 
             rc = pthread_create(&thread_data[idx].tid, &attr,

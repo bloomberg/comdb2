@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <inttypes.h>
 
 #include <plbitlib.h>
 #include <alloca.h>
@@ -30,6 +31,7 @@
 #include "block_internal.h"
 #include <assert.h>
 #include "logmsg.h"
+#include "views.h"
 
 static void *get_constraint_table_cursor(void *table);
 
@@ -313,6 +315,11 @@ int insert_del_op(block_state_t *blkstate, struct dbtable *srcdb, struct dbtable
     return 0;
 }
 
+static int should_skip_constraint_for_index(struct ireq *iq, int ixnum, int nulls)
+{
+    return (nulls && (gbl_nullfkey || iq->usedb->ix_nullsallowed[ixnum]));
+}
+
 /* rec_dta is in .ONDISK format..we have it from 'delete' operation in block
  * loop */
 
@@ -475,7 +482,7 @@ int check_update_constraints(struct ireq *iq, void *trans,
                 continue; /* just move on, there should be nothing to check */
             }
 
-            if (gbl_nullfkey && nulls) {
+            if (should_skip_constraint_for_index(iq, rixnum, nulls)) {
                 if (iq->debug)
                     reqprintf(iq, "RTNKYCNSTRT NULL COLUMN PREVENTS FOREIGN "
                                   "REF %s INDEX %d (%s). SKIPPING RULE CHECK.",
@@ -724,7 +731,7 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
             }
 
             /* Ignore records with null columns if nullfkey is set */
-            if (gbl_nullfkey && nullck) {
+            if (should_skip_constraint_for_index(iq, bct->sixnum, nullck)) {
                 if (iq->debug) {
                     reqprintf(iq, "VERBKYCNSTRT NULL COLUMN PREVENTS FOREIGN "
                                   "REF %s INDEX %d.",
@@ -739,16 +746,6 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                 if (rc) {
                     abort();
                 }
-            }
-
-            /* Ignore records with null columns if nullfkey is set */
-            if (gbl_nullfkey && nullck) {
-                if (iq->debug) {
-                    reqprintf(iq, "VERBKYCNSTRT NULL COLUMN PREVENTS FOREIGN "
-                                  "REF %s INDEX %d.",
-                              bct->srcdb->tablename, bct->sixnum);
-                }
-                continue;
             }
 
             iq->usedb = bct->dstdb;
@@ -937,25 +934,28 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
 
 
 /* this is called twice so putting here to avoid mess */
-#define LIVE_SC_DELAYED_KEY_ADDS(LAST) do {                                  \
-        /* its ok to fail adding to newbtree indices -- SC will abort */     \
-        int lrc = live_sc_delayed_key_adds(                                  \
-            iq, trans, genid, od_dta, ins_keys, ondisk_size);                \
-        if (lrc == RC_INTERNAL_RETRY) {                                      \
-            logmsg(LOGMSG_ERROR, "%s: deadlock add2idx genid 0x%llx\n", __func__, \
-                    genid);                                                  \
-            /* if we failed to add due to deadlock, need to redo */          \
-            *errout = OP_FAILED_INTERNAL;                                    \
-            if (!LAST)                                                       \
-                close_constraint_table_cursor(cur);                          \
-            return lrc;                                                      \
-        }                                                                    \
-        else if (lrc)                                                        \
-            logmsg(LOGMSG_USER, "%s:%d: ERROR: failed add2idx rc %d genid 0x%llx\n",     \
-                    __func__, __LINE__, lrc, genid);                         \
-    } while(0); 
-
-
+#define LIVE_SC_DELAYED_KEY_ADDS(LAST)                                         \
+    do {                                                                       \
+        /* its ok to fail adding to newbtree indices -- SC will abort */       \
+        int lrc = live_sc_delayed_key_adds(iq, trans, genid, od_dta, ins_keys, \
+                                           ondisk_size);                       \
+        if (lrc == RC_INTERNAL_RETRY) {                                        \
+            logmsg(LOGMSG_ERROR, "%s: deadlock add2idx genid 0x%llx\n",        \
+                   __func__, genid);                                           \
+            /* if we failed to add due to deadlock, need to redo */            \
+            *errout = OP_FAILED_INTERNAL;                                      \
+            if (!LAST)                                                         \
+                close_constraint_table_cursor(cur);                            \
+            return lrc;                                                        \
+        } else if (lrc == ERR_NOMASTER) {                                      \
+            logmsg(LOGMSG_ERROR, "%s:%d: live sc downgrading\n", __func__,     \
+                   __LINE__);                                                  \
+            return ERR_NOMASTER;                                               \
+        } else if (lrc)                                                        \
+            logmsg(LOGMSG_USER,                                                \
+                   "%s:%d: ERROR: failed add2idx rc %d genid 0x%llx\n",        \
+                   __func__, __LINE__, lrc, genid);                            \
+    } while (0);
 
 int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
                      int *blkpos, int *ixout, int *errout)
@@ -1188,7 +1188,7 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
 
             /* add the key */
             rc = ix_addk(iq, trans, key, doidx, genid, addrrn, od_dta_tail,
-                         od_tail_len);
+                         od_tail_len, ix_isnullk(iq->usedb, key, doidx));
 
             if (iq->debug) {
                 reqprintf(iq, "%p:ADDKYCNSTRT  TBL %s IX %d RRN %d KEY ", trans,
@@ -1552,7 +1552,7 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                     currdb = iq->usedb;
                     iq->usedb = ftable;
 
-                    if (gbl_nullfkey && nulls)
+                    if (should_skip_constraint_for_index(iq, fixnum, nulls))
                         rc = IX_FND;
                     else
                         rc = ix_find_by_key_tran(iq, fkey, fixlen, fixnum, key,
@@ -1836,8 +1836,8 @@ static char *get_temp_ct_dbname(long long *ctid)
     char *s;
     size_t buflen = strlen(thedb->basedir) + 64;
     s = malloc(buflen);
-    snprintf(s, buflen, "%s/%s.tmpdbs/_temp_ct_%d_%llu.db", thedb->basedir,
-             thedb->envname, (int)pthread_self(), *ctid);
+    snprintf(s, buflen, "%s/%s.tmpdbs/_temp_ct_%" PRIdPTR "_%llu.db",
+             thedb->basedir, thedb->envname, (intptr_t)pthread_self(), *ctid);
     *ctid = *ctid + 1LL;
     return s;
 }
@@ -1922,26 +1922,21 @@ static struct dbtable *get_newer_db(struct dbtable *db, struct dbtable *new_db)
     }
 }
 
-static void constraint_err(void *s, struct dbtable *db, constraint_t *ct, int rule,
-                           const char *err)
+static void constraint_err(struct schema_change_type *s, struct dbtable *db,
+                           constraint_t *ct, int rule, const char *err)
 {
-    // I am temporarily changing this in the attempt of removing the cyclic
-    // dependancy with
-    // schemachange.h for a single print statement
-    /*
-       if(s)
-          sc_errf(s, "constraint error for table \"%s\" key \"%s\" ->
-       <\"%s\":\"%s\">: %s\n",
-             db->tablename,
-             ct->lclkeyname,
-             ct->table[rule],
-             ct->keynm[rule],
-             err);
-       else */
-    logmsg(
-        LOGMSG_ERROR,
-        "constraint error for table \"%s\" key \"%s\" -> <\"%s\":\"%s\">: %s\n",
-        db->tablename, ct->lclkeyname, ct->table[rule], ct->keynm[rule], err);
+    if (s && s->iq) {
+        reqerrstr(s->iq, ERR_SC,
+                  "constraint error for table \"%s\" key \"%s\" -> "
+                  "<\"%s\":\"%s\">: %s",
+                  db->tablename, ct->lclkeyname, ct->table[rule],
+                  ct->keynm[rule], err);
+    } else
+        logmsg(LOGMSG_ERROR,
+               "constraint error for table \"%s\" key \"%s\" -> "
+               "<\"%s\":\"%s\">: %s\n",
+               db->tablename, ct->lclkeyname, ct->table[rule], ct->keynm[rule],
+               err);
 }
 
 static inline int key_has_expressions_members(struct schema *key)
@@ -1958,7 +1953,8 @@ static inline int key_has_expressions_members(struct schema *key)
  * exist & have the correct column count.  If they don't it's a bit of a show
  * stopper. */
 int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
-                             struct dbtable *new_db, void *s)
+                             struct dbtable *new_db,
+                             struct schema_change_type *s)
 {
     int ii, jj;
     char keytag[MAXTAGLEN];
@@ -2003,11 +1999,20 @@ int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
             rdb = get_dbtable_by_name(ct->table[jj]);
             if (rdb)
                 rdb = get_newer_db(rdb, new_db);
+            else if (strcasecmp(ct->table[jj], from_db->tablename) == 0)
+                rdb = from_db;
             if (!rdb) {
                 /* Referencing a non-existent table */
                 constraint_err(s, from_db, ct, jj, "foreign table not found");
                 n_errors++;
                 continue;
+            } else {
+                if (timepart_is_shard(rdb->tablename, 1, NULL)) {
+                    constraint_err(s, from_db, ct, jj,
+                                   "foreign table is a shard");
+                    n_errors++;
+                    continue;
+                }
             }
             if (rdb == new_db) {
                 snprintf(keytag, sizeof(keytag), ".NEW.%s", ct->keynm[jj]);
@@ -2060,6 +2065,9 @@ int populate_reverse_constraints(struct dbtable *db)
             struct schema *sckey = NULL;
             int rcidx = 0, dupadd = 0;
             cttbl = get_dbtable_by_name(cnstrt->table[jj]);
+            if (cttbl == NULL &&
+                strcasecmp(cnstrt->table[jj], db->tablename) == 0)
+                cttbl = db;
 
             if (cttbl == NULL) {
                 ++n_errors;

@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+NRECS=1000
+dbnm=$1
+
+function getrepnode {
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep -v MASTER | grep lsn | head -1 | cut -f1 -d":" | tr -d '[:space:]'
+}
+
+function getmaster {
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+}
+
+# Make sure we talk to the same host
+mach=`getrepnode`
+
+if [ "$mach" = "" ]; then
+    mach=`getmaster`
+    echo "Running standalone on $mach"
+fi
+
+if [ "$mach" = "" ]; then
+    echo "Failed to get a node from the cluster"
+    exit 1
+fi
+
+function test_init {
+cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
+drop table if exists t1
+create table t1 {
+schema {
+    int id
+
+    short a null=yes
+    int b null=yes
+    u_short c null=yes
+    u_int d null=yes
+    longlong e null=yes
+    float f null=yes
+    double g null=yes
+    cstring h[10] null=yes
+    blob i null=yes
+    datetime j null=yes
+
+    longlong comdb2_seqno null=yes
+}
+
+keys {
+    dup "comdb2_seqno" = comdb2_seqno
+    dup "idx" = id
+}
+}$$
+EOF
+
+for i in $(seq 1 $NRECS); do
+    echo "insert into t1 (id, a, b, c, d, e, f, g, h, i, j, comdb2_seqno) values ($i, 1, 2, 3, 4, 5, 6.000000, 7.000000, 'eight', x'99', now(), `date +%s%3N`);"
+done | cdb2sql ${CDB2_OPTIONS} $dbnm default - >/dev/null
+
+cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
+if [[ $cnt != $NRECS ]] ; then
+    echo "count is now $cnt but should be $NRECS"
+    exit 1
+fi
+}
+
+test_init
+# random recover deadlock
+cdb2sql --host $mach $dbnm "exec procedure sys.cmd.send('random_lock_release_interval 200')"
+
+# Test truncate
+echo "Testing truncate"
+(cdb2sql --host $mach $dbnm "select * from t1" > select.out 2>&1 || touch select.failed) &
+sleep 1
+cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
+wait
+if [ -f select.failed ] ; then
+    echo "expected select to succeed but it failed"
+    exit 1
+fi
+sleep 5
+
+cdb2sql --host $mach $dbnm "exec procedure sys.cmd.send('random_lock_release_interval 0')"
+test_init
+cdb2sql --host $mach $dbnm "select * from t1 order by id" > expect.out 2>&1
+# random recover deadlock
+cdb2sql --host $mach $dbnm "exec procedure sys.cmd.send('random_lock_release_interval 200')"
+
+# Test rebuild
+echo "Testing rebuild"
+cdb2sql --host $mach $dbnm "select * from t1 order by id" > select.out 2>&1 &
+sleep 1
+cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild t1"
+sleep 10
+cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild t1"
+sleep 10
+cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild t1"
+wait
+diff expect.out select.out
+if [[ $? != 0 ]]; then
+    echo "expected select to succeed but it failed"
+    exit 1
+fi
+sleep 5
+
+# Test alter
+echo "Testing alter"
+cdb2sql --host $mach $dbnm "select * from t1 order by id" > select.out 2>&1 &
+sleep 1
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop index idx"
+wait
+grep "rc -110.*was schema changed" select.out
+if [[ $? != 0 ]]; then
+    echo "expected select to fail but it succeeded"
+    exit 1
+fi
+sleep 5
+
+# Test drop
+echo "Testing drop"
+cdb2sql --host $mach $dbnm "select * from t1" > select.out 2>&1 &
+sleep 1
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
+wait
+grep "rc -110.*was schema changed" select.out
+if [[ $? != 0 ]]; then
+    echo "expected select to fail but it succeeded"
+    exit 1
+fi
+
+echo "Passed."
+exit 0 

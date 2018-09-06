@@ -1,0 +1,26 @@
+schema
+{
+    int      a
+    cstring  b[32]
+    blob     c
+    int      d
+    int      e
+    int      f
+}
+
+keys
+{
+    "A" =  a
+    "D" =  d
+dup "B" =  b
+dup "de" = d+e
+dup "ed" = e+d
+    "e"  = e
+    "fd"  = f + d
+}
+
+constraints 
+{
+    "a" -> <"t1":"ga">
+    "e" -> <"t1":"a">
+}

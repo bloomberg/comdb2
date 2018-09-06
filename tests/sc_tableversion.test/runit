@@ -42,15 +42,14 @@ function assertcnt
     fi
 }
 
-#updates global $tblver
-function assert_vers 
+assert_vers()
 {
-    target=$1
-    newver=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select table_version('$tbl')")
+    local loc_tbl=$1
+    local target=$2
+    local newver=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select table_version('$loc_tbl')")
     if [[ $newver != $target ]] ; then
         failexit "newver is now $newver but should be $target"
     fi
-    tblver=$newver
 }
 
 function do_verify
@@ -80,9 +79,9 @@ function do_rebuild_track_pid
             exit 1
         fi
 
-        do_verify $loc_dbnm $loc_tbl
         let scnt=scnt+1
-        assert_vers $((tblver + 1))
+        do_verify $loc_dbnm $loc_tbl
+        assert_vers $loc_tbl $tblver
     done
 
     echo "Performed $scnt schema-changes."
@@ -168,14 +167,16 @@ function run_test
     assertcnt 0
 }
 
+echo 'Querying for nonexistent table should return NULL'
+assert_vers nonexistent_table "NULL"
+
 
 #cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table $tbl"
-tblver=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select table_version('$tbl')")
-assert_vers $tblver
+assert_vers $tbl 0
 
 #fastinit does not increase counter
 cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate $tbl"
-assert_vers $tblver
+assert_vers $tbl 0
 
 g=100
 while [ $g -lt 500 ] ; do 

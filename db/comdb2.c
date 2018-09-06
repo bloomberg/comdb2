@@ -1,5 +1,5 @@
 /*
-   Copyright 2015, 2017, Bloomberg Finance L.P.
+   Copyright 2015, 2018, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -76,7 +76,6 @@ void berk_memp_sync_alarm_ms(int);
 #include "timers.h"
 
 #include "comdb2.h"
-#include "comdb2_shm.h"
 #include "sql.h"
 
 #include "comdb2_trn_intrl.h"
@@ -109,6 +108,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "fdb_fend.h"
 #include "fdb_bend.h"
 #include <flibc.h>
+#include "perf.h"
 
 #include <autoanalyze.h>
 #include <sqlglue.h>
@@ -118,35 +118,20 @@ void berk_memp_sync_alarm_ms(int);
 #include "bb_oscompat.h"
 #include "comdb2uuid.h"
 #include "debug_switches.h"
-#include "machine.h"
 #include "eventlog.h"
 #include "config.h"
 
-#define COMDB2_ERRSTAT_ENABLED() 1
-#define COMDB2_DIFFSTAT_REPORT() 1
-#define COMDB2_USE_DEFAULT_CACHESZ() 1
-#define COMDB2_OFFLOADSQL_ENABLED() (gbl_enable_osql)
-#define COMDB2_RECOM_ENABLED() 1
-#define COMDB2_SNAPISOL_ENABLED() 1
-#define COMDB2_SERIAL_ENABLED() 1
-#define COMDB2_SOCK_FSTSND_ENABLED() (gbl_enable_sock_fstsnd == 1)
 #include "views.h"
 
 #include <autoanalyze.h>
 #include <cdb2_constants.h>
 #include <bb_oscompat.h>
 #include <schemachange.h>
+#include "comdb2_atomic.h"
+#include "metrics.h"
+
 
 #define tokdup strndup
-
-static inline int qtrap_lock(pthread_mutex_t *x)
-{
-    return pthread_mutex_lock(x);
-}
-static inline int qtrap_unlock(pthread_mutex_t *x)
-{
-    return pthread_mutex_unlock(x);
-}
 
 int gbl_sc_timeoutms = 1000 * 60;
 char gbl_dbname[MAX_DBNAME_LENGTH];
@@ -161,8 +146,8 @@ int gbl_rep_node_pri = 0;
 int gbl_handoff_node = 0;
 int gbl_use_node_pri = 0;
 int gbl_allow_lua_print = 0;
+int gbl_allow_lua_dynamic_libs = 0;
 int gbl_master_changed_oldfiles = 0;
-int gbl_use_bbipc_global_fastseed = 0;
 int gbl_recovery_timestamp = 0;
 int gbl_recovery_lsn_file = 0;
 int gbl_recovery_lsn_offset = 0;
@@ -197,7 +182,6 @@ int gbl_maxreclen;
 int gbl_penaltyincpercent = 20;
 int gbl_maxwthreadpenalty;
 int gbl_spstrictassignments = 0;
-int gbl_delayed_ondisk_tempdbs = 0;
 int gbl_lock_conflict_trace = 0;
 int gbl_move_deadlk_max_attempt = 500;
 
@@ -212,7 +196,6 @@ int gbl_watchdog_disable_at_start = 0; /* don't enable watchdog on start */
 int gbl_nonames = 1;
 int gbl_reject_osql_mismatch = 1;
 int gbl_abort_on_clear_inuse_rqid = 1;
-int gbl_abort_on_missing_session = 0;
 
 pthread_t gbl_invalid_tid; /* set this to our main threads tid */
 
@@ -237,14 +220,12 @@ int gbl_new_row_data = 0;
 int gbl_extended_tm_from_sql =
     0; /* Keep a count of our extended-tm requests from sql. */
 
-int gbl_upgrade_blocksql_to_socksql = 0;
-
 int gbl_upgrade_blocksql_2_socksql =
     1; /* this is set if blocksock is in any parsed lrl
           files; if any blocksql requests will actually
           by socksql */
 
-int gbl_serialise_sqlite3_open = 1;
+int gbl_serialise_sqlite3_open = 0;
 
 int gbl_nice = 0;
 
@@ -254,10 +235,7 @@ int gbl_notimeouts = 0; /* set this if you don't need the server timeouts
 int gbl_nullfkey = 0;
 
 /* Default fast sql timeouts */
-int gbl_sqlrdtimeoutms = 10000;
 int gbl_sqlwrtimeoutms = 10000;
-
-int gbl_sql_client_stats = 1;
 
 long long gbl_converted_blocksql_requests = 0;
 
@@ -268,17 +246,12 @@ int gbl_honor_rangextunit_for_old_apis = 0;
 /* various roles for the prefault helper threads.  */
 int gbl_prefaulthelper_blockops = 1;
 int gbl_prefaulthelper_sqlreadahead = 1;
-int gbl_prefaulthelper_tagreadahead = 1;
 
 /* this many "next" ops trigger a readahead */
-int gbl_readaheadthresh = 0;
 int gbl_sqlreadaheadthresh = 0;
 
-/* readahead this many records */
-int gbl_readahead = 0;
-int gbl_sqlreadahead = 0;
-
 int gbl_iothreads = 0;
+int gbl_sqlreadahead = 0;
 int gbl_ioqueue = 0;
 int gbl_prefaulthelperthreads = 0;
 int gbl_osqlpfault_threads = 0;
@@ -324,7 +297,6 @@ int gbl_maxretries = 500;              /* thats a lotta retries */
 int gbl_maxblobretries =
     0; /* everyone assures me this can't happen unless the data is corrupt */
 int gbl_maxcontextskips = 10000; /* that's a whole whale of a lotta retries */
-char gbl_cwd[256];               /* start directory */
 int gbl_heartbeat_check = 0, gbl_heartbeat_send = 0, gbl_decom = 0;
 int gbl_netbufsz = 1 * 1024 * 1024;
 int gbl_loghist = 0;
@@ -345,7 +317,6 @@ int gbl_ready = 0; /* gets set just before waitft is called
                       and never gets unset */
 int gbl_debug_verify_tran = 0;
 int gbl_readonly = 0;
-int gbl_use_bbipc = 1; /* on by default. lrl option disable_bbipc to turn off */
 int gbl_init_single_meta = 1;
 int gbl_schedule = 0;
 
@@ -389,7 +360,6 @@ int gbl_updategenids = 0;
 int gbl_osql_heartbeat_send = 5;
 int gbl_osql_heartbeat_alert = 7;
 int gbl_chkpoint_alarm_time = 60;
-int gbl_dump_queues_on_exit = 1;
 int gbl_incoherent_msg_freq = 60 * 60;  /* one hour between messages */
 int gbl_incoherent_alarm_time = 2 * 60; /* alarm if we are incoherent for
                                            more than two minutes */
@@ -429,24 +399,16 @@ int gbl_selectv_rangechk = 0; /* disable selectv range check by default */
 int gbl_sql_tranlevel_preserved = SQL_TDEF_SOCK;
 int gbl_sql_tranlevel_default = SQL_TDEF_SOCK;
 int gbl_exit_alarm_sec = 300;
-int gbl_sql_tranlevel_sosql_pref = 1; /* set this to 1 if everytime the
-                                       * client mentions blocksql, it
-                                       * means sosql; this does not switch
-                                       * all the users to sosql */
-
 int gbl_test_blkseq_replay_code = 0;
 int gbl_dump_blkseq = 0;
 int gbl_test_curtran_change_code = 0;
-int gbl_enable_block_offload = 0;
 int gbl_enable_pageorder_trace = 0;
 int gbl_disable_deadlock_trace = 1;
 int gbl_disable_overflow_page_trace = 1;
-int gbl_debug_rowlocks = 1; /* Default this to 0 if you see it */
 int gbl_simulate_rowlock_deadlock_interval = 0;
 int gbl_enable_berkdb_retry_deadlock_bias = 0;
 int gbl_enable_cache_internal_nodes = 1;
 int gbl_use_appsock_as_sqlthread = 0;
-int gbl_rep_collect_txn_time = 0;
 int gbl_rep_process_txn_time = 0;
 
 int gbl_osql_verify_retries_max =
@@ -467,12 +429,9 @@ int gbl_ftables = 0;
 /* cdb2 features */
 int gbl_disable_skip_rows = 0;
 
-/* block/offload sql */
-int gbl_enable_sock_fstsnd = 1;
 #if 0
 u_int gbl_blk_pq_shmkey = 0;
 #endif
-int gbl_enable_position_apis = 0;
 int gbl_enable_sql_stmt_caching = STMT_CACHE_ALL;
 
 int gbl_round_robin_stripes = 0;
@@ -550,13 +509,15 @@ extern int gbl_net_lmt_upd_incoherent_nodes;
 extern int gbl_allow_user_schema;
 extern int gbl_skip_cget_in_db_put;
 
+int gbl_argc;
+char **gbl_argv;
+
 int gbl_stop_thds_time = 0;
 int gbl_stop_thds_time_threshold = 60;
 pthread_mutex_t stop_thds_time_lk = PTHREAD_MUTEX_INITIALIZER;
 
 int gbl_disallow_null_blobs = 1;
 int gbl_force_notnull_static_tag_blobs = 1;
-int gbl_enable_good_sql_return_codes = 0;
 int gbl_key_updates = 1;
 
 int gbl_partial_indexes = 1;
@@ -590,7 +551,6 @@ extern int gbl_empty_strings_dont_convert_to_numbers;
 extern int gbl_survive_n_master_swings;
 extern int gbl_master_retry_poll_ms;
 
-int gbl_fkrcode = 1;
 int gbl_check_schema_change_permissions = 1;
 
 int gbl_print_syntax_err = 0;
@@ -634,9 +594,6 @@ int gbl_berkdb_epochms_repts = 0;
 
 int gbl_disable_sql_dlmalloc = 0;
 
-int gbl_bbipc_slotidx;
-
-int gbl_sql_use_random_readnode = 0;
 int gbl_decimal_rounding = DEC_ROUND_HALF_EVEN;
 int gbl_sparse_lockerid_map = 1;
 int gbl_inplace_blobs = 1;
@@ -659,7 +616,6 @@ int gbl_disable_stable_for_ipu = 1;
 int gbl_disable_exit_on_thread_error = 0;
 
 int gbl_berkdb_iomap = 1;
-int gbl_catch_response_on_retry = 1;
 int gbl_check_dbnum_conflicts = 1;
 int gbl_requeue_on_tran_dispatch = 1;
 int gbl_crc32c = 1;
@@ -690,7 +646,7 @@ int gbl_sc_inco_chk = 1;
 int gbl_track_queue_time = 1;
 int gbl_locks_check_waiters = 1;
 int gbl_update_startlsn_printstep = 0;
-int gbl_rowlocks_commit_on_waiters = 0;
+int gbl_rowlocks_commit_on_waiters = 1;
 int gbl_rowlocks_deadlock_trace = 0;
 
 int gbl_durable_wait_seqnum_test = 0;
@@ -748,13 +704,11 @@ int gbl_disable_etc_services_lookup = 0;
 int gbl_fingerprint_queries = 1;
 int gbl_stable_rootpages_test = 0;
 
-int gbl_allow_incoherent_sql = 0;
-
-/* Bulk import */
-int gbl_enable_bulk_import; /* allow this db to bulk import */
-int gbl_enable_bulk_import_different_tables;
+/* Only allows the ability to enable: must be enabled on a session via 'set' */
+int gbl_allow_incoherent_sql = 1;
 
 char *gbl_dbdir = NULL;
+static int gbl_backend_opened = 0;
 
 extern int gbl_verbose_net;
 
@@ -783,16 +737,17 @@ int gbl_mifid2_datetime_range = 1;
 int gbl_early_verify = 1;
 
 int gbl_bbenv;
+extern int gbl_legacy_defaults;
 
 comdb2_tunables *gbl_tunables; /* All registered tunables */
 int init_gbl_tunables();
 int free_gbl_tunables();
 int register_db_tunables(struct dbenv *tbl);
 
-int init_plugins(void);
 int destroy_plugins(void);
 void register_plugin_tunables(void);
 int install_static_plugins(void);
+int run_init_plugins(void);
 
 inline int getkeyrecnums(const struct dbtable *tbl, int ixnum)
 {
@@ -933,9 +888,16 @@ void showdbenv(struct dbenv *dbenv)
         logmsg(LOGMSG_ERROR, "   data reclen %-3d bytes\n", usedb->lrl);
 
         for (ii = 0; ii < usedb->nix; ii++) {
-            logmsg(LOGMSG_USER, "   index %-2d keylen %-3d bytes  dupes? %c recnums? %c\n",
-                   ii, usedb->ix_keylen[ii], (usedb->ix_dupes[ii] ? 'y' : 'n'),
-                   (usedb->ix_recnums[ii] ? 'y' : 'n'));
+            logmsg(LOGMSG_USER,
+                   "   index %-2d keylen %-3d bytes  dupes? %c recnums? %c"
+                   " datacopy? %c collattr? %c uniqnulls %c disabled %c\n",
+                   ii, usedb->ix_keylen[ii],
+                   (usedb->ix_dupes[ii] ? 'y' : 'n'),
+                   (usedb->ix_recnums[ii] ? 'y' : 'n'),
+                   (usedb->ix_datacopy[ii] ? 'y' : 'n'),
+                   (usedb->ix_collattr[ii] ? 'y' : 'n'),
+                   (usedb->ix_nullsallowed[ii] ? 'y' : 'n'),
+                   (usedb->ix_disabled[ii] ? 'y' : 'n'));
         }
     }
     for (ii = 0; ii < dbenv->nsiblings; ii++) {
@@ -1097,14 +1059,14 @@ static void *purge_old_blkseq_thread(void *arg)
             static int peak_online_count = 0;
             int num_incoh, since_epoch;
             const char *incoh_list[REPMAX];
-            int now = time_epoch();
+            int now = comdb2_time_epoch();
 
             bdb_get_notcoherent_list(dbenv->bdb_env, incoh_list, REPMAX,
                                      &num_incoh, &since_epoch);
 
             if (num_incoh > 0) {
                 int online_count, ii;
-                int duration = time_epoch() - since_epoch;
+                int duration = comdb2_time_epoch() - since_epoch;
 
                 /* Exclude rtcpu'd nodes from our list of problem machines */
                 for (online_count = 0, ii = 0; ii < num_incoh && ii < REPMAX;
@@ -1201,17 +1163,26 @@ static void *purge_old_files_thread(void *arg)
     dbenv->purge_old_files_is_running = 1;
     backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDONLY);
 
-    while (!dbenv->exiting) {
+    while (!db_is_stopped()) {
         /* even though we only add files to be deleted on the master,
          * don't try to delete files, ever, if you're a replicant */
         if (thedb->master != gbl_mynode) {
             sleep(empty_pause);
             continue;
         }
-
-        if (!bdb_have_unused_files() || dbenv->stopped) {
-            sleep(empty_pause);
+        if (db_is_stopped())
             continue;
+
+        if (!bdb_have_unused_files() && gbl_master_changed_oldfiles) {
+            gbl_master_changed_oldfiles = 0;
+            if ((rc = bdb_process_each_table_version_entry(
+                     dbenv->bdb_env, bdb_check_files_on_disk, &bdberr)) != 0) {
+                logmsg(LOGMSG_ERROR,
+                       "%s: bdb_list_unused_files failed with rc=%d\n",
+                       __func__, rc);
+                sleep(empty_pause);
+                continue;
+            }
         }
 
         init_fake_ireq(thedb, &iq);
@@ -1257,17 +1228,6 @@ static void *purge_old_files_thread(void *arg)
             trans_abort(&iq, trans);
             sleep(empty_pause);
             continue;
-        }
-
-        if (empty && gbl_master_changed_oldfiles) {
-            gbl_master_changed_oldfiles = 0;
-            if ((rc = bdb_list_unused_files(dbenv->bdb_env, &bdberr,
-                                            "purge_old_files_thread"))) {
-                logmsg(LOGMSG_ERROR, "%s: bdb_list_unused_files failed with rc=%d\n",
-                        __func__, rc);
-                sleep(empty_pause);
-                continue;
-            }
         }
     }
 
@@ -1381,20 +1341,60 @@ void clean_exit_sigwrap(int signum) {
    clean_exit();
 }
 
+static void free_sqlite_table(struct dbenv *dbenv)
+{
+    for (int i = dbenv->num_dbs - 1; i >= 0; i--) {
+        struct dbtable *tbl = dbenv->dbs[i];
+        delete_schema(tbl->tablename); // tags hash
+        delete_db(tbl->tablename);     // will free db
+        bdb_cleanup_fld_hints(tbl->handle);
+        freedb(tbl);
+    }
+    free(dbenv->dbs);
+}
+
+/* clean_exit will be called to cleanup db structures upon exit
+ * NB: This function can be called by clean_exit_sigwrap() when the db is not
+ * up yet at which point we may not have much to cleanup.
+ */
 void clean_exit(void)
 {
-    int rc, ii;
-    char *indicator_file;
-    int fd;
+    int alarmtime = (gbl_exit_alarm_sec > 0 ? gbl_exit_alarm_sec : 300);
 
-    thedb->exiting = 1;
+    /* this defaults to 5 minutes */
+    alarm(alarmtime);
+
+    /* dont let any new requests come in.  we're going to go non-coherent
+       here in a second, so letting new reads in would be bad. */
+    no_new_requests(thedb);
+
+    wait_for_sc_to_stop();
+
+#   if 0
+    if (bdb_is_an_unconnected_master(thedb->dbs[0]->handle)) {
+        wait_for_sc_to_stop(); /* single node, need to stop SC */
+        logmsg(LOGMSG_INFO, "This was standalone\n");
+    } else {
+        /* hand over masterness to a new candidate if we're the master. */
+        bdb_transfermaster(thedb->dbs[0]->handle);
+    }
+#   endif
+
+    /* let the lower level start advertising high lsns to go non-coherent
+       - dont hang the master waiting for sync replication to an exiting
+       node. */
+    bdb_exiting(thedb->dbs[0]->handle);
+
     stop_threads(thedb);
-    logmsg(LOGMSG_INFO, "stopping db engine...\n");
+    flush_db();
 
+#   if 0
     /* TODO: (NC) Instead of sleep(), maintain a counter of threads and wait for
       them to quit.
     */
-    sleep(4);
+    if (!gbl_create_mode)
+        sleep(4);
+#   endif
 
     cleanup_q_vars();
     cleanup_switches();
@@ -1409,61 +1409,39 @@ void clean_exit(void)
         logmsg(LOGMSG_USER, "Created database %s.\n", thedb->envname);
     }
 
-    rc = backend_close(thedb);
-    if (rc != 0) logmsg(LOGMSG_ERROR, "error backend_close() rc %d\n", rc);
-
-    if (COMDB2_SOCK_FSTSND_ENABLED()) {
-        comdb2_shm_clr_flag(thedb->dbnum, CMDB2_SHMFLG_SOCK_FSTSND);
+    int rc = backend_close(thedb);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "error backend_close() rc %d\n", rc);
     }
 
-    for (ii = 0; ii < thedb->num_dbs; ii++) {
-        if (thedb->dbs[ii]->dbnum) {
-            if (COMDB2_SOCK_FSTSND_ENABLED()) {
-                comdb2_shm_clr_flag(thedb->dbs[ii]->dbnum,
-                                    CMDB2_SHMFLG_SOCK_FSTSND);
-            }
-
-            indicator_file =
-                comdb2_location("marker", "%s.done", thedb->dbs[ii]->tablename);
-            fd = creat(indicator_file, 0666);
-            if (fd != -1) close(fd);
-            free(indicator_file);
-        }
-    }
     eventlog_stop();
 
-    indicator_file = comdb2_location("marker", "%s.done", thedb->envname);
-    fd = creat(indicator_file, 0666);
-    if (fd != -1) close(fd);
-    logmsg(LOGMSG_INFO, "creating %s\n", indicator_file);
-    free(indicator_file);
-    extern char *gbl_portmux_unix_socket;
-    free(gbl_portmux_unix_socket);
     cleanup_file_locations();
     ctrace_closelog();
 
     backend_cleanup(thedb);
     net_cleanup_subnets();
     cleanup_sqlite_master();
-    for (ii = thedb->num_dbs - 1; ii >= 0; ii--) {
-        struct dbtable *tbl = thedb->dbs[ii];
-        delete_schema(tbl->tablename); // tags hash
-        delete_db(tbl->tablename);     // will free db
-        bdb_cleanup_fld_hints(tbl->handle);
-        freedb(tbl);
-    }
+
+    free_sqlite_table(thedb);
+
     if (thedb->db_hash) {
         hash_clear(thedb->db_hash);
         hash_free(thedb->db_hash);
         thedb->db_hash = NULL;
     }
+
     cleanup_interned_strings();
     cleanup_peer_hash();
+    free(gbl_dbdir);
+    free(gbl_myhostname);
+
+    cleanresources(); // list of lrls
+    clear_portmux_bind_path();
     // TODO: would be nice but other threads need to exit first:
     // comdb2ma_exit();
 
     logmsg(LOGMSG_USER, "goodbye\n");
-
     exit(0);
 }
 
@@ -1668,18 +1646,13 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
             tbl->has_datacopy_ix = 1;
         }
 
-        tbl->ix_nullsallowed[ii] = 0;
-        /*
-          XXX todo
-          tbl->ix_nullsallowed[ii]=dyns_is_idx_nullsallowed(ii);
-          if (tbl->ix_nullallowed[ii]<0)
-          {
-          fprintf(stderr,"cant find index %d datacopy in csc schema %s\n",
-          ii,tblname);
-            cleanup_newdb(tbl);
-            return NULL;
-          }
-        */
+        tbl->ix_nullsallowed[ii] = dyns_is_idx_uniqnulls(ii);
+        if (tbl->ix_nullsallowed[ii] < 0) {
+          logmsg(LOGMSG_ERROR, "cant find index %d uniqnulls in csc schema %s\n",
+                  ii, tblname);
+          cleanup_newdb(tbl);
+          return NULL;
+        }
     }
     tbl->n_rev_constraints =
         0; /* this will be initialized at verification time */
@@ -2075,7 +2048,6 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname)
          * loaded yet. */
 
         /* set tbl values and add to env */
-        tbl->shmflags = 0;
         tbl->dbs_idx = i;
         dbenv->dbs[i] = tbl;
 
@@ -2388,11 +2360,6 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
      * a value of 10 anyway. */
     dbenv->retry = 10;
 
-    /* default pagesizes */
-    dbenv->pagesize_dta = 4096;
-    dbenv->pagesize_freerec = 512;
-    dbenv->pagesize_ix = 4096;
-
     /*default sync mode:*/
     dbenv->rep_sync = REP_SYNC_FULL;
     dbenv->log_sync_time = 10;        /*sync logs every n seconds */
@@ -2428,18 +2395,21 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
 
     /* Register all db tunables. */
     if ((register_db_tunables(dbenv))) {
-        logmsg(LOGMSG_FATAL, "Failed to initialize tunables");
+        logmsg(LOGMSG_FATAL, "Failed to initialize tunables\n");
         exit(1);
     }
 
     if (read_lrl_files(dbenv, lrlname)) {
-        logmsg(LOGMSG_FATAL, "Failed to initialize tunables");
+        logmsg(LOGMSG_FATAL, "Failure in reading lrl file(s)\n");
         exit(1);
     }
 
     logmsg(LOGMSG_INFO, "database %s starting\n", dbenv->envname);
 
-    if (gbl_create_mode) {
+    if (!dbenv->basedir) {
+        logmsg(LOGMSG_FATAL, "DB directory is not set in lrl\n");
+        return NULL;
+    } else if (gbl_create_mode) {
         /* make sure the database directory exists! */
         rc = mkdir(dbenv->basedir, 0774);
         if (rc && errno != EEXIST) {
@@ -2453,7 +2423,7 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
         if (!S_ISDIR(sb.st_mode)) {
             logmsg(LOGMSG_FATAL, "DB directory '%s' does not exist\n",
                    dbenv->basedir);
-            return 0;
+            return NULL;
         }
     }
 
@@ -2488,6 +2458,13 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
     listc_init(&dbenv->sqlhist, offsetof(struct sql_hist, lnk));
     dbenv->master = NULL; /*no known master at this point.*/
     dbenv->errstaton = 1; /* ON */
+
+    dbenv->handle_buf_queue_time = time_metric_new("handle_buf_time_in_queue");
+    dbenv->sql_queue_time = time_metric_new("sql_time_in_queue");
+    dbenv->service_time = time_metric_new("service_time");
+    dbenv->queue_depth = time_metric_new("queue_depth");
+    dbenv->concurrent_queries = time_metric_new("concurrent_queries");
+    dbenv->connections = time_metric_new("connections");
 
     return dbenv;
 }
@@ -2934,7 +2911,8 @@ static char *create_default_lrl_file(char *dbname, char *dir) {
     }
 
     fprintf(lrlfile, "name    %s\n", dbname);
-    fprintf(lrlfile, "dir     %s\n\n", dir);
+    fprintf(lrlfile, "dir     %s\n", dir);
+    add_cmd_line_tunables_to_file(lrlfile);
     fclose(lrlfile);
 
     return lrlfile_name;
@@ -3067,7 +3045,7 @@ static void load_dbstore_tableversion(struct dbenv *dbenv)
     }
 }
 
-int init_sqlite_tables(struct dbenv *dbenv)
+static int init_sqlite_tables(struct dbenv *dbenv)
 {
     int rc;
     rc = init_sqlite_table(dbenv, "sqlite_stat1");
@@ -3136,12 +3114,6 @@ static int init(int argc, char **argv)
         return -1;
     }
 
-    /* get my working directory */
-    if (getcwd(gbl_cwd, sizeof(gbl_cwd)) == 0) {
-        logmsgperror("failed to getcwd");
-        return -1;
-    }
-
     if (thd_init()) {
         logmsg(LOGMSG_FATAL, "failed initialize thread module\n");
         return -1;
@@ -3172,7 +3144,7 @@ static int init(int argc, char **argv)
 
     /* Install all static plugins. */
     if ((install_static_plugins())) {
-        logmsg(LOGMSG_FATAL, "Failed to install builtin plugins");
+        logmsg(LOGMSG_FATAL, "Failed to install static plugins\n");
         exit(1);
     }
 
@@ -3211,9 +3183,14 @@ static int init(int argc, char **argv)
         cacheszkb = atoi(argv[optind]);
     }
 
+    gbl_mynodeid = machine_num(gbl_mynode);
+
     pthread_attr_init(&gbl_pthread_attr);
     pthread_attr_setstacksize(&gbl_pthread_attr, DEFAULT_THD_STACKSZ);
     pthread_attr_setdetachstate(&gbl_pthread_attr, PTHREAD_CREATE_DETACHED);
+
+    /* Initialize the statistics. */
+    init_metrics();
 
     rc = pthread_key_create(&comdb2_open_key, NULL);
     if (rc) {
@@ -3324,9 +3301,6 @@ static int init(int argc, char **argv)
         return -1;
     }
 
-    /* Since we moved bbipc context code lower, we need to explicitly
-     * initialize ctrace stuff, or our ctrace files will have names like
-     * dum50624.trace which isn't helpful */
     if (gbl_ctrace_dbdir)
         ctrace_openlog_taskname(thedb->basedir, dbname);
     else {
@@ -3396,15 +3370,12 @@ static int init(int argc, char **argv)
         logmsg(LOGMSG_INFO, "%d log files found in %s\n", nlogfiles, txndir);
         if (nlogfiles == 0) {
             logmsg(LOGMSG_FATAL, "ZERO log files found in %s!\n", txndir);
-            logmsg(LOGMSG_FATAL, "Cannot start without logfiles.  If this is\n");
-            logmsg(LOGMSG_INFO, "a clustered database then you should fixcomdb2\n");
-            logmsg(LOGMSG_INFO, "from the master.\n");
+            logmsg(LOGMSG_FATAL, "Cannot start without logfiles.\n");
+            logmsg(LOGMSG_FATAL, "If this is a clustered database then you "
+                                 "should copycomdb2 from the master.\n");
             if (!noabort)
                 exit(1);
         }
-    } else {
-        /* if we are going to exit, don't use bbipc */
-        gbl_use_bbipc = 0;
     }
 
     /* Rules for setting cache size:
@@ -3492,7 +3463,7 @@ static int init(int argc, char **argv)
     if (rc)
         logmsg(LOGMSG_INFO, "Cleared temporary tables rc=%d\n", rc);
 
-    gbl_starttime = time_epoch();
+    gbl_starttime = comdb2_time_epoch();
 
     /* Get all the LONG PREAD and LONG PWRITE outof act.log; I am truly fed up
      * with the entire company asking me if this is a problem. -- SJ */
@@ -3502,7 +3473,7 @@ static int init(int argc, char **argv)
      * to allow them because at least one prod database uses them.
      * Still alow bools for people who want to copy/test prod dbs
      * that use them.  Don't allow new databases to have bools. */
-    if ((get_mach_class(machine()) == CLASS_TEST) && gbl_create_mode) {
+    if ((get_mach_class(gbl_mynode) == CLASS_TEST) && gbl_create_mode) {
         if (dyns_used_bools()) {
             logmsg(LOGMSG_FATAL, "bools in schema.  This is now deprecated.\n");
             logmsg(LOGMSG_FATAL, "Exiting since this is a test machine.\n");
@@ -3563,6 +3534,9 @@ static int init(int argc, char **argv)
         logmsg(LOGMSG_INFO, "new snapisol is not running\n");
         gbl_new_snapisol = 0;
         gbl_new_snapisol_asof = 0;
+#ifdef NEWSI_STAT
+        bdb_newsi_stat_init();
+#endif
     }
 
     /* We grab alot of genids in the process of opening llmeta */
@@ -3588,22 +3562,19 @@ static int init(int argc, char **argv)
 
     /* get/set the table names from llmeta */
     if (gbl_create_mode) {
-       if (init_sqlite_tables(thedb))
-          return -1;
-
-        /* schemas are stored in the meta table after the backend is fully
-         * opened below */
-    }
-    /* if we are using low level meta table and this isn't the create pass,
-     * we shouldn't see any table definitions in the lrl. they should have
-     * been removed during initialization */
-    else if (thedb->num_dbs != 0) {
-        logmsg(LOGMSG_FATAL, "lrl contains table definitions, they should not be "
-                        "present after the database has been created\n");
+        if (!gbl_legacy_defaults)
+            if (init_sqlite_tables(thedb))
+                return -1;
+    } else if (thedb->num_dbs != 0) {
+        /* if we are using low level meta table and this isn't the create
+         * pass, we shouldn't see any table definitions in the lrl. they
+         * should have been removed during initialization */
+        logmsg(LOGMSG_FATAL, "lrl contains table definitions, they should not "
+                             "be present after the database has been "
+                             "created\n");
         return -1;
-    }
-    /* we will load the tables from the llmeta table */
-    else {
+    } else {
+        /* we will load the tables from the llmeta table */
         int waitfileopen =
             bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DELAY_FILE_OPEN);
         if (waitfileopen) {
@@ -3680,157 +3651,14 @@ static int init(int argc, char **argv)
 
         check_access_controls(thedb); /* Check authentication settings */
 
-        /* not clearing all the flags makes not possible to backout the
-           server and clear all the bits.  this will prevent this from
-           this point on
-         */
-        comdb2_shm_clear_and_set_flags(thedb->dbnum, 0);
-
-        /* turn off keyless bit (turn them on later if db is in fact keyless) */
-        for (ii = 0; ii < thedb->num_dbs; ii++) {
-            if (thedb->dbs[ii]->dbnum) {
-                comdb2_shm_clear_and_set_flags(thedb->dbs[ii]->dbnum, 0);
-            }
-        }
-
-        /* if(!gbl_notimeouts)
-           ARGHHHHHHHHHHHHHHHHH
-           This is used for both client heartbeats and reset! I cannot
-           turn off one without the other... Please don't overload bits.
-        */
-        comdb2_shm_set_flag(thedb->dbnum, CMDB2_SHMFLG_HEARTBEAT);
-
-        /* we always use server-side keyforming now, adjust lrl/ixlen/etc.,
-         * set db flags */
-
-        comdb2_shm_set_flag(thedb->dbnum, CMDB2_SHMFLG_KEYLESS_API);
-
-        /* Enable linux client in this version. */
-        comdb2_shm_set_flag(thedb->dbnum, CMDB2_SHMFLG_LINUX_CLIENT);
-
-        if (COMDB2_SOCK_FSTSND_ENABLED()) {
-            comdb2_shm_set_flag(thedb->dbnum, CMDB2_SHMFLG_SOCK_FSTSND);
-        }
-
-#if 0
-       if(gbl_blk_pq_shmkey) {
-            comdb2_shm_set_flag(thedb->dbnum, CMDB2_SHMFLG_PQENABLED);
-            comdb2_shm_pq_shmkey_set(thedb->dbnum, gbl_blk_pq_shmkey);
-            fprintf(stderr,"\n setting the pq shared mem key to %d ", gbl_blk_pq_shmkey);
-
-       }
-#endif
-
-        comdb2_shm_set_flag(thedb->dbnum, CMDB2_SHMFLG_ALLOCV2_ENABLED);
-
-        if (gbl_enable_position_apis) {
-            comdb2_shm_set_flag(thedb->dbnum, CMDB2_SHMFLG_POSITION_API);
-        }
-
-        comdb2_shm_set_flag(thedb->dbnum, CMDB2_SHMFLG_TZ);
-
-        comdb2_shm_set_flag(thedb->dbnum, CMDB2_SHMFLG_TZDMP);
-
-        comdb2_shm_set_flag(thedb->dbnum, CMDB2_SHMFLG_FAILEDDISP);
-
-        if (COMDB2_ERRSTAT_ENABLED())
-            comdb2_shm_set_flag(thedb->dbnum, CMDB2_SHMFLG_ERRSTAT);
-
-        comdb2_shm_set_flag(thedb->dbnum, CMDB2_SHMFLG_OSQL);
-
-        comdb2_shm_set_flag(thedb->dbnum, CMDB2_SHMFLG_OSQL_SOCK);
-
-        if (COMDB2_RECOM_ENABLED())
-            comdb2_shm_set_flag(thedb->dbnum, CMDB2_SHMFLG_RECOM);
-
-        if (gbl_sql_tranlevel_default != SQL_TDEF_COMDB2)
-            comdb2_shm_set_flag(thedb->dbnum, gbl_sql_tranlevel_default);
-
-        if (gbl_sql_tranlevel_sosql_pref)
-            comdb2_shm_set_flag(thedb->dbnum, CMDB2_SHMFLG_PREFER_SOSQL);
-
-        if (gbl_enable_block_offload)
-            comdb2_shm_set_flag(thedb->dbnum, CMDB2_SHMFLG_BLOCK_OFFLOAD);
-
-        if (COMDB2_SNAPISOL_ENABLED())
-            comdb2_shm_set_flag(thedb->dbnum, CMDB2_SHMFLG_SERIAL);
-
-        if (COMDB2_SERIAL_ENABLED())
-            comdb2_shm_set_flag(thedb->dbnum, CMDB2_SHMFLG_SERIAL);
-
-        if (gbl_enable_good_sql_return_codes)
-            comdb2_shm_set_flag(thedb->dbnum, CMDB2_SHMFLG_GOODSQLCODES);
-
-        if (gbl_fkrcode)
-            comdb2_shm_set_flag(thedb->dbnum, CMDB2_SHMFLG_FKRCODE);
-
         if (!have_all_schemas()) {
             logmsg(LOGMSG_ERROR,
                   "Server-side keyforming not supported - missing schemas\n");
             return -1;
         }
 
-        if (gbl_sql_use_random_readnode)
-            comdb2_shm_set_flag(thedb->dbnum, CMDB2_SHMFLG_SQL_RANDNODE);
-
         fix_lrl_ixlen(); /* set lrl, ix lengths: ignore lrl file, use info from
                             schema */
-
-        for (i = 0; i < thedb->num_dbs; i++) {
-            if (thedb->dbs[i]->dbnum) {
-                comdb2_shm_set_flag(thedb->dbs[i]->dbnum,
-                                    CMDB2_SHMFLG_KEYLESS_API);
-                comdb2_shm_set_flag(thedb->dbs[i]->dbnum, CMDB2_SHMFLG_TZ);
-                comdb2_shm_set_flag(thedb->dbs[i]->dbnum, CMDB2_SHMFLG_TZDMP);
-
-                if (COMDB2_SOCK_FSTSND_ENABLED()) {
-                    comdb2_shm_set_flag(thedb->dbs[i]->dbnum,
-                                        CMDB2_SHMFLG_SOCK_FSTSND);
-                }
-                if (COMDB2_ERRSTAT_ENABLED())
-                    comdb2_shm_set_flag(thedb->dbs[i]->dbnum,
-                                        CMDB2_SHMFLG_ERRSTAT);
-
-                comdb2_shm_set_flag(thedb->dbs[i]->dbnum, CMDB2_SHMFLG_OSQL);
-                comdb2_shm_set_flag(thedb->dbs[i]->dbnum,
-                                    CMDB2_SHMFLG_OSQL_SOCK);
-
-                if (COMDB2_RECOM_ENABLED())
-                    comdb2_shm_set_flag(thedb->dbs[i]->dbnum,
-                                        CMDB2_SHMFLG_RECOM);
-
-                if (gbl_sql_tranlevel_default != SQL_TDEF_COMDB2)
-                    comdb2_shm_set_flag(thedb->dbs[i]->dbnum,
-                                        gbl_sql_tranlevel_default);
-
-                if (gbl_sql_tranlevel_sosql_pref)
-                    comdb2_shm_set_flag(thedb->dbs[i]->dbnum,
-                                        CMDB2_SHMFLG_PREFER_SOSQL);
-
-                if (gbl_enable_block_offload)
-                    comdb2_shm_set_flag(thedb->dbs[i]->dbnum,
-                                        CMDB2_SHMFLG_BLOCK_OFFLOAD);
-
-                if (COMDB2_SNAPISOL_ENABLED())
-                    comdb2_shm_set_flag(thedb->dbs[i]->dbnum,
-                                        CMDB2_SHMFLG_SERIAL);
-
-                if (COMDB2_SERIAL_ENABLED())
-                    comdb2_shm_set_flag(thedb->dbs[i]->dbnum,
-                                        CMDB2_SHMFLG_SERIAL);
-
-                if (gbl_enable_good_sql_return_codes)
-                    comdb2_shm_set_flag(thedb->dbs[i]->dbnum,
-                                        CMDB2_SHMFLG_GOODSQLCODES);
-
-                comdb2_shm_set_flag(thedb->dbs[i]->dbnum,
-                                    CMDB2_SHMFLG_FAILEDDISP);
-
-                if (gbl_sql_use_random_readnode)
-                    comdb2_shm_set_flag(thedb->dbs[i]->dbnum,
-                                        CMDB2_SHMFLG_SQL_RANDNODE);
-            }
-        }
 
         rc = pthread_key_create(&query_info_key, NULL);
         if (rc) {
@@ -3857,6 +3685,9 @@ static int init(int argc, char **argv)
 
     /* open db engine */
     logmsg(LOGMSG_INFO, "starting backend db engine\n");
+
+    pthread_rwlock_wrlock(&schema_lk);
+
     if (backend_open(thedb) != 0) {
         logmsg(LOGMSG_FATAL, "failed to open '%s'\n", dbname);
         return -1;
@@ -3868,6 +3699,9 @@ static int init(int argc, char **argv)
     }
 
     load_dbstore_tableversion(thedb);
+
+    gbl_backend_opened = 1;
+    pthread_rwlock_unlock(&schema_lk);
 
     sqlinit();
     rc = create_sqlmaster_records(NULL);
@@ -3974,7 +3808,9 @@ static int init(int argc, char **argv)
 
     /* some dbs have lots of tables and spew on startup.  this just wastes
      * peoples time shunting spew */
-    /*showdbenv(thedb);*/
+    if (getenv("CDB2_SHOW_DBENV")) {
+        showdbenv(thedb);
+    }
 
     if (gbl_net_max_queue) {
         net_set_max_queue(thedb->handle_sibling, gbl_net_max_queue);
@@ -4025,16 +3861,6 @@ static int init(int argc, char **argv)
         return -1;
     }
 
-    comdb2_shm_set_flag(thedb->dbnum, CMDB2_SHMFLG_STATS_OK);
-
-    /* Advertise that we support blocksql semantics over sockets. */
-    if (gbl_upgrade_blocksql_to_socksql &&
-        gbl_sql_tranlevel_default != SQL_TDEF_SOCK)
-        comdb2_shm_set_flag(thedb->dbnum, CMDB2_SHMFLG_SOSQL_DFLT);
-
-    /*bdb_set_parallel_recovery_threads(thedb->bdb_env,
-     * gbl_parallel_recovery_threads);*/
-
     csc2_free_all();
 
     return 0;
@@ -4063,9 +3889,6 @@ static char *strtoupper(char instr[])
     return instr;
 } /* strtoupper() */
 
-static __thread ssize_t bbipc_id = 0;
-static pthread_once_t bbipc_exit_once = PTHREAD_ONCE_INIT;
-
 static void ttrap(struct timer_parm *parm)
 {
     char *msg;
@@ -4081,7 +3904,7 @@ static void ttrap(struct timer_parm *parm)
         pthread_exit(NULL);
         break;
     default:
-        cantim(parm->parm);
+        comdb2_cantim(parm->parm);
         break;
     }
 }
@@ -4165,9 +3988,8 @@ void reset_calls_per_sec(void);
 int throttle_lim = 10000;
 int cpu_throttle_threshold = 100000;
 
-#if 0
-void *pq_thread(void *);
-#endif
+double gbl_cpupercent;
+
 
 void *statthd(void *p)
 {
@@ -4229,6 +4051,13 @@ void *statthd(void *p)
     uint64_t last_report_bpool_hits = 0;
     uint64_t last_report_bpool_misses = 0;
 
+    int64_t conns=0, conn_timeouts=0, curr_conns = 0;
+    int64_t last_conns=0, last_conn_timeouts=0, last_curr_conns=0; 
+    int64_t diff_conns=0, diff_conn_timeouts=0, diff_curr_conns=0; 
+    int64_t last_report_conns = 0;
+    int64_t last_report_conn_timeouts = 0;
+    int64_t last_report_curr_conns=0;
+
     struct reqlogger *statlogger = NULL;
     struct bdb_thread_stats last_bdb_stats = {0};
     struct bdb_thread_stats cur_bdb_stats;
@@ -4245,13 +4074,13 @@ void *statthd(void *p)
     int have_scon_header = 0;
     int have_scon_stats = 0;
 
+    extern int active_appsock_conns;
+
     dbenv = p;
 
-    if (COMDB2_DIFFSTAT_REPORT()) {
-        /* initialize */
-        statlogger = reqlog_alloc();
-        reqlog_diffstat_init(statlogger);
-    }
+    /* initialize */
+    statlogger = reqlog_alloc();
+    reqlog_diffstat_init(statlogger);
 
     while (!db_is_stopped()) {
         nqtrap = n_qtrap;
@@ -4265,10 +4094,14 @@ void *statthd(void *p)
         nretries = n_retries;
         vreplays = gbl_verify_tran_replays;
 
+        conns = net_get_num_accepts(thedb->handle_sibling);
+        curr_conns = net_get_num_current_non_appsock_accepts(thedb->handle_sibling) + active_appsock_conns;
+        conn_timeouts = net_get_num_accept_timeouts(thedb->handle_sibling);
+
         bdb_get_bpool_counters(thedb->bdb_env, (int64_t *)&bpool_hits,
                                (int64_t *)&bpool_misses);
 
-        bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlockwaits);
+        bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlockwaits, NULL);
         diff_deadlocks = ndeadlocks - last_ndeadlocks;
         diff_lockwaits = nlockwaits - last_nlockwaits;
 
@@ -4283,6 +4116,9 @@ void *statthd(void *p)
         diff_ncommit_time = ncommit_time - last_ncommit_time;
         diff_bpool_hits = bpool_hits - last_bpool_hits;
         diff_bpool_misses = bpool_misses - last_bpool_misses;
+        diff_conns = conns - last_conns;
+        diff_curr_conns = curr_conns - last_curr_conns;
+        diff_conn_timeouts = conn_timeouts - last_conn_timeouts;
 
         last_qtrap = nqtrap;
         last_fstrap = nfstrap;
@@ -4297,13 +4133,17 @@ void *statthd(void *p)
         last_ncommit_time = ncommit_time;
         last_bpool_hits = bpool_hits;
         last_bpool_misses = bpool_misses;
+        last_conns = conns;
+        last_curr_conns = curr_conns;
+        last_conn_timeouts = conn_timeouts;
 
         have_scon_header = 0;
         have_scon_stats = 0;
 
         if (diff_qtrap || diff_nsql || diff_newsql || diff_nsql_steps ||
             diff_fstrap || diff_vreplays || diff_bpool_hits ||
-            diff_bpool_misses || diff_ncommit_time) {
+            diff_bpool_misses || diff_ncommit_time ||
+            diff_conns || diff_conn_timeouts || diff_curr_conns) {
             if (gbl_report) {
                 logmsg(LOGMSG_USER, "diff");
                 have_scon_header = 1;
@@ -4332,6 +4172,12 @@ void *statthd(void *p)
                     logmsg(LOGMSG_USER, " cache_hits %lu", diff_bpool_hits);
                 if (diff_bpool_misses)
                     logmsg(LOGMSG_USER, " cache_misses %lu", diff_bpool_misses);
+                if (diff_conns)
+                    logmsg(LOGMSG_USER, " connects %lld", diff_conns);
+                if (diff_curr_conns)
+                    logmsg(LOGMSG_USER, " current_connects %lld", diff_curr_conns);
+                if (diff_conn_timeouts)
+                    logmsg(LOGMSG_USER, " connect_timeouts %lld", diff_conn_timeouts);
                 have_scon_stats = 1;
             }
         }
@@ -4341,7 +4187,11 @@ void *statthd(void *p)
         if (have_scon_stats)
             logmsg(LOGMSG_USER, "\n");
 
-        if (COMDB2_DIFFSTAT_REPORT() && !gbl_schema_change_in_progress) {
+        extern void update_cpu_percent(void);
+        if (count % 5 == 0)
+            update_cpu_percent();
+
+        if (!gbl_schema_change_in_progress) {
             thresh = reqlog_diffstat_thresh();
             if ((thresh > 0) && (count == thresh)) {
                 strbuf *logstr = strbuf_new();
@@ -4538,6 +4388,14 @@ void *statthd(void *p)
                     lastlsnbytes = curlsnbytes;
                 }
 
+                if (conns - last_report_conns || curr_conns - last_report_curr_conns) {
+                   reqlog_logf(statlogger, REQL_INFO, "connections %lld timeouts %lld current_connections %lld\n", 
+                         conns - last_report_conns,
+                         conn_timeouts - last_report_conn_timeouts,
+                         curr_conns - last_report_curr_conns);
+                }
+
+
                 reqlog_diffstat_dump(statlogger);
 
                 count = 0;
@@ -4557,6 +4415,10 @@ void *statthd(void *p)
 
                 last_report_ncommits = ncommits;
                 last_report_ncommit_time = ncommit_time;
+
+                last_report_conns = conns;
+                last_report_conn_timeouts = conn_timeouts;
+                last_report_curr_conns = curr_conns;
 
                 osql_comm_diffstat(statlogger, NULL);
                 strbuf_free(logstr);
@@ -4584,6 +4446,15 @@ void *statthd(void *p)
 
         if (gbl_repscore)
             bdb_show_reptimes_compact(thedb->bdb_env);
+
+
+        /* Push out old metrics */
+        time_metric_purge_old(thedb->handle_buf_queue_time);
+        time_metric_purge_old(thedb->sql_queue_time);
+        time_metric_purge_old(thedb->service_time);
+        time_metric_purge_old(thedb->queue_depth);
+        time_metric_purge_old(thedb->concurrent_queries);
+        time_metric_purge_old(thedb->connections);
 
         ++count;
         sleep(1);
@@ -4650,7 +4521,7 @@ static void *memstat_cron_event(void *arg1, void *arg2, void *arg3, void *arg4,
     (void)comdb2ma_stats(NULL, 1, 0, COMDB2MA_TOTAL_DESC, COMDB2MA_GRP_NONE, 1);
 
     if (gbl_memstat_freq > 0) {
-        tm = time_epoch() + gbl_memstat_freq;
+        tm = comdb2_time_epoch() + gbl_memstat_freq;
         rc = cron_add_event(memstat_sched, NULL, tm, (FCRON) memstat_cron_event, NULL,
                             NULL, NULL, NULL, err);
 
@@ -4672,7 +4543,7 @@ static void *memstat_cron_kickoff(void *arg1, void *arg2, void *arg3,
                     "Will print memory usage every %d seconds.\n",
             gbl_memstat_freq);
 
-    tm = time_epoch() + gbl_memstat_freq;
+    tm = comdb2_time_epoch() + gbl_memstat_freq;
     rc = cron_add_event(memstat_sched, NULL, tm, (FCRON) memstat_cron_event, NULL, NULL,
                         NULL, NULL, err);
     if (rc == NULL)
@@ -4717,9 +4588,6 @@ static void register_all_int_switches()
                         &gbl_prefault_verbose);
     register_int_switch("plannedsc", "Use planned schema change by default",
                         &gbl_default_plannedsc);
-    register_int_switch("pflt_readahead",
-                        "Enable prefaulting of readahead operations",
-                        &gbl_prefault_readahead);
     register_int_switch("pflt_toblock_lcl",
                         "Prefault toblock operations locally",
                         &gbl_prefault_toblock_local);
@@ -4737,8 +4605,6 @@ static void register_all_int_switches()
         "node1_rtcpuable",
         "If off then consumer code won't do rtcpu checks on node 1",
         &gbl_node1rtcpuable);
-    register_int_switch("clnt_sql_stats", "Trace back fds to client machines",
-                        &gbl_sql_client_stats);
     register_int_switch("sqlite3openserial",
                         "Serialise calls to sqlite3_open to prevent excess CPU",
                         &gbl_serialise_sqlite3_open);
@@ -4750,8 +4616,6 @@ static void register_all_int_switches()
         "lock_timing",
         "Berkeley DB will keep stats on time spent waiting for locks",
         &gbl_bb_berkdb_enable_lock_timing);
-    register_int_switch("qdump_atexit", "Dump queue stats at exit",
-                        &gbl_dump_queues_on_exit);
     register_int_switch(
         "memp_timing",
         "Berkeley DB will keep stats on time spent in __memp_fget",
@@ -4809,30 +4673,26 @@ static void register_all_int_switches()
                         &gbl_verify_rep_log_records);
     register_int_switch(
         "enable_osql_logging",
-        "Log every osql packet received in a special file, per iq\n",
+        "Log every osql packet received in a special file, per iq",
         &gbl_enable_osql_logging);
     register_int_switch("enable_osql_longreq_logging",
-                        "Log untruncated osql strings\n",
+                        "Log untruncated osql strings",
                         &gbl_enable_osql_longreq_logging);
     register_int_switch(
         "check_sparse_files",
-        "When allocating a page, check that we aren't creating a sparse file\n",
+        "When allocating a page, check that we aren't creating a sparse file",
         &gbl_check_sparse_files);
     register_int_switch(
         "core_on_sparse_file",
-        "Generate a core if we catch berkeley creating a sparse file\n",
+        "Generate a core if we catch berkeley creating a sparse file",
         &gbl_core_on_sparse_file);
-    register_int_switch("sqlclient_use_random_readnode",
-                        "Sql client will use random sql allocation by default "
-                        "(while still calling sqlhndl_alloc()\n",
-                        &gbl_sql_use_random_readnode);
     register_int_switch(
         "check_sqlite_numeric_types",
-        "Report if our numeric conversion disagrees with SQLite's\n",
+        "Report if our numeric conversion disagrees with SQLite's",
         &gbl_report_sqlite_numeric_conversion_errors);
     register_int_switch(
         "use_fastseed_for_comdb2_seqno",
-        "Use fastseed instead of context for comdb2_seqno unique values\n",
+        "Use fastseed instead of context for comdb2_seqno unique values",
         &gbl_use_fastseed_for_comdb2_seqno);
     register_int_switch(
         "disable_stable_for_ipu",
@@ -4850,18 +4710,12 @@ static void register_all_int_switches()
     register_switch("berkdb_iomap",
                     "enable berkdb writing memptrickle status to a mapped file",
                     iomap_on, iomap_off, int_stat_fn, &gbl_berkdb_iomap);
-    register_int_switch("catch_response_on_retry",
-                        "print trace when we try to send replies on a retry",
-                        &gbl_catch_response_on_retry);
     register_int_switch("requeue_on_tran_dispatch",
                         "Requeue transactional statement if not enough threads",
                         &gbl_requeue_on_tran_dispatch);
     register_int_switch("check_wrong_db",
                         "Return error if connecting to wrong database",
                         &gbl_check_wrong_db);
-    register_int_switch("dbglog_use_sockpool",
-                        "Use sockpool for connections opened for dbglog",
-                        &gbl_use_sockpool_for_debug_logs);
     register_int_switch("debug_temp_tables", "Debug temp tables",
                         &gbl_debug_temptables);
     register_int_switch("check_sql_source", "Check sql source",
@@ -5027,9 +4881,10 @@ static void register_all_int_switches()
                         &gbl_extended_sql_debug_trace);
     register_int_switch("dump_fsql_response", "Dump fsql out messages",
                         &gbl_dump_fsql_response);
-    register_int_switch("large_str_idx_find",
-                        "Allow index search using out or range strings",
-                        &gbl_large_str_idx_find);
+    register_int_switch(
+        "large_str_idx_find",
+        "Allow index search using out-of-range strings or bytearrays",
+        &gbl_large_str_idx_find);
     register_int_switch("fingerprint_queries",
                         "Compute fingerprint for SQL queries",
                         &gbl_fingerprint_queries);
@@ -5074,6 +4929,9 @@ static void register_all_int_switches()
     register_int_switch("mifid2_datetime_range",
                         "Extend datetime range to meet mifid2 requirements",
                         &gbl_mifid2_datetime_range);
+    register_int_switch("return_long_column_names",
+                        "Enables returning of long column names. (Default: ON)",
+                        &gbl_return_long_column_names);
 }
 
 static void getmyid(void)
@@ -5212,19 +5070,13 @@ int main(int argc, char **argv)
 
     init_debug_switches();
 
-    /* Initialize the plugin sub-system. */
-    if ((init_plugins())) {
-        logmsg(LOGMSG_FATAL, "Failed to initialize plugin sub-system");
-        exit(1);
-    }
-
     /* Initialize plugin tunables. */
     register_plugin_tunables();
 
     timer_init(ttrap);
 
     if (isatty(fileno(stdout)))
-       logmsg_set_time(0);
+        logmsg_set_time(0);
 
     /* what is my local hostname */
     getmyid();
@@ -5284,6 +5136,9 @@ int main(int argc, char **argv)
 
     set_portmux_bind_path(NULL);
 
+    gbl_argc = argc;
+    gbl_argv = argv;
+
     if (init(argc, argv) == -1) {
         logmsg(LOGMSG_FATAL, "failed to start\n");
         exit(1);
@@ -5308,7 +5163,7 @@ int main(int argc, char **argv)
     create_stat_thread(thedb);
 
     /* create the offloadsql repository */
-    if (thedb->nsiblings > 0) {
+    if (!gbl_create_mode && thedb->nsiblings > 0) {
         if (osql_open(thedb)) {
             logmsg(LOGMSG_FATAL, "Failed to init osql\n");
             exit(1);
@@ -5324,21 +5179,23 @@ int main(int argc, char **argv)
     void init_lua_dbtypes(void);
     init_lua_dbtypes();
 
-    timprm(clean_mins, TMEV_PURGE_OLD_LONGTRN);
+    comdb2_timprm(clean_mins, TMEV_PURGE_OLD_LONGTRN);
 
     if (comdb2ma_stats_cron() != 0)
         abort();
 
-    if (process_deferred_options(thedb, DEFERRED_SEND_COMMAND, NULL,
-                                 deferred_do_commands)) {
-        logmsg(LOGMSG_FATAL, "failed to process deferred options\n");
-        exit(1);
-    }
+    process_deferred_options(thedb, deferred_do_commands);
+    clear_deferred_options();
 
     // db started - disable recsize kludge so
     // new schemachanges won't allow broken size.
     gbl_broken_max_rec_sz = 0;
     wait_for_coherent();
+
+    if (run_init_plugins()) {
+        logmsg(LOGMSG_FATAL, "Initializer plugin failed\n");
+        exit(1);
+    }
 
     gbl_ready = 1;
     logmsg(LOGMSG_WARN, "I AM READY.\n");
@@ -5358,6 +5215,27 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    return 0;
+}
+
+int add_db(struct dbtable *db)
+{
+    pthread_rwlock_wrlock(&thedb_lock);
+
+    if (hash_find_readonly(thedb->db_hash, db) != 0) {
+        pthread_rwlock_unlock(&thedb_lock);
+        return -1;
+    }
+
+    thedb->dbs =
+        realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct dbtable *));
+    db->dbs_idx = thedb->num_dbs;
+    thedb->dbs[thedb->num_dbs++] = db;
+
+    /* Add table to the hash. */
+    hash_add(thedb->db_hash, db);
+
+    pthread_rwlock_unlock(&thedb_lock);
     return 0;
 }
 
@@ -5561,7 +5439,7 @@ void log_delete_counter_change(struct dbenv *dbenv, int action)
 
 inline int debug_this_request(int until)
 {
-    int now = time_epoch();
+    int now = comdb2_time_epoch();
     return now <= until;
 }
 
@@ -5588,7 +5466,7 @@ const char *comdb2_get_dbname(void)
 
 int sc_ready(void)
 {
-    return thedb->timepart_views != 0;
+    return gbl_backend_opened;
 }
 
 #define QUOTE_(x) #x
@@ -5635,6 +5513,7 @@ static void create_service_file(const char *lrlname)
                "WantedBy=multi-user.target\n",
             pw->pw_name);
 
+    free(comdb2_path);
     fclose(f);
 #endif
     return;

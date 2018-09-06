@@ -28,6 +28,8 @@
 #include "analyze.h"
 #include "intern_strings.h"
 #include "portmuxapi.h"
+#include "config.h"
+#include "net.h"
 
 /* Maximum allowable size of the value of tunable. */
 #define MAX_TUNABLE_VALUE_SIZE 512
@@ -36,6 +38,7 @@
 #define COMPOSITE_TUNABLE_SEP '.'
 
 extern int gbl_allow_lua_print;
+extern int gbl_allow_lua_dynamic_libs;
 extern int gbl_berkdb_epochms_repts;
 extern int gbl_pmux_route_enabled;
 extern int gbl_allow_user_schema;
@@ -45,18 +48,13 @@ extern int gbl_broken_max_rec_sz;
 extern int gbl_broken_num_parser;
 extern int gbl_crc32c;
 extern int gbl_decom;
-extern int gbl_delayed_ondisk_tempdbs;
 extern int gbl_disable_rowlocks;
 extern int gbl_disable_rowlocks_logging;
 extern int gbl_disable_skip_rows;
 extern int gbl_disable_sql_dlmalloc;
 extern int gbl_enable_berkdb_retry_deadlock_bias;
-extern int gbl_enable_block_offload;
 extern int gbl_enable_cache_internal_nodes;
-extern int gbl_enable_good_sql_return_codes;
 extern int gbl_partial_indexes;
-extern int gbl_enable_position_apis;
-extern int gbl_enable_sock_fstsnd;
 extern int gbl_sparse_lockerid_map;
 extern int gbl_spstrictassignments;
 extern int gbl_early;
@@ -64,7 +62,6 @@ extern int gbl_enque_reorder_lookahead;
 extern int gbl_exit_alarm_sec;
 extern int gbl_fdb_track;
 extern int gbl_fdb_track_hints;
-extern int gbl_fkrcode;
 extern int gbl_forbid_ulonglong;
 extern int gbl_force_highslot;
 extern int gbl_fdb_allow_cross_classes;
@@ -95,7 +92,6 @@ extern int gbl_prefault_udp;
 extern int gbl_print_syntax_err;
 extern int gbl_lclpooled_buffers;
 extern int gbl_reallyearly;
-extern int gbl_rep_collect_txn_time;
 extern int gbl_repdebug;
 extern int gbl_replicant_latches;
 extern int gbl_return_long_column_names;
@@ -119,12 +115,12 @@ extern int portmux_port;
 extern int g_osql_blocksql_parallel_max;
 extern int g_osql_max_trans;
 extern int gbl_osql_max_throttle_sec;
+extern int gbl_osql_random_restart;
 extern int diffstat_thresh;
 extern int reqltruncate;
 extern int analyze_max_comp_threads;
 extern int analyze_max_table_threads;
 extern int gbl_block_set_commit_genid_trace;
-extern int gbl_debug_high_availability_flag;
 extern int gbl_abort_on_unset_ha_flag;
 extern int gbl_write_dummy_trace;
 extern int gbl_abort_on_incorrect_upgrade;
@@ -147,6 +143,55 @@ extern int gbl_time_rep_apply;
 extern int gbl_incoherent_logput_window;
 extern int gbl_dump_full_net_queue;
 extern int gbl_max_clientstats_cache;
+extern int gbl_decoupled_logputs;
+extern int gbl_apply_queue_memory;
+extern int gbl_inmem_repdb_maxlog;
+extern int gbl_inmem_repdb_memory;
+extern int gbl_net_writer_thread_poll_ms;
+extern int gbl_max_apply_dequeue;
+extern int gbl_catchup_window_trace;
+extern int gbl_early_ack_trace;
+extern int gbl_throttle_logput_trace;
+extern int gbl_fills_waitms;
+extern int gbl_finish_fill_threshold;
+extern int gbl_long_read_threshold;
+extern int gbl_always_ack_fills;
+extern int gbl_verbose_fills;
+extern int gbl_getlock_latencyms;
+extern int gbl_last_locked_seqnum;
+extern int gbl_set_coherent_state_trace;
+extern int gbl_durable_set_trace;
+extern int gbl_set_seqnum_trace;
+extern int gbl_enque_log_more;
+extern int gbl_trace_repmore_reqs;
+extern int gbl_verbose_repdups;
+extern int gbl_apply_thread_pollms;
+extern int gbl_warn_queue_latency_threshold;
+extern int gbl_req_all_threshold;
+extern int gbl_req_delay_count_threshold;
+extern int gbl_rep_verify_always_grab_writelock;
+extern int gbl_rep_verify_will_recover_trace;
+extern int gbl_max_wr_rows_per_txn;
+extern int gbl_force_serial_on_writelock;
+extern int gbl_processor_thd_poll;
+extern int gbl_time_rep_apply;
+extern int gbl_incoherent_logput_window;
+extern int gbl_dump_full_net_queue;
+extern int gbl_max_clientstats_cache;
+extern int gbl_dbreg_stack_on_null_txn;
+extern int gbl_dbreg_abort_on_null_txn;
+extern int gbl_simulate_dropping_request;
+extern int gbl_max_logput_queue;
+extern int gbl_blocking_enque;
+extern int gbl_master_req_waitms;
+extern int gbl_print_net_queue_size;
+extern int gbl_commit_delay_trace;
+extern int gbl_elect_priority_bias;
+extern int gbl_abort_on_reconstruct_failure;
+extern int gbl_rand_elect_timeout;
+extern int gbl_rand_elect_min_ms;
+extern int gbl_rand_elect_max_ms;
+extern int gbl_handle_buf_add_latency_ms;
 
 extern long long sampling_threshold;
 
@@ -161,15 +206,15 @@ extern char *gbl_crypto;
 extern char *gbl_spfile_name;
 extern char *gbl_portmux_unix_socket;
 
-/* bb/ctrace.c */
+/* util/ctrace.c */
 extern int nlogs;
 extern unsigned long long rollat;
 
-/* bb/thread_util.c */
+/* util/thread_util.c */
 extern int thread_debug;
 extern int dump_resources_on_thread_exit;
 
-/* bb/walkback.c */
+/* util/walkback.c */
 extern int gbl_walkback_enabled;
 extern int gbl_warnthresh;
 
@@ -178,6 +223,8 @@ extern int gbl_ack_trace;
 
 /* bdb/bdblock.c */
 extern int gbl_bdblock_debug;
+
+extern int gbl_debug_aa;
 
 /* bdb/os_namemangle_46.c */
 extern int gbl_namemangle_loglevel;
@@ -197,6 +244,13 @@ extern bool gbl_rcache;
 
 static char *name = NULL;
 static int ctrace_gzip;
+
+int gbl_ddl_cascade_drop = 1;
+extern int gbl_queuedb_genid_filename;
+
+extern int gbl_timeseries_metrics;
+extern int gbl_metric_maxpoints;
+extern int gbl_metric_maxage;
 
 /*
   =========================================================
@@ -342,7 +396,7 @@ static void *checkctags_value(void *context)
 
 static void *next_genid_value(void *context)
 {
-    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    /*comdb2_tunable *tunable = (comdb2_tunable *)context;*/
     static char genid_str[64];
     unsigned long long flipgenid, genid = get_genid(thedb->bdb_env, 0);
 
@@ -359,7 +413,7 @@ static void *next_genid_value(void *context)
 
 static int genid_seed_update(void *context, void *value)
 {
-    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    /*comdb2_tunable *tunable = (comdb2_tunable *)context;*/
     char *seedstr = (char *)value;
     unsigned long long seed;
     seed = strtoll(seedstr, 0, 16);
@@ -583,6 +637,23 @@ static int broken_max_rec_sz_update(void *context, void *value)
     return 0;
 }
 
+
+static int netconndumptime_update(void *context, void *value)
+{
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    int val = *(int *)value;
+    net_set_conntime_dump_period(thedb->handle_sibling, val);
+    return 0;
+}
+
+static void *netconndumptime_value(void *context)
+{
+    static char val[64];
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    sprintf(val, "%d", net_get_conntime_dump_period(thedb->handle_sibling));
+    return val;
+}
+
 const char *deadlock_policy_str(int policy);
 int deadlock_policy_max();
 
@@ -685,6 +756,7 @@ static int sql_tranlevel_default_update(void *context, void *value)
         gbl_sql_tranlevel_default = SQL_TDEF_SERIAL;
     } else {
         logmsg(LOGMSG_ERROR, "Unknown transaction level requested\n");
+        gbl_sql_tranlevel_default = SQL_TDEF_SOCK;
         return 1;
     }
     gbl_sql_tranlevel_preserved = gbl_sql_tranlevel_default;
@@ -917,6 +989,7 @@ const char *tunable_type(comdb2_tunable_type type)
     case TUNABLE_COMPOSITE: return "COMPOSITE";
     default: assert(0);
     }
+    return "???";
 }
 
 /* Register all db tunables. */
@@ -1281,11 +1354,15 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
     tok = &buf[0];
 
     if (!(t = hash_find_readonly(gbl_tunables->hash, &tok))) {
-        logmsg(LOGMSG_WARN, "Non-registered tunable '%s'.\n", tok);
+        /* Do not warn in READEARLY phase. */
+        if ((flags & READEARLY) == 0) {
+            logmsg(LOGMSG_WARN, "Non-registered tunable '%s'.\n", tok);
+        }
         return TUNABLE_ERR_INVALID_TUNABLE;
     }
 
-    /* Only proceed if we were asked to process READEARLY tunables. */
+    /* Bail out if we were asked to process READEARLY tunables only
+     * but the matched tunable is non-READEARLY. */
     if ((flags & READEARLY) && ((t->flags & READEARLY) == 0)) {
         return TUNABLE_ERR_OK;
     }
@@ -1379,3 +1456,4 @@ const char *tunable_error(comdb2_tunable_err code)
     }
     return "????";
 }
+

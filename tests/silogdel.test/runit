@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+
+# Runs the register linearizability test
+debug=1
+#debug_trace="-D"
+db=$1
+cpid=0
+export COPROC
+export initrecs=1000
+
+if [[ "$needcluster" = "1" && -z "$CLUSTER" ]]; then
+    echo "This test is only relevant for a CLUSTERED installation."
+    exit 1
+fi
+
+function createtables
+{
+    [[ "$debug" == 1 ]] && set -x
+    cdb2sql ${CDB2_OPTIONS} $db default "create table t1 {schema{int id int value} keys{ \"id\" = id }}" >/dev/null 2>&1
+    cdb2sql ${CDB2_OPTIONS} $db default "create table t2 {schema{int id int value} keys{ \"id\" = id }}" >/dev/null 2>&1
+    cdb2sql ${CDB2_OPTIONS} $db default "create table t3 {schema{int id int value} keys{ \"id\" = id }}" >/dev/null 2>&1
+}
+
+function quitcoproc
+{
+    [[ "$debug" == 1 ]] && set -x
+
+    echo "quit" >&${COPROC[1]}
+    sleep 1
+    kill -9 $cpid
+    return 0
+}
+
+function errquit
+{
+    [[ "$debug" == 1 ]] && set -x
+
+    if [[ $cpid != 0 ]]; then
+        echo "quit" >&${COPROC[1]}
+        sleep 1
+        kill -9 $cpid
+    fi
+    echo "Testcase failed"
+    echo $1
+    exit 1
+}
+
+function getcurfile
+{
+    file=$(cdb2sql ${CDB2_OPTIONS} $db -tabs default "exec procedure sys.cmd.send('bdb logstat')" | egrep st_cur_file | awk '{print $NF}')
+    echo $file
+    return 0
+}
+
+function initialinserts
+{
+    [[ "$debug" == 1 ]] && set -x
+
+    typeset recs=$1 ; typeset t1=$2 ; typeset t2=$3 ; typeset t3=$4
+
+    i=0
+    while [[ $i -lt $recs ]]; do
+        cdb2sql -s ${CDB2_OPTIONS} $db default "insert into t1 values ($i, $i)"
+        cdb2sql -s ${CDB2_OPTIONS} $db default "insert into t2 values ($i, $i)"
+        cdb2sql -s ${CDB2_OPTIONS} $db default "insert into t3 values ($i, $i)"
+        let i=i+1
+    done
+
+    cdb2sql -s ${CDB2_OPTIONS} $db default "select * from t1 order by id" > $t1
+    cdb2sql -s ${CDB2_OPTIONS} $db default "select * from t2 order by id" > $t2
+    cdb2sql -s ${CDB2_OPTIONS} $db default "select * from t3 order by id" > $t3
+}
+
+
+function check_table
+{
+    [[ "$debug" == 1 ]] && set -x
+    table=$1 ; ckfile=$2
+    tmpfile=./chk_$table.txt
+    rm -Rf $tmpfile
+    echo "@redirect $tmpfile" >&${COPROC[1]}
+    echo "select * from $table order by id" >&${COPROC[1]}
+    echo "@redirect" >&${COPROC[1]}
+
+    echo "select count(*) from $table" >&${COPROC[1]}
+
+    export TMOUT=15
+    read -ru ${COPROC[0]} out
+
+    if [[ $? != 0 ]]; then
+        errquit "Error reading select count (*) from $table"
+    fi
+
+    if [[ "$out" != "(count(*)=$initrecs)" ]]; then
+        errquit "Bad count for table $table"
+    fi
+
+    diff $tmpfile $ckfile
+    if [[ $? != 0 ]]; then
+        errquit "Snapshot has changed"
+    fi
+}
+
+function beginsnaptran
+{
+    [[ "$debug" == 1 ]] && set -x
+    echo "set transaction snapshot isolation" >&${COPROC[1]}
+    echo "begin" >&${COPROC[1]}
+}
+
+function endsnaptran
+{
+    [[ "$debug" == 1 ]] && set -x
+    echo "commit" >&${COPROC[1]}
+}
+
+function pushnext
+{
+    [[ "$debug" == 1 ]] && set -x
+    files=$1
+    cur=$(getcurfile)
+    target=$(( files + cur ))
+
+    master=`cdb2sql --tabs ${CDB2_OPTIONS} $db default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
+
+    while [[ $cur != $target ]]; do
+        cdb2sql ${CDB2_OPTIONS} $db -tabs --host $master "exec procedure sys.cmd.send('pushnext')"
+        sleep 1
+        cur=$(getcurfile)
+    done
+}
+
+function runtest
+{
+    [[ "$debug" == 1 ]] && set -x
+    dt=$(date +%Y%m%d%H%M%S)
+
+    t1=./t1.$db.$dt.out
+    t2=./t2.$db.$dt.out
+    t3=./t3.$db.$dt.out
+
+    initialinserts $initrecs $t1 $t2 $t3
+
+    # begin coproc
+    coproc stdbuf -oL cdb2sql -s ${CDB2_OPTIONS} $db default -
+    cpid=$!
+    echo me: $$ COPROC $cpid fd in ${COPROC[0]} out ${COPROC[1]}
+
+    # Strategy is to begin a txn which selects from t1
+    beginsnaptran
+    check_table t1 $t1
+
+    # Update records in t2
+    cdb2sql -s ${CDB2_OPTIONS} $db default "update t2 set value = id+1 where 1"
+    pushnext 20
+
+    # Sleep for a bit to allow the logdelete thread to delete logfiles
+    sleep 10
+
+    # Now check tables t2 and t3
+    check_table t2 $t2
+    check_table t3 $t3
+
+    # If we are here, then success - lets cleanup
+    endsnaptran
+    quitcoproc
+
+    return 0
+}
+
+createtables
+runtest
+
+echo "Success"
+exit 0

@@ -392,10 +392,10 @@ char *thrman_describe(struct thr_handle *thr, char *buf, size_t szbuf)
     else {
         const char *where = thr->where;
         int fd = thr->fd;
-        int pos;
+        int pos = 0;
 
-        pos = snprintf(buf, szbuf, "tid %u:%s", thr->archtid,
-                       thrman_type2a(thr->type));
+        SNPRINTF(buf, szbuf, pos, "tid %u:%s", thr->archtid,
+                 thrman_type2a(thr->type));
 
         if (fd >= 0) {
             /* Get the IP address of this socket connection.  We assume that
@@ -408,24 +408,24 @@ char *thrman_describe(struct thr_handle *thr, char *buf, size_t szbuf)
             char addrstr[64];
             if (getpeername(fd, (struct sockaddr *)&peeraddr,
                             (socklen_t *)&len) < 0)
-                pos +=
-                    snprintf(buf + pos, szbuf - pos, ", fd %d (getpeername:%s)",
-                             fd, strerror(errno));
+                SNPRINTF(buf, szbuf, pos, ", fd %d (getpeername:%s)", fd,
+                         strerror(errno))
             else if (inet_ntop(peeraddr.sin_family, &peeraddr.sin_addr, addrstr,
                                sizeof(addrstr)) == NULL)
-                pos += snprintf(buf + pos, szbuf - pos,
-                                ", fd %d (inet_ntop:%s)", fd, strerror(errno));
+                SNPRINTF(buf, szbuf, pos, ", fd %d (inet_ntop:%s)", fd,
+                         strerror(errno))
             else
-                pos += snprintf(buf + pos, szbuf - pos, ", fd %d (%s)", fd,
-                                addrstr);
+                SNPRINTF(buf, szbuf, pos, ", fd %d (%s)", fd, addrstr)
         }
         if (thr->corigin[0])
-            pos += snprintf(buf + pos, szbuf - pos, ", %s", thr->corigin);
+            SNPRINTF(buf, szbuf, pos, ", %s", thr->corigin)
         if (thr->id[0])
-            pos += snprintf(buf + pos, szbuf - pos, ", %s", thr->id);
+            SNPRINTF(buf, szbuf, pos, ", %s", thr->id)
         if (where != NULL)
-            pos += snprintf(buf + pos, szbuf - pos, ": %s", where);
+            SNPRINTF(buf, szbuf, pos, ": %s", where)
     }
+
+done:
     return buf;
 }
 
@@ -558,7 +558,10 @@ static void thrman_wait(const char *descr, int (*check_fn_ll)(void *),
 void stop_threads(struct dbenv *dbenv)
 {
     /* watchdog makes sure we don't get stuck trying to stop threads */
-    LOCK(&stop_thds_time_lk) { gbl_stop_thds_time = time_epoch(); }
+    LOCK(&stop_thds_time_lk)
+    {
+        gbl_stop_thds_time = comdb2_time_epoch();
+    }
     UNLOCK(&stop_thds_time_lk);
 
     dbenv->stopped = 1;

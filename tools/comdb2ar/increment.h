@@ -20,7 +20,7 @@ std::string read_serialised_sha_file();
 // read from STDIN to get the fingerprint from a serialised .SHA file
 
 bool compare_checksum(
-    FileInfo file,
+    FileInfo &file,
     const std::string& incr_path,
     std::vector<uint32_t>& pages,
     ssize_t *data_size,
@@ -58,7 +58,8 @@ void incr_deserialise_database(
     unsigned percent_full,
     bool force_mode,
     std::vector<std::string>& options,
-    bool& is_disk_full
+    bool& is_disk_full,
+    bool& dryrun
 );
 // Deserialise an incremental backup from STDOUT
 
@@ -83,7 +84,7 @@ bool process_incr_manifest(
 void unpack_incr_data(
     const std::vector<std::string>& file_order,
     const std::map<std::string, std::pair<FileInfo, std::vector<uint32_t> > >& updated_files,
-    const std::string& datadestdir
+    const std::string& datadestdir, bool dryrun
 );
 // Unpack the changed files from the .data file read in from STDIN
 

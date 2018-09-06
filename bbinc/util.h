@@ -21,6 +21,8 @@
 #include <inttypes.h>
 #include <netinet/in.h>
 #include <stdarg.h>
+#include <logmsg.h>
+#include <build/db_dbt.h>
 
 #ifndef YESNO
 #define YESNO(x) ((x) ? "yes" : "no")
@@ -68,8 +70,4 @@ char *comdb2_filev(char *fmt, va_list args);
 char *comdb2_file(char *fmt, ...);
 void init_file_locations(char *);
 void cleanup_file_locations();
-
-char *util_tohex(char *out, const char *in, size_t len);
-void hexdumpbuf(char *key, int keylen, char **buf);
-
 #endif

@@ -228,7 +228,7 @@ tach=$(nodearch $rmt)
 arch=$(myarch)
 
 # executable which adds overflow blobs
-exe=${TESTSROOTDIR}/tools/overflow_blobtest
+exe=${TESTSBUILDDIR}/overflow_blobtest
 
 # run executable with default options
 $exe -d $dbnm 

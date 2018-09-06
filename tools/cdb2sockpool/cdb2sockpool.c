@@ -93,6 +93,7 @@ struct client {
 
 static char unix_bind_path[128] = SOCKPOOL_SOCKET_NAME;
 static char msgtrap_fifo[128] = "/tmp/msgtrap.sockpool";
+static int foreground_mode = 0;
 
 static struct stat save_st;
 
@@ -1026,7 +1027,7 @@ void setting_changed(unsigned *setting)
         socket_pool_set_max_fds_per_typestr(POOL_MAX_FDS_PER_DB);
 #if 0      
    } else if(setting == &CHECK_PIPE_FREQ) {
-      cantim(CHECK_PIPE_TIMER_NO);
+      comdb2_cantim(CHECK_PIPE_TIMER_NO);
       if(CHECK_PIPE_FREQ > 0) {
          timprm(1000 * CHECK_PIPE_FREQ, CHECK_PIPE_TIMER_NO);
       }
@@ -1135,7 +1136,7 @@ int main(int argc, char *argv[])
 
     optind = 1;
 
-    while ((c = getopt(argc, argv, "p:")) != EOF) {
+    while ((c = getopt(argc, argv, "p:f")) != EOF) {
         switch (c) {
         case 'p':
             /* Of the two limits sizeof(sun_addr.sun_path) is smaller */
@@ -1144,6 +1145,10 @@ int main(int argc, char *argv[])
                 exit(2);
             }
             strncpy(unix_bind_path, optarg, sizeof(unix_bind_path));
+            break;
+
+        case 'f':
+            foreground_mode = 1;
             break;
 
         case '?':
@@ -1220,7 +1225,9 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    bb_daemon();
+    if (!foreground_mode) {
+        bb_daemon();
+    }
 
     if (pthread_create_attrs(NULL, PTHREAD_CREATE_DETACHED, 64 * 1024,
                              accept_thd, (void *)(intptr_t)listenfd) != 0) {

@@ -17,10 +17,10 @@
 #ifndef INCLUDE_SC_ADD_TABLES_H
 #define INCLUDE_SC_ADD_TABLES_H
 
-int do_add_table(struct ireq *, tran_type *);
+int do_add_table(struct ireq *, struct schema_change_type *, tran_type *);
 int add_table_to_environment(char *table, const char *csc2,
                              struct schema_change_type *s, struct ireq *iq,
                              tran_type *trans);
-int finalize_add_table(struct ireq *, tran_type *);
+int finalize_add_table(struct ireq *, struct schema_change_type *, tran_type *);
 
 #endif

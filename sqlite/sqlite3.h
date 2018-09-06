@@ -3855,8 +3855,8 @@ SQLITE_API int sqlite3_bind_value(sqlite3_stmt*, int, const sqlite3_value*);
 SQLITE_API int sqlite3_bind_zeroblob(sqlite3_stmt*, int, int n);
 SQLITE_API int sqlite3_bind_zeroblob64(sqlite3_stmt*, int, sqlite3_uint64);
 /* COMDB2 MODIFICATION */
-SQLITE_API int sqlite3_bind_datetime(sqlite3_stmt *pStmt, int i, dttz_t *, char *tz);
-SQLITE_API int sqlite3_bind_interval(sqlite3_stmt *pStmt, int i, intv_t it);
+SQLITE_API int sqlite3_bind_datetime(sqlite3_stmt *, int i, dttz_t *, char *tz);
+SQLITE_API int sqlite3_bind_interval(sqlite3_stmt *, int i, intv_t *);
 
 /*
 ** CAPI3REF: Number Of SQL Parameters

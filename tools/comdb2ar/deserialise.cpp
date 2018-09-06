@@ -355,7 +355,8 @@ void deserialise_database(
         bool legacy_mode,
         bool& is_disk_full,
         bool run_with_done_file,
-        bool incr_mode
+        bool incr_mode,
+        bool dryrun
 )
 // Deserialise a database from serialised from received on stdin.
 // If lrldestdir and datadestdir are not NULL then the lrl and data files
@@ -467,6 +468,18 @@ void deserialise_database(
                 throw Error(ss);
             }
 
+            // remove logs
+            std::string logsdir = datadestdir + "/logs";
+            std::list<std::string> logfiles;
+            listdir(logfiles, logsdir);
+            for (std::list<std::string>::const_iterator it = logfiles.begin();
+                    it != logfiles.end();
+                    ++it) {
+                std::string log = logsdir + "/" + *it;
+                std::cout << "unlink " << log << std::endl;
+                unlink(log.c_str());
+            }
+
             inited_txn_dir = true;
         }
 
@@ -497,7 +510,8 @@ void deserialise_database(
                     percent_full,
                     force_mode,
                     options,
-                    is_disk_full
+                    is_disk_full,
+                    dryrun
                 );
             }
             break;
@@ -564,9 +578,7 @@ void deserialise_database(
             bool is_queuedb_file = false;
             std::string table_name;
 
-            if(recognise_data_file(filename, false, is_data_file,
-                        is_queue_file, is_queuedb_file, table_name) ||
-               recognise_data_file(filename, true, is_data_file,
+            if(recognize_data_file(filename, is_data_file,
                         is_queue_file, is_queuedb_file, table_name)) {
                 if(table_set.insert(table_name).second) {
                     std::clog << "Discovered table " << table_name
@@ -883,11 +895,12 @@ void deserialise_database(
                    // remove files in the txn directory
                    std::string dbtxndir(datadestdir + "/" + dbname + ".txn");
                    make_dirs( dbtxndir );
-                   remove_all_old_files( dbtxndir );
+                   if (!incr_mode)
+                       remove_all_old_files( dbtxndir );
                    dbtxndir = datadestdir + "/" + "logs";
                    make_dirs( dbtxndir );
-                   remove_all_old_files( dbtxndir );
-
+                   if (!incr_mode)
+                       remove_all_old_files( dbtxndir );
                 }
             }
         }
@@ -943,4 +956,220 @@ void deserialise_database(
     std::string fluff_file;
     fluff_file = datadestdir + "/FLUFF";
     unlink(fluff_file.c_str());
+}
+
+void deserialize_file(const std::string &filename, off_t filesize, bool write_file, bool dryrun, bool do_direct_io) {
+    /* must be a multiple of 512! */
+#define DESERIALIZE_BUFSIZE 1024*1024
+    static char buf[DESERIALIZE_BUFSIZE];
+    int rb; // read bytes
+    const int bufsz = DESERIALIZE_BUFSIZE;
+
+    std::unique_ptr<fdostream> out;
+    if (write_file && !dryrun)
+        out = output_file(filename, false, do_direct_io);
+
+    for (int i = 0; i < filesize / sizeof(buf); i++) {
+        rb = readall(0, buf, sizeof(buf));
+        if (rb != sizeof(buf)) {
+            std::ostringstream ss;
+            ss << "Unexpected eof reading " << filename;
+            throw Error(ss.str());
+        }
+        if (write_file && !dryrun)
+            out->write(buf, bufsz);
+        else if (dryrun) {
+            std::cout << filename << ": " << bufsz << " bytes written" << std::endl;
+        }
+    }
+    if (filesize % bufsz) {
+        int remnant = filesize % bufsz;
+        rb = readall(0, buf, remnant);
+        if (rb != remnant) {
+            std::ostringstream ss;
+            ss << "Unexpected eof (last buffer) for " << filename;
+            throw Error(ss.str());
+        }
+        if (write_file && !dryrun)
+            out->write(buf, remnant);
+        else if (dryrun)
+            std::cout << filename << ": " << remnant << " bytes written (remnant)" << std::endl;
+        if (remnant % 512) {
+            remnant = 512 - (remnant % 512);
+            rb = readall(0, buf, remnant);
+            if (rb != remnant) {
+                std::ostringstream ss;
+                ss << "Unexpected eof (padding) for " << filename;
+                throw Error(ss.str());
+            }
+        }
+    }
+}
+
+void restore_partials(
+    const std::string &lrlpath, const std::string& comdb2_task, bool run_full_recovery, bool do_direct_io, bool dryrun
+// On stdio is a tarball containing a partial file. Apply it against the current
+// set of database files in the directory given by the lrl file.
+) {
+    std::string dbname;
+    std::string dbdir;
+    std::list<std::string> support_files;
+    std::set<std::string> table_names;
+    std::set<std::string> queue_names;
+    bool nonames;
+    bool has_cluster_info;
+    tar_block_header hdr;
+    bool is_manifest = false;
+    unsigned long long filesize;
+    uint8_t zeroblock[512] = {0};
+    int64_t manifest_size;
+
+    // settings encoded in manifest
+    std::map<std::string, std::pair<FileInfo, std::vector<uint32_t>>> updated_files;
+    std::map<std::string, FileInfo> new_files;
+    std::set<std::string> deleted_files;
+    std::vector<std::string> file_order;
+    std::vector<std::string> options;
+    std::string manifest_sha;
+
+    parse_lrl_file(lrlpath, &dbname, &dbdir, &support_files, &table_names, &queue_names, &nonames, &has_cluster_info);
+
+    if (!dbdir.empty() && !dbname.empty()) {
+        nonames = check_usenames(dbname, dbdir, nonames);
+    }
+
+    // The first thing we need to do is to delete all the logs - we 
+    // don't want recovery run on partial logs
+    std::string logpath;
+    if (nonames)
+        logpath = dbdir + "/logs";
+    else
+        logpath = dbdir + "/" + dbname + ".txn";
+
+    std::cout << "start restore, datapath " << dbdir << " logpath " << logpath << std::endl;
+
+    std::list<std::string> logfiles;
+    listdir(logfiles, logpath);
+    for (std::list<std::string>::const_iterator it = logfiles.begin();
+            it != logfiles.end(); ++it) {
+        if (it->compare(0, 4, "log.") == 0 && it->length() == 14) {
+            std::string logfile = logpath + "/" + *it;
+            unlink(logfile.c_str());
+        }
+    }
+
+
+    for (;;) {
+        ssize_t rb = readall(0, &hdr, sizeof(hdr));
+        if (rb != sizeof(hdr)) {
+            std::ostringstream ss;
+            ss << "huh? read " << rb << "bytes";
+            throw Error(ss.str());
+        }
+
+        if (std::memcmp(hdr.c, zeroblock, 512) == 0)
+            break;
+
+        if (hdr.h.filename[sizeof(hdr.h.filename) - 1] != '\0') {
+            throw Error("Bad block: filename is not null terminated");
+        }
+        if(!read_octal_ull(hdr.h.size, sizeof(hdr.h.size), filesize)) {
+            read_octal_ull(hdr.h.size, sizeof(hdr.h.size), filesize);
+            std::cout << hdr.h.size << std::endl;
+            throw Error("Bad block: bad size ");
+        }
+        std::string filename(hdr.h.filename);
+        if (filename == "INCR_MANIFEST") {
+            std::string manifest_text = read_incr_manifest(filesize);
+            if(!process_incr_manifest(manifest_text, dbdir,
+                        updated_files, new_files, deleted_files,
+                        file_order, options, manifest_sha)){
+                // Failed to read a coherent manifest
+                std::ostringstream ss;
+                ss << "Error reading manifest";
+                throw Error(ss);
+            }
+
+            // Clear the logfile folder
+            clear_log_folder(dbdir, dbname);
+
+            // delete the deleted files
+            for (std::set<std::string>::const_iterator ii = deleted_files.begin();
+                    ii != deleted_files.end(); ++ii) {
+                // std::cout << "deleted " << dbdir + "/" + *ii << std::endl;
+                std::ostringstream ss;
+                ss << dbdir << "/" << filename;
+                int rc;
+                if (!dryrun)
+                    rc = unlink(ss.str().c_str());
+                else
+                    std::cout << "unlink " << ss.str() << " rc " << rc << std::endl;
+            }
+            for (std::map<std::string, FileInfo>::const_iterator ii = new_files.begin();
+                    ii != new_files.end(); ++ii) {
+                std::cout << "new " << (dbdir + "/" + (*ii).second.get_filename()) << std::endl;
+            }
+            for (std::map<std::string, std::pair<FileInfo, std::vector<uint32_t>>>::const_iterator ii = updated_files.begin();
+                    ii != updated_files.end(); ++ii) {
+                std::cout << "updated " << dbdir + "/" + ii->first << std::endl;
+            }
+            continue;
+        }
+
+        bool write_file = false;
+
+        if (filename.substr(filename.length() - 5, 5) == ".data") {
+            unpack_incr_data(file_order, updated_files, dbdir, dryrun);
+            write_file = false; 
+        }
+        else if (new_files.find(filename) != new_files.end()) {
+            write_file = true;
+        }
+        else if (deleted_files.find(filename) != deleted_files.end()) {
+            std::cout << "found a deleted file in tarball?" << std::endl;
+            write_file = false;
+        }
+        else if (updated_files.find(filename) != updated_files.end()) {
+            std::cout << "update " << filename << std::endl;
+            write_file = true;
+        }
+        else {
+            std::cout << "support-file " << filename << std::endl;
+            write_file = true;
+        }
+
+        if (!write_file)
+            continue;
+
+        std::ostringstream ss;
+        ss << dbdir << "/" << filename;
+        filename = ss.str();
+        if (write_file)
+            deserialize_file(filename, filesize, write_file, dryrun, do_direct_io);
+    }
+
+    if(run_full_recovery) {
+        std::ostringstream cmdss;
+
+        cmdss<< comdb2_task << " " 
+             << dbname << " -lrl "
+             << lrlpath 
+             << " -fullrecovery";
+
+        for (int i = 0; i < options.size(); i++) {
+            cmdss << " " << options[i];
+        }
+
+        std::clog << "Running full recovery: " << cmdss.str() << std::endl;
+
+        errno = 0;
+        int rc = std::system(cmdss.str().c_str());
+        if(rc != 0) {
+            std::ostringstream ss;
+            ss << "Full recovery command '" << cmdss.str() << "' failed rc "
+                << rc << " errno " << errno << std::endl;
+            throw Error(ss);
+        }
+        std::clog << "Full recovery successful" << std::endl;
+    }
 }

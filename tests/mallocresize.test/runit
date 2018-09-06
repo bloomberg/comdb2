@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+bash -n "$0" | exit 1
+set -e
+
+dbnm=$1
+
+time ${TESTSBUILDDIR}/malloc_resize_test $dbnm 1 1

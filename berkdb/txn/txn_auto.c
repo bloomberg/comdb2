@@ -2182,9 +2182,11 @@ do_malloc:
 	LOGCOPY_32(bp, &uinttmp);
 	bp += sizeof(uinttmp);
 
-	uinttmp = (u_int32_t)generation;
-	LOGCOPY_32(bp, &uinttmp);
-	bp += sizeof(uinttmp);
+	if (lflags & DB_TXN_LOGICAL_GEN) {
+		uinttmp = (u_int32_t)generation;
+		LOGCOPY_32(bp, &uinttmp);
+		bp += sizeof(uinttmp);
+	}
 
 #ifdef PRINTLOG_SANITY
     fprintf(stderr, "%s txnid %x begin_lsn [%d][%d] writing generation %u\n", 
@@ -2420,9 +2422,13 @@ __txn_regop_rowlocks_read_int(dbenv, recbuf, do_pgswp, argpp)
 	argp->lflags = (u_int32_t)uinttmp;
 	bp += sizeof(uinttmp);
 
-	LOGCOPY_32(&uinttmp, bp);
-	argp->generation = (u_int32_t)uinttmp;
-	bp += sizeof(uinttmp);
+	if (argp->lflags & DB_TXN_LOGICAL_GEN) {
+		LOGCOPY_32(&uinttmp, bp);
+		argp->generation = (u_int32_t)uinttmp;
+		bp += sizeof(uinttmp);
+	} else {
+		argp->generation = 0;
+	}
 
 	memset(&argp->locks, 0, sizeof(argp->locks));
 	LOGCOPY_32(&argp->locks.size, bp);
@@ -2502,11 +2508,17 @@ __txn_regop_rowlocks_print(dbenv, dbtp, lsnp, notused2, notused3)
 	fflush(stdout);
 	(void)printf("\tgeneration: %u\n", argp->generation);
 	(void)printf("\tlflags: 0x%08x ", argp->lflags);
-    if(argp->lflags & DB_TXN_LOGICAL_BEGIN) printf("DB_TXN_LOGICAL_BEGIN "); 
-    if(argp->lflags & DB_TXN_LOGICAL_COMMIT) printf("DB_TXN_LOGICAL_COMMIT "); 
-    if(argp->lflags & DB_TXN_SCHEMA_LOCK) printf("DB_TXN_SCHEMA_LOCK "); 
-    if(argp->lflags & DB_TXN_DONT_GET_REPO_MTX) printf("DB_TXN_DONT_GET_REPO_MTX "); 
-    printf("\n");
+	if (argp->lflags & DB_TXN_LOGICAL_BEGIN)
+		printf("DB_TXN_LOGICAL_BEGIN ");
+	if (argp->lflags & DB_TXN_LOGICAL_COMMIT)
+		printf("DB_TXN_LOGICAL_COMMIT ");
+	if (argp->lflags & DB_TXN_SCHEMA_LOCK)
+		printf("DB_TXN_SCHEMA_LOCK ");
+	if (argp->lflags & DB_TXN_LOGICAL_GEN)
+		printf("DB_TXN_LOGICAL_GEN ");
+	if (argp->lflags & DB_TXN_DONT_GET_REPO_MTX)
+		printf("DB_TXN_DONT_GET_REPO_MTX ");
+	printf("\n");
 
 	fflush(stdout);
 	(void)printf("\tlocks: \n");

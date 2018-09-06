@@ -12,7 +12,8 @@ FileInfo::FileInfo() :
     m_pagesize(0),
     m_sparse(false),
     m_do_direct_io(true),
-    m_swapped(false) {}
+    m_swapped(false),
+    m_filesize(0) {}
 
 FileInfo::FileInfo(const FileInfo& copy) :
     m_type(copy.m_type),
@@ -22,7 +23,8 @@ FileInfo::FileInfo(const FileInfo& copy) :
     m_checksums(copy.m_checksums),
     m_sparse(copy.m_sparse),
     m_do_direct_io(copy.m_do_direct_io),
-    m_swapped(copy.m_swapped) {}
+    m_swapped(copy.m_swapped),
+    m_filesize(copy.m_filesize) {}
 
 FileInfo::FileInfo(
         FileTypeEnum type,
@@ -41,7 +43,8 @@ FileInfo::FileInfo(
     m_crypto(crypto),
     m_sparse(sparse),
     m_do_direct_io(do_direct_io),
-    m_swapped(swapped)
+    m_swapped(swapped),
+    m_filesize(0)
 {
     // If file name is within the dbdir then just strip dbdir
     if(type != SUPPORT_FILE
@@ -77,6 +80,7 @@ FileInfo& FileInfo::operator=(const FileInfo& rhs)
         m_checksums = rhs.m_checksums;
         m_sparse = rhs.m_sparse;
         m_do_direct_io = rhs.m_do_direct_io;
+        m_filesize = rhs.m_filesize;
     }
     return *this;
 }
@@ -174,6 +178,10 @@ bool read_FileInfo(const std::string& line, FileInfo& file)
                 if(!(ss >> pagesize)) return false;
                 f.set_pagesize(pagesize);
 
+            } else if (tok == "FileSize") {
+                size_t filesize;
+                if(!(ss >> filesize)) return false;
+                f.set_filesize(filesize);
             } else if(tok == "Checksums") {
                 f.set_checksums();
 
@@ -216,6 +224,11 @@ bool read_incr_FileInfo(const std::string& line, FileInfo& file,
                 if(!(ss >> pagesize)) return false;
                 f.set_pagesize(pagesize);
 
+            } else if (tok == "FileSize") {
+                int64_t filesize;
+                if(!(ss >> filesize)) return false;
+                f.set_filesize(filesize);
+
             } else if(tok == "Checksums") {
                 f.set_checksums();
 
@@ -255,7 +268,7 @@ bool read_incr_FileInfo(const std::string& line, FileInfo& file,
 }
 
 
-bool recognise_data_file(const std::string& filename, bool llmeta_mode,
+bool recognize_data_file(const std::string& filename,
         bool& is_data_file, bool& is_queue_file, bool& is_queuedb_file,
         std::string& out_table_name)
 // Determine if the given filename looks like a table or queue file.  If it does
@@ -290,33 +303,23 @@ bool recognise_data_file(const std::string& filename, bool llmeta_mode,
             ext == "freerecq" ||
             ext == "meta.dta" ||
             ext == "meta.ix0" ||
-            ext == "meta.freerec") {
+            ext == "meta.freerec")
+ {
         out_table_name = filename.substr(0, dot_pos);
         is_data_file = true;
         return true;
     }
 
-    if(llmeta_mode) {
-        // In llmeta mode look for *.data*, *.index and *.blob*
-        // Also strip out the 16 digit hex suffix that comes after the table
-        // name.
-        if(dot_pos > 17 && filename[dot_pos-17] == '_' &&
-                (ext == "index" ||
-                ext.compare(0, 4, "data") == 0 ||
-                ext.compare(0, 4, "blob") == 0)) {
-            out_table_name = filename.substr(0, dot_pos - 17);
-            is_data_file = true;
-            return true;
-        }
-
-    } else {
-        /* Look for ordinary non-llmeta mode index and data files */
-        if (ext.compare(0, 2, "ix") == 0 || ext.compare(0, 3, "dta") == 0) {
-            out_table_name = filename.substr(0, dot_pos);
-            is_data_file = true;
-            return true;
-        }
+    // Look for *.data*, *.index and *.blob*
+    // Also strip out the 16 digit hex suffix that comes after the table
+    // name.
+    if(dot_pos > 17 && filename[dot_pos-17] == '_' &&
+            (ext == "index" ||
+             ext.compare(0, 4, "data") == 0 ||
+             ext.compare(0, 4, "blob") == 0)) {
+        out_table_name = filename.substr(0, dot_pos - 17);
+        is_data_file = true;
+        return true;
     }
-
     return false;
 }

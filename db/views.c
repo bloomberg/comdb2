@@ -163,7 +163,7 @@ timepart_views_t *timepart_views_init(struct dbenv *dbenv)
  * Check if a name is a shard 
  *
  */
-int timepart_is_shard(const char *name, int lock)
+int timepart_is_shard(const char *name, int lock, char **viewname)
 {
    timepart_views_t  *views = thedb->timepart_views;
    timepart_view_t   *view;
@@ -180,6 +180,9 @@ int timepart_is_shard(const char *name, int lock)
    if(view)
    {  
       rc = 1;
+      if (viewname) {
+          *viewname = view->name;
+      }
    }
 
    if(lock)
@@ -281,19 +284,25 @@ int timepart_add_view(void *tran, timepart_views_t *views,
 
     view->roll_time = tm;
 
-    print_dbg_verbose(view->name, &view->source_id, "III", "Adding phase 1 at %d\n", 
-                      view->roll_time - preemptive_rolltime);
+    if (!bdb_attr_get(thedb->bdb_attr, BDB_ATTR_TIMEPART_NO_ROLLOUT)) {
+        print_dbg_verbose(view->name, &view->source_id, "III",
+                          "Adding phase 1 at %d\n",
+                          view->roll_time - preemptive_rolltime);
 
-    rc = (cron_add_event(timepart_sched, NULL,
-                         view->roll_time - preemptive_rolltime,
-                         _view_cron_phase1, tmp_str = strdup(view->name), NULL,
-                         NULL, &view->source_id, err) == NULL)
-             ? err->errval
-             : VIEW_NOERR;
-    if (rc != VIEW_NOERR) {
-        if (tmp_str)
-            free(tmp_str);
-        goto done;
+        rc = (cron_add_event(timepart_sched, NULL,
+                             view->roll_time - preemptive_rolltime,
+                             _view_cron_phase1, tmp_str = strdup(view->name),
+                             NULL, NULL, &view->source_id, err) == NULL)
+                 ? err->errval
+                 : VIEW_NOERR;
+        if (rc != VIEW_NOERR) {
+            if (tmp_str)
+                free(tmp_str);
+            goto done;
+        }
+    } else {
+        logmsg(LOGMSG_WARN,
+               "Time partitions rollouts are stopped; no rollouts!\n");
     }
 
     /* adding the view to the list */
@@ -908,6 +917,7 @@ static int _convert_time(char *sql)
 
     struct sqlclntstate client;
     reset_clnt(&client, NULL, 1);
+    strncpy(client.tzname, "UTC", sizeof(client.tzname));
     sql_set_sqlengine_state(&client, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
     client.dbtran.mode = TRANLEVEL_SOSQL;
     client.sql = sql;
@@ -917,7 +927,7 @@ static int _convert_time(char *sql)
     thd = pthread_getspecific(query_info_key);
     sql_get_query_id(thd);
     client.debug_sqlclntstate = pthread_self();
-    thd->sqlclntstate = &client;
+    thd->clnt = &client;
 
     if ((rc = get_curtran(thedb->bdb_env, &client)) != 0) {
         logmsg(LOGMSG_ERROR, "%s: failed to open a new curtran, rc=%d\n", __func__, rc);
@@ -935,7 +945,7 @@ static int _convert_time(char *sql)
                msg ? msg : "<unknown error>");
         goto cleanup;
     }
-    thd->sqlclntstate = NULL;
+    thd->clnt = NULL;
 
     if ((crc = sqlite3_close(sqldb)) != 0)
         logmsg(LOGMSG_ERROR, "close rc %d\n", crc);
@@ -947,7 +957,7 @@ cleanup:
             logmsg(LOGMSG_ERROR, "%s: failed to close curtran\n", __func__);
     }
 
-    thd->sqlclntstate = NULL;
+    thd->clnt = NULL;
     done_sql_thread();
     return ret;
 }
@@ -1012,7 +1022,7 @@ static void* _view_cleanup_thd(void *voidarg)
 
 
    /* sleep until the moment */
-   now = time_epoch();
+   now = comdb2_time_epoch();
 
    if(now<timetodelete)
    {
@@ -1177,7 +1187,7 @@ void *_view_cron_phase1(uuid_t source_id, void *arg1, void *arg2, void *arg3,
         print_dbg_verbose(view->name, &view->source_id, "TTT",
                           "Running phase1 at %u arg1=%p (name=\"%s\") arg2=%p "
                           "arg3=%p\n",
-                          time_epoch(), arg1, (char *)arg1, arg2, arg3);
+                          comdb2_time_epoch(), arg1, (char *)arg1, arg2, arg3);
 
         /* this is a safeguard! we take effort to schedule cleanup of 
         a dropped partition ahead of everything, but jic ! */
@@ -1333,8 +1343,9 @@ void *_view_cron_phase2(uuid_t source_id, void *arg1, void *arg2, void *arg3,
         print_dbg_verbose(view->name, &view->source_id, "TTT",
                           "Running phase2 at %u arg1=%p (name=\"%s\") arg2=%p "
                           "(shard=\"%s\") arg3=%p\n",
-                          time_epoch(), arg1, (arg1) ? (char *)arg1 : "NULL",
-                          arg2, (arg2) ? (char *)arg2 : "NULL", arg3);
+                          comdb2_time_epoch(), arg1,
+                          (arg1) ? (char *)arg1 : "NULL", arg2,
+                          (arg2) ? (char *)arg2 : "NULL", arg3);
 
         /* this is a safeguard! we take effort to schedule cleanup of 
         a dropped partition ahead of everything, but jic ! */
@@ -1415,7 +1426,7 @@ void *_view_cron_phase3(uuid_t source_id, void *arg1, void *arg2, void *arg3,
 
     print_dbg_verbose(NULL, NULL, "TTT",
                       "Running phase3 at %u arg1=%p arg2=%p arg3=%p\n",
-                      time_epoch(), arg1, arg2, arg3);
+                      comdb2_time_epoch(), arg1, arg2, arg3);
 
     if (!pShardName) {
         errstat_set_rc(err, VIEW_ERR_BUG);
@@ -1665,6 +1676,7 @@ static char *_describe_row(const char *tblname, const char *prefix,
     char *cols_str;
     char *tmp_str;
     int i;
+    char *in_default;
 
     assert(op_type == VIEWS_TRIGGER_QUERY || op_type == VIEWS_TRIGGER_INSERT ||
            op_type == VIEWS_TRIGGER_UPDATE);
@@ -1679,15 +1691,32 @@ static char *_describe_row(const char *tblname, const char *prefix,
 
     cols_str = sqlite3_mprintf("%s", (prefix) ? prefix : "");
     for (i = 0; i < gdb->schema->nmembers; i++) {
-        tmp_str = sqlite3_mprintf(
-            "%s%s\"%s\"%s%s%s%s", cols_str,
-            (op_type == VIEWS_TRIGGER_INSERT) ? "new." : "",
-            gdb->schema->member[i].name,
-            (op_type == VIEWS_TRIGGER_UPDATE) ? "=new.\"" : "",
-            (op_type == VIEWS_TRIGGER_UPDATE) ? gdb->schema->member[i].name
-                                              : "",
-            (op_type == VIEWS_TRIGGER_UPDATE) ? "\"" : "",
-            (i < (gdb->schema->nmembers - 1)) ? ", " : "");
+        /* take care of default fields */
+        if (!(op_type == VIEWS_TRIGGER_INSERT &&
+              gdb->schema->member[i].in_default))
+
+        {
+            tmp_str = sqlite3_mprintf(
+                "%s%s\"%s\"%s%s%s%s", cols_str,
+                (op_type == VIEWS_TRIGGER_INSERT) ? "new." : "",
+                gdb->schema->member[i].name,
+                (op_type == VIEWS_TRIGGER_UPDATE) ? "=new.\"" : "",
+                (op_type == VIEWS_TRIGGER_UPDATE) ? gdb->schema->member[i].name
+                                                  : "",
+                (op_type == VIEWS_TRIGGER_UPDATE) ? "\"" : "",
+                (i < (gdb->schema->nmembers - 1)) ? ", " : "");
+        } else {
+            in_default = sql_field_default_trans(&gdb->schema->member[i], 0);
+            if (!in_default)
+                goto malloc;
+
+            tmp_str =
+                sqlite3_mprintf("%scoalesce(new.\"%s\", %s)%s", cols_str,
+                                gdb->schema->member[i].name, in_default,
+                                (i < (gdb->schema->nmembers - 1)) ? ", " : "");
+            sqlite3_free(in_default);
+        }
+
         sqlite3_free(cols_str);
         if (!tmp_str) {
             goto malloc;
@@ -2055,6 +2084,14 @@ int views_cron_restart(timepart_views_t *views)
         /* queue all the events required for this */
         for(i=0;i<views->nviews; i++)
         {
+
+            /* are the rollouts stopped? */
+            if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_TIMEPART_NO_ROLLOUT)) {
+                logmsg(LOGMSG_WARN, "Time partitions rollouts are stopped; "
+                                    "will not start rollouts!\n");
+                goto done;
+            }
+
             view = views->views[i];
 
             rc = _view_restart(view, &xerr);
@@ -2680,9 +2717,13 @@ void timepart_systable_column(sqlite3_context *ctx, int iRowid,
     case VIEWS_NSHARDS:
         sqlite3_result_int(ctx, view->nshards);
         break;
-    case VIEWS_VERSION:
-        sqlite3_result_int(ctx, view->version);
-        break;
+    case VIEWS_VERSION: {
+        struct dbtable *table = get_dbtable_by_name(view->shards[0].tblname);
+        int version = 0;
+        assert(table);
+
+        sqlite3_result_int(ctx, table->tableversion);
+    } break;
     case VIEWS_SHARD0NAME:
         sqlite3_result_text(ctx, view->shard0name, -1, NULL);
         break;
@@ -2749,6 +2790,31 @@ int timepart_get_num_views(void)
 }
 
 /**
+ * Get number of shards
+ *
+ */
+int timepart_get_num_shards(const char *view_name)
+{
+    timepart_views_t *views;
+    timepart_view_t *view;
+    int nshards;
+
+    pthread_rwlock_rdlock(&views_lk);
+
+    views = thedb->timepart_views;
+
+    view = _get_view(views, view_name);
+    if (view)
+        nshards = view->nshards;
+    else
+        nshards = -1;
+
+    pthread_rwlock_unlock(&views_lk);
+
+    return nshards;
+}
+
+/**
  *  Move iRowid to point to the next shard, switching shards in the process
  *  NOTE: this is called with a read lock in views structure
  */
@@ -2757,7 +2823,6 @@ void timepart_systable_next_shard(int *piTimepartId, int *piRowid)
     timepart_views_t *views = thedb->timepart_views;
     timepart_view_t *view;
 
-nextTimepart:
     if (*piTimepartId >= views->nviews)
         return;
     view = views->views[*piTimepartId];
@@ -2765,7 +2830,6 @@ nextTimepart:
     if (*piRowid >= view->nshards) {
         *piRowid = 0;
         (*piTimepartId)++;
-        goto nextTimepart;
     }
 }
 
@@ -2851,6 +2915,25 @@ void timepart_events_column(sqlite3_context *ctx, int iRowid, int iCol)
     case VIEWS_EVENT_ARG3:
         sqlite3_result_null(ctx);
         break;
+    }
+}
+
+void check_columns_null_and_dbstore(const char *name, struct dbtable *tbl)
+{
+    /* if a column has both a default and a null value, NULL cannot be
+    explicitely
+    be inserted as value */
+
+    struct schema *sc = tbl->schema;
+    int i;
+
+    for (i = 0; i < sc->nmembers; i++) {
+        if (sc->member[i].in_default && !(sc->member[i].flags & NO_NULL)) {
+            logmsg(LOGMSG_WARN,
+                   "WARNING: Partition %s schema field %s that "
+                   "has dbstore but cannot be set NULL\n",
+                   name, sc->member[i].name);
+        }
     }
 }
 

@@ -32,7 +32,6 @@
 #include <list.h>
 #include <walkback.h>
 #include <lockmacro.h>
-#include <plink.h>
 #include <logmsg.h>
 
 #if 0

@@ -7,9 +7,10 @@ set(src
   comdb2uuid.c
   config.c
   constraints.c
+  db_metrics.c
   db_tunables.c
   db_util.c
-  dbglog_support.c
+  dbglog_iface.c
   dbqueue.c
   debug.c
   endian.c
@@ -31,7 +32,6 @@ set(src
   lrucache.c
   marshal.c
   memdebug.c
-  #mtrap.c
   osql_srs.c
   osqlblkseq.c
   osqlblockproc.c
@@ -41,7 +41,6 @@ set(src
   osqlsession.c
   osqlshadtbl.c
   osqlsqlthr.c
-  plink_timestamp.c
   plugin_handler.c
   prefault.c
   prefault_helper.c
@@ -51,7 +50,6 @@ set(src
   printlog.c
   process_message.c
   pushlogs.c
-  quantize.c
   record.c
   repl_wait.c
   reqdebug.c
@@ -98,6 +96,17 @@ set(src
 if(WITH_SSL)
   list(APPEND src ssl_bend.c)
 endif()
+
+option(DEBUG_TYPES "Build types.c independent of sqlglue.c" OFF)
+if(DEBUG_TYPES)
+  list(APPEND src types.c)
+  add_definitions(-DDEBUG_TYPES)
+endif()
+
+if(COMDB2_LEGACY_DEFAULTS)
+  add_definitions(-DLEGACY_DEFAULTS)
+endif()
+
 add_executable(comdb2 ${src})
 set(module uncategorized)
 set(MODULE UNCATEGORIZED)
@@ -106,15 +115,12 @@ set_source_files_properties(
   ${PROJECT_BINARY_DIR}/protobuf/bpfunc.pb-c.c
   PROPERTIES GENERATED TRUE
 )
-add_custom_command(
-  OUTPUT plink_timestamp.c
-  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/build_constants > plink_timestamp.c
-)
+
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}
   ${PROJECT_SOURCE_DIR}
-  ${PROJECT_SOURCE_DIR}/bb
+  ${PROJECT_SOURCE_DIR}/util
   ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/bdb
   ${PROJECT_BINARY_DIR}/bdb
@@ -133,7 +139,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/mem
   ${PROJECT_BINARY_DIR}/mem
   ${PROJECT_SOURCE_DIR}/net
-  ${PROJECT_BINARY_DIR}/plugin
+  ${PROJECT_BINARY_DIR}/plugins
   ${PROJECT_SOURCE_DIR}/protobuf
   ${PROJECT_BINARY_DIR}/protobuf
   ${PROJECT_SOURCE_DIR}/schemachange
@@ -153,7 +159,7 @@ add_dependencies(comdb2 mem protobuf sqlite db bdb)
 target_link_libraries(comdb2
   schemachange
   bdb
-  bb
+  util
   cdb2api
   comdb2rle
   crc32c

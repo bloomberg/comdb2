@@ -1,1 +1,1 @@
-${TESTSROOTDIR}/tools/verify_atomics_work
+${TESTSBUILDDIR}/verify_atomics_work

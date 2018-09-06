@@ -68,11 +68,19 @@ void initresourceman(const char *newlrlname)
     if (lrlname) // free before assigning new one
         free(lrlname);
 
-    lrlname = realpath(newlrlname, NULL);
+    char *mem = NULL;
+#   if defined(_IBM_SOURCE)
+    mem = malloc(PATH_MAX);
+#   endif
+    lrlname = realpath(newlrlname, mem);
 
     /* lrl file is always known as "lrl" */
     if (lrlname)
         addresource("lrl", lrlname);
+#   if defined(_IBM_SOURCE)
+    else
+        free(mem);
+#   endif
 }
 
 /* Gets the path of the child file (usually a .lrl or .csc2 relative to a
@@ -162,5 +170,13 @@ void dumpresources(void)
     LISTC_FOR_EACH(&list, res, link)
     {
         logmsg(LOGMSG_USER, "%s -> %s\n", res->name, res->filepath);
+    }
+}
+
+void cleanresources(void)
+{
+    void *ent;
+    while ((ent = listc_rtl(&list)) != NULL) {
+        free(ent);
     }
 }

@@ -237,7 +237,7 @@ assertcnt $NEWNUMREC
 
 set -e
 #echo "Now call task that uses cdb2api to ins/upd/del"
-${TESTSROOTDIR}/tools/cdb2api_caller $dbnm t1 > cdb2api_caller.out
+${TESTSBUILDDIR}/cdb2api_caller $dbnm t1 > cdb2api_caller.out
 
 cdb2sql --host $node $dbnm "select * from t1 order by alltypes_u_short" > orig.txt
 
@@ -304,7 +304,7 @@ done
 set -e
 
 #setup remode db
-$TESTSROOTDIR/setup
+$TESTSROOTDIR/setup &> $TESTDIR/logs/$DBNAME.setup
 
 echo running $CDB2_SQLREPLAY_EXE $alterdbname $logflunziped
 $CDB2_SQLREPLAY_EXE $alterdbname $logflunziped > sqlreplay.out
@@ -318,14 +318,14 @@ if ! diff orig.txt replayed.txt ; then
 fi
 
 set -e
-$TESTSROOTDIR/unsetup $success
+$TESTSROOTDIR/unsetup $success &> $TESTDIR/logs/$DBNAME.unsetup
 set +e
 
 if [ $success != 1 ] ; then
     failexit "replayed.txt content is not the same as original.txt"
 fi
 
-if [ "$CLEANUPDBDIR" == "1" ] ; then
+if [ "$CLEANUPDBDIR" != "0" ] ; then
     #delete files now that test is successful
     rm orig.txt replayed.txt sqlreplay.out
 fi

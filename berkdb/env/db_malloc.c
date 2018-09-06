@@ -56,7 +56,7 @@ __db_shalloc_size_malloc(size_t len, size_t align)
 int
 __db_shalloc_malloc(void *p, size_t len, size_t align, void *retp)
 {
-	size_t *mem;
+	unsigned long long *mem;
 	HEAP *h;
 	int bucket;
 
@@ -68,7 +68,7 @@ __db_shalloc_malloc(void *p, size_t len, size_t align, void *retp)
 	if (h->used + len > h->size)
 		return ENOMEM;
 
-	mem = comdb2_malloc(h->msp, len + sizeof(size_t));
+	mem = comdb2_malloc(h->msp, len + sizeof(unsigned long long));
 	if (mem == NULL)
 		return ENOMEM;
 
@@ -90,7 +90,7 @@ __db_shalloc_malloc(void *p, size_t len, size_t align, void *retp)
 void
 __db_shalloc_free_malloc(void *regionp, void *ptr)
 {
-	size_t *mem = ptr;
+	unsigned long long *mem = ptr;
 	HEAP *h;
 	int bucket;
 
@@ -108,7 +108,7 @@ __db_shalloc_free_malloc(void *regionp, void *ptr)
 size_t
 __db_shsizeof_malloc(void *ptr)
 {
-	size_t *mem;
+	unsigned long long *mem;
 
 	mem = ptr;
 	return mem[-1];

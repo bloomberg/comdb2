@@ -153,7 +153,7 @@ typedef struct VdbeOpList VdbeOpList;
 #define P4_TABLE    (-20) /* P4 is a pointer to a Table structure */
 #define P4_FUNCCTX  (-21) /* P4 is a pointer to an sqlite3_context object */
 
-#define P4_OPFUNC  (-20) /* P4 is a COMDB2 custom function */
+#define P4_OPFUNC  (-22) /* P4 is a COMDB2 custom function */
 
 /* Error message codes for OP_Halt */
 #define P5_ConstraintNotNull 1
@@ -238,6 +238,9 @@ void sqlite3VdbeClearObject(sqlite3*,Vdbe*);
 void sqlite3VdbeMakeReady(Vdbe*,Parse*);
 int sqlite3VdbeFinalize(Vdbe*);
 void sqlite3VdbeResolveLabel(Vdbe*, int);
+#ifdef SQLITE_COVERAGE_TEST
+  int sqlite3VdbeLabelHasBeenResolved(Vdbe*,int);
+#endif
 int sqlite3VdbeCurrentAddr(Vdbe*);
 #ifdef SQLITE_DEBUG
   int sqlite3VdbeAssertMayAbort(Vdbe *, int);

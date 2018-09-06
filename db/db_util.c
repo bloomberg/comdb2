@@ -594,37 +594,3 @@ char *get_full_filename(char *path, int pathlen, enum dirtype type, char *name,
     return ret;
 }
 
-static inline char hex(unsigned char a)
-{
-    if (a < 10)
-        return '0' + a;
-    return 'a' + (a - 10);
-}
-
-void hexdumpbuf(char *key, int keylen, char **buf)
-{
-    char *mem;
-    char *output;
-
-    mem = malloc((2 * keylen) + 2);
-    output = util_tohex(mem, key, keylen);
-
-    *buf = output;
-}
-
-/* Return a hex string
- * output buffer should be appropriately sized */
-char *util_tohex(char *out, const char *in, size_t len)
-{
-    char *beginning = out;
-    char hex[] = "0123456789abcdef";
-    const char *end = in + len;
-    while (in != end) {
-        char i = *(in++);
-        *(out++) = hex[(i & 0xf0) >> 4];
-        *(out++) = hex[i & 0x0f];
-    }
-    *out = 0;
-
-    return beginning;
-}

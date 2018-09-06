@@ -50,18 +50,16 @@ enum {
     OSQL_SKIPSEQ = 0x7777
 };
 
-/* flags for handle_offloadsql_pool */
+/* flags for osql requests */
 enum {
-    OSQL_FLAGS_RECORD_COST = 0,
-    OSQL_FLAGS_AUTH = 1,
-    OSQL_FLAGS_ANALYZE = 2,
+    OSQL_FLAGS_RECORD_COST = 0x00000001,
+    OSQL_FLAGS_AUTH = 0x00000002,
+    OSQL_FLAGS_ANALYZE = 0x00000004,
     /* sent after a verify to do the <slower> selfdeadlock test */
-    OSQL_FLAGS_CHECK_SELFLOCK = 3,
-    /* sent in local case when a remote tran is retried */
-    OSQL_FLAGS_USE_BLKSEQ = 4,
-    OSQL_FLAGS_ROWLOCKS = 5,
-    OSQL_FLAGS_GENID48 = 6,
-    OSQL_FLAGS_SCDONE = 7
+    OSQL_FLAGS_CHECK_SELFLOCK = 0x00000008,
+    OSQL_FLAGS_ROWLOCKS = 0x00000010,
+    OSQL_FLAGS_GENID48 = 0x00000020,
+    OSQL_FLAGS_SCDONE = 0x00000040
 };
 
 int osql_open(struct dbenv *dbenv);

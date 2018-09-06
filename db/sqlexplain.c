@@ -17,7 +17,6 @@
 #include <strings.h>
 #include "sql.h"
 #include "sqlexplain.h"
-#include "sqlresponse.pb-c.h"
 
 /*
   enhancements to sqlites built in explain facility.
@@ -893,9 +892,11 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
     case OP_NoConflict:
     case OP_NotFound:
     case OP_Found:
-        strbuf_appendf(out, "If cursor [%d] %scontain%s ", op->p1,
-                       op->opcode == OP_NotFound ? "doesn't " : "",
-                       op->opcode == OP_NotFound ? "" : "s");
+        if (op->opcode != OP_Found) {
+            strbuf_appendf(out, "If cursor [%d] does not contain ", op->p1);
+        } else {
+            strbuf_appendf(out, "If cursor [%d] contains ", op->p1);
+        }
         if (op->p4.i == 1) {
             strbuf_appendf(out, "R%d", op->p3);
         } else if (op->p4.i > 1) {
@@ -908,7 +909,7 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         break;
     case OP_NotExists:
         strbuf_appendf(out,
-                       "If record id in R%d can't be found using cursor [%d]",
+                       "If record id in R%d can't be found using cursor [%d], ",
                        op->p3, op->p1);
         if (op->p2)
             strbuf_appendf(out, "go to %d", op->p2);
@@ -1234,26 +1235,12 @@ int newsql_dump_query_plan(struct sqlclntstate *clnt, sqlite3 *hndl)
         io_override_set_std(NULL);
     if (rc || !stmt) {
         char * errstr = (char *)sqlite3_errmsg(hndl);
-        struct fsqlresp resp = {0};
-        resp.response = FSQL_ERROR;
-        resp.rcode = FSQL_PREPARE;
-        fsql_write_response(clnt, &resp, (void *)errstr,
-                strlen(errstr) + 1, 1 /*flush*/, __func__, __LINE__);
-
+        write_response(clnt, RESPONSE_ERROR_PREPARE, errstr, 0);
         return rc || 1;
     }
 
-    struct column_info col;
-    col.type = SQLITE_TEXT;
-    strncpy(col.column_name, "Plan", sizeof(col.column_name));
-
-    CDB2SQLRESPONSE__Column **columns = newsql_alloc_row(1);
-    if(!columns) {
-        logmsg(LOGMSG_ERROR, "newsql_alloc_row returned NULL\n");
-        return 1;
-    }
-    newsql_send_column_info(clnt, &col, 1, NULL, columns);
-    newsql_dealloc_row(columns, 1);
+    char *cols[] = {"Plan"};
+    write_response(clnt, RESPONSE_COLUMNS_STR, &cols, 1);
 
     strbuf *out = strbuf_new();
     if (!out) {
@@ -1277,8 +1264,8 @@ int newsql_dump_query_plan(struct sqlclntstate *clnt, sqlite3 *hndl)
         if (indent < 0)
             indent = 0;
         get_one_explain_line(hndl, out, v, indent, maxwidth, pc, cur);
-
-        newsql_send_strbuf_response(clnt, strbuf_buf(out), strbuf_len(out) + 1);
+        char *row[] = {(char*)strbuf_buf(out)};
+        write_response(clnt, RESPONSE_ROW_STR, row, 1);
         strbuf_clear(out);
     }
 
@@ -1288,7 +1275,8 @@ int newsql_dump_query_plan(struct sqlclntstate *clnt, sqlite3 *hndl)
         char buf[32]; /* small stack size in appsock thd */
         while (fgets(buf, sizeof(buf), f))
             strbuf_appendf(out, "%s", buf);
-        newsql_send_strbuf_response(clnt, strbuf_buf(out), strbuf_len(out) + 1);
+        char *row[] = {(char*)strbuf_buf(out)};
+        write_response(clnt, RESPONSE_ROW_STR, row, 1);
         fclose(f);
     }
 
@@ -1297,7 +1285,7 @@ int newsql_dump_query_plan(struct sqlclntstate *clnt, sqlite3 *hndl)
     out = NULL;
 
     sqlite3_finalize(stmt);
-    newsql_send_last_row(clnt, 0, __func__, __LINE__);
+    write_response(clnt, RESPONSE_ROW_LAST, NULL, 0);
     return 0;
 }
 

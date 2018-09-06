@@ -29,11 +29,12 @@
 #include "comdb2_appsock.h"
 #include "comdb2_opcode.h"
 #include "comdb2_machine_info.h"
+#include "comdb2_initializer.h"
 #include "rtcpu.h"
 #include "all_static_plugins.h"
 
 /* All registered plugins */
-comdb2_plugin_t **gbl_plugins;
+comdb2_plugin_t *gbl_plugins[MAXPLUGINS];
 
 /* If specified, the plugins will be loaded from this directory. */
 static char *plugindir;
@@ -52,7 +53,8 @@ static int install_plugin_int(comdb2_plugin_t *new_plugin)
         /* Do not allow similar plugins with same version. */
         if ((strcmp(gbl_plugins[i]->name, new_plugin->name) == 0) &&
             gbl_plugins[i]->version == new_plugin->version) {
-            logmsg(LOGMSG_ERROR, "Plugin %s:%d already installed overriding..",
+            logmsg(LOGMSG_ERROR, "Plugin %s:%d already installed "
+                                 "overriding..\n",
                    new_plugin->name, new_plugin->version);
             return 1;
         }
@@ -60,14 +62,15 @@ static int install_plugin_int(comdb2_plugin_t *new_plugin)
 
     if (i >= MAXPLUGINS) {
         logmsg(LOGMSG_ERROR, "Maximum number of plugins already installed. "
-                             "Ignoring further requests to install plugin(s).");
+                             "Ignoring further requests to install "
+                             "plugin(s).\n");
         return 1;
     }
 
     /* TODO: Check plugin version */
 
     if (new_plugin->type >= COMDB2_PLUGIN_LAST) {
-        logmsg(LOGMSG_ERROR, "Invalid plugin type for %s", new_plugin->name);
+        logmsg(LOGMSG_ERROR, "Invalid plugin type for %s.\n", new_plugin->name);
         return 1;
     }
 
@@ -116,17 +119,20 @@ static int install_plugin_int(comdb2_plugin_t *new_plugin)
         machine_info = (comdb2_machine_info_t *)new_plugin->data;
         register_rtcpu_callbacks(
             machine_info->machine_is_up, machine_info->machine_status_init,
-            machine_info->machine_class, machine_info->machine_dc);
+            machine_info->machine_class, machine_info->machine_dc,
+            machine_info->machine_num);
         break;
     }
+    case COMDB2_PLUGIN_INITIALIZER:
+        break;
     default:
-        logmsg(LOGMSG_ERROR, "Invalid plugin %s.", plugin->name);
+        logmsg(LOGMSG_ERROR, "Invalid plugin %s.\n", new_plugin->name);
         return 1;
     }
 
     gbl_plugins[i] = new_plugin;
 
-    logmsg(LOGMSG_INFO, "Plugin '%s' installed.", new_plugin->name);
+    logmsg(LOGMSG_INFO, "Plugin '%s' installed.\n", new_plugin->name);
 
     return 0;
 }
@@ -140,13 +146,13 @@ static int install_plugin(const char *file_name, const char *plugin_name)
 
     handle = dlopen(file_name, RTLD_LAZY);
     if (!handle) {
-        logmsg(LOGMSG_FATAL, "dlopen() failed: %s", dlerror());
+        logmsg(LOGMSG_FATAL, "dlopen() failed: %s\n", dlerror());
         exit(1);
     }
 
     plugin = (comdb2_plugin_t *)dlsym(handle, "comdb2_plugin");
     if (!plugin) {
-        logmsg(LOGMSG_FATAL, "dlsym() failed: %s", dlerror());
+        logmsg(LOGMSG_FATAL, "dlsym() failed: %s\n", dlerror());
         exit(1);
     }
 
@@ -160,11 +166,11 @@ static int install_plugin(const char *file_name, const char *plugin_name)
     }
 
     if (tmp == NULL) {
-        logmsg(LOGMSG_ERROR, "Plugin %s not found in the shared object file.",
+        logmsg(LOGMSG_ERROR, "Plugin %s not found in the shared object file.\n",
                plugin_name);
         return 1;
     } else if (install_plugin_int(tmp)) {
-        logmsg(LOGMSG_ERROR, "Failed to install plugin %s.", plugin_name);
+        logmsg(LOGMSG_ERROR, "Failed to install plugin %s.\n", plugin_name);
         return 1;
     }
 
@@ -179,19 +185,20 @@ static int install_all_plugins(const char *file_name)
 
     handle = dlopen(file_name, RTLD_LAZY);
     if (!handle) {
-        logmsg(LOGMSG_FATAL, "dlopen() failed: %s", dlerror());
+        logmsg(LOGMSG_FATAL, "dlopen() failed: %s\n", dlerror());
         exit(1);
     }
 
     plugin = (comdb2_plugin_t *)dlsym(handle, "comdb2_plugin");
     if (!plugin) {
-        logmsg(LOGMSG_FATAL, "dlsym() failed: %s", dlerror());
+        logmsg(LOGMSG_FATAL, "dlsym() failed: %s\n", dlerror());
         exit(1);
     }
 
     while (plugin->name) {
         if (install_plugin_int(plugin)) {
-            logmsg(LOGMSG_ERROR, "Failed to install plugin %s.", plugin->name);
+            logmsg(LOGMSG_ERROR, "Failed to install plugin %s.\n",
+                   plugin->name);
             return 1;
         }
         ++plugin;
@@ -210,7 +217,7 @@ int install_static_plugins(void)
         while (plugin->name) {
             plugin->flags |= COMDB2_PLUGIN_STATIC;
             if (install_plugin_int(plugin)) {
-                logmsg(LOGMSG_ERROR, "Failed to install plugin %s.",
+                logmsg(LOGMSG_ERROR, "Failed to install plugin %s.\n",
                        plugin->name);
                 return 1;
             }
@@ -273,34 +280,16 @@ void register_plugin_tunables(void)
         TUNABLE_STRING, &plugindir, READONLY, NULL, NULL, NULL, NULL);
 }
 
-/* Initialize the plugin sub-system. */
-int init_plugins(void)
-{
-    gbl_plugins =
-        (comdb2_plugin_t **)calloc(MAXPLUGINS + 1, sizeof(comdb2_plugin_t *));
-    if (!gbl_plugins) {
-        logmsg(LOGMSG_ERROR, "System out of memory.");
-        return 1;
-    }
-
-    return 0;
-}
-
 /* Destroy all plugins. */
 int destroy_plugins(void)
 {
-    /*
-      Initialize the plugin and add it to the global list of installed plugins.
-    */
     for (int i = 0; gbl_plugins[i]; ++i) {
         if (gbl_plugins[i]->destroy_cb && gbl_plugins[i]->destroy_cb()) {
-            logmsg(LOGMSG_ERROR, "Plugin de-initialization failed (%s).",
+            logmsg(LOGMSG_ERROR, "Plugin de-initialization failed (%s).\n",
                    gbl_plugins[i]->name);
             return 1;
         }
     }
-
-    free(gbl_plugins);
     return 0;
 }
 
@@ -313,8 +302,26 @@ const char *comdb2_plugin_type_to_str(int type)
         return "opcode";
     case COMDB2_PLUGIN_MACHINE_INFO:
         return "machine_info";
+    case COMDB2_PLUGIN_INITIALIZER:
+        return "initializer";
     default:
         break;
     }
     return "unknown";
+}
+
+int run_init_plugins()
+{
+    for (int i = 0; gbl_plugins[i]; ++i) {
+        struct comdb2_initializer *initer;
+        int rc;
+        if (gbl_plugins[i]->type == COMDB2_PLUGIN_INITIALIZER) {
+            initer = gbl_plugins[i]->data;
+            rc = initer->initializer_handler();
+            if (rc) {
+                return 1;
+            }
+        }
+    }
+    return 0;
 }

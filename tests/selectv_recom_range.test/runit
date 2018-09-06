@@ -79,7 +79,7 @@ function runstepper
     typeset log=$3
 
     # teststepper
-    typeset stp=${TESTSROOTDIR}/tools/stepper
+    typeset stp=${TESTSBUILDDIR}/stepper
 
     #$stp $db $tcs > $log 2>&1
     cmd="stdbuf -oL $stp $db $tcs > $log 2>&1"

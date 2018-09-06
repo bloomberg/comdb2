@@ -18,8 +18,8 @@ cdb2sql --host $mach $dbnm "EXEC PROCEDURE sys.cmd.send('reql longrequest 0')"
 cdb2sql --host $mach $dbnm "EXEC PROCEDURE sys.cmd.send('reql longsqlrequest 0')"
 
 # Run queries
-cdb2sql --host $mach $dbnm "SELECT 1" >/dev/null
-cdb2sql --host $mach $dbnm "SELECT 1+1" >/dev/null
+cdb2sql --host $mach $dbnm "SELECT 1" &> sel1.out
+cdb2sql --host $mach $dbnm "SELECT 1+1" &> sel11.out
 
 logfile=
 if [ -n "$CLUSTER" ] ; then
@@ -28,14 +28,14 @@ else
     logfile="$TESTDIR/logs/$dbnm.db"
 fi
 
+sleep 1 # give time for .db file to flush
+
 # These change every time sqlite changes: just regenerate
+echo including $logfile
 cat $logfile
 
-#grep 'dcb8d104a3fd67913c7d509dbdbe2051' $logfile # SELECT 1
-#grep 'f628909f02fd3d8f69c90bcd77c732a5' $logfile # SELECT 1+1
-
-grep '57d3bf4a162583e33381d79f2deac343' $logfile # SELECT 1
-grep 'fdf53d1d2812dbce0f56bf5b10369c1a' $logfile # SELECT 1+1
+grep 'f0b766640ca06b156a8bce8b546931c8' $logfile # SELECT 1
+grep 'd0528903ef5043ddc3a2d6072caf23d6' $logfile # SELECT 1+1
 
 
 # Compare results with pre-calculated hashes

@@ -17,18 +17,18 @@
 (tablename='t3', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t4', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t5', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
-(tablename='t1', keyname='IDX1', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t1', keyname='IDX2', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t1', keyname='IDX3', keynumber=2, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t1', keyname='IDX4', keynumber=3, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t1', keyname='IDX5', keynumber=4, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t1', keyname='IDX6', keynumber=5, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t1', keyname='IDX7', keynumber=6, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t2', keyname='IDX1', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition='where j > 10 ')
-(tablename='t2', keyname='IDX3', keynumber=1, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t2', keyname='IDX4', keynumber=2, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t3', keyname='IDX1', keynumber=0, isunique='N', isdatacopy='Y', isrecnum='N', condition=NULL)
-(tablename='t3', keyname='IDX2', keynumber=1, isunique='N', isdatacopy='Y', isrecnum='N', condition='where j > 10 ')
+(tablename='t1', keyname='IDX1', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t1', keyname='IDX2', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t1', keyname='IDX3', keynumber=2, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t1', keyname='IDX4', keynumber=3, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t1', keyname='IDX5', keynumber=4, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t1', keyname='IDX6', keynumber=5, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t1', keyname='IDX7', keynumber=6, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t2', keyname='IDX1', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition='where (j > 10) ', uniqnulls='N')
+(tablename='t2', keyname='IDX3', keynumber=1, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t2', keyname='IDX4', keynumber=2, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t3', keyname='IDX1', keynumber=0, isunique='N', isdatacopy='Y', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t3', keyname='IDX2', keynumber=1, isunique='N', isdatacopy='Y', isrecnum='N', condition='where (j > 10) ', uniqnulls='N')
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='schema
 	{
 		int i null = yes 
@@ -36,7 +36,7 @@
 keys
 	{
 		dup "IDX1" = i 
-		"IDX2" = i 
+		uniqnulls "IDX2" = i 
 		dup "IDX3" = i 
 		dup "IDX4" = i 
 		dup "IDX5" = i 
@@ -58,12 +58,12 @@ keys
 	}
 keys
 	{
-		dup "IDX1" = i { where j > 10 } 
+		dup "IDX1" = i { where (j > 10) } 
 		dup "IDX3" = i + j 
 		dup "idx4" = i + j 
 	}
 ')
-(type='index', name='$IDX1_A44A20B', tbl_name='t2', rootpage=13, sql='create index "$IDX1_A44A20B" on "t2" ("i") where (j > 10 );', csc2=NULL)
+(type='index', name='$IDX1_A44A20B', tbl_name='t2', rootpage=13, sql='create index "$IDX1_A44A20B" on "t2" ("i") where ((j > 10) );', csc2=NULL)
 (type='index', name='$IDX3_E8BDFAE1', tbl_name='t2', rootpage=14, sql='create index "$IDX3_E8BDFAE1" on "t2" ("i", "j");', csc2=NULL)
 (type='index', name='$IDX4_E8BDFAE1', tbl_name='t2', rootpage=15, sql='create index "$IDX4_E8BDFAE1" on "t2" ("i", "j");', csc2=NULL)
 (type='table', name='t3', tbl_name='t3', rootpage=16, sql='create table "t3"("i" int, "j" int);', csc2='schema
@@ -74,11 +74,11 @@ keys
 keys
 	{
 		dup datacopy "IDX1" = i 
-		dup datacopy "idx2" = i { where j > 10 } 
+		dup datacopy "idx2" = i { where (j > 10) } 
 	}
 ')
 (type='index', name='$IDX1_19767DE4', tbl_name='t3', rootpage=17, sql='create index "$IDX1_19767DE4" on "t3" ("i", "j" collate DATACOPY);', csc2=NULL)
-(type='index', name='$IDX2_19767DE4', tbl_name='t3', rootpage=18, sql='create index "$IDX2_19767DE4" on "t3" ("i", "j" collate DATACOPY) where (j > 10 );', csc2=NULL)
+(type='index', name='$IDX2_19767DE4', tbl_name='t3', rootpage=18, sql='create index "$IDX2_19767DE4" on "t3" ("i", "j" collate DATACOPY) where ((j > 10) );', csc2=NULL)
 (type='table', name='t4', tbl_name='t4', rootpage=19, sql='create table "t4"("i" int);', csc2='schema
 	{
 		int i null = yes 
@@ -103,5 +103,15 @@ keys
 (type='table', name='t2', tbl_name='t2', rootpage=5, sql='create table "t2"("i" int);', csc2='schema
 	{
 		int i null = yes 
+	}
+')
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='schema
+	{
+		int i null = yes 
+	}
+keys
+	{
+		dup "IDX1" = i { where i > 1 } 
+		dup "idx2" = i { where (i > 1) } 
 	}
 ')

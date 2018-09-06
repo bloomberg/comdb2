@@ -1,11 +1,11 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 debug=1
 # Runs the insert utility
 [[ "$debug" == 1 ]] && set -x
 
 db=$1
-multithd=${TESTSROOTDIR}/tools/multithd
+multithd=${TESTSBUILDDIR}/multithd
 
 if [[ -z "$stage" ]]; then
     echo "Setting stage to 'default' (set 'stage' var to override)."
@@ -15,7 +15,7 @@ fi
 function runtest
 {
     [[ "$debug" == 1 ]] && set -x
-    ./multithd -d $db -f $CDB2_CONFIG
+    $multithd -d $db -f $CDB2_CONFIG
     r=$?
     if [[ $r != 0 ]]; then
         echo "Testcase failure, rcode=$r"

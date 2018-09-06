@@ -7,7 +7,7 @@ dbnm=$1
 cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
 
 echo "Testing serial"
-${TESTSROOTDIR}/tools/serial -d $dbnm -s
+${TESTSBUILDDIR}/serial -d $dbnm -s
 
 ret=$?
 

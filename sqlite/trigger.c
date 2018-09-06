@@ -408,6 +408,7 @@ TriggerStep *sqlite3TriggerInsertStep(
     pTriggerStep->pIdList = pColumn;
     pTriggerStep->orconf = orconf;
   }else{
+    testcase( pColumn );
     sqlite3IdListDelete(db, pColumn);
   }
   sqlite3SelectDelete(db, pSelect);
@@ -713,7 +714,7 @@ static int codeTriggerProgram(
           targetSrcList(pParse, pStep),
           sqlite3ExprListDup(db, pStep->pExprList, 0), 
           sqlite3ExprDup(db, pStep->pWhere, 0), 
-          pParse->eOrconf, 0, 0, 0
+          pParse->eOrconf, 0, 0, 0, 0
         );
         break;
       }
@@ -722,7 +723,7 @@ static int codeTriggerProgram(
           targetSrcList(pParse, pStep),
           sqlite3SelectDup(db, pStep->pSelect, 0), 
           sqlite3IdListDup(db, pStep->pIdList), 
-          pParse->eOrconf
+          pParse->eOrconf, 0
         );
         break;
       }

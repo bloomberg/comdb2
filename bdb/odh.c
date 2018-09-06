@@ -637,9 +637,8 @@ err:
     return DB_UNCOMPRESS_ERR;
 }
 
-inline int bdb_unpack(bdb_state_type *bdb_state, const void *from,
-                      size_t fromlen, void *to, size_t tolen, struct odh *odh,
-                      void **freeptr)
+int bdb_unpack(bdb_state_type *bdb_state, const void *from, size_t fromlen,
+               void *to, size_t tolen, struct odh *odh, void **freeptr)
 {
     return bdb_unpack_updateid(bdb_state, from, fromlen, to, tolen, odh, -1,
                                freeptr, 1);
@@ -672,8 +671,8 @@ static int bdb_write_updateid(bdb_state_type *bdb_state, void *buf,
     return 0;
 }
 
-static int bdb_retrieve_updateid(bdb_state_type *bdb_state, const void *from,
-                                 size_t fromlen)
+int bdb_retrieve_updateid(bdb_state_type *bdb_state, const void *from,
+                          size_t fromlen)
 {
     int rc;
     struct odh odh_in;
@@ -1033,8 +1032,8 @@ int bdb_cget_unpack(bdb_state_type *bdb_state, DBC *dbcp, DBT *key, DBT *data,
 }
 
 /* The updateid-agnostic version of this code. */
-inline int bdb_cget_unpack_blob(bdb_state_type *bdb_state, DBC *dbcp, DBT *key,
-                                DBT *data, uint8_t *ver, u_int32_t flags)
+int bdb_cget_unpack_blob(bdb_state_type *bdb_state, DBC *dbcp, DBT *key,
+                         DBT *data, uint8_t *ver, u_int32_t flags)
 {
     return bdb_cget_unpack_int(bdb_state, dbcp, key, data, ver, flags, 0);
 }
@@ -1085,15 +1084,14 @@ static int bdb_get_unpack_int(bdb_state_type *bdb_state, DB *db, DB_TXN *tid,
     return rc;
 }
 
-inline int bdb_get_unpack(bdb_state_type *bdb_state, DB *db, DB_TXN *tid,
-                          DBT *key, DBT *data, uint8_t *ver, u_int32_t flags)
+int bdb_get_unpack(bdb_state_type *bdb_state, DB *db, DB_TXN *tid,
+                   DBT *key, DBT *data, uint8_t *ver, u_int32_t flags)
 {
     return bdb_get_unpack_int(bdb_state, db, tid, key, data, ver, flags, 1);
 }
 
-inline int bdb_get_unpack_blob(bdb_state_type *bdb_state, DB *db, DB_TXN *tid,
-                               DBT *key, DBT *data, uint8_t *ver,
-                               u_int32_t flags)
+int bdb_get_unpack_blob(bdb_state_type *bdb_state, DB *db, DB_TXN *tid,
+                        DBT *key, DBT *data, uint8_t *ver, u_int32_t flags)
 {
     return bdb_get_unpack_int(bdb_state, db, tid, key, data, ver, flags, 0);
 }
@@ -1380,7 +1378,8 @@ inline void bdb_set_fld_hints(bdb_state_type *bdb_state, uint16_t *hints)
 
 inline void bdb_cleanup_fld_hints(bdb_state_type *bdb_state)
 {
-    if (bdb_state->fld_hints)
+    if (bdb_state && bdb_state->fld_hints) {
         free(bdb_state->fld_hints);
-    bdb_state->fld_hints = NULL;
+        bdb_state->fld_hints = NULL;
+    }
 }

@@ -37,6 +37,7 @@ extern "C" {
 #include <time.h>
 #include <openssl/sha.h>
 #include <iomanip>
+#include <sys/stat.h>
 
 #include <stdlib.h>
 
@@ -118,7 +119,7 @@ static void serialise_string(const std::string& filename,
  * that defines this properly */
 void *memalign(size_t boundary, size_t size);
 
-static void serialise_file(const FileInfo& file, volatile iomap *iomap=NULL, const std::string altpath="",
+static void serialise_file(FileInfo& file, volatile iomap *iomap=NULL, const std::string altpath="",
                             const std::string incr_path="", bool incr_create = false)
 // Serialise a single file, in tape archive format, onto stdout.  The input
 // filename is expected to be an absolute path.  The name recorded in the
@@ -135,9 +136,6 @@ static void serialise_file(const FileInfo& file, volatile iomap *iomap=NULL, con
     assert(sizeof(off_t) == 8);
 
     flags = O_RDONLY;
-#   ifndef __APPLE__
-    flags |= O_LARGEFILE;
-#   endif
 
     if (file.get_type() == FileInfo::BERKDB_FILE && file.get_direct_io())
         flags |= DO_DIRECT;
@@ -216,6 +214,7 @@ reopen:
     }
     size_t bufsize = pagesize;
     int num_waits = 0;
+    int64_t filesize = 0;
 
     while((bufsize << 1) <= MAX_BUF_SIZE) {
         bufsize <<= 1;
@@ -231,10 +230,16 @@ reopen:
     unsigned long long pageno = 0;
 
 #if ! defined  ( _SUN_SOURCE ) && ! defined ( _HP_SOURCE )
-        posix_memalign((void**) &pagebuf, 512, bufsize);
+        if(posix_memalign((void**) &pagebuf, 512, bufsize))
+            throw Error("Failed to allocate output buffer");
 #else
         pagebuf = (uint8_t*) memalign(512, bufsize);
 #endif
+
+    std::string incrFilename = incr_path + "/" + filename + ".incr";
+    std::ofstream incrFile(incrFilename,
+            std::ofstream::binary |
+            std::ofstream::trunc);
 
     while(bytesleft > 0) {
         int now;
@@ -258,6 +263,7 @@ reopen:
                 << std::strerror(errno);
             throw SerialiseError(filename, ss.str());
         }
+        filesize += bytesread;
 
         if (file.get_checksums()) {
             // Save current offset
@@ -271,11 +277,6 @@ reopen:
             int retry = 5;
             ssize_t n = 0;
 
-            std::string incrFilename = incr_path + "/" + filename + ".incr";
-            std::ofstream incrFile(incrFilename,
-                                    std::ofstream::binary |
-                                    std::ofstream::trunc);
-
             while (n < bytesread && retry) {
                 bool verify_bool = false;
                 PAGE * pagep = (PAGE *) (pagebuf + n);
@@ -286,6 +287,7 @@ reopen:
                     // checksum verified
                     n += pagesize;
                     retry = 5;
+
 
                     // If we are in incremental mode, on initial backup creation we want to create the diff files
                     if(incr_create){
@@ -349,6 +351,8 @@ reopen:
 
         bytesleft -= bytesread;
     }
+
+    file.set_filesize(filesize);
 
     if (num_waits)
         std::clog <<  "paused " << num_waits << " times because db is busy writing." << std::endl;
@@ -418,7 +422,8 @@ static void serialise_log_files(
         snprintf(logfile, sizeof(logfile), "log.%010lld", log_number);
         std::cerr<<"Serializing "<<logfile<<std::endl;
         makeabs(absfile, dbtxndir, logfile);
-        serialise_file(FileInfo(FileInfo::LOG_FILE, absfile, dbdir));
+        FileInfo fi(FileInfo::LOG_FILE, absfile, dbdir);
+        serialise_file(fi);
         log_number++;
     }
 }
@@ -452,11 +457,9 @@ static void strip_cluster(const std::string& lrlpath,
     }
 }
 
-static void parse_lrl_file(const std::string& lrlpath,
+void parse_lrl_file(const std::string& lrlpath,
         std::string* p_dbname,
         std::string* p_dbdir,
-        bool* p_llmeta,
-        bool* p_tagged,
         std::list<std::string>* p_support_files,
         std::set<std::string>* p_table_names,
         std::set<std::string>* p_queue_names,
@@ -495,14 +498,6 @@ static void parse_lrl_file(const std::string& lrlpath,
                     throw LRLError(lrlpath, lineno, "missing database directory");
                 }
                 *p_dbdir = tok;
-
-            } else if(tok == "use_llmeta") {
-                *p_llmeta = true;
-
-            } else if(tok == "data" || tok == "index") {
-                // Old style database that doesn't know its own schema
-                *p_tagged = false;
-
             } else if(tok == "table") {
                 std::string name;
                 std::string schema_path;
@@ -545,6 +540,23 @@ static void parse_lrl_file(const std::string& lrlpath,
     }
 }
 
+std::string generate_fingerprint(void) 
+{
+    unsigned char obuf[20];
+
+    std::string dt_string = getDTString();
+
+    // SHA the date time to get a pseudorandom fingerprint to check increment order
+    SHA1((unsigned char *) dt_string.c_str(), dt_string.length() + 1, obuf);
+
+    std::ostringstream ss;
+    for(int i = 0; i < 20; ++i){
+        ss << std::hex << std::setw(2) << std::setfill('0') << +obuf[i];
+    }
+
+    return ss.str();
+}
+
 void serialise_database(
   std::string lrlpath,
   const std::string& comdb2_task,
@@ -566,8 +578,6 @@ void serialise_database(
     std::string dbname;
     std::string dbdir;
     std::string dbtxndir;
-    bool llmeta = true;
-    bool tagged = true;
     bool nonames = false;
     bool has_cluster_info = false;
     std::string origlrlname("");
@@ -596,22 +606,12 @@ void serialise_database(
     // Current logfile, log errors
     int curlog=0, logerr=0;
 
-    parse_lrl_file(lrlpath, &dbname, &dbdir, &llmeta, &tagged, &support_files,
+    parse_lrl_file(lrlpath, &dbname, &dbdir, &support_files,
             &table_names, &queue_names, &nonames, &has_cluster_info);
 
+    // Ignore lrl names setting if we know better
     if (!dbdir.empty() && !dbname.empty()) {
-        int rc;
-        struct stat st;
-
-        rc = stat((dbdir + "/" + dbname + ".txn").c_str(), &st);
-        if (rc == 0 && S_ISDIR(st.st_mode))
-            nonames = false;
-
-        rc = stat((dbdir + "/" + "logs").c_str(), &st);
-        if (rc == 0 && S_ISDIR(st.st_mode))
-            nonames = true;
-
-        /* if we couldn't figure it out, we'll go by what parse_lrl_file told us */
+        nonames = check_usenames(dbname, dbdir, nonames);
     }
 
     // Create the directory for incremental backups if needed
@@ -655,10 +655,8 @@ void serialise_database(
     // to skip this if block, but people are supposed to install from a db
     // that's up and running (and has been tested etc) so we'll leave this out
     // for now -cpick
-    if(llmeta && support_files_only) {
+    if(support_files_only) {
         // Reset
-        llmeta = false;
-        tagged = true;
         support_files.clear();
         table_names.clear();
         queue_names.clear();
@@ -686,7 +684,7 @@ void serialise_database(
         origlrlname = dbname + ".lrl"; /* save the current path */
         lrlpath = newlrlpath;
 
-        parse_lrl_file(lrlpath, &dbname, &dbdir, &llmeta, &tagged,
+        parse_lrl_file(lrlpath, &dbname, &dbdir,
                 &support_files, &table_names, &queue_names, &nonames, &has_cluster_info);
     }
 
@@ -733,7 +731,7 @@ void serialise_database(
 
     // If it's an llmeta db then look for the file version map too.
     // Read it in to get a list of tables.
-    if(llmeta && !support_files_only) {
+    if(!support_files_only) {
         if (nonames) {
             optional_files.push_back("file_vers_map");
         } else {
@@ -761,12 +759,6 @@ void serialise_database(
                 }
             }
         }
-    }
-
-
-    // Untagged databases have an explicit table named after the database itself
-    if(!tagged) {
-        table_names.insert(dbname);
     }
 
     // If the database is running, connect to it and instruct it to pause
@@ -892,7 +884,7 @@ void serialise_database(
             std::string table_name;
 
             // First see if this file relates to any of our tables or queues
-            if(recognise_data_file(filename, llmeta,
+            if(recognize_data_file(filename,
                         is_data_file, is_queue_file, is_queuedb_file, table_name)) {
                 if(is_data_file &&
                         table_names.find(table_name) == table_names.end()) {
@@ -945,6 +937,7 @@ void serialise_database(
             } catch(Error& e) {
                 // If we can't get the pagesize with Berkeley then it
                 // can't be a Berkeley DB file, so move on.
+                std::cerr << ">>>>> " << abspath << ":" << e.what() << std::endl;
                 std::clog << e.what() << std::endl;
             }
         }
@@ -992,7 +985,7 @@ void serialise_database(
             << getDTString() << std::endl;
 
 
-        for(std::list<FileInfo>::const_iterator
+        for(std::list<FileInfo>::iterator
                 it = data_files.begin();
                 it != data_files.end();
                 ++it) {
@@ -1008,6 +1001,7 @@ void serialise_database(
                     write_incr_manifest_entry(manifest, *it, pages_list);
                 // Keep track of the file name and the list of pages to be backed-up
                 } else {
+                    std::cerr << it->get_filename() <<  " " << pages_list.size() << " pages" << std::endl;
                     incr_data_files.push_back(*it);
                     page_number_vec.push_back(pages_list);
                     write_incr_manifest_entry(manifest, *it, pages_list);
@@ -1107,9 +1101,11 @@ void serialise_database(
                 }
             }
             if (islrl && strippedpath != "") {
-                serialise_file(FileInfo(FileInfo::SUPPORT_FILE, abspath, dbdir), iom, strippedpath);
+                FileInfo fi(FileInfo::SUPPORT_FILE, abspath, dbdir);
+                serialise_file(fi, iom, strippedpath);
             } else {
-                serialise_file(FileInfo(FileInfo::SUPPORT_FILE, abspath, dbdir), iom);
+                FileInfo fi(FileInfo::SUPPORT_FILE, abspath, dbdir);
+                serialise_file(fi, iom);
             }
             islrl = false;
         }
@@ -1120,7 +1116,8 @@ void serialise_database(
             try {
                 abspath = *it;
                 makeabs(abspath, dbdir, *it);
-                serialise_file(FileInfo(FileInfo::OPTIONAL_FILE, abspath, dbdir), iom);
+                FileInfo fi(FileInfo::OPTIONAL_FILE, abspath, dbdir);
+                serialise_file(fi, iom);
             }
             catch (SerialiseError &err) {
                 std::cerr << "Warning: " << *it << ": " << err.what() << std::endl;
@@ -1134,10 +1131,11 @@ void serialise_database(
             std::string absfile;
             std::cerr<<"Serializing checkpoint"<<std::endl;
             makeabs(absfile, dbtxndir, "checkpoint");
-            serialise_file(FileInfo(FileInfo::LOG_FILE, absfile, dbdir));
+            FileInfo fi(FileInfo::LOG_FILE, absfile, dbdir);
+            serialise_file(fi);
 
             long long log_number(lowest_log);
-            for(std::list<FileInfo>::const_iterator
+            for(std::list<FileInfo>::iterator
                     it = data_files.begin();
                     it != data_files.end();
                     ++it) {
@@ -1173,7 +1171,9 @@ void serialise_database(
         std::string absfile;
         std::cerr<<"Serializing checkpoint"<<std::endl;
         makeabs(absfile, dbtxndir, "checkpoint");
-        serialise_file(FileInfo(FileInfo::LOG_FILE, absfile, dbdir));
+        FileInfo fi(FileInfo::LOG_FILE, absfile, dbdir);
+
+        serialise_file(fi);
 
         long long log_number(lowest_log);
 
@@ -1229,7 +1229,7 @@ void serialise_database(
         }
 
         // Serialise new files
-        for(std::vector<FileInfo>::const_iterator new_it = new_files.begin();
+        for(std::vector<FileInfo>::iterator new_it = new_files.begin();
                 new_it != new_files.end();
                 *new_it++
         ) {
@@ -1254,28 +1254,18 @@ void serialise_database(
 
     // Generate fingerprint SHA file
     if(incr_create || incr_gen){
-        unsigned char obuf[20];
+        std::string sha = generate_fingerprint();
 
-        std::string dt_string = getDTString();
-
-        // SHA the date time to get a pseudorandom fingerprint to check increment order
-        SHA1((unsigned char *) dt_string.c_str(), dt_string.length() + 1, obuf);
-
-        std::ostringstream ss;
-        for(int i = 0; i < 20; ++i){
-            ss << std::hex << std::setw(2) << std::setfill('0') << +obuf[i];
-        }
-
-        std::clog << "Calculated SHA fingerprint as: " << ss.str() << std::endl;
+        std::clog << "Calculated SHA fingerprint as: " << sha << std::endl;
 
         // Serialise the SHA file
-        serialise_string("fingerprint.sha", ss.str());
+        serialise_string("fingerprint.sha", sha);
 
         // Write the SHA file so that the next increment can know it
         std::string sha_filename = incr_path + "/fingerprint.sha";
         std::ofstream sha_file(sha_filename, std::ofstream::trunc);
 
-        sha_file.write(ss.str().c_str(), 40);
+        sha_file.write(sha.c_str(), 40);
     }
 
     // Release the database for log file deletion.
@@ -1288,4 +1278,207 @@ void serialise_database(
     writepadding(2 * 512);
 
     // Success, all done!
+}
+
+extern uint32_t myflip(uint32_t in);
+
+void write_incremental_file (
+        const std::string &dbdir, 
+        const std::string &abspath, 
+        const std::string &incrname, 
+        struct stat *st
+) 
+// Write checksum/LSN information for a database file
+{
+    DB_Wrap db(abspath);
+    int flags = O_RDONLY; 
+    size_t pagesize;
+    int fd;
+
+    RIIA_fd fd_guard(fd);
+
+    // TODO: optionally O_DIRECT?
+    fd = open(abspath.c_str(), flags);
+    if (fd == -1) {
+        std::ostringstream ss;
+        ss << "Can't open" << abspath << " " << strerror(errno) << std::endl;
+        throw SerialiseError(abspath, ss.str());
+    }
+
+    pagesize = db.get_pagesize();
+    if (pagesize == 0)
+        pagesize = 4096;
+    size_t bufsize = pagesize;
+    while((bufsize << 1) <= MAX_BUF_SIZE) {
+        bufsize <<= 1;
+    }
+    off_t uptosize = st->st_size;
+
+    // st->st_size is going to be the size of the incremental file
+    // save the size of the real file here
+    // 12 bytes per page
+    st->st_size = 12 * (st->st_size / pagesize);
+
+    TarHeader head;
+    head.set_filename(incrname);
+    head.set_attrs(*st);
+    head.set_checksum();
+    tar_block_header hdr = head.get();
+
+    // Write tar header
+    if (writeall(1, &hdr, sizeof(tar_block_header)) != sizeof(tar_block_header)) {
+        std::ostringstream ss;
+        ss << "error writing tar block header: " << std::strerror(errno);
+        throw Error(ss.str());
+    }
+
+    uint8_t *pagebuf = NULL;
+    off_t bytesleft = uptosize;
+    unsigned long long pageno = 0;
+    off_t offset = 0;
+
+#if ! defined  ( _SUN_SOURCE ) && ! defined ( _HP_SOURCE )
+    if(posix_memalign((void**) &pagebuf, 512, bufsize))
+        throw Error("Failed to allocate output buffer");
+#else
+    pagebuf = (uint8_t*) memalign(512, bufsize);
+#endif
+    while (bytesleft > 0) {
+        off_t nbytes = bytesleft > bufsize ? bufsize : bytesleft;
+
+        // We don't need to check checksums or retry, since if the page disagrees 
+        // with the source it'll be overwritten
+        size_t rc;
+        rc = read(fd, pagebuf, nbytes);
+        if (rc != nbytes) {
+            std::ostringstream ss;
+            ss << "Can't read" << abspath << " " << nbytes << " bytes at offset " << offset << " : " << strerror(errno) << std::endl;
+            throw SerialiseError(abspath, ss.str());
+        }
+
+        for (off_t n = 0; n < nbytes / pagesize; n++) {
+            PAGE *pagep = (PAGE *) (pagebuf + (pagesize * n));
+            bool verify_bool;
+            uint32_t verify_cksum;
+
+            verify_checksum(pagebuf + (pagesize * n), pagesize, db.get_crypto(), db.get_swapped(), &verify_bool, &verify_cksum);
+            if (db.get_swapped()) {
+                verify_cksum = myflip(verify_cksum);
+                pagep->lsn.file = myflip(pagep->lsn.file);
+                pagep->lsn.offset = myflip(pagep->lsn.offset);
+            }
+
+            write(1, &(LSN(pagep).file), 4);
+            write(1, &(LSN(pagep).offset), 4);
+            write(1, &verify_cksum, 4);
+
+            offset += pagesize;
+        }
+
+        bytesleft -= nbytes;
+    }
+}
+
+void create_partials(
+    const std::string &lrlpath, bool do_direct_io
+) 
+// create a tarball of incremental data files for all data files, and nothing else
+{
+    std::string dbname, dbdir;
+    std::list<std::string> support_files;
+    std::set<std::string> table_names;
+    std::set<std::string> queue_names;
+    bool nonames;
+    bool has_cluster_info;
+    std::list<std::string> dbdir_files;
+    std::string abspath;
+
+    std::string templ_fstblk;
+    std::string templ_llmeta;
+    std::string templ_metadata;
+    std::string templ_blkseq_dta;
+    std::string templ_blkseq_freerec;
+    std::string templ_blkseq_ix0;
+
+
+    parse_lrl_file(lrlpath, &dbname, &dbdir, 
+                   &support_files, &table_names, 
+                   &queue_names, &nonames, &has_cluster_info);
+
+    if (!dbdir.empty() && !dbname.empty()) {
+        nonames = check_usenames(dbname, dbdir, nonames);
+    }
+
+    if(nonames) {
+        templ_fstblk = "comdb2_fstblk.dta";
+        templ_llmeta = "comdb2_llmeta.dta";
+        templ_metadata = "comdb2_metadata.dta";
+        templ_blkseq_dta = "comdb2_blkseq.dta";
+        templ_blkseq_freerec = "comdb2_blkseq.freerec";
+        templ_blkseq_ix0 = "comdb2_blkseq.ix0";
+    } else {
+        templ_fstblk = dbname + ".fstblk.dta";
+        templ_llmeta = dbname + ".llmeta.dta";
+        templ_metadata = dbname + ".metadata.dta";
+        templ_blkseq_dta = dbname + ".blkseq.dta";
+        templ_blkseq_freerec = dbname + ".blkseq.freerec";
+        templ_blkseq_ix0 = dbname + ".blkseq.ix0";
+    }
+
+    // We just care about dbdir.  Ignore everything else.
+    listdir(dbdir_files, dbdir);
+
+    // Incremental backups generate a fingerprint to establish parent/child
+    // relationships. We don't really need this, but the restore process
+    // expects it, so generate it.
+    std::string sha = generate_fingerprint();
+    serialise_string("fingerprint.sha", sha);
+
+    for (std::list<std::string>::const_iterator it  = dbdir_files.begin();  it != dbdir_files.end(); ++it) {
+        bool is_data_file, is_queue_file, is_queuedb_file;
+        std::string table;
+
+        std::ostringstream ss;
+        ss << dbdir << "/" << *it;
+        abspath = ss.str();
+        struct stat st;
+        int rc = stat(abspath.c_str(), &st);
+        if (rc) {
+            std::ostringstream ss;
+            ss << "Can't stat " << ss.str() << " " << strerror(errno) << std::endl;
+            throw Error(ss.str());
+
+        }
+        else if (!(st.st_mode & S_IFREG)) {
+            std::cerr << "notafile " << *it << std::endl;
+            continue;
+        }
+
+        if (recognize_data_file(*it, is_data_file, is_queue_file, is_queuedb_file, table) || 
+                *it == templ_fstblk || *it == templ_llmeta || *it == templ_metadata || 
+                *it == templ_blkseq_dta || *it == templ_blkseq_freerec || *it == templ_blkseq_ix0) {
+            std::ostringstream ss;
+            ss << *it << ".incr";
+
+
+            std::cerr << "p " << *it << std::endl;
+
+
+            try {
+                // Write checksums
+                write_incremental_file(dbdir, abspath, ss.str(), &st);
+                int rem = st.st_size % 512;
+                if (rem) {
+                    rem = 512 - rem;
+                    writepadding(rem);
+                }
+            }
+            catch (Error &e) {
+                std::cerr << e.what() << std::endl;
+            }
+        }
+        else {
+            std::cerr << "notadatafile " << *it << std::endl;
+        }
+    }
 }

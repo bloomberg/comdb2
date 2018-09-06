@@ -10,6 +10,9 @@ setattr REQUEST_DURABLE_LSN_FROM_MASTER 1
 # Retrieve durable LSN at BEGIN
 setattr RETRIEVE_DURABLE_LSN_AT_BEGIN 1
 
+# Print start lsn request trace on the master
+setattr RECEIVE_START_LSN_REQUEST_TRACE 1
+
 # Maximum time we'll wait to retrieve a durable LSN from the master
 setattr DURABLE_LSN_REQUEST_WAITMS 2000
 
@@ -87,3 +90,7 @@ on dump_blkseq
 # Log location
 #location logs /db/logs
 init_with_genid48
+
+# Uncomment these to reproduce the logput-decoupled 'reads-follows-writes' error
+# rep_getlock_latency 1000
+# last_locked_seqnum off

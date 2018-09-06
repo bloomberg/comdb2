@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 set -e
@@ -22,7 +22,7 @@ echo "create t1"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1 (a int) "
 MAX=100000
 
-if [ ${DEBUGGER} == callgrind ] || [ ${DEBUGGER} == memcheck ]; then 
+if [ "${DEBUGGER}" == "callgrind" ] || [ "${DEBUGGER}" == "memcheck" ]; then 
    DEBUG_PREFIX="valgrind --tool=callgrind --instr-atstart=yes --dump-instr=yes --collect-jumps=yes --callgrind-out-file=$TESTDIR/$TESTCASE.cdb2sql.callgrind"
    MAX=2000
 fi

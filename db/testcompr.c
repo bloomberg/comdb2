@@ -352,7 +352,7 @@ static void *handle_comptest_thd(void *_arg)
                            NULL);
 
         while (rc == IX_FND || rc == IX_FNDMORE) {
-            if (gbl_sc_abort) {
+            if (gbl_sc_abort || db->sc_abort) {
                 logmsg(LOGMSG_ERROR, "Abort compression testing %s\n",
                        db->tablename);
                 ++arg->rc;

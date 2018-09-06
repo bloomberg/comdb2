@@ -57,7 +57,6 @@
 #include <sockpool.h>
 
 #include "comdb2.h"
-#include <comdb2_shm.h>
 #include "sql.h"
 
 #include "comdb2_trn_intrl.h"
@@ -94,7 +93,7 @@ static pthread_t gbl_watchdog_kill_tid;
 static pthread_mutex_t gbl_watchdog_kill_mutex;
 
 static int gbl_nowatch = 1; /* start off disabled */
-static int gbl_watchdog_time;
+static int gbl_watchdog_time; /* last timestamp when things were ok */
 
 static pthread_attr_t gbl_pthread_joinable_attr;
 
@@ -110,7 +109,7 @@ void watchdog_set_alarm(int seconds)
         return;
     }
 
-    gbl_watchdog_kill_time = time_epoch() + seconds;
+    gbl_watchdog_kill_time = comdb2_time_epoch() + seconds;
     gbl_watchdog_kill_tid = pthread_self();
 
     pthread_mutex_unlock(&gbl_watchdog_kill_mutex);
@@ -139,7 +138,7 @@ void watchdog_cancel_alarm(void)
     pthread_mutex_unlock(&gbl_watchdog_kill_mutex);
 }
 
-int gbl_epoch_time;
+int gbl_epoch_time; /* db has been up gbl_epoch_time - gbl_starttime seconds */
 
 static void *watchdog_thread(void *arg)
 {
@@ -156,7 +155,6 @@ static void *watchdog_thread(void *arg)
     uint64_t lastlsnbytes = 0, curlsnbytes;
     char master_lastlsn[63] = "", master_curlsn[64];
     uint64_t master_lastlsnbytes = 0, master_curlsnbytes;
-    char *master;
     int sockpool_timeout;
 
     rc = pthread_mutex_init(&gbl_watchdog_kill_mutex, NULL);
@@ -170,49 +168,31 @@ static void *watchdog_thread(void *arg)
     pthread_attr_setdetachstate(&gbl_pthread_joinable_attr,
                                 PTHREAD_CREATE_JOINABLE);
 
-    while (!gbl_ready) {
-        sleep(10);
-    }
-
-    while (!thedb->exiting) {
+    while (!gbl_ready)
         sleep(1);
 
-        gbl_epoch_time = time_epoch();
+    while (!thedb->exiting) {
+        gbl_epoch_time = comdb2_time_epoch();
 
-        if (!gbl_nowatch && !thedb->exiting) {
+        if (!gbl_nowatch) {
             int stop_thds_time;
 
             its_bad = 0;
 
             if (gbl_watchdog_kill_time) {
-                if (time_epoch() >= gbl_watchdog_kill_time) {
+                if (comdb2_time_epoch() >= gbl_watchdog_kill_time) {
                     logmsg(LOGMSG_WARN, "gbl_watchdog_kill_time set\n");
                     its_bad = 1;
                 }
             }
 
             /* try to malloc something */
-            ptr = malloc(128 * 1024);
+            ptr = calloc(1, 128 * 1024);
             if (!ptr) {
-                logmsg(LOGMSG_WARN, "watchdog: Can't malloc\n");
+                logmsg(LOGMSG_WARN, "watchdog: Can't allocate memory\n");
                 its_bad = 1;
             }
-
             free(ptr);
-
-            /* try to create a thread */
-            rc = pthread_create(&dummy_tid, &gbl_pthread_joinable_attr,
-                                dummy_thread, thedb);
-            if (rc) {
-                logmsg(LOGMSG_WARN, "watchdog: Can't create thread\n");
-                its_bad = 1;
-            } else {
-                rc = pthread_join(dummy_tid, NULL);
-                if (rc) {
-                    logmsg(LOGMSG_WARN, "watchdog: Can't join thread\n");
-                    its_bad = 1;
-                }
-            }
 
             /* try to get a file descriptor */
             fd = open("/", O_RDONLY);
@@ -236,7 +216,7 @@ static void *watchdog_thread(void *arg)
             if (stop_thds_time) {
                 int diff_sec;
 
-                diff_sec = time_epoch() - stop_thds_time;
+                diff_sec = comdb2_time_epoch() - stop_thds_time;
                 if (diff_sec > gbl_stop_thds_time_threshold) {
                     logmsg(LOGMSG_WARN, 
                             "watchdog: Trying to stop threads for %d seconds\n",
@@ -278,10 +258,25 @@ static void *watchdog_thread(void *arg)
                    if this is not the case, it means I am deadlock
                    we run this for each 10 iterations of watchdog
                  */
-                master = thedb->master;
                 if (counter % 10 == 0) {
+                    char *master = thedb->master;
                     /* testing slow event time */
                     its_bad_slow = 0;
+
+                    /* try to create a thread */
+                    rc = pthread_create(&dummy_tid, &gbl_pthread_joinable_attr,
+                                        dummy_thread, thedb);
+                    if (rc) {
+                        logmsg(LOGMSG_WARN, "watchdog: Can't create thread\n");
+                        its_bad_slow = its_bad = 1;
+                    } else {
+                        rc = pthread_join(dummy_tid, NULL);
+                        if (rc) {
+                            logmsg(LOGMSG_WARN,
+                                   "watchdog: Can't join thread\n");
+                            its_bad_slow = its_bad = 1;
+                        }
+                    }
 
                     if (!coherent && master > 0 && master != gbl_mynode) {
                         bdb_get_cur_lsn_str(thedb->bdb_env, &curlsnbytes,
@@ -292,27 +287,22 @@ static void *watchdog_thread(void *arg)
                         if (!lastlsnbytes) {
                             lastlsnbytes = curlsnbytes;
                             master_lastlsnbytes = master_curlsnbytes;
-                        } else {
+                        }
+                        /* time for deadlock test;
+                           for now we ignore master progress */
+                        else if (lastlsnbytes == curlsnbytes &&
+                                 /* earth did not moved in the meantime */
+                                 master_curlsnbytes > curlsnbytes &&
+                                 master_lastlsnbytes > curlsnbytes) {
+                            /* we were behind last run, we are still
+                               behind and we did not move: DEADLOCK */
 
-                            /* time for deadlock test;
-                               for now we ignore master progress
-                             */
-                            if (lastlsnbytes == curlsnbytes) {
-                                /* earth did not moved in the meantime */
-                                if (master_curlsnbytes > curlsnbytes &&
-                                    master_lastlsnbytes > curlsnbytes) {
-                                    /* we were behind last run, we are still
-                                       behind
-                                       and we did not move: DEADLOCK */
-
-                                    logmsg(LOGMSG_WARN, 
-                                        "watchdog: DATABASE MAKES NO PROGRESS; "
-                                        "DEADLOCK ALERT %s %s!\n",
-                                        curlsn, master_curlsn);
-                                    its_bad = 1;
-                                    its_bad_slow = 1;
-                                }
-                            }
+                            logmsg(LOGMSG_WARN,
+                                   "watchdog: DATABASE MAKES NO PROGRESS; "
+                                   "DEADLOCK ALERT %s %s!\n",
+                                   curlsn, master_curlsn);
+                            its_bad = 1;
+                            its_bad_slow = 1;
                         }
                     }
                 }
@@ -339,7 +329,7 @@ static void *watchdog_thread(void *arg)
 
             /* if nothing was bad, update the timestamp */
             if (!its_bad && !its_bad_slow) {
-                gbl_watchdog_time = time_epoch();
+                gbl_watchdog_time = comdb2_time_epoch();
             }
         }
 
@@ -365,9 +355,10 @@ static void *watchdog_thread(void *arg)
         }
 
         /* we use counter to downsample the run events for lower frequence
-           tasks,
-           like deadlock detector */
+           tasks, like deadlock detector */
         counter++;
+
+        sleep(1);
     }
     return NULL;
 }
@@ -381,9 +372,11 @@ void watchdog_disable(void)
 void watchdog_enable(void)
 {
     logmsg(LOGMSG_INFO, "watchdog_enable called\n");
-    gbl_watchdog_time = time_epoch();
+    gbl_watchdog_time = comdb2_time_epoch();
     gbl_nowatch = 0;
 }
+
+void lock_info_lockers(FILE *out, bdb_state_type *bdb_state);
 
 void comdb2_die(int aborat)
 {
@@ -396,6 +389,8 @@ void comdb2_die(int aborat)
     alarm(60);
 
     logmsg(LOGMSG_FATAL, "Getting ready to die, printing useful debug info.\n");
+
+    lock_info_lockers(stderr, thedb->bdb_env);
 
     /* print some useful stuff */
 
@@ -422,10 +417,10 @@ static void *watchdog_watcher_thread(void *arg)
 
     while (!thedb->exiting) {
         sleep(10);
-        if (gbl_nowatch)
+        if (gbl_nowatch || thedb->exiting)
             continue;
 
-        int tmstmp = time_epoch();
+        int tmstmp = comdb2_time_epoch();
         if (tmstmp - gbl_watchdog_time > gbl_watchdog_watch_threshold) {
             /*
               In order to handle situations where the watchdog is assumed

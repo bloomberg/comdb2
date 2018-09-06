@@ -1,0 +1,8 @@
+(name='ddl_cascade_drop', description='On DROP, also drop the dependent keys/constraints. (Default: 1)', type='BOOLEAN', value='OFF', read_only='Y')
+[DROP INDEX 'comdb2_pk' ON t2] failed with rc -3 Key 'comdb2_pk' cannot be dropped as it is being used in a foreign key constraint.
+[ALTER TABLE t2 DROP COLUMN 'i'] failed with rc -3 Column 'i' cannot be dropped as it is part of an existing key.
+(csc2='schema
+	{
+		int j null = yes 
+	}
+')

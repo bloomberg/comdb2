@@ -1,0 +1,1 @@
+[exec procedure sys.cmd.load('DBDIR/../agg.csv', 't1')] failed with rc -3 [sys.load(db,csv,tbl,seperator,h...]:2: File not in database directory

@@ -51,8 +51,8 @@ public class Comdb2Connection implements Connection {
     private Comdb2DatabaseMetaData md = null;
     private String db, cluster;
 
-    static final int TIMEOUT_NOT_SET = -1;
-    private int timeout = TIMEOUT_NOT_SET;
+    private int timeout = -1;
+    private int querytimeout = -1;
 
     private String user;
     private String password;
@@ -74,6 +74,7 @@ public class Comdb2Connection implements Connection {
         ret.db = db;
         ret.cluster = cluster;
         ret.timeout = timeout;
+        ret.querytimeout = querytimeout;
         ret.user = user;
         ret.password = password;
         ret.usemicrodt = usemicrodt;
@@ -81,25 +82,23 @@ public class Comdb2Connection implements Connection {
         return ret;
     }
 
-    private Comdb2Connection() {
-        /* empty constructor for duplicate(). */
-    }
-
-    public Comdb2Connection(String db, String cluster) {
-        this(db, cluster, -1);
+    /* Default constructor does not discover the database.
+       This allows us to alter attributes of the connections
+       and its underlying handle without discovering twice. */
+    public Comdb2Connection() {
+        hndl = new Comdb2Handle();
     }
 
     public Comdb2Handle dbHandle() {
         return this.hndl;
     }
 
-    public Comdb2Connection(String db, String cluster, int timeout) {
+    public Comdb2Connection(String db, String cluster) {
         /**
          * The handle is opened in the constructor.
          */
         this.db = db;
         this.cluster = cluster;
-        this.timeout = timeout;
         hndl = new Comdb2Handle(db, cluster);
     }
 
@@ -113,8 +112,30 @@ public class Comdb2Connection implements Connection {
     }
 
     /* Comdb2Statement needs these settings below */
-    public void setQueryTimeout(int timeout) {
+    public void setQueryTimeout(int querytimeout) {
+        this.querytimeout = querytimeout;
+    }
+
+    public void setTimeout(int timeout) {
         this.timeout = timeout;
+    }
+
+    public void setSoTimeout(int timeout) {
+        hndl.soTimeout = timeout;
+    }
+
+    public void setConnectTimeout(int timeout) {
+        hndl.hasConnectTimeout = true;
+        hndl.connectTimeout = timeout;
+    }
+
+    public void setComdb2dbTimeout(int timeout) {
+        hndl.hasComdb2dbTimeout = true;
+        hndl.comdb2dbTimeout = timeout;
+    }
+
+    public void setDbinfoTimeout(int timeout) {
+        hndl.dbinfoTimeout = timeout;
     }
 
     public void setUser(String u) {
@@ -142,6 +163,16 @@ public class Comdb2Connection implements Connection {
 
     void addPorts(List<Integer> ports) {
         hndl.addPorts(ports);
+    }
+
+    public void setDatabase(String db) {
+        this.db = db;
+        hndl.setDatabase(db);
+    }
+
+    public void setCluster(String cluster) {
+        this.cluster = cluster;
+        hndl.setCluster(cluster);
     }
 
     public void setPrefMach(String mach) {
@@ -188,28 +219,12 @@ public class Comdb2Connection implements Connection {
         hndl.setMaxRetries(n);
     }
 
-    public void setDebug(String dbg) {
-        /* valid values: true, 1, T or on */
-        if ("true".equalsIgnoreCase(dbg)
-                || "1".equalsIgnoreCase(dbg)
-                || "T".equalsIgnoreCase(dbg)
-                || "on".equalsIgnoreCase(dbg))
-            hndl.setDebug(true);
-        else
-            hndl.setDebug(false);
+    public void setDebug(boolean dbg) {
+        hndl.setDebug(dbg);
     }
 
     public void setSSLMode(String mode) {
-        SSL_MODE sslmode;
-        if ("REQUIRE".equalsIgnoreCase(mode))
-            sslmode = SSL_MODE.REQUIRE;
-        else if ("VERIFY_CA".equalsIgnoreCase(mode))
-            sslmode = SSL_MODE.VERIFY_CA;
-        else if ("VERIFY_HOSTNAME".equalsIgnoreCase(mode))
-            sslmode = SSL_MODE.VERIFY_HOSTNAME;
-        else
-            sslmode = SSL_MODE.ALLOW;
-        hndl.setSSLMode(sslmode);
+        hndl.setSSLMode(mode);
     }
 
     public void setSSLCrt(String crt) {
@@ -236,34 +251,25 @@ public class Comdb2Connection implements Connection {
         hndl.setSSLCAType(catype);
     }
 
-    public void setAllowPmuxRoute(String val) {
-        if ("true".equalsIgnoreCase(val)
-                || "1".equalsIgnoreCase(val)
-                || "T".equalsIgnoreCase(val)
-                || "on".equalsIgnoreCase(val))
-            hndl.setAllowPmuxRoute(true);
-        else
-            hndl.setAllowPmuxRoute(false);
+    public void setSSLCRL(String crl) {
+        hndl.setSSLCRL(crl);
     }
 
-    public void setStatementQueryEffects(String val) {
-        if ("true".equalsIgnoreCase(val)
-                || "1".equalsIgnoreCase(val)
-                || "T".equalsIgnoreCase(val)
-                || "on".equalsIgnoreCase(val))
-            hndl.setStatementQueryEffects(true);
-        else
-            hndl.setStatementQueryEffects(false);
+    public void setAllowPmuxRoute(boolean rte) {
+        hndl.setAllowPmuxRoute(rte);
     }
 
-    public void setVerifyRetry(String val) {
-        if ("true".equalsIgnoreCase(val)
-                || "1".equalsIgnoreCase(val)
-                || "T".equalsIgnoreCase(val)
-                || "on".equalsIgnoreCase(val))
-            hndl.setVerifyRetry(true);
-        else
-            hndl.setVerifyRetry(false);
+    public void setStatementQueryEffects(boolean stmtEffects) {
+        hndl.setStatementQueryEffects(stmtEffects);
+    }
+
+    public void setVerifyRetry(boolean vrfyRetry) {
+        hndl.setVerifyRetry(vrfyRetry);
+    }
+
+    public void setStackAtOpen(boolean sendStack) {
+        hndl.hasSendStack = true;
+        hndl.setSendStack(sendStack);
     }
 
     public ArrayList<String> getDbHosts() throws NoDbHostFoundException{
@@ -313,8 +319,10 @@ public class Comdb2Connection implements Connection {
             stmt.setUser(user);
         if (password != null)
             stmt.setPassword(password);
-        if (timeout != TIMEOUT_NOT_SET)
-            stmt.setQueryTimeout(timeout);
+        if (timeout >= 0)
+            stmt.setTimeout(timeout);
+        if (querytimeout >= 0)
+            stmt.setQueryTimeout(querytimeout);
 
         stmt.setUseMicroDt(usemicrodt);
         stmts.add(stmt);
@@ -329,8 +337,10 @@ public class Comdb2Connection implements Connection {
             stmt.setUser(user);
         if (password != null)
             stmt.setPassword(password);
-        if (timeout != TIMEOUT_NOT_SET)
-            stmt.setQueryTimeout(timeout);
+        if (timeout >= 0)
+            stmt.setTimeout(timeout);
+        if (querytimeout >= 0)
+            stmt.setQueryTimeout(querytimeout);
 
         stmt.setUseMicroDt(usemicrodt);
         stmts.add(stmt);
@@ -764,12 +774,17 @@ public class Comdb2Connection implements Connection {
             case Constants.Errors.CDB2ERR_VERIFY_ERROR:
             case Constants.Errors.CDB2ERR_NONKLESS:
             case Constants.Errors.CDB2ERR_MALLOC:
+            case Constants.Errors.CDB2ERR_SCHEMA:
             default:
                 /* sql state "COMDB" catches all others */
                 _ex = new SQLException(msg, "COMDB", rc, ex);
                 break;
         }
         return _ex; 
+    }
+
+    public void clearAck() {
+        hndl.clearAck();
     }
 }
 /* vim: set sw=4 ts=4 et: */

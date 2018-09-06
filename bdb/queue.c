@@ -158,8 +158,9 @@ const uint8_t *queue_found_get(struct bdb_queue_found *p_queue_found,
                     p_buf, p_buf_end);
     p_buf = buf_get(&(p_queue_found->data_offset),
                     sizeof(p_queue_found->data_offset), p_buf, p_buf_end);
-    p_buf = buf_get(&(p_queue_found->num_fragments),
-                    sizeof(p_queue_found->num_fragments), p_buf, p_buf_end);
+    p_buf =
+        buf_get(&(p_queue_found->trans.num_fragments),
+                sizeof(p_queue_found->trans.num_fragments), p_buf, p_buf_end);
     p_buf = buf_get(&(p_queue_found->epoch), sizeof(p_queue_found->epoch),
                     p_buf, p_buf_end);
 
@@ -178,8 +179,9 @@ uint8_t *queue_found_put(const struct bdb_queue_found *p_queue_found,
                     p_buf, p_buf_end);
     p_buf = buf_put(&(p_queue_found->data_offset),
                     sizeof(p_queue_found->data_offset), p_buf, p_buf_end);
-    p_buf = buf_put(&(p_queue_found->num_fragments),
-                    sizeof(p_queue_found->num_fragments), p_buf, p_buf_end);
+    p_buf =
+        buf_put(&(p_queue_found->trans.num_fragments),
+                sizeof(p_queue_found->trans.num_fragments), p_buf, p_buf_end);
     p_buf = buf_put(&(p_queue_found->epoch), sizeof(p_queue_found->epoch),
                     p_buf, p_buf_end);
 
@@ -211,7 +213,7 @@ static unsigned long long get_queue_genid(bdb_state_type *bdb_state)
         next_seed = bdb_state->seed;
         Pthread_mutex_unlock(&(bdb_state->seed_lock));
 
-        iptr[0] = time_epoch();
+        iptr[0] = comdb2_time_epoch();
         iptr[1] = next_seed;
     } while (genid == 0);
 
@@ -384,7 +386,7 @@ static int bdb_queue_add_int(bdb_state_type *bdb_state, tran_type *intran,
     tran_type *tran;
 
     if (gbl_rowlocks) {
-        get_physical_transaction(bdb_state, intran, &tran);
+        get_physical_transaction(bdb_state, intran, &tran, 0);
     } else
         tran = intran;
 
@@ -1033,12 +1035,17 @@ int bdb_queue_walk(bdb_state_type *bdb_state, int flags, bbuint32_t *lastitem,
 {
     int rc;
 
+    BDB_READLOCK("bdb_queue_walk");
     /* don't pass this to bdb_queuedb_walk - it needs more than an uint32_t
      * worth of state,
      * caller needs to call it correctly. */
-    BDB_READLOCK("bdb_queue_walk");
-    rc = bdb_queue_walk_int(bdb_state, flags, lastitem, callback, userptr,
-                            bdberr);
+    if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
+        rc = bdb_queuedb_walk(bdb_state, flags, lastitem, callback, userptr,
+                              bdberr);
+    } else {
+        rc = bdb_queue_walk_int(bdb_state, flags, lastitem, callback, userptr,
+                                bdberr);
+    }
     BDB_RELLOCK();
 
     return rc;
@@ -1186,7 +1193,7 @@ static void lost_consumers_alarm(bdb_state_type *bdb_state,
 {
     static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
     uint32_t new_lost_consumers;
-    int ii, now = time_epoch();
+    int ii, now = comdb2_time_epoch();
 
     /* Don't repeat alarms too often */
     if (bdb_state->qpriv->known_lost_consumers == lost_consumers &&
@@ -1469,7 +1476,7 @@ lookagain:
     item.data_len = hdr.total_sz;
     item.data_offset =
         sizeof(struct bdb_queue_found) + sizeof(db_recno_t) * hdr.num_fragments;
-    item.num_fragments = hdr.num_fragments;
+    item.trans.num_fragments = hdr.num_fragments;
     dtaptr = ((char *)p_item_buf) + item.data_offset;
 
     if (!(p_item_buf = queue_found_put(&item, p_item_buf, p_item_buf_end))) {
@@ -1486,7 +1493,7 @@ lookagain:
     recnos = (db_recno_t *)p_item_buf;
 
     next_frag = 0;
-    while (next_frag < item.num_fragments) {
+    while (next_frag < item.trans.num_fragments) {
         if (bdb_lock_desired(bdb_state)) {
             *bdberr = BDBERR_LOCK_DESIRED;
             dbcp->c_close(dbcp);
@@ -1547,7 +1554,7 @@ lookagain:
 
         /* If there are more fragments then we must walk the queue until we
          * find them. */
-        if (next_frag < item.num_fragments) {
+        if (next_frag < item.trans.num_fragments) {
             do {
                 bzero(&dbt_key, sizeof(dbt_key));
                 bzero(&dbt_data, sizeof(dbt_data));
@@ -1580,7 +1587,7 @@ lookagain:
                                "%s: item 0x%llx found only %zu/%u fragments "
                                "(recnos",
                                __func__, item.genid, next_frag + 1,
-                               item.num_fragments);
+                               item.trans.num_fragments);
                         for (fragn = 0; fragn <= next_frag; fragn++) {
                             if (fragn % 5 == 0)
                                logmsg(LOGMSG_ERROR, "\n");
@@ -1697,7 +1704,7 @@ static int bdb_queue_consume_int(bdb_state_type *bdb_state, tran_type *intran,
     struct bdb_queue_header hdr;
 
     if (gbl_rowlocks) {
-        get_physical_transaction(bdb_state, intran, &tran);
+        get_physical_transaction(bdb_state, intran, &tran, 0);
     } else
         tran = intran;
 
@@ -1823,7 +1830,7 @@ static int bdb_queue_consume_int(bdb_state_type *bdb_state, tran_type *intran,
             tid = child_tid;
 
             /* Loop through contigious fragments */
-            while (fragn < item.num_fragments) {
+            while (fragn < item.trans.num_fragments) {
                 if (fragn > 0 &&
                     ntohl(recnos[fragn]) != ntohl(recnos[fragn - 1] + 1)) {
                     /* This fragment is not contigious with the last so we
@@ -1950,7 +1957,7 @@ static int bdb_queue_consume_int(bdb_state_type *bdb_state, tran_type *intran,
         }
 
         /* Do remaining (or all) fragments old way */
-        for (; fragn < item.num_fragments; fragn++) {
+        for (; fragn < item.trans.num_fragments; fragn++) {
             recno = ntohl(recnos[fragn]);
             bzero(&dbt_key, sizeof(dbt_key));
             dbt_key.size = sizeof(db_recno_t);

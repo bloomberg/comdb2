@@ -1,0 +1,56 @@
+# Linearizable is serializable + durable-lsn logic
+enable_serial_isolation
+
+# Enable durable lsn logic
+setattr DURABLE_LSNS 1
+
+# Maximum time we'll wait to retrieve a durable LSN from the master
+setattr DURABLE_LSN_REQUEST_WAITMS 2000
+
+# new_snapshot is seeing bugs here: disable for now, old snapshot works correctly
+disable_new_snapshot
+
+# Increase netpoll
+netpoll 2000
+
+# Commit should force log to be synced to disk
+setattr SYNCTRANSACTIONS 1
+
+# Allow the master to handle sql requests (uncommon)
+setattr MASTER_REJECT_REQUESTS 0
+
+# Very high osqltransfer
+maxosqltransfer 1000000
+
+# This was breaking things earlier.  Rivers has made changes (I need to retry)
+disable_page_compact
+
+# Check for deleteable logs every second
+setattr LOGDELETE_RUN_INTERVAL 1
+
+# Disable parallel rep (this was causing crashes)
+setattr REP_PROCESSORS 0
+setattr REP_WORKERS 0
+
+# Perfect checkpoints is also causing crashes.  Disable for now.
+perfect_ckp 0
+
+# Don't run the watchdog thread
+nowatch
+
+# Disable this trace
+setattr UDP_DROP_WARN_PERCENT 100
+
+# Disable compression so I can read printlog output
+init_with_compr none
+init_with_compr_blobs none
+ 
+# Keep 3 logfiles
+min_keep_logs 3
+
+# Enable 
+setattr DEBUG_LOG_DELETION 1
+
+# Agressively delete private blkseqs
+private_blkseq_maxage 1
+

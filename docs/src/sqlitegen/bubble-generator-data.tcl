@@ -131,10 +131,40 @@ set all_graphs {
            {opt E {or nil + -} {loop /digit nil}}}
      {line \"0x\" {loop /hexdigit nil}}
   }
+
   insert-stmt {
     stack
        {line {opt with-clause}
           INSERT INTO
+       }
+       {line {optx /db-name .} /qualified-table-name
+             {optx ( {loop /column-name ,} )}}
+       {line
+           {or
+             {line VALUES {loop {line ( {loop expr ,} )} ,}}
+             select-stmt
+           }
+           {opt upsert-clause}
+       }
+  }
+
+  upsert-clause {
+      stack
+      {line ON CONFLICT {opt (index-column-list) WHERE expr }
+      }
+      {line DO
+          {or
+              {line NOTHING}
+              {line REPLACE}
+              {line UPDATE SET {loop {line /column-name = expr} ,} {optx WHERE expr}}
+          }
+      }
+  }
+
+  replace-stmt {
+    stack
+       {line {opt with-clause}
+          REPLACE INTO
        }
        {line {optx /db-name .} /qualified-table-name
              {optx ( {loop /column-name ,} )}}
@@ -143,6 +173,7 @@ set all_graphs {
          select-stmt
        }
   }
+
   select-stmt {
    stack
      {opt {line WITH {opt RECURSIVE} {loop common-table-expression ,}}}
@@ -334,9 +365,11 @@ set all_graphs {
   }
   grant-revoke {stack
     {line {or GRANT REVOKE}}
-    {or
-      {line {or READ WRITE} ON /table-name TO /user-name}
-      {line OP TO /user-name}}
+    {line
+        {or
+            {line {or READ WRITE DDL} ON /table-name }
+            {line OP}
+        } TO /user-name}
   }
   rebuild {stack
       {line REBUILD {or {} {line INDEX /index-name} DATA DATABLOB } /table-name}
@@ -447,7 +480,10 @@ set all_graphs {
                   {line /column-name {opt [ size ] }}
               }
           }
-          {line {opt DBSTORE = /literal-value}}
+          {line
+              {opt dbstore = /literal-value}
+              {opt null = {or yes no}}
+          }
       }
   }
 
@@ -455,7 +491,10 @@ set all_graphs {
       loop
       {stack
           {line
-              {opt dup}
+              {or
+                  {opt dup}
+                  {opt uniqnulls}
+              }
               {opt datacopy}
               {line /string-literal = }
           }
@@ -535,23 +574,27 @@ set all_graphs {
 
   create-table-ddl {
       stack
-      {line CREATE TABLE {opt IF NOT EXISTS}}
-      {line {opt db-name .} table-name}
-      {stack
-          {line ( }
-          {loop
-              {line column-name column-type
-                  {opt {loop { column-constraint } { , } } } }
-              { , }
-          }
-          {opt
-              {loop
-                  {line , table-constraint }
+      {line CREATE TABLE {opt IF NOT EXISTS} {opt db-name .} table-name}
+      {or
+          {line LIKE {opt db-name .} existing-table-name }
+          {stack
+              {stack
+                  {line ( }
+                  {loop
+                      {line column-name column-type
+                          {opt {loop { column-constraint } { , } } } }
+                      { , }
+                  }
+                  {opt
+                      {loop
+                          {line , table-constraint }
+                      }
+                  }
+                  {line ) }
               }
+              {line {opt table-options }}
           }
-          {line ) }
       }
-      {line {opt table-options }}
   }
 
   column-constraint {

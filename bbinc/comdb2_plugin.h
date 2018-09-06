@@ -21,6 +21,7 @@ enum comdb2_plugin_type {
     COMDB2_PLUGIN_APPSOCK,
     COMDB2_PLUGIN_OPCODE,
     COMDB2_PLUGIN_MACHINE_INFO,
+    COMDB2_PLUGIN_INITIALIZER,
     COMDB2_PLUGIN_LAST
 };
 
@@ -43,5 +44,7 @@ struct comdb2_plugin {
 typedef struct comdb2_plugin comdb2_plugin_t;
 
 const char *comdb2_plugin_type_to_str(int type);
+
+extern comdb2_plugin_t *gbl_plugins[];
 
 #endif /* ! __INCLUDED_COMDB2_PLUGIN_H */

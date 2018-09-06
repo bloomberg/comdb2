@@ -35,7 +35,6 @@ int debug_switch_skip_table_schema_check(void);          /* 0 */
 int debug_switch_inline_mtraps(void);                    /* 0 */
 int debug_switch_osql_verbose_history_replay(void);      /* 0 */
 int debug_switch_abort_on_invalid_context(void);         /* 0 */
-int debug_switch_use_phase_3(void);                      /* 1 - not debug */
 int debug_switch_reject_writes_on_rtcpu(void);           /* 1 - not debug */
 int debug_switch_ignore_extra_blobs(void);               /* 0 - not debug */
 int debug_switch_support_datetimes(void);                /* 1 */

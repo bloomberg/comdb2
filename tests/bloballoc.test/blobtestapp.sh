@@ -5,7 +5,7 @@ args=$1
 dbnm=$2
 
 # local variables
-blbt=./blob
+blbt=${TESTSBUILDDIR}/blob
 
 cdb2sql -s ${CDB2_OPTIONS} $dbnm default "drop table tbl" &> /dev/null
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table tbl  { `cat blob.csc2 ` }"

@@ -26,6 +26,11 @@
 
 extern int gbl_partial_indexes;
 
+static int should_skip_constraint_for_index(struct dbtable *db, int ixnum, int nulls)
+{
+    return (nulls && (gbl_nullfkey || db->ix_nullsallowed[ixnum]));
+}
+
 int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
                              void *old_dta, unsigned long long ins_keys,
                              blob_buffer_t *blobs, int maxblobs,
@@ -123,7 +128,7 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
                 }
             }
 
-            if (gbl_nullfkey && nulls) {
+            if (should_skip_constraint_for_index(ruledb, ridx, nulls)) {
                 rc = IX_FND;
             } else {
                 ruleiq.usedb = ruledb;
@@ -239,7 +244,7 @@ int verify_partial_rev_constraint(struct dbtable *to_db, struct dbtable *newdb,
                        __func__);
                 continue;
             }
-            if (gbl_nullfkey && nulls) continue;
+            if (should_skip_constraint_for_index(cnstrt->lcltable, rixnum, nulls)) continue;
 
             if (cnstrt->lcltable->ix_collattr[rixnum]) {
                 rc = extract_decimal_quantum(cnstrt->lcltable, rixnum, rkey,
@@ -391,7 +396,12 @@ int mark_schemachange_over_tran(const char *table, tran_type *tran)
     /* mark the schema change over */
     int bdberr;
 
-    bdb_delete_disable_plan_genid(thedb->bdb_env, tran, &bdberr);
+    if (tran && bdb_increment_num_sc_done(thedb->bdb_env, tran, &bdberr)) {
+        logmsg(LOGMSG_WARN, "could not increment num_sc_done\n");
+        return SC_BDB_ERROR;
+    }
+
+    bdb_delete_sc_seed(thedb->bdb_env, tran, table, &bdberr);
 
     if (bdb_set_in_schema_change(tran, table, NULL /*schema_change_data*/,
                                  0 /*schema_change_data_len*/, &bdberr) ||
@@ -492,8 +502,8 @@ int fetch_schema_change_seed(struct schema_change_type *s, struct dbenv *thedb,
                              unsigned int *stored_sc_host)
 {
     int bdberr;
-    int rc = bdb_get_disable_plan_genid(thedb->bdb_env, NULL, stored_sc_genid,
-                                        stored_sc_host, &bdberr);
+    int rc = bdb_get_sc_seed(thedb->bdb_env, NULL, s->table, stored_sc_genid,
+                             stored_sc_host, &bdberr);
     if (rc == -1 && bdberr == BDBERR_FETCH_DTA) {
         /* No seed exists, proceed. */
     } else if (rc) {
@@ -503,9 +513,8 @@ int fetch_schema_change_seed(struct schema_change_type *s, struct dbenv *thedb,
         return SC_INTERNAL_ERROR;
     } else {
         /* found some seed */
-        logmsg(LOGMSG_INFO, "stored seed %016llx, sc seed %016lx, stored host "
-                            "%u, sc host %u\n",
-               *stored_sc_genid, sc_seed, *stored_sc_host, sc_host);
+        logmsg(LOGMSG_INFO, "stored seed %016llx, stored host %u\n",
+               *stored_sc_genid, *stored_sc_host);
         logmsg(
             LOGMSG_WARN,
             "Resuming previously restarted schema change, disabling plan.\n");
@@ -584,12 +593,13 @@ void verify_schema_change_constraint(struct ireq *iq, struct dbtable *currdb,
     if (!currdb || !currdb->sc_to) return;
 
     /* if (is_schema_change_doomed()) */
-    if (gbl_sc_abort) return;
+    if (gbl_sc_abort || currdb->sc_abort || iq->sc_should_abort)
+        return;
 
     int rebuild = currdb->sc_to->plan && currdb->sc_to->plan->dta_plan;
     if (verify_record_constraint(iq, currdb->sc_to, trans, od_dta, ins_keys,
                                  NULL, 0, ".ONDISK", rebuild, 1) != 0) {
-        gbl_sc_abort = 1;
+        currdb->sc_abort = 1;
         MEMORY_SYNC;
     }
 }
@@ -1351,6 +1361,26 @@ void fix_constraint_pointers(struct dbtable *db, struct dbtable *newdb)
             }
         }
     }
+}
+
+/* return 1 if the table is only referenced by foreign key in the same table or
+ * it is not referenced at all, 0 otherwise
+ */
+int self_referenced_only(struct dbtable *db)
+{
+    int i, rc;
+    if (db->n_rev_constraints == 0)
+        return 1;
+
+    rc = 1;
+    for (i = 0; i < db->n_rev_constraints; i++) {
+        constraint_t *ct = db->rev_constraints[i];
+        if (strcasecmp(ct->lcltable->tablename, db->tablename)) {
+            rc = 0;
+            break;
+        }
+    }
+    return rc;
 }
 
 void change_schemas_recover(char *table)

@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# wait for keys
+mkdir ~/.ssh
+chmod 700 ~/.ssh
+cp /common/id_rsa ~/.ssh/
+chmod 700 ~/.ssh/id_rsa
+cp /common/id_rsa.pub ~/.ssh/
+cat /common/id_rsa.pub >> ~/.ssh/authorized_keys
+echo "hostname $(hostname)" > /opt/bb/etc/cdb2/config/comdb2.d/hostname.lrl
+echo READY
+exec /usr/sbin/sshd -D

@@ -89,7 +89,7 @@ typedef enum {
     LLMETA_LOGICAL_LSN_LWM = 13
 
     ,
-    LLMETA_DISABLE_PLAN_GENID = 14
+    LLMETA_SC_SEEDS = 14
 
     ,
     LLMETA_TABLE_USER_READ = 15 /* key  = 15 + TABLENAME[32] + USERNAME[16]
@@ -139,7 +139,7 @@ typedef enum {
     ,
     LLMETA_TABLE_VERSION =
         33 /* reliable table version, updated by any schema change
-     */
+            */
     ,
     LLMETA_TABLE_PARAMETERS =
         34 /* store various parameter values for tables stored
@@ -159,7 +159,8 @@ typedef enum {
     LLMETA_DEFAULT_VERSIONED_SP = 43,
     LLMETA_TABLE_USER_SCHEMA = 44,
     LLMETA_USER_PASSWORD_HASH = 45,
-    LLMETA_FVER_FILE_TYPE_QDB = 46 /* file version for a dbqueue */
+    LLMETA_FVER_FILE_TYPE_QDB = 46, /* file version for a dbqueue */
+    LLMETA_TABLE_NUM_SC_DONE = 47
 } llmetakey_t;
 
 struct llmeta_file_type_key {
@@ -2321,7 +2322,7 @@ backout:
 }
 
 /* looks up the version of a file in the file version db
- * returns <0 if there was an error, 0 the lookup was successful or if  the key
+ * returns <0 if there was an error, 0 the lookup was successful or 1 if the key
  * wasn't found in the llmeta db */
 static int bdb_get_file_version(
     tran_type *tran,                    /* transaction to use */
@@ -2418,6 +2419,12 @@ retry:
                     __func__, *bdberr, retries);
         }
 
+        /* it might be ok if no data was found,
+         * return 1 and *p_version_num = 0ULL */
+        if (*bdberr == BDBERR_FETCH_DTA) {
+            return 1;
+        }
+
         /*fail on all other errors*/
         return -1;
     }
@@ -2439,16 +2446,66 @@ retry:
 
     *p_version_num = version_num.version_num;
 
-    if (llmeta_bdb_state) {
-        parent = llmeta_bdb_state->parent;
-        assert(parent);
-        if (bdb_cmp_genids(version_num.version_num, parent->gblcontext) > 0) {
-            parent->gblcontext = version_num.version_num;
-        }
+    parent = llmeta_bdb_state->parent;
+    assert(parent);
+    if (bdb_cmp_genids(version_num.version_num, parent->gblcontext) > 0) {
+        parent->gblcontext = version_num.version_num;
     }
 
     *bdberr = BDBERR_NOERROR;
     return 0;
+}
+
+int bdb_get_file_version_data(bdb_state_type *bdb_state, tran_type *tran,
+                              int dtanum, unsigned long long *version_num,
+                              int *bdberr)
+{
+    return bdb_get_file_version(tran, bdb_state->name,
+                                LLMETA_FVER_FILE_TYPE_DTA, dtanum, version_num,
+                                bdberr);
+}
+
+int bdb_get_file_version_index(bdb_state_type *bdb_state, tran_type *tran,
+                               int ixnum, unsigned long long *version_num,
+                               int *bdberr)
+{
+    return bdb_get_file_version(tran, (bdb_state)->name,
+                                LLMETA_FVER_FILE_TYPE_IX, ixnum, version_num,
+                                bdberr);
+}
+
+int bdb_get_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
+                               unsigned long long *version_num, int *bdberr)
+{
+    return bdb_get_file_version(tran, (bdb_state)->name,
+                                LLMETA_FVER_FILE_TYPE_TBL, 0, version_num,
+                                bdberr);
+}
+
+int bdb_get_file_version_qdb(bdb_state_type *bdb_state, tran_type *tran,
+                             unsigned long long *version_num, int *bdberr)
+{
+    return bdb_get_file_version(tran, bdb_state->name,
+                                LLMETA_FVER_FILE_TYPE_QDB, 0, version_num,
+                                bdberr);
+}
+
+int bdb_get_file_version_data_by_name(tran_type *tran, const char *name,
+                                      int file_num,
+                                      unsigned long long *version_num,
+                                      int *bdberr)
+{
+    return bdb_get_file_version(tran, name, LLMETA_FVER_FILE_TYPE_DTA, file_num,
+                                version_num, bdberr);
+}
+
+int bdb_get_file_version_index_by_name(tran_type *tran, const char *name,
+                                       int file_num,
+                                       unsigned long long *version_num,
+                                       int *bdberr)
+{
+    return bdb_get_file_version(tran, name, LLMETA_FVER_FILE_TYPE_IX, file_num,
+                                version_num, bdberr);
 }
 
 static int bdb_get_pagesize(tran_type *tran, /* transaction to use */
@@ -2611,42 +2668,6 @@ retry:
     *bdberr = BDBERR_NOERROR;
 
     return 0;
-}
-
-/* calls bdb_get_file_version for a datafile */
-int bdb_get_file_version_data(bdb_state_type *bdb_state, tran_type *tran,
-                              int dtanum, unsigned long long *version_num,
-                              int *bdberr)
-{
-    return bdb_get_file_version(tran, bdb_state->name,
-                                LLMETA_FVER_FILE_TYPE_DTA, dtanum, version_num,
-                                bdberr);
-}
-
-/* calls bdb_get_file_version for an indexfile */
-int bdb_get_file_version_index(bdb_state_type *bdb_state, tran_type *tran,
-                               int ixnum, unsigned long long *version_num,
-                               int *bdberr)
-{
-    return bdb_get_file_version(tran, bdb_state->name, LLMETA_FVER_FILE_TYPE_IX,
-                                ixnum, version_num, bdberr);
-}
-
-/* calls bdb_get_file_version for a table */
-int bdb_get_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
-                               unsigned long long *version_num, int *bdberr)
-{
-    return bdb_get_file_version(tran, bdb_state->name,
-                                LLMETA_FVER_FILE_TYPE_TBL, 0 /*file_num*/,
-                                version_num, bdberr);
-}
-
-int bdb_get_file_version_qdb(bdb_state_type *bdb_state, tran_type *tran,
-                             unsigned long long *version_num, int *bdberr)
-{
-    return bdb_get_file_version(tran, bdb_state->name,
-                                LLMETA_FVER_FILE_TYPE_QDB, 0, version_num,
-                                bdberr);
 }
 
 int bdb_get_pagesize_data(bdb_state_type *bdb_state, tran_type *tran,
@@ -3318,7 +3339,10 @@ bdb_commit_temp_file_version(bdb_state_type *bdb_state, tran_type *tran,
     }
 
     if (file_type == LLMETA_FVER_FILE_TYPE_IX) {
-        logmsg(LOGMSG_DEBUG, "%s: pointing ix %d at  %016llx\n", __func__,
+        logmsg(LOGMSG_INFO, "%s: pointing ix %d at  %016llx\n", __func__,
+               file_num, version_num);
+    } else if (file_type == LLMETA_FVER_FILE_TYPE_DTA) {
+        logmsg(LOGMSG_INFO, "%s: pointing data %d at  %016llx\n", __func__,
                file_num, version_num);
     }
 
@@ -3510,7 +3534,7 @@ backout:
  * returns <0 if there was an error, 0 the lookup was successful or if  the key
  * wasn't found in the llmeta db */
 int bdb_get_in_schema_change(
-    const char *db_name,            /* name of table to check */
+    tran_type *input_trans, const char *db_name, /* name of table to check */
     void **schema_change_data,      /* if this points to NULL it means we
                                      * are no longer in a schema change
                                      * if !NULL it means that we are in the
@@ -3572,13 +3596,13 @@ int bdb_get_in_schema_change(
 
 retry:
     /* try to fetch the schema change data */
-    rc = bdb_lite_exact_var_fetch(llmeta_bdb_state, key, schema_change_data,
-                                  &datalen, bdberr);
+    rc = bdb_lite_exact_var_fetch_tran(llmeta_bdb_state, input_trans, key,
+                                       schema_change_data, &datalen, bdberr);
 
     /* handle return codes */
     if (rc || *bdberr != BDBERR_NOERROR) {
 
-        if (*bdberr == BDBERR_DEADLOCK) {
+        if (*bdberr == BDBERR_DEADLOCK && !input_trans) {
             if (++retries < 500 /*gbl_maxretries*/)
                 goto retry;
 
@@ -4403,13 +4427,102 @@ done:
     return rc;
 }
 
-int bdb_get_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
-                               unsigned long long *genid, unsigned int *host,
-                               int *bdberr)
+int bdb_get_num_sc_done(bdb_state_type *bdb_state, tran_type *tran,
+                        unsigned long long *num, int *bdberr)
 {
     int rc;
     char key[LLMETA_IXLEN] = {0};
     struct llmeta_file_type_key file_type_key;
+    int fndlen;
+    *num = 0;
+    uint8_t *p_buf = (uint8_t *)key, *p_buf_end = (p_buf + LLMETA_IXLEN);
+    unsigned long long tmpnum;
+
+    *bdberr = BDBERR_NOERROR;
+
+    file_type_key.file_type = LLMETA_TABLE_NUM_SC_DONE;
+
+    if (!(llmeta_file_type_key_put(&(file_type_key), p_buf, p_buf_end))) {
+        logmsg(LOGMSG_ERROR, "%s: llmeta_file_type_key_put returns NULL\n",
+               __func__);
+        *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+
+    rc = bdb_lite_exact_fetch_tran(llmeta_bdb_state, tran, key, &tmpnum,
+                                   sizeof(tmpnum), &fndlen, bdberr);
+
+    tmpnum = flibc_ntohll(tmpnum);
+
+    if (rc == 0)
+        *num = tmpnum;
+    else
+        *num = 0;
+    return 0;
+}
+
+int bdb_increment_num_sc_done(bdb_state_type *bdb_state, tran_type *tran,
+                              int *bdberr)
+{
+    int rc;
+    int started_our_own_transaction = 0;
+    char key[LLMETA_IXLEN] = {0};
+    unsigned long long num = 0;
+
+    struct llmeta_file_type_key file_type_key;
+    uint8_t *p_buf = (uint8_t *)key, *p_buf_end = (p_buf + LLMETA_IXLEN);
+
+    *bdberr = BDBERR_NOERROR;
+
+    if (tran == NULL) {
+        /* This function needs to be called with a parent transaction.*/
+        return -1;
+    }
+
+    file_type_key.file_type = LLMETA_TABLE_NUM_SC_DONE;
+
+    if (!(llmeta_file_type_key_put(&(file_type_key), p_buf, p_buf_end))) {
+        logmsg(LOGMSG_ERROR, "%s: llmeta_file_type_key_put returns NULL\n",
+               __func__);
+        *bdberr = BDBERR_BADARGS;
+        rc = -1;
+        goto done;
+    }
+
+    rc = bdb_get_num_sc_done(bdb_state, tran, &num, bdberr);
+    if (rc) {
+        if (*bdberr == BDBERR_FETCH_DTA) {
+            num = 1;
+            num = flibc_htonll(num);
+            rc = bdb_lite_add(llmeta_bdb_state, tran, &num,
+                              sizeof(unsigned long long), key, bdberr);
+            goto done;
+        } else
+            goto done;
+    }
+
+    rc = bdb_lite_exact_del(llmeta_bdb_state, tran, key, bdberr);
+    if (rc && *bdberr != BDBERR_DEL_DTA)
+        goto done;
+
+    num++;
+
+    num = flibc_htonll(num);
+
+    rc = bdb_lite_add(llmeta_bdb_state, tran, &num, sizeof(unsigned long long),
+                      key, bdberr);
+
+done:
+    return rc;
+}
+
+int bdb_get_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
+                    const char *table, unsigned long long *genid,
+                    unsigned int *host, int *bdberr)
+{
+    int rc;
+    char key[LLMETA_IXLEN] = {0};
+    struct llmeta_schema_change_type schema_change;
     int fndlen;
     uint8_t *p_buf = (uint8_t *)key, *p_buf_end = (p_buf + LLMETA_IXLEN);
     int data_sz = sizeof(unsigned long long) + sizeof(unsigned int);
@@ -4417,11 +4530,16 @@ int bdb_get_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
 
     *bdberr = BDBERR_NOERROR;
 
-    file_type_key.file_type = LLMETA_DISABLE_PLAN_GENID;
+    schema_change.file_type = LLMETA_SC_SEEDS;
+    /*copy the table name and check its length so that we have a clean key*/
+    strncpy(schema_change.dbname, table, sizeof(schema_change.dbname));
+    schema_change.dbname_len = strlen(schema_change.dbname) + 1;
 
-    if (!(llmeta_file_type_key_put(&(file_type_key), p_buf, p_buf_end))) {
-        logmsg(LOGMSG_ERROR, "%s: llmeta_file_type_key_put returns NULL\n",
-                __func__);
+    if (!(llmeta_schema_change_type_put(&(schema_change), p_buf, p_buf_end))) {
+        logmsg(LOGMSG_ERROR, "%s: llmeta_schema_change_type_put returns NULL\n",
+               __func__);
+        logmsg(LOGMSG_ERROR, "%s: check the length of table: %s\n", __func__,
+               table);
         *bdberr = BDBERR_BADARGS;
         return -1;
     }
@@ -4435,14 +4553,14 @@ int bdb_get_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
     return rc;
 }
 
-int bdb_set_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
-                               unsigned long long genid, unsigned int host,
-                               int *bdberr)
+int bdb_set_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
+                    const char *table, unsigned long long genid,
+                    unsigned int host, int *bdberr)
 {
     int rc;
     int started_our_own_transaction = 0;
     char key[LLMETA_IXLEN] = {0};
-    struct llmeta_file_type_key file_type_key;
+    struct llmeta_schema_change_type schema_change;
     uint8_t *p_buf = (uint8_t *)key, *p_buf_end = (p_buf + LLMETA_IXLEN);
 
     int data_sz = sizeof(unsigned long long) + sizeof(unsigned int);
@@ -4461,17 +4579,22 @@ int bdb_set_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
         }
     }
 
-    file_type_key.file_type = LLMETA_DISABLE_PLAN_GENID;
+    schema_change.file_type = LLMETA_SC_SEEDS;
+    /*copy the table name and check its length so that we have a clean key*/
+    strncpy(schema_change.dbname, table, sizeof(schema_change.dbname));
+    schema_change.dbname_len = strlen(schema_change.dbname) + 1;
 
-    if (!(llmeta_file_type_key_put(&(file_type_key), p_buf, p_buf_end))) {
-        logmsg(LOGMSG_ERROR, "%s: llmeta_file_type_key_put returns NULL\n",
-                __func__);
+    if (!(llmeta_schema_change_type_put(&(schema_change), p_buf, p_buf_end))) {
+        logmsg(LOGMSG_ERROR, "%s: llmeta_schema_change_type_put returns NULL\n",
+               __func__);
+        logmsg(LOGMSG_ERROR, "%s: check the length of table: %s\n", __func__,
+               table);
         *bdberr = BDBERR_BADARGS;
         rc = -1;
         goto done;
     }
 
-    rc = bdb_get_disable_plan_genid(bdb_state, tran, &genid, &host, bdberr);
+    rc = bdb_get_sc_seed(bdb_state, tran, table, &genid, &host, bdberr);
     if (rc) { //not found, just add -- should refactor
         if (*bdberr == BDBERR_FETCH_DTA) {
             rc = bdb_lite_add(llmeta_bdb_state, tran, data_buf, data_sz, key,
@@ -4500,13 +4623,13 @@ done:
     return rc;
 }
 
-int bdb_delete_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
-                                  int *bdberr)
+int bdb_delete_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
+                       const char *table, int *bdberr)
 {
     int rc;
     int started_our_own_transaction = 0;
     char key[LLMETA_IXLEN] = {0};
-    struct llmeta_file_type_key file_type_key;
+    struct llmeta_schema_change_type schema_change;
     uint8_t *p_buf = (uint8_t *)key, *p_buf_end = (p_buf + LLMETA_IXLEN);
 
     *bdberr = BDBERR_NOERROR;
@@ -4518,10 +4641,16 @@ int bdb_delete_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
             return -1;
     }
 
-    file_type_key.file_type = LLMETA_DISABLE_PLAN_GENID;
-    if (!(llmeta_file_type_key_put(&(file_type_key), p_buf, p_buf_end))) {
-        logmsg(LOGMSG_ERROR, "%s: llmeta_file_type_key_put returns NULL\n",
-                __func__);
+    schema_change.file_type = LLMETA_SC_SEEDS;
+    /*copy the table name and check its length so that we have a clean key*/
+    strncpy(schema_change.dbname, table, sizeof(schema_change.dbname));
+    schema_change.dbname_len = strlen(schema_change.dbname) + 1;
+
+    if (!(llmeta_schema_change_type_put(&(schema_change), p_buf, p_buf_end))) {
+        logmsg(LOGMSG_ERROR, "%s: llmeta_schema_change_type_put returns NULL\n",
+               __func__);
+        logmsg(LOGMSG_ERROR, "%s: check the length of table: %s\n", __func__,
+               table);
         *bdberr = BDBERR_BADARGS;
         rc = -1;
         goto done;
@@ -5782,8 +5911,8 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
     case LLMETA_LOGICAL_LSN_LWM:
         logmsg(LOGMSG_USER, "LLMETA_LOGICAL_LSN_LWM\n");
         break;
-    case LLMETA_DISABLE_PLAN_GENID:
-        logmsg(LOGMSG_USER, "LLMETA_DISABLE_PLAN_GENID\n");
+    case LLMETA_SC_SEEDS:
+        logmsg(LOGMSG_USER, "LLMETA_SC_SEEDS\n");
         break;
     case LLMETA_TABLE_USER_READ:
     case LLMETA_TABLE_USER_WRITE: {
@@ -8451,6 +8580,150 @@ int bdb_get_all_for_versioned_sp(char *name, char ***versions, int *num)
     return rc;
 }
 
+static int bdb_process_each_entry(bdb_state_type *bdb_state, tran_type *tran,
+                                  void *key, int klen,
+                                  int (*func)(bdb_state_type *bdb_state,
+                                              void *arg, void *rec),
+                                  void *arg, int *bdberr)
+{
+    int fnd;
+    uint8_t out[LLMETA_IXLEN];
+    uint8_t nxt[LLMETA_IXLEN];
+    int rc;
+    int irc = 0;
+
+    rc = bdb_lite_fetch_partial_tran(llmeta_bdb_state, tran, key, klen, out,
+                                     &fnd, bdberr);
+    while (rc == 0 && fnd == 1) {
+        if (memcmp(key, out, klen) != 0) {
+            break;
+        }
+
+        if ((irc = (*func)(bdb_state, arg, out)) != 0)
+            break;
+
+        rc = bdb_lite_fetch_keys_fwd_tran(llmeta_bdb_state, tran, out, nxt, 1,
+                                          &fnd, bdberr);
+        memcpy(out, nxt, sizeof(out));
+    }
+    return irc ? irc : rc;
+}
+
+static int table_version_callback(bdb_state_type *bdb_state, void *arg,
+                                  struct llmeta_sane_table_version *rec)
+{
+    const char *tblname = rec->tblname;
+    int bdberr;
+    int rc;
+
+#if 0  
+    /* This test would skip alter leaked file; we don't need to */
+    if (get_dbnum_by_name(bdb_state, tblname) < 0)
+    {
+        fprintf(stderr, "Found deleted file %s\n", tblname);
+        rc = bdb_purge_unused_files_by_name(tblname);
+    }
+#else
+    rc = ((int (*)(bdb_state_type *, const char *, int *))arg)(
+        bdb_state, tblname, &bdberr);
+#endif
+
+    return rc;
+}
+
+int bdb_process_each_table_version_entry(bdb_state_type *bdb_state,
+                                         int (*func)(bdb_state_type *bdb_state,
+                                                     const char *tblname,
+                                                     int *bdberr),
+                                         int *bdberr)
+{
+    struct llmeta_file_type_key key = {0};
+
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+
+    key.file_type = htonl(LLMETA_TABLE_VERSION);
+
+    return bdb_process_each_entry(
+        bdb_state, NULL, &key, sizeof(key.file_type),
+        (int (*)(bdb_state_type *, void *, void *))table_version_callback,
+        (void *)func, bdberr);
+}
+
+static int table_file_callback(bdb_state_type *bdb_state,
+                               unsigned long long *file_version,
+                               struct llmeta_file_type_dbname_file_num_key *rec)
+{
+    int rc;
+    unsigned long long version;
+    int fndlen;
+    int bdberr;
+
+    rc = bdb_lite_exact_fetch(llmeta_bdb_state, rec, &version, sizeof(version),
+                              &fndlen, &bdberr);
+
+    return (rc == 0 && fndlen == sizeof(version) && version == *file_version);
+}
+
+static int bdb_process_each_table_entry(bdb_state_type *bdb_state,
+                                        tran_type *tran, int type,
+                                        const char *tblname,
+                                        unsigned long long version, int *bdberr)
+{
+    struct llmeta_file_type_dbname_key key_struct = {0};
+    char key[LLMETA_IXLEN] = {0};
+    uint8_t *p_buf, *p_buf_start, *p_buf_end;
+    size_t key_offset = 0;
+
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+
+    key_struct.file_type = type;
+    strncpy(key_struct.dbname, tblname, sizeof(key_struct.dbname));
+    key_struct.dbname_len = strlen(key_struct.dbname) + 1 /* NULL byte */;
+
+    if (key_struct.dbname_len > LLMETA_TBLLEN) {
+        fprintf(stderr, "%s: db_name is too long\n", __func__);
+        *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+
+    p_buf_start = p_buf = (uint8_t *)key;
+    p_buf_end = (uint8_t *)(key + LLMETA_IXLEN);
+
+    p_buf = llmeta_file_type_dbname_key_put(&key_struct, p_buf, p_buf_end);
+
+    if (!p_buf) {
+        logmsg(LOGMSG_ERROR,
+               "%s: llmeta_file_type_dbname_key_put returns NULL\n", __func__);
+        *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+
+    key_offset = p_buf - p_buf_start;
+
+    return bdb_process_each_entry(
+        bdb_state, tran, &key, key_offset,
+        (int (*)(bdb_state_type *, void *, void *))table_file_callback,
+        &version, bdberr);
+}
+
+int bdb_process_each_table_dta_entry(bdb_state_type *bdb_state, tran_type *tran,
+                                     const char *tblname,
+                                     unsigned long long version, int *bdberr)
+{
+    return bdb_process_each_table_entry(
+        bdb_state, tran, LLMETA_FVER_FILE_TYPE_DTA, tblname, version, bdberr);
+}
+
+int bdb_process_each_table_idx_entry(bdb_state_type *bdb_state, tran_type *tran,
+                                     const char *tblname,
+                                     unsigned long long version, int *bdberr)
+{
+    return bdb_process_each_table_entry(
+        bdb_state, tran, LLMETA_FVER_FILE_TYPE_IX, tblname, version, bdberr);
+}
+
 /*
 ** Save hashed passwords
 ** Key layout is same as plaintext passwd for: LLMETA_USER_PASSWORD
@@ -8472,7 +8745,7 @@ typedef struct {
     } u;
 } passwd_hash;
 #define ITERATIONS 1000
-int bdb_user_password_check(char *user, char *passwd, int  *valid_user)
+int bdb_user_password_check(char *user, char *passwd, int *valid_user)
 {
     passwd_key key = {0};
     if (valid_user)

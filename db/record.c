@@ -102,13 +102,85 @@ void free_cached_idx(uint8_t * *cached_idx);
 
 int gbl_max_wr_rows_per_txn = 0;
 
-static inline int
-add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
+/* Check whether the key for the specified record is already present in
+ * the index.
+ *
+ * @return 1 : yes/error
+ *         0 : no
+ */
+int check_index(struct ireq *iq, void *trans, int ixnum,
+                struct schema *ondisktagsc, blob_buffer_t *blobs,
+                size_t maxblobs, int *opfailcode, int *ixfailnum, int *retrc,
+                const char *ondisktag, void *od_dta, size_t od_len,
+                unsigned long long ins_keys)
+{
+    int ixkeylen;
+    int rc;
+    char ixtag[MAXTAGLEN];
+    char key[MAXKEYLEN];
+    char mangled_key[MAXKEYLEN];
+    char *od_dta_tail = NULL;
+    int od_len_tail;
+    int fndrrn = 0;
+    unsigned long long fndgenid = 0LL;
+
+    ixkeylen = getkeysize(iq->usedb, ixnum);
+    if (ixkeylen < 0) {
+        if (iq->debug)
+            reqprintf(iq, "BAD INDEX %d OR KEYLENGTH %d", ixnum, ixkeylen);
+        reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+        reqerrstr(iq, COMDB2_ADD_RC_INVL_KEY, "bad index %d or keylength %d",
+                  ixnum, ixkeylen);
+        *ixfailnum = ixnum;
+        *opfailcode = OP_FAILED_BAD_REQUEST;
+        *retrc = ERR_BADREQ;
+        return 1;
+    }
+
+    snprintf(ixtag, sizeof(ixtag), "%s_IX_%d", ondisktag, ixnum);
+
+    if (iq->idxInsert)
+        rc = create_key_from_ireq(iq, ixnum, 0, &od_dta_tail, &od_len_tail,
+                                  mangled_key, od_dta, od_len, key);
+    else
+        rc = create_key_from_ondisk_sch_blobs(
+            iq->usedb, ondisktagsc, ixnum, &od_dta_tail, &od_len_tail,
+            mangled_key, ondisktag, od_dta, od_len, ixtag, key, NULL, blobs,
+            maxblobs, iq->tzname);
+    if (rc == -1) {
+        if (iq->debug)
+            reqprintf(iq, "CAN'T FORM INDEX %d", ixnum);
+        reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+        reqerrstr(iq, COMDB2_ADD_RC_INVL_IDX, "cannot form index %d", ixnum);
+        *ixfailnum = ixnum;
+        *opfailcode = OP_FAILED_INTERNAL + ERR_FORM_KEY;
+        *retrc = rc;
+        return 1;
+    }
+
+    if (ix_isnullk(iq->usedb, key, ixnum)) {
+        return 0;
+    }
+
+    rc = ix_find_by_key_tran(iq, key, ixkeylen, ixnum, key, &fndrrn, &fndgenid,
+                             NULL, NULL, 0, trans);
+    if (rc == IX_FND) {
+        *ixfailnum = ixnum;
+        /* If following changes, update OSQL_INSREC in osqlcomm.c */
+        *opfailcode = OP_FAILED_UNIQ; /* really? */
+        *retrc = IX_DUP;
+        return 1;
+    }
+    return 0;
+}
+
+int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                const uint8_t *p_buf_tag_name_end, uint8_t *p_buf_rec,
                const uint8_t *p_buf_rec_end, const unsigned char fldnullmap[32],
                blob_buffer_t *blobs, size_t maxblobs, int *opfailcode,
                int *ixfailnum, int *rrn, unsigned long long *genid,
-               unsigned long long ins_keys, int opcode, int blkpos, int flags)
+               unsigned long long ins_keys, int opcode, int blkpos, int flags,
+               int rec_flags)
 {
     char tag[MAXTAGLEN + 1];
     int is_od_tag;
@@ -285,7 +357,7 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                           reclen, tag, expected_dat_len);
             reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
             reqerrstr(iq, COMDB2_ADD_RC_INVL_DTA,
-                      "bad data length %u tag '%s' expects data length %u\n",
+                      "bad data length %u tag '%s' expects data length %u",
                       reclen, tag, expected_dat_len);
             *opfailcode = OP_FAILED_BAD_REQUEST;
             retrc = ERR_BADREQ;
@@ -296,8 +368,8 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     reclen = expected_dat_len;
 
     if (!(flags & RECFLAGS_NO_BLOBS) &&
-        check_blob_buffers(iq, blobs, maxblobs, iq->usedb->tablename, tag,
-                           dbname_schema, record, fldnullmap) != 0) {
+        (rc = check_blob_buffers(iq, blobs, maxblobs, iq->usedb->tablename, tag,
+                                 dbname_schema, record, fldnullmap)) != 0) {
         reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
         reqerrstr(iq, COMDB2_ADD_RC_INVL_BLOB,
                   "no blobs flags with blob buffers");
@@ -398,6 +470,61 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         *opfailcode = ERR_NULL_CONSTRAINT;
         rc = retrc = ERR_NULL_CONSTRAINT;
         ERR;
+    }
+
+    if ((rec_flags & OSQL_IGNORE_FAILURE) != 0) {
+        int upsert_idx = rec_flags >> 8;
+
+        /* If a specific index has been used in the ON CONFLICT clause (aka
+         * upsert target/index), then we must move the check for that particular
+         * index to the very end so that errors from other (non-ignorable)
+         * unique indexes have already been verified before we check and ignore
+         * the error (if any) from the upsert index.
+         */
+        for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
+            /* Skip check for upsert index, we'll do it after this loop. */
+            if (ixnum == upsert_idx) {
+                continue;
+            }
+
+            /* Ignore dup keys */
+            if (iq->usedb->ix_dupes[ixnum] != 0) {
+                continue;
+            }
+
+            /* Check for partial keys only when needed. */
+            if (gbl_partial_indexes && iq->usedb->ix_partial &&
+                !(ins_keys & (1ULL << ixnum))) {
+                continue;
+            }
+
+            rc = check_index(iq, trans, ixnum, ondisktagsc, blobs, maxblobs,
+                             opfailcode, ixfailnum, &retrc, ondisktag, od_dta,
+                             od_len, ins_keys);
+            if (rc) {
+                ERR
+            }
+        }
+
+        /* Perform the check for upsert index that we skipped above. */
+        if (upsert_idx != MAXINDEX + 1) {
+
+            /* It must be a unique key. */
+            assert(iq->usedb->ix_dupes[upsert_idx] == 0);
+
+            /* Check for partial keys only when needed. */
+            if (gbl_partial_indexes && iq->usedb->ix_partial &&
+                !(ins_keys & (1ULL << upsert_idx))) {
+                /* NOOP */
+            } else {
+                rc = check_index(iq, trans, upsert_idx, ondisktagsc, blobs,
+                                 maxblobs, opfailcode, ixfailnum, &retrc,
+                                 ondisktag, od_dta, od_len, ins_keys);
+                if (rc) {
+                    ERR
+                }
+            }
+        }
     }
 
     /*
@@ -539,7 +666,7 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
 
             /* add the key */
             rc = ix_addk(iq, trans, key, ixnum, *genid, *rrn, od_dta_tail,
-                         od_len_tail);
+                         od_len_tail, ix_isnullk(iq->usedb, key, ixnum));
             if (iq->debug) {
                 reqprintf(iq, "ix_addk IX %d LEN %u KEY ", ixnum, ixkeylen);
                 reqdumphex(iq, key, ixkeylen);
@@ -608,7 +735,7 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
 
     if (!(flags & RECFLAGS_NEW_SCHEMA)) {
         iq->usedb->write_count[RECORD_WRITE_INS]++;
-        gbl_sc_last_writer_time = time_epoch();
+        gbl_sc_last_writer_time = comdb2_time_epoch();
 
         /* For live schema change */
         rc = live_sc_post_add(iq, trans, *genid, od_dta, ins_keys, 
@@ -649,19 +776,6 @@ err:
     return retrc;
 }
 
-int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
-               const uint8_t *p_buf_tag_name_end, uint8_t *p_buf_rec,
-               const uint8_t *p_buf_rec_end, const unsigned char fldnullmap[32],
-               blob_buffer_t *blobs, size_t maxblobs, int *opfailcode,
-               int *ixfailnum, int *rrn, unsigned long long *genid,
-               unsigned long long ins_keys, int opcode, int blkpos, int flags)
-{
-    return add_record_int(iq, trans, p_buf_tag_name, p_buf_tag_name_end,
-                          p_buf_rec, p_buf_rec_end, fldnullmap, blobs, maxblobs,
-                          opfailcode, ixfailnum, rrn, genid, ins_keys, opcode,
-                          blkpos, flags);
-}
-
 /*
  * Add an individual key.  The operation
  * is defered until the end of the block op (we call insert_add_op).
@@ -672,7 +786,8 @@ static int add_key(struct ireq *iq, void *trans, int ixnum,
                    unsigned long long ins_keys, int rrn,
                    unsigned long long genid, void *od_dta, size_t od_len,
                    int opcode, int blkpos, int *opfailcode, char *newkey,
-                   char *od_dta_tail, int od_tail_len, int do_inline)
+                   char *od_dta_tail, int od_tail_len, int do_inline,
+                   int rec_flags)
 {
     int rc;
 
@@ -701,7 +816,7 @@ static int add_key(struct ireq *iq, void *trans, int ixnum,
         }
 
         rc = ix_addk(iq, trans, newkey, ixnum, genid, rrn, od_dta_tail,
-                     od_tail_len);
+                     od_tail_len, ix_isnullk(iq->usedb, newkey, ixnum));
         if (iq->debug) {
             reqprintf(iq, "ix_addk IX %d RRN %d KEY ", ixnum, rrn);
             reqdumphex(iq, newkey, getkeysize(iq->usedb, ixnum));
@@ -928,7 +1043,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                 reqprintf(iq, "BAD DTA LEN %u TAG %s EXPECTS DTALEN %u\n",
                           reclen, tag, expected_dat_len);
             reqerrstr(iq, COMDB2_UPD_RC_INVL_DTA,
-                      "bad data length %u tag '%s' expects data length %u\n",
+                      "bad data length %u tag '%s' expects data length %u",
                       reclen, tag, expected_dat_len);
             *opfailcode = OP_FAILED_BAD_REQUEST;
             retrc = ERR_BADREQ;
@@ -1444,7 +1559,8 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             gbl_upd_key++;
 
             rc = ix_upd_key(iq, trans, newkey, iq->usedb->ix_keylen[ixnum],
-                            ixnum, vgenid, *genid, od_dta_tail, od_tail_len);
+                            ixnum, vgenid, *genid, od_dta_tail, od_tail_len,
+                            ix_isnullk(iq->usedb, newkey, ixnum));
             if (iq->debug)
                 reqprintf(iq, "upd_key IX %d GENID 0x%016llx RC %d", ixnum,
                           *genid, rc);
@@ -1472,7 +1588,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             /* only delete keys when told */
             if (!gbl_partial_indexes || !iq->usedb->ix_partial ||
                 (del_keys & (1ULL << ixnum))) {
-                rc = ix_delk(iq, trans, oldkey, ixnum, rrn, vgenid);
+                rc = ix_delk(iq, trans, oldkey, ixnum, rrn, vgenid, ix_isnullk(iq->usedb, oldkey, ixnum));
 
                 if (iq->debug)
                     reqprintf(iq, "ix_delk IX %d RRN %d RC %d", ixnum, rrn, rc);
@@ -1501,7 +1617,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                 (ins_keys & (1ULL << ixnum))) {
                 rc = add_key(iq, trans, ixnum, ins_keys, rrn, *genid, od_dta,
                              od_len, opcode, blkpos, opfailcode, newkey,
-                             od_dta_tail, od_tail_len, do_inline);
+                             od_dta_tail, od_tail_len, do_inline, 0);
 
                 if (iq->debug)
                     reqprintf(iq, "add_key IX %d RRN %d RC %d", ixnum, rrn, rc);
@@ -1734,7 +1850,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     }
 
     iq->usedb->write_count[RECORD_WRITE_UPD]++;
-    gbl_sc_last_writer_time = time_epoch();
+    gbl_sc_last_writer_time = comdb2_time_epoch();
 
     dbglog_record_db_write(iq, "update");
     if (iq->__limits.maxcost && iq->cost > iq->__limits.maxcost)
@@ -1990,7 +2106,8 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     if (iq->debug)
         reqprintf(iq, "DEL RRN %d GENID 0x%llx RC %d", rrn, genid, rc);
     if (rc != 0) {
-        *opfailcode = OP_FAILED_INTERNAL + ERR_DEL_DTA;
+        *opfailcode = (rc == ERR_VERIFY) ? OP_FAILED_VERIFY
+                                         : OP_FAILED_INTERNAL + ERR_DEL_DTA;
         retrc = rc;
         goto err;
     }
@@ -2050,7 +2167,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             gbl_osqlpf_step[*(iq->osql_step_ix)].step += 2;
 
         /* delete the key */
-        rc = ix_delk(iq, trans, key, ixnum, rrn, genid);
+        rc = ix_delk(iq, trans, key, ixnum, rrn, genid, ix_isnullk(iq->usedb, key, ixnum));
         if (iq->debug) {
             reqprintf(iq, "ix_delk IX %d KEY ", ixnum);
             reqdumphex(iq, key, getkeysize(iq->usedb, ixnum));
@@ -2099,7 +2216,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     }
 
     iq->usedb->write_count[RECORD_WRITE_DEL]++;
-    gbl_sc_last_writer_time = time_epoch();
+    gbl_sc_last_writer_time = comdb2_time_epoch();
 
 err:
     dbglog_record_db_write(iq, "delete");
@@ -2172,7 +2289,7 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
         }
 
         rc = ix_addk(iq, trans, key, ixnum, newgenid, 2, (void *)od_dta_tail,
-                     od_tail_len);
+                     od_tail_len, ix_isnullk(iq->usedb, key, ixnum));
         if (iq->debug) {
             reqprintf(iq, "ix_addk IX %d KEY ", ixnum);
             reqdumphex(iq, key, getkeysize(iq->usedb, ixnum));
@@ -2550,7 +2667,7 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
             goto err;
         }
 
-        rc = ix_delk(iq, trans, key, ixnum, 2 /*rrn*/, oldgenid);
+        rc = ix_delk(iq, trans, key, ixnum, 2 /*rrn*/, oldgenid, ix_isnullk(iq->usedb, key, ixnum));
         if (iq->debug) {
             reqprintf(iq, "ix_delk IX %d KEY ", ixnum);
             reqdumphex(iq, key, getkeysize(iq->usedb, ixnum));
@@ -2780,7 +2897,7 @@ int del_new_record(struct ireq *iq, void *trans, unsigned long long genid,
             goto err;
         }
 
-        rc = ix_delk(iq, trans, key, ixnum, 2 /*rrn*/, ngenid);
+        rc = ix_delk(iq, trans, key, ixnum, 2 /*rrn*/, ngenid, ix_isnullk(iq->usedb, key, ixnum));
         if (iq->debug) {
             reqprintf(iq, "ix_delk IX %d KEY ", ixnum);
             reqdumphex(iq, key, getkeysize(iq->usedb, ixnum));
@@ -3257,7 +3374,7 @@ void testrep(int niter, int recsz)
     iq.usedb = thedb->dbs[0];
 
     n = 0;
-    now = last = time_epochms();
+    now = last = comdb2_time_epochms();
 
     for (i = 0; i < niter; i++) {
         tran = bdb_tran_begin(thedb->bdb_env, NULL, &bdberr);
@@ -3277,7 +3394,7 @@ void testrep(int niter, int recsz)
             goto done;
         }
 
-        now = time_epochms();
+        now = comdb2_time_epochms();
         if ((now - last) > 1000) {
             logmsg(LOGMSG_ERROR, "%d\n", n);
             n = 0;

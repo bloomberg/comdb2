@@ -415,10 +415,15 @@ static void sleepFunc(sqlite3_context *context, int argc, sqlite3_value *argv[])
   int i;
   for(i = 0; i < n; i++) {
     sleep(1);
-    if( comdb2_sql_tick() )
-      break;  
-    /* We could also return error by doing
-     * sqlite3_result_error(context, "Interrupted", -1); */
+    rc = comdb2_sql_tick();
+    if( rc==SQLITE_LIMIT ){
+      break;
+    }
+    if( rc ){
+      logmsg(LOGMSG_INFO, "Peer dropped connection\n");
+      sqlite3_result_error(context, "Peer dropped connection", -1);
+      return;
+    }
   }
   sqlite3_result_int(context, i);
 }
@@ -806,6 +811,23 @@ static void partitionInfoFunc(
     }
   }
 }
+
+/*
+** Implementation of the comdb2_starttime() SQL function.
+*/
+static void comdb2StartTimeFunc(
+  sqlite3_context *context,
+  int NotUsed,
+  sqlite3_value **NotUsed2
+){
+  UNUSED_PARAMETER2(NotUsed, NotUsed2);
+  extern int gbl_starttime;
+  dttz_t dt = {gbl_starttime, 0};
+  sqlite3_result_datetime(context, &dt, NULL);
+}
+
+/*
+
 
 /*
 ** Implementation of the last_insert_rowid() SQL function.  The return
@@ -2204,6 +2226,7 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(comdb2_port,       0, 0, 0, comdb2PortFunc),
     FUNCTION(comdb2_dbname,     0, 0, 0, comdb2DbnameFunc),
     FUNCTION(comdb2_prevquerycost,0,0,0, comdb2PrevquerycostFunc),
+    FUNCTION(comdb2_starttime,  0, 0, 0, comdb2StartTimeFunc),
 #endif
 #ifdef SQLITE_ENABLE_UNKNOWN_SQL_FUNCTION
     FUNCTION(unknown,           -1, 0, 0, unknownFunc      ),

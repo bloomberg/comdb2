@@ -135,7 +135,7 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
     unsigned char metabuf[512];
     int pgsz;
     int created_temp_table = 0;
-    int nrecs = 0;
+    unsigned long long nrecs = 0;
     unsigned long long recs_looked_at = 0;
     int have_checksums = 0;
     unsigned int pgno = 0;
@@ -222,7 +222,7 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
 #endif
 
     rc = read(fd, page, pgsz);
-    last = time_epoch();
+    last = comdb2_time_epoch();
     while (rc == pgsz) {
         if (ISLEAF(page)) {
             int i, ret;
@@ -296,7 +296,7 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
                     continue;
                 /* select comp_pct / 100 records */
                 if (rand() % 100 < comp_pct) {
-                    now = time_epoch();
+                    now = comdb2_time_epoch();
                     if (now - last >= 10) {
                         last = now;
                         rc = check_free_space(bdb_state->dir);
@@ -350,7 +350,7 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
         rc = -1;
         goto done;
     }
-    logmsg(LOGMSG_INFO, "summarize added %d records, traversed %lld\n", nrecs,
+    logmsg(LOGMSG_INFO, "summarize added %llu records, traversed %llu\n", nrecs,
            recs_looked_at);
 done:
     if (fd != -1)

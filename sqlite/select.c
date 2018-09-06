@@ -2644,7 +2644,11 @@ static int multiSelect(
         if( dest.eDest==SRT_Output ){
           Select *pFirst = p;
           while( pFirst->pPrior ) pFirst = pFirst->pPrior;
-          generateColumnNames(pParse, pFirst->pSrc, pFirst->pEList);
+          /* COMDB2 MODIFICATION
+           * I need this "bug" to return "wrong" types for comdb2sql
+           * It was: generateColumnNames(pParse, pFirst->pSrc, pFirst->pEList);
+           */
+          generateColumnNames(pParse, 0, pFirst->pEList);
         }
         iBreak = sqlite3VdbeMakeLabel(v);
         iCont = sqlite3VdbeMakeLabel(v);
@@ -2719,7 +2723,11 @@ static int multiSelect(
       if( dest.eDest==SRT_Output ){
         Select *pFirst = p;
         while( pFirst->pPrior ) pFirst = pFirst->pPrior;
-        generateColumnNames(pParse, pFirst->pSrc, pFirst->pEList);
+        /* COMDB2 MODIFICATION
+         * I need this "bug" to return "wrong" types for comdb2sql
+         * It was: generateColumnNames(pParse, pFirst->pSrc, pFirst->pEList);
+         */
+        generateColumnNames(pParse, 0, pFirst->pEList);
       }
       iBreak = sqlite3VdbeMakeLabel(v);
       iCont = sqlite3VdbeMakeLabel(v);
@@ -3332,7 +3340,11 @@ static int multiSelectOrderBy(
   if( pDest->eDest==SRT_Output ){
     Select *pFirst = pPrior;
     while( pFirst->pPrior ) pFirst = pFirst->pPrior;
-    generateColumnNames(pParse, pFirst->pSrc, pFirst->pEList);
+    /* COMDB2 MODIFICATION
+     * I need this "bug" to return "wrong" types for comdb2sql
+     * It was: generateColumnNames(pParse, pFirst->pSrc, pFirst->pEList);
+     */
+    generateColumnNames(pParse, 0, pFirst->pEList);
   }
 
   /* Reassembly the compound query so that it will be freed correctly
@@ -5621,7 +5633,8 @@ int sqlite3Select(
     memset(&sNC, 0, sizeof(sNC));
     sNC.pParse = pParse;
     sNC.pSrcList = pTabList;
-    sNC.pAggInfo = &sAggInfo;
+    sNC.uNC.pAggInfo = &sAggInfo;
+    VVA_ONLY( sNC.ncFlags = NC_UAggInfo; )
     sAggInfo.mnReg = pParse->nMem+1;
     sAggInfo.nSortingColumn = pGroupBy ? pGroupBy->nExpr : 0;
     sAggInfo.pGroupBy = pGroupBy;

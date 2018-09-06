@@ -35,6 +35,9 @@
 #include "genid.h"
 #include "logmsg.h"
 
+/* NOTE: This is from "comdb2.h". */
+extern int ix_isnullk(void *db_table, void *key, int ixnum);
+
 /* print to sb if available lua callback otherwise */
 static int locprint(SBUF2 *sb, int (*lua_callback)(void *, const char *), 
         void *lua_params, char *fmt, ...)
@@ -53,7 +56,7 @@ static int locprint(SBUF2 *sb, int (*lua_callback)(void *, const char *),
 }
 
 static int bdb_verify_ll(
-    SBUF2 *sb, bdb_state_type *bdb_state,
+    SBUF2 *sb, bdb_state_type *bdb_state, void *db_table,
     int (*formkey_callback)(void *parm, void *dta, void *blob_parm, int ix,
                             void *keyout, int *keysz),
     int (*get_blob_sizes_callback)(void *parm, void *dta, int blobs[16],
@@ -70,7 +73,7 @@ static int bdb_verify_ll(
     int attempt_fix, unsigned int lid);
 
 int bdb_verify(
-    SBUF2 *sb, bdb_state_type *bdb_state,
+    SBUF2 *sb, bdb_state_type *bdb_state, void *db_table,
     int (*formkey_callback)(void *parm, void *dta, void *blob_parm, int ix,
                             void *keyout, int *keysz),
     int (*get_blob_sizes_callback)(void *parm, void *dta, int blobs[16],
@@ -100,7 +103,7 @@ int bdb_verify(
         return rc;
     }
 
-    rc = bdb_verify_ll(sb, bdb_state, formkey_callback, get_blob_sizes_callback,
+    rc = bdb_verify_ll(sb, bdb_state, db_table, formkey_callback, get_blob_sizes_callback,
                        vtag_callback, add_blob_buffer_callback,
                        free_blob_buffer_callback, verify_indexes_callback,
                        callback_parm, 
@@ -275,7 +278,7 @@ extern int gbl_expressions_indexes;
 int is_comdb2_index_expression(const char *dbname);
 /* TODO: handle deadlock, get rowlocks if db in rowlocks mode */
 static int bdb_verify_ll(
-    SBUF2 *sb, bdb_state_type *bdb_state,
+    SBUF2 *sb, bdb_state_type *bdb_state, void *db_table,
     int (*formkey_callback)(void *parm, void *dta, void *blob_parm, int ix,
                             void *keyout, int *keysz),
     int (*get_blob_sizes_callback)(void *parm, void *dta, int blobs[16],
@@ -334,7 +337,7 @@ static int bdb_verify_ll(
     bzero(&dbt_blob_key, sizeof(DBT));
     bzero(&dbt_blob_data, sizeof(DBT));
 
-    now = last = time_epochms();
+    now = last = comdb2_time_epochms();
 
     /* scan 1 - run through data, verify all the keys and blobs */
     for (dtastripe = 0; dtastripe < bdb_state->attr->dtastripe; dtastripe++) {
@@ -364,7 +367,7 @@ static int bdb_verify_ll(
             nrecs++;
             nrecs_progress++;
 
-            now = time_epochms();
+            now = comdb2_time_epochms();
 
             /* check if comdb2sc is killed */
             if ((now - last) > 1000) {
@@ -557,9 +560,14 @@ static int bdb_verify_ll(
 
                 memcpy(dbt_key.data, expected_keybuf, keylen);
                 dbt_key.size = keylen;
-                if (bdb_state->ixdups[ix]) {
+                if (bdb_keycontainsgenid(bdb_state, ix)) {
                     unsigned long long masked_genid =
                         get_search_genid(bdb_state, genid);
+
+                    /* use 0 as the genid if no null values to keep it unique */
+                    if (bdb_state->ixnulls[ix] && !ix_isnullk(db_table, dbt_key.data, ix))
+                        masked_genid = 0;
+
                     memcpy((char *)dbt_key.data + keylen, &masked_genid,
                            sizeof(unsigned long long));
                     dbt_key.size += sizeof(unsigned long long);
@@ -577,7 +585,8 @@ static int bdb_verify_ll(
 
                 rc = ckey->c_get(ckey, &dbt_key, &dbt_data, DB_SET);
                 if (!(has_keys & (1ULL << ix))) {
-                    if (!rc) {
+                    if (!rc &&
+                        (bdb_state->ixdups[ix] || genid == verify_genid)) {
                         ret = 1;
                         locprint(
                             sb, lua_callback, lua_params,
@@ -667,7 +676,7 @@ static int bdb_verify_ll(
             nrecs++;
             nrecs_progress++;
 
-            now = time_epochms();
+            now = comdb2_time_epochms();
 
             /* check if comdb2sc is killed */
             if ((now - last) > 1000) {
@@ -864,8 +873,9 @@ static int bdb_verify_ll(
                 goto next_key;
             }
 
-            if (bdb_state->ixdups[ix])
+            if (bdb_keycontainsgenid(bdb_state, ix))
                 keylen += sizeof(unsigned long long);
+
             if (keylen != dbt_key.size) {
                 ret = 1;
                 locprint(sb, lua_callback, lua_params,
@@ -887,6 +897,7 @@ static int bdb_verify_ll(
                     unpack_index_odh(bdb_state, &dbt_data, &genid_right,
                                      datacopy_buffer, sizeof(datacopy_buffer),
                                      &odhlen, &ver);
+                    expected_size = odhlen;
                     vtag_callback(callback_parm, datacopy_buffer,
                                   &expected_size, ver);
                     expected_data = datacopy_buffer;
@@ -1025,10 +1036,18 @@ static int bdb_verify_ll(
                 genid_flipped = genid;
 #endif
 
-                if (bdb_state->attr->blobstripe)
-                    stripe = dtastripe;
-                else
-                    stripe = get_dtafile_from_genid(genid);
+                stripe = get_dtafile_from_genid(genid);
+
+                if (!bdb_state->blobstripe_convert_genid ||
+                    bdb_check_genid_is_newer(
+                        bdb_state, genid,
+                        bdb_state->blobstripe_convert_genid)) {
+                    /* verify blobstripe and datastripe is the same */
+                    if (dtastripe != stripe)
+                        locprint(sb, lua_callback, lua_params,
+                                 "!%016llx blobstripe %d != datastripe %d\n",
+                                 genid_flipped, dtastripe, stripe);
+                }
 
                 rc = bdb_state->dbp_data[0][stripe]->paired_cursor_from_lid(
                     bdb_state->dbp_data[0][stripe], lid, &cdata, 0);

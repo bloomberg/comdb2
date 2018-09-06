@@ -1,0 +1,2 @@
+(version='def')
+[exec procedure dyn_lib()] failed with rc -3 [require 'torch'...]:2: dynamic libraries not enabled; check comdb2 documentation

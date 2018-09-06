@@ -186,7 +186,10 @@ osql_req_t *osql_session_getreq(osql_sess_t *sess)
  * Get the request id, aka rqid
  *
  */
-unsigned long long osql_sess_getrqid(osql_sess_t *sess) { return sess->rqid; }
+inline unsigned long long osql_sess_getrqid(osql_sess_t *sess)
+{
+    return sess->rqid;
+}
 
 /**
  * Register client
@@ -938,20 +941,23 @@ void osql_sess_clear_on_error(struct ireq *iq, unsigned long long rqid, uuid_t u
 }
 #endif
 
-int osql_session_is_sorese(osql_sess_t *sess)
+inline int osql_session_is_sorese(osql_sess_t *sess)
 {
     return (sess->type == OSQL_RECOM_REQ || sess->type == OSQL_SOCK_REQ_COST ||
             sess->type == OSQL_SOCK_REQ || sess->type == OSQL_SNAPISOL_REQ ||
             sess->type == OSQL_SERIAL_REQ);
 }
 
-int osql_session_set_ireq(osql_sess_t *sess, struct ireq *iq)
+inline int osql_session_set_ireq(osql_sess_t *sess, struct ireq *iq)
 {
     sess->iq = iq;
     return 0;
 }
 
-struct ireq *osql_session_get_ireq(osql_sess_t *sess) { return sess->iq; }
+inline struct ireq *osql_session_get_ireq(osql_sess_t *sess)
+{
+    return sess->iq;
+}
 
 /**
  * Force a session to end

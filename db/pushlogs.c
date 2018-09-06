@@ -80,7 +80,7 @@ static void *pushlogs_thread(void *voidarg)
         }
 
         /* report progress */
-        now = time_epoch();
+        now = comdb2_time_epoch();
         if (now - lastreport >= 5) {
             lastreport = now;
             char b1[32];

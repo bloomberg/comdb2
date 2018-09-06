@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# create and distribute ssh key
+mkdir ~/.ssh
+chmod 700 ~/.ssh
+cp /common/id_rsa* ~/.ssh/
+chmod 700 ~/.ssh/id_rsa
+cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+export CLUSTER="$(cat common/cluster)"
+echo "CLUSTER is $CLUSTER"
+
+# wait for all the nodes to signal that they're ready
+numnodes=0
+for node in $CLUSTER; do
+    numnodes=$(($numnodes+1))
+done
+echo numnodes $numnodes
+
+declare -A ready
+while :; do 
+    for node in $CLUSTER; do
+        host=$(ssh -o StrictHostKeyChecking=no $node hostname 2>/dev/null)
+        if [[ $? -eq 0 && "$host" == $node ]]; then
+            ready[$node]=1
+        fi
+    done
+
+    ready=0
+    for node in $CLUSTER; do
+        [[ ${ready[$node]} = 1 ]] && ready=$(($ready+1))
+    done
+    [[ $ready -eq $numnodes ]] && break
+done
+
+ssh-keyscan $CLUSTER >> ~/.ssh/known_hosts 2>/dev/null
+
+if [[ $# -ne 0 ]]; then
+    eval $*
+fi
+
+echo READY
+
+if [[ -f /common/user_script ]]; then
+    /common/user_script
+fi

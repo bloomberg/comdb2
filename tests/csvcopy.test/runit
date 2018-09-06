@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# This test case is a collection of queries reported in various 
+# DRQS tickets. As such each one will have different schemas.
+# The driver will just add/alter tables as required.
+
+dbname=$1
+if [[ -z $dbname ]] ; then
+    echo dbname missing
+    exit 1
+fi
+
+cp *.csv $DBDIR/.
+cp agg.csv $DBDIR/../.
+
+for node in $CLUSTER; do
+    if [ $node == $HOSTNAME ] ; then
+        continue
+    fi
+    scp -o StrictHostKeyChecking=no *.csv $node:$DBDIR/.
+    scp -o StrictHostKeyChecking=no agg.csv $node:$DBDIR/../.
+done
+
+cdb2sql ${CDB2_OPTIONS} $dbname default "drop table t1"
+
+for testreq in `ls t*.req` ; do
+    # Setup all the tables this test case needs :-
+    # First drop the table (its ok if this fails,
+    # the table probably doesn't exist).
+    # Then add the table.
+    testname=`echo $testreq | cut -d "." -f 1`
+
+    sed -i -- "s|DBDIR|${DBDIR}|g" *.req
+    sed -i -- "s|DBDIR|${DBDIR}|g" *.expected
+
+    cdb2sql -s ${CDB2_OPTIONS} -f $testreq $dbname default > $testname.output 2>&1
+    echo "diff $testname.expected $testname.output >/dev/null"
+    diff $testname.expected $testname.output >/dev/null
+    if [[  $? -eq 0 ]]; then
+        echo "passed $testname"
+    else
+        echo "failed $testname"
+        exit 1
+    fi
+done
+echo
+exit 0

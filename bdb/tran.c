@@ -182,7 +182,7 @@ int bdb_update_startlsn_lk(bdb_state_type *bdb_state, struct tran_tag *intran,
         if (countstep > maxstep) {
             maxstep = countstep;
 
-            if ((now = time_epoch()) - lastpr) {
+            if ((now = comdb2_time_epoch()) - lastpr) {
                 logmsg(LOGMSG_USER, "Maxstep was %d\n", maxstep);
                 comdb2_cheapstack(stderr);
                 maxstep = 0;
@@ -271,6 +271,11 @@ void bdb_ltran_get_schema_lock(tran_type *ltran)
 {
     ltran->get_schema_lock = 1;
     ltran->single_physical_transaction = 1;
+}
+
+void bdb_ltran_put_schema_lock(tran_type *ltran)
+{
+    ltran->get_schema_lock = 0;
 }
 
 /* Create a txn and add to the txn list.  Called directly from the replication
@@ -605,8 +610,6 @@ int tran_allocate_rlptr(tran_type *tran, DBT **rlptr, DB_LOCK **rlock)
         tran->rc_list = new_rc_list;
         tran->rc_locks = new_rc_locks;
         tran->rc_max += step;
-
-        ret = 1;
     }
 
     if (!(tran->rc_list[tran->rc_count] = pool_getablk(tran->rc_pool))) {
@@ -1211,7 +1214,7 @@ static tran_type *bdb_tran_begin_berk_int(bdb_state_type *bdb_state,
 
 tran_type *bdb_tran_begin_shadow_int(bdb_state_type *bdb_state, int tranclass,
                                      int trak, int *bdberr, int epoch, int file,
-                                     int offset)
+                                     int offset, int is_ha_retry)
 {
     tran_type *tran;
     int rc = 0;
@@ -1246,13 +1249,10 @@ tran_type *bdb_tran_begin_shadow_int(bdb_state_type *bdb_state, int tranclass,
         tran->birth_lsn = tran->snapy_commit_lsn;
     }
 
-    tran->pglogs_hashtbl =
-        hash_init_o(offsetof(struct shadows_pglogs_key, fileid),
-                    DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
+    tran->pglogs_hashtbl = hash_init_o(PGLOGS_KEY_OFFSET, PAGE_KEY_SIZE);
 
     tran->relinks_hashtbl =
-        hash_init_o(offsetof(struct pglogs_relink_key, fileid),
-                    DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
+        hash_init_o(PGLOGS_RELINK_KEY_OFFSET, PAGE_KEY_SIZE);
 
     pthread_mutex_init(&tran->pglogs_mutex, NULL);
 
@@ -1275,8 +1275,9 @@ tran_type *bdb_tran_begin_shadow_int(bdb_state_type *bdb_state, int tranclass,
             }
 
             /* register transaction so we start receiving log undos */
-            tran->osql = bdb_osql_trn_register(bdb_state, tran, trak, bdberr,
-                                               epoch, file, offset);
+            tran->osql =
+                bdb_osql_trn_register(bdb_state, tran, trak, bdberr, epoch,
+                                      file, offset, is_ha_retry);
             if (!tran->osql) {
                 if (*bdberr != BDBERR_NOT_DURABLE)
                     logmsg(LOGMSG_ERROR, "%s %d\n", __func__, *bdberr);
@@ -1409,28 +1410,30 @@ tran_type *bdb_tran_begin_readcommitted(bdb_state_type *bdb_state, int trak,
                                         int *bdberr)
 {
     return bdb_tran_begin_shadow_int(bdb_state, TRANCLASS_READCOMMITTED, trak,
-                                     bdberr, 0, 0, 0);
+                                     bdberr, 0, 0, 0, 0);
 }
 
 tran_type *bdb_tran_begin_socksql(bdb_state_type *bdb_state, int trak,
                                   int *bdberr)
 {
     return bdb_tran_begin_shadow_int(bdb_state, TRANCLASS_SOSQL, trak, bdberr,
-                                     0, 0, 0);
+                                     0, 0, 0, 0);
 }
 
 tran_type *bdb_tran_begin_snapisol(bdb_state_type *bdb_state, int trak,
-                                   int *bdberr, int epoch, int file, int offset)
+                                   int *bdberr, int epoch, int file, int offset,
+                                   int is_ha_retry)
 {
     return bdb_tran_begin_shadow_int(bdb_state, TRANCLASS_SNAPISOL, trak,
-                                     bdberr, epoch, file, offset);
+                                     bdberr, epoch, file, offset, is_ha_retry);
 }
 
 tran_type *bdb_tran_begin_serializable(bdb_state_type *bdb_state, int trak,
-                                       int *bdberr, int epoch, int file, int offset)
+                                       int *bdberr, int epoch, int file,
+                                       int offset, int is_ha_retry)
 {
     return bdb_tran_begin_shadow_int(bdb_state, TRANCLASS_SERIALIZABLE, trak,
-                                     bdberr, epoch, file, offset);
+                                     bdberr, epoch, file, offset, is_ha_retry);
 }
 
 /*
@@ -1665,7 +1668,7 @@ static int bdb_tran_commit_with_seqnum_int_int(
            record if we were given one. */
 
         if (!needed_to_abort || blkseq) {
-            rc = get_physical_transaction(bdb_state, tran, &physical_tran);
+            rc = get_physical_transaction(bdb_state, tran, &physical_tran, 0);
             if (!physical_tran) {
                 logmsg(LOGMSG_FATAL, 
                         "%s %d error getting physical transaction, %d\n",
@@ -1678,15 +1681,8 @@ static int bdb_tran_commit_with_seqnum_int_int(
             int blkseq_rc;
 
             *bdberr = 0;
-            /* If this is an abort, we've already gotten a new physical txn */
-            char *blkcpy = alloca(blklen + sizeof(int)), *p;
-            int t = time_epoch();
-            memcpy(blkcpy, blkseq, blklen);
-            p = ((char *)blkcpy) + blklen;
-            memcpy(p, &t, sizeof(int));
-            rc = bdb_blkseq_insert(bdb_state, physical_tran, blkkey,
-                                   sizeof(int) * 3, blkcpy,
-                                   blklen + sizeof(int), NULL, NULL);
+            rc = bdb_blkseq_insert(bdb_state, physical_tran, blkkey, blkkeylen,
+                                   blkseq, blklen, NULL, NULL);
             *bdberr = (rc == IX_DUP) ? BDBERR_ADD_DUPE : rc;
 
             /*
@@ -1742,7 +1738,8 @@ static int bdb_tran_commit_with_seqnum_int_int(
 
                 /* We've already aborted but failed with blkseq.  Get a physical
                  * transaction to write the commit record. */
-                rc = get_physical_transaction(bdb_state, tran, &physical_tran);
+                rc = get_physical_transaction(bdb_state, tran, &physical_tran,
+                                              0);
                 if (!physical_tran) {
                     logmsg(LOGMSG_FATAL, 
                             "%s %d error getting physical transaction, %d\n",
@@ -1940,12 +1937,6 @@ static int bdb_tran_commit_with_seqnum_int_int(
 
         outrc = 0;
         goto cleanup;
-    }
-
-    /* delay on the master if we were told to */
-    if (bdb_state->repinfo->myhost == bdb_state->repinfo->master_host &&
-        bdb_state->attr->commitdelay && tran->master) {
-        usleep(1000 * bdb_state->attr->commitdelay);
     }
 
     if (tran->master) {

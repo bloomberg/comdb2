@@ -30,7 +30,7 @@ import java.util.*;
  * @author Tzvetan Mikov
  */
 public class Comdb2Statement implements Statement {
-    private static Logger logger = Logger.getLogger(BBSysUtils.class.getName());
+    private static Logger logger = Logger.getLogger(Comdb2Statement.class.getName());
 
     /**
      * `hndl` is a reference to the handle of its connection. So it should be
@@ -40,19 +40,21 @@ public class Comdb2Statement implements Statement {
     protected Comdb2Connection conn;
     protected Comdb2ResultSet rs;
     protected int timeout = -1;
+    protected int querytimeout = -1;
     protected boolean closed;
     protected String user;
     protected String password;
     protected boolean usemicrodt = true;
 
     public Comdb2Statement(DbHandle hndl, Comdb2Connection conn) {
-        this(hndl, conn, -1);
+        this(hndl, conn, -1, -1);
     }
 
-    public Comdb2Statement(DbHandle hndl, Comdb2Connection conn, int timeout) {
+    public Comdb2Statement(DbHandle hndl, Comdb2Connection conn, int timeout, int querytime) {
         this.hndl = hndl;
         this.conn = conn;
         this.timeout = timeout;
+        this.querytimeout = querytime;
     }
 
     @Override
@@ -80,8 +82,13 @@ public class Comdb2Statement implements Statement {
         }
 
         if (!conn.isInTxn()) {
-            if (timeout > 0) {
-                if ( (rc = hndl.runStatement("set maxquerytime " + timeout)) != 0 )
+            if (querytimeout >= 0) {
+                if ( (rc = hndl.runStatement("set maxquerytime " + querytimeout)) != 0 )
+                    throw Comdb2Connection.createSQLException(
+                            hndl.errorString(), rc, sql, hndl.getLastThrowable());
+            }
+            if (timeout >= 0) {
+                if ( (rc = hndl.runStatement("set timeout " + timeout)) != 0 )
                     throw Comdb2Connection.createSQLException(
                             hndl.errorString(), rc, sql, hndl.getLastThrowable());
             }
@@ -151,7 +158,8 @@ public class Comdb2Statement implements Statement {
             !lowerCase.startsWith("alter") &&
             !lowerCase.startsWith("drop") &&
             !lowerCase.startsWith("truncate"))
-            throw Comdb2Connection.createSQLException(hndl.errorString(),
+            throw Comdb2Connection.createSQLException(
+                    "The SQL statement can only be an INSERT, UPDATE, DELETE or DDL.",
                     Constants.Errors.CDB2ERR_PREPARE_ERROR, sql, hndl.getLastThrowable());
 
         ResultSet rs = executeQuery(sql);
@@ -200,12 +208,16 @@ public class Comdb2Statement implements Statement {
 
     @Override
     public int getQueryTimeout() throws SQLException {
-        return timeout;
+        return querytimeout;
     }
 
     @Override
     public void setQueryTimeout(int seconds) throws SQLException {
-        this.timeout = seconds;
+        this.querytimeout = seconds;
+    }
+
+    public void setTimeout(int milliseconds) throws SQLException {
+        this.timeout = milliseconds;
     }
 
     @Override

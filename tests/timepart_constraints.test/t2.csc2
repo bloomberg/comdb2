@@ -1,0 +1,12 @@
+schema
+{
+   int      a
+}
+keys
+{
+   "fk"  = a
+}
+constraints
+{
+    "fk" -> "t1":"pk"
+}

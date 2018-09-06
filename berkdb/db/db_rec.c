@@ -513,7 +513,7 @@ __db_relink_recover(dbenv, dbtp, lsnp, op, info)
 	REC_INTRO(__db_relink_read, 1);
 
 	if (mpf && bdb_relink_pglogs(dbenv->app_private, mpf->fileid,
-	    argp->pgno, argp->prev, argp->next, *lsnp) != 0) {
+		argp->pgno, argp->prev, argp->next, *lsnp) != 0) {
 		logmsg(LOGMSG_FATAL, "%s: fail relink pglogs\n", __func__);
 		abort();
 	}
@@ -923,23 +923,28 @@ __db_pg_free_recover_int(dbenv, argp, file_dbp, lsnp, mpf, op, data)
 	DB_LSN copy_lsn;
 	PAGE *pagep;
 	db_pgno_t pgno;
+	DB_REP *db_rep;
+	REP *rep;
 	int cmp_n, cmp_p, modified, ret;
 
 	meta = NULL;
 	pagep = NULL;
 
-        if (gbl_poll_in_pg_free_recover) poll(0, 0, 100);
+	db_rep = dbenv->rep_handle;
+	rep = db_rep->region;
 
-        /*
-         * Fix up the freed page.  If we're redoing the operation we get the
-         * page and explicitly discard its contents, then update its LSN.  If
-         * we're undoing the operation, we get the page and restore its header.
-         * Create the page if necessary, we may be freeing an aborted
-         * create.
-         */
-        if ((ret = __memp_fget(mpf, &argp->pgno, DB_MPOOL_CREATE, &pagep)) != 0)
+	if (gbl_poll_in_pg_free_recover && !rep->in_recovery) poll(0, 0, 100);
+
+	/*
+	 * Fix up the freed page.  If we're redoing the operation we get the
+	 * page and explicitly discard its contents, then update its LSN.  If
+	 * we're undoing the operation, we get the page and restore its header.
+	 * Create the page if necessary, we may be freeing an aborted
+	 * create.
+	 */
+	if ((ret = __memp_fget(mpf, &argp->pgno, DB_MPOOL_CREATE, &pagep)) != 0)
 		goto out;
-	modified = 0;
+    modified = 0;
 	(void)__ua_memcpy(&copy_lsn, &LSN(argp->header.data), sizeof(DB_LSN));
 	cmp_n = log_compare(lsnp, &LSN(pagep));
 	cmp_p = log_compare(&LSN(pagep), &copy_lsn);

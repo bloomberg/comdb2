@@ -158,9 +158,10 @@ char *bdb_whoismaster(bdb_state_type *bdb_state)
 }
 
 int bdb_get_rep_master(bdb_state_type *bdb_state, char **master_out,
-                       uint32_t *egen)
+                       uint32_t *gen, uint32_t *egen)
 {
-    return bdb_state->dbenv->get_rep_master(bdb_state->dbenv, master_out, egen);
+    return bdb_state->dbenv->get_rep_master(bdb_state->dbenv, master_out, gen,
+                                            egen);
 }
 
 int bdb_get_sanc_list(bdb_state_type *bdb_state, int max_nodes,
@@ -241,14 +242,22 @@ void bdb_make_seqnum(seqnum_type *seqnum, uint32_t logfile, uint32_t logbyte)
     memcpy(seqnum, &lsn, sizeof(DB_LSN));
 }
 
-void bdb_get_txn_stats(bdb_state_type *bdb_state, int *txn_commits)
+void bdb_get_txn_stats(bdb_state_type *bdb_state, int64_t *active,
+                       int64_t *maxactive, int64_t *commits, int64_t *aborts)
 {
     DB_TXN_STAT *txn_stats;
 
     BDB_READLOCK("bdb_get_txn_stats");
 
     bdb_state->dbenv->txn_stat(bdb_state->dbenv, &txn_stats, 0);
-    *txn_commits = txn_stats->st_ncommits;
+    if (active)
+        *active = txn_stats->st_nactive;
+    if (maxactive)
+        *maxactive = txn_stats->st_maxnactive;
+    if (commits)
+        *commits = txn_stats->st_ncommits;
+    if (aborts)
+        *aborts = txn_stats->st_naborts;
 
     BDB_RELLOCK();
 
@@ -266,8 +275,10 @@ void bdb_get_cache_stats(bdb_state_type *bdb_state, uint64_t *hits,
                                 DB_STAT_MINIMAL);
 
     /* We find leaf pages only a more useful metric. */
-    *hits = mpool_stats->st_cache_lhit;
-    *misses = mpool_stats->st_cache_lmiss;
+    if (hits)
+        *hits = mpool_stats->st_cache_lhit;
+    if (misses)
+        *misses = mpool_stats->st_cache_lmiss;
     if (reads)
         *reads = mpool_stats->st_page_in;
     if (writes)
@@ -828,12 +839,12 @@ void bdb_lockspeed(bdb_state_type *bdb_state)
     dbenv->lock_id(dbenv, &lid);
     lkname.data = "hello";
     lkname.size = strlen("hello");
-    start = time_epochms();
+    start = comdb2_time_epochms();
     for (i = 0; i < 100000000; i++) {
         dbenv->lock_get(dbenv, lid, 0, &lkname, DB_LOCK_READ, &lock);
         dbenv->lock_put(dbenv, &lock);
     }
-    end = time_epochms();
+    end = comdb2_time_epochms();
     logmsg(LOGMSG_USER, "berkeley took %dms (%d per second)\n", end - start,
            100000000 / (end - start) * 1000);
     dbenv->lock_id_free(dbenv, lid);

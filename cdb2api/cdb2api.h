@@ -35,7 +35,7 @@ enum cdb2_hndl_alloc_flags {
     CDB2_RANDOM = 8,
     CDB2_RANDOMROOM = 16,
     CDB2_ROOM = 32,
-    CDB2_CACHE_SSL_SESSIONS = 64
+    CDB2_ADMIN = 64
 };
 
 enum cdb2_request_type {
@@ -67,7 +67,6 @@ enum cdb2_errors {
     CDB2ERR_DBCREATE_FAILED = -18,
 
     CDB2ERR_THREADPOOL_INTERNAL = -20, /* some error in threadpool code */
-    CDB2ERR_READONLY = -21,
 
     CDB2ERR_NOMASTER = -101,
     CDB2ERR_UNTAGGED_DATABASE = -102,
@@ -79,6 +78,8 @@ enum cdb2_errors {
 
     CDB2ERR_TRAN_MODE_UNSUPPORTED = -107,
 
+    CDB2ERR_SCHEMA = -110,
+
     CDB2ERR_VERIFY_ERROR = 2,
     CDB2ERR_FKEY_VIOLATION = 3,
     CDB2ERR_NULL_CONSTRAINT = 4,
@@ -89,6 +90,7 @@ enum cdb2_errors {
     CDB2ERR_NOTSUPPORTED = 116,
 
     CDB2ERR_DUPLICATE = 299,
+    CDB2ERR_READONLY = 305,
     CDB2ERR_TZNAME_FAIL = 401,
     CDB2ERR_CHANGENODE = 402,
 
@@ -241,6 +243,8 @@ int cdb2_clear_contexts(cdb2_hndl_tp *hndl);
    with WITH_SSL. */
 int cdb2_init_ssl(int init_libssl, int init_libcrypto);
 int cdb2_is_ssl_encrypted(cdb2_hndl_tp *hndl);
+
+int cdb2_clear_ack(cdb2_hndl_tp *hndl);
 #if defined __cplusplus
 }
 #endif

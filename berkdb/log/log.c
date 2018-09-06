@@ -464,7 +464,6 @@ __log_find(dblp, find_first, valp, statusp)
 	int cnt, fcnt, ret;
 	const char *dir;
 	char *c, **names, *p, *q, savech;
-	uint32_t flags = 0;
 
 	dbenv = dblp->dbenv;
 	logval_status = status = DB_LV_NONEXISTENT;
@@ -484,7 +483,7 @@ __log_find(dblp, find_first, valp, statusp)
 		dir = p;
 	}
 
-	/* Get the list of file names. */
+retry:	/* Get the list of file names. */
 	ret = __os_dirlist(dbenv, dir, &names, &fcnt);
 
 	/*
@@ -542,11 +541,17 @@ __log_find(dblp, find_first, valp, statusp)
 		} else if (logval != 0 && clv < logval)
 			continue;
 
-		if (dbenv->flags & DB_ENV_OSYNC)
-			flags |= DB_OSO_OSYNC;
-
-		if ((ret =
-			__log_valid(dblp, clv, 1, NULL, flags, &status)) != 0) {
+		if ((ret = __log_valid(dblp, clv, 1, NULL, 0, &status)) != 0) {
+			/* If a log file is removed by the log deletion thread
+			   between __os_dirlist() and here, we simply go to the next file.
+			   However if all log files obtained from __os_dirlist() are gone,
+			   we must go back to __os_dirlist and retry. */
+			if (ret == ENOENT) {
+				if (cnt != 0)
+					continue;
+				__os_dirfree(dbenv, names, fcnt);
+				goto retry;
+			}
 			__db_err(dbenv, "Invalid log file: %s: %s", names[cnt],
 			    db_strerror(ret));
 			goto err;
@@ -860,6 +865,10 @@ __log_dbenv_refresh(dbenv)
 	}
 	if (dblp->dbentry != NULL)
 		__os_free(dbenv, dblp->dbentry);
+
+    LOG *region = dblp->reginfo.primary;
+	void *p = R_ADDR(&dblp->reginfo, region->buffer_off);
+	__os_free(dbenv, p);
 
 	__os_free(dbenv, dblp);
 
@@ -1271,4 +1280,26 @@ __log_autoremove(dbenv)
 		__os_ufree(dbenv, begin);
 	}
 	return;
+}
+
+/*
+ * __log_sync_lsn --
+ *  Return the last sync LSN.
+ *
+ * PUBLIC: int __log_sync_lsn __P((DB_ENV *, DB_LSN *));
+ */
+    int
+__log_sync_lsn(dbenv, lsnp)
+    DB_ENV *dbenv;
+    DB_LSN *lsnp;
+{
+    DB_LOG *dblp;
+    LOG *lp;
+
+    dblp = dbenv->lg_handle;
+    lp = dblp->reginfo.primary;
+    R_LOCK(dbenv, &dblp->reginfo);
+    *lsnp = lp->s_lsn;
+    R_UNLOCK(dbenv, &dblp->reginfo);
+    return (0);
 }

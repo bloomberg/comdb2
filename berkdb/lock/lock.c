@@ -41,6 +41,8 @@ static const char revid[] = "$Id: lock.c,v 11.134 2003/11/18 21:30:38 ubell Exp 
 #include <walkback.h>
 #endif
 #include "logmsg.h"
+#include "util.h"
+#include "tohex.h"
 
 
 #ifdef TRACE_ON_ADDING_LOCKS
@@ -120,29 +122,6 @@ pthread_key_t lockmgr_key;
 static int __lock_getlocker_int(DB_LOCKTAB *, u_int32_t locker, u_int32_t indx,
     u_int32_t partition, int create, u_int32_t retries, DB_LOCKER **retp,
     int *created, int is_logical);
-
-static char
-hex(unsigned char a)
-{
-	return a < 10 ? '0' + a : 'a' + (a - 10);
-}
-
-void
-hexdump(FILE *fp, unsigned char *key, int keylen)
-{
-	int i = 0;
-	for (i = 0; i < keylen; i++) {
-        if (fp) {
-            fprintf(fp, "%c%c", 
-		    hex(((unsigned char)key[i]) / 16),
-		    hex(((unsigned char)key[i]) % 16));
-        } else {
-		logmsg(LOGMSG_USER, "%c%c",
-		    hex(((unsigned char)key[i]) / 16),
-		    hex(((unsigned char)key[i]) % 16));
-        }
-	}
-}
 
 void
 berkdb_dump_locks_for_locker(dbenv, id)
@@ -376,7 +355,7 @@ __lock_id_has_waiters(dbenv, id)
 		return EINVAL;
 	}
 
-	if (F_ISSET(sh_locker, DB_LOCKER_HAVE_WAITERS))
+	if (sh_locker->has_waiters)
 		ret = 1;
 	else
 		ret = 0;
@@ -926,8 +905,11 @@ __latch_update_tracked_writelocks_lsn(DB_ENV *dbenv, DB_TXN *txnp,
 	if ((ret = __find_latch_lockerid(dbenv, lockerid, &lidptr, 0)) != 0)
 		abort();
 
-	if (!F_ISSET(lidptr, DB_LOCKER_TRACK_WRITELOCKS))
-		return 0;
+	if (!F_ISSET(lidptr, DB_LOCKER_TRACK_WRITELOCKS)) {
+		logmsg(LOGMSG_FATAL, "%s: BUG! Writelocks for lsn[%u][%u] were not tracked\n",
+			__func__, lsn.file, lsn.offset);
+		abort();
+	}
 
 	F_CLR(lidptr, DB_LOCKER_TRACK_WRITELOCKS);
 	lidptr->has_pglk_lsn = 1;
@@ -935,6 +917,7 @@ __latch_update_tracked_writelocks_lsn(DB_ENV *dbenv, DB_TXN *txnp,
 	if (!txnp->pglogs_hashtbl)
 		DB_ASSERT(F_ISSET(txnp, TXN_COMPENSATE));
 
+	assert(lidptr->ntrackedlocks != 0);
 	for (i = 0; i < lidptr->ntrackedlocks; i++) {
 		ilatch = lidptr->tracked_locklist[i];
 		if (__allocate_db_lock_lsn(dbenv, &lsnp))
@@ -2101,22 +2084,6 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 		snprintf(desc, sizeof(desc), "NULL OBJ LK");
 	}
 
-	/*printf("%d put %s size=%d", pthread_self(), desc, sh_obj->lockobj.size); */
-
-	/*snprintf(lkbuffer[idx], LKBUFSZ, "%d put %s size=%d", pthread_self(), desc, sh_obj->lockobj.size); */
-	/*printf("%d get lid %x %s size=%d ", pthread_self(), locker, desc, obj->size); */
-
-	/*
-	 * if (obj->size == sizeof(DB_LOCK_ILOCK))
-	 * {
-	 * printf(" [ ");
-	 * hexdump(((DB_LOCK_ILOCK*)(obj->data))->fileid, 20);
-	 * printf(" ]\n");
-	 * }
-	 * else
-	 * printf("\n");
-	 */
-
 	pthread_mutex_lock(&lblk);
 	idx = lbcounter;
 	lbcounter = (lbcounter + 1) % LKBUFMAX;
@@ -2736,8 +2703,7 @@ upgrade:
 						logmsg(LOGMSG_USER, 
                                "Set waitflag for lockid %u\n",
 						    holdarr[ii]);
-					F_SET(holder_locker,
-					    DB_LOCKER_HAVE_WAITERS);
+					holder_locker->has_waiters = 1;
 					unlock_locker_partition(region,
 					    holder_locker->partition);
 				}
@@ -3211,18 +3177,6 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 		threadid[idx] = pthread_self();
 		snprintf(lkbuffer[idx], LKBUFSZ, "%d put %s size=%d",
 		    pthread_self(), desc, sh_obj->lockobj.size);
-		/*printf("%d put %s size=%d", pthread_self(), desc, sh_obj->lockobj.size); */
-		/*
-		 * if (sh_obj->lockobj.size == sizeof(DB_LOCK_ILOCK))
-		 * {
-		 * printf(" [ ");
-		 * hexdump(((DB_LOCK_ILOCK*)(lockdata))->fileid, 20);
-		 * printf(" ]\n");
-		 * }
-		 * else
-		 * printf("\n");
-		 */
-
 	}
 #endif
 
@@ -3904,6 +3858,7 @@ __lock_getlocker_int(lt, locker, indx, partition, create, retries, retp,
 		sh_locker->nlocks = 0;
 		sh_locker->npagelocks = 0;
 		sh_locker->nwrites = 0;
+		sh_locker->has_waiters = 0;
 #if TEST_DEADLOCKS
 		printf("%d %s:%d lockerid %x setting priority to %d\n",
 		    pthread_self(), __FILE__, __LINE__, sh_locker->id, retries);
@@ -4529,21 +4484,6 @@ __latch_trade_comp(DB_ENV *dbenv, const DBT *obj, u_int32_t oldlocker,
 	idx = latchhash(dbenv, obj);
 	latch = &region->latches[idx];
 
-#ifdef VERBOSE_LATCH
-	if (latch->lockerid != oldlocker && latch->lockerid != newlocker) {
-		DB_LOCK_ILOCK *ilock = (DB_LOCK_ILOCK *)obj->data;
-		printf("Invalid lockerid owns latch %p lockerid is %u (0x%x)\n",
-		    latch, latch->lockerid, latch->lockerid);
-		printf
-		    ("I want to upgrade from owner %u (0x%x) to owner %u (0x%x)\n",
-		    oldlocker, oldlocker, newlocker, newlocker);
-		printf("fileid=0x");
-		hexdump(ilock->fileid, DB_FILE_ID_LEN);
-		printf(" pgno=%u\n", ilock->pgno);
-		fflush(stdout);
-		abort();
-	}
-#endif
 	assert(latch->lockerid == oldlocker || latch->lockerid == newlocker);
 
 	if (latch->lockerid == oldlocker) {
@@ -5495,8 +5435,8 @@ err:
 	return (ret);
 }
 
-int bdb_shadows_pglogs_key_list_init(void **listp, int n);
-int bdb_update_add_pglogs_key_list(int i, void **listp,
+int bdb_pglogs_key_list_init(void **listp, int n);
+int bdb_add_pglogs_key_list(int i, void **listp,
     db_pgno_t pgno, unsigned char *fileid, DB_LSN lsn, DB_LSN commit_lsn);
 
 static char *
@@ -5579,7 +5519,7 @@ __lock_list_parse_pglogs_int(dbenv, locker, flags, lock_mode, list, maxlsn,
 		}
 	}
 	if (LF_ISSET(LOCK_GET_LIST_GETLOCK | LOCK_GET_LIST_PAGELOGS))
-		bdb_shadows_pglogs_key_list_init(pglogs, nkeys);
+		bdb_pglogs_key_list_init(pglogs, nkeys);
 	*keycnt = nkeys;
 	keyidx = 0;
 	for (i = 0; i < nlocks; i++) {
@@ -5609,42 +5549,51 @@ __lock_list_parse_pglogs_int(dbenv, locker, flags, lock_mode, list, maxlsn,
 
 			GET_LSNCOUNT(dp, nlsns);
 			if (LF_ISSET(LOCK_GET_LIST_PRINTLOCK)) {
-                if (fp)
-                    fprintf(fp, "\t\tFILEID: ");
-                else
-                    logmsg(LOGMSG_USER, "\t\tFILEID: ");
+				if (fp)
+					fprintf(fp, "\t\tFILEID: ");
+				else
+					logmsg(LOGMSG_USER, "\t\tFILEID: ");
 
-				hexdump(fp, lock->fileid, sizeof(lock->fileid));
-                if (fp) {
-                    fprintf(fp, " TYPE: %s", ilock_type_str(lock->type));
-                    fprintf(fp, " PAGE: %u", lock->pgno);
-                } else {
-                    logmsg(LOGMSG_USER, " TYPE: %s", ilock_type_str(lock->type));
-                    logmsg(LOGMSG_USER, " PAGE: %u", lock->pgno);
-                }
-				if (nlsns)
-					logmsg(LOGMSG_USER, " LSNS: ");
+				hexdumpfp(fp, lock->fileid, sizeof(lock->fileid));
+				if (fp) {
+					fprintf(fp, " TYPE: %s", ilock_type_str(lock->type));
+					fprintf(fp, " PAGE: %u", lock->pgno);
+				} else {
+					logmsg(LOGMSG_USER, " TYPE: %s", ilock_type_str(lock->type));
+					logmsg(LOGMSG_USER, " PAGE: %u", lock->pgno);
+				}
+				if (nlsns) {
+					if (fp)
+						fprintf(fp, " LSNS: ");
+					else
+						logmsg(LOGMSG_USER, " LSNS: ");
+				}
 			}
 			for (j = 0; j < nlsns; j++) {
 				GET_LSN(dp, &llsn);
 				if (keyidx >= nkeys) {
 					logmsg(LOGMSG_FATAL, "%s:%d keyidx = %d, nkeys = %d\n",
-					    __func__, __LINE__, keyidx, nkeys);
+						__func__, __LINE__, keyidx, nkeys);
 					abort();
 				}
 				if (LF_ISSET(LOCK_GET_LIST_GETLOCK |
 					LOCK_GET_LIST_PAGELOGS)) {
-					bdb_update_add_pglogs_key_list(keyidx++,
-					    pglogs, lock->pgno, lock->fileid,
-					    llsn, *maxlsn);
+					bdb_add_pglogs_key_list(keyidx++,
+						pglogs, lock->pgno, lock->fileid,
+						llsn, *maxlsn);
 				}
 				if (LF_ISSET(LOCK_GET_LIST_PRINTLOCK)) {
-					logmsg(LOGMSG_USER, "%d:%d ", llsn.file,
-					    llsn.offset);
+					if (fp)
+						fprintf(fp, "%d:%d ", llsn.file, llsn.offset);
+					else
+						logmsg(LOGMSG_USER, "%d:%d ", llsn.file, llsn.offset);
 				}
 			}
 			if (LF_ISSET(LOCK_GET_LIST_PRINTLOCK)) {
-                logmsg(LOGMSG_USER, "\n");
+				if (fp)
+					fprintf(fp, "\n");
+				else
+					logmsg(LOGMSG_USER, "\n");
 			}
 			if (npgno != 0)
 				GET_PGNO(dp, lock->pgno);
@@ -5739,6 +5688,18 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
 			obj_dbt.data = dp;
 			obj_dbt.size = size;
 			dp = ((u_int8_t *)dp) + ALIGN(size, sizeof(u_int32_t));
+            /* 
+             * Comdb2 early locking in replication does not support 
+             * handle locks in write mode for opened file.  We rely
+             * on table locks instead.
+             *
+             */
+            if (size == sizeof(DB_LOCK_ILOCK) && 
+                    IS_WRITELOCK(lock_mode) &&
+                    ((DB_LOCK_ILOCK*)obj_dbt.data)->type == DB_HANDLE_LOCK) {
+                logmsg(LOGMSG_INFO, "Skipped write handle lock on replicant\n");
+                continue;
+            }
 			do {
 				if (LF_ISSET(LOCK_GET_LIST_GETLOCK)) {
 					uint32_t lflags =
@@ -5759,7 +5720,7 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
                     else
                         logmsg(LOGMSG_USER, "\t\tFILEID: ");
 
-					hexdump(fp, lock->fileid,
+					hexdumpfp(fp, lock->fileid,
 					    sizeof(lock->fileid));
                     if (fp) {
                         fprintf(fp, " TYPE: %s",
@@ -5780,7 +5741,7 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
 	} else {
 		ret = __lock_list_parse_pglogs_int(
 		    dbenv, locker, flags, lock_mode, list, maxlsn, pglogs,
-		    keycnt, 1, &dp, NULL);
+		    keycnt, 1, &dp, fp);
 		if (ret)
 			return ret;
 	}
@@ -6176,7 +6137,7 @@ err:
 
 static int
 __latch_set_parent_has_pglk_lsn(DB_ENV *dbenv, u_int32_t parentid,
-    u_int32_t lockerid)
+	u_int32_t lockerid)
 {
 	int ret, ndx;
 	DB_LOCKERID_LATCH_NODE *lidptr, *plidptr;
@@ -6190,10 +6151,10 @@ __latch_set_parent_has_pglk_lsn(DB_ENV *dbenv, u_int32_t parentid,
 		DB_LOCKER *locker;
 		LOCKER_INDX(lt, region, lockerid, ndx);
 		if (__lock_getlocker(lt, lockerid, ndx, 0, 0, &locker) != 0
-		    || locker == NULL) {
-			logmsg(LOGMSG_ERROR, "%s: lockid %x not found\n", __func__,
-			    lockerid);
-			return -1;
+			|| locker == NULL) {
+			logmsg(LOGMSG_FATAL, "%s: lockid %x not found\n", __func__,
+				lockerid);
+			abort();
 		}
 		has_pglk_lsn = locker->has_pglk_lsn;
 	}
@@ -6205,9 +6166,9 @@ __latch_set_parent_has_pglk_lsn(DB_ENV *dbenv, u_int32_t parentid,
 		LOCKER_INDX(lt, region, parentid, ndx);
 		if (__lock_getlocker(lt, parentid, ndx, 0, 0,
 			&parent_locker) != 0 || parent_locker == NULL) {
-			logmsg(LOGMSG_ERROR, "%s: parent-lockid %x not found\n",
-			    __func__, parentid);
-			return -1;
+			logmsg(LOGMSG_FATAL, "%s: parent-lockid %x not found\n",
+				__func__, parentid);
+			abort();
 		}
 
 		parent_locker->has_pglk_lsn = has_pglk_lsn;
@@ -6218,7 +6179,7 @@ __latch_set_parent_has_pglk_lsn(DB_ENV *dbenv, u_int32_t parentid,
 
 int
 __lock_set_parent_has_pglk_lsn(DB_ENV *dbenv, u_int32_t parentid,
-    u_int32_t lockid)
+	u_int32_t lockid)
 {
 	DB_LOCKTAB *lt = dbenv->lk_handle;
 	DB_LOCKREGION *region = lt->reginfo.primary;
@@ -6231,17 +6192,17 @@ __lock_set_parent_has_pglk_lsn(DB_ENV *dbenv, u_int32_t parentid,
 
 	LOCKER_INDX(lt, region, lockid, ndx);
 	if (__lock_getlocker(lt, lockid, ndx, 0, 0, &locker) != 0
-	    || locker == NULL) {
-		logmsg(LOGMSG_ERROR, "%s: lockid %x not found\n", __func__, lockid);
-		return -1;
+		|| locker == NULL) {
+		logmsg(LOGMSG_FATAL, "%s: lockid %x not found\n", __func__, lockid);
+		abort();
 	}
 
 	LOCKER_INDX(lt, region, parentid, ndx);
 	if (__lock_getlocker(lt, parentid, ndx, 0, 0, &parent_locker) != 0
-	    || parent_locker == NULL) {
-		logmsg(LOGMSG_ERROR, "%s: lockid %x not found\n", __func__,
-		    parentid);
-		return -1;
+		|| parent_locker == NULL) {
+		logmsg(LOGMSG_FATAL, "%s: lockid %x not found\n", __func__,
+			parentid);
+		abort();
 	}
 
 	parent_locker->has_pglk_lsn = locker->has_pglk_lsn;
@@ -6252,7 +6213,7 @@ __lock_set_parent_has_pglk_lsn(DB_ENV *dbenv, u_int32_t parentid,
 // PUBLIC: int __lock_update_tracked_writelocks_lsn_pp __P((DB_ENV *, DB_TXN *, u_int32_t, DB_LSN));
 int
 __lock_update_tracked_writelocks_lsn_pp(DB_ENV *dbenv, DB_TXN *txnp,
-    u_int32_t lockid, DB_LSN lsn)
+	u_int32_t lockid, DB_LSN lsn)
 {
 	DB_LOCKTAB *lt = dbenv->lk_handle;
 	DB_LOCKREGION *region = lt->reginfo.primary;
@@ -6271,22 +6232,28 @@ __lock_update_tracked_writelocks_lsn_pp(DB_ENV *dbenv, DB_TXN *txnp,
 
 	if (use_page_latches(dbenv))
 		return __latch_update_tracked_writelocks_lsn(dbenv, txnp,
-		    lockid, lsn);
+			lockid, lsn);
 
 	int ndx;
 	LOCKER_INDX(lt, region, lockid, ndx);
 	if (__lock_getlocker(lt, lockid, ndx, 0, 0, &locker) != 0
-	    || locker == NULL) {
-		logmsg(LOGMSG_ERROR, "%s: lockid %x not found\n", __func__, lockid);
-		return -1;
+		|| locker == NULL) {
+		logmsg(LOGMSG_FATAL, "%s: lockid %x not found\n", __func__, lockid);
+		abort();
 	}
-	if (!F_ISSET(locker, DB_LOCKER_TRACK_WRITELOCKS))
-		return 0;
+
+	if (!F_ISSET(locker, DB_LOCKER_TRACK_WRITELOCKS)) {
+		logmsg(LOGMSG_FATAL, "%s: BUG! Writelocks for lsn[%u][%u] were not tracked\n",
+			__func__, lsn.file, lsn.offset);
+		abort();
+	}
+
 	F_CLR(locker, DB_LOCKER_TRACK_WRITELOCKS);
 	locker->has_pglk_lsn = 1;
 
 	if (!txnp->pglogs_hashtbl)
 		DB_ASSERT(F_ISSET(txnp, TXN_COMPENSATE));
+	assert(locker->ntrackedlocks != 0);
 	for (i = 0; i < locker->ntrackedlocks; i++) {
 		lp = locker->tracked_locklist[i];
 		if (lp->status == DB_LSTAT_HELD) {
@@ -6297,25 +6264,25 @@ __lock_update_tracked_writelocks_lsn_pp(DB_ENV *dbenv, DB_TXN *txnp,
 			pthread_mutex_lock(&lp->lsns_mtx);
 			first_lsnp = SH_LIST_FIRST(&lp->lsns, __db_lock_lsn);
 			if (first_lsnp &&
-			    log_compare(&first_lsnp->llsn, &lsnp->llsn) == 0) {
+				log_compare(&first_lsnp->llsn, &lsnp->llsn) == 0) {
 				pthread_mutex_unlock(&lp->lsns_mtx);
 				__deallocate_db_lock_lsn(dbenv, lsnp);
 			} else {
 				SH_LIST_INSERT_HEAD(&lp->lsns, lsnp, lsn_links,
-				    __db_lock_lsn);
+					__db_lock_lsn);
 				lp->nlsns++;
 				pthread_mutex_unlock(&lp->lsns_mtx);
 				if (txnp->pglogs_hashtbl) {
 					lockobj = lp->lockobj;
 					if (lockobj->lockobj.size ==
-					    sizeof(DB_LOCK_ILOCK)) {
+						sizeof(DB_LOCK_ILOCK)) {
 						ilock = lockobj->lockobj.data;
 						bdb_update_txn_pglogs(dbenv->
-						    app_private,
-						    txnp->pglogs_hashtbl,
-						    &txnp->pglogs_mutex,
-						    ilock->pgno, ilock->fileid,
-						    lsn);
+							app_private,
+							txnp->pglogs_hashtbl,
+							&txnp->pglogs_mutex,
+							ilock->pgno, ilock->fileid,
+							lsn);
 					}
 				}
 			}
@@ -6342,19 +6309,19 @@ __lock_clear_tracked_writelocks_pp(DB_ENV *dbenv, u_int32_t lockid)
 
 	LOCKER_INDX(lt, region, lockid, ndx);
 	if (__lock_getlocker(lt, lockid, ndx, 0, GETLOCKER_CREATE, &locker) != 0
-	    || locker == NULL) {
-		logmsg(LOGMSG_ERROR, "%s: lockid %x not found\n", __func__, lockid);
-		return -1;
+		|| locker == NULL) {
+		logmsg(LOGMSG_FATAL, "%s: lockid %x not found\n", __func__, lockid);
+		abort();
 	}
 	F_SET(locker, DB_LOCKER_TRACK_WRITELOCKS);
 
 	if (!locker->tracked_locklist) {
 		int count = dbenv->attr.tracked_locklist_init > 0 ?
-		    dbenv->attr.tracked_locklist_init : 10;
+			dbenv->attr.tracked_locklist_init : 10;
 		locker->maxtrackedlocks = count;
 		rc = __os_malloc(dbenv,
-		    sizeof(struct __db_lock *) & locker->maxtrackedlocks,
-		    &(locker->tracked_locklist));
+			sizeof(struct __db_lock *) & locker->maxtrackedlocks,
+			&(locker->tracked_locklist));
 		if (rc)
 			return ENOMEM;
 	}

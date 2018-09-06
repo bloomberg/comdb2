@@ -7,10 +7,20 @@
 #include <assert.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <signal.h>
 
 #include <cdb2api.h>
 
 static char *argv0 = NULL;
+
+void failexit(const char *func, int line, int rc)
+{
+    fprintf(stderr, "%s line %d called exit with rc %d\n",
+            func, line, rc);
+    fflush(stderr);
+    fflush(stdout);
+    exit(rc);
+}
 
 void usage(FILE *f)
 {
@@ -19,6 +29,8 @@ void usage(FILE *f)
     fprintf(
         f, "     -o                  -   for occ selectv test (skip rcode).\n");
     fprintf(f, "     -r                  -   read committed mode.\n");
+    fprintf(f, "     -m <retries>        -   set max-retries.\n");
+    fprintf(f, "     -D                  -   enable debug trace.\n");
     fprintf(f, "     -t <num>            -   set num of threads.\n");
     fprintf(f, "     -h                  -   this menu.\n");
     exit(1);
@@ -81,7 +93,7 @@ void *schedule_thd(void *arg)
     if (f == NULL) {
         fprintf(stderr, "%s:%d Error opening log file %s\n", __func__, __LINE__,
                 sql);
-        exit(1);
+        failexit(__func__, __LINE__, 1);
     }
 
     char *conf = getenv("CDB2_CONFIG");
@@ -92,8 +104,10 @@ void *schedule_thd(void *arg)
                 __LINE__, ret);
         fprintf(stderr, "%s:%d Error getting sql handle, ret=%d\n", __func__,
                 __LINE__, ret);
-        exit(1);
+        failexit(__func__, __LINE__, 1);
     }
+
+    cdb2_set_debug_trace(sqlh);
 
     if (c->recom) {
         snprintf(sql, sizeof(sql), "set transaction read committed");
@@ -102,7 +116,7 @@ void *schedule_thd(void *arg)
                     __func__, __LINE__, ret);
             fprintf(stderr, "%s:%d Error setting transaction level ret=%d.\n",
                     __func__, __LINE__, ret);
-            exit(1);
+            failexit(__func__, __LINE__, 1);
         }
         do {
             ret = cdb2_next_record(sqlh);
@@ -117,6 +131,10 @@ void *schedule_thd(void *arg)
         if ((ret = cdb2_run_statement(sqlh, sql)) != 0) {
             fprintf(f, "%s:%d error in begin, ret=%d.\n", __func__, __LINE__,
                     ret);
+            do {
+                ret = cdb2_next_record(sqlh);
+            } while (ret == CDB2_OK);
+            cdb2_run_statement(sqlh, "rollback");
             do {
                 ret = cdb2_next_record(sqlh);
             } while (ret == CDB2_OK);
@@ -159,11 +177,19 @@ void *schedule_thd(void *arg)
                     fprintf(stderr,
                             "%s:%d Unexpected type from cdb2_next_record, %d\n",
                             __func__, __LINE__, type);
-                    exit(1);
+                    failexit(__func__, __LINE__, 1);
                 }
                 ids[n++] = instid;
                 ret = cdb2_next_record(sqlh);
             } while (ret == CDB2_OK);
+
+            if (ret != CDB2_OK_DONE) {
+                cdb2_run_statement(sqlh, "rollback");
+                do {
+                    ret = cdb2_next_record(sqlh);
+                } while (ret == CDB2_OK);
+                continue;
+            }
 
             int i = 0;
             for (i = 0; i < n; i++) {
@@ -187,7 +213,21 @@ void *schedule_thd(void *arg)
                 do {
                     ret = cdb2_next_record(sqlh);
                 } while (ret == CDB2_OK);
+
+                if (ret != CDB2_OK_DONE) {
+                    cdb2_run_statement(sqlh, "rollback");
+                    do {
+                        ret = cdb2_next_record(sqlh);
+                    } while (ret == CDB2_OK);
+                    continue;
+                }
             }
+        } else {
+            cdb2_run_statement(sqlh, "rollback");
+            do {
+                ret = cdb2_next_record(sqlh);
+            } while (ret == CDB2_OK);
+            continue;
         }
 
         snprintf(sql, sizeof(sql), "commit");
@@ -208,6 +248,11 @@ retry_add:
                 do {
                     ret = cdb2_next_record(sqlh);
                 } while (ret == CDB2_OK);
+                cdb2_run_statement(sqlh, "rollback");
+                do {
+                    ret = cdb2_next_record(sqlh);
+                } while (ret == CDB2_OK);
+                continue;
                 goto retry_add;
             }
             fprintf(f, "sql: %s, ret = %d.\n", sql, ret);
@@ -237,31 +282,43 @@ retry_add:
                 do {
                     ret = cdb2_next_record(sqlh);
                 } while (ret == CDB2_OK);
+
+                if (ret != CDB2_OK_DONE) {
+                    cdb2_run_statement(sqlh, "rollback");
+                    do {
+                        ret = cdb2_next_record(sqlh);
+                    } while (ret == CDB2_OK);
+                    goto retry_add;
+                }
             }
             snprintf(sql, sizeof(sql), "commit");
             ret = cdb2_run_statement(sqlh, sql);
             fprintf(f, "sql: %s, ret = %d.\n", sql, ret);
-            if (ret == 210 /*NOT_DURABLE*/ || ret == -1) {
+            if (ret == 210 /*NOT_DURABLE*/ || ret == -1 ||
+                    ret == -109 || ret == -5) {
                 fprintf(f, "FAILED TO INSERT: RET %d, ERR %s\n", ret,
                         cdb2_errstr(sqlh));
             } else if (ret) {
                 fprintf(f, "BUG: FAILED TO INSERT: RET %d, ERR %s\n", ret,
                         cdb2_errstr(sqlh));
-                fprintf(stderr, "BUG in thread %ld: FAILED TO INSERT\n", host);
-                exit(1);
+                fprintf(stderr, "BUG in thread %ld: FAILED TO INSERT: RET %d, ERR %s\n",
+                        host, ret, cdb2_errstr(sqlh));
+                failexit(__func__, __LINE__, 1);
             }
         } else if (ret == CDB2ERR_CONSTRAINTS) {
             fprintf(f, "LOST TO ANOTHER THREAD\n");
         } else if (c->occ) {
             fprintf(f, "LOST TO ANOTHER THREAD, rc %d\n", ret);
-        } else if (ret == 210 /*NOT_DURABLE*/ || ret == -1) {
+        } else if (ret == 210 /*NOT_DURABLE*/ || ret == -1 ||
+                ret == CDB2ERR_VERIFY_ERROR || ret == -109 /* MASTER LOST TXN */) {
             fprintf(f, "FAILED TO UPDATE: RET %d, ERR %s\n", ret,
                     cdb2_errstr(sqlh));
         } else {
 			fprintf(f, "BUG: FAILED TO UPDATE: RET %d, ERR %s\n", ret,
                     cdb2_errstr(sqlh));
-            fprintf(stderr, "BUG in thread %ld: FAILED TO UPDATE\n", host);
-            exit(1);
+            fprintf(stderr, "BUG in thread %ld: FAILED TO UPDATE: RET %d, ERR %s\n", 
+                    host, ret, cdb2_errstr(sqlh));
+            failexit(__func__, __LINE__, 1);
         }
         do {
             ret = cdb2_next_record(sqlh);
@@ -291,7 +348,7 @@ int schedule(config_t *c)
 
         if ((ret = pthread_create(&thds[i], &attr, schedule_thd, upd)) != 0) {
             fprintf(stderr, "Error creating pthread, ret=%d\n", ret);
-            exit(1);
+            failexit(__func__, __LINE__, 1);
         }
     }
 
@@ -307,13 +364,15 @@ int main(int argc, char *argv[])
 {
     cdb2_hndl_tp *sqlh;
     config_t *c;
-    int err = 0, opt;
+    int err = 0, opt, maxretries = 32, debug = 0;
+
+    signal(SIGPIPE, SIG_IGN);
 
     argv0 = argv[0];
     c = default_config();
 
     /* char *optarg=argument, int optind = argv index  */
-    while ((opt = getopt(argc, argv, "d:hort:")) != EOF) {
+    while ((opt = getopt(argc, argv, "d:hort:m:D")) != EOF) {
         switch (opt) {
         case 'd':
             c->dbname = optarg;
@@ -331,8 +390,16 @@ int main(int argc, char *argv[])
             c->threads = atoi(optarg);
             break;
 
+        case 'D':
+            debug = 1;
+            break;
+
         case 'h':
             usage(stdout);
+            break;
+
+        case 'm':
+            maxretries = atoi(optarg);
             break;
 
         default:
@@ -342,6 +409,7 @@ int main(int argc, char *argv[])
         }
     }
 
+
     /* Make sure dbname is set. */
     if (NULL == c->dbname) {
         fprintf(stderr, "dbname is unset.\n");
@@ -349,7 +417,7 @@ int main(int argc, char *argv[])
     }
     /* Punt if there were errors. */
     if (err) {
-        exit(1);
+        failexit(__func__, __LINE__, 1);
     }
 
     printf(
@@ -359,15 +427,22 @@ int main(int argc, char *argv[])
     char *conf = getenv("CDB2_CONFIG");
     if (conf)
         cdb2_set_comdb2db_config(conf);
+
+    cdb2_set_max_retries(maxretries);
+
     /* Allocate an sql handle. */
     if (0 == err && cdb2_open(&sqlh, c->dbname, "default", 0)) {
         fprintf(stderr, "error opening sql handle for '%s'.\n", c->dbname);
         err++;
     }
+
+    if (debug)
+        cdb2_set_debug_trace(sqlh);
+
     /* Punt if there were errors. */
     if (err) {
         usage(stderr);
-        exit(1);
+        failexit(__func__, __LINE__, 1);
     }
 
     schedule(c);

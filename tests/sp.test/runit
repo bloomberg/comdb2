@@ -33,7 +33,7 @@ timeout 2m ${TESTSROOTDIR}/setup &> >(gawk '{ print strftime("%H:%M:%S>"), $0; f
 rc=$?
 if [[ $rc -ne 0 ]]; then
     echo "snapshot db setup failed (rc=$rc)"
-    $TESTSROOTDIR/unsetup
+    $TESTSROOTDIR/unsetup &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.unsetup | cut -c11- | grep "^!" )
     DBNAME=$dbname
     DBDIR=$dbdir
     CDB2_CONFIG=$cdb2config

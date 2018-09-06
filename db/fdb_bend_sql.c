@@ -60,26 +60,11 @@ int fdb_appsock_work(const char *cid, struct sqlclntstate *clnt, int version,
     clnt->fdb_state.flags = flags;
     clnt->osql.timings.query_received = osql_log_time();
 
-#if 0
-   if(osql_register_sqlthr(&clnt, OSQL_BLOCK_REQ))
-   {
-      fprintf(stderr, "%s: unable to register blocksql thread %llx\n", __func__, clnt.osql.rqid);
-   }
-#endif
-
     /*
        dispatch the sql
        NOTE: this waits for statement termination
     */
     rc = dispatch_sql_query(clnt);
-
-#if 0
-   if(osql_unregister_sqlthr(&clnt))
-   {
-      fprintf(stderr, "%s: unable to unregister blocksql thread %llx\n", 
-            __func__, clnt.osql.rqid);
-   }
-#endif
 
     return rc;
 }
@@ -127,8 +112,8 @@ int fdb_svc_sql_row(SBUF2 *sb, char *cid, char *row, int rowlen, int ret,
         genid = flibc_htonll(genid);
     }
 
-    rc = fdb_remcur_send_row(sb, NULL, cid, genid, row, rowlen, NULL, 0, ret,
-                             isuuid);
+    rc = fdb_bend_send_row(sb, NULL, cid, genid, row, rowlen, NULL, 0, ret,
+                           isuuid);
 
     return rc;
 }
@@ -297,16 +282,8 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
 
 static void init_sqlclntstate(struct sqlclntstate *clnt, char *tid, int isuuid)
 {
-    reset_clnt(clnt, NULL, 1);
-
-    pthread_mutex_init(&clnt->wait_mutex, NULL);
-    pthread_cond_init(&clnt->wait_cond, NULL);
-    pthread_mutex_init(&clnt->write_lock, NULL);
-    pthread_mutex_init(&clnt->dtran_mtx, NULL);
-
+    start_internal_sql_clnt(clnt);
     clnt->dbtran.mode = TRANLEVEL_SOSQL;
-    strcpy(clnt->tzname, "America/New_York");
-    clnt->osql.host = NULL;
 
     if (isuuid) {
         clnt->osql.rqid = OSQL_RQID_USE_UUID;
@@ -331,8 +308,7 @@ int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags,
 
     assert(seq == 0);
 
-    *pclnt = clnt =
-        (struct sqlclntstate *)calloc(1, sizeof(struct sqlclntstate));
+    *pclnt = clnt = malloc(sizeof(struct sqlclntstate));
     if (!clnt) {
         return -1;
     }
@@ -618,7 +594,7 @@ _fdb_svc_cursor_start(BtCursor *pCur, struct sqlclntstate *clnt, char *tblname,
         osql_shadtbl_begin_query(thedb->bdb_env, clnt);
     }
 
-    thd->sqlclntstate = clnt;
+    thd->clnt = clnt;
     bzero(pCur, sizeof(*pCur));
     pCur->genid = genid;
 
@@ -823,7 +799,7 @@ int fdb_svc_cursor_insert(struct sqlclntstate *clnt, char *tblname,
 
     fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
 
-    rc = osql_insrec(&bCur, thd, row, rowlen, rowblobs, MAXBLOBS);
+    rc = osql_insrec(&bCur, thd, row, rowlen, rowblobs, MAXBLOBS, 0);
 
     pthread_mutex_unlock(&clnt->dtran_mtx);
 
@@ -962,7 +938,7 @@ int fdb_svc_cursor_update(struct sqlclntstate *clnt, char *tblname,
     fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
 
     rc = osql_updrec(&bCur, thd, row, rowlen, NULL /*TODO : review updCols*/,
-                     rowblobs, MAXBLOBS);
+                     rowblobs, MAXBLOBS, 0);
 
     pthread_mutex_unlock(&clnt->dtran_mtx);
 
