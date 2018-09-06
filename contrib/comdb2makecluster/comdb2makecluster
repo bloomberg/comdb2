@@ -75,6 +75,7 @@ LOGDIR=${LOGDIR:-$DBDIR/var/log}
 
 check_executables_for_cluster() 
 {
+    which $CDB2SQL_EXE  > /dev/null || failexit "$CDB2SQL_EXE not in path"
     which $COMDB2AR_EXE  > /dev/null || failexit "$COMDB2AR_EXE not in path"
     which $COPYCOMDB2_EXE  > /dev/null || failexit "$COPYCOMDB2_EXE not in path"
     for node in $CLUSTER; do
