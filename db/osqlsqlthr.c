@@ -810,7 +810,7 @@ again:
 }
 
 int gbl_random_blkseq_replays;
-int gbl_osql_send_startgen = 0;
+int gbl_osql_send_startgen = 1;
 
 /**
  * Terminates a sosql session
@@ -1335,18 +1335,18 @@ retry:
 
     if (gbl_osql_send_startgen && clnt->start_gen > 0) {
         rc = osql_send_startgen(osql->host, osql->rqid, osql->uuid,
-                clnt->start_gen, nettype, osql->logsb);
+                                clnt->start_gen, nettype, osql->logsb);
     }
 
     if (rc == 0) {
         if (osql->rqid == OSQL_RQID_USE_UUID) {
             rc = osql_send_commit_by_uuid(osql->host, osql->uuid, osql->sentops,
-                    &osql->xerr, nettype, osql->logsb,
-                    clnt->query_stats, snap_info_p);
+                                          &osql->xerr, nettype, osql->logsb,
+                                          clnt->query_stats, snap_info_p);
         } else {
-            rc = osql_send_commit(osql->host, osql->rqid, osql->uuid, osql->sentops,
-                    &osql->xerr, nettype, osql->logsb,
-                    clnt->query_stats, NULL);
+            rc = osql_send_commit(osql->host, osql->rqid, osql->uuid,
+                                  osql->sentops, &osql->xerr, nettype,
+                                  osql->logsb, clnt->query_stats, NULL);
         }
     }
 

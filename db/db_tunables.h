@@ -1440,10 +1440,8 @@ REGISTER_TUNABLE("handle_buf_latency_ms",
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("osql_send_startgen",
-                 "Send start-generation in osql stream.  (Default: off)",
+                 "Send start-generation in osql stream.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_osql_send_startgen,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-
-
 
 #endif /* _DB_TUNABLES_H */
