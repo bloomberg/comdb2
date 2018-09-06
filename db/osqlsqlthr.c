@@ -67,7 +67,7 @@ static int osql_send_delidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
                            int nettype);
 static int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
                            int nettype);
-static int osql_send_qblobs_logic(struct BtCursor *pCur, struct sql_thread *thd,
+static int osql_send_qblobs_logic(struct BtCursor *pCur, osqlstate_t *osql,
                                   int *updCols, blob_buffer_t *blobs,
                                   int nettype);
 static int osql_updcols(struct BtCursor *pCur, struct sql_thread *thd,
@@ -273,7 +273,8 @@ static int send_osql_insrec(struct BtCursor *pCur, struct sql_thread *thd,
         }
     }
 
-    rc = osql_send_qblobs_logic(pCur, thd, NULL, blobs, NET_OSQL_SOCK_RPL);
+    osqlstate_t *osql = &thd->clnt->osql;
+    rc = osql_send_qblobs_logic(pCur, osql, NULL, blobs, NET_OSQL_SOCK_RPL);
     if (rc != SQLITE_OK) {
         logmsg(LOGMSG_ERROR,
                 "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
@@ -281,12 +282,9 @@ static int send_osql_insrec(struct BtCursor *pCur, struct sql_thread *thd,
         return rc;
     }
 
-
-    struct sqlclntstate *clnt = thd->clnt;
-    osqlstate_t *osql = &clnt->osql;
     rc = osql_send_insrec(
             osql->host, osql->rqid, osql->uuid, pCur->genid,
-            (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->ins_keys
+            (gbl_partial_indexes && pCur->db->ix_partial) ? thd->clnt->ins_keys
             : -1ULL,
             pData, nData, NET_OSQL_SOCK_RPL, osql->logsb, flags);
 
@@ -367,7 +365,8 @@ static int send_osql_updrec(struct BtCursor *pCur, struct sql_thread *thd,
         }
     }
 
-    rc = osql_send_qblobs_logic(pCur, thd, updCols, blobs, NET_OSQL_SOCK_RPL);
+    osqlstate_t *osql = &thd->clnt->osql;
+    rc = osql_send_qblobs_logic(pCur, osql, updCols, blobs, NET_OSQL_SOCK_RPL);
     if (rc != SQLITE_OK) {
         logmsg(LOGMSG_ERROR,
                 "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
@@ -375,8 +374,6 @@ static int send_osql_updrec(struct BtCursor *pCur, struct sql_thread *thd,
         return rc;
     }
 
-    struct sqlclntstate *clnt = thd->clnt;
-    osqlstate_t *osql = &clnt->osql;
     if (updCols) {
         rc = osql_send_updcols(osql->host, osql->rqid, osql->uuid, pCur->genid,
                 NET_OSQL_SOCK_RPL, &updCols[1], updCols[0], osql->logsb);
@@ -390,9 +387,9 @@ static int send_osql_updrec(struct BtCursor *pCur, struct sql_thread *thd,
 
     rc = osql_send_updrec(
             osql->host, osql->rqid, osql->uuid, pCur->genid,
-            (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->ins_keys
+            (gbl_partial_indexes && pCur->db->ix_partial) ? thd->clnt->ins_keys
             : -1ULL,
-            (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->del_keys
+            (gbl_partial_indexes && pCur->db->ix_partial) ? thd->clnt->del_keys
             : -1ULL,
             pData, nData, NET_OSQL_SOCK_RPL, osql->logsb);
 
@@ -1232,7 +1229,7 @@ static int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
             !(clnt->ins_keys & (1ULL << i)))
             continue;
         rc = osql_send_index(osql->host, osql->rqid, osql->uuid, pCur->genid, 0,
-                             i, (char *)thd->clnt->idxInsert[i],
+                             i, (char *)clnt->idxInsert[i],
                              getkeysize(pCur->db, i), nettype, osql->logsb);
         if (rc)
             break;
@@ -1266,7 +1263,7 @@ static int osql_send_delidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
             continue;
 
         rc = osql_send_index(osql->host, osql->rqid, osql->uuid, pCur->genid, 1,
-                             i, (char *)thd->clnt->idxDelete[i],
+                             i, (char *)clnt->idxDelete[i],
                              getkeysize(pCur->db, i), nettype, osql->logsb);
         if (rc)
             break;
@@ -1274,12 +1271,10 @@ static int osql_send_delidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
     return rc;
 }
 
-static int osql_send_qblobs_logic(struct BtCursor *pCur, struct sql_thread *thd,
+static int osql_send_qblobs_logic(struct BtCursor *pCur, osqlstate_t *osql,
                                   int *updCols, blob_buffer_t *blobs,
                                   int nettype)
 {
-    struct sqlclntstate *clnt = thd->clnt;
-    osqlstate_t *osql = &clnt->osql;
     int rc = 0;
     int i;
     int idx;
