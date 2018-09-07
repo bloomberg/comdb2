@@ -1266,19 +1266,12 @@ static int osql_send_qblobs_logic(struct BtCursor *pCur, osqlstate_t *osql,
                                   int nettype)
 {
     int rc = 0;
-    int i;
-    int idx;
-    int ncols;
 
-    int actualblobs = pCur->db->schema->numblobs;
-
-    for (i = 0; i < actualblobs; i++) {
-        /* NOTE: the blobs are NOT clustered:
-           create table t1(id int not null, b1 blob, b2 blob);
-           insert into t1 (id, b2) values(0, x'11')
-           so we need to run through all the defined blobs.
-           we only need to send the non-null blobs, and the master
-           will fix up those we missed.
+    for (int i = 0; i < pCur->db->schema->numblobs; i++) {
+        /* NOTE: the blobs are NOT clustered: create table t1(id int not null,
+         * b1 blob, b2 blob); insert into t1 (id, b2) values(0, x'11') so we
+         * need to run through all the defined blobs.  we only need to send the
+         * non-null blobs, and the master will fix up those we missed.
          */
 
         if (!blobs[i].exists)
@@ -1286,18 +1279,16 @@ static int osql_send_qblobs_logic(struct BtCursor *pCur, osqlstate_t *osql,
 
         /* Send length of -2 if this isn't being used in this update. */
         if (updCols && gbl_osql_blob_optimization && blobs[i].length > 0) {
-            idx = get_schema_blob_field_idx(pCur->db->tablename, ".ONDISK", i);
-            /* AZ is pCur->db->schema not set to ondisk so we can instead call
-             * get_schema_blob_field_idx_sc(pCur->db->schema,i); */
-            ncols = updCols[0];
+            int idx = get_schema_blob_field_idx(pCur->db->tablename, ".ONDISK", i);
+            /* AZ: is pCur->db->schema not set to ondisk so we can instead call
+             * get_schema_blob_field_idx_sc(pCur->db->schema,i); ?? */
+            int ncols = updCols[0];
             if (idx >= 0 && idx < ncols && -1 == updCols[idx + 1]) {
-
                 /* Put a token on the network if this isn't going to be used */
                 rc = osql_send_qblob(osql->host, osql->rqid, osql->uuid, i,
-                                     pCur->genid, nettype, NULL, -2,
-                                     osql->logsb);
+                                     pCur->genid, nettype, NULL, -2, osql->logsb);
                 if (rc)
-                    break; /* TODO: should we not return here? */
+                    break; /* break out from while loop so we can return rc */
                 continue;
             }
         }
