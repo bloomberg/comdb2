@@ -88,7 +88,7 @@ void getRowid(BtCursor *pCursor, i64 rowId, u8 p3, Mem *pOut)
   }
   if( p3==2 ){
     unsigned long long genId = 0;
-    if( sqlite3BtreeGetRowId(pCursor, rowid, &genId, 0, 0)!=SQLITE_OK ){
+    if( sqlite3BtreeGetRowId(pCursor, rowId, &genId, 0, 0)!=SQLITE_OK ){
       MemSetTypeFlag(pOut, MEM_Null);
       return;
     }
