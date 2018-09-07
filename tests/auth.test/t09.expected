@@ -200,6 +200,4 @@
 (candidate='comdb2_uptime()')
 (candidate='comdb2_starttime()')
 (candidate='sys.cmd.send()')
-(username='user1')
-(username='user2')
-(username='user3')
+[SELECT DISTINCT username FROM comdb2_users] failed with rc -5 authorization denied
