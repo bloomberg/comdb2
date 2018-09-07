@@ -8707,7 +8707,7 @@ int sqlite3BtreeGetRowId(
   if( pzGenId && pnGenId ){
     char *zGenId;
     int nGenId = 22; /* "+18446744073709551615\0" */
-    assert( ULLONG_MAX<=18446744073709551615 );
+    assert( ULLONG_MAX<=18446744073709551615ULL );
     zGenId = sqlite3Malloc(nGenId);
     if( zGenId==0 ){
       return SQLITE_NOMEM;
