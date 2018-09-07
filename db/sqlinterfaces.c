@@ -2866,6 +2866,9 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
 {
     int rc;
 
+    if (!clnt->in_client_trans)
+        clnt->start_gen = bdb_get_rep_gen(thedb->bdb_env);
+
     sql_update_usertran_state(clnt);
 
     switch (clnt->ctrl_sqlengine) {
