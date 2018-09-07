@@ -1243,13 +1243,15 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             /* Handle tunables registered under tunables sub-system. */
             rc = handle_lrl_tunable(tok, ltok, line + st, len - st, 0);
 
-            if (gbl_bad_lrl_fatal) {
-                logmsg(LOGMSG_ERROR, "unknown opcode '%.*s' in lrl %s\n", ltok,
-                        tok, options->lrlname);
-                return -1;
-            } else {
-                logmsg(LOGMSG_WARN, "unknown opcode '%.*s' in lrl %s\n", ltok,
-                        tok, options->lrlname);
+            if (rc) {
+                if (gbl_bad_lrl_fatal) {
+                    logmsg(LOGMSG_ERROR, "unknown opcode '%.*s' in lrl %s\n", ltok,
+                            tok, options->lrlname);
+                    return -1;
+                } else {
+                    logmsg(LOGMSG_WARN, "unknown opcode '%.*s' in lrl %s\n", ltok,
+                            tok, options->lrlname);
+                }
             }
         }
     }
