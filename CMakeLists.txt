@@ -140,6 +140,7 @@ endif()
 add_subdirectory(tools)
 add_subdirectory(plugins)
 add_subdirectory(db)
+add_subdirectory(contrib/comdb2makecluster)
 add_subdirectory(tests/tools EXCLUDE_FROM_ALL)
 
 enable_testing()

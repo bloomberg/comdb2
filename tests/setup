@@ -3,6 +3,12 @@
 set -e
 set -x
 
+failexit() {
+    echo $1
+    exit 1
+}
+
+
 debug=0
 
 [[ $COMDB2_UNITTEST == 1 ]] && exit 0
@@ -24,7 +30,7 @@ done
 
 source $TESTSROOTDIR/setup.common
 
-DBDIR=$(realpath $DBDIR)
+DBDIR=$(readlink -f $DBDIR)
 
 # Setup a debugger to run comdb2 server
 DEBUG_PREFIX=
@@ -187,22 +193,22 @@ mkdir -p $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2
 cd $DBDIR >/dev/null
 
 PARAMS="$DBNAME --no-global-lrl"
+export LOGDIR=$TESTDIR/logs
 
 # The script occasionally fails here. Let's find out what the rc is.
 set +e
-$COMDB2_EXE --create --lrl ${LRL} --pidfile ${TMPDIR}/$DBNAME.pid $PARAMS &> $TESTDIR/logs/${DBNAME}.init
+$COMDB2_EXE --create --lrl ${LRL} --pidfile ${TMPDIR}/$DBNAME.pid $PARAMS &> $LOGDIR/${DBNAME}.init
 rc=$?
 rm -f ${DBNAME}.trap
 if [[ $rc -ne 0 ]]; then
-    echo "Error rc=$rc while initializing DB, see $TESTDIR/logs/${DBNAME}.init "
-    exit 1
+    failexit "Error rc=$rc while initializing DB, see $LOGDIR/${DBNAME}.init "
 fi
 echo "${DBNAME} created successfully"
 
 set -e
 
 check_db_port_running_local() {
-    local dbport=`grep "\[ERROR\] net_listen: FAILED TO BIND to port" $TESTDIR/logs/${DBNAME}.db | grep -Po "port [0-9]*" | cut -f2 -d" " `
+    local dbport=`grep "\[ERROR\] net_listen: FAILED TO BIND to port" $LOGDIR/${DBNAME}.db | grep -Po "port [0-9]*" | cut -f2 -d" " `
     if [ "x$dbport" == "x" ] ; then
         return
     fi
@@ -216,7 +222,7 @@ check_db_port_running_local() {
 
 check_db_port_running_node() {
     local node=$1
-    local dbport=`grep "\[ERROR\] net_listen: FAILED TO BIND to port" $TESTDIR/logs/${DBNAME}.${node}.db | grep -Po "port [0-9]*" | cut -f2 -d" " `
+    local dbport=`grep "\[ERROR\] net_listen: FAILED TO BIND to port" $LOGDIR/${DBNAME}.${node}.db | grep -Po "port [0-9]*" | cut -f2 -d" " `
     if [ "x$dbport" == "x" ] ; then
         return;
     fi
@@ -237,8 +243,8 @@ check_db_port_running_node() {
 
 
 # test largecsc2 throws error about col width
-#if grep "ERROR" $TESTDIR/logs/${DBNAME}.init | grep -v largecsc2 ; then
-#    echo "Error while initializing DB, see $TESTDIR/logs/${DBNAME}.init "
+#if grep "ERROR" $LOGDIR/${DBNAME}.init | grep -v largecsc2 ; then
+#    echo "Error while initializing DB, see $LOGDIR/${DBNAME}.init "
 #    exit 1
 #fi
 
@@ -251,7 +257,7 @@ if [[ -z "$CLUSTER" ]]; then
     fi
 
     echo "!$TESTCASE: starting single node"
-    ${DEBUG_PREFIX} $COMDB2_EXE $PARAMS --pidfile ${TMPDIR}/${DBNAME}.pid &> $TESTDIR/logs/${DBNAME}.db &
+    ${DEBUG_PREFIX} $COMDB2_EXE $PARAMS --pidfile ${TMPDIR}/${DBNAME}.pid &> $LOGDIR/${DBNAME}.db &
     dbpid=$!
 
     set +e
@@ -268,7 +274,7 @@ if [[ -z "$CLUSTER" ]]; then
     while [[ "$out" != "1" ]]; do
         sleep 1
         out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $DBNAME default 'select 1' 2> /dev/null)
-        $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs $DBNAME 'select 1' &> $TESTDIR/logs/${DBNAME}.conn
+        $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs $DBNAME 'select 1' &> $LOGDIR/${DBNAME}.conn
     done
 else
     echo "!$TESTCASE: copying to cluster"
@@ -279,7 +285,7 @@ else
     COMDB2AR_EXOPTS="-x $COMDB2_EXE"
 
     ARFILE=$DBDIR/${DBNAME}.ar
-    $COMDB2AR_EXE $COMDB2AR_AROPTS c ${LRL} 2> $TESTDIR/logs/${DBNAME}.arstatus > $ARFILE
+    $COMDB2AR_EXE $COMDB2AR_AROPTS c ${LRL} 2> $LOGDIR/${DBNAME}.arstatus > $ARFILE
     [ ! -f $ARFILE ] && echo "failed to create $ARFILE" && exit 1
 
     i=0
@@ -288,7 +294,7 @@ else
         if [ $node == $HOSTNAME ] ; then
             continue
         fi
-        cat $ARFILE | ssh $SSH_OPT $node "cd ${DBDIR}; $COMDB2AR_EXE $COMDB2AR_EXOPTS $COMDB2AR_AROPTS -u 95 x $DBDIR" &> $TESTDIR/logs/${DBNAME}.${node}.copy &
+        cat $ARFILE | ssh $SSH_OPT $node "cd ${DBDIR}; $COMDB2AR_EXE $COMDB2AR_EXOPTS $COMDB2AR_AROPTS -u 95 x $DBDIR" &> $LOGDIR/${DBNAME}.${node}.copy &
         pids[$i]=$!
         let i=i+1
     done
@@ -299,7 +305,7 @@ else
         fi
         wait ${pids[$i]}
         if [[ $? -ne 0 ]]; then
-            echo "FAILED: copying ${LRL} ${node}: see $TESTDIR/logs/${DBNAME}.${node}.copy"
+            echo "FAILED: copying ${LRL} ${node}: see $LOGDIR/${DBNAME}.${node}.copy"
             exit 1
         fi
         let i=i+1
@@ -313,7 +319,7 @@ else
             if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
                 echo -e "!$TESTCASE: Execute the following command on ${node}: ${TEXTCOLOR}${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl ${LRL} --pidfile ${TMPDIR}/${DBNAME}.${node}.pid${NOCOLOR}"
             else
-                ${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl ${LRL} --pidfile ${TMPDIR}/${DBNAME}.${node}.pid &> $TESTDIR/logs/${DBNAME}.${node}.db &
+                ${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl ${LRL} --pidfile ${TMPDIR}/${DBNAME}.${node}.pid &> $LOGDIR/${DBNAME}.${node}.db &
             fi
             continue
         fi
@@ -324,7 +330,7 @@ else
             scp $SSH_OPT ${TESTDIR}/replicant_vars $node:${TESTDIR}/replicant_vars
             # redirect output from CMD to a subshell which runs awk to prepend time
             # could also use connection sharing and close master ssh session in unsetup
-            ssh -n $SSH_OPT -tt $node ${CMD} &>$TESTDIR/logs/${DBNAME}.${node}.db &
+            ssh -n $SSH_OPT -tt $node ${CMD} &>$LOGDIR/${DBNAME}.${node}.db &
             # $! will be pid of ssh (if we had used pipe, $! would be pid of awk)
             echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
         fi
@@ -348,14 +354,13 @@ else
         while  [[ "$out" != "1" ]]; do
             sleep 2
             out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
-            $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' &> $TESTDIR/logs/${DBNAME}.${node}.conn
+            $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' &> $LOGDIR/${DBNAME}.${node}.conn
         done
-        $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select comdb2_host()' &>> $TESTDIR/logs/${DBNAME}.${node}.conn
+        $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select comdb2_host()' &>> $LOGDIR/${DBNAME}.${node}.conn
         out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select comdb2_host()' 2>&1)
         if [ "$out" != "$node" ] ; then
-            echo "comdb2_host() '$out' != expected '$node'"
             sleep 1
-            exit 1
+            failexit "comdb2_host() '$out' != expected '$node'"
         fi
     done
     for node in $CLUSTER; do
