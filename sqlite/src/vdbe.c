@@ -63,54 +63,36 @@ int get_datacopy(BtCursor *pCur, int fnum, Mem *m);
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 /* Removing duplicate code between OP_Rowid and OP_IdxRowid */
-void getRowid(BtCursor *pCursor, i64 rowid, u8 p3, Mem *pOut)
+void getRowid(BtCursor *pCursor, i64 rowId, u8 p3, Mem *pOut)
 {
-  if( p3 == 0 ){
-      pOut->u.i = rowid;
-      MemSetTypeFlag(pOut, MEM_Int);
-      return;
-  }
-
-  if( pCursor==NULL ){
-      MemSetTypeFlag(pOut, MEM_Null);
-      return;
-  }
-
-  if( p3 == 1 ){
-    sqlite3BtreeRecordIDString(pCursor, rowid, &pOut->z, 0);
-    pOut->n = strlen(pOut->z);
-    pOut->enc=SQLITE_UTF8;
-    pOut->xDel = sqlite3_free;
-    MemSetTypeFlag(pOut, MEM_Str | MEM_Term | MEM_Dyn);
+  if( p3==0 ){
+    pOut->u.i = rowId;
+    MemSetTypeFlag(pOut, MEM_Int);
     return;
   }
-
-  if( p3 == 2 ){
-    /* no need to malloc the comdb2_rowid.
-    ** it will be converted to datetime anyway.
-    ** Do conversion in temp buffer
-    */
-    unsigned long long genid;
-    char buf[64];
-    char *outstr;
-    char *s;
-
-    outstr = buf;
-    sqlite3BtreeRecordIDString(pCursor, rowid, &outstr, sizeof(buf));
-    s = strchr(outstr, ':');
-    if( s == NULL ){
+  if( pCursor==NULL ){
+    MemSetTypeFlag(pOut, MEM_Null);
+    return;
+  }
+  if( p3==1 ){
+    char *zRowId = 0;
+    int nRowId = 0;
+    if( sqlite3BtreeGetRowId(pCursor, rowId, 0, &zRowId, &nRowId)!=SQLITE_OK ){
+      assert( zRowId==0 );
+      assert( nRowId==0 );
       MemSetTypeFlag(pOut, MEM_Null);
       return;
     }
-
-    s++;
-    genid = strtoull(s, NULL, 10);
-    if( genid == 0 ){
+    sqlite3VdbeMemSetStr(pOut, zRowId, nRowId, SQLITE_UTF8, sqlite3_free);
+    return;
+  }
+  if( p3==2 ){
+    unsigned long long genId = 0;
+    if( sqlite3BtreeGetRowId(pCursor, rowid, &genId, 0, 0)!=SQLITE_OK ){
       MemSetTypeFlag(pOut, MEM_Null);
       return;
     }
-
-    pOut->u.i = (genid & 0xffffffff00000000ull) >> 32;
+    pOut->u.i = (genId & 0xffffffff00000000ull) >> 32;
     MemSetTypeFlag(pOut, MEM_Int);
     sqlite3VdbeMemDatetimefy(pOut);
   }

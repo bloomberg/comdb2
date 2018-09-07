@@ -2640,7 +2640,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
             rc = sqlite3LockStmtTables(rec->stmt);
         } else if (rc == SQLITE_ERROR && comdb2_get_verify_remote_schemas()) {
             sqlite3ResetFdbSchemas(thd->sqldb);
-            return rc = SQLITE_SCHEMA_REMOTE;
+            return SQLITE_SCHEMA_REMOTE;
         }
         if (rc != SQLITE_SCHEMA_REMOTE) {
             break;

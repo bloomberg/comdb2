@@ -1885,7 +1885,7 @@ wqlist(A) ::= wqlist(A) COMMA nm(X) eidlist_opt(Y) AS LP select(Z) RP. {
 ////////////////////////// COMDB2 SYNTAX EXTENSIONS ///////////////////////////
 // These rules are used to support the syntax extensions provided by COMDB2.
 %ifdef SQLITE_BUILDING_FOR_COMDB2
-////////////////////////////////// GET / SET //////////////////////////////////
+////////////////////////////////// GET / PUT //////////////////////////////////
 cmd ::= GET getcmd.
 
 getcmd ::= ALIAS nm(U). {

@@ -8684,37 +8684,41 @@ char *sqlite3BtreeIntegrityCheck(Btree *pBt, int *aRoot, int nRoot, int mxErr,
     return NULL;
 }
 
-int sqlite3BtreeRecordID(BtCursor *pCur, void *memp)
-{
-    char *mem = (char *)memp;
-    memcpy(mem, &pCur->rrn, sizeof(int));
-    memcpy(mem + sizeof(int), &pCur->genid, sizeof(unsigned long long));
-    return SQLITE_OK;
-}
-
-/* print comdb2_rowid */
-int sqlite3BtreeRecordIDString(BtCursor *pCur, unsigned long long rowid,
-                               char **memp, size_t maxsz)
-{
-    unsigned long long
-        prgenid; /* it's always printed & returned in big-endian */
-    int rc;
-
-    if (maxsz == 0) {
-        maxsz = 64;
-        *memp = sqlite3Malloc(maxsz);
+/* obtain comdb2_rowid and optionally print it as a decimal string */
+int sqlite3BtreeGetRowId(
+  BtCursor *pCur,             /* IN: The BtCursor object being used. */
+  unsigned long long rowId,   /* IN: Original rowId (from the BtCursor). */
+  unsigned long long *pGenId, /* OUT, OPT: The genId, if requested. */
+  char **pzGenId,             /* OUT, OPT: Modified genId as decimal string. */
+  int *pnGenId                /* OUT, OPT: Size of string buffer. */
+){
+  unsigned long long prgenid; /* always printed & returned in big-endian */
+  assert( pCur );
+  assert( sizeof(pCur->rrn)<=sizeof(int) );
+  assert( sizeof(pCur->genid)<=sizeof(unsigned long long) );
+  if( !pCur->bt->is_temporary && pCur->cursor_class==CURSORCLASS_TABLE ){
+    int rc = enque_pfault_olddata_oldkeys(pCur->db, rowId, 0, -1, 0, 1, 1, 1);
+    if( rc!=SQLITE_OK ){
+      logmsg(LOGMSG_USER, "%s: enque_pfault_olddata_oldkeys %d\n",__func__,rc);
     }
-
-    /* assert that all my assumptions are true */
-    assert(sizeof(pCur->rrn) <= sizeof(int));
-    assert(sizeof(pCur->genid <= sizeof(unsigned long long)));
-
-    if (!pCur->bt->is_temporary && pCur->cursor_class == CURSORCLASS_TABLE) {
-        rc = enque_pfault_olddata_oldkeys(pCur->db, rowid, 0, -1, 0, 1, 1, 1);
+  }
+  prgenid = flibc_htonll(rowId);
+  if( pGenId ) *pGenId = prgenid;
+  if( pzGenId && pnGenId ){
+    char *zGenId;
+    int nGenId = 22; /* "+18446744073709551615\0" */
+    assert( ULLONG_MAX<=18446744073709551615 );
+    zGenId = sqlite3Malloc(nGenId);
+    if( zGenId==0 ){
+      return SQLITE_NOMEM;
     }
-    prgenid = flibc_htonll(rowid);
-    snprintf(*memp, maxsz, "%llu", prgenid);
-    return SQLITE_OK;
+    snprintf(zGenId, nGenId, "%llu", prgenid);
+    assert( *pzGenId==0 );
+    *pzGenId = zGenId;
+    assert( *pnGenId==0 );
+    *pnGenId = nGenId;
+  }
+  return SQLITE_OK;
 }
 
 /*

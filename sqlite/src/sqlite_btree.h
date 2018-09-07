@@ -314,10 +314,11 @@ int sqlite3BtreeData(BtCursor*, u32 offset, u32 amt, void*);
 /*
 ** Extract the rrn:genid of the record pointed to by cursor as a string.
 */
-int sqlite3BtreeRecordIDString(BtCursor *,
-                               unsigned long long rowid,
-                               char **outstr,
-                               size_t /* sizeof outstr if already allocated */);
+int sqlite3BtreeGetRowId(BtCursor *,
+                         unsigned long long,
+                         unsigned long long *,
+                         char **,
+                         int* /* sizeof buf if already allocated */);
 
 char *sqlite3BtreeIntegrityCheck(Btree*, int *aRoot, int nRoot, int, int*);
 struct Pager *sqlite3BtreePager(Btree*);
