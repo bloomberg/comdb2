@@ -2884,7 +2884,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             /* remove all prefixes tothe debug trace and put in the transaction
              * and operation name prefix. */
             reqpopprefixes(iq, -1);
-            reqpushprefixf(iq, "%x:tran %p:%s ", (int)pthread_self(), trans,
+            reqpushprefixf(iq, "%p:tran %p:%s ", (int)pthread_self(), trans,
                            breq2a(hdr.opcode));
 
             reqprintflush(iq);
@@ -4963,7 +4963,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     }
 
     if (iq->debug) {
-        reqprintf(iq, "TRANSACTION COMMITTED, NUM_REQS %d", num_reqs);
+        reqprintf(iq, "TRANSACTION COMMITTED, NUM_REQS %d, NUM ROWS WRITTEN %d",
+                  num_reqs, iq->written_row_count);
     }
 
     /* starting writes, no more reads */
