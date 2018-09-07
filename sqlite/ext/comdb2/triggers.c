@@ -22,6 +22,7 @@
 #include <comdb2.h>
 
 #include <translistener.h>
+#include "sql.h"
 
 typedef struct trigger trigger;
 struct trigger {
@@ -91,10 +92,7 @@ again:
 }
 
 static int triggerOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
-  /* Do not allow non-OP users if authentication is enabled. */
-  int rc = comdb2CheckOpAccess();
-  if( rc!=SQLITE_OK )
-      return rc;
+  struct sql_thread *thd;
 
   trigger_cursor *cur = sqlite3_malloc(sizeof(trigger_cursor));
   if( cur == 0)
@@ -102,10 +100,25 @@ static int triggerOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   memset(cur, 0, sizeof(*cur));
   listc_init(&cur->trgs, offsetof(trigger, lnk));
   rdlock_schema_lk(); // protect thedb access
+
+  thd = pthread_getspecific(query_info_key);
+
   trigger *t;
   for(int i = 0; i < thedb->num_qdbs; ++i){
+    int bdberr;
+    int rc;
+
     if( thedb->qdbs[i] == NULL )
       continue;
+
+    /* Check user access. */
+    rc = bdb_check_user_tbl_access(thedb->bdb_env, thd->clnt->user,
+                                   thedb->qdbs[i]->tablename, ACCESS_READ,
+                                   &bdberr);
+    if (rc != 0) {
+        continue;
+    }
+
     t = sqlite3_malloc(sizeof(trigger));
     t->name = strdup(thedb->qdbs[i]->tablename);
     t->type = -1;

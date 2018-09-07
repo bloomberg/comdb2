@@ -87,15 +87,11 @@ static int systblFieldsDisconnect(sqlite3_vtab *pVtab){
 static int systblFieldsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   systbl_fields_cursor *pCur;
 
-  /* Do not allow non-OP users if authentication is enabled. */
-  int rc = comdb2CheckOpAccess();
-  if( rc!=SQLITE_OK )
-      return rc;
-
   pCur = sqlite3_malloc( sizeof(*pCur) );
   if( pCur==0 ) return SQLITE_NOMEM;
   memset(pCur, 0, sizeof(*pCur));
   *ppCursor = &pCur->base;
+  systblNextAllowedTable(&pCur->iRowid);
 
   return SQLITE_OK;
 }
@@ -145,6 +141,8 @@ static int systblFieldsNext(sqlite3_vtab_cursor *cur){
       } while( pCur->iRowid < thedb->num_dbs );
     }
   }
+
+  systblNextAllowedTable(&pCur->iRowid);
 
   return SQLITE_OK;
 }

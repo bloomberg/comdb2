@@ -12,6 +12,9 @@
 #include "types.h"
 #include "comdb2systbl.h"
 
+#include "comdb2.h"
+#include "sql.h"
+
 /* This tries to make it easier to add system tables.  There's usually lots of boilerplate
  * code.  A common case though is that you have an array of structures that you want to
  * emit.   create_system_table lets you specify a table name, the size of the structure,
@@ -361,3 +364,25 @@ int create_system_table(sqlite3 *db, char *name,
 
     return 0;
 }
+
+int systblNextAllowedTable(sqlite3_int64 *tabId) {
+    struct dbtable *pDb;
+    struct sql_thread *thd;
+    char *tablename;
+    int bdberr;
+    int rc;
+
+    thd = pthread_getspecific(query_info_key);
+
+    while (*tabId < thedb->num_dbs) {
+        pDb = thedb->dbs[*tabId];
+        tablename = pDb->tablename;
+        rc = bdb_check_user_tbl_access(thedb->bdb_env, thd->clnt->user,
+                                       tablename, ACCESS_READ, &bdberr);
+        if (rc == 0)
+            return SQLITE_OK;
+         (*tabId)++;
+    }
+    return SQLITE_OK;
+}
+

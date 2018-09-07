@@ -77,15 +77,13 @@ static int systblTblSizeDisconnect(sqlite3_vtab *pVtab){
 static int systblTblSizeOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   systbl_tblsize_cursor *pCur;
 
-  /* Do not allow non-OP users if authentication is enabled. */
-  int rc = comdb2CheckOpAccess();
-  if( rc!=SQLITE_OK )
-      return rc;
-
   pCur = sqlite3_malloc( sizeof(*pCur) );
   if( pCur==0 ) return SQLITE_NOMEM;
   memset(pCur, 0, sizeof(*pCur));
   *ppCursor = &pCur->base;
+
+  systblNextAllowedTable(&pCur->iRowid);
+
   return SQLITE_OK;
 }
 
@@ -102,8 +100,8 @@ static int systblTblSizeClose(sqlite3_vtab_cursor *cur){
 */
 static int systblTblSizeNext(sqlite3_vtab_cursor *cur){
   systbl_tblsize_cursor *pCur = (systbl_tblsize_cursor*)cur;
-
   pCur->iRowid++;
+  systblNextAllowedTable(&pCur->iRowid);
   return SQLITE_OK;
 }
 
