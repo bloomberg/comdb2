@@ -83,6 +83,9 @@ void getRowid(BtCursor *pCursor, i64 rowId, u8 p3, Mem *pOut)
       MemSetTypeFlag(pOut, MEM_Null);
       return;
     }
+    assert( nRowId>=4 ); /* MIN: "2:0\0" */
+    assert( zRowId[0]=='2' ); /* REQD: For R6 compat. */
+    assert( zRowId[1]==':' ); /* REQD: For R6 compat. */
     sqlite3VdbeMemSetStr(pOut, zRowId, nRowId, SQLITE_UTF8, sqlite3_free);
     return;
   }
