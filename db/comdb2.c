@@ -267,7 +267,8 @@ int gbl_use_sqlthrmark = 1000;
 int gbl_repchecksum = 0;
 int gbl_pfault = 0;
 int gbl_pfaultrmt = 1;
-int gbl_dtastripe = 8; int gbl_blobstripe = 1;
+int gbl_dtastripe = 8;
+int gbl_blobstripe = 1;
 int gbl_rebuild_mode = 0;
 int gbl_dbsizetime = 15 * 60; /* number of seconds for db size calculation */
 int gbl_debug = 0;            /* operation debugging */
@@ -1828,7 +1829,7 @@ void check_access_controls(struct dbenv *dbenv)
     logmsg(LOGMSG_INFO, "access control tableXnode enabled\n");
 }
 
-int llmeta_load_tables_older_versions(struct dbenv *dbenv, void *tran)
+int llmeta_load_tables_older_versions(struct dbenv *dbenv)
 {
     int rc = 0, bdberr, dbnums[MAX_NUM_TABLES], fndnumtbls, i;
     char *tblnames[MAX_NUM_TABLES];
@@ -1839,7 +1840,7 @@ int llmeta_load_tables_older_versions(struct dbenv *dbenv, void *tran)
         return 0;
 
     /* re-load the tables from the low level metatable */
-    if (bdb_llmeta_get_tables(tran, tblnames, dbnums, sizeof(tblnames),
+    if (bdb_llmeta_get_tables(NULL, tblnames, dbnums, sizeof(tblnames),
                               &fndnumtbls, &bdberr) ||
         bdberr != BDBERR_NOERROR) {
         logmsg(LOGMSG_ERROR, "couldn't load tables from low level meta table"
@@ -1864,7 +1865,7 @@ int llmeta_load_tables_older_versions(struct dbenv *dbenv, void *tran)
             goto cleanup;
         }
 
-        rc = bdb_get_csc2_highest(tran, tblnames[i], &ver, &bdberr);
+        rc = bdb_get_csc2_highest(NULL, tblnames[i], &ver, &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "couldn't get highest version number for %s\n",
                     tblnames[i]);
@@ -1873,12 +1874,12 @@ int llmeta_load_tables_older_versions(struct dbenv *dbenv, void *tran)
         }
 
         int isc = 0;
-        get_db_instant_schema_change_tran(tbl, &isc, tran);
+        get_db_instant_schema_change(tbl, &isc);
         if (isc) {
             /* load schema for older versions */
             for (int v = 1; v <= ver; ++v) {
                 char *csc2text;
-                if (get_csc2_file_tran(tbl->tablename, v, &csc2text, NULL, tran)) {
+                if (get_csc2_file(tbl->tablename, v, &csc2text, NULL)) {
                     logmsg(LOGMSG_ERROR, "get_csc2_file failed %s:%d\n", __FILE__,
                             __LINE__);
                     continue;
@@ -1977,14 +1978,14 @@ static int llmeta_load_queues(struct dbenv *dbenv)
 
 /* gets the table names and dbnums from the low level meta table and sets up the
  * dbenv accordingly.  returns 0 on success and anything else otherwise */
-static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
+static int llmeta_load_tables(struct dbenv *dbenv, char *dbname)
 {
     int rc = 0, bdberr, dbnums[MAX_NUM_TABLES], fndnumtbls, i;
     char *tblnames[MAX_NUM_TABLES];
     struct dbtable *tbl;
 
     /* load the tables from the low level metatable */
-    if (bdb_llmeta_get_tables(tran, tblnames, dbnums, sizeof(tblnames),
+    if (bdb_llmeta_get_tables(NULL, tblnames, dbnums, sizeof(tblnames),
                               &fndnumtbls, &bdberr) ||
         bdberr != BDBERR_NOERROR) {
         logmsg(LOGMSG_ERROR, "couldn't load tables from low level meta table"
@@ -2004,7 +2005,6 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
         int ver;
         int bdberr;
 
-        logmsg(LOGMSG_INFO, "%s loading table '%s'\n", __func__, tblnames[i]);
         /* if db number matches parent database db number then
          * table name must match parent database name.  otherwise
          * we get mysterious failures to receive qtraps (setting
@@ -2020,18 +2020,12 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
         }
 
         /* get schema version from llmeta */
-        rc = bdb_get_csc2_highest(tran, tblnames[i], &ver, &bdberr);
-        if (rc) {
-            logmsg(LOGMSG_DEBUG, "%s get_csc2_highest for '%s' returns %d\n",
-                    __func__, tblnames[i], rc);
+        rc = bdb_get_csc2_highest(NULL, tblnames[i], &ver, &bdberr);
+        if (rc)
             break;
-        }
-
-        logmsg(LOGMSG_DEBUG, "%s got version %d for table '%s'\n", __func__,
-                ver, tblnames[i]);
 
         /* create latest version of db */
-        rc = get_csc2_file_tran(tblnames[i], ver, &csc2text, NULL, tran);
+        rc = get_csc2_file(tblnames[i], ver, &csc2text, NULL);
         if (rc) {
             logmsg(LOGMSG_ERROR, "get_csc2_file failed %s:%d\n", __FILE__, __LINE__);
             break;
@@ -3044,14 +3038,14 @@ static int init_sqlite_table(struct dbenv *dbenv, char *table)
     return 0;
 }
 
-static void load_dbstore_tableversion(struct dbenv *dbenv, tran_type *tran)
+static void load_dbstore_tableversion(struct dbenv *dbenv)
 {
     int i;
     for (i = 0; i < dbenv->num_dbs; i++) {
         struct dbtable *tbl = dbenv->dbs[i];
         update_dbstore(tbl);
 
-        tbl->tableversion = table_version_select(tbl, tran);
+        tbl->tableversion = table_version_select(tbl, NULL);
         if (tbl->tableversion == -1) {
             logmsg(LOGMSG_ERROR, "Failed reading table version\n");
         }
@@ -3112,7 +3106,6 @@ static int init(int argc, char **argv)
     int rc;
     int bdberr;
     int cacheszkb_suggestion = 0;
-    int stripes, blobstripe;
 
     if (argc < 2) {
         print_usage_and_exit();
@@ -3568,20 +3561,6 @@ static int init(int argc, char **argv)
 
     gbl_llmeta_open = 1;
 
-    if (gbl_create_mode && bdb_set_global_stripe_info(NULL, gbl_dtastripe,
-                gbl_blobstripe, &bdberr) != 0) {
-        logmsg(LOGMSG_FATAL, "Error writing global stripe info\n");
-        exit(1);
-    }
-
-    if (!gbl_create_mode && bdb_get_global_stripe_info(NULL, &stripes,
-                &blobstripe, &bdberr) == 0 && stripes > 0) {
-        gbl_dtastripe = stripes;
-        gbl_blobstripe = blobstripe;
-        bdb_attr_set(thedb->bdb_attr, BDB_ATTR_DTASTRIPE, gbl_dtastripe);
-        bdb_attr_set(thedb->bdb_attr, BDB_ATTR_BLOBSTRIPE, gbl_blobstripe);
-    }
-
     if (!gbl_create_mode) {
        uint64_t format;
        bdb_get_genid_format(&format, &bdberr);
@@ -3618,7 +3597,7 @@ static int init(int argc, char **argv)
            environment is opened, but files are not !*/
         pthread_rwlock_wrlock(&schema_lk);
 
-        if (llmeta_load_tables(thedb, dbname, NULL)) {
+        if (llmeta_load_tables(thedb, dbname)) {
             logmsg(LOGMSG_FATAL, "could not load tables from the low level meta "
                             "table\n");
             pthread_rwlock_unlock(&schema_lk);
@@ -3723,12 +3702,12 @@ static int init(int argc, char **argv)
         return -1;
     }
 
-    if (llmeta_load_tables_older_versions(thedb, NULL)) {
+    if (llmeta_load_tables_older_versions(thedb)) {
         logmsg(LOGMSG_FATAL, "llmeta_load_tables_older_versions failed\n");
         return -1;
     }
 
-    load_dbstore_tableversion(thedb, NULL);
+    load_dbstore_tableversion(thedb);
 
     gbl_backend_opened = 1;
     pthread_rwlock_unlock(&schema_lk);
@@ -5304,6 +5283,7 @@ int rename_db(struct dbtable *db, const char *newname)
     /* db */
     hash_del(thedb->db_hash, db);
     db->tablename = (char *)newname;
+    db->version = 0; /* reset, new table */
     hash_add(thedb->db_hash, db);
 
     pthread_rwlock_unlock(&thedb_lock);
@@ -5472,234 +5452,6 @@ int thdpool_alarm_on_queing(int len)
 }
 
 int gbl_hostname_refresh_time = 60;
-
-int close_all_dbs_tran(tran_type *tran);
-
-int comdb2_close_schemas(void *dbenv, void *lsn, uint32_t lockid)
-{
-    /*
-    uint32_t tranlid = 0;
-    int bdberr = 0;
-    int rc;
-    tran_type *tran;
-
-    tran = bdb_tran_begin(thedb->bdb_env, NULL, &bdberr);
-    if (tran == NULL) {
-        logmsg(LOGMSG_FATAL, "%s: failed to start tran\n", __func__);
-        abort();
-    }
-
-    bdb_get_tran_lockerid(tran, &tranlid);
-    bdb_set_tran_lockerid(tran, lockid);
-
-    if ((rc = close_all_dbs_tran(tran)) != 0) {
-        logmsg(LOGMSG_FATAL, "%s: close_all_dbs_tran returns %d\n", __func__,
-                rc);
-        abort();
-    }
-
-    free_sqlite_table(thedb);
-    thedb->dbs = NULL;
-
-    bdb_set_tran_lockerid(tran, tranlid);
-    if ((rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr)) != 0) {
-        logmsg(LOGMSG_FATAL, "%s: bdb_tran_abort returns %d\n", __func__,
-                rc);
-        abort();
-    }
-    */
-
-    return 0;
-}
-
-int reload_all_db_tran(tran_type *tran);
-int open_all_dbs_tran(void *tran);
-void delete_prepared_stmts(struct sqlthdstate *thd);
-int reload_lua_sfuncs();
-int reload_lua_afuncs();
-void oldfile_list_clear(void);
-
-int comdb2_replicated_truncate(void *dbenv, void *inlsn)
-{
-    int *file = &(((int *)(inlsn))[0]);
-    int *offset = &(((int *)(inlsn))[1]);
-
-    logmsg(LOGMSG_INFO, "%s starting for [%d:%d]\n", __func__, *file, *offset);
-    if (thedb->master == gbl_mynode && !gbl_is_physical_replicant) {
-        /* We've asked the replicants to truncate their log files.  Now we are
-         * incrementing the generation number without an election and writing a
-         * record.  The higher-gen write ensures that this node will remain
-         * master after an election.  */
-        master_increment_gen(thedb->bdb_env);
-    }
-
-    logmsg(LOGMSG_INFO, "%s complete [%d:%d]\n", __func__, *file, *offset);
-
-    return 0;
-}
-
-int gbl_comdb2_reload_schemas = 0;
-
-/* This is for online logfile truncation across a schema-change */
-int comdb2_reload_schemas(void *dbenv, void *inlsn)
-{
-    extern int gbl_watcher_thread_ran;
-    uint32_t tranlid = 0;
-    uint64_t format;
-    int bdberr = 0;
-    int rlstate;
-    int rc;
-    int ii;
-    int table;
-    int stripes, blobstripe;
-    int retries = 0;
-    tran_type *tran;
-    struct dbtable *db;
-    struct sql_thread *sqlthd;
-    struct sqlthdstate *thd;
-    int *file = &(((int *)(inlsn))[0]);
-    int *offset = &(((int *)(inlsn))[1]);
-
-    gbl_comdb2_reload_schemas = 1;
-    logmsg(LOGMSG_INFO, "%s starting for [%d:%d]\n", __func__, *file, *offset);
-    wrlock_schema_lk();
-retry_tran:
-    tran = bdb_tran_begin_flags(thedb->bdb_env, NULL, &bdberr, 0);
-    if (tran == NULL) {
-        logmsg(LOGMSG_FATAL, "%s: failed to start tran\n", __func__);
-        abort();
-    }
-
-    for (ii = 0; ii < thedb->num_dbs; ii++) {
-        db = thedb->dbs[ii];
-        if ((rc = bdb_lock_table_write(db->handle, tran)) != 0) {
-            if (rc == BDBERR_DEADLOCK && retries < 10) {
-                retries++;
-                bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
-                logmsg(LOGMSG_ERROR, "%s: got deadlock acquiring tablelocks\n",
-                        __func__);
-                goto retry_tran;
-            } else {
-                logmsg(LOGMSG_FATAL, "%s: got error %d acquiring tablelocks\n",
-                        __func__, rc);
-                abort();
-            }
-        }
-    }
-
-    /* Test this incrementally with all schema-change types */
-    if ((rc = close_all_dbs_tran(tran)) != 0) {
-        logmsg(LOGMSG_FATAL, "%s: close_all_dbs_tran returns %d\n", __func__,
-                rc);
-        abort();
-    }
-
-    free_sqlite_table(thedb);
-    thedb->dbs = NULL;
-
-    if (thedb->db_hash) 
-        hash_clear(thedb->db_hash);
-
-    if (bdb_get_global_stripe_info(tran, &stripes, &blobstripe, &bdberr) == 0 &&
-            stripes > 0) {
-        gbl_dtastripe = stripes;
-        gbl_blobstripe = blobstripe;
-        bdb_attr_set(thedb->bdb_attr, BDB_ATTR_DTASTRIPE, gbl_dtastripe);
-        bdb_attr_set(thedb->bdb_attr, BDB_ATTR_BLOBSTRIPE, gbl_blobstripe);
-    }
-
-    if (llmeta_load_tables(thedb, gbl_dbname, tran)) {
-        logmsg(LOGMSG_FATAL, "could not load tables from the low level meta "
-                "table\n");
-        abort();
-    }
-
-    if (llmeta_load_timepart(thedb)) {
-        logmsg(LOGMSG_ERROR, "could not load time partitions\n");
-        pthread_rwlock_unlock(&schema_lk);
-        abort();
-    }
-
-    if ((rc = bdb_get_rowlocks_state(&rlstate, tran, &bdberr)) != 0) {
-        logmsg(LOGMSG_ERROR, "Get rowlocks llmeta failed, rc=%d bdberr=%d\n",
-                rc, bdberr);
-        abort();
-    }
-
-    switch (rlstate) {
-        case LLMETA_ROWLOCKS_ENABLED:
-        case LLMETA_ROWLOCKS_ENABLED_MASTER_ONLY:
-            gbl_rowlocks = 1;
-            gbl_sql_tranlevel_default = SQL_TDEF_SNAPISOL;
-        case LLMETA_ROWLOCKS_DISABLED:
-            gbl_rowlocks = 0;
-            gbl_sql_tranlevel_default = gbl_sql_tranlevel_preserved;
-        default:
-            break;
-    }
-
-    bdb_get_genid_format(&format, &bdberr);
-    bdb_genid_set_format(thedb->bdb_env, format);
-
-    if (reload_lua_sfuncs()) {
-        logmsg(LOGMSG_FATAL, "could not load lua funcs from llmeta\n");
-        abort();
-    }
-
-    if (reload_lua_afuncs()) {
-        logmsg(LOGMSG_FATAL, "could not load lua aggs from llmeta\n");
-        abort();
-    }
-
-    if ((rc = db_finalize_and_sanity_checks(thedb)) != 0) {
-        logmsg(LOGMSG_FATAL, "%s: db_finalize_and_sanity_checks returns %d\n",
-                __func__, rc);
-        abort();
-    }
-
-    fix_lrl_ixlen_tran(tran);
-
-    if ((rc = backend_open_tran(thedb, tran, 0)) != 0) {
-        logmsg(LOGMSG_FATAL, "%s: backend_open_tran returns %d\n", __func__,
-                rc);
-        abort();
-    }
-
-    if (llmeta_load_tables_older_versions(thedb, tran)) {
-        logmsg(LOGMSG_FATAL, "llmeta_load_tables_older_versions failed\n");
-        abort();
-    }
-
-    load_dbstore_tableversion(thedb, tran);
-
-    /* Clean up */
-    sqlthd = pthread_getspecific(query_info_key);
-    if (sqlthd) {
-        thd = sqlthd->clnt->thd;
-
-        delete_prepared_stmts(thd);
-        sqlite3_close(thd->sqldb);
-        thd->sqldb = NULL;
-    }
-
-    create_sqlmaster_records(tran);
-    create_sqlite_master();
-    oldfile_list_clear();
-
-    gbl_dbopen_gen++;
-
-    if ((rc = bdb_tran_commit(thedb->bdb_env, tran, &bdberr)) != 0) {
-        logmsg(LOGMSG_FATAL, "%s: bdb_tran_abort returns %d\n", __func__, rc);
-        abort();
-    }
-
-    gbl_watcher_thread_ran = comdb2_time_epoch();
-    unlock_schema_lk();
-    logmsg(LOGMSG_INFO, "%s complete [%d:%d]\n", __func__, *file, *offset);
-
-    gbl_comdb2_reload_schemas = 0;
-    return 0;
-}
 
 int comdb2_is_standalone(void *dbenv)
 {

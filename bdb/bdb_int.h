@@ -1075,8 +1075,7 @@ enum {
     USER_TYPE_DEL_NAME,
     USER_TYPE_TRANSFERMASTER_NAME,
     USER_TYPE_REQ_START_LSN,
-    USER_TYPE_TRUNCATE_LOG,
-    USER_TYPE_IGNORE_GEN
+    USER_TYPE_TRUNCATE_LOG
 };
 
 void print(bdb_state_type *bdb_state, char *format, ...);

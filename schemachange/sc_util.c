@@ -18,14 +18,14 @@
 #include "sc_util.h"
 #include "logmsg.h"
 
-int close_all_dbs_tran(tran_type *tran)
+int close_all_dbs(void)
 {
     int ii, rc, bdberr;
     struct dbtable *db;
     logmsg(LOGMSG_DEBUG, "Closing all tables...\n");
     for (ii = 0; ii < thedb->num_dbs; ii++) {
         db = thedb->dbs[ii];
-        rc = bdb_close_only_sc(db->handle, tran, &bdberr);
+        rc = bdb_close_only(db->handle, &bdberr);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "failed closing table '%s': %d\n",
                    db->tablename, bdberr);
@@ -36,19 +36,14 @@ int close_all_dbs_tran(tran_type *tran)
     return 0;
 }
 
-int close_all_dbs(void)
-{
-    return close_all_dbs_tran(NULL);
-}
-
-int open_all_dbs_tran(void *tran)
+int open_all_dbs(void)
 {
     int ii, rc, bdberr;
     struct dbtable *db;
     logmsg(LOGMSG_DEBUG, "Opening all tables\n");
     for (ii = 0; ii < thedb->num_dbs; ii++) {
         db = thedb->dbs[ii];
-        rc = bdb_open_again_tran(db->handle, tran, &bdberr);
+        rc = bdb_open_again(db->handle, &bdberr);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR,
                    "morestripe: failed reopening table '%s': %d\n",
@@ -59,11 +54,6 @@ int open_all_dbs_tran(void *tran)
     logmsg(LOGMSG_DEBUG, "Opened all tables OK\n");
     gbl_sc_commit_count++;
     return 0;
-}
-
-int open_all_dbs(void)
-{
-    return open_all_dbs_tran(NULL);
 }
 
 /* Check if it is, in prinicple, ok to start a schema change. */

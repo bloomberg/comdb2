@@ -197,7 +197,6 @@ extern int gbl_osql_send_startgen;
 extern int gbl_create_default_user;
 extern int gbl_allow_neg_column_size;
 extern int gbl_instrument_dblist;
-extern int gbl_replicated_truncate_timeout;
 
 extern long long sampling_threshold;
 
