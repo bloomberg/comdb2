@@ -45,7 +45,6 @@ typedef enum scdone {
     lua_sfunc,
     lua_afunc,
     rename_table,
-    change_stripe
 } scdone_t;
 
 int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,

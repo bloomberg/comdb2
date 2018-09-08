@@ -954,39 +954,9 @@ int send_pg_compact_req(bdb_state_type *bdb_state, int32_t fileid,
 out:
     return rc;
 }
-
-int gbl_replicated_truncate_timeout = 60;
-
-/* Sent from the master to all cluster nodes at the beginning of truncation */
-int send_ignore_gen(bdb_state_type *bdb_state)
-{
-    int count, i;
-    uint32_t gen;
-    const char *hostlist[REPMAX];
-    u_int8_t buf[sizeof(uint32_t)], *p_buf, *p_buf_end;
-
-    if (bdb_state->repinfo->master_host != bdb_state->repinfo->myhost) {
-        logmsg(LOGMSG_ERROR, "%s: should only send from master\n", __func__);
-        return 0;
-    }
-
-    gen = bdb_get_rep_gen(bdb_state);
-    p_buf = buf;
-    p_buf_end = buf + sizeof(uint32_t);
-    buf_put(&gen, sizeof(uint32_t), p_buf, p_buf_end);
-    count = net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist);
-    logmsg(LOGMSG_INFO, "%s sending ignore generation %u to cluster\n",
-            __func__, gen);
-    for (i = 0; i < count; i++) {
-        net_send(bdb_state->repinfo->netinfo, hostlist[i], USER_TYPE_IGNORE_GEN,
-                p_buf, sizeof(uint32_t), 0);
-    }
-    return 0;
-}
-
 int send_truncate_to_master(bdb_state_type *bdb_state, int file, int offset)
 {
-    int timeout = gbl_replicated_truncate_timeout * 1000, rc;
+    int timeout = 10 * 1000, rc;
     const char *hostlist[REPMAX];
     char buf[sizeof(DB_LSN)];
     DB_LSN trunc_lsn;
@@ -1011,6 +981,7 @@ int send_truncate_to_master(bdb_state_type *bdb_state, int file, int offset)
 
     return rc;
 }
+
 
 const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
                                     unsigned int hash)

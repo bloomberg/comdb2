@@ -1895,7 +1895,6 @@ int llmeta_dump_mapping_table(struct dbenv *dbenv, const char *table, int err);
 int llmeta_load_lua_sfuncs();
 int llmeta_load_lua_afuncs();
 int backend_open(struct dbenv *dbenv);
-int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags);
 int open_bdb_env(struct dbenv *dbenv);
 int backend_close(struct dbenv *dbenv);
 void backend_cleanup(struct dbenv *dbenv);
@@ -2338,7 +2337,6 @@ int put_csc2_file(const char *table, void *tran, int version, const char *text);
 int put_csc2_stuff(struct dbtable *db, void *trans, void *stuff, size_t lenstuff);
 int put_blobstripe_genid(struct dbtable *db, void *tran, unsigned long long genid);
 int get_blobstripe_genid(struct dbtable *db, unsigned long long *genid);
-int get_blobstripe_genid_tran(struct dbtable *db, unsigned long long *genid, tran_type *tran);
 
 int load_new_table_schema_file(struct dbenv *dbenv, const char *table,
                                const char *csc2file);
@@ -2348,7 +2346,6 @@ int load_new_table_schema_tran(struct dbenv *dbenv, tran_type *tran,
                                const char *table, const char *csc2_text);
 int load_new_table_schema(struct dbenv *dbenv, const char *table,
                           const char *csc2_text);
-void fix_blobstripe_genids(tran_type *tran);
 int dump_all_csc2_to_disk();
 int dump_table_csc2_to_disk_fname(struct dbtable *db, const char *csc2_fname);
 int dump_table_csc2_to_disk(const char *table);
@@ -2399,6 +2396,7 @@ int broadcast_quiesce_threads(void);
 int broadcast_resume_threads(void);
 int broadcast_close_db(char *table);
 int broadcast_close_only_db(char *table);
+int broadcast_morestripe_and_open_all_dbs(int newdtastripe, int newblobstripe);
 int broadcast_close_all_dbs(void);
 int broadcast_sc_end(const char *table, uint64_t seed);
 int broadcast_sc_start(const char *table, uint64_t seed, uint32_t host,
@@ -2446,7 +2444,6 @@ int dbq_consume_goose(struct ireq *iq, void *trans);
 
 /* sql stuff */
 int create_sqlmaster_records(void *tran);
-int create_sqlmaster_records_flags(void *tran, uint32_t flags);
 void form_new_style_name(char *namebuf, int len, struct schema *schema,
                          const char *csctag, const char *dbname);
 

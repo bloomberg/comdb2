@@ -405,9 +405,13 @@ int do_alter_stripes(struct schema_change_type *s)
 
     if (!s->resume) set_sc_flgs(s);
 
-    rc = do_alter_stripes_int(s);
+    rc = propose_sc(s);
+
+    if (rc == SC_OK) rc = do_alter_stripes_int(s);
 
     if (master_downgrading(s)) return SC_MASTER_DOWNGRADE;
+
+    broadcast_sc_end(s->table, s->iq->sc_seed);
 
     /* if we did a regular schema change and we used the llmeta we don't need to
      * push locgs */
