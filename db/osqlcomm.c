@@ -7128,12 +7128,14 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         if (cur_gen != dt.start_gen) {
             err->errcode = OP_FAILED_VERIFY;
             if (logsb) {
-                sbuf2printf(logsb, "Startgen check failed, start_gen %u, "
-                                   "cur_gen %u, return verify error\n",
+                sbuf2printf(logsb,
+                            "Startgen check failed, start_gen %u, "
+                            "cur_gen %u, return verify error\n",
                             dt.start_gen, cur_gen);
             }
-            logmsg(LOGMSG_DEBUG, "[%llx %s] Startgen check failed, start_gen "
-                                 "%u, cur_gen %u\n",
+            logmsg(LOGMSG_DEBUG,
+                   "[%llx %s] Startgen check failed, start_gen "
+                   "%u, cur_gen %u\n",
                    id, us, dt.start_gen, cur_gen);
             return ERR_VERIFY;
         }
