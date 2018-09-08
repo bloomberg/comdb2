@@ -1351,7 +1351,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                 }
 
                 if (gbl_early_verify && !clnt->early_retry &&
-                        gbl_osql_send_startgen && clnt->start_gen) {
+                    gbl_osql_send_startgen && clnt->start_gen) {
                     if (clnt->start_gen != bdb_get_rep_gen(thedb->bdb_env))
                         clnt->early_retry = EARLY_ERR_GENCHANGE;
                 }
@@ -1375,7 +1375,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                     } else if (clnt->early_retry == EARLY_ERR_GENCHANGE) {
                         clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
                         errstat_cat_str(&(clnt->osql.xerr),
-                                "verify error on master swing");
+                                        "verify error on master swing");
                     }
                     if (clnt->early_retry) {
                         clnt->early_retry = 0;

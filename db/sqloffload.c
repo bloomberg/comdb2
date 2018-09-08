@@ -283,8 +283,8 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     int rc2 = 0;
     int usedb_only = 0;
 
-    if (gbl_early_verify && !clnt->early_retry &&
-            gbl_osql_send_startgen && clnt->start_gen) {
+    if (gbl_early_verify && !clnt->early_retry && gbl_osql_send_startgen &&
+        clnt->start_gen) {
         if (clnt->start_gen != bdb_get_rep_gen(thedb->bdb_env))
             clnt->early_retry = EARLY_ERR_GENCHANGE;
     }
@@ -297,8 +297,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         errstat_cat_str(&(clnt->osql.xerr), "constraints error, no genid");
     } else if (clnt->early_retry == EARLY_ERR_GENCHANGE) {
         clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
-        errstat_cat_str(&(clnt->osql.xerr),
-                "verify error on master swing");
+        errstat_cat_str(&(clnt->osql.xerr), "verify error on master swing");
     }
     if (clnt->early_retry) {
         clnt->early_retry = 0;

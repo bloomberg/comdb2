@@ -3634,7 +3634,6 @@ int osql_send_startgen(char *tohost, unsigned long long rqid, uuid_t uuid,
     return rc;
 }
 
-
 /**
  * Send USEDB op
  * It handles remote/local connectivity
