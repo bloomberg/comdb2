@@ -3185,15 +3185,6 @@ static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 {
     sqlite3_stmt *stmt = rec->stmt;
 
-    log_queue_time(thd->logger, clnt);
-    if (rec->sql)
-        reqlog_set_sql(thd->logger, rec->sql);
-    if (gbl_fingerprint_queries) {
-        reqlog_set_fingerprint(thd->logger, sqlite3_fingerprint(thd->sqldb),
-                               sqlite3_fingerprint_size(thd->sqldb));
-    }
-
-    reqlog_set_event(thd->logger, "sql");
     sql_statement_done(thd->sqlthd, thd->logger, clnt, outrc);
 
     if (stmt && !((Vdbe *)stmt)->explain && ((Vdbe *)stmt)->nScan > 1 &&
@@ -3298,6 +3289,16 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
         }
 
     } while (rc == SQLITE_SCHEMA_REMOTE);
+
+    /* set these after sending response to client to respond faster */
+    reqlog_set_event(thd->logger, "sql");
+    log_queue_time(thd->logger, clnt);
+    if (rec.sql)
+        reqlog_set_sql(thd->logger, rec.sql);
+    if (gbl_fingerprint_queries) {
+        reqlog_set_fingerprint(thd->logger, sqlite3_fingerprint(thd->sqldb),
+                               sqlite3_fingerprint_size(thd->sqldb));
+    }
 
     sqlite_done(thd, clnt, &rec, rc);
     return rc;
