@@ -138,7 +138,7 @@ int add_queue_to_environment(char *table, int avgitemsz, int pagesize)
         /* I am NOT master: open replicated db */
         newdb->handle =
             bdb_open_more_queue(newdb->tablename, thedb->basedir, avgitemsz,
-                                pagesize, thedb->bdb_env, 0, &bdberr);
+                                pagesize, thedb->bdb_env, 0, NULL, &bdberr);
     }
     if (newdb->handle == NULL) {
         logmsg(LOGMSG_ERROR, "bdb_open:failed to open queue %s/%s, rcode %d\n",
@@ -198,7 +198,7 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
             goto done;
         }
         db->handle = bdb_open_more_queue(queue_name, thedb->basedir, 65536,
-                                         65536, thedb->bdb_env, 1, &bdberr);
+                                         65536, thedb->bdb_env, 1, NULL, &bdberr);
         if (db->handle == NULL) {
             logmsg(LOGMSG_ERROR,
                    "bdb_open:failed to open queue %s/%s, rcode %d\n",

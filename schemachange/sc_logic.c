@@ -38,6 +38,8 @@
 #include "logmsg.h"
 #include "comdb2_atomic.h"
 
+extern int gbl_is_physical_replicant;
+
 /**** Utility functions */
 
 static enum thrtype prepare_sc_thread(struct schema_change_type *s)
@@ -405,13 +407,9 @@ int do_alter_stripes(struct schema_change_type *s)
 
     if (!s->resume) set_sc_flgs(s);
 
-    rc = propose_sc(s);
-
-    if (rc == SC_OK) rc = do_alter_stripes_int(s);
+    rc = do_alter_stripes_int(s);
 
     if (master_downgrading(s)) return SC_MASTER_DOWNGRADE;
-
-    broadcast_sc_end(s->table, s->iq->sc_seed);
 
     /* if we did a regular schema change and we used the llmeta we don't need to
      * push locgs */
@@ -711,7 +709,11 @@ int resume_schema_change(void)
     int is_shard = 0;
     char *viewname = NULL;
 
-    /* if we're not the master node then we can't do schema change! */
+    /* if we're not the master node/phys replicant then we can't do schema change! */
+    if (gbl_is_physical_replicant)
+    {
+        return 0;
+    }
     if (thedb->master != gbl_mynode) {
         logmsg(LOGMSG_WARN,
                "resume_schema_change: not the master, cannot resume a"

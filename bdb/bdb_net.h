@@ -21,5 +21,7 @@ typedef struct bdb_state_tag bdb_state_type;
 char *print_addr(struct sockaddr_in *addr, char *buf);
 const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
                                     unsigned int hash);
+int send_truncate_to_master(bdb_state_type *bdb_state, int file, int offset);
+int send_ignore_gen(bdb_state_type *bdb_state);
 
 #endif /* __bdb_net_h__ */

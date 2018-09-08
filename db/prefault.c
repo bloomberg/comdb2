@@ -67,6 +67,7 @@ static void *prefault_io_thread(void *arg);
 int start_prefault_io_threads(struct dbenv *dbenv, int numthreads, int maxq)
 {
     int i = 0, rc = 0;
+    static int started = 0;
     pthread_attr_t attr;
 
     bzero(&(dbenv->prefault_stats), sizeof(prefault_stats_type));
@@ -76,6 +77,8 @@ int start_prefault_io_threads(struct dbenv *dbenv, int numthreads, int maxq)
     if (numthreads == 0)
         return 0;
     if (maxq == 0)
+        return 0;
+    if (started != 0)
         return 0;
 
     rc = pthread_attr_init(&attr);
@@ -125,6 +128,7 @@ int start_prefault_io_threads(struct dbenv *dbenv, int numthreads, int maxq)
         }
         dbenv->prefaultiopool.numthreads++;
     }
+    started = 1;
 
     rc = pthread_attr_destroy(&attr);
     if (rc)

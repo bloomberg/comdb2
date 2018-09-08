@@ -13,6 +13,10 @@
 #include <sql.h>
 
 #include <logmsg.h>
+#include <parse_lsn.h>
+#include <truncate_log.h>
+#include <bdb_api.h>
+#include <phys_rep.h>
 
 
 /* Wishes for anyone who wants to clean this up one day:
@@ -249,6 +253,144 @@ static int db_comdb_verify(Lua L) {
     return 1;
 }
 
+static int db_comdb_truncate_log(Lua L) {
+    SP sp = getsp(L);
+    sp->max_num_instructions = 1000000; //allow large number of steps
+    char *lsnstr = NULL;
+    if (lua_isstring(L, 1)) {
+        lsnstr = (char *) lua_tostring(L, 1);
+    }
+    else {
+        return luaL_error(L, "Require a string for the lsn");
+    }
+
+    int rc, file, offset; 
+    int min_file, min_offset;
+  
+    if ((rc = char_to_lsn(lsnstr, &file, &offset)) != 0) {
+        // db_verify_table_callback(L, "Usage: truncate_log(\"{<file>:<offset>}\")");
+        return luaL_error(L, 
+                "Usage: truncate_log(\"{<file>:<offset>}\"). Input not valid.");
+    }
+
+    logdelete_lock();
+    bdb_min_truncate(thedb->bdb_env, &min_file, &min_offset, NULL);
+
+    if (min_file == 0) {
+        logdelete_unlock();
+        return luaL_error(L, "Log is not truncatable");
+    }
+
+    if (file < min_file || (file == min_file && 
+                offset < min_offset)) {
+        logdelete_unlock();
+        return luaL_error(L, 
+                "Minimum truncate lsn is {%d:%d}", min_file, min_offset);
+    }
+    logmsg(LOGMSG_USER, "applying log from lsn {%u:%u}\n", file, offset);
+
+    rc = truncate_log(file, offset, 1);
+    logdelete_unlock();
+    if (rc != 0)
+    {
+        if (rc == -1)
+            return luaL_error(L, "Can only truncate from master node");
+        else
+            return luaL_error(L, "Couldn't truncate to lsn {%u:%u}", file, offset);
+    }
+
+    return 1;
+}
+
+static int db_comdb_truncate_time(Lua L) {
+    SP sp = getsp(L);
+    sp->max_num_instructions = 1000000; //allow large number of steps
+    time_t time;
+    int32_t min_time;
+    int rc;
+    if (lua_isnumber(L, 1))
+    {
+        time = (time_t) lua_tointeger(L, 1);
+    }
+    else
+    {
+        return luaL_error(L, "Usage: truncate_time(<time>), "
+                "where time is epoch time");
+    }
+
+    logdelete_lock();
+    bdb_min_truncate(thedb->bdb_env, NULL, NULL, &min_time);
+
+    if (time < min_time)
+    {
+        logdelete_unlock();
+        return luaL_error(L, "Minimum truncate timestamp is %d\n",
+                min_time);
+    }
+
+    logmsg(LOGMSG_USER, "Finding earliest log before stated time: %ld.\n", time);
+
+    rc = truncate_timestamp(time);
+    logdelete_unlock();
+
+    if (rc != 0)
+    {
+        if (rc == -1)
+            return luaL_error(L, "Can only truncate from master node");
+        else
+            return luaL_error(L, "Couldn't truncate to timestamp %ld", time);
+    }
+
+    return 1;
+}
+
+
+static int db_comdb_apply_log(Lua L) {
+    SP sp = getsp(L);
+    sp->max_num_instructions = 1000000; //allow large number of steps
+    char *lsnstr = NULL;
+    int rc, newfile;
+    blob_t blob; 
+
+    if (lua_isstring(L, 1)) {
+        lsnstr = (char *) lua_tostring(L, 1);
+    }
+    else {
+        return luaL_error(L, 
+                "Usage: apply_log(\"{<file>:<offset>}\", 'blob'). "
+                "1st param not string.");
+    }
+
+    luabb_toblob(L, 2, &blob);
+
+    if (lua_isnumber(L, 3))
+    {
+        newfile = (int) lua_tointeger(L, 1);
+    }
+    else {
+        return luaL_error(L, 
+                "Usage: apply_log(\"{<file>:<offset>}\", 'blob'). "
+                "3rd param not int flag.");
+    }
+
+    unsigned int file, offset; 
+  
+    if ((rc = char_to_lsn(lsnstr, &file, &offset)) != 0) {
+        return luaL_error(L, 
+                "Usage: apply_log(\"{<file>:<offset>}\", 'blob'). "
+                "LSN not valid.");
+    }
+    logmsg(LOGMSG_USER, "applying log lsn {%u:%u}\n", file, offset);
+
+    if ((rc = apply_log_procedure(file, offset, blob.data, 
+                    blob.length, newfile)) != 0)
+    {
+        return luaL_error(L, "Log apply failed.");
+    }
+
+    return 1;
+}
+
 
 static int db_send(Lua L) {
     FILE *f;
@@ -305,6 +447,73 @@ static int db_send(Lua L) {
     return 1;
 }
 
+static int db_comdb_start_replication(Lua L)
+{
+    int rc;
+
+    if (!gbl_is_physical_replicant)
+    {
+        return luaL_error(L, "Database is not a physical replicant, cannot replicate");
+    }
+
+    if ((rc = start_replication()) != 0)
+    {
+        if (rc > 0)
+        {
+            return luaL_error(L, "DB is already replicating");
+        }
+        return luaL_error(L, "Couldn't start replicating");
+    }
+
+    return 1;
+}
+
+static int db_comdb_stop_replication(Lua L)
+{
+    if (!gbl_is_physical_replicant)
+    {
+        return luaL_error(L, "Database is not a physical replicant, cannot replicate");
+    }
+
+    if (stop_replication() != 0)
+    {
+        return luaL_error(L, "Something went horribly wrong. Replicating thread wouldn't stop");
+    }
+
+    return 1;
+}
+
+static int db_comdb_register_replicant(Lua L)
+{
+    if (gbl_is_physical_replicant)
+    {
+        return luaL_error(L, "This database cannot assign physical replicants");
+    }
+    
+    if (!lua_isstring(L, 1))
+    {
+        return luaL_error(L, 
+                "Usage: register_replicant(\"<dbname>\", "
+                "\"<hostname>\", "
+                "\"{<file>:<offset>}\"). "
+                "LSN not valid.");
+    }
+
+    int rc;
+    char* lsnstr = (char *) lua_tostring(L, 1);
+    unsigned int file, offset; 
+  
+    if ((rc = char_to_lsn(lsnstr, &file, &offset)) != 0) {
+        return luaL_error(L, 
+                "Usage: register_replicant(\"<dbname>\", "
+                "\"<hostname>\", "
+                "\"{<file>:<offset>}\"). "
+                "LSN not valid.");
+    }
+
+    return 1;
+}
+
 static const luaL_Reg sys_funcs[] = {
     { "cluster", db_cluster },
     { "comdbg_tables", db_comdbg_tables },
@@ -312,6 +521,12 @@ static const luaL_Reg sys_funcs[] = {
     { "load", db_csvcopy},
     { "comdb_analyze", db_comdb_analyze },
     { "comdb_verify", db_comdb_verify },
+    { "truncate_log", db_comdb_truncate_log },
+    { "truncate_time", db_comdb_truncate_time },
+    { "apply_log", db_comdb_apply_log },
+    { "start_replication", db_comdb_start_replication },
+    { "stop_replication", db_comdb_stop_replication },
+    { "register_replicant", db_comdb_register_replicant },
     { NULL, NULL }
 }; 
 
@@ -416,6 +631,116 @@ static struct sp_source syssps[] = {
         "sys.cmd.load",
         "local function main(csv,tbl,seperator, header)\n"
         "sys.load(db,csv,tbl,seperator,header)\n"
+        "end\n"
+    }
+    ,{
+        "sys.cmd.truncate_log",
+        "local function main(lsn)\n"
+        "sys.truncate_log(lsn)\n"
+        "end\n"
+    }
+    ,{
+        "sys.cmd.truncate_time",
+        "local function main(time)\n"
+        "sys.truncate_time(time)\n"
+        "end\n"
+    }
+    ,{
+        "sys.cmd.apply_log",
+        "local function main(lsn, blob, newfile)\n"
+        "sys.apply_log(lsn, blob, newfile)\n"
+        "end\n"
+    }
+    /* starts and stop replication*/
+    ,{
+        "sys.cmd.start_replication",
+        "local function main()\n"
+        "sys.start_replication()\n"
+        "end\n"
+    }
+    ,{
+        "sys.cmd.stop_replication",
+        "local function main()\n"
+        "sys.stop_replication()\n"
+        "end\n"
+    }
+
+    /* allow replication assignment */
+    ,{
+        "sys.cmd.register_replicant",
+        "local function main(r_dbname, r_machname, lsn)\n"
+            /* create db if necessary */
+            /* "db:exec('create table if not exists comdb2_rep_list " */
+            /* "{ schema " */
+            /*     "{ " */
+            /*         "int tier " */
+            /*         "vutf8 dbname " */
+            /*         "vutf8 machname " */
+            /*         "vutf8 lsn[100] " */
+            /*         "longlong timestamp " */
+            /*     "} " */
+            /* "}')\n" */
+            /* error checking */
+            "if type(r_dbname) ~= 'string' or type(r_machname) ~= 'string' then "
+                "error('First 2 arguments must be a string') end\n"
+            "sys.register_replicant(lsn)\n"
+            "local qr, rc = db:prepare('select * from comdb2_rep_list "
+                    "where dbname = @r_dbname and machname = @r_machname')\n"
+            "qr:bind('r_dbname', r_dbname)\n"
+            "qr:bind('r_machname', r_machname)\n"
+            "qr:exec()\n"
+
+            "local row\n"
+            "if qr then\n"
+                "row = qr:fetch()\n"
+            "end\n"
+            /* find if dbname is in the list, if so, refresh. if not, assign tier */
+            "local my_tier = 0\n"
+            "local my_time = os.time()\n"
+            "if row then "
+                "my_tier = row.tier\n"
+                "qr, rc = db:prepare('update comdb2_rep_list set timestamp = @t, "
+                        "lsn = @lsn "
+                        "where dbname = @r_dbname and machname = @r_machname')\n"
+                "qr:bind('t', my_time)\n"
+                "qr:bind('lsn', lsn)"
+                "qr:bind('r_dbname', r_dbname)\n"
+                "qr:bind('r_machname', r_machname)\n"
+                "qr:exec()\n"
+            "else\n"
+                "qr, rc = db:exec('select count(*) as rec_count from comdb2_rep_list')\n"
+                "row = qr:fetch()\n"
+                "local num_db = row.rec_count\n"
+                "if num_db < 1 then "
+                    "my_tier = 1 "
+                "else "
+                    "my_tier = 2 "
+                "end\n"
+                
+                "qr, rc = db:prepare('insert into comdb2_rep_list(tier, dbname, "
+                        "machname, lsn, timestamp) values(@tr, @dnm, @mnm, @lsn, "
+                        "@ts)')\n"
+                "qr:bind('tr', my_tier)\n"
+                "qr:bind('dnm', r_dbname)\n"
+                "qr:bind('mnm', r_machname)\n"
+                "qr:bind('lsn', lsn)\n"
+                "qr:bind('ts', my_time)\n"
+                "qr:exec()\n"
+            "end\n"
+
+            /* once given tier, we can query */
+            "qr, rc = db:prepare('select * from comdb2_rep_list "
+                    "where tier < @my_tier order by tier desc')\n"
+            "qr:bind('my_tier', my_tier)\n"
+            "qr:exec()\n"
+
+            "row = qr:fetch()\n"
+            "while row do\n"
+            /* what's wrong with this line?? */
+                "db:emit(row)\n"
+                "row = qr:fetch()\n"
+            "end\n"
+
         "end\n"
     }
 };

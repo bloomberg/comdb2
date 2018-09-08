@@ -161,6 +161,8 @@ __checkpoint_save(DB_ENV *dbenv, DB_LSN *lsn, int in_recovery)
 	int rc;
 	size_t niop = 0;
 
+    logmsg(LOGMSG_WARN, "ckpt lsn: %u:%u\n", lsn->file, lsn->offset);
+
 	LOGCOPY_TOLSN(&ckpt.lsn, lsn);
 
 	/* 2 or more.  Better learn to live with 1!
@@ -170,7 +172,7 @@ __checkpoint_save(DB_ENV *dbenv, DB_LSN *lsn, int in_recovery)
 
 	if ((rc = __checkpoint_get(dbenv, NULL))) {
 		__db_err(dbenv,
-		    "__checkpoint_save, couln't fetch last checkpoint rc %d\n",
+		    "__checkpoint_save, couldn't fetch last checkpoint rc %d\n",
 		    rc);
 		return EINVAL;
 	}

@@ -43,29 +43,53 @@ int do_alter_stripes_int(struct schema_change_type *s)
     int newdtastripe = s->newdtastripe;
     int newblobstripe = s->blobstripe;
     struct dbtable *db;
+    tran_type *tran = NULL, *sc_logical_tran = NULL, *phys_tran;
+    struct ireq iq = {0};
 
-    /* STOP THREADS */
-    stop_threads(thedb);
-    broadcast_quiesce_threads();
+    wrlock_schema_lk();
 
-    /* CLOSE ALL TABLES */
-    if (close_all_dbs() != 0) exit(1);
-    broadcast_close_all_dbs();
+    init_fake_ireq(thedb, &iq);
+    iq.usedb = thedb->dbs[0];
+    iq.tranddl = 1;
+
+    rc = trans_start_logical_sc(&iq, &sc_logical_tran);
+    if (rc) {
+        fprintf(stderr, "morestripe: %d: trans_start rc %d\n", __LINE__,
+                rc);
+        unlock_schema_lk();
+        return SC_FAILED_TRANSACTION;
+    }
+
+    bdb_ltran_get_schema_lock(sc_logical_tran);
+
+    if ((phys_tran = bdb_get_physical_tran(sc_logical_tran)) == NULL) {
+        if (bdb_tran_abort(thedb->bdb_env, sc_logical_tran, &bdberr) != 0)
+            abort();
+        fprintf(stderr, "morestripe: %d: get_physical-tran returns NULL\n",
+                __LINE__);
+        unlock_schema_lk();
+        return SC_FAILED_TRANSACTION;
+    }
+
+    /* Get writelocks on all tables */
+    for (ii = 0; ii < thedb->num_dbs; ii++) {
+        db = thedb->dbs[ii];
+        if ((rc = bdb_lock_table_write(db->handle, phys_tran)) != 0) {
+            fprintf(stderr, "morestripe: couldn't acquire table writelocks\n");
+            unlock_schema_lk();
+            return SC_INTERNAL_ERROR;
+        }
+    }
+
+    unlock_schema_lk();
 
     /* RENAME BLOB FILES */
     if (newblobstripe && !gbl_blobstripe) {
-        tran_type *tran = NULL;
-        struct ireq iq = {0};
-
-        init_fake_ireq(thedb, &iq);
-        iq.usedb = thedb->dbs[0];
 
         rc = trans_start(&iq, NULL, &tran);
         if (rc) {
             fprintf(stderr, "morestripe: %d: trans_start rc %d\n", __LINE__,
                     rc);
-            broadcast_resume_threads();
-            resume_threads(thedb);
             return SC_FAILED_TRANSACTION;
         }
 
@@ -78,8 +102,6 @@ int do_alter_stripes_int(struct schema_change_type *s)
                                 "'%s' bdberr %d\n",
                         db->tablename, bdberr);
                 trans_abort(&iq, tran);
-                broadcast_resume_threads();
-                resume_threads(thedb);
                 return SC_BDB_ERROR;
             }
 
@@ -91,7 +113,6 @@ int do_alter_stripes_int(struct schema_change_type *s)
                         "morestripe: couldn't record genid for table '%s'\n",
                         db->tablename);
                 trans_abort(&iq, tran);
-                broadcast_resume_threads();
                 resume_threads(thedb);
                 return SC_INTERNAL_ERROR;
             }
@@ -107,11 +128,8 @@ int do_alter_stripes_int(struct schema_change_type *s)
         rc = trans_commit(&iq, tran, gbl_mynode);
         if (rc) {
             fprintf(stderr, "morestripe: couldn't commit rename trans\n");
-            broadcast_resume_threads();
-            resume_threads(thedb);
             return SC_FAILED_TRANSACTION;
         }
-        /* After this point there is no backing out */
     }
 
     /* CREATE ALL NEW FILES */
@@ -130,26 +148,26 @@ int do_alter_stripes_int(struct schema_change_type *s)
     }
     printf("Created new files OK\n");
 
-    /* SET NEW STRIPE FACTORS */
+    bdb_set_global_stripe_info(NULL, newdtastripe, newblobstripe, &bdberr);
     apply_new_stripe_settings(newdtastripe, newblobstripe);
 
-    /* OPEN ALL TABLES */
+    if (close_all_dbs() != 0) exit(1);
     if (open_all_dbs() != 0) exit(1);
-    broadcast_morestripe_and_open_all_dbs(newdtastripe, newblobstripe);
 
-    /* START THREADS */
-    broadcast_resume_threads();
-    resume_threads(thedb);
+    if ((rc = bdb_llog_scdone_tran(thedb->bdb_env, change_stripe, phys_tran, NULL,
+                    &bdberr)) != 0) {
+        fprintf(stderr, "morestripe: couldn't write scdone record\n");
+        return SC_INTERNAL_ERROR;
+    }
 
-    printf("\n");
+    rc = trans_commit(&iq, sc_logical_tran, gbl_mynode);
+    if (rc) {
+        fprintf(stderr, "morestripe: couldn't commit rename trans\n");
+        return SC_FAILED_TRANSACTION;
+    }
+
     printf("MORESTRIPED SUCCESSFULLY\n");
     printf("New settings are: dtastripe %d blobstripe? %s\n", newdtastripe,
            newblobstripe ? "YES" : "NO");
-    printf("**************************************\n");
-    printf("* BE SURE TO FOLLOW UP BY MAKING THE *\n");
-    printf("* APPROPRIATE CHANGE TO THE LRL FILE *\n");
-    printf("* ON EACH CLUSTER NODE               *\n");
-    printf("**************************************\n");
-
     return SC_OK;
 }
