@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -x
+
+assertres ()
+{
+    if [ $# != 2 ] ; then 
+        failexit "res is $res, target is $target, one or more is blank"
+    fi
+    res=$1
+    target=$2
+    if [ "$res" != "$target" ] ; then
+        failexit "res is $res but should be $target"
+    fi
+}
+failexit()
+{
+    echo $1
+    exit 1
+}
+
+function waitfordb() {
+	sel=$(${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} $1 "select 1" 2>&1)
+    local count=0
+	while [[ "$sel" != "1" ]] && [[ $count -lt 60 ]] ; do
+		sleep 1
+	    sel=$(${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} $1 "select 1" 2>&1)
+        let count=count+1
+	done
+    if [[ "$sel" != "1" ]] ; then 
+        failexit 'cant contact db'
+    fi
+}
+
+mkdir $DBDIR
+touch $DBDIR/${DBNAME}.lrl
+df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" > $DBDIR/${DBNAME}.lrl 
+${COMDB2_EXE} ${DBNAME} --create --dir $DBDIR --lrl $DBDIR/${DBNAME}.lrl &> out
+grep "Created database" out || failexit "expected 'Created database'"
+
+echo "name    $DB" >> $DBDIR/${DBNAME}.lrl
+echo "dir     $DBDIR" >> $DBDIR/${DBNAME}.lrl
+mkdir -p $TESTDIR/var/log/cdb2
+mkdir -p $TMPDIR
+
+
+echo "comdb2_config:default_type=local" >> $CDB2_CONFIG
+${COMDB2_EXE} $DBNAME --no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.pid &> $TESTDIR/logs/${DBNAME}.db &
+
+waitfordb $DBNAME
+
+res=`cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select comdb2_host()"`
+assertres $res $HOSTNAME
+
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('reql events detailed on')"
+
+res=`cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select 1"`
+assertres $res 1
+
+res=`cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "nonsense" 2>&1`
+exp="[nonsense] failed with rc -3 near \"nonsense\": syntax error"
+assertres "\"$res\"" "\"$exp\""
+
+res=`cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select * from nonexistent" 2>&1`
+assertres "\"$res\"" \""[select * from nonexistent] failed with rc -3 no such table: nonexistent\""
+
+COMDB2_UNITTEST=0 CLEANUPDBDIR=0 $TESTSROOTDIR/unsetup 1 > $TESTDIR/logs/${DBNAME}.unsetup
+
+ls -ltr $TESTDIR/var/log/cdb2/ | grep events
+logfl=`ls -1Sr $TESTDIR/var/log/cdb2/ | grep events | grep $DBNAME | tail -1`
+logfl=`find $TESTDIR/var/log/cdb2/ | grep $logfl`
+logflunziped=${logfl}.unzipped
+if [ "x$logfl" == "x" ] ; then
+    failexit "event logfl can not be found"
+fi
+
+wc $logfl
+zcat $logfl > $logflunziped
+
+grep '"sql","sql": "select 1"' $logflunziped | python -c "import sys, json; txt=json.load(sys.stdin); print txt['fingerprint']" > out.txt
+
+echo 'f755c0df1b9c32e99f201e77b29d128f' > exp.txt
+
+if ! diff out.txt exp.txt ; then
+    failexit 'output is different from expected'
+fi
+
+
+grep '"sql","sql": "nonsense"' $logflunziped | python -c "import sys, json; txt=json.load(sys.stdin); print txt['error_code']; print txt['error']; print txt['fingerprint']" > out.txt
+
+echo '1
+near "nonsense": syntax error
+00000000000000000000000000000000' > exp.txt
+
+if ! diff out.txt exp.txt ; then
+    failexit 'output is different from expected'
+fi
+
+
+grep '"sql","sql": "select \* from nonexistent"' $logflunziped | python -c "import sys, json; txt=json.load(sys.stdin); print txt['error_code']; print txt['error']; print txt['fingerprint']" > out.txt
+#grep '"sql","sql": "select \* from nonexistent"' $logflunziped | sed -e 's/[{}]/''/g' | awk -v k="text" '{n=split($0,a,","); for (i=1; i<=n; i++) print a[i]}' | grep "fingerprint\|error" > out.txt
+
+echo '1
+no such table: nonexistent
+e95d2065e6ee80006932de9fe9dbbb42' > exp.txt
+
+if ! diff out.txt exp.txt ; then
+    failexit 'output is different from expected'
+fi
+
+
+exit 0
