@@ -106,8 +106,8 @@ extern int gbl_is_physical_replicant;
 
 static int
 
-__txn_begin_int_set_retries(DB_TXN *txn, u_int32_t retries,
-    DB_LSN *we_start_at_this_lsn, u_int32_t flags);
+__txn_begin_int_set_retries(DB_TXN *txn, int internal, u_int32_t retries,
+    DB_LSN *we_start_at_this_lsn);
 
 extern int __lock_locker_getpriority(DB_LOCKTAB *lt, u_int32_t locker,
     int *priority);
@@ -160,7 +160,7 @@ typedef enum {
 } txnop_t;
 
 static int __txn_abort_pp __P((DB_TXN *));
-static int __txn_begin_int __P((DB_TXN *, u_int32_t));
+static int __txn_begin_int __P((DB_TXN *, int));
 static int __txn_commit_pp __P((DB_TXN *, u_int32_t));
 static int __txn_commit_getlsn_pp __P((DB_TXN *, u_int32_t, DB_LSN *, void *));
 static int __txn_commit_rl_pp __P((DB_TXN *, u_int32_t, u_int64_t, u_int32_t,
@@ -193,11 +193,10 @@ __txn_begin_pp_int(dbenv, parent, txnpp, flags, retries)
 	if ((ret = __db_fchk(dbenv,
 	    "txn_begin", flags,
 	    DB_DIRTY_READ | DB_TXN_NOWAIT |
-	    DB_TXN_NOSYNC | DB_TXN_SYNC | DB_TXN_RECOVERY |
-        DB_TXN_INTERNAL)) != 0)
+	    DB_TXN_NOSYNC | DB_TXN_SYNC)) != 0)
 		return (ret);
 	if ((ret = __db_fcchk(dbenv,
-		"txn_begin", flags, DB_TXN_NOSYNC, DB_TXN_SYNC)) != 0)
+	    "txn_begin", flags, DB_TXN_NOSYNC, DB_TXN_SYNC)) != 0)
 		return (ret);
 
 	if (parent == NULL) {
@@ -294,8 +293,8 @@ __txn_begin_main(dbenv, parent, txnpp, flags, retries)
 		F_SET(txn, TXN_NOWAIT);
 
 	if ((ret =
-		__txn_begin_int_set_retries(txn, retries,
-		    &we_start_at_this_lsn, flags)) != 0)
+		__txn_begin_int_set_retries(txn, 0, retries,
+		    &we_start_at_this_lsn)) != 0)
 		goto err;
 
 	if (!parent) {
@@ -432,7 +431,7 @@ __txn_compensate_begin(dbenv, txnpp)
 	txn->flags = TXN_COMPENSATE | TXN_MALLOC;
 
 	*txnpp = txn;
-	return (__txn_begin_int(txn, DB_TXN_INTERNAL));
+	return (__txn_begin_int(txn, 1));
 }
 
 /*
@@ -440,11 +439,11 @@ __txn_compensate_begin(dbenv, txnpp)
  *	Normal DB version of txn_begin.
  */
 static int
-__txn_begin_int_int(txn, retries, we_start_at_this_lsn, flags)
+__txn_begin_int_int(txn, internal, retries, we_start_at_this_lsn)
 	DB_TXN *txn;
+	int internal;
 	u_int32_t retries;
 	DB_LSN *we_start_at_this_lsn;
-	u_int32_t flags;
 {
 	DB_ENV *dbenv;
 	DB_LSN begin_lsn, null_lsn;
@@ -454,8 +453,6 @@ __txn_begin_int_int(txn, retries, we_start_at_this_lsn, flags)
 	size_t off;
 	u_int32_t id, *ids;
 	int nids, ret;
-    int internal = LF_ISSET(DB_TXN_INTERNAL);
-    int recovery = LF_ISSET(DB_TXN_RECOVERY);
 
 
 	/*
@@ -490,11 +487,6 @@ __txn_begin_int_int(txn, retries, we_start_at_this_lsn, flags)
 
 	if (we_start_at_this_lsn)
 		*we_start_at_this_lsn = begin_lsn;
-
-    if (!recovery && (ret = pthread_rwlock_rdlock(&dbenv->recoverlk)) != 0) {
-        logmsg(LOGMSG_FATAL, "%s error getting recoverlk, %d\n", __func__, ret);
-        abort();
-    }
 
 	R_LOCK(dbenv, &mgr->reginfo);
 	if (!F_ISSET(txn, TXN_COMPENSATE) && F_ISSET(region, TXN_IN_RECOVERY)) {
@@ -589,9 +581,6 @@ __txn_begin_int_int(txn, retries, we_start_at_this_lsn, flags)
 	txn->prepare = __txn_prepare;
 	txn->set_timeout = __txn_set_timeout;
 
-	if (!recovery)
-		F_SET(txn, TXN_RECOVER_LOCK);
-
 	/*
 	 * If this is a transaction family, we must link the child to the
 	 * maximal grandparent in the lock table for deadlock detection.
@@ -609,31 +598,28 @@ __txn_begin_int_int(txn, retries, we_start_at_this_lsn, flags)
 
 	return (0);
 
-err:
-	R_UNLOCK(dbenv, &mgr->reginfo);
-	if (!recovery)
-		pthread_rwlock_unlock(&dbenv->recoverlk);
+err:	R_UNLOCK(dbenv, &mgr->reginfo);
 	return (ret);
 }
 
 
 static int
-__txn_begin_int(txn, flags)
+__txn_begin_int(txn, internal)
 	DB_TXN *txn;
-	u_int32_t flags;
+	int internal;
 {
-	return __txn_begin_int_int(txn, 0, NULL, flags);
+	return __txn_begin_int_int(txn, internal, 0, NULL);
 }
 
 static int
-__txn_begin_int_set_retries(txn, retries, we_start_at_this_lsn, flags)
+__txn_begin_int_set_retries(txn, internal, retries, we_start_at_this_lsn)
 	DB_TXN *txn;
+	int internal;
 	u_int32_t retries;
 	DB_LSN *we_start_at_this_lsn;
-	u_int32_t flags;
 {
-	return __txn_begin_int_int(txn, retries,
-	    we_start_at_this_lsn, flags);
+	return __txn_begin_int_int(txn, internal, retries,
+	    we_start_at_this_lsn);
 }
 
 int
@@ -1261,11 +1247,6 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 		goto err;
 	}
 
-	if (F_ISSET(txnp, TXN_RECOVER_LOCK)) {
-		pthread_rwlock_unlock(&dbenv->recoverlk);
-		F_CLR(txnp, TXN_RECOVER_LOCK);
-	}
-
 	/* This is OK because __txn_end can only fail with a panic. */
 	return (__txn_end(txnp, 1));
 
@@ -1484,11 +1465,6 @@ __txn_abort(txnp)
 	    (ret = __txn_regop_log(dbenv, txnp, &txnp->last_lsn, NULL,
 		    lflags, TXN_ABORT, (int32_t)comdb2_time_epoch(), NULL)) != 0)
 		 return (__db_panic(dbenv, ret));
-
-	if (F_ISSET(txnp, TXN_RECOVER_LOCK)) {
-		pthread_rwlock_unlock(&dbenv->recoverlk);
-		F_CLR(txnp, TXN_RECOVER_LOCK);
-	}
 
 	/* __txn_end always panics if it errors, so pass the return along. */
 	return (__txn_end(txnp, 0));
@@ -2210,16 +2186,7 @@ __txn_checkpoint(dbenv, kbytes, minutes, flags)
 			return (0);
 	}
 
-do_ckp:	
-    if ((ret = pthread_rwlock_rdlock(&dbenv->recoverlk)) != 0) {
-        logmsg(LOGMSG_FATAL, "%s error getting recoverlk, %d\n", __func__, ret);
-        abort();
-    }
-
-    /* Retrieve lsn again after locking */
-	__log_txn_lsn(dbenv, &ckp_lsn, &mbytes, &bytes);
-
-    /*
+do_ckp:	/*
 	 * Find the oldest active transaction and figure out its "begin" LSN.
 	 * This is the lowest LSN we can checkpoint, since any record written
 	 * after it may be involved in a transaction and may therefore need
@@ -2243,7 +2210,6 @@ do_ckp:
 	if (unlikely(gbl_ckp_sleep_before_sync > 0))
 		usleep(gbl_ckp_sleep_before_sync * 1000LL);
 
-	ckp_lsn_sav = ckp_lsn;
 	/* If flag is DB_FORCE, don't run perfect checkpoints. */
 	if (MPOOL_ON(dbenv) &&
 			(ret = __memp_sync_restartable(dbenv,
@@ -2251,20 +2217,15 @@ do_ckp:
 		__db_err(dbenv,
 		    "txn_checkpoint: failed to flush the buffer cache %s",
 		    db_strerror(ret));
-        pthread_rwlock_unlock(&dbenv->recoverlk);
 		return (ret);
 	}
-
-	if (log_compare(&ckp_lsn_sav, &ckp_lsn)<0)
-		ckp_lsn = ckp_lsn_sav;
 
 	/*
 	 * Because we can't be a replication client here, and because
 	 * recovery (somewhat unusually) calls txn_checkpoint and expects
 	 * it to write a log message, LOGGING_ON is the correct macro here.
 	 */
-	if (LOGGING_ON(dbenv) && !gbl_is_physical_replicant &&
-            !LF_ISSET(DB_RECOVER_NOCKP)) {
+	if (LOGGING_ON(dbenv) && !gbl_is_physical_replicant) {
 		DB_LSN debuglsn;
 		DBT op = { 0 };
 		int debugtype;
@@ -2296,10 +2257,8 @@ do_ckp:
 		 * However, it does break the assumption that every successful
 		 * __txn_checkpoint() writes a checkpoint in the log.
 		 */
-		if (dbenv->tx_perfect_ckp && log_compare(&ckp_lsn, &last_ckp) <= 0) {
-            pthread_rwlock_unlock(&dbenv->recoverlk);
+		if (dbenv->tx_perfect_ckp && log_compare(&ckp_lsn, &last_ckp) <= 0)
 			return (0);
-        }
 
 		if (REP_ON(dbenv))
 			__rep_get_gen(dbenv, &gen);
@@ -2321,7 +2280,6 @@ do_ckp:
 		if (ret) {
 			Pthread_rwlock_unlock(&dbenv->dbreglk);
 			MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
-            pthread_rwlock_unlock(&dbenv->recoverlk);
 			return ret;
 		}
 
@@ -2348,7 +2306,6 @@ do_ckp:
 			    db_strerror(ret));
 			Pthread_rwlock_unlock(&dbenv->dbreglk);
 			MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
-            pthread_rwlock_unlock(&dbenv->recoverlk);
 			return (ret);
 		}
 		Pthread_rwlock_unlock(&dbenv->dbreglk);
@@ -2359,7 +2316,6 @@ do_ckp:
 			logmsg(LOGMSG_ERROR, 
                 "%s: failed to push to checkpoint list, ret %d\n",
 			    __func__, ret);
-            pthread_rwlock_unlock(&dbenv->recoverlk);
 			return ret;
 		}
 
@@ -2367,7 +2323,6 @@ do_ckp:
 		if (ret == 0)
 			__txn_updateckp(dbenv, &ckp_lsn);	/* this is the output lsn from txn_ckp_log */
 	}
-    pthread_rwlock_unlock(&dbenv->recoverlk);
 	return (ret);
 }
 
