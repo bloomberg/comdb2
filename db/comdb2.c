@@ -3140,6 +3140,8 @@ static int init(int argc, char **argv)
         return -1;
     }
 
+    initresourceman(NULL);
+
     /* Initialize the opcode handler hash */
     if (init_opcode_handlers()) {
         logmsg(LOGMSG_FATAL, "failed to initialise opcode handler hash\n");
