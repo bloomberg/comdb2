@@ -20,6 +20,8 @@
 #include <build/db.h>
 #include <bdb/bdb_int.h>
 
+extern int gbl_logical_live_sc;
+
 struct common_members {
     int64_t ndeadlocks;
     int64_t nlockwaits;

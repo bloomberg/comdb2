@@ -3423,7 +3423,8 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
         }
     }
 
-    if (bdb_state->attr->snapisol) {
+    extern int gbl_logical_live_sc;
+    if (gbl_logical_live_sc) {
         unsigned int sc_get_logical_redo_lwm();
         unsigned int sc_logical_lwm = sc_get_logical_redo_lwm();
         if (sc_logical_lwm && sc_logical_lwm < lowfilenum)

@@ -5008,6 +5008,10 @@ static void register_all_int_switches()
     register_int_switch("return_long_column_names",
                         "Enables returning of long column names. (Default: ON)",
                         &gbl_return_long_column_names);
+    register_int_switch(
+        "logical_live_sc",
+        "Enables online schema change with logical redo. (Default: OFF)",
+        &gbl_logical_live_sc);
 }
 
 static void getmyid(void)

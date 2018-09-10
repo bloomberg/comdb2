@@ -34,6 +34,8 @@
 #include "comdb2_atomic.h"
 #include "logmsg.h"
 
+int gbl_logical_live_sc = 0;
+
 extern int gbl_partial_indexes;
 
 // Increase max threads to do SC -- called when no contention is detected
@@ -1318,7 +1320,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         data.to->schema /*tbl .NEW..ONDISK schema */); // free tagmap only once
     int outrc = 0;
 
-    if (BDB_ATTR_GET(thedb->bdb_attr, SNAPISOL)) {
+    if (gbl_logical_live_sc) {
         int rc = 0, bdberr = 0;
         struct convert_record_data *thdData =
             calloc(1, sizeof(struct convert_record_data));
@@ -1366,6 +1368,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
                   s->table);
         thdData->isThread = 1;
         s->logical_livesc = 1;
+        bdb_set_logical_live_sc(s->db->handle);
         Pthread_rwlock_wrlock(&s->db->sc_live_lk);
         s->db->sc_live_logical = 1;
         Pthread_rwlock_unlock(&s->db->sc_live_lk);
@@ -1380,6 +1383,18 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
             return -1;
         }
     } else {
+        if (s->resume) {
+            int rc = 0, bdberr = 0;
+            rc = bdb_get_sc_start_lsn(NULL, s->table, &(data.start_lsn),
+                                      &bdberr);
+            if (rc == 0 || bdberr != BDBERR_FETCH_DTA) {
+                sc_errf(data.s,
+                        "rc = %d bdberr = %d trying to resume from "
+                        "[%u][%u] while logical live sc is turned off\n",
+                        rc, bdberr, data.start_lsn.file, data.start_lsn.offset);
+                return -1;
+            }
+        }
         s->logical_livesc = 0;
     }
 
@@ -3090,6 +3105,7 @@ cleanup:
 
     free(data->s->sc_convert_done);
     data->s->sc_convert_done = NULL;
+    bdb_clear_logical_live_sc(data->s->db->handle);
     data->s->logical_livesc = 0;
 
     free(data);

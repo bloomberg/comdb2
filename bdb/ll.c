@@ -157,25 +157,32 @@ static int get_row_lock_dta_minlk(bdb_state_type *bdb_state, DBC *dbcp,
                                      rlk, lkname, BDB_LOCK_WRITE);
 }
 
-extern int gbl_is_physical_replicant;
-
 extern bdb_state_type *gbl_bdb_state;
 extern int gbl_snapisol;
+extern int gbl_logical_live_sc;
 int bdb_logical_logging_enabled()
 {
-    if (gbl_bdb_state->attr->snapisol | gbl_snapisol | gbl_rowlocks)
+    if (gbl_bdb_state->attr->snapisol || gbl_snapisol || gbl_rowlocks ||
+        gbl_logical_live_sc)
         return 1;
     return 0;
 }
 
-int add_snapisol_logging(bdb_state_type *bdb_state)
+extern int gbl_is_physical_replicant;
+int add_snapisol_logging(bdb_state_type *bdb_state, tran_type *tran)
 {
     /* physical_replicants:
      * handle_truncation->vrfy_match->do_rcvry->reload_schemas->commit
      * reload_schemas opens btrees transactionally.  We call commit, but this
      * won't produce a log record if no other record has been written. */
-    if (bdb_state->attr->snapisol && !gbl_rowlocks &&
-        !gbl_is_physical_replicant) {
+    if ((bdb_state->attr->snapisol || bdb_state->logical_live_sc) &&
+        !gbl_rowlocks && !gbl_is_physical_replicant) {
+        if (bdb_state->logical_live_sc) {
+            if (tran->parent)
+                tran->parent->force_logical_commit = 1;
+            else
+                tran->force_logical_commit = 1;
+        }
         return 1;
     } else {
         return 0;
@@ -205,7 +212,7 @@ int ll_dta_add(bdb_state_type *bdb_state, unsigned long long genid, DB *dbp,
     /* fall through */
     case TRANCLASS_PHYSICAL:
 
-        if (add_snapisol_logging(bdb_state)) {
+        if (add_snapisol_logging(bdb_state, tran)) {
             rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
                 bdb_state->dbenv, tran->tid->txnid);
             if (rc) {
@@ -220,7 +227,7 @@ int ll_dta_add(bdb_state_type *bdb_state, unsigned long long genid, DB *dbp,
                              tran ? tran->tid : NULL, dbt_key, dbt_data,
                              tran_flags);
 
-        if (!outrc && add_snapisol_logging(bdb_state)) {
+        if (!outrc && add_snapisol_logging(bdb_state, tran)) {
             tran_type *parent = (tran->parent) ? tran->parent : tran;
             DBT dbt_tbl = {0};
             int iirc;
@@ -300,7 +307,7 @@ int ll_dta_del(bdb_state_type *bdb_state, tran_type *tran, int rrn,
     /* fall through */
     case TRANCLASS_PHYSICAL: {
 
-        if (add_snapisol_logging(bdb_state)) {
+        if (add_snapisol_logging(bdb_state, tran)) {
             rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
                 bdb_state->dbenv, tran->tid->txnid);
             if (rc) {
@@ -335,7 +342,8 @@ int ll_dta_del(bdb_state_type *bdb_state, tran_type *tran, int rrn,
 
         /* If the calling code needs the record value to log an undo,
            fetch it */
-        if (dta_out || bdb_state->attr->snapisol || is_blob) {
+        if (dta_out || bdb_state->attr->snapisol ||
+            bdb_state->logical_live_sc || is_blob) {
             /* This codepath does a direct lookup on a masked genid. */
             int updateid = 0;
             int od_updateid = 0;
@@ -429,7 +437,7 @@ int ll_dta_del(bdb_state_type *bdb_state, tran_type *tran, int rrn,
 
         rc = dbcp->c_close(dbcp);
 
-        if (!rc && add_snapisol_logging(bdb_state)) {
+        if (!rc && add_snapisol_logging(bdb_state, tran)) {
             tran_type *parent = (tran->parent) ? tran->parent : tran;
             DBT dbt_tbl = {0};
             int iirc;
@@ -499,7 +507,7 @@ int ll_key_del(bdb_state_type *bdb_state, tran_type *tran, int ixnum, void *key,
     /* fall through */
     case TRANCLASS_PHYSICAL:
 
-        if (add_snapisol_logging(bdb_state)) {
+        if (add_snapisol_logging(bdb_state, tran)) {
             rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
                 bdb_state->dbenv, tran->tid->txnid);
             if (rc) {
@@ -510,7 +518,8 @@ int ll_key_del(bdb_state_type *bdb_state, tran_type *tran, int ixnum, void *key,
             }
         }
 
-        if (bdb_state->attr->snapisol && !payloadsz)
+        if ((bdb_state->attr->snapisol || bdb_state->logical_live_sc) &&
+            !payloadsz)
             payloadsz = &payloadsz_si;
 
         /* open a cursor on the index, find exact key to be deleted
@@ -588,7 +597,7 @@ int ll_key_del(bdb_state_type *bdb_state, tran_type *tran, int ixnum, void *key,
         /* now close our cursor */
         rc = dbcp->c_close(dbcp);
 
-        if (!rc && add_snapisol_logging(bdb_state)) {
+        if (!rc && add_snapisol_logging(bdb_state, tran)) {
             tran_type *parent = (tran->parent) ? tran->parent : tran;
             DBT dbt_tbl = {0};
             int iirc;
@@ -681,7 +690,7 @@ int ll_key_upd(bdb_state_type *bdb_state, tran_type *tran, char *table_name,
     /* fall through */
     case TRANCLASS_PHYSICAL:
 
-        if (add_snapisol_logging(bdb_state)) {
+        if (add_snapisol_logging(bdb_state, tran)) {
             rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
                 bdb_state->dbenv, tran->tid->txnid);
             if (rc) {
@@ -759,7 +768,7 @@ int ll_key_upd(bdb_state_type *bdb_state, tran_type *tran, char *table_name,
         /* now close our cursor */
         rc = dbcp->c_close(dbcp);
 
-        if (!rc && add_snapisol_logging(bdb_state)) {
+        if (!rc && add_snapisol_logging(bdb_state, tran)) {
             tran_type *parent = (tran->parent) ? tran->parent : tran;
             DBT dbt_tbl = {0};
             int iirc;
@@ -829,7 +838,7 @@ int ll_key_add(bdb_state_type *bdb_state, unsigned long long ingenid,
     /* fall through */
     case TRANCLASS_PHYSICAL:
 
-        if (add_snapisol_logging(bdb_state)) {
+        if (add_snapisol_logging(bdb_state, tran)) {
             rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
                 bdb_state->dbenv, tran->tid->txnid);
             if (rc) {
@@ -846,7 +855,7 @@ int ll_key_add(bdb_state_type *bdb_state, unsigned long long ingenid,
             return rc;
         }
 
-        if (!rc && add_snapisol_logging(bdb_state)) {
+        if (!rc && add_snapisol_logging(bdb_state, tran)) {
             tran_type *parent = (tran->parent) ? tran->parent : tran;
             DBT dbt_tbl = {0};
             int iirc;
@@ -944,7 +953,7 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
     /* fall through */
     case TRANCLASS_PHYSICAL:
 
-        if (add_snapisol_logging(bdb_state)) {
+        if (add_snapisol_logging(bdb_state, tran)) {
             rc = bdb_state->dbenv->lock_clear_tracked_writelocks(
                 bdb_state->dbenv, tran->tid->txnid);
             if (rc) {
@@ -997,7 +1006,8 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
         }
 
         /* Use the inplace update shortcut for only a genid change */
-        if ((!bdb_state->attr->snapisol) && (NULL == dta) && (!old_dta_out) &&
+        if ((!bdb_state->attr->snapisol && !bdb_state->logical_live_sc) &&
+            (NULL == dta) && (!old_dta_out) &&
             (ip_updates_enabled(bdb_state)) &&
             (((0 == use_new_genid) &&
               (0 == bdb_inplace_cmp_genids(bdb_state, oldgenid, *newgenid))) ||
@@ -1331,7 +1341,7 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
 
         bdberr = BDBERR_NOERROR;
 
-        if (!rc && add_snapisol_logging(bdb_state)) {
+        if (!rc && add_snapisol_logging(bdb_state, tran)) {
             tran_type *parent = (tran->parent) ? tran->parent : tran;
             DBT dbt_tbl = {0};
             int iirc;
