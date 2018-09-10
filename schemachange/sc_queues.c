@@ -78,7 +78,7 @@ int do_alter_queues_int(struct schema_change_type *s)
         /* TODO - change item size in existing queue */
         logmsg(LOGMSG_ERROR,
                "do_queue_change: changing existing queues not supported yet\n");
-        rc = 1;
+        rc = -1;
     }
 
     return rc;

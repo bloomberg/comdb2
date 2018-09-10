@@ -450,6 +450,7 @@ int create_queue(struct dbenv *dbenvin, char *queuename, int avgitem,
     strncpy0(s->table, queuename, sizeof(s->table));
     s->avgitemsz = avgitem;
     s->pagesize = pagesize;
+    s->nothrevent = 1;
 
     return start_schema_change(s);
 }
