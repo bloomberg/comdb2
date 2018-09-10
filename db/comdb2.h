@@ -660,7 +660,6 @@ struct dbtable {
     int ix_expr;     /* set to 1 if we have indexes on expressions */
     int ix_blob;     /* set to 1 if blobs are involved in indexes */
 
-    int is_readonly;
     int numblobs;
 
     /* we do not necessarily have as many sql indexes as there are comdb2

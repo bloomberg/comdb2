@@ -158,7 +158,6 @@ static const char *HELP_MAIN[] = {
     "sync <full|normal|source|none> - sync parameters (sync he for more)",
     "electtime #    - override timeout for elections in seconds,",
     "                 0 for no override",
-    "incoh 1/0      - set incoherency status 1=incoherent, 0=coherent",
     "delay #        - set commit delay in ms; use this to throttle the write "
     "rate",
     "delaymax #     - set maximum commit delay in ms; this is the max delay "
@@ -887,26 +886,6 @@ clipper_usage:
         logmsg(LOGMSG_USER, "Setting exit alarm to %d seconds\n", alarmsec);
         gbl_exit_alarm_sec = alarmsec;
     }
-
-#if defined ENABLE_COHERENCY_TEST_TRAPS
-    else if (tokcmp(tok, ltok, "incoherent") == 0) {
-        int node;
-        int outrc;
-
-        tok = segtok(line, lline, &st, &ltok);
-        node = toknum(tok, ltok);
-        send_notcoherent_current_lsn(node, 1, &outrc);
-    }
-
-    else if (tokcmp(tok, ltok, "coherent") == 0) {
-        int node;
-        int outrc;
-
-        tok = segtok(line, lline, &st, &ltok);
-        node = toknum(tok, ltok);
-        send_notcoherent_current_lsn(node, 0, &outrc);
-    }
-#endif
 
 #if defined SET_GBLCONTEXT_TEST_TRAPS
     else if (tokcmp(tok, ltok, "setcontext") == 0) {
