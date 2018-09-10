@@ -1051,30 +1051,11 @@ cmd ::= with insert_cmd(R) INTO xfullname(X) idlist_opt(F) DEFAULT VALUES.
 upsert(A) ::= . { A = 0; }
 upsert(A) ::= ON CONFLICT LP sortlist(T) RP where_opt(TW)
               DO UPDATE SET setlist(Z) where_opt(W).
-%ifndef SQLITE_BUILDING_FOR_COMDB2
               { A = sqlite3UpsertNew(pParse->db,T,TW,Z,W);}
-%endif !SQLITE_BUILDING_FOR_COMDB2
-%ifdef SQLITE_BUILDING_FOR_COMDB2
-              { A = sqlite3UpsertNew(pParse->db,T,TW,Z,W); A->oeFlag = OE_Update; }
-%endif SQLITE_BUILDING_FOR_COMDB2
 upsert(A) ::= ON CONFLICT LP sortlist(T) RP where_opt(TW) DO NOTHING.
-%ifndef SQLITE_BUILDING_FOR_COMDB2
               { A = sqlite3UpsertNew(pParse->db,T,TW,0,0); }
-%endif !SQLITE_BUILDING_FOR_COMDB2
-%ifdef SQLITE_BUILDING_FOR_COMDB2
-              { A = sqlite3UpsertNew(pParse->db,T,TW,0,0); A->oeFlag = OE_Ignore; }
-%endif SQLITE_BUILDING_FOR_COMDB2
 upsert(A) ::= ON CONFLICT DO NOTHING.
-%ifndef SQLITE_BUILDING_FOR_COMDB2
               { A = sqlite3UpsertNew(pParse->db,0,0,0,0); }
-%endif !SQLITE_BUILDING_FOR_COMDB2
-%ifdef SQLITE_BUILDING_FOR_COMDB2
-              { A = sqlite3UpsertNew(pParse->db,0,0,0,0); A->oeFlag = OE_Ignore; }
-%endif SQLITE_BUILDING_FOR_COMDB2
-%ifdef SQLITE_BUILDING_FOR_COMDB2
-upsert(A) ::= ON CONFLICT DO REPLACE.
-              { A = sqlite3UpsertNew(pParse->db,0,0,0,0); A->oeFlag = OE_Replace; }
-%endif SQLITE_BUILDING_FOR_COMDB2
 
 %type insert_cmd {int}
 insert_cmd(A) ::= INSERT orconf(R).   {A = R;}
@@ -1700,10 +1681,13 @@ expr(A) ::= RAISE LP raisetype(T) COMMA nm(Z) RP.  {
 %endif  !SQLITE_OMIT_TRIGGER
 
 %type raisetype {int}
+%ifndef SQLITE_BUILDING_FOR_COMDB2
 raisetype(A) ::= ROLLBACK.  {A = OE_Rollback;}
+%endif !SQLITE_BUILDING_FOR_COMDB2
 raisetype(A) ::= ABORT.     {A = OE_Abort;}
+%ifndef SQLITE_BUILDING_FOR_COMDB2
 raisetype(A) ::= FAIL.      {A = OE_Fail;}
-
+%endif !SQLITE_BUILDING_FOR_COMDB2
 
 ////////////////////////  DROP TRIGGER statement //////////////////////////////
 %ifndef SQLITE_OMIT_TRIGGER

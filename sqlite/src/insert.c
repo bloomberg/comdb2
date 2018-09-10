@@ -570,10 +570,6 @@ void sqlite3Insert(
   int tmask;                  /* Mask of trigger times */
 #endif
 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( pUpsert && onError==OE_Default ) onError = pUpsert->oeFlag;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   db = pParse->db;
   if( pParse->nErr || db->mallocFailed ){
     goto insert_cleanup;
@@ -1153,7 +1149,7 @@ void sqlite3Insert(
 
     if( (gbl_partial_indexes && pTab->hasPartIdx) ||
         (gbl_expressions_indexes && pTab->hasExprIdx) ||
-        (pUpsert && onError!=OE_Ignore) ){
+        onError!=OE_Ignore ){
       int idx;
       for(idx=0, pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext, idx++){
         sqlite3VdbeAddOp1(v, OP_Close, idx+iIdxCur);
@@ -1523,11 +1519,6 @@ void sqlite3GenerateConstraintChecks(
       /* An ON CONFLICT DO NOTHING clause, without a constraint-target.
       ** Make all unique constraint resolution be OE_Ignore */
       assert( pUpsert->pUpsertSet==0 );
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-      /* The above condition also holds true for ON CONFLICT DO REPLACE
-       * (a comdb2 extension). */
-      if( overrideError!=OE_Replace ) overrideError = OE_Ignore;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       overrideError = OE_Ignore;
       pUpsert = 0;
     }else if( (pUpIdx = pUpsert->pUpsertIdx)!=0 ){
