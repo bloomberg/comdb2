@@ -1034,6 +1034,9 @@ setlist(A) ::= LP idlist(X) RP EQ expr(Y). {
 //
 cmd ::= with insert_cmd(R) INTO xfullname(X) idlist_opt(F) select(S)
         upsert(U). {
+
+  sqlite3Insert(pParse, X, S, F, (U)?U->oeFlag:0, U);
+
   sqlite3Insert(pParse, X, S, F, R, U);
 }
 cmd ::= with insert_cmd(R) INTO xfullname(X) idlist_opt(F) DEFAULT VALUES.
@@ -1801,7 +1804,7 @@ alter_table_drop_fk ::= DROP FOREIGN KEY nm(Y). {
 
 alter_table_add_index ::= ADD uniqueflag(U) INDEX nm(I) LP sortlist(X) RP
                           with_opt(O) where_opt(W). {
-  comdb2AddIndex(pParse, &I, X, 0, &W, 0, 0, SQLITE_SO_ASC, (U == OE_Abort) ?
+  comdb2AddIndex(pParse, &I, X, 0, W, 0, 0, SQLITE_SO_ASC, (U == OE_Abort) ?
                  SQLITE_IDXTYPE_UNIQUE : SQLITE_IDXTYPE_DUPKEY, O);
 }
 alter_table_drop_index ::= DROP INDEX nm(I). {
