@@ -435,7 +435,7 @@ int comdb2_malloc_stats(comdb2ma ma, int verbose, int human_readable,
 */
 int comdb2_malloc_trim(comdb2ma ma, size_t pad);
 
-#endif
+#endif /* COMDB2MA_OMIT_DYNAMIC */
 
 #ifndef COMDB2MA_OMIT_STATIC
 
@@ -528,7 +528,7 @@ int comdb2_malloc_stats_static(int indx, int verbose, int human_readable,
 */
 int comdb2_malloc_trim_static(int indx, size_t pad);
 
-#endif
+#endif /* COMDB2MA_OMIT_STATIC */
 
 /****************************************
 **                                     **
@@ -691,4 +691,21 @@ void comdb2_bfree_nl(comdb2bma ma, void *ptr);
 
 #endif /* USE_SYS_ALLOC */
 #endif /* COMDB2_OMIT_BMEM */
+
+#ifndef COMDB2MA_OMIT_DEBUG
+/* Dump the specified allocators. When `unsafe' is set to true,
+   also dump those thread-unsafe allocators. */
+int comdb2ma_debug_dump(const char *, int unsafe);
+/* Start debugging. */
+void comdb2ma_debug_start(void);
+/* Manually stop debugging. */
+void comdb2ma_debug_stop(void);
+/* Turn on debugging on the specified allocators. */
+int comdb2ma_debug_on(const char *);
+/* Turn off debugging on the specified allocators. */
+int comdb2ma_debug_off(const char *);
+/* Print debug config. */
+void comdb2ma_debug_show_config(void);
+#endif /* COMDB2MA_OMIT_DEBUG */
+
 #endif /* INCLUDED_MEM_H */

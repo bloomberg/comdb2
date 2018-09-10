@@ -61,7 +61,6 @@ static void eventlog_roll(void);
 
 struct sqltrack {
     char fingerprint[FINGERPRINTSZ];
-    char *sql;
     LINKC_T(struct sqltrack) lnk;
 };
 
@@ -108,7 +107,6 @@ static void eventlog_close(void)
     struct sqltrack *t = listc_rtl(&sql_statements);
     while (t) {
         hash_del(seen_sql, t);
-        free(t->sql);
         free(t);
         t = listc_rtl(&sql_statements);
     }
@@ -391,7 +389,6 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
         st = malloc(sizeof(struct sqltrack));
         memcpy(st->fingerprint, logger->fingerprint,
                sizeof(logger->fingerprint));
-        st->sql = strdup(logger->stmt);
         hash_add(seen_sql, st);
         listc_abl(&sql_statements, st);
 

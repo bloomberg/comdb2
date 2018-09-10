@@ -3546,7 +3546,7 @@ done:
 int bdb_oldest_outstanding_ltran(bdb_state_type *bdb_state, int *ltran_count,
                                  DB_LSN *oldest_ltran)
 {
-    DB_LTRAN *ltranlist;
+    DB_LTRAN *ltranlist = NULL;
     u_int32_t ltrancount;
     bdb_state_type *parent = bdb_state;
     DB_LSN oldest = {0};
@@ -3561,6 +3561,7 @@ int bdb_oldest_outstanding_ltran(bdb_state_type *bdb_state, int *ltran_count,
 
     if (ltrancount == 0) {
         *ltran_count = ltrancount;
+        free(ltranlist);
         return 0;
     }
 

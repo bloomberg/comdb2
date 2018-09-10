@@ -65,6 +65,7 @@ tests/tools/cdb2api_unit
 tests/tools/cdb2_close_early
 
 
+tests/*_generated.test
 tests/test_*
 tests/pmux.sqlite
 

@@ -365,9 +365,11 @@ set all_graphs {
   }
   grant-revoke {stack
     {line {or GRANT REVOKE}}
-    {or
-      {line {or READ WRITE} ON /table-name TO /user-name}
-      {line OP TO /user-name}}
+    {line
+        {or
+            {line {or READ WRITE DDL} ON /table-name }
+            {line OP}
+        } TO /user-name}
   }
   rebuild {stack
       {line REBUILD {or {} {line INDEX /index-name} DATA DATABLOB } /table-name}

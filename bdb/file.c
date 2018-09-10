@@ -7976,8 +7976,10 @@ int bdb_purge_unused_files(bdb_state_type *bdb_state, tran_type *tran,
     /* skip already deleted files */
     char path[PATH_MAX];
     bdb_trans(munged_name, path);
-    if (stat(path, &sb))
+    if (stat(path, &sb)) {
+        free(munged_name);
         return 0;
+    }
 
     if (lognum && lowfilenum && lognum >= lowfilenum) {
         oldfile_list_add(munged_name, lognum, __func__, __LINE__);
@@ -7991,21 +7993,19 @@ int bdb_purge_unused_files(bdb_state_type *bdb_state, tran_type *tran,
         logmsg(LOGMSG_ERROR, "%s: failed to delete file rc %d bdberr %d: %s\n",
                 __func__, rc, *bdberr, munged_name);
 
-        if (*bdberr != BDBERR_DELNOTFOUND) {
-            if (oldfile_list_add(munged_name, lognum, __func__, __LINE__)) {
-                print(bdb_state, "bdb_del_file failed bdberr=%d and failed to "
-                                 "requeue \"%s\"\n",
-                      *bdberr, munged_name);
-                free(munged_name);
-            }
-        } else
+        if (*bdberr == BDBERR_DELNOTFOUND)
             rc = 0;
-
-        return rc;
+        else if (oldfile_list_add(munged_name, lognum, __func__, __LINE__))
+            print(bdb_state,
+                  "bdb_del_file failed bdberr=%d and failed to "
+                  "requeue \"%s\"\n",
+                  *bdberr, munged_name);
+        else /* Added back to oldfile list. Don't free the file name. */
+            return rc;
     }
 
     free(munged_name);
-    return 0;
+    return rc;
 }
 
 int bdb_osql_cache_table_versions(bdb_state_type *bdb_state, tran_type *tran,

@@ -94,6 +94,12 @@ int bdb_maybe_use_genid_for_key(
         p_dbt_key->size = bdb_state->ixlen[ixnum];
     }
 
+    assert(rc == 0 || *ppKeyMaxBuf != 0);
+#ifndef NDEBUG
+    unsigned long long test_genid = get_search_genid(bdb_state, genid);
+#endif
+    assert(rc == 0 || 0 == memcmp(*ppKeyMaxBuf + bdb_state->ixlen[ixnum],
+                                  &test_genid, sizeof(unsigned long long)));
     return rc;
 }
 
