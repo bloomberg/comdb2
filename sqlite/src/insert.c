@@ -570,6 +570,10 @@ void sqlite3Insert(
   int tmask;                  /* Mask of trigger times */
 #endif
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( onError==OE_Replace ) comdb2SetReplace(v);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
   db = pParse->db;
   if( pParse->nErr || db->mallocFailed ){
     goto insert_cleanup;
@@ -867,30 +871,12 @@ void sqlite3Insert(
     if( pUpsert->pUpsertTarget ){
       sqlite3UpsertAnalyzeTarget(pParse, pTabList, pUpsert);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+      comdb2SetUpdate(v);
     } else {
       comdb2SetUpsertIdx(v, MAXINDEX+1);
+      comdb2SetIgnore(v);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    switch( onError ){
-      case OE_Replace: {
-        comdb2SetReplace(v);
-        break;
-      }
-      case OE_Update: {
-        comdb2SetUpdate(v);
-        break;
-      }
-      case OE_Ignore: {
-        comdb2SetIgnore(v);
-        break;
-      }
-      default: {
-        assert( !"unsupported flag for UPSERT" );
-        break;
-      }
-    }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }
 #endif
 
@@ -1141,22 +1127,6 @@ void sqlite3Insert(
     sqlite3VdbeGoto(v, addrCont);
     sqlite3VdbeJumpHere(v, addrInsTop);
   }
-
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( !IsVirtual(pTab) && !isView ){
-    /* Close all tables and indexes. */
-    if( iDataCur<iIdxCur ) sqlite3VdbeAddOp1(v, OP_Close, iDataCur);
-
-    if( (gbl_partial_indexes && pTab->hasPartIdx) ||
-        (gbl_expressions_indexes && pTab->hasExprIdx) ||
-        (pUpsert && onError!=OE_Ignore) ){
-      int idx;
-      for(idx=0, pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext, idx++){
-        sqlite3VdbeAddOp1(v, OP_Close, idx+iIdxCur);
-      }
-    }
-  }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 insert_end:
   /* Update the sqlite_sequence table by storing the content of the
