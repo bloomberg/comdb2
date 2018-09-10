@@ -8685,7 +8685,7 @@ char *sqlite3BtreeIntegrityCheck(Btree *pBt, int *aRoot, int nRoot, int mxErr,
 }
 
 /* obtain comdb2_rowid and optionally print it as a decimal string */
-int sqlite3BtreeGetRowId(
+int sqlite3BtreeGetGenId(
   BtCursor *pCur,             /* IN: The BtCursor object being used. */
   unsigned long long rowId,   /* IN: Original rowId (from the BtCursor). */
   unsigned long long *pGenId, /* OUT, OPT: The genId, if requested. */
