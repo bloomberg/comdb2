@@ -5350,12 +5350,15 @@ case OP_InsertInt: {
     x.nZero = 0;
   }
   x.pKey = 0;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  rc = sqlite3BtreeInsert(pC->uc.pCursor, &x,
+      (pOp->p5 & OPFLAG_ISUPDATE)!=0, seekResult, pOp->p5
+  );
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   rc = sqlite3BtreeInsert(pC->uc.pCursor, &x,
       (pOp->p5 & (OPFLAG_APPEND|OPFLAG_SAVEPOSITION)), seekResult
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-      , (int) pOp->p5
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   );
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   pC->deferredMoveto = 0;
   pC->cacheStatus = CACHE_STALE;
 
