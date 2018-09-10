@@ -1219,7 +1219,6 @@ int osql_save_index(struct BtCursor *pCur, struct sql_thread *thd,
     if (!gbl_expressions_indexes || !pCur->db->ix_expr)
         return SQLITE_OK;
 
-
     if (!(tbl = open_shadtbl(pCur))) {
         logmsg(LOGMSG_ERROR, "%s: error getting shadtbl\n", __func__);
         return -1;
