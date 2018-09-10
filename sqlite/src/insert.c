@@ -570,10 +570,6 @@ void sqlite3Insert(
   int tmask;                  /* Mask of trigger times */
 #endif
 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( onError==OE_Replace ) comdb2SetReplace(v);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   db = pParse->db;
   if( pParse->nErr || db->mallocFailed ){
     goto insert_cleanup;
@@ -640,6 +636,11 @@ void sqlite3Insert(
   */
   v = sqlite3GetVdbe(pParse);
   if( v==0 ) goto insert_cleanup;
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( onError==OE_Replace ) comdb2SetReplace(v);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
   if( pParse->nested==0 ) sqlite3VdbeCountChanges(v);
   sqlite3BeginWriteOperation(pParse, pSelect || pTrigger, iDb);
 
