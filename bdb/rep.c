@@ -317,9 +317,8 @@ enum { DB_LSN_TYPE_SIZE = 4 + 4 };
 
 BB_COMPILE_TIME_ASSERT(db_lsn_type, sizeof(DB_LSN) == DB_LSN_TYPE_SIZE);
 
-const uint8_t *db_lsn_type_get(DB_LSN *p_db_lsn,
-                                          const uint8_t *p_buf,
-                                          const uint8_t *p_buf_end)
+const uint8_t *db_lsn_type_get(DB_LSN *p_db_lsn, const uint8_t *p_buf,
+                               const uint8_t *p_buf_end)
 {
     if (p_buf_end < p_buf || DB_LSN_TYPE_SIZE > (p_buf_end - p_buf))
         return NULL;
@@ -333,7 +332,7 @@ const uint8_t *db_lsn_type_get(DB_LSN *p_db_lsn,
 }
 
 const uint8_t *db_lsn_type_put(const DB_LSN *p_db_lsn, uint8_t *p_buf,
-                                          const uint8_t *p_buf_end)
+                               const uint8_t *p_buf_end)
 {
     if (p_buf_end < p_buf || DB_LSN_TYPE_SIZE > (p_buf_end - p_buf))
         return NULL;
@@ -4738,10 +4737,10 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         p_buf_end = ((uint8_t *)dta + dtalen);
         if ((db_lsn_type_get(&trunc_lsn, p_buf, p_buf_end)) == NULL) {
             logmsg(LOGMSG_ERROR, "%s %d: failed to get trunc-lsn\n", __func__,
-                    __LINE__);
+                   __LINE__);
         } else {
             logmsg(LOGMSG_INFO, "Truncating log to %d:%d\n", trunc_lsn.file,
-                    trunc_lsn.offset);
+                   trunc_lsn.offset);
             truncate_log_lock(bdb_state, trunc_lsn.file, trunc_lsn.offset, 0);
         }
         net_ack_message(ack_handle, 0);

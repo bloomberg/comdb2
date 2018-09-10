@@ -8,13 +8,34 @@ NRUNS=100
 
 set -x
 
+export COPYCOMDB2_EXE=${BUILDDIR}/db/copycomdb2
+export comdb2ar=${COMDB2AR_EXE}
 destdb=${TESTCASE}dest${TESTID}
 DEST_DBDIR=${DBDIR}/$destdb
 mkdir -p $DEST_DBDIR
+if [[ -z "$CLUSTER" ]]; then
+    cl="-y localhost"
+fi
+if [[ -n "$CLUSTER" ]]; then
+    if [[ "$CLUSTER" =~ .*$myhost.* ]]; then
+        rmt=""
+    else
+        clarray=($CLUSTER)
+        rmt="${clarray[0]}:"
+    fi
+fi
+
+
 
 # use copycomdb2 to create a physical replicant
 
-$COPYCOMDB2_EXE -H ${destdb} -y localhost $DEST_DBDIR/${destdb}.lrl
+${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H $destdb $cl $rmt${DBDIR}/${DBNAME}.lrl $DEST_DBDIR $DEST_DBDIR
+
+if [ ! $? -eq 0 ]; then
+    echo "copycomdb2 failed"
+    exit 1
+fi
+>>>>>>> Work on phys-rep
 
 df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> $DBDIR/${destdb}.lrl
 
@@ -27,7 +48,7 @@ fi
 
 out=
 while [[ "$out" != "1" ]]; do
-    out=$(CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $destdb local 'select 1' 2>/dev/null)
+    out=$(${CDB2SQL_EXE} --tabs $destdb --host localhost 'select 1' 2>/dev/null)
     sleep 1
 done
 
@@ -56,15 +77,17 @@ for sql in `ls *.src.sql | sort -V`; do
     src=$(CDB2SQL_EXE -s --tabs -f $query_cmd ${CDB2_OPTIONS} $dbname default 2>&1 | md5sum) 
     dest=$(CDB2SQL_EXE -s --tabs -f $query_cmd ${CDB2_OPTIONS} $destdb local 2>&1 | md5sum)
 
+    src=$(${CDB2SQL_EXE} -s --tabs -f $query_cmd ${CDB2_OPTIONS} $dbname default 2>&1 | md5sum) 
+    dest=$(${CDB2SQL_EXE} -s --tabs -f $query_cmd $destdb --host localhost 2>&1 | md5sum)
     failed=1
     for i in `seq 1 5`;
     do
         if ! $(equal_queries "$src" "$dest"); then
             echo 'Replicant not updated'
             sleep 1
-            src=$(CDB2SQL_EXE -s --tabs -f $query_cmd ${CDB2_OPTIONS} $dbname default 2>&1 | md5sum) 
-            dest=$(CDB2SQL_EXE -s --tabs -f $query_cmd ${CDB2_OPTIONS} $destdb local 2>&1 | md5sum)
-            continue
+            src=$(${CDB2SQL_EXE} -s --tabs -f $query_cmd ${CDB2_OPTIONS} $dbname default 2>&1 | md5sum) 
+            dest=$(${CDB2SQL_EXE} -s --tabs -f $query_cmd $destdb --host localhost 2>&1 | md5sum)
+            exit 1
         fi
         
         failed=0

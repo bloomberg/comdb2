@@ -13,12 +13,12 @@ extern bdb_state_type *bdb_state;
 
 int matchable_log_type(int rectype);
 
-LOG_INFO get_last_lsn(bdb_state_type* bdb_state)
+LOG_INFO get_last_lsn(bdb_state_type *bdb_state)
 {
-    int rc; 
+    int rc;
 
     /* get db internals */
-    DB_LOGC* logc;
+    DB_LOGC *logc;
     DBT logrec;
     DB_LSN last_log_lsn;
     LOG_INFO log_info;
@@ -34,7 +34,7 @@ LOG_INFO get_last_lsn(bdb_state_type* bdb_state)
     rc = logc->get(logc, &last_log_lsn, &logrec, DB_LAST);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: can't get last log record rc %d\n", __func__,
-                rc);
+               rc);
         logc->close(logc, 0);
         return log_info;
     }
@@ -42,7 +42,7 @@ LOG_INFO get_last_lsn(bdb_state_type* bdb_state)
     logmsg(LOGMSG_WARN, "LSN %u:%u\n", last_log_lsn.file, last_log_lsn.offset);
 
     log_info.file = last_log_lsn.file;
-    log_info.offset =  last_log_lsn.offset; 
+    log_info.offset = last_log_lsn.offset;
     log_info.size = logrec.size;
 
     if (logrec.data)
@@ -53,13 +53,13 @@ LOG_INFO get_last_lsn(bdb_state_type* bdb_state)
     return log_info;
 }
 
-int compare_log(bdb_state_type* bdb_state, unsigned int file, unsigned int offset,
-        void* blob, unsigned int blob_len)
+int compare_log(bdb_state_type *bdb_state, unsigned int file,
+                unsigned int offset, void *blob, unsigned int blob_len)
 {
-    int rc; 
+    int rc;
 
     /* get db internals */
-    DB_LOGC* logc;
+    DB_LOGC *logc;
     DBT logrec;
     DB_LSN match_lsn;
     LOG_INFO log_info;
@@ -77,20 +77,16 @@ int compare_log(bdb_state_type* bdb_state, unsigned int file, unsigned int offse
     logrec.flags = DB_DBT_MALLOC;
     rc = logc->get(logc, &match_lsn, &logrec, DB_SET);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: can't get log record rc %d\n", __func__,
-                rc);
+        logmsg(LOGMSG_ERROR, "%s: can't get log record rc %d\n", __func__, rc);
         logc->close(logc, 0);
         return 1;
     }
 
     logmsg(LOGMSG_WARN, "cmp: LSN %u:%u\n", match_lsn.file, match_lsn.offset);
 
-    if (logrec.size != blob_len)
-    {
+    if (logrec.size != blob_len) {
         rc = 1;
-    }
-    else
-    {
+    } else {
         rc = memcmp(blob, logrec.data, blob_len);
     }
 
@@ -102,14 +98,14 @@ int compare_log(bdb_state_type* bdb_state, unsigned int file, unsigned int offse
     return rc;
 }
 
-int find_log_timestamp(bdb_state_type* bdb_state, time_t time, 
-        unsigned int* file, unsigned int* offset) 
+int find_log_timestamp(bdb_state_type *bdb_state, time_t time,
+                       unsigned int *file, unsigned int *offset)
 {
-    int rc; 
+    int rc;
     u_int64_t my_time;
 
     /* get db internals */
-    DB_LOGC* logc;
+    DB_LOGC *logc;
     DBT logrec;
     DB_LSN rec_lsn;
     u_int32_t rectype;
@@ -121,48 +117,46 @@ int find_log_timestamp(bdb_state_type* bdb_state, time_t time,
         return 1;
     }
 
-    do
-    { 
-        do
-        {
+    do {
+        do {
             bzero(&logrec, sizeof(DBT));
             logrec.flags = DB_DBT_MALLOC;
             rc = logc->get(logc, &rec_lsn, &logrec, DB_PREV);
             if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: can't get log record rc %d\n", __func__,
-                        rc);
+                logmsg(LOGMSG_ERROR, "%s: can't get log record rc %d\n",
+                       __func__, rc);
                 logc->close(logc, 0);
                 return 1;
             }
 
-            LOGCOPY_32(&rectype, logrec.data);        
+            LOGCOPY_32(&rectype, logrec.data);
 
-        } while(!matchable_log_type(rectype));
+        } while (!matchable_log_type(rectype));
 
         my_time = get_timestamp_from_matchable_record(logrec.data);
-        logmsg(LOGMSG_USER, "My ts is %lld, {%u:%u}\n", my_time,
-                rec_lsn.file, rec_lsn.offset); 
+        logmsg(LOGMSG_USER, "My ts is %lld, {%u:%u}\n", my_time, rec_lsn.file,
+               rec_lsn.offset);
 
         if (logrec.data)
             free(logrec.data);
-    } while(time < my_time);
+    } while (time < my_time);
 
-    logmsg(LOGMSG_USER, "My ts is %lld, {%u:%u}\n", my_time,
-            rec_lsn.file, rec_lsn.offset); 
+    logmsg(LOGMSG_USER, "My ts is %lld, {%u:%u}\n", my_time, rec_lsn.file,
+           rec_lsn.offset);
 
     *file = rec_lsn.file;
     *offset = rec_lsn.offset;
-    
+
     return 0;
 }
 
 /* hacky way to create a generator */
-static DB_LOGC* logc;
+static DB_LOGC *logc;
 
-int get_next_matchable(LOG_INFO* info)
+int get_next_matchable(LOG_INFO *info)
 {
     /* TODO: like get_last_lsn, but need to expose the data this time */
-    int rc; 
+    int rc;
     u_int32_t rectype;
 
     /* get db internals */
@@ -173,15 +167,14 @@ int get_next_matchable(LOG_INFO* info)
 
     match_lsn.file = info->file;
     match_lsn.offset = info->offset;
-    
-    do
-    { 
+
+    do {
         bzero(&logrec, sizeof(DBT));
         logrec.flags = DB_DBT_MALLOC;
         rc = logc->get(logc, &match_lsn, &logrec, DB_PREV);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: can't get log record rc %d\n", __func__,
-                    rc);
+                   rc);
             logc->close(logc, 0);
             return 1;
         }
@@ -191,8 +184,7 @@ int get_next_matchable(LOG_INFO* info)
         if (logrec.data)
             free(logrec.data);
 
-    }
-    while(!matchable_log_type(rectype));
+    } while (!matchable_log_type(rectype));
 
     info->file = match_lsn.file;
     info->offset = match_lsn.offset;
@@ -203,7 +195,7 @@ int get_next_matchable(LOG_INFO* info)
     return rc;
 }
 
-int open_db_cursor(bdb_state_type* bdb_state)
+int open_db_cursor(bdb_state_type *bdb_state)
 {
     int rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0);
     if (rc) {
@@ -215,31 +207,32 @@ int open_db_cursor(bdb_state_type* bdb_state)
 }
 
 void close_db_cursor()
-{ 
+{
     logc->close(logc, 0);
     logc = NULL;
 }
 /* generator code */
 
-u_int32_t get_next_offset(DB_ENV* dbenv, LOG_INFO log_info)
+u_int32_t get_next_offset(DB_ENV *dbenv, LOG_INFO log_info)
 {
     return log_info.offset + log_info.size + dbenv->get_log_header_size(dbenv);
 }
 
-int apply_log(DB_ENV* dbenv, unsigned int file, unsigned int offset, 
-        int64_t rectype, void* blob, int blob_len)
+int apply_log(DB_ENV *dbenv, unsigned int file, unsigned int offset,
+              int64_t rectype, void *blob, int blob_len)
 {
     return dbenv->apply_log(dbenv, file, offset, rectype, blob, blob_len);
 }
 
-int truncate_log_lock(bdb_state_type* bdb_state, unsigned int file, 
-        unsigned int offset, uint32_t flags)
+int truncate_log_lock(bdb_state_type *bdb_state, unsigned int file,
+                      unsigned int offset, uint32_t flags)
 {
     extern int gbl_is_physical_replicant;
     DB_LSN trunc_lsn;
-    char* msg = "truncate log";
+    char *msg = "truncate log";
 
-    if (flags && bdb_state->repinfo->master_host != bdb_state->repinfo->myhost) {
+    if (flags &&
+        bdb_state->repinfo->master_host != bdb_state->repinfo->myhost) {
         return send_truncate_to_master(bdb_state, file, offset);
     }
 
@@ -250,5 +243,3 @@ int truncate_log_lock(bdb_state_type* bdb_state, unsigned int file,
 
     return 0;
 }
-
-

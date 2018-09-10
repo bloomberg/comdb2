@@ -707,9 +707,9 @@ int resume_schema_change(void)
     int is_shard = 0;
     char *viewname = NULL;
 
-    /* if we're not the master node/phys replicant then we can't do schema change! */
-    if (gbl_is_physical_replicant)
-    {
+    /* if we're not the master node/phys replicant then we can't do schema
+     * change! */
+    if (gbl_is_physical_replicant) {
         return 0;
     }
     if (thedb->master != gbl_mynode) {

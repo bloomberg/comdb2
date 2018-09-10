@@ -1784,7 +1784,7 @@ uint8_t *rep_berkdb_seqnum_type_put(const seqnum_type *p_seqnum_type,
 uint8_t *rep_udp_filepage_type_put(const filepage_type *p_filepage_type,
                                    uint8_t *p_buf, const uint8_t *p_buf_end);
 const uint8_t *db_lsn_type_put(const DB_LSN *p_db_lsn, uint8_t *p_buf,
-                                   const uint8_t *p_buf_end);
+                               const uint8_t *p_buf_end);
 void poke_updateid(void *buf, int updateid);
 
 void bdb_genid_sanity_check(bdb_state_type *bdb_state, unsigned long long genid,

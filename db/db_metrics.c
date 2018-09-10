@@ -221,16 +221,14 @@ comdb2_metric gbl_metrics[] = {
     {"standing_queue_time", "How long the database has had a standing queue", 
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, 
      &stats.standing_queue_time, NULL}
-    {"minimum_truncation_file", "Minimum truncation file",
-     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
-     &stats.minimum_truncation_file, NULL},
+    {"minimum_truncation_file", "Minimum truncation file", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.minimum_truncation_file, NULL},
     {"minimum_truncation_offset", "Minimum truncation offset",
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
      &stats.minimum_truncation_offset, NULL},
     {"minimum_truncation_timestamp", "Minimum truncation timestamp",
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
-     &stats.minimum_truncation_timestamp, NULL}
-};
+     &stats.minimum_truncation_timestamp, NULL}};
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
     switch (t) {
