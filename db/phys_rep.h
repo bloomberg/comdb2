@@ -15,7 +15,7 @@ int start_replication();
 int stop_replication();
 
 /* expose as a hook for apply_log */
-int apply_log_procedure(unsigned int file, unsigned int offset,
-        void* blob, int blob_len, int newfile);
+int apply_log_procedure(unsigned int file, unsigned int offset, void *blob,
+                        int blob_len, int newfile);
 
 #endif

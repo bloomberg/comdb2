@@ -407,8 +407,8 @@ int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key,
      * (recovery isn't) */
     if (tran) {
         if (!gbl_is_physical_replicant)
-            rc = llog_blkseq_log(bdb_state->dbenv, tran->tid, &lsn, 0, now, &dkey,
-                    &ddata);
+            rc = llog_blkseq_log(bdb_state->dbenv, tran->tid, &lsn, 0, now,
+                                 &dkey, &ddata);
 
         /* Don't bother with these during recovery since we'll run
          * bdb_blkseq_recover to
