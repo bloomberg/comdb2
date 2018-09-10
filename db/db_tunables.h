@@ -1447,7 +1447,7 @@ REGISTER_TUNABLE("osql_send_startgen",
 
 REGISTER_TUNABLE("instrument_dblist",
                  "Extended dblist-trace in berkley.  (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_instrument_dblist, READONLY, NULL, NULL,
-                 NULL, NULL);
+                 TUNABLE_BOOLEAN, &gbl_instrument_dblist,
+                 READONLY | EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

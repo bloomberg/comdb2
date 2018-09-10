@@ -975,13 +975,12 @@ int send_truncate_to_master(bdb_state_type *bdb_state, int file, int offset)
 
     db_lsn_type_put(&trunc_lsn, p_buf, p_buf_end);
 
-    rc = net_send_message(bdb_state->repinfo->netinfo,
-            bdb_state->repinfo->master_host, USER_TYPE_TRUNCATE_LOG,
-            p_buf, sizeof(DB_LSN), 1, timeout);
+    rc = net_send_message(
+        bdb_state->repinfo->netinfo, bdb_state->repinfo->master_host,
+        USER_TYPE_TRUNCATE_LOG, p_buf, sizeof(DB_LSN), 1, timeout);
 
     return rc;
 }
-
 
 const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
                                     unsigned int hash)

@@ -1340,41 +1340,43 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             return -1;
         }
         /* setup a cluster db name */
-        char* cluster_name = tokdup(tok, ltok);
+        char *cluster_name = tokdup(tok, ltok);
 
         tok = segtok(line, len, &st, &ltok);
         if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Must specify at least one db to query from\n");
+            logmsg(LOGMSG_ERROR,
+                   "Must specify at least one db to query from\n");
             return -1;
         }
 
         /* open db connections */
         while (ltok) {
             char *tmp_tok = tokdup(tok, ltok);
-            if (add_replicant_host(tmp_tok, cluster_name, 0) != 0)
-            {
-                logmsg(LOGMSG_ERROR, "Failed to insert hostname %.*s\n", ltok, tok);
+            if (add_replicant_host(tmp_tok, cluster_name, 0) != 0) {
+                logmsg(LOGMSG_ERROR, "Failed to insert hostname %.*s\n", ltok,
+                       tok);
             }
             tok = segtok(line, len, &st, &ltok);
             free(tmp_tok);
         }
 
-        start_replication(); 
+        start_replication();
 
     } else if (tokcmp(tok, ltok, "replicate_wait") == 0) {
         tok = segtok(line, len, &st, &ltok);
 
         /* need to replicate a database */
         if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Must specify # of seconds to wait for timestamp\n");
+            logmsg(LOGMSG_ERROR,
+                   "Must specify # of seconds to wait for timestamp\n");
             return -1;
         }
         gbl_deferred_phys_flag = 1;
-        
-        char* wait = tokdup(tok, ltok);
+
+        char *wait = tokdup(tok, ltok);
         gbl_deferred_phys_update = atol(wait);
         logmsg(LOGMSG_USER, "Waiting for %u seconds for replication\n",
-                gbl_deferred_phys_update);
+               gbl_deferred_phys_update);
         free(wait);
 
     } else {
@@ -1579,9 +1581,9 @@ int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
         read_cmd_line_tunables(dbenv);
 
         /* usenames is not supported with physical replication */
-        if (gbl_is_physical_replicant && !gbl_nonames)
-        {
-            logmsg(LOGMSG_ERROR, "Cannot start a physical replicant under usenames\n");
+        if (gbl_is_physical_replicant && !gbl_nonames) {
+            logmsg(LOGMSG_ERROR,
+                   "Cannot start a physical replicant under usenames\n");
             return 1;
         }
     }
