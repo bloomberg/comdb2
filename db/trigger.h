@@ -21,7 +21,7 @@ struct consumer_stat {
 struct comdb2_queue_consumer {
     int type;
     int (*add_consumer)(struct dbtable *db, int consumern, const char *method, int noremove);
-    void (*admin)(struct dbenv *dbenv);
+    void (*admin)(struct dbenv *dbenv, int type);
     int (*check_consumer)(const char *method);
     enum consumer_t (*consumer_type)(struct consumer *c);
     void (*coalesce)(struct dbenv *dbenv);

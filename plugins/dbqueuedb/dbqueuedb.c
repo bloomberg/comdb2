@@ -372,7 +372,7 @@ static int dbqueuedb_admin_running = 0;
 /* This gets called once a second from purge_old_blkseq_thread().
  * If we have become master we make sure that we have threads in place
  * for each consumer. */
-static void admin(struct dbenv *dbenv)
+static void admin(struct dbenv *dbenv, int type)
 {
     int iammaster = (dbenv->master == gbl_mynode) ? 1 : 0;
 
@@ -395,6 +395,8 @@ static void admin(struct dbenv *dbenv)
                 for (int consumern = 0; consumern < MAXCONSUMERS; consumern++) {
                     struct consumer *consumer = db->consumers[consumern];
                     if (!consumer)
+                        continue;
+                    if (consumer->base.type != type)
                         continue;
                     switch (consumer->base.type) {
                     case CONSUMER_TYPE_LUA:

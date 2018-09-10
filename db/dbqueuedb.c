@@ -27,7 +27,7 @@ void dbqueuedb_admin(struct dbenv *dbenv) {
     for (int i = 0; i < CONSUMER_TYPE_LAST; i++) {
         handler = thedb->queue_consumer_handlers[i];
         if (handler)
-            handler->admin(dbenv);
+            handler->admin(dbenv, i);
     }
 }
 
