@@ -7253,7 +7253,7 @@ static int bdb_table_version_upsert_int(bdb_state_type *bdb_state,
     if (rc || *bdberr != BDBERR_NOERROR) {
         return rc;
     } else {
-        logmsg(LOGMSG_INFO, "Saved version %lu for table %s\n",
+        logmsg(LOGMSG_INFO, "Saved version %" PRIu64 " for table %s\n",
                flibc_htonll(version), bdb_state->name);
     }
 
