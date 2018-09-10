@@ -70,14 +70,12 @@ static int osql_send_insidx_logic(struct BtCursor *pCur,
 static int osql_send_qblobs_logic(struct BtCursor *pCur, osqlstate_t *osql,
                                   int *updCols, blob_buffer_t *blobs,
                                   int nettype);
-static int osql_updcols(struct BtCursor *pCur, struct sql_thread *thd,
-                        int *updCols);
 static int osql_send_recordgenid_logic(struct BtCursor *pCur,
                                        struct sql_thread *thd,
                                        unsigned long long genid, int nettype);
-static int osql_send_updstat_logic(struct BtCursor *pCur,
-                                   struct sql_thread *thd, char *pData,
-                                   int nData, int nStat, int nettype);
+int osql_send_updstat_logic(struct BtCursor *pCur,
+                            struct sql_thread *thd, char *pData,
+                            int nData, int nStat, int nettype);
 static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
                                   int nettype);
 static int osql_send_abort_logic(struct sqlclntstate *clnt, int nettype);
@@ -174,7 +172,7 @@ static int should_restart(struct sqlclntstate *clnt, int rc)
 /**
  * Process the actual sending of the delrec
  */
-static int send_osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
+static int osql_send_del_logic(struct BtCursor *pCur, struct sql_thread *thd)
 {
     int rc = osql_send_usedb_logic(pCur, thd, NET_OSQL_SOCK_RPL);
     if (rc != SQLITE_OK) return rc;
@@ -226,7 +224,7 @@ int osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
 
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         do {
-            rc = send_osql_delrec(pCur, thd);
+            rc = osql_send_del_logic(pCur, thd);
             RESTART_SOCKSQL;
         } while (restarted && rc == 0);
     }
@@ -256,9 +254,9 @@ inline int osql_updstat(struct BtCursor *pCur, struct sql_thread *thd,
 /**
  * Process the sending part for insrec
  */
-static int send_osql_insrec(struct BtCursor *pCur, struct sql_thread *thd,
-                            char *pData, int nData, blob_buffer_t *blobs,
-                            int maxblobs, int flags) 
+static int osql_send_ins_logic(struct BtCursor *pCur, struct sql_thread *thd,
+                               char *pData, int nData, blob_buffer_t *blobs,
+                               int maxblobs, int flags) 
 {
     int rc = osql_send_usedb_logic(pCur, thd, NET_OSQL_SOCK_RPL);
     if (rc != SQLITE_OK) return rc;
@@ -319,7 +317,7 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         do {
-            rc = send_osql_insrec(pCur, thd, pData, nData, blobs, 
+            rc = osql_send_ins_logic(pCur, thd, pData, nData, blobs, 
                                   maxblobs, flags);
             RESTART_SOCKSQL;
         } while (restarted && rc == 0);
@@ -340,9 +338,9 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 /**
  * process the sending of updrec
  */
-static int send_osql_updrec(struct BtCursor *pCur, struct sql_thread *thd,
-                            char *pData, int nData, int *updCols,
-                            blob_buffer_t *blobs, int maxblobs, int flags) 
+static int osql_send_upd_logic(struct BtCursor *pCur, struct sql_thread *thd,
+                              char *pData, int nData, int *updCols,
+                              blob_buffer_t *blobs, int maxblobs, int flags) 
 {
     int rc = osql_send_usedb_logic(pCur, thd, NET_OSQL_SOCK_RPL);
     if (rc != SQLITE_OK) return rc;
@@ -426,7 +424,7 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         do {
-            rc = send_osql_updrec(pCur, thd, pData, nData, updCols, 
+            rc = osql_send_upd_logic(pCur, thd, pData, nData, updCols, 
                                   blobs, maxblobs, flags);
 
             RESTART_SOCKSQL;
@@ -545,8 +543,6 @@ int osql_sock_start(struct sqlclntstate *clnt, int type, int keep_rqid)
         if (gbl_noenv_messages) {
             osql->rqid = OSQL_RQID_USE_UUID;
             comdb2uuid(osql->uuid);
-
-            uuidstr_t us;
         } else {
             osql->rqid = comdb2fastseed();
             comdb2uuid_clear(osql->uuid);
@@ -1086,7 +1082,6 @@ int osql_sock_abort(struct sqlclntstate *clnt, int type)
 {
     int rcout = 0;
     int rc = 0;
-    int irc = 0;
     int bdberr = 0;
 
     /* am I talking already with the master? rqid != 0 */
@@ -1186,7 +1181,7 @@ static int osql_send_usedb_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                      nettype);
 }
 
-static inline int osql_send_updstat_logic(struct BtCursor *pCur,
+inline int osql_send_updstat_logic(struct BtCursor *pCur,
                                           struct sql_thread *thd, char *pData,
                                           int nData, int nStat, int nettype)
 {
