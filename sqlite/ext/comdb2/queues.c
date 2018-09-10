@@ -86,8 +86,12 @@ static int get_stats(struct systbl_queues_cursor *pCur) {
 
   dbqueuedb_get_name(thedb->qdbs[pCur->last_qid], &spname);
   strcpy(pCur->queue_name, thedb->qdbs[pCur->last_qid]->tablename);
-  strcpy(pCur->spname, spname);
-  free(spname);
+  if (spname) {
+      strcpy(pCur->spname, spname);
+      free(spname);
+  }
+  else
+      pCur->spname[0] = 0;
 
   int rc = dbqueuedb_get_stats(thedb->qdbs[pCur->last_qid], stats);
   if (rc) {
@@ -164,7 +168,10 @@ static int systblQueuesColumn(
       break;
     }
     case STQUEUE_SPNAME: {
-      sqlite3_result_text(ctx, pCur->spname, -1, NULL);
+      if (pCur->spname[0] == 0)
+        sqlite3_result_null(ctx);
+      else
+        sqlite3_result_text(ctx, pCur->spname, -1, NULL);
       break;
     }
     case STQUEUE_DEPTH: {
