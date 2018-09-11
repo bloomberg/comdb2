@@ -4,11 +4,14 @@
 # NRECS=1000
 # NRUNS=10000
 
-if [[ ! -e 2-insert.src.sql ]]; then
-    for i in $(seq 1 $NRECS); do
-        echo "insert into t1 (id, a, b, c, d, e, f, g, h, i, j) values ($i, 1, 2, 3, 4, 5, 6.000000, 7.000000, 'eight', x'99', now());"
-    done > 2-insert.src.sql
-fi
+# TEST 1: Table generation
+
+# TEST 2: Insert, Update, Delete
+set -x
+
+for i in $(seq 1 $NRECS); do
+    echo "insert into t1 (id, a, b, c, d, e, f, g, h, i, j) values ($i, 1, 2, 3, 4, 5, 6.000000, 7.000000, 'eight', x'99', now());"
+done > 2-1-insert.src.sql
 
 for i in $(seq 1 $NRUNS); do
     what=$(($RANDOM % 3))
