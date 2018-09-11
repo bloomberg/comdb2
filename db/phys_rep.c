@@ -83,7 +83,8 @@ void cleanup_hosts()
 {
     DB_Connection *cnct;
 
-    for (int i = 0; i < tiers; i++) {
+    /* Clean all but level 0 (cluster machines) */
+    for (int i = 1; i < tiers; i++) {
         for (int j = 0; j < cnct_idx[i]; j++) {
             cnct = local_rep_dbs[i][j];
             delete_connect(cnct);
@@ -92,11 +93,6 @@ void cleanup_hosts()
         free(local_rep_dbs[i]);
         local_rep_dbs[i] = NULL;
     }
-
-    free(local_rep_dbs);
-    local_rep_dbs = NULL;
-
-    cdb2_close(repl_db);
 }
 
 int start_replication()
@@ -324,7 +320,7 @@ static int register_self()
 {
     int rc;
     DB_Connection *cnct;
-    size_t sql_len = 200;
+    size_t sql_len = 400;
     char get_tier[sql_len];
     LOG_INFO info = get_last_lsn(thedb->bdb_env);
 
@@ -335,7 +331,7 @@ static int register_self()
     rc = snprintf(get_tier, sql_len,
                   "exec procedure "
                   "sys.cmd.register_replicant('%s', '%s', '{%u:%u}')",
-                  gbl_dbname, "localhost", info.file, info.offset);
+                  gbl_dbname, gbl_mynode, info.file, info.offset);
 
     if (rc < 0 || rc >= sql_len) {
         logmsg(LOGMSG_ERROR, "lua call buffer is not long enough!\n");
@@ -345,6 +341,7 @@ static int register_self()
     struct timespec remain_spec;
     wait_spec.tv_sec = 1;
     wait_spec.tv_nsec = 0;
+    int64_t max_tier;
 
     /* update our table of possible connections */
     cdb2_hndl_tp *cluster;
@@ -357,22 +354,23 @@ static int register_self()
             cnct->last_cnct = time(NULL);
             cnct->is_up = 1;
             curr_cnct = cnct;
-
+            max_tier = 0;
+            cdb2_set_debug_trace(cluster);
             if ((rc = cdb2_run_statement(cluster, get_tier)) == CDB2_OK) {
                 while ((rc = cdb2_next_record(cluster)) == CDB2_OK) {
                     int64_t tier = *(int64_t *)cdb2_column_value(cluster, 0);
-                    curr_tier = (tier > curr_tier) ? tier : curr_tier;
-
+                    curr_tier = (max_tier = (tier > max_tier) ? tier : max_tier);
                     char *dbname = (char *)cdb2_column_value(cluster, 1);
                     char *hostname = (char *)cdb2_column_value(cluster, 2);
-
                     insert_connect(hostname, dbname, tier);
                 }
                 cdb2_close(cluster);
                 return 0;
+            } else {
+                logmsg(LOGMSG_ERROR, "%s query statement returned %d\n", __func__, rc);
             }
         } else {
-            logmsg(LOGMSG_ERROR, "Couldn't query the cluster to find tier\n");
+            logmsg(LOGMSG_ERROR, "Couldn't open connection to the cluster to find tier\n");
             nanosleep(&wait_spec, &remain_spec);
         }
 
@@ -555,6 +553,17 @@ static int insert_connect(char *hostname, char *dbname, size_t tier)
     }
 
     tiers = (tier > tiers) ? tier : tiers;
+
+    /* Don't add same machine multiple times */
+    for (int i = 0 ; i < cnct_idx[tier] ; i++) {
+        DB_Connection *c = local_rep_dbs[tier][i];
+        if ((strcmp(c->hostname, hostname) == 0) && 
+                strcmp(c->dbname, dbname) == 0) {
+            logmsg(LOGMSG_DEBUG, "%s mach %s db %s found\n", __func__,
+                    hostname, dbname);
+            return 0;
+        }
+    }
 
     DB_Connection *cnct = malloc(sizeof(*cnct));
     cnct->hostname = strdup(hostname);

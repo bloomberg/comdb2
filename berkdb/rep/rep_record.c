@@ -387,7 +387,8 @@ matchable_log_type(int rectype)
 	if (gbl_only_match_commit_records) {
 		ret = (rectype == DB___txn_regop ||
 			rectype == DB___txn_regop_gen ||
-			rectype == DB___txn_regop_rowlocks);
+			rectype == DB___txn_regop_rowlocks ||
+            rectype == DB___txn_ckp);
 	} else {
 		switch (rectype) {
 		case DB___txn_recycle:
