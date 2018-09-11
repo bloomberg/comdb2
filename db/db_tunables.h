@@ -129,6 +129,11 @@ REGISTER_TUNABLE("crc32c",
                  "different checksums) for page checksums. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_crc32c, READONLY | NOARG, NULL, NULL,
                  NULL, NULL);
+REGISTER_TUNABLE("create_default_user",
+                 "Automatically create 'default' user when authentication is "
+                 "enabled. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_create_default_user, READONLY | NOARG,
+                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("crypto", NULL, TUNABLE_STRING, &gbl_crypto, READONLY, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("ctrace_dbdir",

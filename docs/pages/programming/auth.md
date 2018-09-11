@@ -55,7 +55,6 @@ select * from comdb2_users
 
 ```
 select * from comdb2_users
-(username='default', isOP='N')
 (username='foo_user', isOP='N')
 (username='op_user', isOP='Y')
 ```
@@ -75,8 +74,7 @@ put authentication off
 ``` 
 Only users which have OP credentials can turn on/off authentication.
 
-Turning on authentication will add a new user with the name 'default', if it doesn't already exist. This user will be used for every unauthenticated session.
-The newly created 'default' user doesn't have any privileges to any objects, but can be granted any privilege by an OP user.
+As a convenience, if ```create_default_user``` tunable is turned on, turning on authentication would automatically create a new user with name 'default' and empty password if it doesn't already exist. This newly created user doesn't have any privileges to any objects, but can be granted any privilege by an OP user. It will be used for every unauthenticated session.
 
 ## Granting/Revoking table privileges to users
 

@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=880)
+(TUNABLES_COUNT=881)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -124,6 +124,7 @@
 (name='convflush', description='', type='INTEGER', value='100', read_only='Y')
 (name='core_on_sparse_file', description='Generate a core if we catch berkeley creating a sparse file', type='BOOLEAN', value='OFF', read_only='N')
 (name='crc32c', description='Use crc32c (alternate faster implementation of CRC32, different checksums) for page checksums. (Default: on)', type='BOOLEAN', value='ON', read_only='Y')
+(name='create_default_user', description='Automatically create 'default' user when authentication is enabled. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='createdbs', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='crypto', description='', type='STRING', value=NULL, read_only='Y')
 (name='ctrace_dbdir', description='If set, debug trace files will go to the data directory instead of `$COMDB2_ROOT/var/log/cdb2/). (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
