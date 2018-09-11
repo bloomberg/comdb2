@@ -359,7 +359,8 @@ static int register_self()
             if ((rc = cdb2_run_statement(cluster, get_tier)) == CDB2_OK) {
                 while ((rc = cdb2_next_record(cluster)) == CDB2_OK) {
                     int64_t tier = *(int64_t *)cdb2_column_value(cluster, 0);
-                    curr_tier = (max_tier = (tier > max_tier) ? tier : max_tier);
+                    curr_tier =
+                        (max_tier = (tier > max_tier) ? tier : max_tier);
                     char *dbname = (char *)cdb2_column_value(cluster, 1);
                     char *hostname = (char *)cdb2_column_value(cluster, 2);
                     insert_connect(hostname, dbname, tier);
@@ -367,10 +368,12 @@ static int register_self()
                 cdb2_close(cluster);
                 return 0;
             } else {
-                logmsg(LOGMSG_ERROR, "%s query statement returned %d\n", __func__, rc);
+                logmsg(LOGMSG_ERROR, "%s query statement returned %d\n",
+                       __func__, rc);
             }
         } else {
-            logmsg(LOGMSG_ERROR, "Couldn't open connection to the cluster to find tier\n");
+            logmsg(LOGMSG_ERROR,
+                   "Couldn't open connection to the cluster to find tier\n");
             nanosleep(&wait_spec, &remain_spec);
         }
 
@@ -555,12 +558,12 @@ static int insert_connect(char *hostname, char *dbname, size_t tier)
     tiers = (tier > tiers) ? tier : tiers;
 
     /* Don't add same machine multiple times */
-    for (int i = 0 ; i < cnct_idx[tier] ; i++) {
+    for (int i = 0; i < cnct_idx[tier]; i++) {
         DB_Connection *c = local_rep_dbs[tier][i];
-        if ((strcmp(c->hostname, hostname) == 0) && 
-                strcmp(c->dbname, dbname) == 0) {
-            logmsg(LOGMSG_DEBUG, "%s mach %s db %s found\n", __func__,
-                    hostname, dbname);
+        if ((strcmp(c->hostname, hostname) == 0) &&
+            strcmp(c->dbname, dbname) == 0) {
+            logmsg(LOGMSG_DEBUG, "%s mach %s db %s found\n", __func__, hostname,
+                   dbname);
             return 0;
         }
     }
