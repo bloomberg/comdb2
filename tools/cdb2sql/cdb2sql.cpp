@@ -547,8 +547,12 @@ static int process_escape(const char *cmdstr)
         tok = strtok_r(NULL, delims, &lasts);
         if (!tok || strcasecmp(tok, "tables") == 0) {
             int start_time_ms, run_time_ms;
-            const char *sql = "SELECT tablename FROM comdb2_tables";
-
+            const char *sql =
+                "SELECT tablename FROM comdb2_tables order by tablename";
+            run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+        } else if (strcasecmp(tok, "systables") == 0) {
+            int start_time_ms, run_time_ms;
+            const char *sql = "SELECT name FROM comdb2_systables order by name";
             run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
         } else {
             fprintf(stderr, "unknown @ls sub-command %s\n", tok);

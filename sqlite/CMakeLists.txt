@@ -48,6 +48,7 @@ add_library(sqlite
   ext/comdb2/timeseries.c
   ext/comdb2/repl_stats.c
   ext/comdb2/sqlpoolqueue.c
+  ext/comdb2/systables.c
   ext/misc/completion.c
   ext/misc/json1.c
   ext/expert/sqlite3expert.c
