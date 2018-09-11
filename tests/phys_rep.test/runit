@@ -79,6 +79,8 @@ cleanup() {
     kill -9 $(cat $DEST_DBDIR/${destdb}.pid)
 }
 
+./generate_tests
+
 # iterate over each test
 for file in `ls *.src.sql *src.sh | sort -V`; do
     # for each sql test execute it
