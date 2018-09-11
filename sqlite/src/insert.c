@@ -872,12 +872,17 @@ void sqlite3Insert(
     if( pUpsert->pUpsertTarget ){
       sqlite3UpsertAnalyzeTarget(pParse, pTabList, pUpsert);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-      comdb2SetUpdate(v);
     } else {
       comdb2SetUpsertIdx(v, MAXINDEX+1);
-      comdb2SetIgnore(v);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if( pUpsert->pUpsertSet ){
+      comdb2SetUpdate(v);
+    }else{
+      comdb2SetIgnore(v);
+    }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }
 #endif
 
