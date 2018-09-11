@@ -1321,6 +1321,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
     int outrc = 0;
 
     if (gbl_logical_live_sc) {
+        tran_type *trans = NULL;
         int rc = 0, bdberr = 0;
         struct convert_record_data *thdData =
             calloc(1, sizeof(struct convert_record_data));
@@ -1367,8 +1368,19 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         sc_printf(s, "[%s] starting thread for logical live schema change\n",
                   s->table);
         thdData->isThread = 1;
-        s->logical_livesc = 1;
+
+        rc = trans_start_sc(&(data.iq), NULL, &trans);
+        if (rc || trans == NULL) {
+            logmsg(LOGMSG_ERROR, "%s:%d failed to start tran rc = %d\n",
+                   __func__, __LINE__, rc);
+            free(s->sc_convert_done);
+            return -1;
+        }
+        bdb_lock_table_write(s->db->handle, trans);
         bdb_set_logical_live_sc(s->db->handle);
+        trans_abort(&(data.iq), trans);
+
+        s->logical_livesc = 1;
         Pthread_rwlock_wrlock(&s->db->sc_live_lk);
         s->db->sc_live_logical = 1;
         Pthread_rwlock_unlock(&s->db->sc_live_lk);
@@ -1378,6 +1390,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         if (rc) {
             sc_errf(s, "[%s] starting thread failed for logical redo\n",
                     s->table);
+            bdb_clear_logical_live_sc(s->db->handle);
             s->logical_livesc = 0;
             free(s->sc_convert_done);
             return -1;
@@ -2745,7 +2758,7 @@ static int live_sc_redo_logical_rec(struct convert_record_data *data,
 
     if (rec->dtastripe < 0 || rec->dtastripe >= gbl_dtastripe) {
         logmsg(LOGMSG_ERROR, "%s:%d rec->dtastripe %d out of range\n", __func__,
-               __LINE__, rc, rec->dtastripe);
+               __LINE__, rec->dtastripe);
         return 0;
     }
     if (!data->s->sc_convert_done[rec->dtastripe] &&
