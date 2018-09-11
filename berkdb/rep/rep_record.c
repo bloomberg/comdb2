@@ -7424,16 +7424,19 @@ finish:ZERO_LSN(lp->waiting_lsn);
 	 * deadlock.
 	 */
 
-	F_SET(db_rep->rep_db, DB_AM_RECOVER);
-	MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
+	if (db_rep->rep_db)
+	{
+		F_SET(db_rep->rep_db, DB_AM_RECOVER);
+		MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
 
-	if ((ret = __truncate_repdb(dbenv)) != 0) {
-		abort();
-		goto err;
+		if ((ret = __truncate_repdb(dbenv)) != 0) {
+			abort();
+			goto err;
+		}
+
+		MUTEX_LOCK(dbenv, db_rep->db_mutexp);
+		F_CLR(db_rep->rep_db, DB_AM_RECOVER);
 	}
-
-	MUTEX_LOCK(dbenv, db_rep->db_mutexp);
-	F_CLR(db_rep->rep_db, DB_AM_RECOVER);
 
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 	rep->stat.st_log_queued = 0;
