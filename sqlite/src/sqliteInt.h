@@ -4185,7 +4185,7 @@ void sqlite3GenerateConstraintChecks(Parse*,Table*,int*,int,int,int,int,
 void sqlite3CompleteInsertion(Parse*,Table*,int,int,int,int*,int,int,int);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 int sqlite3OpenTableAndIndices(Parse*, Table*, int, u8, int, u8*, int*, int*,
-                               Upsert*);
+                               Upsert*, int);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 int sqlite3OpenTableAndIndices(Parse*, Table*, int, u8, int, u8*, int*, int*);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

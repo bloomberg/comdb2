@@ -541,7 +541,7 @@ void sqlite3Update(
       }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
       sqlite3OpenTableAndIndices(pParse, pTab, OP_OpenWrite, 0, iBaseCur,
-                                 aToOpen, 0, 0, 0);
+                                 aToOpen, 0, 0, 0, OE_None);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       sqlite3OpenTableAndIndices(pParse, pTab, OP_OpenWrite, 0, iBaseCur,
                                  aToOpen, 0, 0);

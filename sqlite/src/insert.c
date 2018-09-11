@@ -844,7 +844,7 @@ void sqlite3Insert(
     int nIdx;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     nIdx = sqlite3OpenTableAndIndices(pParse, pTab, OP_OpenWrite, 0, -1, 0,
-                                      &iDataCur, &iIdxCur, pUpsert);
+                                      &iDataCur, &iIdxCur, pUpsert, onError);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     nIdx = sqlite3OpenTableAndIndices(pParse, pTab, OP_OpenWrite, 0, -1, 0,
                                       &iDataCur, &iIdxCur);
@@ -853,9 +853,6 @@ void sqlite3Insert(
     if( aRegIdx==0 ){
       goto insert_cleanup;
     }
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    /* TODO: nIdx+1 ? */
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     for(i=0, pIdx=pTab->pIndex; i<nIdx; pIdx=pIdx->pNext, i++){
       assert( pIdx );
       aRegIdx[i] = ++pParse->nMem;
@@ -882,6 +879,8 @@ void sqlite3Insert(
     }else{
       comdb2SetIgnore(v);
     }
+  }else if( onError==OE_Replace ){
+    comdb2SetUpsertIdx(v, MAXINDEX+1);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }
 #endif
@@ -1349,7 +1348,7 @@ void sqlite3GenerateConstraintChecks(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( (!gbl_partial_indexes || !pTab->hasPartIdx) &&
       (!gbl_expressions_indexes || !pTab->hasExprIdx) &&
-      pUpsert==0 ){
+      pUpsert==0 && overrideError!=OE_Replace ){
     *pbMayReplace = 0;
     return;
   }
@@ -2066,7 +2065,8 @@ int sqlite3OpenTableAndIndices(
   int *piDataCur,  /* Write the database source cursor number here */
   int *piIdxCur    /* Write the first index cursor number here */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  ,Upsert *pUpsert  /* ON CONFLICT clauses for upsert, or NULL */
+  ,Upsert *pUpsert /* ON CONFLICT clauses for upsert, or NULL */
+  ,int onError     /* OE_Replace, etc. */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 ){
   int i;
@@ -2098,7 +2098,7 @@ int sqlite3OpenTableAndIndices(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( (gbl_partial_indexes && pTab->hasPartIdx) ||
       (gbl_expressions_indexes && pTab->hasExprIdx) ||
-      pUpsert){
+      pUpsert || onError==OE_Replace ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   for(i=0, pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext, i++){
     int iIdxCur = iBase++;
