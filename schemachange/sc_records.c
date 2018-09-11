@@ -1369,16 +1369,18 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
                   s->table);
         thdData->isThread = 1;
 
-        rc = trans_start_sc(&(data.iq), NULL, &trans);
-        if (rc || trans == NULL) {
-            logmsg(LOGMSG_ERROR, "%s:%d failed to start tran rc = %d\n",
-                   __func__, __LINE__, rc);
-            free(s->sc_convert_done);
-            return -1;
+        if (BDB_ATTR_GET(thedb->bdb_attr, SNAPISOL) == 0) {
+            rc = trans_start_sc(&(data.iq), NULL, &trans);
+            if (rc || trans == NULL) {
+                logmsg(LOGMSG_ERROR, "%s:%d failed to start tran rc = %d\n",
+                       __func__, __LINE__, rc);
+                free(s->sc_convert_done);
+                return -1;
+            }
+            bdb_lock_table_write(s->db->handle, trans);
+            bdb_set_logical_live_sc(s->db->handle);
+            trans_abort(&(data.iq), trans);
         }
-        bdb_lock_table_write(s->db->handle, trans);
-        bdb_set_logical_live_sc(s->db->handle);
-        trans_abort(&(data.iq), trans);
 
         s->logical_livesc = 1;
         Pthread_rwlock_wrlock(&s->db->sc_live_lk);
