@@ -12,6 +12,11 @@ export COPYCOMDB2_EXE=${BUILDDIR}/db/copycomdb2
 export comdb2ar=${COMDB2AR_EXE}
 destdb=${TESTCASE}dest${TESTID}
 DEST_DBDIR=${DBDIR}/$destdb
+
+if [[ -z "$TEST_TIMEOUT" ]] ; then 
+    export TEST_TIMEOUT=5m 
+fi
+
 mkdir -p $DEST_DBDIR
 if [[ -z "$CLUSTER" ]]; then
     cl="-y localhost"
@@ -44,7 +49,13 @@ if [ -n "$PMUXPORT" ] ; then
     echo "portmux_bind_path $pmux_socket" >> $DEST_DBDIR/${destdb}.lrl
 fi
 
-( timeout $TEST_TIMEOUT $COMDB2_EXE $destdb -lrl $DEST_DBDIR/${destdb}.lrl -pidfile $DEST_DBDIR/${destdb}.pid ) &
+replog=$DEST_DBDIR/$destdb.log
+
+if [[ -n "$repalive" ]]; then
+    ( $COMDB2_EXE $destdb -lrl $DEST_DBDIR/${destdb}.lrl -pidfile $DEST_DBDIR/${destdb}.pid >$replog 2>&1) &
+else
+    ( timeout $TEST_TIMEOUT $COMDB2_EXE $destdb -lrl $DEST_DBDIR/${destdb}.lrl -pidfile $DEST_DBDIR/${destdb}.pid >$replog 2>&1) &
+fi
 
 out=
 while [[ "$out" != "1" ]]; do
