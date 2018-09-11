@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 
-env
+#env
 dbname=$1
 NRECS=10
 NRUNS=100
+sleeptime=10
 
 set -x
 
@@ -28,8 +29,6 @@ if [[ -n "$CLUSTER" ]]; then
         rmt="${clarray[0]}:"
     fi
 fi
-
-
 
 # use copycomdb2 to create a physical replicant
 
@@ -80,13 +79,8 @@ cleanup() {
     kill -9 $(cat $DEST_DBDIR/${destdb}.pid)
 }
 
-# generate our tests that we will use
-set +x
-source ./generate_tests
-set -x
-
 # iterate over each test
-for file in `ls *.src.sql *.sh | sort -V`; do
+for file in `ls *.src.sql *src.sh | sort -V`; do
     # for each sql test execute it
     if [ ${file: -3} == "sql" ]; then
         $(${CDB2SQL_EXE} -s --tabs -f $file ${CDB2_OPTIONS} $dbname default 2>&1 > /dev/null) 
@@ -95,8 +89,10 @@ for file in `ls *.src.sql *.sh | sort -V`; do
     else
         source ./"$file"
 
-        query_cmd=$(echo $file | sed 's/\.sh//').query.sql
+        query_cmd=$(echo $file | sed 's/\.src\.sh//').query.sql
     fi
+
+    sleep $sleeptime
 
     src=$(${CDB2SQL_EXE} -s --tabs -f $query_cmd ${CDB2_OPTIONS} $dbname default 2>&1 | md5sum) 
     dest=$(${CDB2SQL_EXE} -s --tabs -f $query_cmd $destdb --host localhost 2>&1 | md5sum)
