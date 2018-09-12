@@ -16,8 +16,7 @@
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 extern int gbl_update_delete_limit;
-extern int gbl_partial_indexes;
-extern int gbl_expressions_indexes;
+int has_comdb2_index_for_sqlite(Table *pTab);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -854,9 +853,7 @@ void sqlite3GenerateRowIndexDelete(
   Index *pPk;        /* PRIMARY KEY index, or NULL for rowid tables */
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if ( (!gbl_partial_indexes || !pTab->hasPartIdx) &&
-       (!gbl_expressions_indexes || !pTab->hasExprIdx) )
-      return;
+  if ( !has_comdb2_index_for_sqlite(pTab) ) return;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   v = pParse->pVdbe;

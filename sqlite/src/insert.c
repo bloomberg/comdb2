@@ -17,10 +17,8 @@
 
 #include "cdb2_constants.h"
 
+int has_comdb2_index_for_sqlite(Table *pTab);
 int is_comdb2_index_unique(const char *tbl, char *idx);
-
-extern int gbl_partial_indexes;
-extern int gbl_expressions_indexes;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -1346,8 +1344,7 @@ void sqlite3GenerateConstraintChecks(
   int ipkBottom = 0;     /* OP_Goto at the end of the IPK uniqueness check */
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( (!gbl_partial_indexes || !pTab->hasPartIdx) &&
-      (!gbl_expressions_indexes || !pTab->hasExprIdx) &&
+  if( !has_comdb2_index_for_sqlite(pTab) &&
       pUpsert==0 && overrideError!=OE_Replace ){
     *pbMayReplace = 0;
     return;
@@ -1658,10 +1655,8 @@ void sqlite3GenerateConstraintChecks(
      * ignore failures for all unique indices) or if the current index is the
      * one explicitly specified in the ON CONFLICT clause.
      */
-    if( pUpIdx && pUpIdx!=pIdx &&
-        ((!gbl_partial_indexes || !pTab->hasPartIdx) &&
-         (!gbl_expressions_indexes || !pTab->hasExprIdx)) ) {
-        continue;
+    if( pUpIdx && pUpIdx!=pIdx && !has_comdb2_index_for_sqlite(pTab) ){
+      continue;
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
@@ -1968,8 +1963,7 @@ void sqlite3CompleteInsertion(
   assert( v!=0 );
   assert( pTab->pSelect==0 );  /* This table is not a VIEW */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( (gbl_partial_indexes && pTab->hasPartIdx) ||
-      (gbl_expressions_indexes && pTab->hasExprIdx) ){
+  if( has_comdb2_index_for_sqlite(pTab) ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   for(i=0, pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext, i++){
     if( aRegIdx[i]==0 ) continue;
@@ -2096,9 +2090,7 @@ int sqlite3OpenTableAndIndices(
   }
   if( piIdxCur ) *piIdxCur = iBase;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( (gbl_partial_indexes && pTab->hasPartIdx) ||
-      (gbl_expressions_indexes && pTab->hasExprIdx) ||
-      pUpsert || onError==OE_Replace ){
+  if( has_comdb2_index_for_sqlite(pTab) || pUpsert || onError==OE_Replace ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   for(i=0, pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext, i++){
     int iIdxCur = iBase++;

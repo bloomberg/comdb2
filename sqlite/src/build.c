@@ -31,6 +31,7 @@
 #include "pragma.h"
 #include "logmsg.h"
 
+int has_comdb2_index_for_sqlite(Table *pTab);
 int is_comdb2_index_unique(const char *dbname, char *idx);
 const char* fdb_parse_comdb2_remote_dbname(const char *zDatabase, const char **fqDbname);
 char *fdb_get_alias(const char **p_tablename);

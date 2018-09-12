@@ -10425,6 +10425,19 @@ int is_comdb2_index_disableskipscan(const char *name)
     return 0;
 }
 
+int has_comdb2_index_for_sqlite(
+  Table *pTab
+){
+  if( pTab==0 ) return 0;
+  if( gbl_partial_indexes && pTab->hasPartIdx ){
+    return 1;
+  }
+  if( gbl_expressions_indexes && pTab->hasExprIdx ){
+    return 1;
+  }
+  return 0;
+}
+
 int is_comdb2_index_unique(const char *dbname, char *idx)
 {
     struct dbtable *db = get_dbtable_by_name(dbname);

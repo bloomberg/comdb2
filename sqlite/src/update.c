@@ -85,8 +85,7 @@ void sqlite3ColumnDefault(Vdbe *v, Table *pTab, int i, int iReg){
 }
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-extern int gbl_partial_indexes;
-extern int gbl_expressions_indexes;
+int has_comdb2_index_for_sqlite(Table *pTab);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 /*
 ** Process an UPDATE statement.
@@ -317,9 +316,8 @@ void sqlite3Update(
   for(j=0, pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext, j++){
     int reg;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if( chngKey || hasFK>1 ||
-        (gbl_partial_indexes && pTab->hasPartIdx) /* pIdx->pPartIdxWhere */ ||
-        (gbl_expressions_indexes && pTab->hasExprIdx) || pIdx==pPk ){
+    if( chngKey || hasFK>1 || has_comdb2_index_for_sqlite(pTab)
+        /* TODO: Why? || pIdx->pPartIdxWhere */ || pIdx==pPk ){
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( chngKey || hasFK>1 || pIdx->pPartIdxWhere || pIdx==pPk ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
