@@ -1439,7 +1439,7 @@ REGISTER_TUNABLE("handle_buf_latency_ms",
                  TUNABLE_INTEGER, &gbl_handle_buf_add_latency_ms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("reorder_blkseq_no_deadlock", "Reorder blkseq to have no deadlocks ",
+REGISTER_TUNABLE("reorder_socksql_no_deadlock", "Reorder sock sql to have no deadlocks ",
                  TUNABLE_BOOLEAN, &gbl_reorder_socksql_no_deadlock,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 

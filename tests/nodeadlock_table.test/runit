@@ -4,7 +4,7 @@ set -x
 ################################################################################
 
 function getmaster {
-    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+    cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
 }
 
 failexit()
@@ -15,71 +15,94 @@ failexit()
 
 
 f1() {
-    cdb2sql ${CDB2_OPTIONS} $dbnm default <<"EOF"
-begin
-insert into t1 (i,j,b) values (1, 1, x'abcd')
-insert into t2 (i,j,b) values (1, 2, x'abcd')
-commit
-EOF
+    echo "
+    begin
+        insert into t1 (f,g,j,b) values (1, $1, 1, x'abcd')
+        insert into t2 (f,g,j,b) values (1, $1, 2, x'abcd')
+    commit
+    " > in1.sql
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default -f in1.sql
 }
 
 f2() {
-    cdb2sql ${CDB2_OPTIONS} $dbnm default <<"EOF"
-begin
-insert into t2 (i,j,b) values (2, 3, x'dcba')
-insert into t1 (i,j,b) values (2, 4, x'dcba')
-commit
-EOF
+    echo "
+    begin
+        insert into t2 (f,g,j,b) values (2, $1, 3, x'dcba')
+        insert into t1 (f,g,j,b) values (2, $1, 4, x'dcba')
+    commit
+    " > in2.sql
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default -f in2.sql
 }
 
 
+cdb2sql ${CDB2_OPTIONS} $DBNAME default <<"EOF"
+create table t1 {
+schema
+{
+    int  f
+    int  g
+    int  j
+    blob b
+}}
+EOF
 
-# debug=1
-
-# args
-dbnm=$1
-    cdb2sql ${CDB2_OPTIONS} $dbnm default <<"EOF"
-insert into t1 (i,j,b) values (11, 111, x'abcd')
-insert into t1 (i,j,b) values (12, 112, x'abcd')
+cdb2sql ${CDB2_OPTIONS} $DBNAME default <<"EOF"
+create table t2 {
+schema
+{
+    int  f
+    int  g
+    int  j
+    blob b
+}}
 EOF
 
 
-cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
+
+
+cdb2sql ${CDB2_OPTIONS} $DBNAME default <<"EOF"
+insert into t1 (f,g,j,b) values (11, 0, 111, x'abcd')
+insert into t1 (f,g,j,b) values (12, 0, 112, x'abcd')
+EOF
+
+
+cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
 for node in $cluster ; do
-    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('debg 500')"
-#    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('bdb verbdeadlock 1')"
-#    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('on verbose_deadlocks')"
-    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('bdb setattr DELAY_LOCK_TABLE_RECORD_C 1000')"
-    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('print_deadlock_cycles on')"
-    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('track_curtran_locks on')"
-    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('reql events on')"
-    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('reql events detailed on')"
-#    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('reql trace')"
-#    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('reql go')"
-    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('on extended_sql_debug_trace')"
+    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('debg 500')"
+#    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('bdb verbdeadlock 1')"
+#    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('on verbose_deadlocks')"
+    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('bdb setattr DELAY_LOCK_TABLE_RECORD_C 1000')"
+    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('print_deadlock_cycles on')"
+    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('track_curtran_locks on')"
+    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('reql events on')"
+    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('reql events detailed on')"
+#    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('reql trace')"
+#    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('reql go')"
+    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('on extended_sql_debug_trace')"
 done
 
 master=`getmaster`
 
 echo turn off ordering
 for node in $cluster ; do
-    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('reorder_blkseq_no_deadlock off')"
+    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('reorder_socksql_no_deadlock off')"
 done
 
 echo run two transactions that will get in a deadlock
 echo will see DEADLOCK-CYCLE: in db log
-f1 &
-f2 &
+f1 1 &
+f2 1 &
 
 wait
 
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 't1',* from t1 where i < 10 order by i" > content.out
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 't2',* from t2 order by i" >> content.out
+cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select 't1',* from t1 where f < 10 order by f" > content.out
+cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select 't2',* from t2 order by f" >> content.out
 
-echo "t1	1	1	x'abcd'" > content.expected
-echo "t1	2	4	x'dcba'" >> content.expected
-echo "t2	1	2	x'abcd'" >> content.expected
-echo "t2	2	3	x'dcba'" >> content.expected
+echo "\
+t1	1	1	1	x'abcd'
+t1	2	1	4	x'dcba'
+t2	1	1	2	x'abcd'
+t2	2	1	3	x'dcba'" > content.expected
 
 if ! diff content.expected content.out ; then 
     failexit "content not what it is supposed to be"
@@ -87,26 +110,27 @@ fi
 
 echo turn on ordering
 for node in $cluster ; do
-    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('reorder_blkseq_no_deadlock on')"
+    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('reorder_socksql_no_deadlock on')"
 done
 
 echo there should be NO dedlocks now
-f1 &
-f2 &
+f1 2 &
+f2 2 &
 
 wait
 
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 't1',* from t1 where i < 10 order by i" > content.out
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 't2',* from t2 order by i" >> content.out
+cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select 't1',* from t1 where f < 10 order by f" > content.out
+cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select 't2',* from t2 order by f" >> content.out
 
-echo "t1	1	1	x'abcd'" > content.expected
-echo "t1	1	1	x'abcd'" >> content.expected
-echo "t1	2	4	x'dcba'" >> content.expected
-echo "t1	2	4	x'dcba'" >> content.expected
-echo "t2	1	2	x'abcd'" >> content.expected
-echo "t2	1	2	x'abcd'" >> content.expected
-echo "t2	2	3	x'dcba'" >> content.expected
-echo "t2	2	3	x'dcba'" >> content.expected
+echo "\
+t1	1	1	1	x'abcd'
+t1	1	2	1	x'abcd'
+t1	2	1	4	x'dcba'
+t1	2	2	4	x'dcba'
+t2	1	1	2	x'abcd'
+t2	1	2	2	x'abcd'
+t2	2	1	3	x'dcba'
+t2	2	2	3	x'dcba'" > content.expected
 
 if ! diff content.expected content.out ; then 
     failexit "content not what it is supposed to be"
@@ -116,7 +140,7 @@ fi
 
 f3() 
 {
-    cdb2sql ${CDB2_OPTIONS} $dbnm default <<"EOF"
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default <<"EOF"
 begin
 update t1 set b = x'cccc', j = j+1 where i=1
 update t2 set b = x'dddd', j = j+1 where i=1
@@ -126,7 +150,7 @@ EOF
 
 f4() 
 {
-    cdb2sql ${CDB2_OPTIONS} $dbnm default <<"EOF"
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default <<"EOF"
 begin
 update t2 set b = x'eeee', j = j+1 where i=2
 update t1 set b = x'ffff', j = j+1 where i=2
@@ -138,33 +162,33 @@ f3 &
 f4 &
 wait
 
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 't1',* from t1 where i < 10 order by i" > content.out
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 't2',* from t2 order by i" >> content.out
+cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select 't1',* from t1 where f < 10 order by f" > content.out
+cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select 't2',* from t2 order by f" >> content.out
 
-echo "t1	1	2	x'cccc'" > content.expected
-echo "t1	1	2	x'cccc'" >> content.expected
-echo "t1	2	5	x'ffff'" >> content.expected
-echo "t1	2	5	x'ffff'" >> content.expected
-echo "t2	1	3	x'dddd'" >> content.expected
-echo "t2	1	3	x'dddd'" >> content.expected
-echo "t2	2	4	x'eeee'" >> content.expected
-echo "t2	2	4	x'eeee'" >> content.expected
+echo "t1	1	1	2	x'cccc'" > content.expected
+echo "t1	1	2	2	x'cccc'" >> content.expected
+echo "t1	2	1	5	x'ffff'" >> content.expected
+echo "t1	2	2	5	x'ffff'" >> content.expected
+echo "t2	1	1	3	x'dddd'" >> content.expected
+echo "t2	1	2	3	x'dddd'" >> content.expected
+echo "t2	2	1	4	x'eeee'" >> content.expected
+echo "t2	2	2	4	x'eeee'" >> content.expected
 
 if ! diff content.expected content.out ; then 
     failexit "content not what it is supposed to be"
 fi
 
 ## set ipu off
-#cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "exec procedure sys.cmd.send('setipu t1 off')"
-#cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "exec procedure sys.cmd.send('setipu t2 off')"
+#cdb2sql ${CDB2_OPTIONS} $DBNAME --host $master "exec procedure sys.cmd.send('setipu t1 off')"
+#cdb2sql ${CDB2_OPTIONS} $DBNAME --host $master "exec procedure sys.cmd.send('setipu t2 off')"
 #
 #
 #f3 &
 #f4 &
 #wait
 #
-#cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 't1',* from t1 where i < 10 order by i" > content.out
-#cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 't2',* from t2 order by i" >> content.out
+#cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select 't1',* from t1 where f < 10 order by f" > content.out
+#cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select 't2',* from t2 order by f" >> content.out
 #
 #echo "t1	1	3	x'cccc'" > content.expected
 #echo "t1	1	3	x'cccc'" >> content.expected
@@ -179,19 +203,19 @@ fi
 #    failexit "content not what it is supposed to be"
 #fi
 #
-#cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select printf('%llx',comdb2_rowid) as genid,'t1', * from t1 where i < 10 order by i" > content.out
-#cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select printf('%llx',comdb2_rowid) as genid,'t2', * from t2" >> content.out
+#cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select printf('%llx',comdb2_rowid) as genid,'t1', * from t1 where f < 10 order by f" > content.out
+#cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select printf('%llx',comdb2_rowid) as genid,'t2', * from t2" >> content.out
 #
 
-# closing operations
+echo perform closing operations, get deadlocks from event log file
 
-logfl=`cdb2sql ${CDB2_OPTIONS} --tabs $dbnm --host $master "exec procedure sys.cmd.send('reql stat')" | grep "Eventlog enabled" | cut -f2 -d ':'`
+logfl=`cdb2sql ${CDB2_OPTIONS} --tabs $DBNAME --host $master "exec procedure sys.cmd.send('reql stat')" | grep "Eventlog enabled" | cut -f2 -d ':'`
 if [ "x$logfl" == "x" ]; then
-    cdb2sql ${CDB2_OPTIONS} --tabs $dbnm --host $master "exec procedure sys.cmd.send('reql stat')"
+    cdb2sql ${CDB2_OPTIONS} --tabs $DBNAME --host $master "exec procedure sys.cmd.send('reql stat')"
     failexit "cant find events logfile in reql stat on $master"
 fi
 
-cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "exec procedure sys.cmd.send('reql events roll')"
+cdb2sql ${CDB2_OPTIONS} $DBNAME --host $master "exec procedure sys.cmd.send('reql events roll')"
 
 sleep 4
 

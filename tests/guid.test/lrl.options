@@ -1,3 +1,2 @@
 table t1 t1.csc2
-#reorder_blkseq_no_deadlock on
 do reql events detailed on
