@@ -291,11 +291,9 @@ struct osql_req {
     char pad[1];
     char sqlq[1];
 };
-
 enum { OSQLCOMM_REQ_TYPE_LEN = 8 + 4 + 4 + 8 + DB_MAX_TZNAMEDB + 3 + 1 };
 BB_COMPILE_TIME_ASSERT(osqlcomm_req_type_len,
                        sizeof(struct osql_req) == OSQLCOMM_REQ_TYPE_LEN);
-
 
 struct osql_req_tail {
     int type;

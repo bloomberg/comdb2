@@ -305,7 +305,6 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         reqerrstr(iq, COMDB2_CSTRT_RC_INVL_TAG,
                   "invalid tag description '%.*s'", taglen, tagdescr);
         *opfailcode = OP_FAILED_BAD_REQUEST;
-    //printf("AZ: add_record_int() err 1\n");
         retrc = ERR_BADREQ;
         ERR;
     }
@@ -335,7 +334,6 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                       iq->usedb->tablename);
         *opfailcode = OP_FAILED_BAD_REQUEST;
         retrc = ERR_BADREQ;
-    //printf("AZ: add_record_int() err 2\n");
         ERR;
     }
 
@@ -363,7 +361,6 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                       reclen, tag, expected_dat_len);
             *opfailcode = OP_FAILED_BAD_REQUEST;
             retrc = ERR_BADREQ;
-    //printf("AZ: add_record_int() err 3\n");
             ERR;
         }
     }
@@ -378,7 +375,6 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                   "no blobs flags with blob buffers");
         *opfailcode = OP_FAILED_BAD_REQUEST;
         retrc = ERR_BADREQ;
-//printf("AZ: add_record_int() err 4 rc=%d -- seems like failing to check blobs\n", rc);
         ERR;
     }
 
@@ -414,7 +410,6 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             reqerrstr(iq, COMDB2_ADD_RC_INVL_DTA, "bad ondisk size");
             *opfailcode = OP_FAILED_BAD_REQUEST;
             retrc = ERR_BADREQ;
-    //printf("AZ: add_record_int() err 5\n");
             ERR;
         }
 
@@ -3014,21 +3009,14 @@ static int check_blob_buffers(struct ireq *iq, blob_buffer_t *blobs,
              * then the blob shouldn't exist */
             else if (schema && (schema->member[idx].type == SERVER_VUTF8 ||
                                 schema->member[idx].type == SERVER_BLOB2) &&
-                     ntohl(blob->length) <= schema->member[idx].len - 5 /*hdr*/) {
+                     ntohl(blob->length) <= schema->member[idx].len - 5 /*hdr*/)
                 inconsistent = blobs[cblob].exists;
-//printf("AZ: probl1 \n");
-            }
             /* otherwise, fall back to regular blob checks */
-            else if (blob->notnull) {
+            else if (blob->notnull)
                 inconsistent = !blobs[cblob].exists ||
                                blobs[cblob].length != ntohl(blob->length);
-//printf("AZ: probl2 blobs[cblob].exists=%d, blobs[cblob].length=%d, blob->length=%d, inconsistent=%d\n", blobs[cblob].exists, blobs[cblob].length, ntohl(blob->length), inconsistent);
-                if (inconsistent == 1) abort();
-            }
-            else {
+            else
                 inconsistent = blobs[cblob].exists;
-//printf("AZ: probl3 \n");
-            }
             if (inconsistent) {
                 if (iq->debug) {
                     reqprintf(iq, "INCONSISTENT BLOB BUFFERS FOR BLOB %d",

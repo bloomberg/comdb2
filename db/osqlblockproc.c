@@ -1209,7 +1209,9 @@ static int process_this_session(
         reqlog_set_rqid(iq->reqlogger, uuid, sizeof(uuid));
     reqlog_set_event(iq->reqlogger, "txn");
 
+    //if needed to check content of socksql temp table, dump with:
     //bdb_temp_table_debug_dump(thedb->bdb_env, dbc);
+    
     /* go through each record */
     rc = bdb_temp_table_first(thedb->bdb_env, dbc, bdberr);
     if (rc && rc != IX_EMPTY && rc != IX_NOTFND) {

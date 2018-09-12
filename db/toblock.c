@@ -5653,9 +5653,9 @@ add_blkseq:
                     memcpy(bskey, iq->snap_info.key, iq->snap_info.keylen);
                     bskey[iq->snap_info.keylen] = '\0';
                     logmsg(LOGMSG_USER, "blkseq add '%s', outrc=%d errval=%d "
-                            "errstr='%s', rcout=%d commit-rc=%d\n",
-                            bskey, outrc, iq->errstat.errval, iq->errstat.errstr,
-                            iq->sorese.rcout, irc);
+                           "errstr='%s', rcout=%d commit-rc=%d\n",
+                           bskey, outrc, iq->errstat.errval, iq->errstat.errstr,
+                           iq->sorese.rcout, irc);
                 }
             } else {
                 if (hascommitlock) {
@@ -5695,17 +5695,17 @@ add_blkseq:
                     if (block_state_restore(iq, p_blkstate))
                         /* TODO can I just return here? should prob go to
                          * cleanup ? */
-                    return ERR_INTERNAL;
+                        return ERR_INTERNAL;
 
                     outrc = RC_INTERNAL_RETRY;
                     fromline = __LINE__;
 
                     /* lets bump the priority if we got killed here */
                     if (bdb_attr_get(thedb->bdb_attr,
-                                BDB_ATTR_DEADLOCK_LEAST_WRITES_EVER)) {
+                                     BDB_ATTR_DEADLOCK_LEAST_WRITES_EVER)) {
                         iq->priority += bdb_attr_get(
-                                thedb->bdb_attr,
-                                BDB_ATTR_DEADLK_PRIORITY_BUMP_ON_FSTBLK);
+                            thedb->bdb_attr,
+                            BDB_ATTR_DEADLK_PRIORITY_BUMP_ON_FSTBLK);
                     }
                     goto cleanup;
                 }

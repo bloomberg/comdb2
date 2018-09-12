@@ -1980,7 +1980,7 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
             }
 
             rc = process_local_shadtbl_qblob(clnt, tbl, NULL, bdberr, *seq,
-                    data);
+                                             data);
             if (rc) {
                 free(seq);
                 break;
@@ -1989,7 +1989,7 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
             tbl->nops++;
 
             if (clnt->osql_max_trans &&
-                    ((tbl->nops + crt_nops) > clnt->osql_max_trans)) {
+                ((tbl->nops + crt_nops) > clnt->osql_max_trans)) {
                 free(seq);
                 return SQLITE_TOOBIG;
             }

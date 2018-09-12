@@ -27,8 +27,6 @@ typedef struct osql_req osql_req_t;
 typedef struct blocksql_tran blocksql_tran_t;
 typedef struct osql_uuid_req osql_uuid_req_t;
 
-
-
 /* Magic rqid value that means "please use uuid instead" */
 #define OSQL_RQID_USE_UUID 1
 
