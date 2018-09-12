@@ -29,7 +29,6 @@ static int handle_logdelete_request(comdb2_appsock_arg_t *arg)
     char recovery_command[200] = {0};
     char recovery_lsn[100] = {0};
     char line[128] = {0};
-    int before_count;
     int before_master;
     int after_master;
     int before_sc;
@@ -58,7 +57,9 @@ static int handle_logdelete_request(comdb2_appsock_arg_t *arg)
     backend_update_sync(thedb);
     logdelete_unlock();
 
-    before_count = bdb_get_low_headroom_count(thedb->bdb_env);
+    /* check for after commented out below as well
+    int before_count = bdb_get_low_headroom_count(thedb->bdb_env);
+    */
     before_master = gbl_master_changes;
     before_sc = gbl_sc_commit_count;
     logmsg(LOGMSG_INFO, "Disabling log file deletion\n");

@@ -5249,7 +5249,7 @@ static int configure_from_literal(cdb2_hndl_tp *hndl, const char *type)
 {
     char *type_copy = strdup(cdb2_skipws(type));
     char *eomachine;
-    char *eooptions;
+    char *eooptions = NULL;
     int rc = 0;
     int port;
     char *dc;

@@ -444,10 +444,10 @@ void *client_thd(void *voidarg)
         struct sockpool_msg_vers0 msg0;
         struct sockpool_msg_vers1 msg1;
         int rc, newfd;
-        int request;
-        char *typestr;
+        int request = 0;
+        char *typestr = 0;
         int dbnum;
-        int timeout;
+        int timeout = 0;
         void *msg;
         int msglen;
 

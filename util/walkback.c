@@ -57,7 +57,6 @@ static void showfunc(void *stack[], int nframes, FILE *f)
 
 static void trace_pc_getlist(void *stack[], int nframes, FILE *f)
 {
-    int now;
 
     count++;
 
@@ -65,6 +64,7 @@ static void trace_pc_getlist(void *stack[], int nframes, FILE *f)
  * in the last second */
 #if 0
     static int lastprint = 0;
+    int now;
     if(gbl_warnthresh>0 && ((now=time(NULL))-lastprint)>=1)
     {
         if((count-ivcount) > gbl_warnthresh)

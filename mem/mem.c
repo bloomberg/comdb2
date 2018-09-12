@@ -400,7 +400,7 @@ int comdb2ma_init(size_t init_sz, size_t max_cap)
 
 #ifdef PER_THREAD_MALLOC
             /* create freelists for threaded allocators */
-            for (i = 0; i != COMDB2MA_COUNT; ++i) {
+            for (int i = 0; i != COMDB2MA_COUNT; ++i) {
                 listc_init(&root.freelist[i],
                            offsetof(struct comdb2mspace, freelnk));
                 listc_init(&root.busylist[i],
@@ -419,7 +419,7 @@ int comdb2ma_init(size_t init_sz, size_t max_cap)
 
 #ifndef USE_SYS_ALLOC
             /* create static mspaces for subsystems */
-            for (i = 1; i != COMDB2MA_COUNT; ++i) {
+            for (int i = 1; i != COMDB2MA_COUNT; ++i) {
                 COMDB2_STATIC_MAS[i] = comdb2ma_create_int(
                     NULL, init_sz, max_cap, COMDB2_STATIC_MA_METAS[i].name,
                     NULL, COMDB2MA_MT_SAFE, NULL, NULL, __FILE__, __func__,

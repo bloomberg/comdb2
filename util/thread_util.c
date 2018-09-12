@@ -135,7 +135,6 @@ void thread_remove_resource(void *resource, void (*freefunc)(void *))
 static void thread_ended(void *p)
 {
     struct thread_info *info = p;
-    struct thread_resource *r;
 
     if (thread_debug)
         printf("thd: ended %s tid %" PRIu64

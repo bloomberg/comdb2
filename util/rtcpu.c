@@ -36,7 +36,6 @@
 #include "logmsg.h"
 
 static int machine_is_up_default(const char *host);
-static void machine_mark_down_default(char *host);
 static int machine_status_init(void);
 static int machine_class_default(const char *host);
 static int machine_dc_default(const char *host);

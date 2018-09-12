@@ -313,7 +313,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
     int rc = 0;
     int bdberr = 0;
     struct ireq iq;
-    scdone_t scdone_type;
+    scdone_t scdone_type = llmeta_queue_add;
     SBUF2 *sb = sc->sb;
 
     db = get_dbtable_by_name(sc->table);
