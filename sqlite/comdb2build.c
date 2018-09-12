@@ -1437,15 +1437,40 @@ void comdb2getAlias(Parse* pParse, Token* t1)
 
 /********************* GRANT AUTHORIZAZIONS ************************************/
 
-void comdb2grant(Parse* pParse, int revoke, int permission, Token* nm,Token* lnm, Token* u)
+static int is_system_table(Parse *pParse, Token *nm, char *dst)
+{
+    char tablename[MAXTABLELEN];
+    sqlite3 *db;
+
+    /* missing table name? */
+    if (!nm)
+        return 0;
+
+    if ((strncpy0(tablename, nm->z, MAXTABLELEN)) == NULL)
+        return 0;
+
+    sqlite3Dequote(tablename);
+
+    db = pParse->db;
+
+    if ((sqlite3HashFind(&db->aModule, tablename))) {
+        strcpy(dst, tablename);
+        return 1;
+    }
+
+    return 0;
+}
+
+void comdb2grant(Parse *pParse, int revoke, int permission, Token *nm,
+                 Token *lnm, Token *u)
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
     if (comdb2AuthenticateUserOp(pParse))
-        return;  
+        return;
 
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
-    
+
     if (arg)
     {
         bpfunc_arg__init(arg);
@@ -1457,7 +1482,7 @@ void comdb2grant(Parse* pParse, int revoke, int permission, Token* nm,Token* lnm
 
 
     BpfuncGrant *grant = (BpfuncGrant*) malloc(sizeof(BpfuncGrant));
-    
+
     if (grant)
     {
         bpfunc_grant__init(grant);
@@ -1473,12 +1498,26 @@ void comdb2grant(Parse* pParse, int revoke, int permission, Token* nm,Token* lnm
     grant->perm = permission;
     grant->table = (char*) malloc(MAXTABLELEN);
     grant->table[0] = '\0';
-     
+
     if (permission == AUTH_USERSCHEMA) {
       if (create_string_from_token(v, pParse, &grant->userschema, nm))
         goto clean_arg;
-    } else if (chkAndCopyTableTokens(v, pParse, grant->table, nm, lnm, 1)) {
-        goto clean_arg;
+    } else {
+        /* Check for remote request only if both the tokens are set. */
+        if (lnm && (isRemote(pParse, &nm, &lnm))) {
+            goto clean_arg;
+        }
+
+        if ((is_system_table(pParse, nm, grant->table))) {
+            if (permission != AUTH_READ) {
+                setError(
+                    pParse, SQLITE_ERROR,
+                    "Can't GRANT/REVOKE non-READ permissions on system table");
+                goto clean_arg;
+            }
+        } else if (chkAndCopyTableTokens(v, pParse, grant->table, nm, lnm, 1)) {
+            goto clean_arg;
+        }
     }
 
     if (create_string_from_token(v, pParse, &grant->username, u))
