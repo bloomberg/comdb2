@@ -5829,14 +5829,18 @@ static int offload_net_send(const char *host, int usertype, void *data,
             NET_SEND_FAIL_NOSOCK == rc) {
 
             if (total_wait > gbl_osql_bkoff_netsend_lmt) {
-                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n",
-                       __FILE__, __LINE__, host);
-                return -1;
+                logmsg(
+                    LOGMSG_ERROR,
+                    "%s:%d giving up sending to %s, rc = %d, total wait = %d\n",
+                    __FILE__, __LINE__, host, rc, total_wait);
+                return rc;
             }
 
             if (osql_comm_check_bdb_lock(__func__, __LINE__) != 0) {
-                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n",
-                       __FILE__, __LINE__, host);
+                logmsg(LOGMSG_ERROR,
+                       "%s:%d failed to check bdb lock, giving up sending to "
+                       "%s, rc = %d\n",
+                       __FILE__, __LINE__, host, rc);
                 return rc;
             }
 
@@ -5918,14 +5922,19 @@ static int offload_net_send_tails(const char *host, int usertype, void *data,
             NET_SEND_FAIL_NOSOCK == rc) {
 
             if (total_wait > gbl_osql_bkoff_netsend_lmt) {
-                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n",
-                       __FILE__, __LINE__, host ? host : gbl_mynode);
-                return -1;
+                logmsg(
+                    LOGMSG_ERROR,
+                    "%s:%d giving up sending to %s, rc = %d, total wait = %d\n",
+                    __FILE__, __LINE__, host ? host : gbl_mynode, rc,
+                    total_wait);
+                return rc;
             }
 
-            if ((rc = osql_comm_check_bdb_lock(__func__, __LINE__))) {
-                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n",
-                       __FILE__, __LINE__, host ? host : gbl_mynode);
+            if (osql_comm_check_bdb_lock(__func__, __LINE__) != 0) {
+                logmsg(LOGMSG_ERROR,
+                       "%s:%d failed to check bdb lock, giving up sending to "
+                       "%s, rc = %d\n",
+                       __FILE__, __LINE__, host ? host : gbl_mynode, rc);
                 return rc;
             }
 
