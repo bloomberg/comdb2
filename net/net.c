@@ -102,6 +102,8 @@
 
 #include "debug_switches.h"
 
+#include <crc32c.h>
+
 #ifdef UDP_DEBUG
 static int curr_udp_cnt = 0;
 #endif
@@ -146,35 +148,6 @@ static int sbuf2write_wrapper(SBUF2 *sb, const char *buf, int nbytes)
         logmsg(LOGMSG_USER, "writing, writing %llu\n", gettmms());
 
     return sbuf2unbufferedwrite(sb, buf, nbytes);
-}
-
-/* refresh connection periodically */
-static int connection_refresh(netinfo_type *netinfo_ptr,
-                              host_node_type *host_node_ptr)
-{
-    time_t opentime = (comdb2_time_epoch() - host_node_ptr->timestamp);
-
-    /* global disable */
-    if (debug_switch_disable_connection_refresh()) {
-        return 0;
-    }
-
-    /* no need to refresh if we're not connected */
-    if (-1 == host_node_ptr->fd) {
-        return 0;
-    }
-
-    /* increment cnt */
-    host_node_ptr->rej_up_cnt++;
-
-    /* criteria: more than 20 attempts & stale longer than the heartbeat_check
-     */
-    if (opentime > netinfo_ptr->heartbeat_check_time &&
-        host_node_ptr->rej_up_cnt > 20) {
-        return 1;
-    }
-
-    return 0;
 }
 
 extern void myfree(void *ptr);
@@ -4948,7 +4921,6 @@ int net_get_port_by_service(const char *dbname)
     return ntohs(port);
 }
 
-
 static void *connect_thread(void *arg)
 {
     netinfo_type *netinfo_ptr;
@@ -4978,8 +4950,23 @@ static void *connect_thread(void *arg)
     if (netinfo_ptr->start_thread_callback)
         netinfo_ptr->start_thread_callback(netinfo_ptr->callback_data);
 
+    struct {
+        arch_tid tid;
+        struct timeval t;
+        pid_t pid;
+    } seed_data = {0};
+    seed_data.tid = getarchtid();
+    seed_data.pid = getpid();
+
     while (!host_node_ptr->decom_flag && !netinfo_ptr->exiting) {
+        gettimeofday(&seed_data.t, NULL);
+        uint32_t seed = crc32c((uint8_t *)&seed_data, sizeof(seed_data));
+        int r = rand_r(&seed) % 1000;
+        poll(NULL, 0, r);
         Pthread_mutex_lock(&(host_node_ptr->lock));
+        if (host_node_ptr->fd != -1) { /* already have connection */
+            goto again;
+        }
 
         if (!host_node_ptr->really_closed) {
             goto again;
@@ -5073,6 +5060,7 @@ static void *connect_thread(void *arg)
             exit(1);
         }
 
+        logmsg(LOGMSG_INFO, "%s connect to %s for %s\n", __func__, host_node_ptr->host, netinfo_ptr->service);
         rc = connect(fd, (struct sockaddr *)&sin, sizeof(sin));
         if (rc == -1 && errno == EINPROGRESS) {
             /*wait for connect event */
@@ -5331,10 +5319,6 @@ static int get_subnet_incomming_syn(host_node_type *host_node_ptr)
         return 0;
     }
 
-    logmsg(LOGMSG_WARN, "Incoming connection into name: %s (%s:%u)\n", host,
-           inet_ntoa(lcl_addr_inet.sin_addr),
-           (unsigned)ntohs(lcl_addr_inet.sin_port));
-
     /* extract the suffix of subnet ex. '_n3' in name node1_n3 */
     int myh_len = strlen(host_node_ptr->netinfo_ptr->myhostname);
     if (strncmp(host_node_ptr->netinfo_ptr->myhostname, host, myh_len) == 0) {
@@ -5430,51 +5414,7 @@ static void accept_handle_new_host(netinfo_type *netinfo_ptr,
     /* lock the node */
     Pthread_mutex_lock(&(host_node_ptr->lock));
 
-    /*
-         scuusgdb was running with 2 masters (!).  The core
-         shows that the hostnode pointer for the actual master couldn't connect
-         while the database was connected to a stale fd which it thought was
-         active.  The heartbeat check thread had not been operating for several
-         hours (!!).  The core shows that the heartbeat check thread still
-         exists, but its stack is suspect:
-
-         (gdb) where
-         #0  0xffffe410 in __kernel_vsyscall ()
-         #1  0x00536996 in ?? ()
-         #2  0x00000000 in ?? ()
-
-         __kernel_vsyscall is blocked in a non-existent system call, -516.
-
-         'connection_refresh' attempts to protect against this by closing the
-         current connection pro-actively if the heartbeat thread hasn't updated
-         this timestamp within the heartbeat-timeout.
-
-         The danger is that if something in close_hostnode_ll is responsible for
-         the heartbeat's demise, it could impact us here.  This logic can be
-         disabled by turning on paulbit ( 143, 1 )
-     */
-    if (host_node_ptr->fd != -1 &&
-        connection_refresh(netinfo_ptr, host_node_ptr)) {
-        host_node_errf(
-            LOGMSG_INFO,
-            host_node_ptr,
-            "%s: refresh existing connection- close current hostnode fd %d\n",
-            __func__, host_node_ptr->fd);
-
-        /*   will fd to -1 if the reader & writer have exited */
-        close_hostnode_ll(host_node_ptr);
-    }
-
-    if (host_node_ptr->fd != -1) {
-        host_node_errf(LOGMSG_WARN, host_node_ptr, "%s: already have connection - my "
-                                      "current fd is %d, closing fd %d\n",
-                       __func__, host_node_ptr->fd, new_fd);
-        sbuf2close(sb);
-        close(new_fd);
-        Pthread_mutex_unlock(&(host_node_ptr->lock));
-        Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-        return;
-    }
+    close_hostnode_ll(host_node_ptr);
 
     /* Set the port so that we can send out messages that the other end
      * will understand (i.e. no packet not intended for us silliness) */
