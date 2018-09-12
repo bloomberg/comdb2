@@ -663,7 +663,7 @@ retry:
         flags = 0;
 
     if (gbl_reorder_socksql_no_deadlock) 
-        bset(&flags, OSQL_FLAGS_REORDER_ON);
+        flags |= OSQL_FLAGS_REORDER_ON;
 
     /* send request to blockprocessor */
     rc = osql_comm_send_socksqlreq(osql->host, clnt->sql, strlen(clnt->sql) + 1,

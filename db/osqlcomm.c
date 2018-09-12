@@ -6639,8 +6639,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
     const char *osql_reqtype_str(int type);
 
-    logmsg(LOGMSG_DEBUG, "osql_process_packet(): processing %s\n",
-           osql_reqtype_str(type));
+    logmsg(LOGMSG_DEBUG, "%p osql_process_packet(): processing %s\n",
+           pthread_self(), osql_reqtype_str(type));
 
     switch (type) {
     case OSQL_DONE:
@@ -6734,8 +6734,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                 iq->usedbtablevers = ver;
                 free(newest_shard);
             } else {
-                logmsg(LOGMSG_ERROR, "%s: broken time partition %s"
-                                     "\n",
+                logmsg(LOGMSG_ERROR, "%s: broken time partition %s\n",
                        __func__, tablename);
 
                 return conv_rc_sql2blkop(iq, step, -1, ERR_NO_SUCH_TABLE, err,

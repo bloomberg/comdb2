@@ -809,7 +809,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 #if 0 
     char mus[37];
     comdb2uuidstr(uuid, mus);
-    printf("%lx:%s: rqid=%llx uuid=%s SAVING tp=%d(%s), tbl_idx=%d, stripe=%d, genid=0x%llx, seq=%d\n", 
+    printf("%p:%s: rqid=%llx uuid=%s SAVING tp=%d(%s), tbl_idx=%d, stripe=%d, genid=0x%llx, seq=%d\n", 
             pthread_self(), __func__, rqid, mus, type, osql_reqtype_str(type), key.tbl_idx, key.stripe, key.genid, key.seq);
 #endif
 
@@ -1210,6 +1210,7 @@ static int process_this_session(
     reqlog_set_event(iq->reqlogger, "txn");
 
     //if needed to check content of socksql temp table, dump with:
+    //void bdb_temp_table_debug_dump(bdb_state_type *bdb_state, tmpcursor_t *cur);
     //bdb_temp_table_debug_dump(thedb->bdb_env, dbc);
     
     /* go through each record */

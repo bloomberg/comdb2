@@ -1972,9 +1972,8 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
 
             rc = process_local_shadtbl_index(clnt, tbl, bdberr, *seq, 0);
             if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: error writting index record to master in "
-                        "offload mode!\n",
-                        __func__);
+                logmsg(LOGMSG_ERROR, "%s: error writting index record "
+                       "to master in offload mode!\n", __func__);
                 free(seq);
                 break;
             }

@@ -851,7 +851,7 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
     sess->type = type;
     sess->offhost = fromhost;
     sess->start = sess->initstart = time(NULL);
-    sess->is_reorder_on = btst(&flags, OSQL_FLAGS_REORDER_ON);
+    sess->is_reorder_on = ((flags & OSQL_FLAGS_REORDER_ON) != 0);
 
     if (tzname)
         strncpy(sess->tzname, tzname, sizeof(sess->tzname));
