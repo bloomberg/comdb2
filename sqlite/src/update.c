@@ -539,7 +539,7 @@ void sqlite3Update(
       }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
       sqlite3OpenTableAndIndices(pParse, pTab, OP_OpenWrite, 0, iBaseCur,
-                                 aToOpen, 0, 0, 0, OE_None);
+                                 aToOpen, 0, 0, OE_None, 0);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       sqlite3OpenTableAndIndices(pParse, pTab, OP_OpenWrite, 0, iBaseCur,
                                  aToOpen, 0, 0);
@@ -753,11 +753,19 @@ void sqlite3Update(
     }
   
     /* Insert the new index entries and the new record. */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    sqlite3CompleteInsertion(
+        pParse, pTab, iDataCur, iIdxCur, regNewRowid, aRegIdx, 
+        OPFLAG_ISUPDATE | (eOnePass==ONEPASS_MULTI ? OPFLAG_SAVEPOSITION : 0), 
+        0, 0, OE_None, 0
+    );
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3CompleteInsertion(
         pParse, pTab, iDataCur, iIdxCur, regNewRowid, aRegIdx, 
         OPFLAG_ISUPDATE | (eOnePass==ONEPASS_MULTI ? OPFLAG_SAVEPOSITION : 0), 
         0, 0
     );
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
     /* Do any ON CASCADE, SET NULL or SET DEFAULT operations required to
     ** handle rows (possibly in other tables) that refer via a foreign key

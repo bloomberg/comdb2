@@ -10438,6 +10438,23 @@ int has_comdb2_index_for_sqlite(
   return 0;
 }
 
+int need_index_checks_for_upsert(
+  Table *pTab,
+  Upsert *pUpsert,
+  int onError
+){
+  if( has_comdb2_index_for_sqlite(pTab) ){
+    return 1; /* has partial or expression index */
+  }
+  if( pUpsert && pUpsert->pUpsertSet ){
+    return 1; /* has ON CONFLICT DO UPDATE */
+  }
+  if( onError==OE_Replace ){
+    return 1; /* is INSERT OR REPLACE -or- REPLACE INTO */
+  }
+  return 0;
+}
+
 int is_comdb2_index_unique(const char *dbname, char *idx)
 {
     struct dbtable *db = get_dbtable_by_name(dbname);

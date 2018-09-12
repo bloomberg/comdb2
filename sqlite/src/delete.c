@@ -534,8 +534,8 @@ void sqlite3DeleteFrom(
       testcase( IsVirtual(pTab) );
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
       sqlite3OpenTableAndIndices(pParse, pTab, OP_OpenWrite, OPFLAG_FORDELETE,
-                                 iTabCur, aToOpen, &iDataCur, &iIdxCur, 0,
-                                 OE_None);
+                                 iTabCur, aToOpen, &iDataCur, &iIdxCur, OE_None,
+                                 0);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       sqlite3OpenTableAndIndices(pParse, pTab, OP_OpenWrite, OPFLAG_FORDELETE,
                                  iTabCur, aToOpen, &iDataCur, &iIdxCur);

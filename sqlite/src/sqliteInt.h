@@ -4182,11 +4182,13 @@ void sqlite3GenerateConstraintChecks(Parse*,Table*,int*,int,int,int,int,
 #else
 # define sqlite3SetMakeRecordP5(A,B)
 #endif
-void sqlite3CompleteInsertion(Parse*,Table*,int,int,int,int*,int,int,int);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+void sqlite3CompleteInsertion(Parse*,Table*,int,int,int,int*,int,int,int,
+                              int, Upsert*);
 int sqlite3OpenTableAndIndices(Parse*, Table*, int, u8, int, u8*, int*, int*,
-                               Upsert*, int);
+                               int, Upsert*);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+void sqlite3CompleteInsertion(Parse*,Table*,int,int,int,int*,int,int,int);
 int sqlite3OpenTableAndIndices(Parse*, Table*, int, u8, int, u8*, int*, int*);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 void sqlite3BeginWriteOperation(Parse*, int, int);
