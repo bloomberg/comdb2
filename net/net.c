@@ -2114,6 +2114,14 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
         return -1;
     }
 
+    /* testpoint- throw 'queue-full' errors */
+    if ((0 == rc) && (NET_TEST_QUEUE_FULL == netinfo_ptr->net_test) &&
+        (rand() % 100) == 0) {
+        logmsg(LOGMSG_INFO, "%s line %d debug/random QUEUE-FULL\n", __func__,
+               __LINE__);
+        return NET_SEND_FAIL_QUEUE_FULL;
+    }
+
     /* do nothing if we have a fake netinfo */
     if (netinfo_ptr->fake)
         return 0;
@@ -2240,16 +2248,6 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
                    __LINE__);
         }
         rc = NET_SEND_FAIL_WRITEFAIL;
-    }
-
-    /* testpoint- throw 'queue-full' errors */
-    if ((0 == rc) && (NET_TEST_QUEUE_FULL == netinfo_ptr->net_test) &&
-        (rand() % 1000)) {
-        if (trace) {
-            logmsg(LOGMSG_USER, "%s line %d debug/random QUEUE-FULL\n",
-                   __func__, __LINE__);
-        }
-        rc = NET_SEND_FAIL_QUEUE_FULL;
     }
 
 end:
