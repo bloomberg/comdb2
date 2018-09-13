@@ -1167,6 +1167,9 @@ static int process_this_session(
     if (updCols)
         free(updCols);
 
+    // should never have both of them set
+    assert(rc == 0 || rc_out == 0 || rc_out == OSQL_RC_DONE);
+
     if (rc != 0 && rc != IX_PASTEOF && rc != IX_EMPTY) {
         reqlog_set_error(iq->reqlogger, "Internal Error", rc);
         logmsg(LOGMSG_ERROR, "%s:%d bdb_temp_table_next failed rc=%d bdberr=%d\n",
