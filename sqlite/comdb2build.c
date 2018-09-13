@@ -354,7 +354,7 @@ static int comdb2AuthenticateUserDDL(const char *tablename)
      return SQLITE_AUTH;
 }
 
-int comdb2CheckOpAccess(void) {
+static int comdb2CheckOpAccess(void) {
     if (comdb2AuthenticateUserDDL(""))
         return SQLITE_AUTH;
     return SQLITE_OK;
