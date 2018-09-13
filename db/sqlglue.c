@@ -4608,7 +4608,7 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag, int *pSchemaVersi
     thrman_setid(thrman_self(), rqidinfo);
 
 done:
-    if (rc == SQLITE_OK) {
+    if (rc == SQLITE_OK && pSchemaVersion) {
         sqlite3BtreeGetMeta(pBt, BTREE_SCHEMA_VERSION, (u32 *)pSchemaVersion);
     }
 
