@@ -51,8 +51,7 @@ void timer_init(void (*func)(struct timer_parm *))
     struct timeval tv;
     rc = gettimeofday(&tv, NULL);
     if (rc) {
-        logmsg(LOGMSG_FATAL, "gettimeofday rc %d %s\n", rc, 
-               strerror(errno));
+        logmsg(LOGMSG_FATAL, "gettimeofday rc %d %s\n", rc, strerror(errno));
         abort();
     }
     starttime = tv.tv_sec * 1000 + tv.tv_usec / 1000;
@@ -70,8 +69,7 @@ int64_t comdb2_time_epochus(void)
     int rc;
     rc = gettimeofday(&tv, NULL);
     if (rc) {
-        logmsg(LOGMSG_FATAL, "gettimeofday rc %d %s\n", rc, 
-               strerror(errno));
+        logmsg(LOGMSG_FATAL, "gettimeofday rc %d %s\n", rc, strerror(errno));
         abort();
     }
     return (((int64_t)tv.tv_sec) * 1000000 + tv.tv_usec);
@@ -83,8 +81,7 @@ int comdb2_time_epochms(void)
     int rc;
     rc = gettimeofday(&tv, NULL);
     if (rc) {
-        logmsg(LOGMSG_FATAL, "gettimeofday rc %d %s\n", rc, 
-               strerror(errno));
+        logmsg(LOGMSG_FATAL, "gettimeofday rc %d %s\n", rc, strerror(errno));
         abort();
     }
     return (tv.tv_sec * 1000 + tv.tv_usec / 1000) - starttime;
@@ -227,7 +224,7 @@ void *timer_thread(void *p)
 
             rc = clock_gettime(CLOCK_REALTIME, &now);
             if (rc) {
-                logmsg(LOGMSG_ERROR, "clock_gettime rc %d %s\n", rc, 
+                logmsg(LOGMSG_ERROR, "clock_gettime rc %d %s\n", rc,
                        strerror(errno));
             }
 

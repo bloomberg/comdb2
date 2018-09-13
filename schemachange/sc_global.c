@@ -277,7 +277,8 @@ void sc_status(struct dbenv *dbenv)
         struct dbtable *db = get_dbtable_by_name(sctbl->tablename);
 
         if (db && db->doing_conversion)
-            logmsg(LOGMSG_USER, "Conversion phase running %" PRId64 "converted\n",
+            logmsg(LOGMSG_USER,
+                   "Conversion phase running %" PRId64 "converted\n",
                    db->sc_nrecs);
         else if (db && db->doing_upgrade)
             logmsg(LOGMSG_USER, "Upgrade phase running %" PRId64 " upgraded\n",

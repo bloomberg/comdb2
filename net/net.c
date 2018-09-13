@@ -4873,8 +4873,8 @@ void net_clipper(const char *subnet, int is_disable)
             else
                 time(&now);
             if (gbl_verbose_net)
-                logmsg(LOGMSG_USER, "0x%lx %s subnet %s time %ld\n", pthread_self(),
-                       (is_disable) ? "Disabling" : "Enabling",
+                logmsg(LOGMSG_USER, "0x%lx %s subnet %s time %ld\n",
+                       pthread_self(), (is_disable) ? "Disabling" : "Enabling",
                        subnet_suffices[i], now);
 
             if (is_disable == 0) {

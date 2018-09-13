@@ -4832,7 +4832,8 @@ free_vars:
             }
             if (num_same_room && sqlresponse->value[2]->value.data &&
                 strcasecmp(cdb2_machine_room,
-                           (const char *)sqlresponse->value[2]->value.data) == 0) {
+                           (const char *)sqlresponse->value[2]->value.data) ==
+                    0) {
                 (*num_same_room)++;
             }
             (*num_hosts)++;
