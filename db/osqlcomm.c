@@ -1297,7 +1297,6 @@ static const uint8_t *
 client_query_stats_nopath_get(struct client_query_stats *p_stats,
                               const uint8_t *p_buf, const uint8_t *p_buf_end)
 {
-    int ii;
     if (p_buf_end < p_buf ||
         CLIENT_QUERY_STATS_PATH_OFFSET > (p_buf_end - p_buf))
         return NULL;
@@ -1616,7 +1615,6 @@ static const uint8_t *osqlcomm_usedb_type_get(osql_usedb_t *p_osql_usedb,
                                               const uint8_t *p_buf,
                                               const uint8_t *p_buf_end)
 {
-    uint8_t *p;
     if (p_buf_end < p_buf || OSQLCOMM_USEDB_TYPE_LEN > p_buf_end - p_buf)
         return NULL;
 
@@ -2867,7 +2865,7 @@ static inline int osql_nettype_is_uuid(int type)
            type < NET_OSQL_UUID_REQUEST_MAX;
 }
 
-static osql_stats_t stats[OSQL_MAX_REQ] = {0};
+static osql_stats_t stats[OSQL_MAX_REQ] = {{0}};
 
 /* echo service */
 #define MAX_ECHOES 256
@@ -3288,8 +3286,6 @@ static void net_block_req(void *hndl, void *uptr, char *fromhost, int usertype,
                           void *dtap, int dtalen, uint8_t is_tcp)
 {
 
-    int rc = 0;
-
     net_block_msg_t *net_msg = dtap;
     handle_buf_block_offload(thedb, (uint8_t *)net_msg->data,
                              (uint8_t *)net_msg->data + net_msg->datalen, 0,
@@ -3316,7 +3312,6 @@ static void net_block_reply(void *hndl, void *uptr, char *fromhost,
                             uint8_t is_tcp)
 {
 
-    int rc = 0;
     net_block_msg_t *net_msg = dtap;
     /* using p_slock pointer as the request id now, this contains info about
      * socket request.*/
@@ -3386,7 +3381,6 @@ static void net_snap_uid_rpl(void *hndl, void *uptr, char *fromhost,
                              int usertype, void *dtap, int dtalen,
                              uint8_t is_tcp)
 {
-    int rc = 0;
     snap_uid_t snap_info;
     snap_uid_get(&snap_info, dtap, (uint8_t *)dtap + dtalen);
     osql_chkboard_sqlsession_rc(OSQL_RQID_USE_UUID, snap_info.uuid, 0,
@@ -3406,7 +3400,6 @@ int osql_comm_is_done(char *rpl, int rpllen, int hasuuid, struct errstat **xerr,
                       struct ireq *iq)
 {
     int rc = 0;
-    void *data;
     int type;
     osql_rpl_t hdr;
     osql_uuid_rpl_t uuid_hdr;
@@ -3485,7 +3478,7 @@ int osql_comm_send_poke(char *tohost, unsigned long long rqid, uuid_t uuid,
     if (rqid == OSQL_RQID_USE_UUID) {
         uint8_t buf[OSQLCOMM_POKE_UUID_TYPE_LEN];
         uint8_t *p_buf = buf, *p_buf_end = p_buf + OSQLCOMM_POKE_UUID_TYPE_LEN;
-        osql_poke_uuid_t poke = {0};
+        osql_poke_uuid_t poke = {{0}};
 
         poke.tstamp = comdb2_time_epoch();
         comdb2uuidcpy(poke.uuid, uuid);
@@ -6882,7 +6875,18 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         char *tablename;
 
         tablename = (char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
-        bdb_lock_tablename_read(thedb->bdb_env, tablename, trans);
+
+        // get table lock
+        rc = bdb_lock_tablename_read(thedb->bdb_env, tablename, trans);
+        if (rc == BDBERR_DEADLOCK) {
+            if (iq->debug)
+                reqprintf(iq, "LOCK TABLE READ DEADLOCK");
+            return RC_INTERNAL_RETRY;
+        } else if (rc) {
+            if (iq->debug)
+                reqprintf(iq, "LOCK TABLE READ ERROR: %d", rc);
+            return ERR_INTERNAL;
+        }
 
         if (logsb) {
             sbuf2printf(logsb, "[%llu %s] OSQL_USEDB %*.s\n", rqid,
@@ -6919,6 +6923,18 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                 return conv_rc_sql2blkop(iq, step, -1, ERR_NO_SUCH_TABLE, err,
                                          tablename, 0);
             }
+        }
+
+        // check usedb table version and return verify error if different
+        // add/upd/del always follow a usedb opcode
+        // thus they will not need to check table version
+        if (iq->usedb && iq->usedb->tableversion != iq->usedbtablevers) {
+            if (iq->debug)
+                reqprintf(iq, "Stale buffer: usedb version %d vs curr ver %d\n",
+                          iq->usedbtablevers, iq->usedb->tableversion);
+            poll(NULL, 0, BDB_ATTR_GET(thedb->bdb_attr, SC_DELAY_VERIFY_ERROR));
+            err->errcode = OP_FAILED_VERIFY;
+            return ERR_VERIFY;
         }
     } break;
     case OSQL_DBQ_CONSUME: {
