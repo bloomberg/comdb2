@@ -3343,8 +3343,8 @@ struct AuthContext {
 #define OPFLAG_AUXDELETE     0x04    /* OP_Delete: index in a DELETE op */
 #define OPFLAG_NOCHNG_MAGIC  0x6d    /* OP_MakeRecord: serialtype 10 is ok */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-#define OPFLAG_FORCE_VERIFY  0x40
-#define OPFLAG_IGNORE_FAILURE 0x80
+#define OPFLAG_FORCE_VERIFY   0x100
+#define OPFLAG_IGNORE_FAILURE 0x200
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*

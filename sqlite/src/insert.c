@@ -1956,7 +1956,11 @@ void sqlite3CompleteInsertion(
 ){
   Vdbe *v;            /* Prepared statements under construction */
   Index *pIdx;        /* An index being inserted or updated */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  u16 pik_flags;      /* flag values passed to the btree insert */
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   u8 pik_flags;       /* flag values passed to the btree insert */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   int regData;        /* Content registers (after the rowid) */
   int regRec;         /* Register holding assembled record for the table */
   int i;              /* Loop counter */
