@@ -82,11 +82,6 @@ static int systblMetricsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor)
 {
     int rc;
 
-    /* Do not allow non-OP users if authentication is enabled. */
-    rc = comdb2CheckOpAccess();
-    if( rc!=SQLITE_OK )
-        return rc;
-
     systbl_metrics_cursor *cur = sqlite3_malloc(sizeof(systbl_metrics_cursor));
     if (cur == 0) {
         return SQLITE_NOMEM;

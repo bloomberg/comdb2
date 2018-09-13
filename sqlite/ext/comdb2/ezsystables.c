@@ -115,12 +115,6 @@ static int systbl_disconnect(sqlite3_vtab *pVtab){
 
 static int systbl_open(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
     int rc;
-
-    /* Do not allow non-OP users if authentication is enabled. */
-    rc = comdb2CheckOpAccess();
-    if( rc!=SQLITE_OK )
-        return rc;
-
     struct ez_systable_cursor *pCur = calloc(1, sizeof(struct ez_systable_cursor));
     struct ez_systable_vtab *vtab = (struct ez_systable_vtab*) p;
     struct systable *t = vtab->t;

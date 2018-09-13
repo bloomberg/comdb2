@@ -88,11 +88,6 @@ static int systblReplStatsDisconnect(sqlite3_vtab *pVtab)
 
 static int systblReplStatsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor)
 {
-    /* Do not allow non-OP users if authentication is enabled. */
-    int rc = comdb2CheckOpAccess();
-    if( rc!=SQLITE_OK )
-        return rc;
-
     systbl_repl_stats_cursor *cur =
         sqlite3_malloc(sizeof(systbl_repl_stats_cursor));
     if (cur == 0) {

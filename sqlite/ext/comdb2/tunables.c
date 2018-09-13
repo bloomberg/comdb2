@@ -79,11 +79,6 @@ static int systblTunablesDisconnect(sqlite3_vtab *pVtab)
 
 static int systblTunablesOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor)
 {
-	/* Do not allow non-OP users if authentication is enabled. */
-    int rc = comdb2CheckOpAccess();
-    if( rc!=SQLITE_OK )
-        return rc;
-
     systbl_tunables_cursor *cur =
         sqlite3_malloc(sizeof(systbl_tunables_cursor));
     if (cur == 0) {
