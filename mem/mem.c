@@ -179,6 +179,13 @@ struct comdb2bmspace {
     int nblocks; /* number of blocking threads */
 };
 
+#if !defined(USE_SYS_ALLOC) && !defined(COMDB2MA_OMIT_BMEM)
+/* the pthread key is shared amongst all blocking allocators */
+static pthread_once_t privileged_once = PTHREAD_ONCE_INIT;
+/* 0 - undetermined; 1 - yes; -1 - no */
+static pthread_key_t privileged;
+#endif
+
 #define PRIO_UNKNOWN NULL
 #define PRIO_YES ((void *)1)
 #define PRIO_NO ((void *)-1)
@@ -335,6 +342,11 @@ static int cmpr_number_asc(const void *a, const void *b);
 
 /* order by number desc */
 static int cmpr_number_desc(const void *a, const void *b);
+
+#if !defined(USE_SYS_ALLOC) && !defined(COMDB2MA_OMIT_BMEM)
+/* initialize the shared 'privileged' pthread key once */
+static void privileged_init(void);
+#endif
 
 /* malloc/calloc helpers which will abort upon ENOMEM */
 static void *abortable_malloc(size_t);
@@ -2082,13 +2094,6 @@ static void pfx_ctrace(const char *format, ...)
 
 #if !defined(USE_SYS_ALLOC) && !defined(COMDB2MA_OMIT_BMEM)
 /* COMDB2 BLOCKING MEMORY ALLOCATOR { */
-
-/* the pthread key is shared amongst all blocking allocators */
-static pthread_once_t privileged_once = PTHREAD_ONCE_INIT;
-/* 0 - undetermined; 1 - yes; -1 - no */
-static pthread_key_t privileged;
-
-/* initialize the shared 'privileged' pthread key once */
 static void privileged_init(void)
 {
     if (pthread_key_create(&privileged, NULL) != 0) {
