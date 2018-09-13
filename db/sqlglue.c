@@ -4608,6 +4608,10 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag, int *pSchemaVersi
     thrman_setid(thrman_self(), rqidinfo);
 
 done:
+    if (rc == SQLITE_OK) {
+        sqlite3BtreeGetMeta(pBt, BTREE_SCHEMA_VERSION, (u32 *)pSchemaVersion);
+    }
+
     reqlog_logf(pBt->reqlogger, REQL_TRACE,
                 "BeginTrans(pBt %d, wrflag %d)      = %s (rc=%d)\n",
                 pBt->btreeid, wrflag, sqlite3ErrStr(rc), rc);
