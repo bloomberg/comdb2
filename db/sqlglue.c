@@ -10443,11 +10443,15 @@ int need_index_checks_for_upsert(
   Upsert *pUpsert,
   int onError
 ){
+  if( pUpsert ){
+    if( pUpsert->pUpsertSet ){
+      return 1; /* has ON CONFLICT DO UPDATE */
+    }else{
+      return 0; /* has ON CONFLICT DO NOTHING */
+    }
+  }
   if( has_comdb2_index_for_sqlite(pTab) ){
     return 1; /* has partial or expression index */
-  }
-  if( pUpsert && pUpsert->pUpsertSet ){
-    return 1; /* has ON CONFLICT DO UPDATE */
   }
   if( onError==OE_Replace ){
     return 1; /* is INSERT OR REPLACE -or- REPLACE INTO */

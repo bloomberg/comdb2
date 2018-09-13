@@ -1658,7 +1658,11 @@ void sqlite3GenerateConstraintChecks(
     int addrUniqueOk;    /* Jump here if the UNIQUE constraint is satisfied */
 
     if( aRegIdx[ix]==0 ) continue;  /* Skip indices that do not change */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if( pUpIdx==pIdx && overrideError!=OE_Ignore ){
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( pUpIdx==pIdx ){
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       addrUniqueOk = upsertJump+1;
       upsertBypass = sqlite3VdbeGoto(v, 0);
       VdbeComment((v, "Skip upsert subroutine"));
@@ -1730,9 +1734,8 @@ void sqlite3GenerateConstraintChecks(
     /* We do not need to proceed further for ON CONFLICT DO NOTHING, as this
      * this will be handled on the master. Also continue, if the current index
      * is not an upsert target. */
-    if ( overrideError==OE_Ignore ||
-         (overrideError==OE_Update && pUpIdx!=pIdx) ) {
-        onError = OE_None;
+    if( overrideError==OE_Ignore ){
+      onError = OE_None;
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( onError==OE_None ){ 
@@ -1775,8 +1778,16 @@ void sqlite3GenerateConstraintChecks(
 
     /* Check to see if the new index entry will be unique */
     sqlite3VdbeVerifyAbortable(v, onError);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if( need_index_checks_for_upsert(pTab, pUpsert, onError) ){
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3VdbeAddOp4Int(v, OP_NoConflict, iThisCur, addrUniqueOk,
                          regIdx, pIdx->nKeyCol); VdbeCoverage(v);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    }else{
+      sqlite3VdbeGoto(v, addrUniqueOk);
+    }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
     /* Generate code to handle collisions */
     regR = (pIdx==pPk) ? regIdx : sqlite3GetTempRange(pParse, nPkField);
