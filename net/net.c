@@ -467,13 +467,16 @@ typedef struct connect_and_accept {
 /* Close socket related to hostnode.  */
 static void shutdown_hostnode_socket(host_node_type *host_node_ptr)
 {
-    if (gbl_verbose_net)
+    if (gbl_verbose_net) {
         host_node_printf(LOGMSG_USER, host_node_ptr, "shutting down fd %d\n",
                          host_node_ptr->fd);
-
+    }
     if (shutdown(host_node_ptr->fd, 2) != 0) {
-        host_node_errf(LOGMSG_ERROR, host_node_ptr, "%s: shutdown fd %d errno %d %s\n",
-                       __func__, host_node_ptr->fd, errno, strerror(errno));
+        if (errno != ENOTCONN) {
+            host_node_errf(LOGMSG_ERROR, host_node_ptr,
+                           "%s: shutdown fd %d errno %d %s\n", __func__,
+                           host_node_ptr->fd, errno, strerror(errno));
+        }
     }
 }
 
@@ -4545,8 +4548,6 @@ static void *reader_thread(void *arg)
                                  fromhost, tohost);
         if (rc != 0) {
             if (!host_node_ptr->distress) {
-                host_node_printf(LOGMSG_WARN, host_node_ptr,
-                                 "error reading message header\n");
                 host_node_printf(LOGMSG_WARN, host_node_ptr, "entering distress mode\n");
             }
             /* if we loop it should be ok; TODO: maybe wanna have
@@ -4959,13 +4960,19 @@ static void *connect_thread(void *arg)
     seed_data.pid = getpid();
 
     while (!host_node_ptr->decom_flag && !netinfo_ptr->exiting) {
-        gettimeofday(&seed_data.t, NULL);
-        uint32_t seed = crc32c((uint8_t *)&seed_data, sizeof(seed_data));
-        int r = rand_r(&seed) % 1000;
-        poll(NULL, 0, r);
-        Pthread_mutex_lock(&(host_node_ptr->lock));
-        if (host_node_ptr->fd != -1) { /* already have connection */
+        int check = 1;
+check:  Pthread_mutex_lock(&(host_node_ptr->lock));
+        if (host_node_ptr->fd != -1) {
+            /* already have connection */
             goto again;
+        } else if (check) {
+            gettimeofday(&seed_data.t, NULL);
+            uint32_t seed = crc32c((uint8_t *)&seed_data, sizeof(seed_data));
+            int r = rand_r(&seed) % 5000;
+            Pthread_mutex_unlock(&(host_node_ptr->lock));
+            poll(NULL, 0, r);
+            check = 0;
+            goto check;
         }
 
         if (!host_node_ptr->really_closed) {
@@ -5060,7 +5067,6 @@ static void *connect_thread(void *arg)
             exit(1);
         }
 
-        logmsg(LOGMSG_INFO, "%s connect to %s for %s\n", __func__, host_node_ptr->host, netinfo_ptr->service);
         rc = connect(fd, (struct sockaddr *)&sin, sizeof(sin));
         if (rc == -1 && errno == EINPROGRESS) {
             /*wait for connect event */
@@ -5199,11 +5205,7 @@ static void *connect_thread(void *arg)
         if (netinfo_ptr->exiting) {
             break;
         }
-
-        if (strcmp(host_node_ptr->host, netinfo_ptr->myhostname) < 0)
-            sleep(3);
-        else
-            sleep(6);
+        sleep(1);
     }
 
     if (host_node_ptr->decom_flag)
@@ -5412,9 +5414,24 @@ static void accept_handle_new_host(netinfo_type *netinfo_ptr,
                          __func__, new_fd);
 
     /* lock the node */
+    int cnt = 0;
     Pthread_mutex_lock(&(host_node_ptr->lock));
-
-    close_hostnode_ll(host_node_ptr);
+    while (1) {
+        if (!host_node_ptr->have_reader_thread && !host_node_ptr->have_writer_thread) {
+            break;
+        }
+        /* shutdown the fd. rd/wr thds (if any) will stop immediately */
+        close_hostnode_ll(host_node_ptr);
+        Pthread_mutex_unlock(&(host_node_ptr->lock));
+        Pthread_rwlock_unlock(&(netinfo_ptr->lock));
+        poll(NULL, 0, 100);
+        if (++cnt % 10 == 0) {
+            host_node_printf(LOGMSG_USER, host_node_ptr,
+                             "%s waiting for r/w thds to exit\n", __func__);
+        }
+        Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
+        Pthread_mutex_lock(&(host_node_ptr->lock));
+    }
 
     /* Set the port so that we can send out messages that the other end
      * will understand (i.e. no packet not intended for us silliness) */
@@ -5677,7 +5694,6 @@ static void *accept_thread(void *arg)
             netinfo_ptr->myport, netinfo_ptr->myfd);
 
     if (gbl_pmux_route_enabled) {
-        logmsg(LOGMSG_INFO, "Enabling PORTMUX Route \n");
         portmux_fds =
             portmux_listen_setup(netinfo_ptr->app, netinfo_ptr->service,
                                  netinfo_ptr->instance, netinfo_ptr->myfd);
