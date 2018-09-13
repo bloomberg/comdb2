@@ -3595,6 +3595,10 @@ void comdb2AddColumn(Parse *pParse, /* Parser context */
     sqlite3Dequote(column->name);
 
     /* Column type */
+    if (pType->n == 0) {
+        setError(pParse, SQLITE_MISUSE, "No type specified.");
+        goto cleanup;
+    }
     strncpy0(type, pType->z, sizeof(type));
     sqlite3Dequote(type);
 

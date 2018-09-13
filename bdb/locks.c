@@ -67,8 +67,6 @@
 #include "dbinc/hmac.h"
 #include "genid.h"
 #include "crc32c.h"
-
-#include <plbitlib.h> /* for bset/btst */
 #include <logmsg.h>
 
 extern int __dbreg_get_name(DB_ENV *, u_int8_t *, char **);

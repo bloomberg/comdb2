@@ -14,3 +14,4 @@ SELECT name FROM comdb2_threadpools ORDER BY name;
 SELECT COUNT(*)=1 FROM comdb2_plugins WHERE name = 'newsql';
 SELECT COUNT(*)=1 FROM comdb2_appsock_handlers WHERE name = 'newsql';
 SELECT COUNT(*)=1 FROM comdb2_opcode_handlers WHERE name = 'blockop';
+SELECT * FROM comdb2_systables ORDER BY name;

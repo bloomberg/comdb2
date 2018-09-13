@@ -113,7 +113,9 @@ static int cdb2_cache_ssl_sess = CDB2_CACHE_SSL_SESS_DEFAULT;
 static pthread_mutex_t cdb2_ssl_sess_lock = PTHREAD_MUTEX_INITIALIZER;
 
 typedef struct cdb2_ssl_sess_list cdb2_ssl_sess_list;
+#if 0
 static void cdb2_free_ssl_sessions(cdb2_ssl_sess_list *sessions);
+#endif
 static cdb2_ssl_sess_list *cdb2_get_ssl_sessions(cdb2_hndl_tp *hndl);
 static int cdb2_set_ssl_sessions(cdb2_hndl_tp *hndl,
                                  cdb2_ssl_sess_list *sessions);
@@ -4205,7 +4207,7 @@ read_record:
     }
 
     if ((hndl->firstresponse->error_code == CDB2__ERROR_CODE__MASTER_TIMEOUT ||
-         hndl->firstresponse->error_code == CDB2ERR_CHANGENODE) &&
+         hndl->firstresponse->error_code == CDB2__ERROR_CODE__CHANGENODE) &&
         (hndl->snapshot_file || (!hndl->in_trans && !is_commit) ||
          commit_file)) {
         newsql_disconnect(hndl, hndl->sb, __LINE__);
@@ -4461,8 +4463,6 @@ const char *cdb2_column_name(cdb2_hndl_tp *hndl, int col)
 int cdb2_snapshot_file(cdb2_hndl_tp *hndl, int *snapshot_file,
                        int *snapshot_offset)
 {
-    char *ret;
-
     if (hndl == NULL) {
         (*snapshot_file) = -1;
         (*snapshot_offset) = -1;
@@ -4511,8 +4511,6 @@ void cdb2_cluster_info(cdb2_hndl_tp *hndl, char **cluster, int *ports, int max,
 
 const char *cdb2_cnonce(cdb2_hndl_tp *hndl)
 {
-    char *ret;
-
     if (hndl == NULL)
         return "unallocated cdb2 handle";
 
@@ -4841,7 +4839,8 @@ free_vars:
             }
             if (num_same_room && sqlresponse->value[2]->value.data &&
                 strcasecmp(cdb2_machine_room,
-                           sqlresponse->value[2]->value.data) == 0) {
+                           (const char *)sqlresponse->value[2]->value.data) ==
+                    0) {
                 (*num_same_room)++;
             }
             (*num_hosts)++;
@@ -5260,7 +5259,7 @@ static int configure_from_literal(cdb2_hndl_tp *hndl, const char *type)
 {
     char *type_copy = strdup(cdb2_skipws(type));
     char *eomachine;
-    char *eooptions;
+    char *eooptions = NULL;
     int rc = 0;
     int port;
     char *dc;
@@ -5541,6 +5540,7 @@ static int cdb2_set_ssl_sessions(cdb2_hndl_tp *hndl, cdb2_ssl_sess_list *arg)
     return 0;
 }
 
+#if 0
 static void cdb2_free_ssl_sessions(cdb2_ssl_sess_list *p)
 {
     int i, rc;
@@ -5574,6 +5574,7 @@ static void cdb2_free_ssl_sessions(cdb2_ssl_sess_list *p)
     free(p->list);
     free(p);
 }
+#endif
 #else /* WITH_SSL */
 int cdb2_init_ssl(int init_libssl, int init_libcrypto)
 {

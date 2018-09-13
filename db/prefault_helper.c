@@ -28,8 +28,6 @@
 #include <string.h>
 #include <strings.h>
 #include <stdlib.h>
-
-#include <plbitlib.h>
 #include <memory_sync.h>
 
 #include "comdb2.h"

@@ -21,8 +21,6 @@
 #include <strings.h>
 #include <stdlib.h>
 
-#include <plbitlib.h>
-
 #include "comdb2.h"
 #include "tag.h"
 #include "types.h"

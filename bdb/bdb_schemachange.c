@@ -46,7 +46,6 @@
 #include "llog_ext.h"
 #include "llog_handlers.h"
 
-#include <plbitlib.h> /* for bset/btst */
 #include <ctrace.h>
 #include <alloca.h>
 #include "bdb_schemachange.h"

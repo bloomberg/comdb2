@@ -41,7 +41,6 @@
 #include "bdb_int.h"
 #include "locks.h"
 #include "list.h"
-#include <plbitlib.h> /* for bset/btst */
 #include <endian_core.h>
 
 #include <time.h>

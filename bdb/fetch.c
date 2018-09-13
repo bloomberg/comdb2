@@ -56,9 +56,6 @@
 #include "bdb_int.h"
 #include "bdb_cursor.h"
 #include "locks.h"
-
-#include <plbitlib.h> /* for bset/btst */
-
 #include "genid.h"
 #include "bdb_fetch.h"
 #include "logmsg.h"

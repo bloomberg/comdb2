@@ -27,7 +27,6 @@
 #include <strings.h>
 
 #include <list.h>
-#include <plbitlib.h>
 #include <fsnap.h>
 
 #include <bdb_osqllog.h>

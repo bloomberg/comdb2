@@ -2114,6 +2114,14 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
         return -1;
     }
 
+    /* testpoint- throw 'queue-full' errors */
+    if ((0 == rc) && (NET_TEST_QUEUE_FULL == netinfo_ptr->net_test) &&
+        (rand() % 100) == 0) {
+        logmsg(LOGMSG_INFO, "%s line %d debug/random QUEUE-FULL\n", __func__,
+               __LINE__);
+        return NET_SEND_FAIL_QUEUE_FULL;
+    }
+
     /* do nothing if we have a fake netinfo */
     if (netinfo_ptr->fake)
         return 0;
@@ -2240,16 +2248,6 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
                    __LINE__);
         }
         rc = NET_SEND_FAIL_WRITEFAIL;
-    }
-
-    /* testpoint- throw 'queue-full' errors */
-    if ((0 == rc) && (NET_TEST_QUEUE_FULL == netinfo_ptr->net_test) &&
-        (rand() % 1000)) {
-        if (trace) {
-            logmsg(LOGMSG_USER, "%s line %d debug/random QUEUE-FULL\n",
-                   __func__, __LINE__);
-        }
-        rc = NET_SEND_FAIL_QUEUE_FULL;
     }
 
 end:
@@ -3569,7 +3567,7 @@ static int read_hostlist(netinfo_type *netinfo_ptr, SBUF2 *sb, char *hosts[],
 {
     int datasz;
     int i;
-    int num;
+    int num = 0;
     char *data;
     int rc;
     int tmp;
@@ -3763,7 +3761,7 @@ static int process_payload_ack(netinfo_type *netinfo_ptr,
 {
     int rc;
     int seqnum, outrc;
-    net_ack_message_payload_type p_net_ack_message_payload;
+    net_ack_message_payload_type p_net_ack_message_payload = {0};
     void *payload = NULL;
     uint8_t *buf, *p_buf, *p_buf_end;
     seq_data *ptr;
@@ -4873,8 +4871,8 @@ void net_clipper(const char *subnet, int is_disable)
             else
                 time(&now);
             if (gbl_verbose_net)
-                logmsg(LOGMSG_USER, "%x %s subnet %s time %d\n", pthread_self(),
-                       (is_disable) ? "Disabling" : "Enabling",
+                logmsg(LOGMSG_USER, "0x%lx %s subnet %s time %ld\n",
+                       pthread_self(), (is_disable) ? "Disabling" : "Enabling",
                        subnet_suffices[i], now);
 
             if (is_disable == 0) {
@@ -4975,7 +4973,7 @@ static int get_dedicated_conhost(host_node_type *host_node_ptr, struct in_addr *
     if (counter == 0xffff) // start with a random subnet
         counter = rand() % num_dedicated_subnets;
 
-    int rc;
+    int rc = 0;
     while (ii < num_dedicated_subnets) {
         counter++;
         ii++;
@@ -5395,7 +5393,6 @@ static int get_subnet_incomming_syn(host_node_type *host_node_ptr)
 {
     struct sockaddr_in lcl_addr_inet;
     size_t lcl_len = sizeof(lcl_addr_inet);
-    struct hostent *he = NULL;
 
     /* get local address of connection */
     int ret =
@@ -5697,7 +5694,7 @@ static void *connect_and_accept(void *arg)
     netinfo_type *netinfo_ptr;
     SBUF2 *sb;
     char hostname[256], addr[64];
-    int portnum, fd, rc;
+    int portnum = 0, fd, rc;
     char *host;
     int netnum;
 
@@ -5788,7 +5785,7 @@ static void *accept_thread(void *arg)
     netinfo_type *netinfo_ptr;
     struct pollfd pol;
     int rc;
-    int listenfd;
+    int listenfd = 0;
     int polltm;
     int tcpbfsz;
     struct linger linger_data;

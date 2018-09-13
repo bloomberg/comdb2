@@ -68,10 +68,7 @@
 #include "bdb_int.h"
 #include "locks.h"
 #include <time.h>
-
-#include <plbitlib.h> /* for bset/btst */
 #include <ctrace.h>
-
 #include <list.h>
 #include "nodemap.h"
 #include "intern_strings.h"

@@ -850,13 +850,7 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
         return -1;
     }
 
-    int retries = 0;
-    int changed;
-    int i;
-    int olddb_compress, olddb_compress_blobs, olddb_inplace_updates;
-    int olddb_instant_sc;
     char new_prefix[32];
-    struct scplan theplan;
     int foundix;
 
     if (s->headers != db->odh) {

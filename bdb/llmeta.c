@@ -17,6 +17,7 @@
 #include <string.h>
 #include <strings.h>
 #include <limits.h>
+#include <alloca.h>
 #include <compile_time_assert.h>
 #include <flibc.h>
 #include "bdb_int.h"

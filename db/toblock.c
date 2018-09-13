@@ -41,7 +41,6 @@
 #include <epochlib.h>
 #include <util.h>
 #include <f2cstr.h>
-#include <plbitlib.h>
 #include <list.h>
 #include <plhash.h>
 #include <lockmacro.h>

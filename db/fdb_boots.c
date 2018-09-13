@@ -355,13 +355,17 @@ static int _discover_remote_db_nodes(const char *dbname, const char *class,
     int rc = FDB_NOERR;
     char *node;
     cdb2_hndl_tp *db;
+    const char *comdb2dbname = "comdb2db";
+    const char *comdb2dbclass = "prod";
 
     /* NOTE: test is dev */
     if (strncasecmp(class, "test", 4) == 0) {
         class = "dev";
+        comdb2dbname = "comdb3db";
+        comdb2dbclass = "dev";
     }
 
-    rc = cdb2_open(&db, "comdb2db", "default", 0);
+    rc = cdb2_open(&db, comdb2dbname, comdb2dbclass, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: can't talk to metadb rc %d %s\n", __func__, rc,
                 cdb2_errstr(db));

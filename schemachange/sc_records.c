@@ -1332,7 +1332,6 @@ static int upgrade_records(struct convert_record_data *data)
     int opfailcode = 0;
     int ixfailnum = 0;
     int dtalen = 0;
-    int bdberr;
     unsigned long long genid = 0;
     int recver;
     uint8_t *p_buf_data, *p_buf_data_end;

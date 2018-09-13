@@ -98,7 +98,7 @@ void quantize_free(struct quantize *q)
 void quantize(struct quantize *q, int val)
 {
     unsigned int bkt = ((val + q->step - 1) / q->step);
-    int *cnt, rc;
+    int *cnt;
     if (bkt > q->qnum)
         bkt = q->qnum;
     cnt = q->cnts;

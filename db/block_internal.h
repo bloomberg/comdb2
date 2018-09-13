@@ -21,10 +21,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-
-#include <plbitlib.h>
 #include <alloca.h>
-
 #include "comdb2.h"
 #include "tag.h"
 #include "types.h"

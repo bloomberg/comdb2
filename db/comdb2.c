@@ -1496,7 +1496,6 @@ struct dbtable *newqdb(struct dbenv *env, const char *name, int avgsz, int pages
     tbl = calloc(1, sizeof(struct dbtable));
     tbl->tablename = strdup(name);
     tbl->dbenv = env;
-    tbl->is_readonly = 0;
     tbl->dbtype = isqueuedb ? DBTYPE_QUEUEDB : DBTYPE_QUEUE;
     tbl->avgitemsz = avgsz;
     tbl->queue_pagesize_override = pagesize;
@@ -1561,7 +1560,6 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
         tbl->lrlfname = strdup(fname);
     tbl->tablename = strdup(tblname);
     tbl->dbenv = env;
-    tbl->is_readonly = 0;
     tbl->dbnum = dbnum;
     tbl->lrl = dyns_get_db_table_size(); /* this gets adjusted later */
     if (dbnum == 0) {
