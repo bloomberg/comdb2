@@ -585,6 +585,7 @@ sqlite3_module systblTransactionLogsModule = {
   0,                         /* xRollback */
   0,                         /* xFindMethod */
   0,                         /* xRename */
+  .access_flag = ALLOW_USER
 };
 
 
