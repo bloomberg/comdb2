@@ -1642,7 +1642,7 @@ void sqlite3GenerateConstraintChecks(
   }
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( need_index_checks_for_upsert(pTab, pUpsert, onError) ){
+  if( need_index_checks_for_upsert(pTab, pUpsert, overrideError) ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   /* Test all UNIQUE constraints by creating entries for each UNIQUE
   ** index and making sure that duplicate entries do not already exist.
