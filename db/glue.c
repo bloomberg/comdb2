@@ -41,7 +41,6 @@
 
 #include <ctrace.h>
 #include <epochlib.h>
-#include <plbitlib.h>
 #include <str0.h>
 #include <pthread.h>
 #include <netinet/in.h>

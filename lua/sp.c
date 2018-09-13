@@ -39,7 +39,6 @@
 #include <sqlinterfaces.h>
 #include <sqloffload.h>
 #include <flibc.h>
-#include <plbitlib.h>
 #include <sqlresponse.pb-c.h>
 #include <str0.h>
 

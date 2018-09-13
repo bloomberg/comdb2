@@ -47,7 +47,6 @@
 #include "locks.h"
 
 #include <memory_sync.h>
-#include <plbitlib.h> /* for bset/btst */
 #include <autoanalyze.h>
 #include <logmsg.h>
 

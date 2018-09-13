@@ -49,7 +49,6 @@
 #include "dbinc/db_swap.h"
 #endif
 
-#include <plbitlib.h> /* for bset/btst */
 #include <ctrace.h>
 #include <logmsg.h>
 

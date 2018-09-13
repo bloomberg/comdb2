@@ -39,7 +39,6 @@
 
 #include <build/db.h>
 #include <epochlib.h>
-#include <plbitlib.h> /* for bset/btst */
 #include <lockmacro.h>
 
 #include <ctrace.h>
