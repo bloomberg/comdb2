@@ -43,7 +43,6 @@
 #include "bdb_int.h"
 #include "locks.h"
 
-#include <plbitlib.h> /* for bset/btst */
 #include <segstring.h>
 #include "nodemap.h"
 #include <logmsg.h>

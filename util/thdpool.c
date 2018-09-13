@@ -616,7 +616,6 @@ static void *thdpool_thd(void *voidarg)
     struct thd *thd = voidarg;
     struct thdpool *pool = thd->pool;
     void *thddata = NULL;
-    extern comdb2bma blobmem;
 
     thdpool_thdinit_fn init_fn;
     thdpool_thddelt_fn delt_fn;
@@ -754,7 +753,6 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
     int enqueue_front = (flags & THDPOOL_ENQUEUE_FRONT);
     int force_dispatch = (flags & THDPOOL_FORCE_DISPATCH);
     time_t crt_dump;
-    size_t mem_sz;
     extern comdb2bma blobmem;
 
     LOCK(&pool->mutex)

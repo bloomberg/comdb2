@@ -178,14 +178,11 @@ int verify_partial_rev_constraint(struct dbtable *to_db, struct dbtable *newdb,
         char rondisk_tag[MAXTAGLEN];
         for (j = 0; j < cnstrt->nrules; j++) {
             char ondisk_tag[MAXTAGLEN];
-            int ixnum = 0, ixlen = 0;
+            int ixnum = 0;
             struct dbtable *ldb;
             char lkey[MAXKEYLEN];
-            char nkey[MAXKEYLEN];
-            char rnkey[MAXKEYLEN];
             int fndrrn;
             unsigned long long genid;
-            int nornrefs = 0;
             if (strcasecmp(cnstrt->table[j], to_db->tablename)) {
                 continue;
             }

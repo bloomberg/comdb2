@@ -509,7 +509,6 @@ static int tcpwaitwrite(int fd, int timeoutms)
 int tcpwrite(int fd, const void *cc, int len, int timeoutms)
 {
     /*returns 0 if timed out*/
-    struct pollfd pol;
     if (timeoutms > 0) {
         int rc = tcpwaitwrite(fd, timeoutms);
         if (rc <= 0)

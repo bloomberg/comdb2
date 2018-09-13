@@ -113,8 +113,6 @@ Add the key                             ll_key_add (same call)
 #include "bdb_int.h"
 #include "locks.h"
 #include <dbinc/db_swap.h>
-#include "plbitlib.h" /* for bset/btst */
-
 #include "logmsg.h"
 
 /* There are two problems that berkeley solves for us that we need to

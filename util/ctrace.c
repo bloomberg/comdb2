@@ -537,9 +537,6 @@ void ctracef(FILE *tee, const char *format, ...)
 void vctrace(const char *format, va_list ap)
 {
     int mutex_enabled = g_mutex_enabled;
-    time_t now;
-    struct tm *timep;
-    char tstr[32];
 
     LOCKIFNZ(&g_mutex, mutex_enabled)
     {

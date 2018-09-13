@@ -375,8 +375,7 @@ end:
 
 int do_alter_queues(struct schema_change_type *s)
 {
-    struct dbtable *db;
-    int rc, bdberr;
+    int rc;
 
     set_original_tablename(s);
 
@@ -398,8 +397,7 @@ int do_alter_queues(struct schema_change_type *s)
 
 int do_alter_stripes(struct schema_change_type *s)
 {
-    struct dbtable *db;
-    int rc, bdberr;
+    int rc;
 
     set_original_tablename(s);
 
@@ -684,7 +682,6 @@ static int verify_sc_resumed_for_shard(const char *shardname,
 
 static int verify_sc_resumed_for_all_shards(void *obj, void *arg)
 {
-    int rc = 0;
     struct timepart_sc_resuming *tpt_sc = (struct timepart_sc_resuming *)obj;
 
     /* all shards resumed */

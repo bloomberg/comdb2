@@ -41,8 +41,6 @@
 #include <net.h>
 #include "bdb_int.h"
 #include "locks.h"
-
-#include <plbitlib.h> /* for bset/btst */
 #include <logmsg.h>
 
 /* this is used only for comdbg2 stuff, will not work with rowlocks for now */

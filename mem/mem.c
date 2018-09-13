@@ -179,10 +179,13 @@ struct comdb2bmspace {
     int nblocks; /* number of blocking threads */
 };
 
+#if !defined(USE_SYS_ALLOC) && !defined(COMDB2MA_OMIT_BMEM)
 /* the pthread key is shared amongst all blocking allocators */
 static pthread_once_t privileged_once = PTHREAD_ONCE_INIT;
 /* 0 - undetermined; 1 - yes; -1 - no */
 static pthread_key_t privileged;
+#endif
+
 #define PRIO_UNKNOWN NULL
 #define PRIO_YES ((void *)1)
 #define PRIO_NO ((void *)-1)
@@ -340,8 +343,10 @@ static int cmpr_number_asc(const void *a, const void *b);
 /* order by number desc */
 static int cmpr_number_desc(const void *a, const void *b);
 
+#if !defined(USE_SYS_ALLOC) && !defined(COMDB2MA_OMIT_BMEM)
 /* initialize the shared 'privileged' pthread key once */
 static void privileged_init(void);
+#endif
 
 /* malloc/calloc helpers which will abort upon ENOMEM */
 static void *abortable_malloc(size_t);
@@ -361,8 +366,8 @@ static unsigned char debug_switches[COMDB2MA_COUNT] = {0};
 //^root
 int comdb2ma_init(size_t init_sz, size_t max_cap)
 {
-    int i, rc;
-    char *env_mspace_max, *env_mmap_thresh;
+    int rc;
+    char *env_mmap_thresh;
 
     rc = COMDB2MA_LOCK(&root);
     if (rc != 0)
@@ -384,6 +389,7 @@ int comdb2ma_init(size_t init_sz, size_t max_cap)
              * 3. If a thread is not allowed to create a mspace, it will
              *    be uniformly assigned one (to minimize contention).
              */
+            char *env_mspace_max;
             if ((env_mspace_max = getenv("MALLOC_ARENA_MAX")) != NULL)
                 root.mspace_max = atoi(env_mspace_max);
             /* In case MALLOC_ARENA_MAX isn't a valid numeric. */
@@ -406,7 +412,7 @@ int comdb2ma_init(size_t init_sz, size_t max_cap)
 
 #ifdef PER_THREAD_MALLOC
             /* create freelists for threaded allocators */
-            for (i = 0; i != COMDB2MA_COUNT; ++i) {
+            for (int i = 0; i != COMDB2MA_COUNT; ++i) {
                 listc_init(&root.freelist[i],
                            offsetof(struct comdb2mspace, freelnk));
                 listc_init(&root.busylist[i],
@@ -425,7 +431,7 @@ int comdb2ma_init(size_t init_sz, size_t max_cap)
 
 #ifndef USE_SYS_ALLOC
             /* create static mspaces for subsystems */
-            for (i = 1; i != COMDB2MA_COUNT; ++i) {
+            for (int i = 1; i != COMDB2MA_COUNT; ++i) {
                 COMDB2_STATIC_MAS[i] = comdb2ma_create_int(
                     NULL, init_sz, max_cap, COMDB2_STATIC_MA_METAS[i].name,
                     NULL, COMDB2MA_MT_SAFE, NULL, NULL, __FILE__, __func__,
@@ -505,8 +511,7 @@ int comdb2ma_exit(void)
 int comdb2ma_stats(char *pattern, int verbose, int hr, comdb2ma_order_by ord,
                    comdb2ma_group_by grp, int toctrc)
 {
-    size_t idx, np, sz = 0;
-    comdb2ma curpos, temp;
+    size_t sz = 0;
     struct mallinfo total = {0};
     int rc;
 
@@ -552,7 +557,7 @@ int comdb2ma_stats(char *pattern, int verbose, int hr, comdb2ma_order_by ord,
    We include malloc.h in the function to avoid the conflict. */
 int comdb2ma_nice(int niceness)
 {
-    int rc, narena;
+    int rc;
     rc = mspace_mallopt(M_NICE, niceness);
     if (rc == 1) { /* 1 is success */
         root.nice = niceness;
@@ -566,6 +571,7 @@ int comdb2ma_nice(int niceness)
 #    include <malloc.h> /* for M_ARENA_MAX */
 #  endif
 #  ifdef M_ARENA_MAX
+        int narena;
         /* Override glibc M_ARENA_MAX if we're told to be nicer. */
         if (niceness >= NICE_MODERATE) {
             if (root.mspace_max == INT_MAX)
@@ -603,7 +609,7 @@ size_t comdb2_malloc_usable_size(void *ptr)
 
 int comdb2ma_release(void)
 {
-    int i, rc;
+    int rc;
     comdb2ma curpos;
 
     rc = COMDB2MA_LOCK(&root);
@@ -927,7 +933,6 @@ void *comdb2_resize(comdb2ma cm, void *ptr, size_t n)
 static void comdb2_free_int(comdb2ma cm, void *ptr)
 {
     void **p = (void **)ptr;
-    char *fp;
 
     if (COMDB2MA_LOCK(cm) == 0) {
         mspace_free(cm->m, p + COMDB2MA_SENTINEL_OFS);
@@ -1645,7 +1650,6 @@ static struct mallinfo ma_mallinfo(const comdb2ma cm)
 {
     comdb2ma curpos;
     struct mallinfo info, ret = COMDB2MA_MALLINFO_SAFE(cm);
-    size_t freemem = ret.fordblks, usedmem = ret.uordblks;
 
     LISTC_FOR_EACH(&(cm->children), curpos, sibling)
     {

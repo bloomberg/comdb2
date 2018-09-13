@@ -61,7 +61,6 @@
 #include <cdb2api.h>
 
 #include <sys/time.h>
-#include <plbitlib.h>
 #include <strbuf.h>
 #include <math.h>
 

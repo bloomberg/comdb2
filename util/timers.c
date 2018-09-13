@@ -21,6 +21,8 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <time.h>
+#include <string.h>
+#include <errno.h>
 
 #include <timers.h>
 
@@ -49,7 +51,7 @@ void timer_init(void (*func)(struct timer_parm *))
     struct timeval tv;
     rc = gettimeofday(&tv, NULL);
     if (rc) {
-        logmsg(LOGMSG_FATAL, "gettimeofday rc %d\n", rc);
+        logmsg(LOGMSG_FATAL, "gettimeofday rc %d %s\n", rc, strerror(errno));
         abort();
     }
     starttime = tv.tv_sec * 1000 + tv.tv_usec / 1000;
@@ -67,7 +69,7 @@ int64_t comdb2_time_epochus(void)
     int rc;
     rc = gettimeofday(&tv, NULL);
     if (rc) {
-        logmsg(LOGMSG_FATAL, "gettimeofday rc %d\n", rc);
+        logmsg(LOGMSG_FATAL, "gettimeofday rc %d %s\n", rc, strerror(errno));
         abort();
     }
     return (((int64_t)tv.tv_sec) * 1000000 + tv.tv_usec);
@@ -79,7 +81,7 @@ int comdb2_time_epochms(void)
     int rc;
     rc = gettimeofday(&tv, NULL);
     if (rc) {
-        logmsg(LOGMSG_FATAL, "gettimeofday rc %d\n", rc);
+        logmsg(LOGMSG_FATAL, "gettimeofday rc %d %s\n", rc, strerror(errno));
         abort();
     }
     return (tv.tv_sec * 1000 + tv.tv_usec / 1000) - starttime;
@@ -137,7 +139,6 @@ static void fixdown(int timer)
 static int new_timer(int ms, int parm, int oneshot, int dolock)
 {
     struct timer t;
-    int now;
 
     if (dolock)
         pthread_mutex_lock(&timerlk);
@@ -147,7 +148,6 @@ static int new_timer(int ms, int parm, int oneshot, int dolock)
         return -1;
     }
 
-    now = comdb2_time_epochms();
     t.next = comdb2_time_epochms() + ms;
     t.ms = ms;
     t.parm = parm;
@@ -223,6 +223,11 @@ void *timer_thread(void *p)
             nexttrap = t.next - tnow;
 
             rc = clock_gettime(CLOCK_REALTIME, &now);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "clock_gettime rc %d %s\n", rc,
+                       strerror(errno));
+            }
+
             ts = now;
             ts.tv_sec += nexttrap / 1000;
             ts.tv_nsec += ((nexttrap % 1000) * 1000);

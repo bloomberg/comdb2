@@ -57,14 +57,14 @@ static void showfunc(void *stack[], int nframes, FILE *f)
 
 static void trace_pc_getlist(void *stack[], int nframes, FILE *f)
 {
-    static int lastprint = 0;
-    int now;
 
     count++;
 
 /* Print a message if we've seen at least 'warnthresh' messages
  * in the last second */
 #if 0
+    static int lastprint = 0;
+    int now;
     if(gbl_warnthresh>0 && ((now=time(NULL))-lastprint)>=1)
     {
         if((count-ivcount) > gbl_warnthresh)

@@ -34,8 +34,6 @@
 #include <sys/resource.h>
 #include <stdarg.h>
 #include <sys/time.h>
-
-#include <plbitlib.h>
 #include <segstr.h>
 #include <sbuf2.h>
 #include <str0.h>

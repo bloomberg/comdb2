@@ -332,7 +332,7 @@ char *opertxt(int t)
 int check_options() /* CHECK VALIDITY OF OPTIONS      */
 {
     int ii, jj = 0;
-    int ondisktag = 0, defaulttag = 0, numnormtags = 0;
+    int ondisktag = 0, numnormtags = 0;
 
     /* current restriction on SQL is that it does not support arrays, nor any
      * unions, cases, etc */
@@ -341,10 +341,6 @@ int check_options() /* CHECK VALIDITY OF OPTIONS      */
         if (!strcmp(tables[jj].table_tag, ONDISKTAG)) {
             ondisktag = 1;
             lcldsktag = 1;
-        }
-
-        if (!strcmp(tables[jj].table_tag, DEFAULTTAG)) {
-            defaulttag = 1;
         }
 
         if (strcmp(tables[jj].table_tag, DEFAULTTAG) &&
@@ -836,7 +832,7 @@ void key_add(int ix, char *exprname) /* used by parser, adds a completed key */
 static void key_add_comn(int ix, char *tag, char *exprname,
                          char *where) /* used by parser, adds a completed key */
 {
-    int exprnum, ii, maxidx = 0, loweridx = 0;
+    int exprnum, ii, loweridx = 0;
 
     if (!workkey) {
         csc2_error("ERROR: KEY FAILED\n");
@@ -844,7 +840,6 @@ static void key_add_comn(int ix, char *tag, char *exprname,
         return;
     }
 
-    maxidx = MAX_KEY_INDEX;
     for (ii = 0; ii < ntables; ii++) {
         if (strcasecmp(tag, tables[ii].table_tag) == 0) {
             csc2_error("ERROR: NAME CLASH BETWEEN TAG AND KEY NAME '%s'.\n",
@@ -973,7 +968,7 @@ static void key_add_comn(int ix, char *tag, char *exprname,
     keyexprnum[ii] = exprnum;  /* remember expr assoc with key */
     ixflags[ix] = workkeyflag; /* remember flags */
     if (tag != NULL) {
-        int idxfnd = 0, jj = 0;
+        int jj = 0;
         strupper(tag);
         for (jj = 0; jj < nkeys; jj++) {
             if (keyixnum[jj] != ix && !strcasecmp(tag, keys[jj]->keytag)) {
@@ -1037,7 +1032,7 @@ void key_exprtype_add(int type, int arraysz)
 void key_piece_add(char *buf,
                    int is_expr) /* used by parser, adds a piece of a key */
 {
-    int el[6], rg[2], i, ret, t, found = 0, pointer = -1, tidx = 0;
+    int el[6], rg[2], i, t, tidx = 0;
     char *cp, *tag;
 
     if (is_expr) {
@@ -2192,7 +2187,6 @@ void expr_add_pc(char *sym, int op, int num)
     if (sym)
         strlower(sym, strlen(sym));
 
-    sprintf(arrstr, "");
     for (i = 0; i < 6 && el[i] != -1; i++)
         sprintf(eos(arrstr), "[%d]", el[i]);
 
@@ -2350,9 +2344,6 @@ int macc_fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
 int macc_ferror(FILE *fh)
 {
     extern FILE *yyin; /* lexer's input file */
-    int ch;
-    int numread;
-    unsigned char byte;
 
     if (fh != yyin) {
         csc2_error( "Someone called macc_ferror but not with yyin!\n");
@@ -2365,15 +2356,10 @@ int macc_ferror(FILE *fh)
 static int dyns_load_schema_int(char *filename, char *schematxt, char *dbname,
                                 char *tablename)
 {
-    char buf[256], *ifn = NULL;
-    int i = 0, lastix = 0;
-    int flag_winout = 0; /* true? then parse for winmacc */
+    char *ifn = NULL;
     int fhopen = 0;
-    FILE *fil;         /* my output file               */
     extern FILE *yyin; /* lexer's input file           */
     /*extern*/ int yy_flex_debug;
-    int only_source = 0;
-    void winmacc_output();
 
     yy_flex_debug = 0;
     strcpy(VER, revision + 10); /* get my version               */
@@ -2954,7 +2940,7 @@ static int dyns_get_field_option_comn(char *tag, int fidx, int option,
                                       int *value_type, int *value_sz,
                                       void *valuebuf, int vbsz)
 {
-    int i = 0, length = 0;
+    int i = 0;
     /* int tidx=gettable(tag==NULL?DEFAULTTAG:tag);*/
     int tidx = gettable(ONDISKTAG);
     if (strcmp(tag, ONDISKTAG))
