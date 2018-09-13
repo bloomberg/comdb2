@@ -8912,11 +8912,9 @@ int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt)
         db = state->dbp_data[0];
         stripes = state->attr->dtastripe;
         parallel_count = gbl_parallel_count;
-        // max page 64K
-        // allocate twice that + 4K, in case page compressed "really" well
         pthread_attr_init(&attr);
 #ifdef PTHREAD_STACK_MIN
-        pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN + 132 * 1024);
+        pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN + 512 * 1024);
 #endif
     } else { // index
         db = &state->dbp_ix[ixnum];
