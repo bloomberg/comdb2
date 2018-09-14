@@ -530,11 +530,9 @@ static int prepare_and_verify_newdb_record(struct convert_record_data *data,
                   data->s->schema_change == SC_CONSTRAINT_CHANGE;
 
     uint8_t *p_buf_data = data->rec->recbuf;
-    uint8_t *p_buf_data_end = p_buf_data + data->rec->bufsize;
 
     if (!dta_needs_conversion) {
         p_buf_data = dta;
-        p_buf_data_end = p_buf_data + dtalen;
     }
 
     *dirty_keys = -1ULL;
@@ -943,7 +941,7 @@ static int convert_record(struct convert_record_data *data)
 
             /* wait for logical redo thread to catch up */
             pthread_mutex_lock(&data->s->livesc_mtx);
-            if (log_compare(data->s->curLsn, &now) < 0)
+            if (data->s->curLsn && log_compare(data->s->curLsn, &now) < 0)
                 rc = RC_INTERNAL_RETRY;
             pthread_mutex_unlock(&data->s->livesc_mtx);
             if (rc == RC_INTERNAL_RETRY) {
@@ -2007,7 +2005,6 @@ static int reconstruct_blob_records(struct convert_record_data *data,
     u_int32_t rectype;
     int rc, dtalen, page, index, ixlen;
     unsigned long long genid, oldgenid;
-    short dtafile, dtastripe;
     int prevlen = 0, updlen = 0;
     llog_undo_del_dta_args *del_dta = NULL;
     llog_undo_del_dta_lk_args *del_dta_lk = NULL;
@@ -2061,8 +2058,6 @@ static int reconstruct_blob_records(struct convert_record_data *data,
                     goto error;
                 }
                 genid = add_dta_lk->genid;
-                dtafile = add_dta_lk->dtafile;
-                dtastripe = add_dta_lk->dtastripe;
                 free_ptr = add_dta_lk;
             } else {
                 if ((rc = llog_undo_add_dta_read(bdb_state->dbenv, logdta->data,
@@ -2072,8 +2067,6 @@ static int reconstruct_blob_records(struct convert_record_data *data,
                     goto error;
                 }
                 genid = add_dta->genid;
-                dtafile = add_dta->dtafile;
-                dtastripe = add_dta->dtastripe;
                 free_ptr = add_dta;
             }
 
@@ -2103,8 +2096,6 @@ static int reconstruct_blob_records(struct convert_record_data *data,
                     goto error;
                 }
                 genid = del_dta_lk->genid;
-                dtafile = del_dta_lk->dtafile;
-                dtastripe = del_dta_lk->dtastripe;
                 dtalen = del_dta_lk->dtalen;
                 free_ptr = del_dta_lk;
             } else {
@@ -2115,8 +2106,6 @@ static int reconstruct_blob_records(struct convert_record_data *data,
                     goto error;
                 }
                 genid = del_dta->genid;
-                dtafile = del_dta->dtafile;
-                dtastripe = del_dta->dtastripe;
                 dtalen = del_dta->dtalen;
                 free_ptr = del_dta;
             }
@@ -2158,8 +2147,6 @@ static int reconstruct_blob_records(struct convert_record_data *data,
                 }
                 genid = upd_dta_lk->newgenid;
                 oldgenid = upd_dta_lk->oldgenid;
-                dtafile = upd_dta_lk->dtafile;
-                dtastripe = upd_dta_lk->dtastripe;
                 dtalen = upd_dta_lk->old_dta_len;
             } else {
                 if ((rc = llog_undo_upd_dta_read(bdb_state->dbenv, logdta->data,
@@ -2170,8 +2157,6 @@ static int reconstruct_blob_records(struct convert_record_data *data,
                 }
                 genid = upd_dta->newgenid;
                 oldgenid = upd_dta->oldgenid;
-                dtafile = upd_dta->dtafile;
-                dtastripe = upd_dta->dtastripe;
                 dtalen = upd_dta->old_dta_len;
             }
 
@@ -2277,7 +2262,6 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
     u_int32_t rectype;
     int rc = 0, dtalen, ixlen, opfailcode = 0, ixfailnum = 0;
     unsigned long long genid, ngenid, check_genid;
-    short dtafile, dtastripe;
     llog_undo_add_dta_args *add_dta = NULL;
     llog_undo_add_dta_lk_args *add_dta_lk = NULL;
 
@@ -2306,8 +2290,6 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
             goto done;
         }
         genid = add_dta_lk->genid;
-        dtafile = add_dta_lk->dtafile;
-        dtastripe = add_dta_lk->dtastripe;
     } else {
         if ((rc = llog_undo_add_dta_read(bdb_state->dbenv, logdta->data,
                                          &add_dta)) != 0) {
@@ -2316,8 +2298,6 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
             goto done;
         }
         genid = add_dta->genid;
-        dtafile = add_dta->dtafile;
-        dtastripe = add_dta->dtastripe;
     }
 
     /* Reconstruct the add. */
@@ -2467,7 +2447,6 @@ static int live_sc_redo_delete(struct convert_record_data *data, DB_LOGC *logc,
     u_int32_t rectype;
     int rc, dtalen, page, index;
     unsigned long long genid;
-    short dtafile, dtastripe;
     llog_undo_del_dta_args *del_dta = NULL;
     llog_undo_del_dta_lk_args *del_dta_lk = NULL;
 
@@ -2500,8 +2479,6 @@ static int live_sc_redo_delete(struct convert_record_data *data, DB_LOGC *logc,
             goto done;
         }
         genid = del_dta_lk->genid;
-        dtafile = del_dta_lk->dtafile;
-        dtastripe = del_dta_lk->dtastripe;
         dtalen = del_dta_lk->dtalen;
     } else {
         if ((rc = llog_undo_del_dta_read(bdb_state->dbenv, logdta->data,
@@ -2511,8 +2488,6 @@ static int live_sc_redo_delete(struct convert_record_data *data, DB_LOGC *logc,
             goto done;
         }
         genid = del_dta->genid;
-        dtafile = del_dta->dtafile;
-        dtastripe = del_dta->dtastripe;
         dtalen = del_dta->dtalen;
     }
 
@@ -2576,9 +2551,8 @@ static int live_sc_redo_update(struct convert_record_data *data, DB_LOGC *logc,
     struct blob_recs *pbrecs = NULL;
 
     u_int32_t rectype;
-    int rc, dtalen, page, index;
+    int rc, page, index;
     unsigned long long genid, oldgenid;
-    short dtafile, dtastripe;
     int prevlen = 0, updlen = 0;
     llog_undo_upd_dta_args *upd_dta = NULL;
     llog_undo_upd_dta_lk_args *upd_dta_lk = NULL;
@@ -2613,9 +2587,6 @@ static int live_sc_redo_update(struct convert_record_data *data, DB_LOGC *logc,
         }
         genid = upd_dta_lk->newgenid;
         oldgenid = upd_dta_lk->oldgenid;
-        dtafile = upd_dta_lk->dtafile;
-        dtastripe = upd_dta_lk->dtastripe;
-        dtalen = upd_dta_lk->old_dta_len;
     } else {
         if ((rc = llog_undo_upd_dta_read(bdb_state->dbenv, logdta->data,
                                          &upd_dta)) != 0) {
@@ -2625,9 +2596,6 @@ static int live_sc_redo_update(struct convert_record_data *data, DB_LOGC *logc,
         }
         genid = upd_dta->newgenid;
         oldgenid = upd_dta->oldgenid;
-        dtafile = upd_dta->dtafile;
-        dtastripe = upd_dta->dtastripe;
-        dtalen = upd_dta->old_dta_len;
     }
 
     brecs.genid = genid;
@@ -2755,7 +2723,6 @@ static int live_sc_redo_logical_rec(struct convert_record_data *data,
                                     DB_LOGC *logc, bdb_osql_log_rec_t *rec,
                                     DBT *logdta)
 {
-    u_int32_t rectype;
     int rc = 0;
 
     if (rec->dtastripe < 0 || rec->dtastripe >= gbl_dtastripe) {
@@ -3044,7 +3011,9 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
         data->to->schema /*tbl .NEW..ONDISK schema */); // free tagmap only once
 
     data->s->hitLastCnt = 0;
+    pthread_mutex_lock(&data->s->livesc_mtx);
     data->s->curLsn = &curLsn;
+    pthread_mutex_unlock(&data->s->livesc_mtx);
     while (1) {
         if (gbl_sc_abort || data->from->sc_abort || data->s->sc_thd_failed ||
             (data->s->iq && data->s->iq->sc_should_abort)) {
@@ -3115,7 +3084,9 @@ cleanup:
               data->s->table, pCur->curLsn.file, pCur->curLsn.offset,
               data->nrecs);
 
+    pthread_mutex_lock(&data->s->livesc_mtx);
     data->s->curLsn = NULL;
+    pthread_mutex_unlock(&data->s->livesc_mtx);
     bdb_llog_cursor_close(pCur);
 
     free(data->s->sc_convert_done);
