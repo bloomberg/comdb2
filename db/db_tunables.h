@@ -664,6 +664,10 @@ REGISTER_TUNABLE("name", NULL, TUNABLE_STRING, &name, DEPRECATED | READONLY,
 REGISTER_TUNABLE("natural_types", "Same as 'nosurprise'", TUNABLE_BOOLEAN,
                  &gbl_surprise, INVERSE_VALUE | READONLY | NOARG, NULL, NULL,
                  NULL, NULL);
+REGISTER_TUNABLE("verbose_net",
+                 "Print verbose net messages.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_verbose_net, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("netbufsz", "Size of the network buffer (per "
                              "node) for the replication network. "
                              "(Default: 1MB)",
@@ -1223,9 +1227,9 @@ REGISTER_TUNABLE("verbose_master_req",
                  &gbl_verbose_master_req, EXPERIMENTAL | INTERNAL, NULL, NULL,
                  NULL, NULL);
 REGISTER_TUNABLE("verbose_rep_all_req",
-                 "Print trace showing rep-all-req protocol.", TUNABLE_BOOLEAN,
-                 &gbl_verbose_rep_all_req, EXPERIMENTAL | INTERNAL, NULL, NULL,
-                 NULL, NULL);
+                 "Print trace showing rep-all-req protocol.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_verbose_rep_all_req,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("verbose_send_cohlease",
                  "Print trace from lease-issue thread.", TUNABLE_BOOLEAN,
                  &gbl_verbose_send_coherency_lease, EXPERIMENTAL | INTERNAL,

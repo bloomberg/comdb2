@@ -994,7 +994,6 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 	REP_VOTE_INFO *vi;
 	REP_GEN_VOTE_INFO *vig;
 	u_int32_t bytes, egen, committed_gen, flags, sendflags, gen, gbytes, rectype, type;
-	u_int32_t maxlookahead;
 	unsigned long long bytes_sent;
 	int check_limit, cmp, done, do_req, rc, starttime, endtime, tottime;
 	int match, old, recovering, ret, t_ret, st, ed, sendtime;
@@ -1358,10 +1357,9 @@ skip:				/*
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 		check_limit = gbytes != 0 || bytes != 0;
 		fromline = __LINE__;
-		dbenv->get_lg_max(dbenv, &maxlookahead);
-		if ((ret = __log_cursor_complete(dbenv, &logc, maxlookahead + 100000,
-						0)) != 0)
+		if ((ret = __log_cursor(dbenv, &logc)) != 0)
 			goto errlock;
+
 		/* A confused replicant can send a request
 		 * for an invalid log record, and cause the master
 		 * to panic.  Don't let that happen. */
@@ -1656,9 +1654,7 @@ more:		   if (type == REP_LOG_MORE) {
 		 */
 		oldfilelsn = lsn = rp->lsn;
 		fromline = __LINE__;
-		dbenv->get_lg_max(dbenv, &maxlookahead);
-		if ((ret = __log_cursor_complete(dbenv, &logc,
-						maxlookahead + 100000, 0)) != 0)
+		if ((ret = __log_cursor(dbenv, &logc)) != 0)
 			goto errlock;
 		F_SET(logc, DB_LOG_NO_PANIC);
 		memset(&data_dbt, 0, sizeof(data_dbt));

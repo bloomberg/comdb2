@@ -79,6 +79,7 @@ extern int gbl_max_lua_instructions;
 extern int gbl_max_sqlcache;
 extern int __gbl_max_mpalloc_sleeptime;
 extern int gbl_mem_nice;
+extern int gbl_verbose_net;
 extern int gbl_netbufsz;
 extern int gbl_net_lmt_upd_incoherent_nodes;
 extern int gbl_net_max_mem;
