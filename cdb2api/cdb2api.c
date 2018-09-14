@@ -377,8 +377,6 @@ static int recv_fd_int(int sockfd, void *data, size_t nbytes, int *fd_recvd)
     struct cmsghdr *cmsgptr;
 #endif
 
-    memset(&control_un, 0, sizeof(control_un));
-
     *fd_recvd = -1;
     cdata = data;
     bytesleft = nbytes;
@@ -490,8 +488,6 @@ static int send_fd_to(int sockfd, const void *data, size_t nbytes,
     } control_un;
     struct cmsghdr *cmsgptr;
 #endif
-
-    memset(&control_un, 0, sizeof(control_un));
 
     bytesleft = nbytes;
     cdata = data;
@@ -2284,7 +2280,6 @@ retry:
             int len = cdb2__query__get_packed_size(&query);
             unsigned char *locbuf = malloc(len + 1);
 
-            if (locbuf != NULL) memset(locbuf, 0, len + 1);
             cdb2__query__pack(&query, locbuf);
 
             struct newsqlheader hdr;
@@ -2360,7 +2355,6 @@ static int cdb2_effects_request(cdb2_hndl_tp *hndl)
     int len = cdb2__query__get_packed_size(&query);
     unsigned char *buf = malloc(len + 1);
 
-    if (buf != NULL) memset(buf, 0, len + 1);
     cdb2__query__pack(&query, buf);
 
     struct newsqlheader hdr;
@@ -2553,7 +2547,6 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, const char *dbname,
     int len = cdb2__query__get_packed_size(&query);
     unsigned char *buf = malloc(len + 1);
 
-    if (buf != NULL) memset(buf, 0, len + 1);
     cdb2__query__pack(&query, buf);
 
     struct newsqlheader hdr;
@@ -4946,8 +4939,6 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
 
     int len = cdb2__query__get_packed_size(&query);
     unsigned char *buf = malloc(len + 1);
-
-    if (buf != NULL) memset(buf, 0, len + 1);
     cdb2__query__pack(&query, buf);
 
     struct newsqlheader hdr;

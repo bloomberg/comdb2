@@ -52,8 +52,6 @@ static void cheapstub(FILE *f)
     pthread_t tid = pthread_self();
     const char size = 32;
     void *buf[size];
-
-    memset(buf, 0, size * sizeof(void*));
     int n = backtrace(buf, size);
 
     logmsgf(LOGMSG_USER, f,

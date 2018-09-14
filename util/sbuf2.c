@@ -712,8 +712,6 @@ int SBUF2_FUNC(sbuf2setbufsize)(SBUF2 *sb, unsigned int size)
         free(sb);
         return ENOMEM;
     }
-    memset(sb->rbuf, 0, size);
-    memset(sb->wbuf, 0, size);
     return 0;
 }
 

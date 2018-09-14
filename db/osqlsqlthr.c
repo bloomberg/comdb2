@@ -1716,12 +1716,6 @@ int osql_schemachange_logic(struct schema_change_type *sc,
             }
             RESTART_SOCKSQL;
         } while (restarted && rc == 0);
-        if (rc) {
-            logmsg(LOGMSG_ERROR,
-                   "%s:%d %s - failed to send socksql schemachange rc=%d\n",
-                   __FILE__, __LINE__, __func__, rc);
-            return rc;
-        }
     }
 
     rc = osql_save_schemachange(thd, sc, usedb);

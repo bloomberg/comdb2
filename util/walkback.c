@@ -495,10 +495,8 @@ static int __linux_stack_walkback(ucontext_t *context, unsigned maxframes,
 
     if (context == 0) {
         context = &uc;
-        memset(context, 0, sizeof(ucontext_t));
         unw_getcontext(context);
     }
-    memset(&cursor, 0, sizeof(unw_cursor_t));
     unw_init_local(&cursor, context);
     for (i = 0; i < maxframes; ++i) {
         unw_get_reg(&cursor, UNW_REG_IP, &ip);
@@ -882,11 +880,9 @@ void comdb2_cheapstack(FILE *f)
 int comdb2_cheapstack_char_array(char *str, int maxln)
 {
     void *stack[MAXFRAMES];
-    unsigned int nframes = 0;
+    unsigned int nframes;
     char *p;
     int i, ccount, first = 1;
-
-    memset(stack, 0, MAXFRAMES * sizeof(void*));
 
     if (maxln <= 0 || stack_pc_getlist(NULL, stack, MAXFRAMES, &nframes)) {
         return -1;

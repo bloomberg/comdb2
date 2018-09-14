@@ -242,10 +242,6 @@ __log_init(dbenv, dblp)
 	    __os_malloc(dbenv, dbenv->lg_bsize, &p)) != 0) {
 		goto mem_err;
 	}
-
-	/* Zap to zero. */
-	bzero(p, dbenv->lg_bsize);
-
 	region->num_segments = dbenv->lg_nsegs;
 	region->segment_size = dbenv->lg_bsize / dbenv->lg_nsegs;
 	region->buffer_size = dbenv->lg_nsegs * region->segment_size;
