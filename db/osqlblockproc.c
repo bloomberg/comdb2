@@ -703,7 +703,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     printf("Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n",
            rqid, type, osql_reqtype_str(type), osql_log_time(), seq);
 #endif
-    if (sess->is_reorder_on) {
+    if (sess->is_reorder_on && !iq->tranddl) {
         key.tbl_idx = USHRT_MAX;
 
         if (type == OSQL_USEDB) {
