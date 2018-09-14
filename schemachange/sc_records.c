@@ -18,19 +18,19 @@
 #include <stdbool.h>
 #include <poll.h>
 
+#include "schemachange.h"
+#include "sc_records.h"
+#include "sc_global.h"
+#include "sc_schema.h"
+#include "sc_callbacks.h"
+
 #include <bdb_fetch.h>
-#include "build/db.h"
 #include "dbinc/db_swap.h"
 #include "llog_auto.h"
 #include "llog_ext.h"
 #include "bdb_osqllog.h"
 #include "bdb_osql_log_rec.h"
 
-#include "schemachange.h"
-#include "sc_records.h"
-#include "sc_global.h"
-#include "sc_schema.h"
-#include "sc_callbacks.h"
 #include "comdb2_atomic.h"
 #include "logmsg.h"
 
