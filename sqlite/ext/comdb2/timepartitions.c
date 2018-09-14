@@ -367,6 +367,7 @@ const sqlite3_module systblTimepartEventsModule = {
   0,                    /* xRollback */
   0,                    /* xFindMethod */
   0,                    /* xRename */
+  .access_flag = ALLOW_USER,
 };
 
 #endif /* SQLITE_BUILDING_FOR_COMDB2 */

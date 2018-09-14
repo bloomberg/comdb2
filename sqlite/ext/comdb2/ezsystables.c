@@ -307,7 +307,7 @@ static const sqlite3_module systbl = {
     .xEof = systbl_eof,
     .xColumn = systbl_column,
     .xRowid = systbl_rowid,
-
+    .access_flag = ALLOW_USER,
 };
 
 int create_system_table(sqlite3 *db, char *name, 
