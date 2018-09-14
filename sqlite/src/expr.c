@@ -3462,9 +3462,30 @@ expr_code_doover:
         int iReg = sqlite3ExprCodeTarget(pParse, pExpr->pLeft,target);
         int aff = sqlite3TableColumnAffinity(pExpr->pTab, pExpr->iColumn);
         if( aff!=SQLITE_AFF_BLOB ){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+          static const char zAff[] = "B\000C\000D\000E"
+                                      "\000F\000G\000H"
+                                      "\000I\000J\000K"
+                                      "\000L\000M\000N";
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           static const char zAff[] = "B\000C\000D\000E";
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           assert( SQLITE_AFF_BLOB=='A' );
           assert( SQLITE_AFF_TEXT=='B' );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+          assert( SQLITE_AFF_DATETIME=='C' );
+          assert( SQLITE_AFF_INTV_YE=='D' );
+          assert( SQLITE_AFF_INTV_MO=='E' );
+          assert( SQLITE_AFF_INTV_DY=='F' );
+          assert( SQLITE_AFF_INTV_HO=='G' );
+          assert( SQLITE_AFF_INTV_MI=='H' );
+          assert( SQLITE_AFF_INTV_SE=='I' );
+          assert( SQLITE_AFF_NUMERIC=='J' );
+          assert( SQLITE_AFF_INTEGER=='K' );
+          assert( SQLITE_AFF_REAL=='L' );
+          assert( SQLITE_AFF_DECIMAL=='M' );
+          assert( SQLITE_AFF_SMALL=='N' );
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           if( iReg!=target ){
             sqlite3VdbeAddOp2(v, OP_SCopy, iReg, target);
             iReg = target;
