@@ -664,10 +664,6 @@ REGISTER_TUNABLE("name", NULL, TUNABLE_STRING, &name, DEPRECATED | READONLY,
 REGISTER_TUNABLE("natural_types", "Same as 'nosurprise'", TUNABLE_BOOLEAN,
                  &gbl_surprise, INVERSE_VALUE | READONLY | NOARG, NULL, NULL,
                  NULL, NULL);
-REGISTER_TUNABLE("verbose_net",
-                 "Print verbose net messages.  (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_verbose_net, EXPERIMENTAL | INTERNAL,
-                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("netbufsz", "Size of the network buffer (per "
                              "node) for the replication network. "
                              "(Default: 1MB)",
