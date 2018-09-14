@@ -369,8 +369,6 @@ __rep_set_egen(dbenv, func, line, egen)
 int gbl_abort_on_incorrect_upgrade;
 extern int last_fill;
 extern int gbl_decoupled_logputs;
-int send_all_req(DB_ENV *dbenv, char *master_eid, DB_LSN *lsn, int flags,
-        const char *func, int line);
 
 int
 __rep_new_master(dbenv, cntrl, eid)
@@ -472,7 +470,7 @@ __rep_new_master(dbenv, cntrl, eid)
 			/* Let the apply-thread make this request */
 			if (log_compare(&lsn, &cntrl->lsn) < 0 && !gbl_decoupled_logputs) {
 				if (send_all_req(dbenv, eid, &lsn, DB_REP_NODROP|DB_REP_NOBUFFER,
-							__func__, __LINE__) == 0) {
+						 __func__, __LINE__) == 0) {
 					if (gbl_verbose_fills) {
 						logmsg(LOGMSG_USER, "%s line %d sending REP_ALL_REQ "
 								"for %d:%d\n", __func__, __LINE__, lsn.file,
@@ -521,7 +519,7 @@ empty:		MUTEX_LOCK(dbenv, db_rep->db_mutexp);
 			lp->wait_recs = rep->max_gap;
 			MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
 			if (send_all_req(dbenv, rep->master_id, &lsn, DB_REP_NODROP,
-						__func__, __LINE__) == 0) {
+					 __func__, __LINE__) == 0) {
 				last_fill = comdb2_time_epochms();
 			}
 		} else
