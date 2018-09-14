@@ -1170,15 +1170,14 @@ void sqlite3VdbeChangeP4(Vdbe *p, int addr, const char *zP4, int n){
     pOp->p4type = P4_VTAB;
     sqlite3VtabLock((VTable *)zP4);
     assert( ((VTable *)zP4)->db==p->db );
-  }else if (n == P4_OPFUNC)
-  {
+  }else if( n==P4_OPFUNC ){
     pOp->p4.comdb2func = (OpFunc*) zP4;
     pOp->p4type = n;
-  }else if( n<0 ){
+  }else{
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }else if( zP4!=0 ){
-    assert( n<0 );
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+    assert( n<0 );
     pOp->p4.p = (void*)zP4;
     pOp->p4type = (signed char)n;
     if( n==P4_VTAB ) sqlite3VtabLock((VTable*)zP4);
