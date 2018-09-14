@@ -146,7 +146,7 @@ int sqlite3UpsertAnalyzeTarget(
     int is_comdb2_unique = is_comdb2_index_unique(pIdx->pTable->zName,
                                                   pIdx->zName);
     if( !is_comdb2_unique && !IsUniqueIndex(pIdx) ) continue;
-#else
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( !IsUniqueIndex(pIdx) ) continue;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( pTarget->nExpr!=pIdx->nKeyCol ) continue;

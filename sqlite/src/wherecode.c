@@ -2249,7 +2249,7 @@ Bitmask sqlite3WhereCodeOneLoopStart(
         VdbeNoopComment((v, "WhereTerm[%d] (%p) priority=%d",
                          pWC->nTerm-j, pTerm, iLoop));
       }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) || defined(SQLITE_LIKE_DOESNT_MATCH_BLOBS) */
+#endif
       sqlite3ExprIfFalse(pParse, pE, addrCont, SQLITE_JUMPIFNULL);
       if( skipLikeAddr ) sqlite3VdbeJumpHere(v, skipLikeAddr);
       pTerm->wtFlags |= TERM_CODED;
