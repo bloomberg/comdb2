@@ -3213,7 +3213,7 @@ static int afpClose(sqlite3_file *id) {
   if( pFile->pInode ){
     unixInodeInfo *pInode = pFile->pInode;
     sqlite3_mutex_enter(pInode->pLockMutex);
-    if( pFile->pInode->nLock ){
+    if( pInode->nLock ){
       /* If there are outstanding locks, do not actually close the file just
       ** yet because that would clear those locks.  Instead, add the file
       ** descriptor to pInode->aPending.  It will be automatically closed when
@@ -4912,7 +4912,9 @@ static void unixShmBarrier(
 ){
   UNUSED_PARAMETER(fd);
   sqlite3MemoryBarrier();         /* compiler-defined memory barrier */
-  assert( unixFileMutexNotheld((unixFile*)fd) );
+  assert( fd->pMethods->xLock==nolockLock 
+       || unixFileMutexNotheld((unixFile*)fd) 
+  );
   unixEnterMutex();               /* Also mutex, for redundancy */
   unixLeaveMutex();
 }

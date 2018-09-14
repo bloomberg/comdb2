@@ -254,6 +254,9 @@ struct VdbeFrame {
   void *token;            /* Copy of SubProgram.token */
   i64 lastRowid;          /* Last insert rowid (sqlite3.lastRowid) */
   AuxData *pAuxData;      /* Linked list of auxdata allocations */
+#if SQLITE_DEBUG
+  u32 iFrameMagic;        /* magic number for sanity checking */
+#endif
   int nCursor;            /* Number of entries in apCsr */
   int pc;                 /* Program Counter in parent (calling) frame */
   int nOp;                /* Size of aOp array */
@@ -264,6 +267,13 @@ struct VdbeFrame {
   int nDbChange;          /* Value of db->nChange */
 };
 
+/* Magic number for sanity checking on VdbeFrame objects */
+#define SQLITE_FRAME_MAGIC 0x879fb71e
+
+/*
+** Return a pointer to the array of registers allocated for use
+** by a VdbeFrame.
+*/
 #define VdbeFrameMem(p) ((Mem *)&((u8 *)p)[ROUND8(sizeof(VdbeFrame))])
 
 /*
@@ -278,8 +288,6 @@ struct sqlite3_value {
     int nZero;          /* Extra zero bytes when MEM_Zero and MEM_Blob set */
     const char *zPType; /* Pointer type when MEM_Term|MEM_Subtype|MEM_Null */
     FuncDef *pDef;      /* Used only when flags==MEM_Agg */
-    RowSet *pRowSet;    /* Used only when flags==MEM_RowSet */
-    VdbeFrame *pFrame;  /* Used when flags==MEM_Frame */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     OpFunc *pOpFunc;    /* Used when flags==MEM_OpFunc */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -355,8 +363,8 @@ struct sqlite3_value {
 #define MEM_TypeMask  0x0fff   /* Mask of type bits */
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #define MEM_AffMask   0x001f   /* Mask of affinity bits */
-#define MEM_RowSet    0x0020   /* Value is a RowSet object */
-#define MEM_Frame     0x0040   /* Value is a VdbeFrame object */
+/* Available          0x0020   */
+/* Available          0x0040   */
 #define MEM_Undefined 0x0080   /* Value is undefined */
 #define MEM_Cleared   0x0100   /* NULL set by OP_Null, not from data */
 #define MEM_TypeMask  0xc1ff   /* Mask of type bits */
@@ -396,7 +404,7 @@ struct sqlite3_value {
 ** that needs to be deallocated to avoid a leak.
 */
 #define VdbeMemDynamic(X)  \
-  (((X)->flags&(MEM_Agg|MEM_Dyn|MEM_RowSet|MEM_Frame))!=0)
+  (((X)->flags&(MEM_Agg|MEM_Dyn))!=0)
 
 /*
 ** Clear any existing type flags from a Mem and replace them with f
@@ -635,7 +643,10 @@ void sqlite3VdbeMemSetPointer(Mem*, void*, const char*, void(*)(void*));
 void sqlite3VdbeMemInit(Mem*,sqlite3*,u16);
 void sqlite3VdbeMemSetNull(Mem*);
 void sqlite3VdbeMemSetZeroBlob(Mem*,int);
-void sqlite3VdbeMemSetRowSet(Mem*);
+#ifdef SQLITE_DEBUG
+int sqlite3VdbeMemIsRowSet(const Mem*);
+#endif
+int sqlite3VdbeMemSetRowSet(Mem*);
 int sqlite3VdbeMemMakeWriteable(Mem*);
 int sqlite3VdbeMemStringify(Mem*, u8, u8);
 i64 sqlite3VdbeIntValue(Mem*);
@@ -674,7 +685,11 @@ const char *sqlite3OpcodeName(int);
 int sqlite3VdbeMemGrow(Mem *pMem, int n, int preserve);
 int sqlite3VdbeMemClearAndResize(Mem *pMem, int n);
 int sqlite3VdbeCloseStatement(Vdbe *, int);
-void sqlite3VdbeFrameDelete(VdbeFrame*);
+#ifdef SQLITE_DEBUG
+int sqlite3VdbeFrameIsValid(VdbeFrame*);
+#endif
+void sqlite3VdbeFrameMemDel(void*);      /* Destructor on Mem */
+void sqlite3VdbeFrameDelete(VdbeFrame*); /* Actually deletes the Frame */
 int sqlite3VdbeFrameRestore(VdbeFrame *);
 #ifdef SQLITE_ENABLE_PREUPDATE_HOOK
 void sqlite3VdbePreUpdateHook(Vdbe*,VdbeCursor*,int,const char*,Table*,i64,int);

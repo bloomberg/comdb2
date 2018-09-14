@@ -1685,6 +1685,11 @@ void sqlite3ExprListSetName(
     assert( pItem->zName==0 );
     pItem->zName = sqlite3DbStrNDup(pParse->db, pName->z, pName->n);
     if( dequote ) sqlite3Dequote(pItem->zName);
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
+    if( IN_RENAME_OBJECT ){
+      sqlite3RenameTokenMap(pParse, (void*)pItem->zName, pName);
+    }
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   }
 }
 
@@ -3818,7 +3823,7 @@ expr_code_doover:
       ** "glob(B,A).  We want to use the A in "A glob B" to test
       ** for function overloading.  But we use the B term in "glob(B,A)".
       */
-      if( nFarg>=2 && (pExpr->flags & EP_InfixFunc) ){
+      if( nFarg>=2 && ExprHasProperty(pExpr, EP_InfixFunc) ){
         pDef = sqlite3VtabOverloadFunction(db, pDef, nFarg, pFarg->a[1].pExpr);
       }else if( nFarg>0 ){
         pDef = sqlite3VtabOverloadFunction(db, pDef, nFarg, pFarg->a[0].pExpr);
