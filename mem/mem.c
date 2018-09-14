@@ -41,7 +41,6 @@
 #include <list.h>
 #include <ctrace.h>
 #include "mem.h"
-#include <mem_int.h>
 #include <logmsg.h>
 
 //^macros
@@ -108,6 +107,16 @@
 #endif
 
 // macros$
+
+static comdb2ma COMDB2_STATIC_MAS[COMDB2MA_COUNT];
+
+#define XMACRO_COMDB2MA(idx, name, size, cap) { name, size, cap },
+static struct {
+    char *name;
+    size_t size;
+    size_t cap;
+} COMDB2_STATIC_MA_METAS[] = { COMDB2MA_SPACES };
+#undef XMACRO_COMDB2MA
 
 //^type definitions
 typedef LINKC_T(struct comdb2mspace) mspacelink;
