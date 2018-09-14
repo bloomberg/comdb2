@@ -2427,7 +2427,9 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION2(coalesce,         -1, 0, 0, noopFunc,  SQLITE_FUNC_COALESCE),
   };
 #ifndef SQLITE_OMIT_ALTERTABLE
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   sqlite3AlterFunctions();
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
 #endif
   sqlite3WindowFunctions();
 #if defined(SQLITE_ENABLE_STAT3) || defined(SQLITE_ENABLE_STAT4)

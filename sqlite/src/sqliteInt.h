@@ -4435,10 +4435,10 @@ extern sqlite3_uint64 sqlite3NProfileCnt;
 #endif
 void sqlite3RootPageMoved(sqlite3*, int, int, int);
 void sqlite3Reindex(Parse*, Token*, Token*);
-void sqlite3AlterFunctions(void);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 void sqlite3AlterRenameTable(Parse*, Token*, Token*, int);
 #else
+void sqlite3AlterFunctions(void);
 void sqlite3AlterRenameTable(Parse*, SrcList*, Token*);
 void sqlite3AlterRenameColumn(Parse*, SrcList*, Token*, Token*);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
