@@ -7439,7 +7439,7 @@ retry:
     *version = *((unsigned long long *)fnddata);
     *version = flibc_ntohll(*version);
 
-    logmsg(LOGMSG_INFO, "Retrieved %lld version for %s\n", *version, tblname);
+    logmsg(LOGMSG_INFO, "Retrieved version %lld for %s\n", *version, tblname);
 
     *bdberr = BDBERR_NOERROR;
     return 0;
