@@ -448,8 +448,8 @@ void deserialise_database(
             // Create the copylock file to indicate that this copy isn't
             // done yet.
             copylock_file = lrldestdir + "/" + dbname + ".copylock";
-#if 0
             struct stat statbuf;
+#if 0
             rc = stat(copylock_file.c_str(), &statbuf);
             if (rc == 0)
             {
@@ -471,16 +471,34 @@ void deserialise_database(
             // remove logs
             std::string logsdir = datadestdir + "/logs";
             std::list<std::string> logfiles;
-            listdir(logfiles, logsdir);
-            for (std::list<std::string>::const_iterator it = logfiles.begin();
-                    it != logfiles.end();
-                    ++it) {
-                std::string log = logsdir + "/" + *it;
-                std::cout << "unlink " << log << std::endl;
-                unlink(log.c_str());
-            }
 
-            inited_txn_dir = true;
+            rc = stat(logsdir.c_str(), &statbuf);
+            if (rc == 0) {
+                listdir(logfiles, logsdir);
+                for (std::list<std::string>::const_iterator it = logfiles.begin();
+                        it != logfiles.end();
+                        ++it) {
+                    std::string log = logsdir + "/" + *it;
+                    std::cout << "unlink " << log << std::endl;
+                    unlink(log.c_str());
+                }
+
+                inited_txn_dir = true;
+            }
+            logsdir = datadestdir + "/" + dbname + ".txn";
+            rc = stat(logsdir.c_str(), &statbuf);
+            if (rc == 0) {
+                listdir(logfiles, logsdir);
+                for (std::list<std::string>::const_iterator it = logfiles.begin();
+                        it != logfiles.end();
+                        ++it) {
+                    std::string log = logsdir + "/" + *it;
+                    std::cout << "unlink " << log << std::endl;
+                    unlink(log.c_str());
+                }
+
+                inited_txn_dir = true;
+            }
         }
 
         // Read the tar block header
@@ -892,15 +910,25 @@ void deserialise_database(
                 /* Remove old log files.  This used to remove all files in the directory,
                    which can be problematic if hi. */
                 if (!legacy_mode) {
+                    int rc;
+                    struct stat statbuf;
+
                    // remove files in the txn directory
                    std::string dbtxndir(datadestdir + "/" + dbname + ".txn");
-                   make_dirs( dbtxndir );
-                   if (!incr_mode)
-                       remove_all_old_files( dbtxndir );
+
+                   rc = stat(dbtxndir.c_str(), &statbuf);
+                   if (rc == 0) {
+                       make_dirs( dbtxndir );
+                       if (!incr_mode)
+                           remove_all_old_files( dbtxndir );
+                   }
                    dbtxndir = datadestdir + "/" + "logs";
-                   make_dirs( dbtxndir );
-                   if (!incr_mode)
-                       remove_all_old_files( dbtxndir );
+                   rc = stat(dbtxndir.c_str(), &statbuf);
+                   if (rc == 0) {
+                       make_dirs( dbtxndir );
+                       if (!incr_mode)
+                           remove_all_old_files( dbtxndir );
+                   }
                 }
             }
         }

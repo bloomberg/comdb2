@@ -1222,9 +1222,9 @@ REGISTER_TUNABLE("verbose_master_req",
                  "Print trace showing master-req protocol.", TUNABLE_BOOLEAN,
                  &gbl_verbose_master_req, EXPERIMENTAL | INTERNAL, NULL, NULL,
                  NULL, NULL);
-REGISTER_TUNABLE("verbose_rep_all_req",
-                 "Print trace showing rep-all-req protocol.  (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_verbose_rep_all_req,
+REGISTER_TUNABLE("verbose_log_req",
+                 "Print trace showing all request-log requests.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_verbose_log_req,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("verbose_send_cohlease",
                  "Print trace from lease-issue thread.", TUNABLE_BOOLEAN,

@@ -306,7 +306,7 @@ __rep_control_swap(rp)
 int gbl_verify_rep_log_records = 0;
 
 extern int gbl_verbose_master_req;
-int gbl_verbose_rep_all_req = 0;
+int gbl_verbose_log_req = 0;
 int gbl_last_master_req = 0;
 extern int rep_qstat_has_master_req(void);
 
@@ -334,7 +334,7 @@ int send_all_req(DB_ENV *dbenv, char *master_eid, DB_LSN *lsn, int flags,
 	int now, spanms = 0, rc = 0;
 
 	call_count++;
-	if (gbl_verbose_rep_all_req && ((now = time(NULL)) - lastpr)) {
+	if (gbl_verbose_log_req && ((now = time(NULL)) - lastpr)) {
 		logmsg(LOGMSG_USER,
 		       "%s line %d sending REP_ALL_REQ to %s for "
 		       "[%d:%d], call-count=%llu req-count=%llu\n",
@@ -343,6 +343,27 @@ int send_all_req(DB_ENV *dbenv, char *master_eid, DB_LSN *lsn, int flags,
 		lastpr = now;
 	}
 	rc = __rep_send_message(dbenv, master_eid, REP_ALL_REQ, lsn, NULL,
+				flags, NULL);
+	return rc;
+}
+
+int send_log_req(DB_ENV *dbenv, char *master_eid, DB_LSN *lsn, DBT *max_lsn,
+        int flags, const char *func, int line)
+{
+	static unsigned long long call_count = 0, req_count = 0;
+	static int lastpr = 0;
+	int now, spanms = 0, rc = 0;
+
+	call_count++;
+	if (gbl_verbose_log_req && ((now = time(NULL)) - lastpr)) {
+		logmsg(LOGMSG_USER,
+		       "%s line %d sending REP_LOG_REQ to %s for "
+		       "[%d:%d], call-count=%llu req-count=%llu\n",
+		       func, line, master_eid, lsn->file, lsn->offset,
+		       call_count, req_count);
+		lastpr = now;
+	}
+	rc = __rep_send_message(dbenv, master_eid, REP_LOG_REQ, lsn, max_lsn,
 				flags, NULL);
 	return rc;
 }
@@ -755,9 +776,8 @@ static void *apply_thread(void *arg)
 			LOGCOPY_TOLSN(&tmp_lsn, &first_repdb_lsn);
 			max_lsn_dbt.data = &tmp_lsn;
 			max_lsn_dbt.size = sizeof(tmp_lsn); 
-			if ((ret = __rep_send_message(dbenv, master_eid,
-							REP_LOG_REQ, &my_lsn, &max_lsn_dbt, 0,
-							NULL)) == 0) {
+			if ((ret = send_log_req(dbenv, master_eid, &my_lsn, &max_lsn_dbt, 0,
+                            __func__, __LINE__)) == 0) {
 				last_fill = comdb2_time_epochms();
 
 				if (gbl_verbose_fills) {
@@ -999,6 +1019,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 	REP_VOTE_INFO *vi;
 	REP_GEN_VOTE_INFO *vig;
 	u_int32_t bytes, egen, committed_gen, flags, sendflags, gen, gbytes, rectype, type;
+	u_int32_t maxlookahead;
 	unsigned long long bytes_sent;
 	int check_limit, cmp, done, do_req, rc, starttime, endtime, tottime;
 	int match, old, recovering, ret, t_ret, st, ed, sendtime;
@@ -1362,9 +1383,10 @@ skip:				/*
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 		check_limit = gbytes != 0 || bytes != 0;
 		fromline = __LINE__;
-		if ((ret = __log_cursor(dbenv, &logc)) != 0)
+		dbenv->get_lg_max(dbenv, &maxlookahead);
+		if ((ret = __log_cursor_complete(dbenv, &logc, maxlookahead + 100000,
+						0)) != 0)
 			goto errlock;
-
 		/* A confused replicant can send a request
 		 * for an invalid log record, and cause the master
 		 * to panic.  Don't let that happen. */
@@ -1659,7 +1681,9 @@ more:		   if (type == REP_LOG_MORE) {
 		 */
 		oldfilelsn = lsn = rp->lsn;
 		fromline = __LINE__;
-		if ((ret = __log_cursor(dbenv, &logc)) != 0)
+		dbenv->get_lg_max(dbenv, &maxlookahead);
+		if ((ret = __log_cursor_complete(dbenv, &logc,
+						maxlookahead + 100000, 0)) != 0)
 			goto errlock;
 		F_SET(logc, DB_LOG_NO_PANIC);
 		memset(&data_dbt, 0, sizeof(data_dbt));
@@ -3359,9 +3383,8 @@ gap_check:		max_lsn_dbtp = NULL;
 				 * __FILE__, __LINE__, next_lsn.file, next_lsn.offset);
 				 */
 				if (!gbl_decoupled_logputs) {
-					if (rc = __rep_send_message(dbenv, eid,
-							REP_LOG_REQ, &next_lsn, max_lsn_dbtp, 0,
-							NULL) == 0) {
+					if (rc = send_log_req(dbenv, eid, &next_lsn, max_lsn_dbtp, 0,
+                                __func__, __LINE__) == 0) {
 						if (gbl_verbose_fills) {
 							logmsg(LOGMSG_USER, "%s line %d good REP_LOG_REQ "
 									"for %d:%d\n", __func__, __LINE__, 
@@ -3501,9 +3524,8 @@ gap_check:		max_lsn_dbtp = NULL;
 				 * __FILE__, __LINE__, next_lsn.file, next_lsn.offset);
 				 */
 				if (!gbl_decoupled_logputs) {
-					if (rc = __rep_send_message(dbenv, eid,
-								REP_LOG_REQ, &next_lsn, max_lsn_dbtp, 0,
-								NULL) == 0) { 
+					if (rc = send_log_req(dbenv, eid, &next_lsn, max_lsn_dbtp, 0,
+                                __func__, __LINE__) == 0) {
 						if (gbl_verbose_fills) {
 							logmsg(LOGMSG_USER, "%s line %d good REP_LOG_REQ "
 									"for %d:%d\n", __func__, __LINE__, 

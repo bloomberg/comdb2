@@ -447,10 +447,16 @@ void clear_log_folder(
 // unless in keep_all_logs mode
 {
     // remove files in the txn directory
+    int rc;
+    struct stat statbuf;
     std::string dbtxndir(datadestdir + "/" + dbname + ".txn");
-    make_dirs( dbtxndir );
-    remove_all_old_files( dbtxndir );
+    rc = stat(dbtxndir.c_str(), &statbuf);
+    if (rc == 0) {
+        remove_all_old_files( dbtxndir );
+    } 
     dbtxndir = datadestdir + "/" + "logs";
-    make_dirs( dbtxndir );
-    remove_all_old_files( dbtxndir );
+    rc = stat(dbtxndir.c_str(), &statbuf);
+    if (rc == 0) {
+        remove_all_old_files( dbtxndir );
+    }
 }
