@@ -12,6 +12,7 @@ setattr NEW_MASTER_DUMMY_ADD_DELAY 3600
 berkattr elect_highest_committed_gen 0
 setattr ENABLE_SEQNUM_GENERATIONS 0
 setattr MASTER_LEASE 0
+match_on_ckp off
 maxosqltransfer 2147483647
 override_cachekb 0
 cache 512 mb

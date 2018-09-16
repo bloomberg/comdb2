@@ -202,6 +202,8 @@ extern int gbl_rep_wait_core_ms;
 extern int gbl_random_get_curtran_failures;
 extern int gbl_fail_client_write_lock;
 extern int gbl_instrument_dblist;
+extern int gbl_replicated_truncate_timeout;
+extern int gbl_match_on_ckp;
 
 extern long long sampling_threshold;
 
