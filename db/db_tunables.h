@@ -1455,5 +1455,4 @@ REGISTER_TUNABLE("match_on_ckp",
                  TUNABLE_BOOLEAN, &gbl_match_on_ckp, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
 
-
 #endif /* _DB_TUNABLES_H */
