@@ -374,6 +374,7 @@ lc_free(DB_ENV *dbenv, struct __recovery_processor *rp, LSN_COLLECTION * lc)
 	lc->nalloc = 0;
 }
 
+int gbl_match_on_ckp = 1;
 /*
  * matchable_log_type --
  *
@@ -388,7 +389,7 @@ matchable_log_type(int rectype)
 		ret = (rectype == DB___txn_regop ||
 			rectype == DB___txn_regop_gen ||
 			rectype == DB___txn_regop_rowlocks ||
-            rectype == DB___txn_ckp);
+            (gbl_match_on_ckp && rectype == DB___txn_ckp));
 	} else {
 		switch (rectype) {
 		case DB___txn_recycle:
