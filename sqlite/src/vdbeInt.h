@@ -643,9 +643,9 @@ void sqlite3VdbeMemSetPointer(Mem*, void*, const char*, void(*)(void*));
 void sqlite3VdbeMemInit(Mem*,sqlite3*,u16);
 void sqlite3VdbeMemSetNull(Mem*);
 void sqlite3VdbeMemSetZeroBlob(Mem*,int);
-#ifdef SQLITE_DEBUG
+#if defined(SQLITE_BUILDING_FOR_COMDB2) || defined(SQLITE_DEBUG)
 int sqlite3VdbeMemIsRowSet(const Mem*);
-#endif
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) || defined(SQLITE_DEBUG) */
 int sqlite3VdbeMemSetRowSet(Mem*);
 int sqlite3VdbeMemMakeWriteable(Mem*);
 int sqlite3VdbeMemStringify(Mem*, u8, u8);
