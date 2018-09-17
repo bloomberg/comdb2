@@ -583,9 +583,6 @@ cmd ::= DROP VIEW ifexists(E) fullname(X). {
 //
 cmd ::= select(X).  {
   SelectDest dest = {SRT_Output, 0, 0, 0, 0, 0};
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  X->recording = 0;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Select(pParse, X, &dest);
   sqlite3SelectDelete(pParse->db, X);
 }
