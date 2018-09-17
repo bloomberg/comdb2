@@ -191,8 +191,6 @@ static void myfree(void *ptr)
 static sanc_node_type *add_to_sanctioned_nolock(netinfo_type *netinfo_ptr,
                                                 const char hostname[],
                                                 int portnum);
-static int verify_port(netinfo_type *netinfo_ptr, int alleged_port,
-                       char *hostname);
 static int process_hello_common(netinfo_type *netinfo_ptr,
                                 host_node_type *host_node_ptr,
                                 int look_for_magic);
@@ -919,19 +917,6 @@ static int timeval_cmp(struct timeval *x, struct timeval *y)
     if (x->tv_usec > y->tv_usec)
         return 1;
     if (x->tv_usec < y->tv_usec)
-        return -1;
-    return 0;
-}
-
-static int timespec_cmp(struct timespec *x, struct timespec *y)
-{
-    if (x->tv_sec > y->tv_sec)
-        return 1;
-    if (x->tv_sec < y->tv_sec)
-        return -1;
-    if (x->tv_nsec > y->tv_nsec)
-        return 1;
-    if (x->tv_nsec < y->tv_nsec)
         return -1;
     return 0;
 }
@@ -1980,28 +1965,6 @@ unsigned long long net_get_num_flushes(void) { return num_flushes; }
 
 void net_reset_num_flushes(void) { num_flushes = 0; }
 
-static char prhexnib(unsigned char nib)
-{
-    char map[] = "0123456789ABCDEF";
-
-    return map[nib & 0x0F];
-}
-
-static char *prhexval(char str[], void *val, int nbytes)
-{
-    int nnib = 0;
-    int i;
-
-    for (i = 0; i < nbytes; ++i) {
-        unsigned char byte = ((unsigned char *)val)[i];
-        str[nnib++] = prhexnib(byte >> 4); /* hi nibble */
-        str[nnib++] = prhexnib(byte);      /* lo nibble */
-    }
-    str[nnib++] = '\0';
-
-    return str;
-}
-
 static int stack_flush_min = 50;
 int explicit_flush_trace = 0;
 
@@ -2112,6 +2075,14 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
         logmsg(LOGMSG_ERROR, "too many tails %d passed to net_send_tails, max 32\n",
                numtails);
         return -1;
+    }
+
+    /* testpoint- throw 'queue-full' errors */
+    if ((0 == rc) && (NET_TEST_QUEUE_FULL == netinfo_ptr->net_test) &&
+        (rand() % 100) == 0) {
+        logmsg(LOGMSG_INFO, "%s line %d debug/random QUEUE-FULL\n", __func__,
+               __LINE__);
+        return NET_SEND_FAIL_QUEUE_FULL;
     }
 
     /* do nothing if we have a fake netinfo */
@@ -2240,16 +2211,6 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
                    __LINE__);
         }
         rc = NET_SEND_FAIL_WRITEFAIL;
-    }
-
-    /* testpoint- throw 'queue-full' errors */
-    if ((0 == rc) && (NET_TEST_QUEUE_FULL == netinfo_ptr->net_test) &&
-        (rand() % 1000)) {
-        if (trace) {
-            logmsg(LOGMSG_USER, "%s line %d debug/random QUEUE-FULL\n",
-                   __func__, __LINE__);
-        }
-        rc = NET_SEND_FAIL_QUEUE_FULL;
     }
 
 end:
@@ -3174,6 +3135,8 @@ typedef struct netinfo_node {
 static LISTC_T(netinfo_node_t) nets_list;
 static pthread_mutex_t nets_list_lk = PTHREAD_MUTEX_INITIALIZER;
 
+#ifndef PER_THREAD_MALLOC
+
 static char *to_human_readable(int num, char buf[], int len)
 {
     if (num >> 30) /* GB should be sufficient */
@@ -3190,7 +3153,6 @@ static char *to_human_readable(int num, char buf[], int len)
     return buf;
 }
 
-#ifndef PER_THREAD_MALLOC
 void print_net_memstat(int human_readable)
 {
 
@@ -3569,7 +3531,7 @@ static int read_hostlist(netinfo_type *netinfo_ptr, SBUF2 *sb, char *hosts[],
 {
     int datasz;
     int i;
-    int num;
+    int num = 0;
     char *data;
     int rc;
     int tmp;
@@ -3763,7 +3725,7 @@ static int process_payload_ack(netinfo_type *netinfo_ptr,
 {
     int rc;
     int seqnum, outrc;
-    net_ack_message_payload_type p_net_ack_message_payload;
+    net_ack_message_payload_type p_net_ack_message_payload = {0};
     void *payload = NULL;
     uint8_t *buf, *p_buf, *p_buf_end;
     seq_data *ptr;
@@ -4297,7 +4259,6 @@ static void *writer_thread(void *args)
     host_node_type *host_node_ptr;
     write_data *write_list_ptr, *write_list_back;
     int rc, flags, maxage;
-    int th_start_time = comdb2_time_epoch();
     struct timespec waittime;
 #ifndef HAS_CLOCK_GETTIME
     struct timeval tv;
@@ -4573,59 +4534,12 @@ static int process_hello_common(netinfo_type *netinfo_ptr,
     return 0;
 }
 
-
-/* Use portmux to verify the given port number for a given hostname. */
-static int verify_port(netinfo_type *netinfo_ptr, int alleged_port,
-                       char *hostname)
-{
-    int portmux_port;
-    host_node_type *host_node_ptr;
-
-    Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
-    host_node_ptr = get_host_node_by_name_ll(netinfo_ptr, hostname);
-    if (host_node_ptr) {
-        portmux_port =
-            portmux_geti(host_node_ptr->addr, netinfo_ptr->app,
-                         netinfo_ptr->service, netinfo_ptr->instance);
-
-    } else {
-        portmux_port = portmux_get(hostname, netinfo_ptr->app,
-                                   netinfo_ptr->service, netinfo_ptr->instance);
-    }
-
-    Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-
-    if (portmux_port == -1) {
-        return 1;
-    }
-
-    /*
-       if(portmux_port == -1)
-       {
-       fprintf(stderr, "portmux verification of node %s port %d failed -1\n",
-       hostname, alleged_port);
-       return 0;
-       }
-     */
-
-    else if (portmux_port != alleged_port) {
-        logmsg(LOGMSG_ERROR, "portmux verification of node %s port %d failed: "
-                        "portmux\n",
-                hostname, alleged_port);
-        return 0;
-    } else {
-        return 1;
-    }
-}
-
-
 static void *reader_thread(void *arg)
 {
     netinfo_type *netinfo_ptr;
     host_node_type *host_node_ptr;
     wire_header_type wire_header;
     int rc, set_qstat = 0;
-    int th_start_time = comdb2_time_epoch();
     char fromhost[256], tohost[256];
 
     thread_started("net reader");
@@ -4873,8 +4787,8 @@ void net_clipper(const char *subnet, int is_disable)
             else
                 time(&now);
             if (gbl_verbose_net)
-                logmsg(LOGMSG_USER, "%x %s subnet %s time %d\n", pthread_self(),
-                       (is_disable) ? "Disabling" : "Enabling",
+                logmsg(LOGMSG_USER, "0x%lx %s subnet %s time %ld\n",
+                       pthread_self(), (is_disable) ? "Disabling" : "Enabling",
                        subnet_suffices[i], now);
 
             if (is_disable == 0) {
@@ -4975,7 +4889,7 @@ static int get_dedicated_conhost(host_node_type *host_node_ptr, struct in_addr *
     if (counter == 0xffff) // start with a random subnet
         counter = rand() % num_dedicated_subnets;
 
-    int rc;
+    int rc = 0;
     while (ii < num_dedicated_subnets) {
         counter++;
         ii++;
@@ -5395,7 +5309,6 @@ static int get_subnet_incomming_syn(host_node_type *host_node_ptr)
 {
     struct sockaddr_in lcl_addr_inet;
     size_t lcl_len = sizeof(lcl_addr_inet);
-    struct hostent *he = NULL;
 
     /* get local address of connection */
     int ret =
@@ -5697,7 +5610,7 @@ static void *connect_and_accept(void *arg)
     netinfo_type *netinfo_ptr;
     SBUF2 *sb;
     char hostname[256], addr[64];
-    int portnum, fd, rc;
+    int portnum = 0, fd, rc;
     char *host;
     int netnum;
 
@@ -5788,7 +5701,7 @@ static void *accept_thread(void *arg)
     netinfo_type *netinfo_ptr;
     struct pollfd pol;
     int rc;
-    int listenfd;
+    int listenfd = 0;
     int polltm;
     int tcpbfsz;
     struct linger linger_data;

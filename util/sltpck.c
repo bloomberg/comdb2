@@ -280,7 +280,6 @@ static void *slt_unpck_bck(unsigned int FLAG, void *buf, int bufsz,
 {
     int *flg;
     int alignflg;
-    int jmp = 0;
     struct slt_hdr_t *hdr;
     struct slt_hdr_t alignhdr;
     int misaligned = 0 /* FALSE */;
@@ -382,7 +381,6 @@ static void *slt_unpck_fwd(unsigned int FLAG, void *buf, int bufsz,
                            size_t *sltsz)
 {
     int *flg;
-    int jmp = 0;
     struct slt_hdr_t *hdr;
     int tmpflg = 0x00000001;
     int payload = 0;

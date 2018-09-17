@@ -66,7 +66,7 @@ void hexdump(loglvl lvl, unsigned char *key, int keylen)
         mem = (char *)malloc((2 * keylen) + 2);
     else
         mem = (char *)alloca((2 * keylen) + 2);
-    output = util_tohex(mem, key, keylen);
+    output = util_tohex(mem, (const char *)key, keylen);
     logmsg(lvl, "%s\n", output);
 
     if (keylen > 1000)

@@ -798,7 +798,7 @@ static bool portmux_client_side_validation(int fd, const char *app,
      * send V_NAK, return false
      */
     int state = 0;
-    int next_state;
+    int next_state = 0;
 
     int startms = comdb2_time_epochms();
     if (timeoutms < MIN_VALIDATION_TIMEOUTMS) {
@@ -821,7 +821,7 @@ static bool portmux_client_side_validation(int fd, const char *app,
 
     while (true) {
         uint32_t features;
-        char request, expected_response;
+        char request, expected_response = 0;
 
         switch (state) {
         case 0:

@@ -26,6 +26,7 @@
 #   error "BYTE_ORDER not defined"
 #endif
 
+#ifdef CRLE_VERBOSE
 static void print_hex(uint8_t *b, unsigned l)
 {
     static char map[] = "0123456789abcdef";
@@ -35,7 +36,6 @@ static void print_hex(uint8_t *b, unsigned l)
     fprintf(stderr, "\n");
 }
 
-#ifdef CRLE_VERBOSE
 static int doprint = 0;
 #endif
 

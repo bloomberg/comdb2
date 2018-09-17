@@ -28,6 +28,26 @@
 #define COMDB2MA_MT_SAFE 1
 #define COMDB2MA_MT_UNSAFE 0
 
+#define COMDB2MA_SPACES                                                   \
+XMACRO_COMDB2MA(COMDB2MA_STATIC_INVALID,        "INVALID",          0, 0) \
+XMACRO_COMDB2MA(COMDB2MA_STATIC_UNCATEGORIZED,  "uncategorized",    0, 0) \
+XMACRO_COMDB2MA(COMDB2MA_STATIC_BDB,            "bdb",              0, 0) \
+XMACRO_COMDB2MA(COMDB2MA_STATIC_BERKDB,         "berkdb",           0, 0) \
+XMACRO_COMDB2MA(COMDB2MA_STATIC_NET,            "net",              0, 0) \
+XMACRO_COMDB2MA(COMDB2MA_STATIC_SQLITE,         "sqlite",           0, 0) \
+XMACRO_COMDB2MA(COMDB2MA_STATIC_UTIL,           "util",             0, 0) \
+XMACRO_COMDB2MA(COMDB2MA_STATIC_CSC2,           "csc2",             0, 0) \
+XMACRO_COMDB2MA(COMDB2MA_STATIC_DATETIME,       "datetime",         0, 0) \
+XMACRO_COMDB2MA(COMDB2MA_STATIC_DFP_DECNUMBER,  "dfp_decNumber",    0, 0) \
+XMACRO_COMDB2MA(COMDB2MA_STATIC_PROTOBUF,       "protobuf",         0, 0) \
+XMACRO_COMDB2MA(COMDB2MA_STATIC_SCHEMACHANGE,   "schemachange",     0, 0) \
+XMACRO_COMDB2MA(COMDB2MA_STATIC_LUA,            "lua",              0, 0) \
+XMACRO_COMDB2MA(COMDB2MA_COUNT,                 NULL,               0, 0)
+
+#define XMACRO_COMDB2MA(idx, name, size, cap) idx,
+enum { COMDB2MA_SPACES };
+#undef XMACRO_COMDB2MA
+
 /*
 ** Memory report sort.
 */

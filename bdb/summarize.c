@@ -59,7 +59,6 @@
 #include <dbinc/btree.h>
 #include "dbinc/db_swap.h"
 #include "dbinc/hmac.h"
-#include <plbitlib.h> /* for bset/btst */
 
 #include <dbinc/crypto.h>
 #include <btree/bt_prefix.h>

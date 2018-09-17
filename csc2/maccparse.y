@@ -85,10 +85,8 @@
 extern int current_line;
 extern char *blankchar;
 extern int yyleng;
-extern int charidx;
 extern int lastidx;
 extern int declaration;
-extern int cparse;
 extern int range_or_array;
 int parser_reset=0;
 #ifndef YYDEBUG

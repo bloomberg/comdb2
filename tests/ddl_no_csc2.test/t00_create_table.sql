@@ -343,3 +343,4 @@ SELECT csc2 FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
 DROP TABLE t1;
 DROP TABLE t2;
 
+CREATE TABLE t1(i INT, j DEFAULT 1) $$

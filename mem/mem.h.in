@@ -2,7 +2,6 @@
 #define INCLUDED_COMDB2MA_STATIC_@MODULE@_H
 #include <stddef.h>
 #include <mem.h>
-#include <mem_int.h>
 
 #ifndef USE_SYS_ALLOC
 static inline void *comdb2_malloc_@module@(size_t n)

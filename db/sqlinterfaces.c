@@ -61,7 +61,6 @@
 #include <cdb2api.h>
 
 #include <sys/time.h>
-#include <plbitlib.h>
 #include <strbuf.h>
 #include <math.h>
 
@@ -898,7 +897,7 @@ static int retrieve_snapshot_info(char *sql, char *tzname)
     return 0;
 }
 
-static void snapshot_as_of(struct sqlclntstate *clnt)
+static int snapshot_as_of(struct sqlclntstate *clnt)
 {
     int epoch = 0;
     if (strlen(clnt->sql) > 6)
@@ -906,10 +905,13 @@ static void snapshot_as_of(struct sqlclntstate *clnt)
 
     if (epoch < 0) {
         /* overload this for now */
+        clnt->had_errors = 1;
         sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_WRONG_STATE);
+        return -1;
     } else {
         clnt->snapshot = epoch;
     }
+    return 0;
 }
 
 /**
@@ -944,17 +946,20 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
         } else {
             sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                                     SQLENG_PRE_STRT_STATE);
+
+            upd_snapshot(clnt);
+            if (snapshot_as_of(clnt))
+                return;
+
             clnt->in_client_trans = 1;
 
-            assert(clnt->ddl_tables == NULL && clnt->dml_tables == NULL);
+            assert(clnt->ddl_tables == NULL && clnt->dml_tables == NULL &&
+                   clnt->ddl_contexts == NULL);
             clnt->ddl_tables = hash_init_strcase(0);
             clnt->dml_tables = hash_init_strcase(0);
             clnt->ddl_contexts = hash_init_user(
                 (hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
                 offsetof(struct clnt_ddl_context, name), 0);
-
-            upd_snapshot(clnt);
-            snapshot_as_of(clnt);
         }
     } else if (!strncasecmp(clnt->sql, "commit", 6)) {
         clnt->snapshot = 0;
@@ -1132,6 +1137,9 @@ static inline void destroy_hash(hash_t *h, int (*free_func)(void *, void *))
     hash_clear(h);
     hash_free(h);
 }
+
+extern int gbl_early_verify;
+extern int gbl_osql_send_startgen;
 
 int handle_sql_commitrollback(struct sqlthdstate *thd,
                               struct sqlclntstate *clnt, int sendresponse)
@@ -1341,6 +1349,12 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                 if (gbl_selectv_rangechk) {
                     rc = selectv_range_commit(clnt);
                 }
+
+                if (gbl_early_verify && !clnt->early_retry &&
+                    gbl_osql_send_startgen && clnt->start_gen) {
+                    if (clnt->start_gen != bdb_get_rep_gen(thedb->bdb_env))
+                        clnt->early_retry = EARLY_ERR_GENCHANGE;
+                }
                 if (rc || clnt->early_retry) {
                     int irc = 0;
                     irc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
@@ -1358,6 +1372,10 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                         clnt->osql.xerr.errval = ERR_CONSTR;
                         errstat_cat_str(&(clnt->osql.xerr),
                                         "constraints error, no genid");
+                    } else if (clnt->early_retry == EARLY_ERR_GENCHANGE) {
+                        clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
+                        errstat_cat_str(&(clnt->osql.xerr),
+                                        "verify error on master swing");
                     }
                     if (clnt->early_retry) {
                         clnt->early_retry = 0;
@@ -2847,6 +2865,9 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
                                       struct sqlclntstate *clnt, int *outrc)
 {
     int rc;
+
+    if (!clnt->in_client_trans)
+        clnt->start_gen = bdb_get_rep_gen(thedb->bdb_env);
 
     sql_update_usertran_state(clnt);
 

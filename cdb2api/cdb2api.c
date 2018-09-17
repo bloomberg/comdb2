@@ -113,7 +113,9 @@ static int cdb2_cache_ssl_sess = CDB2_CACHE_SSL_SESS_DEFAULT;
 static pthread_mutex_t cdb2_ssl_sess_lock = PTHREAD_MUTEX_INITIALIZER;
 
 typedef struct cdb2_ssl_sess_list cdb2_ssl_sess_list;
+#if 0
 static void cdb2_free_ssl_sessions(cdb2_ssl_sess_list *sessions);
+#endif
 static cdb2_ssl_sess_list *cdb2_get_ssl_sessions(cdb2_hndl_tp *hndl);
 static int cdb2_set_ssl_sessions(cdb2_hndl_tp *hndl,
                                  cdb2_ssl_sess_list *sessions);
@@ -1241,15 +1243,15 @@ static int read_available_comdb2db_configs(
         fallback_on_bb_bin = 0;
     } else {
         if (*CDB2DBCONFIG_NOBBENV != '\0') {
-          fp = fopen(CDB2DBCONFIG_NOBBENV, "r");
-          if (fp != NULL) {
-              read_comdb2db_cfg(NULL, fp, comdb2db_name, NULL, comdb2db_hosts,
-                                num_hosts, comdb2db_num, dbname, db_hosts,
-                                num_db_hosts, dbnum, dbname_found, comdb2db_found,
-                                send_stack);
-              fclose(fp);
-              fallback_on_bb_bin = 0;
-          }
+            fp = fopen(CDB2DBCONFIG_NOBBENV, "r");
+            if (fp != NULL) {
+                read_comdb2db_cfg(NULL, fp, comdb2db_name, NULL, comdb2db_hosts,
+                                  num_hosts, comdb2db_num, dbname, db_hosts,
+                                  num_db_hosts, dbnum, dbname_found,
+                                  comdb2db_found, send_stack);
+                fclose(fp);
+                fallback_on_bb_bin = 0;
+            }
         }
     }
 
@@ -1935,7 +1937,8 @@ static int newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
 }
 
 /* returns port number, or -1 for error*/
-static int cdb2portmux_get(cdb2_hndl_tp* hndl, const char *type, const char *remote_host, const char *app,
+static int cdb2portmux_get(cdb2_hndl_tp *hndl, const char *type,
+                           const char *remote_host, const char *app,
                            const char *service, const char *instance, int debug)
 {
     char name[128]; /* app/service/dbname */
@@ -1960,15 +1963,19 @@ static int cdb2portmux_get(cdb2_hndl_tp* hndl, const char *type, const char *rem
     if (fd < 0) {
         if (debug)
             fprintf(stderr, "cdb2_tcpconnecth_to returns fd=%d'\n", fd);
-        snprintf(hndl->errstr, sizeof(hndl->errstr),
-                "%s:%d Can't connect to portmux port dbname: %s tier: %s host: %s port %d. "
-                "Err(%d): %s. Portmux down on remote machine or firewall issue.",
-                __func__,__LINE__, instance, type, remote_host, CDB2_PORTMUXPORT, errno, strerror(errno));            
+        snprintf(
+            hndl->errstr, sizeof(hndl->errstr),
+            "%s:%d Can't connect to portmux port dbname: %s tier: %s host: %s "
+            "port %d. "
+            "Err(%d): %s. Portmux down on remote machine or firewall issue.",
+            __func__, __LINE__, instance, type, remote_host, CDB2_PORTMUXPORT,
+            errno, strerror(errno));
         return -1;
     }
     ss = sbuf2open(fd, 0);
     if (ss == 0) {
-        snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d out of memory\n", __func__, __LINE__);
+        snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d out of memory\n",
+                 __func__, __LINE__);
         close(fd);
         if (debug)
             fprintf(stderr, "sbuf2open returned 0\n");
@@ -1983,12 +1990,14 @@ static int cdb2portmux_get(cdb2_hndl_tp* hndl, const char *type, const char *rem
     if (debug)
         fprintf(stderr, "get '%s' returns res='%s'\n", name, res);
     if (res[0] == '\0') {
-        snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d Invalid response from portmux.\n", __func__, __LINE__);        
+        snprintf(hndl->errstr, sizeof(hndl->errstr),
+                 "%s:%d Invalid response from portmux.\n", __func__, __LINE__);
         return -1;
     }
     port = atoi(res);
     if (port <= 0) {
-        snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d Invalid response from portmux.\n", __func__, __LINE__);
+        snprintf(hndl->errstr, sizeof(hndl->errstr),
+                 "%s:%d Invalid response from portmux.\n", __func__, __LINE__);
         port = -1;
     }
     return port;
@@ -2080,8 +2089,8 @@ static inline int cdb2_try_resolve_ports(cdb2_hndl_tp *hndl)
     for (int i = 0; i < hndl->num_hosts; i++) {
         if (hndl->ports[i] <= 0) {
             hndl->ports[i] =
-                cdb2portmux_get(hndl, hndl->type, hndl->hosts[i], "comdb2", "replication",
-                                hndl->dbname, hndl->debug_trace);
+                cdb2portmux_get(hndl, hndl->type, hndl->hosts[i], "comdb2",
+                                "replication", hndl->dbname, hndl->debug_trace);
             if (hndl->ports[i] > 0) {
                 return 1;
             }
@@ -2123,9 +2132,9 @@ retry_connect:
         for (int i = 0; i < hndl->num_hosts; i++) {
             if (hndl->ports[i] <= 0) {
                 if (!cdb2_allow_pmux_route) {
-                    hndl->ports[i] =
-                        cdb2portmux_get(hndl, hndl->type, hndl->hosts[i], "comdb2", "replication",
-                                        hndl->dbname, hndl->debug_trace);
+                    hndl->ports[i] = cdb2portmux_get(
+                        hndl, hndl->type, hndl->hosts[i], "comdb2",
+                        "replication", hndl->dbname, hndl->debug_trace);
                 } else {
                     hndl->ports[i] = CDB2_PORTMUXPORT;
                 }
@@ -4191,7 +4200,7 @@ read_record:
     }
 
     if ((hndl->firstresponse->error_code == CDB2__ERROR_CODE__MASTER_TIMEOUT ||
-         hndl->firstresponse->error_code == CDB2ERR_CHANGENODE) &&
+         hndl->firstresponse->error_code == CDB2__ERROR_CODE__CHANGENODE) &&
         (hndl->snapshot_file || (!hndl->in_trans && !is_commit) ||
          commit_file)) {
         newsql_disconnect(hndl, hndl->sb, __LINE__);
@@ -4447,8 +4456,6 @@ const char *cdb2_column_name(cdb2_hndl_tp *hndl, int col)
 int cdb2_snapshot_file(cdb2_hndl_tp *hndl, int *snapshot_file,
                        int *snapshot_offset)
 {
-    char *ret;
-
     if (hndl == NULL) {
         (*snapshot_file) = -1;
         (*snapshot_offset) = -1;
@@ -4497,8 +4504,6 @@ void cdb2_cluster_info(cdb2_hndl_tp *hndl, char **cluster, int *ports, int max,
 
 const char *cdb2_cnonce(cdb2_hndl_tp *hndl)
 {
-    char *ret;
-
     if (hndl == NULL)
         return "unallocated cdb2 handle";
 
@@ -4730,7 +4735,9 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
             free(bindvars[i]);
         }
         free(bindvars);
-        snprintf(hndl->errstr, sizeof(hndl->errstr), "%s: Can't connect to portmux host %s port %d", __func__, host, port);
+        snprintf(hndl->errstr, sizeof(hndl->errstr),
+                 "%s: Can't connect to portmux host %s port %d", __func__, host,
+                 port);
         return -1;
     }
     SBUF2 *ss = sbuf2open(fd, 0);
@@ -4741,8 +4748,9 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
             free(bindvars[i]);
         }
         free(bindvars);
-        snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d out of memory\n", __func__, __LINE__);
-        
+        snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d out of memory\n",
+                 __func__, __LINE__);
+
         return -1;
     }
     sbuf2settimeout(ss, 5000, 5000);
@@ -4778,7 +4786,9 @@ free_vars:
     rc = cdb2_read_record(&tmp, &p, &len, NULL);
     if (rc) {
         sbuf2close(ss);
-        snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d  Invalid sql response from db %s \n", __func__, __LINE__, comdb2db_name);
+        snprintf(hndl->errstr, sizeof(hndl->errstr),
+                 "%s:%d  Invalid sql response from db %s \n", __func__,
+                 __LINE__, comdb2db_name);
         return -1;
     }
     if ((p != NULL) && (len != 0)) {
@@ -4789,7 +4799,9 @@ free_vars:
         (sqlresponse->response_type != RESPONSE_TYPE__COLUMN_NAMES &&
          sqlresponse->n_value != 1 && sqlresponse->value[0]->has_type != 1 &&
          sqlresponse->value[0]->type != 3)) {
-        snprintf(hndl->errstr, sizeof(hndl->errstr), "%s: Got bad response for %s query. Reply len: %d\n", __func__, comdb2db_name, len);
+        snprintf(hndl->errstr, sizeof(hndl->errstr),
+                 "%s: Got bad response for %s query. Reply len: %d\n", __func__,
+                 comdb2db_name, len);
         sbuf2close(ss);
         return -1;
     }
@@ -4799,7 +4811,9 @@ free_vars:
         cdb2__sqlresponse__free_unpacked(sqlresponse, NULL);
         rc = cdb2_read_record(&tmp, &p, &len, NULL);
         if (rc) {
-            snprintf(hndl->errstr,  sizeof(hndl->errstr), "%s: Can't read dbinfo response from %s \n", __func__, comdb2db_name);
+            snprintf(hndl->errstr, sizeof(hndl->errstr),
+                     "%s: Can't read dbinfo response from %s \n", __func__,
+                     comdb2db_name);
             sbuf2close(ss);
             return -1;
         }
@@ -4818,7 +4832,8 @@ free_vars:
             }
             if (num_same_room && sqlresponse->value[2]->value.data &&
                 strcasecmp(cdb2_machine_room,
-                           sqlresponse->value[2]->value.data) == 0) {
+                           (const char *)sqlresponse->value[2]->value.data) ==
+                    0) {
                 (*num_same_room)++;
             }
             (*num_hosts)++;
@@ -4872,7 +4887,9 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
 
         if (!cdb2_allow_pmux_route) {
             if (!port) {
-                port = cdb2portmux_get(hndl, type, host, "comdb2", "replication" ,dbname, hndl->debug_trace);
+                port =
+                    cdb2portmux_get(hndl, type, host, "comdb2", "replication",
+                                    dbname, hndl->debug_trace);
                 if (hndl->debug_trace)
                     fprintf(stderr, "cdb2portmux_get port=%d'\n", port);
             }
@@ -4886,12 +4903,15 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
                 fprintf(stderr, "cdb2portmux_route fd=%d'\n", fd);
         }
         if (fd < 0) {
-            snprintf(hndl->errstr, sizeof(hndl->errstr), "%s: Can't connect to portmux host %s port %d", __func__, host, port);
+            snprintf(hndl->errstr, sizeof(hndl->errstr),
+                     "%s: Can't connect to portmux host %s port %d", __func__,
+                     host, port);
             return -1;
         }
         sb = sbuf2open(fd, 0);
         if (sb == 0) {
-            snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d out of memory\n", __func__, __LINE__);
+            snprintf(hndl->errstr, sizeof(hndl->errstr),
+                     "%s:%d out of memory\n", __func__, __LINE__);
             close(fd);
             return -1;
         }
@@ -4902,7 +4922,8 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
     } else {
         sb = sbuf2open(fd, 0);
         if (sb == 0) {
-            snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d out of memory\n", __func__, __LINE__);
+            snprintf(hndl->errstr, sizeof(hndl->errstr),
+                     "%s:%d out of memory\n", __func__, __LINE__);
             close(fd);
             return -1;
         }
@@ -4951,7 +4972,9 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
 
     rc = sbuf2fread(p, 1, hdr.length, sb);
     if (rc != hdr.length) {
-        snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d  Invalid dbinfo response from db %s \n", __func__, __LINE__, dbname);
+        snprintf(hndl->errstr, sizeof(hndl->errstr),
+                 "%s:%d  Invalid dbinfo response from db %s \n", __func__,
+                 __LINE__, dbname);
         sbuf2close(sb);
         free(p);
         return -1;
@@ -5041,8 +5064,9 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
     if (strcasecmp(hndl->cluster, "local") == 0) {
         hndl->num_hosts = 1;
         strcpy(hndl->hosts[0], "localhost");
-        hndl->ports[0] = cdb2portmux_get(hndl, "local", "localhost", "comdb2", "replication",
-                                         hndl->dbname, hndl->debug_trace);
+        hndl->ports[0] =
+            cdb2portmux_get(hndl, "local", "localhost", "comdb2", "replication",
+                            hndl->dbname, hndl->debug_trace);
         hndl->flags |= CDB2_DIRECT_CPU;
     } else {
         rc = get_comdb2db_hosts(
@@ -5226,7 +5250,7 @@ static int configure_from_literal(cdb2_hndl_tp *hndl, const char *type)
 {
     char *type_copy = strdup(cdb2_skipws(type));
     char *eomachine;
-    char *eooptions;
+    char *eooptions = NULL;
     int rc = 0;
     int port;
     char *dc;
@@ -5507,6 +5531,7 @@ static int cdb2_set_ssl_sessions(cdb2_hndl_tp *hndl, cdb2_ssl_sess_list *arg)
     return 0;
 }
 
+#if 0
 static void cdb2_free_ssl_sessions(cdb2_ssl_sess_list *p)
 {
     int i, rc;
@@ -5540,6 +5565,7 @@ static void cdb2_free_ssl_sessions(cdb2_ssl_sess_list *p)
     free(p->list);
     free(p);
 }
+#endif
 #else /* WITH_SSL */
 int cdb2_init_ssl(int init_libssl, int init_libcrypto)
 {
@@ -5623,8 +5649,9 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
             hndl->ports[0] = atoi(p + 1);
         } else {
             if (!cdb2_allow_pmux_route) {
-                hndl->ports[0] = cdb2portmux_get(hndl, type, type, "comdb2", "replication",
-                                                 dbname, hndl->debug_trace);
+                hndl->ports[0] =
+                    cdb2portmux_get(hndl, type, type, "comdb2", "replication",
+                                    dbname, hndl->debug_trace);
             } else {
                 hndl->ports[0] = CDB2_PORTMUXPORT;
             }

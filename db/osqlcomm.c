@@ -628,6 +628,116 @@ static uint8_t *osqlcomm_del_rpl_type_put(osql_del_rpl_t *p_del_rpl,
     return p_buf;
 }
 
+/* startgen */
+typedef struct osql_startgen {
+    unsigned int start_gen;
+    int padding;
+} osql_startgen_t;
+
+enum { OSQLCOMM_STARTGEN_TYPE_LEN = 8 };
+
+BB_COMPILE_TIME_ASSERT(osqlcomm_startgen_type_len,
+                       sizeof(osql_startgen_t) == OSQLCOMM_STARTGEN_TYPE_LEN);
+
+static uint8_t *
+osqlcomm_startgen_type_put(const osql_startgen_t *p_osql_startgen,
+                           uint8_t *p_buf, const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || OSQLCOMM_STARTGEN_TYPE_LEN > (p_buf_end - p_buf))
+        return NULL;
+    p_buf = buf_put(&(p_osql_startgen->start_gen),
+                    sizeof(p_osql_startgen->start_gen), p_buf, p_buf_end);
+    p_buf = buf_put(&(p_osql_startgen->padding),
+                    sizeof(p_osql_startgen->padding), p_buf, p_buf_end);
+    return p_buf;
+}
+
+const uint8_t *osqlcomm_startgen_type_get(osql_startgen_t *p_osql_startgen,
+                                          const uint8_t *p_buf,
+                                          const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || OSQLCOMM_STARTGEN_TYPE_LEN > (p_buf_end - p_buf))
+        return NULL;
+    p_buf = buf_get(&(p_osql_startgen->start_gen),
+                    sizeof(p_osql_startgen->start_gen), p_buf, p_buf_end);
+    return p_buf;
+}
+
+typedef struct osql_startgen_rpl {
+    osql_rpl_t hd;
+    osql_startgen_t dt;
+} osql_startgen_rpl_t;
+
+enum {
+    OSQLCOMM_STARTGEN_RPL_LEN =
+        OSQLCOMM_RPL_TYPE_LEN + OSQLCOMM_STARTGEN_TYPE_LEN
+};
+
+BB_COMPILE_TIME_ASSERT(osqlcomm_startgen_rpl_len,
+                       sizeof(osql_startgen_rpl_t) ==
+                           OSQLCOMM_STARTGEN_RPL_LEN);
+
+static uint8_t *
+osqlcomm_startgen_rpl_type_put(const osql_startgen_rpl_t *p_startgen_rpl,
+                               uint8_t *p_buf, uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || OSQLCOMM_STARTGEN_RPL_LEN > (p_buf_end - p_buf))
+        return NULL;
+    p_buf = osqlcomm_rpl_type_put(&(p_startgen_rpl->hd), p_buf, p_buf_end);
+    p_buf = osqlcomm_startgen_type_put(&(p_startgen_rpl->dt), p_buf, p_buf_end);
+    return p_buf;
+}
+
+static const uint8_t *
+osqlcomm_startgen_rpl_type_get(osql_startgen_rpl_t *p_startgen_rpl,
+                               const uint8_t *p_buf, const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || OSQLCOMM_STARTGEN_RPL_LEN > (p_buf_end - p_buf))
+        return NULL;
+    p_buf = osqlcomm_rpl_type_get(&(p_startgen_rpl->hd), p_buf, p_buf_end);
+    p_buf = osqlcomm_startgen_type_get(&(p_startgen_rpl->dt), p_buf, p_buf_end);
+    return p_buf;
+}
+
+typedef struct osql_startgen_uuid_rpl {
+    osql_uuid_rpl_t hd;
+    osql_startgen_t dt;
+} osql_startgen_uuid_rpl_t;
+
+enum {
+    OSQLCOMM_STARTGEN_UUID_RPL_LEN =
+        OSQLCOMM_UUID_RPL_TYPE_LEN + OSQLCOMM_STARTGEN_TYPE_LEN
+};
+
+BB_COMPILE_TIME_ASSERT(osqlcomm_startgen_uuid_type_len,
+                       sizeof(osql_startgen_uuid_rpl_t) ==
+                           OSQLCOMM_STARTGEN_UUID_RPL_LEN);
+
+static uint8_t *osqlcomm_startgen_uuid_rpl_type_put(
+    const osql_startgen_uuid_rpl_t *p_startgen_rpl, uint8_t *p_buf,
+    uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf ||
+        OSQLCOMM_STARTGEN_UUID_RPL_LEN > (p_buf_end - p_buf))
+        return NULL;
+    p_buf = osqlcomm_uuid_rpl_type_put(&(p_startgen_rpl->hd), p_buf, p_buf_end);
+    p_buf = osqlcomm_startgen_type_put(&(p_startgen_rpl->dt), p_buf, p_buf_end);
+    return p_buf;
+}
+
+static const uint8_t *
+osqlcomm_startgen_uuid_rpl_type_get(osql_startgen_uuid_rpl_t *p_startgen_rpl,
+                                    const uint8_t *p_buf,
+                                    const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf ||
+        OSQLCOMM_STARTGEN_UUID_RPL_LEN > (p_buf_end - p_buf))
+        return NULL;
+    p_buf = osqlcomm_uuid_rpl_type_get(&(p_startgen_rpl->hd), p_buf, p_buf_end);
+    p_buf = osqlcomm_startgen_type_get(&(p_startgen_rpl->dt), p_buf, p_buf_end);
+    return p_buf;
+}
+
 /********* OSQL BPLOG FUNC   *****************/
 
 typedef struct osql_bpfunc {
@@ -3318,6 +3428,7 @@ int osql_comm_is_done(char *rpl, int rpllen, int hasuuid, struct errstat **xerr,
     case OSQL_INSIDX:
     case OSQL_DELIDX:
     case OSQL_QBLOB:
+    case OSQL_STARTGEN:
         break;
     case OSQL_DONE_SNAP:
         /* The iq is passed in from bplog_saveop */
@@ -3461,6 +3572,68 @@ int is_tablename_queue(const char * tablename, int len)
             tablename[1] == '_' && tablename[2] == 'q');
 }
 
+int osql_send_startgen(char *tohost, unsigned long long rqid, uuid_t uuid,
+                       uint32_t start_gen, int type, SBUF2 *logsb)
+{
+    netinfo_type *netinfo_ptr = (netinfo_type *)comm->handle_sibling;
+    uint8_t buf[OSQLCOMM_STARTGEN_UUID_RPL_LEN > OSQLCOMM_STARTGEN_RPL_LEN
+                    ? OSQLCOMM_STARTGEN_UUID_RPL_LEN
+                    : OSQLCOMM_STARTGEN_RPL_LEN];
+    int msglen;
+    int rc;
+
+    if (check_master(tohost))
+        return OSQL_SEND_ERROR_WRONGMASTER;
+
+    if (rqid == OSQL_RQID_USE_UUID) {
+        osql_startgen_uuid_rpl_t startgen_uuid_rpl = {0};
+        uint8_t *p_buf = buf;
+        uint8_t *p_buf_end = (p_buf + OSQLCOMM_STARTGEN_UUID_RPL_LEN);
+        msglen = OSQLCOMM_STARTGEN_UUID_RPL_LEN;
+        startgen_uuid_rpl.hd.type = OSQL_STARTGEN;
+        comdb2uuidcpy(startgen_uuid_rpl.hd.uuid, uuid);
+        startgen_uuid_rpl.dt.start_gen = start_gen;
+
+        if (!(p_buf = osqlcomm_startgen_uuid_rpl_type_put(&startgen_uuid_rpl,
+                                                          p_buf, p_buf_end))) {
+            logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
+                   "osqlcomm_startgen_uuid_rpl_type_put");
+            return -1;
+        }
+        type = osql_net_type_to_net_uuid_type(NET_OSQL_SOCK_RPL);
+
+    } else {
+        osql_startgen_rpl_t startgen_rpl = {0};
+        uint8_t *p_buf = buf;
+        uint8_t *p_buf_end = (p_buf + OSQLCOMM_STARTGEN_RPL_LEN);
+        msglen = OSQLCOMM_STARTGEN_RPL_LEN;
+        startgen_rpl.hd.type = OSQL_STARTGEN;
+        startgen_rpl.hd.sid = rqid;
+        startgen_rpl.dt.start_gen = start_gen;
+
+        if (!(p_buf = osqlcomm_startgen_rpl_type_put(&startgen_rpl, p_buf,
+                                                     p_buf_end))) {
+            logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
+                   "osqlcomm_startgen_rpl_type_put");
+            return -1;
+        }
+    }
+
+    if (logsb) {
+        uuidstr_t us;
+        sbuf2printf(logsb, "[%llu %s] send OSQL_STARTGEN %u\n", rqid,
+                    comdb2uuidstr(uuid, us), start_gen);
+        sbuf2flush(logsb);
+    }
+
+    rc = offload_net_send(tohost, type, &buf, msglen, 0);
+
+    if (rc)
+        logmsg(LOGMSG_ERROR, "%s offload_net_send returns rc=%d\n", __func__,
+               rc);
+
+    return rc;
+}
 
 /**
  * Send USEDB op
@@ -5829,14 +6002,18 @@ static int offload_net_send(const char *host, int usertype, void *data,
             NET_SEND_FAIL_NOSOCK == rc) {
 
             if (total_wait > gbl_osql_bkoff_netsend_lmt) {
-                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n",
-                       __FILE__, __LINE__, host);
-                return -1;
+                logmsg(
+                    LOGMSG_ERROR,
+                    "%s:%d giving up sending to %s, rc = %d, total wait = %d\n",
+                    __FILE__, __LINE__, host, rc, total_wait);
+                return rc;
             }
 
             if (osql_comm_check_bdb_lock(__func__, __LINE__) != 0) {
-                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n",
-                       __FILE__, __LINE__, host);
+                logmsg(LOGMSG_ERROR,
+                       "%s:%d failed to check bdb lock, giving up sending to "
+                       "%s, rc = %d\n",
+                       __FILE__, __LINE__, host, rc);
                 return rc;
             }
 
@@ -5918,14 +6095,19 @@ static int offload_net_send_tails(const char *host, int usertype, void *data,
             NET_SEND_FAIL_NOSOCK == rc) {
 
             if (total_wait > gbl_osql_bkoff_netsend_lmt) {
-                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n",
-                       __FILE__, __LINE__, host ? host : gbl_mynode);
-                return -1;
+                logmsg(
+                    LOGMSG_ERROR,
+                    "%s:%d giving up sending to %s, rc = %d, total wait = %d\n",
+                    __FILE__, __LINE__, host ? host : gbl_mynode, rc,
+                    total_wait);
+                return rc;
             }
 
-            if ((rc = osql_comm_check_bdb_lock(__func__, __LINE__))) {
-                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n",
-                       __FILE__, __LINE__, host ? host : gbl_mynode);
+            if (osql_comm_check_bdb_lock(__func__, __LINE__) != 0) {
+                logmsg(LOGMSG_ERROR,
+                       "%s:%d failed to check bdb lock, giving up sending to "
+                       "%s, rc = %d\n",
+                       __FILE__, __LINE__, host ? host : gbl_mynode, rc);
                 return rc;
             }
 
@@ -6575,6 +6757,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     const unsigned char tag_name_ondisk[] = ".ONDISK";
     const size_t tag_name_ondisk_len = 8 /*includes NUL*/;
     int type;
+    unsigned long long id;
     uuidstr_t us;
 
     if (rqid == OSQL_RQID_USE_UUID) {
@@ -6583,6 +6766,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         p_buf_end = (uint8_t *)p_buf + sizeof(rpl);
         p_buf = osqlcomm_uuid_rpl_type_get(&rpl, p_buf, p_buf_end);
         type = rpl.type;
+        id = OSQL_RQID_USE_UUID;
         comdb2uuidstr(rpl.uuid, us);
         if (comdb2uuidcmp(rpl.uuid, uuid)) {
             uuidstr_t passedus;
@@ -6597,6 +6781,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         p_buf_end = (uint8_t *)p_buf + sizeof(rpl);
         p_buf = osqlcomm_rpl_type_get(&rpl, p_buf, p_buf_end);
         type = rpl.type;
+        id = rpl.sid;
+        comdb2uuid_clear(uuid);
     }
 
 #if 0
@@ -6932,6 +7118,30 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         (*receivedrows)++;
     } break;
+    case OSQL_STARTGEN: {
+        osql_startgen_t dt;
+        unsigned char *pData = NULL;
+        uint32_t cur_gen;
+        const uint8_t *p_buf_end;
+        p_buf_end = p_buf + sizeof(osql_startgen_t);
+        pData = (uint8_t *)osqlcomm_startgen_type_get(&dt, p_buf, p_buf_end);
+        cur_gen = bdb_get_rep_gen(thedb->bdb_env);
+        if (cur_gen != dt.start_gen) {
+            err->errcode = OP_FAILED_VERIFY;
+            if (logsb) {
+                sbuf2printf(logsb,
+                            "Startgen check failed, start_gen %u, "
+                            "cur_gen %u, return verify error\n",
+                            dt.start_gen, cur_gen);
+            }
+            logmsg(LOGMSG_DEBUG,
+                   "[%llx %s] Startgen check failed, start_gen "
+                   "%u, cur_gen %u\n",
+                   id, us, dt.start_gen, cur_gen);
+            return ERR_VERIFY;
+        }
+    } break;
+
     case OSQL_UPDREC:
     case OSQL_UPDATE: {
         osql_upd_t dt;
@@ -7958,6 +8168,15 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         sbuf2printf(logsb, " %llx (%d:%lld)\n", lclgenid, rrn, lclgenid);
     } break;
 
+    case OSQL_STARTGEN: {
+        osql_startgen_t dt;
+        unsigned char *pData = NULL;
+        uint8_t *p_buf_end;
+        p_buf_end = p_buf + sizeof(osql_startgen_t);
+        pData = (uint8_t *)osqlcomm_startgen_type_get(&dt, p_buf, p_buf_end);
+        sbuf2printf(logsb, "[%llx %s] %s start_gen = %u\n", id, us,
+                    "OSQL_STARTGEN", dt.start_gen);
+    } break;
     case OSQL_UPDREC:
     case OSQL_UPDATE: {
         osql_upd_t dt;

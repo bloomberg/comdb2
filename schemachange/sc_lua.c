@@ -197,7 +197,7 @@ static int show_versioned_sp_src(struct schema_change_type *sc)
     if (bdb_get_versioned_sp(name, version, &src) != 0) {
         return -1;
     }
-    char *sav, *line;
+    char *sav = NULL, *line;
     line = strtok_r(src, "\n", &sav);
     while (line) {
         sbuf2printf(sb, ">%s\n", line);
@@ -313,7 +313,7 @@ static int show_sp_src(struct schema_change_type *sc)
                               &bdberr)) {
         return -1;
     }
-    char *sav, *line;
+    char *sav = NULL, *line;
     line = strtok_r(src, "\n", &sav);
     while (line) {
         sbuf2printf(sb, ">%s\n", line);

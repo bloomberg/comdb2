@@ -2403,7 +2403,6 @@ int bdb_gbl_pglogs_init(bdb_state_type *bdb_state)
 {
     int rc, i, bdberr;
     pthread_t thread_id;
-    pthread_attr_t thd_attr;
 
     if (gbl_new_snapisol_asof) {
         rc = bdb_checkpoint_list_init();
@@ -2477,12 +2476,12 @@ int bdb_gbl_pglogs_init(bdb_state_type *bdb_state)
         bdb_gbl_ltran_pglogs_hash_processed = 1;
     }
     else {
+        pthread_attr_t thd_attr;
         pthread_attr_init(&thd_attr);
-        pthread_attr_setstacksize(&thd_attr, 4 * 1024); /* 4K */
         pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
-
-        int bdb_list_all_fileids_for_newsi(bdb_state_type * bdb_state,
-                                           hash_t * fileid_tbl);
+#       if defined(PTHREAD_STACK_MIN)
+        pthread_attr_setstacksize(&thd_attr, PTHREAD_STACK_MIN + 64 * 1024);
+#       endif
         hash_t *fileid_tbl = NULL;
         fileid_tbl = hash_init_o(0, DB_FILE_ID_LEN);
         bdb_list_all_fileids_for_newsi(bdb_state, fileid_tbl);
@@ -8913,11 +8912,9 @@ int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt)
         db = state->dbp_data[0];
         stripes = state->attr->dtastripe;
         parallel_count = gbl_parallel_count;
-        // max page 64K
-        // allocate twice that + 4K, in case page compressed "really" well
         pthread_attr_init(&attr);
 #ifdef PTHREAD_STACK_MIN
-        pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN + 132 * 1024);
+        pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN + 512 * 1024);
 #endif
     } else { // index
         db = &state->dbp_ix[ixnum];

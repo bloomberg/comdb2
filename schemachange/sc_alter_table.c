@@ -785,7 +785,9 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     bdb_handle_reset_tran(new_bdb_handle, transac);
 
-    if (!s->same_schema) {
+    if (!s->same_schema ||
+        (!s->fastinit &&
+         BDB_ATTR_GET(thedb->bdb_attr, SC_DONE_SAME_TRAN) == 0)) {
         /* reliable per table versioning */
         rc = table_version_upsert(db, transac, &bdberr);
         if (rc) {

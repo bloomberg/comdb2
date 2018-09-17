@@ -354,7 +354,8 @@ enum OSQL_RPL_TYPE {
     OSQL_DELIDX = 24, /* new osql type to support indexes on expressions */
     OSQL_INSIDX = 25, /* new osql type to support indexes on expressions */
     OSQL_DBQ_CONSUME_UUID = 26,
-    MAX_OSQL_TYPES = 27
+    OSQL_STARTGEN = 27,
+    MAX_OSQL_TYPES = 28
 };
 
 enum DEBUGREQ { DEBUG_METADB_PUT = 1 };
@@ -660,7 +661,6 @@ struct dbtable {
     int ix_expr;     /* set to 1 if we have indexes on expressions */
     int ix_blob;     /* set to 1 if blobs are involved in indexes */
 
-    int is_readonly;
     int numblobs;
 
     /* we do not necessarily have as many sql indexes as there are comdb2

@@ -7,6 +7,7 @@ CREATE TABLE t2(i INT PRIMARY KEY, FOREIGN KEY (i) REFERENCES t1(i)) $$
 @ls tables
 @list tables
 @ls foo
+@ls systables
 
 @desc
 @describe
