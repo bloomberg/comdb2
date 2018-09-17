@@ -725,17 +725,19 @@ values(A) ::= values(A) COMMA LP nexprlist(Y) RP. {
 oneselect(A) ::= SELECTV distinct(D) selcollist(W) from(X) where_opt(Y)
                  groupby_opt(P) having_opt(Q) orderby_opt(Z) limit_opt(L). {
   A = sqlite3SelectNew(pParse,W,X,Y,P,Q,Z,D,L);
-  A->op = TK_SELECTV;
-  A->recording = 1;
+  if( A ){
+    A->op = TK_SELECTV;
+    A->recording = 1;
+  }
 }
 %ifndef SQLITE_OMIT_WINDOWFUNC
 oneselect(A) ::= SELECTV distinct(D) selcollist(W) from(X) where_opt(Y)
                  groupby_opt(P) having_opt(Q) window_clause(R)
                  orderby_opt(Z) limit_opt(L). {
   A = sqlite3SelectNew(pParse,W,X,Y,P,Q,Z,D,L);
-  A->op = TK_SELECTV;
-  A->recording = 1;
   if( A ){
+    A->op = TK_SELECTV;
+    A->recording = 1;
     A->pWinDefn = R;
   }else{
     sqlite3WindowListDelete(pParse->db, R);
