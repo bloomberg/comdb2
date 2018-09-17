@@ -331,7 +331,7 @@ enum OSQL_RPL_TYPE {
     OSQL_DONE = 1,
     OSQL_USEDB = 2,
     OSQL_DELREC = 3,
-    OSQL_INSREC = 4,
+    OSQL_INSREC = 4, /* R7 uses OSQL_INSERT */
     OSQL_CLRTBL = 5,
     OSQL_QBLOB = 6,
     OSQL_UPDREC = 7,

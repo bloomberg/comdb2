@@ -1846,34 +1846,56 @@ osqlcomm_index_uuid_rpl_type_get(osql_index_uuid_rpl_t *p_osql_index_uuid_rpl,
 
 typedef struct osql_ins {
     unsigned long long seq;
+    int flags; /* feature flags */
+    int upsert_flags;
     unsigned long long dk; /* flag to indicate which keys to modify */
-    unsigned long long flags; /* Some additional information */
     int nData;
     char pData[4]; /* alignment! - pass some useful data instead of padding */
 } osql_ins_t;
 
-enum { OSQLCOMM_INS_TYPE_LEN = 8 + 8 + 8 + 4 + 4 };
+enum { OSQLCOMM_INS_TYPE_LEN = 8 + 4 + 4 + 8 + 4 + 4 };
+enum { OSQLCOMM_INS_LEGACY_TYPE_LEN = 8 + 4 + 4 }; /* seq + nData + pData */
 
 BB_COMPILE_TIME_ASSERT(osqlcomm_ins_type_len,
                        sizeof(osql_ins_t) == OSQLCOMM_INS_TYPE_LEN);
 
+/* Flags that attach with OSQL_INSERT. */
+enum osql_insert_flags {
+    OSQL_INSERT_UPSERT = 1 << 0,
+    OSQL_INSERT_SEND_DK = 1 << 1,
+};
+
 static uint8_t *osqlcomm_ins_type_put(const osql_ins_t *p_osql_ins,
                                       uint8_t *p_buf, const uint8_t *p_buf_end,
-                                      int send_dk)
+                                      int is_legacy)
 {
-    if (p_buf_end < p_buf ||
-        (send_dk ? OSQLCOMM_INS_TYPE_LEN
-                 : OSQLCOMM_INS_TYPE_LEN - sizeof(unsigned long long)) >
-            (p_buf_end - p_buf))
+    int expected_len;
+    int flags = p_osql_ins->flags;
+    if (!is_legacy) {
+        expected_len = OSQLCOMM_INS_TYPE_LEN;
+        if ((flags & OSQL_INSERT_UPSERT) == 0)
+            expected_len -= sizeof(int);
+        if ((flags & OSQL_INSERT_SEND_DK) == 0)
+            expected_len -= sizeof(unsigned long long);
+    } else {
+        expected_len = OSQLCOMM_INS_LEGACY_TYPE_LEN;
+    }
+
+    if (p_buf_end < p_buf || expected_len > (p_buf_end - p_buf))
         return NULL;
 
     p_buf = buf_no_net_put(&(p_osql_ins->seq), sizeof(p_osql_ins->seq), p_buf,
                            p_buf_end);
-    if (send_dk)
+    if (!is_legacy)
+        p_buf = buf_no_net_put(&(p_osql_ins->flags), sizeof(p_osql_ins->flags),
+                               p_buf, p_buf_end);
+    if (!is_legacy && (flags & OSQL_INSERT_UPSERT))
+        p_buf =
+            buf_no_net_put(&(p_osql_ins->upsert_flags),
+                           sizeof(p_osql_ins->upsert_flags), p_buf, p_buf_end);
+    if (!is_legacy && (flags & OSQL_INSERT_SEND_DK))
         p_buf = buf_no_net_put(&(p_osql_ins->dk), sizeof(p_osql_ins->dk), p_buf,
                                p_buf_end);
-    p_buf = buf_no_net_put(&(p_osql_ins->flags), sizeof(p_osql_ins->flags),
-                           p_buf, p_buf_end);
     p_buf = buf_put(&(p_osql_ins->nData), sizeof(p_osql_ins->nData), p_buf,
                     p_buf_end);
     /* leave p_buf pointing at pData */
@@ -1884,21 +1906,33 @@ static uint8_t *osqlcomm_ins_type_put(const osql_ins_t *p_osql_ins,
 static const uint8_t *osqlcomm_ins_type_get(osql_ins_t *p_osql_ins,
                                             const uint8_t *p_buf,
                                             const uint8_t *p_buf_end,
-                                            int recv_dk)
+                                            int is_legacy)
 {
-    if (p_buf_end < p_buf ||
-        (recv_dk ? OSQLCOMM_INS_TYPE_LEN
-                 : OSQLCOMM_INS_TYPE_LEN - sizeof(unsigned long long)) >
-            (p_buf_end - p_buf))
+    if (p_buf_end < p_buf || OSQLCOMM_INS_LEGACY_TYPE_LEN > (p_buf_end - p_buf))
         return NULL;
 
     p_buf = buf_no_net_get(&(p_osql_ins->seq), sizeof(p_osql_ins->seq), p_buf,
                            p_buf_end);
-    if (recv_dk)
-        p_buf = buf_no_net_get(&(p_osql_ins->dk), sizeof(p_osql_ins->dk), p_buf,
-                               p_buf_end);
-    p_buf = buf_no_net_get(&(p_osql_ins->flags), sizeof(p_osql_ins->flags),
-                           p_buf, p_buf_end);
+    p_osql_ins->dk = -1ULL;
+    p_osql_ins->upsert_flags = 0;
+    if (!is_legacy) {
+        int expected_len = sizeof(p_osql_ins->nData);
+        p_buf = buf_no_net_get(&(p_osql_ins->flags), sizeof(p_osql_ins->flags),
+                               p_buf, p_buf_end);
+        if (p_osql_ins->flags & OSQL_INSERT_UPSERT)
+            expected_len += sizeof(p_osql_ins->dk);
+        if (p_osql_ins->flags & OSQL_INSERT_SEND_DK)
+            expected_len += sizeof(p_osql_ins->dk);
+        if (expected_len > (p_buf_end - p_buf))
+            return NULL;
+        if (p_osql_ins->flags & OSQL_INSERT_UPSERT)
+            p_buf = buf_no_net_get(&(p_osql_ins->upsert_flags),
+                                   sizeof(p_osql_ins->upsert_flags), p_buf,
+                                   p_buf_end);
+        if (p_osql_ins->flags & OSQL_INSERT_SEND_DK)
+            p_buf = buf_no_net_get(&(p_osql_ins->dk), sizeof(p_osql_ins->dk),
+                                   p_buf, p_buf_end);
+    }
     p_buf = buf_get(&(p_osql_ins->nData), sizeof(p_osql_ins->nData), p_buf,
                     p_buf_end);
     /* leave p_buf pointing at pData */
@@ -1912,46 +1946,20 @@ typedef struct osql_ins_rpl {
 } osql_ins_rpl_t;
 
 enum {
-    OSQLCOMM_INS_RPL_TYPE_LEN = OSQLCOMM_RPL_TYPE_LEN + OSQLCOMM_INS_TYPE_LEN
+    OSQLCOMM_INS_RPL_TYPE_LEN =
+        OSQLCOMM_RPL_TYPE_LEN + OSQLCOMM_INS_LEGACY_TYPE_LEN
 };
-
-BB_COMPILE_TIME_ASSERT(osqlcomm_ins_rpl_type_len,
-                       sizeof(osql_ins_rpl_t) == OSQLCOMM_INS_RPL_TYPE_LEN);
 
 static uint8_t *osqlcomm_ins_rpl_type_put(const osql_ins_rpl_t *p_osql_ins_rpl,
                                           uint8_t *p_buf,
-                                          const uint8_t *p_buf_end, int send_dk)
+                                          const uint8_t *p_buf_end)
 {
-    if (p_buf_end < p_buf ||
-        (send_dk ? OSQLCOMM_INS_RPL_TYPE_LEN
-                 : OSQLCOMM_INS_RPL_TYPE_LEN - sizeof(unsigned long long)) >
-            (p_buf_end - p_buf))
-        return NULL;
-
     p_buf = osqlcomm_rpl_type_put(&(p_osql_ins_rpl->hd), p_buf, p_buf_end);
-    p_buf =
-        osqlcomm_ins_type_put(&(p_osql_ins_rpl->dt), p_buf, p_buf_end, send_dk);
+    p_buf = osqlcomm_ins_type_put(&(p_osql_ins_rpl->dt), p_buf, p_buf_end, 1);
 
     return p_buf;
 }
 
-static const uint8_t *osqlcomm_ins_rpl_type_get(osql_ins_rpl_t *p_osql_ins_rpl,
-                                                const uint8_t *p_buf,
-                                                const uint8_t *p_buf_end,
-                                                int recv_dk)
-{
-    if (p_buf_end < p_buf ||
-        (recv_dk ? OSQLCOMM_INS_RPL_TYPE_LEN
-                 : OSQLCOMM_INS_RPL_TYPE_LEN - sizeof(unsigned long long)) >
-            (p_buf_end - p_buf))
-        return NULL;
-
-    p_buf = osqlcomm_rpl_type_get(&(p_osql_ins_rpl->hd), p_buf, p_buf_end);
-    p_buf =
-        osqlcomm_ins_type_get(&(p_osql_ins_rpl->dt), p_buf, p_buf_end, recv_dk);
-
-    return p_buf;
-}
 typedef struct osql_ins_uuid_rpl {
     osql_uuid_rpl_t hd;
     osql_ins_t dt;
@@ -1968,39 +1976,12 @@ BB_COMPILE_TIME_ASSERT(osqlcomm_ins_rpl_uuid_type_len,
 
 static uint8_t *
 osqlcomm_ins_uuid_rpl_type_put(const osql_ins_uuid_rpl_t *p_osql_ins_uuid_rpl,
-                               uint8_t *p_buf, const uint8_t *p_buf_end,
-                               int send_dk)
+                               uint8_t *p_buf, const uint8_t *p_buf_end)
 {
-    if (p_buf_end < p_buf ||
-        (send_dk ? OSQLCOMM_INS_UUID_RPL_TYPE_LEN
-                 : OSQLCOMM_INS_UUID_RPL_TYPE_LEN -
-                       sizeof(unsigned long long)) > (p_buf_end - p_buf))
-        return NULL;
-
     p_buf = osqlcomm_uuid_rpl_type_put(&(p_osql_ins_uuid_rpl->hd), p_buf,
                                        p_buf_end);
-    p_buf = osqlcomm_ins_type_put(&(p_osql_ins_uuid_rpl->dt), p_buf, p_buf_end,
-                                  send_dk);
-
-    return p_buf;
-}
-
-static const uint8_t *
-osqlcomm_ins_uuid_rpl_type_get(osql_ins_uuid_rpl_t *p_osql_ins_uuid_rpl,
-                               const uint8_t *p_buf, const uint8_t *p_buf_end,
-                               int recv_dk)
-{
-    if (p_buf_end < p_buf ||
-        (recv_dk ? OSQLCOMM_INS_UUID_RPL_TYPE_LEN
-                 : OSQLCOMM_INS_UUID_RPL_TYPE_LEN -
-                       sizeof(unsigned long long)) > (p_buf_end - p_buf))
-        return NULL;
-
-    p_buf = osqlcomm_uuid_rpl_type_get(&(p_osql_ins_uuid_rpl->hd), p_buf,
-                                       p_buf_end);
-    p_buf = osqlcomm_ins_type_get(&(p_osql_ins_uuid_rpl->dt), p_buf, p_buf_end,
-                                  recv_dk);
-
+    p_buf =
+        osqlcomm_ins_type_put(&(p_osql_ins_uuid_rpl->dt), p_buf, p_buf_end, 0);
     return p_buf;
 }
 
@@ -4254,7 +4235,8 @@ int osql_send_updstat(char *tohost, unsigned long long rqid, uuid_t uuid,
  */
 int osql_send_insrec(char *tohost, unsigned long long rqid, uuid_t uuid,
                      unsigned long long genid, unsigned long long dirty_keys,
-                     char *pData, int nData, int type, SBUF2 *logsb, int flags)
+                     char *pData, int nData, int type, SBUF2 *logsb,
+                     int upsert_flags)
 {
     netinfo_type *netinfo_ptr = (netinfo_type *)comm->handle_sibling;
     int msglen;
@@ -4274,31 +4256,37 @@ int osql_send_insrec(char *tohost, unsigned long long rqid, uuid_t uuid,
         return OSQL_SEND_ERROR_WRONGMASTER;
 
     if (rqid == OSQL_RQID_USE_UUID) {
+        int len = OSQLCOMM_INS_UUID_RPL_TYPE_LEN;
+        int flags = 0;
         osql_ins_uuid_rpl_t ins_uuid_rpl = {0};
 
-        ins_uuid_rpl.hd.type = send_dk ? OSQL_INSERT : OSQL_INSREC;
+        ins_uuid_rpl.hd.type = OSQL_INSERT;
         comdb2uuidcpy(ins_uuid_rpl.hd.uuid, uuid);
         ins_uuid_rpl.dt.seq = genid;
-        ins_uuid_rpl.dt.dk = dirty_keys;
+        if (upsert_flags) {
+            flags |= OSQL_INSERT_UPSERT;
+            ins_uuid_rpl.dt.upsert_flags = upsert_flags;
+        } else {
+            len -= sizeof(ins_uuid_rpl.dt.upsert_flags);
+        }
+        if (send_dk) {
+            flags |= OSQL_INSERT_SEND_DK;
+            ins_uuid_rpl.dt.dk = dirty_keys;
+        } else {
+            len -= sizeof(ins_uuid_rpl.dt.dk);
+        }
         ins_uuid_rpl.dt.flags = flags;
         ins_uuid_rpl.dt.nData = nData;
 
-        if (send_dk)
-            p_buf_end = p_buf + OSQLCOMM_INS_UUID_RPL_TYPE_LEN;
-        else
-            p_buf_end =
-                p_buf + OSQLCOMM_INS_UUID_RPL_TYPE_LEN - sizeof(dirty_keys);
+        p_buf_end = p_buf + len;
 
         if (!(p_buf = osqlcomm_ins_uuid_rpl_type_put(&ins_uuid_rpl, p_buf,
-                                                     p_buf_end, send_dk))) {
+                                                     p_buf_end))) {
             logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
-                    "osqlcomm_ins_rpl_type_put");
+                   "osqlcomm_ins_uuid_rpl_type_put");
             return -1;
         }
-        if (send_dk)
-            msglen = sizeof(ins_uuid_rpl);
-        else
-            msglen = sizeof(ins_uuid_rpl) - sizeof(dirty_keys);
+        msglen = len;
         sent = sizeof(ins_uuid_rpl.dt.pData);
 
         /*
@@ -4312,28 +4300,26 @@ int osql_send_insrec(char *tohost, unsigned long long rqid, uuid_t uuid,
     } else {
         osql_ins_rpl_t ins_rpl = {0};
 
-        ins_rpl.hd.type = send_dk ? OSQL_INSERT : OSQL_INSREC;
+        if (send_dk || upsert_flags) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: partial index/upsert not supported in legacy mode\n",
+                   __func__);
+            return -1;
+        }
+
+        ins_rpl.hd.type = OSQL_INSREC;
         ins_rpl.hd.sid = rqid;
         ins_rpl.dt.seq = genid;
-        ins_rpl.dt.dk = dirty_keys;
-        ins_rpl.dt.flags = flags;
         ins_rpl.dt.nData = nData;
 
-        if (send_dk)
-            p_buf_end = p_buf + OSQLCOMM_INS_RPL_TYPE_LEN;
-        else
-            p_buf_end = p_buf + OSQLCOMM_INS_RPL_TYPE_LEN - sizeof(dirty_keys);
+        p_buf_end = p_buf + OSQLCOMM_INS_RPL_TYPE_LEN;
 
-        if (!(p_buf = osqlcomm_ins_rpl_type_put(&ins_rpl, p_buf, p_buf_end,
-                                                send_dk))) {
+        if (!(p_buf = osqlcomm_ins_rpl_type_put(&ins_rpl, p_buf, p_buf_end))) {
             logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
                     "osqlcomm_ins_rpl_type_put");
             return -1;
         }
-        if (send_dk)
-            msglen = sizeof(ins_rpl);
-        else
-            msglen = sizeof(ins_rpl) - sizeof(dirty_keys);
+        msglen = OSQLCOMM_INS_RPL_TYPE_LEN;
         sent = sizeof(ins_rpl.dt.pData);
         memset(p_buf, 0, sizeof(ins_rpl.dt.pData));
     }
@@ -4348,8 +4334,8 @@ int osql_send_insrec(char *tohost, unsigned long long rqid, uuid_t uuid,
         uuidstr_t us;
         sbuf2printf(logsb, "[%llx %s] send %s %llx (%lld)\n", rqid,
                     comdb2uuidstr(uuid, us),
-                    send_dk ? "OSQL_INSERT" : "OSQL_INSREC", lclgenid,
-                    lclgenid);
+                    rqid == OSQL_RQID_USE_UUID ? "OSQL_INSERT" : "OSQL_INSREC",
+                    lclgenid, lclgenid);
         sbuf2flush(logsb);
     }
 
@@ -7021,27 +7007,24 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         unsigned char *pData = NULL;
         int rrn = 0;
         unsigned long long genid = 0;
-        int recv_dk = (type == OSQL_INSERT);
+        int is_legacy = (type == OSQL_INSREC);
 
         const uint8_t *p_buf_end;
-        if (recv_dk)
-            p_buf_end = p_buf + sizeof(osql_ins_t);
+        if (is_legacy)
+            p_buf_end = p_buf + OSQLCOMM_INS_LEGACY_TYPE_LEN;
         else
-            p_buf_end = p_buf + sizeof(osql_ins_t) - sizeof(unsigned long long);
+            p_buf_end = p_buf + OSQLCOMM_INS_TYPE_LEN;
 
         int addflags;
 
         pData =
-            (uint8_t *)osqlcomm_ins_type_get(&dt, p_buf, p_buf_end, recv_dk);
-
-        if (!recv_dk)
-            dt.dk = -1ULL;
+            (uint8_t *)osqlcomm_ins_type_get(&dt, p_buf, p_buf_end, is_legacy);
 
         if (logsb) {
             int jj = 0;
             sbuf2printf(logsb, "[%llu %s] %s [\n", rqid,
                         comdb2uuidstr(uuid, us),
-                        recv_dk ? "OSQL_INSERT" : "OSQL_INSREC");
+                        is_legacy ? "OSQL_INSREC" : "OSQL_INSERT");
             for (jj = 0; jj < dt.nData; jj++)
                 sbuf2printf(logsb, "%02x", pData[jj]);
 
@@ -7064,7 +7047,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                         blobs, MAXBLOBS, /*blobs*/
                         &err->errcode, &err->ixnum, &rrn, &genid, /*new id*/
                         dt.dk, BLOCK2_ADDKL, step, addflags,
-                        dt.flags); /* do I need this?*/
+                        dt.upsert_flags); /* do I need this?*/
         free_blob_buffers(blobs, MAXBLOBS);
         if (iq->idxInsert || iq->idxDelete) {
             free_cached_idx(iq->idxInsert);
@@ -7082,12 +7065,12 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         if (rc != 0) {
             if (err->errcode == OP_FAILED_UNIQ) {
-                int upsert_idx = dt.flags >> 8;
-                if ((dt.flags & OSQL_FORCE_VERIFY) != 0) {
+                int upsert_idx = dt.upsert_flags >> 8;
+                if ((dt.upsert_flags & OSQL_FORCE_VERIFY) != 0) {
                     err->errcode = OP_FAILED_VERIFY;
                     rc = ERR_VERIFY;
                 } else if ((rc == IX_DUP) &&
-                           ((dt.flags & OSQL_IGNORE_FAILURE) != 0) &&
+                           ((dt.upsert_flags & OSQL_IGNORE_FAILURE) != 0) &&
                            ((upsert_idx == MAXINDEX + 1) ||
                             (upsert_idx == err->ixnum))) {
                     return 0;
@@ -8146,21 +8129,21 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         int jj = 0;
         int rrn = 2;
         unsigned long long lclgenid;
-        int recv_dk = (type == OSQL_INSERT);
+        int is_legacy = (type == OSQL_INSREC);
         uint8_t *p_buf_end;
-        if (recv_dk)
-            p_buf_end = p_buf + sizeof(osql_ins_t);
+
+        if (is_legacy)
+            p_buf_end = p_buf + OSQLCOMM_INS_LEGACY_TYPE_LEN;
         else
-            p_buf_end = p_buf + sizeof(osql_ins_t) - sizeof(unsigned long long);
+            p_buf_end = p_buf + OSQLCOMM_INS_TYPE_LEN;
 
         pData =
-            (uint8_t *)osqlcomm_ins_type_get(&dt, p_buf, p_buf_end, recv_dk);
-        if (!recv_dk)
-            dt.dk = -1ULL;
+            (uint8_t *)osqlcomm_ins_type_get(&dt, p_buf, p_buf_end, is_legacy);
+
         lclgenid = bdb_genid_to_host_order(dt.seq);
 
         sbuf2printf(logsb, "[%llx %s] %s [\n", id, us,
-                    recv_dk ? "OSQL_INSERT" : "OSQL_INSREC");
+                    is_legacy ? "OSQL_INSREC" : "OSQL_INSERT");
         for (jj = 0; jj < dt.nData; jj++)
             sbuf2printf(logsb, "%02x", pData[jj]);
 
@@ -9136,7 +9119,7 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
         unsigned long long genid = 0;
         uint8_t *p_buf = (uint8_t *)&((osql_ins_rpl_t *)rpl)->dt;
         pData = (uint8_t *)osqlcomm_ins_type_get(&dt, p_buf, p_buf_end,
-                                                 rpl_op.type == OSQL_INSERT);
+                                                 rpl_op.type == OSQL_INSREC);
         enque_osqlpfault_newdata_newkeys(*last_db, pData, dt.nData,
                                          last_step_idex, rqid, uuid, seq);
     } break;
