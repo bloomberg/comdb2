@@ -2256,8 +2256,9 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
         /* avoid new accepting new queries/transaction on opened connections
            if we are incoherent (and not in a transaction). */
-        if (clnt.ignore_coherency == 0 && !bdb_am_i_coherent(thedb->bdb_env) &&
-            (clnt.ctrl_sqlengine == SQLENG_NORMAL_PROCESS)) {
+        if (!clnt.admin && clnt.ignore_coherency == 0 && 
+                !bdb_am_i_coherent(thedb->bdb_env) && 
+                (clnt.ctrl_sqlengine == SQLENG_NORMAL_PROCESS)) {
             logmsg(LOGMSG_ERROR,
                    "%s line %d td %u new query on incoherent node, "
                    "dropping socket\n",
