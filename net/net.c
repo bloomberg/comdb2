@@ -191,8 +191,6 @@ static void myfree(void *ptr)
 static sanc_node_type *add_to_sanctioned_nolock(netinfo_type *netinfo_ptr,
                                                 const char hostname[],
                                                 int portnum);
-static int verify_port(netinfo_type *netinfo_ptr, int alleged_port,
-                       char *hostname);
 static int process_hello_common(netinfo_type *netinfo_ptr,
                                 host_node_type *host_node_ptr,
                                 int look_for_magic);
@@ -919,19 +917,6 @@ static int timeval_cmp(struct timeval *x, struct timeval *y)
     if (x->tv_usec > y->tv_usec)
         return 1;
     if (x->tv_usec < y->tv_usec)
-        return -1;
-    return 0;
-}
-
-static int timespec_cmp(struct timespec *x, struct timespec *y)
-{
-    if (x->tv_sec > y->tv_sec)
-        return 1;
-    if (x->tv_sec < y->tv_sec)
-        return -1;
-    if (x->tv_nsec > y->tv_nsec)
-        return 1;
-    if (x->tv_nsec < y->tv_nsec)
         return -1;
     return 0;
 }
@@ -1979,28 +1964,6 @@ void net_reset_explicit_flushes(void) { explicit_flushes = 0; }
 unsigned long long net_get_num_flushes(void) { return num_flushes; }
 
 void net_reset_num_flushes(void) { num_flushes = 0; }
-
-static char prhexnib(unsigned char nib)
-{
-    char map[] = "0123456789ABCDEF";
-
-    return map[nib & 0x0F];
-}
-
-static char *prhexval(char str[], void *val, int nbytes)
-{
-    int nnib = 0;
-    int i;
-
-    for (i = 0; i < nbytes; ++i) {
-        unsigned char byte = ((unsigned char *)val)[i];
-        str[nnib++] = prhexnib(byte >> 4); /* hi nibble */
-        str[nnib++] = prhexnib(byte);      /* lo nibble */
-    }
-    str[nnib++] = '\0';
-
-    return str;
-}
 
 static int stack_flush_min = 50;
 int explicit_flush_trace = 0;
@@ -3172,6 +3135,8 @@ typedef struct netinfo_node {
 static LISTC_T(netinfo_node_t) nets_list;
 static pthread_mutex_t nets_list_lk = PTHREAD_MUTEX_INITIALIZER;
 
+#ifndef PER_THREAD_MALLOC
+
 static char *to_human_readable(int num, char buf[], int len)
 {
     if (num >> 30) /* GB should be sufficient */
@@ -3188,7 +3153,6 @@ static char *to_human_readable(int num, char buf[], int len)
     return buf;
 }
 
-#ifndef PER_THREAD_MALLOC
 void print_net_memstat(int human_readable)
 {
 
@@ -4295,7 +4259,6 @@ static void *writer_thread(void *args)
     host_node_type *host_node_ptr;
     write_data *write_list_ptr, *write_list_back;
     int rc, flags, maxage;
-    int th_start_time = comdb2_time_epoch();
     struct timespec waittime;
 #ifndef HAS_CLOCK_GETTIME
     struct timeval tv;
@@ -4571,59 +4534,12 @@ static int process_hello_common(netinfo_type *netinfo_ptr,
     return 0;
 }
 
-
-/* Use portmux to verify the given port number for a given hostname. */
-static int verify_port(netinfo_type *netinfo_ptr, int alleged_port,
-                       char *hostname)
-{
-    int portmux_port;
-    host_node_type *host_node_ptr;
-
-    Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
-    host_node_ptr = get_host_node_by_name_ll(netinfo_ptr, hostname);
-    if (host_node_ptr) {
-        portmux_port =
-            portmux_geti(host_node_ptr->addr, netinfo_ptr->app,
-                         netinfo_ptr->service, netinfo_ptr->instance);
-
-    } else {
-        portmux_port = portmux_get(hostname, netinfo_ptr->app,
-                                   netinfo_ptr->service, netinfo_ptr->instance);
-    }
-
-    Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-
-    if (portmux_port == -1) {
-        return 1;
-    }
-
-    /*
-       if(portmux_port == -1)
-       {
-       fprintf(stderr, "portmux verification of node %s port %d failed -1\n",
-       hostname, alleged_port);
-       return 0;
-       }
-     */
-
-    else if (portmux_port != alleged_port) {
-        logmsg(LOGMSG_ERROR, "portmux verification of node %s port %d failed: "
-                        "portmux\n",
-                hostname, alleged_port);
-        return 0;
-    } else {
-        return 1;
-    }
-}
-
-
 static void *reader_thread(void *arg)
 {
     netinfo_type *netinfo_ptr;
     host_node_type *host_node_ptr;
     wire_header_type wire_header;
     int rc, set_qstat = 0;
-    int th_start_time = comdb2_time_epoch();
     char fromhost[256], tohost[256];
 
     thread_started("net reader");

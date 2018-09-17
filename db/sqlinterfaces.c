@@ -1151,6 +1151,9 @@ static inline void destroy_hash(hash_t *h, int (*free_func)(void *, void *))
     hash_free(h);
 }
 
+extern int gbl_early_verify;
+extern int gbl_osql_send_startgen;
+
 int handle_sql_commitrollback(struct sqlthdstate *thd,
                               struct sqlclntstate *clnt, int sendresponse)
 {
@@ -1359,6 +1362,12 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                 if (gbl_selectv_rangechk) {
                     rc = selectv_range_commit(clnt);
                 }
+
+                if (gbl_early_verify && !clnt->early_retry &&
+                    gbl_osql_send_startgen && clnt->start_gen) {
+                    if (clnt->start_gen != bdb_get_rep_gen(thedb->bdb_env))
+                        clnt->early_retry = EARLY_ERR_GENCHANGE;
+                }
                 if (rc || clnt->early_retry) {
                     int irc = 0;
                     irc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
@@ -1376,6 +1385,10 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                         clnt->osql.xerr.errval = ERR_CONSTR;
                         errstat_cat_str(&(clnt->osql.xerr),
                                         "constraints error, no genid");
+                    } else if (clnt->early_retry == EARLY_ERR_GENCHANGE) {
+                        clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
+                        errstat_cat_str(&(clnt->osql.xerr),
+                                        "verify error on master swing");
                     }
                     if (clnt->early_retry) {
                         clnt->early_retry = 0;
@@ -2878,6 +2891,9 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
                                       struct sqlclntstate *clnt, int *outrc)
 {
     int rc;
+
+    if (!clnt->in_client_trans)
+        clnt->start_gen = bdb_get_rep_gen(thedb->bdb_env);
 
     sql_update_usertran_state(clnt);
 

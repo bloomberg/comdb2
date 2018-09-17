@@ -810,6 +810,7 @@ again:
 }
 
 int gbl_random_blkseq_replays;
+int gbl_osql_send_startgen = 1;
 
 /**
  * Terminates a sosql session
@@ -1330,14 +1331,23 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
     }
 
 retry:
-    if (osql->rqid == OSQL_RQID_USE_UUID) {
-        rc = osql_send_commit_by_uuid(osql->host, osql->uuid, osql->sentops,
-                                      &osql->xerr, nettype, osql->logsb,
-                                      clnt->query_stats, snap_info_p);
-    } else {
-        rc = osql_send_commit(osql->host, osql->rqid, osql->uuid, osql->sentops,
-                              &osql->xerr, nettype, osql->logsb,
-                              clnt->query_stats, NULL);
+    rc = 0;
+
+    if (gbl_osql_send_startgen && clnt->start_gen > 0) {
+        rc = osql_send_startgen(osql->host, osql->rqid, osql->uuid,
+                                clnt->start_gen, nettype, osql->logsb);
+    }
+
+    if (rc == 0) {
+        if (osql->rqid == OSQL_RQID_USE_UUID) {
+            rc = osql_send_commit_by_uuid(osql->host, osql->uuid, osql->sentops,
+                                          &osql->xerr, nettype, osql->logsb,
+                                          clnt->query_stats, snap_info_p);
+        } else {
+            rc = osql_send_commit(osql->host, osql->rqid, osql->uuid,
+                                  osql->sentops, &osql->xerr, nettype,
+                                  osql->logsb, clnt->query_stats, NULL);
+        }
     }
 
     RESTART_SOCKSQL_KEEP_RQID(is_retry);
@@ -1716,6 +1726,12 @@ int osql_schemachange_logic(struct schema_change_type *sc,
             }
             RESTART_SOCKSQL;
         } while (restarted && rc == 0);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d %s - failed to send socksql schemachange rc=%d\n",
+                   __FILE__, __LINE__, __func__, rc);
+            return rc;
+        }
     }
 
     rc = osql_save_schemachange(thd, sc, usedb);
