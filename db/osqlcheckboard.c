@@ -139,7 +139,7 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
     entry->master = clnt->osql.host;
     entry->type = type;
     entry->last_checked = entry->last_updated =
-        comdb2_time_epoch(); /* initialize these to insert time */
+        comdb2_time_epochms(); /* initialize these to insert time */
     entry->clnt = clnt;
 
 #ifdef DEBUG
@@ -524,6 +524,7 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
     int now;
     int poke_timeout;
     int poke_freq;
+    int tm_recov_deadlk;
     uuidstr_t us;
 
     if (!checkboard)
@@ -573,17 +574,12 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
             return -4;
         }
 
-        /* maximum wait-time */
-        // max_wait = bdb_attr_get(thedb->bdb_attr,
-        // BDB_ATTR_SOSQL_MAX_COMMIT_WAIT_SEC);
-
         if ((rc = pthread_mutex_lock(&entry->mtx))) {
             logmsg(LOGMSG_ERROR, "pthread_mutex_lock: error code %d\n", rc);
             return -5;
         }
-
         entry->last_checked = entry->last_updated =
-            comdb2_time_epoch(); /* reset these time */
+            comdb2_time_epochms(); /* reset these time */
 
         /* several conditions cause us to break out */
         while (entry->done != 1 && !entry->master_changed &&
@@ -598,17 +594,14 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
                 return -5;
             }
 
+            tm_recov_deadlk = comdb2_time_epochms();
             /* this call could wait for a bdb read lock; in the meantime,
                someone might try to signal us */
             if (osql_comm_check_bdb_lock(__func__, __LINE__)) {
-                rc = pthread_mutex_unlock(&entry->mtx);
-                if (rc)
-                    logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n",
-                            rc);
                 logmsg(LOGMSG_ERROR, "sosql: timed-out on bdb_lock_desired\n");
-
                 return ERR_READONLY;
             }
+            tm_recov_deadlk = comdb2_time_epochms() - tm_recov_deadlk;
 
             if ((rc = pthread_mutex_lock(&entry->mtx))) {
                 logmsg(LOGMSG_ERROR, "pthread_mutex_lock: error code %d\n", rc);
@@ -630,8 +623,6 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
             }
 
             cnt++;
-            // printf("cnt %d/%d done %d master_changed %d pokebit %d\n", cnt,
-            // max_wait, entry->done, entry->master_changed);
 
             /* we got back the mutex, are we there yet ? */
             if (entry->done == 1 || entry->master_changed ||
@@ -639,15 +630,17 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
                 break;
 
             poke_timeout =
-                bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SOSQL_POKE_TIMEOUT_SEC);
+                bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SOSQL_POKE_TIMEOUT_SEC) *
+                1000;
             poke_freq =
-                bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SOSQL_POKE_FREQ_SEC);
+                bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SOSQL_POKE_FREQ_SEC) *
+                1000;
 
             /* is it the time to check the master? have we already done so? */
-            now = comdb2_time_epoch();
+            now = comdb2_time_epochms();
 
             if ((poke_timeout > 0) &&
-                (entry->last_updated + poke_timeout < now)) {
+                (entry->last_updated + poke_timeout + tm_recov_deadlk < now)) {
                 /* timeout the request */
                 logmsg(LOGMSG_ERROR,
                        "Master %s failed to acknowledge session %llu %s\n",
@@ -662,7 +655,7 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
                 break;
             }
 
-            if ((poke_freq > 0) && (entry->last_checked + poke_freq < now)) {
+            if ((poke_freq > 0) && (entry->last_checked + poke_freq <= now)) {
                 /* try poke again */
                 if (entry->master == 0 || entry->master == gbl_mynode) {
                     /* local checkup */
@@ -779,7 +772,7 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
 
         entry->status = status;
         entry->timestamp = timestamp;
-        entry->last_updated = comdb2_time_epoch();
+        entry->last_updated = comdb2_time_epochms();
 
         if ((rc = pthread_mutex_unlock(&entry->mtx)) != 0) {
             logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
@@ -829,7 +822,7 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
     } else {
         pthread_mutex_lock(&entry->mtx);
         entry->last_checked = entry->last_updated =
-            comdb2_time_epoch(); /* reset these time */
+            comdb2_time_epochms(); /* reset these time */
         entry->done = 0;
         entry->master_changed = 0;
         entry->master =
