@@ -524,7 +524,7 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
     int now;
     int poke_timeout;
     int poke_freq;
-    int tm_resolv_deadlk;
+    int tm_recov_deadlk;
     uuidstr_t us;
 
     if (!checkboard)
@@ -594,14 +594,14 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
                 return -5;
             }
 
-            tm_resolv_deadlk = comdb2_time_epochms();
+            tm_recov_deadlk = comdb2_time_epochms();
             /* this call could wait for a bdb read lock; in the meantime,
                someone might try to signal us */
             if (osql_comm_check_bdb_lock(__func__, __LINE__)) {
                 logmsg(LOGMSG_ERROR, "sosql: timed-out on bdb_lock_desired\n");
                 return ERR_READONLY;
             }
-            tm_resolv_deadlk = comdb2_time_epochms() - tm_resolv_deadlk;
+            tm_recov_deadlk = comdb2_time_epochms() - tm_recov_deadlk;
 
             if ((rc = pthread_mutex_lock(&entry->mtx))) {
                 logmsg(LOGMSG_ERROR, "pthread_mutex_lock: error code %d\n", rc);
@@ -640,7 +640,7 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
             now = comdb2_time_epochms();
 
             if ((poke_timeout > 0) &&
-                (entry->last_updated + poke_timeout + tm_resolv_deadlk < now)) {
+                (entry->last_updated + poke_timeout + tm_recov_deadlk < now)) {
                 /* timeout the request */
                 logmsg(LOGMSG_ERROR,
                        "Master %s failed to acknowledge session %llu %s\n",
