@@ -3428,6 +3428,7 @@ int osql_comm_is_done(char *rpl, int rpllen, int hasuuid, struct errstat **xerr,
     case OSQL_INSIDX:
     case OSQL_DELIDX:
     case OSQL_QBLOB:
+    case OSQL_STARTGEN:
         break;
     case OSQL_DONE_SNAP:
         /* The iq is passed in from bplog_saveop */
