@@ -62,8 +62,7 @@ static int bdb_fetch_last_key_tran_int(bdb_state_type *bdb_state,
     if (tran) {
         tid = tran->tid;
         rc = bdb_lock_table_read(bdb_state, tran);
-        if (rc != 0)
-        {
+        if (rc != 0) {
             *bdberr = BDBERR_MISC;
             return -1;
         }
