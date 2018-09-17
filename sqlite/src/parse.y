@@ -728,6 +728,20 @@ oneselect(A) ::= SELECTV distinct(D) selcollist(W) from(X) where_opt(Y)
   A->op = TK_SELECTV;
   A->recording = 1;
 }
+%ifndef SQLITE_OMIT_WINDOWFUNC
+oneselect(A) ::= SELECTV distinct(D) selcollist(W) from(X) where_opt(Y)
+                 groupby_opt(P) having_opt(Q) window_clause(R)
+                 orderby_opt(Z) limit_opt(L). {
+  A = sqlite3SelectNew(pParse,W,X,Y,P,Q,Z,D,L);
+  A->op = TK_SELECTV;
+  A->recording = 1;
+  if( A ){
+    A->pWinDefn = R;
+  }else{
+    sqlite3WindowListDelete(pParse->db, R);
+  }
+}
+%endif
 %endif SQLITE_BUILDING_FOR_COMDB2
 
 // The "distinct" nonterminal is true (1) if the DISTINCT keyword is
