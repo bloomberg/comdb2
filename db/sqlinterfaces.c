@@ -266,8 +266,32 @@ int disable_server_sql_timeouts(void)
             gbl_sql_no_timeouts_on_release_locks);
 }
 
+/* copied content from WriteResponsesEnum in sql.h */
+const char *WriteRespString[] = {
+    "RESPONSE_COLUMNS",
+    "RESPONSE_COLUMNS_LUA",
+    "RESPONSE_COLUMNS_STR",
+    "RESPONSE_COST",
+    "RESPONSE_DEBUG",
+    "RESPONSE_EFFECTS",
+    "RESPONSE_ERROR",
+    "RESPONSE_ERROR_ACCESS",
+    "RESPONSE_ERROR_BAD_STATE",
+    "RESPONSE_ERROR_PREPARE",
+    "RESPONSE_ERROR_PREPARE_RETRY",
+    "RESPONSE_ERROR_REJECT",
+    "RESPONSE_FLUSH",
+    "RESPONSE_HEARTBEAT",
+    "RESPONSE_ROW",
+    "RESPONSE_ROW_LAST",
+    "RESPONSE_ROW_LAST_DUMMY",
+    "RESPONSE_ROW_LUA",
+    "RESPONSE_ROW_STR",
+    "RESPONSE_TRACE",
+};
 int write_response(struct sqlclntstate *clnt, int R, void *D, int I)
 {
+    logmsg(LOGMSG_DEBUG, "write_response(%s,%p,%d)\n", WriteRespString[R], D, I);
     return clnt->plugin.write_response(clnt, R, D, I);
 }
 
@@ -2948,8 +2972,16 @@ static int skip_response_error(struct sqlclntstate *clnt)
 
 static int send_columns(struct sqlclntstate *clnt, struct sqlite3_stmt *stmt)
 {
-    if (clnt->osql.sent_column_data || skip_response(clnt))
+    if (clnt->osql.sent_column_data) {
+        logmsg(LOGMSG_DEBUG, "send_columns: Already sent column data\n");
         return 0;
+    }
+
+    int skip = skip_response(clnt);
+    if (skip) {
+        logmsg(LOGMSG_DEBUG, "send_columns: skip response = %d\n", skip);
+        return 0;
+    }
     clnt->osql.sent_column_data = 1;
     return write_response(clnt, RESPONSE_COLUMNS, stmt, 0);
 }
@@ -3062,6 +3094,8 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
     }
     char *errstr = NULL;
     int rc = rc_sqlite_to_client(thd, clnt, rec, &errstr);
+    int skip = skip_response_error(clnt); 
+    printf("AZ: %d rc = %d skip = %d\n", __LINE__, rc, skip);
     if (rc != 0) {
         if (!skip_response_error(clnt)) {
             send_run_error(clnt, errstr, rc);
@@ -3090,7 +3124,6 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                     struct errstat *err)
 {
     int rc;
-    int steprc;
     uint64_t row_id = 0;
     int rowcount = 0;
     int postponed_write = 0;
@@ -3107,7 +3140,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     int ncols = sqlite3_column_count(stmt);
 
     /* Get first row to figure out column structure */
-    steprc = sqlite3_step(stmt);
+    int steprc = sqlite3_step(stmt);
     if (steprc == SQLITE_SCHEMA_REMOTE) {
         /* remote schema changed;
            Only safe to recover here
@@ -3127,7 +3160,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     }
 
     if ((rc = send_columns(clnt, stmt)) != 0) {
-        goto out;
+        return rc;
     }
 
     if (clnt->intrans == 0) {
@@ -3146,7 +3179,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: release_locks_on_emit_row failed\n",
                    __func__);
-            goto out;
+            return rc;
         }
 
         if (clnt->isselect == 1) {
@@ -3161,7 +3194,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
             ++row_id;
             rc = send_row(clnt, stmt, row_id, 0, err);
             if (rc)
-                goto out;
+                return rc;
         } else {
             postponed_write = 1;
             send_row(clnt, stmt, row_id, 1, NULL);
@@ -3183,7 +3216,6 @@ postprocessing:
     /* closing: error codes, postponed write result and so on*/
     rc = post_sqlite_processing(thd, clnt, rec, postponed_write, ncols, row_id);
 
-out:
     return rc;
 }
 
@@ -3353,6 +3385,8 @@ static int execute_sql_query(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
     int outrc;
     int rc;
+
+    logmsg(LOGMSG_DEBUG, "execute_sql_query: '%.30s'\n", clnt->sql);
 
     /* access control */
     rc = check_sql_access(thd, clnt);

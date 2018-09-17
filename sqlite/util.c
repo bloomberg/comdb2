@@ -223,6 +223,7 @@ void sqlite3ErrorMsg(Parse *pParse, const char *zFormat, ...){
     pParse->zErrMsg = zMsg;
     pParse->rc = SQLITE_ERROR;
   }
+printf("AZ: setting error to %s\n", zMsg);
 }
 
 /*

@@ -2224,8 +2224,8 @@ retry:
     }
 
     b_read = sbuf2fread((char *)(*buf), 1, hdr.length, sb);
-    debugprint("READ MSG b_read(%d) != *len(%d) type(%d)\n", b_read, *len,
-               hdr.type);
+    debugprint("READ MSG b_read(%d) hdr.length(%d) type(%d)\n", b_read,
+               hdr.length, hdr.type);
 
     *len = hdr.length;
     if (b_read != *len) {
@@ -2233,12 +2233,12 @@ retry:
         return -1;
     }
     if (hdr.type == RESPONSE_HEADER__SQL_RESPONSE_TRACE) {
-        CDB2SQLRESPONSE *response =  cdb2__sqlresponse__unpack(NULL, hdr.length, *buf);
+        CDB2SQLRESPONSE *response = cdb2__sqlresponse__unpack(NULL, hdr.length, *buf);
         if (response->response_type == RESPONSE_TYPE__SP_TRACE) {
-            fprintf(stderr,"%s\n",response->info_string);
+            fprintf(stderr,"%s\n", response->info_string);
             cdb2__sqlresponse__free_unpacked(response, NULL);
         } else {
-            fprintf(stderr,"%s",response->info_string);
+            fprintf(stderr,"%s", response->info_string);
             cdb2__sqlresponse__free_unpacked(response, NULL);
             char cmd[250];
             if (fgets(cmd, 250, stdin) == NULL ||
@@ -2356,7 +2356,8 @@ retry_read:
             cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
         hndl->error_in_trans = 
             cdb2_convert_error_code(hndl->firstresponse->error_code);
-        strcpy(hndl->errstr, hndl->firstresponse->error_string);
+        if (hndl->firstresponse->error_string)
+            strcpy(hndl->errstr, hndl->firstresponse->error_string);
         goto retry_read;
     }
 
@@ -2605,6 +2606,7 @@ static int cdb2_next_record_int(cdb2_hndl_tp *hndl, int shouldretry)
     int len;
     int rc;
     int num_retry = 0;
+    debugprint("entering\n");
 
     if (hndl->ack)
         ack(hndl);
@@ -2633,6 +2635,8 @@ retry_next_record:
     }
 
     rc = cdb2_read_record(hndl, &hndl->last_buf, &len, NULL);
+    debugprint("cdb2_read_record rc=%d\n", rc);
+
     if (rc) {
         newsql_disconnect(hndl, hndl->sb, __LINE__);
         sprintf(hndl->errstr, "%s: Timeout while reading response from server",
@@ -2673,10 +2677,13 @@ retry_next_record:
         PRINT_RETURN_OK(-1);
     }
 
+    /* free previous response */
     if (hndl->lastresponse)
         cdb2__sqlresponse__free_unpacked(hndl->lastresponse, NULL);
 
     hndl->lastresponse = cdb2__sqlresponse__unpack(NULL, len, hndl->last_buf);
+    debugprint("hndl->lastresponse->response_type=%d\n",
+               hndl->lastresponse->response_type);
 
     if (hndl->lastresponse->snapshot_info &&
         hndl->lastresponse->snapshot_info->file) {
@@ -3772,7 +3779,8 @@ retry_queries:
     }
 
     if (!hndl->read_intrans_results && !hndl->is_read && hndl->in_trans) {
-        debugprint("in_trans=%d is_hasql=%d\n", hndl->in_trans, hndl->is_hasql);
+        debugprint("returning because read_intrans_results=%d n_trans=%d is_hasql=%d\n", 
+                    hndl->read_intrans_results, hndl->in_trans, hndl->is_hasql);
         return (0);
     }
 
@@ -3783,7 +3791,7 @@ read_record:
         char *host = "NOT-CONNECTED";
         if (hndl && hndl->connected_host >= 0)
             host = hndl->hosts[hndl->connected_host];
-        debugprint("reading from %s rc=%d type:%d\n", host, rc, type);
+        debugprint("cdb2_read_record host=%s rc=%d type=%d\n", host, rc, type);
     }
 
     if (type == RESPONSE_HEADER__SQL_RESPONSE_SSL) {
@@ -3922,6 +3930,7 @@ read_record:
         debugprint("returning, clear_snap_line is %d\n", hndl->clear_snap_line);
         PRINT_RETURN(-1);
     }
+
     if (hndl->first_buf != NULL) {
         hndl->firstresponse =
             cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);

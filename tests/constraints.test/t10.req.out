@@ -91,14 +91,14 @@
 [create table m {schema{int i} keys{"pk" = i}}] rc 0
 [create table c {schema{int i} keys{dup "key" = i} constraints{"key" -> <"m" : "pk">}}] rc 0
 [commit] rc 0
-[select "transactional drop (bad case)"] rc 0
 ("transactional drop (bad case)"='transactional drop (bad case)')
+[select "transactional drop (bad case)"] rc 0
 [begin] rc 0
 [drop table m] rc 0
 [drop table c] rc 0
 [commit] failed with rc 240 Can't drop tables with foreign constraints
-[select 1] rc 0
 (1=1)
+[select 1] rc 0
 [select * from m] rc 0
 [select * from c] rc 0
 ("transactional drop (good case)"='transactional drop (good case)')

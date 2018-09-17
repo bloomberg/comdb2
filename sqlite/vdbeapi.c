@@ -1801,7 +1801,9 @@ sqlite3 *sqlite3_db_handle(sqlite3_stmt *pStmt){
 ** database.
 */
 int sqlite3_stmt_readonly(sqlite3_stmt *pStmt){
-  return pStmt ? ((Vdbe*)pStmt)->readOnly : 1;
+  int ro = pStmt ? ((Vdbe*)pStmt)->readOnly : 1;
+  logmsg(LOGMSG_DEBUG, "sqlite3_stmt_readonly: ro = %d\n", ro);
+  return ro;
 }
 
 /*
