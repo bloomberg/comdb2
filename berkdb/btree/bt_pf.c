@@ -501,9 +501,7 @@ advance_on_tree(DBC *dbc)
 	btpf *pf = PF(dbc);
 	DB_LOCK lock;
 	PAGE *h;
-	PAGE *t;
 	db_pgno_t pgno;
-	db_pgno_t t_pgno;
 	db_lockmode_t lock_mode = DB_LOCK_READ;
 	u_int8_t up_level = 1;
 	int ret = 0;
@@ -569,9 +567,7 @@ advanceb_on_tree(DBC *dbc)
 	btpf *pf = PF(dbc);
 	DB_LOCK lock;
 	PAGE *h;
-	PAGE *t;
 	db_pgno_t pgno;
-	db_pgno_t t_pgno;
 	db_lockmode_t lock_mode = DB_LOCK_READ;
 
 	u_int8_t up_level = 1;
@@ -634,7 +630,6 @@ page_load_f(btpf * pf, DBC *dbc)
 
 	DB_LOCK lock;
 	PAGE *h;
-	PAGE *t;
 	db_pgno_t pgno;
 	db_pgno_t t_pgno;
 	db_lockmode_t lock_mode = DB_LOCK_READ;
@@ -716,7 +711,7 @@ page_load_b(btpf * pf, DBC *dbc)
 	DB_LOCK lock;
 	PAGE *h;
 	db_pgno_t pgno;
-	db_pgno_t t_pgno;
+	db_pgno_t t_pgno = 0;
 	db_lockmode_t lock_mode = DB_LOCK_READ;
 
 
@@ -800,13 +795,7 @@ static inline int
 tree_walk(DBC *dbc, btfp_tw_flag fl, db_pgno_t root_p, u_int8_t lev)
 {
 	DBC *t_dbc = NULL;
-	db_lockmode_t lock_mode;
-	db_pgno_t pgno;
-	DBT rkey;
-	db_recno_t recnop;
-	int exact = 1;
-	int discard, ret;
-	u_int32_t lid = dbc->locker;
+	int ret;
 
 	if ((ret =
 		dbc->dbp->paired_cursor_from_lid(dbc->dbp, dbc->locker, &t_dbc,
@@ -842,7 +831,6 @@ tree_walk(DBC *dbc, btfp_tw_flag fl, db_pgno_t root_p, u_int8_t lev)
 	if (ret != 0)
 		logmsg(LOGMSG_ERROR, "You got a problem young man! ");
 
-end:
 	if (ret != 0)
 		logmsg(LOGMSG_ERROR, "%s return code: %d \n", __func__, ret);
 

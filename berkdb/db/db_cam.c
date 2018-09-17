@@ -36,7 +36,9 @@ extern pthread_key_t comdb2_open_key;
 #endif
 
 
+#ifndef COMDB2_VERSION
 static int __db_buildpartial __P((DB *, DBT *, DBT *, DBT *));
+#endif
 static int __db_c_cleanup __P((DBC *, DBC *, int));
 static int __db_c_del_secondary __P((DBC *));
 static int __db_c_pget_recno __P((DBC *, DBT *, DBT *, u_int32_t));
@@ -891,7 +893,6 @@ __db_c_get_dup(dbc_arg, dbc_dup, key, data, flags)
 	u_int8_t type;
 	int ret, t_ret;
 	int dontmove;
-	int dupcursor;
 
 	/*F_SET(dbc_arg, DBC_TRANSIENT); */
 
@@ -914,7 +915,6 @@ __db_c_get_dup(dbc_arg, dbc_dup, key, data, flags)
 	}
 
 	dontmove = 0;
-	dupcursor = 0;
 
 	/* Clear OR'd in additional bits so we can check for flag equality. */
 	tmp_rmw = LF_ISSET(DB_RMW);
@@ -1249,12 +1249,12 @@ __db_c_put(dbc_arg, key, data, flags)
 	u_int32_t flags;
 {
 	DB_ENV *dbenv;
-	DB *dbp, *sdbp;
-	DBC *dbc_n, *oldopd, *opd, *sdbc, *pdbc;
-	DBT olddata, oldpkey, oldskey, newdata, pkey, skey, temppkey, tempskey;
+	DB *dbp, *sdbp = NULL;
+	DBC *dbc_n, *oldopd, *opd;
+	DBT olddata, newdata;
 	db_pgno_t pgno;
-	int cmp, have_oldrec, ispartial, nodel, re_pad, ret, rmw, t_ret;
-	u_int32_t re_len, size, tmp_flags;
+    int ret, t_ret;
+	u_int32_t tmp_flags;
 
 	/*
 	 * Cursor Cleanup Note:
@@ -1267,8 +1267,7 @@ __db_c_put(dbc_arg, key, data, flags)
 	 */
 	dbp = dbc_arg->dbp;
 	dbenv = dbp->dbenv;
-	sdbp = NULL;
-	pdbc = dbc_n = NULL;
+	dbc_n = NULL;
 	memset(&newdata, 0, sizeof(DBT));
 	ret = 0;
 
@@ -1281,6 +1280,10 @@ __db_c_put(dbc_arg, key, data, flags)
 	F_SET(&olddata, DB_DBT_MALLOC);
 
 #ifndef COMDB2_VERSION
+	DBC *sdbc = NULL, *pdbc = NULL;
+    DBT oldskey, pkey, skey, temppkey, tempskey;
+	int cmp, have_oldrec, ispartial, nodel, re_pad, rmw;
+	u_int32_t re_len, size;
 	/*
 	 * Putting to secondary indices is forbidden;  when we need
 	 * to internally update one, we'll call this with a private
@@ -1576,6 +1579,7 @@ __db_c_put(dbc_arg, key, data, flags)
 		 *	does not exist, put it.
 		 */
 		if (!F_ISSET(sdbp, DB_AM_DUP)) {
+            DBT oldpkey;
 			/* Case 3. */
 			memset(&oldpkey, 0, sizeof(DBT));
 			F_SET(&oldpkey, DB_DBT_MALLOC);
@@ -2567,6 +2571,7 @@ __db_s_done(sdbp)
 	return (doclose ? __db_close(sdbp, NULL, 0) : 0);
 }
 
+#ifndef COMDB2_VERSION
 /*
  * __db_buildpartial --
  *	Build the record that will result after a partial put is applied to
@@ -2616,6 +2621,7 @@ __db_buildpartial(dbp, oldrec, partial, newrec)
 
 	return (0);
 }
+#endif
 
 /*
  * __db_partsize --

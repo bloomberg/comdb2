@@ -323,7 +323,7 @@ __bam_unlz4_pg_img(argp, dtabuf)
 	__bam_pgcompact_args *argp;
 	u_int8_t *dtabuf;
 {
-	int ret, nuncompr;
+	int nuncompr;
 
 	if (argp->data.size == argp->dtaoriglen)
 		return (0); /* Uncompressed. Not an error. */
@@ -345,9 +345,9 @@ __bam_merge_uncomp_pages(dbc, h, nh, ph, indx)
 	PAGE *ph;
     db_indx_t indx;
 {
-	int ret, direct, compr;
+	int ret, direct;
 	DB *dbp;
-	u_int8_t *sp, *lz4dta;
+	u_int8_t *sp, *lz4dta = NULL;
 	u_int32_t nent, len, ii;
 	db_indx_t *ninp, *pinp;
 	DBT hdr, dta;
@@ -360,7 +360,7 @@ __bam_merge_uncomp_pages(dbc, h, nh, ph, indx)
 		LSN_NOT_LOGGED(LSN(h));
 	else {
 		ALLOCA_LZ4_BUFFER();
-		compr = __bam_lz4_pg_img(dbp, nh, &hdr, &dta, lz4dta);
+		__bam_lz4_pg_img(dbp, nh, &hdr, &dta, lz4dta);
 
 		if ((ret = __bam_pgcompact_log(dbp,
 						dbc->txn, &LSN(h), 0,
@@ -415,9 +415,9 @@ __bam_merge_comp_pages(dbc, h, nh, ph, indx)
 	PAGE *ph;
     db_indx_t indx;
 {
-	int ret, direct, compr;
+	int ret, direct;
 	DB *dbp;
-	u_int8_t *sp, *lz4dta;
+	u_int8_t *sp, *lz4dta = NULL;
 	u_int32_t nent, len, ii;
 	db_indx_t *ninp, *pinp;
 	BKEYDATA *pfxh, *pfxnh;
@@ -431,7 +431,7 @@ __bam_merge_comp_pages(dbc, h, nh, ph, indx)
 		LSN_NOT_LOGGED(LSN(h));
 	else {
 		ALLOCA_LZ4_BUFFER();
-		compr = __bam_lz4_pg_img(dbp, nh, &hdr, &dta, lz4dta);
+		__bam_lz4_pg_img(dbp, nh, &hdr, &dta, lz4dta);
 
 		pfxh = P_PFXENTRY(dbp, h);
 		memset(&pfxhdbt, 0, sizeof(DBT));
@@ -501,11 +501,11 @@ __bam_move_comp_entries_log(dbc, pfx, newh, h, nh, ph, indx)
 	PAGE *ph;
 	db_indx_t indx;
 {
-	int ret, direct, compr;
+	int ret, direct;
 	DB *dbp;
-	BKEYDATA *pfxh, *pfxnh, *newpfx;
+	BKEYDATA *pfxh = NULL, *pfxnh = NULL, *newpfx;
 	DBT hdr, dta, newpfxdbt, pfxhdbt, pfxnhdbt;
-	u_int8_t *lz4dta;
+	u_int8_t *lz4dta = NULL;
 
 	dbp = dbc->dbp;
 	direct = (PGNO(nh) == NEXT_PGNO(h)) ? P_L2R : P_R2L;
@@ -514,7 +514,7 @@ __bam_move_comp_entries_log(dbc, pfx, newh, h, nh, ph, indx)
 		LSN_NOT_LOGGED(LSN(h));
 	else {
 		ALLOCA_LZ4_BUFFER();
-		compr = __bam_lz4_pg_img(dbp, nh, &hdr, &dta, lz4dta);
+		__bam_lz4_pg_img(dbp, nh, &hdr, &dta, lz4dta);
 
 		memset(&newpfxdbt, 0, sizeof(DBT));
 		newpfx = alloca(pfx_bkeydata_size(pfx));
@@ -1129,7 +1129,7 @@ __bam_pgcompact_redo_target(dbc, h, argp)
 	int ret;
 	DB *dbp;
 	u_int8_t *sp, *pfxbuf, *nhbuf, *unlz4dta;
-	PAGE *c, *nh, *ph;
+	PAGE *c, *nh;
 	db_indx_t *ninp, *pinp, ii, nent, len;
 	pfx_t *pfx;
 	void *dtadbtdata, *hdrdbtdata;
@@ -1396,7 +1396,6 @@ __bam_ispgcompactible(dbc, pgno, dbt, ff)
 	int ret, t_ret;
 	double pgff;
 	DB *dbp;
-	DB_ENV *dbenv;
 	DB_MPOOLFILE *dbmfp;
 	PAGE *h;
 	BTREE_CURSOR *cp;
@@ -1428,7 +1427,6 @@ __bam_ispgcompactible(dbc, pgno, dbt, ff)
 		return (ret);
 
 	dbp = dbc->dbp;
-	dbenv = dbp->dbenv;
 	dbmfp = dbp->mpf;
 
 	if ((ret = __memp_fget(dbmfp, &pgno, 0, &h)) != 0) {

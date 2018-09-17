@@ -7,7 +7,7 @@
 
 #ifndef lint
 #ifndef NOID
-static char elsieid[] = "@(#)localtime.c	8.5";
+//static char elsieid[] = "@(#)localtime.c	8.5";
 #endif /* !defined NOID */
 #endif /* !defined lint */
 
@@ -155,7 +155,9 @@ static const char *getsecs P((const char *strp, long *secsp));
 static const char *getoffset P((const char *strp, long *offsetp));
 static const char *getrule P((const char *strp, struct rule *rulep));
 static void gmtload P((struct state * sp));
+#ifdef ALL_STATE
 static struct tm *gmtsub P((const time_t *timep, long offset, struct tm *tmp));
+#endif
 static struct tm *localsub P((const time_t *timep, long offset,
                               struct tm *tmp));
 static int increment_overflow P((int *number, int delta));
@@ -1233,6 +1235,7 @@ struct tm *const tmp;
     return result;
 }
 
+#if 0 //OMIT FOR COMDB2
 static struct tm *tz_gmtime(timep) const time_t *const timep;
 {
     return gmtsub(timep, 0L, &tm);
@@ -1257,6 +1260,7 @@ const long offset;
 }
 
 #endif /* defined STD_INSPIRED */
+#endif
 
 /*
 ** Return the number of leap years through the end of the given year
@@ -1390,6 +1394,7 @@ register struct tm *const tmp;
     return tmp;
 }
 
+#if 0 //OMIT FOR COMDB2
 static char *tz_ctime(timep) const time_t *const timep;
 {
     /*
@@ -1409,6 +1414,7 @@ char *buf;
     return asctime_r(tz_localtime_r(timep, &mytm), buf);
 }
 
+#endif
 /*
 ** Adapted from code provided by Robert Elz, who writes:
 **	The "best" way to do mktime I think is based on an idea of Bob
@@ -1727,6 +1733,7 @@ static time_t tz_mktime(tmp) struct tm *const tmp;
     return time1(tmp, localsub, 0L);
 }
 
+#if 0 //OMIT FOR COMDB2
 #ifdef STD_INSPIRED
 
 static time_t tz_timelocal(tmp) struct tm *const tmp;
@@ -1749,6 +1756,7 @@ const long offset;
 }
 
 #endif /* defined STD_INSPIRED */
+#endif
 
 #ifdef CMUCS
 
@@ -1771,6 +1779,7 @@ static long gtime(tmp) struct tm *const tmp;
 ** XXX--is the below the right way to conditionalize??
 */
 
+#if 0 //OMIT FOR COMDB2
 #ifdef STD_INSPIRED
 
 /*
@@ -1834,6 +1843,7 @@ static time_t posix2time(t) time_t t;
 #endif
 
 #endif /* defined STD_INSPIRED */
+#endif
 
 /*************************DH modified zone***************/
 
