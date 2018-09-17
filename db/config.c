@@ -330,7 +330,7 @@ static char *legacy_options[] = {
     "setattr SC_DONE_SAME_TRAN 0",
     "logmsg notimestamp",
     "queuedb_genid_filename off",
-    "decoupled_logputs off",
+    "use_rep_log_fill off",
     "init_with_time_based_genids",
     "logmsg level info",
     "logput window 1",

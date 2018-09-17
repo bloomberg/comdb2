@@ -72,6 +72,7 @@ extern int gbl_reallyearly;
 extern int gbl_rep_process_txn_time;
 int gbl_rep_badgen_trace;
 int gbl_decoupled_logputs = 1;
+int gbl_use_rep_log_fill = 1;
 int gbl_max_apply_dequeue = 100000;
 int gbl_master_req_waitms = 200;
 int gbl_fills_waitms = 1000;
@@ -1408,7 +1409,7 @@ skip:				/*
 			goto errlock;
 		}
 
-		type = gbl_decoupled_logputs ?  REP_LOG_FILL : REP_LOG;
+		type = (gbl_decoupled_logputs && gbl_use_rep_log_fill) ? REP_LOG_FILL : REP_LOG;
 		flags = IS_ZERO_LSN(rp->lsn) ||
 			IS_INIT_LSN(rp->lsn) ? DB_FIRST : DB_SET;
 		sendflags = DB_REP_SENDACK;
@@ -1691,7 +1692,7 @@ more:		   if (type == REP_LOG_MORE) {
 		int resp_rc;
 		sendflags = DB_REP_SENDACK;
 
-		type = gbl_decoupled_logputs ? REP_LOG_FILL : REP_LOG;
+		type = (gbl_decoupled_logputs && gbl_use_rep_log_fill) ? REP_LOG_FILL : REP_LOG;
 		if (gbl_verbose_fills) {
 			if (rec && rec->size != 0) {
 				logmsg(LOGMSG_USER, "%s line %d received REP_LOG_REQ from %s %d:%d to "

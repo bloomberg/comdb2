@@ -1237,6 +1237,10 @@ REGISTER_TUNABLE("decoupled_logputs",
                  "Perform logputs out-of-band. (Default: on)", TUNABLE_BOOLEAN,
                  &gbl_decoupled_logputs, EXPERIMENTAL | INTERNAL, NULL, NULL,
                  NULL, NULL);
+REGISTER_TUNABLE("use_rep_log_fill",
+                 "Use distinct rep-log-fill response. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_use_rep_log_fill,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("apply_pollms",
                  "Apply-thread poll time before checking queue. "
                  "(Default: 100ms)",
