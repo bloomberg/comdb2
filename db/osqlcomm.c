@@ -1920,7 +1920,7 @@ static const uint8_t *osqlcomm_ins_type_get(osql_ins_t *p_osql_ins,
         p_buf = buf_no_net_get(&(p_osql_ins->flags), sizeof(p_osql_ins->flags),
                                p_buf, p_buf_end);
         if (p_osql_ins->flags & OSQL_INSERT_UPSERT)
-            expected_len += sizeof(p_osql_ins->dk);
+            expected_len += sizeof(p_osql_ins->upsert_flags);
         if (p_osql_ins->flags & OSQL_INSERT_SEND_DK)
             expected_len += sizeof(p_osql_ins->dk);
         if (expected_len > (p_buf_end - p_buf))
