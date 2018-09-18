@@ -111,13 +111,8 @@ __db_new_from_freelist(DBC *dbc, DBMETA *meta, u_int32_t type, PAGE **pagepp)
 	DB_MPOOLFILE *mpf;
 	PAGE *h;
 	db_pgno_t last, pgno, newnext;
-	u_int32_t meta_flags;
 	int extend, ret;
 
-	u_int32_t mbytes, bytes, iosize;
-	off_t sz;
-
-	meta_flags = 0;
 	dbp = dbc->dbp;
 	mpf = dbp->mpf;
 	h = NULL;
@@ -160,7 +155,6 @@ __db_new_from_freelist(DBC *dbc, DBMETA *meta, u_int32_t type, PAGE **pagepp)
 	} else
 		LSN_NOT_LOGGED(LSN(meta));
 
-	meta_flags = DB_MPOOL_DIRTY;
 	meta->free = newnext;
 
 	if (extend == 1) {
@@ -257,7 +251,6 @@ __db_dump_freepages(DB *dbp, FILE *out)
     DBMETA *meta = NULL;
     DB_MPOOLFILE *mpf;
     int rc = 0;
-    int printed = 0;
     int lastcr = 0;
     int i = 0;
 
@@ -305,12 +298,10 @@ int __lock_dump_region_int(DB_ENV *, const char *area, FILE *,
 
 
 
-static uint8_t pagebuf[1048576];
+//Was used for tesing: static uint8_t pagebuf[1048576];
 
-int
-
-__os_physwrite(DB_ENV *dbenv, DB_FH * fhp, void *addr, size_t len,
-    size_t * nwp);
+int __os_physwrite(DB_ENV *dbenv, DB_FH * fhp, void *addr, size_t len,
+                   size_t * nwp);
 
 #include <arpa/inet.h>
 
@@ -332,18 +323,14 @@ __db_new(dbc, type, pagepp)
 	DB_LSN lsn;
 	DB_MPOOLFILE *mpf;
 	PAGE *h;
-	PAGE *p;
 	DBMETA *meta;
 	DB_LOCK metalock;
-	db_pgno_t last, pgno, newnext;
+	db_pgno_t pgno;
 	int extend, ret;
 	int meta_flags;
 	uint8_t *pagebuf = NULL;
 	int i;
 	db_pgno_t firstpage;
-	u_int32_t mbytes, bytes, iosize;
-	off_t sz;
-	size_t niop;
 	int page_extent_size = 0;
 	DB_TXN *t = NULL;
 
@@ -353,8 +340,6 @@ __db_new(dbc, type, pagepp)
 	dbp = dbc->dbp;
 	mpf = dbp->mpf;
 	h = NULL;
-
-	newnext = PGNO_INVALID;
 
 	page_extent_size = dbc->dbp->dbenv->page_extent_size;
 	if (page_extent_size == 0 ||
@@ -369,7 +354,6 @@ __db_new(dbc, type, pagepp)
 		goto err;
 	if ((ret = __memp_fget(mpf, &pgno, 0, &meta)) != 0)
 		goto err;
-	last = meta->last_pgno;
 
 	extend = (meta->free == PGNO_INVALID);
 	meta_flags = DB_MPOOL_DIRTY;
@@ -634,13 +618,12 @@ __db_new_original(dbc, type, pagepp)
 			    pgno, extend);
 
 			if (gbl_core_on_sparse_file) {
-				int rc;
 				char cmd[100];
 
 				snprintf(cmd, sizeof(cmd), "gcore %d",
 				    getpid());
 				printf("%s\n", cmd);
-				rc = system(cmd);
+				system(cmd);
 				gbl_core_on_sparse_file = 0;
 			}
 		}

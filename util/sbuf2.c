@@ -851,13 +851,13 @@ struct peer_info {
 char *SBUF2_FUNC(get_origin_mach_by_buf)(SBUF2 *sb)
 {
     int fd;
-    char *funcname;
     struct sockaddr_in peeraddr;
     socklen_t len = sizeof(peeraddr);
     char *host;
 #if SBUF2_SERVER
     struct peer_info *info;
     struct peer_info key;
+    char *funcname;
 #else
     void *info = NULL;
 #endif
@@ -908,7 +908,9 @@ char *SBUF2_FUNC(get_origin_mach_by_buf)(SBUF2 *sb)
             int goodrc = 0;
 
 #ifdef _LINUX_SOURCE
+#if SBUF2_SERVER
             funcname = "getnameinfo";
+#endif
             rc = getnameinfo((struct sockaddr *)&peeraddr, sizeof(peeraddr),
                              hnm, sizeof(hnm), NULL, 0, 0);
 
@@ -919,7 +921,9 @@ char *SBUF2_FUNC(get_origin_mach_by_buf)(SBUF2 *sb)
                 error_num = errno;
             }
 #else
+#if SBUF2_SERVER
             funcname = "getipnodebyaddr";
+#endif
             struct hostent *hp = NULL;
             hp = getipnodebyaddr(&peeraddr.sin_addr, sizeof(peeraddr.sin_addr),
                                  peeraddr.sin_family, &error_num);

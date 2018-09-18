@@ -638,7 +638,7 @@ __bam_pgcompact(dbc, dbt, ff, tgtff)
 {
 	extern struct thdpool *gbl_pgcompact_thdpool;
 	int ret, t_ret, do_not_care;
-	u_int32_t ntb, nub, nfb, nsfb;
+	u_int32_t ntb, nub, nfb; //, nsfb;
 	int32_t snbl, snbr;
 	DB *dbp;
 	DBC *dupc;
@@ -714,7 +714,7 @@ __bam_pgcompact(dbc, dbt, ff, tgtff)
 	ntb = dbp->pgsize - SIZEOF_PAGE;    /* total */
 	nub = ntb * ff;                     /* expected used */
 	nfb = ntb - nub;                    /* expected free */
-	nsfb = (u_int32_t)((1 - tgtff) * (double)ntb); /* target free */
+	//nsfb = (u_int32_t)((1 - tgtff) * (double)ntb); /* target free */
 
 	TRACE("(!) 0x%x %s %d: %s() I'm looking at pgno %d file %s.\n",
 			pthread_self(), __FILE__, __LINE__, __func__, PGNO(h), dbp->fname);

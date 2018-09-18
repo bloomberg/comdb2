@@ -82,7 +82,6 @@ static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
 
 static int set_genid_format(bdb_state_type *bdb_state, scdone_t type)
 {
-    int bdberr, rc;
     switch (type) {
     case (genid48_enable):
         bdb_genid_set_format(bdb_state, LLMETA_GENID_48BIT);

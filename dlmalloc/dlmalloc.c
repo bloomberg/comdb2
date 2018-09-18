@@ -4735,7 +4735,6 @@ static mstate init_user_mstate(char* tbase, size_t tsize) {
 
 mspace create_mspace(size_t capacity, int locked) {
   mstate m = 0;
-  mspace msp;
   size_t msize = pad_request(sizeof(struct malloc_state));
   init_mparams(); /* Ensure pagesize etc initialized */
 
