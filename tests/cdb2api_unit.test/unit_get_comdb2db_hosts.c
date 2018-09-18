@@ -16,6 +16,14 @@
 
 int global_state; // global 
 
+#define debugprint(fmt, args...)           \
+    do {                          \
+        if (hndl->debug_trace)   \
+            fprintf(stderr, "td 0x%u %s:%d " fmt, (uint32_t)pthread_self(), \
+                    __func__, __LINE__, ##args);                            \
+    } while(0); \
+
+
 typedef struct cdb2_hndl cdb2_hndl_tp;
 #define PATH_MAX 1024
 static char *CDB2DBCONFIG_BUF = NULL;
