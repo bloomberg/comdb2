@@ -291,7 +291,8 @@ const char *WriteRespString[] = {
 };
 int write_response(struct sqlclntstate *clnt, int R, void *D, int I)
 {
-    logmsg(LOGMSG_DEBUG, "write_response(%s,%p,%d)\n", WriteRespString[R], D, I);
+    logmsg(LOGMSG_DEBUG, "write_response(%s,%p,%d)\n", WriteRespString[R], D,
+           I);
     return clnt->plugin.write_response(clnt, R, D, I);
 }
 
@@ -3094,7 +3095,7 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
     }
     char *errstr = NULL;
     int rc = rc_sqlite_to_client(thd, clnt, rec, &errstr);
-    int skip = skip_response_error(clnt); 
+    int skip = skip_response_error(clnt);
     printf("AZ: %d rc = %d skip = %d\n", __LINE__, rc, skip);
     if (rc != 0) {
         if (!skip_response_error(clnt)) {

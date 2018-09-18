@@ -55,7 +55,8 @@ int do_drop_table(struct ireq *iq, struct schema_change_type *s,
 
     if ((!iq || iq->tranddl <= 1) && db->n_rev_constraints > 0 &&
         !self_referenced_only(db)) {
-        sc_errf(s, "%s: Can't drop tables with foreign constraints\n", __func__);
+        sc_errf(s, "%s: Can't drop tables with foreign constraints\n",
+                __func__);
         reqerrstr(iq, ERR_SC, "Can't drop tables with foreign constraints");
         return -1;
     }
@@ -72,7 +73,8 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
     int bdberr = 0;
 
     if (db->n_rev_constraints > 0 && !self_referenced_only(db)) {
-        sc_errf(s, "%s: Can't drop tables with foreign constraints\n", __func__);
+        sc_errf(s, "%s: Can't drop tables with foreign constraints\n",
+                __func__);
         reqerrstr(iq, ERR_SC, "Can't drop tables with foreign constraints");
         return ERR_SC;
     }

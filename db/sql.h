@@ -301,8 +301,6 @@ enum WriteResponsesEnum {
     RESPONSE_TRACE,
 };
 
-
-
 /* read response */
 enum {
     RESPONSE_PING_PONG,

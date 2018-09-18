@@ -530,7 +530,6 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
     if (!checkboard)
         return 0;
 
-
     logmsg(LOGMSG_DEBUG, "osql_chkboard_wait_commitrc: entering\n");
 
     while (!done) {
@@ -734,7 +733,9 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
     } /* done */
 
     if (rc || xerr->errval)
-        logmsg(LOGMSG_DEBUG, "osql_chkboard_wait_commitrc: done rc=%d xerr->errval=%d\n", rc, xerr->errval);
+        logmsg(LOGMSG_DEBUG,
+               "osql_chkboard_wait_commitrc: done rc=%d xerr->errval=%d\n", rc,
+               xerr->errval);
 
 done:
 

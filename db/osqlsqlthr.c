@@ -885,7 +885,8 @@ retry:
     }
 
     rc = osql_send_commit_logic(clnt, retries, req2netrpl(type));
-logmsg(LOGMSG_ERROR, "AZ:%s:%d: sql = %s, rc = %d\n", __FILE__, __LINE__, clnt->sql, rc);
+    logmsg(LOGMSG_ERROR, "AZ:%s:%d: sql = %s, rc = %d\n", __FILE__, __LINE__,
+           clnt->sql, rc);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s:%d: failed to send commit to master rc was %d\n", __FILE__,
                 __LINE__, rc);

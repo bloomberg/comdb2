@@ -117,13 +117,12 @@ void dumpstring(FILE *f, char *s, int quotes, int quote_quotes)
         fprintf(f, "'");
 }
 
-#define verbose_print(fmt, args...)           \
-    do {                          \
-        if (verbose)              \
-            fprintf(stderr, "td 0x%u %s:%d " fmt, (uint32_t)pthread_self(), \
-                    __func__, __LINE__, ##args);                            \
-    } while(0); \
-
+#define verbose_print(fmt, args...)                                            \
+    do {                                                                       \
+        if (verbose)                                                           \
+            fprintf(stderr, "td 0x%u %s:%d " fmt, (uint32_t)pthread_self(),    \
+                    __func__, __LINE__, ##args);                               \
+    } while (0);
 
 static const char *usage_text =
     "Usage: cdb2sql [options] dbname [sql [type1 [type2 ...]]]\n"
@@ -1182,7 +1181,7 @@ static int run_statement(const char *sql, int ntypes, int *types,
             fprintf(out, ");\n");
         } else if (printmode & DISP_TABULAR) {
             /* Noop */
-        } 
+        }
 
         fflush(out);
 
@@ -1548,7 +1547,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    if (printtostderr) 
+    if (printtostderr)
         printmode |= DISP_STDERR;
 
     if (getenv("COMDB2_IOLBF")) {
