@@ -221,6 +221,12 @@ int osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
             rc = osql_send_del_logic(pCur, thd);
             RESTART_SOCKSQL;
         } while (restarted && rc == 0);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d %s - failed to send socksql delrec rc=%d\n", __FILE__,
+                   __LINE__, __func__, rc);
+            return rc;
+        }
     }
 
     if (gbl_expressions_indexes && pCur->db->ix_expr) {
@@ -315,6 +321,12 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
                                      flags);
             RESTART_SOCKSQL;
         } while (restarted && rc == 0);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d %s - failed to send socksql insrec rc=%d\n", __FILE__,
+                   __LINE__, __func__, rc);
+            return rc;
+        }
     }
 
     if (gbl_expressions_indexes && pCur->db->ix_expr) {
@@ -424,6 +436,12 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 
             RESTART_SOCKSQL;
         } while (restarted && rc == 0);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d %s - failed to send socksql updrec rc=%d\n", __FILE__,
+                   __LINE__, __func__, rc);
+            return rc;
+        }
     }
 
     if (gbl_expressions_indexes && pCur->db->ix_expr) {
