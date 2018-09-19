@@ -3163,7 +3163,7 @@ int sqlite3BtreeClose(Btree *pBt)
 
     if (pBt->is_temporary) {
         /* close all tables */
-        for (i = 1; i < pBt->num_temp_tables; i++) {
+        for(i=0; i<pBt->num_temp_tables; i++){
             /* internally this will close cursors open on the table */
             if (pBt->temp_tables[i].owner == pBt) {
                 rc = bdb_temp_table_close(thedb->bdb_env,
@@ -3855,7 +3855,7 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
                 " sqlite3BtreeDropTable(pBt %d, root %d)       = %s\n",
                 pBt->btreeid, iTable, sqlite3ErrStr(rc));
 
-    struct temptable *tbl = &pBt->temp_tables[iTable];
+    struct temptable *tbl = &pBt->temp_tables[iTable-1];
     if (pBt->is_temporary) {
         if (tbl->owner == pBt) {
             // NEED TO LOCK HERE??
@@ -6277,7 +6277,7 @@ int sqlite3BtreeClearTable(Btree *pBt, int iTable, int *pnChange)
 
     if (pBt->is_temporary) {
         rc = bdb_temp_table_truncate(thedb->bdb_env,
-                                     pBt->temp_tables[iTable].tbl, &bdberr);
+                                     pBt->temp_tables[iTable-1].tbl, &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, 
                     "sqlite3BtreeClearTable: bdb_temp_table_clear error rc = %d\n",
@@ -7146,7 +7146,7 @@ sqlite3BtreeCursor_temptable(Btree *pBt,      /* The btree */
     int bdberr = 0;
     cur->cursor_class = CURSORCLASS_TEMPTABLE;
 
-    if (iTable < 0 || iTable > pBt->num_temp_tables) {
+    if( iTable<1 || iTable>pBt->num_temp_tables ){
        logmsg(LOGMSG_ERROR, "sqlite3BtreeCursor: unknown iTable %d\n", iTable);
         return SQLITE_INTERNAL;
     }
@@ -7158,7 +7158,7 @@ sqlite3BtreeCursor_temptable(Btree *pBt,      /* The btree */
         return SQLITE_INTERNAL;
     }
 
-    struct temptable *src = &pBt->temp_tables[iTable];
+    struct temptable *src = &pBt->temp_tables[iTable-1];
     cur->tmptable->tbl = src->tbl;
     if (src->lk) {
         cur->tmptable->lk = src->lk;
@@ -7198,7 +7198,7 @@ sqlite3BtreeCursor_temptable(Btree *pBt,      /* The btree */
      * that is opened for a table */
     cur->rootpage = iTable;
     cur->bt = pBt;
-    if (pBt->temp_tables[iTable].flags & BTREE_INTKEY)
+    if (pBt->temp_tables[iTable-1].flags & BTREE_INTKEY)
         cur->ixnum = -1;
     else
         /* mark as index (-1 means not index, others are ignored) */
@@ -11118,7 +11118,7 @@ void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
 
     sqlite3_stmt *stmt;
     sqlite3_prepare_v2(dest, sql, -1, &stmt, NULL);
-    tmptbl_clone = &s->temp_tables[rootpg];
+    tmptbl_clone = &s->temp_tables[rootpg-1];
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
         ;
     tmptbl_clone = NULL;
