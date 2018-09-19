@@ -199,6 +199,7 @@ extern int gbl_allow_neg_column_size;
 extern int gbl_instrument_dblist;
 extern int gbl_replicated_truncate_timeout;
 extern int gbl_match_on_ckp;
+extern int gbl_verbose_physrep;
 
 extern long long sampling_threshold;
 

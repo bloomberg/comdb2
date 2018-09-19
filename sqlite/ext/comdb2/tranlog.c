@@ -311,11 +311,12 @@ u_int64_t get_timestamp_from_matchable_record(char *data)
     {
         LOGCOPY_32(&rectype, data); 
         dood = *(uint32_t *)(data);
-        fprintf(stderr, "rec: %ld, dood: %ld\n", rectype, dood);
+        logmsg(LOGMSG_DEBUG, "%s rec: %ld, dood: %ld\n", __func__, rectype,
+                dood);
     }
     else
     {
-        logmsg(LOGMSG_WARN, "No data, so can't get rectype!\n");
+        logmsg(LOGMSG_DEBUG, "No data, so can't get rectype!\n");
     }
 
     if (rectype == DB___txn_regop_gen){
@@ -334,7 +335,6 @@ u_int64_t get_timestamp_from_matchable_record(char *data)
         return get_timestamp_from_ckp_record(data);
     }
 
-    logmsg(LOGMSG_WARN, "Timestamp is completely wrong!\n");
     return -1;
 }
 
