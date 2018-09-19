@@ -7146,7 +7146,7 @@ sqlite3BtreeCursor_temptable(Btree *pBt,      /* The btree */
     int bdberr = 0;
     cur->cursor_class = CURSORCLASS_TEMPTABLE;
 
-    if( iTable<1 || iTable>pBt->num_temp_tables ){
+    if( iTable<1 || iTable>=pBt->num_temp_tables ){
        logmsg(LOGMSG_ERROR, "sqlite3BtreeCursor: unknown iTable %d\n", iTable);
         return SQLITE_INTERNAL;
     }
