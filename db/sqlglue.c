@@ -3333,7 +3333,6 @@ int sqlite3BtreeOpen(
         bt->reqlogger = thrman_get_reqlogger(thrman_self());
         bt->btreeid = id++;
         bt->is_temporary = 1;
-        bt->num_temp_tables = 1; /* see above */
         *ppBtree = bt;
         thd->bttmp = bt;
         listc_init(&bt->cursors, offsetof(BtCursor, lnk));
