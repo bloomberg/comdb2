@@ -114,6 +114,7 @@ struct newsql_postponed_data {
 
 struct newsql_appdata {
     int8_t send_intrans_response;
+
     CDB2QUERY *query;
     CDB2SQLQUERY *sqlquery;
     struct newsql_postponed_data *postponed;
@@ -2041,6 +2042,7 @@ extern int gbl_allow_incoherent_sql;
 
 int64_t gbl_denied_appsock_connection_count = 0;
 
+#define APPDATA ((struct newsql_appdata *)(clnt.appdata))
 static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 {
     CDB2QUERY *query = NULL;
@@ -2101,10 +2103,10 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     thrman_change_type(thr_self, THRTYPE_APPSOCK_SQL);
 
     reset_clnt(&clnt, sb, 1);
-    clnt.admin = arg->admin;
     get_newsql_appdata(&clnt, 32);
     plugin_set_callbacks(&clnt, newsql);
     clnt.tzname[0] = '\0';
+    clnt.admin = arg->admin;
 
     pthread_mutex_init(&clnt.wait_mutex, NULL);
     pthread_cond_init(&clnt.wait_cond, NULL);
@@ -2184,8 +2186,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
     while (query) {
         sql_query = query->sqlquery;
-        ((struct newsql_appdata *)clnt.appdata)->query = query;
-        ((struct newsql_appdata *)clnt.appdata)->sqlquery = sql_query;
+        APPDATA->query = query;
+        APPDATA->sqlquery = sql_query;
         clnt.sql = sql_query->sql_query;
         if (!clnt.in_client_trans) {
             bzero(&clnt.effects, sizeof(clnt.effects));
@@ -2256,7 +2258,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
         /* avoid new accepting new queries/transaction on opened connections
            if we are incoherent (and not in a transaction). */
-        if (clnt.ignore_coherency == 0 && !bdb_am_i_coherent(thedb->bdb_env) &&
+        if (!clnt.admin && clnt.ignore_coherency == 0 &&
+            !bdb_am_i_coherent(thedb->bdb_env) &&
             (clnt.ctrl_sqlengine == SQLENG_NORMAL_PROCESS)) {
             logmsg(LOGMSG_ERROR,
                    "%s line %d td %u new query on incoherent node, "
@@ -2316,9 +2319,9 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
         if (clnt.added_to_hist) {
             clnt.added_to_hist = 0;
-        } else if (((struct newsql_appdata *)clnt.appdata)->query) {
-            cdb2__query__free_unpacked(((struct newsql_appdata *)clnt.appdata)->query, &pb_alloc);
-            ((struct newsql_appdata *)clnt.appdata)->query = NULL;
+        } else if (APPDATA->query) {
+            cdb2__query__free_unpacked(APPDATA->query, &pb_alloc);
+            APPDATA->query = NULL;
         }
         query = read_newsql_query(dbenv, &clnt, sb);
     }
