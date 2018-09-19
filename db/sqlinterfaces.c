@@ -2977,7 +2977,6 @@ static int send_columns(struct sqlclntstate *clnt, struct sqlite3_stmt *stmt)
 {
     if (clnt->osql.sent_column_data || skip_response(clnt))
         return 0;
-
     clnt->osql.sent_column_data = 1;
     return write_response(clnt, RESPONSE_COLUMNS, stmt, 0);
 }

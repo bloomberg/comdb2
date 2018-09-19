@@ -358,7 +358,7 @@ int osql_bplog_schemachange(struct ireq *iq)
                        osql_process_schemachange);
 
     if (rc)
-        logmsg(LOGMSG_INFO, "apply_changes returns rc %d\n", rc);
+        logmsg(LOGMSG_DEBUG, "apply_changes returns rc %d\n", rc);
 
     /* wait for all schema changes to finish */
     iq->sc = sc = iq->sc_pending;

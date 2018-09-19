@@ -2535,8 +2535,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, const char *dbname,
         debugprint("sbuf2write rc = %d (len = %d)\n", rc, len);
 
     rc = sbuf2flush(sb);
-    debugprint("sbuf2flush rc = %d\n", rc);
     if (rc < 0) {
+        debugprint("sbuf2flush rc = %d\n", rc);
         free(buf);
         return -1;
     }
@@ -3437,7 +3437,7 @@ static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
     if (i > 0) {
         int skip_len = 4;
         char *dup_sql = strdup(sql + skip_len);
-        char *rest;
+        char *rest = NULL;
         char *set_tok = strtok_r(dup_sql, " ", &rest);
         /* special case for spversion */
         if (set_tok && strcasecmp(set_tok, "spversion") == 0) {
@@ -3719,8 +3719,8 @@ retry_queries:
         if (rc != 0) 
             hndl->query_no -= run_last;
     }
-    debugprint("rc = %d\n", rc);
-    if (rc != 0) {
+    if (rc) {
+        debugprint("cdb2_send_query rc = %d\n", rc);
         sprintf(hndl->errstr, "%s: Can't send query to the db", __func__);
         newsql_disconnect(hndl, hndl->sb, __LINE__);
         hndl->retry_all = 1;
@@ -4195,8 +4195,8 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
          strncasecmp(sql, "commit", 6) != 0 &&
          strncasecmp(sql, "rollback", 8) != 0)) {
         rc = cdb2_run_statement_typed_int(hndl, "begin", 0, NULL, __LINE__);
-        debugprint("rc = %d\n", rc);
-        if (rc != 0) {
+        if (rc) {
+            debugprint("cdb2_run_statement_typed_int rc = %d\n", rc);
             return rc;
         }
         hndl->temp_trans = 1;
@@ -4204,7 +4204,8 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
 
     sql = cdb2_skipws(sql);
     rc = cdb2_run_statement_typed_int(hndl, sql, ntypes, types, __LINE__);
-    debugprint("rc = %d\n", rc);
+    if (rc) 
+        debugprint("rc = %d\n", rc);
 
     // XXX This code does not work correctly for WITH statements
     // (they can be either read or write)
@@ -4578,7 +4579,9 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
     }
     rc = cdb2_send_query(NULL, ss, comdb2db_name, sql_query, 0, 0, NULL, 3,
                          bindvars, 0, NULL, 0, 0, num_retries, 0, __LINE__);
-    debugprint("rc = %d\n", rc);
+    if (rc)
+        debugprint("cdb2_send_query rc = %d\n", rc);
+
 free_vars:
     i = 0;
     for (i = 0; i < 3; i++) {
@@ -4597,6 +4600,7 @@ free_vars:
     cdb2_hndl_tp tmp = {.sb = ss};
     rc = cdb2_read_record(&tmp, &p, &len, NULL);
     if (rc) {
+        debugprint("cdb2_read_record rc = %d\n", rc);
         sbuf2close(ss);
         snprintf(hndl->errstr, sizeof(hndl->errstr),
                  "%s:%d  Invalid sql response from db %s \n", __func__,
@@ -5053,7 +5057,7 @@ static int our_dc_first(const void *mp1, const void *mp2)
 static int configure_from_literal(cdb2_hndl_tp *hndl, const char *type)
 {
     char *type_copy = strdup(cdb2_skipws(type));
-    char *eomachine;
+    char *eomachine = NULL;
     char *eooptions = NULL;
     int rc = 0;
     int port;
