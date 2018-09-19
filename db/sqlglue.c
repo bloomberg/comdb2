@@ -3339,9 +3339,6 @@ int sqlite3BtreeOpen(
         listc_init(&bt->cursors, offsetof(BtCursor, lnk));
         if (flags & BTREE_UNORDERED) {
             bt->is_hashtable = 1;
-        } else {
-            int num_tables = 0;
-            sqlite3BtreeCreateTable(bt, &num_tables, BTREE_INTKEY);
         }
     } else if (zFilename) {
         /* TODO: maybe we should enforce unicity ? when attaching same dbs from
@@ -5044,9 +5041,6 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
         goto done;
     }
     pBt->temp_tables = newp;
-    if (num_temp_tables == 1) { // first one
-        bzero(&pBt->temp_tables[0], sizeof(struct temptable));
-    }
     bzero(&pBt->temp_tables[num_temp_tables], sizeof(struct temptable));
     if (pBt->is_hashtable) {
         pBt->temp_tables[num_temp_tables].tbl =
