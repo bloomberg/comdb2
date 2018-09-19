@@ -214,7 +214,11 @@ void sqlite3FinishCoding(Parse *pParse){
         sqlite3VdbeAddOp4Int(v,
           OP_Transaction,                    /* Opcode */
           iDb,                               /* P1 */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+          pParse->write || DbMaskTest(pParse->writeMask,iDb), /* P2 */
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           DbMaskTest(pParse->writeMask,iDb), /* P2 */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           pSchema->schema_cookie,            /* P3 */
           pSchema->iGeneration               /* P4 */
         );
