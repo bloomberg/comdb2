@@ -2852,6 +2852,7 @@ void sqlite3DropTable(Parse *pParse, SrcList *pName, int isView, int noErr){
   int iDb;
   int code;
 
+  comdb2WriteTransaction(pParse);
   if( db->mallocFailed ){
     goto exit_drop_table;
   }
@@ -3860,6 +3861,7 @@ void sqlite3DropIndex(Parse *pParse, SrcList *pName, int ifExists){
   sqlite3 *db = pParse->db;
   int iDb;
 
+  comdb2WriteTransaction(pParse);
   assert( pParse->nErr==0 );   /* Never called with prior errors */
   if( db->mallocFailed ){
     goto exit_drop_index;

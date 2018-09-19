@@ -732,6 +732,11 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
 
 done:
 
+    if (rc || xerr->errval)
+        logmsg(LOGMSG_DEBUG,
+               "osql_chkboard_wait_commitrc: done rc=%d xerr->errval=%d\n", rc,
+               xerr->errval);
+
     return rc;
 }
 

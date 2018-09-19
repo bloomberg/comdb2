@@ -357,6 +357,9 @@ int osql_bplog_schemachange(struct ireq *iq)
     rc = apply_changes(iq, tran, NULL, &nops, &err, iq->sorese.osqllog,
                        osql_process_schemachange);
 
+    if (rc)
+        logmsg(LOGMSG_DEBUG, "apply_changes returns rc %d\n", rc);
+
     /* wait for all schema changes to finish */
     iq->sc = sc = iq->sc_pending;
     iq->sc_pending = NULL;
@@ -1245,7 +1248,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     /* create a cursor */
     dbc = bdb_temp_table_cursor(thedb->bdb_env, tran->db, NULL, &bdberr);
     if (!dbc || bdberr) {
-        if (pthread_mutex_unlock(&tran->store_mtx)) {
+        if ((rc = pthread_mutex_unlock(&tran->store_mtx))) {
             logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
         }
         logmsg(LOGMSG_ERROR, "%s: failed to create cursor bdberr = %d\n", __func__,
@@ -1264,22 +1267,6 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
             break;
         }
     }
-#if 0
-    /* we will apply these outside a transaction */
-    if (out_rc) {
-        while ((cur_bpfunc = listc_rtl(&iq->bpfunc_lst))) {
-            assert(cur_bpfunc->func->fail != NULL);
-            cur_bpfunc->func->fail(iq_tran, cur_bpfunc->func, NULL);
-            free_bpfunc(cur_bpfunc->func);
-        }
-    } else {
-        while ((cur_bpfunc = listc_rtl(&iq->bpfunc_lst))) {
-            assert(cur_bpfunc->func->success != NULL);
-            cur_bpfunc->func->success(iq_tran, cur_bpfunc->func, NULL);
-            free_bpfunc(cur_bpfunc->func);
-        }
-    }
-#endif
 
     if ((rc = pthread_mutex_unlock(&tran->store_mtx)) != 0) {
         logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
