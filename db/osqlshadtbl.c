@@ -2132,7 +2132,7 @@ static int process_local_shadtbl_dbq(struct sqlclntstate *clnt, int *bdberr,
     shadbq_t *shadbq = &clnt->osql.shadbq;
     if (shadbq->spname && shadbq->genid) {
         osql_dbq_consume(clnt, shadbq->spname, shadbq->genid);
-        ++*crt_nops;
+        ++(*crt_nops);
     }
     return SQLITE_OK;
 }

@@ -1732,8 +1732,6 @@ extern int gbl_osql_verify_ext_chk;
 
 extern int gbl_genid_cache;
 
-extern int gbl_max_appsock_connections;
-
 extern int gbl_master_changed_oldfiles;
 extern int gbl_extended_sql_debug_trace;
 extern int gbl_use_sockpool_for_debug_logs;
