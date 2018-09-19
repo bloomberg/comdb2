@@ -5064,7 +5064,7 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
         goto done;
     }
     pBt->temp_tables[num_temp_tables].flags = flags;
-    *piTable = num_temp_tables;
+    *piTable = num_temp_tables + 1;
     ++pBt->num_temp_tables;
 done:
     reqlog_logf(pBt->reqlogger, REQL_TRACE,
