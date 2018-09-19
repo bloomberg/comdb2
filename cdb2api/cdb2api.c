@@ -2611,7 +2611,6 @@ static int cdb2_next_record_int(cdb2_hndl_tp *hndl, int shouldretry)
     int len;
     int rc;
     int num_retry = 0;
-    debugprint("entering\n");
 
     if (hndl->ack)
         ack(hndl);
@@ -2640,8 +2639,6 @@ retry_next_record:
     }
 
     rc = cdb2_read_record(hndl, &hndl->last_buf, &len, NULL);
-    debugprint("cdb2_read_record rc=%d\n", rc);
-
     if (rc) {
         newsql_disconnect(hndl, hndl->sb, __LINE__);
         sprintf(hndl->errstr, "%s: Timeout while reading response from server",
@@ -3091,9 +3088,8 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
                          hndl->num_set_commands, hndl->num_set_commands_sent,
                          hndl->commands, 0, NULL, 0, NULL, 1, 0, num_retry, 0,
                          __LINE__);
-    debugprint("cdb2_send_query rc = %d\n", rc);
-
     hndl->in_trans = 1;
+    debugprint("cdb2_send_query rc = %d, setting in_trans to 1\n", rc);
 
     if (rc != 0) {
         sbuf2close(hndl->sb);
@@ -3254,7 +3250,6 @@ static int retry_queries_and_skip(cdb2_hndl_tp *hndl, int num_retry,
                          hndl->commands, hndl->n_bindvars, hndl->bindvars,
                          hndl->ntypes, hndl->types, 0, skip_nrows, num_retry, 0,
                          __LINE__);
-    debugprint("rc = %d\n", rc);
     if (rc) {
         PRINT_RETURN_OK(rc);
     }

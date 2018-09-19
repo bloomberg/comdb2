@@ -291,8 +291,10 @@ const char *WriteRespString[] = {
 };
 int write_response(struct sqlclntstate *clnt, int R, void *D, int I)
 {
+#ifdef DEBUG
     logmsg(LOGMSG_DEBUG, "write_response(%s,%p,%d)\n", WriteRespString[R], D,
            I);
+#endif
     return clnt->plugin.write_response(clnt, R, D, I);
 }
 
@@ -2974,13 +2976,11 @@ static int skip_response_error(struct sqlclntstate *clnt)
 static int send_columns(struct sqlclntstate *clnt, struct sqlite3_stmt *stmt)
 {
     if (clnt->osql.sent_column_data) {
-        logmsg(LOGMSG_DEBUG, "send_columns: Already sent column data\n");
         return 0;
     }
 
     int skip = skip_response(clnt);
     if (skip) {
-        logmsg(LOGMSG_DEBUG, "send_columns: skip response = %d\n", skip);
         return 0;
     }
     clnt->osql.sent_column_data = 1;
@@ -3095,8 +3095,6 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
     }
     char *errstr = NULL;
     int rc = rc_sqlite_to_client(thd, clnt, rec, &errstr);
-    int skip = skip_response_error(clnt);
-    printf("AZ: %d rc = %d skip = %d\n", __LINE__, rc, skip);
     if (rc != 0) {
         if (!skip_response_error(clnt)) {
             send_run_error(clnt, errstr, rc);
