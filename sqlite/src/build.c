@@ -2474,7 +2474,7 @@ void sqlite3EndTable(
        "UPDATE %Q.%s "
        "SET type='%s', name=%Q, tbl_name=%Q, rootpage=#%d, sql=%Q "
        "WHERE rowid=#%d",
-       db->aDb[iDb].zDbSName, SCHEMA_TABLE(iDb),
+       db->aDb[iDb].zDbSName, MASTER_NAME,
        zType,
        p->zName,
        p->zName,
@@ -2488,7 +2488,7 @@ void sqlite3EndTable(
        "UPDATE %Q.%s "
        "SET type='%s', name=%Q, tbl_name=%Q, rootpage=#%d, sql=%Q, csc2=NULL "
        "WHERE rowid=#%d",
-       db->aDb[iDb].zDbSName, SCHEMA_TABLE(iDb),
+       db->aDb[iDb].zDbSName, MASTER_NAME,
        zType,
        p->zName,
        p->zName,

@@ -190,7 +190,7 @@ int sqlite3InitOne(sqlite3 *db, int iDb, char **pzErrMsg, u32 mFlags){
   /* have we created already sqlite_master for this one?
   ** remote shares the same sqlite_master with "main"
   **/
-  pTab = sqlite3FindTableCheckOnly(db, zMasterName, /*(iDb<=1)?(db->aDb[iDb].zName):(db->aDb[0].zName)*/ db->aDb[iDb].zDbSName);
+  pTab = sqlite3FindTableCheckOnly(db, zMasterName, db->aDb[iDb].zDbSName);
   if( pTab==NULL ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   /* Construct the in-memory representation schema tables (sqlite_master or
@@ -218,7 +218,6 @@ int sqlite3InitOne(sqlite3 *db, int iDb, char **pzErrMsg, u32 mFlags){
     goto error_out;
   }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  pTab = sqlite3FindTableCheckOnly(db, zMasterName, db->aDb[iDb].zDbSName);
   }else {
     initData.db = db;
     initData.iDb = iDb;
