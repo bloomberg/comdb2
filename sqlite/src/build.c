@@ -201,13 +201,14 @@ void sqlite3FinishCoding(Parse *pParse){
       int iDb, i;
       assert( sqlite3VdbeGetOp(v, 0)->opcode==OP_Init );
       sqlite3VdbeJumpHere(v, 0);
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-      /* DDL/PUT wants a write transaction */
-      if( pParse->write ) sqlite3VdbeAddOp2(v, OP_Transaction, 0, 1); else
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       for(iDb=0; iDb<db->nDb; iDb++){
         Schema *pSchema;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+        /* DDL/PUT wants a write transaction */
+        if( DbMaskTest(pParse->cookieMask, iDb)==0 && !pParse->write ) continue;
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         if( DbMaskTest(pParse->cookieMask, iDb)==0 ) continue;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         sqlite3VdbeUsesBtree(v, iDb);
         pSchema = db->aDb[iDb].pSchema;
         sqlite3VdbeAddOp4Int(v,
