@@ -471,7 +471,6 @@ int sqlite3Init(sqlite3 *db, char **pzErrMsg){
   for(i=db->nDb-1; i>0; i--){
     assert( i==1 || sqlite3BtreeHoldsMutex(db->aDb[i].pBt) );
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if( i==1 ) continue; /* skip temp tables */
     if( !zName && i>1 ) continue; /* skip remote that are not doing a table prepare */
     /*
     ** remote tables are updated on a table basis; check if the schema for this
