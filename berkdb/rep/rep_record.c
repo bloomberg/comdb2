@@ -1339,9 +1339,7 @@ skip:				/*
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 		check_limit = gbytes != 0 || bytes != 0;
 		fromline = __LINE__;
-		dbenv->get_lg_max(dbenv, &maxlookahead);
-		if ((ret = __log_cursor_complete(dbenv, &logc, maxlookahead + 100000,
-						0)) != 0)
+		if ((ret = __log_cursor(dbenv, &logc)) != 0)
 			goto errlock;
 		/* A confused replicant can send a request
 		 * for an invalid log record, and cause the master
@@ -1637,9 +1635,7 @@ more:		   if (type == REP_LOG_MORE) {
 		 */
 		oldfilelsn = lsn = rp->lsn;
 		fromline = __LINE__;
-		dbenv->get_lg_max(dbenv, &maxlookahead);
-		if ((ret = __log_cursor_complete(dbenv, &logc,
-						maxlookahead + 100000, 0)) != 0)
+		if ((ret = __log_cursor(dbenv, &logc)) != 0)
 			goto errlock;
 		F_SET(logc, DB_LOG_NO_PANIC);
 		memset(&data_dbt, 0, sizeof(data_dbt));
