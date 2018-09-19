@@ -69,48 +69,46 @@ struct newsql_postponed_data {
     uint8_t *row;
 };
 
-/*
-**                (SERVER)
-**  Default --> (val: 1)
-**                  |
-**                  +--> Client has SKIP feature?
-**                               |    |
-**                            NO |    | YES
-**                               |    |
-**  SET INTRANSRESULTS OFF ------)--->+--> (val: 0) --+
-**                               |                    |
-**                               |  +-----------------+
-**                               |  |
-**                               |  +---> Send server SKIP feature;
-**                               |        Don't send intrans results
-**                               |
-**  SET INTRANSRESULTS ON        +-------> (val: 1) --+
-**            |                                       |
-**            | (val: -1)           +-----------------+
-**            |                     |
-**            +---------------------+--> Don't send server SKIP feature;
-**                                       Send intrans results
-**
-**                (CLIENT)
-**  CDB2_READ_INTRANS_RESULTS is ON?
-**                 /\
-**   NO (default) /  \ YES
-**               /    \
-**   Send Client       \
-**   SKIP feature       \
-**            /          \
-**   Server has           \
-**        SKIP feature?    \
-**         /          \     \
-**      Y /            \ N   \
-**       /              \     \
-**   Don't read         Read intrans results
-**   intrans results    for writes
-**   for writes
-**
-**  --
-**  Rivers
-*/
+/*                (SERVER)                                                */
+/*  Default --> (val: 1)                                                  */
+/*                  |                                                     */
+/*                  +--> Client has SKIP feature?                         */
+/*                               |    |                                   */
+/*                            NO |    | YES                               */
+/*                               |    |                                   */
+/*  SET INTRANSRESULTS OFF ------)--->+--> (val: 0) --+                   */
+/*                               |                    |                   */
+/*                               |  +-----------------+                   */
+/*                               |  |                                     */
+/*                               |  +---> Send server SKIP feature;       */
+/*                               |        Don't send intrans results      */
+/*                               |                                        */
+/*  SET INTRANSRESULTS ON        +-------> (val: 1) --+                   */
+/*            |                                       |                   */
+/*            | (val: -1)           +-----------------+                   */
+/*            |                     |                                     */
+/*            +---------------------+--> Don't send server SKIP feature;  */
+/*                                       Send intrans results             */
+/*                                                                        */
+/*                (CLIENT)                                                */
+/*  CDB2_READ_INTRANS_RESULTS is ON?                                      */
+/*                 /\                                                     */
+/*   NO (default) /  \ YES                                                */
+/*               /    \                                                   */
+/*   Send Client       \                                                  */
+/*   SKIP feature       \                                                 */
+/*            /          \                                                */
+/*   Server has           \                                               */
+/*        SKIP feature?    \                                              */
+/*         /          \     \                                             */
+/*      Y /            \ N   \                                            */
+/*       /              \     \                                           */
+/*   Don't read         Read intrans results                              */
+/*   intrans results    for writes                                        */
+/*   for writes                                                           */
+/*                                                                        */
+/*  --                                                                    */
+/*  Rivers                                                                */
 
 struct newsql_appdata {
     int8_t send_intrans_response;
@@ -133,7 +131,6 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
 {
     struct newsql_appdata *appdata = clnt->appdata;
     CDB2SQLQUERY *sql_query = appdata->sqlquery;
-    char cnonce[256];
     int rcode = 0;
     if (sql_query && sql_query->snapshot_info &&
         sql_query->snapshot_info->file > 0) {
@@ -260,7 +257,7 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
         CDB2__SQLRESPONSE__SNAPSHOTINFO__INIT;                                 \
                                                                                \
     if (newsql_has_high_availability(clnt)) {                                  \
-        int file = 0, offset = 0, rc;                                          \
+        int file = 0, offset = 0;                                              \
         if (fill_snapinfo(clnt, &file, &offset)) {                             \
             sql_response.error_code = CDB2ERR_CHANGENODE;                      \
         }                                                                      \
@@ -635,7 +632,7 @@ static int newsql_send_postponed_row(struct sqlclntstate *clnt)
     struct newsql_appdata *appdata = clnt->appdata;
     char *hdr = (char *)&appdata->postponed->hdr;
     size_t hdrsz = sizeof(struct newsqlheader);
-    char *row = appdata->postponed->row;
+    char *row = (char *)appdata->postponed->row;
     size_t len = appdata->postponed->len;
     int rc;
     pthread_mutex_lock(&clnt->write_lock);
@@ -969,6 +966,7 @@ static int newsql_row_lua(struct sqlclntstate *clnt, struct response_data *arg)
 static int newsql_row_str(struct sqlclntstate *clnt, char **data, int ncols)
 {
     struct newsql_appdata *appdata = clnt->appdata;
+    UNUSED_PARAMETER(appdata); /* prod build without assert */
     assert(ncols == appdata->count);
     CDB2SQLRESPONSE__Column cols[ncols];
     CDB2SQLRESPONSE__Column *value[ncols];
@@ -980,7 +978,7 @@ static int newsql_row_str(struct sqlclntstate *clnt, char **data, int ncols)
             cols[i].isnull = 1;
             continue;
         }
-        cols[i].value.data = data[i];
+        cols[i].value.data = (uint8_t *)data[i];
         cols[i].value.len = strlen(data[i]) + 1;
     }
     CDB2SQLRESPONSE resp = CDB2__SQLRESPONSE__INIT;
@@ -1072,7 +1070,7 @@ static int newsql_sp_cmd(struct sqlclntstate *clnt, void *cmd, size_t sz)
         return -3;
     }
     uint8_t buf[len];
-    if (sbuf2fread(buf, len, 1, clnt->sb) != 1) {
+    if (sbuf2fread((char *)buf, len, 1, clnt->sb) != 1) {
         return -4;
     }
     CDB2QUERY *query = cdb2__query__unpack(NULL, len, buf);
@@ -2052,13 +2050,11 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     struct sbuf2 *sb;
     struct dbenv *dbenv;
     struct dbtable *tab;
-    char *cmdline;
 
     thr_self = arg->thr_self;
     dbenv = arg->dbenv;
     tab = arg->tab;
     sb = arg->sb;
-    cmdline = arg->cmdline;
 
     if (arg->keepsocket)
         *arg->keepsocket = 1;
@@ -2123,7 +2119,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         if ((now = time(NULL)) - pr) {
             logmsg(LOGMSG_WARN,
                    "%s: Exhausted appsock connections, total %d connections "
-                   "denied-connection count=%llu\n",
+                   "denied-connection count=%"PRId64"\n",
                    __func__, active_appsock_conns,
                    gbl_denied_appsock_connection_count);
             pr = now;
