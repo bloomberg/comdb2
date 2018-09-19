@@ -4687,20 +4687,6 @@ int sqlite3OpenTempDatabase(Parse *pParse){
       pParse->rc = rc;
       return 1;
     }
-
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    {
-      int pgno;
-      rc = sqlite3BtreeCreateTable(pBt, &pgno, BTREE_INTKEY);    
-      if( rc!=SQLITE_OK ){
-        sqlite3ErrorMsg(pParse, "unable to open a temporary database "
-                                "file for storing temporary tables");
-        pParse->rc = rc;
-        return 1;
-      }
-    }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
     db->aDb[1].pBt = pBt;
     assert( db->aDb[1].pSchema );
     if( SQLITE_NOMEM==sqlite3BtreeSetPageSize(pBt, db->nextPagesize, -1, 0) ){
