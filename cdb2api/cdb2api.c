@@ -150,7 +150,7 @@ static void reset_sockpool(void);
 #define debugprint(fmt, args...)                                               \
     do {                                                                       \
         if (hndl->debug_trace)                                                 \
-            fprintf(stderr, "td 0x%u %s:%d " fmt, (uint32_t)pthread_self(),    \
+            fprintf(stderr, "td 0x%p %s:%d " fmt, (void *)pthread_self(),              \
                     __func__, __LINE__, ##args);                               \
     } while (0);
 
@@ -2374,8 +2374,8 @@ retry_read:
     }
 
     if (hndl->first_buf == NULL) {
-        fprintf(stderr, "td 0x%u %s: Can't read response from the db\n",
-                (uint32_t)pthread_self(), __func__);
+        fprintf(stderr, "td 0x%p %s: Can't read response from the db\n",
+                (void *)pthread_self(), __func__);
         return -1;
     }
     hndl->firstresponse = cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
@@ -2390,7 +2390,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, const char *dbname,
                            int retries_done, int do_append, int fromline)
 {
     if (log_calls) {
-        fprintf(stderr, "td 0x%u %s line %d\n", (uint32_t)pthread_self(),
+        fprintf(stderr, "td 0x%p %s line %d\n", (void *)pthread_self(),
                 __func__, __LINE__);
     }
 
@@ -2587,9 +2587,9 @@ static int retry_queries_and_skip(cdb2_hndl_tp *hndl, int num_retry,
     {                                                                          \
         if (hndl->debug_trace)                                                 \
             fprintf(stderr,                                                    \
-                    "%std 0x%u %s:%d cnonce '%s' [%d][%d] "                    \
+                    "%std 0x%p %s:%d cnonce '%s' [%d][%d] "                    \
                     "returning %d\n",                                          \
-                    rcode == 0 ? "" : "XXX ", (uint32_t)pthread_self(),        \
+                    rcode == 0 ? "" : "XXX ", (void *)pthread_self(),          \
                     __func__, __LINE__, hndl->cnonce ? hndl->cnonce : "(nil)", \
                     hndl->snapshot_file, hndl->snapshot_offset, rcode);        \
         return (rcode);                                                        \
@@ -2598,9 +2598,9 @@ static int retry_queries_and_skip(cdb2_hndl_tp *hndl, int num_retry,
     {                                                                          \
         if (hndl->debug_trace)                                                 \
             fprintf(stderr,                                                    \
-                    "td 0x%u %s:%d cnonce '%s' [%d][%d] "                      \
+                    "td 0x%p %s:%d cnonce '%s' [%d][%d] "                      \
                     "returning %d\n",                                          \
-                    (uint32_t)pthread_self(), __func__, __LINE__,              \
+                    (void *)pthread_self(), __func__, __LINE__,                \
                     hndl->cnonce ? hndl->cnonce : "(nil)",                     \
                     hndl->snapshot_file, hndl->snapshot_offset, rcode);        \
         return (rcode);                                                        \
@@ -3145,8 +3145,8 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
         hndl->firstresponse =
             cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
     } else {
-        fprintf(stderr, "td 0x%u %s:%d: Can't read response from DB\n",
-                (uint32_t)pthread_self(), __func__, __LINE__);
+        fprintf(stderr, "td 0x%p %s:%d: Can't read response from DB\n",
+                (void *)pthread_self(), __func__, __LINE__);
         sbuf2close(hndl->sb);
         hndl->sb = NULL;
         return 1;
@@ -3506,8 +3506,8 @@ static inline void consume_previous_query(cdb2_hndl_tp *hndl)
 #define GOTO_RETRY_QUERIES()                                                   \
     do {                                                                       \
         if (hndl->debug_trace) {                                               \
-            fprintf(stderr, "td 0x%u %s:%d goto retry_queries\n",              \
-                    (uint32_t)pthread_self(), __func__, __LINE__);             \
+            fprintf(stderr, "td 0x%p %s:%d goto retry_queries\n",              \
+                    (void *)pthread_self(), __func__, __LINE__);               \
         }                                                                      \
         goto retry_queries;                                                    \
     } while (0);
@@ -3562,13 +3562,13 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
             if (is_commit && !hndl->in_trans) {
                 fprintf(
                     stderr,
-                    "XXX td 0x%u line %d: i am committing but not 'in-trans'\n",
-                    (uint32_t)pthread_self(), __LINE__);
+                    "XXX td 0x%p line %d: i am committing but not 'in-trans'\n",
+                    (void *)pthread_self(), __LINE__);
             } else {
                 fprintf(
                     stderr,
-                    "XXX td 0x%u line %d i am beginning but not 'in-trans'\n",
-                    (uint32_t)pthread_self(), __LINE__);
+                    "XXX td 0x%p line %d i am beginning but not 'in-trans'\n",
+                    (void *)pthread_self(), __LINE__);
             }
         }
 
@@ -3866,11 +3866,11 @@ read_record:
                 if (commit_file) {
                     if (hndl->debug_trace) {
                         fprintf(stderr,
-                                "td 0x%u:%d: i am retrying, retries_done %d\n",
-                                (uint32_t)pthread_self(), __LINE__,
+                                "td 0x%p:%d: i am retrying, retries_done %d\n",
+                                (void *)pthread_self(), __LINE__,
                                 retries_done);
-                        fprintf(stderr, "td 0x%u %s:%d setting in_trans to 1\n",
-                                (uint32_t)pthread_self(), __func__, __LINE__);
+                        fprintf(stderr, "td 0x%p %s:%d setting in_trans to 1\n",
+                                (void *)pthread_self(), __func__, __LINE__);
                     }
                     hndl->in_trans = 1;
                     hndl->snapshot_file = commit_file;
@@ -3906,10 +3906,10 @@ read_record:
             if (commit_file) {
                 if (hndl->debug_trace) {
                     fprintf(stderr,
-                            "td 0x%u:%d: i am retrying, retries_done %d\n",
-                            (uint32_t)pthread_self(), __LINE__, retries_done);
-                    fprintf(stderr, "td 0x%u %s:%d setting in_trans to 1\n",
-                            (uint32_t)pthread_self(), __func__, __LINE__);
+                            "td 0x%p:%d: i am retrying, retries_done %d\n",
+                            (void *)pthread_self(), __LINE__, retries_done);
+                    fprintf(stderr, "td 0x%p %s:%d setting in_trans to 1\n",
+                            (void *)pthread_self(), __func__, __LINE__);
                 }
                 hndl->in_trans = 1;
                 hndl->snapshot_file = commit_file;
@@ -3965,11 +3965,11 @@ read_record:
                 if (commit_file) {
                     if (hndl->debug_trace) {
                         fprintf(stderr,
-                                "td 0x%u:%d: i am retrying, retries_done %d\n",
-                                (uint32_t)pthread_self(), __LINE__,
+                                "td 0x%p:%d: i am retrying, retries_done %d\n",
+                                (void *)pthread_self(), __LINE__,
                                 retries_done);
-                        fprintf(stderr, "td 0x%u %s:%d setting in_trans to 1\n",
-                                (uint32_t)pthread_self(), __func__, __LINE__);
+                        fprintf(stderr, "td 0x%p %s:%d setting in_trans to 1\n",
+                                (void *)pthread_self(), __func__, __LINE__);
                     }
                     hndl->in_trans = 1;
                     hndl->snapshot_file = commit_file;
@@ -5146,8 +5146,8 @@ static int configure_from_literal(cdb2_hndl_tp *hndl, const char *type)
             hndl->num_hosts_sameroom++;
 
         if (hndl && hndl->debug_trace)
-            fprintf(stderr, "td 0x%u %s host %s port %d\n",
-                    (uint32_t)pthread_self(), __func__, m[i].host, m[i].port);
+            fprintf(stderr, "td 0x%p %s host %s port %d\n",
+                    (void *)pthread_self(), __func__, m[i].host, m[i].port);
     }
 
     hndl->flags |= CDB2_DIRECT_CPU;
@@ -5431,8 +5431,8 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
 
     if (getenv("CDB2_DEBUG")) {
         hndl->debug_trace = 1;
-        fprintf(stderr, "td 0x%u %s %d debug trace enabled\n",
-                (uint32_t)pthread_self(), __func__, __LINE__);
+        fprintf(stderr, "td 0x%p %s %d debug trace enabled\n",
+                (void *)pthread_self(), __func__, __LINE__);
     }
 
     if (hndl->flags & CDB2_RANDOM) {
@@ -5465,21 +5465,21 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
             }
         }
         if (hndl && hndl->debug_trace)
-            fprintf(stderr, "td 0x%u %s:%d host %s port %d\n",
-                    (uint32_t)pthread_self(), __func__, __LINE__,
+            fprintf(stderr, "td 0x%p %s:%d host %s port %d\n",
+                    (void *)pthread_self(), __func__, __LINE__,
                     hndl->hosts[0], hndl->ports[0]);
     } else if (is_machine_list(type)) {
         rc = configure_from_literal(hndl, type);
         if (rc && hndl->debug_trace) {
             fprintf(stderr,
-                    "td 0x%u %s:%d configure_from_literal %s returns %d\n",
-                    (uint32_t)pthread_self(), __func__, __LINE__, type, rc);
+                    "td 0x%p %s:%d configure_from_literal %s returns %d\n",
+                    (void *)pthread_self(), __func__, __LINE__, type, rc);
         }
     } else {
         rc = cdb2_get_dbhosts(hndl);
         if (rc && hndl->debug_trace) {
-            fprintf(stderr, "td 0x%u %s:%d cdb2_get_dbhosts returns %d\n",
-                    (uint32_t)pthread_self(), __func__, __LINE__, rc);
+            fprintf(stderr, "td 0x%p %s:%d cdb2_get_dbhosts returns %d\n",
+                    (void *)pthread_self(), __func__, __LINE__, rc);
         }
     }
 
@@ -5487,8 +5487,8 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     if (rc == 0) {
         rc = set_up_ssl_params(hndl);
         if (rc && hndl->debug_trace) {
-            fprintf(stderr, "td 0x%u %s:%d cdb2_get_dbhosts returns %d\n",
-                    (uint32_t)pthread_self(), __func__, __LINE__, rc);
+            fprintf(stderr, "td 0x%p %s:%d cdb2_get_dbhosts returns %d\n",
+                    (void *)pthread_self(), __func__, __LINE__, rc);
         }
     }
 #endif

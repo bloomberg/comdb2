@@ -120,7 +120,7 @@ void dumpstring(FILE *f, char *s, int quotes, int quote_quotes)
 #define verbose_print(fmt, args...)                                            \
     do {                                                                       \
         if (verbose)                                                           \
-            fprintf(stderr, "td 0x%u %s:%d " fmt, (uint32_t)pthread_self(),    \
+            fprintf(stderr, "td 0x%p %s:%d " fmt, (void *)pthread_self(),      \
                     __func__, __LINE__, ##args);                               \
     } while (0);
 
