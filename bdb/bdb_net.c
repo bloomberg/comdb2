@@ -949,6 +949,7 @@ int send_pg_compact_req(bdb_state_type *bdb_state, int32_t fileid,
 out:
     return rc;
 }
+
 int send_truncate_to_master(bdb_state_type *bdb_state, int file, int offset)
 {
     int timeout = 10 * 1000, rc;

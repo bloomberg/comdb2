@@ -1552,4 +1552,11 @@ REGISTER_TUNABLE("match_on_ckp",
                  TUNABLE_BOOLEAN, &gbl_match_on_ckp, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("verbose_physrep",
+                 "Print extended physrep trace.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_verbose_physrep, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+
+
+
 #endif /* _DB_TUNABLES_H */

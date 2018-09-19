@@ -115,6 +115,8 @@ int start_replication()
     return 0;
 }
 
+int gbl_verbose_physrep = 0;
+
 static void *keep_in_sync(void *args)
 {
     /* vars for syncing */
@@ -122,8 +124,6 @@ static void *keep_in_sync(void *args)
     volatile int64_t gen;
     struct timespec wait_spec;
     struct timespec remain_spec;
-    // char* sql_cmd = "select * from
-    // comdb2_transaction_logs('{@file:@offset}')";
     size_t sql_cmd_len = 100;
     char sql_cmd[sql_cmd_len];
     LOG_INFO info;
@@ -164,12 +164,15 @@ static void *keep_in_sync(void *args)
             continue;
         }
 
-        /* queries one extra record: our last record, so skip this record */
+        /* If we can't find our own end of log, truncate */
         if ((rc = cdb2_next_record(repl_db)) != CDB2_OK) {
-            logmsg(LOGMSG_WARN, "Can't find the next record\n");
+            if (gbl_verbose_physrep)
+                logmsg(LOGMSG_USER, "%s can't find the next record\n",
+                        __func__);
 
             if (rc == CDB2_OK_DONE) {
-                fprintf(stderr, "Let's do truncation\n");
+                if (gbl_verbose_physrep)
+                    logmsg(LOGMSG_USER, "%s Let's do truncation\n", __func__);
                 prev_info = handle_truncation(repl_db, info);
             }
         } else {
@@ -180,15 +183,20 @@ static void *keep_in_sync(void *args)
                 /* check the generation id to make sure the master hasn't
                  * switched */
                 int64_t *rec_gen = (int64_t *)cdb2_column_value(repl_db, 2);
-                if (rec_gen && *rec_gen > gen) {
+                if (rec_gen && *rec_gen != gen) {
                     int64_t new_gen = *rec_gen;
-                    logmsg(LOGMSG_WARN, "My master changed, do truncation!\n");
-                    fprintf(stderr, "gen: %" PRId64 ", rec_gen: %" PRId64 "\n",
-                            gen, *rec_gen);
+                    if (gbl_verbose_physrep) {
+                        logmsg(LOGMSG_USER, "%s: My master changed, do "
+                                "truncation!\n", __func__);
+                        logmsg(LOGMSG_USER, "%s: gen: %" PRId64 ", rec_gen: %"
+                                PRId64 "\n", gen, *rec_gen);
+                    }
                     prev_info = handle_truncation(repl_db, info);
                     gen = new_gen;
-                    fprintf(stderr, "new gen: %" PRId64 ", prev_rec_gen: %u\n",
-                            gen, prev_info.gen);
+                    if (gbl_verbose_physrep) {
+                        logmsg(LOGMSG_USER, "new gen: %" PRId64 ", prev_rec_gen: %u\n",
+                                gen, prev_info.gen);
+                    }
                     broke_early = 1;
                     break;
                 }
@@ -199,8 +207,8 @@ static void *keep_in_sync(void *args)
             if ((!broke_early && rc != CDB2_OK_DONE) ||
                 (broke_early && rc != CDB2_OK)) {
                 logmsg(LOGMSG_ERROR,
-                       "Had an error or replication was stopped%d\n", rc);
-                fprintf(stderr, "rc=%d\n", rc);
+                       "%s had an error or replication was stopped %d\n",
+                       __func__, rc);
             }
         }
 
