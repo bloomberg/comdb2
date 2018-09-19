@@ -192,6 +192,10 @@ for arg in "$@" ; do
             echo >&2 "-S option is now ignored"
             shift
             ;;
+        -x)
+            comdb2task="$2"
+            shift 2
+            ;;
         -f)
             # Several tools specify -f explicitly, so be silent about 
             # ignoring it for now.
@@ -411,6 +415,9 @@ touch $arstatus $exstatus
 
 aropts="-C $cluster_info"
 exopts="-C $cluster_info -u $max_du_percent "
+if [[ -n "$comdb2task" ]]; then
+    exopts="$exopts -x $comdb2task"
+fi
 
 [ $copy_data = no ]             && aropts="$aropts -s"
 [ $disable_log_delete = no ]    && aropts="$aropts -L"

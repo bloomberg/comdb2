@@ -2109,6 +2109,7 @@ int bdb_is_standalone(void *dbenv, void *in_bdb_state)
 }
 
 extern int gbl_commit_delay_trace;
+extern int gbl_nonames;
 
 static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
 {
@@ -2538,7 +2539,7 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
 
     /* now open the environment */
 
-    if (bdb_state->attr->nonames)
+    if (gbl_nonames)
         sprintf(txndir, "XXX.logs");
     else
         sprintf(txndir, "XXX.%s.txn", bdb_state->name);

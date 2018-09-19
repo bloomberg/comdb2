@@ -330,11 +330,12 @@ static char *legacy_options[] = {
     "setattr SC_DONE_SAME_TRAN 0",
     "logmsg notimestamp",
     "queuedb_genid_filename off",
-    "decoupled_logputs off",
+    "use_rep_log_fill off",
     "init_with_time_based_genids",
     "logmsg level info",
     "logput window 1",
     "osql_send_startgen off",
+    "finish_fill_threshold 0",
 };
 int gbl_legacy_defaults = 0;
 int pre_read_legacy_defaults(void *_, void *__)

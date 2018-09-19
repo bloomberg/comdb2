@@ -72,6 +72,7 @@ extern int gbl_reallyearly;
 extern int gbl_rep_process_txn_time;
 int gbl_rep_badgen_trace;
 int gbl_decoupled_logputs = 1;
+int gbl_use_rep_log_fill = 1;
 int gbl_max_apply_dequeue = 100000;
 int gbl_master_req_waitms = 200;
 int gbl_fills_waitms = 1000;
@@ -306,6 +307,7 @@ __rep_control_swap(rp)
 int gbl_verify_rep_log_records = 0;
 
 extern int gbl_verbose_master_req;
+int gbl_verbose_log_req = 0;
 int gbl_last_master_req = 0;
 extern int rep_qstat_has_master_req(void);
 
@@ -320,6 +322,51 @@ static inline void send_dupmaster(DB_ENV *dbenv, const char *func, int line)
 			NULL, NULL, 0, NULL);
 
 	logmsg(LOGMSG_DEBUG, "%s line %d sending DUPMASTER\n", func, line);
+}
+
+/*
+ * PUBLIC: int send_all_req __P((DB_ENV *, char *, DB_LSN *, int, const char *, int));
+ */
+int send_all_req(DB_ENV *dbenv, char *master_eid, DB_LSN *lsn, int flags,
+		 const char *func, int line)
+{
+	static unsigned long long call_count = 0, req_count = 0;
+	static int lastpr = 0;
+	int now, spanms = 0, rc = 0;
+
+	call_count++;
+	if (gbl_verbose_log_req && ((now = time(NULL)) - lastpr)) {
+		logmsg(LOGMSG_USER,
+		       "%s line %d sending REP_ALL_REQ to %s for "
+		       "[%d:%d], call-count=%llu req-count=%llu\n",
+		       func, line, master_eid, lsn->file, lsn->offset,
+		       call_count, req_count);
+		lastpr = now;
+	}
+	rc = __rep_send_message(dbenv, master_eid, REP_ALL_REQ, lsn, NULL,
+				flags, NULL);
+	return rc;
+}
+
+int send_log_req(DB_ENV *dbenv, char *master_eid, DB_LSN *lsn, DBT *max_lsn,
+        int flags, const char *func, int line)
+{
+	static unsigned long long call_count = 0, req_count = 0;
+	static int lastpr = 0;
+	int now, spanms = 0, rc = 0;
+
+	call_count++;
+	if (gbl_verbose_log_req && ((now = time(NULL)) - lastpr)) {
+		logmsg(LOGMSG_USER,
+		       "%s line %d sending REP_LOG_REQ to %s for "
+		       "[%d:%d], call-count=%llu req-count=%llu\n",
+		       func, line, master_eid, lsn->file, lsn->offset,
+		       call_count, req_count);
+		lastpr = now;
+	}
+	rc = __rep_send_message(dbenv, master_eid, REP_LOG_REQ, lsn, max_lsn,
+				flags, NULL);
+	return rc;
 }
 
 void send_master_req(DB_ENV *dbenv, const char *func, int line)
@@ -577,8 +624,8 @@ static void *apply_thread(void *arg)
 
 					int flags = (DB_REP_NODROP|DB_REP_NOBUFFER);
 					if (master_eid != db_eid_invalid && 
-							(rc = __rep_send_message(dbenv, master_eid, 
-							REP_ALL_REQ, &lsn, NULL, flags, NULL)) == 0) {
+							(rc = send_all_req(dbenv, master_eid, &lsn, flags,
+									   __func__, __LINE__)) == 0) {
 						last_fill = comdb2_time_epochms();
 						if (gbl_verbose_fills) {
 							logmsg(LOGMSG_USER, "%s line %d continue "
@@ -711,9 +758,8 @@ static void *apply_thread(void *arg)
 		if ((gbl_req_all_threshold && (bytes_behind > gbl_req_all_threshold)) ||
 				IS_ZERO_LSN(first_repdb_lsn)) {
 			/* Request all records from the master */
-			if ((ret = __rep_send_message(dbenv, master_eid,
-							REP_ALL_REQ, &my_lsn, NULL, 0,
-							NULL)) == 0) {
+			if ((ret = send_all_req(dbenv, master_eid, &my_lsn, 0, __func__,
+						__LINE__)) == 0){
 				last_fill = comdb2_time_epochms();
 				if (gbl_verbose_fills) {
 					logmsg(LOGMSG_USER, "%s line %d successful REP_ALL_REQ from %d:%d "
@@ -731,9 +777,8 @@ static void *apply_thread(void *arg)
 			LOGCOPY_TOLSN(&tmp_lsn, &first_repdb_lsn);
 			max_lsn_dbt.data = &tmp_lsn;
 			max_lsn_dbt.size = sizeof(tmp_lsn); 
-			if ((ret = __rep_send_message(dbenv, master_eid,
-							REP_LOG_REQ, &my_lsn, &max_lsn_dbt, 0,
-							NULL)) == 0) {
+			if ((ret = send_log_req(dbenv, master_eid, &my_lsn, &max_lsn_dbt, 0,
+                            __func__, __LINE__)) == 0) {
 				last_fill = comdb2_time_epochms();
 
 				if (gbl_verbose_fills) {
@@ -1364,7 +1409,7 @@ skip:				/*
 			goto errlock;
 		}
 
-		type = gbl_decoupled_logputs ?  REP_LOG_FILL : REP_LOG;
+		type = (gbl_decoupled_logputs && gbl_use_rep_log_fill) ? REP_LOG_FILL : REP_LOG;
 		flags = IS_ZERO_LSN(rp->lsn) ||
 			IS_INIT_LSN(rp->lsn) ? DB_FIRST : DB_SET;
 		sendflags = DB_REP_SENDACK;
@@ -1576,8 +1621,8 @@ more:		   if (type == REP_LOG_MORE) {
 			 */
 			if (master == db_eid_invalid)
 				ret = 0;
-			else if (__rep_send_message(dbenv,
-				master, REP_ALL_REQ, &lsn, NULL, DB_REP_NODROP, NULL) != 0) {
+			else if (send_all_req(dbenv, master, &lsn, DB_REP_NODROP, __func__,
+					      __LINE__) != 0) {
 				if (gbl_verbose_fills) {
 					logmsg(LOGMSG_USER, "%s line %d failed continue REP_ALL_REQ"
 							" lsn %d:%d\n", __func__, __LINE__, lsn.file,
@@ -1647,7 +1692,7 @@ more:		   if (type == REP_LOG_MORE) {
 		int resp_rc;
 		sendflags = DB_REP_SENDACK;
 
-		type = gbl_decoupled_logputs ? REP_LOG_FILL : REP_LOG;
+		type = (gbl_decoupled_logputs && gbl_use_rep_log_fill) ? REP_LOG_FILL : REP_LOG;
 		if (gbl_verbose_fills) {
 			if (rec && rec->size != 0) {
 				logmsg(LOGMSG_USER, "%s line %d received REP_LOG_REQ from %s %d:%d to "
@@ -3339,9 +3384,8 @@ gap_check:		max_lsn_dbtp = NULL;
 				 * __FILE__, __LINE__, next_lsn.file, next_lsn.offset);
 				 */
 				if (!gbl_decoupled_logputs) {
-					if (rc = __rep_send_message(dbenv, eid,
-							REP_LOG_REQ, &next_lsn, max_lsn_dbtp, 0,
-							NULL) == 0) {
+					if (rc = send_log_req(dbenv, eid, &next_lsn, max_lsn_dbtp, 0,
+                                __func__, __LINE__) == 0) {
 						if (gbl_verbose_fills) {
 							logmsg(LOGMSG_USER, "%s line %d good REP_LOG_REQ "
 									"for %d:%d\n", __func__, __LINE__, 
@@ -3481,9 +3525,8 @@ gap_check:		max_lsn_dbtp = NULL;
 				 * __FILE__, __LINE__, next_lsn.file, next_lsn.offset);
 				 */
 				if (!gbl_decoupled_logputs) {
-					if (rc = __rep_send_message(dbenv, eid,
-								REP_LOG_REQ, &next_lsn, max_lsn_dbtp, 0,
-								NULL) == 0) { 
+					if (rc = send_log_req(dbenv, eid, &next_lsn, max_lsn_dbtp, 0,
+                                __func__, __LINE__) == 0) {
 						if (gbl_verbose_fills) {
 							logmsg(LOGMSG_USER, "%s line %d good REP_LOG_REQ "
 									"for %d:%d\n", __func__, __LINE__, 
@@ -7418,8 +7461,8 @@ finish:ZERO_LSN(lp->waiting_lsn);
 		 */
 		lp->wait_recs = rep->max_gap;
 		MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
-		if (__rep_send_message(dbenv,
-			master, REP_ALL_REQ, &rp->lsn, NULL, DB_REP_NODROP, NULL) == 0) {
+		if (send_all_req(dbenv, master, &rp->lsn, DB_REP_NODROP, __func__,
+				 __LINE__) == 0) {
 			last_fill = comdb2_time_epochms();
 			if (gbl_verbose_fills) {
 				logmsg(LOGMSG_USER, "%s line %d successful REP_ALL_REQ for "

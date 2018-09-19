@@ -1222,6 +1222,10 @@ REGISTER_TUNABLE("verbose_master_req",
                  "Print trace showing master-req protocol.", TUNABLE_BOOLEAN,
                  &gbl_verbose_master_req, EXPERIMENTAL | INTERNAL, NULL, NULL,
                  NULL, NULL);
+REGISTER_TUNABLE("verbose_log_req",
+                 "Print trace showing all request-log requests.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_verbose_log_req, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("verbose_send_cohlease",
                  "Print trace from lease-issue thread.", TUNABLE_BOOLEAN,
                  &gbl_verbose_send_coherency_lease, EXPERIMENTAL | INTERNAL,
@@ -1233,6 +1237,10 @@ REGISTER_TUNABLE("decoupled_logputs",
                  "Perform logputs out-of-band. (Default: on)", TUNABLE_BOOLEAN,
                  &gbl_decoupled_logputs, EXPERIMENTAL | INTERNAL, NULL, NULL,
                  NULL, NULL);
+REGISTER_TUNABLE("use_rep_log_fill",
+                 "Use distinct rep-log-fill response. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_use_rep_log_fill,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("apply_pollms",
                  "Apply-thread poll time before checking queue. "
                  "(Default: 100ms)",
