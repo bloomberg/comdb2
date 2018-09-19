@@ -4204,7 +4204,7 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
 
     sql = cdb2_skipws(sql);
     rc = cdb2_run_statement_typed_int(hndl, sql, ntypes, types, __LINE__);
-    if (rc) 
+    if (rc)
         debugprint("rc = %d\n", rc);
 
     // XXX This code does not work correctly for WITH statements

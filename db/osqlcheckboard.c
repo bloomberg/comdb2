@@ -737,7 +737,6 @@ done:
                "osql_chkboard_wait_commitrc: done rc=%d xerr->errval=%d\n", rc,
                xerr->errval);
 
-
     return rc;
 }
 
