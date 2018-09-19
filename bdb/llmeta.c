@@ -2315,9 +2315,8 @@ backout:
         *bdberr = prev_bdberr;
         if (*bdberr == BDBERR_DEADLOCK)
             goto retry;
-
-        logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
     }
+    logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
     return -1;
 }
 

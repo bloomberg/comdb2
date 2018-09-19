@@ -3886,6 +3886,7 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
     int tmp_tid;
     tran_type tran;
 
+deadlock_again:
     tmp_tid = 0;
 
     db_flags = DB_THREAD;
@@ -3944,6 +3945,9 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
                        bdberr);
                 if (tid)
                     tid->abort(tid);
+                tid = NULL;
+                if (tmp_tid && bdberr == BDBERR_DEADLOCK)
+                    goto deadlock_again;
                 return -1;
             }
         }
