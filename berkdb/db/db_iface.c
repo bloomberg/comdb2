@@ -949,8 +949,7 @@ __db_get_pp(dbp, txn, key, data, flags)
 			    "cursor (lockerid %d)\n", (void *)pthread_self(), lid);
 			fprintf(stderr, "First stack:\n");
 			for (i = SKIPFRAMES; i < vptr->nframes; i++)
-				fprintf(stderr, " %d %p", i - SKIPFRAMES,
-				    vptr->stack[i]);
+				fprintf(stderr, " %d %p", i - SKIPFRAMES, vptr->stack[i]);
 			printf("\n");
 
 #ifndef __linux__
@@ -960,8 +959,7 @@ __db_get_pp(dbp, txn, key, data, flags)
 			if (!rc) {
 				fprintf(stderr, "Second stack:\n");
 				for (i = SKIPFRAMES; i < nframes; i++)
-					fprintf(stderr, "%d %p", i - SKIPFRAMES,
-					    stack[i]);
+					fprintf(stderr, "%d %p", i - SKIPFRAMES, stack[i]);
 				printf("\n");
 			}
 #endif
@@ -977,7 +975,7 @@ __db_get_pp(dbp, txn, key, data, flags)
 	if (LF_ISSET(DB_DIRTY_READ))
 		mode = DB_DIRTY_READ;
 	else if ((flags & DB_OPFLAGS_MASK) == DB_CONSUME ||
-	    (flags & DB_OPFLAGS_MASK) == DB_CONSUME_WAIT) {
+		(flags & DB_OPFLAGS_MASK) == DB_CONSUME_WAIT) {
 		mode = DB_WRITELOCK;
 		if (IS_AUTO_COMMIT(dbenv, txn, flags)) {
 			if ((ret = __db_txn_auto_init(dbenv, &txn)) != 0)

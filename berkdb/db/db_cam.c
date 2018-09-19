@@ -1253,7 +1253,7 @@ __db_c_put(dbc_arg, key, data, flags)
 	DBC *dbc_n, *oldopd, *opd;
 	DBT olddata, newdata;
 	db_pgno_t pgno;
-    int ret, t_ret;
+	int ret, t_ret;
 	u_int32_t tmp_flags;
 
 	/*
@@ -1281,7 +1281,7 @@ __db_c_put(dbc_arg, key, data, flags)
 
 #ifndef COMDB2_VERSION
 	DBC *sdbc = NULL, *pdbc = NULL;
-    DBT oldskey, pkey, skey, temppkey, tempskey;
+	DBT oldskey, pkey, skey, temppkey, tempskey;
 	int cmp, have_oldrec, ispartial, nodel, re_pad, rmw;
 	u_int32_t re_len, size;
 	/*
@@ -1579,7 +1579,7 @@ __db_c_put(dbc_arg, key, data, flags)
 		 *	does not exist, put it.
 		 */
 		if (!F_ISSET(sdbp, DB_AM_DUP)) {
-            DBT oldpkey;
+			DBT oldpkey;
 			/* Case 3. */
 			memset(&oldpkey, 0, sizeof(DBT));
 			F_SET(&oldpkey, DB_DBT_MALLOC);
