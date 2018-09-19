@@ -150,7 +150,7 @@ static void reset_sockpool(void);
 #define debugprint(fmt, args...)                                               \
     do {                                                                       \
         if (hndl->debug_trace)                                                 \
-            fprintf(stderr, "td 0x%p %s:%d " fmt, (void *)pthread_self(),              \
+            fprintf(stderr, "td 0x%p %s:%d " fmt, (void *)pthread_self(),      \
                     __func__, __LINE__, ##args);                               \
     } while (0);
 
@@ -3867,8 +3867,7 @@ read_record:
                     if (hndl->debug_trace) {
                         fprintf(stderr,
                                 "td 0x%p:%d: i am retrying, retries_done %d\n",
-                                (void *)pthread_self(), __LINE__,
-                                retries_done);
+                                (void *)pthread_self(), __LINE__, retries_done);
                         fprintf(stderr, "td 0x%p %s:%d setting in_trans to 1\n",
                                 (void *)pthread_self(), __func__, __LINE__);
                     }
@@ -3966,8 +3965,7 @@ read_record:
                     if (hndl->debug_trace) {
                         fprintf(stderr,
                                 "td 0x%p:%d: i am retrying, retries_done %d\n",
-                                (void *)pthread_self(), __LINE__,
-                                retries_done);
+                                (void *)pthread_self(), __LINE__, retries_done);
                         fprintf(stderr, "td 0x%p %s:%d setting in_trans to 1\n",
                                 (void *)pthread_self(), __func__, __LINE__);
                     }
@@ -5466,8 +5464,8 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
         }
         if (hndl && hndl->debug_trace)
             fprintf(stderr, "td 0x%p %s:%d host %s port %d\n",
-                    (void *)pthread_self(), __func__, __LINE__,
-                    hndl->hosts[0], hndl->ports[0]);
+                    (void *)pthread_self(), __func__, __LINE__, hndl->hosts[0],
+                    hndl->ports[0]);
     } else if (is_machine_list(type)) {
         rc = configure_from_literal(hndl, type);
         if (rc && hndl->debug_trace) {
