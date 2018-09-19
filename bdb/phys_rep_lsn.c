@@ -13,6 +13,8 @@ extern bdb_state_type *bdb_state;
 
 int matchable_log_type(int rectype);
 
+extern int gbl_verbose_physrep;
+
 LOG_INFO get_last_lsn(bdb_state_type *bdb_state)
 {
     int rc;
@@ -21,8 +23,7 @@ LOG_INFO get_last_lsn(bdb_state_type *bdb_state)
     DB_LOGC *logc;
     DBT logrec;
     DB_LSN last_log_lsn;
-    LOG_INFO log_info;
-    log_info.file = log_info.offset = log_info.size = 0;
+    LOG_INFO log_info = {0};
 
     rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0);
     if (rc) {
@@ -82,7 +83,10 @@ int compare_log(bdb_state_type *bdb_state, unsigned int file,
         return 1;
     }
 
-    logmsg(LOGMSG_WARN, "cmp: LSN %u:%u\n", match_lsn.file, match_lsn.offset);
+    if (gbl_verbose_physrep) {
+        logmsg(LOGMSG_USER, "cmp: LSN %u:%u\n", match_lsn.file,
+                match_lsn.offset);
+    }
 
     if (logrec.size != blob_len) {
         rc = 1;
@@ -134,15 +138,19 @@ int find_log_timestamp(bdb_state_type *bdb_state, time_t time,
         } while (!matchable_log_type(rectype));
 
         my_time = get_timestamp_from_matchable_record(logrec.data);
-        logmsg(LOGMSG_USER, "My ts is %lld, {%u:%u}\n", my_time, rec_lsn.file,
-               rec_lsn.offset);
+        if (gbl_verbose_physrep) {
+            logmsg(LOGMSG_USER, "%s my ts is %lld, {%u:%u}\n", __func__,
+                    my_time, rec_lsn.file, rec_lsn.offset);
+        }
 
         if (logrec.data)
             free(logrec.data);
     } while (time < my_time);
 
-    logmsg(LOGMSG_USER, "My ts is %lld, {%u:%u}\n", my_time, rec_lsn.file,
-           rec_lsn.offset);
+    if (gbl_verbose_physrep) {
+        logmsg(LOGMSG_USER, "%s ts is %lld, {%u:%u}\n", __func__, my_time,
+                rec_lsn.file, rec_lsn.offset);
+    }
 
     *file = rec_lsn.file;
     *offset = rec_lsn.offset;
