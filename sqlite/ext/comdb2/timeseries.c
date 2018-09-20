@@ -100,7 +100,7 @@ static int systblTimeseriesNext(sqlite3_vtab_cursor *cur){
       }
   }
 
-  return SQLITE_OK;
+  return rc;
 }
 
 enum {

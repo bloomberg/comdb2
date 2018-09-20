@@ -1607,7 +1607,6 @@ static int strcmpfunc_stmt(char *a, char *b, int len) { return strcmp(a, b); }
 static u_int strhashfunc_stmt(u_char *keyp, int len)
 {
     unsigned hash;
-    int jj;
     u_char *key = keyp;
     for (hash = 0; *key; key++)
         hash = ((hash % 8388013) << 8) + ((*key));
@@ -2873,7 +2872,6 @@ static void handle_expert_query(struct sqlthdstate *thd,
     }
 
     if (rc == SQLITE_OK) {
-        int nQuery = sqlite3_expert_count(p);
         const char *zCand =
             sqlite3_expert_report(p, 0, EXPERT_REPORT_CANDIDATES);
         fprintf(stdout, "-- Candidates -------------------------------\n");
@@ -3289,7 +3287,9 @@ static void handle_stored_proc(struct sqlthdstate *thd,
 }
 
 
-static inline void post_run_reqlog(struct sqlthdstate *thd, struct sql_state *rec)
+static inline void post_run_reqlog(struct sqlthdstate *thd,
+                                   struct sqlclntstate *clnt,
+                                   struct sql_state *rec)
 {
     reqlog_set_event(thd->logger, "sql");
     log_queue_time(thd->logger, clnt);
@@ -3363,7 +3363,7 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
     } while (rc == SQLITE_SCHEMA_REMOTE);
 
     /* set these after sending response so client gets results a bit sooner */
-    post_run_reqlog(thd, &rec);
+    post_run_reqlog(thd, clnt, &rec);
 
     sqlite_done(thd, clnt, &rec, rc);
     return rc;
@@ -3735,7 +3735,6 @@ static void sqlengine_work_appsock_pp(struct thdpool *pool, void *work,
                                       void *thddata, int op)
 {
     struct sqlclntstate *clnt = work;
-    int rc = 0;
 
     switch (op) {
     case THD_RUN:
@@ -3792,10 +3791,8 @@ static int send_heartbeat(struct sqlclntstate *clnt)
 
 int dispatch_sql_query(struct sqlclntstate *clnt)
 {
-    int done;
     char msg[1024];
     char *sqlcpy;
-    char thdinfo[40];
     int rc;
     struct thr_handle *self = thrman_self();
     int q_depth_tag_and_sql;
@@ -4227,10 +4224,6 @@ void reset_clnt_flags(struct sqlclntstate *clnt)
 
 void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt)
 {
-    int osqlrc = 0;
-    int rc = 0;
-    int bdberr = 0;
-
     if (clnt && clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
         switch (clnt->dbtran.mode) {
         case TRANLEVEL_SOSQL:
@@ -4296,7 +4289,7 @@ retry:
     retry++;
     while (written < nbytes) {
         struct pollfd pd;
-        int fd = pd.fd = sbuf2fileno(sb);
+        pd.fd = sbuf2fileno(sb);
         pd.events = POLLOUT;
         errno = 0;
         int rc = poll(&pd, 1, 100);
@@ -4459,13 +4452,12 @@ struct statement_handle {
 
 static void switch_context(struct sqlconn *conn, struct statement_handle *h)
 {
-    struct sql_thread *thd;
-    sqlite3 *db;
-    int i;
-
     return;
 
 #if 0
+    struct sql_thread *thd;
+    int i;
+    sqlite3 *db;
     /* don't do anything if we are working with the same statemtn as last time */
     if (conn->last_handle == h)
         return;
@@ -4538,7 +4530,6 @@ static enum req_code read_req(struct sqlconn *conn)
    the list of cursors and saves the query path and cost. */
 static int record_query_cost(struct sql_thread *thd, struct sqlclntstate *clnt)
 {
-    double cost;
     struct client_query_path_component *stats;
     int i;
     struct client_query_stats *query_info;
