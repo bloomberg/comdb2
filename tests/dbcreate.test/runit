@@ -64,7 +64,7 @@ grep "Created database" out || failexit "expected 'Created database'"
 
 echo "name    $DB" >> $TSTDBDIR/${DB}.lrl
 echo "dir     $TSTDBDIR" >> $TSTDBDIR/${DB}.lrl
-mkdir -p $TSTDBDIR/var/log
+mkdir -p $TSTDBDIR/var/log/cdb2
 mkdir -p $TMPDIR
 
 echo "Check 8, bring up db and query it"

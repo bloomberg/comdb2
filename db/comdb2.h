@@ -2815,9 +2815,6 @@ int reqlog_get_error_code(struct reqlogger *logger);
 void reqlog_set_path(struct reqlogger *logger, struct client_query_stats *path);
 void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context);
 void reqlog_set_clnt(struct reqlogger *, struct sqlclntstate *);
-/* Convert raw fingerprint to hex string, and write at most `n' characters of
-   the result to `hexstr'. Return the number of characters written. */
-int reqlog_fingerprint_to_hex(struct reqlogger *logger, char *hexstr, size_t n);
 
 void process_nodestats(void);
 void nodestats_report(FILE *fh, const char *prefix, int disp_rates);
