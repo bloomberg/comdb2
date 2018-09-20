@@ -6107,13 +6107,16 @@ case OP_IdxInsert: {        /* in2 */
     x.pKey = pIn2->z;
     x.aMem = aMem + pOp->p3;
     x.nMem = (u16)pOp->p4.i;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    rc = sqlite3BtreeInsert(pC->uc.pCursor, &x,
+        (pOp->p5 & OPFLAG_ISUPDATE)!=0, seekResult, pOp->p5
+        );
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     rc = sqlite3BtreeInsert(pC->uc.pCursor, &x,
          (pOp->p5 & (OPFLAG_APPEND|OPFLAG_SAVEPOSITION)), 
         ((pOp->p5 & OPFLAG_USESEEKRESULT) ? pC->seekResult : 0)
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-         , (int) pOp->p5
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         );
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     assert( pC->deferredMoveto==0 );
     pC->cacheStatus = CACHE_STALE;
   }
