@@ -3288,6 +3288,25 @@ static void handle_stored_proc(struct sqlthdstate *thd,
     sqlite_done(thd, clnt, &rec, 0);
 }
 
+
+static inline void post_run_reqlog(struct sqlthdstate *thd, struct sql_state *rec)
+{
+    reqlog_set_event(thd->logger, "sql");
+    log_queue_time(thd->logger, clnt);
+    if (rec->sql)
+        reqlog_set_sql(thd->logger, rec->sql);
+    if (gbl_fingerprint_queries) {
+        if(rec->stmt_entry) 
+            reqlog_set_fingerprint(
+                thd->logger, rec->stmt_entry->fingerprint, 
+                sizeof(rec->stmt_entry->fingerprint));
+        else
+            reqlog_set_fingerprint(
+                thd->logger, sqlite3_fingerprint(thd->sqldb),
+                sqlite3_fingerprint_size(thd->sqldb));
+    }
+}
+
 static int handle_sqlite_requests(struct sqlthdstate *thd,
                                   struct sqlclntstate *clnt)
 {
@@ -3343,15 +3362,8 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
 
     } while (rc == SQLITE_SCHEMA_REMOTE);
 
-    /* set these after sending response to client to respond faster */
-    reqlog_set_event(thd->logger, "sql");
-    log_queue_time(thd->logger, clnt);
-    if (rec.sql)
-        reqlog_set_sql(thd->logger, rec.sql);
-    if (gbl_fingerprint_queries) {
-        reqlog_set_fingerprint(thd->logger, sqlite3_fingerprint(thd->sqldb),
-                               sqlite3_fingerprint_size(thd->sqldb));
-    }
+    /* set these after sending response so client gets results a bit sooner */
+    post_run_reqlog(thd, &rec);
 
     sqlite_done(thd, clnt, &rec, rc);
     return rc;
