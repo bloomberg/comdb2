@@ -6980,6 +6980,5 @@ int net_get_conntime_dump_period(netinfo_type *netinfo_ptr) {
 
 void net_register_disconnect_callback(netinfo_type *netinfo_ptr, 
         void (*disconnected)(netinfo_type *netinfo_ptr, const char *host)) {
-    fprintf(stderr, ">>>>> REGISTERED HANDLER <<<<<<<<\n");
     netinfo_ptr->disconnected = disconnected;
 }

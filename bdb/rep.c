@@ -997,6 +997,7 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
             if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
                 dontsend = (is_logput && throttle_updates_incoherent_nodes(
                                              bdb_state, hostlist[i]));
+                dontsend = 0;
                 if (bdb_state->attr->net_send_gblcontext && tran &&
                     gblcontext && nodelay) {
 
@@ -2616,16 +2617,26 @@ static int bdb_wait_for_seqnum_from_node_nowait_int(bdb_state_type *bdb_state,
 
 void bdb_disconnected(bdb_state_type *bdb_state, const char *host) {
 
-    fprintf(stderr, ">>>>>>>>>>>>>>>>> DISCONNECTED %s <<<<<<<<<<<<<<<<\n", host);
     if (bdb_state == NULL)
         return;
+
+    /* clear statistics */
     Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
     if (bdb_state->seqnum_info->time_minute[nodeix(host)])
-        averager_purge_old(bdb_state->seqnum_info->time_minute[nodeix(host)], INT_MAX);
+        averager_clear(bdb_state->seqnum_info->time_minute[nodeix(host)]);
     if (bdb_state->seqnum_info->time_10seconds[nodeix(host)])
-        averager_purge_old(bdb_state->seqnum_info->time_10seconds[nodeix(host)], INT_MAX);
-    printf("%.2f %.2f\n", averager_avg(bdb_state->seqnum_info->time_10seconds[nodeix(host)]),
-                averager_avg(bdb_state->seqnum_info->time_minute[nodeix(host)]));
+        averager_clear(bdb_state->seqnum_info->time_10seconds[nodeix(host)]);
+
+    /* clear any lsns we were waiting for */
+    struct waiting_for_lsn *waitforlsn;
+    if (bdb_state->seqnum_info->waitlist[nodeix(host)]) {
+        waitforlsn = (struct waiting_for_lsn *) listc_rtl(bdb_state->seqnum_info->waitlist[nodeix(host)]);
+        while (waitforlsn) {
+            pool_relablk(bdb_state->seqnum_info->trackpool, waitforlsn);
+            waitforlsn = (struct waiting_for_lsn *) listc_rtl(bdb_state->seqnum_info->waitlist[nodeix(host)]);
+        }
+    }
+
     Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
 }
 
@@ -2639,7 +2650,7 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
     int state;
     int print_message;
     const char *host;
-    int made_incoherent_slow = 1;
+    int made_incoherent_slow = 0;
 
     /* this used to be allocated on stack, but that can overflow if called from
      * the appsock thread */
@@ -2653,6 +2664,7 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
         net_get_all_commissioned_nodes(bdb_state->repinfo->netinfo, hosts);
  
     if (numnodes < 2) {
+        logmsg(LOGMSG_INFO, "have %d nodes, no point\n", numnodes);
         free(proctime);
         return;
     }
@@ -2663,7 +2675,7 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
     for (int i = 0; i < numnodes; i++) {
         host = hosts[i];
 
-        printf("host %s state %s\n", host, coherent_state_to_str(bdb_state->coherent_state[nodeix(host)]));
+        logmsg(LOGMSG_INFO, "host %s state %s\n", host, coherent_state_to_str(bdb_state->coherent_state[nodeix(host)]));
 
         if (bdb_state->seqnum_info->time_minute[nodeix(host)])
             proctime[nodeix(host)] =
@@ -2706,7 +2718,7 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
         /* weigh time, to account for inter-datacenter delays */
         pthread_mutex_lock(&(bdb_state->coherent_state_lock));
         state = bdb_state->coherent_state[nodeix(worst_node)];
-        printf("worst %s time %.2f  second worst %s time %.2f limit %.2f\n", 
+        logmsg(LOGMSG_INFO, "worst %s time %.2f  second worst %s time %.2f limit %.2f\n", 
                 worst_node, worst_time,
                 second_worst_node, second_worst_time,
                 second_worst_time * bdb_state->attr->slowrep_incoherent_factor + 
@@ -2744,6 +2756,7 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
                 second_worst_time);
     }
 
+    printf("worst_node %s made_incoherent_slow %d\n", worst_node ? worst_node : "???", made_incoherent_slow);
     /* TODO: if we ever disable make_slow_replicants_incoherent and have
      * replicants in this state, make them incoherent immediately */
     print_message = 0;
@@ -2756,6 +2769,9 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
             host = hosts[i];
             if (proctime[nodeix(host)] == 0)
                 continue;
+            printf("this %s state %s time %.2f worst %s time %.2f\n", host, 
+                    coherent_state_to_str(bdb_state->coherent_state[nodeix(host)]),
+                    proctime[nodeix(host)], worst_node, worst_time);
             if (bdb_state->coherent_state[nodeix(host)] !=
                 STATE_INCOHERENT_SLOW)
                 continue;
