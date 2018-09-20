@@ -4166,7 +4166,7 @@ case OP_OpenWrite:
   pCur->wrFlag = wrFlag;
 #endif
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  rc = sqlite3BtreeCursor(p, pX, p2, wrFlag, pKeyInfo, pCur->uc.pCursor);
+  rc = sqlite3BtreeCursor(p, pX, p2, wrFlag, 1, pKeyInfo, pCur->uc.pCursor);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   rc = sqlite3BtreeCursor(pX, p2, wrFlag, pKeyInfo, pCur->uc.pCursor);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -4230,11 +4230,13 @@ case OP_OpenDup: {
   pCx->pKeyInfo = pOrig->pKeyInfo;
   pCx->isTable = pOrig->isTable;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  rc = sqlite3BtreeCursor(p, pOrig->pBtx, MASTER_ROOT, BTREE_CUR_WR|BTREE_WRCSR,
+  rc = sqlite3BtreeCursor(p, pOrig->pBtx, MASTER_ROOT,
+                          BTREE_CUR_WR|BTREE_WRCSR, 1,
+                          pCx->pKeyInfo, pCx->uc.pCursor);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   rc = sqlite3BtreeCursor(pOrig->pBtx, MASTER_ROOT, BTREE_WRCSR,
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
                           pCx->pKeyInfo, pCx->uc.pCursor);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   /* The sqlite3BtreeCursor() routine can only fail for the first cursor
   ** opened for a database.  Since there is already an open cursor when this
   ** opcode is run, the sqlite3BtreeCursor() cannot fail */
@@ -4312,11 +4314,13 @@ case OP_OpenEphemeral: {
         assert( pKeyInfo->db==db );
         assert( pKeyInfo->enc==ENC(db) );
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-        rc = sqlite3BtreeCursor(p, pCx->pBtx, pgno, BTREE_CUR_WR|BTREE_WRCSR,
+        rc = sqlite3BtreeCursor(p, pCx->pBtx, pgno,
+                                BTREE_CUR_WR|BTREE_WRCSR, 0,
+                                pKeyInfo, pCx->uc.pCursor);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         rc = sqlite3BtreeCursor(pCx->pBtx, pgno, BTREE_WRCSR,
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
                                 pKeyInfo, pCx->uc.pCursor);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       }
       pCx->isTable = 0;
     }else{
@@ -4324,7 +4328,8 @@ case OP_OpenEphemeral: {
       int pgno;
       rc = sqlite3BtreeCreateTable(pCx->pBtx, &pgno, BTREE_INTKEY);
       if( rc==SQLITE_OK ){
-        rc = sqlite3BtreeCursor(p, pCx->pBtx, pgno, BTREE_CUR_WR|BTREE_WRCSR,
+        rc = sqlite3BtreeCursor(p, pCx->pBtx, pgno,
+                                BTREE_CUR_WR|BTREE_WRCSR, 0,
                                 pKeyInfo, pCx->uc.pCursor);
       }
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */

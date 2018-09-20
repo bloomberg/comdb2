@@ -8001,7 +8001,8 @@ int sqlite3BtreeCursor(
     Vdbe *vdbe,               /* Vdbe running the show */
     Btree *pBt,               /* BTree containing table to open */
     int iTable,               /* Index of root page */
-    int wrFlag,               /* 1 for writing.  0 for read-only */
+    int wrFlag,               /* 1 for writing.  0 for read-only. */
+    int forOpen,              /* 1 for open mode.  0 for create mode. */
     struct KeyInfo *pKeyInfo, /* First argument to compare function */
     BtCursor *cur             /* Space to write cursor structure */
 ){
@@ -8030,8 +8031,22 @@ int sqlite3BtreeCursor(
     cur->pKeyInfo = pKeyInfo;
 
     if (pBt->is_temporary) { /* temp table */
-        rc = sqlite3BtreeCursor_temptable(pBt, iTable, wrFlag & BTREE_CUR_WR,
-                                          temp_table_cmp, pKeyInfo, cur, thd);
+        if( forOpen ){
+          /*
+          ** NOTE: When being called to open a temporary table cursor in
+          **       response to an OP_Open* (or OP_Reopen*) VDBE opcode,
+          **       the temporary table will not have been created yet.
+          **       Attempt to do that now.
+          */
+          int tmpPgno;
+          rc = sqlite3BtreeCreateTable(pBt, &tmpPgno, BTREE_INTKEY);
+          logmsg(LOGMSG_INFO, "%s created temporary table, pgno %d, rc %d\n",
+                 __func__, tmpPgno, rc);
+        }
+        if( rc==SQLITE_OK ){
+          rc = sqlite3BtreeCursor_temptable(pBt, iTable, wrFlag & BTREE_CUR_WR,
+                                            temp_table_cmp, pKeyInfo, cur, thd);
+        }
 
         cur->find_cost = cur->move_cost = 0.1;
         cur->write_cost = 0.2;

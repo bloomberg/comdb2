@@ -240,6 +240,7 @@ int sqlite3BtreeCursor(
   Btree*,                              /* BTree containing table to open */
   int iTable,                          /* Index of root page */
   int wrFlag,                          /* 1 for writing.  0 for read-only */
+  int forOpen,                         /* 1 for open mode.  0 for create mode. */
   struct KeyInfo*,                     /* First argument to compare function */
   BtCursor *pCursor                    /* Space to write cursor structure */
 );
