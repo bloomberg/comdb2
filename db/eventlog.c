@@ -374,6 +374,40 @@ static void eventlog_path(cson_object *obj, const struct reqlogger *logger)
     cson_object_set(obj, "path", components);
 }
 
+/* add never seen before "newsql" query, also print it to log */
+static void eventlog_add_newsql(cson_object *obj, const struct reqlogger *logger)
+{
+    struct sqltrack *st;
+    st = malloc(sizeof(struct sqltrack));
+    memcpy(st->fingerprint, logger->fingerprint,
+            sizeof(logger->fingerprint));
+    hash_add(seen_sql, st);
+    listc_abl(&sql_statements, st);
+
+    cson_value *newval;
+    cson_object *newobj;
+    newval = cson_value_new_object();
+    newobj = cson_value_get_object(newval);
+
+    cson_object_set(newobj, "time", cson_new_int(logger->startus));
+    cson_object_set(newobj, "type",
+            cson_value_new_string("newsql", sizeof("newsql")));
+    cson_object_set(newobj, "sql", cson_value_new_string(
+                logger->stmt, strlen(logger->stmt)));
+
+    char expanded_fp[2 * FINGERPRINTSZ + 1];
+    util_tohex(expanded_fp, logger->fingerprint, FINGERPRINTSZ);
+    cson_object_set(newobj, "fingerprint",
+            cson_value_new_string(expanded_fp, FINGERPRINTSZ * 2));
+
+    /* yes, this can spill the file to beyond the configured size - we need
+       this
+       event to be in the same file as the event its being logged for */
+    cson_output(newval, write_json, eventlog, &opt);
+    if (eventlog_verbose) cson_output(newval, write_logmsg, stdout, &opt);
+    cson_value_free(newval);
+}
+
 static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
 {
     if (eventlog == NULL || !eventlog_enabled)
@@ -384,36 +418,7 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
 
     pthread_mutex_lock(&eventlog_lk);
     if ((isSql || isSqlErr) && !hash_find(seen_sql, logger->fingerprint)) {
-        /* add never seen before "newsql" query, also print it to log */
-        struct sqltrack *st;
-        st = malloc(sizeof(struct sqltrack));
-        memcpy(st->fingerprint, logger->fingerprint,
-               sizeof(logger->fingerprint));
-        hash_add(seen_sql, st);
-        listc_abl(&sql_statements, st);
-
-        cson_value *newval;
-        cson_object *newobj;
-        newval = cson_value_new_object();
-        newobj = cson_value_get_object(newval);
-
-        cson_object_set(newobj, "time", cson_new_int(logger->startus));
-        cson_object_set(newobj, "type",
-                        cson_value_new_string("newsql", sizeof("newsql")));
-        cson_object_set(newobj, "sql", cson_value_new_string(
-                                           logger->stmt, strlen(logger->stmt)));
-
-        char expanded_fp[2 * FINGERPRINTSZ + 1];
-        util_tohex(expanded_fp, logger->fingerprint, FINGERPRINTSZ);
-        cson_object_set(newobj, "fingerprint",
-                        cson_value_new_string(expanded_fp, FINGERPRINTSZ * 2));
-
-        /* yes, this can spill the file to beyond the configured size - we need
-           this
-           event to be in the same file as the event its being logged for */
-        cson_output(newval, write_json, eventlog, &opt);
-        if (eventlog_verbose) cson_output(newval, write_logmsg, stdout, &opt);
-        cson_value_free(newval);
+        eventlog_add_newsql(obj, logger);
     }
     pthread_mutex_unlock(&eventlog_lk);
 

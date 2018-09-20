@@ -405,7 +405,6 @@ __db_dbenv_setup(dbp, txn, fname, id, flags)
 	DB_MPOOL *dbmp;
 	u_int32_t maxid;
 	int ret;
-    int i;
 
 	dbenv = dbp->dbenv;
 
@@ -1136,7 +1135,6 @@ __dblist_get(dbenv, adjid)
 	u_int32_t adjid;
 {
 	DB *dbp;
-	int ct = 0;
 
 	dbp = dbenv->dbs[adjid].top;
 	return dbp;

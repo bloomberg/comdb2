@@ -83,7 +83,7 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
     /* at this point if a backup is going on, it will be bad */
     gbl_sc_commit_count++;
 
-    if (rc = mark_schemachange_over_tran(db->tablename, tran))
+    if ((rc = mark_schemachange_over_tran(db->tablename, tran)))
         return rc;
 
     s->already_finalized = 1;

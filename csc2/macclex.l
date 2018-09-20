@@ -28,10 +28,6 @@
 #include "logmsg.h"
 extern int current_line;
 extern YYSTYPE yylval;
-static char   inputch=0;
-static int    matchp=0;
-static int    startcustom=0;
-static int    bufsz=32768;
 static int    rectplvl=0;
 extern int    parser_reset;
 int    charidx=0;

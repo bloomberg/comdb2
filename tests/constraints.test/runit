@@ -50,7 +50,7 @@ function fastinit
     # fastinit for constraints requires an sql delete
     for tbl in $(cat $iter.fastinit) ; do
         
-        cmd="cdb2sql ${CDB2_OPTIONS} $db default \"delete from $tbl where 1=1\""
+        cmd="cdb2sql --stderr ${CDB2_OPTIONS} $db default \"delete from $tbl where 1=1\""
         echo $cmd
         eval $cmd
     done
@@ -137,7 +137,7 @@ for testcase in $files ; do
     else
 
         # Be verbose
-        cmd="cdb2sql ${CDB2_OPTIONS} $a_dbn default - < $testcase &> $output"
+        cmd="cdb2sql --stderr ${CDB2_OPTIONS} $a_dbn default - < $testcase &> $output"
         echo "$cmd"
 
         # run command

@@ -141,7 +141,7 @@ static pthread_once_t berkdb_blobmem_once = PTHREAD_ONCE_INIT;
 static void
 __berkdb_blobmem_init_once(void)
 {
-	extern size_t gbl_blobmem_cap;
+    extern size_t gbl_blobmem_cap;
 	berkdb_blobmem = comdb2bma_create(0, gbl_blobmem_cap, "berkdb/blob", NULL);
 	if (berkdb_blobmem == NULL) {
 		__db_err(dbenv_being_initialized,
@@ -1276,9 +1276,6 @@ __dbenv_set_durable_lsn(dbenv, lsnp, generation)
 	DB_LSN *lsnp;
 	uint32_t generation;
 {
-	DB_REP *db_rep;
-
-	db_rep = dbenv->rep_handle;
 	extern int gbl_durable_set_trace;
 
 	if (lsnp->file == 2147483647) {
@@ -1337,7 +1334,6 @@ __dbenv_get_durable_lsn(dbenv, lsnp, generation)
 	DB_LSN *lsnp;
 	uint32_t *generation;
 {
-	DB_REP *db_rep = dbenv->rep_handle;
 	pthread_mutex_lock(&gbl_durable_lsn_lk);
 	*lsnp = dbenv->durable_lsn;
 	*generation = dbenv->durable_generation;

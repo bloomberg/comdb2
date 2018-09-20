@@ -38,7 +38,7 @@
 
 struct BtCursor;
 
-/* Flags that attach with OSQL_INSREC. */
+/* Upsert flags that attach with OSQL_INSERT. */
 enum osql_rec_flags {
     OSQL_FORCE_VERIFY = 1 << 0,
     OSQL_IGNORE_FAILURE = 1 << 1,

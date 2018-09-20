@@ -2991,7 +2991,7 @@ static int sqlite_unpacked_to_ondisk(BtCursor *pCur, UnpackedRecord *rec,
                                      struct convert_failure *fail_reason,
                                      bias_info *bias_info)
 {
-    int rc;
+    int rc = 0;
     int clen = 0;
     struct field *f;
     int fields;

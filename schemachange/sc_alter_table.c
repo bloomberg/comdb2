@@ -187,7 +187,6 @@ static int prepare_version_for_dbs_without_instant_sc(tran_type *tran,
                                                       struct dbtable *newdb)
 {
     int rc;
-    int bdberr;
 
     if (db->odh && !db->instant_schema_change && newdb->instant_schema_change &&
         newdb->version == 2) {
@@ -368,14 +367,10 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     struct dbtable *db;
     int rc;
     int bdberr = 0;
-    int trying_again = 0;
     struct dbtable *newdb;
     int datacopy_odh = 0;
-    int stop_tag_thds = 0;
-    int retries = 0;
     int changed;
     int i;
-    int olddb_instant_sc;
     char new_prefix[32];
     int foundix;
 
@@ -621,7 +616,6 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
                          tran_type *transac)
 {
-    int retries = 0;
     int rc, bdberr;
     struct dbtable *db = s->db;
     struct dbtable *newdb = s->newdb;

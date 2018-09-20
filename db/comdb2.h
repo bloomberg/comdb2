@@ -331,7 +331,7 @@ enum OSQL_RPL_TYPE {
     OSQL_DONE = 1,
     OSQL_USEDB = 2,
     OSQL_DELREC = 3,
-    OSQL_INSREC = 4,
+    OSQL_INSREC = 4, /* R7 uses OSQL_INSERT */
     OSQL_CLRTBL = 5,
     OSQL_QBLOB = 6,
     OSQL_UPDREC = 7,
@@ -1732,8 +1732,6 @@ extern int gbl_osql_verify_ext_chk;
 
 extern int gbl_genid_cache;
 
-extern int gbl_max_appsock_connections;
-
 extern int gbl_master_changed_oldfiles;
 extern int gbl_extended_sql_debug_trace;
 extern int gbl_use_sockpool_for_debug_logs;
@@ -2817,9 +2815,6 @@ int reqlog_get_error_code(struct reqlogger *logger);
 void reqlog_set_path(struct reqlogger *logger, struct client_query_stats *path);
 void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context);
 void reqlog_set_clnt(struct reqlogger *, struct sqlclntstate *);
-/* Convert raw fingerprint to hex string, and write at most `n' characters of
-   the result to `hexstr'. Return the number of characters written. */
-int reqlog_fingerprint_to_hex(struct reqlogger *logger, char *hexstr, size_t n);
 
 void process_nodestats(void);
 void nodestats_report(FILE *fh, const char *prefix, int disp_rates);

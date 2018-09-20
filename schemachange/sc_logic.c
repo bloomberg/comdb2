@@ -323,7 +323,7 @@ static int check_table_version(struct ireq *iq, struct schema_change_type *sc)
     if (sc->usedbtablevers != version) {
         errstat_set_strf(&iq->errstat,
                          "stale version for table:%s master:%d replicant:%d",
-                         sc->table, version, iq->usedbtablevers);
+                         sc->table, version, sc->usedbtablevers);
         iq->errstat.errval = ERR_SC;
         return SC_INTERNAL_ERROR;
     }

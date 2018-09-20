@@ -195,7 +195,6 @@ uint8_t *tm_put(const cdb2_tm_t *p_tm, uint8_t *p_buf, const uint8_t *p_buf_end)
 const uint8_t *tm_get(cdb2_tm_t *p_tm, const uint8_t *p_buf,
                       const uint8_t *p_buf_end)
 {
-    int lft;
     if (p_buf_end < p_buf || TM_LEN > (p_buf_end - p_buf))
         return NULL;
 
@@ -244,7 +243,6 @@ uint8_t *tm_little_put(const cdb2_tm_t *p_tm, uint8_t *p_buf,
 const uint8_t *tm_little_get(cdb2_tm_t *p_tm, const uint8_t *p_buf,
                              const uint8_t *p_buf_end)
 {
-    int lft;
     if (p_buf_end < p_buf || TM_LEN > (p_buf_end - p_buf))
         return NULL;
 

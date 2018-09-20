@@ -1,10 +1,26 @@
-# transactional create (bad case)
+create table m {schema{int i}} $$
+alter table m {schema{int i}} $$
+alter table m {schema{int i}} $$
+drop table m
+
+create table c {schema{int i}} $$
+alter table c {schema{int i}} $$
+alter table c {schema{int i}} $$
+alter table c {schema{int i}} $$
+alter table c {schema{int i}} $$
+alter table c {schema{int i}} $$
+alter table c {schema{int i}} $$
+alter table c {schema{int i}} $$
+alter table c {schema{int i}} $$
+drop table c
+
+select "transactional create (bad case)"
 begin
 create table c {schema{int i} keys{dup "key" = i} constraints{"key" -> <"m" : "pk">}} $$
 create table m {schema{int i} keys{"pk" = i}} $$
 commit
 
-# transactional create
+select "transactional create"
 begin
 create table m {schema{int i} keys{"pk" = i}} $$
 create table c {schema{int i} keys{dup "key" = i} constraints{"key" -> <"m" : "pk">}} $$
@@ -22,7 +38,7 @@ drop table m
 select * from m
 select * from c
 
-# transactional truncate
+select "transactional truncate"
 begin
 truncate c
 truncate m
@@ -34,7 +50,7 @@ insert into m values (1)
 insert into c values (1)
 insert into c values (1)
 insert into c values (1)
-# transactional drop & truncate (bad case)
+select "transactional drop & truncate (bad case)"
 begin
 truncate c
 drop table m
@@ -42,7 +58,7 @@ commit
 select * from m
 select * from c
 
-# transactional drop & truncate (good case)
+select "transactional drop & truncate (good case)"
 begin
 drop table c
 truncate m
@@ -59,15 +75,16 @@ create table m {schema{int i} keys{"pk" = i}} $$
 create table c {schema{int i} keys{dup "key" = i} constraints{"key" -> <"m" : "pk">}} $$
 commit
 
-# transactional drop (bad case)
+select "transactional drop (bad case)"
 begin
 drop table m
 drop table c
 commit
+select 1
 select * from m
 select * from c
 
-# transactional drop (good case)
+select "transactional drop (good case)"
 begin
 drop table c
 drop table m
@@ -81,33 +98,33 @@ create table c {schema{int i} keys{dup "key" = i} constraints{"key" -> <"m" : "p
 create table d {schema{int i} keys{dup "key" = i} constraints{"key" -> <"m" : "pk">}} $$
 commit
 
-# transactional alter (bad case 1)
+select "transactional alter (bad case 1)"
 alter table m {schema{int i}} $$
-# transactional alter (bad case 2)
+select "transactional alter (bad case 2)"
 begin
 alter table m {schema{int i}} $$
 alter table c {schema{int i} keys{dup "key" = i}} $$
 commit
-# transactional alter (bad case 3)
+select "transactional alter (bad case 3)"
 begin
 alter table c {schema{int i} keys{dup "key" = i}} $$
 alter table m {schema{int i}} $$
 commit
-# transactional alter (bad case 4)
+select "transactional alter (bad case 4)"
 begin
 alter table c {schema{int i} keys{dup "key" = i}} $$
 alter table m {schema{int i}} $$
 alter table d {schema{int i} keys{dup "key" = i}} $$
 commit
 
-# transactional alter (good case)
+select "transactional alter (good case)"
 begin
 alter table c {schema{int i} keys{dup "key" = i}} $$
 alter table d {schema{int i} keys{dup "key" = i}} $$
 alter table m {schema{int i}} $$
 commit
 
-# transactional alter & add (good case)
+select "transactional alter & add (good case)"
 begin
 alter table m {schema{int i} keys{"pk" = i}} $$
 alter table c {schema{int i} keys{dup "key" = i} constraints{"key" -> <"m" : "pk">}} $$
@@ -115,7 +132,7 @@ alter table d {schema{int i} keys{dup "key" = i} constraints{"key" -> <"m" : "pk
 create table e {schema{int i} keys{dup "key" = i} constraints{"key" -> <"m" : "pk">}} $$
 commit
 
-# transactional alter & drop (bad case)
+select "transactional alter & drop (bad case)"
 begin
 drop table c
 drop table d
@@ -123,7 +140,7 @@ alter table m {schema{int i}} $$
 drop table e
 commit
 
-# transactional alter & drop (good case)
+select "transactional alter & drop (good case)"
 begin
 drop table c
 drop table d
@@ -131,22 +148,22 @@ drop table e
 alter table m {schema{int i}} $$
 commit
 
-# tests for self referenced schema
-# add self-referenced bad 1
+select "tests for self referenced schema"
+select "add self-referenced bad 1"
 create table s {schema{int i int j} keys{dup "i" = i dup "j" = j} constraints{"k" -> <"s" : "i">}} $$
-# add self-referenced bad 2
+select "add self-referenced bad 2"
 create table s {schema{int i int j} keys{dup "i" = i dup "j" = j} constraints{"j" -> <"s" : "k">}} $$
-# add self-referenced good
+select "add self-referenced good"
 create table s {schema{int i int j} keys{dup "i" = i dup "j" = j} constraints{"j" -> <"s" : "i">}} $$
-# truncate self-referenced
+select "truncate self-referenced"
 truncate s
-# alter self-referenced drop constraints
+select "alter self-referenced drop constraints"
 alter table s {schema{int i int j}} $$
-# alter self-referenced bad 1
+select "alter self-referenced bad 1"
 alter table s {schema{int i int j} keys{dup "i" = i dup "j" = j} constraints{"k" -> <"s" : "i">}} $$
-# alter self-referenced bad 2
+select "alter self-referenced bad 2"
 alter table s {schema{int i int j} keys{dup "i" = i dup "j" = j} constraints{"j" -> <"s" : "k">}} $$
-# alter self-referenced good
+select "alter self-referenced good"
 alter table s {schema{int i int j} keys{dup "i" = i dup "j" = j} constraints{"j" -> <"s" : "i">}} $$
-# drop self-referenced table
+select "drop self-referenced table"
 drop table s

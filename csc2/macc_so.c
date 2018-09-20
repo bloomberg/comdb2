@@ -2359,9 +2359,7 @@ static int dyns_load_schema_int(char *filename, char *schematxt, char *dbname,
     char *ifn = NULL;
     int fhopen = 0;
     extern FILE *yyin; /* lexer's input file           */
-    /*extern*/ int yy_flex_debug;
 
-    yy_flex_debug = 0;
     strcpy(VER, revision + 10); /* get my version               */
     ifn = strchr(VER, '$');     /* clean up version text        */
     if (ifn)

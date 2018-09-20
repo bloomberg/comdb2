@@ -11,6 +11,7 @@
 #define	_DB_LOCK_H_
 
 #include <assert.h>
+#include <compile_time_assert.h>
 
 extern size_t gbl_lk_parts;
 extern size_t gbl_lkr_parts;
@@ -61,15 +62,6 @@ typedef struct {
 	((t1)->tv_sec > (t2)->tv_sec ||					\
 	((t1)->tv_sec == (t2)->tv_sec && (t1)->tv_usec > (t2)->tv_usec))
 
-#define STATIC_ASSERT(condition, name) 		\
-static void assert_failed_ ## name(void)	\
-{						\
-	switch (0) {				\
-	case 0:					\
-	case condition: ;			\
-	}					\
-}
-
 #ifdef LOCKMGRDBG
 typedef struct
 {
@@ -114,7 +106,7 @@ typedef struct
 #endif // LOCKMGRDBG
 
 #ifdef  __x86_64
-STATIC_ASSERT(sizeof(PthreadMutexWithFluff) == 192, lockfluff_not_192);
+BB_COMPILE_TIME_ASSERT(lockfluff_not_192, sizeof(PthreadMutexWithFluff) == 192);
 #endif
 
 typedef SH_TAILQ_HEAD(LockerTab, __db_locker) LockerTab;

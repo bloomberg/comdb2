@@ -8,7 +8,7 @@
 
 #define RMBR_LVL 6
 
-#define PF(x) ((btpf*)x->pf)
+#define PFX(x) ((btpf*)x->pf)
 #define BTPF_ENABLED(dbc) dbc->dbp->dbenv->attr.btpf_enabled
 
 #define PG_GAP(dbc)   dbc->dbp->dbenv->attr.btpf_pg_gap

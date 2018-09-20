@@ -21,7 +21,7 @@
 
 #ifndef lint
 #ifndef NOID
-static char	privatehid[] = "@(#)private.h	8.3";
+//static char	privatehid[] = "@(#)private.h	8.3";
 #endif /* !defined NOID */
 #endif /* !defined lint */
 

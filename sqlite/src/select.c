@@ -248,8 +248,6 @@ static void fingerprintInsertInt(sqlite3 *db, MD5Context *c, SrcList *pTabList, 
     fingerprintWith(db, c, pWith);
 }
 
-#include <fsnapf.h>
-
 /* Why isn't this in insert.c?  Because Insert doesn't introduce any new structures 
    that aren't already processed here */
 void sqlite3FingerprintInsert(sqlite3 *db, SrcList *pTabList, Select *pSelect, IdList *pColumn, With *pWith) {

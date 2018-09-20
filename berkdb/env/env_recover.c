@@ -147,7 +147,6 @@ __checkpoint_get(DB_ENV *dbenv, DB_LSN *lsnout)
 {
 	struct __db_checkpoint ckpt = { 0 };
 	int rc;
-	int niop = 0;
 
 	/*
 	 * we can't use __os_io here because that calls
@@ -350,7 +349,10 @@ __db_find_recovery_start_int(dbenv, outlsn, max_lsn)
 	DB_LSN *max_lsn;
 {
 	int ret = 0;
-	DB_LSN lsn, prev_lsn = { 0 }, checkpoint_lsn, ckp_lsn;
+#if defined FIND_RECOVERY_START_TRACE
+	DB_LSN prev_lsn = { 0 };
+#endif
+	DB_LSN lsn, checkpoint_lsn, ckp_lsn;
 	DB_LOGC *logc = NULL;
 	DBT rec = { 0 };
 	__txn_ckp_args *ckp_args = NULL;
@@ -372,7 +374,9 @@ __db_find_recovery_start_int(dbenv, outlsn, max_lsn)
 	if ((ret = __log_cursor(dbenv, &logc)) != 0)
 		goto err;
 
+#if defined FIND_RECOVERY_START_TRACE
 	prev_lsn = lsn;
+#endif
 	do {
 		if (ckp_args) {
 			free(ckp_args);
@@ -390,8 +394,8 @@ __db_find_recovery_start_int(dbenv, outlsn, max_lsn)
 			    ckp_args->last_ckp.file, ckp_args->last_ckp.offset,
 			    max_lsn->file, max_lsn->offset);
 		}
-#endif
 		prev_lsn = lsn;
+#endif
 		lsn = ckp_args->last_ckp;
 	}
 	while (max_lsn != NULL &&
@@ -412,8 +416,8 @@ __db_find_recovery_start_int(dbenv, outlsn, max_lsn)
 		    "checkpoint below [%d][%d]\n", __func__,
 		    ckp_args->last_ckp.file, ckp_args->last_ckp.offset,
 		    ckp_lsn.file, ckp_lsn.offset);
-#endif
 		prev_lsn = lsn;
+#endif
 		lsn = ckp_args->last_ckp;
 	}
 	while (log_compare(&ckp_args->last_ckp, &ckp_lsn) >= 0);
@@ -444,7 +448,9 @@ __db_find_recovery_start_int(dbenv, outlsn, max_lsn)
 			    rectype, lsn.file, lsn.offset,
 			    checkpoint_lsn.file, checkpoint_lsn.offset);
 		}
+#if defined FIND_RECOVERY_START_TRACE
 		prev_lsn = lsn;
+#endif
 		ret = __log_c_get(logc, &lsn, &rec, DB_PREV);
 		if (ret)
 			break;
@@ -519,7 +525,7 @@ full_recovery_check(DB_ENV *dbenv, DB_LSN *max_lsn)
 	DB_LOGC *logc = NULL;
 	int ret;
 	DBT logrec = { 0 };
-	DB_LSN lsn, prev_lsn, cpy;
+	DB_LSN lsn, cpy;
 	u_int32_t type;
 	LSN_COLLECTION lc = { 0 };
 	int ignore;
@@ -641,7 +647,6 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 	REP *rep;
 	__txn_ckp_args *ckp_args;
 	time_t now, tlow;
-	u_int32_t rectype;
 	int32_t log_size, low;
 	double nfiles;
 	int have_rec, progress, ret, t_ret;
@@ -649,7 +654,6 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 	u_int32_t hi_txn, txnid;
 	char *p, *pass, t1[60], t2[60];
 	void *txninfo;
-	void *bdb_state = dbenv->app_private;
 	DB_LSN logged_checkpoint_lsn;
 	int start_recovery_at_dbregs;
 
@@ -1471,13 +1475,11 @@ __log_find_latest_checkpoint_before_lsn_try_harder(DB_ENV * dbenv,
 {
 	DB_LSN lsn;
 	DBT data;
-	__txn_ckp_args *ckp_args = NULL;
 	int ret;
 	u_int32_t type;
 
 	memset(&data, 0, sizeof(data));
 	data.flags = DB_DBT_REALLOC;
-	ckp_args = NULL;
 
 	ret = __log_c_get(logc, &lsn, &data, DB_LAST);
 	if (ret) {

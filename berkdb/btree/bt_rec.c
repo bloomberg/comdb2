@@ -59,13 +59,13 @@ __bam_split_recover(dbenv, dbtp, lsnp, op, info)
 {
 	__bam_split_args *argp;
 	DB *file_dbp;
-	DB *dbp;
+	DB *dbp = NULL;
 	DBC *dbc;
 	DB_MPOOLFILE *mpf;
 	PAGE *_lp, *lp, *np, *pp, *_rp, *rp, *sp;
 	db_pgno_t pgno, root_pgno;
 	u_int32_t ptype;
-	int cmp, l_update, p_update, r_update, rc, ret, ret_l, rootsplit, t_ret;
+	int cmp, l_update, p_update, r_update, rc, ret, ret_l, rootsplit = 0, t_ret;
 
 	DBT split_key;
 	PAGE *argp_lp = NULL;
@@ -451,7 +451,7 @@ __bam_rsplit_recover(dbenv, dbtp, lsnp, op, info)
 {
 	__bam_rsplit_args *argp;
 	DB *file_dbp;
-	DB *dbp;
+	DB *dbp = NULL;
 	DBC *dbc;
 	DB_LSN copy_lsn;
 	DB_MPOOLFILE *mpf;
