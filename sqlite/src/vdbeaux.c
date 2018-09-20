@@ -2449,11 +2449,17 @@ void sqlite3VdbeAddTable(
   Vdbe *p,
   Table *pTab
 ){
-  int numTables = p->numTables;
-  Table **pTbls = sqlite3Realloc(p->tbls, (numTables+1)*sizeof(Table*));
+  Table **pTbls;
+  int numTables;
+  if( !p || !pTab ) return;
+  numTables = p->numTables;
+  assert( numTables>=0 );
+  if( !pTab ) return;
+  pTbls = sqlite3Realloc(p->tbls, (numTables+1)*sizeof(Table*));
   if( pTbls==0 ) return;
   memset(&pTbls[numTables], 0, (numTables+1-p->numTables)*sizeof(Table*));
   pTbls[numTables] = pTab;
+  pTab->nTabRef++;
   p->tbls = pTbls;
   p->numTables++;
 }
@@ -3366,7 +3372,11 @@ void sqlite3VdbeDelete(Vdbe *p){
     p->pNext->pPrev = p->pPrev;
   }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( p->tbls){
+  if( p->tbls ){
+    int i;
+    for(i=0; i<p->numTables; i++){
+      sqlite3DeleteTable(db, p->tbls[i]);
+    }
     sqlite3_free(p->tbls);
     p->tbls = NULL;
     p->numTables = 0;

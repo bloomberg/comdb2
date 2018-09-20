@@ -2494,7 +2494,7 @@ int sqlite3FindInIndex(
             sqlite3VdbeAddOp3(v, OP_OpenRead, iTab, pIdx->tnum, iDb);
             sqlite3VdbeSetP4KeyInfo(pParse, pIdx);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-            sqlite3VdbeAddTable(v,pTab);
+            sqlite3VdbeAddTable(v, pTab);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
             VdbeComment((v, "%s", pIdx->zName));
             assert( IN_INDEX_INDEX_DESC == IN_INDEX_INDEX_ASC+1 );
