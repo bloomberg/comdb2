@@ -1649,9 +1649,10 @@ static inline void init_stmt_caching_table(struct sqlthdstate *thd)
 }
 
 /*
- * Reque a stmt that was previously removed from the queues
+ * Requeue a stmt that was previously removed from the queues
  * by calling remove_stmt_entry().
- * Similar to add_stmt_table() but does not need to allocate.
+ * Called by put_prepared_stmt_int() after we are done running stmt
+ * and by add_stmt_table() after it allocates the new entry
  */
 int requeue_stmt_entry(struct sqlthdstate *thd, stmt_hash_entry_type *entry)
 {
@@ -1712,7 +1713,9 @@ static void remove_stmt_entry(struct sqlthdstate *thd,
     assert(rc == 0);
 }
 
-/* On error will return non zero and
+/* This will call requeue_stmt_entry() after it has allocated memory 
+ * for the new entry.
+ * On error will return non zero and
  * caller will need to finalize_stmt() in that case
  */
 static int add_stmt_table(struct sqlthdstate *thd, const char *sql,
@@ -1736,7 +1739,7 @@ static int add_stmt_table(struct sqlthdstate *thd, const char *sql,
         list = &thd->noparam_stmt_list;
     }
 
-    /* remove older entries */
+    /* remove older entries to make room for new ones */
     if (gbl_max_sqlcache <= listc_size(list)) {
         delete_last_stmt_entry(thd, list);
     }
@@ -1744,6 +1747,13 @@ static int add_stmt_table(struct sqlthdstate *thd, const char *sql,
     stmt_hash_entry_type *entry = sqlite3_malloc(sizeof(stmt_hash_entry_type));
     strcpy(entry->sql, sql); /* sql is at most MAX_HASH_SQL_LENGTH - 1 */
     entry->stmt = stmt;
+
+    if (gbl_fingerprint_queries) {
+        size_t fsz = sqlite3_fingerprint_size(thd->sqldb);
+        size_t min_fsz = (sizeof(entry->fingerprint) < fsz) ? sizeof(entry->fingerprint) : fsz;
+        memcpy(entry->fingerprint, sqlite3_fingerprint(thd->sqldb), min_fsz);
+    }
+
     if (actual_sql && gbl_debug_temptables)
         entry->query = strdup(actual_sql);
     else
@@ -2428,17 +2438,16 @@ static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
  * Ddl stmts and explain commands should not get to
  * put_prepared_stmt_int() so are not handled in this function.
  */
-#define sql_equal(keyword) strncasecmp(sql, keyword, sizeof(keyword) - 1) == 0
-static inline int dont_cache_sql(const char *sql)
+#define sql_equal(keyword) (strncasecmp(sql, keyword, sizeof(keyword) - 1) == 0)
+static inline int dont_cache_this_sql(const char *sql)
 {
-    if (sql_equal("create") || sql_equal("alter") || sql_equal("rebuild") ||
+    return (sql_equal("create") || sql_equal("alter") || sql_equal("rebuild") ||
         sql_equal("drop") || sql_equal("analyze") || sql_equal("truncate") ||
-        sql_equal("put") || sql_equal("explain")) {
-        return 1;
-    }
-    return 0;
+        sql_equal("put") || sql_equal("explain"));
 }
 
+/* return code of 1 means we encountered an error and the caller
+ * needs to cleanup this rec->stmt */
 static int put_prepared_stmt_int(struct sqlthdstate *thd,
                                  struct sqlclntstate *clnt,
                                  struct sql_state *rec, int outrc)
@@ -2458,18 +2467,19 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
         sqlite3_stmt_has_remotes(stmt)) {
         return 1;
     }
-    if (rec->stmt_entry != NULL) {
-        if (requeue_stmt_entry(thd, rec->stmt_entry))
-            cleanup_stmt_entry(rec->stmt_entry);
+    if (rec->stmt_entry != NULL) {  /* we found this stmt in the cache */
+        if (requeue_stmt_entry(thd, rec->stmt_entry)) /* put back in queue... */
+            cleanup_stmt_entry(rec->stmt_entry); /* ...and on error, cleanup */
 
         return 0;
     }
 
+    /* this is a new stmt (never was in cache before) so create cache object */
     const char *sqlptr = clnt->sql;
     if (rec->sql)
         sqlptr = rec->sql;
 
-    if (dont_cache_sql(sqlptr)) {
+    if (dont_cache_this_sql(sqlptr)) {
         return 1;
     }
 
@@ -2642,6 +2652,8 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     query_stats_setup(thd, clnt);
     get_cached_stmt(thd, clnt, rec);
     const char *tail = NULL;
+
+    /* if we did not get a cached stmt, need to prepare it in sql engine */
     while (rec->stmt == NULL) {
         clnt->no_transaction = 1;
         rc = sqlite3_prepare_v2(thd->sqldb, rec->sql, -1, &rec->stmt, &tail);
@@ -2815,26 +2827,27 @@ static int get_prepared_bound_stmt(struct sqlthdstate *thd,
     if ((rc = get_prepared_stmt(thd, clnt, rec, err)) != 0) {
         return rc;
     }
-    int a = sqlite3_bind_parameter_count(rec->stmt);
-    int b = param_count(clnt);
-    if (a != b) {
+
+    int bind_cnt = sqlite3_bind_parameter_count(rec->stmt);
+    int par_cnt = param_count(clnt);
+    if (bind_cnt != par_cnt) {
         errstat_set_rcstrf(err, ERR_PREPARE,
-                           "parameters in stmt:%d  "
-                           "parameters provided:%d",
-                           a, b);
+                           "parameters in stmt:%d parameters provided:%d",
+                           bind_cnt, par_cnt);
         return -1;
     }
+
     int cols = sqlite3_column_count(rec->stmt);
     int overrides = override_count(clnt);
     if (overrides && overrides != cols) {
         errstat_set_rcstrf(err, ERR_PREPARE,
-                           "columns in stmt:%d  "
-                           "column types provided:%d",
+                           "columns in stmt:%d column types provided:%d",
                            cols, overrides);
         return -1;
     }
+
     reqlog_logf(thd->logger, REQL_INFO, "ncols=%d", cols);
-    if (a == 0)
+    if (bind_cnt == 0)
         return 0;
     return bind_params(thd, clnt, rec, err);
 }
@@ -3394,15 +3407,13 @@ static int execute_sql_query(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         return 0;
     }
 
-    /* All requests that do not require a sqlite engine
-       are processed below.  A return != 0 means processing
-       done
-     */
+    /* All requests that do not require a sqlite engine are processed next,
+     * rc != 0 means processing done */
     if ((rc = handle_non_sqlite_requests(thd, clnt, &outrc)) != 0) {
         return outrc;
     }
 
-    /* This is a request that require a sqlite engine */
+    /* This is a request that requires a sqlite engine */
     return handle_sqlite_requests(thd, clnt);
 }
 
