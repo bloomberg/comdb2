@@ -7198,7 +7198,7 @@ sqlite3BtreeCursor_temptable(Btree *pBt,      /* The btree */
      * that is opened for a table */
     cur->rootpage = iTable;
     cur->bt = pBt;
-    if (pBt->temp_tables[iTable-1].flags & BTREE_INTKEY)
+    if (src->flags & BTREE_INTKEY)
         cur->ixnum = -1;
     else
         /* mark as index (-1 means not index, others are ignored) */
