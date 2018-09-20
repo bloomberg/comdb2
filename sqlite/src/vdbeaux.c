@@ -2445,14 +2445,17 @@ void sqlite3VdbeSetNumCols(Vdbe *p, int nResColumn){
 }
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-void sqlite3VdbeAddTable(Vdbe *p, Table *table){
+void sqlite3VdbeAddTable(
+  Vdbe *p,
+  Table *pTab
+){
+  int numTables = p->numTables;
+  Table **pTbls = sqlite3Realloc(p->tbls, (numTables+1)*sizeof(Table*));
+  if( pTbls==0 ) return;
+  memset(&pTbls[numTables], 0, (numTables+1-p->numTables)*sizeof(Table*));
+  pTbls[numTables] = table;
+  p->tbls = pTbls;
   p->numTables++;
-  if (p->tbls == NULL) {
-    p->tbls = sqlite3Malloc(sizeof(Table*)); 
-  } else {
-    p->tbls = sqlite3Realloc(p->tbls, sizeof(Table*) * p->numTables);
-  }
-  p->tbls[p->numTables-1] = table;
 }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
