@@ -379,9 +379,7 @@ __crypto_set_passwd(dbenv_src, dbenv_dest)
 	REGENV *renv;
 	REGINFO *infop;
 	char *sh_passwd;
-	int ret;
 
-	ret = 0;
 	infop = dbenv_src->reginfo;
 	renv = infop->primary;
 

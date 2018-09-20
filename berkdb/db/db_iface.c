@@ -410,7 +410,6 @@ __db_cursor_ser_pp(dbp, txn, dbcs, dbcp, flags)
 	int rc;
 	DBC *d;
 	struct cursor_track *vptr;
-	int nframes;
 	int i;
 
 
@@ -435,8 +434,6 @@ __db_cursor_ser_pp(dbp, txn, dbcs, dbcp, flags)
 			if ((l != 0) && (d->locker != 0)) {
 				if (l != d->locker &&
 				    debug_switch_check_multiple_lockers()) {
-					unsigned int nframes;
-					void *stack[MAXSTACKDEPTH];
 
 					fprintf(stderr,
 					    "ERROR thread %p opened 2 cursors w/ 2 lockerids %d %d\n",
@@ -450,6 +447,8 @@ __db_cursor_ser_pp(dbp, txn, dbcs, dbcp, flags)
 						    vptr->stack[i]);
 
 #ifndef __linux__
+					unsigned int nframes;
+					void *stack[MAXSTACKDEPTH];
 					rc = stack_pc_getlist(NULL, stack,
 					    MAXSTACKDEPTH, &nframes);
 					if (!rc) {
@@ -941,10 +940,7 @@ __db_get_pp(dbp, txn, key, data, flags)
 	vptr = pthread_getspecific(comdb2_open_key);
 	if (vptr) {
 		u_int32_t lid;
-		unsigned int nframes;
-		void *stack[MAXSTACKDEPTH];
 		int i;
-		int rc;
 
 		lid = vptr->lockerid;
 		if (lid && debug_switch_check_multiple_lockers()) {
@@ -953,18 +949,17 @@ __db_get_pp(dbp, txn, key, data, flags)
 			    "cursor (lockerid %d)\n", (void *)pthread_self(), lid);
 			fprintf(stderr, "First stack:\n");
 			for (i = SKIPFRAMES; i < vptr->nframes; i++)
-				fprintf(stderr, " %d %p", i - SKIPFRAMES,
-				    vptr->stack[i]);
+				fprintf(stderr, " %d %p", i - SKIPFRAMES, vptr->stack[i]);
 			printf("\n");
 
 #ifndef __linux__
-			rc = stack_pc_getlist(NULL, stack, MAXSTACKDEPTH,
-			    &nframes);
+            unsigned int nframes;
+            void *stack[MAXSTACKDEPTH];
+            int rc = stack_pc_getlist(NULL, stack, MAXSTACKDEPTH, &nframes);
 			if (!rc) {
 				fprintf(stderr, "Second stack:\n");
 				for (i = SKIPFRAMES; i < nframes; i++)
-					fprintf(stderr, "%d %p", i - SKIPFRAMES,
-					    stack[i]);
+					fprintf(stderr, "%d %p", i - SKIPFRAMES, stack[i]);
 				printf("\n");
 			}
 #endif
@@ -980,7 +975,7 @@ __db_get_pp(dbp, txn, key, data, flags)
 	if (LF_ISSET(DB_DIRTY_READ))
 		mode = DB_DIRTY_READ;
 	else if ((flags & DB_OPFLAGS_MASK) == DB_CONSUME ||
-	    (flags & DB_OPFLAGS_MASK) == DB_CONSUME_WAIT) {
+		(flags & DB_OPFLAGS_MASK) == DB_CONSUME_WAIT) {
 		mode = DB_WRITELOCK;
 		if (IS_AUTO_COMMIT(dbenv, txn, flags)) {
 			if ((ret = __db_txn_auto_init(dbenv, &txn)) != 0)

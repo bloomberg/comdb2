@@ -1274,7 +1274,6 @@ __bam_copy(dbp, pp, cp, nxt, stop)
 	 * Nxt is the offset of the next record to be placed on the target page.
 	 */
 	for (off = 0; nxt < stop; ++nxt, ++NUM_ENT(cp), ++off) {
-		uint8_t expand_pfx = 0;
 		switch (TYPE(pp)) {
 		case P_IBTREE:
 			if (B_TYPE(GET_BINTERNAL(dbp, pp, nxt)) == B_KEYDATA)

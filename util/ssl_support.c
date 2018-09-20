@@ -181,7 +181,8 @@ int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
 {
     SSL_CTX *myctx;
     char *buffer, *cert, *key, *ca, *crl;
-    int rc, servermode;
+    int rc = 0;
+    int servermode;
     struct stat buf;
     STACK_OF(X509_NAME) *cert_names;
 

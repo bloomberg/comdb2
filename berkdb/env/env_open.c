@@ -719,9 +719,7 @@ __dbenv_config(dbenv, db_home, flags)
 	const char *db_home;
 	u_int32_t flags;
 {
-	FILE *fp;
 	int ret;
-	char *p, buf[256];
 
 	/*
 	 * Set the database home.  Do this before calling __db_appname,
@@ -958,7 +956,6 @@ __dbenv_refresh(dbenv, orig_flags, rep_check)
 		}
 	}
 
-skip:
 
 
 	/*
@@ -1234,10 +1231,7 @@ __db_tmp_open(dbenv, tmp_oflags, path, fhpp)
 	char *path;
 	DB_FH **fhpp;
 {
-	u_int32_t id;
-	int mode, isdir, ret;
-	const char *p;
-	char *trv;
+	int mode, ret;
 	static pthread_mutex_t mutex_copy_before;
 	static pthread_mutex_t mutex_copy_after;
 
@@ -1293,7 +1287,6 @@ __checkpoint_open(DB_ENV *dbenv, const char *db_home)
 	char fname[PATH_MAX];
 	const char *pbuf;
 	struct __db_checkpoint ckpt = { 0 };
-	int niop = 0;
 	DB_LSN lsn;
 	size_t sz;
 
