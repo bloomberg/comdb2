@@ -6762,9 +6762,7 @@ int sqlite3Select(
         sqlite3CodeVerifySchema(pParse, iDb);
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-        if( iDb!=1 ){
-          sqlite3VdbeAddTable(v, pTab);
-        }
+        sqlite3VdbeAddTable(v, pTab);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
         sqlite3TableLock(pParse, iDb, pTab->tnum, 0, pTab->zName);

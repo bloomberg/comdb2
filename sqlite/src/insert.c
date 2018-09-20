@@ -68,9 +68,7 @@ void sqlite3OpenTable(
   ** COMDB2: Open Cursor locks the table, verify cookie after we have
   ** opened the cursor
   */
-  if( iDb != 1 ){
-    sqlite3VdbeAddTable(v,pTab);
-  }
+  sqlite3VdbeAddTable(v,pTab);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
 
