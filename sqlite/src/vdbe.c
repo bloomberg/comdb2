@@ -6109,7 +6109,9 @@ case OP_IdxInsert: {        /* in2 */
     x.nMem = (u16)pOp->p4.i;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     rc = sqlite3BtreeInsert(pC->uc.pCursor, &x,
-        (pOp->p5 & OPFLAG_ISUPDATE)!=0, seekResult, pOp->p5
+         (pOp->p5 & OPFLAG_ISUPDATE)!=0,
+        ((pOp->p5 & OPFLAG_USESEEKRESULT) ? pC->seekResult : 0),
+         pOp->p5
         );
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     rc = sqlite3BtreeInsert(pC->uc.pCursor, &x,
