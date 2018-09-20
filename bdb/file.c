@@ -3131,12 +3131,14 @@ again:
 
     /* SUCCESS.  we are LIVE and CACHE COHERENT */
 
-    if (bdb_state->repinfo->master_host != myhost) {
-        while (!gbl_passed_repverify) {
-            sleep(1);
-            logmsg(LOGMSG_DEBUG, "waiting for rep_verify to complete\n");
-        }
+    /* If I'm not the master and I haven't passed rep verify, wait here. */
+    while (bdb_state->repinfo->master_host != myhost && !gbl_passed_repverify) {
+        sleep(1);
+        logmsg(LOGMSG_DEBUG, "waiting for rep_verify to complete\n");
+    }
 
+    /* Check again if I'm still not the master. */
+    if (bdb_state->repinfo->master_host != myhost) {
         rc = net_send(bdb_state->repinfo->netinfo,
                       bdb_state->repinfo->master_host,
                       USER_TYPE_COMMITDELAYNONE, NULL, 0, 1);
