@@ -8031,7 +8031,9 @@ int sqlite3BtreeCursor(
     cur->pKeyInfo = pKeyInfo;
 
     if (pBt->is_temporary) { /* temp table */
-        if( forOpen ){
+        assert( iTable>=1 );
+        assert( iTable<=pBt->num_temp_tables+1 );
+        if( forOpen && iTable==pBt->num_temp_tables+1 ){
           /*
           ** NOTE: When being called to open a temporary table cursor in
           **       response to an OP_Open* (or OP_Reopen*) VDBE opcode,
