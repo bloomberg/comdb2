@@ -637,6 +637,7 @@ struct __db_log_cursor {
 	int (*close) __P((DB_LOGC *, u_int32_t));
 	int (*get) __P((DB_LOGC *, DB_LSN *, DBT *, u_int32_t));
     int (*stat) __P((DB_LOGC *, DB_LOGC_STAT **));
+    int (*setflags) __P((DB_LOGC*, u_int32_t));
 
     /* Instrumentation for log stats */
     int incursor_count;
@@ -2027,6 +2028,12 @@ struct __db_env {
 	void *(*db_realloc) __P((void *, size_t));
 	void (*db_free) __P((void *));
 
+    /* expose logging rep_apply */
+    int (*apply_log) __P((DB_ENV *, unsigned int, unsigned int, int64_t,
+                void*, int));
+    size_t (*get_log_header_size) __P((DB_ENV*)); 
+    int (*rep_verify_match) __P((DB_ENV *, unsigned int, unsigned int));
+    int (*min_truncate_lsn_timestamp) __P((DB_ENV *, int file, DB_LSN *outlsn, int32_t *timestamp));
 
 	/*
 	 * Currently, the verbose list is a bit field with room for 32

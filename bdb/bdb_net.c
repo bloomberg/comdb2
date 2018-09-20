@@ -955,6 +955,34 @@ out:
     return rc;
 }
 
+int send_truncate_to_master(bdb_state_type *bdb_state, int file, int offset)
+{
+    int timeout = 10 * 1000, rc;
+    const char *hostlist[REPMAX];
+    char buf[sizeof(DB_LSN)];
+    DB_LSN trunc_lsn;
+    u_int8_t *p_buf, *p_buf_end;
+
+    if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
+        logmsg(LOGMSG_ERROR, "%s: I am the master\n", __func__);
+        return 0;
+    }
+
+    trunc_lsn.file = file;
+    trunc_lsn.offset = offset;
+
+    p_buf = buf;
+    p_buf_end = buf + sizeof(DB_LSN);
+
+    db_lsn_type_put(&trunc_lsn, p_buf, p_buf_end);
+
+    rc = net_send_message(
+        bdb_state->repinfo->netinfo, bdb_state->repinfo->master_host,
+        USER_TYPE_TRUNCATE_LOG, p_buf, sizeof(DB_LSN), 1, timeout);
+
+    return rc;
+}
+
 const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
                                     unsigned int hash)
 {

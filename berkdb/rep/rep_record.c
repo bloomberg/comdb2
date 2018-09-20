@@ -70,6 +70,7 @@ extern int gbl_optimize_truncate_repdb;
 extern int gbl_early;
 extern int gbl_reallyearly;
 extern int gbl_rep_process_txn_time;
+extern int gbl_is_physical_replicant;
 int gbl_rep_badgen_trace;
 int gbl_decoupled_logputs = 1;
 int gbl_max_apply_dequeue = 100000;
@@ -371,6 +372,7 @@ lc_free(DB_ENV *dbenv, struct __recovery_processor *rp, LSN_COLLECTION * lc)
 	lc->nalloc = 0;
 }
 
+int gbl_match_on_ckp = 1;
 /*
  * matchable_log_type --
  *
@@ -384,7 +386,8 @@ matchable_log_type(int rectype)
 	if (gbl_only_match_commit_records) {
 		ret = (rectype == DB___txn_regop ||
 			rectype == DB___txn_regop_gen ||
-			rectype == DB___txn_regop_rowlocks);
+			rectype == DB___txn_regop_rowlocks ||
+            (gbl_match_on_ckp && rectype == DB___txn_ckp));
 	} else {
 		switch (rectype) {
 		case DB___txn_recycle:
@@ -590,6 +593,10 @@ static void *apply_thread(void *arg)
 					}
 				}
 			} else {
+                logmsg(LOGMSG_DEBUG, "%s: dropping [%d:%d], rep->gen=%d "
+                        "rec-gen=%d\n", __func__, q->rp->lsn.file,
+                        q->rp->lsn.offset, rep->gen, q->gen);
+
 				pthread_mutex_unlock(&rep_candidate_lock);
 				ret = 0;
 			}
@@ -3035,6 +3042,18 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	 * That said, I really don't want to do db operations holding the
 	 * log mutex, so the synchronization here is tricky.
 	 */
+    /* TODO: return a message telling the physical replicant to go 
+     * into matching mode */
+    if (gbl_is_physical_replicant && cmp != 0)
+    {
+        static uint32_t count=0;
+        count++;
+        logmsg(LOGMSG_INFO, "%s out-of-order lsn [%d][%d] instead of [%d][%d], "
+                "count %u\n", __func__, rp->lsn.file, rp->lsn.offset,
+                lp->ready_lsn.file, lp->ready_lsn.offset, count);
+        goto done;
+    }
+    
 	if (cmp == 0) {
 		/* We got the log record that we are expecting. */
 		if (rp->rectype == REP_NEWFILE) {
@@ -3413,6 +3432,13 @@ gap_check:		max_lsn_dbtp = NULL;
 #endif
 		/* Only add less than the oldest */
 		if (inmem_repdb) {
+            /* TODO: Hack to check if local replicant */
+            if (gbl_is_physical_replicant && decoupled == 2)
+            {
+                logmsg(LOGMSG_ERROR, "Cannot enqueue anymore on local replicants\n");
+                abort();
+            }
+
 			repdb_enqueue(rp, rec, decoupled);
 			ret = 0;
 		} else {
@@ -3672,6 +3698,7 @@ gap_check:		max_lsn_dbtp = NULL;
 		if (ret != 0) {
 			__db_err(dbenv, "Error processing txn [%lu][%lu]",
 				(u_long)rp->lsn.file, (u_long)rp->lsn.offset);
+            __log_flush(dbenv, NULL);
 			__db_panic(dbenv, ret);
 		}
 		break;
@@ -3780,6 +3807,49 @@ __rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	return rc;
 }
 
+int __dbenv_apply_log(DB_ENV* dbenv, unsigned int file, unsigned int offset, 
+        int64_t rectype, void* blob, int blob_len)
+{
+
+    REP_CONTROL rp;
+
+    DBT rec = {0};
+    DB_LSN ret_lsnp;
+    uint32_t *commit_gen;
+    int rc, decoupled;
+    DB_REP* db_rep; 
+    REP* rep; 
+
+    rec.data = blob;
+    rec.size = blob_len;
+
+    ret_lsnp.file = file;
+    ret_lsnp.offset = offset;
+
+    rp.rep_version = 0;
+    rp.log_version = 0;
+    rp.lsn = ret_lsnp;
+    db_rep = dbenv->rep_handle;
+    rep = db_rep->region;
+    rp.rectype = rectype;
+    rp.gen = rep->gen; 
+    rp.flags = 0;
+
+    /* call of 2 to differentiate from true master */
+    return __rep_apply(dbenv, &rp, &rec, &ret_lsnp, &rep->gen, 2);
+
+}
+
+size_t __dbenv_get_log_header_size(DB_ENV* dbenv)
+{
+	size_t hdrsize = HDR_NORMAL_SZ;
+
+	if (CRYPTO_ON(dbenv)) {
+		hdrsize = HDR_CRYPTO_SZ;
+	}
+
+    return hdrsize;
+}
 
 u_int32_t gbl_rep_lockid;
 
@@ -7166,6 +7236,28 @@ __rep_truncate_repdb(dbenv)
  * everything else has exited the library.  If not, set up the world
  * correctly and move forward.
  */
+int __dbenv_rep_verify_match(DB_ENV* dbenv, unsigned int file, unsigned int offset, int online)
+{
+    REP_CONTROL rp;
+	DB_LSN lsnp;
+    DB_REP* db_rep; 
+    REP* rep; 
+    int ret;
+
+    lsnp.file = file;
+    lsnp.offset = offset;
+
+    rp.rep_version = 0;
+    rp.log_version = 0;
+    rp.lsn = lsnp;
+    db_rep = dbenv->rep_handle;
+    rep = db_rep->region;
+    rp.gen = rep->gen; 
+    rp.flags = 0;
+    ret = __rep_verify_match(dbenv, &rp, rep->timestamp);
+    return ret;
+}
+
 static int
 __rep_verify_match(dbenv, rp, savetime)
 	DB_ENV *dbenv;
@@ -7328,16 +7420,19 @@ finish:ZERO_LSN(lp->waiting_lsn);
 	 * deadlock.
 	 */
 
-	F_SET(db_rep->rep_db, DB_AM_RECOVER);
-	MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
+	if (db_rep->rep_db)
+	{
+		F_SET(db_rep->rep_db, DB_AM_RECOVER);
+		MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
 
-	if ((ret = __truncate_repdb(dbenv)) != 0) {
-		abort();
-		goto err;
+		if ((ret = __truncate_repdb(dbenv)) != 0) {
+			abort();
+			goto err;
+		}
+
+		MUTEX_LOCK(dbenv, db_rep->db_mutexp);
+		F_CLR(db_rep->rep_db, DB_AM_RECOVER);
 	}
-
-	MUTEX_LOCK(dbenv, db_rep->db_mutexp);
-	F_CLR(db_rep->rep_db, DB_AM_RECOVER);
 
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 	rep->stat.st_log_queued = 0;

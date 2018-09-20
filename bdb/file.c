@@ -3296,6 +3296,51 @@ static int get_filenum_from_logfile(char *str_in)
 
 extern int gbl_new_snapisol_asof;
 
+int32_t gbl_min_truncate_file;
+int32_t gbl_min_truncate_offset;
+int32_t gbl_min_truncate_timestamp;
+
+static pthread_rwlock_t min_trunc_lk = PTHREAD_RWLOCK_INITIALIZER;
+
+static int bdb_calc_min_truncate(bdb_state_type *bdb_state)
+{
+    DB_LSN lsn;
+    int rc;
+    int lowfilenum;
+    int32_t timestamp;
+    pthread_rwlock_wrlock(&min_trunc_lk);
+    lowfilenum = get_lowfilenum_sanclist(bdb_state);
+    rc = bdb_state->dbenv->min_truncate_lsn_timestamp(
+        bdb_state->dbenv, lowfilenum, &lsn, &timestamp);
+    if (rc == 0) {
+        gbl_min_truncate_file = lsn.file;
+        gbl_min_truncate_offset = lsn.offset;
+        gbl_min_truncate_timestamp = timestamp;
+    } else {
+        gbl_min_truncate_file = 0;
+        gbl_min_truncate_offset = 0;
+        gbl_min_truncate_timestamp = 0;
+    }
+    pthread_rwlock_unlock(&min_trunc_lk);
+    return rc;
+}
+
+int bdb_min_truncate(bdb_state_type *bdb_state, int *file, int *offset,
+                     int32_t *timestamp)
+{
+    if (gbl_min_truncate_file <= 1)
+        bdb_calc_min_truncate(bdb_state);
+    pthread_rwlock_rdlock(&min_trunc_lk);
+    if (file)
+        *file = gbl_min_truncate_file;
+    if (offset)
+        *offset = gbl_min_truncate_offset;
+    if (timestamp)
+        *timestamp = gbl_min_truncate_timestamp;
+    pthread_rwlock_unlock(&min_trunc_lk);
+    return 0;
+}
+
 /*
   get a list of log files we can delete
   (call DB_ENV->log_archive with no flags)
@@ -3791,6 +3836,7 @@ void delete_log_files(bdb_state_type *bdb_state)
     BDB_READLOCK("logdelete_thread");
     pthread_mutex_lock(&logdelete_lk);
     delete_log_files_int(bdb_state);
+    bdb_calc_min_truncate(bdb_state);
     pthread_mutex_unlock(&logdelete_lk);
     BDB_RELLOCK();
 }
@@ -7337,6 +7383,13 @@ char *oldfile_list_rem(int *lognum)
     Pthread_mutex_unlock(&of_list_mtx);
 
     return ret;
+}
+
+void oldfile_list_clear(void)
+{
+    Pthread_mutex_lock(&of_list_mtx);
+    list_tl = list_hd = 0;
+    Pthread_mutex_unlock(&of_list_mtx);
 }
 
 int oldfile_list_empty(void)
