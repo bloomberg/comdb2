@@ -2453,7 +2453,7 @@ void sqlite3VdbeAddTable(
   Table **pTbls = sqlite3Realloc(p->tbls, (numTables+1)*sizeof(Table*));
   if( pTbls==0 ) return;
   memset(&pTbls[numTables], 0, (numTables+1-p->numTables)*sizeof(Table*));
-  pTbls[numTables] = table;
+  pTbls[numTables] = pTab;
   p->tbls = pTbls;
   p->numTables++;
 }
