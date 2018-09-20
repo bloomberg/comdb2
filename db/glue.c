@@ -3081,6 +3081,10 @@ static int nodeup_callback(void *bdb_handle, const char *host)
     return is_node_up(host);
 }
 
+static void disconnect_callback(netinfo_type *net, const char *host) {
+    bdb_disconnected(thedb->bdb_env, host);
+}
+
 static char *tcmtest_routecpu_down_node = 0;
 
 void tcmtest_routecpu_set_down_node(char *n) { tcmtest_routecpu_down_node = n; }
@@ -4061,6 +4065,8 @@ int open_bdb_env(struct dbenv *dbenv)
         if (net_register_allow(dbenv->handle_sibling, net_allow_node))
             return -1;
     }
+
+    net_register_disconnect_callback(dbenv->handle_sibling, disconnect_callback);
 
     /* open environment */
     dbenv->bdb_env = bdb_open_env(

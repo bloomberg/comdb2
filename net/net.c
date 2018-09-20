@@ -554,6 +554,8 @@ static void close_hostnode_ll(host_node_type *host_node_ptr)
 static void close_hostnode(host_node_type *host_node_ptr)
 {
     Pthread_mutex_lock(&(host_node_ptr->lock));
+    if (host_node_ptr->netinfo_ptr->disconnected)
+        host_node_ptr->netinfo_ptr->disconnected(host_node_ptr->netinfo_ptr, host_node_ptr->host);
     close_hostnode_ll(host_node_ptr);
     Pthread_mutex_unlock(&(host_node_ptr->lock));
 }
@@ -4549,6 +4551,9 @@ static void *reader_thread(void *arg)
         if (rc != 0) {
             if (!host_node_ptr->distress) {
                 host_node_printf(LOGMSG_WARN, host_node_ptr, "entering distress mode\n");
+
+                if (netinfo_ptr->disconnected)
+                    netinfo_ptr->disconnected(netinfo_ptr, host_node_ptr->host);
             }
             /* if we loop it should be ok; TODO: maybe wanna have
              * a modulo operation to report errors w/ a certain periodicity? */
@@ -6971,4 +6976,10 @@ void net_set_conntime_dump_period(netinfo_type *netinfo_ptr, int value)  {
 
 int net_get_conntime_dump_period(netinfo_type *netinfo_ptr) {
     return netinfo_ptr->conntime_dump_period;
+}
+
+void net_register_disconnect_callback(netinfo_type *netinfo_ptr, 
+        void (*disconnected)(netinfo_type *netinfo_ptr, const char *host)) {
+    fprintf(stderr, ">>>>> REGISTERED HANDLER <<<<<<<<\n");
+    netinfo_ptr->disconnected = disconnected;
 }

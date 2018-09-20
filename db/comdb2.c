@@ -958,49 +958,6 @@ static void cleanup_q_vars()
     quantize_free(q_sql_steps_all);
 }
 
-/* Send an alert about the fact that I'm incoherent */
-static int send_incoherent_message(int num_online, int duration)
-{
-    char *tmpfile;
-    FILE *fh;
-    struct utsname u;
-    int hours, mins, secs;
-    uuid_t uuid;
-    uuidstr_t us;
-
-    comdb2uuid(uuid);
-    comdb2uuidstr(uuid, us);
-    tmpfile = comdb2_location("tmp", "comdb2_incoh_msg.%s.%s.txt",
-                              thedb->envname, us);
-
-    fh = fopen(tmpfile, "w");
-    if (!fh) {
-        logmsg(LOGMSG_ERROR, "%s: cannot open '%s': %d %s\n", __func__, tmpfile,
-                errno, strerror(errno));
-        free(tmpfile);
-        return -1;
-    }
-
-    uname(&u);
-    fprintf(fh, "%s %s HAS %d INCOHERENT ONLINE NODES\n", u.nodename,
-            thedb->envname, num_online);
-
-    hours = duration / (60 * 60);
-    mins = (duration / 60) % 60;
-    secs = duration % 60;
-    fprintf(fh, "Nodes have been incoherent for %02d:%02d:%02d\n", hours, mins,
-            secs);
-
-    bdb_short_netinfo_dump(fh, thedb->bdb_env);
-
-    fclose(fh);
-
-    logmsg(LOGMSG_WARN, "incoherent nodes present for longer than desired, details in %s\n",
-           tmpfile);
-    free(tmpfile);
-
-    return 0;
-}
 
 /* sorry guys, i hijacked this to be more of a "purge stuff in general" thread
  * -- SJ
@@ -1055,51 +1012,6 @@ static void *purge_old_blkseq_thread(void *arg)
                             "Running bdb '%s' command to grab diagnostics\n",
                             cmd);
                     bdb_process_user_command(dbenv->bdb_env, cmd, len, 0);
-                }
-            }
-        }
-
-        if (dbenv->master == gbl_mynode) {
-            static int last_incoh_msg_time = 0;
-            static int peak_online_count = 0;
-            int num_incoh, since_epoch;
-            const char *incoh_list[REPMAX];
-            int now = comdb2_time_epoch();
-
-            bdb_get_notcoherent_list(dbenv->bdb_env, incoh_list, REPMAX,
-                                     &num_incoh, &since_epoch);
-
-            if (num_incoh > 0) {
-                int online_count, ii;
-                int duration = comdb2_time_epoch() - since_epoch;
-
-                /* Exclude rtcpu'd nodes from our list of problem machines */
-                for (online_count = 0, ii = 0; ii < num_incoh && ii < REPMAX;
-                     ii++) {
-                    if (is_node_up(incoh_list[ii]))
-                        online_count++;
-                }
-
-                /* Filter out momentary incoherency unless it is more than
-                 * 2 incoherent nodes */
-                if (online_count < 3 && duration < 20) {
-                    /* No message */
-                } else if (online_count > 0 &&
-                           (duration >= gbl_incoherent_alarm_time ||
-                            online_count > gbl_max_incoherent_nodes)) {
-                    /* Send a message if it's been a while or if things are
-                     * worse than ever before */
-                    if (last_incoh_msg_time == 0 ||
-                        now - last_incoh_msg_time >= gbl_incoherent_msg_freq ||
-                        online_count < peak_online_count) {
-                        if (online_count < peak_online_count)
-                            online_count = peak_online_count;
-                        last_incoh_msg_time = now;
-
-                        /* Send a message about these dreadful incoherent
-                         * nodes */
-                        send_incoherent_message(online_count, duration);
-                    }
                 }
             }
         }
