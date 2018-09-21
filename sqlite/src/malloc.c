@@ -624,7 +624,7 @@ void *sqlite3DbMallocWithMutex(sqlite3 *db, u64 n, int bZero){
 ** and released if necessary.  If the bZero flag is set, new memory
 ** will be zeroed.
 */
-void *sqlite3DbReallocOrMalloc(sqlite3 *db, void *p, u64 n, int bZero){
+void *sqlite3DbReallocWithMutex(sqlite3 *db, void *p, u64 n, int bZero){
   void *pNew;
   int nOld = (!db || bZero) ? sqlite3MallocSize(p) : 0;
   if( db ){
