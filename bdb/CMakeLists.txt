@@ -91,6 +91,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/mem
   ${PROJECT_BINARY_DIR}/mem
   ${PROJECT_SOURCE_DIR}/net
+  ${PROJECT_SOURCE_DIR}/cdb2api
   ${PROJECT_BINARY_DIR}/protobuf
   ${OPENSSL_INCLUDE_DIR}
   ${PROTOBUF_C_INCLUDE_DIR}
