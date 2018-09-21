@@ -3847,6 +3847,10 @@ void sqlite3DbFree(sqlite3*, void*);
 void sqlite3DbFreeNN(sqlite3*, void*);
 int sqlite3MallocSize(void*);
 int sqlite3DbMallocSize(sqlite3*, void*);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+void *sqlite3DbMallocWithMutex(sqlite3 *, u64, int);
+void *sqlite3DbReallocOrMalloc(sqlite3 *, void *, u64, int);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 void *sqlite3PageMalloc(int);
 void sqlite3PageFree(void*);
 void sqlite3MemSetDefault(void);
