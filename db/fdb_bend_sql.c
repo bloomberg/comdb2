@@ -256,14 +256,14 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
     sqlite3 *sqdb = ((Vdbe *)stmt)->db;
 
     if (pMem->zMalloc == pMem->z) {
-        sqlite3_mutex_enter(sqdb->mutex);
+        if( sqdb ) sqlite3_mutex_enter(sqdb->mutex);
         pMem->zMalloc = pMem->z = sqlite3DbRealloc(sqdb, pMem->z, len);
-        sqlite3_mutex_leave(sqdb->mutex);
+        if( sqdb ) sqlite3_mutex_leave(sqdb->mutex);
         pMem->szMalloc = pMem->n = len;
     } else {
-        sqlite3_mutex_enter(sqdb->mutex);
+        if( sqdb ) sqlite3_mutex_enter(sqdb->mutex);
         pMem->z = sqlite3DbRealloc(sqdb, pMem->z, len);
-        sqlite3_mutex_leave(sqdb->mutex);
+        if( sqdb ) sqlite3_mutex_leave(sqdb->mutex);
         pMem->n = len;
     }
     if (!pMem->z) {
