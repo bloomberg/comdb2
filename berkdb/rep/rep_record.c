@@ -7329,7 +7329,8 @@ __rep_verify_match(dbenv, rp, savetime)
 
 	/* Parallel rep threads could still be working- wait for them to complete
 	 * before grabbing the rep_mutex. */
-    if (!online) {
+//    if (!online) {
+    if (1) {
         wait_for_running_transactions(dbenv);
 
         /*
@@ -7342,6 +7343,7 @@ __rep_verify_match(dbenv, rp, savetime)
             rep->stat.st_msgs_recover++;
             goto errunlock;
         }
+    }
 
 	/* Phase 1: set REP_F_READY and wait for op_cnt to go to 0. */
 	/* This doesn't do anything anymore, but we should have gotten the 
@@ -7369,7 +7371,7 @@ __rep_verify_match(dbenv, rp, savetime)
 	 * to 0 and for the number of threads in __rep_process_message
 	 * to go to 1 (us).
 	 */
-    if (!online)
+//    if (!online)
         rep->in_recovery = 1;
 
 	rep->in_recovery = 1;
