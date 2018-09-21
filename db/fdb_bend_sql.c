@@ -253,12 +253,17 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
         strbuf_append(new_sql, ");");
 
     len = strlen(strbuf_buf(new_sql));
+    sqlite3 *sqdb = ((Vdbe *)stmt)->db;
+
     if (pMem->zMalloc == pMem->z) {
-        pMem->zMalloc = pMem->z =
-            sqlite3DbRealloc(((Vdbe *)stmt)->db, pMem->z, len);
+        sqlite3_mutex_enter(sqdb->mutex);
+        pMem->zMalloc = pMem->z = sqlite3DbRealloc(sqdb, pMem->z, len);
+        sqlite3_mutex_leave(sqdb->mutex);
         pMem->szMalloc = pMem->n = len;
     } else {
-        pMem->z = sqlite3DbRealloc(((Vdbe *)stmt)->db, pMem->z, len);
+        sqlite3_mutex_enter(sqdb->mutex);
+        pMem->z = sqlite3DbRealloc(sqdb, pMem->z, len);
+        sqlite3_mutex_leave(sqdb->mutex);
         pMem->n = len;
     }
     if (!pMem->z) {
