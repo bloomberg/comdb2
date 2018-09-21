@@ -432,11 +432,11 @@ int handle_ireq(struct ireq *iq)
     if (rc == 0 && iq->num_queues_hit > 0) {
         if (iq->num_queues_hit > MAX_QUEUE_HITS_PER_TRANS) {
             /* good heavens.  wake up all consumers */
-            dbqueue_wake_all_consumers_all_queues(iq->dbenv, 0);
+            dbqueuedb_wake_all_consumers_all_queues(iq->dbenv, 0);
         } else {
             unsigned ii;
             for (ii = 0; ii < iq->num_queues_hit; ii++)
-                dbqueue_wake_all_consumers(iq->queues_hit[ii], 0);
+                dbqueuedb_wake_all_consumers(iq->queues_hit[ii], 0);
         }
     }
 

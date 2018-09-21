@@ -5038,6 +5038,7 @@ extern int gbl_dump_locks_on_repwait;
 extern int gbl_lock_get_list_start;
 int bdb_clean_pglogs_queues(bdb_state_type *bdb_state);
 extern int db_is_stopped();
+extern int db_is_exiting();
 
 int request_delaymore(void *bdb_state_in)
 {
@@ -5099,7 +5100,7 @@ void *watcher_thread(void *arg)
 
     bdb_state->repinfo->disable_watcher = 0;
 
-    while (!db_is_stopped()) {
+    while (!db_is_exiting()) {
         time_now = comdb2_time_epoch();
         time_then = bdb_state->repinfo->disable_watcher;
 

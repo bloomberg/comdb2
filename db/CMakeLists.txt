@@ -11,7 +11,7 @@ set(src
   db_tunables.c
   db_util.c
   dbglog_iface.c
-  dbqueue.c
+  dbqueuedb.c
   debug.c
   endian.c
   envstubs.c

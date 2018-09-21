@@ -825,98 +825,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         if (rc != 0) {
             return -1;
         }
-    } else if (tokcmp(tok, ltok, "queue") == 0) {
-        struct dbtable *db;
-        char *qname;
-        int avgsz;
-        int pagesize = 0;
-
-        /*
-          queue <qname>
-        */
-        tok = segtok(line, len, &st, &ltok); /* queue name */
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Malformed \"queue\" directive\n");
-            return -1;
-        }
-        qname = tokdup(tok, ltok);
-
-        tok = segtok(line, len, &st, &ltok); /* item sz*/
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Malformed \"queue\" directive\n");
-            return -1;
-        }
-        avgsz = toknum(tok, ltok);
-        if (avgsz == 0) {
-            logmsg(LOGMSG_ERROR, "Malformed \"queue\" directive\n");
-            return -1;
-        }
-
-        /* This code is dupliated in the message trap parser.. sorry */
-        tok = segtok(line, len, &st, &ltok);
-        while (ltok) {
-            char ctok[64];
-            tokcpy0(tok, ltok, ctok, sizeof(ctok));
-            if (strncmp(ctok, "pagesize=", 9) == 0) {
-                pagesize = atoi(ctok + 9);
-            } else {
-                logmsg(LOGMSG_ERROR, "Bad queue attribute '%s'\n", ctok);
-                return -1;
-            }
-            tok = segtok(line, len, &st, &ltok);
-        }
-
-        db = newqdb(dbenv, qname, avgsz, pagesize, 0);
-        if (!db) {
-            return -1;
-        }
-        db->dbs_idx = -1;
-
-        dbenv->qdbs = realloc(dbenv->qdbs,
-                              (dbenv->num_qdbs + 1) * sizeof(struct dbtable *));
-        dbenv->qdbs[dbenv->num_qdbs++] = db;
-
-        /* Add queue to the hash. */
-        hash_add(dbenv->qdb_hash, db);
-
-    } else if (tokcmp(tok, ltok, "consumer") == 0) {
-        char *qname;
-        int consumer;
-        char *method;
-        struct dbtable *db;
-
-        /*
-         * consumer <qname> <consumer#> <method>
-         */
-        tok = segtok(line, len, &st, &ltok); /* queue name */
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Malformed \"consumer\" directive\n");
-            return -1;
-        }
-        qname = tokdup(tok, ltok);
-        tok = segtok(line, len, &st, &ltok); /* consumer # */
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Malformed \"consumer\" directive\n");
-            return -1;
-        }
-        consumer = toknum(tok, ltok);
-        tok = segtok(line, len, &st, &ltok); /* method */
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Malformed \"consumer\" directive\n");
-            return -1;
-        }
-        method = tokdup(tok, ltok);
-
-        db = getqueuebyname(qname);
-        if (!db) {
-            logmsg(LOGMSG_ERROR, "No such queue '%s'\n", qname);
-            return -1;
-        }
-
-        if (dbqueue_add_consumer(db, consumer, method, 1) != 0) {
-            return -1;
-        }
-
     } else if (tokcmp(tok, ltok, "sfuncs") == 0) {
         parse_lua_funcs(s);
     } else if (tokcmp(tok, ltok, "afuncs") == 0) {
@@ -1326,17 +1234,28 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
          * marked as READEARLY) */
         read_legacy_defaults(dbenv, options);
     } else {
-        /* Handle tunables registered under tunables sub-system. */
-        rc = handle_lrl_tunable(tok, ltok, line + st, len - st, 0);
-        if (rc != TUNABLE_ERR_OK) {
+        // see if any plugins know how to handle this
+        struct lrl_handler *h;
+        rc = 1;
+        LISTC_FOR_EACH(&dbenv->lrl_handlers, h, lnk) {
+            rc = h->handle(dbenv, line);
+            if (rc == 0)
+                break;
+        }
 
-            if (gbl_bad_lrl_fatal) {
-                logmsg(LOGMSG_ERROR, "unknown opcode '%.*s' in lrl %s\n", ltok,
-                       tok, options->lrlname);
-                return -1;
-            } else {
-                logmsg(LOGMSG_WARN, "unknown opcode '%.*s' in lrl %s\n", ltok,
-                       tok, options->lrlname);
+        if (rc) {
+            /* Handle tunables registered under tunables sub-system. */
+            rc = handle_lrl_tunable(tok, ltok, line + st, len - st, 0);
+
+            if (rc) {
+                if (gbl_bad_lrl_fatal) {
+                    logmsg(LOGMSG_ERROR, "unknown opcode '%.*s' in lrl %s\n", ltok,
+                            tok, options->lrlname);
+                    return -1;
+                } else {
+                    logmsg(LOGMSG_WARN, "unknown opcode '%.*s' in lrl %s\n", ltok,
+                            tok, options->lrlname);
+                }
             }
         }
     }

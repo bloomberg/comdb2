@@ -8073,7 +8073,6 @@ int bdb_llmeta_get_queues(char **queue_names, size_t max_queues,
             break;
         if (nqueues >= max_queues)
             break;
-        logmsg(LOGMSG_USER, ">> queue: %s\n", qk.dbname);
         queue_names[nqueues] = strdup(qk.dbname);
         ++nqueues;
         if ((rc = bdb_lite_fetch_keys_fwd(llmeta_bdb_state, key, nextkey, 1,
