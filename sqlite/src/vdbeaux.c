@@ -2452,10 +2452,11 @@ void sqlite3VdbeAddTable(
   Table **pTbls;
   int numTables;
   if( !p || !pTab ) return;
+  assert( sqlite3_mutex_held(p->db->mutex) );
   numTables = p->numTables;
   assert( numTables>=0 );
   if( !pTab ) return;
-  pTbls = sqlite3Realloc(p->tbls, (numTables+1)*sizeof(Table*));
+  pTbls = sqlite3DbRealloc(p->db, p->tbls, (numTables+1)*sizeof(Table*));
   if( pTbls==0 ) return;
   memset(&pTbls[numTables], 0, (numTables+1-p->numTables)*sizeof(Table*));
   pTbls[numTables] = pTab;
@@ -3361,6 +3362,17 @@ void sqlite3VdbeDelete(Vdbe *p){
   assert( p!=0 );
   db = p->db;
   assert( sqlite3_mutex_held(db->mutex) );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( p->tbls ){
+    int i;
+    for(i=0; i<p->numTables; i++){
+      sqlite3DeleteTable(db, p->tbls[i]);
+    }
+    sqlite3DbFree(db, p->tbls);
+    p->tbls = 0;
+    p->numTables = 0;
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3VdbeClearObject(db, p);
   if( p->pPrev ){
     p->pPrev->pNext = p->pNext;
@@ -3371,17 +3383,6 @@ void sqlite3VdbeDelete(Vdbe *p){
   if( p->pNext ){
     p->pNext->pPrev = p->pPrev;
   }
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( p->tbls ){
-    int i;
-    for(i=0; i<p->numTables; i++){
-      sqlite3DeleteTable(db, p->tbls[i]);
-    }
-    sqlite3_free(p->tbls);
-    p->tbls = NULL;
-    p->numTables = 0;
-  }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   p->magic = VDBE_MAGIC_DEAD;
   p->db = 0;
   sqlite3DbFreeNN(db, p);
