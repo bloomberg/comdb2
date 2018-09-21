@@ -3995,8 +3995,10 @@ deadlock_again:
                        bdberr);
                 if (tid)
                     tid->abort(tid);
+/*
                 if (open_tid)
                     open_tid->abort(open_tid);
+*/
 
                 tid = NULL;
                 if (tmp_tid && bdberr == BDBERR_DEADLOCK)
