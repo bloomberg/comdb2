@@ -3027,8 +3027,7 @@ done2:
                 no_change = 0;
             if (no_change > 60 / 5) {
                 /* We are not making any progress.  Go back to phase 2.  This is
-                 * a desparate act to try to stop the constant "stuck in phase
-                 * 3"
+                 * a desparate act to try to stop the constant "stuck in phase 3"
                  * problem that we get every other day on turning the beta
                  * cluster. */
 
@@ -3887,6 +3886,7 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
     int tmp_tid;
     tran_type tran;
 
+deadlock_again:
     tmp_tid = 0;
 
     db_flags = DB_THREAD;
@@ -3945,6 +3945,9 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
                        bdberr);
                 if (tid)
                     tid->abort(tid);
+                tid = NULL;
+                if (tmp_tid && bdberr == BDBERR_DEADLOCK)
+                    goto deadlock_again;
                 return -1;
             }
         }

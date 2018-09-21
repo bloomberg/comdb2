@@ -892,11 +892,6 @@ REGISTER_TUNABLE("print_syntax_err",
                  "Trace all SQL with syntax errors. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_print_syntax_err, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
-REGISTER_TUNABLE("queuepoll", "Occasionally wake up and poll "
-                              "consumer queues even when no "
-                              "events require it. (Default: 5secs)",
-                 TUNABLE_INTEGER, &gbl_queue_sleeptime, READONLY, NULL, NULL,
-                 NULL, NULL);
 REGISTER_TUNABLE("random_lock_release_interval", NULL, TUNABLE_INTEGER,
                  &gbl_sql_random_release_interval, READONLY, NULL, NULL, NULL,
                  NULL);

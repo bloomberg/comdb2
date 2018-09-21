@@ -7,6 +7,29 @@ NRUNS=10000
 
 set -x
 
+failexit()
+{
+    echo "Failed $1"
+    exit -1
+}
+
+
+assertcnt ()
+{
+    local tbl=$1
+    local target=$2
+    local cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbname default "select count(*) from $tbl")
+    if [ $? -ne 0 ] ; then
+        echo "assertcnt: select error"
+    fi
+
+    #echo "count is now $cnt"
+    if [[ $cnt != $target ]] ; then
+        failexit "tbl $tbl count is now $cnt but should be $target"
+    fi
+}
+
+
 cdb2sql ${CDB2_OPTIONS} $dbname default 'create table t1 {
 schema {
     int id
@@ -30,6 +53,7 @@ keys {
 }
 }
 '
+cdb2sql ${CDB2_OPTIONS} $dbname default 'create table t2 (i int)'
 
 cdb2sql ${CDB2_OPTIONS} $dbname default 'create table comdb2_oplog {
 schema {
@@ -59,9 +83,52 @@ keys {
 '
 
 
-for i in $(seq 1 $NRECS); do
+cdb2sql ${CDB2_OPTIONS} $dbname default 'alter table comdb2_oplog {
+schema {
+    longlong seqno
+    int      blkpos
+    int      optype
+    blob     ops         null=yes
+}
+
+tag "log" {
+    longlong seqno
+    int      optype
+    int      blkpos
+    blob     ops
+}
+
+tag "justseq" {
+    longlong seqno
+    int      blkpos
+    int      optype
+}
+
+keys {
+    "seqno" = seqno + blkpos
+}
+}
+'
+
+echo "insert into t1 (id, a, b, c, d, e, f, g, h, i, j) values (1, 1, 2, 3, 4, 5, 6.000000, 7.000000, 'eight', x'99', now());" | cdb2sql -s ${CDB2_OPTIONS} $dbname default - >/dev/null
+assertcnt t1 1
+
+i=2
+echo "begin 
+insert into t1 (id, a, b, c, d, e, f, g, h, i, j) values (2, 1, 2, 3, 4, 5, 6.000000, 7.000000, 'eight', x'99', now());
+insert into t2 values(1)
+insert into t1 (id, a, b, c, d, e, f, g, h, i, j) values (3, 1, 2, 3, 4, 5, 6.000000, 7.000000, 'eight', x'99', now());
+insert into t2 values(2) 
+commit" | cdb2sql -s ${CDB2_OPTIONS} $dbname default - >/dev/null
+
+assertcnt t1 3
+assertcnt t2 2
+
+for i in $(seq 4 $NRECS); do
     echo "insert into t1 (id, a, b, c, d, e, f, g, h, i, j) values ($i, 1, 2, 3, 4, 5, 6.000000, 7.000000, 'eight', x'99', now());"
 done | cdb2sql -s ${CDB2_OPTIONS} $dbname default - >/dev/null
+
+assertcnt t1 $NRECS
 
 for i in $(seq 1 $NRUNS); do
     what=$(($RANDOM % 3))

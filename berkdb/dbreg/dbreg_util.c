@@ -233,7 +233,6 @@ __dbreg_recovery_pages(dbenv)
 {
 	DB_LOG *dblp;
 	DB *dbp;
-	int ret;
 	int32_t i;
 
 	COMPQUIET(dbp, NULL);
@@ -580,8 +579,6 @@ __dbreg_id_to_db_prefault(dbenv, txn, dbpp, ndx, inc)
 	int32_t ndx;
 	int inc;
 {
-	int rc;
-
 	return __dbreg_id_to_db_int_int(dbenv, txn, dbpp, ndx, inc, 0, NULL, 0,
 	    1);
 }

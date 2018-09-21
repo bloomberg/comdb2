@@ -1275,7 +1275,7 @@ static int portmux_poll_v(portmux_fd_t **fds, nfds_t nfds, int timeoutms,
 {
     int clientfd;
     struct pollfd *pollfds;
-    nfds_t npollfds;
+    nfds_t npollfds = 0;
     char msg[64];
     struct polldata {
         bool is_tcp;

@@ -90,6 +90,7 @@ typedef long long tranid_t;
 #include "comdb2uuid.h"
 #include "machclass.h"
 #include "tunables.h"
+#include "comdb2_plugin.h"
 
 #ifndef LUASP
 #include <mem_uncategorized.h>
@@ -331,7 +332,7 @@ enum OSQL_RPL_TYPE {
     OSQL_DONE = 1,
     OSQL_USEDB = 2,
     OSQL_DELREC = 3,
-    OSQL_INSREC = 4,
+    OSQL_INSREC = 4, /* R7 uses OSQL_INSERT */
     OSQL_CLRTBL = 5,
     OSQL_QBLOB = 6,
     OSQL_UPDREC = 7,
@@ -815,6 +816,16 @@ struct lrlfile {
     LINKC_T(struct lrlfile) lnk;
 };
 
+struct lrl_handler {
+    int (*handle)(struct dbenv*, const char *line);
+    LINKC_T(struct lrl_handler) lnk;
+};
+
+struct message_handler {
+    int (*handle)(struct dbenv*, const char *line);
+    LINKC_T(struct message_handler) lnk;
+};
+
 struct dbenv {
     char *basedir;
     char *envname;
@@ -967,16 +978,16 @@ struct dbenv {
     uint32_t incoh_file, incoh_offset;
     timepart_views_t *timepart_views;
 
-    /* locking for the queue system */
-    pthread_mutex_t dbqueue_admin_lk;
-    int dbqueue_admin_running;
-
     struct time_metric* service_time;
     struct time_metric* queue_depth;
     struct time_metric* concurrent_queries;
     struct time_metric* connections;
     struct time_metric *sql_queue_time;
     struct time_metric *handle_buf_queue_time;
+    LISTC_T(struct lrl_handler) lrl_handlers;
+    LISTC_T(struct message_handler) message_handlers;
+
+    comdb2_queue_consumer_t *queue_consumer_handlers[CONSUMER_TYPE_LAST];
 };
 
 extern struct dbenv *thedb;
@@ -1731,8 +1742,6 @@ extern int gbl_enable_osql_longreq_logging;
 extern int gbl_osql_verify_ext_chk;
 
 extern int gbl_genid_cache;
-
-extern int gbl_max_appsock_connections;
 
 extern int gbl_master_changed_oldfiles;
 extern int gbl_extended_sql_debug_trace;
@@ -2542,23 +2551,18 @@ void diagnostics_dump_rrn(struct dbtable *tbl, int rrn);
 void diagnostics_dump_dta(struct dbtable *db, int dtanum);
 
 /* queue stuff */
-void dbqueue_coalesce(struct dbenv *dbenv);
-void dbqueue_admin(struct dbenv *dbenv);
-int dbqueue_add_consumer(struct dbtable *db, int consumer, const char *method,
+void dbqueuedb_coalesce(struct dbenv *dbenv);
+void dbqueuedb_admin(struct dbenv *dbenv);
+int dbqueuedb_add_consumer(struct dbtable *db, int consumer, const char *method,
                          int noremove);
-int dbqueue_set_consumern_options(struct dbtable *db, int consumer,
-                                  const char *opts);
-int dbqueue_set_consumer_options(struct consumer *consumer, const char *opts);
-void dbqueue_stat(struct dbtable *db, int fullstat, int walk_queue, int blocking);
-void dbqueue_flush_in_thread(struct dbtable *db, int consumern);
-void dbqueue_flush_abort(void);
 int consumer_change(const char *queuename, int consumern, const char *method);
-void dbqueue_wake_all_consumers(struct dbtable *db, int force);
-void dbqueue_wake_all_consumers_all_queues(struct dbenv *dbenv, int force);
-void dbqueue_goose(struct dbtable *db, int force);
-void dbqueue_stop_consumers(struct dbtable *db);
-void dbqueue_restart_consumers(struct dbtable *db);
-int dbqueue_check_consumer(const char *method);
+int dbqueuedb_wake_all_consumers(struct dbtable *db, int force);
+int dbqueuedb_wake_all_consumers_all_queues(struct dbenv *dbenv, int force);
+int dbqueuedb_stop_consumers(struct dbtable *db);
+int dbqueuedb_restart_consumers(struct dbtable *db);
+int dbqueuedb_check_consumer(const char *method);
+int dbqueuedb_get_name(struct dbtable *db, char **spname);
+int dbqueuedb_get_stats(struct dbtable *db, struct consumer_stat *stats);
 
 /* Resource manager */
 void initresourceman(const char *newlrlname);
@@ -2817,9 +2821,6 @@ int reqlog_get_error_code(struct reqlogger *logger);
 void reqlog_set_path(struct reqlogger *logger, struct client_query_stats *path);
 void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context);
 void reqlog_set_clnt(struct reqlogger *, struct sqlclntstate *);
-/* Convert raw fingerprint to hex string, and write at most `n' characters of
-   the result to `hexstr'. Return the number of characters written. */
-int reqlog_fingerprint_to_hex(struct reqlogger *logger, char *hexstr, size_t n);
 
 void process_nodestats(void);
 void nodestats_report(FILE *fh, const char *prefix, int disp_rates);
@@ -3547,5 +3548,6 @@ int comdb2_get_verify_remote_schemas(void);
 void comdb2_set_verify_remote_schemas(void);
 
 int repopulate_lrl(const char *p_lrl_fname_out);
+void plugin_post_dbenv_hook(struct dbenv *dbenv);
 
 #endif /* !INCLUDED_COMDB2_H */

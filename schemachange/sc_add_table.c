@@ -29,7 +29,6 @@ static inline int adjust_master_tables(struct dbtable *newdb, const char *csc2,
                                        struct ireq *iq, void *trans)
 {
     int rc;
-    int pi = 0; // partial indexes
 
     fix_lrl_ixlen_tran(trans);
     /* fix_lrl_ixlen() usually sets csc2_schema/csc2_schema_len, but for llmeta

@@ -117,11 +117,12 @@ void dumpstring(FILE *f, char *s, int quotes, int quote_quotes)
         fprintf(f, "'");
 }
 
-#define verbose_print(...)                                                     \
-    {                                                                          \
+#define verbose_print(fmt, args...)                                            \
+    do {                                                                       \
         if (verbose)                                                           \
-            fprintf(stderr, __VA_ARGS__);                                      \
-    }
+            fprintf(stderr, "td 0x%p %s:%d " fmt, (void *)pthread_self(),      \
+                    __func__, __LINE__, ##args);                               \
+    } while (0);
 
 static const char *usage_text =
     "Usage: cdb2sql [options] dbname [sql [type1 [type2 ...]]]\n"
@@ -1467,6 +1468,7 @@ int main(int argc, char *argv[])
     int *types = NULL;
     int opt_indx = 0;
     int c;
+    int printtostderr = 0;
 
     sighold(SIGPIPE);
 
@@ -1475,6 +1477,7 @@ int main(int argc, char *argv[])
         {"binary", no_argument, &printmode, DISP_BINARY},
         {"tabs", no_argument, &printmode, DISP_TABS},
         {"tabular", no_argument, &printmode, DISP_TABULAR},
+        {"stderr", no_argument, &printtostderr, 1},
         {"verbose", no_argument, &verbose, 1},
         {"strblobs", no_argument, &string_blobs, 1},
         {"debugtrace", no_argument, &debug_trace, 1},
@@ -1543,6 +1546,9 @@ int main(int argc, char *argv[])
             break;
         }
     }
+
+    if (printtostderr)
+        printmode |= DISP_STDERR;
 
     if (getenv("COMDB2_IOLBF")) {
         setvbuf(stdout, 0, _IOLBF, 0);

@@ -603,6 +603,8 @@ static void append_field(struct byte_buffer *bytes, struct field *f,
              * zero-length or fits in the inline portion. */
             memcpy(&len, (uint8_t *)rec + f->offset + 1, sizeof(int));
             len = ntohl(len);
+            if (len > 0)
+                len--;
             byte_buffer_append_int32(bytes, len);
             byte_buffer_append(
                 bytes, (uint8_t *)rec + f->offset + 1 + sizeof(int), len);

@@ -278,7 +278,7 @@ enum {
 };
 
 /* write response */
-enum {
+enum WriteResponsesEnum {
     RESPONSE_COLUMNS,
     RESPONSE_COLUMNS_LUA,
     RESPONSE_COLUMNS_STR,

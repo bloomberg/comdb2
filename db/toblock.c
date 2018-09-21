@@ -4963,7 +4963,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     }
 
     if (iq->debug) {
-        reqprintf(iq, "TRANSACTION COMMITTED, NUM_REQS %d", num_reqs);
+        if (is_block2sqlmode)
+            reqprintf(iq, "TRANSACTION COMMITTED, NUM_ROWS WRITTEN %d", nops);
+        else
+            reqprintf(iq, "TRANSACTION COMMITTED, NUM_REQS %d", num_reqs);
     }
 
     /* starting writes, no more reads */

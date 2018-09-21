@@ -904,7 +904,6 @@ __bam_c_init(dbc, dbtype)
 	DBTYPE dbtype;
 {
 	DB_ENV *dbenv;
-	BTREE_CURSOR *cp;
 	int ret;
 
 	dbenv = dbc->dbp->dbenv;
@@ -913,8 +912,6 @@ __bam_c_init(dbc, dbtype)
 	if (dbc->internal == NULL &&(ret =
 	    __os_calloc(dbenv, 1, sizeof(BTREE_CURSOR), &dbc->internal)) != 0)
 		return (ret);
-
-	cp = (BTREE_CURSOR *)dbc->internal;
 
 	/* Initialize methods. */
 	dbc->c_close = comdb2__db_c_close;
@@ -978,7 +975,6 @@ __bam_c_refresh(dbc)
 	BTREE *t;
 	BTREE_CURSOR *cp;
 	DB *dbp;
-	int ret;
 
 	/* TODO Fabio change this to line to a reset
 	btpf_free((btpf**)&dbc->pf);
@@ -1095,7 +1091,6 @@ __bam_c_getgenids(dbc, genids, num, max)
 	PAGE *page;
 	BKEYDATA *data;
 	BTREE_CURSOR *cp;
-	db_indx_t *entries;
 	int i;
 
 	*num = 0;
@@ -1386,12 +1381,10 @@ __bam_c_close(dbc, root_pgno, rmroot)
 	DB *dbp;
 	DBC *dbc_opd, *dbc_c;
 	DB_MPOOLFILE *mpf;
-	DB_ENV *dbenv;
 	PAGE *h;
 	int cdb_lock, ret, t_ret;
 
 	dbp = dbc->dbp;
-	dbenv = dbp->dbenv;
 	mpf = dbp->mpf;
 	cp = (BTREE_CURSOR *)dbc->internal;
 	cp_opd = (dbc_opd = cp->opd) == NULL ?

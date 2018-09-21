@@ -1272,7 +1272,7 @@ __db_pg_prealloc_recover(dbenv, dbtp, lsnp, op, info)
 	DBC *dbc;
 	DB_MPOOLFILE *mpf;
 	PAGE *pagep;
-	int cmp_n, cmp_p, modified, ret;
+	int cmp_n, cmp_p = 0, modified, ret;
 
 	REC_PRINT(__db_pg_prealloc_print);
 	REC_INTRO(__db_pg_prealloc_read, 1);

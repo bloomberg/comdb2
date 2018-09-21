@@ -42,6 +42,7 @@ int walkback_get_warnthresh(void)
     return gbl_warnthresh;
 }
 
+#if 0
 static void showfunc(void *stack[], int nframes, FILE *f)
 {
     int i;
@@ -54,6 +55,7 @@ static void showfunc(void *stack[], int nframes, FILE *f)
         fprintf(f, "\n");
     }
 }
+#endif
 
 static void trace_pc_getlist(void *stack[], int nframes, FILE *f)
 {

@@ -162,7 +162,7 @@ int gbl_check_access_controls;
 
 struct thdpool *gbl_sqlengine_thdpool = NULL;
 
-static void sql_reset_sqlthread(sqlite3 *db, struct sql_thread *thd);
+static void sql_reset_sqlthread(struct sql_thread *thd);
 int blockproc2sql_error(int rc, const char *func, int line);
 static int test_no_btcursors(struct sqlthdstate *thd);
 static void sql_thread_describe(void *obj, FILE *out);
@@ -266,8 +266,35 @@ int disable_server_sql_timeouts(void)
             gbl_sql_no_timeouts_on_release_locks);
 }
 
+/* copied content from WriteResponsesEnum in sql.h */
+const char *WriteRespString[] = {
+    "RESPONSE_COLUMNS",
+    "RESPONSE_COLUMNS_LUA",
+    "RESPONSE_COLUMNS_STR",
+    "RESPONSE_COST",
+    "RESPONSE_DEBUG",
+    "RESPONSE_EFFECTS",
+    "RESPONSE_ERROR",
+    "RESPONSE_ERROR_ACCESS",
+    "RESPONSE_ERROR_BAD_STATE",
+    "RESPONSE_ERROR_PREPARE",
+    "RESPONSE_ERROR_PREPARE_RETRY",
+    "RESPONSE_ERROR_REJECT",
+    "RESPONSE_FLUSH",
+    "RESPONSE_HEARTBEAT",
+    "RESPONSE_ROW",
+    "RESPONSE_ROW_LAST",
+    "RESPONSE_ROW_LAST_DUMMY",
+    "RESPONSE_ROW_LUA",
+    "RESPONSE_ROW_STR",
+    "RESPONSE_TRACE",
+};
 int write_response(struct sqlclntstate *clnt, int R, void *D, int I)
 {
+#ifdef DEBUG
+    logmsg(LOGMSG_DEBUG, "write_response(%s,%p,%d)\n", WriteRespString[R], D,
+           I);
+#endif
     return clnt->plugin.write_response(clnt, R, D, I);
 }
 
@@ -2294,7 +2321,6 @@ static void setup_reqlog(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     setup_client_info(clnt, thd, info_nvreplays);
     reqlog_new_sql_request(thd->logger, NULL);
     log_context(clnt, thd->logger);
-    log_queue_time(thd->logger, clnt);
 }
 
 static void query_stats_setup(struct sqlthdstate *thd,
@@ -2607,7 +2633,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     int rc = sqlengine_prepare_engine(thd, clnt, recreate);
     if (thd->sqldb == NULL) {
         return handle_bad_engine(clnt);
-    } else if (rc != 0) {
+    } else if (rc) {
         return rc;
     }
     if (sql_set_transaction_mode(thd->sqldb, clnt, clnt->dbtran.mode) != 0) {
@@ -2615,8 +2641,6 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     }
     query_stats_setup(thd, clnt);
     get_cached_stmt(thd, clnt, rec);
-    if (rec->sql)
-        reqlog_set_sql(thd->logger, rec->sql);
     const char *tail = NULL;
     while (rec->stmt == NULL) {
         clnt->no_transaction = 1;
@@ -2640,10 +2664,6 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     } else if (rc == 0) {
         // No stmt and no error -> Empty sql string or just comment.
         rc = ERR_SQL_PREPARE;
-    }
-    if (gbl_fingerprint_queries) {
-        reqlog_set_fingerprint(thd->logger, sqlite3_fingerprint(thd->sqldb),
-                               sqlite3_fingerprint_size(thd->sqldb));
     }
     if (rc) {
         _prepare_error(thd, clnt, rec, rc, err);
@@ -3090,13 +3110,11 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                     struct errstat *err)
 {
     int rc;
-    int steprc;
     uint64_t row_id = 0;
     int rowcount = 0;
     int postponed_write = 0;
     sqlite3_stmt *stmt = rec->stmt;
 
-    reqlog_set_event(thd->logger, "sql");
     run_stmt_setup(clnt, stmt);
 
     /* this is a regular sql query, add it to history */
@@ -3107,7 +3125,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     int ncols = sqlite3_column_count(stmt);
 
     /* Get first row to figure out column structure */
-    steprc = sqlite3_step(stmt);
+    int steprc = sqlite3_step(stmt);
     if (steprc == SQLITE_SCHEMA_REMOTE) {
         /* remote schema changed;
            Only safe to recover here
@@ -3127,7 +3145,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     }
 
     if ((rc = send_columns(clnt, stmt)) != 0) {
-        goto out;
+        return rc;
     }
 
     if (clnt->intrans == 0) {
@@ -3146,7 +3164,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: release_locks_on_emit_row failed\n",
                    __func__);
-            goto out;
+            return rc;
         }
 
         if (clnt->isselect == 1) {
@@ -3161,7 +3179,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
             ++row_id;
             rc = send_row(clnt, stmt, row_id, 0, err);
             if (rc)
-                goto out;
+                return rc;
         } else {
             postponed_write = 1;
             send_row(clnt, stmt, row_id, 1, NULL);
@@ -3183,7 +3201,6 @@ postprocessing:
     /* closing: error codes, postponed write result and so on*/
     rc = post_sqlite_processing(thd, clnt, rec, postponed_write, ncols, row_id);
 
-out:
     return rc;
 }
 
@@ -3191,7 +3208,6 @@ static void handle_sqlite_error(struct sqlthdstate *thd,
                                 struct sqlclntstate *clnt,
                                 struct sql_state *rec, int rc)
 {
-    reqlog_set_event(thd->logger, "sql"); /* set before error */
     reqlog_set_error(thd->logger, sqlite3_errmsg(thd->sqldb), rc);
 
     if (thd->sqlthd)
@@ -3202,8 +3218,6 @@ static void handle_sqlite_error(struct sqlthdstate *thd,
 
     if (clnt->using_case_insensitive_like)
         toggle_case_sensitive_like(thd->sqldb, 0);
-
-    reqlog_end_request(thd->logger, -1, __func__, __LINE__);
 }
 
 static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
@@ -3316,6 +3330,16 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
 
     } while (rc == SQLITE_SCHEMA_REMOTE);
 
+    /* set these after sending response to client to respond faster */
+    reqlog_set_event(thd->logger, "sql");
+    log_queue_time(thd->logger, clnt);
+    if (rec.sql)
+        reqlog_set_sql(thd->logger, rec.sql);
+    if (gbl_fingerprint_queries) {
+        reqlog_set_fingerprint(thd->logger, sqlite3_fingerprint(thd->sqldb),
+                               sqlite3_fingerprint_size(thd->sqldb));
+    }
+
     sqlite_done(thd, clnt, &rec, rc);
     return rc;
 }
@@ -3353,6 +3377,10 @@ static int execute_sql_query(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
     int outrc;
     int rc;
+
+#ifdef DEBUG
+    logmsg(LOGMSG_DEBUG, "execute_sql_query: '%.30s'\n", clnt->sql);
+#endif
 
     /* access control */
     rc = check_sql_access(thd, clnt);
@@ -3532,7 +3560,7 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
 
     clnt->query_rc = exec_thread(thd, clnt);
 
-    sql_reset_sqlthread(thd->sqldb, thd->sqlthd);
+    sql_reset_sqlthread(thd->sqlthd);
 
     clnt->osql.timings.query_finished = osql_log_time();
     osql_log_time_done(clnt);
@@ -3663,7 +3691,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
 
     osql_shadtbl_done_query(thedb->bdb_env, clnt);
     thrman_setfd(thd->thr_self, -1);
-    sql_reset_sqlthread(thd->sqldb, sqlthd);
+    sql_reset_sqlthread(sqlthd);
     /* this is a compromise; we release the curtran here, even though
        we might have a begin/commit transaction pending
        any query inside the begin/commit will be performed under its
@@ -4864,14 +4892,9 @@ int sqlpool_init(void)
     return 0;
 }
 
-/* we have to clear
-      - sqlclntstate (key, pointers in Bt, thd)
-      - thd->tran and mode (this is actually done in Commit/Rollback)
- */
-static void sql_reset_sqlthread(sqlite3 *db, struct sql_thread *thd)
+/* clear thd->clnt */
+static inline void sql_reset_sqlthread(struct sql_thread *thd)
 {
-    int i;
-
     if (thd) {
         thd->clnt = NULL;
     }
@@ -4883,7 +4906,6 @@ static void sql_reset_sqlthread(sqlite3 *db, struct sql_thread *thd)
 int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
                      sqlite3_stmt *stmt, const char **errstr)
 {
-
     int rc = sqlite3_reset(stmt);
 
     switch (rc) {
