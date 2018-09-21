@@ -3407,7 +3407,7 @@ void comdb2CreateTableStart(
 )
 {
     if (isTemp || isView || isVirtual || pParse->db->init.busy ||
-        pParse->db->isExpert || IN_DECLARE_VTAB) {
+        pParse->db->isExpert || IN_SPECIAL_PARSE) {
         pParse->comdb2_ddl_ctx = 0;
         sqlite3StartTable(pParse, pName1, pName2, isTemp, isView, isVirtual,
                           noErr);
@@ -4128,7 +4128,7 @@ void comdb2CreateIndex(
     char *keyname;
 
     if (temp || pParse->db->init.busy || pParse->db->isExpert ||
-        IN_DECLARE_VTAB) {
+        IN_SPECIAL_PARSE) {
         sqlite3CreateIndex(pParse, pName1, pName2, pTblName, pList, onError,
                            pStart, pPIWhere, sortOrder, ifNotExist, idxType);
         return;
