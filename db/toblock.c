@@ -5604,7 +5604,8 @@ add_blkseq:
                 if (iq->tranddl) {
                     if (backed_out) {
                         assert(trans == NULL);
-                        bdb_ltran_put_schema_lock(iq->sc_logical_tran);
+                        if (iq->sc_logical_tran)
+                            bdb_ltran_put_schema_lock(iq->sc_logical_tran);
                     } else {
                         assert(iq->sc_tran);
                         assert(trans != NULL);
