@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=882)
+(TUNABLES_COUNT=885)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -581,6 +581,7 @@
 (name='pgcompactpool.stacksz', description='Thread stack size.', type='INTEGER', value='1048576', read_only='N')
 (name='physical_ack_interval', description='For logical transactions, have the slave send an 'ack' after this many physical operations.', type='INTEGER', value='0', read_only='N')
 (name='physical_commit_interval', description='Force a physical commit after this many physical operations.', type='INTEGER', value='512', read_only='N')
+(name='physrep_reconnect_penalty', description='Physrep wait seconds before retry to the same node.  (Default: 5)', type='INTEGER', value='5', read_only='N')
 (name='plannedsc', description='Use planned schema change by default', type='BOOLEAN', value='ON', read_only='N')
 (name='planner_effort', description='Planner effort (try harder) levels. (Default: 1)', type='INTEGER', value='1', read_only='N')
 (name='planner_show_scanstats', description='', type='BOOLEAN', value='OFF', read_only='N')
