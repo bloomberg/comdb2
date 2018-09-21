@@ -6,6 +6,7 @@ dbname=$1
 NRECS=10
 NRUNS=100
 sleeptime=10
+dgpid=0
 
 set -x
 
@@ -62,6 +63,11 @@ while [[ "$out" != "1" ]]; do
     sleep 1
 done
 
+./downgrade.sh $dbname > downgrade.log 2>&1 &
+dgpid=$!
+echo "Downgrade Thread PID $dgpid"
+
+
 # requires $1 and $2
 equal_queries() {
     lhs="$1" 
@@ -70,8 +76,15 @@ equal_queries() {
     [ "$lhs" = "$rhs" ]
 }
 
+cleanup_abort() {
+    kill -6 $(cat $DEST_DBDIR/${destdb}.pid)
+    [[ $dgpid != 0 ]] && kill -9 $dgpid
+}
+
+
 cleanup() {
     kill -9 $(cat $DEST_DBDIR/${destdb}.pid)
+    [[ $dgpid != 0 ]] && kill -9 $dgpid
 }
 
 ./generate_tests
@@ -101,6 +114,7 @@ for file in `ls *.src.sql *src.sh | sort -V`; do
             sleep 1
             src=$(${CDB2SQL_EXE} -s --tabs -f $query_cmd ${CDB2_OPTIONS} $dbname default 2>&1 | md5sum) 
             dest=$(${CDB2SQL_EXE} -s --tabs -f $query_cmd $destdb --host localhost 2>&1 | md5sum)
+            $(cleanup_abort)
             exit 1
         fi
         
@@ -109,8 +123,8 @@ for file in `ls *.src.sql *src.sh | sort -V`; do
     done
 
     if ! [ $failed -eq 0 ]; then
-        echo "Failed on $sql test."
-        $(cleanup)
+        echo "Failed on $file test."
+        $(cleanup_abort)
         exit 1
     fi
 done

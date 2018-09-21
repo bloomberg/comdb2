@@ -6,6 +6,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <stdint.h>
+#include <unistd.h>
 #include <time.h>
 
 #include "phys_rep_lsn.h"
@@ -21,19 +22,20 @@
 typedef struct DB_Connection {
     char *hostname;
     char *dbname;
+    uint32_t seed;
     int is_up; // was the db available for connection. Default nonzero if not
                // connected before
     time_t last_cnct;   // when was the last time we connected
     time_t last_failed; // when was the last time a connection failed
 } DB_Connection;
 
+int gbl_verbose_physrep = 0;
 static DB_Connection ***local_rep_dbs = NULL;
 static size_t tiers = 0;
 static size_t curr_tier = 0;
 static size_t tier_len = 0;
 static size_t *cnct_len = NULL;
 static size_t *cnct_idx = NULL;
-
 static time_t retry_time = 3;
 
 /* forward declarations */
@@ -41,7 +43,6 @@ static DB_Connection *get_connect(char *hostname);
 static int insert_connect(char *hostname, char *dbname, size_t tier);
 static void delete_connect(DB_Connection *cnct);
 static LOG_INFO handle_record();
-static void failed_connect();
 static int find_new_repl_db();
 static DB_Connection *get_rand_connect(size_t tier);
 static void *keep_in_sync(void *args);
@@ -52,6 +53,7 @@ static volatile sig_atomic_t running;
 
 /* for replication */
 static cdb2_hndl_tp *repl_db = NULL;
+static int repl_db_connected = 0;
 static DB_Connection *curr_cnct = NULL;
 
 static volatile int do_repl;
@@ -67,16 +69,6 @@ extern char gbl_dbname[];
 int add_replicant_host(char *hostname, char *dbname, size_t tier)
 {
     return insert_connect(hostname, dbname, tier);
-}
-
-int remove_replicant_host(char *hostname)
-{
-    DB_Connection *cnct = get_connect(hostname);
-    if (cnct) {
-        delete_connect(cnct);
-        return 0;
-    }
-    return -1;
 }
 
 void cleanup_hosts()
@@ -95,7 +87,7 @@ void cleanup_hosts()
     }
 }
 
-int start_replication()
+int start_replication(void)
 {
     if (running) {
         logmsg(LOGMSG_ERROR, "Please call stop_replication before "
@@ -115,107 +107,123 @@ int start_replication()
     return 0;
 }
 
-int gbl_verbose_physrep = 0;
+void close_repl_connection(void)
+{
+    curr_cnct->last_failed = time(NULL);
+    curr_cnct->is_up = 0;
+    cdb2_close(repl_db);
+    repl_db_connected = 0;
+    if (gbl_verbose_physrep) {
+        logmsg(LOGMSG_USER, "%s closed handle\n", __func__);
+    }
+}
 
 static void *keep_in_sync(void *args)
 {
     /* vars for syncing */
     int rc;
-    volatile int64_t gen;
-    struct timespec wait_spec;
-    struct timespec remain_spec;
+    volatile int64_t gen, highest_gen = 0;
     size_t sql_cmd_len = 100;
     char sql_cmd[sql_cmd_len];
+    int do_truncate = 0;
     LOG_INFO info;
     LOG_INFO prev_info;
 
     do_repl = 1;
-    wait_spec.tv_sec = 1;
-    wait_spec.tv_nsec = 0;
-
+    
     /* cannot call get_last_lsn if thedb is not ready */
     while (!sc_ready())
-        nanosleep(&wait_spec, &remain_spec);
+        sleep(1);
 
     backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
 
-    /* get a fresh db connection */
-    if (find_new_repl_db() == 0) {
-        /* do truncation to start fresh */
-        info = get_last_lsn(thedb->bdb_env);
-        prev_info = handle_truncation(repl_db, info);
-        gen = prev_info.gen;
-        fprintf(stderr, "gen: %" PRId64 "\n", gen);
-    }
-
     while (do_repl) {
-        info = get_last_lsn(thedb->bdb_env);
-        prev_info = info;
-
-        rc = snprintf(sql_cmd, sql_cmd_len,
-                      "select * from comdb2_transaction_logs('{%u:%u}')",
-                      info.file, info.offset);
-        if (rc < 0 || rc >= sql_cmd_len)
-            logmsg(LOGMSG_ERROR, "sql_cmd buffer is not long enough!\n");
-
-        if ((rc = cdb2_run_statement(repl_db, sql_cmd)) != CDB2_OK) {
-            logmsg(LOGMSG_ERROR, "Couldn't query the database, retrying\n");
-            failed_connect();
-            continue;
+        /* get a fresh db connection */
+        if (repl_db_connected == 0) {
+            if (find_new_repl_db() == 0) {
+                /* do truncation to start fresh */
+                info = get_last_lsn(thedb->bdb_env);
+                do_truncate = 1;
+            } else {
+                sleep(1);
+                continue;
+            }
         }
 
-        /* If we can't find our own end of log, truncate */
-        if ((rc = cdb2_next_record(repl_db)) != CDB2_OK) {
-            if (gbl_verbose_physrep)
-                logmsg(LOGMSG_USER, "%s can't find the next record\n",
-                        __func__);
-
-            if (rc == CDB2_OK_DONE) {
-                if (gbl_verbose_physrep)
-                    logmsg(LOGMSG_USER, "%s Let's do truncation\n", __func__);
-                prev_info = handle_truncation(repl_db, info);
+        if (do_truncate) {
+            prev_info = handle_truncation(repl_db, info);
+            if (prev_info.file == 0) {
+                cdb2_close(repl_db);
+                repl_db_connected = 0;
+                continue;
             }
-        } else {
-            int broke_early = 0;
+
+            gen = prev_info.gen;
+            if (gbl_verbose_physrep)
+                logmsg(LOGMSG_USER, "%s: gen: %" PRId64 "\n", __func__, gen);
+            do_truncate = 0;
+        }
+
+        if (repl_db_connected == 0)
+            continue;
+
+        info = get_last_lsn(thedb->bdb_env);
+        if (info.file > 0) {
+            prev_info = info;
+
+            rc = snprintf(sql_cmd, sql_cmd_len,
+                    "select * from comdb2_transaction_logs('{%u:%u}')",
+                    info.file, info.offset);
+            if (rc < 0 || rc >= sql_cmd_len)
+                logmsg(LOGMSG_ERROR, "sql_cmd buffer is not long enough!\n");
+
+            if ((rc = cdb2_run_statement(repl_db, sql_cmd)) != CDB2_OK) {
+                logmsg(LOGMSG_ERROR, "Couldn't query the database, retrying\n");
+                close_repl_connection();
+                continue;
+            }
+
+            /* If we can't find our own end of log, truncate */
+            if ((rc = cdb2_next_record(repl_db)) != CDB2_OK) {
+                if (gbl_verbose_physrep)
+                    logmsg(LOGMSG_USER, "%s can't find the next record\n",
+                            __func__);
+                close_repl_connection();
+                continue;
+
+            } 
 
             /* our log matches, so apply each record log received */
-            while ((rc = cdb2_next_record(repl_db)) == CDB2_OK && do_repl) {
+            while (do_repl && !do_truncate && 
+                    (rc = cdb2_next_record(repl_db)) == CDB2_OK) {
                 /* check the generation id to make sure the master hasn't
                  * switched */
                 int64_t *rec_gen = (int64_t *)cdb2_column_value(repl_db, 2);
-                if (rec_gen && *rec_gen != gen) {
+                if (rec_gen && *rec_gen > highest_gen) {
                     int64_t new_gen = *rec_gen;
                     if (gbl_verbose_physrep) {
-                        logmsg(LOGMSG_USER, "%s: My master changed, do "
-                                "truncation!\n", __func__);
+                        logmsg(LOGMSG_USER, "%s: My master changed, set "
+                                "truncate flag\n", __func__);
                         logmsg(LOGMSG_USER, "%s: gen: %" PRId64 ", rec_gen: %"
-                                PRId64 "\n", gen, *rec_gen);
+                                PRId64 "\n", __func__, gen, *rec_gen);
                     }
-                    prev_info = handle_truncation(repl_db, info);
-                    gen = new_gen;
-                    if (gbl_verbose_physrep) {
-                        logmsg(LOGMSG_USER, "new gen: %" PRId64 ", prev_rec_gen: %u\n",
-                                gen, prev_info.gen);
-                    }
-                    broke_early = 1;
-                    break;
+                    do_truncate = 1;
+                    highest_gen = new_gen;
                 }
                 prev_info = handle_record(prev_info);
             }
 
-            /* check we finished correctly */
-            if ((!broke_early && rc != CDB2_OK_DONE) ||
-                (broke_early && rc != CDB2_OK)) {
-                logmsg(LOGMSG_ERROR,
-                       "%s had an error or replication was stopped %d\n",
-                       __func__, rc);
+            if (rc != CDB2_OK_DONE || do_truncate) {
+                do_truncate = 1;
+                continue;
             }
         }
 
-        nanosleep(&wait_spec, &remain_spec);
+        sleep(1);
     }
 
     cdb2_close(repl_db);
+    repl_db_connected = 0;
 
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
 
@@ -263,7 +271,7 @@ static LOG_INFO handle_record(LOG_INFO prev_info)
     /* vars for 1 record */
     void *blob;
     int blob_len;
-    char *lsn, *token;
+    char *lsn;
     int64_t rectype;
     int64_t *timestamp;
     int rc;
@@ -345,17 +353,18 @@ static int register_self()
         logmsg(LOGMSG_ERROR, "lua call buffer is not long enough!\n");
     }
 
-    struct timespec wait_spec;
-    struct timespec remain_spec;
-    wait_spec.tv_sec = 1;
-    wait_spec.tv_nsec = 0;
     int64_t max_tier;
 
     /* update our table of possible connections */
     cdb2_hndl_tp *cluster;
     while (do_repl) {
         /* tier 0 is the cluster */
-        cnct = get_rand_connect(0);
+        if ((cnct = get_rand_connect(0)) == NULL) {
+            logmsg(LOGMSG_FATAL,
+                   "Physical replicant cannot find cluster\n");
+            abort();
+        }
+
         if ((rc = cdb2_open(&cluster, cnct->dbname, cnct->hostname,
                             CDB2_DIRECT_CPU)) == 0) {
 
@@ -363,7 +372,6 @@ static int register_self()
             cnct->is_up = 1;
             curr_cnct = cnct;
             max_tier = 0;
-            cdb2_set_debug_trace(cluster);
             if ((rc = cdb2_run_statement(cluster, get_tier)) == CDB2_OK) {
                 while ((rc = cdb2_next_record(cluster)) == CDB2_OK) {
                     int64_t tier = *(int64_t *)cdb2_column_value(cluster, 0);
@@ -379,70 +387,114 @@ static int register_self()
                 logmsg(LOGMSG_ERROR, "%s query statement returned %d\n",
                        __func__, rc);
             }
+            cdb2_close(cluster);
         } else {
             logmsg(LOGMSG_ERROR,
                    "Couldn't open connection to the cluster to find tier\n");
-            nanosleep(&wait_spec, &remain_spec);
         }
-
-        cdb2_close(cluster);
+        sleep(1);
     }
 
     logmsg(LOGMSG_WARN, "Been told to stop replicating\n");
     return 1;
 }
 
+int gbl_physrep_reconnect_penalty = 5;
+
+static int seedsort(const void *arg1, const void *arg2)
+{
+    DB_Connection *cnct1 = (DB_Connection *)arg1;
+    DB_Connection *cnct2 = (DB_Connection *)arg2;
+    if (cnct1->seed > cnct2->seed)
+        return 1;
+    if (cnct1->seed < cnct2->seed)
+        return -1;
+    return 0;
+}
+
 static int find_new_repl_db()
 {
     int rc;
+    int notfound=0;
     DB_Connection *cnct;
 
-    if (repl_db == NULL) {
-        register_self();
-    }
-
-    /* TODO: do logic here to swap between tiers */
-    int i = curr_tier;
-    int j = 0;
+    assert(repl_db_connected == 0);
     while (do_repl) {
-        /* TODO: here is the logic started to manually sweep tier n-1, ignoring
-         * tier 0 */
-        /* as tier 0 is the cluster line */
-        if (curr_tier == 0) {
-            cnct = get_rand_connect(curr_tier);
 
-        } else {
-            if (j < cnct_idx[i])
+        while (repl_db == NULL && (rc = register_self()) != 0) {
+            int level;
+            notfound++;
+            if (gbl_verbose_physrep)
+                level = gbl_verbose_physrep;
+            else if (notfound >= 10)
+                level = LOGMSG_ERROR;
+            else
+                level = LOGMSG_DEBUG;
+            logmsg(level, "%s failed to register against cluster, attempt %d\n",
+                    __func__, notfound);
+            sleep(1);
+        }
+
+        int j = 0;
+        int i = curr_tier;
+
+        while (i >= 0) {
+
+            for (j=0;j<cnct_idx[i];j++)
+                local_rep_dbs[i][j]->seed = rand();
+
+            /* Random sort this tier */
+            qsort(local_rep_dbs[i], cnct_idx[i], sizeof(**local_rep_dbs), 
+                    seedsort);
+            for (j=0;j<cnct_idx[i];j++){
                 cnct = local_rep_dbs[i][j];
+                if ((time(NULL) - cnct->last_failed) > 
+                        gbl_physrep_reconnect_penalty) {
+                    if (gbl_verbose_physrep) {
+                        logmsg(LOGMSG_USER, "%s connecting against mach %s "
+                                "db %s tier %d idx %d\n", __func__, cnct->hostname,
+                                cnct->dbname, i, j);
+                    }
+                    if ((rc = cdb2_open(&repl_db, cnct->dbname,
+                         cnct->hostname, CDB2_DIRECT_CPU)) == 0 && 
+                            (rc = cdb2_run_statement(repl_db, "select 1")) == CDB2_OK){
+                        while (cdb2_next_record(repl_db) == CDB2_OK)
+                            ;
+                        logmsg(LOGMSG_INFO,
+                                "Attached to '%s' db '%s' for replication\n",
+                                cnct->hostname, cnct->dbname);
+
+                        cnct->last_cnct = time(NULL);
+                        cnct->is_up = 1;
+                        curr_cnct = cnct;
+                        repl_db_connected = 1;
+                        return 0;
+                    } else {
+                        if (gbl_verbose_physrep) {
+                            logmsg(LOGMSG_USER, "%s setting mach %s "
+                                    "db %s tier %d idx %d last_fail\n",
+                                    __func__, cnct->hostname, cnct->dbname, i, j);
+                        }
+                        cnct->last_failed = time(NULL);
+                    }
+                } else {
+                    if (gbl_verbose_physrep) {
+                        logmsg(LOGMSG_USER, "%s skipping mach %s "
+                                "db %s tier %d idx %d: on recent last_fail \n",
+                                __func__, cnct->hostname, cnct->dbname, i, j);
+                    }
+                }
+            } 
+            if (gbl_verbose_physrep) {
+                logmsg(LOGMSG_USER, "%s: couldn't connect to any machine in "
+                        "tier %d\n", __func__, i);
+            }
+            i--;
         }
-
-        if ((rc = cdb2_open(&repl_db, cnct->dbname, cnct->hostname,
-                            CDB2_DIRECT_CPU)) == 0) {
-            logmsg(LOGMSG_WARN,
-                   "Attached to '%s' and db '%s' for replication\n",
-                   cnct->hostname, cnct->dbname);
-
-            cnct->last_cnct = time(NULL);
-            cnct->is_up = 1;
-            curr_cnct = cnct;
-
-            return 0;
-        }
-
-        logmsg(LOGMSG_WARN, "Couldn't connect to %s\n", cnct->hostname);
     }
 
     logmsg(LOGMSG_WARN, "Stopping replication\n");
     return -1;
-}
-
-static void failed_connect()
-{
-    curr_cnct->last_failed = time(NULL);
-    curr_cnct->is_up = 0;
-    cdb2_close(repl_db);
-
-    find_new_repl_db();
 }
 
 static DB_Connection *get_rand_connect(size_t tier)
@@ -477,24 +529,6 @@ static DB_Connection *get_rand_connect(size_t tier)
     }
 
     return cnct;
-}
-
-/* data struct implementation */
-static DB_Connection *get_connect(char *hostname)
-{
-    DB_Connection *cnct;
-
-    for (int i = 0; i < tiers; i++) {
-        for (int j = 0; j < cnct_idx[i]; j++) {
-            cnct = local_rep_dbs[i][j];
-
-            if (strcmp(cnct->hostname, hostname) == 0) {
-                return cnct;
-            }
-        }
-    }
-
-    return NULL;
 }
 
 static int insert_connect(char *hostname, char *dbname, size_t tier)

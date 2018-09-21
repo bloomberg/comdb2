@@ -25,8 +25,4 @@ int compare_log(bdb_state_type *bdb_state, unsigned int file,
 int find_log_timestamp(bdb_state_type *bdb_state, time_t time,
                        unsigned int *file, unsigned int *offset);
 
-int get_next_matchable(LOG_INFO *info);
-int open_db_cursor(bdb_state_type *bdb_state);
-void close_db_cursor();
-
 #endif

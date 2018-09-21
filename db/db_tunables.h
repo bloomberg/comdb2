@@ -1557,6 +1557,17 @@ REGISTER_TUNABLE("verbose_physrep",
                  TUNABLE_BOOLEAN, &gbl_verbose_physrep, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("physrep_reconnect_penalty",
+                 "Physrep wait seconds before retry to the same node.  "
+                 "(Default: 5)",
+                 TUNABLE_INTEGER, &gbl_physrep_reconnect_penalty, 0, NULL,
+                 NULL, NULL, NULL);
+
+REGISTER_TUNABLE("verbose_physrep",
+                 "Print extended physrep trace.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_verbose_physrep, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+
 
 
 #endif /* _DB_TUNABLES_H */

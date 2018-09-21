@@ -7,6 +7,8 @@
 #include <dbinc/db_swap.h>
 #include "phys_rep_lsn.h"
 #include "ext/comdb2/tranlog.h"
+#include <cdb2api.h>
+#include <parse_lsn.h>
 #include "locks.h"
 
 extern bdb_state_type *bdb_state;
@@ -40,7 +42,9 @@ LOG_INFO get_last_lsn(bdb_state_type *bdb_state)
         return log_info;
     }
 
-    logmsg(LOGMSG_WARN, "LSN %u:%u\n", last_log_lsn.file, last_log_lsn.offset);
+    if (gbl_verbose_physrep)
+        logmsg(LOGMSG_USER, "%s: LSN %u:%u\n", __func__, last_log_lsn.file,
+                last_log_lsn.offset);
 
     log_info.file = last_log_lsn.file;
     log_info.offset = last_log_lsn.offset;
@@ -158,10 +162,7 @@ int find_log_timestamp(bdb_state_type *bdb_state, time_t time,
     return 0;
 }
 
-/* hacky way to create a generator */
-static DB_LOGC *logc;
-
-int get_next_matchable(LOG_INFO *info)
+static int get_next_matchable(DB_LOGC *logc, LOG_INFO *info)
 {
     /* TODO: like get_last_lsn, but need to expose the data this time */
     int rc;
@@ -183,7 +184,6 @@ int get_next_matchable(LOG_INFO *info)
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: can't get log record rc %d\n", __func__,
                    rc);
-            logc->close(logc, 0);
             return 1;
         }
 
@@ -198,27 +198,14 @@ int get_next_matchable(LOG_INFO *info)
     info->offset = match_lsn.offset;
     info->size = logrec.size;
 
-    logmsg(LOGMSG_WARN, "Found matchable {%u:%u}\n", info->file, info->offset);
+    if (gbl_verbose_physrep) {
+        logmsg(LOGMSG_USER, "%s: Found matchable {%u:%u}\n", __func__,
+                info->file, info->offset);
+    }
 
     return rc;
 }
 
-int open_db_cursor(bdb_state_type *bdb_state)
-{
-    int rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: can't get log cursor rc %d\n", __func__, rc);
-        return 1;
-    }
-
-    return 0;
-}
-
-void close_db_cursor()
-{
-    logc->close(logc, 0);
-    logc = NULL;
-}
 /* generator code */
 
 u_int32_t get_next_offset(DB_ENV *dbenv, LOG_INFO log_info)
@@ -251,3 +238,102 @@ int truncate_log_lock(bdb_state_type *bdb_state, unsigned int file,
 
     return 0;
 }
+
+LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db, LOG_INFO start_info)
+{
+    int rc;
+    char sql_cmd[128];
+    bdb_state_type *bdb_state = (bdb_state_type *)in_bdb_state;
+    void *blob;
+    char *lsn;
+    int blob_len;
+    unsigned int match_file, match_offset;
+    LOG_INFO info = {0};
+    DB_LOGC *logc;
+    DBT logrec;
+
+
+    rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: can't get log cursor rc %d\n", __func__, rc);
+        return info;
+    }
+
+    while (!(rc = get_next_matchable(logc, &start_info))) {
+        snprintf(sql_cmd, sizeof(sql_cmd),
+                "select * from comdb2_transaction_logs('{%d:%d}','{%d:%d}', 0)",
+                start_info.file, start_info.offset, start_info.file,
+                start_info.offset);
+
+        if ((rc = cdb2_run_statement(repl_db, sql_cmd)) == 0) {
+            if ((rc = cdb2_next_record(repl_db)) == CDB2_OK) {
+                lsn = (char *)cdb2_column_value(repl_db, 0);
+                if (!lsn) {
+                    logmsg(LOGMSG_FATAL, "%s: null lsn for probe of {%d:%d}."
+                            " going to next record\n", __func__,
+                            start_info.file,start_info.offset);
+                    abort();
+                }
+
+                if ((rc = char_to_lsn(lsn, &match_file, &match_offset)) != 0) {
+                    logmsg(LOGMSG_FATAL, "Could not parse lsn? %s\n", lsn);
+                    abort();
+                }
+
+                /* check if lsns match, if not, then get next matchable */
+                if (match_file != start_info.file ||
+                        match_offset != start_info.offset) {
+                    logmsg(LOGMSG_ERROR, "%s %d not same lsn{%u:%u} vs "
+                            "{%u:%u}??? \n", __func__, start_info.file,
+                            start_info.offset, match_file, match_offset);
+                    continue;
+                }
+
+                /* here lsns match, thus we can now compare them */
+                blob = cdb2_column_value(repl_db, 4);
+                blob_len = cdb2_column_size(repl_db, 4);
+
+                if ((rc = compare_log(bdb_state, match_file, match_offset,
+                                blob, blob_len)) == 0) {
+                    info.file = match_file;
+                    info.offset = match_offset;
+                    info.size = blob_len;
+                    info.gen = *(int64_t *)cdb2_column_value(repl_db, 2);
+                    logc->close(logc, 0);
+                    if (gbl_verbose_physrep) {
+                        logmsg(LOGMSG_USER, "%s: found match at {%d:%d}\n",
+                                __func__, start_info.file, start_info.offset);
+                    }
+                    return info;
+                } else {
+                    if (gbl_verbose_physrep) {
+                        logmsg(LOGMSG_USER, "%s: memcmp failed for {%d:%d}\n",
+                                __func__, start_info.file, start_info.offset);
+                    }
+                }
+            } else {
+                /* Didn't find a record: just go to previous */
+                if (gbl_verbose_physrep) {
+                    logmsg(LOGMSG_USER, "%s: probe of {%d:%d} failed, going to "
+                            "previous\n", __func__, start_info.file,
+                            start_info.offset);
+                }
+            }
+        } else {
+            /* Run statement failure: close cursor and handle & return */
+            if (gbl_verbose_physrep) {
+                logmsg(LOGMSG_USER, "%s: %s returns %d, '%s': closing "
+                        "connection\n", __func__, sql_cmd, rc,
+                        cdb2_errstr(repl_db));
+            }
+            logc->close(logc, 0);
+            return info;
+        }
+    }
+
+    logmsg(LOGMSG_WARN, "No matchable lsns in the log\n");
+    logc->close(logc, 0);
+
+    return info;
+}
+
