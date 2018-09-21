@@ -592,6 +592,55 @@ void *sqlite3DbReallocOrFree(sqlite3 *db, void *p, u64 n){
   return pNew;
 }
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+/*
+** Allocate memory.  This routine is like sqlite3DbMalloc() except that it
+** will enter and leave the connection object mutex if necessary.  If the
+** bZero flag is set, the memory will be zeroed.
+*/
+void *sqlite3DbMallocWithMutex(sqlite3 *db, u64 n, int bZero){
+  if( db ){
+    void *pNew;
+    sqlite3_mutex_enter(db->mutex);
+    if( bZero ){
+      pNew = sqlite3DbMallocZero(db, n);
+    }else{
+      pNew = sqlite3DbMallocRaw(db, n);
+    }
+    sqlite3_mutex_leave(db->mutex);
+    return pNew;
+  }else if( bZero ){
+    return sqlite3MallocZero(n);
+  }else{
+    return sqlite3Malloc(n);
+  }
+}
+
+/*
+** Resize the block of memory pointed to by p to n bytes. If the
+** resize fails, set the mallocFailed flag in the connection object,
+** if present.  If the connection object is null, fallback to using
+** sqlite3Malloc().  The mutex on the connection object is obtained
+** and released if necessary.  If the bZero flag is set, new memory
+** will be zeroed.
+*/
+void *sqlite3DbReallocOrMalloc(sqlite3 *db, void *p, u64 n, int bZero){
+  void *pNew;
+  int nOld = (!db || bZero) ? sqlite3MallocSize(p) : 0;
+  if( db ){
+    sqlite3_mutex_enter(db->mutex);
+    pNew = sqlite3DbRealloc(db, p, n);
+    sqlite3_mutex_leave(db->mutex);
+  }else{
+    pNew = sqlite3Realloc(p, n);
+  }
+  if( pNew && n>nOld && bZero ){
+    memset((u8*)pNew + nOld, 0, (size_t)(n - nOld));
+  }
+  return pNew;
+}
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 /*
 ** Make a copy of a string in memory obtained from sqliteMalloc(). These 
 ** functions call sqlite3MallocRaw() directly instead of sqliteMalloc(). This

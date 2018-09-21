@@ -253,27 +253,24 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
         strbuf_append(new_sql, ");");
 
     len = strlen(strbuf_buf(new_sql));
-    sqlite3 *sqdb = ((Vdbe *)stmt)->db;
+    sqlite3 *sqldb = stmt ? ((Vdbe *)stmt)->db : 0;
+    char *zNew = sqlite3DbMallocWithMutex(sqldb, len, 1);
 
-    if (pMem->zMalloc == pMem->z) {
-        if( sqdb ) sqlite3_mutex_enter(sqdb->mutex);
-        pMem->zMalloc = pMem->z = sqlite3DbRealloc(sqdb, pMem->z, len);
-        if( sqdb ) sqlite3_mutex_leave(sqdb->mutex);
-        pMem->szMalloc = pMem->n = len;
-    } else {
-        if( sqdb ) sqlite3_mutex_enter(sqdb->mutex);
-        pMem->z = sqlite3DbRealloc(sqdb, pMem->z, len);
-        if( sqdb ) sqlite3_mutex_leave(sqdb->mutex);
-        pMem->n = len;
-    }
-    if (!pMem->z) {
-        logmsg(LOGMSG_ERROR, "%s: failed to malloc\n", __func__);
-    } else {
-        memcpy(pMem->z, strbuf_buf(new_sql), len);
+    if (zNew) {
+        memcpy(zNew, strbuf_buf(new_sql), len);
         /*
-        pMem->z[pMem->n-2] ='\0';
-        pMem->z[pMem->n-1] ='\0';
+        zNew[len-2] ='\0';
+        zNew[len-1] ='\0';
         */
+        if (pMem->zMalloc == pMem->z) {
+            pMem->zMalloc = pMem->z = zNew;
+            pMem->szMalloc = pMem->n = len;
+        } else {
+            pMem->z = zNew;
+            pMem->n = len;
+        }
+    } else {
+        logmsg(LOGMSG_ERROR, "%s: failed to malloc\n", __func__);
     }
 
     /*
