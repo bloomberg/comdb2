@@ -522,6 +522,7 @@ static const luaL_Reg sys_funcs[] = {
 struct sp_source {
     char *name;
     char *source;
+    char *override;
 };
 
 static struct sp_source syssps[] = {
@@ -545,7 +546,8 @@ static struct sp_source syssps[] = {
         "    for i, v in ipairs(cluster_info) do\n"
         "        db:emit(v)\n"
         "    end\n"
-        "end\n"
+        "end\n",
+        NULL
     },
 
     {
@@ -570,7 +572,8 @@ static struct sp_source syssps[] = {
         "    for i, v in ipairs(table_info) do\n"
         "        db:emit(v)\n"
         "    end\n"
-        "end\n"
+        "end\n",
+        NULL
     },
 
     {
@@ -588,7 +591,8 @@ static struct sp_source syssps[] = {
         "    for i, v in ipairs(msg) do\n"
         "        db:emit(v)\n"
         "    end\n"
-        "end\n"
+        "end\n",
+        NULL
     },
 
     {
@@ -607,51 +611,59 @@ static struct sp_source syssps[] = {
         "    for i, v in ipairs(msg) do\n"
         "        db:emit(v)\n"
         "    end\n"
-        "end\n"
+        "end\n",
+        NULL
     }
     ,{
         // to call verify for a table: cdb2sql adidb local 'exec procedure sys.cmd.verify("t1")'
         "sys.cmd.verify",
         "local function main(tbl)\n"
         "sys.comdb_verify(tbl)\n"
-        "end\n"
+        "end\n",
+        NULL
     }
     ,{
         "sys.cmd.load",
         "local function main(csv,tbl,seperator, header)\n"
         "sys.load(db,csv,tbl,seperator,header)\n"
-        "end\n"
+        "end\n",
+        NULL
     }
     ,{
         "sys.cmd.truncate_log",
         "local function main(lsn)\n"
         "sys.truncate_log(lsn)\n"
-        "end\n"
+        "end\n",
+        NULL
     }
     ,{
         "sys.cmd.truncate_time",
         "local function main(time)\n"
         "sys.truncate_time(time)\n"
-        "end\n"
+        "end\n",
+        NULL
     }
     ,{
         "sys.cmd.apply_log",
         "local function main(lsn, blob, newfile)\n"
         "sys.apply_log(lsn, blob, newfile)\n"
-        "end\n"
+        "end\n",
+        NULL
     }
     /* starts and stop replication*/
     ,{
         "sys.cmd.start_replication",
         "local function main()\n"
         "sys.start_replication()\n"
-        "end\n"
+        "end\n",
+        NULL
     }
     ,{
         "sys.cmd.stop_replication",
         "local function main()\n"
         "sys.stop_replication()\n"
-        "end\n"
+        "end\n",
+        NULL
     }
 
     /* allow replication assignment */
@@ -673,14 +685,18 @@ static struct sp_source syssps[] = {
         "    for i, v in ipairs(rep_machs) do\n"
         "        db:emit(v)\n"
         "    end\n"
-        "end\n"
+        "end\n",
+        "register_replicant"
     }
 };
 
-char* find_syssp(const char *s) {
+char* find_syssp(const char *s, char **override) {
     for (int i = 0; i < sizeof(syssps)/sizeof(syssps[0]); i++) {
-        if (strcmp(syssps[i].name, s) == 0)
+        if (strcmp(syssps[i].name, s) == 0) {
+            if (override)
+                (*override) = syssps[i].override;
             return syssps[i].source;
+        }
     }
     return NULL;
 }
