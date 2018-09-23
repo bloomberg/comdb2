@@ -62,7 +62,6 @@ incremental_backup        -- incremental backup tests are broken
 incremental_backup_load
 incremental_backup_usenames
 deadlock_policy.test
-deadlock.test             -- in clustered it leaves a bunch of cdb2sql tasks
 overflowblobs.test        -- timesout
 halt_processor_tds.test   -- requires a cluster
 rowlocks_blkseq.test

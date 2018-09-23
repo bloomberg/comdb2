@@ -2,6 +2,7 @@
 
 # deadlock policy tester for the cdb2tcm testsuite
 
+
 # arguments 
 args=$1
 dbnm=$2
@@ -28,12 +29,12 @@ function gen {
 function upd {
     db=$1
     count=$(cdb2sql --tabs ${CDB2_OPTIONS} $db default 'select max(a) from t1')
-    while :; do
+    while [ ! -f eotest.fl ] ; do
         val=$(($RANDOM % $count))
         key=$(($RANDOM % 3))
         echo "select * from t1 where "${keys[$key]}" = $val limit 1"
         echo "update t1 set a=$val where "${keys[$key]}" = $val"
-    done | cdb2sql -s ${CDB2_OPTIONS} $db default - >/dev/null
+    done | cdb2sql -s ${CDB2_OPTIONS} $db default - > run_${RANDOM}.txt
 }
 
 
@@ -56,9 +57,10 @@ function run_timeout
     st=$SECONDS
     
     # run command and grab pid
-    $exe $args > /dev/null 2>&1 &
+    $exe $args > /dev/null 2&>1 &
     cpid=$!
 
+    echo verify pid = $cpid >> /dev/shm/pidverify.txt
     # verify pid
     ps -p $cpid >/dev/null 2>&1
 
@@ -74,6 +76,9 @@ function run_timeout
         ps -p $cpid >/dev/null 2>&1
 
     done
+
+    touch eotest.fl
+    sleep 1
 
     # kill the task
     kill -9 $cpid >/dev/null 2>&1 
@@ -160,3 +165,5 @@ sleep 10
 
 # spawn 40 selects against an index
 test_select $dbnm 10
+
+#sleep 5
