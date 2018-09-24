@@ -8030,10 +8030,10 @@ int sqlite3BtreeCursor(
     cur->rootpage = iTable;
     cur->pKeyInfo = pKeyInfo;
 
-    if (pBt->is_temporary) { /* temp table */
-        assert( iTable>=1 );
+    if (iTable != RTPAGE_SQLITE_MASTER && pBt->is_temporary) { /* temp table */
+        assert( iTable>=2 );
         assert( iTable<=pBt->num_temp_tables+1 );
-        if( forOpen && iTable==pBt->num_temp_tables+1 ){
+        if( iTable==pBt->num_temp_tables+1 ){
           /*
           ** NOTE: When being called to open a temporary table cursor in
           **       response to an OP_Open* (or OP_Reopen*) VDBE opcode,
@@ -8042,6 +8042,7 @@ int sqlite3BtreeCursor(
           */
           int tmpPgno;
           rc = sqlite3BtreeCreateTable(pBt, &tmpPgno, BTREE_INTKEY);
+          assert( tmpPgno==iTable );
           logmsg(LOGMSG_INFO, "%s created temporary table, pgno %d, rc %d\n",
                  __func__, tmpPgno, rc);
         }
