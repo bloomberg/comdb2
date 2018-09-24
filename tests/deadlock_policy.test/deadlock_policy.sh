@@ -5,9 +5,8 @@
 #set -x
 
 # arguments 
-args=$1
-dbnm=$2
-log=$3
+dbnm=$1
+log=${TESTDIR}/logs/${DBNAME}.db
 
 # local variables
 isrmt=
@@ -33,12 +32,15 @@ function gen {
 function upd {
     db=$1
     count=$(cdb2sql --tabs ${CDB2_OPTIONS} $db default 'select max(a) from t1')
-    while :; do
+    while [ ! -f eotest.fl ] ; do
         val=$(($RANDOM % $count))
         key=$(($RANDOM % 3))
         echo "select * from t1 where "${keys[$key]}" = $val limit 1"
         echo "update t1 set a=$val where "${keys[$key]}" = $val"
-    done | cdb2sql -s ${CDB2_OPTIONS} $db default - >/dev/null
+        ls -al eotest.fl >> debug.txt
+        date >> debug.txt
+        sleep 0.01
+    done | cdb2sql -s ${CDB2_OPTIONS} $db default - &> run_${RANDOM}.txt
 }
 
 
@@ -60,7 +62,6 @@ function run_timeout
     st=$SECONDS
     
     # run command and grab pid
-    echo $exe $args
     $exe $args > /dev/null 2>&1 &
     cpid=$!
 
@@ -82,10 +83,11 @@ function run_timeout
 
     if [[ $elapsed -ge $tmout ]]; then
 
-        echo " killing $exe because we timed out $elapsed -ge $tmout"
+        touch eotest.fl
+        sleep 2
+
+        #killing $exe because we timed out $elapsed -ge $tmout"
         kill -9 $cpid >/dev/null 2>&1 
-        # this is a kludge - also kill the cdb2sql processes
-        ps | grep cdb2sql | awk '{print $1}' | xargs kill -9 >/dev/null 2>&1 || true
         return 1
 
     fi
@@ -120,7 +122,7 @@ function spawn_instances
 
 
 # validate the logfile output of this test
-function validscon
+function validate_scon
 {
     # local vars
     typeset maxr=0
@@ -196,27 +198,17 @@ function validscon
 
         echo "TEST FAILED"
         echo "$kpln"
-        return 1
-
-    else
-
-        echo "SUCCESS!"
-        return 0
+        exit 1
 
     fi
 
 } 
 
-cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('scon')"
+cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':'`
 
-# check to see if database is running remotely
-if [[ "$rmt" == 0 ]]; then
-
-    isrmt=0
-    mch=$(hostname)
-    echo "scon" >> /dev/tty
-
-fi
+for node in $cluster ; do
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('scon')" &> /dev/null
+done
 
 
 # generate 10000 records of input data
@@ -233,5 +225,6 @@ sleep 60
 # TODO:NOENV
 
 # validate the log
-validscon $dbnm $log .80 20 30
-exit $?
+validate_scon $dbnm $log .80 20 30
+
+echo "Testcase passed."
