@@ -448,7 +448,8 @@ statement instead.
 ![CREATE INDEX](images/create-index.gif)
 
 The ```CREATE INDEX``` statement can be used to create an index on an existing
-table. The support for ```CREATE INDEX``` was added in version 7.0.
+table. The support for ```CREATE INDEX``` was added in version 7.0. Indexes on
+expression cannot be currently created via this command.
 
 ### DROP INDEX
 
