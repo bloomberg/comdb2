@@ -3997,6 +3997,14 @@ static int db_setdatetimeprecision(lua_State *lua)
     return rc;
 }
 
+static int db_getdbname(Lua L)
+{
+    extern char gbl_dbname[MAX_DBNAME_LENGTH];
+    SP sp = getsp(L);
+    lua_pushstring(L, gbl_dbname);
+    return 1;
+}
+
 static int db_getdatetimeprecision(Lua L)
 {
     SP sp = getsp(L);
@@ -4195,6 +4203,7 @@ static const luaL_Reg db_funcs[] = {
     {"gettimezone", db_gettimezone},
     {"setdatetimeprecision", db_setdatetimeprecision},
     {"getdatetimeprecision", db_getdatetimeprecision},
+    {"getdbname", db_getdbname},
     {"bind", db_bind},
     {"null", db_null},
     {"NULL", db_null}, // why upper-case? -- deprecate
