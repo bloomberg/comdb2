@@ -669,7 +669,7 @@ static struct sp_source syssps[] = {
     /* allow replication assignment */
     ,{
         "sys.cmd.register_replicant",
-        "local function main(dbname, machname, lsn)\n"
+        "local function main(dbname, machname, file, offset)\n"
         "    local schema = {\n"
         "        { 'int',    'tier' },\n"
         "        { 'string', 'dbname' },\n"
@@ -681,7 +681,7 @@ static struct sp_source syssps[] = {
         "        db:column_type(v[1], i)\n"
         "    end\n"
         "    local rep_machs\n"
-        "    rep_machs = sys.register_replicant(dbname, machname, lsn)\n"
+        "    rep_machs = sys.register_replicant(dbname, machname, file, offset)\n"
         "    for i, v in ipairs(rep_machs) do\n"
         "        db:emit(v)\n"
         "    end\n"
@@ -693,8 +693,7 @@ static struct sp_source syssps[] = {
 char* find_syssp(const char *s, char **override) {
     for (int i = 0; i < sizeof(syssps)/sizeof(syssps[0]); i++) {
         if (strcmp(syssps[i].name, s) == 0) {
-            if (override)
-                (*override) = syssps[i].override;
+            (*override) = syssps[i].override;
             return syssps[i].source;
         }
     }

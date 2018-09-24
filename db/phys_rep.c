@@ -346,7 +346,7 @@ static int register_self()
     /* TODO: Change this from local host to gbl_mynode */
     rc = snprintf(get_tier, sql_len,
                   "exec procedure "
-                  "sys.cmd.register_replicant('%s', '%s', '{%u:%u}')",
+                  "sys.cmd.register_replicant('%s', '%s', '%u', '%u')",
                   gbl_dbname, gbl_mynode, info.file, info.offset);
 
     if (rc < 0 || rc >= sql_len) {
