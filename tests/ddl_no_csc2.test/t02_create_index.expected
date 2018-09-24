@@ -116,5 +116,6 @@ keys
 	}
 ')
 [CREATE INDEX idx1 ON t1(i+i)] failed with rc -3 Invalid index column list
+[CREATE INDEX idx1 ON t1('i+i')] failed with rc -3 Unknown column 'i+i'.
 [CREATE INDEX idx1 ON t1(where i > 1)] failed with rc -3 near "where": syntax error
 [CREATE INDEX idx1 ON t1(wherei > 1)] failed with rc -3 Invalid index column list

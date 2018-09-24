@@ -3916,9 +3916,7 @@ static void comdb2AddIndexInt(
                 sqlite3ErrorMsg(pParse, "Invalid index column list");
                 goto cleanup;
             }
-        }
 
-        for (i = 0; i < pList->nExpr; i++) {
             idx_column =
                 comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_index_column));
             if (idx_column == 0)
