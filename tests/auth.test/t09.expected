@@ -200,7 +200,6 @@
 (candidate='comdb2_uptime()')
 (candidate='comdb2_starttime()')
 (candidate='sys.cmd.send()')
-(username='default')
 (username='user1')
 (username='user2')
 (username='user3')

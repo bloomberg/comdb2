@@ -335,6 +335,7 @@ static char *legacy_options[] = {
     "logmsg level info",
     "logput window 1",
     "osql_send_startgen off",
+    "create_default_user",
 };
 int gbl_legacy_defaults = 0;
 int pre_read_legacy_defaults(void *_, void *__)
