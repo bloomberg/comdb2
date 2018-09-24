@@ -1376,6 +1376,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
                 return -1;
             }
             bdb_lock_table_write(s->db->handle, trans);
+            // no one can write at this point
             bdb_set_logical_live_sc(s->db->handle);
             trans_abort(&(data.iq), trans);
         }
@@ -2954,6 +2955,7 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
     struct thr_handle *thr_self = thrman_self();
     enum thrtype oldtype = THRTYPE_UNKNOWN;
     int rc = 0;
+    int finalizing = 0;
     bdb_llog_cursor llog_cur = {0};
     bdb_llog_cursor *pCur = &llog_cur;
     DB_LSN curLsn = {0};
@@ -3057,8 +3059,12 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
                       diff_nrecs / copy_sc_report_freq);
         }
         if (pCur->hitLast) {
-            if (data->s->got_tablelock)
-                break;
+            if (data->s->got_tablelock) {
+                /* loop one more time after we get table lock */
+                if (finalizing)
+                    break;
+                finalizing = 1;
+            }
             poll(NULL, 0, 100);
             data->s->hitLastCnt++;
             continue;
