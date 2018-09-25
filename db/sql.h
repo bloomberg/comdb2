@@ -669,10 +669,10 @@ struct Btree {
 
     /* temp table stuff */
     int is_temporary;
-    /* number and array of temp tables under this btree (generally 1) */
-    int num_temp_tables;
-    struct temptable *temp_tables;
-    int tempid;
+
+    /* hash table of temp tables, keyed on root page number and its mutex */
+    Hash temp_tables;
+    pthread_mutex_t temp_tables_lk;
 
     int is_hashtable;
 
