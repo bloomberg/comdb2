@@ -17,10 +17,6 @@
 #ifndef INCLUDED_COMDB2_H
 #define INCLUDED_COMDB2_H
 
-/* DB_RELEASE_NAME moved to gbl_db_release_name
- * Please update gbl_db_release_name when branchings a new release
- */
-
 /* MOVE THESE TO COMDB2_API.H */
 
 #define SQLHERR_LIMIT (-107)
@@ -1488,6 +1484,7 @@ typedef struct {
 extern int gbl_sc_timeoutms;
 extern int gbl_trigger_timepart;
 
+extern const char *const gbl_db_build_name;
 extern const char *const gbl_db_release_name;
 extern int gbl_sc_del_unused_files_threshold_ms;
 
