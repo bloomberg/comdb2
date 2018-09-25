@@ -1712,7 +1712,7 @@ static void remove_stmt_entry(struct sqlthdstate *thd,
     assert(rc == 0);
 }
 
-/* This will call requeue_stmt_entry() after it has allocated memory 
+/* This will call requeue_stmt_entry() after it has allocated memory
  * for the new entry.
  * On error will return non zero and
  * caller will need to finalize_stmt() in that case
@@ -1749,7 +1749,9 @@ static int add_stmt_table(struct sqlthdstate *thd, const char *sql,
 
     if (gbl_fingerprint_queries) {
         size_t fsz = sqlite3_fingerprint_size(thd->sqldb);
-        size_t min_fsz = (sizeof(entry->fingerprint) < fsz) ? sizeof(entry->fingerprint) : fsz;
+        size_t min_fsz = (sizeof(entry->fingerprint) < fsz)
+                             ? sizeof(entry->fingerprint)
+                             : fsz;
         memcpy(entry->fingerprint, sqlite3_fingerprint(thd->sqldb), min_fsz);
     }
 
@@ -2441,8 +2443,8 @@ static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 static inline int dont_cache_this_sql(const char *sql)
 {
     return (sql_equal("create") || sql_equal("alter") || sql_equal("rebuild") ||
-        sql_equal("drop") || sql_equal("analyze") || sql_equal("truncate") ||
-        sql_equal("put") || sql_equal("explain"));
+            sql_equal("drop") || sql_equal("analyze") ||
+            sql_equal("truncate") || sql_equal("put") || sql_equal("explain"));
 }
 
 /* return code of 1 means we encountered an error and the caller
@@ -2466,7 +2468,7 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
         sqlite3_stmt_has_remotes(stmt)) {
         return 1;
     }
-    if (rec->stmt_entry != NULL) {  /* we found this stmt in the cache */
+    if (rec->stmt_entry != NULL) { /* we found this stmt in the cache */
         if (requeue_stmt_entry(thd, rec->stmt_entry)) /* put back in queue... */
             cleanup_stmt_entry(rec->stmt_entry); /* ...and on error, cleanup */
 
@@ -2840,8 +2842,8 @@ static int get_prepared_bound_stmt(struct sqlthdstate *thd,
     int overrides = override_count(clnt);
     if (overrides && overrides != cols) {
         errstat_set_rcstrf(err, ERR_PREPARE,
-                           "columns in stmt:%d column types provided:%d",
-                           cols, overrides);
+                           "columns in stmt:%d column types provided:%d", cols,
+                           overrides);
         return -1;
     }
 
@@ -3286,7 +3288,6 @@ static void handle_stored_proc(struct sqlthdstate *thd,
     sqlite_done(thd, clnt, &rec, 0);
 }
 
-
 static inline void post_run_reqlog(struct sqlthdstate *thd,
                                    struct sqlclntstate *clnt,
                                    struct sql_state *rec)
@@ -3296,14 +3297,12 @@ static inline void post_run_reqlog(struct sqlthdstate *thd,
     if (rec->sql)
         reqlog_set_sql(thd->logger, rec->sql);
     if (gbl_fingerprint_queries) {
-        if(rec->stmt_entry) 
-            reqlog_set_fingerprint(
-                thd->logger, rec->stmt_entry->fingerprint, 
-                sizeof(rec->stmt_entry->fingerprint));
+        if (rec->stmt_entry)
+            reqlog_set_fingerprint(thd->logger, rec->stmt_entry->fingerprint,
+                                   sizeof(rec->stmt_entry->fingerprint));
         else
-            reqlog_set_fingerprint(
-                thd->logger, sqlite3_fingerprint(thd->sqldb),
-                sqlite3_fingerprint_size(thd->sqldb));
+            reqlog_set_fingerprint(thd->logger, sqlite3_fingerprint(thd->sqldb),
+                                   sqlite3_fingerprint_size(thd->sqldb));
     }
 }
 
