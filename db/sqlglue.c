@@ -3900,11 +3900,12 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
             rc = SQLITE_OK;
         }
 
-        struct temptable *pOldTbl = sqlite3HashInsert(
-            &pBt->temp_tables, SQLITE_INT_TO_PTR(iTable), 0
-        );
-
-        assert( pOldTbl==pTbl );
+        if (rc == SQLITE_OK) {
+            struct temptable *pOldTbl = sqlite3HashInsert(
+                &pBt->temp_tables, SQLITE_INT_TO_PTR(iTable), 0
+            );
+            assert( pOldTbl==pTbl );
+        }
 
         pthread_mutex_unlock(&pBt->temp_tables_lk);
     }
