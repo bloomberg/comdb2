@@ -389,7 +389,11 @@ retry_after_fdb_creation:
     /* Not found.  If the name we were looking for was temp.sqlite_master
     ** then change the name to sqlite_temp_master and try again. */
     if( sqlite3StrICmp(zName, MASTER_NAME)!=0 ) break;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if( sqlite3_stricmp(dbName, db->aDb[1].zDbSName)!=0 ) break;
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( sqlite3_stricmp(zDatabase, db->aDb[1].zDbSName)!=0 ) break;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     zName = TEMP_MASTER_NAME;
   }
 
