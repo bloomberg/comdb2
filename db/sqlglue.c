@@ -111,6 +111,7 @@ struct temptable {
     struct temp_table *tbl;
     int flags;
     char *name;
+    char keyBuf[50]; /* >= len("+18446744073709551615\0") */
     int nRef;
     pthread_mutex_t *lk;
 };
@@ -119,6 +120,23 @@ extern int gbl_partial_indexes;
 #define SQLITE3BTREE_KEY_SET_INS(IX) (clnt->ins_keys |= (1ULL << (IX)))
 #define SQLITE3BTREE_KEY_SET_DEL(IX) (clnt->del_keys |= (1ULL << (IX)))
 extern int gbl_expressions_indexes;
+
+static const char *rootPageNumToTempHashKey(
+  int iTable
+){
+  snprintf(hashKeyBuf, sizeof(hashKeyBuf), "%d\0", iTable);
+  return hashKeyBuf;
+}
+
+static const char *rootPageNumToPermHashKey(
+  char *zKeyBuf,
+  size_t nKeyBuf,
+  int iTable
+){
+  snprintf(zKeyBuf, nKeyBuf, "%d\0", iTable);
+  return zKeyBuf;
+}
+
 void free_cached_idx(uint8_t **cached_idx)
 {
     int i;
@@ -3881,7 +3899,7 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
         pthread_mutex_lock(&pBt->temp_tables_lk);
 
         struct temptable *pTbl = sqlite3HashFind(
-            &pBt->temp_tables, SQLITE_INT_TO_PTR(iTable));
+            &pBt->temp_tables, rootPageNumToTempHashKey(iTable));
 
         if (pTbl != NULL && --pTbl->nRef <= 0) {
             if (pTbl->tbl != NULL) {
@@ -3901,8 +3919,13 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
         }
 
         if (rc == SQLITE_OK) {
+            /*
+            ** NOTE: Use of rootPageNumToTempHashKey() here is fine because
+            **       the hash entry is being deleted (not stored); therefore,
+            **       the passed string hash key will not be stored.
+            */
             struct temptable *pOldTbl = sqlite3HashInsert(
-                &pBt->temp_tables, SQLITE_INT_TO_PTR(iTable), 0
+                &pBt->temp_tables, rootPageNumToTempHashKey(iTable), 0
             );
             assert( pOldTbl==pTbl );
         }
@@ -5028,6 +5051,8 @@ static char *get_temp_dbname(Btree *pBt)
     return s;
 }
 
+static __thread char hashKeyBuf[50]; /* >= len("+18446744073709551615\0") */
+
 /*
 ** Lua threads share temp tables.
 ** Don't create new btree, use this one.
@@ -5130,11 +5155,11 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
 
     int iTable = pBt->temp_tables.count + 1;
 
-    assert( !sqlite3HashFind(&pBt->temp_tables, SQLITE_INT_TO_PTR(iTable)) );
+    assert( !sqlite3HashFind(&pBt->temp_tables, rootPageNumToTempHashKey(iTable)) );
 
-    struct temptable *pOldTbl = sqlite3HashInsert(
-        &pBt->temp_tables, SQLITE_INT_TO_PTR(iTable), pNewTbl
-    );
+    struct temptable *pOldTbl = sqlite3HashInsert(&pBt->temp_tables,
+        rootPageNumToPermHashKey(pNewTbl->keyBuf, sizeof(pNewTbl->keyBuf),
+        iTable), pNewTbl);
 
     assert( pOldTbl==NULL );
     *piTable = iTable;
@@ -6353,7 +6378,7 @@ int sqlite3BtreeClearTable(Btree *pBt, int iTable, int *pnChange)
         pthread_mutex_lock(&pBt->temp_tables_lk);
 
         struct temptable *pTbl = sqlite3HashFind(
-            &pBt->temp_tables, SQLITE_INT_TO_PTR(iTable));
+            &pBt->temp_tables, rootPageNumToTempHashKey(iTable));
 
         if (pTbl == NULL) {
             logmsg(LOGMSG_ERROR, "%s: table %d not found\n",
@@ -7237,7 +7262,7 @@ sqlite3BtreeCursor_temptable(Btree *pBt,      /* The btree */
     int bdberr = 0;
 
     struct temptable *src = sqlite3HashFind(
-        &pBt->temp_tables, SQLITE_INT_TO_PTR(iTable));
+        &pBt->temp_tables, rootPageNumToTempHashKey(iTable));
 
     if (src == NULL) {
         logmsg(LOGMSG_ERROR, "%s: table %d not found\n",
@@ -11232,7 +11257,7 @@ void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
     // aDb[0]: sqlite_master
     // aDb[1]: sqlite_temp_master
     struct temptable *pTbl = sqlite3HashFind(
-        &src->aDb[1].pBt[0].temp_tables, SQLITE_INT_TO_PTR(rootpg));
+        &src->aDb[1].pBt[0].temp_tables, rootPageNumToTempHashKey(rootpg));
 
     if (pTbl == NULL) {
         logmsg(LOGMSG_ERROR, "%s table %d not found, sql:%s\n",
