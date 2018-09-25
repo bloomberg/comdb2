@@ -5092,7 +5092,7 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
         pNewTbl->lk = NULL;
     	pNewTbl->flags = flags;
     } else if (!tmptbl_clone) {
-        temp_table *tbl;
+        struct temp_table *tbl;
         int bdberr;
 
         tbl = bdb_temp_table_create(thedb->bdb_env, &bdberr);
