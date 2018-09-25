@@ -6600,41 +6600,6 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
         sbuf2flush(logsb);
     }
 
-    if (!sc->addonly) {
-        if (unlikely(timepart_is_timepart(sc->tablename, 1))) {
-            char *newest_shard;
-            unsigned long long ver;
-
-            newest_shard = timepart_newest_shard(sc->tablename, &ver);
-            if (newest_shard) {
-                iq->usedbtablevers = ver;
-                free(newest_shard);
-            } else {
-                logmsg(LOGMSG_ERROR,
-                        "%s: broken time partition %s"
-                        "\n",
-                        __func__, sc->tablename);
-
-                return conv_rc_sql2blkop(iq, step, -1, ERR_NO_SUCH_TABLE, err,
-                        sc->tablename, 0);
-            }
-        } else {
-            if (is_tablename_queue(sc->tablename, sc->tablename_len)) {
-                iq->usedb = getqueuebyname(sc->tablename);
-            } else {
-                iq->usedb = get_dbtable_by_name(sc->tablename);
-                iq->usedbtablevers = sc->usedbtablevers;
-            }
-            if (iq->usedb == NULL) {
-                iq->usedb = iq->origdb;
-                logmsg(LOGMSG_INFO, "%s: unable to get usedb for table %s\n",
-                        __func__, sc->tablename);
-                return conv_rc_sql2blkop(iq, step, -1, ERR_NO_SUCH_TABLE, err,
-                                         sc->tablename, 0);
-            }
-        }
-    }
-
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_ASYNC))
         sc->nothrevent = 0;
     else
@@ -6847,7 +6812,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
             newest_shard = timepart_newest_shard(tablename, &ver);
             if (newest_shard) {
-                iq->usedbtablevers = ver;
                 free(newest_shard);
             } else {
                 logmsg(LOGMSG_ERROR, "%s: broken time partition %s"
@@ -6862,7 +6826,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                 iq->usedb = getqueuebyname(tablename);
             } else {
                 iq->usedb = get_dbtable_by_name(tablename);
-                iq->usedbtablevers = dt.tableversion;
             }
             if (iq->usedb == NULL) {
                 iq->usedb = iq->origdb;
@@ -6876,10 +6839,10 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         // check usedb table version and return verify error if different
         // add/upd/del always follow a usedb opcode
         // thus they will not need to check table version
-        if (iq->usedb && iq->usedb->tableversion != iq->usedbtablevers) {
+        if (iq->usedb && iq->usedb->tableversion != dt.tableversion) {
             if (iq->debug)
-                reqprintf(iq, "Stale buffer: usedb version %d vs curr ver %d\n",
-                          iq->usedbtablevers, iq->usedb->tableversion);
+                reqprintf(iq, "Stale buffer: USEDB version %d vs curr ver %d\n",
+                          dt.tableversion, iq->usedb->tableversion);
             poll(NULL, 0, BDB_ATTR_GET(thedb->bdb_attr, SC_DELAY_VERIFY_ERROR));
             err->errcode = OP_FAILED_VERIFY;
             return ERR_VERIFY;

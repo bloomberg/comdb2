@@ -534,7 +534,7 @@ int do_schema_change(struct schema_change_type *s)
         s->db = get_dbtable_by_name(s->tablename);
     }
     iq->usedb = s->db;
-    s->usedbtablevers = iq->usedbtablevers = s->db ? s->db->tableversion : 0;
+    s->usedbtablevers = s->db ? s->db->tableversion : 0;
     sc_arg_t *arg = malloc(sizeof(sc_arg_t));
     arg->iq = iq;
     arg->sc = s;
