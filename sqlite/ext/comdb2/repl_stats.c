@@ -88,8 +88,6 @@ static int systblReplStatsDisconnect(sqlite3_vtab *pVtab)
 
 static int systblReplStatsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor)
 {
-    int cluster_size;
-
     systbl_repl_stats_cursor *cur =
         sqlite3_malloc(sizeof(systbl_repl_stats_cursor));
     if (cur == 0) {

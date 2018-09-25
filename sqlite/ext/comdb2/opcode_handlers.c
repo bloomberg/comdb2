@@ -109,8 +109,6 @@ static int systblOpcodeHandlersFilter(sqlite3_vtab_cursor *pVtabCursor,
                                       int idxNum, const char *idxStr, int argc,
                                       sqlite3_value **argv)
 {
-    systbl_opcode_handlers_cursor *pCur =
-        (systbl_opcode_handlers_cursor *)pVtabCursor;
     return SQLITE_OK;
 }
 

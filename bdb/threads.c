@@ -120,8 +120,6 @@ void *memp_trickle_thread(void *arg)
         sleep(1);
 
     while (!db_is_stopped()) {
-        int t1, t2;
-
         BDB_READLOCK("memp_trickle_thread");
 
         /* time is in usecs, memptricklemsecs is in msecs */
@@ -172,7 +170,6 @@ void *deadlockdetect_thread(void *arg)
 
     while (1) {
         int rc;
-        int time_now;
         int policy;
 
         BDB_READLOCK("deadlockdetect thread");

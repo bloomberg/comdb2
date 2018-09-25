@@ -141,7 +141,7 @@ static pthread_once_t berkdb_blobmem_once = PTHREAD_ONCE_INIT;
 static void
 __berkdb_blobmem_init_once(void)
 {
-    extern size_t gbl_blobmem_cap;
+	extern size_t gbl_blobmem_cap;
 	berkdb_blobmem = comdb2bma_create(0, gbl_blobmem_cap, "berkdb/blob", NULL);
 	if (berkdb_blobmem == NULL) {
 		__db_err(dbenv_being_initialized,

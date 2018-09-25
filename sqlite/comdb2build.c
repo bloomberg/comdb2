@@ -309,7 +309,6 @@ int comdb2PrepareSC(Vdbe *v, Parse *pParse, int int_arg,
     if (t) {
         sqlite3VdbeAddTable(v, t);
     }
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
     return comdb2prepareNoRows(v, pParse, int_arg, arg, func, freeFunc);
 }
 
@@ -633,7 +632,6 @@ out:
 void comdb2DropTable(Parse *pParse, SrcList *pName)
 {
 
-    sqlite3 *db = pParse->db;
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
     struct schema_change_type* sc = new_schemachange_type();
@@ -670,7 +668,6 @@ out:
 
 static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
 {
-    sqlite3 *db = pParse->db;
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
     struct schema_change_type* sc = new_schemachange_type();
@@ -783,7 +780,6 @@ out:
 
 void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int opt)
 {
-    sqlite3 *db = pParse->db;
     Vdbe *v  = sqlite3GetVdbe(pParse);
     char* indexname;
     int index_num;
@@ -910,7 +906,6 @@ void comdb2DefaultProcedure(Parse* pParse, Token* nm, Token* ver, int str)
 void comdb2DropProcedure(Parse* pParse, Token* nm, Token* ver, int str)
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
-    int rc;   
     struct schema_change_type* sc = new_schemachange_type();
     if (sc == NULL) {
         setError(pParse, SQLITE_NOMEM, "System out of memory");
@@ -1045,7 +1040,6 @@ void comdb2DropTimePartition(Parse* pParse, Token* partition_name)
     return;
 err:
     setError(pParse, SQLITE_INTERNAL, "Internal Error");
-clean_arg:
     if(arg)
         free_bpfunc_arg(arg);
 }
@@ -1055,8 +1049,6 @@ clean_arg:
 
 void comdb2bulkimport(Parse* pParse, Token* nm,Token* lnm, Token* nm2, Token* lnm2)
 {
-    Vdbe *v  = sqlite3GetVdbe(pParse);
-
     setError(pParse, SQLITE_INTERNAL, "Not Implemented");
     logmsg(LOGMSG_DEBUG, "Bulk import from %.*s to %.*s ", nm->n + lnm->n,
            nm->z, nm2->n +lnm2->n, nm2->z);
@@ -1075,7 +1067,6 @@ int comdb2vdbeAnalyze(OpFunc *f)
 void comdb2analyze(Parse* pParse, int opt, Token* nm, Token* lnm, int pc)
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
-    int percentage = pc;
     int threads = GET_ANALYZE_THREAD(opt);
     int sum_threads = GET_ANALYZE_SUMTHREAD(opt);
   
@@ -1245,7 +1236,6 @@ void comdb2enableRowlocks(Parse* pParse, int enable)
 
 err:
     setError(pParse, SQLITE_INTERNAL, "Internal Error");
-clean_arg:
     if (arg)
         free_bpfunc_arg(arg);   
 }
@@ -1286,7 +1276,6 @@ void comdb2analyzeThreshold(Parse* pParse, Token* nm, Token* lnm, int newthresho
     return;
 err:
     setError(pParse, SQLITE_INTERNAL, "Internal Error");
-clean_arg:
     if (arg)
         free_bpfunc_arg(arg);
 }
@@ -1422,8 +1411,6 @@ void comdb2enableAuth(Parse* pParse, int on)
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
-    int rc = SQLITE_OK;
- 
     if (comdb2AuthenticateOpPassword(v, pParse)) 
     {
         setError(pParse, SQLITE_AUTH, "User does not have OP credentials");
@@ -1761,7 +1748,6 @@ clean_arg:
 void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName,
         int dryrun)
 {
-    sqlite3 *db = pParse->db;
     Vdbe *v  = sqlite3GetVdbe(pParse);
     struct schema_change_type *sc;
 
@@ -3443,7 +3429,6 @@ void comdb2CreateTableStart(
 oom:
     setError(pParse, SQLITE_NOMEM, "System out of memory");
 
-cleanup:
     free_ddl_context(pParse);
     return;
 }
@@ -3669,7 +3654,6 @@ void comdb2AddDefaultValue(Parse *pParse, ExprSpan *pSpan)
 oom:
     setError(pParse, SQLITE_NOMEM, "System out of memory");
 
-cleanup:
     free_ddl_context(pParse);
     return;
 }
@@ -4305,8 +4289,6 @@ find_parent_key_in_client_context(Parse *pParse, struct comdb2_ddl_context *ctx,
         key_col = key->idx_col_list.top;
         LISTC_FOR_EACH(&constraint->parent_idx_col_list, idx_col, lnk)
         {
-            int sort_order =
-                (key_col->flags & INDEX_ORDER_DESC) ? INDEX_ORDER_DESC : 0;
             if ((strcasecmp(idx_col->name, key_col->name) != 0) ||
                 idx_col->flags != key_col->flags) {
                 key_found = 0;
@@ -4587,7 +4569,6 @@ void comdb2DropForeignKey(Parse *pParse, /* Parser context */
 )
 {
     char *name;
-    int fk_found = 0;
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     struct comdb2_constraint *cons;
 
@@ -4783,9 +4764,6 @@ void comdb2DropIndexInt(Parse *pParse, char *idx_name)
 
     return;
 
-oom:
-    setError(pParse, SQLITE_NOMEM, "System out of memory");
-
 cleanup:
     free_ddl_context(pParse);
     return;
@@ -4800,7 +4778,6 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
     struct dbtable *table;
     struct schema_change_type *sc;
     struct comdb2_ddl_context *ctx;
-    struct comdb2_schema *key;
     char *idx_name;
     char *tbl_name = 0;
     int max_size;
@@ -4953,7 +4930,6 @@ cleanup:
 */
 void comdb2AlterDropIndex(Parse *pParse, Token *pName)
 {
-    struct comdb2_schema *key;
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     char *keyname;
 

@@ -230,7 +230,6 @@ void comdb2DropTrigger(Parse *parse, Token *proc)
 
 #define comdb2CreateFunc(parse, proc, pfx, type)                               \
 	do {                                                                   \
-		int bdberr = 0;                                                \
 		TokenStr(spname, proc);                                        \
 		if (comdb2LocateSP(parse, spname) != 0) {                      \
 			return;                                                \
@@ -263,7 +262,6 @@ void comdb2CreateAggFunc(Parse *parse, Token *proc)
 
 #define comdb2DropFunc(parse, proc, pfx, type)                                 \
 	do {                                                                   \
-		int bdberr = 0;                                                \
 		TokenStr(spname, proc);                                        \
 		if (find_lua_##pfx##func(spname) == 0) {                       \
 			sqlite3ErrorMsg(parse, "no such lua " #type "func:%s", \
