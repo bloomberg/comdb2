@@ -121,6 +121,8 @@ extern int gbl_partial_indexes;
 #define SQLITE3BTREE_KEY_SET_DEL(IX) (clnt->del_keys |= (1ULL << (IX)))
 extern int gbl_expressions_indexes;
 
+static __thread char hashKeyBuf[50]; /* >= len("+18446744073709551615\0") */
+
 static const char *rootPageNumToTempHashKey(
   int iTable
 ){
@@ -5050,8 +5052,6 @@ static char *get_temp_dbname(Btree *pBt)
              thedb->envname, genid);
     return s;
 }
-
-static __thread char hashKeyBuf[50]; /* >= len("+18446744073709551615\0") */
 
 /*
 ** Lua threads share temp tables.
