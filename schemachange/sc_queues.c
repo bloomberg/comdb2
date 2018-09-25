@@ -70,7 +70,8 @@ int do_alter_queues_int(struct schema_change_type *sc)
     db = getqueuebyname(sc->tablename);
     if (db == NULL) {
         /* create new queue */
-        rc = add_queue_to_environment(sc->tablename, sc->avgitemsz, sc->pagesize);
+        rc = add_queue_to_environment(sc->tablename, sc->avgitemsz,
+                                      sc->pagesize);
         /* tell other nodes to follow suit */
         broadcast_add_new_queue(
             sc->tablename, sc->avgitemsz); // TODO Check the return value ??????
@@ -392,7 +393,8 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
      * other methods, we need to manage the existing consumer first. */
     if (sc->addonly) {
         /* create a procedure (needs to go away, badly) */
-        rc = javasp_do_procedure_op(JAVASP_OP_LOAD, sc->tablename, NULL, config);
+        rc =
+            javasp_do_procedure_op(JAVASP_OP_LOAD, sc->tablename, NULL, config);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: javasp_do_procedure_op returned rc %d\n",
                    __func__, rc);

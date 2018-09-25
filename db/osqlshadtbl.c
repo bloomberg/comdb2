@@ -2961,12 +2961,13 @@ static int process_local_shadtbl_sc(struct sqlclntstate *clnt, int *bdberr)
             osql->xerr.errval = ERR_SC;
             errstat_set_strf(
                 &(osql->xerr),
-                "stale version for table:%s master:%d replicant:%d", sc->tablename,
-                comdb2_table_version(sc->tablename), packed_sc_key[1]);
+                "stale version for table:%s master:%d replicant:%d",
+                sc->tablename, comdb2_table_version(sc->tablename),
+                packed_sc_key[1]);
             return ERR_SC;
         } else if (packed_sc_key[1] >= 0) {
-            rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid, sc->tablename,
-                                 NET_OSQL_SOCK_RPL, osql->logsb,
+            rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid,
+                                 sc->tablename, NET_OSQL_SOCK_RPL, osql->logsb,
                                  packed_sc_key[1]);
             if (rc) {
                 logmsg(LOGMSG_ERROR,

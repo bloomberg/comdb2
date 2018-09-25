@@ -240,13 +240,15 @@ static int chk_versioned_sp(char *name, char *version, struct ireq *iq)
 static int del_versioned_sp(struct schema_change_type *sc, struct ireq *iq)
 {
     int rc;
-    if ((rc = chk_versioned_sp(sc->tablename, sc->fname, iq)) != 0) return rc;
+    if ((rc = chk_versioned_sp(sc->tablename, sc->fname, iq)) != 0)
+        return rc;
     return bdb_del_versioned_sp(sc->tablename, sc->fname);
 }
 static int default_versioned_sp(struct schema_change_type *sc, struct ireq *iq)
 {
     int rc;
-    if ((rc = chk_versioned_sp(sc->tablename, sc->fname, iq)) != 0) return rc;
+    if ((rc = chk_versioned_sp(sc->tablename, sc->fname, iq)) != 0)
+        return rc;
     return bdb_set_default_versioned_sp(sc->tran, sc->tablename, sc->fname);
 }
 
@@ -338,8 +340,8 @@ static int add_sp(struct schema_change_type *sc, int *version)
         return rc;
     }
     bdb_get_lua_highest(NULL, sc->tablename, version, INT_MAX, &bdberr);
-    sbuf2printf(sb, "!Added stored procedure: %s \t version %d.\n", sc->tablename,
-                *version);
+    sbuf2printf(sb, "!Added stored procedure: %s \t version %d.\n",
+                sc->tablename, *version);
     sbuf2printf(sb, "SUCCESS\n");
     return rc;
 }
@@ -475,7 +477,8 @@ int do_show_sp(struct schema_change_type *sc)
         if (def == -1) {
             // check versioned default
             char *def_version;
-            if (bdb_get_default_versioned_sp(sc->tablename, &def_version) == 0) {
+            if (bdb_get_default_versioned_sp(sc->tablename, &def_version) ==
+                0) {
                 sbuf2printf(sb, ">Default version is: '%s'\n", def_version);
                 free(def_version);
             } else {

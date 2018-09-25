@@ -1464,8 +1464,8 @@ void *osql_commit_timepart_resuming_sc(void *p)
             sc->sc_next = sc_pending;
             sc_pending = sc;
         } else {
-            logmsg(LOGMSG_ERROR, "%s: shard '%s', rc %d\n", __func__, sc->tablename,
-                   sc->sc_rc);
+            logmsg(LOGMSG_ERROR, "%s: shard '%s', rc %d\n", __func__,
+                   sc->tablename, sc->sc_rc);
             sc_set_running(sc->tablename, 0, 0, NULL, 0);
             free_schema_change_type(sc);
             error = 1;

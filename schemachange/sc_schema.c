@@ -499,8 +499,8 @@ int fetch_schema_change_seed(struct schema_change_type *s, struct dbenv *thedb,
                              unsigned int *stored_sc_host)
 {
     int bdberr;
-    int rc = bdb_get_sc_seed(thedb->bdb_env, NULL, s->tablename, stored_sc_genid,
-                             stored_sc_host, &bdberr);
+    int rc = bdb_get_sc_seed(thedb->bdb_env, NULL, s->tablename,
+                             stored_sc_genid, stored_sc_host, &bdberr);
     if (rc == -1 && bdberr == BDBERR_FETCH_DTA) {
         /* No seed exists, proceed. */
     } else if (rc) {

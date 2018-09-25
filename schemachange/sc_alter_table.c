@@ -679,8 +679,8 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
         goto backout;
 
     /* load new csc2 data */
-    rc = load_new_table_schema_tran(thedb, transac, /*s->tablename*/ db->tablename,
-                                    s->newcsc2);
+    rc = load_new_table_schema_tran(thedb, transac,
+                                    /*s->tablename*/ db->tablename, s->newcsc2);
     if (rc != 0) {
         sc_errf(s, "Error loading new schema into meta tables, "
                    "trying again\n");

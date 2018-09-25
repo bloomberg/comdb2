@@ -106,9 +106,10 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             pthread_mutex_unlock(&s->mtx);
             uuidstr_t us;
             comdb2uuidstr(s->uuid, us);
-            logmsg(LOGMSG_INFO, "Resuming schema change: rqid [%llx %s] "
-                                "table %s, add %d, drop %d, fastinit %d, alter "
-                                "%d, finalize_only %d\n",
+            logmsg(LOGMSG_INFO,
+                   "Resuming schema change: rqid [%llx %s] "
+                   "table %s, add %d, drop %d, fastinit %d, alter "
+                   "%d, finalize_only %d\n",
                    s->rqid, us, s->tablename, s->addonly, s->drop_table,
                    s->fastinit, s->alteronly, s->finalize_only);
 
@@ -119,8 +120,9 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             if (bdb_get_in_schema_change(trans, s->tablename, &packed_sc_data,
                                          &packed_sc_data_len, &bdberr) ||
                 bdberr != BDBERR_NOERROR) {
-                logmsg(LOGMSG_WARN, "%s: failed to discover whether table: "
-                                    "%s is in the middle of a schema change\n",
+                logmsg(LOGMSG_WARN,
+                       "%s: failed to discover whether table: "
+                       "%s is in the middle of a schema change\n",
                        __func__, s->tablename);
             }
             if (packed_sc_data) {
@@ -300,7 +302,8 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             pthread_mutex_unlock(&sc_async_mtx);
 
             free(arg);
-            sc_set_running(s->tablename, 0, iq->sc_seed, gbl_mynode, time(NULL));
+            sc_set_running(s->tablename, 0, iq->sc_seed, gbl_mynode,
+                           time(NULL));
             free_schema_change_type(s);
             rc = SC_ASYNC_FAILED;
         } else {
@@ -384,7 +387,8 @@ int finalize_schema_change(struct ireq *iq, tran_type *trans)
             logmsg(LOGMSG_ERROR,
                    "start_schema_change:pthread_create rc %d %s\n", rc,
                    strerror(errno));
-            sc_set_running(s->tablename, 0, iq->sc_seed, gbl_mynode, time(NULL));
+            sc_set_running(s->tablename, 0, iq->sc_seed, gbl_mynode,
+                           time(NULL));
             free_schema_change_type(s);
             rc = SC_ASYNC_FAILED;
         } else {
@@ -1076,8 +1080,8 @@ int sc_timepart_add_table(const char *existingTableName,
         goto error;
     }
 
-    if (sc_set_running(sc.tablename, 1, bdb_get_a_genid(thedb->bdb_env), gbl_mynode,
-                       time(NULL)) != 0) {
+    if (sc_set_running(sc.tablename, 1, bdb_get_a_genid(thedb->bdb_env),
+                       gbl_mynode, time(NULL)) != 0) {
         xerr->errval = SC_VIEW_ERR_EXIST;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "schema change running");
         goto error;
@@ -1144,8 +1148,8 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
         goto error;
     }
 
-    if (sc_set_running(sc.tablename, 1, bdb_get_a_genid(thedb->bdb_env), gbl_mynode,
-                       time(NULL)) != 0) {
+    if (sc_set_running(sc.tablename, 1, bdb_get_a_genid(thedb->bdb_env),
+                       gbl_mynode, time(NULL)) != 0) {
         xerr->errval = SC_VIEW_ERR_EXIST;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "schema change running");
         goto error;

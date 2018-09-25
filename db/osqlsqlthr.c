@@ -1695,7 +1695,8 @@ int osql_schemachange_logic(struct schema_change_type *sc,
 
     osql->running_ddl = 1;
 
-    if (clnt->dml_tables && hash_find_readonly(clnt->dml_tables, sc->tablename)) {
+    if (clnt->dml_tables &&
+        hash_find_readonly(clnt->dml_tables, sc->tablename)) {
         return SQLITE_DDL_MISUSE;
     }
     if (clnt->ddl_tables) {
@@ -1727,9 +1728,8 @@ int osql_schemachange_logic(struct schema_change_type *sc,
         }
 
         do {
-            rc = osql_send_schemachange(osql->host, rqid,
-                                        thd->clnt->osql.uuid, sc,
-                                        NET_OSQL_SOCK_RPL, osql->logsb);
+            rc = osql_send_schemachange(osql->host, rqid, thd->clnt->osql.uuid,
+                                        sc, NET_OSQL_SOCK_RPL, osql->logsb);
             RESTART_SOCKSQL;
         } while (restarted && rc == 0);
         if (rc) {

@@ -172,7 +172,8 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
 
     p_buf = buf_put(&s->type, sizeof(s->type), p_buf, p_buf_end);
 
-    p_buf = buf_put(&s->tablename_len, sizeof(s->tablename_len), p_buf, p_buf_end);
+    p_buf =
+        buf_put(&s->tablename_len, sizeof(s->tablename_len), p_buf, p_buf_end);
 
     p_buf = buf_no_net_put(s->tablename, s->tablename_len, p_buf, p_buf_end);
 
@@ -281,7 +282,8 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
 
     p_buf = buf_put(&s->rename, sizeof(s->rename), p_buf, p_buf_end);
     p_buf = buf_no_net_put(s->newtable, sizeof(s->newtable), p_buf, p_buf_end);
-    p_buf = buf_put(&s->usedbtablevers, sizeof(s->usedbtablevers), p_buf, p_buf_end);
+    p_buf = buf_put(&s->usedbtablevers, sizeof(s->usedbtablevers), p_buf,
+                    p_buf_end);
 
     return p_buf;
 }
@@ -343,14 +345,15 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
 
     p_buf = (uint8_t *)buf_get(&s->type, sizeof(s->type), p_buf, p_buf_end);
 
-    p_buf = (uint8_t *)buf_get(&s->tablename_len, sizeof(s->tablename_len), p_buf,
-                               p_buf_end);
+    p_buf = (uint8_t *)buf_get(&s->tablename_len, sizeof(s->tablename_len),
+                               p_buf, p_buf_end);
     if (s->tablename_len != strlen((const char *)p_buf) + 1 ||
         s->tablename_len > sizeof(s->tablename)) {
         s->tablename_len = -1;
         return NULL;
     }
-    p_buf = (uint8_t *)buf_no_net_get(s->tablename, s->tablename_len, p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_no_net_get(s->tablename, s->tablename_len, p_buf,
+                                      p_buf_end);
 
     p_buf = (uint8_t *)buf_get(&s->fname_len, sizeof(s->fname_len), p_buf,
                                p_buf_end);
@@ -709,7 +712,8 @@ void print_schemachange_info(struct schema_change_type *s, struct dbtable *db,
     else
         sc_printf(s, info + 1);
 
-    if (s->fastinit) sc_printf(s, "fastinit starting on table %s\n", s->tablename);
+    if (s->fastinit)
+        sc_printf(s, "fastinit starting on table %s\n", s->tablename);
 
     switch (s->scanmode) {
     case SCAN_INDEX:

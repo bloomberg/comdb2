@@ -152,8 +152,8 @@ int finalize_fastinit_table(struct ireq *iq, struct schema_change_type *s,
             }
             if (sc_pending && sc_pending->fastinit)
                 logmsg(LOGMSG_INFO,
-                       "Fastinit '%s' and %s'%s' transactionally\n", s->tablename,
-                       sc_pending->drop_table ? "drop " : "",
+                       "Fastinit '%s' and %s'%s' transactionally\n",
+                       s->tablename, sc_pending->drop_table ? "drop " : "",
                        sc_pending->tablename);
             else {
                 sc_errf(s, "Can't fastinit tables with foreign constraints\n");

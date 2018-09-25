@@ -85,8 +85,8 @@ static int mark_sc_in_llmeta_tran(struct schema_change_type *s, void *trans)
     size_t packed_sc_data_len;
     uuidstr_t us;
     comdb2uuidstr(s->uuid, us);
-    logmsg(LOGMSG_INFO, "%s: table '%s' rqid [%llx %s]\n", __func__, s->tablename,
-           s->rqid, us);
+    logmsg(LOGMSG_INFO, "%s: table '%s' rqid [%llx %s]\n", __func__,
+           s->tablename, s->rqid, us);
     if (pack_schema_change_type(s, &packed_sc_data, &packed_sc_data_len)) {
         sc_errf(s, "could not pack the schema change data for storage in "
                    "low level meta table\n");
@@ -315,8 +315,8 @@ static int check_table_version(struct ireq *iq, struct schema_change_type *sc)
     rc = bdb_table_version_select(sc->tablename, NULL, &version, &bdberr);
     if (rc != 0) {
         errstat_set_strf(&iq->errstat,
-                         "failed to get version for table:%s rc:%d", sc->tablename,
-                         rc);
+                         "failed to get version for table:%s rc:%d",
+                         sc->tablename, rc);
         iq->errstat.errval = ERR_SC;
         return SC_INTERNAL_ERROR;
     }
@@ -810,8 +810,8 @@ int resume_schema_change(void)
             logmsg(LOGMSG_INFO,
                    "%s: resuming schema change: rqid [%llx %s] "
                    "table %s, add %d, drop %d, fastinit %d, alter %d\n",
-                   __func__, s->rqid, us, s->tablename, s->addonly, s->drop_table,
-                   s->fastinit, s->alteronly);
+                   __func__, s->rqid, us, s->tablename, s->addonly,
+                   s->drop_table, s->fastinit, s->alteronly);
 
             is_shard = 0;
             if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) &&
