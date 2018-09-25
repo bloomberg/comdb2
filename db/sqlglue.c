@@ -3349,8 +3349,12 @@ int sqlite3BtreeOpen(
         bt->reqlogger = thrman_get_reqlogger(thrman_self());
         bt->btreeid = id++;
         bt->is_temporary = 1;
+        pthread_mutex_lock(&gbl_sql_lock);
         pthread_mutex_init(&bt->temp_tables_lk, NULL);
+        pthread_mutex_lock(&bt->temp_tables_lk);
         sqlite3HashInit(&bt->temp_tables);
+        pthread_mutex_unlock(&bt->temp_tables_lk);
+        pthread_mutex_unlock(&gbl_sql_lock);
         *ppBtree = bt;
         thd->bttmp = bt;
         listc_init(&bt->cursors, offsetof(BtCursor, lnk));
