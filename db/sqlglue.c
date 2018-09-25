@@ -3174,9 +3174,9 @@ int sqlite3BtreeClose(Btree *pBt)
             if (pTbl != NULL && --pTbl->nRef <= 0) {
                 if (pTbl->tbl != NULL) {
                     rc = bdb_temp_table_close(thedb->bdb_env, pTbl->tbl, &bdberr);
-                    pTbl->tbl = NULL;
                 }
                 if (rc == SQLITE_OK) {
+                    pTbl->tbl = NULL;
                     free(pTbl->name);
                     pTbl->name = NULL;
                     free(pTbl);
@@ -3883,16 +3883,25 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
             if (pTbl->tbl != NULL) {
                 // NEED TO LOCK HERE??
                 rc = bdb_temp_table_close(thedb->bdb_env, pTbl->tbl, &bdberr);
-                pTbl->tbl = NULL;
             } else {
                 rc = SQLITE_OK;
             }
-            free(pTbl->name);
-            pTbl->name = NULL;
-            free(pTbl);
+            if (rc == SQLITE_OK) {
+                pTbl->tbl = NULL;
+                free(pTbl->name);
+                pTbl->name = NULL;
+                free(pTbl);
+            }
         } else {
             rc = SQLITE_OK;
         }
+
+        struct temptable *pOldTbl = sqlite3HashInsert(
+            &pBt->temp_tables, SQLITE_INT_TO_PTR(iTable), 0
+        );
+
+        assert( pOldTbl==pTbl );
+
         pthread_mutex_unlock(&pBt->temp_tables_lk);
     }
     return rc;
