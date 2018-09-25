@@ -130,6 +130,8 @@ void berk_memp_sync_alarm_ms(int);
 #include "comdb2_atomic.h"
 #include "metrics.h"
 
+#define QUOTE_(x) #x
+#define QUOTE(x) QUOTE_(x)
 
 #define tokdup strndup
 
@@ -173,7 +175,8 @@ int clear_temp_tables(void);
 pthread_key_t comdb2_open_key;
 
 /*---GLOBAL SETTINGS---*/
-const char *const gbl_db_release_name = "R7.0pre";
+const char *const gbl_db_release_name = QUOTE(COMDB2_RELEASE);
+const char *const gbl_db_build_name = QUOTE(COMDB2_BUILD);
 int gbl_enque_flush_interval;
 int gbl_enque_reorder_lookahead = 20;
 int gbl_morecolumns = 0;
@@ -5462,9 +5465,6 @@ int sc_ready(void)
 {
     return gbl_backend_opened;
 }
-
-#define QUOTE_(x) #x
-#define QUOTE(x) QUOTE_(x)
 
 static void create_service_file(const char *lrlname)
 {

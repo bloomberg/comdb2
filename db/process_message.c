@@ -1678,6 +1678,7 @@ clipper_usage:
             sc_status(dbenv);
             print_dbs(dbenv);
             backend_stat(dbenv);
+            logmsg(LOGMSG_USER, "version: %s.%s\n", gbl_db_release_name, gbl_db_build_name);
             logmsg(LOGMSG_USER, "Codename:      \"%s\"\n", gbl_db_release_name);
         } else if (tokcmp(tok, ltok, "ixstat") == 0) {
             ixstats(dbenv);
