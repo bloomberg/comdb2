@@ -3169,7 +3169,7 @@ int sqlite3BtreeClose(Btree *pBt)
 
         for(pElem=sqliteHashFirst(&pBt->temp_tables); pElem; pElem=sqliteHashNext(pElem)){
             /* internally this will close cursors open on the table */
-            struct temp_table *pTbl = (struct temp_table *)pElem->data;
+            struct temptable *pTbl = (struct temptable *)pElem->data;
 
             if (pTbl != NULL && --pTbl->nRef <= 0) {
                 if (pTbl->tbl != NULL) {
@@ -5057,13 +5057,13 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
         goto done;
     }
 
-    struct temp_table *pNewTbl;
+    struct temptable *pNewTbl;
 
     if (tmptbl_clone) {
         pNewTbl = tmptbl_clone;
         pNewTbl->nRef++;
     } else {
-        pNewTbl = calloc(1, sizeof(struct temp_table));
+        pNewTbl = calloc(1, sizeof(struct temptable));
 
         if (unlikely(pNewTbl == NULL)) {
             logmsg(LOGMSG_ERROR, "%s: calloc(%lu) failed\n", __func__,
@@ -5115,7 +5115,7 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
 
     assert( !sqlite3HashFind(&pBt->temp_tables, SQLITE_INT_TO_PTR(iTable)) );
 
-    struct temp_table *pOldTbl = sqlite3HashInsert(
+    struct temptable *pOldTbl = sqlite3HashInsert(
         &pBt->temp_tables, SQLITE_INT_TO_PTR(iTable), pNewTbl
     );
 
@@ -7026,7 +7026,7 @@ sqlite3BtreeCursor_analyze(Btree *pBt,      /* The btree */
 
     cur->sampled_idx = calloc(1, sizeof(struct temptable));
     if (!cur->sampled_idx) {
-        logmsg(LOGMSG_ERROR, "%s: calloc sizeof(struct temp_table) failed\n",
+        logmsg(LOGMSG_ERROR, "%s: calloc sizeof(struct temptable) failed\n",
                 __func__);
         return SQLITE_INTERNAL;
     }
