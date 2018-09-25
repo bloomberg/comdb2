@@ -4345,9 +4345,9 @@ retry:
                      */
                     struct sockaddr_in peeraddr;
                     socklen_t len = sizeof(peeraddr);
-                    rc = getpeername(fd, (struct sockaddr *)&peeraddr, &len);
+                    rc = getpeername(pd.fd, (struct sockaddr *)&peeraddr, &len);
                     if (rc == -1 && errno == ENOTCONN) {
-                        ctrace("fd %d disconnected\n", fd);
+                        ctrace("fd %d disconnected\n", pd.fd);
                         return -1;
                     }
                 }
