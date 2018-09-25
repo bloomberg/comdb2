@@ -98,6 +98,7 @@ static inline int isRemote(Parse *pParse, Token **t1, Token **t2)
                     "DDL commands operate on local schema only.");
 }
 
+/* chkAndCopyTable expects the dst (OUT) buffer to be of MAXTABLELEN size. */
 static inline
 int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
                     size_t name_len, int mustexist)
@@ -5091,13 +5092,35 @@ cleanup:
 }
 
 // Use create_string_from_token() to store the string on heap.
-int comdb2TokenToStr(Token *nm, char *buf, size_t len)
+int comdb2TokenToStr(Token *nm, char *out, size_t len)
 {
-    if (nm->n >= len)
-        return 1;
+    char *buf;
+    int rc = 0;
+    int malloced = 0;
 
+    if (likely(nm->n < 100)) {
+        buf = alloca(nm->n + 1);
+    } else {
+        buf = malloc(nm->n + 1);
+        if (buf == 0) /* malloc failed */
+            return -1;
+        malloced = 1;
+    }
     memcpy(buf, nm->z, nm->n);
     buf[nm->n] = '\0';
+
     sqlite3Dequote(buf);
-    return 0;
+
+    if (strlen(buf) >= len) {
+        rc = 1;
+        goto done;
+    }
+
+    strcpy(out, buf);
+
+done:
+    if (malloced)
+        free(buf);
+
+    return rc;
 }
