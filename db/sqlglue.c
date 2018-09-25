@@ -3176,8 +3176,11 @@ int sqlite3BtreeClose(Btree *pBt)
                     rc = bdb_temp_table_close(thedb->bdb_env, pTbl->tbl, &bdberr);
                     pTbl->tbl = NULL;
                 }
-                free(pTbl->name);
-                pTbl->name = NULL;
+                if (rc == SQLITE_OK) {
+                    free(pTbl->name);
+                    pTbl->name = NULL;
+                    free(pTbl);
+                }
             }
             if (rc != SQLITE_OK) {
                 logmsg(LOGMSG_ERROR, "sqlite3BtreeClose:bdb_temp_table_close bdberr %d\n",
@@ -3886,10 +3889,10 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
             }
             free(pTbl->name);
             pTbl->name = NULL;
+            free(pTbl);
         } else {
             rc = SQLITE_OK;
         }
-        bzero(tbl, sizeof(struct temptable));
         pthread_mutex_unlock(&pBt->temp_tables_lk);
     }
     return rc;
