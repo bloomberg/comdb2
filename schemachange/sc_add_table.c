@@ -217,14 +217,14 @@ int do_add_table(struct ireq *iq, struct schema_change_type *s,
 
     if ((rc = check_option_coherency(s, NULL, NULL))) return rc;
 
-    if ((db = get_dbtable_by_name(s->table))) {
-        sc_errf(s, "Table %s already exists\n", s->table);
-        logmsg(LOGMSG_ERROR, "Table %s already exists\n", s->table);
+    if ((db = get_dbtable_by_name(s->tablename))) {
+        sc_errf(s, "Table %s already exists\n", s->tablename);
+        logmsg(LOGMSG_ERROR, "Table %s already exists\n", s->tablename);
         return SC_TABLE_ALREADY_EXIST;
     }
 
     pthread_mutex_lock(&csc2_subsystem_mtx);
-    rc = add_table_to_environment(s->table, s->newcsc2, s, iq, trans);
+    rc = add_table_to_environment(s->tablename, s->newcsc2, s, iq, trans);
     pthread_mutex_unlock(&csc2_subsystem_mtx);
     if (rc) {
         sc_errf(s, "error adding new table locally\n");
@@ -261,7 +261,7 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
     }
 
     sc_printf(s, "Start add table transaction ok\n");
-    rc = load_new_table_schema_tran(thedb, tran, s->table, s->newcsc2);
+    rc = load_new_table_schema_tran(thedb, tran, s->tablename, s->newcsc2);
     if (rc != 0) {
         sc_errf(s, "error recording new table schema\n");
         return rc;

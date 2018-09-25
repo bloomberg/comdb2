@@ -108,7 +108,7 @@ static size_t dests_field_packed_size(struct schema_change_type *s)
 
 size_t schemachange_packed_size(struct schema_change_type *s)
 {
-    s->table_len = strlen(s->table) + 1;
+    s->tablename_len = strlen(s->tablename) + 1;
     s->fname_len = strlen(s->fname) + 1;
     s->aname_len = strlen(s->aname) + 1;
     s->spname_len = strlen(s->spname) + 1;
@@ -116,7 +116,7 @@ size_t schemachange_packed_size(struct schema_change_type *s)
 
     s->packed_len =
         sizeof(s->rqid) + sizeof(s->uuid) + sizeof(s->type) +
-        sizeof(s->table_len) + s->table_len + sizeof(s->fname_len) +
+        sizeof(s->tablename_len) + s->tablename_len + sizeof(s->fname_len) +
         s->fname_len + sizeof(s->aname_len) + s->aname_len +
         sizeof(s->avgitemsz) + sizeof(s->fastinit) + sizeof(s->newdtastripe) +
         sizeof(s->blobstripe) + sizeof(s->live) + sizeof(s->addonly) +
@@ -135,7 +135,7 @@ size_t schemachange_packed_size(struct schema_change_type *s)
         dests_field_packed_size(s) + sizeof(s->spname_len) + s->spname_len +
         sizeof(s->addsp) + sizeof(s->delsp) + sizeof(s->defaultsp) +
         sizeof(s->is_sfunc) + sizeof(s->is_afunc) + sizeof(s->rename) +
-        sizeof(s->newtable);
+        sizeof(s->newtable) + sizeof(s->usedbtablevers);
 
     return s->packed_len;
 }
@@ -172,9 +172,9 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
 
     p_buf = buf_put(&s->type, sizeof(s->type), p_buf, p_buf_end);
 
-    p_buf = buf_put(&s->table_len, sizeof(s->table_len), p_buf, p_buf_end);
+    p_buf = buf_put(&s->tablename_len, sizeof(s->tablename_len), p_buf, p_buf_end);
 
-    p_buf = buf_no_net_put(s->table, s->table_len, p_buf, p_buf_end);
+    p_buf = buf_no_net_put(s->tablename, s->tablename_len, p_buf, p_buf_end);
 
     p_buf = buf_put(&s->fname_len, sizeof(s->fname_len), p_buf, p_buf_end);
 
@@ -281,6 +281,7 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
 
     p_buf = buf_put(&s->rename, sizeof(s->rename), p_buf, p_buf_end);
     p_buf = buf_no_net_put(s->newtable, sizeof(s->newtable), p_buf, p_buf_end);
+    p_buf = buf_put(&s->usedbtablevers, sizeof(s->usedbtablevers), p_buf, p_buf_end);
 
     return p_buf;
 }
@@ -342,14 +343,14 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
 
     p_buf = (uint8_t *)buf_get(&s->type, sizeof(s->type), p_buf, p_buf_end);
 
-    p_buf = (uint8_t *)buf_get(&s->table_len, sizeof(s->table_len), p_buf,
+    p_buf = (uint8_t *)buf_get(&s->tablename_len, sizeof(s->tablename_len), p_buf,
                                p_buf_end);
-    if (s->table_len != strlen((const char *)p_buf) + 1 ||
-        s->table_len > sizeof(s->table)) {
-        s->table_len = -1;
+    if (s->tablename_len != strlen((const char *)p_buf) + 1 ||
+        s->tablename_len > sizeof(s->tablename)) {
+        s->tablename_len = -1;
         return NULL;
     }
-    p_buf = (uint8_t *)buf_no_net_get(s->table, s->table_len, p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_no_net_get(s->tablename, s->tablename_len, p_buf, p_buf_end);
 
     p_buf = (uint8_t *)buf_get(&s->fname_len, sizeof(s->fname_len), p_buf,
                                p_buf_end);
@@ -500,6 +501,8 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
     p_buf = (uint8_t *)buf_get(&s->rename, sizeof(s->rename), p_buf, p_buf_end);
     p_buf = (uint8_t *)buf_no_net_get(s->newtable, sizeof(s->newtable), p_buf,
                                       p_buf_end);
+    p_buf = (uint8_t *)buf_get(&s->usedbtablevers, sizeof(s->usedbtablevers),
+                               p_buf, p_buf_end);
 
     return p_buf;
 }
@@ -568,7 +571,7 @@ int unpack_schema_change_type(struct schema_change_type *s, void *packed,
 
     if (p_buf == NULL) {
 
-        if (s->table_len < 0) {
+        if (s->tablename_len < 0) {
             logmsg(
                 LOGMSG_ERROR,
                 "unpack_schema_change_type: length of table in packed"
@@ -706,7 +709,7 @@ void print_schemachange_info(struct schema_change_type *s, struct dbtable *db,
     else
         sc_printf(s, info + 1);
 
-    if (s->fastinit) sc_printf(s, "fastinit starting on table %s\n", s->table);
+    if (s->fastinit) sc_printf(s, "fastinit starting on table %s\n", s->tablename);
 
     switch (s->scanmode) {
     case SCAN_INDEX:

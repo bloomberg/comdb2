@@ -68,8 +68,8 @@ struct schema_change_type {
     uuid_t uuid;
     int type; /* DBTYPE_TAGGED_TABLE or DBTYPE_QUEUE or DBTYPE_QUEUEDB
                  or DBTYPE_MORESTRIPE */
-    size_t table_len;
-    char table[MAXTABLELEN]; /* name of table/queue */
+    size_t tablename_len;
+    char tablename[MAXTABLELEN]; /* name of table/queue */
     int rename;              /* new table name */
     char newtable[MAXTABLELEN]; /* rename table */
     size_t fname_len;

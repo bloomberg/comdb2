@@ -204,7 +204,7 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, Token *proc,
 	struct schema_change_type *sc = new_schemachange_type();
 	sc->is_trigger = 1;
 	sc->addonly = 1;
-	strcpy(sc->table, qname);
+	strcpy(sc->tablename, qname);
 	struct dest *d = malloc(sizeof(struct dest));
 	d->dest = strdup(method);
 	listc_abl(&sc->dests, d);
@@ -233,7 +233,7 @@ void comdb2DropTrigger(Parse *parse, Token *proc)
 	struct schema_change_type *sc = new_schemachange_type();
 	sc->is_trigger = 1;
 	sc->drop_table = 1;
-	strcpy(sc->table, qname);
+	strcpy(sc->tablename, qname);
 	Vdbe *v = sqlite3GetVdbe(parse);
 	comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran,
 			    (vdbeFuncArgFree)&free_schema_change_type);
