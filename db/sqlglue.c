@@ -5077,7 +5077,7 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
 
     /* creating a temporary table */
     if (pBt->is_hashtable) {
-        temp_table *tbl;
+        struct temp_table *tbl;
         int bdberr;
 
         tbl = bdb_temp_hashtable_create(thedb->bdb_env, &bdberr);
