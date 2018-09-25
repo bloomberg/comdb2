@@ -7221,6 +7221,10 @@ static int lk_tmptbl_cursor_count(BtCursor *btcursor, i64 *count)
     return rc;
 }
 
+/*
+** WARNING: This function assumes (and requires) that the associated
+**          temp_tables_lk pthread mutex is already held.
+*/
 static int
 sqlite3BtreeCursor_temptable(Btree *pBt,      /* The btree */
                              int iTable,      /* Root page of table to open */
