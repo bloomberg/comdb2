@@ -7232,15 +7232,12 @@ sqlite3BtreeCursor_temptable(Btree *pBt,      /* The btree */
 {
     int bdberr = 0;
 
-    pthread_mutex_lock(&pBt->temp_tables_lk);
-
     struct temptable *src = sqlite3HashFind(
         &pBt->temp_tables, SQLITE_INT_TO_PTR(iTable));
 
     if (src == NULL) {
         logmsg(LOGMSG_ERROR, "%s: table %d not found\n",
                __func__, iTable);
-        pthread_mutex_unlock(&pBt->temp_tables_lk);
         return SQLITE_INTERNAL;
     }
 
@@ -7250,7 +7247,6 @@ sqlite3BtreeCursor_temptable(Btree *pBt,      /* The btree */
     if (!cur->tmptable) {
         logmsg(LOGMSG_ERROR, "%s: calloc sizeof(struct temp_table) failed\n",
                 __func__);
-        pthread_mutex_unlock(&pBt->temp_tables_lk);
         return SQLITE_INTERNAL;
     }
 
@@ -7287,7 +7283,6 @@ sqlite3BtreeCursor_temptable(Btree *pBt,      /* The btree */
         logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_cursor failed: %d\n",
                __func__, bdberr);
         free(cur->tmptable);
-        pthread_mutex_unlock(&pBt->temp_tables_lk);
         return SQLITE_INTERNAL;
     }
 
@@ -7303,7 +7298,6 @@ sqlite3BtreeCursor_temptable(Btree *pBt,      /* The btree */
         /* this also covers the flags == 0 case for OP_AggReset */
         cur->ixnum = 0;
 
-    pthread_mutex_unlock(&pBt->temp_tables_lk);
     return SQLITE_OK;
 }
 
