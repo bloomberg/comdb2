@@ -288,6 +288,10 @@ cstart:         '[' number ']' cstart
 									current_line);
 								any_errors++;
 							} else {
+                                if ($2.number < 0) {
+                                    logmsg(LOGMSG_WARN, "CSC2: ERROR AT LINE %3d: NEGATIVE ARRAY LENGTH\n",
+                                           current_line);
+                                }
 								add_array($2.number, NULL);
 							}
 						}
@@ -303,6 +307,10 @@ cstart:         '[' number ']' cstart
 										current_line);
 									any_errors++;
 								} else {
+                                    if (constants[i].value < 0) {
+                                        logmsg(LOGMSG_WARN, "CSC2: ERROR AT LINE %3d: NEGATIVE ARRAY LENGTH\n",
+                                               current_line);
+                                    }
 									lastidx++;
 									add_array(constants[i].value,
 										constants[i].nm);
