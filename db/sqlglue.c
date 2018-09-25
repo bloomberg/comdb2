@@ -11217,7 +11217,7 @@ void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
     // aDb[0]: sqlite_master
     // aDb[1]: sqlite_temp_master
     struct temptable *pTbl = sqlite3HashFind(
-        &src->aDb[1].pBt[0]->temp_tables, SQLITE_INT_TO_PTR(rootpg));
+        &src->aDb[1].pBt[0].temp_tables, SQLITE_INT_TO_PTR(rootpg));
 
     if (pTbl == NULL) {
         logmsg(LOGMSG_ERROR, "%s table %d not found, sql:%s\n",
