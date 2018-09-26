@@ -6611,111 +6611,70 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
 
     /*fprintf(stderr,"rpl type is %d msg=%x\n",rpl.type, msg);*/
 
-    switch (type) {
-    case OSQL_USEDB: {
-        osql_usedb_t dt;
-        p_buf_end = (uint8_t *)p_buf + sizeof(osql_usedb_t);
-        char *tablename;
-
-        tablename = (char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
-
-        if (logsb) {
-            sbuf2printf(logsb, "[%llu %s] OSQL_USEDB %*.s\n", rqid,
-                        comdb2uuidstr(uuid, us), dt.tablenamelen, tablename);
-            sbuf2flush(logsb);
-        }
-        if (unlikely(timepart_is_timepart(tablename, 1))) {
-            char *newest_shard;
-            unsigned long long ver;
-
-            newest_shard = timepart_newest_shard(tablename, &ver);
-            if (newest_shard) {
-                iq->usedbtablevers = ver;
-                free(newest_shard);
-            } else {
-                logmsg(LOGMSG_ERROR, "%s: broken time partition %s"
-                                     "\n",
-                       __func__, tablename);
-
-                return conv_rc_sql2blkop(iq, step, -1, ERR_NO_SUCH_TABLE, err,
-                                         tablename, 0);
-            }
-        } else {
-            if (is_tablename_queue(tablename, strlen(tablename))) {
-                iq->usedb = getqueuebyname(tablename);
-                iq->usedbtablevers = 0;
-            } else {
-                iq->usedb = get_dbtable_by_name(tablename);
-                iq->usedbtablevers = dt.tableversion;
-            }
-            if (iq->usedb == NULL) {
-                iq->usedb = iq->origdb;
-                logmsg(LOGMSG_INFO, "%s: unable to get usedb for table %.*s\n",
-                       __func__, dt.tablenamelen, tablename);
-                return conv_rc_sql2blkop(iq, step, -1, ERR_NO_SUCH_TABLE, err,
-                                         tablename, 0);
-            }
-        }
-    } break;
-    case OSQL_SCHEMACHANGE: {
-        struct schema_change_type *sc = new_schemachange_type();
-        p_buf_end = p_buf + msglen;
-        p_buf = osqlcomm_schemachange_type_get(sc, p_buf, p_buf_end);
-
-        if (p_buf == NULL) {
-            logmsg(LOGMSG_ERROR, "%s:%d failed to read schema change object\n",
-                   __func__, __LINE__);
-            reqerrstr(iq, ERR_SC,
-                      "internal error: failed to read schema change object");
-            return ERR_SC;
-        }
-
-        if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_ASYNC))
-            sc->nothrevent = 0;
-        else
-            sc->nothrevent = 1;
-        sc->finalize = 0;
-        if (sc->original_master_node[0] != 0 &&
-            strcmp(sc->original_master_node, gbl_mynode))
-            sc->resume = 1;
-
-        iq->sc = sc;
-        sc->iq = iq;
-        if (sc->db == NULL) {
-            sc->db = get_dbtable_by_name(sc->table);
-        }
-        sc->tran = NULL;
-        if (sc->db)
-            iq->usedb = sc->db;
-
-        if (!timepart_is_timepart(sc->table, 1)) {
-            rc = start_schema_change_tran(iq, NULL);
-            if (rc != SC_ASYNC && rc != SC_COMMIT_PENDING) {
-                iq->sc = NULL;
-            } else {
-                iq->sc->sc_next = iq->sc_pending;
-                iq->sc_pending = iq->sc;
-                iq->osql_flags |= OSQL_FLAGS_SCDONE;
-            }
-        } else {
-            timepart_sc_arg_t arg = {0};
-            arg.s = sc;
-            arg.s->iq = iq;
-            rc = timepart_foreach_shard(
-                sc->table, start_schema_change_tran_wrapper, &arg, 0);
-        }
-        iq->usedb = NULL;
-
-        if (!rc || rc == SC_ASYNC || rc == SC_COMMIT_PENDING)
-            return 0;
-        else
-            return ERR_SC;
-    } break;
-    default:
+    if (type != OSQL_SCHEMACHANGE)
         return 0;
+
+    struct schema_change_type *sc = new_schemachange_type();
+    p_buf_end = p_buf + msglen;
+    p_buf = osqlcomm_schemachange_type_get(sc, p_buf, p_buf_end);
+
+    if (p_buf == NULL) {
+        logmsg(LOGMSG_ERROR, "%s:%d failed to read schema change object\n",
+               __func__, __LINE__);
+        reqerrstr(iq, ERR_SC,
+                  "internal error: failed to read schema change object");
+        return ERR_SC;
     }
 
-    return 0;
+    logmsg(LOGMSG_DEBUG, "OSQL_SCHEMACHANGE '%s' tableversion %d\n",
+           sc->table, sc->usedbtablevers);
+
+    if (logsb) {
+        sbuf2printf(logsb, "[%llu %s] OSQL_SCHEMACHANGE %s\n", rqid,
+                    comdb2uuidstr(uuid, us), sc->table);
+        sbuf2flush(logsb);
+    }
+
+    if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_ASYNC))
+        sc->nothrevent = 0;
+    else
+        sc->nothrevent = 1;
+    sc->finalize = 0;
+    if (sc->original_master_node[0] != 0 &&
+        strcmp(sc->original_master_node, gbl_mynode))
+        sc->resume = 1;
+
+    iq->sc = sc;
+    sc->iq = iq;
+    if (sc->db == NULL) {
+        sc->db = get_dbtable_by_name(sc->table);
+    }
+    sc->tran = NULL;
+    if (sc->db)
+        iq->usedb = sc->db;
+
+    if (!timepart_is_timepart(sc->table, 1)) {
+        rc = start_schema_change_tran(iq, NULL);
+        if (rc != SC_ASYNC && rc != SC_COMMIT_PENDING) {
+            iq->sc = NULL;
+        } else {
+            iq->sc->sc_next = iq->sc_pending;
+            iq->sc_pending = iq->sc;
+            iq->osql_flags |= OSQL_FLAGS_SCDONE;
+        }
+    } else {
+        timepart_sc_arg_t arg = {0};
+        arg.s = sc;
+        arg.s->iq = iq;
+        rc = timepart_foreach_shard(
+            sc->table, start_schema_change_tran_wrapper, &arg, 0);
+    }
+    iq->usedb = NULL;
+
+    if (!rc || rc == SC_ASYNC || rc == SC_COMMIT_PENDING)
+        return 0;
+    else
+        return ERR_SC;
 }
 
 /**
@@ -6886,7 +6845,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
             newest_shard = timepart_newest_shard(tablename, &ver);
             if (newest_shard) {
-                iq->usedbtablevers = ver;
                 free(newest_shard);
             } else {
                 logmsg(LOGMSG_ERROR, "%s: broken time partition %s"
@@ -6899,10 +6857,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         } else {
             if (is_tablename_queue(tablename, strlen(tablename))) {
                 iq->usedb = getqueuebyname(tablename);
-                iq->usedbtablevers = 0;
             } else {
                 iq->usedb = get_dbtable_by_name(tablename);
-                iq->usedbtablevers = dt.tableversion;
             }
             if (iq->usedb == NULL) {
                 iq->usedb = iq->origdb;
@@ -6916,10 +6872,10 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         // check usedb table version and return verify error if different
         // add/upd/del always follow a usedb opcode
         // thus they will not need to check table version
-        if (iq->usedb && iq->usedb->tableversion != iq->usedbtablevers) {
+        if (iq->usedb && iq->usedb->tableversion != dt.tableversion) {
             if (iq->debug)
-                reqprintf(iq, "Stale buffer: usedb version %d vs curr ver %d\n",
-                          iq->usedbtablevers, iq->usedb->tableversion);
+                reqprintf(iq, "Stale buffer: USEDB version %d vs curr ver %d\n",
+                          dt.tableversion, iq->usedb->tableversion);
             poll(NULL, 0, BDB_ATTR_GET(thedb->bdb_attr, SC_DELAY_VERIFY_ERROR));
             err->errcode = OP_FAILED_VERIFY;
             return ERR_VERIFY;

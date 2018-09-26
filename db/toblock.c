@@ -4066,14 +4066,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     BACKOUT;
                 }
 
-                /*
-                  Update iq->usedbtablevers here if the request came via IPC.
-                  This is done to avoid failure due to table version mismatch.
-                */
-                if (iq->p_sinfo) {
-                    iq->usedbtablevers = iq->usedb->tableversion;
-                }
-
                 if (iq->debug)
                     reqprintf(iq, "DB '%s'", iq->usedb->tablename);
             } else {
