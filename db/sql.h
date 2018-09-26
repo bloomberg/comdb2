@@ -55,8 +55,6 @@ enum transaction_level {
  * of appsock threads with small stacks. */
 
 #define MAX_HASH_SQL_LENGTH 8192
-#define MAX_USERNAME_LEN 17
-#define MAX_PASSWORD_LEN 19
 #define FINGERPRINTSZ 16
 
 /* Static rootpages numbers. */

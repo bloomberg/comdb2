@@ -1244,14 +1244,14 @@ static void *purge_old_files_thread(void *arg)
 
 /* remove every file that contains ".csc2" anywhere in its name.
    this should be safe */
-int clear_csc2_files(void)
+static int clear_csc2_files(void)
 {
-    char path[256];
+    char path[PATH_MAX] = {0};
     DIR *dirp = NULL;
     struct dirent *dp = NULL;
-    bzero(path, sizeof(path));
 
-    snprintf(path, 256, "%s", thedb->basedir);
+    /* TODO: Why copy thedb->basedir? */
+    snprintf(path, sizeof(path), "%s", thedb->basedir);
 
     dirp = opendir(path);
     if (dirp == NULL)
@@ -1259,7 +1259,7 @@ int clear_csc2_files(void)
     while (dirp) {
         errno = 0;
         if ((dp = readdir(dirp)) != NULL) {
-            char fullfile[512];
+            char fullfile[PATH_MAX];
             char *ptr;
 
             if (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, ".."))
@@ -1269,7 +1269,7 @@ int clear_csc2_files(void)
 
             if (ptr) {
                 int rc;
-                sprintf(fullfile, "%s/%s", path, dp->d_name);
+                snprintf(fullfile, sizeof(fullfile), "%s/%s", path, dp->d_name);
                 logmsg(LOGMSG_INFO, "removing csc2 file %s\n", fullfile);
                 rc = unlink(fullfile);
                 if (rc)

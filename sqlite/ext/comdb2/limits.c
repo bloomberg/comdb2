@@ -62,7 +62,7 @@ struct limit_t {
                                            "transaction"),
     COMDB2_LIMIT(MAXRECSZ, "Maximum record size"),
     COMDB2_LIMIT(MAXSIBLINGS, "Maximum number of sibling nodes"),
-    COMDB2_LIMIT(MAX_SPNAME, "Maximum length of stored procedure"),
+    COMDB2_LIMIT(MAX_SPNAME, "Maximum stored procedure name length"),
     COMDB2_LIMIT(MAX_SPVERSION_LEN,
                  "Maximum length of stored procedure version"),
     {"MAXTABLELEN", "Maximum table name length", MAXTABLELEN - 1},

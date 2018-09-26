@@ -1311,7 +1311,8 @@ clipper_usage:
                 return -1;
             }
             if (ltok >= MAXTABLELEN) {
-                logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n", MAXTABLELEN);
+                logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n",
+                       MAXTABLELEN - 1);
                 return -1;
             }
             tokcpy(tok, ltok, table);
@@ -1950,7 +1951,8 @@ clipper_usage:
             return -1;
         }
         if (ltok >= MAXTABLELEN) {
-            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n", MAXTABLELEN);
+            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n",
+                   MAXTABLELEN - 1);
             return -1;
         }
         tokcpy(tok, ltok, table);
@@ -2071,7 +2073,8 @@ clipper_usage:
             return -1;
         }
         if (ltok >= MAXTABLELEN) {
-            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n", MAXTABLELEN);
+            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n",
+                   MAXTABLELEN - 1);
             return -1;
         }
 
@@ -2123,7 +2126,8 @@ clipper_usage:
             return -1;
         }
         if (ltok >= MAXTABLELEN) {
-            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n", MAXTABLELEN);
+            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n",
+                   MAXTABLELEN - 1);
             return -1;
         }
 
@@ -2157,7 +2161,8 @@ clipper_usage:
             return -1;
         }
         if (ltok >= MAXTABLELEN) {
-            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n", MAXTABLELEN);
+            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n",
+                   MAXTABLELEN - 1);
             return -1;
         }
 
@@ -2174,7 +2179,8 @@ clipper_usage:
             return -1;
         }
         if (ltok >= MAXTABLELEN) {
-            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n", MAXTABLELEN);
+            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n",
+                   MAXTABLELEN - 1);
             return -1;
         }
 
@@ -2195,7 +2201,8 @@ clipper_usage:
             return -1;
         }
         if (ltok >= MAXTABLELEN) {
-            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n", MAXTABLELEN);
+            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n",
+                   MAXTABLELEN - 1);
             return -1;
         }
 
