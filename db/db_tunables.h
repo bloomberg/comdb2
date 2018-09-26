@@ -37,6 +37,11 @@ REGISTER_TUNABLE("allow_lua_dynamic_libs",
                  "libraries (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_allow_lua_dynamic_libs, READONLY | NOARG,
                  NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("allow_negative_column_size",
+                 "Allow negative column size in csc2 schema. Added mostly for "
+                 "backwards compatibility. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_allow_neg_column_size, READONLY | NOARG,
+                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("allow_portmux_route", NULL, TUNABLE_BOOLEAN,
                  &gbl_pmux_route_enabled, READONLY | NOARG | READEARLY, NULL,
                  NULL, NULL, NULL);
