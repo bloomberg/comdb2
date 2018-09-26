@@ -34,7 +34,7 @@ import java.util.logging.Logger;
  * Credits to mybatis.
  * http://grepcode.com/file/repo1.maven.org/maven2/org.mybatis/mybatis/3.0.4/org/apache/ibatis/datasource/unpooled/UnpooledDataSource.java
  * 
- * Cedits to apache dbcp for initialization sql logic
+ * Credits to apache dbcp for initialization sql logic
  * https://github.com/apache/commons-dbcp/blob/master/src/main/java/org/apache/commons/dbcp2/BasicDataSource.java#L1201
  * 
  * @author Sebastien Blind
