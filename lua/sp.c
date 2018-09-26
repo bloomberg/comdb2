@@ -4790,9 +4790,7 @@ static int l_send_back_row(Lua lua, sqlite3_stmt *stmt, int nargs)
 {
     int rc = 0;
     SP sp = getsp(lua);
-    if (nargs <= 0) {
-        return luabb_error(lua, sp, "no row to send back");
-    }
+    luaL_argcheck(lua, nargs > 0, 1, "no row to send back");
     if (nargs > MAXCOLUMNS) {
         return luabb_error(lua, sp, "attempt to read %d cols (maxcols:%d)",
                            nargs, MAXCOLUMNS);
