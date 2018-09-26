@@ -253,7 +253,6 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     arg->trans = trans;
     arg->iq = iq;
     arg->sc = iq->sc;
-    iq->sc->usedbtablevers = iq->usedbtablevers;
 
     if (s->resume && s->alteronly && !s->finalize_only) {
         if (gbl_test_sc_resume_race) {
@@ -326,7 +325,7 @@ int start_schema_change(struct schema_change_type *s)
         s->db = get_dbtable_by_name(s->table);
     }
     iq->usedb = s->db;
-    iq->usedbtablevers = s->db ? s->db->tableversion : 0;
+    s->usedbtablevers = s->db ? s->db->tableversion : 0;
     return start_schema_change_tran(iq, NULL);
 }
 

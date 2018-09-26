@@ -1691,7 +1691,6 @@ int osql_schemachange_logic(struct schema_change_type *sc,
     int restarted;
     int rc = 0;
     unsigned long long rqid = thd->clnt->osql.rqid;
-    unsigned long long version = 0;
 
     osql->running_ddl = 1;
 
@@ -1711,37 +1710,22 @@ int osql_schemachange_logic(struct schema_change_type *sc,
         comdb2uuidcpy(sc->uuid, osql->uuid);
     }
 
+    sc->usedbtablevers = comdb2_table_version(sc->table);
+
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
-        if (usedb) {
-            if (getdbidxbyname(sc->table) < 0) { // view
-                char *viewname = timepart_newest_shard(sc->table, &version);
-                if (viewname) {
-                    free(viewname);
-                } else
-                    usedb = 0;
-            } else {
-                version = comdb2_table_version(sc->table);
-            }
+        if (usedb && getdbidxbyname(sc->table) < 0) { // view
+            unsigned long long version = 0;
+            char *viewname = timepart_newest_shard(sc->table, &version);
+            sc->usedbtablevers = version;
+            if (viewname)
+                free(viewname);
+            else
+                usedb = 0;
         }
+
         do {
-            rc = 0;
-            if (usedb) {
-                if (osql->tablename) {
-                    /* free the cached tablename so that we send a new usedb for
-                     * the next op */
-                    free(osql->tablename);
-                    osql->tablename = NULL;
-                    osql->tablenamelen = 0;
-                }
-                rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid,
-                                     sc->table, NET_OSQL_SOCK_RPL, osql->logsb,
-                                     version);
-            }
-            if (rc == SQLITE_OK) {
-                rc = osql_send_schemachange(osql->host, rqid,
-                                            thd->clnt->osql.uuid, sc,
-                                            NET_OSQL_SOCK_RPL, osql->logsb);
-            }
+            rc = osql_send_schemachange(osql->host, rqid, thd->clnt->osql.uuid,
+                                        sc, NET_OSQL_SOCK_RPL, osql->logsb);
             RESTART_SOCKSQL;
         } while (restarted && rc == 0);
         if (rc) {
