@@ -6643,6 +6643,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
         } else {
             if (is_tablename_queue(tablename, strlen(tablename))) {
                 iq->usedb = getqueuebyname(tablename);
+                iq->usedbtablevers = 0;
             } else {
                 iq->usedb = get_dbtable_by_name(tablename);
                 iq->usedbtablevers = dt.tableversion;
@@ -6898,6 +6899,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         } else {
             if (is_tablename_queue(tablename, strlen(tablename))) {
                 iq->usedb = getqueuebyname(tablename);
+                iq->usedbtablevers = 0;
             } else {
                 iq->usedb = get_dbtable_by_name(tablename);
                 iq->usedbtablevers = dt.tableversion;
