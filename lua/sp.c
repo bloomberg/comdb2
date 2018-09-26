@@ -2089,7 +2089,6 @@ static int luatable_emit(Lua L)
 static int dbtable_insert(Lua lua)
 {
     SP sp = getsp(lua);
-
     int rc, nargs, len;
     strbuf *columns, *params, *sql;
 

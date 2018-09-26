@@ -12,8 +12,8 @@ local function main()
 		end
 
 		db:begin()
-			audit:insert({added_by='consumer',type=tp, inew=inew, iold=iold})
 			consumer:consume()
+			audit:insert({added_by='consumer',type=tp, inew=inew, iold=iold})
 		db:commit()
 	end
 end
