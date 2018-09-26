@@ -8155,7 +8155,6 @@ int sqlite3BtreeCursor(
     if (pBt->is_temporary) { /* temp table */
         pthread_mutex_lock(&pBt->temp_tables_lk);
         assert( iTable>=1 );
-        assert( iTable<=pBt->temp_tables.count );
         if( forOpen && iTable==pBt->temp_tables.count+1 ){
           /*
           ** NOTE: When being called to open a temporary table cursor in
@@ -8164,11 +8163,15 @@ int sqlite3BtreeCursor(
           **       Attempt to do that now.
           */
           int tmpPgno;
+          assert( !sqlite3HashFind(&pBt->temp_tables, rootPageNumToTempHashKey(iTable)) );
+          pthread_mutex_unlock(&pBt->temp_tables_lk);
           rc = sqlite3BtreeCreateTable(pBt, &tmpPgno, BTREE_INTKEY);
+          pthread_mutex_lock(&pBt->temp_tables_lk);
           assert( tmpPgno==iTable );
           logmsg(LOGMSG_INFO, "%s created temporary table, pgno %d, rc %d\n",
                  __func__, tmpPgno, rc);
         }
+        assert( iTable<=pBt->temp_tables.count );
         if( rc==SQLITE_OK ){
           rc = sqlite3BtreeCursor_temptable(pBt, iTable, wrFlag & BTREE_CUR_WR,
                                             temp_table_cmp, pKeyInfo, cur, thd);
