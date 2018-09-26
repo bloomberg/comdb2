@@ -2822,6 +2822,7 @@ static void update_tran_funcs(Lua L, int in_tran)
 
 static void drop_temp_tables(SP sp)
 {
+    sqlite3 *db = getdb(sp);
     tmptbl_info_t *tbl;
     LIST_FOREACH(tbl, &sp->tmptbls, entries)
     {
@@ -2829,7 +2830,6 @@ static void drop_temp_tables(SP sp)
         two_part_tbl_name(tbl->name, n1, n2);
         char drop_sql[128];
         sprintf(drop_sql, "DROP TABLE temp.\"%s\"", n2);
-        sqlite3 *db = getdb(sp);
         sp->clnt->skip_peer_chk = 1;
         sqlite3_exec(db, drop_sql, NULL, NULL, NULL);
         sp->clnt->skip_peer_chk = 0;
