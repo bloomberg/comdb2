@@ -1,7 +1,5 @@
-(username='abcd', isOP='N')
-(username='dcba', isOP='N')
-(username='default', isOP='N')
-(username='mohit', isOP='Y')
+[select * from comdb2_users] failed with rc -106 access denied
+[select * from comdb2_tablepermissions] failed with rc -106 access denied
 [create table '01234567890123456789012345'(i int)] failed with rc -3 User-schema name is too long
 (tablename='dummy')
 (tablename='sqlite_stat1')
