@@ -8163,7 +8163,7 @@ int sqlite3BtreeCursor(
           **       Attempt to do that now.
           */
           int tmpPgno;
-          temptable *saved_tmptbl_clone = tmptbl_clone;
+          struct temptable *saved_tmptbl_clone = tmptbl_clone;
           tmptbl_clone = NULL;
           assert( !sqlite3HashFind(&pBt->temp_tables, rootPageNumToTempHashKey(iTable)) );
           pthread_mutex_unlock(&pBt->temp_tables_lk);
@@ -11252,6 +11252,12 @@ out:
     done_sql_thread();
     sql_mem_shutdown(NULL);
     thread_memdestroy();
+}
+
+void reset_temp_master(sqlite3 *db){
+    sqlite3BtreeEnterAll(db);
+    sqlite3ResetOneSchema(db, 1);
+    sqlite3BtreeLeaveAll(db);
 }
 
 void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,

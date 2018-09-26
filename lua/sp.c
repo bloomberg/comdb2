@@ -2834,6 +2834,7 @@ static void drop_temp_tables(SP sp)
         sqlite3_exec(db, drop_sql, NULL, NULL, NULL);
         sp->clnt->skip_peer_chk = 0;
     }
+    reset_temp_master(db);
 }
 
 // SP ready to run again
