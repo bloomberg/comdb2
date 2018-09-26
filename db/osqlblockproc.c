@@ -139,7 +139,6 @@ static int osql_bplog_key_cmp(void *usermem, int key1len, const void *key1,
     oplog_key_t *k1 = (oplog_key_t *)key1;
     oplog_key_t *k2 = (oplog_key_t *)key2;
 #endif
-    int cmp;
 
     if (k1->seq < k2->seq) {
         return -1;
@@ -164,7 +163,6 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
     blocksql_tran_t *tran = NULL;
     blocksql_info_t *info = NULL;
     int bdberr = 0;
-    int rc;
 
     /*
        this stuff is LOCKLESS, since we have only block
@@ -235,7 +233,7 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
     int error = 0;
     blocksql_info_t *info = NULL, *temp = NULL;
     struct errstat generr = {0}, *xerr;
-    int rc = 0, irc = 0;
+    int rc = 0;
     int stop_time = 0;
 
     while (tran->pending.top && !error) {
@@ -372,11 +370,11 @@ int osql_bplog_schemachange(struct ireq *iq)
             sc->sc_next = iq->sc_pending;
             iq->sc_pending = sc;
         } else if (sc->sc_rc == SC_MASTER_DOWNGRADE) {
-            sc_set_running(sc->table, 0, iq->sc_seed, NULL, 0);
+            sc_set_running(sc->tablename, 0, iq->sc_seed, NULL, 0);
             free_schema_change_type(sc);
             rc = ERR_NOMASTER;
         } else {
-            sc_set_running(sc->table, 0, iq->sc_seed, NULL, 0);
+            sc_set_running(sc->tablename, 0, iq->sc_seed, NULL, 0);
             if (sc->sc_rc)
                 rc = ERR_SC;
             free_schema_change_type(sc);
@@ -445,7 +443,6 @@ char *osql_sorese_type_to_str(int stype)
 char *osql_get_tran_summary(struct ireq *iq)
 {
 
-    int i = 0;
     char *ret = NULL;
     char *nametype;
 
@@ -506,7 +503,6 @@ char *osql_get_tran_summary(struct ireq *iq)
 static pthread_mutex_t kludgelk = PTHREAD_MUTEX_INITIALIZER;
 int osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func, const char *callfunc, int line)
 {
-    int val = 0;
     int rc = 0;
     int bdberr = 0;
     blocksql_info_t *info = NULL, *tmp = NULL;
@@ -636,11 +632,9 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     struct ireq *iq = osql_session_get_ireq(sess);
     int rc = 0, rc_op = 0;
     oplog_key_t key = {0};
-    int rpl_len = 0;
     struct errstat *xerr;
     int bdberr;
     int debug = 0;
-    uuidstr_t us;
 
     int type = 0;
     buf_get(&type, sizeof(type), rpl, rpl + rplen);
@@ -948,7 +942,6 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
     /* must make sure the packed sqlq is NUL terminated later on */
 
     /* pack sql */
-    uint8_t *sqlbuf = p_buf;
     if (!(p_buf = packedreq_sql_put(&sql, p_buf, *pp_buf_end)))
         return -1;
     *sqlqret =
@@ -1067,7 +1060,6 @@ static int process_this_session(
                 struct block_err *, int *, SBUF2 *))
 {
 
-    blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
     unsigned long long rqid = osql_sess_getrqid(sess);
     oplog_key_t key_next, key_crt;
     int countops = 0;
@@ -1220,7 +1212,6 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     int out_rc = 0;
     int bdberr = 0;
     struct temp_cursor *dbc = NULL;
-    bpfunc_lstnode_t *cur_bpfunc = NULL;
 
     /* lock the table (it should get no more access anway) */
     if ((rc = pthread_mutex_lock(&tran->store_mtx))) {
@@ -1358,10 +1349,7 @@ void osql_bplog_time_done(struct ireq *iq)
     blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
     osql_bp_timings_t *tms = &iq->timings;
     blocksql_info_t *info = NULL;
-    int rc = 0;
-    int bdberr = 0;
     char msg[4096];
-    unsigned long long rqid;
     int tottm = 0;
     int rtt = 0;
     int rtrs = 0;
@@ -1476,9 +1464,9 @@ void *osql_commit_timepart_resuming_sc(void *p)
             sc->sc_next = sc_pending;
             sc_pending = sc;
         } else {
-            logmsg(LOGMSG_ERROR, "%s: shard '%s', rc %d\n", __func__, sc->table,
-                   sc->sc_rc);
-            sc_set_running(sc->table, 0, 0, NULL, 0);
+            logmsg(LOGMSG_ERROR, "%s: shard '%s', rc %d\n", __func__,
+                   sc->tablename, sc->sc_rc);
+            sc_set_running(sc->tablename, 0, 0, NULL, 0);
             free_schema_change_type(sc);
             error = 1;
         }
@@ -1530,7 +1518,7 @@ void *osql_commit_timepart_resuming_sc(void *p)
             iq.usedb = iq.sc->db;
         if (finalize_schema_change(&iq, iq.sc_tran)) {
             logmsg(LOGMSG_ERROR, "%s: failed to finalize '%s'\n", __func__,
-                   iq.sc->table);
+                   iq.sc->tablename);
             goto abort_sc;
         }
         iq.usedb = NULL;

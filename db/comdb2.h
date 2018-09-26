@@ -1244,7 +1244,6 @@ struct ireq {
     uint8_t *p_buf_out_start;     /* pointer to start of output buf */
     const uint8_t *p_buf_out_end; /* pointer to just past end of output buf */
     unsigned long long rqid;
-    int usedbtablevers;
     int frompid;
     int debug;
     int opcode;

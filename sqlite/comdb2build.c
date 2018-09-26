@@ -325,7 +325,7 @@ int comdb2PrepareSC(Vdbe *v, Parse *pParse, int int_arg,
                     vdbeFuncArgFree freeFunc)
 {
     comdb2WriteTransaction(pParse);
-    Table *t = sqlite3LocateTable(pParse, LOCATE_NOERR, arg->table, NULL);
+    Table *t = sqlite3LocateTable(pParse, LOCATE_NOERR, arg->tablename, NULL);
     if (t) {
         sqlite3VdbeAddTable(v, t);
     }
@@ -593,10 +593,10 @@ void comdb2CreateTableCSC2(
     if (noErr && get_dbtable_by_name(table))
         goto out;
 
-    if (chkAndCopyTableTokens(v, pParse, sc->table, pName1, pName2, 0))
+    if (chkAndCopyTableTokens(v, pParse, sc->tablename, pName1, pName2, 0))
         goto out;
 
-    if (authenticateSC(sc->table, pParse))
+    if (authenticateSC(sc->tablename, pParse))
         goto out;
 
     sc->addonly = 1;
@@ -630,10 +630,10 @@ void comdb2AlterTableCSC2(
         return;
     }
 
-    if (chkAndCopyTableTokens(v, pParse,sc->table, pName1, pName2, 1))
+    if (chkAndCopyTableTokens(v, pParse,sc->tablename, pName1, pName2, 1))
         goto out;
 
-    if (authenticateSC(sc->table, pParse))
+    if (authenticateSC(sc->tablename, pParse))
         goto out;
 
     sc->alteronly = 1;
@@ -667,11 +667,11 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
         return;
     }
 
-    if (chkAndCopyTable(pParse, sc->table, pName->a[0].zName,
+    if (chkAndCopyTable(pParse, sc->tablename, pName->a[0].zName,
                         strlen(pName->a[0].zName), 1))
         goto out;
 
-    if (authenticateSC(sc->table, pParse))
+    if (authenticateSC(sc->tablename, pParse))
         goto out;
 
     sc->same_schema = 1;
@@ -679,9 +679,9 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
     sc->fastinit = 1;
     sc->nothrevent = 1;
     
-    if(get_csc2_file(sc->table, -1 , &sc->newcsc2, NULL )) {
+    if(get_csc2_file(sc->tablename, -1 , &sc->newcsc2, NULL )) {
         logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
-               sc->table);
+               sc->tablename);
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
@@ -704,10 +704,10 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
         return;
     }
 
-    if (chkAndCopyTableTokens(v, pParse,sc->table, nm, lnm, 1))
+    if (chkAndCopyTableTokens(v, pParse,sc->tablename, nm, lnm, 1))
         goto out;
 
-    if (authenticateSC(sc->table, pParse))
+    if (authenticateSC(sc->tablename, pParse))
         goto out;
 
     sc->nothrevent = 1;
@@ -737,10 +737,10 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
     sc->convert_sleep = gbl_convert_sleep;
 
     sc->same_schema = 1;
-    if(get_csc2_file(sc->table, -1 , &sc->newcsc2, NULL ))
+    if(get_csc2_file(sc->tablename, -1 , &sc->newcsc2, NULL ))
     {
         logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
-               sc->table);
+               sc->tablename);
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
@@ -780,20 +780,20 @@ void comdb2Truncate(Parse* pParse, Token* nm, Token* lnm)
         return;
     }
 
-    if (chkAndCopyTableTokens(v, pParse,sc->table, nm, lnm, 1))
+    if (chkAndCopyTableTokens(v, pParse,sc->tablename, nm, lnm, 1))
         goto out;
 
-    if (authenticateSC(sc->table, pParse))
+    if (authenticateSC(sc->tablename, pParse))
         goto out;
 
     sc->fastinit = 1;
     sc->nothrevent = 1;
     sc->same_schema = 1;
 
-    if(get_csc2_file(sc->table, -1 , &sc->newcsc2, NULL ))
+    if(get_csc2_file(sc->tablename, -1 , &sc->newcsc2, NULL ))
     {
         logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
-               sc->table);
+               sc->tablename);
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
@@ -818,16 +818,16 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
         return;
     }
 
-    if (chkAndCopyTableTokens(v,pParse,sc->table, nm, lnm, 1))
+    if (chkAndCopyTableTokens(v,pParse,sc->tablename, nm, lnm, 1))
         goto out;
 
-    if (authenticateSC(sc->table, pParse))
+    if (authenticateSC(sc->tablename, pParse))
         goto out;
 
     sc->same_schema = 1;
-    if(get_csc2_file(sc->table, -1 , &sc->newcsc2, NULL )) {
+    if(get_csc2_file(sc->tablename, -1 , &sc->newcsc2, NULL )) {
         logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
-               sc->table);
+               sc->tablename);
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
@@ -835,9 +835,9 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
     if (create_string_from_token(v, pParse, &indexname, index))
         goto out;
 
-    int rc = getidxnumbyname(sc->table, indexname, &index_num );
+    int rc = getidxnumbyname(sc->tablename, indexname, &index_num );
     if( rc ){
-        logmsg(LOGMSG_ERROR, "!table:index '%s:%s' not found\n", sc->table, indexname);
+        logmsg(LOGMSG_ERROR, "!table:index '%s:%s' not found\n", sc->tablename, indexname);
         setError(pParse, SQLITE_ERROR, "Index not found");
         goto out;
     }
@@ -883,7 +883,7 @@ void comdb2CreateProcedure(Parse* pParse, Token* nm, Token* ver, Token* proc)
     }
 
     struct schema_change_type *sc = new_schemachange_type();
-    strcpy(sc->table, spname);
+    strcpy(sc->tablename, spname);
     sc->newcsc2 = malloc(proc->n);
     sc->addsp = 1;
 
@@ -924,7 +924,7 @@ void comdb2DefaultProcedure(Parse *pParse, Token *nm, Token *ver, int str)
     }
 
     struct schema_change_type *sc = new_schemachange_type();
-    strcpy(sc->table, spname);
+    strcpy(sc->tablename, spname);
 
     if (str) {
         if (comdb2TokenToStr(ver, sp_version, sizeof(sp_version))) {
@@ -968,7 +968,7 @@ void comdb2DropProcedure(Parse *pParse, Token *nm, Token *ver, int str)
         setError(pParse, SQLITE_NOMEM, "System out of memory");
         return;
     }
-    strcpy(sc->table, spname);
+    strcpy(sc->tablename, spname);
 
     if (str) {
         if (comdb2TokenToStr(ver, sp_version, sizeof(sp_version))) {
@@ -1893,10 +1893,10 @@ void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName,
         return;
     }
 
-    if (chkAndCopyTableTokens(v, pParse, sc->table, pSrcName, NULL, 1))
+    if (chkAndCopyTableTokens(v, pParse, sc->tablename, pSrcName, NULL, 1))
         goto out;
 
-    if (authenticateSC(sc->table, pParse))
+    if (authenticateSC(sc->tablename, pParse))
         goto out;
 
 
@@ -3470,11 +3470,11 @@ void comdb2AlterTableEnd(Parse *pParse)
     if (sc == 0)
         goto oom;
 
-    if ((chkAndCopyTable(pParse, sc->table, ctx->schema->name,
+    if ((chkAndCopyTable(pParse, sc->tablename, ctx->schema->name,
                          strlen(ctx->schema->name), 1)))
         goto cleanup;
 
-    if (authenticateSC(sc->table, pParse))
+    if (authenticateSC(sc->tablename, pParse))
         goto cleanup;
 
     sc->alteronly = 1;
@@ -3590,11 +3590,11 @@ void comdb2CreateTableEnd(
     if (sc == 0)
         goto oom;
 
-    if ((chkAndCopyTable(pParse, sc->table, ctx->schema->name,
+    if ((chkAndCopyTable(pParse, sc->tablename, ctx->schema->name,
                          strlen(ctx->schema->name), 0)))
         goto cleanup;
 
-    if (authenticateSC(sc->table, pParse))
+    if (authenticateSC(sc->tablename, pParse))
         goto cleanup;
     sc->addonly = 1;
     sc->nothrevent = 1;
@@ -4300,11 +4300,11 @@ void comdb2CreateIndex(
     if (pParse->rc)
         goto cleanup;
 
-    if ((chkAndCopyTable(pParse, sc->table, ctx->schema->name,
+    if ((chkAndCopyTable(pParse, sc->tablename, ctx->schema->name,
                          strlen(ctx->schema->name), 1)))
         goto cleanup;
 
-    if (authenticateSC(sc->table, pParse))
+    if (authenticateSC(sc->tablename, pParse))
         goto cleanup;
 
     sc->alteronly = 1;
@@ -4992,11 +4992,11 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
     if (pParse->rc)
         goto cleanup;
 
-    if ((chkAndCopyTable(pParse, sc->table, ctx->schema->name,
+    if ((chkAndCopyTable(pParse, sc->tablename, ctx->schema->name,
                          strlen(ctx->schema->name), 1)))
         goto cleanup;
 
-    if (authenticateSC(sc->table, pParse))
+    if (authenticateSC(sc->tablename, pParse))
         goto cleanup;
 
     sc->alteronly = 1;

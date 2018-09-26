@@ -2399,7 +2399,7 @@ int timepart_foreach_shard(const char *view_name,
                            timepart_sc_arg_t *arg, int first_shard)
 {
     struct schema_change_type *s = arg->s;
-    const char *original_name = s->table;
+    const char *original_name = s->tablename;
     timepart_views_t *views;
     timepart_view_t *view;
     int rc;

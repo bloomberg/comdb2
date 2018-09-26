@@ -353,7 +353,7 @@ int is_table_in_schema_change(const char *tbname, tran_type *tran)
                    __func__);
             return -1;
         }
-        rc = (strcasecmp(tbname, s->table) == 0);
+        rc = (strcasecmp(tbname, s->tablename) == 0);
         free(packed_sc_data);
         free_schema_change_type(s);
         return rc;

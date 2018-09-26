@@ -41,7 +41,7 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
     int foundix;
     struct scinfo scinfo;
 
-    iq->usedb = db = s->db = get_dbtable_by_name(s->table);
+    iq->usedb = db = s->db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
         sc_errf(s, "Table doesn't exists\n");
         reqerrstr(iq, ERR_SC, "Table doesn't exists");
@@ -105,7 +105,7 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
     if (rc) {
         /* todo: clean up db */
         sc_errf(s, "failed opening new db\n");
-        change_schemas_recover(s->table);
+        change_schemas_recover(s->tablename);
         return -1;
     }
 
@@ -145,16 +145,16 @@ int finalize_fastinit_table(struct ireq *iq, struct schema_change_type *s,
             constraint_t *cnstrt = db->rev_constraints[i];
             sc_pending = iq->sc_pending;
             while (sc_pending != NULL) {
-                if (strcasecmp(sc_pending->table,
+                if (strcasecmp(sc_pending->tablename,
                                cnstrt->lcltable->tablename) == 0)
                     break;
                 sc_pending = sc_pending->sc_next;
             }
             if (sc_pending && sc_pending->fastinit)
                 logmsg(LOGMSG_INFO,
-                       "Fastinit '%s' and %s'%s' transactionally\n", s->table,
-                       sc_pending->drop_table ? "drop " : "",
-                       sc_pending->table);
+                       "Fastinit '%s' and %s'%s' transactionally\n",
+                       s->tablename, sc_pending->drop_table ? "drop " : "",
+                       sc_pending->tablename);
             else {
                 sc_errf(s, "Can't fastinit tables with foreign constraints\n");
                 reqerrstr(iq, ERR_SC,

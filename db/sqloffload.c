@@ -750,7 +750,7 @@ static void osql_scdone_commit_callback(struct ireq *iq)
                     type = alter;
                 if (type < 0 || s->db == NULL) {
                     logmsg(LOGMSG_ERROR, "%s: Skipping scdone for table %s\n",
-                           __func__, s->table);
+                           __func__, s->tablename);
                 } else {
                     rc = bdb_llog_scdone(s->db->handle, type, 1, &bdberr);
                     if (rc || bdberr != BDBERR_NOERROR) {
@@ -764,15 +764,15 @@ static void osql_scdone_commit_callback(struct ireq *iq)
                          */
                         logmsg(LOGMSG_ERROR,
                                "%s: Failed to log scdone for table %s\n",
-                               __func__, s->table);
+                               __func__, s->tablename);
                     }
                 }
             }
-            broadcast_sc_end(iq->sc->table, iq->sc_seed);
+            broadcast_sc_end(iq->sc->tablename, iq->sc_seed);
             if (iq->sc->db)
                 sc_del_unused_files(iq->sc->db);
             if (iq->sc->fastinit && !iq->sc->drop_table)
-                autoanalyze_after_fastinit(iq->sc->table);
+                autoanalyze_after_fastinit(iq->sc->tablename);
             free_schema_change_type(iq->sc);
             iq->sc = sc_next;
         }
