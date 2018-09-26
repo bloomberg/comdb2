@@ -8163,10 +8163,13 @@ int sqlite3BtreeCursor(
           **       Attempt to do that now.
           */
           int tmpPgno;
+          temptable *saved_tmptbl_clone = tmptbl_clone;
+          tmptbl_clone = NULL;
           assert( !sqlite3HashFind(&pBt->temp_tables, rootPageNumToTempHashKey(iTable)) );
           pthread_mutex_unlock(&pBt->temp_tables_lk);
           rc = sqlite3BtreeCreateTable(pBt, &tmpPgno, BTREE_INTKEY);
           pthread_mutex_lock(&pBt->temp_tables_lk);
+          tmptbl_clone = saved_tmptbl_clone;
           assert( tmpPgno==iTable );
           logmsg(LOGMSG_INFO, "%s created temporary table, pgno %d, rc %d\n",
                  __func__, tmpPgno, rc);
