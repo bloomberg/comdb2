@@ -21,6 +21,11 @@ import java.sql.DriverManager;
 import java.sql.DriverPropertyInfo;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
 import java.util.Properties;
 import java.util.logging.Logger;
 
@@ -28,6 +33,9 @@ import java.util.logging.Logger;
 /**
  * Credits to mybatis.
  * http://grepcode.com/file/repo1.maven.org/maven2/org.mybatis/mybatis/3.0.4/org/apache/ibatis/datasource/unpooled/UnpooledDataSource.java
+ * 
+ * Cedits to apache dbcp for initialization sql logic
+ * https://github.com/apache/commons-dbcp/blob/master/src/main/java/org/apache/commons/dbcp2/BasicDataSource.java#L1201
  * 
  * @author Sebastien Blind
  *
@@ -47,6 +55,7 @@ public class UnpooledDataSource implements DataSource {
 
 	private boolean autoCommit = true; // Connections should default to auto commit
 	private Integer defaultTransactionIsolationLevel;
+	private List<String> connectionInitSqls;
 
 	public UnpooledDataSource() {
 	}
@@ -180,6 +189,43 @@ public class UnpooledDataSource implements DataSource {
 	public void setDefaultTransactionIsolationLevel(Integer defaultTransactionIsolationLevel) {
 		this.defaultTransactionIsolationLevel = defaultTransactionIsolationLevel;
 	}
+	
+	/**
+     * Returns the list of SQL statements executed when a physical connection is first created. Returns an empty list if
+     * there are no initialization statements configured.
+     *
+     * @return initialization SQL statements
+     */
+    public List<String> getConnectionInitSqls() {
+        final List<String> result = connectionInitSqls;
+        if (result == null) {
+            return Collections.emptyList();
+        }
+        return result;
+    }
+
+    /**
+     * Sets the list of SQL statements to be executed when a physical connection is first created (i.e. every time).
+     *
+     * @param connectionInitSqls
+     *            Collection of SQL statements to execute on connection creation
+     */
+	public void setConnectionInitSqls(final Collection<String> connectionInitSqls) {
+        if (connectionInitSqls != null && connectionInitSqls.size() > 0) {
+            ArrayList<String> newVal = null;
+            for (final String s : connectionInitSqls) {
+                if (s != null && s.trim().length() > 0) {
+                    if (newVal == null) {
+                        newVal = new ArrayList<String>();
+                    }
+                    newVal.add(s);
+                }
+            }
+            this.connectionInitSqls = newVal;
+        } else {
+            this.connectionInitSqls = null;
+        }
+    }
 
 	private void configureConnection(Connection conn) throws SQLException {
 		if (autoCommit != conn.getAutoCommit()) {
@@ -187,6 +233,24 @@ public class UnpooledDataSource implements DataSource {
 		}
 		if (defaultTransactionIsolationLevel != null) {
 			conn.setTransactionIsolation(defaultTransactionIsolationLevel);
+		}
+
+		if (connectionInitSqls != null) {
+			Statement stmt = null;
+			try {
+				stmt = conn.createStatement();
+				for (String sql : connectionInitSqls) {
+					stmt.execute(sql);
+				}
+			} finally {
+				if (stmt != null) {
+					try {
+						stmt.close();
+					} catch (Exception t) {
+						// ignored
+					}
+				}
+			}
 		}
 	}
 
