@@ -83,6 +83,7 @@ for run in 1 2 3 4 5; do
 
 
    if (( $run == 3 )) ; then
+      echo "performing 'alter table ${VIEW1}'"
       cdb2sql ${CDB2_OPTIONS} $dbname default "alter table ${VIEW1} { `cat $SCHEMAFILE` }"
       if (( $? != 0 )) ; then
          echo "FAILURE"

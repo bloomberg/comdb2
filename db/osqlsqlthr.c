@@ -1691,7 +1691,6 @@ int osql_schemachange_logic(struct schema_change_type *sc,
     int restarted;
     int rc = 0;
     unsigned long long rqid = thd->clnt->osql.rqid;
-    unsigned long long version = 0;
 
     osql->running_ddl = 1;
 
@@ -1715,16 +1714,14 @@ int osql_schemachange_logic(struct schema_change_type *sc,
     sc->usedbtablevers = comdb2_table_version(sc->tablename);
 
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
-        if (usedb) {
-            if (getdbidxbyname(sc->tablename) < 0) { // view
-                char *viewname = timepart_newest_shard(sc->tablename, &version);
-                if (viewname) {
-                    free(viewname);
-                } else
-                    usedb = 0;
-            } else {
-                version = comdb2_table_version(sc->tablename);
-            }
+        if (usedb && getdbidxbyname(sc->tablename) < 0) { // view
+            unsigned long long version = 0;
+            char *viewname = timepart_newest_shard(sc->tablename, &version);
+            sc->usedbtablevers = version;
+            if (viewname)
+                free(viewname);
+            else
+                usedb = 0;
         }
 
         do {
