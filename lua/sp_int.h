@@ -30,6 +30,7 @@
 
 
 typedef struct stored_proc *SP;
+typedef struct db_thread db_thread;
 typedef struct dbstmt_t dbstmt_t;
 typedef struct tmptbl_info_t tmptbl_info_t;
 struct stored_proc {
