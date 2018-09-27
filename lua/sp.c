@@ -106,7 +106,7 @@ struct dbstmt_t {
     LIST_ENTRY(dbstmt_t) entries;
 };
 
-typedef struct {
+typedef struct dbthread_t {
     DBTYPES_COMMON;
     pthread_mutex_t lua_thread_mutex;
     pthread_cond_t lua_thread_cond;
