@@ -428,11 +428,11 @@ static int lookupName(
 
     /* Check if a partial index or an expression index contains blob fields. */
     if( (pNC->ncFlags & (NC_PartIdx|NC_IdxExpr))!=0
-     && pExpr->pTab
+     && pExpr->y.pTab
      && pExpr->iColumn>=0
     ){
       int is_comdb2_index_blob(const char *dbname, int icol);
-      is_comdb2_index_blob(pExpr->pTab->zName, pExpr->iColumn);
+      is_comdb2_index_blob(pExpr->y.pTab->zName, pExpr->iColumn);
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
