@@ -257,6 +257,18 @@ int deadlock_policy_max()
     return DB_LOCK_MAX;
 }
 
+int bdb_lock_stats(bdb_state_type *bdb_state, int64_t *nlocks)
+{
+    DB_LOCK_STAT *stats = NULL;
+    int rc;
+    rc = bdb_state->dbenv->lock_stat(bdb_state->dbenv, &stats, 0);
+    if (rc)
+        return -1;
+    *nlocks = stats->st_nlocks;
+    free(stats);
+    return 0;
+}
+
 static void lock_stats(FILE *out, bdb_state_type *bdb_state)
 {
     int rc;

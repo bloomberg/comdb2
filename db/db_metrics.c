@@ -74,6 +74,7 @@ struct comdb2_metrics_store {
     int64_t sql_queue_timeouts;
     double handle_buf_queue_time;
     int64_t denied_appsock_connections;
+    int64_t locks;
 };
 
 static struct comdb2_metrics_store stats;
@@ -187,8 +188,11 @@ comdb2_metric gbl_metrics[] = {
      STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST,
      &stats.handle_buf_queue_time, NULL},
     {"denied_appsocks", "Number of denied appsock connections",
-     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
      &stats.denied_appsock_connections, NULL},
+    {"locks", "Number of currently held locks",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.locks, NULL},
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -347,6 +351,10 @@ int refresh_metrics(void)
                       &stats.maxactive_transactions, &stats.total_commits,
                       &stats.total_aborts);
     stats.denied_appsock_connections = gbl_denied_appsock_connection_count;
+
+    if (bdb_lock_stats(thedb->bdb_env, &stats.locks))
+        stats.locks = 0;
+
     return 0;
 }
 
