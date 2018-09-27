@@ -793,6 +793,7 @@ osql_req_t *osql_sess_getreq(osql_sess_t *sess) { return sess->req; }
 
 /**
  * Creates an sock osql session and add it to the repository
+ * Runs on master node when an initial sorese message is received
  * Returns created object if success, NULL otherwise
  *
  */

@@ -67,6 +67,7 @@
 
 #include "logmsg.h"
 
+#define DEBUG_REORDER 0
 
 int g_osql_blocksql_parallel_max = 5;
 extern int gbl_blocksql_grace;
@@ -632,6 +633,7 @@ const char *osql_reqtype_str(int type)
         "DELIDX",
         "INSIDX",
         "DBQ_CONSUME_UUID",
+        "STARTGEN",
         "GENID",
     };
     return typestr[type];
@@ -696,11 +698,11 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     if (type == OSQL_SCHEMACHANGE)
         iq->tranddl++;
 
-#if 0
+#ifdef DEBUG_REORDER 
     printf("Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n",
            rqid, type, osql_reqtype_str(type), osql_log_time(), seq);
 #endif
-    if (sess->is_reorder_on && !iq->tranddl) {
+    if (sess->is_reorder_on) {
         key.tbl_idx = USHRT_MAX;
 
         if (type == OSQL_USEDB) {
@@ -727,8 +729,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                 type == OSQL_INSREC || type == OSQL_UPDREC || type == OSQL_DELREC ||
                 type == OSQL_INSERT || type == OSQL_UPDATE || type == OSQL_DELETE ||
                 type == OSQL_INSIDX || type == OSQL_DELIDX || type == OSQL_RECGENID ||
-                type == OSQL_QBLOB || type == OSQL_UPDCOLS || type == OSQL_SCHEMACHANGE ||
-                type == OSQL_GENID) {
+                type == OSQL_QBLOB || type == OSQL_UPDCOLS || type == OSQL_GENID) {
                 return -1;
             }
         }
@@ -757,7 +758,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
             key.genid = sess->last_genid;
             key.stripe = get_dtafile_from_genid(key.genid);
             assert (key.stripe >= 0);
-        } else if (type == OSQL_RECGENID || type == OSQL_SCHEMACHANGE) {
+        } else if (type == OSQL_RECGENID) {
             key.tbl_idx = sess->tbl_idx;
         }
     }
@@ -803,7 +804,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         return -1;
     }
 
-#if 0 
+#ifdef DEBUG_REORDER 
     char mus[37];
     comdb2uuidstr(uuid, mus);
     printf("%p:%s: rqid=%llx uuid=%s SAVING tp=%d(%s), tbl_idx=%d, stripe=%d, genid=0x%llx, seq=%d\n", 
@@ -1204,9 +1205,11 @@ static int process_this_session(
         reqlog_set_rqid(iq->reqlogger, uuid, sizeof(uuid));
     reqlog_set_event(iq->reqlogger, "txn");
 
-    //if needed to check content of socksql temp table, dump with:
-    //void bdb_temp_table_debug_dump(bdb_state_type *bdb_state, tmpcursor_t *cur);
-    //bdb_temp_table_debug_dump(thedb->bdb_env, dbc);
+#ifdef DEBUG_REORDER
+    // if needed to check content of socksql temp table, dump with:
+    void bdb_temp_table_debug_dump(bdb_state_type *bdb_state, tmpcursor_t *cur);
+    bdb_temp_table_debug_dump(thedb->bdb_env, dbc);
+#endif
     
     /* go through each record */
     rc = bdb_temp_table_first(thedb->bdb_env, dbc, bdberr);
@@ -1226,7 +1229,11 @@ static int process_this_session(
     while (!rc && !rc_out) {
         int realkeylen = bdb_temp_table_keysize(dbc);
         oplog_key_t* opkey = (oplog_key_t *)bdb_temp_table_key(dbc);
-//printf("AZ: READ key rqid=%d, uuid=%s, tbl_idx=%d, stripe=%d, genid=0x%llx, seq=%d\n", rqid, mus, opkey->tbl_idx, opkey->stripe, opkey->genid, opkey->seq);
+#ifdef DEBUG_REORDER
+        char mus[37];
+        comdb2uuidstr(uuid, mus);
+        printf("AZ: READ key rqid=%d, uuid=%s, tbl_idx=%d, stripe=%d, genid=0x%llx, seq=%d\n", rqid, mus, opkey->tbl_idx, opkey->stripe, opkey->genid, opkey->seq);
+#endif
 
         char *data = bdb_temp_table_data(dbc);
         int datalen = bdb_temp_table_datasize(dbc);

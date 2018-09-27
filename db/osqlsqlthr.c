@@ -177,7 +177,7 @@ static int osql_send_del_logic(struct BtCursor *pCur, struct sql_thread *thd)
     if (rc != SQLITE_OK)
         return rc;
 
-    if (gbl_reorder_socksql_no_deadlock) {
+    if (osql->is_reorder_on) {
         rc = osql_send_genid(osql->host, osql->rqid, osql->uuid, pCur->genid,
                 NET_OSQL_SOCK_RPL, osql->logsb, OSQL_GENID);
         if (rc != SQLITE_OK)
@@ -274,7 +274,7 @@ static int osql_send_ins_logic(struct BtCursor *pCur, struct sql_thread *thd,
     if (rc != SQLITE_OK)
         return rc;
 
-    if (gbl_reorder_socksql_no_deadlock) {
+    if (osql->is_reorder_on) {
         rc = osql_send_genid(osql->host, osql->rqid, osql->uuid, 0,
                 NET_OSQL_SOCK_RPL, osql->logsb, OSQL_GENID);
         if (rc != SQLITE_OK) {
@@ -376,7 +376,7 @@ static int osql_send_upd_logic(struct BtCursor *pCur, struct sql_thread *thd,
     if (rc != SQLITE_OK)
         return rc;
 
-    if (gbl_reorder_socksql_no_deadlock) {
+    if (osql->is_reorder_on) {
         rc = osql_send_genid(osql->host, osql->rqid, osql->uuid, pCur->genid,
                 NET_OSQL_SOCK_RPL, osql->logsb, OSQL_GENID);
         if (rc != SQLITE_OK) return rc;
@@ -564,7 +564,8 @@ int osql_block_commit(struct sql_thread *thd)
 }
 
 /**
- * Starts a sosql session, which creates a blockprocessor peer
+ * This is called on the replicant node and starts a sosql session, 
+ * which creates a blockprocessor peer on the master node
  * Returns ok if the packet is sent successful to the master
  * if keep_rqid, this is a retry and we want to
  * keep the same rqid
@@ -594,6 +595,8 @@ int osql_sock_start(struct sqlclntstate *clnt, int type, int keep_rqid)
             assert(osql->rqid);
         }
     }
+
+    osql->is_reorder_on = gbl_reorder_socksql_no_deadlock;
 
     /* lets reset error, this could be a retry */
     osql->xerr.errval = 0;
@@ -680,7 +683,7 @@ retry:
     else
         flags = 0;
 
-    if (gbl_reorder_socksql_no_deadlock) 
+    if (osql->is_reorder_on)
         flags |= OSQL_FLAGS_REORDER_ON;
 
     /* send request to blockprocessor */
