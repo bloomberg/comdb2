@@ -133,7 +133,7 @@ static void fingerprintExpr(sqlite3 *db, MD5Context *c, Expr *p) {
     MD5Update(c, (const unsigned char*) &p->iRightJoinTable, sizeof(i16));
     MD5Update(c, (const unsigned char*) &p->op2, sizeof(u8));
     if (p->iTable == TK_COLUMN)
-        fingerprintTable(db, c, p->pTab);
+        fingerprintTable(db, c, p->y.pTab);
 
     if( !ExprHasProperty(p, (EP_TokenOnly|EP_Leaf)) ){
         if( p->pLeft) fingerprintExpr(db, c, p->pLeft);
