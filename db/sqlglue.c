@@ -3361,9 +3361,9 @@ int sqlite3BtreeOpen(
         bt->btreeid = id++;
 
         bt->is_temporary = 0;
-        *ppBtree = bt;
-
         listc_init(&bt->cursors, offsetof(BtCursor, lnk));
+
+        *ppBtree = bt;
     } else if (!zFilename || strcmp(zFilename, ":memory:") == 0) {
         /* temporary connection (for temp tables and such) */
         bt->reqlogger = thrman_get_reqlogger(thrman_self());
@@ -3375,12 +3375,32 @@ int sqlite3BtreeOpen(
         sqlite3HashInit(&bt->temp_tables);
         pthread_mutex_unlock(&bt->temp_tables_lk);
         pthread_mutex_unlock(&gbl_sql_lock);
-        *ppBtree = bt;
+        /*
+        ** NOTE: There are no temporary tables whatsoever.  There must be a
+        **       "sqlite_temp_master" table before anything else, because it
+        **       must have a root page number of 1; therefore, create it now.
+        */
+        int masterPgno;
+        assert( tmptbl_clone==NULL );
+        rc = sqlite3BtreeCreateTable(pBt, &masterPgno, BTREE_INTKEY);
+        assert( masterPgno==1 ); /* sqlite_temp_master root page number */
+        logmsg(LOGMSG_INFO, "%s created sqlite_temp_master, pgno %d, rc %d\n",
+               __func__, masterPgno, rc);
+        if( rc!=SQLITE_OK ){
+            pthread_mutex_lock(&bt->temp_tables_lk);
+            sqlite3HashClear(&pBt->temp_tables);
+            pthread_mutex_unlock(&bt->temp_tables_lk);
+            pthread_mutex_lock(&gbl_sql_lock);
+            pthread_mutex_destroy(&pBt->temp_tables_lk);
+            pthread_mutex_unlock(&gbl_sql_lock);
+            goto done;
+        }
         thd->bttmp = bt;
         listc_init(&bt->cursors, offsetof(BtCursor, lnk));
         if (flags & BTREE_UNORDERED) {
             bt->is_hashtable = 1;
         }
+        *ppBtree = bt;
     } else if (zFilename) {
         /* TODO: maybe we should enforce unicity ? when attaching same dbs from
          * multiple sql threads */
@@ -8158,22 +8178,7 @@ int sqlite3BtreeCursor(
     if (pBt->is_temporary) { /* temp table */
         pthread_mutex_lock(&pBt->temp_tables_lk);
         assert( iTable>=1 ); /* can never be zero or negative */
-        if( rc==SQLITE_OK && pBt->temp_tables.count==0 ){ /* temp master */
-          /*
-          ** NOTE: There are no temporary tables whatsoever.  There must be a
-          **       "sqlite_temp_master" table before anything else, because it
-          **       must have a root page number of 1; therefore, create it now.
-          */
-          int masterPgno;
-          pthread_mutex_unlock(&pBt->temp_tables_lk);
-          assert( tmptbl_clone==NULL );
-          rc = sqlite3BtreeCreateTable(pBt, &masterPgno, BTREE_INTKEY);
-          pthread_mutex_lock(&pBt->temp_tables_lk);
-          assert( masterPgno==1 ); /* sqlite_temp_master root page number */
-          logmsg(LOGMSG_INFO, "%s created sqlite_temp_master, pgno %d, rc %d\n",
-                 __func__, masterPgno, rc);
-        }
-        if( rc==SQLITE_OK && forOpen ){
+        if( forOpen ){
           /*
           ** NOTE: When being called to open a temporary (table) cursor in
           **       response to OP_OpenRead, OP_OpenWrite, or OP_ReopenIdx
