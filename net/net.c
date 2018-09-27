@@ -6972,3 +6972,17 @@ void net_set_conntime_dump_period(netinfo_type *netinfo_ptr, int value)  {
 int net_get_conntime_dump_period(netinfo_type *netinfo_ptr) {
     return netinfo_ptr->conntime_dump_period;
 }
+
+int net_get_stats(netinfo_type *netinfo_ptr, struct net_stats *stat) {
+    struct host_node_tag *ptr;
+
+    stat->num_drops = 0;
+
+    Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
+    for (ptr = netinfo_ptr->head; ptr != NULL; ptr = ptr->next)
+        stat->num_drops = ptr->num_queue_full;
+
+    Pthread_rwlock_unlock(&(netinfo_ptr->lock));
+
+    return 0;
+}

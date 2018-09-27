@@ -364,6 +364,12 @@ struct host_node_info {
 int net_get_nodes_info(netinfo_type *netinfo_ptr, int max_nodes,
                        struct host_node_info *out_nodes);
 
+
+struct net_stats {
+    int num_drops;
+};
+int net_get_stats(netinfo_type *netinfo_ptr, struct net_stats *stat);
+
 void net_cmd(netinfo_type *netinfo_ptr, char *line, int lline, int st, int op1);
 
 int net_set_max_queue(netinfo_type *netinfo_ptr, int x);

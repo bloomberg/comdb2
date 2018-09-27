@@ -21,6 +21,7 @@
 #include "comdb2_atomic.h"
 #include "metrics.h"
 #include "bdb_api.h"
+#include "net.h"
 
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -76,6 +77,7 @@ struct comdb2_metrics_store {
     int64_t denied_appsock_connections;
     int64_t locks;
     int64_t temptable_spills;
+    int64_t net_drops;
 };
 
 static struct comdb2_metrics_store stats;
@@ -196,7 +198,11 @@ comdb2_metric gbl_metrics[] = {
      &stats.locks, NULL},
     {"temptable_spills", "Number of temptables that had to be spilled to disk-backed tables",
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
-     &stats.temptable_spills, NULL}
+     &stats.temptable_spills, NULL},
+    {"net_drops", "Number of packets that didn't fit on network queue and were dropped",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.net_drops, NULL}
+
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -358,6 +364,15 @@ int refresh_metrics(void)
     if (bdb_lock_stats(thedb->bdb_env, &stats.locks))
         stats.locks = 0;
     stats.temptable_spills = gbl_temptable_spills;
+
+    struct net_stats net_stats;
+    rc = net_get_stats(thedb->handle_sibling, &net_stats);
+    if (rc == 0) {
+        stats.net_drops = net_stats.num_drops;
+    }
+    else {
+        stats.net_drops = 0;
+    }
 
     return 0;
 }
