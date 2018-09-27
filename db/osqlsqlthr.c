@@ -711,9 +711,7 @@ again:
     sentops = 0;
 
     /* we need to check if we need bdb write lock here to prevent a master
-       upgrade
-       blockade
-     */
+       upgrade blockade */
     if (thd && bdb_lock_desired(thedb->bdb_env)) {
         int sleepms = 100 * clnt->deadlock_recovered;
         if (sleepms > 1000)
@@ -749,6 +747,7 @@ again:
         osql->tablename = NULL;
         osql->tablenamelen = 0;
     }
+    osql->replicant_numops = 0;
 
     if (!keep_session) {
         if (gbl_master_swing_osql_verbose)
@@ -1268,6 +1267,7 @@ static int osql_send_delidx_logic(struct BtCursor *pCur,
                              getkeysize(pCur->db, i), nettype, osql->logsb);
         if (rc)
             break;
+        osql->replicant_numops++;
     }
     return rc;
 }
@@ -1302,6 +1302,8 @@ static int osql_send_qblobs_logic(struct BtCursor *pCur, osqlstate_t *osql,
                                      osql->logsb);
                 if (rc)
                     break; /* break out from while loop so we can return rc */
+                osql->replicant_numops++;
+
                 continue;
             }
         }
@@ -1311,6 +1313,7 @@ static int osql_send_qblobs_logic(struct BtCursor *pCur, osqlstate_t *osql,
                              osql->logsb);
         if (rc)
             break;
+        osql->replicant_numops++;
     }
 
     return rc;
@@ -1333,6 +1336,7 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
         osql->tablenamelen = 0;
     }
     osql->tran_ops = 0; /* reset transaction size counter*/
+    osql->replicant_numops += 2; //startgen and snap_done
 
     extern int gbl_always_send_cnonce;
     int send_cnonce = gbl_always_send_cnonce ? 1 : has_high_availability(clnt);

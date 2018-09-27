@@ -1123,6 +1123,8 @@ static int process_this_session(
         rc_out = func(iq, rqid, uuid, iq_tran, data, datalen, &flags, &updCols,
                       blobs, step, err, &receivedrows, logsb);
 
+        iq->osql_replicant_numops++;
+
         if (rc_out != 0 && rc_out != OSQL_RC_DONE) {
             reqlog_set_error(iq->reqlogger, "Error processing", rc_out);
             /* error processing, can be a verify error or deadlock */

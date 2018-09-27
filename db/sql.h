@@ -122,6 +122,7 @@ typedef struct osqlstate {
     int tablenamelen;        /* tablename length */
     int sentops;             /* number of operations per statement */
     int tran_ops;            /* actual number of operations for a transaction */
+    int replicant_numops;    /* total num of ops sent by replicant to master which includes USEDB, BLOB, etc. */
 
     SBUF2 *logsb; /* help debugging */
 

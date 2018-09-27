@@ -4786,13 +4786,15 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
             rpl_ok.dt.rc = SQLITE_DONE;
         rpl_ok.dt.nops = nops;
 
+        uuidstr_t us;
         if (logsb) {
-            uuidstr_t us;
             sbuf2printf(logsb, "[%s] send OSQL_DONE %d %d\n",
                         comdb2uuidstr(uuid, us), rc, nops);
             sbuf2flush(logsb);
         }
 
+        logmsg(LOGMSG_DEBUG, "[%llu] send OSQL_DONE rc = %d, nops = %d\n",
+               comdb2uuidstr(uuid, us), rc, nops);
 #if 0
       printf("Sending rqid=%llu tmp=%llu\n", rqid, osql_log_time());
 #endif
@@ -6715,8 +6717,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
     const char *osql_reqtype_str(int type);
 
-    logmsg(LOGMSG_DEBUG, "osql_process_packet(): processing %s\n",
-           osql_reqtype_str(type));
+    logmsg(LOGMSG_DEBUG, "osql_process_packet(): processing %s(%d)\n",
+           osql_reqtype_str(type), type);
 
     switch (type) {
     case OSQL_DONE:
@@ -6779,6 +6781,9 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
             assert(!memcmp(&snap_info, &iq->snap_info, sizeof(snap_uid_t)));
         }
+
+        logmsg(LOGMSG_DEBUG, "rqid=%llu, uuid=%llu, received OSQL_DONE rc = %d, nops = %d\n",
+               rqid, comdb2uuidstr(uuid, us), rc, dt.nops);
 
         /* p_buf is pointing at client_query_stats if there is one */
         if (type == OSQL_DONE_STATS) { /* Never set anywhere. */
@@ -7975,9 +7980,7 @@ int osql_comm_echo(char *tohost, int stream, unsigned long long *sent,
 }
 
 /**
- * Interprets each packet and log info
- * about it
- *
+ * Interprets each packet and log info about it
  */
 int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                     void *trans, char *msg, int msglen, int *flags,
