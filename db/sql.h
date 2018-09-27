@@ -673,6 +673,7 @@ struct Btree {
     /* hash table of temp tables, keyed on root page number and its mutex */
     Hash temp_tables;
     pthread_mutex_t temp_tables_lk;
+    int next_temp_root_pg;
 
     int is_hashtable;
 
@@ -944,7 +945,6 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
 
 void clearClientSideRow(struct sqlclntstate *clnt);
 void comdb2_set_tmptbl_lk(pthread_mutex_t *);
-void reset_temp_master(sqlite3 *db);
 void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
                       int rootpg);
 int sqlengine_prepare_engine(struct sqlthdstate *, struct sqlclntstate *,

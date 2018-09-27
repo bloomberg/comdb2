@@ -5153,9 +5153,12 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
     /* at this point, we have succeeded. */
     thd->had_temptables = 1;
 
-    int iTable = pBt->temp_tables.count + 1;
+    int iTable = ++pBt->next_temp_root_pg;
 
-    assert( !sqlite3HashFind(&pBt->temp_tables, rootPageNumToTempHashKey(iTable)) );
+    assert( iTable>=1 ); /* can never be zero or negative */
+    assert( iTable>1 || pBt->temp_tables.count==0 ); /* master page == 1 */
+    assert( !sqlite3HashFind(&pBt->temp_tables,
+                             rootPageNumToTempHashKey(iTable)) );
 
     struct temptable *pOldTbl = sqlite3HashInsert(&pBt->temp_tables,
         rootPageNumToPermHashKey(pNewTbl->keyBuf, sizeof(pNewTbl->keyBuf),
@@ -8154,28 +8157,43 @@ int sqlite3BtreeCursor(
 
     if (pBt->is_temporary) { /* temp table */
         pthread_mutex_lock(&pBt->temp_tables_lk);
-        assert( iTable>=1 );
-        if( forOpen && iTable==pBt->temp_tables.count+1 ){
+        assert( iTable>=1 ); /* can never be zero or negative */
+        if( rc==SQLITE_OK && pBt->temp_tables.count==0 ){ /* temp master */
           /*
-          ** NOTE: When being called to open a temporary table cursor in
-          **       response to an OP_Open* (or OP_Reopen*) VDBE opcode,
-          **       the temporary table will not have been created yet.
-          **       Attempt to do that now.
+          ** NOTE: There are no temporary tables whatsoever.  There must be a
+          **       "sqlite_temp_master" table before anything else, because it
+          **       must have a root page number of 1; therefore, create it now.
           */
-          int tmpPgno;
-          struct temptable *saved_tmptbl_clone = tmptbl_clone;
-          tmptbl_clone = NULL;
-          assert( !sqlite3HashFind(&pBt->temp_tables, rootPageNumToTempHashKey(iTable)) );
+          int masterPgno;
           pthread_mutex_unlock(&pBt->temp_tables_lk);
-          rc = sqlite3BtreeCreateTable(pBt, &tmpPgno, BTREE_INTKEY);
+          assert( tmptbl_clone==NULL );
+          rc = sqlite3BtreeCreateTable(pBt, &masterPgno, BTREE_INTKEY);
           pthread_mutex_lock(&pBt->temp_tables_lk);
-          tmptbl_clone = saved_tmptbl_clone;
-          assert( tmpPgno==iTable );
-          logmsg(LOGMSG_INFO, "%s created temporary table, pgno %d, rc %d\n",
-                 __func__, tmpPgno, rc);
+          assert( masterPgno==1 ); /* sqlite_temp_master root page number */
+          logmsg(LOGMSG_INFO, "%s created sqlite_temp_master, pgno %d, rc %d\n",
+                 __func__, masterPgno, rc);
         }
-        assert( iTable<=pBt->temp_tables.count );
+        if( rc==SQLITE_OK && forOpen ){
+          /*
+          ** NOTE: When being called to open a temporary (table) cursor in
+          **       response to OP_OpenRead, OP_OpenWrite, or OP_ReopenIdx
+          **       opcodes by the VDBE, the temporary table may not have
+          **       been created yet.  Attempt to do that now.
+          */
+          if( sqlite3HashFind(&pBt->temp_tables,
+                              rootPageNumToTempHashKey(iTable))==0 ){
+            int tmpPgno;
+            pthread_mutex_unlock(&pBt->temp_tables_lk);
+            assert( tmptbl_clone==NULL );
+            rc = sqlite3BtreeCreateTable(pBt, &tmpPgno, BTREE_INTKEY);
+            pthread_mutex_lock(&pBt->temp_tables_lk);
+            assert( tmpPgno==iTable );
+            logmsg(LOGMSG_INFO, "%s created temporary table, pgno %d, rc %d\n",
+                   __func__, tmpPgno, rc);
+          }
+        }
         if( rc==SQLITE_OK ){
+          assert( iTable<=pBt->temp_tables.count );
           rc = sqlite3BtreeCursor_temptable(pBt, iTable, wrFlag & BTREE_CUR_WR,
                                             temp_table_cmp, pKeyInfo, cur, thd);
         }
@@ -11252,12 +11270,6 @@ out:
     done_sql_thread();
     sql_mem_shutdown(NULL);
     thread_memdestroy();
-}
-
-void reset_temp_master(sqlite3 *db){
-    sqlite3BtreeEnterAll(db);
-    sqlite3ResetOneSchema(db, 1);
-    sqlite3BtreeLeaveAll(db);
 }
 
 void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
