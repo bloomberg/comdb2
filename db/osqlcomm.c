@@ -51,6 +51,7 @@
 
 #define BLKOUT_DEFAULT_DELTA 5
 #define MAX_CLUSTER 16
+#define DEBUG_REORDER 0
 
 #define UNK_ERR_SEND_RETRY 10
 /**
@@ -3950,12 +3951,12 @@ int osql_send_qblob(char *tohost, unsigned long long rqid, uuid_t uuid,
         sbuf2flush(logsb);
     }
 
-#if 0
-printf("AZ: putting blob id=%d, seq=%d, bloblen(datalen)=%d, sent=%d\n", blobid, seq, datalen, sent);
+#if DEBUG_REORDER 
+printf("REORDER: putting blob id=%d, seq=%d, bloblen(datalen)=%d, sent=%d\n", blobid, seq, datalen, sent);
 if (datalen > 0) {
     char *blah;
     hexdumpbuf(data, datalen, &blah);
-    printf("AZ: hexdump datalen=%d blob='%s'\n", datalen, blah);
+    printf("REORDER: hexdump datalen=%d blob='%s'\n", datalen, blah);
 }
 #endif
 
@@ -7061,7 +7062,9 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                 sbuf2printf(logsb, "Added new record rrn = %d, newgenid=%llx\n",
                             rrn, bdb_genid_to_host_order(newgenid));
         }
-        //printf("AZ: Added new record rrn = %d, newgenid=%llx\n", rrn, bdb_genid_to_host_order(newgenid));
+#if DEBUG_REORDER 
+        printf("REORDER: Added new record rrn = %d, newgenid=%llx\n", rrn, bdb_genid_to_host_order(newgenid));
+#endif
 
         (*receivedrows)++;
     } break;
@@ -7656,7 +7659,9 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
         free(malcd);
         goto done;
     }
-    //printf("AZ: created sess %p, with req.flags %x, sess->is_reorder_on %d\n", sess, uuid_req.flags, sess->is_reorder_on);
+#if DEBUG_REORDER 
+    printf("REORDER: created sess %p, with req.flags %x, sess->is_reorder_on %d\n", sess, uuid_req.flags, sess->is_reorder_on);
+#endif
 
 #if 0
    printf( "Starting block processor %llu\n", osql_log_time());

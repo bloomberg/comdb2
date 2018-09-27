@@ -676,7 +676,9 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                       unsigned long long rqid, uuid_t uuid,
                       unsigned long long seq, const char *host)
 {
-    //printf("AZ: saving for sess %p\n", sess);
+#if DEBUG_REORDER 
+    printf("REORDER: saving for sess %p\n", sess);
+#endif
     blocksql_tran_t *tran = (blocksql_tran_t *)osql_sess_getbptran(sess);
     if (!tran || !tran->db) {
         /* something has gone wrong dispatching the socksql request, ignoring
@@ -698,7 +700,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     if (type == OSQL_SCHEMACHANGE)
         iq->tranddl++;
 
-#ifdef DEBUG_REORDER 
+#if DEBUG_REORDER 
     printf("Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n",
            rqid, type, osql_reqtype_str(type), osql_log_time(), seq);
 #endif
@@ -720,11 +722,15 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                     key.tbl_idx = sess->tbl_idx;
                     no_such_tbl_error(tablename, rqid, host);
                 }
-                //printf("AZ: tablename='%s' idx=%d\n", tablename, (iq->usedb?iq->usedb->dbs_idx:-1));
+#if DEBUG_REORDER 
+                printf("REORDER: tablename='%s' idx=%d\n", tablename, (iq->usedb?iq->usedb->dbs_idx:-1));
+#endif
             }
         }
         else if (!iq->usedb) { 
-            //printf("AZ: usedb not set for type=%d(%s)\n", type,  osql_reqtype_str(type));
+#if DEBUG_REORDER 
+            printf("REORDER: usedb not set for type=%d(%s)\n", type,  osql_reqtype_str(type));
+#endif
             if (type == OSQL_DONE_SNAP || type == OSQL_DONE || type == OSQL_DONE_STATS ||
                 type == OSQL_INSREC || type == OSQL_UPDREC || type == OSQL_DELREC ||
                 type == OSQL_INSERT || type == OSQL_UPDATE || type == OSQL_DELETE ||
@@ -739,17 +745,17 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
             unsigned long long genid;
             const char *p_buf = rpl + OSQLCOMM_UUID_RPL_TYPE_LEN; 
             buf_no_net_get(&(genid), sizeof(genid), p_buf, p_buf + sizeof(genid));
-            //printf("AZ: Receiving genid 0x%llx\n", genid);
+#if DEBUG_REORDER 
+            printf("REORDER: Receiving genid 0x%llx\n", genid);
+#endif
             if (0 == genid) {
                 genid = bdb_get_next_genid(iq->usedb->handle);
-                //printf("AZ: Creating genid 0x%llx\n", genid);
+#if DEBUG_REORDER 
+                printf("REORDER: Creating genid 0x%llx\n", genid);
+#endif
             }
             sess->last_genid = genid;
-            //char mus[37];
-            //comdb2uuidstr(uuid, mus);
-            //printf("%lx:%s: rqid=%llx uuid=%s NOTSAVING tp=%d(%s), tbl_idx=%d, stripe=%d, genid=0x%llx, seq=%d\n", 
-                    //pthread_self(), __func__, rqid, mus, type, osql_reqtype_str(type), key.tbl_idx, key.stripe, genid, seq);
-            return 0; //don't put in temp table
+            return 0; //don't put in temp table OSQL_GENID
         } else if (type == OSQL_UPDATE || type == OSQL_DELETE || type == OSQL_UPDREC ||
             type == OSQL_DELREC || type == OSQL_INSERT || type == OSQL_INSREC ||
             type == OSQL_QBLOB  || type == OSQL_DELIDX || type == OSQL_INSIDX ||
@@ -804,7 +810,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         return -1;
     }
 
-#ifdef DEBUG_REORDER 
+#if DEBUG_REORDER 
     char mus[37];
     comdb2uuidstr(uuid, mus);
     printf("%p:%s: rqid=%llx uuid=%s SAVING tp=%d(%s), tbl_idx=%d, stripe=%d, genid=0x%llx, seq=%d\n", 
@@ -1205,7 +1211,7 @@ static int process_this_session(
         reqlog_set_rqid(iq->reqlogger, uuid, sizeof(uuid));
     reqlog_set_event(iq->reqlogger, "txn");
 
-#ifdef DEBUG_REORDER
+#if DEBUG_REORDER 
     // if needed to check content of socksql temp table, dump with:
     void bdb_temp_table_debug_dump(bdb_state_type *bdb_state, tmpcursor_t *cur);
     bdb_temp_table_debug_dump(thedb->bdb_env, dbc);
@@ -1229,10 +1235,10 @@ static int process_this_session(
     while (!rc && !rc_out) {
         int realkeylen = bdb_temp_table_keysize(dbc);
         oplog_key_t* opkey = (oplog_key_t *)bdb_temp_table_key(dbc);
-#ifdef DEBUG_REORDER
+#if DEBUG_REORDER 
         char mus[37];
         comdb2uuidstr(uuid, mus);
-        printf("AZ: READ key rqid=%d, uuid=%s, tbl_idx=%d, stripe=%d, genid=0x%llx, seq=%d\n", rqid, mus, opkey->tbl_idx, opkey->stripe, opkey->genid, opkey->seq);
+        printf("REORDER: READ key rqid=%d, uuid=%s, tbl_idx=%d, stripe=%d, genid=0x%llx, seq=%d\n", rqid, mus, opkey->tbl_idx, opkey->stripe, opkey->genid, opkey->seq);
 #endif
 
         char *data = bdb_temp_table_data(dbc);
