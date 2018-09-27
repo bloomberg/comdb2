@@ -110,6 +110,7 @@ struct temptable {
     struct temp_cursor *cursor;
     struct temp_table *tbl;
     int flags;
+    int rootPg;
     char *name;
     char keyBuf[50]; /* >= len("+18446744073709551615\0") */
     int nRef;
@@ -3192,7 +3193,8 @@ int sqlite3BtreeClose(Btree *pBt)
         pthread_mutex_lock(&gbl_sql_lock);
         pthread_mutex_lock(&pBt->temp_tables_lk);
 
-        for(pElem=sqliteHashFirst(&pBt->temp_tables); pElem; pElem=sqliteHashNext(pElem)){
+        for(pElem=sqliteHashFirst(&pBt->temp_tables); pElem;
+                pElem=sqliteHashNext(pElem)){
             /* internally this will close cursors open on the table */
             struct temptable *pTbl = (struct temptable *)pElem->data;
 
@@ -5149,10 +5151,11 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
             rc = SQLITE_INTERNAL;
             goto done;
         }
+        pNewTbl->rootPg = ++pBt->next_temp_root_pg;
         pNewTbl->tbl = tbl;
         pNewTbl->name = get_temp_dbname(pBt);
         pNewTbl->lk = NULL;
-    	pNewTbl->flags = flags;
+        pNewTbl->flags = flags;
     } else if (!tmptbl_clone) {
         struct temp_table *tbl;
         int bdberr;
@@ -5165,6 +5168,7 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
             rc = SQLITE_INTERNAL;
             goto done;
         }
+        pNewTbl->rootPg = ++pBt->next_temp_root_pg;
         pNewTbl->tbl = tbl;
         pNewTbl->name = get_temp_dbname(pBt);
         pNewTbl->lk = tmptbl_lk;
@@ -5174,7 +5178,7 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
     /* at this point, we have succeeded. */
     thd->had_temptables = 1;
 
-    int iTable = ++pBt->next_temp_root_pg;
+    int iTable = pNewTbl->rootPg;
 
     assert( iTable>=1 ); /* can never be zero or negative */
     assert( iTable>1 || pBt->temp_tables.count==0 ); /* master page == 1 */
@@ -11286,18 +11290,19 @@ void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
 {
     int rc;
     char *err = NULL;
+    Btree *pSrcBt = &src->aDb[1].pBt[0];
 
-    pthread_mutex_lock(&src->aDb[1].pBt[0].temp_tables_lk);
+    pthread_mutex_lock(&pSrcBt->temp_tables_lk);
 
     // aDb[0]: sqlite_master
     // aDb[1]: sqlite_temp_master
     struct temptable *pTbl = sqlite3HashFind(
-        &src->aDb[1].pBt[0].temp_tables, rootPageNumToTempHashKey(rootpg));
+        &pSrcBt->temp_tables, rootPageNumToTempHashKey(rootpg));
 
     if (pTbl == NULL) {
         logmsg(LOGMSG_ERROR, "%s table %d not found, sql:%s\n",
                __func__, rootpg, sql);
-        pthread_mutex_unlock(&src->aDb[1].pBt[0].temp_tables_lk);
+        pthread_mutex_unlock(&pSrcBt->temp_tables_lk);
         abort();
     }
 
@@ -11307,26 +11312,56 @@ void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
     if (rc != SQLITE_OK) {
         logmsg(LOGMSG_ERROR, "%s rc:%d err:%s sql:%s\n",
                __func__, rc, err, sql);
-        pthread_mutex_unlock(&src->aDb[1].pBt[0].temp_tables_lk);
+        pthread_mutex_unlock(&pSrcBt->temp_tables_lk);
         abort();
     }
 
     assert( tmptbl_clone==NULL );
     tmptbl_clone = pTbl; 
-    pthread_mutex_unlock(&src->aDb[1].pBt[0].temp_tables_lk);
+    pthread_mutex_unlock(&pSrcBt->temp_tables_lk);
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
         ; /* do nothing (no loop body) */
-    pthread_mutex_lock(&src->aDb[1].pBt[0].temp_tables_lk);
+    pthread_mutex_lock(&pSrcBt->temp_tables_lk);
     tmptbl_clone = NULL;
 
     if (rc != SQLITE_DONE) {
         logmsg(LOGMSG_ERROR, "%s rc:%d err:%s sql:%s\n",
                __func__, rc, err, sql);
-        pthread_mutex_unlock(&src->aDb[1].pBt[0].temp_tables_lk);
+        pthread_mutex_unlock(&pSrcBt->temp_tables_lk);
         abort();
     }
     sqlite3_finalize(stmt);
-    pthread_mutex_unlock(&src->aDb[1].pBt[0].temp_tables_lk);
+    int srcNextRootPg = pSrcBt->next_temp_root_pg;
+    pthread_mutex_unlock(&pSrcBt->temp_tables_lk);
+
+    Btree *pDestBt = &dest->aDb[1].pBt[0];
+    if( pDestBt ){
+        int maxRootPg = -1;
+        HashElem *pElem;
+        pthread_mutex_lock(&pDestBt->temp_tables_lk);
+        for(pElem=sqliteHashFirst(&pDestBt->temp_tables); pElem;
+                pElem=sqliteHashNext(pElem)){
+            struct temptable *pTbl = (struct temptable *)pElem->data;
+            if( pTbl==NULL ) continue;
+            if( maxRootPg==-1 || maxRootPg<pTbl->rootPg ){
+                maxRootPg = pTbl->rootpg;
+            }
+        }
+        if( maxRootPg!=-1 ){
+            assert( maxRootPg>=1 );
+            if( maxRootPg>=pDestBt->next_temp_root_pg ){
+                pDestBt->next_temp_root_pg = maxRootPg + 1;
+            }else{
+                logmsg(LOGMSG_ERROR,
+                       "%s max root page wrong, src:%d vs max:%d vs dst:%d\n",
+                       __func__, srcNextRootPg, maxRootPg,
+                       pDestBt->next_temp_root_pg);
+                pthread_mutex_unlock(&pDestBt->temp_tables_lk);
+                abort();
+            }
+        }
+        pthread_mutex_unlock(&pDestBt->temp_tables_lk);
+    }
 }
 
 int bt_hash_table(char *table, int szkb)
