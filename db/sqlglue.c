@@ -11344,7 +11344,7 @@ void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
             struct temptable *pTbl = (struct temptable *)pElem->data;
             if( pTbl==NULL ) continue;
             if( maxRootPg==-1 || maxRootPg<pTbl->rootPg ){
-                maxRootPg = pTbl->rootpg;
+                maxRootPg = pTbl->rootPg;
             }
         }
         if( maxRootPg!=-1 ){
