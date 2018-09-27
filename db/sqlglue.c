@@ -11283,6 +11283,8 @@ void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
     int rc;
     char *err = NULL;
 
+    pthread_mutex_lock(&src->aDb[1].pBt[0].temp_tables_lk);
+
     // aDb[0]: sqlite_master
     // aDb[1]: sqlite_temp_master
     struct temptable *pTbl = sqlite3HashFind(
@@ -11291,6 +11293,7 @@ void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
     if (pTbl == NULL) {
         logmsg(LOGMSG_ERROR, "%s table %d not found, sql:%s\n",
                __func__, rootpg, sql);
+        pthread_mutex_unlock(&src->aDb[1].pBt[0].temp_tables_lk);
         abort();
     }
 
@@ -11300,21 +11303,26 @@ void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
     if (rc != SQLITE_OK) {
         logmsg(LOGMSG_ERROR, "%s rc:%d err:%s sql:%s\n",
                __func__, rc, err, sql);
+        pthread_mutex_unlock(&src->aDb[1].pBt[0].temp_tables_lk);
         abort();
     }
 
     assert( tmptbl_clone==NULL );
     tmptbl_clone = pTbl; 
+    pthread_mutex_unlock(&src->aDb[1].pBt[0].temp_tables_lk);
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
         ; /* do nothing (no loop body) */
+    pthread_mutex_lock(&src->aDb[1].pBt[0].temp_tables_lk);
     tmptbl_clone = NULL;
 
     if (rc != SQLITE_DONE) {
         logmsg(LOGMSG_ERROR, "%s rc:%d err:%s sql:%s\n",
                __func__, rc, err, sql);
+        pthread_mutex_unlock(&src->aDb[1].pBt[0].temp_tables_lk);
         abort();
     }
     sqlite3_finalize(stmt);
+    pthread_mutex_unlock(&src->aDb[1].pBt[0].temp_tables_lk);
 }
 
 int bt_hash_table(char *table, int szkb)
