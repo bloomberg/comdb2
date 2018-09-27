@@ -8197,7 +8197,8 @@ int sqlite3BtreeCursor(
           }
         }
         if( rc==SQLITE_OK ){
-          assert( iTable<=pBt->temp_tables.count );
+          assert( sqlite3HashFind(&pBt->temp_tables,
+                                  rootPageNumToTempHashKey(iTable)) );
           rc = sqlite3BtreeCursor_temptable(pBt, iTable, wrFlag & BTREE_CUR_WR,
                                             temp_table_cmp, pKeyInfo, cur, thd);
         }
