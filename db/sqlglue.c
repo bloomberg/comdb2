@@ -6326,13 +6326,15 @@ skip:
             free(pCur->sampled_idx->name);
             free(pCur->sampled_idx);
         } else if (pCur->bt && pCur->bt->is_temporary) {
-            rc = pCur->cursor_close(thedb->bdb_env, pCur, &bdberr);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "bdb_temp_table_close_cursor rc %d\n", bdberr);
-                rc = SQLITE_INTERNAL;
-                goto done;
+            if( pCur->cursor_close ){
+                rc = pCur->cursor_close(thedb->bdb_env, pCur, &bdberr);
+                if (rc) {
+                    logmsg(LOGMSG_ERROR, "bdb_temp_table_close_cursor rc %d\n", bdberr);
+                    rc = SQLITE_INTERNAL;
+                    goto done;
+                }
             }
-            free(pCur->tmptable->name);
+            if( pCur->tmptable ) free(pCur->tmptable->name);
             free(pCur->tmptable);
         }
 
