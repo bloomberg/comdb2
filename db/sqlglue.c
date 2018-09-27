@@ -121,6 +121,11 @@ extern int gbl_partial_indexes;
 #define SQLITE3BTREE_KEY_SET_DEL(IX) (clnt->del_keys |= (1ULL << (IX)))
 extern int gbl_expressions_indexes;
 
+/*
+** Lua threads share temp tables.
+** Don't create new btree, use this one.
+*/
+static __thread struct temptable *tmptbl_clone = NULL;
 static __thread char hashKeyBuf[50]; /* >= len("+18446744073709551615\0") */
 
 static const char *rootPageNumToTempHashKey(
@@ -3382,16 +3387,16 @@ int sqlite3BtreeOpen(
         */
         int masterPgno;
         assert( tmptbl_clone==NULL );
-        rc = sqlite3BtreeCreateTable(pBt, &masterPgno, BTREE_INTKEY);
+        rc = sqlite3BtreeCreateTable(bt, &masterPgno, BTREE_INTKEY);
         assert( masterPgno==1 ); /* sqlite_temp_master root page number */
         logmsg(LOGMSG_INFO, "%s created sqlite_temp_master, pgno %d, rc %d\n",
                __func__, masterPgno, rc);
         if( rc!=SQLITE_OK ){
             pthread_mutex_lock(&bt->temp_tables_lk);
-            sqlite3HashClear(&pBt->temp_tables);
+            sqlite3HashClear(&bt->temp_tables);
             pthread_mutex_unlock(&bt->temp_tables_lk);
             pthread_mutex_lock(&gbl_sql_lock);
-            pthread_mutex_destroy(&pBt->temp_tables_lk);
+            pthread_mutex_destroy(&bt->temp_tables_lk);
             pthread_mutex_unlock(&gbl_sql_lock);
             goto done;
         }
@@ -5072,12 +5077,6 @@ static char *get_temp_dbname(Btree *pBt)
              thedb->envname, genid);
     return s;
 }
-
-/*
-** Lua threads share temp tables.
-** Don't create new btree, use this one.
-*/
-static __thread struct temptable *tmptbl_clone = NULL;
 
 /*
 ** Temp tables were not designed to be shareable.
