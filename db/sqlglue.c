@@ -11349,8 +11349,9 @@ void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
         }
         if( maxRootPg!=-1 ){
             assert( maxRootPg>=1 );
+            maxRootPg++; /* advance to the next one */
             if( maxRootPg>=pDestBt->next_temp_root_pg ){
-                pDestBt->next_temp_root_pg = maxRootPg + 1;
+                pDestBt->next_temp_root_pg = maxRootPg;
             }else{
                 logmsg(LOGMSG_ERROR,
                        "%s max root page wrong, src:%d vs max:%d vs dst:%d\n",
