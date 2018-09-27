@@ -5143,6 +5143,7 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
 
         tbl = bdb_temp_hashtable_create(thedb->bdb_env, &bdberr);
         if (tbl == NULL) {
+            free(pNewTbl);
             logmsg(LOGMSG_ERROR, "%s: bdb_temp_hashtable_create failed: %d\n",
                    __func__, bdberr);
             rc = SQLITE_INTERNAL;
@@ -5158,6 +5159,7 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
 
         tbl = bdb_temp_table_create(thedb->bdb_env, &bdberr);
         if (tbl == NULL) {
+            free(pNewTbl);
             logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_create failed: %d\n",
                    __func__, bdberr);
             rc = SQLITE_INTERNAL;
