@@ -108,7 +108,6 @@ pthread_mutex_t pr_lk = PTHREAD_MUTEX_INITIALIZER;
 int lkprintf(loglvl lvl, const char *fmt, ...)
 {
     va_list args;
-    int rc;
 
     pthread_mutex_lock(&pr_lk);
 
@@ -491,8 +490,6 @@ static inline int verify_pageorder_tablescan(bdb_cursor_impl_t *cur)
     u_int64_t nextcount;
     u_int64_t skipcount;
     u_int64_t ratio = 0;
-    int disable = 0;
-    int now;
     int rc;
 
     /* Print trace if enabled */
@@ -561,7 +558,6 @@ bdb_cursor_ifn_t *bdb_cursor_open(
     int (*pause_pagelock_cursors)(void *), void *pausearg,
     int (*count_cursors)(void *), void *countarg, int trak, int *bdberr)
 {
-    extern int gbl_force_old_cursors;
     bdb_cursor_ifn_t *pcur_ifn = NULL;
     bdb_cursor_impl_t *cur = NULL;
     int maxdta = 0;
@@ -797,14 +793,11 @@ bdb_cursor_ifn_t *bdb_cursor_open(
 int timestamp_lsn_keycmp(void *_, int key1len, const void *key1, int key2len,
                          const void *key2)
 {
-    int len;
-    int rc;
     struct timestamp_lsn_key *pkey1;
     struct timestamp_lsn_key *pkey2;
     assert(key1len == key2len);
     pkey1 = (struct timestamp_lsn_key *)key1;
     pkey2 = (struct timestamp_lsn_key *)key2;
-    len = key1len;
 
     if (pkey1->timestamp != pkey2->timestamp) {
         if (pkey1->timestamp < pkey2->timestamp) {
@@ -1570,7 +1563,6 @@ static int insert_ltran_pglog(bdb_state_type *bdb_state,
                               DB_LSN commitlsn)
 {
     struct ltran_pglogs_key *ltran_ent = NULL, ltran_key;
-    int bdberr = 0;
     int rc = 0;
 
 #ifdef NEWSI_STAT
@@ -1698,11 +1690,10 @@ int bdb_oldest_outstanding_ltran(bdb_state_type *bdb_state, int *ltran_count,
 
 int bdb_pglogs_min_lsn(bdb_state_type *bdb_state, DB_LSN *outlsn)
 {
-    DB_LSN orig_lsn, lsn, txn_lsn = {0};
+    DB_LSN lsn, txn_lsn = {0};
     int count;
 
     bdb_oldest_active_lsn(bdb_state, &lsn);
-    orig_lsn = lsn;
 
     bdb_oldest_outstanding_ltran(bdb_state, &count, &txn_lsn);
     if (count > 0) {
@@ -1880,14 +1871,12 @@ retrieve_logfile_pglogs(unsigned int filenum, int create)
 static int logfile_pglog_tmptbl_cmp(void *_, int key1len, const void *key1,
                                     int key2len, const void *key2)
 {
-    int len;
     int rc;
     pglogs_tmptbl_key *pkey1;
     pglogs_tmptbl_key *pkey2;
     assert(key1len == key2len);
     pkey1 = (pglogs_tmptbl_key *)key1;
     pkey2 = (pglogs_tmptbl_key *)key2;
-    len = key1len;
     if (pkey1->pgno != pkey2->pgno) {
         if (pkey1->pgno < pkey2->pgno)
             return -1;
@@ -1902,14 +1891,12 @@ static int logfile_pglog_tmptbl_cmp(void *_, int key1len, const void *key1,
 static int logfile_relink_tmptbl_cmp(void *_, int key1len, const void *key1,
                                      int key2len, const void *key2)
 {
-    int len;
     int rc;
     relinks_tmptbl_key *pkey1;
     relinks_tmptbl_key *pkey2;
     assert(key1len == key2len);
     pkey1 = (relinks_tmptbl_key *)key1;
     pkey2 = (relinks_tmptbl_key *)key2;
-    len = key1len;
     if (pkey1->pgno != pkey2->pgno) {
         if (pkey1->pgno < pkey2->pgno)
             return -1;
@@ -2049,15 +2036,12 @@ int transfer_ltran_pglogs_to_gbl(bdb_state_type *bdb_state,
                                  DB_LSN logical_commit_lsn)
 {
     int rc = 0;
-    int bdberr = 0;
-    int allocate = 0;
     struct ltran_pglogs_key *ltran_ent = NULL;
     struct logfile_pglogs_entry *l_entry;
     struct ltran_pglogs_key key;
     void *hash_cur;
     unsigned int hash_cur_buk;
     struct pglogs_logical_key *pglog_key = NULL;
-    logfile_pglog_hashkey *logfile_pglogs_ent = NULL;
     struct lsn_commit_list *lsn_ent = NULL;
     unsigned filenum;
 #ifdef NEWSI_DEBUG
@@ -2179,10 +2163,10 @@ static void *pglogs_asof_thread(void *arg)
 
     while (!db_is_stopped()) {
         // Remove list
-        int count, i, dont_poll = 0, drain_limit;
+        int count, i, dont_poll = 0;
         DB_LSN new_asof_lsn, lsn, del_lsn = {0};
         DB_LSN max_commit_lsn_in_queue = {0};
-        // drain_limit = bdb_state->attr->asof_thread_drain_limit;
+        // int drain_limit = bdb_state->attr->asof_thread_drain_limit;
 
         // Get commit list
         pthread_mutex_lock(&bdb_asof_current_lsn_mutex);
@@ -2205,7 +2189,6 @@ static void *pglogs_asof_thread(void *arg)
 
         // Realloc if I need to
         if (count > fileid_max_count) {
-            unsigned char **fids;
             int j;
             qh.fileids = realloc(qh.fileids, count * sizeof(unsigned char *));
             for (j = fileid_max_count; j < count; j++)
@@ -2222,7 +2205,7 @@ static void *pglogs_asof_thread(void *arg)
         for (i = 0; i < qh.index; i++) {
             struct fileid_pglogs_queue *queue;
             unsigned char *fileid = qh.fileids[i];
-            struct pglogs_queue_key *prev, *top, *current, *last;
+            struct pglogs_queue_key *top, *current, *last;
             struct asof_cursor *cur;
 
             int do_current = 0;
@@ -2271,7 +2254,6 @@ static void *pglogs_asof_thread(void *arg)
 
             count = 0;
             while (current != last) {
-                prev = current;
                 current = current->lnk.next;
 
                 count++;
@@ -2401,7 +2383,7 @@ static int my_fileid_free(void *obj, void *arg)
 
 int bdb_gbl_pglogs_init(bdb_state_type *bdb_state)
 {
-    int rc, i, bdberr;
+    int rc, bdberr;
     pthread_t thread_id;
 
     if (gbl_new_snapisol_asof) {
@@ -2535,7 +2517,6 @@ int bdb_txn_pglogs_init(void *bdb_state, void **pglogs_hashtbl,
 int bdb_txn_pglogs_close(void *instate, void **pglogs_hashtbl,
                          pthread_mutex_t *mutexp)
 {
-    bdb_state_type *bdb_state = (bdb_state_type *)instate;
     if (!gbl_new_snapisol)
         return 0;
 
@@ -2548,7 +2529,6 @@ int bdb_txn_pglogs_close(void *instate, void **pglogs_hashtbl,
 int bdb_insert_pglogs_int(hash_t *pglogs_hashtbl, unsigned char *fileid,
                           db_pgno_t pgno, DB_LSN lsn)
 {
-    int rc = 0;
     struct pglogs_key key;
     struct pglogs_key *pglogs_ent = NULL;
     struct lsn_list *lsnent = NULL;
@@ -2590,7 +2570,6 @@ int bdb_insert_pglogs_int(hash_t *pglogs_hashtbl, unsigned char *fileid,
 int bdb_insert_pglogs_logical_int(hash_t *pglogs_hashtbl, unsigned char *fileid,
                                   db_pgno_t pgno, DB_LSN lsn, DB_LSN commit_lsn)
 {
-    int rc = 0;
     struct pglogs_logical_key key;
     struct pglogs_logical_key *pglogs_ent = NULL;
     struct lsn_commit_list *lsnent = NULL;
@@ -2692,7 +2671,6 @@ int bdb_insert_relinks_int(hash_t *relinks_hashtbl, unsigned char *fileid,
                            db_pgno_t pgno, db_pgno_t prev_pgno,
                            db_pgno_t next_pgno, DB_LSN lsn)
 {
-    int rc = 0;
     struct relink_list *rlent;
     struct pglogs_relink_key *relinks_ent;
     struct pglogs_relink_key key;
@@ -2852,11 +2830,8 @@ int bdb_update_ltran_pglogs_hash(void *bdb_state, void *pglogs,
                                  DB_LSN logical_commit_lsn, hash_t *fileid_tbl)
 {
     int rc = 0;
-    int bdberr = 0;
     struct ltran_pglogs_key *ltran_ent = NULL;
     struct ltran_pglogs_key ltran_key;
-    struct pglogs_logical_key *pglogs_ent;
-    struct lsn_commit_list *lsnent;
     int i;
     struct page_logical_lsn_key *keylist =
         (struct page_logical_lsn_key *)pglogs;
@@ -3008,12 +2983,8 @@ int bdb_update_logfile_pglogs_from_queue(void *bdb_state, unsigned char *fid,
                                          struct pglogs_queue_key *queuekey)
 {
     int rc = 0;
-    int count = 0;
-    int bdberr;
-    int i, allocate = 0;
     unsigned filenum;
     struct logfile_pglogs_entry *l_entry;
-    struct lsn_commit_list *lsnent = NULL;
     DB_LSN logical_commit_lsn = queuekey->commit_lsn;
 
 #ifdef NEWSI_STAT
@@ -3074,15 +3045,11 @@ int bdb_update_logfile_pglogs(void *bdb_state, void *pglogs, unsigned int nkeys,
                               DB_LSN logical_commit_lsn, hash_t *fileid_tbl)
 {
     int rc = 0;
-    int count = 0;
-    int bdberr;
-    int allocate = 0;
     int i;
     struct logfile_pglogs_entry *l_entry;
     struct page_logical_lsn_key *keylist =
         (struct page_logical_lsn_key *)pglogs;
-    unsigned filenum, fileidx;
-    struct lsn_commit_list *lsnent = NULL;
+    unsigned filenum;
 
 #ifdef NEWSI_STAT
     struct timeval before, after, diff;
@@ -3241,7 +3208,7 @@ static int bdb_update_pglogs_fileid_queues(void *bdb_state,
                                            struct page_logical_lsn_key *keylist,
                                            unsigned int nkeys)
 {
-    int j, count;
+    int j;
     struct fileid_pglogs_queue *fileid_queue = NULL;
     struct pglogs_queue_key **qearray = NULL, *qe, *chk;
     struct page_logical_lsn_key *key;
@@ -3420,7 +3387,6 @@ int bdb_transfer_pglogs_to_queues(void *bdb_state, void *pglogs,
                                   int32_t timestamp, unsigned long long context)
 {
     int rc = 0;
-    int bdberr = 0;
     struct page_logical_lsn_key *keylist =
         (struct page_logical_lsn_key *)pglogs;
 
@@ -3517,7 +3483,6 @@ int bdb_update_txn_pglogs(void *bdb_state, void *pglogs_hashtbl,
                           unsigned char *fileid, DB_LSN lsn)
 {
     int rc;
-    struct pglogs_key *pglogs_ent;
     struct pglogs_key key;
 #ifdef NEWSI_STAT
     struct timeval before, after, diff;
@@ -3551,8 +3516,8 @@ int bdb_relink_logfile_pglogs(void *bdb_state, unsigned char *fileid,
                               db_pgno_t next_pgno, DB_LSN lsn,
                               hash_t *fileid_tbl)
 {
-    int rc = 0, allocate = 0;
-    unsigned filenum, last_filenum;
+    int rc = 0;
+    unsigned filenum;
     struct logfile_pglogs_entry *l_entry;
 
     if (!logfile_pglogs_repo_ready)
@@ -3836,10 +3801,7 @@ int bdb_transfer_txn_pglogs(void *bdb_state, void *pglogs_hashtbl,
                             uint32_t flags, unsigned long long logical_tranid,
                             int32_t timestamp, unsigned long long context)
 {
-    int rc, bdberr;
-    int count = 0;
-    int is_logical_commit = (flags & DB_TXN_LOGICAL_COMMIT);
-    int get_repo_lock = !(flags & DB_TXN_DONT_GET_REPO_MTX);
+    int rc;
 
     if (!gbl_new_snapisol || !bdb_gbl_ltran_pglogs_hash_ready)
         return 0;
@@ -4043,7 +4005,6 @@ static int bdb_cursor_next(bdb_cursor_ifn_t *pcur_ifn, int *bdberr)
     bdb_cursor_impl_t *cur = pcur_ifn->impl;
     int rc;
 
-again:
     rc = bdb_cursor_move(cur, DB_NEXT, bdberr);
 
     /* must stand on the last row */
@@ -4083,7 +4044,6 @@ static int bdb_cursor_prev(bdb_cursor_ifn_t *pcur_ifn, int *bdberr)
 /* The YAST test does an 'order by rowid desc' */
 /* assert(cur->type != BDBC_DT); */
 
-again:
     rc = bdb_cursor_move(cur, DB_PREV, bdberr);
 
     /* must stand on the last row */
@@ -4135,12 +4095,9 @@ static int bdb_cursor_find_last_dup(bdb_cursor_ifn_t *pcur_ifn, void *key,
 {
     int dirLeft = bias->dirLeft;
     bdb_cursor_impl_t *cur = pcur_ifn->impl;
-    bdb_state_type *bdb_state;
     char *newkey;
     int newkeylen;
     int rc = 0;
-
-    bdb_state = cur->state;
 
     *bdberr = 0;
 
@@ -4617,7 +4574,6 @@ static int bdb_cursor_move_and_skip_int(bdb_cursor_impl_t *cur,
 {
     unsigned long long genid = 0;
     int howcrt = how;
-    int tmpheader = 0;
     int rc = 0;
     int rc2 = 0;
     db_pgno_t pgno = 0;
@@ -4936,7 +4892,7 @@ static int bdb_cursor_find_merge(bdb_cursor_impl_t *cur, void *key, int keylen,
     int dtasize_rl = 0;
     char *key_rl = NULL;
     int keysize_rl = 0;
-    unsigned long long genid_rl;
+    unsigned long long genid_rl = 0;
     uint8_t ver_rl;
     int got_rl;
 
@@ -4945,17 +4901,15 @@ static int bdb_cursor_find_merge(bdb_cursor_impl_t *cur, void *key, int keylen,
     int dtasize_po = 0;
     char *key_po = NULL;
     int keysize_po = 0;
-    unsigned long long genid_po;
+    unsigned long long genid_po = 0;
     uint8_t ver_po;
-    int got_po;
 
     /* Variables containing 'shadow' data from the shadow-tables. */
     char *dta_sd = NULL;
     int dtasize_sd = 0;
     char *key_sd = NULL;
     int keysize_sd = 0;
-    unsigned long long genid_sd;
-    int got_sd = 0;
+    unsigned long long genid_sd = 0;
 
     /* Utility variables. */
     unsigned long long *genid_ck;
@@ -4970,7 +4924,6 @@ static int bdb_cursor_find_merge(bdb_cursor_impl_t *cur, void *key, int keylen,
 
 step1:
     got_rl = 0;
-    got_po = 0;
 
     /* STEP 1*/
     if (cur->rl) /* shadow data will have no real */
@@ -5043,9 +4996,9 @@ step1:
 
             if (cur->trak) {
                 logmsg(LOGMSG_USER, "Cur %p found 0x", cur);
-                hexdump(LOGMSG_USER, key_rl, keysize_rl);
+                hexdump(LOGMSG_USER, (unsigned char *)key_rl, keysize_rl);
                 logmsg(LOGMSG_USER, " data 0x");
-                hexdump(LOGMSG_USER, dta_rl, dtasize_rl);
+                hexdump(LOGMSG_USER, (unsigned char *)dta_rl, dtasize_rl);
                 logmsg(LOGMSG_USER, " in real table.\n");
             }
         }
@@ -5201,13 +5154,12 @@ step1:
                 key_po = bdb_temp_table_key(cur->addcur);
                 keysize_po = bdb_temp_table_keysize(cur->addcur);
                 genid_po = *(unsigned long long *)key_po;
-                got_po = 1;
 
                 if (cur->trak) {
                     logmsg(LOGMSG_USER, "Cur %p found 0x", cur);
-                    hexdump(LOGMSG_USER, key_po, keysize_po);
+                    hexdump(LOGMSG_USER, (unsigned char *)key_po, keysize_po);
                     logmsg(LOGMSG_USER, " data 0x");
-                    hexdump(LOGMSG_USER, dta_po, dtasize_po);
+                    hexdump(LOGMSG_USER, (unsigned char *)dta_po, dtasize_po);
                     logmsg(LOGMSG_USER, " in virtual stripe.\n");
                 }
             } else {
@@ -5303,9 +5255,9 @@ step1:
 
             if (cur->trak) {
                 logmsg(LOGMSG_USER, "Cur %p found 0x", cur);
-                hexdump(LOGMSG_USER, key_sd, keysize_sd);
+                hexdump(LOGMSG_USER, (unsigned char *)key_sd, keysize_sd);
                 logmsg(LOGMSG_USER, " data 0x");
-                hexdump(LOGMSG_USER, dta_sd, dtasize_sd);
+                hexdump(LOGMSG_USER, (unsigned char *)dta_sd, dtasize_sd);
                 logmsg(LOGMSG_USER, " in shadow table.\n");
             }
 #if MERGE_DEBUG
@@ -5518,8 +5470,8 @@ static int bdb_cursor_move_merge(bdb_cursor_impl_t *cur, int how, int *bdberr)
     char *key_sd = NULL;
     int keysize_sd = 0;
     unsigned long long *genid_ck;
-    unsigned long long genid_rl;
-    unsigned long long genid_sd;
+    unsigned long long genid_rl = 0;
+    unsigned long long genid_sd = 0;
     char last_key[MAXRECSZ];
     int last_keylen = 0;
     int stripe_rl = -1;
@@ -5646,11 +5598,11 @@ step1:
             logmsg(LOGMSG_USER, 
                     "Cur %p idx-real-move how=%d rc=%d srch: keylen=%d key=0x",
                     cur, how, rc, last_keylen);
-            hexdump(LOGMSG_USER, last_key, last_keylen);
+            hexdump(LOGMSG_USER, (unsigned char *)last_key, last_keylen);
 
             if (IX_FND == rc) {
                 logmsg(LOGMSG_USER, " found: keylen=%d key=0x", keysize_rl);
-                hexdump(LOGMSG_USER, key_rl, keysize_rl);
+                hexdump(LOGMSG_USER, (unsigned char *)key_rl, keysize_rl);
                 logmsg(LOGMSG_USER, " stripe %d page %d idx %d", cur->idx, page_rl,
                         index_rl);
             } else {
@@ -5942,9 +5894,9 @@ step1:
         if (skip) {
             if (cur->trak) {
                 logmsg(LOGMSG_USER, "cur %p skipping page-order key 0x", cur);
-                hexdump(LOGMSG_USER, key_rl, keysize_rl);
+                hexdump(LOGMSG_USER, (unsigned char *)key_rl, keysize_rl);
                 logmsg(LOGMSG_USER, " dta 0x");
-                hexdump(LOGMSG_USER, dta_rl, dtasize_rl);
+                hexdump(LOGMSG_USER, (unsigned char *)dta_rl, dtasize_rl);
                 logmsg(LOGMSG_USER, "\n");
             }
 
@@ -6117,11 +6069,11 @@ step1:
                 "Cur %p %s idx-shad-move how=%d rc=%d srch: keylen=%d key=0x",
                 cur, cur->pageorder ? "pageorder(?) " : "", how, rc,
                 last_keylen);
-            hexdump(LOGMSG_USER, last_key, last_keylen);
+            hexdump(LOGMSG_USER, (unsigned char *)last_key, last_keylen);
 
             if (IX_FND == rc) {
                 logmsg(LOGMSG_USER, " found: keylen=%d dta=0x", keysize_sd);
-                hexdump(LOGMSG_USER, key_sd, keysize_sd);
+                hexdump(LOGMSG_USER, (unsigned char *)key_sd, keysize_sd);
             } else {
                 logmsg(LOGMSG_USER, " (not found)");
             }
@@ -6388,9 +6340,8 @@ static int bdb_cursor_move_int(bdb_cursor_impl_t *cur, int how, int *bdberr)
 
 static int bdb_cursor_move(bdb_cursor_impl_t *cur, int how, int *bdberr)
 {
-    int rc, cnt = 0, max = cur->state->attr->max_rowlocks_reposition, now;
+    int rc, cnt = 0, max = cur->state->attr->max_rowlocks_reposition;
     bdb_cursor_ifn_t *pcur_ifn = cur->ifn;
-    static int lastpr = 0;
 
 again:
     rc = bdb_cursor_move_int(cur, how, bdberr);
@@ -6421,12 +6372,8 @@ static int bdb_cursor_find_int(bdb_cursor_ifn_t *pcur_ifn, void *key,
                                int keylen, int dirLeft, int *bdberr)
 {
     bdb_cursor_impl_t *cur = pcur_ifn->impl;
-    bdb_state_type *bdb_state;
     int rc;
     int dtafile = -1;
-    unsigned long long genid;
-
-    bdb_state = cur->state;
 
     *bdberr = 0;
 
@@ -6558,8 +6505,7 @@ static int bdb_cursor_find(bdb_cursor_ifn_t *pcur_ifn, void *key, int keylen,
                            int dirLeft, int *bdberr)
 {
     bdb_cursor_impl_t *cur = pcur_ifn->impl;
-    int rc, cnt = 0, max = cur->state->attr->max_rowlocks_reposition, now;
-    static int lastpr = 0;
+    int rc, cnt = 0, max = cur->state->attr->max_rowlocks_reposition;
 
 again:
     rc = bdb_cursor_find_int(pcur_ifn, key, keylen, dirLeft, bdberr);
@@ -6760,10 +6706,6 @@ static int bdb_btree_merge(bdb_cursor_impl_t *cur, int stripe_rl, int page_rl,
     char *data_sd;
     int datalen_sd;
     int rc = -1;
-    void *data = NULL;
-    int len = 0;
-    int rrn = 0;
-    unsigned long long genid = 0;
     int fidlen = (DB_FILE_ID_LEN * 2) + 1;
     char _fileid[DB_FILE_ID_LEN] = {0};
     char hex_fid[(DB_FILE_ID_LEN * 2) + 1];
@@ -7445,7 +7387,6 @@ static int bdb_btree_update_shadow_cursor_prev(bdb_cursor_impl_t *cur,
 
     /* argh, cannot reuse last_dup for bdbcursor here */
     char tmpkey[MAXKEYSZ + 1]; /* last dup */
-    int tmpkeylen;
     char *usekey = NULL;
     int usekeylen = 0;
 
@@ -7509,14 +7450,12 @@ static int bdb_copy_logfile_pglogs_to_shadow_tran(bdb_state_type *bdb_state,
     logfile_pglog_hashkey *pglog_ent = NULL;
     struct pglogs_key client_pglog_key;
     struct pglogs_key *client_pglog_ent = NULL;
-    struct lsn_commit_list *lsnent = NULL;
     struct lsn_list *add_lsnent = NULL;
     struct lsn_list *add_before_lsnent = NULL;
 
     logfile_relink_hashkey *relink_ent = NULL;
     struct pglogs_relink_key client_relink_key;
     struct pglogs_relink_key *client_relink_ent = NULL;
-    struct relink_list *rlent = NULL;
     struct relink_list *add_rlent = NULL;
     struct relink_list *add_before_rlent = NULL;
     unsigned filenum, first_filenum;
@@ -7676,6 +7615,7 @@ static int bdb_copy_logfile_pglogs_to_shadow_tran(bdb_state_type *bdb_state,
             }
             Pthread_mutex_unlock(&pglog_ent->mtx);
 #else
+            struct lsn_commit_list *lsnent = NULL;
             LISTC_FOR_EACH_REVERSE(&pglog_ent->lsns, lsnent, lnk)
             {
                 if (log_compare(&lsnent->commit_lsn, &shadow_tran->asof_lsn) <=
@@ -7797,6 +7737,7 @@ static int bdb_copy_logfile_pglogs_to_shadow_tran(bdb_state_type *bdb_state,
             }
             Pthread_mutex_unlock(&relink_ent->mtx);
 #else
+            struct relink_list *rlent = NULL;
             LISTC_FOR_EACH_REVERSE(&relink_ent->relinks, rlent, lnk)
             {
                 if (log_compare(&rlent->lsn, &shadow_tran->asof_ref_lsn) <= 0)
@@ -8117,7 +8058,6 @@ static struct pglogs_queue_cursor *retrieve_queue_cursor(bdb_cursor_impl_t *cur,
                                                          int *bdberr)
 {
     unsigned char fileid[DB_FILE_ID_LEN];
-    struct pglogs_queue_cursor *plogq;
 
     if (!cur->rl || cur->rl->fileid(cur->rl, fileid, bdberr))
         return NULL;
