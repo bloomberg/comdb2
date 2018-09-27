@@ -39,7 +39,6 @@
 #include <sqlinterfaces.h>
 #include <sqloffload.h>
 #include <flibc.h>
-#include <plbitlib.h>
 #include <sqlresponse.pb-c.h>
 #include <str0.h>
 
@@ -829,7 +828,7 @@ static int dbconsumer_consume_int(Lua L, dbconsumer_t *q)
     if (q->genid == 0) {
         return -1;
     }
-    enum consumer_t type = consumer_type(q->consumer);
+    enum consumer_t type = dbqueue_consumer_type(q->consumer);
     int rc = (type == CONSUMER_TYPE_LUA) ? lua_trigger_impl(L, q)
                                          : lua_consumer_impl(L, q);
     q->genid = 0;
@@ -2090,7 +2089,6 @@ static int luatable_emit(Lua L)
 static int dbtable_insert(Lua lua)
 {
     SP sp = getsp(lua);
-
     int rc, nargs, len;
     strbuf *columns, *params, *sql;
 
@@ -4089,7 +4087,7 @@ static int db_consumer(Lua L)
         return luaL_error(L, "consumer not found for sp:%s", spname);
     }
 
-    enum consumer_t type = consumer_type(consumer);
+    enum consumer_t type = dbqueue_consumer_type(consumer);
     trigger_reg_t *t;
     if (type == CONSUMER_TYPE_DYNLUA) {
         // will block until registration completes

@@ -64,7 +64,7 @@ static int prepare_changes(struct schema_change_type *s, struct dbtable *db,
                            struct dbtable *newdb, struct scplan *theplan,
                            struct scinfo *scinfo)
 {
-    int changed = ondisk_schema_changed(s->table, newdb, stderr, s);
+    int changed = ondisk_schema_changed(s->tablename, newdb, stderr, s);
 
     if (changed == SC_BAD_NEW_FIELD) {
         /* we want to capture cases when "alter" is used
@@ -165,7 +165,7 @@ static void adjust_version(int changed, struct scinfo *scinfo,
     }
 
     /* if only index or constraints have changed don't bump version */
-    int ondisk_changed = compare_tag(s->table, ".ondisk", NULL);
+    int ondisk_changed = compare_tag(s->tablename, ".ondisk", NULL);
     if (ondisk_changed != SC_NO_CHANGE /* something changed in .ondisk */
         || s->fastinit                 /* fastinit */
         || !s->use_plan                /* full rebuild due to some prob */
@@ -187,7 +187,6 @@ static int prepare_version_for_dbs_without_instant_sc(tran_type *tran,
                                                       struct dbtable *newdb)
 {
     int rc;
-    int bdberr;
 
     if (db->odh && !db->instant_schema_change && newdb->instant_schema_change &&
         newdb->version == 2) {
@@ -368,14 +367,10 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     struct dbtable *db;
     int rc;
     int bdberr = 0;
-    int trying_again = 0;
     struct dbtable *newdb;
     int datacopy_odh = 0;
-    int stop_tag_thds = 0;
-    int retries = 0;
     int changed;
     int i;
-    int olddb_instant_sc;
     char new_prefix[32];
     int foundix;
 
@@ -388,9 +383,9 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     gbl_use_plan = 1;
     gbl_sc_last_writer_time = 0;
 
-    db = get_dbtable_by_name(s->table);
+    db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
-        sc_errf(s, "Table not found:%s\n", s->table);
+        sc_errf(s, "Table not found:%s\n", s->tablename);
         return SC_TABLE_DOESNOT_EXIST;
     }
 
@@ -480,7 +475,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     if (rc) {
         /* todo: clean up db */
         sc_errf(s, "failed opening new db\n");
-        change_schemas_recover(s->table);
+        change_schemas_recover(s->tablename);
         return -1;
     }
 
@@ -527,7 +522,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     if (init_sc_genids(newdb, s)) {
         sc_errf(s, "failed initilizing sc_genids\n");
         delete_temp_table(iq, newdb);
-        change_schemas_recover(s->table);
+        change_schemas_recover(s->tablename);
         return -1;
     }
 
@@ -606,7 +601,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
         backout_constraint_pointers(newdb, db);
         delete_temp_table(iq, newdb);
-        change_schemas_recover(s->table);
+        change_schemas_recover(s->tablename);
         return rc;
     }
     newdb->iq = NULL;
@@ -621,7 +616,6 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
                          tran_type *transac)
 {
-    int retries = 0;
     int rc, bdberr;
     struct dbtable *db = s->db;
     struct dbtable *newdb = s->newdb;
@@ -644,7 +638,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     db->sc_to = newdb;
 
     if (gbl_sc_abort || db->sc_abort || iq->sc_should_abort) {
-        sc_errf(s, "Aborting schema change %s\n", s->table);
+        sc_errf(s, "Aborting schema change %s\n", s->tablename);
         goto backout;
     }
 
@@ -685,8 +679,8 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
         goto backout;
 
     /* load new csc2 data */
-    rc = load_new_table_schema_tran(thedb, transac, /*s->table*/ db->tablename,
-                                    s->newcsc2);
+    rc = load_new_table_schema_tran(thedb, transac,
+                                    /*s->tablename*/ db->tablename, s->newcsc2);
     if (rc != 0) {
         sc_errf(s, "Error loading new schema into meta tables, "
                    "trying again\n");
@@ -738,7 +732,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     fix_constraint_pointers(db, newdb);
 
     /* update tags in memory */
-    commit_schemas(/*s->table*/ db->tablename);
+    commit_schemas(/*s->tablename*/ db->tablename);
     update_dbstore(db); // update needs to occur after refresh of hashtbl
 
     MEMORY_SYNC;
@@ -833,7 +827,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 backout:
     live_sc_off(db);
     backout_constraint_pointers(newdb, db);
-    change_schemas_recover(/*s->table*/ db->tablename);
+    change_schemas_recover(/*s->tablename*/ db->tablename);
 
     logmsg(LOGMSG_WARN,
            "##### BACKOUT #####   %s v: %d sc:%d lrl: %d odh:%d bdb:%p\n",
@@ -860,7 +854,7 @@ int do_upgrade_table_int(struct schema_change_type *s)
     struct dbtable *db;
     struct scinfo scinfo;
 
-    db = get_dbtable_by_name(s->table);
+    db = get_dbtable_by_name(s->tablename);
     if (db == NULL) return SC_TABLE_DOESNOT_EXIST;
 
     s->db = db;

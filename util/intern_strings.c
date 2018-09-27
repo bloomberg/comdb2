@@ -46,7 +46,6 @@ static void init_interned_strings(void)
 /* Store a copy of parameter str in a hash tbl */
 char *intern(const char *str)
 {
-    char *out;
     struct interned_string *s;
 
     pthread_once(&once, init_interned_strings);

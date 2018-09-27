@@ -178,14 +178,11 @@ int verify_partial_rev_constraint(struct dbtable *to_db, struct dbtable *newdb,
         char rondisk_tag[MAXTAGLEN];
         for (j = 0; j < cnstrt->nrules; j++) {
             char ondisk_tag[MAXTAGLEN];
-            int ixnum = 0, ixlen = 0;
+            int ixnum = 0;
             struct dbtable *ldb;
             char lkey[MAXKEYLEN];
-            char nkey[MAXKEYLEN];
-            char rnkey[MAXKEYLEN];
             int fndrrn;
             unsigned long long genid;
-            int nornrefs = 0;
             if (strcasecmp(cnstrt->table[j], to_db->tablename)) {
                 continue;
             }
@@ -483,7 +480,7 @@ struct dbtable *create_db_from_schema(struct dbenv *thedb,
                                  int foundix, int version)
 {
     struct dbtable *newdb =
-        newdb_from_schema(thedb, s->table, NULL, dbnum, foundix, 0);
+        newdb_from_schema(thedb, s->tablename, NULL, dbnum, foundix, 0);
 
     if (newdb == NULL) return NULL;
 
@@ -502,8 +499,8 @@ int fetch_schema_change_seed(struct schema_change_type *s, struct dbenv *thedb,
                              unsigned int *stored_sc_host)
 {
     int bdberr;
-    int rc = bdb_get_sc_seed(thedb->bdb_env, NULL, s->table, stored_sc_genid,
-                             stored_sc_host, &bdberr);
+    int rc = bdb_get_sc_seed(thedb->bdb_env, NULL, s->tablename,
+                             stored_sc_genid, stored_sc_host, &bdberr);
     if (rc == -1 && bdberr == BDBERR_FETCH_DTA) {
         /* No seed exists, proceed. */
     } else if (rc) {
@@ -941,7 +938,7 @@ int create_schema_change_plan(struct schema_change_type *s, struct dbtable *oldd
     }
 
     char *str_constraints = "";
-    rc = ondisk_schema_changed(s->table, newdb, NULL, s);
+    rc = ondisk_schema_changed(s->tablename, newdb, NULL, s);
     if (rc == SC_CONSTRAINT_CHANGE && !plan->plan_convert &&
         newdb->n_constraints) {
         plan->plan_convert = 1;

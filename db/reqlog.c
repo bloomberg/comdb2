@@ -50,7 +50,6 @@
 #include <list.h>
 #include <segstr.h>
 #include <plhash.h>
-#include <plbitlib.h>
 #include <lockmacro.h>
 #include <memory_sync.h>
 
@@ -2688,10 +2687,9 @@ void reqlog_set_queue_time(struct reqlogger *logger, uint64_t timeus)
 void reqlog_set_fingerprint(struct reqlogger *logger, const char *fingerprint,
                             size_t n)
 {
-    size_t min;
     if (logger == NULL)
         return;
-    min = (FINGERPRINTSZ < n) ? FINGERPRINTSZ : n;
+    size_t min = (FINGERPRINTSZ < n) ? FINGERPRINTSZ : n;
     memcpy(logger->fingerprint, fingerprint, min);
     logger->have_fingerprint = 1;
 }

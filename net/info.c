@@ -53,7 +53,6 @@ static char *fmt_time(struct timebuf *b, int epochtime)
 static void basic_node_data(struct host_node_tag *ptr)
 {
     struct timebuf t;
-    char ip[16];
     logmsg(LOGMSG_USER, "host %10s%s:%-5d fd %-3d", ptr->host, ptr->subnet,
            ptr->port, ptr->fd);
     if (ptr->have_connect_thread)

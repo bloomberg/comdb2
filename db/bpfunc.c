@@ -12,6 +12,9 @@
 
 extern int gbl_check_access_controls;
 
+/* Automatically create 'default' user when authentication is enabled. */
+int gbl_create_default_user;
+
 /*                           FUNCTION DECLARATIONS */
 
 static int prepare_create_timepart(bpfunc_t *tp);
@@ -342,7 +345,7 @@ static int exec_authentication(void *tran, bpfunc_t *func, char *err)
     /* Check if there is already op password. */
     int rc = bdb_authentication_set(thedb->bdb_env, tran, auth->enabled, &bdberr);
 
-    if (auth->enabled && valid_user == 0 && rc == 0)
+    if (gbl_create_default_user && auth->enabled && valid_user == 0 && rc == 0)
         rc = bdb_user_password_set(tran, DEFAULT_USER, DEFAULT_PASSWORD);
 
     if (rc == 0)

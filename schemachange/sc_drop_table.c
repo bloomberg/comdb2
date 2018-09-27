@@ -46,7 +46,7 @@ int do_drop_table(struct ireq *iq, struct schema_change_type *s,
                   tran_type *tran)
 {
     struct dbtable *db;
-    iq->usedb = db = s->db = get_dbtable_by_name(s->table);
+    iq->usedb = db = s->db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
         sc_errf(s, "Table doesn't exists\n");
         reqerrstr(iq, ERR_SC, "Table doesn't exists");
@@ -83,7 +83,7 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
     /* at this point if a backup is going on, it will be bad */
     gbl_sc_commit_count++;
 
-    if (rc = mark_schemachange_over_tran(db->tablename, tran))
+    if ((rc = mark_schemachange_over_tran(db->tablename, tran)))
         return rc;
 
     s->already_finalized = 1;

@@ -551,9 +551,11 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
         }
     }
 
-    table->num_mem_entries = 0;
-    table->cmpfunc = key_memcmp;
-    table->temp_table_type = temp_table_type;
+    if (table != NULL) {
+        table->num_mem_entries = 0;
+        table->cmpfunc = key_memcmp;
+        table->temp_table_type = temp_table_type;
+    }
 
     return table;
 }

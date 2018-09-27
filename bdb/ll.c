@@ -63,8 +63,6 @@
 #include "locks.h"
 #include "llog_auto.h"
 #include "missing.h"
-
-#include <plbitlib.h> /* for bset/btst */
 #include <list.h>
 #include <lockmacro.h>
 

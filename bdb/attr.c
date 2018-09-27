@@ -43,7 +43,6 @@
 #include "bdb_int.h"
 #include "locks.h"
 
-#include <plbitlib.h> /* for bset/btst */
 #include <logmsg.h>
 
 static void bdb_attr_set_int(bdb_state_type *bdb_state, bdb_attr_type *bdb_attr,

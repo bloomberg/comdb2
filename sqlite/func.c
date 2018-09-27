@@ -22,6 +22,7 @@
 
 #include <memcompare.c>
 
+extern const char *const gbl_db_build_name;
 extern const char * const gbl_db_release_name;
 
 /*
@@ -689,9 +690,9 @@ static void comdb2VersionFunc(
   sqlite3_value **NotUsed2
 ){
   UNUSED_PARAMETER2(NotUsed, NotUsed2);
-  char zBuf[50];
-  const char * version = getenv("COMDB2_VERSION");
-  sqlite3_snprintf(sizeof(zBuf), zBuf, "%s (%s)", gbl_db_release_name, version);
+  char zBuf[128];
+  sqlite3_snprintf(sizeof(zBuf), zBuf,
+    "%s (%s.%s)", gbl_db_release_name, gbl_db_release_name, gbl_db_build_name);
   sqlite3_result_text(context, zBuf, -1, SQLITE_TRANSIENT);
 }
 

@@ -159,7 +159,6 @@ int SBUF2_FUNC(sbuf2close)(SBUF2 *sb)
 int SBUF2_FUNC(sbuf2flush)(SBUF2 *sb)
 {
     int cnt = 0, rc, len;
-    void *ssl;
 
     if (sb == 0)
         return -1;
@@ -171,6 +170,7 @@ int SBUF2_FUNC(sbuf2flush)(SBUF2 *sb)
         }
 
 #if SBUF2_SERVER && WITH_SSL
+        void *ssl;
 ssl_downgrade:
         ssl = sb->ssl;
         rc = sb->write(sb, (char *)&sb->wbuf[sb->wtl], len);
@@ -238,7 +238,7 @@ int SBUF2_FUNC(sbuf2puts)(SBUF2 *sb, char *string)
 /* returns num items written || <0 for error*/
 int SBUF2_FUNC(sbuf2write)(char *ptr, int nbytes, SBUF2 *sb)
 {
-    int rc, ii, off, left, written = 0;
+    int rc, off, left, written = 0;
     if (sb == 0)
         return -1;
     off = 0;
@@ -304,7 +304,6 @@ int SBUF2_FUNC(sbuf2fwrite)(char *ptr, int size, int nitems, SBUF2 *sb)
 int SBUF2_FUNC(sbuf2getc)(SBUF2 *sb)
 {
     int rc, cc;
-    void *ssl;
     if (sb == 0)
         return -1;
 
@@ -320,6 +319,7 @@ int SBUF2_FUNC(sbuf2getc)(SBUF2 *sb)
         sb->rtl = 0;
         sb->rhd = 0;
 #if SBUF2_SERVER && WITH_SSL
+        void *ssl;
 ssl_downgrade:
         ssl = sb->ssl;
         rc = sb->read(sb, (char *)sb->rbuf, sb->lbuf - 1);
@@ -390,7 +390,6 @@ static int sbuf2fread_int(char *ptr, int size, int nitems,
 {
     int need = size * nitems;
     int done = 0;
-    void *ssl;
 
 #if SBUF2_UNGETC
     if (sb->ungetc_buf_len > 0) {
@@ -424,6 +423,7 @@ static int sbuf2fread_int(char *ptr, int size, int nitems,
             sb->rtl = 0;
             sb->rhd = 0;
 #if SBUF2_SERVER && WITH_SSL
+            void *ssl;
 ssl_downgrade:
             ssl = sb->ssl;
             rc = sb->read(sb, (char *)sb->rbuf, sb->lbuf - 1);
@@ -851,13 +851,13 @@ struct peer_info {
 char *SBUF2_FUNC(get_origin_mach_by_buf)(SBUF2 *sb)
 {
     int fd;
-    char *funcname;
     struct sockaddr_in peeraddr;
     socklen_t len = sizeof(peeraddr);
     char *host;
 #if SBUF2_SERVER
     struct peer_info *info;
     struct peer_info key;
+    char *funcname;
 #else
     void *info = NULL;
 #endif
@@ -901,15 +901,16 @@ char *SBUF2_FUNC(get_origin_mach_by_buf)(SBUF2 *sb)
             /* Do a slow lookup of this internet address in the host database
              * to get a hostname, and then search the bigsnd node list to
              * map this to a node number. */
-            struct hostent *hp = NULL, rslt;
             char hnm[256] = {0};
             char *h_name = NULL;
-            int node, rc;
+            int rc;
             int error_num = 0;
             int goodrc = 0;
 
 #ifdef _LINUX_SOURCE
+#if SBUF2_SERVER
             funcname = "getnameinfo";
+#endif
             rc = getnameinfo((struct sockaddr *)&peeraddr, sizeof(peeraddr),
                              hnm, sizeof(hnm), NULL, 0, 0);
 
@@ -920,7 +921,10 @@ char *SBUF2_FUNC(get_origin_mach_by_buf)(SBUF2 *sb)
                 error_num = errno;
             }
 #else
+#if SBUF2_SERVER
             funcname = "getipnodebyaddr";
+#endif
+            struct hostent *hp = NULL;
             hp = getipnodebyaddr(&peeraddr.sin_addr, sizeof(peeraddr.sin_addr),
                                  peeraddr.sin_family, &error_num);
             if (hp) {

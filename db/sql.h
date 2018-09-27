@@ -55,8 +55,7 @@ enum transaction_level {
  * of appsock threads with small stacks. */
 
 #define MAX_HASH_SQL_LENGTH 8192
-#define MAX_USERNAME_LEN 17
-#define MAX_PASSWORD_LEN 19
+#define FINGERPRINTSZ 16
 
 /* Static rootpages numbers. */
 enum { RTPAGE_SQLITE_MASTER = 1, RTPAGE_START = 2 };
@@ -65,6 +64,7 @@ typedef struct stmt_hash_entry {
     char sql[MAX_HASH_SQL_LENGTH];
     sqlite3_stmt *stmt;
     char *query;
+    char fingerprint[FINGERPRINTSZ];
     //struct schema *params_to_bind;
     LINKC_T(struct stmt_hash_entry) stmtlist_linkv;
 } stmt_hash_entry_type;
@@ -262,8 +262,11 @@ void currange_free(CurRange *cr);
 struct stored_proc;
 struct lua_State;
 
-enum early_verify_error { EARLY_ERR_VERIFY = 1, EARLY_ERR_SELECTV = 2 };
-#define FINGERPRINTSZ 16
+enum early_verify_error {
+    EARLY_ERR_VERIFY = 1,
+    EARLY_ERR_SELECTV = 2,
+    EARLY_ERR_GENCHANGE = 3
+};
 
 enum {
   ERR_GENERIC = -1,
@@ -274,7 +277,7 @@ enum {
 };
 
 /* write response */
-enum {
+enum WriteResponsesEnum {
     RESPONSE_COLUMNS,
     RESPONSE_COLUMNS_LUA,
     RESPONSE_COLUMNS_STR,
@@ -638,6 +641,8 @@ struct sqlclntstate {
 
     int translevel_changed;
     int admin;
+
+    uint32_t start_gen;
 };
 
 /* Query stats. */

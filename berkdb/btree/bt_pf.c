@@ -48,10 +48,10 @@ static inline int advance_on_tree(DBC *dbc);
 #define BTPF_SAME_THREAD 0
 
 #define TEST_STOP(dbc) {                                                             \
-    if (!BTPF_ENABLED(dbc) || PF(dbc)->curlf[MIN_TH(dbc)] == PGNO_INVALID)           \
+    if (!BTPF_ENABLED(dbc) || PFX(dbc)->curlf[MIN_TH(dbc)] == PGNO_INVALID)           \
     {                                                                                \
-        PF(dbc)->on = PF_OFF;                                                        \
-        PF(dbc)->status = STOPPED;                                                   \
+        PFX(dbc)->on = PF_OFF;                                                        \
+        PFX(dbc)->status = STOPPED;                                                   \
     }                                                                                \
 }
 
@@ -119,7 +119,7 @@ btpf_free_job(btpf_job ** x)
 void
 btpf_copy_dbc(DBC *dbc, DBC *ndbc)
 {
-	btpf_copy(PF(dbc), PF(ndbc));
+	btpf_copy(PFX(dbc), PFX(ndbc));
 }
 
 void
@@ -165,22 +165,22 @@ int
 crsr_nxt(DBC *dbc)
 {
 	int ret = 0;
-	if (!PF(dbc))
+	if (!PFX(dbc))
 		return 0;
 	TEST_STOP(dbc);
-	if (!PF(dbc)->on)
+	if (!PFX(dbc)->on)
 		return 100;
-	if (!PF(dbc)->status == LOADED_ALL)
+	if (PFX(dbc)->status == LOADED_ALL)
 		return 0;
-	if (PF(dbc)->direction == BACKWARD) {
-		btpf_rst(PF(dbc));
-		if (PF(dbc)->status == PF || PF(dbc)->status == LOADED_ALL) 
+	if (PFX(dbc)->direction == BACKWARD) {
+		btpf_rst(PFX(dbc));
+		if (PFX(dbc)->status == PF || PFX(dbc)->status == LOADED_ALL) 
 			ret = tree_walk(dbc, SRCH_CUR, 1, RMBR_LVL );
 	}
 
-	PF(dbc)->direction = FORWARD; 
+	PFX(dbc)->direction = FORWARD; 
 	if (!ret) {
-		PF(dbc)->rdr_rec_cnt++;
+		PFX(dbc)->rdr_rec_cnt++;
 		chk_forward(dbc);
 	}
 
@@ -191,23 +191,23 @@ int
 crsr_prv(DBC *dbc)
 {
 	int ret = 0;
-	if (!PF(dbc))
+	if (!PFX(dbc))
 		return 0;
 	TEST_STOP(dbc);
-	if (!PF(dbc)->on)
+	if (!PFX(dbc)->on)
 		return 100;
-	if (PF(dbc)->status == LOADED_ALL)
+	if (PFX(dbc)->status == LOADED_ALL)
 		return 0;
-	if (PF(dbc)->direction == FORWARD) {
-		btpf_rst(PF(dbc));
-		if (PF(dbc)->status == PF || PF(dbc)->status == LOADED_ALL)
+	if (PFX(dbc)->direction == FORWARD) {
+		btpf_rst(PFX(dbc));
+		if (PFX(dbc)->status == PF || PFX(dbc)->status == LOADED_ALL)
 			ret = tree_walk(dbc, SRCH_CUR, 1, RMBR_LVL );
 	}
 
-	PF(dbc)->direction = BACKWARD;
+	PFX(dbc)->direction = BACKWARD;
 
 	if (!ret) {
-		PF(dbc)->rdr_rec_cnt++;
+		PFX(dbc)->rdr_rec_cnt++;
 		ret = chk_backward(dbc);
 	}
    
@@ -218,27 +218,27 @@ int
 crsr_pf_nxt(DBC *dbc)
 {
 	int ret = 0;
-	if (!PF(dbc))
+	if (!PFX(dbc))
 		return 0;
 	TEST_STOP(dbc);
-	if (!PF(dbc)->on)
+	if (!PFX(dbc)->on)
 		return 100;
-	if (PF(dbc)->status == LOADED_ALL)
+	if (PFX(dbc)->status == LOADED_ALL)
 		return 0;
-	if (PF(dbc)->direction == BACKWARD) {
-		btpf_rst(PF(dbc));
-		if (PF(dbc)->status == PF || PF(dbc)->status == LOADED_ALL)
+	if (PFX(dbc)->direction == BACKWARD) {
+		btpf_rst(PFX(dbc));
+		if (PFX(dbc)->status == PF || PFX(dbc)->status == LOADED_ALL)
 			ret = tree_walk(dbc, SRCH_CUR, 1, RMBR_LVL );
 	}
-	PF(dbc)->direction = FORWARD;  
+	PFX(dbc)->direction = FORWARD;  
 	if (!ret) {
-		PF(dbc)->rdr_pg_cnt++;
-		PF(dbc)->rdr_rec_cnt++;
+		PFX(dbc)->rdr_pg_cnt++;
+		PFX(dbc)->rdr_rec_cnt++;
 		ret = chk_forward(dbc);
 	}
 #if BTPF_DEBUG 
 	fprintf(stderr, "Moving to next page ");
-	btpf_fprintf(stderr, PF(dbc));
+	btpf_fprintf(stderr, PFX(dbc));
 #endif   
 	return ret;
 }
@@ -247,30 +247,30 @@ int
 crsr_pf_prv(DBC *dbc)
 {
 	int ret = 0;
-	if (!PF(dbc))
+	if (!PFX(dbc))
 		return 0; 
 	TEST_STOP(dbc);
-	if (!PF(dbc)->on)
+	if (!PFX(dbc)->on)
 		return 100;
-	if (!PF(dbc)->status == LOADED_ALL)
+	if (PFX(dbc)->status == LOADED_ALL)
 		return 0;
-	if (PF(dbc)->direction == FORWARD) {
+	if (PFX(dbc)->direction == FORWARD) {
 
-		btpf_rst(PF(dbc));
-		if (PF(dbc)->status == PF || PF(dbc)->status == LOADED_ALL)
+		btpf_rst(PFX(dbc));
+		if (PFX(dbc)->status == PF || PFX(dbc)->status == LOADED_ALL)
 			ret = tree_walk(dbc, SRCH_CUR, 1, RMBR_LVL );
 	} 
 
-	PF(dbc)->direction = BACKWARD;
+	PFX(dbc)->direction = BACKWARD;
 
 	if (!ret) {
-		PF(dbc)->rdr_pg_cnt++;
-		PF(dbc)->rdr_rec_cnt++;
+		PFX(dbc)->rdr_pg_cnt++;
+		PFX(dbc)->rdr_rec_cnt++;
 		ret = chk_backward(dbc);
 	}
 #if BTPF_DEBUG 
 	fprintf(stderr, "Moving to previous page");
-	btpf_fprintf(stderr, PF(dbc));
+	btpf_fprintf(stderr, PFX(dbc));
 #endif   
 	return ret;
 }
@@ -278,10 +278,10 @@ crsr_pf_prv(DBC *dbc)
 int
 crsr_jump(DBC *dbc)
 {
-	if (!PF(dbc))
+	if (!PFX(dbc))
 		return 0;
 	TEST_STOP(dbc)
-	    btpf_rst(PF(dbc));
+	    btpf_rst(PFX(dbc));
 
 	return (0);
 }
@@ -290,7 +290,7 @@ static inline int
 chk_forward(DBC *dbc)
 {
 	int fetch = 0;
-	btpf *f = PF(dbc);
+	btpf *f = PFX(dbc);
 	BTREE_CURSOR *cp = (BTREE_CURSOR *)dbc->internal;
 	int rst = 0;
 	int32_t th;
@@ -321,7 +321,7 @@ static inline int
 chk_backward(DBC *dbc)
 {
 	int fetch = 0;
-	btpf *f = PF(dbc);
+	btpf *f = PFX(dbc);
 	BTREE_CURSOR *cp = (BTREE_CURSOR *)dbc->internal;
 	int rst = 0;
 	int32_t th;
@@ -368,23 +368,23 @@ trk_descent(DB *dbp, DBC *dbc, PAGE *h, db_indx_t indx)
 {
 	int level = h->level -1;
 	if (level < RMBR_LVL) {
-		PF(dbc)->curlf[level] = h->pgno;
-		PF(dbc)->curindx[level] = indx;
-		PF(dbc)->maxindx[level] = h->entries;
-		memcpy(&(PF(dbc)->lsn[level]), &(h->lsn), sizeof(DB_LSN));
+		PFX(dbc)->curlf[level] = h->pgno;
+		PFX(dbc)->curindx[level] = indx;
+		PFX(dbc)->maxindx[level] = h->entries;
+		memcpy(&(PFX(dbc)->lsn[level]), &(h->lsn), sizeof(DB_LSN));
 	}
 #if BTPF_DEBUG 
-	btpf_fprintf(stderr, PF(dbc));
+	btpf_fprintf(stderr, PFX(dbc));
 #endif 
 }
 
 void
 trk_leaf(DBC *dbc, PAGE *h, db_indx_t p)
 {
-	PF(dbc)->curlf[0] = h->pgno;
-	PF(dbc)->curindx[0] = p;
-	PF(dbc)->maxindx[0] = NUM_ENT(h);
-	memcpy(&(PF(dbc)->lsn[0]), &(h->lsn), sizeof(DB_LSN));
+	PFX(dbc)->curlf[0] = h->pgno;
+	PFX(dbc)->curindx[0] = p;
+	PFX(dbc)->maxindx[0] = NUM_ENT(h);
+	memcpy(&(PFX(dbc)->lsn[0]), &(h->lsn), sizeof(DB_LSN));
 }
 
 static inline int
@@ -420,12 +420,12 @@ start_loading(DBC *dbc)
 	int rc = 0;
 	btpf_job *job = btpf_job_init();
 
-	btpf_copy(PF(dbc), PF(job));
+	btpf_copy(PFX(dbc), PFX(job));
 	read_key(dbc, job);
-	job->npages = PF(dbc)->wndw;
+	job->npages = PFX(dbc)->wndw;
 	job->mpf = dbc->dbp->mpf;
 	job->db = dbc->dbp;
-	job->dirty = PF(dbc)->status == PF || PF(dbc)->status == LOADED_ALL;	// TODO it cannot be on LOADED_ALL when it runs asynchronously
+	job->dirty = PFX(dbc)->status == PF || PFX(dbc)->status == LOADED_ALL;	// TODO it cannot be on LOADED_ALL when it runs asynchronously
 	job->lid = dbc->lid;
 	job->locker = dbc->locker;
 #if BTPF_SAME_THREAD
@@ -476,20 +476,20 @@ start_loading_async_cb(btpf_job * job)
 		if ((rc = tree_walk(dbc, SRCH_CUR, 1, RMBR_LVL)) != 0)
 			return;
 	} else {
-		btpf_copy(PF(job), PF(dbc));
+		btpf_copy(PFX(job), PFX(dbc));
 	}
 
-	PF(dbc)->direction = job->pf->direction;
-	PF(dbc)->wndw = job->npages;
+	PFX(dbc)->direction = job->pf->direction;
+	PFX(dbc)->wndw = job->npages;
 
 #if BTPF_DEBUG 
-	fprintf(stderr, "Found rec in page: %d \n", PF(dbc)->curlf[0]);
+	fprintf(stderr, "Found rec in page: %d \n", PFX(dbc)->curlf[0]);
 #endif
 
-	if (PF(dbc)->direction == FORWARD)
-		page_load_f(PF(dbc), dbc);
+	if (PFX(dbc)->direction == FORWARD)
+		page_load_f(PFX(dbc), dbc);
 	else
-		page_load_b(PF(dbc), dbc);
+		page_load_b(PFX(dbc), dbc);
 
 }
 
@@ -498,12 +498,10 @@ advance_on_tree(DBC *dbc)
 {
 	DB *dbp = dbc->dbp;
 	DB_MPOOLFILE *mpf = dbp->mpf;
-	btpf *pf = PF(dbc);
+	btpf *pf = PFX(dbc);
 	DB_LOCK lock;
 	PAGE *h;
-	PAGE *t;
 	db_pgno_t pgno;
-	db_pgno_t t_pgno;
 	db_lockmode_t lock_mode = DB_LOCK_READ;
 	u_int8_t up_level = 1;
 	int ret = 0;
@@ -566,12 +564,10 @@ advanceb_on_tree(DBC *dbc)
 {
 	DB *dbp = dbc->dbp;
 	DB_MPOOLFILE *mpf = dbp->mpf;
-	btpf *pf = PF(dbc);
+	btpf *pf = PFX(dbc);
 	DB_LOCK lock;
 	PAGE *h;
-	PAGE *t;
 	db_pgno_t pgno;
-	db_pgno_t t_pgno;
 	db_lockmode_t lock_mode = DB_LOCK_READ;
 
 	u_int8_t up_level = 1;
@@ -634,7 +630,6 @@ page_load_f(btpf * pf, DBC *dbc)
 
 	DB_LOCK lock;
 	PAGE *h;
-	PAGE *t;
 	db_pgno_t pgno;
 	db_pgno_t t_pgno;
 	db_lockmode_t lock_mode = DB_LOCK_READ;
@@ -716,7 +711,7 @@ page_load_b(btpf * pf, DBC *dbc)
 	DB_LOCK lock;
 	PAGE *h;
 	db_pgno_t pgno;
-	db_pgno_t t_pgno;
+	db_pgno_t t_pgno = 0;
 	db_lockmode_t lock_mode = DB_LOCK_READ;
 
 
@@ -800,13 +795,7 @@ static inline int
 tree_walk(DBC *dbc, btfp_tw_flag fl, db_pgno_t root_p, u_int8_t lev)
 {
 	DBC *t_dbc = NULL;
-	db_lockmode_t lock_mode;
-	db_pgno_t pgno;
-	DBT rkey;
-	db_recno_t recnop;
-	int exact = 1;
-	int discard, ret;
-	u_int32_t lid = dbc->locker;
+	int ret;
 
 	if ((ret =
 		dbc->dbp->paired_cursor_from_lid(dbc->dbp, dbc->locker, &t_dbc,
@@ -816,7 +805,7 @@ tree_walk(DBC *dbc, btfp_tw_flag fl, db_pgno_t root_p, u_int8_t lev)
 	t_dbc->internal->root = root_p;
 	t_dbc->internal->pgno = root_p;
 	t_dbc->rkey = dbc->rkey;
-	PF(t_dbc)->on = PF_OFF;
+	PFX(t_dbc)->on = PF_OFF;
 
 	if (fl == SRCH_CUR) {
 		ret = t_dbc->c_am_get(t_dbc, t_dbc->rkey, NULL, DB_SET, 0);
@@ -830,19 +819,18 @@ tree_walk(DBC *dbc, btfp_tw_flag fl, db_pgno_t root_p, u_int8_t lev)
 		int x;
 
 		for (x = 0; x < lev; x++) {
-			PF(dbc)->curlf[x] = PF(t_dbc)->curlf[x];
-			PF(dbc)->curindx[x] = PF(t_dbc)->curindx[x];
-			PF(dbc)->maxindx[x] = PF(t_dbc)->maxindx[x];
-			memcpy(&(PF(dbc)->lsn[x]), &(PF(t_dbc)->lsn[x]),
+			PFX(dbc)->curlf[x] = PFX(t_dbc)->curlf[x];
+			PFX(dbc)->curindx[x] = PFX(t_dbc)->curindx[x];
+			PFX(dbc)->maxindx[x] = PFX(t_dbc)->maxindx[x];
+			memcpy(&(PFX(dbc)->lsn[x]), &(PFX(t_dbc)->lsn[x]),
 			    sizeof(DB_LSN));
 		}
-		PF(dbc)->tr_page = t_dbc->internal->pgno;
+		PFX(dbc)->tr_page = t_dbc->internal->pgno;
 	}
 
 	if (ret != 0)
 		logmsg(LOGMSG_ERROR, "You got a problem young man! ");
 
-end:
 	if (ret != 0)
 		logmsg(LOGMSG_ERROR, "%s return code: %d \n", __func__, ret);
 

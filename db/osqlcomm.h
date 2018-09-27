@@ -141,7 +141,8 @@ int osql_send_updrec(char *tonode, unsigned long long rqid, uuid_t uuid,
  */
 int osql_send_insrec(char *tohost, unsigned long long rqid, uuid_t uuid,
                      unsigned long long genid, unsigned long long dirty_keys,
-                     char *pData, int nData, int type, SBUF2 *logsb, int flags);
+                     char *pData, int nData, int type, SBUF2 *logsb,
+                     int upsert_flags);
 
 /* send genid op */
 int osql_send_genid(char *tohost, unsigned long long rqid, uuid_t uuid,
@@ -196,6 +197,8 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
                              struct errstat *xerr, int type, SBUF2 *logsb,
                              struct client_query_stats *query_stats,
                              snap_uid_t *snap_info);
+int osql_send_startgen(char *tohost, unsigned long long rqid, uuid_t uuid,
+                       uint32_t start_gen, int type, SBUF2 *logsb);
 
 /**
  * Send decomission for osql net

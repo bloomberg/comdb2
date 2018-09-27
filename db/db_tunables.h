@@ -37,6 +37,11 @@ REGISTER_TUNABLE("allow_lua_dynamic_libs",
                  "libraries (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_allow_lua_dynamic_libs, READONLY | NOARG,
                  NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("allow_negative_column_size",
+                 "Allow negative column size in csc2 schema. Added mostly for "
+                 "backwards compatibility. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_allow_neg_column_size, READONLY | NOARG,
+                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("allow_portmux_route", NULL, TUNABLE_BOOLEAN,
                  &gbl_pmux_route_enabled, READONLY | NOARG | READEARLY, NULL,
                  NULL, NULL, NULL);
@@ -129,6 +134,11 @@ REGISTER_TUNABLE("crc32c",
                  "different checksums) for page checksums. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_crc32c, READONLY | NOARG, NULL, NULL,
                  NULL, NULL);
+REGISTER_TUNABLE("create_default_user",
+                 "Automatically create 'default' user when authentication is "
+                 "enabled. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_create_default_user, READONLY | NOARG,
+                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("crypto", NULL, TUNABLE_STRING, &gbl_crypto, READONLY, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("ctrace_dbdir",
@@ -892,11 +902,6 @@ REGISTER_TUNABLE("print_syntax_err",
                  "Trace all SQL with syntax errors. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_print_syntax_err, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
-REGISTER_TUNABLE("queuepoll", "Occasionally wake up and poll "
-                              "consumer queues even when no "
-                              "events require it. (Default: 5secs)",
-                 TUNABLE_INTEGER, &gbl_queue_sleeptime, READONLY, NULL, NULL,
-                 NULL, NULL);
 REGISTER_TUNABLE("random_lock_release_interval", NULL, TUNABLE_INTEGER,
                  &gbl_sql_random_release_interval, READONLY, NULL, NULL, NULL,
                  NULL);
@@ -1437,6 +1442,11 @@ REGISTER_TUNABLE("handle_buf_latency_ms",
                  "Add up to this much artificial latency to handle-buf.  "
                  "(Default: 0)",
                  TUNABLE_INTEGER, &gbl_handle_buf_add_latency_ms,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("osql_send_startgen",
+                 "Send start-generation in osql stream.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_osql_send_startgen,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("reorder_socksql_no_deadlock", "Reorder sock sql to have no deadlocks ",

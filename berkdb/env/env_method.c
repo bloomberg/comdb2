@@ -1276,9 +1276,6 @@ __dbenv_set_durable_lsn(dbenv, lsnp, generation)
 	DB_LSN *lsnp;
 	uint32_t generation;
 {
-	DB_REP *db_rep;
-
-	db_rep = dbenv->rep_handle;
 	extern int gbl_durable_set_trace;
 
 	if (lsnp->file == 2147483647) {
@@ -1337,7 +1334,6 @@ __dbenv_get_durable_lsn(dbenv, lsnp, generation)
 	DB_LSN *lsnp;
 	uint32_t *generation;
 {
-	DB_REP *db_rep = dbenv->rep_handle;
 	pthread_mutex_lock(&gbl_durable_lsn_lk);
 	*lsnp = dbenv->durable_lsn;
 	*generation = dbenv->durable_generation;

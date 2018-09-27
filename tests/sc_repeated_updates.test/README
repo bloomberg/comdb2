@@ -1,3 +1,5 @@
+Run schema change while having updates at the same time
+
 This test case will be used to add a certain number of records into a db, 
 then update a single record several times, then update all records 
 several times. Do this while schemachange is rebuilding in background

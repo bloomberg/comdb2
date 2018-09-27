@@ -277,10 +277,11 @@ void sc_status(struct dbenv *dbenv)
         struct dbtable *db = get_dbtable_by_name(sctbl->tablename);
 
         if (db && db->doing_conversion)
-            logmsg(LOGMSG_USER, "Conversion phase running %lld converted\n",
+            logmsg(LOGMSG_USER,
+                   "Conversion phase running %" PRId64 "converted\n",
                    db->sc_nrecs);
         else if (db && db->doing_upgrade)
-            logmsg(LOGMSG_USER, "Upgrade phase running %lld upgraded\n",
+            logmsg(LOGMSG_USER, "Upgrade phase running %" PRId64 " upgraded\n",
                    db->sc_nrecs);
 
         logmsg(LOGMSG_USER, "-------------------------\n");
@@ -352,7 +353,7 @@ int is_table_in_schema_change(const char *tbname, tran_type *tran)
                    __func__);
             return -1;
         }
-        rc = (strcasecmp(tbname, s->table) == 0);
+        rc = (strcasecmp(tbname, s->tablename) == 0);
         free(packed_sc_data);
         free_schema_change_type(s);
         return rc;

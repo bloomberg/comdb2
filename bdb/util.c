@@ -37,8 +37,6 @@
 #include "bdb_int.h"
 #include "locks.h"
 #include "list.h"
-#include <plbitlib.h> /* for bset/btst */
-
 #include <memory_sync.h>
 #include <logmsg.h>
 

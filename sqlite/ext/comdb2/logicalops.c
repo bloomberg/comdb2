@@ -258,10 +258,10 @@ static int create_logical_payload(logicalops_cursor *pCur, DB_LSN regop_lsn,
     DB_LOGC *logc;
     DB_LSN lsn;
 
-    if (rc = retrieve_start_lsn(data, rectype, &lsn))
+    if ((rc = retrieve_start_lsn(data, rectype, &lsn)))
         return rc;
 
-    if (rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0) != 0) {
+    if ((rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0)) != 0) {
         logmsg(LOGMSG_ERROR, "%s line %d cannot allocate log-cursor\n",
                 __func__, __LINE__);
         return SQLITE_NOMEM;
@@ -283,7 +283,7 @@ static int advance_to_next_commit(logicalops_cursor *pCur)
 {
     bdb_state_type *bdb_state = thedb->bdb_env;
     u_int32_t rectype = 0;
-    int rc, getflags = 0, durable_gen = 0;
+    int rc, getflags = 0;
     if (!pCur->openCursor) {
         if ((rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &pCur->logc,
                         0)) != 0) {
@@ -306,8 +306,8 @@ static int advance_to_next_commit(logicalops_cursor *pCur)
 
 again:
     do {
-        if (rc = pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data,
-                    getflags) != 0) {
+        if ((rc = pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data,
+                    getflags)) != 0) {
             pCur->hitLast = 1;
         }
         getflags = DB_NEXT;
@@ -404,7 +404,6 @@ static int json_blob(char *buf, int len, struct schema *sc, int ix,
         strbuf *ds) 
 {
     struct field *f;
-    struct field_conv_opts opts = {0};
     assert(ix < sc->nmembers && ix >= 0);
     strbuf_appendf(ds, "{");
     f = &sc->member[ix];
@@ -680,12 +679,9 @@ static int produce_update_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
 {
     int rc, dtalen, page, index;
     unsigned long long genid, oldgenid;
-    short dtafile, dtastripe;
+    short dtafile;
     void *packedbuf = NULL;
     void *packedprevbuf = NULL;
-    void *unpackedbuf = NULL;
-    void *unpackedprevbuf = NULL;
-    char table[64] = {0};
     int prevlen = 0;
     int updlen = 0;
     llog_undo_upd_dta_args *upd_dta = NULL;
@@ -705,7 +701,6 @@ static int produce_update_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
         genid = upd_dta_lk->newgenid;
         oldgenid = upd_dta_lk->oldgenid;
         dtafile = upd_dta_lk->dtafile;
-        dtastripe = upd_dta_lk->dtastripe;
         /* ?? */
         dtalen = upd_dta_lk->old_dta_len;
         pCur->table = strdup((char *)(upd_dta_lk->table.data));
@@ -720,7 +715,6 @@ static int produce_update_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
         genid = upd_dta->newgenid;
         oldgenid = upd_dta->oldgenid;
         dtafile = upd_dta->dtafile;
-        dtastripe = upd_dta->dtastripe;
         /* ?? */
         dtalen = upd_dta->old_dta_len;
         pCur->table = strdup((char *)(upd_dta->table.data));
@@ -838,12 +832,10 @@ done:
 static int produce_add_data_record(logicalops_cursor *pCur, DB_LOGC *logc, 
         bdb_osql_log_rec_t *rec, DBT *logdta)
 {
-    int rc, dtalen, ixlen, page, index, rlen;
+    int rc, dtalen, ixlen;
     unsigned long long genid;
-    short dtafile, dtastripe;
+    short dtafile;
     void *packedbuf = NULL;
-    void *unpackedbuf = NULL;
-    char table[64] = {0};
     llog_undo_add_dta_args *add_dta = NULL;
     llog_undo_add_dta_lk_args *add_dta_lk = NULL;
     bdb_state_type *bdb_state = thedb->bdb_env;
@@ -861,7 +853,6 @@ static int produce_add_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
         }
         genid = add_dta_lk->genid;
         dtafile = add_dta_lk->dtafile;
-        dtastripe = add_dta_lk->dtastripe;
         pCur->table = strdup((char *)(add_dta_lk->table.data));
     } else {
         if ((rc = llog_undo_add_dta_read(bdb_state->dbenv, logdta->data,
@@ -873,7 +864,6 @@ static int produce_add_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
         }
         genid = add_dta->genid;
         dtafile = add_dta->dtafile;
-        dtastripe = add_dta->dtastripe;
         pCur->table = strdup((char *)(add_dta->table.data));
     }
     genid_format(pCur, genid, pCur->genid, sizeof(pCur->genid));
@@ -947,9 +937,8 @@ static int produce_delete_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
 {
     int rc, dtalen, page, index;
     unsigned long long genid;
-    short dtafile, dtastripe;
+    short dtafile;
     void *packedprevbuf = NULL;
-    char table[64] = {0};
     llog_undo_del_dta_args *del_dta = NULL;
     llog_undo_del_dta_lk_args *del_dta_lk = NULL;
     bdb_state_type *bdb_state = thedb->bdb_env;
@@ -966,7 +955,6 @@ static int produce_delete_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
         }
         genid = del_dta_lk->genid;
         dtafile = del_dta_lk->dtafile;
-        dtastripe = del_dta_lk->dtastripe;
         dtalen = del_dta_lk->dtalen;
         pCur->table = strdup((char *)(del_dta_lk->table.data));
     } else {
@@ -979,7 +967,6 @@ static int produce_delete_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
         }
         genid = del_dta->genid;
         dtafile = del_dta->dtafile;
-        dtastripe = del_dta->dtastripe;
         dtalen = del_dta->dtalen;
         pCur->table = strdup((char *)(del_dta->table.data));
     }
@@ -1149,7 +1136,6 @@ static int unpack_logical_record(logicalops_cursor *pCur)
 static int logicalopsNext(sqlite3_vtab_cursor *cur){
   logicalops_cursor *pCur = (logicalops_cursor*)cur;
   int rc;
-  bdb_state_type *bdb_state = thedb->bdb_env;
 
   if (pCur->hitLast)
       return SQLITE_OK;

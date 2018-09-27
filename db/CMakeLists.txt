@@ -11,7 +11,7 @@ set(src
   db_tunables.c
   db_util.c
   dbglog_iface.c
-  dbqueue.c
+  dbqueuedb.c
   debug.c
   endian.c
   envstubs.c
@@ -106,6 +106,19 @@ endif()
 if(COMDB2_LEGACY_DEFAULTS)
   add_definitions(-DLEGACY_DEFAULTS)
 endif()
+
+if(NOT DEFINED COMDB2_RELEASE)
+    set(COMDB2_RELEASE "R7")
+endif()
+
+if(NOT DEFINED COMDB2_BUILD)
+    set(COMDB2_BUILD "pre")
+endif()
+
+set_property(SOURCE comdb2.c PROPERTY COMPILE_DEFINITIONS
+  COMDB2_RELEASE=${COMDB2_RELEASE}
+  COMDB2_BUILD=${COMDB2_BUILD}
+)
 
 add_executable(comdb2 ${src})
 set(module uncategorized)

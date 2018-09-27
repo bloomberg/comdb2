@@ -115,7 +115,6 @@ __db_ispgcompactible(dbp, pgno, dbt, ff)
 		ret = EINVAL;
 	}
 
-done:
 	if ((t_ret = __db_c_close(dbc)) != 0 && ret == 0)
 		ret = t_ret;
 	return (ret);

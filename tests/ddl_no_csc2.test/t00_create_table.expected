@@ -1037,3 +1037,4 @@ constraints
 		cstring v[101] null = yes 
 	}
 ')
+[CREATE TABLE t1(i INT, j DEFAULT 1)] failed with rc -3 No type specified.

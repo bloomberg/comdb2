@@ -268,11 +268,9 @@ struct fsqlreq {
     int followlen; /* how much data follows header*/
 };
 
-static int send_reset(int fd)
+static void send_reset(int fd)
 {
-    int rc;
-    int nretries = 0, maxretries = 6;
-    int sbuftimeoutms;
+    int ret;
     struct fsqlreq req;
 
     req.request = FSQL_RESET; /* special reset opcode */
@@ -280,9 +278,14 @@ static int send_reset(int fd)
     req.parm = 0;
     req.followlen = 0;
 
-    rc = write(fd, &req, sizeof(req));
+    ret = write(fd, &req, sizeof(req));
+    if (ret == -1)
+        syslog(LOG_ERR, "send_reset(): Failed to write to fd. %s\n",
+               strerror(errno));
 
-    return 0;
+    if (ret != sizeof(req))
+        syslog(LOG_ERR, "send_reset(): Wrote %d bytes instead of %zu to fd.\n",
+               ret, sizeof(req));
 }
 
 static int cache_port(char *typestr, int fd, char *prefix)
@@ -441,10 +444,10 @@ void *client_thd(void *voidarg)
         struct sockpool_msg_vers0 msg0;
         struct sockpool_msg_vers1 msg1;
         int rc, newfd;
-        int request;
-        char *typestr;
+        int request = 0;
+        char *typestr = 0;
         int dbnum;
-        int timeout;
+        int timeout = 0;
         void *msg;
         int msglen;
 
@@ -829,7 +832,6 @@ static void do_stat(void)
     syslog(LOG_INFO, "---\n");
     LOCK(&client_lock)
     {
-        struct client *clnt;
         syslog(LOG_INFO, "current number of clients : %u\n",
                listc_size(&client_list));
         syslog(LOG_INFO, "peak number of clients    : %u\n", max_clients);
@@ -891,8 +893,6 @@ static void do_stat_port(void)
 {
     LOCK(&gbl_port_hints_lock)
     {
-        struct hint *hint;
-
         if (!gbl_exiting) {
             syslog(LOG_INFO, "=== Cached %d ports ===\n", num_port_hints);
             hash_for(port_hints, port_hint_dump, NULL);
@@ -1164,7 +1164,6 @@ int main(int argc, char *argv[])
      * To deal with this, we increase the soft limit to meet the hard
      * limit here.
      */
-    int increased_fd_limit = 1;
     increase_file_descriptor_limit();
 
     socket_pool_enable();

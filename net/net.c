@@ -102,6 +102,8 @@
 
 #include "debug_switches.h"
 
+#include <crc32c.h>
+
 #ifdef UDP_DEBUG
 static int curr_udp_cnt = 0;
 #endif
@@ -148,35 +150,6 @@ static int sbuf2write_wrapper(SBUF2 *sb, const char *buf, int nbytes)
     return sbuf2unbufferedwrite(sb, buf, nbytes);
 }
 
-/* refresh connection periodically */
-static int connection_refresh(netinfo_type *netinfo_ptr,
-                              host_node_type *host_node_ptr)
-{
-    time_t opentime = (comdb2_time_epoch() - host_node_ptr->timestamp);
-
-    /* global disable */
-    if (debug_switch_disable_connection_refresh()) {
-        return 0;
-    }
-
-    /* no need to refresh if we're not connected */
-    if (-1 == host_node_ptr->fd) {
-        return 0;
-    }
-
-    /* increment cnt */
-    host_node_ptr->rej_up_cnt++;
-
-    /* criteria: more than 20 attempts & stale longer than the heartbeat_check
-     */
-    if (opentime > netinfo_ptr->heartbeat_check_time &&
-        host_node_ptr->rej_up_cnt > 20) {
-        return 1;
-    }
-
-    return 0;
-}
-
 extern void myfree(void *ptr);
 
 /* Help me build the test program... - Sam J */
@@ -191,8 +164,6 @@ static void myfree(void *ptr)
 static sanc_node_type *add_to_sanctioned_nolock(netinfo_type *netinfo_ptr,
                                                 const char hostname[],
                                                 int portnum);
-static int verify_port(netinfo_type *netinfo_ptr, int alleged_port,
-                       char *hostname);
 static int process_hello_common(netinfo_type *netinfo_ptr,
                                 host_node_type *host_node_ptr,
                                 int look_for_magic);
@@ -496,13 +467,16 @@ typedef struct connect_and_accept {
 /* Close socket related to hostnode.  */
 static void shutdown_hostnode_socket(host_node_type *host_node_ptr)
 {
-    if (gbl_verbose_net)
+    if (gbl_verbose_net) {
         host_node_printf(LOGMSG_USER, host_node_ptr, "shutting down fd %d\n",
                          host_node_ptr->fd);
-
+    }
     if (shutdown(host_node_ptr->fd, 2) != 0) {
-        host_node_errf(LOGMSG_ERROR, host_node_ptr, "%s: shutdown fd %d errno %d %s\n",
-                       __func__, host_node_ptr->fd, errno, strerror(errno));
+        if (errno != ENOTCONN) {
+            host_node_errf(LOGMSG_ERROR, host_node_ptr,
+                           "%s: shutdown fd %d errno %d %s\n", __func__,
+                           host_node_ptr->fd, errno, strerror(errno));
+        }
     }
 }
 
@@ -919,19 +893,6 @@ static int timeval_cmp(struct timeval *x, struct timeval *y)
     if (x->tv_usec > y->tv_usec)
         return 1;
     if (x->tv_usec < y->tv_usec)
-        return -1;
-    return 0;
-}
-
-static int timespec_cmp(struct timespec *x, struct timespec *y)
-{
-    if (x->tv_sec > y->tv_sec)
-        return 1;
-    if (x->tv_sec < y->tv_sec)
-        return -1;
-    if (x->tv_nsec > y->tv_nsec)
-        return 1;
-    if (x->tv_nsec < y->tv_nsec)
         return -1;
     return 0;
 }
@@ -1980,28 +1941,6 @@ unsigned long long net_get_num_flushes(void) { return num_flushes; }
 
 void net_reset_num_flushes(void) { num_flushes = 0; }
 
-static char prhexnib(unsigned char nib)
-{
-    char map[] = "0123456789ABCDEF";
-
-    return map[nib & 0x0F];
-}
-
-static char *prhexval(char str[], void *val, int nbytes)
-{
-    int nnib = 0;
-    int i;
-
-    for (i = 0; i < nbytes; ++i) {
-        unsigned char byte = ((unsigned char *)val)[i];
-        str[nnib++] = prhexnib(byte >> 4); /* hi nibble */
-        str[nnib++] = prhexnib(byte);      /* lo nibble */
-    }
-    str[nnib++] = '\0';
-
-    return str;
-}
-
 static int stack_flush_min = 50;
 int explicit_flush_trace = 0;
 
@@ -2112,6 +2051,14 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
         logmsg(LOGMSG_ERROR, "too many tails %d passed to net_send_tails, max 32\n",
                numtails);
         return -1;
+    }
+
+    /* testpoint- throw 'queue-full' errors */
+    if ((0 == rc) && (NET_TEST_QUEUE_FULL == netinfo_ptr->net_test) &&
+        (rand() % 100) == 0) {
+        logmsg(LOGMSG_INFO, "%s line %d debug/random QUEUE-FULL\n", __func__,
+               __LINE__);
+        return NET_SEND_FAIL_QUEUE_FULL;
     }
 
     /* do nothing if we have a fake netinfo */
@@ -2240,16 +2187,6 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
                    __LINE__);
         }
         rc = NET_SEND_FAIL_WRITEFAIL;
-    }
-
-    /* testpoint- throw 'queue-full' errors */
-    if ((0 == rc) && (NET_TEST_QUEUE_FULL == netinfo_ptr->net_test) &&
-        (rand() % 1000)) {
-        if (trace) {
-            logmsg(LOGMSG_USER, "%s line %d debug/random QUEUE-FULL\n",
-                   __func__, __LINE__);
-        }
-        rc = NET_SEND_FAIL_QUEUE_FULL;
     }
 
 end:
@@ -3174,6 +3111,8 @@ typedef struct netinfo_node {
 static LISTC_T(netinfo_node_t) nets_list;
 static pthread_mutex_t nets_list_lk = PTHREAD_MUTEX_INITIALIZER;
 
+#ifndef PER_THREAD_MALLOC
+
 static char *to_human_readable(int num, char buf[], int len)
 {
     if (num >> 30) /* GB should be sufficient */
@@ -3190,7 +3129,6 @@ static char *to_human_readable(int num, char buf[], int len)
     return buf;
 }
 
-#ifndef PER_THREAD_MALLOC
 void print_net_memstat(int human_readable)
 {
 
@@ -3569,7 +3507,7 @@ static int read_hostlist(netinfo_type *netinfo_ptr, SBUF2 *sb, char *hosts[],
 {
     int datasz;
     int i;
-    int num;
+    int num = 0;
     char *data;
     int rc;
     int tmp;
@@ -3763,7 +3701,7 @@ static int process_payload_ack(netinfo_type *netinfo_ptr,
 {
     int rc;
     int seqnum, outrc;
-    net_ack_message_payload_type p_net_ack_message_payload;
+    net_ack_message_payload_type p_net_ack_message_payload = {0};
     void *payload = NULL;
     uint8_t *buf, *p_buf, *p_buf_end;
     seq_data *ptr;
@@ -4297,7 +4235,6 @@ static void *writer_thread(void *args)
     host_node_type *host_node_ptr;
     write_data *write_list_ptr, *write_list_back;
     int rc, flags, maxage;
-    int th_start_time = comdb2_time_epoch();
     struct timespec waittime;
 #ifndef HAS_CLOCK_GETTIME
     struct timeval tv;
@@ -4573,59 +4510,12 @@ static int process_hello_common(netinfo_type *netinfo_ptr,
     return 0;
 }
 
-
-/* Use portmux to verify the given port number for a given hostname. */
-static int verify_port(netinfo_type *netinfo_ptr, int alleged_port,
-                       char *hostname)
-{
-    int portmux_port;
-    host_node_type *host_node_ptr;
-
-    Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
-    host_node_ptr = get_host_node_by_name_ll(netinfo_ptr, hostname);
-    if (host_node_ptr) {
-        portmux_port =
-            portmux_geti(host_node_ptr->addr, netinfo_ptr->app,
-                         netinfo_ptr->service, netinfo_ptr->instance);
-
-    } else {
-        portmux_port = portmux_get(hostname, netinfo_ptr->app,
-                                   netinfo_ptr->service, netinfo_ptr->instance);
-    }
-
-    Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-
-    if (portmux_port == -1) {
-        return 1;
-    }
-
-    /*
-       if(portmux_port == -1)
-       {
-       fprintf(stderr, "portmux verification of node %s port %d failed -1\n",
-       hostname, alleged_port);
-       return 0;
-       }
-     */
-
-    else if (portmux_port != alleged_port) {
-        logmsg(LOGMSG_ERROR, "portmux verification of node %s port %d failed: "
-                        "portmux\n",
-                hostname, alleged_port);
-        return 0;
-    } else {
-        return 1;
-    }
-}
-
-
 static void *reader_thread(void *arg)
 {
     netinfo_type *netinfo_ptr;
     host_node_type *host_node_ptr;
     wire_header_type wire_header;
     int rc, set_qstat = 0;
-    int th_start_time = comdb2_time_epoch();
     char fromhost[256], tohost[256];
 
     thread_started("net reader");
@@ -4658,8 +4548,6 @@ static void *reader_thread(void *arg)
                                  fromhost, tohost);
         if (rc != 0) {
             if (!host_node_ptr->distress) {
-                host_node_printf(LOGMSG_WARN, host_node_ptr,
-                                 "error reading message header\n");
                 host_node_printf(LOGMSG_WARN, host_node_ptr, "entering distress mode\n");
             }
             /* if we loop it should be ok; TODO: maybe wanna have
@@ -4873,8 +4761,8 @@ void net_clipper(const char *subnet, int is_disable)
             else
                 time(&now);
             if (gbl_verbose_net)
-                logmsg(LOGMSG_USER, "%x %s subnet %s time %d\n", pthread_self(),
-                       (is_disable) ? "Disabling" : "Enabling",
+                logmsg(LOGMSG_USER, "0x%lx %s subnet %s time %ld\n",
+                       pthread_self(), (is_disable) ? "Disabling" : "Enabling",
                        subnet_suffices[i], now);
 
             if (is_disable == 0) {
@@ -4975,7 +4863,7 @@ static int get_dedicated_conhost(host_node_type *host_node_ptr, struct in_addr *
     if (counter == 0xffff) // start with a random subnet
         counter = rand() % num_dedicated_subnets;
 
-    int rc;
+    int rc = 0;
     while (ii < num_dedicated_subnets) {
         counter++;
         ii++;
@@ -5034,7 +4922,6 @@ int net_get_port_by_service(const char *dbname)
     return ntohs(port);
 }
 
-
 static void *connect_thread(void *arg)
 {
     netinfo_type *netinfo_ptr;
@@ -5064,8 +4951,29 @@ static void *connect_thread(void *arg)
     if (netinfo_ptr->start_thread_callback)
         netinfo_ptr->start_thread_callback(netinfo_ptr->callback_data);
 
+    struct {
+        arch_tid tid;
+        struct timeval t;
+        pid_t pid;
+    } seed_data = {0};
+    seed_data.tid = getarchtid();
+    seed_data.pid = getpid();
+
     while (!host_node_ptr->decom_flag && !netinfo_ptr->exiting) {
-        Pthread_mutex_lock(&(host_node_ptr->lock));
+        int check = 1;
+check:  Pthread_mutex_lock(&(host_node_ptr->lock));
+        if (host_node_ptr->fd != -1) {
+            /* already have connection */
+            goto again;
+        } else if (check) {
+            gettimeofday(&seed_data.t, NULL);
+            uint32_t seed = crc32c((uint8_t *)&seed_data, sizeof(seed_data));
+            int r = rand_r(&seed) % 5000;
+            Pthread_mutex_unlock(&(host_node_ptr->lock));
+            poll(NULL, 0, r);
+            check = 0;
+            goto check;
+        }
 
         if (!host_node_ptr->really_closed) {
             goto again;
@@ -5297,11 +5205,7 @@ static void *connect_thread(void *arg)
         if (netinfo_ptr->exiting) {
             break;
         }
-
-        if (strcmp(host_node_ptr->host, netinfo_ptr->myhostname) < 0)
-            sleep(3);
-        else
-            sleep(6);
+        sleep(1);
     }
 
     if (host_node_ptr->decom_flag)
@@ -5395,7 +5299,6 @@ static int get_subnet_incomming_syn(host_node_type *host_node_ptr)
 {
     struct sockaddr_in lcl_addr_inet;
     size_t lcl_len = sizeof(lcl_addr_inet);
-    struct hostent *he = NULL;
 
     /* get local address of connection */
     int ret =
@@ -5417,10 +5320,6 @@ static int get_subnet_incomming_syn(host_node_type *host_node_ptr)
                (unsigned)ntohs(lcl_addr_inet.sin_port), gai_strerror(s));
         return 0;
     }
-
-    logmsg(LOGMSG_WARN, "Incoming connection into name: %s (%s:%u)\n", host,
-           inet_ntoa(lcl_addr_inet.sin_addr),
-           (unsigned)ntohs(lcl_addr_inet.sin_port));
 
     /* extract the suffix of subnet ex. '_n3' in name node1_n3 */
     int myh_len = strlen(host_node_ptr->netinfo_ptr->myhostname);
@@ -5515,52 +5414,23 @@ static void accept_handle_new_host(netinfo_type *netinfo_ptr,
                          __func__, new_fd);
 
     /* lock the node */
+    int cnt = 0;
     Pthread_mutex_lock(&(host_node_ptr->lock));
-
-    /*
-         scuusgdb was running with 2 masters (!).  The core
-         shows that the hostnode pointer for the actual master couldn't connect
-         while the database was connected to a stale fd which it thought was
-         active.  The heartbeat check thread had not been operating for several
-         hours (!!).  The core shows that the heartbeat check thread still
-         exists, but its stack is suspect:
-
-         (gdb) where
-         #0  0xffffe410 in __kernel_vsyscall ()
-         #1  0x00536996 in ?? ()
-         #2  0x00000000 in ?? ()
-
-         __kernel_vsyscall is blocked in a non-existent system call, -516.
-
-         'connection_refresh' attempts to protect against this by closing the
-         current connection pro-actively if the heartbeat thread hasn't updated
-         this timestamp within the heartbeat-timeout.
-
-         The danger is that if something in close_hostnode_ll is responsible for
-         the heartbeat's demise, it could impact us here.  This logic can be
-         disabled by turning on paulbit ( 143, 1 )
-     */
-    if (host_node_ptr->fd != -1 &&
-        connection_refresh(netinfo_ptr, host_node_ptr)) {
-        host_node_errf(
-            LOGMSG_INFO,
-            host_node_ptr,
-            "%s: refresh existing connection- close current hostnode fd %d\n",
-            __func__, host_node_ptr->fd);
-
-        /*   will fd to -1 if the reader & writer have exited */
+    while (1) {
+        if (!host_node_ptr->have_reader_thread && !host_node_ptr->have_writer_thread) {
+            break;
+        }
+        /* shutdown the fd. rd/wr thds (if any) will stop immediately */
         close_hostnode_ll(host_node_ptr);
-    }
-
-    if (host_node_ptr->fd != -1) {
-        host_node_errf(LOGMSG_WARN, host_node_ptr, "%s: already have connection - my "
-                                      "current fd is %d, closing fd %d\n",
-                       __func__, host_node_ptr->fd, new_fd);
-        sbuf2close(sb);
-        close(new_fd);
         Pthread_mutex_unlock(&(host_node_ptr->lock));
         Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-        return;
+        poll(NULL, 0, 100);
+        if (++cnt % 10 == 0) {
+            host_node_printf(LOGMSG_USER, host_node_ptr,
+                             "%s waiting for r/w thds to exit\n", __func__);
+        }
+        Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
+        Pthread_mutex_lock(&(host_node_ptr->lock));
     }
 
     /* Set the port so that we can send out messages that the other end
@@ -5697,7 +5567,7 @@ static void *connect_and_accept(void *arg)
     netinfo_type *netinfo_ptr;
     SBUF2 *sb;
     char hostname[256], addr[64];
-    int portnum, fd, rc;
+    int portnum = 0, fd, rc;
     char *host;
     int netnum;
 
@@ -5788,7 +5658,7 @@ static void *accept_thread(void *arg)
     netinfo_type *netinfo_ptr;
     struct pollfd pol;
     int rc;
-    int listenfd;
+    int listenfd = 0;
     int polltm;
     int tcpbfsz;
     struct linger linger_data;
@@ -5824,7 +5694,6 @@ static void *accept_thread(void *arg)
             netinfo_ptr->myport, netinfo_ptr->myfd);
 
     if (gbl_pmux_route_enabled) {
-        logmsg(LOGMSG_INFO, "Enabling PORTMUX Route \n");
         portmux_fds =
             portmux_listen_setup(netinfo_ptr->app, netinfo_ptr->service,
                                  netinfo_ptr->instance, netinfo_ptr->myfd);

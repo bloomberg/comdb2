@@ -18,6 +18,7 @@ add_subdirectory(logdelete)
 add_subdirectory(newsql)
 add_subdirectory(remsql)
 add_subdirectory(repopnewlrl)
+add_subdirectory(dbqueuedb)
 
 set(COMDB2_EXTRA_PLUGINS ${EXTRA_PLUGINS} CACHE PATH "Path to additional plugins")
 if (COMDB2_EXTRA_PLUGINS)

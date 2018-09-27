@@ -41,7 +41,6 @@
 #include <epochlib.h>
 #include <util.h>
 #include <f2cstr.h>
-#include <plbitlib.h>
 #include <list.h>
 #include <plhash.h>
 #include <lockmacro.h>
@@ -4067,14 +4066,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     BACKOUT;
                 }
 
-                /*
-                  Update iq->usedbtablevers here if the request came via IPC.
-                  This is done to avoid failure due to table version mismatch.
-                */
-                if (iq->p_sinfo) {
-                    iq->usedbtablevers = iq->usedb->tableversion;
-                }
-
                 if (iq->debug)
                     reqprintf(iq, "DB '%s'", iq->usedb->tablename);
             } else {
@@ -4964,7 +4955,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     }
 
     if (iq->debug) {
-        reqprintf(iq, "TRANSACTION COMMITTED, NUM_REQS %d", num_reqs);
+        if (is_block2sqlmode)
+            reqprintf(iq, "TRANSACTION COMMITTED, NUM_ROWS WRITTEN %d", nops);
+        else
+            reqprintf(iq, "TRANSACTION COMMITTED, NUM_REQS %d", num_reqs);
     }
 
     /* starting writes, no more reads */

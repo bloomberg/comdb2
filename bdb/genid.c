@@ -49,7 +49,6 @@
 #include <build/db.h>
 #include <epochlib.h>
 #include <ctrace.h>
-#include <plbitlib.h>
 #include <plhash.h>
 #include <list.h>
 

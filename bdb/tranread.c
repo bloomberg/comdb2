@@ -41,8 +41,6 @@
 #include <net.h>
 #include "bdb_int.h"
 #include "locks.h"
-
-#include <plbitlib.h> /* for bset/btst */
 #include <logmsg.h>
 
 /* this is used only for comdbg2 stuff, will not work with rowlocks for now */
@@ -61,10 +59,16 @@ static int bdb_fetch_last_key_tran_int(bdb_state_type *bdb_state,
 
     *bdberr = 0;
 
-    if (tran)
+    if (tran) {
         tid = tran->tid;
-    else
+        rc = bdb_lock_table_read(bdb_state, tran);
+        if (rc != 0) {
+            *bdberr = BDBERR_MISC;
+            return -1;
+        }
+    } else {
         tid = NULL;
+    }
 
     if (idx < 0 || idx >= bdb_state->numix) {
         *bdberr = BDBERR_FETCH_IX;

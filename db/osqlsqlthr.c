@@ -230,6 +230,12 @@ int osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
             rc = osql_send_del_logic(pCur, thd);
             RESTART_SOCKSQL;
         } while (restarted && rc == 0);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d %s - failed to send socksql delrec rc=%d\n", __FILE__,
+                   __LINE__, __func__, rc);
+            return rc;
+        }
     }
 
     if (gbl_expressions_indexes && pCur->db->ix_expr) {
@@ -336,6 +342,12 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
                                      flags);
             RESTART_SOCKSQL;
         } while (restarted && rc == 0);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d %s - failed to send socksql insrec rc=%d\n", __FILE__,
+                   __LINE__, __func__, rc);
+            return rc;
+        }
     }
 
     if (gbl_expressions_indexes && pCur->db->ix_expr) {
@@ -452,6 +464,12 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 
             RESTART_SOCKSQL;
         } while (restarted && rc == 0);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d %s - failed to send socksql updrec rc=%d\n", __FILE__,
+                   __LINE__, __func__, rc);
+            return rc;
+        }
     }
 
     if (gbl_expressions_indexes && pCur->db->ix_expr) {
@@ -841,6 +859,7 @@ again:
 }
 
 int gbl_random_blkseq_replays;
+int gbl_osql_send_startgen = 1;
 
 /**
  * Terminates a sosql session
@@ -1361,14 +1380,23 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
     }
 
 retry:
-    if (osql->rqid == OSQL_RQID_USE_UUID) {
-        rc = osql_send_commit_by_uuid(osql->host, osql->uuid, osql->sentops,
-                                      &osql->xerr, nettype, osql->logsb,
-                                      clnt->query_stats, snap_info_p);
-    } else {
-        rc = osql_send_commit(osql->host, osql->rqid, osql->uuid, osql->sentops,
-                              &osql->xerr, nettype, osql->logsb,
-                              clnt->query_stats, NULL);
+    rc = 0;
+
+    if (gbl_osql_send_startgen && clnt->start_gen > 0) {
+        rc = osql_send_startgen(osql->host, osql->rqid, osql->uuid,
+                                clnt->start_gen, nettype, osql->logsb);
+    }
+
+    if (rc == 0) {
+        if (osql->rqid == OSQL_RQID_USE_UUID) {
+            rc = osql_send_commit_by_uuid(osql->host, osql->uuid, osql->sentops,
+                                          &osql->xerr, nettype, osql->logsb,
+                                          clnt->query_stats, snap_info_p);
+        } else {
+            rc = osql_send_commit(osql->host, osql->rqid, osql->uuid,
+                                  osql->sentops, &osql->xerr, nettype,
+                                  osql->logsb, clnt->query_stats, NULL);
+        }
     }
 
     RESTART_SOCKSQL_KEEP_RQID(is_retry);
@@ -1694,18 +1722,18 @@ int osql_schemachange_logic(struct schema_change_type *sc,
     int restarted;
     int rc = 0;
     unsigned long long rqid = thd->clnt->osql.rqid;
-    unsigned long long version = 0;
 
     osql->running_ddl = 1;
 
-    if (clnt->dml_tables && hash_find_readonly(clnt->dml_tables, sc->table)) {
+    if (clnt->dml_tables &&
+        hash_find_readonly(clnt->dml_tables, sc->tablename)) {
         return SQLITE_DDL_MISUSE;
     }
     if (clnt->ddl_tables) {
-        if (hash_find_readonly(clnt->ddl_tables, sc->table)) {
+        if (hash_find_readonly(clnt->ddl_tables, sc->tablename)) {
             return SQLITE_DDL_MISUSE;
         } else
-            hash_add(clnt->ddl_tables, strdup(sc->table));
+            hash_add(clnt->ddl_tables, strdup(sc->tablename));
     }
 
     if (!bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) ||
@@ -1714,39 +1742,30 @@ int osql_schemachange_logic(struct schema_change_type *sc,
         comdb2uuidcpy(sc->uuid, osql->uuid);
     }
 
+    sc->usedbtablevers = comdb2_table_version(sc->tablename);
+
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
-        if (usedb) {
-            if (getdbidxbyname(sc->table) < 0) { // view
-                char *viewname = timepart_newest_shard(sc->table, &version);
-                if (viewname) {
-                    free(viewname);
-                } else
-                    usedb = 0;
-            } else {
-                version = comdb2_table_version(sc->table);
-            }
+        if (usedb && getdbidxbyname(sc->tablename) < 0) { // view
+            unsigned long long version = 0;
+            char *viewname = timepart_newest_shard(sc->tablename, &version);
+            sc->usedbtablevers = version;
+            if (viewname)
+                free(viewname);
+            else
+                usedb = 0;
         }
+
         do {
-            rc = 0;
-            if (usedb) {
-                if (osql->tablename) {
-                    /* free the cached tablename so that we send a new usedb for
-                     * the next op */
-                    free(osql->tablename);
-                    osql->tablename = NULL;
-                    osql->tablenamelen = 0;
-                }
-                rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid,
-                                     sc->table, NET_OSQL_SOCK_RPL, osql->logsb,
-                                     version);
-            }
-            if (rc == SQLITE_OK) {
-                rc = osql_send_schemachange(osql->host, rqid,
-                                            thd->clnt->osql.uuid, sc,
-                                            NET_OSQL_SOCK_RPL, osql->logsb);
-            }
+            rc = osql_send_schemachange(osql->host, rqid, thd->clnt->osql.uuid,
+                                        sc, NET_OSQL_SOCK_RPL, osql->logsb);
             RESTART_SOCKSQL;
         } while (restarted && rc == 0);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d %s - failed to send socksql schemachange rc=%d\n",
+                   __FILE__, __LINE__, __func__, rc);
+            return rc;
+        }
     }
 
     rc = osql_save_schemachange(thd, sc, usedb);

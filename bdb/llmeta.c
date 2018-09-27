@@ -39,7 +39,7 @@ enum {
     ,
     LLMETA_TBLLEN = MAXTABLELEN /* maximum table name length */
     ,
-    LLMETA_SPLEN = MAXTABLELEN /* maximum SP length. see also */
+    LLMETA_SPLEN = MAX_SPNAME /* maximum SP length. see also */
     ,
     LLMETA_STATS_IXLEN =
         64 /* maximum index name length for sqlite_stat1 & 2. */
@@ -1450,7 +1450,7 @@ int bdb_llmeta_get_tables(
                         * were returned */
     int *bdberr)
 {
-    int rc, fndlen, addlen = 0, retries = 0, offset = 0, tmpkey;
+    int rc, fndlen, retries = 0, offset = 0, tmpkey;
     char key[LLMETA_IXLEN] = {0};
     uint8_t *p_outbuf, *p_outbuf_start, *p_outbuf_end;
     size_t outbuflen = maxnumtbls * (LLMETA_TBLLEN + sizeof(int));
@@ -1573,7 +1573,6 @@ static int bdb_new_file_version(
 {
     int retries = 0, rc;
     char key[LLMETA_IXLEN] = {0};
-    size_t key_offset = 0;
     struct llmeta_version_number_type version_num;
     tran_type *trans;
     unsigned long long real_version_num;
@@ -1731,7 +1730,7 @@ bdb_chg_file_versions_int(tran_type *trans, /* must be !NULL */
                           int file_type, /* see FILE_VERSIONS_FILE_TYPE_* */
                           int *bdberr)
 {
-    int numfnd = 0, i, rc;
+    int numfnd = 0, rc;
     char key[LLMETA_IXLEN] = {0};
     char new_key[LLMETA_IXLEN] = {0};
     char key_orig[LLMETA_IXLEN] = {0};
@@ -2316,9 +2315,8 @@ backout:
         *bdberr = prev_bdberr;
         if (*bdberr == BDBERR_DEADLOCK)
             goto retry;
-
-        logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
     }
+    logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
     return -1;
 }
 
@@ -3553,7 +3551,6 @@ int bdb_get_in_schema_change(
     int rc, retries = 0, datalen;
     char key[LLMETA_IXLEN] = {0};
     size_t key_offset = 0;
-    tran_type tran = {0};
     struct llmeta_schema_change_type schema_change;
     uint8_t *p_buf, *p_buf_start, *p_buf_end;
 
@@ -3648,7 +3645,6 @@ static int bdb_set_high_genid_int(
 {
     int retries = 0, rc;
     char key[LLMETA_IXLEN] = {0};
-    size_t key_offset = 0;
     tran_type *trans;
     struct llmeta_high_genid_key_type high_genid_key_type;
     uint8_t *p_buf, *p_buf_start, *p_buf_end;
@@ -3826,11 +3822,8 @@ int bdb_get_high_genid(
 {
     int rc, fndlen, retries = 0;
     char key[LLMETA_IXLEN] = {0};
-    size_t key_offset = 0;
-    tran_type tran = {0};
     struct llmeta_high_genid_key_type high_genid_key_type;
     unsigned long long tmpgenid = 0;
-    uint8_t *p_genid, *p_genid_end;
     uint8_t *p_buf, *p_buf_start, *p_buf_end;
 
     /*stop here if the db isn't open*/
@@ -3919,11 +3912,8 @@ retry:
 int bdb_delete_file_lwm(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
 {
     char key[LLMETA_IXLEN] = {0};
-    int fndlen;
     int rc;
-    DB_LSN tmplsn;
     struct llmeta_file_type_key file_type_key;
-    struct llmeta_db_lsn_data_type lsn_data;
     uint8_t *p_buf, *p_buf_start, *p_buf_end;
 
     file_type_key.file_type = LLMETA_LOGICAL_LSN_LWM;
@@ -4466,7 +4456,6 @@ int bdb_increment_num_sc_done(bdb_state_type *bdb_state, tran_type *tran,
                               int *bdberr)
 {
     int rc;
-    int started_our_own_transaction = 0;
     char key[LLMETA_IXLEN] = {0};
     unsigned long long num = 0;
 
@@ -4764,9 +4753,8 @@ static int bdb_tbl_access_set(bdb_state_type *bdb_state, tran_type *input_trans,
 {
     uint8_t key[LLMETA_IXLEN] = {0};
     int rc;
-    DB_LSN tmplsn;
     struct llmeta_tbl_access tbl_access_data = {0};
-    uint8_t *p_buf, *p_buf_start, *p_buf_end;
+    uint8_t *p_buf, *p_buf_start = NULL, *p_buf_end;
     tran_type *trans;
     int retries = 0;
     int prev_bdberr;
@@ -4895,7 +4883,7 @@ int bdb_tbl_op_access_set(bdb_state_type *bdb_state, tran_type *input_trans,
     uint8_t key[LLMETA_IXLEN] = {0};
     int rc;
     struct llmeta_tbl_op_access tbl_access_data = {0};
-    uint8_t *p_buf, *p_buf_start, *p_buf_end;
+    uint8_t *p_buf, *p_buf_start = NULL, *p_buf_end;
     tran_type *trans;
     int retries = 0;
     int prev_bdberr;
@@ -5122,9 +5110,8 @@ int bdb_feature_set_int(bdb_state_type *bdb_state, tran_type *input_trans,
 {
     uint8_t key[LLMETA_IXLEN] = {0};
     int rc;
-    DB_LSN tmplsn;
     struct llmeta_authentication authentication_data = {0};
-    uint8_t *p_buf, *p_buf_start, *p_buf_end;
+    uint8_t *p_buf, *p_buf_start = NULL, *p_buf_end;
     tran_type *trans;
     int retries = 0;
     int prev_bdberr;
@@ -5230,7 +5217,7 @@ static int bdb_feature_get_int(bdb_state_type *bdb_state, tran_type *tran,
     uint8_t key[LLMETA_IXLEN] = {0};
     struct llmeta_authentication authentication_data = {0};
     int fndlen;
-    uint8_t *p_buf, *p_buf_start, *p_buf_end;
+    uint8_t *p_buf, *p_buf_end;
 
     *bdberr = BDBERR_NOERROR;
 
@@ -5272,7 +5259,6 @@ static int bdb_tbl_access_get(bdb_state_type *bdb_state, tran_type *input_trans,
 {
     uint8_t key[LLMETA_IXLEN] = {0};
     int fndlen, rc;
-    DB_LSN tmplsn;
     struct llmeta_tbl_access tbl_access_data = {0};
     uint8_t *p_buf, *p_buf_end;
 
@@ -5329,7 +5315,6 @@ int bdb_tbl_access_userschema_get(bdb_state_type *bdb_state,
     uint8_t key[LLMETA_IXLEN] = {0};
     uint8_t fndkey[LLMETA_IXLEN] = {0};
     int fndlen, rc;
-    DB_LSN tmplsn;
     struct llmeta_tbl_access tbl_access_data = {0};
     uint8_t *p_buf, *p_buf_end;
 
@@ -5519,7 +5504,6 @@ static int bdb_sqlite_stat1_read_int(bdb_state_type *bdb_state,
 {
     uint8_t key[LLMETA_IXLEN] = {0};
     struct llmeta_sqlstat1_key sqlstats = {0};
-    tran_type *trans;
     int rc;
     int stat_len;
     int retries = 0;
@@ -5971,6 +5955,11 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
                "LLMETA_TABLE_VERSION table=\"%s\" version=\"%lu\"\n", tblname,
                flibc_ntohll(version));
         } break;
+        case LLMETA_TABLE_NUM_SC_DONE: {
+            unsigned long long version = *(unsigned long long *)data;
+            logmsg(LOGMSG_USER, "LLMETA_TABLE_NUM_SC_DONE version=\"%lu\"\n",
+                   flibc_ntohll(version));
+        } break;
         case LLMETA_GENID_FORMAT: {
             uint64_t genid_format;
             genid_format = flibc_htonll(*(unsigned long long *)data);
@@ -5980,8 +5969,7 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
                        : (genid_format == LLMETA_GENID_48BIT)
                              ? "LLMETA_GENID_48BIT"
                              : "UNKNOWN GENID FORMAT");
-            break;
-        }
+        } break;
         default:
             logmsg(LOGMSG_USER, "Todo (type=%d)\n", type);
             break;
@@ -6038,11 +6026,8 @@ int bdb_get_analyzecoverage_table(tran_type *input_trans, const char *tbl_name,
 {
     int rc, fndlen, retries = 0;
     char key[LLMETA_IXLEN] = {0};
-    size_t key_offset = 0;
-    tran_type tran = {0};
     struct llmeta_analyzecoverage_key_type analyzecoverage_key;
     int tmpval = 0;
-    uint8_t *p_genid, *p_genid_end;
     uint8_t *p_buf, *p_buf_start, *p_buf_end;
 
     /*stop here if the db isn't open*/
@@ -6127,7 +6112,6 @@ int bdb_set_analyzecoverage_table(tran_type *input_trans, const char *tbl_name,
     char key[LLMETA_IXLEN] = {0};
 
     tran_type *trans;
-    uint8_t *p_coveragevalue, *p_coveragevalue_end;
     uint8_t *p_buf, *p_buf_start, *p_buf_end;
 
     /*fail if the db isn't open*/
@@ -6281,11 +6265,8 @@ int bdb_get_analyzethreshold_table(tran_type *input_trans, const char *tbl_name,
 {
     int rc, fndlen, retries = 0;
     char key[LLMETA_IXLEN] = {0};
-    size_t key_offset = 0;
-    tran_type tran = {0};
     struct llmeta_analyzethreshold_key_type analyzethreshold_key;
     long long tmpval = 0;
-    uint8_t *p_genid, *p_genid_end;
     uint8_t *p_buf, *p_buf_start, *p_buf_end;
 
     /*stop here if the db isn't open*/
@@ -6535,7 +6516,6 @@ int bdb_set_analyzethreshold_table(tran_type *input_trans, const char *tbl_name,
     char key[LLMETA_IXLEN] = {0};
 
     tran_type *trans;
-    uint8_t *p_value, *p_value_end;
     uint8_t *p_buf, *p_buf_start, *p_buf_end;
 
     /*fail if the db isn't open*/
@@ -6665,7 +6645,6 @@ static int llmeta_get_uint64(llmetakey_t key, uint64_t *value)
     if (llmeta_bdb_state == NULL)
         return -1;
     int rc, bdberr;
-    void *tran;
     int fndlen;
     uint64_t tmp;
     char llkey[LLMETA_IXLEN] = {0};
@@ -6852,7 +6831,7 @@ int llmeta_set_tablename_alias(void *ptran, const char *tablename_alias,
                                const char *url, char **errstr)
 {
     struct llmeta_tablename_alias_key key = {0};
-    struct llmeta_tablename_alias_data data = {0};
+    struct llmeta_tablename_alias_data data = {{0}};
 
     char key_buf[LLMETA_IXLEN] = {0};
     char data_buf[LLMETA_TABLENAME_ALIAS_DATA_LEN] = {0};
@@ -6966,7 +6945,6 @@ retry:
 char *llmeta_get_tablename_alias(const char *tablename_alias, char **errstr)
 {
     struct llmeta_tablename_alias_key key = {0};
-    struct llmeta_tablename_alias_data data = {0};
 
     char key_buf[LLMETA_IXLEN] = {0};
     char *data_buf;
@@ -6974,7 +6952,6 @@ char *llmeta_get_tablename_alias(const char *tablename_alias, char **errstr)
     int bdberr = 0;
     int rc = 0;
     int fndlen = 0;
-    tran_type *trans = NULL;
 
     if (__llmeta_preop_alias(&key, tablename_alias, key_buf, sizeof(key_buf),
                              errstr))
@@ -7037,7 +7014,6 @@ int llmeta_rem_tablename_alias(const char *tablename_alias, char **errstr)
     int retries = 0;
     int bdberr = 0;
     int rc = 0;
-    int fndlen = 0;
     tran_type *trans = NULL;
 
     if (__llmeta_preop_alias(&key, tablename_alias, key_buf, sizeof(key_buf),
@@ -7148,7 +7124,6 @@ int bdb_llmeta_print_alias(bdb_state_type *bdb_state, void *key, int keylen,
 
 void llmeta_list_tablename_alias(void)
 {
-    int rc = 0;
     int bdberr = 0;
 
     if (!bdb_have_llmeta()) {
@@ -7379,7 +7354,7 @@ int bdb_table_version_select(const char *tblname, tran_type *tran,
     int fnddatalen;
     int tblnamelen;
     uint8_t *p_buf, *p_buf_end;
-    int retries;
+    int retries = 0;
     int rc;
 
     *bdberr = 0;
@@ -7463,7 +7438,7 @@ retry:
     *version = *((unsigned long long *)fnddata);
     *version = flibc_ntohll(*version);
 
-    logmsg(LOGMSG_INFO, "Retrieved %lld version for %s\n", *version, tblname);
+    logmsg(LOGMSG_INFO, "Retrieved version %lld for %s\n", *version, tblname);
 
     *bdberr = BDBERR_NOERROR;
     return 0;
@@ -7948,7 +7923,7 @@ static struct queue_data *llmeta_queue_data_get(uint8_t *p_buf,
                                                 uint8_t *p_buf_end)
 {
     struct queue_data *qd = NULL;
-    int len;
+    int len = 0;
 
     qd = calloc(1, sizeof(struct queue_data));
     if (qd == NULL)
@@ -7980,7 +7955,6 @@ int bdb_llmeta_add_queue(bdb_state_type *bdb_state, tran_type *tran,
                          int *bdberr)
 {
     char key[LLMETA_IXLEN] = {0};
-    void *dta;
     int dtalen;
     uint8_t *p_buf, *p_buf_end;
     struct queue_data qd = {0};
@@ -7991,6 +7965,12 @@ int bdb_llmeta_add_queue(bdb_state_type *bdb_state, tran_type *tran,
     p_buf_end = p_buf + LLMETA_IXLEN;
     qk.file_type = LLMETA_TRIGGER;
     /* TODO: range check? assume sanitized at this point? */
+
+    if (strlen(queue) >= LLMETA_TBLLEN) {
+        *bdberr = BDBERR_MISC;
+        logmsg(LOGMSG_ERROR, "%s: queue name length is too long\n", __func__);
+        return -1;
+    }
     strcpy(qk.dbname, queue);
 
     p_buf = llmeta_queue_key_put(&qk, p_buf, p_buf_end);
@@ -8043,10 +8023,7 @@ int bdb_llmeta_drop_queue(bdb_state_type *bdb_state, tran_type *tran,
                           char *queue, int *bdberr)
 {
     char key[LLMETA_IXLEN] = {0};
-    void *dta;
-    int dtalen;
     uint8_t *p_buf, *p_buf_end;
-    struct queue_data qd = {0};
     struct queue_key qk = {0};
     int rc;
 
@@ -8102,7 +8079,6 @@ int bdb_llmeta_get_queues(char **queue_names, size_t max_queues,
             break;
         if (nqueues >= max_queues)
             break;
-        logmsg(LOGMSG_USER, ">> queue: %s\n", qk.dbname);
         queue_names[nqueues] = strdup(qk.dbname);
         ++nqueues;
         if ((rc = bdb_lite_fetch_keys_fwd(llmeta_bdb_state, key, nextkey, 1,
@@ -8380,7 +8356,7 @@ int bdb_llmeta_del_lua_afunc(char *name, int *bdberr)
 */
 struct versioned_sp {
     int32_t key; // LLMETA_VERSIONED_SP
-    char name[LLMETA_TBLLEN];
+    char name[LLMETA_SPLEN];
     char version[MAX_SPVERSION_LEN];
 };
 int bdb_add_versioned_sp(tran_type *t, char *name, char *version, char *src)
@@ -8388,7 +8364,7 @@ int bdb_add_versioned_sp(tran_type *t, char *name, char *version, char *src)
     union {
         struct versioned_sp sp;
         uint8_t buf[LLMETA_IXLEN];
-    } u = {0};
+    } u = {{0}};
     u.sp.key = htonl(LLMETA_VERSIONED_SP);
     strcpy(u.sp.name, name);
     strcpy(u.sp.version, version);
@@ -8404,7 +8380,7 @@ int bdb_get_versioned_sp(char *name, char *version, char **src)
     union {
         struct versioned_sp sp;
         uint8_t buf[LLMETA_IXLEN];
-    } u = {0};
+    } u = {{0}};
     u.sp.key = htonl(LLMETA_VERSIONED_SP);
     strcpy(u.sp.name, name);
     strcpy(u.sp.version, version);
@@ -8429,7 +8405,7 @@ static int bdb_del_versioned_sp_int(tran_type *t, char *name, char *version)
     union {
         struct versioned_sp sp;
         uint8_t buf[LLMETA_IXLEN];
-    } u = {0};
+    } u = {{0}};
     u.sp.key = htonl(LLMETA_VERSIONED_SP);
     strcpy(u.sp.name, name);
     strcpy(u.sp.version, version);
@@ -8478,7 +8454,7 @@ static int bdb_set_default_versioned_sp_int(tran_type *tran, char *name,
     union {
         struct default_versioned_sp sp;
         uint8_t buf[LLMETA_IXLEN];
-    } u = {0};
+    } u = {{0}};
     u.sp.key = htonl(LLMETA_DEFAULT_VERSIONED_SP);
     strcpy(u.sp.name, name);
     int rc, bdberr;
@@ -8499,7 +8475,7 @@ int bdb_get_default_versioned_sp(char *name, char **version)
     union {
         struct default_versioned_sp sp;
         uint8_t buf[LLMETA_IXLEN];
-    } u = {0};
+    } u = {{0}};
     u.sp.key = htonl(LLMETA_DEFAULT_VERSIONED_SP);
     strcpy(u.sp.name, name);
     char **versions;
@@ -8523,7 +8499,7 @@ int bdb_del_default_versioned_sp(tran_type *tran, char *name)
     union {
         struct default_versioned_sp sp;
         uint8_t buf[LLMETA_IXLEN];
-    } u = {0};
+    } u = {{0}};
     u.sp.key = htonl(LLMETA_DEFAULT_VERSIONED_SP);
     strcpy(u.sp.name, name);
     int bdberr;
@@ -8564,7 +8540,7 @@ int bdb_get_all_for_versioned_sp(char *name, char ***versions, int *num)
     union {
         struct versioned_sp sp;
         uint8_t buf[LLMETA_IXLEN];
-    } k = {0}, **v;
+    } k = {{0}}, **v;
     k.sp.key = htonl(LLMETA_VERSIONED_SP);
     strcpy(k.sp.name, name);
     size_t klen = sizeof(llmetakey_t) + strlen(name) + 1;
@@ -8748,7 +8724,7 @@ typedef struct {
 #define ITERATIONS 1000
 int bdb_user_password_check(char *user, char *passwd, int *valid_user)
 {
-    passwd_key key = {0};
+    passwd_key key = {{0}};
     if (valid_user)
         *valid_user = 0;
     size_t ulen = strlen(user) + 1;
@@ -8802,7 +8778,7 @@ out:
 }
 int bdb_user_password_set(tran_type *tran, char *user, char *passwd)
 {
-    passwd_key key = {0};
+    passwd_key key = {{0}};
     size_t ulen = strlen(user) + 1;
     if (ulen > sizeof(key.passwd.user))
         return -1;
@@ -8823,7 +8799,7 @@ int bdb_user_password_set(tran_type *tran, char *user, char *passwd)
 }
 int bdb_user_password_delete(tran_type *tran, char *user)
 {
-    passwd_key key = {0};
+    passwd_key key = {{0}};
     size_t ulen = strlen(user) + 1;
     if (ulen > sizeof(key.passwd.user))
         return -1;

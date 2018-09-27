@@ -68,10 +68,7 @@
 #include "bdb_int.h"
 #include "locks.h"
 #include <time.h>
-
-#include <plbitlib.h> /* for bset/btst */
 #include <ctrace.h>
-
 #include <list.h>
 #include "nodemap.h"
 #include "intern_strings.h"
@@ -3030,8 +3027,7 @@ done2:
                 no_change = 0;
             if (no_change > 60 / 5) {
                 /* We are not making any progress.  Go back to phase 2.  This is
-                 * a desparate act to try to stop the constant "stuck in phase
-                 * 3"
+                 * a desparate act to try to stop the constant "stuck in phase 3"
                  * problem that we get every other day on turning the beta
                  * cluster. */
 
@@ -3804,7 +3800,7 @@ void bdb_print_log_files(bdb_state_type *bdb_state)
     int rc;
     char **list;
     char **file;
-    char logname[200];
+    char logname[PATH_MAX];
 
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
@@ -3818,8 +3814,8 @@ void bdb_print_log_files(bdb_state_type *bdb_state)
     if (list != NULL) {
         for (file = list; *file != NULL; ++file) {
             logname[0] = '\0';
-            sprintf(logname, "%s/%s", bdb_state->txndir, *file);
-
+            snprintf(logname, sizeof(logname), "%s/%s", bdb_state->txndir,
+                     *file);
             logmsg(LOGMSG_USER, "%s\n", logname);
         }
 
@@ -3890,6 +3886,7 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
     int tmp_tid;
     tran_type tran;
 
+deadlock_again:
     tmp_tid = 0;
 
     db_flags = DB_THREAD;
@@ -3948,6 +3945,9 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
                        bdberr);
                 if (tid)
                     tid->abort(tid);
+                tid = NULL;
+                if (tmp_tid && bdberr == BDBERR_DEADLOCK)
+                    goto deadlock_again;
                 return -1;
             }
         }

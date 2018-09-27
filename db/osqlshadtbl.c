@@ -2146,7 +2146,7 @@ static int process_local_shadtbl_dbq(struct sqlclntstate *clnt, int *bdberr,
     shadbq_t *shadbq = &clnt->osql.shadbq;
     if (shadbq->spname && shadbq->genid) {
         osql_dbq_consume(clnt, shadbq->spname, shadbq->genid);
-        ++*crt_nops;
+        ++(*crt_nops);
     }
     return SQLITE_OK;
 }
@@ -2897,13 +2897,13 @@ int osql_save_schemachange(struct sql_thread *thd,
 
     if (!osql->sc_tbl || !osql->sc_cur) {
         logmsg(LOGMSG_ERROR, "%s: error getting sc table for \'%s\'\n",
-               __func__, sc->table);
+               __func__, sc->tablename);
         return -1;
     }
 
     if (pack_schema_change_type(sc, &packed_sc_data, &packed_sc_data_len)) {
         logmsg(LOGMSG_ERROR, "%s: error packing sc table for \'%s\'\n",
-               __func__, sc->table);
+               __func__, sc->tablename);
         return -1;
     }
     if (clnt->ddl_tables) {
@@ -2911,14 +2911,14 @@ int osql_save_schemachange(struct sql_thread *thd,
                   NULL, NULL);
     }
     if (usedb) {
-        packed_sc_key[1] = comdb2_table_version(sc->table);
+        packed_sc_key[1] = comdb2_table_version(sc->tablename);
     }
     rc = bdb_temp_table_put(thedb->bdb_env, osql->sc_tbl, &packed_sc_key,
                             sizeof(packed_sc_key), packed_sc_data,
                             packed_sc_data_len, NULL, &bdberr);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: error saving sc table for \'%s\'\n", __func__,
-               sc->table);
+               sc->tablename);
         return -1;
     }
 
@@ -2970,17 +2970,18 @@ static int process_local_shadtbl_sc(struct sqlclntstate *clnt, int *bdberr)
         }
 
         if (packed_sc_key[1] >= 0 &&
-            packed_sc_key[1] != comdb2_table_version(sc->table)) {
+            packed_sc_key[1] != comdb2_table_version(sc->tablename)) {
             free_schema_change_type(sc);
             osql->xerr.errval = ERR_SC;
             errstat_set_strf(
                 &(osql->xerr),
-                "stale version for table:%s master:%d replicant:%d", sc->table,
-                comdb2_table_version(sc->table), packed_sc_key[1]);
+                "stale version for table:%s master:%d replicant:%d",
+                sc->tablename, comdb2_table_version(sc->tablename),
+                packed_sc_key[1]);
             return ERR_SC;
         } else if (packed_sc_key[1] >= 0) {
-            rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid, sc->table,
-                                 NET_OSQL_SOCK_RPL, osql->logsb,
+            rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid,
+                                 sc->tablename, NET_OSQL_SOCK_RPL, osql->logsb,
                                  packed_sc_key[1]);
             if (rc) {
                 logmsg(LOGMSG_ERROR,

@@ -589,7 +589,10 @@ Table *sqlite3LocateTableItem(
   /* COMDB2 MODIFICATION */
   if (gbl_allow_user_schema) {
     char tblName[MAXTABLELEN];
-    resolveTableName(p, zDb, tblName);
+    if (resolveTableName(p, zDb, tblName, sizeof(tblName))) {
+        sqlite3ErrorMsg(pParse, "failed to resolve table name");
+        return 0;
+    }
     return sqlite3LocateTable(pParse, flags, tblName, zDb);
   } else {
     return sqlite3LocateTable(pParse, flags, p->zName, zDb);
@@ -2852,6 +2855,7 @@ void sqlite3DropTable(Parse *pParse, SrcList *pName, int isView, int noErr){
   int iDb;
   int code;
 
+  comdb2WriteTransaction(pParse);
   if( db->mallocFailed ){
     goto exit_drop_table;
   }
@@ -3860,6 +3864,7 @@ void sqlite3DropIndex(Parse *pParse, SrcList *pName, int ifExists){
   sqlite3 *db = pParse->db;
   int iDb;
 
+  comdb2WriteTransaction(pParse);
   assert( pParse->nErr==0 );   /* Never called with prior errors */
   if( db->mallocFailed ){
     goto exit_drop_index;

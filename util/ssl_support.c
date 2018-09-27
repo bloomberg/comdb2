@@ -62,10 +62,12 @@ static pthread_mutex_t ssl_init_lock = PTHREAD_MUTEX_INITIALIZER;
    defined, we still need to implement our own locking. */
 static pthread_mutex_t *ssl_locks = NULL;
 
+#ifdef OPENSSL_NO_DEPRECATED
 static void ssl_threadid(CRYPTO_THREADID *thd)
 {
     CRYPTO_THREADID_set_numeric(thd, (intptr_t)pthread_self());
 }
+#endif /* OPENSSL_NO_DEPRECATED */
 
 /* For OpenSSL < 1.0.0. */
 static unsigned long ssl_threadid_deprecated()
@@ -179,7 +181,8 @@ int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
 {
     SSL_CTX *myctx;
     char *buffer, *cert, *key, *ca, *crl;
-    int rc, servermode;
+    int rc = 0;
+    int servermode;
     struct stat buf;
     STACK_OF(X509_NAME) *cert_names;
 

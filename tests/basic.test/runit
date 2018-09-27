@@ -274,6 +274,12 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t2  { `cat alltypes.csc2 ` }"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t2 "
 
 set +e
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t2 " &> baddrop.txt
+echo "[drop table t2] failed with rc -3 no such table: t2" > baddrop.exp
+if ! diff baddrop.txt baddrop.exp ; then
+    failexit "unexpected $nosuchtbl"
+fi
+
 cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t2 " &> badsel.txt
 echo "[select * from t2] failed with rc -3 no such table: t2" > badsel.exp
 if ! diff badsel.txt badsel.exp ; then

@@ -25,7 +25,6 @@
 #include <strings.h>
 
 #include <list.h>
-#include <plbitlib.h>
 #include <fsnap.h>
 #include <bdb_osqllog.h>
 #include <bdb_osqltrn.h>
@@ -61,17 +60,7 @@
 #include <util.h>
 #endif
 
-#define MAXTABLENAME 128
-#define LOG_DTA_PTR_BIT 1
-
 static int log_repo_lsns = 0;
-
-static char hex(unsigned char a)
-{
-    if (a < 10)
-        return '0' + a;
-    return 'a' + (a - 10);
-}
 
 #include "bdb_osql_log_rec.h"
 /**

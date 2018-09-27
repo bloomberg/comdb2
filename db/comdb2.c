@@ -130,6 +130,8 @@ void berk_memp_sync_alarm_ms(int);
 #include "comdb2_atomic.h"
 #include "metrics.h"
 
+#define QUOTE_(x) #x
+#define QUOTE(x) QUOTE_(x)
 
 #define tokdup strndup
 
@@ -173,7 +175,8 @@ int clear_temp_tables(void);
 pthread_key_t comdb2_open_key;
 
 /*---GLOBAL SETTINGS---*/
-const char *const gbl_db_release_name = "R7.0pre";
+const char *const gbl_db_release_name = QUOTE(COMDB2_RELEASE);
+const char *const gbl_db_build_name = QUOTE(COMDB2_BUILD);
 int gbl_enque_flush_interval;
 int gbl_enque_reorder_lookahead = 20;
 int gbl_morecolumns = 0;
@@ -922,6 +925,8 @@ void no_new_requests(struct dbenv *dbenv)
 
 int db_is_stopped(void) { return (thedb->stopped || thedb->exiting); }
 
+int db_is_exiting(void) { return (thedb->exiting); }
+
 void print_dbsize(void);
 
 static void init_q_vars()
@@ -1116,15 +1121,15 @@ static void *purge_old_blkseq_thread(void *arg)
             thrman_where(thr_self, NULL);
         }
 
+        /* queue consumer thread admin */
+        thrman_where(thr_self, "dbqueue_admin");
+        dbqueuedb_admin(dbenv);
+        thrman_where(thr_self, NULL);
+
         /* purge old blobs.  i didn't want to make a whole new thread just
          * for this -- SJ */
         thrman_where(thr_self, "purge_old_cached_blobs");
         purge_old_cached_blobs();
-        thrman_where(thr_self, NULL);
-
-        /* queue consumer thread admin */
-        thrman_where(thr_self, "dbqueue_admin");
-        dbqueue_admin(dbenv);
         thrman_where(thr_self, NULL);
 
         /* update per node stats */
@@ -1240,14 +1245,14 @@ static void *purge_old_files_thread(void *arg)
 
 /* remove every file that contains ".csc2" anywhere in its name.
    this should be safe */
-int clear_csc2_files(void)
+static int clear_csc2_files(void)
 {
-    char path[256];
+    char path[PATH_MAX] = {0};
     DIR *dirp = NULL;
     struct dirent *dp = NULL;
-    bzero(path, sizeof(path));
 
-    snprintf(path, 256, "%s", thedb->basedir);
+    /* TODO: Why copy thedb->basedir? */
+    snprintf(path, sizeof(path), "%s", thedb->basedir);
 
     dirp = opendir(path);
     if (dirp == NULL)
@@ -1255,7 +1260,7 @@ int clear_csc2_files(void)
     while (dirp) {
         errno = 0;
         if ((dp = readdir(dirp)) != NULL) {
-            char fullfile[512];
+            char fullfile[PATH_MAX];
             char *ptr;
 
             if (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, ".."))
@@ -1265,7 +1270,7 @@ int clear_csc2_files(void)
 
             if (ptr) {
                 int rc;
-                sprintf(fullfile, "%s/%s", path, dp->d_name);
+                snprintf(fullfile, sizeof(fullfile), "%s/%s", path, dp->d_name);
                 logmsg(LOGMSG_INFO, "removing csc2 file %s\n", fullfile);
                 rc = unlink(fullfile);
                 if (rc)
@@ -1497,7 +1502,6 @@ struct dbtable *newqdb(struct dbenv *env, const char *name, int avgsz, int pages
     tbl = calloc(1, sizeof(struct dbtable));
     tbl->tablename = strdup(name);
     tbl->dbenv = env;
-    tbl->is_readonly = 0;
     tbl->dbtype = isqueuedb ? DBTYPE_QUEUEDB : DBTYPE_QUEUE;
     tbl->avgitemsz = avgsz;
     tbl->queue_pagesize_override = pagesize;
@@ -1562,7 +1566,6 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
         tbl->lrlfname = strdup(fname);
     tbl->tablename = strdup(tblname);
     tbl->dbenv = env;
-    tbl->is_readonly = 0;
     tbl->dbnum = dbnum;
     tbl->lrl = dyns_get_db_table_size(); /* this gets adjusted later */
     if (dbnum == 0) {
@@ -1950,7 +1953,7 @@ static int llmeta_load_queues(struct dbenv *dbenv)
             return -1;
         }
 
-        rc = dbqueue_add_consumer(tbl, 0, dests[0], 0);
+        rc = dbqueuedb_add_consumer(tbl, 0, dests[0], 0);
         if (rc) {
             logmsg(LOGMSG_ERROR, "can't add consumer for queue \"%s\"\n", qnames[i]);
             return -1;
@@ -2344,7 +2347,7 @@ int llmeta_dump_mapping_table(struct dbenv *dbenv, const char *table, int err)
     return llmeta_dump_mapping_table_tran(NULL, dbenv, table, err);
 }
 
-static struct dbenv *newdbenv(char *dbname, char *lrlname)
+struct dbenv *newdbenv(char *dbname, char *lrlname)
 {
     int rc;
     struct dbenv *dbenv = calloc(1, sizeof(struct dbenv));
@@ -2352,6 +2355,7 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
         logmsg(LOGMSG_FATAL, "newdb:calloc dbenv");
         return NULL;
     }
+    thedb = dbenv;
 
     dbenv->cacheszkbmin = 65536;
     dbenv->bdb_attr = bdb_attr_create();
@@ -2389,16 +2393,16 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
         hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
                        offsetof(struct dbtable, tablename), 0);
 
-    if ((rc = pthread_mutex_init(&dbenv->dbqueue_admin_lk, NULL)) != 0) {
-        logmsg(LOGMSG_FATAL, "can't init lock %d %s\n", rc, strerror(errno));
-        return NULL;
-    }
-
     /* Register all db tunables. */
     if ((register_db_tunables(dbenv))) {
         logmsg(LOGMSG_FATAL, "Failed to initialize tunables\n");
         exit(1);
     }
+
+    listc_init(&dbenv->lrl_handlers, offsetof(struct lrl_handler, lnk));
+    listc_init(&dbenv->message_handlers, offsetof(struct message_handler, lnk));
+
+    plugin_post_dbenv_hook(dbenv);
 
     if (read_lrl_files(dbenv, lrlname)) {
         logmsg(LOGMSG_FATAL, "Failure in reading lrl file(s)\n");
@@ -2457,6 +2461,7 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
 
     listc_init(&dbenv->sql_threads, offsetof(struct sql_thread, lnk));
     listc_init(&dbenv->sqlhist, offsetof(struct sql_hist, lnk));
+
     dbenv->master = NULL; /*no known master at this point.*/
     dbenv->errstaton = 1; /* ON */
 
@@ -3136,6 +3141,8 @@ static int init(int argc, char **argv)
         logmsg(LOGMSG_FATAL, "failed to initialise page compact module\n");
         return -1;
     }
+
+    initresourceman(NULL);
 
     /* Initialize the opcode handler hash */
     if (init_opcode_handlers()) {
@@ -4599,13 +4606,6 @@ static void register_all_int_switches()
                         &gbl_default_livesc);
     register_int_switch("dflt_plansc", "Use planned schema change by default",
                         &gbl_default_plannedsc);
-    register_int_switch("consumer_rtcpu",
-                        "Don't send update broadcasts to rtcpu'd machines",
-                        &gbl_consumer_rtcpu_check);
-    register_int_switch(
-        "node1_rtcpuable",
-        "If off then consumer code won't do rtcpu checks on node 1",
-        &gbl_node1rtcpuable);
     register_int_switch("sqlite3openserial",
                         "Serialise calls to sqlite3_open to prevent excess CPU",
                         &gbl_serialise_sqlite3_open);
@@ -4631,9 +4631,6 @@ static void register_all_int_switches()
     register_int_switch("allow_mismatched_tag_size",
                         "Allow variants in padding in static tag struct sizes",
                         &gbl_allow_mismatched_tag_size);
-    register_int_switch("reset_queue_cursor_mode",
-                        "Reset queue consumeer read cursor after each consume",
-                        &gbl_reset_queue_cursor);
     register_int_switch("key_updates",
                         "Update non-dupe keys instead of delete/add",
                         &gbl_key_updates);
@@ -5469,9 +5466,6 @@ int sc_ready(void)
 {
     return gbl_backend_opened;
 }
-
-#define QUOTE_(x) #x
-#define QUOTE(x) QUOTE_(x)
 
 static void create_service_file(const char *lrlname)
 {
