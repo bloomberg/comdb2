@@ -2948,9 +2948,9 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
                 sqlite3ExprListSetName(pParse, pList, &x, 0);
                 if( pParse->db->mallocFailed ) goto oom;
 
-                pList.a[i].pExpr->op = TK_ID;
-                pList.a[i].pExpr->u.zToken = child_idx_column->name;
-                pList.a[i].zName = child_idx_column->name;
+                pList->a[i].pExpr->op = TK_ID;
+                pList->a[i].pExpr->u.zToken = child_idx_column->name;
+                pList->a[i].zName = child_idx_column->name;
                 if (child_idx_column->flags & INDEX_ORDER_DESC) {
                     pList->a[i].sortOrder = SQLITE_SO_DESC;
                 } else {
