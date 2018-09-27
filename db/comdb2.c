@@ -742,6 +742,8 @@ int gbl_early_verify = 1;
 int gbl_bbenv;
 extern int gbl_legacy_defaults;
 
+int64_t gbl_temptable_spills = 0;
+
 comdb2_tunables *gbl_tunables; /* All registered tunables */
 int init_gbl_tunables();
 int free_gbl_tunables();
