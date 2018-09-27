@@ -110,6 +110,8 @@ typedef struct {
     DBTYPES_COMMON;
     pthread_mutex_t lua_thread_mutex;
     pthread_cond_t lua_thread_cond;
+    pthread_mutex_t tmptbl_clone_mutex;
+    pthread_cond_t tmptbl_clone_cond;
     int finished_run;
     pthread_t lua_tid;
     char *sql;
@@ -2906,6 +2908,8 @@ static int db_create_thread_int(Lua lua, const char *funcname)
     new_lua_t(lt, dbthread_t, DBTYPES_THREAD);
     pthread_mutex_init(&lt->lua_thread_mutex, NULL);
     pthread_cond_init(&lt->lua_thread_cond, NULL);
+    pthread_mutex_init(&lt->tmptbl_clone_mutex, NULL);
+    pthread_cond_init(&lt->tmptbl_clone_cond, NULL);
 
     SP sp = getsp(lua);
     SP newsp = NULL;
@@ -2943,9 +2947,25 @@ static int db_create_thread_int(Lua lua, const char *funcname)
 #ifdef PTHREAD_STACK_MIN
     pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN + 16 * 1024);
 #endif
+    pthread_mutex_lock(&lt->tmptbl_clone_mutex);
+    sp->db_thread = lt;
     rc = pthread_create(&lt->lua_tid, &attr, dispatch_lua_thread, lt);
     pthread_attr_destroy(&attr);
-    if (rc == 0) return 1;
+    if (rc == 0){
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_sec += (dbq_delay / 1000);
+        pthread_cond_timedwait(
+            &lt->tmptbl_clone_cond, &lt->tmptbl_clone_mutex, &ts
+        );
+        pthread_cond_destroy(&lt->tmptbl_clone_cond);
+        pthread_mutex_unlock(&lt->tmptbl_clone_mutex);
+        pthread_mutex_destroy(&lt->tmptbl_clone_mutex);
+        return 1;
+    }
+    pthread_cond_destroy(&lt->tmptbl_clone_cond);
+    pthread_mutex_unlock(&lt->tmptbl_clone_mutex);
+    pthread_mutex_destroy(&lt->tmptbl_clone_mutex);
     luabb_error(lua, sp, "failed to create thread");
 bad:
     free(err);
@@ -5686,6 +5706,7 @@ static void clone_temp_tables(SP sp)
         clone_temp_table(dest, src, strbuf_buf(sql), tbl->rootpg);
         strbuf_free(sql);
     }
+    if (sp->db_thread) pthread_cond_signal(&sp->db_thread->tmptbl_clone_cond);
 }
 
 static int begin_sp(struct sqlclntstate *clnt, char **err)
