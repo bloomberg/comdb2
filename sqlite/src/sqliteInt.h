@@ -1601,6 +1601,7 @@ struct sqlite3 {
 #define SQLITE_EnableQPSG     0x00800000  /* Query Planner Stability Guarantee*/
 #define SQLITE_TriggerEQP     0x01000000  /* Show trigger EXPLAIN QUERY PLAN */
 #define SQLITE_ResetDatabase  0x02000000  /* Reset the database */
+#define SQLITE_LegacyAlter    0x04000000  /* Legacy ALTER TABLE behaviour */
 
 /* Flags used only if debugging */
 #ifdef SQLITE_DEBUG
@@ -2584,11 +2585,11 @@ struct Expr {
                          ** TK_COLUMN: the value of p5 for OP_Column
                          ** TK_AGG_FUNCTION: nesting depth */
   AggInfo *pAggInfo;     /* Used by TK_AGG_COLUMN and TK_AGG_FUNCTION */
-  Table *pTab;           /* Table for TK_COLUMN expressions.  Can be NULL
-                         ** for a column of an index on an expression */
-#ifndef SQLITE_OMIT_WINDOWFUNC
-  Window *pWin;          /* Window definition for window functions */
-#endif
+  union {
+    Table *pTab;           /* TK_COLUMN: Table containing column. Can be NULL
+                           ** for a column of an index on an expression */
+    Window *pWin;          /* TK_FUNCTION: Window definition for the func */
+  } y;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   u8 visited;            /* Set if visited by fingerprinter. */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -2621,6 +2622,7 @@ struct Expr {
 #define EP_Subquery  0x200000 /* Tree contains a TK_SELECT operator */
 #define EP_Alias     0x400000 /* Is an alias for a result set column */
 #define EP_Leaf      0x800000 /* Expr.pLeft, .pRight, .u.pSelect all NULL */
+#define EP_WinFunc  0x1000000 /* TK_FUNCTION with Expr.y.pWin set */
 
 /*
 ** The EP_Propagate mask is a set of properties that automatically propagate
@@ -4442,7 +4444,7 @@ void sqlite3RootPageMoved(sqlite3*, int, int, int);
 void sqlite3Reindex(Parse*, Token*, Token*);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 void sqlite3AlterRenameTable(Parse*, Token*, Token*, int);
-#else
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 void sqlite3AlterFunctions(void);
 void sqlite3AlterRenameTable(Parse*, SrcList*, Token*);
 void sqlite3AlterRenameColumn(Parse*, SrcList*, Token*, Token*);

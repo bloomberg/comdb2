@@ -2164,10 +2164,6 @@ static void convertToWithoutRowidTable(Parse *pParse, Table *pTab){
     }
   }
 
-  /* The remaining transformations only apply to b-tree tables, not to
-  ** virtual tables */
-  if( IN_DECLARE_VTAB ) return;
-
   /* Convert the P3 operand of the OP_CreateBtree opcode from BTREE_INTKEY
   ** into BTREE_BLOBKEY.
   */
