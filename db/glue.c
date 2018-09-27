@@ -3557,7 +3557,8 @@ void net_add_consumer(void *hndl, void *uptr, char *fromnode, int usertype,
         return;
     }
 
-    rc = dbqueue_add_consumer(db, msg->consumern, msg->method, 0);
+    rc = dbqueuedb_add_consumer(db, msg->consumern, msg->method, 0);
+
     fix_consumers_with_bdblib(thedb);
     net_ack_message(hndl, rc);
 }

@@ -85,8 +85,8 @@ static int mark_sc_in_llmeta_tran(struct schema_change_type *s, void *trans)
     size_t packed_sc_data_len;
     uuidstr_t us;
     comdb2uuidstr(s->uuid, us);
-    logmsg(LOGMSG_INFO, "%s: table '%s' rqid [%llx %s]\n", __func__, s->table,
-           s->rqid, us);
+    logmsg(LOGMSG_INFO, "%s: table '%s' rqid [%llx %s]\n", __func__,
+           s->tablename, s->rqid, us);
     if (pack_schema_change_type(s, &packed_sc_data, &packed_sc_data_len)) {
         sc_errf(s, "could not pack the schema change data for storage in "
                    "low level meta table\n");
@@ -99,7 +99,7 @@ static int mark_sc_in_llmeta_tran(struct schema_change_type *s, void *trans)
          * retry several times */
         for (retries = 0;
              retries < max_retries &&
-             (bdb_set_in_schema_change(trans, s->table, packed_sc_data,
+             (bdb_set_in_schema_change(trans, s->tablename, packed_sc_data,
                                        packed_sc_data_len, &bdberr) ||
               bdberr != BDBERR_NOERROR);
              ++retries) {
@@ -132,7 +132,7 @@ static int mark_sc_in_llmeta(struct schema_change_type *s)
 static int propose_sc(struct schema_change_type *s)
 {
     /* Check that all nodes are ready to do this schema change. */
-    int rc = broadcast_sc_start(s->table, s->iq->sc_seed, s->iq->sc_host,
+    int rc = broadcast_sc_start(s->tablename, s->iq->sc_seed, s->iq->sc_host,
                                 time(NULL));
     if (rc != 0) {
         rc = SC_PROPOSE_FAIL;
@@ -206,7 +206,7 @@ static void stop_and_free_sc(int rc, struct schema_change_type *s, int do_free)
             sbuf2printf(s->sb, "SUCCESS\n");
         }
     }
-    sc_set_running(s->table, 0, s->iq->sc_seed, NULL, 0);
+    sc_set_running(s->tablename, 0, s->iq->sc_seed, NULL, 0);
     if (do_free) {
         free_sc(s);
     }
@@ -214,9 +214,9 @@ static void stop_and_free_sc(int rc, struct schema_change_type *s, int do_free)
 
 static int set_original_tablename(struct schema_change_type *s)
 {
-    struct dbtable *db = get_dbtable_by_name(s->table);
+    struct dbtable *db = get_dbtable_by_name(s->tablename);
     if (db) {
-        strncpy0(s->table, db->tablename, sizeof(s->table));
+        strncpy0(s->tablename, db->tablename, sizeof(s->tablename));
         return 0;
     }
     return 1;
@@ -234,7 +234,7 @@ int do_upgrade_table(struct schema_change_type *s)
     if (rc == SC_OK) rc = do_upgrade_table_int(s);
 
     if (rc) {
-        mark_schemachange_over(s->table);
+        mark_schemachange_over(s->tablename);
     } else if (s->finalize) {
         rc = finalize_upgrade_table(s);
     } else {
@@ -272,7 +272,7 @@ static int do_finalize(ddl_t func, struct ireq *iq,
     if (rc) {
         if (input_tran == NULL) {
             trans_abort(iq, tran);
-            mark_schemachange_over(s->table);
+            mark_schemachange_over(s->tablename);
             sc_del_unused_files(s->db);
         }
         return rc;
@@ -296,7 +296,7 @@ static int do_finalize(ddl_t func, struct ireq *iq,
         sc_del_unused_files(s->db);
     } else if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_DONE_SAME_TRAN)) {
         int bdberr = 0;
-        rc = bdb_llog_scdone_tran(s->db->handle, type, input_tran, s->table,
+        rc = bdb_llog_scdone_tran(s->db->handle, type, input_tran, s->tablename,
                                   &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
             sc_errf(s, "Failed to send scdone rc=%d bdberr=%d\n", rc, bdberr);
@@ -312,18 +312,18 @@ static int check_table_version(struct ireq *iq, struct schema_change_type *sc)
         return 0;
     int rc, bdberr;
     unsigned long long version;
-    rc = bdb_table_version_select(sc->table, NULL, &version, &bdberr);
+    rc = bdb_table_version_select(sc->tablename, NULL, &version, &bdberr);
     if (rc != 0) {
         errstat_set_strf(&iq->errstat,
-                         "failed to get version for table:%s rc:%d", sc->table,
-                         rc);
+                         "failed to get version for table:%s rc:%d",
+                         sc->tablename, rc);
         iq->errstat.errval = ERR_SC;
         return SC_INTERNAL_ERROR;
     }
     if (sc->usedbtablevers != version) {
         errstat_set_strf(&iq->errstat,
                          "stale version for table:%s master:%d replicant:%d",
-                         sc->table, version, sc->usedbtablevers);
+                         sc->tablename, version, sc->usedbtablevers);
         iq->errstat.errval = ERR_SC;
         return SC_INTERNAL_ERROR;
     }
@@ -345,7 +345,7 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
         set_sc_flgs(s);
     if ((rc = mark_sc_in_llmeta_tran(s, NULL))) // non-tran ??
         goto end;
-    broadcast_sc_start(s->table, iq->sc_seed, iq->sc_host,
+    broadcast_sc_start(s->tablename, iq->sc_seed, iq->sc_host,
                        time(NULL));                   // dont care rcode
     rc = pre(iq, s, NULL);                            // non-tran ??
     if (type == alter && master_downgrading(s)) {
@@ -356,15 +356,15 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
         return SC_MASTER_DOWNGRADE;
     }
     if (rc) {
-        mark_schemachange_over_tran(s->table, NULL); // non-tran ??
-        broadcast_sc_end(s->table, iq->sc_seed);
+        mark_schemachange_over_tran(s->tablename, NULL); // non-tran ??
+        broadcast_sc_end(s->tablename, iq->sc_seed);
     } else if (s->finalize) {
         wrlock_schema_lk();
         rc = do_finalize(post, iq, s, tran, type);
         unlock_schema_lk();
         if (type == fastinit && gbl_replicate_local)
             local_replicant_write_clear(iq, tran, s->db);
-        broadcast_sc_end(s->table, iq->sc_seed);
+        broadcast_sc_end(s->tablename, iq->sc_seed);
     } else {
         rc = SC_COMMIT_PENDING;
     }
@@ -387,7 +387,7 @@ int do_alter_queues(struct schema_change_type *s)
 
     if (master_downgrading(s)) return SC_MASTER_DOWNGRADE;
 
-    broadcast_sc_end(s->table, s->iq->sc_seed);
+    broadcast_sc_end(s->tablename, s->iq->sc_seed);
 
     if ((s->type != DBTYPE_TAGGED_TABLE) && gbl_pushlogs_after_sc)
         push_next_log();
@@ -409,7 +409,7 @@ int do_alter_stripes(struct schema_change_type *s)
 
     if (master_downgrading(s)) return SC_MASTER_DOWNGRADE;
 
-    broadcast_sc_end(s->table, s->iq->sc_seed);
+    broadcast_sc_end(s->tablename, s->iq->sc_seed);
 
     /* if we did a regular schema change and we used the llmeta we don't need to
      * push locgs */
@@ -495,7 +495,7 @@ int do_schema_change_tran(sc_arg_t *arg)
     reset_sc_thread(oldtype, s);
     if (rc && rc != SC_COMMIT_PENDING) {
         logmsg(LOGMSG_ERROR, ">>> SCHEMA CHANGE ERROR: TABLE %s, RC %d\n",
-               s->table, rc);
+               s->tablename, rc);
         iq->sc_should_abort = 1;
     }
     s->sc_rc = rc;
@@ -531,10 +531,10 @@ int do_schema_change(struct schema_change_type *s)
     init_fake_ireq(thedb, iq);
     iq->sc = s;
     if (s->db == NULL) {
-        s->db = get_dbtable_by_name(s->table);
+        s->db = get_dbtable_by_name(s->tablename);
     }
     iq->usedb = s->db;
-    s->usedbtablevers = iq->usedbtablevers = s->db ? s->db->tableversion : 0;
+    s->usedbtablevers = s->db ? s->db->tableversion : 0;
     sc_arg_t *arg = malloc(sizeof(sc_arg_t));
     arg->iq = iq;
     arg->sc = s;
@@ -603,12 +603,12 @@ void *sc_resuming_watchdog(void *p)
         pthread_mutex_lock(&(iq.sc->mtx));
         stored_sc = stored_sc->sc_next;
         logmsg(LOGMSG_INFO, "%s: aborting schema change of table '%s'\n",
-               __func__, iq.sc->table);
-        mark_schemachange_over(iq.sc->table);
+               __func__, iq.sc->tablename);
+        mark_schemachange_over(iq.sc->tablename);
         if (iq.sc->addonly) {
             delete_temp_table(&iq, iq.sc->db);
             if (iq.sc->addonly == SC_DONE_ADD)
-                delete_db(iq.sc->table);
+                delete_db(iq.sc->tablename);
         }
         sc_del_unused_files(iq.sc->db);
         pthread_mutex_unlock(&(iq.sc->mtx));
@@ -650,14 +650,14 @@ static int verify_sc_resumed_for_shard(const char *shardname,
     sc = arg->s;
     while (sc) {
         /* already resumed */
-        if (strcasecmp(shardname, sc->table) == 0)
+        if (strcasecmp(shardname, sc->tablename) == 0)
             return 0;
         sc = sc->sc_next;
     }
 
     /* start a new sc for shard that was not already resumed */
     struct schema_change_type *new_sc = clone_schemachange_type(arg->s);
-    strncpy0(new_sc->table, shardname, sizeof(new_sc->table));
+    strncpy0(new_sc->tablename, shardname, sizeof(new_sc->tablename));
     new_sc->iq = NULL;
     new_sc->tran = NULL;
     new_sc->resume = 0;
@@ -669,7 +669,7 @@ static int verify_sc_resumed_for_shard(const char *shardname,
     arg->s = new_sc;
 
     logmsg(LOGMSG_INFO, "Restarting schema change for view '%s' shard '%s'\n",
-           arg->view_name, new_sc->table);
+           arg->view_name, new_sc->tablename);
     rc = start_schema_change(new_sc);
     if (rc != SC_ASYNC && rc != SC_COMMIT_PENDING) {
         logmsg(LOGMSG_ERROR, "%s: failed to restart shard '%s', rc %d\n",
@@ -810,17 +810,17 @@ int resume_schema_change(void)
             logmsg(LOGMSG_INFO,
                    "%s: resuming schema change: rqid [%llx %s] "
                    "table %s, add %d, drop %d, fastinit %d, alter %d\n",
-                   __func__, s->rqid, us, s->table, s->addonly, s->drop_table,
-                   s->fastinit, s->alteronly);
+                   __func__, s->rqid, us, s->tablename, s->addonly,
+                   s->drop_table, s->fastinit, s->alteronly);
 
             is_shard = 0;
             if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) &&
                 s->rqid == 0 && comdb2uuid_is_zero(s->uuid)) {
                 s->resume = SC_RESUME;
-                if (unlikely(timepart_is_shard(s->table, 1, &viewname))) {
+                if (unlikely(timepart_is_shard(s->tablename, 1, &viewname))) {
                     logmsg(LOGMSG_INFO,
                            "Resuming schema change for view '%s' shard '%s'\n",
-                           viewname, s->table);
+                           viewname, s->tablename);
                     s->finalize = 0;
                     is_shard = 1;
                 } else {
@@ -838,7 +838,7 @@ int resume_schema_change(void)
             if (rc != SC_OK && rc != SC_ASYNC) {
                 logmsg(LOGMSG_ERROR,
                        "%s: failed to resume schema change for table '%s'\n",
-                       __func__, s->table);
+                       __func__, s->tablename);
                 free_schema_change_type(s);
                 continue;
             } else if (is_shard) {
@@ -1231,7 +1231,7 @@ int dryrun_int(struct schema_change_type *s, struct dbtable *db, struct dbtable 
         s->force_blob_rebuild = 1;
     }
 
-    changed = ondisk_schema_changed(s->table, newdb, NULL, s);
+    changed = ondisk_schema_changed(s->tablename, newdb, NULL, s);
     if (changed < 0) {
         if (changed == SC_BAD_NEW_FIELD) {
             sbuf2printf(s->sb,
@@ -1282,7 +1282,7 @@ int backout_schema_changes(struct ireq *iq, tran_type *tran)
     while (s != NULL) {
         if (s->addonly) {
             if (s->addonly == SC_DONE_ADD)
-                delete_db(s->table);
+                delete_db(s->tablename);
             if (s->newdb) {
                 backout_schemas(s->newdb->tablename);
                 cleanup_newdb(s->newdb);
@@ -1309,13 +1309,13 @@ int backout_schema_changes(struct ireq *iq, tran_type *tran)
 int scdone_abort_cleanup(struct ireq *iq)
 {
     struct schema_change_type *s = iq->sc;
-    mark_schemachange_over(s->table);
-    sc_set_running(s->table, 0, iq->sc_seed, gbl_mynode, time(NULL));
-    if (s->addonly) {
+    mark_schemachange_over(s->tablename);
+    sc_set_running(s->tablename, 0, iq->sc_seed, gbl_mynode, time(NULL));
+    if (s->addonly && s->db->handle) {
         delete_temp_table(iq, s->db);
     } else if (s->db) {
         sc_del_unused_files(s->db);
     }
-    broadcast_sc_end(s->table, iq->sc_seed);
+    broadcast_sc_end(s->tablename, iq->sc_seed);
     return 0;
 }

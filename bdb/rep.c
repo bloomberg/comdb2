@@ -748,8 +748,6 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
     struct rep_type_berkdb_rep_seqnum p_rep_type_berkdb_rep_seqnum = {0};
     uint8_t *p_buf, *p_buf_end;
     int rectype;
-    char *recbuf;
-    char *controlbuf;
     int i;
     int *seqnum;
     const char *hostlist[REPMAX];
@@ -850,6 +848,8 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
     p_buf += sizeof(int);
 
     /*
+       char *controlbuf;
+       char *recbuf;
        ptr = buf;
 
        seqnum = (int *)ptr;
@@ -1222,7 +1222,7 @@ static void *elect_thread(void *args)
 {
     int rc, count, i;
     bdb_state_type *bdb_state;
-    char *master_host, *old_master;
+    char *master_host;
     int num;
     int end, start;
     int num_connected;
@@ -1237,9 +1237,7 @@ static void *elect_thread(void *args)
     int elect_count;
 
     int op;
-    int restart = 0;
     int done = 0;
-    int called_rep_start = 0;
     int elect_again = 0;
 
     thread_started("bdb election");
@@ -1383,7 +1381,6 @@ elect_again:
     /* we're calling for election.  if we are doing this, we don't know who the
        master is.  ensure that master_eid isnt latched to the previous master
        here.  */
-    old_master = bdb_state->repinfo->master_host;
     set_repinfo_master_host(bdb_state, db_eid_invalid, __func__, __LINE__);
 
     /* Should be holding bdb readlock .. */
@@ -3085,7 +3082,6 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
     const char *nodelist[REPMAX];
     const char *connlist[REPMAX];
     int durable_lsns = bdb_state->attr->durable_lsns;
-    const char *sanclist[REPMAX];
     const char *skiplist[REPMAX];
     int catchup_window = bdb_state->attr->catchup_window;
     int do_slow_node_check = 0;
@@ -3370,8 +3366,6 @@ done_wait:
     }
 
     if (durable_lsns) {
-        static int lastpr = 0;
-        int now;
         uint32_t cur_gen;
         static uint32_t not_durable_count;
         static uint32_t durable_count;
@@ -3444,7 +3438,6 @@ done_wait:
                 num_successfully_acked, durable_count, not_durable_count,
                 seqnum->lsn.file, seqnum->lsn.offset, seqnum->generation,
                 calc_lsn.file, calc_lsn.offset, calc_gen);
-            lastpr = now;
         }
     }
 
@@ -4618,8 +4611,9 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         break;
 
     case USER_TYPE_ANALYZED_TBL: {
+        // TODO (NC): Buffer way too big for a table name? (see: MAXTABLELEN)
         char tblname[256] = {0};
-        memcpy(tblname, dta, dtalen);
+        memcpy(tblname, dta, MIN(dtalen, (sizeof(tblname) - 1)));
         ctrace("MASTER received notification, tbl %s was analyzed\n", tblname);
         void reset_aa_counter(char *tblname);
         reset_aa_counter(tblname);
@@ -4802,8 +4796,6 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
     int seqnum;
     int outrc = 0;
     seqnum_type berkdb_seqnum;
-    void *controlptr;
-    void *recptr;
     int filenum;
     unsigned long long master_cmpcontext;
 
@@ -4886,9 +4878,6 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
 
         control.size = controlbufsz;
         control.data = controlbuf;
-
-        controlptr = control.data;
-        recptr = rec.data;
 
         if (bdb_state->attr->repchecksum) {
             /*fprintf(stderr, "2) repchecksum\n");*/
@@ -5038,6 +5027,7 @@ extern int gbl_dump_locks_on_repwait;
 extern int gbl_lock_get_list_start;
 int bdb_clean_pglogs_queues(bdb_state_type *bdb_state);
 extern int db_is_stopped();
+extern int db_is_exiting();
 
 int request_delaymore(void *bdb_state_in)
 {
@@ -5054,8 +5044,6 @@ void *watcher_thread(void *arg)
     bdb_state_type *bdb_state;
     char *master_host = db_eid_invalid;
     int i;
-    DB_LSN last_lsn;
-    int last_time;
     int j;
     int time_now, time_then;
     int rc;
@@ -5066,7 +5054,6 @@ void *watcher_thread(void *arg)
     char *rep_master = 0;
     int list_start;
     int last_list_start = 0;
-    int is_durable;
 
     gbl_watcher_thread_ran = comdb2_time_epoch();
 
@@ -5077,10 +5064,6 @@ void *watcher_thread(void *arg)
 
     /* hold off om "watching" for a little bit during startup */
     sleep(5);
-
-    last_lsn.file = 0;
-    last_lsn.offset = 0;
-    last_time = 0;
 
     bdb_state = (bdb_state_type *)arg;
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
@@ -5099,7 +5082,7 @@ void *watcher_thread(void *arg)
 
     bdb_state->repinfo->disable_watcher = 0;
 
-    while (!db_is_stopped()) {
+    while (!db_is_exiting()) {
         time_now = comdb2_time_epoch();
         time_then = bdb_state->repinfo->disable_watcher;
 
@@ -5199,11 +5182,8 @@ void *watcher_thread(void *arg)
                     num_skipped++;
 
             if (num_skipped >= bdb_state->attr->toomanyskipped) {
-                int rc;
-
-                /* too many guys being skipped, lets take drastic measures! */
-
-                /* delay ourselves */
+                /* too many guys being skipped, lets take drastic measures!
+                 * delay ourselves */
                 if (bdb_state->attr->commitdelay <
                     bdb_state->attr->skipdelaybase) {
                     bdb_state->attr->commitdelay =
@@ -5525,8 +5505,6 @@ int bdb_wait_for_seqnum_from_n(bdb_state_type *bdb_state, seqnum_type *seqnum,
     const char *connlist[REPMAX];
     int numnodes;
     int i;
-    int rc;
-    DB_LSN *lsn = (DB_LSN *)&seqnum->lsn;
 
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
@@ -5564,7 +5542,6 @@ void bdb_set_rep_handle_dead(bdb_state_type *bdb_state)
 int bdb_master_should_reject(bdb_state_type *bdb_state)
 {
     int time_now;
-    int we_are_master;
     int should_reject;
 
     if (!bdb_state->attr->master_reject_requests)
@@ -5582,13 +5559,10 @@ int bdb_master_should_reject(bdb_state_type *bdb_state)
     if ((time_now - bdb_state->repinfo->should_reject_timestamp) > 10) {
         int count;
         const char *hostlist[REPMAX];
-        int num_skipped;
         int total;
         int i;
 
         bdb_state->repinfo->should_reject_timestamp = time_now;
-
-        num_skipped = 0;
 
         if (bdb_state->attr->master_reject_sql_ignore_sanc) {
             count = net_get_all_nodes_connected(bdb_state->repinfo->netinfo,
@@ -5665,7 +5639,6 @@ int request_durable_lsn_from_master(bdb_state_type *bdb_state,
         waitms = 1000;
 
     if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
-        const char *comlist[REPMAX];
         if (bdb_state->attr->master_lease && !verify_master_leases(bdb_state, 
                     __func__, __LINE__)) {
             logmsg(LOGMSG_ERROR, "%s line %d failed verifying master leases\n", 

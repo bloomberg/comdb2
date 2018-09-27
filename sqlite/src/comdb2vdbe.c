@@ -394,8 +394,6 @@ int comdb2prepareSString(Vdbe* v, Parse* pParse, int int_arg,  void *arg,
 
 int comdb2GenerateRstMsg(OpFunc *f)
 {
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
-
     struct rstMsg *s = (struct rstMsg*)f->arg;
     
     opFuncWriteInteger(f, s->rc);

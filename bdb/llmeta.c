@@ -39,7 +39,7 @@ enum {
     ,
     LLMETA_TBLLEN = MAXTABLELEN /* maximum table name length */
     ,
-    LLMETA_SPLEN = MAXTABLELEN /* maximum SP length. see also */
+    LLMETA_SPLEN = MAX_SPNAME /* maximum SP length. see also */
     ,
     LLMETA_STATS_IXLEN =
         64 /* maximum index name length for sqlite_stat1 & 2. */
@@ -2315,9 +2315,8 @@ backout:
         *bdberr = prev_bdberr;
         if (*bdberr == BDBERR_DEADLOCK)
             goto retry;
-
-        logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
     }
+    logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
     return -1;
 }
 
@@ -7966,6 +7965,12 @@ int bdb_llmeta_add_queue(bdb_state_type *bdb_state, tran_type *tran,
     p_buf_end = p_buf + LLMETA_IXLEN;
     qk.file_type = LLMETA_TRIGGER;
     /* TODO: range check? assume sanitized at this point? */
+
+    if (strlen(queue) >= LLMETA_TBLLEN) {
+        *bdberr = BDBERR_MISC;
+        logmsg(LOGMSG_ERROR, "%s: queue name length is too long\n", __func__);
+        return -1;
+    }
     strcpy(qk.dbname, queue);
 
     p_buf = llmeta_queue_key_put(&qk, p_buf, p_buf_end);
@@ -8074,7 +8079,6 @@ int bdb_llmeta_get_queues(char **queue_names, size_t max_queues,
             break;
         if (nqueues >= max_queues)
             break;
-        logmsg(LOGMSG_USER, ">> queue: %s\n", qk.dbname);
         queue_names[nqueues] = strdup(qk.dbname);
         ++nqueues;
         if ((rc = bdb_lite_fetch_keys_fwd(llmeta_bdb_state, key, nextkey, 1,
@@ -8352,7 +8356,7 @@ int bdb_llmeta_del_lua_afunc(char *name, int *bdberr)
 */
 struct versioned_sp {
     int32_t key; // LLMETA_VERSIONED_SP
-    char name[LLMETA_TBLLEN];
+    char name[LLMETA_SPLEN];
     char version[MAX_SPVERSION_LEN];
 };
 int bdb_add_versioned_sp(tran_type *t, char *name, char *version, char *src)

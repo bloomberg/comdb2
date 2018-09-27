@@ -17,10 +17,6 @@
 #ifndef INCLUDED_COMDB2_H
 #define INCLUDED_COMDB2_H
 
-/* DB_RELEASE_NAME moved to gbl_db_release_name
- * Please update gbl_db_release_name when branchings a new release
- */
-
 /* MOVE THESE TO COMDB2_API.H */
 
 #define SQLHERR_LIMIT (-107)
@@ -90,6 +86,7 @@ typedef long long tranid_t;
 #include "comdb2uuid.h"
 #include "machclass.h"
 #include "tunables.h"
+#include "comdb2_plugin.h"
 
 #ifndef LUASP
 #include <mem_uncategorized.h>
@@ -815,6 +812,16 @@ struct lrlfile {
     LINKC_T(struct lrlfile) lnk;
 };
 
+struct lrl_handler {
+    int (*handle)(struct dbenv*, const char *line);
+    LINKC_T(struct lrl_handler) lnk;
+};
+
+struct message_handler {
+    int (*handle)(struct dbenv*, const char *line);
+    LINKC_T(struct message_handler) lnk;
+};
+
 struct dbenv {
     char *basedir;
     char *envname;
@@ -967,16 +974,16 @@ struct dbenv {
     uint32_t incoh_file, incoh_offset;
     timepart_views_t *timepart_views;
 
-    /* locking for the queue system */
-    pthread_mutex_t dbqueue_admin_lk;
-    int dbqueue_admin_running;
-
     struct time_metric* service_time;
     struct time_metric* queue_depth;
     struct time_metric* concurrent_queries;
     struct time_metric* connections;
     struct time_metric *sql_queue_time;
     struct time_metric *handle_buf_queue_time;
+    LISTC_T(struct lrl_handler) lrl_handlers;
+    LISTC_T(struct message_handler) message_handlers;
+
+    comdb2_queue_consumer_t *queue_consumer_handlers[CONSUMER_TYPE_LAST];
 };
 
 extern struct dbenv *thedb;
@@ -1237,7 +1244,6 @@ struct ireq {
     uint8_t *p_buf_out_start;     /* pointer to start of output buf */
     const uint8_t *p_buf_out_end; /* pointer to just past end of output buf */
     unsigned long long rqid;
-    int usedbtablevers;
     int frompid;
     int debug;
     int opcode;
@@ -1477,6 +1483,7 @@ typedef struct {
 extern int gbl_sc_timeoutms;
 extern int gbl_trigger_timepart;
 
+extern const char *const gbl_db_build_name;
 extern const char *const gbl_db_release_name;
 extern int gbl_sc_del_unused_files_threshold_ms;
 
@@ -2540,23 +2547,18 @@ void diagnostics_dump_rrn(struct dbtable *tbl, int rrn);
 void diagnostics_dump_dta(struct dbtable *db, int dtanum);
 
 /* queue stuff */
-void dbqueue_coalesce(struct dbenv *dbenv);
-void dbqueue_admin(struct dbenv *dbenv);
-int dbqueue_add_consumer(struct dbtable *db, int consumer, const char *method,
+void dbqueuedb_coalesce(struct dbenv *dbenv);
+void dbqueuedb_admin(struct dbenv *dbenv);
+int dbqueuedb_add_consumer(struct dbtable *db, int consumer, const char *method,
                          int noremove);
-int dbqueue_set_consumern_options(struct dbtable *db, int consumer,
-                                  const char *opts);
-int dbqueue_set_consumer_options(struct consumer *consumer, const char *opts);
-void dbqueue_stat(struct dbtable *db, int fullstat, int walk_queue, int blocking);
-void dbqueue_flush_in_thread(struct dbtable *db, int consumern);
-void dbqueue_flush_abort(void);
 int consumer_change(const char *queuename, int consumern, const char *method);
-void dbqueue_wake_all_consumers(struct dbtable *db, int force);
-void dbqueue_wake_all_consumers_all_queues(struct dbenv *dbenv, int force);
-void dbqueue_goose(struct dbtable *db, int force);
-void dbqueue_stop_consumers(struct dbtable *db);
-void dbqueue_restart_consumers(struct dbtable *db);
-int dbqueue_check_consumer(const char *method);
+int dbqueuedb_wake_all_consumers(struct dbtable *db, int force);
+int dbqueuedb_wake_all_consumers_all_queues(struct dbenv *dbenv, int force);
+int dbqueuedb_stop_consumers(struct dbtable *db);
+int dbqueuedb_restart_consumers(struct dbtable *db);
+int dbqueuedb_check_consumer(const char *method);
+int dbqueuedb_get_name(struct dbtable *db, char **spname);
+int dbqueuedb_get_stats(struct dbtable *db, struct consumer_stat *stats);
 
 /* Resource manager */
 void initresourceman(const char *newlrlname);
@@ -3542,5 +3544,6 @@ int comdb2_get_verify_remote_schemas(void);
 void comdb2_set_verify_remote_schemas(void);
 
 int repopulate_lrl(const char *p_lrl_fname_out);
+void plugin_post_dbenv_hook(struct dbenv *dbenv);
 
 #endif /* !INCLUDED_COMDB2_H */

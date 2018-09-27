@@ -872,9 +872,6 @@ static int GetValueStructFromObj(
 		{    NULL, 0}
 	    };
 
-	    cdb2_client_datetime_t *pDateTimeValue =
-		(cdb2_client_datetime_t *)valuePtr;
-
 	    assert(valueLength >= sizeof(cdb2_client_datetime_t));
 	    assert(COUNT_OF(fields) == CDB2_DATETIME_MAX_ELEMENTS);
 
@@ -965,9 +962,6 @@ static int GetValueStructFromObj(
 		{    "%s", offsetof(cdb2_client_datetimeus_t, tzname)},
 		{    NULL, 0}
 	    };
-
-	    cdb2_client_datetimeus_t *pDateTimeUsValue =
-		(cdb2_client_datetimeus_t *)valuePtr;
 
 	    assert(valueLength >= sizeof(cdb2_client_datetimeus_t));
 	    assert(COUNT_OF(fields) == CDB2_DATETIMEUS_MAX_ELEMENTS);
@@ -1475,7 +1469,6 @@ int Tclcdb2_Unload(
 
 	    for (hPtr = Tcl_FirstHashEntry(hTablePtr, &hSearch);
 		    hPtr != NULL; hPtr = Tcl_NextHashEntry(&hSearch)) {
-		char *name = Tcl_GetHashKey(hTablePtr, hPtr);
 		cdb2_hndl_tp *pCdb2 = Tcl_GetHashValue(hPtr);
 
 		if (pCdb2 != NULL) {

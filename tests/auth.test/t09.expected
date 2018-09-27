@@ -210,7 +210,6 @@
 (candidate='partition_info()')
 (candidate='sys.cmd.send()')
 (candidate='table_version()')
-(username='default')
 (username='user1')
 (username='user2')
 (username='user3')

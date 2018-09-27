@@ -171,9 +171,7 @@ static const char *HELP_MAIN[] = {
     "sql ...        - sql subsystem commands",
     "help stat      - other general status query commands",
     "help bdb       - database backend commands",
-    "help java      - java stored procedure engine commands",
     "help schema    - schema related commands",
-    "help queue     - ondisk queue commands",
     "help fstblk    - fstblk commands", "help compr     - compression commands",
     "help analyze   - analyze commands", "exit           - exit task", NULL};
 
@@ -182,25 +180,6 @@ static const char *HELP_JAVA[] = {
     "java load <name> <jar> [args...]", "java reload <name> <jar> [args...]",
     "java unload <name>", "java sigjava           - Set JVM signal handlers",
     "java sigorig           - Set pre-JVM signal handlers", NULL};
-static const char *HELP_QUEUES[] = {
-    "Queue commands:-", "queue stat              - status report on all queues",
-    "queue stat name         - status report on named queue",
-    "queue slowstat name     - full status report on named queue",
-    "queue flush <name> <#>  - flush a given queue by consumer number",
-    "queue flush abort       - abort active flush operation",
-    "queue create <name> <sz> - create queue with given avg item sz",
-    "queue consumer <name> <#> <method> - set consumer #",
-    "queue debg <#>          - debug trace for next # events in consumer "
-    "threads ",
-    "queue dump <name> <file>- dump queue to file",
-    "queue goose <name>      - goose the head of the queue",
-    "queue gooserates #1 #2  - set/query goose rates.",
-    "                          #1 is add rate, #2 is consume rate in seconds",
-    "queue poll #            - set poll interval in seconds.  0 is default and "
-    "is",
-    "                          best for cpu.",
-    "queue wake              - immediately wake all consumers on all queues",
-    NULL};
 static const char *HELP_STAT[] = {
     "Database status query commands:-",
     "stat                       - basic status report",
@@ -637,6 +616,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
     int ltok, tst, ntok, stsav = st, llinesav = lline;
     int i = 0;
     int rc = 0;
+    int start_st = st;
 
     /* prevent this if the threads are stopped; initial intent is
        to prevent a bdb access while the db is closed during schema
@@ -1228,292 +1208,6 @@ clipper_usage:
         logmsg(LOGMSG_USER, "gbl_upd_key: %d\n", gbl_upd_key);
     }
 
-    else if (tokcmp(tok, ltok, "queue") == 0) {
-        tok = segtok(line, lline, &st, &ltok);
-        if (tokcmp(tok, ltok, "help") == 0) {
-            print_help_page(HELP_QUEUES);
-        } else if (tokcmp(tok, ltok, "gooserates") == 0) {
-            unsigned new_add_rate = gbl_goose_add_rate;
-            unsigned new_consume_rate = gbl_goose_consume_rate;
-            logmsg(LOGMSG_USER, "gbl_goose_add_rate = %u\n", gbl_goose_add_rate);
-            logmsg(LOGMSG_USER, "gbl_goose_consume_rate = %u\n", gbl_goose_consume_rate);
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok) {
-                new_add_rate = toknum(tok, ltok);
-                tok = segtok(line, lline, &st, &ltok);
-                if (ltok) {
-                    new_consume_rate = toknum(tok, ltok);
-                    gbl_goose_add_rate = new_add_rate;
-                    gbl_goose_consume_rate = new_consume_rate;
-                    logmsg(LOGMSG_USER, "new gbl_goose_add_rate = %u\n", gbl_goose_add_rate);
-                    logmsg(LOGMSG_USER, "new gbl_goose_consume_rate = %u\n",
-                           gbl_goose_consume_rate);
-                }
-            }
-        } else if (tokcmp(tok, ltok, "poll") == 0) {
-            tok = segtok(line, lline, &st, &ltok);
-            gbl_queue_sleeptime = toknum(tok, ltok);
-            logmsg(LOGMSG_USER, "setting gbl_queue_sleeptime to %d\n", gbl_queue_sleeptime);
-        } else if (tokcmp(tok, ltok, "wake") == 0) {
-            logmsg(LOGMSG_USER, "Waking all consumers on all queues\n");
-            dbqueue_wake_all_consumers_all_queues(thedb, 1);
-        } else if (tokcmp(tok, ltok, "debg") == 0) {
-            tok = segtok(line, lline, &st, &ltok);
-            gbl_queue_debug = toknum(tok, ltok);
-            logmsg(LOGMSG_USER, "set full consumer debugging to %d\n", gbl_queue_debug);
-        } else if (tokcmp(tok, ltok, "dump") == 0) {
-            tok = segtok(line, lline, &st, &ltok);
-            if (tok == 0) {
-                logmsg(LOGMSG_USER, "expected queue name\n");
-            } else {
-                char *name = tokdup(tok, ltok);
-                struct dbtable *db = getqueuebyname(name);
-                if (!db)
-                    logmsg(LOGMSG_USER, "no queue named '%s'\n", name);
-                else {
-                    tok = segtok(line, lline, &st, &ltok);
-                    if (tok == 0)
-                        logmsg(LOGMSG_USER, "expected file name\n");
-                    else {
-                        char *file = tokdup(tok, ltok);
-                        FILE *fh;
-                        fh = fopen(file, "w");
-                        if (!fh)
-                            logmsg(LOGMSG_ERROR, "cannot open %s for writing: %s\n", file,
-                                   strerror(errno));
-                        else {
-                            logmsg(LOGMSG_USER, "Dumping queue %s to file %s...\n", name,
-                                    file);
-                            dbq_dump(db, fh);
-                            logmsg(LOGMSG_USER, "...finished\n");
-                            fclose(fh);
-                        }
-                        free(file);
-                    }
-                }
-                free(name);
-            }
-        } else if (tokcmp(tok, ltok, "goose") == 0) {
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok == 0) {
-                logmsg(LOGMSG_ERROR, "goose which queue?\n");
-            } else {
-                /* stat on named queue */
-                char *name = tokdup(tok, ltok);
-                struct dbtable *db = getqueuebyname(name);
-                if (!db)
-                    logmsg(LOGMSG_ERROR, "no queue named '%s'\n", name);
-                else {
-                    dbqueue_goose(db, 1);
-                    logmsg(LOGMSG_USER, "goosed queue %s\n", db->tablename);
-                }
-                free(name);
-            }
-        } else if (tokcmp(tok, ltok, "stat") == 0) {
-        queue_stat:
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok == 0) {
-                /* stat on all queues */
-                int ii;
-                logmsg(LOGMSG_USER, "database has %d queues\n", thedb->num_qdbs);
-                for (ii = 0; ii < thedb->num_qdbs; ii++)
-                    dbqueue_stat(thedb->qdbs[ii], 0, 0, 0);
-            } else {
-                /* stat on named queue */
-                char *name = tokdup(tok, ltok);
-                struct dbtable *db = getqueuebyname(name);
-                if (!db)
-                    logmsg(LOGMSG_ERROR, "no queue named '%s'\n", name);
-                else
-                    dbqueue_stat(db, 0, 0, 0);
-                free(name);
-            }
-        } else if (tokcmp(tok, ltok, "slowstat") == 0) {
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok == 0) {
-                /* stat on all queues */
-                int ii;
-                logmsg(LOGMSG_USER, "database has %d queues\n", thedb->num_qdbs);
-                for (ii = 0; ii < thedb->num_qdbs; ii++)
-                    dbqueue_stat(thedb->qdbs[ii], 1, 0, 0);
-            } else {
-                /* stat on named queue */
-                char *name = tokdup(tok, ltok);
-                struct dbtable *db = getqueuebyname(name);
-                if (!db)
-                    logmsg(LOGMSG_ERROR, "no queue named '%s'\n", name);
-                else
-                    dbqueue_stat(db, 1, 0, 0);
-                free(name);
-            }
-        } else if (tokcmp(tok, ltok, "countstat") == 0) {
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok == 0) {
-                /* stat on all queues */
-                int ii;
-                logmsg(LOGMSG_USER, "database has %d queues\n", thedb->num_qdbs);
-                for (ii = 0; ii < thedb->num_qdbs; ii++)
-                    dbqueue_stat(thedb->qdbs[ii], 1, 1, 0);
-            } else {
-                /* stat on named queue */
-                char *name = tokdup(tok, ltok);
-                struct dbtable *db = getqueuebyname(name);
-                if (!db)
-                    logmsg(LOGMSG_ERROR, "no queue named '%s'\n", name);
-                else
-                    dbqueue_stat(db, 1, 1, 0);
-                free(name);
-            }
-        }
-
-        else if (tokcmp(tok, ltok, "flush") == 0) {
-            char *qname;
-            int consumern;
-            struct dbtable *db;
-
-            tok = segtok(line, lline, &st, &ltok);
-            if (tokcmp(tok, ltok, "abort") == 0) {
-                dbqueue_flush_abort();
-            } else {
-                if (ltok == 0) {
-                    logmsg(LOGMSG_ERROR, "expected a queue name\n");
-                    return -1;
-                }
-                qname = tokdup(tok, ltok);
-
-                tok = segtok(line, lline, &st, &ltok);
-                if (ltok == 0) {
-                    logmsg(LOGMSG_ERROR, "expected a consumer number\n");
-                    free(qname);
-                    return -1;
-                }
-                consumern = toknum(tok, ltok);
-
-                db = getqueuebyname(qname);
-                if (!db)
-                    logmsg(LOGMSG_ERROR, "no queue named '%s'\n", qname);
-                else
-                    dbqueue_flush_in_thread(db, consumern);
-                free(qname);
-            }
-        } else if (tokcmp(tok, ltok, "create") == 0) {
-            char qname[64];
-            int avgitem;
-            int pagesize = 0;
-
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok == 0) {
-                logmsg(LOGMSG_ERROR, "expected a queue name\n");
-                return -1;
-            }
-            tokcpy0(tok, ltok, qname, sizeof(qname));
-
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok == 0) {
-                logmsg(LOGMSG_ERROR, "expected average item size in bytes\n");
-                return -1;
-            }
-            avgitem = toknum(tok, ltok);
-            if (avgitem <= 0) {
-                logmsg(LOGMSG_ERROR, "expected average item size illegal\n");
-                return -1;
-            }
-
-            /* This code is dupliated in the lrl parser.. sorry */
-            tok = segtok(line, lline, &st, &ltok);
-            while (ltok) {
-                char ctok[64];
-                tokcpy0(tok, ltok, ctok, sizeof(ctok));
-                if (strncmp(ctok, "pagesize=", 9) == 0) {
-                    pagesize = atoi(ctok + 9);
-                } else {
-                    logmsg(LOGMSG_ERROR, "Bad queue attribute '%s'\n", ctok);
-                    return -1;
-                }
-                tok = segtok(line, lline, &st, &ltok);
-            }
-
-            /* create a new queue by the name. */
-            create_queue(thedb, qname, avgitem, pagesize, 0);
-        } else if (tokcmp(tok, ltok, "setopt") == 0) {
-            char *qname;
-            int consumern;
-            char *opts;
-            struct dbtable *db;
-
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok == 0) {
-                logmsg(LOGMSG_ERROR, "expected a queue name\n");
-                return -1;
-            }
-            qname = tokdup(tok, ltok);
-
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok == 0) {
-                logmsg(LOGMSG_ERROR, "expected a consumer number\n");
-                free(qname);
-                return -1;
-            }
-            consumern = toknum(tok, ltok);
-
-            db = getqueuebyname(qname);
-            if (!db) {
-                logmsg(LOGMSG_ERROR, "no queue called '%s'\n", qname);
-                free(qname);
-                return -1;
-            }
-
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok == 0) {
-                logmsg(LOGMSG_ERROR, "expected queue options\n");
-                free(qname);
-                return -1;
-            }
-            opts = tokdup(tok, ltok);
-
-            /* add/remove a consumer */
-            dbqueue_set_consumern_options(db, consumern, opts);
-
-            free(qname);
-            free(opts);
-        } else if (tokcmp(tok, ltok, "consumer") == 0) {
-            char *qname;
-            int consumern;
-            char *method;
-
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok == 0) {
-                logmsg(LOGMSG_ERROR, "expected a queue name\n");
-                return -1;
-            }
-            qname = tokdup(tok, ltok);
-
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok == 0) {
-                logmsg(LOGMSG_ERROR, "expected a consumer number\n");
-                free(qname);
-                return -1;
-            }
-            consumern = toknum(tok, ltok);
-
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok == 0) {
-                logmsg(LOGMSG_ERROR, "expected a method\n");
-                free(qname);
-                return -1;
-            }
-            method = tokdup(tok, ltok);
-
-            /* add/remove a consumer */
-            consumer_change(qname, consumern, method);
-
-            free(qname);
-            free(method);
-        } else {
-            logmsg(LOGMSG_ERROR, "unknown queue command <%.*s>\n", ltok, tok);
-        }
-    }
-
     else if (tokcmp(tok, ltok, "netlock") == 0) {
         int secs;
 
@@ -1617,7 +1311,8 @@ clipper_usage:
                 return -1;
             }
             if (ltok >= MAXTABLELEN) {
-                logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n", MAXTABLELEN);
+                logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n",
+                       MAXTABLELEN - 1);
                 return -1;
             }
             tokcpy(tok, ltok, table);
@@ -1842,8 +1537,6 @@ clipper_usage:
             compr_print_stats();
         } else if (tokcmp(tok, ltok, "resources") == 0) {
             dumpresources();
-        } else if (tokcmp(tok, ltok, "queue") == 0) {
-            goto queue_stat;
         } else if (tokcmp(tok, ltok, "signals") == 0) {
             dumpsignalsetupf(stdout);
         } else if (tokcmp(tok, ltok, "java") == 0) {
@@ -1986,6 +1679,7 @@ clipper_usage:
             sc_status(dbenv);
             print_dbs(dbenv);
             backend_stat(dbenv);
+            logmsg(LOGMSG_USER, "version: %s.%s\n", gbl_db_release_name, gbl_db_build_name);
             logmsg(LOGMSG_USER, "Codename:      \"%s\"\n", gbl_db_release_name);
         } else if (tokcmp(tok, ltok, "ixstat") == 0) {
             ixstats(dbenv);
@@ -2257,7 +1951,8 @@ clipper_usage:
             return -1;
         }
         if (ltok >= MAXTABLELEN) {
-            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n", MAXTABLELEN);
+            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n",
+                   MAXTABLELEN - 1);
             return -1;
         }
         tokcpy(tok, ltok, table);
@@ -2378,7 +2073,8 @@ clipper_usage:
             return -1;
         }
         if (ltok >= MAXTABLELEN) {
-            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n", MAXTABLELEN);
+            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n",
+                   MAXTABLELEN - 1);
             return -1;
         }
 
@@ -2430,7 +2126,8 @@ clipper_usage:
             return -1;
         }
         if (ltok >= MAXTABLELEN) {
-            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n", MAXTABLELEN);
+            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n",
+                   MAXTABLELEN - 1);
             return -1;
         }
 
@@ -2464,7 +2161,8 @@ clipper_usage:
             return -1;
         }
         if (ltok >= MAXTABLELEN) {
-            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n", MAXTABLELEN);
+            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n",
+                   MAXTABLELEN - 1);
             return -1;
         }
 
@@ -2481,7 +2179,8 @@ clipper_usage:
             return -1;
         }
         if (ltok >= MAXTABLELEN) {
-            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n", MAXTABLELEN);
+            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n",
+                   MAXTABLELEN - 1);
             return -1;
         }
 
@@ -2502,7 +2201,8 @@ clipper_usage:
             return -1;
         }
         if (ltok >= MAXTABLELEN) {
-            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n", MAXTABLELEN);
+            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n",
+                   MAXTABLELEN - 1);
             return -1;
         }
 
@@ -3334,8 +3034,6 @@ clipper_usage:
             print_help_page(HELP_MAIN);
         } else if (tokcmp(tok, ltok, "java") == 0) {
             print_help_page(HELP_JAVA);
-        } else if (tokcmp(tok, ltok, "queue") == 0) {
-            print_help_page(HELP_QUEUES);
         } else if (tokcmp(tok, ltok, "stat") == 0) {
             print_help_page(HELP_STAT);
         } else if (tokcmp(tok, ltok, "compr") == 0) {
@@ -5091,9 +4789,19 @@ clipper_usage:
         rc = handle_lrl_tunable(tok, ltok, line + st, lline - st, DYNAMIC);
         switch (rc) {
         case TUNABLE_ERR_OK: break;
-        case TUNABLE_ERR_INVALID_TUNABLE:
-            logmsg(LOGMSG_ERROR, "Unknown command <%.*s>\n", ltok, tok);
+        case TUNABLE_ERR_INVALID_TUNABLE: {
+            /* One more chance - this could be handled by a plugin */
+            struct message_handler *h;
+            LISTC_FOR_EACH(&dbenv->message_handlers, h, lnk) {
+                rc = h->handle(dbenv, line + start_st);
+                if (rc == 0)
+                    break;
+            }
+
+            if (rc)
+                logmsg(LOGMSG_ERROR, "Unknown command <%.*s>\n", ltok, tok);
             break;
+        }
         default:
             logmsg(LOGMSG_ERROR, "%s", tunable_error(rc));
         }

@@ -122,7 +122,6 @@ static void net_to_systable(struct netinfo_struct *netinfo_ptr, void *arg,
             default: s->unknown += n->type_counts[i]; break;
         }
     }
-done:
     pthread_mutex_unlock(&n->lock);
 }
 

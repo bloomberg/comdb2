@@ -243,7 +243,7 @@ static struct {
     comdb2ma pos[COMDB2MA_COUNT];
 #endif
 
-} root = {.list = 0,
+} root = {.list = {0},
           .m = 0,
           .use_lock = COMDB2MA_MT_SAFE,
           .lock = PTHREAD_MUTEX_INITIALIZER,

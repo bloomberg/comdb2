@@ -127,7 +127,7 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
       return SQLITE_OK;
 
   if (!pCur->openCursor) {
-      if (rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &pCur->logc, 0)
+      if ((rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &pCur->logc, 0))
               != 0) {
           logmsg(LOGMSG_ERROR, "%s line %d error getting a log cursor rc=%d\n",
                   __func__, __LINE__, rc);
@@ -163,7 +163,6 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
   /* Don't advance cursor until this is durable */
   if (pCur->flags & TRANLOG_FLAGS_DURABLE) {
       do {
-          char *master;
           struct timespec ts;
           bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv,
                   &durable_lsn, &durable_gen);
@@ -348,7 +347,6 @@ static int tranlogColumn(
 )
 {
   tranlog_cursor *pCur = (tranlog_cursor*)cur;
-  int rc;
   u_int32_t rectype = 0;
   u_int32_t generation = 0;
   int64_t timestamp = 0;

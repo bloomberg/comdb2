@@ -47,7 +47,6 @@ extern struct thdpool *gbl_sqlengine_thdpool;
 static int get_sqlpoolqueue(void **data, int *records)
 {
     getsqlpoolqueue_t q = {0};
-    struct thdpool *pool;     /* Current thread pool */
     thdpool_foreach(gbl_sqlengine_thdpool, collect, &q);
     *data = q.records;
     *records = q.count;

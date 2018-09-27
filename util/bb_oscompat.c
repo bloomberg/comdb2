@@ -66,7 +66,9 @@ void comdb2_getservbyname(const char *name, const char *proto, short *port)
 {
     struct servent result_buf, *result = NULL;
     char buf[1024];
-#   if defined(_LINUX_SOURCE)
+#   if defined(__APPLE__) // Should be first, as _LINUX_SOURCE is also defined.
+    result = getservbyname(name, proto);
+#   elif defined(_LINUX_SOURCE)
     getservbyname_r(name, proto, &result_buf, buf, sizeof(buf), &result);
 #   elif defined(_SUN_SOURCE)
     result = getservbyname_r(name, proto, &result_buf, buf, sizeof(buf));
