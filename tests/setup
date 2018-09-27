@@ -132,7 +132,7 @@ ssl_cert_path $TESTDIR
 EOPTIONS
 fi
 
-echo "logmsg level info" >> ${LRL}
+echo "logmsg level debug" >> ${LRL}
 
 if [[ -f ${TESTSROOTDIR}/${TESTCASE}.test/lrl ]]; then
     cat ${TESTSROOTDIR}/${TESTCASE}.test/lrl >> ${LRL}

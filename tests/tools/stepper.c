@@ -49,6 +49,9 @@ int main( int argc, char **argv)
    stage = "default";
    infile = argv[2];
 
+   if (getenv("DEBUG")) {
+       debug = 1;
+   }
    outfile = (argc == 4)?argv[3]:NULL;
 
    file = fopen( infile, "r");
@@ -129,6 +132,8 @@ int main( int argc, char **argv)
          break;
       } 
 
+      if (debug)
+         fprintf( out, "%d [%s]\n", id, query);
       rc = clnt_run_query(clnt, query, out);
       if (rc)
       {
