@@ -91,7 +91,6 @@ int bdb_verify(
 {
     int rc;
     DB_LOCKREQ rq = {0};
-    unsigned int flags = DB_LOCK_ID_READONLY;
     unsigned int lid;
 
     BDB_READLOCK("bdb_verify");
@@ -175,7 +174,7 @@ static int fix_blobs(bdb_state_type *bdb_state, DB *db, DBC **cdata,
 {
     int i;
     DBC *c = NULL;
-    int rc, crc;
+    int rc =0, crc;
     tran_type *t = NULL;
     int bdberr;
     DBT key;
@@ -309,7 +308,7 @@ static int bdb_verify_ll(
     DBT dbt_dta_check_key = {0}, dbt_dta_check_data = {0};
     int rc;
     int ix;
-    int keylen, expected_keylen;
+    int keylen;
     unsigned long long has_keys;
     unsigned long long genid, verify_genid;
     int blobsizes[16];
@@ -751,10 +750,9 @@ static int bdb_verify_ll(
                 } else {
                     /* verify blobs */
                     int realblobsz[16];
-                    int had_errors, had_irrecoverable_errors;
+                    int had_errors;
 
                     had_errors = 0;
-                    had_irrecoverable_errors = 0;
                     for (blobno = 0; blobno < nblobs; blobno++) {
                         DBC *cblob;
                         DB *blobdb;
@@ -762,7 +760,6 @@ static int bdb_verify_ll(
                         int dtafile;
 
                         realblobsz[blobno] = -1;
-                        had_irrecoverable_errors = 0;
                         had_errors = 0;
 
                         dtafile = get_dtafile_from_genid(genid);
@@ -808,7 +805,6 @@ static int bdb_verify_ll(
                                             blobsizes[blobno]);
                             }
                         } else if (rc) {
-                            had_irrecoverable_errors = 1;
                             sbuf2printf(sb, "!%016llx blob %d rc %d\n",
                                         genid_flipped, blobno, rc);
                             had_errors = 1;

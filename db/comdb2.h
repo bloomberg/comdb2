@@ -322,6 +322,7 @@ enum BLOCK_OPS {
 
 /*
    type will identify if there is a new record and type the new record is *
+   PLEASE update osql_reqtype_str() when adding to this structure
 */
 enum OSQL_RPL_TYPE {
     OSQL_RPLINV = 0,

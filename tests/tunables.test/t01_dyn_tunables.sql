@@ -47,7 +47,7 @@ PUT TUNABLE 'logmsg.level' 'xxx';
 PUT TUNABLE 'logmsg.level' 'error';
 SELECT value AS 'logmsg.level' FROM comdb2_tunables WHERE name = 'logmsg.level';
 exec procedure sys.cmd.send('logmsg level xxx');
-exec procedure sys.cmd.send('logmsg level debug');
+exec procedure sys.cmd.send('logmsg level info');
 SELECT value AS 'logmsg.level' FROM comdb2_tunables WHERE name = 'logmsg.level';
 
 SELECT name AS 'appsockpool tunables' FROM comdb2_tunables WHERE name LIKE 'appsockpool%';

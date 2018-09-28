@@ -2333,11 +2333,10 @@ static int bdb_get_file_version(
     bdb_state_type *parent; /* the low level meta table */
     int rc, fndlen, retries = 0;
     char key[LLMETA_IXLEN] = {0};
-    size_t key_offset = 0;
     unsigned long long tmpversion;
     struct llmeta_version_number_type version_num;
     struct llmeta_file_type_dbname_file_num_key file_type_dbname_file_num_key;
-    uint8_t *p_buf, *p_buf_start, *p_buf_end;
+    uint8_t *p_buf, *p_buf_end;
 
     /*set to 0 incase we return early*/
     *p_version_num = 0ULL;
@@ -2387,7 +2386,7 @@ static int bdb_get_file_version(
      * left for the rest of the key */
     file_type_dbname_file_num_key.file_num = file_num;
 
-    p_buf_start = p_buf = (uint8_t *)key;
+    p_buf = (uint8_t *)key;
     p_buf_end = (p_buf + LLMETA_IXLEN);
 
     if (!(p_buf = llmeta_file_type_dbname_file_num_put(
@@ -2398,8 +2397,6 @@ static int bdb_get_file_version(
         *bdberr = BDBERR_BADARGS;
         return -1;
     }
-
-    key_offset = (p_buf - p_buf_start);
 
 retry:
     /* try to fetch the version number */
@@ -3409,7 +3406,6 @@ int bdb_set_in_schema_change(
 {
     int retries = 0, rc;
     char key[LLMETA_IXLEN] = {0};
-    size_t key_offset = 0;
     tran_type *trans;
     uint8_t *p_buf, *p_buf_start, *p_buf_end;
     struct llmeta_schema_change_type schema_change;
@@ -3457,8 +3453,6 @@ int bdb_set_in_schema_change(
         *bdberr = BDBERR_MISC;
         return -1;
     }
-
-    key_offset = p_buf - p_buf_start;
 
 retry:
     if (++retries >= 500 /*gbl_maxretries*/) {
@@ -3550,7 +3544,6 @@ int bdb_get_in_schema_change(
 {
     int rc, retries = 0, datalen;
     char key[LLMETA_IXLEN] = {0};
-    size_t key_offset = 0;
     struct llmeta_schema_change_type schema_change;
     uint8_t *p_buf, *p_buf_start, *p_buf_end;
 
@@ -5785,7 +5778,7 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
     case LLMETA_FVER_FILE_TYPE_IX:
     case LLMETA_FVER_FILE_TYPE_DTA: {
         struct llmeta_file_type_dbname_file_num_key akey;
-        struct llmeta_version_number_type adata;
+        struct llmeta_version_number_type adata = {0};
 
         if (keylen < sizeof(akey)) {
             logmsg(LOGMSG_USER, "%s:%d: wrong LLMETA_FVER_FILE_TYPE_TBL entry\n",
