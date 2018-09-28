@@ -1078,7 +1078,7 @@ cmd ::= with insert_cmd(R) INTO xfullname(X) idlist_opt(F) select(S)
 cmd ::= with insert_cmd(R) INTO xfullname(X) idlist_opt(F) DEFAULT VALUES.
 {
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sqlite3FingerprintInsert(pParse->db, X, S, F, pParse->pWith);
+  sqlite3FingerprintInsert(pParse->db, X, 0, F, pParse->pWith);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Insert(pParse, X, 0, F, R, 0);
 }
