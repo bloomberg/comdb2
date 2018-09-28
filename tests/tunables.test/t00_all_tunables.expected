@@ -380,7 +380,7 @@
 (name='loghist', description='', type='INTEGER', value='0', read_only='Y')
 (name='loghist_verbose', description='', type='BOOLEAN', value='OFF', read_only='Y')
 (name='logmemsize', description='Use this much memory for a log file in-memory buffer.', type='INTEGER', value='10485760', read_only='N')
-(name='logmsg.level', description='All messages below this level will not be logged.', type='ENUM', value='INFO', read_only='N')
+(name='logmsg.level', description='All messages below this level will not be logged.', type='ENUM', value='DEBUG', read_only='N')
 (name='logmsg.notimestamp', description='Disables 'syslog.timestamp'.', type='BOOLEAN', value='OFF', read_only='N')
 (name='logmsg.syslog', description='Log messages to syslog.', type='BOOLEAN', value='OFF', read_only='N')
 (name='logmsg.timestamp', description='Stamp all messages with timestamp.', type='BOOLEAN', value='ON', read_only='N')
