@@ -5,7 +5,7 @@
 (nowatch='OFF')
 [PUT TUNABLE nonexistent 100] failed with rc -3 Invalid tunable
 (allow_broken_datetimes='ON')
-[PUT TUNABLE allow_broken_datetimes] failed with rc -3 near "allow_broken_datetimes": syntax error
+[PUT TUNABLE allow_broken_datetimes] failed with rc -3 incomplete input
 (allow_broken_datetimes='ON')
 [PUT TUNABLE allow_broken_datetimes 100] failed with rc -3 Invalid tunable value
 (allow_broken_datetimes='ON')

@@ -2451,7 +2451,7 @@ void sqlite3VdbeAddTable(
 ){
   Table **pTbls;
   int numTables, i;
-  if( !p || !pTab ) return;
+  if( !p || !pTab || pTab->iDb==1 ) return;
   assert( sqlite3_mutex_held(p->db->mutex) );
   numTables = p->numTables;
   assert( numTables>=0 );
