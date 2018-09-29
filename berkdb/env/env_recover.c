@@ -328,6 +328,8 @@ __db_find_earliest_recover_point_after_file(dbenv, outlsn, file)
 			__os_free(dbenv, debug_args);
 			if (optype == 2) {
 				start_lsn = lsn;
+				logmsg(LOGMSG_INFO, "%s: fullrecovery starting at lsn %u:%u\n",
+						__func__, lsn.file, lsn.offset);
 				break;
 			}
 		}
@@ -573,9 +575,11 @@ __dbenv_min_truncate_lsn_timestamp(dbenv, lowfile, outlsn, outtime)
             ckp_args = NULL;
 			*outlsn = prev_lsn;
             *outtime = prev_time;
+            logmsg(LOGMSG_INFO, "%s return [%d][%d] time %d for lowfile %d\n",
+                    __func__, outlsn->file, outlsn->offset, *outtime, lowfile);
             found_checkpoint = 1;
 		} else {
-            prev_lsn = lsn;
+            prev_lsn = ckp_args->ckp_lsn;
             prev_time = ckp_args->timestamp;
             lsn = ckp_args->last_ckp;
             if (IS_ZERO_LSN(lsn))

@@ -965,7 +965,7 @@ int send_truncate_to_master(bdb_state_type *bdb_state, int file, int offset)
 
     if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
         logmsg(LOGMSG_ERROR, "%s: I am the master\n", __func__);
-        return 0;
+        return -1;
     }
 
     trunc_lsn.file = file;
