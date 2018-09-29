@@ -173,7 +173,6 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                int rec_flags)
 {
     char tag[MAXTAGLEN + 1];
-    int is_od_tag;
     int rc = 0;
     int retrc = 0;
     int expected_dat_len;
@@ -265,25 +264,30 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
 
     if (!(flags & RECFLAGS_NEW_SCHEMA)) { // dont lock if adding from SC
 
-        int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_LOCK_TABLE_RECORD_C);
+        int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_WRITES_IN_RECORD_C);
         if (d_ms) {
             if (iq->debug)
-                reqprintf(iq, "Sleeping for %d ms", d_ms);
-            usleep(1000 * d_ms);
+                reqprintf(iq, "Sleeping for DELAY_WRITES_IN_RECORD_C (%dms)", d_ms);
+            int lrc = usleep(1000 * d_ms);
+            if (lrc)
+                reqprintf(iq, "usleep error rc %d errno %d\n", rc, errno);
         }
 
-        rc = bdb_lock_table_read(iq->usedb->handle, trans);
-        if (rc == BDBERR_DEADLOCK) {
-            if (iq->debug)
-                reqprintf(iq, "LOCK TABLE READ DEADLOCK");
-            retrc = RC_INTERNAL_RETRY;
-            ERR;
-        } else if (rc) {
-            if (iq->debug)
-                reqprintf(iq, "LOCK TABLE READ ERROR: %d", rc);
-            *opfailcode = OP_FAILED_INTERNAL;
-            retrc = ERR_INTERNAL;
-            ERR;
+        if(!iq->have_blkseq) {
+            reqprintf(iq, "Calling bdb_lock_table_read()");
+            rc = bdb_lock_table_read(iq->usedb->handle, trans);
+            if (rc == BDBERR_DEADLOCK) {
+                if (iq->debug)
+                    reqprintf(iq, "LOCK TABLE READ DEADLOCK");
+                retrc = RC_INTERNAL_RETRY;
+                ERR;
+            } else if (rc) {
+                if (iq->debug)
+                    reqprintf(iq, "LOCK TABLE READ ERROR: %d", rc);
+                *opfailcode = OP_FAILED_INTERNAL;
+                retrc = ERR_INTERNAL;
+                ERR;
+            }
         }
     }
 
@@ -381,15 +385,12 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         /* we have the ondisk data already, no conversion needed */
         od_dta = record;
         od_len = reclen;
-        is_od_tag = 1;
-
         ondisktagsc = dbname_schema;
     } else {
         int od_len_int;
         struct convert_failure reason;
 
         /* we need to convert the record to ondisk format */
-        is_od_tag = 0;
         od_len_int = getdatsize(iq->usedb);
         if (od_len_int <= 0) {
             if (iq->debug)
@@ -889,7 +890,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     void *old_dta = NULL;
     char tag[MAXTAGLEN + 1];
     int fndlen;
-    int blobno, num_cblobs;
+    int blobno;
     int ixnum;
     char lclprimkey[MAXKEYLEN];
     unsigned char lclnulls[64];
@@ -960,25 +961,28 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         prefixes++;
     }
 
-    int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_LOCK_TABLE_RECORD_C);
+    int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_WRITES_IN_RECORD_C);
     if (d_ms) {
         if (iq->debug)
             reqprintf(iq, "Sleeping for %d ms", d_ms);
         usleep(1000 * d_ms);
     }
 
-    rc = bdb_lock_table_read(iq->usedb->handle, trans);
-    if (rc == BDBERR_DEADLOCK) {
-        if (iq->debug)
-            reqprintf(iq, "LOCK TABLE READ DEADLOCK");
-        retrc = RC_INTERNAL_RETRY;
-        goto err;
-    } else if (rc) {
-        if (iq->debug)
-            reqprintf(iq, "LOCK TABLE READ ERROR: %d", rc);
-        *opfailcode = OP_FAILED_INTERNAL;
-        retrc = ERR_INTERNAL;
-        goto err;
+    if(!iq->have_blkseq) {
+        reqprintf(iq, "Calling bdb_lock_table_read()");
+        rc = bdb_lock_table_read(iq->usedb->handle, trans);
+        if (rc == BDBERR_DEADLOCK) {
+            if (iq->debug)
+                reqprintf(iq, "LOCK TABLE READ DEADLOCK");
+            retrc = RC_INTERNAL_RETRY;
+            goto err;
+        } else if (rc) {
+            if (iq->debug)
+                reqprintf(iq, "LOCK TABLE READ ERROR: %d", rc);
+            *opfailcode = OP_FAILED_INTERNAL;
+            retrc = ERR_INTERNAL;
+            goto err;
+        }
     }
 
     rc = resolve_tag_name(iq, tagdescr, taglen, &dynschema, tag, sizeof(tag));
@@ -1950,25 +1954,28 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     if (iq->osql_step_ix)
         gbl_osqlpf_step[*(iq->osql_step_ix)].step += 1;
 
-    int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_LOCK_TABLE_RECORD_C);
+    int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_WRITES_IN_RECORD_C);
     if (d_ms) {
         if (iq->debug)
             reqprintf(iq, "Sleeping for %d ms", d_ms);
         usleep(1000 * d_ms);
     }
 
-    rc = bdb_lock_table_read(iq->usedb->handle, trans);
-    if (rc == BDBERR_DEADLOCK) {
-        if (iq->debug)
-            reqprintf(iq, "LOCK TABLE READ DEADLOCK");
-        retrc = RC_INTERNAL_RETRY;
-        goto err;
-    } else if (rc) {
-        if (iq->debug)
-            reqprintf(iq, "LOCK TABLE READ ERROR: %d", rc);
-        *opfailcode = OP_FAILED_INTERNAL;
-        retrc = ERR_INTERNAL;
-        goto err;
+    if(!iq->have_blkseq) {
+        reqprintf(iq, "Calling bdb_lock_table_read()");
+        rc = bdb_lock_table_read(iq->usedb->handle, trans);
+        if (rc == BDBERR_DEADLOCK) {
+            if (iq->debug)
+                reqprintf(iq, "LOCK TABLE READ DEADLOCK");
+            retrc = RC_INTERNAL_RETRY;
+            goto err;
+        } else if (rc) {
+            if (iq->debug)
+                reqprintf(iq, "LOCK TABLE READ ERROR: %d", rc);
+            *opfailcode = OP_FAILED_INTERNAL;
+            retrc = ERR_INTERNAL;
+            goto err;
+        }
     }
 
     if (primkey) {
@@ -2223,7 +2230,6 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
                                int nd_len, unsigned long long ins_keys,
                                int use_new_tag, blob_buffer_t *blobs)
 {
-    int prefixes = 0;
     int rc = 0;
 #ifdef DEBUG
     fprintf(stderr, "upd_new_record_add2indices: genid %llx\n", newgenid);
@@ -2613,9 +2619,6 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
     for (ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
         char keytag[MAXTAGLEN];
         char key[MAXKEYLEN];
-        char mangled_key[MAXKEYLEN];
-        char *od_dta_tail = NULL;
-        int od_tail_len = 0;
 
         if (gbl_use_plan && iq->usedb->plan &&
             iq->usedb->plan->ix_plan[ixnum] != -1)
@@ -2839,7 +2842,6 @@ int del_new_record(struct ireq *iq, void *trans, unsigned long long genid,
     for (ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
         char keytag[MAXTAGLEN];
         char key[MAXKEYLEN];
-        char mangled_key[MAXKEYLEN];
 
         if (gbl_use_plan && iq->usedb->plan &&
             iq->usedb->plan->ix_plan[ixnum] != -1)
@@ -3234,7 +3236,6 @@ int updbykey_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     if (strcmp(tag, ondisktag) == 0) {
         /* XXX support this? */
     } else {
-        int od_len_int;
         struct convert_failure reason;
         char keytag[MAXTAGLEN];
 

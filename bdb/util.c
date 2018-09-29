@@ -193,21 +193,13 @@ void bdb_lock_name(bdb_state_type *bdb_state, char *s, size_t slen,
         }
 
     } else {
-        const unsigned char *cptr = lockid;
         snprintf(s, slen, "lockid_leen=%u", (unsigned)lockid_len);
     }
 }
 
 int bdb_write_preamble(bdb_state_type *bdb_state, int *bdberr)
 {
-    bdb_state_type *parent;
-
     *bdberr = BDBERR_NOERROR;
-
-    if (bdb_state->parent)
-        parent = bdb_state->parent;
-    else
-        parent = bdb_state;
 
     if (!bdb_state->read_write) {
         *bdberr = BDBERR_READONLY;

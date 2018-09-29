@@ -640,7 +640,7 @@ DEF_ATTR(STARTUP_SYNC_ATTEMPTS, startup_sync_attempts, QUANTITY, 5, NULL)
 DEF_ATTR(DEBUG_TIMEPART_CRON, dbg_timepart_cron, BOOLEAN, 0, NULL)
 DEF_ATTR(DEBUG_TIMEPART_SQLITE, dbg_timepart_SQLITE, BOOLEAN, 0, NULL)
 DEF_ATTR(DELAY_FILE_OPEN, delay_file_open, MSECS, 0, NULL)
-DEF_ATTR(DELAY_LOCK_TABLE_RECORD_C, delay_lock_table_record_c, MSECS, 0, NULL)
+DEF_ATTR(DELAY_WRITES_IN_RECORD_C, delay_in_record_c, MSECS, 0, NULL)
 
 DEF_ATTR(NET_SEND_GBLCONTEXT, net_send_gblcontext, BOOLEAN, 0,
          "Enable net_send for USER_TYPE_GBLCONTEXT.")
