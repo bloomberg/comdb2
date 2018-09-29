@@ -3300,9 +3300,9 @@ static int get_filenum_from_logfile(char *str_in)
 
 extern int gbl_new_snapisol_asof;
 
-int32_t gbl_min_truncate_file;
-int32_t gbl_min_truncate_offset;
-int32_t gbl_min_truncate_timestamp;
+static int32_t gbl_min_truncate_file;
+static int32_t gbl_min_truncate_offset;
+static int32_t gbl_min_truncate_timestamp;
 
 static pthread_rwlock_t min_trunc_lk = PTHREAD_RWLOCK_INITIALIZER;
 
