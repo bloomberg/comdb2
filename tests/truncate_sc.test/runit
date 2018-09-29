@@ -74,6 +74,7 @@ function get_current_lsn
     [[ $debug == "1" ]] && set -x
     typeset func="get_current_lsn"
     typeset tries=$total_tries
+    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default 'exec procedure sys.cmd.send("flush")'
     r=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1")
     while [[ -z "$r" ]]; do
         let tries=tries-1

@@ -5189,6 +5189,8 @@ int gbl_rep_wait_core_ms = 0;
 void *watcher_thread(void *arg)
 {
     extern int gbl_comdb2_reload_schemas;
+    int reload_schemas;
+    int reload_schemas_count = 0;
     bdb_state_type *bdb_state;
     extern int gbl_rep_lock_time_ms;
     char *master_host = db_eid_invalid;
@@ -5231,7 +5233,7 @@ void *watcher_thread(void *arg)
 
     bdb_state->repinfo->disable_watcher = 0;
 
-    while (!db_is_stopped() || gbl_comdb2_reload_schemas) {
+    while (!db_is_stopped() || (reload_schemas = gbl_comdb2_reload_schemas)) {
         time_now = comdb2_time_epoch();
         time_then = bdb_state->repinfo->disable_watcher;
 
@@ -5246,10 +5248,23 @@ void *watcher_thread(void *arg)
             sleep(diff);
         }
 
-        if (gbl_comdb2_reload_schemas) {
+        if (db_is_stopped()) {
+            assert(reload_schemas);
             sleep (1);
+            reload_schemas_count++;
+            if (reload_schemas_count > 30) {
+                logmsg(LOGMSG_FATAL, "%s: database stuck reloading schemas for "
+                        "%d seconds\n", __func__, reload_schemas_count);
+                abort();
+            }
+            if (reload_schemas_count > 3) {
+                logmsg(LOGMSG_WARN, "%s: reloading schemas for %d seconds\n",
+                        __func__, reload_schemas_count);
+            }
+            gbl_watcher_thread_ran = comdb2_time_epoch();
             continue;
         }
+        reload_schemas_count = 0;
 
         i++;
         j++;

@@ -648,6 +648,7 @@ __txn_ckp_recover(dbenv, dbtp, lsnp, op, info)
 			if (argp->rep_gen > rep->recover_gen)
 				rep->recover_gen = argp->rep_gen;
 		}
+        __log_flush(dbenv, NULL);
 		__checkpoint_save(dbenv, lsnp, 1);
 		region->last_ckp = *lsnp;
 	}
