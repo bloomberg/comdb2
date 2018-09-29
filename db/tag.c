@@ -7032,7 +7032,7 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
         db->tablename, thedb->basedir, newdb->lrl, newdb->nix,
         (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
         newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
-        newdb->numblobs + 1, thedb->bdb_env, tran, &bdberr);
+        newdb->numblobs + 1, thedb->bdb_env, tran, 0, &bdberr);
 
     if (bdberr != 0 || newdb->handle == NULL) {
         logmsg(LOGMSG_ERROR, "reload_schema handle %p bdberr %d\n",
@@ -7089,6 +7089,52 @@ int reload_after_bulkimport(struct dbtable *db, tran_type *tran)
     update_dbstore(db);
     create_sqlmaster_records(tran);
     create_sqlite_master();
+    return 0;
+}
+
+#include <bdb_int.h>
+
+int reload_all_db_tran(tran_type *tran)
+{
+    int table;
+    int rc;
+    int bdberr;
+    for (rc = 0, table = 0; table < thedb->num_dbs && rc == 0; table++) {
+        struct dbtable *db = thedb->dbs[table];
+        backout_schemas(db->tablename);
+
+        if (load_new_ondisk(db, tran)) {
+            logmsg(LOGMSG_ERROR, "Failed to load new .ONDISK\n");
+            return 1;
+        }
+        if (load_new_versions(db, tran)) {
+            logmsg(LOGMSG_ERROR, "Failed to load .ONDISK.VER.nn\n");
+            return 1;
+        }
+
+        db->tableversion = table_version_select(db, tran);
+        update_dbstore(db);
+    }
+
+    /* Seems like this should be outside of the loop */
+    /*
+    create_sqlmaster_records(tran);
+    create_sqlite_master();
+    */
+
+    /*
+    for (table = 0; table < thedb->num_dbs && rc == 0; table++) {
+        struct dbtable *db = thedb->dbs[table];
+        if ((db->handle = bdb_open_more_tran(db->tablename, db->dbenv->basedir,
+                        db->lrl, db->nix, db->ix_keylen, db->ix_dupes,
+                        db->ix_recnums, db->ix_datacopy, db->ix_collattr,
+                        db->ix_nullsallowed, db->numblobs + 1, thedb->bdb_env, 
+                        tran, &bdberr)) == NULL) {
+            logmsg(LOGMSG_ERROR, "Failed to bdb_open_more_tran %s\n", db->tablename);
+        }
+    }
+    */
+
     return 0;
 }
 

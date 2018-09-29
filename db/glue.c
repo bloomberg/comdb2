@@ -147,8 +147,6 @@ extern struct dbenv *thedb;
 extern int gbl_lost_master_time;
 extern int gbl_check_access_controls;
 
-static void fix_blobstripe_genids(void);
-
 static int meta_put(struct dbtable *db, void *input_tran, struct metahdr *hdr,
                     void *data, int dtalen);
 static int meta_get(struct dbtable *db, struct metahdr *key, void *dta, int dtalen);
@@ -3428,7 +3426,7 @@ static void net_morestripe_and_open_all_dbs(void *hndl, void *uptr,
         return;
     }
 
-    fix_blobstripe_genids();
+    fix_blobstripe_genids(NULL);
     net_ack_message(hndl, 0);
 }
 
@@ -3690,16 +3688,6 @@ int broadcast_sc_ok(void)
     return send_to_all_nodes(NULL, 0, NET_CHECK_SC_OK, SCWAITTIME);
 }
 
-int broadcast_morestripe_and_open_all_dbs(int newdtastripe, int newblobstripe)
-{
-    struct net_morestripe_msg msg;
-    bzero(&msg, sizeof(msg));
-    msg.newdtastripe = newdtastripe;
-    msg.newblobstripe = newblobstripe;
-    return send_to_all_nodes(&msg, sizeof(msg), NET_MORESTRIPE_OPEN_DBS,
-                             MSGWAITTIME);
-}
-
 int broadcast_procedure_op(int op, const char *name, const char *param)
 {
     struct new_procedure_op_msg *msg;
@@ -3818,7 +3806,7 @@ int open_auxdbs(struct dbtable *db, int force_create)
         /* see if we have a lite meta table - if so use that.  otherwise
          * fallback on a heavy meta table. */
         db->meta = bdb_open_more_lite(litename, db->dbenv->basedir, 0, ixlen[0],
-                                      0, db->dbenv->bdb_env, &bdberr);
+                                      0, db->dbenv->bdb_env, NULL, 0, &bdberr);
         if (!db->meta) {
             if (gbl_meta_lite)
                 ctrace("bdb_open_more(meta) cannot open lite meta %d\n",
@@ -3994,10 +3982,6 @@ int open_bdb_env(struct dbenv *dbenv)
         if (net_register_handler(dbenv->handle_sibling, NET_CLOSE_ALL_DBS,
                                  "close_all_dbs", net_close_all_dbs))
             return -1;
-        if (net_register_handler(dbenv->handle_sibling, NET_MORESTRIPE_OPEN_DBS,
-                                 "morestripe_and_open_all_dbs",
-                                 net_morestripe_and_open_all_dbs))
-            return -1;
         if (net_register_handler(dbenv->handle_sibling, NET_CHECK_SC_OK,
                                  "check_sc_ok", net_check_sc_ok))
             return -1;
@@ -4087,9 +4071,9 @@ static int init_odh_lrl(struct dbtable *d, int *compr, int *compr_blobs,
 }
 
 static int init_odh_llmeta(struct dbtable *d, int *compr, int *compr_blobs,
-                           int *datacopy_odh)
+                           int *datacopy_odh, tran_type *tran)
 {
-    if (get_db_odh(d, &d->odh) != 0 || d->odh == 0) {
+    if (get_db_odh_tran(d, &d->odh, tran) != 0 || d->odh == 0) {
         // couldn't find odh in llmeta or odh off
         *compr = 0;
         *compr_blobs = 0;
@@ -4100,23 +4084,23 @@ static int init_odh_llmeta(struct dbtable *d, int *compr, int *compr_blobs,
         return 0;
     }
 
-    get_db_compress(d, compr);
-    get_db_compress_blobs(d, compr_blobs);
-    get_db_instant_schema_change(d, &d->instant_schema_change);
-    get_db_inplace_updates(d, &d->inplace_updates);
-    get_db_datacopy_odh(d, datacopy_odh);
+    get_db_compress_tran(d, compr, tran);
+    get_db_compress_blobs_tran(d, compr_blobs, tran);
+    get_db_instant_schema_change_tran(d, &d->instant_schema_change, tran);
+    get_db_inplace_updates_tran(d, &d->inplace_updates, tran);
+    get_db_datacopy_odh_tran(d, datacopy_odh, tran);
 
     return 0;
 }
 
-static void get_disable_skipscan(struct dbtable *tbl)
+static void get_disable_skipscan(struct dbtable *tbl, tran_type *tran)
 {
     if (tbl->dbtype != DBTYPE_UNTAGGED_TABLE &&
         tbl->dbtype != DBTYPE_TAGGED_TABLE)
         return;
 
     char *str = NULL;
-    int rc = bdb_get_table_parameter(tbl->tablename, "disableskipscan", &str);
+    int rc = bdb_get_table_parameter_tran(tbl->tablename, "disableskipscan", &str, tran);
     if (rc != 0) {
         tbl->disableskipscan = 0;
         return;
@@ -4134,14 +4118,14 @@ void get_disable_skipscan_all()
 #endif
     for (int ii = 0; ii < thedb->num_dbs; ii++) {
         struct dbtable *d = thedb->dbs[ii];
-        get_disable_skipscan(d);
+        get_disable_skipscan(d, NULL);
     }
 }
  
 
 
 /* open the db files, etc */
-int backend_open(struct dbenv *dbenv)
+int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
 {
     int bdberr, ii;
     struct dbtable *db = NULL;
@@ -4158,11 +4142,11 @@ int backend_open(struct dbenv *dbenv)
             logmsg(LOGMSG_INFO, "open table '%s'\n", db->tablename);
 
         db->handle =
-            bdb_open_more(db->tablename, dbenv->basedir, db->lrl, db->nix,
+            bdb_open_more_tran(db->tablename, dbenv->basedir, db->lrl, db->nix,
                           (short *)db->ix_keylen, db->ix_dupes, db->ix_recnums,
                           db->ix_datacopy, db->ix_collattr, db->ix_nullsallowed,
                           db->numblobs + 1, /* main record + n blobs */
-                          dbenv->bdb_env, &bdberr);
+                          dbenv->bdb_env, tran, flags, &bdberr);
 
         if (db->handle == NULL) {
             if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_IGNORE_BAD_TABLE)) {
@@ -4208,7 +4192,7 @@ int backend_open(struct dbenv *dbenv)
 
         db->handle = bdb_open_more_queue(
             db->tablename, dbenv->basedir, db->avgitemsz, pagesize,
-            dbenv->bdb_env, db->dbtype == DBTYPE_QUEUEDB ? 1 : 0, &bdberr);
+            dbenv->bdb_env, db->dbtype == DBTYPE_QUEUEDB ? 1 : 0, tran, &bdberr);
         if (db->handle == NULL) {
             logmsg(LOGMSG_ERROR,
                    "bdb_open_more_queue:failed to open queue %s/%s, rcode %d\n",
@@ -4236,7 +4220,8 @@ int backend_open(struct dbenv *dbenv)
 
         dbenv->meta = bdb_open_more_lite(metadbname, dbenv->basedir, 0,
                                          sizeof(struct metahdr2), 0,
-                                         dbenv->bdb_env, &bdberr);
+                                         dbenv->bdb_env, tran, flags,
+                                         &bdberr);
     }
 
     if (!dbenv->meta) {
@@ -4253,7 +4238,7 @@ int backend_open(struct dbenv *dbenv)
 
     /* now that meta is open, get the blobstripe conversion genids for each
      * table so that we can find pre-blobstripe blobs */
-    fix_blobstripe_genids();
+    fix_blobstripe_genids(tran);
 
     for (ii = 0; ii < dbenv->num_dbs; ii++) {
         /* read ondisk header and compression information */
@@ -4273,17 +4258,17 @@ int backend_open(struct dbenv *dbenv)
             }
             bthashsz = gbl_init_with_bthash;
         } else {
-            if (init_odh_llmeta(d, &compress, &compress_blobs, &datacopy_odh) !=
+            if (init_odh_llmeta(d, &compress, &compress_blobs, &datacopy_odh, tran) !=
                 0) {
                 logmsg(LOGMSG_ERROR, "fetch odh from llmeta failed\n");
                 return -1;
             }
 
-            if (get_db_bthash(d, &bthashsz) != 0) {
+            if (get_db_bthash_tran(d, &bthashsz, tran) != 0) {
                 bthashsz = 0;
             }
 
-            get_disable_skipscan(d);
+            get_disable_skipscan(d, tran);
         }
 
         if (bthashsz) {
@@ -4328,7 +4313,7 @@ int backend_open(struct dbenv *dbenv)
         }
     } else {
         int rlstate;
-        if ((rc = bdb_get_rowlocks_state(&rlstate, &bdberr)) != 0) {
+        if ((rc = bdb_get_rowlocks_state(&rlstate, tran, &bdberr)) != 0) {
             logmsg(LOGMSG_ERROR, "Get rowlocks llmeta failed, rc=%d bdberr=%d\n", rc, bdberr);
             return -1;
         }
@@ -4365,9 +4350,12 @@ int backend_open(struct dbenv *dbenv)
     return 0; /*success */
 }
 
+int backend_open(struct dbenv *dbenv)
+{
+    return backend_open_tran(dbenv, NULL, 0);
+}
 
-
-static void fix_blobstripe_genids(void)
+void fix_blobstripe_genids(tran_type *tran)
 {
     int ii, rc;
     struct dbtable *db;
@@ -4375,7 +4363,7 @@ static void fix_blobstripe_genids(void)
     if (gbl_blobstripe) {
         for (ii = 0; ii < dbenv->num_dbs; ii++) {
             db = dbenv->dbs[ii];
-            rc = get_blobstripe_genid(db, &db->blobstripe_genid);
+            rc = get_blobstripe_genid_tran(db, &db->blobstripe_genid, tran);
             if (rc == 0) {
                 bdb_set_blobstripe_genid(db->handle, db->blobstripe_genid);
                 ctrace("blobstripe genid 0x%llx for table %s\n",
@@ -4709,14 +4697,21 @@ int put_blobstripe_genid(struct dbtable *db, void *tran, unsigned long long geni
     return rc;
 }
 
-int get_blobstripe_genid(struct dbtable *db, unsigned long long *genid)
+int get_blobstripe_genid_tran(struct dbtable *db, unsigned long long *genid,
+        tran_type *tran)
 {
     struct metahdr hdr;
     int rc;
     hdr.rrn = META_BLOBSTRIPE_GENID_RRN;
     hdr.attr = 0;
-    rc = meta_get(db, &hdr, (void *)genid, sizeof(*genid));
+    rc = meta_get_tran(tran, db, &hdr, (void *)genid, sizeof(*genid));
     return rc;
+}
+
+
+int get_blobstripe_genid(struct dbtable *db, unsigned long long *genid)
+{
+    return get_blobstripe_genid_tran(db, genid, NULL);
 }
 
 #define get_put_db(x, y)                                                       \

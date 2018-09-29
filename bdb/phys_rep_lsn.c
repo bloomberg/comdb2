@@ -222,18 +222,25 @@ int apply_log(DB_ENV *dbenv, unsigned int file, unsigned int offset,
 int truncate_log_lock(bdb_state_type *bdb_state, unsigned int file,
                       unsigned int offset, uint32_t flags)
 {
+    extern int gbl_online_recovery;
     extern int gbl_is_physical_replicant;
     DB_LSN trunc_lsn;
     char *msg = "truncate log";
+    int online = gbl_online_recovery;
 
     if (flags &&
         bdb_state->repinfo->master_host != bdb_state->repinfo->myhost) {
         return send_truncate_to_master(bdb_state, file, offset);
     }
 
+    if (online) {
+        BDB_READLOCK(msg);
+    } else {
+        BDB_WRITELOCK(msg);
+    }
+    bdb_state->dbenv->rep_verify_match(bdb_state->dbenv, file, offset, online);
+
     /* have to get lock for recovery */
-    BDB_WRITELOCK(msg);
-    bdb_state->dbenv->rep_verify_match(bdb_state->dbenv, file, offset);
     BDB_RELLOCK();
 
     return 0;

@@ -2192,6 +2192,15 @@ uint32_t bdb_get_rep_gen(bdb_state_type *bdb_state)
     return mygen;
 }
 
+void master_increment_gen(bdb_state_type *bdb_state)
+{
+    uint32_t mygen;
+    bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &mygen);
+    bdb_state->dbenv->rep_set_gen(bdb_state->dbenv, mygen+(20+(rand()%20)));
+    bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, 0, DB_REP_MASTER);
+    bdb_add_dummy_llmeta();
+}
+
 /* Called by the master to periodically broadcast the durable lsn.  The
  * algorithm: sort lsns of all nodes (including master's).  The durable lsn will
  * be in the (n/2)th spot.  We can only make claims about durability for things
@@ -3154,6 +3163,9 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
     if ((seqnum->lsn.file == 0) && (seqnum->lsn.offset == 0))
         return 0;
 
+    logmsg(LOGMSG_DEBUG, "%s waiting for %s\n", __func__, lsn_to_str(str,
+                &(seqnum->lsn)));
+
     begin_time = comdb2_time_epochms();
 
     /* lame, i know.  go into a loop polling once per second to see if
@@ -3739,6 +3751,8 @@ void bdb_set_seqnum(void *in_bdb_state)
     }
 }
 
+int gbl_online_recovery = 1;
+
 static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
                           DBT *rec)
 {
@@ -3750,6 +3764,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     uint32_t generation, commit_generation;
     int outrc;
     int time1, time2;
+    int online = gbl_online_recovery;
     char *oldmaster = NULL;
     int force_election = 0;
     int rectype;
@@ -3791,8 +3806,9 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
        locks.
        Grab the bdb_writelock here rather than inside of berkdb so that we avoid
        racing against a rep_start. */
-    if (rectype == REP_VERIFY && bdb_state->dbenv->rep_verify_will_recover(
-                                     bdb_state->dbenv, control, rec)) {
+    if (!online && rectype == REP_VERIFY && 
+        bdb_state->dbenv->rep_verify_will_recover(
+        bdb_state->dbenv, control, rec)) {
         BDB_WRITELOCK_REP("bdb_rep_verify");
         got_writelock = 1;
     }
@@ -3813,7 +3829,8 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
         sleep(2);
 
     r = bdb_state->dbenv->rep_process_message(
-        bdb_state->dbenv, control, rec, &host, &permlsn, &commit_generation);
+        bdb_state->dbenv, control, rec, &host, &permlsn, &commit_generation,
+        online);
 
     if (got_vote2lock) {
         if (bdb_get_rep_master(bdb_state, &master, &gen, &egen) != 0) {
@@ -4745,6 +4762,21 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         }
         net_ack_message(ack_handle, 0);
         break;
+    case USER_TYPE_IGNORE_GEN:
+        p_buf = (uint8_t *)dta;
+        p_buf_end = ((uint8_t *)dta + dtalen);
+
+        if ((buf_get(&gen, sizeof(gen), p_buf, p_buf_end)) == NULL) {
+            logmsg(LOGMSG_ERROR, "%s %d: failed to get ignore-gen\n", __func__,
+                    __LINE__);
+        } else {
+            logmsg(LOGMSG_INFO, "%s: ignoring generation %u for truncate\n",
+                    __func__, gen);
+            bdb_state->dbenv->rep_set_ignore_gen(bdb_state->dbenv, gen);
+        }
+
+        break;
+
     default:
 #if 0 
         fprintf(stderr,"%s: unknown message: %d (0x%08X)\n",__func__,usertype, 
@@ -5156,6 +5188,7 @@ int gbl_rep_wait_core_ms = 0;
 
 void *watcher_thread(void *arg)
 {
+    extern int gbl_comdb2_reload_schemas;
     bdb_state_type *bdb_state;
     extern int gbl_rep_lock_time_ms;
     char *master_host = db_eid_invalid;
@@ -5198,7 +5231,7 @@ void *watcher_thread(void *arg)
 
     bdb_state->repinfo->disable_watcher = 0;
 
-    while (!db_is_stopped()) {
+    while (!db_is_stopped() || gbl_comdb2_reload_schemas) {
         time_now = comdb2_time_epoch();
         time_then = bdb_state->repinfo->disable_watcher;
 
@@ -5211,6 +5244,11 @@ void *watcher_thread(void *arg)
                 diff = 60;
             logmsg(LOGMSG_WARN, "watcher thread pausing for %d second\n", diff);
             sleep(diff);
+        }
+
+        if (gbl_comdb2_reload_schemas) {
+            sleep (1);
+            continue;
         }
 
         i++;

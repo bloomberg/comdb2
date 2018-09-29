@@ -1348,11 +1348,6 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 		case DB_LOCK_GET_TIMEOUT:
 			LF_SET(DB_LOCK_SET_TIMEOUT);
 		case DB_LOCK_GET:
-			if (IS_RECOVERING(dbenv) && (!IS_REP_CLIENT(dbenv) ||
-			    !LF_ISSET(DB_LOCK_LOGICAL))) {
-				LOCK_INIT(list[i].lock);
-				break;
-			}
 			ret = __lock_get_internal(dbenv->lk_handle,
 			    locker, NULL, flags, list[i].obj,
 			    list[i].mode, list[i].timeout, &list[i].lock);
@@ -1909,12 +1904,6 @@ __lock_get(dbenv, locker, flags, obj, lock_mode, lock)
 	DB_LOCK *lock;
 {
 	int ret;
-
-	if (IS_RECOVERING(dbenv) && (!IS_REP_CLIENT(dbenv) ||
-		!LF_ISSET(DB_LOCK_LOGICAL))) {
-		LOCK_INIT(*lock);
-		return (0);
-	}
 
 	LOCKREGION(dbenv, (DB_LOCKTAB *)dbenv->lk_handle);
 	ret = __lock_get_internal(dbenv->lk_handle,
@@ -2959,9 +2948,6 @@ __lock_put(dbenv, lock)
 
 	int ret;
 	u_int32_t run_dd = 0;
-
-	if (IS_RECOVERING(dbenv))
-		return (0);
 
 	lt = dbenv->lk_handle;
 
@@ -6069,10 +6055,6 @@ __lock_abort_logical_waiters_pp(dbenv, locker, flags)
 	ENV_REQUIRES_CONFIG(dbenv,
 	    dbenv->lk_handle, "DB_ENV->lock_abort_logical_waiters",
 	    DB_INIT_LOCK);
-
-	if (IS_RECOVERING(dbenv)) {
-		return (0);
-	}
 
 	LOCKREGION(dbenv, (DB_LOCKTAB *)dbenv->lk_handle);
 	ret = __lock_abort_logical_waiters(dbenv, locker, flags);

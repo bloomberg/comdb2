@@ -480,19 +480,19 @@ bdb_open_more_tran(const char name[], const char dir[], int lrl, short numix,
                    const signed char ixrecnum[], const signed char ixdta[],
                    const signed char ixcollattr[], const signed char ixnulls[],
                    int numdtafiles, bdb_state_type *parent_bdb_handle,
-                   tran_type *tran, int *bdberr);
+                   tran_type *tran, uint32_t flags, int *bdberr);
 
 /* open an existing lite table */
 bdb_state_type *bdb_open_more_lite(const char name[], const char dir[], int lrl,
                                    int ixlen, int pagesize,
                                    bdb_state_type *parent_bdb_handle,
-                                   int *bdberr);
+                                   tran_type *tran, uint32_t flags, int *bdberr);
 
 /* open an existing queue */
 bdb_state_type *bdb_open_more_queue(const char name[], const char dir[],
                                     int item_size, int pagesize,
                                     bdb_state_type *parent_bdb_state,
-                                    int isqueuedb, int *bdberr);
+                                    int isqueuedb, tran_type *, int *bdberr);
 
 /* create a new queue */
 bdb_state_type *bdb_create_queue(const char name[], const char dir[],
@@ -613,7 +613,12 @@ unsigned long long bdb_mask_updateid(bdb_state_type *bdb_state,
 unsigned long long bdb_normalise_genid(bdb_state_type *bdb_state,
                                        unsigned long long genid);
 
+#define BDB_TRAN_RECOVERY 0x00000001
+
 /* return a new tran handle, begin a transaction */
+tran_type *bdb_tran_begin_flags(bdb_state_type *bdb_handle, tran_type *parent_tran,
+                          int *bdberr, uint32_t flags);
+
 tran_type *bdb_tran_begin(bdb_state_type *bdb_handle, tran_type *parent_tran,
                           int *bdberr);
 
@@ -1108,6 +1113,8 @@ int bdb_list_dropped_files(bdb_state_type *bdb_state, int *bdberr);
 /* make new stripes */
 int bdb_create_stripes(bdb_state_type *bdb_state, int newdtastripe,
                        int newblobstripe, int *bdberr);
+int bdb_create_stripes_tran(bdb_state_type *bdb_state, tran_type *tran,
+                            int newdtastripe, int newblobstripe, int *bdberr);
 
 /* re-open bdb handle that has been bdb_close_only'ed
    as master/client depending on how it used to be */
@@ -1564,7 +1571,10 @@ int bdb_delete_sp_lua_source(bdb_state_type *bdb_state, tran_type *tran,
                              const char *sp_name, int lua_ver, int *bdberr);
 int bdb_set_sp_lua_default(bdb_state_type *bdb_state, tran_type *tran,
                            char *sp_name, int lua_ver, int *bdberr);
-
+int bdb_get_global_stripe_info(tran_type *tran, int *stripes, int *blobstripe,
+                               int *bdberr);
+int bdb_set_global_stripe_info(tran_type *tran, int stripes, int blobstripe,
+                               int *bdberr);
 int bdb_set_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
                     const char *table, unsigned long long genid,
                     unsigned int host, int *bdberr);
@@ -1856,6 +1866,8 @@ int bdb_clear_table_parameter(void *parent_tran, const char *table,
                               const char *parameter);
 int bdb_get_table_parameter(const char *table, const char *parameter,
                             char **value);
+int bdb_get_table_parameter_tran(const char *table, const char *parameter,
+                            char **value, tran_type *tran);
 int bdb_set_table_parameter(void *parent_tran, const char *table,
                             const char *parameter, const char *value);
 
@@ -2015,6 +2027,10 @@ void bdb_get_txn_stats(bdb_state_type *bdb_state, int64_t *active,
                        int64_t *maxactive, int64_t *commits, int64_t *aborts);
 
 uint32_t bdb_get_rep_gen(bdb_state_type *bdb_state);
+
+/* Hack to retain mastership after a truncate: increment generation & 
+ * broadcast newmaster, and write a record immediately. */
+void master_increment_gen(bdb_state_type *bdb_state);
 
 typedef struct bias_info bias_info;
 typedef int (*bias_cmp_t)(bias_info *, void *found);

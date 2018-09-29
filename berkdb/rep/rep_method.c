@@ -55,6 +55,8 @@ static int __rep_set_rep_transport __P((DB_ENV *, char *,
 	int (*)(DB_ENV *, const DBT *, const DBT *, const DB_LSN *,
 		char *, int, void *)));
 static int __rep_set_check_standalone __P((DB_ENV *, int (*)(DB_ENV *)));
+static int __rep_set_truncate_sc_callback __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *)));
+static int __rep_set_rep_truncate_callback __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *)));
 static int __rep_set_rep_db_pagesize __P((DB_ENV *, int));
 static int __rep_get_rep_db_pagesize __P((DB_ENV *, int *));
 static int __rep_start __P((DB_ENV *, DBT *, u_int32_t, u_int32_t));
@@ -116,6 +118,10 @@ __rep_dbenv_create(dbenv)
 		dbenv->set_rep_limit = __rep_set_limit;
 		dbenv->set_rep_request = __rep_set_request;
 		dbenv->set_rep_transport = __rep_set_rep_transport;
+		dbenv->set_truncate_sc_callback = __rep_set_truncate_sc_callback;
+		dbenv->set_rep_truncate_callback = __rep_set_rep_truncate_callback;
+		dbenv->rep_set_gen = __rep_set_gen_pp;
+		dbenv->rep_set_ignore_gen = __rep_set_ignore_gen;
 		dbenv->set_check_standalone = __rep_set_check_standalone;
 		dbenv->set_rep_db_pagesize = __rep_set_rep_db_pagesize;
 		dbenv->get_rep_db_pagesize = __rep_get_rep_db_pagesize;
@@ -868,6 +874,35 @@ __rep_set_check_standalone(dbenv, f_check_standalone)
 		return (EINVAL);
 	}
 	dbenv->check_standalone = f_check_standalone;
+	return (0);
+}
+
+static int
+__rep_set_rep_truncate_callback(dbenv, rep_truncate_callback)
+	DB_ENV *dbenv;
+	int (*rep_truncate_callback) __P((DB_ENV *, DB_LSN *lsn));
+{
+	PANIC_CHECK(dbenv);
+	if (rep_truncate_callback == NULL) {
+		__db_err(dbenv, "DB_ENV->truncate_sc_callback: no function specified");
+		return (EINVAL);
+	}
+	dbenv->rep_truncate_callback = rep_truncate_callback;
+	return (0);
+}
+
+
+static int
+__rep_set_truncate_sc_callback(dbenv, truncate_sc_callback)
+	DB_ENV *dbenv;
+	int (*truncate_sc_callback) __P((DB_ENV *, DB_LSN *lsn));
+{
+	PANIC_CHECK(dbenv);
+	if (truncate_sc_callback == NULL) {
+		__db_err(dbenv, "DB_ENV->truncate_sc_callback: no function specified");
+		return (EINVAL);
+	}
+	dbenv->truncate_sc_callback = truncate_sc_callback;
 	return (0);
 }
 

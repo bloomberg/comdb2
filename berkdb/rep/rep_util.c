@@ -332,6 +332,41 @@ __rep_set_gen(dbenv, func, line, gen)
 }
 
 /*
+ * __rep_set_ignore_gen --
+ *  Exposed as a utility function to help with distributed truncate.
+ *
+ * PUBLIC: void __rep_set_ignore_gen __P((DB_ENV *, uint32_t gen));
+ */
+void
+__rep_set_ignore_gen(dbenv, gen)
+	DB_ENV *dbenv;
+	uint32_t gen;
+{
+	DB_REP *db_rep;
+	REP *rep;
+	db_rep = dbenv->rep_handle;
+	rep = db_rep->region;
+    rep->ignore_gen = gen;
+}
+
+
+
+/*
+ * __rep_set_gen_pp --
+ *  Exposed as a utility function to help with distributed truncate.
+ *
+ * PUBLIC: void __rep_set_gen_pp __P((DB_ENV *, uint32_t gen));
+ */
+void
+__rep_set_gen_pp(dbenv, gen)
+	DB_ENV *dbenv;
+	uint32_t gen;
+{
+    __rep_set_gen(dbenv, __func__, __LINE__, gen);
+}
+
+
+/*
  * __rep_set_egen --
  *  Called as a utility function to see places where an instance's 
  * replication election generation can be changed.
