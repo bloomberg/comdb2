@@ -244,6 +244,8 @@ static int db_comdb_verify(Lua L) {
     return 1;
 }
 
+int gbl_truncating_log = 0;
+
 static int db_comdb_truncate_log(Lua L) {
     SP sp = getsp(L);
     sp->max_num_instructions = 1000000; //allow large number of steps
@@ -265,23 +267,25 @@ static int db_comdb_truncate_log(Lua L) {
     }
 
     logdelete_lock();
+    truncating_log = 1;
+    logdelete_unlock();
+
     bdb_min_truncate(thedb->bdb_env, &min_file, &min_offset, NULL);
 
     if (min_file == 0) {
-        logdelete_unlock();
+        truncating_log = 0;
         return luaL_error(L, "Log is not truncatable");
     }
 
     if (file < min_file || (file == min_file && 
                 offset < min_offset)) {
-        logdelete_unlock();
         return luaL_error(L, 
                 "Minimum truncate lsn is {%d:%d}", min_file, min_offset);
     }
     logmsg(LOGMSG_USER, "applying log from lsn {%u:%u}\n", file, offset);
 
     rc = truncate_log(file, offset, 1);
-    logdelete_unlock();
+    truncating_log = 0;
     if (rc != 0)
     {
         if (rc == -1)
@@ -310,11 +314,14 @@ static int db_comdb_truncate_time(Lua L) {
     }
 
     logdelete_lock();
+    gbl_truncating_log = 1;
+    logdelete_unlock();
+
     bdb_min_truncate(thedb->bdb_env, NULL, NULL, &min_time);
 
     if (time < min_time)
     {
-        logdelete_unlock();
+        gbl_truncating_log = 0;
         return luaL_error(L, "Minimum truncate timestamp is %d\n",
                 min_time);
     }
@@ -322,7 +329,7 @@ static int db_comdb_truncate_time(Lua L) {
     logmsg(LOGMSG_USER, "Finding earliest log before stated time: %ld.\n", time);
 
     rc = truncate_timestamp(time);
-    logdelete_unlock();
+    gbl_truncating_log = 0;
 
     if (rc != 0)
     {

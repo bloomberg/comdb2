@@ -3846,10 +3846,13 @@ void logdelete_unlock(void)
 
 void delete_log_files(bdb_state_type *bdb_state)
 {
+    extern int gbl_truncating_log;
     BDB_READLOCK("logdelete_thread");
     Pthread_mutex_lock(&logdelete_lk);
-    delete_log_files_int(bdb_state);
-    bdb_calc_min_truncate(bdb_state);
+    if (!gbl_truncating_log) {
+        delete_log_files_int(bdb_state);
+        bdb_calc_min_truncate(bdb_state);
+    }
     Pthread_mutex_unlock(&logdelete_lk);
     BDB_RELLOCK();
 }
