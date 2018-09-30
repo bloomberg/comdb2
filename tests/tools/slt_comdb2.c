@@ -27,7 +27,6 @@ struct ResAccum {
 */
 static void appendValue(ResAccum *p, const char *zValue){
   char *z;
-  char d[1];
   if( zValue ){
     z = strdup(zValue);
     if( z==0 ){
@@ -93,7 +92,6 @@ static int comdb2Connect(
   const char *zConnectStr,    /* Connection string */
   void **ppConn               /* Write completed connection here */
 ){
-    struct conn *c;
     int rc;
 
     if (dbname == NULL)
@@ -178,8 +176,8 @@ static int comdb2Query(
     int col;
     char val[20];
     ResAccum res;
+    int i;
     double d;
-    long long i;
     char *s;
     char *tmp;
 
@@ -199,7 +197,7 @@ static int comdb2Query(
 
             default:
                 free(types);
-                fprintf(stderr, "unknown character in type-string: %c\n", zType[i]);
+                fprintf(stderr, "unknown character in type-string: %c\n", zType[col]);
                 return 1;
         }
     }
