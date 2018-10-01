@@ -249,7 +249,7 @@ char *osql_breq2a(int op)
     }
 }
 
-int block2_sorese(struct ireq *iq, const char *sql, int sqlen, int block2_type)
+void block2_sorese(struct ireq *iq, const char *sql, int sqlen, int block2_type)
 {
 
     struct thr_handle *thr_self = thrman_self();
@@ -259,8 +259,6 @@ int block2_sorese(struct ireq *iq, const char *sql, int sqlen, int block2_type)
 
     thrman_wheref(thr_self, "%s [%s %s %llx]", req2a(iq->opcode),
                   breq2a(block2_type), iq->sorese.host, iq->sorese.rqid);
-
-    return 0;
 }
 
 extern int gbl_early_verify;
@@ -472,10 +470,11 @@ int recom_abort(struct sqlclntstate *clnt)
     return sorese_abort(clnt, OSQL_RECOM_REQ);
 }
 
-int block2_serial(struct ireq *iq, const char *sql, int sqlen)
+inline int block2_serial(struct ireq *iq, const char *sql, int sqlen)
 {
 
-    return block2_sorese(iq, sql, sqlen, BLOCK2_SERIAL);
+    block2_sorese(iq, sql, sqlen, BLOCK2_SERIAL);
+    return 0;
 }
 
 int snapisol_commit(struct sqlclntstate *clnt, struct sql_thread *thd,

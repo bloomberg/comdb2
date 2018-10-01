@@ -194,6 +194,7 @@ static int osql_send_del_logic(struct BtCursor *pCur, struct sql_thread *thd)
                __FILE__, __LINE__, __func__, rc);
         return rc;
     }
+    osql->replicant_numops++;
     return SQLITE_OK;
 }
 
@@ -292,6 +293,7 @@ static int osql_send_ins_logic(struct BtCursor *pCur, struct sql_thread *thd,
                __FILE__, __LINE__, __func__, rc);
         return rc;
     }
+    osql->replicant_numops++;
     return SQLITE_OK;
 }
 
@@ -339,7 +341,8 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     if (rc != SQLITE_OK)
         return rc;
 
-    return osql_save_insrec(pCur, thd, pData, nData, flags);
+    rc = osql_save_insrec(pCur, thd, pData, nData, flags);
+    return rc;
 }
 
 /**
@@ -404,6 +407,8 @@ static int osql_send_upd_logic(struct BtCursor *pCur, struct sql_thread *thd,
                __FILE__, __LINE__, __func__, rc);
         return rc;
     }
+
+    thd->clnt->osql.replicant_numops++;
     return SQLITE_OK;
 }
 
@@ -709,6 +714,7 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
 again:
 
     sentops = 0;
+    osql->replicant_numops = 0;
 
     /* we need to check if we need bdb write lock here to prevent a master
        upgrade blockade */
@@ -747,7 +753,6 @@ again:
         osql->tablename = NULL;
         osql->tablenamelen = 0;
     }
-    osql->replicant_numops = 0;
 
     if (!keep_session) {
         if (gbl_master_swing_osql_verbose)
@@ -801,7 +806,7 @@ again:
         goto error;
 
     if (0) {
-    error:
+error:
         retries++;
         if (retries < maxretries) {
             logmsg(LOGMSG_ERROR, 
@@ -1122,6 +1127,7 @@ int osql_sock_abort(struct sqlclntstate *clnt, int type)
 
     clnt->osql.sentops = 0;  /* reset statement size counter*/
     clnt->osql.tran_ops = 0; /* reset transaction size counter*/
+    clnt->osql.replicant_numops = 0; /* reset replicant numops counter*/
 
     osql_shadtbl_close(clnt);
 
@@ -1187,6 +1193,7 @@ static int osql_send_usedb_logic_int(char *tablename, struct sqlclntstate *clnt,
         if (osql->tablename)
             osql->tablenamelen = tablenamelen;
     }
+    osql->replicant_numops++;
 
     return rc;
 }
@@ -1362,12 +1369,12 @@ retry:
 
     if (rc == 0) {
         if (osql->rqid == OSQL_RQID_USE_UUID) {
-            rc = osql_send_commit_by_uuid(osql->host, osql->uuid, osql->sentops,
+            rc = osql_send_commit_by_uuid(osql->host, osql->uuid, osql->replicant_numops,
                                           &osql->xerr, nettype, osql->logsb,
                                           clnt->query_stats, snap_info_p);
         } else {
             rc = osql_send_commit(osql->host, osql->rqid, osql->uuid,
-                                  osql->sentops, &osql->xerr, nettype,
+                                  osql->replicant_numops, &osql->xerr, nettype,
                                   osql->logsb, clnt->query_stats, NULL);
         }
     }
@@ -1378,6 +1385,7 @@ retry:
         /* we need to reset the commit here */
         goto retry;
     }
+    osql->replicant_numops = 0; // reset for next time
 
     return rc;
 }

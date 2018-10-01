@@ -70,7 +70,7 @@ int get_osql_maxtransfer(void);
 
 char *osql_breq2a(int op);
 
-int block2_sorese(struct ireq *iq, const char *sql, int sqlen, int block2_type);
+void block2_sorese(struct ireq *iq, const char *sql, int sqlen, int block2_type);
 
 int req2netreq(int reqtype);
 int req2netrpl(int reqtype);

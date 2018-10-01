@@ -4801,7 +4801,7 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
 
         if (!(p_buf = osqlcomm_done_uuid_rpl_put(&rpl_ok, p_buf, p_buf_end))) {
             logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
-                    "osqlcomm_done_rpl_put");
+                    "osqlcomm_done_uuid_rpl_put");
             if (used_malloc)
                 free(buf);
             return -1;
@@ -4815,7 +4815,7 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
             if (!(p_buf =
                       client_query_stats_put(query_stats, p_buf, p_buf_end))) {
                 logmsg(LOGMSG_ERROR, "%s line %d:%s returns NULL\n", __func__,
-                        __LINE__, "osqlcomm_done_rpl_put");
+                        __LINE__, "client_query_stats_put");
                 if (used_malloc)
                     free(buf);
                 return -1;
@@ -6715,10 +6715,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     if (gbl_toblock_net_throttle && is_write_request(type))
         net_throttle_wait(thedb->handle_sibling);
 
-    const char *osql_reqtype_str(int type);
-
-    logmsg(LOGMSG_DEBUG, "osql_process_packet(): processing %s(%d)\n",
-           osql_reqtype_str(type), type);
+    logmsg(LOGMSG_DEBUG, "osql_process_packet(): processing %d\n", type);
 
     switch (type) {
     case OSQL_DONE:
@@ -6769,7 +6766,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         // TODO Notify all bpfunc of success
 
-        /* dt->nops carries the possible conversion error index */
+        /* dt.nops carries the possible conversion error index */
         rc = conv_rc_sql2blkop(iq, step, -1, dt.rc, err, NULL, dt.nops);
 
         if (type == OSQL_DONE_SNAP) {
@@ -6782,8 +6779,17 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             assert(!memcmp(&snap_info, &iq->snap_info, sizeof(snap_uid_t)));
         }
 
-        logmsg(LOGMSG_DEBUG, "rqid=%llu, uuid=%llu, received OSQL_DONE rc = %d, nops = %d\n",
-               rqid, comdb2uuidstr(uuid, us), rc, dt.nops);
+        logmsg(LOGMSG_DEBUG, "rqid=%llu, uuid=%llu, received OSQL_DONE rc = %d, nops = %d, steps = %d\n",
+               rqid, comdb2uuidstr(uuid, us), rc, dt.nops, step + 1);
+
+        /* the blockops received should be same as what client sent */
+        if (dt.nops != (step + 1)) {
+            abort(); //TODO: remove later
+            err->blockop_num = step;
+            err->ixnum = 0;
+            err->errcode = OP_FAILED_VERIFY;
+            return ERR_INTERNAL;
+        }
 
         /* p_buf is pointing at client_query_stats if there is one */
         if (type == OSQL_DONE_STATS) { /* Never set anywhere. */
