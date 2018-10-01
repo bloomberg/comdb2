@@ -78,6 +78,7 @@ struct comdb2_metrics_store {
     int64_t locks;
     int64_t temptable_spills;
     int64_t net_drops;
+    int64_t net_queue_size;
 };
 
 static struct comdb2_metrics_store stats;
@@ -201,8 +202,10 @@ comdb2_metric gbl_metrics[] = {
      &stats.temptable_spills, NULL},
     {"net_drops", "Number of packets that didn't fit on network queue and were dropped",
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
-     &stats.net_drops, NULL}
-
+     &stats.net_drops, NULL},
+    {"net_queue_size", "Size of largest outgoing net queue", 
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, 
+     &stats.net_queue_size, NULL}
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -247,12 +250,35 @@ static int64_t refresh_diskspace(struct dbenv *dbenv) {
 static time_t last_time;
 static int64_t last_counter;
 
+void refresh_queue_size(struct dbenv *dbenv) {
+    const char *hostlist[REPMAX];
+    int num_nodes;
+    int max_queue_size = 0;
+    struct net_host_stats stat;
+
+    /* do this for both nets */
+    num_nodes = net_get_all_nodes_connected(dbenv->handle_sibling, hostlist);
+    for (int i = 0; i < num_nodes; i++) {
+        if (net_get_host_stats(dbenv->handle_sibling, hostlist[i], &stat) == 0) {
+            if (stat.queue_size > max_queue_size)
+                max_queue_size = stat.queue_size;
+        }
+    }
+    /* do this for both nets */
+    for (int i = 0; i < num_nodes; i++) {
+        if (net_get_host_stats(dbenv->handle_sibling_offload, hostlist[i], &stat) == 0) {
+            if (stat.queue_size > max_queue_size)
+                max_queue_size = stat.queue_size;
+        }
+    }
+    stats.net_queue_size = max_queue_size;
+}
+
 int refresh_metrics(void)
 {
     int rc;
     const struct bdb_thread_stats *pstats;
-    extern int active_appsock_conns;
-    int bdberr;
+    extern int active_appsock_conns; int bdberr;
 
     /* Check whether the server is exiting. */
     if (thedb->exiting || thedb->stopped)
@@ -374,6 +400,8 @@ int refresh_metrics(void)
         stats.net_drops = 0;
     }
 
+    refresh_queue_size(thedb);
+
     return 0;
 }
 
@@ -439,5 +467,3 @@ void update_cpu_percent(void) {
    gbl_cpupercent = cpu_percent;
 #endif
 }
-
-

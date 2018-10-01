@@ -24,7 +24,7 @@
 #include <netinet/in.h>
 #include <sbuf2.h>
 #include <cdb2_constants.h>
-#include <quantize.h>
+#include "perf.h"
 
 /*
   we have an int, but we only need a short for real ports.
@@ -364,6 +364,10 @@ struct host_node_info {
 int net_get_nodes_info(netinfo_type *netinfo_ptr, int max_nodes,
                        struct host_node_info *out_nodes);
 
+struct net_host_stats {
+    int queue_size;
+};
+int net_get_host_stats(netinfo_type *netinfo_ptr, const char *host, struct net_host_stats *stat);
 
 struct net_stats {
     int num_drops;
