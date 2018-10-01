@@ -265,7 +265,7 @@ public class UnpooledDataSource implements DataSource {
 					driverType = Class.forName(driver);
 				}
 
-				DriverManager.registerDriver(new DriverProxy((Driver) driverType.newInstance()));
+				DriverManager.registerDriver(new DriverProxy((java.sql.Driver) driverType.newInstance()));
 			} catch (Exception e) {
 				throw new RuntimeException("Error setting driver (" + driver + ") on UnpooledDataSource. Cause: " + e, e);
 			}
@@ -273,9 +273,9 @@ public class UnpooledDataSource implements DataSource {
 	}
 
 	private static class DriverProxy implements java.sql.Driver {
-		private Driver driver;
+		private java.sql.Driver driver;
 
-		DriverProxy(Driver d) {
+		DriverProxy(java.sql.Driver d) {
 			this.driver = d;
 		}
 
