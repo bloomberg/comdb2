@@ -2252,3 +2252,11 @@ int bdb_fill_cluster_info(void **data, int *num_nodes) {
     *data = info;
     return 0;
 }
+
+int bdb_rep_stats(bdb_state_type *bdb_state, int64_t *nrep_deadlocks) {
+    DB_REP_STAT *stats;
+    bdb_state->dbenv->rep_stat(bdb_state->dbenv, &stats, 0);
+    *nrep_deadlocks = stats->retry;
+    free(stats);
+    return 0;
+}

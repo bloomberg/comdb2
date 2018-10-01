@@ -2077,5 +2077,7 @@ void wait_for_sc_to_stop(void);
 void allow_sc_to_run(void);
 int bdb_lock_stats(bdb_state_type *bdb_state, int64_t *nlocks);
 
+int bdb_rep_stats(bdb_state_type *bdb_state, int64_t *nrep_deadlocks);
+
 
 #endif

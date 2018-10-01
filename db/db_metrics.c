@@ -79,6 +79,7 @@ struct comdb2_metrics_store {
     int64_t temptable_spills;
     int64_t net_drops;
     int64_t net_queue_size;
+    int64_t rep_deadlocks;
 };
 
 static struct comdb2_metrics_store stats;
@@ -205,7 +206,11 @@ comdb2_metric gbl_metrics[] = {
      &stats.net_drops, NULL},
     {"net_queue_size", "Size of largest outgoing net queue", 
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, 
-     &stats.net_queue_size, NULL}
+     &stats.net_queue_size, NULL},
+    {"rep_deadlocks", "Replication deadlocks", 
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
+     &stats.rep_deadlocks, NULL}
+
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -226,7 +231,8 @@ extern int n_commits;
 extern long n_fstrap;
 
 
-static int64_t refresh_diskspace(struct dbenv *dbenv) {
+static int64_t refresh_diskspace(struct dbenv *dbenv)
+{
     int64_t total = 0;
     int ndb;
     struct dbtable *db;
@@ -250,7 +256,8 @@ static int64_t refresh_diskspace(struct dbenv *dbenv) {
 static time_t last_time;
 static int64_t last_counter;
 
-void refresh_queue_size(struct dbenv *dbenv) {
+void refresh_queue_size(struct dbenv *dbenv) 
+{
     const char *hostlist[REPMAX];
     int num_nodes;
     int max_queue_size = 0;
@@ -402,6 +409,8 @@ int refresh_metrics(void)
 
     refresh_queue_size(thedb);
 
+    bdb_rep_stats(thedb->bdb_env, &stats.rep_deadlocks);
+
     return 0;
 }
 
@@ -429,7 +438,8 @@ const char *metric_type(comdb2_metric_type type)
     }
 }
 
-void update_cpu_percent(void) {
+void update_cpu_percent(void) 
+{
 #if _LINUX_SOURCE
    static time_t last_time = 0;
    static int64_t last_counter = 0;
