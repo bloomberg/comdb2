@@ -3833,14 +3833,21 @@ int bdb_get_low_headroom_count(bdb_state_type *bdb_state)
 }
 
 static pthread_mutex_t logdelete_lk = PTHREAD_MUTEX_INITIALIZER;
+int gbl_logdelete_lock_trace = 0;
 
-void logdelete_lock(void)
+void logdelete_lock(const char *func, int line)
 {
+    if (gbl_logdelete_lock_trace) {
+        logmsg(LOGMSG_USER, "%s line %d lock logdelete lock\n", func, line);
+    }
     Pthread_mutex_lock(&logdelete_lk);
 }
 
-void logdelete_unlock(void)
+void logdelete_unlock(const char *func, int line)
 {
+    if (gbl_logdelete_lock_trace) {
+        logmsg(LOGMSG_USER, "%s line %d release logdelete lock\n", func, line);
+    }
     Pthread_mutex_unlock(&logdelete_lk);
 }
 
@@ -3848,12 +3855,12 @@ void delete_log_files(bdb_state_type *bdb_state)
 {
     extern int gbl_truncating_log;
     BDB_READLOCK("logdelete_thread");
-    Pthread_mutex_lock(&logdelete_lk);
+    logdelete_lock(__func__, __LINE__);
     if (!gbl_truncating_log) {
         delete_log_files_int(bdb_state);
         bdb_calc_min_truncate(bdb_state);
     }
-    Pthread_mutex_unlock(&logdelete_lk);
+    logdelete_unlock(__func__, __LINE__);
     BDB_RELLOCK();
 }
 

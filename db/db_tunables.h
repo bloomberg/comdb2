@@ -1574,6 +1574,10 @@ REGISTER_TUNABLE("verbose_physrep",
                  TUNABLE_BOOLEAN, &gbl_verbose_physrep, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("logdelete_lock_trace",
+                 "Print trace getting and releasing the logdelete lock.  "
+                 "(Default: off)", TUNABLE_BOOLEAN, &gbl_logdelete_lock_trace,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 
 #endif /* _DB_TUNABLES_H */

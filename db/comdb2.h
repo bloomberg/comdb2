@@ -1955,8 +1955,8 @@ void apply_new_stripe_settings(int newdtastripe, int newblobstripe);
 void sc_del_unused_files_check_progress(void);
 
 /* update sync parameters*/
-void logdelete_lock(void);
-void logdelete_unlock(void);
+void logdelete_lock(const char *func, int line);
+void logdelete_unlock(const char *func, int line);
 void backend_update_sync(struct dbenv *dbenv);
 void backend_sync_stat(struct dbenv *dbenv);
 

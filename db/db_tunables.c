@@ -206,6 +206,7 @@ extern int gbl_replicated_truncate_timeout;
 extern int gbl_match_on_ckp;
 extern int gbl_verbose_physrep;
 extern int gbl_physrep_reconnect_penalty;
+extern int gbl_logdelete_lock_trace;
 
 extern long long sampling_threshold;
 

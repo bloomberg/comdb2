@@ -266,14 +266,14 @@ static int db_comdb_truncate_log(Lua L) {
                 "Usage: truncate_log(\"{<file>:<offset>}\"). Input not valid.");
     }
 
-    logdelete_lock();
-    truncating_log = 1;
-    logdelete_unlock();
+    logdelete_lock(__func__, __LINE__);
+    gbl_truncating_log = 1;
+    logdelete_unlock(__func__, __LINE__);
 
     bdb_min_truncate(thedb->bdb_env, &min_file, &min_offset, NULL);
 
     if (min_file == 0) {
-        truncating_log = 0;
+        gbl_truncating_log = 0;
         return luaL_error(L, "Log is not truncatable");
     }
 
@@ -285,7 +285,7 @@ static int db_comdb_truncate_log(Lua L) {
     logmsg(LOGMSG_USER, "applying log from lsn {%u:%u}\n", file, offset);
 
     rc = truncate_log(file, offset, 1);
-    truncating_log = 0;
+    gbl_truncating_log = 0;
     if (rc != 0)
     {
         if (rc == -1)
@@ -313,9 +313,9 @@ static int db_comdb_truncate_time(Lua L) {
                 "where time is epoch time");
     }
 
-    logdelete_lock();
+    logdelete_lock(__func__, __LINE__);
     gbl_truncating_log = 1;
-    logdelete_unlock();
+    logdelete_unlock(__func__, __LINE__);
 
     bdb_min_truncate(thedb->bdb_env, NULL, NULL, &min_time);
 
