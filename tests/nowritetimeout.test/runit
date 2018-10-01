@@ -16,6 +16,3 @@ if [ $? -ne 0 ]; then
     fi
 fi
 ${TESTSBUILDDIR}/nowritetimeout $dbnm
-rc=$?
-pkill cdb2sockpool
-exit $rc
