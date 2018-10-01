@@ -22,5 +22,15 @@ public class UnpooledDataSourceTest {
         ResultSet rs = stmt.executeQuery("SELECT CAST(NOW() AS TEXT)");
         String zulu = rs.getString(1);
         Assert.assertTrue("Should get back a time in Zulu", zulu.contains("Zulu"));
+
+        /* De-register myself from the driver manager to not interfere with other tests. */
+        Enumeration<java.sql.Driver> drivers = DriverManager.getDrivers();
+        while (drivers.hasMoreElements()) {
+            java.sql.Driver driver = drivers.nextElement();
+            if (!(driver instanceof com.bloomberg.comdb2.jdbc.Driver)) {
+                DriverManager.deregisterDriver(driver);
+                break;
+            }
+        }
     }
 }
