@@ -721,22 +721,22 @@ cdb2sql $SP_OPTIONS - <<EOF
 create table foraudit {$(cat foraudit.csc2)}\$\$
 create table audit {$(cat audit.csc2)}\$\$
 create procedure audit version 'sptest' {$(cat audit.lua)}\$\$
-put default procedure audit 'sptest' 
-create procedure cons version 'sptest' {$(cat cons.lua)}\$\$
-put default procedure cons 'sptest'
+create procedure cons0 version 'sptest' {$(cat cons.lua)}\$\$
+create procedure cons1 version 'sptest' {$(cat cons.lua)}\$\$
 create procedure cons_with_tid version 'sptest' {$(cat cons_with_tid.lua)}\$\$
-put default procedure cons_with_tid 'sptest'
 create lua trigger audit on (table foraudit for insert and update and delete)
-create lua consumer cons on (table foraudit for insert and update and delete)
+create lua consumer cons0 on (table foraudit for insert and update and delete)
+create lua consumer cons1 on (table foraudit for insert and update and delete)
 EOF
 
 for ((i=0;i<500;++i)); do
-    echo "drop lua consumer cons"
-    echo "create lua consumer cons on (table foraudit for insert and update and delete)"
+    echo "drop lua consumer cons0"
+    echo "create lua consumer cons0 on (table foraudit for insert and update and delete)"
 done | cdb2sql $SP_OPTIONS - > /dev/null
 
-sleep 3 # Wait for trigger to start
-cdb2sql $SP_OPTIONS "exec procedure cons()" > /dev/null 2>&1 &
+#START CONSUMERS
+cdb2sql $SP_OPTIONS "exec procedure cons0(true)" > /dev/null 2>&1 &
+cdb2sql $SP_OPTIONS "exec procedure cons1(false)" > /dev/null 2>&1 &
 #GENERATE DATA
 cdb2sql $SP_OPTIONS "exec procedure gen('foraudit', 500)"
 #DELETE DATA
@@ -745,7 +745,8 @@ sleep 20 # Wait for queues to drain
 cdb2sql $SP_OPTIONS - <<'EOF'
 select * from comdb2_triggers order by name, type, tbl_name, event
 drop lua trigger audit
-drop lua consumer cons
+drop lua consumer cons0
+drop lua consumer cons1
 select * from comdb2_triggers order by name, type, tbl_name, event
 select added_by, type, count(*) from audit group by added_by, type
 EOF

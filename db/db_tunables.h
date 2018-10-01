@@ -1444,6 +1444,10 @@ REGISTER_TUNABLE("handle_buf_latency_ms",
                  TUNABLE_INTEGER, &gbl_handle_buf_add_latency_ms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("queuedb_timeout_sec",
+                 "Unassign Lua consumer/trigger if no heartbeat received for this time",
+                 TUNABLE_INTEGER, &gbl_queuedb_timeout_sec, 0, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("osql_send_startgen",
                  "Send start-generation in osql stream.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_osql_send_startgen,
