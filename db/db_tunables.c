@@ -250,6 +250,7 @@ static int ctrace_gzip;
 
 int gbl_ddl_cascade_drop = 1;
 extern int gbl_queuedb_genid_filename;
+extern int gbl_queuedb_timeout_sec;
 
 extern int gbl_timeseries_metrics;
 extern int gbl_metric_maxpoints;
@@ -552,7 +553,6 @@ static int maxcolumns_verify(void *context, void *value)
 static int loghist_update(void *context, void *value)
 {
     comdb2_tunable *tunable = (comdb2_tunable *)context;
-    int val;
 
     if ((tunable->flags & EMPTY) != 0) {
         *(int *)tunable->var = 10000;
@@ -615,8 +615,6 @@ static int blobmem_sz_thresh_kb_update(void *context, void *value)
 static int enable_upgrade_ahead_update(void *context, void *value)
 {
     comdb2_tunable *tunable = (comdb2_tunable *)context;
-    int val;
-
     if ((tunable->flags & EMPTY) != 0) {
         *(int *)tunable->var = 32;
     } else {
@@ -643,7 +641,6 @@ static int broken_max_rec_sz_update(void *context, void *value)
 
 static int netconndumptime_update(void *context, void *value)
 {
-    comdb2_tunable *tunable = (comdb2_tunable *)context;
     int val = *(int *)value;
     net_set_conntime_dump_period(thedb->handle_sibling, val);
     return 0;
@@ -652,7 +649,6 @@ static int netconndumptime_update(void *context, void *value)
 static void *netconndumptime_value(void *context)
 {
     static char val[64];
-    comdb2_tunable *tunable = (comdb2_tunable *)context;
     sprintf(val, "%d", net_get_conntime_dump_period(thedb->handle_sibling));
     return val;
 }
@@ -856,7 +852,6 @@ static inline int free_tunable(comdb2_tunable *tunable)
 /* Reclaim memory acquired by global tunables. */
 int free_gbl_tunables()
 {
-    comdb2_tunable *tunable;
     for (int i = 0; i < gbl_tunables->count; i++) {
         free_tunable(gbl_tunables->array[i]);
         free(gbl_tunables->array[i]);
@@ -1082,7 +1077,6 @@ int parse_double(const char *value, double *num)
 static int parse_bool(const char *value, int *num)
 {
     int n;
-    int ret;
 
     if (!(strncasecmp(value, "on", sizeof("on"))) ||
         !(strncasecmp(value, "yes", sizeof("yes")))) {

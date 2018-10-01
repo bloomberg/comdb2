@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=882)
+(TUNABLES_COUNT=883)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -608,6 +608,7 @@
 (name='private_blkseq_stripes', description='Number of stripes for the blkseq table.', type='INTEGER', value='1', read_only='N')
 (name='qscanmode', description='Enables queue scan mode optimisation.', type='BOOLEAN', value='OFF', read_only='N')
 (name='queuedb_genid_filename', description='Use genid in queuedb filenames.  (Default: on)', type='BOOLEAN', value='ON', read_only='Y')
+(name='queuedb_timeout_sec', description='Unassign Lua consumer/trigger if no heartbeat received for this time', type='INTEGER', value='10', read_only='N')
 (name='rand_udp_fails', description='Rate of drop of UDP packets (for testing).', type='INTEGER', value='0', read_only='N')
 (name='random_get_curtran_failures', description='Force random get_curtran failures', type='BOOLEAN', value='OFF', read_only='N')
 (name='random_lock_release_interval', description='', type='INTEGER', value='0', read_only='Y')

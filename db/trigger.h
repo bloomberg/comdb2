@@ -72,7 +72,7 @@ int trigger_unregister_req(trigger_reg_t *);
 int trigger_unregister_node(const char *node);
 int trigger_registered(const char *);
 void trigger_clear_hash(void);
-void trigger_stat(void);
+int trigger_stat(void);
 void trigger_reg_to_cpu(trigger_reg_t *);
 
 #define trigger_reg_to_net trigger_reg_to_cpu
@@ -91,10 +91,12 @@ void trigger_reg_to_cpu(trigger_reg_t *);
         dest->spname_len = strlen(sp_name);                                    \
         strcpy(dest->spname, sp_name);                                         \
         strcpy(trigger_hostname(dest), gbl_mynode);                            \
-        trigger_reg_to_net(dest);                                              \
     } while (0)
 
 #define Q4SP(var, spname)                                                      \
     char var[sizeof("__q") + strlen(spname)];                                  \
     sprintf(var, "__q%s", spname);
+
+#define SP4Q(q) ((q) + (sizeof("__q") - 1))
+
 #endif
