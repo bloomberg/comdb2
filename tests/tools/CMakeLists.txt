@@ -45,10 +45,11 @@ add_exe(cdb2api_unit cdb2api_unit.c)
 add_exe(malloc_resize_test malloc_resize_test.c)
 add_exe(cdb2_close_early cdb2_close_early.c)
 add_exe(cdb2api_read_intrans_results cdb2api_read_intrans_results.c)
+add_exe(nowritetimeout nowritetimeout.c)
 
 add_custom_target(test-tools DEPENDS ${test-tools})
 
-foreach(executable blob bound cdb2api_caller cdb2bind comdb2_blobtest insert_lots_mt leakcheck localrep overflow_blobtest selectv serial sicountbug sirace simple_ssl utf8 insert register breakloop cdb2_open multithd verify_atomics_work cdb2api_unit malloc_resize_test cdb2_close_early cdb2api_read_intrans_results ssl_multi_certs_one_process)
+foreach(executable blob bound cdb2api_caller cdb2bind comdb2_blobtest insert_lots_mt leakcheck localrep overflow_blobtest selectv serial sicountbug sirace simple_ssl utf8 insert register breakloop cdb2_open multithd verify_atomics_work cdb2api_unit malloc_resize_test cdb2_close_early cdb2api_read_intrans_results ssl_multi_certs_one_process nowritetimeout)
   target_link_libraries(${executable} cdb2api ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
 endforeach()
 
@@ -70,6 +71,6 @@ target_link_libraries(recom cdb2api ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} $
 # everything!
 target_link_libraries(stepper cdb2api mem dlmalloc util ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
 
-foreach(executable blob bound cdb2api_caller cdb2bind comdb2_blobtest insert_lots_mt leakcheck localrep overflow_blobtest selectv serial sicountbug sirace simple_ssl utf8 insert register breakloop cdb2_client hatest comdb2_sqltest ptrantest recom stepper multithd cdb2_open verify_atomics_work cdb2api_unit malloc_resize_test cdb2_close_early cdb2api_read_intrans_results ssl_multi_certs_one_process)
+foreach(executable blob bound cdb2api_caller cdb2bind comdb2_blobtest insert_lots_mt leakcheck localrep overflow_blobtest selectv serial sicountbug sirace simple_ssl utf8 insert register breakloop cdb2_client hatest comdb2_sqltest ptrantest recom stepper multithd cdb2_open verify_atomics_work cdb2api_unit malloc_resize_test cdb2_close_early cdb2api_read_intrans_results ssl_multi_certs_one_process nowritetimeout)
     target_link_libraries(${executable} ${UNWIND_LIBRARY})
 endforeach()
