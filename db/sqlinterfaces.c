@@ -163,7 +163,7 @@ int gbl_check_access_controls;
 
 struct thdpool *gbl_sqlengine_thdpool = NULL;
 
-void sql_reset_sqlthread(sqlite3 *db, struct sql_thread *thd);
+void sql_reset_sqlthread(struct sql_thread *thd);
 int blockproc2sql_error(int rc, const char *func, int line);
 static int test_no_btcursors(struct sqlthdstate *thd);
 static void sql_thread_describe(void *obj, FILE *out);
@@ -3462,7 +3462,7 @@ int handle_sqlite_requests(struct sqlthdstate *thd,
 
         /* get an sqlite engine */
         rc = get_prepared_bound_stmt(thd, clnt, &rec, &err);
-        if (rc == SQLITE_SCHEMA_REMOTE) {
+        if (rc == SQLITE_SCHEMA_REMOTE)
             continue;
         if ( rc == SQLITE_SCHEMA_DOHSQL) {
             rec.sql = strdup(dohsql_get_sql(clnt, 0));
@@ -5277,11 +5277,7 @@ int sqlpool_init(void)
     return 0;
 }
 
-/* we have to clear
-      - sqlclntstate (key, pointers in Bt, thd)
-      - thd->tran and mode (this is actually done in Commit/Rollback)
- */
-void sql_reset_sqlthread(sqlite3 *db, struct sql_thread *thd)
+void sql_reset_sqlthread(struct sql_thread *thd)
 {
     if (thd) {
         thd->clnt = NULL;

@@ -123,11 +123,7 @@ static void sqlengine_work_shard(struct thdpool *pool, void *work,
 {
     struct sqlthdstate *thd = thddata;
     struct sqlclntstate *clnt= (struct sqlclntstate*)work;
-    int bdberr;
-    int inherited_curtrans = 0;
     int rc;
-    int created_shadtbl = 0;
-    char thdinfo[40];
 
     thr_set_user("shard thread", clnt->appsock_id);
 
@@ -165,7 +161,7 @@ static void sqlengine_work_shard(struct thdpool *pool, void *work,
         handle_child_error(clnt, clnt->query_rc); 
     }
 
-    sql_reset_sqlthread(thd->sqldb, thd->sqlthd);
+    sql_reset_sqlthread(thd->sqlthd);
 
     if (put_curtran(thedb->bdb_env, clnt)) {
         logmsg(LOGMSG_ERROR, "%s: unable to destroy a CURSOR transaction!\n",
@@ -226,7 +222,6 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp, int 
 {
     dohsql_connector_t *conn = (dohsql_connector_t*)clnt->plugin.state;
     sqlite3_stmt *stmt = resp->stmt;
-    struct errstat *err = resp->err;
     
     row_t   *row;
     row_t   *oldrow;
@@ -236,8 +231,8 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp, int 
     
     if(conn->status == DOH_MASTER_DONE) {
         if (verbose)
-            logmsg(LOGMSG_ERROR, "%s: %p master done q %d qf %d\n", 
-                    __func__, pthread_self(), queue_count(conn->que),
+            logmsg(LOGMSG_ERROR, "%lx %s master done q %d qf %d\n", 
+                    pthread_self(), __func__, queue_count(conn->que),
                     queue_count(conn->que_free));
         /* work is done, need to clean-up */
         trimQue(stmt, conn->que, 0);
@@ -252,7 +247,7 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp, int 
 
     /* try to steal an old row */
     if (queue_count(conn->que_free)>0){
-        fprintf(stderr, "%s: %d retrieved older row\n", __func__, pthread_self());
+        fprintf(stderr, "%lx %s retrieved older row\n", pthread_self(), __func__);
         oldrow = queue_next(conn->que_free);
     }
     pthread_mutex_unlock(&conn->mtx);
@@ -555,7 +550,7 @@ got_row:
 static int dohsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s %d\n", pthread_self(), __func__, t); 
+        logmsg(LOGMSG_WARN, "%lx %s %d\n", pthread_self(), __func__, t); 
     switch (t) {
     case RESPONSE_COLUMNS: return inner_columns(c, a);
     case RESPONSE_COLUMNS_STR: return 0/*newsql_columns_str(c, a, i)*/;
@@ -585,129 +580,129 @@ static int dohsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
 static int dohsql_read_response(struct sqlclntstate *a, int b, void *c, int d)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s %d\n", pthread_self(), __func__, b); 
+        logmsg(LOGMSG_WARN, "%lx %s %d\n", pthread_self(), __func__, b); 
     return -1;
 }
 static void *dohsql_save_stmt(struct sqlclntstate *clnt, void *arg)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
+        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__); 
     return strdup(clnt->sql);
 }
 static void *dohsql_restore_stmt(struct sqlclntstate *clnt, void *arg)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
+        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__); 
     clnt->sql = arg;
     return NULL;
 }
 static void *dohsql_destroy_stmt(struct sqlclntstate *clnt, void *arg)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
+        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__); 
     free(arg);
     return NULL;
 }
 static void *dohsql_print_stmt(struct sqlclntstate *clnt, void *arg)
 {
      if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
+        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__); 
     return arg;
 }
 static int dohsql_param_count(struct sqlclntstate *a)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s TODO\n", pthread_self(), __func__); 
+        logmsg(LOGMSG_WARN, "%lx %s TODO\n", pthread_self(), __func__); 
     return 0;
 }
 static int dohsql_param_index(struct sqlclntstate *a, const char *b, int64_t *c)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
+        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__); 
     return -1;
 }
 static int dohsql_param_value(struct sqlclntstate *a, struct param_data *b, int c)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
+        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__); 
     return -1;
 }
 static int dohsql_override_count(struct sqlclntstate *a)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s TODO\n", pthread_self(), __func__); 
+        logmsg(LOGMSG_WARN, "%lx %s TODO\n", pthread_self(), __func__); 
     return 0;
 }
 static int dohsql_clr_cnonce(struct sqlclntstate *a)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
+        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__); 
     return -1;
 }
 static int dohsql_has_cnonce(struct sqlclntstate *a)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
+        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__); 
     return 0;
 }
 static int dohsql_set_cnonce(struct sqlclntstate *a)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
+        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__); 
     return -1;
 }
 static int dohsql_get_cnonce(struct sqlclntstate *a, snap_uid_t *b)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
+        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__); 
     return -1;
 }
 static int dohsql_get_snapshot(struct sqlclntstate *a, int *b, int *c)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
+        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__); 
     return -1;
 }
 static int dohsql_upd_snapshot(struct sqlclntstate *a)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
+        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__); 
     return -1;
 }
 static int dohsql_clr_snapshot(struct sqlclntstate *a)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
+        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__); 
     return -1;
 }
 static int dohsql_has_high_availability(struct sqlclntstate *a)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
+        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__); 
     return 0;
 }
 static int dohsql_set_high_availability(struct sqlclntstate *a)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
+        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__); 
     return -1;
 }
 static int dohsql_clr_high_availability(struct sqlclntstate *a)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
+        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__); 
     return -1;
 }
 static int dohsql_get_high_availability(struct sqlclntstate *a)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
+        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__); 
     return 0;
 }
 static void dohsql_add_steps(struct sqlclntstate *a, double b)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
+        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__); 
 }
 static void dohsql_setup_client_info(struct sqlclntstate *clnt, struct sqlthdstate *b, char *c)
 {
@@ -717,30 +712,36 @@ static void dohsql_setup_client_info(struct sqlclntstate *clnt, struct sqlthdsta
         thrman_wheref(thrman_self(), "%s", conn->thr_where);
 
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s %s\n", pthread_self(), __func__, (conn->thr_where)?conn->thr_where: "NULL"); 
+        logmsg(LOGMSG_WARN, "%lx %s %s\n", pthread_self(), __func__, (conn->thr_where)?conn->thr_where: "NULL"); 
 }
 static int dohsql_skip_row(struct sqlclntstate *a, uint64_t b)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
+        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__); 
     return 0;
 }
 static int dohsql_log_context(struct sqlclntstate *a, struct reqlogger *b)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s TODO\n", pthread_self(), __func__); 
+        logmsg(LOGMSG_WARN, "%lx %s TODO\n", pthread_self(), __func__); 
     return 0;
 }
 static uint64_t dohsql_get_client_starttime(struct sqlclntstate *clnt)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
+        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__); 
     return 0;
 }
 static int dohsql_get_client_retries(struct sqlclntstate *clnt)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", pthread_self(), __func__); 
+        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__); 
+    return 0;
+}
+static int dohsql_send_intrans_response(struct sqlclntstate *a)
+{
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__); 
     return 0;
 }
 
@@ -769,7 +770,7 @@ static int _shard_connect(struct sqlclntstate *clnt, dohsql_connector_t *conn,
 
     comdb2uuid(conn->clnt->osql.uuid);
     conn->clnt->appsock_id = getarchtid();
-    init_sqlclntstate(conn->clnt, conn->clnt->osql.uuid, 1);
+    init_sqlclntstate(conn->clnt, (char*)conn->clnt->osql.uuid, 1);
     conn->clnt->origin = clnt->origin;
     conn->clnt->sql = strdup(sql);
     plugin_set_callbacks(conn->clnt, dohsql);
@@ -856,14 +857,14 @@ int dohsql_distribute(dohsql_node_t *node)
     /* start peers */
     for(i=0;i<conns->nconns;i++)
     {
-        if(rc = _shard_connect(clnt, &conns->conns[i], node->nodes[i]->sql))
+        if((rc = _shard_connect(clnt, &conns->conns[i], node->nodes[i]->sql))!=0)
             return rc;
 
         if(i>0) {
             /* launch the new sqlite engine a the next shard */
             rc = thdpool_enqueue(gbl_sqlengine_thdpool, 
                     sqlengine_work_shard_pp, clnt->conns->conns[i].clnt, 1, 
-                    sqlcpy=strdup(node->nodes[i]->sql));
+                    sqlcpy=strdup(node->nodes[i]->sql), 0);
             if(rc) {
                 free(sqlcpy);
                 return SHARD_ERR_GENERIC;
@@ -921,7 +922,7 @@ void dohsql_wait_for_master(sqlite3_stmt* stmt, struct sqlclntstate *clnt)
 
     /* wait if run ended ok, master is not done, and there are cached rows */
     if (!clnt->query_rc) {
-        while(conn->status = DOH_RUNNING && queue_count(conn->que)>0) {
+        while(conn->status == DOH_RUNNING && queue_count(conn->que)>0) {
             pthread_mutex_unlock(&conn->mtx);
             poll(NULL, 0, 10);
             pthread_mutex_lock(&conn->mtx);
