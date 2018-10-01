@@ -4082,6 +4082,7 @@ void *statthd(void *p)
     char hdr_fmt[] = "DIFF REQUEST STATS FOR DB %d '%s'\n";
     int have_scon_header = 0;
     int have_scon_stats = 0;
+    int64_t rw_evicts;
 
     extern int active_appsock_conns;
 
@@ -4108,7 +4109,7 @@ void *statthd(void *p)
         conn_timeouts = net_get_num_accept_timeouts(thedb->handle_sibling);
 
         bdb_get_bpool_counters(thedb->bdb_env, (int64_t *)&bpool_hits,
-                               (int64_t *)&bpool_misses);
+                               (int64_t *)&bpool_misses, &rw_evicts);
 
         bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlockwaits, NULL);
         diff_deadlocks = ndeadlocks - last_ndeadlocks;

@@ -80,6 +80,7 @@ struct comdb2_metrics_store {
     int64_t net_drops;
     int64_t net_queue_size;
     int64_t rep_deadlocks;
+    int64_t rw_evicts;
 };
 
 static struct comdb2_metrics_store stats;
@@ -209,8 +210,10 @@ comdb2_metric gbl_metrics[] = {
      &stats.net_queue_size, NULL},
     {"rep_deadlocks", "Replication deadlocks", 
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
-     &stats.rep_deadlocks, NULL}
-
+     &stats.rep_deadlocks, NULL},
+    {"rw_evictions", "Dirty page evictions", 
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
+     &stats.rw_evicts, NULL}
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -307,7 +310,7 @@ int refresh_metrics(void)
     }
 
     rc = bdb_get_bpool_counters(thedb->bdb_env, &stats.bpool_hits,
-                                &stats.bpool_misses);
+                                &stats.bpool_misses, &stats.rw_evicts);
     if (rc) {
         logmsg(LOGMSG_ERROR, "failed to refresh statistics (%s:%d)\n", __FILE__,
                __LINE__);

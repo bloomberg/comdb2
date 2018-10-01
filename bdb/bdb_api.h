@@ -1770,7 +1770,7 @@ int bdb_get_lock_counters(bdb_state_type *bdb_state, int64_t *deadlocks, int64_t
                           int64_t *requests);
 
 int bdb_get_bpool_counters(bdb_state_type *bdb_state, int64_t *bpool_hits,
-                           int64_t *bpool_misses);
+                           int64_t *bpool_misses, int64_t *rw_evicts);
 
 int bdb_master_should_reject(bdb_state_type *bdb_state);
 
@@ -2075,9 +2075,9 @@ int bdb_fill_cluster_info(void **data, int *num_nodes);
 
 void wait_for_sc_to_stop(void);
 void allow_sc_to_run(void);
+
 int bdb_lock_stats(bdb_state_type *bdb_state, int64_t *nlocks);
 
 int bdb_rep_stats(bdb_state_type *bdb_state, int64_t *nrep_deadlocks);
-
 
 #endif
