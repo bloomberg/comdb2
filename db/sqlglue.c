@@ -7342,6 +7342,7 @@ sqlite3BtreeCursor_temptable(Btree *pBt,      /* The btree */
         logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_cursor failed: %d\n",
                __func__, bdberr);
         free(cur->tmptable);
+        cur->tmptable = NULL;
         return SQLITE_INTERNAL;
     }
 
