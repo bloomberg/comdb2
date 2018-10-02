@@ -91,6 +91,7 @@ int gbl_req_all_threshold = 10000000;
 int gbl_req_all_time_threshold = 0;
 int gbl_req_delay_count_threshold = 5;
 int gbl_getlock_latencyms = 0;
+int gbl_flush_log_at_checkpoint = 1;
 extern int request_delaymore(void *bdb_state);
 int __rep_set_last_locked(DB_ENV *dbenv, DB_LSN *lsn);
 
@@ -3628,7 +3629,8 @@ gap_check:		max_lsn_dbtp = NULL;
 			goto err;
 		}
 		__os_free(dbenv, ckp_args);
-
+        if (gbl_flush_log_at_checkpoint)
+            __log_flush(dbenv, NULL);
 		__memp_sync_out_of_band(dbenv, &rp->lsn);
 		break;
 	case DB___txn_regop_rowlocks:
@@ -6422,22 +6424,6 @@ recovery_release_locks(dbenv, lockid)
 }
 
 static int
-online_apprec(dbenv, lsn, trunclsnp)
-	DB_ENV *dbenv;
-	DB_LSN lsn, *trunclsnp;
-{
-    int ret;
-    if ((ret = pthread_rwlock_wrlock(&dbenv->recoverlk)) != 0) {
-        logmsg(LOGMSG_FATAL, "%s error getting recoverlk, %d\n", __func__, ret);
-        abort();
-    }
-
-    ret = __db_apprec(dbenv, &lsn, trunclsnp, 1, DB_RECOVER_NOCKP);
-    pthread_rwlock_unlock(&dbenv->recoverlk);
-    return ret;
-}
-
-static int
 __rep_dorecovery(dbenv, lsnp, trunclsnp, online)
 	DB_ENV *dbenv;
 	DB_LSN *lsnp, *trunclsnp;
@@ -6452,12 +6438,12 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online)
 	int found_scdone = 0;
 	int recover_at_commit = 1;
     int schema_lk_count = 0;
+    int i_am_master = 0;
 	int maxlocks = gbl_online_recovery_maxlocks;
 	u_int32_t rectype;
 	u_int32_t keycnt = 0;
 	u_int32_t logflags = DB_LAST;
 	u_int32_t lockcnt;
-	int do_truncate = 0;
 	u_int32_t lockid = DB_LOCK_INVALIDID;
 	DB_REP *db_rep;
 	REP *rep;
@@ -6467,6 +6453,8 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online)
 
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
+
+    i_am_master = F_ISSET(rep, REP_F_MASTER);
 
 	/* Figure out if we are backing out any commited transactions. */
 	if ((ret = __log_cursor(dbenv, &logc)) != 0)
@@ -6527,30 +6515,6 @@ restart:
 
 			if (ret)
 				goto err;
-
-			if (online) {
-				if (!schema_lk_count && maxlocks > 0) {
-					if ((ret = dbenv->lock_locker_lockcount(
-									dbenv, lockid, &lockcnt)) != 0) {
-						logmsg(LOGMSG_ERROR, "%s lockcount failed, ret=%d\n",
-								__func__, ret);
-						goto err;
-					}
-					do_truncate = (lockcnt > maxlocks);
-				}
-
-				if (do_truncate) {
-                    DB_LSN sc_lsn = lsn;
-					if ((ret = __log_c_get(logc, &lsn, &mylog, DB_PREV)) != 0)
-						goto err;
-					ret = online_apprec(dbenv, lsn, trunclsnp);
-					recovery_release_locks(dbenv, lockid);
-                    lockid = DB_LOCK_INVALIDID;
-					if (ret)
-						goto err;
-					goto restart;
-				}
-			}
 		}
 
 		if (rectype == DB___txn_regop_gen) {
@@ -6575,28 +6539,6 @@ restart:
 
 			if (ret)
 				goto err;
-
-			if (online) {
-				do_truncate = 0;
-				if (!schema_lk_count && maxlocks > 0) {
-					if ((ret = dbenv->lock_locker_lockcount(
-									dbenv, lockid, &lockcnt)) != 0) {
-						logmsg(LOGMSG_ERROR, "%s lockcount failed, ret=%d\n",
-								__func__, ret);
-						goto err;
-					}
-					do_truncate = (lockcnt > maxlocks);
-				}
-				if (do_truncate) {
-					if ((ret = __log_c_get(logc, &lsn, &mylog, DB_PREV)) != 0)
-						goto err;
-					ret = online_apprec(dbenv, lsn, trunclsnp);
-					recovery_release_locks(dbenv, lockid);
-                    lockid = DB_LOCK_INVALIDID;
-					if (ret) goto err;
-					goto restart;
-				}
-			}
 		}
 
 		if (rectype == DB___txn_regop) {
@@ -6621,28 +6563,6 @@ restart:
 
 			if (ret)
 				goto err;
-
-			if (online) {
-				do_truncate = 0;
-				if (!schema_lk_count && maxlocks > 0) {
-					if ((ret = dbenv->lock_locker_lockcount(
-									dbenv, lockid, &lockcnt)) != 0) {
-						logmsg(LOGMSG_ERROR, "%s lockcount failed, ret=%d\n",
-								__func__, ret);
-						goto err;
-					}
-					do_truncate = (lockcnt > maxlocks);
-				}
-				if (do_truncate) {
-					if ((ret = __log_c_get(logc, &lsn, &mylog, DB_PREV)) != 0)
-						goto err;
-					ret = online_apprec(dbenv, lsn, trunclsnp);
-					recovery_release_locks(dbenv, lockid);
-                    lockid = DB_LOCK_INVALIDID;
-					if (ret) goto err;
-					goto restart;
-				}
-			}
 		}
 	}
 
@@ -6650,9 +6570,14 @@ restart:
             lsnp->file, lsnp->offset);
     ret = __db_apprec(dbenv, lsnp, trunclsnp, undo, DB_RECOVER_NOCKP);
 
+    /* Increase generation before releasing recovery lock */
+    if (i_am_master && !gbl_is_physical_replicant) {
+        uint32_t newgen = rep->gen+(20+rand()%20);
+        __rep_set_gen(dbenv, __func__, __LINE__, newgen);
+    }
+
     logmsg(LOGMSG_INFO, "%s finished truncate, trunclsnp is [%d:%d]\n", __func__,
             trunclsnp->file, trunclsnp->offset);
-
 
     pthread_rwlock_unlock(&dbenv->recoverlk);
     have_recover_lk = 0;
@@ -6667,7 +6592,7 @@ restart:
         dbenv->truncate_sc_callback(dbenv, trunclsnp);
 
     /* Tell replicants to truncate */
-    if (F_ISSET(rep, REP_F_MASTER) && dbenv->rep_truncate_callback)
+    if (i_am_master && dbenv->rep_truncate_callback)
         dbenv->rep_truncate_callback(dbenv, trunclsnp);
 
 err:

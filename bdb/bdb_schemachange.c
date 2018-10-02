@@ -378,12 +378,10 @@ int bdb_reload_rowlocks(bdb_state_type *bdb_state, scdone_t type, int *bdberr)
         str = "disable_rowlocks";
     }
 
-    BDB_WRITELOCK(str);
     if (type == rowlocks_on)
         gbl_rowlocks = 1;
     else
         gbl_rowlocks = 0;
-    BDB_RELLOCK();
     return 0;
 }
 

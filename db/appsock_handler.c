@@ -180,6 +180,12 @@ static void *thd_appsock_int(appsock_work_args_t *w, int *keepsocket,
 
     sbuf2settimeout(sb, IOTIMEOUTMS, IOTIMEOUTMS);
 
+    if (!thedb->dbs) {
+        logmsg(LOGMSG_ERROR, "%s: halt appsock request on NULL thedb->dbs\n",
+                __func__);
+        return 0;
+    }
+
     arg.tab = thedb->dbs[0];
     arg.conv_flags = 0;
 

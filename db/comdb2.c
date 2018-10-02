@@ -5554,12 +5554,12 @@ int comdb2_replicated_truncate(void *dbenv, void *inlsn)
     int *offset = &(((int *)(inlsn))[1]);
 
     logmsg(LOGMSG_INFO, "%s starting for [%d:%d]\n", __func__, *file, *offset);
-    if (thedb->master == gbl_mynode && !gbl_is_physical_replicant) {
+    if (!gbl_is_physical_replicant) {
         /* We've asked the replicants to truncate their log files.  Now we are
          * incrementing the generation number without an election and writing a
          * record.  The higher-gen write ensures that this node will remain
          * master after an election.  */
-        master_increment_gen(thedb->bdb_env);
+        send_newmaster(thedb->bdb_env);
     }
 
     logmsg(LOGMSG_INFO, "%s complete [%d:%d]\n", __func__, *file, *offset);

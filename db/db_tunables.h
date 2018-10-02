@@ -1579,5 +1579,10 @@ REGISTER_TUNABLE("logdelete_lock_trace",
                  "(Default: off)", TUNABLE_BOOLEAN, &gbl_logdelete_lock_trace,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("flush_log_at_checkpoint",
+                 "Replicants flush the log at checkpoint records.  "
+                 "(Default: on)", TUNABLE_BOOLEAN, &gbl_flush_log_at_checkpoint,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 
 #endif /* _DB_TUNABLES_H */

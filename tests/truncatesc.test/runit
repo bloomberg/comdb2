@@ -12,7 +12,7 @@ export repname=rep$TESTID
 export repdir=${DBDIR}/$repname
 export comdb2ar=${COMDB2AR_EXE}
 export myhost=$(hostname)
-export physrep=1
+export physrep=0
 export replive=1
 export total_tries=40
 export replog=$repdir/log.txt
@@ -1217,12 +1217,12 @@ EOF
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into strings(str) values ('{\"i\":20}')"
     lua_sfunc_lsn_1=$(get_current_lsn)
     lua_sfunc_jse_1=$(select_json_extract)
-    sleep $repsleep
-    write_prompt $func "Selecting json-extract from rep"
-    lua_sfunc_rep_1=$(select_json_extract_rep)
-    [[ "$lua_sfunc_rep_1" != "$lua_sfunc_jse_1" ]] && failexit $func "rep json-extract output differs"
-
-
+    if [[ "$physrep" == 1 ]]; then
+        sleep $repsleep
+        write_prompt $func "Selecting json-extract from rep"
+        lua_sfunc_rep_1=$(select_json_extract_rep)
+        [[ "$lua_sfunc_rep_1" != "$lua_sfunc_jse_1" ]] && failexit $func "rep json-extract output differs"
+    fi
     write_prompt $func "Dropping json_extract"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop lua scalar function json_extract"
     lua_sfunc_jse_2=$(select_json_extract)
@@ -1320,9 +1320,12 @@ local function final()
 end
 }$$
 EOF
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put default procedure myavg 'sptest'"
+    sleep $sleeptime
     write_prompt $func "Putting default for myavg"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put default procedure myavg 'sptest'"
+    sleep $sleeptime
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create lua aggregate function myavg"
+    sleep $sleeptime
     write_prompt $func "Exec gen and myavg"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "exec procedure gen()"
     lua_afunc_lsn_1=$(get_current_lsn)

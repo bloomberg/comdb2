@@ -2028,9 +2028,7 @@ void bdb_get_txn_stats(bdb_state_type *bdb_state, int64_t *active,
 
 uint32_t bdb_get_rep_gen(bdb_state_type *bdb_state);
 
-/* Hack to retain mastership after a truncate: increment generation & 
- * broadcast newmaster, and write a record immediately. */
-void master_increment_gen(bdb_state_type *bdb_state);
+void send_newmaster(bdb_state_type *bdb_state);
 
 typedef struct bias_info bias_info;
 typedef int (*bias_cmp_t)(bias_info *, void *found);
