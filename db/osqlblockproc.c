@@ -603,6 +603,7 @@ const char *osql_reqtype_str(int type)
         "DELIDX",
         "INSIDX",
         "DBQ_CONSUME_UUID",
+        "STARTGEN",
     };
     return typestr[type];
 }

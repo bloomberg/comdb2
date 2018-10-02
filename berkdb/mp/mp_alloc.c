@@ -341,8 +341,8 @@ found:		if (offsetp != NULL)
 		return (0);
 	} else if (giveup || c_mp->stat.st_pages == 0) {
 		R_UNLOCK(dbenv, memreg);
-		logmsg(LOGMSG_FATAL, 
-                "unable to allocate space from the buffer cache");
+		logmsg(LOGMSG_FATAL,
+		       "unable to allocate space from the buffer cache\n");
 		abort();
 	}
 
@@ -401,7 +401,7 @@ found:		if (offsetp != NULL)
 		 * This test ignores pathological cases like no buffers in the
 		 * system -- that shouldn't be possible.
 		 */
-		if ((++buckets % c_mp->htab_buckets) == 0) {
+		if (buckets++ == c_mp->htab_buckets) {
 			if (freed_space > 0)
 				goto alloc;
 			R_UNLOCK(dbenv, memreg);

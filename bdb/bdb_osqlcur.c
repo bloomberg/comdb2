@@ -540,8 +540,6 @@ int bdb_tran_free_shadows(bdb_state_type *bdb_state, tran_type *tran)
 {
     int dbnum = 0;
     int have_errors = 0;
-    int bdberr;
-    int rc = 0;
 
     if (!tran)
         return 0;
@@ -617,9 +615,10 @@ struct temp_cursor *bdb_tran_deltbl_first(bdb_state_type *bdb_state,
     rc = bdb_temp_table_first(bdb_state, cur, bdberr);
     if (rc == IX_OK) {
         char *key = bdb_temp_table_key(cur);
+#ifndef NDEBUG
         int keylen = bdb_temp_table_keysize(cur);
-
         assert(keylen == sizeof(*genid));
+#endif
 
         memcpy(genid, key, sizeof(*genid));
 
@@ -654,9 +653,10 @@ int bdb_tran_deltbl_next(bdb_state_type *bdb_state, tran_type *shadow_tran,
     rc = bdb_temp_table_next(bdb_state, cur, bdberr);
     if (rc == IX_OK) {
         char *key = bdb_temp_table_key(cur);
+#ifndef NDEBUG
         int keylen = bdb_temp_table_keysize(cur);
-
         assert(keylen == sizeof(*genid));
+#endif
 
         memcpy(genid, key, sizeof(*genid));
 
@@ -818,7 +818,6 @@ int bdb_tran_deltbl_setdeleted(bdb_cursor_ifn_t *pcur_ifn,
                                int datalen, int *bdberr)
 {
     bdb_cursor_impl_t *cur = pcur_ifn->impl;
-    tmpcursor_t *skip = NULL;
     int rc = 0;
 
     if (!cur->shadow_tran) {

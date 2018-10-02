@@ -6,4 +6,3 @@ endif
 ifeq ($(TEST_TIMEOUT),)
 	export TEST_TIMEOUT=1m
 endif
-unexport CLUSTER
