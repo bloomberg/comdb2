@@ -273,7 +273,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                 reqprintf(iq, "usleep error rc %d errno %d\n", rc, errno);
         }
 
-        if(!iq->have_blkseq) {
+        if(!iq->is_sorese) {
             reqprintf(iq, "Calling bdb_lock_table_read()");
             rc = bdb_lock_table_read(iq->usedb->handle, trans);
             if (rc == BDBERR_DEADLOCK) {
@@ -968,7 +968,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         usleep(1000 * d_ms);
     }
 
-    if(!iq->have_blkseq) {
+    if(!iq->is_sorese) {
         reqprintf(iq, "Calling bdb_lock_table_read()");
         rc = bdb_lock_table_read(iq->usedb->handle, trans);
         if (rc == BDBERR_DEADLOCK) {
@@ -1961,7 +1961,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         usleep(1000 * d_ms);
     }
 
-    if(!iq->have_blkseq) {
+    if(!iq->is_sorese) {
         reqprintf(iq, "Calling bdb_lock_table_read()");
         rc = bdb_lock_table_read(iq->usedb->handle, trans);
         if (rc == BDBERR_DEADLOCK) {
