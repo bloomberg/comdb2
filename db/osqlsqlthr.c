@@ -518,14 +518,15 @@ int osql_serial_send_readset(struct sqlclntstate *clnt, int nettype)
     if (osql->rqid == OSQL_RQID_USE_UUID)
         nettype = nettypetouuidnettype(nettype);
 
+    CurRangeArr *arr_ptr;
     if (nettype == NET_OSQL_SERIAL_RPL || nettype == NET_OSQL_SERIAL_RPL_UUID)
-        rc = osql_send_serial(osql->host, osql->rqid, osql->uuid, clnt->arr,
-                              clnt->arr->file, clnt->arr->offset, nettype,
-                              osql->logsb);
+        arr_ptr = clnt->arr;
     else
-        rc = osql_send_serial(osql->host, osql->rqid, osql->uuid,
-                              clnt->selectv_arr, clnt->selectv_arr->file,
-                              clnt->selectv_arr->offset, nettype, osql->logsb);
+        arr_ptr = clnt->selectv_arr;
+
+    rc = osql_send_serial(osql->host, osql->rqid, osql->uuid, arr_ptr,
+                          arr_ptr->file, arr_ptr->offset, nettype, osql->logsb);
+    osql->replicant_numops++;
     return rc;
 }
 

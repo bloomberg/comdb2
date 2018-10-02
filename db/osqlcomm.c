@@ -6652,6 +6652,20 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
     return 0;
 }
 
+
+
+/* get the number of blockops sent in the osql_done packet
+ */
+inline int osql_get_replicant_nops(const char *rpl, int has_uuid)
+{
+    uint8_t *p_buf = rpl;
+    p_buf += (has_uuid ? sizeof(osql_uuid_rpl_t) : sizeof(osql_rpl_t));
+    osql_done_t dt = {0};
+    const uint8_t *p_buf_end = p_buf + sizeof(osql_done_t);
+    osqlcomm_done_type_get(&dt, p_buf, p_buf_end);
+    return dt.nops;
+}
+
 /**
  * Handles each packet and calls record.c functions
  * to apply to received row updates
@@ -6780,17 +6794,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             assert(!memcmp(&snap_info, &iq->snap_info, sizeof(snap_uid_t)));
         }
 
-        logmsg(LOGMSG_DEBUG, "rqid=%llu, uuid=%llu, received OSQL_DONE rc = %d, nops = %d, steps = %d\n",
-               rqid, comdb2uuidstr(uuid, us), rc, dt.nops, step + 1);
-
-        /* the blockops received should be same as what client sent */
-        if (dt.nops != (step + 1)) {
-            abort(); //TODO: remove later
-            err->blockop_num = step;
-            err->ixnum = 0;
-            err->errcode = OP_FAILED_VERIFY;
-            return ERR_INTERNAL;
-        }
 
         /* p_buf is pointing at client_query_stats if there is one */
         if (type == OSQL_DONE_STATS) { /* Never set anywhere. */

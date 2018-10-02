@@ -639,8 +639,9 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     if (type == OSQL_SCHEMACHANGE)
         iq->tranddl++;
 
+    iq->osql_replicant_numops++;
+
 #if 0
-#endif
     printf("Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n",
            rqid, type, osql_reqtype_str(type), osql_log_time(), sess->seq);
 #endif
@@ -715,6 +716,17 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                            osql_session_get_ireq(sess));
     if (rc == 0)
         return 0;
+
+    assert(type == OSQL_DONE_SNAP);
+    // get nops from the osql_done packet
+    int done_nops = osql_get_replicant_nops(rpl, rqid == OSQL_RQID_USE_UUID);
+    logmsg(LOGMSG_DEBUG, "Saving OSQL_DONE done_nops = %d, seq = %lld\n", done_nops, seq);
+    if (done_nops != seq + 1) {
+        abort();
+        return ERR_INTERNAL;
+    }
+
+    /* TODO: check the generation and fail early if it does not match */
 
     osql_sess_set_complete(rqid, uuid, sess, xerr);
 
@@ -1123,8 +1135,6 @@ static int process_this_session(
         /* this locks pages */
         rc_out = func(iq, rqid, uuid, iq_tran, data, datalen, &flags, &updCols,
                       blobs, step, err, &receivedrows, logsb);
-
-        iq->osql_replicant_numops++;
 
         if (rc_out != 0 && rc_out != OSQL_RC_DONE) {
             reqlog_set_error(iq->reqlogger, "Error processing", rc_out);
