@@ -143,16 +143,18 @@ verify_hello_reuse()
 test_basic_actions()
 {
     cat <<EOF > help.expected
-get [/echo] service     : discover port for service
-reg service             : obtain/discover port for new service
-del service             : forget port assignment for service
-use service port        : set specific port registration for service
-stat                    : dump some stats
-used (or list)          : dump active port assignments
-rte                     : get route to instance service/port
-hello service           : keep active connection
 active                  : list active connections
+del service             : forget port assignment for service
 exit                    : shutdown pmux (may be restarted by system)
+get [/echo] service     : discover port for service
+hello service           : keep active connection
+help                    : this help message
+range                   : print port range which this pmux can assign
+reg service             : obtain/discover port for new service
+rte                     : get route to instance service/port
+stat                    : dump some stats
+use service port        : set specific port registration for service
+used (or list)          : dump active port assignments
 EOF
 
     ${TESTSROOTDIR}/tools/send_msg_port.sh "help" ${COMDB2_PMUX_PORT} &> help.out
@@ -233,23 +235,67 @@ EOF
 
 
     #----------
-    echo use a port outside of range of pmux, should fail and clear previous entry
+    echo use a port outside of range of pmux, should not fail and clear previous entry
     echo NOTE: port $((PMUXPORTSTART-1)) is OUT OF THE RANGE this pmux is allowed to assign
     ${TESTSROOTDIR}/tools/send_msg_port.sh "use $name $((PMUXPORTSTART-1))" ${COMDB2_PMUX_PORT} &> use.out
-    echo "-1" > use.expected
+    echo "0" > use.expected
     if ! diff use.expected use.out ; then
         failexit "differing use.expected use.out"
     fi
 
     #----------
+    echo out of range port should not change the num of free ports
+    cat <<EOF > stat5.expected
+free ports: 90
+$name -> $((PMUXPORTSTART-1))
+EOF
+
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "stat" ${COMDB2_PMUX_PORT} &> stat.out
+    if ! diff stat5.expected stat.out ; then
+        failexit "differing stat5.expected stat.out: stat should contain port"
+    fi
+
+    #----------
+    echo make sure name has port $((PMUXPORTSTART-1))
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT} &> get.out
+    echo $((PMUXPORTSTART-1)) > get.expected
+    if ! diff get.expected get.out ; then
+        failexit "differing get.expected get.out"
+    fi
+
+    #---------- 
+    echo register name should return the same out of range port
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "reg $name" ${COMDB2_PMUX_PORT} &> reg.out
+    echo $((PMUXPORTSTART-1)) > reg.expected
+    if ! diff reg.expected reg.out ; then
+        failexit "differing reg.expected reg.out"
+    fi
+
+    #----------
+    echo deleting the out of range port
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "del $name" ${COMDB2_PMUX_PORT} &> del.out
+    if ! diff del.expected del.out ; then
+        failexit "differing del.expected del.out"
+    fi
+
+    #----------
+    echo stat should show that list is empty, and all ports are avail
     ${TESTSROOTDIR}/tools/send_msg_port.sh "stat" ${COMDB2_PMUX_PORT} &> stat.out
     if ! diff stat.expected stat.out ; then
         failexit "differing stat.expected stat.out: stat should be empty"
     fi
 
+    #----------
+    echo deleting a service which has no entry should fail with -1
+    echo "-1" > del2.expected
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "del $name" ${COMDB2_PMUX_PORT} &> del.out
+    if ! diff del2.expected del.out ; then
+        failexit "differing del2.expected del.out"
+    fi
+
 
     #---------- 
-    echo register name again
+    echo register name again -- should get $PMUXPORTSTART
     ${TESTSROOTDIR}/tools/send_msg_port.sh "reg $name" ${COMDB2_PMUX_PORT} &> reg.out
     echo $PMUXPORTSTART > reg.expected
     if ! diff reg.expected reg.out ; then
@@ -257,7 +303,7 @@ EOF
     fi
 
     #---------- 
-    echo make sure name has port $PMUXPORTSTART
+    echo make sure $name has port $PMUXPORTSTART
     ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT} &> get.out
     echo $PMUXPORTSTART > get.expected
     if ! diff get.expected get.out ; then
@@ -265,20 +311,38 @@ EOF
     fi
 
 
-
     #---------- 
-    echo this is in use by $name so use of this port should fail with -1
+    echo this is in use by $name so use of this port will override that
     name2="comdb2/replication/another_dummy_name"
     ${TESTSROOTDIR}/tools/send_msg_port.sh "use $name2 $PMUXPORTSTART" ${COMDB2_PMUX_PORT} &> use.out
-    echo "-1" > use.expected
+    echo "0" > use.expected
     if ! diff use.expected use.out ; then
         failexit "differing use.expected use.out"
     fi
 
+
+    #---------- 
+    echo make sure $name2 has port $PMUXPORTSTART
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name2" ${COMDB2_PMUX_PORT} &> get.out
+    echo $PMUXPORTSTART > get.expected
+    if ! diff get.expected get.out ; then
+        failexit "differing get.expected get.out"
+    fi
+
+    #---------- 
+    echo make sure $name does not have a port assigned
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT} &> get.out
+    echo "-1" > get.expected
+    if ! diff get.expected get.out ; then
+        failexit "differing get.expected get.out"
+    fi
+
+
+
     #----------
-    echo $name should now use next port: start+1
-    ${TESTSROOTDIR}/tools/send_msg_port.sh "use $name $((PMUXPORTSTART+1))" ${COMDB2_PMUX_PORT} &> use.out
-    echo 0 > use.expected
+    echo $name should now get next port: start+1
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "reg $name" ${COMDB2_PMUX_PORT} &> use.out
+    echo $((PMUXPORTSTART+1)) > use.expected
     if ! diff use.expected use.out ; then
         failexit "differing use.expected use.out"
     fi
@@ -292,7 +356,7 @@ EOF
 
 
     #---------- 
-    echo $PMUXPORTEND is valid to use
+    echo last port in range $PMUXPORTEND is valid to use
     ${TESTSROOTDIR}/tools/send_msg_port.sh "use $name $PMUXPORTEND" ${COMDB2_PMUX_PORT} &> use.out
     echo 0 > use.expected
     if ! diff use.expected use.out ; then
@@ -306,8 +370,17 @@ EOF
         failexit "differing get.expected get.out"
     fi
 
+
     #----------
-    echo only one port registered
+    echo deleting name2 at $PMUXPORTSTART
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "del $name2" ${COMDB2_PMUX_PORT} &> del.out
+    if ! diff del.expected del.out ; then
+        failexit "differing del.expected del.out"
+    fi
+
+
+    #----------
+    echo only one port now registered
     ${TESTSROOTDIR}/tools/send_msg_port.sh "stat" ${COMDB2_PMUX_PORT} &> stat3.out
     cat <<EOF > stat3.expected
 free ports: 89
@@ -341,7 +414,7 @@ $name2 -> $PMUXPORTSTART
 $name -> $PMUXPORTEND
 EOF
     if ! diff stat4.expected stat4.out ; then
-        failexit "differing stat3.expected stat3.out"
+        failexit "differing stat4.expected stat4.out"
     fi
 
 }
@@ -488,15 +561,20 @@ runtest()
     echo start comdb2 and request a port that is in pmux range
     test_comdb2_with_port $((PMUXPORTEND-1))
     local name="comdb2/replication/$DBNAME"
-    ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT} &> get.out
-    echo $((PMUXPORTEND-1)) > get.expected
-    if ! diff get.expected get.out ; then
-        failexit "differing get.expected get.out"
+    local locport=`${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT}`
+    if [ $((PMUXPORTEND-1)) != $locport ] ; then
+        failexit "expected $((PMUXPORTEND-1)) but got $locport"
     fi
 
     echo start comdb2 and request a port that is not on pmux range
     test_comdb2_with_port $((PMUXPORTSTART-1))
-    ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT} &> get.out
+    locport=`${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT}`
+    if [ $((PMUXPORTSTART-1)) != $locport ] ; then
+        failexit "expected $((PMUXPORTSTART-1)) but got $locport"
+    fi
+
+    echo delete svc $name
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "del $name" ${COMDB2_PMUX_PORT} &> get.out
 
     sleep 2
     test_rte

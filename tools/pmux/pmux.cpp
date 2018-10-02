@@ -385,27 +385,40 @@ static int tcp_listen(uint16_t port)
     return fd;
 }
 
+static bool is_port_in_range(int port)
+{
+    for (auto &range : port_ranges) {
+        if (range.first <= port && port <=  range.second)
+            return true;
+    }
+    return false;
+}
+
+/* Service svc is informing us that it is using a certain port.
+ * If port is in use by another service we need to update the 
+ * mapping. If port is outside of range, we still need to honor
+ * and store it in the mapping.
+ */
 static int use_port(const char *svc, int port)
 {
     const auto &i = free_ports.find(port);
+    
+    // if registered under another service or if out of range
+    if (i != free_ports.end()) {
+        free_ports.erase(i);
+    }
+
     // remember the old service->port mapping, if any
     int usedport = get_port(svc);
 
-    if (i == free_ports.end()) {
-        /* service can tell us over and over that it's using the port, that's
-         * fine */
-        if (usedport == port)
-            return 0;
-        else // service was using a different port before so remove that mapping
-            dealloc_port(svc);
+    // service can tell us repeatedly that it's using the port, thats fine
+    if (usedport == port) // we dont need to do anything
+        return 0;
 
-        syslog(LOG_ERR, "%s -- port %d not on free list:\n", svc, port);
-        return -1;
-    } else if (usedport != -1) {
-        // service was using a different port before so remove that mapping
+    // service was using a different port before so remove that mapping
+    if (usedport != -1) {
         dealloc_port(svc);
     }
-    free_ports.erase(i);
 
     std::pair<std::string, int> kv(svc, port);
     port_map.insert(kv);
@@ -436,10 +449,12 @@ static int dealloc_port(const char *svc)
     if (i == port_map.end()) {
         return -1;
     }
+
     int port = i->second;
     port_map.erase(i);
     pmux_store->del_port(svc);
-    free_ports.insert(port);
+    if (is_port_in_range(port))
+        free_ports.insert(port);
     return 0;
 }
 #if 0
@@ -550,7 +565,6 @@ static int run_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds, char *in,
     if (cmd == NULL)
         goto done;
 
-again:
     if (strcmp(cmd, "reg") == 0) {
         if (c.writable) {
             svc = strtok_r(NULL, " ", &sav);
@@ -652,6 +666,8 @@ again:
                 std::cout << "hello from " << svc << std::endl;
 #endif
             }
+        } else if (svc == nullptr) {
+                conn_printf(c, "-1 missing service name\n");
         } else {
             disallowed_write(c, cmd);
         }

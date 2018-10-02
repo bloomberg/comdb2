@@ -3428,7 +3428,7 @@ inline netinfo_type *create_netinfo_fake(void)
     char service[HOSTNAME_LEN] = "fakeservice";
     char instance[HOSTNAME_LEN] = "fakeinstance";
 
-    return create_netinfo_int(intern(myhostname), myportnum, -1, , service,
+    return create_netinfo_int(intern(myhostname), myportnum, -1, app, service,
                               instance, 1, 0, 0, 0);
 }
 
