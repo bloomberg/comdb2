@@ -392,6 +392,7 @@ static int osql_send_upd_logic(struct BtCursor *pCur, struct sql_thread *thd,
                    __LINE__, __func__, rc);
             return rc;
         }
+        osql->replicant_numops++;
     }
 
     rc = osql_send_updrec(
@@ -408,7 +409,7 @@ static int osql_send_upd_logic(struct BtCursor *pCur, struct sql_thread *thd,
         return rc;
     }
 
-    thd->clnt->osql.replicant_numops++;
+    osql->replicant_numops++;
     return SQLITE_OK;
 }
 
@@ -1246,6 +1247,7 @@ static int osql_send_insidx_logic(struct BtCursor *pCur,
                              getkeysize(pCur->db, i), nettype, osql->logsb);
         if (rc)
             break;
+        osql->replicant_numops++;
     }
     return rc;
 }
@@ -1413,6 +1415,7 @@ static int osql_send_abort_logic(struct sqlclntstate *clnt, int nettype)
                               nettype, osql->logsb, clnt->query_stats, NULL);
     /* no need to restart an abort, master drop the transaction anyway
     RESTART_SOCKSQL; */
+    osql->replicant_numops = 0;
 
     return rc;
 }
@@ -1465,6 +1468,7 @@ int osql_query_dbglog(struct sql_thread *thd, int queryid)
         /* not sure if we want to restart this */
         RESTART_SOCKSQL;
     } while (restarted && rc == 0);
+    osql->replicant_numops++;
     return rc;
 }
 
@@ -1538,6 +1542,7 @@ int osql_record_genid(struct BtCursor *pCur, struct sql_thread *thd,
             return rc;
         }
     }
+    thd->clnt->osql.replicant_numops++;
     return osql_save_recordgenid(pCur, thd, genid);
 }
 
@@ -1747,6 +1752,7 @@ int osql_schemachange_logic(struct schema_change_type *sc,
                    __FILE__, __LINE__, __func__, rc);
             return rc;
         }
+        osql->replicant_numops++;
     }
 
     rc = osql_save_schemachange(thd, sc, usedb);
@@ -1786,6 +1792,7 @@ int osql_bpfunc_logic(struct sql_thread *thd, BpfuncArg *arg)
                    __LINE__, __func__, rc);
             return rc;
         }
+        osql->replicant_numops++;
     }
 
     rc = osql_save_bpfunc(thd, arg);

@@ -640,6 +640,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         iq->tranddl++;
 
 #if 0
+#endif
     printf("Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n",
            rqid, type, osql_reqtype_str(type), osql_log_time(), sess->seq);
 #endif

@@ -6715,7 +6715,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     if (gbl_toblock_net_throttle && is_write_request(type))
         net_throttle_wait(thedb->handle_sibling);
 
-    logmsg(LOGMSG_DEBUG, "osql_process_packet(): processing %d\n", type);
+    const char *osql_reqtype_str(int type);
+    logmsg(LOGMSG_DEBUG, "osql_process_packet(): processing %s (%d)\n", osql_reqtype_str(type), type);
 
     switch (type) {
     case OSQL_DONE:
