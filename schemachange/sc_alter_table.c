@@ -597,8 +597,8 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         live_sc_off(db);
 
         for (i = 0; i < gbl_dtastripe; i++) {
-            sc_errf(s, "  > [%s] stripe %2d was at 0x%016llx\n", s->table, i,
-                    newdb->sc_genids[i]);
+            sc_errf(s, "  > [%s] stripe %2d was at 0x%016llx\n", s->tablename,
+                    i, newdb->sc_genids[i]);
         }
 
         while (s->logical_livesc) {

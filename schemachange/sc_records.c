@@ -1334,7 +1334,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         }
         *thdData = data;
         if (s->resume) {
-            rc = bdb_get_sc_start_lsn(NULL, s->table, &(thdData->start_lsn),
+            rc = bdb_get_sc_start_lsn(NULL, s->tablename, &(thdData->start_lsn),
                                       &bdberr);
             if (rc) {
                 logmsg(
@@ -1351,7 +1351,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
                        __func__, __LINE__);
                 return -1;
             }
-            rc = bdb_set_sc_start_lsn(NULL, s->table, &(thdData->start_lsn),
+            rc = bdb_set_sc_start_lsn(NULL, s->tablename, &(thdData->start_lsn),
                                       &bdberr);
             if (rc) {
                 logmsg(LOGMSG_ERROR,
@@ -1364,7 +1364,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         sc_set_logical_redo_lwm(thdData->start_lsn.file);
         thdData->stripe = -1;
         sc_printf(s, "[%s] starting thread for logical live schema change\n",
-                  s->table);
+                  s->tablename);
         thdData->isThread = 1;
 
         if (BDB_ATTR_GET(thedb->bdb_attr, SNAPISOL) == 0) {
@@ -1390,7 +1390,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
                             thdData);
         if (rc) {
             sc_errf(s, "[%s] starting thread failed for logical redo\n",
-                    s->table);
+                    s->tablename);
             bdb_clear_logical_live_sc(s->db->handle);
             s->logical_livesc = 0;
             free(s->sc_convert_done);
@@ -1399,7 +1399,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
     } else {
         if (s->resume) {
             int rc = 0, bdberr = 0;
-            rc = bdb_get_sc_start_lsn(NULL, s->table, &(data.start_lsn),
+            rc = bdb_get_sc_start_lsn(NULL, s->tablename, &(data.start_lsn),
                                       &bdberr);
             if (rc == 0 || bdberr != BDBERR_FETCH_DTA) {
                 sc_errf(data.s,
@@ -2044,7 +2044,7 @@ static int reconstruct_blob_records(struct convert_record_data *data,
         logmsg(LOGMSG_DEBUG,
                "%s: [%s] redo lsn[%u:%u] type[%d] dtafile %d, "
                "datastripe %d, genid %llx\n",
-               __func__, data->s->table, rec->lsn.file, rec->lsn.offset,
+               __func__, data->s->tablename, rec->lsn.file, rec->lsn.offset,
                rec->type, rec->dtafile, rec->dtastripe, rec->genid);
 #endif
 
@@ -2421,7 +2421,7 @@ done:
     logmsg(LOGMSG_DEBUG,
            "%s: [%s] redo lsn[%u:%u] type[ADD_DTA] rec->dtafile %d, "
            "rec->datastripe %d, rec->genid %llx\n",
-           __func__, data->s->table, rec->lsn.file, rec->lsn.offset,
+           __func__, data->s->tablename, rec->lsn.file, rec->lsn.offset,
            rec->dtafile, rec->dtastripe, rec->genid);
 #endif
 
@@ -2526,7 +2526,7 @@ done:
     logmsg(LOGMSG_DEBUG,
            "%s: [%s] redo lsn[%u:%u] type[DEL_DTA] rec->dtafile %d, "
            "rec->datastripe %d, rec->genid %llx\n",
-           __func__, data->s->table, rec->lsn.file, rec->lsn.offset,
+           __func__, data->s->tablename, rec->lsn.file, rec->lsn.offset,
            rec->dtafile, rec->dtastripe, rec->genid);
 #endif
 
@@ -2703,7 +2703,7 @@ done:
     logmsg(LOGMSG_DEBUG,
            "%s: [%s] redo lsn[%u:%u] type[UPD_DTA] rec->dtafile %d, "
            "rec->datastripe %d, rec->genid %llx, newgenid %llx\n",
-           __func__, data->s->table, rec->lsn.file, rec->lsn.offset,
+           __func__, data->s->tablename, rec->lsn.file, rec->lsn.offset,
            rec->dtafile, rec->dtastripe, rec->genid, genid);
 #endif
 
@@ -2746,7 +2746,7 @@ static int live_sc_redo_logical_rec(struct convert_record_data *data,
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s: [%s] failed to redo add lsn[%u:%u] rc=%d\n", __func__,
-                   data->s->table, rec->lsn.file, rec->lsn.offset, rc);
+                   data->s->tablename, rec->lsn.file, rec->lsn.offset, rc);
             return rc;
         }
         break;
@@ -2756,7 +2756,7 @@ static int live_sc_redo_logical_rec(struct convert_record_data *data,
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s: [%s] failed to redo delete lsn[%u:%u] rc=%d\n",
-                   __func__, data->s->table, rec->lsn.file, rec->lsn.offset,
+                   __func__, data->s->tablename, rec->lsn.file, rec->lsn.offset,
                    rc);
             return rc;
         }
@@ -2767,7 +2767,7 @@ static int live_sc_redo_logical_rec(struct convert_record_data *data,
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s: [%s] failed to redo update lsn[%u:%u] rc=%d\n",
-                   __func__, data->s->table, rec->lsn.file, rec->lsn.offset,
+                   __func__, data->s->tablename, rec->lsn.file, rec->lsn.offset,
                    rc);
             return rc;
         }
@@ -2793,7 +2793,7 @@ static int live_sc_redo_logical_log(struct convert_record_data *data,
     /* pre process blob recs */
     LISTC_FOR_EACH_SAFE(&pCur->log->impl->recs, rec, tmp, lnk)
     {
-        if (strcasecmp(data->s->table, rec->table) != 0)
+        if (strcasecmp(data->s->tablename, rec->table) != 0)
             continue;
 
         switch (rec->type) {
@@ -2867,7 +2867,7 @@ again:
 
     LISTC_FOR_EACH(&pCur->log->impl->recs, rec, lnk)
     {
-        if (strcasecmp(data->s->table, rec->table) != 0)
+        if (strcasecmp(data->s->tablename, rec->table) != 0)
             continue;
         if (data->s->sc_thd_failed) {
             if (!data->s->retry_bad_genids)
@@ -2880,7 +2880,7 @@ again:
         }
         if (gbl_sc_abort || data->from->sc_abort ||
             (data->s->iq && data->s->iq->sc_should_abort)) {
-            sc_errf(data->s, "[%s] Logical redo aborted\n", data->s->table);
+            sc_errf(data->s, "[%s] Logical redo aborted\n", data->s->tablename);
             rc = -1;
             goto done;
         }
@@ -2889,8 +2889,8 @@ again:
             logmsg(LOGMSG_ERROR,
                    "[%s] redo failed at record lsn[%u:%u] table[%s] type[%d] "
                    "rc=%d\n",
-                   data->s->table, rec->lsn.file, rec->lsn.offset, rec->table,
-                   rec->type, rc);
+                   data->s->tablename, rec->lsn.file, rec->lsn.offset,
+                   rec->table, rec->type, rc);
             goto done;
         }
     }
@@ -2900,8 +2900,8 @@ again:
             BDB_ATTR_GET(thedb->bdb_attr, SC_LOGICAL_SAVE_LSN_EVERY_N) ==
         0) {
         int bdberr = 0;
-        rc = bdb_set_sc_start_lsn(data->trans, data->s->table, &(pCur->curLsn),
-                                  &bdberr);
+        rc = bdb_set_sc_start_lsn(data->trans, data->s->tablename,
+                                  &(pCur->curLsn), &bdberr);
         if (rc != 0) {
             if (bdberr == BDBERR_DEADLOCK)
                 rc = RC_INTERNAL_RETRY;
@@ -2975,7 +2975,7 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
     }
     data->iq.reqlogger = thrman_get_reqlogger(thr_self);
 
-    sc_printf(data->s, "[%s] logical redo %s at [%u:%u]\n", data->s->table,
+    sc_printf(data->s, "[%s] logical redo %s at [%u:%u]\n", data->s->tablename,
               data->s->resume ? "resumes" : "starts", data->start_lsn.file,
               data->start_lsn.offset);
     data->lasttime = comdb2_time_epoch();
@@ -3022,12 +3022,13 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
             sc_errf(data->s,
                     "[%s] Stoping work on logical redo because we are told to "
                     "abort\n",
-                    data->s->table);
+                    data->s->tablename);
             goto cleanup;
         }
         if (bdb_llog_cursor_next(pCur) != 0) {
             sc_printf(data->s, "[%s] logical redo failed at [%u:%u]\n",
-                      data->s->table, pCur->curLsn.file, pCur->curLsn.offset);
+                      data->s->tablename, pCur->curLsn.file,
+                      pCur->curLsn.offset);
             data->s->iq->sc_should_abort = 1;
             goto cleanup;
         }
@@ -3035,7 +3036,7 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
             rc = live_sc_redo_logical_log(data, pCur);
             if (rc) {
                 sc_printf(data->s, "[%s] logical redo failed at [%u:%u]\n",
-                          data->s->table, pCur->curLsn.file,
+                          data->s->tablename, pCur->curLsn.file,
                           pCur->curLsn.offset);
                 data->s->iq->sc_should_abort = 1;
                 goto cleanup;
@@ -3087,7 +3088,7 @@ cleanup:
     sc_printf(data->s,
               "[%s] logical redo thread exiting, log cursor at [%u:%u], redid "
               "%lld txns\n",
-              data->s->table, pCur->curLsn.file, pCur->curLsn.offset,
+              data->s->tablename, pCur->curLsn.file, pCur->curLsn.offset,
               data->nrecs);
 
     pthread_mutex_lock(&data->s->livesc_mtx);
