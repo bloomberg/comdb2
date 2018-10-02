@@ -163,13 +163,9 @@ static int osql_bplog_key_cmp(void *usermem, int key1len, const void *key1,
         return 1;
     }
 
-    if (k1->genid < k2->genid) {
-        return -1;
-    }
-
-    if (k1->genid > k2->genid) {
-        return 1;
-    }
+    // need to sort by genid correctly
+    int cmp = bdb_cmp_genids(k1->genid, k2->genid);
+    if (cmp) return cmp;
 
     if (k1->seq < k2->seq) {
         return -1;
@@ -742,7 +738,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
         if (type == OSQL_GENID) {
             enum { OSQLCOMM_UUID_RPL_TYPE_LEN = 4 + 4 + 16 };
-            unsigned long long genid;
+            unsigned long long genid = 0;
             const char *p_buf = rpl + OSQLCOMM_UUID_RPL_TYPE_LEN; 
             buf_no_net_get(&(genid), sizeof(genid), p_buf, p_buf + sizeof(genid));
 #if DEBUG_REORDER 
@@ -755,7 +751,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 #endif
             }
             sess->last_genid = genid;
-            return 0; //don't put in temp table OSQL_GENID
+            return 0; // don't put in temp table OSQL_GENID
         } else if (type == OSQL_UPDATE || type == OSQL_DELETE || type == OSQL_UPDREC ||
             type == OSQL_DELREC || type == OSQL_INSERT || type == OSQL_INSREC ||
             type == OSQL_QBLOB  || type == OSQL_DELIDX || type == OSQL_INSIDX ||
