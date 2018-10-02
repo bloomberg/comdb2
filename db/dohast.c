@@ -220,7 +220,6 @@ static dohsql_node_t* gen_oneselect(Vdbe *v, Select *p, Expr *extraRows)
     dohsql_node_t *node;
     Select *prior = p->pPrior;
     Select *next = p->pNext;
-    int i;
 
     p->selFlags |= SF_ASTIncluded;
 
@@ -336,7 +335,6 @@ static dohsql_node_t* gen_select(Vdbe* v, Select *p)
 {
     Select *crt;
     int span = 0;
-    int i;
 
     p->selFlags |= SF_ASTIncluded;
 
@@ -352,6 +350,10 @@ static dohsql_node_t* gen_select(Vdbe* v, Select *p)
             return NULL;
         crt = crt->pPrior;
     }
+
+    /* this is the insert rowset which links values on pNext!*/
+    if (span == 1 && p->op == TK_ALL)
+        return NULL;
 
     if (p->op == TK_SELECT)
         return gen_oneselect(v, p, NULL);
@@ -421,8 +423,9 @@ const char* ast_type_str(enum ast_type type)
     switch(type) {
     case AST_TYPE_SELECT: return "SELECT";
     case AST_TYPE_INSERT: return "INSERT";
+    default:
+        return "INVALID";
     }
-    return "INVALID";
 }
 
 const char* ast_param_str(enum ast_type type, void* obj)
@@ -430,8 +433,9 @@ const char* ast_param_str(enum ast_type type, void* obj)
     switch(type) {
     case AST_TYPE_SELECT: return obj?((dohsql_node_t*)obj)->sql:"NULL";
     case AST_TYPE_INSERT: return "()";
+    default:
+        return "INVALID";
     }
-    return "INVALID";
 }
 
 void ast_print(ast_t *ast)
