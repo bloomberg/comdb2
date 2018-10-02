@@ -2463,7 +2463,7 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
     } 
     
     /* make sure the database directory exists! */
-    struct stat sb;
+    struct stat sb = {0};
     rc = stat(dbenv->basedir, &sb);
     if (rc || !S_ISDIR(sb.st_mode)) {
         logmsg(LOGMSG_FATAL, "DB directory '%s' does not exist\n",
