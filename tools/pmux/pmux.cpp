@@ -661,28 +661,24 @@ again:
         for (auto it : active_services) {
             conn_printf(c, "%s\n", it.c_str());
         }
-    } else if (strcmp(cmd, "active") == 0) {
-        std::lock_guard<std::mutex> l(active_services_mutex);
-        conn_printf(c, "%d\n", active_services.size());
-        for (auto it : active_services) {
-            conn_printf(c, "%s\n", it.c_str());
-        }
     } else if (strcmp(cmd, "range") == 0) {
         for (auto &range : port_ranges) {
             conn_printf(c, "%d:%d\n", range.first, range.second);
         }
     } else if (strcmp(cmd, "help") == 0) {
-        conn_printf(c, "get [/echo] service     : discover port for service\n"); 
-        conn_printf(c, "reg service             : obtain/discover port for new service\n");
-        conn_printf(c, "del service             : forget port assignment for service\n");
-        conn_printf(c, "use service port        : set specific port registration for service\n");
-        conn_printf(c, "stat                    : dump some stats\n");
         conn_printf(c,
-                    "used (or list)          : dump active port assignments\n");
-        conn_printf(c, "rte                     : get route to instance service/port\n");
-        conn_printf(c, "hello service           : keep active connection\n");
-        conn_printf(c, "active                  : list active connections\n");
-        conn_printf(c, "exit                    : shutdown pmux (may be restarted by system)\n");
+            "active                  : list active connections\n"
+            "del service             : forget port assignment for service\n"
+            "exit                    : shutdown pmux (may be restarted by system)\n"
+            "get [/echo] service     : discover port for service\n"
+            "hello service           : keep active connection\n"
+            "help                    : this help message\n"
+            "range                   : print port range which this pmux can assign\n"
+            "reg service             : obtain/discover port for new service\n"
+            "rte                     : get route to instance service/port\n"
+            "stat                    : dump some stats\n"
+            "use service port        : set specific port registration for service\n"
+            "used (or list)          : dump active port assignments\n");
     } else {
         conn_printf(c, "-1 unknown command, type 'help' for a brief usage description\n");
     }

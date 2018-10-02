@@ -3316,10 +3316,10 @@ static netinfo_type *create_netinfo_int(char myhostname[], int myportnum,
 
 #ifdef DEBUG
     rc = pthread_attr_setstacksize(&(netinfo_ptr->pthread_attr_detach),
-                                   1024 * /*512*/ 1024);
+                                   1024 * 1024);
 #else
     rc = pthread_attr_setstacksize(&(netinfo_ptr->pthread_attr_detach),
-                                   1024 * /*128*/ 256);
+                                   1024 * 256);
 #endif
     if (rc != 0) {
         logmsg(LOGMSG_FATAL, "pthread_attr_setstacksize failed: %d %s\n", errno,
@@ -3428,7 +3428,7 @@ inline netinfo_type *create_netinfo_fake(void)
     char service[HOSTNAME_LEN] = "fakeservice";
     char instance[HOSTNAME_LEN] = "fakeinstance";
 
-    return create_netinfo_int(intern(myhostname), myportnum, -1, app, service,
+    return create_netinfo_int(intern(myhostname), myportnum, -1, , service,
                               instance, 1, 0, 0, 0);
 }
 
