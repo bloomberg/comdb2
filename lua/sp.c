@@ -29,6 +29,7 @@
 #include <alloca.h>
 #include <poll.h>
 #include <unistd.h>
+#include <math.h>
 
 #include <sqlite3.h>
 #include <sqliteInt.h>
@@ -125,6 +126,7 @@ typedef struct {
     struct consumer *consumer;
     genid_t genid;
     int push_tid;
+    int register_timeoutms;
 
     /* signaling from libdb on qdb insert */
     pthread_mutex_t *lock;
@@ -407,13 +409,18 @@ static int check_retry_conditions(Lua L, int initial)
     return 0;
 }
 
-static int luabb_trigger_register(Lua L, trigger_reg_t *reg)
+static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
+                                  int register_timeoutms)
 {
     logmsg(LOGMSG_DEBUG,
-           "%s waiting for %s elect_cookie:%d trigger_cookie:0x%lx\n",
-           __func__, reg->spname, ntohl(reg->elect_cookie), reg->trigger_cookie);
+           "%s waiting for %s elect_cookie:%d trigger_cookie:0x%lx\n", __func__,
+           reg->spname, ntohl(reg->elect_cookie), reg->trigger_cookie);
     int rc;
     SP sp = getsp(L);
+    int retry = round(register_timeoutms / 1000.0);
+    if (retry == 0) {
+        retry = 1;
+    }
     while ((rc = trigger_register_req(reg)) != CDB2_TRIG_REQ_SUCCESS) {
         if (check_retry_conditions(L, 1) != 0) {
             return luabb_error(L, sp, sp->error);
@@ -422,11 +429,24 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg)
         case NET_SEND_FAIL_TIMEOUT:
         case NET_SEND_FAIL_INVALIDNODE:
         case CDB2_TRIG_ASSIGNED_OTHER:
-        case CDB2_TRIG_NOT_MASTER: sleep(1); break;
+        case CDB2_TRIG_NOT_MASTER:
+            if (retry) {
+                sleep(1);
+                break;
+            }
         default:
-            luabb_error(L, sp, "failed to register trigger:%s rc:%d",
-                        reg->spname, rc);
-            return -1;
+            if (register_timeoutms == 0) {
+                luabb_error(L, sp, "trigger:%s registration failed rc:%d",
+                            reg->spname, rc);
+                return -1;
+            } else {
+                luabb_error(L, sp, " trigger:%s registration timeout %dms",
+                            reg->spname, register_timeoutms);
+                return -2;
+            }
+        }
+        if (register_timeoutms) {
+            --retry;
         }
     }
     logmsg(LOGMSG_DEBUG, "%s rc:%d %s elect_cookie:%d trigger_cookie:0x%lx\n",
@@ -434,7 +454,6 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg)
            reg->trigger_cookie);
     return rc;
 }
-
 static void luabb_trigger_unregister(dbconsumer_t *q)
 {
     if (q->lock) {
@@ -671,7 +690,7 @@ static int dbq_poll(Lua L, dbconsumer_t *q, int delay)
             return rc;
         }
         if ((rc = check_register_condition(L, q)) != 0) {
-            if (luabb_trigger_register(L, &q->info) != CDB2_TRIG_REQ_SUCCESS) {
+            if (luabb_trigger_register(L, &q->info, q->register_timeoutms) != CDB2_TRIG_REQ_SUCCESS) {
                 return -1;
             }
         }
@@ -714,27 +733,32 @@ static int dbconsumer_get_int(Lua L, dbconsumer_t *q)
     return rc;
 }
 
-static int dbconsumer_pushtid(Lua L, int arg) {
-    int push_tid = 0;
-    if (lua_gettop(L) == arg) {
-      luaL_checktype(L, arg, LUA_TTABLE);
-      lua_pushnil(L);
-      while (lua_next(L, -2)) {
-          const char *key, *value;
-          switch (luabb_type(L, -2)) {
-          case DBTYPES_LSTRING:
-          case DBTYPES_CSTRING:
-              key = luabb_tostring(L, -2);
-              if (strcmp(key, "with_tid") == 0) {
-                  if (luabb_type(L, -1) == DBTYPES_LBOOLEAN) {
-                      push_tid = lua_toboolean(L, -1);
-                  }
-              }
-              lua_pop(L, 1);
-          }
-      }
+static void dbconsumer_getargs(Lua L, int *push_tid, int *register_timeoutms)
+{
+    if (lua_gettop(L) != 1) return;
+    luaL_checktype(L, 1, LUA_TTABLE);
+    lua_pushnil(L);
+    while (lua_next(L, -2)) {
+        const char *key;
+        switch (luabb_type(L, -2)) {
+        case DBTYPES_LSTRING:
+        case DBTYPES_CSTRING:
+            key = luabb_tostring(L, -2);
+            if (strcasecmp(key, "with_tid") == 0) {
+                if (luabb_type(L, -1) == DBTYPES_LBOOLEAN) {
+                    *push_tid = lua_toboolean(L, -1);
+                }
+            } else if (strcasecmp(key, "register_timeout") == 0) {
+                if (lua_isnumber(L, -1)) {
+                    int timeoutms = lua_tonumber(L, -1);
+                    if (timeoutms > 0) {
+                        *register_timeoutms = timeoutms;
+                    }
+                }
+            }
+            lua_pop(L, 1);
+        }
     }
-    return push_tid;
 }
 
 static int dbconsumer_get(Lua L)
@@ -4067,7 +4091,10 @@ static int db_error(lua_State *lua)
 static int db_consumer(Lua L)
 {
     luaL_checkudata(L, 1, dbtypes.db);
-    int push_tid = dbconsumer_pushtid(L, 2);
+    lua_remove(L, 1);
+
+    int push_tid = 0, register_timeoutms = 0;
+    dbconsumer_getargs(L, &push_tid, &register_timeoutms);
 
     SP sp = getsp(L);
     if (sp->parent->have_consumer) {
@@ -4090,10 +4117,16 @@ static int db_consumer(Lua L)
     enum consumer_t type = dbqueue_consumer_type(consumer);
     trigger_reg_t *t;
     if (type == CONSUMER_TYPE_DYNLUA) {
-        // will block until registration completes
         trigger_reg_init(t, spname);
-        int rc = luabb_trigger_register(L, t);
-        if (rc != CDB2_TRIG_REQ_SUCCESS) return luaL_error(L, sp->error);
+        switch (luabb_trigger_register(L, t, register_timeoutms)) {
+        case CDB2_TRIG_REQ_SUCCESS:
+            break;
+        case -2:
+            lua_pushnil(L);
+            return 1;
+        default:
+            return luaL_error(L, sp->error);
+        }
     } else {
         luabb_error(L, sp, "no such consumer");
         lua_pushnil(L);
@@ -4109,6 +4142,7 @@ static int db_consumer(Lua L)
         return 1;
     }
     q->push_tid = push_tid;
+    q->register_timeoutms = register_timeoutms;
     sp->parent->have_consumer = 1;
     return 1;
 }
