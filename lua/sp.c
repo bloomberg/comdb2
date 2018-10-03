@@ -127,6 +127,7 @@ typedef struct {
     genid_t genid;
     int push_tid;
     int register_timeoutms;
+    time_t registration_time;
 
     /* signaling from libdb on qdb insert */
     pthread_mutex_t *lock;
@@ -463,11 +464,16 @@ static void luabb_trigger_unregister(dbconsumer_t *q)
 
 static int stop_waiting(Lua L, dbconsumer_t *q)
 {
-    if (check_retry_conditions(L, 0))
+    if (check_retry_conditions(L, 0) != 0)
         return 1;
-    if (luabb_trigger_register(L, &q->info, q->register_timeoutms) == CDB2_TRIG_REQ_SUCCESS)
+    time_t now = time(NULL);
+    if (difftime(now, q->registration_time) < (gbl_queuedb_timeout_sec / 3))
         return 0;
-    return 1;
+    if (luabb_trigger_register(L, &q->info, q->register_timeoutms) !=
+        CDB2_TRIG_REQ_SUCCESS)
+        return 1;
+    q->registration_time = time(NULL);
+    return 0;
 }
 
 static void ping(Lua L)
