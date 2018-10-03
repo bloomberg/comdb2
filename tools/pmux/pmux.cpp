@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <cstring>
 #include <cstdarg>
+#include <assert.h>
 #include <strings.h>
 
 #include <algorithm>
@@ -132,13 +133,27 @@ static int alloc_fd(const char *svc, int fd)
     return 0;
 }
 
-static int get_port(const char *svc)
+static int get_svc_port(const char *svc)
 {
     std::string key(svc);
-    const auto &port = port_map.find(key);
-    if (port == port_map.end())
+    const auto &it = port_map.find(key);
+    if (it == port_map.end())
         return -1;
-    return port->second;
+    return it->second;
+}
+
+static bool is_port_in_range(int port)
+{
+    for (auto &range : port_ranges) {
+        if (range.first <= port && port <=  range.second)
+            return true;
+    }
+    return false;
+}
+
+
+static void dealloc_port_int(const std::map<std::string, int>::iterator &it)
+{
 }
 
 static int connect_instance(int servicefd, char *name)
@@ -146,7 +161,7 @@ static int connect_instance(int servicefd, char *name)
 #ifdef VERBOSE
     fprintf(stderr, "Adding fd %d service %s\n", servicefd, name);
 #endif
-    int port = get_port(name);
+    int port = get_svc_port(name);
     std::string s;
     std::stringstream out;
     out << port;
@@ -385,13 +400,18 @@ static int tcp_listen(uint16_t port)
     return fd;
 }
 
-static bool is_port_in_range(int port)
+static void dealloc_svc_running_on_port(int port)
 {
-    for (auto &range : port_ranges) {
-        if (range.first <= port && port <=  range.second)
-            return true;
+    for (std::map<std::string, int>::iterator it = port_map.begin(); it != port_map.end(); ++it) {
+        if (it->second == port) {
+            int port = it->second;
+            pmux_store->del_port(it->first.c_str());
+            port_map.erase(it);
+            if (is_port_in_range(port))
+                free_ports.insert(port);
+            break;
+        }
     }
-    return false;
 }
 
 /* Service svc is informing us that it is using a certain port.
@@ -401,15 +421,8 @@ static bool is_port_in_range(int port)
  */
 static int use_port(const char *svc, int port)
 {
-    const auto &i = free_ports.find(port);
-    
-    // if registered under another service or if out of range
-    if (i != free_ports.end()) {
-        free_ports.erase(i);
-    }
-
-    // remember the old service->port mapping, if any
-    int usedport = get_port(svc);
+    // remember the old port for this service, if any
+    int usedport = get_svc_port(svc);
 
     // service can tell us repeatedly that it's using the port, thats fine
     if (usedport == port) // we dont need to do anything
@@ -420,6 +433,18 @@ static int use_port(const char *svc, int port)
         dealloc_port(svc);
     }
 
+    // now find what's running in our port
+    const auto &it = free_ports.find(port);
+    
+    // find who's using port and dealloc it since db is up and running
+    // on the specified port which it is trying to register with pmux
+    dealloc_svc_running_on_port(port);
+
+    if (is_port_in_range(port)) {
+        const auto &it = free_ports.find(port);
+        assert (it != free_ports.end()); // port should be free
+        free_ports.erase(it);
+    }
     std::pair<std::string, int> kv(svc, port);
     port_map.insert(kv);
     pmux_store->sav_port(svc, port);
@@ -445,18 +470,21 @@ static int alloc_port(const char *svc)
 static int dealloc_port(const char *svc)
 {
     std::string key(svc);
-    const auto &i = port_map.find(key);
-    if (i == port_map.end()) {
+    const auto &it = port_map.find(key);
+    if (it == port_map.end()) {
         return -1;
     }
 
-    int port = i->second;
-    port_map.erase(i);
-    pmux_store->del_port(svc);
+    int port = it->second;
+    pmux_store->del_port(it->first.c_str());
+    port_map.erase(it);
     if (is_port_in_range(port))
         free_ports.insert(port);
+
     return 0;
 }
+
+
 #if 0
 static char hexmap[] = {'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'};
 static void hprintf(FILE *f, char *b, size_t s)
@@ -512,8 +540,8 @@ static int watchfd(int fd, std::vector<struct pollfd> &fds, struct in_addr addr)
 
 static void used(connection &c)
 {
-    for (auto &port : port_map) {
-        conn_printf(c, "port %-7d name %s\n", port.second, port.first.c_str());
+    for (auto &kv : port_map) {
+        conn_printf(c, "port %-7d name %s\n", kv.second, kv.first.c_str());
     }
 }
 
@@ -571,7 +599,7 @@ static int run_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds, char *in,
             if (svc == NULL) {
                 conn_printf(c, "-1 missing service name\n");
             } else {
-                int port = get_port(svc);
+                int port = get_svc_port(svc);
                 if (port == -1) {
                     port = alloc_port(svc);
                 }
@@ -594,7 +622,7 @@ static int run_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds, char *in,
             if (svc == NULL) {
                 conn_printf(c, "-1\n");
             } else {
-                int port = get_port(svc);
+                int port = get_svc_port(svc);
                 if (echo)
                     conn_printf(c, "%d %s\n", port, svc);
                 else
