@@ -101,6 +101,8 @@ static int bdb_wait_for_seqnum_from_node_nowait_int(bdb_state_type *bdb_state,
                                                     seqnum_type *seqnum,
                                                     char *host);
 
+static void bdb_zap_lsn_waitlist(bdb_state_type *bdb_state, const char *host);
+
 static int last_slow_node_check_time = 0;
 static pthread_mutex_t slow_node_check_lk = PTHREAD_MUTEX_INITIALIZER;
 
@@ -1802,6 +1804,8 @@ void net_newnode_rtn(netinfo_type *netinfo_ptr, char *hostname, int portnum)
             pthread_create(&tid, &(bdb_state->pthread_attr_detach),
                            dummy_add_thread, bdb_state);
         }
+
+        bdb_zap_lsn_waitlist(bdb_state, hostname);
     }
 }
 
@@ -2558,6 +2562,8 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                                     host, seqnum->lsn.file,
                                     seqnum->lsn.offset, seqnum->generation, gen,
                                     bdb_state->repinfo->master_host);
+
+                            bdb_zap_lsn_waitlist(bdb_state, host);
                         }
                     }
 
@@ -2615,8 +2621,7 @@ static int bdb_wait_for_seqnum_from_node_nowait_int(bdb_state_type *bdb_state,
     return -999;
 }
 
-void bdb_disconnected(bdb_state_type *bdb_state, const char *host) {
-
+static void bdb_zap_lsn_waitlist(bdb_state_type *bdb_state, const char *host) {
     if (bdb_state == NULL)
         return;
 
@@ -2686,7 +2691,7 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
         /* We're just checking, not checking & setting */
         state = bdb_state->coherent_state[nodeix(host)];
 
-        if (state != STATE_COHERENT && state != STATE_INCOHERENT_WAIT)
+        if (state != STATE_COHERENT)
             continue;
 
         if (proctime[nodeix(host)] > worst_time) {
@@ -2724,7 +2729,7 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
                 second_worst_time * bdb_state->attr->slowrep_incoherent_factor + 
                 bdb_state->attr->slowrep_incoherent_mintime);
 
-        if ((state == STATE_COHERENT || state == STATE_INCOHERENT_WAIT) &&
+        if (state == STATE_COHERENT &&
                     worst_time >
                     (second_worst_time *
                     bdb_state->attr->slowrep_incoherent_factor +
