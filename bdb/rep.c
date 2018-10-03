@@ -999,7 +999,6 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
             if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
                 dontsend = (is_logput && throttle_updates_incoherent_nodes(
                                              bdb_state, hostlist[i]));
-                dontsend = 0;
                 if (bdb_state->attr->net_send_gblcontext && tran &&
                     gblcontext && nodelay) {
 
@@ -2081,6 +2080,38 @@ int bdb_get_num_notcoherent(bdb_state_type *bdb_state)
     return num_skipped;
 }
 
+/* NO LOCK.  this is only intended to be used for the incoherent report */
+/*
+ * Get the list of incoherent peers
+ * nodes_list should point to an array of [max_nodes] ints to be populated
+ * with node numbers.
+ * *num_notcoherent will be set to the number of incoherent nodes (which
+ * coul be more than max_nodes)
+ * *since_epoch will be set to the epoch time at which nodes first became
+ * incoherent.
+ */
+void bdb_get_notcoherent_list(bdb_state_type *bdb_state,
+                              const char *nodes_list[REPMAX], size_t max_nodes,
+                              int *num_notcoherent, int *since_epoch)
+{
+    int count;
+    const char *hostlist[REPMAX];
+    int i;
+
+    count = net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist);
+
+    *num_notcoherent = 0;
+    for (i = 0; i < count; i++) {
+        if (is_incoherent(bdb_state, hostlist[i])) {
+            {
+                if ((*num_notcoherent) < max_nodes)
+                    nodes_list[*num_notcoherent] = hostlist[i];
+                (*num_notcoherent)++;
+            }
+        }
+        *since_epoch = bdb_state->repinfo->skipsinceepoch;
+    }
+}
 
 void bdb_disable_replication_time_tracking(bdb_state_type *bdb_state)
 {
@@ -2357,8 +2388,6 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
         }
 
         if (seqnum->generation > mygen) {
-                logmsg(LOGMSG_USER, "%s: I am outdated? seqnum from %s is gen %u, I am gen %u\n",
-                        host, seqnum->generation, mygen);
             if (bdb_state->attr->downgrade_on_seqnum_gen_mismatch &&
                 bdb_state->repinfo->master_host == bdb_state->repinfo->myhost)
                 call_for_election(bdb_state, __func__, __LINE__);
@@ -2669,7 +2698,6 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
         net_get_all_commissioned_nodes(bdb_state->repinfo->netinfo, hosts);
  
     if (numnodes < 2) {
-        logmsg(LOGMSG_INFO, "have %d nodes, no point\n", numnodes);
         free(proctime);
         return;
     }
@@ -2679,8 +2707,6 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
     /* find the slowest and second slowest nodes */
     for (int i = 0; i < numnodes; i++) {
         host = hosts[i];
-
-        logmsg(LOGMSG_INFO, "host %s state %s\n", host, coherent_state_to_str(bdb_state->coherent_state[nodeix(host)]));
 
         if (bdb_state->seqnum_info->time_minute[nodeix(host)])
             proctime[nodeix(host)] =
@@ -2723,11 +2749,6 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
         /* weigh time, to account for inter-datacenter delays */
         pthread_mutex_lock(&(bdb_state->coherent_state_lock));
         state = bdb_state->coherent_state[nodeix(worst_node)];
-        logmsg(LOGMSG_INFO, "worst %s time %.2f  second worst %s time %.2f limit %.2f\n", 
-                worst_node, worst_time,
-                second_worst_node, second_worst_time,
-                second_worst_time * bdb_state->attr->slowrep_incoherent_factor + 
-                bdb_state->attr->slowrep_incoherent_mintime);
 
         if (state == STATE_COHERENT &&
                     worst_time >
@@ -2761,7 +2782,6 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
                 second_worst_time);
     }
 
-    printf("worst_node %s made_incoherent_slow %d\n", worst_node ? worst_node : "???", made_incoherent_slow);
     /* TODO: if we ever disable make_slow_replicants_incoherent and have
      * replicants in this state, make them incoherent immediately */
     print_message = 0;
@@ -2774,9 +2794,6 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
             host = hosts[i];
             if (proctime[nodeix(host)] == 0)
                 continue;
-            printf("this %s state %s time %.2f worst %s time %.2f\n", host, 
-                    coherent_state_to_str(bdb_state->coherent_state[nodeix(host)]),
-                    proctime[nodeix(host)], worst_node, worst_time);
             if (bdb_state->coherent_state[nodeix(host)] !=
                 STATE_INCOHERENT_SLOW)
                 continue;

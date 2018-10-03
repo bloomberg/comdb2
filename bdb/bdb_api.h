@@ -1335,6 +1335,9 @@ int bdb_set_tran_lowpri(bdb_state_type *bdb_state, tran_type *tran);
 int bdb_am_i_coherent(bdb_state_type *bdb_state);
 
 int bdb_get_num_notcoherent(bdb_state_type *bdb_state);
+void bdb_get_notcoherent_list(bdb_state_type *bdb_state,
+                              const char *nodes_list[REPMAX], size_t max_nodes,
+                              int *num_notcoherent, int *since_epoch);
 int bdb_is_skip(bdb_state_type *bdb_state, int node);
 void set_skip(bdb_state_type *bdb_state, int node);
 void clear_skip(bdb_state_type *bdb_state, int node);
@@ -2072,7 +2075,5 @@ int bdb_fill_cluster_info(void **data, int *num_nodes);
 
 void wait_for_sc_to_stop(void);
 void allow_sc_to_run(void);
-
-void bdb_disconnected(bdb_state_type *bdb_state, const char *host);
 
 #endif

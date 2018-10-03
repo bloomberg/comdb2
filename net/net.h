@@ -461,6 +461,4 @@ int64_t net_get_num_accept_timeouts(netinfo_type *netinfo_ptr);
 void net_set_conntime_dump_period(netinfo_type *netinfo_ptr, int value);
 int net_get_conntime_dump_period(netinfo_type *netinfo_ptr);
 
-void net_register_disconnect_callback(netinfo_type *netinfo_ptr, void (*disconnected)(netinfo_type *netinfo_ptr, const char *host));
-
 #endif

@@ -349,8 +349,6 @@ struct netinfo_struct {
     /* An appsock routine may or may not close the connection.
        Therefore we can only reliably keep track of non-appsock connections. */
     int num_current_non_appsock_accepts;
-
-    void (*disconnected)(netinfo_type *netinfo_ptr, const char *host);
 };
 
 typedef struct ack_state_struct {
