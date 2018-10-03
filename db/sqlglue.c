@@ -2289,7 +2289,6 @@ static int get_matching_genid(BtCursor *cur, int rrn, unsigned long long *genid)
 static int cursor_move_table(BtCursor *pCur, int *pRes, int how)
 {
     struct sql_thread *thd = pCur->thd;
-    struct ireq iq; /* = { 0 }; */
     void *fndkeybuf;
     int fndlen;
     int bdberr = 0;
@@ -2316,11 +2315,6 @@ static int cursor_move_table(BtCursor *pCur, int *pRes, int how)
 
     if (thd)
         thd->had_tablescans = 1;
-
-    iq.dbenv = thedb;
-    iq.is_fake = 1;
-    iq.usedb = pCur->db;
-    iq.opcode = OP_FIND;
 
     outrc = SQLITE_OK;
     *pRes = 0;
@@ -2437,7 +2431,7 @@ static int cursor_move_table(BtCursor *pCur, int *pRes, int how)
 static int cursor_move_index(BtCursor *pCur, int *pRes, int how)
 {
     struct sql_thread *thd = pCur->thd;
-    struct ireq iq;
+    struct ireq iq = {0};
     void *fndkeybuf;
     int fndlen;
     int rrn;
@@ -2466,7 +2460,6 @@ static int cursor_move_index(BtCursor *pCur, int *pRes, int how)
     if (thd)
         thd->nmove++;
 
-    bdberr = 0;
     if (how == CNEXT) {
         pCur->num_nexts++;
 
@@ -2479,6 +2472,7 @@ static int cursor_move_index(BtCursor *pCur, int *pRes, int how)
             }
     }
 
+    bdberr = 0;
     rc = ddguard_bdb_cursor_move(thd, pCur, 0, &bdberr, how, &iq, 0);
     if (bdberr == BDBERR_NOT_DURABLE) {
         return SQLITE_CLIENT_CHANGENODE;
