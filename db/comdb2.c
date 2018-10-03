@@ -2413,22 +2413,25 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
     if (!dbenv->basedir) {
         logmsg(LOGMSG_FATAL, "DB directory is not set in lrl\n");
         return NULL;
-    } else if (gbl_create_mode) {
-        /* make sure the database directory exists! */
+    } 
+
+    if (gbl_create_mode) {
+        logmsg(LOGMSG_DEBUG, "gbl_create_mode is on, "
+               "creating the database directory exists %s\n", dbenv->basedir);
         rc = mkdir(dbenv->basedir, 0774);
         if (rc && errno != EEXIST) {
             logmsg(LOGMSG_ERROR, "mkdir(%s): %s\n", dbenv->basedir,
                    strerror(errno));
-            /* continue, this will make us fail later */
         }
-    } else {
-        struct stat sb;
-        stat(dbenv->basedir, &sb);
-        if (!S_ISDIR(sb.st_mode)) {
-            logmsg(LOGMSG_FATAL, "DB directory '%s' does not exist\n",
-                   dbenv->basedir);
-            return NULL;
-        }
+    } 
+    
+    /* make sure the database directory exists! */
+    struct stat sb;
+    stat(dbenv->basedir, &sb);
+    if (!S_ISDIR(sb.st_mode)) {
+        logmsg(LOGMSG_FATAL, "DB directory '%s' does not exist\n",
+               dbenv->basedir);
+        return NULL;
     }
 
     tz_hash_init();
@@ -3654,8 +3657,6 @@ static int init(int argc, char **argv)
         return -1;
 
     if (!gbl_exit) {
-        int i;
-
         check_access_controls(thedb); /* Check authentication settings */
 
         if (!have_all_schemas()) {
@@ -4180,11 +4181,11 @@ void *statthd(void *p)
                 if (diff_bpool_misses)
                     logmsg(LOGMSG_USER, " cache_misses %lu", diff_bpool_misses);
                 if (diff_conns)
-                    logmsg(LOGMSG_USER, " connects %lld", diff_conns);
+                    logmsg(LOGMSG_USER, " connects %"PRId64, diff_conns);
                 if (diff_curr_conns)
-                    logmsg(LOGMSG_USER, " current_connects %lld", diff_curr_conns);
+                    logmsg(LOGMSG_USER, " current_connects %"PRId64, diff_curr_conns);
                 if (diff_conn_timeouts)
-                    logmsg(LOGMSG_USER, " connect_timeouts %lld", diff_conn_timeouts);
+                    logmsg(LOGMSG_USER, " connect_timeouts %"PRId64, diff_conn_timeouts);
                 have_scon_stats = 1;
             }
         }
@@ -5027,8 +5028,6 @@ static void wait_for_coherent()
 
 int main(int argc, char **argv)
 {
-    char *marker_file;
-    int ii;
     int rc;
 
     char *exe = NULL;
@@ -5263,7 +5262,6 @@ void delete_db(char *db_name)
 /* rename in memory db names; fragile */
 int rename_db(struct dbtable *db, const char *newname)
 {
-    int rc;
     char *tag_name = strdup(newname);
     char *bdb_name = strdup(newname);
 

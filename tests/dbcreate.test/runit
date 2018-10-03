@@ -46,6 +46,7 @@ grep "\[FATAL\] DB directory" out | grep "does not exist" || failexit "expected 
 
 echo "Check 5"
 echo "name    $DB
+logmsg level debug
 dir     ${TSTDBDIR}_nonexistent " > $TSTDBDIR/${DB}.lrl
 ${COMDB2_EXE} $DB --lrl $TSTDBDIR/${DB}.lrl &> out
 grep "\[FATAL\] DB directory '${TSTDBDIR}_nonexistent' does not exist" out || failexit "expected '[FATAL] DB directory does not exist'"
