@@ -260,7 +260,7 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp, int 
     conn->rc = SQLITE_ROW;
     queue_add(conn->que, row);
     if(verbose)
-        logmsg(LOGMSG_ERROR, "XXX: %p added new row\n", conn);
+        logmsg(LOGMSG_ERROR, "%lx XXX: %p added new row\n", pthread_self(), conn);
 
     /* inline cleanup */
     if (queue_count(conn->que_free)>10) {
@@ -411,10 +411,10 @@ static int init_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     rc = sqlite3_step(stmt);
 
     if (verbose)
-        logmsg(LOGMSG_ERROR, "%s: sqlite3_step rc %d\n", __func__, rc);
+        logmsg(LOGMSG_ERROR, "%lx %s: sqlite3_step rc %d\n", pthread_self(), __func__, rc);
 
 
-    fprintf(stderr, "checking clnt %p for conns %p limit %d offsetMem %d offset %d\n",
+    fprintf(stderr, "%lx checking clnt %p for conns %p limit %d offsetMem %d offset %d\n", pthread_self(),
             clnt, conns, conns->limitMem, conns->offsetMem, conns->offset);
     if(conns->limitMem>0 && (!conns->offsetMem || !conns->offset)) {
         conns->limit = sqlite3_value_int64(
@@ -482,7 +482,7 @@ static int dohsql_dist_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     int rc;
 
     if (verbose)
-        logmsg(LOGMSG_ERROR, "%s: start\n", __func__);
+        logmsg(LOGMSG_ERROR, "%lx %s: start\n", pthread_self(), __func__);
     if(conns->nrows == 0) {
         rc = init_next_row(clnt, stmt);
         if (rc == SQLITE_ROW) {
@@ -1016,6 +1016,8 @@ void comdb2_handle_offset(Vdbe *v, Mem *m)
     }
 }
 
+#define Q_LOCK(x) pthread_mutex_lock(&conns->conns[x].mtx)
+#define Q_UNLOCK(x) pthread_mutex_unlock(&conns->conns[x].mtx)
 
 static int _cmp(dohsql_t *conns, int idx_a, int idx_b)
 {
@@ -1023,19 +1025,38 @@ static int _cmp(dohsql_t *conns, int idx_a, int idx_b)
     row_t *a,*b;
     int i;
     int ret;
+    int qc_a, qc_b;
    
     if (idx_a == idx_b)
         return 0;  
-    
-    a = conns->conns[order[idx_a]].que->lst.top->obj;
-    b = conns->conns[order[idx_b]].que->lst.top->obj;
 
-    for(i=0; i< conns->ncols; i++) {
-        ret = sqlite3MemCompare(&a[i], &b[i], NULL);
-        if (ret)
-            return ret;
+    /* note idx_a is the referrence, and it is locked here */
+    Q_LOCK(order[idx_b]);
+
+    qc_a = queue_count(conns->conns[order[idx_a]].que);
+    qc_b = queue_count(conns->conns[order[idx_b]].que);
+    if (qc_a == 0) {
+        if (qc_b == 0) {
+            ret = 0; 
+        } else {
+            ret = -1;
+        }
+    } else if(qc_b == 0) {
+        ret = 1;
+    } else {
+        a = conns->conns[order[idx_a]].que->lst.top->obj;
+        b = conns->conns[order[idx_b]].que->lst.top->obj;
+
+        for(i=0; i< conns->ncols; i++) {
+            ret = sqlite3MemCompare(&a[i], &b[i], NULL);
+            if (ret)
+                break;
+        }
     }
-    return 0;
+
+    Q_UNLOCK(order[idx_b]);
+
+    return ret;
 }
 
 int _pos(dohsql_t *conns, int index)
@@ -1070,6 +1091,22 @@ int _pos(dohsql_t *conns, int index)
     return left;
 }
 
+static void _print_order_info(dohsql_t *conns, const char *label)
+{
+    int* order = conns->order;
+    int i;
+
+    logmsg(LOGMSG_ERROR, "%lx Order %s: top_idx=%d filling=%d active=%d nconns=%d\n[", pthread_self(),
+            label, conns->top_idx, conns->filling, conns->active, conns->nconns);
+    for(i=0;i<conns->nconns;i++) {
+        logmsg(LOGMSG_ERROR, "(%d, %d, %d) ",
+                order[i], (order[i]>=0)?conns->conns[order[i]].rc:-1,
+                (order[i]>=0)?queue_count(conns->conns[order[i]].que):-1);
+    }
+    logmsg(LOGMSG_ERROR, "]\n");
+
+}
+
 static int q_top(dohsql_t *conns)
 {
     int *order = conns->order;
@@ -1087,18 +1124,8 @@ static int q_top(dohsql_t *conns)
         order[last] = order[ret];
         order[ret] = -1;
     }
-    if(verbose)  {
-        int i;
-        logmsg(LOGMSG_ERROR, "Order Free: top_idx=%d filling=%d active=%d nconns=%d\n[",
-                conns->top_idx, conns->filling, conns->active, conns->nconns);
-        for(i=0;i<conns->nconns;i++) {
-            logmsg(LOGMSG_ERROR, "(%d, %d, %d) ",
-                    order[i], (order[i]>=0)?conns->conns[order[i]].rc:-1,
-                    (order[i]>=0)?queue_count(conns->conns[order[i]].que):-1);
-        }
-        logmsg(LOGMSG_ERROR, "]\n");
-    }
-
+    if(verbose)
+        _print_order_info(conns, "retrieved_ordered_row");
 
     return ret_val;
 }
@@ -1112,35 +1139,19 @@ static int q_insert(dohsql_t *conns, int indx)
     
     if (pos > last) {
         if (last > 0) {
-            memmove(&order[1], &order[0], last);
+            memmove(&order[1], &order[0], sizeof(order[0])*last);
         }
         last = conns->nconns-1;
         order[0] = order[last];
     } 
     if (pos < last) {
-        memmove(&conns->order[pos+1], &conns->order[pos], last-pos);
+        memmove(&order[pos+1], &order[pos], sizeof(order[0])*(last-pos));
     }
     conns->order[pos] = saved;
     conns->filling++;
 
-    if(verbose)  {
-        int i;
-        logmsg(LOGMSG_ERROR, "Order: top_idx=%d filling=%d active=%d nconns=%d\n[",
-                conns->top_idx, conns->filling, conns->active, conns->nconns);
-        for(i=0;i<conns->nconns;i++) {
-            logmsg(LOGMSG_ERROR, "(%d, %d, %d) ",
-                    order[i], (order[i]>=0)?conns->conns[order[i]].rc:-1,
-                    (order[i]>=0)?queue_count(conns->conns[order[i]].que):-1);
-        }
-        logmsg(LOGMSG_ERROR, "]\n");
-    }
-
-
     return SHARD_NOERR;
 }
-
-#define Q_LOCK(x) pthread_mutex_lock(&conns->conns[x].mtx)
-#define Q_UNLOCK(x) pthread_mutex_unlock(&conns->conns[x].mtx)
 
 static void _move_client_done(dohsql_t *conns, int idx)
 {
@@ -1148,21 +1159,33 @@ static void _move_client_done(dohsql_t *conns, int idx)
     int last;
 
     last = (conns->top_idx+conns->active-1)%conns->nconns;
+    if (verbose)
+        logmsg(LOGMSG_ERROR, "%lx %s: client %d done\n", pthread_self(), __func__, order[idx]);
     if (last!=idx)
         order[idx] = order[last];
     order[last] = -1;
     conns->active--;
+
+    if (verbose)
+      _print_order_info(conns, "client_done");  
 }
 
 static void _move_client_row(dohsql_t *conns, int idx)
 {
     int *order = conns->order;
-    int last;
+    int last, tmp;
     /* flip to the non-ready pole-position */
     last = (conns->top_idx+conns->filling)%conns->nconns;
-    if (last!=idx) 
+    if (last!=idx) {
+        tmp = order[idx];
         order[idx] = order[last];
+        order[last] = tmp;
+        idx = last;
+    }
     q_insert(conns, idx);
+
+    if(verbose)
+      _print_order_info(conns, "insert_new_row");  
 }
 
 static int _local_step(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
@@ -1194,7 +1217,7 @@ static int dohsql_dist_next_row_ordered(struct sqlclntstate *clnt, sqlite3_stmt 
     int que_idx;
 
     if (verbose)
-        logmsg(LOGMSG_ERROR, "%s: start\n", __func__);
+        logmsg(LOGMSG_ERROR, "%lx %s: start\n", pthread_self(), __func__);
     if(conns->nrows == 0) {
         rc = _local_step(clnt, stmt, 0);
         if(rc != SQLITE_OK)
@@ -1244,6 +1267,7 @@ retry_row:
 
     int unready = conns->active-conns->filling;
     int unready_start = conns->filling;
+
     for(i=0; i<unready && rc==SQLITE_OK; i++) {
         idx = (conns->top_idx+unready_start+i)%conns->nconns;
         que_idx = order[idx];
@@ -1277,7 +1301,7 @@ retry_row:
 int order_init(dohsql_t *conns)
 {
     int i;
-    conns->order =  (int*)calloc(sizeof(int), conns->nrows);
+    conns->order =  (int*)calloc(sizeof(int), conns->nconns);
 
     if (!conns->order)
         return SHARD_ERR_MALLOC;

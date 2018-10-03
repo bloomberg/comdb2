@@ -472,12 +472,12 @@ int comdb2_check_parallel(Parse *pParse)
         return 0;
 
     if (node->type == AST_TYPE_SELECT) {
-        fprintf(stderr, "Single query \"%s\"\n", node->sql);
+        fprintf(stderr, "%lx Single query \"%s\"\n", pthread_self(), node->sql);
         return 0;
     }
 
     if (node->type == AST_TYPE_UNION) {
-        fprintf(stderr, "Parallelizable union %d threads:\n", node->nnodes);
+        fprintf(stderr, "%lx Parallelizable union %d threads:\n", pthread_self(), node->nnodes);
         for(i=0;i<node->nnodes;i++) {
             fprintf(stderr,"\t Thread %d: \"%s\"\n", i+1, node->nodes[i]->sql);
         }
