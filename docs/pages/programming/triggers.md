@@ -239,12 +239,25 @@ The `DROP LUA CONSUMER` statement will stop execution of the store procedure and
 ### db:consumer
 
 ```
-dbconsumer = db:consumer()
+dbconsumer = db:consumer(x)
+    x: Optional Lua table to set timeout, etc
 ```
 
 Description:
 
-Returns a dbconsumer object associated with the stored procedure running a Lua consumer.
+Returns a dbconsumer object associated with the stored procedure running a Lua consumer. This method blocks until registration succeeds with master node. It accepts an optional Lua table with following keys:
+
+```
+x.register_timeout = number (ms)
+```
+
+Specify timeout (in milliseconds) to wait for registration with master. For example, `db:consumer({register_timeout = 5000})` will return `nil` if registration fails after 5 seconds.
+
+```
+x.with_tid = true | false (default)
+```
+
+When `with_tid` is `true`, Lua table returned by `dbconsumer:get/poll()` include additional property (`tid`). All events belonging to same originating transaction will have the same `tid`. This can be used by application to detect transaction boundaries as tid changes.
 
 ### dbconsumer:get
 
@@ -254,22 +267,31 @@ lua-table = dbconsumer:get()
 
 Description:
 
-Returns a Lua table which contains data describing the event consumed. It contains:
+This method blocks until there an event available to consume. It returns a Lua table which contains data describing the event. It contains:
 
-|Key  | Values
+|Key  | Value
 |-----|--------------------------------------
 |id   | unique id associated with this event
 |name | table name which triggered event
 |type | "add" or "del" or "upd"
 |new  | nil or a Lua-table with values which were updated/inserted
 |old  | nil or Lua-table with values which were updated/deleted
+|tid  | optional transaction id (see `with_tid` above)
 
+### dbconsumer:poll
+
+```
+lua-table = dbconsumer:poll(t)
+    t: number (ms)
+```
+
+Specify timeout (in milliseconds) to wait for event to be generated in the system. Similar to `dbconsumer:get()` otherwise. Returns `nil` if no event is avaiable after timeout.
 
 ### dbconsumer:consume
 
 Description:
 
-Consumes the last event obtained by `dbconsumer:get()`. Creates a new transaction if no explicit transaction was ongoing.
+Consumes the last event obtained by `dbconsumer:get/poll()`. Creates a new transaction if no explicit transaction was ongoing.
 
 
 ### dbconsumer:emit
@@ -277,7 +299,3 @@ Consumes the last event obtained by `dbconsumer:get()`. Creates a new transactio
 Description:
 
 Like `db:emit()`, except it will block until the calling client requests next row by calling `cdb2_next_record`.
-
-
-
-
