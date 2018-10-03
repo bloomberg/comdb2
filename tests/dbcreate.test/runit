@@ -29,7 +29,7 @@ ${COMDB2_EXE} --create $DB --lrl $TSTDBDIR/${DB}.lrl &> out
 grep "lrl : No such file or directory" out || failexit "expected 'No such file or directory'"
 
 echo "Check 2"
-mkdir $TSTDBDIR
+mkdir -p $TSTDBDIR
 touch $TSTDBDIR/${DB}.lrl
 #should not crash
 ${COMDB2_EXE} --create $DB --lrl $TSTDBDIR/${DB}.lrl &> out
