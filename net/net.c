@@ -4092,14 +4092,15 @@ int net_is_connected(netinfo_type *netinfo_ptr, const char *host)
 int net_send_hello(netinfo_type *netinfo_ptr, const char *tohost)
 {
     host_node_type *host_node_ptr;
+    int rc = -1;
 
     Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
     host_node_ptr = netinfo_ptr->head;
     while (host_node_ptr != NULL && host_node_ptr->host != tohost)
         host_node_ptr = host_node_ptr->next;
+    if (host_node_ptr)
+        rc = write_hello(netinfo_ptr, host_node_ptr);
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-
-    int rc = write_hello(netinfo_ptr, host_node_ptr);
 
     return rc;
 }
