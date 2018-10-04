@@ -1946,7 +1946,7 @@ struct schema_mem {
     Mem *mout;
 };
 
-#define INDEXES_THREAD_MEMORY = 1048576;
+#define INDEXES_THREAD_MEMORY 1048576
 /* force an update on sqlite_master to test partial indexes syntax*/
 int new_indexes_syntax_check(struct ireq *iq, struct dbtable *db)
 {
