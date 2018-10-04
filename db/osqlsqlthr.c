@@ -83,7 +83,6 @@ static int access_control_check_sql_write(struct BtCursor *pCur,
                                           struct sql_thread *thd);
 
 
-#undef NDEBUG
 #ifndef NDEBUG
 #define DEBUGMSG(fmt, args...) logmsg(LOGMSG_DEBUG, fmt, ##args)
 #else
@@ -1603,6 +1602,8 @@ static int osql_send_recordgenid_logic(struct BtCursor *pCur,
         RESTART_SOCKSQL;
     } while (restarted && rc == 0);
 
+    clnt->osql.replicant_numops++;
+    DEBUGMSG("%s replicant_numops = %d\n", __func__, clnt->osql.replicant_numops);
     return rc;
 }
 

@@ -1357,7 +1357,6 @@ int osql_save_qblobs(struct BtCursor *pCur, struct sql_thread *thd,
     int rc = 0;
     int bdberr = 0;
     shad_tbl_t *tbl = NULL;
-    int i;
     unsigned long long tmp = 0;
 
     if (pCur->numblobs == 0) {
@@ -1385,7 +1384,7 @@ int osql_save_qblobs(struct BtCursor *pCur, struct sql_thread *thd,
     else
         set_genid_add(&tmp);
 
-    for (i = 0; i < maxblobs && rc == SQLITE_OK; i++) {
+    for (int i = 0; i < maxblobs && rc == SQLITE_OK; i++) {
 
         if (blobs[i].exists == 1) {
 
@@ -2945,15 +2944,15 @@ static int process_local_shadtbl_sc(struct sqlclntstate *clnt, int *bdberr)
 
 int osql_save_bpfunc(struct sql_thread *thd, BpfuncArg *arg)
 {
-    osqlstate_t *osql = &thd->clnt->osql;
+    struct sqlclntstate *clnt = thd->clnt;
+    osqlstate_t *osql = &clnt->osql;
     int rc = 0;
     int bdberr = 0;
     void *bpfunc_data = NULL;
     size_t bpfunc_data_len = bpfunc_arg__get_packed_size(arg);
 
     if (!osql->bpfunc_tbl) {
-        rc = osql_create_bpfunc_temptbl(thedb->bdb_env, thd->clnt,
-                                        &bdberr);
+        rc = osql_create_bpfunc_temptbl(thedb->bdb_env, clnt, &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s: failed to create bpfunc table rc=%d bdberr=%d\n",
