@@ -65,11 +65,10 @@ struct dohsql {
     int row_src;
     int rc;
     /* LIMIT support */
-    int limitMem; /* limit address */
+    int limitRegs[4]; /* sqlite engine limit registers*/
     int limit; /* any limit */
     int nrows; /* sent rows so far */
     /* OFFSET support */
-    int offsetMem; /* offset address */
     int offset; /* any offset */
     int skipped; /* how many rows where skipped so far */
     /* ORDER BY support */
@@ -410,13 +409,14 @@ static int init_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 
     rc = sqlite3_step(stmt);
 
-    if (verbose)
+    if (verbose) {
         logmsg(LOGMSG_ERROR, "%lx %s: sqlite3_step rc %d\n", pthread_self(), __func__, rc);
-
-
-    fprintf(stderr, "%lx checking clnt %p for conns %p limit %d offsetMem %d offset %d\n", pthread_self(),
-            clnt, conns, conns->limitMem, conns->offsetMem, conns->offset);
-    if(conns->limitMem>0 && (!conns->offsetMem || !conns->offset)) {
+        if (conns->limitRegs[0]>=0)
+            logmsg(LOGMSG_ERROR, "%lx checking clnt %p for conns %p limitMem %d limit %d offsetMem %d offset %d\n", pthread_self(),
+                    clnt, conns, conns->limitRegs[0], conns->limit, conns->limitRegs[1], conns->offset);
+    }
+#if 0
+    if(conns->limitRegs[0]>0 && (!conns->offsetMem || !conns->offset)) {
         conns->limit = sqlite3_value_int64(
                 &((Vdbe*)stmt)->aMem[conns->limitMem-1]);
 
@@ -424,6 +424,7 @@ static int init_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
             logmsg(LOGMSG_ERROR, "XXX: found limit %d\n", conns->limit);
         assert(rc!=SQLITE_ROW || conns->limit!=0); /* sqlite planning */
     }
+#endif
 
     if (rc == SQLITE_ROW)
         return rc;
@@ -439,11 +440,13 @@ static int init_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 
 static int _check_limit(sqlite3_stmt *stmt, dohsql_t *conns)
 {
-    if (conns->limitMem>0 && conns->limit>=0 && conns->nrows >= conns->limit) {
-        fprintf(stderr, "REACHED LIMIT rc =%d!\n",
-                conns->conns[0].rc);
+    if (conns->limitRegs[0]>=0 && conns->limit>=0 && conns->nrows >= conns->limit) {
+        if(verbose)
+            logmsg(LOGMSG_ERROR, "%lx REACHED LIMIT rc =%d!\n", pthread_self(),
+                    conns->conns[0].rc);
         if(conns->conns[0].rc != SQLITE_DONE) {
-            fprintf(stderr, "RESET STMT!\n");
+            if(verbose)
+                logmsg(LOGMSG_ERROR, "RESET STMT!\n");
             sqlite3_reset(stmt);
         }
 
@@ -456,7 +459,7 @@ static int _check_limit(sqlite3_stmt *stmt, dohsql_t *conns)
 
 static int _check_offset(dohsql_t *conns)
 {
-    if (conns->offsetMem && conns->skipped < conns->offset) {
+    if (conns->limitRegs[1] && conns->skipped < conns->offset) {
         conns->skipped++;
         if (verbose)
             logmsg(LOGMSG_ERROR, "XXX: skipped client %d row skipped %d, offset =%d\n",
@@ -843,6 +846,7 @@ int dohsql_distribute(dohsql_node_t *node)
     conns->conns = (dohsql_connector_t*)(conns+1);
     conns->nconns = node->nnodes;
     conns->ncols = node->ncols;
+    conns->limitRegs[0] = conns->limitRegs[1] = conns->limitRegs[2] = conns->limitRegs[3] = -1;
     if (node->has_order) {
         if (order_init(conns)) {
             free(conns);
@@ -942,10 +946,10 @@ const char* dohsql_get_sql(struct sqlclntstate *clnt, int index)
     return clnt->conns->conns[index].clnt->sql;
 }
 
+#if 0
 void comdb2_register_limit(Select *p)
 {
     GET_CLNT;
-
 
     if (unlikely(clnt->conns)) {
         clnt->conns->limitMem = p->iLimit+1;
@@ -962,10 +966,57 @@ void comdb2_register_offset(Select *p)
         clnt->conns->offsetMem = p->iOffset+1;
     }
 }
+#endif
+
+int* comdb2_parallel(void)
+{
+    GET_CLNT;
+    return (unlikely(clnt->conns))?clnt->conns->limitRegs:NULL;
+}
 
 
 #define DOHSQL_MASTER (clnt->plugin.next_row == dohsql_dist_next_row || \
         clnt->plugin.next_row == dohsql_dist_next_row_ordered)
+
+void comdb2_handle_limit(Vdbe *v, Mem *m)
+{
+    GET_CLNT;
+    dohsql_t *conns = clnt->conns;
+    Mem *reg;
+
+    if(!DOHSQL_MASTER) return;
+
+    /* limit or offset ? */
+    reg = &v->aMem[conns->limitRegs[0]];
+    if (reg == m+1/*this is following limit register*/) {
+        /* limit */
+        conns->limit = sqlite3_value_int64(reg);
+        if (verbose)
+            logmsg(LOGMSG_ERROR, "%lx found limit %d from register %d\n",
+                   pthread_self(), conns->limit, conns->limitRegs[0]);
+    } else {
+        reg = &v->aMem[conns->limitRegs[1]];
+        if (reg == m+2 /*this is following offset and offset+limit*/) {
+            /* offset */
+            conns->offset = sqlite3_value_int64(reg);
+
+            if (verbose)
+                logmsg(LOGMSG_ERROR, "%lx found offset %d from register %d,"
+                        " updating internal to %lld->0 and %lld->%lld\n",
+                        pthread_self(), conns->offset, conns->limitRegs[1],
+                        v->aMem[conns->limitRegs[2]].u.i,
+                        v->aMem[conns->limitRegs[3]].u.i,
+                        v->aMem[conns->limitRegs[3]].u.i - conns->offset);
+
+            /* nuke the offset, maybe do this only for order?*/
+            v->aMem[conns->limitRegs[2]].u.i = 0;
+            v->aMem[conns->limitRegs[3]].u.i -= conns->offset;
+        } else
+            abort(); /*sqlite changed assumptions*/
+    }
+}
+
+#if 0
 /*
  * sqlite calls this every time we skip a row
  * offset is > 0
@@ -1015,6 +1066,7 @@ void comdb2_handle_offset(Vdbe *v, Mem *m)
         }
     }
 }
+#endif
 
 #define Q_LOCK(x) pthread_mutex_lock(&conns->conns[x].mtx)
 #define Q_UNLOCK(x) pthread_mutex_unlock(&conns->conns[x].mtx)
@@ -1280,6 +1332,10 @@ retry_row:
             } else {
                 if (conns->conns[que_idx].rc == SQLITE_DONE) {
                     _move_client_done(conns, idx);
+                    /* above moves the location of done client at the end, 
+                    i points to the next row*/
+                    i--;
+                    unready--;
                 } else if (conns->conns[que_idx].rc != SQLITE_ROW) {
                     rc = conns->conns[que_idx].rc;    
                     continue;

@@ -2096,11 +2096,6 @@ static void computeLimitRegisters(Parse *pParse, Select *p, int iBreak){
   if( p->pLimit ){
     p->iLimit = iLimit = ++pParse->nMem;
     v = sqlite3GetVdbe(pParse);
-    {
-        /* COMDB2 MODIFICATION */
-        extern void comdb2_register_limit(Select*);
-        comdb2_register_limit(p);
-    }
     assert( v!=0 );
     if( sqlite3ExprIsInteger(p->pLimit, &n) ){
       sqlite3VdbeAddOp2(v, OP_Integer, n, iLimit);
@@ -2117,19 +2112,31 @@ static void computeLimitRegisters(Parse *pParse, Select *p, int iBreak){
       VdbeComment((v, "LIMIT counter"));
       sqlite3VdbeAddOp2(v, OP_IfNot, iLimit, iBreak); VdbeCoverage(v);
     }
+    /* COMDB2 MODIFICATION */
+    extern int* comdb2_parallel(void);
+    int *poker;
+    if ((poker=comdb2_parallel())!=NULL){
+      *poker = ++pParse->nMem;
+      *(poker+1) = -1;
+      *(poker+2) = -1;
+      *(poker+3) = -1;
+      sqlite3VdbeAddOp2(v, OP_IntCopy, iLimit, *poker); VdbeCoverage(v);
+    }
     if( p->pOffset ){
       p->iOffset = iOffset = ++pParse->nMem;
-      {
-          /* COMDB2 MODIFICATION */
-          extern void comdb2_register_offset(Select*);
-          comdb2_register_offset(p);
-      }
       pParse->nMem++;   /* Allocate an extra register for limit+offset */
       sqlite3ExprCode(pParse, p->pOffset, iOffset);
       sqlite3VdbeAddOp1(v, OP_MustBeInt, iOffset); VdbeCoverage(v);
       VdbeComment((v, "OFFSET counter"));
       sqlite3VdbeAddOp3(v, OP_OffsetLimit, iLimit, iOffset+1, iOffset);
       VdbeComment((v, "LIMIT+OFFSET"));
+      /* COMDB2 MODIFICATION */
+      if (poker) {
+        *(poker+1) = ++pParse->nMem;
+        *(poker+2) = iOffset;
+        *(poker+3) = iOffset+1;
+        sqlite3VdbeAddOp2(v, OP_IntCopy, iOffset, *(poker+1)); VdbeCoverage(v);
+      }
     }
   }
 }
