@@ -2915,17 +2915,6 @@ static int process_local_shadtbl_sc(struct sqlclntstate *clnt, int *bdberr)
                 sc->tablename, comdb2_table_version(sc->tablename),
                 packed_sc_key[1]);
             return ERR_SC;
-        } else if (packed_sc_key[1] >= 0) {
-            rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid,
-                                 sc->tablename, NET_OSQL_SOCK_RPL, osql->logsb,
-                                 packed_sc_key[1]);
-            if (rc) {
-                logmsg(LOGMSG_ERROR,
-                       "%s: error writting record to master in offload mode!\n",
-                       __func__);
-                return SQLITE_INTERNAL;
-            }
-            osql->replicant_numops++;
         }
 
         rc = osql_send_schemachange(osql->host, osql->rqid, osql->uuid, sc,
