@@ -2729,7 +2729,7 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
     for (int i = 0; i < numnodes; i++) {
         host = hosts[i];
         state = bdb_state->coherent_state[nodeix(host)];
-        if (state != STATE_COHERENT && state != STATE_INCOHERENT_WAIT)
+        if (state != STATE_COHERENT)
             continue;
 
         if (proctime[nodeix(host)] > second_worst_time && host != worst_node) {
