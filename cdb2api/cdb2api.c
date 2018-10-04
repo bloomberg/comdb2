@@ -85,6 +85,9 @@ static int COMDB2DB_TIMEOUT = COMDB2DB_TIMEOUT_DEFAULT;
 #define CDB2_TCPBUFSZ_DEFAULT 0
 static int cdb2_tcpbufsz = CDB2_TCPBUFSZ_DEFAULT;
 
+#define CDB2CFG_OVERRIDE_DEFAULT 0
+static int cdb2cfg_override = CDB2CFG_OVERRIDE_DEFAULT;
+
 #ifndef WITH_SSL
 #  define WITH_SSL 1
 #endif
@@ -927,8 +930,10 @@ void cdb2_set_comdb2db_config(const char *cfg_file)
                 cfg_file);
     memset(CDB2DBCONFIG_NOBBENV, 0, sizeof(CDB2DBCONFIG_NOBBENV) /* 512 */);
     if (cfg_file != NULL) {
+        cdb2cfg_override = 1;
         strncpy(CDB2DBCONFIG_NOBBENV, cfg_file, 511);
     } else {
+        cdb2cfg_override = CDB2CFG_OVERRIDE_DEFAULT;
         reset_the_configuration();
     }
     pthread_mutex_unlock(&cdb2_cfg_lock);
@@ -947,10 +952,12 @@ void cdb2_set_comdb2db_info(const char *cfg_info)
         CDB2DBCONFIG_BUF = NULL;
     }
     if (cfg_info == NULL) {
+        cdb2cfg_override = CDB2CFG_OVERRIDE_DEFAULT;
         reset_the_configuration();
         pthread_mutex_unlock(&cdb2_cfg_lock);
         return;
     }
+    cdb2cfg_override = 1;
     len = strlen(cfg_info) + 1;
     CDB2DBCONFIG_BUF = malloc(len);
     strncpy(CDB2DBCONFIG_BUF, cfg_info, len);
@@ -4839,14 +4846,16 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
         fprintf(stderr, "td %d %s:%d\n", (uint32_t)pthread_self(), __func__,
                 __LINE__);
 
-    /* Try dbinfo query without any host info. */
-    if (cdb2_dbinfo_query(hndl, hndl->type, hndl->dbname, hndl->dbnum, NULL,
-                          hndl->hosts, hndl->ports, &hndl->master,
-                          &hndl->num_hosts, &hndl->num_hosts_sameroom) == 0) {
-        /* We get a plaintext socket from sockpool.
-           We still need to read SSL config */
-        only_read_config();
-        return 0;
+    if (!cdb2cfg_override) {
+        /* Try dbinfo query without any host info. */
+        if (cdb2_dbinfo_query(hndl, hndl->type, hndl->dbname, hndl->dbnum, NULL,
+                              hndl->hosts, hndl->ports, &hndl->master,
+                              &hndl->num_hosts, &hndl->num_hosts_sameroom) == 0) {
+            /* We get a plaintext socket from sockpool.
+               We still need to read SSL config */
+            only_read_config();
+            return 0;
+        }
     }
 
     get_comdb2db_hosts(hndl, comdb2db_hosts, comdb2db_ports, &master,
@@ -4865,6 +4874,9 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
             return -1;
         }
         strncpy(hndl->cluster, cdb2_default_cluster, sizeof(hndl->cluster) - 1);
+        if (cdb2cfg_override) {
+            strncpy(hndl->type, cdb2_default_cluster, sizeof(hndl->type)-1);
+        }
     }
 
     if (strcasecmp(hndl->cluster, "local") == 0) {
