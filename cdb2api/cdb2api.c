@@ -194,6 +194,7 @@ static void reset_the_configuration(void)
     cdb2_tcpbufsz = CDB2_TCPBUFSZ_DEFAULT;
 
     cdb2_allow_pmux_route = CDB2_ALLOW_PMUX_ROUTE_DEFAULT;
+    cdb2cfg_override = CDB2CFG_OVERRIDE_DEFAULT;
 
 #if WITH_SSL
     cdb2_c_ssl_mode = SSL_ALLOW;
@@ -933,7 +934,6 @@ void cdb2_set_comdb2db_config(const char *cfg_file)
         cdb2cfg_override = 1;
         strncpy(CDB2DBCONFIG_NOBBENV, cfg_file, 511);
     } else {
-        cdb2cfg_override = CDB2CFG_OVERRIDE_DEFAULT;
         reset_the_configuration();
     }
     pthread_mutex_unlock(&cdb2_cfg_lock);
@@ -952,7 +952,6 @@ void cdb2_set_comdb2db_info(const char *cfg_info)
         CDB2DBCONFIG_BUF = NULL;
     }
     if (cfg_info == NULL) {
-        cdb2cfg_override = CDB2CFG_OVERRIDE_DEFAULT;
         reset_the_configuration();
         pthread_mutex_unlock(&cdb2_cfg_lock);
         return;
