@@ -31,7 +31,6 @@ int main( int argc, char **argv)
 {
    char  *infile = NULL;
    char  *outfile = NULL;
-   char  *comdb2sql = NULL;
    char  *dbname = NULL;
    char  *stage;
    FILE  *file = NULL;
@@ -86,7 +85,7 @@ int main( int argc, char **argv)
 
    if( ! isatty(fileno(file) ) )
    {
-      struct sigaction act = {0};
+      struct sigaction act = {{0}};
       act.sa_sigaction = timed_out;
       act.sa_flags = (SA_SIGINFO | SA_RESETHAND);
       sigfillset( &act.sa_mask );
