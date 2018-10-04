@@ -1602,6 +1602,7 @@ int osql_dbq_consume(struct sqlclntstate *clnt, const char *spname,
     int rc = osql_send_usedb_logic_int(qname, clnt, NET_OSQL_SOCK_RPL);
     if (rc != SQLITE_OK)
         return rc;
+    osql->replicant_numops++;
     return osql_send_dbq_consume(osql->host, osql->rqid, osql->uuid, genid,
                                  NET_OSQL_SOCK_RPL, osql->logsb);
 }

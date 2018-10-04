@@ -641,6 +641,9 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     iq->osql_replicant_numops++;
 
+    logmsg(LOGMSG_DEBUG, 
+           "tid 0x%lu Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n",
+           pthread_self(), rqid, type, osql_reqtype_str(type), osql_log_time(), ses->seq);
 #if 0
     printf("Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n",
            rqid, type, osql_reqtype_str(type), osql_log_time(), sess->seq);
@@ -721,7 +724,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     if (type != OSQL_XERR) {
         int done_nops = osql_get_replicant_nops(rpl, rqid == OSQL_RQID_USE_UUID);
-        logmsg(LOGMSG_DEBUG, "%s: %s done_nops = %d, seq = %lld\n", __func__, osql_reqtype_str(type), done_nops, seq);
+        logmsg(LOGMSG_DEBUG, "tid 0x%lu %s: %s done_nops = %d, seq = %lld\n",
+               pthread_self(), __func__, osql_reqtype_str(type), done_nops, seq);
 
         if(done_nops != seq + 1) {
             abort();
