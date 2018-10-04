@@ -1429,24 +1429,20 @@ char *sql_field_default_trans(struct field *f, int is_out)
     int default_type;
     void *this_default;
     unsigned int this_default_len;
-    struct field_conv_opts_tz outopts = {0};
-    unsigned long long uival = 0;
-    long long ival = 0;
-    double dval = 0;
     char *cval = NULL;
     unsigned char *bval = NULL;
     int rc = 0;
     int null;
     int outsz;
     char *dstr = NULL;
-    int i;
 
     default_type = is_out ? f->out_default_type : f->in_default_type;
     this_default = is_out ? f->out_default : f->in_default;
     this_default_len = is_out ? f->out_default_len : f->in_default_len;
 
     switch (default_type) {
-    case SERVER_UINT:
+    case SERVER_UINT: {
+        unsigned long long uival = 0;
         rc = SERVER_UINT_to_CLIENT_UINT(
             this_default, this_default_len, NULL, NULL, &uival,
             sizeof(unsigned long long), &null, &outsz, NULL, NULL);
@@ -1454,8 +1450,9 @@ char *sql_field_default_trans(struct field *f, int is_out)
         if (rc == 0)
             dstr = sqlite3_mprintf("%llu", uival);
         break;
-
-    case SERVER_BINT:
+    }
+    case SERVER_BINT: {
+        long long ival = 0;
         rc = SERVER_BINT_to_CLIENT_INT(this_default, this_default_len, NULL,
                                        NULL, &ival, sizeof(long long), &null,
                                        &outsz, NULL, NULL);
@@ -1463,8 +1460,9 @@ char *sql_field_default_trans(struct field *f, int is_out)
         if (rc == 0)
             dstr = sqlite3_mprintf("%lld", ival);
         break;
-
-    case SERVER_BREAL:
+    }
+    case SERVER_BREAL: {
+        double dval = 0;
         rc = SERVER_BREAL_to_CLIENT_REAL(this_default, this_default_len, NULL,
                                          NULL, &dval, sizeof(double), &null,
                                          &outsz, NULL, NULL);
@@ -1472,8 +1470,8 @@ char *sql_field_default_trans(struct field *f, int is_out)
         if (rc == 0)
             dstr = sqlite3_mprintf("%f", dval);
         break;
-
-    case SERVER_BCSTR:
+    }
+    case SERVER_BCSTR: {
         cval = sqlite3_malloc(this_default_len + 1);
         rc = SERVER_BCSTR_to_CLIENT_CSTR(this_default, this_default_len, NULL,
                                          NULL, cval, this_default_len + 1,
@@ -1481,8 +1479,8 @@ char *sql_field_default_trans(struct field *f, int is_out)
         if (rc == 0)
             dstr = sqlite3_mprintf("'%q'", cval);
         break;
-
-    case SERVER_BYTEARRAY:
+    }
+    case SERVER_BYTEARRAY: {
         /* ... */
         bval = sqlite3_malloc(this_default_len - 1);
         rc = SERVER_BYTEARRAY_to_CLIENT_BYTEARRAY(
@@ -1492,15 +1490,15 @@ char *sql_field_default_trans(struct field *f, int is_out)
         dstr = sqlite3_malloc((this_default_len * 2) + 3);
         dstr[0] = 'x';
         dstr[1] = '\'';
-
+        int i;
         for (i = 0; i < this_default_len - 1; i++)
             snprintf(&dstr[i * 2 + 2], 3, "%02x", bval[i]);
         dstr[i * 2 + 2] = '\'';
         dstr[i * 2 + 3] = 0;
-
         break;
-
-    case SERVER_DATETIME:
+    }
+    case SERVER_DATETIME: {
+        struct field_conv_opts_tz outopts = {0};
         cval = sqlite3_malloc(CLIENT_DATETIME_EXT_LEN);
         strcpy(outopts.tzname, "UTC");
         outopts.flags |= FLD_CONV_TZONE;
@@ -1515,8 +1513,9 @@ char *sql_field_default_trans(struct field *f, int is_out)
             }
         }
         break;
-
-    case SERVER_DATETIMEUS:
+    }
+    case SERVER_DATETIMEUS: {
+        struct field_conv_opts_tz outopts = {0};
         cval = sqlite3_malloc(CLIENT_DATETIME_EXT_LEN);
         strcpy(outopts.tzname, "UTC");
         outopts.flags |= FLD_CONV_TZONE;
@@ -1531,9 +1530,8 @@ char *sql_field_default_trans(struct field *f, int is_out)
             }
         }
         break;
-
+    }
     /* no defaults for blobs or vutf8 */
-
     default:
         logmsg(LOGMSG_ERROR, "Unknown type in schema: column '%s' "
                         "type %d\n",
@@ -2217,8 +2215,10 @@ static void genid_hash_add(BtCursor *cur, int rrn, unsigned long long genid)
 
     /* printf("genid_hash_add(cur %d rrn %d genid %08llx rc %d)\n",
      * cur->cursorid, rrn, genid, rc); */
-    bdb_temp_hash_insert(cur->bt->genid_hash, &key, sizeof(struct key),
-                         &genid, sizeof(genid));
+    int rc = bdb_temp_hash_insert(cur->bt->genid_hash, &key, sizeof(struct key),
+                                  &genid, sizeof(genid));
+    if (rc)
+        logmsg(LOGMSG_ERROR, "bdb_temp_hash_insert returned rc = %d\n", rc);
 }
 
 static int get_matching_genid(BtCursor *cur, int rrn, unsigned long long *genid)
@@ -2647,10 +2647,9 @@ static int cursor_move_master(BtCursor *pCur, int *pRes, int how)
      * and if peer_dropped_connection is true, we'll get NO SQL ENGINE and
      * a wasted thread apparently.
     int done = 0;
-    int rc = SQLITE_OK;
-    rc = cursor_move_preprop(pCur, pRes, how, &done, 0);
+    int rc = cursor_move_preprop(pCur, pRes, how, &done, 0);
     if (done)
-    return rc;
+        return rc;
      */
 
     pCur->eof = 0; /* reset. set again if we really are past eof */
@@ -6352,7 +6351,6 @@ int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
 {
     int null;
     i64 ival;
-    double dval = 0;
     int outdtsz = 0;
     int rc = 0;
     struct field *f = &(sc->member[fnum]);
@@ -6433,7 +6431,8 @@ int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
         }
         break;
 
-    case SERVER_BREAL:
+    case SERVER_BREAL: {
+        double dval = 0;
         rc = SERVER_BREAL_to_CLIENT_REAL(
             in, f->len, NULL /*convopts */, NULL /*blob */, &dval, sizeof(dval),
             &null, &outdtsz, &convopts, NULL /*blob */);
@@ -6445,7 +6444,7 @@ int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
         else
             m->flags = MEM_Real;
         break;
-
+    }
     case SERVER_BCSTR:
         /* point directly at the ondisk string */
         m->z = (char *)&in[1]; /* skip header byte in front */
@@ -8956,7 +8955,7 @@ int pause_pagelock_cursors(void *arg)
     LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
     {
         if (cur->bdbcur) {
-            cur->bdbcur->pause(cur->bdbcur, &bdberr);
+            int rc = cur->bdbcur->pause(cur->bdbcur, &bdberr);
             assert(0 == rc);
         }
     }
@@ -11122,7 +11121,6 @@ static int get_data_from_ondisk(struct schema *sc, uint8_t *in,
 {
     int null;
     i64 ival;
-    double dval = 0;
     int outdtsz = 0;
     int rc = 0;
     struct field *f = &(sc->member[fnum]);
@@ -11200,7 +11198,8 @@ static int get_data_from_ondisk(struct schema *sc, uint8_t *in,
         }
         break;
 
-    case SERVER_BREAL:
+    case SERVER_BREAL: {
+        double dval = 0;
         rc = SERVER_BREAL_to_CLIENT_REAL(
             in, f->len, NULL /*convopts */, NULL /*blob */, &dval, sizeof(dval),
             &null, &outdtsz, NULL /*convopts */, NULL /*blob */);
@@ -11213,7 +11212,7 @@ static int get_data_from_ondisk(struct schema *sc, uint8_t *in,
         else
             m->flags = MEM_Real;
         break;
-
+    }
     case SERVER_BCSTR:
         /* point directly at the ondisk string */
         m->z = (char *)&in[1]; /* skip header byte in front */
