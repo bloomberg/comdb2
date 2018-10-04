@@ -4850,7 +4850,8 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
         /* Try dbinfo query without any host info. */
         if (cdb2_dbinfo_query(hndl, hndl->type, hndl->dbname, hndl->dbnum, NULL,
                               hndl->hosts, hndl->ports, &hndl->master,
-                              &hndl->num_hosts, &hndl->num_hosts_sameroom) == 0) {
+                              &hndl->num_hosts,
+                              &hndl->num_hosts_sameroom) == 0) {
             /* We get a plaintext socket from sockpool.
                We still need to read SSL config */
             only_read_config();
@@ -4875,7 +4876,7 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
         }
         strncpy(hndl->cluster, cdb2_default_cluster, sizeof(hndl->cluster) - 1);
         if (cdb2cfg_override) {
-            strncpy(hndl->type, cdb2_default_cluster, sizeof(hndl->type)-1);
+            strncpy(hndl->type, cdb2_default_cluster, sizeof(hndl->type) - 1);
         }
     }
 
