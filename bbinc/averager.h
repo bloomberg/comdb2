@@ -28,6 +28,7 @@ int averager_min(struct averager *avg);
 void averager_destroy(struct averager *avg);
 int averager_depth(struct averager *avg);
 void averager_purge_old(struct averager *avg, int now);
+void averager_clear(struct averager *avg);
 
 struct point {
     time_t time_added;
