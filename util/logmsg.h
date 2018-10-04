@@ -18,6 +18,14 @@ typedef enum {
 #else
 #define FORMAT_PRINTF(x,y) __attribute__((format(printf,x,y)))
 #endif
+
+#ifndef NDEBUG
+#define DEBUGMSG(fmt, args...) logmsg(LOGMSG_DEBUG, "tid 0x%lu %s:%d "fmt, \
+        pthread_self(), __func__, __LINE__, ##args)
+#else
+#define DEBUGMSG(fmt, args...) do {} while(0)
+#endif
+
 int logmsg(loglvl lvl, const char *fmt, ...) FORMAT_PRINTF(2, 3);
 int logmsgv(loglvl lvl, const char *fmt, va_list args);
 int logmsgf(loglvl lvl, FILE *f, const char *fmt, ...) FORMAT_PRINTF(3, 4);
