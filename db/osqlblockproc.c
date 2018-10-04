@@ -716,14 +716,17 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                            osql_session_get_ireq(sess));
     if (rc == 0)
         return 0;
+    
+    // only OSQL_DONE_SNAP, OSQL_DONE, OSQL_DONE_STATS, and OSQL_XERR are processed beyond this point
 
-    assert(type == OSQL_DONE_SNAP);
-    // get nops from the osql_done packet
-    int done_nops = osql_get_replicant_nops(rpl, rqid == OSQL_RQID_USE_UUID);
-    logmsg(LOGMSG_DEBUG, "Saving OSQL_DONE done_nops = %d, seq = %lld\n", done_nops, seq);
-    if (done_nops != seq + 1) {
-        abort();
-        return ERR_INTERNAL;
+    if (type != OSQL_XERR) {
+        int done_nops = osql_get_replicant_nops(rpl, rqid == OSQL_RQID_USE_UUID);
+        logmsg(LOGMSG_DEBUG, "%s: %s done_nops = %d, seq = %lld\n", __func__, osql_reqtype_str(type), done_nops, seq);
+
+        if(done_nops != seq + 1) {
+            abort();
+            return ERR_INTERNAL;
+        }
     }
 
     /* TODO: check the generation and fail early if it does not match */

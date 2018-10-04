@@ -4592,7 +4592,6 @@ int osql_send_commit(char *tohost, unsigned long long rqid, uuid_t uuid,
                      snap_uid_t *snap_info)
 {
     osql_done_rpl_t rpl_ok = {0};
-
     osql_done_xerr_t rpl_xerr = {0};
     int b_sz;
     int used_malloc = 0;
@@ -4653,10 +4652,12 @@ int osql_send_commit(char *tohost, unsigned long long rqid, uuid_t uuid,
         rpl_ok.dt.nops = nops;
 
         if (logsb) {
-            sbuf2printf(logsb, "[%llu] send OSQL_DONE %d %d\n", rqid, rc, nops);
+            sbuf2printf(logsb, "[%llu] send commit %s %d %d\n", rqid, osql_reqtype_str(rpl_ok.hd.type), rc, nops);
             sbuf2flush(logsb);
         }
 
+        logmsg(LOGMSG_DEBUG, "%s: [%llu] send %s rc = %d, nops = %d\n",
+               __func__, rqid, osql_reqtype_str(rpl_ok.hd.type), rc, nops);
 #if 0
       printf("Sending rqid=%llu tmp=%llu\n", rqid, osql_log_time());
 #endif
@@ -4724,7 +4725,6 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
                              snap_uid_t *snap_info)
 {
     osql_done_uuid_rpl_t rpl_ok = {0};
-
     osql_done_xerr_uuid_t rpl_xerr = {0};
     int b_sz;
     int used_malloc = 0;
@@ -4788,13 +4788,11 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
 
         uuidstr_t us;
         if (logsb) {
-            sbuf2printf(logsb, "[%s] send OSQL_DONE %d %d\n",
-                        comdb2uuidstr(uuid, us), rc, nops);
+            sbuf2printf(logsb, "[%s] send %s %d %d\n", comdb2uuidstr(uuid, us), osql_reqtype_str(rpl_ok.hd.type), rc, nops);
             sbuf2flush(logsb);
         }
 
-        logmsg(LOGMSG_DEBUG, "[%llu] send OSQL_DONE rc = %d, nops = %d\n",
-               comdb2uuidstr(uuid, us), rc, nops);
+        logmsg(LOGMSG_DEBUG, "%s: [%llu] send %s rc = %d, nops = %d\n", __func__, comdb2uuidstr(uuid, us), osql_reqtype_str(rpl_ok.hd.type), rc, nops);
 #if 0
       printf("Sending rqid=%llu tmp=%llu\n", rqid, osql_log_time());
 #endif
@@ -4830,6 +4828,8 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
 
         memcpy(&rpl_xerr.dt, xerr, sizeof(rpl_xerr.dt));
 
+        uuidstr_t us;
+        logmsg(LOGMSG_DEBUG, "%s: [%llu] send %s rc = %d, nops = %d\n", __func__, comdb2uuidstr(uuid, us), osql_reqtype_str(rpl_xerr.hd.type), rc, nops);
         if (!osqlcomm_done_xerr_uuid_type_put(&rpl_xerr, p_buf, p_buf_end)) {
             logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
                     "osqlcomm_done_xerr_type_put");
@@ -6729,7 +6729,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     if (gbl_toblock_net_throttle && is_write_request(type))
         net_throttle_wait(thedb->handle_sibling);
 
-    const char *osql_reqtype_str(int type);
     logmsg(LOGMSG_DEBUG, "osql_process_packet(): processing %s (%d)\n", osql_reqtype_str(type), type);
 
     switch (type) {
@@ -8105,7 +8104,7 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     } break;
 
     case OSQL_STARTGEN: {
-        osql_startgen_t dt;
+        osql_startgen_t dt = {0};
         unsigned char *pData = NULL;
         uint8_t *p_buf_end;
         p_buf_end = p_buf + sizeof(osql_startgen_t);

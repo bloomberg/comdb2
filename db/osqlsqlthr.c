@@ -195,6 +195,7 @@ static int osql_send_del_logic(struct BtCursor *pCur, struct sql_thread *thd)
         return rc;
     }
     osql->replicant_numops++;
+    logmsg(LOGMSG_DEBUG, "%s replicant_numops = %d\n", __func__, osql->replicant_numops);
     return SQLITE_OK;
 }
 
@@ -294,6 +295,7 @@ static int osql_send_ins_logic(struct BtCursor *pCur, struct sql_thread *thd,
         return rc;
     }
     osql->replicant_numops++;
+    logmsg(LOGMSG_DEBUG, "%s replicant_numops = %d\n", __func__, osql->replicant_numops);
     return SQLITE_OK;
 }
 
@@ -393,6 +395,7 @@ static int osql_send_upd_logic(struct BtCursor *pCur, struct sql_thread *thd,
             return rc;
         }
         osql->replicant_numops++;
+        logmsg(LOGMSG_DEBUG, "%s replicant_numops = %d\n", __func__, osql->replicant_numops);
     }
 
     rc = osql_send_updrec(
@@ -410,6 +413,7 @@ static int osql_send_upd_logic(struct BtCursor *pCur, struct sql_thread *thd,
     }
 
     osql->replicant_numops++;
+    logmsg(LOGMSG_DEBUG, "%s replicant_numops = %d\n", __func__, osql->replicant_numops);
     return SQLITE_OK;
 }
 
@@ -527,6 +531,7 @@ int osql_serial_send_readset(struct sqlclntstate *clnt, int nettype)
     rc = osql_send_serial(osql->host, osql->rqid, osql->uuid, arr_ptr,
                           arr_ptr->file, arr_ptr->offset, nettype, osql->logsb);
     osql->replicant_numops++;
+    logmsg(LOGMSG_DEBUG, "%s replicant_numops = %d\n", __func__, osql->replicant_numops);
     return rc;
 }
 
@@ -1196,6 +1201,7 @@ static int osql_send_usedb_logic_int(char *tablename, struct sqlclntstate *clnt,
             osql->tablenamelen = tablenamelen;
     }
     osql->replicant_numops++;
+    logmsg(LOGMSG_DEBUG, "%s replicant_numops = %d\n", __func__, osql->replicant_numops);
 
     return rc;
 }
@@ -1249,6 +1255,7 @@ static int osql_send_insidx_logic(struct BtCursor *pCur,
         if (rc)
             break;
         osql->replicant_numops++;
+        logmsg(LOGMSG_DEBUG, "%s replicant_numops = %d\n", __func__, osql->replicant_numops);
     }
     return rc;
 }
@@ -1278,6 +1285,7 @@ static int osql_send_delidx_logic(struct BtCursor *pCur,
         if (rc)
             break;
         osql->replicant_numops++;
+        logmsg(LOGMSG_DEBUG, "%s replicant_numops = %d\n", __func__, osql->replicant_numops);
     }
     return rc;
 }
@@ -1313,6 +1321,7 @@ static int osql_send_qblobs_logic(struct BtCursor *pCur, osqlstate_t *osql,
                 if (rc)
                     break; /* break out from while loop so we can return rc */
                 osql->replicant_numops++;
+                logmsg(LOGMSG_DEBUG, "%s replicant_numops = %d\n", __func__, osql->replicant_numops);
 
                 continue;
             }
@@ -1324,6 +1333,7 @@ static int osql_send_qblobs_logic(struct BtCursor *pCur, osqlstate_t *osql,
         if (rc)
             break;
         osql->replicant_numops++;
+        logmsg(LOGMSG_DEBUG, "%s replicant_numops = %d\n", __func__, osql->replicant_numops);
     }
 
     return rc;
@@ -1346,7 +1356,6 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
         osql->tablenamelen = 0;
     }
     osql->tran_ops = 0; /* reset transaction size counter*/
-    osql->replicant_numops += 2; //startgen and snap_done
 
     extern int gbl_always_send_cnonce;
     int send_cnonce = gbl_always_send_cnonce ? 1 : has_high_availability(clnt);
@@ -1362,10 +1371,16 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
         snap_info_p = &snap_info;
     }
 
+    osql->replicant_numops++;
+    int send_startgen = 0;
+    if (gbl_osql_send_startgen && clnt->start_gen > 0) {
+        send_startgen = 1;
+        osql->replicant_numops++;
+    }
 retry:
     rc = 0;
 
-    if (gbl_osql_send_startgen && clnt->start_gen > 0) {
+    if (send_startgen) {
         rc = osql_send_startgen(osql->host, osql->rqid, osql->uuid,
                                 clnt->start_gen, nettype, osql->logsb);
     }
@@ -1408,13 +1423,15 @@ static int osql_send_abort_logic(struct sqlclntstate *clnt, int nettype)
              "sql session %llu %s rollback", osql->rqid,
              comdb2uuidstr(osql->uuid, us));
 
+    osql->replicant_numops++;
+
     if (osql->rqid == OSQL_RQID_USE_UUID)
-        rc = osql_send_commit_by_uuid(osql->host, osql->uuid, 0, &xerr, nettype,
+        rc = osql_send_commit_by_uuid(osql->host, osql->uuid, osql->replicant_numops, &xerr, nettype,
                                       osql->logsb, clnt->query_stats, NULL);
     else
-        rc = osql_send_commit(osql->host, osql->rqid, osql->uuid, 0, &xerr,
+        rc = osql_send_commit(osql->host, osql->rqid, osql->uuid, osql->replicant_numops, &xerr,
                               nettype, osql->logsb, clnt->query_stats, NULL);
-    /* no need to restart an abort, master drop the transaction anyway
+    /* no need to restart an abort, master will drop the transaction anyway
     RESTART_SOCKSQL; */
     osql->replicant_numops = 0;
 
@@ -1470,6 +1487,7 @@ int osql_query_dbglog(struct sql_thread *thd, int queryid)
         RESTART_SOCKSQL;
     } while (restarted && rc == 0);
     osql->replicant_numops++;
+    logmsg(LOGMSG_DEBUG, "%s replicant_numops = %d\n", __func__, osql->replicant_numops);
     return rc;
 }
 
@@ -1544,6 +1562,7 @@ int osql_record_genid(struct BtCursor *pCur, struct sql_thread *thd,
         }
     }
     thd->clnt->osql.replicant_numops++;
+    logmsg(LOGMSG_DEBUG, "%s replicant_numops = %d\n", __func__, thd->clnt->osql.replicant_numops);
     return osql_save_recordgenid(pCur, thd, genid);
 }
 
@@ -1754,6 +1773,7 @@ int osql_schemachange_logic(struct schema_change_type *sc,
             return rc;
         }
         osql->replicant_numops++;
+        logmsg(LOGMSG_DEBUG, "%s replicant_numops = %d\n", __func__, osql->replicant_numops);
     }
 
     rc = osql_save_schemachange(thd, sc, usedb);
@@ -1794,6 +1814,7 @@ int osql_bpfunc_logic(struct sql_thread *thd, BpfuncArg *arg)
             return rc;
         }
         osql->replicant_numops++;
+        logmsg(LOGMSG_DEBUG, "%s replicant_numops = %d\n", __func__, osql->replicant_numops);
     }
 
     rc = osql_save_bpfunc(thd, arg);

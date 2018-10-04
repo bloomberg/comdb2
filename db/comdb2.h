@@ -321,6 +321,10 @@ enum BLOCK_OPS {
     NUM_BLOCKOP_OPCODES = 45
 };
 
+
+
+const char *osql_reqtype_str(int type); // used for printing string of type
+
 /*
    type will identify if there is a new record and type the new record is *
    PLEASE update osql_reqtype_str() when adding to this structure

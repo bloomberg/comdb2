@@ -318,7 +318,36 @@ echo "begin
 select count(*) from t1
 select count(*) from t2
 select count(*) from t2 where i = 1
-commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans.txt
+commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans1.txt
+
+# test transaction of diff sizes
+echo "begin
+insert into t2 values(3)
+commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans2.txt
+
+echo "begin
+insert into t2 values(4)
+insert into t2 values(5)
+commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans3.txt
+
+echo "begin
+insert into t2 values(6)
+insert into t2 values(7)
+insert into t2 values(8)
+commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans4.txt
+
+# test rollback
+echo "begin
+insert into t2 values(9)
+rollback" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans5.txt
+
+echo "begin
+insert into t2 values(9)
+insert into t2 values(10)
+rollback" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans5.txt
+
+
+
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure nonexistent(4)" &> badproc.txt
 echo "[exec procedure nonexistent(4)] failed with rc -3 no such procedure: nonexistent ver:0" > badproc.exp
