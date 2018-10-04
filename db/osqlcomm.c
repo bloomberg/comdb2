@@ -4792,7 +4792,7 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
             sbuf2flush(logsb);
         }
 
-        logmsg(LOGMSG_DEBUG, "%s: [%llu] send %s rc = %d, nops = %d\n", __func__, comdb2uuidstr(uuid, us), osql_reqtype_str(rpl_ok.hd.type), rc, nops);
+        DEBUGMSG("uuid=%s send %s rc = %d, nops = %d\n", comdb2uuidstr(uuid, us), osql_reqtype_str(rpl_ok.hd.type), rc, nops);
 #if 0
       printf("Sending rqid=%llu tmp=%llu\n", rqid, osql_log_time());
 #endif

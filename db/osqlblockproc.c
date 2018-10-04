@@ -635,15 +635,15 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     struct errstat *xerr;
     int bdberr;
     int debug = 0;
+    uuidstr_t us;
 
     if (type == OSQL_SCHEMACHANGE)
         iq->tranddl++;
 
     iq->osql_replicant_numops++;
 
-    logmsg(LOGMSG_DEBUG, 
-           "tid 0x%lu Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n",
-           pthread_self(), rqid, type, osql_reqtype_str(type), osql_log_time(), ses->seq);
+    DEBUGMSG("Saving uuid=%s type=%d (%s) tmp=%llu seq=%d\n",
+             comdb2uuidstr(uuid, us), type, osql_reqtype_str(type), osql_log_time(), sess->seq);
 #if 0
     printf("Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n",
            rqid, type, osql_reqtype_str(type), osql_log_time(), sess->seq);
@@ -724,8 +724,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     if (type != OSQL_XERR) {
         int done_nops = osql_get_replicant_nops(rpl, rqid == OSQL_RQID_USE_UUID);
-        logmsg(LOGMSG_DEBUG, "tid 0x%lu %s: %s done_nops = %d, seq = %lld\n",
-               pthread_self(), __func__, osql_reqtype_str(type), done_nops, seq);
+        DEBUGMSG("uuid = %s type %s done_nops = %d, seq = %lld\n", comdb2uuidstr(uuid, us), osql_reqtype_str(type), done_nops, seq);
 
         if(done_nops != seq + 1) {
             abort();
@@ -1091,7 +1090,6 @@ static int process_this_session(
     int receivedrows = 0;
     int flags = 0;
     uuid_t uuid;
-    uuidstr_t us;
 
     iq->queryid = osql_sess_queryid(sess);
 
@@ -1114,6 +1112,7 @@ static int process_this_session(
     key_next = key_crt = *(oplog_key_t *)bdb_temp_table_key(dbc);
 
     if (rc == IX_NOTFND) {
+        uuidstr_t us;
         comdb2uuidstr(uuid, us);
         logmsg(LOGMSG_ERROR, "%s: session %llx %s has no update rows?\n", __func__,
                 rqid, us);
