@@ -91,6 +91,11 @@ static int __dbenv_trigger_subscribe __P((DB_ENV *, const char *,
 static int __dbenv_trigger_unsubscribe __P((DB_ENV *, const char *));
 static int __dbenv_trigger_open __P((DB_ENV *, const char *));
 static int __dbenv_trigger_close __P((DB_ENV *, const char *));
+int __dbenv_apply_log __P((DB_ENV *, unsigned int, unsigned int, int64_t,
+            void*, int));
+size_t __dbenv_get_log_header_size __P((DB_ENV*)); 
+int __dbenv_rep_verify_match __P((DB_ENV*, unsigned int, unsigned int, int));
+int __dbenv_min_truncate_lsn_timestamp __P((DB_ENV*, int file, DB_LSN *lsn, int32_t *timestamp));
 
 /*
  * db_env_create --
@@ -209,6 +214,7 @@ __dbenv_init(dbenv)
 		dbenv->set_verbose = __dbcl_set_verbose;
 	} else {
 #endif
+        dbenv->apply_log = __dbenv_apply_log;
 		dbenv->close = __dbenv_close_pp;
 		dbenv->dbremove = __dbenv_dbremove_pp;
 		dbenv->dbrename = __dbenv_dbrename_pp;
@@ -262,6 +268,10 @@ __dbenv_init(dbenv)
 		dbenv->get_rep_verify_lsn = __dbenv_get_rep_verify_lsn;
 		dbenv->set_durable_lsn = __dbenv_set_durable_lsn;
 		dbenv->get_durable_lsn = __dbenv_get_durable_lsn;
+
+        dbenv->get_log_header_size = __dbenv_get_log_header_size;
+        dbenv->rep_verify_match = __dbenv_rep_verify_match;
+        dbenv->min_truncate_lsn_timestamp = __dbenv_min_truncate_lsn_timestamp;
 #ifdef	HAVE_RPC
 	}
 #endif

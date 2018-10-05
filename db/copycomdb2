@@ -5,6 +5,7 @@ PREFIX=@CMAKE_INSTALL_PREFIX@
 
 arch=`uname`
 rsh=ssh
+recovery_opts=""
 
 scriptname=${0##*/}
 [ -z "$TMPDIR" ] && TMPDIR=/tmp
@@ -80,7 +81,13 @@ Other options:
     -b          Serialize a backup of a database to stdout
     -r          Restore a backup of a database from stdin
     -p          Copy only the incremental differences
+    -H db       Creates a physical replicant with name 'db'.
+    -y 'machs'  Sets physical replicant machines (defaults to cluster).
+    -P rmt_path Sets the remote path for comdb2ar.
+    -z rmt_path Sets the remote path for lz4.
+    -R          Does not run full recovery on the copied database.
 \n"
+
    exit 1
 }
 
@@ -128,6 +135,14 @@ max_du_percent=95
 partial=no
 partialopts=
 outmode=x
+phys_repmode=no
+phys_name=
+phys_copy_from=
+phys_copy_flag=no
+comdb2ar_rmt=
+lz4_rmt=
+do_recovery=yes
+
 [ -z "$comdb2ar" ] && comdb2ar="${PREFIX}/bin/comdb2ar"
 [ -z "$lz4" ] && lz4="${PREFIX}/bin/lz4"
 
@@ -150,11 +165,15 @@ if [[ ! -x $lz4 ]]; then
    fi
 fi
 
-set - `getopt "LC:ht:l:rdsSx:fmaZu:bp" "$@"` || die
+set - `getopt "LC:ht:l:rdsSx:fmaZu:bpH:y:P:z:R" "$@"` || die
 for arg in "$@" ; do
     case "$arg" in
         -h)
             usage
+            ;;
+        -x)
+            recovery_opts="-x $2"
+            shift 2
             ;;
         -C)
             cluster_info="$2"
@@ -224,6 +243,28 @@ for arg in "$@" ; do
             shift
             ;;
 
+        -H) phys_repmode=yes
+            phys_name="$2"
+            shift 2
+            ;;
+
+        -y) phys_copy_from="$2"
+            phys_copy_flag=yes
+            shift 2
+            ;;
+
+        -P) comdb2ar_rmt="$2"
+            shift 2
+            ;;
+
+        -z) lz4_rmt="$2"
+            shift 2
+            ;;
+
+        -R) do_recovery=no
+            shift
+            ;;
+
         --)
             shift
             break
@@ -231,8 +272,16 @@ for arg in "$@" ; do
     esac
 done
 
+# allow comdb2ar_rmt to be changed
+[ -z "$comdb2ar_rmt" ] && comdb2ar_rmt="${comdb2ar}"
+[ -z "$lz4_rmt" ] && lz4_rmt="${lz4}"
+
 [ $copy_data = no -a $copy_lrls = no ] && die "cannot use -s and -d together"
 
+# restrict physical replicant mode
+[ $movemode = yes -a $phys_repmode = yes ] && die "cannot replicate and local move"
+[ $backupmode = yes -a $phys_repmode = yes ] && die "cannot replicate and backup"
+[ $restoremode = yes -a $phys_repmode = yes ] && die "cannot replicate and restore"
 
 # Get source file and host
 if [[ $restoremode = no ]]; then
@@ -410,10 +459,13 @@ exstatus="$TMPDIR/comdb2ar_ex.$$.txt"
 touch $arstatus $exstatus
 
 aropts="-C $cluster_info"
-exopts="-C $cluster_info -u $max_du_percent "
+exopts="-C $cluster_info -u $max_du_percent $recovery_opts"
 
 [ $copy_data = no ]             && aropts="$aropts -s"
 [ $disable_log_delete = no ]    && aropts="$aropts -L"
+[ $phys_repmode = yes ]         && aropts="$aropts -E $phys_name"
+[ $phys_copy_flag = yes ]       && aropts="$aropts -a $phys_copy_from"
+[ $do_recovery = no ]           && exopts="$exopts -R"
 
 if [ $restoremode = yes ]; then
     $IONICE $lz4 -d stdin stdout | $comdb2ar $COMDB2AR_AROPTS $exopts x $destlrldir $destdbdir 2>$arstatus 
@@ -463,11 +515,11 @@ else
         # Pull mode.  Serialise the db at the destination and pipe this in to
         # a local deserialise.
         if [[ $partial = yes ]] ; then
-            $rsh $srcmach "$IONICE_RMT $comdb2ar $COMDB2AR_AROPTS $aropts c $partialopts $srclrl 2>$arstatus | $lz4 stdin stdout " | \
+            $rsh $srcmach "$IONICE_RMT $comdb2ar_rmt $COMDB2AR_AROPTS $aropts c $partialopts $srclrl 2>$arstatus | $lz4_rmt stdin stdout " | \
                 $lz4 -d stdin stdout | $IONICE $comdb2ar $COMDB2AR_EXOPTS $exopts $outmode $destlrldir/$partiallrl >$exstatus 2>&1
             rc=$?
         else
-            $rsh $srcmach "$IONICE_RMT $comdb2ar $COMDB2AR_AROPTS $aropts c $srclrl 2>$arstatus | $lz4 stdin stdout " | \
+            $rsh $srcmach "$IONICE_RMT $comdb2ar_rmt $COMDB2AR_AROPTS $aropts c $srclrl 2>$arstatus | $lz4_rmt stdin stdout " | \
                 $lz4 -d stdin stdout | $IONICE $comdb2ar $COMDB2AR_EXOPTS $exopts $outmode $destlrldir $destdbdir >$exstatus 2>&1
             rc=$?
         fi
@@ -477,11 +529,11 @@ else
         # process on remote machine.
         if [[ $partial = yes ]] ; then
             $IONICE $comdb2ar $COMDB2AR_AROPTS $aropts c $partialopts $srclrl 2>$arstatus | $lz4 stdin stdout | \
-                $rsh $destmach "$lz4 -d stdin stdout | $IONICE_RMT $comdb2ar $COMDB2AR_EXOPTS $exopts $outmode $destlrldir/$partiallrl " >$exstatus 2>&1
+                $rsh $destmach "$lz4_rmt -d stdin stdout | $IONICE_RMT $comdb2ar_rmt $COMDB2AR_EXOPTS $exopts $outmode $destlrldir/$partiallrl " >$exstatus 2>&1
             rc=$?
         else
             $IONICE $comdb2ar $COMDB2AR_AROPTS $aropts c $srclrl 2>$arstatus | $lz4 stdin stdout | \
-                $rsh $destmach "$lz4 -d stdin stdout | $IONICE_RMT $comdb2ar $COMDB2AR_EXOPTS $exopts $outmode $destlrldir $destdbdir " >$exstatus 2>&1
+                $rsh $destmach "$lz4_rmt -d stdin stdout | $IONICE_RMT $comdb2ar_rmt $COMDB2AR_EXOPTS $exopts $outmode $destlrldir $destdbdir " >$exstatus 2>&1
             rc=$?
         fi
 

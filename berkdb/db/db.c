@@ -61,6 +61,7 @@ static const char revid[] = "$Id: db.c,v 11.283 2003/11/14 05:32:29 ubell Exp $"
 #include "dbinc/mp.h"
 #include "dbinc/qam.h"
 #include "dbinc/txn.h"
+#include "logmsg.h"
 
 static int __db_dbenv_mpool __P((DB *, const char *, u_int32_t));
 static int __db_disassociate __P((DB *));
@@ -70,6 +71,8 @@ static void __db_makecopy __P((DB_ENV *, const char *, const char *));
 static int  __db_testdocopy __P((DB_ENV *, const char *));
 static int  __qam_testdocopy __P((DB *, const char *));
 #endif
+
+extern int gbl_is_physical_replicant;
 
 /*
  * DB.C --
@@ -385,12 +388,52 @@ done:	/*
 	return (ret);
 }
 
+int gbl_instrument_dblist = 0;
+
+int get_dblist_count(dbenv, dbp, op, func, line)
+	DB_ENV *dbenv;
+	DB *dbp;
+	const char *op;
+	const char *func;
+	int line;
+{
+	DB *ldbp;
+	char *mem;
+	int count=0;
+	int ret;
+	char *p;
+
+	if (!gbl_instrument_dblist)
+		return 0;
+
+	for (ldbp = LIST_FIRST(&dbenv->dblist);
+			ldbp != NULL; ldbp = LIST_NEXT(ldbp, dblistlinks))
+		count++;
+
+	int len = (count*(sizeof(ldbp)+10))+1;
+	if ((ret = __os_malloc(dbenv, len, &mem)) != 0)
+		abort();
+
+	p = mem;
+
+	for (ldbp = LIST_FIRST(&dbenv->dblist);
+			ldbp != NULL; ldbp = LIST_NEXT(ldbp, dblistlinks)) {
+		p += sprintf(p, "%p ", ldbp);
+	}
+	*p = '\0';
+	logmsg(LOGMSG_DEBUG, "%s line %d %s %p, dbenv %p, count is %d\n", func,
+			line, op, dbp, dbenv, count);
+	logmsg(LOGMSG_DEBUG, "%s\n", mem);
+	__os_free(dbenv, mem);
+	return count;
+}
+
 /*
  * __db_dbenv_setup --
  *	Set up the underlying environment during a db_open.
  *
  * PUBLIC: int __db_dbenv_setup __P((DB *,
- * PUBLIC:     DB_TXN *, const char *, u_int32_t, u_int32_t));
+ * PUBLIC:	 DB_TXN *, const char *, u_int32_t, u_int32_t));
  */
 int
 __db_dbenv_setup(dbp, txn, fname, id, flags)
@@ -404,7 +447,9 @@ __db_dbenv_setup(dbp, txn, fname, id, flags)
 	DB_ENV *dbenv;
 	DB_MPOOL *dbmp;
 	u_int32_t maxid;
+	int bef, aft;
 	int ret;
+	int i;
 
 	dbenv = dbp->dbenv;
 
@@ -412,13 +457,13 @@ __db_dbenv_setup(dbp, txn, fname, id, flags)
 	if (!F_ISSET(dbenv, DB_ENV_OPEN_CALLED)) {
 		/* Make sure we have at least DB_MINCACHE pages in our cache. */
 		if (dbenv->mp_gbytes == 0 &&
-		    dbenv->mp_bytes < dbp->pgsize * DB_MINPAGECACHE &&
-		    (ret = __memp_set_cachesize(
-		    dbenv, 0, dbp->pgsize * DB_MINPAGECACHE, 0)) != 0)
+			dbenv->mp_bytes < dbp->pgsize * DB_MINPAGECACHE &&
+			(ret = __memp_set_cachesize(
+			dbenv, 0, dbp->pgsize * DB_MINPAGECACHE, 0)) != 0)
 			return (ret);
 
 		if ((ret = __dbenv_open(dbenv, NULL, DB_CREATE |
-		    DB_INIT_MPOOL | DB_PRIVATE | LF_ISSET(DB_THREAD), 0)) != 0)
+			DB_INIT_MPOOL | DB_PRIVATE | LF_ISSET(DB_THREAD), 0)) != 0)
 			return (ret);
 	}
 
@@ -433,7 +478,7 @@ __db_dbenv_setup(dbp, txn, fname, id, flags)
 	if (LF_ISSET(DB_THREAD)) {
 		dbmp = dbenv->mp_handle;
 		if ((ret = __db_mutex_setup(dbenv, dbmp->reginfo, &dbp->mutexp,
-		    MUTEX_ALLOC | MUTEX_THREAD)) != 0)
+			MUTEX_ALLOC | MUTEX_THREAD)) != 0)
 			return (ret);
 	}
 
@@ -444,7 +489,7 @@ __db_dbenv_setup(dbp, txn, fname, id, flags)
 	 * still need an FNAME struct, so LOGGING_ON is the correct macro.
 	 */
 	if (LOGGING_ON(dbenv) &&
-	    (ret = __dbreg_setup(dbp, fname, id)) != 0)
+		(ret = __dbreg_setup(dbp, fname, id)) != 0)
 		return (ret);
 
 	/*
@@ -453,9 +498,9 @@ __db_dbenv_setup(dbp, txn, fname, id, flags)
 	 */
 	if (DBENV_LOGGING(dbenv) && !F_ISSET(dbp, DB_AM_RECOVER) &&
 #if !defined(DEBUG_ROP)
-	    !F_ISSET(dbp, DB_AM_RDONLY) &&
+		!F_ISSET(dbp, DB_AM_RDONLY) &&
 #endif
-	    (ret = __dbreg_new_id(dbp, txn)) != 0)
+		(ret = __dbreg_new_id(dbp, txn)) != 0)
 		return (ret);
 
 	/*
@@ -475,7 +520,7 @@ __db_dbenv_setup(dbp, txn, fname, id, flags)
 	if (F_ISSET(dbp, DB_AM_HASH))
 		dbp->peer = dbp;
 	for (lldbp = LIST_FIRST(&dbenv->dblist);
-	    lldbp != NULL; lldbp = LIST_NEXT(lldbp, dblistlinks)) {
+		lldbp != NULL; lldbp = LIST_NEXT(lldbp, dblistlinks)) {
 		if (memcmp(lldbp->fileid, dbp->fileid, DB_FILE_ID_LEN) == 0) {
 			if (F_ISSET(dbp, DB_AM_HASH)) {
 				lldbp->peer = dbp;
@@ -486,14 +531,16 @@ __db_dbenv_setup(dbp, txn, fname, id, flags)
 		}
 	}
 
+	int count=0;
 	for (maxid = 0, ldbp = LIST_FIRST(&dbenv->dblist);
-	    ldbp != NULL; ldbp = LIST_NEXT(ldbp, dblistlinks)) {
+		ldbp != NULL; ldbp = LIST_NEXT(ldbp, dblistlinks)) {
 		if (fname != NULL &&
-		    memcmp(ldbp->fileid, dbp->fileid, DB_FILE_ID_LEN) == 0 &&
-		    ldbp->meta_pgno == dbp->meta_pgno)
+			memcmp(ldbp->fileid, dbp->fileid, DB_FILE_ID_LEN) == 0 &&
+			ldbp->meta_pgno == dbp->meta_pgno)
 			break;
 		if (ldbp->adj_fileid > maxid)
 			maxid = ldbp->adj_fileid;
+		count++;
 	}
 
 	/*
@@ -509,20 +556,38 @@ __db_dbenv_setup(dbp, txn, fname, id, flags)
 	if (ldbp == NULL) {
 		dbp->adj_fileid = maxid + 1;
 		if (dbp->adj_fileid >= dbenv->maxdb) {
-			dbenv->maxdb = dbp->adj_fileid;
 			dbenv->dbs =
-			    realloc(dbenv->dbs,
-			    sizeof(listc_t) * (dbp->adj_fileid + 1));
+				realloc(dbenv->dbs,
+				sizeof(listc_t) * (dbp->adj_fileid + 1));
+			for (i = dbenv->maxdb + 1 ; i <= dbp->adj_fileid; i++) {
+				listc_init(&dbenv->dbs[i], offsetof(DB, adjlnk));
+			}
+			dbenv->maxdb = dbp->adj_fileid;
 		}
 		listc_init(&dbenv->dbs[dbp->adj_fileid], offsetof(DB, adjlnk));
 
+		bef = get_dblist_count(dbenv, dbp, "before-insert-head", __func__, __LINE__);
 		LIST_INSERT_HEAD(&dbenv->dblist, dbp, dblistlinks);
+		aft = get_dblist_count(dbenv, dbp, "after-insert-head", __func__, __LINE__);
+		if (gbl_instrument_dblist && aft != (bef+1))
+			abort();
 	} else {
 		dbp->adj_fileid = ldbp->adj_fileid;
+		bef = get_dblist_count(dbenv, dbp, "before-insert", __func__, __LINE__);
 		LIST_INSERT_AFTER(ldbp, dbp, dblistlinks);
+		aft = get_dblist_count(dbenv, dbp, "after-insert", __func__, __LINE__);
+		if (gbl_instrument_dblist && aft != (bef+1))
+			abort();
+        if (gbl_instrument_dblist)
+            logmsg(LOGMSG_DEBUG, "%s found match for dbp at adj_fileid %u\n",
+                    __func__, ldbp->adj_fileid);
 	}
 	dbp->inadjlist = 1;
 	listc_abl(&dbenv->dbs[dbp->adj_fileid], dbp);
+    if (gbl_instrument_dblist)
+        logmsg(LOGMSG_DEBUG, "%s putting dbp %p adj_fileid %u into %p list "
+                "%p\n", __func__, dbp, dbp->adj_fileid, dbenv, &dbenv->dbs[
+                dbp->adj_fileid]);
 
 	MUTEX_THREAD_UNLOCK(dbenv, dbenv->dblist_mutexp);
 
@@ -741,6 +806,7 @@ __db_refresh(dbp, txn, flags, deferred_closep)
 	DB_LOCKREQ lreq;
 	DB_MPOOL *dbmp;
 	int ret, t_ret;
+    int aft, bef;
 
 	ret = 0;
 
@@ -950,10 +1016,18 @@ never_opened:
 	 */
 	MUTEX_THREAD_LOCK(dbenv, dbenv->dblist_mutexp);
 	if (dbp->dblistlinks.le_prev != NULL) {
+        bef = get_dblist_count(dbenv, dbp, "before-remove", __func__, __LINE__);
 		LIST_REMOVE(dbp, dblistlinks);
+        aft = get_dblist_count(dbenv, dbp, "after-remove", __func__, __LINE__);
+        if (gbl_instrument_dblist && aft != (bef - 1))
+            abort();
 		if (dbp->inadjlist) {
 			listc_rfl(&dbenv->dbs[dbp->adj_fileid], dbp);
 			dbp->inadjlist = 0;
+            if (gbl_instrument_dblist)
+                logmsg(LOGMSG_DEBUG, "%s removing dbp %p adj_fileid %u from %p "
+                        "list %p\n", __func__, dbp, dbp->adj_fileid, dbenv,
+                        &dbenv->dbs[dbp->adj_fileid]);
 		}
 		dbp->dblistlinks.le_prev = NULL;
 	}
@@ -1075,8 +1149,9 @@ __db_backup_name(dbenv, name, txn, backup)
 			 * a valid dbp, and we aren't guaranteed to be able
 			 * to pass one in here.
 			 */
-			if ((ret = __db_debug_log(dbenv, txn, &lsn, 0,
-			    NULL, 0, NULL, NULL, 0)) != 0)
+            if (!gbl_is_physical_replicant && 
+                    ((ret = __db_debug_log(dbenv, txn, &lsn, 0,
+                                           NULL, 0, NULL, NULL, 0)) != 0))
 				return (ret);
 		} else
 			lsn = txn->last_lsn;

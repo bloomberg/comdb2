@@ -39,6 +39,7 @@ add_library(bdb
   odh.c
   os_namemangle.c
   phys.c
+  phys_rep_lsn.c
   queue.c
   queuedb.c
   read.c
@@ -90,6 +91,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/mem
   ${PROJECT_BINARY_DIR}/mem
   ${PROJECT_SOURCE_DIR}/net
+  ${PROJECT_SOURCE_DIR}/cdb2api
   ${PROJECT_BINARY_DIR}/protobuf
   ${OPENSSL_INCLUDE_DIR}
   ${PROTOBUF_C_INCLUDE_DIR}

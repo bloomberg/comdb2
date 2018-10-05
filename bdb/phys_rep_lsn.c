@@ -1,0 +1,339 @@
+#include <build/db.h>
+#include <strings.h>
+#include <logmsg.h>
+#include <string.h>
+
+#include "bdb_int.h"
+#include <dbinc/db_swap.h>
+#include "phys_rep_lsn.h"
+#include "ext/comdb2/tranlog.h"
+#include <cdb2api.h>
+#include <parse_lsn.h>
+#include "locks.h"
+
+extern bdb_state_type *bdb_state;
+
+int matchable_log_type(int rectype);
+
+extern int gbl_verbose_physrep;
+
+LOG_INFO get_last_lsn(bdb_state_type *bdb_state)
+{
+    int rc;
+
+    /* get db internals */
+    DB_LOGC *logc;
+    DBT logrec;
+    DB_LSN last_log_lsn;
+    LOG_INFO log_info = {0};
+
+    rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: can't get log cursor rc %d\n", __func__, rc);
+        return log_info;
+    }
+    bzero(&logrec, sizeof(DBT));
+    logrec.flags = DB_DBT_MALLOC;
+    rc = logc->get(logc, &last_log_lsn, &logrec, DB_LAST);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: can't get last log record rc %d\n", __func__,
+               rc);
+        logc->close(logc, 0);
+        return log_info;
+    }
+
+    if (gbl_verbose_physrep)
+        logmsg(LOGMSG_USER, "%s: LSN %u:%u\n", __func__, last_log_lsn.file,
+                last_log_lsn.offset);
+
+    log_info.file = last_log_lsn.file;
+    log_info.offset = last_log_lsn.offset;
+    log_info.size = logrec.size;
+
+    if (logrec.data)
+        free(logrec.data);
+
+    logc->close(logc, 0);
+
+    return log_info;
+}
+
+int compare_log(bdb_state_type *bdb_state, unsigned int file,
+                unsigned int offset, void *blob, unsigned int blob_len)
+{
+    int rc;
+
+    /* get db internals */
+    DB_LOGC *logc;
+    DBT logrec;
+    DB_LSN match_lsn;
+    LOG_INFO log_info;
+    log_info.file = log_info.offset = log_info.size = 0;
+
+    match_lsn.file = file;
+    match_lsn.offset = offset;
+
+    rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: can't get log cursor rc %d\n", __func__, rc);
+        return 1;
+    }
+    bzero(&logrec, sizeof(DBT));
+    logrec.flags = DB_DBT_MALLOC;
+    rc = logc->get(logc, &match_lsn, &logrec, DB_SET);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: can't get log record rc %d\n", __func__, rc);
+        logc->close(logc, 0);
+        return 1;
+    }
+
+    if (gbl_verbose_physrep) {
+        logmsg(LOGMSG_USER, "cmp: LSN %u:%u\n", match_lsn.file,
+                match_lsn.offset);
+    }
+
+    if (logrec.size != blob_len) {
+        rc = 1;
+    } else {
+        rc = memcmp(blob, logrec.data, blob_len);
+    }
+
+    if (logrec.data)
+        free(logrec.data);
+
+    logc->close(logc, 0);
+
+    return rc;
+}
+
+int find_log_timestamp(bdb_state_type *bdb_state, time_t time,
+                       unsigned int *file, unsigned int *offset)
+{
+    int rc;
+    u_int64_t my_time;
+
+    /* get db internals */
+    DB_LOGC *logc;
+    DBT logrec;
+    DB_LSN rec_lsn;
+    u_int32_t rectype;
+
+    /* get last record then iterate */
+    rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: can't get log cursor rc %d\n", __func__, rc);
+        return 1;
+    }
+
+    do {
+        do {
+            bzero(&logrec, sizeof(DBT));
+            logrec.flags = DB_DBT_MALLOC;
+            rc = logc->get(logc, &rec_lsn, &logrec, DB_PREV);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s: can't get log record rc %d\n",
+                       __func__, rc);
+                logc->close(logc, 0);
+                return 1;
+            }
+
+            LOGCOPY_32(&rectype, logrec.data);
+
+        } while (!matchable_log_type(rectype));
+
+        my_time = get_timestamp_from_matchable_record(logrec.data);
+        if (gbl_verbose_physrep) {
+            logmsg(LOGMSG_USER, "%s my ts is %lld, {%u:%u}\n", __func__,
+                    my_time, rec_lsn.file, rec_lsn.offset);
+        }
+
+        if (logrec.data)
+            free(logrec.data);
+    } while (time < my_time);
+
+    if (gbl_verbose_physrep) {
+        logmsg(LOGMSG_USER, "%s ts is %lld, {%u:%u}\n", __func__, my_time,
+                rec_lsn.file, rec_lsn.offset);
+    }
+
+    *file = rec_lsn.file;
+    *offset = rec_lsn.offset;
+
+    return 0;
+}
+
+static int get_next_matchable(DB_LOGC *logc, LOG_INFO *info)
+{
+    /* TODO: like get_last_lsn, but need to expose the data this time */
+    int rc;
+    u_int32_t rectype;
+
+    /* get db internals */
+    DBT logrec;
+    DB_LSN match_lsn;
+    LOG_INFO log_info;
+    log_info.file = log_info.offset = log_info.size = 0;
+
+    match_lsn.file = info->file;
+    match_lsn.offset = info->offset;
+
+    do {
+        bzero(&logrec, sizeof(DBT));
+        logrec.flags = DB_DBT_MALLOC;
+        rc = logc->get(logc, &match_lsn, &logrec, DB_PREV);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: can't get log record rc %d\n", __func__,
+                   rc);
+            return 1;
+        }
+
+        LOGCOPY_32(&rectype, logrec.data);
+
+        if (logrec.data)
+            free(logrec.data);
+
+    } while (!matchable_log_type(rectype));
+
+    info->file = match_lsn.file;
+    info->offset = match_lsn.offset;
+    info->size = logrec.size;
+
+    if (gbl_verbose_physrep) {
+        logmsg(LOGMSG_USER, "%s: Found matchable {%u:%u}\n", __func__,
+                info->file, info->offset);
+    }
+
+    return rc;
+}
+
+/* generator code */
+
+u_int32_t get_next_offset(DB_ENV *dbenv, LOG_INFO log_info)
+{
+    return log_info.offset + log_info.size + dbenv->get_log_header_size(dbenv);
+}
+
+int apply_log(DB_ENV *dbenv, unsigned int file, unsigned int offset,
+              int64_t rectype, void *blob, int blob_len)
+{
+    return dbenv->apply_log(dbenv, file, offset, rectype, blob, blob_len);
+}
+
+int truncate_log_lock(bdb_state_type *bdb_state, unsigned int file,
+                      unsigned int offset, uint32_t flags)
+{
+    extern int gbl_is_physical_replicant;
+    DB_LSN trunc_lsn;
+    char *msg = "truncate log";
+
+    if (flags &&
+        bdb_state->repinfo->master_host != bdb_state->repinfo->myhost) {
+        return send_truncate_to_master(bdb_state, file, offset);
+    }
+
+    /* have to get lock for recovery */
+    BDB_WRITELOCK(msg);
+    bdb_state->dbenv->rep_verify_match(bdb_state->dbenv, file, offset);
+    BDB_RELLOCK();
+
+    return 0;
+}
+
+LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db, LOG_INFO start_info)
+{
+    int rc;
+    char sql_cmd[128];
+    bdb_state_type *bdb_state = (bdb_state_type *)in_bdb_state;
+    void *blob;
+    char *lsn;
+    int blob_len;
+    unsigned int match_file, match_offset;
+    LOG_INFO info = {0};
+    DB_LOGC *logc;
+    DBT logrec;
+
+
+    rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: can't get log cursor rc %d\n", __func__, rc);
+        return info;
+    }
+
+    while (!(rc = get_next_matchable(logc, &start_info))) {
+        snprintf(sql_cmd, sizeof(sql_cmd),
+                "select * from comdb2_transaction_logs('{%d:%d}','{%d:%d}', 0)",
+                start_info.file, start_info.offset, start_info.file,
+                start_info.offset);
+
+        if ((rc = cdb2_run_statement(repl_db, sql_cmd)) == 0) {
+            if ((rc = cdb2_next_record(repl_db)) == CDB2_OK) {
+                lsn = (char *)cdb2_column_value(repl_db, 0);
+                if (!lsn) {
+                    logmsg(LOGMSG_FATAL, "%s: null lsn for probe of {%d:%d}."
+                            " going to next record\n", __func__,
+                            start_info.file,start_info.offset);
+                    abort();
+                }
+
+                if ((rc = char_to_lsn(lsn, &match_file, &match_offset)) != 0) {
+                    logmsg(LOGMSG_FATAL, "Could not parse lsn? %s\n", lsn);
+                    abort();
+                }
+
+                /* check if lsns match, if not, then get next matchable */
+                if (match_file != start_info.file ||
+                        match_offset != start_info.offset) {
+                    logmsg(LOGMSG_ERROR, "%s %d not same lsn{%u:%u} vs "
+                            "{%u:%u}??? \n", __func__, start_info.file,
+                            start_info.offset, match_file, match_offset);
+                    continue;
+                }
+
+                /* here lsns match, thus we can now compare them */
+                blob = cdb2_column_value(repl_db, 4);
+                blob_len = cdb2_column_size(repl_db, 4);
+
+                if ((rc = compare_log(bdb_state, match_file, match_offset,
+                                blob, blob_len)) == 0) {
+                    info.file = match_file;
+                    info.offset = match_offset;
+                    info.size = blob_len;
+                    info.gen = *(int64_t *)cdb2_column_value(repl_db, 2);
+                    logc->close(logc, 0);
+                    if (gbl_verbose_physrep) {
+                        logmsg(LOGMSG_USER, "%s: found match at {%d:%d}\n",
+                                __func__, start_info.file, start_info.offset);
+                    }
+                    return info;
+                } else {
+                    if (gbl_verbose_physrep) {
+                        logmsg(LOGMSG_USER, "%s: memcmp failed for {%d:%d}\n",
+                                __func__, start_info.file, start_info.offset);
+                    }
+                }
+            } else {
+                /* Didn't find a record: just go to previous */
+                if (gbl_verbose_physrep) {
+                    logmsg(LOGMSG_USER, "%s: probe of {%d:%d} failed, going to "
+                            "previous\n", __func__, start_info.file,
+                            start_info.offset);
+                }
+            }
+        } else {
+            /* Run statement failure: close cursor and handle & return */
+            if (gbl_verbose_physrep) {
+                logmsg(LOGMSG_USER, "%s: %s returns %d, '%s': closing "
+                        "connection\n", __func__, sql_cmd, rc,
+                        cdb2_errstr(repl_db));
+            }
+            logc->close(logc, 0);
+            return info;
+        }
+    }
+
+    logmsg(LOGMSG_WARN, "No matchable lsns in the log\n");
+    logc->close(logc, 0);
+
+    return info;
+}
+

@@ -68,6 +68,7 @@
 #include <trigger.h>
 #include "printformats.h"
 #include <llog_auto.h>
+#include "phys_rep_lsn.h"
 #include "logmsg.h"
 #include <compat.h>
 
@@ -311,15 +312,14 @@ const uint8_t *rep_udp_filepage_type_get(filepage_type *p_filepage_type,
     return p_buf;
 }
 
-enum { REP_DB_LSN_TYPE_SIZE = 4 + 4 };
+enum { DB_LSN_TYPE_SIZE = 4 + 4 };
 
-BB_COMPILE_TIME_ASSERT(rep_db_lsn_type, sizeof(DB_LSN) == REP_DB_LSN_TYPE_SIZE);
+BB_COMPILE_TIME_ASSERT(db_lsn_type, sizeof(DB_LSN) == DB_LSN_TYPE_SIZE);
 
-static const uint8_t *rep_db_lsn_type_get(DB_LSN *p_db_lsn,
-                                          const uint8_t *p_buf,
-                                          const uint8_t *p_buf_end)
+const uint8_t *db_lsn_type_get(DB_LSN *p_db_lsn, const uint8_t *p_buf,
+                               const uint8_t *p_buf_end)
 {
-    if (p_buf_end < p_buf || REP_DB_LSN_TYPE_SIZE > (p_buf_end - p_buf))
+    if (p_buf_end < p_buf || DB_LSN_TYPE_SIZE > (p_buf_end - p_buf))
         return NULL;
 
     p_buf =
@@ -330,11 +330,10 @@ static const uint8_t *rep_db_lsn_type_get(DB_LSN *p_db_lsn,
     return p_buf;
 }
 
-static const uint8_t *rep_db_lsn_type_put(const DB_LSN *p_db_lsn,
-                                          uint8_t *p_buf,
-                                          const uint8_t *p_buf_end)
+const uint8_t *db_lsn_type_put(const DB_LSN *p_db_lsn, uint8_t *p_buf,
+                               const uint8_t *p_buf_end)
 {
-    if (p_buf_end < p_buf || REP_DB_LSN_TYPE_SIZE > (p_buf_end - p_buf))
+    if (p_buf_end < p_buf || DB_LSN_TYPE_SIZE > (p_buf_end - p_buf))
         return NULL;
 
     p_buf =
@@ -951,7 +950,7 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
 
                     p_buf = (uint8_t *)lsnp;
                     p_buf_end = (uint8_t *)lsnp + sizeof(DB_LSN);
-                    rep_db_lsn_type_get(&(tran->savelsn), p_buf, p_buf_end);
+                    db_lsn_type_get(&(tran->savelsn), p_buf, p_buf_end);
 
                     /*
                        char str[80];
@@ -4440,9 +4439,11 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
     bdb_state_type *bdb_state;
     int node;
     int on_off;
+    uint32_t gen;
     lsn_cmp_type lsn_cmp;
     int in_rep_process_message;
     DB_LSN cur_lsn;
+    DB_LSN trunc_lsn;
     uint8_t *p_buf;
     uint8_t *p_buf_end;
     pgcomp_snd_t pgsnd;
@@ -4664,6 +4665,19 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         enqueue_pg_compact_work(bdb_state, pgsnd.id, pgsnd.size, pgsnd_pl_pos);
         break;
 
+    case USER_TYPE_TRUNCATE_LOG:
+        p_buf = (uint8_t *)dta;
+        p_buf_end = ((uint8_t *)dta + dtalen);
+        if ((db_lsn_type_get(&trunc_lsn, p_buf, p_buf_end)) == NULL) {
+            logmsg(LOGMSG_ERROR, "%s %d: failed to get trunc-lsn\n", __func__,
+                   __LINE__);
+        } else {
+            logmsg(LOGMSG_INFO, "Truncating log to %d:%d\n", trunc_lsn.file,
+                   trunc_lsn.offset);
+            truncate_log_lock(bdb_state, trunc_lsn.file, trunc_lsn.offset, 0);
+        }
+        net_ack_message(ack_handle, 0);
+        break;
     default:
 #if 0 
         fprintf(stderr,"%s: unknown message: %d (0x%08X)\n",__func__,usertype, 
@@ -5120,7 +5134,7 @@ void *watcher_thread(void *arg)
 
     bdb_state->repinfo->disable_watcher = 0;
 
-    while (!db_is_exiting()) {
+    while (!db_is_stopped()) {
         time_now = comdb2_time_epoch();
         time_then = bdb_state->repinfo->disable_watcher;
 

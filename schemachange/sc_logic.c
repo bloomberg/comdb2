@@ -38,6 +38,8 @@
 #include "logmsg.h"
 #include "comdb2_atomic.h"
 
+extern int gbl_is_physical_replicant;
+
 /**** Utility functions */
 
 static enum thrtype prepare_sc_thread(struct schema_change_type *s)
@@ -708,7 +710,11 @@ int resume_schema_change(void)
     int is_shard = 0;
     char *viewname = NULL;
 
-    /* if we're not the master node then we can't do schema change! */
+    /* if we're not the master node/phys replicant then we can't do schema
+     * change! */
+    if (gbl_is_physical_replicant) {
+        return 0;
+    }
     if (thedb->master != gbl_mynode) {
         logmsg(LOGMSG_WARN,
                "resume_schema_change: not the master, cannot resume a"

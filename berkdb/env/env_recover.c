@@ -59,6 +59,7 @@ void bdb_get_writelock(void *bdb_state,
 void bdb_rellock(void *bdb_state, const char *funcname, int line);
 int bdb_is_open(void *bdb_state);
 
+extern int gbl_is_physical_replicant;
 
 #define BDB_WRITELOCK(idstr)    bdb_get_writelock(bdb_state, (idstr), __func__, __LINE__)
 #define BDB_RELLOCK()           bdb_rellock(bdb_state, __func__, __LINE__)
@@ -291,11 +292,13 @@ __db_find_recovery_start_if_enabled(dbenv, outlsn)
 
 /* Walk forward in the log until the first debug record */
 static int
-__db_find_earliest_recover_point(dbenv, outlsn)
+__db_find_earliest_recover_point_after_file(dbenv, outlsn, file)
 	DB_ENV *dbenv;
 	DB_LSN *outlsn;
+    int file;
 {
 	int ret = 0;
+    int flags = DB_FIRST;
 	DB_LOGC *logc = NULL;
 	u_int32_t type;
 	DB_LSN lsn, start_lsn = {0};
@@ -307,10 +310,17 @@ __db_find_earliest_recover_point(dbenv, outlsn)
 	if ((ret = __log_cursor(dbenv, &logc)) != 0)
 		goto err;
 
-	for (ret = __log_c_get(logc, &lsn, &rec, DB_FIRST);
+    if (file > 0) {
+        lsn.file = file;
+        lsn.offset = 28;
+        if (0 == __log_c_get(logc, &lsn, &rec, DB_SET))
+            flags = DB_SET;
+    }
+
+	for (ret = __log_c_get(logc, &lsn, &rec, flags);
 			ret == 0; ret = __log_c_get(logc, &lsn, &rec, DB_NEXT)) {
 		LOGCOPY_32(&type, rec.data);
-		if (type == DB___db_debug) {
+		if (type == DB___db_debug && lsn.file >= file) {
 			int optype = 0;
 			if((ret = __db_debug_read(dbenv, rec.data, &debug_args)) != 0)
 				goto err;
@@ -318,7 +328,7 @@ __db_find_earliest_recover_point(dbenv, outlsn)
 			__os_free(dbenv, debug_args);
 			if (optype == 2) {
 				start_lsn = lsn;
-				fprintf(stderr, "%s: fullrecovery starting at lsn %u:%u\n", 
+				logmsg(LOGMSG_INFO, "%s: fullrecovery starting at lsn %u:%u\n",
 						__func__, lsn.file, lsn.offset);
 				break;
 			}
@@ -516,6 +526,77 @@ __db_find_recovery_start(dbenv, outlsn)
 	return __db_find_recovery_start_int(dbenv, outlsn, NULL);
 }
 
+int
+__dbenv_min_truncate_lsn_timestamp(dbenv, lowfile, outlsn, outtime)
+	DB_ENV *dbenv;
+    int lowfile;
+	DB_LSN *outlsn;
+    int32_t *outtime;
+{
+    DB_LSN earliest_dbreg, lsn, prev_lsn = {0};
+    DB_LOGC *logc = NULL;
+	DBT data = {0};
+    int32_t prev_time;
+	__txn_ckp_args *ckp_args = NULL;
+    int ret, found_checkpoint = 0;
+
+    if ((ret = __db_find_earliest_recover_point_after_file(dbenv,
+                    &earliest_dbreg, lowfile)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s couldn't find earliest recover-point\n",
+                __func__);
+        goto done;
+    }
+
+	if ((ret = __txn_getckp(dbenv, &lsn)) != 0)
+        goto done;
+
+	if (IS_ZERO_LSN(lsn))
+		logmsg(LOGMSG_WARN, "last_ckp lsn is 0:0\n");
+
+	if ((ret = __log_cursor(dbenv, &logc)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s couldn't get a log-cursor\n",
+                __func__);
+        goto done;
+    }
+
+	while (found_checkpoint == 0 && (ret = 
+                __log_c_get(logc, &lsn, &data, DB_SET)) == 0) {
+		if ((ret = __txn_ckp_read(dbenv, data.data, &ckp_args)) != 0) {
+            ckp_args = NULL;
+            goto done;
+        }
+		if (log_compare(&earliest_dbreg, &ckp_args->ckp_lsn) > 0) {
+            if (prev_lsn.file == 0) {
+                logmsg(LOGMSG_ERROR, "%s can't find earliest recovery point\n",
+                        __func__);
+                goto done;
+            }
+			__os_free(dbenv, ckp_args);
+            ckp_args = NULL;
+			*outlsn = prev_lsn;
+            *outtime = prev_time;
+            logmsg(LOGMSG_INFO, "%s return [%d][%d] time %d for lowfile %d\n",
+                    __func__, outlsn->file, outlsn->offset, *outtime, lowfile);
+            found_checkpoint = 1;
+		} else {
+            prev_lsn = ckp_args->ckp_lsn;
+            prev_time = ckp_args->timestamp;
+            lsn = ckp_args->last_ckp;
+            if (IS_ZERO_LSN(lsn))
+                break;
+            __os_free(dbenv, ckp_args);
+            ckp_args = NULL;
+        }
+	}
+
+done:
+	if (ckp_args != NULL)
+		__os_free(dbenv, ckp_args);
+    if (logc != NULL)
+        __log_c_close(logc);
+    return (ret != 0) ? ret : !found_checkpoint;
+}
+
 int __rep_check_applied_lsns(DB_ENV * dbenv, LSN_COLLECTION * lc,
     int inrecovery);
 
@@ -621,6 +702,8 @@ void log_recovery_progress(int stage, int progress)
 		logmsg(LOGMSG_WARN, " %d%%", progress);
 	}
 }
+
+
 
 
 /*
@@ -949,7 +1032,8 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 		if (!IS_ZERO_LSN(dbenv->recovery_start_lsn)) {
 			first_lsn = dbenv->recovery_start_lsn;
 		} else if (start_recovery_at_dbregs) {
-			ret = __db_find_earliest_recover_point(dbenv, &first_lsn);
+			ret = __db_find_earliest_recover_point_after_file(dbenv,
+                    &first_lsn, 0);
 			if (ret) {
 				__db_err(dbenv,
 						"__db_find_recovery_start_int rc %d\n", ret);
@@ -1194,87 +1278,99 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 	}
 
 	/* Take a checkpoint here to force any dirty data pages to disk. */
-	if ((ret = __txn_checkpoint(dbenv, 0, 0, DB_FORCE)) != 0)
-		goto err;
+    if (gbl_is_physical_replicant) {
+        if (MPOOL_ON(dbenv) && (ret = __memp_sync_restartable(dbenv,
+                        NULL, 0, 0)) != 0) {
+            logmsg(LOGMSG_ERROR, "memp_sync returned %d\n", ret);
+            goto err;
+        }
+    } else if ((ret = __txn_checkpoint(dbenv, 0, 0, DB_FORCE)) != 0)
+        goto err;
+
 
 	/* Close all the db files that are open. */
 	if ((ret = __dbreg_close_files(dbenv)) != 0)
 		goto err;
 
 done:
-	if (max_lsn != NULL) {
-		/*
-		 * When I truncate, I am running replicated recovery.
-		 * I am synced all the way to the last checkpoint, so
-		 * dropping the all the checkpoints in the truncation
-		 * log phase does not make me bad
-		 */
-		DB_LSN last_valid_checkpoint = { 0 };
+	if (max_lsn != NULL || gbl_is_physical_replicant) {
 
-		/*
-		 * We can't truncate before we write a valid
-		 * checkpoint into the checkpoint file.  We don't know
-		 * what that is.  Find it.  By this point we already
-		 * did recovery, so any checkpoint LSN < max_lsn is
-		 * valid.
-		 */
-		if ((ret =
-			__log_find_latest_checkpoint_before_lsn(dbenv, logc,
-			    max_lsn, &last_valid_checkpoint)) != 0) {
-			__db_err(dbenv,
-			    "can't find last logged checkpoint max_lsn %u:%u",
-			    max_lsn->file, max_lsn->offset);
-			ret =
-			    __log_find_latest_checkpoint_before_lsn_try_harder
-			    (dbenv, logc, max_lsn, &last_valid_checkpoint);
-			if (ret == 0)
-				logmsg(LOGMSG_DEBUG, "tried harder and found %u:%u\n",
-				    last_valid_checkpoint.file,
-				    last_valid_checkpoint.offset);
-			else {
-				logmsg(LOGMSG_DEBUG, "tried harder and still failed rc; I'll be good unless I crash %d\n",
-				    ret);
-				/* Here we are gonna write a checkpoint FILE containing 0:0 as recovery lsn, claiming all it 
-				 * is good at this point */
-				/*goto err; */
-			}
-		}
+            /*
+             * When I truncate, I am running replicated recovery.
+             * I am synced all the way to the last checkpoint, so
+             * dropping the all the checkpoints in the truncation
+             * log phase does not make me bad
+             */
+        if (max_lsn != NULL) {
 
-		/* Save the checkpoint. */
-		if ((ret =
-			__checkpoint_save(dbenv, &last_valid_checkpoint,
-			    1)) != 0) {
-			__db_err(dbenv, "can't save checkpoint %u:%u",
-			    last_valid_checkpoint.file,
-			    last_valid_checkpoint.offset);
-			goto err;
-		}
+            DB_LSN last_valid_checkpoint = { 0 };
 
-		logmsg(LOGMSG_WARN, "TRUNCATING to %u:%u checkpoint lsn is %u:%u\n",
-		    max_lsn->file, max_lsn->offset,
-		    last_valid_checkpoint.file, last_valid_checkpoint.offset);
+            /*
+             * We can't truncate before we write a valid
+             * checkpoint into the checkpoint file.  We don't know
+             * what that is.  Find it.  By this point we already
+             * did recovery, so any checkpoint LSN < max_lsn is
+             * valid.
+             */
+            if ((ret =
+                __log_find_latest_checkpoint_before_lsn(dbenv, logc,
+                    max_lsn, &last_valid_checkpoint)) != 0) {
+                __db_err(dbenv,
+                    "can't find last logged checkpoint max_lsn %u:%u",
+                    max_lsn->file, max_lsn->offset);
+                ret =
+                    __log_find_latest_checkpoint_before_lsn_try_harder
+                    (dbenv, logc, max_lsn, &last_valid_checkpoint);
+                if (ret == 0)
+                    logmsg(LOGMSG_DEBUG, "tried harder and found %u:%u\n",
+                        last_valid_checkpoint.file,
+                        last_valid_checkpoint.offset);
+                else {
+                    logmsg(LOGMSG_DEBUG, "tried harder and still failed rc; I'll be good unless I crash %d\n",
+                        ret);
+                    /* Here we are gonna write a checkpoint FILE containing 0:0 as recovery lsn, claiming all it 
+                     * is good at this point */
+                    /*goto err; */
+                }
+            }
 
-		region->last_ckp = ((DB_TXNHEAD *) txninfo)->ckplsn;
-		logmsg(LOGMSG_DEBUG, "%s:%d last_ckp is %u:%u\n", __FILE__, __LINE__,
-		    region->last_ckp.file, region->last_ckp.offset);
+            /* Save the checkpoint. */
+            if ((ret =
+                __checkpoint_save(dbenv, &last_valid_checkpoint,
+                    1)) != 0) {
+                __db_err(dbenv, "can't save checkpoint %u:%u",
+                    last_valid_checkpoint.file,
+                    last_valid_checkpoint.offset);
+                goto err;
+            }
 
-		if (IS_ZERO_LSN(region->last_ckp)) {
-			/* I still don't understand how this ends up as 0:0 */
-			logmsg(LOGMSG_DEBUG, "last_ckp zero lsn? Let's try %u:%u\n",
-			    last_valid_checkpoint.file,
-			    last_valid_checkpoint.offset);
-			region->last_ckp = last_valid_checkpoint;
+            logmsg(LOGMSG_WARN, "TRUNCATING to %u:%u checkpoint lsn is %u:%u\n",
+                max_lsn->file, max_lsn->offset,
+                last_valid_checkpoint.file, last_valid_checkpoint.offset);
 
-		}
+            region->last_ckp = ((DB_TXNHEAD *) txninfo)->ckplsn;
+            logmsg(LOGMSG_DEBUG, "%s:%d last_ckp is %u:%u\n", __FILE__, __LINE__,
+                region->last_ckp.file, region->last_ckp.offset);
 
-		/* We are going to truncate, so we'd best close the cursor. */
-		if (logc != NULL && (ret = __log_c_close(logc)) != 0)
-			goto err;
+            if (IS_ZERO_LSN(region->last_ckp)) {
+                /* I still don't understand how this ends up as 0:0 */
+                logmsg(LOGMSG_DEBUG, "last_ckp zero lsn? Let's try %u:%u\n",
+                    last_valid_checkpoint.file,
+                    last_valid_checkpoint.offset);
+                region->last_ckp = last_valid_checkpoint;
 
-		__log_vtruncate(dbenv, max_lsn, &region->last_ckp, trunclsn);
+            }
 
-		logmsg(LOGMSG_WARN, "TRUNCATED TO is %u:%u \n", trunclsn->file,
-		    trunclsn->offset);
+            /* We are going to truncate, so we'd best close the cursor. */
+            if (logc != NULL && (ret = __log_c_close(logc)) != 0)
+                goto err;
+
+            __log_vtruncate(dbenv, max_lsn, &region->last_ckp, trunclsn);
+
+            logmsg(LOGMSG_WARN, "TRUNCATED TO is %u:%u \n", trunclsn->file,
+                trunclsn->offset);
+        }
+
 
 		/*
 		 * Now we need to open files that should be open in order for
@@ -1309,13 +1405,17 @@ done:
 		if ((ret = __env_openfiles(dbenv, logc,
 			    txninfo, &data, &first_lsn, NULL, nfiles, 1)) != 0)
 			goto err;
-	} else if (region->stat.st_nrestores == 0)
+	} else if (region->stat.st_nrestores == 0) 
 		/*
 		 * If there are no prepared transactions that need resolution,
 		 * we need to reset the transaction ID space and log this fact.
 		 */
-		if ((ret = __txn_reset(dbenv)) != 0)
-			goto err;
+        if (!gbl_is_physical_replicant)
+        {
+            if ((ret = __txn_reset(dbenv)) != 0)
+                goto err;
+
+        }
 
 	if (FLD_ISSET(dbenv->verbose, DB_VERB_RECOVERY)) {
 		(void)time(&now);

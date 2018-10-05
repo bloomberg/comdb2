@@ -41,6 +41,7 @@ set(src
   osqlsession.c
   osqlshadtbl.c
   osqlsqlthr.c
+  phys_rep.c
   plugin_handler.c
   prefault.c
   prefault_helper.c
@@ -79,6 +80,7 @@ set(src
   trans.c
   translistener.c
   trigger.c
+  truncate_log.c
   twophase.c
   utf8.c
   verify.c
@@ -186,6 +188,7 @@ target_link_libraries(comdb2
   net
   sockpool
   sqlite
+  util
   tz
   m
   ${CMAKE_DL_LIBS}
