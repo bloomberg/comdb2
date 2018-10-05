@@ -63,7 +63,6 @@ void averager_clear(struct averager *avg) {
         t = listc_rtl(&avg->ticks);
     }
     avg->sum = 0;
-    avg->min = avg->max = NULL;
 }
 
 void averager_purge_old(struct averager *avg, int now)
