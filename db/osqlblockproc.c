@@ -640,8 +640,6 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     if (type == OSQL_SCHEMACHANGE)
         iq->tranddl++;
 
-    iq->osql_replicant_numops++;
-
     DEBUGMSG("uuid=%s type=%d (%s) seq=%lld\n",
              comdb2uuidstr(uuid, us), type, osql_reqtype_str(type), sess->seq);
 

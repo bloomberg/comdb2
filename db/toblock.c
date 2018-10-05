@@ -4671,9 +4671,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         rc = osql_bplog_commit(iq, trans, &tmpnops, &err);
         send_prefault_udp = 0;
 
-        /* check count */
-        logmsg(LOGMSG_DEBUG, "MASTER: osql_replicant_numops = %d\n", iq->osql_replicant_numops);
-
         if (iq->osql_step_ix) {
             int mutex_rc = 0;
             gbl_osqlpf_step[*(iq->osql_step_ix)].rqid = 0;

@@ -4656,8 +4656,8 @@ int osql_send_commit(char *tohost, unsigned long long rqid, uuid_t uuid,
             sbuf2flush(logsb);
         }
 
-        logmsg(LOGMSG_DEBUG, "%s: [%llu] send %s rc = %d, nops = %d\n",
-               __func__, rqid, osql_reqtype_str(rpl_ok.hd.type), rc, nops);
+        DEBUGMSG("[%llu] send %s rc = %d, nops = %d\n",
+               rqid, osql_reqtype_str(rpl_ok.hd.type), rc, nops);
 #if 0
       printf("Sending rqid=%llu tmp=%llu\n", rqid, osql_log_time());
 #endif
@@ -4826,7 +4826,7 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
         memcpy(&rpl_xerr.dt, xerr, sizeof(rpl_xerr.dt));
 
         uuidstr_t us;
-        logmsg(LOGMSG_DEBUG, "%s: [%llu] send %s rc = %d, nops = %d\n", __func__, comdb2uuidstr(uuid, us), osql_reqtype_str(rpl_xerr.hd.type), rc, nops);
+        DEBUGMSG("uuid=%llu send %s rc = %d, nops = %d\n", comdb2uuidstr(uuid, us), osql_reqtype_str(rpl_xerr.hd.type), rc, nops);
         if (!osqlcomm_done_xerr_uuid_type_put(&rpl_xerr, p_buf, p_buf_end)) {
             logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
                     "osqlcomm_done_xerr_type_put");
@@ -6726,7 +6726,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     if (gbl_toblock_net_throttle && is_write_request(type))
         net_throttle_wait(thedb->handle_sibling);
 
-    logmsg(LOGMSG_DEBUG, "osql_process_packet(): processing %s (%d)\n", osql_reqtype_str(type), type);
+    DEBUGMSG("osql_process_packet(): processing %s (%d)\n", osql_reqtype_str(type), type);
 
     switch (type) {
     case OSQL_DONE:
@@ -6789,7 +6789,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
             assert(!memcmp(&snap_info, &iq->snap_info, sizeof(snap_uid_t)));
         }
-
 
         /* p_buf is pointing at client_query_stats if there is one */
         if (type == OSQL_DONE_STATS) { /* Never set anywhere. */

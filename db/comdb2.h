@@ -1366,8 +1366,6 @@ struct ireq {
 
     /* Number of oplog operations logged as part of this transaction */
     int oplog_numops;
-    /* number of osql operations sent by the replicant */
-    int osql_replicant_numops;
     int seqlen;
     int helper_thread;
     int queryid;
