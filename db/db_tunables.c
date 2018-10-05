@@ -205,6 +205,7 @@ extern int gbl_instrument_dblist;
 extern int gbl_replicated_truncate_timeout;
 extern int gbl_match_on_ckp;
 extern int gbl_verbose_physrep;
+extern int gbl_verbose_set_sc_in_progress;
 extern int gbl_physrep_reconnect_penalty;
 extern int gbl_logdelete_lock_trace;
 extern int gbl_flush_log_at_checkpoint;

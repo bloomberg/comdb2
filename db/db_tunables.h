@@ -1584,5 +1584,11 @@ REGISTER_TUNABLE("flush_log_at_checkpoint",
                  "(Default: on)", TUNABLE_BOOLEAN, &gbl_flush_log_at_checkpoint,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("verbose_set_sc_in_progress",
+                 "Prints a line of trace when sc_in_progress is set.  "
+                 "(Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_verbose_set_sc_in_progress, EXPERIMENTAL | INTERNAL, NULL,
+                 NULL, NULL, NULL);
+
 
 #endif /* _DB_TUNABLES_H */

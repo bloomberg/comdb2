@@ -137,7 +137,7 @@ function create_table
     r=$?
     while [[ "$r" != 0 ]]; do
         let tries=tries-1
-        [[ "$tries" == 0 ]] && failexit "failed to create table  $1"
+        [[ "$tries" == 0 ]] && failexit "failed to create table $1"
         sleep 1
         $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table $1(a int)"
         r=$?
@@ -194,21 +194,56 @@ function truncate_log
 {
     [[ $debug == "1" ]] && set -x
     typeset func="truncate_log"
+    typeset tries=$total_tries
     typeset lsn="$1"
     typeset master=$(get_master)
     write_prompt $func "Truncating to $lsn"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$lsn\")"
+    r=$?
+    while [[ "$r" != 0 ]]; do
+        let tries=tries-1
+        [[ "$tries" == 0 ]] && failexit "failed to truncate log"
+        sleep 1
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.truncate_log(\"$lsn\")"
+        r=$?
+    done
     typeset newlsn=$(get_current_lsn)
     write_prompt $func "Current lsn is $newlsn"
+    sleep $sleeptime
+}
+
+function genid48_command
+{
+    [[ $debug == "1" ]] && set -x
+    typeset tries=$total_tries
+    typeset func="genid48_command"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put genid48 $1"
+    r=$?
+    while [[ "$r" != 0 ]]; do
+        let tries=tries-1
+        [[ "$tries" == 0 ]] && failexit "failed to run genid48_command"
+        sleep 1
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put genid48 $1"
+        r=$?
+    done
     sleep $sleeptime
 }
 
 function morestripe_command
 {
     [[ $debug == "1" ]] && set -x
+    typeset tries=$total_tries
     typeset func="morestripe_command"
     typeset master=$(get_master)
     $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.send(\"morestripe $1\")"
+    r=$?
+    while [[ "$r" != 0 ]]; do
+        let tries=tries-1
+        [[ "$tries" == 0 ]] && failexit "failed to run morestripe"
+        sleep 1
+        $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.send(\"morestripe $1\")"
+        r=$?
+    done
     sleep $sleeptime
 }
 
@@ -1404,14 +1439,14 @@ function genid48
     genid48_fmt_1=$(get_genid_format)
 
     write_prompt $func "Changing to time-based genids"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put genid48 disable"
+    genid48_command disable
     insert_record t1
     genid48_lsn_2=$(get_current_lsn)
     genid48_fmt_2=$(get_genid_format)
     [[ "$genid48_fmt_1" == "$genid48_fmt_2" ]] && failexit $func "genid format did not change"
 
     write_prompt $func "Changing to genid48 genids"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put genid48 enable"
+    genid48_command enable
     insert_record t1
     genid48_fmt_3=$(get_genid_format)
     [[ "$genid48_fmt_3" == "$genid48_fmt_2" ]] && failexit $func "genid format did not change"
