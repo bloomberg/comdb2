@@ -4197,9 +4197,9 @@ void *statthd(void *p)
         if (have_scon_stats)
             logmsg(LOGMSG_USER, "\n");
 
-        extern void update_cpu_percent(void);
+        extern void update_metrics(void);
         if (count % 5 == 0)
-            update_cpu_percent();
+            update_metrics();
 
         if (!gbl_schema_change_in_progress) {
             thresh = reqlog_diffstat_thresh();

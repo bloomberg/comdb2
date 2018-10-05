@@ -81,6 +81,7 @@ struct comdb2_metrics_store {
     int64_t net_queue_size;
     int64_t rep_deadlocks;
     int64_t rw_evicts;
+    int64_t standing_queue_time;
 };
 
 static struct comdb2_metrics_store stats;
@@ -213,7 +214,10 @@ comdb2_metric gbl_metrics[] = {
      &stats.rep_deadlocks, NULL},
     {"rw_evictions", "Dirty page evictions", 
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
-     &stats.rw_evicts, NULL}
+     &stats.rw_evicts, NULL},
+    {"standing_queue_time", "How long the database has had a standing queue", 
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, 
+     &stats.standing_queue_time, NULL}
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -283,6 +287,8 @@ void refresh_queue_size(struct dbenv *dbenv)
     }
     stats.net_queue_size = max_queue_size;
 }
+
+static time_t metrics_standing_queue_time(void);
 
 int refresh_metrics(void)
 {
@@ -414,6 +420,8 @@ int refresh_metrics(void)
 
     bdb_rep_stats(thedb->bdb_env, &stats.rep_deadlocks);
 
+    stats.standing_queue_time = metrics_standing_queue_time();
+
     return 0;
 }
 
@@ -441,7 +449,24 @@ const char *metric_type(comdb2_metric_type type)
     }
 }
 
-void update_cpu_percent(void) 
+static time_t queue_start_time = 0;
+
+static time_t metrics_standing_queue_time(void) {
+    if (queue_start_time == 0)
+        return 0;
+    else
+        return time(NULL) - queue_start_time;
+}
+
+static void update_standing_queue_time(void) {
+    double qdepth = time_metric_average(thedb->queue_depth) + time_metric_average(thedb->handle_buf_queue_time);
+    if (queue_start_time == 0 && qdepth > 1)
+        queue_start_time = time(NULL);
+    else if (qdepth < 1)
+        queue_start_time = 0;
+}
+
+static void update_cpu_percent(void) 
 {
 #if _LINUX_SOURCE
    static time_t last_time = 0;
@@ -479,4 +504,9 @@ void update_cpu_percent(void)
 
    gbl_cpupercent = cpu_percent;
 #endif
+}
+
+void update_metrics(void) {
+    update_cpu_percent();
+    update_standing_queue_time();
 }
