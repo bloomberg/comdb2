@@ -5845,7 +5845,7 @@ long long get_unique_longlong(struct dbenv *env)
     } else {
         struct ireq iq;
         init_fake_ireq(env, &iq);
-        iq.usedb = env->dbs[0];
+        iq.usedb = &env->static_table;
         get_context(&iq, (unsigned long long *)&id);
     }
 

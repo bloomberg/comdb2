@@ -908,6 +908,7 @@ struct dbenv {
     /* tables and queues */
     int num_dbs;
     struct dbtable **dbs;
+    struct dbtable static_table;
     hash_t *db_hash;
     int num_qdbs;
     struct dbtable **qdbs;

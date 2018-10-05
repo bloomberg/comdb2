@@ -1117,7 +1117,7 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                      * than limp onwards, we should just exit here.  Hand off
                      * masterness if possible. */
                     if (debug_exit_on_pthread_create_error()) {
-                        bdb_transfermaster(thedb->dbs[0]->handle);
+                        bdb_transfermaster(thedb->static_table.handle);
                         logmsg(LOGMSG_FATAL, 
                                 "%s:Exiting due to thread create errors\n",
                                 __func__);

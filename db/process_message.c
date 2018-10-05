@@ -805,9 +805,9 @@ clipper_usage:
        }
      */
     else if (tokcmp(tok, ltok, "downgrade") == 0) {
-        bdb_transfermaster(dbenv->dbs[0]->handle);
+        bdb_transfermaster(dbenv->static_table.handle);
     } else if (tokcmp(tok, ltok, "losemaster") == 0) {
-        bdb_losemaster(dbenv->dbs[0]->handle);
+        bdb_losemaster(dbenv->static_table.handle);
     } else if (tokcmp(tok, ltok, "upgrade") == 0) {
         char *newmaster = 0;
         tok = segtok(line, lline, &st, &ltok);
@@ -819,7 +819,7 @@ clipper_usage:
         newmaster = intern(tok);
         free(tok);
         logmsg(LOGMSG_USER, "Trying to transfer master to node %s\n", newmaster);
-        bdb_transfermaster_tonode(dbenv->dbs[0]->handle, newmaster);
+        bdb_transfermaster_tonode(dbenv->static_table.handle, newmaster);
     } else if (tokcmp(tok, ltok, "synccluster") == 0) {
 
         int outrc = -1;
@@ -1491,7 +1491,7 @@ clipper_usage:
     }
 
     else if (tokcmp(tok, ltok, "reco") == 0) {
-        bdb_set_recovery(dbenv->dbs[0]->handle);
+        bdb_set_recovery(dbenv->static_table.handle);
     } else if (tokcmp(tok, ltok, "lua_break") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         int thread_id = toknum(tok, ltok);
@@ -1652,7 +1652,7 @@ clipper_usage:
             unsigned long long txns_applied;
             int max_retries;
 
-            bdb_get_rep_stats(dbenv->dbs[0]->handle, &msgs_processed,
+            bdb_get_rep_stats(dbenv->static_table.handle, &msgs_processed,
                               &msgs_sent, &txns_applied, &rep_retry,
                               &max_retries);
 

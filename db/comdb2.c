@@ -1396,20 +1396,10 @@ void clean_exit(void)
 
     wait_for_sc_to_stop();
 
-#   if 0
-    if (bdb_is_an_unconnected_master(thedb->dbs[0]->handle)) {
-        wait_for_sc_to_stop(); /* single node, need to stop SC */
-        logmsg(LOGMSG_INFO, "This was standalone\n");
-    } else {
-        /* hand over masterness to a new candidate if we're the master. */
-        bdb_transfermaster(thedb->dbs[0]->handle);
-    }
-#   endif
-
     /* let the lower level start advertising high lsns to go non-coherent
        - dont hang the master waiting for sync replication to an exiting
        node. */
-    bdb_exiting(thedb->dbs[0]->handle);
+    bdb_exiting(&thedb->static_table);
 
     stop_threads(thedb);
     flush_db();
@@ -1989,6 +1979,8 @@ static int llmeta_load_queues(struct dbenv *dbenv)
     return 0;
 }
 
+#define COMDB2_STATIC_TABLE "_comdb2_static_table"
+
 /* gets the table names and dbnums from the low level meta table and sets up the
  * dbenv accordingly.  returns 0 on success and anything else otherwise */
 static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
@@ -2009,6 +2001,16 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
     /* set generic settings, likely already set when env was opened, but make
      * sure */
     bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_GENIDS, 1);
+
+    /* Initialize static table once */
+    if (dbenv->static_table.dbs_idx == 0) {
+        logmsg(LOGMSG_INFO, "%s initializing static table '%s'\n", __func__, COMDB2_STATIC_TABLE);
+        dbenv->static_table.dbs_idx = -1;
+        dbenv->static_table.tablename = COMDB2_STATIC_TABLE;
+        dbenv->static_table.dbenv = dbenv;
+        dbenv->static_table.dbtype = DBTYPE_TAGGED_TABLE;
+        dbenv->static_table.handle = dbenv->bdb_env;
+    }
 
     /* make room for dbs */
     dbenv->dbs = realloc(dbenv->dbs, fndnumtbls * sizeof(struct dbtable *));

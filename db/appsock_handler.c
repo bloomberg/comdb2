@@ -186,7 +186,7 @@ static void *thd_appsock_int(appsock_work_args_t *w, int *keepsocket,
         return 0;
     }
 
-    arg.tab = thedb->dbs[0];
+    arg.tab = &thedb->static_table;
     arg.conv_flags = 0;
 
     while (1) {
