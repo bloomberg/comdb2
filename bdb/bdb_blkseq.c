@@ -127,7 +127,6 @@ void bdb_cleanup_private_blkseq(bdb_state_type *bdb_state)
 int bdb_create_private_blkseq(bdb_state_type *bdb_state)
 {
     DB_ENV *env;
-    DB *db[2];
     int rc;
 
     bdb_state->blkseq_env =
@@ -236,7 +235,6 @@ int bdb_blkseq_recover(DB_ENV *dbenv, u_int32_t rectype, llog_blkseq_args *args,
     if (op == DB_TXN_APPLY || op == DB_TXN_FORWARD_ROLL) {
         stripe =
             get_stripe(bdb_state, (uint8_t *)args->key.data, args->key.size);
-        int *p = (int *)args->key.data;
 
         now = comdb2_time_epoch();
 
@@ -739,7 +737,6 @@ err:
 int bdb_blkseq_dumplogs(bdb_state_type *bdb_state)
 {
     struct seen_blkseq *logseq;
-    int now = comdb2_time_epoch();
 
     for (int stripe = 0; stripe < bdb_state->attr->private_blkseq_stripes;
          stripe++) {

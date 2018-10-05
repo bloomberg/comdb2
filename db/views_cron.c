@@ -400,7 +400,6 @@ int cron_event_details(cron_sched_t *sched, int idx, FCRON *func, int *epoch,
 {
     cron_event_t *event;
     int counter = 0;
-    int i = 0;
 
     event = sched->events.top;
     while (event) {

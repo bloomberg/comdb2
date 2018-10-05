@@ -582,7 +582,6 @@ void luabb_todatetime(lua_State *lua, int idx, datetime_t *ret)
     const char *str;
     cdb2_client_datetime_t cdtms;
     cdb2_client_datetimeus_t cdtus;
-    dbtypes_enum dbtype;
 
     SP sp = getsp(lua);
     const char *tzname = sp->clnt->tzname;

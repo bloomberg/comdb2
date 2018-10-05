@@ -1231,7 +1231,6 @@ Operation_Not_Implemented1(128, Tanh, rhs)
   {                                                                      \
     if(globalContext.dfpRealMode==PPCHW) {                               \
       dfp_quad xres;                                                     \
-      dfp_pad qwpad=0.0;                                                 \
       xres=hwf(qwpad,*((dfp_quad *)&lhsoprnd),*((dfp_quad *)&rhsoprnd)); \
       return(*((decimal128 *)&xres));                                    \
     }                                                                    \
@@ -1330,7 +1329,6 @@ Operation_Not_Implemented1(128, Tanh, rhs)
     }                                                                    \
     else {                                                               \
       decNumber rhsdn;                                                   \
-      fnrtn result;                                                      \
       decContext * dnctx = &(Tls_Load()->dn64Context);                   \
       decimal64ToNumber(&rhs, &rhsdn);                                   \
       return(dnfn(&rhsdn,dnctx));                                        \
@@ -1399,7 +1397,6 @@ Operation_Not_Implemented1(128, Tanh, rhs)
   {                                                                      \
     if(globalContext.dfpRealMode==PPCHW) {                               \
       dfp_integer ires;                                                  \
-      dfp_pad qwpad=0.0;                                                 \
       ppc_fpscr beforeFPSCR;                                             \
                                                                          \
       Read_FPSCR_Set_RM(beforeFPSCR, DFP_ROUND_TOWARD_ZERO)              \
@@ -1440,7 +1437,6 @@ Operation_Not_Implemented1(128, Tanh, rhs)
   {                                                                      \
     if(globalContext.dfpRealMode==PPCHW) {                               \
       dfp_integer ires;                                                  \
-      dfp_pad qwpad=0.0;                                                 \
       ppc_fpscr beforeFPSCR;                                             \
                                                                          \
       Read_FPSCR_Set_RM(beforeFPSCR, DFP_ROUND_TOWARD_ZERO)              \
@@ -1450,7 +1446,6 @@ Operation_Not_Implemented1(128, Tanh, rhs)
     }                                                                    \
     else {                                                               \
       decNumber rhsdn;                                                   \
-      fnrtn result;                                                      \
       decContext * dnctx = &(Tls_Load()->dn128Context);                  \
       decimal128ToNumber(&rhs, &rhsdn);                                  \
       return(dnfn(&rhsdn,dnctx));                                        \
@@ -2168,7 +2163,6 @@ decimal64 dfpal_decimal64FromString(const char *string)
 decimal64 decimal64FromDecimal32(const decimal32 rhs)
 {
   if(globalContext.dfpRealMode==PPCHW) {
-    dfp_single xrhs;
     dfp_single_parameter xin;
     dfp_double xres;
 
@@ -2223,7 +2217,6 @@ decimal64 decimal64FromDecimal128(const decimal128 rhs)
 {
   if(globalContext.dfpRealMode==PPCHW) {
     dfp_double x64res;
-    dfp_pad qwpad=0.0;
     x64res=ppc_drdpq(qwpad, *((dfp_quad *)&rhs));
     return(*((decimal64 *)&x64res));
   }
@@ -2402,7 +2395,6 @@ uByte * decimal64ToPackedBCD(
   #if !defined(DFPAL_USE_DECFLOAT)
     decNumber dn;
 
-    decContext * dnctx = &(Tls_Load()->dn64Context);
     decimal64ToNumber(&rhs, &dn);
     return (decPackedFromNumber(bcdOut, length, scale, &dn));
   #else
@@ -2467,7 +2459,6 @@ decimal64 decimal64FromPackedBCD (
   else {
     decNumber   dn;
     decNumber *dnErr;
-    decimal64 *d64Err;
     decimal64 result64;
     decContext * dnctx = &(Tls_Load()->dn64Context);
 
@@ -2597,7 +2588,6 @@ compare_result decimal64Cmpop(const decimal64 lhs,
   }
   else {
   #if !defined(DFPAL_USE_DECFLOAT)
-    decimal64 result64;                                   
     decNumber lhsdn, rhsdn, resultdn;                             
     decContext * dnctx = &(Tls_Load()->dn64Context);             
     decimal64ToNumber(&(lhs),&lhsdn);                  
@@ -2864,7 +2854,6 @@ decimal64 decimal64Remainder(const decimal64 lhs, const decimal64 rhs)
     dfp_double xlhs, xrhs, xres;
     decimal64 res;
     dfp_double rdiv;
-    dfp_pad qwpad=0.0;
     ppc_fpscr savedFPSCR, afterDivFPSCR;
 
     if ( (!dfpalIsSpecial(lhs)) && dfpalIsInfinite(rhs) ) {
@@ -2917,7 +2906,6 @@ decimal64 decimal64RemainderNear(const decimal64 lhs, const decimal64 rhs)
   if(globalContext.dfpRealMode==PPCHW) {
     dfp_double xlhs, xrhs, xres, rdiv;
     decimal64 res;
-    dfp_pad qwpad=0.0;
     ppc_fpscr savedFPSCR, afterDivFPSCR;
 
     if ( (!dfpalIsSpecial(lhs)) && dfpalIsInfinite(rhs) ) {
@@ -2998,7 +2986,6 @@ decimal64 decimal64Rescale(const decimal64 lhs, const decimal64 rhs)
       (ires.sll > DFPAL_DECIMAL64_Emax) || 
       (ires.sll < (DFPAL_DECIMAL64_Emin-DFPAL_DECIMAL64_Pmax+1))) {
       /* input scale was non-integer or out of bound */
-      dec64DataXchg xnan;
 
       /* set invalid into pre-FPSCR */
       beforeFPSCR.fpscr_attrib.vxsoft=1;
@@ -3245,7 +3232,6 @@ Flag decimal128IsNegative (const decimal128 rhs)
 Flag decimal128IsZero (const decimal128 rhs)
 {
   if(globalContext.dfpRealMode==PPCHW) {
-    dfp_pad qwpad=0.0;
     if (dfpalIsSNaN(rhs)) return((Flag) 0); /* to avoid INVALID by dcmpu */
     return((Flag)(ppc_dcmpuq(qwpad,*((dfp_quad *)&rhs), dfp_quad_zero) & 
       DFPAL_COMP_EQ));
@@ -3313,7 +3299,6 @@ Int decimal128GetExponent(const decimal128 rhs)
   if(globalContext.dfpRealMode==PPCHW) {
     dec128DataXchg xrhs; 
     dfp_integer exp;
-    dfp_pad qwpad=0.0;
 
     xrhs.dsw=rhs;
     exp.d=ppc_dxexq(qwpad, xrhs.dhw);
@@ -3526,7 +3511,6 @@ uByte * decimal128ToPackedBCD(
   if(globalContext.dfpRealMode==PPCHW) {
     dec128DataXchg xrhs, xres, xshiftr;
     dfp_integer exp;
-    dfp_pad qwpad=0.0;
 
     xrhs.dsw=rhs;
 
@@ -3546,7 +3530,6 @@ uByte * decimal128ToPackedBCD(
   #if !defined(DFPAL_USE_DECFLOAT)
     decNumber dn;
 
-    decContext * dnctx = &(Tls_Load()->dn64Context);
     decimal128ToNumber(&rhs, &dn);
     return (decPackedFromNumber(bcdOut, length, scale, &dn));
   #else
@@ -3577,7 +3560,6 @@ decimal128 decimal128FromPackedBCD (
 {
   if(globalContext.dfpRealMode==PPCHW) {
     dfp_quad lsd, res;
-    dfp_pad qwpad=0.0;
     dfp_integer newexp;
     dfp_quad tmplsd, tmpmsd;
     uByte msd[16]={0};
@@ -3613,7 +3595,6 @@ decimal128 decimal128FromPackedBCD (
   else {
     decNumber   dn;
     decNumber *dnErr;
-    decimal128 *d128Err;
     decimal128 result128;
     decContext * dnctx = &(Tls_Load()->dn128Context);
 
@@ -3670,7 +3651,6 @@ Quad_Word_Function2(Add,lhs,rhs,ppc_daddq)
 decimal128 decimal128Compare(const decimal128 lhs, const decimal128 rhs)
 {
   if(globalContext.dfpRealMode==PPCHW) {
-    dfp_pad qwpad=0.0;
     compare_result cmp;
     dfp_quad xres;                                  
   
@@ -3692,7 +3672,6 @@ decimal128 decimal128Compare(const decimal128 lhs, const decimal128 rhs)
   {                                                                          \
     dec128DataXchg xlhs, xrhs;                                               \
     uByte cmpwLHS=0, cmpwRHS=0;                                              \
-    dfp_pad mqwpad=0.0;                                                      \
     ppc_fpscr savedFPSCR;                                                    \
                                                                              \
     xlhs.dsw=(lhssw);                                                        \
@@ -3735,7 +3714,6 @@ compare_result decimal128Cmpop(const decimal128 lhs,
                               const decimal128 rhs, const Flag op)
 {
   if(globalContext.dfpRealMode==PPCHW) {
-    dfp_pad qwpad=0.0;
     compare_result cmpres;
 
     if(op==DFPAL_COMP_ORDERED) {
@@ -3748,7 +3726,6 @@ compare_result decimal128Cmpop(const decimal128 lhs,
   }
   else {
   #if !defined(DFPAL_USE_DECFLOAT)
-    decimal128 result128;                                   
     decNumber lhsdn, rhsdn, resultdn;                             
     decContext * dnctx = &(Tls_Load()->dn128Context);            
     decimal128ToNumber(&(lhs),&lhsdn);                  
@@ -3817,7 +3794,6 @@ decimal128 decimal128DivideInteger(const decimal128 lhs, const decimal128 rhs)
   if(globalContext.dfpRealMode==PPCHW) {
     dec128DataXchg xlhs, xrhs, xres, xdiv;
     ppc_fpscr savedFPSCR, afterDivFPSCR;
-    dfp_pad qwpad=0.0;
 
     xlhs.dsw=lhs;
     xrhs.dsw=rhs;
@@ -3871,7 +3847,6 @@ decimal128 decimal128Log10(const decimal128 rhs)
 decimal128 decimal128Max(const decimal128 lhs, const decimal128 rhs)
 {
   if(globalContext.dfpRealMode==PPCHW) {
-    dfp_pad qwpad=0.0;
     dec128DataXchg xlhs, xrhs;
     compare_result compr;
     xlhs.dsw=lhs;
@@ -3892,7 +3867,6 @@ decimal128 decimal128Max(const decimal128 lhs, const decimal128 rhs)
 decimal128 decimal128Min(const decimal128 lhs, const decimal128 rhs)
 {
   if(globalContext.dfpRealMode==PPCHW) {
-    dfp_pad qwpad=0.0;
     dec128DataXchg xlhs, xrhs;
     compare_result compr;
     xlhs.dsw=lhs;
@@ -3993,7 +3967,6 @@ decimal128 decimal128Quantize(const decimal128 lhs, const decimal128 rhs)
 {
   if(globalContext.dfpRealMode==PPCHW) {
     dfp_quad xres;
-    dfp_pad qwpad=0.0;
     xres=ppc_dquaq_rfpscr(qwpad, *((dfp_quad *)&rhs), *((dfp_quad *)&lhs)); 
                                                  /* note transposed */
                                                  /* argument order */
@@ -4014,7 +3987,6 @@ decimal128 decimal128Remainder(const decimal128 lhs, const decimal128 rhs)
     dfp_integer expIntq, expRhs, iexp;
     ppc_fpscr savedFPSCR, afterDivFPSCR;
     dfp_significance numDigits;
-    dfp_pad qwpad=0.0;
 
     if ( (!dfpalIsSpecial(lhs)) && dfpalIsInfinite(rhs) ) {
       return(lhs);
@@ -4120,7 +4092,6 @@ decimal128 decimal128RemainderNear(const decimal128 lhs, const decimal128 rhs)
     dfp_integer expIntq, expRhs, iexp, rndmode;
     ppc_fpscr savedFPSCR, afterDivFPSCR;
     dfp_significance numDigits;
-    dfp_pad qwpad=0.0;
 
     if ( (!dfpalIsSpecial(lhs)) && dfpalIsInfinite(rhs) ) {
       return(lhs);
@@ -4231,7 +4202,6 @@ decimal128 decimal128Rescale(const decimal128 lhs, const decimal128 rhs)
   if(globalContext.dfpRealMode==PPCHW) {
     ppc_fpscr beforeFPSCR, afterFPSCR, clearINEXACT;
     dec128DataXchg xlhs, xrhs, xres;
-    dfp_pad qwpad=0.0;
     dfp_quad tmp128;
     dfp_integer ires;
 
@@ -4259,7 +4229,6 @@ decimal128 decimal128Rescale(const decimal128 lhs, const decimal128 rhs)
       (ires.sll > DFPAL_DECIMAL128_Emax) ||
       (ires.sll < (DFPAL_DECIMAL128_Emin-DFPAL_DECIMAL128_Pmax+1))) {
       /* input scale was non-integer */
-      dec128DataXchg xnan;
 
       /* set invalid into pre-FPSCR */
       beforeFPSCR.fpscr_attrib.vxsoft=1;
@@ -4300,7 +4269,6 @@ decimal128 decimal128SameQuantum(const decimal128 lhs, const decimal128 rhs)
 {
   if(globalContext.dfpRealMode==PPCHW) {
     dfp_quad xres;
-    dfp_pad qwpad=0.0;
 
     if (ppc_dtstexq(qwpad, *((dfp_quad *)&lhs), *((dfp_quad *)&rhs)) & 
       DFPAL_COMP_EQ)
@@ -4334,7 +4302,6 @@ decimal128 decimal128ToIntegralValue(const decimal128 rhs)
 {
   if(globalContext.dfpRealMode==PPCHW) {
     dfp_quad xres;
-    dfp_pad qwpad=0.0;
     xres=ppc_drintnq_rfpscr(qwpad, *((dfp_quad *)&rhs));
     return(*((decimal128 *)&xres));
   }
@@ -4355,7 +4322,6 @@ decimal128 decimal128Ceil(const decimal128 rhs)
 {
   if(globalContext.dfpRealMode==PPCHW) {
     dec128DataXchg xrhs, xres;
-    dfp_pad qwpad=0.0;
     xrhs.dsw=rhs;
     xres.dhw=ppc_drintnq_rtpi(qwpad, xrhs.dhw);
     return(xres.dsw);
@@ -4369,7 +4335,6 @@ decimal128 decimal128Floor(const decimal128 rhs)
 {
   if(globalContext.dfpRealMode==PPCHW) {
     dec128DataXchg xrhs, xres;
-    dfp_pad qwpad=0.0;
     xrhs.dsw=rhs;
     xres.dhw=ppc_drintnq_rtmi(qwpad, xrhs.dhw);
     return(xres.dsw);

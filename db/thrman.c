@@ -170,7 +170,6 @@ struct thr_handle *thrman_register(enum thrtype type)
 
     rc = pthread_setspecific(thrman_key, thr);
     if (rc != 0) {
-        char buf[1024];
         logmsg(LOGMSG_FATAL, "thrman_register(%s): pthread_setspecific: %d %s\n",
                 thrman_type2a(type), rc, strerror(rc));
         abort();
@@ -230,7 +229,6 @@ void thrman_change_type(struct thr_handle *thr, enum thrtype newtype)
 static void thrman_destructor(void *param)
 {
     struct thr_handle *thr = param;
-    int rc;
 
     if (!thr) {
         logmsg(LOGMSG_ERROR, "thrman_destructor: thr==NULL\n");

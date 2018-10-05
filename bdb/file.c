@@ -1974,7 +1974,6 @@ static void panic_func(DB_ENV *dbenv, int errval)
 
     pid = getpid();
     snprintf(buf, sizeof(buf), "pstack %d", pid);
-    int dum = system(buf);
 
     /* this code sometimes deadlocks.  install a timer - if it
        fires, we
@@ -7469,7 +7468,6 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
     int rc = 0;
     char table_prefix[80];
     unsigned long long file_version;
-    unsigned long long version_num;
 
     struct dirent *buf;
     struct dirent *ent;
@@ -7566,7 +7564,6 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
         /* brute force scan to find any files on disk that we aren't
          * actually using */
         int found_in_llmeta = 0;
-        int i;
 
         /* We have to check new. prefix for schemachange first.
          * See NOTE in bdb_is_new_sc_file()

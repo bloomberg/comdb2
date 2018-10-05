@@ -1390,7 +1390,6 @@ static void analyzeOneTable(
 #ifdef SQLITE372
       u8 seekOp = OP_NotExists;
 #else
-      u8 seekOp = HasRowid(pTab) ? OP_NotExists : OP_NotFound;
 #endif
 
       pParse->nMem = MAX(pParse->nMem, regCol+nCol+1);

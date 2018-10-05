@@ -458,12 +458,10 @@ static void *udp_reader(void *arg)
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
 
     repinfo_type *repinfo = bdb_state->repinfo;
-    netinfo_type *netinfo = repinfo->netinfo;
     void *data;
     uint8_t buff[1024];
     ssize_t nrecv;
     ack_info *info = (ack_info *)buff;
-    char straddr[256];
     char *from;
     int type;
     int fd = repinfo->udp_fd;
@@ -479,7 +477,6 @@ static void *udp_reader(void *arg)
         ptr = (struct sockaddr *)&addr;
         nrecv = recvfrom(fd, &buff, sizeof(buff), 0, ptr, &socklen);
 #else
-        struct sockaddr_in *paddr = NULL;
         nrecv = recvfrom(fd, &buff, sizeof(buff), 0, NULL, NULL);
 #endif
 
@@ -702,7 +699,6 @@ int send_myseqnum_to_master_udp(bdb_state_type *bdb_state)
     ack_info *info;
     uint8_t *p_buf;
     uint8_t *p_buf_end;
-    static int lastpr = 0;
     int rc = 0, now;
 
     new_ack_info(info, BDB_SEQNUM_TYPE_LEN, bdb_state->repinfo->myhost);
@@ -740,7 +736,6 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
     const char *hostlist[REPMAX];
     const char *comlist[REPMAX];
     colease_t colease;
-    ack_info *info;
     static int last_count = 0;
 
     colease.issue_time = gettimeofday_ms();
@@ -813,7 +808,6 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
         master_is_coherent = 1;
 
     for (i = 0; i < count; i++) {
-        int catchup_window = bdb_state->attr->catchup_window;
         pthread_mutex_lock(&(bdb_state->coherent_state_lock));
 
         if (!master_is_coherent || bdb_state->coherent_state[

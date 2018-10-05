@@ -545,7 +545,6 @@ struct statthrargs {
 static void *stat_thread(void *argsptr)
 {
     struct statthrargs *args = argsptr;
-    struct thr_handle *thr_self = thrman_register(THRTYPE_QSTAT);
     thread_started("dbque stat");
     backend_thread_event(args->db->dbenv, COMDB2_THR_EVENT_START_RDONLY);
     stat_thread_int(args->db, args->fullstat, args->walk_queue);

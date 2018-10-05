@@ -157,7 +157,6 @@ static void print_field(Vdbe *v, struct cursor_info *cinfo, int num, char *buf)
 
 static int print_cursor_description(strbuf *out, struct cursor_info *cinfo)
 {
-    int m;
     struct schema *sc;
     char scname[100];
     int is_index = 0;
@@ -425,7 +424,6 @@ static int str_in_array(const char *zStr, const char **azArray)
 void explain_data_prepare(IndentInfo *p, Vdbe *v)
 {
     // const char *zSql;               /* The text of the SQL statement */
-    const char *z;    /* Used to check if this is an EXPLAIN */
     int *abYield = 0; /* True if op is an OP_Yield */
     int nAlloc = 0;   /* Allocated size of p->aiIndent[], abYield */
     int pc;           /* Index of operation in p->aiIndent[] */

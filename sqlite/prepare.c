@@ -509,13 +509,11 @@ int sqlite3ReadSchema(Parse *pParse){
 static void schemaIsValid(Parse *pParse){
   sqlite3 *db = pParse->db;
   int iDb;
-  int rc;
   int cookie;
 
   assert( pParse->checkSchema );
   assert( sqlite3_mutex_held(db->mutex) );
   for(iDb=0; iDb<db->nDb; iDb++){
-    int openedTransaction = 0;         /* True if a transaction is opened */
     Btree *pBt = db->aDb[iDb].pBt;     /* Btree database to read cookie from */
     if( pBt==0 ) continue;
 

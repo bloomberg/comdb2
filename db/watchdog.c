@@ -382,8 +382,6 @@ void comdb2_die(int aborat)
 {
     pid_t pid;
     char pstack_cmd[128];
-    int rc;
-    pthread_t tid;
 
     /* we have 60 seconds to "print useful stuff" */
     alarm(60);
@@ -401,7 +399,6 @@ void comdb2_die(int aborat)
         sizeof(pstack_cmd)) {
         logmsg(LOGMSG_WARN, "pstack cmd too long for buffer\n");
     } else {
-        int dum = system(pstack_cmd);
     }
 
     if (aborat)

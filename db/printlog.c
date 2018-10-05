@@ -65,7 +65,6 @@ struct fnames {
 void dump_record(DB_ENV *dbenv, __db_addrem_args *args, struct fname *f)
 {
     struct schema *sc;
-    char tag[100];
     /* just do data */
     if (f->index == -1 && args->opcode == DB_ADD_DUP) {
         unsigned long long genid = 0;

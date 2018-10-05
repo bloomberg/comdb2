@@ -510,7 +510,6 @@ void bdb_get_readlock(bdb_state_type *bdb_state, const char *idstr,
     thread_lock_info_type *lk = pthread_getspecific(lock_key);
     bdb_state_type *lock_handle = bdb_state;
     int rc;
-    int cnt;
 
     if (lock_handle->parent)
         lock_handle = lock_handle->parent;
@@ -668,7 +667,6 @@ void bdb_checklock(bdb_state_type *bdb_state)
 {
     thread_lock_info_type *lk = pthread_getspecific(lock_key);
     bdb_state_type *lock_handle = bdb_state;
-    int rc;
 
     if (lock_handle->parent)
         lock_handle = lock_handle->parent;

@@ -121,9 +121,6 @@ retry:
         int rrn;
         int maxsz = getdatsize(db);
         char *dta = malloc(maxsz);
-        int sz;
-        int ixnum;
-        int errcode;
         int fndlen;
         unsigned long long fnd_genid;
 
@@ -226,7 +223,6 @@ static int verify_formkey_callback(void *parm, void *dta, void *blob_parm,
 {
     struct dbtable *db = parm;
     int rc;
-    struct convert_failure reason;
 
     *keysz = get_size_of_schema(db->ixschema[ix]);
     /*

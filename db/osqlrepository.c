@@ -144,9 +144,6 @@ int osql_repository_add(osql_sess_t *sess, int *replaced)
     uuid_t uuid;
     unsigned long long rqid;
     int rc = 0;
-    int poll_msec = 100;
-    int total_time_msec = 30 * 1000;
-    int crt_time_msec = 0;
 
 retry:
 
@@ -422,7 +419,6 @@ int osql_repository_printcrtsessions(void)
 {
 
     osql_repository_t *stat = theosql;
-    osql_sess_t *rq = NULL;
     int rc = 0;
     int maxops = 0;
 
@@ -469,7 +465,6 @@ int osql_repository_printcrtsessions(void)
 int osql_repository_blkout_node(char *host)
 {
 
-    osql_repository_t *stat = theosql;
     int outrc = 0;
     int rc = 0;
 

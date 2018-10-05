@@ -798,15 +798,6 @@ bdb_osql_comprec_reference_rec(bdb_state_type *bdb_state, DB_LSN *lsn,
 {
     u_int32_t rectype = 0;
     int rc = 0;
-    llog_undo_add_dta_args *add_dta;
-    llog_undo_add_ix_args *add_ix;
-    llog_ltran_commit_args *commit;
-    llog_ltran_start_args *start;
-    llog_ltran_comprec_args *comprec;
-    llog_undo_del_dta_args *del_dta;
-    llog_undo_del_ix_args *del_ix;
-    llog_undo_upd_dta_args *upd_dta;
-    llog_undo_upd_ix_args *upd_ix;
 
     /* Rowlocks types */
     llog_undo_add_dta_lk_args *add_dta_lk;
@@ -1593,7 +1584,6 @@ int bdb_osql_log_apply_log(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
                            bdb_osql_log_t *log, bdb_osql_trn_t *trn, int *dirty,
                            enum log_ops log_op, int trak, int *bdberr)
 {
-    tran_type *shadow_tran = bdb_osql_trn_get_shadow_tran(trn);
     bdb_osql_log_rec_t *rec = NULL;
     int rc = 0;
 
@@ -1701,9 +1691,7 @@ bdb_osql_log_t *parse_log_for_shadows_int(bdb_state_type *bdb_state,
     llog_ltran_comprec_args *comprec = NULL;
 
     /* Rowlocks benchmark record */
-    llog_rowlocks_log_bench_args *rl_log = NULL;
 
-    unsigned long long genid = 0;
     int done = 0;
 
     /*
@@ -2372,7 +2360,6 @@ void bdb_update_ltran_lsns(bdb_state_type *bdb_state, DB_LSN regop_lsn,
     unsigned long long ltranid;
     tran_type *ltrans = NULL;
     int rc = 0;
-    int bdberr;
 
     if (!gbl_new_snapisol)
         return;
@@ -2550,7 +2537,6 @@ static int undo_get_prevlsn(bdb_state_type *bdb_state, DBT *logdta,
     llog_undo_add_dta_args *add_dta;
     llog_undo_add_ix_args *add_ix;
     llog_ltran_commit_args *commit;
-    llog_ltran_start_args *start;
     llog_ltran_comprec_args *comprec;
     llog_undo_del_dta_args *del_dta;
     llog_undo_del_ix_args *del_ix;
@@ -2878,14 +2864,9 @@ static int bdb_osql_log_try_run_optimized(bdb_cursor_impl_t *cur,
     int outrc = 0;
     DBT logdta;
     int offset = 0;
-    int dttype;
-    int updlen;
     int page = 0;
     int index = 0;
-    int version = 0;
-    int use_addcur = 0;
     u_int32_t rectype;
-    llog_undo_del_dta_args *del_dta = NULL;
     llog_undo_upd_dta_args *upd_dta = NULL;
 
     *bdberr = 0;
@@ -3128,41 +3109,19 @@ int bdb_osql_update_shadows_with_pglogs(bdb_cursor_impl_t *cur, DB_LSN lsn,
                                         bdb_osql_trn_t *trn, int *dirty,
                                         int trak, int *bdberr)
 {
-    tran_type *shadow_tran = bdb_osql_trn_get_shadow_tran(trn);
     bdb_state_type *bdb_state = cur->state;
     int rc = 0;
     DBT logdta;
-    DB_LSN undolsn;
-    DB_LSN prev_lsn;
     u_int32_t rectype = 0;
-    void *key;
-    int idx;
     DB_LOGC *logcur = NULL;
 
     void *free_ptr = NULL;
-    bdb_osql_log_addc_ptr_t *addptr;
-    int use_addcur = 0;
-    int inplace = 0;
-    void *keybuf;
-    int keylen;
-    int updlen;
-    void *dtabuf;
-    void *freeme;
-    int page;
-    int index;
-    int curpage;
-    int curidx;
-    int offset;
-    int dtalen;
     int skip = 0;
 
     bdb_osql_log_rec_t *rec = NULL;
 
     llog_undo_add_dta_args *add_dta = NULL;
     llog_undo_add_ix_args *add_ix = NULL;
-    llog_ltran_commit_args *commit = NULL;
-    llog_ltran_start_args *start = NULL;
-    llog_ltran_comprec_args *comprec = NULL;
     llog_undo_del_dta_args *del_dta = NULL;
     llog_undo_del_ix_args *del_ix = NULL;
     llog_undo_upd_dta_args *upd_dta = NULL;
@@ -3175,9 +3134,7 @@ int bdb_osql_update_shadows_with_pglogs(bdb_cursor_impl_t *cur, DB_LSN lsn,
     llog_undo_del_ix_lk_args *del_ix_lk = NULL;
     llog_undo_upd_dta_lk_args *upd_dta_lk = NULL;
     llog_undo_upd_ix_lk_args *upd_ix_lk = NULL;
-    void *logp = NULL;
 
-    int i;
 
     bzero(&logdta, sizeof(DBT));
     logdta.flags = DB_DBT_REALLOC;
@@ -3516,7 +3473,6 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
     llog_undo_del_ix_lk_args *del_ix_lk = NULL;
     llog_undo_upd_ix_args *upd_ix = NULL;
     llog_undo_upd_ix_lk_args *upd_ix_lk = NULL;
-    llog_ltran_comprec_args *comprec = NULL;
     void *free_ptr = NULL;
     bdb_osql_log_addc_ptr_t *addptr;
     u_int32_t rectype;
@@ -3529,8 +3485,6 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
     void *freeme;
     int page;
     int index;
-    int curpage;
-    int curidx;
     int rc = 0;
     int offset;
     int dtalen;
@@ -3779,7 +3733,6 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
     case DB_llog_undo_add_dta_lk: {
         unsigned long long genid;
         short dtastripe, dtafile;
-        int dtalen;
 
         if (rec->type == DB_llog_undo_add_dta_lk) {
             if (llog_dta) {

@@ -33,7 +33,6 @@
  */
 static int db_cluster(Lua L)
 {
-    char *hosts[REPMAX];
     int nnodes;
     struct host_node_info nodes[REPMAX];
 
@@ -83,7 +82,6 @@ static int db_cluster(Lua L)
  *
  */
 static int db_comdbg_tables(Lua L) {
-    struct dbtable *db;
     int rownum = 1;
 
     /* TODO: locking protocol for this is... */
@@ -223,7 +221,6 @@ static int db_comdb_verify(Lua L) {
         return luaL_error(L, "Verify failed.");
     }
 
-    struct dbtable *t;
     int found = 0;
     for (int dbn = 0; dbn < thedb->num_dbs; dbn++) {
         struct dbtable *t = thedb->dbs[dbn];
@@ -254,7 +251,6 @@ static int db_send(Lua L) {
     FILE *f;
     char buf[1024];
     int rownum = 1;
-    char *s;
     char *cmd;
 
     if (!lua_isstring(L, 1))

@@ -65,7 +65,6 @@ void perror_errnum(const char *s, int errnum)
             (void)strerror_r(errnum, errmsg, sizeof(errmsg));
     */
     char *errmsg;
-    char errmsgb[100];
 
 /* we use the deprecated sys_errlist, as strerror_r isnt available
    on the version of sunos we use (5.9) */
@@ -99,7 +98,6 @@ int strcmpfunc(char **a, char **b, int len)
 u_int strhashfunc(u_char **keyp, int len)
 {
     unsigned hash;
-    int jj;
     u_char *key = *keyp;
     for (hash = 0; *key; key++)
         hash = ((hash % 8388013) << 8) + (TOUPPER(*key));
@@ -230,8 +228,6 @@ int rewrite_lrl_remove_tables(const char *lrlname)
     char line[1024];
     int ntables = 0;
     int err = 0;
-    int have_use_llmeta = 0;
-    int have_table_comment = 0;
 
     if (!lrlname)
         return 0;
@@ -356,7 +352,6 @@ int rewrite_lrl_un_llmeta(const char *p_lrl_fname_in,
     SBUF2 *sb_out;
     SBUF2 *sb_in;
     char line[1024];
-    int ntables = 0;
 
     fd_in = open(p_lrl_fname_in, O_RDONLY);
     if (fd_in == -1) {

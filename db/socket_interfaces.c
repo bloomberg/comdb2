@@ -160,6 +160,5 @@ int sndbak_socket(SBUF2 *sb, u_char *buf, int buflen, int rc)
 
 int sndbak_open_socket(SBUF2 *sb, u_char *buf, int buflen, int rc)
 {
-    int rcd = 0;
     return send_ack_reply(sb, rc, buf, buflen);
 }

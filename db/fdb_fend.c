@@ -909,7 +909,6 @@ static int check_table_fdb(fdb_t *fdb, fdb_tbl_t *tbl, int initial,
     int irc = FDB_NOERR;
     fdb_cursor_if_t *fdbc_if;
     fdb_cursor_t *fdbc;
-    int node;
     char sql[256];
     char *row;
     int rowlen;
@@ -926,7 +925,6 @@ static int check_table_fdb(fdb_t *fdb, fdb_tbl_t *tbl, int initial,
     init_cursor(cur, NULL, (Btree *)(cur + 1));
     cur->bt->fdb = fdb;
     cur->bt->is_remote = 1;
-    struct sql_thread *thd = cur->thd;
     struct sqlclntstate *clnt = cur->clnt;
 
 run:
@@ -1553,7 +1551,6 @@ static fdb_tbl_ent_t *get_fdb_tbl_ent_by_rootpage(int rootpage)
 char *fdb_sqlexplain_get_name(int rootpage)
 {
     fdb_tbl_ent_t *ent;
-    fdb_t *fdb;
     char tmp[1024];
 
     ent = get_fdb_tbl_ent_by_rootpage(rootpage);
@@ -1883,7 +1880,6 @@ int fdb_cursor_move_master(BtCursor *pCur, int *pRes, int how)
     const char *zTblName = sqlite->init.zTblName;
     fdb_t *fdb = pCur->bt->fdb;
     fdb_tbl_t *tbl = NULL;
-    fdb_tbl_ent_t *ret;
     int step = 0;
 
     assert(fdb != NULL);
@@ -1993,10 +1989,6 @@ char *fdb_sqlexplain_get_field_name(Vdbe *v, int rootpage, int ixnum,
                                     int fieldnum)
 {
     fdb_tbl_ent_t *ent;
-    fdb_t *fdb;
-    int i;
-    char tmp[1024];
-    int iDb;
     Table *pTab;
     Index *pIdx;
     Column *pCol;
@@ -2042,7 +2034,6 @@ char *fdb_sqlexplain_get_field_name(Vdbe *v, int rootpage, int ixnum,
  */
 Schema *fdb_sqlite_get_schema(Btree *pBt, int nbytes)
 {
-    fdb_t *fdb = pBt->fdb;
 
     assert(pBt->is_remote && pBt->fdb != NULL);
 
@@ -2063,7 +2054,6 @@ Schema *fdb_sqlite_get_schema(Btree *pBt, int nbytes)
 static int _fdb_remote_reconnect(fdb_t *fdb, SBUF2 **psb, char *host)
 {
     SBUF2 *sb = *psb;
-    int rc = FDB_NOERR;
     static uint64_t old = 0ULL;
     uint64_t now, then;
 
@@ -2321,7 +2311,6 @@ static fdb_cursor_if_t *_fdb_cursor_open_remote(struct sqlclntstate *clnt,
 {
     fdb_cursor_if_t *fdbc_if;
     fdb_cursor_t *fdbc;
-    fdb_tbl_ent_t *ent;
     int rc;
     char *tid;
     int isuuid = gbl_noenv_messages;
@@ -2435,7 +2424,6 @@ fdb_cursor_if_t *fdb_cursor_open(struct sqlclntstate *clnt, BtCursor *pCur,
     int rc;
     int source_rootpage;
     int flags;
-    int errval = FDB_NOERR;
 
     assert(pCur->bt->is_remote);
 
@@ -2568,7 +2556,6 @@ static void fdb_cursor_close_on_open(BtCursor *pCur, int cache)
  */
 static int fdb_cursor_close(BtCursor *pCur)
 {
-    int rc = 0;
 
     if (pCur->fdbc) {
         /*TODO: check sqlite_stat cursors and their caching */
@@ -2789,7 +2776,6 @@ static char *fdb_cursor_id(BtCursor *pCur)
 
 static int fdb_serialize_key(BtCursor *pCur, Mem *key, int nfields)
 {
-    int rc = 0;
     int fnum = 0;
     u32 type = 0;
     int sz;
@@ -2966,7 +2952,6 @@ static int fdb_cursor_move_sql(BtCursor *pCur, int how)
     enum run_sql_flags flags = FDB_RUN_SQL_NORMAL;
     unsigned long long start_rpc;
     unsigned long long end_rpc;
-    int error = 0;
 
     if (fdbc) {
         start_rpc = osql_log_time();
@@ -3811,7 +3796,6 @@ fdb_tran_t *fdb_trans_begin_or_join(struct sqlclntstate *clnt, fdb_t *fdb,
 {
     fdb_distributed_tran_t *dtran;
     fdb_tran_t *tran;
-    int rc = 0;
 
     pthread_mutex_lock(&clnt->dtran_mtx);
 
@@ -4374,7 +4358,6 @@ int fdb_process_message(const char *line, int lline)
     int st = 0;
     int ltok = 0;
     char *tok;
-    int rc;
 
     tok = segtok((char *)line, lline, &st, &ltok);
     if (ltok == 0) {
@@ -4568,7 +4551,6 @@ int fdb_table_exists(int rootpage)
 int fdb_lock_table(sqlite3_stmt *pStmt, struct sqlclntstate *clnt, Table *tab,
                    fdb_tbl_ent_t **p_ent)
 {
-    int rc;
     fdb_tbl_ent_t *ent;
     int rootpage = tab->tnum;
     int version = tab->version;

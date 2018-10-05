@@ -88,9 +88,6 @@ tran_type *bdb_tran_begin_logical_norowlocks_int(bdb_state_type *bdb_state,
 {
     tran_type *tran;
     int rc;
-    DB_TXN *parent_tid;
-    bdb_state_type *child;
-    int i;
     unsigned int flags = 0;
 
     /* One day this will change.  One day.
@@ -346,7 +343,6 @@ int berkdb_commit_logical(DB_ENV *dbenv, void *state, uint64_t ltranid,
                           DB_LSN *lsn)
 {
     int rc;
-    tran_type *txn;
     bdb_state_type *bdb_state;
 
     bdb_state = (bdb_state_type *)state;
@@ -635,10 +631,6 @@ tran_type *bdb_tran_begin_logical_int_int(bdb_state_type *bdb_state,
     int rc = 0;
     int step;
     int ismaster;
-    DB_TXN *parent_tid;
-    bdb_state_type *child;
-    int i;
-    unsigned int flags;
 
     /* One day this will change.  One day.
        We really want a bdb_env_type and a bdb_table_type.
@@ -837,8 +829,8 @@ tran_type *bdb_tran_begin_phys(bdb_state_type *bdb_state,
                                tran_type *logical_tran)
 {
     int rc, flags = 0;
-    extern int gbl_micro_retry_on_deadlock, gbl_locks_check_waiters,
-        gbl_rowlocks_commit_on_waiters;
+    extern int gbl_locks_check_waiters,
+         gbl_rowlocks_commit_on_waiters;
     tran_type *tran;
 
     if (logical_tran->tranclass != TRANCLASS_LOGICAL) {
@@ -913,10 +905,8 @@ tran_type *bdb_tran_begin_phys(bdb_state_type *bdb_state,
 static inline unsigned long long lag_bytes(bdb_state_type *bdb_state)
 {
     const char *connlist[REPMAX];
-    int count, numnodes, i;
+    int count, i;
     char *master_host = bdb_state->repinfo->master_host;
-    int now;
-    static int lastpr = 0;
     uint64_t lagbytes;
     DB_LSN minlsn, masterlsn;
 
@@ -1103,8 +1093,6 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
     tran_type *tran;
     int rc;
     DB_TXN *parent_tid;
-    bdb_state_type *child;
-    int i;
     unsigned int flags;
 
     /*fprintf(stderr, "calling bdb_tran_begin_ll_int\n");*/
@@ -1130,7 +1118,6 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
 
         parent->committed_child = 0; /* reset this, there are children */
     } else {
-        DB_LSN lsn;
         parent_tid = NULL;
 
         tran->committed_child =
@@ -1465,10 +1452,8 @@ static int bdb_tran_commit_with_seqnum_int_int(
     void *blkkey, int blkkeylen)
 {
     int rc = 0, outrc = 0;
-    DB_LSN *lsnptr;
     unsigned int flags;
     int failed_to_log=0;
-    int logical_commit_retries = 0;
     int needed_to_abort = 0;
     int set_seqnum = 0;
     uint32_t generation = 0;
@@ -1677,7 +1662,6 @@ static int bdb_tran_commit_with_seqnum_int_int(
         }
 
         if (blkseq) {
-            int blkseq_rc;
 
             *bdberr = 0;
             rc = bdb_blkseq_insert(bdb_state, physical_tran, blkkey, blkkeylen,
@@ -2235,7 +2219,6 @@ int bdb_tran_abort_int_int(bdb_state_type *bdb_state, tran_type *tran,
 {
     int rc = 0;
     int outrc = 0;
-    DB_LSN *lsnptr;
 
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
@@ -2483,7 +2466,6 @@ cursor_tran_t *bdb_get_cursortran(bdb_state_type *bdb_state, int lowpri,
 
 int bdb_curtran_has_waiters(bdb_state_type *bdb_state, cursor_tran_t *curtran)
 {
-    int rc;
 
     if (!curtran || curtran->lockerid == 0)
         return 0;

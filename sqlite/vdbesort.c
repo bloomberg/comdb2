@@ -1004,7 +1004,6 @@ int sqlite3VdbeSorterInit(
     }
 
     if( !sqlite3TempInMemory(db) ){
-      i64 mxCache;                /* Cache size in bytes*/
       u32 szPma = sqlite3GlobalConfig.szPma;
       pSorter->mnPmaSize = szPma * pgsz;
       /* COMDB2 MODIFICATION

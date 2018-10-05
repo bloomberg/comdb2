@@ -8928,8 +8928,8 @@ int put_curtran(bdb_state_type *bdb_state, struct sqlclntstate *clnt)
 /* Return a count of all cursors to the lower layer for debugging */
 int count_pagelock_cursors(void *arg)
 {
+    int count;
     struct sql_thread *thd = (struct sql_thread *)arg;
-    int count = 0;
 
     pthread_mutex_lock(&thd->lk);
     count = listc_size(&thd->bt->cursors);

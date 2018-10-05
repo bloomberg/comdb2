@@ -72,7 +72,6 @@ void req_stats(struct dbtable *db)
     int ii, jj;
     int hdr = 0;
     for (ii = 0; ii <= MAXTYPCNT; ii++) {
-        int flag = 0;
         if (db->typcnt[ii]) {
             if (hdr == 0) {
                 logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum,

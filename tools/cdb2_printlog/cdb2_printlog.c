@@ -70,7 +70,6 @@ void remove_tempdir()
 {
 	if (orig_dir && chdir(orig_dir) == 0) {
 		free(orig_dir);
-		int dum = system("rm -rf " PRINTLOG_RANGE_DIR);
 	}
 }
 
@@ -95,7 +94,7 @@ int tool_cdb2_printlog_main(argc, argv)
 	DBT data, keydbt;
 	DB_LSN key;
 	int ch, exitval, nflag, rflag, ret, repflag;
-	char *home, passwd[1024], cmd[128];
+	char *home, passwd[1024];
 	bdb_state_type st;
 	FILE *crypto;
 

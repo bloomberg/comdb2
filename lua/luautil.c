@@ -229,10 +229,6 @@ int luabb_istype(lua_State *lua, int index, dbtypes_enum type)
 
 int luabb_error(Lua lua, SP sp, const char *fmt, ...)
 {
-    lua_Debug ar;
-    int rc;
-    const char *w = NULL;   // where
-    ptrdiff_t wl = 0;       // where len
 
     char c[1];
     va_list args;

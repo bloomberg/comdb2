@@ -211,7 +211,6 @@ static inline int return_cursor(bdb_berkdb_t *berkdb)
     bdb_state_type *bdb_state;
     int rc;
     u_int32_t curflags = 0;
-    char tmpdta;
     DBT dbtkey = {0};
     DBT dbtdta = {0};
     int bdberr;
@@ -328,7 +327,6 @@ static inline int open_pagelock_cursor(bdb_berkdb_t *berkdb)
     bdb_cursor_impl_t *cur;
     int bdberr = 0;
     DB *db = NULL;
-    int rc;
 
     /* Pointer to last row structure */
     r = &berkdb->impl->u.row;
@@ -484,7 +482,6 @@ static inline int bdb_berkdb_rowlocks_firstlast_int(bdb_berkdb_t *berkdb,
     int trycnt = 0;
 
     /* Cursor flags */
-    int curflags = 0;
 
     /* Got the endlock flag */
     int got_endlk = 0;
@@ -824,7 +821,7 @@ static inline int bdb_berkdb_rowlocks_nextprev_int(bdb_berkdb_t *berkdb,
     struct odh odh;
 
     /* Holds the pagelsn of a page */
-    DB_LSN pagelsn, lwmlsn;
+    DB_LSN pagelsn;
 
     /* New lock */
     DB_LOCK newlk;
@@ -863,18 +860,16 @@ static inline int bdb_berkdb_rowlocks_nextprev_int(bdb_berkdb_t *berkdb,
     bdb_state_type *bdb_state;
 
     /* For debugging */
-    DB_LSN prevlsn, postlsn, rprvlsn, rpstlsn;
-    int prevpg, postpg, previdx, postidx;
+    DB_LSN prevlsn, postlsn, rprvlsn;
+    int prevpg, postpg, previdx;
 
     /* Key and Data */
     DBT key = {0};
     DBT data = {0};
 
     /* Db pointer for allocating a cursor */
-    DB *db = NULL;
 
     /* Debug variable */
-    int trycount = 0;
 
     /* Pointers to cursors */
     bdb_rowlocks_tag_t *r;
@@ -1381,7 +1376,6 @@ static inline int bdb_berkdb_rowlocks_find_idx_int(bdb_berkdb_t *berkdb,
     int trycnt = 0;
 
     /* Cursor flags */
-    int curflags = 0;
 
     /* Pointers to cursors */
     bdb_rowlocks_tag_t *r;
@@ -1716,7 +1710,6 @@ static inline int bdb_berkdb_rowlocks_find_dta_int(bdb_berkdb_t *berkdb,
     int trycnt = 0;
 
     /* Cursor flags */
-    int curflags = 0;
 
     /* Pointers to cursors */
     bdb_rowlocks_tag_t *r;
@@ -1986,7 +1979,7 @@ static inline int lockcount_trace(bdb_berkdb_t *berkdb, const char *func,
                                   int how, int enter_lkcount, int exit_lkcount)
 {
     bdb_state_type *bdb_state = berkdb->impl->bdb_state;
-    int now, cursor_count;
+    int cursor_count;
     u_int32_t page_lock_count;
     bdb_cursor_impl_t *cur = berkdb->impl->cur;
 
@@ -2038,7 +2031,6 @@ static inline int bdb_berkdb_rowlocks_enter(bdb_berkdb_t *berkdb,
     int absolute = absolute_move(how), rc, ret = 0;
 
     /* Grab the bdb state */
-    bdb_state_type *bdb_state = berkdb->impl->bdb_state;
 
     /* Reset bdberr */
     *bdberr = 0;
@@ -2177,7 +2169,6 @@ static inline int bdb_berkdb_rowlocks_exit(bdb_berkdb_t *berkdb,
 {
     int rc;
     /* Grab the bdb state */
-    bdb_state_type *bdb_state = berkdb->impl->bdb_state;
 
     /* Pointers to cursors */
     bdb_rowlocks_tag_t *r = &berkdb->impl->u.row;
@@ -2535,7 +2526,6 @@ int bdb_berkdb_rowlocks_pause(bdb_berkdb_t *berkdb, int *bdberr)
 
     /* Pointers to cursors */
     bdb_rowlocks_tag_t *r = &berkdb->impl->u.row;
-    bdb_cursor_impl_t *cur = berkdb->impl->cur;
 
     *bdberr = 0;
 
@@ -2678,7 +2668,6 @@ int bdb_berkdb_rowlocks_prevent_optimized(bdb_berkdb_t *berkdb)
 
 int bdb_berkdb_rowlocks_init(bdb_berkdb_t *berkdb, DB *db, int *bdberr)
 {
-    int rc;
     bdb_state_type *bdb_state;
     bdb_rowlocks_tag_t *r;
     bdb_cursor_impl_t *cur;

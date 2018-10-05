@@ -1087,7 +1087,6 @@ static int bdb_temp_table_truncate_temp_db(bdb_state_type *bdb_state,
     int rc, rc2;
     DBC *dbcur;
     DBT dbt_key, dbt_data;
-    DB *db;
 
     if (tbl->num_mem_entries == 0) {
         return 0;
@@ -1131,9 +1130,7 @@ int bdb_temp_table_truncate(bdb_state_type *bdb_state, struct temp_table *tbl,
 {
     if (tbl == NULL)
         return 0;
-    DB *db = NULL;
     int rc = 0;
-    unsigned int discarded = 0;
 
     switch (tbl->temp_table_type) {
     case TEMP_TABLE_TYPE_LIST: {
@@ -1192,7 +1189,6 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
                          int *bdberr)
 {
     struct temp_cursor *cur, *temp;
-    DB *db;
     DB_MPOOL_STAT *tmp;
     int rc;
 
@@ -1291,7 +1287,6 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
                                bdb_state_type *bdb_state, int *last,
                                int *bdberr)
 {
-    DB *db;
     DB_MPOOL_STAT *tmp;
     int rc;
 
@@ -1455,7 +1450,6 @@ void bdb_temp_table_set_cmp_func(struct temp_table *tbl, tmptbl_cmp cmpfunc)
 static int temp_table_compare(DB *db, const DBT *dbt1, const DBT *dbt2)
 {
     struct temp_table *tbl;
-    struct temp_cursor *cur;
     void *pKeyInfo = NULL;
 
     tbl = (struct temp_table *)db->app_private;
@@ -1893,9 +1887,7 @@ inline void bdb_temp_table_flush(struct temp_table *tbl)
 int bdb_temp_table_stat(bdb_state_type *bdb_state, DB_MPOOL_STAT **gspp)
 {
     bdb_state_type *parent;
-    struct temp_table *tbl;
     DB_MPOOL_STAT *sp;
-    DB_MPOOL_STAT *tmp;
 
     if (bdb_state->parent)
         parent = bdb_state->parent;

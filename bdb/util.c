@@ -193,7 +193,6 @@ void bdb_lock_name(bdb_state_type *bdb_state, char *s, size_t slen,
         }
 
     } else {
-        const unsigned char *cptr = lockid;
         snprintf(s, slen, "lockid_leen=%u", (unsigned)lockid_len);
     }
 }

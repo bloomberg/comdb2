@@ -129,7 +129,6 @@ static int cache_delayed_indexes(struct ireq *iq, unsigned long long genid)
     void *cur = NULL;
     int err = 0;
     int *pixnum;
-    int i;
 
     if (iq->idxInsert || iq->idxDelete) {
         free_cached_idx(iq->idxInsert);
@@ -571,8 +570,6 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
     int del_cascade;
     int keylen;
     int upd_cascade;
-    void *od_dta = NULL;
-    char ondisk_tag[MAXTAGLEN];
     char key[MAXKEYLEN];
     unsigned char nulls[MAXNULLBITS] = {0};
     void *cur = NULL;
@@ -618,7 +615,6 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
     while (rc == 0) {
         cte *ctrq = (cte *)bdb_temp_table_data(cur);
         struct backward_ct *bct = NULL;
-        int ondisk_size = 0;
         unsigned long long genid = 0LL, fndgenid = 0LL;
         struct dbtable *currdb = NULL;
         char *skey = NULL;
@@ -2045,7 +2041,6 @@ int populate_reverse_constraints(struct dbtable *db)
         int jj = 0;
         constraint_t *cnstrt = &db->constraints[ii];
         struct schema *sc = NULL;
-        struct dbtable *ftable = NULL;
         int keyszs = 0, keyszd = 0, keyix = 0;
 
         sc = find_tag_schema(db->tablename, cnstrt->lclkeyname);

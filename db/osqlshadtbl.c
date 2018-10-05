@@ -415,7 +415,6 @@ static shad_tbl_t *create_shadtbl(struct BtCursor *pCur,
                                   struct sqlclntstate *clnt)
 {
     shad_tbl_t *tbl;
-    unsigned long long rqid;
     struct dbtable *db = pCur->db;
     struct dbenv *env = pCur->db->dbenv;
     int numblobs = pCur->numblobs;
@@ -1296,7 +1295,6 @@ int osql_save_updcols(struct BtCursor *pCur, struct sql_thread *thd,
     updCols_key_t key;
     int len = 0;
     int rc;
-    int updated_synthetic = 0;
 
     /* verify that there's something to update */
     if (NULL == updCols || updCols[0] <= 0) {
@@ -1402,8 +1400,6 @@ int osql_save_qblobs(struct BtCursor *pCur, struct sql_thread *thd,
     int bdberr = 0;
     shad_tbl_t *tbl = NULL;
     int i;
-    int idx;
-    int ncols;
     unsigned long long tmp = 0;
 
     if (pCur->numblobs == 0) {
@@ -1491,7 +1487,6 @@ int osql_shadtbl_process(struct sqlclntstate *clnt, int *nops, int *bdberr,
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
     shad_tbl_t *tbl = NULL;
-    int i = 0;
 
     *nops = 0;
 
@@ -1861,8 +1856,6 @@ static int process_local_shadtbl_index(struct sqlclntstate *clnt,
     int lindex = 0;
     char *index = NULL;
     int rc = 0;
-    int idx;
-    int ncols;
     int osql_nettype = tran2netrpl(clnt->dbtran.mode);
     struct temp_cursor *tmp_cur = NULL;
     unsigned long long dk = -1ULL;
@@ -2228,7 +2221,6 @@ static int delete_record_indexes(BtCursor *pCur, char *pdta, int dtasize,
     char namebuf[MAXTAGLEN];
     struct dbtable *db = pCur->db;
     char *key;
-    void *tran = thd->clnt->dbtran.shadow_tran;
     bdb_cursor_ifn_t *tmpcur = NULL;
     int rc = 0;
     unsigned long long genid = pCur->genid;
@@ -2685,7 +2677,6 @@ int osql_save_recordgenid(struct BtCursor *pCur, struct sql_thread *thd,
     osqlstate_t *osql = &thd->clnt->osql;
     int rc = 0;
     int bdberr = 0;
-    shad_tbl_t *tbl = NULL;
     recgenid_key_t key;
     uint8_t *packed_key = NULL;
 
@@ -2741,7 +2732,6 @@ int is_genid_recorded(struct sql_thread *thd, struct BtCursor *pCur,
     int rc = 0;
     int bdberr = 0;
     recgenid_key_t key;
-    struct temp_cursor *cur = NULL;
     uint8_t *packed_key = NULL;
 
     if (!osql->verify_tbl) return 0;
@@ -3004,7 +2994,6 @@ static int process_local_shadtbl_sc(struct sqlclntstate *clnt, int *bdberr)
 
 int osql_save_bpfunc(struct sql_thread *thd, BpfuncArg *arg)
 {
-    struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &thd->clnt->osql;
     int rc = 0;
     int bdberr = 0;

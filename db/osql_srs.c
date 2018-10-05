@@ -235,7 +235,6 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
     int rc = 0;
     int nq = 0;
     int tnq = 0;
-    int bdberr = 0;
 
     clnt->verify_retries = 0;
 

@@ -4776,9 +4776,6 @@ case OP_NewRowid: {           /* out2 */
   i64 v;                 /* The new rowid */
   VdbeCursor *pC;        /* Cursor of table to get the new rowid */
   int res;               /* Result of an sqlite3BtreeLast() */
-  int cnt;               /* Counter to limit the number of searches */
-  Mem *pMem;             /* Register holding largest rowid for AUTOINCREMENT */
-  VdbeFrame *pFrame;     /* Root frame of VDBE */
 
   v = 0;
   res = 0;

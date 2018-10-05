@@ -303,8 +303,6 @@ int fdb_svc_cursor_close(char *cid, int isuuid, struct sqlclntstate **pclnt)
     svc_cursor_t *cur;
     int rc = 0;
     int bdberr = 0;
-    int commit;
-    uuidstr_t us;
 
     /* retrieve cursor */
     pthread_rwlock_wrlock(&center->cursors_rwlock);
@@ -512,7 +510,6 @@ static int fdb_fetch_blob_into_sqlite_mem(svc_cursor_t *cur, struct schema *sc,
     blob_status_t blobs;
     int bdberr;
 
-    struct ireq iq;
     int rc;
     int nretries = 0;
 
@@ -591,7 +588,6 @@ static int fdb_get_data_int(svc_cursor_t *cur, struct schema *sc, char *in,
     double dval;
     int outdtsz = 0;
     int rc = 0;
-    Vdbe *vdbe = NULL;
     struct field *f = &(sc->member[fnum]);
     char *in_orig = in = in + f->offset;
 
@@ -911,7 +907,6 @@ static int fdb_get_data_int(svc_cursor_t *cur, struct schema *sc, char *in,
         break;
 
     case SERVER_DECIMAL: {
-        int i;
         null = stype_is_null(in);
         if (null) {
             m->flags = MEM_Null;
@@ -1007,13 +1002,10 @@ static int fdb_ondisk_to_packed_sqlite_tz(struct dbtable *db, struct schema *s,
                                           svc_cursor_t *cur)
 {
     Mem *m;
-    int fnum;
     int i;
     int rc = 0;
     int datasz = 0;
     int hdrsz = 0;
-    int remainingsz = 0;
-    int sz;
     unsigned char *hdrbuf, *dtabuf;
     int ncols = 0;
     int nField;

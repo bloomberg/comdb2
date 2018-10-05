@@ -213,7 +213,6 @@ upd_record_prefault(struct ireq *iq, void *primkey, int rrn,
     int rc, retrc = 0, prefixes = 0;
     int expected_dat_len;
     struct schema *dynschema = NULL;
-    size_t od_len;
     char tag[MAXTAGLEN + 1];
     unsigned char lclnulls[32];
 
@@ -365,14 +364,10 @@ int prefault_toblock(struct ireq *iq_in, void *ptr_in, int helper_thread,
     int ii, jj, datoff, datlen = 0, num_reqs, maxoff, curoff, lastoff;
     int rc, ixnum = 0, ixkeylen, rrnoff, rrn, dbnum;
     int vptr = 0, vlen, newlen, dtalen, irc, taglen = 0;
-    int source_node;
     char *vdta, *newdta;
     int fndrrn = 0, fndlen = 0;
     char tbltag[64];
-    union packedreq *packedreq;
     /* for updates */
-    int ondisk_size = 0;
-    int saved_rrn = 0;
 
     int addrrn;
     unsigned char nulls[MAXNULLBITS];

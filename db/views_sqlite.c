@@ -169,7 +169,6 @@ static char *_views_create_view_query(timepart_view_t *view, sqlite3 *db,
     char *tmp_str = NULL;
     char *ret_str = NULL;
     const char *table0name;
-    Table *pTbl;
     int i;
 
     if (view->nshards == 0) {

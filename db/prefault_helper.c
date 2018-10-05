@@ -68,7 +68,6 @@ static void *prefault_helper_thread(void *arg)
     struct dbtable *db;
     int numreadahead;
     struct thr_handle *thr_self;
-    int retrys;
     int working_for;
 
     thr_self = thrman_register(THRTYPE_PREFAULT);
@@ -388,7 +387,6 @@ int readaheadpf(struct ireq *iq, struct dbtable *db, int ixnum, unsigned char *k
                 int keylen, int num)
 {
     pthread_t my_tid;
-    pthread_t working_for;
     int rc;
     int i;
 

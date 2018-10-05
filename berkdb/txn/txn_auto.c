@@ -66,7 +66,6 @@ __txn_regop_log_int(dbenv, txnid, ret_lsnp, ret_contextp, flags,
 	u_int32_t zero, uinttmp, rectype, txn_num;
 	u_int npad;
 	u_int8_t *bp;
-	DB *dbp = NULL;
 	int is_durable, ret;
 	int used_malloc = 0;
 	int off_context = -1;
@@ -364,7 +363,6 @@ __txn_regop_read_int(dbenv, recbuf, do_pgswp, argpp)
 	__txn_regop_args *argp;
 	u_int32_t uinttmp;
 	u_int8_t *bp;
-	DB *dbp = NULL;
 	int ret;
 
 #ifdef __txn_DEBUG
@@ -421,8 +419,6 @@ __txn_regop_print(dbenv, dbtp, lsnp, notused2, notused3)
 	__txn_regop_args *argp;
     unsigned long long commit_context = 0;
 	struct tm *lt;
-	u_int32_t i;
-	int ch;
 	int ret;
 
 	notused2 = DB_TXN_ABORT;
@@ -530,7 +526,6 @@ __txn_ckp_log(dbenv, txnid, ret_lsnp, flags,
 	u_int32_t uinttmp, rectype, txn_num;
 	u_int npad;
 	u_int8_t *bp;
-	DB *dbp = NULL;
 	int is_durable, ret;
 	int used_malloc = 0;
 
@@ -716,7 +711,6 @@ __txn_ckp_getallpgnos(dbenv, rec, lsnp, notused1, summary)
 	db_recops notused1;
 	void *summary;
 {
-    DB *dbp;
 	TXN_RECS *t;
     __txn_ckp_args *argp;
     int ret = 0;
@@ -784,7 +778,6 @@ __txn_ckp_read_int(dbenv, recbuf, do_pgswp, argpp)
 	__txn_ckp_args *argp;
 	u_int32_t uinttmp;
 	u_int8_t *bp;
-	DB *dbp = NULL;
 	int ret;
 
 #ifdef __txn_DEBUG
@@ -916,7 +909,6 @@ __txn_child_log(dbenv, txnid, ret_lsnp, flags,
 	u_int32_t uinttmp, rectype, txn_num;
 	u_int npad;
 	u_int8_t *bp;
-	DB *dbp = NULL;
 	int is_durable, ret;
 	int used_malloc = 0;
 
@@ -1085,7 +1077,6 @@ __txn_child_getallpgnos(dbenv, rec, lsnp, notused1, summary)
 	db_recops notused1;
 	void *summary;
 {
-    DB *dbp;
 	TXN_RECS *t;
     __txn_child_args *argp;
     int ret = 0;
@@ -1153,7 +1144,6 @@ __txn_child_read_int(dbenv, recbuf, do_pgswp, argpp)
 	__txn_child_args *argp;
 	u_int32_t uinttmp;
 	u_int8_t *bp;
-	DB *dbp = NULL;
 	int ret;
 
 #ifdef __txn_DEBUG
@@ -1265,7 +1255,6 @@ __txn_xa_regop_log(dbenv, txnid, ret_lsnp, flags,
 	u_int32_t zero, uinttmp, rectype, txn_num;
 	u_int npad;
 	u_int8_t *bp;
-	DB *dbp = NULL;
 	int is_durable, ret;
 	int used_malloc = 0;
 
@@ -1514,7 +1503,6 @@ __txn_xa_regop_getallpgnos(dbenv, rec, lsnp, notused1, summary)
 	db_recops notused1;
 	void *summary;
 {
-    DB *dbp;
 	TXN_RECS *t;
 	__txn_xa_regop_args *argp;
 	int ret = 0;
@@ -1547,7 +1535,6 @@ __txn_xa_regop_read_int(dbenv, recbuf, do_pgswp, argpp)
 	__txn_xa_regop_args *argp;
 	u_int32_t uinttmp;
 	u_int8_t *bp;
-	DB *dbp = NULL;
 	int ret;
 
 #ifdef __txn_DEBUG
@@ -1617,8 +1604,6 @@ __txn_xa_regop_print(dbenv, dbtp, lsnp, notused2, notused3)
 	void *notused3;
 {
 	__txn_xa_regop_args *argp;
-	u_int32_t i;
-	int ch;
 	int ret;
 
 	notused2 = DB_TXN_ABORT;
@@ -1691,7 +1676,6 @@ __txn_recycle_log(dbenv, txnid, ret_lsnp, flags,
 	u_int32_t uinttmp, rectype, txn_num;
 	u_int npad;
 	u_int8_t *bp;
-	DB *dbp = NULL;
 	int is_durable, ret;
 	int used_malloc = 0;
 
@@ -1893,7 +1877,6 @@ __txn_recycle_getallpgnos(dbenv, rec, lsnp, notused1, summary)
 	db_recops notused1;
 	void *summary;
 {
-    DB *dbp;
 	TXN_RECS *t;
 	__txn_recycle_args *argp;
 	int ret = 0;
@@ -1926,7 +1909,6 @@ __txn_recycle_read_int(dbenv, recbuf, do_pgswp, argpp)
 	__txn_recycle_args *argp;
 	u_int32_t uinttmp;
 	u_int8_t *bp;
-	DB *dbp = NULL;
 	int ret;
 
 #ifdef __txn_DEBUG
@@ -2047,7 +2029,6 @@ __txn_regop_rowlocks_log(dbenv, txnid, ret_lsnp, ret_contextp, flags,
 	u_int64_t uint64tmp;
 	u_int npad;
 	u_int8_t *bp;
-	DB *dbp = NULL;
 	int is_durable, ret;
 	int used_malloc = 0;
     int off_context = -1;
@@ -2374,7 +2355,6 @@ __txn_regop_rowlocks_read_int(dbenv, recbuf, do_pgswp, argpp)
 	u_int32_t uinttmp;
 	u_int64_t uint64tmp;
 	u_int8_t *bp;
-	DB *dbp = NULL;
 	int ret;
 
 #ifdef __txn_DEBUG
@@ -2460,8 +2440,6 @@ __txn_regop_rowlocks_print(dbenv, dbtp, lsnp, notused2, notused3)
 {
 	__txn_regop_rowlocks_args *argp;
 	struct tm *lt;
-	u_int32_t i;
-	int ch;
 	int ret;
 
 	notused2 = DB_TXN_ABORT;
@@ -2575,7 +2553,6 @@ __txn_regop_gen_log(dbenv, txnid, ret_lsnp, ret_contextp, flags,
 	u_int64_t uint64tmp;
 	u_int npad;
 	u_int8_t *bp;
-	DB *dbp = NULL;
 	int is_durable, ret;
 	int used_malloc = 0;
 	int off_context = -1;
@@ -2836,7 +2813,6 @@ __txn_regop_gen_read_int(dbenv, recbuf, do_pgswp, argpp)
 	u_int32_t uinttmp;
 	u_int64_t uint64tmp;
 	u_int8_t *bp;
-	DB *dbp = NULL;
 	int ret;
 
 #ifdef __txn_DEBUG
@@ -2898,8 +2874,6 @@ __txn_regop_gen_print(dbenv, dbtp, lsnp, notused2, notused3)
 {
 	__txn_regop_gen_args *argp;
 	struct tm *lt;
-	u_int32_t i;
-	int ch;
 	int ret;
 
 	notused2 = DB_TXN_ABORT;

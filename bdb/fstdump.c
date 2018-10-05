@@ -334,15 +334,13 @@ static void *fstdump_thread_inner(fstdump_per_thread_t *fstdump, void *sendrec,
                                   void *databuf, size_t buffer_length)
 {
     fstdump_t *common = fstdump->common;
-    int fndrrn, fndlen, rc, rrn;
+    int fndrrn, rc, rrn;
     unsigned long long genid;
-    unsigned char *fnddta;
     unsigned char *retkey = NULL;
     unsigned long long lastkey;
 
     DBC *dbcp;
     DBT key, data;
-    void *p;
     int need_advance = 1;
 
     memset(&key, 0, sizeof(key));
@@ -967,8 +965,6 @@ struct dtadump *bdb_dtadump_start(bdb_state_type *bdb_state, int *bdberr,
                                   int is_blob, int nr)
 {
     struct dtadump *dump;
-    int rc;
-    unsigned long long genid = 0;
     int i;
     int dtanum;
 

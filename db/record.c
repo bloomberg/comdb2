@@ -889,7 +889,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     void *old_dta = NULL;
     char tag[MAXTAGLEN + 1];
     int fndlen;
-    int blobno, num_cblobs;
+    int blobno;
     int ixnum;
     char lclprimkey[MAXKEYLEN];
     unsigned char lclnulls[64];
@@ -2223,7 +2223,6 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
                                int nd_len, unsigned long long ins_keys,
                                int use_new_tag, blob_buffer_t *blobs)
 {
-    int prefixes = 0;
     int rc = 0;
 #ifdef DEBUG
     fprintf(stderr, "upd_new_record_add2indices: genid %llx\n", newgenid);
@@ -2613,9 +2612,6 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
     for (ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
         char keytag[MAXTAGLEN];
         char key[MAXKEYLEN];
-        char mangled_key[MAXKEYLEN];
-        char *od_dta_tail = NULL;
-        int od_tail_len = 0;
 
         if (gbl_use_plan && iq->usedb->plan &&
             iq->usedb->plan->ix_plan[ixnum] != -1)
@@ -2839,7 +2835,6 @@ int del_new_record(struct ireq *iq, void *trans, unsigned long long genid,
     for (ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
         char keytag[MAXTAGLEN];
         char key[MAXKEYLEN];
-        char mangled_key[MAXKEYLEN];
 
         if (gbl_use_plan && iq->usedb->plan &&
             iq->usedb->plan->ix_plan[ixnum] != -1)
@@ -3234,7 +3229,6 @@ int updbykey_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     if (strcmp(tag, ondisktag) == 0) {
         /* XXX support this? */
     } else {
-        int od_len_int;
         struct convert_failure reason;
         char keytag[MAXTAGLEN];
 

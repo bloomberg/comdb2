@@ -50,9 +50,6 @@ static int bdb_prim_delkey_int(bdb_state_type *bdb_state, tran_type *tran,
 {
     int rc;
     DBT dbt_key;
-    DBC *dbcp;
-    unsigned int keydata[3];
-    unsigned int *iptr;
     void *pKeyMaxBuf = 0;
 
     if (bdb_write_preamble(bdb_state, bdberr))
@@ -120,7 +117,6 @@ static int bdb_prim_deallocdta_stripe_int(bdb_state_type *bdb_state,
                                           tran_type *tran,
                                           unsigned long long genid, int *bdberr)
 {
-    DBT dbt_key;
     int rc;
     int dtafile;
     DB *db;
@@ -161,9 +157,8 @@ static int bdb_prim_deallocdta_n_int(bdb_state_type *bdb_state, tran_type *tran,
                                      int rrn, unsigned long long genid,
                                      int dtanum, int *bdberr)
 {
-    DBT dbt_key, dbt_data;
+    DBT dbt_key;
     int rc, dtafile;
-    DBC *dbcp;
     DB *dbp;
 
     if (bdb_write_preamble(bdb_state, bdberr))
@@ -208,9 +203,8 @@ static int bdb_prim_deallocdta_int(bdb_state_type *bdb_state, tran_type *tran,
                                    int rrn, unsigned long long genid,
                                    int *bdberr)
 {
-    DBT dbt_key, dbt_data;
+    DBT dbt_key;
     int rc;
-    int keyval;
     int dtanum;
 
     /*fprintf(stderr, "bdb_prim_deallocdta_int called\n");*/

@@ -587,7 +587,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, void *data,
         if (!rc_out) {
             /* Must increment seq under completed_lock */
             pthread_mutex_lock(&sess->completed_lock);
-            uuidstr_t sessuuid, requuid;
+            uuidstr_t sessuuid;
 
             if (sess->rqid == rqid || (rqid == OSQL_RQID_USE_UUID &&
                                        comdb2uuidcmp(sess->uuid, uuid) == 0)) {
@@ -804,7 +804,6 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
 
     osql_sess_t *sess = NULL;
     int rc = 0;
-    uuidstr_t us;
 
 #ifdef TEST_QSQL_REQ
     fprintf(stdout, "%s: Opening request %llu %s\n", __func__, rqid,

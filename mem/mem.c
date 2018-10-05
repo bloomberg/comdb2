@@ -1134,7 +1134,6 @@ char *comdb2_strndup_static(int indx, const char *s, size_t n)
 
 struct mallinfo comdb2_mallinfo_static(int indx)
 {
-    struct mallinfo empty = {0};
     STATIC_RANGE_CHECK(indx, empty);
     return comdb2_mallinfo(get_area(indx));
 }

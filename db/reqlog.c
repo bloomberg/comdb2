@@ -465,7 +465,7 @@ static const char *dblrangestr(const struct dblrange *range, char *buf,
 static void printrule(struct logrule *rule, FILE *fh, const char *p)
 {
     char b[32];
-    int rc, opcode;
+    int rc;
     logmsgf(LOGMSG_USER, fh, "%sRULE '%s'", p, rule->name);
     if (!rule->active) logmsgf(LOGMSG_USER, fh, " (INACTIVE)");
     logmsgf(LOGMSG_USER, fh, "\n");
@@ -595,7 +595,6 @@ static void scanrules_ll(void)
 
 int reqlog_init(const char *dbname)
 {
-    struct logrule *rule;
     struct output *out;
     char *filename;
 
@@ -1373,7 +1372,6 @@ void reqlog_setflag(struct reqlogger *logger, unsigned flag)
 /* figure out what to log for this request */
 static void reqlog_start_request(struct reqlogger *logger)
 {
-    struct logrule *rule;
     int gather;
     int ii;
 
@@ -2021,7 +2019,6 @@ void init_clientstats_table()
 static nodestats_t *add_clientstats(const char *task, const char *stack,
                                     int node, int fd)
 {
-    int ret = -1;
     int task_len, stack_len;
     nodestats_t *old_entry = NULL;
     nodestats_t *entry = NULL;
@@ -2181,7 +2178,6 @@ struct rawnodestats *get_raw_node_stats(const char *task, const char *stack,
                                         char *host, int fd)
 {
     struct nodestats *nodestats = NULL;
-    struct rawnodestats *rawnodestats = NULL;
     unsigned checksum;
     int namelen, node;
     int task_len, stack_len = 0;
@@ -2305,7 +2301,6 @@ void process_nodestats(void)
         unsigned *nowptr;
         unsigned *prevptr;
         unsigned *bucketptr;
-        struct rawnodestats *rawnodestats;
         nodestats = list[i];
 
         nowptr = (unsigned *)&nodestats->rawtotals;
@@ -2608,8 +2603,6 @@ void nodestats_report(FILE *fh, const char *prefix, int disp_rates)
     unsigned max_clients;
     unsigned ii;
     struct summary_nodestats *summaries;
-    struct nodestats *nodestats;
-    struct rawnodestats snap;
 
     if (!prefix) prefix = "";
 

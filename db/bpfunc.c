@@ -149,7 +149,6 @@ end:
 int exec_create_timepart(void *tran, bpfunc_t *func, char *err)
 {
     char *json_cmd = NULL;
-    char cmd[256];
     int len = 0;
     int rc;
     struct errstat errst;
@@ -197,7 +196,6 @@ static int prepare_create_timepart(bpfunc_t *tp)
 int exec_drop_timepart(void *tran, bpfunc_t *func, char *err)
 {
     char *json_cmd = NULL;
-    char cmd[256];
     int len = 0;
     int rc;
     struct errstat errst;

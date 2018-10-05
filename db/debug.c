@@ -82,12 +82,9 @@ void debug_trap(char *line, int lline)
 {
     char table[MAXTABLELEN];
     char tag[MAXTAGLEN];
-    int i;
-    int rc;
     int st = 0;
     char *tok;
     int ltok;
-    int newvers;
 
     tok = segtok(line, lline, &st, &ltok);
     if (tokcmp(tok, ltok, "delsc") == 0) {

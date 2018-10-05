@@ -147,7 +147,6 @@ static pthread_t sqllog_threadid;
 
 static void sqllog_async_init_once(void)
 {
-    int rc;
     listc_init(&sqllog_events, offsetof(struct log_event, lnk));
     event_pool = pool_setalloc_init(sizeof(struct log_event), 20, malloc, free);
     if (event_pool == NULL) {
@@ -401,10 +400,6 @@ static int log_async(struct sqlclntstate *clnt, int cost, int nrows, int timems)
 void sqllog_log_statement(struct sqlclntstate *clnt, int cost, int nrows,
                           int timems)
 {
-    struct timeval t;
-    int32_t ival;
-    int sqllen;
-    int rc;
 
     /* HERE */
 }

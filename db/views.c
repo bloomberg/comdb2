@@ -131,7 +131,6 @@ static timepart_view_t* _check_shard_collision(timepart_views_t *views, const ch
  */
 timepart_views_t *timepart_views_init(struct dbenv *dbenv)
 {
-    int rc;
 
     pthread_rwlock_init(&views_lk, NULL);
 
@@ -234,7 +233,6 @@ int timepart_add_view(void *tran, timepart_views_t *views,
     char next_existing_shard[MAXTABLELEN + 1];
     int preemptive_rolltime = thedb->timepart_views->preemptive_rolltime;
     timepart_view_t *oldview;
-    timepart_shard_t *shard;
     char *tmp_str;
     int rc;
     int tm;
@@ -415,7 +413,6 @@ int timepart_view_set_retention(timepart_views_t *views, const char *name,
                                 int retention)
 {
     timepart_view_t *view;
-    int i;
     int rc;
 
     pthread_rwlock_wrlock(&views_lk);
@@ -445,7 +442,6 @@ int timepart_view_set_period(timepart_views_t *views, const char *name,
                              enum view_timepart_period period)
 {
     timepart_view_t *view;
-    int i;
     int rc;
 
     pthread_rwlock_wrlock(&views_lk);
@@ -506,7 +502,6 @@ int timepart_del_view(void *tran, timepart_views_t *views, const char *name)
     timepart_view_t *view;
     int i;
     int rc = VIEW_NOERR;
-    int irc;
 
     pthread_rwlock_wrlock(&views_lk);
 
@@ -572,7 +567,6 @@ int timepart_free_views_unlocked(timepart_views_t *views)
  */
 int timepart_free_views(timepart_views_t *views)
 {
-    timepart_view_t *view;
     int rc = VIEW_NOERR;
 
     pthread_rwlock_wrlock(&views_lk);
@@ -618,7 +612,6 @@ int views_handle_replicant_reload(const char *name)
 {
     timepart_views_t *views = thedb->timepart_views;
     timepart_view_t *view = NULL;
-    timepart_views_t *oldview = NULL;
     struct dbtable *db;
     int rc = VIEW_NOERR;
     char *str = NULL;
@@ -1254,7 +1247,6 @@ _view_cron_schedule_next_rollout(timepart_view_t *view, int timeCrtRollout,
     int preemptive_rolltime = thedb->timepart_views->preemptive_rolltime;
     char *tmp_str;
     int tm;
-    int rc = FDB_NOERR;
 
     if (unlikely(view->period == VIEW_TIMEPART_TEST2MIN)) {
         preemptive_rolltime = 30; /* 30 seconds in advance we add a new table */
@@ -1421,7 +1413,6 @@ void *_view_cron_phase3(uuid_t source_id, void *arg1, void *arg2, void *arg3,
     bdb_state_type *bdb_state = thedb->bdb_env;
     char *pShardName = (char *)arg1;
     int run = 0;
-    int tm;
     int rc;
 
     print_dbg_verbose(NULL, NULL, "TTT",
@@ -2399,7 +2390,6 @@ int timepart_foreach_shard(const char *view_name,
                            timepart_sc_arg_t *arg, int first_shard)
 {
     struct schema_change_type *s = arg->s;
-    const char *original_name = s->tablename;
     timepart_views_t *views;
     timepart_view_t *view;
     int rc;
@@ -2669,7 +2659,6 @@ int timepart_schemachange_get_shard_in_progress(const char *view_name,
 
 static int _view_update_table_version(timepart_view_t *view, tran_type *tran)
 {
-    struct dbtable *db;
     unsigned long long version;
     int rc = VIEW_NOERR;
 
@@ -2719,7 +2708,6 @@ void timepart_systable_column(sqlite3_context *ctx, int iRowid,
         break;
     case VIEWS_VERSION: {
         struct dbtable *table = get_dbtable_by_name(view->shards[0].tblname);
-        int version = 0;
         assert(table);
 
         sqlite3_result_int(ctx, table->tableversion);
@@ -2748,7 +2736,6 @@ void timepart_systable_shard_column(sqlite3_context *ctx, int iTimepartId,
     timepart_views_t *views = thedb->timepart_views;
     timepart_view_t *view;
     timepart_shard_t *shard;
-    uuidstr_t us;
 
     if (iTimepartId < 0 || iTimepartId >= views->nviews ||
         iCol >= VIEWS_SHARD_MAXCOLUMN) {

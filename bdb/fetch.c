@@ -73,7 +73,7 @@ static DB_TXN *resolve_db_txn(bdb_state_type *bdb_state, tran_type *tran)
     int rc;
     if (tran) {
         if (tran->tranclass == TRANCLASS_LOGICAL && !tran->reptxn) {
-            tran_type ptxn, *pptr;
+            tran_type *pptr;
             if ((rc = get_physical_transaction(bdb_state, tran, &pptr, 0)) !=
                 0) {
                 logmsg(LOGMSG_ERROR, "%s %d: error getting transaction, rc=%d\n",
@@ -157,7 +157,6 @@ static int bdb_fetch_blobs_by_rrn_and_genid_int_int(
         int rc = 0;
 
         int pgno;
-        int tmp_i;
 
         /* Could have changed in get_unpack_blob. */
         genid = ingenid;
@@ -600,9 +599,6 @@ static int bdb_fetch_int_ll(
     int outrc;
     int past_three_outrc;
     int foundrrn;
-    unsigned long long foungenid;
-    int tmprrn;
-    unsigned long long tmpgenid;
     int found;
     int search_recnum;
     int flags;
@@ -2265,13 +2261,10 @@ static int bdb_fetch_int(int return_dta, int direction, int lookahead,
                          bdb_cursor_ser_int_t *cur_ser, bdb_fetch_args_t *args,
                          int *bdberr)
 {
-    unsigned long long lockgenid;
-    unsigned long long masked_genid;
     int created_temp_tran;
     int rc;
     int llrc;
-    DBT key, data;
-    int dirty_read;
+    DBT key;
     char tmpixfound[1024];
     int bdberr2;
 
@@ -3997,7 +3990,6 @@ int bdb_fetch_by_rrn_and_genid(bdb_state_type *bdb_state, int rrn,
                                int *bdberr)
 {
     int rc;
-    unsigned long long outgenid;
     BDB_READLOCK("bdb_fetch_by_rrn_and_genid");
 
     rc = bdb_fetch_by_genid_int(bdb_state, NULL, genid, dta, dtalen, reqdtalen,
@@ -4036,7 +4028,6 @@ int bdb_fetch_by_rrn_and_genid_dirty(bdb_state_type *bdb_state, int rrn,
                                      bdb_fetch_args_t *args, int *bdberr)
 {
     int rc;
-    unsigned long long outgenid;
     BDB_READLOCK("bdb_fetch_by_rrn_and_genid");
 
     rc = bdb_fetch_by_genid_int(bdb_state, NULL, genid, dta, dtalen, reqdtalen,
@@ -4073,7 +4064,6 @@ int bdb_fetch_by_rrn_and_genid_tran(bdb_state_type *bdb_state, tran_type *tran,
                                     bdb_fetch_args_t *args, int *bdberr)
 {
     int rc;
-    unsigned long long outgenid;
     BDB_READLOCK("bdb_fetch_by_rrn_and_genid_tran");
 
     rc = bdb_fetch_by_genid_int(bdb_state, tran, genid, dta, dtalen, reqdtalen,

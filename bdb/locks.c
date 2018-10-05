@@ -226,7 +226,6 @@ int berkdb_lock(DB_ENV *dbenv, int lid, int flags, DBT *lkname, int mode,
                 DB_LOCK *lk)
 {
     int rc;
-    char lock_description[100];
 
 #if 0
     bdb_describe_lock(dbenv, lkname->data, lkname->size, lock_description,
