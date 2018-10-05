@@ -814,7 +814,7 @@
 (name='timepart_check_shard_existence', description='Check at startup/time-partition creation that all shard files exist.', type='BOOLEAN', value='OFF', read_only='N')
 (name='timepart_no_rollout', description='Prevent new rollouts for time partitions.', type='BOOLEAN', value='OFF', read_only='N')
 (name='timeseries_metrics', description='Keep time series data for some metrics', type='BOOLEAN', value='ON', read_only='N')
-(name='timeseries_metrics_maxage', description='Time to keep metrics in memory (seconds)', type='INTEGER', value='3600', read_only='N')
+(name='timeseries_metrics_maxage', description='Time to keep metrics in memory (seconds)', type='INTEGER', value='30', read_only='N')
 (name='timeseries_metrics_maxpoints', description='Maximum data points to keep in memory for various metrics', type='INTEGER', value='10000', read_only='N')
 (name='toblock_net_throttle', description='Throttle writes in apply_changes. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='toomanyskipped', description='Call for election again and delay commits if more than this many nodes are incoherent.', type='INTEGER', value='2', read_only='N')
