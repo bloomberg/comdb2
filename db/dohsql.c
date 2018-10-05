@@ -25,7 +25,7 @@ limitations under the License.
 #include "memcompare.c"
 
 static int gbl_plugin_api_debug = 0;
-static int verbose = 1;
+static int verbose = 0;
 
 struct col {
     int type;
