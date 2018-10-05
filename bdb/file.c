@@ -5020,7 +5020,7 @@ static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
     }
 
     if (op != UPGRADE) {
-        wait_for_sc_to_stop();
+        wait_for_sc_to_stop("downgrade");
     }
 
     watchdog_set_alarm(timeout);

@@ -6456,6 +6456,11 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online)
 
     i_am_master = F_ISSET(rep, REP_F_MASTER);
 
+    if (i_am_master) {
+        void wait_for_sc_to_stop(const char *operation);
+        wait_for_sc_to_stop("log-truncate");
+    }
+
 	/* Figure out if we are backing out any commited transactions. */
 	if ((ret = __log_cursor(dbenv, &logc)) != 0)
 		return (ret);

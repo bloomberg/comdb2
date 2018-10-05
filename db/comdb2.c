@@ -1394,7 +1394,7 @@ void clean_exit(void)
        here in a second, so letting new reads in would be bad. */
     no_new_requests(thedb);
 
-    wait_for_sc_to_stop();
+    wait_for_sc_to_stop("exit");
 
     /* let the lower level start advertising high lsns to go non-coherent
        - dont hang the master waiting for sync replication to an exiting
