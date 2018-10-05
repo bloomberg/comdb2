@@ -1038,6 +1038,8 @@ function bulk_rebuild
     assert_notable t3
 }
 
+#  Joe says test create columns / delete columns / set and unset primary key / foreign keys / unique constraints
+#
 function alter_table_options
 {
     [[ $debug == "1" ]] && set -x
