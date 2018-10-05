@@ -55,6 +55,14 @@ struct dohsql_connector {
 typedef struct dohsql_connector dohsql_connector_t;
 
 typedef Mem row_t;
+enum {
+    ILIMIT_MEM_IDX = 0
+    ,ILIMIT_SAVED_MEM_IDX = 1
+    ,IOFFSET_MEM_IDX = 2
+    ,IOFFSETLIMIT_MEM_IDX = 3
+    ,IOFFSET_SAVED_MEM_IDX = 4
+    ,MAX_MEM_IDX = 5
+};
 
 struct dohsql {
     int nconns;
@@ -65,7 +73,7 @@ struct dohsql {
     int row_src;
     int rc;
     /* LIMIT support */
-    int limitRegs[4]; /* sqlite engine limit registers*/
+    int limitRegs[MAX_MEM_IDX]; /* sqlite engine limit registers*/
     int limit; /* any limit */
     int nrows; /* sent rows so far */
     /* OFFSET support */
@@ -87,9 +95,6 @@ static int order_init(dohsql_t *conns);
 static int dohsql_dist_next_row_ordered(struct sqlclntstate *clnt,
         sqlite3_stmt *stmt);
 
-#define GET_CLNT \
-    struct sql_thread *thd = pthread_getspecific(query_info_key); \
-    struct sqlclntstate *clnt = thd->clnt;
 
 static void sqlengine_work_shard_pp(struct thdpool *pool, void *work,
                                       void *thddata, int op)
@@ -411,9 +416,13 @@ static int init_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 
     if (verbose) {
         logmsg(LOGMSG_ERROR, "%lx %s: sqlite3_step rc %d\n", pthread_self(), __func__, rc);
-        if (conns->limitRegs[0]>=0)
-            logmsg(LOGMSG_ERROR, "%lx checking clnt %p for conns %p limitMem %d limit %d offsetMem %d offset %d\n", pthread_self(),
-                    clnt, conns, conns->limitRegs[0], conns->limit, conns->limitRegs[1], conns->offset);
+        if (conns->limitRegs[ILIMIT_SAVED_MEM_IDX]>0)
+            logmsg(LOGMSG_ERROR, "%lx clnt %p conns %p limitMem %d:%d limit %d "
+                    "offsetMem %d:%d offset %d\n", pthread_self(),
+                    clnt, conns, conns->limitRegs[ILIMIT_MEM_IDX], 
+                    conns->limitRegs[ILIMIT_SAVED_MEM_IDX], conns->limit,
+                    conns->limitRegs[IOFFSET_MEM_IDX],
+                    conns->limitRegs[IOFFSET_SAVED_MEM_IDX], conns->offset);
     }
 #if 0
     if(conns->limitRegs[0]>0 && (!conns->offsetMem || !conns->offset)) {
@@ -440,7 +449,8 @@ static int init_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 
 static int _check_limit(sqlite3_stmt *stmt, dohsql_t *conns)
 {
-    if (conns->limitRegs[0]>=0 && conns->limit>=0 && conns->nrows >= conns->limit) {
+    if (conns->limitRegs[ILIMIT_SAVED_MEM_IDX]>0 && conns->limit>=0 &&
+            conns->nrows >= conns->limit) {
         if(verbose)
             logmsg(LOGMSG_ERROR, "%lx REACHED LIMIT rc =%d!\n", pthread_self(),
                     conns->conns[0].rc);
@@ -459,7 +469,7 @@ static int _check_limit(sqlite3_stmt *stmt, dohsql_t *conns)
 
 static int _check_offset(dohsql_t *conns)
 {
-    if (conns->limitRegs[1] && conns->skipped < conns->offset) {
+    if (conns->limitRegs[IOFFSET_SAVED_MEM_IDX] && conns->skipped < conns->offset) {
         conns->skipped++;
         if (verbose)
             logmsg(LOGMSG_ERROR, "XXX: skipped client %d row skipped %d, offset =%d\n",
@@ -846,7 +856,6 @@ int dohsql_distribute(dohsql_node_t *node)
     conns->conns = (dohsql_connector_t*)(conns+1);
     conns->nconns = node->nnodes;
     conns->ncols = node->ncols;
-    conns->limitRegs[0] = conns->limitRegs[1] = conns->limitRegs[2] = conns->limitRegs[3] = -1;
     if (node->has_order) {
         if (order_init(conns)) {
             free(conns);
@@ -968,11 +977,35 @@ void comdb2_register_offset(Select *p)
 }
 #endif
 
-int* comdb2_parallel(void)
+int comdb2_register_limit(int iLimit, int iSavedLimit)
 {
     GET_CLNT;
-    return (unlikely(clnt->conns))?clnt->conns->limitRegs:NULL;
+    if (unlikely(clnt->conns)) {
+        clnt->conns->limitRegs[ILIMIT_SAVED_MEM_IDX] = iSavedLimit;
+        clnt->conns->limitRegs[ILIMIT_MEM_IDX] = iLimit;
+        if (verbose)
+            logmsg(LOGMSG_ERROR,
+                    "%lx setting saved limit to %d limit is %d\n", pthread_self(),
+                    iSavedLimit, iLimit);
+        return 1;
+    }
+    return 0;
 }
+
+void comdb2_register_offset(int iOffset, int iLimitOffset, int iSavedOffset)
+{
+    GET_CLNT;
+    if (likely(clnt->conns)) {
+        clnt->conns->limitRegs[IOFFSET_SAVED_MEM_IDX] = iSavedOffset;
+        clnt->conns->limitRegs[IOFFSETLIMIT_MEM_IDX] = iLimitOffset;
+        clnt->conns->limitRegs[IOFFSET_MEM_IDX] = iOffset;
+        if (verbose)
+            logmsg(LOGMSG_ERROR, "%lx setting saved offset to %d offset is %d\n",
+                    pthread_self(), iSavedOffset, iOffset);
+
+    }
+}
+
 
 
 #define DOHSQL_MASTER (clnt->plugin.next_row == dohsql_dist_next_row || \
@@ -987,30 +1020,33 @@ void comdb2_handle_limit(Vdbe *v, Mem *m)
     if(!DOHSQL_MASTER) return;
 
     /* limit or offset ? */
-    reg = &v->aMem[conns->limitRegs[0]];
-    if (reg == m+1/*this is following limit register*/) {
+    if (m == &v->aMem[conns->limitRegs[ILIMIT_MEM_IDX]]) {
+        reg = &v->aMem[conns->limitRegs[ILIMIT_SAVED_MEM_IDX]];
         /* limit */
         conns->limit = sqlite3_value_int64(reg);
         if (verbose)
             logmsg(LOGMSG_ERROR, "%lx found limit %d from register %d\n",
                    pthread_self(), conns->limit, conns->limitRegs[0]);
     } else {
-        reg = &v->aMem[conns->limitRegs[1]];
-        if (reg == m+2 /*this is following offset and offset+limit*/) {
+        if (m == &v->aMem[conns->limitRegs[IOFFSET_MEM_IDX]]) {
+            reg = &v->aMem[conns->limitRegs[IOFFSET_SAVED_MEM_IDX]];
             /* offset */
             conns->offset = sqlite3_value_int64(reg);
 
             if (verbose)
-                logmsg(LOGMSG_ERROR, "%lx found offset %d from register %d,"
-                        " updating internal to %lld->0 and %lld->%lld\n",
+                logmsg(LOGMSG_ERROR, "%lx found offset %d from register %d, adjusting limit to %d"
+                        " updating internal offset mems to %lld->0 and %lld->%lld\n",
                         pthread_self(), conns->offset, conns->limitRegs[1],
-                        v->aMem[conns->limitRegs[2]].u.i,
-                        v->aMem[conns->limitRegs[3]].u.i,
-                        v->aMem[conns->limitRegs[3]].u.i - conns->offset);
-
+                        (conns->limit<0)?conns->limit:(conns->limit - conns->offset),
+                        v->aMem[conns->limitRegs[IOFFSET_MEM_IDX]].u.i,
+                        v->aMem[conns->limitRegs[IOFFSETLIMIT_MEM_IDX]].u.i,
+                        v->aMem[conns->limitRegs[IOFFSETLIMIT_MEM_IDX]].u.i - conns->offset);
+            if (conns->limit>=0 && conns->offset>0)
+                conns->limit = conns->limit - conns->offset;
             /* nuke the offset, maybe do this only for order?*/
-            v->aMem[conns->limitRegs[2]].u.i = 0;
-            v->aMem[conns->limitRegs[3]].u.i -= conns->offset;
+            v->aMem[conns->limitRegs[IOFFSET_MEM_IDX]].u.i = 0;
+            if (conns->offset>0)
+                v->aMem[conns->limitRegs[IOFFSETLIMIT_MEM_IDX]].u.i -= conns->offset;
         } else
             abort(); /*sqlite changed assumptions*/
     }
@@ -1371,3 +1407,10 @@ int order_init(dohsql_t *conns)
    
     return SHARD_NOERR;
 }
+
+int is_parallel_shard(void)
+{
+    GET_CLNT;
+    return (clnt->conns || DOHSQL_CLIENT);
+}
+

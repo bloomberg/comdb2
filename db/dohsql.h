@@ -55,4 +55,14 @@ const char* dohsql_get_sql(struct sqlclntstate *clnt, int index);
  */
 void dohsql_wait_for_master(sqlite3_stmt* stmt, struct sqlclntstate *clnt);
 
+#define GET_CLNT \
+    struct sql_thread *thd = pthread_getspecific(query_info_key); \
+    struct sqlclntstate *clnt = thd->clnt;
+
+/**
+ * Return 1 if this sql thread servers a parallel statement 
+ *
+ */
+int is_parallel_shard(void);
+
 #endif

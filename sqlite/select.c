@@ -2095,6 +2095,7 @@ static void computeLimitRegisters(Parse *pParse, Select *p, int iBreak){
   assert( p->pOffset==0 || p->pLimit!=0 );
   if( p->pLimit ){
     p->iLimit = iLimit = ++pParse->nMem;
+    fprintf(stderr, "%lx getting iLimit %d\n", pthread_self(), iLimit);
     v = sqlite3GetVdbe(pParse);
     assert( v!=0 );
     if( sqlite3ExprIsInteger(p->pLimit, &n) ){
@@ -2113,17 +2114,14 @@ static void computeLimitRegisters(Parse *pParse, Select *p, int iBreak){
       sqlite3VdbeAddOp2(v, OP_IfNot, iLimit, iBreak); VdbeCoverage(v);
     }
     /* COMDB2 MODIFICATION */
-    extern int* comdb2_parallel(void);
-    int *poker;
-    if ((poker=comdb2_parallel())!=NULL){
-      *poker = ++pParse->nMem;
-      *(poker+1) = -1;
-      *(poker+2) = -1;
-      *(poker+3) = -1;
-      sqlite3VdbeAddOp2(v, OP_IntCopy, iLimit, *poker); VdbeCoverage(v);
+    extern int comdb2_register_limit(int, int);
+    int is_parallel;
+    if ((is_parallel = comdb2_register_limit(iLimit, ++pParse->nMem)) != 0) {
+     sqlite3VdbeAddOp2(v, OP_IntCopy, iLimit, pParse->nMem); VdbeCoverage(v);
     }
     if( p->pOffset ){
       p->iOffset = iOffset = ++pParse->nMem;
+      fprintf(stderr, "%lx getting iOffset %d\n", pthread_self(), iOffset);
       pParse->nMem++;   /* Allocate an extra register for limit+offset */
       sqlite3ExprCode(pParse, p->pOffset, iOffset);
       sqlite3VdbeAddOp1(v, OP_MustBeInt, iOffset); VdbeCoverage(v);
@@ -2131,11 +2129,10 @@ static void computeLimitRegisters(Parse *pParse, Select *p, int iBreak){
       sqlite3VdbeAddOp3(v, OP_OffsetLimit, iLimit, iOffset+1, iOffset);
       VdbeComment((v, "LIMIT+OFFSET"));
       /* COMDB2 MODIFICATION */
-      if (poker) {
-        *(poker+1) = ++pParse->nMem;
-        *(poker+2) = iOffset;
-        *(poker+3) = iOffset+1;
-        sqlite3VdbeAddOp2(v, OP_IntCopy, iOffset, *(poker+1)); VdbeCoverage(v);
+      extern void comdb2_register_offset(int, int, int);
+      if (is_parallel){
+        comdb2_register_offset(iOffset, iOffset+1, ++pParse->nMem);
+        sqlite3VdbeAddOp2(v, OP_IntCopy, iOffset, pParse->nMem); VdbeCoverage(v);
       }
     }
   }

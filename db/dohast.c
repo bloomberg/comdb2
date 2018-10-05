@@ -138,11 +138,16 @@ char* sqlite_struct_to_string(Vdbe *v, Select *p, Expr* extraRows, int *has_orde
                 sqlite3DbFree(db, cols);
                 return NULL;
             }
-            select = sqlite3_mprintf("SeLeCT %s FRoM %s%s%s%s%s LiMit %s oFFSeT %s",
+            select = sqlite3_mprintf("SeLeCT %s FRoM %s%s%s%s%s "
+                    "LiMit (CaSe wHeN (%s)<0 THeN (%s) eLSe ((%s) + "
+                    "(CaSe wHeN (%s)<0 THeN 0 eLSe (%s) eND)"
+                    ") eND) oFFSeT (%s)",
                     cols, tbl,
                     (where)?" WHeRe ":"", (where)?where:"",
                     (orderby)?" oRDeR By ":"", (orderby)?orderby:"",
-                    limit, offset);
+                    limit, limit, limit, 
+                    offset, offset,
+                    offset);
         } else if (!extraRows) {
             select = sqlite3_mprintf("SeLeCT %s FRoM %s%s%s%s%s LiMit %s", 
                     cols, tbl,
@@ -159,11 +164,14 @@ char* sqlite_struct_to_string(Vdbe *v, Select *p, Expr* extraRows, int *has_orde
                 return NULL;
             }
             select = sqlite3_mprintf(
-                    "SeLeCT %s FRoM %s%s%s%s%s LiMit (CaSe wHeN (%s)<0 THeN %s eLSe ((%s) + (%s)) eND)",
+                    "SeLeCT %s FRoM %s%s%s%s%s LiMit (CaSe wHeN (%s)<0 THeN (%s) eLSe ((%s) + "
+                    "(CaSe wHeN (%s)<0 THeN 0 eLSe (%s) eND)"
+                    ") eND)",
                     cols, tbl,
                     (where)?" WHeRe ":"", (where)?where:"",
                     (orderby)?" oRDeR By ":"", (orderby)?orderby:"",
-                    limit, limit, limit, extra);
+                    limit, limit, limit,
+                    extra, extra);
         }
     }
 
@@ -335,6 +343,7 @@ static dohsql_node_t* gen_select(Vdbe* v, Select *p)
 {
     Select *crt;
     int span = 0;
+    dohsql_node_t *ret;
 
     p->selFlags |= SF_ASTIncluded;
 
@@ -356,15 +365,20 @@ static dohsql_node_t* gen_select(Vdbe* v, Select *p)
         return NULL;
 
     if (p->op == TK_SELECT)
-        return gen_oneselect(v, p, NULL);
+        ret = gen_oneselect(v, p, NULL);
+    else
+        ret = gen_union(v, p, span);  
 
-    return gen_union(v, p, span);  
+    return ret;
 }
 
 int ast_push(ast_t *ast, enum ast_type op, Vdbe *v, void* obj)
 {
     int ignore = 0;
 
+    if (is_parallel_shard())
+        return 0;
+    
     if (ast->nused>=ast->nalloc) {
         ast->stack = realloc(ast->stack, 
                 (ast->nalloc+AST_STACK_INIT)*sizeof(ast->stack[0]));
