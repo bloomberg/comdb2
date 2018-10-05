@@ -212,6 +212,22 @@ function truncate_log
     sleep $sleeptime
 }
 
+function rowlocks_command
+{
+    [[ $debug == "1" ]] && set -x
+    typeset tries=$total_tries
+    typeset func="rowlocks_command"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put rowlocks $1"
+    r=$?
+    while [[ "$r" != 0 ]]; do
+        let tries=tries-1
+        [[ "$tries" == 0 ]] && failexit "failed to run put rowlocks $1"
+        sleep 1
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put rowlocks $1"
+        r=$?
+    done
+}
+
 function genid48_command
 {
     [[ $debug == "1" ]] && set -x
@@ -1477,14 +1493,14 @@ function rowlocks
     rowlocks_rlk_1=$(get_rowlocks)
 
     write_prompt $func "Enabling rowlocks"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put rowlocks enable"
+    rowlocks_command enable
     sleep $sleeptime
     rowlocks_lsn_2=$(get_current_lsn)
     rowlocks_rlk_2=$(get_rowlocks)
     [[ "$rowlocks_rlk_1" == "$rowlocks_rlk_2" ]] && failexit $func "rowlocks were not enabled"
 
     write_prompt $func "Disabling rowlocks"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put rowlocks disable"
+    rowlocks_command disable
     rowlocks_rlk_3=$(get_rowlocks)
     [[ "$rowlocks_rlk_2" == "$rowlocks_rlk_3" ]] && failexit $func "rowlocks were not disabled"
 
