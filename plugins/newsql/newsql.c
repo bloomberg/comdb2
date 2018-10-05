@@ -1047,12 +1047,14 @@ static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
 static int newsql_ping_pong(struct sqlclntstate *clnt)
 {
     struct newsqlheader hdr;
-    if (sbuf2fread((void *)&hdr, sizeof(hdr), 1, clnt->sb) != 1) {
-        return -1;
-    }
-    if (ntohl(hdr.type) != RESPONSE_HEADER__SQL_RESPONSE_PONG) {
-        return -2;
-    }
+    int rc, r, w, timeout = 0;
+    sbuf2gettimeout(clnt->sb, &r, &w);
+    sbuf2settimeout(clnt->sb, 1000, w);
+    rc = sbuf2fread_timeout((void *)&hdr, sizeof(hdr), 1, clnt->sb, &timeout);
+    sbuf2settimeout(clnt->sb, r, w);
+    if (timeout) return -1;
+    if (rc != 1) return -2;
+    if (ntohl(hdr.type) != RESPONSE_HEADER__SQL_RESPONSE_PONG) return -3;
     return 0;
 }
 

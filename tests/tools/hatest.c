@@ -457,7 +457,6 @@ static int run_statement(const char *sql, int ntypes, int *types,
     int rc;
     int ncols;
     int col;
-    int cost;
     FILE *out = stdout;
 
     int startms, rowms, endms;

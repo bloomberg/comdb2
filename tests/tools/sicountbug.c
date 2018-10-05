@@ -155,8 +155,6 @@ void *insert_records_thd(void *arg)
 
 int insert_records(config_t *c)
 {
-    int i, ret;
-
     insert_thread_t *ins = (insert_thread_t *) malloc(sizeof(*ins));
     ins->c = c;
     insert_records_thd(ins);

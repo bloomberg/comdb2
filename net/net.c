@@ -5184,6 +5184,11 @@ check:  Pthread_mutex_lock(&(host_node_ptr->lock));
         host_node_ptr->really_closed = 0;
         host_node_ptr->closed = 0;
 
+        /* Also call the new node routine here - it shouldn't matter which
+         * node initiated the connection. */
+        if (netinfo_ptr->new_node_rtn)
+            netinfo_ptr->new_node_rtn(netinfo_ptr, host_node_ptr->host, host_node_ptr->port);
+
         /* wake writer, if exists */
         pthread_cond_signal(&(host_node_ptr->write_wakeup));
         Pthread_mutex_unlock(&(host_node_ptr->write_lock));
