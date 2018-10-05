@@ -887,7 +887,7 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
     }
     case OP_DeferredSeek:
         strbuf_appendf(out, "Move cursor [%d] to rowid of index cursor [%d]",
-                       op->p1, op->p2);
+                       op->p3, op->p1);
         break;
     case OP_NoConflict:
     case OP_NotFound:
