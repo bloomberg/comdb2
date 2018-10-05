@@ -642,12 +642,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     iq->osql_replicant_numops++;
 
-    DEBUGMSG("Saving uuid=%s type=%d (%s) tmp=%llu seq=%d\n",
-             comdb2uuidstr(uuid, us), type, osql_reqtype_str(type), osql_log_time(), sess->seq);
-#if 0
-    printf("Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n",
-           rqid, type, osql_reqtype_str(type), osql_log_time(), sess->seq);
-#endif
+    DEBUGMSG("uuid=%s type=%d (%s) seq=%lld\n",
+             comdb2uuidstr(uuid, us), type, osql_reqtype_str(type), sess->seq);
 
     key.seq = sess->seq;
     assert (sess->rqid == rqid);
@@ -724,7 +720,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     if (type != OSQL_XERR) {
         int done_nops = osql_get_replicant_nops(rpl, rqid == OSQL_RQID_USE_UUID);
-        DEBUGMSG("uuid = %s type %s done_nops = %d, seq = %lld\n", comdb2uuidstr(uuid, us), osql_reqtype_str(type), done_nops, seq);
+        DEBUGMSG("uuid=%s type %s done_nops=%d, seq=%lld %s\n", comdb2uuidstr(uuid, us), osql_reqtype_str(type), done_nops, seq, (done_nops != seq + 1 ? "NO match": ""));
 
         if(done_nops != seq + 1) {
             abort();

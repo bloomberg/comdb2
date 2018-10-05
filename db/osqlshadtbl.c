@@ -120,6 +120,16 @@ static int osql_create_bpfunc_temptbl(bdb_state_type *bdb_state,
 static int osql_destroy_bpfunc_temptbl(bdb_state_type *bdb_state,
                                        struct sqlclntstate *clnt);
 
+
+#ifndef NDEBUG
+#define DEBUG_PRINT_NUMOPS() { \
+    uuidstr_t us; \
+    DEBUGMSG("uuid=%s, replicant_numops=%d\n", comdb2uuidstr(osql->uuid, us), osql->replicant_numops); \
+}
+#else
+#define DEBUG_PRINT_NUMOPS() {}
+#endif
+
 static int free_it(void *obj, void *arg)
 {
     free(obj);
@@ -1600,7 +1610,7 @@ static int process_local_shadtbl_usedb(struct sqlclntstate *clnt,
         logmsg(LOGMSG_ERROR, "%s: osql_send_usedb rc=%d\n", __func__, rc);
     }
     osql->replicant_numops++;
-    DEBUGMSG("replicant_numops = %d\n", osql->replicant_numops);
+    DEBUG_PRINT_NUMOPS();
     return rc;
 }
 
@@ -1657,7 +1667,7 @@ static int process_local_shadtbl_skp(struct sqlclntstate *clnt, shad_tbl_t *tbl,
                 return SQLITE_INTERNAL;
             }
             osql->replicant_numops++;
-            DEBUGMSG("replicant_numops = %d\n", osql->replicant_numops);
+            DEBUG_PRINT_NUMOPS();
         }
 
         rc = bdb_tran_deltbl_next(tbl->env->bdb_env, clnt->dbtran.shadow_tran,
@@ -1737,7 +1747,7 @@ static int process_local_shadtbl_updcols(struct sqlclntstate *clnt,
         return SQLITE_INTERNAL;
     }
     osql->replicant_numops++;
-    DEBUGMSG("replicant_numops = %d\n", osql->replicant_numops);
+    DEBUG_PRINT_NUMOPS();
 
     return rc;
 }
@@ -1768,7 +1778,7 @@ static int process_local_shadtbl_qblob(struct sqlclntstate *clnt,
                 rc = osql_send_qblob(osql->host, osql->rqid, osql->uuid, i, seq,
                                      osql_nettype, NULL, -2, osql->logsb);
                 osql->replicant_numops++;
-                DEBUGMSG("replicant_numops = %d\n", osql->replicant_numops);
+                DEBUG_PRINT_NUMOPS();
                 continue;
             }
         }
@@ -1806,7 +1816,7 @@ static int process_local_shadtbl_qblob(struct sqlclntstate *clnt,
             return SQLITE_INTERNAL;
         }
         osql->replicant_numops++;
-        DEBUGMSG("replicant_numops = %d\n", osql->replicant_numops);
+        DEBUG_PRINT_NUMOPS();
 
     } /* for */
 
@@ -1868,7 +1878,7 @@ static int process_local_shadtbl_index(struct sqlclntstate *clnt,
             return SQLITE_INTERNAL;
         }
         osql->replicant_numops++;
-        DEBUGMSG("replicant_numops = %d\n", osql->replicant_numops);
+        DEBUG_PRINT_NUMOPS();
     }
     return 0;
 }
@@ -1951,7 +1961,7 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
                    __func__);
             return SQLITE_INTERNAL;
             osql->replicant_numops++;
-            DEBUGMSG("replicant_numops = %d\n", osql->replicant_numops);
+            DEBUG_PRINT_NUMOPS();
         }
     next:
         rc = bdb_temp_table_next(tbl->env->bdb_env, tbl->add_cur, bdberr);
@@ -2058,7 +2068,7 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
             break;
         }
         osql->replicant_numops++;
-        DEBUGMSG("replicant_numops = %d\n", osql->replicant_numops);
+        DEBUG_PRINT_NUMOPS();
 
         rc = bdb_temp_table_next(tbl->env->bdb_env, tbl->upd_cur, bdberr);
     }
@@ -2799,7 +2809,7 @@ static int process_local_shadtbl_recgenids(struct sqlclntstate *clnt,
             return SQLITE_INTERNAL;
         }
         osql->replicant_numops++;
-        DEBUGMSG("replicant_numops = %d\n", osql->replicant_numops);
+        DEBUG_PRINT_NUMOPS();
 
         rc = bdb_temp_table_next(bdb_state, cur, bdberr);
     }
@@ -2934,7 +2944,7 @@ static int process_local_shadtbl_sc(struct sqlclntstate *clnt, int *bdberr)
             return SQLITE_INTERNAL;
         }
         osql->replicant_numops++;
-        DEBUGMSG("replicant_numops = %d\n", osql->replicant_numops);
+        DEBUG_PRINT_NUMOPS();
         free_schema_change_type(sc);
 
         rc = bdb_temp_table_next(bdb_state, cur, bdberr);
@@ -3045,7 +3055,7 @@ static int process_local_shadtbl_bpfunc(struct sqlclntstate *clnt, int *bdberr)
             return SQLITE_INTERNAL;
         }
         osql->replicant_numops++;
-        DEBUGMSG("replicant_numops = %d\n", osql->replicant_numops);
+        DEBUG_PRINT_NUMOPS();
 
         rc = bdb_temp_table_next(bdb_state, cur, bdberr);
     }

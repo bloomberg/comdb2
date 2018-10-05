@@ -86,7 +86,7 @@ static int access_control_check_sql_write(struct BtCursor *pCur,
 #ifndef NDEBUG
 #define DEBUG_PRINT_NUMOPS() { \
     uuidstr_t us; \
-    DEBUGMSG("uuid = %s, replicant_numops = %d\n", comdb2uuidstr(osql->uuid, us), osql->replicant_numops); \
+    DEBUGMSG("uuid=%s, replicant_numops=%d\n", comdb2uuidstr(osql->uuid, us), osql->replicant_numops); \
 }
 #else
 #define DEBUG_PRINT_NUMOPS() {}
@@ -1383,21 +1383,17 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
         snap_info_p = &snap_info;
     }
 
-    osql->replicant_numops++;
-    int send_startgen = 0;
-    if (gbl_osql_send_startgen && clnt->start_gen > 0) {
-        send_startgen = 1;
-        osql->replicant_numops++;
-    }
 retry:
     rc = 0;
 
-    if (send_startgen) {
+    if (gbl_osql_send_startgen && clnt->start_gen > 0) {
+        osql->replicant_numops++;
         rc = osql_send_startgen(osql->host, osql->rqid, osql->uuid,
                                 clnt->start_gen, nettype, osql->logsb);
     }
 
     if (rc == 0) {
+        osql->replicant_numops++;
         if (osql->rqid == OSQL_RQID_USE_UUID) {
             rc = osql_send_commit_by_uuid(osql->host, osql->uuid, osql->replicant_numops,
                                           &osql->xerr, nettype, osql->logsb,
