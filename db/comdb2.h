@@ -3547,4 +3547,6 @@ void comdb2_set_verify_remote_schemas(void);
 int repopulate_lrl(const char *p_lrl_fname_out);
 void plugin_post_dbenv_hook(struct dbenv *dbenv);
 
+int64_t gbl_temptable_spills;
+
 #endif /* !INCLUDED_COMDB2_H */

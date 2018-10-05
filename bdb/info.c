@@ -203,18 +203,19 @@ int bdb_get_lock_counters(bdb_state_type *bdb_state, int64_t *deadlocks, int64_t
 }
 
 int bdb_get_bpool_counters(bdb_state_type *bdb_state, int64_t *bpool_hits,
-                           int64_t *bpool_misses)
+                           int64_t *bpool_misses, int64_t *rw_evicts)
 {
     int rc;
     DB_MPOOL_STAT *mpool_stats;
 
     rc = bdb_state->dbenv->memp_stat(bdb_state->dbenv, &mpool_stats, NULL,
-                                     DB_STAT_MINIMAL);
+                                     0);
     if (rc)
         return rc;
 
     *bpool_hits = mpool_stats->st_cache_hit;
     *bpool_misses = mpool_stats->st_cache_miss;
+    *rw_evicts = mpool_stats->st_rw_evict;
 
     free(mpool_stats);
     return 0;
@@ -255,6 +256,18 @@ const char *deadlock_policy_str(u_int32_t policy)
 int deadlock_policy_max()
 {
     return DB_LOCK_MAX;
+}
+
+int bdb_lock_stats(bdb_state_type *bdb_state, int64_t *nlocks)
+{
+    DB_LOCK_STAT *stats = NULL;
+    int rc;
+    rc = bdb_state->dbenv->lock_stat(bdb_state->dbenv, &stats, 0);
+    if (rc)
+        return -1;
+    *nlocks = stats->st_nlocks;
+    free(stats);
+    return 0;
 }
 
 static void lock_stats(FILE *out, bdb_state_type *bdb_state)
@@ -2238,5 +2251,13 @@ int bdb_fill_cluster_info(void **data, int *num_nodes) {
             info[i].coherent_state = "coherent";
     }
     *data = info;
+    return 0;
+}
+
+int bdb_rep_stats(bdb_state_type *bdb_state, int64_t *nrep_deadlocks) {
+    DB_REP_STAT *stats;
+    bdb_state->dbenv->rep_stat(bdb_state->dbenv, &stats, 0);
+    *nrep_deadlocks = stats->retry;
+    free(stats);
     return 0;
 }

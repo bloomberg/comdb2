@@ -18,7 +18,7 @@ static LISTC_T(struct time_metric) metrics;
 
 /* TODO: tunabalize? */
 int gbl_metric_maxpoints = 10000;
-int gbl_metric_maxage = 3600;
+int gbl_metric_maxage = 30;
 
 struct time_metric {
     char *name;
@@ -114,4 +114,8 @@ int time_metric_get_points(struct time_metric *t, struct point **values, int *nv
 
 double time_metric_average(struct time_metric *t) {
     return averager_avg(t->avg);
+}
+
+int time_metric_max(struct time_metric *t) {
+    return averager_max(t->avg);
 }
