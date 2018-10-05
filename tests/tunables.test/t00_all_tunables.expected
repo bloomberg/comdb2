@@ -405,7 +405,7 @@
 (name='lsnerr_logflush', description='Flush log on lsn error', type='BOOLEAN', value='ON', read_only='N')
 (name='lsnerr_pgdump', description='Dump page on LSN errors', type='BOOLEAN', value='ON', read_only='N')
 (name='lsnerr_pgdump_all', description='Dump page on LSN errors on all nodes', type='BOOLEAN', value='OFF', read_only='N')
-(name='make_slow_replicants_incoherent', description='Make slow replicants incoherent.', type='BOOLEAN', value='OFF', read_only='N')
+(name='make_slow_replicants_incoherent', description='Make slow replicants incoherent.', type='BOOLEAN', value='ON', read_only='N')
 (name='master_lease', description='', type='INTEGER', value='500', read_only='N')
 (name='master_lease_renew_interval', description='', type='INTEGER', value='200', read_only='N')
 (name='master_lease_set_trace', description='', type='BOOLEAN', value='OFF', read_only='N')
