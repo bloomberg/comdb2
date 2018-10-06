@@ -182,6 +182,7 @@ static int master_downgrading(struct schema_change_type *s)
         logmsg(
             LOGMSG_WARN,
             "Master node downgrading - new master will resume schemachange\n");
+        set_schema_change_in_progress(__func__, __LINE__, 0);
         return SC_MASTER_DOWNGRADE;
     }
     return SC_OK;
