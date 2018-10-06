@@ -475,7 +475,7 @@ static void *udp_reader(void *arg)
     uint8_t *p_buf, *p_buf_end;
     filepage_type fp;
 
-    while (!db_is_stopped()) {
+    while (1) {
 #ifdef UDP_DEBUG
         struct sockaddr_in addr;
         struct sockaddr_in *paddr = &addr;
