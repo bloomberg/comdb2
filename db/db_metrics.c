@@ -220,7 +220,7 @@ comdb2_metric gbl_metrics[] = {
      &stats.rw_evicts, NULL},
     {"standing_queue_time", "How long the database has had a standing queue", 
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, 
-     &stats.standing_queue_time, NULL}
+     &stats.standing_queue_time, NULL},
     {"minimum_truncation_file", "Minimum truncation file", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.minimum_truncation_file, NULL},
     {"minimum_truncation_offset", "Minimum truncation offset",
