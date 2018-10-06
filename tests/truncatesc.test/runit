@@ -230,7 +230,7 @@ function rowlocks_command
     [[ $debug == "1" ]] && set -x
     typeset tries=$total_tries
     typeset func="rowlocks_command"
-    repeat_command "put rowlocks $1" "put_rowlocks"
+    repeat_command "put rowlocks $1" "put_rowlocks" >/dev/null
     sleep $sleeptime
 }
 
@@ -239,7 +239,7 @@ function genid48_command
     [[ $debug == "1" ]] && set -x
     typeset tries=$total_tries
     typeset func="genid48_command"
-    repeat_command "put genid48 $1" "put_genid48"
+    repeat_command "put genid48 $1" "put_genid48" >/dev/null
     sleep $sleeptime
 }
 
@@ -256,7 +256,7 @@ function get_dtastripe
 {
     [[ $debug == "1" ]] && set -x
     typeset func="get_dtastripe"
-    repeat_command "select value from comdb2_tunables where name='dtastripe'" $func
+    repeat_command "select value from comdb2_tunables where name='dtastripe'" $func "tabs"
 }
 
 function get_dtastripe_rep
