@@ -509,10 +509,14 @@ void sqlite3Update(
     ** be deleted as a result of REPLACE conflict handling. Any of these
     ** things might disturb a cursor being used to scan through the table
     ** or index, causing a single-pass approach to malfunction.  */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    flags = 0;
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     flags = WHERE_ONEPASS_DESIRED|WHERE_SEEK_UNIQ_TABLE;
     if( !pParse->nested && !pTrigger && !hasFK && !chngKey && !bReplace ){
       flags |= WHERE_ONEPASS_MULTIROW;
     }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     pWInfo = sqlite3WhereBegin(pParse, pTabList, pWhere, 0, 0, flags, iIdxCur);
     if( pWInfo==0 ) goto update_cleanup;
   
