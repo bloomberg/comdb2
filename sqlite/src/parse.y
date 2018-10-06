@@ -929,10 +929,8 @@ on_opt(N) ::= .     [OR]   {N = 0;}
 //
 %type indexed_opt {Token}
 indexed_opt(A) ::= .                 {A.z=0; A.n=0;}
-%ifndef SQLITE_BUILDING_FOR_COMDB2
 indexed_opt(A) ::= INDEXED BY nm(X). {A = X;}
 indexed_opt(A) ::= NOT INDEXED.      {A.z=0; A.n=1;}
-%endif !SQLITE_BUILDING_FOR_COMDB2
 
 %type using_opt {IdList*}
 %destructor using_opt {sqlite3IdListDelete(pParse->db, $$);}

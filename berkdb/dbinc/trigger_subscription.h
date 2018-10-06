@@ -6,7 +6,7 @@
 
 struct __db_trigger_subscription {
 	char *name;
-	uint8_t active;
+	int active;
 	uint8_t open;
 	pthread_cond_t cond;
 	pthread_mutex_t lock;
