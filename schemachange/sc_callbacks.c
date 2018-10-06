@@ -91,7 +91,8 @@ static int reload_stripe_info(bdb_state_type *bdb_state)
     extern uint32_t gbl_rep_lockid;
 
     stop_threads(thedb);
-    if (close_all_dbs() != 0) exit(1);
+    if (close_all_dbs() != 0)
+        exit(1);
 
     tran = bdb_tran_begin(bdb_state, NULL, &bdberr);
     if (tran == NULL) {
@@ -103,22 +104,23 @@ static int reload_stripe_info(bdb_state_type *bdb_state)
     bdb_get_tran_lockerid(tran, &lid);
     bdb_set_tran_lockerid(tran, gbl_rep_lockid);
 
-    if (bdb_get_global_stripe_info(tran, &stripes, &blobstripe, &bdberr) 
-            != 0) {
-        logmsg(LOGMSG_ERROR,
-               "%s: failed to retrieve global stripe info\n", __func__);
+    if (bdb_get_global_stripe_info(tran, &stripes, &blobstripe, &bdberr) != 0) {
+        logmsg(LOGMSG_ERROR, "%s: failed to retrieve global stripe info\n",
+               __func__);
         resume_threads(thedb);
         return -1;
     }
 
     apply_new_stripe_settings(stripes, blobstripe);
 
-    if (open_all_dbs_tran(tran) != 0) exit(1);
+    if (open_all_dbs_tran(tran) != 0)
+        exit(1);
 
     bdb_set_tran_lockerid(tran, lid);
     rc = bdb_tran_commit(thedb->bdb_env, tran, &bdberr);
     if (rc)
-        logmsg(LOGMSG_FATAL, "%s failed to commit transaction rc:%d\n", __func__, rc);
+        logmsg(LOGMSG_FATAL, "%s failed to commit transaction rc:%d\n",
+               __func__, rc);
 
     resume_threads(thedb);
     fix_blobstripe_genids(NULL);

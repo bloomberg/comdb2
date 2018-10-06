@@ -917,8 +917,8 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
         new_bdb_handle = bdb_open_more_tran(
             table, thedb->basedir, db->lrl, db->nix, (short *)db->ix_keylen,
             db->ix_dupes, db->ix_recnums, db->ix_datacopy, db->ix_collattr,
-            db->ix_nullsallowed, db->numblobs + 1, thedb->bdb_env, tran,
-            0, &bdberr);
+            db->ix_nullsallowed, db->numblobs + 1, thedb->bdb_env, tran, 0,
+            &bdberr);
         logmsg(LOGMSG_DEBUG,
                "reload_schema (fastinit case) handle %p bdberr %d\n",
                db->handle, bdberr);

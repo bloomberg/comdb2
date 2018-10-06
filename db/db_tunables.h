@@ -1566,8 +1566,8 @@ REGISTER_TUNABLE("verbose_physrep",
 REGISTER_TUNABLE("physrep_reconnect_penalty",
                  "Physrep wait seconds before retry to the same node.  "
                  "(Default: 5)",
-                 TUNABLE_INTEGER, &gbl_physrep_reconnect_penalty, 0, NULL,
-                 NULL, NULL, NULL);
+                 TUNABLE_INTEGER, &gbl_physrep_reconnect_penalty, 0, NULL, NULL,
+                 NULL, NULL);
 
 REGISTER_TUNABLE("verbose_physrep",
                  "Print extended physrep trace.  (Default: off)",
@@ -1576,19 +1576,20 @@ REGISTER_TUNABLE("verbose_physrep",
 
 REGISTER_TUNABLE("logdelete_lock_trace",
                  "Print trace getting and releasing the logdelete lock.  "
-                 "(Default: off)", TUNABLE_BOOLEAN, &gbl_logdelete_lock_trace,
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_logdelete_lock_trace,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("flush_log_at_checkpoint",
                  "Replicants flush the log at checkpoint records.  "
-                 "(Default: on)", TUNABLE_BOOLEAN, &gbl_flush_log_at_checkpoint,
+                 "(Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_flush_log_at_checkpoint,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("verbose_set_sc_in_progress",
                  "Prints a line of trace when sc_in_progress is set.  "
-                 "(Default: off)", TUNABLE_BOOLEAN,
-                 &gbl_verbose_set_sc_in_progress, EXPERIMENTAL | INTERNAL, NULL,
-                 NULL, NULL, NULL);
-
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_verbose_set_sc_in_progress,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

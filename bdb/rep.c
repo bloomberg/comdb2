@@ -3161,8 +3161,8 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
     if ((seqnum->lsn.file == 0) && (seqnum->lsn.offset == 0))
         return 0;
 
-    logmsg(LOGMSG_DEBUG, "%s waiting for %s\n", __func__, lsn_to_str(str,
-                &(seqnum->lsn)));
+    logmsg(LOGMSG_DEBUG, "%s waiting for %s\n", __func__,
+           lsn_to_str(str, &(seqnum->lsn)));
 
     begin_time = comdb2_time_epochms();
 
@@ -3804,9 +3804,9 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
        locks.
        Grab the bdb_writelock here rather than inside of berkdb so that we avoid
        racing against a rep_start. */
-    if (!online && rectype == REP_VERIFY && 
-        bdb_state->dbenv->rep_verify_will_recover(
-        bdb_state->dbenv, control, rec)) {
+    if (!online && rectype == REP_VERIFY &&
+        bdb_state->dbenv->rep_verify_will_recover(bdb_state->dbenv, control,
+                                                  rec)) {
         BDB_WRITELOCK_REP("bdb_rep_verify");
         got_writelock = 1;
     }
@@ -3826,9 +3826,9 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     if (debug_switch_rep_delay())
         sleep(2);
 
-    r = bdb_state->dbenv->rep_process_message(
-        bdb_state->dbenv, control, rec, &host, &permlsn, &commit_generation,
-        online);
+    r = bdb_state->dbenv->rep_process_message(bdb_state->dbenv, control, rec,
+                                              &host, &permlsn,
+                                              &commit_generation, online);
 
     if (got_vote2lock) {
         if (bdb_get_rep_master(bdb_state, &master, &gen, &egen) != 0) {
@@ -4766,10 +4766,10 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
 
         if ((buf_get(&gen, sizeof(gen), p_buf, p_buf_end)) == NULL) {
             logmsg(LOGMSG_ERROR, "%s %d: failed to get ignore-gen\n", __func__,
-                    __LINE__);
+                   __LINE__);
         } else {
             logmsg(LOGMSG_INFO, "%s: ignoring generation %u for truncate\n",
-                    __func__, gen);
+                   __func__, gen);
             bdb_state->dbenv->rep_set_ignore_gen(bdb_state->dbenv, gen);
         }
 
@@ -5229,7 +5229,7 @@ void *watcher_thread(void *arg)
 
     bdb_state->repinfo->disable_watcher = 0;
 
-    while(1) {
+    while (1) {
         time_now = comdb2_time_epoch();
         time_then = bdb_state->repinfo->disable_watcher;
 
@@ -5248,14 +5248,14 @@ void *watcher_thread(void *arg)
             stopped_count++;
             if (stopped_count > 30) {
                 logmsg(LOGMSG_FATAL, "%s db stopped for %d seconds, aborting\n",
-                        __func__, stopped_count);
+                       __func__, stopped_count);
                 abort();
             }
             if (stopped_count > 3) {
-                logmsg(LOGMSG_WARN, "%s db stopped for %d seconds\n",
-                        __func__, stopped_count);
+                logmsg(LOGMSG_WARN, "%s db stopped for %d seconds\n", __func__,
+                       stopped_count);
             }
-            sleep (1);
+            sleep(1);
             gbl_watcher_thread_ran = comdb2_time_epoch();
             continue;
         }

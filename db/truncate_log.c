@@ -11,7 +11,8 @@ extern struct dbenv *thedb;
 extern int gbl_match_on_ckp;
 void close_repl_connection(void);
 
-LOG_INFO find_match_lsn(void *bdb_state, cdb2_hndl_tp *repl_db, LOG_INFO start_info);
+LOG_INFO find_match_lsn(void *bdb_state, cdb2_hndl_tp *repl_db,
+                        LOG_INFO start_info);
 
 LOG_INFO handle_truncation(cdb2_hndl_tp *repl_db, LOG_INFO latest_info)
 {

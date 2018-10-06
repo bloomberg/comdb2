@@ -1314,8 +1314,8 @@ static tran_type *bdb_tran_begin_logical_pp(bdb_state_type *bdb_state, int trak,
 }
 
 static tran_type *bdb_tran_begin_pp(bdb_state_type *bdb_state,
-                                    tran_type *parent, int retries, 
-                                    int *bdberr, u_int32_t flags)
+                                    tran_type *parent, int retries, int *bdberr,
+                                    u_int32_t flags)
 {
     tran_type *tran;
 
@@ -1392,13 +1392,12 @@ tran_type *bdb_tran_begin(bdb_state_type *bdb_state, tran_type *parent,
 }
 
 tran_type *bdb_tran_begin_flags(bdb_state_type *bdb_state, tran_type *parent,
-                          int *bdberr, u_int32_t flags)
+                                int *bdberr, u_int32_t flags)
 {
     tran_type *tran;
     tran = bdb_tran_begin_pp(bdb_state, parent, 0, bdberr, flags);
     return tran;
 }
-
 
 tran_type *bdb_tran_begin_set_retries(bdb_state_type *bdb_state,
                                       tran_type *parent, int retries,

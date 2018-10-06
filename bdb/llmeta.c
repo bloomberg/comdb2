@@ -1260,8 +1260,8 @@ int bdb_llmeta_open(char name[], char dir[], bdb_state_type *parent_bdb_handle,
         llmeta_bdb_state = bdb_create_more_lite(name, dir, 0, LLMETA_IXLEN, 0,
                                                 parent_bdb_handle, bdberr);
     else
-        llmeta_bdb_state = bdb_open_more_lite(name, dir, 0, LLMETA_IXLEN, 0,
-                                              parent_bdb_handle, NULL, 0, bdberr);
+        llmeta_bdb_state = bdb_open_more_lite(
+            name, dir, 0, LLMETA_IXLEN, 0, parent_bdb_handle, NULL, 0, bdberr);
 
     BDB_RELLOCK();
 
@@ -4415,8 +4415,7 @@ done:
     return rc;
 }
 
-struct llmeta_global_stripe_info
-{
+struct llmeta_global_stripe_info {
     int stripes;
     int blobstripe;
 };
@@ -4424,37 +4423,37 @@ struct llmeta_global_stripe_info
 enum { LLMETA_GLOBAL_STRIPE_INFO_LEN = 8 };
 
 BB_COMPILE_TIME_ASSERT(llmeta_global_stripe_info_len,
-        sizeof(struct llmeta_global_stripe_info) ==
-        LLMETA_GLOBAL_STRIPE_INFO_LEN);
+                       sizeof(struct llmeta_global_stripe_info) ==
+                           LLMETA_GLOBAL_STRIPE_INFO_LEN);
 
 static const uint8_t *llmeta_global_stripe_info_get(
-        struct llmeta_global_stripe_info *p_global_stripe_info, const
-        uint8_t *p_buf, const uint8_t *p_buf_end)
+    struct llmeta_global_stripe_info *p_global_stripe_info,
+    const uint8_t *p_buf, const uint8_t *p_buf_end)
 {
     if (p_buf_end < p_buf || LLMETA_FILE_TYPE_KEY_LEN > (p_buf_end - p_buf))
         return NULL;
     p_buf = buf_get(&(p_global_stripe_info->stripes),
-                sizeof(p_global_stripe_info->stripes), p_buf, p_buf_end);
+                    sizeof(p_global_stripe_info->stripes), p_buf, p_buf_end);
     p_buf = buf_get(&(p_global_stripe_info->blobstripe),
-                sizeof(p_global_stripe_info->blobstripe), p_buf, p_buf_end);
+                    sizeof(p_global_stripe_info->blobstripe), p_buf, p_buf_end);
     return p_buf;
 }
 
-static uint8_t *llmeta_global_stripe_info_put(const struct
-        llmeta_global_stripe_info *p_global_stripe_info, uint8_t *p_buf,
-        const uint8_t *p_buf_end)
+static uint8_t *llmeta_global_stripe_info_put(
+    const struct llmeta_global_stripe_info *p_global_stripe_info,
+    uint8_t *p_buf, const uint8_t *p_buf_end)
 {
     if (p_buf_end < p_buf || LLMETA_FILE_TYPE_KEY_LEN > (p_buf_end - p_buf))
         return NULL;
     p_buf = buf_put(&(p_global_stripe_info->stripes),
-                sizeof(p_global_stripe_info->stripes), p_buf, p_buf_end);
+                    sizeof(p_global_stripe_info->stripes), p_buf, p_buf_end);
     p_buf = buf_put(&(p_global_stripe_info->blobstripe),
-                sizeof(p_global_stripe_info->blobstripe), p_buf, p_buf_end);
+                    sizeof(p_global_stripe_info->blobstripe), p_buf, p_buf_end);
     return p_buf;
 }
 
 int bdb_get_global_stripe_info(tran_type *tran, int *stripes, int *blobstripe,
-        int *bdberr)
+                               int *bdberr)
 {
     int rc;
     char buf[LLMETA_GLOBAL_STRIPE_INFO_LEN];
@@ -4501,7 +4500,7 @@ int bdb_get_global_stripe_info(tran_type *tran, int *stripes, int *blobstripe,
 }
 
 int bdb_set_global_stripe_info(tran_type *tran, int stripes, int blobstripe,
-        int *bdberr)
+                               int *bdberr)
 {
     int rc;
     int started_our_own_transaction = 0;
@@ -4550,7 +4549,7 @@ int bdb_set_global_stripe_info(tran_type *tran, int stripes, int blobstripe,
     stripes = htonl(stripes);
 
     rc = bdb_lite_add(llmeta_bdb_state, tran, buf,
-            LLMETA_GLOBAL_STRIPE_INFO_LEN, key, bdberr);
+                      LLMETA_GLOBAL_STRIPE_INFO_LEN, key, bdberr);
 
 done:
     if (started_our_own_transaction) {
@@ -6522,7 +6521,8 @@ int bdb_get_rowlocks_state(int *rlstate, tran_type *tran, int *bdberr)
 
 retry:
     rc = bdb_lite_exact_fetch_tran(llmeta_bdb_state, tran, key, data,
-                              LLMETA_ROWLOCKS_STATE_DATA_LEN, &fndlen, bdberr);
+                                   LLMETA_ROWLOCKS_STATE_DATA_LEN, &fndlen,
+                                   bdberr);
 
     if (rc || *bdberr != BDBERR_NOERROR) {
         if (*bdberr == BDBERR_DEADLOCK) {
@@ -7781,7 +7781,7 @@ int bdb_del_table_csonparameters(void *parent_tran, const char *table)
  * NB: caller needs to free that memory area
  */
 int bdb_get_table_parameter_tran(const char *table, const char *parameter,
-                            char **value, tran_type *tran)
+                                 char **value, tran_type *tran)
 {
 #ifdef DEBUG_LLMETA
     fprintf(stderr, "%s()\n", __func__);
@@ -7868,7 +7868,6 @@ int bdb_get_table_parameter(const char *table, const char *parameter,
 {
     return bdb_get_table_parameter_tran(table, parameter, value, NULL);
 }
-
 
 int bdb_set_table_parameter(void *parent_tran, const char *table,
                             const char *parameter, const char *value)
@@ -9058,7 +9057,7 @@ int bdb_rename_csc2_version(tran_type *trans, const char *tblname,
     struct llmeta_file_type_dbname_csc2_vers_key new_vers_key;
 
     logmsg(LOGMSG_DEBUG, "%s renaming from '%s' to '%s', version %d\n",
-            __func__, tblname, newtblname, ver);
+           __func__, tblname, newtblname, ver);
 
     vers_key.file_type = LLMETA_CSC2;
     strncpy(vers_key.dbname, tblname, sizeof(vers_key.dbname));
@@ -9090,11 +9089,12 @@ int bdb_rename_csc2_version(tran_type *trans, const char *tblname,
                 return rc;
             }
             logmsg(LOGMSG_DEBUG, "%s added table '%s' (old table '%s') version "
-                    "%d\n", __func__, newtblname, tblname, ver);
+                                 "%d\n",
+                   __func__, newtblname, tblname, ver);
         } else {
             logmsg(LOGMSG_DEBUG, "%s didn't find old table '%s' version %d (so "
-                    "not adding new-table '%s'?)\n", __func__, tblname, ver,
-                    newtblname);
+                                 "not adding new-table '%s'?)\n",
+                   __func__, tblname, ver, newtblname);
         }
 
         rc = bdb_lite_exact_del(llmeta_bdb_state, trans, &key, bdberr);

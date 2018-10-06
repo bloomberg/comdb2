@@ -267,7 +267,8 @@ int gbl_use_sqlthrmark = 1000;
 int gbl_repchecksum = 0;
 int gbl_pfault = 0;
 int gbl_pfaultrmt = 1;
-int gbl_dtastripe = 8; int gbl_blobstripe = 1;
+int gbl_dtastripe = 8;
+int gbl_blobstripe = 1;
 int gbl_rebuild_mode = 0;
 int gbl_dbsizetime = 15 * 60; /* number of seconds for db size calculation */
 int gbl_debug = 0;            /* operation debugging */
@@ -1882,7 +1883,8 @@ int llmeta_load_tables_older_versions(struct dbenv *dbenv, void *tran)
             /* load schema for older versions */
             for (int v = 1; v <= ver; ++v) {
                 char *csc2text;
-                if (get_csc2_file_tran(tbl->tablename, v, &csc2text, NULL, tran)) {
+                if (get_csc2_file_tran(tbl->tablename, v, &csc2text, NULL,
+                                       tran)) {
                     logmsg(LOGMSG_ERROR, "get_csc2_file failed %s:%d\n", __FILE__,
                             __LINE__);
                     continue;
@@ -2004,7 +2006,8 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
 
     /* Initialize static table once */
     if (dbenv->static_table.dbs_idx == 0) {
-        logmsg(LOGMSG_INFO, "%s initializing static table '%s'\n", __func__, COMDB2_STATIC_TABLE);
+        logmsg(LOGMSG_INFO, "%s initializing static table '%s'\n", __func__,
+               COMDB2_STATIC_TABLE);
         dbenv->static_table.dbs_idx = -1;
         dbenv->static_table.tablename = COMDB2_STATIC_TABLE;
         dbenv->static_table.dbenv = dbenv;
@@ -2039,12 +2042,12 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
         rc = bdb_get_csc2_highest(tran, tblnames[i], &ver, &bdberr);
         if (rc) {
             logmsg(LOGMSG_DEBUG, "%s get_csc2_highest for '%s' returns %d\n",
-                    __func__, tblnames[i], rc);
+                   __func__, tblnames[i], rc);
             break;
         }
 
         logmsg(LOGMSG_DEBUG, "%s got version %d for table '%s'\n", __func__,
-                ver, tblnames[i]);
+               ver, tblnames[i]);
 
         /* create latest version of db */
         rc = get_csc2_file_tran(tblnames[i], ver, &csc2text, NULL, tran);
@@ -3607,14 +3610,16 @@ static int init(int argc, char **argv)
 
     gbl_llmeta_open = 1;
 
-    if (gbl_create_mode && bdb_set_global_stripe_info(NULL, gbl_dtastripe,
-                gbl_blobstripe, &bdberr) != 0) {
+    if (gbl_create_mode &&
+        bdb_set_global_stripe_info(NULL, gbl_dtastripe, gbl_blobstripe,
+                                   &bdberr) != 0) {
         logmsg(LOGMSG_FATAL, "Error writing global stripe info\n");
         exit(1);
     }
 
-    if (!gbl_create_mode && bdb_get_global_stripe_info(NULL, &stripes,
-                &blobstripe, &bdberr) == 0 && stripes > 0) {
+    if (!gbl_create_mode &&
+        bdb_get_global_stripe_info(NULL, &stripes, &blobstripe, &bdberr) == 0 &&
+        stripes > 0) {
         gbl_dtastripe = stripes;
         gbl_blobstripe = blobstripe;
         bdb_attr_set(thedb->bdb_attr, BDB_ATTR_DTASTRIPE, gbl_dtastripe);
@@ -5608,11 +5613,11 @@ retry_tran:
                 retries++;
                 bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
                 logmsg(LOGMSG_ERROR, "%s: got deadlock acquiring tablelocks\n",
-                        __func__);
+                       __func__);
                 goto retry_tran;
             } else {
                 logmsg(LOGMSG_FATAL, "%s: got error %d acquiring tablelocks\n",
-                        __func__, rc);
+                       __func__, rc);
                 abort();
             }
         }
@@ -5621,18 +5626,18 @@ retry_tran:
     /* Test this incrementally with all schema-change types */
     if ((rc = close_all_dbs_tran(tran)) != 0) {
         logmsg(LOGMSG_FATAL, "%s: close_all_dbs_tran returns %d\n", __func__,
-                rc);
+               rc);
         abort();
     }
 
     free_sqlite_table(thedb);
     thedb->dbs = NULL;
 
-    if (thedb->db_hash) 
+    if (thedb->db_hash)
         hash_clear(thedb->db_hash);
 
     if (bdb_get_global_stripe_info(tran, &stripes, &blobstripe, &bdberr) == 0 &&
-            stripes > 0) {
+        stripes > 0) {
         gbl_dtastripe = stripes;
         gbl_blobstripe = blobstripe;
         bdb_attr_set(thedb->bdb_attr, BDB_ATTR_DTASTRIPE, gbl_dtastripe);
@@ -5641,7 +5646,7 @@ retry_tran:
 
     if (llmeta_load_tables(thedb, gbl_dbname, tran)) {
         logmsg(LOGMSG_FATAL, "could not load tables from the low level meta "
-                "table\n");
+                             "table\n");
         abort();
     }
 
@@ -5653,20 +5658,20 @@ retry_tran:
 
     if ((rc = bdb_get_rowlocks_state(&rlstate, tran, &bdberr)) != 0) {
         logmsg(LOGMSG_ERROR, "Get rowlocks llmeta failed, rc=%d bdberr=%d\n",
-                rc, bdberr);
+               rc, bdberr);
         abort();
     }
 
     switch (rlstate) {
-        case LLMETA_ROWLOCKS_ENABLED:
-        case LLMETA_ROWLOCKS_ENABLED_MASTER_ONLY:
-            gbl_rowlocks = 1;
-            gbl_sql_tranlevel_default = SQL_TDEF_SNAPISOL;
-        case LLMETA_ROWLOCKS_DISABLED:
-            gbl_rowlocks = 0;
-            gbl_sql_tranlevel_default = gbl_sql_tranlevel_preserved;
-        default:
-            break;
+    case LLMETA_ROWLOCKS_ENABLED:
+    case LLMETA_ROWLOCKS_ENABLED_MASTER_ONLY:
+        gbl_rowlocks = 1;
+        gbl_sql_tranlevel_default = SQL_TDEF_SNAPISOL;
+    case LLMETA_ROWLOCKS_DISABLED:
+        gbl_rowlocks = 0;
+        gbl_sql_tranlevel_default = gbl_sql_tranlevel_preserved;
+    default:
+        break;
     }
 
     bdb_get_genid_format(&format, &bdberr);
@@ -5684,7 +5689,7 @@ retry_tran:
 
     if ((rc = db_finalize_and_sanity_checks(thedb)) != 0) {
         logmsg(LOGMSG_FATAL, "%s: db_finalize_and_sanity_checks returns %d\n",
-                __func__, rc);
+               __func__, rc);
         abort();
     }
 
@@ -5692,7 +5697,7 @@ retry_tran:
 
     if ((rc = backend_open_tran(thedb, tran, 0)) != 0) {
         logmsg(LOGMSG_FATAL, "%s: backend_open_tran returns %d\n", __func__,
-                rc);
+               rc);
         abort();
     }
 

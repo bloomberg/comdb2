@@ -182,7 +182,7 @@ static void *thd_appsock_int(appsock_work_args_t *w, int *keepsocket,
 
     if (!thedb->dbs) {
         logmsg(LOGMSG_ERROR, "%s: halt appsock request on NULL thedb->dbs\n",
-                __func__);
+               __func__);
         return 0;
     }
 

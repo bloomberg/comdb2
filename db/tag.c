@@ -7128,9 +7128,10 @@ int reload_all_db_tran(tran_type *tran)
         if ((db->handle = bdb_open_more_tran(db->tablename, db->dbenv->basedir,
                         db->lrl, db->nix, db->ix_keylen, db->ix_dupes,
                         db->ix_recnums, db->ix_datacopy, db->ix_collattr,
-                        db->ix_nullsallowed, db->numblobs + 1, thedb->bdb_env, 
+                        db->ix_nullsallowed, db->numblobs + 1, thedb->bdb_env,
                         tran, &bdberr)) == NULL) {
-            logmsg(LOGMSG_ERROR, "Failed to bdb_open_more_tran %s\n", db->tablename);
+            logmsg(LOGMSG_ERROR, "Failed to bdb_open_more_tran %s\n",
+    db->tablename);
         }
     }
     */

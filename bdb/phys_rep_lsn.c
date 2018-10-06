@@ -44,7 +44,7 @@ LOG_INFO get_last_lsn(bdb_state_type *bdb_state)
 
     if (gbl_verbose_physrep)
         logmsg(LOGMSG_USER, "%s: LSN %u:%u\n", __func__, last_log_lsn.file,
-                last_log_lsn.offset);
+               last_log_lsn.offset);
 
     log_info.file = last_log_lsn.file;
     log_info.offset = last_log_lsn.offset;
@@ -89,7 +89,7 @@ int compare_log(bdb_state_type *bdb_state, unsigned int file,
 
     if (gbl_verbose_physrep) {
         logmsg(LOGMSG_USER, "cmp: LSN %u:%u\n", match_lsn.file,
-                match_lsn.offset);
+               match_lsn.offset);
     }
 
     if (logrec.size != blob_len) {
@@ -144,7 +144,7 @@ int find_log_timestamp(bdb_state_type *bdb_state, time_t time,
         my_time = get_timestamp_from_matchable_record(logrec.data);
         if (gbl_verbose_physrep) {
             logmsg(LOGMSG_USER, "%s my ts is %lld, {%u:%u}\n", __func__,
-                    my_time, rec_lsn.file, rec_lsn.offset);
+                   my_time, rec_lsn.file, rec_lsn.offset);
         }
 
         if (logrec.data)
@@ -153,7 +153,7 @@ int find_log_timestamp(bdb_state_type *bdb_state, time_t time,
 
     if (gbl_verbose_physrep) {
         logmsg(LOGMSG_USER, "%s ts is %lld, {%u:%u}\n", __func__, my_time,
-                rec_lsn.file, rec_lsn.offset);
+               rec_lsn.file, rec_lsn.offset);
     }
 
     *file = rec_lsn.file;
@@ -200,7 +200,7 @@ static int get_next_matchable(DB_LOGC *logc, LOG_INFO *info)
 
     if (gbl_verbose_physrep) {
         logmsg(LOGMSG_USER, "%s: Found matchable {%u:%u}\n", __func__,
-                info->file, info->offset);
+               info->file, info->offset);
     }
 
     return rc;
@@ -246,7 +246,8 @@ int truncate_log_lock(bdb_state_type *bdb_state, unsigned int file,
     return 0;
 }
 
-LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db, LOG_INFO start_info)
+LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db,
+                        LOG_INFO start_info)
 {
     int rc;
     char sql_cmd[128];
@@ -259,7 +260,6 @@ LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db, LOG_INFO star
     DB_LOGC *logc;
     DBT logrec;
 
-
     rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: can't get log cursor rc %d\n", __func__, rc);
@@ -267,18 +267,19 @@ LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db, LOG_INFO star
     }
 
     while (!(rc = get_next_matchable(logc, &start_info))) {
-        snprintf(sql_cmd, sizeof(sql_cmd),
-                "select * from comdb2_transaction_logs('{%d:%d}','{%d:%d}', 0)",
-                start_info.file, start_info.offset, start_info.file,
-                start_info.offset);
+        snprintf(
+            sql_cmd, sizeof(sql_cmd),
+            "select * from comdb2_transaction_logs('{%d:%d}','{%d:%d}', 0)",
+            start_info.file, start_info.offset, start_info.file,
+            start_info.offset);
 
         if ((rc = cdb2_run_statement(repl_db, sql_cmd)) == 0) {
             if ((rc = cdb2_next_record(repl_db)) == CDB2_OK) {
                 lsn = (char *)cdb2_column_value(repl_db, 0);
                 if (!lsn) {
                     logmsg(LOGMSG_FATAL, "%s: null lsn for probe of {%d:%d}."
-                            " going to next record\n", __func__,
-                            start_info.file,start_info.offset);
+                                         " going to next record\n",
+                           __func__, start_info.file, start_info.offset);
                     abort();
                 }
 
@@ -289,10 +290,11 @@ LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db, LOG_INFO star
 
                 /* check if lsns match, if not, then get next matchable */
                 if (match_file != start_info.file ||
-                        match_offset != start_info.offset) {
+                    match_offset != start_info.offset) {
                     logmsg(LOGMSG_ERROR, "%s %d not same lsn{%u:%u} vs "
-                            "{%u:%u}??? \n", __func__, start_info.file,
-                            start_info.offset, match_file, match_offset);
+                                         "{%u:%u}??? \n",
+                           __func__, start_info.file, start_info.offset,
+                           match_file, match_offset);
                     continue;
                 }
 
@@ -300,8 +302,8 @@ LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db, LOG_INFO star
                 blob = cdb2_column_value(repl_db, 4);
                 blob_len = cdb2_column_size(repl_db, 4);
 
-                if ((rc = compare_log(bdb_state, match_file, match_offset,
-                                blob, blob_len)) == 0) {
+                if ((rc = compare_log(bdb_state, match_file, match_offset, blob,
+                                      blob_len)) == 0) {
                     info.file = match_file;
                     info.offset = match_offset;
                     info.size = blob_len;
@@ -309,29 +311,29 @@ LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db, LOG_INFO star
                     logc->close(logc, 0);
                     if (gbl_verbose_physrep) {
                         logmsg(LOGMSG_USER, "%s: found match at {%d:%d}\n",
-                                __func__, start_info.file, start_info.offset);
+                               __func__, start_info.file, start_info.offset);
                     }
                     return info;
                 } else {
                     if (gbl_verbose_physrep) {
                         logmsg(LOGMSG_USER, "%s: memcmp failed for {%d:%d}\n",
-                                __func__, start_info.file, start_info.offset);
+                               __func__, start_info.file, start_info.offset);
                     }
                 }
             } else {
                 /* Didn't find a record: just go to previous */
                 if (gbl_verbose_physrep) {
                     logmsg(LOGMSG_USER, "%s: probe of {%d:%d} failed, going to "
-                            "previous\n", __func__, start_info.file,
-                            start_info.offset);
+                                        "previous\n",
+                           __func__, start_info.file, start_info.offset);
                 }
             }
         } else {
             /* Run statement failure: close cursor and handle & return */
             if (gbl_verbose_physrep) {
                 logmsg(LOGMSG_USER, "%s: %s returns %d, '%s': closing "
-                        "connection\n", __func__, sql_cmd, rc,
-                        cdb2_errstr(repl_db));
+                                    "connection\n",
+                       __func__, sql_cmd, rc, cdb2_errstr(repl_db));
             }
             logc->close(logc, 0);
             return info;
@@ -343,4 +345,3 @@ LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db, LOG_INFO star
 
     return info;
 }
-

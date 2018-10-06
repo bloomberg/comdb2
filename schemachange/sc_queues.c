@@ -201,8 +201,9 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
             rc = -1;
             goto done;
         }
-        db->handle = bdb_open_more_queue(queue_name, thedb->basedir, 65536,
-                                         65536, thedb->bdb_env, 1, NULL, &bdberr);
+        db->handle =
+            bdb_open_more_queue(queue_name, thedb->basedir, 65536, 65536,
+                                thedb->bdb_env, 1, NULL, &bdberr);
         if (db->handle == NULL) {
             logmsg(LOGMSG_ERROR,
                    "bdb_open:failed to open queue %s/%s, rcode %d\n",

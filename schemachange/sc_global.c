@@ -99,7 +99,7 @@ void set_schema_change_in_progress(const char *func, int line, int val)
 {
     if (gbl_verbose_set_sc_in_progress) {
         logmsg(LOGMSG_USER, "%s line %d set schema_change_in_progress to %d\n",
-                func, line, val);
+               func, line, val);
     }
     gbl_schema_change_in_progress = val;
 }
@@ -143,8 +143,8 @@ void wait_for_sc_to_stop(const char *operation)
                 abort();
             }
         }
-        logmsg(LOGMSG_INFO, "proceeding with %s (waited for: %ds)\n",
-               operation, waited);
+        logmsg(LOGMSG_INFO, "proceeding with %s (waited for: %ds)\n", operation,
+               waited);
     }
     extern int gbl_test_sc_resume_race;
     if (gbl_test_sc_resume_race) {
@@ -231,16 +231,19 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
             sctbl->time = time;
             hash_add(sc_tables, sctbl);
         }
-        set_schema_change_in_progress(__func__, __LINE__, gbl_schema_change_in_progress + 1);
+        set_schema_change_in_progress(__func__, __LINE__,
+                                      gbl_schema_change_in_progress + 1);
     } else { /* not running */
         if (table && (sctbl = hash_find_readonly(sc_tables, &table)) != NULL) {
             hash_del(sc_tables, sctbl);
             free(sctbl);
-            if (gbl_schema_change_in_progress>0)
-                set_schema_change_in_progress(__func__, __LINE__, gbl_schema_change_in_progress - 1);
+            if (gbl_schema_change_in_progress > 0)
+                set_schema_change_in_progress(
+                    __func__, __LINE__, gbl_schema_change_in_progress - 1);
         } else if (!table && gbl_schema_change_in_progress) {
-            if (gbl_schema_change_in_progress>0)
-                set_schema_change_in_progress(__func__, __LINE__, gbl_schema_change_in_progress - 1);
+            if (gbl_schema_change_in_progress > 0)
+                set_schema_change_in_progress(
+                    __func__, __LINE__, gbl_schema_change_in_progress - 1);
         }
 
         if (gbl_schema_change_in_progress <= 0 || (!table && !seed)) {
