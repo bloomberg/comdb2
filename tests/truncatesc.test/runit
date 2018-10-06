@@ -1626,14 +1626,9 @@ function run_tests
     alter_table_options
     bulk_rebuild
     luasp
-    lua_afunc
-    lua_sfunc
     morestripe
     genid48
     rowlocks
-    # I think there's a general problem with schema-changes in time-partitions
-    # Change this test to NOT do a schema-change.  I will come back to this.
-    #time_partitions_nosc
 }
 
 setup
@@ -1643,3 +1638,8 @@ tear_down
 # Not tested or supported:
 # queues
 # bulkimport
+# I think there's a general problem with schema-changes in time-partitions.
+# I will come back to this.
+# time_partitions_nosc
+
+
