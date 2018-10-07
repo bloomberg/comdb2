@@ -14,7 +14,8 @@ export comdb2ar=${COMDB2AR_EXE}
 export myhost=$(hostname)
 export physrep=1
 export replive=1
-export total_tries=40
+export core_rep_on_failexit=1
+export total_tries=60
 export replog=$repdir/log.txt
 export COPYCOMDB2_EXE=${BUILDDIR}/db/copycomdb2
 
@@ -30,7 +31,11 @@ function failexit
     typeset func="failexit"
     typeset f=$1
     write_prompt $func "$f failed: $2"
-    kill -9 $(cat $repdir/${repname}.pid)
+    if [[ "$core_rep_on_failexit" == 1 ]]; then
+        kill -6 $(cat $repdir/${repname}.pid)
+    else
+        kill -9 $(cat $repdir/${repname}.pid)
+    fi
     exit -1
 }
 
@@ -664,7 +669,11 @@ function assert_select_t1
         typeset rep=$(select_t1_rep)
         while [[ "$prev_rn" != "$rep" ]]; do
             let tries=tries-1
-            [[ "$tries" == "0" ]] && failexit $func "return_number sp changed in rep"
+            if [[ "$tries" == "0" ]] ; then
+                echo "prev_rn = $prev_rn"
+                echo "rep = $rep"
+                failexit $func "return_number sp changed in rep"
+            fi
             sleep 1
             rep=$(select_t1_rep)
         done
