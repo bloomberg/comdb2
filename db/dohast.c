@@ -21,7 +21,7 @@
 #include "dohsql.h"
 
 
-static int ast_verbose = 0;
+#define ast_verbose bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DOHAST_VERBOSE)
 
 char *generate_columns(sqlite3 *db, ExprList *c, const char **tbl)
 {
@@ -437,6 +437,9 @@ const char* ast_type_str(enum ast_type type)
     switch(type) {
     case AST_TYPE_SELECT: return "SELECT";
     case AST_TYPE_INSERT: return "INSERT";
+    case AST_TYPE_IN: return "IN_SELECT";
+    case AST_TYPE_DELETE: return "DELETE";
+    case AST_TYPE_UPDATE: return "UPDATE";
     default:
         return "INVALID";
     }
@@ -447,6 +450,9 @@ const char* ast_param_str(enum ast_type type, void* obj)
     switch(type) {
     case AST_TYPE_SELECT: return obj?((dohsql_node_t*)obj)->sql:"NULL";
     case AST_TYPE_INSERT: return "()";
+    case AST_TYPE_IN: return "()";
+    case AST_TYPE_DELETE: return "()";
+    case AST_TYPE_UPDATE: return "()";
     default:
         return "INVALID";
     }
@@ -486,14 +492,18 @@ int comdb2_check_parallel(Parse *pParse)
         return 0;
 
     if (node->type == AST_TYPE_SELECT) {
-        fprintf(stderr, "%lx Single query \"%s\"\n", pthread_self(), node->sql);
+        if(ast_verbose)
+            logmsg(LOGMSG_DEBUG, "%lx Single query \"%s\"\n", pthread_self(), node->sql);
         return 0;
     }
 
     if (node->type == AST_TYPE_UNION) {
-        fprintf(stderr, "%lx Parallelizable union %d threads:\n", pthread_self(), node->nnodes);
-        for(i=0;i<node->nnodes;i++) {
-            fprintf(stderr,"\t Thread %d: \"%s\"\n", i+1, node->nodes[i]->sql);
+        if(ast_verbose) {
+            logmsg(LOGMSG_DEBUG,
+                    "%lx Parallelizable union %d threads:\n", pthread_self(), node->nnodes);
+            for(i=0;i<node->nnodes;i++) {
+                logmsg(LOGMSG_DEBUG,"\t Thread %d: \"%s\"\n", i+1, node->nodes[i]->sql);
+            }
         }
 
         if (!pParse->explain) {

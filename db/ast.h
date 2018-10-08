@@ -25,6 +25,9 @@ enum ast_type {
     ,AST_TYPE_SELECT = 1
     ,AST_TYPE_INSERT = 2
     ,AST_TYPE_UNION  = 3
+    ,AST_TYPE_IN = 4
+    ,AST_TYPE_DELETE = 5
+    ,AST_TYPE_UPDATE = 6
 };
 
 ast_t* ast_init(void);
