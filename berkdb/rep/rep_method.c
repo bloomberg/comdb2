@@ -121,7 +121,6 @@ __rep_dbenv_create(dbenv)
 		dbenv->set_truncate_sc_callback = __rep_set_truncate_sc_callback;
 		dbenv->set_rep_truncate_callback = __rep_set_rep_truncate_callback;
 		dbenv->rep_set_gen = __rep_set_gen_pp;
-		dbenv->rep_set_ignore_gen = __rep_set_ignore_gen;
 		dbenv->set_check_standalone = __rep_set_check_standalone;
 		dbenv->set_rep_db_pagesize = __rep_set_rep_db_pagesize;
 		dbenv->get_rep_db_pagesize = __rep_get_rep_db_pagesize;

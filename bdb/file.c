@@ -2488,8 +2488,6 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_TRUNCATE_LOG,
                          "truncate_log", berkdb_receive_msg);
-    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_IGNORE_GEN,
-                         "ignore_gen", berkdb_receive_msg);
     /* register our net library appsock wedge.  this lets us return
        the usr ptr containing the bdb state to the caller instead
        of the netinfo pointer */
@@ -3341,7 +3339,7 @@ static int bdb_calc_min_truncate(bdb_state_type *bdb_state)
 int bdb_min_truncate(bdb_state_type *bdb_state, int *file, int *offset,
                      int32_t *timestamp)
 {
-    if (gbl_min_truncate_file <= 1)
+    if (gbl_min_truncate_file < 1)
         bdb_calc_min_truncate(bdb_state);
     pthread_rwlock_rdlock(&min_trunc_lk);
     if (file)

@@ -5562,10 +5562,10 @@ int comdb2_replicated_truncate(void *dbenv, void *inlsn)
 
     logmsg(LOGMSG_INFO, "%s starting for [%d:%d]\n", __func__, *file, *offset);
     if (!gbl_is_physical_replicant) {
-        /* We've asked the replicants to truncate their log files.  Now we are
-         * incrementing the generation number without an election and writing a
-         * record.  The higher-gen write ensures that this node will remain
-         * master after an election.  */
+        /* We've asked the replicants to truncate their log files.  The master
+         * incremented it's generation number before truncating.  The newmaster
+         * message with the higher generation forces the replicants into 
+         * REP_VERIFY_MATCH */
         send_newmaster(thedb->bdb_env);
     }
 
@@ -5725,7 +5725,7 @@ retry_tran:
     gbl_dbopen_gen++;
 
     if ((rc = bdb_tran_commit(thedb->bdb_env, tran, &bdberr)) != 0) {
-        logmsg(LOGMSG_FATAL, "%s: bdb_tran_abort returns %d\n", __func__, rc);
+        logmsg(LOGMSG_FATAL, "%s: bdb_tran_commit returns %d\n", __func__, rc);
         abort();
     }
 
