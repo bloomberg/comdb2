@@ -2696,7 +2696,7 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
     int state;
     int print_message;
     const char *host;
-    const char *host_ix;
+    int host_ix;
     int made_incoherent_slow = 0;
 
     /* this used to be allocated on stack, but that can overflow if called from
