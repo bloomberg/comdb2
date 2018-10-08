@@ -3634,7 +3634,6 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
 
 retry_queries:
 
-    clear_responses(hndl);
 
     debugprint(
         "retry_queries: hndl->host=%d (%s)\n", hndl->connected_host,
@@ -3708,6 +3707,8 @@ retry_queries:
             }
         }
     }
+
+    clear_responses(hndl);
 
     hndl->sql = (char *)sql;
     hndl->ntypes = ntypes;
