@@ -1,5 +1,5 @@
 /*
-   Copyright 2015, 2017, Bloomberg Finance L.P.
+   Copyright 2015, 2018, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@
 #include <assert.h>
 #include "logmsg.h"
 #include "views.h"
+#include "osqlsqlthr.h"
 
 static void *get_constraint_table_cursor(void *table);
 
@@ -205,7 +206,7 @@ static inline void free_cached_delayed_indexes(struct ireq *iq)
 int insert_add_op(struct ireq *iq, block_state_t *blkstate, struct dbtable *usedb,
                   const uint8_t *p_buf_req_start, const uint8_t *p_buf_req_end,
                   int optype, int rrn, int ixnum, unsigned long long genid,
-                  unsigned long long ins_keys, int blkpos)
+                  unsigned long long ins_keys, int blkpos, int flags)
 {
     void *cur = NULL;
     int type = CTE_ADD, rc = 0;
@@ -240,6 +241,7 @@ int insert_add_op(struct ireq *iq, block_state_t *blkstate, struct dbtable *used
     cte_record.ctop.fwdct.ixnum = ixnum;
     cte_record.ctop.fwdct.rrn = rrn;
     cte_record.ctop.fwdct.optype = optype;
+    cte_record.ctop.fwdct.flags = flags;
 
     rc = bdb_temp_table_insert(thedb->bdb_env, cur, key,
                                sizeof(int) + sizeof(long long), &cte_record,
@@ -1007,6 +1009,7 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
     unsigned long long genid = 0LL;
     unsigned long long cached_index_genid = genid;
     unsigned long long ins_keys = 0ULL;
+    int flags = 0;
     rc = bdb_temp_table_first(thedb->bdb_env, cur, &err);
     if (rc != 0) {
         close_constraint_table_cursor(cur);
@@ -1059,6 +1062,7 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
         int ixnum = curop->ixnum;
         genid = curop->genid;
         ins_keys = curop->ins_keys;
+        flags = curop->flags;
 
         if (addrrn == -1) {
             if (iq->debug)
@@ -1194,18 +1198,23 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
             }
 
             if (rc == IX_DUP) {
-                reqerrstr(iq, COMDB2_CSTRT_RC_DUP, "add key constraint "
-                                                   "duplicate key '%s' on "
-                                                   "table '%s' index %d",
-                          get_keynm_from_db_idx(iq->usedb, doidx),
-                          iq->usedb->tablename, doidx);
+                int upsert_idx = flags >> 8;
+                if ((flags & OSQL_FORCE_VERIFY) != 0) {
+                    *errout = OP_FAILED_VERIFY;
+                    rc = ERR_VERIFY;
+                } else {
+                    reqerrstr(iq, COMDB2_CSTRT_RC_DUP,
+                              "add key constraint duplicate key '%s' on table "
+                              "'%s' index %d",
+                              get_keynm_from_db_idx(iq->usedb, doidx),
+                              iq->usedb->tablename, doidx);
+                    *errout = OP_FAILED_UNIQ;
+                }
 
                 *blkpos = curop->blkpos;
-                *errout = OP_FAILED_UNIQ;
                 *ixout = doidx;
                 close_constraint_table_cursor(cur);
                 free_cached_delayed_indexes(iq);
-
                 return rc;
             } else if (rc != 0) {
                 reqerrstr(iq, COMDB2_CSTRT_RC_INTL_ERR,
@@ -1213,7 +1222,6 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
                           get_keynm_from_db_idx(iq->usedb, doidx), doidx);
 
                 *blkpos = curop->blkpos;
-
                 *errout = OP_FAILED_INTERNAL;
                 *ixout = doidx;
                 close_constraint_table_cursor(cur);
