@@ -3952,7 +3952,6 @@ static int open_dbs_int(bdb_state_type *bdb_state, int iammaster, int upgrade,
     bdbtype_t bdbtype = bdb_state->bdbtype;
     int tmp_tid;
     tran_type tran;
-    DB_TXN *open_tid = NULL;
 
 deadlock_again:
     tmp_tid = 0;
@@ -3971,15 +3970,6 @@ deadlock_again:
     if (tid == NULL) {
         tmp_tid = 1;
         rc = bdb_state->dbenv->txn_begin(bdb_state->dbenv, NULL, &tid, 0);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "open_dbs: begin transaction failed\n");
-            exit(1);
-        }
-    }
-
-    /* If flags is set, open & commit under a different txn */
-    if (flags) {
-        rc = bdb_state->dbenv->txn_begin(bdb_state->dbenv, NULL, &open_tid, 0);
         if (rc != 0) {
             logmsg(LOGMSG_FATAL, "open_dbs: begin transaction failed\n");
             exit(1);
@@ -4113,15 +4103,11 @@ deadlock_again:
                         && strncasecmp(bdb_state->name, "sqlite_stat", 11) != 0)
                         /* don't compact sqlite_stat tables */
                         db_flags |= DB_OLCOMPACT;
-                    if (open_tid)
-                        rc = dbp->open(dbp, open_tid, tmpname, NULL, dta_type,
-                                       db_flags, db_mode);
-                    else
-                        rc = dbp->open(dbp, tid, tmpname, NULL, dta_type,
-                                       db_flags, db_mode);
+                    rc = dbp->open(dbp, tid, tmpname, NULL, dta_type,
+                            db_flags, db_mode);
                     logmsg(LOGMSG_DEBUG, "dbp->open %s type=%d rc %d\n",
                            tmpname, dbp->type, rc);
-                } while ((tid == NULL && open_tid == NULL) && iter++ < 100 &&
+                } while ((tid == NULL) && iter++ < 100 &&
                          rc == DB_LOCK_DEADLOCK);
 
                 if (rc != 0) {
@@ -4138,8 +4124,6 @@ deadlock_again:
                                 tmpname, rc, db_strerror(rc));
                     if (tid)
                         tid->abort(tid);
-                    if (open_tid)
-                        open_tid->abort(open_tid);
                     return -1;
                 }
 
@@ -4183,8 +4167,6 @@ deadlock_again:
         if (rc) {
             if (tid)
                 tid->abort(tid);
-            if (open_tid)
-                open_tid->abort(open_tid);
             return rc;
         }
 
@@ -4231,12 +4213,8 @@ deadlock_again:
         }
 
         print(bdb_state, "opening %s\n", tmpname);
-        if (open_tid)
-            rc = dbp->open(dbp, open_tid, tmpname, NULL, dta_type, db_flags,
-                           db_mode);
-        else
-            rc =
-                dbp->open(dbp, tid, tmpname, NULL, dta_type, db_flags, db_mode);
+        rc =
+            dbp->open(dbp, tid, tmpname, NULL, dta_type, db_flags, db_mode);
         if (rc != 0) {
             if (rc == DB_LOCK_DEADLOCK) {
                 logmsg(LOGMSG_FATAL, "deadlock in open\n");
@@ -4252,8 +4230,6 @@ deadlock_again:
 
             if (tid)
                 tid->abort(tid);
-            if (open_tid)
-                open_tid->abort(open_tid);
             return -1;
         }
 
@@ -4314,8 +4290,6 @@ deadlock_again:
                     logmsg(LOGMSG_ERROR, "couldnt set recnum mode\n");
                     if (tid)
                         tid->abort(tid);
-                    if (open_tid)
-                        open_tid->abort(open_tid);
                     return -1;
                 }
             }
@@ -4389,8 +4363,6 @@ deadlock_again:
 
                 if (tid)
                     tid->abort(tid);
-                if (open_tid)
-                    open_tid->abort(open_tid);
                 return -1;
             }
 
@@ -4407,14 +4379,6 @@ deadlock_again:
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "open_dbs: commit %d\n", rc);
             return -1;
-        }
-    }
-
-    if (open_tid) {
-        rc = open_tid->commit(open_tid, 0);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "open_dbs: open_tid commit %d\n", rc);
-            abort();
         }
     }
 
@@ -6062,33 +6026,6 @@ bdb_open_more_tran(const char name[], const char dir[], int lrl, short numix,
                        BDBTYPE_TABLE, tran ? tran->tid : NULL, 0, NULL, flags);
 
     BDB_RELLOCK();
-
-    return ret;
-}
-
-bdb_state_type *bdb_open_more_tran_int(
-    const char name[], const char dir[], int lrl, short numix,
-    const short ixlen[], const signed char ixdups[],
-    const signed char ixrecnum[], const signed char ixdta[],
-    const signed char ixcollattr[], const signed char ixnulls[],
-    int numdtafiles, bdb_state_type *parent_bdb_handle, DB_TXN *tid,
-    uint32_t flags, int *bdberr)
-{
-    bdb_state_type *ret;
-
-    *bdberr = BDBERR_NOERROR;
-
-    ret = bdb_open_int(0, /* envonly */
-                       name, dir, lrl, numix, ixlen, ixdups, ixrecnum, ixdta,
-                       ixcollattr, ixnulls, numdtafiles, NULL, /* bdb_attr */
-                       NULL,                               /* bdb_callback */
-                       NULL,                               /* usr_ptr */
-                       NULL,                               /* netinfo */
-                       0,                                  /* upgrade */
-                       parent_bdb_handle->attr->createdbs, /* create */
-
-                       bdberr, parent_bdb_handle, 0, /* pagesize override */
-                       BDBTYPE_TABLE, tid, 0, NULL, flags);
 
     return ret;
 }
