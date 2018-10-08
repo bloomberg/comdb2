@@ -1997,6 +1997,7 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host)
             defer_commits(bdb_state, host, __func__);
             set_coherent_state(bdb_state, host, STATE_INCOHERENT, __func__,
                                __LINE__);
+            bdb_state->repinfo->skipsinceepoch = comdb2_time_epoch();
         }
 
         /* hostdown can defer commits */
