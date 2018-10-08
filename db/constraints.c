@@ -1064,6 +1064,10 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
         ins_keys = curop->ins_keys;
         flags = curop->flags;
 
+        if ((flags & OSQL_IGNORE_FAILURE) != 0) {
+            goto next_record;
+        }
+
         if (addrrn == -1) {
             if (iq->debug)
                 reqprintf(iq, "%p:ADDKYCNSTRT (AFPRI) FAILED, NO RRN\n", trans);
@@ -1239,6 +1243,7 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
             }
         } /* for each index */
 
+next_record:
         /* get next record from table */
         rc = bdb_temp_table_next(thedb->bdb_env, cur, &err);
     } while (rc == 0);

@@ -590,7 +590,11 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
              * handle idx in live_sc_*
              */
         }
-    } else {
+    }
+
+    if ((flags & RECFLAGS_NO_CONSTRAINTS) /* if NOT no constraints */ ||
+        ((rec_flags & OSQL_IGNORE_FAILURE) != 0))
+    {
         int ixnum;
         od_dta_tail = NULL;
         if (iq->osql_step_ix)
