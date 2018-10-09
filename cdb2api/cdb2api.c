@@ -3706,6 +3706,8 @@ retry_queries:
         }
     }
 
+    clear_responses(hndl);
+
     hndl->sql = (char *)sql;
     hndl->ntypes = ntypes;
     hndl->types = types;
