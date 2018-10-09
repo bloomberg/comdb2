@@ -19,10 +19,9 @@ limitations under the License.
 
 #include "ast.h"
 
-struct dohsql_node
-{
+struct dohsql_node {
     enum ast_type type;
-    char* sql;
+    char *sql;
     int ncols;
     struct dohsql_node **nodes;
     int nnodes;
@@ -30,7 +29,7 @@ struct dohsql_node
 };
 typedef struct dohsql_node dohsql_node_t;
 
-/** 
+/**
  * Launch parallel sql engines
  *
  */
@@ -42,25 +41,24 @@ int dohsql_distribute(dohsql_node_t *node);
  */
 int dohsql_end_distribute(struct sqlclntstate *clnt);
 
-
 /**
  * Get sql for a certain parallel engine
  *
  */
-const char* dohsql_get_sql(struct sqlclntstate *clnt, int index);
+const char *dohsql_get_sql(struct sqlclntstate *clnt, int index);
 
 /**
  * Synchronize parallel execution
  *
  */
-void dohsql_wait_for_master(sqlite3_stmt* stmt, struct sqlclntstate *clnt);
+void dohsql_wait_for_master(sqlite3_stmt *stmt, struct sqlclntstate *clnt);
 
-#define GET_CLNT \
-    struct sql_thread *thd = pthread_getspecific(query_info_key); \
+#define GET_CLNT                                                               \
+    struct sql_thread *thd = pthread_getspecific(query_info_key);              \
     struct sqlclntstate *clnt = thd->clnt;
 
 /**
- * Return 1 if this sql thread servers a parallel statement 
+ * Return 1 if this sql thread servers a parallel statement
  *
  */
 int is_parallel_shard(void);

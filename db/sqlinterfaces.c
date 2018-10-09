@@ -352,7 +352,7 @@ int read_response(struct sqlclntstate *clnt, int R, void *D, int I)
 
 int column_count(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 {
-    struct sql_thread  *thd = NULL;
+    struct sql_thread *thd = NULL;
 
     if (!clnt) {
         thd = pthread_getspecific(query_info_key);
@@ -362,29 +362,30 @@ int column_count(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 
     if (clnt && clnt->plugin.column_count)
         return clnt->plugin.column_count(clnt, stmt);
-    
+
     return sqlite3_column_count(stmt);
 }
 
-#define FUNC_COLUMN_TYPE(ret, type) \
-ret column_ ## type (struct sqlclntstate *clnt, sqlite3_stmt *stmt, int iCol) \
-{ \
-    if (clnt && clnt->plugin.column_ ## type) \
-        return clnt->plugin.column_ ## type (clnt, stmt, iCol); \
-    return sqlite3_column_ ## type (stmt, iCol); \
-}
+#define FUNC_COLUMN_TYPE(ret, type)                                            \
+    ret column_##type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int iCol) \
+    {                                                                          \
+        if (clnt && clnt->plugin.column_##type)                                \
+            return clnt->plugin.column_##type(clnt, stmt, iCol);               \
+        return sqlite3_column_##type(stmt, iCol);                              \
+    }
 
-FUNC_COLUMN_TYPE( int, type)
-FUNC_COLUMN_TYPE( sqlite_int64, int64)
-FUNC_COLUMN_TYPE( double, double)
-FUNC_COLUMN_TYPE( const unsigned char*, text)
-FUNC_COLUMN_TYPE( int, bytes)
-FUNC_COLUMN_TYPE( const void*, blob)
-FUNC_COLUMN_TYPE( const dttz_t*, datetime)
+FUNC_COLUMN_TYPE(int, type)
+FUNC_COLUMN_TYPE(sqlite_int64, int64)
+FUNC_COLUMN_TYPE(double, double)
+FUNC_COLUMN_TYPE(const unsigned char *, text)
+FUNC_COLUMN_TYPE(int, bytes)
+FUNC_COLUMN_TYPE(const void *, blob)
+FUNC_COLUMN_TYPE(const dttz_t *, datetime)
 
-const intv_t* column_interval (struct sqlclntstate *clnt, sqlite3_stmt *stmt, int iCol, int type)
+const intv_t *column_interval(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
+                              int iCol, int type)
 {
-    if (clnt && clnt->plugin.column_interval) 
+    if (clnt && clnt->plugin.column_interval)
         return clnt->plugin.column_interval(clnt, stmt, iCol, type);
     return sqlite3_column_interval(stmt, iCol, type);
 }
@@ -393,8 +394,8 @@ int next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 {
     if (clnt && clnt->plugin.next_row)
         return clnt->plugin.next_row(clnt, stmt);
-    
-   return sqlite3_step(stmt); 
+
+    return sqlite3_step(stmt);
 }
 
 int has_cnonce(struct sqlclntstate *clnt)
@@ -561,7 +562,6 @@ static int dump_block(void *obj, void *arg)
 static __thread int in_init = 0;
 
 void sqlite_init_start(void) { in_init = 1; }
-
 
 void sqlite_init_end(void) { in_init = 0; }
 
@@ -2342,7 +2342,6 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
     return 0;
 }
 
-
 static int check_sql(struct sqlclntstate *clnt, int *sp)
 {
     char buf[256];
@@ -2449,8 +2448,7 @@ static void setup_reqlog(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     log_context(clnt, thd->logger);
 }
 
-void query_stats_setup(struct sqlthdstate *thd,
-                       struct sqlclntstate *clnt)
+void query_stats_setup(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
     /* debug */
     thr_set_current_sql(clnt->sql);
@@ -2621,8 +2619,8 @@ void put_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                        struct sql_state *rec, int outrc)
 {
     int rc;
-    
-    dohsql_wait_for_master((rec)?rec->stmt:NULL, clnt);
+
+    dohsql_wait_for_master((rec) ? rec->stmt : NULL, clnt);
 
     rc = put_prepared_stmt_int(thd, clnt, rec, outrc);
     if (rc != 0 && rec->stmt) {
@@ -3402,7 +3400,7 @@ static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
        the next read in sqlite master will find them and try to use them
      */
     clearClientSideRow(clnt);
-    
+
     if (clnt->conns)
         dohsql_end_distribute(clnt);
 }
@@ -3448,8 +3446,7 @@ static inline void post_run_reqlog(struct sqlthdstate *thd,
     }
 }
 
-int handle_sqlite_requests(struct sqlthdstate *thd,
-                           struct sqlclntstate *clnt)
+int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
     int rc;
     struct errstat err = {0};
@@ -3464,11 +3461,11 @@ int handle_sqlite_requests(struct sqlthdstate *thd,
         rc = get_prepared_bound_stmt(thd, clnt, &rec, &err);
         if (rc == SQLITE_SCHEMA_REMOTE)
             continue;
-        if ( rc == SQLITE_SCHEMA_DOHSQL) {
+        if (rc == SQLITE_SCHEMA_DOHSQL) {
             rec.sql = strdup(dohsql_get_sql(clnt, 0));
             continue;
         }
-            
+
         if (rc) {
             int irc = errstat_get_rc(&err);
             /* certain errors are saved, in that case we don't send anything */
@@ -3541,17 +3538,14 @@ static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     return rc;
 }
 
-
 /* SHARD
     int irc = 0;
     if(clnt->shard_slice<=1) {
         if (clnt->is_newsql) {
             if (!rc && (clnt->num_retry == clnt->sql_query->retry) &&
-                    (clnt->num_retry == 0 || clnt->sql_query->has_skip_rows == 0 ||
-                     (clnt->sql_query->skip_rows < row_id)))
-                irc = send_row_new(thd, clnt, ncols, row_id, columns);
-        } else {
-            irc = send_row_old(thd, clnt, new_row_data_type);
+                    (clnt->num_retry == 0 || clnt->sql_query->has_skip_rows == 0
+|| (clnt->sql_query->skip_rows < row_id))) irc = send_row_new(thd, clnt, ncols,
+row_id, columns); } else { irc = send_row_old(thd, clnt, new_row_data_type);
         }
     }
 
@@ -3566,7 +3560,7 @@ static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         shard_flush_conns(clnt, 1);
 
     ......
-    
+
 #ifdef DEBUG
         int hasn;
         if (!(hasn = sqlite3_hasNColumns(stmt, ncols))) {
@@ -3575,7 +3569,7 @@ static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         }
 #endif
 
-        // create return row 
+        // create return row
         rc = make_retrow(thd, clnt, rec, new_row_data_type, ncols, rowcount,
                          fast_error, err);
         if (rc)
@@ -3589,13 +3583,13 @@ static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
             bzero(cnonce, sizeof(cnonce));
             snprintf(cnonce, 256, "%s", clnt->sql_query->cnonce.data);
             logmsg(LOGMSG_USER, "%s: cnonce '%s': iswrite=%d replay=%d "
-                    "want_query_effects is %d, isselect is %d\n", 
-                    __func__, cnonce, clnt->iswrite, clnt->osql.replay, 
-                    clnt->want_query_effects, 
+                    "want_query_effects is %d, isselect is %d\n",
+                    __func__, cnonce, clnt->iswrite, clnt->osql.replay,
+                    clnt->want_query_effects,
                     clnt->isselect);
         }
 
-        // return row, if needed 
+        // return row, if needed
         if (!clnt->iswrite && clnt->osql.replay != OSQL_RETRY_DO) {
             postponed_write = 0;
             row_id++;
@@ -3603,9 +3597,10 @@ static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
             if (!clnt->want_query_effects || clnt->isselect) {
                 if(comm->send_row_data) {
                     if (gbl_extended_sql_debug_trace) {
-                        logmsg(LOGMSG_USER, "%s: cnonce '%s' sending row\n", __func__, cnonce);
+                        logmsg(LOGMSG_USER, "%s: cnonce '%s' sending row\n",
+__func__, cnonce);
                     }
-                    rc = comm->send_row_data(thd, clnt, new_row_data_type, 
+                    rc = comm->send_row_data(thd, clnt, new_row_data_type,
                                              ncols, row_id, rc, columns);
                     if (rc)
                         goto out;
@@ -3613,7 +3608,7 @@ static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
             }
         } else {
             if (gbl_extended_sql_debug_trace) {
-                logmsg(LOGMSG_USER, "%s: cnonce '%s' setting postponed_write\n", 
+                logmsg(LOGMSG_USER, "%s: cnonce '%s' setting postponed_write\n",
                         __func__, cnonce);
             }
             postponed_write = 1;
@@ -3625,7 +3620,7 @@ static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         if (clnt->rawnodestats)
             clnt->rawnodestats->sql_rows++;
 
-        // flush 
+        // flush
         if(comm->flush && !clnt->iswrite) {
             rc = comm->flush(clnt);
             if (rc)
@@ -3635,7 +3630,7 @@ static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
 // whatever sqlite returns in sqlite3_step is only used to step out of the loop,
  //  otherwise ignored; we are gonna
- //  get it from sqlite (or osql.xerr) 
+ //  get it from sqlite (or osql.xerr)
 
 postprocessing:
     if (rc == SQLITE_DONE)
@@ -3664,21 +3659,21 @@ out:
 
     bzero(&rec, sizeof(rec));
 
-    // loop if possible in case when cached remote schema becomes stale 
+    // loop if possible in case when cached remote schema becomes stale
     do {
-        // get an sqlite engine 
+        // get an sqlite engine
         rc = get_prepared_bound_stmt(thd, clnt, &rec, &err);
         if (rc) {
             int irc = errstat_get_rc(&err);
-            // certain errors are saved, in that case we don't send anything 
+            // certain errors are saved, in that case we don't send anything
             if(irc == ERR_PREPARE || irc == ERR_PREPARE_RETRY)
                 if(comm->send_prepare_error)
-                    comm->send_prepare_error(clnt, err.errstr, 
+                    comm->send_prepare_error(clnt, err.errstr,
                                              (irc == ERR_PREPARE_RETRY));
             goto errors;
         }
 
-        // run the engine 
+        // run the engine
         fast_error = 0;
         rc = run_stmt(thd, clnt, &rec, &fast_error, &err, comm);
         if (rc) {
@@ -3686,12 +3681,12 @@ out:
             switch(irc) {
                 case ERR_ROW_HEADER:
                     if(comm->send_run_error)
-                        comm->send_run_error(clnt, errstat_get_str(&err), 
+                        comm->send_run_error(clnt, errstat_get_str(&err),
                                              CDB2ERR_CONV_FAIL);
                     break;
                 case ERR_CONVERSION_DT:
                     if(comm->send_run_error)
-                        comm->send_run_error(clnt, errstat_get_str(&err), 
+                        comm->send_run_error(clnt, errstat_get_str(&err),
                                              DB_ERR_CONV_FAIL);
                     break;
             }
@@ -3716,7 +3711,6 @@ errors:
 }
 
 */
-
 
 /**
  * Main driver of SQL processing, for both sqlite and non-sqlite requests

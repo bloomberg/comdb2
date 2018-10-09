@@ -5650,8 +5650,8 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
                                  .cur = pCur,
                                  .unpacked = pIdxKey};
 
-        /* here, if we are a splinter, we update the key properly */                          
-        #if 0
+/* here, if we are a splinter, we update the key properly */
+#if 0
         if(thd->crtshard >=  1) {
             struct db *db = thedb->dbs[pCur->tblnum];
             shard_limits_t*shards = db->shards[pCur->ixnum];
@@ -5677,7 +5677,7 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
             }
             
         }
-        #endif
+#endif
         ondisk_len = rc =
             sqlite_unpacked_to_ondisk(pCur, pIdxKey, fail_reason, &info);
         if (rc < 0) {

@@ -33,23 +33,22 @@ struct Parse;
 /**
  * A range sharding uses row prefixes that match the index key structure.
  *
- * Each indexes that are considered for parallel execution have this 
+ * Each indexes that are considered for parallel execution have this
  * structure saved, and parallelizable sql select statements will run
  * use this to overlap work
  *
  */
 struct shard_limits {
-   int nlimits;
-   struct Token *col;
-   struct Expr **low;
-   struct Expr **high;
+    int nlimits;
+    struct Token *col;
+    struct Expr **low;
+    struct Expr **high;
 };
 typedef struct shard_limits shard_limits_t;
 
-
 /* Create a range structure */
-void shard_range_create(struct Parse *pParser, const char *tblname, 
-        struct Token *col, struct ExprList *limits);
+void shard_range_create(struct Parse *pParser, const char *tblname,
+                        struct Token *col, struct ExprList *limits);
 
 /* Destroy a range structure */
 void shard_range_destroy(shard_limits_t *shards);
@@ -58,6 +57,3 @@ void shard_range_destroy(shard_limits_t *shards);
 void shard_flush_conns(struct sqlclntstate *clnt, int waitfordone);
 
 #endif
-
-
-
