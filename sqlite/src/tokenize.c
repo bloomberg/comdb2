@@ -531,8 +531,8 @@ int sqlite3GetToken(const unsigned char *z, int *tokenType){
       **       is no checking for unmatched curly braces.
       */
       for(i=1; (c=z[i])!=0; i++){}
-      *tokenType = z[i-1]=='}' ? TK_NOSQL : TK_ILLEGAL;
       testcase( z[i-1]=='}' );  testcase( z[i-1]!='}' );
+      *tokenType = z[i-1]=='}' ? TK_NOSQL : TK_ILLEGAL;
       return i;
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
