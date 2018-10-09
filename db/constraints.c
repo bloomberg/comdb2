@@ -802,7 +802,7 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                     /* TODO verify we have proper schema change locks */
 
                     rc = del_record(iq, trans, NULL, rrn, genid, -1ULL, &err,
-                                    &idx, BLOCK2_DELKL, 0);
+                                    &idx, BLOCK2_DELKL, RECFLAGS_DONT_LOCK_TBL);
                     if (iq->debug)
                         reqpopprefixes(iq, 1);
                     iq->usedb = currdb;
@@ -867,7 +867,7 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                         0,    /*maxblobs*/
                         &newgenid, -1ULL, -1ULL, &err, &idx, BLOCK2_UPDKL,
                         0, /*blkpos*/
-                        UPDFLAGS_CASCADE);
+                        UPDFLAGS_CASCADE | RECFLAGS_DONT_LOCK_TBL);
                     if (iq->debug)
                         reqpopprefixes(iq, 1);
                     iq->usedb = currdb;

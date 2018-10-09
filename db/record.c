@@ -261,8 +261,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         }
     }
 
-
-    if (!(flags & RECFLAGS_NEW_SCHEMA)) { // dont lock if adding from SC
+    if (!(flags & RECFLAGS_NEW_SCHEMA)) { // dont sleep if adding from SC
 
         int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_WRITES_IN_RECORD_C);
         if (d_ms) {
@@ -272,22 +271,26 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             if (lrc)
                 reqprintf(iq, "usleep error rc %d errno %d\n", rc, errno);
         }
+    }
 
-        if(!iq->is_sorese) {
-            reqprintf(iq, "Calling bdb_lock_table_read()");
-            rc = bdb_lock_table_read(iq->usedb->handle, trans);
-            if (rc == BDBERR_DEADLOCK) {
-                if (iq->debug)
-                    reqprintf(iq, "LOCK TABLE READ DEADLOCK");
-                retrc = RC_INTERNAL_RETRY;
-                ERR;
-            } else if (rc) {
-                if (iq->debug)
-                    reqprintf(iq, "LOCK TABLE READ ERROR: %d", rc);
-                *opfailcode = OP_FAILED_INTERNAL;
-                retrc = ERR_INTERNAL;
-                ERR;
-            }
+
+    if (!(flags & RECFLAGS_NEW_SCHEMA) && !(flags & RECFLAGS_DONT_LOCK_TBL)) {
+        // dont lock table if adding from SC or if RECFLAGS_DONT_LOCK_TBL
+        assert(!iq->is_sorese); //sorese codepaths should have locked it already
+    
+        reqprintf(iq, "Calling bdb_lock_table_read()");
+        rc = bdb_lock_table_read(iq->usedb->handle, trans);
+        if (rc == BDBERR_DEADLOCK) {
+            if (iq->debug)
+                reqprintf(iq, "LOCK TABLE READ DEADLOCK");
+            retrc = RC_INTERNAL_RETRY;
+            ERR;
+        } else if (rc) {
+            if (iq->debug)
+                reqprintf(iq, "LOCK TABLE READ ERROR: %d", rc);
+            *opfailcode = OP_FAILED_INTERNAL;
+            retrc = ERR_INTERNAL;
+            ERR;
         }
     }
 
@@ -968,7 +971,9 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         usleep(1000 * d_ms);
     }
 
-    if(!iq->is_sorese) {
+    if (!(flags & RECFLAGS_DONT_LOCK_TBL)) {
+        assert(!iq->is_sorese); //sorese codepaths should have locked it already
+
         reqprintf(iq, "Calling bdb_lock_table_read()");
         rc = bdb_lock_table_read(iq->usedb->handle, trans);
         if (rc == BDBERR_DEADLOCK) {
@@ -1961,7 +1966,9 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         usleep(1000 * d_ms);
     }
 
-    if(!iq->is_sorese) {
+    if (!(flags & RECFLAGS_DONT_LOCK_TBL)) {
+        assert(!iq->is_sorese); //sorese codepaths should have locked it already
+
         reqprintf(iq, "Calling bdb_lock_table_read()");
         rc = bdb_lock_table_read(iq->usedb->handle, trans);
         if (rc == BDBERR_DEADLOCK) {
