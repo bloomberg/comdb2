@@ -145,7 +145,7 @@ static int systblKeywordsColumn(
       }
     }
     case KEYWORDS_COLUMN_RESERVED: {
-      sqlite3_result_text(ctx, "1", 1, NULL);
+      sqlite3_result_text(ctx, "Y", 1, NULL);
       return SQLITE_OK;
     }
     default: {
