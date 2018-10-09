@@ -527,24 +527,12 @@ int sqlite3GetToken(const unsigned char *z, int *tokenType){
     case CC_LB: {
       /*
       ** NOTE: This code assumes that the curly braced block represents the
-      **       last token in the string.
+      **       last token in the string.  For backward compatibility, there
+      **       is no checking for unmatched curly braces.
       */
-      int n = 1;
-      *tokenType = TK_NOSQL;
-      for(i=1; (c=z[i])!=0; i++){
-        if( c=='{' ){
-          n++;
-        }else if( c=='}' ){
-          if( n==0 ){
-            *tokenType = TK_ILLEGAL;
-            break;
-          }else{
-            n--;
-          }
-        }
-      }
-      testcase( n<0 );  testcase( n==0 );  testcase( n>0 );
-      testcase( z[i-1]=='}' );  testcase( z[i-1]!='}' );
+      for(i=1; (c=z[i])!=0; i++){}
+      *tokenType = c=='}' ? TK_NOSQL : TK_ILLEGAL;
+      testcase( c=='}' );  testcase( c!='}' );
       return i;
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
