@@ -1,0 +1,4 @@
+ARG version=latest
+FROM comdb2:${version}
+
+

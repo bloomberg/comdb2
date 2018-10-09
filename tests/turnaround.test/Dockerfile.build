@@ -1,0 +1,9 @@
+FROM comdb2:buildbase
+
+ARG SRCHOME
+
+COPY . ${SRCHOME}
+
+RUN cd ${SRCHOME} && cd build && make -j4 && make install
+
+ENV PATH      $PATH:/opt/bb/bin

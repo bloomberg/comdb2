@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+
+set -x
+src=${SRCHOME}/tests/turnaround.test
+tag=$(git rev-parse --short HEAD)
+
+docker images | grep -q comdb2:devbase
+if [[ $? -ne 0 ]]; then
+    docker build -f ${src}/Dockerfile.buildbase -t comdb2:buildbase .
+fi
+
+docker images | grep -q comdb2:${tag}
+rc=$?
+
+set -e
+cd $SRCHOME
+
+if [[ $rc -ne 0 ]]; then
+    docker build -f ${src}/Dockerfile.build --build-arg SRCHOME=${SRCHOME} -t comdb2:${tag} .
+fi
+
+comdb2 --create --dir $(pwd)/db
+
+cat > db.lrl <<EOF
+name db
+cluster nodes m1 m2 m3 m4 m5
+SOSQL_MAX_COMMIT_WAIT_SEC 60
+dedicated_network_suffixes -n3 -n4
+EOF
+
+docker-compose up
+
+
+exit 1
