@@ -1250,7 +1250,7 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
             }
         } /* for each index */
 
-next_record:
+    next_record:
         /* get next record from table */
         rc = bdb_temp_table_next(thedb->bdb_env, cur, &err);
     } while (rc == 0);
