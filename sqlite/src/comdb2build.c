@@ -1664,6 +1664,9 @@ int producekw(OpFunc *f)
 {
     for (int i=0; i < sqlite3_keyword_count(); i++)
     {
+        if ((f->int_arg != KW_ALL) && (f->int_arg != KW_RES))
+            continue;
+
         const char *zName = 0;
         int nName = 0;
         if( sqlite3_keyword_name(i, &zName, &nName)==SQLITE_OK ){
