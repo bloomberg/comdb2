@@ -418,6 +418,7 @@ int do_alter_stripes(struct schema_change_type *s)
     if ((s->type != DBTYPE_TAGGED_TABLE) && gbl_pushlogs_after_sc)
         push_next_log();
 
+    s->finalize = 1;
     return rc;
 }
 

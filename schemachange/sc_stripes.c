@@ -84,6 +84,9 @@ int do_alter_stripes_int(struct schema_change_type *s)
 
     unlock_schema_lk();
 
+    if (close_all_dbs() != 0)
+        exit(1);
+
     /* RENAME BLOB FILES */
     if (newblobstripe && !gbl_blobstripe) {
 
@@ -152,8 +155,6 @@ int do_alter_stripes_int(struct schema_change_type *s)
     bdb_set_global_stripe_info(NULL, newdtastripe, newblobstripe, &bdberr);
     apply_new_stripe_settings(newdtastripe, newblobstripe);
 
-    if (close_all_dbs() != 0)
-        exit(1);
     if (open_all_dbs() != 0) exit(1);
 
     if ((rc = bdb_llog_scdone_tran(thedb->bdb_env, change_stripe, phys_tran,
