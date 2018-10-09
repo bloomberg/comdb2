@@ -57,6 +57,7 @@ extern void backtrace_symbols_fd(void *const *, int, int);
 #endif
 
 extern char *gbl_crypto;
+extern int64_t gbl_temptable_spills;
 
 struct hashobj {
     int len;
@@ -1860,6 +1861,7 @@ static int bdb_temp_table_insert_put(bdb_state_type *bdb_state,
         }
 
         if (tbl->num_mem_entries > tbl->max_mem_entries) {
+            gbl_temptable_spills++;
             rc = bdb_hash_table_copy_to_temp_db(bdb_state, tbl, bdberr);
             if (unlikely(rc)) {
                 return -1;
