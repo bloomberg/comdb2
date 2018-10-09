@@ -1232,6 +1232,7 @@ static int disable_global_variables(lua_State *lua)
 static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
 {
     SP sp = getsp(lua);
+    struct sqlclntstate *clnt = sp->clnt;
     int rc = sqlite3_step(stmt);
 
     if (rc == SQLITE_DONE) {

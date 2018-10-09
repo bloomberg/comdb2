@@ -76,7 +76,7 @@ add_definitions(
   -D_FILE_OFFSET_BITS=64
 )
 
-option(COMDB2_PER_THREAD_MALLOC "Turn OFF to run under Valgrind" OFF)
+option(COMDB2_PER_THREAD_MALLOC "Turn OFF to run under Valgrind" ON)
 if(COMDB2_PER_THREAD_MALLOC)
   add_definitions(-DPER_THREAD_MALLOC)
 else()
