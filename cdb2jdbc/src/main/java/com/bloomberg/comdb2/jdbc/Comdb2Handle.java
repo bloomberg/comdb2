@@ -936,8 +936,6 @@ public class Comdb2Handle extends AbstractConnection {
         while (next_int() == Errors.CDB2_OK)
             ;
 
-        clearResp();
-
         rowsRead = 0;
 
         tdlog(Level.FINE, "[running sql] %s", sql);
@@ -1074,6 +1072,7 @@ public class Comdb2Handle extends AbstractConnection {
                 }
             }
 
+            clearResp();
             lastSql = sql;
             timestampus = System.currentTimeMillis() * 1000L;
 
