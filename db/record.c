@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2018, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -570,14 +570,19 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
 
     /*
      * Form and add all the keys.
-     * If there are constraints, do the add to indices defered.
+     * If there are constraints, do the add to indices deferred.
+     *
+     * For records from INSERT ... ON CONFLICT DO NOTHING, we need
+     * to update the indices inplace to avoid inserting duplicate
+     * data. The keys, however, are also added to the deferred
+     * temporary table to enable cascading updates, if needed.
      */
     if (!(flags & RECFLAGS_NO_CONSTRAINTS)) /* if NOT no constraints */
     {
         if (!(flags & RECFLAGS_NEW_SCHEMA)) {
             /* enqueue the add of the key for constaint checking purposes */
             rc = insert_add_op(iq, iq->blkstate, iq->usedb, NULL, NULL, opcode,
-                               *rrn, -1, *genid, ins_keys, blkpos);
+                               *rrn, -1, *genid, ins_keys, blkpos, rec_flags);
             if (rc != 0) {
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO PUSH KEYOP");
@@ -590,7 +595,10 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
              * handle idx in live_sc_*
              */
         }
-    } else {
+    }
+
+    if ((flags & RECFLAGS_NO_CONSTRAINTS) /* if NOT no constraints */ ||
+        ((rec_flags & OSQL_IGNORE_FAILURE) != 0)) {
         int ixnum;
         od_dta_tail = NULL;
         if (iq->osql_step_ix)
@@ -789,7 +797,7 @@ static int add_key(struct ireq *iq, void *trans, int ixnum,
         const uint8_t *p_buf_req_end = NULL;
         rc = insert_add_op(iq, iq->blkstate, iq->usedb, p_buf_req_start,
                            p_buf_req_end, opcode, rrn, ixnum, genid, ins_keys,
-                           blkpos);
+                           blkpos, 0);
         if (iq->debug)
             reqprintf(iq, "insert_add_op IX %d RRN %d RC %d", ixnum, rrn, rc);
         if (rc != 0) {
