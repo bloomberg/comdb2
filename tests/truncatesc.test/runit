@@ -14,10 +14,15 @@ export comdb2ar=${COMDB2AR_EXE}
 export myhost=$(hostname)
 export physrep=1
 export replive=1
+export reader=1
+export verbose_reader=0
+export reader_pid=0
+export max_reader_error=10
 export core_rep_on_failexit=1
 export total_tries=60
 export replog=$repdir/log.txt
 export COPYCOMDB2_EXE=${BUILDDIR}/db/copycomdb2
+export begin_lsn=""
 
 function write_prompt
 {
@@ -36,6 +41,7 @@ function failexit
     else
         kill -9 $(cat $repdir/${repname}.pid)
     fi
+    [[ "$reader_pid" -gt 0 ]] && kill -9 $reader_pid
     exit -1
 }
 
@@ -84,6 +90,35 @@ function repeat_command
         r=$?
     done
     echo "$x"
+}
+
+function reader_thread
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="reader_thread"
+    typeset err=0
+    while :; do
+        x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select count(*) from reader_table" 2>&1)
+        if [[ $? != 0 ]]; then
+            let err=err+1
+            [[ "$err" -gt "$max_reader_error" ]] && failexit "Too many reader errors"
+            write_prompt $func "Error, count $err: $x"
+        elif [[ "$verbose_reader" == 1 ]]; then
+            write_prompt $func "$x"
+        fi
+        sleep 2
+    done
+}
+
+function create_reader
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="create_reader"
+    write_prompt $func "Creating reader_thread"
+    repeat_command "create table reader_table(a int)" "create_reader table reader_table" "" >/dev/null
+    repeat_command "insert into reader_table select * from generate_series limit 10000" "insert into reader_table" "" >/dev/null
+    reader_thread &
+    export reader_pid=$!
 }
 
 function make_phys_rep
@@ -823,9 +858,6 @@ function assert_count
         done
     fi
 }
-
-write_prompt main "Getting current lsn and master"
-begin_lsn=$(get_current_lsn)
 
 function add_tables
 {
@@ -1608,15 +1640,24 @@ function setup
 {
     [[ $debug == "1" ]] && set -x
     typeset func="setup"
+
     if [[ "$physrep" == 1 ]] ; then
-        [[ "$dont_make_phys_rep" ]] || make_phys_rep
+        make_phys_rep
         sleep $repsleep
+    fi
+
+    if [[ "$reader" == 1 ]]; then
+        create_reader
+        sleep $sleeptime
     fi
 
     if [[ "$setup_sleep" -gt 0 ]]; then
         write_prompt main "Sleeping for $setup_sleep"
         sleep $setup_sleep
     fi
+
+    write_prompt main "Getting current lsn and master"
+    export begin_lsn=$(get_current_lsn)
 }
 
 function tear_down
@@ -1624,6 +1665,7 @@ function tear_down
     if [[ "$physrep" == 1 ]] ; then
         kill -9 $(cat $repdir/${repname}.pid)
     fi
+    [[ "$reader_pid" -gt 0 ]] && kill -9 $reader_pid
 }
 
 function run_tests
