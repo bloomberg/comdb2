@@ -7148,8 +7148,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                                                      ctag2stag is called */
             *updCols, blobs, MAXBLOBS, &genid, dt.ins_keys, dt.del_keys,
             &err->errcode, &err->ixnum, BLOCK2_UPDKL, step,
-            RECFLAGS_DYNSCHEMA_NULLS_ONLY |
-                RECFLAGS_DONT_LOCK_TBL |
+            RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_DONT_LOCK_TBL |
                 RECFLAGS_DONT_SKIP_BLOBS /* because we only receive info about
                                             blobs that should exist in the new
                                             record, override the update

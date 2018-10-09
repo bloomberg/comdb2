@@ -784,9 +784,9 @@ struct dbtable {
     pthread_rwlock_t consumer_lk;
 
     bool has_datacopy_ix : 1; /* set to 1 if we have datacopy indexes */
-    bool ix_partial : 1;  /* set to 1 if we have partial indexes */
-    bool ix_expr : 1;     /* set to 1 if we have indexes on expressions */
-    bool ix_blob : 1;     /* set to 1 if blobs are involved in indexes */
+    bool ix_partial : 1;      /* set to 1 if we have partial indexes */
+    bool ix_expr : 1;         /* set to 1 if we have indexes on expressions */
+    bool ix_blob : 1;         /* set to 1 if blobs are involved in indexes */
 
     bool sc_abort : 1;
     bool sc_downgrading : 1;
