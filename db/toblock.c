@@ -4131,7 +4131,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             } else {
                 blob_buffer_t *blob = &blobs[qblob.blobno];
                 if (!blob->exists) {
-                    if (qblob.length >= MAXBLOBLENGTH) {
+                    if (qblob.length > MAXBLOBLENGTH) {
                         reqerrstr(iq, COMDB2_BLOB_RC_RCV_TOO_LARGE,
                                   "blob %d too large (%u > max size %u)",
                                   qblob.blobno, qblob.length, MAXBLOBLENGTH);
