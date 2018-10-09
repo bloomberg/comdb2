@@ -609,6 +609,28 @@ const char *osql_reqtype_str(int type)
 }
 
 
+static void send_error_to_replicant(int rqid, const char *host, int errval,
+        const char *errstr)
+{
+    sorese_info_t sorese_info = {0};
+    struct errstat generr = {0};
+
+    logmsg(LOGMSG_ERROR, "%s: %s\n", __func__, errstr);
+
+    sorese_info.rqid = rqid;
+    sorese_info.host = host;
+    sorese_info.type = -1; /* I don't need it */
+
+    generr.errval = errval;
+    strncpy(generr.errstr, errstr, sizeof(generr.errstr));
+
+    int rc = osql_comm_signal_sqlthr_rc(&sorese_info, &generr,
+            RC_INTERNAL_RETRY);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "Failed to signal replicant rc=%d\n", rc);
+    }
+}
+
 /**
  * Inserts the op in the iq oplog
  * If sql processing is local, this is called by sqlthread
@@ -653,33 +675,15 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     }
 
     if (sess->seq == 0 && osql_session_is_sorese(sess) && tran->rows > 0) {
-        /* lets make sure that the temp table is empty since commit retries will
-         * use same rqid*/
-        sorese_info_t sorese_info = {0};
-        struct errstat generr = {0};
-
-        logmsg(LOGMSG_ERROR, "%s Broken transaction, received first seq row but "
-                "session already has rows?\n",
-                __func__);
-
-        sorese_info.rqid = rqid;
-        sorese_info.host = sess->offhost;
-        sorese_info.type = -1; /* I don't need it */
-
-        generr.errval = RC_INTERNAL_RETRY;
-        strncpy(generr.errstr,
-                "malformed transaction, received duplicated first row",
-                sizeof(generr.errstr));
-
         if ((rc = pthread_mutex_unlock(&tran->store_mtx))) {
             logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
         }
 
-        rc = osql_comm_signal_sqlthr_rc(&sorese_info, &generr,
-                RC_INTERNAL_RETRY);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "Failed to signal replicant rc=%d\n", rc);
-        }
+        /* we want to make sure that the temp table is empty since commit
+         * retries will use same rqid */
+        send_error_to_replicant(rqid, sess->offhost,
+                RC_INTERNAL_RETRY,
+                "Malformed transaction, received duplicated first row");
 
         return -1;
     }
@@ -716,13 +720,21 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     
     // only OSQL_DONE_SNAP, OSQL_DONE, OSQL_DONE_STATS, and OSQL_XERR are processed beyond this point
 
-    if (type != OSQL_XERR) {
+    if (type != OSQL_XERR) { // if tran not aborted
         int done_nops = osql_get_replicant_nops(rpl, rqid == OSQL_RQID_USE_UUID);
-        DEBUGMSG("uuid=%s type %s done_nops=%d, seq=%lld %s\n", comdb2uuidstr(uuid, us), osql_reqtype_str(type), done_nops, seq, (done_nops != seq + 1 ? "NO match": ""));
+        DEBUGMSG("uuid=%s type %s done_nops=%d, seq=%lld %s\n",
+                comdb2uuidstr(uuid, us), osql_reqtype_str(type), done_nops, seq,
+                (done_nops != seq + 1 ? "NO match": ""));
 
-        if(done_nops != seq + 1) {
-            abort();
-            return ERR_INTERNAL;
+        if(done_nops != seq + 1 || (rand() % 3) == 0) {
+            //TODO: figure out how to return an error to client
+            //TODO: send error always fail as if client is not waiting for a response
+            send_error_to_replicant(rqid, host,
+                    RC_INTERNAL_RETRY,
+                    "Master received inconsistent number of opcodes");
+
+            logmsg(LOGMSG_ERROR, "%s: *********************  replicant sent %d opcodes, master received %lld\n", __func__, done_nops, seq + 1);
+            return -1;
         }
     }
 
