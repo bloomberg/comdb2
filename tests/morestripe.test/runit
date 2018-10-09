@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+[[ $debug == "1" ]] && set -x
+
+export background_writer_pid=0
+export sleeptime=5
+
+# Grab my database name.
+dbnm=$1
+
+function write_prompt
+{
+    typeset func=$1
+    echo "[$func] $2"
+}
+
+function kill_background_writer
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="kill_background_writer"
+    [[ "$background_writer_pid" -gt 0 ]] && kill -9 $background_writer_pid
+}
+
+function failexit
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="failexit"
+    typeset f=$1
+    kill_background_writer
+    write_prompt $func "$f failed: $2"
+    exit -1
+}
+
+function get_master
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="get_master"
+    typeset tries=$total_tries
+    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.send(\"bdb cluster\")" | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+}
+
+function create_t1
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="create_t1"
+    typeset cmd="create table t1(a int, b blob)"
+    write_prompt $func "executing $func"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int, b blob)" 
+    write_prompt $func "$cmd"
+}
+
+function background_writer
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="background_writer"
+    write_prompt $func "executing $func"
+    while :; do 
+        x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 select *, x'11' from generate_series limit 1000" 2>&1)
+        write_prompt $func "$x"
+        sleep 1
+    done
+}
+
+function start_background_writer
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="start_background_writer"
+    write_prompt $func "executing $func"
+    background_writer &
+    export background_writer_pid=$!
+    sleep $sleeptime
+}
+
+function blobstripe
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="blobstripe"
+    typeset master=$(get_master)
+    write_prompt $func "executing $func"
+    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME -host $master "exec procedure sys.cmd.send('morestripe blobstripe')"
+    sleep $sleeptime
+}
+
+function morestripe
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="morestripe"
+    typeset master=$(get_master)
+    write_prompt $func "executing $func $1"
+    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME -host $master "exec procedure sys.cmd.send('morestripe $1')"
+    sleep $sleeptime
+}
+
+function count
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="count"
+    write_prompt $func "executing $func"
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from t1")
+    write_prompt $func "$x"
+}
+
+function run_test
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="run_test"
+    write_prompt $func "executing $func"
+    create_t1
+    start_background_writer
+    blobstripe
+    count
+    morestripe 2
+    count
+    morestripe 4
+    count
+    morestripe 8
+    count
+    morestripe 16
+    count
+    kill_background_writer
+}
+
+run_test
+echo "Success"
