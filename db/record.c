@@ -570,7 +570,12 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
 
     /*
      * Form and add all the keys.
-     * If there are constraints, do the add to indices defered.
+     * If there are constraints, do the add to indices deferred.
+     *
+     * For records from INSERT ... ON CONFLICT DO NOTHING, we need
+     * to update the indices inplace to avoid inserting duplicate
+     * data. The keys, however, are also added to the deferred
+     * temporary table to enable cascading updates, if needed.
      */
     if (!(flags & RECFLAGS_NO_CONSTRAINTS)) /* if NOT no constraints */
     {

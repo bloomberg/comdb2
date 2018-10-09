@@ -1064,6 +1064,12 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
         ins_keys = curop->ins_keys;
         flags = curop->flags;
 
+        /* Keys for records from INSERT .. ON CONFLICT DO NOTHING have
+         * already been added to the indexes in add_record() to ensure
+         * we don't add duplicates in the data files. We still push them
+         * to ct_add_table to be able to perform cascade updates to the
+         * child tables.
+         */
         if ((flags & OSQL_IGNORE_FAILURE) != 0) {
             goto next_record;
         }
@@ -1249,7 +1255,7 @@ next_record:
     } while (rc == 0);
 
     close_constraint_table_cursor(cur);
-    
+
     if (rc == IX_EMPTY || rc == IX_PASTEOF) {
         if (cached_index_genid != genid) {
             if (cache_delayed_indexes(iq, genid)) {
