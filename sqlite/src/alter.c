@@ -1064,9 +1064,14 @@ static int renameResolveTrigger(Parse *pParse, const char *zDb){
       db->aDb[sqlite3SchemaToIndex(db, pNew->pTabSchema)].zDbSName
   );
   pParse->eTriggerOp = pNew->op;
+  /* ALWAYS() because if the table of the trigger does not exist, the
+  ** error would have been hit before this point */
+  if( ALWAYS(pParse->pTriggerTab) ){
+    rc = sqlite3ViewGetColumnNames(pParse, pParse->pTriggerTab);
+  }
 
   /* Resolve symbols in WHEN clause */
-  if( pNew->pWhen ){
+  if( rc==SQLITE_OK && pNew->pWhen ){
     rc = sqlite3ResolveExprNames(&sNC, pNew->pWhen);
   }
 

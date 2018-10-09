@@ -5339,7 +5339,9 @@ int sqlite3VdbeIdxRowid(sqlite3 *db, BtCursor *pCur, i64 *rowid){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   /* Raw index optimization will cause this test to fail */
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-  if( unlikely(szHdr<3 || (int)szHdr>m.n) ){
+  testcase( szHdr>0x7fffffff );
+  assert( m.n>=0 );
+  if( unlikely(szHdr<3 || szHdr>(unsigned)m.n) ){
     goto idx_rowid_corruption;
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
