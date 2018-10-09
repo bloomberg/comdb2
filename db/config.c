@@ -1238,14 +1238,19 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
 
     } else if (tokcmp(tok, ltok, "replicate_from") == 0) {
         /* replicate_from <db_name> [dbs to query] */
-        logmsg(LOGMSG_WARN, "I'm a replicant\n");
+        if (gbl_is_physical_replicant) {
+            logmsg(LOGMSG_ERROR, "Ignoring multiple replicate_from directives:"
+                    "can only replicate from a single source\n");
+            return -1;
+        }
+
         gbl_is_physical_replicant = 1;
 
         tok = segtok(line, len, &st, &ltok);
 
         /* need to replicate a database */
         if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Must specify a database to replicate to\n");
+            logmsg(LOGMSG_FATAL, "Must specify a database to replicate to\n");
             return -1;
         }
         /* setup a cluster db name */
@@ -1269,6 +1274,8 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             free(tmp_tok);
         }
 
+        logmsg(LOGMSG_INFO, "Physical replicant replicating from %s on %s\n", 
+                cluster_name);
         start_replication();
 
     } else if (tokcmp(tok, ltok, "replicate_wait") == 0) {
