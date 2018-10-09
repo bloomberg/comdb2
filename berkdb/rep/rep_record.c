@@ -1635,7 +1635,7 @@ more:		   if (type == REP_LOG_MORE) {
 		memset(&data_dbt, 0, sizeof(data_dbt));
 		ret = __log_c_get(logc, &rp->lsn, &data_dbt, DB_SET);
 		int resp_rc;
-		sendflags = DB_REP_SENDACK;
+		sendflags = DB_REP_SENDACK | DB_REP_NOBUFFER;
 
 		type = gbl_decoupled_logputs ? REP_LOG_FILL : REP_LOG;
 		if (gbl_verbose_fills) {
@@ -1649,9 +1649,6 @@ more:		   if (type == REP_LOG_MORE) {
 						__func__, __LINE__, *eidp, lsn.file, lsn.offset);
 			}
 		}
-
-		if (rec == NULL)
-			sendflags |= DB_REP_NOBUFFER;
 
 		if (ret == 0) {
 			oldfilelsn.offset += logc->c_len;
@@ -1775,19 +1772,7 @@ more:		   if (type == REP_LOG_MORE) {
 							"for LSN %d:%d, %d - retrying with NOBUF/NODROP\n",
 							__func__, __LINE__, lsn.file, lsn.offset, resp_rc);
 				}
-
-				sendflags |= (DB_REP_NOBUFFER|DB_REP_NODROP);
-
-				if ((resp_rc = __rep_send_message(dbenv, *eidp, type, &lsn,
-						&data_dbt, sendflags|DB_REP_NOBUFFER|DB_REP_NODROP,
-						NULL)) != 0) {
-					if (gbl_verbose_fills) {
-						logmsg(LOGMSG_USER, "%s line %d failed NOBUF/NOSEND log "
-								"for LSN %d:%d, %d\n", __func__, __LINE__, 
-								lsn.file, lsn.offset, resp_rc);
-					}
-					break;
-				}
+                break;
 			}
 			sendtime += (comdb2_time_epochus() - st);
 		}
