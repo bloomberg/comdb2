@@ -32,15 +32,10 @@ ifeq ($(subst all,,$(MAKECMDGOALS)),) #if cmdgoals empty or 'all'
 DOALL:=1
 endif
 
-ifeq ($(DOALL),1)
-$(shell $(TESTSROOTDIR)/tools/create_generated_tests.sh)
-endif
-
 # List of all tests that need to run. This is essentially a list of all
 # non-disabled tests.
 export ALL_TESTS:=$(patsubst %.test, %, $(filter-out $(DISABLED_TESTS), \
     $(shell $(TESTSROOTDIR)/tools/get_tests_inorder.sh)))
-
 
 TOTAL=$(words $(MAKECMDGOALS) )
 ifeq ($(DOALL),1)
@@ -89,17 +84,15 @@ showparams:
 
 
 
-%_generated: basicops %_generated.test 
-
-%_generated.test:
-	@N=`$(TESTSROOTDIR)/tools/get_test_counter.sh` && echo TESTID=${TESTID} running in $(TESTDIR) $< $$N/${TOTAL}
-	@cp -r $< $(TESTDIR)/
-	@$(MAKE) -skC $(TESTDIR)/$<
+%_generated: basicops
+	@N=`$(TESTSROOTDIR)/tools/get_test_counter.sh` && echo TESTID=${TESTID} rrunning in $(TESTDIR) $@ $$N/${TOTAL}
+	@tools/create_generated_tests.sh `tools/get_testopts_path.sh $@` $(TESTDIR)
+	@$(MAKE) -skC $(TESTDIR)/$@.test
 
 $(patsubst %.test,%,$(ALL_TESTS)): basicops
 
 %: %.test
-	@N=`$(TESTSROOTDIR)/tools/get_test_counter.sh` && echo TESTID=${TESTID} running in $(TESTDIR) $< $$N/${TOTAL}
+	@N=`$(TESTSROOTDIR)/tools/get_test_counter.sh` && echo TESTID=${TESTID} running in $(TESTDIR) $* $$N/${TOTAL}
 	@cp -r $< $(TESTDIR)/
 	@$(MAKE) -skC $(TESTDIR)/$<
 
