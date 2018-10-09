@@ -106,7 +106,6 @@ function reader_thread
         elif [[ "$verbose_reader" == 1 ]]; then
             write_prompt $func "$x"
         fi
-        sleep 2
     done
 }
 
