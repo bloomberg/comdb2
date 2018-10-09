@@ -889,6 +889,7 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         strbuf_appendf(out, "Move cursor [%d] to rowid of index cursor [%d]",
                        op->p3, op->p1);
         break;
+    case OP_IfNoHope:
     case OP_NoConflict:
     case OP_NotFound:
     case OP_Found:

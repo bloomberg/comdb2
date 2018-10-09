@@ -4949,8 +4949,11 @@ case OP_Found: {        /* jump, in3 */
     }
   }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  res = 0; /* res = -1 triggers early verify check */
-  if( pOp->opcode == OP_NotFound && pOp->p5 ) res = -1;
+  if( (pOp->opcode==OP_IfNoHope || pOp->opcode==OP_NotFound) && pOp->p5 ){
+    res = -1;
+  }else{
+    res = 0; /* res = -1 triggers early verify check */
+  }
   rc = sqlite3BtreeMovetoUnpacked(pC->uc.pCursor,pIdxKey,0,pOp->opcode,&res);
   if( pOp->p4.i==0 ){ sqlite3DbFree(db, pFree); }
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */

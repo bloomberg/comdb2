@@ -5269,6 +5269,9 @@ void sqlite3WhereEnd(WhereInfo *pWInfo){
             sqlite3VdbeAddOp4Int(v, OP_IfNoHope, pLevel->iIdxCur,
                               sqlite3VdbeCurrentAddr(v)+2,
                               pIn->iBase, pIn->nPrefix);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+            sqlite3VdbeChangeP5(v, 1);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
             VdbeCoverage(v);
           }
           sqlite3VdbeAddOp2(v, pIn->eEndLoopOp, pIn->iCur, pIn->addrInTop);
