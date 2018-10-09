@@ -276,7 +276,9 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
 
     if (!(flags & RECFLAGS_NEW_SCHEMA) && !(flags & RECFLAGS_DONT_LOCK_TBL)) {
         // dont lock table if adding from SC or if RECFLAGS_DONT_LOCK_TBL
-        assert(!iq->is_sorese); //sorese codepaths should have locked it already
+        assert(!iq->is_sorese); //sorese codepaths will have locked it already
+        if(iq->is_sorese); //sorese codepaths should have locked it already
+            abort();
     
         reqprintf(iq, "Calling bdb_lock_table_read()");
         rc = bdb_lock_table_read(iq->usedb->handle, trans);
@@ -972,7 +974,9 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     }
 
     if (!(flags & RECFLAGS_DONT_LOCK_TBL)) {
-        assert(!iq->is_sorese); //sorese codepaths should have locked it already
+        assert(!iq->is_sorese); //sorese codepaths will have locked it already
+        if(iq->is_sorese); //sorese codepaths should have locked it already
+            abort();
 
         reqprintf(iq, "Calling bdb_lock_table_read()");
         rc = bdb_lock_table_read(iq->usedb->handle, trans);
@@ -1967,7 +1971,9 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     }
 
     if (!(flags & RECFLAGS_DONT_LOCK_TBL)) {
-        assert(!iq->is_sorese); //sorese codepaths should have locked it already
+        assert(!iq->is_sorese); //sorese codepaths will have locked it already
+        if(iq->is_sorese); //sorese codepaths should have locked it already
+            abort();
 
         reqprintf(iq, "Calling bdb_lock_table_read()");
         rc = bdb_lock_table_read(iq->usedb->handle, trans);
