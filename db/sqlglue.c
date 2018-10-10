@@ -132,7 +132,7 @@ static __thread char hashKeyBuf[50]; /* >= len("+18446744073709551615\0") */
 static const char *rootPageNumToTempHashKey(
   int iTable
 ){
-  snprintf(hashKeyBuf, sizeof(hashKeyBuf), "%d\0", iTable);
+  snprintf(hashKeyBuf, sizeof(hashKeyBuf), "%d", iTable);
   return hashKeyBuf;
 }
 
@@ -141,7 +141,7 @@ static const char *rootPageNumToPermHashKey(
   size_t nKeyBuf,
   int iTable
 ){
-  snprintf(zKeyBuf, nKeyBuf, "%d\0", iTable);
+  snprintf(zKeyBuf, nKeyBuf, "%d", iTable);
   return zKeyBuf;
 }
 
@@ -3125,7 +3125,6 @@ static int free_hash_ent(void *obj, void *dum)
  */
 int sqlite3BtreeClose(Btree *pBt)
 {
-    int i;
     int rc = SQLITE_OK;
     int bdberr;
     BtCursor *pCur;
