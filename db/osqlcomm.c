@@ -3952,11 +3952,11 @@ int osql_send_qblob(char *tohost, unsigned long long rqid, uuid_t uuid,
     }
 
 #if DEBUG_REORDER 
-printf("REORDER: putting blob id=%d, seq=%d, bloblen(datalen)=%d, sent=%d\n", blobid, seq, datalen, sent);
+logmsg(LOGMSG_DEBUG, "REORDER: putting blob id=%d, seq=%d, bloblen(datalen)=%d, sent=%d\n", blobid, seq, datalen, sent);
 if (datalen > 0) {
     char *blah;
     hexdumpbuf(data, datalen, &blah);
-    printf("REORDER: hexdump datalen=%d blob='%s'\n", datalen, blah);
+    logmsg(LOGMSG_DEBUG, "REORDER: hexdump datalen=%d blob='%s'\n", datalen, blah);
 }
 #endif
 
@@ -7063,7 +7063,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                             rrn, bdb_genid_to_host_order(newgenid));
         }
 #if DEBUG_REORDER 
-        printf("REORDER: Added new record rrn = %d, newgenid=%llx\n", rrn, bdb_genid_to_host_order(newgenid));
+        logmsg(LOGMSG_DEBUG, "REORDER: Added new record rrn = %d, newgenid=%llx\n", rrn, bdb_genid_to_host_order(newgenid));
 #endif
 
         (*receivedrows)++;
@@ -7660,7 +7660,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
         goto done;
     }
 #if DEBUG_REORDER 
-    printf("REORDER: created sess %p, with req.flags %x, sess->is_reorder_on %d\n", sess, uuid_req.flags, sess->is_reorder_on);
+    logmsg(LOGMSG_DEBUG, "REORDER: created sess %p, with req.flags %x, sess->is_reorder_on %d\n", sess, uuid_req.flags, sess->is_reorder_on);
 #endif
 
 #if 0

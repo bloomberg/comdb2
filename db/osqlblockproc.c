@@ -673,7 +673,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                       unsigned long long seq, const char *host)
 {
 #if DEBUG_REORDER 
-    printf("REORDER: saving for sess %p\n", sess);
+    logmsg(LOGMSG_DEBUG, "REORDER: saving for sess %p\n", sess);
 #endif
     blocksql_tran_t *tran = (blocksql_tran_t *)osql_sess_getbptran(sess);
     if (!tran || !tran->db) {
@@ -697,10 +697,10 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         iq->tranddl++;
 
 #if DEBUG_REORDER 
-    printf("Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n",
+    logmsg(LOGMSG_DEBUG, "Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n",
            rqid, type, osql_reqtype_str(type), osql_log_time(), seq);
 #endif
-    if (sess->is_reorder_on) {
+    if (sess->is_reorder_on) { //TODO: refactor this into a separate function
         key.tbl_idx = USHRT_MAX;
 
         if (type == OSQL_USEDB) {
@@ -717,21 +717,26 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                     key.tbl_idx = 0;
                     key.tbl_idx = sess->tbl_idx;
                     no_such_tbl_error(tablename, rqid, host);
+                    //TODO: need to cleanup this session; for now abort for testing
+                    abort();
+                    return -1;
                 }
 #if DEBUG_REORDER 
-                printf("REORDER: tablename='%s' idx=%d\n", tablename, (iq->usedb?iq->usedb->dbs_idx:-1));
+                logmsg(LOGMSG_DEBUG, "REORDER: tablename='%s' idx=%d\n", tablename, (iq->usedb?iq->usedb->dbs_idx:-1));
 #endif
             }
         }
         else if (!iq->usedb) { 
 #if DEBUG_REORDER 
-            printf("REORDER: usedb not set for type=%d(%s)\n", type,  osql_reqtype_str(type));
+            logmsg(LOGMSG_DEBUG, "REORDER: usedb not set for type=%d(%s)\n", type,  osql_reqtype_str(type));
 #endif
             if (type == OSQL_DONE_SNAP || type == OSQL_DONE || type == OSQL_DONE_STATS ||
                 type == OSQL_INSREC || type == OSQL_UPDREC || type == OSQL_DELREC ||
                 type == OSQL_INSERT || type == OSQL_UPDATE || type == OSQL_DELETE ||
                 type == OSQL_INSIDX || type == OSQL_DELIDX || type == OSQL_RECGENID ||
                 type == OSQL_QBLOB || type == OSQL_UPDCOLS || type == OSQL_GENID) {
+                //TODO: need to cleanup this session; for now abort for testing
+                abort();
                 return -1;
             }
         }
@@ -742,16 +747,19 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
             const char *p_buf = rpl + OSQLCOMM_UUID_RPL_TYPE_LEN; 
             buf_no_net_get(&(genid), sizeof(genid), p_buf, p_buf + sizeof(genid));
 #if DEBUG_REORDER 
-            printf("REORDER: Receiving genid 0x%llx\n", genid);
+            logmsg(LOGMSG_DEBUG, "REORDER: Receiving genid 0x%llx\n", genid);
 #endif
             if (0 == genid) {
                 genid = bdb_get_next_genid(iq->usedb->handle);
 #if DEBUG_REORDER 
-                printf("REORDER: Creating genid 0x%llx\n", genid);
+                logmsg(LOGMSG_DEBUG, "REORDER: Creating genid 0x%llx\n", genid);
 #endif
             }
             sess->last_genid = genid;
-            return 0; // don't put in temp table OSQL_GENID
+            return 0; // don't put in temp table OSQL_GENID, not useful for further processing
+                      // as an alternative, we can optionally send rec before the blobs
+                      // and if addrec create new genid just like here and sort blobs before rec
+                      // that way genid is not necessary
         } else if (type == OSQL_UPDATE || type == OSQL_DELETE || type == OSQL_UPDREC ||
             type == OSQL_DELREC || type == OSQL_INSERT || type == OSQL_INSREC ||
             type == OSQL_QBLOB  || type == OSQL_DELIDX || type == OSQL_INSIDX ||
@@ -809,7 +817,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 #if DEBUG_REORDER 
     char mus[37];
     comdb2uuidstr(uuid, mus);
-    printf("%p:%s: rqid=%llx uuid=%s SAVING tp=%d(%s), tbl_idx=%d, stripe=%d, genid=0x%llx, seq=%d\n", 
+    logmsg(LOGMSG_DEBUG, "%p:%s: rqid=%llx uuid=%s SAVING tp=%d(%s), tbl_idx=%d, stripe=%d, genid=0x%llx, seq=%d\n", 
             pthread_self(), __func__, rqid, mus, type, osql_reqtype_str(type), key.tbl_idx, key.stripe, key.genid, key.seq);
 #endif
 
@@ -1234,7 +1242,7 @@ static int process_this_session(
 #if DEBUG_REORDER 
         char mus[37];
         comdb2uuidstr(uuid, mus);
-        printf("REORDER: READ key rqid=%d, uuid=%s, tbl_idx=%d, stripe=%d, genid=0x%llx, seq=%d\n", rqid, mus, opkey->tbl_idx, opkey->stripe, opkey->genid, opkey->seq);
+        logmsg(LOGMSG_DEBUG, "REORDER: READ key rqid=%d, uuid=%s, tbl_idx=%d, stripe=%d, genid=0x%llx, seq=%d\n", rqid, mus, opkey->tbl_idx, opkey->stripe, opkey->genid, opkey->seq);
 #endif
 
         char *data = bdb_temp_table_data(dbc);
