@@ -5447,31 +5447,31 @@ static char* sqlite3ExprDescribe_inner(
       char *left, *ret2, *ret = NULL;
 
       if(!(pExpr->flags & EP_Subquery)) {
-          if( pExpr->x.pList->nExpr == 0 ){
-              break;
-          }
+        if( pExpr->x.pList->nExpr == 0 ){
+          break;
+        }
 
-          left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime);
+        left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime);
+        if( !left ){
+          return NULL;
+        }
+        ret = sqlite3_mprintf(" %s IN ", left);
+
+        sqlite3DbFree(v->db, left);
+
+        for(i =0; i< pExpr->x.pList->nExpr; i++){
+          left = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[i].pExpr,
+                  atRuntime);
           if( !left ){
-              return NULL;
+            sqlite3DbFree(v->db, ret);
+            return NULL;
           }
-          ret = sqlite3_mprintf(" %s IN ", left);
-
+          ret2 = sqlite3_mprintf("%s%s%s%s", ret, (i)?", ":"( ", left,
+                  (i==pExpr->x.pList->nExpr-1)?" )":"");
+          sqlite3DbFree(v->db, ret);
           sqlite3DbFree(v->db, left);
-
-          for(i =0; i< pExpr->x.pList->nExpr; i++){
-              left = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[i].pExpr,
-                      atRuntime);
-              if( !left ){
-                  sqlite3DbFree(v->db, ret);
-                  return NULL;
-              }
-              ret2 = sqlite3_mprintf("%s%s%s%s", ret, (i)?", ":"( ", left,
-                      (i==pExpr->x.pList->nExpr-1)?" )":"");
-              sqlite3DbFree(v->db, ret);
-              sqlite3DbFree(v->db, left);
-              ret = ret2;
-          }
+          ret = ret2;
+        }
       }
 
       return ret;
