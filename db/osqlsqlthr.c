@@ -178,10 +178,15 @@ static int osql_send_del_logic(struct BtCursor *pCur, struct sql_thread *thd)
         return rc;
 
     if (osql->is_reorder_on) {
-        rc = osql_send_genid(osql->host, osql->rqid, osql->uuid, pCur->genid,
-                NET_OSQL_SOCK_RPL, osql->logsb, OSQL_GENID);
-        if (rc != SQLITE_OK)
+        rc = osql_send_delrec(
+                osql->host, osql->rqid, osql->uuid, pCur->genid,
+                (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->del_keys : -1ULL,
+                NET_OSQL_SOCK_RPL, osql->logsb);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s:%d %s - failed to send socksql row rc=%d\n",
+                    __FILE__, __LINE__, __func__, rc);
             return rc;
+        }
     }
 
     if (gbl_expressions_indexes && pCur->db->ix_expr) {
@@ -194,14 +199,16 @@ static int osql_send_del_logic(struct BtCursor *pCur, struct sql_thread *thd)
         }
     }
 
-    rc = osql_send_delrec(
-        osql->host, osql->rqid, osql->uuid, pCur->genid,
-        (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->del_keys : -1ULL,
-        NET_OSQL_SOCK_RPL, osql->logsb);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s:%d %s - failed to send socksql row rc=%d\n",
-               __FILE__, __LINE__, __func__, rc);
-        return rc;
+    if (!osql->is_reorder_on) {
+        rc = osql_send_delrec(
+                osql->host, osql->rqid, osql->uuid, pCur->genid,
+                (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->del_keys : -1ULL,
+                NET_OSQL_SOCK_RPL, osql->logsb);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s:%d %s - failed to send socksql row rc=%d\n",
+                    __FILE__, __LINE__, __func__, rc);
+            return rc;
+        }
     }
     return SQLITE_OK;
 }
@@ -275,12 +282,15 @@ static int osql_send_ins_logic(struct BtCursor *pCur, struct sql_thread *thd,
         return rc;
 
     if (osql->is_reorder_on) {
-        rc = osql_send_genid(osql->host, osql->rqid, osql->uuid, 0,
-                NET_OSQL_SOCK_RPL, osql->logsb, OSQL_GENID);
-        if (rc != SQLITE_OK) {
-            logmsg(LOGMSG_USER, 
-                   "%s:%d %s - failed to send OSQL_GENID rc=%d\n",
-                   __FILE__, __LINE__, __func__, rc);
+        rc = osql_send_insrec(osql->host, osql->rqid, osql->uuid, pCur->genid,
+                (gbl_partial_indexes && pCur->db->ix_partial)
+                ? thd->clnt->ins_keys
+                : -1ULL,
+                pData, nData, NET_OSQL_SOCK_RPL, osql->logsb, flags);
+
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s:%d %s - failed to send socksql row rc=%d\n",
+                    __FILE__, __LINE__, __func__, rc);
             return rc;
         }
     }
@@ -302,16 +312,18 @@ static int osql_send_ins_logic(struct BtCursor *pCur, struct sql_thread *thd,
         return rc;
     }
 
-    rc = osql_send_insrec(osql->host, osql->rqid, osql->uuid, pCur->genid,
-                          (gbl_partial_indexes && pCur->db->ix_partial)
-                              ? thd->clnt->ins_keys
-                              : -1ULL,
-                          pData, nData, NET_OSQL_SOCK_RPL, osql->logsb, flags);
+    if (!osql->is_reorder_on) {
+        rc = osql_send_insrec(osql->host, osql->rqid, osql->uuid, pCur->genid,
+                (gbl_partial_indexes && pCur->db->ix_partial)
+                ? thd->clnt->ins_keys
+                : -1ULL,
+                pData, nData, NET_OSQL_SOCK_RPL, osql->logsb, flags);
 
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s:%d %s - failed to send socksql row rc=%d\n",
-               __FILE__, __LINE__, __func__, rc);
-        return rc;
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s:%d %s - failed to send socksql row rc=%d\n",
+                    __FILE__, __LINE__, __func__, rc);
+            return rc;
+        }
     }
     return SQLITE_OK;
 }
@@ -377,9 +389,19 @@ static int osql_send_upd_logic(struct BtCursor *pCur, struct sql_thread *thd,
         return rc;
 
     if (osql->is_reorder_on) {
-        rc = osql_send_genid(osql->host, osql->rqid, osql->uuid, pCur->genid,
-                NET_OSQL_SOCK_RPL, osql->logsb, OSQL_GENID);
-        if (rc != SQLITE_OK) return rc;
+        rc = osql_send_updrec(
+                osql->host, osql->rqid, osql->uuid, pCur->genid,
+                (gbl_partial_indexes && pCur->db->ix_partial) ? thd->clnt->ins_keys
+                : -1ULL,
+                (gbl_partial_indexes && pCur->db->ix_partial) ? thd->clnt->del_keys
+                : -1ULL,
+                pData, nData, NET_OSQL_SOCK_RPL, osql->logsb);
+
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s:%d %s - failed to send socksql row rc=%d\n",
+                    __FILE__, __LINE__, __func__, rc);
+            return rc;
+        }
     }
 
     if (gbl_expressions_indexes && pCur->db->ix_expr) {
@@ -419,21 +441,24 @@ static int osql_send_upd_logic(struct BtCursor *pCur, struct sql_thread *thd,
         }
     }
 
-    rc = osql_send_updrec(
-        osql->host, osql->rqid, osql->uuid, pCur->genid,
-        (gbl_partial_indexes && pCur->db->ix_partial) ? thd->clnt->ins_keys
-                                                      : -1ULL,
-        (gbl_partial_indexes && pCur->db->ix_partial) ? thd->clnt->del_keys
-                                                      : -1ULL,
-        pData, nData, NET_OSQL_SOCK_RPL, osql->logsb);
+    if (!osql->is_reorder_on) {
+        rc = osql_send_updrec(
+                osql->host, osql->rqid, osql->uuid, pCur->genid,
+                (gbl_partial_indexes && pCur->db->ix_partial) ? thd->clnt->ins_keys
+                : -1ULL,
+                (gbl_partial_indexes && pCur->db->ix_partial) ? thd->clnt->del_keys
+                : -1ULL,
+                pData, nData, NET_OSQL_SOCK_RPL, osql->logsb);
 
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s:%d %s - failed to send socksql row rc=%d\n",
-               __FILE__, __LINE__, __func__, rc);
-        return rc;
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s:%d %s - failed to send socksql row rc=%d\n",
+                    __FILE__, __LINE__, __func__, rc);
+            return rc;
+        }
     }
     return SQLITE_OK;
 }
+
 
 /**
  * Process a sqlite update row request

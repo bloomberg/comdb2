@@ -111,6 +111,7 @@ typedef struct oplog_key {
     uint16_t tbl_idx;
     uint8_t stripe;
     unsigned long long genid;
+    uint8_t isrec; // record needs to go after blobs
     uint32_t seq;
 } oplog_key_t;
 
@@ -128,7 +129,7 @@ static int req2blockop(int reqtype);
  * The bplog key-compare function - required because memcmp changes
  * the order of temp_table_next on little-endian machines.
  *
- * key will compare by rqid, uuid, table, stripe, genid, then sequence
+ * key will compare by rqid, uuid, table, stripe, genid, isrec, then sequence
  */
 static int osql_bplog_key_cmp(void *usermem, int key1len, const void *key1,
                               int key2len, const void *key2)
@@ -166,6 +167,14 @@ static int osql_bplog_key_cmp(void *usermem, int key1len, const void *key1,
     // need to sort by genid correctly
     int cmp = bdb_cmp_genids(k1->genid, k2->genid);
     if (cmp) return cmp;
+
+    if (k1->isrec < k2->isrec) {
+        return -1;
+    }
+
+    if (k1->isrec > k2->isrec) {
+        return 1;
+    }
 
     if (k1->seq < k2->seq) {
         return -1;
@@ -717,6 +726,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                     key.tbl_idx = 0;
                     key.tbl_idx = sess->tbl_idx;
                     no_such_tbl_error(tablename, rqid, host);
+                    logmsg(LOGMSG_DEBUG, "REORDER: no such table: for now call abort(): tablename='%s'\n", tablename);
                     //TODO: need to cleanup this session; for now abort for testing
                     abort();
                     return -1;
@@ -735,35 +745,41 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                 type == OSQL_INSERT || type == OSQL_UPDATE || type == OSQL_DELETE ||
                 type == OSQL_INSIDX || type == OSQL_DELIDX || type == OSQL_RECGENID ||
                 type == OSQL_QBLOB || type == OSQL_UPDCOLS || type == OSQL_GENID) {
+                logmsg(LOGMSG_DEBUG, "REORDER: no usedb: for now call abort()\n");
                 //TODO: need to cleanup this session; for now abort for testing
                 abort();
                 return -1;
             }
         }
 
-        if (type == OSQL_GENID) {
+        if (type == OSQL_UPDATE || type == OSQL_DELETE || type == OSQL_UPDREC ||
+            type == OSQL_DELREC || type == OSQL_INSERT || type == OSQL_INSREC ) {
             enum { OSQLCOMM_UUID_RPL_TYPE_LEN = 4 + 4 + 16 };
             unsigned long long genid = 0;
-            const char *p_buf = rpl + OSQLCOMM_UUID_RPL_TYPE_LEN; 
-            buf_no_net_get(&(genid), sizeof(genid), p_buf, p_buf + sizeof(genid));
-#if DEBUG_REORDER 
-            logmsg(LOGMSG_DEBUG, "REORDER: Receiving genid 0x%llx\n", genid);
-#endif
-            if (0 == genid) {
+            if ( type == OSQL_INSERT || type == OSQL_INSREC) {
                 genid = bdb_get_next_genid(iq->usedb->handle);
 #if DEBUG_REORDER 
                 logmsg(LOGMSG_DEBUG, "REORDER: Creating genid 0x%llx\n", genid);
 #endif
             }
+            else {
+                const char *p_buf = rpl + OSQLCOMM_UUID_RPL_TYPE_LEN; 
+                buf_no_net_get(&(genid), sizeof(genid), p_buf, p_buf + sizeof(genid));
+#if DEBUG_REORDER 
+                logmsg(LOGMSG_DEBUG, "REORDER: Receiving genid 0x%llx\n", genid);
+#endif
+            }
+            assert (0 != genid);
             sess->last_genid = genid;
-            return 0; // don't put in temp table OSQL_GENID, not useful for further processing
-                      // as an alternative, we can optionally send rec before the blobs
-                      // and if addrec create new genid just like here and sort blobs before rec
-                      // that way genid is not necessary
-        } else if (type == OSQL_UPDATE || type == OSQL_DELETE || type == OSQL_UPDREC ||
-            type == OSQL_DELREC || type == OSQL_INSERT || type == OSQL_INSREC ||
-            type == OSQL_QBLOB  || type == OSQL_DELIDX || type == OSQL_INSIDX ||
-            type == OSQL_UPDCOLS) {
+
+            key.tbl_idx = sess->tbl_idx;
+            key.genid = sess->last_genid;
+            key.stripe = get_dtafile_from_genid(key.genid);
+            key.isrec = 1;
+            assert (key.stripe >= 0);
+
+        } else if (type == OSQL_QBLOB  || type == OSQL_DELIDX || 
+                   type == OSQL_INSIDX || type == OSQL_UPDCOLS) {
             key.tbl_idx = sess->tbl_idx;
             key.genid = sess->last_genid;
             key.stripe = get_dtafile_from_genid(key.genid);
