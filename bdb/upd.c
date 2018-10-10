@@ -56,7 +56,6 @@ static int bdb_change_dta_genid_dtastripe(bdb_state_type *bdb_state,
                                           unsigned long long newgenid,
                                           int has_blob_opt, int *bdberr)
 {
-    unsigned long long dtagenid = oldgenid;
     int rc;
     DB *dbp;
     int dtastripe;
@@ -118,7 +117,6 @@ static int bdb_prim_add_upd_int(bdb_state_type *bdb_state, tran_type *tran,
 
     int rc;
     int stripe;
-    int *iptr;
     DB *dbp;
     DBT dbt_newdta;
 
@@ -186,10 +184,8 @@ static int bdb_prim_updvrfy_int(bdb_state_type *bdb_state, tran_type *tran,
                                 int participantstripid, int use_new_genid,
                                 int keep_genid_intact, int *bdberr)
 {
-    DBT dbt_key, dbt_data;
     int rc;
     int stripe;
-    int *iptr;
     DB *dbp;
     DBT dbt_newdta;
     DBT dbt_olddta;
@@ -275,8 +271,6 @@ static int bdb_prim_updkey_genid_int(bdb_state_type *bdb_state, tran_type *tran,
                                      int dtalen, int isnull, int *bdberr)
 {
     int rc;
-    int stripe;
-    int *iptr;
     DBT dbt_key;
     void *pKeyMaxBuf = 0;
 
@@ -284,8 +278,6 @@ static int bdb_prim_updkey_genid_int(bdb_state_type *bdb_state, tran_type *tran,
         return -1;
 
     *bdberr = BDBERR_NOERROR;
-
-    stripe = 0;
 
     /* synthetic genids should not make it here */
     if (is_genid_synthetic(genid)) {

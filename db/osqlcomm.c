@@ -6913,7 +6913,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         }
 
         rc = del_record(iq, trans, NULL, 0, dt.genid, dt.dk, &err->errcode,
-                        &err->ixnum, BLOCK2_DELKL, 0);
+                        &err->ixnum, BLOCK2_DELKL, RECFLAGS_DONT_LOCK_TBL);
 
         if (iq->idxInsert || iq->idxDelete) {
             free_cached_idx(iq->idxInsert);
@@ -6972,7 +6972,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             sbuf2printf(logsb, "\n] -> ");
         }
 
-        addflags = RECFLAGS_DYNSCHEMA_NULLS_ONLY;
+        addflags = RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_DONT_LOCK_TBL;
         if (osql_get_delayed(iq) == 0 && iq->usedb->n_constraints == 0 &&
             gbl_goslow == 0) {
             addflags |= RECFLAGS_NO_CONSTRAINTS;
@@ -7148,7 +7148,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                                                      ctag2stag is called */
             *updCols, blobs, MAXBLOBS, &genid, dt.ins_keys, dt.del_keys,
             &err->errcode, &err->ixnum, BLOCK2_UPDKL, step,
-            RECFLAGS_DYNSCHEMA_NULLS_ONLY |
+            RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_DONT_LOCK_TBL |
                 RECFLAGS_DONT_SKIP_BLOBS /* because we only receive info about
                                             blobs that should exist in the new
                                             record, override the update

@@ -130,7 +130,6 @@ static int cache_delayed_indexes(struct ireq *iq, unsigned long long genid)
     void *cur = NULL;
     int err = 0;
     int *pixnum;
-    int i;
 
     if (iq->idxInsert || iq->idxDelete) {
         free_cached_idx(iq->idxInsert);
@@ -569,13 +568,11 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                            struct ireq *iq, block_state_t *blkstate,
                            void *trans, blob_buffer_t *blobs, int *errout)
 {
-    int i = 0, rc = 0, fndlen = 0, fndrrn = 0, opcode = 0, err = 0;
+    int rc = 0, fndrrn = 0, err = 0;
     int cascade;
     int del_cascade;
     int keylen;
     int upd_cascade;
-    void *od_dta = NULL;
-    char ondisk_tag[MAXTAGLEN];
     char key[MAXKEYLEN];
     unsigned char nulls[MAXNULLBITS] = {0};
     void *cur = NULL;
@@ -621,7 +618,6 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
     while (rc == 0) {
         cte *ctrq = (cte *)bdb_temp_table_data(cur);
         struct backward_ct *bct = NULL;
-        int ondisk_size = 0;
         unsigned long long genid = 0LL, fndgenid = 0LL;
         struct dbtable *currdb = NULL;
         char *skey = NULL;
@@ -805,7 +801,7 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                     /* TODO verify we have proper schema change locks */
 
                     rc = del_record(iq, trans, NULL, rrn, genid, -1ULL, &err,
-                                    &idx, BLOCK2_DELKL, 0);
+                                    &idx, BLOCK2_DELKL, RECFLAGS_DONT_LOCK_TBL);
                     if (iq->debug)
                         reqpopprefixes(iq, 1);
                     iq->usedb = currdb;
@@ -870,7 +866,7 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                         0,    /*maxblobs*/
                         &newgenid, -1ULL, -1ULL, &err, &idx, BLOCK2_UPDKL,
                         0, /*blkpos*/
-                        UPDFLAGS_CASCADE);
+                        UPDFLAGS_CASCADE | RECFLAGS_DONT_LOCK_TBL);
                     if (iq->debug)
                         reqpopprefixes(iq, 1);
                     iq->usedb = currdb;
@@ -959,7 +955,7 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
 int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
                      int *blkpos, int *ixout, int *errout)
 {
-    int i = 0, rc = 0, fndlen = 0, fndrrn = 0, err = 0, limit = 0;
+    int rc = 0, fndlen = 0, err = 0, limit = 0;
     int idx = 0, ixkeylen = -1;
     void *od_dta = NULL;
     char ondisk_tag[MAXTAGLEN];
@@ -1285,7 +1281,7 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                            struct ireq *iq, block_state_t *blkstate,
                            void *trans, int *errout)
 {
-    int i = 0, rc = 0, fndlen = 0, fndrrn = 0, opcode = 0, err = 0;
+    int rc = 0, fndlen = 0, fndrrn = 0, opcode = 0, err = 0;
     void *od_dta = NULL;
     char ondisk_tag[MAXTAGLEN];
     char key[MAXKEYLEN];
@@ -1345,8 +1341,6 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
         struct forward_ct *curop = NULL;
         int addrrn = -1, ixnum = -1;
         int ondisk_size = 0;
-        const uint8_t *p_buf_req_start;
-        const uint8_t *p_buf_req_end;
         unsigned long long genid = 0LL;
         unsigned long long ins_keys = 0ULL;
         /* do something */
@@ -1368,8 +1362,6 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
         ixnum = curop->ixnum;
         genid = curop->genid;
         ins_keys = curop->ins_keys;
-        p_buf_req_start = curop->p_buf_req_start;
-        p_buf_req_end = curop->p_buf_req_end;
         opcode = curop->optype;
         /* if we are updating by key, check the constraints as if we're doing a
          * normal update */
@@ -1490,7 +1482,6 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
 
                 for (ridx = 0; ridx < ct->nrules; ridx++) {
                     struct dbtable *ftable = NULL, *currdb = NULL;
-                    int ftblsz = 0;
                     int fixnum = 0;
                     int fixlen = 0;
                     char fkey[MAXKEYLEN];
@@ -1509,7 +1500,6 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                         close_constraint_table_cursor(cur);
                         return ERR_BADREQ;
                     }
-                    ftblsz = getdatsize(ftable);
                     rc = getidxnumbyname(ftable->tablename, ct->keynm[ridx],
                                          &fixnum);
                     if (rc) {
@@ -1560,7 +1550,8 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                         }
                     }
 
-                    /*     fprintf(stderr, "%s;%d-%s;%d\n",ftable->tablename,
+                    /*     int ftblsz = getdatsize(ftable);
+                     *     fprintf(stderr, "%s;%d-%s;%d\n",ftable->tablename,
                            ftblsz, ct->keynm[ridx], fixlen);*/
 
                     /* we'll do the find on created index to make sure
@@ -2065,8 +2056,6 @@ int populate_reverse_constraints(struct dbtable *db)
         int jj = 0;
         constraint_t *cnstrt = &db->constraints[ii];
         struct schema *sc = NULL;
-        struct dbtable *ftable = NULL;
-        int keyszs = 0, keyszd = 0, keyix = 0;
 
         sc = find_tag_schema(db->tablename, cnstrt->lclkeyname);
         if (sc == NULL) {
