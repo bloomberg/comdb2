@@ -451,8 +451,7 @@ retry_after_fdb_creation:
   ** remotely
   */
   if( !already_searched_fdb ){
-    int        version; 
-    int        iNewDb;
+    int        version;
     char       *zErrDyn = NULL;
 
     if( gbl_fdb_track ){
