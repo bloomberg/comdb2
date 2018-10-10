@@ -1,4 +1,6 @@
 ARG version=latest
 FROM comdb2:${version}
 
+COPY init.client /init.client
 
+ENTRYPOINT /init.client

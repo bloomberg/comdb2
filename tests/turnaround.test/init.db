@@ -1,0 +1,10 @@
+#!/bin/bash
+
+pmux -n
+
+sleep 2
+
+while :; do
+    echo Starting db on $(hostname)
+    comdb2 testdb >> /log/$(hostname)_testdb.out 2>&1
+done

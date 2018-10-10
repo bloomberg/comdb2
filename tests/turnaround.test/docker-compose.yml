@@ -18,10 +18,12 @@ services:
         volumes:
             - ./log:/log
     m1:
+        cap_add:
+            - SYS_PTRACE
         hostname: m1
         build:
             context: .
-            dockerfile: Dockerfile.db
+            dockerfile: Dockerfile.database
         networks:
             primary:
             n3:
@@ -33,10 +35,12 @@ services:
         volumes:
             - ./log:/log
     m2:
+        cap_add:
+            - SYS_PTRACE
         hostname: m2
         build:
             context: .
-            dockerfile: Dockerfile.db
+            dockerfile: Dockerfile.database
         networks:
             primary:
             n3:
@@ -48,10 +52,12 @@ services:
         volumes:
             - ./log:/log
     m3:
+        cap_add:
+            - SYS_PTRACE
         hostname: m3
         build:
             context: .
-            dockerfile: Dockerfile.db
+            dockerfile: Dockerfile.database
         networks:
             primary:
             n3:
@@ -63,10 +69,12 @@ services:
         volumes:
             - ./log:/log
     m4:
+        cap_add:
+            - SYS_PTRACE
         hostname: m4
         build:
             context: .
-            dockerfile: Dockerfile.db
+            dockerfile: Dockerfile.database
         networks:
             primary:
             n3:
@@ -79,10 +87,12 @@ services:
             - ./log:/log
 
     m5:
+        cap_add:
+            - SYS_PTRACE
         hostname: m5
         build:
             context: .
-            dockerfile: Dockerfile.db
+            dockerfile: Dockerfile.database
         networks:
             primary:
             n3:

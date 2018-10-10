@@ -33,5 +33,7 @@ RUN apt-get update && \
     socat \
     time \
     strace \
-	gdb && \
+	gdb \
+    vim \
+    less && \
   rm -rf /var/lib/apt/lists/*

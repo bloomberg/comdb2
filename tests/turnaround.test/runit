@@ -1,34 +1,69 @@
 #!/usr/bin/env bash
 
+function timeout {
+    local n=$1
+    sleep $n
+    touch log/failed
+}
+
+function finish {
+    docker-compose down --rmi all
+    exit $1
+}
+
 set -x
-src=${SRCHOME}/tests/turnaround.test
+TESTDIR=${SRCHOME}/tests/turnaround.test
 tag=$(git rev-parse --short HEAD)
 
-docker images | grep -q comdb2:devbase
+docker images --format "{{.Repository}}:{{.Tag}}" | grep -q comdb2:buildbase
 if [[ $? -ne 0 ]]; then
-    docker build -f ${src}/Dockerfile.buildbase -t comdb2:buildbase .
+    docker build -f ${TESTDIR}/Dockerfile.buildbase --build-arg version=${tag} -t comdb2:buildbase .
 fi
 
-docker images | grep -q comdb2:${tag}
+docker images --format "{{.Repository}}:{{.Tag}}" | grep -q comdb2:${tag}
 rc=$?
 
 set -e
+rm -fr log
+mkdir log
+
 cd $SRCHOME
 
 if [[ $rc -ne 0 ]]; then
-    docker build -f ${src}/Dockerfile.build --build-arg SRCHOME=${SRCHOME} -t comdb2:${tag} .
+    docker build -f ${TESTDIR}/Dockerfile.build --build-arg version=${tag} --build-arg SRCHOME=${SRCHOME} -t comdb2:${tag} .
 fi
 
-comdb2 --create --dir $(pwd)/db
-
-cat > db.lrl <<EOF
+cd ${TESTDIR}
+comdb2 --create --dir $(pwd)/testdb testdb
+cat > testdb/testdb.lrl <<EOF
 name db
 cluster nodes m1 m2 m3 m4 m5
 SOSQL_MAX_COMMIT_WAIT_SEC 60
 dedicated_network_suffixes -n3 -n4
 EOF
+tar cf db.tar testdb
 
-docker-compose up
+for m in {1..5}; do
+    docker-compose build --build-arg version=${tag} m${m}
+done
+docker-compose build --build-arg version=${tag} client
+docker-compose up &
+timeout 300 &
+set +x
 
+while :; do
+    [[ -f log/failed ]] && finish 1
+    [[ -f log/ready ]] && break
+    sleep 1
+done
 
-exit 1
+while :; do
+    [[ -f log/failed ]] && finish 1
+    status=$(docker-compose ps | grep /init.client | awk '{print $5}')
+    if [[ "$status" != "Up" ]]; then
+        break
+    fi
+done
+
+[[ -f log/success ]] && finish 0
+finish 1

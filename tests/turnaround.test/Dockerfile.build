@@ -4,6 +4,6 @@ ARG SRCHOME
 
 COPY . ${SRCHOME}
 
-RUN cd ${SRCHOME} && cd build && make -j4 && make install
+RUN cd ${SRCHOME} && rm -fr build && mkdir build && cd build && cmake .. && make -j4 && make install
 
 ENV PATH      $PATH:/opt/bb/bin
