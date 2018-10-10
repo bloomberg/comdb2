@@ -239,11 +239,10 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
     while (tran->pending.top && !error) {
 
         /* go through the list of pending requests and if there are any
-            that have not received responses over a certain window, poke them */
+           that have not received responses over a certain window, poke them */
         /* if we find any complete lists, move them from pending to complete */
         /* if the session finished with deadlock on replicant, or failed
-           session,
-           resubmit it */
+           session, resubmit it */
         LISTC_FOR_EACH_SAFE(&tran->pending, info, temp, p_reqs)
         {
 
@@ -392,8 +391,7 @@ int osql_bplog_schemachange(struct ireq *iq)
 }
 
 /**
- * Wait for all pending osql sessions of this transaction to
- * finish
+ * Wait for all pending osql sessions of this transaction to finish
  * Once all finished ok, we apply all the changes
  */
 int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,
@@ -654,7 +652,6 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     struct ireq *iq = osql_session_get_ireq(sess);
     int rc = 0, rc_op = 0;
     oplog_key_t key = {0};
-    struct errstat *xerr;
     int bdberr;
     int debug = 0;
     uuidstr_t us;
@@ -713,6 +710,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     if (rc_op)
         return rc_op;
 
+    struct errstat *xerr;
+    /* check if type is done -- TODO: can pass type in */
     rc = osql_comm_is_done(type, rpl, rplen, rqid == OSQL_RQID_USE_UUID, &xerr,
                            osql_session_get_ireq(sess));
     if (rc == 0)
@@ -727,13 +726,14 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                 (done_nops != seq + 1 ? "NO match": ""));
 
         if(done_nops != seq + 1 || (rand() % 3) == 0) {
-            //TODO: figure out how to return an error to client
-            //TODO: send error always fail as if client is not waiting for a response
             send_error_to_replicant(rqid, host,
                     RC_INTERNAL_RETRY,
                     "Master received inconsistent number of opcodes");
 
-            logmsg(LOGMSG_ERROR, "%s: *********************  replicant sent %d opcodes, master received %lld\n", __func__, done_nops, seq + 1);
+            logmsg(LOGMSG_ERROR, "%s: Replicant sent %d opcodes, master received %lld\n", __func__, done_nops, seq + 1);
+            
+            // terminate session so replicant can retry
+            osql_sess_try_terminate(sess);
             return -1;
         }
     }
@@ -758,7 +758,6 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     }
 
     if (osql_session_is_sorese(sess)) {
-
         osql_sess_lock(sess);
         osql_sess_lock_complete(sess);
         if (!osql_sess_dispatched(sess) && !osql_sess_is_terminated(sess)) {
