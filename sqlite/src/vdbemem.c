@@ -866,7 +866,11 @@ static int sqlite3RealSameAsInt(double r1, sqlite3_int64 i){
 int sqlite3VdbeMemNumerify(Mem *pMem){
   if( (pMem->flags & (MEM_Int|MEM_Real|MEM_Null))==0 ){
     int rc;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    assert( (pMem->flags & (MEM_Blob|MEM_Str|MEM_Interval|MEM_Datetime))!=0 );
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     assert( (pMem->flags & (MEM_Blob|MEM_Str))!=0 );
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     assert( pMem->db==0 || sqlite3_mutex_held(pMem->db->mutex) );
     rc = sqlite3Atoi64(pMem->z, &pMem->u.i, pMem->n, pMem->enc);
     if( rc==0 ){
