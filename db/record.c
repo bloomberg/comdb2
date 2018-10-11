@@ -3007,15 +3007,12 @@ static int check_blob_buffers(struct ireq *iq, blob_buffer_t *blobs,
                                 schema->member[idx].type == SERVER_BLOB2) &&
                      ntohl(blob->length) <= schema->member[idx].len - 5 /*hdr*/)
                 inconsistent = blobs[cblob].exists;
-
             /* otherwise, fall back to regular blob checks */
             else if (blob->notnull)
                 inconsistent = !blobs[cblob].exists ||
                                blobs[cblob].length != ntohl(blob->length);
-
             else
                 inconsistent = blobs[cblob].exists;
-
             if (inconsistent) {
                 if (iq->debug) {
                     reqprintf(iq, "INCONSISTENT BLOB BUFFERS FOR BLOB %d",
@@ -3405,3 +3402,4 @@ void testrep(int niter, int recsz)
 done:
     free(stuff);
 }
+
