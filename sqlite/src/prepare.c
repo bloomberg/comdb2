@@ -422,6 +422,7 @@ error_out:
 ** tables.  If it is NULL, all the tables are initialized
 */
 int sqlite3InitTable(sqlite3 *db, char **pzErrMsg, const char *zName){
+  int i, rc = SQLITE_OK;
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 /*
 ** Initialize all database files - the main database file, the file
@@ -434,8 +435,8 @@ int sqlite3InitTable(sqlite3 *db, char **pzErrMsg, const char *zName){
 ** file was of zero-length, then the DB_Empty flag is also set.
 */
 int sqlite3Init(sqlite3 *db, char **pzErrMsg){
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   int i, rc;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   int commit_internal = !(db->mDbFlags&DBFLAG_SchemaChange);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   char *tmp;
@@ -465,7 +466,11 @@ int sqlite3Init(sqlite3 *db, char **pzErrMsg){
   /* Do the main schema first */
   if( !DbHasProperty(db, 0, DB_SchemaLoaded) ){
     rc = sqlite3InitOne(db, 0, pzErrMsg, 0);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if( rc ) goto done_with_init;
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( rc ) return rc;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }
   /* All other schemas after the main schema. The "temp" schema must be last */
   for(i=db->nDb-1; i>0; i--){
@@ -480,19 +485,26 @@ int sqlite3Init(sqlite3 *db, char **pzErrMsg){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( !DbHasProperty(db, i, DB_SchemaLoaded) ){
       rc = sqlite3InitOne(db, i, pzErrMsg, 0);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      if( rc ) goto done_with_init;
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       if( rc ) return rc;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
   }
+  if( commit_internal ){
+    sqlite3CommitInternalChanges(db);
+  }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+done_with_init:
   if( zName ){
     free(db->init.zTblName);
     db->init.zTblName = NULL;
   }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-  if( commit_internal ){
-    sqlite3CommitInternalChanges(db);
-  }
+  return rc;
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   return SQLITE_OK;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
