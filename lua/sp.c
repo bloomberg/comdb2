@@ -6282,7 +6282,7 @@ void *exec_trigger(trigger_reg_t *reg)
     put_curtran(thedb->bdb_env, &clnt);
     if (q) {
         luabb_trigger_unregister(q);
-        logmsg(LOGMSG_ERROR, "trigger:%s %016" PRIx64 " finished\n", reg->spname, q->info.trigger_cookie);
+        logmsg(LOGMSG_DEBUG, "trigger:%s %016" PRIx64 " finished\n", reg->spname, q->info.trigger_cookie);
         free(q);
     } else {
         //setup fake dbconsumer_t to send unregister
