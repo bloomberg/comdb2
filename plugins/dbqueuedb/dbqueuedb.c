@@ -378,7 +378,8 @@ int set_consumer_options(struct consumer *consumer, const char *opts)
 }
 
 /* Returns the genid of the event in the front of the queue. */
-static unsigned long long dbqueue_get_front_genid(struct dbtable *table, int consumer)
+static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
+                                                  int consumer)
 {
     unsigned long long genid;
     int rc;
@@ -418,15 +419,18 @@ static unsigned long long dbqueue_get_front_genid(struct dbtable *table, int con
 skip:
     rc = bdb_trigger_unsubscribe(table->handle);
     if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "dbq_get_front_genid: bdb_trigger_unsubscribe "
-               "failed (rc: %d)\n", rc);
+        logmsg(LOGMSG_ERROR,
+               "dbq_get_front_genid: bdb_trigger_unsubscribe "
+               "failed (rc: %d)\n",
+               rc);
     }
     pthread_mutex_unlock(mu);
 
     return genid;
 }
 
-static void dbqueue_check_inactivity(struct consumer *consumer) {
+static void dbqueue_check_inactivity(struct consumer *consumer)
+{
     time_t current_time = time(NULL);
     time_t diff = current_time - consumer->last_checked;
     time_t intervals = 60; /* in seconds */
