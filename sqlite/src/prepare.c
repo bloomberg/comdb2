@@ -482,7 +482,7 @@ int sqlite3Init(sqlite3 *db, char **pzErrMsg){
     ** table is actually present
     */
     if( dbname[0] && (sqlite3FindTableCheckOnly(db, db->init.zTblName, db->aDb[i].zDbSName)!=0) ) continue;
-    {
+    if( i>1 || !DbHasProperty(db, i, DB_SchemaLoaded) ){
 #else
     if( !DbHasProperty(db, i, DB_SchemaLoaded) ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
