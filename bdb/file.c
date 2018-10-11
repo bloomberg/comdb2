@@ -1558,7 +1558,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     free(bdb_state);
      */
 
-    net_cleanup_netinfo(netinfo_ptr);
+    /* net_cleanup_netinfo(netinfo_ptr); */
 
     /* DO NOT RELEASE the write lock.  just let it be. */
     return 0;
