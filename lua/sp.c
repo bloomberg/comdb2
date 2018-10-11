@@ -2950,8 +2950,8 @@ static int db_create_thread_int(Lua lua, const char *funcname)
     pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN + 16 * 1024);
 #endif
     rc = pthread_create(&lt->lua_tid, &attr, dispatch_lua_thread, lt);
-    if (rc == 0) return 1;
     pthread_attr_destroy(&attr);
+    if (rc == 0) return 1;
     luabb_error(lua, sp, "failed to create thread");
 bad:
     free(err);
