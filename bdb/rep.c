@@ -659,6 +659,7 @@ int is_incoherent(bdb_state_type *bdb_state, const char *host)
 
 int gbl_throttle_logput_trace = 0;
 int gbl_incoherent_logput_window = 0;
+extern int gbl_decoupled_logputs;
 
 static int throttle_updates_incoherent_nodes(bdb_state_type *bdb_state,
                                              const char *host)
@@ -667,6 +668,10 @@ static int throttle_updates_incoherent_nodes(bdb_state_type *bdb_state,
     static int lastpr = 0;
     static unsigned long long throttles = 0;
     unsigned long long cntbytes;
+
+    /* Only enable if decoupled logputs are enabled */
+    if (!gbl_decoupled_logputs)
+        return 0;
 
     if (gbl_throttle_logput_trace && ((now = time(NULL)) - lastpr)) {
         pr = 1;
@@ -731,8 +736,6 @@ unsigned long long rep_get_send_bytecount(void) { return bytecount; }
 void rep_reset_send_callcount(void) { callcount = 0; }
 
 void rep_reset_send_bytecount(void) { bytecount = 0; }
-
-extern int gbl_decoupled_logputs;
 
 int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
                     const DB_LSN *lsnp, char *host, uint32_t flags,
