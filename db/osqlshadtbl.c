@@ -593,17 +593,16 @@ int osql_fetch_shadblobs_by_genid(BtCursor *pCur, int *blobnum,
 
     rc = bdb_temp_table_find_exact(tbl->env->bdb_env, tbl->blb_cur, key,
                                    sizeof(*key), bdberr);
-    if (rc == IX_EMPTY || rc == IX_NOTFND) {
+    if (rc != IX_FND)
         free(key);
+
+    if (rc == IX_EMPTY || rc == IX_NOTFND) {
         blobs->bloblens[0] = 0;
         blobs->bloboffs[0] = 0;
         blobs->blobptrs[0] = NULL;
         rc = 0;
     }
-    else if (rc) {
-        free(key);
-    } 
-    else {
+    else if (!rc) {
         blobs->bloblens[0] = bdb_temp_table_datasize(tbl->blb_cur);
         blobs->bloboffs[0] = 0;
         blobs->blobptrs[0] = bdb_temp_table_data(tbl->blb_cur);
@@ -756,14 +755,16 @@ static int save_dirty_keys(struct sqlclntstate *clnt, shad_tbl_t *tbl,
                            unsigned long long seq,
                            int ins /* 1 for add, 0 for del */)
 {
-    struct rec_dirty_keys rdk;
     struct rec_dirty_keys *prdk;
     hash_t *h;
-    rdk.seq = seq;
     h = ins ? tbl->addidx_hash : tbl->delidx_hash;
 
     assert(h);
+#ifndef NDEBUG
+    rdk.seq = seq;
+    struct rec_dirty_keys rdk;
     assert(hash_find(h, &rdk) == NULL);
+#endif
 
     prdk = calloc(1, sizeof(struct rec_dirty_keys));
     if (!prdk) {
@@ -826,14 +827,16 @@ static int save_rec_flags(struct sqlclntstate *clnt, shad_tbl_t *tbl,
                           int ins /* 1 for add, 0 for del */)
 {
     hash_t *h;
-    rec_flags_t tmp;
     rec_flags_t *rec_flags;
 
-    tmp.seq = seq;
     h = ins ? tbl->ins_rec_hash : tbl->upd_rec_hash;
 
     assert(h);
+#ifndef NDEBUG
+    rec_flags_t tmp;
+    tmp.seq = seq;
     assert(hash_find(h, &tmp) == NULL);
+#endif
 
     rec_flags = calloc(1, sizeof(rec_flags_t));
     if (!rec_flags) {
@@ -1291,10 +1294,12 @@ int osql_save_updcols(struct BtCursor *pCur, struct sql_thread *thd,
 
         if (rc == IX_FND) {
             int *oldUpdCols = (int *)bdb_temp_table_data(tbl->blb_cur);
-            int oldUpdCols_len = bdb_temp_table_datasize(tbl->blb_cur);
             int i;
 
+#ifndef NDEBUG
+            int oldUpdCols_len = bdb_temp_table_datasize(tbl->blb_cur);
             assert((oldUpdCols[0] + 1) * sizeof(int) == oldUpdCols_len);
+#endif
             assert(updCols[0] == oldUpdCols[0]);
 
             for (i = 0; i < updCols[0]; i++) {
@@ -1773,16 +1778,17 @@ static int process_local_shadtbl_qblob(struct sqlclntstate *clnt,
 
         rc = bdb_temp_table_find_exact(tbl->env->bdb_env, tbl->blb_cur, key,
                                        sizeof(*key), bdberr);
+        if (rc != IX_FND)
+            free(key);
+
         if (rc == IX_EMPTY || rc == IX_NOTFND) {
             /* null blob */
             data = NULL;
             ldata = -1;
-            free(key);
         } else if (rc == IX_FND) {
             data = bdb_temp_table_data(tbl->blb_cur);
             ldata = bdb_temp_table_datasize(tbl->blb_cur);
         } else {
-            free(key);
             return SQLITE_INTERNAL;
         }
 
@@ -1839,15 +1845,14 @@ static int process_local_shadtbl_index(struct sqlclntstate *clnt,
 
         rc = bdb_temp_table_find_exact(tbl->env->bdb_env, tmp_cur, key,
                                        sizeof(*key), bdberr);
-        if (rc == IX_FND) {
-            index = bdb_temp_table_data(tmp_cur);
-            lindex = bdb_temp_table_datasize(tmp_cur);
-        } else {
+        if (rc != IX_FND) {
             logmsg(LOGMSG_ERROR, "%s: error missing index record!\n", __func__);
             free(key);
             return SQLITE_INTERNAL;
         }
 
+        index = bdb_temp_table_data(tmp_cur);
+        lindex = bdb_temp_table_datasize(tmp_cur);
         rc = osql_send_index(osql->host, osql->rqid, osql->uuid, seq, is_delete,
                              i, index, lindex, osql_nettype, osql->logsb);
 
@@ -2860,7 +2865,6 @@ static int process_local_shadtbl_sc(struct sqlclntstate *clnt, int *bdberr)
     void *packed_sc_data = NULL;
     size_t packed_sc_data_len;
     int *packed_sc_key;
-    size_t packed_sc_key_len;
 
     if (!cur) {
         return 0;
@@ -2878,11 +2882,14 @@ static int process_local_shadtbl_sc(struct sqlclntstate *clnt, int *bdberr)
     while (rc == 0) {
         struct schema_change_type *sc = NULL;
         packed_sc_key = bdb_temp_table_key(cur);
-        packed_sc_key_len = bdb_temp_table_keysize(cur);
         packed_sc_data = bdb_temp_table_data(cur);
         packed_sc_data_len = bdb_temp_table_datasize(cur);
 
+#ifndef NDEBUG
+        size_t packed_sc_key_len;
+        packed_sc_key_len = bdb_temp_table_keysize(cur);
         assert(packed_sc_key_len == (sizeof(int) * 2));
+#endif
 
         sc = new_schemachange_type();
         if (!sc) {
