@@ -5235,13 +5235,8 @@ case OP_NewRowid: {           /* out2 */
       do{
         sqlite3_randomness(sizeof(v), &v);
         v &= (MAX_ROWID>>1); v++;  /* Ensure that v is greater than zero */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-      }while(  ((rc = sqlite3BtreeMovetoUnpacked(pC->uc.pCursor, 0, (u64)v,
-                                                 pOp->opcode, &res))==SQLITE_OK)
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       }while(  ((rc = sqlite3BtreeMovetoUnpacked(pC->uc.pCursor, 0, (u64)v,
                                                  0, &res))==SQLITE_OK)
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
             && (res==0)
             && (++cnt<100));
       if( rc ) goto abort_due_to_error;
