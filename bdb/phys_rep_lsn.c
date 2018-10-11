@@ -125,15 +125,18 @@ int find_log_timestamp(bdb_state_type *bdb_state, time_t time,
         return 1;
     }
 
+    bzero(&logrec, sizeof(DBT));
+    logrec.flags = DB_DBT_REALLOC;
+
     do {
         do {
-            bzero(&logrec, sizeof(DBT));
-            logrec.flags = DB_DBT_MALLOC;
             rc = logc->get(logc, &rec_lsn, &logrec, DB_PREV);
             if (rc) {
                 logmsg(LOGMSG_ERROR, "%s: can't get log record rc %d\n",
                        __func__, rc);
                 logc->close(logc, 0);
+                if (logrec.data)
+                    free(logrec.data);
                 return 1;
             }
 
@@ -147,9 +150,13 @@ int find_log_timestamp(bdb_state_type *bdb_state, time_t time,
                    my_time, rec_lsn.file, rec_lsn.offset);
         }
 
-        if (logrec.data)
-            free(logrec.data);
     } while (time < my_time);
+
+    if (logrec.data) {
+        free(logrec.data);
+        logrec.data = NULL;
+    }
+
 
     if (gbl_verbose_physrep) {
         logmsg(LOGMSG_USER, "%s ts is %lld, {%u:%u}\n", __func__, my_time,
@@ -162,9 +169,8 @@ int find_log_timestamp(bdb_state_type *bdb_state, time_t time,
     return 0;
 }
 
-static int get_next_matchable(DB_LOGC *logc, LOG_INFO *info)
+static int get_next_matchable(DB_LOGC *logc, LOG_INFO *info, int check_current)
 {
-    /* TODO: like get_last_lsn, but need to expose the data this time */
     int rc;
     u_int32_t rectype;
 
@@ -177,23 +183,41 @@ static int get_next_matchable(DB_LOGC *logc, LOG_INFO *info)
     match_lsn.file = info->file;
     match_lsn.offset = info->offset;
 
-    do {
-        bzero(&logrec, sizeof(DBT));
-        logrec.flags = DB_DBT_MALLOC;
-        rc = logc->get(logc, &match_lsn, &logrec, DB_PREV);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: can't get log record rc %d\n", __func__,
-                   rc);
+    bzero(&logrec, sizeof(DBT));
+    logrec.flags = DB_DBT_REALLOC;
+
+    if (check_current) {
+        if ((rc = logc->get(logc, &match_lsn, &logrec, DB_SET)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s: can't find log record {%d:%d}, rc %d\n",
+                    __func__, info->file, info->offset, rc);
             return 1;
         }
-
         LOGCOPY_32(&rectype, logrec.data);
-
-        if (logrec.data)
+        if (matchable_log_type(rectype)) {
             free(logrec.data);
+            if (gbl_verbose_physrep) {
+                logmsg(LOGMSG_USER, "%s: initial rec {%u:%u} is matchable\n",
+                        __func__, info->file, info->offset);
+            }
+            assert(info->file == match_lsn.file);
+            assert(info->offset == match_lsn.offset);
+            info->size = logrec.size;
+            return 0;
+        }
+    }
 
+    do {
+        rc = logc->get(logc, &match_lsn, &logrec, DB_PREV);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: can't get prev log record for {%d:%d} rc"
+                    "%d\n", __func__, match_lsn.file, match_lsn.offset, rc);
+            free(logrec.data);
+            return 1;
+        }
+        LOGCOPY_32(&rectype, logrec.data);
     } while (!matchable_log_type(rectype));
 
+    free(logrec.data);
     info->file = match_lsn.file;
     info->offset = match_lsn.offset;
     info->size = logrec.size;
@@ -255,6 +279,7 @@ LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db,
     void *blob;
     char *lsn;
     int blob_len;
+    int match_current = 1;
     unsigned int match_file, match_offset;
     LOG_INFO info = {0};
     DB_LOGC *logc;
@@ -266,7 +291,8 @@ LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db,
         return info;
     }
 
-    while (!(rc = get_next_matchable(logc, &start_info))) {
+    while (!(rc = get_next_matchable(logc, &start_info, match_current))) {
+        match_current = 0;
         snprintf(
             sql_cmd, sizeof(sql_cmd),
             "select * from comdb2_transaction_logs('{%d:%d}','{%d:%d}', 0)",
@@ -277,15 +303,15 @@ LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db,
             if ((rc = cdb2_next_record(repl_db)) == CDB2_OK) {
                 lsn = (char *)cdb2_column_value(repl_db, 0);
                 if (!lsn) {
-                    logmsg(LOGMSG_FATAL, "%s: null lsn for probe of {%d:%d}."
+                    logmsg(LOGMSG_ERROR, "%s: null lsn for probe of {%d:%d}."
                                          " going to next record\n",
                            __func__, start_info.file, start_info.offset);
-                    abort();
+                    continue;
                 }
 
                 if ((rc = char_to_lsn(lsn, &match_file, &match_offset)) != 0) {
-                    logmsg(LOGMSG_FATAL, "Could not parse lsn? %s\n", lsn);
-                    abort();
+                    logmsg(LOGMSG_ERROR, "Could not parse lsn? %s\n", lsn);
+                    continue;
                 }
 
                 /* check if lsns match, if not, then get next matchable */

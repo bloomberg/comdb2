@@ -153,8 +153,7 @@ static void *keep_in_sync(void *args)
         if (do_truncate) {
             prev_info = handle_truncation(repl_db, info);
             if (prev_info.file == 0) {
-                cdb2_close(repl_db);
-                repl_db_connected = 0;
+                close_repl_connection();
                 continue;
             }
 
@@ -223,7 +222,7 @@ static void *keep_in_sync(void *args)
         sleep(1);
     }
 
-    cdb2_close(repl_db);
+    close_repl_connection();
     repl_db_connected = 0;
 
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
@@ -333,6 +332,8 @@ static LOG_INFO handle_record(LOG_INFO prev_info)
     return next_info;
 }
 
+static int last_register;
+
 static int register_self()
 {
     int rc;
@@ -382,6 +383,7 @@ static int register_self()
                     insert_connect(hostname, dbname, tier);
                 }
                 cdb2_close(cluster);
+                last_register = time(NULL);
                 return 0;
             } else {
                 logmsg(LOGMSG_ERROR, "%s query statement returned %d\n",
@@ -629,6 +631,7 @@ static int insert_connect(char *hostname, char *dbname, size_t tier)
 static void delete_connect(DB_Connection *cnct)
 {
     free(cnct->hostname);
-    cnct->hostname = NULL;
+    free(cnct->dbname);
+    cnct->hostname = cnct->dbname = NULL;
     free(cnct);
 }

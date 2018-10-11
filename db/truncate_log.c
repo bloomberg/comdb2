@@ -19,12 +19,15 @@ LOG_INFO handle_truncation(cdb2_hndl_tp *repl_db, LOG_INFO latest_info)
     LOG_INFO match_lsn = find_match_lsn(thedb->bdb_env, repl_db, latest_info);
 
     if (match_lsn.file == 0) {
-        logmsg(LOGMSG_WARN, "File is 0, ignoring\n");
+        if (gbl_verbose_physrep)
+            logmsg(LOGMSG_USER, "%s: unable to find match-lsn", __func__);
         return match_lsn;
     }
 
-    logmsg(LOGMSG_WARN, "Rewind to lsn: {%u:%u}\n", match_lsn.file,
-           match_lsn.offset);
+    if (gbl_verbose_physrep) {
+        logmsg(LOGMSG_USER, "Rewind to lsn: {%u:%u}\n", match_lsn.file,
+                match_lsn.offset);
+    }
 
     truncate_log(match_lsn.file, match_lsn.offset, 1);
 
