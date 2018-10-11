@@ -9310,6 +9310,10 @@ int bdb_set_sc_start_lsn(tran_type *tran, const char *table, void *plsn,
         if (*bdberr == BDBERR_FETCH_DTA) {
             rc = bdb_lite_add(llmeta_bdb_state, tran, &tmplsn, sizeof(tmplsn),
                               key, bdberr);
+            if (rc || *bdberr) {
+                logmsg(LOGMSG_ERROR, "%s:%d failed with rc %d bdberr %d\n",
+                       __func__, __LINE__, rc, *bdberr);
+            }
         }
         goto done;
     }
@@ -9323,12 +9327,20 @@ int bdb_set_sc_start_lsn(tran_type *tran, const char *table, void *plsn,
 
     rc = bdb_lite_add(llmeta_bdb_state, tran, &tmplsn, sizeof(tmplsn), key,
                       bdberr);
+    if (rc || *bdberr) {
+        logmsg(LOGMSG_ERROR, "%s:%d failed with rc %d bdberr %d\n", __func__,
+               __LINE__, rc, *bdberr);
+    }
 
 done:
     if (started_our_own_transaction) {
-        if (rc == 0)
+        if (rc == 0) {
             rc = bdb_tran_commit(llmeta_bdb_state->parent, tran, bdberr);
-        else {
+            if (rc || *bdberr) {
+                logmsg(LOGMSG_ERROR, "%s:%d failed with rc %d bdberr %d\n",
+                       __func__, __LINE__, rc, *bdberr);
+            }
+        } else {
             int arc;
             arc = bdb_tran_abort(llmeta_bdb_state->parent, tran, bdberr);
             if (arc)
