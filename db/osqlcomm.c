@@ -3380,7 +3380,41 @@ int gbl_disable_cnonce_blkseq;
 int osql_comm_is_done(int type, char *rpl, int rpllen, int hasuuid,
                       struct errstat **xerr, struct ireq *iq)
 {
-    if(type == OSQL_XERR) {
+    int rc = 0;
+
+    switch (type) {
+    case OSQL_USEDB:
+    case OSQL_INSREC:
+    case OSQL_INSERT:
+    case OSQL_INSIDX:
+    case OSQL_DELIDX:
+    case OSQL_QBLOB:
+    case OSQL_STARTGEN:
+        break;
+    case OSQL_DONE_SNAP:
+        /* iq is passed in from bplog_saveop */
+        if(iq) {
+            const uint8_t *p_buf = (uint8_t *)rpl;
+            const uint8_t *p_buf_end = p_buf + rpllen;
+            osql_done_t dt = {0};
+            p_buf_end = p_buf + sizeof(osql_done_t);
+            if((p_buf = osqlcomm_done_type_get(&dt, p_buf, p_buf_end)) == NULL)
+                abort();
+
+            p_buf_end = (const uint8_t *)rpl + rpllen;
+
+            if ((p_buf = snap_uid_get(&iq->snap_info, p_buf, p_buf_end)) == NULL)
+                abort();
+
+            iq->have_snap_info = !(gbl_disable_cnonce_blkseq);
+        } /* fall through */
+    case OSQL_DONE:
+    case OSQL_DONE_STATS:
+        if (xerr)
+            *xerr = NULL;
+        rc = 1;
+        break;
+    case OSQL_XERR:
         /* keep this un-endianized.  the code will swap what it needs to */
         if (xerr) {
             if (hasuuid)
@@ -3388,47 +3422,14 @@ int osql_comm_is_done(int type, char *rpl, int rpllen, int hasuuid,
             else
                 *xerr = &((osql_done_xerr_t *)rpl)->dt;
         }
-        return 1;
-    }
-
-    if (type == OSQL_DONE || type == OSQL_DONE_STATS) {
-        if (xerr) 
-            *xerr = NULL;
-        return 1;
-    }
-
-    if (type != OSQL_DONE_SNAP) {
-        if (type != OSQL_USEDB && type != OSQL_INSREC && type != OSQL_INSERT && 
-            type != OSQL_INSIDX && type != OSQL_DELIDX && type != OSQL_QBLOB &&
-            type != OSQL_STARTGEN && iq) {
+        rc = 1;
+        break;
+    default:
+        if (iq)
             osql_set_delayed(iq);
-        }
-        return 0;
+        break;
     }
-
-    /* the rest is OSQL_DONE_SNAP */
-
-    /* The iq is passed in from bplog_saveop */
-    if(iq)
-    {
-        const uint8_t *p_buf = (uint8_t *)rpl;
-        const uint8_t *p_buf_end = p_buf + rpllen;
-        osql_done_t dt = {0};
-        p_buf_end = p_buf + sizeof(osql_done_t);
-        if((p_buf = osqlcomm_done_type_get(&dt, p_buf, p_buf_end)) == NULL)
-            abort();
-
-        p_buf_end = (const uint8_t *)rpl + rpllen;
-
-        if ((p_buf = snap_uid_get(&iq->snap_info, p_buf, p_buf_end)) == NULL)
-            abort();
-
-        iq->have_snap_info = !(gbl_disable_cnonce_blkseq);
-    }
-
-    if (xerr)
-        *xerr = NULL;
-    return 1;
+    return rc;
 }
 
 /**
