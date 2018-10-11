@@ -872,6 +872,14 @@ int sqlite3VdbeMemNumerify(Mem *pMem){
     assert( (pMem->flags & (MEM_Blob|MEM_Str))!=0 );
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     assert( pMem->db==0 || sqlite3_mutex_held(pMem->db->mutex) );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    /* e.g. string is NULL for cast(intervalds as string) */
+    if ( !pMem->z ){
+      pMem->u.r = sqlite3VdbeRealValue(pMem);
+      MemSetTypeFlag(pMem, MEM_Real);
+      sqlite3VdbeIntegerAffinity(pMem);
+    }else{
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     rc = sqlite3Atoi64(pMem->z, &pMem->u.i, pMem->n, pMem->enc);
     if( rc==0 ){
       MemSetTypeFlag(pMem, MEM_Int);
@@ -885,6 +893,9 @@ int sqlite3VdbeMemNumerify(Mem *pMem){
         MemSetTypeFlag(pMem, MEM_Real);
       }
     }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }
   assert( (pMem->flags & (MEM_Int|MEM_Real|MEM_Null))!=0 );
   pMem->flags &= ~(MEM_Str|MEM_Blob|MEM_Zero);
