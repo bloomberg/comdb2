@@ -1,0 +1,5 @@
+Test restart of socksql.
+
+When a replicant sends the osql stream to master and in the middle of sending 
+there is a failure, we restart from the beginning. This test makes sure that 
+the restart is successful.

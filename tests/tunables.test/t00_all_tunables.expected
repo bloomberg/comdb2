@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=883)
+(TUNABLES_COUNT=884)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -147,6 +147,7 @@
 (name='deadlock_youngest_ever', description='If AUTODEADLOCKDETECT is off, prefer youngest transaction as deadlock victim.', type='BOOLEAN', value='OFF', read_only='N')
 (name='deadlockdetectms', description='When automatic deadlock detection is disabled, run the deadlock detector this often.', type='INTEGER', value='100', read_only='N')
 (name='debug.autoanalyze', description='debug autoanalyze operations', type='BOOLEAN', value='OFF', read_only='N')
+(name='debug.osql_random_restart', description='randomly restart osql operations', type='BOOLEAN', value='OFF', read_only='N')
 (name='debug_addrem_dbregs', description='Generate debug records for addrems', type='BOOLEAN', value='OFF', read_only='N')
 (name='debug_bdb_lock_stack', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='debug_deadlock_replicant_percent', description='Percent of replicant events getting deadlocks', type='INTEGER', value='0', read_only='N')

@@ -133,7 +133,7 @@ static inline int osql_should_restart(struct sqlclntstate *clnt, int rc)
         return 1;
     }
 
-    if (gbl_osql_random_restart && (rand() % 100) == 0) {
+    if (gbl_osql_random_restart && (rand() % 10) == 0) {
         logmsg(LOGMSG_USER, "Forcing random-restart\n");
         return 1;
     }
