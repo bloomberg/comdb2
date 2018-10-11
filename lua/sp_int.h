@@ -30,7 +30,6 @@
 
 
 typedef struct stored_proc *SP;
-typedef struct dbthread_t dbthread_t;
 typedef struct dbstmt_t dbstmt_t;
 typedef struct tmptbl_info_t tmptbl_info_t;
 struct stored_proc {
@@ -60,7 +59,6 @@ struct stored_proc {
     LIST_HEAD(, dbstmt_t) dbstmts;
     LIST_HEAD(, tmptbl_info_t) tmptbls;
 
-    dbthread_t *db_thread;
     dbstmt_t *prev_dbstmt; // for db_bind -- deprecated
 
     unsigned initial           : 1;
