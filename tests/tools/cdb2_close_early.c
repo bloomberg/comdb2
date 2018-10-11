@@ -105,7 +105,7 @@ int main(int argc, char *argv[])
     if (ret == CDB2_OK) {
         do {
             if ((type = cdb2_column_type(sqlh, 0)) == CDB2_INTEGER) {
-                printf("integer: %lld\n", *((int64_t *)cdb2_column_value(sqlh, 0)));
+                printf("integer: %"PRId64"ld\n", *((int64_t *)cdb2_column_value(sqlh, 0)));
                 if (c->close)
                     goto done;
 
@@ -124,7 +124,7 @@ done:
     cdb2_close(sqlh);
     end = gettimeofday_ms();
     tot = end - start;
-    printf("cdb2_close took %d ms\n", tot);
+    printf("cdb2_close took %"PRId64" ms\n", tot);
     if (tot >= 4)
         exit(1);
     return 0;
