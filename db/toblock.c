@@ -2452,7 +2452,6 @@ int backout_schema_changes(struct ireq *iq, tran_type *tran);
 static void backout_and_abort_tranddl(struct ireq *iq, tran_type *parent)
 {
     int rc = 0;
-    assert(iq->tranddl && iq->sc_logical_tran);
     if (iq->sc_tran) {
         assert(parent);
         rc = trans_abort(iq, iq->sc_tran);
