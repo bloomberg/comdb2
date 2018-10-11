@@ -1021,6 +1021,8 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
                 }
             }
 
+            dontsend = 0;
+
             if (dontsend && (flags & DB_REP_TRACE)) {
                 logmsg(LOGMSG_USER, "%s line %d logput to %s throttled\n",
                        __func__, __LINE__, hostlist[i]);
