@@ -483,7 +483,7 @@ int sqlite3Init(sqlite3 *db, char **pzErrMsg){
     */
     if( dbname[0] && (sqlite3FindTableCheckOnly(db, db->init.zTblName, db->aDb[i].zDbSName)!=0) ) continue;
     {
-#else
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( !DbHasProperty(db, i, DB_SchemaLoaded) ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       rc = sqlite3InitOne(db, i, pzErrMsg, 0);
