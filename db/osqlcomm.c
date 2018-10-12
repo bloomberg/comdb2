@@ -3393,12 +3393,11 @@ int osql_comm_is_done(int type, char *rpl, int rpllen, int hasuuid,
     case OSQL_DONE_SNAP:
         /* iq is passed in from bplog_saveop */
         if(iq) {
-            osql_done_t dt = {0};
-            const uint8_t *p_buf = (uint8_t *)rpl + (hasuuid ? sizeof(osql_uuid_rpl_t) : sizeof(osql_rpl_t));
-            const uint8_t *p_buf_end = (const uint8_t *)rpl + rpllen;
-            if((p_buf = osqlcomm_done_type_get(&dt, p_buf, p_buf_end)) == NULL)
-                abort();
+            const uint8_t *p_buf = 
+                (uint8_t *)rpl + sizeof(osql_done_t) +
+                (hasuuid ? sizeof(osql_uuid_rpl_t) : sizeof(osql_rpl_t));
 
+            const uint8_t *p_buf_end = (const uint8_t *)rpl + rpllen;
             if ((p_buf = snap_uid_get(&iq->snap_info, p_buf, p_buf_end)) == NULL)
                 abort();
 
