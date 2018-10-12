@@ -946,41 +946,40 @@ static int idxCreateFromCons(
       if( zName==0 ){ 
         rc = SQLITE_NOMEM;
       }else{
-        if( idxIdentifierRequiresQuotes(zTable) ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+        if( idxIdentifierRequiresQuotes(zTable) ){
           zFmt = "CREATE TEMP INDEX '%q' ON %Q(%s)";
           zFmt_p = "CREATE INDEX '%q' ON %Q(%s)";
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-          zFmt = "CREATE INDEX '%q' ON %Q(%s)";
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         }else{
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
           zFmt = "CREATE TEMP INDEX %s ON %s(%s)";
           zFmt_p = "CREATE INDEX %s ON %s(%s)";
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-          zFmt = "CREATE INDEX %s ON %s(%s)";
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         }
         zIdx = sqlite3_mprintf(zFmt, zName, zTable, zCols);
         if( !zIdx ){
           rc = SQLITE_NOMEM;
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
           goto error_out;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-        }else{
-          rc = sqlite3_exec(dbm, zIdx, 0, 0, p->pzErrmsg);
-          idxHashAdd(&rc, &p->hIdx, zName, zIdx);
         }
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
         zIdx_p = sqlite3_mprintf(zFmt_p, zName, zTable, zCols);
         if( !zIdx_p ){
           rc = SQLITE_NOMEM;
           goto error_out;
+        }
+        rc = sqlite3_exec(dbm, zIdx, 0, 0, p->pzErrmsg);
+        idxHashAdd(&rc, &p->hIdx, zName, zIdx_p);
+error_out:
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+        if( idxIdentifierRequiresQuotes(zTable) ){
+          zFmt = "CREATE INDEX '%q' ON %Q(%s)";
+        }else{
+          zFmt = "CREATE INDEX %s ON %s(%s)";
+        }
+        zIdx = sqlite3_mprintf(zFmt, zName, zTable, zCols);
+        if( !zIdx ){
+          rc = SQLITE_NOMEM;
         }else{
           rc = sqlite3_exec(dbm, zIdx, 0, 0, p->pzErrmsg);
-          idxHashAdd(&rc, &p->hIdx, zName, zIdx_p);
+          idxHashAdd(&rc, &p->hIdx, zName, zIdx);
         }
-error_out:
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         sqlite3_free(zName);
         sqlite3_free(zIdx);
