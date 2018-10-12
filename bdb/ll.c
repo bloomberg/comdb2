@@ -325,13 +325,14 @@ int ll_dta_del(bdb_state_type *bdb_state, tran_type *tran, int rrn,
             dbt_key.size = sizeof(search_genid);
 
             /* Tell Berkley to allocate memory if we need it.  */
-            if (dta_out) {
+            if (dta_out || add_snapisol_logging(bdb_state)) {
                 dta_out_si.flags = DB_DBT_MALLOC;
             }
 
             /* Logical logging only needs the record size. */
             else {
                 dta_out_si.ulen = 0;
+                dta_out_si.flags = DB_DBT_PARTIAL | DB_DBT_USERMEM;
             }
             /*
              * Use a real cursor so we pick up the ondisk headers.  The
@@ -350,6 +351,10 @@ int ll_dta_del(bdb_state_type *bdb_state, tran_type *tran, int rrn,
             if (dta_out) {
                 dta_out->data = dta_out_si.data;
                 dta_out->size = dta_out_si.size;
+            } else if (dta_out_si.data) {
+                /* Logical logging only needs the record size. */
+                free(dta_out_si.data);
+                dta_out_si.data = NULL;
             }
 
             /* Verify updateid */
@@ -1042,12 +1047,14 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
         bzero(&old_dta_out_lcl, sizeof(old_dta_out_lcl));
 
         /* Ask Berkeley to allocate memory if we need it.  */
-        if (!dta || verify_dta || old_dta_out) {
+        if (!dta || verify_dta || old_dta_out || is_rowlocks ||
+            add_snapisol_logging(bdb_state)) {
             old_dta_out_lcl.flags = DB_DBT_MALLOC;
         }
         /* Set ulen to 0 to retrieve only the size. */
         else {
             old_dta_out_lcl.ulen = 0;
+            old_dta_out_lcl.flags = DB_DBT_PARTIAL | DB_DBT_USERMEM;
         }
 
         /* Retrieve using a Berkeley cursor. */
@@ -1091,6 +1098,10 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
                     get_updateid_from_genid(bdb_state, oldgenid))
                     rc = (0 == rc ? DB_NOTFOUND : rc);
             }
+        } else if (rc == 0 && add_snapisol_logging(bdb_state)) {
+            /* logical logs only need the size -- make sure we free
+             * malloceddta later */
+            malloceddta = old_dta_out_lcl.data;
         }
 
         /* A blob with this genid may or may not be there. */
