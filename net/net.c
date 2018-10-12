@@ -101,6 +101,7 @@
 #include <bdb_net.h>
 
 #include "debug_switches.h"
+#include "perf.h"
 
 #include <crc32c.h>
 
@@ -596,6 +597,7 @@ static int write_list(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr,
 
     Pthread_mutex_lock(&(host_node_ptr->enquelk));
 
+
     /* let 1 message always slip in */
     if (host_node_ptr->enque_count) {
         if ((flags & WRITE_MSG_NOLIMIT) == 0 &&
@@ -632,6 +634,8 @@ static int write_list(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr,
         datasz += netinfo_ptr->myhostname_len;
     if (host_node_ptr->hostname_len > HOSTNAME_LEN)
         datasz += host_node_ptr->hostname_len;
+
+    time_metric_add(host_node_ptr->metric_queue_size, datasz);
 
     /* Malloc space for the list item struct (which includes the net message
      * header) and all the data in our iovec. */
@@ -2769,6 +2773,11 @@ static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
     ptr->stats.bytes_written = ptr->stats.bytes_read = 0;
     ptr->stats.throttle_waits = ptr->stats.reorders = 0;
 
+    char *metric_name;
+    metric_name = comdb2_asprintf("queue_size_%s", hostname);
+    ptr->metric_queue_size = time_metric_new(metric_name);
+    free(metric_name);
+
     return ptr;
 
 err:
@@ -4092,14 +4101,15 @@ int net_is_connected(netinfo_type *netinfo_ptr, const char *host)
 int net_send_hello(netinfo_type *netinfo_ptr, const char *tohost)
 {
     host_node_type *host_node_ptr;
+    int rc = -1;
 
     Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
     host_node_ptr = netinfo_ptr->head;
     while (host_node_ptr != NULL && host_node_ptr->host != tohost)
         host_node_ptr = host_node_ptr->next;
+    if (host_node_ptr)
+        rc = write_hello(netinfo_ptr, host_node_ptr);
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-
-    int rc = write_hello(netinfo_ptr, host_node_ptr);
 
     return rc;
 }
@@ -5183,6 +5193,11 @@ check:  Pthread_mutex_lock(&(host_node_ptr->lock));
         host_node_ptr->fd = fd;
         host_node_ptr->really_closed = 0;
         host_node_ptr->closed = 0;
+
+        /* Also call the new node routine here - it shouldn't matter which
+         * node initiated the connection. */
+        if (netinfo_ptr->new_node_rtn)
+            netinfo_ptr->new_node_rtn(netinfo_ptr, host_node_ptr->host, host_node_ptr->port);
 
         /* wake writer, if exists */
         pthread_cond_signal(&(host_node_ptr->write_wakeup));
@@ -6971,4 +6986,34 @@ void net_set_conntime_dump_period(netinfo_type *netinfo_ptr, int value)  {
 
 int net_get_conntime_dump_period(netinfo_type *netinfo_ptr) {
     return netinfo_ptr->conntime_dump_period;
+}
+
+int net_get_stats(netinfo_type *netinfo_ptr, struct net_stats *stat) {
+    struct host_node_tag *ptr;
+
+    stat->num_drops = 0;
+
+    Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
+    for (ptr = netinfo_ptr->head; ptr != NULL; ptr = ptr->next)
+        stat->num_drops = ptr->num_queue_full;
+
+    Pthread_rwlock_unlock(&(netinfo_ptr->lock));
+
+    return 0;
+}
+
+int net_get_host_stats(netinfo_type *netinfo_ptr, const char *host, struct net_host_stats *stat) {
+    struct host_node_tag *ptr;
+    stat->queue_size = 0;
+
+    Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
+    for (ptr = netinfo_ptr->head; ptr != NULL; ptr = ptr->next) {
+        if (strcmp(host, ptr->host) == 0) {
+            stat->queue_size = time_metric_max(ptr->metric_queue_size);
+            break;
+        }
+    }
+    Pthread_rwlock_unlock(&(netinfo_ptr->lock));
+
+    return 0;
 }

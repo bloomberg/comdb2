@@ -4089,7 +4089,7 @@ void cleanup_clnt(struct sqlclntstate *clnt)
 
 void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
 {
-    int wrtimeoutsec = 0;
+    int wrtimeoutsec, notimeout = disable_server_sql_timeouts();
     if (initial) {
         bzero(clnt, sizeof(*clnt));
     }
@@ -4177,7 +4177,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
 
     bzero(clnt->dirty, sizeof(clnt->dirty));
 
-    if (gbl_sqlwrtimeoutms == 0)
+    if (gbl_sqlwrtimeoutms == 0 || notimeout)
         wrtimeoutsec = 0;
     else
         wrtimeoutsec = gbl_sqlwrtimeoutms / 1000;

@@ -2452,7 +2452,6 @@ int backout_schema_changes(struct ireq *iq, tran_type *tran);
 static void backout_and_abort_tranddl(struct ireq *iq, tran_type *parent)
 {
     int rc = 0;
-    assert(iq->tranddl && iq->sc_logical_tran);
     if (iq->sc_tran) {
         assert(parent);
         rc = trans_abort(iq, iq->sc_tran);
@@ -4131,7 +4130,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             } else {
                 blob_buffer_t *blob = &blobs[qblob.blobno];
                 if (!blob->exists) {
-                    if (qblob.length >= MAXBLOBLENGTH) {
+                    if (qblob.length > MAXBLOBLENGTH) {
                         reqerrstr(iq, COMDB2_BLOB_RC_RCV_TOO_LARGE,
                                   "blob %d too large (%u > max size %u)",
                                   qblob.blobno, qblob.length, MAXBLOBLENGTH);

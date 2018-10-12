@@ -67,9 +67,6 @@ extern int __txn_getpriority(DB_TXN *txnp, int *priority);
 int __lock_dump_region_lockerid __P((DB_ENV *, const char *, FILE *, u_int32_t lockerid));
 #endif
 
-/* Count these */
-static int outoforderlwm = 0;
-
 int bdb_tran_clear_request_ack(tran_type *tran)
 {
     tran->request_ack = 0;
@@ -1103,7 +1100,6 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
     tran_type *tran;
     int rc;
     DB_TXN *parent_tid;
-    bdb_state_type *child;
     int i;
     unsigned int flags;
 
@@ -1465,10 +1461,7 @@ static int bdb_tran_commit_with_seqnum_int_int(
     void *blkkey, int blkkeylen)
 {
     int rc = 0, outrc = 0;
-    DB_LSN *lsnptr;
     unsigned int flags;
-    int failed_to_log=0;
-    int logical_commit_retries = 0;
     int needed_to_abort = 0;
     int set_seqnum = 0;
     uint32_t generation = 0;
@@ -1569,7 +1562,6 @@ static int bdb_tran_commit_with_seqnum_int_int(
                 *bdberr = BDBERR_MISC;
                 outrc = -1;
                 atexit(abort_at_exit);
-                failed_to_log = 1;
                 bdb_osql_trn_repo_unlock();
                 goto cleanup;
             }
@@ -1677,8 +1669,6 @@ static int bdb_tran_commit_with_seqnum_int_int(
         }
 
         if (blkseq) {
-            int blkseq_rc;
-
             *bdberr = 0;
             rc = bdb_blkseq_insert(bdb_state, physical_tran, blkkey, blkkeylen,
                                    blkseq, blklen, NULL, NULL);
@@ -2235,7 +2225,6 @@ int bdb_tran_abort_int_int(bdb_state_type *bdb_state, tran_type *tran,
 {
     int rc = 0;
     int outrc = 0;
-    DB_LSN *lsnptr;
 
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
@@ -2371,7 +2360,7 @@ int bdb_tran_abort_int(bdb_state_type *bdb_state, tran_type *tran, int *bdberr,
 int bdb_tran_abort_wrap(bdb_state_type *bdb_state, tran_type *tran, int *bdberr,
                         int *priority)
 {
-    int rc, dead;
+    int rc;
     int has_bdblock;
 
     /* if we were passed a child, find his parent */
@@ -2392,7 +2381,6 @@ int bdb_tran_abort_wrap(bdb_state_type *bdb_state, tran_type *tran, int *bdberr,
     else
         has_bdblock = 1;
 
-    dead = tran->rep_handle_dead;
     rc =
         bdb_tran_abort_int(bdb_state, tran, bdberr, NULL, 0, NULL, 0, priority);
 
@@ -2483,8 +2471,6 @@ cursor_tran_t *bdb_get_cursortran(bdb_state_type *bdb_state, int lowpri,
 
 int bdb_curtran_has_waiters(bdb_state_type *bdb_state, cursor_tran_t *curtran)
 {
-    int rc;
-
     if (!curtran || curtran->lockerid == 0)
         return 0;
 

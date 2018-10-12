@@ -455,12 +455,6 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
                    __func__, rc, bdberr);
             goto done;
         }
-
-        /* ugh. */
-        /* TODO: thread_start_lock in consumer so we don't race with
-         * purge_old_blkseq_thread and
-         * launch 2 threads per consumer... */
-        dbqueuedb_admin(thedb);
     } else if (sc->alteronly) {
         rc = bdb_llmeta_alter_queue(thedb->bdb_env, tran, sc->tablename, config,
                                     sc->dests.count, dests, &bdberr);
@@ -492,7 +486,6 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
 
         /* start - see the ugh above. */
         dbqueuedb_restart_consumers(db);
-        dbqueuedb_admin(thedb);
     } else if (sc->drop_table) {
         scdone_type = llmeta_queue_drop;
         /* stop */
@@ -526,6 +519,10 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         goto done;
     }
     tran = NULL;
+
+    if (sc->addonly || sc->alteronly) {
+        dbqueuedb_admin(thedb);
+    }
 
     /* log for replicants to do the same */
     rc = bdb_llog_scdone(db->handle, scdone_type, 1, &bdberr);

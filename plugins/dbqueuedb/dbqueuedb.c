@@ -114,6 +114,17 @@ struct consumer
 
     int please_stop;
     int stopped;
+
+    /* The following data is used to report about the inactivity in the
+     * consumption of events from the queue.
+     */
+    time_t inactive_since; /* timestamp since when events were not consumed
+                              from the queue. */
+    time_t last_checked;   /* timestamp when activity on the event queue was
+                              last checked (done every sec). */
+    unsigned long long event_genid; /* genid of the event in the front of the
+                                       queue waiting to be consumed when last
+                                       checked. */
 };
 
 
@@ -366,6 +377,90 @@ int set_consumer_options(struct consumer *consumer, const char *opts)
     return nerrors;
 }
 
+/* Returns the genid of the event in the front of the queue. */
+static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
+                                                  int consumer)
+{
+    unsigned long long genid;
+    int rc;
+    struct ireq iq;
+    void *fnddta;
+    size_t fnddtalen;
+    size_t fnddtaoff;
+    uint8_t *open;
+    pthread_mutex_t *mu;
+    pthread_cond_t *cond;
+
+    init_fake_ireq(table->dbenv, &iq);
+    iq.usedb = table;
+    genid = 0;
+
+    rc = bdb_trigger_subscribe(table->handle, &cond, &mu, &open);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR,
+               "dbq_get_front_genid: bdb_trigger_subscribe "
+               "failed (rc: %d)\n",
+               rc);
+        return 0;
+    }
+    pthread_mutex_lock(mu);
+
+    if (*open != 1) {
+        goto skip;
+    }
+
+    rc = dbq_get(&iq, consumer, NULL, (void **)&fnddta, &fnddtalen, &fnddtaoff,
+                 NULL, NULL);
+    if (rc == 0) {
+        genid = dbq_item_genid(fnddta);
+    } else if (rc != IX_NOTFND) {
+        logmsg(LOGMSG_ERROR,
+               "dbq_get_front_genid: dbq_item_genid failed "
+               "(rc: %d)\n",
+               rc);
+    }
+
+skip:
+    rc = bdb_trigger_unsubscribe(table->handle);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR,
+               "dbq_get_front_genid: bdb_trigger_unsubscribe "
+               "failed (rc: %d)\n",
+               rc);
+    }
+    pthread_mutex_unlock(mu);
+
+    return genid;
+}
+
+static void dbqueue_check_inactivity(struct consumer *consumer)
+{
+    time_t current_time = time(NULL);
+    time_t diff = current_time - consumer->last_checked;
+    time_t intervals = 60; /* in seconds */
+
+    if (diff && diff >= intervals) {
+        unsigned long long genid;
+
+        genid = dbqueue_get_front_genid(consumer->db, consumer->consumern);
+
+        if (!genid)
+            return;
+
+        if (genid == consumer->event_genid) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: event(s) has not been consumed for last "
+                   "%ld secs.\n",
+                   consumer->procedure_name,
+                   current_time - consumer->inactive_since);
+        } else {
+            consumer->event_genid = genid;
+            consumer->inactive_since = current_time;
+        }
+        consumer->last_checked = current_time;
+    }
+}
+
 static pthread_mutex_t dbqueuedb_admin_lk = PTHREAD_MUTEX_INITIALIZER;
 static int dbqueuedb_admin_running = 0;
 
@@ -384,7 +479,7 @@ static void admin(struct dbenv *dbenv, int type)
     dbqueuedb_admin_running = 1;
     pthread_mutex_unlock(&dbqueuedb_admin_lk);
 
-    /* if we are master then make sure all the queues are running */
+    /* If we are master then make sure all the queues are running */
     if (iammaster && !dbenv->stopped && !dbenv->exiting) {
         for (int ii = 0; ii < dbenv->num_qdbs; ii++) {
             if (dbenv->qdbs[ii] == NULL)
@@ -400,10 +495,12 @@ static void admin(struct dbenv *dbenv, int type)
                         continue;
                     switch (consumer->base.type) {
                     case CONSUMER_TYPE_LUA:
+                        dbqueue_check_inactivity(consumer);
+
                         if (!trigger_registered(consumer->procedure_name)) {
                             char *name = consumer->procedure_name;
-                            char *host;
-                            host = net_get_osql_node(thedb->handle_sibling);
+                            char *host =
+                                net_get_osql_node(thedb->handle_sibling);
                             if (host == NULL && thedb->nsiblings == 1) {
                                 trigger_start(name); // standalone
                             } else {
@@ -412,6 +509,9 @@ static void admin(struct dbenv *dbenv, int type)
                                                  name, strlen(name) + 1, 0, 0);
                             }
                         }
+                        break;
+                    case CONSUMER_TYPE_DYNLUA:
+                        dbqueue_check_inactivity(consumer);
                         break;
                     }
                 }

@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2018, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -173,7 +173,6 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                int rec_flags)
 {
     char tag[MAXTAGLEN + 1];
-    int is_od_tag;
     int rc = 0;
     int retrc = 0;
     int expected_dat_len;
@@ -262,16 +261,24 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         }
     }
 
+    if (!(flags & RECFLAGS_NEW_SCHEMA)) { // dont sleep if adding from SC
 
-    if (!(flags & RECFLAGS_NEW_SCHEMA)) { // dont lock if adding from SC
-
-        int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_LOCK_TABLE_RECORD_C);
+        int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_WRITES_IN_RECORD_C);
         if (d_ms) {
             if (iq->debug)
-                reqprintf(iq, "Sleeping for %d ms", d_ms);
-            usleep(1000 * d_ms);
+                reqprintf(iq, "Sleeping for DELAY_WRITES_IN_RECORD_C (%dms)",
+                          d_ms);
+            int lrc = usleep(1000 * d_ms);
+            if (lrc)
+                reqprintf(iq, "usleep error rc %d errno %d\n", rc, errno);
         }
+    }
 
+    if (!(flags & RECFLAGS_NEW_SCHEMA) && !(flags & RECFLAGS_DONT_LOCK_TBL)) {
+        // dont lock table if adding from SC or if RECFLAGS_DONT_LOCK_TBL
+        assert(!iq->is_sorese); // sorese codepaths will have locked it already
+
+        reqprintf(iq, "Calling bdb_lock_table_read()");
         rc = bdb_lock_table_read(iq->usedb->handle, trans);
         if (rc == BDBERR_DEADLOCK) {
             if (iq->debug)
@@ -381,15 +388,12 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         /* we have the ondisk data already, no conversion needed */
         od_dta = record;
         od_len = reclen;
-        is_od_tag = 1;
-
         ondisktagsc = dbname_schema;
     } else {
         int od_len_int;
         struct convert_failure reason;
 
         /* we need to convert the record to ondisk format */
-        is_od_tag = 0;
         od_len_int = getdatsize(iq->usedb);
         if (od_len_int <= 0) {
             if (iq->debug)
@@ -575,14 +579,19 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
 
     /*
      * Form and add all the keys.
-     * If there are constraints, do the add to indices defered.
+     * If there are constraints, do the add to indices deferred.
+     *
+     * For records from INSERT ... ON CONFLICT DO NOTHING, we need
+     * to update the indices inplace to avoid inserting duplicate
+     * data. The keys, however, are also added to the deferred
+     * temporary table to enable cascading updates, if needed.
      */
     if (!(flags & RECFLAGS_NO_CONSTRAINTS)) /* if NOT no constraints */
     {
         if (!(flags & RECFLAGS_NEW_SCHEMA)) {
             /* enqueue the add of the key for constaint checking purposes */
             rc = insert_add_op(iq, iq->blkstate, iq->usedb, NULL, NULL, opcode,
-                               *rrn, -1, *genid, ins_keys, blkpos);
+                               *rrn, -1, *genid, ins_keys, blkpos, rec_flags);
             if (rc != 0) {
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO PUSH KEYOP");
@@ -595,7 +604,10 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
              * handle idx in live_sc_*
              */
         }
-    } else {
+    }
+
+    if ((flags & RECFLAGS_NO_CONSTRAINTS) /* if NOT no constraints */ ||
+        ((rec_flags & OSQL_IGNORE_FAILURE) != 0)) {
         int ixnum;
         od_dta_tail = NULL;
         if (iq->osql_step_ix)
@@ -794,7 +806,7 @@ static int add_key(struct ireq *iq, void *trans, int ixnum,
         const uint8_t *p_buf_req_end = NULL;
         rc = insert_add_op(iq, iq->blkstate, iq->usedb, p_buf_req_start,
                            p_buf_req_end, opcode, rrn, ixnum, genid, ins_keys,
-                           blkpos);
+                           blkpos, 0);
         if (iq->debug)
             reqprintf(iq, "insert_add_op IX %d RRN %d RC %d", ixnum, rrn, rc);
         if (rc != 0) {
@@ -894,7 +906,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     void *old_dta = NULL;
     char tag[MAXTAGLEN + 1];
     int fndlen;
-    int blobno, num_cblobs;
+    int blobno;
     int ixnum;
     char lclprimkey[MAXKEYLEN];
     unsigned char lclnulls[64];
@@ -965,25 +977,30 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         prefixes++;
     }
 
-    int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_LOCK_TABLE_RECORD_C);
+    int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_WRITES_IN_RECORD_C);
     if (d_ms) {
         if (iq->debug)
             reqprintf(iq, "Sleeping for %d ms", d_ms);
         usleep(1000 * d_ms);
     }
 
-    rc = bdb_lock_table_read(iq->usedb->handle, trans);
-    if (rc == BDBERR_DEADLOCK) {
-        if (iq->debug)
-            reqprintf(iq, "LOCK TABLE READ DEADLOCK");
-        retrc = RC_INTERNAL_RETRY;
-        goto err;
-    } else if (rc) {
-        if (iq->debug)
-            reqprintf(iq, "LOCK TABLE READ ERROR: %d", rc);
-        *opfailcode = OP_FAILED_INTERNAL;
-        retrc = ERR_INTERNAL;
-        goto err;
+    if (!(flags & RECFLAGS_DONT_LOCK_TBL)) {
+        assert(!iq->is_sorese); // sorese codepaths will have locked it already
+
+        reqprintf(iq, "Calling bdb_lock_table_read()");
+        rc = bdb_lock_table_read(iq->usedb->handle, trans);
+        if (rc == BDBERR_DEADLOCK) {
+            if (iq->debug)
+                reqprintf(iq, "LOCK TABLE READ DEADLOCK");
+            retrc = RC_INTERNAL_RETRY;
+            goto err;
+        } else if (rc) {
+            if (iq->debug)
+                reqprintf(iq, "LOCK TABLE READ ERROR: %d", rc);
+            *opfailcode = OP_FAILED_INTERNAL;
+            retrc = ERR_INTERNAL;
+            goto err;
+        }
     }
 
     rc = resolve_tag_name(iq, tagdescr, taglen, &dynschema, tag, sizeof(tag));
@@ -1955,25 +1972,30 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     if (iq->osql_step_ix)
         gbl_osqlpf_step[*(iq->osql_step_ix)].step += 1;
 
-    int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_LOCK_TABLE_RECORD_C);
+    int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_WRITES_IN_RECORD_C);
     if (d_ms) {
         if (iq->debug)
             reqprintf(iq, "Sleeping for %d ms", d_ms);
         usleep(1000 * d_ms);
     }
 
-    rc = bdb_lock_table_read(iq->usedb->handle, trans);
-    if (rc == BDBERR_DEADLOCK) {
-        if (iq->debug)
-            reqprintf(iq, "LOCK TABLE READ DEADLOCK");
-        retrc = RC_INTERNAL_RETRY;
-        goto err;
-    } else if (rc) {
-        if (iq->debug)
-            reqprintf(iq, "LOCK TABLE READ ERROR: %d", rc);
-        *opfailcode = OP_FAILED_INTERNAL;
-        retrc = ERR_INTERNAL;
-        goto err;
+    if (!(flags & RECFLAGS_DONT_LOCK_TBL)) {
+        assert(!iq->is_sorese); // sorese codepaths will have locked it already
+
+        reqprintf(iq, "Calling bdb_lock_table_read()");
+        rc = bdb_lock_table_read(iq->usedb->handle, trans);
+        if (rc == BDBERR_DEADLOCK) {
+            if (iq->debug)
+                reqprintf(iq, "LOCK TABLE READ DEADLOCK");
+            retrc = RC_INTERNAL_RETRY;
+            goto err;
+        } else if (rc) {
+            if (iq->debug)
+                reqprintf(iq, "LOCK TABLE READ ERROR: %d", rc);
+            *opfailcode = OP_FAILED_INTERNAL;
+            retrc = ERR_INTERNAL;
+            goto err;
+        }
     }
 
     if (primkey) {
@@ -2228,7 +2250,6 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
                                int nd_len, unsigned long long ins_keys,
                                int use_new_tag, blob_buffer_t *blobs)
 {
-    int prefixes = 0;
     int rc = 0;
 #ifdef DEBUG
     fprintf(stderr, "upd_new_record_add2indices: genid %llx\n", newgenid);
@@ -2618,9 +2639,6 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
     for (ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
         char keytag[MAXTAGLEN];
         char key[MAXKEYLEN];
-        char mangled_key[MAXKEYLEN];
-        char *od_dta_tail = NULL;
-        int od_tail_len = 0;
 
         if (gbl_use_plan && iq->usedb->plan &&
             iq->usedb->plan->ix_plan[ixnum] != -1)
@@ -2844,7 +2862,6 @@ int del_new_record(struct ireq *iq, void *trans, unsigned long long genid,
     for (ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
         char keytag[MAXTAGLEN];
         char key[MAXKEYLEN];
-        char mangled_key[MAXKEYLEN];
 
         if (gbl_use_plan && iq->usedb->plan &&
             iq->usedb->plan->ix_plan[ixnum] != -1)
@@ -3236,7 +3253,6 @@ int updbykey_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     if (strcmp(tag, ondisktag) == 0) {
         /* XXX support this? */
     } else {
-        int od_len_int;
         struct convert_failure reason;
         char keytag[MAXTAGLEN];
 

@@ -134,11 +134,11 @@ fi
 
 echo "logmsg level debug" >> ${LRL}
 
-if [[ -f ${TESTSROOTDIR}/${TESTCASE}.test/lrl ]]; then
-    cat ${TESTSROOTDIR}/${TESTCASE}.test/lrl >> ${LRL}
+if [[ -f lrl ]]; then
+    cat lrl >> ${LRL}
 fi
-if [[ -f "${TESTSROOTDIR}/${TESTCASE}.test/lrl.options" ]]; then
-    cat ${TESTSROOTDIR}/${TESTCASE}.test/lrl.options >> ${LRL}
+if [[ -f lrl.options ]]; then
+    cat lrl.options >> ${LRL}
 fi
 
 cat >> ${LRL} <<EOPTIONS

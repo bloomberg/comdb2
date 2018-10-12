@@ -6708,9 +6708,9 @@ static int bdb_btree_merge(bdb_cursor_impl_t *cur, int stripe_rl, int page_rl,
     int rc = -1;
     int fidlen = (DB_FILE_ID_LEN * 2) + 1;
     char _fileid[DB_FILE_ID_LEN] = {0};
-    char hex_fid[(DB_FILE_ID_LEN * 2) + 1];
+    char hex_fid[(DB_FILE_ID_LEN * 2) + 1] = "(none)\0";
 
-    if (cur->trak) {
+    if (cur->trak && cur->rl) {
         int bdberr = 0;
         cur->rl->fileid(cur->rl, _fileid, &bdberr);
         hex_fid[fidlen - 1] = '\0';

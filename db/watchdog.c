@@ -151,9 +151,9 @@ static void *watchdog_thread(void *arg)
     int coherent = 0;
 
     int counter = 0;
-    char lastlsn[63] = "", curlsn[64];
+    char curlsn[64];
     uint64_t lastlsnbytes = 0, curlsnbytes;
-    char master_lastlsn[63] = "", master_curlsn[64];
+    char master_curlsn[64];
     uint64_t master_lastlsnbytes = 0, master_curlsnbytes;
     int sockpool_timeout;
 
@@ -310,10 +310,8 @@ static void *watchdog_thread(void *arg)
 
             /* test netinfo lock */
             {
-                int count;
                 const char *hostlist[REPMAX];
-                count = net_get_all_nodes_connected(thedb->handle_sibling,
-                                                    hostlist);
+                net_get_all_nodes_connected(thedb->handle_sibling, hostlist);
             }
 
             /* See if we can grab the berkeley log region lock.  If we block on
@@ -382,8 +380,6 @@ void comdb2_die(int aborat)
 {
     pid_t pid;
     char pstack_cmd[128];
-    int rc;
-    pthread_t tid;
 
     /* we have 60 seconds to "print useful stuff" */
     alarm(60);
@@ -401,7 +397,7 @@ void comdb2_die(int aborat)
         sizeof(pstack_cmd)) {
         logmsg(LOGMSG_WARN, "pstack cmd too long for buffer\n");
     } else {
-        int dum = system(pstack_cmd);
+        system(pstack_cmd);
     }
 
     if (aborat)

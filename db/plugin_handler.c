@@ -49,9 +49,7 @@ static comdb2_queue_consumer_t *queue_consumer_handlers[CONSUMER_TYPE_LAST];
 
 static int install_plugin_int(comdb2_plugin_t *new_plugin)
 {
-    comdb2_plugin_t *plugin = NULL;
     int i;
-
     assert(new_plugin);
 
     for (i = 0; gbl_plugins[i]; ++i) {
@@ -156,7 +154,6 @@ static int install_plugin(const char *file_name, const char *plugin_name)
     void *handle;
     comdb2_plugin_t *plugin;
     comdb2_plugin_t *tmp;
-    int i;
 
     handle = dlopen(file_name, RTLD_LAZY);
     if (!handle) {
@@ -195,7 +192,6 @@ static int install_all_plugins(const char *file_name)
 {
     void *handle;
     comdb2_plugin_t *plugin;
-    int i;
 
     handle = dlopen(file_name, RTLD_LAZY);
     if (!handle) {

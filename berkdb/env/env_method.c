@@ -1353,7 +1353,7 @@ __dbenv_trigger_subscribe(dbenv, fname, cond, lock, open)
 	t = __db_get_trigger_subscription(fname);
 	pthread_mutex_lock(&t->lock);
 	if (t->open) {
-		t->active = 1;
+		++t->active;
 		*cond = &t->cond;
 		*lock = &t->lock;
 		*open = &t->open;
@@ -1371,7 +1371,7 @@ __dbenv_trigger_unsubscribe(dbenv, fname)
 	/* trigger_lock should be held by caller */
 	struct __db_trigger_subscription *t;
 	t = __db_get_trigger_subscription(fname);
-	t->active = 0;
+	--t->active;
 	return 0;
 }
 

@@ -198,8 +198,6 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
 {
     DBT dbt_key = {0}, dbt_data = {0};
     DBC *dbcp = NULL;
-    // struct queuedb_key *k;
-    struct bdb_queue_found qfnd;
     int rc;
 
     if (gbl_debug_queuedb)
@@ -308,7 +306,7 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, int consumer,
 
     struct queuedb_key k;
     DBT dbt_key = {0}, dbt_data = {0};
-    DBC *dbcp;
+    DBC *dbcp = NULL;
     int rc;
     struct bdb_queue_found qfnd;
     uint8_t *p_buf, *p_buf_end;
@@ -324,6 +322,11 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, int consumer,
 
     rc = bdb_state->dbp_data[0][0]->cursor(bdb_state->dbp_data[0][0], NULL,
                                            &dbcp, 0);
+    if (rc) {
+        *bdberr = BDBERR_MISC;
+        goto done;
+    }
+
     k.consumer = consumer;
     if (prevcursor)
         memcpy(&k.genid, prevcursor->genid, sizeof(uint64_t));
@@ -480,7 +483,6 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, int consumer,
     if (fnddtaoff)
         *fnddtaoff = sizeof(struct bdb_queue_found);
     if (fndcursor) {
-        uint64_t g;
         memcpy(fndcursor->genid, &qfnd.genid, sizeof(qfnd.genid));
         fndcursor->recno = 0;
         fndcursor->reserved = 0;

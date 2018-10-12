@@ -34,6 +34,7 @@
 #include "cdb2_constants.h"
 #include "logmsg.h"
 #include "quantize.h"
+#include "perf.h"
 
 enum {
     /* Flags for write_list() */
@@ -207,6 +208,7 @@ struct host_node_tag {
     int interval_max_queue_count;
     int interval_max_queue_bytes;
     void *qstat;
+    struct time_metric *metric_queue_size;
 };
 
 /* Cut down data structure used for storing the sanc list. */

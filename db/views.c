@@ -415,7 +415,6 @@ int timepart_view_set_retention(timepart_views_t *views, const char *name,
                                 int retention)
 {
     timepart_view_t *view;
-    int i;
     int rc;
 
     pthread_rwlock_wrlock(&views_lk);
@@ -445,7 +444,6 @@ int timepart_view_set_period(timepart_views_t *views, const char *name,
                              enum view_timepart_period period)
 {
     timepart_view_t *view;
-    int i;
     int rc;
 
     pthread_rwlock_wrlock(&views_lk);
@@ -1154,10 +1152,10 @@ void *_view_cron_phase1(uuid_t source_id, void *arg1, void *arg2, void *arg3,
     timepart_view_t *view;
     char *name = (char *)arg1;
     char *pShardName = NULL;
-    int rc;
+    int rc = 0;
     char *tmp_str;
     int run;
-    int shardChangeTime;
+    int shardChangeTime = 0;
 
     if (!name) {
         errstat_set_rc(err, VIEW_ERR_BUG);
@@ -1310,9 +1308,9 @@ void *_view_cron_phase2(uuid_t source_id, void *arg1, void *arg2, void *arg3,
     char *pShardName = (char *)arg2;
     int run = 0;
     int timeNextRollout;
-    int timeCrtRollout;
+    int timeCrtRollout = 0;
     char *removeShardName;
-    int rc;
+    int rc = 0;
     int bdberr;
 
     if (!name || !pShardName) {
@@ -1887,7 +1885,7 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
     char next_existing_shard[MAXTABLELEN + 1];
     char evicted_shard[MAXTABLELEN + 1];
     struct dbtable *evicted_db;
-    int evicted_time;
+    int evicted_time = 0;
     int tm;
     int rc;
     char *tmp_str1;
@@ -2644,8 +2642,8 @@ int timepart_schemachange_get_shard_in_progress(const char *view_name,
 {
     timepart_views_t *views;
     timepart_view_t *view;
-    int rc;
-    int i;
+    int rc = 0;
+    int i = 0;
 
     pthread_rwlock_wrlock(&views_lk);
 

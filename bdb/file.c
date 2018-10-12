@@ -1558,7 +1558,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     free(bdb_state);
      */
 
-    net_cleanup_netinfo(netinfo_ptr);
+    /* net_cleanup_netinfo(netinfo_ptr); */
 
     /* DO NOT RELEASE the write lock.  just let it be. */
     return 0;
@@ -3131,12 +3131,14 @@ again:
 
     /* SUCCESS.  we are LIVE and CACHE COHERENT */
 
-    if (bdb_state->repinfo->master_host != myhost) {
-        while (!gbl_passed_repverify) {
-            sleep(1);
-            logmsg(LOGMSG_DEBUG, "waiting for rep_verify to complete\n");
-        }
+    /* If I'm not the master and I haven't passed rep verify, wait here. */
+    while (bdb_state->repinfo->master_host != myhost && !gbl_passed_repverify) {
+        sleep(1);
+        logmsg(LOGMSG_DEBUG, "waiting for rep_verify to complete\n");
+    }
 
+    /* Check again if I'm still not the master. */
+    if (bdb_state->repinfo->master_host != myhost) {
         rc = net_send(bdb_state->repinfo->netinfo,
                       bdb_state->repinfo->master_host,
                       USER_TYPE_COMMITDELAYNONE, NULL, 0, 1);

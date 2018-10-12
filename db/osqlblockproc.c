@@ -678,8 +678,7 @@ void no_such_tbl_error(const char * tablename, unsigned long long rqid,
  *
  */
 int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
-                      unsigned long long rqid, uuid_t uuid,
-                      unsigned long long seq, const char *host)
+                      unsigned long long rqid, uuid_t uuid, int type)
 {
 #if DEBUG_REORDER 
     logmsg(LOGMSG_DEBUG, "REORDER: saving for sess %p\n", sess);
@@ -700,14 +699,12 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     int bdberr;
     int debug = 0;
 
-    int type = 0;
-    buf_get(&type, sizeof(type), rpl, rpl + rplen);
     if (type == OSQL_SCHEMACHANGE)
         iq->tranddl++;
 
 #if DEBUG_REORDER 
     logmsg(LOGMSG_DEBUG, "Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n",
-           rqid, type, osql_reqtype_str(type), osql_log_time(), seq);
+           rqid, type, osql_reqtype_str(type), osql_log_time(), sess->seq);
 #endif
     if (sess->is_reorder_on) { //TODO: refactor this into a separate function
         key.tbl_idx = USHRT_MAX;
@@ -789,7 +786,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         }
     }
 
-    key.seq = seq;
+    key.seq = sess->seq;
     assert (sess->rqid == rqid);
 
     /* add the op into the temporary table */
@@ -798,7 +795,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         return rc;
     }
 
-    if (seq == 0 && osql_session_is_sorese(sess) && tran->rows > 0) {
+    if (sess->seq == 0 && osql_session_is_sorese(sess) && tran->rows > 0) {
         /* lets make sure that the temp table is empty since commit retries will
          * use same rqid*/
         sorese_info_t sorese_info = {0};
@@ -809,7 +806,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                 __func__);
 
         sorese_info.rqid = rqid;
-        sorese_info.host = host;
+        sorese_info.host = sess->offhost;
         sorese_info.type = -1; /* I don't need it */
 
         generr.errval = RC_INTERNAL_RETRY;
@@ -841,11 +838,11 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                                rplen, NULL, &bdberr);
     if (rc_op) {
         logmsg(LOGMSG_ERROR, "%s: fail to put oplog seq=%llu rc=%d bdberr=%d\n",
-               __func__, key.seq, rc_op, bdberr);
+               __func__, sess->seq, rc_op, bdberr);
     } else if (gbl_osqlpfault_threads) {
         osql_page_prefault(rpl, rplen, &(tran->last_db),
                            &(osql_session_get_ireq(sess)->osql_step_ix), rqid,
-                           uuid, seq);
+                           uuid, sess->seq);
     }
 
     tran->rows++;
@@ -858,8 +855,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     if (rc_op)
         return rc_op;
 
-    rc = osql_comm_is_done(rpl, rplen, rqid == OSQL_RQID_USE_UUID, &xerr,
-                                    osql_session_get_ireq(sess));
+    rc = osql_comm_is_done(type, rpl, rplen, rqid == OSQL_RQID_USE_UUID, &xerr,
+                           osql_session_get_ireq(sess));
     if (rc == 0)
         return 0;
 
@@ -868,7 +865,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     /* if we received a too early, check the coherency and mark blackout the
      * node */
     if (xerr && xerr->errval == OSQL_TOOEARLY) {
-        osql_comm_blkout_node(host);
+        osql_comm_blkout_node(sess->offhost);
     }
 
     if ((rc = osql_bplog_signal(tran))) {

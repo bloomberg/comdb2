@@ -30,19 +30,34 @@ On every machine in the cluster:
 
 2. Install prerequisites: 
    
-   ** Ubuntu 16.04, 16.10, 17.04, Windows Subsystem for Linux (WSL) **
+   **Ubuntu 16.04, 16.10, 17.04, Windows Subsystem for Linux (WSL)**
         
    ```
-   sudo apt-get install -y build-essential cmake bison flex libprotobuf-c-dev libreadline-dev libsqlite3-dev libssl-dev libunwind-dev libz1 libz-dev make gawk protobuf-c-compiler uuid-dev liblz4-tool liblz4-dev libprotobuf-c1 libsqlite3-0 libuuid1 libz1 tzdata ncurses-dev tcl bc
+   sudo apt-get install -y \
+       bison \
+       build-essential \
+       cmake \
+       flex \
+       protobuf-c-compiler \
+       liblz4-dev \
+       libncurses5-dev \
+       libprotobuf-c-dev \
+       libreadline-dev \
+       libssl-dev \
+       libsqlite3-dev \
+       libunwind-dev \
+       tcl \
+       uuid-dev \
+       zlib1g-dev
    ```
 
-   ** CentOS 7 **
+   **CentOS 7**
 
    ```
    sudo yum install -y gcc gcc-c++ cmake3 protobuf-c libunwind libunwind-devel protobuf-c-devel byacc flex openssl openssl-devel openssl-libs readline-devel sqlite sqlite-devel libuuid libuuid-devel zlib-devel zlib lz4-devel gawk tcl epel-release lz4 rpm-build which
    ```
 
-   ** macOS High Sierra (experimental) **
+   **macOS High Sierra (experimental)**
 
    Install Xcode and Homebrew. Then install required libraries:
 

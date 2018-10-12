@@ -993,7 +993,7 @@ rc = db:commit()
 
 Description:
 
-This method commits a transaction that was started inside the same stored procedure with the db:begin method.  It is an error to attempt to commit any transaction not begun in that manner. db:sqlerror() should give the failure message on commit.
+This method commits a transaction that was started inside the same stored procedure with the db:begin method.  It is an error to attempt to commit any transaction not begun in that manner. db:error() should give the failure message on commit.
 
 Return Values:
 
@@ -1223,9 +1223,9 @@ This stored procedure will output:
 
 ## Error information
 
-### db:sqlerror()
+### db:error()
 ```
-errstr = db:sqlerror()
+errstr = db:error()
 ```
 
 Obtain error string if any. Error may have been produced by running SQL or by other SP operations.

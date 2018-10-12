@@ -743,6 +743,8 @@ int gbl_early_verify = 1;
 int gbl_bbenv;
 extern int gbl_legacy_defaults;
 
+int64_t gbl_temptable_spills = 0;
+
 comdb2_tunables *gbl_tunables; /* All registered tunables */
 int init_gbl_tunables();
 int free_gbl_tunables();
@@ -1409,7 +1411,6 @@ void clean_exit(void)
     tz_hash_free();
     destroy_plugins();
     destroy_appsock();
-    bdb_cleanup_private_blkseq(thedb->bdb_env);
 
     if (gbl_create_mode) {
         logmsg(LOGMSG_USER, "Created database %s.\n", thedb->envname);
@@ -1419,6 +1420,7 @@ void clean_exit(void)
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "error backend_close() rc %d\n", rc);
     }
+    bdb_cleanup_private_blkseq(thedb->bdb_env);
 
     eventlog_stop();
 
@@ -2414,22 +2416,25 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
     if (!dbenv->basedir) {
         logmsg(LOGMSG_FATAL, "DB directory is not set in lrl\n");
         return NULL;
-    } else if (gbl_create_mode) {
-        /* make sure the database directory exists! */
+    } 
+
+    if (gbl_create_mode) {
+        logmsg(LOGMSG_DEBUG, "gbl_create_mode is on, "
+               "creating the database directory exists %s\n", dbenv->basedir);
         rc = mkdir(dbenv->basedir, 0774);
         if (rc && errno != EEXIST) {
             logmsg(LOGMSG_ERROR, "mkdir(%s): %s\n", dbenv->basedir,
                    strerror(errno));
-            /* continue, this will make us fail later */
         }
-    } else {
-        struct stat sb;
-        stat(dbenv->basedir, &sb);
-        if (!S_ISDIR(sb.st_mode)) {
-            logmsg(LOGMSG_FATAL, "DB directory '%s' does not exist\n",
-                   dbenv->basedir);
-            return NULL;
-        }
+    } 
+    
+    /* make sure the database directory exists! */
+    struct stat sb;
+    rc = stat(dbenv->basedir, &sb);
+    if (rc || !S_ISDIR(sb.st_mode)) {
+        logmsg(LOGMSG_FATAL, "DB directory '%s' does not exist\n",
+               dbenv->basedir);
+        return NULL;
     }
 
     tz_hash_init();
@@ -3655,8 +3660,6 @@ static int init(int argc, char **argv)
         return -1;
 
     if (!gbl_exit) {
-        int i;
-
         check_access_controls(thedb); /* Check authentication settings */
 
         if (!have_all_schemas()) {
@@ -4081,6 +4084,7 @@ void *statthd(void *p)
     char hdr_fmt[] = "DIFF REQUEST STATS FOR DB %d '%s'\n";
     int have_scon_header = 0;
     int have_scon_stats = 0;
+    int64_t rw_evicts;
 
     extern int active_appsock_conns;
 
@@ -4107,7 +4111,7 @@ void *statthd(void *p)
         conn_timeouts = net_get_num_accept_timeouts(thedb->handle_sibling);
 
         bdb_get_bpool_counters(thedb->bdb_env, (int64_t *)&bpool_hits,
-                               (int64_t *)&bpool_misses);
+                               (int64_t *)&bpool_misses, &rw_evicts);
 
         bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlockwaits, NULL);
         diff_deadlocks = ndeadlocks - last_ndeadlocks;
@@ -4181,11 +4185,11 @@ void *statthd(void *p)
                 if (diff_bpool_misses)
                     logmsg(LOGMSG_USER, " cache_misses %lu", diff_bpool_misses);
                 if (diff_conns)
-                    logmsg(LOGMSG_USER, " connects %lld", diff_conns);
+                    logmsg(LOGMSG_USER, " connects %"PRId64, diff_conns);
                 if (diff_curr_conns)
-                    logmsg(LOGMSG_USER, " current_connects %lld", diff_curr_conns);
+                    logmsg(LOGMSG_USER, " current_connects %"PRId64, diff_curr_conns);
                 if (diff_conn_timeouts)
-                    logmsg(LOGMSG_USER, " connect_timeouts %lld", diff_conn_timeouts);
+                    logmsg(LOGMSG_USER, " connect_timeouts %"PRId64, diff_conn_timeouts);
                 have_scon_stats = 1;
             }
         }
@@ -4195,9 +4199,9 @@ void *statthd(void *p)
         if (have_scon_stats)
             logmsg(LOGMSG_USER, "\n");
 
-        extern void update_cpu_percent(void);
+        extern void update_metrics(void);
         if (count % 5 == 0)
-            update_cpu_percent();
+            update_metrics();
 
         if (!gbl_schema_change_in_progress) {
             thresh = reqlog_diffstat_thresh();
@@ -5028,8 +5032,6 @@ static void wait_for_coherent()
 
 int main(int argc, char **argv)
 {
-    char *marker_file;
-    int ii;
     int rc;
 
     char *exe = NULL;
@@ -5264,7 +5266,6 @@ void delete_db(char *db_name)
 /* rename in memory db names; fragile */
 int rename_db(struct dbtable *db, const char *newname)
 {
-    int rc;
     char *tag_name = strdup(newname);
     char *bdb_name = strdup(newname);
 
