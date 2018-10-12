@@ -6252,8 +6252,6 @@ void *exec_trigger(trigger_reg_t *reg)
             goto bad;
         }
         if ((rc = run_sp(&clnt, args, &err)) != 0) {
-        rollback:
-            db_rollback_int(L, &rc);
         bad:
             free(err);
             if (args != -2) {
@@ -6263,14 +6261,16 @@ void *exec_trigger(trigger_reg_t *reg)
         }
         if (lua_gettop(L) != 1 || !lua_isnumber(L, 1) ||
             (rc = lua_tonumber(L, 1)) != 0) {
-            logmsg(LOGMSG_ERROR, "trigger:%s rc:%s\n", sp->spname,
+            logmsg(LOGMSG_DEBUG, "trigger:%s rc:%s\n", sp->spname,
                    lua_tostring(L, 1));
             err = strdup("trigger returned bad rc");
-            goto rollback;
+            db_rollback_int(L, &rc);
+            goto bad;
         }
         if ((rc = dbconsumer_consume_int(L, q)) != 0) {
             err = strdup("trigger failed to consume");
-            goto rollback;
+            db_rollback_int(L, &rc);
+            goto bad;
         }
         if ((rc = commit_sp(L, &err)) != 0) {
             logmsg(LOGMSG_ERROR, "trigger:%s %016" PRIx64 " commit failed rc:%d -- %s\n",
@@ -6282,7 +6282,7 @@ void *exec_trigger(trigger_reg_t *reg)
     put_curtran(thedb->bdb_env, &clnt);
     if (q) {
         luabb_trigger_unregister(q);
-        logmsg(LOGMSG_ERROR, "trigger:%s %016" PRIx64 " finished\n", reg->spname, q->info.trigger_cookie);
+        logmsg(LOGMSG_DEBUG, "trigger:%s %016" PRIx64 " finished\n", reg->spname, q->info.trigger_cookie);
         free(q);
     } else {
         //setup fake dbconsumer_t to send unregister

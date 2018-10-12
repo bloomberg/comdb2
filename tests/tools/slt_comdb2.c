@@ -228,7 +228,7 @@ static int comdb2Query(
 
                     case 'I':
                         i = *(long long*) cdb2_column_value(sqlh, col);
-                        snprintf(val, sizeof(val), "%lld", i);
+                        snprintf(val, sizeof(val), "%d", i);
                         appendValue(&res, val);
                         break;
 

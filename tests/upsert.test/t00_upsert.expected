@@ -111,3 +111,10 @@
 (i=NULL)
 (i=NULL)
 (i=1)
+(rows inserted=1)
+(i=1, j=1)
+(rows inserted=1)
+(rows inserted=1)
+[COMMIT] failed with rc 3 verify key constraint cannot cascade update table 'c' rrn 2
+(i=1)
+(i=1)

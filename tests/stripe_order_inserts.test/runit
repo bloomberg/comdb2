@@ -71,7 +71,7 @@ CDB2_CONFIG=$DBDIR/comdb2db.cfg
 CDB2_OPTIONS="--cdb2cfg $CDB2_CONFIG"
 
 unset COMDB2_UNITTEST   # needed to run setup script
-echo round_robin_stripes > ${TESTSROOTDIR}/${TESTCASE}.test/lrl.options
+echo round_robin_stripes > lrl.options
 $TESTSROOTDIR/setup &> $TESTDIR/logs/$DBNAME.setup
 
 # Trap to call_unsetup if the test exits
@@ -122,7 +122,7 @@ CDB2_CONFIG=$DBDIR/comdb2db.cfg
 CDB2_OPTIONS="--cdb2cfg $CDB2_CONFIG"
 
 unset COMDB2_UNITTEST
-rm ${TESTSROOTDIR}/${TESTCASE}.test/lrl.options
+rm lrl.options
 $TESTSROOTDIR/setup &> $TESTDIR/logs/$DBNAME.setup
 
 # Trap to call_unsetup if the test exits

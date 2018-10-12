@@ -4403,9 +4403,8 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
     switch (clnt->dbtran.mode) {
     default:
         logmsg(LOGMSG_ERROR, "%s: unknown mode %d\n", __func__, clnt->dbtran.mode);
-        rc = SQLITE_INTERNAL;
-        goto done;
-
+        return SQLITE_INTERNAL;
+        break;
     case TRANLEVEL_SNAPISOL:
         clnt->dbtran.shadow_tran = trans_start_snapisol(
             &iq, clnt->bdb_osql_trak, clnt->snapshot, snapshot_file,
@@ -4413,7 +4412,7 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
 
         if (!clnt->dbtran.shadow_tran) {
             logmsg(LOGMSG_ERROR, "%s:trans_start_snapisol error %d\n", __func__,
-                    error);
+                   error);
             if (!error) {
                 rc = SQLITE_INTERNAL;
             } else if (error == BDBERR_NOT_DURABLE) {
@@ -4425,7 +4424,7 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
             } else {
                 rc = error;
             }
-            goto done;
+            return rc;
         }
 
         break;
@@ -4453,7 +4452,7 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
             } else {
                 rc = error;
             }
-            goto done;
+            return rc;
         }
 
         break;
@@ -4467,8 +4466,7 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
 
         if (!clnt->dbtran.shadow_tran) {
            logmsg(LOGMSG_ERROR, "%s:trans_start_readcommitted error\n", __func__);
-            rc = SQLITE_INTERNAL;
-            goto done;
+           return SQLITE_INTERNAL;
         }
 
         break;
@@ -4482,8 +4480,7 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
 
         if (!clnt->dbtran.shadow_tran) {
            logmsg(LOGMSG_ERROR, "%s:trans_start_socksql error\n", __func__);
-            rc = SQLITE_INTERNAL;
-            goto done;
+           return SQLITE_INTERNAL;
         }
 
         rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0);
@@ -4492,10 +4489,8 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
         sql_debug_logf(clnt, __func__, __LINE__, "osql_sock_start returns %d\n",
                        rc);
         break;
-
     }
 
-done:
     return rc;
 }
 

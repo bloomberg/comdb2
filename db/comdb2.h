@@ -640,6 +640,7 @@ struct dbtable {
     struct dbenv *dbenv; /*chain back to my environment*/
     char *lrlfname;
     char *tablename;
+    struct ireq *iq; /* iq used at sc time */
 
     int dbnum;
     int lrl; /*dat len in bytes*/
@@ -653,11 +654,6 @@ struct dbtable {
     signed char ix_collattr[MAXINDEX];
     signed char ix_nullsallowed[MAXINDEX];
     signed char ix_disabled[MAXINDEX];
-    struct ireq *iq; /* iq used at sc time */
-    int has_datacopy_ix; /* set to 1 if we have datacopy indexes */
-    int ix_partial;  /* set to 1 if we have partial indexes */
-    int ix_expr;     /* set to 1 if we have indexes on expressions */
-    int ix_blob;     /* set to 1 if blobs are involved in indexes */
 
     int numblobs;
 
@@ -754,8 +750,6 @@ struct dbtable {
 
     struct dbtable *sc_from; /* point to the source db, replace global sc_from */
     struct dbtable *sc_to; /* point to the new db, replace global sc_to */
-    int sc_abort;
-    int sc_downgrading;
     unsigned long long *sc_genids; /* schemachange stripe pointers */
 
     /* count the number of updates and deletes done by schemachange
@@ -768,11 +762,6 @@ struct dbtable {
 
     uint64_t sc_nrecs;
     uint64_t sc_prev_nrecs;
-    /* boolean value set to nonzero if table rebuild is in progress */
-    uint8_t doing_conversion;
-    /* boolean value set to nonzero if table upgrade is in progress */
-    uint8_t doing_upgrade;
-
     unsigned int sqlcur_ix;  /* count how many cursors where open in ix mode */
     unsigned int sqlcur_cur; /* count how many cursors where open in cur mode */
 
@@ -786,8 +775,6 @@ struct dbtable {
     int inplace_updates;
     unsigned long long tableversion;
 
-    int do_local_replication;
-
     /* map of tag fields for version to curr schema */
     unsigned int * versmap[MAXVER + 1];
     /* is tag version compatible with ondisk schema */
@@ -795,7 +782,22 @@ struct dbtable {
 
     /* lock for consumer list */
     pthread_rwlock_t consumer_lk;
-    int disableskipscan : 1;
+
+    bool has_datacopy_ix : 1; /* set to 1 if we have datacopy indexes */
+    bool ix_partial : 1;      /* set to 1 if we have partial indexes */
+    bool ix_expr : 1;         /* set to 1 if we have indexes on expressions */
+    bool ix_blob : 1;         /* set to 1 if blobs are involved in indexes */
+
+    bool sc_abort : 1;
+    bool sc_downgrading : 1;
+
+    /* boolean value set to nonzero if table rebuild is in progress */
+    bool doing_conversion : 1;
+    /* boolean value set to nonzero if table upgrade is in progress */
+    bool doing_upgrade : 1;
+
+    bool disableskipscan : 1;
+    bool do_local_replication : 1;
 };
 
 struct log_delete_state {
@@ -2619,7 +2621,9 @@ enum {
     /* used for upgrade record */
     RECFLAGS_UPGRADE_RECORD = RECFLAGS_DYNSCHEMA_NULLS_ONLY |
                               RECFLAGS_KEEP_GENID | RECFLAGS_NO_TRIGGERS |
-                              RECFLAGS_NO_CONSTRAINTS | RECFLAGS_NO_BLOBS | 512
+                              RECFLAGS_NO_CONSTRAINTS | RECFLAGS_NO_BLOBS | 512,
+    RECFLAGS_DONT_LOCK_TBL = 1024,
+    RECFLAGS_MAX = 2048
 };
 
 /* flag codes */

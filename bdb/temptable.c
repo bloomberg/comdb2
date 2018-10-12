@@ -1626,7 +1626,9 @@ static int bdb_temp_table_find_exact_hash(struct temp_cursor *cur,
 
 }
 
-
+/* Caller needs to free the key if return is not IX_FND
+ * if IX_FND this function will free key [eventually not immediately]
+ */
 int bdb_temp_table_find_exact(bdb_state_type *bdb_state,
                               struct temp_cursor *cur, void *key, int keylen,
                               int *bdberr)
@@ -1657,18 +1659,18 @@ int bdb_temp_table_find_exact(bdb_state_type *bdb_state,
     rc = cur->cur->c_get(cur->cur, &dkey, &ddata, DB_SET);
     /*
     printf("Got data %p %d key %p %d\n",
-          ddata.data, ddata.size, dkey.data, dkey.size);
-          */
-    if (!rc) {
-        exists = 1;
-    } else if (rc == DB_NOTFOUND) {
+           ddata.data, ddata.size, dkey.data, dkey.size); */
+
+    if (rc == DB_NOTFOUND) {
         exists = 0;
         goto done;
-    } else {
+    } else if (rc) {
         *bdberr = rc;
         rc = -1;
         goto done;
     }
+
+    exists = 1; /* rc is 0; key was found */
 
     if (cur->key && cur->key != dkey.data) {
 #if 0

@@ -55,7 +55,6 @@ static int bdb_fetch_last_key_tran_int(bdb_state_type *bdb_state,
     DBT key, data;
     int rc = 0;
     int flags = 0;
-    char *buf;
 
     *bdberr = 0;
 

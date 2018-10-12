@@ -1410,7 +1410,6 @@ void clean_exit(void)
     tz_hash_free();
     destroy_plugins();
     destroy_appsock();
-    bdb_cleanup_private_blkseq(thedb->bdb_env);
 
     if (gbl_create_mode) {
         logmsg(LOGMSG_USER, "Created database %s.\n", thedb->envname);
@@ -1420,6 +1419,7 @@ void clean_exit(void)
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "error backend_close() rc %d\n", rc);
     }
+    bdb_cleanup_private_blkseq(thedb->bdb_env);
 
     eventlog_stop();
 

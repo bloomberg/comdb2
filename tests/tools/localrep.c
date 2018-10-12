@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdarg.h>
 #include <stdint.h>
+#include <inttypes.h>
 
 #include <cdb2api.h>
 #include <arpa/inet.h>
@@ -271,8 +272,8 @@ int bind_value(cdb2_hndl_tp *db, void *opsp, int opsz, comdb2_field_type *fld, v
     } *u;
     int rc;
     uint8_t *ops = (uint8_t*) opsp;
-    int type, len;
-    void *addr;
+    int type = 0, len = 0;
+    void *addr = NULL;
 
     /* TODO: other datetime/interval types */
 
@@ -341,7 +342,7 @@ int bind_value(cdb2_hndl_tp *db, void *opsp, int opsz, comdb2_field_type *fld, v
     rc = cdb2_bind_param(db, fld->name, type, addr, len);
     // printf("bind %s type %d addr %p rc %d\n", fld->name, type, addr, rc);
     if (rc) {
-        fprintf(stderr, "bind %s rc %d\n", fld->name, type, rc);
+        fprintf(stderr, "bind %s type %d rc %d\n", fld->name, type, rc);
         return 1;
     }
     return rc;
@@ -391,7 +392,7 @@ int apply_add(cdb2_hndl_tp *db, void *opsp, int opsz) {
 
     ops += sizeof(int);
     /* extract table */
-    table = ops;
+    table = (char *)ops;
     ops += MAXTABLELEN;
 
     /* extract field descriptions */
@@ -460,11 +461,9 @@ int apply_clear(cdb2_hndl_tp *db, void *opsp, int opsz)
 }
 
 int apply_op(cdb2_hndl_tp *db, int64_t seqno, int64_t blkpos, int64_t type, void *ops, int opsz) {
-    uint8_t *p;
     int rc;
     // printf("apply_op seqno %lld blkpos %lld type %d ops ", seqno, blkpos, type);
     // hexdump(ops, opsz);
-    p = (uint8_t*) ops;
 
     void *opscpy = NULL;
     if (ops) {
@@ -479,7 +478,7 @@ int apply_op(cdb2_hndl_tp *db, int64_t seqno, int64_t blkpos, int64_t type, void
     cdb2_bind_param(db, "ops", CDB2_BLOB, opscpy, opsz);
     rc = cdb2_run_statement(db, "insert into comdb2_oplog(seqno, blkpos, optype, ops) values(@seqno, @blkpos, @optype, @ops)");
     if (rc) {
-        fprintf(stderr, "failed inserting into destination oplog %d %s seqno %lld blkseq %lld\n", rc, cdb2_errstr(db), seqno, blkpos);
+        fprintf(stderr, "failed inserting into destination oplog %d %s seqno %"PRId64" blkseq %"PRId64"\n", rc, cdb2_errstr(db), seqno, blkpos);
         free(opscpy);
         return 1;
     }
@@ -494,19 +493,19 @@ int apply_op(cdb2_hndl_tp *db, int64_t seqno, int64_t blkpos, int64_t type, void
         case LCL_OP_COMMIT:
             rc = cdb2_run_statement(db, "commit");
             if (rc)
-                fprintf(stderr, "commit seqno %lld rc %d %s\n", seqno, rc, cdb2_errstr(db));
+                fprintf(stderr, "commit seqno %"PRId64" rc %d %s\n", seqno, rc, cdb2_errstr(db));
             break;
         /* TODO: others! */
         case LCL_OP_CLEAR:
             rc = apply_clear(db, ops, opsz);
             if (rc)
-                fprintf(stderr, "apply_clear seqno %lld rc %d %s\n", seqno, rc,
+                fprintf(stderr, "apply_clear seqno %"PRId64" rc %d %s\n", seqno, rc,
                         cdb2_errstr(db));
             break;
         case LCL_OP_ANALYZE:
             break;
         default:
-            fprintf(stderr, "unknown op %d\n", type);
+            fprintf(stderr, "unknown op %"PRId64"\n", type);
             free(opscpy);
             return 1;
     }
@@ -520,7 +519,7 @@ int apply_seqno(cdb2_hndl_tp *from, cdb2_hndl_tp *to, int64_t seqno, int maxblkp
 
     rc = cdb2_run_statement(to, "begin");
     if (rc) {
-        fprintf(stderr, "begin failed for seqno %lld: %d %s\n", seqno, rc, cdb2_errstr(to));
+        fprintf(stderr, "begin failed for seqno %"PRId64": %d %s\n", seqno, rc, cdb2_errstr(to));
         return 1;
     }
     havetrans = 1;
@@ -533,7 +532,7 @@ int apply_seqno(cdb2_hndl_tp *from, cdb2_hndl_tp *to, int64_t seqno, int maxblkp
         cdb2_bind_param(from, "blkpos", CDB2_INTEGER, &blkpos, sizeof(int64_t));
         rc = cdb2_run_statement(from, "select optype, ops from comdb2_oplog where seqno=@seqno and blkpos=@blkpos");
         if (rc) {
-            fprintf(stderr, "rc %d %s: getting event for seqno %lld blkpos %lld\n", rc, cdb2_errstr(from), seqno, blkpos);
+            fprintf(stderr, "rc %d %s: getting event for seqno %"PRId64" blkpos %"PRId64"\n", rc, cdb2_errstr(from), seqno, blkpos);
             goto done;
         }
 
@@ -562,7 +561,7 @@ done:
     if (havetrans) {
         int arc = cdb2_run_statement(to, "rollback");
         if (arc) {
-            fprintf(stderr, "rollback failed for seqno %lld: %d %s\n", seqno, arc, cdb2_errstr(to));
+            fprintf(stderr, "rollback failed for seqno %"PRId64": %d %s\n", seqno, arc, cdb2_errstr(to));
             return 1;
         }
         consume(from);
@@ -571,15 +570,13 @@ done:
 }
 
 int sync(cdb2_hndl_tp *from, int64_t maxfrom, cdb2_hndl_tp *to, int64_t maxto) {
-    int64_t nops;
-
     for (int64_t seqno = maxto+1; seqno <= maxfrom; seqno++) {
         int blkpos = (int) query_int(from, "select max(blkpos) from comdb2_oplog where seqno = %lld", seqno);
         // printf("seqno %lld blkpos %d\n", seqno, blkpos);
         int rc;
         rc = apply_seqno(from, to, seqno, blkpos);
         if (rc) {
-            fprintf(stderr, "Failed for seqno %lld\n", seqno);
+            fprintf(stderr, "Failed for seqno %"PRId64"\n", seqno);
             return 1;
         }
     }
