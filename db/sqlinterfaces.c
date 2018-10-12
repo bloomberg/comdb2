@@ -2663,7 +2663,6 @@ static void _prepare_error(struct sqlthdstate *thd,
     if (rc == SQLITE_SCHEMA_DOHSQL)
         return;
 
-
     if (clnt->in_client_trans && (rec->status & CACHE_HAS_HINT ||
                                   has_sqlcache_hint(clnt->sql, NULL, NULL)) &&
         !(rec->status & CACHE_FOUND_STR) &&

@@ -667,7 +667,7 @@ struct dbtable {
     signed char ix_nullsallowed[MAXINDEX];
     signed char ix_disabled[MAXINDEX];
 
-    shard_limits_t* sharding;
+    shard_limits_t *sharding;
 
     int numblobs;
 

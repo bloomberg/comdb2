@@ -814,7 +814,7 @@ static int _shard_connect(struct sqlclntstate *clnt, dohsql_connector_t *conn,
     plugin_set_callbacks(conn->clnt, dohsql);
     conn->clnt->plugin.state = conn;
     where = thrman_get_where(thrman_self());
-    conn->thr_where = strdup(where?where:"");
+    conn->thr_where = strdup(where ? where : "");
     conn->rc = SQLITE_ROW;
 
     return SHARD_NOERR;
