@@ -397,8 +397,10 @@ static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
 
     rc = bdb_trigger_subscribe(table->handle, &cond, &mu, &open);
     if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "dbq_get_front_genid: bdb_trigger_subscribe "
-               "failed (rc: %d)\n", rc);
+        logmsg(LOGMSG_ERROR,
+               "dbq_get_front_genid: bdb_trigger_subscribe "
+               "failed (rc: %d)\n",
+               rc);
         return 0;
     }
     pthread_mutex_lock(mu);
@@ -412,8 +414,10 @@ static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
     if (rc == 0) {
         genid = dbq_item_genid(fnddta);
     } else if (rc != IX_NOTFND) {
-        logmsg(LOGMSG_ERROR, "dbq_get_front_genid: dbq_item_genid failed "
-               "(rc: %d)\n", rc);
+        logmsg(LOGMSG_ERROR,
+               "dbq_get_front_genid: dbq_item_genid failed "
+               "(rc: %d)\n",
+               rc);
     }
 
 skip:
@@ -495,7 +499,8 @@ static void admin(struct dbenv *dbenv, int type)
 
                         if (!trigger_registered(consumer->procedure_name)) {
                             char *name = consumer->procedure_name;
-                            char *host = net_get_osql_node(thedb->handle_sibling);
+                            char *host =
+                                net_get_osql_node(thedb->handle_sibling);
                             if (host == NULL && thedb->nsiblings == 1) {
                                 trigger_start(name); // standalone
                             } else {
