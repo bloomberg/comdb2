@@ -213,6 +213,8 @@
 (name='disable_upgrade_ahead', description='Sets 'enable_upgrade_ahead' to 0.', type='BOOLEAN', value='ON', read_only='Y')
 (name='disable_writer_penalty_deadlock', description='If set, won't shrink max #writers on deadlock.', type='BOOLEAN', value='OFF', read_only='N')
 (name='disallow_portmux_route', description='Disables 'allow_portmux_route'', type='BOOLEAN', value='OFF', read_only='Y')
+(name='dohast_verbose', description='', type='BOOLEAN', value='OFF', read_only='N')
+(name='dohsql_verbose', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='dont_abort_on_in_use_rqid', description='Disable 'abort_on_in_use_rqid'', type='BOOLEAN', value='OFF', read_only='Y')
 (name='dont_forbid_ulonglong', description='Disables 'forbid_ulonglong'', type='BOOLEAN', value='OFF', read_only='Y')
 (name='dont_init_with_inplace_updates', description='Disables 'init_with_inplace_updates'', type='BOOLEAN', value='OFF', read_only='Y')
