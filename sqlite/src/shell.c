@@ -3075,11 +3075,7 @@ static int completionConnect(
 #define COMPLETION_COLUMN_PHASE     3  /* ePhase - used for debugging only */
 
   rc = sqlite3_declare_vtab(db,
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
       "CREATE TABLE x("
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-      "CREATE TABLE comdb2_completion("
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       "  candidate TEXT,"
       "  prefix TEXT HIDDEN,"
       "  wholeline TEXT HIDDEN,"
@@ -7510,41 +7506,40 @@ static int idxCreateFromCons(
       if( zName==0 ){ 
         rc = SQLITE_NOMEM;
       }else{
-        if( idxIdentifierRequiresQuotes(zTable) ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+        if( idxIdentifierRequiresQuotes(zTable) ){
           zFmt = "CREATE TEMP INDEX '%q' ON %Q(%s)";
           zFmt_p = "CREATE INDEX '%q' ON %Q(%s)";
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-          zFmt = "CREATE INDEX '%q' ON %Q(%s)";
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         }else{
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
           zFmt = "CREATE TEMP INDEX %s ON %s(%s)";
           zFmt_p = "CREATE INDEX %s ON %s(%s)";
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-          zFmt = "CREATE INDEX %s ON %s(%s)";
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         }
         zIdx = sqlite3_mprintf(zFmt, zName, zTable, zCols);
         if( !zIdx ){
           rc = SQLITE_NOMEM;
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
           goto error_out;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-        }else{
-          rc = sqlite3_exec(dbm, zIdx, 0, 0, p->pzErrmsg);
-          idxHashAdd(&rc, &p->hIdx, zName, zIdx);
         }
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
         zIdx_p = sqlite3_mprintf(zFmt_p, zName, zTable, zCols);
         if( !zIdx_p ){
           rc = SQLITE_NOMEM;
           goto error_out;
+        }
+        rc = sqlite3_exec(dbm, zIdx, 0, 0, p->pzErrmsg);
+        idxHashAdd(&rc, &p->hIdx, zName, zIdx_p);
+error_out:
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+        if( idxIdentifierRequiresQuotes(zTable) ){
+          zFmt = "CREATE INDEX '%q' ON %Q(%s)";
+        }else{
+          zFmt = "CREATE INDEX %s ON %s(%s)";
+        }
+        zIdx = sqlite3_mprintf(zFmt, zName, zTable, zCols);
+        if( !zIdx ){
+          rc = SQLITE_NOMEM;
         }else{
           rc = sqlite3_exec(dbm, zIdx, 0, 0, p->pzErrmsg);
-          idxHashAdd(&rc, &p->hIdx, zName, zIdx_p);
+          idxHashAdd(&rc, &p->hIdx, zName, zIdx);
         }
-error_out:
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         sqlite3_free(zName);
         sqlite3_free(zIdx);
@@ -11161,7 +11156,8 @@ static const char *(azHelp[]) = {
 ** Return the number of matches.
 */
 static int showHelp(FILE *out, const char *zPattern){
-  int i, j;
+  int i = 0;
+  int j = 0;
   int n = 0;
   char *zPat;
   if( zPattern==0
@@ -11247,7 +11243,7 @@ static char *readFile(const char *zName, int *pnByte){
   nIn = ftell(in);
   rewind(in);
   pBuf = sqlite3_malloc64( nIn+1 );
-  if( pBuf==0 ) return 0;
+  if( pBuf==0 ){ fclose(in); return 0; }
   nRead = fread(pBuf, nIn, 1, in);
   fclose(in);
   if( nRead!=1 ){
@@ -12631,6 +12627,7 @@ static void shellPreparePrintf(
     char *z;
     va_start(ap, zFmt);
     z = sqlite3_vmprintf(zFmt, ap);
+    va_end(ap);
     if( z==0 ){
       *pRc = SQLITE_NOMEM;
     }else{
@@ -13823,7 +13820,7 @@ static int do_meta_command(char *zLine, ShellState *p){
 
   if( c=='h' && strncmp(azArg[0], "help", n)==0 ){
     if( nArg>=2 ){
-      int n = showHelp(p->out, azArg[1]);
+      n = showHelp(p->out, azArg[1]);
       if( n==0 ){
         utf8_printf(p->out, "Nothing matches '%s'\n", azArg[1]);
       }
@@ -16516,7 +16513,7 @@ int SQLITE_CDECL wmain(int argc, wchar_t **wargv){
     */
     if( stdin_is_interactive ){
       char *zHome;
-      char *zHistory = 0;
+      char *zHistory;
       int nHistory;
       printf(
         "SQLite version %s %.19s\n" /*extra-version-info*/
@@ -16529,8 +16526,10 @@ int SQLITE_CDECL wmain(int argc, wchar_t **wargv){
         printf(".\nUse \".open FILENAME\" to reopen on a "
                "persistent database.\n");
       }
-      zHome = find_home_dir(0);
-      if( zHome ){
+      zHistory = getenv("SQLITE_HISTORY");
+      if( zHistory ){
+        zHistory = strdup(zHistory);
+      }else if( (zHome = find_home_dir(0))!=0 ){
         nHistory = strlen30(zHome) + 20;
         if( (zHistory = malloc(nHistory))!=0 ){
           sqlite3_snprintf(nHistory, zHistory,"%s/.sqlite_history", zHome);
