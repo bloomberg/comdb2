@@ -5785,31 +5785,36 @@ default_prec:
         }
       }
       /* default, pass the function remotely */
-      if( pExpr->x.pList->nExpr <= 0 )
-        return sqlite3_mprintf(" %s ( )", pExpr->u.zToken);
-      char *arg = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[0].pExpr,
-                                            atRuntime);
-      if( !arg )
-        return NULL;
-      ret = sqlite3_mprintf(" %s ( %s", pExpr->u.zToken, arg);
-      sqlite3DbFree(v->db, arg);
-      arg = NULL;
-      for( i = 1; i < pExpr->x.pList->nExpr; i++ ) {
-        arg = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[i].pExpr,
-                                        atRuntime);
+      if( !pExpr->x.pList ) {
+        /* no arguments */
+        return sqlite3_mprintf(" %s() ", pExpr->u.zToken);
+      } else {
+        if( pExpr->x.pList->nExpr <= 0 )
+          return sqlite3_mprintf(" %s ( )", pExpr->u.zToken);
+        char *arg = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[0].pExpr,
+                                              atRuntime);
         if( !arg )
           return NULL;
-        ret2 = sqlite3_mprintf("%s, %s", ret, arg);
+        ret = sqlite3_mprintf(" %s ( %s", pExpr->u.zToken, arg);
         sqlite3DbFree(v->db, arg);
+        arg = NULL;
+        for( i = 1; i < pExpr->x.pList->nExpr; i++ ) {
+          arg = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[i].pExpr,
+                                        atRuntime);
+          if( !arg )
+            return NULL;
+          ret2 = sqlite3_mprintf("%s, %s", ret, arg);
+          sqlite3DbFree(v->db, arg);
+          sqlite3DbFree(v->db, ret);
+          ret = ret2;
+          arg = NULL;
+          ret2 = NULL;
+        }
+        ret2 = sqlite3_mprintf("%s ) ", ret);
         sqlite3DbFree(v->db, ret);
         ret = ret2;
-        arg = NULL;
-        ret2 = NULL;
+        return ret;
       }
-      ret2 = sqlite3_mprintf("%s ) ", ret);
-      sqlite3DbFree(v->db, ret);
-      ret = ret2;
-      return ret;
     }
     case TK_COLUMN: {
       if( atRuntime ){
