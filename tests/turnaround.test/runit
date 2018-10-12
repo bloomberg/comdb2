@@ -37,6 +37,7 @@ cd ${TESTDIR}
 comdb2 --create --dir $(pwd)/testdb testdb
 cat > testdb/testdb.lrl <<EOF
 name db
+verbose_fills on
 cluster nodes m1 m2 m3 m4 m5
 SOSQL_MAX_COMMIT_WAIT_SEC 60
 dedicated_network_suffixes -n3 -n4
