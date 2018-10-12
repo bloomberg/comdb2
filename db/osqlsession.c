@@ -529,7 +529,8 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
     /* NOTE: before retrieving a session, we have to figure out if this is a
        sorese completion and lock the repository until the session is dispatched
        This prevents the race against signal_rtoff forcefully cleanup */
-    is_msg_done = osql_comm_is_done(type, data, datalen, rqid == OSQL_RQID_USE_UUID, &perr, NULL);
+    is_msg_done = osql_comm_is_done(type, data, datalen,
+                                    rqid == OSQL_RQID_USE_UUID, &perr, NULL);
 
     /* get the session */
     sess = osql_repository_get(rqid, uuid, is_msg_done);

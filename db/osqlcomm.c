@@ -3392,8 +3392,8 @@ int osql_comm_is_done(int type, char *rpl, int rpllen, int hasuuid,
         break;
     case OSQL_DONE_SNAP:
         /* iq is passed in from bplog_saveop */
-        if(iq) {
-            const uint8_t *p_buf = 
+        if (iq) {
+            const uint8_t *p_buf =
                 (uint8_t *)rpl + sizeof(osql_done_t) +
                 (hasuuid ? sizeof(osql_uuid_rpl_t) : sizeof(osql_rpl_t));
 
@@ -6166,7 +6166,6 @@ static void net_osql_rpl(void *hndl, void *uptr, char *fromnode, int usertype,
             rqid = p_osql_rpl.sid;
             type = p_osql_rpl.type;
         }
-
     }
 
 #ifdef TEST_OSQL
@@ -6215,11 +6214,11 @@ static int net_osql_rpl_tail(void *hndl, void *uptr, char *fromhost,
         dup = malloc(dtalen + tailen);
 
     if (!dup) {
-        logmsg(LOGMSG_FATAL, 
-                "%s: master running out of memory! unable to alloc %d bytes\n",
-                __func__, dtalen + tailen);
+        logmsg(LOGMSG_FATAL,
+               "%s: master running out of memory! unable to alloc %d bytes\n",
+               __func__, dtalen + tailen);
         abort(); /* rc = NET_SEND_FAIL_MALLOC_FAIL;*/
-    } 
+    }
 
 #ifdef TEST_OSQL
     fprintf(stdout, "%s: calling sorese_rcvrpl type=%d sid=%llu\n", __func__,
@@ -6239,10 +6238,10 @@ static int net_osql_rpl_tail(void *hndl, void *uptr, char *fromhost,
     if (osql_nettype_is_uuid(usertype)) {
         osql_uuid_rpl_t p_osql_rpl;
 
-        if (!(p_buf = (uint8_t *)osqlcomm_uuid_rpl_type_get(
-                        &p_osql_rpl, p_buf, p_buf_end))) {
+        if (!(p_buf = (uint8_t *)osqlcomm_uuid_rpl_type_get(&p_osql_rpl, p_buf,
+                                                            p_buf_end))) {
             logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
-                    "osqlcomm_rpl_type_get");
+                   "osqlcomm_rpl_type_get");
             rc = -1;
         } else {
             comdb2uuidcpy(uuid, p_osql_rpl.uuid);
@@ -6254,9 +6253,9 @@ static int net_osql_rpl_tail(void *hndl, void *uptr, char *fromhost,
         osql_rpl_t p_osql_rpl;
 
         if (!(p_buf = (uint8_t *)osqlcomm_rpl_type_get(&p_osql_rpl, p_buf,
-                        p_buf_end))) {
+                                                       p_buf_end))) {
             logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
-                    "osqlcomm_rpl_type_get");
+                   "osqlcomm_rpl_type_get");
             rc = -1;
         } else {
             rqid = p_osql_rpl.sid;
@@ -7725,7 +7724,8 @@ static void net_sorese_signal(void *hndl, void *uptr, char *fromhost,
     }
     osqlcomm_done_type_get(&done, p_buf, p_buf_end);
 
-    if (osql_comm_is_done(type, dtap, dtalen, rqid == OSQL_RQID_USE_UUID, &xerr, NULL) == 1) {
+    if (osql_comm_is_done(type, dtap, dtalen, rqid == OSQL_RQID_USE_UUID, &xerr,
+                          NULL) == 1) {
 
 #if 0
       printf("Done rqid=%llu tmp=%llu\n", hdr->sid, osql_log_time());

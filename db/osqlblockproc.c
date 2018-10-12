@@ -636,9 +636,6 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     int bdberr;
     int debug = 0;
 
-    int ltype = 0;
-    buf_get(&ltype, sizeof(ltype), rpl, rpl + rplen);
-    assert(ltype == type);
     if (type == OSQL_SCHEMACHANGE)
         iq->tranddl++;
 
