@@ -1574,6 +1574,11 @@ REGISTER_TUNABLE("verbose_physrep",
                  TUNABLE_BOOLEAN, &gbl_verbose_physrep, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("physrep_register_interval",
+                 "Interval for physical replicant re-registration.  "
+                 "(Default: 3600)", TUNABLE_INTEGER, &gbl_physrep_register_interval,
+                 0, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("logdelete_lock_trace",
                  "Print trace getting and releasing the logdelete lock.  "
                  "(Default: off)",

@@ -42,8 +42,8 @@ static time_t retry_time = 3;
 static DB_Connection *get_connect(char *hostname);
 static int insert_connect(char *hostname, char *dbname, size_t tier);
 static void delete_connect(DB_Connection *cnct);
-static LOG_INFO handle_record();
-static int find_new_repl_db();
+static LOG_INFO handle_record(LOG_INFO prev_info);
+static int find_new_repl_db(void);
 static DB_Connection *get_rand_connect(size_t tier);
 static void *keep_in_sync(void *args);
 
@@ -118,6 +118,9 @@ void close_repl_connection(void)
     }
 }
 
+int gbl_physrep_register_interval = 3600;
+static int last_register;
+
 static void *keep_in_sync(void *args)
 {
     /* vars for syncing */
@@ -126,6 +129,7 @@ static void *keep_in_sync(void *args)
     size_t sql_cmd_len = 100;
     char sql_cmd[sql_cmd_len];
     int do_truncate = 0;
+    int now;
     LOG_INFO info;
     LOG_INFO prev_info;
 
@@ -138,7 +142,13 @@ static void *keep_in_sync(void *args)
     backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
 
     while (do_repl) {
-        /* get a fresh db connection */
+        if (repl_db_connected && ((now = time(NULL)) - 
+                last_register) > gbl_physrep_register_interval) {
+            close_repl_connection();
+            if (gbl_verbose_physrep) {
+                logmsg(LOGMSG_USER, "%s: forcing re-registration\n", __func__);
+            }
+        }
         if (repl_db_connected == 0) {
             if (find_new_repl_db() == 0) {
                 /* do truncation to start fresh */
@@ -223,7 +233,6 @@ static void *keep_in_sync(void *args)
     }
 
     close_repl_connection();
-    repl_db_connected = 0;
 
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
 
@@ -332,8 +341,6 @@ static LOG_INFO handle_record(LOG_INFO prev_info)
     return next_info;
 }
 
-static int last_register;
-
 static int register_self()
 {
     int rc;
@@ -414,7 +421,7 @@ static int seedsort(const void *arg1, const void *arg2)
     return 0;
 }
 
-static int find_new_repl_db()
+static int find_new_repl_db(void)
 {
     int rc;
     int notfound = 0;
@@ -439,6 +446,7 @@ static int find_new_repl_db()
 
         int j = 0;
         int i = curr_tier;
+        int now;
 
         while (i >= 0) {
 
@@ -450,7 +458,7 @@ static int find_new_repl_db()
                   seedsort);
             for (j = 0; j < cnct_idx[i]; j++) {
                 cnct = local_rep_dbs[i][j];
-                if ((time(NULL) - cnct->last_failed) >
+                if (((now = time(NULL)) - cnct->last_failed) >
                     gbl_physrep_reconnect_penalty) {
                     if (gbl_verbose_physrep) {
                         logmsg(LOGMSG_USER, "%s connecting against mach %s "
@@ -484,9 +492,10 @@ static int find_new_repl_db()
                 } else {
                     if (gbl_verbose_physrep) {
                         logmsg(LOGMSG_USER,
-                               "%s skipping mach %s "
-                               "db %s tier %d idx %d: on recent last_fail \n",
-                               __func__, cnct->hostname, cnct->dbname, i, j);
+                               "%s skipping mach %s db %s tier %d idx %d: on "
+                               "recent last_fail @%d vs %d\n", __func__,
+                               cnct->hostname, cnct->dbname, i, j,
+                               cnct->last_failed, now);
                     }
                 }
             }
@@ -497,6 +506,13 @@ static int find_new_repl_db()
             }
             i--;
         }
+
+        if (gbl_verbose_physrep) {
+            logmsg(LOGMSG_USER, "%s: couldn't connect to any machine, sleeping for 1\n",
+                    __func__, i);
+        }
+
+        sleep(1);
     }
 
     logmsg(LOGMSG_WARN, "Stopping replication\n");
