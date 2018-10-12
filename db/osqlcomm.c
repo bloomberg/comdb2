@@ -51,7 +51,7 @@
 
 #define BLKOUT_DEFAULT_DELTA 5
 #define MAX_CLUSTER 16
-#define DEBUG_REORDER 1
+#define DEBUG_REORDER 0
 
 #define UNK_ERR_SEND_RETRY 10
 /**
