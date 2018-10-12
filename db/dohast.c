@@ -364,8 +364,8 @@ static dohsql_node_t *gen_select(Vdbe *v, Select *p)
 
     p->selFlags |= SF_ASTIncluded;
 
-    /* no joins or subqueries */
-    if (p->pSrc->nSrc > 1 || p->pSrc->a->pSelect)
+    /* no with, joins or subqueries */
+    if (p->pSrc->nSrc == 0 /*with*/ || p->pSrc->nSrc > 1 /*joins*/ || p->pSrc->a->pSelect /*subquery*/)
         return NULL;
 
     /* only handle union all */
