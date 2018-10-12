@@ -784,6 +784,8 @@ static int dohsql_send_intrans_response(struct sqlclntstate *a)
 static int _shard_connect(struct sqlclntstate *clnt, dohsql_connector_t *conn,
                           const char *sql)
 {
+    const char *where = NULL;
+
     conn->clnt = (struct sqlclntstate *)calloc(1, sizeof(struct sqlclntstate));
     if (!conn->clnt) {
         return SHARD_ERR_MALLOC;
@@ -811,7 +813,8 @@ static int _shard_connect(struct sqlclntstate *clnt, dohsql_connector_t *conn,
     conn->clnt->sql = strdup(sql);
     plugin_set_callbacks(conn->clnt, dohsql);
     conn->clnt->plugin.state = conn;
-    conn->thr_where = strdup(thrman_get_where(thrman_self()));
+    where = thrman_get_where(thrman_self());
+    conn->thr_where = strdup(where?where:"");
     conn->rc = SQLITE_ROW;
 
     return SHARD_NOERR;
