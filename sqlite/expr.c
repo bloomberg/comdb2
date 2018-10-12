@@ -5661,9 +5661,12 @@ static char* sqlite3ExprDescribe_inner(
     }
     case TK_VARIABLE: {
       int iBindVar = pExpr->iColumn;
-      Mem *m = &v->aVar[iBindVar-1];
-
-      return print_mem(m);
+      if (atRuntime) {
+          Mem *m = &v->aVar[iBindVar-1];
+          return print_mem(m);
+      }else{
+        return sqlite3_mprintf("%s", pExpr->u.zToken);
+      }
     }
     case TK_CASE: {
       char *ret = NULL;
