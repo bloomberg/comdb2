@@ -90,14 +90,12 @@ static int reload_stripe_info(bdb_state_type *bdb_state)
     uint32_t lid = 0;
     extern uint32_t gbl_rep_lockid;
 
-    stop_threads(thedb);
     if (close_all_dbs() != 0)
         exit(1);
 
     tran = bdb_tran_begin(bdb_state, NULL, &bdberr);
     if (tran == NULL) {
         logmsg(LOGMSG_ERROR, "%s: failed to start tran\n", __func__);
-        resume_threads(thedb);
         return -1;
     }
 
@@ -107,7 +105,6 @@ static int reload_stripe_info(bdb_state_type *bdb_state)
     if (bdb_get_global_stripe_info(tran, &stripes, &blobstripe, &bdberr) != 0) {
         logmsg(LOGMSG_ERROR, "%s: failed to retrieve global stripe info\n",
                __func__);
-        resume_threads(thedb);
         return -1;
     }
 
@@ -122,7 +119,6 @@ static int reload_stripe_info(bdb_state_type *bdb_state)
         logmsg(LOGMSG_FATAL, "%s failed to commit transaction rc:%d\n",
                __func__, rc);
 
-    resume_threads(thedb);
     fix_blobstripe_genids(NULL);
 
     return 0;

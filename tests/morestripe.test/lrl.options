@@ -1,2 +1,2 @@
-noblobstripe on
+blobstripe off
 dtastripe   1

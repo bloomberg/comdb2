@@ -40,13 +40,14 @@ function get_master
     $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.send(\"bdb cluster\")" | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
 }
 
-function create_t1
+function create_table
 {
     [[ $debug == "1" ]] && set -x
-    typeset func="create_t1"
-    typeset cmd="create table t1(a int, b blob)"
+    typeset func="create_table"
+    typeset tbl=$1
+    typeset cmd="create table $tbl(a int, b blob)"
     write_prompt $func "executing $func"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int, b blob)" 
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table $tbl(a int, b blob)" 
     write_prompt $func "$cmd"
 }
 
@@ -96,9 +97,26 @@ function count
 {
     [[ $debug == "1" ]] && set -x
     typeset func="count"
+    typeset tbl=${1:-t1}
+    #write_prompt $func "executing $func"
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $tbl")
+    #write_prompt $func "$x"
+    echo "$x"
+}
+
+function run_blobstripe_test
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="run_blobstripe_test"
     write_prompt $func "executing $func"
-    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from t1")
-    write_prompt $func "$x"
+    create_table bstripe
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into bstripe select *, x'11' from generate_series limit 1000" 2>/dev/null
+    blobstripe
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into bstripe select *, x'11' from generate_series limit 1000" 2>/dev/null
+    x=$(count bstripe)
+    [[ "$x" == "2000" ]] || failexit "incorrect count for bstripe, $x"
+    x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from bstripe" | egrep -v 11 | wc -l)
+    [[ "$x" == "0" ]] || failexit "incorrect blobs for blobstripe"
 }
 
 function run_test
@@ -106,20 +124,20 @@ function run_test
     [[ $debug == "1" ]] && set -x
     typeset func="run_test"
     write_prompt $func "executing $func"
-    create_t1
+    create_table t1
     start_background_writer
-    blobstripe
-    count
+    count >/dev/null
     morestripe 2
-    count
+    count >/dev/null
     morestripe 4
-    count
+    count >/dev/null
     morestripe 8
-    count
+    count >/dev/null
     morestripe 16
-    count
+    count >/dev/null
     kill_background_writer
 }
 
+run_blobstripe_test
 run_test
 echo "Success"

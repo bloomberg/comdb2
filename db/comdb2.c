@@ -5511,43 +5511,6 @@ int gbl_hostname_refresh_time = 60;
 
 int close_all_dbs_tran(tran_type *tran);
 
-int comdb2_close_schemas(void *dbenv, void *lsn, uint32_t lockid)
-{
-    /*
-    uint32_t tranlid = 0;
-    int bdberr = 0;
-    int rc;
-    tran_type *tran;
-
-    tran = bdb_tran_begin(thedb->bdb_env, NULL, &bdberr);
-    if (tran == NULL) {
-        logmsg(LOGMSG_FATAL, "%s: failed to start tran\n", __func__);
-        abort();
-    }
-
-    bdb_get_tran_lockerid(tran, &tranlid);
-    bdb_set_tran_lockerid(tran, lockid);
-
-    if ((rc = close_all_dbs_tran(tran)) != 0) {
-        logmsg(LOGMSG_FATAL, "%s: close_all_dbs_tran returns %d\n", __func__,
-                rc);
-        abort();
-    }
-
-    free_sqlite_table(thedb);
-    thedb->dbs = NULL;
-
-    bdb_set_tran_lockerid(tran, tranlid);
-    if ((rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr)) != 0) {
-        logmsg(LOGMSG_FATAL, "%s: bdb_tran_abort returns %d\n", __func__,
-                rc);
-        abort();
-    }
-    */
-
-    return 0;
-}
-
 int reload_all_db_tran(tran_type *tran);
 int open_all_dbs_tran(void *tran);
 void delete_prepared_stmts(struct sqlthdstate *thd);

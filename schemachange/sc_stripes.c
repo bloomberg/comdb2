@@ -37,13 +37,14 @@ void apply_new_stripe_settings(int newdtastripe, int newblobstripe)
  * 6. Open all tables
  * 7. Start threads
  */
+int open_all_dbs_tran(void *tran);
 int do_alter_stripes_int(struct schema_change_type *s)
 {
     int ii, rc, bdberr;
     int newdtastripe = s->newdtastripe;
     int newblobstripe = s->blobstripe;
     struct dbtable *db;
-    tran_type *tran = NULL, *sc_logical_tran = NULL, *phys_tran;
+    tran_type *sc_logical_tran = NULL, *phys_tran;
     struct ireq iq = {0};
 
     wrlock_schema_lk();
@@ -90,33 +91,26 @@ int do_alter_stripes_int(struct schema_change_type *s)
     /* RENAME BLOB FILES */
     if (newblobstripe && !gbl_blobstripe) {
 
-        rc = trans_start(&iq, NULL, &tran);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "morestripe: %d: trans_start rc %d\n", __LINE__,
-                    rc);
-            return SC_FAILED_TRANSACTION;
-        }
-
         for (ii = 0; ii < thedb->num_dbs; ii++) {
             unsigned long long genid;
             db = thedb->dbs[ii];
-            rc = bdb_rename_blob1(db->handle, tran, &genid, &bdberr);
+            rc = bdb_rename_blob1(db->handle, phys_tran, &genid, &bdberr);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "morestripe: couldn't rename blob 1 for table "
                                 "'%s' bdberr %d\n",
                         db->tablename, bdberr);
-                trans_abort(&iq, tran);
+                bdb_tran_abort(thedb->bdb_env, sc_logical_tran, &bdberr);
                 return SC_BDB_ERROR;
             }
 
             /* record the genid for the conversion in the table's meta database
              */
-            rc = put_blobstripe_genid(db, tran, genid);
+            rc = put_blobstripe_genid(db, phys_tran, genid);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR,
                         "morestripe: couldn't record genid for table '%s'\n",
                         db->tablename);
-                trans_abort(&iq, tran);
+                bdb_tran_abort(thedb->bdb_env, sc_logical_tran, &bdberr);
                 resume_threads(thedb);
                 return SC_INTERNAL_ERROR;
             }
@@ -127,12 +121,6 @@ int do_alter_stripes_int(struct schema_change_type *s)
 
             logmsg(LOGMSG_INFO,"Converted table '%s' to blobstripe with genid 0x%llx\n",
                    db->tablename, genid);
-        }
-
-        rc = trans_commit(&iq, tran, gbl_mynode);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "morestripe: couldn't commit rename trans\n");
-            return SC_FAILED_TRANSACTION;
         }
     }
 
@@ -152,10 +140,10 @@ int do_alter_stripes_int(struct schema_change_type *s)
     }
     logmsg(LOGMSG_INFO, "Created new files OK\n");
 
-    bdb_set_global_stripe_info(NULL, newdtastripe, newblobstripe, &bdberr);
+    bdb_set_global_stripe_info(phys_tran, newdtastripe, newblobstripe, &bdberr);
     apply_new_stripe_settings(newdtastripe, newblobstripe);
 
-    if (open_all_dbs() != 0) exit(1);
+    if (open_all_dbs_tran(phys_tran) != 0) exit(1);
 
     if ((rc = bdb_llog_scdone_tran(thedb->bdb_env, change_stripe, phys_tran,
                                    NULL, &bdberr)) != 0) {
