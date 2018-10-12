@@ -4383,7 +4383,7 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
 
         if (!clnt->dbtran.shadow_tran) {
            logmsg(LOGMSG_ERROR, "%s:trans_start_readcommitted error\n", __func__);
-            return SQLITE_INTERNAL;
+           return SQLITE_INTERNAL;
         }
 
         break;
@@ -4397,7 +4397,7 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
 
         if (!clnt->dbtran.shadow_tran) {
            logmsg(LOGMSG_ERROR, "%s:trans_start_socksql error\n", __func__);
-            return SQLITE_INTERNAL;
+           return SQLITE_INTERNAL;
         }
 
         rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0);
@@ -11900,4 +11900,3 @@ void *comdb2_get_ddl_context(char *name)
     }
     return ctx;
 }
-

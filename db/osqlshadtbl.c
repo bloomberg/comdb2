@@ -601,13 +601,13 @@ int osql_fetch_shadblobs_by_genid(BtCursor *pCur, int *blobnum,
         blobs->bloboffs[0] = 0;
         blobs->blobptrs[0] = NULL;
         rc = 0;
-    }
-    else if (!rc) {
+    } else if (!rc) {
         blobs->bloblens[0] = bdb_temp_table_datasize(tbl->blb_cur);
         blobs->bloboffs[0] = 0;
         blobs->blobptrs[0] = bdb_temp_table_data(tbl->blb_cur);
 
-        /* reset data pointer in cursor; blob will be freed when blobs is freed */
+        /* reset data pointer in cursor; blob will be freed when blobs is freed
+         */
         bdb_temp_table_reset_datapointers(tbl->blb_cur);
     }
     return rc;
@@ -1315,8 +1315,7 @@ int osql_save_updcols(struct BtCursor *pCur, struct sql_thread *thd,
                         __func__, rc, bdberr);
             }
             updCols = oldUpdCols;
-        }
-        else
+        } else
             free(pkey);
     }
 
@@ -1700,8 +1699,7 @@ static int process_local_shadtbl_updcols(struct sqlclntstate *clnt,
 
     if (rc < 0) {
         return rc;
-    }
-    else if (IX_EMPTY == rc || IX_NOTFND == rc) {
+    } else if (IX_EMPTY == rc || IX_NOTFND == rc) {
         return 0;
     }
 
@@ -1906,20 +1904,20 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
         if (rc < 0) {
             free(seq);
             return rc;
-        }
-        else if (rc == IX_FND)
+        } else if (rc == IX_FND)
             goto next;
 
         rc = process_local_shadtbl_index(clnt, tbl, bdberr, *seq, 0);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: error writting index record to master in "
-                            "offload mode!\n", __func__);
+            logmsg(LOGMSG_ERROR,
+                   "%s: error writting index record to master in "
+                   "offload mode!\n",
+                   __func__);
             free(seq);
             break;
         }
 
-        rc = process_local_shadtbl_qblob(clnt, tbl, NULL, bdberr, *seq,
-                                         data);
+        rc = process_local_shadtbl_qblob(clnt, tbl, NULL, bdberr, *seq, data);
         if (rc) {
             free(seq);
             break;
@@ -1942,12 +1940,12 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
 
         free(seq);
         if (rc) {
-            logmsg(LOGMSG_USER, 
-                    "%s: error writting record to master in offload mode!\n",
-                    __func__);
+            logmsg(LOGMSG_USER,
+                   "%s: error writting record to master in offload mode!\n",
+                   __func__);
             return SQLITE_INTERNAL;
         }
-next:
+    next:
         rc = bdb_temp_table_next(tbl->env->bdb_env, tbl->add_cur, bdberr);
     }
 

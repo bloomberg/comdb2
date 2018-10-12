@@ -1626,8 +1626,7 @@ static int bdb_temp_table_find_exact_hash(struct temp_cursor *cur,
 
 }
 
-
-/* Caller needs to free the key if return is not IX_FND 
+/* Caller needs to free the key if return is not IX_FND
  * if IX_FND this function will free key [eventually not immediately]
  */
 int bdb_temp_table_find_exact(bdb_state_type *bdb_state,
