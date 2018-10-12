@@ -258,10 +258,15 @@ int ll_dta_del(bdb_state_type *bdb_state, tran_type *tran, int rrn,
     unsigned long long search_genid;
     int crc;
     int is_blob = 0;
+    int is_rowlocks = 0;
 
     if (dta_out) {
         bzero(dta_out, sizeof(DBT));
         dta_out->flags = DB_DBT_MALLOC;
+    }
+
+    if (tran->logical_tran) {
+        is_rowlocks = 1;
     }
 
     /* Always delete a masked genid for blobs. */
@@ -325,12 +330,9 @@ int ll_dta_del(bdb_state_type *bdb_state, tran_type *tran, int rrn,
             dbt_key.size = sizeof(search_genid);
 
             /* Tell Berkley to allocate memory if we need it.  */
-            if (dta_out || add_snapisol_logging(bdb_state)) {
+            if (dta_out || is_rowlocks || add_snapisol_logging(bdb_state)) {
                 dta_out_si.flags = DB_DBT_MALLOC;
-            }
-
-            /* Logical logging only needs the record size. */
-            else {
+            } else {
                 dta_out_si.ulen = 0;
                 dta_out_si.flags = DB_DBT_PARTIAL | DB_DBT_USERMEM;
             }
@@ -347,6 +349,30 @@ int ll_dta_del(bdb_state_type *bdb_state, tran_type *tran, int rrn,
                 goto done;
             }
 
+            if (is_rowlocks) {
+                /* Verify updateid */
+                updateid = get_updateid_from_genid(bdb_state, genid);
+                od_updateid = bdb_retrieve_updateid(bdb_state, dta_out_si.data,
+                                                    dta_out_si.size);
+                if (od_updateid >= 0) {
+                    if (dtafile >= 1) {
+                        /* blobs */
+                        if (od_updateid > updateid)
+                            rc = DB_NOTFOUND;
+                    } else {
+                        /* data */
+                        if (od_updateid != updateid)
+                            rc = DB_NOTFOUND;
+                    }
+                } else {
+                    logmsg(LOGMSG_ERROR,
+                           "%s:%d failed to get updateid from odh for genid "
+                           "%llx\n",
+                           __FILE__, __LINE__, genid);
+                    rc = DB_ODH_CORRUPT;
+                }
+            }
+
             /* Copy the pointers if the user wanted the record. */
             if (dta_out) {
                 dta_out->data = dta_out_si.data;
@@ -356,28 +382,6 @@ int ll_dta_del(bdb_state_type *bdb_state, tran_type *tran, int rrn,
                 free(dta_out_si.data);
                 dta_out_si.data = NULL;
             }
-
-            /* Verify updateid */
-            updateid = get_updateid_from_genid(bdb_state, genid);
-            od_updateid = bdb_retrieve_updateid(bdb_state, dta_out_si.data,
-                                                dta_out_si.size);
-            if (od_updateid >= 0) {
-                if (dtafile >= 1) {
-                    /* blobs */
-                    if (od_updateid > updateid)
-                        rc = DB_NOTFOUND;
-                } else {
-                    /* data */
-                    if (od_updateid != updateid)
-                        rc = DB_NOTFOUND;
-                }
-            } else {
-                logmsg(LOGMSG_ERROR,
-                       "%s:%d failed to get updateid from odh for genid %llx\n",
-                       __FILE__, __LINE__, genid);
-                rc = DB_ODH_CORRUPT;
-            }
-
         } /* dta_out || snapisol || is_blob */
         else {
             /* Use the normal genid. */
