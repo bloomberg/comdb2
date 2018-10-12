@@ -229,7 +229,7 @@ int osql_sess_unlock_complete(osql_sess_t *sess);
  * Set found if the session is found or not
  *
  */
-int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, void *data,
+int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
                     int datalen, int *found);
 
 /**

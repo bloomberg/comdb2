@@ -516,7 +516,7 @@ int osql_sess_unlock_complete(osql_sess_t *sess)
  * Set found if the session is found or not
  *
  */
-int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, void *data,
+int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
                     int datalen, int *found)
 {
     osql_sess_t *sess = NULL;
@@ -529,8 +529,8 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, void *data,
     /* NOTE: before retrieving a session, we have to figure out if this is a
        sorese completion and lock the repository until the session is dispatched
        This prevents the race against signal_rtoff forcefully cleanup */
-    is_msg_done =
-        osql_comm_is_done(data, datalen, rqid == OSQL_RQID_USE_UUID, &perr, NULL);
+    is_msg_done = osql_comm_is_done(type, data, datalen,
+                                    rqid == OSQL_RQID_USE_UUID, &perr, NULL);
 
     /* get the session */
     sess = osql_repository_get(rqid, uuid, is_msg_done);
@@ -580,8 +580,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, void *data,
         pthread_mutex_unlock(&sess->completed_lock);
 
         /* save op */
-        rc_out = osql_bplog_saveop(sess, data, datalen, rqid, uuid, sess->seq,
-                                   sess->offhost);
+        rc_out = osql_bplog_saveop(sess, data, datalen, rqid, uuid, type);
 
         /* if rc_out, sess is FREED! */
         if (!rc_out) {
