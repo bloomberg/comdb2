@@ -183,6 +183,7 @@ static int osql_bplog_key_cmp(void *usermem, int key1len, const void *key1,
     if (k1->seq > k2->seq) {
         return 1;
     }
+
     return 0;
 }
 
@@ -722,7 +723,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                 } else {
                     key.tbl_idx = 0;
                     key.tbl_idx = sess->tbl_idx;
-                    no_such_tbl_error(tablename, rqid, host);
+                    no_such_tbl_error(tablename, rqid, sess->offhost);
                     logmsg(LOGMSG_DEBUG, "REORDER: no such table: for now call abort(): tablename='%s'\n", tablename);
                     //TODO: need to cleanup this session; for now abort for testing
                     abort();
@@ -1218,7 +1219,6 @@ static int process_this_session(
     uuidstr_t us;
 
     iq->queryid = osql_sess_queryid(sess);
-    iq->debug = 1; //AZ
 
     osql_sess_getuuid(sess, uuid);
 
@@ -1250,7 +1250,6 @@ static int process_this_session(
     }
 
     while (!rc && !rc_out) {
-        int realkeylen = bdb_temp_table_keysize(dbc);
         oplog_key_t* opkey = (oplog_key_t *)bdb_temp_table_key(dbc);
 #if DEBUG_REORDER 
         char mus[37];

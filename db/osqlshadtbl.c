@@ -761,8 +761,8 @@ static int save_dirty_keys(struct sqlclntstate *clnt, shad_tbl_t *tbl,
 
     assert(h);
 #ifndef NDEBUG
-    rdk.seq = seq;
     struct rec_dirty_keys rdk;
+    rdk.seq = seq;
     assert(hash_find(h, &rdk) == NULL);
 #endif
 

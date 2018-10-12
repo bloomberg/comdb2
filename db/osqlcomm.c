@@ -51,7 +51,7 @@
 
 #define BLKOUT_DEFAULT_DELTA 5
 #define MAX_CLUSTER 16
-#define DEBUG_REORDER 0
+#define DEBUG_REORDER 1
 
 #define UNK_ERR_SEND_RETRY 10
 /**
@@ -370,12 +370,11 @@ struct osql_uuid_req {
     enum OSQL_REQ_TYPE type;
     int rqlen;
     int sqlqlen;
-    int padding;
+    int flags;
     uuid_t uuid;
     char tzname[DB_MAX_TZNAMEDB];
-    uint32_t flags;
     unsigned char ntails;
-    char pad[1];
+    char pad[2];
     char sqlq[1];
 };
 enum { OSQLCOMM_REQ_UUID_TYPE_LEN = 8 + 4 + 4 + 16 + DB_MAX_TZNAMEDB + 3 + 1 };
@@ -395,15 +394,13 @@ osqlcomm_req_uuid_type_put(const struct osql_uuid_req *p_osql_req,
                     p_buf_end);
     p_buf = buf_put(&p_osql_req->sqlqlen, sizeof(p_osql_req->sqlqlen), p_buf,
                     p_buf_end);
-    p_buf = buf_put(&p_osql_req->padding, sizeof(p_osql_req->padding), p_buf,
+    p_buf = buf_put(&p_osql_req->flags, sizeof(p_osql_req->flags), p_buf,
                     p_buf_end);
     p_buf = buf_no_net_put(&p_osql_req->uuid, sizeof(p_osql_req->uuid), p_buf,
                            p_buf_end);
     p_buf = buf_put(&p_osql_req->tzname, sizeof(p_osql_req->tzname), p_buf,
                     p_buf_end);
     p_buf = buf_put(&p_osql_req->ntails, sizeof(p_osql_req->ntails), p_buf,
-                    p_buf_end);
-    p_buf = buf_put(&p_osql_req->flags, sizeof(p_osql_req->flags), p_buf,
                     p_buf_end);
     p_buf =
         buf_put(&p_osql_req->pad, sizeof(p_osql_req->pad), p_buf, p_buf_end);
@@ -424,15 +421,13 @@ osqlcomm_req_uuid_type_get(struct osql_uuid_req *p_osql_req,
                     p_buf_end);
     p_buf = buf_get(&p_osql_req->sqlqlen, sizeof(p_osql_req->sqlqlen), p_buf,
                     p_buf_end);
-    p_buf = buf_get(&p_osql_req->padding, sizeof(p_osql_req->padding), p_buf,
+    p_buf = buf_get(&p_osql_req->flags, sizeof(p_osql_req->flags), p_buf,
                     p_buf_end);
     p_buf =
         buf_get(&p_osql_req->uuid, sizeof(p_osql_req->uuid), p_buf, p_buf_end);
     p_buf = buf_get(&p_osql_req->tzname, sizeof(p_osql_req->tzname), p_buf,
                     p_buf_end);
     p_buf = buf_get(&p_osql_req->ntails, sizeof(p_osql_req->ntails), p_buf,
-                    p_buf_end);
-    p_buf = buf_get(&p_osql_req->flags, sizeof(p_osql_req->flags), p_buf,
                     p_buf_end);
     p_buf =
         buf_get(&p_osql_req->pad, sizeof(p_osql_req->pad), p_buf, p_buf_end);
@@ -3936,6 +3931,7 @@ int osql_send_qblob(char *tohost, unsigned long long rqid, uuid_t uuid,
 logmsg(LOGMSG_DEBUG, "REORDER: putting blob id=%d, seq=%d, bloblen(datalen)=%d, sent=%d\n", blobid, seq, datalen, sent);
 if (datalen > 0) {
     char *blah;
+    void hexdumpbuf(char *key, int keylen, char **buf);
     hexdumpbuf(data, datalen, &blah);
     logmsg(LOGMSG_DEBUG, "REORDER: hexdump datalen=%d blob='%s'\n", datalen, blah);
 }
@@ -4987,7 +4983,6 @@ void *osql_create_request(const char *sql, int sqlen, int type,
 
         req_uuid.type = type;
         req_uuid.flags = flags;
-        req_uuid.padding = 0;
         req_uuid.ntails = 0;
         comdb2uuidcpy(req_uuid.uuid, uuid);
         req_uuid.rqlen = rqlen;
@@ -6715,9 +6710,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         net_throttle_wait(thedb->handle_sibling);
 
     const char *osql_reqtype_str(int type);
-
     logmsg(LOGMSG_DEBUG, "%p osql_process_packet(): processing %s\n",
-           pthread_self(), osql_reqtype_str(type));
+           (void *)pthread_self(), osql_reqtype_str(type));
 
     switch (type) {
     case OSQL_DONE:
