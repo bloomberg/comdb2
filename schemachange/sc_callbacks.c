@@ -113,13 +113,13 @@ static int reload_stripe_info(bdb_state_type *bdb_state)
     if (open_all_dbs_tran(tran) != 0)
         exit(1);
 
+    fix_blobstripe_genids(tran);
+
     bdb_set_tran_lockerid(tran, lid);
     rc = bdb_tran_commit(thedb->bdb_env, tran, &bdberr);
     if (rc)
         logmsg(LOGMSG_FATAL, "%s failed to commit transaction rc:%d\n",
                __func__, rc);
-
-    fix_blobstripe_genids(NULL);
 
     return 0;
 }
