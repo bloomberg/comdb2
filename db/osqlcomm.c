@@ -3381,7 +3381,6 @@ int osql_comm_is_done(int type, char *rpl, int rpllen, int hasuuid,
                       struct errstat **xerr, struct ireq *iq)
 {
     int rc = 0;
-
     switch (type) {
     case OSQL_USEDB:
     case OSQL_INSREC:
@@ -3394,14 +3393,11 @@ int osql_comm_is_done(int type, char *rpl, int rpllen, int hasuuid,
     case OSQL_DONE_SNAP:
         /* iq is passed in from bplog_saveop */
         if(iq) {
-            const uint8_t *p_buf = (uint8_t *)rpl;
-            const uint8_t *p_buf_end = p_buf + rpllen;
             osql_done_t dt = {0};
-            p_buf_end = p_buf + sizeof(osql_done_t);
+            const uint8_t *p_buf = (uint8_t *)rpl + (hasuuid ? sizeof(osql_uuid_rpl_t) : sizeof(osql_rpl_t));
+            const uint8_t *p_buf_end = (const uint8_t *)rpl + rpllen;
             if((p_buf = osqlcomm_done_type_get(&dt, p_buf, p_buf_end)) == NULL)
                 abort();
-
-            p_buf_end = (const uint8_t *)rpl + rpllen;
 
             if ((p_buf = snap_uid_get(&iq->snap_info, p_buf, p_buf_end)) == NULL)
                 abort();
@@ -6145,21 +6141,20 @@ static void net_osql_rpl(void *hndl, void *uptr, char *fromnode, int usertype,
         osql_uuid_rpl_t p_osql_uuid_rpl;
 
         rqid = OSQL_RQID_USE_UUID;
-        type = p_osql_uuid_rpl.type;
         if (!(p_buf = (uint8_t *)osqlcomm_uuid_rpl_type_get(
                   &p_osql_uuid_rpl, p_buf, p_buf_end))) {
             logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
                     "osqlcomm_uuid_rpl_type_get");
             rc = -1;
-        } else
+        } else {
             comdb2uuidcpy(uuid, p_osql_uuid_rpl.uuid);
+            type = p_osql_uuid_rpl.type;
+        }
     } else {
         osql_rpl_t p_osql_rpl;
         uint8_t *p_buf, *p_buf_end;
 
         comdb2uuid_clear(uuid);
-        type = p_osql_rpl.type;
-
         p_buf = (uint8_t *)dtap;
         p_buf_end = (p_buf + dtalen);
 
@@ -6168,8 +6163,11 @@ static void net_osql_rpl(void *hndl, void *uptr, char *fromnode, int usertype,
             logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
                     "osqlcomm_rpl_type_get");
             rc = -1;
-        } else
+        } else {
             rqid = p_osql_rpl.sid;
+            type = p_osql_rpl.type;
+        }
+
     }
 
 #ifdef TEST_OSQL
@@ -6180,7 +6178,7 @@ static void net_osql_rpl(void *hndl, void *uptr, char *fromnode, int usertype,
     printf("NET RPL rqid=%llu tmp=%llu\n", ((osql_rpl_t*)dtap)->sid, osql_log_time());
 #endif
 
-    if (rc == 0)
+    if (!rc)
         rc = osql_sess_rcvop(rqid, uuid, type, dtap, dtalen, &found);
     if (rc)
         stats[netrpl2req(usertype)].rcv_failed++;
