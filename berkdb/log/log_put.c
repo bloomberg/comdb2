@@ -182,8 +182,8 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
     /* prevent local replicant from generating logs */
     if (gbl_is_physical_replicant)
     {
-        logmsg(LOGMSG_USER, "I'm a local replicant, stop me!");
-        logmsg(LOGMSG_FATAL, "%s line %d invalid logput for physical replicant\n", __func__, __LINE__);
+        logmsg(LOGMSG_FATAL, "%s line %d invalid logput for physical "
+               "replicant\n", __func__, __LINE__);
         abort();
     }
 

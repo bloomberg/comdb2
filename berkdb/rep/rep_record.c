@@ -3465,13 +3465,6 @@ gap_check:		max_lsn_dbtp = NULL;
 #endif
 		/* Only add less than the oldest */
 		if (inmem_repdb) {
-            /* TODO: Hack to check if local replicant */
-            if (gbl_is_physical_replicant && decoupled == 2)
-            {
-                logmsg(LOGMSG_ERROR, "Cannot enqueue anymore on local replicants\n");
-                abort();
-            }
-
 			repdb_enqueue(rp, rec, decoupled);
 			ret = 0;
 		} else {

@@ -95,9 +95,6 @@ int start_replication(void)
         return 1;
     }
 
-    /* initialize a random seed for db connections */
-    srand(time(NULL));
-
     if (pthread_create(&sync_thread, NULL, keep_in_sync, NULL)) {
         logmsg(LOGMSG_ERROR, "Couldn't create thread to sync\n");
         return -1;
@@ -120,13 +117,14 @@ void close_repl_connection(void)
 
 int gbl_physrep_register_interval = 3600;
 static int last_register;
+int gbl_blocking_physrep = 0;
 
 static void *keep_in_sync(void *args)
 {
     /* vars for syncing */
     int rc;
     volatile int64_t gen, highest_gen = 0;
-    size_t sql_cmd_len = 100;
+    size_t sql_cmd_len = 150;
     char sql_cmd[sql_cmd_len];
     int do_truncate = 0;
     int now;
@@ -141,6 +139,7 @@ static void *keep_in_sync(void *args)
 
     backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
 
+repl_loop:
     while (do_repl) {
         if (repl_db_connected && ((now = time(NULL)) - 
                 last_register) > gbl_physrep_register_interval) {
@@ -161,6 +160,7 @@ static void *keep_in_sync(void *args)
         }
 
         if (do_truncate) {
+            info = get_last_lsn(thedb->bdb_env);
             prev_info = handle_truncation(repl_db, info);
             if (prev_info.file == 0) {
                 close_repl_connection();
@@ -180,9 +180,15 @@ static void *keep_in_sync(void *args)
         if (info.file > 0) {
             prev_info = info;
 
-            rc = snprintf(sql_cmd, sql_cmd_len,
-                          "select * from comdb2_transaction_logs('{%u:%u}')",
-                          info.file, info.offset);
+            if (gbl_blocking_physrep) {
+                rc = snprintf(sql_cmd, sql_cmd_len,
+                        "select * from comdb2_transaction_logs('{%u:%u}', NULL, 1)",
+                        info.file, info.offset);
+            } else {
+                rc = snprintf(sql_cmd, sql_cmd_len,
+                        "select * from comdb2_transaction_logs('{%u:%u}')",
+                        info.file, info.offset);
+            }
             if (rc < 0 || rc >= sql_cmd_len)
                 logmsg(LOGMSG_ERROR, "sql_cmd buffer is not long enough!\n");
 
@@ -192,7 +198,6 @@ static void *keep_in_sync(void *args)
                 continue;
             }
 
-            /* If we can't find our own end of log, truncate */
             if ((rc = cdb2_next_record(repl_db)) != CDB2_OK) {
                 if (gbl_verbose_physrep)
                     logmsg(LOGMSG_USER, "%s can't find the next record\n",
@@ -219,6 +224,7 @@ static void *keep_in_sync(void *args)
                     }
                     do_truncate = 1;
                     highest_gen = new_gen;
+                    goto repl_loop;
                 }
                 prev_info = handle_record(prev_info);
             }
@@ -296,20 +302,18 @@ static LOG_INFO handle_record(LOG_INFO prev_info)
         logmsg(LOGMSG_ERROR, "Could not parse lsn:%s\n", lsn);
     }
 
-    /* sleep while not ready to apply this log */
     if (gbl_deferred_phys_flag && timestamp) {
         time_t curr_time = time(NULL);
-        if (*timestamp + gbl_deferred_phys_update > curr_time) {
-            struct timespec wait_spec;
-            struct timespec remain_spec;
-            wait_spec.tv_sec =
-                (*timestamp + gbl_deferred_phys_update) - curr_time;
-            wait_spec.tv_nsec = 0;
-
-            logmsg(LOGMSG_WARN, "Deferring log update for %ld seconds\n",
-                   wait_spec.tv_sec);
-
-            nanosleep(&wait_spec, &remain_spec);
+        /* Change this to sleep only once a second to test the
+         * value of tunable */
+        while (do_repl && (*timestamp + gbl_deferred_phys_update) > curr_time) {
+            sleep(1);
+            curr_time = time(NULL);
+            if (gbl_verbose_physrep) {
+                logmsg(LOGMSG_USER, "Deferring update, commit-ts %lld, "
+                        "target %d\n", *timestamp,
+                        curr_time + gbl_deferred_phys_update);
+            }
         }
     }
 
@@ -566,7 +570,7 @@ static int insert_connect(char *hostname, char *dbname, size_t tier)
     if (tier >= tier_len) {
         size_t old_tier_len = tier_len;
 
-        if (tier_len > 1024) {
+        if (tier > 1024) {
             logmsg(LOGMSG_ERROR,
                    "Please keep tier sizes manageable (tier < 1024).\n");
             return 1;

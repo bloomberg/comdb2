@@ -129,6 +129,8 @@ function make_phys_rep
 
     if [[ -z "$CLUSTER" ]]; then
         cl="-y localhost"
+    else
+        cl="-y @$(echo $CLUSTER | tr ' ' ',')"
     fi
 
     if [[ -n "$CLUSTER" ]]; then

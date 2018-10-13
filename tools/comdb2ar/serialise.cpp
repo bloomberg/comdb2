@@ -605,7 +605,7 @@ void parse_lrl_file(const std::string& lrlpath,
 void create_lrl_file(std::string& lrlpath,
         std::string repl_name,
         std::string master_name,
-        std::string repl_from_hostnames)
+        std::string repl_type)
 {
     // First, load the lrl file into memory.
     // Modify string path to rename it to the replication machine's name
@@ -648,12 +648,6 @@ void create_lrl_file(std::string& lrlpath,
                     throw LRLError(lrlpath, lineno, "Invalid cluster nodes line");
                 }
 
-                /* default if not overridden from cmd */
-                if (repl_from_hostnames.empty())
-                {
-                    getline(liness, repl_from_hostnames);
-                }
-
                 /* cleave cluster is implied */
                 phys_lrl << "#" << line << std::endl;
             }
@@ -673,13 +667,7 @@ void create_lrl_file(std::string& lrlpath,
 
     }
 
-    /* still no hosts to replicate from */
-    if (repl_from_hostnames.empty())
-    {
-        /* We need a cluster to replicate from, so we quit */
-        errexit();
-    }
-    phys_lrl << "replicate_from " << master_name << " " << repl_from_hostnames; 
+    phys_lrl << "replicate_from " << master_name << " " << repl_type; 
 }
 
 std::string generate_fingerprint(void) 
@@ -701,7 +689,7 @@ std::string generate_fingerprint(void)
 
 void serialise_database(
   std::string lrlpath,
-  std::string repl_from_hostnames,
+  std::string repl_type,
   std::string repl_name,
   const std::string& comdb2_task,
   bool disable_log_deletion,
@@ -771,7 +759,7 @@ void serialise_database(
     /* update found parsed info if making a physical replicant */
     if (copy_physical)
     {
-        create_lrl_file(lrlpath, repl_name, dbname, repl_from_hostnames);
+        create_lrl_file(lrlpath, repl_name, dbname, repl_type);
         templrlpath = lrlpath;
     }
 

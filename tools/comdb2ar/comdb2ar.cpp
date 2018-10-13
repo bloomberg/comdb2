@@ -58,8 +58,8 @@ const char *help_text[] = {
 "  -f           force deserialisation even if checksums fail",
 "  -O           legacy mode, does not delete old format files",
 "  -D           turn off directio",
-"  -E <dbname>  Creates a physical replicant with given db name",
-"  -a <remote>  Set physical replicant machines (defaults to cluster)",
+"  -E dbname    create replicant with dbname",
+"  -T type      override physrep type",
 NULL
 };
 
@@ -112,8 +112,8 @@ int main(int argc, char *argv[])
     bool dryrun = false;
     bool copy_physical = false;
 
-    std::string repl_dbs = ""; 
     std::string new_db_name = "";
+    std::string new_type = "default";
 
     // TODO: should really consider using comdb2file.c
     char *s = getenv("COMDB2_ROOT");
@@ -127,7 +127,7 @@ int main(int argc, char *argv[])
     ss << root << "/bin/comdb2";
     std::string comdb2_task(ss.str());
 
-    while((c = getopt(argc, argv, "hsSLC:I:b:x:u:rRSkKfODE:a:")) != EOF) {
+    while((c = getopt(argc, argv, "hsSLC:I:b:x:u:rRSkKfODE:T:")) != EOF) {
         switch(c) {
             case 'O':
                 legacy_mode = true;
@@ -226,8 +226,8 @@ int main(int argc, char *argv[])
                 strip_cluster_info = true;
                 break;
 
-            case 'a':
-                repl_dbs = std::string(optarg);
+            case 'T':
+                new_type = std::string(optarg);
                 break;
 
             case '?':
@@ -296,7 +296,7 @@ int main(int argc, char *argv[])
         try {
             serialise_database(
                 lrlpath,
-                repl_dbs,
+                new_type,
                 new_db_name,
                 comdb2_task,
                 disable_log_deletion,

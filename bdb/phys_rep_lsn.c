@@ -58,50 +58,15 @@ LOG_INFO get_last_lsn(bdb_state_type *bdb_state)
     return log_info;
 }
 
-int compare_log(bdb_state_type *bdb_state, unsigned int file,
-                unsigned int offset, void *blob, unsigned int blob_len)
+int compare_log(DBT *logrec, void *blob, unsigned int blob_len)
 {
     int rc;
 
-    /* get db internals */
-    DB_LOGC *logc;
-    DBT logrec;
-    DB_LSN match_lsn;
-    LOG_INFO log_info;
-    log_info.file = log_info.offset = log_info.size = 0;
-
-    match_lsn.file = file;
-    match_lsn.offset = offset;
-
-    rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: can't get log cursor rc %d\n", __func__, rc);
-        return 1;
-    }
-    bzero(&logrec, sizeof(DBT));
-    logrec.flags = DB_DBT_MALLOC;
-    rc = logc->get(logc, &match_lsn, &logrec, DB_SET);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: can't get log record rc %d\n", __func__, rc);
-        logc->close(logc, 0);
-        return 1;
-    }
-
-    if (gbl_verbose_physrep) {
-        logmsg(LOGMSG_USER, "cmp: LSN %u:%u\n", match_lsn.file,
-               match_lsn.offset);
-    }
-
-    if (logrec.size != blob_len) {
+    if (logrec->size != blob_len) {
         rc = 1;
     } else {
-        rc = memcmp(blob, logrec.data, blob_len);
+        rc = memcmp(blob, logrec->data, blob_len);
     }
-
-    if (logrec.data)
-        free(logrec.data);
-
-    logc->close(logc, 0);
 
     return rc;
 }
@@ -169,13 +134,12 @@ int find_log_timestamp(bdb_state_type *bdb_state, time_t time,
     return 0;
 }
 
-static int get_next_matchable(DB_LOGC *logc, LOG_INFO *info, int check_current)
+static int get_next_matchable(DB_LOGC *logc, LOG_INFO *info, int check_current, DBT *logrec)
 {
     int rc;
     u_int32_t rectype;
 
     /* get db internals */
-    DBT logrec;
     DB_LSN match_lsn;
     LOG_INFO log_info;
     log_info.file = log_info.offset = log_info.size = 0;
@@ -183,44 +147,40 @@ static int get_next_matchable(DB_LOGC *logc, LOG_INFO *info, int check_current)
     match_lsn.file = info->file;
     match_lsn.offset = info->offset;
 
-    bzero(&logrec, sizeof(DBT));
-    logrec.flags = DB_DBT_REALLOC;
-
     if (check_current) {
-        if ((rc = logc->get(logc, &match_lsn, &logrec, DB_SET)) != 0) {
+        if ((rc = logc->get(logc, &match_lsn, logrec, DB_SET)) != 0) {
             logmsg(LOGMSG_ERROR, "%s: can't find log record {%d:%d}, rc %d\n",
                     __func__, info->file, info->offset, rc);
             return 1;
         }
-        LOGCOPY_32(&rectype, logrec.data);
+        LOGCOPY_32(&rectype, logrec->data);
         if (matchable_log_type(rectype)) {
-            free(logrec.data);
             if (gbl_verbose_physrep) {
                 logmsg(LOGMSG_USER, "%s: initial rec {%u:%u} is matchable\n",
                         __func__, info->file, info->offset);
             }
             assert(info->file == match_lsn.file);
             assert(info->offset == match_lsn.offset);
-            info->size = logrec.size;
+            info->size = logrec->size;
             return 0;
         }
     }
 
     do {
-        rc = logc->get(logc, &match_lsn, &logrec, DB_PREV);
+        rc = logc->get(logc, &match_lsn, logrec, DB_PREV);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: can't get prev log record for {%d:%d} rc"
                     "%d\n", __func__, match_lsn.file, match_lsn.offset, rc);
-            free(logrec.data);
+            free(logrec->data);
+            logrec->data = NULL;
             return 1;
         }
-        LOGCOPY_32(&rectype, logrec.data);
+        LOGCOPY_32(&rectype, logrec->data);
     } while (!matchable_log_type(rectype));
 
-    free(logrec.data);
     info->file = match_lsn.file;
     info->offset = match_lsn.offset;
-    info->size = logrec.size;
+    info->size = logrec->size;
 
     if (gbl_verbose_physrep) {
         logmsg(LOGMSG_USER, "%s: Found matchable {%u:%u}\n", __func__,
@@ -247,7 +207,6 @@ int truncate_log_lock(bdb_state_type *bdb_state, unsigned int file,
                       unsigned int offset, uint32_t flags)
 {
     extern int gbl_online_recovery;
-    extern int gbl_is_physical_replicant;
     DB_LSN trunc_lsn;
     char *msg = "truncate log";
     int online = gbl_online_recovery;
@@ -283,7 +242,7 @@ LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db,
     unsigned int match_file, match_offset;
     LOG_INFO info = {0};
     DB_LOGC *logc;
-    DBT logrec;
+    DBT logrec = {0};
 
     rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0);
     if (rc) {
@@ -291,7 +250,9 @@ LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db,
         return info;
     }
 
-    while (!(rc = get_next_matchable(logc, &start_info, match_current))) {
+    logrec.flags = DB_DBT_REALLOC;
+
+    while (!(rc = get_next_matchable(logc, &start_info, match_current, &logrec))) {
         match_current = 0;
         snprintf(
             sql_cmd, sizeof(sql_cmd),
@@ -328,13 +289,14 @@ LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db,
                 blob = cdb2_column_value(repl_db, 4);
                 blob_len = cdb2_column_size(repl_db, 4);
 
-                if ((rc = compare_log(bdb_state, match_file, match_offset, blob,
-                                      blob_len)) == 0) {
+                if ((rc = compare_log(&logrec, blob, blob_len)) == 0) {
                     info.file = match_file;
                     info.offset = match_offset;
                     info.size = blob_len;
                     info.gen = *(int64_t *)cdb2_column_value(repl_db, 2);
                     logc->close(logc, 0);
+                    free(logrec.data);
+                    logrec.data = NULL;
                     if (gbl_verbose_physrep) {
                         logmsg(LOGMSG_USER, "%s: found match at {%d:%d}\n",
                                __func__, start_info.file, start_info.offset);
@@ -362,12 +324,19 @@ LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db,
                        __func__, sql_cmd, rc, cdb2_errstr(repl_db));
             }
             logc->close(logc, 0);
+            if (logrec.data) {
+                free(logrec.data);
+                logrec.data = NULL;
+            }
             return info;
         }
     }
 
     logmsg(LOGMSG_WARN, "No matchable lsns in the log\n");
     logc->close(logc, 0);
-
+    if (logrec.data) {
+        free(logrec.data);
+        logrec.data = NULL;
+    }
     return info;
 }

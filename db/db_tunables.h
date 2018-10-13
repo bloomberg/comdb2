@@ -1579,6 +1579,11 @@ REGISTER_TUNABLE("physrep_register_interval",
                  "(Default: 3600)", TUNABLE_INTEGER, &gbl_physrep_register_interval,
                  0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("blocking_physrep",
+                 "Physical replicant blocks on select.  "
+                 "(Default: false)", TUNABLE_BOOLEAN, &gbl_blocking_physrep,
+                 0, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("logdelete_lock_trace",
                  "Print trace getting and releasing the logdelete lock.  "
                  "(Default: off)",

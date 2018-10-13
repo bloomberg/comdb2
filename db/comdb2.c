@@ -1188,10 +1188,12 @@ static void *purge_old_files_thread(void *arg)
     dbenv->purge_old_files_is_running = 1;
     backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDONLY);
 
+    assert(!gbl_is_physical_replicant);
+
     while (!db_is_stopped()) {
         /* even though we only add files to be deleted on the master,
          * don't try to delete files, ever, if you're a replicant */
-        if (thedb->master != gbl_mynode || gbl_is_physical_replicant) {
+        if (thedb->master != gbl_mynode) {
             sleep(empty_pause);
             continue;
         }
@@ -3999,7 +4001,7 @@ void create_old_blkseq_thread(struct dbenv *dbenv)
                 rc, strerror(rc));
     }
 
-    if (!dbenv->purge_old_files_is_running) {
+    if (!dbenv->purge_old_files_is_running && !gbl_is_physical_replicant) {
         rc = pthread_create(&dbenv->purge_old_files_tid, &gbl_pthread_attr,
                             purge_old_files_thread, thedb);
         if (rc)

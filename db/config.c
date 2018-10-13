@@ -1236,46 +1236,53 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
          * marked as READEARLY) */
         read_legacy_defaults(dbenv, options);
 
+    /* 'replicate_from <dbname> <prod|beta|alpha|dev|host|@hst1,hst2,hst3..>' */
     } else if (tokcmp(tok, ltok, "replicate_from") == 0) {
+        cdb2_hndl_tp *hndl;
         /* replicate_from <db_name> [dbs to query] */
         if (gbl_is_physical_replicant) {
-            logmsg(LOGMSG_ERROR, "Ignoring multiple replicate_from directives:"
+            logmsg(LOGMSG_FATAL, "Ignoring multiple replicate_from directives:"
                     "can only replicate from a single source\n");
             return -1;
         }
 
-        gbl_is_physical_replicant = 1;
-
+        /* dbname */
         tok = segtok(line, len, &st, &ltok);
-
-        /* need to replicate a database */
         if (ltok == 0) {
-            logmsg(LOGMSG_FATAL, "Must specify a database to replicate to\n");
-            return -1;
+            logmsg(LOGMSG_FATAL, "Must specify a database to replicate from\n");
+            exit(1);
         }
-        /* setup a cluster db name */
-        char *cluster_name = tokdup(tok, ltok);
+        char *dbname = tokdup(tok, ltok);
 
         tok = segtok(line, len, &st, &ltok);
         if (ltok == 0) {
-            logmsg(LOGMSG_ERROR,
-                   "Must specify at least one db to query from\n");
-            return -1;
+            logmsg(LOGMSG_FATAL, "Must specify a type\n");
+            exit(1);
+        }
+        char *type = tokdup(tok, ltok);
+
+        if ((rc = cdb2_open(&hndl, dbname, type, 0)) != 0) {
+            logmsg(LOGMSG_FATAL, "Error opening handle to %s %s: %d\n",
+                    dbname, type, rc);
+            exit(1);
         }
 
-        /* open db connections */
-        while (ltok) {
-            char *tmp_tok = tokdup(tok, ltok);
-            if (add_replicant_host(tmp_tok, cluster_name, 0) != 0) {
-                logmsg(LOGMSG_ERROR, "Failed to insert hostname %.*s\n", ltok,
-                       tok);
+        char *hosts[32];
+        int count;
+        cdb2_cluster_info(hndl, hosts, NULL, 32, &count);
+        count = (count < 32 ? count : 32);
+        for (ii = 0; ii < count; ii++) {
+            if (add_replicant_host(hosts[ii], dbname, 0) != 0) {
+                logmsg(LOGMSG_ERROR, "Failed to insert hostname %s\n", 
+                        hosts[ii]);
             }
-            tok = segtok(line, len, &st, &ltok);
-            free(tmp_tok);
+            gbl_is_physical_replicant = 1;
+            free(hosts[ii]);
         }
-
+        cdb2_close(hndl);
         logmsg(LOGMSG_INFO, "Physical replicant replicating from %s on %s\n", 
-                cluster_name);
+                dbname, type);
+        free(dbname); free(type);
         start_replication();
 
     } else if (tokcmp(tok, ltok, "replicate_wait") == 0) {

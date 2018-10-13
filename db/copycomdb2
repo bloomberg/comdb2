@@ -82,7 +82,7 @@ Other options:
     -r          Restore a backup of a database from stdin
     -p          Copy only the incremental differences
     -H db       Creates a physical replicant with name 'db'.
-    -y 'machs'  Sets physical replicant machines (defaults to cluster).
+    -y type     Sets physical replicant type-string.
     -P rmt_path Sets the remote path for comdb2ar.
     -z rmt_path Sets the remote path for lz4.
     -R          Does not run full recovery on the copied database.
@@ -137,7 +137,7 @@ partialopts=
 outmode=x
 phys_repmode=no
 phys_name=
-phys_copy_from=
+phys_copy_type=
 phys_copy_flag=no
 comdb2ar_rmt=
 lz4_rmt=
@@ -248,7 +248,7 @@ for arg in "$@" ; do
             shift 2
             ;;
 
-        -y) phys_copy_from="$2"
+        -y) phys_copy_type="$2"
             phys_copy_flag=yes
             shift 2
             ;;
@@ -464,7 +464,7 @@ exopts="-C $cluster_info -u $max_du_percent $recovery_opts"
 [ $copy_data = no ]             && aropts="$aropts -s"
 [ $disable_log_delete = no ]    && aropts="$aropts -L"
 [ $phys_repmode = yes ]         && aropts="$aropts -E $phys_name"
-[ $phys_copy_flag = yes ]       && aropts="$aropts -a $phys_copy_from"
+[ $phys_copy_flag = yes ]       && aropts="$aropts -T $phys_copy_type"
 [ $do_recovery = no ]           && exopts="$exopts -R"
 
 if [ $restoremode = yes ]; then

@@ -99,7 +99,7 @@ bool check_usenames(const std::string& dbname, const std::string& dbdir, bool no
 
 void serialise_database(
   std::string lrlpath,
-  std::string repl_dbs,
+  std::string db_type,
   std::string db_name,
   const std::string& comdb2_task,
   bool disable_log_deletion,

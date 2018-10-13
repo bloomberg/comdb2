@@ -161,6 +161,10 @@ extern int gbl_is_physical_replicant;
 
 int add_snapisol_logging(bdb_state_type *bdb_state)
 {
+    /* physical_replicants: 
+     * handle_truncation->vrfy_match->do_rcvry->reload_schemas->commit
+     * reload_schemas opens btrees transactionally.  We call commit, but this 
+     * won't produce a log record if no other record has been written. */
     if (bdb_state->attr->snapisol && !gbl_rowlocks &&
         !gbl_is_physical_replicant) {
         return 1;

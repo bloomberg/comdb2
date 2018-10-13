@@ -1405,17 +1405,17 @@ done:
 		if ((ret = __env_openfiles(dbenv, logc,
 			    txninfo, &data, &first_lsn, NULL, nfiles, 1)) != 0)
 			goto err;
-	} else if (region->stat.st_nrestores == 0) 
+	} else if (region->stat.st_nrestores == 0) {
 		/*
 		 * If there are no prepared transactions that need resolution,
 		 * we need to reset the transaction ID space and log this fact.
 		 */
-        if (!gbl_is_physical_replicant)
-        {
-            if ((ret = __txn_reset(dbenv)) != 0)
-                goto err;
+        assert(!gbl_is_physical_replicant);
 
-        }
+        if ((ret = __txn_reset(dbenv)) != 0)
+            goto err;
+    }
+
 
 	if (FLD_ISSET(dbenv->verbose, DB_VERB_RECOVERY)) {
 		(void)time(&now);

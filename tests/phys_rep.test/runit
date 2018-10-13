@@ -22,6 +22,8 @@ fi
 mkdir -p $DEST_DBDIR
 if [[ -z "$CLUSTER" ]]; then
     cl="-y localhost"
+else
+    cl="-y @$(echo $CLUSTER | tr ' ' ',')"
 fi
 if [[ -n "$CLUSTER" ]]; then
     if [[ "$CLUSTER" =~ .*$myhost.* ]]; then
