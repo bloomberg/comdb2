@@ -592,15 +592,8 @@ unsigned long long bdb_get_a_genid(bdb_state_type *bdb_state)
 
 /* get a unique genid that can be used in comdb2 prefault to reference next
  * block to allocate by database for new data records. */
-unsigned long long bdb_get_next_genid(bdb_state_type *bdb_state)
+inline unsigned long long bdb_get_next_genid(bdb_state_type *bdb_state)
 {
-    bdb_state_type *parent = NULL;
-
-    if (bdb_state->parent)
-        parent = bdb_state->parent;
-    else
-        parent = bdb_state;
-
     return get_genid(bdb_state, bdb_get_active_stripe_int(bdb_state));
 }
 

@@ -1902,18 +1902,15 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
 
         unsigned long long key = *(unsigned long long *)bdb_temp_table_key(tbl->add_cur);
 
-        /*
-         * If this isn't a synthetic genid, then it's a logfile update to a
-         * page-order cursor- ignore that here.
-         */
+        /* If this isn't a synthetic genid, then it's a logfile update to a
+         * page-order cursor- ignore that here. */
         if (!is_genid_synthetic(key))
             goto next;
 
         seq = (unsigned long long *)malloc(sizeof(unsigned long long));
         *seq = key;
         /* lookup the upd_cur to see if this is an actual update, skip it if so
-  TODO: we could package and ship it rite here, rite now (later)
-         */
+         * TODO: we could package and ship it rite here, rite now (later) */
         rc = bdb_temp_table_find_exact(tbl->env->bdb_env, tbl->upd_cur, seq,
                                        sizeof(*seq), bdberr);
         if (rc != IX_FND)
