@@ -211,7 +211,6 @@ static void *_cron_runner(void *arg)
 
     cron_sched_t *sched = (cron_sched_t *)arg;
     cron_event_t *event;
-    int secs_until_next_event;
     struct timespec ts, now;
     int rc;
     struct errstat xerr;
@@ -224,8 +223,6 @@ static void *_cron_runner(void *arg)
 
     locked = 0;
     while (!gbl_exit && !db_is_stopped()) {
-        secs_until_next_event = DEFAULT_SLEEP_IDLE_SCHEDULE;
-
         pthread_mutex_lock(&sched->mtx);
         locked = 1;
 
@@ -353,7 +350,7 @@ void cron_clear_queue(cron_sched_t *sched)
     cron_lock(sched);
 
     /* mop up */
-    while (event = sched->events.top)
+    while ((event = sched->events.top))
         _destroy_event(sched, event);
 
     cron_unlock(sched);
@@ -400,7 +397,6 @@ int cron_event_details(cron_sched_t *sched, int idx, FCRON *func, int *epoch,
 {
     cron_event_t *event;
     int counter = 0;
-    int i = 0;
 
     event = sched->events.top;
     while (event) {

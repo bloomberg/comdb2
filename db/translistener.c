@@ -275,7 +275,6 @@ static void byte_buffer_reserve(struct byte_buffer *b, int sz)
 
 static void byte_buffer_append_zero(struct byte_buffer *b, int n)
 {
-    unsigned char z = 0;
     byte_buffer_reserve(b, n);
     bzero(b->bytes + b->used, n);
     b->used += n;
@@ -750,7 +749,6 @@ static int sp_trigger_run(struct javasp_trans_state *javasp_trans_handle,
 {
 
     struct schema *s;
-    int sz;
     int rc = 0;
     struct byte_buffer bytes;
     struct field *f;
@@ -1011,10 +1009,7 @@ void javasp_rec_set_blobs(struct javasp_rec *rec, blob_status_t *blobs)
 
 int javasp_unload_procedure_int(const char *name)
 {
-    struct stored_proc *sp;
-    int rc;
-
-    sp = stored_procs.top;
+    struct stored_proc *sp = stored_procs.top;
     while (sp) {
         if (strcasecmp(sp->name, name) == 0) {
             struct sp_table *t;
@@ -1146,7 +1141,6 @@ int javasp_load_procedure_int(const char *name, const char *param,
     char *paramcpy = NULL;
     char *endp;
     int argc = 0;
-    int i;
     int rc = 0;
     struct stored_proc *p;
     char *queue;
@@ -1258,8 +1252,6 @@ int javasp_load_procedure_int(const char *name, const char *param,
             continue;
 
         if (strcasecmp(s, "queue") == 0) {
-            int i;
-
             if (paramvalue) {
                 logmsg(LOGMSG_ERROR, 
                         "queue parameter ignored for new queue definition\n");

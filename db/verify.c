@@ -121,9 +121,6 @@ retry:
         int rrn;
         int maxsz = getdatsize(db);
         char *dta = malloc(maxsz);
-        int sz;
-        int ixnum;
-        int errcode;
         int fndlen;
         unsigned long long fnd_genid;
 
@@ -226,11 +223,11 @@ static int verify_formkey_callback(void *parm, void *dta, void *blob_parm,
 {
     struct dbtable *db = parm;
     int rc;
-    struct convert_failure reason;
 
     *keysz = get_size_of_schema(db->ixschema[ix]);
     /*
     rc = stag_to_stag_buf(db->tablename, ".ONDISK", (const char*) dta,
+    struct convert_failure reason;
     db->ixschema[ix]->tag, keyout, &reason);
      */
     rc = create_key_from_ondisk_blobs(db, ix, NULL, NULL, NULL, ".ONDISK", dta,
@@ -378,7 +375,7 @@ int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
     pthread_attr_init(&attr);
     pthread_attr_setstacksize(&attr, stacksize);
 
-    if (rc = pthread_create(&v.tid, &attr, verify_td, &v)) {
+    if ((rc = pthread_create(&v.tid, &attr, verify_td, &v))) {
         logmsg(LOGMSG_ERROR, "%s unable to create thread for verify: %s\n",
                __func__, strerror(errno));
         sbuf2printf(sb, "FAILED\n");

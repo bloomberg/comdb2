@@ -137,9 +137,6 @@ const char *gbl_blockop_name_xrefs[NUM_BLOCKOP_OPCODES];
 static int findblkseq(struct ireq *iq, block_state_t *blkstate,
                       fstblkseq_t *seq, int *have_keyless_requests);
 
-static pthread_mutex_t blkseqlk = PTHREAD_MUTEX_INITIALIZER;
-
-
 
 static int block2_qadd(struct ireq *iq, block_state_t *p_blkstate, void *trans,
                        struct packedreq_qadd *buf, blob_buffer_t *blobs)
@@ -213,7 +210,6 @@ static int block2_qadd(struct ireq *iq, block_state_t *p_blkstate, void *trans,
 static int block2_custom(struct ireq *iq, struct packedreq_custom *buf,
                          const uint8_t *p_opname, blob_buffer_t *blobs)
 {
-    struct packedreq_custom custom_buf;
     char opname[MAXCUSTOPNAME + 1];
     int rc;
     const void *data;
@@ -783,7 +779,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
 {
     struct block_rsp errrsp;
     int rc = 0;
-    int outrc, snapinfo_outrc, jj, snapinfo = 0;
+    int outrc, snapinfo_outrc, snapinfo = 0;
     uint8_t buf_fstblk[FSTBLK_HEADER_LEN + FSTBLK_PRE_RSPKL_LEN +
                        BLOCK_RSPKL_LEN + FSTBLK_RSPERR_LEN + FSTBLK_RSPOK_LEN +
                        (BLOCK_ERR_LEN * MAXBLOCKOPS)];
@@ -1137,7 +1133,6 @@ replay_error:
 static int tolongblock_req_pre_hdr_int(struct ireq *iq,
                                        block_state_t *p_blkstate)
 {
-    int rc;
     struct longblock_req_pre_hdr req;
 
     if (!(iq->p_buf_in = longblock_req_pre_hdr_get(&req, iq->p_buf_in,
@@ -1169,7 +1164,6 @@ pthread_mutex_t delay_lock = PTHREAD_MUTEX_INITIALIZER;
 static int tolongblock_fwd_pre_hdr_int(struct ireq *iq,
                                        block_state_t *p_blkstate)
 {
-    int rc;
     struct longblock_fwd_pre_hdr fwd;
 
     if (!(iq->p_buf_in = longblock_fwd_pre_hdr_get(&fwd, iq->p_buf_in,
@@ -1189,7 +1183,6 @@ int tolongblock(struct ireq *iq)
     unsigned long long tranid = 0LL;
     int rc = 0;
     int irc;
-    int have_keyless_requests = 0;
     longblk_trans_type *blklong_trans = NULL;
     block_state_t blkstate;
     struct longblock_req_hdr hdr;
@@ -1378,7 +1371,6 @@ int tolongblock(struct ireq *iq)
         int gotsequence = 0;
         int gotsequence2 = 0;
         fstblkseq_t sequence;
-        const uint8_t *p_buf_in_saved;
 
         memcpy(&tranid, hdr.trnid, sizeof(int) * 2);
 
@@ -1456,7 +1448,6 @@ int tolongblock(struct ireq *iq)
         /* loop to adjust all new offsets to account for already existing
          * ones, this is a pre-loop, we want to jump back to the begining after
          * it's done */
-        p_buf_in_saved = iq->p_buf_in;
         for (ii = 0; ii < hdr.num_reqs; ++ii, block_state_next(iq, &blkstate)) {
             struct packedreq_hdr op_hdr;
             uint8_t *p_buf_op_start;
@@ -1540,7 +1531,6 @@ int tolongblock(struct ireq *iq)
             case BLOCK2_RECOM:
             case BLOCK2_SNAPISOL:
             case BLOCK2_SERIAL:
-                have_keyless_requests = 1;
                 break;
             }
             if (blklong_trans != NULL)
@@ -1607,7 +1597,6 @@ int tolongblock(struct ireq *iq)
                                                     iq->p_buf_out_end)))
                 return ERR_INTERNAL;
         } else {
-            int datasz = blklong_trans->datasz;
             /* do not free data until execution is done */
             uint8_t *p_rawdata = (uint8_t *)blklong_trans->trn_data;
             int trnsegs = blklong_trans->numsegs;
@@ -2287,8 +2276,6 @@ static int toblock_outer(struct ireq *iq, block_state_t *blkstate)
         iq->dbenv->prefault_stats.num_nohelpers++;
 
     if (gaveaway) {
-        int err_rc;
-
         /* we have another thread working on our memory - we cant
            proceed till he is done with it.  in theory he should be
            much faster than us as it's just memory operations */
@@ -2343,8 +2330,6 @@ static int toblock_outer(struct ireq *iq, block_state_t *blkstate)
     javasp_trans_end(iq->jsph);
     return rc;
 }
-
-static unsigned int nLockAlls = 0;
 
 static int extract_blkseq(struct ireq *iq, block_state_t *p_blkstate,
                           int *found_blkseq, int *have_blkseq)
@@ -2624,7 +2609,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
        flag and logger events for this flag should be reset in the case of a
        retry) */
     if (iq->retries == 0) {
-        unsigned blockop_counts[NUM_BLOCKOP_OPCODES];
         const uint8_t *p_buf_in_saved;
         int got_blockseq = 0;
         int got_blockseq2 = 0;
@@ -3225,12 +3209,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
         case BLOCK2_ADDKEY: {
             struct packedreq_addkey addkey;
-            int opfailcode;
-
-            const uint8_t *p_buf_addkey_start;
-
             ++delayed;
-            p_buf_addkey_start = iq->p_buf_in;
 
             if (!(iq->p_buf_in = packedreq_addkey_get(
                       &addkey, iq->p_buf_in, p_blkstate->p_buf_next_start))) {
@@ -3307,8 +3286,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         }
 
         case BLOCK2_DELDTA: {
-            int cterr = 0;
-
             struct packedreq_delete delete;
 
             ++delayed;
@@ -3719,7 +3696,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         case BLOCK_ADNOD:
         case BLOCK_SECAFPRI: {
             struct packedreq_addsec addsec;
-            int opfailcode, ixnum;
+            int ixnum;
 
             ++delayed;
             if (!(iq->p_buf_in = packedreq_addsec_get(
@@ -3843,7 +3820,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
          * prescan loop, if you change it here please change it there */
         case BLOCK_UPVRRN: {
             struct packedreq_upvrrn upvrrn;
-            int vlen, vptr, newlen;
+            int vlen, newlen;
             const uint8_t *p_buf_tag_name;
             const uint8_t *p_buf_tag_name_end;
             const uint8_t *p_newdta;
@@ -3863,7 +3840,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
             rrn = upvrrn.rrn;
             vlen = upvrrn.vlen4 * 4;
-            vptr = (upvrrn.vptr4 - 1) * 4;
 
             p_buf_vdta = iq->p_buf_in;
             if (vlen > p_blkstate->p_buf_req_end - iq->p_buf_in) {
@@ -4362,7 +4338,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         case BLOCK2_SERIAL: {
             struct packedreq_sql sql;
             const uint8_t *p_buf_sqlq;
-            const uint8_t *p_buf_sqlq_end;
 
             ++delayed;
             is_block2sqlmode = 1;
@@ -4385,7 +4360,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
             p_buf_sqlq = iq->p_buf_in;
             iq->p_buf_in += sql.sqlqlen;
-            p_buf_sqlq_end = iq->p_buf_in;
 
             if (iq->sorese.osql_retry) {
                 if (iq->debug)
@@ -4620,7 +4594,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     if (is_block2sqlmode) {
         int tmpnops = 0;
         int needbackout = 0;
-        int iirc;
 
         rc = osql_bplog_finish_sql(iq, &err);
         if (rc) {
@@ -4854,8 +4827,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     hascommitlock = 1;
     if (iq->arr || iq->selectv_arr) {
         // serializable read-set validation
-        int selectv_rc = 0;
-        int serial_rc = 0;
         irc = pthread_rwlock_unlock(&commit_lock);
         if (irc != 0) {
             logmsg(LOGMSG_FATAL, "pthread_rwlock_unlock(&commit_lock) %d\n", irc);
@@ -6155,8 +6126,6 @@ int get_next_seqno(void *tran, long long *seqno)
     /* key is a long long + int + descriptor bytes for each */
     char fndkey[14];
     int rc;
-    int rrn;
-    unsigned long long genid;
     int fndlen;
     int outnull, outsz;
     struct ireq iq;
