@@ -333,7 +333,7 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
 
         if (!(*psub)) {
             node_free(v, &node);
-            return NULL;
+            goto done;
         }
         if (psub != node->nodes) {
             char *tmp =
@@ -342,7 +342,7 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
             node->sql = tmp;
             if (!tmp) {
                 node_free(v, &node);
-                return NULL;
+                goto done;
             }
         } else {
             node->sql = sqlite3_mprintf("%s", (*psub)->sql);
@@ -350,6 +350,7 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
         crt = crt->pNext;
         psub++;
     }
+done:
     p->pLimit = pLimit;
     p->pOffset = pOffset;
 
