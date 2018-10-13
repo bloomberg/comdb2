@@ -164,7 +164,7 @@ DEF_ATTR(LOGSEGMENTS, logsegments, QUANTITY, 1,
          "being flushed.")
 
 #ifdef BERKDB_4_2
-#define REPLIMIT_DEFAULT (100 * 1024 * 1024)
+#define REPLIMIT_DEFAULT (256 * 1024)
 #elif defined(BERKDB_4_3) || defined(BERKDB_4_5) || defined(BERKDB_46)
 #define REPLIMIT_DEFAULT (1024 * 1024)
 #else
