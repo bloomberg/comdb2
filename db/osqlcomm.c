@@ -3379,7 +3379,6 @@ int osql_comm_is_done(int type, char *rpl, int rpllen, int hasuuid,
     int rc = 0;
     switch (type) {
     case OSQL_USEDB:
-    case OSQL_GENID:
     case OSQL_INSREC:
     case OSQL_INSERT:
     case OSQL_INSIDX:
@@ -7509,8 +7508,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         free(rpl);
         return rc;
     } break;
-    case OSQL_GENID:
-        break;
     default:
 
         logmsg(LOGMSG_ERROR, "%s [%llu %s] RECEIVED AN UNKNOWN OFF OPCODE %u, "
@@ -8299,17 +8296,18 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 }
 
 
-/* 
- * send genid
+/**
+ * Send RECGENID
+ * It handles remote/local connectivity
+ *
  */
-int osql_send_genid(char *tohost, unsigned long long rqid, uuid_t uuid,
-                          unsigned long long genid, int type, SBUF2 *logsb,
-                          int osql_type)
+int osql_send_recordgenid(char *tohost, unsigned long long rqid, uuid_t uuid,
+                          unsigned long long genid, int type, SBUF2 *logsb)
 {
     int rc = 0;
     uuidstr_t us;
 
-    if (osql_type == OSQL_RECGENID && check_master(tohost))
+    if (check_master(tohost))
         return OSQL_SEND_ERROR_WRONGMASTER;
 
     if (rqid == OSQL_RQID_USE_UUID) {
@@ -8318,7 +8316,7 @@ int osql_send_genid(char *tohost, unsigned long long rqid, uuid_t uuid,
         uint8_t *p_buf = buf;
         uint8_t *p_buf_end = p_buf + OSQLCOMM_RECGENID_UUID_RPL_TYPE_LEN;
 
-        recgenid_rpl.hd.type = osql_type;
+        recgenid_rpl.hd.type = OSQL_RECGENID;
         comdb2uuidcpy(recgenid_rpl.hd.uuid, uuid);
         recgenid_rpl.dt.genid = genid;
 
@@ -8364,17 +8362,6 @@ int osql_send_genid(char *tohost, unsigned long long rqid, uuid_t uuid,
     }
 
     return rc;
-}
-
-/**
- * Send RECGENID
- * It handles remote/local connectivity
- *
- */
-int osql_send_recordgenid(char *tohost, unsigned long long rqid, uuid_t uuid,
-                          unsigned long long genid, int type, SBUF2 *logsb)
-{
-    return osql_send_genid(tohost, rqid, uuid, genid, type, logsb, OSQL_RECGENID);
 }
 
 /**
