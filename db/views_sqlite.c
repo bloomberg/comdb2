@@ -169,7 +169,6 @@ static char *_views_create_view_query(timepart_view_t *view, sqlite3 *db,
     char *tmp_str = NULL;
     char *ret_str = NULL;
     const char *table0name;
-    Table *pTbl;
     int i;
 
     if (view->nshards == 0) {
@@ -183,6 +182,7 @@ static char *_views_create_view_query(timepart_view_t *view, sqlite3 *db,
 #if 0
    This is not ready yet, let us use the struct dbtable instead 
    /* extract schema from first table */
+   Table *pTbl;
    pTbl = sqlite3FindTableCheckOnly(db, table0name, NULL);
    if(!pTbl)
    {
