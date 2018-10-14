@@ -2095,7 +2095,6 @@ static void computeLimitRegisters(Parse *pParse, Select *p, int iBreak){
   assert( p->pOffset==0 || p->pLimit!=0 );
   if( p->pLimit ){
     p->iLimit = iLimit = ++pParse->nMem;
-    fprintf(stderr, "%lx getting iLimit %d\n", pthread_self(), iLimit);
     v = sqlite3GetVdbe(pParse);
     assert( v!=0 );
     if( sqlite3ExprIsInteger(p->pLimit, &n) ){
@@ -2121,7 +2120,6 @@ static void computeLimitRegisters(Parse *pParse, Select *p, int iBreak){
     }
     if( p->pOffset ){
       p->iOffset = iOffset = ++pParse->nMem;
-      fprintf(stderr, "%lx getting iOffset %d\n", pthread_self(), iOffset);
       pParse->nMem++;   /* Allocate an extra register for limit+offset */
       sqlite3ExprCode(pParse, p->pOffset, iOffset);
       sqlite3VdbeAddOp1(v, OP_MustBeInt, iOffset); VdbeCoverage(v);
