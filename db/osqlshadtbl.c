@@ -1895,10 +1895,10 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
         unsigned long long *seq;
         seq = (unsigned long long *)malloc(sizeof(unsigned long long));
         *seq = key;
-        /* lookup the upd_cur to see if this is an actual update, skip it if so
+        /* lookup the upd_cur: if this is an actual update then skip it
          * TODO: we could package and ship it rite here, rite now (later) */
         rc = bdb_temp_table_find_exact(tbl->env->bdb_env, tbl->upd_cur, seq,
-                sizeof(*seq), bdberr);
+                                       sizeof(*seq), bdberr);
         if (rc != IX_FND)
             free(seq);
 
@@ -1946,8 +1946,9 @@ next:
     if (rc == IX_PASTEOF || rc == IX_EMPTY) {
         rc = 0;
     } else {
-        logmsg(LOGMSG_ERROR, "%s:%d bdb_temp_table_next failed rc=%d bdberr=%d\n",
-                __func__, __LINE__, rc, *bdberr);
+        logmsg(LOGMSG_ERROR, 
+               "%s:%d bdb_temp_table_next failed rc=%d bdberr=%d\n",
+               __func__, __LINE__, rc, *bdberr);
         /* fall-through */
     }
 
