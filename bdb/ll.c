@@ -1050,28 +1050,22 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
         /* Zero old_dta_out_lcl. */
         bzero(&old_dta_out_lcl, sizeof(old_dta_out_lcl));
 
-        /* Ask Berkeley to allocate memory if we need it.  */
-        if (!dta || verify_dta || old_dta_out || is_rowlocks ||
-            add_snapisol_logging(bdb_state)) {
-            old_dta_out_lcl.flags = DB_DBT_MALLOC;
-        }
-        /* Set ulen to 0 to retrieve only the size. */
-        else {
-            old_dta_out_lcl.ulen = 0;
-            old_dta_out_lcl.flags = DB_DBT_PARTIAL | DB_DBT_USERMEM;
-        }
+        /* always use DB_DBT_MALLOC as we always need the size */
+        old_dta_out_lcl.flags = DB_DBT_MALLOC;
 
         /* Retrieve using a Berkeley cursor. */
         rc = dbcp->c_get(dbcp, &dbt_key, &old_dta_out_lcl, DB_SET | DB_RMW);
+
+        if (rc == 0) {
+            /* Grab malloceddta to possibly free later. */
+            malloceddta = old_dta_out_lcl.data;
+        }
 
         /* Retrieve the actual record length for the logical log. */
         logical_len = old_dta_out_lcl.size;
 
         /* Unpack if we need the record to return or verify. */
         if (0 == rc && (is_rowlocks || !dta || old_dta_out || verify_dta)) {
-            /* Grab malloceddta to possibly free later. */
-            malloceddta = old_dta_out_lcl.data;
-
             /* Zap odh. */
             bzero(&odh, sizeof(odh));
 
@@ -1102,10 +1096,6 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
                     get_updateid_from_genid(bdb_state, oldgenid))
                     rc = (0 == rc ? DB_NOTFOUND : rc);
             }
-        } else if (rc == 0 && add_snapisol_logging(bdb_state)) {
-            /* logical logs only need the size -- make sure we free
-             * malloceddta later */
-            malloceddta = old_dta_out_lcl.data;
         }
 
         /* A blob with this genid may or may not be there. */
