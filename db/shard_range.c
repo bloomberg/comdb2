@@ -40,9 +40,7 @@ static int _colIndex(Table *pTab, const char *zCol);
 void shard_range_create(struct Parse *pParser, const char *tblname,
                         struct Token *col, ExprList *limits)
 {
-    sqlite3 *sqldb = pParser->db;
     struct dbtable *db;
-    struct schema *s;
     int i;
     char *colname;
     Table *pTab;
@@ -100,14 +98,10 @@ void shard_range_destroy(shard_limits_t *shards)
  */
 int shard_check_parallelism(int iTable)
 {
-    GET_CLNT;
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct dbtable *db;
     shard_limits_t *shards;
-    int tblnum;
     int ixnum;
-    int rc;
-    char *sqlcpy;
-    int i;
 
     /* is this an sql thread ?*/
     if (!thd)
@@ -163,7 +157,6 @@ int comdb2_shard_table_constraints(Parse *pParser, const char *zName,
     struct dbtable *db;
     int idx = clnt->conns_idx; /* this is 1 based */
     Expr *pExprLeft, *pExprRight, *pExpr;
-    struct Token tok = {"a", 2};
     struct Table *pTab;
 
     /* is this is a parallel shard ? */
