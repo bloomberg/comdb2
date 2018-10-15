@@ -25,7 +25,6 @@ struct col {
     int type;
     char *name;
 };
-typedef struct col col_t;
 
 static Expr *_create_low(Parse *pParse, struct Token *col, int iColumn,
                          ExprList *list, int shard);

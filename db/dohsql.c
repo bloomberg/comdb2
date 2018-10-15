@@ -31,7 +31,7 @@ struct col {
     int type;
     char *name;
 };
-typedef struct col col_t;
+typedef struct col my_col_t;
 
 enum doh_status { DOH_RUNNING = 0, DOH_MASTER_DONE = 1, DOH_CLIENT_DONE = 2 };
 
@@ -41,7 +41,7 @@ struct dohsql_connector {
     queue_type *que_free; /* de-queued rows come here to be freed */
     pthread_mutex_t mtx;  /* mutex for queueing operations and related counts */
     char *thr_where;      /* cached where status */
-    col_t *cols;          /* cached cols values */
+    my_col_t *cols;          /* cached cols values */
     int ncols;            /* number of columns */
     int rc;
     int nrows;              /* current total queued rows */
@@ -63,7 +63,7 @@ enum {
 struct dohsql {
     int nconns;
     dohsql_connector_t *conns;
-    col_t *cols;
+    my_col_t *cols;
     int ncols;
     row_t *row;
     int row_src;
@@ -192,7 +192,7 @@ static int inner_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     ncols = sqlite3_column_count(stmt);
 
     if (!conn->cols || conn->ncols < ncols) {
-        conn->cols = (col_t *)realloc(conn->cols, ncols * sizeof(col_t));
+        conn->cols = (my_col_t *)realloc(conn->cols, ncols * sizeof(my_col_t));
         if (!conn->cols)
             return -1;
     }
