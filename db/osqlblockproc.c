@@ -722,13 +722,12 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                     key.tbl_idx = sess->tbl_idx;
                 } else {
                     key.tbl_idx = 0;
-                    key.tbl_idx = sess->tbl_idx;
-                    no_such_tbl_error(tablename, rqid, sess->offhost);
+                    //no_such_tbl_error(tablename, rqid, sess->offhost);
                     logmsg(LOGMSG_DEBUG, "REORDER: no such table: for now call abort(): tablename='%s'\n", tablename);
                     //TODO: need to cleanup this session; for now abort for testing
                     //selectv_recom sends usedb with a non existing table
-                    abort();
-                    return -1;
+                    //abort();
+                    //let this get saved in the tmptbl
                 }
 #if DEBUG_REORDER 
                 logmsg(LOGMSG_DEBUG, "REORDER: tablename='%s' idx=%d\n", tablename, (iq->usedb?iq->usedb->dbs_idx:-1));
@@ -747,18 +746,17 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                 logmsg(LOGMSG_DEBUG, "REORDER: no usedb: for now call abort()\n");
                 //TODO: need to cleanup this session; for now abort for testing
                 abort();
-                return -1;
             }
         }
 
         if (type == OSQL_UPDATE || type == OSQL_DELETE || type == OSQL_UPDREC ||
-            type == OSQL_DELREC || type == OSQL_INSERT || type == OSQL_INSREC ) {
+            type == OSQL_DELREC || type == OSQL_INSERT || type == OSQL_INSREC) {
             enum { OSQLCOMM_UUID_RPL_TYPE_LEN = 4 + 4 + 16 };
             unsigned long long genid = 0;
             if ( type == OSQL_INSERT || type == OSQL_INSREC) {
                 if (iq->usedb)
                     genid = bdb_get_next_genid(iq->usedb->handle);
-                else // if no iq->usedb we cant get a good next genid so 
+                else           // if no iq->usedb we cant get a good next genid so 
                     genid = 1; // just for reordering assign something non zero
 #if DEBUG_REORDER 
                 logmsg(LOGMSG_DEBUG, "REORDER: Creating genid 0x%llx\n", genid);
