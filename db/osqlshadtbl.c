@@ -1884,24 +1884,23 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
         char *data = bdb_temp_table_data(tbl->add_cur);
         int ldata = bdb_temp_table_datasize(tbl->add_cur);
 
-        unsigned long long key = *(unsigned long long *)bdb_temp_table_key(tbl->add_cur);
+        unsigned long long key;
+        key = *(unsigned long long *)bdb_temp_table_key(tbl->add_cur);
 
         /* If this isn't a synthetic genid, then it's a logfile update to a
          * page-order cursor- ignore that here. */
         if (!is_genid_synthetic(key))
             goto next;
 
-        {
-            unsigned long long *seq;
-            seq = (unsigned long long *)malloc(sizeof(unsigned long long));
-            *seq = key;
-            /* lookup the upd_cur to see if this is an actual update, skip it if so
-             * TODO: we could package and ship it rite here, rite now (later) */
-            rc = bdb_temp_table_find_exact(tbl->env->bdb_env, tbl->upd_cur, seq,
-                    sizeof(*seq), bdberr);
-            if (rc != IX_FND)
-                free(seq);
-        }
+        unsigned long long *seq;
+        seq = (unsigned long long *)malloc(sizeof(unsigned long long));
+        *seq = key;
+        /* lookup the upd_cur to see if this is an actual update, skip it if so
+         * TODO: we could package and ship it rite here, rite now (later) */
+        rc = bdb_temp_table_find_exact(tbl->env->bdb_env, tbl->upd_cur, seq,
+                sizeof(*seq), bdberr);
+        if (rc != IX_FND)
+            free(seq);
 
         if (rc < 0)
             return rc;
@@ -1910,8 +1909,7 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
 
         rc = process_local_shadtbl_index(clnt, tbl, bdberr, key, 0);
         if (rc) {
-            logmsg(LOGMSG_ERROR,
-                   "%s: error writting index record to master in "
+            logmsg(LOGMSG_ERROR, "%s: error writting index record to master in "
                    "offload mode!\n", __func__);
             break;
         }

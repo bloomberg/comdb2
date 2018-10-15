@@ -557,7 +557,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
            master not needed */
         rc = sql_cancelled_transaction(sess->iq);
         if (rc) {
-            fprintf(stderr, "%s: failed cancelling transaction! rc %d\n",
+            logmsg(LOGMSG_ERROR, "%s: failed cancelling transaction! rc %d\n",
                     __func__, rc);
         }
 
@@ -604,7 +604,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
 
     /* release the session */
     if ((rc = osql_repository_put(sess, is_msg_done)) != 0) {
-        fprintf(stderr, "%s: rc =%d\n", __func__, rc);
+        logmsg(LOGMSG_ERROR, "%s: osql_repository_put rc =%d\n", __func__, rc);
     }
 
     if (rc_out && osql_session_is_sorese(sess))
