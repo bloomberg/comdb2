@@ -550,7 +550,8 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
                       BDB_ATTR_DISABLE_SELECTVONLY_TRAN_NOP)) {
         /* release the session */
         if ((rc = osql_repository_put(sess, is_msg_done)) != 0) {
-            fprintf(stderr, "%s: rc =%d\n", __func__, rc);
+            logmsg(LOGMSG_ERROR, 
+                   "%s: osql_repository_put rc =%d\n", __func__, rc);
         }
 
         /* sqlite aborted the transaction, skip all the work here
@@ -558,7 +559,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
         rc = sql_cancelled_transaction(sess->iq);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: failed cancelling transaction! rc %d\n",
-                    __func__, rc);
+                                  __func__, rc);
         }
 
         /* done here */
@@ -578,10 +579,9 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
                    __func__, __LINE__, rc);
         }
         comdb2uuidstr(uuid, us);
-        logmsg(
-            LOGMSG_INFO,
-            "%s: rqid=%llx, uuid=%s is already done, ignoring packages\n",
-            __func__, rqid, us);
+        logmsg(LOGMSG_INFO,
+               "%s: rqid=%llx, uuid=%s is already done, ignoring packages\n",
+               __func__, rqid, us);
         return 0;
     }
     pthread_mutex_unlock(&sess->completed_lock);
