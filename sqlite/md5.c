@@ -139,7 +139,9 @@ void MD5Init(MD5Context *ctx){
  */
 void MD5Update(MD5Context *ctx, const unsigned char *buf, unsigned int len){
         uint32 t;
-
+void hexdump(int, unsigned char *key, int keylen);
+        fprintf(stderr, "CALLED  %s buf %p len %d\n", __func__, buf, len);
+        hexdump(1000000, (unsigned char *)buf, len);
         /* Update bitcount */
 
         t = ctx->bits[0];
