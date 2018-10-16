@@ -37,6 +37,7 @@
 extern bdb_state_type *gbl_bdb_state;
 extern int gbl_rowlocks;
 extern pthread_t gbl_invalid_tid;
+extern int gbl_exit;
 
 int gbl_bdblock_debug = 0;
 
@@ -253,19 +254,23 @@ void bdb_lock_destructor(void *ptr)
 {
     thread_lock_info_type *lk = ptr;
     if (lk) {
+        if (gbl_exit) {
+            /* We don't give up bdblock on exit */
+            goto out;
+        }
         logmsg(LOGMSG_ERROR, 
             "%s: thread has not called bdb_thread_event to destroy locks!\n",
             __func__);
-
         if (lk->lockref != 0) {
             logmsg(LOGMSG_FATAL, "%s: exiting thread holding lock!\n", __func__);
             abort_lk(lk);
         }
-        if (lk->stack && lk->nstack > 0)
+        if (lk->stack && lk->nstack > 0) {
             cheap_stack_trace();
-
-        if (lk->stack)
+        }
+out:    if (lk->stack) {
             free(lk->stack);
+        }
         free(lk);
     }
 }
