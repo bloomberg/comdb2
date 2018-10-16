@@ -87,6 +87,7 @@ gets truncated at the first 0x00 (if any) and anything beyond that gets discarde
 |Type|SQL Datatype|Description|Range|
 |---|---|---|---|
 |cstring|```CDB2_CSTRING```|A C style string with NULL termination| 0 or more characters terminated with '\0' up to the record size (16k) |
+|vutf8|```CDB2_CSTRING```|A C style string with NULL termination, and variable length. Must be valid UTF-8|Must be valid UTF-8.  Limited to 255mb in size.|
 
 ## Datetime types
 
