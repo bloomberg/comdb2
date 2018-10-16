@@ -1862,6 +1862,7 @@ char *bdb_coherent_state_string(const char *);
 /* ugly, but need to signal shutdown */
 int osql_process_message_decom(char *);
 void osql_net_exiting(void);
+void osql_cleanup_netinfo(void);
 
 int bdb_list_all_fileids_for_newsi(bdb_state_type *, hash_t *);
 

@@ -3139,17 +3139,8 @@ int osql_comm_init(struct dbenv *dbenv)
  */
 void osql_comm_destroy(void)
 {
-
     if (g_osql_ready)
         logmsg(LOGMSG_ERROR, "Osql module was not disabled yet!\n");
-    /*
-       LEAK THIS PLEASE: there are races in net lib that I could not
-       figure it out.  Leaking ensures that we do not need to
-       sync all the net threads on with this destruction effort
-
-       destroy_netinfo(comm->handle_sibling);
-       free(comm);
-    */
     comm = NULL;
 }
 
@@ -4074,8 +4065,14 @@ void osql_net_exiting(void)
 {
     if(!comm) return;
     netinfo_type *netinfo_ptr = (netinfo_type *)comm->handle_sibling;
-
     net_exiting(netinfo_ptr);
+}
+
+void osql_cleanup_netinfo(void)
+{
+    if(!comm) return;
+    netinfo_type *netinfo_ptr = (netinfo_type *)comm->handle_sibling;
+    net_cleanup_netinfo(netinfo_ptr);
 }
 
 int osql_close_connection(char *host)

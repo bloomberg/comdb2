@@ -1429,14 +1429,6 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     DB_TXN *tid;
     netinfo_type *netinfo_ptr = bdb_state->repinfo->netinfo;
 
-    BDB_READLOCK("bdb_close_int");
-
-    /* force a checkpoint */
-    rc = ll_checkpoint(bdb_state, 1);
-
-    /* lock everyone out of the bdb code */
-    BDB_WRITELOCK("bdb_close_int");
-
     if (is_real_netinfo(netinfo_ptr)) {
         /* get me off the network */
         net_send_decom_all(netinfo_ptr, gbl_mynode);
@@ -1447,9 +1439,15 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
 
         net_exiting(netinfo_ptr);
         osql_net_exiting();
-
-        sleep(1);
     }
+    net_cleanup_netinfo(netinfo_ptr);
+    osql_cleanup_netinfo();
+
+    /* lock everyone out of the bdb code */
+    BDB_WRITELOCK(__func__);
+
+    /* force a checkpoint */
+    rc = ll_checkpoint(bdb_state, 1);
 
     /* if we were passed a child, find his parent */
     if (bdb_state->parent)
@@ -1557,8 +1555,6 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     memset(bdb_state, 0xff, sizeof(bdb_state));
     free(bdb_state);
      */
-
-    /* net_cleanup_netinfo(netinfo_ptr); */
 
     /* DO NOT RELEASE the write lock.  just let it be. */
     return 0;

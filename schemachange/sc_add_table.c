@@ -231,7 +231,8 @@ int do_add_table(struct ireq *iq, struct schema_change_type *s,
         return rc;
     }
 
-    iq->usedb = db->sc_to = s->db = db = s->newdb;
+    iq->usedb = s->db = db = s->newdb;
+    db->sc_to = db;
     db->odh = s->headers;
     db->inplace_updates = s->ip_updates;
     db->version = 1;
