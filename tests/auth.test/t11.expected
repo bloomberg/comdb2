@@ -7,7 +7,6 @@
 [put password 'secret' for 'other'] rc 0
 [grant read on comdb2_transaction_logs to 'replicant'] rc 0
 [grant read on comdb2_metrics to 'sysmon'] rc 0
-(username='default', isOP='N')
 (username='other', isOP='N')
 (username='replicant', isOP='N')
 (username='sysmon', isOP='N')
