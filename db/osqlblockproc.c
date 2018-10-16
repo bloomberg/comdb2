@@ -640,7 +640,6 @@ const char *osql_reqtype_str(int type)
         "INSIDX",
         "DBQ_CONSUME_UUID",
         "STARTGEN",
-        "GENID",
     };
     return typestr[type];
 }
@@ -678,7 +677,7 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
                 type == OSQL_INSREC || type == OSQL_UPDREC || type == OSQL_DELREC ||
                 type == OSQL_INSERT || type == OSQL_UPDATE || type == OSQL_DELETE ||
                 type == OSQL_INSIDX || type == OSQL_DELIDX || type == OSQL_RECGENID ||
-                type == OSQL_QBLOB || type == OSQL_UPDCOLS || type == OSQL_GENID) {
+                type == OSQL_QBLOB || type == OSQL_UPDCOLS) {
             logmsg(LOGMSG_DEBUG, "REORDER: no usedb: for now call abort()\n");
             //TODO: need to cleanup this session; for now abort for testing
             abort();
