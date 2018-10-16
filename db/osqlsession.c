@@ -519,10 +519,7 @@ int osql_sess_unlock_complete(osql_sess_t *sess)
 int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
                     int datalen, int *found)
 {
-    osql_sess_t *sess = NULL;
     int rc = 0;
-    int rc_out = 0;
-    int is_sorese = 0;
     int is_msg_done = 0;
     struct errstat *perr;
 
@@ -533,100 +530,87 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
                                     rqid == OSQL_RQID_USE_UUID, &perr, NULL);
 
     /* get the session */
-    sess = osql_repository_get(rqid, uuid, is_msg_done);
-
-    if (sess) {
-        is_sorese = osql_session_is_sorese(sess);
-
-        if (is_msg_done && perr && htonl(perr->errval) == SQLITE_ABORT &&
-            !bdb_attr_get(thedb->bdb_attr,
-                          BDB_ATTR_DISABLE_SELECTVONLY_TRAN_NOP)) {
-            /* release the session */
-            if ((rc = osql_repository_put(sess, is_msg_done)) != 0) {
-                fprintf(stderr, "%s: rc =%d\n", __func__, rc);
-            }
-
-            /* sqlite aborted the transaction, skip all the work here
-               master not needed */
-            rc = sql_cancelled_transaction(sess->iq);
-            if (rc) {
-                fprintf(stderr, "%s: failed cancelling transaction! rc %d\n",
-                        __func__, rc);
-            }
-
-            /* done here */
-            return rc;
-        }
-
-        *found = 1;
-
-        pthread_mutex_lock(&sess->completed_lock);
-        /* ignore new coming osql packages */
-        if (sess->completed || sess->dispatched || sess->terminate) {
-            uuidstr_t us;
-            pthread_mutex_unlock(&sess->completed_lock);
-            if ((rc = osql_repository_put(sess, is_msg_done)) != 0) {
-                logmsg(LOGMSG_ERROR,
-                       "%s:%d osql_repository_put failed with rc %d\n",
-                       __func__, __LINE__, rc);
-            }
-            comdb2uuidstr(uuid, us);
-            logmsg(
-                LOGMSG_INFO,
-                "%s: rqid=%llx, uuid=%s is already done, ignoring packages\n",
-                __func__, rqid, us);
-            return 0;
-        }
-        pthread_mutex_unlock(&sess->completed_lock);
-
-        /* save op */
-        rc_out = osql_bplog_saveop(sess, data, datalen, rqid, uuid, type);
-
-        /* if rc_out, sess is FREED! */
-        if (!rc_out) {
-            /* Must increment seq under completed_lock */
-            pthread_mutex_lock(&sess->completed_lock);
-            uuidstr_t sessuuid, requuid;
-
-            if (sess->rqid == rqid || (rqid == OSQL_RQID_USE_UUID &&
-                                       comdb2uuidcmp(sess->uuid, uuid) == 0)) {
-                sess->seq++;
-                sess->last_row = time(NULL);
-            }
-
-            pthread_mutex_unlock(&sess->completed_lock);
-        }
-
-        /* release the session */
-        if ((rc = osql_repository_put(sess, is_msg_done)) != 0) {
-            fprintf(stderr, "%s: rc =%d\n", __func__, rc);
-        }
-
-        if (is_sorese && rc_out) {
-            /*exit here*/
-            return rc_out;
-        }
-
-    } else {
+    osql_sess_t *sess = osql_repository_get(rqid, uuid, is_msg_done);
+    if (!sess) {
+        /* in the current implementation we tolerate redundant ops from session
+         * that have been already terminated--discard the packet in that case */
         uuidstr_t us;
         comdb2uuidstr(uuid, us);
-        printf("discarding packet for %llx %s, session not found\n", rqid, us);
-
-        /* in the current implementation we tolerate
-           redundant ops from session that have been
-           terminated in the meantime;
-           we simply discard the packet in such a case
-         */
+        logmsg(LOGMSG_ERROR,
+               "discarding packet for %llx %s, session not found\n", rqid, us);
         *found = 0;
 
         /* we used to free data here, but some callers like net_osql_rpl_tail()
          * (and probably all others expect to manage it themselves */
-
-        rc = 0; /* redundant */
+        return 0;
     }
 
-    if (rc || rc_out) {
-        /* something is wrong with the session, terminate it*/
+    if (is_msg_done && perr && htonl(perr->errval) == SQLITE_ABORT &&
+        !bdb_attr_get(thedb->bdb_attr,
+                      BDB_ATTR_DISABLE_SELECTVONLY_TRAN_NOP)) {
+        /* release the session */
+        if ((rc = osql_repository_put(sess, is_msg_done)) != 0) {
+            logmsg(LOGMSG_ERROR, 
+                   "%s: osql_repository_put rc =%d\n", __func__, rc);
+        }
+
+        /* sqlite aborted the transaction, skip all the work here
+           master not needed */
+        rc = sql_cancelled_transaction(sess->iq);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed cancelling transaction! rc %d\n",
+                                  __func__, rc);
+        }
+
+        /* done here */
+        return rc;
+    }
+
+    *found = 1;
+
+    pthread_mutex_lock(&sess->completed_lock);
+    /* ignore new coming osql packages */
+    if (sess->completed || sess->dispatched || sess->terminate) {
+        uuidstr_t us;
+        pthread_mutex_unlock(&sess->completed_lock);
+        if ((rc = osql_repository_put(sess, is_msg_done)) != 0) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d osql_repository_put failed with rc %d\n",
+                   __func__, __LINE__, rc);
+        }
+        comdb2uuidstr(uuid, us);
+        logmsg(LOGMSG_INFO,
+               "%s: rqid=%llx, uuid=%s is already done, ignoring packages\n",
+               __func__, rqid, us);
+        return 0;
+    }
+    pthread_mutex_unlock(&sess->completed_lock);
+
+    /* save op */
+    int rc_out = osql_bplog_saveop(sess, data, datalen, rqid, uuid, type);
+
+    /* if rc_out, sess is FREED! */
+    if (!rc_out) {
+        /* Must increment seq under completed_lock */
+        pthread_mutex_lock(&sess->completed_lock);
+        if (sess->rqid == rqid || (rqid == OSQL_RQID_USE_UUID &&
+                                   comdb2uuidcmp(sess->uuid, uuid) == 0)) {
+            sess->seq++;
+            sess->last_row = time(NULL);
+        }
+
+        pthread_mutex_unlock(&sess->completed_lock);
+    }
+
+    /* release the session */
+    if ((rc = osql_repository_put(sess, is_msg_done)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s: osql_repository_put rc =%d\n", __func__, rc);
+    }
+
+    if (rc_out && osql_session_is_sorese(sess))
+        return rc_out;
+
+    if (rc || rc_out) { /* something is wrong with the session, terminate it*/
         sess->terminate = OSQL_TERMINATE;
     }
 
