@@ -50,28 +50,6 @@ typedef struct osql_checkboard {
 
 } osql_checkboard_t;
 
-struct osql_sqlthr {
-    unsigned long long rqid; /* osql rq id */
-    uuid_t uuid;             /* request id, take 2 */
-    char *master;            /* who was the master I was talking to */
-    int done;            /* result of socksql, recom, snapisol and serial master
-                            transactions*/
-    struct errstat err;  /* valid if done = 1 */
-    int type;            /* type of the request, enum OSQL_REQ_TYPE */
-    pthread_mutex_t mtx; /* mutex and cond for commitrc sync */
-    pthread_cond_t cond;
-    int master_changed; /* set if we detect that node we were waiting for was
-                           disconnected */
-    int nops;
-
-    int status;       /* poking support; status at the last check */
-    int timestamp;    /* poking support: timestamp at the last check */
-    int last_updated; /* poking support: when was the last time I got info, 0 is
-                         never */
-    int last_checked; /* poking support: when was the loast poke sent */
-    struct sqlclntstate *clnt; /* cache clnt */
-};
-
 static osql_checkboard_t *checkboard = NULL;
 
 int osql_checkboard_init(void)
@@ -141,6 +119,7 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
     entry->last_checked = entry->last_updated =
         comdb2_time_epochms(); /* initialize these to insert time */
     entry->clnt = clnt;
+    entry->register_time = osql_log_time();
 
 #ifdef DEBUG
     if (gbl_debug_sql_opcodes) {
@@ -471,7 +450,7 @@ int osql_checkboard_master_changed(void *obj, void *arg)
     return 0;
 }
 
-void osql_checkboard_for_each(char *host, int (*func)(void *, void *))
+void osql_checkboard_for_each(void *arg, int (*func)(void *, void *))
 {
     int rc;
 
@@ -483,8 +462,8 @@ void osql_checkboard_for_each(char *host, int (*func)(void *, void *))
         return;
     }
 
-    hash_for(checkboard->rqs, func, host);
-    hash_for(checkboard->rqsuuid, func, host);
+    hash_for(checkboard->rqs, func, arg);
+    hash_for(checkboard->rqsuuid, func, arg);
 
     if ((rc = pthread_rwlock_unlock(&checkboard->rwlock))) {
         logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n", rc);

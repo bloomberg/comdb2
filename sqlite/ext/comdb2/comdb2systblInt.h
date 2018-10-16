@@ -41,6 +41,7 @@ int systblSqlpoolQueueInit(sqlite3 *db);
 int systblActivelocksInit(sqlite3 *db);
 int systblNetUserfuncsInit(sqlite3 *db);
 int systblClusterInit(sqlite3 *db);
+int systblActiveOsqlsInit(sqlite3 *db);
 
 int comdb2_next_allowed_table(sqlite3_int64 *tabId);
 

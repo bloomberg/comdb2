@@ -269,6 +269,8 @@ int comdb2SystblInit(
     rc = systblNetUserfuncsInit(db);
   if (rc == SQLITE_OK)
     rc = systblClusterInit(db);
+  if (rc == SQLITE_OK)
+      rc = systblActiveOsqlsInit(db);
 #endif
   return rc;
 }
