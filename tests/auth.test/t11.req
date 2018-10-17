@@ -30,8 +30,8 @@ select 1 from comdb2_opcode_handlers limit 1
 #select 1 from comdb2_plugins limit 1
 select 1 from comdb2_procedures limit 1
 select 1 from comdb2_queues limit 1
-select 1 from comdb2_repl_stats limit 1
-select 1 from comdb2_replication_netqueue limit 1
+select count(*) from comdb2_repl_stats where host='dummy'
+select count(*) from comdb2_replication_netqueue where machine='dummy'
 select 1 from comdb2_sqlpool_queue limit 1
 select 1 from comdb2_threadpools limit 1
 select 1 from comdb2_timepartevents limit 1
