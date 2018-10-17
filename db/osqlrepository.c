@@ -610,3 +610,27 @@ int osql_repository_session_exists(unsigned long long rqid, uuid_t uuid)
 
     return out_rc;
 }
+
+void osql_repository_for_each(void *arg, int (*func)(void *, void *))
+{
+    int rc = 0;
+
+    if (!theosql)
+        return;
+
+    if ((rc = pthread_rwlock_rdlock_check(&theosql->hshlck, __func__,
+                                          __LINE__))) {
+        logmsg(LOGMSG_ERROR, "%s:pthread_rwlock_rdlock error code %d\n",
+               __func__, rc);
+        return;
+    }
+
+    hash_for(theosql->rqs, func, arg);
+    hash_for(theosql->rqsuuid, func, arg);
+
+    if ((rc = theosql_pthread_rwlock_unlock(&theosql->hshlck))) {
+        logmsg(LOGMSG_ERROR, "%s:pthread_rwlock_unlock error code %d\n",
+               __func__, rc);
+        return;
+    }
+}
