@@ -546,12 +546,11 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
     }
 
     if (is_msg_done && perr && htonl(perr->errval) == SQLITE_ABORT &&
-        !bdb_attr_get(thedb->bdb_attr,
-                      BDB_ATTR_DISABLE_SELECTVONLY_TRAN_NOP)) {
+        !bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DISABLE_SELECTVONLY_TRAN_NOP)) {
         /* release the session */
         if ((rc = osql_repository_put(sess, is_msg_done)) != 0) {
-            logmsg(LOGMSG_ERROR, 
-                   "%s: osql_repository_put rc =%d\n", __func__, rc);
+            logmsg(LOGMSG_ERROR, "%s: osql_repository_put rc =%d\n", __func__,
+                   rc);
         }
 
         /* sqlite aborted the transaction, skip all the work here
@@ -559,7 +558,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
         rc = sql_cancelled_transaction(sess->iq);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: failed cancelling transaction! rc %d\n",
-                                  __func__, rc);
+                   __func__, rc);
         }
 
         /* done here */
@@ -575,8 +574,8 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
         pthread_mutex_unlock(&sess->completed_lock);
         if ((rc = osql_repository_put(sess, is_msg_done)) != 0) {
             logmsg(LOGMSG_ERROR,
-                   "%s:%d osql_repository_put failed with rc %d\n",
-                   __func__, __LINE__, rc);
+                   "%s:%d osql_repository_put failed with rc %d\n", __func__,
+                   __LINE__, rc);
         }
         comdb2uuidstr(uuid, us);
         logmsg(LOGMSG_INFO,
