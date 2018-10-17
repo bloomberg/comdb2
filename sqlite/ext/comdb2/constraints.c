@@ -93,7 +93,7 @@ static int systblConstraintsOpen(
   memset(pCur, 0, sizeof(*pCur));
   *ppCursor = &pCur->base;
 
-  systblNextAllowedTable(&pCur->iRowid);
+  comdb2_next_allowed_table(&pCur->iRowid);
 
   return SQLITE_OK;
 }
@@ -131,7 +131,7 @@ static int systblConstraintsNext(sqlite3_vtab_cursor *cur){
     }
   }
 
-  systblNextAllowedTable(&pCur->iRowid);
+  comdb2_next_allowed_table(&pCur->iRowid);
 
   return SQLITE_OK;
 }

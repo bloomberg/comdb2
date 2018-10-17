@@ -98,7 +98,7 @@ static int systblColumnsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   memset(pCur, 0, sizeof(*pCur));
   *ppCursor = &pCur->base;
 
-  systblNextAllowedTable(&pCur->iTabId);
+  comdb2_next_allowed_table(&pCur->iTabId);
 
   return SQLITE_OK;
 }
@@ -120,7 +120,7 @@ static int systblColumnsNext(sqlite3_vtab_cursor *cur){
   if( ++pCur->iColId == thedb->dbs[pCur->iTabId]->schema->nmembers ){
     pCur->iColId = 0;
     pCur->iTabId++;
-    systblNextAllowedTable(&pCur->iTabId);
+    comdb2_next_allowed_table(&pCur->iTabId);
   }
   return SQLITE_OK;
 }

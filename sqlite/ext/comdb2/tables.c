@@ -77,7 +77,7 @@ static int systblTablesOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   memset(pCur, 0, sizeof(*pCur));
   *ppCursor = &pCur->base;
 
-  systblNextAllowedTable(&pCur->iRowid);
+  comdb2_next_allowed_table(&pCur->iRowid);
 
   return SQLITE_OK;
 }
@@ -96,7 +96,7 @@ static int systblTablesClose(sqlite3_vtab_cursor *cur){
 static int systblTablesNext(sqlite3_vtab_cursor *cur){
   systbl_tables_cursor *pCur = (systbl_tables_cursor*)cur;
   pCur->iRowid++;
-  systblNextAllowedTable(&pCur->iRowid);
+  comdb2_next_allowed_table(&pCur->iRowid);
   return SQLITE_OK;
 }
 
