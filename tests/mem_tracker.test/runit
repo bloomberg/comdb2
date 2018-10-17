@@ -12,4 +12,4 @@ EXEC PROCEDURE sys.cmd.send("memstat debug stop")
 EOF
 
 stacks=`cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $host 'EXEC PROCEDURE sys.cmd.send("memstat debug dump sqlite")'`
-addr2line -fsp -e $COMDB2_EXE "$stacks" | grep sql_statement_done
+addr2line -fsp -e $COMDB2_EXE $stacks | grep sql_statement_done

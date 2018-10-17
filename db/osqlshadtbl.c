@@ -1939,8 +1939,10 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
         }
         rc = process_local_shadtbl_index(clnt, tbl, bdberr, key, 0);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: error writting index record to master in "
-                   "offload mode!\n", __func__);
+            logmsg(LOGMSG_ERROR,
+                   "%s: error writting index record to master in "
+                   "offload mode!\n",
+                   __func__);
             break;
         }
 
@@ -1969,7 +1971,6 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
                        "%s: error writting record to master in offload mode!\n",
                        __func__);
                 return SQLITE_INTERNAL;
-            }
         }
 next:
         rc = bdb_temp_table_next(tbl->env->bdb_env, tbl->add_cur, bdberr);
@@ -1978,9 +1979,9 @@ next:
     if (rc == IX_PASTEOF || rc == IX_EMPTY) {
         rc = 0;
     } else {
-        logmsg(LOGMSG_ERROR, 
-               "%s:%d bdb_temp_table_next failed rc=%d bdberr=%d\n",
-               __func__, __LINE__, rc, *bdberr);
+        logmsg(LOGMSG_ERROR,
+               "%s:%d bdb_temp_table_next failed rc=%d bdberr=%d\n", __func__,
+               __LINE__, rc, *bdberr);
         /* fall-through */
     }
 
@@ -2019,8 +2020,9 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
         rc = bdb_temp_table_find_exact(tbl->env->bdb_env, tbl->add_cur, seq,
                                        sizeof(*seq), bdberr);
         if (rc != IX_FND) {
-            logmsg(LOGMSG_ERROR, "%s: this genid %llu must exist! bug rc = %d\n",
-                   __func__, *seq, rc);
+            logmsg(LOGMSG_ERROR,
+                   "%s: this genid %llu must exist! bug rc = %d\n", __func__,
+                   *seq, rc);
             free(seq);
             return SQLITE_INTERNAL;
         }
