@@ -6353,7 +6353,8 @@ void *get_bdb_env(void) { return thedb->bdb_env; }
  *
  * @param  tabId : index to the current table in the tables array
  */
-int comdb2_next_allowed_table(sqlite3_int64 *tabId) {
+int comdb2_next_allowed_table(sqlite3_int64 *tabId)
+{
     struct dbtable *pDb;
     struct sql_thread *thd;
     char *tablename;
@@ -6369,7 +6370,7 @@ int comdb2_next_allowed_table(sqlite3_int64 *tabId) {
                                        tablename, ACCESS_READ, &bdberr);
         if (rc == 0)
             return SQLITE_OK;
-         (*tabId)++;
+        (*tabId)++;
     }
     return SQLITE_OK;
 }
