@@ -685,7 +685,6 @@ int views_do_partition(void *tran, timepart_views_t *views, const char *name,
     cson_object *cson_obj;
     const char *op;
     int rc;
-    char *latest_views_str;
 
     /* string to conversion */
     rc = cson_parse_string(&cson_cmd, cmd, strlen(cmd), NULL, NULL);
@@ -727,6 +726,7 @@ int views_do_partition(void *tran, timepart_views_t *views, const char *name,
 
 #if 0
    /* time to change the change persistent */
+    char *latest_views_str;
    rc = timepart_serialize(views, &latest_views_str, 0);
    if (rc != VIEW_NOERR || !latest_views_str)
    {
@@ -1001,7 +1001,6 @@ static cson_array *_cson_extract_array(cson_object *cson_obj, const char *param,
                                        struct errstat *err)
 {
     cson_value *param_val;
-    cson_array *array;
 
     param_val = cson_object_get(cson_obj, param);
     if (!param_val) {
@@ -1084,7 +1083,6 @@ static int timepart_deserialize_cson_value(cson_value *cson_view,
     cson_object *obj_arr;
     int j;
     int rc = VIEW_NOERR;
-    int now;
 
     if (!cson_value_is_object(cson_view) ||
         (obj = cson_value_get_object(cson_view)) == NULL) {

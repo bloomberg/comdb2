@@ -1868,7 +1868,6 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
 {
 
     osqlstate_t *osql = &clnt->osql;
-    unsigned long long *seq = NULL;
     int rc = 0;
     int osql_nettype = tran2netrpl(clnt->dbtran.mode);
 
@@ -1885,41 +1884,40 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
         char *data = bdb_temp_table_data(tbl->add_cur);
         int ldata = bdb_temp_table_datasize(tbl->add_cur);
 
-        seq = (unsigned long long *)malloc(sizeof(unsigned long long));
+        unsigned long long key;
+        key = *(unsigned long long *)bdb_temp_table_key(tbl->add_cur);
 
-        *seq = *(unsigned long long *)bdb_temp_table_key(tbl->add_cur);
-
-        /*
-         * If this isn't a synthetic genid, then it's a logfile update to a
-         * page-order cursor- ignore that here.
-         */
-        if (!is_genid_synthetic(*seq))
+        /* If this isn't a synthetic genid, then it's a logfile update to a
+         * page-order cursor- ignore that here. */
+        if (!is_genid_synthetic(key))
             goto next;
 
-        /* lookup the upd_cur to see if this is an actual update, skip it if so
-  TODO: we could package and ship it rite here, rite now (later)
-         */
+        unsigned long long *seq;
+        seq = (unsigned long long *)malloc(sizeof(unsigned long long));
+        *seq = key;
+        /* lookup the upd_cur: if this is an actual update then skip it
+         * TODO: we could package and ship it rite here, rite now (later) */
         rc = bdb_temp_table_find_exact(tbl->env->bdb_env, tbl->upd_cur, seq,
                                        sizeof(*seq), bdberr);
-        if (rc < 0) {
+        if (rc != IX_FND)
             free(seq);
+
+        if (rc < 0)
             return rc;
-        } else if (rc == IX_FND)
+        else if (rc == IX_FND)
             goto next;
 
-        rc = process_local_shadtbl_index(clnt, tbl, bdberr, *seq, 0);
+        rc = process_local_shadtbl_index(clnt, tbl, bdberr, key, 0);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s: error writting index record to master in "
                    "offload mode!\n",
                    __func__);
-            free(seq);
             break;
         }
 
-        rc = process_local_shadtbl_qblob(clnt, tbl, NULL, bdberr, *seq, data);
+        rc = process_local_shadtbl_qblob(clnt, tbl, NULL, bdberr, key, data);
         if (rc) {
-            free(seq);
             break;
         }
 
@@ -1927,18 +1925,16 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
 
         if (clnt->osql_max_trans &&
             ((tbl->nops + crt_nops) > clnt->osql_max_trans)) {
-            free(seq);
             return SQLITE_TOOBIG;
         }
 
-        rc = osql_send_insrec(osql->host, osql->rqid, osql->uuid, *seq,
+        rc = osql_send_insrec(osql->host, osql->rqid, osql->uuid, key,
                               (gbl_partial_indexes && tbl->ix_partial)
-                                  ? get_ins_keys(clnt, tbl, *seq)
+                                  ? get_ins_keys(clnt, tbl, key)
                                   : -1ULL,
                               data, ldata, osql_nettype, osql->logsb,
-                              get_rec_flags(clnt, tbl, *seq, 1));
+                              get_rec_flags(clnt, tbl, key, 1));
 
-        free(seq);
         if (rc) {
             logmsg(LOGMSG_USER,
                    "%s: error writting record to master in offload mode!\n",
@@ -1952,8 +1948,9 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
     if (rc == IX_PASTEOF || rc == IX_EMPTY) {
         rc = 0;
     } else {
-        logmsg(LOGMSG_ERROR, "%s:%d bdb_temp_table_next failed rc=%d bdberr=%d\n",
-                __func__, __LINE__, rc, *bdberr);
+        logmsg(LOGMSG_ERROR,
+               "%s:%d bdb_temp_table_next failed rc=%d bdberr=%d\n", __func__,
+               __LINE__, rc, *bdberr);
         /* fall-through */
     }
 
@@ -1992,8 +1989,9 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
         rc = bdb_temp_table_find_exact(tbl->env->bdb_env, tbl->add_cur, seq,
                                        sizeof(*seq), bdberr);
         if (rc != IX_FND) {
-            logmsg(LOGMSG_ERROR, "%s: this genid %llu must exist! bug rc = %d\n",
-                    __func__, *seq, rc);
+            logmsg(LOGMSG_ERROR,
+                   "%s: this genid %llu must exist! bug rc = %d\n", __func__,
+                   *seq, rc);
             free(seq);
             return SQLITE_INTERNAL;
         }
