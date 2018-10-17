@@ -166,7 +166,7 @@ const sqlite3_module systblTimepartModule = {
   0,                   /* xRollback */
   0,                   /* xFindMethod */
   0,                   /* xRename */
-  .access_flag = ALLOW_USER,
+  .access_flag = CDB2_ALLOW_USER,
 };
 
 static int timepartShardsConnect(
@@ -247,7 +247,7 @@ const sqlite3_module systblTimepartShardsModule = {
   0,                    /* xRollback */
   0,                    /* xFindMethod */
   0,                    /* xRename */
-  .access_flag = ALLOW_USER,
+  .access_flag = CDB2_ALLOW_USER,
 };
 
 
@@ -369,7 +369,7 @@ const sqlite3_module systblTimepartEventsModule = {
   0,                    /* xRollback */
   0,                    /* xFindMethod */
   0,                    /* xRename */
-  .access_flag = ALLOW_USER,
+  .access_flag = CDB2_ALLOW_USER,
 };
 
 #endif /* SQLITE_BUILDING_FOR_COMDB2 */

@@ -11917,7 +11917,7 @@ int comdb2_check_vtab_access(sqlite3 *db, sqlite3_module *module)
             int bdberr;
             int rc;
 
-            if (module->access_flag == ALLOW_ALL) {
+            if (module->access_flag == CDB2_ALLOW_ALL) {
                 return SQLITE_OK;
             }
 

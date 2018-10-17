@@ -5935,8 +5935,8 @@ struct sqlite3_module {
 
 /* COMDB2 MODIFICATION */
 enum {
-  ALLOW_ALL,  // Allow access to all
-  ALLOW_USER, // Limit access only to permitted users
+  CDB2_ALLOW_ALL,  // Allow access to all
+  CDB2_ALLOW_USER, // Limit access only to permitted users
 };
 
 /*

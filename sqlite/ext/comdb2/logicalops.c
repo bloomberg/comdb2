@@ -1424,7 +1424,7 @@ sqlite3_module systblLogicalOpsModule = {
   0,                         /* xRollback */
   0,                         /* xFindMethod */
   0,                         /* xRename */
-  .access_flag = ALLOW_USER,
+  .access_flag = CDB2_ALLOW_USER,
 };
 
 
