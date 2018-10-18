@@ -157,7 +157,7 @@ int osql_sess_set_complete(unsigned long long rqid, uuid_t uuid,
  * if this is still in progress
  *
  */
-int osql_sess_test_slow(blocksql_tran_t *tran, osql_sess_t *sess);
+int osql_sess_test_slow(osql_sess_t *sess);
 
 /**
  * Returns

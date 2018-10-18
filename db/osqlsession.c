@@ -414,7 +414,7 @@ int osql_sess_test_complete(osql_sess_t *sess, struct errstat **xerr)
  * if this is still in progress
  *
  */
-int osql_sess_test_slow(blocksql_tran_t *tran, osql_sess_t *sess)
+int osql_sess_test_slow(osql_sess_t *sess)
 {
     int rc = 0;
     time_t crttime = time(NULL);
@@ -431,7 +431,7 @@ int osql_sess_test_slow(blocksql_tran_t *tran, osql_sess_t *sess)
             sess->terminate = OSQL_TERMINATE;
 
             /* wake up the block processor */
-            rc = osql_bplog_signal(tran);
+            //TODO DELETE THIS no need for signal: rc = osql_bplog_signal(tran);
 
             if (bdb_lock_desired(thedb->bdb_env))
                 return ERR_NOMASTER;
@@ -705,12 +705,7 @@ int osql_session_testterminate(void *obj, void *arg)
 #endif
 
             /* no one will work on this; need to clear it */
-            rc = osql_bplog_free(sess->iq, 0, __func__, NULL, 0);
-            /* NOTE: sess is clear here! */
-            if (rc) {
-                fprintf(stderr, "%s: error in bplog_free rc=%d\n", __func__,
-                        rc);
-            }
+            osql_bplog_free(sess->iq, 0, __func__, NULL, 0);
         }
     }
     return 0;
@@ -783,7 +778,6 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
                                    uuid_t uuid, char *fromhost, struct ireq *iq,
                                    int *replaced)
 {
-
     osql_sess_t *sess = NULL;
     int rc = 0;
     uuidstr_t us;
@@ -964,12 +958,7 @@ static int osql_sess_set_terminate(osql_sess_t *sess)
 
     assert(!sess->completed && !sess->dispatched);
     /* no one will work on this; need to clear it */
-    rc = osql_bplog_free(sess->iq, 0, __func__, NULL, __LINE__);
-    /* NOTE: sess is clear here! */
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: error in bplog_free rc=%d\n", __func__, rc);
-    }
-
+    osql_bplog_free(sess->iq, 0, __func__, NULL, __LINE__);
     return rc;
 }
 

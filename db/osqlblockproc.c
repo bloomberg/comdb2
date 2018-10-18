@@ -71,23 +71,11 @@
 int g_osql_blocksql_parallel_max = 5;
 extern int gbl_blocksql_grace;
 
-typedef struct blocksql_info {
-    osql_sess_t *sess; /* pointer to the osql session */
-
-    LINKC_T(struct blocksql_info)
-        p_reqs; /* pending osql sessions linked in same transaction */
-    LINKC_T(struct blocksql_info)
-        c_reqs; /* completed osql sessions linked in same transaction */
-} blocksql_info_t;
 
 struct blocksql_tran {
+    osql_sess_t *sess; /* pointer to the osql session */
     /* NOTE: we keep only block processor thread operating on this, so we don't
      * need a lock */
-    LISTC_T(blocksql_info_t)
-        pending; /* list of complete sessions for this block sql */
-    LISTC_T(blocksql_info_t)
-        complete; /* list of complete sessions for this block sql */
-
     pthread_mutex_t store_mtx; /* mutex for db access - those are non-env dbs */
     struct temp_table *db;     /* temp table that keeps the list of ops for all
                                   current sessions */
@@ -96,13 +84,9 @@ struct blocksql_tran {
                            has completed */
     pthread_cond_t cond;
     int dowait; /* mark this when session completes to avoid loosing signal */
-
-    int num; /* count how many sessions were started for this tran */
-
+    int iscomplete;
     int delayed;
-
     int rows;
-
     struct dbtable *last_db;
 };
 
@@ -152,7 +136,7 @@ static int osql_bplog_key_cmp(void *usermem, int key1len, const void *key1,
 }
 
 /**
- * Adds the current session to the bplog pending session list.
+ * Adds the current session
  * If there is no bplog created, it creates one.
  * Returns 0 if success.
  *
@@ -161,7 +145,6 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
 {
 
     blocksql_tran_t *tran = NULL;
-    blocksql_info_t *info = NULL;
     int bdberr = 0;
 
     /*
@@ -172,13 +155,6 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
        info, we'll need a lock around alloc/dealloc
      */
 
-    info = (blocksql_info_t *)calloc(1, sizeof(blocksql_info_t));
-    if (!info) {
-        logmsg(LOGMSG_ERROR, "%s: error allocating %zu bytes\n", __func__,
-               sizeof(blocksql_info_t));
-        return -1;
-    }
-
     if (iq->blocksql_tran)
         abort();
 
@@ -186,7 +162,6 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
     if (!tran) {
         logmsg(LOGMSG_ERROR, "%s: error allocating %zu bytes\n", __func__,
                sizeof(blocksql_tran_t));
-        free(info);
         return -1;
     }
 
@@ -196,16 +171,12 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
 
     iq->blocksql_tran = tran; /* now blockproc knows about it */
 
-    /* init the lists and the temporary table and cursor */
-    listc_init(&tran->pending, offsetof(blocksql_info_t, p_reqs));
-    listc_init(&tran->complete, offsetof(blocksql_info_t, c_reqs));
-
+    /* init temporary table and cursor */
     tran->db = bdb_temp_table_create(thedb->bdb_env, &bdberr);
     if (!tran->db || bdberr) {
         logmsg(LOGMSG_ERROR, "%s: failed to create temp table bdberr=%d\n",
                __func__, bdberr);
         free(tran);
-        free(info);
         return -1;
     }
 
@@ -217,11 +188,7 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
     iq->tranddl = 0;
     /*printf("Set req_received=%llu\n", iq->timings.req_received);*/
 
-    tran->num++;
-
-    info->sess = sess;
-    listc_abl(&tran->pending, info);
-
+    tran->sess = sess;
     return 0;
 }
 
@@ -231,56 +198,44 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
 {
     blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
     int error = 0;
-    blocksql_info_t *info = NULL, *temp = NULL;
     struct errstat generr = {0}, *xerr;
     int rc = 0;
     int stop_time = 0;
 
-    while (tran->pending.top && !error) {
-
-        /* go through the list of pending requests and if there are any
-            that have not received responses over a certain window, poke them */
-        /* if we find any complete lists, move them from pending to complete */
+    if (!tran->iscomplete) {
         /* if the session finished with deadlock on replicant, or failed
-           session,
-           resubmit it */
-        LISTC_FOR_EACH_SAFE(&tran->pending, info, temp, p_reqs)
-        {
+           session, resubmit it */
 
-            rc = osql_sess_test_complete(info->sess, &xerr);
-            switch (rc) {
-            case SESS_DONE_OK:
-                listc_rfl(&tran->pending, info);
-                listc_abl(&tran->complete, info);
-                break;
+        rc = osql_sess_test_complete(tran->sess, &xerr);
+        switch (rc) {
+        case SESS_DONE_OK:
+            tran->iscomplete = 1;
+            break;
 
-            case SESS_DONE_ERROR_REPEATABLE:
+        case SESS_DONE_ERROR_REPEATABLE:
 
-                /* generate a new id for this session */
-                if (iq->sorese.type) {
-                    /* this is socksql, recom, snapisol or serial; no retry here
-                     */
-                    generr.errval = ERR_INTERNAL;
-                    strncpy(generr.errstr, "master cancelled transaction",
-                            sizeof(generr.errstr));
-                    xerr = &generr;
-                    error = 1;
-                    break;
-                }
-                break;
-
-            case SESS_DONE_ERROR:
+            /* generate a new id for this session */
+            if (iq->sorese.type) {
+                /* this is socksql, recom, snapisol or serial; no retry here
+                 */
+                generr.errval = ERR_INTERNAL;
+                strncpy(generr.errstr, "master cancelled transaction",
+                        sizeof(generr.errstr));
+                xerr = &generr;
                 error = 1;
                 break;
-
-            case SESS_PENDING:
-                rc = osql_sess_test_slow(tran, info->sess);
-                if (rc)
-                    return rc;
-                break;
             }
-            if (error)
-                break;
+            break;
+
+        case SESS_DONE_ERROR:
+            error = 1;
+            break;
+
+        case SESS_PENDING:
+            rc = osql_sess_test_slow(tran->sess);
+            if (rc)
+                return rc;
+            break;
         }
 
         /* please stop !!! */
@@ -297,9 +252,6 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
             }
         }
 
-        if (!tran->pending.top)
-            break;
-
         if (bdb_lock_desired(thedb->bdb_env)) {
             logmsg(LOGMSG_ERROR, "%lu %s:%d blocksql session closing early\n",
                    pthread_self(), __FILE__, __LINE__);
@@ -309,18 +261,8 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
             return ERR_NOMASTER;
         }
 
-        /* this ensure we poke frequently enough */
-        if (!error && tran->pending.top) {
-#if 0
-         printf("Going to wait tmp=%llu\n", osql_log_time());
-#endif
-
-            rc = osql_bplog_wait(tran);
-            if (rc)
-                return rc;
-        } else
-            break; /* all completed */
-    }              /* done with all requests, or unrepeatable error */
+    }
+    else abort();
 
     iq->timings.req_alldone = osql_log_time();
 
@@ -451,8 +393,6 @@ char *osql_get_tran_summary(struct ireq *iq)
      */
     if (iq->blocksql_tran) {
         blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
-        blocksql_info_t *info = NULL;
-
         int sz = 128;
         int min_rtt = INT_MAX;
         int max_rtt = 0;
@@ -467,13 +407,12 @@ char *osql_get_tran_summary(struct ireq *iq)
             return NULL;
         }
 
-        LISTC_FOR_EACH(&tran->complete, info, c_reqs)
-        {
+        if (tran->iscomplete) {
             int crt_tottm = 0;
             int crt_rtt = 0;
             int crt_rtrs = 0;
 
-            osql_sess_getsummary(info->sess, &crt_tottm, &crt_rtt, &crt_rtrs);
+            osql_sess_getsummary(tran->sess, &crt_tottm, &crt_rtt, &crt_rtrs);
 
             min_tottm = (min_tottm < crt_tottm) ? min_tottm : crt_tottm;
             max_tottm = (max_tottm > crt_tottm) ? max_tottm : crt_tottm;
@@ -485,8 +424,8 @@ char *osql_get_tran_summary(struct ireq *iq)
 
         nametype = osql_sorese_type_to_str(iq->sorese.type);
 
-        snprintf(ret, sz, "%s num=%u tot=[%u %u] rtt=[%u %u] rtrs=[%u %u]",
-                 nametype, tran->num, min_tottm, max_tottm, min_rtt, max_rtt,
+        snprintf(ret, sz, "%s tot=[%u %u] rtt=[%u %u] rtrs=[%u %u]",
+                 nametype, min_tottm, max_tottm, min_rtt, max_rtt,
                  min_rtrs, max_rtrs);
         ret[sz - 1] = '\0';
     }
@@ -501,73 +440,48 @@ char *osql_get_tran_summary(struct ireq *iq)
  * (sltdbt.c)
  */
 static pthread_mutex_t kludgelk = PTHREAD_MUTEX_INITIALIZER;
-int osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func, const char *callfunc, int line)
+void osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func, const char *callfunc, int line)
 {
     int rc = 0;
     int bdberr = 0;
-    blocksql_info_t *info = NULL, *tmp = NULL;
     pthread_mutex_lock(&kludgelk);
     blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
     iq->blocksql_tran = NULL;
     pthread_mutex_unlock(&kludgelk);
 
-    if (tran) {
+    if (!tran) 
+        return;
 
-        /* null this here, since the clients of sessions could still use
-           sess->iq->blockproc to update the transaction bplog
-           osql_close_session ensures there are no further clients
-           of sess before removing it from the lookup hash
-         */
+    /* null this here, since the clients of sessions could still use
+       sess->iq->blockproc to update the transaction bplog
+       osql_close_session ensures there are no further clients
+       of sess before removing it from the lookup hash
+     */
 
-        /* remove the sessions from repository and free them */
-        LISTC_FOR_EACH_SAFE(&tran->pending, info, tmp, p_reqs)
-        {
-            /* this can be the case for failed transactions */
-            osql_close_session(iq, &info->sess, are_sessions_linked, func, callfunc, line);
-        }
+    /* remove the sessions from repository and free them */
+    osql_close_session(iq, &tran->sess, are_sessions_linked, func, callfunc, line);
 
+    /* destroy transaction */
+    pthread_cond_destroy(&tran->cond);
+    pthread_mutex_destroy(&tran->mtx);
+    pthread_mutex_destroy(&tran->store_mtx);
 
-        LISTC_FOR_EACH_SAFE(&tran->pending, info, tmp, p_reqs)
-        {
-            listc_rfl(&tran->pending, info);
-            free(info);
-        }
-
-        LISTC_FOR_EACH_SAFE(&tran->complete, info, tmp, c_reqs)
-        {
-            osql_close_session(iq, &info->sess, are_sessions_linked, func, callfunc, line);
-        }
-
-        LISTC_FOR_EACH_SAFE(&tran->complete, info, tmp, c_reqs)
-        {
-            listc_rfl(&tran->complete, info);
-            free(info);
-        }
-
-
-        /* destroy transaction */
-        pthread_cond_destroy(&tran->cond);
-        pthread_mutex_destroy(&tran->mtx);
-        pthread_mutex_destroy(&tran->store_mtx);
-
-        rc = bdb_temp_table_close(thedb->bdb_env, tran->db, &bdberr);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "%s: failed close table rc=%d bdberr=%d\n",
-                    __func__, rc, bdberr);
-        } else {
-            tran->db = NULL;
-        }
-
-        free(tran);
-
-        /* free the space for sql strings */
-        if (iq->sqlhistory_ptr && iq->sqlhistory_ptr != &iq->sqlhistory[0]) {
-            free(iq->sqlhistory_ptr);
-            iq->sqlhistory_ptr = NULL;
-        }
-        iq->sqlhistory_len = 0;
+    rc = bdb_temp_table_close(thedb->bdb_env, tran->db, &bdberr);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "%s: failed close table rc=%d bdberr=%d\n",
+                __func__, rc, bdberr);
+    } else {
+        tran->db = NULL;
     }
-    return 0;
+
+    free(tran);
+
+    /* free the space for sql strings */
+    if (iq->sqlhistory_ptr && iq->sqlhistory_ptr != &iq->sqlhistory[0]) {
+        free(iq->sqlhistory_ptr);
+        iq->sqlhistory_ptr = NULL;
+    }
+    iq->sqlhistory_len = 0;
 }
 
 
@@ -1186,14 +1100,8 @@ static int process_this_session(
 int osql_bplog_reqlog_queries(struct ireq *iq)
 {
     blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
-    blocksql_info_t *info = NULL;
-
-    /* go through the complete list and apply all the changes */
-    LISTC_FOR_EACH(&tran->complete, info, c_reqs)
-    {
-        osql_sess_reqlogquery(info->sess, iq->reqlogger);
-    }
-
+    if (tran->iscomplete)
+        osql_sess_reqlogquery(tran->sess, iq->reqlogger);
     return 0;
 }
 
@@ -1205,7 +1113,6 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
                                      struct block_err *, int *, SBUF2 *))
 {
 
-    blocksql_info_t *info = NULL;
     int rc = 0;
     int out_rc = 0;
     int bdberr = 0;
@@ -1248,13 +1155,10 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     listc_init(&iq->bpfunc_lst, offsetof(bpfunc_lstnode_t, linkct));
 
     /* go through the complete list and apply all the changes */
-    LISTC_FOR_EACH(&tran->complete, info, c_reqs)
+    if(tran->iscomplete)
     {
-        out_rc = process_this_session(iq, iq_tran, info->sess, &bdberr, nops,
+        out_rc = process_this_session(iq, iq_tran, tran->sess, &bdberr, nops,
                                       err, logsb, dbc, func);
-        if (out_rc) {
-            break;
-        }
     }
 
     if ((rc = pthread_mutex_unlock(&tran->store_mtx)) != 0) {
@@ -1272,6 +1176,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     return out_rc;
 }
 
+//called by osql_bplog_finish_sql
 static int osql_bplog_wait(blocksql_tran_t *tran)
 {
 
@@ -1289,6 +1194,7 @@ static int osql_bplog_wait(blocksql_tran_t *tran)
     }
 
     if (tran->dowait) {
+        abort();
 #if 0
       printf("Waitng tmp=%llu\n", osql_log_time());
 #endif
@@ -1346,7 +1252,6 @@ void osql_bplog_time_done(struct ireq *iq)
 {
     blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
     osql_bp_timings_t *tms = &iq->timings;
-    blocksql_info_t *info = NULL;
     char msg[4096];
     int tottm = 0;
     int rtt = 0;
@@ -1357,7 +1262,6 @@ void osql_bplog_time_done(struct ireq *iq)
         return;
 
     if (tran) {
-
         if (tms->req_sentrc == 0)
             tms->req_sentrc = tms->req_applied;
 
@@ -1376,25 +1280,13 @@ void osql_bplog_time_done(struct ireq *iq)
             tms->retries - 1);          /* how many time bplog was retried */
         len = strlen(msg);
 
-        LISTC_FOR_EACH(&tran->pending, info, p_reqs)
-        {
-            /* these are failed */
-            osql_sess_getsummary(info->sess, &tottm, &rtt, &rtrs);
-            snprintf0(msg + len, sizeof(msg) - len,
-                      " F(rqid=%llu time=%u lastrtt=%u retries=%u)",
-                      osql_sess_getrqid(info->sess), tottm, rtt, rtrs);
-            len = strlen(msg);
-        }
-
-        LISTC_FOR_EACH(&tran->complete, info, c_reqs)
-        {
-            /* these have finished */
-            osql_sess_getsummary(info->sess, &tottm, &rtt, &rtrs);
-            snprintf0(msg + len, sizeof(msg) - len,
-                      " C(rqid=%llu time=%u lastrtt=%u retries=%u)",
-                      osql_sess_getrqid(info->sess), tottm, rtt, rtrs);
-            len = strlen(msg);
-        }
+        /* these are failed */
+        osql_sess_getsummary(tran->sess, &tottm, &rtt, &rtrs);
+        snprintf0(msg + len, sizeof(msg) - len,
+                  " %s(rqid=%llu time=%u lastrtt=%u retries=%u)",
+                  (tran->iscomplete ? "C" : "F"),
+                  osql_sess_getrqid(tran->sess), tottm, rtt, rtrs);
+        len = strlen(msg);
     }
     logmsg(LOGMSG_USER, "%s]\n", msg);
 }
@@ -1424,10 +1316,10 @@ int osql_get_delayed(struct ireq *iq)
  */
 int sql_cancelled_transaction(struct ireq *iq)
 {
-    int rc;
+    int rc = 0;
 
     logmsg(LOGMSG_DEBUG, "%s: cancelled transaction\n", __func__);
-    rc = osql_bplog_free(iq, 1, __func__, NULL, 0);
+    osql_bplog_free(iq, 1, __func__, NULL, 0);
 
     if (iq->p_buf_orig) {
         /* nothing changed this siince init_ireq */

@@ -89,7 +89,7 @@ int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,
  * process, call this function only after reqlog_end_request is called
  * (sltdbt.c)
  */
-int osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func, const char *callfunc, int line);
+void osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func, const char *callfunc, int line);
 
 /**
  * Prints summary for the current osql bp transaction
