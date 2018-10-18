@@ -607,6 +607,9 @@ DEF_ATTR(TIMEPART_CHECK_SHARD_EXISTENCE, timepart_check_shard_existence,
 DEF_ATTR(
     IGNORE_BAD_TABLE, ignore_bad_table, BOOLEAN, 0,
     "Allow a database with a corrupt table to come up, without that table.")
+
+DEF_ATTR(TIMEOUT_FDB_TRANS_SYNC, timeout_fdb_trans_sync, MSECS, 4000, "Timeout for retrieving a foreign table transaction")
+
 DEF_ATTR(TIMEPART_NO_ROLLOUT, timepart_no_rollout, BOOLEAN, 0,
          "Prevent new rollouts for time partitions.")
 /* Keep enabled for the merge */

@@ -3374,7 +3374,7 @@ extern int gbl_max_sql_hint_cache;
 
 /* Remote cursor support */
 /* use portmux to open an SBUF2 to local db or proxied db */
-SBUF2 *connect_remote_db(const char *dbname, const char *service, char *host);
+SBUF2* connect_remote_db(const char *protocol, const char *dbname, const char *service, char *host, int use_cache);
 int get_rootpage_numbers(int nums);
 
 void sql_dump_hints(void);
@@ -3491,7 +3491,7 @@ int find_constraint(struct dbtable *db, constraint_t *ct);
 /**
  * Disconnect a socket and tries to save it in sockpool
  */
-void disconnect_remote_db(const char *dbname, const char *service, char *host,
+void disconnect_remote_db(const char *protocol, const char *dbname, const char *service, char *host,
                           SBUF2 **psb);
 
 void sbuf2gettimeout(SBUF2 *sb, int *read, int *write);
