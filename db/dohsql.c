@@ -760,6 +760,12 @@ static int dohsql_get_high_availability(struct sqlclntstate *a)
         logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
     return 0;
 }
+static int dohsql_has_parallel_sql(struct sqlclntstate *a)
+{
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+    return 0;
+}
 static void dohsql_add_steps(struct sqlclntstate *a, double b)
 {
     if (gbl_plugin_api_debug)

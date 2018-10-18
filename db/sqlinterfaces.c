@@ -470,6 +470,19 @@ static int get_high_availability(struct sqlclntstate *clnt)
     return clnt->plugin.get_high_availability(clnt);
 }
 
+int has_parallel_sql(struct sqlclntstate *clnt)
+{
+    struct sql_thread *thd = NULL;
+
+    if (!clnt) {
+        thd = pthread_getspecific(query_info_key);
+        if (thd)
+            clnt = thd->clnt;
+    }
+
+    return clnt && clnt->plugin.has_parallel_sql && clnt->plugin.has_parallel_sql(clnt);
+}
+
 static void setup_client_info(struct sqlclntstate *clnt, struct sqlthdstate *thd, char *replay)
 {
     clnt->plugin.setup_client_info(clnt, thd, replay);
@@ -5828,6 +5841,10 @@ static int internal_clr_high_availability(struct sqlclntstate *a)
     return -1;
 }
 static int internal_get_high_availability(struct sqlclntstate *a)
+{
+    return 0;
+}
+static int internal_has_parallel_sql(struct sqlclntstate *a)
 {
     return 0;
 }

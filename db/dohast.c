@@ -19,6 +19,7 @@
 #include "vdbeInt.h"
 #include "ast.h"
 #include "dohsql.h"
+#include "sql.h"
 
 #define ast_verbose bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DOHAST_VERBOSE)
 
@@ -497,6 +498,12 @@ int comdb2_check_parallel(Parse *pParse)
     ast_t *ast = pParse->ast;
     dohsql_node_t *node;
     int i;
+
+    if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DOHSQL_DISABLE))
+        return 0;
+    
+    if (has_parallel_sql(NULL) == 0)
+        return 0;
 
     if (ast->nused > 1)
         return 0;

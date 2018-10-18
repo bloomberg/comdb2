@@ -55,6 +55,7 @@ int sbuf_is_local(SBUF2 *sb);
 
 static int newsql_clr_snapshot(struct sqlclntstate *);
 static int newsql_has_high_availability(struct sqlclntstate *);
+static int newsql_has_parallel_sql(struct sqlclntstate *);
 
 struct newsqlheader {
     int type;        /*  newsql request/response type */
@@ -1320,6 +1321,11 @@ static int newsql_get_high_availability(struct sqlclntstate *clnt)
         }
     }
     return is_snap_uid_retry(clnt);
+}
+
+static int newsql_has_parallel_sql(struct sqlclntstate *clnt)
+{
+    return bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DOHSQL_DISABLE) == 0;
 }
 
 static void newsql_add_steps(struct sqlclntstate *clnt, double steps)

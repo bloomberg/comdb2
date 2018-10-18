@@ -374,6 +374,7 @@ struct plugin_callbacks {
     plugin_func *set_high_availability; /* newsql_set_high_availability */
     plugin_func *clr_high_availability; /* newsql_clr_high_availability */
     plugin_func *get_high_availability; /* newsql_get_high_availability*/
+    plugin_func *has_parallel_sql; /* newsql_has_parallel_sql */
 
     add_steps_func *add_steps; /* newsql_add_steps */
     setup_client_info_func *setup_client_info; /* newsql_setup_client_info */
@@ -428,6 +429,7 @@ struct plugin_callbacks {
         make_plugin_callback(clnt, name, set_high_availability);               \
         make_plugin_callback(clnt, name, clr_high_availability);               \
         make_plugin_callback(clnt, name, get_high_availability);               \
+        make_plugin_callback(clnt, name, has_parallel_sql);                    \
         make_plugin_callback(clnt, name, add_steps);                           \
         make_plugin_callback(clnt, name, setup_client_info);                   \
         make_plugin_callback(clnt, name, skip_row);                            \
@@ -454,6 +456,7 @@ int param_value(struct sqlclntstate *, struct param_data *, int);
 int override_count(struct sqlclntstate *);
 int get_cnonce(struct sqlclntstate *, snap_uid_t *);
 int has_high_availability(struct sqlclntstate *);
+int has_parallel_sql(struct sqlclntstate *);
 int set_high_availability(struct sqlclntstate *);
 int clr_high_availability(struct sqlclntstate *);
 uint64_t get_client_starttime(struct sqlclntstate *);
