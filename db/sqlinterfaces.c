@@ -382,6 +382,28 @@ FUNC_COLUMN_TYPE(int, bytes)
 FUNC_COLUMN_TYPE(const void *, blob)
 FUNC_COLUMN_TYPE(const dttz_t *, datetime)
 
+int sqlite_stmt_error(sqlite3_stmt *stmt, char **errstr)
+{
+    sqlite3 *db = sqlite3_db_handle(stmt);
+    int errcode;
+
+    *errstr = NULL;
+
+    errcode = sqlite3_errcode(db);
+    if (errcode && errcode != SQLITE_ROW) {
+        *errstr = sqlite3_errmsg(db);
+    }
+    return errcode;
+}
+
+int sqlite_error(struct sqlclntstate *clnt, sqlite3_stmt *stmt, char **errstr)
+{
+    if (clnt && clnt->plugin.sqlite_error)
+        return clnt->plugin.sqlite_error(clnt, stmt, errstr);
+
+    return sqlite_stmt_error(stmt, errstr);
+}
+
 const intv_t *column_interval(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
                               int iCol, int type)
 {

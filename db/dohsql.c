@@ -332,6 +332,33 @@ static sqlite3_value *dohsql_dist_column_value(struct sqlclntstate *clnt,
     return &conns->row[i];
 }
 
+#define Q_LOCK(x) pthread_mutex_lock(&conns->conns[x].mtx)
+#define Q_UNLOCK(x) pthread_mutex_unlock(&conns->conns[x].mtx)
+
+static int dohsql_dist_sqlite_error(struct sqlclntstate *clnt,
+                                    sqlite3_stmt *stmt, char **errstr)
+{
+    dohsql_t *conns = clnt->conns;
+    int errcode;
+    int src = conns->row_src;
+
+    if (src == 0) {
+        return sqlite_stmt_error(stmt, errstr);
+    }
+    
+    Q_LOCK(src);
+   
+    *errstr = NULL;
+    errcode = conns->conns[src].rc;
+
+    if (errcode != SQLITE_ROW && errcode != SQLITE_DONE)
+        *errstr = (char*)conns->row;
+
+    Q_UNLOCK(src);
+
+    return errcode;
+}
+
 static void add_row(dohsql_t *conns, int i, row_t *row)
 {
     if (conns->row && conns->row_src) {
@@ -851,6 +878,7 @@ static void _master_clnt_set(struct sqlclntstate *clnt)
     clnt->plugin.column_blob = dohsql_dist_column_blob;
     clnt->plugin.column_datetime = dohsql_dist_column_datetime;
     clnt->plugin.column_interval = dohsql_dist_column_interval;
+    clnt->plugin.sqlite_error = dohsql_dist_sqlite_error;
 }
 
 static void _master_clnt_reset(struct sqlclntstate *clnt)
@@ -1059,9 +1087,6 @@ void comdb2_handle_limit(Vdbe *v, Mem *m)
             abort(); /*sqlite changed assumptions*/
     }
 }
-
-#define Q_LOCK(x) pthread_mutex_lock(&conns->conns[x].mtx)
-#define Q_UNLOCK(x) pthread_mutex_unlock(&conns->conns[x].mtx)
 
 static int _cmp(dohsql_t *conns, int idx_a, int idx_b)
 {
