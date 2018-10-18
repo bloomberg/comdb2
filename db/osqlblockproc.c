@@ -725,16 +725,17 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                 comdb2uuidstr(uuid, us), osql_reqtype_str(type), done_nops, seq,
                 (done_nops != seq + 1 ? "NO match": ""));
 
-        if(done_nops != seq + 1 || (rand() % 3) == 0) {
-            send_error_to_replicant(rqid, host,
+        if(done_nops != sess->seq + 1) { // || (rand() % 3) == 0) {
+            send_error_to_replicant(rqid, sess->offhost,
                     RC_INTERNAL_RETRY,
                     "Master received inconsistent number of opcodes");
 
-            logmsg(LOGMSG_ERROR, "%s: Replicant sent %d opcodes, master received %lld\n", __func__, done_nops, seq + 1);
+            logmsg(LOGMSG_ERROR, "%s: Replicant sent %d opcodes, master received %lld\n", __func__, done_nops, sess->seq + 1);
             
+            abort();
             // terminate session so replicant can retry
             osql_sess_try_terminate(sess);
-            return -1;
+            return 0;
         }
     }
 
