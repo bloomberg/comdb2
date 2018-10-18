@@ -979,7 +979,7 @@ struct sqlclntstate *fdb_svc_trans_get(char *tid, int isuuid)
             rc = osql_chkboard_get_clnt(*(unsigned long long *)tid, &clnt);
         if (rc && rc == -1) {
             if (deadline && comdb2_time_epochms() > deadline) {
-                fprintf(stderr, "%s: timeout waiting for transaction %d waited %u\n",
+                logmsg(LOGMSG_ERROR, "%s: timeout waiting for transaction %d waited %u\n",
                         __func__, deadline, wait);
 
                 break;
