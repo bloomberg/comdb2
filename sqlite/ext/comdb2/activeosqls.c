@@ -20,7 +20,7 @@ typedef struct systable_osqlsession {
     char *type;
     char *origin;
     char *argv0;
-    char *stack;
+    char *where;
     char *cnonce;
     char *id;
     int64_t nops;
@@ -59,7 +59,7 @@ static int collect_osql_session(void *obj, void *arg)
     o->type = osqltype;
     o->origin = clnt->origin ? strdup(clnt->origin) : NULL;
     o->argv0 = clnt->argv0 ? strdup(clnt->argv0) : NULL;
-    o->stack = clnt->stack ? strdup(clnt->stack) : NULL;
+    o->where = clnt->stack ? strdup(clnt->stack) : NULL;
     if (get_cnonce(clnt, &snap) == 0) {
         o->cnonce = malloc(snap.keylen + 1);
         memcpy(o->cnonce, snap.key, snap.keylen);
@@ -102,7 +102,7 @@ static int collect_bplog_session(void *obj, void *arg)
 
     o->type = bplogtype;
     o->origin = sess->offhost ? strdup(sess->offhost) : NULL;
-    o->stack = iq && iq->where ? strdup(iq->where) : NULL;
+    o->where = iq && iq->where ? strdup(iq->where) : NULL;
     if (iq && iq->have_snap_info) {
         o->cnonce = malloc(iq->snap_info.keylen + 1);
         memcpy(o->cnonce, iq->snap_info.key, iq->snap_info.keylen);
@@ -140,8 +140,8 @@ static void free_osqls(void *p, int n)
             free(t[i].origin);
         if (t[i].argv0)
             free(t[i].argv0);
-        if (t[i].stack)
-            free(t[i].stack);
+        if (t[i].where)
+            free(t[i].where);
         if (t[i].cnonce)
             free(t[i].cnonce);
         if (t[i].id)
@@ -157,7 +157,7 @@ int systblActiveOsqlsInit(sqlite3 *db)
         CDB2_CSTRING, "type", -1, offsetof(systable_osqlsession_t, type),
         CDB2_CSTRING, "origin", -1, offsetof(systable_osqlsession_t, origin),
         CDB2_CSTRING, "argv0", -1, offsetof(systable_osqlsession_t, argv0),
-        CDB2_CSTRING, "stack", -1, offsetof(systable_osqlsession_t, stack),
+        CDB2_CSTRING, "where", -1, offsetof(systable_osqlsession_t, where),
         CDB2_CSTRING, "cnonce", -1, offsetof(systable_osqlsession_t, cnonce),
         CDB2_CSTRING, "request_id", -1, offsetof(systable_osqlsession_t, id),
         CDB2_INTEGER, "nops", -1, offsetof(systable_osqlsession_t, nops),
