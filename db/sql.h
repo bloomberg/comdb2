@@ -374,7 +374,7 @@ struct plugin_callbacks {
     plugin_func *set_high_availability; /* newsql_set_high_availability */
     plugin_func *clr_high_availability; /* newsql_clr_high_availability */
     plugin_func *get_high_availability; /* newsql_get_high_availability*/
-    plugin_func *has_parallel_sql; /* newsql_has_parallel_sql */
+    plugin_func *has_parallel_sql;      /* newsql_has_parallel_sql */
 
     add_steps_func *add_steps; /* newsql_add_steps */
     setup_client_info_func *setup_client_info; /* newsql_setup_client_info */
@@ -398,7 +398,7 @@ struct plugin_callbacks {
     const intv_t *(*column_interval)(struct sqlclntstate *, sqlite3_stmt *, int,
                                      int); /* sqlite3_column_interval*/
     int (*sqlite_error)(struct sqlclntstate *, sqlite3_stmt *,
-                     char **errstr); /* sqlite3_errcode */
+                        char **errstr); /* sqlite3_errcode */
 };
 
 #define make_plugin_callback(clnt, name, func)                                 \

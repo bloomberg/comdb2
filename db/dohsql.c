@@ -41,7 +41,7 @@ struct dohsql_connector {
     queue_type *que_free; /* de-queued rows come here to be freed */
     pthread_mutex_t mtx;  /* mutex for queueing operations and related counts */
     char *thr_where;      /* cached where status */
-    my_col_t *cols;          /* cached cols values */
+    my_col_t *cols;       /* cached cols values */
     int ncols;            /* number of columns */
     int rc;
     int nrows;              /* current total queued rows */
@@ -345,14 +345,14 @@ static int dohsql_dist_sqlite_error(struct sqlclntstate *clnt,
     if (src == 0) {
         return sqlite_stmt_error(stmt, errstr);
     }
-    
+
     Q_LOCK(src);
-   
+
     *errstr = NULL;
     errcode = conns->conns[src].rc;
 
     if (errcode != SQLITE_ROW && errcode != SQLITE_DONE)
-        *errstr = (char*)conns->row;
+        *errstr = (char *)conns->row;
 
     Q_UNLOCK(src);
 

@@ -501,7 +501,7 @@ int comdb2_check_parallel(Parse *pParse)
 
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DOHSQL_DISABLE))
         return 0;
-    
+
     if (has_parallel_sql(NULL) == 0)
         return 0;
 

@@ -480,7 +480,8 @@ int has_parallel_sql(struct sqlclntstate *clnt)
             clnt = thd->clnt;
     }
 
-    return clnt && clnt->plugin.has_parallel_sql && clnt->plugin.has_parallel_sql(clnt);
+    return clnt && clnt->plugin.has_parallel_sql &&
+           clnt->plugin.has_parallel_sql(clnt);
 }
 
 static void setup_client_info(struct sqlclntstate *clnt, struct sqlthdstate *thd, char *replay)
