@@ -10286,17 +10286,17 @@ void comdb2SetWriteFlag(int wrflag)
         clnt->writeTransaction = wrflag;
 }
 
-void _sockpool_socket_type(const char *dbname, const char *service, char *host,
+void _sockpool_socket_type(const char *protocol, const char *dbname, const char *service, char *host,
                            char *socket_type, int socket_type_len)
 {
     /* NOTE: in fdb, we want to require a specific node.
        We make the name include that node to be able to request
        sockets going to a specific node. */
-    snprintf(socket_type, socket_type_len, "comdb2/%s/%s/%s", dbname, service,
+    snprintf(socket_type, socket_type_len, "%s/%s/%s/%s", protocol, dbname, service,
              host);
 }
 
-static int _sockpool_get(const char *dbname, const char *service, char *host)
+static int _sockpool_get(const char *protocol, const char *dbname, const char *service, char *host)
 {
     char socket_type[512];
     int fd;
@@ -10305,7 +10305,7 @@ static int _sockpool_get(const char *dbname, const char *service, char *host)
             bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DISABLE_SERVER_SOCKPOOL)))
         return -1;
 
-    _sockpool_socket_type(dbname, service, host, socket_type,
+    _sockpool_socket_type(protocol, dbname, service, host, socket_type,
                           sizeof(socket_type));
 
     /* TODO: don't rely on hints yet */
@@ -10320,7 +10320,7 @@ static int _sockpool_get(const char *dbname, const char *service, char *host)
     return fd;
 }
 
-void disconnect_remote_db(const char *dbname, const char *service, char *host,
+void disconnect_remote_db(const char *protocol, const char *dbname, const char *service, char *host,
                           SBUF2 **psb)
 {
     char socket_type[512];
@@ -10337,7 +10337,7 @@ void disconnect_remote_db(const char *dbname, const char *service, char *host,
 
     fd = sbuf2fileno(sb);
 
-    _sockpool_socket_type(dbname, service, host, socket_type,
+    _sockpool_socket_type(protocol, dbname, service, host, socket_type,
                           sizeof(socket_type));
 
     if (gbl_fdb_track)
@@ -10346,7 +10346,7 @@ void disconnect_remote_db(const char *dbname, const char *service, char *host,
 
     /* this is used by fdb sql for now */
     socket_pool_donate_ext(socket_type, fd, IOTIMEOUTMS / 1000, 0,
-                           SOCKET_POOL_GET_GLOBAL, NULL, NULL);
+                           0, NULL, NULL);
 
     sbuf2free(sb);
     *psb = NULL;
@@ -10355,19 +10355,21 @@ void disconnect_remote_db(const char *dbname, const char *service, char *host,
 /* use portmux to open an SBUF2 to local db or proxied db
    it is trying to use sockpool
  */
-SBUF2 *connect_remote_db(const char *dbname, const char *service, char *host)
+SBUF2 *connect_remote_db(const char *protocol, const char *dbname, const char *service, char *host, int use_cache)
 {
     SBUF2 *sb;
     int port;
     int retry;
     int sockfd;
 
-    /* lets try to use sockpool, if available */
-    sockfd = _sockpool_get(dbname, service, host);
-    if (sockfd > 0) {
-        /*fprintf(stderr, "%s: retrieved sockpool socket for %s.%s.%s fd=%d\n",
-            __func__, dbname, service, host);*/
-        goto sbuf;
+    if (use_cache) {
+        /* lets try to use sockpool, if available */
+        sockfd = _sockpool_get(protocol, dbname, service, host);
+        if (sockfd > 0) {
+            /*fprintf(stderr, "%s: retrieved sockpool socket for %s.%s.%s fd=%d\n",
+              __func__, dbname, service, host);*/
+            goto sbuf;
+        }
     } else
         /*fprintf(stderr, "%s: no sockpool socket for %s.%s.%s\n",
             __func__, dbname, service, host);*/
