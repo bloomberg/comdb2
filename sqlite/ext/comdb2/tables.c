@@ -66,20 +66,6 @@ static int systblTablesDisconnect(sqlite3_vtab *pVtab){
   return SQLITE_OK;
 }
 
-static int checkRowidAccess(systbl_tables_cursor *pCur) {
-  while (pCur->iRowid < thedb->num_dbs) {
-    struct dbtable *pDb = thedb->dbs[pCur->iRowid];
-    char *x = pDb->tablename;
-    int bdberr;
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
-    int rc = bdb_check_user_tbl_access(thedb->bdb_env, thd->clnt->user, x, ACCESS_READ, &bdberr);
-    if (rc == 0)
-       return SQLITE_OK;
-    pCur->iRowid++;
-  }
-  return SQLITE_OK;
-}
-
 /*
 ** Constructor for systbl_tables_cursor objects.
 */
@@ -90,7 +76,9 @@ static int systblTablesOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   if( pCur==0 ) return SQLITE_NOMEM;
   memset(pCur, 0, sizeof(*pCur));
   *ppCursor = &pCur->base;
-  checkRowidAccess(pCur);
+
+  comdb2_next_allowed_table(&pCur->iRowid);
+
   return SQLITE_OK;
 }
 
@@ -108,7 +96,7 @@ static int systblTablesClose(sqlite3_vtab_cursor *cur){
 static int systblTablesNext(sqlite3_vtab_cursor *cur){
   systbl_tables_cursor *pCur = (systbl_tables_cursor*)cur;
   pCur->iRowid++;
-  checkRowidAccess(pCur);
+  comdb2_next_allowed_table(&pCur->iRowid);
   return SQLITE_OK;
 }
 

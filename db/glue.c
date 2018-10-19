@@ -6346,3 +6346,31 @@ int table_version_set(tran_type *tran, const char *tablename,
 }
 
 void *get_bdb_env(void) { return thedb->bdb_env; }
+
+/* This function can be used as an iterator to jump to the next
+ * base table, starting the table at the specified index in the
+ * global tables array, that the current user has READ access to.
+ *
+ * @param  tabId : index to the current table in the tables array
+ */
+int comdb2_next_allowed_table(sqlite3_int64 *tabId)
+{
+    struct dbtable *pDb;
+    struct sql_thread *thd;
+    char *tablename;
+    int bdberr;
+    int rc;
+
+    thd = pthread_getspecific(query_info_key);
+
+    while (*tabId < thedb->num_dbs) {
+        pDb = thedb->dbs[*tabId];
+        tablename = pDb->tablename;
+        rc = bdb_check_user_tbl_access(thedb->bdb_env, thd->clnt->user,
+                                       tablename, ACCESS_READ, &bdberr);
+        if (rc == 0)
+            return SQLITE_OK;
+        (*tabId)++;
+    }
+    return SQLITE_OK;
+}

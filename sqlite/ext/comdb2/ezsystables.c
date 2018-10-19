@@ -10,6 +10,7 @@
 #include "strbuf.h"
 #include "ezsystables.h"
 #include "types.h"
+#include "comdb2systbl.h"
 
 /* This tries to make it easier to add system tables.  There's usually lots of boilerplate
  * code.  A common case though is that you have an array of structures that you want to
@@ -110,10 +111,10 @@ static int systbl_disconnect(sqlite3_vtab *pVtab){
 }
 
 static int systbl_open(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
+    int rc;
     struct ez_systable_cursor *pCur = calloc(1, sizeof(struct ez_systable_cursor));
     struct ez_systable_vtab *vtab = (struct ez_systable_vtab*) p;
     struct systable *t = vtab->t;
-    int rc;
     pCur->rowid = 0;
     pCur->t = t;
     rc = t->init(&pCur->data, &pCur->npoints);
@@ -303,7 +304,7 @@ static const sqlite3_module systbl = {
     .xEof = systbl_eof,
     .xColumn = systbl_column,
     .xRowid = systbl_rowid,
-
+    .access_flag = CDB2_ALLOW_USER,
 };
 
 int create_system_table(sqlite3 *db, char *name, 

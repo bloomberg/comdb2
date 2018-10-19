@@ -7136,6 +7136,12 @@ case OP_VOpen: {
     goto abort_due_to_error;
   }
   pModule = pVtab->pModule;
+
+  /* COMDB2 MODIFICATION */
+  int comdb2_check_vtab_access(sqlite3*, sqlite3_module*);
+  rc = comdb2_check_vtab_access(db, pModule);
+  if( rc ) goto abort_due_to_error;
+
   rc = pModule->xOpen(pVtab, &pVCur);
   sqlite3VtabImportErrmsg(p, pVtab);
   if( rc ) goto abort_due_to_error;

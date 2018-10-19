@@ -91,6 +91,7 @@ static int systblFieldsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   if( pCur==0 ) return SQLITE_NOMEM;
   memset(pCur, 0, sizeof(*pCur));
   *ppCursor = &pCur->base;
+  comdb2_next_allowed_table(&pCur->iRowid);
 
   return SQLITE_OK;
 }
@@ -140,6 +141,8 @@ static int systblFieldsNext(sqlite3_vtab_cursor *cur){
       } while( pCur->iRowid < thedb->num_dbs );
     }
   }
+
+  comdb2_next_allowed_table(&pCur->iRowid);
 
   return SQLITE_OK;
 }
