@@ -15,7 +15,6 @@
 typedef struct systable_blkseq {
     int64_t stripe;
     int64_t ix;
-    char *lsn;
     char *id;
     int64_t size;
     int64_t rcode;
@@ -32,7 +31,6 @@ typedef struct getblkseq {
 static void collect_blkseq(int stripe, int ix, void *plsn, void *pkey,
                            void *pdata, void *arg)
 {
-    DB_LSN *lsn = plsn;
     DBT *key = pkey;
     DBT *data = pdata;
     int now = comdb2_time_epoch();
@@ -53,8 +51,6 @@ static void collect_blkseq(int stripe, int ix, void *plsn, void *pkey,
 
     b->stripe = stripe;
     b->ix = ix;
-    b->lsn = malloc(30);
-    snprintf(b->lsn, 30, "[%u][%u]", lsn->file, lsn->offset);
 
     int *k;
     k = (int *)key->data;
@@ -100,8 +96,6 @@ static void free_blkseq(void *p, int n)
 {
     systable_blkseq_t  *t = (systable_blkseq_t *)p;
     for (int i = 0; i < n; i++) {
-        if (t[i].lsn)
-            free(t[i].lsn);
         if (t[i].id)
             free(t[i].id);
     }
@@ -114,7 +108,6 @@ int systblBlkseqInit(sqlite3 *db)
         db, "comdb2_blkseq", get_blkseq, free_blkseq, sizeof(systable_blkseq_t),
         CDB2_INTEGER, "stripe", -1, offsetof(systable_blkseq_t, stripe),
         CDB2_INTEGER, "index", -1, offsetof(systable_blkseq_t, ix),
-        CDB2_CSTRING, "last_lsn", -1, offsetof(systable_blkseq_t, lsn),
         CDB2_CSTRING, "id", -1, offsetof(systable_blkseq_t, id),
         CDB2_INTEGER, "size", -1, offsetof(systable_blkseq_t, size),
         CDB2_INTEGER, "rcode", -1, offsetof(systable_blkseq_t, rcode),

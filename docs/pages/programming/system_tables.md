@@ -203,11 +203,10 @@ Information about OSQL requests in the database
 
 Information about BLKSEQ stored in the database
 
-    comdb2_blkseq(stripe, index, last_lsn, id, size, rcode, time, age)
+    comdb2_blkseq(stripe, index, id, size, rcode, time, age)
 
 * `stripe` - Stripe of a blkseq file
 * `index` - Index of a blkseq file
-* `last_lsn` - Last LSN written in this blkseq file
 * `id` - Identifier of the request
 * `size` - Size of the blkseq entry
 * `rcode` - Return code of this request
