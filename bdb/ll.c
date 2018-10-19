@@ -258,15 +258,16 @@ int ll_dta_del(bdb_state_type *bdb_state, tran_type *tran, int rrn,
     unsigned long long search_genid;
     int crc;
     int is_blob = 0;
-    int is_rowlocks = 0;
+
+    /* Verify updateid here for ondisk data as in rowlocks mode, we dont have
+     * the luxury of letting ix_find* to protect the row from changing because
+     * we may have released the page lock before getting the row lock. So the
+     * row may have been changed in this gap and we need to verify here again */
+    int verify_updateid = (tran->logical_tran && dtafile == 0);
 
     if (dta_out) {
         bzero(dta_out, sizeof(DBT));
         dta_out->flags = DB_DBT_MALLOC;
-    }
-
-    if (tran->logical_tran && dtafile == 0) {
-        is_rowlocks = 1;
     }
 
     /* Always delete a masked genid for blobs. */
@@ -330,7 +331,7 @@ int ll_dta_del(bdb_state_type *bdb_state, tran_type *tran, int rrn,
             dbt_key.size = sizeof(search_genid);
 
             /* Tell Berkley to allocate memory if we need it.  */
-            if (dta_out || is_rowlocks || add_snapisol_logging(bdb_state)) {
+            if (dta_out || verify_updateid || add_snapisol_logging(bdb_state)) {
                 dta_out_si.flags = DB_DBT_MALLOC;
             } else {
                 dta_out_si.ulen = 0;
@@ -349,7 +350,7 @@ int ll_dta_del(bdb_state_type *bdb_state, tran_type *tran, int rrn,
                 goto done;
             }
 
-            if (is_rowlocks) {
+            if (verify_updateid) {
                 /* Verify updateid */
                 updateid = get_updateid_from_genid(bdb_state, genid);
                 od_updateid = bdb_retrieve_updateid(bdb_state, dta_out_si.data,
@@ -906,7 +907,6 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
     void *freedtaptr = NULL;
     DB *dbp_add;
     int got_rowlock = 0;
-    int is_rowlocks = 0;
     int logical_len = 0;
     int add_blob = 0;
     DBT old_dta_out_lcl;
@@ -918,16 +918,16 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
     int oldsz = -1;
     int newstripe = 0;
 
+    /* Verify updateid for ondisk data in rowlows mode.
+     * see ll_dta_del() */
+    int verify_updateid = (tran->logical_tran && dtafile == 0);
+
     if (bdb_state->parent)
         parent = bdb_state->parent;
     else
         parent = bdb_state;
 
     dbp_add = NULL;
-
-    if (tran->logical_tran && dtafile == 0) {
-        is_rowlocks = 1;
-    }
 
     if (old_dta_out) {
         old_dta_out->size = 0;
@@ -1003,7 +1003,7 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
               (0 == bdb_inplace_cmp_genids(bdb_state, oldgenid, *newgenid))) ||
              (inplace))) {
             /* This is a blobs-only optimization. */
-            assert(!is_rowlocks);
+            assert(!verify_updateid);
 
             rc = bdb_update_updateid(bdb_state, dbcp, oldgenid, *newgenid);
             if (rc != 0) {
@@ -1065,7 +1065,7 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
         logical_len = old_dta_out_lcl.size;
 
         /* Unpack if we need the record to return or verify. */
-        if (0 == rc && (is_rowlocks || !dta || old_dta_out || verify_dta)) {
+        if (0 == rc && (verify_updateid || !dta || old_dta_out || verify_dta)) {
             /* Zap odh. */
             bzero(&odh, sizeof(odh));
 
