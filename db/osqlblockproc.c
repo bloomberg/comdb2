@@ -210,6 +210,11 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
         switch (rc) {
         case SESS_DONE_OK:
             tran->iscomplete = 1;
+            uuid_t uuid;
+            uuidstr_t us;
+            osql_sess_getuuid(tran->sess, uuid);
+            comdb2uuidstr(uuid, us);
+            fprintf(stderr, "******** setting iscomplete to 1, uuid=%s\n", us);
             break;
 
         case SESS_DONE_ERROR_REPEATABLE:
@@ -262,7 +267,14 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
         }
 
     }
-    else abort();
+    else { 
+        uuid_t uuid;
+        uuidstr_t us;
+        osql_sess_getuuid(tran->sess, uuid);
+        comdb2uuidstr(uuid, us);
+
+        fprintf(stderr, "******** iscomplete was already 1 this must be a replay, uuid=%s\n", us);
+    }
 
     iq->timings.req_alldone = osql_log_time();
 
