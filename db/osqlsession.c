@@ -430,9 +430,6 @@ int osql_sess_test_slow(osql_sess_t *sess)
                     comdb2uuidstr(sess->uuid, us), sess->offhost);
             sess->terminate = OSQL_TERMINATE;
 
-            /* wake up the block processor */
-            //TODO DELETE THIS no need for signal: rc = osql_bplog_signal(tran);
-
             if (bdb_lock_desired(thedb->bdb_env))
                 return ERR_NOMASTER;
 
@@ -653,10 +650,6 @@ int osql_session_testterminate(void *obj, void *arg)
             need_clean = osql_session_is_sorese(sess);
         }
         pthread_mutex_unlock(&sess->completed_lock);
-
-        /* this request might be waiting to be dispatched */
-        if (sess->iq)
-            osql_bplog_signal(sess->iq->blocksql_tran);
 
         /* wake up the block processor waiting for this request */
 
@@ -945,7 +938,6 @@ static int osql_sess_set_terminate(osql_sess_t *sess)
     sess->terminate = OSQL_TERMINATE;
     if (sess->iq) {
         osql_bplog_session_is_done(sess->iq);
-        osql_bplog_signal(sess->iq->blocksql_tran);
     }
     rc = osql_repository_rem(sess, 0, __func__, NULL,
                              __LINE__); /* already have exclusive lock */

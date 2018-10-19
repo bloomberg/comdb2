@@ -111,12 +111,6 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                       unsigned long long rqid, uuid_t uuid, int type);
 
 /**
- * Wakeup the block processor waiting for a completed session
- *
- */
-int osql_bplog_signal(blocksql_tran_t *tran);
-
-/**
  * Construct a blockprocessor transaction buffer containing
  * a sock sql /recom  / snapisol / serial transaction
  *

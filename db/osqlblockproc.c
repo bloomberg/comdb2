@@ -79,15 +79,11 @@ struct blocksql_tran {
     pthread_mutex_t store_mtx; /* mutex for db access - those are non-env dbs */
     struct temp_table *db;     /* temp table that keeps the list of ops for all
                                   current sessions */
-
-    pthread_mutex_t mtx; /* mutex and cond for notifying when any session
-                           has completed */
-    pthread_cond_t cond;
+    struct dbtable *last_db;
     int dowait; /* mark this when session completes to avoid loosing signal */
-    int iscomplete;
     int delayed;
     int rows;
-    struct dbtable *last_db;
+    bool iscomplete;
 };
 
 typedef struct oplog_key {
@@ -100,7 +96,6 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
                                      void *, char *, int, int *, int **,
                                      blob_buffer_t blobs[MAXBLOBS], int,
                                      struct block_err *, int *, SBUF2 *));
-static int osql_bplog_wait(blocksql_tran_t *tran);
 static int req2blockop(int reqtype);
 
 /**
@@ -166,8 +161,6 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
     }
 
     pthread_mutex_init(&tran->store_mtx, NULL);
-    pthread_mutex_init(&tran->mtx, NULL);
-    pthread_cond_init(&tran->cond, NULL);
 
     iq->blocksql_tran = tran; /* now blockproc knows about it */
 
@@ -267,14 +260,7 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
         }
 
     }
-    else { 
-        uuid_t uuid;
-        uuidstr_t us;
-        osql_sess_getuuid(tran->sess, uuid);
-        comdb2uuidstr(uuid, us);
-
-        fprintf(stderr, "******** iscomplete was already 1 this must be a replay, uuid=%s\n", us);
-    }
+    // else iscomplete was already 1, this must me a replicant replay
 
     iq->timings.req_alldone = osql_log_time();
 
@@ -474,8 +460,6 @@ void osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func,
     osql_close_session(iq, &tran->sess, are_sessions_linked, func, callfunc, line);
 
     /* destroy transaction */
-    pthread_cond_destroy(&tran->cond);
-    pthread_mutex_destroy(&tran->mtx);
     pthread_mutex_destroy(&tran->store_mtx);
 
     rc = bdb_temp_table_close(thedb->bdb_env, tran->db, &bdberr);
@@ -649,10 +633,6 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         osql_comm_blkout_node(sess->offhost);
     }
 
-    if ((rc = osql_bplog_signal(tran))) {
-        return rc;
-    }
-
     debug = debug_this_request(gbl_debug_until);
     if (gbl_who > 0 && gbl_debug) {
         debug = 1;
@@ -676,37 +656,6 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     return 0;
 }
 
-/**
- * Wakeup the block processor waiting for a completed session
- *
- */
-int osql_bplog_signal(blocksql_tran_t *tran)
-{
-
-    int rc = 0;
-
-    /* signal block processor that one done event arrived */
-    if ((rc = pthread_mutex_lock(&tran->mtx))) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_lock: error code %d\n", rc);
-        return rc;
-    }
-
-    tran->dowait = 0;
-#if 0
-   printf("Signalling tmp=%llu\n", osql_log_time());
-#endif
-
-    if ((rc = pthread_cond_signal(&tran->cond))) {
-        logmsg(LOGMSG_ERROR, "pthread_cond_signal: error code %d\n", rc);
-    }
-
-    if ((rc = pthread_mutex_unlock(&tran->mtx))) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_lock: error code %d\n", rc);
-        return rc;
-    }
-
-    return rc;
-}
 
 /**
  * Construct a blockprocessor transaction buffer containing
@@ -992,7 +941,7 @@ static int process_this_session(
     int *updCols = NULL;
 
     /* session info */
-    blob_buffer_t blobs[MAXBLOBS] = {0};
+    blob_buffer_t blobs[MAXBLOBS] = {{0}};
     int step = 0;
     int receivedrows = 0;
     int flags = 0;
@@ -1186,47 +1135,6 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     }
 
     return out_rc;
-}
-
-//called by osql_bplog_finish_sql
-static int osql_bplog_wait(blocksql_tran_t *tran)
-{
-
-    struct timespec tm_s;
-    int rc = 0;
-
-    /* wait for more ops */
-    clock_gettime(CLOCK_REALTIME, &tm_s);
-    tm_s.tv_sec += gbl_osql_blockproc_timeout_sec;
-
-    /* signal block processor that one done event arrived */
-    if ((rc = pthread_mutex_lock(&tran->mtx))) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_lock: error code %d\n", rc);
-        return rc;
-    }
-
-    if (tran->dowait) {
-        abort();
-#if 0
-      printf("Waitng tmp=%llu\n", osql_log_time());
-#endif
-        rc = pthread_cond_timedwait(&tran->cond, &tran->mtx, &tm_s);
-        if (rc && rc != ETIMEDOUT) {
-            logmsg(LOGMSG_ERROR, "pthread_cond_wait: error code %d\n", rc);
-            return rc;
-        }
-
-        tran->dowait = 0;
-    } else {
-        tran->dowait = 1;
-    }
-
-    if ((rc = pthread_mutex_unlock(&tran->mtx))) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_lock: error code %d\n", rc);
-        return rc;
-    }
-
-    return rc;
 }
 
 static int req2blockop(int reqtype)
