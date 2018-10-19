@@ -357,6 +357,7 @@ int gbl_sort_nulls_correctly = 1;
 int gbl_check_client_tags = 1;
 char *gbl_lrl_fname = NULL;
 char *gbl_spfile_name = NULL;
+char *gbl_timepart_file_name = NULL;
 int gbl_max_lua_instructions = 10000;
 int gbl_check_wrong_cmd = 1;
 int gbl_updategenids = 0;
@@ -2582,6 +2583,27 @@ static int dump_queuedbs(char *dir)
     return 0;
 }
 
+static int dump_timepartitions(const char *dir, const char *dbname, const char *filename)
+{
+   int has_tp = 0;
+   char path[PATH_MAX];
+   snprintf(path, sizeof(path), "%s/%s_%s", dir, dbname, filename);
+   FILE *f = fopen(path, "w");
+   if (f == NULL) {
+      logmsg(LOGMSG_ERROR, "%s:fopen(\"%s\"):%s\n", __func__, path,
+            strerror(errno));
+      return -1;
+   }
+
+   /* save the configuration */
+   has_tp = timepart_dump_timepartitions(f);
+
+   fclose(f);
+   logmsg(LOGMSG_INFO, "%s wrote time partitions configuration in: %s\n", __func__, path);
+
+   return has_tp;
+}
+
 int repopulate_lrl(const char *p_lrl_fname_out)
 {
     /* can't put this on stack, it will overflow appsock thread */
@@ -2663,11 +2685,18 @@ int repopulate_lrl(const char *p_lrl_fname_out)
         return -1;
     }
 
+    int has_tp = dump_timepartitions(p_data->lrl_fname_out_dir, thedb->envname,
+          TIMEPART_FILE_NAME);
+    if (has_tp < 0) {
+       free(p_data);
+       return -1;
+    }
+
     /* write out the lrl */
     if (rewrite_lrl_un_llmeta(getresourcepath("lrl"), p_lrl_fname_out,
                               p_data->p_table_names, p_data->p_csc2_paths,
                               p_data->table_nums, thedb->num_dbs,
-                              p_data->lrl_fname_out_dir, has_sp)) {
+                              p_data->lrl_fname_out_dir, has_sp, has_tp)) {
         logmsg(LOGMSG_ERROR, "%s: rewrite_lrl_un_llmeta failed\n", __func__);
 
         free(p_data);
@@ -3762,6 +3791,13 @@ static int init(int argc, char **argv)
 
         if (gbl_spfile_name) {
             read_spfile(gbl_spfile_name);
+        }
+
+        if(gbl_timepart_file_name) {
+            if (timepart_apply_file(gbl_timepart_file_name)) {
+               logmsg(LOGMSG_FATAL, "Failed to create time partitions!\n");
+               return -1;
+            }
         }
 
         if (llmeta_set_qdbs() != 0) {

@@ -358,6 +358,20 @@ void views_unlock(void);
 char *timepart_newest_shard(const char *view_name, unsigned long long *version);
 
 /**
+ * Dump the timepartition json configuration
+ * Used for schema copy only
+ * Returns: 0 - no tps; 1 - has tps
+ *
+ */
+int timepart_dump_timepartitions(FILE *dest);
+
+/**
+ * Create timepartition llmeta entries based on file configuration
+ *
+ */
+int timepart_apply_file(const char *filename);
+
+/**
  * Returned a malloced string for the "iRowid"-th timepartition, column iCol
  * NOTE: this is called with a read lock in views structure
  */
