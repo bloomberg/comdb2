@@ -667,22 +667,16 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     /* add the op into the temporary table */
     if ((rc = pthread_mutex_lock(&tran->store_mtx))) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_lock: error code %d\n", rc);
-        return rc;
+        logmsg(LOGMSG_FATAL, "pthread_mutex_lock: error code %d\n", rc);
+        abort();
     }
 
-    if (sess->seq == 0 && osql_session_is_sorese(sess) && tran->rows > 0) {
-        if ((rc = pthread_mutex_unlock(&tran->store_mtx))) {
-            logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
-        }
-
-        /* we want to make sure that the temp table is empty since commit
-         * retries will use same rqid */
-        send_error_to_replicant(rqid, sess->offhost,
-                RC_INTERNAL_RETRY,
-                "Malformed transaction, received duplicated first row");
-
-        return -1;
+    /* make sure that the temp table is empty since commit
+     * retries will use same rqid */
+    assert(sess->seq == 0 && tran->rows == 0);
+    if (sess->seq == 0 && tran->rows > 0) {
+        logmsg(LOGMSG_FATAL, "Malformed transaction, received duplicated first row");
+        abort();
     }
 
 #if 0 
@@ -703,8 +697,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     tran->rows++;
 
     if ((rc = pthread_mutex_unlock(&tran->store_mtx))) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
-        return rc;
+        logmsg(LOGMSG_FATAL, "pthread_mutex_unlock: error code %d\n", rc);
+        abort();
     }
 
     if (rc_op)
@@ -725,7 +719,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                 comdb2uuidstr(uuid, us), osql_reqtype_str(type), done_nops, seq,
                 (done_nops != seq + 1 ? "NO match": ""));
 
-        if(done_nops != sess->seq + 1) { // || (rand() % 3) == 0) {
+        if(done_nops != sess->seq + 1 /* || (rand() % 3) == 0 */ ) {
             send_error_to_replicant(rqid, sess->offhost,
                     RC_INTERNAL_RETRY,
                     "Master received inconsistent number of opcodes");

@@ -1960,9 +1960,9 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
                    "%s: error writting record to master in offload mode!\n",
                    __func__);
             return SQLITE_INTERNAL;
-            osql->replicant_numops++;
-            DEBUG_PRINT_NUMOPS();
         }
+        osql->replicant_numops++;
+        DEBUG_PRINT_NUMOPS();
     next:
         rc = bdb_temp_table_next(tbl->env->bdb_env, tbl->add_cur, bdberr);
     }
