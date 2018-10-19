@@ -899,6 +899,7 @@ static void _master_clnt_reset(struct sqlclntstate *clnt)
     clnt->plugin.column_blob = NULL;
     clnt->plugin.column_datetime = NULL;
     clnt->plugin.column_interval = NULL;
+    clnt->plugin.sqlite_error = NULL;
 }
 
 int dohsql_distribute(dohsql_node_t *node)
