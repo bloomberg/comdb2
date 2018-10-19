@@ -4979,6 +4979,8 @@ static void getmyid(void)
 
     getmyaddr();
     gbl_mypid = getpid();
+   /* prepare the server class ahead of time */
+    get_my_mach_class();
 }
 
 void create_marker_file() 

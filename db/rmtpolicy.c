@@ -56,9 +56,12 @@ static struct rmtpol cluster_pol = {"cluster with", {0}, {0}, 0, 0, 0};
 
 enum mach_class get_my_mach_class(void)
 {
+    static pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
     static int have_class = 0;
     static enum mach_class my_class = CLASS_UNKNOWN;
     char *class = NULL;
+
+    pthread_mutex_lock(&mtx);
 
     if (!have_class) {
         static const char *delims = " \t\r\n";
@@ -67,13 +70,10 @@ enum mach_class get_my_mach_class(void)
         FILE *fh;
         char hostname[64];
 
-        /* whatever the outcome, don't do this again */
-        have_class = 1;
-
         if (gethostname(hostname, sizeof(hostname)) == -1) {
             logmsg(LOGMSG_ERROR, "%s:gethostname: %d %s\n", __func__, errno,
                     strerror(errno));
-            return CLASS_UNKNOWN;
+            goto done;
         }
 
         /* TODO: find a way around? only use if exists? */
@@ -83,7 +83,7 @@ enum mach_class get_my_mach_class(void)
             logmsg(LOGMSG_ERROR, "%s: error opening %s: %d %s\n", __func__, bbcpu,
                     errno, strerror(errno));
             free(bbcpu);
-            return CLASS_UNKNOWN;
+            goto done;
         }
         free(bbcpu);
 
@@ -135,7 +135,12 @@ enum mach_class get_my_mach_class(void)
             }
         }
         fclose(fh);
+
+        /* whatever the outcome, don't do this again */
+        have_class = 1;
     }
+done:
+    pthread_mutex_unlock(&mtx);
 
     return my_class;
 }
@@ -155,6 +160,8 @@ const char *get_class_str(enum mach_class cls)
         return "beta";
     case CLASS_PROD:
         return "prod";
+    case CLASS_UAT:
+        return "uat";
     }
 }
 
