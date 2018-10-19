@@ -265,7 +265,7 @@ int ll_dta_del(bdb_state_type *bdb_state, tran_type *tran, int rrn,
         dta_out->flags = DB_DBT_MALLOC;
     }
 
-    if (tran->logical_tran) {
+    if (tran->logical_tran && dtafile == 0) {
         is_rowlocks = 1;
     }
 
