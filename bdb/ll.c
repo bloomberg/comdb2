@@ -918,7 +918,7 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
     int oldsz = -1;
     int newstripe = 0;
 
-    /* Verify updateid for ondisk data in rowlows mode.
+    /* Verify updateid for ondisk data in rowlocks mode.
      * see ll_dta_del() */
     int verify_updateid = (tran->logical_tran && dtafile == 0);
 
