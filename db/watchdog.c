@@ -304,6 +304,8 @@ static void *watchdog_thread(void *arg)
                             its_bad = 1;
                             its_bad_slow = 1;
                         }
+                    } else if (lastlsnbytes) {
+                        lastlsnbytes = 0;
                     }
                 }
             }
