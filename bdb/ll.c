@@ -259,6 +259,12 @@ int ll_dta_del(bdb_state_type *bdb_state, tran_type *tran, int rrn,
     int crc;
     int is_blob = 0;
 
+    /* Verify updateid here for ondisk data as in rowlocks mode, we dont have
+     * the luxury of letting ix_find* to protect the row from changing because
+     * we may have released the page lock before getting the row lock. So the
+     * row may have been changed in this gap and we need to verify here again */
+    int verify_updateid = (tran->logical_tran && dtafile == 0);
+
     if (dta_out) {
         bzero(dta_out, sizeof(DBT));
         dta_out->flags = DB_DBT_MALLOC;
@@ -325,13 +331,11 @@ int ll_dta_del(bdb_state_type *bdb_state, tran_type *tran, int rrn,
             dbt_key.size = sizeof(search_genid);
 
             /* Tell Berkley to allocate memory if we need it.  */
-            if (dta_out) {
+            if (dta_out || verify_updateid || add_snapisol_logging(bdb_state)) {
                 dta_out_si.flags = DB_DBT_MALLOC;
-            }
-
-            /* Logical logging only needs the record size. */
-            else {
+            } else {
                 dta_out_si.ulen = 0;
+                dta_out_si.flags = DB_DBT_PARTIAL | DB_DBT_USERMEM;
             }
             /*
              * Use a real cursor so we pick up the ondisk headers.  The
@@ -346,33 +350,39 @@ int ll_dta_del(bdb_state_type *bdb_state, tran_type *tran, int rrn,
                 goto done;
             }
 
+            if (verify_updateid) {
+                /* Verify updateid */
+                updateid = get_updateid_from_genid(bdb_state, genid);
+                od_updateid = bdb_retrieve_updateid(bdb_state, dta_out_si.data,
+                                                    dta_out_si.size);
+                if (od_updateid >= 0) {
+                    if (dtafile >= 1) {
+                        /* blobs */
+                        if (od_updateid > updateid)
+                            rc = DB_NOTFOUND;
+                    } else {
+                        /* data */
+                        if (od_updateid != updateid)
+                            rc = DB_NOTFOUND;
+                    }
+                } else {
+                    logmsg(LOGMSG_ERROR,
+                           "%s:%d failed to get updateid from odh for genid "
+                           "%llx\n",
+                           __FILE__, __LINE__, genid);
+                    rc = DB_ODH_CORRUPT;
+                }
+            }
+
             /* Copy the pointers if the user wanted the record. */
             if (dta_out) {
                 dta_out->data = dta_out_si.data;
                 dta_out->size = dta_out_si.size;
+            } else if (dta_out_si.data) {
+                /* Logical logging only needs the record size. */
+                free(dta_out_si.data);
+                dta_out_si.data = NULL;
             }
-
-            /* Verify updateid */
-            updateid = get_updateid_from_genid(bdb_state, genid);
-            od_updateid = bdb_retrieve_updateid(bdb_state, dta_out_si.data,
-                                                dta_out_si.size);
-            if (od_updateid >= 0) {
-                if (dtafile >= 1) {
-                    /* blobs */
-                    if (od_updateid > updateid)
-                        rc = DB_NOTFOUND;
-                } else {
-                    /* data */
-                    if (od_updateid != updateid)
-                        rc = DB_NOTFOUND;
-                }
-            } else {
-                logmsg(LOGMSG_ERROR,
-                       "%s:%d failed to get updateid from odh for genid %llx\n",
-                       __FILE__, __LINE__, genid);
-                rc = DB_ODH_CORRUPT;
-            }
-
         } /* dta_out || snapisol || is_blob */
         else {
             /* Use the normal genid. */
@@ -897,7 +907,6 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
     void *freedtaptr = NULL;
     DB *dbp_add;
     int got_rowlock = 0;
-    int is_rowlocks = 0;
     int logical_len = 0;
     int add_blob = 0;
     DBT old_dta_out_lcl;
@@ -909,16 +918,16 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
     int oldsz = -1;
     int newstripe = 0;
 
+    /* Verify updateid for ondisk data in rowlocks mode.
+     * see ll_dta_del() */
+    int verify_updateid = (tran->logical_tran && dtafile == 0);
+
     if (bdb_state->parent)
         parent = bdb_state->parent;
     else
         parent = bdb_state;
 
     dbp_add = NULL;
-
-    if (tran->logical_tran && dtafile == 0) {
-        is_rowlocks = 1;
-    }
 
     if (old_dta_out) {
         old_dta_out->size = 0;
@@ -994,7 +1003,7 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
               (0 == bdb_inplace_cmp_genids(bdb_state, oldgenid, *newgenid))) ||
              (inplace))) {
             /* This is a blobs-only optimization. */
-            assert(!is_rowlocks);
+            assert(!verify_updateid);
 
             rc = bdb_update_updateid(bdb_state, dbcp, oldgenid, *newgenid);
             if (rc != 0) {
@@ -1041,26 +1050,22 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
         /* Zero old_dta_out_lcl. */
         bzero(&old_dta_out_lcl, sizeof(old_dta_out_lcl));
 
-        /* Ask Berkeley to allocate memory if we need it.  */
-        if (!dta || verify_dta || old_dta_out) {
-            old_dta_out_lcl.flags = DB_DBT_MALLOC;
-        }
-        /* Set ulen to 0 to retrieve only the size. */
-        else {
-            old_dta_out_lcl.ulen = 0;
-        }
+        /* always use DB_DBT_MALLOC as we always need the size */
+        old_dta_out_lcl.flags = DB_DBT_MALLOC;
 
         /* Retrieve using a Berkeley cursor. */
         rc = dbcp->c_get(dbcp, &dbt_key, &old_dta_out_lcl, DB_SET | DB_RMW);
+
+        if (rc == 0) {
+            /* Grab malloceddta to possibly free later. */
+            malloceddta = old_dta_out_lcl.data;
+        }
 
         /* Retrieve the actual record length for the logical log. */
         logical_len = old_dta_out_lcl.size;
 
         /* Unpack if we need the record to return or verify. */
-        if (0 == rc && (is_rowlocks || !dta || old_dta_out || verify_dta)) {
-            /* Grab malloceddta to possibly free later. */
-            malloceddta = old_dta_out_lcl.data;
-
+        if (0 == rc && (verify_updateid || !dta || old_dta_out || verify_dta)) {
             /* Zap odh. */
             bzero(&odh, sizeof(odh));
 
