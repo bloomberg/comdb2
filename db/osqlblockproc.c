@@ -194,75 +194,65 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
     struct errstat generr = {0}, *xerr;
     int rc = 0;
     int stop_time = 0;
+    iq->timings.req_alldone = osql_log_time();
 
-    if (!tran->iscomplete) {
-        /* if the session finished with deadlock on replicant, or failed
-           session, resubmit it */
+    if (tran->iscomplete) // already complete this is a replicant replay??
+        return 0;
+    
+    /* if the session finished with deadlock on replicant, or failed
+       session, resubmit it */
 
-        rc = osql_sess_test_complete(tran->sess, &xerr);
-        switch (rc) {
-        case SESS_DONE_OK:
-            tran->iscomplete = 1;
-            uuid_t uuid;
-            uuidstr_t us;
-            osql_sess_getuuid(tran->sess, uuid);
-            comdb2uuidstr(uuid, us);
-            fprintf(stderr, "******** setting iscomplete to 1, uuid=%s\n", us);
-            break;
+    rc = osql_sess_test_complete(tran->sess, &xerr);
+    switch (rc) {
+    case SESS_DONE_OK:
+        tran->iscomplete = 1;
+        break;
+    case SESS_DONE_ERROR_REPEATABLE:
 
-        case SESS_DONE_ERROR_REPEATABLE:
-
-            /* generate a new id for this session */
-            if (iq->sorese.type) {
-                /* this is socksql, recom, snapisol or serial; no retry here
-                 */
-                generr.errval = ERR_INTERNAL;
-                strncpy(generr.errstr, "master cancelled transaction",
-                        sizeof(generr.errstr));
-                xerr = &generr;
-                error = 1;
-                break;
-            }
-            break;
-
-        case SESS_DONE_ERROR:
+        /* generate a new id for this session */
+        if (iq->sorese.type) {
+            /* this is socksql, recom, snapisol or serial; no retry here
+             */
+            generr.errval = ERR_INTERNAL;
+            strncpy(generr.errstr, "master cancelled transaction",
+                    sizeof(generr.errstr));
+            xerr = &generr;
             error = 1;
             break;
-
-        case SESS_PENDING:
-            rc = osql_sess_test_slow(tran->sess);
-            if (rc)
-                return rc;
-            break;
         }
+        break;
+    case SESS_DONE_ERROR:
+        error = 1;
+        break;
+    case SESS_PENDING:
+        rc = osql_sess_test_slow(tran->sess);
+        if (rc)
+            return rc;
+        break;
+    }
 
-        /* please stop !!! */
-        if (thedb->stopped || thedb->exiting) {
-            if (stop_time == 0) {
-                stop_time = comdb2_time_epoch();
-            } else {
-                if (stop_time + gbl_blocksql_grace /*seconds grace time*/ <=
-                    comdb2_time_epoch()) {
-                    logmsg(LOGMSG_ERROR, 
-                            "blocksql session closing early, db stopped\n");
-                    return ERR_NOMASTER;
-                }
+    /* please stop !!! */
+    if (thedb->stopped || thedb->exiting) {
+        if (stop_time == 0) {
+            stop_time = comdb2_time_epoch();
+        } else {
+            if (stop_time + gbl_blocksql_grace /*seconds grace time*/ <=
+                comdb2_time_epoch()) {
+                logmsg(LOGMSG_ERROR, 
+                        "blocksql session closing early, db stopped\n");
+                return ERR_NOMASTER;
             }
         }
-
-        if (bdb_lock_desired(thedb->bdb_env)) {
-            logmsg(LOGMSG_ERROR, "%lu %s:%d blocksql session closing early\n",
-                   pthread_self(), __FILE__, __LINE__);
-            err->blockop_num = 0;
-            err->errcode = ERR_NOMASTER;
-            err->ixnum = 0;
-            return ERR_NOMASTER;
-        }
-
     }
-    // else iscomplete was already 1, this must me a replicant replay
 
-    iq->timings.req_alldone = osql_log_time();
+    if (bdb_lock_desired(thedb->bdb_env)) {
+        logmsg(LOGMSG_ERROR, "%lu %s:%d blocksql session closing early\n",
+               pthread_self(), __FILE__, __LINE__);
+        err->blockop_num = 0;
+        err->errcode = ERR_NOMASTER;
+        err->ixnum = 0;
+        return ERR_NOMASTER;
+    }
 
     if (error) {
         iq->errstat.errval = xerr->errval;
