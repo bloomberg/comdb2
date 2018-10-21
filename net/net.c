@@ -4886,10 +4886,11 @@ static int get_dedicated_conhost(host_node_type *host_node_ptr, struct in_addr *
                 continue;
         }
 
-        char rephostname[HOSTNAME_LEN * 2 + 1];
-        strncpy(rephostname, host_node_ptr->host, HOSTNAME_LEN);
+        char *rephostname =
+            alloca(strlen(host_node_ptr->host) + strlen(subnet) + 1);
+        strcpy(rephostname, host_node_ptr->host);
         if (subnet[0]) {
-            strncat(rephostname, subnet, HOSTNAME_LEN);
+            strcat(rephostname, subnet);
             strncpy(host_node_ptr->subnet, subnet, HOSTNAME_LEN);
 
 #ifdef DEBUG
@@ -4907,8 +4908,7 @@ static int get_dedicated_conhost(host_node_type *host_node_ptr, struct in_addr *
                 "Connecting to NON dedicated hostname/subnet '%s' counter=%d\n",
                 rephostname, counter);
 #endif
-        char *name = rephostname;
-        rc = comdb2_gethostbyname(&name, addr);
+        rc = comdb2_gethostbyname(&rephostname, addr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%d) %s(): ERROR gethostbyname '%s' FAILED\n",
                     ii, __func__, rephostname);
