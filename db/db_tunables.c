@@ -482,7 +482,7 @@ static int maxq_update(void *context, void *value)
 static int file_update(void *context, void *value)
 {
     comdb2_tunable *tunable = (comdb2_tunable *)context;
-    int len = strlen((char*)value);
+    int len = strlen((char *)value);
     int st = 0;
     int ltok;
     char *tok = segtok(value, len, &st, &ltok);
@@ -493,7 +493,6 @@ static int file_update(void *context, void *value)
     free(file_tmp);
 
     return 0;
-
 }
 
 extern char **qdbs;

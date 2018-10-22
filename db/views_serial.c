@@ -304,7 +304,8 @@ timepart_views_t *timepart_deserialize(const char *str, struct errstat *err)
     }
 
     if (!cson_value_is_array(cson)) {
-        logmsg(LOGMSG_ERROR, "Wrong JSON format, we expect an array of views\n");
+        logmsg(LOGMSG_ERROR,
+               "Wrong JSON format, we expect an array of views\n");
         goto error;
     }
 
@@ -365,26 +366,25 @@ error:
 }
 
 /**
- * Process all views from llmeta 
+ * Process all views from llmeta
  *
  */
-timepart_views_t* views_create_all_views(void)
+timepart_views_t *views_create_all_views(void)
 {
-   char  *views_str;
-   timepart_views_t *ret;
+    char *views_str;
+    timepart_views_t *ret;
 
-   views_str = views_read_all_views();
-   if(!views_str)
-   {
-      ret = (timepart_views_t*)calloc(1,sizeof(timepart_views_t));
-      if (ret) {
-         ret->preemptive_rolltime = VIEWS_DFT_PREEMPT_ROLL_SECS;
-         ret->rollout_delete_lag = VIEWS_DFT_ROLL_DELETE_LAG_SECS;
-      }
-      return ret;
-   }
+    views_str = views_read_all_views();
+    if (!views_str) {
+        ret = (timepart_views_t *)calloc(1, sizeof(timepart_views_t));
+        if (ret) {
+            ret->preemptive_rolltime = VIEWS_DFT_PREEMPT_ROLL_SECS;
+            ret->rollout_delete_lag = VIEWS_DFT_ROLL_DELETE_LAG_SECS;
+        }
+        return ret;
+    }
 
-   return _create_all_views(views_str);
+    return _create_all_views(views_str);
 }
 
 /* parse a user-provided json create command and update the in-memory views */
@@ -626,7 +626,8 @@ int views_do_partition(void *tran, timepart_views_t *views, const char *name,
         }
     } else {
         err->errval = VIEW_ERR_UNIMPLEMENTED;
-        logmsg(LOGMSG_ERROR, "Unrecognized command \"%s\" in:\n\"%s\"\n", op, cmd);
+        logmsg(LOGMSG_ERROR, "Unrecognized command \"%s\" in:\n\"%s\"\n", op,
+               cmd);
         goto error;
     }
 
@@ -760,13 +761,15 @@ static cson_value *_cson_it_get_value(cson_object_iterator *it,
 
     kv = cson_object_iter_next(it);
     if (!kv) {
-        logmsg(LOGMSG_ERROR, "Wrong JSON format, no %s for %d view\n", field, itr);
+        logmsg(LOGMSG_ERROR, "Wrong JSON format, no %s for %d view\n", field,
+               itr);
         return NULL;
     }
 
     key = cson_string_cstr(cson_kvp_key(kv));
     if (strcasecmp(key, field)) {
-        logmsg(LOGMSG_ERROR, "Wrong JSON format, no %s for %d view\n", field, itr);
+        logmsg(LOGMSG_ERROR, "Wrong JSON format, no %s for %d view\n", field,
+               itr);
         return NULL;
     }
 
@@ -1251,8 +1254,9 @@ int convert_time_string_to_epoch(const char *time_str)
                                        (struct field_conv_opts *)&convopts,
                                        NULL, &sdt, sizeof(sdt), &outdtsz, NULL,
                                        NULL)) {
-        logmsg(LOGMSG_ERROR, "Error client time string to server datetime \"%s\"\n",
-                time_str);
+        logmsg(LOGMSG_ERROR,
+               "Error client time string to server datetime \"%s\"\n",
+               time_str);
         return -1;
     }
 
@@ -1268,154 +1272,141 @@ int convert_time_string_to_epoch(const char *time_str)
     return ret;
 }
 
-
 /* convert a views configuration string in a timepart_views_t struct */
 static timepart_views_t *_create_all_views(const char *views_str)
 {
-   timepart_views_t     *views;
-   timepart_view_t      *view;
-   cson_value           *cson = NULL;
-   cson_kvp             *kvp;
-   cson_object          *obj;
-   cson_object_iterator it;
-   int                  rc;
-   struct errstat       xerr = {0};
+    timepart_views_t *views;
+    timepart_view_t *view;
+    cson_value *cson = NULL;
+    cson_kvp *kvp;
+    cson_object *obj;
+    cson_object_iterator it;
+    int rc;
+    struct errstat xerr = {0};
 
-   rc = cson_parse_string(&cson, views_str, strlen(views_str), NULL, NULL);
-   if (rc)
-   {
-      logmsg(LOGMSG_ERROR, "%s: views incorrect llmeta format", __func__);
-      return NULL;
-   }
+    rc = cson_parse_string(&cson, views_str, strlen(views_str), NULL, NULL);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: views incorrect llmeta format", __func__);
+        return NULL;
+    }
 
-   if(!cson_value_is_object(cson) ||
-         (obj = cson_value_get_object(cson)) == NULL)
-   {
-      logmsg(LOGMSG_ERROR, "%s: views format expect object", __func__);
-      return NULL;
-   }
+    if (!cson_value_is_object(cson) ||
+        (obj = cson_value_get_object(cson)) == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: views format expect object", __func__);
+        return NULL;
+    }
 
-   views = (timepart_views_t*)calloc(1,sizeof(timepart_views_t));
-   if(!views)
-   {
-      rc = VIEW_ERR_MALLOC;
-      goto done;
-   }
-   
-   views->preemptive_rolltime = VIEWS_DFT_PREEMPT_ROLL_SECS;
-   views->rollout_delete_lag = VIEWS_DFT_ROLL_DELETE_LAG_SECS;
-   logmsg(LOGMSG_INFO, "Partition rollout preemption=%dsecs lag=%dsecs\n",
-         views->preemptive_rolltime, views->rollout_delete_lag);
+    views = (timepart_views_t *)calloc(1, sizeof(timepart_views_t));
+    if (!views) {
+        rc = VIEW_ERR_MALLOC;
+        goto done;
+    }
 
-   cson_object_iter_init(obj, &it);
+    views->preemptive_rolltime = VIEWS_DFT_PREEMPT_ROLL_SECS;
+    views->rollout_delete_lag = VIEWS_DFT_ROLL_DELETE_LAG_SECS;
+    logmsg(LOGMSG_INFO, "Partition rollout preemption=%dsecs lag=%dsecs\n",
+           views->preemptive_rolltime, views->rollout_delete_lag);
 
-   while( (kvp = cson_object_iter_next(&it)) )
-   {
-      cson_string const *ckey = cson_kvp_key(kvp);
-      cson_value        *v = cson_kvp_value(kvp);
-      const char        *str;
+    cson_object_iter_init(obj, &it);
 
-      /* skip timepart_views, old format */
-      if (strcmp(cson_string_cstr(ckey), "timepart_views") == 0)
-      {
-         continue;
-      }
-      
-      if (!cson_value_is_string(v) ||
-            ((str = cson_string_cstr(cson_value_get_string(v))) == NULL))
-      {
-         logmsg(LOGMSG_ERROR, "view %s malformed", cson_string_cstr(ckey));
-         rc = VIEW_ERR_GENERIC;
-         goto done;
-      }
+    while ((kvp = cson_object_iter_next(&it))) {
+        cson_string const *ckey = cson_kvp_key(kvp);
+        cson_value *v = cson_kvp_value(kvp);
+        const char *str;
 
-      views->views = (timepart_view_t**)realloc(views->views, (views->nviews+1)*sizeof(timepart_view_t*));
-      if(!views->views)
-      {
-         rc = VIEW_ERR_MALLOC;
-         goto done;
-      }
-      view = timepart_deserialize_view(str, &xerr);
-      if(!view)
-      {
-         rc = xerr.errval;
-         goto done;
-      }
+        /* skip timepart_views, old format */
+        if (strcmp(cson_string_cstr(ckey), "timepart_views") == 0) {
+            continue;
+        }
 
-      rc = views_validate_view(views, view, &xerr);
-      if(rc)
-      {
-         logmsg(LOGMSG_ERROR, "Time partition error rc=%d [%s]\n", xerr.errval, xerr.errstr);
-         timepart_free_view(view);
-         view=NULL;
-         continue;
-      }
-   
-      /* make sure view names are the same */
-      if(strcmp(view->name, cson_string_cstr(ckey)))
-      {
-         logmsg(LOGMSG_ERROR, "%s: incorrect view format for key %s\n",
-                 __func__, cson_string_cstr(ckey));
-         rc = VIEW_ERR_BUG;
-         goto done;
-      }
+        if (!cson_value_is_string(v) ||
+            ((str = cson_string_cstr(cson_value_get_string(v))) == NULL)) {
+            logmsg(LOGMSG_ERROR, "view %s malformed", cson_string_cstr(ckey));
+            rc = VIEW_ERR_GENERIC;
+            goto done;
+        }
 
-      views->views[views->nviews] = view;
-      views->nviews++;
-   } 
+        views->views = (timepart_view_t **)realloc(
+            views->views, (views->nviews + 1) * sizeof(timepart_view_t *));
+        if (!views->views) {
+            rc = VIEW_ERR_MALLOC;
+            goto done;
+        }
+        view = timepart_deserialize_view(str, &xerr);
+        if (!view) {
+            rc = xerr.errval;
+            goto done;
+        }
 
-   rc = VIEW_NOERR;
-   
+        rc = views_validate_view(views, view, &xerr);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "Time partition error rc=%d [%s]\n",
+                   xerr.errval, xerr.errstr);
+            timepart_free_view(view);
+            view = NULL;
+            continue;
+        }
+
+        /* make sure view names are the same */
+        if (strcmp(view->name, cson_string_cstr(ckey))) {
+            logmsg(LOGMSG_ERROR, "%s: incorrect view format for key %s\n",
+                   __func__, cson_string_cstr(ckey));
+            rc = VIEW_ERR_BUG;
+            goto done;
+        }
+
+        views->views[views->nviews] = view;
+        views->nviews++;
+    }
+
+    rc = VIEW_NOERR;
+
 done:
-   if(rc!=VIEW_NOERR)
-   {
-      if(views)
-      {
-         timepart_free_views(views);
-         #if 0
+    if (rc != VIEW_NOERR) {
+        if (views) {
+            timepart_free_views(views);
+#if 0
             TODO: reinstate this abort() when code is fixed
          free(views);
          views = NULL;
-         #else
+#else
             bzero(views, sizeof(*views));
-         #endif
-      }
-      logmsg(LOGMSG_ERROR, "Error creating views from llmeta rc=%d errstr=\"%s\"\n",
-            xerr.errval, xerr.errstr);
-   }
-   cson_value_free(cson);
+#endif
+        }
+        logmsg(LOGMSG_ERROR,
+               "Error creating views from llmeta rc=%d errstr=\"%s\"\n",
+               xerr.errval, xerr.errstr);
+    }
+    cson_value_free(cson);
 
-   return views;
+    return views;
 }
 
-char* _read_config(const char *filename)
+char *_read_config(const char *filename)
 {
-   FILE  *fd = NULL;
-   char  *config = NULL;
-   char  line[512];
-   int   len = 0;
+    FILE *fd = NULL;
+    char *config = NULL;
+    char line[512];
+    int len = 0;
 
-   fd = fopen(filename, "r");
-   if(!fd)
-   {
-      logmsg(LOGMSG_ERROR, "%s: cannot open file %s\n", __func__, filename);
-      return NULL;
-   }
+    fd = fopen(filename, "r");
+    if (!fd) {
+        logmsg(LOGMSG_ERROR, "%s: cannot open file %s\n", __func__, filename);
+        return NULL;
+    }
 
-   while(fgets(line, sizeof(line), fd))
-   {
-      config = _concat(config, &len, "%s", line);   
-      if(!config)
-      {
-         logmsg(LOGMSG_ERROR, "%s: cannot create json string\n", __func__);
-         goto done;
-      }
-   }
+    while (fgets(line, sizeof(line), fd)) {
+        config = _concat(config, &len, "%s", line);
+        if (!config) {
+            logmsg(LOGMSG_ERROR, "%s: cannot create json string\n", __func__);
+            goto done;
+        }
+    }
 
 done:
-   fclose(fd);
-   
-   return config;
+    fclose(fd);
+
+    return config;
 }
 
 /**
@@ -1424,43 +1415,41 @@ done:
  */
 int timepart_apply_file(const char *filename)
 {
-   timepart_views_t     *views;
-   int                  rc = 0;
-   char                 *config = NULL;
-   int                  i;
-   struct errstat       err = {0};
-   
-   config = _read_config(filename);
-   if (!config)
-      return VIEW_ERR_GENERIC;
+    timepart_views_t *views;
+    int rc = 0;
+    char *config = NULL;
+    int i;
+    struct errstat err = {0};
 
-   views = _create_all_views(config);
-   if (!views)
-   {
-      logmsg(LOGMSG_ERROR, "%s: cannot deserialize json string\n", __func__);
-      rc = VIEW_ERR_GENERIC;
-      goto done;
-   }
+    config = _read_config(filename);
+    if (!config)
+        return VIEW_ERR_GENERIC;
 
-   pthread_rwlock_wrlock(&views_lk);
+    views = _create_all_views(config);
+    if (!views) {
+        logmsg(LOGMSG_ERROR, "%s: cannot deserialize json string\n", __func__);
+        rc = VIEW_ERR_GENERIC;
+        goto done;
+    }
 
-   for(i=0;i<views->nviews;i++)
-   {
-      rc = _view_rollout_publish(NULL, views->views[i], &err);
-      if(rc!=VIEW_NOERR) {
-         pthread_rwlock_unlock(&views_lk);
-         goto done;
-      }
-   }
+    pthread_rwlock_wrlock(&views_lk);
 
-   pthread_rwlock_unlock(&views_lk);
+    for (i = 0; i < views->nviews; i++) {
+        rc = _view_rollout_publish(NULL, views->views[i], &err);
+        if (rc != VIEW_NOERR) {
+            pthread_rwlock_unlock(&views_lk);
+            goto done;
+        }
+    }
+
+    pthread_rwlock_unlock(&views_lk);
 
 done:
-   if(views)
-      timepart_free_views(views);
-   free(config);
+    if (views)
+        timepart_free_views(views);
+    free(config);
 
-   return rc;
+    return rc;
 }
 
 #ifdef VIEWS_PERSIST_TEST
@@ -1515,9 +1504,10 @@ int main(int argc, char **argv)
         /* test deserializing a string */
         repo = timepart_deserialize(tests[i]);
         if (!repo) {
-            logmsg(LOGMSG_ERROR, "FAILURE in test %d deserializing string:\n"
-                            "\"%s\"\n",
-                    i + 1, tests[i]);
+            logmsg(LOGMSG_ERROR,
+                   "FAILURE in test %d deserializing string:\n"
+                   "\"%s\"\n",
+                   i + 1, tests[i]);
             orc = -1;
             continue;
         }
@@ -1526,9 +1516,9 @@ int main(int argc, char **argv)
         rc = timepart_serialize(repo, &str, 0);
         if (rc || !str) {
             logmsg(LOGMSG_ERROR,
-                    "FAILURE in test %d, serializing repo created from str:\n"
-                    "\"%s\"\n",
-                    i + 1, tests[i]);
+                   "FAILURE in test %d, serializing repo created from str:\n"
+                   "\"%s\"\n",
+                   i + 1, tests[i]);
             orc = -1;
         }
         if (str) {
@@ -1537,11 +1527,11 @@ int main(int argc, char **argv)
 
             if (strcmp(norm_str, norm_test)) {
                 logmsg(LOGMSG_ERROR,
-                        "FAILURE in test %d, strings differs, from str:\n"
-                        "\"%s\"\n"
-                        "to str:\n"
-                        "\"%s\"\n",
-                        i + 1, tests[i], (str) ? str : "NULL");
+                       "FAILURE in test %d, strings differs, from str:\n"
+                       "\"%s\"\n"
+                       "to str:\n"
+                       "\"%s\"\n",
+                       i + 1, tests[i], (str) ? str : "NULL");
                 orc = -1;
             }
             free(str);

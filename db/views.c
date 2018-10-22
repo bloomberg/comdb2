@@ -1662,32 +1662,30 @@ char* comdb2_partition_info(const char *partition_name, const char *option)
  */
 int timepart_dump_timepartitions(FILE *dest)
 {
-   timepart_views_t  *views = thedb->timepart_views;
-   char              *info;
-   int               has_tp = 0;
+    timepart_views_t *views = thedb->timepart_views;
+    char *info;
+    int has_tp = 0;
 
-   pthread_rwlock_rdlock(&views_lk);
-  
-   has_tp = views->nviews>0;
+    pthread_rwlock_rdlock(&views_lk);
 
-   if( has_tp)
-   {
-      info = views_read_all_views();
-      if(info)
-      {
-         fprintf(dest, "%s", info);
-         free(info);
-      }
-      else
-      {
-         logmsg(LOGMSG_ERROR, "Cannot get timepartition configuration string from llmeta\n");
-         has_tp = -1;
-      }
-   }
+    has_tp = views->nviews > 0;
 
-   pthread_rwlock_unlock(&views_lk);
+    if (has_tp) {
+        info = views_read_all_views();
+        if (info) {
+            fprintf(dest, "%s", info);
+            free(info);
+        } else {
+            logmsg(
+                LOGMSG_ERROR,
+                "Cannot get timepartition configuration string from llmeta\n");
+            has_tp = -1;
+        }
+    }
 
-   return has_tp;
+    pthread_rwlock_unlock(&views_lk);
+
+    return has_tp;
 }
 
 static char *_describe_row(const char *tblname, const char *prefix,

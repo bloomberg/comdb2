@@ -2583,25 +2583,27 @@ static int dump_queuedbs(char *dir)
     return 0;
 }
 
-static int dump_timepartitions(const char *dir, const char *dbname, const char *filename)
+static int dump_timepartitions(const char *dir, const char *dbname,
+                               const char *filename)
 {
-   int has_tp = 0;
-   char path[PATH_MAX];
-   snprintf(path, sizeof(path), "%s/%s_%s", dir, dbname, filename);
-   FILE *f = fopen(path, "w");
-   if (f == NULL) {
-      logmsg(LOGMSG_ERROR, "%s:fopen(\"%s\"):%s\n", __func__, path,
-            strerror(errno));
-      return -1;
-   }
+    int has_tp = 0;
+    char path[PATH_MAX];
+    snprintf(path, sizeof(path), "%s/%s_%s", dir, dbname, filename);
+    FILE *f = fopen(path, "w");
+    if (f == NULL) {
+        logmsg(LOGMSG_ERROR, "%s:fopen(\"%s\"):%s\n", __func__, path,
+               strerror(errno));
+        return -1;
+    }
 
-   /* save the configuration */
-   has_tp = timepart_dump_timepartitions(f);
+    /* save the configuration */
+    has_tp = timepart_dump_timepartitions(f);
 
-   fclose(f);
-   logmsg(LOGMSG_INFO, "%s wrote time partitions configuration in: %s\n", __func__, path);
+    fclose(f);
+    logmsg(LOGMSG_INFO, "%s wrote time partitions configuration in: %s\n",
+           __func__, path);
 
-   return has_tp;
+    return has_tp;
 }
 
 int repopulate_lrl(const char *p_lrl_fname_out)
@@ -2686,10 +2688,10 @@ int repopulate_lrl(const char *p_lrl_fname_out)
     }
 
     int has_tp = dump_timepartitions(p_data->lrl_fname_out_dir, thedb->envname,
-          TIMEPART_FILE_NAME);
+                                     TIMEPART_FILE_NAME);
     if (has_tp < 0) {
-       free(p_data);
-       return -1;
+        free(p_data);
+        return -1;
     }
 
     /* write out the lrl */
@@ -3793,10 +3795,10 @@ static int init(int argc, char **argv)
             read_spfile(gbl_spfile_name);
         }
 
-        if(gbl_timepart_file_name) {
+        if (gbl_timepart_file_name) {
             if (timepart_apply_file(gbl_timepart_file_name)) {
-               logmsg(LOGMSG_FATAL, "Failed to create time partitions!\n");
-               return -1;
+                logmsg(LOGMSG_FATAL, "Failed to create time partitions!\n");
+                return -1;
             }
         }
 
