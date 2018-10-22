@@ -445,7 +445,6 @@ int sqlite3Init(sqlite3 *db, char **pzErrMsg){
   
   assert( sqlite3_mutex_held(db->mutex) );
   assert( sqlite3BtreeHoldsMutex(db->aDb[0].pBt) );
-  assert( db->init.busy==0 );
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   dbname[0] = '\0';
   if( zName ){
@@ -461,6 +460,8 @@ int sqlite3Init(sqlite3 *db, char **pzErrMsg){
     }
     tmp = db->init.zTblName;
   }
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  assert( db->init.busy==0 );
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   ENC(db) = SCHEMA_ENC(db);
   assert( db->nDb>0 );
@@ -1099,4 +1100,3 @@ int sqlite3_prepare16_v3(
 }
 
 #endif /* SQLITE_OMIT_UTF16 */
-/* SQLITE_OMIT_UTF16 */
