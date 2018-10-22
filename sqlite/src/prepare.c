@@ -439,7 +439,7 @@ int sqlite3Init(sqlite3 *db, char **pzErrMsg){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   int commit_internal = !(db->mDbFlags&DBFLAG_SchemaChange);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  char *tmp;
+  char *tmp = 0;
   char dbname[32];   /* ok, this needs to ship! */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   
@@ -459,6 +459,7 @@ int sqlite3Init(sqlite3 *db, char **pzErrMsg){
       logmsg(LOGMSG_WARN, "%s: confusing name %s\n", __func__, db->init.zTblName);
       dbname[0] = '\0';
     }
+    tmp = db->init.zTblName;
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   ENC(db) = SCHEMA_ENC(db);
@@ -481,8 +482,8 @@ int sqlite3Init(sqlite3 *db, char **pzErrMsg){
     ** remote tables are updated on a table basis; check if the schema for this
     ** table is actually present
     */
-    if( dbname[0] && (sqlite3FindTableCheckOnly(db, db->init.zTblName, db->aDb[i].zDbSName)!=0) ) continue;
-    if( i>1 || !DbHasProperty(db, i, DB_SchemaLoaded) ){
+    if( dbname[0] && tmp && (sqlite3FindTableCheckOnly(db, tmp, db->aDb[i].zDbSName)!=0) ) continue;
+    if( i>=1 || !DbHasProperty(db, i, DB_SchemaLoaded) ){
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( !DbHasProperty(db, i, DB_SchemaLoaded) ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -1098,3 +1099,4 @@ int sqlite3_prepare16_v3(
 }
 
 #endif /* SQLITE_OMIT_UTF16 */
+/* SQLITE_OMIT_UTF16 */
