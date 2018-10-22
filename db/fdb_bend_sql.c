@@ -965,6 +965,14 @@ struct sqlclntstate *fdb_svc_trans_get(char *tid, int isuuid)
     struct sqlclntstate *clnt;
     int rc = 0;
 
+    int                  deadline =  0;
+    int                  wait = bdb_attr_get(thedb->bdb_attr, 
+            BDB_ATTR_TIMEOUT_FDB_TRANS_SYNC);
+
+    if (wait > 0)
+        deadline = wait + comdb2_time_epochms();
+
+
     /* this returns a dtran_mtx locked structure */
     do {
         if (isuuid)
@@ -972,6 +980,13 @@ struct sqlclntstate *fdb_svc_trans_get(char *tid, int isuuid)
         else
             rc = osql_chkboard_get_clnt(*(unsigned long long *)tid, &clnt);
         if (rc && rc == -1) {
+            if (deadline && comdb2_time_epochms() > deadline) {
+                logmsg(LOGMSG_ERROR, "%s: timeout waiting for transaction %d waited %u\n",
+                        __func__, deadline, wait);
+
+                break;
+            }
+
             /* this is a missing transaction, we need to wait for it !*/
             poll(NULL, 0, 10);
             continue;

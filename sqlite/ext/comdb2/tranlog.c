@@ -23,6 +23,7 @@
 #include "build/db.h"
 #include "dbinc/db_swap.h"
 #include "dbinc_auto/txn_auto.h"
+#include "comdb2systbl.h"
 
 /* Column numbers */
 #define TRANLOG_COLUMN_START        0
@@ -64,6 +65,7 @@ static int tranlogConnect(
 ){
   sqlite3_vtab *pNew;
   int rc;
+
   rc = sqlite3_declare_vtab(db,
      "CREATE TABLE x(minlsn hidden,maxlsn hidden, flags hidden,lsn,rectype integer,generation integer,timestamp integer,payload)");
   if( rc==SQLITE_OK ){
@@ -81,6 +83,7 @@ static int tranlogDisconnect(sqlite3_vtab *pVtab){
 
 static int tranlogOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   tranlog_cursor *pCur;
+
   pCur = sqlite3_malloc( sizeof(*pCur) );
   if( pCur==0 ) return SQLITE_NOMEM;
   memset(pCur, 0, sizeof(*pCur));
@@ -582,6 +585,7 @@ sqlite3_module systblTransactionLogsModule = {
   0,                         /* xRollback */
   0,                         /* xFindMethod */
   0,                         /* xRename */
+  .access_flag = CDB2_ALLOW_USER
 };
 
 

@@ -13,6 +13,7 @@
 #include "perf.h"
 #include "sqliteInt.h"
 #include "vdbeInt.h"
+#include "comdb2systbl.h"
 
 /* systbl_metrics_cursor is a subclass of sqlite3_vtab_cursor which
 ** serves as the underlying cursor to enumerate the rows in this
@@ -213,6 +214,7 @@ const sqlite3_module systblTimeseriesModule = {
   0,                            /* xRollback */
   0,                            /* xFindMethod */
   0,                            /* xRename */
+  .access_flag = CDB2_ALLOW_USER,
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \

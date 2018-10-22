@@ -246,6 +246,7 @@ typedef struct sqlclntstate_fdb {
     char **fdb_ids;       /* the fdb for which we have affinity */
     char **fdb_nodes;     /* node numbers preferred for each fdb in fdb_ids */
     int *fdb_last_status; /* used to mark a node bad after a failure */
+    int failed_heartbeats; /* used to signal failed communication with remotes */
 } sqlclntstate_fdb_t;
 
 CurRange *currange_new();

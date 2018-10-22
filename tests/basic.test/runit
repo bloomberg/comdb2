@@ -350,4 +350,18 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1 values(1, 1)"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set j = j+1 where i = 1"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
 
+# make sure inplace update works
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table if exists t1"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1 (i int unique)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1 values(1)"
+out=$(cdb2sql ${CDB2_OPTIONS} --tabs $dbnm default "select cast(rowid / 4294967296 as int) & 4043243520 from t1")
+if [[ "$out" != "0" ]]; then
+    failexit "Insert should have update id 0"
+fi
+cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set i = 1"
+out=$(cdb2sql ${CDB2_OPTIONS} --tabs $dbnm default "select cast(rowid / 4294967296 as int) & 4043243520 from t1")
+if [[ "$out" == "0" ]]; then
+    failexit "Inplace update should update updateid to nonzero"
+fi
+
 echo "Success"

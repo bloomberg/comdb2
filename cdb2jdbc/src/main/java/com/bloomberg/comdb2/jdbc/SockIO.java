@@ -122,7 +122,7 @@ public class SockIO implements IO {
         int i, nr;
         for (i = 0; i < b.length; ++i) {
             nr = in.read(b, i, 1);
-            if (nr < 0 || b[i] == '\n') /* EOF or \n */
+            if (nr <= 0 || b[i] == '\n') /* EOF or \n */
                 return new String(b, 0, i);
         }
         throw new IOException("Unexpectedly long line.");

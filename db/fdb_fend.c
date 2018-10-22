@@ -2060,7 +2060,7 @@ Schema *fdb_sqlite_get_schema(Btree *pBt, int nbytes)
     return calloc(1, nbytes);
 }
 
-static int _fdb_remote_reconnect(fdb_t *fdb, SBUF2 **psb, char *host)
+static int _fdb_remote_reconnect(fdb_t *fdb, SBUF2 **psb, char *host, int use_cache)
 {
     SBUF2 *sb = *psb;
     int rc = FDB_NOERR;
@@ -2081,7 +2081,7 @@ static int _fdb_remote_reconnect(fdb_t *fdb, SBUF2 **psb, char *host)
         now = gettimeofday_ms();
     }
 
-    *psb = sb = connect_remote_db(fdb->dbname, "remsql", host);
+    *psb = sb = connect_remote_db("icdb2", fdb->dbname, "remsql", host, use_cache);
 
     if (gbl_fdb_track_times) {
         then = gettimeofday_ms();
@@ -2176,7 +2176,7 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
             psb = &trans->sb;
         }
 
-        if ((rc = _fdb_remote_reconnect(fdb, psb, host)) == FDB_NOERR) {
+        if ((rc = _fdb_remote_reconnect(fdb, psb, host, (fdbc)?1:0)) == FDB_NOERR) {
             if (fdbc) {
                 fdbc->streaming = FDB_CUR_IDLE;
 
@@ -2549,7 +2549,7 @@ static void fdb_cursor_close_on_open(BtCursor *pCur, int cache)
 
         if (cache && fdbc->ent && fdbc->ent->tbl &&
             fdbc->streaming == FDB_CUR_IDLE) {
-            disconnect_remote_db(fdbc->ent->tbl->fdb->dbname, "remsql",
+            disconnect_remote_db("icdb2", fdbc->ent->tbl->fdb->dbname, "remsql",
                                  fdbc->node, &fdbc->fcon.sock.sb);
         } else {
             sbuf2close(fdbc->fcon.sock.sb);
@@ -4653,6 +4653,7 @@ int fdb_heartbeats(struct sqlclntstate *clnt)
     fdb_msg_t *msg;
     fdb_tran_t *tran;
     int rc = 0;
+    int out_rc = 0;
 
     if (!dtran || dtran->remoted)
         return FDB_NOERR;
@@ -4681,13 +4682,15 @@ int fdb_heartbeats(struct sqlclntstate *clnt)
                         __func__, *(unsigned long long *)tran->tid,
                         tran->fdb->dbname, rc);
         }
+        if (!out_rc)
+            out_rc = rc;
     }
 
     pthread_mutex_unlock(&clnt->dtran_mtx);
 
     free(msg);
 
-    return rc;
+    return out_rc;
 }
 
 /* check if the mentioned fdb has a preferred node, and get the status of last

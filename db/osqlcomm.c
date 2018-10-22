@@ -6128,7 +6128,7 @@ static void net_osql_rpl(void *hndl, void *uptr, char *fromnode, int usertype,
     int found = 0;
     int rc = 0;
     uuid_t uuid;
-    int type;
+    int type = 0;
     unsigned long long rqid;
     uint8_t *p_buf, *p_buf_end;
     p_buf = (uint8_t *)dtap;
@@ -6234,7 +6234,7 @@ static int net_osql_rpl_tail(void *hndl, void *uptr, char *fromhost,
     uint8_t *p_buf = (uint8_t *)dup;
     uint8_t *p_buf_end = p_buf + dtalen;
     unsigned long long rqid;
-    int type;
+    int type = 0;
     if (osql_nettype_is_uuid(usertype)) {
         osql_uuid_rpl_t p_osql_rpl;
 
@@ -6260,6 +6260,7 @@ static int net_osql_rpl_tail(void *hndl, void *uptr, char *fromhost,
         } else {
             rqid = p_osql_rpl.sid;
             comdb2uuid_clear(uuid);
+            type = p_osql_rpl.type;
         }
     }
 

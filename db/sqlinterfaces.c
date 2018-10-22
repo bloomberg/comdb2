@@ -3933,7 +3933,9 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
                 if (diff.tv_sec >= clnt->heartbeat) {
                     last = st;
                     send_heartbeat(clnt);
-                    fdb_heartbeats(clnt);
+                    rc = fdb_heartbeats(clnt);
+                    if (rc)
+                        return -1;
                 }
                 if (clnt->query_timeout > 0 && !clnt->statement_timedout) {
                     TIMESPEC_SUB(st, first, diff);

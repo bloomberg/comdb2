@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=884)
+(TUNABLES_COUNT=885)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -810,6 +810,7 @@
 (name='test_scindex_deadlock', description='Test index on expressions schema change deadlock', type='BOOLEAN', value='OFF', read_only='Y')
 (name='thread_stats', description='Berkeley DB will keep stats on what its threads are doing', type='BOOLEAN', value='ON', read_only='N')
 (name='throttlesqloverlog', description='On a full queue of SQL requests, dump the current thread pool this often (in secs). (Default: 5sec)', type='INTEGER', value='5', read_only='Y')
+(name='timeout_fdb_trans_sync', description='Timeout for retrieving a foreign table transaction', type='INTEGER', value='4000', read_only='N')
 (name='timeout_server_sockpool', description='Timeout for getting a connection to another database from sockpool.', type='INTEGER', value='10', read_only='N')
 (name='timepart_abort_on_preperror', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='timepart_check_shard_existence', description='Check at startup/time-partition creation that all shard files exist.', type='BOOLEAN', value='OFF', read_only='N')

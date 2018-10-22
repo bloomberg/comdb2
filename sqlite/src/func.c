@@ -2415,6 +2415,7 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(table_version,        1, 0, 0, tableVersionFunc),
     FUNCTION(partition_info,       2, 0, 0, partitionInfoFunc),
     FUNCTION(comdb2_host,          0, 0, 0, comdb2HostFunc),
+    FUNCTION(comdb2_node,          0, 0, 0, comdb2HostFunc),
     FUNCTION(comdb2_port,          0, 0, 0, comdb2PortFunc),
     FUNCTION(comdb2_dbname,        0, 0, 0, comdb2DbnameFunc),
     FUNCTION(comdb2_prevquerycost, 0, 0, 0, comdb2PrevquerycostFunc),

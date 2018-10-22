@@ -153,7 +153,13 @@ static int completionDisconnect(sqlite3_vtab *pVtab){
 ** Constructor for a new completion_cursor object.
 */
 static int completionOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
+  /* We do not need to check for OP user for this module as the system
+   * tables that this module accesses (comdb2_tables, comdb2_columns) are
+   * already filtered for current user.
+   */
+
   completion_cursor *pCur;
+
   pCur = sqlite3_malloc( sizeof(*pCur) );
   if( pCur==0 ) return SQLITE_NOMEM;
   memset(pCur, 0, sizeof(*pCur));
