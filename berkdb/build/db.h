@@ -2399,7 +2399,6 @@ struct __db_env {
 	int bulk_stops_on_page;
 
 	void (*recovery_start_callback)(DB_ENV *env);
-	void (*recovery_done_callback)(DB_ENV *env);
 	void (*lsn_undone_callback)(DB_ENV *env, DB_LSN*);
 
 	int  (*txn_begin_set_retries)
@@ -2500,10 +2499,13 @@ struct __db_env {
 	int (*check_standalone)(DB_ENV *);
 	int (*set_truncate_sc_callback) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn)));
 	int (*truncate_sc_callback)(DB_ENV *, DB_LSN *lsn);
-	int (*set_rep_truncate_callback) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn)));
-	int (*rep_truncate_callback)(DB_ENV *, DB_LSN *lsn);
+	int (*set_rep_truncate_callback) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn, int is_master)));
+	int (*rep_truncate_callback)(DB_ENV *, DB_LSN *lsn, int is_master);
     void (*rep_set_gen)(DB_ENV *, uint32_t gen);
-
+	int (*set_rep_recovery_cleanup) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn, int is_master)));
+    int (*rep_recovery_cleanup)(DB_ENV *, DB_LSN *lsn, int is_master);
+    void (*lock_recovery_lock)(DB_ENV *);
+    void (*unlock_recovery_lock)(DB_ENV *);
 	/* Trigger/consumer signalling support */
 	int(*trigger_subscribe) __P((DB_ENV *, const char *, pthread_cond_t **,
 				     pthread_mutex_t **, const uint8_t **active));

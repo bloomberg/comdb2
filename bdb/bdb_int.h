@@ -1417,8 +1417,6 @@ int ll_checkpoint(bdb_state_type *bdb_state, int force);
 
 int bdb_llog_start(bdb_state_type *bdb_state, tran_type *tran, DB_TXN *txn);
 
-int bdb_run_logical_recovery(bdb_state_type *bdb_state, int locks_only);
-
 tran_type *bdb_tran_continue_logical(bdb_state_type *bdb_state,
                                      unsigned long long tranid, int trak,
                                      int *bdberr);

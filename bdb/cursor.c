@@ -1731,6 +1731,55 @@ retrieve_fileid_pglogs_queue(unsigned char *fileid, int create)
     return fileid_queue;
 }
 
+/* Delete from the large-end of pglogs queues after truncating the log */
+static int bdb_truncate_pglog_queue(bdb_state_type *bdb_state,
+                                 struct fileid_pglogs_queue *queue,
+                                 DB_LSN trunclsn)
+{
+    struct pglogs_queue_key *qe, *del_qe = NULL;
+    pthread_rwlock_wrlock(&queue->queue_lk);
+    qe = LISTC_TOP(&queue->queue_keys);
+
+    while (qe) {
+        if (qe->type == PGLOGS_QUEUE_PAGE &&
+            (log_compare(&qe->commit_lsn, &trunclsn) > 0)) {
+            del_qe = qe;
+            break;
+        }
+        qe = qe->lnk.next;
+    }
+
+#ifdef ASOF_TRACE
+    char *buf;
+    unsigned count = 0;
+#endif
+
+    if (!del_qe) {
+        goto done;
+    }
+
+    /* Remove from the bottom of the list and return */
+    do {
+        qe = listc_rbl(&queue->queue_keys);
+        return_pglogs_queue_key(qe);
+#ifdef ASOF_TRACE
+        count++;
+#endif
+    } while (qe != del_qe);
+
+done:
+#ifdef ASOF_TRACE
+    hexdumpbuf(queue->fileid, DB_FILE_ID_LEN, &buf);
+    logmsg(LOGMSG_INFO, "%s: fileid[%s], trunclsn[%d][%d], count %u\n", __func__,
+           buf, trunclsn.file, trunclsn.offset, count);
+    free(buf);
+#endif
+
+    pthread_rwlock_unlock(&queue->queue_lk);
+
+    return 0;
+}
+
 static int bdb_clean_pglog_queue(bdb_state_type *bdb_state,
                                  struct fileid_pglogs_queue *queue,
                                  DB_LSN minlsn, struct asof_cursor *cur)
@@ -1791,17 +1840,17 @@ done:
     return 0;
 }
 
-int bdb_clean_pglogs_queues(bdb_state_type *bdb_state)
+int bdb_clean_pglogs_queues(bdb_state_type *bdb_state, DB_LSN lsn, int truncate)
 {
     struct pglogs_queue_heads qh;
-    DB_LSN lsn;
     int count, i;
 
     if (!gbl_new_snapisol)
         return 0;
 
     Pthread_mutex_lock(&del_queue_lk);
-    bdb_pglogs_min_lsn(bdb_state, &lsn);
+    if (lsn.file == 0)
+        bdb_pglogs_min_lsn(bdb_state, &lsn);
 
     Pthread_mutex_lock(&pglogs_queue_lk);
 
@@ -1824,13 +1873,17 @@ int bdb_clean_pglogs_queues(bdb_state_type *bdb_state)
     Pthread_mutex_unlock(&pglogs_queue_lk);
 
     for (i = 0; i < count; i++) {
-        struct fileid_pglogs_queue *queue; //= qh.queue_heads[i];
+        struct fileid_pglogs_queue *queue;
         unsigned char *fileid = qh.fileids[i];
 
         if (!(queue = retrieve_fileid_pglogs_queue(fileid, 0)))
             abort();
 
-        bdb_clean_pglog_queue(bdb_state, queue, lsn, NULL);
+        if (truncate)
+            bdb_truncate_pglog_queue(bdb_state, queue, lsn);
+        else
+            bdb_clean_pglog_queue(bdb_state, queue, lsn, NULL);
+
         free(qh.fileids[i]);
     }
 
@@ -2158,6 +2211,18 @@ static inline void set_del_lsn(const char *func, unsigned int line,
 #endif
 }
 
+/* Remove pglogs & clear queues for anything larger than LSN.  
+ * Called while holding recoverlk in write mode. */
+int truncate_asof_pglogs(bdb_state_type *bdb_state, int file, int offset)
+{
+    DB_LSN lsn = { .file = file, .offset = offset};
+    bdb_clean_pglogs_queues(bdb_state, lsn, 1);
+    pthread_mutex_lock(&bdb_asof_current_lsn_mutex);
+    bdb_asof_current_lsn = lsn;
+    pthread_mutex_unlock(&bdb_asof_current_lsn_mutex);
+    return 0;
+}
+
 static void *pglogs_asof_thread(void *arg)
 {
     bdb_state_type *bdb_state = (bdb_state_type *)arg;
@@ -2166,12 +2231,14 @@ static void *pglogs_asof_thread(void *arg)
     struct commit_list *lcommit, *bcommit, *next;
     int pollms, ret;
 
-    while (!db_is_stopped()) {
+    /* We need to stop this thread when truncating the log */
+    bdb_state->dbenv->lock_recovery_lock(bdb_state->dbenv);
+
+    while (1) {
         // Remove list
         int count, i, dont_poll = 0;
         DB_LSN new_asof_lsn, lsn, del_lsn = {0};
         DB_LSN max_commit_lsn_in_queue = {0};
-        // int drain_limit = bdb_state->attr->asof_thread_drain_limit;
 
         // Get commit list
         Pthread_mutex_lock(&bdb_asof_current_lsn_mutex);
@@ -2351,13 +2418,16 @@ static void *pglogs_asof_thread(void *arg)
         }
 #endif
 
+        bdb_state->dbenv->unlock_recovery_lock(bdb_state->dbenv);
         if (!dont_poll) {
             pollms = bdb_state->attr->asof_thread_poll_interval_ms <= 0
                          ? 500
                          : bdb_state->attr->asof_thread_poll_interval_ms;
             poll(NULL, 0, pollms);
         }
+        bdb_state->dbenv->lock_recovery_lock(bdb_state->dbenv);
     }
+    bdb_state->dbenv->unlock_recovery_lock(bdb_state->dbenv);
 
     return NULL;
 }

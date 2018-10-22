@@ -1463,10 +1463,6 @@ err:	if (logc != NULL && (t_ret = __log_c_close(logc)) != 0 && ret == 0)
 	/*   BDB_RELLOCK(); */
 
 	F_CLR(region, TXN_IN_RECOVERY);
-
-	if (dbenv->recovery_done_callback)
-		dbenv->recovery_done_callback(dbenv);
-
 	dbenv->recovery_pass = DB_TXN_NOT_IN_RECOVERY;
 
 	return (ret);

@@ -6574,6 +6574,10 @@ restart:
         __rep_set_gen(dbenv, __func__, __LINE__, newgen);
     }
 
+    /* Recovery cleanup is called holding recoverlk */
+    if (dbenv->rep_recovery_cleanup)
+        dbenv->rep_recovery_cleanup(dbenv, trunclsnp, i_am_master);
+
     logmsg(LOGMSG_INFO, "%s finished truncate, trunclsnp is [%d:%d]\n", __func__,
             trunclsnp->file, trunclsnp->offset);
 
@@ -6590,8 +6594,8 @@ restart:
         dbenv->truncate_sc_callback(dbenv, trunclsnp);
 
     /* Tell replicants to truncate */
-    if (i_am_master && dbenv->rep_truncate_callback)
-        dbenv->rep_truncate_callback(dbenv, trunclsnp);
+    if (dbenv->rep_truncate_callback)
+        dbenv->rep_truncate_callback(dbenv, trunclsnp, i_am_master);
 
 err:
     if (have_recover_lk)
@@ -6604,9 +6608,6 @@ err:
 		recovery_release_locks(dbenv, lockid);
 		lockid = DB_LOCK_INVALIDID;
 	}
-
-	if (dbenv->recovery_done_callback)
-		dbenv->recovery_done_callback(dbenv);
 
 	return (ret);
 }
