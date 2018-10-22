@@ -1,0 +1,195 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# Time partition testcase for comdb2
+################################################################################
+
+
+# args
+# <dbname>
+dbname=$1
+
+VIEW1="testview1"
+VIEW2="testview2"
+OUT="run.log"
+
+rm $OUT 2>/dev/null
+touch $OUT
+
+
+function timepart_stats
+{
+    dbn=$1
+    # check the current partitions 
+    echo cdb2sql ${CDB2_OPTIONS} $dbn default "exec procedure sys.cmd.send('partitions')" | 
+        egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID" >> $OUT
+    cdb2sql -tabs ${CDB2_OPTIONS} $dbn default "exec procedure sys.cmd.send('partitions')" |
+        egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID" >> $OUT
+    if (( $? != 0 )) ; then
+        echo "FAILURE"
+        exit 1
+    fi
+
+    echo cdb2sql ${CDB2_OPTIONS} $dbn default  "select name, period, retention, nshards, version,shard0name from comdb2_timepartitions " >> $OUT
+    cdb2sql ${CDB2_OPTIONS} $dbn default  "select name, period, retention, nshards, version,shard0name from comdb2_timepartitions " >> $OUT
+    if (( $? != 0 )) ; then
+        echo "FAILURE"
+        exit 1
+    fi
+
+    echo cdb2sql ${CDB2_OPTIONS} $dbn default  "select name, shardname from comdb2_timepartshards" >> $OUT
+    cdb2sql ${CDB2_OPTIONS} $dbn default  "select name, shardname from comdb2_timepartshards" >> $OUT
+    if (( $? != 0 )) ; then
+        echo "FAILURE"
+        exit 1
+    fi
+}
+
+timepart_stats $dbname
+
+# create the partition
+starttime1=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-60*60*(24*4+1))'`
+echo cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON t1 as ${VIEW1} PERIOD 'daily' RETENTION 3 START '${starttime1}'" 
+cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON t1 as ${VIEW1} PERIOD 'daily' RETENTION 3 START '${starttime1}'" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE"
+   exit 1
+fi
+sleep 10
+starttime2=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-60*60*(24*2+1))'`
+echo cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON t2 as ${VIEW2} PERIOD 'daily' RETENTION 3 START '${starttime2}'" 
+cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON t2 as ${VIEW2} PERIOD 'daily' RETENTION 3 START '${starttime2}'" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE"
+   exit 1
+fi
+sleep 10
+
+timepart_stats $dbname
+
+echo "Inserting rows table t1" >> $OUT
+
+let row=0
+while (( $row != 100 )) ; do
+    echo cdb2sql ${CDB2_OPTIONS} $dbname default "insert into ${VIEW1} values ($row, 'A row', 0x'DEADBEAF')" >> $OUT
+    cdb2sql ${CDB2_OPTIONS} $dbname default "insert into ${VIEW1} values ($row, 'A row', x'DEADBEAF')" >> $OUT
+    if (( $? != 0 )) ; then
+        echo "FAILURE"
+        exit 1
+    fi
+    let row=row+1
+done
+
+echo "Inserting rows table t2" >> $OUT
+
+let row=0
+while (( $row != 100 )) ; do
+    echo cdb2sql ${CDB2_OPTIONS} $dbname default "insert into ${VIEW2} values ($row)" >> $OUT
+    cdb2sql ${CDB2_OPTIONS} $dbname default "insert into ${VIEW2} values ($row)" >> $OUT
+    if (( $? != 0 )) ; then
+        echo "FAILURE"
+        exit 1
+    fi
+    let row=row+1
+done
+
+echo "HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH" >> $OUT
+
+echo cdb2sql ${CDB2_OPTIONS} $dbname default "select * from ${VIEW1} order by a" >> $OUT
+cdb2sql ${CDB2_OPTIONS} $dbname default "select * from ${VIEW1} order by a" >> $OUT
+if (( $? != 0 )) ; then
+    echo "FAILURE"
+    exit 1
+fi
+
+echo cdb2sql ${CDB2_OPTIONS} $dbname default "select * from ${VIEW2} order by a" >> $OUT
+cdb2sql ${CDB2_OPTIONS} $dbname default "select * from ${VIEW2} order by a" >> $OUT
+if (( $? != 0 )) ; then
+    echo "FAILURE"
+    exit 1
+fi
+
+timepart_stats $dbname
+
+
+# create a temporary directory
+newdb=srcdb$dbname
+newdbdir=$TESTDIR/$newdb
+newlrl=$newdbdir/$newdb.lrl
+
+echo "Creating newdb $dbname in $newdbdir"
+
+# copy the schema of the old db
+echo $COMDB2AR_EXE -s c $DBDIR/$dbname.lrl | $COMDB2AR_EXE  -C preserve -u 95 x $newdbdir $newdbdir
+$COMDB2AR_EXE -s c $DBDIR/$dbname.lrl | $COMDB2AR_EXE  -C preserve -u 95 x $newdbdir $newdbdir
+echo mv $newdbdir/$dbname.lrl $newlrl
+mv $newdbdir/$dbname.lrl $newlrl
+echo sed -i "/^name /s/$dbname/$newdb/g" $newlrl
+sed -i "/^name /s/$dbname/$newdb/g" $newlrl
+
+# recreate the db
+echo $COMDB2_EXE $newdb --create --lrl $newlrl
+$COMDB2_EXE $newdb --create --lrl $newlrl
+if (( $? != 0 )) ; then
+   echo "FAILURE"
+   exit 1
+fi
+
+echo "Bringing the $newdb up"
+
+# bring the db up
+echo $COMDB2_EXE $newdb --lrl $newlrl --pidfile ${TMPDIR}/$newdb.pid
+$COMDB2_EXE $newdb --lrl $newlrl --pidfile ${TMPDIR}/$newdb.pid &
+if (( $? != 0 )) ; then
+   echo "FAILURE"
+   exit 1
+fi
+
+echo "Waiting for db"
+
+sleep 20
+
+echo "Confirming time partition transfer for $newdb"
+
+# double check the time partition settings
+timepart_stats $newdb
+
+echo "Killing the $newdb"
+
+# bring down new db
+kill_by_pidfile() {
+    local pidfile=$1
+    if [[ -f $pidfile ]]; then
+        local pid=$(cat $pidfile)
+        local pstr=$(ps -p $pid -o args | grep comdb2)
+        echo $pstr | grep -q "comdb2 ${newdb}"
+        if [[ $? -eq 0 ]]; then
+            echo "${TESTCASE}: killing $pid"
+            if [ "`echo $pstr | awk '{ print $1 }' | xargs basename`" = "comdb2" ] ; then
+                kill -9 $pid
+            else
+                kill $pid
+            fi
+        fi
+        rm -f $pidfile
+    else
+        echo "kill_by_pidfile: pidfile $pidfile does not exist"
+    fi
+}
+kill_by_pidfile ${TMPDIR}/$newdb.pid 
+
+
+
+# we need to scrub dbname from alpha
+sed "s/dorintdb/$dbname/g; s#\${CDB2_OPTIONS}#${CDB2_OPTIONS}#g" $OUT.alpha > $OUT.alpha.actual
+
+
+difs=`diff $OUT $OUT.alpha.actual`
+if [[ ! -z "${difs}" ]] ; then
+   echo "diff $OUT $OUT.alpha.actual"
+   echo ${difs}
+   echo "FAILURE"
+   exit 1
+fi
+
+echo "SUCCESS"
