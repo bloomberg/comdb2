@@ -398,12 +398,12 @@ void __free_fdb(fdb_t *fdb)
  * Add a lockless user
  *
  */
-static void __fdb_add_user(fdb_t *fdb)
+static void __fdb_add_user(fdb_t *fdb, int noTrace)
 {
     pthread_mutex_lock(&fdb->users_mtx);
     fdb->users++;
 
-    if (gbl_fdb_track)
+    if (!noTrace && gbl_fdb_track)
         logmsg(LOGMSG_USER, "%lu %s %s users %d\n", pthread_self(), __func__,
                fdb->dbname, fdb->users);
 
@@ -415,12 +415,12 @@ static void __fdb_add_user(fdb_t *fdb)
  * Remove a lockless user
  *
  */
-static void __fdb_rem_user(fdb_t *fdb)
+static void __fdb_rem_user(fdb_t *fdb, int noTrace)
 {
     pthread_mutex_lock(&fdb->users_mtx);
     fdb->users--;
 
-    if (gbl_fdb_track)
+    if (!noTrace && gbl_fdb_track)
         logmsg(LOGMSG_USER, "%lu %s %s users %d\n", pthread_self(), __func__,
                fdb->dbname, fdb->users);
 
@@ -444,7 +444,7 @@ fdb_t *get_fdb(const char *dbname)
    NOTE: we will rely on table locks instead of this! 
    if(fdb)
    {
-      __fdb_add_user(fdb);
+      __fdb_add_user(fdb, 0);
    }
 #endif
     pthread_rwlock_unlock(&fdbs.arr_lock);
@@ -467,7 +467,7 @@ fdb_t *new_fdb(const char *dbname, int *created, enum mach_class class)
     fdb = __cache_fnd_fdb(dbname, NULL);
     if (fdb) {
         assert(class == fdb->class);
-        __fdb_add_user(fdb);
+        __fdb_add_user(fdb, 0);
 
         *created = 0;
         goto done;
@@ -499,7 +499,7 @@ fdb_t *new_fdb(const char *dbname, int *created, enum mach_class class)
 
     /* this should be safe to call even though the fdb is not booked in the fdb
      * array */
-    __fdb_add_user(fdb);
+    __fdb_add_user(fdb, 0);
 
     rc = __cache_link_fdb(fdb);
     if (rc) {
@@ -752,7 +752,7 @@ retry_find_table:
         char *tmpname = strdup(fdb->dbname);
 
         /* new_fdb bumped this up, we need exclusive lock, get ourselves out */
-        __fdb_rem_user(fdb);
+        __fdb_rem_user(fdb, 0);
 
         rc = __lock_wrlock_exclusive(tmpname);
         free(tmpname);
@@ -766,7 +766,7 @@ retry_find_table:
         }
 
         /* add ourselves back */
-        __fdb_add_user(fdb);
+        __fdb_add_user(fdb, 0);
 
         if (status == TABLE_STALE) {
             /* remove the stale table here */
@@ -1355,7 +1355,7 @@ retry_fdb_creation:
 
     error:
         /* decrement the local bump */
-        __fdb_rem_user(fdb);
+        __fdb_rem_user(fdb, 0);
 
         /* if we've created this now, remove it since it could be a mistype */
         if (created) {
@@ -1404,7 +1404,7 @@ int sqlite3UnlockTable(const char *dbname, const char *table)
         abort();
     }
 
-    __fdb_rem_user(fdb); /* matches __fdb_add_user in sqlite3AddAndLockTable */
+    __fdb_rem_user(fdb, 0); /* matches __fdb_add_user in sqlite3AddAndLockTable */
 
     return SQLITE_OK;
 }
@@ -4342,11 +4342,11 @@ static void fdb_info_db(const char *dbname)
             if (!fdb)
                 continue;
 
-            __fdb_add_user(fdb);
+            __fdb_add_user(fdb, 1);
 
             fdb_info_tables(fdb);
 
-            __fdb_rem_user(fdb);
+            __fdb_rem_user(fdb, 1);
         }
         pthread_rwlock_unlock(&fdbs.arr_lock);
     } else {
@@ -4357,11 +4357,11 @@ static void fdb_info_db(const char *dbname)
             return;
         }
 
-        __fdb_add_user(fdb);
+        __fdb_add_user(fdb, 1);
 
         fdb_info_tables(fdb);
 
-        __fdb_rem_user(fdb);
+        __fdb_rem_user(fdb, 1);
     }
 }
 
@@ -4612,7 +4612,7 @@ int fdb_lock_table(sqlite3_stmt *pStmt, struct sqlclntstate *clnt, Table *tab,
     }
 
     /* Lets try something simple, bumping users for fdb */
-    __fdb_add_user(ent->tbl->fdb);
+    __fdb_add_user(ent->tbl->fdb, 0);
 
     *p_ent = ent;
 
@@ -4638,7 +4638,7 @@ int fdb_unlock_table(fdb_tbl_ent_t *ent)
                ent->tbl->version);
     }
 
-    __fdb_rem_user(ent->tbl->fdb);
+    __fdb_rem_user(ent->tbl->fdb, 0);
 
     return FDB_NOERR;
 }
