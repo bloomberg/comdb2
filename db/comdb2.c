@@ -3272,6 +3272,9 @@ static int init(int argc, char **argv)
 
     init_file_locations(lrlname);
 
+    /* prepare the server class ahead of time */
+    get_my_mach_class();
+
     if (gbl_create_mode && lrlname == NULL) {
        if (gbl_dbdir == NULL)
           gbl_dbdir = comdb2_location("database", "%s", dbname);
@@ -4979,8 +4982,6 @@ static void getmyid(void)
 
     getmyaddr();
     gbl_mypid = getpid();
-   /* prepare the server class ahead of time */
-    get_my_mach_class();
 }
 
 void create_marker_file() 
