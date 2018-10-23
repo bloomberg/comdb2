@@ -1,0 +1,10 @@
+schema
+{
+   int      a
+   cstring  b[10]
+   blob     c
+}
+keys
+{
+   "pk"  = a
+}

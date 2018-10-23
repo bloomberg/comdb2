@@ -296,6 +296,8 @@ int rewrite_lrl_remove_tables(const char *lrlname)
             continue;
         if (ltok && tokcmp(tok, ltok, "queuedb") == 0)
             continue;
+        if (ltok && tokcmp(tok, ltok, "timepartitions") == 0)
+            continue;
 
         /* echo the line back out unchanged */
         sbuf2printf(sbnew, "%s", line);
@@ -348,7 +350,8 @@ int rewrite_lrl_remove_tables(const char *lrlname)
 int rewrite_lrl_un_llmeta(const char *p_lrl_fname_in,
                           const char *p_lrl_fname_out, char *p_table_names[],
                           char *p_csc2_paths[], int table_nums[],
-                          size_t num_tables, char *out_lrl_dir, int has_sp)
+                          size_t num_tables, char *out_lrl_dir, int has_sp,
+                          int has_timepartitions)
 {
     unsigned i;
     int fd_out;
@@ -416,6 +419,12 @@ int rewrite_lrl_un_llmeta(const char *p_lrl_fname_in,
     if (has_sp) {
         sbuf2printf(sb_out, "spfile %s/%s_%s", out_lrl_dir, thedb->envname,
                     SP_FILE_NAME);
+        sbuf2printf(sb_out, "\n");
+    }
+
+    if (has_timepartitions) {
+        sbuf2printf(sb_out, "timepartitions %s/%s_%s", out_lrl_dir,
+                    thedb->envname, TIMEPART_FILE_NAME);
         sbuf2printf(sb_out, "\n");
     }
 
