@@ -2533,6 +2533,7 @@ void net_reset_udp_stat(netinfo_type *netinfo_ptr)
 
 void print_all_udp_stat(netinfo_type *netinfo_ptr)
 {
+    if (!netinfo_ptr) return;
     Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
 
     for (host_node_type *ptr = netinfo_ptr->head; ptr != NULL;
@@ -3483,6 +3484,7 @@ void net_count_nodes_ex(netinfo_type *netinfo_ptr, int *total_ptr,
 
 inline int net_count_nodes(netinfo_type *netinfo_ptr)
 {
+    if (!netinfo_ptr) return 0;
     int total;
     net_count_nodes_ex(netinfo_ptr, &total, NULL);
     return total;
