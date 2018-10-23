@@ -1434,11 +1434,11 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
         net_send_decom_all(netinfo_ptr, gbl_mynode);
         osql_process_message_decom(gbl_mynode);
 
-        /* kludge -- need something like net_send_message_payload_ack */
         sleep(2);
 
         net_exiting(netinfo_ptr);
         osql_net_exiting();
+
     }
     net_cleanup_netinfo(netinfo_ptr);
     osql_cleanup_netinfo();
