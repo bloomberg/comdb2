@@ -3512,6 +3512,8 @@ check_version:
                     logmsg(LOGMSG_ERROR, 
                             "failed to create views rc=%d errstr=\"%s\"\n",
                             xerr.errval, xerr.errstr);
+                    /* there is no really way forward */
+                    abort();
                 }
                 if (cnonce)
                     set_cnonce(clnt);
