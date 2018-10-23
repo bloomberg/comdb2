@@ -708,7 +708,6 @@ cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_time
 (name='testview2', shardname='$3_5BC3CAF0')
 (name='testview2', shardname='$2_FE82588E')
 (name='testview2', shardname='$1_14AC98FD')
-cdb2sql ${CDB2_OPTIONS} srcdbdorintdb default exec procedure sys.cmd.send('partitions')
 [
  {
   "NAME"      : "testview1",
@@ -748,10 +747,8 @@ cdb2sql ${CDB2_OPTIONS} srcdbdorintdb default exec procedure sys.cmd.send('parti
   ]
  }
 ]
-cdb2sql ${CDB2_OPTIONS} srcdbdorintdb default select name, period, retention, nshards, version,shard0name from comdb2_timepartitions 
 (name='testview1', period='daily', retention=3, nshards=3, version=0, shard0name='t1')
 (name='testview2', period='daily', retention=3, nshards=3, version=0, shard0name='t2')
-cdb2sql ${CDB2_OPTIONS} srcdbdorintdb default select name, shardname from comdb2_timepartshards
 (name='testview1', shardname='$1_7FC6B09')
 (name='testview1', shardname='$0_A2BDF977')
 (name='testview1', shardname='$3_48933904')
