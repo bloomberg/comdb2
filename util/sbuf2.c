@@ -78,6 +78,7 @@ struct sbuf2 {
 
 #if SBUF2_SERVER
     comdb2ma allocator;
+    struct sql_thread *sql_thd;
 #endif
 
 #if WITH_SSL
@@ -764,6 +765,7 @@ error:
     if (alloc) {
         comdb2ma_destroy(alloc);
     }
+    sb->sql_thd = NULL;
 #endif
     return NULL;
 }
@@ -802,6 +804,18 @@ int SBUF2_FUNC(sbuf2eof)(SBUF2 *sb)
         else
             return -1;
     }
+}
+#endif
+
+#if SBUF2_SERVER
+void SBUF2_FUNC(sbuf2setsqlthd)(SBUF2 *sb, struct sql_thread *sql_thd)
+{
+    sb->sql_thd = sql_thd;
+}
+
+struct sql_thread *SBUF2_FUNC(sbuf2getsqlthd)(SBUF2 *sb)
+{
+    return sb->sql_thd;
 }
 #endif
 

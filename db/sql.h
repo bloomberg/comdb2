@@ -646,6 +646,7 @@ struct sqlclntstate {
     int admin;
 
     uint32_t start_gen;
+    int emitting_flag;
 };
 
 /* Query stats. */

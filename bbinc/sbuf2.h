@@ -158,6 +158,18 @@ char *SBUF2_FUNC(sbuf2dbgin)(SBUF2 *sb);
 char *SBUF2_FUNC(sbuf2dbgout)(SBUF2 *sb);
 #define sbuf2dbgout SBUF2_FUNC(sbuf2dbgout)
 
+#if SBUF2_SERVER
+struct sql_thread;
+
+/* set the sqlclntstate pointer associated with this sbuf */
+void SBUF2_FUNC(sbuf2setsqlthd)(SBUF2 *sb, struct sql_thread *clnt);
+#define sbuf2setsqlthd SBUF2_FUNC(sbuf2setsqlthd)
+
+/* get the sqlclntstate pointer associated with this sbuf */
+struct sql_thread *SBUF2_FUNC(sbuf2getsqlthd)(SBUF2 *sb);
+#define sbuf2getsqlthd SBUF2_FUNC(sbuf2getsqlthd)
+#endif
+
 /* set the userptr associated with this sbuf - use this for whatever your
  * application desires. */
 void SBUF2_FUNC(sbuf2setuserptr)(SBUF2 *sb, void *userptr);
