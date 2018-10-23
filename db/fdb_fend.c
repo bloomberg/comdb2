@@ -955,7 +955,8 @@ run:
             snprintf(sql, sizeof(sql),
                      "select *, table_version(tbl_name) from sqlite_master"
                      " where tbl_name='%s' collate nocase or tbl_name="
-                     "'sqlite_stat1' or " "tbl_name='sqlite_stat4'",
+                     "'sqlite_stat1' or "
+                     "tbl_name='sqlite_stat4'",
                      tbl->name);
         } else {
             snprintf(sql, sizeof(sql),
@@ -972,8 +973,9 @@ run:
                      "tbl_name='sqlite_stat4' collate nocase",
                      tbl->name);
         } else {
-            snprintf(sql, sizeof(sql), "select * from sqlite_master"
-                                       " where tbl_name='%s' collate nocase",
+            snprintf(sql, sizeof(sql),
+                     "select * from sqlite_master"
+                     " where tbl_name='%s' collate nocase",
                      tbl->name);
         }
     }
