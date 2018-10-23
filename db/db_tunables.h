@@ -1458,4 +1458,10 @@ REGISTER_TUNABLE("osql_send_startgen",
                  TUNABLE_BOOLEAN, &gbl_osql_send_startgen,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("client_heartbeat_ms",
+                 "Number of milliseconds between client api heartbeats.  "
+                 "(Default: 100)", TUNABLE_INTEGER, &gbl_client_heartbeat_ms,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+
 #endif /* _DB_TUNABLES_H */

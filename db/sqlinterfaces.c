@@ -2199,10 +2199,10 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
     if (gbl_locks_check_waiters && gbl_sql_release_locks_on_emit_row) {
         extern int gbl_sql_random_release_interval;
         if (bdb_curtran_has_waiters(thedb->bdb_env, clnt->dbtran.cursor_tran)) {
-            rc = release_locks(thd, "lockwait at emit-row");
+            rc = release_locks(thd->sqlthd, "lockwait at emit-row");
         } else if (gbl_sql_random_release_interval &&
                    !(rand() % gbl_sql_random_release_interval)) {
-            rc = release_locks(thd, "random release emit-row");
+            rc = release_locks(thd->sqlthd, "random release emit-row");
         }
     }
     return rc;
@@ -3772,6 +3772,8 @@ static int send_heartbeat(struct sqlclntstate *clnt)
         }                                                                      \
     } while (0)
 
+int gbl_client_heartbeat_ms = 100;
+
 int dispatch_sql_query(struct sqlclntstate *clnt)
 {
     char msg[1024];
@@ -3850,14 +3852,16 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
         if (clnt->osql.replay != OSQL_RETRY_NONE || clnt->in_client_trans) {
             send_heartbeat(clnt);
         }
-        const struct timespec ms100 = {.tv_sec = 0, .tv_nsec = 100000000};
+        struct timespec mshb;
         struct timespec first, last;
         clock_gettime(CLOCK_REALTIME, &first);
         last = first;
         while (1) {
             struct timespec now, st;
             clock_gettime(CLOCK_REALTIME, &now);
-            TIMESPEC_ADD(now, ms100, st);
+            mshb.tv_sec = (gbl_client_heartbeat_ms / 1000);
+            mshb.tv_nsec = (gbl_client_heartbeat_ms % 1000) * 1000000;
+            TIMESPEC_ADD(now, mshb, st);
 
             Pthread_mutex_lock(&clnt->wait_mutex);
             if (clnt->done) {
