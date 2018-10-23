@@ -725,9 +725,10 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                     "Master received inconsistent number of opcodes");
 
             logmsg(LOGMSG_ERROR, "%s: Replicant sent %d opcodes, master received %lld\n", __func__, done_nops, sess->seq + 1);
-            
-            abort();
-            // terminate session so replicant can retry
+            abort(); //for now abort to catch failure cases
+
+            // TODO: terminate session so replicant can retry
+            // or mark session bad so don't process this session from toblock
             osql_sess_try_terminate(sess);
             return 0;
         }
