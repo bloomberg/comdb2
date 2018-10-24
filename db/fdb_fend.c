@@ -3090,9 +3090,9 @@ static int fdb_cursor_move_sql(BtCursor *pCur, int how)
 
                 return rc;
             } else {
-                fdbc->streaming = (rc == IX_FNDMORE)?FDB_CUR_STREAMING:FDB_CUR_IDLE;
+                fdbc->streaming =
+                    (rc == IX_FNDMORE) ? FDB_CUR_STREAMING : FDB_CUR_IDLE;
             }
-            
         }
 
         end_rpc = osql_log_time();
@@ -3281,7 +3281,8 @@ static int fdb_cursor_find_sql_common(BtCursor *pCur, Mem *key, int nfields,
 
                 return rc;
             } else {
-                fdbc->streaming = (rc == IX_FNDMORE)?FDB_CUR_STREAMING:FDB_CUR_IDLE;
+                fdbc->streaming =
+                    (rc == IX_FNDMORE) ? FDB_CUR_STREAMING : FDB_CUR_IDLE;
             }
 
             /* if we don't get a row here, it means the concocted sql did not
