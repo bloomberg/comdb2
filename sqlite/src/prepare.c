@@ -484,7 +484,7 @@ int sqlite3Init(sqlite3 *db, char **pzErrMsg){
     ** table is actually present
     */
     if( dbname[0] && tmp && (sqlite3FindTableCheckOnly(db, tmp, db->aDb[i].zDbSName)!=0) ) continue;
-    if( i>=1 || !DbHasProperty(db, i, DB_SchemaLoaded) ){
+    if( i>1 || !DbHasProperty(db, i, DB_SchemaLoaded) ){
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( !DbHasProperty(db, i, DB_SchemaLoaded) ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
