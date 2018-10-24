@@ -1430,7 +1430,7 @@ void *_view_cron_phase3(uuid_t source_id, void *arg1, void *arg2, void *arg3,
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
         BDB_READLOCK(__func__);
         pthread_rwlock_wrlock(&schema_lk);
-        pthread_rwlock_wrlock(&views_lk);  /* I might decide to not lock this */
+        pthread_rwlock_wrlock(&views_lk); /* I might decide to not lock this */
 
         rc = _views_rollout_phase3(pShardName, err);
         if (rc != VIEW_NOERR) {
