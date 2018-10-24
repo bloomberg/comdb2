@@ -740,6 +740,13 @@ static void re_sql_func(
   }
 }
 
+int sqlite3RegexpInit(sqlite3 *db) {
+  int rc = SQLITE_OK;
+  rc = sqlite3_create_function(db, "regexp", 2, SQLITE_UTF8, 0,
+                                 re_sql_func, 0, 0);
+  return rc;
+}
+
 /*
 ** Invoke this routine to register the regexp() function with the
 ** SQLite database connection.

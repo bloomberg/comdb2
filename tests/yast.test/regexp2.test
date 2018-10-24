@@ -17,7 +17,11 @@ set testdir [file dirname $argv0]
 source $testdir/tester.tcl
 set testprefix regexp2
 
-load_static_extension db regexp
+# Comdb2 modification
+# NC: sqlite triggers not supported, skip
+finish_test
+
+#load_static_extension db regexp
 
 #-------------------------------------------------------------------------
 # Test that triggers do not become confused and use aux-data created by
