@@ -359,9 +359,11 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
         mark_schemachange_over_tran(s->tablename, NULL); // non-tran ??
         broadcast_sc_end(s->tablename, iq->sc_seed);
     } else if (s->finalize) {
-        wrlock_schema_lk();
+        if (!iq->sc_locked)
+            wrlock_schema_lk();
         rc = do_finalize(post, iq, s, tran, type);
-        unlock_schema_lk();
+        if (!iq->sc_locked)
+            unlock_schema_lk();
         if (type == fastinit && gbl_replicate_local)
             local_replicant_write_clear(iq, tran, s->db);
         broadcast_sc_end(s->tablename, iq->sc_seed);
@@ -519,7 +521,7 @@ int do_schema_change_tran(sc_arg_t *arg)
     return rc;
 }
 
-int do_schema_change(struct schema_change_type *s)
+int do_schema_change_locked(struct schema_change_type *s)
 {
     int rc = 0;
     struct ireq *iq = NULL;
@@ -539,7 +541,10 @@ int do_schema_change(struct schema_change_type *s)
     arg->iq = iq;
     arg->sc = s;
     arg->trans = NULL;
-    Pthread_mutex_lock(&s->mtx);
+    /* the only callers are lightweight timepartition events,
+       which already have schema lock */
+    arg->iq->sc_locked = 1;
+    pthread_mutex_lock(&s->mtx);
     rc = do_schema_change_tran(arg);
     free(iq);
     return rc;

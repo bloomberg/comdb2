@@ -1034,14 +1034,14 @@ int sc_timepart_add_table(const char *existingTableName,
         xerr->errval = SC_VIEW_ERR_BUG;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "table '%s' not found\n",
                  existingTableName);
-        goto error_prelock;
+        goto error;
     }
     if (get_csc2_file(db->tablename, -1 /*highest csc2_version*/, &schemabuf,
                       NULL /*csc2len*/)) {
         xerr->errval = SC_VIEW_ERR_BUG;
         snprintf(xerr->errstr, sizeof(xerr->errstr),
                  "could not get schema for table '%s'\n", existingTableName);
-        goto error_prelock;
+        goto error;
     }
     sc.newcsc2 = schemabuf;
 
@@ -1052,24 +1052,22 @@ int sc_timepart_add_table(const char *existingTableName,
         snprintf(xerr->errstr, sizeof(xerr->errstr),
                  "could not get compression for table '%s'\n",
                  existingTableName);
-        goto error_prelock;
+        goto error;
     }
     if (get_db_compress_blobs(db, &sc.compress_blobs)) {
         xerr->errval = SC_VIEW_ERR_BUG;
         snprintf(xerr->errstr, sizeof(xerr->errstr),
                  "could not get blob compression for table '%s'\n",
                  existingTableName);
-        goto error_prelock;
+        goto error;
     }
     if (get_db_inplace_updates(db, &sc.ip_updates)) {
         xerr->errval = SC_VIEW_ERR_BUG;
         snprintf(xerr->errstr, sizeof(xerr->errstr),
                  "could not get ipu for table '%s'\n", existingTableName);
-        goto error_prelock;
+        goto error;
     }
     if (db->instant_schema_change) sc.instant_sc = 1;
-
-    BDB_READLOCK("view_add_table");
 
     /* still one schema change at a time */
     if (thedb->master != gbl_mynode) {
@@ -1088,16 +1086,11 @@ int sc_timepart_add_table(const char *existingTableName,
 
     /* do the dance */
     sc.nothrevent = 1;
-    do_schema_change(&sc);
+    do_schema_change_locked(&sc);
 
     xerr->errval = SC_VIEW_NOERR;
 
 error:
-
-    BDB_RELLOCK();
-
-error_prelock:
-
     free_schema_change_type(&sc);
     return xerr->errval;
 }
@@ -1134,10 +1127,8 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
         xerr->errval = SC_VIEW_ERR_BUG;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "table '%s' not found\n",
                  tableName);
-        goto error_prelock;
+        goto error;
     }
-
-    BDB_READLOCK("view_drop_table");
 
     /* still one schema change at a time */
     if (thedb->master != gbl_mynode) {
@@ -1176,7 +1167,7 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
         sc.newcsc2 = schemabuf;
     }
 
-    rc = do_schema_change(&sc);
+    rc = do_schema_change_locked(&sc);
     if (rc) {
         xerr->errval = SC_VIEW_ERR_SC;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "failed to drop table");
@@ -1186,11 +1177,6 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
     xerr->errval = SC_VIEW_NOERR;
 
 error:
-
-    BDB_RELLOCK();
-
-error_prelock:
-
     free_schema_change_type(&sc);
     return xerr->errval;
 }

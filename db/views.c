@@ -1163,7 +1163,10 @@ void *_view_cron_phase1(uuid_t source_id, void *arg1, void *arg2, void *arg3,
 
     if (run) {
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
-        Pthread_rwlock_wrlock(&views_lk);
+
+        BDB_READLOCK(__func__);
+        pthread_rwlock_wrlock(&schema_lk);
+        pthread_rwlock_wrlock(&views_lk);
 
         view = _get_view(thedb->timepart_views, name);
         if (!view) {
@@ -1191,19 +1194,17 @@ void *_view_cron_phase1(uuid_t source_id, void *arg1, void *arg2, void *arg3,
             goto done;
         }
 
-        BDB_READLOCK(__func__);
-
         rc = _views_rollout_phase1(view, &pShardName, err);
         shardChangeTime = view->roll_time;
-
-        BDB_RELLOCK();
 
         /* do NOT override rc at this point! */
     }
 
 done:
     if (run) {
-        Pthread_rwlock_unlock(&views_lk);
+        pthread_rwlock_unlock(&views_lk);
+        pthread_rwlock_unlock(&schema_lk);
+        BDB_RELLOCK();
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
 
         /* queue the next event, done with the mutex released to avoid
@@ -1427,37 +1428,22 @@ void *_view_cron_phase3(uuid_t source_id, void *arg1, void *arg2, void *arg3,
 
     if (run) {
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
-        Pthread_rwlock_wrlock(&views_lk); /* I might decide to not lock this */
-
         BDB_READLOCK(__func__);
+        pthread_rwlock_wrlock(&schema_lk);
+        pthread_rwlock_wrlock(&views_lk);  /* I might decide to not lock this */
 
         rc = _views_rollout_phase3(pShardName, err);
-
-        BDB_RELLOCK();
-
         if (rc != VIEW_NOERR) {
             logmsg(LOGMSG_ERROR, "%s: phase 3 failed rc=%d errstr=%s\n", __func__,
                     err->errval, err->errstr);
         }
-    }
 
-done:
-    if (run) {
-        Pthread_rwlock_unlock(&views_lk);
+        pthread_rwlock_unlock(&views_lk);
+        pthread_rwlock_unlock(&schema_lk);
+        BDB_RELLOCK();
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
-
-#if 0
-        if(rc!=VIEW_NOERR)
-        {
-            /* update the error */
-            struct errstat newerr;
-            errstat_set_strf(&newerr, "%s: %s", view->name, err->errstr);
-            *err = newerr;
-        }
-#endif
-
     }
-
+done:
     return NULL;
 }
 
