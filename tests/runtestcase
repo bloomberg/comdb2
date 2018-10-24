@@ -30,12 +30,15 @@ mkdir -p ${TESTDIR}/logs/
 
 call_unsetup() {
     [[ $COMDB2_UNITTEST == 1 ]] && return
-    ${TESTSROOTDIR}/unsetup $successful &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.unsetup | cut -c11- | grep "^!" )
+
+    local LCLDBNAME=$1
+    ${TESTSROOTDIR}/unsetup $LCLDBNAME $successful &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${LCLDBNAME}.unsetup | cut -c11- | grep "^!" )
 }
 
 warn_long_setup() {
     start=$(date +%s)
-    ( ${TESTSROOTDIR}/setup &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.setup | cut -c11- | grep "^!" ) ) &
+    local LCLDBNAME=$1
+    ( ${TESTSROOTDIR}/setup $LCLDBNAME &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${LCLDBNAME}.setup | cut -c11- | grep "^!" ) ) &
     pid=$!
     kill -0 $pid >/dev/null 2>&1
     r=$?
@@ -161,34 +164,35 @@ find_cores() {
 call_setup() {
     [[ $COMDB2_UNITTEST == 1 ]] && return
 
+    local LCLDBNAME=$1
     if [[ $SETUP_WARN ]]; then
-         warn_long_setup
+         warn_long_setup $LCLDBNAME
          rc=$?
     else
-        { timeout ${SETUP_TIMEOUT} ${TESTSROOTDIR}/setup 2>&1 || echo $?; } | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.setup | cut -c11- | grep "^!"
+        { timeout ${SETUP_TIMEOUT} ${TESTSROOTDIR}/setup ${LCLDBNAME} 2>&1 || echo $?; } | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${LCLDBNAME}.setup | cut -c11- | grep "^!"
     fi
     sleep 0.8 # wait a bit for any cores
     #last line of .setup file will contain the error rc if any
-    ret=`tail -1 ${TESTDIR}/logs/${DBNAME}.setup | cut -c11-`
+    ret=`tail -1 ${TESTDIR}/logs/${LCLDBNAME}.setup | cut -c11-`
     cr=`find_cores`
 
     if [[ -n "$cr" ]] ; then
         echo "!$TESTCASE: setup failed with core dumped ($cr)"
         echo "!$TESTCASE: setup failed with core dumped ($cr)" >> ${TESTDIR}/test.log
-        call_unsetup
+        call_unsetup ${LCLDBNAME}
         sleep 0.1
         exit 1
     elif [[ $ret != "setup successful" ]] ; then
         echo "!$TESTCASE: setup failed (rc=$ret)" >> ${TESTDIR}/test.log
-        echo "!$TESTCASE: setup failed (rc=$ret) see ${TESTDIR}/logs/${DBNAME}.setup"
-        call_unsetup
+        echo "!$TESTCASE: setup failed (rc=$ret) see ${TESTDIR}/logs/${LCLDBNAME}.setup"
+        call_unsetup ${LCLDBNAME}
         sleep 0.1
         exit 1
     fi
 }
 
 
-call_setup
+call_setup ${DBNAME}
 echo "!$TESTCASE: running with timeout ${TEST_TIMEOUT}"
 
 timeout ${TEST_TIMEOUT} ./runit ${DBNAME} 2>&1  | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' &> ${TESTDIR}/logs/${DBNAME}.testcase
@@ -213,7 +217,7 @@ else
     echo "!$TESTCASE: failed" >> ${TESTDIR}/test.log
 fi
 
-call_unsetup
+call_unsetup ${LCLDBNAME}
 
 DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
 echo Done $TESTCASE with id $TESTID at $DATETIME >> $TESTDIR/test.log

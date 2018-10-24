@@ -10,7 +10,7 @@ setup_db ()
     CDB2_CONFIG=${DBDIR}/comdb2db.cfg
     CDB2_OPTIONS="--cdb2cfg $CDB2_CONFIG"
 
-    $TESTSROOTDIR/setup
+    $TESTSROOTDIR/setup $DBNAME
 
     cdb2sql ${CDB2_OPTIONS} $DBNAME default "select comdb2_dbname(), comdb2_host()"
 }
@@ -27,7 +27,7 @@ unsetup_db ()
        successful=1
     fi
 
-    $TESTSROOTDIR/unsetup $successful &> $TESTDIR/logs/$DBNAME.unsetup
+    $TESTSROOTDIR/unsetup $DBNAME $successful &> $TESTDIR/logs/$DBNAME.unsetup
 }
 
 
