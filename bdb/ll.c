@@ -353,7 +353,8 @@ int ll_dta_del(bdb_state_type *bdb_state, tran_type *tran, int rrn,
             dbt_key.size = sizeof(search_genid);
 
             /* Tell Berkley to allocate memory if we need it.  */
-            if (dta_out || verify_updateid || add_snapisol_logging(bdb_state)) {
+            if (dta_out || verify_updateid ||
+                add_snapisol_logging(bdb_state, tran)) {
                 dta_out_si.flags = DB_DBT_MALLOC;
             } else {
                 dta_out_si.ulen = 0;
