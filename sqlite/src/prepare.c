@@ -460,9 +460,8 @@ int sqlite3Init(sqlite3 *db, char **pzErrMsg){
     }
     tmp = db->init.zTblName;
   }
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-  assert( db->init.busy==0 );
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  assert( db->init.busy==0 );
   ENC(db) = SCHEMA_ENC(db);
   assert( db->nDb>0 );
   /* Do the main schema first */
@@ -479,6 +478,7 @@ int sqlite3Init(sqlite3 *db, char **pzErrMsg){
     assert( i==1 || sqlite3BtreeHoldsMutex(db->aDb[i].pBt) );
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     if( !zName && i>1 ) continue; /* skip remote that are not doing a table prepare */
+    if( zName && i==1 ) continue; /* skip temp db when doing a table prepare */
     /*
     ** remote tables are updated on a table basis; check if the schema for this
     ** table is actually present

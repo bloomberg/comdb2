@@ -327,12 +327,15 @@ done_with_open:
   if( rc==SQLITE_OK ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     Table *p;
+    int savedBusy = db->init.busy;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3BtreeEnterAll(db);
     db->init.iDb = 0;
     db->mDbFlags &= ~(DBFLAG_SchemaKnownOk);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+    db->init.busy = 0; /* prevent assert */
     rc = sqlite3InitTable(db, &zErrDyn, zName);
+    db->init.busy = savedBusy;
     /*
     ** Need to set the version to the table to support per table schema refresh
     */
