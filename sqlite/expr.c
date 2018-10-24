@@ -5571,7 +5571,7 @@ static char* sqlite3ExprDescribe_inner(
       return ret;
     }
     case TK_STRING: {
-      return sqlite3_mprintf("'%s'", pExpr->u.zToken);
+      return sqlite3_mprintf("'%q'", pExpr->u.zToken);
     }
     case TK_JOIN_KW:
     case TK_DEFAULT: {
