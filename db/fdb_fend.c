@@ -628,7 +628,7 @@ static int _table_exists(fdb_t *fdb, const char *table_name,
 
         /* ok, table exists, HURRAY!
            Is the table marked obsolete? */
-        if (table->need_version && table->version != table->need_version) {
+        if (table->need_version && table->version != (table->need_version-1)) {
             *status = TABLE_STALE;
         } else {
             if (comdb2_get_verify_remote_schemas()) {
@@ -641,7 +641,7 @@ static int _table_exists(fdb_t *fdb, const char *table_name,
                                             "%lld, cached %lld\n",
                                fdb->dbname, table_name, remote_version,
                                table->version);
-                        table->need_version = remote_version;
+                        table->need_version = remote_version + 1;
                         *status = TABLE_STALE;
                     } else {
                         /* table version correct, make sure to pass this
@@ -781,7 +781,7 @@ static int _add_table_and_stats_fdb(fdb_t *fdb, const char *table_name,
              * lock */
             if (remtbl) {
                 /* table is still around */
-                if (remtbl->need_version == remtbl->version) {
+                if ((remtbl->need_version-1) == remtbl->version) {
                     /* table was fixed in the meantime!, drop exclusive lock */
                     rc = FDB_NOERR;
                     *version = remtbl->version;
@@ -792,7 +792,7 @@ static int _add_table_and_stats_fdb(fdb_t *fdb, const char *table_name,
                         logmsg(LOGMSG_USER, "Detected stale table \"%s.%s\" "
                                             "version %llu required %d\n",
                                remtbl->fdb->dbname, remtbl->name,
-                               remtbl->version, remtbl->need_version);
+                               remtbl->version, remtbl->need_version-1);
 
                     if (__free_fdb_tbl(remtbl, fdb)) {
                         logmsg(LOGMSG_ERROR, "Error clearing schema for table "
@@ -3035,7 +3035,7 @@ static int fdb_cursor_move_sql(BtCursor *pCur, int how)
                        multiple sql engines, maybe with different
                        values if the remote table is schema changed repeatedly
                        */
-                    fdbc->ent->tbl->need_version = remote_version;
+                    fdbc->ent->tbl->need_version = remote_version + 1;
 
                     rc = SQLITE_SCHEMA_REMOTE;
                 } else if (rc == FDB_ERR_FDB_VERSION) {
@@ -3249,7 +3249,7 @@ static int fdb_cursor_find_sql_common(BtCursor *pCur, Mem *key, int nfields,
                        multiple sql engines, maybe with different
                        values if the remote table is schema changed repeatedly
                        */
-                    fdbc->ent->tbl->need_version = remote_version;
+                    fdbc->ent->tbl->need_version = remote_version + 1;
 
                     rc = SQLITE_SCHEMA_REMOTE;
                 } else {
@@ -4219,7 +4219,7 @@ static void fdb_clear_schema(const char *dbname, const char *tblname,
          fprintf(stderr, "Unknown table \"%s\" in db \"%s\"\n", tblname, dbname);
          already_updated = 1;
       }
-      else if (tbl->version == tbl->need_version)
+      else if (tbl->version == tbl->need_version + 1)
       {
          if (gbl_fdb_track)
          {
