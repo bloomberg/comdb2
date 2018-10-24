@@ -613,8 +613,7 @@ static void *clean_exit_thd(void *unused)
 int process_command(struct dbenv *dbenv, char *line, int lline, int st)
 {
     char *tok;
-    int ltok, tst, ntok, stsav = st, llinesav = lline;
-    int i = 0;
+    int ltok, stsav = st, llinesav = lline;
     int rc = 0;
     int start_st = st;
 
@@ -2114,7 +2113,6 @@ clipper_usage:
 
     } else if (tokcmp(tok, ltok, "delbthash") == 0) {
         char table[MAXTABLELEN];
-        int szkb;
         if (thedb->master != gbl_mynode) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
             return -1;
@@ -2153,8 +2151,6 @@ clipper_usage:
 
     } else if (tokcmp(tok, ltok, "bthashstat") == 0) {
         char table[MAXTABLELEN];
-        int szkb;
-
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR, "Expected db name\n");
@@ -2171,8 +2167,6 @@ clipper_usage:
         stat_bt_hash_table(table);
     } else if (tokcmp(tok, ltok, "clearbthashstat") == 0) {
         char table[MAXTABLELEN];
-        int szkb;
-
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR, "Expected db name\n");
@@ -2188,7 +2182,6 @@ clipper_usage:
 
         stat_bt_hash_table_reset(table);
     } else if (tokcmp(tok, ltok, "fastinit") == 0) {
-        char fname[128];
         char table[MAXTABLELEN];
         if (thedb->master != gbl_mynode) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
@@ -2209,6 +2202,7 @@ clipper_usage:
         tokcpy(tok, ltok, table);
 
         /*
+           char fname[128];
            tok=segtok(line,lline,&st,&ltok);
            if (ltok == 0) {
            printf("Expected schema file\n");
@@ -2451,9 +2445,6 @@ clipper_usage:
     }
 
     else if (tokcmp(tok, ltok, "llmeta") == 0) {
-        char table[MAXTABLELEN];
-        char user[17];
-        char password[17];
         int rc;
         int bdberr;
 
@@ -2604,7 +2595,6 @@ clipper_usage:
         }
 
     } else if (tokcmp(tok, ltok, "osqlecho") == 0) {
-        int tonode;
         int stream;
         unsigned long long *sent;
         unsigned long long *replied;
@@ -2886,7 +2876,6 @@ clipper_usage:
             headroom = toknum(tok, ltok);
             analyze_set_headroom(headroom);
         } else if (tokcmp(tok, ltok, "backout") == 0) {
-            int maxtd = 0;
             tok = segtok(line, lline, &st, &ltok);
             char * table = NULL;
             if (ltok > 0) 
@@ -4217,6 +4206,7 @@ clipper_usage:
         if (ltok > 0) {
             commit_delay_ms = toknum(tok, ltok);
             pthread_mutex_lock(&testguard);
+            bdb_berktest_commit_delay(commit_delay_ms);
             pthread_mutex_unlock(&testguard);
         } else {
             logmsg(LOGMSG_USER, "berkdelay requires commit-delay-ms argument\n");
@@ -4741,9 +4731,7 @@ clipper_usage:
             free(tblname);
         } else {
             char *str = NULL;
-            int lrc;
-
-            lrc = timepart_serialize(thedb->timepart_views, &str, 1);
+            timepart_serialize(thedb->timepart_views, &str, 1);
 
             if (str) {
                 logmsg(LOGMSG_USER, "%s\n", str);
