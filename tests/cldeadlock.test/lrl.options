@@ -1,0 +1,3 @@
+release_locks_trace on
+maxosqltransfer 1000000
+logmsg level info

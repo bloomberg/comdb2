@@ -7150,7 +7150,8 @@ static int rootpcompare(const void *p1, const void *p2)
     return strcmp(tp1->zName, tp2->zName);
 }
 
-int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
+int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, struct sql_thread *thd,
+        int after_recovery)
 {
     if (pStmt == NULL)
         return 0;
@@ -7170,7 +7171,8 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
     if (nTables == 0)
         return 0;
 
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    if (thd == NULL)
+        thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd->clnt;
 
     if (NULL == clnt->dbtran.cursor_tran) {
@@ -7374,12 +7376,12 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
 
 int sqlite3LockStmtTables(sqlite3_stmt *pStmt)
 {
-    return sqlite3LockStmtTables_int(pStmt, 0);
+    return sqlite3LockStmtTables_int(pStmt, NULL, 0);
 }
 
-int sqlite3LockStmtTablesRecover(sqlite3_stmt *pStmt)
+int sqlite3LockStmtTablesRecover(sqlite3_stmt *pStmt, struct sql_thread *thd)
 {
-    return sqlite3LockStmtTables_int(pStmt, 1);
+    return sqlite3LockStmtTables_int(pStmt, thd, 1);
 }
 
 void sql_remote_schema_changed(struct sqlclntstate *clnt, sqlite3_stmt *pStmt)
@@ -8755,7 +8757,8 @@ int osql_check_shadtbls(bdb_state_type *bdb_env, struct sqlclntstate *clnt,
 
 int gbl_random_get_curtran_failures;
 
-int get_curtran(bdb_state_type *bdb_state, struct sqlclntstate *clnt)
+int get_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
+        struct sql_thread *thd, uint32_t flags)
 {
     cursor_tran_t *curtran_out = NULL;
     int rcode = 0;
@@ -8767,7 +8770,11 @@ int get_curtran(bdb_state_type *bdb_state, struct sqlclntstate *clnt)
     int lowpri = gbl_lowpri_snapisol_sessions &&
                  (clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
                   clnt->dbtran.mode == TRANLEVEL_SERIAL);
+    int curtran_flags = lowpri ? BDB_CURTRAN_LOW_PRIORITY : 0;
     int rc = 0;
+
+    if (flags & CURTRAN_SKIP_BDBLOCK)
+        curtran_flags |= BDB_CURTRAN_SKIP_BDBLOCK;
 
     /*fprintf(stderr, "get_curtran\n"); */
 
@@ -8790,7 +8797,7 @@ int get_curtran(bdb_state_type *bdb_state, struct sqlclntstate *clnt)
 
 retry:
     bdberr = 0;
-    curtran_out = bdb_get_cursortran(bdb_state, lowpri, &bdberr);
+    curtran_out = bdb_get_cursortran(bdb_state, curtran_flags, &bdberr);
     if (bdberr == BDBERR_DEADLOCK) {
         retries++;
         if (!max_retries || retries < max_retries)
@@ -8815,7 +8822,7 @@ retry:
         clnt->init_gen &&
         ((clnt->init_gen != curgen) ||
          (gbl_test_curtran_change_code && (0 == (rand() % 1000))))) {
-        bdb_put_cursortran(bdb_state, curtran_out, &bdberr);
+        bdb_put_cursortran(bdb_state, curtran_out, curtran_flags, &bdberr);
         curtran_out = NULL;
         clnt->gen_changed = 1;
         logmsg(LOGMSG_ERROR, "td %u %s: failing because generation has changed: "
@@ -8834,7 +8841,7 @@ retry:
 
     /* check if we have table locks that were dropped during recovery */
     if (clnt->dbtran.pStmt) {
-        rc = sqlite3LockStmtTablesRecover(clnt->dbtran.pStmt);
+        rc = sqlite3LockStmtTablesRecover(clnt->dbtran.pStmt, thd);
         if (!rc) {
             /* NOTE: we need to make sure the versions are the same */
 
@@ -8848,10 +8855,17 @@ retry:
     return rcode;
 }
 
-int put_curtran_int(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
-                    int is_recovery)
+int get_curtran(bdb_state_type *bdb_state, struct sqlclntstate *clnt)
+{
+    return get_curtran_flags(bdb_state, clnt, NULL, 0);
+}
+
+int put_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
+                    uint32_t flags)
 {
     int rc = 0;
+    int is_recovery = (flags & CURTRAN_RECOVERY);
+    int curtran_flags = 0;
     int bdberr = 0;
 
 #ifdef DEBUG_TRAN
@@ -8864,7 +8878,11 @@ int put_curtran_int(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
         return -1;
     }
 
-    rc = bdb_put_cursortran(bdb_state, clnt->dbtran.cursor_tran, &bdberr);
+    if (flags & CURTRAN_SKIP_BDBLOCK)
+        curtran_flags = BDB_CURTRAN_SKIP_BDBLOCK;
+
+    rc = bdb_put_cursortran(bdb_state, clnt->dbtran.cursor_tran,
+            curtran_flags, &bdberr);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: %lu rc %d bdberror %d\n", __func__,
                pthread_self(), rc, bdberr);
@@ -8896,14 +8914,9 @@ int put_curtran_int(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
     return rc;
 }
 
-int put_curtran_recovery(bdb_state_type *bdb_state, struct sqlclntstate *clnt)
-{
-    return put_curtran_int(bdb_state, clnt, 1);
-}
-
 int put_curtran(bdb_state_type *bdb_state, struct sqlclntstate *clnt)
 {
-    return put_curtran_int(bdb_state, clnt, 0);
+    return put_curtran_flags(bdb_state, clnt, 0);
 }
 
 /* Return a count of all cursors to the lower layer for debugging */
@@ -8983,14 +8996,16 @@ static void recover_deadlock_sc_cleanup(struct sql_thread *thd)
 /* BIG NOTE:
    carefull about double calling this function
  */
-static int recover_deadlock_int(bdb_state_type *bdb_state,
+int recover_deadlock_flags(bdb_state_type *bdb_state,
                                 struct sql_thread *thd,
                                 bdb_cursor_ifn_t *bdbcur, int sleepms,
-                                int ptrace)
+                                uint32_t flags)
 {
+    int ptrace = (flags & RECOVER_DEADLOCK_PTRACE);
     struct sqlclntstate *clnt = thd->clnt;
     BtCursor *cur = NULL;
     int rc = 0;
+    uint32_t curtran_flags;
     int bdberr;
 #if 0
    char buf[160];
@@ -9037,14 +9052,12 @@ static int recover_deadlock_int(bdb_state_type *bdb_state,
 
     Pthread_mutex_unlock(&thd->lk);
 
-#if 0
-   sprintf(buf, "recover_deadlock about to put curtran tid %d\n",
-         pthread_self());
-   bdb_bdblock_print(thedb->bdb_env, buf);
-#endif
+    curtran_flags = CURTRAN_RECOVERY;
+    curtran_flags |= (flags & RECOVER_DEADLOCK_SKIP_BDBLOCK) ? 
+        CURTRAN_SKIP_BDBLOCK : 0;
 
     /* free curtran */
-    rc = put_curtran_recovery(thedb->bdb_env, clnt);
+    rc = put_curtran_flags(thedb->bdb_env, clnt, curtran_flags);
     if (rc) {
         if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS)) {
             logmsg(LOGMSG_ERROR, 
@@ -9102,7 +9115,7 @@ static int recover_deadlock_int(bdb_state_type *bdb_state,
     }
 
     /* get a new curtran */
-    rc = get_curtran(thedb->bdb_env, clnt);
+    rc = get_curtran_flags(thedb->bdb_env, clnt, thd, curtran_flags);
     if (rc) {
         if (rc == SQLITE_SCHEMA || rc == SQLITE_COMDB2SCHEMA)
             return SQLITE_COMDB2SCHEMA;
@@ -9188,13 +9201,8 @@ static int recover_deadlock_int(bdb_state_type *bdb_state,
 int recover_deadlock(bdb_state_type *bdb_state, struct sql_thread *thd,
                      bdb_cursor_ifn_t *bdbcur, int sleepms)
 {
-    return recover_deadlock_int(bdb_state, thd, bdbcur, sleepms, 1);
-}
-
-int recover_deadlock_silent(bdb_state_type *bdb_state, struct sql_thread *thd,
-                            bdb_cursor_ifn_t *bdbcur, int sleepms)
-{
-    return recover_deadlock_int(bdb_state, thd, bdbcur, sleepms, 0);
+    return recover_deadlock_flags(bdb_state, thd, bdbcur, sleepms,
+            RECOVER_DEADLOCK_PTRACE);
 }
 
 static int ddguard_bdb_cursor_find(struct sql_thread *thd, BtCursor *pCur,

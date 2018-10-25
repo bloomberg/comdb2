@@ -1,0 +1,174 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+[[ $debug == "1" ]] && set -x
+export cl_iters=5
+export forked_cl=0
+export cl_pids
+export cl_thd_pid=0
+export coherent_pid=0
+
+function write_prompt
+{
+    typeset func=$1
+    echo "[$func] $2"
+}
+
+function cleanup
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="run_test"
+    write_prompt $func "executing $cleanup"
+
+    if [[ "$forked_cl" == 1 ]]; then
+        j=0
+        while [[ $j -lt $cl_iters ]]; do
+            kill -9 ${cl_pids[$j]}
+            let j=j+1
+        done
+    fi
+    [[ "$cl_thd_pid" -gt 0 ]] && kill -9 $cl_thd_pid
+    [[ "$coherent_pid" -gt 0 ]] && kill -9 $coherent_pid
+}
+
+function failexit
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="failexit"
+    typeset f=$1
+    cleanup
+    write_prompt $func "$f failed: $2"
+    exit -1
+}
+
+function check_coherent
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="check_coherent"
+    typeset master=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.send(\"bdb cluster\")" | grep MASTER | cut -f1 -d":" | tr -d '[:space:]')
+    typeset verbose=${1:-0}
+    [[ "$verbose" == 1 ]] && write_prompt $func "executing $func"
+    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.send(\"bdb cluster\")" | grep COHERENT
+    [[ $? == 0 ]] && failexit "cluster is not coherent"
+}
+
+function coherent_loop
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="check_coherent"
+    write_prompt $func "executing $func"
+    while :; do 
+        check_coherent
+        sleep 1
+    done
+}
+
+function create_table
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="create_table"
+    typeset tbl=$1
+    typeset cmd="create table $tbl(a int)"
+    write_prompt $func "executing $func"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "$cmd"
+    write_prompt $func "$cmd"
+    typeset cmd="create index idx1 on $tbl(a)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "$cmd"
+    write_prompt $func "$cmd"
+}
+
+function cluster_thread
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="cluster_thread"
+    typeset sltime=${1:-5}
+    typeset master=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.send(\"bdb cluster\")" | grep MASTER | cut -f1 -d":" | tr -d '[:space:]')
+    write_prompt $func "executing $func"
+    while :; do
+        $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.send(\"bdb cluster\")"
+        sleep $sltime
+    done
+}
+
+function fill_table
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="fill_table"
+    write_prompt $func "executing $func"
+    typeset tbl=$1
+    typeset recs=${2:-100000}
+    typeset step=${3:-100000}
+    typeset count=0
+
+    while [[ $recs -gt 0 ]]; do
+        $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "insert into t1 select * from generate_series(1, $step)" >/dev/null
+        let recs=recs-step
+        let count=count+step
+        write_prompt $func "inserted $count records"
+    done
+}
+
+function cldeadlock_exe
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="cldeadlock_exe"
+    write_prompt $func "executing $func"
+    ${TESTSBUILDDIR}/cldeadlock -d $DBNAME -c $CDB2_CONFIG -t default
+    r=$?
+    [[ "$r" != 0 ]] && failexit "cldeadlock failed, $r"
+}
+
+function cldeadlock
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="cldeadlock"
+    write_prompt $func "executing $func"
+    typeset iters=${1:-5}
+    typeset j=0
+    while [[ $j -lt $iters ]]; do
+        cldeadlock_exe &
+        cl_pids[$j]=$!
+        let j=j+1
+    done
+    forked_cl=1
+    j=0
+    while [[ $j -lt $iters ]]; do
+        wait ${cl_pids[$j]}
+        let j=j+1
+    done
+    forked_cl=0
+}
+
+function start_cluster_trace
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="start_cluster_trace"
+    write_prompt $func "executing $func"
+    cluster_thread &
+    cl_thd_pid=$!
+}
+
+function start_coherent_loop
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="start_coherent_loop"
+    write_prompt $func "executing $func"
+    coherent_loop &
+    coherent_pid=$!
+}
+
+function run_test
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="run_test"
+    write_prompt $func "executing $func"
+    start_coherent_loop
+    create_table t1
+    fill_table t1
+    cldeadlock $cl_iters
+    check_coherent 1
+    cleanup
+}
+
+run_test
+echo "Success"

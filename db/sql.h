@@ -899,6 +899,10 @@ extern int gbl_master_swing_sock_restart_sleep;
  */
 int get_curtran(bdb_state_type *bdb_state, struct sqlclntstate *clnt);
 int put_curtran(bdb_state_type *bdb_state, struct sqlclntstate *clnt);
+int get_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
+        struct sql_thread *thd, uint32_t flags);
+int put_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
+        uint32_t flags);
 
 unsigned long long osql_log_time(void);
 void osql_log_time_done(struct sqlclntstate *clnt);

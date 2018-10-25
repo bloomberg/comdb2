@@ -2175,37 +2175,62 @@ static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
 int release_locks(struct sql_thread *td, const char *trace)
 {
-    struct sql_thread *thd = td ? td : pthread_getspecific(query_info_key);
+    struct sql_thread *qikey = pthread_getspecific(query_info_key);
+    struct sql_thread *thd = td ? td : qikey;
     struct sqlclntstate *clnt = thd ? thd->clnt : NULL;
+    uint32_t flags = (qikey == NULL) ? RECOVER_DEADLOCK_SKIP_BDBLOCK : 0;
     int rc = 0;
 
     if (clnt && clnt->dbtran.cursor_tran) {
         extern int gbl_sql_release_locks_trace;
         if (gbl_sql_release_locks_trace)
-            logmsg(LOGMSG_USER, "Releasing locks for lockid %d, %s\n",
+            logmsg(LOGMSG_USER, "Releasing locks for lockid %d, %s%s\n",
                    bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran),
-                   trace);
-        rc = recover_deadlock_silent(thedb->bdb_env, thd, NULL, -1);
+                   trace, (qikey == NULL) ? " (ignore bdblock)" : "");
+        rc = recover_deadlock_flags(thedb->bdb_env, thd, NULL, -1, flags);
     }
     return rc;
 }
 
+/* Release-locks if rep-thread is blocked longer than this many seconds */
+int gbl_rep_wait_release = 60;
+
 int release_locks_on_emit_row(struct sqlthdstate *thd,
                               struct sqlclntstate *clnt)
 {
-    extern int gbl_sql_release_locks_on_emit_row;
     extern int gbl_locks_check_waiters;
-    int rc = 0;
-    if (gbl_locks_check_waiters && gbl_sql_release_locks_on_emit_row) {
-        extern int gbl_sql_random_release_interval;
-        if (bdb_curtran_has_waiters(thedb->bdb_env, clnt->dbtran.cursor_tran)) {
-            rc = release_locks(thd->sqlthd, "lockwait at emit-row");
-        } else if (gbl_sql_random_release_interval &&
-                   !(rand() % gbl_sql_random_release_interval)) {
-            rc = release_locks(thd->sqlthd, "random release emit-row");
-        }
-    }
-    return rc;
+    extern int gbl_sql_release_locks_on_emit_row;
+    extern int gbl_rep_lock_time;
+    extern int gbl_sql_random_release_interval;
+    int rep_lock_time = gbl_rep_lock_time, elapsed;
+
+    /* Short circuit if check-waiters is disabled */
+    if (!gbl_locks_check_waiters) 
+        return 0;
+
+    /* Release locks randomly for testing */
+    if (gbl_sql_random_release_interval &&
+            !(rand() % gbl_sql_random_release_interval))
+        return release_locks(thd->sqlthd, "random release emit-row");
+
+    /* Short circuit if we don't have any waiters */
+    if (!bdb_curtran_has_waiters(thedb->bdb_env, clnt->dbtran.cursor_tran))
+        return 0;
+
+    /* Release locks an any waiter */
+    if (gbl_sql_release_locks_on_emit_row)
+        return release_locks(thd->sqlthd, "lockwait at emit-row");
+
+    /* Short circuit rep-release if master or not enabled */
+    if (!rep_lock_time || !gbl_rep_wait_release || thedb->master == gbl_mynode)
+        return 0;
+
+    /* Release if rep-thread has waited too long */
+    if ((elapsed = (comdb2_time_epoch() - rep_lock_time)) >
+            gbl_rep_wait_release)
+        return release_locks(thd->sqlthd, "long repwait at emit-row");
+
+    return 0;
 }
 
 static int check_sql(struct sqlclntstate *clnt, int *sp)

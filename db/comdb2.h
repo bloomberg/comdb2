@@ -513,6 +513,16 @@ enum RECORD_WRITE_TYPES {
     RECORD_WRITE_MAX = 3
 };
 
+enum RECOVER_DEADLOCK_FLAGS {
+    RECOVER_DEADLOCK_PTRACE = 0x00000001,
+    RECOVER_DEADLOCK_SKIP_BDBLOCK = 0x00000002
+};
+
+enum CURTRAN_FLAGS {
+    CURTRAN_RECOVERY = 0x00000001,
+    CURTRAN_SKIP_BDBLOCK = 0x00000002
+};
+
 /* Raw stats, kept on a per origin machine basis.  This whole struct is
  * essentially an array of unsigneds.  Please don't add any other data
  * type as this allows us to easily sum it and diff it in a loop in reqlog.c.
@@ -3325,8 +3335,8 @@ int read_spfile(char *file);
 struct bdb_cursor_ifn;
 int recover_deadlock(bdb_state_type *, struct sql_thread *,
                      struct bdb_cursor_ifn *, int sleepms);
-int recover_deadlock_silent(bdb_state_type *, struct sql_thread *,
-                            struct bdb_cursor_ifn *, int sleepms);
+int recover_deadlock_flags(bdb_state_type *, struct sql_thread *,
+                     struct bdb_cursor_ifn *, int sleepms, uint32_t flags);
 int pause_pagelock_cursors(void *arg);
 int count_pagelock_cursors(void *arg);
 int compare_indexes(const char *table, FILE *out);

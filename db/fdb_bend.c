@@ -391,36 +391,6 @@ int fdb_svc_cursor_close(char *cid, int isuuid, struct sqlclntstate **pclnt)
     return rc;
 }
 
-#if 0
-int fdb_svc_trans_rollback(char *tid)
-{
-   int         rc = 0;
-   int         bdberr = 0;
-
-
-   if(gbl_fdb_track)
-      printf("%d rolling back tid=%llx\n", pthread_self(),
-         *(unsigned long long*)cur->tid);
-   /* destroying curstran */
-   if(cur->dbtran.cursor_tran)
-   {
-      rc = bdb_put_cursortran(thedb->bdb_env, cur->dbtran.cursor_tran, &bdberr);
-      if(rc || bdberr)
-      {
-         fprintf(stderr, "%s: failed releasing the curstran rc=%d bdberr=%d\n",
-               __func__, rc, bdberr);
-      }
-      cur->dbtran.cursor_tran = NULL;
-   }
-   else
-   {
-      fprintf(stderr, "%s: missing trans %llx\n", *(unsigned long long*)cur->tid);
-   }
-
-   return 0;
-}
-#endif
-
 /**
  * Move cursor
  *

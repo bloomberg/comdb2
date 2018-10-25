@@ -1842,6 +1842,11 @@ enum {
     LLMETA_GENID_FORMAT_MAX = 2
 };
 
+enum {
+    BDB_CURTRAN_SKIP_BDBLOCK = 0x00000001,
+    BDB_CURTRAN_LOW_PRIORITY = 0x00000002
+};
+
 int bdb_get_rowlocks_state(int *rlstate, int *bdberr);
 int bdb_set_rowlocks_state(tran_type *input_trans, int rlstate, int *bdberr);
 int bdb_get_genid_format(uint64_t *genid_format, int *bdberr);

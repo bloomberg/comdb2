@@ -4,6 +4,7 @@
 #include <poll.h>
 #include <errno.h>
 #include <cdb2api.h>
+#include <time.h>
 #include <inttypes.h>
 
 static char *argv0=NULL;
@@ -12,6 +13,7 @@ void usage(FILE *f)
 {
     fprintf(f, "Usage: %s <cmd-line>\n", argv0);
     fprintf(f, " -d <dbname>\n");
+    fprintf(f, " -c <config>\n");
     fprintf(f, " -t <type-string>\n");
     fprintf(f, " -r <update-range>\n");
     fprintf(f, " -p <print-interval>\n");
@@ -23,7 +25,7 @@ void usage(FILE *f)
 int64_t record_count(const char *dbname, const char *type)
 {
     cdb2_hndl_tp *hndl;
-    int64_t *count;
+    int64_t count;
     int rc;
 
     if ((rc = cdb2_open(&hndl, dbname, type, 0)) != 0) {
@@ -41,25 +43,22 @@ int64_t record_count(const char *dbname, const char *type)
         exit(1);
     }
 
-    if ((count = (int64_t *)cdb2_column_value(hndl, 0)) == NULL) {
-        fprintf(stderr, "cdb2_column_value returns NULL\n");
-        exit(1);
-    }
-
+    count = *(int64_t *)cdb2_column_value(hndl, 0);
     cdb2_close(hndl);
-    return *count;
+    return count;
 }
 
 int select_and_update_orphan(const char *dbname, const char *type,
         int64_t count, int range, int pint)
 {
     int sel_rc, upd_rc;
-    int64_t target = (rand() % count), iter = 0;
+    int64_t target = (rand() % count) / 10, iter = 0;
     int64_t *sel_val, upd_val, cnt=0;
     char upd_sql[80];
     cdb2_hndl_tp *sel_hndl;
     cdb2_hndl_tp *upd_hndl;
 
+    printf("Orphan target is %" PRId64 "\n", target);
     if ((sel_rc = cdb2_open(&sel_hndl, dbname, type, 0)) != 0) {
         fprintf(stderr, "Failed to allocate sel-handle for %s\n", dbname);
         exit(1);
@@ -98,14 +97,16 @@ int select_and_update_orphan(const char *dbname, const char *type,
                 ;
 
             if (upd_rc != CDB2_OK_DONE) {
-                fprintf(stderr, "Failed next from update curdor, rcode is %d\n",
+                fprintf(stderr, "Failed next from update cursor, rcode is %d\n",
                         upd_rc);
                 exit(1);
             }
             if (pint > 0 && !(cnt % pint))
-                printf("Updated %" PRId64 " records\n", cnt);
+                printf("Updated %" PRId64 " records, target is %" PRId64 "\n",
+                        cnt, target);
         }
     }
+    printf("Orphaning connections after %" PRId64 " records\n", iter);
 
     // Intentionally orphan handles
     return 0;
@@ -128,10 +129,17 @@ int main(int argc,char *argv[])
     int64_t count;
     argv0=argv[0];
 
-    while ((c = getopt(argc,argv,"hd:r:p:t:"))!=EOF) {
+    setvbuf(stdout, NULL, _IOLBF, 0);
+    setvbuf(stderr, NULL, _IOLBF, 0);
+    srand(time(NULL) ^ getpid());
+
+    while ((c = getopt(argc,argv,"hd:r:p:t:c:"))!=EOF) {
         switch(c) {
             case 'd':
                 dbname = optarg;
+                break;
+            case 'c':
+                cdb2_set_comdb2db_config(optarg);
                 break;
             case 't':
                 type = optarg;

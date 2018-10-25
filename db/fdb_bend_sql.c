@@ -493,7 +493,7 @@ int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
     /* destroying curstran */
     if (clnt->dbtran.cursor_tran) {
         rc = bdb_put_cursortran(thedb->bdb_env, clnt->dbtran.cursor_tran,
-                                &bdberr);
+                                0, &bdberr);
         if (rc || bdberr) {
             logmsg(LOGMSG_ERROR, 
                     "%s: failed releasing the curstran rc=%d bdberr=%d\n",
@@ -619,7 +619,7 @@ _fdb_svc_cursor_start(BtCursor *pCur, struct sqlclntstate *clnt, char *tblname,
             logmsg(LOGMSG_ERROR, "%s: bdb_cursor_open rc %d\n", __func__, bdberr);
 
             rc = bdb_put_cursortran(thedb->bdb_env, clnt->dbtran.cursor_tran,
-                                    &bdberr);
+                                    0, &bdberr);
             if (rc || bdberr) {
                 logmsg(LOGMSG_ERROR, 
                         "%s: failed releasing the curstran rc=%d bdberr=%d\n",
@@ -665,7 +665,7 @@ static int _fdb_svc_cursor_end(BtCursor *pCur, struct sqlclntstate *clnt,
                        pthread_self());
 
             rc = bdb_put_cursortran(thedb->bdb_env, clnt->dbtran.cursor_tran,
-                                    &bdberr);
+                                    0, &bdberr);
             if (rc || bdberr) {
                 logmsg(LOGMSG_ERROR, 
                         "%s: failed releasing the curstran rc=%d bdberr=%d\n",
