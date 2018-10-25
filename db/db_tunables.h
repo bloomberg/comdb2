@@ -1460,13 +1460,14 @@ REGISTER_TUNABLE("osql_send_startgen",
 
 REGISTER_TUNABLE("client_heartbeat_ms",
                  "Number of milliseconds between client api heartbeats.  "
-                 "(Default: 100)", TUNABLE_INTEGER, &gbl_client_heartbeat_ms,
+                 "(Default: 100)",
+                 TUNABLE_INTEGER, &gbl_client_heartbeat_ms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("rep_release_wait",
                  "Release sql-locks if rep-thd is blocked for this many "
-                 "seconds.  (Default: 60)", TUNABLE_INTEGER,
-                 &gbl_rep_wait_release, EXPERIMENTAL | INTERNAL, NULL, NULL,
-                 NULL, NULL);
+                 "seconds.  (Default: 60)",
+                 TUNABLE_INTEGER, &gbl_rep_wait_release,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

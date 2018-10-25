@@ -163,9 +163,9 @@ int bdb_set_check_shadows(tran_type *shadow_tran);
  *
  */
 cursor_tran_t *bdb_get_cursortran(bdb_state_type *bdb_state, uint32_t flags,
-        int *bdberr);
+                                  int *bdberr);
 int bdb_put_cursortran(bdb_state_type *bdb_state, cursor_tran_t *curtran,
-        uint32_t flags, int *bdberr);
+                       uint32_t flags, int *bdberr);
 
 /**
  * Return lockerid in use by provided curtran

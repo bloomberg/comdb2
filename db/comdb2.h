@@ -3336,7 +3336,8 @@ struct bdb_cursor_ifn;
 int recover_deadlock(bdb_state_type *, struct sql_thread *,
                      struct bdb_cursor_ifn *, int sleepms);
 int recover_deadlock_flags(bdb_state_type *, struct sql_thread *,
-                     struct bdb_cursor_ifn *, int sleepms, uint32_t flags);
+                           struct bdb_cursor_ifn *, int sleepms,
+                           uint32_t flags);
 int pause_pagelock_cursors(void *arg);
 int count_pagelock_cursors(void *arg);
 int compare_indexes(const char *table, FILE *out);

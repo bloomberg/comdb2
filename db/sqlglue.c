@@ -7151,7 +7151,7 @@ static int rootpcompare(const void *p1, const void *p2)
 }
 
 int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, struct sql_thread *thd,
-        int after_recovery)
+                              int after_recovery)
 {
     if (pStmt == NULL)
         return 0;
@@ -8758,7 +8758,7 @@ int osql_check_shadtbls(bdb_state_type *bdb_env, struct sqlclntstate *clnt,
 int gbl_random_get_curtran_failures;
 
 int get_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
-        struct sql_thread *thd, uint32_t flags)
+                      struct sql_thread *thd, uint32_t flags)
 {
     cursor_tran_t *curtran_out = NULL;
     int rcode = 0;
@@ -8861,7 +8861,7 @@ int get_curtran(bdb_state_type *bdb_state, struct sqlclntstate *clnt)
 }
 
 int put_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
-                    uint32_t flags)
+                      uint32_t flags)
 {
     int rc = 0;
     int is_recovery = (flags & CURTRAN_RECOVERY);
@@ -8881,8 +8881,8 @@ int put_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
     if (flags & CURTRAN_SKIP_BDBLOCK)
         curtran_flags = BDB_CURTRAN_SKIP_BDBLOCK;
 
-    rc = bdb_put_cursortran(bdb_state, clnt->dbtran.cursor_tran,
-            curtran_flags, &bdberr);
+    rc = bdb_put_cursortran(bdb_state, clnt->dbtran.cursor_tran, curtran_flags,
+                            &bdberr);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: %lu rc %d bdberror %d\n", __func__,
                pthread_self(), rc, bdberr);
@@ -8996,10 +8996,9 @@ static void recover_deadlock_sc_cleanup(struct sql_thread *thd)
 /* BIG NOTE:
    carefull about double calling this function
  */
-int recover_deadlock_flags(bdb_state_type *bdb_state,
-                                struct sql_thread *thd,
-                                bdb_cursor_ifn_t *bdbcur, int sleepms,
-                                uint32_t flags)
+int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
+                           bdb_cursor_ifn_t *bdbcur, int sleepms,
+                           uint32_t flags)
 {
     int ptrace = (flags & RECOVER_DEADLOCK_PTRACE);
     struct sqlclntstate *clnt = thd->clnt;
@@ -9053,8 +9052,8 @@ int recover_deadlock_flags(bdb_state_type *bdb_state,
     Pthread_mutex_unlock(&thd->lk);
 
     curtran_flags = CURTRAN_RECOVERY;
-    curtran_flags |= (flags & RECOVER_DEADLOCK_SKIP_BDBLOCK) ? 
-        CURTRAN_SKIP_BDBLOCK : 0;
+    curtran_flags |=
+        (flags & RECOVER_DEADLOCK_SKIP_BDBLOCK) ? CURTRAN_SKIP_BDBLOCK : 0;
 
     /* free curtran */
     rc = put_curtran_flags(thedb->bdb_env, clnt, curtran_flags);
@@ -9202,7 +9201,7 @@ int recover_deadlock(bdb_state_type *bdb_state, struct sql_thread *thd,
                      bdb_cursor_ifn_t *bdbcur, int sleepms)
 {
     return recover_deadlock_flags(bdb_state, thd, bdbcur, sleepms,
-            RECOVER_DEADLOCK_PTRACE);
+                                  RECOVER_DEADLOCK_PTRACE);
 }
 
 static int ddguard_bdb_cursor_find(struct sql_thread *thd, BtCursor *pCur,

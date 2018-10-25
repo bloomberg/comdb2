@@ -2506,7 +2506,7 @@ int bdb_free_curtran_locks(bdb_state_type *bdb_state, cursor_tran_t *curtran,
 }
 
 int bdb_put_cursortran(bdb_state_type *bdb_state, cursor_tran_t *curtran,
-        uint32_t flags, int *bdberr)
+                       uint32_t flags, int *bdberr)
 {
     int haslocks = 0;
     int rc = 0;

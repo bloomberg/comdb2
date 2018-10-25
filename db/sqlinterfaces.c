@@ -2185,8 +2185,8 @@ int release_locks(struct sql_thread *td, const char *trace)
         extern int gbl_sql_release_locks_trace;
         if (gbl_sql_release_locks_trace)
             logmsg(LOGMSG_USER, "Releasing locks for lockid %d, %s%s\n",
-                   bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran),
-                   trace, (qikey == NULL) ? " (ignore bdblock)" : "");
+                   bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran), trace,
+                   (qikey == NULL) ? " (ignore bdblock)" : "");
         rc = recover_deadlock_flags(thedb->bdb_env, thd, NULL, -1, flags);
     }
     return rc;
@@ -2205,12 +2205,12 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
     int rep_lock_time = gbl_rep_lock_time, elapsed;
 
     /* Short circuit if check-waiters is disabled */
-    if (!gbl_locks_check_waiters) 
+    if (!gbl_locks_check_waiters)
         return 0;
 
     /* Release locks randomly for testing */
     if (gbl_sql_random_release_interval &&
-            !(rand() % gbl_sql_random_release_interval))
+        !(rand() % gbl_sql_random_release_interval))
         return release_locks(thd->sqlthd, "random release emit-row");
 
     /* Short circuit if we don't have any waiters */
@@ -2227,7 +2227,7 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
 
     /* Release if rep-thread has waited too long */
     if ((elapsed = (comdb2_time_epoch() - rep_lock_time)) >
-            gbl_rep_wait_release)
+        gbl_rep_wait_release)
         return release_locks(thd->sqlthd, "long repwait at emit-row");
 
     return 0;
@@ -4313,7 +4313,7 @@ retry:
         if (rc < 0) {
             if (errno == EINTR || errno == EAGAIN) {
                 if (gbl_sql_release_locks_on_slow_reader && !released_locks &&
-                        (!clnt || clnt->emitting_flag)) {
+                    (!clnt || clnt->emitting_flag)) {
                     if (release_locks(thd, "slow reader") != 0) {
                         logmsg(LOGMSG_ERROR, "%s release_locks failed\n",
                                __func__);
@@ -4329,7 +4329,7 @@ retry:
         }
         if (rc == 0) { // descriptor not ready, write will block
             if (gbl_sql_release_locks_on_slow_reader && !released_locks &&
-                    (!clnt || clnt->emitting_flag)) {
+                (!clnt || clnt->emitting_flag)) {
                 rc = release_locks(thd, "slow reader");
                 if (rc) {
                     logmsg(LOGMSG_ERROR,
