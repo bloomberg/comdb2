@@ -2186,7 +2186,7 @@ int release_locks(struct sql_thread *td, const char *trace)
         if (gbl_sql_release_locks_trace)
             logmsg(LOGMSG_USER, "Releasing locks for lockid %d, %s%s\n",
                    bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran), trace,
-                   (qikey == NULL) ? " (ignore bdblock)" : "");
+                   (qikey == NULL) ? " (skip bdblock)" : "");
         rc = recover_deadlock_flags(thedb->bdb_env, thd, NULL, -1, flags);
     }
     return rc;
