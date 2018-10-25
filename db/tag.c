@@ -188,11 +188,7 @@ void add_tag_schema(const char *table, struct schema *schema)
     hash_add(tag->tags, schema);
     listc_abl(&tag->taglist, schema);
 
-    rc = unlock_taglock();
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "Pthread_rwlock_unlock(&taglock) failed\n");
-        exit(1);
-    }
+    unlock_taglock();
 }
 
 void del_tag_schema(const char *table, const char *tagname)
@@ -219,11 +215,7 @@ void del_tag_schema(const char *table, const char *tagname)
 
 struct schema *find_tag_schema(const char *table, const char *tagname)
 {
-    int rc = lock_taglock_read();
-    if (unlikely(rc != 0)) {
-        logmsg(LOGMSG_FATAL, "Pthread_rwlock_rdlock(&taglock) failed\n");
-        exit(1);
-    }
+    lock_taglock_read();
 
     struct dbtag *tag = hash_find_readonly(gbl_tag_hash, &table);
     if (unlikely(tag == NULL)) {

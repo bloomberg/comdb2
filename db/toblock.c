@@ -1182,7 +1182,6 @@ int tolongblock(struct ireq *iq)
 {
     unsigned long long tranid = 0LL;
     int rc = 0;
-    int irc;
     longblk_trans_type *blklong_trans = NULL;
     block_state_t blkstate;
     struct longblock_req_hdr hdr;
@@ -2419,7 +2418,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     int fromline = -1;
     int opnum, jj, num_reqs;
     int rc = 0, ixkeylen, rrn;
-    int irc;
+    int irc = 0;
     char *source_host;
     char key[MAXKEYLEN];
     tran_type *trans = NULL; /*transaction handle */
@@ -4617,7 +4616,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         send_prefault_udp = 0;
 
         if (iq->osql_step_ix) {
-            int mutex_rc = 0;
             gbl_osqlpf_step[*(iq->osql_step_ix)].rqid = 0;
             gbl_osqlpf_step[*(iq->osql_step_ix)].step = 0;
             Pthread_mutex_lock(&osqlpf_mutex);

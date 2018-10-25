@@ -3210,22 +3210,24 @@ int offload_comm_send_sync_blockreq(char *node, void *buf, int buflen)
         return rc;
     }
 
-    Pthread_mutex_lock(&(p_slock->req_lock));
-    rc = offload_comm_send_blockreq(node, p_slock, buf, buflen);
-    if (rc == 0) {
-        nwakeups = 0;
-        while (p_slock->reply_state != REPLY_STATE_DONE) {
-            clock_gettime(CLOCK_REALTIME, &ts);
-            ts.tv_sec += 1;
-            rc = pthread_cond_timedwait(&(p_slock->wait_cond),
-                                        &(p_slock->req_lock), &ts);
-            ++nwakeups;
+    {
+        Pthread_mutex_lock(&(p_slock->req_lock));
+        rc = offload_comm_send_blockreq(node, p_slock, buf, buflen);
+        if (rc == 0) {
+            nwakeups = 0;
+            while (p_slock->reply_state != REPLY_STATE_DONE) {
+                clock_gettime(CLOCK_REALTIME, &ts);
+                ts.tv_sec += 1;
+                rc = pthread_cond_timedwait(&(p_slock->wait_cond),
+                        &(p_slock->req_lock), &ts);
+                ++nwakeups;
 
-            if (nwakeups == 1000)
-                break;
+                if (nwakeups == 1000)
+                    break;
+            }
         }
+        Pthread_mutex_unlock(&(p_slock->req_lock));
     }
-    Pthread_mutex_unlock(&(p_slock->req_lock));
 
     // clean up
     pthread_cond_destroy(&(p_slock->wait_cond));
@@ -3289,20 +3291,22 @@ static void net_block_reply(void *hndl, void *uptr, char *fromhost,
      * socket request.*/
     struct buf_lock_t *p_slock = (struct buf_lock_t *)net_msg->rqid;
     Pthread_mutex_lock(&p_slock->req_lock);
-    if (p_slock->reply_state == REPLY_STATE_DISCARD) {
-        /* The tag request is handled by master. However by the time
-           (1000+ seconds) the replicant receives the reply from master,
-           the tag request is already discarded. */
-        Pthread_mutex_unlock(&p_slock->req_lock);
-        cleanup_lock_buffer(p_slock);
-    } else {
-        p_slock->rc = net_msg->rc;
-        sndbak_open_socket(p_slock->sb, (u_char *)net_msg->data,
-                           net_msg->datalen, net_msg->rc);
-        /* Signal to allow the appsock thread
-           to take new request from client. */
-        signal_buflock(p_slock);
-        Pthread_mutex_unlock(&p_slock->req_lock);
+    {
+        if (p_slock->reply_state == REPLY_STATE_DISCARD) {
+            /* The tag request is handled by master. However by the time
+               (1000+ seconds) the replicant receives the reply from master,
+               the tag request is already discarded. */
+            Pthread_mutex_unlock(&p_slock->req_lock);
+            cleanup_lock_buffer(p_slock);
+        } else {
+            p_slock->rc = net_msg->rc;
+            sndbak_open_socket(p_slock->sb, (u_char *)net_msg->data,
+                               net_msg->datalen, net_msg->rc);
+            /* Signal to allow the appsock thread
+               to take new request from client. */
+            signal_buflock(p_slock);
+            Pthread_mutex_unlock(&p_slock->req_lock);
+        }
     }
 }
 
@@ -9260,66 +9264,68 @@ static void *uprec_cron_event(uuid_t source_id, void *arg1, void *arg2, void *ar
     struct timespec ts;
     const uint8_t *buf_end;
 
-    Pthread_mutex_lock(uprec->lk);
-    /* construct buffer */
-    buf_end = construct_uptbl_buffer(uprec->touch, uprec->genid,
-                                     gbl_num_record_upgrades, uprec->buffer,
-                                     &uprec->buf_end);
-    if (buf_end == NULL)
-        goto done;
+    {
+        Pthread_mutex_lock(uprec->lk);
+        /* construct buffer */
+        buf_end = construct_uptbl_buffer(uprec->touch, uprec->genid,
+                                         gbl_num_record_upgrades, uprec->buffer,
+                                         &uprec->buf_end);
+        if (buf_end == NULL)
+            goto done;
 
-    /* send and then wait */
-    p_slock = &uprec->slock;
-    rc = offload_comm_send_blockreq(
-        thedb->master == gbl_mynode ? 0 : thedb->master, p_slock,
-        uprec->buffer, (buf_end - uprec->buffer));
-    if (rc != 0)
-        goto done;
+        /* send and then wait */
+        p_slock = &uprec->slock;
+        rc = offload_comm_send_blockreq(
+            thedb->master == gbl_mynode ? 0 : thedb->master, p_slock,
+            uprec->buffer, (buf_end - uprec->buffer));
+        if (rc != 0)
+            goto done;
 
-    ++uprec->nreqs;
-    nwakeups = 0;
-    while (p_slock->reply_state != REPLY_STATE_DONE) {
-        clock_gettime(CLOCK_REALTIME, &ts);
-        ts.tv_sec += 1;
-        rc = pthread_cond_timedwait(&p_slock->wait_cond, &p_slock->req_lock,
-                                    &ts);
-        ++nwakeups;
+        ++uprec->nreqs;
+        nwakeups = 0;
+        while (p_slock->reply_state != REPLY_STATE_DONE) {
+            clock_gettime(CLOCK_REALTIME, &ts);
+            ts.tv_sec += 1;
+            rc = pthread_cond_timedwait(&p_slock->wait_cond, &p_slock->req_lock,
+                                        &ts);
+            ++nwakeups;
 
-        if (nwakeups == uprec->thre) { // timedout #1
-            logmsg(LOGMSG_WARN, "no response from master within %d seconds\n", 
-                    nwakeups);
-            break;
+            if (nwakeups == uprec->thre) { // timedout #1
+                logmsg(LOGMSG_WARN, "no response from master within %d seconds\n", 
+                        nwakeups);
+                break;
+            }
         }
-    }
 
-    if (p_slock->reply_state != REPLY_STATE_DONE) {
-        // timedout from #1
-        // intv = 0.75 * intv + 0.25 * T(this time)
-        uprec->intv += (uprec->intv << 1) + nwakeups;
-        uprec->intv >>= 2;
-        ++uprec->ntimeouts;
-    } else if (p_slock->rc) {
-        // something unexpected happened. double the interval.
-        if (uprec->intv >= uprec->thre)
-            ++uprec->intv;
-        else {
-            uprec->intv <<= 1;
+        if (p_slock->reply_state != REPLY_STATE_DONE) {
+            // timedout from #1
+            // intv = 0.75 * intv + 0.25 * T(this time)
+            uprec->intv += (uprec->intv << 1) + nwakeups;
+            uprec->intv >>= 2;
+            ++uprec->ntimeouts;
+        } else if (p_slock->rc) {
+            // something unexpected happened. double the interval.
             if (uprec->intv >= uprec->thre)
-                uprec->intv = uprec->thre;
+                ++uprec->intv;
+            else {
+                uprec->intv <<= 1;
+                if (uprec->intv >= uprec->thre)
+                    uprec->intv = uprec->thre;
+            }
+            ++uprec->nbads;
+        } else {
+            // all good. reset interval
+            uprec->intv = 1;
+            ++uprec->ngoods;
         }
-        ++uprec->nbads;
-    } else {
-        // all good. reset interval
-        uprec->intv = 1;
-        ++uprec->ngoods;
-    }
 
 done:
-    // allow the array to take new requests
-    uprec->genid = 0;
-    uprec->owner = NULL;
+        // allow the array to take new requests
+        uprec->genid = 0;
+        uprec->owner = NULL;
 
-    Pthread_mutex_unlock(uprec->lk);
+        Pthread_mutex_unlock(uprec->lk);
+    }
 
     return NULL;
 }

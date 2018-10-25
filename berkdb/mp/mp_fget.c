@@ -1015,19 +1015,20 @@ __memp_send_sparse_page_thread(_)
 	ii = sizeof(spgs.list) / sizeof(spgs.list[0]) - 1;
 
 	while (1) {
-        Pthread_mutex_lock(&spgs.lock);
-        while (spgs.list[ii].sparseness == 0) {
-            /* no entry, cond wait */
-            spgs.wait = 1;
-            pthread_cond_wait(&spgs.cond, &spgs.lock);
-        }
+		{
+			Pthread_mutex_lock(&spgs.lock);
+			while (spgs.list[ii].sparseness == 0) {
+				/* no entry, cond wait */
+				spgs.wait = 1;
+				pthread_cond_wait(&spgs.cond, &spgs.lock);
+			}
 
-        spgs.wait = 0;
-        ent = spgs.list[ii];
-        memmove(&spgs.list[1], spgs.list, sizeof(struct spg) * ii);
-        memset(spgs.list, 0, sizeof(struct spg));
-
-        Pthread_mutex_unlock(&spgs.lock);
+			spgs.wait = 0;
+			ent = spgs.list[ii];
+			memmove(&spgs.list[1], spgs.list, sizeof(struct spg) * ii);
+			memset(spgs.list, 0, sizeof(struct spg));
+			Pthread_mutex_unlock(&spgs.lock);
+		}
 
 		dbenv = ent.dbenv;
 		fileid = ent.id;

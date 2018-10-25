@@ -105,8 +105,6 @@ static void *prefault_helper_thread(void *arg)
     pthread_setspecific(unique_tag_key, thdinfo);
 
     while (1) {
-    again:
-
         Pthread_mutex_lock(&(dbenv->prefault_helper.mutex));
 
         /*fprintf(stderr, "setting working_for(%d) to invalid\n", i);*/
@@ -127,8 +125,7 @@ static void *prefault_helper_thread(void *arg)
         /* bogus wakeup? */
         if (dbenv->prefault_helper.threads[i].working_for == gbl_invalid_tid) {
             Pthread_mutex_unlock(&(dbenv->prefault_helper.mutex));
-
-            goto again;
+            continue;
         }
 
         working_for = dbenv->prefault_helper.threads[i].working_for;
@@ -310,12 +307,7 @@ int create_prefault_helper_threads(struct dbenv *dbenv, int nthreads)
         prefault_helper_thread_arg->instance = i;
 
         Pthread_mutex_init(&(dbenv->prefault_helper.threads[i].mutex),
-                                NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "could not initialize pre-fault data mutex %d\n",
-                    i);
-            exit(1);
-        }
+                           NULL);
 
         rc = pthread_cond_init(&(dbenv->prefault_helper.threads[i].cond), NULL);
         if (rc != 0) {

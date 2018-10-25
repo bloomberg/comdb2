@@ -1699,8 +1699,8 @@ __rep_stat(dbenv, statp, flags)
 	stats->lc_cache_misses = rep->stat.lc_cache_misses;
 	stats->lc_cache_size = dbenv->lc_cache.memused;
 	Pthread_mutex_lock(&gbl_durable_lsn_lk);
-    stats->durable_lsn = dbenv->durable_lsn;
-    stats->durable_gen = dbenv->durable_generation;
+	stats->durable_lsn = dbenv->durable_lsn;
+	stats->durable_gen = dbenv->durable_generation;
 	Pthread_mutex_unlock(&gbl_durable_lsn_lk);
 
 	*statp = stats;
