@@ -384,7 +384,7 @@ static struct output *get_output_ll(const char *filename)
     out->refcount = 1;
     out->fd = fd;
     listc_atl(&outputs, out);
-    pthread_mutex_init(&out->mutex, NULL);
+    Pthread_mutex_init(&out->mutex, NULL);
     return out;
 }
 
@@ -597,7 +597,7 @@ int reqlog_init(const char *dbname)
     struct output *out;
     char *filename;
 
-    pthread_mutex_init(&rules_mutex, NULL);
+    Pthread_mutex_init(&rules_mutex, NULL);
     listc_init(&rules, offsetof(struct logrule, linkv));
     listc_init(&outputs, offsetof(struct output, linkv));
 
@@ -611,7 +611,7 @@ int reqlog_init(const char *dbname)
     out->refcount = 1;
     default_out = out;
     listc_atl(&outputs, out);
-    pthread_mutex_init(&out->mutex, NULL);
+    Pthread_mutex_init(&out->mutex, NULL);
 
     filename = comdb2_location("logs", "%s.longreqs", dbname);
     long_request_out = get_output_ll(filename);
@@ -2034,7 +2034,7 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
         return NULL;
     }
 
-    pthread_mutex_init(&entry->mtx, 0);
+    Pthread_mutex_init(&entry->mtx, 0);
     entry->ref = 1;
 
     memcpy(entry->mem, task, task_len);

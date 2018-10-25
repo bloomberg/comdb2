@@ -128,12 +128,7 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
     }
 #endif
 
-    rc = pthread_mutex_init(&entry->mtx, NULL);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: error init mutex, rc=%d\n", __func__, rc);
-        free(entry);
-        return -1;
-    }
+    Pthread_mutex_init(&entry->mtx, NULL);
     rc = pthread_cond_init(&entry->cond, NULL);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: error init cond, rc=%d\n", __func__, rc);
@@ -388,10 +383,7 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
         else
             bzero(&entry->err, sizeof(entry->err));
 
-        if ((rc = pthread_mutex_lock(&entry->mtx))) {
-            logmsg(LOGMSG_ERROR, "pthread_mutex_lock: error code %d\n", rc);
-            return rc;
-        }
+        Pthread_mutex_lock(&entry->mtx);
 
         entry->done = 1; /* mem sync? */
         entry->nops = nops;
@@ -412,10 +404,7 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
             logmsg(LOGMSG_ERROR, "pthread_cond_signal: error code %d\n", rc);
         }
 
-        if ((rc = pthread_mutex_unlock(&entry->mtx))) {
-            logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
-            return rc;
-        }
+        Pthread_mutex_unlock(&entry->mtx);
 
         rc2 = 0;
     }
@@ -553,10 +542,7 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
             return -4;
         }
 
-        if ((rc = pthread_mutex_lock(&entry->mtx))) {
-            logmsg(LOGMSG_ERROR, "pthread_mutex_lock: error code %d\n", rc);
-            return -5;
-        }
+        Pthread_mutex_lock(&entry->mtx);
         entry->last_checked = entry->last_updated =
             comdb2_time_epochms(); /* reset these time */
 
@@ -568,10 +554,7 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
             clock_gettime(CLOCK_REALTIME, &tm_s);
             tm_s.tv_sec++;
 
-            if ((rc = pthread_mutex_unlock(&entry->mtx))) {
-                logmsg(LOGMSG_ERROR, "pthread_mutex_lock: error code %d\n", rc);
-                return -5;
-            }
+            Pthread_mutex_unlock(&entry->mtx);
 
             tm_recov_deadlk = comdb2_time_epochms();
             /* this call could wait for a bdb read lock; in the meantime,
@@ -582,10 +565,7 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
             }
             tm_recov_deadlk = comdb2_time_epochms() - tm_recov_deadlk;
 
-            if ((rc = pthread_mutex_lock(&entry->mtx))) {
-                logmsg(LOGMSG_ERROR, "pthread_mutex_lock: error code %d\n", rc);
-                return -5;
-            }
+            Pthread_mutex_lock(&entry->mtx);
 
             if (entry->done == 1 || entry->master_changed)
                 break;
@@ -680,18 +660,14 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
         }
 
         if ((max_wait > 0 && cnt >= max_wait)) {
-            rc = pthread_mutex_unlock(&entry->mtx);
-            if (rc)
-                logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
+            Pthread_mutex_unlock(&entry->mtx);
             fprintf(stderr,
                     "sosql: timed-out waiting for commit from master\n");
             return -6;
         }
 
         if (entry->master_changed) {
-            rc = pthread_mutex_unlock(&entry->mtx);
-            if (rc)
-                logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
+            Pthread_mutex_unlock(&entry->mtx);
             rc = 0; /* retry at higher level */
             xerr->errval = ERR_NOMASTER;
             if (gbl_master_swing_osql_verbose) {
@@ -702,10 +678,7 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
             goto done;
         }
 
-        if ((rc = pthread_mutex_unlock(&entry->mtx))) {
-            logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
-            return -6;
-        }
+        Pthread_mutex_unlock(&entry->mtx);
 
     } /* done */
 
@@ -749,19 +722,13 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
 
     } else {
 
-        if ((rc = pthread_mutex_lock(&entry->mtx)) != 0) {
-            logmsg(LOGMSG_ERROR, "pthread_mutex_lock: error code %d\n", rc);
-            return rc;
-        }
+        Pthread_mutex_lock(&entry->mtx);
 
         entry->status = status;
         entry->timestamp = timestamp;
         entry->last_updated = comdb2_time_epochms();
 
-        if ((rc = pthread_mutex_unlock(&entry->mtx)) != 0) {
-            logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
-            return rc;
-        }
+        Pthread_mutex_unlock(&entry->mtx);
 
         rc2 = 0;
     }

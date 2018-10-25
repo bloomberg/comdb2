@@ -116,7 +116,7 @@ static inline int init_taglock(void)
 #ifdef TAGLOCK_RW_LOCK
     return pthread_rwlock_init(&taglock, NULL);
 #else
-    return pthread_mutex_init(&taglock, NULL);
+    return Pthread_mutex_init(&taglock, NULL);
 #endif
 }
 

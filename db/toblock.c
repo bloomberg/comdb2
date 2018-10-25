@@ -1265,11 +1265,7 @@ int tolongblock(struct ireq *iq)
         /* if coming from socket, remove transaction entry from table, if it
          * exists.  we dont need any pieces since we have full buffer coming
          * in anyway */
-        rc = pthread_mutex_lock(&iq->dbenv->long_trn_mtx);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "find_trn_entry:Failed to lock trn table mutex\n");
-            return ERR_INTERNAL;
-        }
+        Pthread_mutex_lock(&iq->dbenv->long_trn_mtx);
         blklong_trans = hash_find(iq->dbenv->long_trn_table, &tranid);
 
         if (blklong_trans == NULL) {
@@ -1374,11 +1370,7 @@ int tolongblock(struct ireq *iq)
 
         memcpy(&tranid, hdr.trnid, sizeof(int) * 2);
 
-        rc = pthread_mutex_lock(&iq->dbenv->long_trn_mtx);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "find_trn_entry:Failed to lock trn table mutex\n");
-            return ERR_INTERNAL;
-        }
+        Pthread_mutex_lock(&iq->dbenv->long_trn_mtx);
         blklong_trans = hash_find(iq->dbenv->long_trn_table, &tranid);
         pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
 
@@ -1413,7 +1405,7 @@ int tolongblock(struct ireq *iq)
                 blklong_trans->blocking = 0;
             }
 
-            rc = pthread_mutex_lock(&iq->dbenv->long_trn_mtx);
+            Pthread_mutex_lock(&iq->dbenv->long_trn_mtx);
             if (blklong_trans->expseg < hdr.curpiece) {
                 hash_del(iq->dbenv->long_trn_table, blklong_trans);
                 pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
@@ -1629,13 +1621,7 @@ int tolongblock(struct ireq *iq)
                     if (!bdb_attr_get(
                             thedb->bdb_attr,
                             BDB_ATTR_DISABLE_WRITER_PENALTY_DEADLOCK)) {
-                        irc = pthread_mutex_lock(&delay_lock);
-                        if (irc != 0) {
-                            logmsg(LOGMSG_FATAL, 
-                                    "pthread_mutex_lock(&delay_lock) %d\n",
-                                    irc);
-                            exit(1);
-                        }
+                        Pthread_mutex_lock(&delay_lock);
 
                         penaltyinc =
                             (double)(gbl_maxwthreads - gbl_maxwthreadpenalty) *
@@ -1652,12 +1638,7 @@ int tolongblock(struct ireq *iq)
                         gbl_maxwthreadpenalty += penaltyinc;
                         totpen += penaltyinc;
 
-                        irc = pthread_mutex_unlock(&delay_lock);
-                        if (irc != 0) {
-                            logmsg(LOGMSG_FATAL, "pthread_mutex_unlock(&delay_lock) %d\n",
-                                    irc);
-                            exit(1);
-                        }
+                        Pthread_mutex_unlock(&delay_lock);
                     }
 
                     n_retries++;
@@ -1678,19 +1659,11 @@ int tolongblock(struct ireq *iq)
             */
             osql_blkseq_unregister(iq);
 
-            irc = pthread_mutex_lock(&delay_lock);
-            if (irc != 0) {
-                logmsg(LOGMSG_FATAL, "pthread_mutex_lock(&delay_lock) %d\n", irc);
-                exit(1);
-            }
+            Pthread_mutex_lock(&delay_lock);
 
             gbl_maxwthreadpenalty -= totpen;
 
-            irc = pthread_mutex_unlock(&delay_lock);
-            if (irc != 0) {
-                logmsg(LOGMSG_FATAL, "pthread_mutex_unlock(&delay_lock) %d\n", irc);
-                exit(1);
-            }
+            Pthread_mutex_unlock(&delay_lock);
 
             block_state_free(&blkstate);
 
@@ -1771,22 +1744,12 @@ int tolongblock(struct ireq *iq)
                 /*fprintf(stderr, "setting gbl_maxwthreadpenalty\n");*/
                 if (!bdb_attr_get(thedb->bdb_attr,
                                   BDB_ATTR_DISABLE_WRITER_PENALTY_DEADLOCK)) {
-                    irc = pthread_mutex_lock(&delay_lock);
-                    if (irc != 0) {
-                        logmsg(LOGMSG_FATAL, "pthread_mutex_lock(&delay_lock) %d\n",
-                                irc);
-                        exit(1);
-                    }
+                    Pthread_mutex_lock(&delay_lock);
 
                     gbl_maxwthreadpenalty += penaltyinc;
                     totpen += penaltyinc;
 
-                    irc = pthread_mutex_unlock(&delay_lock);
-                    if (irc != 0) {
-                        logmsg(LOGMSG_FATAL, 
-                                "pthread_mutex_unlock(&delay_lock) %d\n", irc);
-                        exit(1);
-                    }
+                    Pthread_mutex_unlock(&delay_lock);
                 }
 
                 n_retries++;
@@ -1800,19 +1763,11 @@ int tolongblock(struct ireq *iq)
             }
         }
 
-        irc = pthread_mutex_lock(&delay_lock);
-        if (irc != 0) {
-            logmsg(LOGMSG_FATAL, "pthread_mutex_lock(&delay_lock) %d\n", irc);
-            exit(1);
-        }
+        Pthread_mutex_lock(&delay_lock);
 
         gbl_maxwthreadpenalty -= totpen;
 
-        irc = pthread_mutex_unlock(&delay_lock);
-        if (irc != 0) {
-            logmsg(LOGMSG_FATAL, "pthread_mutex_unlock(&delay_lock) %d\n", irc);
-            exit(1);
-        }
+        Pthread_mutex_unlock(&delay_lock);
 
         block_state_free(&blkstate);
 
@@ -2192,11 +2147,7 @@ static int toblock_outer(struct ireq *iq, block_state_t *blkstate)
         newiq.reqlogger = NULL;
 
         /* try to give away this buffer to a toblock_prefault_thread*/
-        rc = pthread_mutex_lock(&(iq->dbenv->prefault_helper.mutex));
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "toblock_outer: couldnt lock main pflt mutex\n");
-            exit(1);
-        }
+        Pthread_mutex_lock(&(iq->dbenv->prefault_helper.mutex));
 
         for (i = 0; i < iq->dbenv->prefault_helper.numthreads; i++) {
             if (iq->dbenv->prefault_helper.threads[i].working_for ==
@@ -2246,11 +2197,7 @@ static int toblock_outer(struct ireq *iq, block_state_t *blkstate)
             }
         }
 
-        rc = pthread_mutex_unlock(&(iq->dbenv->prefault_helper.mutex));
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "toblock_outer: couldnt unlock main pflt mutex\n");
-            exit(1);
-        }
+        Pthread_mutex_unlock(&(iq->dbenv->prefault_helper.mutex));
     }
 
     /*sleep(1);*/
@@ -4673,19 +4620,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             int mutex_rc = 0;
             gbl_osqlpf_step[*(iq->osql_step_ix)].rqid = 0;
             gbl_osqlpf_step[*(iq->osql_step_ix)].step = 0;
-            mutex_rc = pthread_mutex_lock(&osqlpf_mutex);
-            if (mutex_rc != 0) {
-                logmsg(LOGMSG_ERROR, "toblock: Failed to lock osqlpf_mutex\n");
-                numerrs = 1;
-                BACKOUT;
-            }
+            Pthread_mutex_lock(&osqlpf_mutex);
             queue_add(gbl_osqlpf_stepq, iq->osql_step_ix);
-            mutex_rc = pthread_mutex_unlock(&osqlpf_mutex);
-            if (mutex_rc != 0) {
-                logmsg(LOGMSG_ERROR, "toblock: Failed to unlock osqlpf_mutex\n");
-                numerrs = 1;
-                BACKOUT;
-            }
+            Pthread_mutex_unlock(&osqlpf_mutex);
             iq->osql_step_ix = NULL;
         }
 

@@ -152,11 +152,7 @@ static void thd_io_complete(void)
 int thd_init(void)
 {
     int rc;
-    rc = pthread_mutex_init(&lock, 0);
-    if (rc) {
-        perror_errnum("thd_init:pthread_mutex_init", rc);
-        return -1;
-    }
+    Pthread_mutex_init(&lock, 0);
     rc = pthread_attr_init(&attr);
     if (rc) {
         perror_errnum("thd_init:pthread_attr_init", rc);

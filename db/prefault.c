@@ -92,12 +92,7 @@ int start_prefault_io_threads(struct dbenv *dbenv, int numthreads, int maxq)
         return -1;
     }
 
-    rc = pthread_mutex_init(&dbenv->prefaultiopool.mutex, NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "could not initialize pre-fault data mutex %d\n", i);
-        exit(1);
-    }
-
+    Pthread_mutex_init(&dbenv->prefaultiopool.mutex, NULL);
     dbenv->prefaultiopool.guard = 0xabababab;
     logmsg(LOGMSG_DEBUG, "&(dbenv->prefaultiopool.guard) = %p\n",
            &(dbenv->prefaultiopool.guard));
@@ -148,21 +143,13 @@ unsigned int enque_pfault_ll(struct dbenv *dbenv, pfrq_t *qdata)
     if (dbenv->prefaultiopool.numthreads == 0)
         return 1;
 
-    rc = pthread_mutex_lock(&(dbenv->prefaultiopool.mutex));
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "failed to lock prefault mutex\n");
-        exit(1);
-    }
+    Pthread_mutex_lock(&(dbenv->prefaultiopool.mutex));
     /*fprintf(stderr, "about to add item, q now=%d\n",
        queue_count(dbenv->prefaultiopool.ioq));*/
 
     if (queue_count(dbenv->prefaultiopool.ioq) >= dbenv->prefaultiopool.maxq) {
         /* queue over the allowed size..ignore the request! */
-        rc = pthread_mutex_unlock(&(dbenv->prefaultiopool.mutex));
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "failed to lock prefault mutex\n");
-            exit(1);
-        }
+        Pthread_mutex_unlock(&(dbenv->prefaultiopool.mutex));
 
         dbenv->prefault_stats.num_ioq_full++;
 
@@ -178,11 +165,7 @@ unsigned int enque_pfault_ll(struct dbenv *dbenv, pfrq_t *qdata)
     rc = queue_add(dbenv->prefaultiopool.ioq, qdata);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "could not add data to queue!\n");
-        rc = pthread_mutex_unlock(&(dbenv->prefaultiopool.mutex));
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "failed to lock prefault mutex\n");
-            exit(1);
-        }
+        Pthread_mutex_unlock(&(dbenv->prefaultiopool.mutex));
     }
 
     rc = pthread_cond_signal(&(dbenv->prefaultiopool.cond));
@@ -191,11 +174,7 @@ unsigned int enque_pfault_ll(struct dbenv *dbenv, pfrq_t *qdata)
         exit(1);
     }
 
-    rc = pthread_mutex_unlock(&(dbenv->prefaultiopool.mutex));
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "failed to lock prefault mutex\n");
-        exit(1);
-    }
+    Pthread_mutex_unlock(&(dbenv->prefaultiopool.mutex));
 
     /*fprintf(stderr, "(%d) queued idx %d\n",pthread_self(), ixnum);*/
     return 0;
@@ -514,11 +493,7 @@ static void *prefault_io_thread(void *arg)
     while (1) {
         req = NULL;
 
-        rc = pthread_mutex_lock(&(dbenv->prefaultiopool.mutex));
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "cannot lock prefault mutex\n");
-            exit(1);
-        }
+        Pthread_mutex_lock(&(dbenv->prefaultiopool.mutex));
 
         req = (pfrq_t *)queue_next(dbenv->prefaultiopool.ioq);
 
@@ -539,11 +514,7 @@ static void *prefault_io_thread(void *arg)
         /*fprintf(stderr, "consumed item, q now=%d\n",
            queue_count(dbenv->prefaultiopool.ioq));*/
 
-        rc = pthread_mutex_unlock(&(dbenv->prefaultiopool.mutex));
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "count unlock mutex in io thread\n");
-            exit(1);
-        }
+        Pthread_mutex_unlock(&(dbenv->prefaultiopool.mutex));
 
         assert(req != NULL);
 

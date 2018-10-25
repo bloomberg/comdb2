@@ -70,7 +70,7 @@
 #include <plhash.h>
 #include <assert.h>
 
-#include "locks.h"
+#include "locks_wrap.h"
 #include "net.h"
 #include "net_int.h"
 
@@ -2663,26 +2663,9 @@ static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
     ptr->wait_list = NULL;
     ptr->distress = 0;
 
-    int rc = pthread_mutex_init(&(ptr->lock), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: couldn't init lock for node %s\n", __func__,
-                ptr->host);
-        goto err;
-    }
-
-    rc = pthread_mutex_init(&(ptr->pool_lock), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: couldn't init pool_lock for node %s\n", __func__,
-                ptr->host);
-        goto err;
-    }
-
-    rc = pthread_mutex_init(&(ptr->timestamp_lock), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: couldn't init timestamp_lock for node %s\n",
-                __func__, ptr->host);
-        goto err;
-    }
+    Pthread_mutex_init(&(ptr->lock), NULL);
+    Pthread_mutex_init(&(ptr->pool_lock), NULL);
+    Pthread_mutex_init(&(ptr->timestamp_lock), NULL);
 
     ptr->user_data_buf = malloc(netinfo_ptr->user_data_buf_size);
 
@@ -2707,37 +2690,17 @@ static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
     }
 #endif /* !PER_THREAD_MALLOC */
 
-    rc = pthread_mutex_init(&(ptr->write_lock), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: couldn't init write_lock for node %s\n", __func__,
-                ptr->host);
-        goto err;
-    }
-    rc = pthread_mutex_init(&(ptr->enquelk), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: couldn't init enquelk for node %s\n", __func__,
-                ptr->host);
-        goto err;
-    }
+    Pthread_mutex_init(&(ptr->write_lock), NULL);
+    Pthread_mutex_init(&(ptr->enquelk), NULL);
 
     ptr->enque_count = 0;
     ptr->enque_bytes = 0;
 
-    rc = pthread_mutex_init(&(ptr->wait_mutex), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: couldn't init wait_mutex for node %s\n", __func__,
-                ptr->host);
-        goto err;
-    }
+    Pthread_mutex_init(&(ptr->wait_mutex), NULL);
 
-    rc = pthread_mutex_init(&(ptr->throttle_lock), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: couldn't init throttle_lock for node %s\n",
-                __func__, ptr->host);
-        goto err;
-    }
+    Pthread_mutex_init(&(ptr->throttle_lock), NULL);
 
-    rc = pthread_cond_init(&(ptr->ack_wakeup), NULL);
+    int rc = pthread_cond_init(&(ptr->ack_wakeup), NULL);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "%s: couldn't init ack_wakeup for node %s\n", __func__,
                 ptr->host);
@@ -3338,11 +3301,7 @@ static netinfo_type *create_netinfo_int(char myhostname[], int myportnum,
         exit(1);
     }
 
-    rc = pthread_mutex_init(&(netinfo_ptr->connlk), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "create_netinfo: couldn't init conn mutex\n");
-        goto fail;
-    }
+    Pthread_mutex_init(&(netinfo_ptr->connlk), NULL);
 
     netinfo_ptr->connpool =
         pool_setalloc_init(sizeof(connect_and_accept_t), 0, malloc, free);
@@ -3356,23 +3315,9 @@ static netinfo_type *create_netinfo_int(char myhostname[], int myportnum,
         logmsg(LOGMSG_ERROR, "create_netinfo: couldn't init netinfo lock \n");
         goto fail;
     }
-    rc = pthread_mutex_init(&(netinfo_ptr->seqlock), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "create_netinfo: couldn't init seqlock mutex\n");
-        goto fail;
-    }
-
-    rc = pthread_mutex_init(&(netinfo_ptr->watchlk), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "create_netinfo: couldn't init watchlk mutex\n");
-        goto fail;
-    }
-
-    rc = pthread_mutex_init(&(netinfo_ptr->sanclk), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "create_netinfo: couldn't init sanclk mutex\n");
-        goto fail;
-    }
+    Pthread_mutex_init(&(netinfo_ptr->seqlock), NULL);
+    Pthread_mutex_init(&(netinfo_ptr->watchlk), NULL);
+    Pthread_mutex_init(&(netinfo_ptr->sanclk), NULL);
 
     netinfo_ptr->pool_size = 512;
     netinfo_ptr->pool_extend = 1024;

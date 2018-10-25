@@ -1100,7 +1100,7 @@ static int create_temp_table(Lua lua, pthread_mutex_t **lk, const char **name)
     }
     // now, actually create the temp table
     *lk = malloc(sizeof(pthread_mutex_t));
-    pthread_mutex_init(*lk, NULL);
+    Pthread_mutex_init(*lk, NULL);
     comdb2_set_tmptbl_lk(*lk);
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
         ;
@@ -2508,10 +2508,10 @@ static void *dispatch_lua_thread(void *arg)
     clnt.must_close_sb = 0;
     clnt.exec_lua_thread = 1;
     clnt.trans_has_sp = 1;
-    pthread_mutex_init(&clnt.wait_mutex, NULL);
+    Pthread_mutex_init(&clnt.wait_mutex, NULL);
     pthread_cond_init(&clnt.wait_cond, NULL);
-    pthread_mutex_init(&clnt.write_lock, NULL);
-    pthread_mutex_init(&clnt.dtran_mtx, NULL);
+    Pthread_mutex_init(&clnt.write_lock, NULL);
+    Pthread_mutex_init(&clnt.dtran_mtx, NULL);
     strcpy(clnt.tzname, parent_clnt->tzname);
 
     dispatch_sql_query(&clnt); // --> exec_thread()
@@ -2910,7 +2910,7 @@ static int db_create_thread_int(Lua lua, const char *funcname)
     /* Make a new cloned working state. */
     dbthread_t *lt;
     new_lua_t(lt, dbthread_t, DBTYPES_THREAD);
-    pthread_mutex_init(&lt->lua_thread_mutex, NULL);
+    Pthread_mutex_init(&lt->lua_thread_mutex, NULL);
     pthread_cond_init(&lt->lua_thread_cond, NULL);
 
     SP sp = getsp(lua);

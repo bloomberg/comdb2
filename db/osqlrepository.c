@@ -28,6 +28,7 @@
 #include "comdb2uuid.h"
 #include <alloca.h>
 #include <logmsg.h>
+#include <locks_wrap.h>
 #include <tohex.h>
 
 struct osql_repository {
@@ -65,18 +66,9 @@ int osql_repository_init(void)
         return -1;
     }
 
-    if (pthread_mutex_init(&tmp->cancelall_mtx, NULL)) {
-        logmsg(LOGMSG_ERROR, "%s: unable to initialize the mutex\n", __func__);
-        free(tmp);
-        return -1;
-    }
+    Pthread_mutex_init(&tmp->cancelall_mtx, NULL);
 
-    if (pthread_rwlock_init(&tmp->hshlck, NULL)) {
-        logmsg(LOGMSG_ERROR, "%s: unable to initialize the rwlock\n", __func__);
-        pthread_mutex_destroy(&tmp->cancelall_mtx);
-        free(tmp);
-        return -1;
-    }
+    Pthread_rwlock_init(&tmp->hshlck, NULL);
 
     /* init the client hash */
     tmp->rqs = hash_init(sizeof(unsigned long long)); /* indexed after rqid */

@@ -29,6 +29,7 @@ static const char revid[] = "$Id: mp_sync.c,v 11.80 2003/09/13 19:20:41 bostic E
 #include <ctrace.h>
 #include <pool.h>
 #include <logmsg.h>
+#include <locks_wrap.h>
 
 typedef struct {
 	DB_MPOOL_HASH *track_hp;	/* Hash bucket. */
@@ -328,13 +329,7 @@ void
 mempsync_out_of_band_init(void)
 {
 	int rc;
-	rc = pthread_mutex_init(&mempsync_lk, NULL);
-
-	if (rc) {
-		logmsg(LOGMSG_ERROR, "%s:%d pthread_mutex_init rc %d %s\n", __FILE__,
-		    __LINE__, rc, strerror(rc));
-		abort();
-	}
+	Pthread_mutex_init(&mempsync_lk, NULL);
 	rc = pthread_cond_init(&mempsync_wait, NULL);
 
 	if (rc) {

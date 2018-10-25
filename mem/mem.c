@@ -42,6 +42,7 @@
 #include <ctrace.h>
 #include "mem.h"
 #include <logmsg.h>
+#include <locks_wrap.h>
 
 //^macros
 #define COMDB2MA_SUCCESS 0
@@ -1200,10 +1201,8 @@ static comdb2ma comdb2ma_create_int(void *base, size_t init_sz, size_t max_cap,
         return NULL;
     }
 
-    if (lock == COMDB2MA_MT_SAFE && pthread_mutex_init(&out->lock, NULL) != 0) {
-        destroy_mspace(out->m);
-        mspace_free(root.m, out);
-        return NULL;
+    if (lock == COMDB2MA_MT_SAFE) {
+        Pthread_mutex_init(&out->lock, NULL);
     }
 
     if (max_cap == COMDB2MA_UNLIMITED || max_cap > init_sz) {

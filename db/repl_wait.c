@@ -31,6 +31,7 @@
 #include "repl_wait.h"
 #include "switches.h"
 #include "logmsg.h"
+#include <locks_wrap.h>
 
 #include <mem_uncategorized.h>
 #include <mem_override.h>
@@ -69,7 +70,7 @@ void repl_list_init(void)
 {
     pool = pool_setalloc_init(sizeof(struct repl_object), 0, malloc, free);
     hash = hash_init(sizeof(unsigned long long));
-    pthread_mutex_init(&lock, NULL);
+    Pthread_mutex_init(&lock, NULL);
     register_int_switch("repl_wait",
                         "Replication wait system enabled for queues", &enabled);
 }
@@ -136,7 +137,7 @@ void wait_for_genid_repl(unsigned long long genid)
             pthread_mutexattr_init(&attr);
             pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_NORMAL);
 
-            pthread_mutex_init(&me.mutex, &attr);
+            Pthread_mutex_init(&me.mutex, &attr);
             pthread_mutex_lock(&me.mutex);
             me.next = obj->waiter_list;
             obj->waiter_list = &me;

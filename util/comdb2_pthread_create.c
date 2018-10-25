@@ -33,6 +33,7 @@
 #include "mem_util.h"
 #include "list.h"
 #include "logmsg.h"
+#include "locks_wrap.h"
 
 #define RW (PROT_READ | PROT_WRITE)
 #define STACK_FREE_DELAY 5
@@ -85,19 +86,9 @@ static void *free_stack_thr(void *unused)
 
     while (!db_is_stopped()) {
         //![1]
-        rc = pthread_mutex_lock(&pthr_mutex);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "%s:%d error %d upon pthread_mutex_lock.\n",
-                    __func__, __LINE__, rc);
-            abort();
-        }
+        Pthread_mutex_lock(&pthr_mutex);
         signal_count = listc_size(&stack_list);
-        rc = pthread_mutex_unlock(&pthr_mutex);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "%s:%d error %d upon pthread_mutex_unlock.\n",
-                    __func__, __LINE__, rc);
-            abort();
-        }
+        Pthread_mutex_unlock(&pthr_mutex);
 
         //![2]
         if (signal_count == 0) {
@@ -114,12 +105,7 @@ static void *free_stack_thr(void *unused)
             continue;
         }
 
-        rc = pthread_mutex_lock(&pthr_mutex);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "%s:%d error %d upon pthread_mutex_lock.\n",
-                    __func__, __LINE__, rc);
-            abort();
-        }
+        Pthread_mutex_lock(&pthr_mutex);
 
         //![4]
         while (signal_count != 0) {
@@ -161,12 +147,7 @@ static void *free_stack_thr(void *unused)
             }
             --signal_count;
         }
-        rc = pthread_mutex_unlock(&pthr_mutex);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "%s:%d error %d upon pthread_mutex_unlock.\n",
-                    __func__, __LINE__, rc);
-            abort();
-        }
+        Pthread_mutex_unlock(&pthr_mutex);
     }
 
     /* should never reach this point */

@@ -2375,7 +2375,7 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
     dbenv->log_delete_filenum = -1;
     listc_init(&dbenv->log_delete_state_list,
                offsetof(struct log_delete_state, linkv));
-    pthread_mutex_init(&dbenv->log_delete_counter_mutex, NULL);
+    Pthread_mutex_init(&dbenv->log_delete_counter_mutex, NULL);
 
     /* assume I want a cluster, unless overridden by -local or cluster none */
 
@@ -2385,7 +2385,7 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
                offsetof(struct managed_component, lnk));
     listc_init(&dbenv->managed_coordinators,
                offsetof(struct managed_component, lnk));
-    pthread_mutex_init(&dbenv->incoherent_lk, NULL);
+    Pthread_mutex_init(&dbenv->incoherent_lk, NULL);
 
     /* Initialize the table/queue hashes. */
     dbenv->db_hash =
@@ -2447,12 +2447,7 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
         logmsg(LOGMSG_ERROR, "couldn't allocate long transaction lookup table\n");
         return NULL;
     }
-    if (pthread_mutex_init(&dbenv->long_trn_mtx, NULL) != 0) {
-        logmsg(LOGMSG_ERROR, "couldn't allocate long transaction lookup table\n");
-        hash_free(dbenv->long_trn_table);
-        dbenv->long_trn_table = NULL;
-        return NULL;
-    }
+    Pthread_mutex_init(&dbenv->long_trn_mtx, NULL);
 
     if (gbl_local_mode) {
         /*force no siblings for local mode*/

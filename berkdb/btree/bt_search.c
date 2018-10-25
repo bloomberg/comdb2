@@ -72,6 +72,7 @@ static const char revid[] = "$Id: bt_search.c,v 11.47 2003/06/30 17:19:35 bostic
 #include <util.h>
 
 #include <logmsg.h>
+#include <locks_wrap.h>
 
 /*
  * __bam_cmp --
@@ -522,16 +523,10 @@ hash_backup:
 		dbp->pg_hash_stat.n_bt_hash_hit++;
 		if (!(TYPE(h) == P_LBTREE || TYPE(h) == P_LDUP)) {
 			// remove pg from hash
-			mutex_rc = pthread_mutex_lock(&(hash->mutex));
-			if (mutex_rc != 0) {
-				logmsg(LOGMSG_ERROR, "__bam_search: Failed to lock (hash->mutex)\n");
-			}
+			Pthread_mutex_lock(&(hash->mutex));
 			genidsetzero(hashtbl[hh].genid);
 			hashtbl[hh].pgno = 0;
-			mutex_rc = pthread_mutex_unlock(&(hash->mutex));
-			if (mutex_rc != 0) {
-				logmsg(LOGMSG_ERROR, "__bam_search: Failed to unlock (hash->mutex)\n");
-			}
+			Pthread_mutex_unlock(&(hash->mutex));
 			goto notfound;
 		}
 	}
@@ -908,10 +903,7 @@ found:	*exactp = 1;
 
 	// only save non-root page
 	if (add_to_hash && h->pgno != 1) {
-		mutex_rc = pthread_mutex_lock(&(hash->mutex));
-		if (mutex_rc != 0) {
-			logmsg(LOGMSG_ERROR, "__bam_search: Failed to lock (hash->mutex)\n");
-		}
+		Pthread_mutex_lock(&(hash->mutex));
 		//1 Hash-to-correct-entry
 		//2 Write an invalid genid (0)
 		genidsetzero(hashtbl[hh].genid);
@@ -919,10 +911,7 @@ found:	*exactp = 1;
 		hashtbl[hh].pgno = h->pgno;
 		//4 Write the correct genid
 		genidcpy(hashtbl[hh].genid, key->data);
-		mutex_rc = pthread_mutex_unlock(&(hash->mutex));
-		if (mutex_rc != 0) {
-			logmsg(LOGMSG_ERROR, "__bam_search: Failed to unlock (hash->mutex)\n");
-		}
+		Pthread_mutex_unlock(&(hash->mutex));
 	}
 	gettimeofday(&after, NULL);
 

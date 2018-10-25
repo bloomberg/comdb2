@@ -200,12 +200,7 @@ int osql_sess_addclient(osql_sess_t *sess)
 {
     int rc = 0;
 
-    if ((rc = pthread_mutex_lock(&sess->clients_mtx)) != 0) {
-        fprintf(stderr, "%s: pthread_mutex_lock failed rc = %d\n", __func__,
-                rc);
-        abort();
-        return -1;
-    }
+    Pthread_mutex_lock(&sess->clients_mtx);
 #if 0
    uuidstr_t us;
    comdb2uuidstr(sess->uuid, us);
@@ -215,11 +210,7 @@ int osql_sess_addclient(osql_sess_t *sess)
 
     sess->clients++;
 
-    if ((rc = pthread_mutex_unlock(&sess->clients_mtx)) != 0) {
-        fprintf(stderr, "%s: pthread_mutex_unlock failed rc = %d\n", __func__,
-                rc);
-        return -1;
-    }
+    Pthread_mutex_unlock(&sess->clients_mtx);
 
     return 0;
 }
@@ -234,13 +225,7 @@ int osql_sess_remclient(osql_sess_t *sess)
 
     int rc = 0;
 
-    if ((rc = pthread_mutex_lock(&sess->clients_mtx)) != 0) {
-        fprintf(stderr, "%s: pthread_mutex_lock failed rc = %d\n", __func__,
-                rc);
-        // this is happening for me
-        abort();
-        return -1;
-    }
+    Pthread_mutex_lock(&sess->clients_mtx);
 
 #if 0
    uuidstr_t us;
@@ -258,11 +243,7 @@ int osql_sess_remclient(osql_sess_t *sess)
                 __func__, sess->rqid, comdb2uuidstr(sess->uuid, us));
     }
 
-    if ((rc = pthread_mutex_unlock(&sess->clients_mtx)) != 0) {
-        fprintf(stderr, "%s: pthread_mutex_unlock failed rc = %d\n", __func__,
-                rc);
-        return -1;
-    }
+    Pthread_mutex_unlock(&sess->clients_mtx);
 
     return 0;
 }
@@ -633,10 +614,7 @@ int osql_session_testterminate(void *obj, void *arg)
 
     if (!node || sess->offhost == node) {
 
-        if ((rc = pthread_mutex_lock(&sess->mtx)) != 0) {
-            fprintf(stderr, "pthread_mutex_lock: error code %d\n", rc);
-            return rc;
-        }
+        Pthread_mutex_lock(&sess->mtx);
 
         pthread_mutex_lock(&sess->completed_lock);
         sess->terminate = OSQL_TERMINATE;
@@ -660,10 +638,7 @@ int osql_session_testterminate(void *obj, void *arg)
 
         /* wake up the block processor waiting for this request */
 
-        if ((rc = pthread_mutex_unlock(&sess->mtx)) != 0) {
-            fprintf(stderr, "pthread_mutex_unlock: error code %d\n", rc);
-            return rc;
-        }
+        Pthread_mutex_unlock(&sess->mtx);
     }
 
     if (need_clean) {
@@ -802,16 +777,8 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
     }
 
     /* init sync fields */
-    rc = pthread_mutex_init(&sess->clients_mtx, NULL);
-    if (rc) {
-        _destroy_session(&sess, 4);
-        return NULL;
-    }
-    rc = pthread_mutex_init(&sess->mtx, NULL);
-    if (rc) {
-        _destroy_session(&sess, 3);
-        return NULL;
-    }
+    Pthread_mutex_init(&sess->clients_mtx, NULL);
+    Pthread_mutex_init(&sess->mtx, NULL);
     rc = pthread_cond_init(&sess->cond, NULL);
     if (rc) {
         _destroy_session(&sess, 2);

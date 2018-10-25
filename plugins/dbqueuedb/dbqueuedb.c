@@ -158,26 +158,16 @@ static void wake_up_consumer(struct consumer *consumer, int force)
 {
     int rc;
 
-    rc = pthread_mutex_lock(&consumer->mutex);
-    if (rc != 0)
-        logmsg(LOGMSG_ERROR, "%s: "
-                "pthread_mutex_lock %d %s\n",
-                __func__, rc, strerror(rc));
-    else {
-        if (force || consumer->waiting_for_data) {
-            consumer->need_to_wake = 1;
-            rc = pthread_cond_broadcast(&consumer->cond);
-            if (rc != 0)
-                logmsg(LOGMSG_ERROR, "%s: "
-                        "pthread_cond_broadcast %d %s\n",
-                        __func__, rc, strerror(rc));
-        }
+    Pthread_mutex_lock(&consumer->mutex);
+    if (force || consumer->waiting_for_data) {
+        consumer->need_to_wake = 1;
+        rc = pthread_cond_broadcast(&consumer->cond);
+        if (rc != 0)
+            logmsg(LOGMSG_ERROR, "%s: "
+                    "pthread_cond_broadcast %d %s\n",
+                    __func__, rc, strerror(rc));
     }
-    rc = pthread_mutex_unlock(&consumer->mutex);
-    if (rc != 0)
-        logmsg(LOGMSG_ERROR, "%s: "
-                "pthread_mutex_unlock %d %s\n",
-                __func__, rc, strerror(rc));
+    Pthread_mutex_unlock(&consumer->mutex);
 }
 
 static int wake_all_consumers(struct dbtable *db, int force)
@@ -308,7 +298,7 @@ static int add_consumer_int(struct dbtable *db, int consumern,
         /* Allow unrecognised options */
         set_consumer_options(consumer, opts);
 
-        pthread_mutex_init(&consumer->mutex, NULL);
+        Pthread_mutex_init(&consumer->mutex, NULL);
         pthread_cond_init(&consumer->cond, NULL);
     }
 

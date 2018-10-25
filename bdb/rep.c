@@ -40,6 +40,7 @@
 #include "net.h"
 #include "bdb_int.h"
 #include "locks.h"
+#include "locks_wrap.h"
 #include "list.h"
 #include <endian_core.h>
 

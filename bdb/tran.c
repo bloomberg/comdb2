@@ -47,6 +47,7 @@
 #include "bdb_cursor.h"
 #include "bdb_int.h"
 #include "locks.h"
+#include "locks_wrap.h"
 #include "bdb_osqltrn.h"
 #include "bdb_osqlcur.h"
 
@@ -1249,7 +1250,7 @@ tran_type *bdb_tran_begin_shadow_int(bdb_state_type *bdb_state, int tranclass,
     tran->relinks_hashtbl =
         hash_init_o(PGLOGS_RELINK_KEY_OFFSET, PAGE_KEY_SIZE);
 
-    pthread_mutex_init(&tran->pglogs_mutex, NULL);
+    Pthread_mutex_init(&tran->pglogs_mutex, NULL);
 
     tran->asof_lsn.file = 0;
     tran->asof_lsn.offset = 1;

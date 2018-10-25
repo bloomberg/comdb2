@@ -3939,7 +3939,7 @@ clipper_usage:
         int i;
         int start, end;
 
-        pthread_mutex_init(&lk, NULL);
+        Pthread_mutex_init(&lk, NULL);
         start = comdb2_time_epochms();
         for (i = 0; i < 100000000; i++) {
             pthread_mutex_lock(&lk);

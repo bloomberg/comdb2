@@ -158,12 +158,7 @@ retry:
         if (++retries < gbl_maxretries) {
             if (!bdb_attr_get(thedb->bdb_attr,
                               BDB_ATTR_DISABLE_WRITER_PENALTY_DEADLOCK)) {
-                irc = pthread_mutex_lock(&delay_lock);
-                if (irc != 0) {
-                    logmsg(LOGMSG_FATAL, "pthread_mutex_lock(&delay_lock) %d\n",
-                           irc);
-                    exit(1);
-                }
+                Pthread_mutex_lock(&delay_lock);
 
                 penaltyinc = (double)(gbl_maxwthreads - gbl_maxwthreadpenalty) *
                              (gbl_penaltyincpercent_d / iq->retries);
@@ -179,12 +174,7 @@ retry:
                 gbl_maxwthreadpenalty += penaltyinc;
                 totpen += penaltyinc;
 
-                irc = pthread_mutex_unlock(&delay_lock);
-                if (irc != 0) {
-                    logmsg(LOGMSG_FATAL,
-                           "pthread_mutex_unlock(&delay_lock) %d\n", irc);
-                    exit(1);
-                }
+                Pthread_mutex_unlock(&delay_lock);
             }
 
             iq->usedb = iq->origdb;
@@ -206,19 +196,11 @@ retry:
        */
     osql_blkseq_unregister(iq);
 
-    irc = pthread_mutex_lock(&delay_lock);
-    if (irc != 0) {
-        logmsg(LOGMSG_FATAL, "pthread_mutex_lock(&delay_lock) %d\n", irc);
-        exit(1);
-    }
+    Pthread_mutex_lock(&delay_lock);
 
     gbl_maxwthreadpenalty -= totpen;
 
-    irc = pthread_mutex_unlock(&delay_lock);
-    if (irc != 0) {
-        logmsg(LOGMSG_FATAL, "pthread_mutex_unlock(&delay_lock) %d\n", irc);
-        exit(1);
-    }
+    Pthread_mutex_unlock(&delay_lock);
 
     /* return codes we think the proxy understands.  all other cases
        return proxy retry */

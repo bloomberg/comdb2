@@ -182,11 +182,7 @@ void blob_print_stats(void)
 
 int init_blob_cache(void)
 {
-    if (pthread_mutex_init(&blobmutex, NULL) != 0) {
-        logmsg(LOGMSG_ERROR, "init_blob_cache: cannot init mutex: %s\n",
-                strerror(errno));
-        return -1;
-    }
+    Pthread_mutex_init(&blobmutex, NULL);
 
     blobhash = hash_init(sizeof(cached_blob_key_t));
     if (!blobhash) {

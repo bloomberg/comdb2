@@ -493,9 +493,9 @@ fdb_t *new_fdb(const char *dbname, int *created, enum mach_class class)
     fdb->h_ents_name = hash_init_strptr(offsetof(struct fdb_tbl_ent, name));
     fdb->h_tbls_name = hash_init_strptr(0);
     pthread_rwlock_init(&fdb->h_rwlock, NULL);
-    pthread_mutex_init(&fdb->sqlstats_mtx, NULL);
-    pthread_mutex_init(&fdb->dbcon_mtx, NULL);
-    pthread_mutex_init(&fdb->users_mtx, NULL);
+    Pthread_mutex_init(&fdb->sqlstats_mtx, NULL);
+    Pthread_mutex_init(&fdb->dbcon_mtx, NULL);
+    Pthread_mutex_init(&fdb->users_mtx, NULL);
 
     /* this should be safe to call even though the fdb is not booked in the fdb
      * array */
@@ -591,7 +591,7 @@ static fdb_tbl_t *_alloc_table_fdb(fdb_t *fdb, const char *tblname)
     tbl->name = strdup(tblname);
     tbl->name_len = strlen(tblname);
     tbl->fdb = fdb;
-    pthread_mutex_init(&tbl->ents_mtx, NULL);
+    Pthread_mutex_init(&tbl->ents_mtx, NULL);
     listc_init(&tbl->ents, offsetof(struct fdb_tbl_ent, lnk));
 
     return tbl;

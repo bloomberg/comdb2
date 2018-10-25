@@ -5472,10 +5472,10 @@ void start_internal_sql_clnt(struct sqlclntstate *clnt)
 {
     reset_clnt(clnt, NULL, 1);
     plugin_set_callbacks(clnt, internal);
-    pthread_mutex_init(&clnt->wait_mutex, NULL);
+    Pthread_mutex_init(&clnt->wait_mutex, NULL);
     pthread_cond_init(&clnt->wait_cond, NULL);
-    pthread_mutex_init(&clnt->write_lock, NULL);
-    pthread_mutex_init(&clnt->dtran_mtx, NULL);
+    Pthread_mutex_init(&clnt->write_lock, NULL);
+    Pthread_mutex_init(&clnt->dtran_mtx, NULL);
     clnt->dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
     clr_high_availability(clnt);
 }

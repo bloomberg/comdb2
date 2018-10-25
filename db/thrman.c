@@ -107,11 +107,7 @@ void thrman_init(void)
 {
     int rc;
 
-    rc = pthread_mutex_init(&mutex, NULL);
-    if (rc != 0) {
-        perror_errnum("thrman_init:pthread_mutex_init", rc);
-        exit(1);
-    }
+    Pthread_mutex_init(&mutex, NULL);
 
     rc = pthread_key_create(&thrman_key, thrman_destructor);
     if (rc != 0) {

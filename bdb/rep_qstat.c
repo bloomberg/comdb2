@@ -4,6 +4,7 @@
 #include <dbinc/rep_types.h>
 #include "bdb_int.h"
 #include <rep_qstat.h>
+#include "locks_wrap.h"
 
 int net_get_lsn_rectype(bdb_state_type *bdb_state, const void *buf, int buflen,
                         DB_LSN *lsn, int *myrectype);
@@ -15,7 +16,7 @@ static void *net_init_queue_stats_rtn(netinfo_type *netinfo_type,
                                       const char hostname[])
 {
     net_queue_stat_t *n = calloc(sizeof(*n), 1);
-    pthread_mutex_init(&n->lock, NULL);
+    Pthread_mutex_init(&n->lock, NULL);
     n->nettype = strdup(nettype);
     n->hostname = strdup(hostname);
     n->max_type = -1;

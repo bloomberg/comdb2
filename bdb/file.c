@@ -67,6 +67,7 @@
 #include <cheapstack.h>
 #include "bdb_int.h"
 #include "locks.h"
+#include "locks_wrap.h"
 #include <time.h>
 #include <ctrace.h>
 #include <list.h>
@@ -143,9 +144,7 @@ int bdb_checkpoint_list_init()
 {
     int rc = 0;
     listc_init(&ckp_lst, offsetof(struct checkpoint_list, lnk));
-    rc = pthread_mutex_init(&ckp_lst_mtx, NULL);
-    if (rc)
-        logmsg(LOGMSG_ERROR, "%s: pthread_mutex_init init rc %d\n", __func__, rc);
+    Pthread_mutex_init(&ckp_lst_mtx, NULL);
     ckp_lst_ready = 1;
     return rc;
 }
@@ -2553,14 +2552,14 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
         logmsg(LOGMSG_INFO, "Temptable pool enabled.\n");
     }
 
-    pthread_mutex_init(&(bdb_state->temp_list_lock), NULL);
+    Pthread_mutex_init(&(bdb_state->temp_list_lock), NULL);
     bdb_state->logical_transactions_hash = hash_init_o(
         offsetof(tran_type, logical_tranid), sizeof(unsigned long long));
     pthread_cond_init(&(bdb_state->temptable_wait), NULL);
     bdb_state->temp_stats = calloc(1, sizeof(*(bdb_state->temp_stats)));
     pthread_mutexattr_init(&bdb_recursive_mutex);
     pthread_mutexattr_settype(&bdb_recursive_mutex, PTHREAD_MUTEX_RECURSIVE);
-    pthread_mutex_init(&bdb_state->translist_lk, &bdb_recursive_mutex);
+    Pthread_mutex_init(&bdb_state->translist_lk, &bdb_recursive_mutex);
     listc_init(&bdb_state->logical_transactions_list,
                offsetof(struct tran_tag, tranlist_lnk));
 
@@ -3414,9 +3413,9 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
         extern pthread_mutex_t bdb_asof_current_lsn_mutex;
         extern DB_LSN bdb_asof_current_lsn;
 
-        pthread_mutex_lock(&bdb_asof_current_lsn_mutex);
+        Pthread_mutex_lock(&bdb_asof_current_lsn_mutex);
         asoflsn = bdb_asof_current_lsn;
-        pthread_mutex_unlock(&bdb_asof_current_lsn_mutex);
+        Pthread_mutex_unlock(&bdb_asof_current_lsn_mutex);
 
         if (asoflsn.file <= lowfilenum) {
             if (bdb_state->attr->debug_log_deletion) {
@@ -3776,20 +3775,20 @@ static pthread_mutex_t logdelete_lk = PTHREAD_MUTEX_INITIALIZER;
 
 void logdelete_lock(void)
 {
-    pthread_mutex_lock(&logdelete_lk);
+    Pthread_mutex_lock(&logdelete_lk);
 }
 
 void logdelete_unlock(void)
 {
-    pthread_mutex_unlock(&logdelete_lk);
+    Pthread_mutex_unlock(&logdelete_lk);
 }
 
 void delete_log_files(bdb_state_type *bdb_state)
 {
     BDB_READLOCK("logdelete_thread");
-    pthread_mutex_lock(&logdelete_lk);
+    Pthread_mutex_lock(&logdelete_lk);
     delete_log_files_int(bdb_state);
-    pthread_mutex_unlock(&logdelete_lk);
+    Pthread_mutex_unlock(&logdelete_lk);
     BDB_RELLOCK();
 }
 
@@ -5220,47 +5219,25 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
             exit(1);
         }
 
-        rc = pthread_mutex_init(&(bdb_state->numthreads_lock), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "numthreads_lockx failed\n");
-            exit(1);
-        }
-
-        rc = pthread_mutex_init(&(bdb_state->id_lock), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "id_lock failed\n");
-            exit(1);
-        }
-
-        rc = pthread_mutex_init(&(bdb_state->gblcontext_lock), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "gblcontext_lock failed\n");
-            exit(1);
-        }
+        Pthread_mutex_init(&(bdb_state->numthreads_lock), NULL);
+        Pthread_mutex_init(&(bdb_state->id_lock), NULL);
+        Pthread_mutex_init(&(bdb_state->gblcontext_lock), NULL);
 
         bdb_state->last_downgrade_time = calloc(sizeof(uint64_t), MAXNODES);
         bdb_state->master_lease = calloc(sizeof(uint64_t), MAXNODES);
-        pthread_mutex_init(&(bdb_state->master_lease_lk), NULL);
+        Pthread_mutex_init(&(bdb_state->master_lease_lk), NULL);
 
         bdb_state->coherent_state = malloc(sizeof(int) * MAXNODES);
         for (int i = 0; i < MAXNODES; i++)
             bdb_state->coherent_state[i] = STATE_COHERENT;
 
-        rc = pthread_mutex_init(&(bdb_state->coherent_state_lock), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "coherent_state_lock failed\n");
-            exit(1);
-        }
+        Pthread_mutex_init(&(bdb_state->coherent_state_lock), NULL);
 
         bdb_state->gblcontext = 0;
 
         bdb_lock_init(bdb_state);
 
-        rc = pthread_mutex_init(&bdb_state->durable_lsn_lk, NULL);
-        if (rc) {
-            logmsg(LOGMSG_FATAL, "durable_lsn_lk failed\n");
-            exit(1);
-        }
+        Pthread_mutex_init(&bdb_state->durable_lsn_lk, NULL);
     }
 
     /* XXX this looks wrong */
@@ -5303,29 +5280,17 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
         bdb_state->seqnum_info = parent_bdb_state->seqnum_info;
     }
 
-    rc = pthread_mutex_init(&(bdb_state->exit_lock), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "exit mutex failed\n");
-        exit(1);
-    }
+    Pthread_mutex_init(&(bdb_state->exit_lock), NULL);
 
     /* initialize this thing high so any findnexts that happen before we
        get a broadcast from master will not skip anything */
     bdb_state->master_cmpcontext = flibc_htonll(ULLONG_MAX);
 
     bdb_state->seed = 0;
-    rc = pthread_mutex_init(&(bdb_state->seed_lock), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "seed mutex failed\n");
-        exit(1);
-    }
+    Pthread_mutex_init(&(bdb_state->seed_lock), NULL);
 
     if (!parent_bdb_state) {
-        rc = pthread_mutex_init(&(bdb_state->seqnum_info->lock), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "seqnum_info mutex failed\n");
-            exit(1);
-        }
+        Pthread_mutex_init(&(bdb_state->seqnum_info->lock), NULL);
         rc = pthread_cond_init(&(bdb_state->seqnum_info->cond), NULL);
         if (rc != 0) {
             logmsg(LOGMSG_FATAL, "seqnum_info cond failed\n");
@@ -5369,11 +5334,7 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
             exit(1);
         }
 
-        rc = pthread_mutex_init(&(bdb_state->children_lock), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "children_lock failed\n");
-            exit(1);
-        }
+        Pthread_mutex_init(&(bdb_state->children_lock), NULL);
 
     } else {
         bdb_state->parent = parent_bdb_state;
@@ -5448,12 +5409,7 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
     */
 
     bdb_state->pending_seqnum_broadcast = 0;
-    rc = pthread_mutex_init(&bdb_state->pending_broadcast_lock, NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "init pending_broadcast_lock failed\n");
-        *bdberr = BDBERR_MISC;
-        return NULL;
-    }
+    Pthread_mutex_init(&bdb_state->pending_broadcast_lock, NULL);
 
     if (bdbtype == BDBTYPE_QUEUE || bdbtype == BDBTYPE_QUEUEDB) {
         bdb_queue_init_priv(bdb_state);
@@ -5518,40 +5474,15 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
         /* chain back a pointer to our bdb_state for later */
         net_set_usrptr(bdb_state->repinfo->netinfo, bdb_state);
 
-        rc = pthread_mutex_init(&(bdb_state->repinfo->elect_mutex), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "init elect mutex failed\n");
-            *bdberr = BDBERR_MISC;
-            return NULL;
-        }
+        Pthread_mutex_init(&(bdb_state->repinfo->elect_mutex), NULL);
 
-        rc = pthread_mutex_init(&(bdb_state->repinfo->upgrade_lock), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "init upgrade_lock failed\n");
-            *bdberr = BDBERR_MISC;
-            return NULL;
-        }
+        Pthread_mutex_init(&(bdb_state->repinfo->upgrade_lock), NULL);
 
-        rc = pthread_mutex_init(&(bdb_state->repinfo->send_lock), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "init send_lock failed\n");
-            *bdberr = BDBERR_MISC;
-            return NULL;
-        }
+        Pthread_mutex_init(&(bdb_state->repinfo->send_lock), NULL);
 
-        rc = pthread_mutex_init(&(bdb_state->repinfo->receive_lock), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "init receive_lock failed\n");
-            *bdberr = BDBERR_MISC;
-            return NULL;
-        }
+        Pthread_mutex_init(&(bdb_state->repinfo->receive_lock), NULL);
 
-        rc = pthread_mutex_init(&(bdb_state->repinfo->appseqnum_lock), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "init appseqnum_lock failed\n");
-            *bdberr = BDBERR_MISC;
-            return NULL;
-        }
+        Pthread_mutex_init(&(bdb_state->repinfo->appseqnum_lock), NULL);
 
         /* set up the appseqnum array.  we tag all packets we put out
            on the network with our own application level sequence
@@ -5797,12 +5728,7 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
         }
 
         bdb_state->last_dta = 0;
-        rc = pthread_mutex_init(&bdb_state->last_dta_lk, NULL);
-        if (rc) {
-            logmsg(LOGMSG_FATAL, "Can't init last_dta_lk err %d %s\n", rc,
-                    strerror(rc));
-            exit(1);
-        }
+        Pthread_mutex_init(&bdb_state->last_dta_lk, NULL);
     }
 
     bdb_state->isopen = 1;

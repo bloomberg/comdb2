@@ -45,6 +45,7 @@
 #include "debug_switches.h"
 
 #include <ctrace.h>
+#include <locks_wrap.h>
 
 #include <net.h>
 #include "bdb_int.h"
@@ -714,7 +715,7 @@ static int bdb_fstdumpdta_sendsz_int(bdb_state_type *bdb_state, SBUF2 *sb,
     fstdump.bdb_state = bdb_state;
     fstdump.bdb_parent_state =
         bdb_state->parent ? bdb_state->parent : bdb_state;
-    pthread_mutex_init(&fstdump.lock, NULL);
+    Pthread_mutex_init(&fstdump.lock, NULL);
     fstdump.fd = sockfd;
     fstdump.bdberr = 0;
     fstdump.convert_callback = convert_callback;
@@ -800,7 +801,7 @@ static int bdb_fstdumpdta_sendsz_int(bdb_state_type *bdb_state, SBUF2 *sb,
             args.perthread[nthr].real_thread = 1;
             args.perthread[nthr].get_genids = get_genids;
         }
-        pthread_mutex_init(&args.mutex, NULL);
+        Pthread_mutex_init(&args.mutex, NULL);
         args.num_stripes = bdb_state->attr->dtastripe;
         args.num_done = 0;
 

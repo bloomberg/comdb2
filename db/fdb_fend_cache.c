@@ -127,7 +127,7 @@ static int fdb_sqlstat_populate_table(fdb_t *fdb, fdb_sqlstat_cache_t *cache,
 
     bzero(tbl, sizeof(*tbl));
     tbl->name = strdup(tblname);
-    pthread_mutex_init(&tbl->mtx, NULL);
+    Pthread_mutex_init(&tbl->mtx, NULL);
 
     tbl->tbl = bdb_temp_table_create(thedb->bdb_env, &bdberr);
     if (!tbl->tbl) {
@@ -283,7 +283,7 @@ int fdb_sqlstat_cache_create(struct sqlclntstate *clnt, fdb_t *fdb,
         goto done;
     }
 
-    pthread_mutex_init(&cache->arr_lock, NULL);
+    Pthread_mutex_init(&cache->arr_lock, NULL);
 
     rc = fdb_sqlstat_cache_populate(clnt, fdb, cache);
     if (rc) {

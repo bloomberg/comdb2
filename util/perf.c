@@ -11,6 +11,7 @@
 #include "perf.h"
 #include "averager.h"
 #include "list.h"
+#include <locks_wrap.h>
 
 int gbl_timeseries_metrics = 1;
 
@@ -45,9 +46,7 @@ struct time_metric* time_metric_new(char *name) {
     t->avg = averager_new(gbl_metric_maxage, gbl_metric_maxpoints);
     if (t->avg == NULL)
         goto bad;
-    int rc = pthread_mutex_init(&t->lk, NULL);
-    if (rc)
-        goto bad;
+    Pthread_mutex_init(&t->lk, NULL);
 
     listc_abl(&metrics, t);
 

@@ -39,7 +39,7 @@ int init_history(history *h, size_t size)
     h->hist = calloc(size, sizeof(history_request *));
     h->pool = pool_setalloc_init(sizeof(history_request), size, malloc, free);
     h->total = 0;
-    pthread_mutex_init(&h->lock, NULL);
+    Pthread_mutex_init(&h->lock, NULL);
     return (int)(h->hist && h->pool && !rc);
 }
 

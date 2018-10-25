@@ -3201,11 +3201,7 @@ int offload_comm_send_sync_blockreq(char *node, void *buf, int buflen)
     p_slock->sb = NULL;
 
     // initialize lock and cond
-    rc = pthread_mutex_init(&(p_slock->req_lock), 0);
-    if (rc != 0) {
-        free(p_slock);
-        return rc;
-    }
+    Pthread_mutex_init(&(p_slock->req_lock), 0);
 
     rc = pthread_cond_init(&(p_slock->wait_cond), NULL);
     if (rc != 0) {
@@ -3214,24 +3210,22 @@ int offload_comm_send_sync_blockreq(char *node, void *buf, int buflen)
         return rc;
     }
 
-    rc = pthread_mutex_lock(&(p_slock->req_lock));
+    Pthread_mutex_lock(&(p_slock->req_lock));
+    rc = offload_comm_send_blockreq(node, p_slock, buf, buflen);
     if (rc == 0) {
-        rc = offload_comm_send_blockreq(node, p_slock, buf, buflen);
-        if (rc == 0) {
-            nwakeups = 0;
-            while (p_slock->reply_state != REPLY_STATE_DONE) {
-                clock_gettime(CLOCK_REALTIME, &ts);
-                ts.tv_sec += 1;
-                rc = pthread_cond_timedwait(&(p_slock->wait_cond),
-                                            &(p_slock->req_lock), &ts);
-                ++nwakeups;
+        nwakeups = 0;
+        while (p_slock->reply_state != REPLY_STATE_DONE) {
+            clock_gettime(CLOCK_REALTIME, &ts);
+            ts.tv_sec += 1;
+            rc = pthread_cond_timedwait(&(p_slock->wait_cond),
+                                        &(p_slock->req_lock), &ts);
+            ++nwakeups;
 
-                if (nwakeups == 1000)
-                    break;
-            }
+            if (nwakeups == 1000)
+                break;
         }
-        pthread_mutex_unlock(&(p_slock->req_lock));
     }
+    pthread_mutex_unlock(&(p_slock->req_lock));
 
     // clean up
     pthread_cond_destroy(&(p_slock->wait_cond));
@@ -9003,17 +8997,9 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
     osqlcomm_rpl_type_get(&rpl_op, p_buf, p_buf_end);
 
     if (seq == 0) {
-        rc = pthread_mutex_lock(&osqlpf_mutex);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "osql_page_prefault: Failed to lock osqlpf_mutex\n");
-            return 1;
-        }
+        Pthread_mutex_lock(&osqlpf_mutex);
         ii = queue_next(gbl_osqlpf_stepq);
-        rc = pthread_mutex_unlock(&osqlpf_mutex);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "osql_page_prefault: Failed to unlock osqlpf_mutex\n");
-            return 1;
-        }
+        Pthread_mutex_unlock(&osqlpf_mutex);
         if (ii == NULL) {
             logmsg(LOGMSG_ERROR, "osql io prefault got a BUG!\n");
             exit(1);
@@ -9288,68 +9274,66 @@ static void *uprec_cron_event(uuid_t source_id, void *arg1, void *arg2, void *ar
     struct timespec ts;
     const uint8_t *buf_end;
 
-    rc = pthread_mutex_lock(uprec->lk);
-    if (rc == 0) {
-        /* construct buffer */
-        buf_end = construct_uptbl_buffer(uprec->touch, uprec->genid,
-                                         gbl_num_record_upgrades, uprec->buffer,
-                                         &uprec->buf_end);
-        if (buf_end == NULL)
-            goto done;
+    Pthread_mutex_lock(uprec->lk);
+    /* construct buffer */
+    buf_end = construct_uptbl_buffer(uprec->touch, uprec->genid,
+                                     gbl_num_record_upgrades, uprec->buffer,
+                                     &uprec->buf_end);
+    if (buf_end == NULL)
+        goto done;
 
-        /* send and then wait */
-        p_slock = &uprec->slock;
-        rc = offload_comm_send_blockreq(
-            thedb->master == gbl_mynode ? 0 : thedb->master, p_slock,
-            uprec->buffer, (buf_end - uprec->buffer));
-        if (rc != 0)
-            goto done;
+    /* send and then wait */
+    p_slock = &uprec->slock;
+    rc = offload_comm_send_blockreq(
+        thedb->master == gbl_mynode ? 0 : thedb->master, p_slock,
+        uprec->buffer, (buf_end - uprec->buffer));
+    if (rc != 0)
+        goto done;
 
-        ++uprec->nreqs;
-        nwakeups = 0;
-        while (p_slock->reply_state != REPLY_STATE_DONE) {
-            clock_gettime(CLOCK_REALTIME, &ts);
-            ts.tv_sec += 1;
-            rc = pthread_cond_timedwait(&p_slock->wait_cond, &p_slock->req_lock,
-                                        &ts);
-            ++nwakeups;
+    ++uprec->nreqs;
+    nwakeups = 0;
+    while (p_slock->reply_state != REPLY_STATE_DONE) {
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_sec += 1;
+        rc = pthread_cond_timedwait(&p_slock->wait_cond, &p_slock->req_lock,
+                                    &ts);
+        ++nwakeups;
 
-            if (nwakeups == uprec->thre) { // timedout #1
-                logmsg(LOGMSG_WARN, "no response from master within %d seconds\n", 
-                        nwakeups);
-                break;
-            }
+        if (nwakeups == uprec->thre) { // timedout #1
+            logmsg(LOGMSG_WARN, "no response from master within %d seconds\n", 
+                    nwakeups);
+            break;
         }
-
-        if (p_slock->reply_state != REPLY_STATE_DONE) {
-            // timedout from #1
-            // intv = 0.75 * intv + 0.25 * T(this time)
-            uprec->intv += (uprec->intv << 1) + nwakeups;
-            uprec->intv >>= 2;
-            ++uprec->ntimeouts;
-        } else if (p_slock->rc) {
-            // something unexpected happened. double the interval.
-            if (uprec->intv >= uprec->thre)
-                ++uprec->intv;
-            else {
-                uprec->intv <<= 1;
-                if (uprec->intv >= uprec->thre)
-                    uprec->intv = uprec->thre;
-            }
-            ++uprec->nbads;
-        } else {
-            // all good. reset interval
-            uprec->intv = 1;
-            ++uprec->ngoods;
-        }
-
-    done:
-        // allow the array to take new requests
-        uprec->genid = 0;
-        uprec->owner = NULL;
-
-        rc = pthread_mutex_unlock(uprec->lk);
     }
+
+    if (p_slock->reply_state != REPLY_STATE_DONE) {
+        // timedout from #1
+        // intv = 0.75 * intv + 0.25 * T(this time)
+        uprec->intv += (uprec->intv << 1) + nwakeups;
+        uprec->intv >>= 2;
+        ++uprec->ntimeouts;
+    } else if (p_slock->rc) {
+        // something unexpected happened. double the interval.
+        if (uprec->intv >= uprec->thre)
+            ++uprec->intv;
+        else {
+            uprec->intv <<= 1;
+            if (uprec->intv >= uprec->thre)
+                uprec->intv = uprec->thre;
+        }
+        ++uprec->nbads;
+    } else {
+        // all good. reset interval
+        uprec->intv = 1;
+        ++uprec->ngoods;
+    }
+
+done:
+    // allow the array to take new requests
+    uprec->genid = 0;
+    uprec->owner = NULL;
+
+    Pthread_mutex_unlock(uprec->lk);
 
     return NULL;
 }
@@ -9405,11 +9389,7 @@ static void uprec_sender_array_init(void)
     uprec->ntimeouts = 0;
 
     // initialize slock
-    if (pthread_mutex_init(&(uprec->slock.req_lock), NULL) != 0) {
-        logmsg(LOGMSG_FATAL, "%s: failed to create buf_lock_t req_lock.\n",
-                __func__);
-        abort();
-    }
+    Pthread_mutex_init(&(uprec->slock.req_lock), NULL);
 
     if (pthread_cond_init(&(uprec->slock.wait_cond), NULL) != 0) {
         logmsg(LOGMSG_FATAL, "%s: failed to create buf_lock_t wait_cond.\n",
@@ -9450,12 +9430,10 @@ int offload_comm_send_upgrade_records(struct dbtable *db, unsigned long long gen
     (void)pthread_once(&uprec_sender_array_once, uprec_sender_array_init);
 
     if (uprec->owner == NULL) {
-        rc = pthread_mutex_lock(uprec->lk);
-        if (rc == 0) {
-            if (uprec->owner == NULL)
-                uprec->owner = db;
-            rc = pthread_mutex_unlock(uprec->lk);
-        }
+        Pthread_mutex_lock(uprec->lk);
+        if (uprec->owner == NULL)
+            uprec->owner = db;
+        Pthread_mutex_unlock(uprec->lk);
     }
 
     if (db == uprec->owner) {
@@ -9479,7 +9457,7 @@ int offload_comm_send_upgrade_records(struct dbtable *db, unsigned long long gen
                 uprec->owner = (void *)~(uintptr_t)0;
             }
         }
-        rc = pthread_mutex_unlock(uprec->lk);
+        Pthread_mutex_unlock(uprec->lk);
     }
 
     return rc;

@@ -2106,10 +2106,10 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     clnt.tzname[0] = '\0';
     clnt.admin = arg->admin;
 
-    pthread_mutex_init(&clnt.wait_mutex, NULL);
+    Pthread_mutex_init(&clnt.wait_mutex, NULL);
     pthread_cond_init(&clnt.wait_cond, NULL);
-    pthread_mutex_init(&clnt.write_lock, NULL);
-    pthread_mutex_init(&clnt.dtran_mtx, NULL);
+    Pthread_mutex_init(&clnt.write_lock, NULL);
+    Pthread_mutex_init(&clnt.dtran_mtx, NULL);
 
     if (!clnt.admin &&
         active_appsock_conns >

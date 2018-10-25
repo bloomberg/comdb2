@@ -667,7 +667,7 @@ struct sql_thread *start_sql_thread(void)
     listc_init(&thd->query_stats, offsetof(struct query_path_component, lnk));
     thd->query_hash = hash_init_user(query_path_component_hash,
                                      query_path_component_cmp, 0, 0);
-    pthread_mutex_init(&thd->lk, NULL);
+    Pthread_mutex_init(&thd->lk, NULL);
     int rc = pthread_setspecific(query_info_key, thd);
     if (rc != 0)
         perror_errnum("start_sql_thread: pthread_setspecific", rc);
@@ -1900,7 +1900,7 @@ char comdb2_maxkey[MAXKEYLEN];
 void sqlinit(void)
 {
     memset(comdb2_maxkey, 0xff, sizeof(comdb2_maxkey));
-    pthread_mutex_init(&gbl_sql_lock, NULL);
+    Pthread_mutex_init(&gbl_sql_lock, NULL);
     sql_dlmalloc_init();
     /* initialize global structures in sqlite */
     if (sqlite3_initialize())

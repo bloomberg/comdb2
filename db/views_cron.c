@@ -56,7 +56,7 @@ cron_sched_t *cron_add_event(cron_sched_t *sched, const char *name, int epoch,
         }
         created = 1;
 
-        pthread_mutex_init(&sched->mtx, NULL);
+        Pthread_mutex_init(&sched->mtx, NULL);
         pthread_cond_init(&sched->cond, NULL);
         listc_init(&sched->events, offsetof(struct cron_event, lnk));
         if (name) {

@@ -45,6 +45,7 @@
 #include "thdpool.h"
 #include "thread_util.h"
 #include "thread_malloc.h"
+#include <locks_wrap.h>
 
 #include "debug_switches.h"
 
@@ -240,7 +241,7 @@ struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz)
     listc_init(&pool->freelist, offsetof(struct thd, freelist_linkv));
     listc_init(&pool->queue, offsetof(struct workitem, linkv));
 
-    pthread_mutex_init(&pool->mutex, NULL);
+    Pthread_mutex_init(&pool->mutex, NULL);
     pthread_attr_init(&pool->attrs);
     pthread_attr_setstacksize(&pool->attrs, DEFAULT_THD_STACKSZ);
     pthread_attr_setdetachstate(&pool->attrs, PTHREAD_CREATE_DETACHED);

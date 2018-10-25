@@ -827,14 +827,7 @@ int init_gbl_tunables()
                        offsetof(comdb2_tunable, name), 0);
     logmsg(LOGMSG_DEBUG, "Global tunables hash initialized\n");
 
-    rc = pthread_mutex_init(&gbl_tunables->mu, NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR,
-               "%s:%d Failed to initialize mutex for global tunables.\n",
-               __FILE__, __LINE__);
-        return 1;
-    }
-
+    Pthread_mutex_init(&gbl_tunables->mu, NULL);
     return 0;
 }
 
