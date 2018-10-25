@@ -546,7 +546,7 @@ DEF_ATTR(
     REMOVE_COMMITDELAY_ON_COHERENT_CLUSTER,
     remove_commitdelay_on_coherent_cluster, BOOLEAN, 1,
     "Stop delaying commits when all the nodes in the cluster are coherent.")
-DEF_ATTR(DISABLE_SERVER_SOCKPOOL, disable_sockpool, BOOLEAN, 1,
+DEF_ATTR(DISABLE_SERVER_SOCKPOOL, disable_sockpool, BOOLEAN, 0,
          "Don't get connections to other databases from sockpool.")
 DEF_ATTR(TIMEOUT_SERVER_SOCKPOOL, timeout_sockpool, SECS, 10,
          "Timeout for getting a connection to another database from sockpool.")
