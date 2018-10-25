@@ -283,12 +283,7 @@ __dbenv_open(dbenv, db_home, flags, mode)
 	/* Save the flags passed to DB_ENV->open. */
 	dbenv->open_flags = flags;
 
-    ret = pthread_rwlock_init(&dbenv->dbreglk, NULL);
-    if (ret) {
-        __db_err(dbenv, "Can't create dbreglk lock %d %s", ret, strerror(ret));
-        goto err;
-    }
-
+    Pthread_rwlock_init(&dbenv->dbreglk, NULL);
 	/*
 	 * Initialize the subsystems.
 	 *
@@ -586,7 +581,7 @@ foundlsn:
 		thdpool_set_maxqueue(dbenv->recovery_workers, 8000);
 		Pthread_mutex_init(&dbenv->recover_lk, NULL);
 		pthread_cond_init(&dbenv->recover_cond, NULL);
-		pthread_rwlock_init(&dbenv->ser_lk, NULL);
+		Pthread_rwlock_init(&dbenv->ser_lk, NULL);
 		listc_init(&dbenv->inflight_transactions,
 		    offsetof(struct __recovery_processor, lnk));
 		listc_init(&dbenv->inactive_transactions,

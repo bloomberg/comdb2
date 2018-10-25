@@ -5328,12 +5328,7 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
         bdb_state->callback = bdb_callback;
 
         bdb_state->bdb_lock = mymalloc(sizeof(pthread_rwlock_t));
-        rc = pthread_rwlock_init(bdb_state->bdb_lock, NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "rwlock_init failed\n");
-            exit(1);
-        }
-
+        Pthread_rwlock_init(bdb_state->bdb_lock, NULL);
         Pthread_mutex_init(&(bdb_state->children_lock), NULL);
 
     } else {

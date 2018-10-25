@@ -120,7 +120,7 @@ int bdb_osql_log_repo_init(int *bdberr)
 
     listc_init(&tmp->logs, offsetof(bdb_osql_log_t, lnk));
 
-    pthread_rwlock_init(&tmp->tail_lock, NULL);
+    Pthread_rwlock_init(&tmp->tail_lock, NULL);
     Pthread_mutex_init(&tmp->clients_mtx, NULL);
 
     tmp->trak = 0; /* hook this up to a higher lvl */

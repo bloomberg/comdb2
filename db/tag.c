@@ -117,7 +117,7 @@ int unlock_taglock(void)
 static inline int init_taglock(void)
 {
 #ifdef TAGLOCK_RW_LOCK
-    pthread_rwlock_init(&taglock, NULL);
+    Pthread_rwlock_init(&taglock, NULL);
 #else
     Pthread_mutex_init(&taglock, NULL);
 #endif
@@ -149,11 +149,7 @@ int schema_init(void)
 {
     int rc;
 
-    rc = init_taglock();
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "schema_init:pthread_rwlock_init failed rc=%d\n", rc);
-        return -1;
-    }
+    init_taglock();
     gbl_tag_hash =
         hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
                        offsetof(struct dbtag, tblname), 0);

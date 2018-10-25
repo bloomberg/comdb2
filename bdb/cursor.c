@@ -1719,7 +1719,7 @@ retrieve_fileid_pglogs_queue(unsigned char *fileid, int create)
         fileid_queue = allocate_fileid_pglogs_queue();
         fileid_queue->deleteme = 0;
         memcpy(fileid_queue->fileid, fileid, DB_FILE_ID_LEN);
-        pthread_rwlock_init(&fileid_queue->queue_lk, NULL);
+        Pthread_rwlock_init(&fileid_queue->queue_lk, NULL);
         listc_init(&fileid_queue->queue_keys,
                    offsetof(struct pglogs_queue_key, lnk));
         if (memcmp(fileid, test_fileid, DB_FILE_ID_LEN) == 0)

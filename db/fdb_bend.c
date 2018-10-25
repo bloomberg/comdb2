@@ -175,7 +175,7 @@ int fdb_svc_init(void)
         return -1;
     }
 
-    pthread_rwlock_init(&center->cursors_rwlock, NULL);
+    Pthread_rwlock_init(&center->cursors_rwlock, NULL);
     center->cursors_hash = hash_init_user(cidhash, cidcmp, 0, 0);
     center->cursorsuuid_hash =
         hash_init_o(offsetof(svc_cursor_t, ciduuid), sizeof(uuid_t));

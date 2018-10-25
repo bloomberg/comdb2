@@ -3310,11 +3310,7 @@ static netinfo_type *create_netinfo_int(char myhostname[], int myportnum,
         goto fail;
     }
 
-    rc = pthread_rwlock_init(&(netinfo_ptr->lock), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "create_netinfo: couldn't init netinfo lock \n");
-        goto fail;
-    }
+    Pthread_rwlock_init(&(netinfo_ptr->lock), NULL);
     Pthread_mutex_init(&(netinfo_ptr->seqlock), NULL);
     Pthread_mutex_init(&(netinfo_ptr->watchlk), NULL);
     Pthread_mutex_init(&(netinfo_ptr->sanclk), NULL);

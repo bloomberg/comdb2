@@ -291,10 +291,10 @@ int fdb_cache_init(int n)
         return -1;
     }
     fdbs.nalloc = n;
-    pthread_rwlock_init(&fdbs.arr_lock, NULL);
+    Pthread_rwlock_init(&fdbs.arr_lock, NULL);
 
     fdbs.h_curs = hash_init_i4(0);
-    pthread_rwlock_init(&fdbs.h_curs_lock, NULL);
+    Pthread_rwlock_init(&fdbs.h_curs_lock, NULL);
 
     return 0;
 }
@@ -492,7 +492,7 @@ fdb_t *new_fdb(const char *dbname, int *created, enum mach_class class)
     fdb->h_ents_rootp = hash_init_i4(0);
     fdb->h_ents_name = hash_init_strptr(offsetof(struct fdb_tbl_ent, name));
     fdb->h_tbls_name = hash_init_strptr(0);
-    pthread_rwlock_init(&fdb->h_rwlock, NULL);
+    Pthread_rwlock_init(&fdb->h_rwlock, NULL);
     Pthread_mutex_init(&fdb->sqlstats_mtx, NULL);
     Pthread_mutex_init(&fdb->dbcon_mtx, NULL);
     Pthread_mutex_init(&fdb->users_mtx, NULL);

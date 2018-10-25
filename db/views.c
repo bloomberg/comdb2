@@ -131,7 +131,7 @@ static timepart_view_t* _check_shard_collision(timepart_views_t *views, const ch
  */
 timepart_views_t *timepart_views_init(struct dbenv *dbenv)
 {
-    pthread_rwlock_init(&views_lk, NULL);
+    Pthread_rwlock_init(&views_lk, NULL);
 
     /* hack for now to force natural types */
     if (_start_views_cron())

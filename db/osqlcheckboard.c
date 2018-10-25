@@ -71,13 +71,7 @@ int osql_checkboard_init(void)
         tmp->rqsuuid =
             hash_init_o(offsetof(osql_sqlthr_t, uuid), sizeof(uuid_t));
 
-        if (pthread_rwlock_init(&tmp->rwlock, NULL)) {
-            logmsg(LOGMSG_ERROR, "%s: error init pthread_rwlock_t\n", __func__);
-            hash_free(tmp->rqs);
-            free(tmp);
-            return -1;
-        }
-
+        Pthread_rwlock_init(&tmp->rwlock, NULL);
         checkboard = tmp;
     }
 

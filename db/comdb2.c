@@ -1509,12 +1509,7 @@ struct dbtable *newqdb(struct dbenv *env, const char *name, int avgsz, int pages
     tbl->queue_pagesize_override = pagesize;
 
     if (tbl->dbtype == DBTYPE_QUEUEDB) {
-        rc = pthread_rwlock_init(&tbl->consumer_lk, NULL);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "create consumer rwlock rc %d %s\n", rc,
-                    strerror(rc));
-            return NULL;
-        }
+        Pthread_rwlock_init(&tbl->consumer_lk, NULL);
     }
 
     return tbl;
