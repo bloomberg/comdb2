@@ -484,7 +484,7 @@ static void *apply_thread(void *arg)
 		ret = pthread_cond_timedwait(&queue_cond, &rep_queue_lock, &ts);
 
 		/* Lock order dance */
-		pthread_mutex_unlock(&rep_queue_lock);
+		Pthread_mutex_unlock(&rep_queue_lock);
 		bdb_get_the_readlock("apply_thread", __func__, __LINE__);
 		Pthread_mutex_lock(&rep_queue_lock);
 		Pthread_mutex_lock(&rep_candidate_lock);
@@ -514,7 +514,7 @@ static void *apply_thread(void *arg)
 			assert(listc_size(&log_queue) >= queue_log_fill_count);
 			assert(gbl_apply_queue_memory >= 0);
 
-			pthread_mutex_unlock(&rep_queue_lock);
+			Pthread_mutex_unlock(&rep_queue_lock);
 
 			if (gbl_warn_queue_latency_threshold > 0 &&
 					(waitms = (comdb2_time_epochms() - q->enqueued_time)) >
@@ -539,7 +539,7 @@ static void *apply_thread(void *arg)
 				int now;
 
 				ret = __rep_apply(dbenv, q->rp, &rec, &ret_lsnp, &q->gen, 1);
-				pthread_mutex_unlock(&rep_candidate_lock);
+				Pthread_mutex_unlock(&rep_candidate_lock);
 				if (ret == 0 || ret == DB_REP_ISPERM) {
 					void bdb_set_seqnum(void *);
 					bdb_set_seqnum(dbenv->app_private);
@@ -590,7 +590,7 @@ static void *apply_thread(void *arg)
 					}
 				}
 			} else {
-				pthread_mutex_unlock(&rep_candidate_lock);
+				Pthread_mutex_unlock(&rep_candidate_lock);
 				ret = 0;
 			}
 			bdb_relthelock(__func__, __LINE__);
@@ -610,7 +610,7 @@ static void *apply_thread(void *arg)
 		}
 
 		int in_election = IN_ELECTION_TALLY_WAITSTART(rep);
-		pthread_mutex_unlock(&rep_candidate_lock);
+		Pthread_mutex_unlock(&rep_candidate_lock);
 
 		if (in_election) {
 			bdb_relthelock(__func__, __LINE__);
@@ -619,7 +619,7 @@ static void *apply_thread(void *arg)
 
 		log_more_count = queue_log_more_count;
 		log_fill_count = queue_log_fill_count;
-		pthread_mutex_unlock(&rep_queue_lock);
+		Pthread_mutex_unlock(&rep_queue_lock);
 		get_master_lsn(dbenv->app_private, &master_lsn);
 
 		MUTEX_LOCK(dbenv, db_rep->db_mutexp);
@@ -751,7 +751,7 @@ static void *apply_thread(void *arg)
 	}
 	apply_thd_created = 0;
 	memset(&apply_thd, 0, sizeof(apply_thd));
-	pthread_mutex_unlock(&rep_queue_lock);
+	Pthread_mutex_unlock(&rep_queue_lock);
 	bdb_thread_done_rw();
 	return NULL;
 }
@@ -803,7 +803,7 @@ __rep_enqueue_log(dbenv, rp, rec, gen)
 		struct timespec ts;
 
 		if (IN_ELECTION_TALLY_WAITSTART(rep)) {
-			pthread_mutex_unlock(&rep_queue_lock);
+			Pthread_mutex_unlock(&rep_queue_lock);
 			if (gbl_verbose_fills) {
 				logmsg(LOGMSG_USER, "%s line %d: dropping logput on election\n",
 						__func__, __LINE__);
@@ -844,7 +844,7 @@ __rep_enqueue_log(dbenv, rp, rec, gen)
 		apply_thd_created = 1;
 	}
 	pthread_cond_signal(&queue_cond);
-	pthread_mutex_unlock(&rep_queue_lock);
+	Pthread_mutex_unlock(&rep_queue_lock);
 
 	if (gbl_verbose_fills && (elapsed = (comdb2_time_epochms() - start)) >
 			gbl_warn_queue_latency_threshold) {
@@ -2354,7 +2354,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 				goto errunlock;
 			}
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-			pthread_mutex_unlock(&rep_candidate_lock);
+			Pthread_mutex_unlock(&rep_candidate_lock);
 
 			/* Vote for someone else. */
 			if (dbenv->attr.elect_highest_committed_gen) {
@@ -2373,7 +2373,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 			}
 		} else {
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-			pthread_mutex_unlock(&rep_candidate_lock);
+			Pthread_mutex_unlock(&rep_candidate_lock);
 		}
 
 		/* Election is still going on. */
@@ -2469,7 +2469,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 			goto errunlock;
 		} else {
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-			pthread_mutex_unlock(&rep_candidate_lock);
+			Pthread_mutex_unlock(&rep_candidate_lock);
 		}
 		break;
 
@@ -2499,7 +2499,7 @@ errlock:
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 errunlock:
 	rep->msg_th--;
-	pthread_mutex_unlock(&rep_candidate_lock);
+	Pthread_mutex_unlock(&rep_candidate_lock);
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	PRINT_RETURN(ret, fromline);
 }
@@ -3885,7 +3885,7 @@ worker_thd(struct thdpool *pool, void *work, void *thddata, int op)
 	if (pool) {
 		pthread_cond_signal(&rq->processor->wait);
 	}
-	pthread_mutex_unlock(&rq->processor->lk);
+	Pthread_mutex_unlock(&rq->processor->lk);
 }
 
 /* note: must be called under the dbenv->recover_lk lock */
@@ -3988,7 +3988,7 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 		int lsize;
 		Pthread_mutex_lock(&dbenv->recover_lk);
 		lsize = listc_size(&dbenv->inflight_transactions);
-		pthread_mutex_unlock(&dbenv->recover_lk);
+		Pthread_mutex_unlock(&dbenv->recover_lk);
 		logmsg(LOGMSG_ERROR, "Polling for %d in processor_thd, there are %d "
 				"processor thds outstanding\n", polltm, lsize);
 		poll(0, 0, polltm);
@@ -4190,7 +4190,7 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 				lastpr = ts.tv_sec;
 			}
 		}
-		pthread_mutex_unlock(&rp->lk);
+		Pthread_mutex_unlock(&rp->lk);
 	}
 
 
@@ -4246,7 +4246,7 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 			F_ISSET(rp->ltrans, TXN_LTRANS_WASCOMMITTED))
 			deallocate = 1;
 
-		pthread_mutex_unlock(&rp->ltrans->lk);
+		Pthread_mutex_unlock(&rp->ltrans->lk);
 
 		if (rp->has_schema_lock) {
 			unlock_schema_lk();
@@ -4299,7 +4299,7 @@ err:
 	listc_abl(&dbenv->inactive_transactions, rp);
 	if (listc_size(&dbenv->inflight_transactions) == 0)
 		pthread_cond_broadcast(&dbenv->recover_cond);
-	pthread_mutex_unlock(&dbenv->recover_lk);
+	Pthread_mutex_unlock(&dbenv->recover_lk);
 
 	if (!dbenv->lsn_chain) {
 		pthread_rwlock_unlock(&dbenv->ser_lk);
@@ -4756,7 +4756,7 @@ err:
 	/*
 	 * Pthread_mutex_lock(&dbenv->recover_lk);
 	 * in_order_commit_check(&maxlsn);
-	 * pthread_mutex_unlock(&dbenv->recover_lk);
+	 * Pthread_mutex_unlock(&dbenv->recover_lk);
 	 */
 
 	/* Do the lsn sanity check before we release locks. */
@@ -4885,7 +4885,7 @@ wait_for_lsn_chain_lk(dbenv)
 
 	Pthread_mutex_lock(&dbenv->recover_lk);
 	waitlsn = dbenv->prev_commit_lsn;
-	pthread_mutex_unlock(&dbenv->recover_lk);
+	Pthread_mutex_unlock(&dbenv->recover_lk);
 
 	ret = __lock_id(dbenv, &lockid);
 	if (ret != 0)
@@ -4950,7 +4950,7 @@ berkdb_dumptrans(DB_ENV *dbenv)
 			rp->prev_commit_lsn.file, rp->prev_commit_lsn.offset,
 			rp->num_fileids, rp->lc.nlsns, rp->lc.memused);
 	}
-	pthread_mutex_unlock(&dbenv->recover_lk);
+	Pthread_mutex_unlock(&dbenv->recover_lk);
 }
 
 static int
@@ -5027,7 +5027,7 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 
 	Pthread_mutex_lock(&dbenv->recover_lk);
 	rp = listc_rtl(&dbenv->inactive_transactions);
-	pthread_mutex_unlock(&dbenv->recover_lk);
+	Pthread_mutex_unlock(&dbenv->recover_lk);
 	/* If we can't reuse a processor, create one.  Should probably be
 	 * in its own routine.  */
 	if (rp == NULL) {
@@ -5417,7 +5417,7 @@ bad_resize:	;
 		reset_recovery_processor(rp);
 		Pthread_mutex_lock(&dbenv->recover_lk);
 		listc_abl(&dbenv->inactive_transactions, rp);
-		pthread_mutex_unlock(&dbenv->recover_lk);
+		Pthread_mutex_unlock(&dbenv->recover_lk);
 
 		return ret;
 	}
@@ -5477,7 +5477,7 @@ bad_resize:	;
 	if (rp->ltrans) {
 		Pthread_mutex_lock(&rp->ltrans->lk);
 		rp->ltrans->active_txn_count++;
-		pthread_mutex_unlock(&rp->ltrans->lk);
+		Pthread_mutex_unlock(&rp->ltrans->lk);
 		if (txn_rl_args->lflags & DB_TXN_LOGICAL_COMMIT)
 			rp->has_logical_commit = 1;
 		if (txn_rl_args->lflags & DB_TXN_SCHEMA_LOCK)
@@ -5486,7 +5486,7 @@ bad_resize:	;
 
 	Pthread_mutex_lock(&dbenv->recover_lk);
 	listc_abl(&dbenv->inflight_transactions, rp);
-	pthread_mutex_unlock(&dbenv->recover_lk);
+	Pthread_mutex_unlock(&dbenv->recover_lk);
 
 	thdpool_enqueue(dbenv->recovery_processors, processor_thd, rp, 0, NULL, 0);
 
@@ -5529,7 +5529,7 @@ err:
 
 	Pthread_mutex_lock(&dbenv->recover_lk);
 	listc_abl(&dbenv->inactive_transactions, rp);
-	pthread_mutex_unlock(&dbenv->recover_lk);
+	Pthread_mutex_unlock(&dbenv->recover_lk);
 
 	if (logc != NULL && (t_ret = __log_c_close(logc)) != 0 && ret == 0)
 		ret = t_ret;
@@ -7427,7 +7427,7 @@ int __rep_block_on_inflight_transactions(DB_ENV *dbenv)
 					listc_size(&dbenv->inflight_transactions));
 		}
 	}
-	pthread_mutex_unlock(&dbenv->recover_lk);
+	Pthread_mutex_unlock(&dbenv->recover_lk);
 	return 0;
 }
 
@@ -7440,14 +7440,14 @@ __rep_inflight_txns_older_than_lsn(DB_ENV *dbenv, DB_LSN *lsn)
 	Pthread_mutex_lock(&dbenv->recover_lk);
 	LISTC_FOR_EACH(&dbenv->inflight_transactions, rp, lnk) {
 		if (log_compare(&rp->commit_lsn, lsn) < 0) {
-			pthread_mutex_unlock(&dbenv->recover_lk);
+			Pthread_mutex_unlock(&dbenv->recover_lk);
 			/*printf("inflight transaction %u:%u checkpoint lsn %u:%u\n", 
 			 * rp->commit_lsn.file, rp->commit_lsn.offset,
 			 * lsn->file, lsn->offset); */
 			return 1;
 		}
 	}
-	pthread_mutex_unlock(&dbenv->recover_lk);
+	Pthread_mutex_unlock(&dbenv->recover_lk);
 	return 0;
 }
 

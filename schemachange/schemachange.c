@@ -83,7 +83,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                      */
                     sc_errf(s, "schema change already in progress\n");
                     free_schema_change_type(s);
-                    pthread_mutex_unlock(&sc_resuming_mtx);
+                    Pthread_mutex_unlock(&sc_resuming_mtx);
                     return SC_CANT_SET_RUNNING;
                 }
                 break;
@@ -92,7 +92,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             last_sc = stored_sc;
             stored_sc = stored_sc->sc_next;
         }
-        pthread_mutex_unlock(&sc_resuming_mtx);
+        Pthread_mutex_unlock(&sc_resuming_mtx);
         if (stored_sc) {
             stored_sc->tran = trans;
             stored_sc->iq = iq;
@@ -103,7 +103,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             s->finalize_only = 1;
             s->nothrevent = 1;
             s->resume = SC_RESUME;
-            pthread_mutex_unlock(&s->mtx);
+            Pthread_mutex_unlock(&s->mtx);
             uuidstr_t us;
             comdb2uuidstr(s->uuid, us);
             logmsg(LOGMSG_INFO,
@@ -283,7 +283,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             pthread_cond_wait(&sc_async_cond, &sc_async_mtx);
         }
         sc_async_threads++;
-        pthread_mutex_unlock(&sc_async_mtx);
+        Pthread_mutex_unlock(&sc_async_mtx);
 
         if (!s->partialuprecs)
             logmsg(LOGMSG_INFO, "Executing ASYNCHRONOUSLY\n");
@@ -298,7 +298,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
 
             Pthread_mutex_lock(&sc_async_mtx);
             sc_async_threads--;
-            pthread_mutex_unlock(&sc_async_mtx);
+            Pthread_mutex_unlock(&sc_async_mtx);
 
             free(arg);
             sc_set_running(s->tablename, 0, iq->sc_seed, gbl_mynode,
@@ -918,10 +918,10 @@ int add_schema_change_tables()
     /* if a schema change is currently running don't try to resume one */
     Pthread_mutex_lock(&schema_change_in_progress_mutex);
     if (gbl_schema_change_in_progress) {
-        pthread_mutex_unlock(&schema_change_in_progress_mutex);
+        Pthread_mutex_unlock(&schema_change_in_progress_mutex);
         return 0;
     }
-    pthread_mutex_unlock(&schema_change_in_progress_mutex);
+    Pthread_mutex_unlock(&schema_change_in_progress_mutex);
     struct ireq iq;
     init_fake_ireq(thedb, &iq);
 
@@ -1355,7 +1355,7 @@ void sc_printf(struct schema_change_type *s, const char *fmt, ...)
     vsb_printf(LOGMSG_INFO, (s) ? s->sb : NULL, "?", "Schema change info: ",
                fmt, args);
 
-    if (s && s->sb) pthread_mutex_unlock(&schema_change_sbuf2_lock);
+    if (s && s->sb) Pthread_mutex_unlock(&schema_change_sbuf2_lock);
 
     va_end(args);
 }
@@ -1375,7 +1375,7 @@ void sc_errf(struct schema_change_type *s, const char *fmt, ...)
     vsb_printf(LOGMSG_ERROR, (s) ? s->sb : NULL, "!", "Schema change error: ",
                fmt, args);
 
-    if (s && s->sb) pthread_mutex_unlock(&schema_change_sbuf2_lock);
+    if (s && s->sb) Pthread_mutex_unlock(&schema_change_sbuf2_lock);
 
     va_end(args);
 }

@@ -435,7 +435,7 @@ int osql_checkboard_master_changed(void *obj, void *arg)
     if (rq->master != arg && !(rq->master == 0 && gbl_mynode == arg)) {
         signal_master_change(rq, arg, __func__);
     }
-    pthread_mutex_unlock(&rq->mtx);
+    Pthread_mutex_unlock(&rq->mtx);
     return 0;
 }
 
@@ -467,7 +467,7 @@ static int osql_checkboard_check_request_down_node(void *obj, void *arg)
     if (rq->master == arg) {
         signal_master_change(rq, arg, __func__);
     }
-    pthread_mutex_unlock(&rq->mtx);
+    Pthread_mutex_unlock(&rq->mtx);
     return 0;
 }
 
@@ -779,7 +779,7 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
         entry->master =
             master ? master : gbl_mynode; /* master changed, store it here */
         bzero(&entry->err, sizeof(entry->err));
-        pthread_mutex_unlock(&entry->mtx);
+        Pthread_mutex_unlock(&entry->mtx);
     }
 
     if ((rc = pthread_rwlock_unlock(&checkboard->rwlock))) {

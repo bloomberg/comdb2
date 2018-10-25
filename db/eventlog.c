@@ -420,7 +420,7 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
     if ((isSql || isSqlErr) && !hash_find(seen_sql, logger->fingerprint)) {
         eventlog_add_newsql(obj, logger);
     }
-    pthread_mutex_unlock(&eventlog_lk);
+    Pthread_mutex_unlock(&eventlog_lk);
 
     cson_object_set(obj, "time", cson_new_int(logger->startus));
     if (logger->event_type)
@@ -502,13 +502,13 @@ void eventlog_add(const struct reqlogger *logger)
     Pthread_mutex_lock(&eventlog_lk);
     eventlog_count++;
     if (eventlog_every_n > 1 && eventlog_count % eventlog_every_n != 0) {
-        pthread_mutex_unlock(&eventlog_lk);
+        Pthread_mutex_unlock(&eventlog_lk);
         return;
     }
     if (bytes_written > eventlog_rollat) {
         eventlog_roll();
     }
-    pthread_mutex_unlock(&eventlog_lk);
+    Pthread_mutex_unlock(&eventlog_lk);
 
     val = cson_value_new_object();
     obj = cson_value_get_object(val);
@@ -516,7 +516,7 @@ void eventlog_add(const struct reqlogger *logger)
 
     Pthread_mutex_lock(&eventlog_lk);
     cson_output(val, write_json, eventlog, &opt);
-    pthread_mutex_unlock(&eventlog_lk);
+    Pthread_mutex_unlock(&eventlog_lk);
 
     if (eventlog_verbose) cson_output(val, write_logmsg, stdout, &opt);
 
@@ -667,7 +667,7 @@ void eventlog_process_message(char *line, int lline, int *toff)
 {
     Pthread_mutex_lock(&eventlog_lk);
     eventlog_process_message_locked(line, lline, toff);
-    pthread_mutex_unlock(&eventlog_lk);
+    Pthread_mutex_unlock(&eventlog_lk);
 }
 
 void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
@@ -713,5 +713,5 @@ void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
 
     Pthread_mutex_lock(&eventlog_lk);
     cson_output(dval, write_json, eventlog, &opt);
-    pthread_mutex_unlock(&eventlog_lk);
+    Pthread_mutex_unlock(&eventlog_lk);
 }

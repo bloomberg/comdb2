@@ -285,7 +285,7 @@ __rep_start(dbenv, dbt, gen, flags)
 				abort();
 			}
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-			pthread_mutex_unlock(&rep_candidate_lock);
+			Pthread_mutex_unlock(&rep_candidate_lock);
 			(void)__os_sleep(dbenv, 1, 0);
 			Pthread_mutex_lock(&rep_candidate_lock);
 			MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
@@ -358,7 +358,7 @@ __rep_start(dbenv, dbt, gen, flags)
 					__func__, __LINE__, rep->gen, rep->egen);
 		}
 		F_CLR(rep, REP_F_WAITSTART);
-		pthread_mutex_unlock(&rep_candidate_lock);
+		Pthread_mutex_unlock(&rep_candidate_lock);
 		rep->master_id = rep->eid;
 		/*
 		 * Note, setting flags below implicitly clears out
@@ -422,7 +422,7 @@ __rep_start(dbenv, dbt, gen, flags)
 
 		rep->flags = repflags;
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-        pthread_mutex_unlock(&rep_candidate_lock);
+        Pthread_mutex_unlock(&rep_candidate_lock);
 
 		/*
 		 * Abort any prepared transactions that were restored
@@ -1141,7 +1141,7 @@ restart:
 	}
 
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-	pthread_mutex_unlock(&rep_candidate_lock);
+	Pthread_mutex_unlock(&rep_candidate_lock);
 
 	if (use_committed_gen) {
 		logmsg(LOGMSG_DEBUG, "%s line %d broadcasting REP_GEN_VOTE1 to all with committed-gen=%d gen=%d egen=%d\n",
@@ -1191,7 +1191,7 @@ restart:
 	 */
 	if (egen != rep->egen) {
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-		pthread_mutex_unlock(&rep_candidate_lock);
+		Pthread_mutex_unlock(&rep_candidate_lock);
 #ifdef DIAGNOSTIC
 		if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
 			__db_err(dbenv, "Egen changed from %lu to %lu",
@@ -1224,7 +1224,7 @@ restart:
 		F_CLR(rep, REP_F_EPHASE1);
 	}
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-	pthread_mutex_unlock(&rep_candidate_lock);
+	Pthread_mutex_unlock(&rep_candidate_lock);
 	if (send_vote == db_eid_invalid) {
 		/* We do not have enough votes to elect. */
 #ifdef DIAGNOSTIC
@@ -1314,7 +1314,7 @@ lockdone:
 		F_SET(rep, orig_tally);
 	}
 
-	pthread_mutex_unlock(&rep_candidate_lock);
+	Pthread_mutex_unlock(&rep_candidate_lock);
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	logmsg(LOGMSG_DEBUG, "%s line %d returning %d master %s egen is %d\n",
 			__func__, __LINE__, ret, *eidp, *newgen);
@@ -1452,7 +1452,7 @@ __rep_wait(dbenv, timeout, eidp, outegen, inegen, flags)
         Pthread_mutex_lock(&gbl_rep_egen_lk);
         rc = pthread_cond_timedwait(&gbl_rep_egen_cd, &gbl_rep_egen_lk, &tm);
         *outegen = rep->egen;
-        pthread_mutex_unlock(&gbl_rep_egen_lk);
+        Pthread_mutex_unlock(&gbl_rep_egen_lk);
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		done = !F_ISSET(rep, flags) && rep->master_id != db_eid_invalid;
 
@@ -1701,7 +1701,7 @@ __rep_stat(dbenv, statp, flags)
 	Pthread_mutex_lock(&gbl_durable_lsn_lk);
     stats->durable_lsn = dbenv->durable_lsn;
     stats->durable_gen = dbenv->durable_generation;
-	pthread_mutex_unlock(&gbl_durable_lsn_lk);
+	Pthread_mutex_unlock(&gbl_durable_lsn_lk);
 
 	*statp = stats;
 	return (0);

@@ -376,11 +376,11 @@ __memp_recover_page(dbmfp, hp, bhp, pgno)
 		if ((ret = __os_io(dbenv, DB_IO_READ,
 		    dbmfp->recp, i, pagesize,
 		    (u_int8_t *)pagep, &nr)) != 0) {
-			pthread_mutex_unlock(&dbmfp->recp_lk_array[i]);
+			Pthread_mutex_unlock(&dbmfp->recp_lk_array[i]);
 			break;
 		}
 
-		pthread_mutex_unlock(&dbmfp->recp_lk_array[i]);
+		Pthread_mutex_unlock(&dbmfp->recp_lk_array[i]);
 
 		/* Verify length. */
 		if (nr < pagesize)
@@ -587,7 +587,7 @@ berkdb_verify_page_lsn_written_to_disk(DB_ENV *dbenv, DB_LSN *lsn)
 	d = opendir(dir);
 	if (d == NULL) {
 		__db_err(dbenv, "Can't get directory listing");
-		pthread_mutex_unlock(&verifylk);
+		Pthread_mutex_unlock(&verifylk);
 		return 1;
 	}
 
@@ -608,7 +608,7 @@ berkdb_verify_page_lsn_written_to_disk(DB_ENV *dbenv, DB_LSN *lsn)
 	}
 	closedir(d);
 
-	pthread_mutex_unlock(&verifylk);
+	Pthread_mutex_unlock(&verifylk);
 
 	/* guaranteed written */
 	if (lsn->file < filenum)
@@ -988,7 +988,7 @@ __memp_pgwrite_multi(dbenv, dbmfp, hps, bhps, numpages, wrrec)
 				idx = dbmfp->rec_idx;
 				dbmfp->rec_idx = (dbmfp->rec_idx %
 				    dbenv->mp_recovery_pages) + 1;
-				pthread_mutex_unlock(&dbmfp->recp_idx_lk);
+				Pthread_mutex_unlock(&dbmfp->recp_idx_lk);
 			}
 
 			/* Lock out other threads */
@@ -1062,7 +1062,7 @@ err:
 file_dead:
 	/* Unlock the recovery-lock. */
 	for (i = 0; reclk[i] && i < numpages; i++)
-		pthread_mutex_unlock(&dbmfp->recp_lk_array[reclk[i] - 1]);
+		Pthread_mutex_unlock(&dbmfp->recp_lk_array[reclk[i] - 1]);
 
 	/*
 	 * !!!

@@ -1019,7 +1019,7 @@ static void* _view_cleanup_thd(void *voidarg)
       fprintf(stderr, "Sleeping %d before deleting oldest shard for view \"%s\"\n",
             timetodelete-now, name); 
 
-      pthread_mutex_unlock(&views_mtx);
+      Pthread_mutex_unlock(&views_mtx);
 
       sleep(timetodelete-now);
 
@@ -1053,7 +1053,7 @@ static void* _view_cleanup_thd(void *voidarg)
 
 
    /* we are done with critical path */
-   pthread_mutex_unlock(&views_mtx);
+   Pthread_mutex_unlock(&views_mtx);
 
    sc_timepart_drop_table(tblname, &xerr);
 

@@ -398,7 +398,7 @@ done:	*lsnp = argp->prev_lsn;
 					hashtbl[hh].pgno = argp->right;
 					genidcpy(hashtbl[hh].genid,
 					    split_key.data);
-                    pthread_mutex_unlock(&(hash->mutex));
+                    Pthread_mutex_unlock(&(hash->mutex));
 				}
 			}
 		}
@@ -578,7 +578,7 @@ done:	*lsnp = argp->prev_lsn;
 						genidsetzero(hashtbl[hh].genid);
 						hashtbl[hh].pgno = 0;
 					}
-                    pthread_mutex_unlock(&(hash->mutex));
+                    Pthread_mutex_unlock(&(hash->mutex));
 				}
 			}
 		}

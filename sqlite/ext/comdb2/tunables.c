@@ -193,7 +193,7 @@ static int systblTunablesColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,
     default: assert(0);
     };
 
-    pthread_mutex_unlock(&gbl_tunables->mu);
+    Pthread_mutex_unlock(&gbl_tunables->mu);
 
     return SQLITE_OK;
 }

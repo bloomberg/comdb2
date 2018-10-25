@@ -71,7 +71,7 @@ void time_metric_add(struct time_metric *t, int value) {
 
     Pthread_mutex_lock(&t->lk);
     averager_add(t->avg, value, now);
-    pthread_mutex_unlock(&t->lk);
+    Pthread_mutex_unlock(&t->lk);
 }
 
 struct time_metric* time_metric_get(char *name) {
@@ -100,14 +100,14 @@ void time_metric_purge_old(struct time_metric *t) {
 
     Pthread_mutex_lock(&t->lk);
     averager_purge_old(t->avg, now);
-    pthread_mutex_unlock(&t->lk);
+    Pthread_mutex_unlock(&t->lk);
 }
 
 int time_metric_get_points(struct time_metric *t, struct point **values, int *nvalues) {
     int rc;
     Pthread_mutex_lock(&t->lk);
     rc = averager_get_points(t->avg, values, nvalues);
-    pthread_mutex_unlock(&t->lk);
+    Pthread_mutex_unlock(&t->lk);
     return rc;
 }
 

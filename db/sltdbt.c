@@ -380,7 +380,7 @@ int handle_ireq(struct ireq *iq)
                         (struct buf_lock_t *)iq->request_data;
                     Pthread_mutex_lock(&p_slock->req_lock);
                     if (p_slock->reply_state == REPLY_STATE_DISCARD) {
-                        pthread_mutex_unlock(&p_slock->req_lock);
+                        Pthread_mutex_unlock(&p_slock->req_lock);
                         cleanup_lock_buffer(p_slock);
                         free_bigbuf_nosignal(iq->p_buf_out_start);
                     } else {
@@ -388,7 +388,7 @@ int handle_ireq(struct ireq *iq)
                             iq->sb, iq->p_buf_out_start,
                             iq->p_buf_out - iq->p_buf_out_start, rc);
                         free_bigbuf(iq->p_buf_out_start, iq->request_data);
-                        pthread_mutex_unlock(&p_slock->req_lock);
+                        Pthread_mutex_unlock(&p_slock->req_lock);
                     }
                 }
                 iq->request_data = iq->p_buf_out_start = NULL;

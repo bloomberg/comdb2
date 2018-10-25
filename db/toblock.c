@@ -1269,10 +1269,10 @@ int tolongblock(struct ireq *iq)
         blklong_trans = hash_find(iq->dbenv->long_trn_table, &tranid);
 
         if (blklong_trans == NULL) {
-            pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+            Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
         } else {
             hash_del(iq->dbenv->long_trn_table, blklong_trans);
-            pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+            Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
             free(blklong_trans->trn_data);
             free(blklong_trans);
             blklong_trans = NULL;
@@ -1372,7 +1372,7 @@ int tolongblock(struct ireq *iq)
 
         Pthread_mutex_lock(&iq->dbenv->long_trn_mtx);
         blklong_trans = hash_find(iq->dbenv->long_trn_table, &tranid);
-        pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+        Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
 
         if (blklong_trans == NULL) {
             if (!hdr.docommit) {
@@ -1408,7 +1408,7 @@ int tolongblock(struct ireq *iq)
             Pthread_mutex_lock(&iq->dbenv->long_trn_mtx);
             if (blklong_trans->expseg < hdr.curpiece) {
                 hash_del(iq->dbenv->long_trn_table, blklong_trans);
-                pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+                Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
                 free(blklong_trans->trn_data);
                 free(blklong_trans);
                 blklong_trans = NULL;
@@ -1425,7 +1425,7 @@ int tolongblock(struct ireq *iq)
 
                 /* we already received that piece...just drop the packet */
                 memcpy(rsp.trnid, &blklong_trans->tranid, sizeof(int) * 2);
-                pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+                Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
                 rsp.rc = 0;
                 memset(rsp.reserved, 0, sizeof(rsp.reserved));
 
@@ -1464,7 +1464,7 @@ int tolongblock(struct ireq *iq)
                     /* we are still locked here UNLESS
                      * hdr.docommit&&check_auxdb */
                     if (!hdr.docommit || !check_auxdb)
-                        pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+                        Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
                     return ERR_INTERNAL;
                 }
             }
@@ -1479,7 +1479,7 @@ int tolongblock(struct ireq *iq)
                     /* we are still locked here UNLESS
                      * hdr.docommit&&check_auxdb */
                     if (!hdr.docommit || !check_auxdb)
-                        pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+                        Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
                     return ERR_INTERNAL;
                 }
                 gotsequence = 1;
@@ -1488,7 +1488,7 @@ int tolongblock(struct ireq *iq)
                     /* we are still locked here UNLESS
                      * hdr.docommit&&check_auxdb */
                     if (!hdr.docommit || !check_auxdb)
-                        pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+                        Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
                     return ERR_INTERNAL;
                 }
 
@@ -1505,7 +1505,7 @@ int tolongblock(struct ireq *iq)
                 if (!(iq->p_buf_in = packedreq_seq2_get(
                           &seq, iq->p_buf_in, blkstate.p_buf_next_start))) {
                     if (!hdr.docommit || !check_auxdb)
-                        pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+                        Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
                     return ERR_INTERNAL;
                 }
                 comdb2uuidcpy(blkseq_uuid, seq.seq);
@@ -1546,14 +1546,14 @@ int tolongblock(struct ireq *iq)
         {
             logmsg(LOGMSG_ERROR, "%s: blklong_trans==NULL unexpectedly!!\n",
                     __func__);
-            pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+            Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
             return ERR_INTERNAL;
         }
 
         /* allocation is done before grabbing long_trn_mtx */
         if (blklong_trans->trn_data == NULL) {
             hash_del(iq->dbenv->long_trn_table, blklong_trans);
-            pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+            Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
             free(blklong_trans->trn_data);
             free(blklong_trans);
             return ERR_INTERNAL;
@@ -1581,7 +1581,7 @@ int tolongblock(struct ireq *iq)
 
             /* we already received that piece...just drop the packet */
             memcpy(rsp.trnid, &blklong_trans->tranid, sizeof(int) * 2);
-            pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+            Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
             rsp.rc = 0;
             memset(rsp.reserved, 0, sizeof(rsp.reserved));
 
@@ -1606,7 +1606,7 @@ int tolongblock(struct ireq *iq)
             MEMORY_SYNC;
 
             hash_del(iq->dbenv->long_trn_table, blklong_trans);
-            pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+            Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
             free(blklong_trans);
 
             totpen = 0;
@@ -2271,7 +2271,7 @@ static int toblock_outer(struct ireq *iq, block_state_t *blkstate)
         if (iq->dbenv->prefault_helper.threads[i].seqnum == 0)
             iq->dbenv->prefault_helper.threads[i].seqnum = 1;
 
-        pthread_mutex_unlock(&(iq->dbenv->prefault_helper.mutex));
+        Pthread_mutex_unlock(&(iq->dbenv->prefault_helper.mutex));
     }
 
     javasp_trans_end(iq->jsph);
@@ -5842,7 +5842,7 @@ add_blkseq:
     Pthread_mutex_lock(&commit_stat_lk);
     n_commit_time += diff_time_micros;
     n_commits++;
-    pthread_mutex_unlock(&commit_stat_lk);
+    Pthread_mutex_unlock(&commit_stat_lk);
 
     /* Trigger JAVASP_TRANS_LISTEN_AFTER_COMMIT.  Doesn't really matter what
      * it does since the transaction is committed. */
@@ -5919,7 +5919,7 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
 
     prmax = blkmax;
 
-    pthread_mutex_unlock(&blklk);
+    Pthread_mutex_unlock(&blklk);
 
     if (prcnt && gbl_print_blockp_stats) {
         logmsg(LOGMSG_USER, "%d threads are in the block processor, max is %d\n",
@@ -5941,7 +5941,7 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
     Pthread_mutex_lock(&blklk);
     blkcnt--;
     block_processor_ms += (end - start);
-    pthread_mutex_unlock(&blklk);
+    Pthread_mutex_unlock(&blklk);
 
     if (prcnt && gbl_print_blockp_stats) {
         logmsg(LOGMSG_USER, "%lu total time spent in the block processor\n",

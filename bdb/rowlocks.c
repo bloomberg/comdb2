@@ -1748,7 +1748,7 @@ static int cancel_all_logical_transactions(bdb_state_type *bdb_state)
 
         free(ltrans);
     }
-    pthread_mutex_unlock(&bdb_state->translist_lk);
+    Pthread_mutex_unlock(&bdb_state->translist_lk);
     return 0;
 }
 
@@ -2073,7 +2073,7 @@ static inline tran_type *find_logical_transaction(bdb_state_type *bdb_state,
 
     Pthread_mutex_lock(&parent->translist_lk);
     ltrans = hash_find(parent->logical_transactions_hash, &ltranid);
-    pthread_mutex_unlock(&parent->translist_lk);
+    Pthread_mutex_unlock(&parent->translist_lk);
     if (ltrans == NULL) {
         ltrans = bdb_tran_continue_logical(bdb_state, ltranid, 0, &bdberr);
         if (ltrans == NULL) {
@@ -2124,7 +2124,7 @@ static int logical_release_transaction(bdb_state_type *bdb_state,
     Pthread_mutex_lock(&bdb_state->translist_lk);
     ltrans = hash_find(bdb_state->logical_transactions_hash, &ltranid);
     if (ltrans == NULL) {
-        pthread_mutex_unlock(&bdb_state->translist_lk);
+        Pthread_mutex_unlock(&bdb_state->translist_lk);
         logmsg(LOGMSG_DEBUG, 
                 "asked to release locks for an empty transaction %016llx?\n",
                 ltranid);
@@ -2155,7 +2155,7 @@ static int logical_release_transaction(bdb_state_type *bdb_state,
     lockerid = ltrans->logical_lid;
     ltrans->logical_lid = 0;
 
-    pthread_mutex_unlock(&bdb_state->translist_lk);
+    Pthread_mutex_unlock(&bdb_state->translist_lk);
 
     /* This shouldn't happen here */
     if (repcommit && ltrans->got_bdb_lock) {
@@ -2207,12 +2207,12 @@ static int release_locks_for_logical_transaction(bdb_state_type *bdb_state,
     Pthread_mutex_lock(&bdb_state->translist_lk);
     ltrans = hash_find(bdb_state->logical_transactions_hash, &ltranid);
     if (ltrans == NULL) {
-        pthread_mutex_unlock(&bdb_state->translist_lk);
+        Pthread_mutex_unlock(&bdb_state->translist_lk);
         logmsg(LOGMSG_DEBUG, "asked to release locks for an empty transaction %016llx?\n",
                 ltranid);
         return 0;
     }
-    pthread_mutex_unlock(&bdb_state->translist_lk);
+    Pthread_mutex_unlock(&bdb_state->translist_lk);
 
     rc = release_locks_for_logical_transaction_object(bdb_state, ltrans,
                                                       &bdberr);
@@ -2635,11 +2635,11 @@ void print_logical_commits_starts(FILE *f)
 #ifdef COUNT_REP_LTRANS
     Pthread_mutex_lock(&lstlk);
     lst = gbl_rep_count_logical_starts;
-    pthread_mutex_unlock(&lstlk);
+    Pthread_mutex_unlock(&lstlk);
 
     Pthread_mutex_lock(&lcmlk);
     lcm = gbl_rep_count_logical_commits;
-    pthread_mutex_unlock(&lcmlk);
+    Pthread_mutex_unlock(&lcmlk);
 
     logmsg(LOGMSG_USER, "%llu logical starts\n", lst);
     logmsg(LOGMSG_USER, "%llu logical commits\n", lcm);
@@ -2662,7 +2662,7 @@ int handle_commit(DB_ENV *dbenv, u_int32_t rectype,
 #ifdef COUNT_REP_LTRANS
     Pthread_mutex_lock(&lcmlk);
     gbl_rep_count_logical_commits++;
-    pthread_mutex_unlock(&lcmlk);
+    Pthread_mutex_unlock(&lcmlk);
 #endif
 
     /* don't do anything during berkeley recovery */
@@ -2751,7 +2751,7 @@ int handle_start(DB_ENV *dbenv, u_int32_t rectype, llog_ltran_start_args *args,
 #ifdef COUNT_REP_LTRANS
     Pthread_mutex_lock(&lstlk);
     gbl_rep_count_logical_starts++;
-    pthread_mutex_unlock(&lstlk);
+    Pthread_mutex_unlock(&lstlk);
 #endif
 
     bdb_state = dbenv->app_private;
@@ -3641,7 +3641,7 @@ int bdb_get_active_logical_transaction_lsns(bdb_state_type *bdb_state,
     lsns = malloc(sizeof(DB_LSN) * parent->logical_transactions_list.count);
     if (!lsns) {
         *numlsns = parent->logical_transactions_list.count;
-        pthread_mutex_unlock(&parent->translist_lk);
+        Pthread_mutex_unlock(&parent->translist_lk);
         if (*numlsns == 0)
             return 0;
         *bdberr = BDBERR_MALLOC;
@@ -3663,7 +3663,7 @@ int bdb_get_active_logical_transaction_lsns(bdb_state_type *bdb_state,
     }
     *numlsns = tran_num;
 
-    pthread_mutex_unlock(&parent->translist_lk);
+    Pthread_mutex_unlock(&parent->translist_lk);
     *lsnout = lsns;
     return 0;
 }

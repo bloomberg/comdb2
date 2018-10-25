@@ -1183,7 +1183,7 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                     listc_rfl(&rq_reqs, nextrq);
                 }
                 pool_relablk(pq_reqs, nextrq);
-                pthread_mutex_unlock(&lock);
+                Pthread_mutex_unlock(&lock);
                 nqfulls++;
                 reterr_withfree(iq, ERR_REJECTED);
             } else {
@@ -1207,10 +1207,10 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                     abort();
                 }
 
-                pthread_mutex_unlock(&lock);
+                Pthread_mutex_unlock(&lock);
             }
         } else {
-            pthread_mutex_unlock(&lock);
+            Pthread_mutex_unlock(&lock);
         }
     }
 

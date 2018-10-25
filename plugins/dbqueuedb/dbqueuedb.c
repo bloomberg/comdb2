@@ -418,7 +418,7 @@ skip:
                "failed (rc: %d)\n",
                rc);
     }
-    pthread_mutex_unlock(mu);
+    Pthread_mutex_unlock(mu);
 
     return genid;
 }
@@ -463,11 +463,11 @@ static void admin(struct dbenv *dbenv, int type)
 
     Pthread_mutex_lock(&dbqueuedb_admin_lk);
     if (dbqueuedb_admin_running) {
-        pthread_mutex_unlock(&dbqueuedb_admin_lk);
+        Pthread_mutex_unlock(&dbqueuedb_admin_lk);
         return;
     }
     dbqueuedb_admin_running = 1;
-    pthread_mutex_unlock(&dbqueuedb_admin_lk);
+    Pthread_mutex_unlock(&dbqueuedb_admin_lk);
 
     /* If we are master then make sure all the queues are running */
     if (iammaster && !dbenv->stopped && !dbenv->exiting) {
@@ -512,7 +512,7 @@ static void admin(struct dbenv *dbenv, int type)
 
     Pthread_mutex_lock(&dbqueuedb_admin_lk);
     dbqueuedb_admin_running = 0;
-    pthread_mutex_unlock(&dbqueuedb_admin_lk);
+    Pthread_mutex_unlock(&dbqueuedb_admin_lk);
 }
 
 static int stat_callback(int consumern, size_t length,
@@ -835,16 +835,16 @@ static void stop_consumer(struct consumer *consumer)
     Pthread_mutex_lock(&consumer->mutex);
     consumer->please_stop = 1;
     pthread_cond_signal(&consumer->cond);
-    pthread_mutex_unlock(&consumer->mutex);
+    Pthread_mutex_unlock(&consumer->mutex);
 
     Pthread_mutex_lock(&consumer->mutex);
     if (consumer->stopped) {
-        pthread_mutex_unlock(&consumer->mutex);
+        Pthread_mutex_unlock(&consumer->mutex);
         return;
     }
     while (!consumer->stopped) {
         pthread_cond_wait(&consumer->cond, &consumer->mutex);
-        pthread_mutex_unlock(&consumer->mutex);
+        Pthread_mutex_unlock(&consumer->mutex);
     }
 }
 
@@ -854,7 +854,7 @@ static void restart_consumer(struct consumer *consumer)
 {
     Pthread_mutex_lock(&consumer->mutex);
     consumer->stopped = 0;
-    pthread_mutex_unlock(&consumer->mutex);
+    Pthread_mutex_unlock(&consumer->mutex);
 }
 
 int stop_consumers(struct dbtable *db)

@@ -79,11 +79,11 @@ cron_sched_t *cron_add_event(cron_sched_t *sched, const char *name, int epoch,
 
     rc = _queue_event(sched, epoch, func, arg1, arg2, arg3, source_id, err);
     if (rc != VIEW_NOERR) {
-        pthread_mutex_unlock(&sched->mtx);
+        Pthread_mutex_unlock(&sched->mtx);
         goto error;
     }
 
-    pthread_mutex_unlock(&sched->mtx);
+    Pthread_mutex_unlock(&sched->mtx);
 
     return sched;
 
@@ -246,7 +246,7 @@ static void *_cron_runner(void *arg)
                    event to any other thread !!!
                    */
                 sched->running = 1;     
-                pthread_mutex_unlock(&sched->mtx);
+                Pthread_mutex_unlock(&sched->mtx);
                 event->func(event->source_id, event->arg1, event->arg2, event->arg3,
                             &xerr);
                 Pthread_mutex_lock(&sched->mtx);
@@ -278,12 +278,12 @@ static void *_cron_runner(void *arg)
             break;
         }
 
-        pthread_mutex_unlock(&sched->mtx);
+        Pthread_mutex_unlock(&sched->mtx);
         locked = 0;
     }
 
     if (locked) {
-        pthread_mutex_unlock(&sched->mtx);
+        Pthread_mutex_unlock(&sched->mtx);
     }
 
     logmsg(LOGMSG_DEBUG, "Exiting cron job for %s\n", sched->name);
@@ -300,7 +300,7 @@ void cron_signal_worker(cron_sched_t *sched)
 
     pthread_cond_signal(&sched->cond);
 
-    pthread_mutex_unlock(&sched->mtx);
+    Pthread_mutex_unlock(&sched->mtx);
 }
 
 /**
@@ -372,7 +372,7 @@ void cron_lock(cron_sched_t *sched)
 
 void cron_unlock(cron_sched_t *sched)
 {
-    pthread_mutex_unlock(&sched->mtx);
+    Pthread_mutex_unlock(&sched->mtx);
 }
 
 /**

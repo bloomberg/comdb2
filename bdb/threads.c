@@ -219,12 +219,12 @@ void *master_lease_thread(void *arg)
 
     Pthread_mutex_lock(&lk);
     if (have_master_lease_thread) {
-        pthread_mutex_unlock(&lk);
+        Pthread_mutex_unlock(&lk);
         return NULL;
     } else {
         have_master_lease_thread = 1;
         bdb_state->master_lease_thread = pthread_self();
-        pthread_mutex_unlock(&lk);
+        Pthread_mutex_unlock(&lk);
     }
 
     assert(!bdb_state->parent);
@@ -251,7 +251,7 @@ void *master_lease_thread(void *arg)
     Pthread_mutex_lock(&lk);
     have_master_lease_thread = 0;
     bdb_state->master_lease_thread = 0;
-    pthread_mutex_unlock(&lk);
+    Pthread_mutex_unlock(&lk);
     return NULL;
 }
 
@@ -268,12 +268,12 @@ void *coherency_lease_thread(void *arg)
 
     Pthread_mutex_lock(&lk);
     if (have_coherency_thread) {
-        pthread_mutex_unlock(&lk);
+        Pthread_mutex_unlock(&lk);
         return NULL;
     } else {
         have_coherency_thread = 1;
         bdb_state->coherency_lease_thread = pthread_self();
-        pthread_mutex_unlock(&lk);
+        Pthread_mutex_unlock(&lk);
     }
     assert(!bdb_state->parent);
     thread_started("bdb coherency lease");
@@ -330,7 +330,7 @@ void *coherency_lease_thread(void *arg)
     Pthread_mutex_lock(&lk);
     have_coherency_thread = 0;
     bdb_state->coherency_lease_thread = 0;
-    pthread_mutex_unlock(&lk);
+    Pthread_mutex_unlock(&lk);
     return NULL;
 }
 

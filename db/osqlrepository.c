@@ -397,7 +397,7 @@ void osql_set_cancelall(int disable)
     if (theosql) {
         Pthread_mutex_lock(&theosql->cancelall_mtx);
         theosql->cancelall = disable;
-        pthread_mutex_unlock(&theosql->cancelall_mtx);
+        Pthread_mutex_unlock(&theosql->cancelall_mtx);
 
         if (disable)
             osql_repository_cancelall();
@@ -471,7 +471,7 @@ int osql_repository_blkout_node(char *host)
     outrc = osql_comm_blkout_node(host);
 
     if ((rc = theosql_pthread_rwlock_unlock(&theosql->hshlck))) {
-        logmsg(LOGMSG_ERROR, "%s: pthread_mutex_unlock error %d\n", __func__, rc);
+        logmsg(LOGMSG_ERROR, "%s: Pthread_mutex_unlock error %d\n", __func__, rc);
         return -1;
     }
 
@@ -528,7 +528,7 @@ int osql_repository_terminatenode(char *host)
     }
 
     if ((rc = theosql_pthread_rwlock_unlock(&theosql->hshlck))) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
+        logmsg(LOGMSG_ERROR, "Pthread_mutex_unlock: error code %d\n", rc);
         return -1;
     }
 
@@ -559,7 +559,7 @@ int osql_repository_cancelled(void)
     Pthread_mutex_lock(&theosql->cancelall_mtx);
     if (theosql->cancelall)
         cancelall = 1;
-    pthread_mutex_unlock(&theosql->cancelall_mtx);
+    Pthread_mutex_unlock(&theosql->cancelall_mtx);
 
     return cancelall;
 }

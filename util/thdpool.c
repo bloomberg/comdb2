@@ -261,7 +261,7 @@ struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz)
     Pthread_mutex_lock(&pool_list_lk);
     pthread_once(&init_pool_list_once, init_pool_list);
     listc_abl(&threadpools, pool);
-    pthread_mutex_unlock(&pool_list_lk);
+    Pthread_mutex_unlock(&pool_list_lk);
 
     /* Register all tunables. */
     register_thdpool_tunables((char *)name, pool);
@@ -422,7 +422,7 @@ void thdpool_list_pools(void)
     logmsg(LOGMSG_USER, "thread pools:\n");
     Pthread_mutex_lock(&pool_list_lk);
     LISTC_FOR_EACH(&threadpools, pool, lnk) { logmsg(LOGMSG_USER, "  %s\n", pool->name); }
-    pthread_mutex_unlock(&pool_list_lk);
+    Pthread_mutex_unlock(&pool_list_lk);
 }
 
 void thdpool_command_to_all(char *line, int lline, int st)
@@ -433,7 +433,7 @@ void thdpool_command_to_all(char *line, int lline, int st)
     {
         thdpool_process_message(pool, line, lline, st);
     }
-    pthread_mutex_unlock(&pool_list_lk);
+    Pthread_mutex_unlock(&pool_list_lk);
 }
 
 void thdpool_process_message(struct thdpool *pool, char *line, int lline,

@@ -145,7 +145,7 @@ static int new_timer(int ms, int parm, int oneshot, int dolock)
         Pthread_mutex_lock(&timerlk);
     if (ntimers == MAXTIMERS) {
         if (dolock)
-            pthread_mutex_unlock(&timerlk);
+            Pthread_mutex_unlock(&timerlk);
         return -1;
     }
 
@@ -160,7 +160,7 @@ static int new_timer(int ms, int parm, int oneshot, int dolock)
 
     pthread_cond_signal(&timerwait);
     if (dolock)
-        pthread_mutex_unlock(&timerlk);
+        Pthread_mutex_unlock(&timerlk);
     return 0;
 }
 
@@ -183,12 +183,12 @@ int remove_timer(int parm, int dolock)
             if (dolock)
                 pthread_cond_signal(&timerwait);
             if (dolock)
-                pthread_mutex_unlock(&timerlk);
+                Pthread_mutex_unlock(&timerlk);
             return 0;
         }
     }
     if (dolock)
-        pthread_mutex_unlock(&timerlk);
+        Pthread_mutex_unlock(&timerlk);
     return -1;
 }
 
@@ -252,6 +252,6 @@ void *timer_thread(void *p)
             if (!oneshot)
                 new_timer(ms, waitft_parm.parm, 0, 0);
         }
-        pthread_mutex_unlock(&timerlk);
+        Pthread_mutex_unlock(&timerlk);
     }
 }

@@ -103,7 +103,7 @@ static int nodeix_global(const char *node)
     for (int i = 0; i < numnodes; i++) {
         if (nodes[i].node == node) {
             /* someone else inserted it, return the index */
-            pthread_mutex_unlock(&lk);
+            Pthread_mutex_unlock(&lk);
             return i;
         }
     }
@@ -117,7 +117,7 @@ static int nodeix_global(const char *node)
     nodes[numnodes].ix = numnodes;
     nodes[numnodes].ref = 0;
     numnodes++;
-    pthread_mutex_unlock(&lk);
+    Pthread_mutex_unlock(&lk);
 
     /* next search will add to local */
     // printf("added global %s->%d\n", node, numnodes-1);

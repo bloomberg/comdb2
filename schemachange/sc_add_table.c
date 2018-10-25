@@ -225,7 +225,7 @@ int do_add_table(struct ireq *iq, struct schema_change_type *s,
 
     Pthread_mutex_lock(&csc2_subsystem_mtx);
     rc = add_table_to_environment(s->tablename, s->newcsc2, s, iq, trans);
-    pthread_mutex_unlock(&csc2_subsystem_mtx);
+    Pthread_mutex_unlock(&csc2_subsystem_mtx);
     if (rc) {
         sc_errf(s, "error adding new table locally\n");
         return rc;

@@ -302,7 +302,7 @@ static void *sampling_thread(void *arg)
     Pthread_mutex_lock(&comp_thd_mutex);
     analyze_cur_comp_threads--;
     pthread_cond_broadcast(&comp_thd_cond);
-    pthread_mutex_unlock(&comp_thd_mutex);
+    Pthread_mutex_unlock(&comp_thd_mutex);
 
     /* cleanup */
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
@@ -325,7 +325,7 @@ static int dispatch_sample_index_thread(index_descriptor_t *ix_des)
     analyze_cur_comp_threads++;
 
     /* release */
-    pthread_mutex_unlock(&comp_thd_mutex);
+    Pthread_mutex_unlock(&comp_thd_mutex);
 
     /* dispatch */
     int rc = pthread_create(&ix_des->thread_id, &gbl_pthread_attr_detached,
@@ -348,7 +348,7 @@ static int wait_for_index(index_descriptor_t *ix_des)
     }
 
     /* release */
-    pthread_mutex_unlock(&comp_thd_mutex);
+    Pthread_mutex_unlock(&comp_thd_mutex);
 
     return 0;
 }
@@ -877,7 +877,7 @@ static void *table_thread(void *arg)
     Pthread_mutex_lock(&table_thd_mutex);
     analyze_cur_table_threads--;
     pthread_cond_broadcast(&table_thd_cond);
-    pthread_mutex_unlock(&table_thd_mutex);
+    Pthread_mutex_unlock(&table_thd_mutex);
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
 
     thread_memdestroy();
@@ -902,7 +902,7 @@ static int dispatch_table_thread(table_descriptor_t *td)
     analyze_cur_table_threads++;
 
     /* release */
-    pthread_mutex_unlock(&table_thd_mutex);
+    Pthread_mutex_unlock(&table_thd_mutex);
 
     /* dispatch */
     rc = pthread_create(&td->thread_id, &gbl_pthread_attr_detached,
@@ -925,7 +925,7 @@ static int wait_for_table(table_descriptor_t *td)
     }
 
     /* release */
-    pthread_mutex_unlock(&table_thd_mutex);
+    Pthread_mutex_unlock(&table_thd_mutex);
 
     int rc = 0;
     if (TABLE_COMPLETE == td->table_state) {

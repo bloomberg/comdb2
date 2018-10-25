@@ -698,7 +698,7 @@ __txn_count_ltrans(dbenv, count)
 {
 	Pthread_mutex_lock(&dbenv->ltrans_active_lk);
 	*count = listc_size(&dbenv->active_ltrans);
-	pthread_mutex_unlock(&dbenv->ltrans_active_lk);
+	Pthread_mutex_unlock(&dbenv->ltrans_active_lk);
 	return 0;
 }
 
@@ -716,7 +716,7 @@ __txn_ltrans_find_lowest_lsn(dbenv, lsnp)
 		if (IS_ZERO_LSN(*lsnp) || log_compare(&lt->begin_lsn, lsnp) < 0)
 			(*lsnp) = lt->begin_lsn;
 	}
-	pthread_mutex_unlock(&dbenv->ltrans_active_lk);
+	Pthread_mutex_unlock(&dbenv->ltrans_active_lk);
 
 	return (0);
 }
@@ -733,7 +733,7 @@ __txn_allocate_ltrans(dbenv, ltranid, begin_lsn, rlt)
 
 	Pthread_mutex_lock(&dbenv->ltrans_inactive_lk);
 	lt = listc_rtl(&dbenv->inactive_ltrans);
-	pthread_mutex_unlock(&dbenv->ltrans_inactive_lk);
+	Pthread_mutex_unlock(&dbenv->ltrans_inactive_lk);
 
 	if (!lt) {
 		if ((ret = __os_calloc(dbenv, 1, sizeof(LTDESC), &lt)) != 0)
@@ -752,11 +752,11 @@ __txn_allocate_ltrans(dbenv, ltranid, begin_lsn, rlt)
 	assert(!(hflt = hash_find(dbenv->ltrans_hash, lt)));
 #endif
 	hash_add(dbenv->ltrans_hash, lt);
-	pthread_mutex_unlock(&dbenv->ltrans_hash_lk);
+	Pthread_mutex_unlock(&dbenv->ltrans_hash_lk);
 
 	Pthread_mutex_lock(&dbenv->ltrans_active_lk);
 	listc_abl(&dbenv->active_ltrans, lt);
-	pthread_mutex_unlock(&dbenv->ltrans_active_lk);
+	Pthread_mutex_unlock(&dbenv->ltrans_active_lk);
 
 #ifdef LTRANS_DEBUG
 	__txn_track_stack_info(&lt->allocate_info);
@@ -797,7 +797,7 @@ __txn_get_ltran_list(dbenv, rlist, rcount)
 	*rcount = count;
 
 err:
-	pthread_mutex_unlock(&dbenv->ltrans_active_lk);
+	Pthread_mutex_unlock(&dbenv->ltrans_active_lk);
 	return (ret);
 }
 
@@ -812,7 +812,7 @@ __txn_find_ltrans(dbenv, ltranid, rlt)
 
 	Pthread_mutex_lock(&dbenv->ltrans_hash_lk);
 	lt = hash_find(dbenv->ltrans_hash, &ltranid);
-	pthread_mutex_unlock(&dbenv->ltrans_hash_lk);
+	Pthread_mutex_unlock(&dbenv->ltrans_hash_lk);
 	(*rlt) = lt;
 	return (lt) ? 0 : -1;
 }
@@ -834,15 +834,15 @@ __txn_deallocate_ltrans(dbenv, lt)
 	assert(hflt = hash_find(dbenv->ltrans_hash, lt));
 #endif
 	hash_del(dbenv->ltrans_hash, lt);
-	pthread_mutex_unlock(&dbenv->ltrans_hash_lk);
+	Pthread_mutex_unlock(&dbenv->ltrans_hash_lk);
 
 	Pthread_mutex_lock(&dbenv->ltrans_active_lk);
 	listc_rfl(&dbenv->active_ltrans, lt);
-	pthread_mutex_unlock(&dbenv->ltrans_active_lk);
+	Pthread_mutex_unlock(&dbenv->ltrans_active_lk);
 
 	Pthread_mutex_lock(&dbenv->ltrans_inactive_lk);
 	listc_abl(&dbenv->inactive_ltrans, lt);
-	pthread_mutex_unlock(&dbenv->ltrans_inactive_lk);
+	Pthread_mutex_unlock(&dbenv->ltrans_inactive_lk);
 }
 extern int gbl_new_snapisol;
 extern int gbl_new_snapisol_logging;

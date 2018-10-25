@@ -408,7 +408,7 @@ static void __fdb_add_user(fdb_t *fdb)
                fdb->dbname, fdb->users);
 
     assert(fdb->users > 0);
-    pthread_mutex_unlock(&fdb->users_mtx);
+    Pthread_mutex_unlock(&fdb->users_mtx);
 }
 
 /**
@@ -425,7 +425,7 @@ static void __fdb_rem_user(fdb_t *fdb)
                fdb->dbname, fdb->users);
 
     assert(fdb->users >= 0);
-    pthread_mutex_unlock(&fdb->users_mtx);
+    Pthread_mutex_unlock(&fdb->users_mtx);
 }
 
 /**
@@ -550,7 +550,7 @@ static void destroy_fdb(fdb_t *fdb)
         __cache_unlink_fdb(fdb);
         __free_fdb(fdb);
     } else {
-        pthread_mutex_unlock(&fdb->users_mtx);
+        Pthread_mutex_unlock(&fdb->users_mtx);
     }
 
     pthread_rwlock_unlock(&fdbs.arr_lock);
@@ -1280,7 +1280,7 @@ retry_fdb_creation:
     if (!local) {
         Pthread_mutex_lock(&fdb->dbcon_mtx);
         rc = fdb_locate(fdb->dbname, fdb->class, 0, &fdb->loc);
-        pthread_mutex_unlock(&fdb->dbcon_mtx);
+        Pthread_mutex_unlock(&fdb->dbcon_mtx);
         if (rc != FDB_NOERR) {
             switch (rc) {
             case FDB_ERR_CLASS_UNKNOWN:
@@ -1939,7 +1939,7 @@ search:
         assert(pCur->crt_sqlite_master_row);
     } else {
         if (!pCur->crt_sqlite_master_row->lnk.next) {
-            pthread_mutex_unlock(&tbl->ents_mtx);
+            Pthread_mutex_unlock(&tbl->ents_mtx);
 
             switch (step) {
             case 0:
@@ -1962,7 +1962,7 @@ search:
         return SQLITE_OK;
     }
 
-    pthread_mutex_unlock(&tbl->ents_mtx);
+    Pthread_mutex_unlock(&tbl->ents_mtx);
 
     *pRes = 0;
 
@@ -2055,7 +2055,7 @@ Schema *fdb_sqlite_get_schema(Btree *pBt, int nbytes)
     {
        fdb->schema = (Schema*)calloc(1, nbytes);
     }
-    pthread_mutex_unlock(&fdb->dbcon_mtx);
+    Pthread_mutex_unlock(&fdb->dbcon_mtx);
 
     return fdb->schema;
     */
@@ -2956,7 +2956,7 @@ static int fdb_cursor_reopen(BtCursor *pCur)
 
 done:
     if (tran)
-        pthread_mutex_unlock(&clnt->dtran_mtx);
+        Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     return rc;
 }
@@ -3383,7 +3383,7 @@ fdb_sqlstat_cache_t *fdb_sqlstats_get(fdb_t *fdb)
     return fdb->sqlstats;
 }
 
-void fdb_sqlstats_put(fdb_t *fdb) { pthread_mutex_unlock(&fdb->sqlstats_mtx); }
+void fdb_sqlstats_put(fdb_t *fdb) { Pthread_mutex_unlock(&fdb->sqlstats_mtx); }
 
 static int fdb_cursor_set_sql(BtCursor *pCur, const char *sql)
 {
@@ -3833,7 +3833,7 @@ fdb_tran_t *fdb_trans_begin_or_join(struct sqlclntstate *clnt, fdb_t *fdb,
             *(unsigned long long *)ptid = *(unsigned long long *)tran->tid;
     }
 
-    pthread_mutex_unlock(&clnt->dtran_mtx);
+    Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     return tran;
 }
@@ -3947,7 +3947,7 @@ int fdb_trans_commit(struct sqlclntstate *clnt)
     free(clnt->dbtran.dtran);
     clnt->dbtran.dtran = NULL;
 
-    pthread_mutex_unlock(&clnt->dtran_mtx);
+    Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     free(msg);
 
@@ -4015,7 +4015,7 @@ int fdb_trans_rollback(struct sqlclntstate *clnt, fdb_tran_t *trans)
     free(clnt->dbtran.dtran);
     clnt->dbtran.dtran = NULL;
 
-    pthread_mutex_unlock(&clnt->dtran_mtx);
+    Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     free(msg);
 
@@ -4688,7 +4688,7 @@ int fdb_heartbeats(struct sqlclntstate *clnt)
             out_rc = rc;
     }
 
-    pthread_mutex_unlock(&clnt->dtran_mtx);
+    Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     free(msg);
 

@@ -409,7 +409,7 @@ __latch_dump_region_int(dbenv, fp)
 			__dump_lid_latches(dbenv, lid, fp);
 			lid = lid->next;
 		}
-		pthread_mutex_unlock(&(lockerid_latches[idx].lock));
+		Pthread_mutex_unlock(&(lockerid_latches[idx].lock));
 	}
 	return 0;
 }

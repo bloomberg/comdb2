@@ -190,14 +190,14 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
         if (running && table &&
             (sctbl = hash_find_readonly(sc_tables, &table)) != NULL &&
             sctbl->seed != seed) {
-            pthread_mutex_unlock(&schema_change_in_progress_mutex);
+            Pthread_mutex_unlock(&schema_change_in_progress_mutex);
             logmsg(LOGMSG_INFO,
                    "schema change for table %s already in progress\n", table);
             return -1;
         } else if (!running && table &&
                    (sctbl = hash_find_readonly(sc_tables, &table)) != NULL &&
                    seed && sctbl->seed != seed) {
-            pthread_mutex_unlock(&schema_change_in_progress_mutex);
+            Pthread_mutex_unlock(&schema_change_in_progress_mutex);
             logmsg(LOGMSG_ERROR,
                    "cannot stop schema change for table %s: wrong seed given\n",
                    table);
@@ -207,7 +207,7 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
     if (running) {
         /* this is an osql replay of a resuming schema change */
         if (sctbl) {
-            pthread_mutex_unlock(&schema_change_in_progress_mutex);
+            Pthread_mutex_unlock(&schema_change_in_progress_mutex);
             return 0;
         }
         if (table) {
@@ -247,7 +247,7 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
            "gbl_schema_change_in_progress %d\n",
            table, running, (unsigned long long)seed,
            gbl_schema_change_in_progress);
-    pthread_mutex_unlock(&schema_change_in_progress_mutex);
+    Pthread_mutex_unlock(&schema_change_in_progress_mutex);
     return 0;
 }
 
@@ -290,7 +290,7 @@ void sc_status(struct dbenv *dbenv)
     if (!gbl_schema_change_in_progress) {
         logmsg(LOGMSG_USER, "schema change running   NO\n");
     }
-    pthread_mutex_unlock(&schema_change_in_progress_mutex);
+    Pthread_mutex_unlock(&schema_change_in_progress_mutex);
 }
 
 void reset_sc_stat()

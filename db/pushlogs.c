@@ -75,7 +75,7 @@ static void *pushlogs_thread(void *voidarg)
             logmsg(LOGMSG_ERROR, "pushlogs_thread: error getting seqnum\n");
             Pthread_mutex_lock(&mutex);
             have_thread = 0;
-            pthread_mutex_unlock(&mutex);
+            Pthread_mutex_unlock(&mutex);
             break;
         }
 
@@ -100,14 +100,14 @@ static void *pushlogs_thread(void *voidarg)
             have_thread = 0;
             done = 1;
         }
-        pthread_mutex_unlock(&mutex);
+        Pthread_mutex_unlock(&mutex);
         if (done)
             break;
 
         Pthread_mutex_lock(&schema_change_in_progress_mutex);
 
         if (gbl_schema_change_in_progress) {
-            pthread_mutex_unlock(&schema_change_in_progress_mutex);
+            Pthread_mutex_unlock(&schema_change_in_progress_mutex);
             sleep(1);
             continue;
         }
@@ -119,30 +119,30 @@ static void *pushlogs_thread(void *voidarg)
         rc = trans_start(&iq, NULL, &trans);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "pushlogs_thread: cannot create transaction\n");
-            pthread_mutex_unlock(&schema_change_in_progress_mutex);
+            Pthread_mutex_unlock(&schema_change_in_progress_mutex);
             Pthread_mutex_lock(&mutex);
             have_thread = 0;
-            pthread_mutex_unlock(&mutex);
+            Pthread_mutex_unlock(&mutex);
             break;
         }
         rc = put_csc2_stuff(db, trans, junk, sizeof(junk));
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "pushlogs_thread: error %d adding to meta table\n",
                     rc);
-            pthread_mutex_unlock(&schema_change_in_progress_mutex);
+            Pthread_mutex_unlock(&schema_change_in_progress_mutex);
             trans_abort(&iq, trans);
             Pthread_mutex_lock(&mutex);
             have_thread = 0;
-            pthread_mutex_unlock(&mutex);
+            Pthread_mutex_unlock(&mutex);
             break;
         }
-        pthread_mutex_unlock(&schema_change_in_progress_mutex);
+        Pthread_mutex_unlock(&schema_change_in_progress_mutex);
         rc = trans_commit(&iq, trans, gbl_mynode);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "pushlogs_thread: cannot commit txn %d\n", rc);
             Pthread_mutex_lock(&mutex);
             have_thread = 0;
-            pthread_mutex_unlock(&mutex);
+            Pthread_mutex_unlock(&mutex);
             break;
         }
         nwrites++;
@@ -178,7 +178,7 @@ void set_target_lsn(uint32_t logfile, uint32_t logbyte)
             have_thread = 1;
         }
     }
-    pthread_mutex_unlock(&mutex);
+    Pthread_mutex_unlock(&mutex);
 }
 
 void push_next_log(void)

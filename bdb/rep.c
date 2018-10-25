@@ -641,7 +641,7 @@ static inline int is_incoherent_complete(bdb_state_type *bdb_state,
 
     Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
     state = bdb_state->coherent_state[nodeix(host)];
-    pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+    Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 
     /* STATE_COHERENT and STATE_INCOHERENT_LOCAL return COHERENT. */
     if (state == STATE_INCOHERENT || state == STATE_INCOHERENT_SLOW)
@@ -1597,11 +1597,11 @@ void *rep_catchup_add_thread(void *arg)
     static int rep_catchup_add_running = 0;
     Pthread_mutex_lock(&lk);
     if (rep_catchup_add_running) {
-        pthread_mutex_unlock(&lk);
+        Pthread_mutex_unlock(&lk);
         return NULL;
     }
     rep_catchup_add_running = 1;
-    pthread_mutex_unlock(&lk);
+    Pthread_mutex_unlock(&lk);
     bdb_state_type *bdb_state = arg;
     thread_started("rep_catchup_add");
     bdb_thread_event(bdb_state, 1);
@@ -1609,7 +1609,7 @@ void *rep_catchup_add_thread(void *arg)
     bdb_thread_event(bdb_state, 0);
     Pthread_mutex_lock(&lk);
     rep_catchup_add_running = 0;
-    pthread_mutex_unlock(&lk);
+    Pthread_mutex_unlock(&lk);
     return NULL;
 }
 
@@ -1797,7 +1797,7 @@ void net_newnode_rtn(netinfo_type *netinfo_ptr, char *hostname, int portnum)
 
         set_coherent_state(bdb_state, hostname, STATE_INCOHERENT_WAIT, __func__,
                            __LINE__);
-        pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+        Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 
         /* Colease thread will do this */
         if (!bdb_state->attr->coherency_lease) {
@@ -2002,7 +2002,7 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host)
 
         /* hostdown can defer commits */
         bdb_state->last_downgrade_time[nodeix(host)] = gettimeofday_ms();
-        pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+        Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
         trigger_unregister_node(host);
     } 
     /*BDB_RELLOCK();*/
@@ -2024,7 +2024,7 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host)
 
     Pthread_mutex_lock(&bdb_state->pending_broadcast_lock);
     bdb_state->pending_seqnum_broadcast = 1;
-    pthread_mutex_unlock(&bdb_state->pending_broadcast_lock);
+    Pthread_mutex_unlock(&bdb_state->pending_broadcast_lock);
 
     hostdown_buf = malloc(sizeof(hostdown_type));
     hostdown_buf->bdb_state = bdb_state;
@@ -2060,7 +2060,7 @@ void bdb_all_incoherent(bdb_state_type *bdb_state)
     set_coherent_state(bdb_state, bdb_state->repinfo->myhost, STATE_COHERENT,
                        __func__, __LINE__);
 
-    pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+    Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 }
 
 int bdb_get_num_notcoherent(bdb_state_type *bdb_state)
@@ -2236,7 +2236,7 @@ static void calculate_durable_lsn(bdb_state_type *bdb_state, DB_LSN *dlsn,
             index++;
         }
     }
-    pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+    Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
 
     qsort(nodelsns, index, sizeof(DB_LSN), lsncmp);
 
@@ -2298,7 +2298,7 @@ int verify_master_leases_int(bdb_state_type *bdb_state, const char **comlist,
         if (ctime < bdb_state->master_lease[nodeix(comlist[i])])
             current_leases++;
     }
-    pthread_mutex_unlock(&(bdb_state->master_lease_lk));
+    Pthread_mutex_unlock(&(bdb_state->master_lease_lk));
 
     if (current_leases >= ((total_nodes / 2) + 1)) {
         if (verify_trace && (last_rc == 0 || (now = time(NULL)) != lastpr)) {
@@ -2408,7 +2408,7 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                 lease_time = issue_time + seqnum->lease_ms;
             Pthread_mutex_lock(&(bdb_state->master_lease_lk));
             bdb_state->master_lease[nodeix(host)] = lease_time;
-            pthread_mutex_unlock(&(bdb_state->master_lease_lk));
+            Pthread_mutex_unlock(&(bdb_state->master_lease_lk));
 
             if (bdb_state->attr->master_lease_set_trace && (now = time(NULL)) > lastpr)
             {
@@ -2442,10 +2442,10 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                 set_coherent_state(bdb_state, host, STATE_INCOHERENT, __func__,
                                    __LINE__);
             }
-            pthread_mutex_unlock(&bdb_state->coherent_state_lock);
+            Pthread_mutex_unlock(&bdb_state->coherent_state_lock);
             last_slow_node_check_time = comdb2_time_epochms();
         }
-        pthread_mutex_unlock(&slow_node_check_lk);
+        Pthread_mutex_unlock(&slow_node_check_lk);
     }
 
     bzero(&zero_seq, sizeof(seqnum_type));
@@ -2619,7 +2619,7 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
         }
     }
 
-    pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+    Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 }
 
 /* returns -999 on timeout */
@@ -2773,7 +2773,7 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
                 }
             }
         }
-        pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+        Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
     }
 
     if (print_message) {
@@ -2809,7 +2809,7 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
                 set_coherent_state(bdb_state, host, STATE_INCOHERENT, __func__,
                                    __LINE__);
             }
-            pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+            Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
             if (print_message)
                 logmsg(LOGMSG_USER, "replication time for %s (%.2fms) is within "
                                 "bounds of second-worst node %s (%.2fms)\n",
@@ -2872,7 +2872,7 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
     /* dont wait if it's in a skipped state */
     Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
     if ((coherent_state = bdb_state->coherent_state[nodeix(host)]) == STATE_INCOHERENT) {
-        pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+        Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
         if (bdb_state->attr->wait_for_seqnum_trace) {
             logmsg(LOGMSG_USER, PR_LSN " %s is incoherent, not waiting\n",
                    PARM_LSN(seqnum->lsn), host);
@@ -2880,7 +2880,7 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
         return 1;
     }
 
-    pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+    Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 
     /* node is rtcpued off:  we may need to make the node incoherent */
     if (node_is_rtcpu) {
@@ -2896,7 +2896,7 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
                 bdb_state->repinfo->skipsinceepoch = comdb2_time_epoch();
         }
 
-        pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+        Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 
         if (bdb_state->attr->wait_for_seqnum_trace) {
             logmsg(LOGMSG_USER, PR_LSN " %s became incoherent, not waiting\n",
@@ -3194,7 +3194,7 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
                     do_slow_node_check = 1;
                 }
             }
-            pthread_mutex_unlock(&slow_node_check_lk);
+            Pthread_mutex_unlock(&slow_node_check_lk);
 
             /* do the slow replicant check - only if we need to ... */
             if (do_slow_node_check &&
@@ -3448,7 +3448,7 @@ done_wait:
                             __func__, __LINE__);
                     abort();
                 }
-                pthread_mutex_unlock(&bdb_state->durable_lsn_lk);
+                Pthread_mutex_unlock(&bdb_state->durable_lsn_lk);
                 durable_count++;
                 was_durable = 1;
             }
@@ -3816,7 +3816,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
         if (bdb_get_rep_master(bdb_state, &master, &gen, &egen) != 0) {
             abort();
         }
-        pthread_mutex_unlock(&vote2_lock);
+        Pthread_mutex_unlock(&vote2_lock);
     }
 
     /*

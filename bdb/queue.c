@@ -1223,7 +1223,7 @@ static void lost_consumers_alarm(bdb_state_type *bdb_state,
         bdb_state->qpriv->last_orphaned_consumers_alarm = now;
     }
 
-    pthread_mutex_unlock(&mutex);
+    Pthread_mutex_unlock(&mutex);
 }
 
 static int bdb_queue_get_int(bdb_state_type *bdb_state, int consumer,

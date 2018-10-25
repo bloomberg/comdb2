@@ -1306,7 +1306,7 @@ comdb2_tunable_err handle_runtime_tunable(const char *name, const char *value)
 
     Pthread_mutex_lock(&gbl_tunables->mu);
     ret = update_tunable(t, value);
-    pthread_mutex_unlock(&gbl_tunables->mu);
+    Pthread_mutex_unlock(&gbl_tunables->mu);
 
     return ret;
 }

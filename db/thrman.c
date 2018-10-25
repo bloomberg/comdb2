@@ -180,7 +180,7 @@ struct thr_handle *thrman_register(enum thrtype type)
        logmsg(LOGMSG_ERROR, "thrman_register: %s\n", thrman_describe(thr, buf, sizeof(buf)));
     }
     pthread_cond_broadcast(&cond);
-    pthread_mutex_unlock(&mutex);
+    Pthread_mutex_unlock(&mutex);
 
     return thr;
 }
@@ -218,7 +218,7 @@ void thrman_change_type(struct thr_handle *thr, enum thrtype newtype)
                thrman_describe(thr, buf, sizeof(buf)));
     }
     pthread_cond_broadcast(&cond);
-    pthread_mutex_unlock(&mutex);
+    Pthread_mutex_unlock(&mutex);
 }
 
 /* Called from the thrman_key destructor when the thread exits, or manually
@@ -242,7 +242,7 @@ static void thrman_destructor(void *param)
                thrman_describe(thr, buf, sizeof(buf)));
     }
     pthread_cond_broadcast(&cond);
-    pthread_mutex_unlock(&mutex);
+    Pthread_mutex_unlock(&mutex);
 
     if (thr->reqlogger) {
         reqlog_free(thr->reqlogger);
@@ -449,7 +449,7 @@ void thrman_dump(void)
 {
     Pthread_mutex_lock(&mutex);
     thrman_dump_ll();
-    pthread_mutex_unlock(&mutex);
+    Pthread_mutex_unlock(&mutex);
 }
 
 /* stop sql connections.  this is needed to stop blocked
@@ -467,7 +467,7 @@ void thrman_stop_sql_connections(void)
             thr->type == THRTYPE_APPSOCK_SQL)
             shutdown(thr->fd, 0);
     }
-    pthread_mutex_unlock(&mutex);
+    Pthread_mutex_unlock(&mutex);
 }
 
 /* See if all threads are gone (or all but myself) */
@@ -546,7 +546,7 @@ static void thrman_wait(const char *descr, int (*check_fn_ll)(void *),
             perror_errnum("thrman_coalesce:pthread_cond_timedwait", rc);
         }
     }
-    pthread_mutex_unlock(&mutex);
+    Pthread_mutex_unlock(&mutex);
 }
 
 /* Stop all database threads.  Different thread types get stopped in different
@@ -629,7 +629,7 @@ int thrman_count_type(enum thrtype type)
     if (type >= 0 && type < THRTYPE_MAX) {
         Pthread_mutex_lock(&mutex);
         count = thr_type_counts[type];
-        pthread_mutex_unlock(&mutex);
+        Pthread_mutex_unlock(&mutex);
     }
     return count;
 }

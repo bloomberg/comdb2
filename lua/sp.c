@@ -441,7 +441,7 @@ static void luabb_trigger_unregister(dbconsumer_t *q)
     if (q->lock) {
         Pthread_mutex_lock(q->lock);
         bdb_trigger_unsubscribe(q->iq.usedb->handle);
-        pthread_mutex_unlock(q->lock);
+        Pthread_mutex_unlock(q->lock);
     }
     int rc;
     int retry = 10;
@@ -663,7 +663,7 @@ static int dbq_poll_int(Lua L, dbconsumer_t *q)
 {
     struct qfound f = {0};
     int rc = dbq_get(&q->iq, 0, NULL, (void**)&f.item, &f.len, &f.dtaoff, NULL, NULL);
-    pthread_mutex_unlock(q->lock);
+    Pthread_mutex_unlock(q->lock);
     getsp(L)->num_instructions = 0;
     if (rc == 0) {
         return dbq_pushargs(L, q, &f);
@@ -686,7 +686,7 @@ static int dbq_poll(Lua L, dbconsumer_t *q, int delay)
 again:  if (*q->open) {
             rc = dbq_poll_int(L, q); // call will release q->lock
         } else {
-            pthread_mutex_unlock(q->lock);
+            Pthread_mutex_unlock(q->lock);
             rc = -2;
         }
         if (rc == 1) {
@@ -704,7 +704,7 @@ again:  if (*q->open) {
             // was woken up -- try getting from queue
             goto again;
         }
-        pthread_mutex_unlock(q->lock);
+        Pthread_mutex_unlock(q->lock);
         delay -= dbq_delay;
         if (delay < 0) {
             return 0;
@@ -1371,7 +1371,7 @@ static int get_remote_input(lua_State *lua, char *buffer, size_t sz)
     }
     Pthread_mutex_lock(&lua_debug_mutex);
     int rc = read_response(clnt, RESPONSE_SP_CMD, buffer, sz);
-    pthread_mutex_unlock(&lua_debug_mutex);
+    Pthread_mutex_unlock(&lua_debug_mutex);
     return rc;
 }
 
@@ -1388,14 +1388,14 @@ void *read_client_socket(void *in)
     rc = sbuf2fread(info->buffer, 250, 1, clnt->sb);
     if (rc && (strncmp(info->buffer, "HALT", 4) == 0)) {
         gbl_break_lua = info->thread_id;
-        pthread_mutex_unlock(&lua_debug_mutex);
+        Pthread_mutex_unlock(&lua_debug_mutex);
     } else if (rc) {
         info->has_buffer = 1;
         info_buf = *info;
-        pthread_mutex_unlock(&lua_debug_mutex);
+        Pthread_mutex_unlock(&lua_debug_mutex);
     } else {
         clnt->sb = NULL;
-        pthread_mutex_unlock(&lua_debug_mutex);
+        Pthread_mutex_unlock(&lua_debug_mutex);
     }
     /* Socket is disconnected now. */
     free(info);
@@ -2995,7 +2995,7 @@ static int dbthread_join(Lua lua1)
         ts.tv_sec += 1;
         pthread_cond_timedwait(&lt->lua_thread_cond, mtx, &ts);
     }
-    pthread_mutex_unlock(mtx);
+    Pthread_mutex_unlock(mtx);
 
     Lua lua2 = lt->lua;
     SP sp = lt->sp;
@@ -3673,7 +3673,7 @@ static int db_column_name(Lua L)
     }
     Pthread_mutex_lock(parent->emit_mutex);
     if (parent_clnt->osql.sent_column_data) {
-        pthread_mutex_unlock(parent->emit_mutex);
+        Pthread_mutex_unlock(parent->emit_mutex);
         free(name);
         return luaL_error(L, "attempt to change column name");
     }
@@ -3684,7 +3684,7 @@ static int db_column_name(Lua L)
         parent->clntname[index] = NULL;
     }
     parent->clntname[index] = name;
-    pthread_mutex_unlock(parent->emit_mutex);
+    Pthread_mutex_unlock(parent->emit_mutex);
     lua_pushinteger(L, 0);
     return 1;
 }
@@ -3735,13 +3735,13 @@ static int db_column_type(Lua L)
     free(name);
     Pthread_mutex_lock(parent->emit_mutex);
     if (parent_clnt->osql.sent_column_data) {
-        pthread_mutex_unlock(parent->emit_mutex);
+        Pthread_mutex_unlock(parent->emit_mutex);
         return luaL_error(L, "attempt to change column type");
     }
     new_col_info(sp, index);
     --index;
     parent->clnttype[index] = clnttype;
-    pthread_mutex_unlock(parent->emit_mutex);
+    Pthread_mutex_unlock(parent->emit_mutex);
     lua_pushinteger(L, 0);
     return 1;
 }
@@ -3759,7 +3759,7 @@ static int db_num_columns(Lua L)
     }
     Pthread_mutex_lock(parent->emit_mutex);
     if (parent_clnt->osql.sent_column_data) {
-        pthread_mutex_unlock(parent->emit_mutex);
+        Pthread_mutex_unlock(parent->emit_mutex);
         return luaL_error(L, "attempt to change number of columns");
     }
     int num_cols = lua_tonumber(L, 2);
@@ -3772,7 +3772,7 @@ static int db_num_columns(Lua L)
     } else {
         new_col_info(sp, num_cols);
     }
-    pthread_mutex_unlock(parent->emit_mutex);
+    Pthread_mutex_unlock(parent->emit_mutex);
     lua_pushinteger(L, 0);
     return 1;
 }
@@ -4829,7 +4829,7 @@ static int l_send_back_row(Lua lua, sqlite3_stmt *stmt, int nargs)
             rc = write_response(clnt, RESPONSE_COLUMNS_LUA, &arg, 0);
             clnt->osql.sent_column_data = 1;
         }
-        pthread_mutex_unlock(sp->emit_mutex);
+        Pthread_mutex_unlock(sp->emit_mutex);
         if (rc) return rc;
     }
     int type = stmt ? RESPONSE_ROW : RESPONSE_ROW_LUA;
@@ -5131,26 +5131,26 @@ wait_here:
     pthread_cond_broadcast(&lua_debug_cond); /* 1 debugger at a time. */
     Pthread_mutex_lock(&lua_debug_mutex);
     pthread_cond_wait(&lua_debug_cond, &lua_debug_mutex);
-    pthread_mutex_unlock(&lua_debug_mutex);
+    Pthread_mutex_unlock(&lua_debug_mutex);
 do_continue:
     logmsg(LOGMSG_USER, "CoNtInUe \n");
     info_buf.has_buffer = 0;
     Pthread_mutex_lock(&lua_debug_mutex);
     int rc = sbuf2fread(info_buf.buffer, 250, 1, clnt->sb);
     if (rc && (strncmp(info_buf.buffer, "HALT", 4) == 0)) {
-        pthread_mutex_unlock(&lua_debug_mutex);
+        Pthread_mutex_unlock(&lua_debug_mutex);
         goto halt_here;
     } else if (rc) {
         info_buf.has_buffer = 1;
         if ((strncmp(info_buf.buffer, "cont", 4) == 0)) {
-            pthread_mutex_unlock(&lua_debug_mutex);
+            Pthread_mutex_unlock(&lua_debug_mutex);
             goto do_continue;
         }
         logmsg(LOGMSG_USER, "This was not continue \n");
-        pthread_mutex_unlock(&lua_debug_mutex);
+        Pthread_mutex_unlock(&lua_debug_mutex);
         goto wait_here;
     } else {
-        pthread_mutex_unlock(&lua_debug_mutex);
+        Pthread_mutex_unlock(&lua_debug_mutex);
     }
 
     if (debug_clnt == clnt) {

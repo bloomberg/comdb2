@@ -267,5 +267,5 @@ __txn_dump_ltrans(dbenv, f, flags)
 	LISTC_FOR_EACH_SAFE(&dbenv->active_ltrans, lt, lttemp, lnk) {
 		__txn_print_ltrans(dbenv, lt, f, flags);
 	}
-	pthread_mutex_unlock(&dbenv->ltrans_active_lk);
+	Pthread_mutex_unlock(&dbenv->ltrans_active_lk);
 }

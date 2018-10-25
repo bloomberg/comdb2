@@ -1326,7 +1326,7 @@ __dbenv_set_durable_lsn(dbenv, lsnp, generation)
 	}
 
     pthread_cond_broadcast(&gbl_durable_lsn_cond);
-	pthread_mutex_unlock(&gbl_durable_lsn_lk);
+	Pthread_mutex_unlock(&gbl_durable_lsn_lk);
 }
 
 static void
@@ -1338,7 +1338,7 @@ __dbenv_get_durable_lsn(dbenv, lsnp, generation)
 	Pthread_mutex_lock(&gbl_durable_lsn_lk);
 	*lsnp = dbenv->durable_lsn;
 	*generation = dbenv->durable_generation;
-	pthread_mutex_unlock(&gbl_durable_lsn_lk);
+	Pthread_mutex_unlock(&gbl_durable_lsn_lk);
 }
 
 static int
@@ -1360,7 +1360,7 @@ __dbenv_trigger_subscribe(dbenv, fname, cond, lock, open)
 		*open = &t->open;
 		rc = 0;
 	}
-	pthread_mutex_unlock(&t->lock);
+	Pthread_mutex_unlock(&t->lock);
 	return rc;
 }
 
@@ -1386,7 +1386,7 @@ __dbenv_trigger_open(dbenv, fname)
 	Pthread_mutex_lock(&t->lock);
 	t->open = 1;
 	pthread_cond_signal(&t->cond);
-	pthread_mutex_unlock(&t->lock);
+	Pthread_mutex_unlock(&t->lock);
 	return 0;
 }
 
@@ -1400,6 +1400,6 @@ __dbenv_trigger_close(dbenv, fname)
 	Pthread_mutex_lock(&t->lock);
 	t->open = 0;
 	pthread_cond_signal(&t->cond);
-	pthread_mutex_unlock(&t->lock);
+	Pthread_mutex_unlock(&t->lock);
 	return 0;
 }

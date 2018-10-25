@@ -99,7 +99,7 @@ static inline int __log_cursor_cache(dbenv, logcp)
         if (curhd) curhd->prev = NULL;
         logc->next = logc->prev = NULL;
     }
-    pthread_mutex_unlock(&curlk);
+    Pthread_mutex_unlock(&curlk);
     *logcp = logc;
     return logc ? 0 : -1;
 }
@@ -234,7 +234,7 @@ __log_c_close(logc)
         logc->next = curhd;
         if (curhd) curhd->prev = logc;
         curhd = logc;
-        pthread_mutex_unlock(&curlk);
+        Pthread_mutex_unlock(&curlk);
         return (0);
     }
 

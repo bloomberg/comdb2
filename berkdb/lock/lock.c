@@ -439,7 +439,7 @@ __allocate_ilock_latch(dbenv, lnode)
 	}
 	*lnode = region->ilock_latch_head;
 	region->ilock_latch_head = region->ilock_latch_head->next;
-	pthread_mutex_unlock(&region->ilock_latch_lk);
+	Pthread_mutex_unlock(&region->ilock_latch_lk);
 	assert(!(*lnode)->count);
 	return 0;
 }
@@ -469,7 +469,7 @@ __allocate_db_lock_lsn(dbenv, lsnp)
 	} else
 		SH_LIST_REMOVE(l, lsn_links, __db_lock_lsn);
 
-	pthread_mutex_unlock(&region->db_lock_lsn_lk);
+	Pthread_mutex_unlock(&region->db_lock_lsn_lk);
 	(*lsnp) = l;
 	return 0;
 }
@@ -485,7 +485,7 @@ __deallocate_db_lock_lsn(dbenv, lsnp)
 	Pthread_mutex_lock(&region->db_lock_lsn_lk);
 	SH_LIST_INSERT_HEAD(&region->db_lock_lsn_head, lsnp, lsn_links,
 	    __db_lock_lsn);
-	pthread_mutex_unlock(&region->db_lock_lsn_lk);
+	Pthread_mutex_unlock(&region->db_lock_lsn_lk);
 }
 
 static void
@@ -506,13 +506,13 @@ __deallocate_ilock_latch(dbenv, lnode)
 		__deallocate_db_lock_lsn(dbenv, lp_lsn);
 	}
 	lnode->nlsns = 0;
-	pthread_mutex_unlock(&lnode->lsns_mtx);
+	Pthread_mutex_unlock(&lnode->lsns_mtx);
 
 	Pthread_mutex_lock(&region->ilock_latch_lk);
 	lnode->prev = NULL;
 	lnode->next = region->ilock_latch_head;
 	region->ilock_latch_head = lnode;
-	pthread_mutex_unlock(&region->ilock_latch_lk);
+	Pthread_mutex_unlock(&region->ilock_latch_lk);
 }
 
 #ifdef DEBUG_LOCKERID_LNODE_LEAK
@@ -556,7 +556,7 @@ __allocate_lockerid_lnode(dbenv, lidnode)
 #ifdef DEBUG_LOCKERID_LNODE_LEAK
 	lockerid_lnode_inuse++;
 #endif
-	pthread_mutex_unlock(&region->lockerid_node_lk);
+	Pthread_mutex_unlock(&region->lockerid_node_lk);
 	return 0;
 }
 
@@ -573,7 +573,7 @@ __deallocate_lockerid_node(dbenv, lidnode)
 #ifdef DEBUG_LOCKERID_LNODE_LEAK
 	lockerid_lnode_inuse--;
 #endif
-	pthread_mutex_unlock(&region->lockerid_node_lk);
+	Pthread_mutex_unlock(&region->lockerid_node_lk);
 }
 
 static inline u_int32_t
@@ -648,7 +648,7 @@ __free_latch_lockerid(dbenv, lockerid)
 	}
 #endif
 
-	pthread_mutex_unlock(&lockerid_latches[idx].lock);
+	Pthread_mutex_unlock(&lockerid_latches[idx].lock);
 
 	return 0;
 }
@@ -838,7 +838,7 @@ __find_latch_lockerid(DB_ENV *dbenv, u_int32_t locker,
 			lockerid_latches[idx].head->prev = lid;
 		lockerid_latches[idx].head = lid;
 	}
-	pthread_mutex_unlock(&lockerid_latches[idx].lock);
+	Pthread_mutex_unlock(&lockerid_latches[idx].lock);
 	*rlid = lid;
 	return lid ? 0 : -1;
 }
@@ -928,13 +928,13 @@ __latch_update_tracked_writelocks_lsn(DB_ENV *dbenv, DB_TXN *txnp,
 		first_lsnp = SH_LIST_FIRST(&ilatch->lsns, __db_lock_lsn);
 		if (first_lsnp &&
 		    log_compare(&first_lsnp->llsn, &lsnp->llsn) == 0) {
-			pthread_mutex_unlock(&ilatch->lsns_mtx);
+			Pthread_mutex_unlock(&ilatch->lsns_mtx);
 			__deallocate_db_lock_lsn(dbenv, lsnp);
 		} else {
 			SH_LIST_INSERT_HEAD(&ilatch->lsns, lsnp, lsn_links,
 			    __db_lock_lsn);
 			ilatch->nlsns++;
-			pthread_mutex_unlock(&ilatch->lsns_mtx);
+			Pthread_mutex_unlock(&ilatch->lsns_mtx);
 			if (txnp->pglogs_hashtbl) {
 				ilock = (DB_LOCK_ILOCK *)ilatch->lock;
 				bdb_update_txn_pglogs(dbenv->app_private,
@@ -1025,7 +1025,7 @@ __put_page_latch_int(dbenv, lock)
 			latch->tid = 0;
 			latch->lockerid = 0;
 			latch->locker = NULL;
-			pthread_mutex_unlock(&latch->lock);
+			Pthread_mutex_unlock(&latch->lock);
 		}
 	}
 
@@ -1540,7 +1540,7 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 						    __db_lock_lsn);
 						SH_LIST_INIT(&lp->lsns);
 						lp->nlsns = 0;
-						pthread_mutex_unlock(&lp->
+						Pthread_mutex_unlock(&lp->
 						    lsns_mtx);
 
 						lklsnp->data =
@@ -1621,7 +1621,7 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 							SH_LIST_INIT(&lnode->
 							    lsns);
 							lnode->nlsns = 0;
-							pthread_mutex_unlock
+							Pthread_mutex_unlock
 							    (&lnode->lsns_mtx);
 							lklsnp->data =
 							    lnode->lock;
@@ -1657,7 +1657,7 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 					latch->tid = 0;
 					latch->lockerid = 0;
 					latch->locker = NULL;
-					pthread_mutex_unlock(&latch->lock);
+					Pthread_mutex_unlock(&latch->lock);
 				}
 				latch = nextlatch;
 			}
@@ -2088,7 +2088,7 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 	Pthread_mutex_lock(&lblk);
 	idx = lbcounter;
 	lbcounter = (lbcounter + 1) % LKBUFMAX;
-	pthread_mutex_unlock(&lblk);
+	Pthread_mutex_unlock(&lblk);
 
 	threadid[idx] = pthread_self();
 	snprintf(lkbuffer[idx], LKBUFSZ, "%d get lid %x %s size=%d ",
@@ -3173,7 +3173,7 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 		Pthread_mutex_lock(&lblk);
 		idx = lbcounter;
 		lbcounter = (lbcounter + 1) % LKBUFMAX;
-		pthread_mutex_unlock(&lblk);
+		Pthread_mutex_unlock(&lblk);
 
 		threadid[idx] = pthread_self();
 		snprintf(lkbuffer[idx], LKBUFSZ, "%d put %s size=%d",
@@ -3326,7 +3326,7 @@ __lock_freelock(lt, lockp, sh_locker, flags)
 		}
 		lockp->nlsns = 0;
 		SH_LIST_INIT(&lockp->lsns);
-		pthread_mutex_unlock(&lockp->lsns_mtx);
+		Pthread_mutex_unlock(&lockp->lsns_mtx);
 		SH_TAILQ_INSERT_HEAD(&region->free_locks[lockp->lpartition],
 		    lockp, links, __db_lock);
 		region->stat.st_nlocks--;
@@ -6266,13 +6266,13 @@ __lock_update_tracked_writelocks_lsn_pp(DB_ENV *dbenv, DB_TXN *txnp,
 			first_lsnp = SH_LIST_FIRST(&lp->lsns, __db_lock_lsn);
 			if (first_lsnp &&
 				log_compare(&first_lsnp->llsn, &lsnp->llsn) == 0) {
-				pthread_mutex_unlock(&lp->lsns_mtx);
+				Pthread_mutex_unlock(&lp->lsns_mtx);
 				__deallocate_db_lock_lsn(dbenv, lsnp);
 			} else {
 				SH_LIST_INSERT_HEAD(&lp->lsns, lsnp, lsn_links,
 					__db_lock_lsn);
 				lp->nlsns++;
-				pthread_mutex_unlock(&lp->lsns_mtx);
+				Pthread_mutex_unlock(&lp->lsns_mtx);
 				if (txnp->pglogs_hashtbl) {
 					lockobj = lp->lockobj;
 					if (lockobj->lockobj.size ==

@@ -105,14 +105,14 @@ void watchdog_set_alarm(int seconds)
 
     /* if theres already an alarm, leave it alone */
     if (gbl_watchdog_kill_time) {
-        pthread_mutex_unlock(&gbl_watchdog_kill_mutex);
+        Pthread_mutex_unlock(&gbl_watchdog_kill_mutex);
         return;
     }
 
     gbl_watchdog_kill_time = comdb2_time_epoch() + seconds;
     gbl_watchdog_kill_tid = pthread_self();
 
-    pthread_mutex_unlock(&gbl_watchdog_kill_mutex);
+    Pthread_mutex_unlock(&gbl_watchdog_kill_mutex);
 }
 
 void watchdog_cancel_alarm(void)
@@ -121,13 +121,13 @@ void watchdog_cancel_alarm(void)
 
     /* if no alarm is set, its an error */
     if (!gbl_watchdog_kill_time) {
-        pthread_mutex_unlock(&gbl_watchdog_kill_mutex);
+        Pthread_mutex_unlock(&gbl_watchdog_kill_mutex);
         return;
     }
 
     /* if the currently set alarm isnt ours, leave it alone */
     if (gbl_watchdog_kill_tid != pthread_self()) {
-        pthread_mutex_unlock(&gbl_watchdog_kill_mutex);
+        Pthread_mutex_unlock(&gbl_watchdog_kill_mutex);
         return;
     }
 
@@ -135,7 +135,7 @@ void watchdog_cancel_alarm(void)
     gbl_watchdog_kill_tid = 0;
     gbl_watchdog_kill_time = 0;
 
-    pthread_mutex_unlock(&gbl_watchdog_kill_mutex);
+    Pthread_mutex_unlock(&gbl_watchdog_kill_mutex);
 }
 
 int gbl_epoch_time; /* db has been up gbl_epoch_time - gbl_starttime seconds */

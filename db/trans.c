@@ -98,10 +98,7 @@ int add_new_transaction_entry(struct dbenv *dbenv, void *entry)
         return ERR_INTERNAL;
     }
     /*listc_abl(&dbenv->long_trn_list, entry);*/
-    if (pthread_mutex_unlock(&dbenv->long_trn_mtx) != 0) {
-        fprintf(stderr, "Failed to unlock trn table mutex\n");
-        return ERR_INTERNAL;
-    }
+    Pthread_mutex_unlock(&dbenv->long_trn_mtx);
     return 0;
 }
 

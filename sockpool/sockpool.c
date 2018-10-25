@@ -385,7 +385,7 @@ void socket_pool_close_all(void)
     if (hash) {
         socket_pool_trim_ll(0, SOCKET_POOL_EVENT_CLOSE);
     }
-    pthread_mutex_unlock(&sockpool_lk);
+    Pthread_mutex_unlock(&sockpool_lk);
 }
 
 void socket_pool_close_all_(void) { socket_pool_close_all(); }
@@ -404,7 +404,7 @@ void socket_pool_end_event(void)
     if (hash) {
         socket_pool_trim_ll(0, SOCKET_POOL_EVENT_ENDEVENT);
     }
-    pthread_mutex_unlock(&sockpool_lk);
+    Pthread_mutex_unlock(&sockpool_lk);
 }
 
 /* Close all pooled sockets and free all memory used by the pool. */
@@ -419,7 +419,7 @@ void socket_pool_free_all(void)
         hash = NULL;
         pool = NULL;
     }
-    pthread_mutex_unlock(&sockpool_lk);
+    Pthread_mutex_unlock(&sockpool_lk);
 }
 
 void socket_pool_free_all_(void) { socket_pool_free_all(); }
@@ -447,7 +447,7 @@ void socket_pool_timeout(void)
             }
         }
     }
-    pthread_mutex_unlock(&sockpool_lk);
+    Pthread_mutex_unlock(&sockpool_lk);
 }
 
 void socket_pool_timeout_(void) { socket_pool_timeout(); }
@@ -510,7 +510,7 @@ void socket_pool_dump_stats_syslog(int reset, int all)
     } else {
         syslog(LOG_INFO, "Socket pool unused\n");
     }
-    pthread_mutex_unlock(&sockpool_lk);
+    Pthread_mutex_unlock(&sockpool_lk);
 }
 
 void socket_pool_dump_stats_ex(FILE *fh, int reset, int all,
@@ -536,7 +536,7 @@ void socket_pool_dump_stats_ex(FILE *fh, int reset, int all,
     } else {
         fprintf(fh, "Socket pool unused\n");
     }
-    pthread_mutex_unlock(&sockpool_lk);
+    Pthread_mutex_unlock(&sockpool_lk);
 }
 
 void socket_pool_dump_stats_(const int *reset, const int *all)
@@ -592,7 +592,7 @@ socket_pool_get_ext_ll(const char *typestr, int dbnum, int flags,
                 pool_relablk(pool, fnd_item);
             }
         }
-        pthread_mutex_unlock(&sockpool_lk);
+        Pthread_mutex_unlock(&sockpool_lk);
     }
     /* If we couldn't get this socket locally it may be available from the
      * global socket pool. */
@@ -659,7 +659,7 @@ socket_pool_get_ext_ll(const char *typestr, int dbnum, int flags,
             }
         }
         hold_sigpipe_ll(0);
-        pthread_mutex_unlock(&sockpool_lk);
+        Pthread_mutex_unlock(&sockpool_lk);
     }
     return fd;
 }
@@ -796,7 +796,7 @@ void socket_pool_donate_ext(const char *typestr, int fd, int timeout_secs,
                 socket_pool_trim_ll(max_active_fds, SOCKET_POOL_EVENT_TRIM);
             }
         }
-        pthread_mutex_unlock(&sockpool_lk);
+        Pthread_mutex_unlock(&sockpool_lk);
     }
 
     /* if it wasn't pooled then it must be closed. */
@@ -804,6 +804,6 @@ void socket_pool_donate_ext(const char *typestr, int fd, int timeout_secs,
         Pthread_mutex_lock(&sockpool_lk);
         destructor(SOCKET_POOL_EVENT_CLOSE, typestr, fd, dbnum, flags,
                    timeout_secs, destructor_arg);
-        pthread_mutex_unlock(&sockpool_lk);
+        Pthread_mutex_unlock(&sockpool_lk);
     }
 }

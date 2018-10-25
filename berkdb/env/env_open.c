@@ -1243,7 +1243,7 @@ __db_tmp_open(dbenv, tmp_oflags, path, fhpp)
 	Pthread_mutex_lock(&tmp_open_lock);
 	num++;
 	x = num;
-	pthread_mutex_unlock(&tmp_open_lock);
+	Pthread_mutex_unlock(&tmp_open_lock);
 	memcpy(&mutex_copy_after, &tmp_open_lock, sizeof(mutex_copy_after));
 
 	/*   

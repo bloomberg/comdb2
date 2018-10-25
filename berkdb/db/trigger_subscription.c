@@ -26,6 +26,6 @@ struct __db_trigger_subscription *__db_get_trigger_subscription(const char *name
 		pthread_mutex_init(&s->lock, NULL);
 		hash_add(htab, s);
 	}
-	pthread_mutex_unlock(&subscription_lk);
+	Pthread_mutex_unlock(&subscription_lk);
 	return s;
 }

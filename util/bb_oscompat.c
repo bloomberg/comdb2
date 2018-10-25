@@ -79,7 +79,7 @@ void comdb2_getservbyname(const char *name, const char *proto, short *port)
         result_buf = *result;
         result = &result_buf;
     }
-    pthread_mutex_unlock(&servbyname_lk);
+    Pthread_mutex_unlock(&servbyname_lk);
 #   endif
     if (result) {
         *port = result->s_port;

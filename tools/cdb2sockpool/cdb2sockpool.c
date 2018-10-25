@@ -198,7 +198,7 @@ static int get_pooled_socket_count()
     {
         pooled_sockets = pooled_socket_count;
     }
-    pthread_mutex_unlock(&sockpool_lk);
+    Pthread_mutex_unlock(&sockpool_lk);
     return pooled_sockets;
 }
 
@@ -569,7 +569,7 @@ void *client_thd(void *voidarg)
                     dbs_info[dbnum].pool_count++;
                 }
             }
-            pthread_mutex_unlock(&sockpool_lk);
+            Pthread_mutex_unlock(&sockpool_lk);
 
             clnt.stats.fds_donated++;
             gbl_stats.fds_donated++;
@@ -829,7 +829,7 @@ static void do_stat(void)
     if (count > 0)
         syslog(LOG_INFO, "%s", strbuf_buf(stb));
     strbuf_free(stb);
-    pthread_mutex_unlock(&sockpool_lk);
+    Pthread_mutex_unlock(&sockpool_lk);
     syslog(LOG_INFO, "---\n");
     LOCK(&client_lock)
     {

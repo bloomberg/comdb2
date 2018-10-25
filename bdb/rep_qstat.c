@@ -37,7 +37,7 @@ static void net_clear_queue_stats_rtn(netinfo_type *netinfo_type, void *netstat)
     bzero(&n->max_lsn, sizeof(n->max_lsn));
     bzero(&n->min_lsn, sizeof(n->min_lsn));
     n->unknown_count = n->total_count = 0;
-    pthread_mutex_unlock(&n->lock);
+    Pthread_mutex_unlock(&n->lock);
 }
 
 static void net_enque_write_rtn(netinfo_type *netinfo_ptr, void *netstat,
@@ -73,7 +73,7 @@ static void net_enque_write_rtn(netinfo_type *netinfo_ptr, void *netstat,
         n->unknown_count++;
         n->total_count++;
     }
-    pthread_mutex_unlock(&n->lock);
+    Pthread_mutex_unlock(&n->lock);
 }
 
 static void net_enque_free(netinfo_type *netinfo_ptr, void *netstat)
@@ -106,7 +106,7 @@ int rep_qstat_has_allreq(void)
     if (n->max_type >= REP_ALL_REQ) {
         ret += n->type_counts[REP_ALL_REQ];
     }
-    pthread_mutex_unlock(&n->lock);
+    Pthread_mutex_unlock(&n->lock);
     return ret ? 1 : 0;
 }
 
@@ -120,7 +120,7 @@ int rep_qstat_has_master_req(void)
     if (n->max_type >= REP_MASTER_REQ) {
         ret += n->type_counts[REP_MASTER_REQ];
     }
-    pthread_mutex_unlock(&n->lock);
+    Pthread_mutex_unlock(&n->lock);
     return ret ? 1 : 0;
 }
 
@@ -135,7 +135,7 @@ int rep_qstat_has_fills(void)
         ret += n->type_counts[REP_LOG_FILL];
         ret += n->type_counts[REP_LOG_MORE];
     }
-    pthread_mutex_unlock(&n->lock);
+    Pthread_mutex_unlock(&n->lock);
     return ret ? 1 : 0;
 }
 
@@ -147,5 +147,5 @@ void rep_qstat_lsn_range(DB_LSN *min_lsn, DB_LSN *max_lsn)
     Pthread_mutex_lock(&n->lock);
     *min_lsn = n->min_lsn;
     *max_lsn = n->max_lsn;
-    pthread_mutex_unlock(&n->lock);
+    Pthread_mutex_unlock(&n->lock);
 }

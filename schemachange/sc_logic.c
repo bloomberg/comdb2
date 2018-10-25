@@ -192,7 +192,7 @@ static void free_sc(struct schema_change_type *s)
     /* free any memory csc2 allocated when parsing schema */
     Pthread_mutex_lock(&csc2_subsystem_mtx);
     csc2_free_all();
-    pthread_mutex_unlock(&csc2_subsystem_mtx);
+    Pthread_mutex_unlock(&csc2_subsystem_mtx);
 }
 
 static void stop_and_free_sc(int rc, struct schema_change_type *s, int do_free)
@@ -503,14 +503,14 @@ int do_schema_change_tran(sc_arg_t *arg)
         Pthread_mutex_lock(&sc_async_mtx);
         sc_async_threads--;
         pthread_cond_broadcast(&sc_async_cond);
-        pthread_mutex_unlock(&sc_async_mtx);
+        Pthread_mutex_unlock(&sc_async_mtx);
     }
     if (s->resume == SC_NEW_MASTER_RESUME || rc == SC_COMMIT_PENDING ||
         (!s->nothrevent && !s->finalize)) {
-        pthread_mutex_unlock(&s->mtx);
+        Pthread_mutex_unlock(&s->mtx);
         return rc;
     }
-    pthread_mutex_unlock(&s->mtx);
+    Pthread_mutex_unlock(&s->mtx);
     if (rc == SC_MASTER_DOWNGRADE) {
         free_sc(s);
     } else {
@@ -578,7 +578,7 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
         rc = finalize_upgrade_table(s);
 
     reset_sc_thread(oldtype, s);
-    pthread_mutex_unlock(&s->mtx);
+    Pthread_mutex_unlock(&s->mtx);
 
     stop_and_free_sc(rc, s, 0 /*free_sc*/);
     return rc;
@@ -611,14 +611,14 @@ void *sc_resuming_watchdog(void *p)
                 delete_db(iq.sc->tablename);
         }
         sc_del_unused_files(iq.sc->db);
-        pthread_mutex_unlock(&(iq.sc->mtx));
+        Pthread_mutex_unlock(&(iq.sc->mtx));
         free_schema_change_type(iq.sc);
         iq.sc = NULL;
     }
     sc_resuming = NULL;
     logmsg(LOGMSG_INFO, "%s: existing\n", __func__);
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
-    pthread_mutex_unlock(&sc_resuming_mtx);
+    Pthread_mutex_unlock(&sc_resuming_mtx);
     return NULL;
 }
 
@@ -877,7 +877,7 @@ int resume_schema_change(void)
             logmsg(LOGMSG_ERROR, "%s: failed to start sc_resuming_watchdog\n",
                    __FILE__);
     }
-    pthread_mutex_unlock(&sc_resuming_mtx);
+    Pthread_mutex_unlock(&sc_resuming_mtx);
 
     hash_for(tpt_sc_hash, verify_sc_resumed_for_all_shards, NULL);
     hash_for(tpt_sc_hash, process_tpt_sc_hash, NULL);

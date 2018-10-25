@@ -106,11 +106,11 @@ int osql_close_session(struct ireq *iq, osql_sess_t **psess, int is_linked, cons
     if (!rc) {
         Pthread_mutex_lock(&sess->clients_mtx);
         while (sess->clients > 0) {
-            pthread_mutex_unlock(&sess->clients_mtx);
+            Pthread_mutex_unlock(&sess->clients_mtx);
             poll(NULL, 0, 10);
             Pthread_mutex_lock(&sess->clients_mtx);
         }
-        pthread_mutex_unlock(&sess->clients_mtx);
+        Pthread_mutex_unlock(&sess->clients_mtx);
 
         _destroy_session(psess, 0);
     }
@@ -282,12 +282,12 @@ int osql_sess_set_complete(unsigned long long rqid, uuid_t uuid,
     Pthread_mutex_lock(&sess->completed_lock);
 
     if (sess->rqid != rqid || comdb2uuidcmp(uuid, sess->uuid)) {
-        pthread_mutex_unlock(&sess->completed_lock);
+        Pthread_mutex_unlock(&sess->completed_lock);
         return 0;
     }
 
     if (sess->completed != 0) {
-        pthread_mutex_unlock(&sess->completed_lock);
+        Pthread_mutex_unlock(&sess->completed_lock);
         return 0;
     }
 
@@ -306,7 +306,7 @@ int osql_sess_set_complete(unsigned long long rqid, uuid_t uuid,
     if (sess->terminate != OSQL_TERMINATE) {
         osql_bplog_session_is_done(sess->iq);
     }
-    pthread_mutex_unlock(&sess->completed_lock);
+    Pthread_mutex_unlock(&sess->completed_lock);
 
     return 0;
 }
@@ -384,7 +384,7 @@ int osql_sess_test_complete(osql_sess_t *sess, struct errstat **xerr)
             rc = SESS_DONE_ERROR_REPEATABLE;
     }
 
-    pthread_mutex_unlock(&sess->completed_lock);
+    Pthread_mutex_unlock(&sess->completed_lock);
 
     return rc;
 }
@@ -460,7 +460,7 @@ void *osql_sess_getbptran(osql_sess_t *sess)
     if (sess->iq && !sess->completed && !sess->terminate) {
         bsql = sess->iq->blocksql_tran;
     }
-    pthread_mutex_unlock(&sess->mtx);
+    Pthread_mutex_unlock(&sess->mtx);
     return bsql;
 }
 
@@ -468,7 +468,8 @@ int osql_sess_lock(osql_sess_t *sess) { Pthread_mutex_lock(&sess->mtx); return 0
 
 int osql_sess_unlock(osql_sess_t *sess)
 {
-    return pthread_mutex_unlock(&sess->mtx);
+    Pthread_mutex_unlock(&sess->mtx);
+    return 0;
 }
 
 int osql_sess_is_terminated(osql_sess_t *sess) { return sess->terminate; }
@@ -488,7 +489,8 @@ int osql_sess_lock_complete(osql_sess_t *sess)
 
 int osql_sess_unlock_complete(osql_sess_t *sess)
 {
-    return pthread_mutex_unlock(&sess->completed_lock);
+    Pthread_mutex_unlock(&sess->completed_lock);
+    return 0;
 }
 
 /**
@@ -553,7 +555,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
     /* ignore new coming osql packages */
     if (sess->completed || sess->dispatched || sess->terminate) {
         uuidstr_t us;
-        pthread_mutex_unlock(&sess->completed_lock);
+        Pthread_mutex_unlock(&sess->completed_lock);
         if ((rc = osql_repository_put(sess, is_msg_done)) != 0) {
             logmsg(LOGMSG_ERROR,
                    "%s:%d osql_repository_put failed with rc %d\n", __func__,
@@ -565,7 +567,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
                __func__, rqid, us);
         return 0;
     }
-    pthread_mutex_unlock(&sess->completed_lock);
+    Pthread_mutex_unlock(&sess->completed_lock);
 
     /* save op */
     int rc_out = osql_bplog_saveop(sess, data, datalen, rqid, uuid, type);
@@ -580,7 +582,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
             sess->last_row = time(NULL);
         }
 
-        pthread_mutex_unlock(&sess->completed_lock);
+        Pthread_mutex_unlock(&sess->completed_lock);
     }
 
     /* release the session */
@@ -631,7 +633,7 @@ int osql_session_testterminate(void *obj, void *arg)
                the temp table*/
             need_clean = osql_session_is_sorese(sess);
         }
-        pthread_mutex_unlock(&sess->completed_lock);
+        Pthread_mutex_unlock(&sess->completed_lock);
 
         /* this request might be waiting to be dispatched */
         if (sess->iq)
@@ -654,11 +656,11 @@ int osql_session_testterminate(void *obj, void *arg)
         /* step 2) wait for current reader threads to go away */
         Pthread_mutex_lock(&sess->clients_mtx);
         while (sess->clients > 0) {
-            pthread_mutex_unlock(&sess->clients_mtx);
+            Pthread_mutex_unlock(&sess->clients_mtx);
             poll(NULL, 0, 10);
             Pthread_mutex_lock(&sess->clients_mtx);
         }
-        pthread_mutex_unlock(&sess->clients_mtx);
+        Pthread_mutex_unlock(&sess->clients_mtx);
         /* NOTE: at this point there will be no other bplog updates coming from
            this
            sorese session; the session might still be worked on; if that is the
@@ -672,7 +674,7 @@ int osql_session_testterminate(void *obj, void *arg)
                    if not complete, we need to clear it right now */
         Pthread_mutex_lock(&sess->completed_lock);
         completed = sess->completed | sess->dispatched;
-        pthread_mutex_unlock(&sess->completed_lock);
+        Pthread_mutex_unlock(&sess->completed_lock);
 
         if (!completed) {
 #if 0

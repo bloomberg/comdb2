@@ -176,7 +176,7 @@ void clear_trans_from_repl_list(struct repl_object *head)
             for (waiter = head->waiter_list; waiter != NULL;
                  waiter = next_waiter) {
                 next_waiter = waiter->next;
-                pthread_mutex_unlock(&waiter->mutex);
+                Pthread_mutex_unlock(&waiter->mutex);
             }
 
             hash_del(hash, head);

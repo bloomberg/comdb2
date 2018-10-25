@@ -824,7 +824,7 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
         }
         do_send = master_is_coherent && (bdb_state->coherent_state[
                 nodeix(hostlist[i])] == STATE_COHERENT);
-        pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+        Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 
         if (do_send) {
             if (use_udp) {

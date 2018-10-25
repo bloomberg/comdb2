@@ -4687,7 +4687,7 @@ void net_subnet_status()
                subnet_disabled[i] ? " at " : "",
                subnet_disabled[i] ? ctime(&subnet_disabled[i]) : "");
     }
-    pthread_mutex_unlock(&subnet_mtx);
+    Pthread_mutex_unlock(&subnet_mtx);
 }
 
 void net_set_bad_subnet(const char *subnet)
@@ -4707,7 +4707,7 @@ void net_set_bad_subnet(const char *subnet)
                        last_bad_subnet_idx, last_bad_subnet_time);
         }
     }
-    pthread_mutex_unlock(&subnet_mtx);
+    Pthread_mutex_unlock(&subnet_mtx);
 }
 
 void net_clipper(const char *subnet, int is_disable)
@@ -4736,7 +4736,7 @@ void net_clipper(const char *subnet, int is_disable)
             }
         }
     }
-    pthread_mutex_unlock(&subnet_mtx);
+    Pthread_mutex_unlock(&subnet_mtx);
 }
 
 int net_subnet_disabled(const char *subnet)
@@ -4751,7 +4751,7 @@ int net_subnet_disabled(const char *subnet)
             break;
         }
     }
-    pthread_mutex_unlock(&subnet_mtx);
+    Pthread_mutex_unlock(&subnet_mtx);
     return rc;
 }
 
@@ -4763,7 +4763,7 @@ int net_add_nondedicated_subnet(void *context, void *value)
         Pthread_mutex_lock(&subnet_mtx);
         subnet_suffices[num_dedicated_subnets] = strdup("");
         num_dedicated_subnets++;
-        pthread_mutex_unlock(&subnet_mtx);
+        Pthread_mutex_unlock(&subnet_mtx);
     }
     return 0;
 }
@@ -4778,12 +4778,12 @@ int net_add_to_subnets(const char *suffix, const char *lrlname)
     if (num_dedicated_subnets >= MAXSUBNETS) {
         logmsg(LOGMSG_ERROR, "too many subnet suffices (max=%d) in lrl %s\n",
                MAXSUBNETS, lrlname);
-        pthread_mutex_unlock(&subnet_mtx);
+        Pthread_mutex_unlock(&subnet_mtx);
         return -1;
     }
     subnet_suffices[num_dedicated_subnets] = strdup(suffix);
     num_dedicated_subnets++;
-    pthread_mutex_unlock(&subnet_mtx);
+    Pthread_mutex_unlock(&subnet_mtx);
     return 0;
 }
 
@@ -4797,7 +4797,7 @@ void net_cleanup_subnets()
             subnet_suffices[i] = NULL;
         }
     }
-    pthread_mutex_unlock(&subnet_mtx);
+    Pthread_mutex_unlock(&subnet_mtx);
 }
 
 /* Dedicated subnets are specified in the lrl file:
@@ -4819,7 +4819,7 @@ static int get_dedicated_conhost(host_node_type *host_node_ptr, struct in_addr *
                          "Connecting to default hostname/subnet '%s'\n",
                          host_node_ptr->host);
 #endif
-        pthread_mutex_unlock(&subnet_mtx);
+        Pthread_mutex_unlock(&subnet_mtx);
         return comdb2_gethostbyname(&host_node_ptr->host, addr);
     }
 
@@ -4874,7 +4874,7 @@ static int get_dedicated_conhost(host_node_type *host_node_ptr, struct in_addr *
             break;
         }
     }
-    pthread_mutex_unlock(&subnet_mtx);
+    Pthread_mutex_unlock(&subnet_mtx);
     return rc;
 }
 
@@ -6111,7 +6111,7 @@ void net_end_appsock(SBUF2 *sb)
         sbuf2setrw(sb, watchlist_node->readfn, watchlist_node->writefn);
 
         free(watchlist_node);
-        pthread_mutex_unlock(&(netinfo_ptr->watchlk));
+        Pthread_mutex_unlock(&(netinfo_ptr->watchlk));
     }
 
     sbuf2close(sb);

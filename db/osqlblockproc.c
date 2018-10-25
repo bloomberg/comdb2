@@ -364,7 +364,7 @@ int osql_bplog_schemachange(struct ireq *iq)
     while (sc != NULL) {
         Pthread_mutex_lock(&sc->mtx);
         sc->nothrevent = 1;
-        pthread_mutex_unlock(&sc->mtx);
+        Pthread_mutex_unlock(&sc->mtx);
         iq->sc = sc->sc_next;
         if (sc->sc_rc == SC_COMMIT_PENDING) {
             sc->sc_next = iq->sc_pending;
@@ -385,7 +385,7 @@ int osql_bplog_schemachange(struct ireq *iq)
         extern pthread_mutex_t csc2_subsystem_mtx;
         Pthread_mutex_lock(&csc2_subsystem_mtx);
         csc2_free_all();
-        pthread_mutex_unlock(&csc2_subsystem_mtx);
+        Pthread_mutex_unlock(&csc2_subsystem_mtx);
     }
     logmsg(LOGMSG_INFO, ">>> DDL SCHEMA CHANGE RC %d <<<\n", rc);
     return rc;
@@ -509,7 +509,7 @@ int osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func, 
     Pthread_mutex_lock(&kludgelk);
     blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
     iq->blocksql_tran = NULL;
-    pthread_mutex_unlock(&kludgelk);
+    Pthread_mutex_unlock(&kludgelk);
 
     if (tran) {
 
@@ -1428,7 +1428,7 @@ void *osql_commit_timepart_resuming_sc(void *p)
     while (sc != NULL) {
         Pthread_mutex_lock(&sc->mtx);
         sc->nothrevent = 1;
-        pthread_mutex_unlock(&sc->mtx);
+        Pthread_mutex_unlock(&sc->mtx);
         iq.sc = sc->sc_next;
         if (sc->sc_rc == SC_COMMIT_PENDING) {
             sc->sc_next = sc_pending;

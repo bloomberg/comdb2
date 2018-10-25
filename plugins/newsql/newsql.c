@@ -375,7 +375,7 @@ static int newsql_send_hdr(struct sqlclntstate *clnt, int h)
         goto done;
     rc = 0;
 done:
-    pthread_mutex_unlock(&clnt->write_lock);
+    Pthread_mutex_unlock(&clnt->write_lock);
     return rc;
 }
 
@@ -413,7 +413,7 @@ static int newsql_response_int(struct sqlclntstate *clnt,
         goto done;
     rc = 0;
 done:
-    pthread_mutex_unlock(&clnt->write_lock);
+    Pthread_mutex_unlock(&clnt->write_lock);
     return rc;
 }
 
@@ -598,7 +598,7 @@ static int newsql_flush(struct sqlclntstate *clnt)
 {
     Pthread_mutex_lock(&clnt->write_lock);
     int rc = sbuf2flush(clnt->sb);
-    pthread_mutex_unlock(&clnt->write_lock);
+    Pthread_mutex_unlock(&clnt->write_lock);
     return rc < 0;
 }
 
@@ -642,7 +642,7 @@ static int newsql_send_postponed_row(struct sqlclntstate *clnt)
         goto done;
     rc = 0;
 done:
-    pthread_mutex_unlock(&clnt->write_lock);
+    Pthread_mutex_unlock(&clnt->write_lock);
     return rc;
 }
 
@@ -1906,13 +1906,13 @@ retry_read:
             }
             newsql_heartbeat(clnt);
             fdb_heartbeats(clnt);
-            pthread_mutex_unlock(&clnt->wait_mutex);
+            Pthread_mutex_unlock(&clnt->wait_mutex);
         }
 
     if (pre_enabled) {
         Pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
-        pthread_mutex_unlock(&clnt->wait_mutex);
+        Pthread_mutex_unlock(&clnt->wait_mutex);
         pre_enabled = 0;
     }
 
@@ -1947,14 +1947,14 @@ retry_read:
         }
         newsql_heartbeat(clnt);
         fdb_heartbeats(clnt);
-        pthread_mutex_unlock(&clnt->wait_mutex);
+        Pthread_mutex_unlock(&clnt->wait_mutex);
     }
     free(p);
 
     if (pre_enabled) {
         Pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
-        pthread_mutex_unlock(&clnt->wait_mutex);
+        Pthread_mutex_unlock(&clnt->wait_mutex);
     }
 
     if (!query || errno != 0) {

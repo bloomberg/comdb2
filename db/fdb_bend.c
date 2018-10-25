@@ -271,7 +271,7 @@ svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int code_release,
         fdb_sequence_request(tran_clnt, trans, seq);
 
         /* free this guy */
-        pthread_mutex_unlock(&tran_clnt->dtran_mtx);
+        Pthread_mutex_unlock(&tran_clnt->dtran_mtx);
     }
 
     if (isuuid) {
@@ -369,7 +369,7 @@ int fdb_svc_cursor_close(char *cid, int isuuid, struct sqlclntstate **pclnt)
                           cur);
 
                 /* free this guy */
-                pthread_mutex_unlock(&tran_clnt->dtran_mtx);
+                Pthread_mutex_unlock(&tran_clnt->dtran_mtx);
             }
 
             (*pclnt)->dbtran.shadow_tran = NULL;
@@ -1297,7 +1297,7 @@ int fdb_svc_trans_init(struct sqlclntstate *clnt, const char *tid,
     trans->dtran = (fdb_distributed_tran_t *)calloc(
         1, sizeof(fdb_distributed_tran_t) + sizeof(fdb_tran_t));
     if (!trans->dtran) {
-        pthread_mutex_unlock(&clnt->dtran_mtx);
+        Pthread_mutex_unlock(&clnt->dtran_mtx);
         logmsg(LOGMSG_ERROR, "%s: calloc!\n", __func__);
         return -1;
     }
@@ -1322,7 +1322,7 @@ int fdb_svc_trans_init(struct sqlclntstate *clnt, const char *tid,
     /* explicit bump of sequence number, waiting for this */
     fdb_tran->seq++;
 
-    pthread_mutex_unlock(&clnt->dtran_mtx);
+    Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     return 0;
 }
@@ -1395,7 +1395,7 @@ void fdb_sequence_request(struct sqlclntstate *tran_clnt, fdb_tran_t *trans,
 {
     while (trans->seq < seq) {
         /* free this guy */
-        pthread_mutex_unlock(&tran_clnt->dtran_mtx);
+        Pthread_mutex_unlock(&tran_clnt->dtran_mtx);
 
         /* wait for all the updates to arrive; we could skip that in socksql,
            but I am

@@ -471,7 +471,7 @@ __bam_page(dbc, pp, cp)
 					hashtbl[hh].pgno = PGNO(rp);
 					genidcpy(hashtbl[hh].genid,
 					    split_key.data);
-                    pthread_mutex_unlock(&(hash->mutex));
+                    Pthread_mutex_unlock(&(hash->mutex));
 				}
 			}
 		}

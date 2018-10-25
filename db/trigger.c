@@ -143,7 +143,7 @@ int trigger_register(trigger_reg_t *t)
     BDB_READLOCK("register trigger");
     Pthread_mutex_lock(&trighash_lk);
     int rc = trigger_register_int(t);
-    pthread_mutex_unlock(&trighash_lk);
+    Pthread_mutex_unlock(&trighash_lk);
     BDB_RELLOCK();
     return rc;
 }
@@ -169,7 +169,7 @@ static int trigger_unregister_lk(trigger_reg_t *t)
 {
     Pthread_mutex_lock(&trighash_lk);
     int rc = trigger_unregister_int(t);
-    pthread_mutex_unlock(&trighash_lk);
+    Pthread_mutex_unlock(&trighash_lk);
     return rc;
 }
 
@@ -253,7 +253,7 @@ int trigger_unregister_node(const char *host)
 {
     Pthread_mutex_lock(&trighash_lk);
     int rc = trigger_unregister_node_int(host);
-    pthread_mutex_unlock(&trighash_lk);
+    Pthread_mutex_unlock(&trighash_lk);
     return rc;
 }
 
@@ -262,7 +262,7 @@ void trigger_clear_hash()
     Pthread_mutex_lock(&trighash_lk);
     hash_t *old = trigger_hash;
     trigger_hash = NULL;
-    pthread_mutex_unlock(&trighash_lk);
+    Pthread_mutex_unlock(&trighash_lk);
 
     if (old == NULL)
         return;
@@ -316,7 +316,7 @@ int trigger_stat()
                    spname);
         }
     }
-    pthread_mutex_unlock(&trighash_lk);
+    Pthread_mutex_unlock(&trighash_lk);
     return 0;
 }
 
@@ -339,7 +339,7 @@ int trigger_registered(const char *name)
 {
     Pthread_mutex_lock(&trighash_lk);
     int rc = trigger_registered_int(name);
-    pthread_mutex_unlock(&trighash_lk);
+    Pthread_mutex_unlock(&trighash_lk);
     return rc;
 }
 

@@ -129,7 +129,7 @@ static int systblThreadPoolsOpen(sqlite3_vtab *p,
 
 static int systblThreadPoolsClose(sqlite3_vtab_cursor *cur)
 {
-    pthread_mutex_unlock(&pool_list_lk);
+    Pthread_mutex_unlock(&pool_list_lk);
     sqlite3_free(cur);
     return SQLITE_OK;
 }

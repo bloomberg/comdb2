@@ -599,11 +599,11 @@ static void *clean_exit_thd(void *unused)
 {
     Pthread_mutex_lock(&exiting_lock);
     if (gbl_exit) {
-        pthread_mutex_unlock(&exiting_lock);
+        Pthread_mutex_unlock(&exiting_lock);
         return NULL;
     }
     gbl_exit = 1;
-    pthread_mutex_unlock(&exiting_lock);
+    Pthread_mutex_unlock(&exiting_lock);
 
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
     clean_exit();
@@ -3943,7 +3943,7 @@ clipper_usage:
         start = comdb2_time_epochms();
         for (i = 0; i < 100000000; i++) {
             Pthread_mutex_lock(&lk);
-            pthread_mutex_unlock(&lk);
+            Pthread_mutex_unlock(&lk);
         }
         end = comdb2_time_epochms();
 
@@ -4199,7 +4199,7 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "locktest") == 0) {
         Pthread_mutex_lock(&testguard);
         bdb_locktest(thedb->bdb_env);
-        pthread_mutex_unlock(&testguard);
+        Pthread_mutex_unlock(&testguard);
     } else if (tokcmp(tok, ltok, "berkdelay") == 0) {
         uint32_t commit_delay_ms = 0;
         tok = segtok(line, lline, &st, &ltok);
@@ -4207,7 +4207,7 @@ clipper_usage:
             commit_delay_ms = toknum(tok, ltok);
             bdb_berktest_commit_delay(commit_delay_ms);
             Pthread_mutex_lock(&testguard);
-            pthread_mutex_unlock(&testguard);
+            Pthread_mutex_unlock(&testguard);
         } else {
             logmsg(LOGMSG_USER, "berkdelay requires commit-delay-ms argument\n");
         }
@@ -4221,7 +4221,7 @@ clipper_usage:
             bdb_berktest_multi(thedb->bdb_env);
         else
             bdb_berktest(thedb->bdb_env, txnsize);
-        pthread_mutex_unlock(&testguard);
+        Pthread_mutex_unlock(&testguard);
     } else if (tokcmp(tok, ltok, "dump_ltran_list") == 0) {
         bdb_dump_logical_tranlist(thedb->bdb_env, stderr);
     } else if (tokcmp(tok, ltok, "clear_rowlocks_stats") == 0) {
@@ -4312,7 +4312,7 @@ clipper_usage:
         } else {
             Pthread_mutex_lock(&testguard);
             commit_bench(thedb->bdb_env, tcnt, cnt);
-            pthread_mutex_unlock(&testguard);
+            Pthread_mutex_unlock(&testguard);
         }
     } else if (tokcmp(tok, ltok, "rowlocks_bench") == 0) {
         int lcnt = 0;
@@ -4333,7 +4333,7 @@ clipper_usage:
         } else {
             Pthread_mutex_lock(&testguard);
             rowlocks_bench(thedb->bdb_env, lcnt, pcnt);
-            pthread_mutex_unlock(&testguard);
+            Pthread_mutex_unlock(&testguard);
         }
     } else if (tokcmp(tok, ltok, "rowlocks_lock1_bench") == 0) {
         int lcnt = 0;
@@ -4356,7 +4356,7 @@ clipper_usage:
         } else {
             Pthread_mutex_lock(&testguard);
             rowlocks_lock1_bench(thedb->bdb_env, lcnt, pcnt);
-            pthread_mutex_unlock(&testguard);
+            Pthread_mutex_unlock(&testguard);
         }
     }
 
@@ -4382,7 +4382,7 @@ clipper_usage:
         } else {
             Pthread_mutex_lock(&testguard);
             rowlocks_lock2_bench(thedb->bdb_env, lcnt, pcnt);
-            pthread_mutex_unlock(&testguard);
+            Pthread_mutex_unlock(&testguard);
         }
     } else if (tokcmp(tok, ltok, "deadlock_policy_override") == 0) {
         tok = segtok(line, lline, &st, &ltok);

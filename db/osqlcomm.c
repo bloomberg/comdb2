@@ -3225,7 +3225,7 @@ int offload_comm_send_sync_blockreq(char *node, void *buf, int buflen)
                 break;
         }
     }
-    pthread_mutex_unlock(&(p_slock->req_lock));
+    Pthread_mutex_unlock(&(p_slock->req_lock));
 
     // clean up
     pthread_cond_destroy(&(p_slock->wait_cond));
@@ -3293,7 +3293,7 @@ static void net_block_reply(void *hndl, void *uptr, char *fromhost,
         /* The tag request is handled by master. However by the time
            (1000+ seconds) the replicant receives the reply from master,
            the tag request is already discarded. */
-        pthread_mutex_unlock(&p_slock->req_lock);
+        Pthread_mutex_unlock(&p_slock->req_lock);
         cleanup_lock_buffer(p_slock);
     } else {
         p_slock->rc = net_msg->rc;
@@ -3302,7 +3302,7 @@ static void net_block_reply(void *hndl, void *uptr, char *fromhost,
         /* Signal to allow the appsock thread
            to take new request from client. */
         signal_buflock(p_slock);
-        pthread_mutex_unlock(&p_slock->req_lock);
+        Pthread_mutex_unlock(&p_slock->req_lock);
     }
 }
 
@@ -7856,7 +7856,7 @@ static void net_osql_rcv_echo_pong(void *hndl, void *uptr, char *fromhost,
         return;
     }
 
-    pthread_mutex_unlock(&msgs_mtx);
+    Pthread_mutex_unlock(&msgs_mtx);
 
     msgs[msg.idx].rcv = msg.rcv;
 }
@@ -7887,7 +7887,7 @@ int osql_comm_echo(char *tohost, int stream, unsigned long long *sent,
                 break;
         if (i == MAX_ECHOES) {
             logmsg(LOGMSG_ERROR, "%s: too many echoes pending\n", __func__);
-            pthread_mutex_unlock(&msgs_mtx);
+            Pthread_mutex_unlock(&msgs_mtx);
             return -1;
         }
 
@@ -7900,7 +7900,7 @@ int osql_comm_echo(char *tohost, int stream, unsigned long long *sent,
         msg.idx = msgs[i].idx = i;
         msg.snt = msgs[i].snt = snt;
 
-        pthread_mutex_unlock(&msgs_mtx);
+        Pthread_mutex_unlock(&msgs_mtx);
 
         list[j] = &msgs[i];
 

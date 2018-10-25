@@ -860,7 +860,7 @@ void reqlog_process_message(char *line, int st, int lline)
             rule = new_rule_ll(rulename);
             if (!rule) {
                 logmsg(LOGMSG_ERROR, "error creating new rule %s\n", rulename);
-                pthread_mutex_unlock(&rules_mutex);
+                Pthread_mutex_unlock(&rules_mutex);
                 return;
             }
         }
@@ -955,7 +955,7 @@ void reqlog_process_message(char *line, int st, int lline)
             printrule(rule, stdout, "");
         }
         scanrules_ll();
-        pthread_mutex_unlock(&rules_mutex);
+        Pthread_mutex_unlock(&rules_mutex);
     }
 }
 
@@ -989,7 +989,7 @@ void reqlog_stat(void)
         logmsg(LOGMSG_USER, "Output file open: %s\n", out->filename);
     }
     eventlog_status();
-    pthread_mutex_unlock(&rules_mutex);
+    Pthread_mutex_unlock(&rules_mutex);
 }
 
 struct reqlogger *reqlog_alloc(void)
@@ -1577,8 +1577,8 @@ static void log_header(struct reqlogger *logger, struct output *out,
     Pthread_mutex_lock(&rules_mutex);
     Pthread_mutex_lock(&out->mutex);
     log_header_ll(logger, out);
-    pthread_mutex_unlock(&out->mutex);
-    pthread_mutex_unlock(&rules_mutex);
+    Pthread_mutex_unlock(&out->mutex);
+    Pthread_mutex_unlock(&rules_mutex);
 }
 
 static void log_all_events(struct reqlogger *logger, struct output *out)
@@ -1619,7 +1619,7 @@ static void log_rule(struct reqlogger *logger, struct output *out,
     prefix_init(&logger->prefix);
     log_header_ll(logger, out);
     if (event_mask == 0) {
-        pthread_mutex_unlock(&out->mutex);
+        Pthread_mutex_unlock(&out->mutex);
         return;
     }
     /* print all events that this rule wanted to log */
@@ -1651,7 +1651,7 @@ static void log_rule(struct reqlogger *logger, struct output *out,
             break;
 
         default:
-            pthread_mutex_unlock(&out->mutex);
+            Pthread_mutex_unlock(&out->mutex);
             logmsg(LOGMSG_ERROR, "%s: bad event type %d?!\n", __func__,
                    event->type);
             return;
@@ -1661,7 +1661,7 @@ static void log_rule(struct reqlogger *logger, struct output *out,
     logger->prefix.pos = 0;
     dump(logger, out, "----------", 10);
     flushdump(logger, out);
-    pthread_mutex_unlock(&out->mutex);
+    Pthread_mutex_unlock(&out->mutex);
 }
 
 static int inrange(const struct range *range, int value)
@@ -1869,7 +1869,7 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
             free(use_rule);
         }
 
-        pthread_mutex_unlock(&rules_mutex);
+        Pthread_mutex_unlock(&rules_mutex);
     }
 
     /* check for bad cstrings */
@@ -2073,9 +2073,9 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
             if (entry->ref == 1) {
                 Pthread_mutex_lock(&clntlru_mtx);
                 listc_rfl(&clntlru, entry);
-                pthread_mutex_unlock(&clntlru_mtx);
+                Pthread_mutex_unlock(&clntlru_mtx);
             }
-            pthread_mutex_unlock(&entry->mtx);
+            Pthread_mutex_unlock(&entry->mtx);
         } else {
             Pthread_mutex_lock(&clntlru_mtx);
             while (hash_get_num_entries(clientstats) + 1 >
@@ -2092,7 +2092,7 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
                     break;
                 }
             }
-            pthread_mutex_unlock(&clntlru_mtx);
+            Pthread_mutex_unlock(&clntlru_mtx);
             hash_add(clientstats, entry);
         }
     }
@@ -2116,7 +2116,7 @@ static nodestats_t *find_clientstats(unsigned checksum, int node, int fd)
             if (entry->ref == 1) {
                 Pthread_mutex_lock(&clntlru_mtx);
                 listc_rfl(&clntlru, entry);
-                pthread_mutex_unlock(&clntlru_mtx);
+                Pthread_mutex_unlock(&clntlru_mtx);
             }
             pthread_rwlock_unlock(&clientstats_lk);
             if (*(unsigned *)&(entry->addr) == 0 && fd > 0) {
@@ -2133,7 +2133,7 @@ static nodestats_t *find_clientstats(unsigned checksum, int node, int fd)
                            sizeof(struct in_addr));
                 }
             }
-            pthread_mutex_unlock(&entry->mtx);
+            Pthread_mutex_unlock(&entry->mtx);
             return entry;
         }
     }
@@ -2162,9 +2162,9 @@ static int release_clientstats(unsigned checksum, int node)
             if (entry->ref == 0) {
                 Pthread_mutex_lock(&clntlru_mtx);
                 listc_abl(&clntlru, entry);
-                pthread_mutex_unlock(&clntlru_mtx);
+                Pthread_mutex_unlock(&clntlru_mtx);
             }
-            pthread_mutex_unlock(&entry->mtx);
+            Pthread_mutex_unlock(&entry->mtx);
         } else {
             rc = -1;
         }

@@ -245,7 +245,7 @@ int comdb2_objpool_stop(comdb2_objpool_t op)
     Pthread_mutex_lock(&op->data_mutex);
     op->stopped = 1;
     pthread_cond_broadcast(&op->unexhausted);
-    pthread_mutex_unlock(&op->data_mutex);
+    Pthread_mutex_unlock(&op->data_mutex);
     return rc;
 }
 
@@ -255,7 +255,7 @@ int comdb2_objpool_resume(comdb2_objpool_t op)
     OP_DBG(op, "resume pool");
     Pthread_mutex_lock(&op->data_mutex);
     op->stopped = 0;
-    pthread_mutex_unlock(&op->data_mutex);
+    Pthread_mutex_unlock(&op->data_mutex);
     return rc;
 }
 
@@ -267,7 +267,7 @@ int comdb2_objpool_destroy(comdb2_objpool_t op)
     if (op->nactiveobjs > 0) {
         /* active objects out there, can't proceed */
         rc = EBUSY;
-        pthread_mutex_unlock(&op->data_mutex);
+        Pthread_mutex_unlock(&op->data_mutex);
         return rc;
     }
 
@@ -277,7 +277,7 @@ int comdb2_objpool_destroy(comdb2_objpool_t op)
         /* terminate eviction thread */
         Pthread_mutex_lock(&op->evict_mutex);
         if (rc != 0) {
-            pthread_mutex_unlock(&op->data_mutex);
+            Pthread_mutex_unlock(&op->data_mutex);
             return rc;
         }
 
@@ -285,20 +285,20 @@ int comdb2_objpool_destroy(comdb2_objpool_t op)
 
         rc = pthread_cond_signal(&op->evict_cond);
         if (rc != 0) {
-            pthread_mutex_unlock(&op->evict_mutex);
-            pthread_mutex_unlock(&op->data_mutex);
+            Pthread_mutex_unlock(&op->evict_mutex);
+            Pthread_mutex_unlock(&op->data_mutex);
             return rc;
         }
 
-        pthread_mutex_unlock(&op->evict_mutex);
+        Pthread_mutex_unlock(&op->evict_mutex);
         if (rc != 0) {
-            pthread_mutex_unlock(&op->data_mutex);
+            Pthread_mutex_unlock(&op->data_mutex);
             return rc;
         }
 
         rc = pthread_join(op->evict_thd, NULL);
         if (rc != 0) {
-            pthread_mutex_unlock(&op->data_mutex);
+            Pthread_mutex_unlock(&op->data_mutex);
             return rc;
         }
     }
@@ -311,7 +311,7 @@ int comdb2_objpool_destroy(comdb2_objpool_t op)
     hash_free(op->history);
     free(op->objs);
 
-    pthread_mutex_unlock(&op->data_mutex);
+    Pthread_mutex_unlock(&op->data_mutex);
 
     /* clean up mutexes and conditions */
     Pthread_mutex_destroy(&op->data_mutex);
@@ -358,7 +358,7 @@ int comdb2_objpool_setopt(comdb2_objpool_t op,
         rc = EINVAL;
         break;
     }
-    pthread_mutex_unlock(&op->data_mutex);
+    Pthread_mutex_unlock(&op->data_mutex);
     return rc;
 }
 
@@ -375,7 +375,7 @@ int comdb2_objpool_available(comdb2_objpool_t op)
 
     avail = !exhausted(op) || !full(op);
 
-    pthread_mutex_unlock(&op->data_mutex);
+    Pthread_mutex_unlock(&op->data_mutex);
     return avail;
 }
 
@@ -464,7 +464,7 @@ int comdb2_objpool_stats(comdb2_objpool_t op)
     else
         logmsg(LOGMSG_USER, "  Max idle time        : %d ms\n", op->idle_time_ms);
 
-    pthread_mutex_unlock(&op->data_mutex);
+    Pthread_mutex_unlock(&op->data_mutex);
 
     return rc;
 }
@@ -677,7 +677,7 @@ static void *eviction_thread(void *arg)
     }
 
     op->evict_thd_run = 0;
-    pthread_mutex_unlock(&op->evict_mutex);
+    Pthread_mutex_unlock(&op->evict_mutex);
     return (void *)rc;
 }
 
@@ -692,7 +692,7 @@ static int objpool_return_int(comdb2_objpool_t op, void *obj)
     Pthread_mutex_lock(&op->data_mutex);
 
     if (op->stopped) {
-        pthread_mutex_unlock(&op->data_mutex);
+        Pthread_mutex_unlock(&op->data_mutex);
         return EPERM;
     }
 
@@ -737,10 +737,10 @@ static int objpool_return_int(comdb2_objpool_t op, void *obj)
         if (op->evict_ratio != OPT_DISABLE &&
             idle_rate(op) >= op->evict_ratio) {
             Pthread_mutex_lock(&op->evict_mutex);
-            pthread_mutex_unlock(&op->data_mutex);
+            Pthread_mutex_unlock(&op->data_mutex);
             OP_DBG(op, "signal evict_cond");
             pthread_cond_signal(&op->evict_cond);
-            pthread_mutex_unlock(&op->evict_mutex);
+            Pthread_mutex_unlock(&op->evict_mutex);
             return rc;
         }
 
@@ -750,7 +750,7 @@ static int objpool_return_int(comdb2_objpool_t op, void *obj)
         }
     }
 
-    pthread_mutex_unlock(&op->data_mutex);
+    Pthread_mutex_unlock(&op->data_mutex);
 
     return rc;
 }
@@ -768,7 +768,7 @@ static int objpool_borrow_int(comdb2_objpool_t op, void **objp, long nanosecs,
     Pthread_mutex_lock(&op->data_mutex);
 
     if (op->stopped) {
-        pthread_mutex_unlock(&op->data_mutex);
+        Pthread_mutex_unlock(&op->data_mutex);
         return EPERM;
     }
 
@@ -782,7 +782,7 @@ static int objpool_borrow_int(comdb2_objpool_t op, void **objp, long nanosecs,
             rc = object_create(op, objp);
             if (rc == 0)
                 ++op->nborrows;
-            pthread_mutex_unlock(&op->data_mutex);
+            Pthread_mutex_unlock(&op->data_mutex);
             return rc;
         }
 
@@ -799,7 +799,7 @@ static int objpool_borrow_int(comdb2_objpool_t op, void **objp, long nanosecs,
                     op->npeakobjs = op->nforcedobjs + op->nobjs;
                 ++op->nborrows;
             }
-            pthread_mutex_unlock(&op->data_mutex);
+            Pthread_mutex_unlock(&op->data_mutex);
             return rc;
         }
 
@@ -808,7 +808,7 @@ static int objpool_borrow_int(comdb2_objpool_t op, void **objp, long nanosecs,
              ** if pool is full and caller doesn't want to wait,
              ** return EAGAIN
              */
-            pthread_mutex_unlock(&op->data_mutex);
+            Pthread_mutex_unlock(&op->data_mutex);
             return EAGAIN;
         }
 
@@ -838,14 +838,14 @@ static int objpool_borrow_int(comdb2_objpool_t op, void **objp, long nanosecs,
             OP_DBG(op, "thr wake up");
 
             if (rc != 0) {
-                pthread_mutex_unlock(&op->data_mutex);
+                Pthread_mutex_unlock(&op->data_mutex);
                 return rc;
             }
 
             if (op->stopped) {
                 /* interrupted by stop() */
                 OP_DBG(op, "intr by stop()");
-                pthread_mutex_unlock(&op->data_mutex);
+                Pthread_mutex_unlock(&op->data_mutex);
                 return EPERM;
             }
 
@@ -856,7 +856,7 @@ static int objpool_borrow_int(comdb2_objpool_t op, void **objp, long nanosecs,
             OP_DBG(op, "intr or spurious wakeup");
             if (full(op)) {
                 if (nanosecs > 0) {
-                    pthread_mutex_unlock(&op->data_mutex);
+                    Pthread_mutex_unlock(&op->data_mutex);
                     return ETIMEDOUT;
                 }
                 /* if caller didn't specify waiting time, cond_wait again */
@@ -864,7 +864,7 @@ static int objpool_borrow_int(comdb2_objpool_t op, void **objp, long nanosecs,
                 rc = object_create(op, objp);
                 if (rc == 0)
                     ++op->nborrows;
-                pthread_mutex_unlock(&op->data_mutex);
+                Pthread_mutex_unlock(&op->data_mutex);
                 return rc;
             }
         }
@@ -880,7 +880,7 @@ static int objpool_borrow_int(comdb2_objpool_t op, void **objp, long nanosecs,
     ++rec->nborrows;
     rec->tid = pthread_self();
 
-    pthread_mutex_unlock(&op->data_mutex);
+    Pthread_mutex_unlock(&op->data_mutex);
 
     OP_DBG(op, "borrowed from pool");
     return rc;
@@ -941,7 +941,7 @@ static void objpool_lifo_evict(comdb2_objpool_t op)
         op->out = op->in - 1;
     }
 
-    pthread_mutex_unlock(&op->data_mutex);
+    Pthread_mutex_unlock(&op->data_mutex);
 }
 
 static void objpool_lifo_clear(comdb2_objpool_t op)
@@ -1007,7 +1007,7 @@ static void objpool_fifo_evict(comdb2_objpool_t op)
 
     op->out += cnt;
 
-    pthread_mutex_unlock(&op->data_mutex);
+    Pthread_mutex_unlock(&op->data_mutex);
 }
 
 static void objpool_fifo_clear(comdb2_objpool_t op)
@@ -1075,7 +1075,7 @@ static void objpool_rand_evict(comdb2_objpool_t op)
         }
     }
 
-    pthread_mutex_unlock(&op->data_mutex);
+    Pthread_mutex_unlock(&op->data_mutex);
 }
 
 static void objpool_rand_clear(comdb2_objpool_t op)
@@ -1189,7 +1189,7 @@ static int opt_evict_intv_ms(comdb2_objpool_t op, int value)
         op->evict_thd_run = 0;
         pthread_cond_signal(&op->evict_cond);
 
-        pthread_mutex_unlock(&op->evict_mutex);
+        Pthread_mutex_unlock(&op->evict_mutex);
 
         rc = pthread_join(op->evict_thd, NULL);
 
@@ -1198,7 +1198,7 @@ static int opt_evict_intv_ms(comdb2_objpool_t op, int value)
         Pthread_mutex_lock(&op->evict_mutex);
 
         rc = pthread_create(&op->evict_thd, NULL, eviction_thread, op);
-        pthread_mutex_unlock(&op->evict_mutex);
+        Pthread_mutex_unlock(&op->evict_mutex);
     }
 
     if (rc == 0)
@@ -1221,7 +1221,7 @@ static int opt_evict_ratio(comdb2_objpool_t op, int value)
         op->evict_thd_run = 0;
         pthread_cond_signal(&op->evict_cond);
 
-        pthread_mutex_unlock(&op->evict_mutex);
+        Pthread_mutex_unlock(&op->evict_mutex);
 
         rc = pthread_join(op->evict_thd, NULL);
 
@@ -1230,7 +1230,7 @@ static int opt_evict_ratio(comdb2_objpool_t op, int value)
         Pthread_mutex_lock(&op->evict_mutex);
 
         rc = pthread_create(&op->evict_thd, NULL, eviction_thread, op);
-        pthread_mutex_unlock(&op->evict_mutex);
+        Pthread_mutex_unlock(&op->evict_mutex);
     }
 
     if (rc == 0)

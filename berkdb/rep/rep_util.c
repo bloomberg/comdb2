@@ -407,7 +407,7 @@ __rep_new_master(dbenv, cntrl, eid)
 			if (gbl_abort_on_incorrect_upgrade) abort();
 
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-			pthread_mutex_unlock(&rep_candidate_lock);
+			Pthread_mutex_unlock(&rep_candidate_lock);
 			rep->stat.st_msgs_badgen++;
 			return 0;
 		}
@@ -436,7 +436,7 @@ __rep_new_master(dbenv, cntrl, eid)
 		F_SET(rep, REP_F_NOARCHIVE | REP_F_RECOVER);
 	}
 	F_CLR(rep, REP_F_WAITSTART);
-	pthread_mutex_unlock(&rep_candidate_lock);
+	Pthread_mutex_unlock(&rep_candidate_lock);
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 
 	dblp = dbenv->lg_handle;
@@ -730,7 +730,7 @@ __rep_elect_done(dbenv, rep, egen, func, line)
 		else
 			__rep_set_egen(dbenv, __func__, __LINE__, rep->egen+1);
 		pthread_cond_broadcast(&gbl_rep_egen_cd);
-		pthread_mutex_unlock(&gbl_rep_egen_lk);
+		Pthread_mutex_unlock(&gbl_rep_egen_lk);
 	}
 #ifdef DIAGNOSTIC
 	if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
@@ -958,7 +958,7 @@ __rep_set_last_locked(dbenv, last_locked_lsn)
 	if (last_locked_lsn->file <= 0) 
 		abort();
 	dbenv->last_locked_lsn = *last_locked_lsn;
-	pthread_mutex_unlock(&dbenv->locked_lsn_lk);
+	Pthread_mutex_unlock(&dbenv->locked_lsn_lk);
 	return 0;
 }
 
@@ -976,7 +976,7 @@ __rep_get_last_locked(dbenv, last_locked_lsn)
 {
 	Pthread_mutex_lock(&dbenv->locked_lsn_lk);
 	*last_locked_lsn = dbenv->last_locked_lsn;
-	pthread_mutex_unlock(&dbenv->locked_lsn_lk);
+	Pthread_mutex_unlock(&dbenv->locked_lsn_lk);
 	return 0;
 }
 

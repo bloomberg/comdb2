@@ -930,11 +930,11 @@ __memp_read_recovery_pages(dbmfp)
 		if ((ret = __os_io(dbenv, DB_IO_READ,
 			    dbmfp->recp, i, pagesize,
 			    (u_int8_t *)pagep, &nr)) != 0) {
-			pthread_mutex_unlock(&dbmfp->recp_lk_array[i]);
+			Pthread_mutex_unlock(&dbmfp->recp_lk_array[i]);
 			break;
 		}
 
-		pthread_mutex_unlock(&dbmfp->recp_lk_array[i]);
+		Pthread_mutex_unlock(&dbmfp->recp_lk_array[i]);
 
 		/* Verify length. */
 		if (nr < pagesize)
@@ -1027,7 +1027,7 @@ __memp_send_sparse_page_thread(_)
         memmove(&spgs.list[1], spgs.list, sizeof(struct spg) * ii);
         memset(spgs.list, 0, sizeof(struct spg));
 
-        pthread_mutex_unlock(&spgs.lock);
+        Pthread_mutex_unlock(&spgs.lock);
 
 		dbenv = ent.dbenv;
 		fileid = ent.id;
@@ -1100,7 +1100,7 @@ __memp_add_sparse_page(dbenv, id, ufid, pgno, sparseness)
 	if (spgs.wait)
 		pthread_cond_signal(&spgs.cond);
 
-	pthread_mutex_unlock(&spgs.lock);
+	Pthread_mutex_unlock(&spgs.lock);
 }
 
 /*

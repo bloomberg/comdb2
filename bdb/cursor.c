@@ -116,7 +116,7 @@ int lkprintf(loglvl lvl, const char *fmt, ...)
     logmsgv(lvl, fmt, args);
     va_end(args);
 
-    pthread_mutex_unlock(&pr_lk);
+    Pthread_mutex_unlock(&pr_lk);
 
     return 0;
 }

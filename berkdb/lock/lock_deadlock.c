@@ -475,20 +475,20 @@ __lock_detect(dbenv, atype, abortp)
 		skip = 0;
 		q = 1;
 	}
-	pthread_mutex_unlock(&qlock);
+	Pthread_mutex_unlock(&qlock);
 	if (skip) return 0;
 
 	Pthread_mutex_lock(&dlock);
 	{
 		Pthread_mutex_lock(&qlock);
 		q = 0;
-		pthread_mutex_unlock(&qlock);
+		Pthread_mutex_unlock(&qlock);
 		int retry = 0;
 		ret = __lock_detect_int(dbenv, atype, abortp, &retry);
 		if (retry)
 			ret = __lock_detect_int(dbenv, atype, abortp, NULL);
 	}
-	pthread_mutex_unlock(&dlock);
+	Pthread_mutex_unlock(&dlock);
 	return ret;
 }
 

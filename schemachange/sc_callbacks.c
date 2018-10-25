@@ -489,7 +489,7 @@ int schema_change_abort_callback(void)
          * that, just kill us */
         exit(1);
     }
-    pthread_mutex_unlock(&gbl_sc_lock);
+    Pthread_mutex_unlock(&gbl_sc_lock);
 
     return 0;
 }
@@ -506,7 +506,7 @@ void sc_del_unused_files_tran(struct dbtable *db, tran_type *tran)
 
     Pthread_mutex_lock(&gbl_sc_lock);
     sc_del_unused_files_start_ms = comdb2_time_epochms();
-    pthread_mutex_unlock(&gbl_sc_lock);
+    Pthread_mutex_unlock(&gbl_sc_lock);
 
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DELAYED_OLDFILE_CLEANUP)) {
         if (bdb_list_unused_files_tran(db->handle, tran, &bdberr,
@@ -521,7 +521,7 @@ void sc_del_unused_files_tran(struct dbtable *db, tran_type *tran)
 
     Pthread_mutex_lock(&gbl_sc_lock);
     sc_del_unused_files_start_ms = 0;
-    pthread_mutex_unlock(&gbl_sc_lock);
+    Pthread_mutex_unlock(&gbl_sc_lock);
 }
 
 void sc_del_unused_files(struct dbtable *db)
@@ -537,7 +537,7 @@ void sc_del_unused_files_check_progress(void)
 
     Pthread_mutex_lock(&gbl_sc_lock);
     start_ms = sc_del_unused_files_start_ms;
-    pthread_mutex_unlock(&gbl_sc_lock);
+    Pthread_mutex_unlock(&gbl_sc_lock);
 
     /* if a schema change is in progress */
     if (start_ms) {

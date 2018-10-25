@@ -246,7 +246,7 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 		goto panic_check;
 
     pthread_cond_broadcast(&gbl_logput_cond);
-    pthread_mutex_unlock(&gbl_logput_lk);
+    Pthread_mutex_unlock(&gbl_logput_lk);
 
 	lsn = *lsnp;
 
@@ -379,7 +379,7 @@ err:
 		/* Don't lock out anything else */
 		Pthread_mutex_lock(&lk);
 		poll(NULL, 0, delay);
-		pthread_mutex_unlock(&lk);
+		Pthread_mutex_unlock(&lk);
 		count++;
 		if (gbl_commit_delay_trace && (now = time(NULL))-lastpr) {
 			logmsg(LOGMSG_USER, "%s line %d commit-delayed for %d ms, %llu "
@@ -886,7 +886,7 @@ __write_inmemory_buffer(dblp, write_all)
 		Pthread_mutex_lock(&log_write_lk);
 		ret = __write_inmemory_buffer_lk(dblp, NULL, write_all);
 
-		pthread_mutex_unlock(&log_write_lk);
+		Pthread_mutex_unlock(&log_write_lk);
 		return ret;
 	} else {
 		return __log_write(dblp, dblp->bufp, (u_int32_t)lp->b_off);
@@ -1263,7 +1263,7 @@ __log_lwr_lsn(dblp)
 		if (curseg != lwrseg) {
 			Pthread_mutex_lock(&log_write_lk);
 			lwrseg = (lp->l_off / lp->segment_size);
-			pthread_mutex_unlock(&log_write_lk);
+			Pthread_mutex_unlock(&log_write_lk);
 		}
 
 		/* The seg_start_lsn_array is protected by the region lock. */
@@ -1682,7 +1682,7 @@ __log_write_td(arg)
 	}
 	while (!log_write_td_should_stop);
 
-	pthread_mutex_unlock(&log_write_lk);
+	Pthread_mutex_unlock(&log_write_lk);
 
 	return NULL;
 }
@@ -1777,7 +1777,7 @@ __log_fill_segments(dblp, startlsn, lsn, addr, len)
 			if ((ret =
 				__log_write(dblp, addr,
 				    nbufs * lp->buffer_size)) != 0) {
-				pthread_mutex_unlock(&log_write_lk);
+				Pthread_mutex_unlock(&log_write_lk);
 				return (ret);
 			}
 
@@ -1795,7 +1795,7 @@ __log_fill_segments(dblp, startlsn, lsn, addr, len)
 			lp->b_off = 0;
 
 			/* I no longer neeed the write lock. */
-			pthread_mutex_unlock(&log_write_lk);
+			Pthread_mutex_unlock(&log_write_lk);
 
 			/* Zero out the last LSN. */
 			ZERO_LSN(seg_lsn_array[lp->num_segments - 1]);
@@ -1847,7 +1847,7 @@ __log_fill_segments(dblp, startlsn, lsn, addr, len)
 					++lp->stat.st_inline_writes;
 				}
 
-				pthread_mutex_unlock(&log_write_lk);
+				Pthread_mutex_unlock(&log_write_lk);
 			}
 
 			assert(lp->l_off != nxtseg);

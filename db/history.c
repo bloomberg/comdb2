@@ -48,7 +48,7 @@ history_request *hist_get_event(history *h)
     history_request *req;
     Pthread_mutex_lock(&h->lock);
     req = pool_getzblk(h->pool);
-    pthread_mutex_unlock(&h->lock);
+    Pthread_mutex_unlock(&h->lock);
     return req;
 }
 
@@ -66,7 +66,7 @@ void hist_add_event(history *h, history_request *req)
         h->head = (h->head + 1) % h->size;
     }
     h->total++;
-    pthread_mutex_unlock(&h->lock);
+    Pthread_mutex_unlock(&h->lock);
     if (h->wholereq) {
         if (sv1)
             free(sv1);

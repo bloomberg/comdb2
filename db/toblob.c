@@ -154,7 +154,7 @@ static void blobmem_init(void);
     comdb2bma_mark_locked(blobmem);
 #define UNLOCK_BLOB_MUTEX()                                                    \
     comdb2bma_mark_unlocked(blobmem);                                          \
-    pthread_mutex_unlock(&blobmutex);
+    Pthread_mutex_unlock(&blobmutex);
 
 void blob_print_stats(void)
 {
