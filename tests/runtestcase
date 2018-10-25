@@ -31,14 +31,14 @@ mkdir -p ${TESTDIR}/logs/
 call_unsetup() {
     [[ $COMDB2_UNITTEST == 1 ]] && return
 
-    local LCLDBNAME=$1
-    ${TESTSROOTDIR}/unsetup $LCLDBNAME $successful &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${LCLDBNAME}.unsetup | cut -c11- | grep "^!" )
+    local LCLDBNM=$1
+    ${TESTSROOTDIR}/unsetup $LCLDBNM $successful &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${LCLDBNM}.unsetup | cut -c11- | grep "^!" )
 }
 
 warn_long_setup() {
     start=$(date +%s)
-    local LCLDBNAME=$1
-    ( ${TESTSROOTDIR}/setup $LCLDBNAME &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${LCLDBNAME}.setup | cut -c11- | grep "^!" ) ) &
+    local LCLDBNM=$1
+    ( ${TESTSROOTDIR}/setup $LCLDBNM &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${LCLDBNM}.setup | cut -c11- | grep "^!" ) ) &
     pid=$!
     kill -0 $pid >/dev/null 2>&1
     r=$?
@@ -66,7 +66,7 @@ find_cores() {
     # assumes core location and pattern is the same as local machine
     # for all machines in cluster 
     local COREAGE=60
-
+    local LCLDBNM=$1
     local CPAT=$(< /proc/sys/kernel/core_pattern)  # like cat core_pattern
     local COREDIR=$(dirname $CPAT 2>/dev/null)
     if [ "x$COREDIR" == "x" ] || [ "x$COREDIR" == "x." ] ; then 
@@ -78,7 +78,7 @@ find_cores() {
     grep '%e\|%t\|%u\|%g\|%s\|%h\|%p' /proc/sys/kernel/core_pattern > /dev/null && has_pattern=1
     local COREFL="$COREDIR/$CPAT"
     local CORECMD="find ${COREDIR} -mmin -$COREAGE -regex '$COREFL' 2> /dev/null"
-    local PIDFL=${TMPDIR}/${DBNAME}.pid
+    local PIDFL=${TMPDIR}/${LCLDBNM}.pid
 
 
     # always check localhost because thats where we create db
@@ -105,7 +105,7 @@ find_cores() {
 
     if [[ -n "$CLUSTER" ]] ; then
         #check again for clustered local crash
-        PIDFL=${TMPDIR}/${DBNAME}.$HOSTNAME.pid
+        PIDFL=${TMPDIR}/${LCLDBNM}.$HOSTNAME.pid
         if [ $has_pattern -eq 1 ] ; then
             local PID=$(cat ${PIDFL} 2> /dev/null)
             COREFL=`echo $CPAT | sed "s/%e/comdb2/g; s/.%t/.[^.]*/g; s/.%u/.[^.]*/g; s/.%g/.[^.]*/; s/.%s/.[^.]*/; s/.%h/.[^.]*/; s/%p/$PID/g; s/\.\./\./;"`
@@ -132,7 +132,7 @@ find_cores() {
             continue
         fi
         if [ $has_pattern -eq 1 ] ; then
-            PIDFL=${TMPDIR}/${DBNAME}.pid
+            PIDFL=${TMPDIR}/${LCLDBNM}.pid
             local PID=`ssh -o StrictHostKeyChecking=no $node "cat ${PIDFL} 2> /dev/null" </dev/null`
             if [ "x$PID" == "x" ] ; then
                 continue
@@ -164,28 +164,28 @@ find_cores() {
 call_setup() {
     [[ $COMDB2_UNITTEST == 1 ]] && return
 
-    local LCLDBNAME=$1
+    local LCLDBNM=$1
     if [[ $SETUP_WARN ]]; then
-         warn_long_setup $LCLDBNAME
+         warn_long_setup $LCLDBNM
          rc=$?
     else
-        { timeout ${SETUP_TIMEOUT} ${TESTSROOTDIR}/setup ${LCLDBNAME} 2>&1 || echo $?; } | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${LCLDBNAME}.setup | cut -c11- | grep "^!"
+        { timeout ${SETUP_TIMEOUT} ${TESTSROOTDIR}/setup ${LCLDBNM} 2>&1 || echo $?; } | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${LCLDBNM}.setup | cut -c11- | grep "^!"
     fi
     sleep 0.8 # wait a bit for any cores
     #last line of .setup file will contain the error rc if any
-    ret=`tail -1 ${TESTDIR}/logs/${LCLDBNAME}.setup | cut -c11-`
-    cr=`find_cores`
+    ret=`tail -1 ${TESTDIR}/logs/${LCLDBNM}.setup | cut -c11-`
+    cr=`find_cores $LCLDBNM`
 
     if [[ -n "$cr" ]] ; then
         echo "!$TESTCASE: setup failed with core dumped ($cr)"
         echo "!$TESTCASE: setup failed with core dumped ($cr)" >> ${TESTDIR}/test.log
-        call_unsetup ${LCLDBNAME}
+        call_unsetup ${LCLDBNM}
         sleep 0.1
         exit 1
     elif [[ $ret != "setup successful" ]] ; then
         echo "!$TESTCASE: setup failed (rc=$ret)" >> ${TESTDIR}/test.log
-        echo "!$TESTCASE: setup failed (rc=$ret) see ${TESTDIR}/logs/${LCLDBNAME}.setup"
-        call_unsetup ${LCLDBNAME}
+        echo "!$TESTCASE: setup failed (rc=$ret) see ${TESTDIR}/logs/${LCLDBNM}.setup"
+        call_unsetup ${LCLDBNM}
         sleep 0.1
         exit 1
     fi
@@ -193,13 +193,23 @@ call_setup() {
 
 
 call_setup ${DBNAME}
+
+if [ -n "${SECONDARY_DB_PREFIX}" ] ; then
+    SECONDARY_DB=${SECONDARY_DB}${DBNAME}
+    call_setup ${SECONDARY_DB}
+fi
+
 echo "!$TESTCASE: running with timeout ${TEST_TIMEOUT}"
 
 timeout ${TEST_TIMEOUT} ./runit ${DBNAME} 2>&1  | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' &> ${TESTDIR}/logs/${DBNAME}.testcase
 
 rc=${PIPESTATUS[0]}
 sleep 1
-cr=`find_cores`
+cr=`find_cores $DBNAME`
+
+if [ -z "$cr" ] && [ -x "${SECONDARY_DB}" ] ; then
+    cr=`find_cores ${SECONDARY_DB}`
+fi
 
 if [[ -n "$cr" ]] ; then
     echo "!$TESTCASE: failed with core dumped ($cr)"
@@ -217,7 +227,11 @@ else
     echo "!$TESTCASE: failed" >> ${TESTDIR}/test.log
 fi
 
-call_unsetup ${LCLDBNAME}
+call_unsetup ${DBNAME}
+
+if [ -n "${SECONDARY_DB}" ] ; then
+    call_setup ${SECONDARY_DB}
+fi
 
 DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
 echo Done $TESTCASE with id $TESTID at $DATETIME >> $TESTDIR/test.log
