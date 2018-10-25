@@ -146,11 +146,11 @@ static void _destroy_session(osql_sess_t **prq, int phase)
     case 1:
         pthread_cond_destroy(&rq->cond);
     case 2:
-        pthread_mutex_destroy(&rq->mtx);
+        Pthread_mutex_destroy(&rq->mtx);
     case 3:
-        pthread_mutex_destroy(&rq->clients_mtx);
+        Pthread_mutex_destroy(&rq->clients_mtx);
     case 4:
-        pthread_mutex_destroy(&rq->completed_lock);
+        Pthread_mutex_destroy(&rq->completed_lock);
     case 5:
         free(rq);
     }

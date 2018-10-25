@@ -132,7 +132,7 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
     rc = pthread_cond_init(&entry->cond, NULL);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: error init cond, rc=%d\n", __func__, rc);
-        pthread_mutex_destroy(&entry->mtx);
+        Pthread_mutex_destroy(&entry->mtx);
         free(entry);
         return -1;
     }
@@ -291,7 +291,7 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
 
         /* free sql thread registration entry */
         pthread_cond_destroy(&entry->cond);
-        pthread_mutex_destroy(&entry->mtx);
+        Pthread_mutex_destroy(&entry->mtx);
         free(entry);
 
         /*reset rqid */

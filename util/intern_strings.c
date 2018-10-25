@@ -24,6 +24,7 @@
 #include "mem_util.h"
 #include "mem_override.h"
 #include "logmsg.h"
+#include "locks_wrap.h"
 
 static pthread_once_t once = PTHREAD_ONCE_INIT;
 static pthread_mutex_t intern_lk = PTHREAD_MUTEX_INITIALIZER;
@@ -111,5 +112,5 @@ void cleanup_interned_strings()
     hash_clear(interned_strings);
     hash_free(interned_strings);
     interned_strings = NULL;
-    pthread_mutex_destroy(&intern_lk);
+    Pthread_mutex_destroy(&intern_lk);
 }

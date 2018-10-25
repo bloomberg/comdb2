@@ -85,7 +85,7 @@ static void net_enque_free(netinfo_type *netinfo_ptr, void *netstat)
     free(n->hostname);
     if (n->type_counts)
         free(n->type_counts);
-    pthread_mutex_destroy(&n->lock);
+    Pthread_mutex_destroy(&n->lock);
     free(n);
 }
 

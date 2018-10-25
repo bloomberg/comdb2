@@ -23,6 +23,7 @@
 #include "dbinc_auto/btree_auto.h"
 #include <assert.h>
 #include "logmsg.h"
+#include "locks_wrap.h"
 
 
 /* TODO:
@@ -80,7 +81,7 @@ __lc_cache_destroy(DB_ENV *dbenv)
 	__os_free(dbenv, lcc->ent);
     if (lcc->txnid_hash)
         hash_free(lcc->txnid_hash);
-	pthread_mutex_destroy(&lcc->lk);
+	Pthread_mutex_destroy(&lcc->lk);
 
 	return 0;
 }

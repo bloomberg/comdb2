@@ -93,7 +93,7 @@ error:
         if (sched->name)
             free(sched->name);
         pthread_cond_destroy(&sched->cond);
-        pthread_mutex_destroy(&sched->mtx);
+        Pthread_mutex_destroy(&sched->mtx);
         free(sched);
         sched = NULL;
     }

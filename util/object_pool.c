@@ -314,8 +314,8 @@ int comdb2_objpool_destroy(comdb2_objpool_t op)
     pthread_mutex_unlock(&op->data_mutex);
 
     /* clean up mutexes and conditions */
-    pthread_mutex_destroy(&op->data_mutex);
-    pthread_mutex_destroy(&op->evict_mutex);
+    Pthread_mutex_destroy(&op->data_mutex);
+    Pthread_mutex_destroy(&op->evict_mutex);
     pthread_cond_destroy(&op->unexhausted);
     pthread_cond_destroy(&op->evict_cond);
 
@@ -497,15 +497,15 @@ static int comdb2_objpool_create_int(comdb2_objpool_t *opp, const char *name,
     Pthread_mutex_init(&op->evict_mutex, NULL);
 
     if ((rc = pthread_cond_init(&op->unexhausted, NULL)) != 0) {
-        pthread_mutex_destroy(&op->data_mutex);
-        pthread_mutex_destroy(&op->evict_mutex);
+        Pthread_mutex_destroy(&op->data_mutex);
+        Pthread_mutex_destroy(&op->evict_mutex);
         free(op);
         return rc;
     }
 
     if ((rc = pthread_cond_init(&op->evict_cond, NULL)) != 0) {
-        pthread_mutex_destroy(&op->data_mutex);
-        pthread_mutex_destroy(&op->evict_mutex);
+        Pthread_mutex_destroy(&op->data_mutex);
+        Pthread_mutex_destroy(&op->evict_mutex);
         pthread_cond_destroy(&op->unexhausted);
         free(op);
         return rc;
@@ -517,8 +517,8 @@ static int comdb2_objpool_create_int(comdb2_objpool_t *opp, const char *name,
     op->out = 0;
     op->objs = malloc(cap * sizeof(void *));
     if (op->objs == NULL) {
-        pthread_mutex_destroy(&op->data_mutex);
-        pthread_mutex_destroy(&op->evict_mutex);
+        Pthread_mutex_destroy(&op->data_mutex);
+        Pthread_mutex_destroy(&op->evict_mutex);
         pthread_cond_destroy(&op->unexhausted);
         pthread_cond_destroy(&op->evict_cond);
         free(op);
@@ -546,8 +546,8 @@ static int comdb2_objpool_create_int(comdb2_objpool_t *opp, const char *name,
         op->clear_impl = objpool_rand_clear;
         break;
     default:
-        pthread_mutex_destroy(&op->data_mutex);
-        pthread_mutex_destroy(&op->evict_mutex);
+        Pthread_mutex_destroy(&op->data_mutex);
+        Pthread_mutex_destroy(&op->evict_mutex);
         pthread_cond_destroy(&op->unexhausted);
         pthread_cond_destroy(&op->evict_cond);
         free(op);

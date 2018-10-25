@@ -42,6 +42,7 @@ static const char revid[] = "$Id: lock.c,v 11.134 2003/11/18 21:30:38 ubell Exp 
 #endif
 #include "logmsg.h"
 #include "util.h"
+#include "locks_wrap.h"
 #include "tohex.h"
 
 
@@ -429,11 +430,11 @@ __allocate_ilock_latch(dbenv, lnode)
 			    region->ilock_step, &mem)) != 0)
 			abort();
 		for (i = 0; i < region->ilock_step - 1; i++) {
-			pthread_mutex_init(&mem[i].lsns_mtx, NULL);
+			Pthread_mutex_init(&mem[i].lsns_mtx, NULL);
 			mem[i].next = &mem[i + 1];
 		}
 		mem[region->ilock_step - 1].next = NULL;
-		pthread_mutex_init(&mem[region->ilock_step - 1].lsns_mtx, NULL);
+		Pthread_mutex_init(&mem[region->ilock_step - 1].lsns_mtx, NULL);
 		region->ilock_latch_head = mem;
 	}
 	*lnode = region->ilock_latch_head;
@@ -796,14 +797,14 @@ init_latches(dbenv, lt)
 		abort();
 
 	for (i = 0; i < region->max_latch; i++)
-		pthread_mutex_init(&region->latches[i].lock, &attr);
+		Pthread_mutex_init(&region->latches[i].lock, &attr);
 
 	for (i = 0; i < region->max_latch_lockerid; i++)
-		pthread_mutex_init(&region->lockerid_latches[i].lock, NULL);
+		Pthread_mutex_init(&region->lockerid_latches[i].lock, NULL);
 
-	pthread_mutex_init(&region->ilock_latch_lk, NULL);
+	Pthread_mutex_init(&region->ilock_latch_lk, NULL);
 	region->ilock_latch_head = NULL;
-	pthread_mutex_init(&region->lockerid_node_lk, NULL);
+	Pthread_mutex_init(&region->lockerid_node_lk, NULL);
 	region->lockerid_node_head = NULL;
 	return 0;
 }

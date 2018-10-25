@@ -807,7 +807,7 @@ void cleanup_lock_buffer(struct buf_lock_t *lock_buffer)
     /* sbuf2 is owned by the appsock. Don't close it here. */
 
     pthread_cond_destroy(&lock_buffer->wait_cond);
-    pthread_mutex_destroy(&lock_buffer->req_lock);
+    Pthread_mutex_destroy(&lock_buffer->req_lock);
 
     LOCK(&buf_lock)
     {

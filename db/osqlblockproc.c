@@ -547,8 +547,8 @@ int osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func, 
 
         /* destroy transaction */
         pthread_cond_destroy(&tran->cond);
-        pthread_mutex_destroy(&tran->mtx);
-        pthread_mutex_destroy(&tran->store_mtx);
+        Pthread_mutex_destroy(&tran->mtx);
+        Pthread_mutex_destroy(&tran->store_mtx);
 
         rc = bdb_temp_table_close(thedb->bdb_env, tran->db, &bdberr);
         if (rc != 0) {

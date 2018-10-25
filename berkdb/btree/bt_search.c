@@ -254,7 +254,7 @@ genid_hash_free(DB_ENV *dbenv, genid_hash * hp)
 	if (!hp)
 		return;
 	__os_free(dbenv, hp->tbl);
-	pthread_mutex_destroy(&(hp->mutex));
+	Pthread_mutex_destroy(&(hp->mutex));
 	__os_free(dbenv, hp);
 }
 

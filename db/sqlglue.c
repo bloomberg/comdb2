@@ -694,7 +694,7 @@ void done_sql_thread(void)
         pthread_mutex_lock(&gbl_sql_lock);
         listc_rfl(&thedb->sql_threads, thd);
         pthread_mutex_unlock(&gbl_sql_lock);
-        pthread_mutex_destroy(&thd->lk);
+        Pthread_mutex_destroy(&thd->lk);
         pthread_setspecific(query_info_key, NULL);
         if (thd->buf) {
             free(thd->buf);
@@ -11618,10 +11618,10 @@ static int run_verify_indexes_query(char *sql, struct schema *sc, Mem *min,
     if (clnt.query_stats)
         free(clnt.query_stats);
 
-    pthread_mutex_destroy(&clnt.wait_mutex);
+    Pthread_mutex_destroy(&clnt.wait_mutex);
     pthread_cond_destroy(&clnt.wait_cond);
-    pthread_mutex_destroy(&clnt.write_lock);
-    pthread_mutex_destroy(&clnt.dtran_mtx);
+    Pthread_mutex_destroy(&clnt.write_lock);
+    Pthread_mutex_destroy(&clnt.dtran_mtx);
 
     return rc;
 }

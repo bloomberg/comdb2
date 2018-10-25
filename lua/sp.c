@@ -905,7 +905,7 @@ static void free_tmptbl(SP sp, tmptbl_info_t *tbl)
 {
     LIST_REMOVE(tbl, entries);
     if (sp->parent == sp) {
-        pthread_mutex_destroy(tbl->lk);
+        Pthread_mutex_destroy(tbl->lk);
         free(tbl->lk);
     }
     free(tbl->sql);
@@ -2517,10 +2517,10 @@ static void *dispatch_lua_thread(void *arg)
     dispatch_sql_query(&clnt); // --> exec_thread()
 
     cleanup_clnt(&clnt);
-    pthread_mutex_destroy(&clnt.wait_mutex);
+    Pthread_mutex_destroy(&clnt.wait_mutex);
     pthread_cond_destroy(&clnt.wait_cond);
-    pthread_mutex_destroy(&clnt.write_lock);
-    pthread_mutex_destroy(&clnt.dtran_mtx);
+    Pthread_mutex_destroy(&clnt.write_lock);
+    Pthread_mutex_destroy(&clnt.dtran_mtx);
 
     parent_thd->finished_run = 1;
     parent_thd->lua_tid = 0;

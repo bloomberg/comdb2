@@ -388,9 +388,9 @@ void __free_fdb(fdb_t *fdb)
     hash_free(fdb->h_ents_name);
     hash_free(fdb->h_tbls_name);
     pthread_rwlock_destroy(&fdb->h_rwlock);
-    pthread_mutex_destroy(&fdb->sqlstats_mtx);
-    pthread_mutex_destroy(&fdb->dbcon_mtx);
-    pthread_mutex_destroy(&fdb->users_mtx);
+    Pthread_mutex_destroy(&fdb->sqlstats_mtx);
+    Pthread_mutex_destroy(&fdb->dbcon_mtx);
+    Pthread_mutex_destroy(&fdb->users_mtx);
     free(fdb);
 }
 
@@ -566,7 +566,7 @@ static void destroy_fdb(fdb_t *fdb)
 void __fdb_free_table(fdb_t *fdb, fdb_tbl_t *tbl)
 {
     free(tbl->name);
-    pthread_mutex_destroy(&tbl->ents_mtx);
+    Pthread_mutex_destroy(&tbl->ents_mtx);
     free(tbl);
 }
 
@@ -4178,7 +4178,7 @@ static int __free_fdb_tbl(void *obj, void *arg)
     /* free table itself */
     hash_del(fdb->h_tbls_name, tbl);
     free(tbl->name);
-    pthread_mutex_destroy(&tbl->ents_mtx);
+    Pthread_mutex_destroy(&tbl->ents_mtx);
     free(tbl);
 
     return FDB_NOERR;

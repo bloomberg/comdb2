@@ -79,6 +79,7 @@ static const char revid[] = "$Id: txn.c,v 11.219 2003/12/03 14:33:06 bostic Exp 
 #include "printformats.h"
 #include "dbinc/db_swap.h"
 #include "logmsg.h"
+#include "locks_wrap.h"
 
 #ifndef TESTSUITE
 #include <thread_util.h>
@@ -737,7 +738,7 @@ __txn_allocate_ltrans(dbenv, ltranid, begin_lsn, rlt)
 	if (!lt) {
 		if ((ret = __os_calloc(dbenv, 1, sizeof(LTDESC), &lt)) != 0)
 			goto err;
-		pthread_mutex_init(&lt->lk, NULL);
+		Pthread_mutex_init(&lt->lk, NULL);
 		pthread_cond_init(&lt->wait, NULL);
 	}
 

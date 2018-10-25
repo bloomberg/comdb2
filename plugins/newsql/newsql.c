@@ -2362,10 +2362,10 @@ done:
     close_appsock(sb);
     cleanup_clnt(&clnt);
 
-    pthread_mutex_destroy(&clnt.wait_mutex);
+    Pthread_mutex_destroy(&clnt.wait_mutex);
     pthread_cond_destroy(&clnt.wait_cond);
-    pthread_mutex_destroy(&clnt.write_lock);
-    pthread_mutex_destroy(&clnt.dtran_mtx);
+    Pthread_mutex_destroy(&clnt.write_lock);
+    Pthread_mutex_destroy(&clnt.dtran_mtx);
 
     return APPSOCK_RETURN_OK;
 }

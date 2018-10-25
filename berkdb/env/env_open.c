@@ -39,6 +39,7 @@ static const char revid[] = "$Id: env_open.c,v 11.144 2003/09/13 18:39:34 bostic
 #include "dbinc/txn.h"
 
 #include "logmsg.h"
+#include "locks_wrap.h"
 
 static int __db_tmp_open __P((DB_ENV *, u_int32_t, char *, DB_FH **));
 static int __dbenv_config __P((DB_ENV *, const char *, u_int32_t));
@@ -334,14 +335,14 @@ __dbenv_open(dbenv, db_home, flags, mode)
 	/* Init this part before txn's */
 	if (LF_ISSET(DB_INIT_REP)) {
 		dbenv->ltrans_hash = hash_init(sizeof(u_int64_t));
-		pthread_mutex_init(&dbenv->ltrans_hash_lk, NULL);
+		Pthread_mutex_init(&dbenv->ltrans_hash_lk, NULL);
 		listc_init(&dbenv->active_ltrans,
 		    offsetof(struct __ltrans_descriptor, lnk));
 		listc_init(&dbenv->inactive_ltrans,
 		    offsetof(struct __ltrans_descriptor, lnk));
-		pthread_mutex_init(&dbenv->ltrans_inactive_lk, NULL);
-		pthread_mutex_init(&dbenv->ltrans_active_lk, NULL);
-		pthread_mutex_init(&dbenv->locked_lsn_lk, NULL);
+		Pthread_mutex_init(&dbenv->ltrans_inactive_lk, NULL);
+		Pthread_mutex_init(&dbenv->ltrans_active_lk, NULL);
+		Pthread_mutex_init(&dbenv->locked_lsn_lk, NULL);
 	}
 
 	if (LF_ISSET(DB_INIT_TXN)) {
@@ -583,7 +584,7 @@ foundlsn:
 		    dbenv->num_recovery_worker_threads);
 		thdpool_set_linger(dbenv->recovery_workers, 30);
 		thdpool_set_maxqueue(dbenv->recovery_workers, 8000);
-		pthread_mutex_init(&dbenv->recover_lk, NULL);
+		Pthread_mutex_init(&dbenv->recover_lk, NULL);
 		pthread_cond_init(&dbenv->recover_cond, NULL);
 		pthread_rwlock_init(&dbenv->ser_lk, NULL);
 		listc_init(&dbenv->inflight_transactions,

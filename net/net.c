@@ -2831,13 +2831,13 @@ static void rem_from_netinfo_ll(netinfo_type *netinfo_ptr,
                host_node_ptr->have_writer_thread);
     }
     Pthread_mutex_unlock(&(host_node_ptr->lock));
-    pthread_mutex_destroy(&(host_node_ptr->lock));
-    pthread_mutex_destroy(&(host_node_ptr->timestamp_lock));
-    pthread_mutex_destroy(&(host_node_ptr->pool_lock));
-    pthread_mutex_destroy(&(host_node_ptr->write_lock));
-    pthread_mutex_destroy(&(host_node_ptr->enquelk));
-    pthread_mutex_destroy(&(host_node_ptr->wait_mutex));
-    pthread_mutex_destroy(&(host_node_ptr->throttle_lock));
+    Pthread_mutex_destroy(&(host_node_ptr->lock));
+    Pthread_mutex_destroy(&(host_node_ptr->timestamp_lock));
+    Pthread_mutex_destroy(&(host_node_ptr->pool_lock));
+    Pthread_mutex_destroy(&(host_node_ptr->write_lock));
+    Pthread_mutex_destroy(&(host_node_ptr->enquelk));
+    Pthread_mutex_destroy(&(host_node_ptr->wait_mutex));
+    Pthread_mutex_destroy(&(host_node_ptr->throttle_lock));
 
     pthread_cond_destroy(&(host_node_ptr->ack_wakeup));
     pthread_cond_destroy(&(host_node_ptr->write_wakeup));

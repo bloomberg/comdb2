@@ -3205,7 +3205,7 @@ int offload_comm_send_sync_blockreq(char *node, void *buf, int buflen)
 
     rc = pthread_cond_init(&(p_slock->wait_cond), NULL);
     if (rc != 0) {
-        pthread_mutex_destroy(&(p_slock->req_lock));
+        Pthread_mutex_destroy(&(p_slock->req_lock));
         free(p_slock);
         return rc;
     }
@@ -3229,7 +3229,7 @@ int offload_comm_send_sync_blockreq(char *node, void *buf, int buflen)
 
     // clean up
     pthread_cond_destroy(&(p_slock->wait_cond));
-    pthread_mutex_destroy(&(p_slock->req_lock));
+    Pthread_mutex_destroy(&(p_slock->req_lock));
     free(p_slock);
     return rc;
 }

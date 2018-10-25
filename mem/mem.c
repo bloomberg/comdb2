@@ -493,7 +493,7 @@ int comdb2ma_exit(void)
                 COMDB2MA_UNLOCK(curpos);
             }
             if (curpos->use_lock)
-                pthread_mutex_destroy(&curpos->lock);
+                Pthread_mutex_destroy(&curpos->lock);
             mspace_free(root.m, curpos);
             curpos = NULL;
         }
@@ -1278,7 +1278,7 @@ static int comdb2ma_destroy_int(comdb2ma cm)
     cm->m = NULL;
     rc = COMDB2MA_UNLOCK(cm);
     if (cm->use_lock)
-        pthread_mutex_destroy(&cm->lock);
+        Pthread_mutex_destroy(&cm->lock);
     mspace_free(root.m, cm);
 
     return rc;

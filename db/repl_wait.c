@@ -153,7 +153,7 @@ void wait_for_genid_repl(unsigned long long genid)
             }
             xLOCK(&lock);
 
-            pthread_mutex_destroy(&me.mutex);
+            Pthread_mutex_destroy(&me.mutex);
         }
     }
     UNLOCK(&lock);

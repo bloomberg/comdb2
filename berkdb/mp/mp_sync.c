@@ -1484,7 +1484,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 		ret = pt->ret;
 	}
 
-	pthread_mutex_destroy(&pt->lk);
+	Pthread_mutex_destroy(&pt->lk);
 	pthread_cond_destroy(&pt->wait);
 done:
         /*
