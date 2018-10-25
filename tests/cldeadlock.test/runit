@@ -108,25 +108,24 @@ function fill_table
     done
 }
 
-function cldeadlock_exe
-{
-    [[ $debug == "1" ]] && set -x
-    typeset func="cldeadlock_exe"
-    write_prompt $func "executing $func"
-    ${TESTSBUILDDIR}/cldeadlock -d $DBNAME -c $CDB2_CONFIG -t default
-    r=$?
-    [[ "$r" != 0 ]] && failexit "cldeadlock failed, $r"
-}
-
 function cldeadlock
 {
     [[ $debug == "1" ]] && set -x
     typeset func="cldeadlock"
+    typeset iter=$1
+    write_prompt $func "executing $func-$iter"
+    ${TESTSBUILDDIR}/cldeadlock -d $DBNAME -c $CDB2_CONFIG -t default 2>&1 | gawk "{print \"[$func-$iter]\", \$0; fflush(); }"
+}
+
+function cldeadlock_threads
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="cldeadlock_threads"
     write_prompt $func "executing $func"
     typeset iters=${1:-5}
     typeset j=0
     while [[ $j -lt $iters ]]; do
-        cldeadlock_exe &
+        cldeadlock $j &
         cl_pids[$j]=$!
         let j=j+1
     done
@@ -165,7 +164,7 @@ function run_test
     start_coherent_loop
     create_table t1
     fill_table t1
-    cldeadlock $cl_iters
+    cldeadlock_threads $cl_iters
     check_coherent 1
     cleanup
 }
