@@ -87,7 +87,8 @@ int select_and_update_orphan(const char *dbname, const char *type,
                     "update t1 set a = %" PRId64 " where a = %" PRId64 "\n",
                     upd_val, *sel_val);
 
-            if ((upd_rc = cdb2_run_statement(upd_hndl, upd_sql)) != 0) {
+            if ((upd_rc = cdb2_run_statement(upd_hndl, upd_sql)) != 0 &&
+                    upd_rc != CDB2ERR_VERIFY_ERROR) {
                 fprintf(stderr, "Failed to run update statement, rc=%d\n", upd_rc);
                 exit(1);
             }
