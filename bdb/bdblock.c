@@ -533,7 +533,7 @@ void bdb_get_readlock(bdb_state_type *bdb_state, const char *idstr,
 
             Pthread_rwlock_rdlock(lock_handle->bdb_lock);
         } else if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "%s/%s(%s): pthread_rwlock_rdlock error %d %s\n",
+            logmsg(LOGMSG_FATAL, "%s/%s(%s): pthread_rwlock_tryrdlock error %d %s\n",
                     idstr, funcname, __func__, rc, strerror(rc));
             abort();
         }

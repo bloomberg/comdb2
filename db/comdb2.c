@@ -778,7 +778,7 @@ struct dbtable *getdbbynum(int num)
 {
     int ii;
     struct dbtable *p_db = NULL;
-    pthread_rwlock_rdlock(&thedb_lock);
+    Pthread_rwlock_rdlock(&thedb_lock);
     for (ii = 0; ii < thedb->num_dbs; ii++) {
         if (thedb->dbs[ii]->dbnum == num) {
             p_db = thedb->dbs[ii];
@@ -801,7 +801,7 @@ struct dbtable *get_dbtable_by_name(const char *p_name)
 {
     struct dbtable *p_db = NULL;
 
-    pthread_rwlock_rdlock(&thedb_lock);
+    Pthread_rwlock_rdlock(&thedb_lock);
     p_db = hash_find_readonly(thedb->db_hash, &p_name);
     pthread_rwlock_unlock(&thedb_lock);
 

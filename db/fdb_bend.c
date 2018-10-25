@@ -437,7 +437,7 @@ int fdb_svc_cursor_move(enum svc_move_types type, char *cid, char **data,
     int irc = 0;
 
     /* retrieve cursor */
-    pthread_rwlock_rdlock(&center->cursors_rwlock);
+    Pthread_rwlock_rdlock(&center->cursors_rwlock);
     if (isuuid)
         cur = hash_find_readonly(center->cursorsuuid_hash, cid);
     else {
@@ -1202,7 +1202,7 @@ int fdb_svc_cursor_find(char *cid, int keylen, char *key, int last,
     char *use_key;
 
     /* retrieve cursor */
-    pthread_rwlock_rdlock(&center->cursors_rwlock);
+    Pthread_rwlock_rdlock(&center->cursors_rwlock);
     if (isuuid)
         cur = hash_find_readonly(center->cursorsuuid_hash, cid);
     else {
@@ -1349,7 +1349,7 @@ int fdb_svc_trans_get_tid(char *cid, char *tid, int isuuid)
     *tid = 0ULL;
 
     /* retrieve cursor */
-    pthread_rwlock_rdlock(&center->cursors_rwlock);
+    Pthread_rwlock_rdlock(&center->cursors_rwlock);
     if (isuuid)
         cur = hash_find_readonly(center->cursorsuuid_hash, cid);
     else {

@@ -171,7 +171,7 @@ int timepart_is_shard(const char *name, int lock, char **viewname)
    rc = 0;
 
    if(lock)
-       pthread_rwlock_rdlock(&views_lk);
+       Pthread_rwlock_rdlock(&views_lk);
 
    view = _check_shard_collision(views, name, &indx, _CHECK_ALL_SHARDS);
 
@@ -205,7 +205,7 @@ int timepart_is_timepart(const char *name, int lock)
        return 0;
 
    if(lock)
-       pthread_rwlock_rdlock(&views_lk);
+       Pthread_rwlock_rdlock(&views_lk);
 
    for(i=0; i<views->nviews; i++)
    {
@@ -1591,7 +1591,7 @@ int comdb2_partition_check_name_reuse(const char *tblname, char **partname, int 
     timepart_view_t *view;
     int rc = VIEW_NOERR;
 
-    pthread_rwlock_rdlock(&views_lk);
+    Pthread_rwlock_rdlock(&views_lk);
 
     view = _check_shard_collision(views, tblname, indx, _CHECK_ALL_SHARDS);
     if(view) {
@@ -1618,7 +1618,7 @@ void comdb2_partition_info_all(const char *option)
     int i;
     char *info;
 
-    pthread_rwlock_rdlock(&views_lk);
+    Pthread_rwlock_rdlock(&views_lk);
 
     for(i=0; i<views->nviews; i++) {
         view = views->views[i];
@@ -1645,7 +1645,7 @@ char* comdb2_partition_info(const char *partition_name, const char *option)
 {
     char *ret_str = NULL;
 
-    pthread_rwlock_rdlock(&views_lk);
+    Pthread_rwlock_rdlock(&views_lk);
 
     ret_str = comdb2_partition_info_locked(partition_name, option);
 
@@ -1666,7 +1666,7 @@ int timepart_dump_timepartitions(FILE *dest)
     char *info;
     int has_tp = 0;
 
-    pthread_rwlock_rdlock(&views_lk);
+    Pthread_rwlock_rdlock(&views_lk);
 
     has_tp = views->nviews > 0;
 
@@ -2331,7 +2331,7 @@ static int _view_get_next_rollout(enum view_timepart_period period,
  */
 void views_signal(timepart_views_t *views)
 {
-    pthread_rwlock_rdlock(&views_lk);
+    Pthread_rwlock_rdlock(&views_lk);
 
     if (views && timepart_sched) {
         cron_signal_worker(timepart_sched);
@@ -2369,7 +2369,7 @@ int views_validate_view(timepart_views_t *views, timepart_view_t *view,
 
     rc = VIEW_NOERR;
 
-    pthread_rwlock_rdlock(&views_lk);
+    Pthread_rwlock_rdlock(&views_lk);
 
     /* check partition name collision */
     chk_view = _check_shard_collision(views, view->name, &indx, 
@@ -2419,7 +2419,7 @@ int timepart_foreach_shard(const char *view_name,
     int rc = 0;
     int i;
 
-    pthread_rwlock_rdlock(&views_lk);
+    Pthread_rwlock_rdlock(&views_lk);
 
     views = thedb->timepart_views;
 
@@ -2459,7 +2459,7 @@ int timepart_for_each_shard(const char *name,
    int               rc = VIEW_NOERR, irc;
    int               i;
 
-   pthread_rwlock_rdlock(&views_lk);
+   Pthread_rwlock_rdlock(&views_lk);
 
    view = _get_view(views, name);
    if(!view)
@@ -2588,7 +2588,7 @@ done:
  */
 void views_lock(void)
 {
-    pthread_rwlock_rdlock(&views_lk);
+    Pthread_rwlock_rdlock(&views_lk);
 }
 void views_unlock(void)
 {
@@ -2605,7 +2605,7 @@ char *timepart_newest_shard(const char *view_name, unsigned long long *version)
     timepart_view_t *view;
     char *ret = NULL;
 
-    pthread_rwlock_rdlock(&views_lk);
+    Pthread_rwlock_rdlock(&views_lk);
 
     view = _get_view(views, view_name);
     if (view) {
@@ -2810,7 +2810,7 @@ int timepart_get_num_shards(const char *view_name)
     timepart_view_t *view;
     int nshards;
 
-    pthread_rwlock_rdlock(&views_lk);
+    Pthread_rwlock_rdlock(&views_lk);
 
     views = thedb->timepart_views;
 

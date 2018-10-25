@@ -2205,7 +2205,7 @@ static int toblock_outer(struct ireq *iq, block_state_t *blkstate)
         int gotlk = 0;
 
         if (gbl_exclusive_blockop_qconsume) {
-            pthread_rwlock_rdlock(&gbl_block_qconsume_lock);
+            Pthread_rwlock_rdlock(&gbl_block_qconsume_lock);
             gotlk = 1;
         }
 
@@ -4756,24 +4756,12 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         BACKOUT;
     }
 
-    irc = pthread_rwlock_rdlock(&commit_lock);
-    if (irc != 0) {
-        logmsg(LOGMSG_FATAL, "pthread_rwlock_rdlock(&commit_lock) %d\n", irc);
-        exit(1);
-    }
+    Pthread_rwlock_rdlock(&commit_lock);
     hascommitlock = 1;
     if (iq->arr || iq->selectv_arr) {
         // serializable read-set validation
-        irc = pthread_rwlock_unlock(&commit_lock);
-        if (irc != 0) {
-            logmsg(LOGMSG_FATAL, "pthread_rwlock_unlock(&commit_lock) %d\n", irc);
-            exit(1);
-        }
-        irc = pthread_rwlock_wrlock(&commit_lock);
-        if (irc != 0) {
-            logmsg(LOGMSG_FATAL, "pthread_rwlock_wrlock(&commit_lock) %d\n", irc);
-            exit(1);
-        }
+        Pthread_rwlock_unlock(&commit_lock);
+        Pthread_rwlock_wrlock(&commit_lock);
         hascommitlock = 1;
 
         while ((iq->arr &&
@@ -4783,12 +4771,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 bdb_osql_serial_check(thedb->bdb_env, iq->selectv_arr,
                                       &(iq->selectv_arr->file),
                                       &(iq->selectv_arr->offset), 1))) {
-            irc = pthread_rwlock_unlock(&commit_lock);
-            if (irc != 0) {
-                logmsg(LOGMSG_FATAL, "pthread_rwlock_unlock(&commit_lock) %d\n",
-                       irc);
-                exit(1);
-            }
+            Pthread_rwlock_unlock(&commit_lock);
             hascommitlock = 0;
             if (iq->arr &&
                 bdb_osql_serial_check(thedb->bdb_env, iq->arr, &(iq->arr->file),
@@ -4815,12 +4798,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 reqerrstr(iq, COMDB2_CSTRT_RC_INVL_REC, "selectv constraints");
                 BACKOUT;
             } else {
-                irc = pthread_rwlock_wrlock(&commit_lock);
-                if (irc != 0) {
-                    logmsg(LOGMSG_FATAL,
-                           "pthread_rwlock_wrlock(&commit_lock) %d\n", irc);
-                    exit(1);
-                }
+                Pthread_rwlock_wrlock(&commit_lock);
                 hascommitlock = 1;
             }
         }
@@ -5540,13 +5518,7 @@ add_blkseq:
                 }
 
                 if (hascommitlock) {
-                    irc = pthread_rwlock_unlock(&commit_lock);
-                    if (irc != 0) {
-                        logmsg(LOGMSG_FATAL, 
-                                "pthread_rwlock_unlock(&commit_lock) %d\n",
-                                irc);
-                        exit(1);
-                    }
+                    Pthread_rwlock_unlock(&commit_lock);
                     hascommitlock = 0;
                 }
                 if (gbl_dump_blkseq && iq->have_snap_info) {
@@ -5560,12 +5532,7 @@ add_blkseq:
                 }
             } else {
                 if (hascommitlock) {
-                    irc = pthread_rwlock_unlock(&commit_lock);
-                    if (irc != 0) {
-                        logmsg(LOGMSG_FATAL,
-                               "pthread_rwlock_unlock(&commit_lock) %d\n", irc);
-                        exit(1);
-                    }
+                    Pthread_rwlock_unlock(&commit_lock);
                     hascommitlock = 0;
                 }
                 if (iq->tranddl) {
@@ -5621,12 +5588,7 @@ add_blkseq:
             if ((tcm_testpoint(TCM_PARENT_DEADLOCK)) && (0 == (rand() % 20))) {
                 logmsg(LOGMSG_DEBUG, "tcm forcing parent retry in rowlocks\n");
                 if (hascommitlock) {
-                    irc = pthread_rwlock_unlock(&commit_lock);
-                    if (irc != 0) {
-                        logmsg(LOGMSG_FATAL,
-                               "pthread_rwlock_unlock(&commit_lock) %d\n", irc);
-                        exit(1);
-                    }
+                    Pthread_rwlock_unlock(&commit_lock);
                     hascommitlock = 0;
                 }
                 trans_abort_logical(iq, trans, NULL, 0, NULL, 0);
@@ -5648,13 +5610,7 @@ add_blkseq:
                     p_buf_fstblk - buf_fstblk + sizeof(int), bskey, bskeylen);
 
                 if (hascommitlock) {
-                    irc = pthread_rwlock_unlock(&commit_lock);
-                    if (irc != 0) {
-                        logmsg(LOGMSG_FATAL, 
-                                "pthread_rwlock_unlock(&commit_lock) %d\n",
-                                irc);
-                        exit(1);
-                    }
+                    Pthread_rwlock_unlock(&commit_lock);
                     hascommitlock = 0;
                 }
 
@@ -5662,13 +5618,7 @@ add_blkseq:
                     rc = ERR_NOT_DURABLE;
             } else {
                 if (hascommitlock) {
-                    irc = pthread_rwlock_unlock(&commit_lock);
-                    if (irc != 0) {
-                        logmsg(LOGMSG_USER, 
-                                "pthread_rwlock_unlock(&commit_lock) %d\n",
-                                irc);
-                        exit(1);
-                    }
+                    Pthread_rwlock_unlock(&commit_lock);
                     hascommitlock = 0;
                 }
                 rc = trans_abort_logical(
@@ -5726,13 +5676,7 @@ add_blkseq:
         if (rowlocks) {
             if (rc) {
                 if (hascommitlock) {
-                    irc = pthread_rwlock_unlock(&commit_lock);
-                    if (irc != 0) {
-                        logmsg(LOGMSG_FATAL, 
-                                "pthread_rwlock_unlock(&commit_lock) %d\n",
-                                irc);
-                        exit(1);
-                    }
+                    Pthread_rwlock_unlock(&commit_lock);
                     hascommitlock = 0;
                 }
                 irc = trans_abort_logical(iq, trans, NULL, 0, NULL, 0);
@@ -5766,12 +5710,7 @@ add_blkseq:
                     irc = rc = ERR_NOT_DURABLE;
             }
             if (hascommitlock) {
-                irc = pthread_rwlock_unlock(&commit_lock);
-                if (irc != 0) {
-                    logmsg(LOGMSG_FATAL, "pthread_rwlock_unlock(&commit_lock) %d\n",
-                            irc);
-                    exit(1);
-                }
+                Pthread_rwlock_unlock(&commit_lock);
                 hascommitlock = 0;
             }
         }

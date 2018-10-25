@@ -620,7 +620,7 @@ int live_sc_post_delete(struct ireq *iq, void *trans, unsigned long long genid,
                         blob_buffer_t *oldblobs)
 {
     int rc = 0;
-    pthread_rwlock_rdlock(&sc_live_rwlock);
+    Pthread_rwlock_rdlock(&sc_live_rwlock);
 
     rc = live_sc_post_delete_int(iq, trans, genid, old_dta, del_keys, oldblobs);
 
@@ -675,7 +675,7 @@ int live_sc_post_add(struct ireq *iq, void *trans, unsigned long long genid,
         logmsg(LOGMSG_INFO, "%s: slept 30s\n", __func__);
     }
 
-    pthread_rwlock_rdlock(&sc_live_rwlock);
+    Pthread_rwlock_rdlock(&sc_live_rwlock);
 
     rc = live_sc_post_add_int(iq, trans, genid, od_dta, ins_keys, blobs,
                               maxblobs, origflags, rrn);
@@ -690,7 +690,7 @@ int live_sc_delayed_key_adds(struct ireq *iq, void *trans,
                              unsigned long long ins_keys, int od_len)
 {
     int rc = 0;
-    pthread_rwlock_rdlock(&sc_live_rwlock);
+    Pthread_rwlock_rdlock(&sc_live_rwlock);
 
     rc = live_sc_post_update_delayed_key_adds_int(iq, trans, newgenid, od_dta,
                                                   ins_keys, od_len);
@@ -817,7 +817,7 @@ int live_sc_post_update(struct ireq *iq, void *trans,
                         blob_buffer_t *newblobs)
 {
     int rc = 0;
-    pthread_rwlock_rdlock(&sc_live_rwlock);
+    Pthread_rwlock_rdlock(&sc_live_rwlock);
 
     rc = live_sc_post_update_int(iq, trans, oldgenid, old_dta, newgenid,
                                  new_dta, ins_keys, del_keys, od_len, updCols,

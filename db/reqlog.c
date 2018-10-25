@@ -2107,7 +2107,7 @@ static nodestats_t *find_clientstats(unsigned checksum, int node, int fd)
     nodestats_t *entry = NULL;
     key.checksum = checksum;
     key.node = node;
-    pthread_rwlock_rdlock(&clientstats_lk);
+    Pthread_rwlock_rdlock(&clientstats_lk);
     {
         entry = hash_find_readonly(clientstats, &key);
         if (entry) {
@@ -2148,7 +2148,7 @@ static int release_clientstats(unsigned checksum, int node)
     nodestats_t *entry = NULL;
     key.checksum = checksum;
     key.node = node;
-    pthread_rwlock_rdlock(&clientstats_lk);
+    Pthread_rwlock_rdlock(&clientstats_lk);
     {
         if ((entry = hash_find_readonly(clientstats, &key)) != NULL) {
             Pthread_mutex_lock(&entry->mtx);
@@ -2280,7 +2280,7 @@ void process_nodestats(void)
     span_ms = comdb2_time_epochms() - last_time_ms;
     last_time_ms = comdb2_time_epochms();
 
-    pthread_rwlock_rdlock(&clientstats_lk);
+    Pthread_rwlock_rdlock(&clientstats_lk);
 
     nclnts = hash_get_num_entries(clientstats);
     if (nclnts == 0)
@@ -2373,7 +2373,7 @@ struct summary_nodestats *get_nodestats_summary(unsigned *nodes_cnt,
     int i;
     int nclnts = 0;
 
-    pthread_rwlock_rdlock(&clientstats_lk);
+    Pthread_rwlock_rdlock(&clientstats_lk);
 
     nclnts = hash_get_num_entries(clientstats);
     if (nclnts == 0)
@@ -2534,7 +2534,7 @@ void nodestats_node_report(FILE *fh, const char *prefix, int disp_rates,
     int i;
     int nclnts = 0;
 
-    pthread_rwlock_rdlock(&clientstats_lk);
+    Pthread_rwlock_rdlock(&clientstats_lk);
 
     nclnts = hash_get_num_entries(clientstats);
     if (nclnts == 0)

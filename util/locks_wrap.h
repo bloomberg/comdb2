@@ -102,7 +102,7 @@
 
 #define Pthread_rwlock_wrlock(rwlock_ptr)                                      \
 {                                                                          \
-    logmsg(LOGMSG_USER, "%d pthread_rwlock_rwlock try (%d)  %s:%d\n",          \
+    logmsg(LOGMSG_USER, "%d pthread_rwlock_wrlock try (%d)  %s:%d\n",          \
             (int)pthread_self(), rwlock_ptr, __FILE__, __LINE__);               \
     if (pthread_rwlock_wrlock(rwlock_ptr) != 0) {                          \
         logmsg(LOGMSG_FATAL, "%d:%s:%d rwlock lock failed\n",              \

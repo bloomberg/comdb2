@@ -134,19 +134,13 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
 retry:
 
     /* insert entry */
-    if ((rc = pthread_rwlock_wrlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_wrlock: error code %d\n", rc);
-        return -1;
-    }
+    Pthread_rwlock_wrlock(&checkboard->rwlock);
 
     /* making sure we're adding the correct master */
     if (entry->master != thedb->master) {
         entry->master = clnt->osql.host = thedb->master;
         if (!entry->master) {
-            if ((rc = pthread_rwlock_unlock(&checkboard->rwlock))) {
-                logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n", rc);
-                return -1;
-            }
+            Pthread_rwlock_unlock(&checkboard->rwlock);
             if (retry < 60) /* 60*500 = 30 seconds */
             {
                 poll(NULL, 0, 500);
@@ -174,10 +168,7 @@ retry:
 
     clnt->osql.sess_blocksock = entry;
 
-    if ((rc = pthread_rwlock_unlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n", rc);
-        return -1;
-    }
+    Pthread_rwlock_unlock(&checkboard->rwlock);
 
     if (gbl_enable_osql_logging && !clnt->osql.logsb) {
         int fd = 0;
@@ -230,15 +221,12 @@ int osql_register_remtran(struct sqlclntstate *clnt, int type, char *tid)
 int osql_unregister_sqlthr(struct sqlclntstate *clnt)
 {
     osql_sqlthr_t *entry = NULL;
-    int rc = 0, rc2 = 0;
+    int rc2 = 0;
 
     if (clnt->osql.rqid == 0)
         return 0;
 
-    if ((rc = pthread_rwlock_wrlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_wrlock: error code %d\n", rc);
-        return -1;
-    }
+    Pthread_rwlock_wrlock(&checkboard->rwlock);
 
     /* non-thread-safe hash_find() ok because we have the write (exclusive)
      * lock */
@@ -292,10 +280,7 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
         clnt->osql.rqid = 0;
     }
 
-    if ((rc = pthread_rwlock_unlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n", rc);
-        return -1;
-    }
+    Pthread_rwlock_unlock(&checkboard->rwlock);
 
     return rc2;
 }
@@ -313,27 +298,23 @@ int osql_chkboard_sqlsession_exists(unsigned long long rqid, uuid_t uuid,
 {
 
     osql_sqlthr_t *entry = NULL;
-    int rc = 0, rc2;
+    int rc = 0;
 
     if (!checkboard)
         return 0;
 
-    if (lock && (rc = pthread_rwlock_rdlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_wrlock: error code %d\n", rc);
-        return -1;
-    }
+    if (lock) 
+        Pthread_rwlock_rdlock(&checkboard->rwlock);
 
     if (rqid == OSQL_RQID_USE_UUID)
-        rc2 = (entry = hash_find_readonly(checkboard->rqsuuid, uuid)) != 0;
+        rc = (entry = hash_find_readonly(checkboard->rqsuuid, uuid)) != 0;
     else
-        rc2 = (entry = hash_find_readonly(checkboard->rqs, &rqid)) != 0;
+        rc = (entry = hash_find_readonly(checkboard->rqs, &rqid)) != 0;
 
-    if (lock && (rc = pthread_rwlock_unlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n", rc);
-        return -2;
-    }
+    if (lock) 
+        Pthread_rwlock_unlock(&checkboard->rwlock);
 
-    return rc2;
+    return rc;
 }
 
 int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
@@ -347,10 +328,7 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
     if (!checkboard)
         return 0;
 
-    if ((rc = pthread_rwlock_rdlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_wrlock: error code %d\n", rc);
-        return -1;
-    }
+    Pthread_rwlock_rdlock(&checkboard->rwlock);
 
     if (rqid == OSQL_RQID_USE_UUID)
         entry = hash_find_readonly(checkboard->rqsuuid, uuid);
@@ -403,10 +381,7 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
         rc2 = 0;
     }
 
-    if ((rc = pthread_rwlock_unlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n", rc);
-        return -2;
-    }
+    Pthread_rwlock_unlock(&checkboard->rwlock);
 
     return rc2;
 }
@@ -440,18 +415,12 @@ void osql_checkboard_for_each(void *arg, int (*func)(void *, void *))
     if (!checkboard)
         return;
 
-    if ((rc = pthread_rwlock_rdlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_wrlock: error code %d\n", rc);
-        return;
-    }
+    Pthread_rwlock_rdlock(&checkboard->rwlock);
 
     hash_for(checkboard->rqs, func, arg);
     hash_for(checkboard->rqsuuid, func, arg);
 
-    if ((rc = pthread_rwlock_unlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n", rc);
-        return;
-    }
+    Pthread_rwlock_unlock(&checkboard->rwlock);
 }
 
 static int osql_checkboard_check_request_down_node(void *obj, void *arg)
@@ -494,10 +463,7 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
 
     while (!done) {
 
-        if ((rc = pthread_rwlock_rdlock(&checkboard->rwlock))) {
-            logmsg(LOGMSG_ERROR, "pthread_rwlock_wrlock: error code %d\n", rc);
-            return -1;
-        }
+        Pthread_rwlock_rdlock(&checkboard->rwlock);
 
         if (rqid == OSQL_RQID_USE_UUID)
             entry = hash_find_readonly(checkboard->rqsuuid, uuid);
@@ -509,10 +475,7 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
                     __func__, rqid);
             rc = -2;
 
-            if ((rc = pthread_rwlock_unlock(&checkboard->rwlock))) {
-                logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n", rc);
-                return -3;
-            }
+            Pthread_rwlock_unlock(&checkboard->rwlock);
 
             break;
 
@@ -522,19 +485,12 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
                 /* we are done */
                 *xerr = entry->err;
                 done = 1;
-                if ((rc = pthread_rwlock_unlock(&checkboard->rwlock))) {
-                    logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n",
-                            rc);
-                    return -3;
-                }
+                Pthread_rwlock_unlock(&checkboard->rwlock);
                 break;
             }
         }
 
-        if ((rc = pthread_rwlock_unlock(&checkboard->rwlock))) {
-            logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n", rc);
-            return -4;
-        }
+        Pthread_rwlock_unlock(&checkboard->rwlock);
 
         Pthread_mutex_lock(&entry->mtx);
         entry->last_checked = entry->last_updated =
@@ -700,10 +656,7 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
     if (!checkboard)
         return 0;
 
-    if ((rc = pthread_rwlock_rdlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_wrlock: error code %d\n", rc);
-        return -1;
-    }
+    Pthread_rwlock_rdlock(&checkboard->rwlock);
 
     if (rqid == OSQL_RQID_USE_UUID)
         entry = hash_find_readonly(checkboard->rqsuuid, uuid);
@@ -727,10 +680,7 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
         rc2 = 0;
     }
 
-    if ((rc = pthread_rwlock_unlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n", rc);
-        return -1;
-    }
+    Pthread_rwlock_unlock(&checkboard->rwlock);
 
     return rc2;
 }
@@ -748,10 +698,7 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
     if (clnt->osql.rqid == 0)
         return 0;
 
-    if ((rc = pthread_rwlock_wrlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_wrlock_rdlock: error code %d\n", rc);
-        return -1;
-    }
+    Pthread_rwlock_wrlock(&checkboard->rwlock);
 
     if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
         entry = hash_find_readonly(checkboard->rqsuuid, clnt->osql.uuid);
@@ -776,10 +723,7 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
         Pthread_mutex_unlock(&entry->mtx);
     }
 
-    if ((rc = pthread_rwlock_unlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n", rc);
-        return -1;
-    }
+    Pthread_rwlock_unlock(&checkboard->rwlock);
 
     return rc2;
 }
@@ -799,10 +743,7 @@ int osql_chkboard_get_clnt_int(hash_t *h, void *k, struct sqlclntstate **clnt)
     if (!checkboard)
         return 0;
 
-    if ((rc = pthread_rwlock_rdlock(&checkboard->rwlock)) != 0) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_wrlock: error code %d\n", rc);
-        return -1;
-    }
+    Pthread_rwlock_rdlock(&checkboard->rwlock);
 
     entry = hash_find_readonly(h, k);
     if (!entry) {
@@ -836,10 +777,7 @@ int osql_chkboard_get_clnt_int(hash_t *h, void *k, struct sqlclntstate **clnt)
         rc2 = 0;
     }
 
-    if ((rc = pthread_rwlock_unlock(&checkboard->rwlock)) != 0) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n", rc);
-        return -2;
-    }
+    Pthread_rwlock_unlock(&checkboard->rwlock);
 
     return rc2;
 }

@@ -87,7 +87,7 @@ int compare_indexes(const char *table, FILE *out);
 static inline int lock_taglock_read(void)
 {
 #ifdef TAGLOCK_RW_LOCK
-    pthread_rwlock_rdlock(&taglock);
+    Pthread_rwlock_rdlock(&taglock);
 #else
     Pthread_mutex_lock(&taglock);
 #endif
@@ -168,11 +168,7 @@ void add_tag_schema(const char *table, struct schema *schema)
     struct dbtag *tag;
     int rc;
 
-    rc = lock_taglock();
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "pthread_rwlock_wrlock(&taglock) failed\n");
-        exit(1);
-    }
+    lock_taglock();
 
     tag = hash_find_readonly(gbl_tag_hash, &table);
     if (tag == NULL) {
@@ -201,11 +197,7 @@ void add_tag_schema(const char *table, struct schema *schema)
 
 void del_tag_schema(const char *table, const char *tagname)
 {
-    int rc = lock_taglock();
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "pthread_rwlock_rwlock(&taglock) failed\n");
-        exit(1);
-    }
+    lock_taglock();
 
     struct dbtag *tag = hash_find_readonly(gbl_tag_hash, &table);
     if (tag == NULL) {
@@ -222,37 +214,25 @@ void del_tag_schema(const char *table, const char *tagname)
         }
     }
     /* doesn't exist? */
-    rc = unlock_taglock();
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "pthread_rwlock_unlock(&taglock) failed\n");
-        exit(1);
-    }
+    unlock_taglock();
 }
 
 struct schema *find_tag_schema(const char *table, const char *tagname)
 {
     int rc = lock_taglock_read();
     if (unlikely(rc != 0)) {
-        logmsg(LOGMSG_FATAL, "pthread_rwlock_rdlock(&taglock) failed\n");
+        logmsg(LOGMSG_FATAL, "Pthread_rwlock_rdlock(&taglock) failed\n");
         exit(1);
     }
 
     struct dbtag *tag = hash_find_readonly(gbl_tag_hash, &table);
     if (unlikely(tag == NULL)) {
-        rc = unlock_taglock();
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "pthread_rwlock_unlock(&taglock) failed\n");
-            exit(1);
-        }
+        unlock_taglock();
         return NULL;
     }
     struct schema *s = hash_find_readonly(tag->tags, &tagname);
 
-    rc = unlock_taglock();
-    if (unlikely(rc != 0)) {
-        logmsg(LOGMSG_FATAL, "pthread_rwlock_unlock(&taglock) failed\n");
-        exit(1);
-    }
+    unlock_taglock();
 
     return s;
 }

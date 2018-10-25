@@ -438,7 +438,7 @@ fdb_t *get_fdb(const char *dbname)
 {
     fdb_t *fdb = NULL;
 
-    pthread_rwlock_rdlock(&fdbs.arr_lock);
+    Pthread_rwlock_rdlock(&fdbs.arr_lock);
     fdb = __cache_fnd_fdb(dbname, NULL);
 #if 0
    NOTE: we will rely on table locks instead of this! 
@@ -1415,8 +1415,7 @@ static int __lock_wrlock_shared(fdb_t *fdb)
 {
     int rc = FDB_NOERR;
 
-    if (pthread_rwlock_rdlock(&fdb->h_rwlock))
-        rc = FDB_ERR_PTHR_LOCK;
+    Pthread_rwlock_rdlock(&fdb->h_rwlock);
 
     return rc;
 }
@@ -1434,7 +1433,7 @@ static int __lock_wrlock_exclusive(char *dbname)
     }
 
     do {
-        pthread_rwlock_rdlock(&fdbs.arr_lock);
+        Pthread_rwlock_rdlock(&fdbs.arr_lock);
         if (!(idx >= 0 && idx < fdbs.nused && fdbs.arr[idx] == fdb &&
               strncasecmp(dbname, fdbs.arr[idx]->dbname, len) == 0)) {
             fdb = __cache_fnd_fdb(dbname, &idx);
@@ -1502,7 +1501,7 @@ static fdb_tbl_ent_t *get_fdb_tbl_ent_by_name_from_fdb(fdb_t *fdb,
 {
     fdb_tbl_ent_t *ent;
     /*
-       pthread_rwlock_rdlock(&fdb->h_rwlock);
+       Pthread_rwlock_rdlock(&fdb->h_rwlock);
      */
     ent = hash_find_readonly(fdb->h_ents_name, &name);
     /*
@@ -1533,7 +1532,7 @@ static fdb_tbl_ent_t *get_fdb_tbl_ent_by_rootpage(int rootpage)
     fdb_tbl_ent_t *ent = NULL;
     int i;
 
-    pthread_rwlock_rdlock(&fdbs.arr_lock);
+    Pthread_rwlock_rdlock(&fdbs.arr_lock);
     for (i = 0; i < fdbs.nused; i++) {
         fdb = fdbs.arr[i];
 
@@ -4337,7 +4336,7 @@ static void fdb_info_db(const char *dbname)
     int i;
 
     if (!dbname) {
-        pthread_rwlock_rdlock(&fdbs.arr_lock);
+        Pthread_rwlock_rdlock(&fdbs.arr_lock);
         for (i = 0; i < fdbs.nused; i++) {
             fdb = fdbs.arr[i];
 

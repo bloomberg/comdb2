@@ -131,11 +131,7 @@ int osql_repository_add(osql_sess_t *sess, int *replaced)
     }
 
     /* insert it into the hash table */
-    if ((rc = pthread_rwlock_wrlock(&theosql->hshlck))) {
-        logmsg(LOGMSG_ERROR, "%s:pthread_rwlock_wrlock error code %d\n", __func__,
-                rc);
-        return -1;
-    }
+    Pthread_rwlock_wrlock(&theosql->hshlck);
 
     /*
     Must check the cancelled flag under hshlck:
@@ -236,11 +232,7 @@ int osql_repository_rem(osql_sess_t *sess, int lock, const char *func, const cha
     int rc = 0;
 
     if (lock) {
-        if ((rc = pthread_rwlock_wrlock(&theosql->hshlck)) != 0) {
-            logmsg(LOGMSG_ERROR, "%s:pthread_rwlock_wrlock error code %d\n",
-                    __func__, rc);
-            return -1;
-        }
+        Pthread_rwlock_wrlock(&theosql->hshlck);
     }
 
     if (sess->rqid == OSQL_RQID_USE_UUID) {
@@ -311,11 +303,6 @@ int osql_repository_rem(osql_sess_t *sess, int lock, const char *func, const cha
     return 0;
 }
 
-int pthread_rwlock_rdlock_check(pthread_rwlock_t *lk, const char *func, uint32_t line) 
-{
-    return pthread_rwlock_rdlock(lk);
-}
-
 /**
  * Retrieves a session based on rqid
  * Increments the users to prevent premature
@@ -331,11 +318,7 @@ osql_sess_t *osql_repository_get(unsigned long long rqid, uuid_t uuid,
     osql_sess_t *sess = NULL;
     int rc = 0;
 
-    if ((rc = pthread_rwlock_rdlock_check(&theosql->hshlck, __func__, __LINE__))) {
-        logmsg(LOGMSG_ERROR, "%s:pthread_rwlock_rdlock error code %d\n", __func__,
-                rc);
-        return NULL;
-    }
+    Pthread_rwlock_rdlock(&theosql->hshlck);
 
     if (rqid == OSQL_RQID_USE_UUID)
         /* hash_find can modify the ordering of the hash chains, so is not
@@ -426,10 +409,7 @@ int osql_repository_printcrtsessions(void)
     maxops = get_osql_maxtransfer();
     logmsg(LOGMSG_USER, "Maximum transaction size: %d bplog entries\n", maxops);
 
-    if ((rc = pthread_rwlock_rdlock_check(&stat->hshlck, __func__, __LINE__))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_rdlock: error code %d\n", rc);
-        return -1;
-    }
+    Pthread_rwlock_rdlock(&stat->hshlck);
 
     logmsg(LOGMSG_USER, "Begin osql session info:\n");
     if ((rc = hash_for(stat->rqs, osql_sess_getcrtinfo, NULL))) {
@@ -439,10 +419,7 @@ int osql_repository_printcrtsessions(void)
     }
     logmsg(LOGMSG_USER, "Done osql info.\n");
 
-    if ((rc = pthread_rwlock_unlock(&stat->hshlck))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n", rc);
-        return -1;
-    }
+    Pthread_rwlock_unlock(&stat->hshlck);
 
     return 0;
 }
@@ -463,10 +440,7 @@ int osql_repository_blkout_node(char *host)
     int outrc = 0;
     int rc = 0;
 
-    if ((rc = pthread_rwlock_wrlock(&theosql->hshlck))) {
-        logmsg(LOGMSG_ERROR, "%s: Pthread_mutex_lock error %d\n", __func__, rc);
-        return -1;
-    }
+    Pthread_rwlock_wrlock(&theosql->hshlck);
 
     outrc = osql_comm_blkout_node(host);
 
@@ -502,10 +476,7 @@ int osql_repository_terminatenode(char *host)
     osql_repository_t *theosql = stat;
 
     /* insert it into the hash table */
-    if ((rc = pthread_rwlock_wrlock(&theosql->hshlck))) {
-        logmsg(LOGMSG_ERROR, "Pthread_mutex_lock: error code %d\n", rc);
-        return -1;
-    }
+    Pthread_rwlock_wrlock(&theosql->hshlck);
 
     if ((rc = hash_for(theosql->rqs, osql_session_testterminate, host))) {
         logmsg(LOGMSG_ERROR, "hash_for failed with rc = %d\n", rc);
@@ -580,11 +551,7 @@ int osql_repository_session_exists(unsigned long long rqid, uuid_t uuid)
     int rc = 0;
     int out_rc = 0;
 
-    if ((rc = pthread_rwlock_rdlock_check(&theosql->hshlck, __func__, __LINE__))) {
-        logmsg(LOGMSG_ERROR, "%s:pthread_rwlock_rdlock error code %d\n", __func__,
-                rc);
-        return 0;
-    }
+    Pthread_rwlock_rdlock(&theosql->hshlck);
 
     if (rqid == OSQL_RQID_USE_UUID)
         /* hash_find can modify the ordering of the hash chains, so is not

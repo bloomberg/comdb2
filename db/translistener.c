@@ -84,7 +84,7 @@ LISTC_T(struct stored_proc) stored_procs;
 LISTC_T(struct stored_proc) delayed_stored_procs;
 
 pthread_rwlock_t splk = PTHREAD_RWLOCK_INITIALIZER;
-#define SP_READLOCK() pthread_rwlock_rdlock(&splk)
+#define SP_READLOCK() Pthread_rwlock_rdlock(&splk)
 #define SP_WRITELOCK() pthread_rwlock_wrlock(&splk)
 #define SP_RELLOCK() pthread_rwlock_unlock(&splk)
 

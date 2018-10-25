@@ -999,7 +999,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 			memset(&request, 0, sizeof(request));
 			memset(&list_dbt_rl, 0, sizeof(list_dbt_rl));
 
-			pthread_rwlock_rdlock(&gbl_dbreg_log_lock);
+			Pthread_rwlock_rdlock(&gbl_dbreg_log_lock);
 
 			if (LOCKING_ON(dbenv)) {
 				request.op = DB_LOCK_PUT_READ;

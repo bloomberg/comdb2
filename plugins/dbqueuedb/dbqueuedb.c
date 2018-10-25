@@ -177,7 +177,7 @@ static int wake_all_consumers(struct dbtable *db, int force)
     if (db->dbtype != DBTYPE_QUEUEDB)
         return -1;
 
-    pthread_rwlock_rdlock(&db->consumer_lk);
+    Pthread_rwlock_rdlock(&db->consumer_lk);
     if (db->dbtype == DBTYPE_QUEUE || db->dbtype == DBTYPE_QUEUEDB) {
         for (consumern = 0; consumern < MAXCONSUMERS; consumern++) {
             struct consumer *consumer = db->consumers[consumern];
@@ -476,7 +476,7 @@ static void admin(struct dbenv *dbenv, int type)
                 continue;
             if (dbenv->qdbs[ii]->dbtype == DBTYPE_QUEUEDB) {
                 struct dbtable *db = dbenv->qdbs[ii];
-                pthread_rwlock_rdlock(&db->consumer_lk);
+                Pthread_rwlock_rdlock(&db->consumer_lk);
                 for (int consumern = 0; consumern < MAXCONSUMERS; consumern++) {
                     struct consumer *consumer = db->consumers[consumern];
                     if (!consumer)
@@ -576,7 +576,7 @@ static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
                bdbstats->n_old_way_frags_consumed);
 
         if (db->dbtype == DBTYPE_QUEUEDB)
-            pthread_rwlock_rdlock(&db->consumer_lk);
+            Pthread_rwlock_rdlock(&db->consumer_lk);
         for (ii = 0; ii < MAXCONSUMERS; ii++) {
             struct consumer *consumer = db->consumers[ii];
 
@@ -861,7 +861,7 @@ int stop_consumers(struct dbtable *db)
 {
     if (db->dbtype != DBTYPE_QUEUEDB)
         return -1;
-    pthread_rwlock_rdlock(&db->consumer_lk);
+    Pthread_rwlock_rdlock(&db->consumer_lk);
     for (int i = 0; i < MAXCONSUMERS; i++) {
         if (db->consumers[i])
             stop_consumer(db->consumers[i]);
@@ -874,7 +874,7 @@ int restart_consumers(struct dbtable *db)
 {
     if (db->dbtype != DBTYPE_QUEUEDB)
         return -1;
-    pthread_rwlock_rdlock(&db->consumer_lk);
+    Pthread_rwlock_rdlock(&db->consumer_lk);
     for (int i = 0; i < MAXCONSUMERS; i++) {
         if (db->consumers[i])
             restart_consumer(db->consumers[i]);

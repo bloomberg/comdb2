@@ -5462,7 +5462,7 @@ bad_resize:	;
 		if (ret)
 			goto err;
 	} else {
-		pthread_rwlock_rdlock(&dbenv->ser_lk);
+		Pthread_rwlock_rdlock(&dbenv->ser_lk);
 	}
 
 	/* Dispatch to a processor thread. */

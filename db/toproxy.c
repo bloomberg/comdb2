@@ -124,7 +124,7 @@ uint8_t *get_prox2_config_info_put(uint8_t *p_buf, const uint8_t *p_buf_end)
      * the out buffer after releasing the lock; however, I beleive that making
      * a copy (using a malloc for each lnk, then strdup()ing each line) takes
      * longer then it does just to pack the data straight to the buffer */
-    pthread_rwlock_rdlock(&proxy_config_lk);
+    Pthread_rwlock_rdlock(&proxy_config_lk);
     {
         struct db_proxy_config_rsp rsp;
         struct proxy_config_line *p_l;
@@ -155,7 +155,7 @@ void dump_proxy_config(void)
 {
     struct proxy_config_line *l;
 
-    pthread_rwlock_rdlock(&proxy_config_lk);
+    Pthread_rwlock_rdlock(&proxy_config_lk);
     if (listc_size(&proxy_config_lines) > 0)
         printf("Proxy configuration parameters:\n");
     else
