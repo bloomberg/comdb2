@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#set -x
+set -x
 # on exit call_unsetup
 
 TEST_TIMEOUT=${TEST_TIMEOUT:-5m}
@@ -17,6 +17,7 @@ if [[ -n "$NUMNODESTOUSE" ]] ; then
 fi
 
 
+export DBDIR=
 export HOSTNAME=${HOSTNAME:-`hostname`}
 export CLEANUPDBDIR=${CLEANUPDBDIR:-1}
 source $TESTSROOTDIR/setup.common
@@ -32,13 +33,18 @@ call_unsetup() {
     [[ $COMDB2_UNITTEST == 1 ]] && return
 
     local LCLDBNM=$1
-    ${TESTSROOTDIR}/unsetup $LCLDBNM $successful &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${LCLDBNM}.unsetup | cut -c11- | grep "^!" )
+    local LCLDBDIR=$2
+    local LCLOPTIONS=$3
+    CDB2_OPTIONS=$LCLOPTIONS ${TESTSROOTDIR}/unsetup $LCLDBNM $LCLDBDIR $successful &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${LCLDBNM}.unsetup | cut -c11- | grep "^!" )
 }
 
 warn_long_setup() {
     start=$(date +%s)
     local LCLDBNM=$1
-    ( ${TESTSROOTDIR}/setup $LCLDBNM &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${LCLDBNM}.setup | cut -c11- | grep "^!" ) ) &
+    local LCLDBDIR=$2
+    local LCLCONFIG=$3
+    local LCLOPTIONS=$4
+    ( CDB2_OPTIONS=$LCLOPTIONS CDB2_CONFIG=$LCLCONFIG ${TESTSROOTDIR}/setup $LCLDBNM $LCLDBDIR &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${LCLDBNM}.setup | cut -c11- | grep "^!" ) ) &
     pid=$!
     kill -0 $pid >/dev/null 2>&1
     r=$?
@@ -65,12 +71,13 @@ warn_long_setup() {
 find_cores() {
     # assumes core location and pattern is the same as local machine
     # for all machines in cluster 
-    local COREAGE=60
     local LCLDBNM=$1
+    local LCLDBDIR=$2
+    local COREAGE=60
     local CPAT=$(< /proc/sys/kernel/core_pattern)  # like cat core_pattern
     local COREDIR=$(dirname $CPAT 2>/dev/null)
     if [ "x$COREDIR" == "x" ] || [ "x$COREDIR" == "x." ] ; then 
-        COREDIR=$DBDIR
+        COREDIR=$LCLDBDIR
     else
         CPAT=`basename $CPAT`
     fi
@@ -94,12 +101,12 @@ find_cores() {
 
     eval cr=\$\(${CORECMD}\)       # or can do cr=$(eval ${CORECMD}) or cr=$(find ${COREDIR} | grep $COREFL)
     if [[ -n "$cr" ]] ; then
-        echo "Core file $HOSTNAME:${cr} copied to $DBDIR" > $DBDIR/core_stacktrace.$HOSTNAME.txt
-        ln ${cr} -t $DBDIR || cp ${cr} $DBDIR #if can't hardlink then just copy
-        which gdb > /dev/null && [ -f $cr ] && echo 'where' | gdb -q $COMDB2_EXE $cr &>> $DBDIR/core_stacktrace.$HOSTNAME.txt
-        ln $COMDB2_EXE -t $DBDIR #make a hardlink of the executable as well
+        echo "Core file $HOSTNAME:${cr} copied to $LCLDBDIR" > $LCLDBDIR/core_stacktrace.$HOSTNAME.txt
+        ln ${cr} -t $LCLDBDIR || cp ${cr} $LCLDBDIR #if can't hardlink then just copy
+        which gdb > /dev/null && [ -f $cr ] && echo 'where' | gdb -q $COMDB2_EXE $cr &>> $LCLDBDIR/core_stacktrace.$HOSTNAME.txt
+        ln $COMDB2_EXE -t $LCLDBDIR #make a hardlink of the executable as well
         echo $cr # this is the return value of the function
-        echo "    see $DBDIR/core_stacktrace.$HOSTNAME.txt"
+        echo "    see $LCLDBDIR/core_stacktrace.$HOSTNAME.txt"
     fi
 
 
@@ -118,12 +125,12 @@ find_cores() {
 
         eval cr=\$\(${CORECMD}\)       # or can do cr=$(eval ${CORECMD}) or cr=$(find ${COREDIR} | grep $COREFL)
         if [[ -n "$cr" ]] ; then
-            echo "Core file $HOSTNAME:${cr} copied to $DBDIR" > $DBDIR/core_stacktrace.$HOSTNAME.txt
-            cp ${cr} $DBDIR
-            which gdb > /dev/null && [ -f $cr ] && echo 'where' | gdb -q $COMDB2_EXE $cr &>> $DBDIR/core_stacktrace.$HOSTNAME.txt
-            ln $COMDB2_EXE -t $DBDIR #make a hardlink of the executable as well
+            echo "Core file $HOSTNAME:${cr} copied to $LCLDBDIR" > $LCLDBDIR/core_stacktrace.$HOSTNAME.txt
+            cp ${cr} $LCLDBDIR
+            which gdb > /dev/null && [ -f $cr ] && echo 'where' | gdb -q $COMDB2_EXE $cr &>> $LCLDBDIR/core_stacktrace.$HOSTNAME.txt
+            ln $COMDB2_EXE -t $LCLDBDIR #make a hardlink of the executable as well
             echo $cr # this is the return value of the function
-            echo "    see $DBDIR/core_stacktrace.$HOSTNAME.txt"
+            echo "    see $LCLDBDIR/core_stacktrace.$HOSTNAME.txt"
         fi
     fi
 
@@ -149,12 +156,12 @@ find_cores() {
             local space=$(df .  | awk '{print $4}' | grep -v Available)
             local size=$(ssh $node "ls -s $cr | cut -f1 -d' '")
             if [[ $space -lt $size ]] ; then 
-                local copy_core=$DBDIR/${node}.`basename $cr`
+                local copy_core=$LCLDBDIR/${node}.`basename $cr`
                 scp -o StrictHostKeyChecking=no $node:${cr} $copy_core < /dev/null
-                echo "Core file $node:${cr} copied to $copy_core" > $DBDIR/core_stacktrace.$node.txt
-                echo 'where' | gdb -q $COMDB2_EXE $copy_core &>> $DBDIR/core_stacktrace.$node.txt
-                ln $COMDB2_EXE -t $DBDIR #make a hardlink of the executable as well
-                echo "    see $DBDIR/core_stacktrace.$node.txt"
+                echo "Core file $node:${cr} copied to $copy_core" > $LCLDBDIR/core_stacktrace.$node.txt
+                echo 'where' | gdb -q $COMDB2_EXE $copy_core &>> $LCLDBDIR/core_stacktrace.$node.txt
+                ln $COMDB2_EXE -t $LCLDBDIR #make a hardlink of the executable as well
+                echo "    see $LCLDBDIR/core_stacktrace.$node.txt"
             fi
         fi
     done
@@ -165,38 +172,44 @@ call_setup() {
     [[ $COMDB2_UNITTEST == 1 ]] && return
 
     local LCLDBNM=$1
+    local LCLDBDIR=$2
+    local LCLCONFIG=$3
+    local LCLOPTIONS=$4
     if [[ $SETUP_WARN ]]; then
-         warn_long_setup $LCLDBNM
+         warn_long_setup $LCLDBNM $LCLDBDIR $LCLCONFIG $LCLOPTIONS
          rc=$?
     else
-        { timeout ${SETUP_TIMEOUT} ${TESTSROOTDIR}/setup ${LCLDBNM} 2>&1 || echo $?; } | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${LCLDBNM}.setup | cut -c11- | grep "^!"
+        { timeout ${SETUP_TIMEOUT} CDB2_OPTIONS=$LCLOPTIONS CDB2_CONFIG=$LCLCONFIG ${TESTSROOTDIR}/setup ${LCLDBNM} $LCLDBDIR 2>&1 || echo $?; } | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${LCLDBNM}.setup | cut -c11- | grep "^!"
     fi
     sleep 0.8 # wait a bit for any cores
     #last line of .setup file will contain the error rc if any
     ret=`tail -1 ${TESTDIR}/logs/${LCLDBNM}.setup | cut -c11-`
-    cr=`find_cores $LCLDBNM`
+    cr=`find_cores $LCLDBNM $LCLDBDIR`
 
     if [[ -n "$cr" ]] ; then
         echo "!$TESTCASE: setup failed with core dumped ($cr)"
         echo "!$TESTCASE: setup failed with core dumped ($cr)" >> ${TESTDIR}/test.log
-        call_unsetup ${LCLDBNM}
+        call_unsetup ${LCLDBNM} ${LCLDBDIR} $LCLOPTIONS
         sleep 0.1
         exit 1
     elif [[ $ret != "setup successful" ]] ; then
         echo "!$TESTCASE: setup failed (rc=$ret)" >> ${TESTDIR}/test.log
         echo "!$TESTCASE: setup failed (rc=$ret) see ${TESTDIR}/logs/${LCLDBNM}.setup"
-        call_unsetup ${LCLDBNM}
+        call_unsetup ${LCLDBNM} ${LCLDBDIR}$LCLOPTIONS
         sleep 0.1
         exit 1
     fi
 }
 
 
-call_setup ${DBNAME}
+call_setup ${DBNAME} ${DBDIR} CDB2_CONFIG CDB2_OPTIONS
 
 if [ -n "${SECONDARY_DB_PREFIX}" ] ; then
-    SECONDARY_DB=${SECONDARY_DB}${DBNAME}
-    call_setup ${SECONDARY_DB}
+    SECONDARY_DB=${SECONDARY_DB_PREFIX}${DBNAME}
+    SECONDARY_DBDIR=${TESTDIR}/${SECONDARY_DB}
+    SECONDARY_DB_CDB2_CONFIG=${SECONDARY_DBDIR}/comdb2db.cfg
+    SECONDARY_DB_CDB2_OPTIONS="--cdb2cfg ${CDB2_CONFIG}"
+    call_setup ${SECONDARY_DB} ${SECONDARY_DBDIR} $SECONDARY_DB_CDB2_CONFIG $SECONDARY_DB_CDB2_OPTIONS
 fi
 
 echo "!$TESTCASE: running with timeout ${TEST_TIMEOUT}"
@@ -205,10 +218,10 @@ timeout ${TEST_TIMEOUT} ./runit ${DBNAME} 2>&1  | gawk '{ print strftime("%H:%M:
 
 rc=${PIPESTATUS[0]}
 sleep 1
-cr=`find_cores $DBNAME`
+cr=`find_cores ${DBNAME} $DBDIR`
 
 if [ -z "$cr" ] && [ -x "${SECONDARY_DB}" ] ; then
-    cr=`find_cores ${SECONDARY_DB}`
+    cr=`find_cores ${SECONDARY_DB} ${SECONDARY_DBDIR}`
 fi
 
 if [[ -n "$cr" ]] ; then
@@ -227,10 +240,10 @@ else
     echo "!$TESTCASE: failed" >> ${TESTDIR}/test.log
 fi
 
-call_unsetup ${DBNAME}
+call_unsetup ${DBNAME} ${DBDIR} $CDB2_OPTIONS
 
 if [ -n "${SECONDARY_DB}" ] ; then
-    call_setup ${SECONDARY_DB}
+    call_unsetup ${SECONDARY_DB} ${SECONDARY_DBDIR} $SECONDARY_DB_CDB2_OPTIONS
 fi
 
 DATETIME=$(date +"%Y-%m-%d %H:%M:%S")

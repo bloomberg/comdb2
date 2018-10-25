@@ -10,8 +10,10 @@ echo "!$TESTCASE: stopping"
 
 #take the dbname as the first parameter
 LCLDBNAME=$1
-#parameter $2 indicates if test is successful or not
-successful=$2
+#take the dbdir as the second parameter
+LCLDBDIR=$2
+#next parameter indicates if test is successful or not
+successful=$3
 
 kill_by_pidfile() {
     local pidfile=$1
@@ -97,17 +99,17 @@ cleanup_cluster() {
         dbport=`${TESTSROOTDIR}/tools/send_msg_port.sh -h $node "get comdb2/replication/${LCLDBNAME}" ${pmux_port}`
         echo "deregistering $LCLDBNAME (port $dbport) from $node pmux:$pmux_port"
         ssh -o StrictHostKeyChecking=no $node "${deregister_db_port}" < /dev/null
-        if [ "x$DBDIR" == "x" ] ; then 
+        if [ "x$LCLDBDIR" == "x" ] ; then 
             continue
         fi
 
         if [ "$successful" != "1" ] ; then 
-            echo copy $node:${DBDIR} content locally to $DBDIR/$node/ for investigation
-            mkdir $DBDIR/$node/
-            scp -r -o StrictHostKeyChecking=no $node:${DBDIR} $DBDIR/$node/ < /dev/null &
-            scp -r -o StrictHostKeyChecking=no $node:${TESTDIR}/var/log/cdb2/${LCLDBNAME}* $DBDIR/$node/ < /dev/null &
+            echo copy $node:${LCLDBDIR} content locally to $LCLDBDIR/$node/ for investigation
+            mkdir $LCLDBDIR/$node/
+            scp -r -o StrictHostKeyChecking=no $node:${LCLDBDIR} $LCLDBDIR/$node/ < /dev/null &
+            scp -r -o StrictHostKeyChecking=no $node:${TESTDIR}/var/log/cdb2/${LCLDBNAME}* $LCLDBDIR/$node/ < /dev/null &
         elif [ "$CLEANUPDBDIR" != "0" ] ; then 
-            ssh -o StrictHostKeyChecking=no $node "rm -rf ${DBDIR} $TMPDIR/${LCLDBNAME}" < /dev/null &
+            ssh -o StrictHostKeyChecking=no $node "rm -rf ${LCLDBDIR} $TMPDIR/${LCLDBNAME}" < /dev/null &
             ssh -o StrictHostKeyChecking=no $node "rm -f ${TESTDIR}/var/log/cdb2/${LCLDBNAME}.*" < /dev/null &
             if [ "$CLEANUPDBDIR" == "2" ] ; then 
                 ssh -o StrictHostKeyChecking=no $node "rm -f $TESTDIR/${LCLDBNAME}.db ${TMPDIR}/${LCLDBNAME}.* ${TMPDIR}/cdb2/${LCLDBNAME}.*" < /dev/null &
@@ -116,10 +118,10 @@ cleanup_cluster() {
     done
     wait
 
-    # the local node always has a copy of DBDIR even if not part of cluster
-    if [ "$CLEANUPDBDIR" != "0" ] && [ "$successful" == "1" ] && [ "x$DBDIR" != "x" ] ; then 
-        rm -rf ${DBDIR} ${TMPDIR}/${LCLDBNAME}
-        rm -f ${DBDIR} ${TESTDIR}/var/log/cdb2/${LCLDBNAME}.* ${TMPDIR}/${LCLDBNAME}.* ${TMPDIR}/cdb2/${LCLDBNAME}.*
+    # the local node always has a copy of LCLDBDIR even if not part of cluster
+    if [ "$CLEANUPDBDIR" != "0" ] && [ "$successful" == "1" ] && [ "x$LCLDBDIR" != "x" ] ; then 
+        rm -rf ${LCLDBDIR} ${TMPDIR}/${LCLDBNAME}
+        rm -f ${LCLDBDIR} ${TESTDIR}/var/log/cdb2/${LCLDBNAME}.* ${TMPDIR}/${LCLDBNAME}.* ${TMPDIR}/cdb2/${LCLDBNAME}.*
         if [ "$CLEANUPDBDIR" == "2" ] ; then
             rm -f $TESTDIR/logs/${LCLDBNAME}.* `find $TESTDIR/${TESTCASE}.test/* | grep -v Makefile`
             rmdir ${TMPDIR}/cdb2 ${TMPDIR} 2> /dev/null

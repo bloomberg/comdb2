@@ -23,8 +23,9 @@ done
 # In this script we want to take the db name we are setting up via
 # the first argument
 LCLDBNAME=$1
+LCLDBDIR=$2
 
-vars="HOSTNAME TESTID SRCHOME TESTCASE LCLDBNAME DBDIR BUILDDIR TESTSBUILDDIR TESTSROOTDIR TESTDIR TMPDIR CDB2_OPTIONS CDB2_CONFIG COMDB2_EXE CDB2SQL_EXE COMDB2AR_EXE PMUX_EXE pmux_port"
+vars="HOSTNAME TESTID SRCHOME TESTCASE LCLDBNAME LCLDBDIR BUILDDIR TESTSBUILDDIR TESTSROOTDIR TESTDIR TMPDIR CDB2_OPTIONS CDB2_CONFIG COMDB2_EXE CDB2SQL_EXE COMDB2AR_EXE PMUX_EXE pmux_port"
 for required in $vars; do
     q=${!required}
     if [[ -z "$q" ]]; then
@@ -36,7 +37,8 @@ done
 
 source $TESTSROOTDIR/setup.common
 
-DBDIR=$(readlink -f $DBDIR)
+#get full path
+LCLDBDIR=$(readlink -f $LCLDBDIR)
 
 # Setup a debugger to run comdb2 server
 DEBUG_PREFIX=
@@ -122,12 +124,12 @@ if [[ $debug -eq 1 ]]; then
 fi
 
 # TESTDIR looks like this: tests/test_12758
-# DBDIR looks like this: tests/test_12758/analyzenew12758
-mkdir -p $DBDIR $TMPDIR
+# LCLDBDIR looks like this: tests/test_12758/analyzenew12758
+mkdir -p $LCLDBDIR $TMPDIR
 
 # setup files:
 echo "!$TESTCASE: creating"
-LRL="$DBDIR/${LCLDBNAME}.lrl"
+LRL="$LCLDBDIR/${LCLDBNAME}.lrl"
 > ${LRL}
 
 if [[ -z $SKIPSSL ]] ; then
@@ -148,7 +150,7 @@ fi
 
 cat >> ${LRL} <<EOPTIONS
 name    ${LCLDBNAME}
-dir     $DBDIR
+dir     $LCLDBDIR
 
 setattr MASTER_REJECT_REQUESTS 0
 EOPTIONS
@@ -157,7 +159,7 @@ if [[ -n "$CUSTOMLRLPATH" ]]; then
     cat $CUSTOMLRLPATH >> ${LRL}
 fi
 
-df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> ${LRL}
+df $LCLDBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> ${LRL}
 echo "make_slow_replicants_incoherent off" >> ${LRL}
 
 # If CLUSTER is defined, populate config and lrl with that info
@@ -191,11 +193,11 @@ SSH_OPT="-o StrictHostKeyChecking=no "
 
 for csc2 in $(ls *.csc2 2>/dev/null); do
     table=${csc2%%.csc2}
-    cp $PWD/$csc2 $DBDIR/
+    cp $PWD/$csc2 $LCLDBDIR/
 done >> ${LRL}
 
 mkdir -p $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2
-cd $DBDIR >/dev/null
+cd $LCLDBDIR >/dev/null
 
 PARAMS="${LCLDBNAME} --no-global-lrl"
 export LOGDIR=$TESTDIR/logs
@@ -257,7 +259,7 @@ check_db_port_running_node() {
 if [[ -z "$CLUSTER" ]]; then
 
     if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
-        echo -e "!$TESTCASE: Execute the following command in a separate terminal: ${TEXTCOLOR}cd $DBDIR && ${DEBUG_PREFIX} $COMDB2_EXE $PARAMS --pidfile ${TMPDIR}/${LCLDBNAME}.pid${NOCOLOR}"
+        echo -e "!$TESTCASE: Execute the following command in a separate terminal: ${TEXTCOLOR}cd $LCLDBDIR && ${DEBUG_PREFIX} $COMDB2_EXE $PARAMS --pidfile ${TMPDIR}/${LCLDBNAME}.pid${NOCOLOR}"
         exit 0
     fi
 
@@ -289,7 +291,7 @@ else
     COMDB2AR_AROPTS="-C preserve"
     COMDB2AR_EXOPTS="-x $COMDB2_EXE"
 
-    ARFILE=$DBDIR/${LCLDBNAME}.ar
+    ARFILE=$LCLDBDIR/${LCLDBNAME}.ar
     $COMDB2AR_EXE $COMDB2AR_AROPTS c ${LRL} 2> $LOGDIR/${LCLDBNAME}.arstatus > $ARFILE
     [ ! -f $ARFILE ] && echo "failed to create $ARFILE" && exit 1
 
@@ -299,7 +301,7 @@ else
         if [ $node == $HOSTNAME ] ; then
             continue
         fi
-        cat $ARFILE | ssh $SSH_OPT $node "cd ${DBDIR}; $COMDB2AR_EXE $COMDB2AR_EXOPTS $COMDB2AR_AROPTS -u 95 x $DBDIR" &> $LOGDIR/${LCLDBNAME}.${node}.copy &
+        cat $ARFILE | ssh $SSH_OPT $node "cd ${LCLDBDIR}; $COMDB2AR_EXE $COMDB2AR_EXOPTS $COMDB2AR_AROPTS -u 95 x $LCLDBDIR" &> $LOGDIR/${LCLDBNAME}.${node}.copy &
         pids[$i]=$!
         let i=i+1
     done
@@ -317,7 +319,7 @@ else
     done
 
     echo "export COMDB2_ROOT=$COMDB2_ROOT" >> ${TESTDIR}/replicant_vars
-    CMD="cd ${DBDIR}; source ${TESTDIR}/replicant_vars ; ${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl ${LRL} --pidfile ${TMPDIR}/${LCLDBNAME}.pid 2>&1 | tee $TESTDIR/${LCLDBNAME}.db"
+    CMD="cd ${LCLDBDIR}; source ${TESTDIR}/replicant_vars ; ${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl ${LRL} --pidfile ${TMPDIR}/${LCLDBNAME}.pid 2>&1 | tee $TESTDIR/${LCLDBNAME}.db"
     echo "!$TESTCASE: starting"
     for node in $CLUSTER; do
         if [ $node == $HOSTNAME ] ; then # dont ssh to ourself -- just start db locally

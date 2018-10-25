@@ -6,3 +6,4 @@ endif
 ifeq ($(TEST_TIMEOUT),)
 	export TEST_TIMEOUT=3m
 endif
+export SECONDARY_DB_PREFIX=srcdb
