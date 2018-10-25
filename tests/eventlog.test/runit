@@ -74,7 +74,7 @@ assertres "\"$res\"" "\"$exp\""
 res=`cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select * from nonexistent" 2>&1`
 assertres "\"$res\"" \""[select * from nonexistent] failed with rc -3 no such table: nonexistent\""
 
-COMDB2_UNITTEST=0 CLEANUPDBDIR=0 $TESTSROOTDIR/unsetup $DBNAME 1 > $TESTDIR/logs/${DBNAME}.unsetup
+COMDB2_UNITTEST=0 CLEANUPDBDIR=0 $TESTSROOTDIR/unsetup 1 > $TESTDIR/logs/${DBNAME}.unsetup
 
 ls -ltr $TESTDIR/var/log/cdb2/ | grep events
 logfl=`ls -1Sr $TESTDIR/var/log/cdb2/ | grep events | grep $DBNAME | tail -1`

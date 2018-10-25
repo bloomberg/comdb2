@@ -46,7 +46,7 @@ assertcnt()
 
 call_unsetup() {
     local successful=$1
-    $TESTSROOTDIR/unsetup $DBNAME $successful &> $TESTDIR/logs/$DBNAME.unsetup
+    $TESTSROOTDIR/unsetup $successful &> $TESTDIR/logs/$DBNAME.unsetup
 }
 
 
@@ -72,7 +72,7 @@ CDB2_OPTIONS="--cdb2cfg $CDB2_CONFIG"
 
 unset COMDB2_UNITTEST   # needed to run setup script
 echo round_robin_stripes > lrl.options
-$TESTSROOTDIR/setup $DBNAME &> $TESTDIR/logs/$DBNAME.setup
+$TESTSROOTDIR/setup &> $TESTDIR/logs/$DBNAME.setup
 
 # Trap to call_unsetup if the test exits
 trap "call_unsetup \"0\"" INT EXIT
@@ -123,7 +123,7 @@ CDB2_OPTIONS="--cdb2cfg $CDB2_CONFIG"
 
 unset COMDB2_UNITTEST
 rm lrl.options
-$TESTSROOTDIR/setup $DBNAME &> $TESTDIR/logs/$DBNAME.setup
+$TESTSROOTDIR/setup &> $TESTDIR/logs/$DBNAME.setup
 
 # Trap to call_unsetup if the test exits
 trap "call_unsetup \"Cancelling test\"" INT EXIT

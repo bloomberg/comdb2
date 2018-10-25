@@ -29,11 +29,11 @@ export CUSTOMLRLPATH=$TESTDIR/customlrl
 
 #setup another db with default transaction snapisol
 echo "Setting up snapshot db"
-timeout 2m ${TESTSROOTDIR}/setup $DBNAME &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.setup | cut -c11- | grep "^!" )
+timeout 2m ${TESTSROOTDIR}/setup &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.setup | cut -c11- | grep "^!" )
 rc=$?
 if [[ $rc -ne 0 ]]; then
     echo "snapshot db setup failed (rc=$rc)"
-    $TESTSROOTDIR/unsetup $DBNAME &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.unsetup | cut -c11- | grep "^!" )
+    $TESTSROOTDIR/unsetup &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.unsetup | cut -c11- | grep "^!" )
     DBNAME=$dbname
     DBDIR=$dbdir
     CDB2_CONFIG=$cdb2config
@@ -53,7 +53,7 @@ successful=1
 if (( $rc != 0 )) ; then
     successful=0
 fi
-${TESTSROOTDIR}/unsetup $DBNAME $successful &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.unsetup | cut -c11- | grep "^!" )
+${TESTSROOTDIR}/unsetup $successful &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.unsetup | cut -c11- | grep "^!" )
 
 DBNAME=$dbname
 DBDIR=$dbdir

@@ -8,19 +8,15 @@ echo "!$TESTCASE: stopping"
 [ -z "$TESTDIR" ] && TESTDIR=${PWD}/test_${TESTID}
 [ -z "$TMPDIR" ] && TMPDIR=${TESTDIR}/tmp
 
-#take the dbname as the first parameter
-LCLDBNAME=$1
-#take the dbdir as the second parameter
-LCLDBDIR=$2
-#next parameter indicates if test is successful or not
-successful=$3
+#parameter $1 indicates if test is successful or not
+successful=$1
 
 kill_by_pidfile() {
     local pidfile=$1
     if [[ -f $pidfile ]]; then
         local pid=$(cat $pidfile)
         local pstr=$(ps -p $pid -o args | grep comdb2)
-        echo $pstr | grep -q "comdb2 ${LCLDBNAME}"
+        echo $pstr | grep -q "comdb2 ${DBNAME}"
         if [[ $? -eq 0 ]]; then
             echo "${TESTCASE}: killing $pid"
             if [ "`echo $pstr | awk '{ print $1 }' | xargs basename`" = "comdb2" ] ; then
@@ -39,7 +35,7 @@ build_pidfilelist() {
     local pidfile=$1
     if [[ -f $pidfile ]]; then
         local pid=$(cat $pidfile)
-        ps -p $pid -o args | grep -q "comdb2 ${LCLDBNAME}"
+        ps -p $pid -o args | grep -q "comdb2 ${DBNAME}"
         if [[ $? -eq 0 ]]; then 
             echo "${TESTCASE}: adding to filelist $pid"
             pidfilelist="$pidfilelist $pid"
@@ -52,23 +48,23 @@ build_pidfilelist() {
 
 dumplock_all_nodes() {
     local node
-    local pidfl=${TMPDIR}/${LCLDBNAME}.pid
+    local pidfl=${TMPDIR}/${DBNAME}.pid
 
     if [[ -z "$CLUSTER" ]] ; then
-        cdb2sql ${CDB2_OPTIONS} ${LCLDBNAME} default 'exec procedure sys.cmd.send("bdb lockinfo lockers")' &
+        cdb2sql ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("bdb lockinfo lockers")' &
     else
         for node in $CLUSTER; do
-            cdb2sql ${CDB2_OPTIONS} ${LCLDBNAME} --host $node 'exec procedure sys.cmd.send("bdb lockinfo lockers")' &
+            cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("bdb lockinfo lockers")' &
         done
     fi
 }
 
 core_all_nodes() {
     local node
-    local pidfl=${TMPDIR}/${LCLDBNAME}.pid
+    local pidfl=${TMPDIR}/${DBNAME}.pid
     if [[ -z "$CLUSTER" ]] || [[ `echo $CLUSTER | grep $HOSTNAME ` ]]; then
         if [[ -n "$CLUSTER" ]] ; then
-            pidfl=${TMPDIR}/${LCLDBNAME}.$HOSTNAME.pid
+            pidfl=${TMPDIR}/${DBNAME}.$HOSTNAME.pid
         fi
         cat ${pidfl} | xargs kill -6 
     fi
@@ -77,17 +73,17 @@ core_all_nodes() {
         if [ $node == $HOSTNAME ] ; then
             continue
         fi
-        pidfl=${TMPDIR}/${LCLDBNAME}.pid
+        pidfl=${TMPDIR}/${DBNAME}.pid
         ssh -o StrictHostKeyChecking=no $node "cat ${pidfl} | xargs kill -6 " </dev/null
     done
 }
 
 cleanup_cluster() {    
-    local deregister_db_port="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port}; echo del comdb2/replication/${LCLDBNAME} >&3 )"
+    local deregister_db_port="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port}; echo del comdb2/replication/${DBNAME} >&3 )"
     local dbport
     if [[ -z "$CLUSTER" ]] || [[ `echo $CLUSTER | grep $HOSTNAME ` ]]; then
-        dbport=`${TESTSROOTDIR}/tools/send_msg_port.sh -h $HOSTNAME "get comdb2/replication/${LCLDBNAME}" ${pmux_port}`
-        echo "deregistering $LCLDBNAME (port $dbport) from $HOSTNAME pmux:$pmux_port"
+        dbport=`${TESTSROOTDIR}/tools/send_msg_port.sh -h $HOSTNAME "get comdb2/replication/${DBNAME}" ${pmux_port}`
+        echo "deregistering $DBNAME (port $dbport) from $HOSTNAME pmux:$pmux_port"
         eval $deregister_db_port
     fi
 
@@ -96,34 +92,34 @@ cleanup_cluster() {
         if [ $node == $HOSTNAME ] ; then
             continue
         fi
-        dbport=`${TESTSROOTDIR}/tools/send_msg_port.sh -h $node "get comdb2/replication/${LCLDBNAME}" ${pmux_port}`
-        echo "deregistering $LCLDBNAME (port $dbport) from $node pmux:$pmux_port"
+        dbport=`${TESTSROOTDIR}/tools/send_msg_port.sh -h $node "get comdb2/replication/${DBNAME}" ${pmux_port}`
+        echo "deregistering $DBNAME (port $dbport) from $node pmux:$pmux_port"
         ssh -o StrictHostKeyChecking=no $node "${deregister_db_port}" < /dev/null
-        if [ "x$LCLDBDIR" == "x" ] ; then 
+        if [ "x$DBDIR" == "x" ] ; then 
             continue
         fi
 
         if [ "$successful" != "1" ] ; then 
-            echo copy $node:${LCLDBDIR} content locally to $LCLDBDIR/$node/ for investigation
-            mkdir $LCLDBDIR/$node/
-            scp -r -o StrictHostKeyChecking=no $node:${LCLDBDIR} $LCLDBDIR/$node/ < /dev/null &
-            scp -r -o StrictHostKeyChecking=no $node:${TESTDIR}/var/log/cdb2/${LCLDBNAME}* $LCLDBDIR/$node/ < /dev/null &
+            echo copy $node:${DBDIR} content locally to $DBDIR/$node/ for investigation
+            mkdir $DBDIR/$node/
+            scp -r -o StrictHostKeyChecking=no $node:${DBDIR} $DBDIR/$node/ < /dev/null &
+            scp -r -o StrictHostKeyChecking=no $node:${TESTDIR}/var/log/cdb2/${DBNAME}* $DBDIR/$node/ < /dev/null &
         elif [ "$CLEANUPDBDIR" != "0" ] ; then 
-            ssh -o StrictHostKeyChecking=no $node "rm -rf ${LCLDBDIR} $TMPDIR/${LCLDBNAME}" < /dev/null &
-            ssh -o StrictHostKeyChecking=no $node "rm -f ${TESTDIR}/var/log/cdb2/${LCLDBNAME}.*" < /dev/null &
+            ssh -o StrictHostKeyChecking=no $node "rm -rf ${DBDIR} $TMPDIR/${DBNAME}" < /dev/null &
+            ssh -o StrictHostKeyChecking=no $node "rm -f ${TESTDIR}/var/log/cdb2/${DBNAME}.*" < /dev/null &
             if [ "$CLEANUPDBDIR" == "2" ] ; then 
-                ssh -o StrictHostKeyChecking=no $node "rm -f $TESTDIR/${LCLDBNAME}.db ${TMPDIR}/${LCLDBNAME}.* ${TMPDIR}/cdb2/${LCLDBNAME}.*" < /dev/null &
+                ssh -o StrictHostKeyChecking=no $node "rm -f $TESTDIR/${DBNAME}.db ${TMPDIR}/${DBNAME}.* ${TMPDIR}/cdb2/${DBNAME}.*" < /dev/null &
             fi
         fi
     done
     wait
 
-    # the local node always has a copy of LCLDBDIR even if not part of cluster
-    if [ "$CLEANUPDBDIR" != "0" ] && [ "$successful" == "1" ] && [ "x$LCLDBDIR" != "x" ] ; then 
-        rm -rf ${LCLDBDIR} ${TMPDIR}/${LCLDBNAME}
-        rm -f ${LCLDBDIR} ${TESTDIR}/var/log/cdb2/${LCLDBNAME}.* ${TMPDIR}/${LCLDBNAME}.* ${TMPDIR}/cdb2/${LCLDBNAME}.*
+    # the local node always has a copy of DBDIR even if not part of cluster
+    if [ "$CLEANUPDBDIR" != "0" ] && [ "$successful" == "1" ] && [ "x$DBDIR" != "x" ] ; then 
+        rm -rf ${DBDIR} ${TMPDIR}/${DBNAME}
+        rm -f ${DBDIR} ${TESTDIR}/var/log/cdb2/${DBNAME}.* ${TMPDIR}/${DBNAME}.* ${TMPDIR}/cdb2/${DBNAME}.*
         if [ "$CLEANUPDBDIR" == "2" ] ; then
-            rm -f $TESTDIR/logs/${LCLDBNAME}.* `find $TESTDIR/${TESTCASE}.test/* | grep -v Makefile`
+            rm -f $TESTDIR/logs/${DBNAME}.* `find $TESTDIR/${TESTCASE}.test/* | grep -v Makefile`
             rmdir ${TMPDIR}/cdb2 ${TMPDIR} 2> /dev/null
         fi
     fi
@@ -131,9 +127,9 @@ cleanup_cluster() {
 
 flush_node() {
     local node=$1
-    cdb2sql ${CDB2_OPTIONS} ${LCLDBNAME} --host $node 'exec procedure sys.cmd.send("flush")' &
+    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("flush")' &
     sleep 1
-    cdb2sql ${CDB2_OPTIONS} ${LCLDBNAME} --host $node 'exec procedure sys.cmd.send("reql events off")' &
+    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("reql events off")' &
     sleep 1
 }
 
@@ -154,19 +150,19 @@ fi
 
 
 if [[ -z "$CLUSTER" ]]; then
-    cdb2sql ${CDB2_OPTIONS} ${LCLDBNAME} default 'exec procedure sys.cmd.send("flush")' &
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("flush")' &
     sleep 1
-    cdb2sql ${CDB2_OPTIONS} ${LCLDBNAME} default 'exec procedure sys.cmd.send("reql events off")' &
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("reql events off")' &
     sleep 1
     
-    kill_by_pidfile ${TMPDIR}/${LCLDBNAME}.pid
+    kill_by_pidfile ${TMPDIR}/${DBNAME}.pid
 
 else
     pidfilelist=""
 
     for node in $CLUSTER; do
         flush_node $node &
-        build_pidfilelist ${TMPDIR}/${LCLDBNAME}.${node}.pid
+        build_pidfilelist ${TMPDIR}/${DBNAME}.${node}.pid
     done
     wait
 

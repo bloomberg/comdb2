@@ -43,7 +43,7 @@ done
 
 
 #setup remode db
-$TESTSROOTDIR/setup $DBNAME &> $TESTDIR/logs/$DBNAME.setup
+$TESTSROOTDIR/setup &> $TESTDIR/logs/$DBNAME.setup
 
 function old()
 {
@@ -239,7 +239,7 @@ if (( $result == 0 )) ; then
    successful=1
 fi
 
-$TESTSROOTDIR/unsetup $DBNAME $successful &> $TESTDIR/logs/$DBNAME.unsetup
+$TESTSROOTDIR/unsetup $successful &> $TESTDIR/logs/$DBNAME.unsetup
 
 function old_clenaup(){
 if (( $is_local == 0 )) ; then

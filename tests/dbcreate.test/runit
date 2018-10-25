@@ -98,7 +98,7 @@ else
     assertres $res $HOSTNAME
 fi
 
-COMDB2_UNITTEST=0 CLEANUPDBDIR=1 $TESTSROOTDIR/unsetup $DB 1 > $TESTDIR/logs/${DB}.unsetup
+COMDB2_UNITTEST=0 CLEANUPDBDIR=1 $TESTSROOTDIR/unsetup 1 > $TESTDIR/logs/${DBNAME}.unsetup
 
 
 if [[ -n "$CLUSTER" ]]; then
@@ -119,7 +119,7 @@ if [[ -n "$CLUSTER" ]]; then
         assertres $res $node
     done
 
-    COMDB2_UNITTEST=0 CLEANUPDBDIR=1 $TESTSROOTDIR/unsetup $DB 1 > $TESTDIR/logs/${DB}.unsetup
+    COMDB2_UNITTEST=0 CLEANUPDBDIR=1 $TESTSROOTDIR/unsetup 1 > $TESTDIR/logs/${DBNAME}.unsetup
 fi
 
 
