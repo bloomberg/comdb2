@@ -393,7 +393,7 @@ static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
                rc);
         return 0;
     }
-    pthread_mutex_lock(mu);
+    Pthread_mutex_lock(mu);
 
     if (*open != 1) {
         goto skip;
@@ -461,7 +461,7 @@ static void admin(struct dbenv *dbenv, int type)
 {
     int iammaster = (dbenv->master == gbl_mynode) ? 1 : 0;
 
-    pthread_mutex_lock(&dbqueuedb_admin_lk);
+    Pthread_mutex_lock(&dbqueuedb_admin_lk);
     if (dbqueuedb_admin_running) {
         pthread_mutex_unlock(&dbqueuedb_admin_lk);
         return;
@@ -510,7 +510,7 @@ static void admin(struct dbenv *dbenv, int type)
         }
     }
 
-    pthread_mutex_lock(&dbqueuedb_admin_lk);
+    Pthread_mutex_lock(&dbqueuedb_admin_lk);
     dbqueuedb_admin_running = 0;
     pthread_mutex_unlock(&dbqueuedb_admin_lk);
 }
@@ -832,12 +832,12 @@ static void stop_consumer(struct consumer *consumer)
     }
 
     // TODO CONSUMER_TYPE_LUA,
-    pthread_mutex_lock(&consumer->mutex);
+    Pthread_mutex_lock(&consumer->mutex);
     consumer->please_stop = 1;
     pthread_cond_signal(&consumer->cond);
     pthread_mutex_unlock(&consumer->mutex);
 
-    pthread_mutex_lock(&consumer->mutex);
+    Pthread_mutex_lock(&consumer->mutex);
     if (consumer->stopped) {
         pthread_mutex_unlock(&consumer->mutex);
         return;
@@ -852,7 +852,7 @@ static void stop_consumer(struct consumer *consumer)
  * mark "no longer stopped" so admin can do it's thing */
 static void restart_consumer(struct consumer *consumer)
 {
-    pthread_mutex_lock(&consumer->mutex);
+    Pthread_mutex_lock(&consumer->mutex);
     consumer->stopped = 0;
     pthread_mutex_unlock(&consumer->mutex);
 }

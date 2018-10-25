@@ -4680,7 +4680,7 @@ out:
 void net_subnet_status()
 {
     int i = 0;
-    pthread_mutex_lock(&subnet_mtx);
+    Pthread_mutex_lock(&subnet_mtx);
     for (i = 0; i < num_dedicated_subnets; i++) {
         logmsg(LOGMSG_USER, "Subnet %s %s%s%s", subnet_suffices[i],
                subnet_disabled[i] ? "disabled" : "enabled\n",
@@ -4693,7 +4693,7 @@ void net_subnet_status()
 void net_set_bad_subnet(const char *subnet)
 {
     int i = 0;
-    pthread_mutex_lock(&subnet_mtx);
+    Pthread_mutex_lock(&subnet_mtx);
     for (i = 0; i < num_dedicated_subnets; i++) {
         if (subnet_suffices[i][0] &&
             strncmp(subnet, subnet_suffices[i], strlen(subnet) + 1) == 0) {
@@ -4714,7 +4714,7 @@ void net_clipper(const char *subnet, int is_disable)
 {
     int i = 0;
     time_t now;
-    pthread_mutex_lock(&subnet_mtx);
+    Pthread_mutex_lock(&subnet_mtx);
     for (i = 0; i < num_dedicated_subnets; i++) {
         if (subnet_suffices[i][0] &&
             strncmp(subnet, subnet_suffices[i], strlen(subnet) + 1) == 0) {
@@ -4743,7 +4743,7 @@ int net_subnet_disabled(const char *subnet)
 {
     int i = 0;
     int rc = 0;
-    pthread_mutex_lock(&subnet_mtx);
+    Pthread_mutex_lock(&subnet_mtx);
     for (i = 0; i < num_dedicated_subnets; i++) {
         if (subnet_suffices[i][0] &&
             strncmp(subnet, subnet_suffices[i], strlen(subnet) + 1) == 0) {
@@ -4760,7 +4760,7 @@ int net_add_nondedicated_subnet(void *context, void *value)
     // increment num_dedicated_subnets only once for non dedicated subnet
     if (0 == _non_dedicated_subnet) {
         _non_dedicated_subnet = 1;
-        pthread_mutex_lock(&subnet_mtx);
+        Pthread_mutex_lock(&subnet_mtx);
         subnet_suffices[num_dedicated_subnets] = strdup("");
         num_dedicated_subnets++;
         pthread_mutex_unlock(&subnet_mtx);
@@ -4774,7 +4774,7 @@ int net_add_to_subnets(const char *suffix, const char *lrlname)
     printf("net_add_to_subnets subnet '%s'\n", suffix);
 #endif
 
-    pthread_mutex_lock(&subnet_mtx);
+    Pthread_mutex_lock(&subnet_mtx);
     if (num_dedicated_subnets >= MAXSUBNETS) {
         logmsg(LOGMSG_ERROR, "too many subnet suffices (max=%d) in lrl %s\n",
                MAXSUBNETS, lrlname);
@@ -4790,7 +4790,7 @@ int net_add_to_subnets(const char *suffix, const char *lrlname)
 
 void net_cleanup_subnets()
 {
-    pthread_mutex_lock(&subnet_mtx);
+    Pthread_mutex_lock(&subnet_mtx);
     for (uint8_t i = 0; i < num_dedicated_subnets; i++) {
         if (subnet_suffices[i]) {
             free(subnet_suffices[i]);
@@ -4812,7 +4812,7 @@ static int get_dedicated_conhost(host_node_type *host_node_ptr, struct in_addr *
     static unsigned int counter = 0xffff;
     uint8_t ii = 0; // do the loop no more that max subnets
 
-    pthread_mutex_lock(&subnet_mtx);
+    Pthread_mutex_lock(&subnet_mtx);
     if (num_dedicated_subnets == 0) {
 #ifdef DEBUG
         host_node_printf(LOGMSG_USER, host_node_ptr,
@@ -6101,7 +6101,7 @@ void net_end_appsock(SBUF2 *sb)
         netinfo_ptr = watchlist_node->netinfo_ptr;
 
         /* remove from the watch list, if it's on there */
-        pthread_mutex_lock(&(netinfo_ptr->watchlk));
+        Pthread_mutex_lock(&(netinfo_ptr->watchlk));
         if (watchlist_node->in_watchlist) {
             listc_rfl(&(netinfo_ptr->watchlist), watchlist_node);
         }

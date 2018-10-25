@@ -696,7 +696,7 @@ __txn_count_ltrans(dbenv, count)
 	DB_ENV *dbenv;
 	u_int32_t *count;
 {
-	pthread_mutex_lock(&dbenv->ltrans_active_lk);
+	Pthread_mutex_lock(&dbenv->ltrans_active_lk);
 	*count = listc_size(&dbenv->active_ltrans);
 	pthread_mutex_unlock(&dbenv->ltrans_active_lk);
 	return 0;
@@ -711,7 +711,7 @@ __txn_ltrans_find_lowest_lsn(dbenv, lsnp)
 	LTDESC *lt, *lttemp;
 
 	ZERO_LSN(*lsnp);
-	pthread_mutex_lock(&dbenv->ltrans_active_lk);
+	Pthread_mutex_lock(&dbenv->ltrans_active_lk);
 	LISTC_FOR_EACH_SAFE(&dbenv->active_ltrans, lt, lttemp, lnk) {
 		if (IS_ZERO_LSN(*lsnp) || log_compare(&lt->begin_lsn, lsnp) < 0)
 			(*lsnp) = lt->begin_lsn;
@@ -731,7 +731,7 @@ __txn_allocate_ltrans(dbenv, ltranid, begin_lsn, rlt)
 	LTDESC *lt = NULL, *hflt;
 	int ret = 0;
 
-	pthread_mutex_lock(&dbenv->ltrans_inactive_lk);
+	Pthread_mutex_lock(&dbenv->ltrans_inactive_lk);
 	lt = listc_rtl(&dbenv->inactive_ltrans);
 	pthread_mutex_unlock(&dbenv->ltrans_inactive_lk);
 
@@ -747,14 +747,14 @@ __txn_allocate_ltrans(dbenv, ltranid, begin_lsn, rlt)
 	lt->flags = 0;
 	lt->begin_lsn = *begin_lsn;
 
-	pthread_mutex_lock(&dbenv->ltrans_hash_lk);
+	Pthread_mutex_lock(&dbenv->ltrans_hash_lk);
 #ifdef LTRANS_DEBUG
 	assert(!(hflt = hash_find(dbenv->ltrans_hash, lt)));
 #endif
 	hash_add(dbenv->ltrans_hash, lt);
 	pthread_mutex_unlock(&dbenv->ltrans_hash_lk);
 
-	pthread_mutex_lock(&dbenv->ltrans_active_lk);
+	Pthread_mutex_lock(&dbenv->ltrans_active_lk);
 	listc_abl(&dbenv->active_ltrans, lt);
 	pthread_mutex_unlock(&dbenv->ltrans_active_lk);
 
@@ -781,7 +781,7 @@ __txn_get_ltran_list(dbenv, rlist, rcount)
 	ret = idx = 0;
 	*rlist = NULL;
 
-	pthread_mutex_lock(&dbenv->ltrans_active_lk);
+	Pthread_mutex_lock(&dbenv->ltrans_active_lk);
 	count = listc_size(&dbenv->active_ltrans);
 	if ((ret = __os_malloc(dbenv, count * sizeof(DB_LTRAN), &list)) != 0)
 		goto err;
@@ -810,7 +810,7 @@ __txn_find_ltrans(dbenv, ltranid, rlt)
 {
 	LTDESC *lt = NULL;
 
-	pthread_mutex_lock(&dbenv->ltrans_hash_lk);
+	Pthread_mutex_lock(&dbenv->ltrans_hash_lk);
 	lt = hash_find(dbenv->ltrans_hash, &ltranid);
 	pthread_mutex_unlock(&dbenv->ltrans_hash_lk);
 	(*rlt) = lt;
@@ -829,18 +829,18 @@ __txn_deallocate_ltrans(dbenv, lt)
 	assert(lt->active_txn_count == 0);
 	lt->flags = 0;
 
-	pthread_mutex_lock(&dbenv->ltrans_hash_lk);
+	Pthread_mutex_lock(&dbenv->ltrans_hash_lk);
 #ifdef LTRANS_DEBUG
 	assert(hflt = hash_find(dbenv->ltrans_hash, lt));
 #endif
 	hash_del(dbenv->ltrans_hash, lt);
 	pthread_mutex_unlock(&dbenv->ltrans_hash_lk);
 
-	pthread_mutex_lock(&dbenv->ltrans_active_lk);
+	Pthread_mutex_lock(&dbenv->ltrans_active_lk);
 	listc_rfl(&dbenv->active_ltrans, lt);
 	pthread_mutex_unlock(&dbenv->ltrans_active_lk);
 
-	pthread_mutex_lock(&dbenv->ltrans_inactive_lk);
+	Pthread_mutex_lock(&dbenv->ltrans_inactive_lk);
 	listc_abl(&dbenv->inactive_ltrans, lt);
 	pthread_mutex_unlock(&dbenv->ltrans_inactive_lk);
 }

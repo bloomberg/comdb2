@@ -172,7 +172,7 @@ struct thr_handle *thrman_register(enum thrtype type)
         abort();
     }
 
-    pthread_mutex_lock(&mutex);
+    Pthread_mutex_lock(&mutex);
     listc_abl(&thr_list, thr);
     thr_type_counts[type]++;
     if (gbl_thrman_trace) {
@@ -208,7 +208,7 @@ void thrman_change_type(struct thr_handle *thr, enum thrtype newtype)
 
     oldtype = thr->type;
 
-    pthread_mutex_lock(&mutex);
+    Pthread_mutex_lock(&mutex);
     thr_type_counts[thr->type]--;
     thr->type = newtype;
     thr_type_counts[thr->type]++;
@@ -233,7 +233,7 @@ static void thrman_destructor(void *param)
         return;
     }
 
-    pthread_mutex_lock(&mutex);
+    Pthread_mutex_lock(&mutex);
     listc_rfl(&thr_list, thr);
     thr_type_counts[thr->type]--;
     if (gbl_thrman_trace) {
@@ -447,7 +447,7 @@ static void thrman_dump_ll(void)
 /* Dump all active threads */
 void thrman_dump(void)
 {
-    pthread_mutex_lock(&mutex);
+    Pthread_mutex_lock(&mutex);
     thrman_dump_ll();
     pthread_mutex_unlock(&mutex);
 }
@@ -459,7 +459,7 @@ void thrman_stop_sql_connections(void)
     struct thr_handle *thr;
     struct thr_handle *temp;
 
-    pthread_mutex_lock(&mutex);
+    Pthread_mutex_lock(&mutex);
     LISTC_FOR_EACH_SAFE(&thr_list, thr, temp, linkv)
     {
         if (thr->type == THRTYPE_SQLPOOL || thr->type == THRTYPE_SQL ||
@@ -522,7 +522,7 @@ static int thrman_check_threads_gone_ll(void *context)
 static void thrman_wait(const char *descr, int (*check_fn_ll)(void *),
                         void *context)
 {
-    pthread_mutex_lock(&mutex);
+    Pthread_mutex_lock(&mutex);
     while (1) {
         struct timespec ts;
         struct timeval tp;
@@ -627,7 +627,7 @@ int thrman_count_type(enum thrtype type)
 {
     int count = 0;
     if (type >= 0 && type < THRTYPE_MAX) {
-        pthread_mutex_lock(&mutex);
+        Pthread_mutex_lock(&mutex);
         count = thr_type_counts[type];
         pthread_mutex_unlock(&mutex);
     }

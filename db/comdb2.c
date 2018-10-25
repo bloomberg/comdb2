@@ -5428,14 +5428,14 @@ int check_current_schemas(void)
 
 void log_delete_add_state(struct dbenv *dbenv, struct log_delete_state *state)
 {
-    pthread_mutex_lock(&dbenv->log_delete_counter_mutex);
+    Pthread_mutex_lock(&dbenv->log_delete_counter_mutex);
     listc_atl(&dbenv->log_delete_state_list, state);
     pthread_mutex_unlock(&dbenv->log_delete_counter_mutex);
 }
 
 void log_delete_rem_state(struct dbenv *dbenv, struct log_delete_state *state)
 {
-    pthread_mutex_lock(&dbenv->log_delete_counter_mutex);
+    Pthread_mutex_lock(&dbenv->log_delete_counter_mutex);
     listc_rfl(&dbenv->log_delete_state_list, state);
     pthread_mutex_unlock(&dbenv->log_delete_counter_mutex);
 }
@@ -5444,7 +5444,7 @@ void log_delete_counter_change(struct dbenv *dbenv, int action)
 {
     struct log_delete_state *pstate;
     int filenum;
-    pthread_mutex_lock(&dbenv->log_delete_counter_mutex);
+    Pthread_mutex_lock(&dbenv->log_delete_counter_mutex);
     switch (action) {
     case LOG_DEL_ABS_ON:
         dbenv->log_delete = 1;

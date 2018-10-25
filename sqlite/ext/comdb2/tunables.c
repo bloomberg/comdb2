@@ -131,7 +131,7 @@ static int systblTunablesColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,
     comdb2_tunable *tunable =
         gbl_tunables->array[((systbl_tunables_cursor *)cur)->rowid];
 
-    pthread_mutex_lock(&gbl_tunables->mu);
+    Pthread_mutex_lock(&gbl_tunables->mu);
 
     switch (pos) {
     case TUNABLES_COLUMN_NAME:

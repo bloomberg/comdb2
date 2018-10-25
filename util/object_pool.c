@@ -242,7 +242,7 @@ int comdb2_objpool_stop(comdb2_objpool_t op)
 {
     int rc;
     OP_DBG(op, "stop pool");
-    pthread_mutex_lock(&op->data_mutex);
+    Pthread_mutex_lock(&op->data_mutex);
     op->stopped = 1;
     pthread_cond_broadcast(&op->unexhausted);
     pthread_mutex_unlock(&op->data_mutex);
@@ -253,7 +253,7 @@ int comdb2_objpool_resume(comdb2_objpool_t op)
 {
     int rc;
     OP_DBG(op, "resume pool");
-    pthread_mutex_lock(&op->data_mutex);
+    Pthread_mutex_lock(&op->data_mutex);
     op->stopped = 0;
     pthread_mutex_unlock(&op->data_mutex);
     return rc;
@@ -262,7 +262,7 @@ int comdb2_objpool_resume(comdb2_objpool_t op)
 int comdb2_objpool_destroy(comdb2_objpool_t op)
 {
     int rc = 0;
-    pthread_mutex_lock(&op->data_mutex);
+    Pthread_mutex_lock(&op->data_mutex);
 
     if (op->nactiveobjs > 0) {
         /* active objects out there, can't proceed */
@@ -275,7 +275,7 @@ int comdb2_objpool_destroy(comdb2_objpool_t op)
 
     if (op->evict_thd_run) {
         /* terminate eviction thread */
-        pthread_mutex_lock(&op->evict_mutex);
+        Pthread_mutex_lock(&op->evict_mutex);
         if (rc != 0) {
             pthread_mutex_unlock(&op->data_mutex);
             return rc;
@@ -328,7 +328,7 @@ int comdb2_objpool_setopt(comdb2_objpool_t op,
                           enum comdb2_objpool_option option, int value)
 {
     int rc = 0;
-    pthread_mutex_lock(&op->data_mutex);
+    Pthread_mutex_lock(&op->data_mutex);
     switch (option) {
     case OP_CAPACITY:
         rc = opt_capacity(op, value);
@@ -371,7 +371,7 @@ int comdb2_objpool_available(comdb2_objpool_t op)
 {
     int rc, avail;
 
-    pthread_mutex_lock(&op->data_mutex);
+    Pthread_mutex_lock(&op->data_mutex);
 
     avail = !exhausted(op) || !full(op);
 
@@ -405,7 +405,7 @@ int comdb2_objpool_stats(comdb2_objpool_t op)
 {
     int rc;
 
-    pthread_mutex_lock(&op->data_mutex);
+    Pthread_mutex_lock(&op->data_mutex);
 
     /* status */
     logmsg(LOGMSG_USER, "Object pool [%s] stats\n", op->name);
@@ -641,7 +641,7 @@ static void *eviction_thread(void *arg)
     op = (comdb2_objpool_t)arg;
     OP_DBG(op, "start eviction thr");
 
-    pthread_mutex_lock(&op->evict_mutex);
+    Pthread_mutex_lock(&op->evict_mutex);
 
     op->evict_thd_run = 1;
 
@@ -689,7 +689,7 @@ static int objpool_return_int(comdb2_objpool_t op, void *obj)
     if (op->stopped)
         return EPERM;
 
-    pthread_mutex_lock(&op->data_mutex);
+    Pthread_mutex_lock(&op->data_mutex);
 
     if (op->stopped) {
         pthread_mutex_unlock(&op->data_mutex);
@@ -735,8 +735,8 @@ static int objpool_return_int(comdb2_objpool_t op, void *obj)
         OP_DBG(op, "returned to pool");
 
         if (op->evict_ratio != OPT_DISABLE &&
-            idle_rate(op) >= op->evict_ratio &&
-            pthread_mutex_lock(&op->evict_mutex) == 0) {
+            idle_rate(op) >= op->evict_ratio) {
+            Pthread_mutex_lock(&op->evict_mutex);
             pthread_mutex_unlock(&op->data_mutex);
             OP_DBG(op, "signal evict_cond");
             pthread_cond_signal(&op->evict_cond);
@@ -765,7 +765,7 @@ static int objpool_borrow_int(comdb2_objpool_t op, void **objp, long nanosecs,
     if (op->stopped)
         return EPERM;
 
-    pthread_mutex_lock(&op->data_mutex);
+    Pthread_mutex_lock(&op->data_mutex);
 
     if (op->stopped) {
         pthread_mutex_unlock(&op->data_mutex);
@@ -908,8 +908,7 @@ static void objpool_lifo_evict(comdb2_objpool_t op)
     void *object;
     struct timespec tm;
 
-    if (pthread_mutex_lock(&op->data_mutex) != 0)
-        return;
+    Pthread_mutex_lock(&op->data_mutex);
 
     clock_gettime(CLOCK_REALTIME, &tm);
 
@@ -977,8 +976,7 @@ static void objpool_fifo_evict(comdb2_objpool_t op)
     void *object;
     struct timespec tm;
 
-    if (pthread_mutex_lock(&op->data_mutex) != 0)
-        return;
+    Pthread_mutex_lock(&op->data_mutex);
 
     clock_gettime(CLOCK_REALTIME, &tm);
 
@@ -1046,8 +1044,7 @@ static void objpool_rand_evict(comdb2_objpool_t op)
     void *object;
     struct timespec tm;
 
-    if (pthread_mutex_lock(&op->data_mutex) != 0)
-        return;
+    Pthread_mutex_lock(&op->data_mutex);
 
     clock_gettime(CLOCK_REALTIME, &tm);
 
@@ -1187,7 +1184,7 @@ static int opt_evict_intv_ms(comdb2_objpool_t op, int value)
     if (op->evict_thd_run && value == OPT_DISABLE &&
         op->evict_ratio == OPT_DISABLE) {
         /* eviction thr is running. caller wants to terminate it */
-        pthread_mutex_lock(&op->evict_mutex);
+        Pthread_mutex_lock(&op->evict_mutex);
 
         op->evict_thd_run = 0;
         pthread_cond_signal(&op->evict_cond);
@@ -1198,7 +1195,7 @@ static int opt_evict_intv_ms(comdb2_objpool_t op, int value)
 
     } else if (!op->evict_thd_run && value != OPT_DISABLE) {
         /* eviction thr isn't running and caller wants to start it */
-        pthread_mutex_lock(&op->evict_mutex);
+        Pthread_mutex_lock(&op->evict_mutex);
 
         rc = pthread_create(&op->evict_thd, NULL, eviction_thread, op);
         pthread_mutex_unlock(&op->evict_mutex);
@@ -1219,7 +1216,7 @@ static int opt_evict_ratio(comdb2_objpool_t op, int value)
     if (op->evict_thd_run && value == OPT_DISABLE &&
         op->evict_intv_ms == OPT_DISABLE) {
         /* eviction thr is running. caller wants to terminate it */
-        pthread_mutex_lock(&op->evict_mutex);
+        Pthread_mutex_lock(&op->evict_mutex);
 
         op->evict_thd_run = 0;
         pthread_cond_signal(&op->evict_cond);
@@ -1230,7 +1227,7 @@ static int opt_evict_ratio(comdb2_objpool_t op, int value)
 
     } else if (!op->evict_thd_run && value != OPT_DISABLE) {
         /* eviction thr isn't running and caller wants to start it */
-        pthread_mutex_lock(&op->evict_mutex);
+        Pthread_mutex_lock(&op->evict_mutex);
 
         rc = pthread_create(&op->evict_thd, NULL, eviction_thread, op);
         pthread_mutex_unlock(&op->evict_mutex);

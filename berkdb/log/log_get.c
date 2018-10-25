@@ -25,6 +25,7 @@ static const char revid[] = "$Id: log_get.c,v 11.98 2003/09/13 19:20:38 bostic E
 #include "dbinc/db_swap.h"
 #include "dbinc/hash.h"
 #include <epochlib.h>
+#include <locks_wrap.h>
 
 typedef enum { L_ALREADY, L_ACQUIRED, L_NONE } RLOCK;
 
@@ -90,7 +91,7 @@ static inline int __log_cursor_cache(dbenv, logcp)
     if (!dbenv->attr.log_cursor_cache)
         return -1;
 
-    pthread_mutex_lock(&curlk);
+    Pthread_mutex_lock(&curlk);
     if (curhd) 
     {
         logc = curhd;
@@ -228,7 +229,7 @@ __log_c_close(logc)
             (void)__os_closehandle(dbenv, logc->c_fhp);
             logc->c_fhp = NULL;
         }
-        pthread_mutex_lock(&curlk);
+        Pthread_mutex_lock(&curlk);
         logc->prev = NULL;
         logc->next = curhd;
         if (curhd) curhd->prev = logc;

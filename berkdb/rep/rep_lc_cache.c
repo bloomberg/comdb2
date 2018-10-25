@@ -43,7 +43,7 @@ __lc_cache_init(DB_ENV *dbenv, int reinit)
 			 return ret;
 	} 
 
-	pthread_mutex_lock(&dbenv->lc_cache.lk);
+	Pthread_mutex_lock(&dbenv->lc_cache.lk);
 
 	LC_CACHE *lcc;
 
@@ -190,7 +190,7 @@ lc_dump_cache(DB_ENV *dbenv, int needlock)
 {
 
 	if (needlock)
-		pthread_mutex_lock(&dbenv->lc_cache.lk);
+		Pthread_mutex_lock(&dbenv->lc_cache.lk);
 
 	LC_CACHE_ENTRY *e;
 
@@ -228,7 +228,7 @@ __lc_cache_feed(DB_ENV *dbenv, DB_LSN lsn, DBT dbt)
 	DB_LSN prevlsn;
 	uint8_t *logrec;
 
-	pthread_mutex_lock(&dbenv->lc_cache.lk);
+	Pthread_mutex_lock(&dbenv->lc_cache.lk);
 
 	logrec = dbt.data;
 	if (dbt.size <
@@ -570,7 +570,7 @@ __lc_cache_get(DB_ENV *dbenv, DB_LSN *lsnp, LSN_COLLECTION * lcout,
 {
 	LC_CACHE_ENTRY *e;
 
-	pthread_mutex_lock(&dbenv->lc_cache.lk);
+	Pthread_mutex_lock(&dbenv->lc_cache.lk);
 
 	if (dbenv->attr.cache_lc_debug)
 		logmsg(LOGMSG_USER, "looking for " PR_LSN "\n", PARM_LSNP(lsnp));

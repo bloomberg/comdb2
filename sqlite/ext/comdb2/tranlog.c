@@ -190,7 +190,7 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
           /* Wait on a condition variable */
           clock_gettime(CLOCK_REALTIME, &ts);
           ts.tv_nsec += (200 * 1000000);
-          pthread_mutex_lock(&gbl_durable_lsn_lk);
+          Pthread_mutex_lock(&gbl_durable_lsn_lk);
           pthread_cond_timedwait(&gbl_durable_lsn_cond, &gbl_durable_lsn_lk, &ts);
           pthread_mutex_unlock(&gbl_durable_lsn_lk);
 
@@ -208,7 +208,7 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
               struct timespec ts;
               clock_gettime(CLOCK_REALTIME, &ts);
               ts.tv_nsec += (200 * 1000000);
-              pthread_mutex_lock(&gbl_logput_lk);
+              Pthread_mutex_lock(&gbl_logput_lk);
               pthread_cond_timedwait(&gbl_logput_cond, &gbl_logput_lk, &ts);
               pthread_mutex_unlock(&gbl_logput_lk);
 

@@ -1240,7 +1240,7 @@ __db_tmp_open(dbenv, tmp_oflags, path, fhpp)
 	static int num;
 
 	memcpy(&mutex_copy_before, &tmp_open_lock, sizeof(mutex_copy_before));
-	pthread_mutex_lock(&tmp_open_lock);
+	Pthread_mutex_lock(&tmp_open_lock);
 	num++;
 	x = num;
 	pthread_mutex_unlock(&tmp_open_lock);

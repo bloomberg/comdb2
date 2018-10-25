@@ -56,7 +56,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         struct schema_change_type *last_sc = NULL;
         struct schema_change_type *stored_sc = NULL;
 
-        pthread_mutex_lock(&sc_resuming_mtx);
+        Pthread_mutex_lock(&sc_resuming_mtx);
         stored_sc = sc_resuming;
         while (stored_sc) {
             if (strcasecmp(stored_sc->tablename, s->tablename) == 0) {
@@ -99,7 +99,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             free_schema_change_type(s);
             s = stored_sc;
             iq->sc = s;
-            pthread_mutex_lock(&s->mtx);
+            Pthread_mutex_lock(&s->mtx);
             s->finalize_only = 1;
             s->nothrevent = 1;
             s->resume = SC_RESUME;
@@ -271,12 +271,12 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     if (s->nothrevent) {
         if (!s->partialuprecs)
             logmsg(LOGMSG_INFO, "Executing SYNCHRONOUSLY\n");
-        pthread_mutex_lock(&s->mtx);
+        Pthread_mutex_lock(&s->mtx);
         rc = do_schema_change_tran(arg);
     } else {
         int max_threads =
             bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_ASYNC_MAXTHREADS);
-        pthread_mutex_lock(&sc_async_mtx);
+        Pthread_mutex_lock(&sc_async_mtx);
         while (!s->resume && max_threads > 0 &&
                sc_async_threads >= max_threads) {
             logmsg(LOGMSG_INFO, "Waiting for avaiable schema change threads\n");
@@ -288,7 +288,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         if (!s->partialuprecs)
             logmsg(LOGMSG_INFO, "Executing ASYNCHRONOUSLY\n");
         pthread_t tid;
-        pthread_mutex_lock(&s->mtx);
+        Pthread_mutex_lock(&s->mtx);
         rc = pthread_create(&tid, &gbl_pthread_attr_detached,
                             (void *(*)(void *))do_schema_change_tran, arg);
         if (rc) {
@@ -296,7 +296,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                    "start_schema_change:pthread_create rc %d %s\n", rc,
                    strerror(errno));
 
-            pthread_mutex_lock(&sc_async_mtx);
+            Pthread_mutex_lock(&sc_async_mtx);
             sc_async_threads--;
             pthread_mutex_unlock(&sc_async_mtx);
 
@@ -916,7 +916,7 @@ int add_schema_change_tables()
     int scabort = 0;
 
     /* if a schema change is currently running don't try to resume one */
-    pthread_mutex_lock(&schema_change_in_progress_mutex);
+    Pthread_mutex_lock(&schema_change_in_progress_mutex);
     if (gbl_schema_change_in_progress) {
         pthread_mutex_unlock(&schema_change_in_progress_mutex);
         return 0;
@@ -1350,7 +1350,7 @@ void sc_printf(struct schema_change_type *s, const char *fmt, ...)
         return;
     }
 
-    if (s && s->sb) pthread_mutex_lock(&schema_change_sbuf2_lock);
+    if (s && s->sb) Pthread_mutex_lock(&schema_change_sbuf2_lock);
 
     vsb_printf(LOGMSG_INFO, (s) ? s->sb : NULL, "?", "Schema change info: ",
                fmt, args);
@@ -1370,7 +1370,7 @@ void sc_errf(struct schema_change_type *s, const char *fmt, ...)
         return;
     }
 
-    if (s && s->sb) pthread_mutex_lock(&schema_change_sbuf2_lock);
+    if (s && s->sb) Pthread_mutex_lock(&schema_change_sbuf2_lock);
 
     vsb_printf(LOGMSG_ERROR, (s) ? s->sb : NULL, "!", "Schema change error: ",
                fmt, args);

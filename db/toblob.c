@@ -150,7 +150,7 @@ static unsigned dyntag_next_extra = 1;
 static void blobmem_init(void);
 
 #define LOCK_BLOB_MUTEX()                                                      \
-    pthread_mutex_lock(&blobmutex);                                            \
+    Pthread_mutex_lock(&blobmutex);                                            \
     comdb2bma_mark_locked(blobmem);
 #define UNLOCK_BLOB_MUTEX()                                                    \
     comdb2bma_mark_unlocked(blobmem);                                          \

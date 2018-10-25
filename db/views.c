@@ -989,7 +989,7 @@ static void* _view_cleanup_thd(void *voidarg)
       return NULL;
    }
 
-   pthread_mutex_lock(&views_mtx);
+   Pthread_mutex_lock(&views_mtx);
 
    view = _get_view_check(views, name);
    if(!view)
@@ -1023,7 +1023,7 @@ static void* _view_cleanup_thd(void *voidarg)
 
       sleep(timetodelete-now);
 
-      pthread_mutex_lock(&views_mtx);
+      Pthread_mutex_lock(&views_mtx);
 
 
       view = _get_view_check(views, name);
@@ -1068,7 +1068,7 @@ error:
 
    view->purge_time = 0;
 
-   pthread_mutex_lock(&views_mtx);
+   Pthread_mutex_lock(&views_mtx);
    free(name);
    return NULL;
 }

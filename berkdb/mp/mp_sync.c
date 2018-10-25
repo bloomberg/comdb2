@@ -232,7 +232,7 @@ mempsync_thd(void *p)
 
 	mempsync_thread_running = 1;
 	while (!mempsync_thread_should_stop) {
-		pthread_mutex_lock(&mempsync_lk);
+		Pthread_mutex_lock(&mempsync_lk);
 		pthread_cond_wait(&mempsync_wait, &mempsync_lk);
 		if (mempsync_thread_should_stop) {
 			pthread_mutex_unlock(&mempsync_lk);
@@ -241,7 +241,7 @@ mempsync_thd(void *p)
 		/* latch the lsn */
 		pthread_mutex_unlock(&mempsync_lk);
 		BDB_READLOCK("mempsync_thd");
-		pthread_mutex_lock(&mempsync_lk);
+		Pthread_mutex_lock(&mempsync_lk);
 		lsn = mempsync_lsn;
 		sync_lsn = lsn;
 		pthread_mutex_unlock(&mempsync_lk);
@@ -351,7 +351,7 @@ __memp_sync_out_of_band(DB_ENV *dbenv, DB_LSN *lsn)
 	gblenv = dbenv;
 	pthread_once(&mempsync_once, mempsync_out_of_band_init);
 
-	pthread_mutex_lock(&mempsync_lk);
+	Pthread_mutex_lock(&mempsync_lk);
 	mempsync_lsn = *lsn;
 	pthread_cond_signal(&mempsync_wait);
 	pthread_mutex_unlock(&mempsync_lk);
@@ -1008,14 +1008,14 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 		MUTEX_UNLOCK(dbenv, &hparray[j]->hash_mutex);
 	}
 
-	pthread_mutex_lock(&range->t->lk);
+	Pthread_mutex_lock(&range->t->lk);
 	range->t->written_pages += wrote;
 	range->t->done_pages += ar_cnt;
 	range->t->ret = ret;
 	pthread_cond_signal(&range->t->wait);
 	pthread_mutex_unlock(&range->t->lk);
 
-	pthread_mutex_lock(&pgpool_lk);
+	Pthread_mutex_lock(&pgpool_lk);
 	pool_relablk(pgpool, range);
 	pthread_mutex_unlock(&pgpool_lk);
 }
@@ -1378,7 +1378,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 
 		for (i = 1, j = 0; i < ar_cnt; ++i) {
 			if (bharray[j].track_off != bharray[i].track_off) {
-				pthread_mutex_lock(&pgpool_lk);
+				Pthread_mutex_lock(&pgpool_lk);
 				range = pool_getablk(pgpool);
 				pthread_mutex_unlock(&pgpool_lk);
 
@@ -1393,7 +1393,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 				 *  can't do that yet 
 				 */
 				t_ret = 1;
-				pthread_mutex_lock(&pt->lk);
+				Pthread_mutex_lock(&pt->lk);
 				while(pt->ret == 0 &&
 				      t_ret != 0) {
 					pthread_mutex_unlock(&pt->lk);
@@ -1404,7 +1404,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 						pt->nwaits++;
 						poll(NULL, 0, 10);
 					}
-					pthread_mutex_lock(&pt->lk);
+					Pthread_mutex_lock(&pt->lk);
 				}
 
 				/*
@@ -1421,7 +1421,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 		}
 
 		if (pt->ret == 0) {
-			pthread_mutex_lock(&pgpool_lk);
+			Pthread_mutex_lock(&pgpool_lk);
 			range = pool_getablk(pgpool);
 			pthread_mutex_unlock(&pgpool_lk);
 
@@ -1436,7 +1436,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 			 *  can't do that yet 
 			 */
 			t_ret = 1;
-			pthread_mutex_lock(&pt->lk);
+			Pthread_mutex_lock(&pt->lk);
 			while(pt->ret == 0 && t_ret != 0) {
 				pthread_mutex_unlock(&pt->lk);
 
@@ -1447,7 +1447,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 					poll(NULL, 0, 10);
 				}
 			
-				pthread_mutex_lock(&pt->lk);
+				Pthread_mutex_lock(&pt->lk);
 			}
 
 			/*
@@ -1460,7 +1460,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 		}
 
 		/* wait for writers to finish */
-		pthread_mutex_lock(&pt->lk);
+		Pthread_mutex_lock(&pt->lk);
 		while (pt->done_pages < pt->total_pages) {
 			pthread_cond_wait(&pt->wait, &pt->lk);
 		}
@@ -1468,7 +1468,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 		ret = pt->ret;
 		pthread_mutex_unlock(&pt->lk);
 	} else {
-		pthread_mutex_lock(&pgpool_lk);
+		Pthread_mutex_lock(&pgpool_lk);
 		range = pool_getablk(pgpool);
 		pthread_mutex_unlock(&pgpool_lk);
 

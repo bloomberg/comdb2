@@ -87,37 +87,41 @@ int compare_indexes(const char *table, FILE *out);
 static inline int lock_taglock_read(void)
 {
 #ifdef TAGLOCK_RW_LOCK
-    return pthread_rwlock_rdlock(&taglock);
+    pthread_rwlock_rdlock(&taglock);
 #else
-    return pthread_mutex_lock(&taglock);
+    Pthread_mutex_lock(&taglock);
 #endif
+    return 0;
 }
 
 int lock_taglock(void)
 {
 #ifdef TAGLOCK_RW_LOCK
-    return pthread_rwlock_wrlock(&taglock);
+    pthread_rwlock_wrlock(&taglock);
 #else
-    return pthread_mutex_lock(&taglock);
+    Pthread_mutex_lock(&taglock);
 #endif
+    return 0;
 }
 
 int unlock_taglock(void)
 {
 #ifdef TAGLOCK_RW_LOCK
-    return pthread_rwlock_unlock(&taglock);
+    pthread_rwlock_unlock(&taglock);
 #else
-    return pthread_mutex_unlock(&taglock);
+    pthread_mutex_unlock(&taglock);
 #endif
+    return 0;
 }
 
 static inline int init_taglock(void)
 {
 #ifdef TAGLOCK_RW_LOCK
-    return pthread_rwlock_init(&taglock, NULL);
+    pthread_rwlock_init(&taglock, NULL);
 #else
-    return Pthread_mutex_init(&taglock, NULL);
+    Pthread_mutex_init(&taglock, NULL);
 #endif
+    return 0;
 }
 
 /* set dbstore (or null) value for a column
@@ -6925,7 +6929,7 @@ struct schema *create_version_schema(char *csc2, int version,
     char *tag;
     int rc;
 
-    pthread_mutex_lock(&csc2_subsystem_mtx);
+    Pthread_mutex_lock(&csc2_subsystem_mtx);
     rc = dyns_load_schema_string(csc2, dbenv->envname, gbl_ver_temp_table);
     if (rc) {
         logmsg(LOGMSG_ERROR, "dyns_load_schema_string failed %s:%d\n", __FILE__,
@@ -7029,7 +7033,7 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
     void *old_bdb_handle, *new_bdb_handle;
     char *csc2 = NULL;
 
-    pthread_mutex_lock(&csc2_subsystem_mtx);
+    Pthread_mutex_lock(&csc2_subsystem_mtx);
     rc = get_csc2_file_tran(db->tablename, version, &csc2, &len, tran);
     if (rc) {
         logmsg(LOGMSG_ERROR, "get_csc2_file failed %s:%d\n", __FILE__, __LINE__);

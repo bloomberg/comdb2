@@ -138,7 +138,7 @@ void wait_for_genid_repl(unsigned long long genid)
             pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_NORMAL);
 
             Pthread_mutex_init(&me.mutex, &attr);
-            pthread_mutex_lock(&me.mutex);
+            Pthread_mutex_lock(&me.mutex);
             me.next = obj->waiter_list;
             obj->waiter_list = &me;
 
@@ -149,7 +149,7 @@ void wait_for_genid_repl(unsigned long long genid)
                 /* Try to double lock the mutex - this will block until
                  * the mutex is unlocked by clearing the genid from the
                  * list. */
-                pthread_mutex_lock(&me.mutex);
+                Pthread_mutex_lock(&me.mutex);
             }
             xLOCK(&lock);
 

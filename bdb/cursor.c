@@ -110,7 +110,7 @@ int lkprintf(loglvl lvl, const char *fmt, ...)
 {
     va_list args;
 
-    pthread_mutex_lock(&pr_lk);
+    Pthread_mutex_lock(&pr_lk);
 
     va_start(args, fmt);
     logmsgv(lvl, fmt, args);

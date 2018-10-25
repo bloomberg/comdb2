@@ -75,7 +75,7 @@ cron_sched_t *cron_add_event(cron_sched_t *sched, const char *name, int epoch,
         }
     }
 
-    pthread_mutex_lock(&sched->mtx);
+    Pthread_mutex_lock(&sched->mtx);
 
     rc = _queue_event(sched, epoch, func, arg1, arg2, arg3, source_id, err);
     if (rc != VIEW_NOERR) {
@@ -223,7 +223,7 @@ static void *_cron_runner(void *arg)
 
     locked = 0;
     while (!gbl_exit && !db_is_stopped()) {
-        pthread_mutex_lock(&sched->mtx);
+        Pthread_mutex_lock(&sched->mtx);
         locked = 1;
 
         clock_gettime(CLOCK_REALTIME, &now);
@@ -249,7 +249,7 @@ static void *_cron_runner(void *arg)
                 pthread_mutex_unlock(&sched->mtx);
                 event->func(event->source_id, event->arg1, event->arg2, event->arg3,
                             &xerr);
-                pthread_mutex_lock(&sched->mtx);
+                Pthread_mutex_lock(&sched->mtx);
                 sched->running = 0;
 
                 if (xerr.errval)
@@ -296,7 +296,7 @@ static void *_cron_runner(void *arg)
  */
 void cron_signal_worker(cron_sched_t *sched)
 {
-    pthread_mutex_lock(&sched->mtx);
+    Pthread_mutex_lock(&sched->mtx);
 
     pthread_cond_signal(&sched->cond);
 
@@ -361,7 +361,7 @@ void cron_lock(cron_sched_t *sched)
 {
     struct timespec now;
 
-    pthread_mutex_lock(&sched->mtx);
+    Pthread_mutex_lock(&sched->mtx);
 
     while (sched->running) {
         clock_gettime(CLOCK_REALTIME, &now);

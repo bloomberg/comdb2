@@ -439,7 +439,7 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
 static void luabb_trigger_unregister(dbconsumer_t *q)
 {
     if (q->lock) {
-        pthread_mutex_lock(q->lock);
+        Pthread_mutex_lock(q->lock);
         bdb_trigger_unsubscribe(q->iq.usedb->handle);
         pthread_mutex_unlock(q->lock);
     }
@@ -682,7 +682,7 @@ static int dbq_poll(Lua L, dbconsumer_t *q, int delay)
             return -1;
         }
         int rc;
-        pthread_mutex_lock(q->lock);
+        Pthread_mutex_lock(q->lock);
 again:  if (*q->open) {
             rc = dbq_poll_int(L, q); // call will release q->lock
         } else {
@@ -699,7 +699,7 @@ again:  if (*q->open) {
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
         ts.tv_sec += (dbq_delay / 1000);
-        pthread_mutex_lock(q->lock);
+        Pthread_mutex_lock(q->lock);
         if (pthread_cond_timedwait(q->cond, q->lock, &ts) == 0) {
             // was woken up -- try getting from queue
             goto again;
@@ -1369,7 +1369,7 @@ static int get_remote_input(lua_State *lua, char *buffer, size_t sz)
     if (sp->rc) {
         return luabb_error(lua, sp, "%s: couldn't send results back", __func__);
     }
-    pthread_mutex_lock(&lua_debug_mutex);
+    Pthread_mutex_lock(&lua_debug_mutex);
     int rc = read_response(clnt, RESPONSE_SP_CMD, buffer, sz);
     pthread_mutex_unlock(&lua_debug_mutex);
     return rc;
@@ -2987,7 +2987,7 @@ static int dbthread_join(Lua lua1)
 {
     dbthread_t *lt = lua_touserdata(lua1, -1);
     pthread_mutex_t *mtx = &lt->lua_thread_mutex;
-    pthread_mutex_lock(mtx);
+    Pthread_mutex_lock(mtx);
     while (lt->finished_run == 0) {
         check_retry_conditions(lua1, 1);
         struct timespec ts;
@@ -3671,7 +3671,7 @@ static int db_column_name(Lua L)
         return luaL_error(L,
                           "bad arguments to 'column_name' for typed-statement");
     }
-    pthread_mutex_lock(parent->emit_mutex);
+    Pthread_mutex_lock(parent->emit_mutex);
     if (parent_clnt->osql.sent_column_data) {
         pthread_mutex_unlock(parent->emit_mutex);
         free(name);
@@ -3733,7 +3733,7 @@ static int db_column_type(Lua L)
         clnttype = SQLITE_TEXT;
     }
     free(name);
-    pthread_mutex_lock(parent->emit_mutex);
+    Pthread_mutex_lock(parent->emit_mutex);
     if (parent_clnt->osql.sent_column_data) {
         pthread_mutex_unlock(parent->emit_mutex);
         return luaL_error(L, "attempt to change column type");
@@ -3757,7 +3757,7 @@ static int db_num_columns(Lua L)
         return luaL_error(
             L, "attempt to set number of columns for typed-statement");
     }
-    pthread_mutex_lock(parent->emit_mutex);
+    Pthread_mutex_lock(parent->emit_mutex);
     if (parent_clnt->osql.sent_column_data) {
         pthread_mutex_unlock(parent->emit_mutex);
         return luaL_error(L, "attempt to change number of columns");
@@ -4823,7 +4823,7 @@ static int l_send_back_row(Lua lua, sqlite3_stmt *stmt, int nargs)
     arg.pingpong = sp->pingpong;
     struct sqlclntstate *clnt = sp->parent->clnt;
     if (clnt->osql.sent_column_data == 0) {
-        pthread_mutex_lock(sp->emit_mutex);
+        Pthread_mutex_lock(sp->emit_mutex);
         if (clnt->osql.sent_column_data == 0) {
             new_col_info(sp, nargs);
             rc = write_response(clnt, RESPONSE_COLUMNS_LUA, &arg, 0);
@@ -5129,13 +5129,13 @@ halt_here:
     clnt->want_stored_procedure_debug = 1;
 wait_here:
     pthread_cond_broadcast(&lua_debug_cond); /* 1 debugger at a time. */
-    pthread_mutex_lock(&lua_debug_mutex);
+    Pthread_mutex_lock(&lua_debug_mutex);
     pthread_cond_wait(&lua_debug_cond, &lua_debug_mutex);
     pthread_mutex_unlock(&lua_debug_mutex);
 do_continue:
     logmsg(LOGMSG_USER, "CoNtInUe \n");
     info_buf.has_buffer = 0;
-    pthread_mutex_lock(&lua_debug_mutex);
+    Pthread_mutex_lock(&lua_debug_mutex);
     int rc = sbuf2fread(info_buf.buffer, 250, 1, clnt->sb);
     if (rc && (strncmp(info_buf.buffer, "HALT", 4) == 0)) {
         pthread_mutex_unlock(&lua_debug_mutex);

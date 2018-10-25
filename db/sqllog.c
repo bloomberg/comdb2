@@ -83,7 +83,7 @@ static void *async_logthd(void *unused)
     int rc;
 
     for (;;) {
-        pthread_mutex_lock(&sql_log_lk);
+        Pthread_mutex_lock(&sql_log_lk);
         if (e) {
             async_size -= e->bufsz;
             free_event(e);
@@ -121,7 +121,7 @@ static void async_enqueue(void *buf, int bufsz)
     if (!async_have_thread)
         sqllog_changesync(1);
 
-    pthread_mutex_lock(&sql_log_lk);
+    Pthread_mutex_lock(&sql_log_lk);
 
     if ((sqllog_async_maxsize && (async_size + bufsz > sqllog_async_maxsize)) ||
         gbl_log_all_sql == 0) {
@@ -164,7 +164,7 @@ static void sqllog_changesync(int async)
 
     pthread_once(&async_init_once, sqllog_async_init_once);
 
-    pthread_mutex_lock(&sql_log_lk);
+    Pthread_mutex_lock(&sql_log_lk);
     if (async == 0) {
         /* changing to sync? eat everything on the async queue  - treat them as
          * drops */
@@ -193,7 +193,7 @@ static void sqllog_changesync(int async)
             if (rc)
                 logmsg(LOGMSG_WARN, "rc %d waiting for sqllog thread\n", rc);
 
-            pthread_mutex_lock(&sql_log_lk);
+            Pthread_mutex_lock(&sql_log_lk);
         }
         async_have_thread = 0;
         sqllog_use_async = 0;
@@ -296,7 +296,7 @@ again:
 
 static int sqllog_enable(void)
 {
-    pthread_mutex_lock(&sql_log_lk);
+    Pthread_mutex_lock(&sql_log_lk);
     if (gbl_log_all_sql == 1) {
         pthread_mutex_unlock(&sql_log_lk);
         logmsg(LOGMSG_ERROR, "SQL logging already enabled\n");
@@ -320,7 +320,7 @@ static int sqllog_enable(void)
 
 static int sqllog_disable(void)
 {
-    pthread_mutex_lock(&sql_log_lk);
+    Pthread_mutex_lock(&sql_log_lk);
     if (gbl_log_all_sql == 0) {
         pthread_mutex_unlock(&sql_log_lk);
         logmsg(LOGMSG_ERROR, "SQL logging already disabled\n");
@@ -337,7 +337,7 @@ static int sqllog_disable(void)
 
 static int sqllog_flush(void)
 {
-    pthread_mutex_lock(&sql_log_lk);
+    Pthread_mutex_lock(&sql_log_lk);
     if (sqllog == NULL) {
         logmsg(LOGMSG_ERROR, "SQL log not open (logging %senabled)\n",
                 gbl_log_all_sql ? "" : "not ");
@@ -384,7 +384,7 @@ static int sqllog_roll_locked(int nkeep, int quiet)
 static int sqllog_roll(int nkeep)
 {
     int rc;
-    pthread_mutex_lock(&sql_log_lk);
+    Pthread_mutex_lock(&sql_log_lk);
     rc = sqllog_roll_locked(nkeep, 0);
     pthread_mutex_unlock(&sql_log_lk);
     return rc;

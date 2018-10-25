@@ -258,7 +258,7 @@ struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz)
 
     pthread_cond_init(&pool->wait_for_thread, NULL);
 
-    pthread_mutex_lock(&pool_list_lk);
+    Pthread_mutex_lock(&pool_list_lk);
     pthread_once(&init_pool_list_once, init_pool_list);
     listc_abl(&threadpools, pool);
     pthread_mutex_unlock(&pool_list_lk);
@@ -420,7 +420,7 @@ void thdpool_list_pools(void)
 {
     struct thdpool *pool;
     logmsg(LOGMSG_USER, "thread pools:\n");
-    pthread_mutex_lock(&pool_list_lk);
+    Pthread_mutex_lock(&pool_list_lk);
     LISTC_FOR_EACH(&threadpools, pool, lnk) { logmsg(LOGMSG_USER, "  %s\n", pool->name); }
     pthread_mutex_unlock(&pool_list_lk);
 }
@@ -428,7 +428,7 @@ void thdpool_list_pools(void)
 void thdpool_command_to_all(char *line, int lline, int st)
 {
     struct thdpool *pool;
-    pthread_mutex_lock(&pool_list_lk);
+    Pthread_mutex_lock(&pool_list_lk);
     LISTC_FOR_EACH(&threadpools, pool, lnk)
     {
         thdpool_process_message(pool, line, lline, st);
@@ -1105,12 +1105,14 @@ int thdpool_get_dump_on_full(struct thdpool *pool)
 
 int thdpool_lock(struct thdpool *pool)
 {
-    return pthread_mutex_lock(&pool->mutex);
+    Pthread_mutex_lock(&pool->mutex);
+    return 0;
 }
 
 int thdpool_unlock(struct thdpool *pool)
 {
-    return pthread_mutex_unlock(&pool->mutex);
+    Pthread_mutex_unlock(&pool->mutex);
+    return 0;
 }
 
 struct thdpool *thdpool_next_pool(struct thdpool *pool)

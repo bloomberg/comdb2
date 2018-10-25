@@ -35,6 +35,7 @@
 #include "intern_strings.h"
 
 #include <logmsg.h>
+#include <locks_wrap.h>
 
 struct node_index {
     const char *node;
@@ -97,7 +98,7 @@ static int nodeix_global(const char *node)
     }
 
     /* didn't find in global list, add - now lock*/
-    pthread_mutex_lock(&lk);
+    Pthread_mutex_lock(&lk);
     /* repeat the search in case someone else inserted it */
     for (int i = 0; i < numnodes; i++) {
         if (nodes[i].node == node) {

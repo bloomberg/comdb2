@@ -1383,7 +1383,7 @@ int tolongblock(struct ireq *iq)
         /* if expected piece lower than sent one, something arrived out of
          * sequence, so we need to replay the transaction */
         else {
-            /* allocator memory from blobmem first before pthread_mutex_lock
+            /* allocator memory from blobmem first before Pthread_mutex_lock
                otherwise there might be deadlocks */
             in_dataszw =
                 hdr.offset - (((REQ_HDR_LEN + LONGBLOCK_REQ_PRE_HDR_LEN +
@@ -2263,7 +2263,7 @@ static int toblock_outer(struct ireq *iq, block_state_t *blkstate)
             }
         }
 
-        pthread_mutex_lock(&(iq->dbenv->prefault_helper.mutex));
+        Pthread_mutex_lock(&(iq->dbenv->prefault_helper.mutex));
 
         /*fprintf(stderr, "done waiting for helper %d\n", i);*/
 
@@ -5839,7 +5839,7 @@ add_blkseq:
 
     int diff_time_micros = (int)reqlog_current_us(iq->reqlogger);
 
-    pthread_mutex_lock(&commit_stat_lk);
+    Pthread_mutex_lock(&commit_stat_lk);
     n_commit_time += diff_time_micros;
     n_commits++;
     pthread_mutex_unlock(&commit_stat_lk);
@@ -5906,7 +5906,7 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
     static pthread_mutex_t blklk = PTHREAD_MUTEX_INITIALIZER;
     static int blkcnt = 0, lastpr = 0;
 
-    pthread_mutex_lock(&blklk);
+    Pthread_mutex_lock(&blklk);
     blkcnt++;
 
     if (((now = comdb2_time_epoch()) - lastpr) > 1) {
@@ -5938,7 +5938,7 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
         handle_postabort_bpfunc(iq);
     }
 
-    pthread_mutex_lock(&blklk);
+    Pthread_mutex_lock(&blklk);
     blkcnt--;
     block_processor_ms += (end - start);
     pthread_mutex_unlock(&blklk);

@@ -44,6 +44,7 @@ static const char revid[] = "$Id: log_put.c,v 11.145 2003/09/13 19:20:39 bostic 
 #include <netinet/in.h>
 
 #include "logmsg.h"
+#include <locks_wrap.h>
 #include <poll.h>
 
 extern unsigned long long get_commit_context(const void *, uint32_t generation);
@@ -238,7 +239,7 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 
 	ZERO_LSN(old_lsn);
 
-    pthread_mutex_lock(&gbl_logput_lk);
+    Pthread_mutex_lock(&gbl_logput_lk);
 	if ((ret =
 		__log_put_next(dbenv, lsnp, contextp, dbt, udbt, &hdr, &old_lsn,
 		    off_context, key, flags)) != 0)
@@ -376,7 +377,7 @@ err:
 		int now;
 
 		/* Don't lock out anything else */
-		pthread_mutex_lock(&lk);
+		Pthread_mutex_lock(&lk);
 		poll(NULL, 0, delay);
 		pthread_mutex_unlock(&lk);
 		count++;
@@ -882,7 +883,7 @@ __write_inmemory_buffer(dblp, write_all)
 	lp = dblp->reginfo.primary;
 
 	if (lp->num_segments > 1) {
-		pthread_mutex_lock(&log_write_lk);
+		Pthread_mutex_lock(&log_write_lk);
 		ret = __write_inmemory_buffer_lk(dblp, NULL, write_all);
 
 		pthread_mutex_unlock(&log_write_lk);
@@ -1260,7 +1261,7 @@ __log_lwr_lsn(dblp)
 		 * without grabbing log_write_lk.
 		 */
 		if (curseg != lwrseg) {
-			pthread_mutex_lock(&log_write_lk);
+			Pthread_mutex_lock(&log_write_lk);
 			lwrseg = (lp->l_off / lp->segment_size);
 			pthread_mutex_unlock(&log_write_lk);
 		}
@@ -1658,7 +1659,7 @@ __log_write_td(arg)
 	dblp = (DB_LOG *)arg;
 	lp = dblp->reginfo.primary;
 
-	pthread_mutex_lock(&log_write_lk);
+	Pthread_mutex_lock(&log_write_lk);
 	do {
 		/* Block until there's more to write. */
 		pthread_cond_wait(&log_write_cond, &log_write_lk);
@@ -1767,7 +1768,7 @@ __log_fill_segments(dblp, startlsn, lsn, addr, len)
 			 */
 			nbufs = len / lp->buffer_size;
 
-			pthread_mutex_lock(&log_write_lk);
+			Pthread_mutex_lock(&log_write_lk);
 
 			/* Flush the in-memory buffer. */
 			__write_inmemory_buffer_lk(dblp, NULL, 0);
@@ -1837,7 +1838,7 @@ __log_fill_segments(dblp, startlsn, lsn, addr, len)
 
 			/* Can't proceed until this is written to disk. */
 			if (lp->l_off == nxtseg) {
-				pthread_mutex_lock(&log_write_lk);
+				Pthread_mutex_lock(&log_write_lk);
 
 				/* Writer thread didn't flush: write inline. */
 				if (lp->l_off == nxtseg) {

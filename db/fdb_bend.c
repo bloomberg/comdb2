@@ -1292,7 +1292,7 @@ int fdb_svc_trans_init(struct sqlclntstate *clnt, const char *tid,
 
     assert(trans != NULL);
 
-    pthread_mutex_lock(&clnt->dtran_mtx);
+    Pthread_mutex_lock(&clnt->dtran_mtx);
 
     trans->dtran = (fdb_distributed_tran_t *)calloc(
         1, sizeof(fdb_distributed_tran_t) + sizeof(fdb_tran_t));
@@ -1402,7 +1402,7 @@ void fdb_sequence_request(struct sqlclntstate *tran_clnt, fdb_tran_t *trans,
            not gonna do that now.  Recom ftw */
         poll(NULL, 0, 10);
 
-        pthread_mutex_lock(&tran_clnt->dtran_mtx);
+        Pthread_mutex_lock(&tran_clnt->dtran_mtx);
     }
 
     /* bump the transactional sequence */

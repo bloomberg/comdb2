@@ -423,7 +423,7 @@ __allocate_ilock_latch(dbenv, lnode)
 	DB_LOCKTAB *lt = dbenv->lk_handle;
 	DB_LOCKREGION *region = lt->reginfo.primary;
 	int ret, i;
-	pthread_mutex_lock(&region->ilock_latch_lk);
+	Pthread_mutex_lock(&region->ilock_latch_lk);
 	if (!region->ilock_latch_head) {
 		DB_ILOCK_LATCH *mem;
 		if ((ret = __os_calloc(dbenv, sizeof(DB_ILOCK_LATCH),
@@ -454,7 +454,7 @@ __allocate_db_lock_lsn(dbenv, lsnp)
 	struct __db_lock_lsn *l;
 	int ret, i;
 
-	pthread_mutex_lock(&region->db_lock_lsn_lk);
+	Pthread_mutex_lock(&region->db_lock_lsn_lk);
 
 	if (!(l = SH_LIST_FIRST(&region->db_lock_lsn_head, __db_lock_lsn))) {
 		struct __db_lock_lsn *mem;
@@ -482,7 +482,7 @@ __deallocate_db_lock_lsn(dbenv, lsnp)
 	DB_LOCKTAB *lt = dbenv->lk_handle;
 	DB_LOCKREGION *region = lt->reginfo.primary;
 
-	pthread_mutex_lock(&region->db_lock_lsn_lk);
+	Pthread_mutex_lock(&region->db_lock_lsn_lk);
 	SH_LIST_INSERT_HEAD(&region->db_lock_lsn_head, lsnp, lsn_links,
 	    __db_lock_lsn);
 	pthread_mutex_unlock(&region->db_lock_lsn_lk);
@@ -498,7 +498,7 @@ __deallocate_ilock_latch(dbenv, lnode)
 	struct __db_lock_lsn *lp_lsn, *next_lsn;
 
 	lnode->lock_mode = 0;
-	pthread_mutex_lock(&lnode->lsns_mtx);
+	Pthread_mutex_lock(&lnode->lsns_mtx);
 	for (lp_lsn = SH_LIST_FIRST(&lnode->lsns, __db_lock_lsn);
 	    lp_lsn != NULL; lp_lsn = next_lsn) {
 		next_lsn = SH_LIST_NEXT(lp_lsn, lsn_links, __db_lock_lsn);
@@ -508,7 +508,7 @@ __deallocate_ilock_latch(dbenv, lnode)
 	lnode->nlsns = 0;
 	pthread_mutex_unlock(&lnode->lsns_mtx);
 
-	pthread_mutex_lock(&region->ilock_latch_lk);
+	Pthread_mutex_lock(&region->ilock_latch_lk);
 	lnode->prev = NULL;
 	lnode->next = region->ilock_latch_head;
 	region->ilock_latch_head = lnode;
@@ -529,7 +529,7 @@ __allocate_lockerid_lnode(dbenv, lidnode)
 	DB_LOCKREGION *region = lt->reginfo.primary;
 	int ret, i;
 
-	pthread_mutex_lock(&region->lockerid_node_lk);
+	Pthread_mutex_lock(&region->lockerid_node_lk);
 	if (!region->lockerid_node_head) {
 		DB_LOCKERID_LATCH_NODE *mem;
 		if ((ret = __os_calloc(dbenv, sizeof(DB_LOCKERID_LATCH_NODE),
@@ -567,7 +567,7 @@ __deallocate_lockerid_node(dbenv, lidnode)
 {
 	DB_LOCKTAB *lt = dbenv->lk_handle;
 	DB_LOCKREGION *region = lt->reginfo.primary;
-	pthread_mutex_lock(&region->lockerid_node_lk);
+	Pthread_mutex_lock(&region->lockerid_node_lk);
 	lidnode->next = region->lockerid_node_head;
 	region->lockerid_node_head = lidnode;
 #ifdef DEBUG_LOCKERID_LNODE_LEAK
@@ -611,7 +611,7 @@ __free_latch_lockerid(dbenv, lockerid)
 		return 0;
 
 	idx = lockeridhash(dbenv, lockerid);
-	pthread_mutex_lock(&lockerid_latches[idx].lock);
+	Pthread_mutex_lock(&lockerid_latches[idx].lock);
 
 	lidptr = lockerid_latches[idx].head;
 
@@ -822,7 +822,7 @@ __find_latch_lockerid(DB_ENV *dbenv, u_int32_t locker,
 
 	idx = lockeridhash(dbenv, locker);
 
-	pthread_mutex_lock(&(lockerid_latches[idx].lock));
+	Pthread_mutex_lock(&(lockerid_latches[idx].lock));
 	lid = lockerid_latches[idx].head;
 	while (lid && lid->lockerid != locker)
 		lid = lid->next;
@@ -924,7 +924,7 @@ __latch_update_tracked_writelocks_lsn(DB_ENV *dbenv, DB_TXN *txnp,
 		if (__allocate_db_lock_lsn(dbenv, &lsnp))
 			return ENOMEM;
 		lsnp->llsn = lsn;
-		pthread_mutex_lock(&ilatch->lsns_mtx);
+		Pthread_mutex_lock(&ilatch->lsns_mtx);
 		first_lsnp = SH_LIST_FIRST(&ilatch->lsns, __db_lock_lsn);
 		if (first_lsnp &&
 		    log_compare(&first_lsnp->llsn, &lsnp->llsn) == 0) {
@@ -1109,9 +1109,9 @@ __get_page_latch_int(lt, locker, flags, obj, lock_mode, lock)
 
 	if (((ret = pthread_mutex_trylock(&latch->lock)) != 0) &&
 	    latch->lockerid != locker) {
-		if (region->blocking_latches || LF_ISSET(DB_LOCK_ONELOCK))
-			pthread_mutex_lock(&latch->lock);
-
+		if (region->blocking_latches || LF_ISSET(DB_LOCK_ONELOCK)) {
+			Pthread_mutex_lock(&latch->lock);
+        }
 		else {
 			if (dbenv->attr.latch_timed_mutex) {
 				int latch_max_wait = dbenv->attr.latch_max_wait;
@@ -1531,7 +1531,7 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 						    (char *)objlist->data +
 						    objlist->size);
 						SH_LIST_INIT(&lklsnp->lsns);
-						pthread_mutex_lock(&lp->
+						Pthread_mutex_lock(&lp->
 						    lsns_mtx);
 						lklsnp->nlsns = lp->nlsns;
 						SH_LIST_FIRST(&(lklsnp->lsns),
@@ -1608,7 +1608,7 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 							    objlist->size);
 							SH_LIST_INIT(&lklsnp->
 							    lsns);
-							pthread_mutex_lock
+							Pthread_mutex_lock
 							    (&lnode->lsns_mtx);
 							lklsnp->nlsns =
 							    lnode->nlsns;
@@ -2085,7 +2085,7 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 		snprintf(desc, sizeof(desc), "NULL OBJ LK");
 	}
 
-	pthread_mutex_lock(&lblk);
+	Pthread_mutex_lock(&lblk);
 	idx = lbcounter;
 	lbcounter = (lbcounter + 1) % LKBUFMAX;
 	pthread_mutex_unlock(&lblk);
@@ -3170,7 +3170,7 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 
 		bdb_describe_lock_dbt(dbenv, &dbt, desc, sizeof(desc));
 
-		pthread_mutex_lock(&lblk);
+		Pthread_mutex_lock(&lblk);
 		idx = lbcounter;
 		lbcounter = (lbcounter + 1) % LKBUFMAX;
 		pthread_mutex_unlock(&lblk);
@@ -3316,7 +3316,7 @@ __lock_freelock(lt, lockp, sh_locker, flags)
 		}
 #endif
 		lockp->status = DB_LSTAT_FREE;
-		pthread_mutex_lock(&lockp->lsns_mtx);
+		Pthread_mutex_lock(&lockp->lsns_mtx);
 		for (lp_lsn = SH_LIST_FIRST(&lockp->lsns, __db_lock_lsn);
 		    lp_lsn != NULL; lp_lsn = next_lsn) {
 			next_lsn =
@@ -6262,7 +6262,7 @@ __lock_update_tracked_writelocks_lsn_pp(DB_ENV *dbenv, DB_TXN *txnp,
 			if (rc)
 				return ENOMEM;
 			lsnp->llsn = lsn;
-			pthread_mutex_lock(&lp->lsns_mtx);
+			Pthread_mutex_lock(&lp->lsns_mtx);
 			first_lsnp = SH_LIST_FIRST(&lp->lsns, __db_lock_lsn);
 			if (first_lsnp &&
 				log_compare(&first_lsnp->llsn, &lsnp->llsn) == 0) {

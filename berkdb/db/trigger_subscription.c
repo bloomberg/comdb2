@@ -2,6 +2,7 @@
 #include <string.h>
 #include <plhash.h>
 #include "dbinc/trigger_subscription.h"
+#include <locks_wrap.h>
 
 /*
  * Maintain mapping of qdb name and its signaling mechanism.
@@ -13,7 +14,7 @@ static hash_t *htab = NULL;
 static pthread_mutex_t subscription_lk = PTHREAD_MUTEX_INITIALIZER;
 struct __db_trigger_subscription *__db_get_trigger_subscription(const char *name)
 {
-	pthread_mutex_lock(&subscription_lk);
+	Pthread_mutex_lock(&subscription_lk);
 	if (htab == NULL) {
 		htab = hash_init_strptr(0);
 	}

@@ -101,7 +101,7 @@ extern pthread_attr_t gbl_pthread_attr;
 
 void watchdog_set_alarm(int seconds)
 {
-    pthread_mutex_lock(&gbl_watchdog_kill_mutex);
+    Pthread_mutex_lock(&gbl_watchdog_kill_mutex);
 
     /* if theres already an alarm, leave it alone */
     if (gbl_watchdog_kill_time) {
@@ -117,7 +117,7 @@ void watchdog_set_alarm(int seconds)
 
 void watchdog_cancel_alarm(void)
 {
-    pthread_mutex_lock(&gbl_watchdog_kill_mutex);
+    Pthread_mutex_lock(&gbl_watchdog_kill_mutex);
 
     /* if no alarm is set, its an error */
     if (!gbl_watchdog_kill_time) {

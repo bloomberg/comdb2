@@ -190,7 +190,7 @@ static void free_sc(struct schema_change_type *s)
 {
     free_schema_change_type(s);
     /* free any memory csc2 allocated when parsing schema */
-    pthread_mutex_lock(&csc2_subsystem_mtx);
+    Pthread_mutex_lock(&csc2_subsystem_mtx);
     csc2_free_all();
     pthread_mutex_unlock(&csc2_subsystem_mtx);
 }
@@ -500,7 +500,7 @@ int do_schema_change_tran(sc_arg_t *arg)
     }
     s->sc_rc = rc;
     if (!s->nothrevent) {
-        pthread_mutex_lock(&sc_async_mtx);
+        Pthread_mutex_lock(&sc_async_mtx);
         sc_async_threads--;
         pthread_cond_broadcast(&sc_async_cond);
         pthread_mutex_unlock(&sc_async_mtx);
@@ -539,7 +539,7 @@ int do_schema_change(struct schema_change_type *s)
     arg->iq = iq;
     arg->sc = s;
     arg->trans = NULL;
-    pthread_mutex_lock(&s->mtx);
+    Pthread_mutex_lock(&s->mtx);
     rc = do_schema_change_tran(arg);
     free(iq);
     return rc;
@@ -549,7 +549,7 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
 {
     if (iq == NULL || iq->sc == NULL) abort();
     struct schema_change_type *s = iq->sc;
-    pthread_mutex_lock(&s->mtx);
+    Pthread_mutex_lock(&s->mtx);
     enum thrtype oldtype = prepare_sc_thread(s);
     int rc = SC_OK;
 
@@ -594,13 +594,13 @@ void *sc_resuming_watchdog(void *p)
     logmsg(LOGMSG_INFO, "%s: waking up\n", __func__);
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
     init_fake_ireq(thedb, &iq);
-    pthread_mutex_lock(&sc_resuming_mtx);
+    Pthread_mutex_lock(&sc_resuming_mtx);
     stored_sc = sc_resuming;
     while (stored_sc) {
         iq.sc = stored_sc;
         if (iq.sc->db)
             iq.sc->db->sc_abort = 1;
-        pthread_mutex_lock(&(iq.sc->mtx));
+        Pthread_mutex_lock(&(iq.sc->mtx));
         stored_sc = stored_sc->sc_next;
         logmsg(LOGMSG_INFO, "%s: aborting schema change of table '%s'\n",
                __func__, iq.sc->tablename);
@@ -734,7 +734,7 @@ int resume_schema_change(void)
         logmsg(LOGMSG_INFO, "%s: found '%s'\n", __func__, abort_filename);
     }
 
-    pthread_mutex_lock(&sc_resuming_mtx);
+    Pthread_mutex_lock(&sc_resuming_mtx);
     sc_resuming = NULL;
     for (i = 0; i < thedb->num_dbs; ++i) {
         int bdberr;

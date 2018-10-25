@@ -431,7 +431,7 @@ static inline void signal_master_change(osql_sqlthr_t *rq, char *host,
 int osql_checkboard_master_changed(void *obj, void *arg)
 {
     osql_sqlthr_t *rq = obj;
-    pthread_mutex_lock(&rq->mtx);
+    Pthread_mutex_lock(&rq->mtx);
     if (rq->master != arg && !(rq->master == 0 && gbl_mynode == arg)) {
         signal_master_change(rq, arg, __func__);
     }
@@ -463,7 +463,7 @@ void osql_checkboard_for_each(void *arg, int (*func)(void *, void *))
 static int osql_checkboard_check_request_down_node(void *obj, void *arg)
 {
     osql_sqlthr_t *rq = obj;
-    pthread_mutex_lock(&rq->mtx);
+    Pthread_mutex_lock(&rq->mtx);
     if (rq->master == arg) {
         signal_master_change(rq, arg, __func__);
     }
@@ -771,7 +771,7 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
                 clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us));
         rc2 = -1;
     } else {
-        pthread_mutex_lock(&entry->mtx);
+        Pthread_mutex_lock(&entry->mtx);
         entry->last_checked = entry->last_updated =
             comdb2_time_epochms(); /* reset these time */
         entry->done = 0;
@@ -837,7 +837,7 @@ int osql_chkboard_get_clnt_int(hash_t *h, void *k, struct sqlclntstate **clnt)
         /* Need to lock this guy out
            This prevents them from getting freed upon commit
            before a new cursor is recorded */
-        pthread_mutex_lock(&(*clnt)->dtran_mtx);
+        Pthread_mutex_lock(&(*clnt)->dtran_mtx);
 
         rc2 = 0;
     }

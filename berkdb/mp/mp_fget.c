@@ -31,6 +31,7 @@ static const char revid[] = "$Id: mp_fget.c,v 11.81 2003/09/25 02:15:16 sue Exp 
 #include "dbinc/txn.h"
 
 #include "logmsg.h"
+#include <locks_wrap.h>
 #include "comdb2_atomic.h"
 
 
@@ -923,7 +924,7 @@ __memp_read_recovery_pages(dbmfp)
 	/* Scan in each of the recovery pages. */
 	for (i = 0; i <= dbenv->mp_recovery_pages; i++) {
 		/* Lock out other threads */
-		pthread_mutex_lock(&dbmfp->recp_lk_array[i]);
+		Pthread_mutex_lock(&dbmfp->recp_lk_array[i]);
 
 		/* Read page. */
 		if ((ret = __os_io(dbenv, DB_IO_READ,
@@ -1014,20 +1015,19 @@ __memp_send_sparse_page_thread(_)
 	ii = sizeof(spgs.list) / sizeof(spgs.list[0]) - 1;
 
 	while (1) {
-		if (pthread_mutex_lock(&spgs.lock) == 0) {
-			while (spgs.list[ii].sparseness == 0) {
-				/* no entry, cond wait */
-				spgs.wait = 1;
-				pthread_cond_wait(&spgs.cond, &spgs.lock);
-			}
+        Pthread_mutex_lock(&spgs.lock);
+        while (spgs.list[ii].sparseness == 0) {
+            /* no entry, cond wait */
+            spgs.wait = 1;
+            pthread_cond_wait(&spgs.cond, &spgs.lock);
+        }
 
-			spgs.wait = 0;
-			ent = spgs.list[ii];
-			memmove(&spgs.list[1], spgs.list, sizeof(struct spg) * ii);
-			memset(spgs.list, 0, sizeof(struct spg));
+        spgs.wait = 0;
+        ent = spgs.list[ii];
+        memmove(&spgs.list[1], spgs.list, sizeof(struct spg) * ii);
+        memset(spgs.list, 0, sizeof(struct spg));
 
-			pthread_mutex_unlock(&spgs.lock);
-		}
+        pthread_mutex_unlock(&spgs.lock);
 
 		dbenv = ent.dbenv;
 		fileid = ent.id;

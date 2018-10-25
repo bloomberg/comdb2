@@ -178,7 +178,7 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
     printf("%s: %d\n", __func__, running);
     comdb2_linux_cheap_stack_trace();
 #endif
-    pthread_mutex_lock(&schema_change_in_progress_mutex);
+    Pthread_mutex_lock(&schema_change_in_progress_mutex);
     if (sc_tables == NULL) {
         sc_tables =
             hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
@@ -256,7 +256,7 @@ void sc_status(struct dbenv *dbenv)
     unsigned int bkt;
     void *ent;
     sc_table_t *sctbl = NULL;
-    pthread_mutex_lock(&schema_change_in_progress_mutex);
+    Pthread_mutex_lock(&schema_change_in_progress_mutex);
     if (sc_tables)
         sctbl = hash_first(sc_tables, &ent, &bkt);
     while (gbl_schema_change_in_progress && sctbl) {

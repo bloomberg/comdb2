@@ -36,6 +36,7 @@ static const char revid[] = "$Id: rep_method.c,v 1.134 2003/11/13 15:41:51 sue E
 
 #include <epochlib.h>
 #include "logmsg.h"
+#include <locks_wrap.h>
 
 int gbl_rep_method_max_sleep_cnt = 0;
 
@@ -231,7 +232,7 @@ __rep_start(dbenv, dbt, gen, flags)
 		return (ret);
 	}
 
-	pthread_mutex_lock(&rep_candidate_lock);
+	Pthread_mutex_lock(&rep_candidate_lock);
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 	/*
 	 * We only need one thread to start-up replication, so if
@@ -286,7 +287,7 @@ __rep_start(dbenv, dbt, gen, flags)
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 			pthread_mutex_unlock(&rep_candidate_lock);
 			(void)__os_sleep(dbenv, 1, 0);
-			pthread_mutex_lock(&rep_candidate_lock);
+			Pthread_mutex_lock(&rep_candidate_lock);
 			MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		}
 	}
@@ -1090,7 +1091,7 @@ restart:
 		return (ret);
 	tiebreaker = pid ^ sec ^ usec ^ (u_int) rand() ^ P_TO_UINT32(&pid);
 
-	pthread_mutex_lock(&rep_candidate_lock);
+	Pthread_mutex_lock(&rep_candidate_lock);
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 
 	/* WAITSTART pushes us past point of no-return */
@@ -1182,7 +1183,7 @@ restart:
 	 * votes to pick a winner and if so, to send out a vote to
 	 * the winner.
 	 */
-	pthread_mutex_lock(&rep_candidate_lock);
+	Pthread_mutex_lock(&rep_candidate_lock);
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 	/*
 	 * If our egen changed while we were waiting.  We need to
@@ -1297,7 +1298,7 @@ phase2:
 	}
 
 err:	
-	pthread_mutex_lock(&rep_candidate_lock);
+	Pthread_mutex_lock(&rep_candidate_lock);
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 lockdone:
 	/*
@@ -1448,7 +1449,7 @@ __rep_wait(dbenv, timeout, eidp, outegen, inegen, flags)
             tm.tv_nsec -= 1000000000;
             tm.tv_sec += 1;
         }
-        pthread_mutex_lock(&gbl_rep_egen_lk);
+        Pthread_mutex_lock(&gbl_rep_egen_lk);
         rc = pthread_cond_timedwait(&gbl_rep_egen_cd, &gbl_rep_egen_lk, &tm);
         *outegen = rep->egen;
         pthread_mutex_unlock(&gbl_rep_egen_lk);
@@ -1697,7 +1698,7 @@ __rep_stat(dbenv, statp, flags)
 	stats->lc_cache_hits = rep->stat.lc_cache_hits;
 	stats->lc_cache_misses = rep->stat.lc_cache_misses;
 	stats->lc_cache_size = dbenv->lc_cache.memused;
-	pthread_mutex_lock(&gbl_durable_lsn_lk);
+	Pthread_mutex_lock(&gbl_durable_lsn_lk);
     stats->durable_lsn = dbenv->durable_lsn;
     stats->durable_gen = dbenv->durable_generation;
 	pthread_mutex_unlock(&gbl_durable_lsn_lk);

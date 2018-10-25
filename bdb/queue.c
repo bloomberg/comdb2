@@ -1201,7 +1201,7 @@ static void lost_consumers_alarm(bdb_state_type *bdb_state,
         bdb_state->qpriv->last_orphaned_consumers_alarm == now)
         return;
 
-    pthread_mutex_lock(&mutex);
+    Pthread_mutex_lock(&mutex);
 
     if (bdb_state->qpriv->last_orphaned_consumers_alarm != now) {
         new_lost_consumers = lost_consumers;

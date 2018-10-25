@@ -49,6 +49,7 @@
 #include <pool_c.h>
 #include <passfd.h>
 #include <syslog.h>
+#include <locks_wrap.h>
 
 #ifdef SOCKET_POOL_DEBUG
 #define DBG(x) printf x
@@ -380,7 +381,7 @@ static void socket_pool_trim_ll(unsigned max, enum socket_pool_event event)
 void socket_pool_close_all(void)
 {
 
-    pthread_mutex_lock(&sockpool_lk);
+    Pthread_mutex_lock(&sockpool_lk);
     if (hash) {
         socket_pool_trim_ll(0, SOCKET_POOL_EVENT_CLOSE);
     }
@@ -399,7 +400,7 @@ void socket_pool_end_event_(void) { socket_pool_end_event(); }
 
 void socket_pool_end_event(void)
 {
-    pthread_mutex_lock(&sockpool_lk);
+    Pthread_mutex_lock(&sockpool_lk);
     if (hash) {
         socket_pool_trim_ll(0, SOCKET_POOL_EVENT_ENDEVENT);
     }
@@ -409,7 +410,7 @@ void socket_pool_end_event(void)
 /* Close all pooled sockets and free all memory used by the pool. */
 void socket_pool_free_all(void)
 {
-    pthread_mutex_lock(&sockpool_lk);
+    Pthread_mutex_lock(&sockpool_lk);
     if (hash) {
         socket_pool_trim_ll(0, SOCKET_POOL_EVENT_CLOSE);
         hash_for(hash, socket_pool_free_callback, NULL);
@@ -426,7 +427,7 @@ void socket_pool_free_all_(void) { socket_pool_free_all(); }
 /* Check for sockets that have timed out and close them */
 void socket_pool_timeout(void)
 {
-    pthread_mutex_lock(&sockpool_lk);
+    Pthread_mutex_lock(&sockpool_lk);
     if (hash) {
         int now;
         struct item *tmpp, *item;
@@ -495,7 +496,7 @@ void socket_pool_dump_stats_syslog(int reset, int all)
 {
     syslog(LOG_INFO, "Socket pool stats, enabled=%d, sockpool enabled=%d\n", enabled,
             sockpool_enabled);
-    pthread_mutex_lock(&sockpool_lk);
+    Pthread_mutex_lock(&sockpool_lk);
     if (hash) {
         struct stats_args args = {all, reset, 1, NULL};
         hash_for(hash, socket_pool_stats_callback, &args);
@@ -517,7 +518,7 @@ void socket_pool_dump_stats_ex(FILE *fh, int reset, int all,
 {
     fprintf(fh, "Socket pool stats, enabled=%d, sockpool enabled=%d\n", enabled,
             sockpool_enabled);
-    pthread_mutex_lock(&sockpool_lk);
+    Pthread_mutex_lock(&sockpool_lk);
     if (hash) {
         struct stats_args args = {all, reset, 0, fh};
         hash_for(hash, socket_pool_stats_callback, &args);
@@ -558,7 +559,7 @@ socket_pool_get_ext_ll(const char *typestr, int dbnum, int flags,
 {
     int fd = -1;
     if (enabled) {
-        pthread_mutex_lock(&sockpool_lk);
+        Pthread_mutex_lock(&sockpool_lk);
         if (hash) {
             struct item *fnd_item;
             struct itemtype *fnd_type;
@@ -603,7 +604,7 @@ socket_pool_get_ext_ll(const char *typestr, int dbnum, int flags,
             }
         }
 
-        pthread_mutex_lock(&sockpool_lk);
+        Pthread_mutex_lock(&sockpool_lk);
         hold_sigpipe_ll(1);
         if (sockpool_fd == -1) {
             sockpool_fd = open_sockpool_ll();
@@ -696,7 +697,7 @@ void socket_pool_donate_ext(const char *typestr, int fd, int timeout_secs,
     if (!destructor)
         destructor = default_destructor;
     if (enabled && !(flags & SOCKET_POOL_DONATE_NOLOCAL)) {
-        pthread_mutex_lock(&sockpool_lk);
+        Pthread_mutex_lock(&sockpool_lk);
         if (!hash) {
             hash = hash_init_str(offsetof(struct itemtype, typestr));
             if (!hash) {
@@ -800,7 +801,7 @@ void socket_pool_donate_ext(const char *typestr, int fd, int timeout_secs,
 
     /* if it wasn't pooled then it must be closed. */
     if (!pooled) {
-        pthread_mutex_lock(&sockpool_lk);
+        Pthread_mutex_lock(&sockpool_lk);
         destructor(SOCKET_POOL_EVENT_CLOSE, typestr, fd, dbnum, flags,
                    timeout_secs, destructor_arg);
         pthread_mutex_unlock(&sockpool_lk);

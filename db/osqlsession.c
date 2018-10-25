@@ -104,11 +104,11 @@ int osql_close_session(struct ireq *iq, osql_sess_t **psess, int is_linked, cons
        since we removed the hash entry, no new messages are added
      */
     if (!rc) {
-        pthread_mutex_lock(&sess->clients_mtx);
+        Pthread_mutex_lock(&sess->clients_mtx);
         while (sess->clients > 0) {
             pthread_mutex_unlock(&sess->clients_mtx);
             poll(NULL, 0, 10);
-            pthread_mutex_lock(&sess->clients_mtx);
+            Pthread_mutex_lock(&sess->clients_mtx);
         }
         pthread_mutex_unlock(&sess->clients_mtx);
 
@@ -279,7 +279,7 @@ int osql_sess_set_complete(unsigned long long rqid, uuid_t uuid,
                            osql_sess_t *sess, struct errstat *xerr)
 {
 
-    pthread_mutex_lock(&sess->completed_lock);
+    Pthread_mutex_lock(&sess->completed_lock);
 
     if (sess->rqid != rqid || comdb2uuidcmp(uuid, sess->uuid)) {
         pthread_mutex_unlock(&sess->completed_lock);
@@ -353,7 +353,7 @@ int osql_sess_test_complete(osql_sess_t *sess, struct errstat **xerr)
 {
     int rc = SESS_PENDING;
 
-    pthread_mutex_lock(&sess->completed_lock);
+    Pthread_mutex_lock(&sess->completed_lock);
 
     if (sess->completed) {
 
@@ -456,7 +456,7 @@ void *osql_sess_getbptran(osql_sess_t *sess)
 {
     void *bsql = NULL;
 
-    pthread_mutex_lock(&sess->mtx);
+    Pthread_mutex_lock(&sess->mtx);
     if (sess->iq && !sess->completed && !sess->terminate) {
         bsql = sess->iq->blocksql_tran;
     }
@@ -464,7 +464,7 @@ void *osql_sess_getbptran(osql_sess_t *sess)
     return bsql;
 }
 
-int osql_sess_lock(osql_sess_t *sess) { return pthread_mutex_lock(&sess->mtx); }
+int osql_sess_lock(osql_sess_t *sess) { Pthread_mutex_lock(&sess->mtx); return 0; }
 
 int osql_sess_unlock(osql_sess_t *sess)
 {
@@ -482,7 +482,8 @@ int osql_sess_dispatched(osql_sess_t *sess) { return sess->dispatched; }
 
 int osql_sess_lock_complete(osql_sess_t *sess)
 {
-    return pthread_mutex_lock(&sess->completed_lock);
+    Pthread_mutex_lock(&sess->completed_lock);
+    return 0;
 }
 
 int osql_sess_unlock_complete(osql_sess_t *sess)
@@ -548,7 +549,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
 
     *found = 1;
 
-    pthread_mutex_lock(&sess->completed_lock);
+    Pthread_mutex_lock(&sess->completed_lock);
     /* ignore new coming osql packages */
     if (sess->completed || sess->dispatched || sess->terminate) {
         uuidstr_t us;
@@ -572,7 +573,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
     /* if rc_out, sess is FREED! */
     if (!rc_out) {
         /* Must increment seq under completed_lock */
-        pthread_mutex_lock(&sess->completed_lock);
+        Pthread_mutex_lock(&sess->completed_lock);
         if (sess->rqid == rqid || (rqid == OSQL_RQID_USE_UUID &&
                                    comdb2uuidcmp(sess->uuid, uuid) == 0)) {
             sess->seq++;
@@ -616,7 +617,7 @@ int osql_session_testterminate(void *obj, void *arg)
 
         Pthread_mutex_lock(&sess->mtx);
 
-        pthread_mutex_lock(&sess->completed_lock);
+        Pthread_mutex_lock(&sess->completed_lock);
         sess->terminate = OSQL_TERMINATE;
         if (!sess->completed) {
             if (sess->iq)
@@ -651,11 +652,11 @@ int osql_session_testterminate(void *obj, void *arg)
         }
 
         /* step 2) wait for current reader threads to go away */
-        pthread_mutex_lock(&sess->clients_mtx);
+        Pthread_mutex_lock(&sess->clients_mtx);
         while (sess->clients > 0) {
             pthread_mutex_unlock(&sess->clients_mtx);
             poll(NULL, 0, 10);
-            pthread_mutex_lock(&sess->clients_mtx);
+            Pthread_mutex_lock(&sess->clients_mtx);
         }
         pthread_mutex_unlock(&sess->clients_mtx);
         /* NOTE: at this point there will be no other bplog updates coming from
@@ -669,7 +670,7 @@ int osql_session_testterminate(void *obj, void *arg)
         /* step 3) check if this is complete; if it is, it will/is being
            dispatched
                    if not complete, we need to clear it right now */
-        pthread_mutex_lock(&sess->completed_lock);
+        Pthread_mutex_lock(&sess->completed_lock);
         completed = sess->completed | sess->dispatched;
         pthread_mutex_unlock(&sess->completed_lock);
 

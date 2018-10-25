@@ -400,7 +400,7 @@ void __free_fdb(fdb_t *fdb)
  */
 static void __fdb_add_user(fdb_t *fdb)
 {
-    pthread_mutex_lock(&fdb->users_mtx);
+    Pthread_mutex_lock(&fdb->users_mtx);
     fdb->users++;
 
     if (gbl_fdb_track)
@@ -417,7 +417,7 @@ static void __fdb_add_user(fdb_t *fdb)
  */
 static void __fdb_rem_user(fdb_t *fdb)
 {
-    pthread_mutex_lock(&fdb->users_mtx);
+    Pthread_mutex_lock(&fdb->users_mtx);
     fdb->users--;
 
     if (gbl_fdb_track)
@@ -544,7 +544,7 @@ static void destroy_fdb(fdb_t *fdb)
     pthread_rwlock_wrlock(&fdbs.arr_lock);
 
     /* if there are any users, don't touch the db */
-    pthread_mutex_lock(&fdb->users_mtx);
+    Pthread_mutex_lock(&fdb->users_mtx);
     fdb->users--;
     if (fdb->users == 0) {
         __cache_unlink_fdb(fdb);
@@ -1278,7 +1278,7 @@ retry_fdb_creation:
     }
 
     if (!local) {
-        pthread_mutex_lock(&fdb->dbcon_mtx);
+        Pthread_mutex_lock(&fdb->dbcon_mtx);
         rc = fdb_locate(fdb->dbname, fdb->class, 0, &fdb->loc);
         pthread_mutex_unlock(&fdb->dbcon_mtx);
         if (rc != FDB_NOERR) {
@@ -1929,7 +1929,7 @@ search:
         *pRes = 1;
         return SQLITE_OK;
     }
-    pthread_mutex_lock(&tbl->ents_mtx);
+    Pthread_mutex_lock(&tbl->ents_mtx);
     pthread_rwlock_unlock(&fdb->h_rwlock);
 
     assert(how == CNEXT || how == CFIRST); /* NEXT w/out FIRST is FIRST */
@@ -2050,7 +2050,7 @@ Schema *fdb_sqlite_get_schema(Btree *pBt, int nbytes)
 
     /* TODO: switch to sharing schemas for fdbs */
     /*
-    pthread_mutex_lock(&fdb->dbcon_mtx);
+    Pthread_mutex_lock(&fdb->dbcon_mtx);
     if (fdb->schema == NULL)
     {
        fdb->schema = (Schema*)calloc(1, nbytes);
@@ -2939,7 +2939,7 @@ static int fdb_cursor_reopen(BtCursor *pCur)
     need_ssl = pCur->fdbc->impl->need_ssl;
 
     if (tran)
-        pthread_mutex_lock(&clnt->dtran_mtx);
+        Pthread_mutex_lock(&clnt->dtran_mtx);
 
     rc = pCur->fdbc->close(pCur);
     if (rc) {
@@ -3815,7 +3815,7 @@ fdb_tran_t *fdb_trans_begin_or_join(struct sqlclntstate *clnt, fdb_t *fdb,
     fdb_tran_t *tran;
     int rc = 0;
 
-    pthread_mutex_lock(&clnt->dtran_mtx);
+    Pthread_mutex_lock(&clnt->dtran_mtx);
 
     dtran = clnt->dbtran.dtran;
     if (!dtran) {
@@ -3884,7 +3884,7 @@ int fdb_trans_commit(struct sqlclntstate *clnt)
 
     /* TODO: here we replace the trivial 2PC with the actual thing */
 
-    pthread_mutex_lock(&clnt->dtran_mtx);
+    Pthread_mutex_lock(&clnt->dtran_mtx);
 
     LISTC_FOR_EACH(&dtran->fdb_trans, tran, lnk)
     {
@@ -3981,7 +3981,7 @@ int fdb_trans_rollback(struct sqlclntstate *clnt, fdb_tran_t *trans)
 
     /* TODO: here we replace the trivial 2PC with the actual thing */
 
-    pthread_mutex_lock(&clnt->dtran_mtx);
+    Pthread_mutex_lock(&clnt->dtran_mtx);
 
     LISTC_FOR_EACH(&dtran->fdb_trans, tran, lnk)
     {
@@ -4666,7 +4666,7 @@ int fdb_heartbeats(struct sqlclntstate *clnt)
         return -1;
     }
 
-    pthread_mutex_lock(&clnt->dtran_mtx);
+    Pthread_mutex_lock(&clnt->dtran_mtx);
 
     LISTC_FOR_EACH(&dtran->fdb_trans, tran, lnk)
     {

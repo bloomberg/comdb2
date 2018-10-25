@@ -23,6 +23,7 @@
 #include <net.h>
 #include <bdb_int.h>
 #include <locks.h>
+#include <locks_wrap.h>
 #include <ctrace.h>
 #include <string.h>
 #include <strings.h>
@@ -1725,7 +1726,7 @@ static int cancel_all_logical_transactions(bdb_state_type *bdb_state)
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
-    pthread_mutex_lock(&bdb_state->translist_lk);
+    Pthread_mutex_lock(&bdb_state->translist_lk);
     LISTC_FOR_EACH_SAFE(&bdb_state->logical_transactions_list, ltrans, temp,
                         tranlist_lnk)
     {
@@ -2070,7 +2071,7 @@ static inline tran_type *find_logical_transaction(bdb_state_type *bdb_state,
     if (!parent->passed_dbenv_open)
         return NULL;
 
-    pthread_mutex_lock(&parent->translist_lk);
+    Pthread_mutex_lock(&parent->translist_lk);
     ltrans = hash_find(parent->logical_transactions_hash, &ltranid);
     pthread_mutex_unlock(&parent->translist_lk);
     if (ltrans == NULL) {
@@ -2120,7 +2121,7 @@ static int logical_release_transaction(bdb_state_type *bdb_state,
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
-    pthread_mutex_lock(&bdb_state->translist_lk);
+    Pthread_mutex_lock(&bdb_state->translist_lk);
     ltrans = hash_find(bdb_state->logical_transactions_hash, &ltranid);
     if (ltrans == NULL) {
         pthread_mutex_unlock(&bdb_state->translist_lk);
@@ -2203,7 +2204,7 @@ static int release_locks_for_logical_transaction(bdb_state_type *bdb_state,
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
-    pthread_mutex_lock(&bdb_state->translist_lk);
+    Pthread_mutex_lock(&bdb_state->translist_lk);
     ltrans = hash_find(bdb_state->logical_transactions_hash, &ltranid);
     if (ltrans == NULL) {
         pthread_mutex_unlock(&bdb_state->translist_lk);
@@ -2632,11 +2633,11 @@ void print_logical_commits_starts(FILE *f)
 {
     unsigned long long lst = 0, lcm = 0;
 #ifdef COUNT_REP_LTRANS
-    pthread_mutex_lock(&lstlk);
+    Pthread_mutex_lock(&lstlk);
     lst = gbl_rep_count_logical_starts;
     pthread_mutex_unlock(&lstlk);
 
-    pthread_mutex_lock(&lcmlk);
+    Pthread_mutex_lock(&lcmlk);
     lcm = gbl_rep_count_logical_commits;
     pthread_mutex_unlock(&lcmlk);
 
@@ -2659,7 +2660,7 @@ int handle_commit(DB_ENV *dbenv, u_int32_t rectype,
     bdb_state = dbenv->app_private;
 
 #ifdef COUNT_REP_LTRANS
-    pthread_mutex_lock(&lcmlk);
+    Pthread_mutex_lock(&lcmlk);
     gbl_rep_count_logical_commits++;
     pthread_mutex_unlock(&lcmlk);
 #endif
@@ -2748,7 +2749,7 @@ int handle_start(DB_ENV *dbenv, u_int32_t rectype, llog_ltran_start_args *args,
     int bdberr;
 
 #ifdef COUNT_REP_LTRANS
-    pthread_mutex_lock(&lstlk);
+    Pthread_mutex_lock(&lstlk);
     gbl_rep_count_logical_starts++;
     pthread_mutex_unlock(&lstlk);
 #endif
@@ -3635,7 +3636,7 @@ int bdb_get_active_logical_transaction_lsns(bdb_state_type *bdb_state,
     else
         parent = bdb_state;
 
-    pthread_mutex_lock(&parent->translist_lk);
+    Pthread_mutex_lock(&parent->translist_lk);
 
     lsns = malloc(sizeof(DB_LSN) * parent->logical_transactions_list.count);
     if (!lsns) {

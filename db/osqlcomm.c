@@ -3288,22 +3288,21 @@ static void net_block_reply(void *hndl, void *uptr, char *fromhost,
     /* using p_slock pointer as the request id now, this contains info about
      * socket request.*/
     struct buf_lock_t *p_slock = (struct buf_lock_t *)net_msg->rqid;
-    if (pthread_mutex_lock(&p_slock->req_lock) == 0) {
-        if (p_slock->reply_state == REPLY_STATE_DISCARD) {
-            /* The tag request is handled by master. However by the time
-               (1000+ seconds) the replicant receives the reply from master,
-               the tag request is already discarded. */
-            pthread_mutex_unlock(&p_slock->req_lock);
-            cleanup_lock_buffer(p_slock);
-        } else {
-            p_slock->rc = net_msg->rc;
-            sndbak_open_socket(p_slock->sb, (u_char *)net_msg->data,
-                               net_msg->datalen, net_msg->rc);
-            /* Signal to allow the appsock thread
-               to take new request from client. */
-            signal_buflock(p_slock);
-            pthread_mutex_unlock(&p_slock->req_lock);
-        }
+    Pthread_mutex_lock(&p_slock->req_lock);
+    if (p_slock->reply_state == REPLY_STATE_DISCARD) {
+        /* The tag request is handled by master. However by the time
+           (1000+ seconds) the replicant receives the reply from master,
+           the tag request is already discarded. */
+        pthread_mutex_unlock(&p_slock->req_lock);
+        cleanup_lock_buffer(p_slock);
+    } else {
+        p_slock->rc = net_msg->rc;
+        sndbak_open_socket(p_slock->sb, (u_char *)net_msg->data,
+                           net_msg->datalen, net_msg->rc);
+        /* Signal to allow the appsock thread
+           to take new request from client. */
+        signal_buflock(p_slock);
+        pthread_mutex_unlock(&p_slock->req_lock);
     }
 }
 
@@ -7850,20 +7849,14 @@ static void net_osql_rcv_echo_pong(void *hndl, void *uptr, char *fromhost,
         return;
     }
 
-    if (pthread_mutex_lock(&msgs_mtx)) {
-        logmsgperror("pthread_mutex_lock");
-        return;
-    }
+    Pthread_mutex_lock(&msgs_mtx);
     if (msgs[msg.idx].idx != msg.idx || msgs[msg.idx].nonce != msg.nonce ||
         msgs[msg.idx].snt != msg.snt) {
         logmsg(LOGMSG_ERROR, "%s: malformed pong\n", __func__);
         return;
     }
 
-    if (pthread_mutex_unlock(&msgs_mtx)) {
-        logmsgperror("pthread_mutex_unlock");
-        return;
-    }
+    pthread_mutex_unlock(&msgs_mtx);
 
     msgs[msg.idx].rcv = msg.rcv;
 }
@@ -7887,18 +7880,14 @@ int osql_comm_echo(char *tohost, int stream, unsigned long long *sent,
     i = 0;
     for (j = 0; j < stream; j++) {
         /* get an echo message */
-        if (pthread_mutex_lock(&msgs_mtx)) {
-            logmsgperror("pthread_mutex_lock");
-            return -1;
-        }
+        Pthread_mutex_lock(&msgs_mtx);
 
         for (; i < MAX_ECHOES; i++)
             if (msgs[i].nonce == 0)
                 break;
         if (i == MAX_ECHOES) {
             logmsg(LOGMSG_ERROR, "%s: too many echoes pending\n", __func__);
-            if (pthread_mutex_unlock(&msgs_mtx))
-                logmsgperror("pthread_mutex_unlock");
+            pthread_mutex_unlock(&msgs_mtx);
             return -1;
         }
 
@@ -7911,10 +7900,7 @@ int osql_comm_echo(char *tohost, int stream, unsigned long long *sent,
         msg.idx = msgs[i].idx = i;
         msg.snt = msgs[i].snt = snt;
 
-        if (pthread_mutex_unlock(&msgs_mtx)) {
-            logmsgperror("pthread_mutex_lock");
-            return -1;
-        }
+        pthread_mutex_unlock(&msgs_mtx);
 
         list[j] = &msgs[i];
 

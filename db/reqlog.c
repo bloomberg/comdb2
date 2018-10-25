@@ -849,7 +849,7 @@ void reqlog_process_message(char *line, int st, int lline)
             logmsg(LOGMSG_USER, "rulename='%s'\n", rulename);
         }
 
-        pthread_mutex_lock(&rules_mutex);
+        Pthread_mutex_lock(&rules_mutex);
         LISTC_FOR_EACH(&rules, rule, linkv)
         {
             if (strcmp(rulename, rule->name) == 0) {
@@ -978,7 +978,7 @@ void reqlog_stat(void)
         logmsg(LOGMSG_USER, "not set\n");
     else
         logmsg(LOGMSG_USER, "%f\n", gbl_sql_cost_error_threshold);
-    pthread_mutex_lock(&rules_mutex);
+    Pthread_mutex_lock(&rules_mutex);
     logmsg(LOGMSG_USER, "%d rules currently active\n", rules.count);
     LISTC_FOR_EACH(&rules, rule, linkv)
     {
@@ -1574,8 +1574,8 @@ static void log_header_ll(struct reqlogger *logger, struct output *out)
 static void log_header(struct reqlogger *logger, struct output *out,
                        int is_long)
 {
-    pthread_mutex_lock(&rules_mutex);
-    pthread_mutex_lock(&out->mutex);
+    Pthread_mutex_lock(&rules_mutex);
+    Pthread_mutex_lock(&out->mutex);
     log_header_ll(logger, out);
     pthread_mutex_unlock(&out->mutex);
     pthread_mutex_unlock(&rules_mutex);
@@ -1615,7 +1615,7 @@ static void log_rule(struct reqlogger *logger, struct output *out,
 {
     struct logevent *event;
 
-    pthread_mutex_lock(&out->mutex);
+    Pthread_mutex_lock(&out->mutex);
     prefix_init(&logger->prefix);
     log_header_ll(logger, out);
     if (event_mask == 0) {
@@ -1765,7 +1765,7 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
 
     /* now see if this matches any of our rules */
     if (rules.count != 0) {
-        pthread_mutex_lock(&rules_mutex);
+        Pthread_mutex_lock(&rules_mutex);
         LISTC_FOR_EACH_SAFE(&rules, rule, tmprule, linkv)
         {
             if (!rule->active) {
@@ -2068,16 +2068,16 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
         if (entry_chk) {
             free(entry);
             entry = entry_chk;
-            pthread_mutex_lock(&entry->mtx);
+            Pthread_mutex_lock(&entry->mtx);
             entry->ref++;
             if (entry->ref == 1) {
-                pthread_mutex_lock(&clntlru_mtx);
+                Pthread_mutex_lock(&clntlru_mtx);
                 listc_rfl(&clntlru, entry);
                 pthread_mutex_unlock(&clntlru_mtx);
             }
             pthread_mutex_unlock(&entry->mtx);
         } else {
-            pthread_mutex_lock(&clntlru_mtx);
+            Pthread_mutex_lock(&clntlru_mtx);
             while (hash_get_num_entries(clientstats) + 1 >
                    gbl_max_clientstats_cache) {
                 old_entry = listc_rtl(&clntlru);
@@ -2111,10 +2111,10 @@ static nodestats_t *find_clientstats(unsigned checksum, int node, int fd)
     {
         entry = hash_find_readonly(clientstats, &key);
         if (entry) {
-            pthread_mutex_lock(&entry->mtx);
+            Pthread_mutex_lock(&entry->mtx);
             entry->ref++;
             if (entry->ref == 1) {
-                pthread_mutex_lock(&clntlru_mtx);
+                Pthread_mutex_lock(&clntlru_mtx);
                 listc_rfl(&clntlru, entry);
                 pthread_mutex_unlock(&clntlru_mtx);
             }
@@ -2151,7 +2151,7 @@ static int release_clientstats(unsigned checksum, int node)
     pthread_rwlock_rdlock(&clientstats_lk);
     {
         if ((entry = hash_find_readonly(clientstats, &key)) != NULL) {
-            pthread_mutex_lock(&entry->mtx);
+            Pthread_mutex_lock(&entry->mtx);
             entry->ref--;
             if (entry->ref < 0) {
                 logmsg(LOGMSG_ERROR,
@@ -2160,7 +2160,7 @@ static int release_clientstats(unsigned checksum, int node)
                 entry->ref = 0;
             }
             if (entry->ref == 0) {
-                pthread_mutex_lock(&clntlru_mtx);
+                Pthread_mutex_lock(&clntlru_mtx);
                 listc_abl(&clntlru, entry);
                 pthread_mutex_unlock(&clntlru_mtx);
             }

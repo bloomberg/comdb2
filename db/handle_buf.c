@@ -985,7 +985,7 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
 
     /* allocate a request for later dispatch to available thread */
 
-    pthread_mutex_lock(&lock);
+    Pthread_mutex_lock(&lock);
     if (iq == NULL) {
         iq = (struct ireq *)pool_getablk(p_reqs);
 #if 0

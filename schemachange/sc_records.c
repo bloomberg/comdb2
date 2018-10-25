@@ -458,7 +458,7 @@ static int convert_record(struct convert_record_data *data)
     }
 
     data->iq.debug = debug_this_request(gbl_debug_until);
-    pthread_mutex_lock(&gbl_sc_lock);
+    Pthread_mutex_lock(&gbl_sc_lock);
     if (gbl_who > 0) {
         gbl_who--;
         data->iq.debug = 1;
@@ -1358,7 +1358,7 @@ static int upgrade_records(struct convert_record_data *data)
 
     // set debug info
     if (gbl_who > 0 || data->iq.debug > 0) {
-        pthread_mutex_lock(&gbl_sc_lock);
+        Pthread_mutex_lock(&gbl_sc_lock);
         data->iq.debug = gbl_who;
         if (data->iq.debug > 0) {
             gbl_who = data->iq.debug - 1;

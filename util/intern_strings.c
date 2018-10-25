@@ -50,7 +50,7 @@ char *intern(const char *str)
     struct interned_string *s;
 
     pthread_once(&once, init_interned_strings);
-    pthread_mutex_lock(&intern_lk);
+    Pthread_mutex_lock(&intern_lk);
     s = hash_find_readonly(interned_strings, &str);
     if (s == NULL) {
         s = malloc(sizeof(struct interned_string));
@@ -87,7 +87,7 @@ int isinterned(const char *node)
 {
     struct interned_string *s;
 
-    pthread_mutex_lock(&intern_lk);
+    Pthread_mutex_lock(&intern_lk);
     s = hash_find_readonly(interned_strings, &node);
     pthread_mutex_unlock(&intern_lk);
 

@@ -65,7 +65,7 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
         gbl_broken_max_rec_sz = s->db->lrl - COMDB2_MAX_RECORD_SIZE;
     }
 
-    pthread_mutex_lock(&csc2_subsystem_mtx);
+    Pthread_mutex_lock(&csc2_subsystem_mtx);
     if ((rc = load_db_from_schema(s, thedb, &foundix, iq))) {
         pthread_mutex_unlock(&csc2_subsystem_mtx);
         return rc;
