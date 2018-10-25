@@ -7,7 +7,7 @@ bash -n "$0" | exit 1
 
 # we rely on the following global variables to be set
 echo "main db vars"
-vars="TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR CDB2_OPTIONS CDB2_CONFIG"
+vars="TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR CDB2_OPTIONS CDB2_CONFIG SECONDARY_DB SECONDARY_DBDIR SECONDARY_DB_CDB2_CONFIG SECONDARY_DB_CDB2_OPTIONS"
 for required in $vars; do
     q=${!required}
     echo "$required=$q" 
@@ -16,55 +16,21 @@ for required in $vars; do
         exit 1
     fi
 done
-
-dbname=$DBNAME
-srcdbname=$SECONDARY_DB
-dbdir=$DBDIR
-testdir=$TESTDIR
-cdb2config=$CDB2_CONFIG
-
-DBNAME=$srcdbname
-DBDIR=$TESTDIR/$DBNAME
-#effectively srcdb config -- needed to setup srcdb
-CDB2_CONFIG=$DBDIR/comdb2db.cfg
-CDB2_OPTIONS="--cdb2cfg $CDB2_CONFIG"
-
-echo "remote db vars"
-vars="TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR CDB2_OPTIONS CDB2_CONFIG"
-for required in $vars; do
-    q=${!required}
-    echo "$required=$q" 
-    if [[ -z "$q" ]]; then
-        echo "$required not set" >&2
-        exit 1
-    fi
-done
-
-
-#setup remode db
-$TESTSROOTDIR/setup $DBNAME &> $TESTDIR/logs/$DBNAME.setup
-
 
 #generate testscripts in new files
 files=`ls *.req.src`
 for file in $files ; do
    newfile=${file%%.src}
-   sed "/^insert /!s/ t$/ LOCAL_$dbname.t/g" $file > $newfile.tmp
-   sed "/^insert /!s/ t / LOCAL_$dbname.t /g" $newfile.tmp > $newfile
+   sed "/^insert /!s/ t$/ LOCAL_$DBNAME.t/g" $file > $newfile.tmp
+   sed "/^insert /!s/ t / LOCAL_$DBNAME.t /g" $newfile.tmp > $newfile
    rm $newfile.tmp
 done
 
 
 #run tests
 echo "Starting tests"
-./remsql_curmoves.sh $dbname $cdb2config $srcdbname  $dbdir $testdir 
+./remsql_curmoves.sh $DBNAME $CDB2_CONFIG $SECONDARY_DB $SECONDARY_DBDIR $TESTDIR 
 result=$?
-
-if (( $result == 0 )) ; then
-   successful=1
-fi
-
-$TESTSROOTDIR/unsetup $DBNAME $successful &> $TESTDIR/logs/$DBNAME.unsetup
 
 if (( $result != 0 )) ; then
    echo "FAILURE"

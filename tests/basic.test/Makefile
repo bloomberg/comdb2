@@ -7,9 +7,6 @@ ifeq ($(TEST_TIMEOUT),)
 	export TEST_TIMEOUT=1m
 endif
 
-
-export SECONDARY_DB_PREFIX=secondary
-
 tool:
 	make -skC $(TESTSROOTDIR)/tools cdb2api_caller
 
