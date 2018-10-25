@@ -618,6 +618,7 @@ void osql_repository_for_each(void *arg, int (*func)(void *, void *))
 {
     int rc = 0;
 
+    osql_repository_t *theosql = get_theosql();
     if (!theosql)
         return;
 
