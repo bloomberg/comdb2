@@ -782,11 +782,11 @@ struct dbtable *getdbbynum(int num)
     for (ii = 0; ii < thedb->num_dbs; ii++) {
         if (thedb->dbs[ii]->dbnum == num) {
             p_db = thedb->dbs[ii];
-            pthread_rwlock_unlock(&thedb_lock);
+            Pthread_rwlock_unlock(&thedb_lock);
             return p_db;
         }
     }
-    pthread_rwlock_unlock(&thedb_lock);
+    Pthread_rwlock_unlock(&thedb_lock);
     return 0;
 }
 
@@ -803,7 +803,7 @@ struct dbtable *get_dbtable_by_name(const char *p_name)
 
     Pthread_rwlock_rdlock(&thedb_lock);
     p_db = hash_find_readonly(thedb->db_hash, &p_name);
-    pthread_rwlock_unlock(&thedb_lock);
+    Pthread_rwlock_unlock(&thedb_lock);
 
     return p_db;
 }
@@ -3624,16 +3624,16 @@ static int init(int argc, char **argv)
         if (llmeta_load_tables(thedb, dbname)) {
             logmsg(LOGMSG_FATAL, "could not load tables from the low level meta "
                             "table\n");
-            pthread_rwlock_unlock(&schema_lk);
+            Pthread_rwlock_unlock(&schema_lk);
             return -1;
         }
 
         if (llmeta_load_timepart(thedb)) {
             logmsg(LOGMSG_ERROR, "could not load time partitions\n");
-            pthread_rwlock_unlock(&schema_lk);
+            Pthread_rwlock_unlock(&schema_lk);
             return -1;
         }
-        pthread_rwlock_unlock(&schema_lk);
+        Pthread_rwlock_unlock(&schema_lk);
 
         if (llmeta_load_queues(thedb)) {
             logmsg(LOGMSG_FATAL, "could not load queues from the low level meta "
@@ -3732,7 +3732,7 @@ static int init(int argc, char **argv)
     load_dbstore_tableversion(thedb);
 
     gbl_backend_opened = 1;
-    pthread_rwlock_unlock(&schema_lk);
+    Pthread_rwlock_unlock(&schema_lk);
 
     sqlinit();
     rc = create_sqlmaster_records(NULL);
@@ -5250,7 +5250,7 @@ int add_db(struct dbtable *db)
     Pthread_rwlock_wrlock(&thedb_lock);
 
     if (hash_find_readonly(thedb->db_hash, db) != 0) {
-        pthread_rwlock_unlock(&thedb_lock);
+        Pthread_rwlock_unlock(&thedb_lock);
         return -1;
     }
 
@@ -5262,7 +5262,7 @@ int add_db(struct dbtable *db)
     /* Add table to the hash. */
     hash_add(thedb->db_hash, db);
 
-    pthread_rwlock_unlock(&thedb_lock);
+    Pthread_rwlock_unlock(&thedb_lock);
     return 0;
 }
 
@@ -5287,7 +5287,7 @@ void delete_db(char *db_name)
 
     thedb->num_dbs -= 1;
     thedb->dbs[thedb->num_dbs] = NULL;
-    pthread_rwlock_unlock(&thedb_lock);
+    Pthread_rwlock_unlock(&thedb_lock);
 }
 
 /* rename in memory db names; fragile */
@@ -5313,7 +5313,7 @@ int rename_db(struct dbtable *db, const char *newname)
     db->version = 0; /* reset, new table */
     hash_add(thedb->db_hash, db);
 
-    pthread_rwlock_unlock(&thedb_lock);
+    Pthread_rwlock_unlock(&thedb_lock);
     return 0;
 }
 
@@ -5346,7 +5346,7 @@ void replace_db_idx(struct dbtable *p_db, int idx)
         hash_add(thedb->db_hash, p_db);
     }
 
-    pthread_rwlock_unlock(&thedb_lock);
+    Pthread_rwlock_unlock(&thedb_lock);
 }
 
 void epoch2a(int epoch, char *buf, size_t buflen)

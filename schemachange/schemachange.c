@@ -624,7 +624,7 @@ int live_sc_post_delete(struct ireq *iq, void *trans, unsigned long long genid,
 
     rc = live_sc_post_delete_int(iq, trans, genid, old_dta, del_keys, oldblobs);
 
-    pthread_rwlock_unlock(&sc_live_rwlock);
+    Pthread_rwlock_unlock(&sc_live_rwlock);
     return rc;
 }
 
@@ -680,7 +680,7 @@ int live_sc_post_add(struct ireq *iq, void *trans, unsigned long long genid,
     rc = live_sc_post_add_int(iq, trans, genid, od_dta, ins_keys, blobs,
                               maxblobs, origflags, rrn);
 
-    pthread_rwlock_unlock(&sc_live_rwlock);
+    Pthread_rwlock_unlock(&sc_live_rwlock);
     return rc;
 }
 
@@ -695,7 +695,7 @@ int live_sc_delayed_key_adds(struct ireq *iq, void *trans,
     rc = live_sc_post_update_delayed_key_adds_int(iq, trans, newgenid, od_dta,
                                                   ins_keys, od_len);
 
-    pthread_rwlock_unlock(&sc_live_rwlock);
+    Pthread_rwlock_unlock(&sc_live_rwlock);
     return rc;
 }
 
@@ -824,7 +824,7 @@ int live_sc_post_update(struct ireq *iq, void *trans,
                                  blobs, maxblobs, origflags, rrn, deferredAdd,
                                  oldblobs, newblobs);
 
-    pthread_rwlock_unlock(&sc_live_rwlock);
+    Pthread_rwlock_unlock(&sc_live_rwlock);
     return rc;
 }
 

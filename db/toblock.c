@@ -2216,7 +2216,7 @@ static int toblock_outer(struct ireq *iq, block_state_t *blkstate)
         bdb_stripe_done(iq->dbenv->bdb_env);
 
         if (gotlk)
-            pthread_rwlock_unlock(&gbl_block_qconsume_lock);
+            Pthread_rwlock_unlock(&gbl_block_qconsume_lock);
     }
 
     if (!gaveaway)
@@ -5690,13 +5690,7 @@ add_blkseq:
                     irc = ERR_NOT_DURABLE;
 
                 if (hascommitlock) {
-                    int newrc = pthread_rwlock_unlock(&commit_lock);
-                    if (newrc != 0) {
-                        logmsg(LOGMSG_FATAL, 
-                                "pthread_rwlock_unlock(&commit_lock) %d\n",
-                                newrc);
-                        exit(1);
-                    }
+                    Pthread_rwlock_unlock(&commit_lock);
                     hascommitlock = 0;
                 }
             }

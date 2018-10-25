@@ -292,7 +292,7 @@ svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int code_release,
         hash_add(center->cursorsuuid_hash, cur);
     else
         hash_add(center->cursors_hash, cur);
-    pthread_rwlock_unlock(&center->cursors_rwlock);
+    Pthread_rwlock_unlock(&center->cursors_rwlock);
 
     return cur;
 }
@@ -313,7 +313,7 @@ int fdb_svc_cursor_close(char *cid, int isuuid, struct sqlclntstate **pclnt)
         cur = hash_find(center->cursorsuuid_hash, cid);
         if (!cur) {
             comdb2uuidstr((unsigned char *)cid, us);
-            pthread_rwlock_unlock(&center->cursors_rwlock);
+            Pthread_rwlock_unlock(&center->cursors_rwlock);
 
             logmsg(LOGMSG_ERROR, "%s: missing cursor %s\n", __func__, us);
             return -1;
@@ -325,7 +325,7 @@ int fdb_svc_cursor_close(char *cid, int isuuid, struct sqlclntstate **pclnt)
         curkey.cid = cid;
         cur = hash_find(center->cursors_hash, &curkey);
         if (!cur) {
-            pthread_rwlock_unlock(&center->cursors_rwlock);
+            Pthread_rwlock_unlock(&center->cursors_rwlock);
 
             logmsg(LOGMSG_ERROR, "%s: missing cursor %llx\n", __func__,
                     *(unsigned long long *)cid);
@@ -340,7 +340,7 @@ int fdb_svc_cursor_close(char *cid, int isuuid, struct sqlclntstate **pclnt)
                pthread_self(), *(unsigned long long *)cur->cid,
                cur->autocommit);
 
-    pthread_rwlock_unlock(&center->cursors_rwlock);
+    Pthread_rwlock_unlock(&center->cursors_rwlock);
 
     if (cur->bdbc) {
         rc = cur->bdbc->close(cur->bdbc, &bdberr);
@@ -445,7 +445,7 @@ int fdb_svc_cursor_move(enum svc_move_types type, char *cid, char **data,
         curkey.cid = cid;
         cur = hash_find_readonly(center->cursors_hash, &curkey);
     }
-    pthread_rwlock_unlock(&center->cursors_rwlock);
+    Pthread_rwlock_unlock(&center->cursors_rwlock);
 
     /* TODO: we assumed here nobody can close this cursor except ourselves; pls
        review
@@ -1210,7 +1210,7 @@ int fdb_svc_cursor_find(char *cid, int keylen, char *key, int last,
         curkey.cid = cid;
         cur = hash_find_readonly(center->cursors_hash, &curkey);
     }
-    pthread_rwlock_unlock(&center->cursors_rwlock);
+    Pthread_rwlock_unlock(&center->cursors_rwlock);
 
     if (cur) {
         if (cur->ixnum < 0) {
@@ -1365,7 +1365,7 @@ int fdb_svc_trans_get_tid(char *cid, char *tid, int isuuid)
             memcpy(tid, cur->tid, sizeof(unsigned long long));
     }
 
-    pthread_rwlock_unlock(&center->cursors_rwlock);
+    Pthread_rwlock_unlock(&center->cursors_rwlock);
 
     if (!cur) {
         if (isuuid) {

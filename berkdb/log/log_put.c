@@ -478,7 +478,7 @@ __log_put(dbenv, lsnp, udbt, flags)
 	ret = __log_put_int(dbenv, lsnp, NULL, udbt, flags, -1, NULL);
 
 	if (!(flags & DB_LOG_DONT_LOCK))
-		pthread_rwlock_unlock(&dbenv->dbreglk);
+		Pthread_rwlock_unlock(&dbenv->dbreglk);
 	return ret;
 }
 
@@ -507,7 +507,7 @@ __log_put_commit_context(dbenv, lsnp, contextp, udbt, flags, off_context,
 	    __log_put_int(dbenv, lsnp, contextp, udbt, flags, off_context,
 	    usr_ptr);
 	if (!(flags & DB_LOG_DONT_LOCK))
-		pthread_rwlock_unlock(&dbenv->dbreglk);
+		Pthread_rwlock_unlock(&dbenv->dbreglk);
 	return ret;
 }
 

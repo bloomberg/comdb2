@@ -87,7 +87,7 @@ int views_sqlite_update(timepart_views_t *views, sqlite3 *db,
 
 done:
     if (lock)
-        pthread_rwlock_unlock(&views_lk);
+        Pthread_rwlock_unlock(&views_lk);
 
     return rc;
 }

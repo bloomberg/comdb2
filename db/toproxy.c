@@ -57,7 +57,7 @@ void handle_proxy_lrl_line(char *line)
 
     Pthread_rwlock_wrlock(&proxy_config_lk);
     listc_abl(&proxy_config_lines, ln);
-    pthread_rwlock_unlock(&proxy_config_lk);
+    Pthread_rwlock_unlock(&proxy_config_lk);
 }
 
 /* TODO: this shouldn't exist.  there should be some general way
@@ -106,7 +106,7 @@ void reload_proxy_lrl_lines(char *lrlfile)
     }
 
     proxy_config_lines = new_config;
-    pthread_rwlock_unlock(&proxy_config_lk);
+    Pthread_rwlock_unlock(&proxy_config_lk);
 
     fclose(f);
     printf("Reloaded proxy config\n");
@@ -146,7 +146,7 @@ uint8_t *get_prox2_config_info_put(uint8_t *p_buf, const uint8_t *p_buf_end)
             }
         }
     }
-    pthread_rwlock_unlock(&proxy_config_lk);
+    Pthread_rwlock_unlock(&proxy_config_lk);
 
     return p_buf;
 }
@@ -161,5 +161,5 @@ void dump_proxy_config(void)
     else
         printf("No proxy configuration options loaded from lrl file\n");
     LISTC_FOR_EACH(&proxy_config_lines, l, lnk) { printf("   %s\n", l->line); }
-    pthread_rwlock_unlock(&proxy_config_lk);
+    Pthread_rwlock_unlock(&proxy_config_lk);
 }

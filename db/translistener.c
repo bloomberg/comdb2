@@ -86,7 +86,7 @@ LISTC_T(struct stored_proc) delayed_stored_procs;
 pthread_rwlock_t splk = PTHREAD_RWLOCK_INITIALIZER;
 #define SP_READLOCK() Pthread_rwlock_rdlock(&splk)
 #define SP_WRITELOCK() Pthread_rwlock_wrlock(&splk)
-#define SP_RELLOCK() pthread_rwlock_unlock(&splk)
+#define SP_RELLOCK() Pthread_rwlock_unlock(&splk)
 
 struct javasp_rec {
     /* If this is not null then this is the transaction under which we can read

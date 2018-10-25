@@ -4302,7 +4302,7 @@ err:
 	Pthread_mutex_unlock(&dbenv->recover_lk);
 
 	if (!dbenv->lsn_chain) {
-		pthread_rwlock_unlock(&dbenv->ser_lk);
+		Pthread_rwlock_unlock(&dbenv->ser_lk);
 	}
 
 	bdb_thread_done_rw();
@@ -4931,7 +4931,7 @@ wait_for_running_transactions(dbenv)
 		Pthread_rwlock_wrlock(&dbenv->ser_lk);
 
 		/* Release immediately: no one else is running */
-		pthread_rwlock_unlock(&dbenv->ser_lk);
+		Pthread_rwlock_unlock(&dbenv->ser_lk);
 
 		return 0;
 	}

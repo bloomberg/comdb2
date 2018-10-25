@@ -312,7 +312,7 @@ inline int get_copy_rootpages(struct sql_thread *thd)
     int ret;
     Pthread_rwlock_rdlock(&schema_lk);
     ret = get_copy_rootpages_nolock(thd);
-    pthread_rwlock_unlock(&schema_lk);
+    Pthread_rwlock_unlock(&schema_lk);
     return ret;
 }
 
@@ -333,7 +333,7 @@ int get_rootpage_numbers(int nums)
         tmp = crt_rootpage_number;
         crt_rootpage_number += nums;
     }
-    pthread_rwlock_unlock(&sqlite_rootpages);
+    Pthread_rwlock_unlock(&sqlite_rootpages);
 
     /*fprintf(stderr, "XXX allocated [%d:%d]\n", tmp, crt_rootpage_number-1);*/
 

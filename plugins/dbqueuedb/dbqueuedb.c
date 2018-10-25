@@ -185,7 +185,7 @@ static int wake_all_consumers(struct dbtable *db, int force)
                 wake_up_consumer(consumer, force);
         }
     }
-    pthread_rwlock_unlock(&db->consumer_lk);
+    Pthread_rwlock_unlock(&db->consumer_lk);
     return 0;
 }
 
@@ -311,7 +311,7 @@ static int add_consumer_int(struct dbtable *db, int consumern,
 
 done:
     if (!checkonly && db->dbtype == DBTYPE_QUEUEDB)
-        pthread_rwlock_unlock(&db->consumer_lk);
+        Pthread_rwlock_unlock(&db->consumer_lk);
     return rc;
 }
 
@@ -505,7 +505,7 @@ static void admin(struct dbenv *dbenv, int type)
                         break;
                     }
                 }
-                pthread_rwlock_unlock(&db->consumer_lk);
+                Pthread_rwlock_unlock(&db->consumer_lk);
             }
         }
     }
@@ -620,7 +620,7 @@ static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
                 logmsg(LOGMSG_USER, "    empty\n");
         }
         if (db->dbtype == DBTYPE_QUEUEDB)
-            pthread_rwlock_unlock(&db->consumer_lk);
+            Pthread_rwlock_unlock(&db->consumer_lk);
 
         logmsg(LOGMSG_USER, "-----\n");
     }
@@ -866,7 +866,7 @@ int stop_consumers(struct dbtable *db)
         if (db->consumers[i])
             stop_consumer(db->consumers[i]);
     }
-    pthread_rwlock_unlock(&db->consumer_lk);
+    Pthread_rwlock_unlock(&db->consumer_lk);
     return 0;
 }
 
@@ -879,7 +879,7 @@ int restart_consumers(struct dbtable *db)
         if (db->consumers[i])
             restart_consumer(db->consumers[i]);
     }
-    pthread_rwlock_unlock(&db->consumer_lk);
+    Pthread_rwlock_unlock(&db->consumer_lk);
 
     return 0;
 }

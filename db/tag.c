@@ -107,7 +107,7 @@ int lock_taglock(void)
 int unlock_taglock(void)
 {
 #ifdef TAGLOCK_RW_LOCK
-    pthread_rwlock_unlock(&taglock);
+    Pthread_rwlock_unlock(&taglock);
 #else
     Pthread_mutex_unlock(&taglock);
 #endif
@@ -190,7 +190,7 @@ void add_tag_schema(const char *table, struct schema *schema)
 
     rc = unlock_taglock();
     if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "pthread_rwlock_unlock(&taglock) failed\n");
+        logmsg(LOGMSG_FATAL, "Pthread_rwlock_unlock(&taglock) failed\n");
         exit(1);
     }
 }

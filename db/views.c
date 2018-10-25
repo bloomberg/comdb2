@@ -184,7 +184,7 @@ int timepart_is_shard(const char *name, int lock, char **viewname)
    }
 
    if(lock)
-       pthread_rwlock_unlock(&views_lk);
+       Pthread_rwlock_unlock(&views_lk);
 
    return rc;
 }
@@ -217,7 +217,7 @@ int timepart_is_timepart(const char *name, int lock)
    }
 
    if(lock)
-       pthread_rwlock_unlock(&views_lk);
+       Pthread_rwlock_unlock(&views_lk);
 
    return rc;
 }
@@ -335,7 +335,7 @@ int timepart_add_view(void *tran, timepart_views_t *views,
     gbl_views_gen++;
 
 done:
-    pthread_rwlock_unlock(&views_lk);
+    Pthread_rwlock_unlock(&views_lk);
 
     return rc;
 }
@@ -399,7 +399,7 @@ int timepart_view_add_newest_shard(timepart_views_t *views, const char *name,
     /* TODO: trigger a schema change event to refresh sqlite engines */
     rc = VIEW_NOERR;
 done:
-    pthread_rwlock_unlock(&views_lk);
+    Pthread_rwlock_unlock(&views_lk);
 
     return rc;
 }
@@ -428,7 +428,7 @@ int timepart_view_set_retention(timepart_views_t *views, const char *name,
 
     rc = VIEW_NOERR;
 done:
-    pthread_rwlock_unlock(&views_lk);
+    Pthread_rwlock_unlock(&views_lk);
 
     return rc;
 }
@@ -457,7 +457,7 @@ int timepart_view_set_period(timepart_views_t *views, const char *name,
 
     rc = VIEW_NOERR;
 done:
-    pthread_rwlock_unlock(&views_lk);
+    Pthread_rwlock_unlock(&views_lk);
 
     return rc;
 }
@@ -531,7 +531,7 @@ int timepart_del_view(void *tran, timepart_views_t *views, const char *name)
     }
 
 done:
-    pthread_rwlock_unlock(&views_lk);
+    Pthread_rwlock_unlock(&views_lk);
 
     return rc;
 }
@@ -572,7 +572,7 @@ int timepart_free_views(timepart_views_t *views)
 
     rc = timepart_free_views_unlocked(views);
 
-    pthread_rwlock_unlock(&views_lk);
+    Pthread_rwlock_unlock(&views_lk);
 
     return rc;
 }
@@ -707,7 +707,7 @@ done:
     if (str)
         free(str);
 
-    pthread_rwlock_unlock(&views_lk);
+    Pthread_rwlock_unlock(&views_lk);
 
     return rc;
 }
@@ -1126,7 +1126,7 @@ static int _views_do_op(timepart_views_t *views, const char *name,
 
 done:
 
-    pthread_rwlock_unlock(&views_lk);
+    Pthread_rwlock_unlock(&views_lk);
 
     return rc;
 }
@@ -1203,7 +1203,7 @@ void *_view_cron_phase1(uuid_t source_id, void *arg1, void *arg2, void *arg3,
 
 done:
     if (run) {
-        pthread_rwlock_unlock(&views_lk);
+        Pthread_rwlock_unlock(&views_lk);
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
 
         /* queue the next event, done with the mutex released to avoid
@@ -1380,7 +1380,7 @@ void *_view_cron_phase2(uuid_t source_id, void *arg1, void *arg2, void *arg3,
 
 done:
     if (run) {
-        pthread_rwlock_unlock(&views_lk);
+        Pthread_rwlock_unlock(&views_lk);
         unlock_schema_lk();
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
 
@@ -1443,7 +1443,7 @@ void *_view_cron_phase3(uuid_t source_id, void *arg1, void *arg2, void *arg3,
 
 done:
     if (run) {
-        pthread_rwlock_unlock(&views_lk);
+        Pthread_rwlock_unlock(&views_lk);
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
 
 #if 0
@@ -1603,7 +1603,7 @@ int comdb2_partition_check_name_reuse(const char *tblname, char **partname, int 
         rc = VIEW_ERR_EXIST;
     }
 
-    pthread_rwlock_unlock(&views_lk);
+    Pthread_rwlock_unlock(&views_lk);
     return rc;
 }
 
@@ -1632,7 +1632,7 @@ void comdb2_partition_info_all(const char *option)
         }
     }
 
-    pthread_rwlock_unlock(&views_lk);
+    Pthread_rwlock_unlock(&views_lk);
 }
 
 /**
@@ -1649,7 +1649,7 @@ char* comdb2_partition_info(const char *partition_name, const char *option)
 
     ret_str = comdb2_partition_info_locked(partition_name, option);
 
-    pthread_rwlock_unlock(&views_lk);
+    Pthread_rwlock_unlock(&views_lk);
 
     return ret_str;
 }
@@ -1683,7 +1683,7 @@ int timepart_dump_timepartitions(FILE *dest)
         }
     }
 
-    pthread_rwlock_unlock(&views_lk);
+    Pthread_rwlock_unlock(&views_lk);
 
     return has_tp;
 }
@@ -1950,7 +1950,7 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
             /* we cannot jump into chron scheduler keeping locks that chron
                functions
                might acquire */
-            pthread_rwlock_unlock(&views_lk);
+            Pthread_rwlock_unlock(&views_lk);
 
             print_dbg_verbose(view->name, &view->source_id, "RRR",
                               "Adding phase 3 at %d for %s\n",
@@ -2123,7 +2123,7 @@ int views_cron_restart(timepart_views_t *views)
 done:
     BDB_RELLOCK();
 
-    pthread_rwlock_unlock(&views_lk);
+    Pthread_rwlock_unlock(&views_lk);
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
     return rc;
 }
@@ -2337,7 +2337,7 @@ void views_signal(timepart_views_t *views)
         cron_signal_worker(timepart_sched);
     }
 
-    pthread_rwlock_unlock(&views_lk);
+    Pthread_rwlock_unlock(&views_lk);
 }
 
 static void _remove_view_entry(timepart_views_t *views, int i)
@@ -2400,7 +2400,7 @@ int views_validate_view(timepart_views_t *views, timepart_view_t *view,
 
 
 done:
-    pthread_rwlock_unlock(&views_lk);
+    Pthread_rwlock_unlock(&views_lk);
 
     return rc;
 }
@@ -2442,7 +2442,7 @@ int timepart_foreach_shard(const char *view_name,
     }
 
 done:
-    pthread_rwlock_unlock(&views_lk);
+    Pthread_rwlock_unlock(&views_lk);
 
     return rc;
 }
@@ -2479,7 +2479,7 @@ int timepart_for_each_shard(const char *name,
    }
 
 done:
-    pthread_rwlock_unlock(&views_lk);
+    Pthread_rwlock_unlock(&views_lk);
 
     return rc;
 }
@@ -2578,7 +2578,7 @@ int timepart_update_retention(void *tran, const char *name, int retention, struc
    }
 
 done:
-    pthread_rwlock_unlock(&views_lk);
+    Pthread_rwlock_unlock(&views_lk);
     return rc;
 }
 
@@ -2592,7 +2592,7 @@ void views_lock(void)
 }
 void views_unlock(void)
 {
-    pthread_rwlock_unlock(&views_lk);
+    Pthread_rwlock_unlock(&views_lk);
 }
 
 /**
@@ -2617,7 +2617,7 @@ char *timepart_newest_shard(const char *view_name, unsigned long long *version)
             *version = db->tableversion;
     }
 
-    pthread_rwlock_unlock(&views_lk);
+    Pthread_rwlock_unlock(&views_lk);
 
     return ret;
 }
@@ -2643,7 +2643,7 @@ int timepart_resume_schemachange(int check_llmeta(const char *))
             break;
     }
 
-    pthread_rwlock_unlock(&views_lk);
+    Pthread_rwlock_unlock(&views_lk);
 
     return rc;
 }
@@ -2676,7 +2676,7 @@ int timepart_schemachange_get_shard_in_progress(const char *view_name,
     if (rc == 1)
         rc = i;
 
-    pthread_rwlock_unlock(&views_lk);
+    Pthread_rwlock_unlock(&views_lk);
 
     return rc;
 }
@@ -2820,7 +2820,7 @@ int timepart_get_num_shards(const char *view_name)
     else
         nshards = -1;
 
-    pthread_rwlock_unlock(&views_lk);
+    Pthread_rwlock_unlock(&views_lk);
 
     return nshards;
 }

@@ -1042,7 +1042,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 							     ltranid,
 							     begin_lsn,
 							     &lt)) != 0) {
-							pthread_rwlock_unlock(&gbl_dbreg_log_lock);
+							Pthread_rwlock_unlock(&gbl_dbreg_log_lock);
 							goto err;
 						}
 					}
@@ -1052,7 +1052,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						    ltranid, &lt)) != 0) {
 						logmsg(LOGMSG_FATAL, "Couldn't find ltrans?");
 						abort();
-						pthread_rwlock_unlock(&gbl_dbreg_log_lock);
+						Pthread_rwlock_unlock(&gbl_dbreg_log_lock);
 						goto err;
 					}
 
@@ -1140,7 +1140,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						    txnp->last_lsn.offset;
 					}
 				}
-				pthread_rwlock_unlock(&gbl_dbreg_log_lock);
+				Pthread_rwlock_unlock(&gbl_dbreg_log_lock);
 
 				if (gbl_new_snapisol) {
 					if (!txnp->pglogs_hashtbl) {
@@ -2279,7 +2279,7 @@ do_ckp:	/*
 		    __db_debug_log(dbenv, NULL, &debuglsn, DB_LOG_DONT_LOCK,
 		    &op, -1, NULL, NULL, 0);
 		if (ret) {
-			pthread_rwlock_unlock(&dbenv->dbreglk);
+			Pthread_rwlock_unlock(&dbenv->dbreglk);
 			MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
 			return ret;
 		}
@@ -2305,11 +2305,11 @@ do_ckp:	/*
 			    "txn_checkpoint: log failed at LSN [%ld %ld] %s",
 			    (long)ckp_lsn.file, (long)ckp_lsn.offset,
 			    db_strerror(ret));
-			pthread_rwlock_unlock(&dbenv->dbreglk);
+			Pthread_rwlock_unlock(&dbenv->dbreglk);
 			MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
 			return (ret);
 		}
-		pthread_rwlock_unlock(&dbenv->dbreglk);
+		Pthread_rwlock_unlock(&dbenv->dbreglk);
 		MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
 
 		ret = bdb_checkpoint_list_push(ckp_lsn, ckp_lsn_sav, timestamp);

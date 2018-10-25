@@ -2096,7 +2096,7 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
             hash_add(clientstats, entry);
         }
     }
-    pthread_rwlock_unlock(&clientstats_lk);
+    Pthread_rwlock_unlock(&clientstats_lk);
 
     return entry;
 }
@@ -2118,7 +2118,7 @@ static nodestats_t *find_clientstats(unsigned checksum, int node, int fd)
                 listc_rfl(&clntlru, entry);
                 Pthread_mutex_unlock(&clntlru_mtx);
             }
-            pthread_rwlock_unlock(&clientstats_lk);
+            Pthread_rwlock_unlock(&clientstats_lk);
             if (*(unsigned *)&(entry->addr) == 0 && fd > 0) {
                 struct sockaddr_in peeraddr;
                 socklen_t len = sizeof(peeraddr);
@@ -2137,7 +2137,7 @@ static nodestats_t *find_clientstats(unsigned checksum, int node, int fd)
             return entry;
         }
     }
-    pthread_rwlock_unlock(&clientstats_lk);
+    Pthread_rwlock_unlock(&clientstats_lk);
     return NULL;
 }
 
@@ -2169,7 +2169,7 @@ static int release_clientstats(unsigned checksum, int node)
             rc = -1;
         }
     }
-    pthread_rwlock_unlock(&clientstats_lk);
+    Pthread_rwlock_unlock(&clientstats_lk);
     return rc;
 }
 
@@ -2322,7 +2322,7 @@ void process_nodestats(void)
         nodestats->cur_bucket = next_bucket;
     }
 done:
-    pthread_rwlock_unlock(&clientstats_lk);
+    Pthread_rwlock_unlock(&clientstats_lk);
     if (list)
         free(list);
 }
@@ -2513,7 +2513,7 @@ struct summary_nodestats *get_nodestats_summary(unsigned *nodes_cnt,
     max_clients = ii;
 
 done:
-    pthread_rwlock_unlock(&clientstats_lk);
+    Pthread_rwlock_unlock(&clientstats_lk);
     if (list)
         free(list);
     *nodes_cnt = max_clients;
@@ -2592,7 +2592,7 @@ void nodestats_node_report(FILE *fh, const char *prefix, int disp_rates,
     }
 
 done:
-    pthread_rwlock_unlock(&clientstats_lk);
+    Pthread_rwlock_unlock(&clientstats_lk);
     if (list)
         free(list);
 }
