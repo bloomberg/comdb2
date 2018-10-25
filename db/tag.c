@@ -5025,9 +5025,9 @@ void printrecord(char *buf, struct schema *sc, int len)
                 logmsg(LOGMSG_USER, "%s=%llu", f->name, uival);
             break;
         case SERVER_BINT:
-            SERVER_BINT_to_CLIENT_INT(
-                buf + f->offset, flen, &opts /*convopts*/, NULL /*blob*/, &ival,
-                8, &null, &outdtsz, &opts /*convopts*/, NULL /*blob*/);
+            SERVER_BINT_to_CLIENT_INT(buf + f->offset, flen, &opts /*convopts*/,
+                                      NULL /*blob*/, &ival, 8, &null, &outdtsz,
+                                      &opts /*convopts*/, NULL /*blob*/);
             if (null)
                 logmsg(LOGMSG_USER, "%s=NULL", f->name);
             else
@@ -7410,7 +7410,7 @@ int extract_decimal_quantum(struct dbtable *db, int ix, char *inbuf, char *poutb
                              BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
                 logmsg(LOGMSG_USER, "Dec extract IN:\n");
                 hexdump(LOGMSG_USER,
-                       (unsigned char *) &inbuf[s->member[i].offset],
+                        (unsigned char *)&inbuf[s->member[i].offset],
                         s->member[i].len);
                 logmsg(LOGMSG_USER, "\n");
             }
@@ -7427,7 +7427,7 @@ int extract_decimal_quantum(struct dbtable *db, int ix, char *inbuf, char *poutb
                              BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
                 logmsg(LOGMSG_USER, "Dec extract OUT:\n");
                 hexdump(LOGMSG_USER,
-                        (unsigned char *) &inbuf[s->member[i].offset],
+                        (unsigned char *)&inbuf[s->member[i].offset],
                         s->member[i].len);
                 logmsg(LOGMSG_USER, "\n");
             }

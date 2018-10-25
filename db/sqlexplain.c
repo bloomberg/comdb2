@@ -433,11 +433,12 @@ void explain_data_prepare(IndentInfo *p, Vdbe *v)
                            OP_RowSetRead, OP_Rewind, 0};
     const int opGoto[] = {OP_Goto, 0};
 
-    //unused: const char *azNext[] = {"Next",       "Prev",       "VPrev",      "VNext",
+    // unused: const char *azNext[] = {"Next",       "Prev",       "VPrev",
+    // "VNext",
     //                        "SorterNext", "NextIfOpen", "PrevIfOpen", 0};
-    //unused: const char *azYield[] = {"Yield",      "SeekLT", "SeekGT",
+    // unused: const char *azYield[] = {"Yield",      "SeekLT", "SeekGT",
     //                         "RowSetRead", "Rewind", 0};
-    //unused: const char *azGoto[] = {"Goto", 0};
+    // unused: const char *azGoto[] = {"Goto", 0};
 
     /* Try to figure out if this is really an EXPLAIN statement. If this
     ** cannot be verified, return early.  */
