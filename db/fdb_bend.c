@@ -287,7 +287,7 @@ svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int code_release,
                *(unsigned long long *)cur->tid,
                *(unsigned long long *)cur->cid);
 
-    pthread_rwlock_wrlock(&center->cursors_rwlock);
+    Pthread_rwlock_wrlock(&center->cursors_rwlock);
     if (isuuid)
         hash_add(center->cursorsuuid_hash, cur);
     else
@@ -307,7 +307,7 @@ int fdb_svc_cursor_close(char *cid, int isuuid, struct sqlclntstate **pclnt)
     uuidstr_t us;
 
     /* retrieve cursor */
-    pthread_rwlock_wrlock(&center->cursors_rwlock);
+    Pthread_rwlock_wrlock(&center->cursors_rwlock);
     if (isuuid) {
         uuidstr_t us;
         cur = hash_find(center->cursorsuuid_hash, cid);

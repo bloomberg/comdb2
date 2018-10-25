@@ -97,7 +97,7 @@ static inline int lock_taglock_read(void)
 int lock_taglock(void)
 {
 #ifdef TAGLOCK_RW_LOCK
-    pthread_rwlock_wrlock(&taglock);
+    Pthread_rwlock_wrlock(&taglock);
 #else
     Pthread_mutex_lock(&taglock);
 #endif

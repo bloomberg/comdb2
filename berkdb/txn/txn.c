@@ -2271,7 +2271,7 @@ do_ckp:	/*
 
 		/* Put out a special debug record.  Recovery will look for it
 		 * to know where to start. */
-		pthread_rwlock_wrlock(&dbenv->dbreglk);
+		Pthread_rwlock_wrlock(&dbenv->dbreglk);
 		op.data = &debugtype;
 		op.size = sizeof(int);
 		debugtype = htonl(2);

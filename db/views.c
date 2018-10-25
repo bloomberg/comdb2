@@ -240,7 +240,7 @@ int timepart_add_view(void *tran, timepart_views_t *views,
         preemptive_rolltime = 30; /* 30 seconds in advance we add a new table */
     }
 
-    pthread_rwlock_wrlock(&views_lk);
+    Pthread_rwlock_wrlock(&views_lk);
 
     /* make sure we are unique */
     oldview = _get_view(views, view->name);
@@ -354,7 +354,7 @@ int timepart_view_add_newest_shard(timepart_views_t *views, const char *name,
     timepart_shard_t *shard;
     int rc;
 
-    pthread_rwlock_wrlock(&views_lk);
+    Pthread_rwlock_wrlock(&views_lk);
 
     view = _get_view(views, name);
 
@@ -414,7 +414,7 @@ int timepart_view_set_retention(timepart_views_t *views, const char *name,
     timepart_view_t *view;
     int rc;
 
-    pthread_rwlock_wrlock(&views_lk);
+    Pthread_rwlock_wrlock(&views_lk);
 
     view = _get_view(views, name);
     if (!view) {
@@ -443,7 +443,7 @@ int timepart_view_set_period(timepart_views_t *views, const char *name,
     timepart_view_t *view;
     int rc;
 
-    pthread_rwlock_wrlock(&views_lk);
+    Pthread_rwlock_wrlock(&views_lk);
 
     view = _get_view(views, name);
     if (!view) {
@@ -502,7 +502,7 @@ int timepart_del_view(void *tran, timepart_views_t *views, const char *name)
     int i;
     int rc = VIEW_NOERR;
 
-    pthread_rwlock_wrlock(&views_lk);
+    Pthread_rwlock_wrlock(&views_lk);
 
     view = NULL;
     for (i = 0; i < views->nviews; i++) {
@@ -568,7 +568,7 @@ int timepart_free_views(timepart_views_t *views)
 {
     int rc = VIEW_NOERR;
 
-    pthread_rwlock_wrlock(&views_lk);
+    Pthread_rwlock_wrlock(&views_lk);
 
     rc = timepart_free_views_unlocked(views);
 
@@ -617,7 +617,7 @@ int views_handle_replicant_reload(const char *name)
     struct errstat xerr = {0};
     int i;
 
-    pthread_rwlock_wrlock(&views_lk);
+    Pthread_rwlock_wrlock(&views_lk);
 
     logmsg(LOGMSG_INFO, "Replicant updating views counter=%d\n", gbl_views_gen);
 
@@ -1085,7 +1085,7 @@ static int _views_do_op(timepart_views_t *views, const char *name,
 
     int rc = VIEW_NOERR;
 
-    pthread_rwlock_wrlock(&views_lk);
+    Pthread_rwlock_wrlock(&views_lk);
 
     view = _get_view(views, name);
 
@@ -1163,7 +1163,7 @@ void *_view_cron_phase1(uuid_t source_id, void *arg1, void *arg2, void *arg3,
 
     if (run) {
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
-        pthread_rwlock_wrlock(&views_lk);
+        Pthread_rwlock_wrlock(&views_lk);
 
         view = _get_view(thedb->timepart_views, name);
         if (!view) {
@@ -1318,7 +1318,7 @@ void *_view_cron_phase2(uuid_t source_id, void *arg1, void *arg2, void *arg3,
     if (run) {
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
         rdlock_schema_lk();
-        pthread_rwlock_wrlock(&views_lk);
+        Pthread_rwlock_wrlock(&views_lk);
 
         view = _get_view(thedb->timepart_views, name);
         if (!view) {
@@ -1427,7 +1427,7 @@ void *_view_cron_phase3(uuid_t source_id, void *arg1, void *arg2, void *arg3,
 
     if (run) {
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
-        pthread_rwlock_wrlock(&views_lk); /* I might decide to not lock this */
+        Pthread_rwlock_wrlock(&views_lk); /* I might decide to not lock this */
 
         BDB_READLOCK(__func__);
 
@@ -1966,7 +1966,7 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
                      : VIEW_NOERR;
 
             /* get back views global lock */
-            pthread_rwlock_wrlock(&views_lk);
+            Pthread_rwlock_wrlock(&views_lk);
 
             if (rc != VIEW_NOERR) {
                 logmsg(LOGMSG_ERROR, "%s: failed rc=%d errstr=%s\n", __func__,
@@ -2089,7 +2089,7 @@ int views_cron_restart(timepart_views_t *views)
             gbl_sc_abort = 1;
             MEMORY_SYNC;
         }
-        pthread_rwlock_wrlock(&views_lk);
+        Pthread_rwlock_wrlock(&views_lk);
     } else if (rc) {
         abort();
     }
@@ -2555,7 +2555,7 @@ int timepart_update_retention(void *tran, const char *name, int retention, struc
    timepart_view_t *view;
    int rc = VIEW_NOERR;
 
-   pthread_rwlock_wrlock(&views_lk);
+   Pthread_rwlock_wrlock(&views_lk);
 
    /* make sure we are unique */
    view = _get_view(views, name);
@@ -2633,7 +2633,7 @@ int timepart_resume_schemachange(int check_llmeta(const char *))
     int i;
     int rc = 0;
 
-    pthread_rwlock_wrlock(&views_lk);
+    Pthread_rwlock_wrlock(&views_lk);
 
     views = thedb->timepart_views;
     for (i = 0; i < views->nviews; i++) {
@@ -2661,7 +2661,7 @@ int timepart_schemachange_get_shard_in_progress(const char *view_name,
     int rc = 0;
     int i = 0;
 
-    pthread_rwlock_wrlock(&views_lk);
+    Pthread_rwlock_wrlock(&views_lk);
 
     views = thedb->timepart_views;
 

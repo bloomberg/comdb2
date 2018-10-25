@@ -55,7 +55,7 @@ void handle_proxy_lrl_line(char *line)
         line++;
     ln->line = strdup(line);
 
-    pthread_rwlock_wrlock(&proxy_config_lk);
+    Pthread_rwlock_wrlock(&proxy_config_lk);
     listc_abl(&proxy_config_lines, ln);
     pthread_rwlock_unlock(&proxy_config_lk);
 }
@@ -97,7 +97,7 @@ void reload_proxy_lrl_lines(char *lrlfile)
         }
     }
 
-    pthread_rwlock_wrlock(&proxy_config_lk);
+    Pthread_rwlock_wrlock(&proxy_config_lk);
     l = listc_rtl(&proxy_config_lines);
     while (l) {
         free(l->line);

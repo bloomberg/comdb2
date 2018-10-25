@@ -324,7 +324,7 @@ int get_rootpage_numbers(int nums)
     static int crt_rootpage_number = RTPAGE_START;
     int tmp;
 
-    pthread_rwlock_wrlock(&sqlite_rootpages);
+    Pthread_rwlock_wrlock(&sqlite_rootpages);
 
     tmp = crt_rootpage_number + nums;
     if (tmp < crt_rootpage_number) {

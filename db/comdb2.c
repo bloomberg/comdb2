@@ -3619,7 +3619,7 @@ static int init(int argc, char **argv)
         /* we would like to open the files under schema lock, so that
            we don't race with a schema change from master (at this point
            environment is opened, but files are not !*/
-        pthread_rwlock_wrlock(&schema_lk);
+        Pthread_rwlock_wrlock(&schema_lk);
 
         if (llmeta_load_tables(thedb, dbname)) {
             logmsg(LOGMSG_FATAL, "could not load tables from the low level meta "
@@ -3717,7 +3717,7 @@ static int init(int argc, char **argv)
     /* open db engine */
     logmsg(LOGMSG_INFO, "starting backend db engine\n");
 
-    pthread_rwlock_wrlock(&schema_lk);
+    Pthread_rwlock_wrlock(&schema_lk);
 
     if (backend_open(thedb) != 0) {
         logmsg(LOGMSG_FATAL, "failed to open '%s'\n", dbname);
@@ -5247,7 +5247,7 @@ int main(int argc, char **argv)
 
 int add_db(struct dbtable *db)
 {
-    pthread_rwlock_wrlock(&thedb_lock);
+    Pthread_rwlock_wrlock(&thedb_lock);
 
     if (hash_find_readonly(thedb->db_hash, db) != 0) {
         pthread_rwlock_unlock(&thedb_lock);
@@ -5270,7 +5270,7 @@ void delete_db(char *db_name)
 {
     int idx;
 
-    pthread_rwlock_wrlock(&thedb_lock);
+    Pthread_rwlock_wrlock(&thedb_lock);
     if ((idx = getdbidxbyname(db_name)) < 0) {
         logmsg(LOGMSG_FATAL, "%s: failed to find tbl for deletion: %s\n", __func__,
                 db_name);
@@ -5299,7 +5299,7 @@ int rename_db(struct dbtable *db, const char *newname)
     if (!tag_name || !bdb_name)
         return -1;
 
-    pthread_rwlock_wrlock(&thedb_lock);
+    Pthread_rwlock_wrlock(&thedb_lock);
 
     /* tags */
     rename_schema(db->tablename, tag_name);
@@ -5320,7 +5320,7 @@ int rename_db(struct dbtable *db, const char *newname)
 void replace_db_idx(struct dbtable *p_db, int idx)
 {
     int move = 0;
-    pthread_rwlock_wrlock(&thedb_lock);
+    Pthread_rwlock_wrlock(&thedb_lock);
 
     if (idx < 0 || idx >= thedb->num_dbs ||
         strcasecmp(thedb->dbs[idx]->tablename, p_db->tablename) != 0) {

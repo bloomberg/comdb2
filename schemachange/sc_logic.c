@@ -476,7 +476,7 @@ int do_schema_change_tran(sc_arg_t *arg)
 
             /* return NOMASTER for live schemachange writes */
             start_exclusive_backend_request(thedb);
-            pthread_rwlock_wrlock(&sc_live_rwlock);
+            Pthread_rwlock_wrlock(&sc_live_rwlock);
             s->db->sc_to = NULL;
             s->db->sc_from = NULL;
             s->db->sc_abort = 0;

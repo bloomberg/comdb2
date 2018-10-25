@@ -438,7 +438,7 @@ static inline void bdb_get_writelock_int(bdb_state_type *bdb_state,
 
             Pthread_rwlock_wrlock(lock_handle->bdb_lock);
         } else if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "%s/%s(%s): pthread_rwlock_wrlock error %d %s\n",
+            logmsg(LOGMSG_FATAL, "%s/%s(%s): pthread_rwlock_trywrlock error %d %s\n",
                     idstr, funcname, __func__, rc, strerror(rc));
             abort();
         }

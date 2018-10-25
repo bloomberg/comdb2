@@ -526,7 +526,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         return -1;
     }
 
-    pthread_rwlock_wrlock(&sc_live_rwlock);
+    Pthread_rwlock_wrlock(&sc_live_rwlock);
     db->sc_from = s->db = db;
     db->sc_to = s->newdb = newdb;
     db->sc_abort = 0;

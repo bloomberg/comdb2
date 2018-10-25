@@ -2062,7 +2062,7 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
         }
     }
 
-    pthread_rwlock_wrlock(&clientstats_lk);
+    Pthread_rwlock_wrlock(&clientstats_lk);
     {
         entry_chk = hash_find(clientstats, entry);
         if (entry_chk) {

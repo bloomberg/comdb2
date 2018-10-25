@@ -184,7 +184,7 @@ int timepart_serialize(timepart_views_t *views, char **out, int user_friendly)
 
     *out = NULL;
 
-    pthread_rwlock_wrlock(&views_lk);
+    Pthread_rwlock_wrlock(&views_lk);
 
     if (views->nviews == 0) {
         str = _concat(NULL, &len, "[]\n");
@@ -1432,7 +1432,7 @@ int timepart_apply_file(const char *filename)
         goto done;
     }
 
-    pthread_rwlock_wrlock(&views_lk);
+    Pthread_rwlock_wrlock(&views_lk);
 
     for (i = 0; i < views->nviews; i++) {
         rc = _view_rollout_publish(NULL, views->views[i], &err);

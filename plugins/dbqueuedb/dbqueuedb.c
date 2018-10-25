@@ -210,7 +210,7 @@ static int add_consumer_int(struct dbtable *db, int consumern,
     int rc = 0;
 
     if (!checkonly && db->dbtype == DBTYPE_QUEUEDB)
-        pthread_rwlock_wrlock(&db->consumer_lk);
+        Pthread_rwlock_wrlock(&db->consumer_lk);
 
     if (checkonly) {
         if (strncmp(method, "lua:", 4) != 0 &&

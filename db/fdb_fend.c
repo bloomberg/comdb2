@@ -463,7 +463,7 @@ fdb_t *new_fdb(const char *dbname, int *created, enum mach_class class)
     int rc = 0;
     fdb_t *fdb;
 
-    pthread_rwlock_wrlock(&fdbs.arr_lock);
+    Pthread_rwlock_wrlock(&fdbs.arr_lock);
     fdb = __cache_fnd_fdb(dbname, NULL);
     if (fdb) {
         assert(class == fdb->class);
@@ -541,7 +541,7 @@ static void destroy_fdb(fdb_t *fdb)
     if (!fdb)
         return;
 
-    pthread_rwlock_wrlock(&fdbs.arr_lock);
+    Pthread_rwlock_wrlock(&fdbs.arr_lock);
 
     /* if there are any users, don't touch the db */
     Pthread_mutex_lock(&fdb->users_mtx);
@@ -1444,7 +1444,7 @@ static int __lock_wrlock_exclusive(char *dbname)
             return FDB_ERR_FDB_NOTFOUND;
         }
 
-        pthread_rwlock_wrlock(&fdb->h_rwlock);
+        Pthread_rwlock_wrlock(&fdb->h_rwlock);
 
         /* we got the lock, are there any lockless users ? */
         if (fdb->users > 1) {
@@ -2411,7 +2411,7 @@ static fdb_cursor_if_t *_fdb_cursor_open_remote(struct sqlclntstate *clnt,
                          important update */
     }
 
-    pthread_rwlock_wrlock(&fdbs.h_curs_lock);
+    Pthread_rwlock_wrlock(&fdbs.h_curs_lock);
     hash_add(fdbs.h_curs, fdbc);
     pthread_rwlock_unlock(&fdbs.h_curs_lock);
 
@@ -2544,7 +2544,7 @@ static void fdb_cursor_close_on_open(BtCursor *pCur, int cache)
     if (pCur->fdbc) {
         fdb_cursor_t *fdbc = pCur->fdbc->impl;
 
-        pthread_rwlock_wrlock(&fdbs.h_curs_lock);
+        Pthread_rwlock_wrlock(&fdbs.h_curs_lock);
         hash_del(fdbs.h_curs, fdbc);
         pthread_rwlock_unlock(&fdbs.h_curs_lock);
 

@@ -166,7 +166,7 @@ queue_consume(struct ireq *iq, const void *fnd, int consumern)
                 poll(0,0,(rand()%25+1));
 
             if (gbl_exclusive_blockop_qconsume) {
-                pthread_rwlock_wrlock(&gbl_block_qconsume_lock);
+                Pthread_rwlock_wrlock(&gbl_block_qconsume_lock);
                 gotlk = 1;
             }
 
