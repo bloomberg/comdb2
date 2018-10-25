@@ -46,7 +46,6 @@ static off_t sqllog_rollat_size = 0;
 static int sqllog_keep_files = 2;
 /* Apparently this is a "feature" that "standard" products have. */
 static int sqllog_every_n = 0;
-static int sqllog_every_counter = 0;
 static int sqllog_use_async = 1;
 #define DEFAULT_ASYNC_MAXSIZE 1024 * 1024 * 4
 static int sqllog_async_maxsize = DEFAULT_ASYNC_MAXSIZE;
@@ -147,7 +146,6 @@ static pthread_t sqllog_threadid;
 
 static void sqllog_async_init_once(void)
 {
-    int rc;
     listc_init(&sqllog_events, offsetof(struct log_event, lnk));
     event_pool = pool_setalloc_init(sizeof(struct log_event), 20, malloc, free);
     if (event_pool == NULL) {
@@ -396,17 +394,6 @@ static int log_async(struct sqlclntstate *clnt, int cost, int nrows, int timems)
 {
     /* HERE */
     return 0;
-}
-
-void sqllog_log_statement(struct sqlclntstate *clnt, int cost, int nrows,
-                          int timems)
-{
-    struct timeval t;
-    int32_t ival;
-    int sqllen;
-    int rc;
-
-    /* HERE */
 }
 
 void sqllogger_process_message(char *line, int lline)
