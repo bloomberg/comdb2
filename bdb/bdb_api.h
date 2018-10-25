@@ -1887,10 +1887,13 @@ int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key,
                       int *lenout);
 int bdb_blkseq_find(bdb_state_type *bdb_state, tran_type *tran, void *key,
                     int klen, void **dtaout, int *lenout);
-int bdb_blkseq_dumpall(bdb_state_type *bdb_state, uint8_t stripe);
+void bdb_blkseq_dumpall(bdb_state_type *bdb_state);
 int bdb_recover_blkseq(bdb_state_type *bdb_state);
 int bdb_blkseq_dumplogs(bdb_state_type *bdb_state);
 int bdb_blkseq_can_delete_log(bdb_state_type *bdb_state, int lognum);
+void bdb_blkseq_for_each(bdb_state_type *bdb_state, void *arg,
+                         void (*func)(int, int, void *, void *, void *,
+                                      void *));
 
 /* low level calls to add things to a single btree for debugging and emergency
  * repair */

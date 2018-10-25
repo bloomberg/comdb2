@@ -4535,12 +4535,7 @@ clipper_usage:
         if (ltok == 0)
             return 0;
         if (tokcmp(tok, ltok, "dump") == 0) {
-            int nstripes =
-                bdb_attr_get(thedb->bdb_attr, BDB_ATTR_PRIVATE_BLKSEQ_STRIPES);
-            for (int stripe = 0; stripe < nstripes; stripe++) {
-               logmsg(LOGMSG_USER, "stripe %d\n", stripe);
-                bdb_blkseq_dumpall(thedb->bdb_env, stripe);
-            }
+            bdb_blkseq_dumpall(thedb->bdb_env);
         } else if (tokcmp(tok, ltok, "logdel") == 0) {
             bdb_blkseq_dumplogs(thedb->bdb_env);
         }
