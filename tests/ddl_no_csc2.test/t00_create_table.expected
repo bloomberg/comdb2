@@ -1038,3 +1038,13 @@ constraints
 	}
 ')
 [CREATE TABLE t1(i INT, j DEFAULT 1)] failed with rc -3 No type specified.
+(csc2='schema
+	{
+		cstring v[10] null = yes 
+	}
+keys
+	{
+		uniqnulls "$KEY_5E2A9750" = (cstring[10])"( v || 'aaa' )" 
+	}
+')
+(csc2=NULL)
