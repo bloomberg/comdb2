@@ -54,7 +54,6 @@ static int bdb_bdblock_debug_init_called = 0;
 void bdb_bdblock_debug_init(bdb_state_type *bdb_state)
 {
     char buf[80];
-    int rc;
 
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
@@ -652,7 +651,6 @@ void bdb_checklock(bdb_state_type *bdb_state)
 {
     thread_lock_info_type *lk = pthread_getspecific(lock_key);
     bdb_state_type *lock_handle = bdb_state;
-    int rc;
 
     if (lock_handle->parent)
         lock_handle = lock_handle->parent;

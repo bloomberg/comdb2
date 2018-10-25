@@ -155,7 +155,7 @@ int bdb_osql_log_repo_destroy(int *bdberr)
         bdb_osql_log_destroy(log);
     }
 
-    pthread_rwlock_destroy(&tmp->tail_lock);
+    Pthread_rwlock_destroy(&tmp->tail_lock);
     Pthread_mutex_destroy(&tmp->clients_mtx);
 
     free(tmp);

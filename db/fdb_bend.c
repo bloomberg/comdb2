@@ -187,7 +187,7 @@ void fdb_svc_destroy(void)
 {
     hash_free(center->cursors_hash);
     hash_free(center->cursorsuuid_hash);
-    pthread_rwlock_destroy(&center->cursors_rwlock);
+    Pthread_rwlock_destroy(&center->cursors_rwlock);
 }
 
 svc_cursor_t *fdb_svc_cursor_open_master(char *tid, char *cid, int version)

@@ -77,7 +77,7 @@ int osql_repository_init(void)
     if (!tmp->rqs) {
         logmsg(LOGMSG_ERROR, "%s: unable to create hash\n", __func__);
         Pthread_mutex_destroy(&tmp->cancelall_mtx);
-        pthread_rwlock_destroy(&tmp->hshlck);
+        Pthread_rwlock_destroy(&tmp->hshlck);
         free(tmp);
         return -1;
     }

@@ -387,7 +387,7 @@ void __free_fdb(fdb_t *fdb)
     hash_free(fdb->h_ents_rootp);
     hash_free(fdb->h_ents_name);
     hash_free(fdb->h_tbls_name);
-    pthread_rwlock_destroy(&fdb->h_rwlock);
+    Pthread_rwlock_destroy(&fdb->h_rwlock);
     Pthread_mutex_destroy(&fdb->sqlstats_mtx);
     Pthread_mutex_destroy(&fdb->dbcon_mtx);
     Pthread_mutex_destroy(&fdb->users_mtx);

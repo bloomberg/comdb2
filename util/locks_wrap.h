@@ -74,17 +74,30 @@
     }                                                                      \
 }
 
-#define Pthread_rwlock_init(mutex_ptr, attr)                                     \
+#define Pthread_rwlock_init(rwlock_ptr, attr)                                     \
 {                                                                          \
     logmsg(LOGMSG_USER, "%d pthread_rwlock_init try (%d)  %s:%d\n",             \
-           (int)pthread_self(), mutex_ptr, __FILE__, __LINE__);                \
-    if (pthread_rwlock_init(mutex_ptr, attr) != 0) {                            \
+           (int)pthread_self(), rwlock_ptr, __FILE__, __LINE__);                \
+    if (pthread_rwlock_init(rwlock_ptr, attr) != 0) {                            \
         logmsg(LOGMSG_FATAL, "%d:%s:%d init failed\n", (int)pthread_self(),     \
                __func__, __LINE__);                                        \
         abort();                                                           \
     }                                                                      \
     logmsg(LOGMSG_USER, "%d pthread_rwlock_init got (%d)  %s:%d\n",             \
-            (int)pthread_self(), mutex_ptr, __FILE__, __LINE__);                \
+            (int)pthread_self(), rwlock_ptr, __FILE__, __LINE__);                \
+}
+
+#define Pthread_rwlock_destroy(rwlock_ptr)                                     \
+{                                                                          \
+    logmsg(LOGMSG_USER, "%d pthread_rwlock_init try (%d)  %s:%d\n",             \
+           (int)pthread_self(), rwlock_ptr, __FILE__, __LINE__);                \
+    if (pthread_rwlock_destroy(rwlock_ptr) != 0) {                            \
+        logmsg(LOGMSG_FATAL, "%d:%s:%d init failed\n", (int)pthread_self(),     \
+               __func__, __LINE__);                                        \
+        abort();                                                           \
+    }                                                                      \
+    logmsg(LOGMSG_USER, "%d pthread_rwlock_init got (%d)  %s:%d\n",             \
+            (int)pthread_self(), rwlock_ptr, __FILE__, __LINE__);                \
 }
 
 #define Pthread_rwlock_rdlock(rwlock_ptr)                                      \
@@ -163,9 +176,18 @@
     }                                                                      \
 }
 
-#define Pthread_rwlock_init(mutex_ptr, attr)                                     \
+#define Pthread_rwlock_init(rwlock_ptr, attr)                                     \
 {                                                                          \
-    if (pthread_rwlock_init(mutex_ptr, attr) != 0) {                            \
+    if (pthread_rwlock_init(rwlock_ptr, attr) != 0) {                            \
+        logmsg(LOGMSG_FATAL, "%d:%s:%d init failed\n", (int)pthread_self(),     \
+               __func__, __LINE__);                                        \
+        abort();                                                           \
+    }                                                                      \
+}
+
+#define Pthread_rwlock_destroy(rwlock_ptr)                                     \
+{                                                                          \
+    if (pthread_rwlock_destroy(rwlock_ptr) != 0) {                            \
         logmsg(LOGMSG_FATAL, "%d:%s:%d init failed\n", (int)pthread_self(),     \
                __func__, __LINE__);                                        \
         abort();                                                           \
@@ -202,4 +224,4 @@
 
 #endif
 
-#endif
+#endif /* include guard _INCLUDED_LOCKS_H */
