@@ -173,7 +173,7 @@ int ll_dta_add(bdb_state_type *bdb_state, unsigned long long genid, DB *dbp,
                tran_type *tran, int dtafile, int dtastripe, DBT *dbt_key,
                DBT *dbt_data, int flags)
 {
-    int outrc, rc;
+    int outrc = 0, rc;
     int tran_flags;
     int updateid;
     int crc;
@@ -242,6 +242,7 @@ int ll_dta_add(bdb_state_type *bdb_state, unsigned long long genid, DB *dbp,
     default:
         logmsg(LOGMSG_ERROR, "ll_dta_add called with unknown tran type %d\n",
                 tran->tranclass);
+        outrc = -1;
     }
     return outrc;
 }
@@ -629,7 +630,7 @@ int ll_key_upd(bdb_state_type *bdb_state, tran_type *tran, char *table_name,
     const int genid_sz = sizeof(unsigned long long);
     unsigned char dtacopy_payload[MAXRECSZ + ODH_SIZE_RESERVE + genid_sz];
     unsigned long long keybuf[512 / sizeof(unsigned long long)];
-    int dtacopy_payload_len;
+    int dtacopy_payload_len = 0;
     unsigned char keydata[MAXKEYSZ];
     int llog_payload_len = 8;
 
@@ -890,7 +891,7 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
                           int is_blob, int has_blob_update_optimization,
                           int keep_genid_intact)
 {
-    int rc;
+    int rc = 0;
     int inplace = 0;
     int updateid = 0;
     DBC *dbcp = NULL;

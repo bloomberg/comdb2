@@ -226,7 +226,7 @@ __memp_fget_internal(dbmfp, pgnoaddr, flags, addrp, did_io)
 	db_pgno_t falloc_off, falloc_len;
 	DB_TXN *thrtxn;
 
-	uint64_t start_time_us;
+	uint64_t start_time_us = 0;
 
 	if (memp_fget_callback)
 		memp_fget_callback();

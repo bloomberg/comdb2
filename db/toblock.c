@@ -491,7 +491,7 @@ static int forward_longblock_to_master(struct ireq *iq,
 static int forward_block_to_master(struct ireq *iq, block_state_t *p_blkstate,
                                    char *mstr)
 {
-    int rc;
+    int rc = 0;
     struct block_fwd fwd;
     struct req_hdr req_hdr;
     size_t req_len;
@@ -779,7 +779,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
 {
     struct block_rsp errrsp;
     int rc = 0;
-    int outrc, snapinfo_outrc, snapinfo = 0;
+    int outrc, snapinfo_outrc = 0, snapinfo = 0;
     uint8_t buf_fstblk[FSTBLK_HEADER_LEN + FSTBLK_PRE_RSPKL_LEN +
                        BLOCK_RSPKL_LEN + FSTBLK_RSPERR_LEN + FSTBLK_RSPOK_LEN +
                        (BLOCK_ERR_LEN * MAXBLOCKOPS)];
@@ -2471,7 +2471,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     int rowlocks = gbl_rowlocks;
     int fromline = -1;
     int opnum, jj, num_reqs;
-    int rc, ixkeylen, rrn;
+    int rc = 0, ixkeylen, rrn;
     int irc;
     char *source_host;
     char key[MAXKEYLEN];
@@ -6151,7 +6151,7 @@ int get_next_seqno(void *tran, long long *seqno)
     if (fndlen == 0)
         *seqno = 1;
     else {
-        long long next_seqno;
+        long long next_seqno = 0;
 
         /* convert to client format value so we can use it. Call the Routine
          * Of Many Arguments to do so. */

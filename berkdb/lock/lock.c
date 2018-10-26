@@ -2041,7 +2041,7 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 		return DB_LOCK_DEADLOCK;
 	}
 	u_int32_t partition = gbl_lk_parts, lpartition = gbl_lkr_parts;
-	uint64_t x1, x2;
+	uint64_t x1 = 0, x2;
 	struct __db_lock *newl, *lp, *firstlp, *wwrite;
 	DB_ENV *dbenv;
 	DB_LOCKER *sh_locker;
@@ -4862,8 +4862,8 @@ __lock_fix_list(dbenv, list_dbt, nlocks, has_pglk_lsn)
 	u_int32_t nlocks;
 	u_int8_t has_pglk_lsn;
 {
-	DBT *obj_dbt;
-	struct __db_lockobj_lsn *obj_lsn;
+	DBT *obj_dbt = NULL;
+	struct __db_lockobj_lsn *obj_lsn = NULL;
 	struct __db_dbt_internal *obj;
 	DB_LOCK_ILOCK *lock, *plock;
 	u_int32_t i, j, nfid, npgno, size, nlsns, k;

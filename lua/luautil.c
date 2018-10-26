@@ -88,7 +88,7 @@ const char *luabb_pushfstring(lua_State *lua, char *fmt, ...) {
     char c[1];
     va_list args;
     int len;
-    char *out;
+    char *out = NULL;
     va_start(args, fmt);
     len = vsnprintf(c, 1, fmt, args);
     va_end(args);
@@ -237,7 +237,7 @@ int luabb_error(Lua lua, SP sp, const char *fmt, ...)
     char c[1];
     va_list args;
     int len;
-    char *out;
+    char *out = NULL;
     va_start(args, fmt);
     len = vsnprintf(c, 1, fmt, args);
     va_end(args);
@@ -461,7 +461,7 @@ static int numeq(lua_dbtypes_t *b1, TValue *t2, int *eq)
 
 static int streq(lua_cstring_t *b1, TValue *t2, int *eq)
 {
-    const char *s1, *s2;
+    const char *s1, *s2 = NULL;
     lua_cstring_t *b2;
     s1 = b1->val;
     switch (ttype(t2)) {

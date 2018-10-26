@@ -773,7 +773,7 @@ static const uint8_t *osqlcomm_bpfunc_type_get(osql_bpfunc_t **p_osql_bpfunc,
 {
     if (p_buf_end < p_buf || OSQLCOMM_BPFUNC_TYPE_LEN > (p_buf_end - p_buf))
         return NULL;
-    int32_t data_len;
+    int32_t data_len = 0;
 
     p_buf = buf_get(&data_len, sizeof(data_len), p_buf, p_buf_end);
 
@@ -1077,7 +1077,7 @@ static const uint8_t *serial_readset_get(CurRangeArr *arr, int buf_size,
                                          const uint8_t *p_buf_end)
 {
     int i;
-    int tmp;
+    int tmp = 0;
     CurRange *cr;
     if (p_buf_end < p_buf || buf_size > (p_buf_end - p_buf))
         return NULL;
@@ -7413,7 +7413,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         }
     } break;
     case OSQL_DBGLOG: {
-        osql_dbglog_t dbglog;
+        osql_dbglog_t dbglog = {0};
         const uint8_t *p_buf = (const uint8_t *)msg;
         const uint8_t *p_buf_end = p_buf + sizeof(osql_dbglog_t);
 
@@ -7474,7 +7474,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     } break;
     case OSQL_BPFUNC: {
         uint8_t *p_buf_end = (uint8_t *)msg + sizeof(osql_bpfunc_t) + msglen;
-        osql_bpfunc_t *rpl;
+        osql_bpfunc_t *rpl = NULL;
         char err[MSGERR_MAXLEN]; // TODO TO BE REMOVED
 
         const uint8_t *n_p_buf =
@@ -8241,7 +8241,7 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     } break;
 
     case OSQL_UPDSTAT: {
-        osql_updstat_t dt;
+        osql_updstat_t dt = {0};
         uint8_t *p_buf_end = p_buf + sizeof(osql_updstat_rpl_t);
         unsigned char *pData;
         unsigned long long seq;
@@ -8873,7 +8873,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         }
     } break;
     case OSQLPFRQ_OLDDATA_OLDKEYS_NEWKEYS: {
-        size_t od_len;
+        size_t od_len = 0;
         int od_len_int;
         int fndlen = 0;
         int ixnum = 0;
@@ -9507,7 +9507,7 @@ int osql_send_bpfunc(char *tonode, unsigned long long rqid, uuid_t uuid,
     size_t data_len = bpfunc_arg__get_packed_size(arg);
     size_t osql_bpfunc_size;
     size_t osql_rpl_size;
-    uint8_t *p_buf;
+    uint8_t *p_buf = NULL;
     uint8_t *p_buf_end;
     int rc = 0;
     uuidstr_t us;

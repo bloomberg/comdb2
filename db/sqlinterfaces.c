@@ -3399,7 +3399,7 @@ static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
  */
 static int execute_sql_query(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
-    int outrc;
+    int outrc = 0;
     int rc;
 
 #ifdef DEBUG
@@ -3433,7 +3433,7 @@ static int prepare_engine(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                           int recreate)
 {
     struct errstat xerr;
-    int rc;
+    int rc = 0;
     int got_views_lock = 0;
     int got_curtran = 0;
 

@@ -3466,7 +3466,7 @@ int handle_remsql_request(comdb2_appsock_arg_t *arg)
     char line[128];
     int rc = FDB_NOERR;
     static uint64_t old = 0ULL;
-    uint64_t now;
+    uint64_t now = 0;
     uint64_t then;
 
     dbenv = arg->dbenv;

@@ -784,7 +784,7 @@ __memp_pgwrite_multi(dbenv, dbmfp, hps, bhps, numpages, wrrec)
 	DB_LSN tmplsn, maxlsn;
 	MPOOLFILE *mfp;
 	DB_MPOOL_HASH *hp;
-	BH *bhp;
+	BH *bhp = NULL;
 	u_int8_t **bparray;
 	size_t nw;
 	int *callpgin, *reclk;
@@ -1169,7 +1169,7 @@ __dir_pg(dbmfp, pgno, buf, is_pgin)
 	MPOOLFILE *mfp;
 	int ftype, ret;
 
-	uint64_t start_time_us;
+	uint64_t start_time_us = 0;
 
 	dbenv = dbmfp->dbenv;
 	dbmp = dbenv->mp_handle;

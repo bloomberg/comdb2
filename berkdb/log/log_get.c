@@ -947,19 +947,19 @@ __log_c_inregion_int(logc, lsn, rlockp, last_lsn, hdr, pp)
 	DB_LSN *seg_lsn_array;
 	DB_LSN *seg_start_lsn_array;
 	DB_LSN f_lsn;
-	DB_LSN a_lsn;
+	DB_LSN a_lsn = {0};
 	LOG *lp;
 	size_t len, nr;
 	u_int32_t b_disk, b_region;
-	u_int32_t w_off;
+	u_int32_t w_off = 0;
 	u_int32_t st_off;
 	u_int32_t cp_sz;
-	u_int32_t b_remain;
+	u_int32_t b_remain = 0;
 	u_int32_t inmemlen = 0;
-	int32_t buf_offset;
-	u_int32_t curseg, oldseg;
+	int32_t buf_offset = 0;
+	u_int32_t curseg = 0, oldseg = 0;
 	int ret, st, tot;
-	u_int8_t *p;
+	u_int8_t *p = NULL;
 
 	dbenv = logc->dbenv;
 	dblp = dbenv->lg_handle;

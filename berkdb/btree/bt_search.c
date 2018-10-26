@@ -350,13 +350,13 @@ __bam_search(dbc, root_pgno, key, flags, stop, recnop, exactp)
 	bool save = false;
 	uint16_t gen;
 	uint32_t slot;
-	unsigned int hh;
+	unsigned int hh = 0;
 	genid_hash *hash = NULL;
 	__genid_pgno *hashtbl = NULL;
 	int got_pg_from_hash = 0;
 	int add_to_hash = 0;
 	db_pgno_t hash_pg;
-	db_pgno_t pg_copy;
+	db_pgno_t pg_copy = 0;
 	int mutex_rc = 0;
 
 	struct timeval before, after, diff;

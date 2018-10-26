@@ -773,7 +773,7 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
 
     if (count != comcount) {
         static time_t lastpr = 0;
-        time_t now;
+        time_t now = time(NULL);
 
         /* Assume disconnected node(s) are incoherent */
         *inc_wait = 1;
