@@ -125,7 +125,7 @@ function cldeadlock_threads
     typeset j=0
     while [[ $j -lt $iters ]]; do
         cldeadlock $j &
-        export cl_pids[$j]=$!
+        cl_pids[$j]=$!
         let j=j+1
     done
     export forked_cl=1
