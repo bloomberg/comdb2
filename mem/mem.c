@@ -2155,19 +2155,15 @@ comdb2bma comdb2bma_create_trace(size_t init, size_t cap, const char *name,
             if (ret->alloc == NULL) {
                 mspace_free(root.m, ret);
                 ret = NULL;
-            } else if (pthread_cond_init(&ret->cond, NULL) != 0) {
-                comdb2ma_destroy_int(ret->alloc);
-                mspace_free(root.m, ret);
-                ret = NULL;
             } else if (pthread_key_create(&ret->bmakey, comdb2bma_thr_dest) !=
                        0) {
-                pthread_cond_destroy(&ret->cond);
                 comdb2ma_destroy_int(ret->alloc);
                 mspace_free(root.m, ret);
                 ret = NULL;
             }
 
             if (ret != NULL) {
+                pthread_cond_init(&ret->cond, NULL);
                 // initialize fields
                 ret->prio = 0;
                 ret->lock = lock ? lock : (&ret->alloc->lock);

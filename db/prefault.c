@@ -164,12 +164,7 @@ unsigned int enque_pfault_ll(struct dbenv *dbenv, pfrq_t *qdata)
         Pthread_mutex_unlock(&(dbenv->prefaultiopool.mutex));
     }
 
-    rc = pthread_cond_signal(&(dbenv->prefaultiopool.cond));
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "failed to signal prefault cond\n");
-        exit(1);
-    }
-
+    pthread_cond_signal(&(dbenv->prefaultiopool.cond));
     Pthread_mutex_unlock(&(dbenv->prefaultiopool.mutex));
 
     /*fprintf(stderr, "(%d) queued idx %d\n",pthread_self(), ixnum);*/

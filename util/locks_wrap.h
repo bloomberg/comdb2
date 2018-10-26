@@ -21,6 +21,17 @@
 
 #include "logmsg.h"
 
+/* for completeness since pthread_cond_init never returns an error */
+#define Pthread_cond_init pthread_cond_init
+
+/* for completeness since pthread_cond_signal never returns an error */
+#define Pthread_cond_signal pthread_cond_signal
+
+/* for completeness since pthread_cond_broadcast never returns an error */
+#define Pthread_cond_broadcast pthread_cond_broadcast
+
+/* for completeness since pthread_cond_wait never returns an error */
+#define Pthread_cond_wait pthread_cond_wait
 
 #ifdef LOCK_DEBUG
 

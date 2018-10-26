@@ -748,9 +748,6 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
  */
 int osql_bplog_signal(blocksql_tran_t *tran)
 {
-
-    int rc = 0;
-
     /* signal block processor that one done event arrived */
     Pthread_mutex_lock(&tran->mtx);
 
@@ -759,13 +756,10 @@ int osql_bplog_signal(blocksql_tran_t *tran)
    printf("Signalling tmp=%llu\n", osql_log_time());
 #endif
 
-    if ((rc = pthread_cond_signal(&tran->cond))) {
-        logmsg(LOGMSG_ERROR, "pthread_cond_signal: error code %d\n", rc);
-    }
-
+    pthread_cond_signal(&tran->cond);
     Pthread_mutex_unlock(&tran->mtx);
 
-    return rc;
+    return 0;
 }
 
 /**

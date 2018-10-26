@@ -2183,14 +2183,7 @@ static int toblock_outer(struct ireq *iq, block_state_t *blkstate)
 
                 /*fprintf(stderr, "waking up prefault_helper %d\n", i);*/
 
-                rc = pthread_cond_signal(
-                    &(iq->dbenv->prefault_helper.threads[i].cond));
-                if (rc != 0) {
-                    logmsg(LOGMSG_FATAL, "toblock_outer: couldnt cond signal pflt "
-                                    "thrd %d\n",
-                            i);
-                    exit(1);
-                }
+                pthread_cond_signal(&(iq->dbenv->prefault_helper.threads[i].cond));
 
                 break;
             }

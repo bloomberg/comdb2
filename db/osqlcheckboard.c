@@ -215,7 +215,7 @@ int osql_register_remtran(struct sqlclntstate *clnt, int type, char *tid)
 int osql_unregister_sqlthr(struct sqlclntstate *clnt)
 {
     osql_sqlthr_t *entry = NULL;
-    int rc2 = 0;
+    int rc = 0;
 
     if (clnt->osql.rqid == 0)
         return 0;
@@ -235,17 +235,17 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
     } else {
 
         if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
-            rc2 = hash_del(checkboard->rqsuuid, entry);
-            if (rc2)
+            rc = hash_del(checkboard->rqsuuid, entry);
+            if (rc)
                 logmsg(LOGMSG_ERROR, "%s: unable to delete record %llx, rc=%d\n",
-                        __func__, entry->rqid, rc2);
+                        __func__, entry->rqid, rc);
         } else {
-            rc2 = hash_del(checkboard->rqs, entry);
-            if (rc2) {
+            rc = hash_del(checkboard->rqs, entry);
+            if (rc) {
                 uuidstr_t us;
                 logmsg(LOGMSG_ERROR, "%s: unable to delete record %llx %s, rc=%d\n",
                         __func__, entry->rqid,
-                        comdb2uuidstr(clnt->osql.uuid, us), rc2);
+                        comdb2uuidstr(clnt->osql.uuid, us), rc);
             }
         }
 
@@ -276,7 +276,7 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
 
     Pthread_rwlock_unlock(&checkboard->rwlock);
 
-    return rc2;
+    return rc;
 }
 
 /**
@@ -316,7 +316,7 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
 {
 
     osql_sqlthr_t *entry = NULL;
-    int rc = 0, rc2;
+    int rc = 0;
 
     if (!checkboard)
         return 0;
@@ -339,7 +339,7 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
         uuidstr_t us;
         ctrace("%s: received result for missing session %llu %s\n", __func__,
                rqid, comdb2uuidstr(uuid, us));
-        rc2 = -1;
+        rc = -1;
 
     } else {
 
@@ -365,18 +365,13 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
             }
         }
 
-        if ((rc = pthread_cond_signal(&entry->cond))) {
-            logmsg(LOGMSG_ERROR, "pthread_cond_signal: error code %d\n", rc);
-        }
-
+        pthread_cond_signal(&entry->cond);
         Pthread_mutex_unlock(&entry->mtx);
-
-        rc2 = 0;
     }
 
     Pthread_rwlock_unlock(&checkboard->rwlock);
 
-    return rc2;
+    return rc;
 }
 
 static inline void signal_master_change(osql_sqlthr_t *rq, char *host,
@@ -641,7 +636,7 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
                                   int status, int timestamp)
 {
     osql_sqlthr_t *entry = NULL;
-    int rc;
+    int rc = 0;
     uuidstr_t us;
 
     if (!checkboard)
@@ -668,7 +663,6 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
 
         Pthread_mutex_unlock(&entry->mtx);
 
-        rc = 0;
     }
 
     Pthread_rwlock_unlock(&checkboard->rwlock);
@@ -684,7 +678,7 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
 int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
 {
     osql_sqlthr_t *entry = NULL;
-    int rc;
+    int rc = 0;
 
     if (clnt->osql.rqid == 0)
         return 0;
@@ -712,7 +706,6 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
             master ? master : gbl_mynode; /* master changed, store it here */
         bzero(&entry->err, sizeof(entry->err));
         Pthread_mutex_unlock(&entry->mtx);
-        rc = 0;
     }
 
     Pthread_rwlock_unlock(&checkboard->rwlock);

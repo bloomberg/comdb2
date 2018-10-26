@@ -349,7 +349,6 @@ int readaheadpf(struct ireq *iq, struct dbtable *db, int ixnum, unsigned char *k
 {
     pthread_t my_tid;
     pthread_t working_for;
-    int rc;
     int i;
 
     if (!prefault_check_enabled())
@@ -380,13 +379,7 @@ int readaheadpf(struct ireq *iq, struct dbtable *db, int ixnum, unsigned char *k
 
             /*fprintf(stderr, "readahead signaling helper %d\n", i);*/
 
-            rc = pthread_cond_signal(
-                &(iq->dbenv->prefault_helper.threads[i].cond));
-            if (rc != 0) {
-                logmsg(LOGMSG_FATAL, "readahead: couldnt cond signal thrd %d\n", i);
-                exit(1);
-            }
-
+            pthread_cond_signal(&(iq->dbenv->prefault_helper.threads[i].cond));
             Pthread_mutex_unlock(&(iq->dbenv->prefault_helper.threads[i].mutex));
 
             /* Found someone to work for me, break out of loop */
