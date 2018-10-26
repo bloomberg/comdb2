@@ -202,6 +202,25 @@ call_setup() {
 }
 
 
+check_db_at_finish() {
+    local LCLDBNM="$1"
+    local LCLDBDIR="$2"
+    local LCLCONFIG="$3"
+    local LCLOPTIONS="--cdb2cfg ${LCLCONFIG}"
+
+    for node in ${CLUSTER} ; do
+        out=$($CDB2SQL_EXE ${LCLOPTIONS} --tabs --host $node $LCLDBNAME 'select 1' 2>&1)
+        if [ "$out" != "1" ] ; then
+            echo 1
+            return
+        fi
+    done
+}
+
+
+
+# start the testing: setup, runit, check cores, unsetup
+
 call_setup ${DBNAME} ${DBDIR} "$CDB2_CONFIG" "$CDB2_OPTIONS"
 
 if [ -n "${SECONDARY_DB_PREFIX}" ] ; then
@@ -212,21 +231,38 @@ if [ -n "${SECONDARY_DB_PREFIX}" ] ; then
     call_setup ${SECONDARY_DB} ${SECONDARY_DBDIR} $SECONDARY_DB_CDB2_CONFIG
 fi
 
+
 echo "!$TESTCASE: running with timeout ${TEST_TIMEOUT}"
 
 timeout ${TEST_TIMEOUT} ./runit ${DBNAME} 2>&1  | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' &> ${TESTDIR}/logs/${DBNAME}.testcase
 
+# get the return code from the first phase of the pipe
 rc=${PIPESTATUS[0]}
 sleep 1
+
+
 cr=`find_cores ${DBNAME} $DBDIR`
 
-if [ -z "$cr" ] && [ -x "${SECONDARY_DB}" ] ; then
+if [[ -z "$cr" ]] && [[ -n "${SECONDARY_DB}" ]] ; then
     cr=`find_cores ${SECONDARY_DB} ${SECONDARY_DBDIR}`
 fi
+
+CHECK_DB_AT_FINISH=${CHECK_DB_AT_FINISH:-1}
+if [ $CHECK_DB_AT_FINISH -eq 1 ] ; then
+    bdown=`check_db_at_finish ${SECONDARY_DB} ${SECONDARY_DBDIR} $SECONDARY_DB_CDB2_CONFIG`
+    if [[ -z "$dbdown" ]] && [[ -n "${SECONDARY_DB}" ]]; then
+        bdown=`check_db_at_finish ${SECONDARY_DB} ${SECONDARY_DBDIR} $SECONDARY_DB_CDB2_CONFIG`
+    fi
+fi
+
+
 
 if [[ -n "$cr" ]] ; then
     echo "!$TESTCASE: failed with core dumped ($cr)"
     echo "!$TESTCASE: failed with core dumped ($cr)" >> ${TESTDIR}/test.log
+elif [[ $rc -eq 124 ]] ; then
+    echo "!$TESTCASE: db was unavailable at finish ($dbdown logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
+    echo "!$TESTCASE: db was unavailable at finish ($dbdown)" >> ${TESTDIR}/test.log
 elif [[ $rc -eq 124 ]] ; then
     echo "!$TESTCASE: timeout (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: timeout" >> ${TESTDIR}/test.log
@@ -239,6 +275,8 @@ else
     echo "!$TESTCASE: failed rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: failed" >> ${TESTDIR}/test.log
 fi
+
+
 
 call_unsetup ${DBNAME} ${DBDIR} $CDB2_OPTIONS
 
