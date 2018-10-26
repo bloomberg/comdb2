@@ -4584,11 +4584,13 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			uint32_t flags =
 				LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
 				LOCK_GET_LIST_PRINTLOCK : 0);
+            assert(gbl_rep_lock_time_ms == 0);
 			gbl_rep_lock_time_ms = comdb2_time_epochms();
 			ret =
 				__lock_get_list_context(dbenv, lockid, flags,
 				DB_LOCK_WRITE, lock_dbt, &context, &(rctl->lsn),
 				&pglogs, &keycnt);
+            assert(gbl_rep_lock_time_ms != 0);
 			gbl_rep_lock_time_ms = 0;
 			if (ret != 0)
 				goto err;
@@ -4601,10 +4603,12 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			uint32_t flags =
 				LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
 				LOCK_GET_LIST_PRINTLOCK : 0);
+            assert(gbl_rep_lock_time_ms == 0);
 			gbl_rep_lock_time_ms = comdb2_time_epochms();
 			ret =
 				__lock_get_list(dbenv, lockid, flags, DB_LOCK_WRITE,
 				lock_dbt, &(rctl->lsn), &pglogs, &keycnt, stdout);
+            assert(gbl_rep_lock_time_ms != 0);
 			gbl_rep_lock_time_ms = 0;
 			if (ret != 0)
 				goto err;
@@ -5275,10 +5279,12 @@ bad_resize:	;
 		uint32_t flags =
 			LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
 			LOCK_GET_LIST_PRINTLOCK : 0);
+        assert(gbl_rep_lock_time_ms == 0);
 		gbl_rep_lock_time_ms = comdb2_time_epochms();
 		ret =
 			__lock_get_list_context(dbenv, lockid, flags, DB_LOCK_WRITE,
 			lock_dbt, &rp->context, &(rctl->lsn), &pglogs, &keycnt);
+        assert(gbl_rep_lock_time_ms != 0);
 		gbl_rep_lock_time_ms = 0;
 		if (ret != 0)
 			goto err;
@@ -5291,10 +5297,12 @@ bad_resize:	;
 		uint32_t flags =
 			LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
 			LOCK_GET_LIST_PRINTLOCK : 0);
+        assert(gbl_rep_lock_time_ms == 0);
 		gbl_rep_lock_time_ms = comdb2_time_epochms();
 		ret =
 			__lock_get_list(dbenv, lockid, flags, DB_LOCK_WRITE,
 			lock_dbt, &(rctl->lsn), &pglogs, &keycnt, stdout);
+        assert(gbl_rep_lock_time_ms != 0);
 		gbl_rep_lock_time_ms = 0;
 		if (ret != 0)
 			goto err;
