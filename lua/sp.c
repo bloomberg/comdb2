@@ -2526,6 +2526,7 @@ static void *dispatch_lua_thread(void *arg)
     Pthread_mutex_init(&clnt.wait_mutex, NULL);
     Pthread_cond_init(&clnt.wait_cond, NULL);
     Pthread_mutex_init(&clnt.write_lock, NULL);
+    Pthread_cond_init(&clnt.write_cond, NULL);
     Pthread_mutex_init(&clnt.dtran_mtx, NULL);
     strcpy(clnt.tzname, parent_clnt->tzname);
     if (dispatch_sql_query(&clnt) == 0) { // --> exec_thread()
@@ -2542,6 +2543,7 @@ static void *dispatch_lua_thread(void *arg)
     Pthread_mutex_destroy(&clnt.wait_mutex);
     Pthread_cond_destroy(&clnt.wait_cond);
     Pthread_mutex_destroy(&clnt.write_lock);
+    pthread_cond_destroy(&clnt.write_cond);
     Pthread_mutex_destroy(&clnt.dtran_mtx);
     return NULL;
 }

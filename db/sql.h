@@ -459,8 +459,9 @@ struct sqlclntstate {
     /* For SQL engine dispatch. */
     int inited_mutex;
     pthread_mutex_t wait_mutex;
-    pthread_mutex_t write_lock;
     pthread_cond_t wait_cond;
+    pthread_mutex_t write_lock;
+    pthread_cond_t write_cond;
     int query_rc;
 
     struct rawnodestats *rawnodestats;
@@ -647,6 +648,8 @@ struct sqlclntstate {
 
     uint32_t start_gen;
     int emitting_flag;
+    int need_recover_deadlock;
+    int heartbeat_lock;
 };
 
 /* Query stats. */

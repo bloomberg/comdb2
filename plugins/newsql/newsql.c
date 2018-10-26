@@ -368,14 +368,14 @@ static int newsql_send_hdr(struct sqlclntstate *clnt, int h)
     struct newsqlheader hdr = {0};
     hdr.type = ntohl(h);
     int rc;
-    Pthread_mutex_lock(&clnt->write_lock);
+    lock_client_write_lock(clnt);
     if ((rc = sbuf2write((char *)&hdr, sizeof(hdr), clnt->sb)) != sizeof(hdr))
         goto done;
     if ((rc = sbuf2flush(clnt->sb)) < 0)
         goto done;
     rc = 0;
 done:
-    Pthread_mutex_unlock(&clnt->write_lock);
+    unlock_client_write_lock(clnt);
     return rc;
 }
 
@@ -404,7 +404,7 @@ static int newsql_response_int(struct sqlclntstate *clnt,
     hdr.length = ntohl(len);
 
     int rc;
-    Pthread_mutex_lock(&clnt->write_lock);
+    lock_client_write_lock(clnt);
     if ((rc = sbuf2write((char *)&hdr, sizeof(hdr), clnt->sb)) != sizeof(hdr))
         goto done;
     if ((rc = sbuf2write((char *)buf, len, clnt->sb)) != len)
@@ -413,7 +413,7 @@ static int newsql_response_int(struct sqlclntstate *clnt,
         goto done;
     rc = 0;
 done:
-    Pthread_mutex_unlock(&clnt->write_lock);
+    unlock_client_write_lock(clnt);
     return rc;
 }
 
@@ -596,9 +596,9 @@ static int newsql_error(struct sqlclntstate *c, char *r, int e)
 
 static int newsql_flush(struct sqlclntstate *clnt)
 {
-    Pthread_mutex_lock(&clnt->write_lock);
+    lock_client_write_lock(clnt);
     int rc = sbuf2flush(clnt->sb);
-    Pthread_mutex_unlock(&clnt->write_lock);
+    unlock_client_write_lock(clnt);
     return rc < 0;
 }
 
@@ -635,14 +635,14 @@ static int newsql_send_postponed_row(struct sqlclntstate *clnt)
     char *row = (char *)appdata->postponed->row;
     size_t len = appdata->postponed->len;
     int rc;
-    Pthread_mutex_lock(&clnt->write_lock);
+    lock_client_write_lock(clnt);
     if ((rc = sbuf2write(hdr, hdrsz, clnt->sb)) != hdrsz)
         goto done;
     if ((rc = sbuf2write(row, len, clnt->sb)) != len)
         goto done;
     rc = 0;
 done:
-    Pthread_mutex_unlock(&clnt->write_lock);
+    unlock_client_write_lock(clnt);
     return rc;
 }
 
@@ -2109,6 +2109,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     Pthread_mutex_init(&clnt.wait_mutex, NULL);
     Pthread_cond_init(&clnt.wait_cond, NULL);
     Pthread_mutex_init(&clnt.write_lock, NULL);
+    Pthread_cond_init(&clnt.write_cond, NULL);
     Pthread_mutex_init(&clnt.dtran_mtx, NULL);
 
     if (!clnt.admin &&
@@ -2365,6 +2366,7 @@ done:
     Pthread_mutex_destroy(&clnt.wait_mutex);
     Pthread_cond_destroy(&clnt.wait_cond);
     Pthread_mutex_destroy(&clnt.write_lock);
+    pthread_cond_destroy(&clnt.write_cond);
     Pthread_mutex_destroy(&clnt.dtran_mtx);
 
     return APPSOCK_RETURN_OK;

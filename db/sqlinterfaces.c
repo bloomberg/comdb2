@@ -3799,6 +3799,47 @@ static int send_heartbeat(struct sqlclntstate *clnt)
 
 int gbl_client_heartbeat_ms = 100;
 
+static int lock_client_write_lock_int(struct sqlclntstate *clnt, int try)
+{
+    struct sql_thread *thd;
+    int rc;
+
+again:
+    if (try) {
+        rc = pthread_mutex_trylock(&clnt->write_lock);
+    } else {
+        rc = Pthread_mutex_lock(&clnt->write_lock);
+        if (rc)
+            abort();
+    }
+    if (rc == 0 && clnt->heartbeat_lock) {
+        if (clnt->need_recover_deadlock &&
+                (thd = pthread_getspecific(query_info_key))) {
+            rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0);
+            clnt->need_recover_deadlock = 0;
+        }
+        pthread_cond_signal(&clnt->write_cond);
+        Pthread_mutex_unlock(&clnt->write_lock);
+        goto again;
+    }
+    return rc;
+}
+
+int lock_client_write_trylock(struct sqlclntstate *clnt)
+{
+    return lock_client_write_lock_int(clnt, 1);
+}
+
+int lock_client_write_lock(struct sqlclntstate *clnt)
+{
+    return lock_client_write_lock_int(clnt, 0);
+}
+
+int unlock_client_write_lock(struct sqlclntstate *clnt)
+{
+    return Pthread_mutex_unlock(&clnt->write_lock);
+}
+
 int dispatch_sql_query(struct sqlclntstate *clnt)
 {
     char msg[1024];
@@ -3924,9 +3965,9 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
                 exit(1);
             }
 
-            if (pthread_mutex_trylock(&clnt->write_lock) == 0) {
+            if (lock_client_write_trylock(clnt) == 0) {
                 sbuf2flush(clnt->sb);
-                Pthread_mutex_unlock(&clnt->write_lock);
+                unlock_client_write_lock(clnt);
             }
             Pthread_mutex_unlock(&clnt->wait_mutex);
         }
@@ -4293,10 +4334,50 @@ int sbuf_is_local(SBUF2 *sb)
     return 0;
 }
 
+static inline int sql_writer_recover_deadlock(struct sql_thread *qikey,
+        struct sql_thread *thd, struct sqlclntstate *clnt)
+{
+    int count = 0, rc;
+
+    /* sql thread */
+    if (qikey) {
+        if (release_locks(thd, "slow reader") != 0) {
+            logmsg(LOGMSG_ERROR, "%s release_locks failed\n",
+                    __func__);
+            return -1;
+        }
+        return 0;
+    } 
+
+    /* Heartbeat thread */
+    if (clnt && clnt->emitting_flag) {
+        clnt->heartbeat_lock = 1;
+        clnt->need_recover_deadlock = 1;
+        do {
+            struct timespec ts;
+            count++;
+            clock_gettime(CLOCK_REALTIME, &ts);
+            ts.tv_sec++;
+            if (count > 5) {
+                logmsg(LOGMSG_ERROR, "%s wait for sql to release locks, "
+                        "count=%d\n", __func__, count);
+            }
+            rc = pthread_cond_timedwait(&clnt->write_cond, &clnt->write_lock,
+                    &ts);
+        } while (clnt->need_recover_deadlock == 1);
+        clnt->heartbeat_lock = 0;
+        return 0;
+    }
+
+    /* Recover deadlock not run */
+    return 1;
+}
+
 int sql_writer(SBUF2 *sb, const char *buf, int nbytes)
 {
     extern int gbl_sql_release_locks_on_slow_reader;
     ssize_t nwrite, written = 0;
+    struct sql_thread *qikey = pthread_getspecific(query_info_key);
     struct sql_thread *thd = sbuf2getsqlthd(sb);
     struct sqlclntstate *clnt = thd ? thd->clnt : NULL;
     int retry = -1;
@@ -4310,46 +4391,21 @@ retry:
         pd.events = POLLOUT;
         errno = 0;
         int rc = poll(&pd, 1, 100);
-        if (rc < 0) {
-            if (errno == EINTR || errno == EAGAIN) {
-                if (gbl_sql_release_locks_on_slow_reader && !released_locks &&
-                    (!clnt || clnt->emitting_flag)) {
-                    if (release_locks(thd, "slow reader") != 0) {
-                        logmsg(LOGMSG_ERROR, "%s release_locks failed\n",
-                               __func__);
-                        return -1;
-                    }
-                    released_locks = 1;
-                }
-                goto retry;
-            }
-            logmsg(LOGMSG_ERROR, "%s poll rc:%d errno:%d errstr:%s\n", __func__,
-                   rc, errno, strerror(errno));
-            return rc;
-        }
-        if (rc == 0) { // descriptor not ready, write will block
-            if (gbl_sql_release_locks_on_slow_reader && !released_locks &&
-                (!clnt || clnt->emitting_flag)) {
-                rc = release_locks(thd, "slow reader");
-                if (rc) {
-                    logmsg(LOGMSG_ERROR,
-                           "%s release_locks generation changed\n", __func__);
-                    return -1;
-                }
-                released_locks = 1;
-            }
 
-            if (bdb_lock_desired(thedb->bdb_env)) {
-                struct sql_thread *thd = pthread_getspecific(query_info_key);
-                if (thd) {
-                    rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0);
-                    if (rc) {
-                        logmsg(LOGMSG_ERROR,
-                               "%s recover_deadlock generation changed\n",
-                               __func__);
-                        return -1;
-                    }
-                }
+        if (rc < 0 && (errno == EINTR || errno == EAGAIN)) {
+            if ((rc = sql_writer_recover_deadlock(qikey, thd, clnt)) < 0)
+                return -1;
+            if (rc == 0)
+                released_locks = 1;
+            goto retry;
+        }
+        if (rc == 0) {
+            if ((gbl_sql_release_locks_on_slow_reader && !released_locks) ||
+                    bdb_lock_desired(thedb->bdb_env)) {
+                if ((rc = sql_writer_recover_deadlock(qikey, thd, clnt)) < 0)
+                    return -1;
+                if (rc == 0)
+                    released_locks = 1;
             }
 
 #ifdef _SUN_SOURCE
@@ -5369,6 +5425,7 @@ void run_internal_sql(char *sql)
     Pthread_mutex_destroy(&clnt.wait_mutex);
     Pthread_cond_destroy(&clnt.wait_cond);
     Pthread_mutex_destroy(&clnt.write_lock);
+    pthread_cond_destroy(&clnt.write_cond);
     Pthread_mutex_destroy(&clnt.dtran_mtx);
 }
 
@@ -5491,6 +5548,7 @@ void start_internal_sql_clnt(struct sqlclntstate *clnt)
     Pthread_mutex_init(&clnt->wait_mutex, NULL);
     Pthread_cond_init(&clnt->wait_cond, NULL);
     Pthread_mutex_init(&clnt->write_lock, NULL);
+    Pthread_cond_init(&clnt->write_cond, NULL);
     Pthread_mutex_init(&clnt->dtran_mtx, NULL);
     clnt->dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
     clr_high_availability(clnt);
@@ -5531,5 +5589,6 @@ void end_internal_sql_clnt(struct sqlclntstate *clnt)
     Pthread_mutex_destroy(&clnt->wait_mutex);
     Pthread_cond_destroy(&clnt->wait_cond);
     Pthread_mutex_destroy(&clnt->write_lock);
+    pthread_cond_destroy(&clnt->write_cond);
     Pthread_mutex_destroy(&clnt->dtran_mtx);
 }
