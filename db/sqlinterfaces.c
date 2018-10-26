@@ -2193,16 +2193,16 @@ int release_locks(struct sql_thread *td, const char *trace)
 }
 
 /* Release-locks if rep-thread is blocked longer than this many seconds */
-int gbl_rep_wait_release = 60;
+int gbl_rep_wait_release_ms = 60000;
 
 int release_locks_on_emit_row(struct sqlthdstate *thd,
                               struct sqlclntstate *clnt)
 {
     extern int gbl_locks_check_waiters;
     extern int gbl_sql_release_locks_on_emit_row;
-    extern int gbl_rep_lock_time;
+    extern int gbl_rep_lock_time_ms;
     extern int gbl_sql_random_release_interval;
-    int rep_lock_time = gbl_rep_lock_time, elapsed;
+    int rep_lock_time_ms = gbl_rep_lock_time_ms;
 
     /* Short circuit if check-waiters is disabled */
     if (!gbl_locks_check_waiters)
@@ -2222,12 +2222,12 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
         return release_locks(thd->sqlthd, "lockwait at emit-row");
 
     /* Short circuit rep-release if master or not enabled */
-    if (!rep_lock_time || !gbl_rep_wait_release || thedb->master == gbl_mynode)
+    if (!rep_lock_time_ms || !gbl_rep_wait_release_ms ||
+            thedb->master == gbl_mynode)
         return 0;
 
     /* Release if rep-thread has waited too long */
-    if ((elapsed = (comdb2_time_epoch() - rep_lock_time)) >
-        gbl_rep_wait_release)
+    if ((comdb2_time_epochms() - rep_lock_time_ms) > gbl_rep_wait_release_ms)
         return release_locks(thd->sqlthd, "long repwait at emit-row");
 
     return 0;

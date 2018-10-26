@@ -4353,7 +4353,7 @@ int bdb_transfer_pglogs_to_queues(void *bdb_state, void *pglogs,
 	int32_t timestamp, unsigned long long context);
 
 static unsigned long long getlock_poll_count = 0;
-int gbl_rep_lock_time = 0;
+int gbl_rep_lock_time_ms = 0;
 
 /*
  * __rep_process_txn --
@@ -4584,12 +4584,12 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			uint32_t flags =
 				LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
 				LOCK_GET_LIST_PRINTLOCK : 0);
-			gbl_rep_lock_time = comdb2_time_epoch();
+			gbl_rep_lock_time_ms = comdb2_time_epochms();
 			ret =
 				__lock_get_list_context(dbenv, lockid, flags,
 				DB_LOCK_WRITE, lock_dbt, &context, &(rctl->lsn),
 				&pglogs, &keycnt);
-			gbl_rep_lock_time = 0;
+			gbl_rep_lock_time_ms = 0;
 			if (ret != 0)
 				goto err;
 
@@ -4601,11 +4601,11 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			uint32_t flags =
 				LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
 				LOCK_GET_LIST_PRINTLOCK : 0);
-			gbl_rep_lock_time = comdb2_time_epoch();
+			gbl_rep_lock_time_ms = comdb2_time_epochms();
 			ret =
 				__lock_get_list(dbenv, lockid, flags, DB_LOCK_WRITE,
 				lock_dbt, &(rctl->lsn), &pglogs, &keycnt, stdout);
-			gbl_rep_lock_time = 0;
+			gbl_rep_lock_time_ms = 0;
 			if (ret != 0)
 				goto err;
 
@@ -5275,11 +5275,11 @@ bad_resize:	;
 		uint32_t flags =
 			LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
 			LOCK_GET_LIST_PRINTLOCK : 0);
-		gbl_rep_lock_time = comdb2_time_epoch();
+		gbl_rep_lock_time_ms = comdb2_time_epochms();
 		ret =
 			__lock_get_list_context(dbenv, lockid, flags, DB_LOCK_WRITE,
 			lock_dbt, &rp->context, &(rctl->lsn), &pglogs, &keycnt);
-		gbl_rep_lock_time = 0;
+		gbl_rep_lock_time_ms = 0;
 		if (ret != 0)
 			goto err;
 
@@ -5291,11 +5291,11 @@ bad_resize:	;
 		uint32_t flags =
 			LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
 			LOCK_GET_LIST_PRINTLOCK : 0);
-		gbl_rep_lock_time = comdb2_time_epoch();
+		gbl_rep_lock_time_ms = comdb2_time_epochms();
 		ret =
 			__lock_get_list(dbenv, lockid, flags, DB_LOCK_WRITE,
 			lock_dbt, &(rctl->lsn), &pglogs, &keycnt, stdout);
-		gbl_rep_lock_time = 0;
+		gbl_rep_lock_time_ms = 0;
 		if (ret != 0)
 			goto err;
 
