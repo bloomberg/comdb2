@@ -1499,7 +1499,6 @@ struct dbtable *newqdb(struct dbenv *env, const char *name, int avgsz, int pages
                   int isqueuedb)
 {
     struct dbtable *tbl;
-    int rc;
 
     tbl = calloc(1, sizeof(struct dbtable));
     tbl->tablename = strdup(name);

@@ -496,20 +496,8 @@ static int comdb2_objpool_create_int(comdb2_objpool_t *opp, const char *name,
 
     Pthread_mutex_init(&op->evict_mutex, NULL);
 
-    if ((rc = pthread_cond_init(&op->unexhausted, NULL)) != 0) {
-        Pthread_mutex_destroy(&op->data_mutex);
-        Pthread_mutex_destroy(&op->evict_mutex);
-        free(op);
-        return rc;
-    }
-
-    if ((rc = pthread_cond_init(&op->evict_cond, NULL)) != 0) {
-        Pthread_mutex_destroy(&op->data_mutex);
-        Pthread_mutex_destroy(&op->evict_mutex);
-        pthread_cond_destroy(&op->unexhausted);
-        free(op);
-        return rc;
-    }
+    pthread_cond_init(&op->unexhausted, NULL);
+    pthread_cond_init(&op->evict_cond, NULL);
 
     /* initialize attributes */
     op->capacity = cap;

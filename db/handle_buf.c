@@ -163,11 +163,7 @@ int thd_init(void)
         perror_errnum("thd_init:pthread_attr_setdetached", rc);
         return -1;
     }
-    rc = pthread_cond_init(&coalesce_wakeup, NULL);
-    if (rc) {
-        perror_errnum("thd_init:pthread_cond_init", rc);
-        return -1;
-    }
+    pthread_cond_init(&coalesce_wakeup, NULL);
     p_thds = pool_setalloc_init(sizeof(struct thd), 0, malloc, free);
     if (p_thds == 0) {
         logmsg(LOGMSG_ERROR, "thd_init:failed thd pool init");
@@ -1123,12 +1119,7 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                 thd->iq = iq;
                 /*                fprintf(stderr, "added3 %8.8x\n",thd);*/
                 iq->where = "dispatched new";
-                rc = pthread_cond_init(&thd->wakeup, 0);
-                if (rc != 0) {
-                    errUNLOCK(&lock);
-                    perror_errnum("handle_buf:failed pthread_cond_init", rc);
-                    return reterr(curswap, thd, iq, ERR_INTERNAL);
-                }
+                pthread_cond_init(&thd->wakeup, 0);
                 nthdcreates++;
 #ifdef MONITOR_STACK
                 rc = comdb2_pthread_create(&thd->tid, &attr, thd_req,

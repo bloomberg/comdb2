@@ -96,7 +96,7 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
 {
 
     osql_sqlthr_t *entry = (osql_sqlthr_t *)calloc(sizeof(osql_sqlthr_t), 1);
-    int rc = 0, rc2 = 0;
+    int rc = 0;
     int retry = 0;
     uuidstr_t us;
 
@@ -123,13 +123,7 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
 #endif
 
     Pthread_mutex_init(&entry->mtx, NULL);
-    rc = pthread_cond_init(&entry->cond, NULL);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: error init cond, rc=%d\n", __func__, rc);
-        Pthread_mutex_destroy(&entry->mtx);
-        free(entry);
-        return -1;
-    }
+    pthread_cond_init(&entry->cond, NULL);
 
 retry:
 
@@ -157,11 +151,11 @@ retry:
     if (entry->master == 0)
         entry->master = gbl_mynode;
     if (entry->rqid == OSQL_RQID_USE_UUID)
-        rc2 = hash_add(checkboard->rqsuuid, entry);
+        rc = hash_add(checkboard->rqsuuid, entry);
     else
-        rc2 = hash_add(checkboard->rqs, entry);
+        rc = hash_add(checkboard->rqs, entry);
 
-    if (rc2) {
+    if (rc) {
         logmsg(LOGMSG_ERROR, "%s: error adding record %llx %s rc=%d\n", __func__,
                 entry->rqid, comdb2uuidstr(entry->uuid, us), rc);
     }
@@ -190,7 +184,7 @@ retry:
         }
     }
 
-    return rc2;
+    return rc;
 }
 
 /**

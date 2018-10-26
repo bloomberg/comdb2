@@ -98,11 +98,7 @@ int start_prefault_io_threads(struct dbenv *dbenv, int numthreads, int maxq)
            &(dbenv->prefaultiopool.guard));
 
     logmsg(LOGMSG_DEBUG, "prefault cond initialized\n");
-    rc = pthread_cond_init(&dbenv->prefaultiopool.cond, NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "could not initialize pre-fault data mutex %d\n", i);
-        exit(1);
-    }
+    pthread_cond_init(&dbenv->prefaultiopool.cond, NULL);
 
     dbenv->prefaultiopool.maxq = maxq;
     dbenv->prefaultiopool.ioq = queue_new();

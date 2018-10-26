@@ -3202,13 +3202,7 @@ int offload_comm_send_sync_blockreq(char *node, void *buf, int buflen)
 
     // initialize lock and cond
     Pthread_mutex_init(&(p_slock->req_lock), 0);
-
-    rc = pthread_cond_init(&(p_slock->wait_cond), NULL);
-    if (rc != 0) {
-        Pthread_mutex_destroy(&(p_slock->req_lock));
-        free(p_slock);
-        return rc;
-    }
+    pthread_cond_init(&(p_slock->wait_cond), NULL);
 
     {
         Pthread_mutex_lock(&(p_slock->req_lock));
@@ -9382,12 +9376,7 @@ static void uprec_sender_array_init(void)
 
     // initialize slock
     Pthread_mutex_init(&(uprec->slock.req_lock), NULL);
-
-    if (pthread_cond_init(&(uprec->slock.wait_cond), NULL) != 0) {
-        logmsg(LOGMSG_FATAL, "%s: failed to create buf_lock_t wait_cond.\n",
-                __func__);
-        abort();
-    }
+    pthread_cond_init(&(uprec->slock.wait_cond), NULL);
 
     uprec->lk = &uprec->slock.req_lock;
     uprec->slock.reply_state = REPLY_STATE_NA;

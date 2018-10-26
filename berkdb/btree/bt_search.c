@@ -358,7 +358,6 @@ __bam_search(dbc, root_pgno, key, flags, stop, recnop, exactp)
 	int add_to_hash = 0;
 	db_pgno_t hash_pg;
 	db_pgno_t pg_copy = 0;
-	int mutex_rc = 0;
 
 	struct timeval before, after, diff;
 

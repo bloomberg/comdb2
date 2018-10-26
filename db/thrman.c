@@ -115,11 +115,7 @@ void thrman_init(void)
         exit(1);
     }
 
-    rc = pthread_cond_init(&cond, NULL);
-    if (rc != 0) {
-        perror_errnum("thrman_init:pthread_cond_init", rc);
-        exit(1);
-    }
+    pthread_cond_init(&cond, NULL);
 
     pthread_attr_init(&gbl_pthread_attr_detached);
     pthread_attr_setdetachstate(&gbl_pthread_attr_detached,
@@ -127,7 +123,7 @@ void thrman_init(void)
     /* 4 meg stack - there should be a better solution for this..
        some huge sql queries (it's happened) blow out stack during the parsing
        phase. */
-    rc = pthread_attr_setstacksize(&gbl_pthread_attr_detached, 4 * 1024 * 1024);
+    pthread_attr_setstacksize(&gbl_pthread_attr_detached, 4 * 1024 * 1024);
 
     listc_init(&thr_list, offsetof(struct thr_handle, linkv));
 }

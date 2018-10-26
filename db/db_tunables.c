@@ -805,8 +805,6 @@ static int set_defaults()
 */
 int init_gbl_tunables()
 {
-    int rc;
-
     /* Set the default values. */
     if ((set_defaults())) {
         logmsg(LOGMSG_ERROR, "%s:%d Failed to set the default values "

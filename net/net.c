@@ -2700,24 +2700,9 @@ static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
 
     Pthread_mutex_init(&(ptr->throttle_lock), NULL);
 
-    int rc = pthread_cond_init(&(ptr->ack_wakeup), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: couldn't init ack_wakeup for node %s\n", __func__,
-                ptr->host);
-        goto err;
-    }
-    rc = pthread_cond_init(&(ptr->write_wakeup), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: couldn't init write_wakeup for node %s\n",
-                __func__, ptr->host);
-        goto err;
-    }
-    rc = pthread_cond_init(&(ptr->throttle_wakeup), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: couldn't init throttle_wakeup for node %s\n",
-                __func__, hostname);
-        goto err;
-    }
+    pthread_cond_init(&(ptr->ack_wakeup), NULL);
+    pthread_cond_init(&(ptr->write_wakeup), NULL);
+    pthread_cond_init(&(ptr->throttle_wakeup), NULL);
 
     if (netinfo_ptr->qstat_init_rtn) {
         ptr->qstat = (netinfo_ptr->qstat_init_rtn)(

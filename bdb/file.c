@@ -5289,11 +5289,7 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
 
     if (!parent_bdb_state) {
         Pthread_mutex_init(&(bdb_state->seqnum_info->lock), NULL);
-        rc = pthread_cond_init(&(bdb_state->seqnum_info->cond), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "seqnum_info cond failed\n");
-            exit(1);
-        }
+        pthread_cond_init(&(bdb_state->seqnum_info->cond), NULL);
         bdb_state->seqnum_info->waitlist =
             calloc(MAXNODES, sizeof(wait_for_lsn_list *));
         bdb_state->seqnum_info->trackpool = pool_setalloc_init(

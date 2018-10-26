@@ -309,12 +309,7 @@ int create_prefault_helper_threads(struct dbenv *dbenv, int nthreads)
         Pthread_mutex_init(&(dbenv->prefault_helper.threads[i].mutex),
                            NULL);
 
-        rc = pthread_cond_init(&(dbenv->prefault_helper.threads[i].cond), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "could not initialize pre-fault data mutex %d\n",
-                    i);
-            exit(1);
-        }
+        pthread_cond_init(&(dbenv->prefault_helper.threads[i].cond), NULL);
 
         dbenv->prefault_helper.threads[i].pfk_bitmap =
             malloc(8 * gbl_maxblockops);

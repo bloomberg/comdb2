@@ -330,16 +330,11 @@ mempsync_out_of_band_init(void)
 {
 	int rc;
 	Pthread_mutex_init(&mempsync_lk, NULL);
-	rc = pthread_cond_init(&mempsync_wait, NULL);
+	pthread_cond_init(&mempsync_wait, NULL);
 
-	if (rc) {
-		logmsg(LOGMSG_FATAL, "pthread_cond_init rc %d %s\n", rc, strerror(rc));
-		abort();
-	}
 	rc = pthread_create(&mempsync_tid, NULL, mempsync_thd, gblenv);
-
 	if (rc) {
-		logmsg(LOGMSG_FATAL, "pthread_cond_init rc %d %s\n", rc, strerror(rc));
+		logmsg(LOGMSG_FATAL, "pthread_create rc %d %s\n", rc, strerror(rc));
 		abort();
 	}
 }
