@@ -745,6 +745,7 @@ SBUF2 *SBUF2_FUNC(sbuf2open)(int fd, int flags)
     sb->flags = flags;
 #if SBUF2_SERVER
     sb->allocator = alloc;
+    sb->sql_thd = NULL;
 #endif
 
 #if SBUF2_UNGETC
@@ -765,7 +766,6 @@ error:
     if (alloc) {
         comdb2ma_destroy(alloc);
     }
-    sb->sql_thd = NULL;
 #endif
     return NULL;
 }
