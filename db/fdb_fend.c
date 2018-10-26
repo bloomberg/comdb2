@@ -591,7 +591,6 @@ static fdb_tbl_t *_alloc_table_fdb(fdb_t *fdb, const char *tblname)
     tbl->name = strdup(tblname);
     tbl->name_len = strlen(tblname);
     tbl->fdb = fdb;
-    tbl->need_version = -1;
     pthread_mutex_init(&tbl->ents_mtx, NULL);
     listc_init(&tbl->ents, offsetof(struct fdb_tbl_ent, lnk));
 
