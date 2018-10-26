@@ -2457,7 +2457,6 @@ void sqlite3VdbeAddTable(
   assert( numTables>=0 );
   if( !pTab ) return;
   pTbls = p->tbls;
-  if( pTbls ){ for(i=0; i<numTables; i++) if( pTbls[i]==pTab ) return; }
   pTbls = sqlite3DbRealloc(p->db, pTbls, (numTables+1)*sizeof(Table*));
   if( pTbls==0 ) return;
   memset(&pTbls[numTables], 0, (numTables+1-p->numTables)*sizeof(Table*));
