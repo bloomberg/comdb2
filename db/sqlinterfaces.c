@@ -2223,7 +2223,7 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
 
     /* Short circuit rep-release if master or not enabled */
     if (!rep_lock_time_ms || !gbl_rep_wait_release_ms ||
-            thedb->master == gbl_mynode)
+        thedb->master == gbl_mynode)
         return 0;
 
     /* Release if rep-thread has waited too long */
