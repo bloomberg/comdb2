@@ -7,6 +7,7 @@ export forked_cl=0
 export cl_pids
 export cl_thd_pid=0
 export coherent_pid=0
+export pidroot=cldeadlock
 
 function write_prompt
 {
@@ -19,14 +20,11 @@ function cleanup
     [[ $debug == "1" ]] && set -x
     typeset func="run_test"
     write_prompt $func "executing $cleanup"
-
-    if [[ "$forked_cl" == 1 ]]; then
-        j=0
-        while [[ $j -lt $cl_iters ]]; do
-            kill -9 ${cl_pids[$j]}
-            let j=j+1
-        done
-    fi
+    j=0
+    while [[ $j -lt $cl_iters ]]; do
+        kill -9 $(cat $pidroot.$j)
+        let j=j+1
+    done
     [[ "$cl_thd_pid" -gt 0 ]] && kill -9 $cl_thd_pid
     [[ "$coherent_pid" -gt 0 ]] && kill -9 $coherent_pid
 }
@@ -113,8 +111,9 @@ function cldeadlock
     [[ $debug == "1" ]] && set -x
     typeset func="cldeadlock"
     typeset iter=$1
+    typeset pidfile=$pidroot.$iter
     write_prompt $func "executing $func-$iter"
-    ${TESTSBUILDDIR}/cldeadlock -d $DBNAME -c $CDB2_CONFIG -t default 2>&1 | gawk "{print \"[$func-$iter]\", \$0; fflush(); }"
+    ${TESTSBUILDDIR}/cldeadlock -d $DBNAME -f $pidfile -c $CDB2_CONFIG -t default 2>&1 | gawk "{print \"[$func-$iter]\", \$0; fflush(); }"
 }
 
 function cldeadlock_threads
@@ -126,16 +125,16 @@ function cldeadlock_threads
     typeset j=0
     while [[ $j -lt $iters ]]; do
         cldeadlock $j &
-        cl_pids[$j]=$!
+        export cl_pids[$j]=$!
         let j=j+1
     done
-    forked_cl=1
+    export forked_cl=1
     j=0
     while [[ $j -lt $iters ]]; do
         wait ${cl_pids[$j]}
         let j=j+1
     done
-    forked_cl=0
+    export forked_cl=0
 }
 
 function start_cluster_trace

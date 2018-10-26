@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <poll.h>
 #include <errno.h>
+#include <string.h>
 #include <cdb2api.h>
 #include <time.h>
 #include <inttypes.h>
@@ -126,7 +127,8 @@ int select_and_update(const char *dbname, const char *type, int64_t count,
 int main(int argc,char *argv[])
 {
     int c, err = 0, range = 100000, rc, pint = 10000, orphans = 10;
-    char *dbname = NULL, *type = NULL;
+    char *dbname = NULL, *type = NULL, *pidfile = NULL;
+    FILE *pfile;
     int64_t count;
     argv0=argv[0];
 
@@ -134,7 +136,7 @@ int main(int argc,char *argv[])
     setvbuf(stderr, NULL, _IOLBF, 0);
     srand(time(NULL) ^ getpid());
 
-    while ((c = getopt(argc,argv,"hd:r:p:t:c:"))!=EOF) {
+    while ((c = getopt(argc,argv,"hd:r:p:t:c:f:"))!=EOF) {
         switch(c) {
             case 'd':
                 dbname = optarg;
@@ -151,6 +153,9 @@ int main(int argc,char *argv[])
             case 'p':
                 pint = atoi(optarg);
                 break;
+            case 'f':
+                pidfile = optarg;
+                break;
             case 'o':
                 orphans = atoi(optarg);
                 break;
@@ -165,9 +170,22 @@ int main(int argc,char *argv[])
         err++;
     }
 
+    if (pidfile) {
+        if ((pfile = fopen(pidfile, "w")) == NULL) {
+            fprintf(stderr, "Error opening '%s', %s\n", pidfile,
+                    strerror(errno));
+            err++;
+        } else {
+            fprintf(pfile, "%d\n", getpid());
+            fflush(pfile);
+            fclose(pfile);
+        }
+    }
+
     if (err) {
         usage(stderr);
     }
+
 
     count = record_count(dbname, type);
     rc = select_and_update(dbname, type, count, orphans, range, pint);
