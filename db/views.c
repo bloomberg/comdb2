@@ -823,16 +823,12 @@ static int _shard_suffix_str_len(int maxshards)
 
 static int _extract_shardname_index(const char *tblName, const char *originalName, int maxShards)
 {
-   int indexLen;
    int nextNum;
 
    if(!strcasecmp(tblName, originalName))
    {
       return 0;   /* initial shard */
    }
-
-   /* we have all the shards, what is next one ?*/
-   indexLen = _shard_suffix_str_len(maxShards);
 
    nextNum = atoi(tblName+1); /* skip $ */
 
@@ -1658,6 +1654,39 @@ char* comdb2_partition_info(const char *partition_name, const char *option)
     return ret_str;
 }
 
+/**
+ * Dump the timepartition json configuration
+ * Used for schema copy only
+ * Returns: 0 - no tps; 1 - has tps
+ *
+ */
+int timepart_dump_timepartitions(FILE *dest)
+{
+    timepart_views_t *views = thedb->timepart_views;
+    char *info;
+    int has_tp = 0;
+
+    pthread_rwlock_rdlock(&views_lk);
+
+    has_tp = views->nviews > 0;
+
+    if (has_tp) {
+        info = views_read_all_views();
+        if (info) {
+            fprintf(dest, "%s", info);
+            free(info);
+        } else {
+            logmsg(
+                LOGMSG_ERROR,
+                "Cannot get timepartition configuration string from llmeta\n");
+            has_tp = -1;
+        }
+    }
+
+    pthread_rwlock_unlock(&views_lk);
+
+    return has_tp;
+}
 
 static char *_describe_row(const char *tblname, const char *prefix,
                            enum views_trigger_op op_type, struct errstat *err)

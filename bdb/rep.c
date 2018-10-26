@@ -1790,8 +1790,6 @@ void net_newnode_rtn(netinfo_type *netinfo_ptr, char *hostname, int portnum)
     /* get a pointer back to our bdb_state */
     bdb_state = net_get_usrptr(netinfo_ptr);
 
-    logmsg(LOGMSG_WARN, "NEW NODE CONNECTED: %s:%d\n", hostname, portnum);
-
     /* if we're the master, treat him as incoherent till proven wrong */
     if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
         pthread_mutex_lock(&(bdb_state->coherent_state_lock));

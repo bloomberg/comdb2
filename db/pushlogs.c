@@ -52,7 +52,7 @@ static void *pushlogs_thread(void *voidarg)
 {
     int rc;
     int lastreport = 0;
-    struct thr_handle *thr_self = thrman_register(THRTYPE_PUSHLOG);
+    thrman_register(THRTYPE_PUSHLOG);
     int nwrites = 0;
 
     thread_started("pushlog");

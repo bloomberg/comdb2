@@ -250,8 +250,6 @@ int net_send_decom_all(netinfo_type *netinfo_ptr, char *decom_host);
 
 int net_send_authcheck_all(netinfo_type *netinfo_ptr);
 
-void destroy_netinfo(netinfo_type *netinfo_ptr);
-
 /* start the network */
 int net_init(netinfo_type *netinfo_ptr);
 

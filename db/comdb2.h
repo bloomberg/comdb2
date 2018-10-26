@@ -26,6 +26,7 @@
 #define MAXVER 255
 
 #define SP_FILE_NAME "stored_procedures.sp"
+#define TIMEPART_FILE_NAME "time_partitions.tp"
 #define REPOP_QDB_FMT "%s/%s.%d.queuedb" /* /dir/dbname.num.ext */
 
 #define DEFAULT_USER "default"

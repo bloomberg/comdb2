@@ -2854,7 +2854,12 @@ static osql_stats_t stats[OSQL_MAX_REQ] = {{0}};
 osql_echo_t msgs[MAX_ECHOES];
 pthread_mutex_t msgs_mtx = PTHREAD_MUTEX_INITIALIZER;
 
-static osql_comm_t *comm = NULL;
+static osql_comm_t *thecomm_obj = NULL;
+
+static osql_comm_t *get_thecomm(void)
+{
+    return thecomm_obj;
+}
 
 static void net_osql_rpl(void *hndl, void *uptr, char *fromnode, int usertype,
                          void *dtap, int dtalen, uint8_t is_tcp);
@@ -3113,7 +3118,7 @@ int osql_comm_init(struct dbenv *dbenv)
     tmp->blkout.delta = BLKOUT_DEFAULT_DELTA;
     tmp->blkout.delta_hbeat = gbl_osql_heartbeat_alert;
 
-    comm = tmp;
+    thecomm_obj = tmp;
 
     bdb_register_rtoff_callback(dbenv->bdb_env, signal_rtoff);
 
@@ -3139,18 +3144,9 @@ int osql_comm_init(struct dbenv *dbenv)
  */
 void osql_comm_destroy(void)
 {
-
     if (g_osql_ready)
         logmsg(LOGMSG_ERROR, "Osql module was not disabled yet!\n");
-    /*
-       LEAK THIS PLEASE: there are races in net lib that I could not
-       figure it out.  Leaking ensures that we do not need to
-       sync all the net threads on with this destruction effort
-
-       destroy_netinfo(comm->handle_sibling);
-       free(comm);
-    */
-    comm = NULL;
+    thecomm_obj = NULL;
 }
 
 /**
@@ -3167,6 +3163,7 @@ int osql_comm_blkout_node(const char *host)
     int i = 0;
     int len = 0;
 
+    osql_comm_t *comm = get_thecomm();
     if (!comm)
         return -1;
 
@@ -4050,6 +4047,7 @@ void osql_decom_node(char *decom_node)
 
     netinfo_type *netinfo_ptr;
 
+    osql_comm_t *comm = get_thecomm();
     if (!comm) {
         logmsg(LOGMSG_ERROR, "osql_decom_node: no comm object?\n");
         return;
@@ -4072,14 +4070,23 @@ void osql_decom_node(char *decom_node)
  */
 void osql_net_exiting(void)
 {
+    osql_comm_t *comm = get_thecomm();
     if(!comm) return;
     netinfo_type *netinfo_ptr = (netinfo_type *)comm->handle_sibling;
-
     net_exiting(netinfo_ptr);
+}
+
+void osql_cleanup_netinfo(void)
+{
+    osql_comm_t *comm = get_thecomm();
+    if(!comm) return;
+    netinfo_type *netinfo_ptr = (netinfo_type *)comm->handle_sibling;
+    net_cleanup_netinfo(netinfo_ptr);
 }
 
 int osql_close_connection(char *host)
 {
+    osql_comm_t *comm = get_thecomm();
     if (comm)
         return net_close_connection(comm->handle_sibling, host);
     else
@@ -4842,7 +4849,7 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
  */
 int osql_process_message_decom(char *host)
 {
-
+    osql_comm_t *comm = get_thecomm();
     if (comm) {
         net_send_decom_all(comm->handle_sibling, host);
     }
@@ -5089,7 +5096,7 @@ static void osql_request_getuuid(osql_req_t *req, uuid_t uuid)
  */
 void osql_net_cmd(char *line, int lline, int st, int op1)
 {
-
+    osql_comm_t *comm = get_thecomm();
     if (comm && comm->handle_sibling) {
         net_cmd(comm->handle_sibling, line, lline, st, op1);
     } else {
@@ -5101,7 +5108,13 @@ void osql_net_cmd(char *line, int lline, int st, int op1)
  * Sets the osql net-poll value.
  *
  */
-void osql_set_net_poll(int pval) { net_set_poll(comm->handle_sibling, pval); }
+void osql_set_net_poll(int pval)
+{
+    osql_comm_t *comm = get_thecomm();
+    if (comm) {
+        net_set_poll(comm->handle_sibling, pval);
+    }
+}
 
 /**
  * Sends a sosql request to the master
@@ -5399,7 +5412,8 @@ static void net_osql_heartbeat(void *hndl, void *uptr, char *fromnode,
     int i = 0;
 
     /* if we are not the master, don't do nothing */
-    if (!g_osql_ready || gbl_mynode != thedb->master)
+    osql_comm_t *comm = get_thecomm();
+    if (!comm || !g_osql_ready || gbl_mynode != thedb->master)
         return;
 
     /* TODO: maybe look into the packet we got! */
@@ -5746,7 +5760,8 @@ static void *osql_heartbeat_thread(void *arg)
 
         osqlcomm_hbeat_type_put(&(msg), p_buf, p_buf_end);
 
-        if (g_osql_ready)
+        osql_comm_t *comm = get_thecomm();
+        if (g_osql_ready && comm)
             rc =
                 net_send_message(comm->handle_sibling, thedb->master,
                                  NET_HBEAT_SQL, &buf, sizeof(buf), 0, 5 * 1000);
@@ -5914,6 +5929,9 @@ static int offload_net_send(const char *host, int usertype, void *data,
         return 0;
     }
 
+    osql_comm_t *comm = get_thecomm();
+    if (!comm)
+        return -1;
     netinfo_type *netinfo_ptr = comm->handle_sibling;
     int backoff = gbl_osql_bkoff_netsend;
     int total_wait = backoff;
@@ -6001,7 +6019,9 @@ static int offload_net_send_tails(const char *host, int usertype, void *data,
                                   int datalen, int nodelay, int ntails,
                                   void **tails, int *tailens)
 {
-
+    osql_comm_t *comm = get_thecomm();
+    if (!comm)
+        return -1;
     netinfo_type *netinfo_ptr = comm->handle_sibling;
     int backoff = gbl_osql_bkoff_netsend;
     int total_wait = backoff;
@@ -6089,6 +6109,7 @@ static int get_blkout(time_t now, char *nodes[REPMAX], int *nds)
     int i = 0, j = 0;
     int len = 0;
 
+    osql_comm_t *comm = get_thecomm();
     if (!comm)
         return -1;
 
@@ -8348,6 +8369,7 @@ int osql_send_recordgenid(char *tohost, unsigned long long rqid, uuid_t uuid,
 int osql_enable_net_test(int testnum)
 {
     netinfo_type *netinfo_ptr;
+    osql_comm_t *comm = get_thecomm();
     if (!comm || !comm->handle_sibling)
         return 1;
     netinfo_ptr = (netinfo_type *)comm->handle_sibling;
@@ -8362,6 +8384,7 @@ int osql_enable_net_test(int testnum)
 int osql_disable_net_test(void)
 {
     netinfo_type *netinfo_ptr;
+    osql_comm_t *comm = get_thecomm();
     if (!comm || !comm->handle_sibling)
         return 1;
     netinfo_ptr = (netinfo_type *)comm->handle_sibling;
@@ -8413,6 +8436,8 @@ static const uint8_t *osqlcomm_corigin_type_get(osql_corigin_t *p_corigin,
 
 netinfo_type *osql_get_netinfo(void)
 {
+    osql_comm_t *comm = get_thecomm();
+    if (!comm) return NULL;
     return (netinfo_type *)comm->handle_sibling;
 }
 

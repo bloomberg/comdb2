@@ -127,7 +127,6 @@ void bdb_cleanup_private_blkseq(bdb_state_type *bdb_state)
 int bdb_create_private_blkseq(bdb_state_type *bdb_state)
 {
     DB_ENV *env;
-    DB *db[2];
     int rc;
 
     bdb_state->blkseq_env =
@@ -208,9 +207,7 @@ int bdb_blkseq_recover(DB_ENV *dbenv, u_int32_t rectype, llog_blkseq_args *args,
                        DB_LSN *lsn, db_recops op)
 {
     int rc = 0;
-    DBT key = {0}, data = {0};
     bdb_state_type *bdb_state;
-    int now;
     uint8_t stripe;
 
     bdb_state = dbenv->app_private;
@@ -236,10 +233,9 @@ int bdb_blkseq_recover(DB_ENV *dbenv, u_int32_t rectype, llog_blkseq_args *args,
     if (op == DB_TXN_APPLY || op == DB_TXN_FORWARD_ROLL) {
         stripe =
             get_stripe(bdb_state, (uint8_t *)args->key.data, args->key.size);
-        int *p = (int *)args->key.data;
 
-        now = comdb2_time_epoch();
-
+        // int now = comdb2_time_epoch();
+        // int *p = (int *)args->key.data;
         // printf("%d seconds old %x %x %x ", now - args->time, p[0], p[1],
         // p[2]);
         pthread_mutex_lock(&bdb_state->blkseq_lk[stripe]);
@@ -533,11 +529,13 @@ done:
     return rc;
 }
 
-int bdb_blkseq_dumpall(bdb_state_type *bdb_state, uint8_t stripe)
+static int bdb_blkseq_stripe_for_each(bdb_state_type *bdb_state, uint8_t stripe,
+                                      void *arg,
+                                      void (*func)(int, int, void *, void *,
+                                                   void *, void *))
 {
     DBC *dbc = NULL;
     DBT dkey = {0}, ddata = {0};
-    int now;
     int rc;
 
     dkey.flags = ddata.flags = DB_DBT_REALLOC;
@@ -546,38 +544,12 @@ int bdb_blkseq_dumpall(bdb_state_type *bdb_state, uint8_t stripe)
     for (int i = 0; i < 2; i++) {
         rc = bdb_state->blkseq[i][stripe]->cursor(bdb_state->blkseq[i][stripe],
                                                   NULL, &dbc, 0);
-        logmsg(LOGMSG_USER, "stripe %d idx %d last_lsn=[%d][%d]\n", stripe, i, 
-                bdb_state->blkseq_last_lsn[i][stripe].file,
-                bdb_state->blkseq_last_lsn[i][stripe].offset);
         if (rc)
             goto done;
         rc = dbc->c_get(dbc, &dkey, &ddata, DB_FIRST);
-        now = comdb2_time_epoch();
         while (rc == 0) {
-            int *k;
-            k = (int *)dkey.data;
-            if (ddata.size < sizeof(int)) {
-                logmsg(LOGMSG_ERROR, "%x %x %x invalid sz %d\n", k[0], k[1], k[2],
-                       ddata.size);
-            } else {
-                int timestamp;
-                int age;
-                memcpy(&timestamp, (uint8_t *)ddata.data + (ddata.size - 4), 4);
-                age = now - timestamp;
-                // this is a cnonce 
-                if (dkey.size > 12) {
-                    char *p = alloca(dkey.size + 1);
-                    memcpy(p, dkey.data, dkey.size);
-                    p[dkey.size] = '\0';
-                    logmsg(LOGMSG_USER, "stripe %d idx %d : %s sz %d age %d\n", stripe, i, 
-                            p, ddata.size, age);
-                }
-                else {
-                    logmsg(LOGMSG_USER, "stripe %d idx %d : %x %x %x sz %d age %d\n", stripe,
-                            i, k[0], k[1], k[2], ddata.size, age);
-                }
-            }
-
+            func(stripe, i, &(bdb_state->blkseq_last_lsn[i][stripe]), &dkey,
+                 &ddata, arg);
             rc = dbc->c_get(dbc, &dkey, &ddata, DB_NEXT);
         }
         if (rc) {
@@ -602,6 +574,67 @@ done:
     return rc;
 }
 
+void bdb_blkseq_for_each(bdb_state_type *bdb_state, void *arg,
+                         void (*func)(int, int, void *, void *, void *, void *))
+{
+    int rc = 0;
+    int nstripes =
+        bdb_attr_get(bdb_state->attr, BDB_ATTR_PRIVATE_BLKSEQ_STRIPES);
+    for (int stripe = 0; stripe < nstripes; stripe++) {
+        rc = bdb_blkseq_stripe_for_each(bdb_state, stripe, arg, func);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed for stripe %d\n", __func__,
+                   stripe);
+        }
+    }
+}
+
+static void dump_blkseq(int stripe, int ix, void *plsn, void *pkey, void *pdata,
+                        void *arg)
+{
+    DB_LSN *lsn = plsn;
+    DBT *key = pkey;
+    DBT *data = pdata;
+    int now;
+    now = comdb2_time_epoch();
+
+    int *k;
+    k = (int *)key->data;
+    if (data->size < sizeof(int)) {
+        logmsg(LOGMSG_ERROR, "%x %x %x invalid sz %d\n", k[0], k[1], k[2],
+               data->size);
+    } else {
+        int timestamp;
+        int age;
+        int blkseq_get_rcode(void *data, int datalen);
+        int rcode = blkseq_get_rcode(data->data, data->size);
+        memcpy(&timestamp, (uint8_t *)data->data + (data->size - 4), 4);
+        age = now - timestamp;
+        // this is a cnonce
+        if (key->size > 12) {
+            char *p = alloca(key->size + 1);
+            memcpy(p, key->data, key->size);
+            p[key->size] = '\0';
+            logmsg(LOGMSG_USER,
+                   "stripe %d idx %d last_lsn=[%d][%d]: %s sz %d age %d rcode "
+                   "%d\n",
+                   stripe, ix, lsn->file, lsn->offset, p, data->size, age,
+                   rcode);
+        } else {
+            logmsg(LOGMSG_USER,
+                   "stripe %d idx %d last_lsn=[%d][%d]: %x %x %x sz %d age %d "
+                   "rcode %d\n",
+                   stripe, ix, lsn->file, lsn->offset, k[0], k[1], k[2],
+                   data->size, age, rcode);
+        }
+    }
+}
+
+void bdb_blkseq_dumpall(bdb_state_type *bdb_state)
+{
+    bdb_blkseq_for_each(bdb_state, NULL, dump_blkseq);
+}
+
 /* Note: this code runs for recovery on startup only - replicated recovery
  * processes
  * blkseq events along with everything else.  The only reason we need this
@@ -614,13 +647,12 @@ int bdb_recover_blkseq(bdb_state_type *bdb_state)
     DB_LOGC *logc = NULL;
     int rc;
     DBT logdta = {0};
-    DB_LSN lsn, last_lsn;
+    DB_LSN lsn, last_lsn = {0};
     llog_blkseq_args *blkseq = NULL;
     int now = comdb2_time_epoch();
     int nblkseq = 0;
     int ndupes = 0;
     int last_log_filenum;
-    int stripe;
     int oldest_blkseq;
     struct seen_blkseq *logseq;
 
@@ -664,8 +696,6 @@ int bdb_recover_blkseq(bdb_state_type *bdb_state)
                 if (blkseq->time < oldest_blkseq)
                     oldest_blkseq = blkseq->time;
 
-                stripe =
-                    get_stripe(bdb_state, blkseq->key.data, blkseq->key.size);
                 if (lsn.file != last_log_filenum && oldest_blkseq != INT_MAX) {
                     /* if we just switched a file, remember the oldest blkseq we
                      * saw in the current file */
@@ -739,7 +769,6 @@ err:
 int bdb_blkseq_dumplogs(bdb_state_type *bdb_state)
 {
     struct seen_blkseq *logseq;
-    int now = comdb2_time_epoch();
 
     for (int stripe = 0; stripe < bdb_state->attr->private_blkseq_stripes;
          stripe++) {
