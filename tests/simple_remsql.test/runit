@@ -29,7 +29,7 @@ done
 
 #run tests
 echo "Starting tests"
-./remsql_curmoves.sh $DBNAME $CDB2_CONFIG $SECONDARY_DB $SECONDARY_DBDIR $TESTDIR 
+./remsql_curmoves.sh $DBNAME $CDB2_CONFIG $SECONDARY_DB $SECONDARY_DB_CDB2_CONFIG
 result=$?
 
 if (( $result != 0 )) ; then
