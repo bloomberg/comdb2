@@ -1047,4 +1047,18 @@ keys
 		uniqnulls "$KEY_5E2A9750" = (cstring[10])"( v || 'aaa' )" 
 	}
 ')
-(csc2=NULL)
+[CREATE TABLE t1(json vutf8(128), UNIQUE (json_extract(json, '$.a')))] failed with rc -3 Invalid index column list
+(csc2='schema
+	{
+		vutf8 json[128] null = yes 
+	}
+keys
+	{
+		uniqnulls "$KEY_4084D7CF" = (int)" json_extract ( json, '$.a' ) " 
+		uniqnulls "$KEY_E1DFD69F" = (cstring[10])" json_extract ( json, '$.b' ) " 
+	}
+')
+(rows inserted=2)
+[INSERT INTO t1 VALUES ('{"a":0,"b":"zero"}'), ('{"a":1,"b":"one"}')] failed with rc 299 add key constraint duplicate key '$KEY_4084D7CF' on table 't1' index 0
+(json='{"a":0,"b":"zero"}')
+(json='{"a":1,"b":"one"}')
