@@ -747,7 +747,7 @@ static int sql_tranlevel_default_update(void *context, void *value)
         gbl_sql_tranlevel_default = SQL_TDEF_SOCK;
     } else if (tokcmp(tok, ltok, "recom") == 0) {
         gbl_sql_tranlevel_default = SQL_TDEF_RECOM;
-    } else if (tokcmp(tok, ltok, "snapisol") == 0) {
+    } else if (tokcmp(tok, ltok, "snapshot") == 0) {
         gbl_sql_tranlevel_default = SQL_TDEF_SNAPISOL;
     } else if (tokcmp(tok, ltok, "serial") == 0) {
         gbl_sql_tranlevel_default = SQL_TDEF_SERIAL;
