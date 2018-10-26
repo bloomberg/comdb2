@@ -140,13 +140,11 @@ pthread_mutex_t ckp_lst_mtx;
 int ckp_lst_ready = 0;
 extern int gbl_set_seqnum_trace;
 
-int bdb_checkpoint_list_init()
+void bdb_checkpoint_list_init()
 {
-    int rc = 0;
     listc_init(&ckp_lst, offsetof(struct checkpoint_list, lnk));
     Pthread_mutex_init(&ckp_lst_mtx, NULL);
     ckp_lst_ready = 1;
-    return rc;
 }
 
 int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp)

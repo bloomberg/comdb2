@@ -2388,11 +2388,7 @@ int bdb_gbl_pglogs_init(bdb_state_type *bdb_state)
     pthread_t thread_id;
 
     if (gbl_new_snapisol_asof) {
-        rc = bdb_checkpoint_list_init();
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: failed to init checkpoint list\n", __func__);
-            return rc;
-        }
+        bdb_checkpoint_list_init();
 
         Pthread_mutex_init(&bdb_gbl_recoverable_lsn_mutex, NULL);
 

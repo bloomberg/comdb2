@@ -362,6 +362,7 @@ int fdb_svc_trans_commit(char *tid, enum transaction_level lvl,
     while (clnt->dbtran.dtran->fdb_trans.top->cursors.top != NULL) {
         Pthread_mutex_unlock(&clnt->dtran_mtx);
         poll(NULL, 0, 10);
+        Pthread_mutex_lock(&clnt->dtran_mtx);
     }
     Pthread_mutex_unlock(&clnt->dtran_mtx);
 
@@ -463,6 +464,7 @@ int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
     while (clnt->dbtran.dtran->fdb_trans.top->cursors.top != NULL) {
         Pthread_mutex_unlock(&clnt->dtran_mtx);
         poll(NULL, 0, 10);
+        Pthread_mutex_lock(&clnt->dtran_mtx);
     }
     Pthread_mutex_unlock(&clnt->dtran_mtx);
 

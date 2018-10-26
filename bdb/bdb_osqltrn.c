@@ -153,13 +153,13 @@ void bdb_verify_repo_lock() { verify_pthread_mutex(&trn_repo_mtx); }
  * lock the snapshot/serializable transaction repository
  *
  */
-int bdb_osql_trn_repo_lock() { Pthread_mutex_lock(&trn_repo_mtx); return 0; }
+void bdb_osql_trn_repo_lock() { Pthread_mutex_lock(&trn_repo_mtx); }
 
 /**
  * unlock the snapshot/serializable transaction repository
  *
  */
-int bdb_osql_trn_repo_unlock() { Pthread_mutex_unlock(&trn_repo_mtx); return 0; }
+void bdb_osql_trn_repo_unlock() { Pthread_mutex_unlock(&trn_repo_mtx); }
 
 /**
  * Destroy the snapshot/serializable transaction repository
@@ -170,7 +170,6 @@ int bdb_osql_trn_repo_destroy(int *bdberr)
 {
     bdb_osql_trn_repo_t *tmp = trn_repo;
     bdb_osql_trn_t *trn = NULL, *trn2 = NULL;
-    int rc = 0;
 
     if (!tmp)
         return 0;
@@ -590,7 +589,6 @@ int bdb_osql_trn_unregister(bdb_osql_trn_t *trn, int *bdberr)
 int bdb_osql_trn_cancel_clients(bdb_osql_log_t *log, int lock_repo, int *bdberr)
 {
     bdb_osql_trn_t *trn = NULL;
-    int rc = 0;
 
     if (lock_repo) {
         /* lock the repository so no transactions will move in/out */
@@ -626,18 +624,15 @@ int bdb_osql_trn_cancel_clients(bdb_osql_log_t *log, int lock_repo, int *bdberr)
         logmsg(LOGMSG_WARN, "%s: No trn repo???\n", __func__);
     }
 
-done:
     if (lock_repo) {
         Pthread_mutex_unlock(&trn_repo_mtx);
     }
 
-    return rc;
+    return 0;
 }
 
 int bdb_osql_trn_count_clients(int *count, int lock_repo, int *bdberr)
 {
-    int rc = 0;
-
     *count = 0;
 
     if (lock_repo) {
@@ -762,7 +757,6 @@ int bdb_osql_trn_check_clients(bdb_osql_log_t *log, int *empty, int lock_repo,
     } else
         *empty = 1;
 
-done:
     if (lock_repo) {
         Pthread_mutex_unlock(&trn_repo_mtx);
     }
@@ -841,7 +835,6 @@ void free_clients_relink_req(struct clients_relink_req *rq)
 int bdb_osql_trn_get_oldest_asof_reflsn(DB_LSN *lsnout)
 {
     bdb_osql_trn_t *trn = NULL;
-    int rc = 0;
     tran_type *shadow_tran = NULL;
 
     lsnout->file = 0;
@@ -868,10 +861,9 @@ int bdb_osql_trn_get_oldest_asof_reflsn(DB_LSN *lsnout)
         logmsg(LOGMSG_WARN, "%s: No trn repo???\n", __func__);
     }
 
-done:
     Pthread_mutex_unlock(&trn_repo_mtx);
 
-    return rc;
+    return 0;
 }
 
 /**
@@ -915,7 +907,6 @@ int bdb_osql_trn_asof_ok_to_delete_log(int filenum)
 bdb_osql_log_t *bdb_osql_trn_first_log(bdb_osql_trn_t *trn, int *bdberr)
 {
     bdb_osql_log_t *log = NULL;
-    int rc = 0;
 
     *bdberr = 0;
 
@@ -938,7 +929,6 @@ bdb_osql_log_t *bdb_osql_trn_next_log(bdb_osql_trn_t *trn, bdb_osql_log_t *log,
 {
     bdb_osql_log_t *next = NULL;
     unsigned long long genid;
-    int rc = 0;
 
     *bdberr = 0;
 
@@ -1235,7 +1225,6 @@ int bdb_oldest_active_lsn(bdb_state_type *bdb_state, void *inlsn)
 {
     DB_LSN lsn, log_lsn;
     bdb_osql_trn_t *trn = NULL;
-    int rc;
 
     lsn.file = INT_MAX;
     __log_txn_lsn(bdb_state->dbenv, &log_lsn, NULL, NULL);
@@ -1275,7 +1264,6 @@ int bdb_osql_trn_get_lwm(bdb_state_type *bdb_state, void *plsn)
     DB_LSN lsn;
     DB_LSN crtlsn;
     bdb_osql_trn_t *trn = NULL;
-    int rc = 0;
     int trak = 0;
 
     lsn.file = INT_MAX;
@@ -1300,10 +1288,9 @@ int bdb_osql_trn_get_lwm(bdb_state_type *bdb_state, void *plsn)
         logmsg(LOGMSG_WARN, "%s: No trn repo???\n", __func__);
     }
 
-done:
     *(DB_LSN *)plsn = lsn;
 
     Pthread_mutex_unlock(&trn_repo_mtx);
 
-    return rc;
+    return 0;
 }

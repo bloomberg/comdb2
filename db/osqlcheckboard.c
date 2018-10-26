@@ -323,7 +323,6 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
 
     osql_sqlthr_t *entry = NULL;
     int rc = 0, rc2;
-    uuidstr_t us;
 
     if (!checkboard)
         return 0;
@@ -410,8 +409,6 @@ int osql_checkboard_master_changed(void *obj, void *arg)
 
 void osql_checkboard_for_each(void *arg, int (*func)(void *, void *))
 {
-    int rc;
-
     if (!checkboard)
         return;
 
@@ -650,7 +647,7 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
                                   int status, int timestamp)
 {
     osql_sqlthr_t *entry = NULL;
-    int rc, rc2;
+    int rc;
     uuidstr_t us;
 
     if (!checkboard)
@@ -665,7 +662,7 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
     if (!entry) {
         ctrace("%s: SORESE received exists for missing session %llu %s\n",
                __func__, rqid, comdb2uuidstr(uuid, us));
-        rc2 = -1;
+        rc = -1;
 
     } else {
 
@@ -677,12 +674,12 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
 
         Pthread_mutex_unlock(&entry->mtx);
 
-        rc2 = 0;
+        rc = 0;
     }
 
     Pthread_rwlock_unlock(&checkboard->rwlock);
 
-    return rc2;
+    return rc;
 }
 
 /**
@@ -693,7 +690,7 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
 int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
 {
     osql_sqlthr_t *entry = NULL;
-    int rc = 0, rc2 = 0;
+    int rc;
 
     if (clnt->osql.rqid == 0)
         return 0;
@@ -710,7 +707,7 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
         uuidstr_t us;
         logmsg(LOGMSG_ERROR, "%s: error unable to find record %llx %s\n", __func__,
                 clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us));
-        rc2 = -1;
+        rc = -1;
     } else {
         Pthread_mutex_lock(&entry->mtx);
         entry->last_checked = entry->last_updated =
@@ -721,11 +718,12 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
             master ? master : gbl_mynode; /* master changed, store it here */
         bzero(&entry->err, sizeof(entry->err));
         Pthread_mutex_unlock(&entry->mtx);
+        rc = 0;
     }
 
     Pthread_rwlock_unlock(&checkboard->rwlock);
 
-    return rc2;
+    return rc;
 }
 
 /**
@@ -738,7 +736,7 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
 int osql_chkboard_get_clnt_int(hash_t *h, void *k, struct sqlclntstate **clnt)
 {
     osql_sqlthr_t *entry = NULL;
-    int rc = 0, rc2;
+    int rc = 0;
 
     if (!checkboard)
         return 0;
@@ -763,7 +761,7 @@ int osql_chkboard_get_clnt_int(hash_t *h, void *k, struct sqlclntstate **clnt)
 
         *clnt = NULL;
 
-        rc2 = -1;
+        rc = -1;
 
     } else {
 
@@ -773,13 +771,11 @@ int osql_chkboard_get_clnt_int(hash_t *h, void *k, struct sqlclntstate **clnt)
            This prevents them from getting freed upon commit
            before a new cursor is recorded */
         Pthread_mutex_lock(&(*clnt)->dtran_mtx);
-
-        rc2 = 0;
     }
 
     Pthread_rwlock_unlock(&checkboard->rwlock);
 
-    return rc2;
+    return rc;
 }
 
 int osql_chkboard_get_clnt(unsigned long long rqid, struct sqlclntstate **clnt)

@@ -3820,6 +3820,7 @@ fdb_tran_t *fdb_trans_begin_or_join(struct sqlclntstate *clnt, fdb_t *fdb,
     if (!dtran) {
         dtran = fdb_trans_create_dtran(clnt);
         if (!dtran) {
+            Pthread_mutex_unlock(&clnt->dtran_mtx);
             return NULL;
         }
     }

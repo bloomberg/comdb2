@@ -103,7 +103,6 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
 int bdb_osql_log_repo_init(int *bdberr)
 {
     bdb_osql_log_repo_t *tmp = NULL;
-    int rc = 0;
 
     if (log_repo) {
 
@@ -136,7 +135,6 @@ int bdb_osql_log_repo_destroy(int *bdberr)
 {
     bdb_osql_log_repo_t *tmp = log_repo;
     bdb_osql_log_t *log = NULL, *log2 = NULL;
-    int rc = 0;
 
     if (tmp)
         return 0;
@@ -160,7 +158,7 @@ int bdb_osql_log_repo_destroy(int *bdberr)
 
     free(tmp);
 
-    return rc;
+    return 0;
 }
 
 /**
@@ -2677,7 +2675,6 @@ static int undo_get_prevlsn(bdb_state_type *bdb_state, DBT *logdta,
 struct bdb_osql_log *bdb_osql_log_last(int *bdberr)
 {
     bdb_osql_log_t *ret = NULL;
-    int rc = 0;
 
     Pthread_rwlock_rdlock(&log_repo->tail_lock);
 
@@ -4309,7 +4306,6 @@ int bdb_osql_log_is_optim_data(void *buf)
 int bdb_osql_log_unregister(tran_type *tran, bdb_osql_log_t *firstlog,
                             bdb_osql_log_t *lastlog, int trak)
 {
-    int rc = 0;
     int registered = 0;
 
     if ((firstlog && !lastlog) || (!firstlog && lastlog)) {
