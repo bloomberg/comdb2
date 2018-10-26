@@ -1,0 +1,6 @@
+#!/bin/sh
+
+bash -n "$0" | exit 1
+dbnm=$1
+echo 'comdb2_config:allow_pmux_route:false' >>$DBDIR/comdb2db.cfg
+${TESTSBUILDDIR}/api_events $dbnm 2>&1 | diff expected -

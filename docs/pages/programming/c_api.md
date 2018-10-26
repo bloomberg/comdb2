@@ -485,6 +485,86 @@ Parameters:
 |*hndl*| input | cdb2 handle | A previously allocated CDB2 handle |
 
 
+### cdb2_register_event
+```
+cdb2_event *cdb2_register_event(cdb2_hndl_tp *hndl, cdb2_event_type types,
+                                cdb2_event_ctrl ctrls, cdb2_event_callback cb,
+                                void *user_arg, int argc, ...);
+```
+
+Description:
+
+The function registers an event with a callback `cb`.
+The function returns an opaque structure which can be used to unregister the event using `cdb2_unregister_event()`.
+
+If `hndl` is NULL, the event will be registered globally and thus will be inherited by all handles created afterwards.
+Otherwise, the event will be registered locally to the handle, thus will be visible to the handle only.
+
+`types` specifies when the callback should be called. It can be set to a bitwise OR'd combination of the following values.
+
+|Event|Description|
+|---|---|
+| `CDB2_BEFORE_CONNECT` | The callback is called before the API starts connecting to a host. |
+| `CDB2_AFTER_CONNECT` | The callback is called after the attempt to connect. |
+| `CDB2_BEFORE_PMUX` | The callback is called before the API starts querying for the database port from `pmux`. |
+| `CDB2_AFTER_PMUX` | The callback is called after the attempt to database port query. |
+| `CDB2_BEFORE_DBINFO` | The callback is called before the API starts retrieving the dbinfo. |
+| `CDB2_AFTER_DBINFO` | The callback is called after the dbinfo attempt. |
+| `CDB2_BEFORE_SEND_QUERY` | The callback is called before the API starts sending a query. |
+| `CDB2_AFTER_SEND_QUERY` | The callback is called after the attempt to send a query. |
+| `CDB2_BEFORE_READ_RECORD` | The callback is called before the API starts reading a record. |
+| `CDB2_AFTER_READ_RECORD` | The callback is called after the attempt to read a record. |
+
+`ctrls` specifies how a callback should be handled by the API. It can be set to 0, or a bitwise OR'd combination of the following values.
+
+|Type|Description|
+|---|---|
+| `0` | No special handling |
+| `CDB2_OVERWRITE_RETURN_VALUE` | The API overwrites the return value of the event to the return value of the callback. |
+
+`cb` is the event callback. The prototype is as below.
+
+```
+typedef void *(*cdb2_event_callback)(cdb2_hndl_tp *cb_hndl, void *user_arg, int argc, void **argv);
+```
+
+where `cb_hndl` is the handle upon which the event is fired.
+
+`user_arg` will be passed along to `cb`.
+
+Besides the user argument, one can request additional arguments by setting `argc` to the number of the arguments, followed by the argument types. The arguments will be passed to `cb` in `argv`. The table below lists the argument types.
+
+|Event|`CDB2_HOSTNAME`|`CDB2_PORT`|`CDB2_SQL`|`CDB2_RETURN_VALUE`|
+|---|---|---|---|---|
+| `CDB2_BEFORE_CONNECT` | The hostname to connect to | The port to connect to | N/A | N/A |
+| `CDB2_AFTER_CONNECT` | The hostname to connect to | The port to connect to | N/A | 0 on success; Non-zero on failure |
+| `CDB2_BEFORE_PMUX` | The server hostname | The pmux port | N/A | N/A |
+| `CDB2_AFTER_PMUX` | The server hostname | The pmux port | N/A | The database port |
+| `CDB2_BEFORE_DBINFO` | The server hostname  | The database port | N/A | N/A |
+| `CDB2_AFTER_DBINFO` | The server hostname | The database port | N/A | 0 on success; Non-zero on failure | 
+| `CDB2_BEFORE_SEND_QUERY` | The server hostname | The database port | The SQL query | N/A |
+| `CDB2_AFTER_SEND_QUERY` | The server hostname | The database port | The SQL query | 0 on success; Non-zero on failure |
+| `CDB2_BEFORE_READ_RECORD` | The server hostname | The database port | The SQL query | N/A |
+| `CDB2_AFTER_READ_RECORD` | The server hostname | The database port | The SQL query | 0 on success; Non-zero on failure |
+
+Return Value:
+
+The function returns an opaque structure which can be used to unregister the event using `cdb2_unregister_event()`.
+
+### cdb2_unregister_event
+```
+int cdb2_unregister_event(cdb2_hndl_tp *hndl, cdb2_event *e);
+```
+
+Description:
+
+The function unregisters and destroys an event.
+If `hndl` is NULL, the function unregisters the event from all handles. Any handle created afterwards will not inherit the event either.
+Otherwise, the function unregisters the event from the handle.
+
+Return Value:
+
+The function returns 0 on success, and returns EINVAL if the event could not be found.
 
 ## Errors
 

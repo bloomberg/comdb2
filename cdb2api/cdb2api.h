@@ -245,6 +245,41 @@ int cdb2_init_ssl(int init_libssl, int init_libcrypto);
 int cdb2_is_ssl_encrypted(cdb2_hndl_tp *hndl);
 
 int cdb2_clear_ack(cdb2_hndl_tp *hndl);
+
+typedef enum cdb2_event_ctrl {
+    CDB2_OVERWRITE_RETURN_VALUE = 1
+} cdb2_event_ctrl;
+
+typedef enum cdb2_event_type {
+    /* Network events */
+    CDB2_BEFORE_CONNECT = 1,
+    CDB2_AFTER_CONNECT = 1 << 1,
+    CDB2_BEFORE_PMUX = 1 << 2,
+    CDB2_AFTER_PMUX = 1 << 3,
+    CDB2_BEFORE_DBINFO = 1 << 4,
+    CDB2_AFTER_DBINFO = 1 << 5,
+    CDB2_BEFORE_SEND_QUERY = 1 << 6,
+    CDB2_AFTER_SEND_QUERY = 1 << 7,
+    CDB2_BEFORE_READ_RECORD = 1 << 8,
+    CDB2_AFTER_READ_RECORD = 1 << 9
+} cdb2_event_type;
+
+typedef enum cdb2_event_arg {
+    CDB2_HOSTNAME = 1,
+    CDB2_PORT,
+    CDB2_SQL,
+    CDB2_RETURN_VALUE
+} cdb2_event_arg;
+
+typedef struct cdb2_event cdb2_event;
+
+typedef void *(*cdb2_event_callback)(cdb2_hndl_tp *hndl, void *user_arg,
+                                     int argc, void **argv);
+
+cdb2_event *cdb2_register_event(cdb2_hndl_tp *hndl, cdb2_event_type types,
+                                cdb2_event_ctrl ctrls, cdb2_event_callback cb,
+                                void *user_arg, int argc, ...);
+int cdb2_unregister_event(cdb2_hndl_tp *hndl, cdb2_event *e);
 #if defined __cplusplus
 }
 #endif
