@@ -207,6 +207,7 @@ extern uint8_t _non_dedicated_subnet;
 
 extern char *gbl_crypto;
 extern char *gbl_spfile_name;
+extern char *gbl_timepart_file_name;
 extern char *gbl_portmux_unix_socket;
 
 /* util/ctrace.c */
@@ -478,22 +479,19 @@ static int maxq_update(void *context, void *value)
     return 0;
 }
 
-static int spfile_update(void *context, void *value)
+static int file_update(void *context, void *value)
 {
-    comdb2_tunable *tunable;
-    char *spfile_tmp;
-    char *tok;
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    int len = strlen((char *)value);
     int st = 0;
     int ltok;
-    int len;
+    char *tok = segtok(value, len, &st, &ltok);
+    char *file_tmp = tokdup(tok, ltok);
 
-    tunable = (comdb2_tunable *)context;
-    len = strlen((char *)value);
-    tok = segtok(value, len, &st, &ltok);
-    spfile_tmp = tokdup(tok, ltok);
     free(*(char **)tunable->var);
-    *(char **)tunable->var = getdbrelpath(spfile_tmp);
-    free(spfile_tmp);
+    *(char **)tunable->var = getdbrelpath(file_tmp);
+    free(file_tmp);
+
     return 0;
 }
 

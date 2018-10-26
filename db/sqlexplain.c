@@ -157,7 +157,6 @@ static void print_field(Vdbe *v, struct cursor_info *cinfo, int num, char *buf)
 
 static int print_cursor_description(strbuf *out, struct cursor_info *cinfo)
 {
-    int m;
     struct schema *sc;
     char scname[100];
     int is_index = 0;
@@ -201,7 +200,7 @@ static int print_cursor_description(strbuf *out, struct cursor_info *cinfo)
                 strbuf_appendf(out,"???");
                 return;
             }
-            for (m = 0; m < sc->nmembers; m++)
+            for (int m = 0; m < sc->nmembers; m++)
             {
                 strbuf_appendf(out,"%s", sc->member[m].name);
                 if (m != sc->nmembers-1)
@@ -358,7 +357,7 @@ extern int sqlite3WhereTrace;
 static void describe_cursor(Vdbe *v, int pc, struct cursor_info *cur)
 {
     Op *op = &v->aOp[pc];
-    bzero(cur, sizeof cur);
+    bzero(cur, sizeof(struct cursor_info));
     if (op->p3 <= 1) {
         struct sql_thread *sqlthd = pthread_getspecific(query_info_key);
         struct dbtable *db = get_sqlite_db(sqlthd, op->p2, &cur->ix);
@@ -424,8 +423,6 @@ static int str_in_array(const char *zStr, const char **azArray)
 */
 void explain_data_prepare(IndentInfo *p, Vdbe *v)
 {
-    // const char *zSql;               /* The text of the SQL statement */
-    const char *z;    /* Used to check if this is an EXPLAIN */
     int *abYield = 0; /* True if op is an OP_Yield */
     int nAlloc = 0;   /* Allocated size of p->aiIndent[], abYield */
     int pc;           /* Index of operation in p->aiIndent[] */
@@ -436,16 +433,18 @@ void explain_data_prepare(IndentInfo *p, Vdbe *v)
                            OP_RowSetRead, OP_Rewind, 0};
     const int opGoto[] = {OP_Goto, 0};
 
-    const char *azNext[] = {"Next",       "Prev",       "VPrev",      "VNext",
-                            "SorterNext", 0};
-    const char *azYield[] = {"Yield",      "SeekLT", "SeekGT",
-                             "RowSetRead", "Rewind", 0};
-    const char *azGoto[] = {"Goto", 0};
+    // unused: const char *azNext[] = {"Next",       "Prev",       "VPrev",
+    //                                 "VNext",      "SorterNext", 0};
+    // unused: const char *azYield[] = {"Yield",      "SeekLT", "SeekGT",
+    //                                  "RowSetRead", "Rewind", 0};
+    // unused: const char *azGoto[] = {"Goto", 0};
 
     /* Try to figure out if this is really an EXPLAIN statement. If this
     ** cannot be verified, return early.  */
+    // const char *zSql;               /* The text of the SQL statement */
     // zSql = sqlite3_sql(pSql);
     // if( zSql==0 ) return;
+    // const char *z;    /* Used to check if this is an EXPLAIN */
     // for(z=zSql; *z==' ' || *z=='\t' || *z=='\n' || *z=='\f' || *z=='\r';
     // z++);
     // if( sqlite3_strnicmp(z, "explain", 7) ) return;

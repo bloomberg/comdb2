@@ -101,6 +101,7 @@
 #include "eventlog.h"
 
 #include "str0.h"
+#include "comdb2_atomic.h"
 
 unsigned long long get_id(bdb_state_type *);
 
@@ -624,7 +625,7 @@ static int sql_tick(struct sql_thread *thd, int uses_bdb_locking)
 }
 
 pthread_key_t query_info_key;
-static int query_id = 1;
+static int gbl_query_id = 1;
 
 int comdb2_sql_tick()
 {
@@ -635,9 +636,7 @@ int comdb2_sql_tick()
 void sql_get_query_id(struct sql_thread *thd)
 {
     if (thd) {
-        pthread_mutex_lock(&gbl_sql_lock);
-        thd->id = query_id++;
-        pthread_mutex_unlock(&gbl_sql_lock);
+        thd->id = ATOMIC_ADD(gbl_query_id, 1);
     }
 }
 

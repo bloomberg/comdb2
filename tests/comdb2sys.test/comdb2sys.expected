@@ -332,7 +332,9 @@
 [SELECT COUNT(*)=1 FROM comdb2_appsock_handlers WHERE name = 'newsql'] rc 0
 (COUNT(*)=1=1)
 [SELECT COUNT(*)=1 FROM comdb2_opcode_handlers WHERE name = 'blockop'] rc 0
+(name='comdb2_active_osqls')
 (name='comdb2_appsock_handlers')
+(name='comdb2_blkseq')
 (name='comdb2_clientstats')
 (name='comdb2_cluster')
 (name='comdb2_columns')

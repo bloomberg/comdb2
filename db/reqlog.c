@@ -224,7 +224,7 @@ static void flushdump(struct reqlogger *logger, struct output *out)
                 logmsg(LOGMSG_USER, "%.*s", (int)iov[i].iov_len,
                        (char *)iov[i].iov_base);
         } else {
-            int dum = writev(out->fd, iov, niov);
+            writev(out->fd, iov, niov);
         }
         logger->dumplinepos = 0;
     }
@@ -465,7 +465,6 @@ static const char *dblrangestr(const struct dblrange *range, char *buf,
 static void printrule(struct logrule *rule, FILE *fh, const char *p)
 {
     char b[32];
-    int rc, opcode;
     logmsgf(LOGMSG_USER, fh, "%sRULE '%s'", p, rule->name);
     if (!rule->active) logmsgf(LOGMSG_USER, fh, " (INACTIVE)");
     logmsgf(LOGMSG_USER, fh, "\n");
@@ -595,7 +594,6 @@ static void scanrules_ll(void)
 
 int reqlog_init(const char *dbname)
 {
-    struct logrule *rule;
     struct output *out;
     char *filename;
 
@@ -1373,7 +1371,6 @@ void reqlog_setflag(struct reqlogger *logger, unsigned flag)
 /* figure out what to log for this request */
 static void reqlog_start_request(struct reqlogger *logger)
 {
-    struct logrule *rule;
     int gather;
     int ii;
 
@@ -2021,7 +2018,6 @@ void init_clientstats_table()
 static nodestats_t *add_clientstats(const char *task, const char *stack,
                                     int node, int fd)
 {
-    int ret = -1;
     int task_len, stack_len;
     nodestats_t *old_entry = NULL;
     nodestats_t *entry = NULL;
@@ -2047,7 +2043,7 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
     memcpy(entry->mem + task_len, stack, stack_len);
     entry->stack = entry->mem + task_len;
 
-    entry->checksum = crc32c(entry->mem, task_len + stack_len);
+    entry->checksum = crc32c((const uint8_t *)entry->mem, task_len + stack_len);
     entry->node = node;
     entry->host = intern(nodeat(node));
 
@@ -2055,7 +2051,7 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
         bzero(&(entry->addr), sizeof(struct in_addr));
     } else {
         struct sockaddr_in peeraddr;
-        int len = sizeof(peeraddr);
+        socklen_t len = sizeof(peeraddr);
         bzero(&peeraddr, sizeof(peeraddr));
         if (getpeername(fd, (struct sockaddr *)&peeraddr, &len) < 0) {
             logmsg(LOGMSG_ERROR, "%s: getpeername failed fd %d: %d %s\n",
@@ -2125,7 +2121,7 @@ static nodestats_t *find_clientstats(unsigned checksum, int node, int fd)
             pthread_rwlock_unlock(&clientstats_lk);
             if (*(unsigned *)&(entry->addr) == 0 && fd > 0) {
                 struct sockaddr_in peeraddr;
-                int len = sizeof(peeraddr);
+                socklen_t len = sizeof(peeraddr);
                 bzero(&peeraddr, sizeof(peeraddr));
                 if (getpeername(fd, (struct sockaddr *)&peeraddr, &len) < 0) {
                     logmsg(LOGMSG_ERROR,
@@ -2181,7 +2177,6 @@ struct rawnodestats *get_raw_node_stats(const char *task, const char *stack,
                                         char *host, int fd)
 {
     struct nodestats *nodestats = NULL;
-    struct rawnodestats *rawnodestats = NULL;
     unsigned checksum;
     int namelen, node;
     int task_len, stack_len = 0;
@@ -2202,7 +2197,7 @@ struct rawnodestats *get_raw_node_stats(const char *task, const char *stack,
     }
     memcpy(tmp, NAME(task), task_len);
     memcpy(tmp + task_len, NAME(stack), stack_len);
-    checksum = crc32c(tmp, namelen);
+    checksum = crc32c((const uint8_t *)tmp, namelen);
     if ((nodestats = find_clientstats(checksum, node, fd)) == NULL) {
         nodestats = add_clientstats(task, stack, node, fd);
         if (nodestats == NULL) {
@@ -2237,7 +2232,7 @@ int release_node_stats(const char *task, const char *stack, char *host)
         return -1;
     memcpy(tmp, NAME(task), task_len);
     memcpy(tmp + task_len, NAME(stack), stack_len);
-    checksum = crc32c(tmp, namelen);
+    checksum = crc32c((const uint8_t *)tmp, namelen);
     if (release_clientstats(checksum, nodeix(host)) != 0) {
         logmsg(LOGMSG_ERROR,
                "%s: failed to release host=%s, node=%d, task=%s, stack=%s\n",
@@ -2305,7 +2300,6 @@ void process_nodestats(void)
         unsigned *nowptr;
         unsigned *prevptr;
         unsigned *bucketptr;
-        struct rawnodestats *rawnodestats;
         nodestats = list[i];
 
         nowptr = (unsigned *)&nodestats->rawtotals;
@@ -2608,8 +2602,6 @@ void nodestats_report(FILE *fh, const char *prefix, int disp_rates)
     unsigned max_clients;
     unsigned ii;
     struct summary_nodestats *summaries;
-    struct nodestats *nodestats;
-    struct rawnodestats snap;
 
     if (!prefix) prefix = "";
 

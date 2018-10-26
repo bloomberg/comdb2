@@ -17,7 +17,9 @@
 (tablename='t1')
 (tablename='t2')
 unknown @ls sub-command foo
+(name='comdb2_active_osqls')
 (name='comdb2_appsock_handlers')
+(name='comdb2_blkseq')
 (name='comdb2_clientstats')
 (name='comdb2_cluster')
 (name='comdb2_columns')

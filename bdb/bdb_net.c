@@ -659,6 +659,7 @@ void udp_stats(unsigned int *in_sent_udp, unsigned int *in_fail_udp,
 // Zero out all counters
 void udp_reset(netinfo_type *netinfo)
 {
+    if (!netinfo) return;
     rect_udp = recl_udp = fail_udp = sent_udp = recd_udp = 0;
     net_reset_udp_stat(netinfo);
 }

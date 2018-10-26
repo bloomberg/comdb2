@@ -838,6 +838,7 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
         strncpy(sess->tzname, tzname, sizeof(sess->tzname));
 
     sess->iq = iq;
+    sess->iqcopy = iq;
     sess->clients = 1;
 
     /* how about we start the bplog before making this available to the world?

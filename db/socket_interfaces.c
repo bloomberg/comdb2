@@ -56,7 +56,7 @@ static const uint8_t *sockreq_type_get(sockreq_t *p_sockreq,
                                        const uint8_t *p_buf,
                                        const uint8_t *p_buf_end)
 {
-    if (p_buf_end < p_buf < 0 || SOCKREQ_LEN > (p_buf_end - p_buf))
+    if (p_buf_end < p_buf || SOCKREQ_LEN > (p_buf_end - p_buf))
         return NULL;
 
     p_buf = buf_get(&(p_sockreq->request), sizeof(p_sockreq->request), p_buf,
@@ -78,7 +78,7 @@ static const uint8_t *sockreq_type_get(sockreq_t *p_sockreq,
 static uint8_t *sockrsp_type_put(const sockrsp_t *p_sockrsp, uint8_t *p_buf,
                                  const uint8_t *p_buf_end)
 {
-    if (p_buf_end < p_buf < 0 || SOCKRSP_LEN > (p_buf_end - p_buf))
+    if (p_buf_end < p_buf || SOCKRSP_LEN > (p_buf_end - p_buf))
         return NULL;
 
     p_buf = buf_put(&(p_sockrsp->response), sizeof(p_sockrsp->response), p_buf,
@@ -160,6 +160,5 @@ int sndbak_socket(SBUF2 *sb, u_char *buf, int buflen, int rc)
 
 int sndbak_open_socket(SBUF2 *sb, u_char *buf, int buflen, int rc)
 {
-    int rcd = 0;
     return send_ack_reply(sb, rc, buf, buflen);
 }
