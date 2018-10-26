@@ -227,7 +227,7 @@ static int db_comdb_verify(Lua L) {
     }
     else {
         char buf[128] = {0};
-        snprintf(buf, sizeof(buf), "Table %s does not exist.", tblname);
+        snprintf(buf, sizeof(buf), "Table \"%s\" does not exist.", tblname);
         db_verify_table_callback(L, buf);
         rc = 1;
     }

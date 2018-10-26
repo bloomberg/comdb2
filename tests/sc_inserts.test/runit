@@ -135,7 +135,7 @@ if ! diff verify.exp verify.out ; then
     failexit "Verify did not fail correctly, see verify.out"
 fi
 
-echo "Table nonexistent does not exist.
+echo "Table \"nonexistent\" does not exist.
 [exec procedure sys.cmd.verify('nonexistent')] failed with rc -3 [sys.comdb_verify(tbl)...]:2: Verify failed." > verify.exp
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('nonexistent')" &> verify.out
 if ! diff verify.exp verify.out ; then

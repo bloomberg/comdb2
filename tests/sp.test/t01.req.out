@@ -366,7 +366,7 @@ SP: exec procedure bound(@i, @u, @ll, @ull, @s, @us, @f, @d, @dt, @cstr, @ba, @b
 (3=3)
 [exec procedure sys.cmd.verify(\"nonexistent\")] failed with rc -3 bad argument -> \"nonexistent\")
 (4=4)
-(out='Table does not exist.')
+(out='Table "nonexistent" does not exist.')
 [exec procedure sys.cmd.verify("nonexistent")] failed with rc -3 [sys.comdb_verify(tbl)...]:2: Verify failed.
 (5=5)
 (version='sptest')
