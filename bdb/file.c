@@ -4868,7 +4868,7 @@ static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
                                              int timeout, uint32_t newgen,
                                              int *done)
 {
-    int rc;
+    int rc = 0;
     char *lock_str;
 
     if (done) {

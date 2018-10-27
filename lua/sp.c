@@ -1962,7 +1962,7 @@ static int stmt_bind_int(Lua lua, sqlite3_stmt *stmt, int name, int value)
 
     dttz_t dt;
     const char *c;
-    const void *p;
+    const void *p = NULL;
     blob_t *b;
     intv_t *i;
     datetime_t *d;
@@ -3921,7 +3921,7 @@ static int db_now(Lua lua)
     SP sp;
     dttz_t dt;
     const char *tz;
-    int precision;
+    int precision = 0;
     struct timespec ts;
     datetime_t datetime;
     cdb2_client_datetimeus_t cdtus;

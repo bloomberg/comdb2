@@ -617,7 +617,7 @@ static int bdb_fetch_int_ll(
     int ixrecnum;
     DB *dbp;
     unsigned long long foundgenid;
-    int dtafile;
+    int dtafile = 0;
     int cursor_flags;
     int get_flags;
     DB_TXN *tid;
@@ -630,7 +630,7 @@ static int bdb_fetch_int_ll(
     char tmp_data[BDB_RECORD_MAX + sizeof(unsigned long long)];
     char tmp_key[BDB_RECORD_MAX + sizeof(unsigned long long)];
     char tmp_last_key[BDB_RECORD_MAX + sizeof(unsigned long long)];
-    char *last_key;
+    char *last_key = NULL;
 
     unsigned long long *llptr;
 

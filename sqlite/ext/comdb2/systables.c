@@ -51,7 +51,7 @@ static int systblSystabsConnect(sqlite3 *db, void *pAux, int argc,
                                 char **pErr)
 {
     int rc;
-    systbl_systabs_vtab *systabs;
+    systbl_systabs_vtab *systabs = NULL;
 
     rc = sqlite3_declare_vtab(db, "CREATE TABLE comdb2_systabs(\"name\")");
 

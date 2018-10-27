@@ -208,7 +208,7 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 
 		memcpy(t.data, udbt->data, udbt->size);
 	}
-	unsigned long long ltranid;
+	unsigned long long ltranid = 0;
 	if (10006 == rectype) {
 		/* Find the logical tranid.  Offset should be (rectype + txn_num + last_lsn) */
 		ltranid = *(unsigned long long *)(&pp[4 + 4 + 8]);

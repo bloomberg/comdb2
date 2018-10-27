@@ -55,7 +55,7 @@ static int permissionsConnect(
   sqlite3_vtab **ppVtab,
   char **pErr
 ){
-  systbl_permissions_vtab *pNew;
+  systbl_permissions_vtab *pNew = NULL;
   int rc;
 
   /* Column numbers */

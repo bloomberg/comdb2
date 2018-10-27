@@ -448,7 +448,7 @@ void comdb2_early_ack(DB_ENV *, DB_LSN, uint32_t generation);
 
 static void *apply_thread(void *arg) 
 {
-	int ret, rc, log_more_count, log_fill_count, now;
+	int ret, rc = 0, log_more_count = 0, log_fill_count, now;
 	int i_am_replicant;
 	uint32_t more_behind_count = 0;
 	LOG *lp;
@@ -957,7 +957,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 	DB_LSN *ret_lsnp;
 	uint32_t *commit_gen;
 {
-	int fromline;
+	int fromline = 0;
 	DB_LOG *dblp;
 	DB_LOGC *logc;
 	DB_LOGC_STAT *lcstat;
@@ -972,7 +972,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 	u_int32_t bytes, egen, committed_gen, flags, sendflags, gen, gbytes, rectype, type;
 	unsigned long long bytes_sent;
 	int check_limit, cmp, done, do_req, rc, starttime, endtime, tottime;
-	int match, old, recovering, ret, t_ret, st, sendtime;
+	int match, old, recovering, ret, t_ret, st = 0, sendtime;
 	time_t savetime;
 #if defined INSTRUMENT_REP_APPLY
 	static unsigned long long rpm_count = 0;
@@ -2946,7 +2946,7 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	LOG *lp;
 	REP *rep;
 	REP_CONTROL *grp;
-	u_int32_t rectype, txnid;
+	u_int32_t rectype = 0, txnid;
 	int cmp, do_req, gap, ret, t_ret, rc;
 	int num_retries;
 	int disabled_minwrite_noread = 0;
@@ -4390,7 +4390,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	__txn_xa_regop_args *prep_args;
 	u_int32_t rectype;
 	int i, ret, t_ret;
-	u_int32_t txnid;
+	u_int32_t txnid = 0;
 	void *txninfo;
 	unsigned long long context = 0;
 	int had_serializable_records = 0;
@@ -5002,13 +5002,13 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 	DB_LSN prev_commit_lsn;
 {
 	DBT data_dbt, *lock_dbt, lsn_lock_dbt;
-	int32_t timestamp;
+	int32_t timestamp = 0;
 	DB_LOGC *logc;
 	DB_LSN prev_lsn;
 	DB_REP *db_rep;
 	DB_LOCK lsnlock;
-	REP *rep;
-	u_int32_t txnid;
+	REP *rep = NULL;
+	u_int32_t txnid = 0;
 	int cmp;
 	LTDESC *lt = NULL;
 	__txn_regop_args *txn_args = NULL;
@@ -5016,7 +5016,7 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 	__txn_regop_rowlocks_args *txn_rl_args = NULL;
 	void *args = NULL;
 	__txn_xa_regop_args *prep_args = NULL;
-	u_int32_t lockid = DB_LOCK_INVALIDID, rectype;
+	u_int32_t lockid = DB_LOCK_INVALIDID, rectype = 0;
 	int ret, t_ret, throwdeadlock = 0;
 	void *txninfo;
 	struct __recovery_processor *rp;

@@ -592,7 +592,7 @@ struct temp_cursor *bdb_temp_table_cursor(bdb_state_type *bdb_state,
                                           int *bdberr)
 {
     struct temp_cursor *cur;
-    int rc;
+    int rc = 0;
 
     cur = calloc(1, sizeof(struct temp_cursor));
     /* set up compare routine and callback */
@@ -605,13 +605,11 @@ struct temp_cursor *bdb_temp_table_cursor(bdb_state_type *bdb_state,
 
     case TEMP_TABLE_TYPE_LIST:
         cur->list_cur = NULL;
-        rc = 0;
         break;
 
     case TEMP_TABLE_TYPE_HASH:
         cur->hash_cur = NULL;
         cur->hash_cur_buk = 0;
-        rc = 0;
         break;
 
     case TEMP_TABLE_TYPE_BTREE:
