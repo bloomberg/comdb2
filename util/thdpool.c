@@ -656,7 +656,7 @@ static void *thdpool_thd(void *voidarg)
             /* Get work.  If there is no work then place us on the free
              * list and wait for work. */
             while (!get_work_ll(thd, &work)) {
-                int rc;
+                int rc = 0;
                 if (listc_size(&pool->thdlist) > pool->minnthd && !ts) {
                     /* we have more threads than we want - wait for a bit then
                      * timeout */
@@ -694,7 +694,7 @@ static void *thdpool_thd(void *voidarg)
                 if (ts) {
                     rc = pthread_cond_timedwait(&thd->cond, &pool->mutex, ts);
                 } else {
-                    rc = pthread_cond_wait(&thd->cond, &pool->mutex);
+                    pthread_cond_wait(&thd->cond, &pool->mutex);
                 }
                 if (rc == ETIMEDOUT) {
                     /* Make sure we don't get into a hot loop. */
@@ -702,7 +702,7 @@ static void *thdpool_thd(void *voidarg)
                     /* If there's still no work we'll die. */
                     thr_exit = 1;
                 } else if (rc != 0 && rc != EINTR) {
-                    logmsg(LOGMSG_ERROR, "%s(%s):pthread_cond_wait: %d %s\n",
+                    logmsg(LOGMSG_ERROR, "%s(%s):pthread_cond_timedwait: %d %s\n",
                             __func__, pool->name, rc, strerror(rc));
                 }
             }
@@ -850,17 +850,9 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
         }
 
         if (thd == NULL && pool->wait) {
-            int rc;
 
             pool->waiting_for_thread = 1;
-            rc = pthread_cond_wait(&pool->wait_for_thread, &pool->mutex);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s:%d pthread_cond_wait rc %d %s\n", __FILE__,
-                        __LINE__, rc, strerror(rc));
-                pool->num_failed_dispatches++;
-                return -1; /* not sure what happens to my mutex here */
-            }
-
+            pthread_cond_wait(&pool->wait_for_thread, &pool->mutex);
             pool->waiting_for_thread = 0;
 
             goto again;

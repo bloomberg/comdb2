@@ -94,12 +94,11 @@ int add_new_transaction_entry(struct dbenv *dbenv, void *entry)
     Pthread_mutex_lock(&dbenv->long_trn_mtx);
     rc = hash_add(dbenv->long_trn_table, entry);
     if (rc != 0) {
-        Pthread_mutex_unlock(&dbenv->long_trn_mtx);
-        return ERR_INTERNAL;
+        rc = ERR_INTERNAL;
     }
     /*listc_abl(&dbenv->long_trn_list, entry);*/
     Pthread_mutex_unlock(&dbenv->long_trn_mtx);
-    return 0;
+    return rc;
 }
 
 void tran_dump(struct long_trn_stat *tstats)

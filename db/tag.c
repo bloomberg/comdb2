@@ -84,37 +84,34 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                     int strict);
 int compare_indexes(const char *table, FILE *out);
 
-static inline int lock_taglock_read(void)
+static inline void lock_taglock_read(void)
 {
 #ifdef TAGLOCK_RW_LOCK
     Pthread_rwlock_rdlock(&taglock);
 #else
     Pthread_mutex_lock(&taglock);
 #endif
-    return 0;
 }
 
-int lock_taglock(void)
+void lock_taglock(void)
 {
 #ifdef TAGLOCK_RW_LOCK
     Pthread_rwlock_wrlock(&taglock);
 #else
     Pthread_mutex_lock(&taglock);
 #endif
-    return 0;
 }
 
-int unlock_taglock(void)
+void unlock_taglock(void)
 {
 #ifdef TAGLOCK_RW_LOCK
     Pthread_rwlock_unlock(&taglock);
 #else
     Pthread_mutex_unlock(&taglock);
 #endif
-    return 0;
 }
 
-static inline int init_taglock(void)
+static inline void init_taglock(void)
 {
 #ifdef TAGLOCK_RW_LOCK
     Pthread_rwlock_init(&taglock, NULL);

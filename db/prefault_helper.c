@@ -115,12 +115,8 @@ static void *prefault_helper_thread(void *arg)
         dbenv->prefault_helper.threads[i].working_for = gbl_invalid_tid;
         MEMORY_SYNC;
 
-        rc = pthread_cond_wait(&(dbenv->prefault_helper.threads[i].cond),
-                               &(dbenv->prefault_helper.mutex));
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "prefault_helper couldnt unlock\n");
-            exit(1);
-        }
+        pthread_cond_wait(&(dbenv->prefault_helper.threads[i].cond),
+                          &(dbenv->prefault_helper.mutex));
 
         /* bogus wakeup? */
         if (dbenv->prefault_helper.threads[i].working_for == gbl_invalid_tid) {
@@ -248,13 +244,8 @@ static void *prefault_helper_thread(void *arg)
       dbenv->prefault_helper.threads[i].working_for = gbl_invalid_tid;
       MEMORY_SYNC;
       
-      rc = pthread_cond_wait(&(dbenv->prefault_helper.threads[i].cond),
+      pthread_cond_wait(&(dbenv->prefault_helper.threads[i].cond),
          &(dbenv->prefault_helper.threads[i].mutex));
-      if (rc != 0)
-      {
-         fprintf(stderr, "prefault_helper couldnt unlock\n");
-         exit(1);
-      }
 
       MEMORY_SYNC;
 

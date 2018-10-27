@@ -156,16 +156,10 @@ static int wake_all_consumers_all_queues(struct dbenv *dbenv, int force)
  * variable - otherwise no effect. */
 static void wake_up_consumer(struct consumer *consumer, int force)
 {
-    int rc;
-
     Pthread_mutex_lock(&consumer->mutex);
     if (force || consumer->waiting_for_data) {
         consumer->need_to_wake = 1;
-        rc = pthread_cond_broadcast(&consumer->cond);
-        if (rc != 0)
-            logmsg(LOGMSG_ERROR, "%s: "
-                    "pthread_cond_broadcast %d %s\n",
-                    __func__, rc, strerror(rc));
+        pthread_cond_broadcast(&consumer->cond);
     }
     Pthread_mutex_unlock(&consumer->mutex);
 }

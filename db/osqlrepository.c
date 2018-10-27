@@ -194,19 +194,19 @@ int osql_repository_add(osql_sess_t *sess, int *replaced)
     else
         rc = hash_add(theosql->rqs, sess);
 
-    if (rc) {
+    if (!rc) {
         logmsg(LOGMSG_ERROR, "%s: Unable to hash the new request\n", __func__);
-        Pthread_rwlock_unlock(&theosql->hshlck);
-        return -2;
+        rc = -2;
     }
-
-    memcpy(add_uuid_list[add_current_uuid], sess->uuid, sizeof(add_uuid_list[0]));
-    add_uuid_order[add_current_uuid] = total_ordering++;
-    add_current_uuid = ((add_current_uuid + 1) % MAX_UUID_LIST);
+    else {
+        memcpy(add_uuid_list[add_current_uuid], sess->uuid, sizeof(add_uuid_list[0]));
+        add_uuid_order[add_current_uuid] = total_ordering++;
+        add_current_uuid = ((add_current_uuid + 1) % MAX_UUID_LIST);
+    }
 
     Pthread_rwlock_unlock(&theosql->hshlck);
 
-    return 0;
+    return rc;
 }
 
 

@@ -198,8 +198,6 @@ inline unsigned long long osql_sess_getrqid(osql_sess_t *sess)
  */
 int osql_sess_addclient(osql_sess_t *sess)
 {
-    int rc = 0;
-
     Pthread_mutex_lock(&sess->clients_mtx);
 #if 0
    uuidstr_t us;
@@ -222,9 +220,6 @@ int osql_sess_addclient(osql_sess_t *sess)
  */
 int osql_sess_remclient(osql_sess_t *sess)
 {
-
-    int rc = 0;
-
     Pthread_mutex_lock(&sess->clients_mtx);
 
 #if 0

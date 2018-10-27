@@ -73,7 +73,6 @@ static void free_memptr(void *inarg)
 
 static void *free_stack_thr(void *unused)
 {
-    int rc;
     thr_arg_t *arg;
     int signal_count;
     size_t stacksz;
@@ -97,7 +96,7 @@ static void *free_stack_thr(void *unused)
         }
 
         //![3]
-        rc = sleep(STACK_FREE_DELAY);
+        int rc = sleep(STACK_FREE_DELAY);
         if (rc != 0) {
             logmsg(LOGMSG_INFO,
                    "%s:%d interrupted with rc %d while sleeping.\n", __func__,

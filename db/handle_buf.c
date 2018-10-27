@@ -284,11 +284,7 @@ static void thd_coalesce_check_ll(void)
 {
     if (coalesce_waiters && busy.count <= coalesce_reqthd_waiters &&
         q_reqs.count == 0) {
-        int rc;
-        rc = pthread_cond_broadcast(&coalesce_wakeup);
-        if (rc != 0)
-            logmsg(LOGMSG_ERROR, "%s:pthread_cond_broadcast: %d %s\n", __func__, rc,
-                    strerror(rc));
+        pthread_cond_broadcast(&coalesce_wakeup);
     }
 }
 

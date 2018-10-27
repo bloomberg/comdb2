@@ -1883,7 +1883,7 @@ int net_send_message_payload_ack(netinfo_type *netinfo_ptr, const char *to_host,
                                         payloadlen, seq_ptr->seqnum);
             Pthread_mutex_unlock(&(host_node_ptr->wait_mutex));
             logmsg(LOGMSG_ERROR, "net_send_message: host %s, "
-                            "got rc = %d from pthread_cond_wait\n",
+                            "got rc = %d from pthread_cond_timedwait\n",
                     host_node_ptr->host, rc);
 
             rc = NET_SEND_FAIL_INTERNAL;

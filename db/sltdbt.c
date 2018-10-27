@@ -115,7 +115,6 @@ static int handle_op_block(struct ireq *iq)
     int retries;
     int totpen;
     int penaltyinc;
-    int irc;
     double gbl_penaltyincpercent_d;
 
     if (gbl_readonly || gbl_readonly_sc) {

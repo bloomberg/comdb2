@@ -489,12 +489,8 @@ static void *prefault_io_thread(void *arg)
         req = (pfrq_t *)queue_next(dbenv->prefaultiopool.ioq);
 
         while (req == NULL) {
-            rc = pthread_cond_wait(&(dbenv->prefaultiopool.cond),
-                                   &(dbenv->prefaultiopool.mutex));
-            if (rc != 0) {
-                logmsg(LOGMSG_FATAL, "cond wait failed in io thread %d\n", rc);
-                exit(1);
-            }
+            pthread_cond_wait(&(dbenv->prefaultiopool.cond),
+                              &(dbenv->prefaultiopool.mutex));
 
             req = (pfrq_t *)queue_next(dbenv->prefaultiopool.ioq);
         }

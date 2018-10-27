@@ -621,8 +621,9 @@ static void *eviction_thread(void *arg)
             break;
         }
 
+        rc = 0;
         if (op->evict_intv_ms == OPT_DISABLE)
-            rc = pthread_cond_wait(&op->evict_cond, &op->evict_mutex);
+            pthread_cond_wait(&op->evict_cond, &op->evict_mutex);
         else {
             clock_gettime(CLOCK_REALTIME, &tm);
             tm.tv_nsec += 1000000L * op->evict_intv_ms;
@@ -792,8 +793,9 @@ static int objpool_borrow_int(comdb2_objpool_t op, void **objp, long nanosecs,
             if (op->nborrowwaits > op->npeakborrowwaits)
                 op->npeakborrowwaits = op->nborrowwaits;
 
+            rc = 0;
             if (nanosecs < 0)
-                rc = pthread_cond_wait(&op->unexhausted, &op->data_mutex);
+                pthread_cond_wait(&op->unexhausted, &op->data_mutex);
             else {
                 clock_gettime(CLOCK_REALTIME, &tm);
                 tm.tv_nsec += nanosecs;

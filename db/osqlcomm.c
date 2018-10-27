@@ -3284,8 +3284,8 @@ static void net_block_reply(void *hndl, void *uptr, char *fromhost,
     /* using p_slock pointer as the request id now, this contains info about
      * socket request.*/
     struct buf_lock_t *p_slock = (struct buf_lock_t *)net_msg->rqid;
-    Pthread_mutex_lock(&p_slock->req_lock);
     {
+        Pthread_mutex_lock(&p_slock->req_lock);
         if (p_slock->reply_state == REPLY_STATE_DISCARD) {
             /* The tag request is handled by master. However by the time
                (1000+ seconds) the replicant receives the reply from master,
@@ -8974,7 +8974,6 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
 {
     static int last_step_idex = 0;
     int *ii;
-    int rc;
     osql_rpl_t rpl_op;
     uint8_t *p_buf = (uint8_t *)rpl;
     uint8_t *p_buf_end = p_buf + rplen;

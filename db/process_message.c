@@ -4205,8 +4205,8 @@ clipper_usage:
         tok = segtok(line, lline, &st, &ltok);
         if (ltok > 0) {
             commit_delay_ms = toknum(tok, ltok);
-            bdb_berktest_commit_delay(commit_delay_ms);
             Pthread_mutex_lock(&testguard);
+            bdb_berktest_commit_delay(commit_delay_ms);
             Pthread_mutex_unlock(&testguard);
         } else {
             logmsg(LOGMSG_USER, "berkdelay requires commit-delay-ms argument\n");
