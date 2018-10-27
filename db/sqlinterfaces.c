@@ -3649,7 +3649,8 @@ void sqlengine_work_appsock(void *thddata, void *work)
     struct sql_thread *sqlthd = thd->sqlthd;
     if (sqlthd) {
         sqlthd->clnt = clnt;
-        sbuf2setsqlthd(clnt->sb, sqlthd);
+        if (clnt->sb)
+            sbuf2setsqlthd(clnt->sb, sqlthd);
     } else {
         abort();
     }
@@ -4377,7 +4378,7 @@ int sql_writer(SBUF2 *sb, const char *buf, int nbytes)
     ssize_t nwrite, written = 0;
     struct sql_thread *qikey = pthread_getspecific(query_info_key);
     struct sql_thread *thd = sbuf2getsqlthd(sb);
-    struct sqlclntstate *clnt = thd ? thd->clnt : NULL;
+    struct sqlclntstate *clnt = thd->clnt;
     int retry = -1;
     int released_locks = 0;
 
