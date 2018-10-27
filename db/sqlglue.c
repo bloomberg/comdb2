@@ -8773,9 +8773,6 @@ int get_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
     int curtran_flags = lowpri ? BDB_CURTRAN_LOW_PRIORITY : 0;
     int rc = 0;
 
-    if (flags & CURTRAN_SKIP_BDBLOCK)
-        curtran_flags |= BDB_CURTRAN_SKIP_BDBLOCK;
-
     /*fprintf(stderr, "get_curtran\n"); */
 
     if (clnt->dbtran.cursor_tran) {
@@ -8877,9 +8874,6 @@ int put_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
         cheap_stack_trace();
         return -1;
     }
-
-    if (flags & CURTRAN_SKIP_BDBLOCK)
-        curtran_flags = BDB_CURTRAN_SKIP_BDBLOCK;
 
     rc = bdb_put_cursortran(bdb_state, clnt->dbtran.cursor_tran, curtran_flags,
                             &bdberr);
@@ -9052,8 +9046,6 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
     Pthread_mutex_unlock(&thd->lk);
 
     curtran_flags = CURTRAN_RECOVERY;
-    curtran_flags |=
-        (flags & RECOVER_DEADLOCK_SKIP_BDBLOCK) ? CURTRAN_SKIP_BDBLOCK : 0;
 
     /* free curtran */
     rc = put_curtran_flags(thedb->bdb_env, clnt, curtran_flags);

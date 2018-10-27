@@ -7,7 +7,9 @@ export forked_cl=0
 export cl_pids
 export cl_thd_pid=0
 export coherent_pid=0
+export downgrade_pid=0
 export pidroot=cldeadlock
+export incoherent_fail=incoherent.fail
 
 function write_prompt
 {
@@ -25,8 +27,14 @@ function cleanup
         kill -9 $(cat $pidroot.$j)
         let j=j+1
     done
+
     [[ "$cl_thd_pid" -gt 0 ]] && kill -9 $cl_thd_pid
     [[ "$coherent_pid" -gt 0 ]] && kill -9 $coherent_pid
+    [[ "$downgrade_pid" -gt 0 ]] && kill -9 $downgrade_pid
+
+    cl_thd_pid=0
+    coherent_pid=0
+    downgrade_pid=0
 }
 
 function failexit
@@ -43,20 +51,55 @@ function check_coherent
 {
     [[ $debug == "1" ]] && set -x
     typeset func="check_coherent"
-    typeset master=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.send(\"bdb cluster\")" | grep MASTER | cut -f1 -d":" | tr -d '[:space:]')
+    typeset max_incoherent=${1:-1}
+    typeset count=0
     typeset verbose=${1:-0}
+    typeset r=0
     [[ "$verbose" == 1 ]] && write_prompt $func "executing $func"
-    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.send(\"bdb cluster\")" | grep COHERENT
-    [[ $? == 0 ]] && failexit "cluster is not coherent"
+    master=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.send(\"bdb cluster\")" | grep MASTER | cut -f1 -d":" | tr -d '[:space:]') 2>/dev/null
+    if [[ -n "$master" ]] ; then
+        $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.send(\"bdb cluster\")" | grep COHERENT > /dev/null
+        r=$?
+    fi
+    while [[ $r == 0 ]]; do
+        let count=count+1
+        write_prompt $func "incoherent count $count"
+        if [[ "$count" -ge "$max_incoherent" ]] ; then
+            touch $incoherent_fail
+            failexit "cluster is not coherent"
+        fi
+        sleep 1
+        master=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.send(\"bdb cluster\")" | grep MASTER | cut -f1 -d":" | tr -d '[:space:]') 2>/dev/null
+        if [[ -n "$master" ]] ; then
+            $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.send(\"bdb cluster\")" | grep COHERENT > /dev/null
+            r=$?
+        fi
+    done
+}
+
+function downgrade_loop
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="downgrade_loop"
+    write_prompt $func "executing $func"
+    typeset sleeptime=${1:-1}
+    while :; do
+        sleep $sleeptime
+        write_prompt $func "downgrading master"
+        for x in $CLUSTER; do
+            $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $x "exec procedure sys.cmd.send(\"downgrade\")" >/dev/null 2>&1
+        done
+    done
 }
 
 function coherent_loop
 {
     [[ $debug == "1" ]] && set -x
     typeset func="check_coherent"
+    typeset max_incoherent=${1:-1}
     write_prompt $func "executing $func"
     while :; do 
-        check_coherent
+        check_coherent $max_incoherent
         sleep 1
     done
 }
@@ -150,9 +193,53 @@ function start_coherent_loop
 {
     [[ $debug == "1" ]] && set -x
     typeset func="start_coherent_loop"
+    typeset max_incoherent=${1:-1}
     write_prompt $func "executing $func"
-    coherent_loop &
+    coherent_loop $max_incoherent &
     coherent_pid=$!
+}
+
+function start_downgrade_thread
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="start_downgrade_thread"
+    write_prompt $func "executing $func"
+    downgrade_loop 10 &
+    downgrade_pid=$!
+}
+
+function normal_test
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="normal_test"
+    write_prompt $func "executing $func"
+    start_coherent_loop
+    cldeadlock_threads $cl_iters
+    check_coherent
+    cleanup
+}
+
+function downgrade_test
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="downgrade_test"
+    write_prompt $func "executing $func"
+    start_coherent_loop 20
+    start_downgrade_thread
+    cldeadlock_threads $cl_iters
+    cleanup
+    sleep 10
+    check_coherent
+}
+
+function setup_test
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="setup"
+    rm -f $incoherent_fail
+    write_prompt $func "executing $func"
+    create_table t1
+    fill_table t1
 }
 
 function run_test
@@ -160,12 +247,10 @@ function run_test
     [[ $debug == "1" ]] && set -x
     typeset func="run_test"
     write_prompt $func "executing $func"
-    start_coherent_loop
-    create_table t1
-    fill_table t1
-    cldeadlock_threads $cl_iters
-    check_coherent 1
-    cleanup
+    setup_test
+    downgrade_test
+    normal_test
+    [[ -f $incoherent_fail ]] && failexit "Cluster went incoherent"
 }
 
 run_test

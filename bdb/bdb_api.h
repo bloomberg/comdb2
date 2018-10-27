@@ -1843,8 +1843,7 @@ enum {
 };
 
 enum {
-    BDB_CURTRAN_SKIP_BDBLOCK = 0x00000001,
-    BDB_CURTRAN_LOW_PRIORITY = 0x00000002
+    BDB_CURTRAN_LOW_PRIORITY = 0x00000001
 };
 
 int bdb_get_rowlocks_state(int *rlstate, int *bdberr);

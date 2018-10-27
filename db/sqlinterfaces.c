@@ -2178,7 +2178,6 @@ int release_locks(struct sql_thread *td, const char *trace)
     struct sql_thread *qikey = pthread_getspecific(query_info_key);
     struct sql_thread *thd = td ? td : qikey;
     struct sqlclntstate *clnt = thd ? thd->clnt : NULL;
-    uint32_t flags = (qikey == NULL) ? RECOVER_DEADLOCK_SKIP_BDBLOCK : 0;
     int rc = 0;
 
     if (clnt && clnt->dbtran.cursor_tran) {
@@ -2187,7 +2186,7 @@ int release_locks(struct sql_thread *td, const char *trace)
             logmsg(LOGMSG_USER, "Releasing locks for lockid %d, %s%s\n",
                    bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran), trace,
                    (qikey == NULL) ? " (skip bdblock)" : "");
-        rc = recover_deadlock_flags(thedb->bdb_env, thd, NULL, -1, flags);
+        rc = recover_deadlock_flags(thedb->bdb_env, thd, NULL, -1, 0);
     }
     return rc;
 }
@@ -3799,7 +3798,7 @@ static int send_heartbeat(struct sqlclntstate *clnt)
 
 int gbl_client_heartbeat_ms = 100;
 
-static int lock_client_write_lock_int(struct sqlclntstate *clnt, int try)
+static inline int lock_client_write_lock_int(struct sqlclntstate *clnt, int try)
 {
     struct sql_thread *thd;
     int rc;
@@ -3809,8 +3808,6 @@ again:
         rc = pthread_mutex_trylock(&clnt->write_lock);
     } else {
         rc = Pthread_mutex_lock(&clnt->write_lock);
-        if (rc)
-            abort();
     }
     if (rc == 0 && clnt->heartbeat_lock) {
         if (clnt->need_recover_deadlock &&
@@ -4337,9 +4334,9 @@ int sbuf_is_local(SBUF2 *sb)
 static inline int sql_writer_recover_deadlock(struct sql_thread *qikey,
         struct sql_thread *thd, struct sqlclntstate *clnt)
 {
-    int count = 0, rc;
+    int count = 0;
 
-    /* sql thread */
+    /* Sql thread */
     if (qikey) {
         if (release_locks(thd, "slow reader") != 0) {
             logmsg(LOGMSG_ERROR, "%s release_locks failed\n",
@@ -4349,8 +4346,10 @@ static inline int sql_writer_recover_deadlock(struct sql_thread *qikey,
         return 0;
     } 
 
-    /* Heartbeat thread */
+    /* Appsock/heartbeat thread emitting a row */
     if (clnt && clnt->emitting_flag) {
+        assert(clnt->heartbeat_lock == 0);
+        assert(clnt->need_recover_deadlock == 0);
         clnt->heartbeat_lock = 1;
         clnt->need_recover_deadlock = 1;
         do {
@@ -4362,8 +4361,7 @@ static inline int sql_writer_recover_deadlock(struct sql_thread *qikey,
                 logmsg(LOGMSG_ERROR, "%s wait for sql to release locks, "
                         "count=%d\n", __func__, count);
             }
-            rc = pthread_cond_timedwait(&clnt->write_cond, &clnt->write_lock,
-                    &ts);
+            pthread_cond_timedwait(&clnt->write_cond, &clnt->write_lock, &ts);
         } while (clnt->need_recover_deadlock == 1);
         clnt->heartbeat_lock = 0;
         return 0;

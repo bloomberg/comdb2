@@ -2428,7 +2428,6 @@ cursor_tran_t *bdb_get_cursortran(bdb_state_type *bdb_state, uint32_t flags,
 {
     cursor_tran_t *curtran = NULL;
     int lowpri = (flags & BDB_CURTRAN_LOW_PRIORITY);
-    int skip_bdblock = (flags & BDB_CURTRAN_SKIP_BDBLOCK);
     int rc = 0;
 
     if (bdb_state->parent) {
@@ -2436,8 +2435,7 @@ cursor_tran_t *bdb_get_cursortran(bdb_state_type *bdb_state, uint32_t flags,
                 __func__);
     }
 
-    if (!skip_bdblock)
-        BDB_READLOCK("bdb_get_cursortran");
+    BDB_READLOCK("bdb_get_cursortran");
 
     curtran = calloc(sizeof(cursor_tran_t), 1);
     if (curtran) {
@@ -2455,8 +2453,7 @@ cursor_tran_t *bdb_get_cursortran(bdb_state_type *bdb_state, uint32_t flags,
             logmsg(LOGMSG_ERROR, "%s: fail to get lock_id rc=%d\n", __func__, rc);
             *bdberr = (rc == DB_LOCK_DEADLOCK) ? BDBERR_DEADLOCK : rc;
             free(curtran);
-            if (!skip_bdblock)
-                BDB_RELLOCK();
+            BDB_RELLOCK();
             return NULL;
         }
         curtran->id = curtran_counter++;
@@ -2464,8 +2461,7 @@ cursor_tran_t *bdb_get_cursortran(bdb_state_type *bdb_state, uint32_t flags,
         logmsg(LOGMSG_ERROR, "%s: error allocating %zu bytes\n", __func__,
                sizeof(cursor_tran_t));
         *bdberr = BDBERR_MALLOC;
-        if (!skip_bdblock)
-            BDB_RELLOCK();
+        BDB_RELLOCK();
     }
 
     if (bdb_state->attr->dbgberkdbcursor && curtran)
@@ -2552,8 +2548,7 @@ int bdb_put_cursortran(bdb_state_type *bdb_state, cursor_tran_t *curtran,
         rc = -1;
     }
 
-    if (!(flags & BDB_CURTRAN_SKIP_BDBLOCK))
-        BDB_RELLOCK();
+    BDB_RELLOCK();
 
     if (bdb_state->attr->dbgberkdbcursor)
         logmsg(LOGMSG_ERROR, "BERKDBLOG=%d %p curtran bdberr=%d PUT\n", curtran->id,

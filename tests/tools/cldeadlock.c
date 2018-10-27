@@ -23,6 +23,19 @@ void usage(FILE *f)
     exit(1);
 }
 
+static inline int failexit(const char *func, int line, int rc)
+{
+    printf("Exiting from %s line %d with rc %d\n", func, line, rc);
+    exit(1);
+}
+
+static inline int retry_rcode(int rc)
+{
+    if (rc == -1 || rc == -5 || rc == 2)
+        return 1;
+    return 0;
+}
+
 int64_t record_count(const char *dbname, const char *type)
 {
     cdb2_hndl_tp *hndl;
@@ -31,17 +44,25 @@ int64_t record_count(const char *dbname, const char *type)
 
     if ((rc = cdb2_open(&hndl, dbname, type, 0)) != 0) {
         fprintf(stderr, "Failed to allocate count handle for %s\n", dbname);
-        exit(1);
+        failexit(__func__, __LINE__, rc);
     }
 
+again:
     if ((rc = cdb2_run_statement(hndl, "select count(*) from t1")) != 0) {
-        fprintf(stderr, "Failed to run select count statement, rc=%d\n", rc);
-        exit(1);
+        fprintf(stderr, "Failed to run select count statement, rc=%d, %s\n", rc,
+                cdb2_errstr(hndl));
+        /* Connect error */
+        if (retry_rcode(rc) == 1) {
+            sleep(1);
+            goto again;
+        }
+        failexit(__func__, __LINE__, rc);
     }
 
     if ((rc = cdb2_next_record(hndl)) != CDB2_OK) {
-        fprintf(stderr, "cdb2_next_record returns %d\n", rc);
-        exit(1);
+        fprintf(stderr, "cdb2_next_record returns %d, %s\n", rc,
+                cdb2_errstr(hndl));
+        failexit(__func__, __LINE__, rc);
     }
 
     count = *(int64_t *)cdb2_column_value(hndl, 0);
@@ -62,18 +83,24 @@ int select_and_update_orphan(const char *dbname, const char *type,
     printf("Orphan target is %" PRId64 "\n", target);
     if ((sel_rc = cdb2_open(&sel_hndl, dbname, type, 0)) != 0) {
         fprintf(stderr, "Failed to allocate sel-handle for %s\n", dbname);
-        exit(1);
+        failexit(__func__, __LINE__, sel_rc);
     }
 
     if ((upd_rc = cdb2_open(&upd_hndl, dbname, type, 0)) != 0) {
         fprintf(stderr, "Failed to allocate upd-handle for %s\n", dbname);
-        exit(1);
+        failexit(__func__, __LINE__, upd_rc);
     }
 
+sel_again:
     if ((sel_rc = cdb2_run_statement(sel_hndl,
                     "select a from t1 order by a")) != 0) {
-        fprintf(stderr, "Failed to run select statement, rc=%d\n", sel_rc);
-        exit(1);
+        fprintf(stderr, "Failed to run select statement, rc=%d, %s\n", sel_rc,
+                cdb2_errstr(sel_hndl));
+        if (retry_rcode(sel_rc)) {
+            sleep(1);
+            goto sel_again;
+        }
+        failexit(__func__, __LINE__, sel_rc);
     }
 
     while((++iter < target) && (sel_rc = cdb2_next_record(sel_hndl)) == CDB2_OK) {
@@ -88,10 +115,16 @@ int select_and_update_orphan(const char *dbname, const char *type,
                     "update t1 set a = %" PRId64 " where a = %" PRId64 "\n",
                     upd_val, *sel_val);
 
+upd_again:
             if ((upd_rc = cdb2_run_statement(upd_hndl, upd_sql)) != 0 &&
                     upd_rc != CDB2ERR_VERIFY_ERROR) {
-                fprintf(stderr, "Failed to run update statement, rc=%d\n", upd_rc);
-                exit(1);
+                fprintf(stderr, "Failed to run update statement, rc=%d, %s\n",
+                        upd_rc, cdb2_errstr(upd_hndl));
+                if (retry_rcode(upd_rc)) {
+                    sleep(1);
+                    goto upd_again;
+                }
+                failexit(__func__, __LINE__, upd_rc);
             }
 
             /* Ignore results */
@@ -99,9 +132,9 @@ int select_and_update_orphan(const char *dbname, const char *type,
                 ;
 
             if (upd_rc != CDB2_OK_DONE) {
-                fprintf(stderr, "Failed next from update cursor, rcode is %d\n",
-                        upd_rc);
-                exit(1);
+                fprintf(stderr, "Failed next from update cursor, rcode is %d, %s\n",
+                        upd_rc, cdb2_errstr(upd_hndl));
+                failexit(__func__, __LINE__, upd_rc);
             }
             if (pint > 0 && !(cnt % pint))
                 printf("Updated %" PRId64 " records, target is %" PRId64 "\n",
@@ -126,7 +159,7 @@ int select_and_update(const char *dbname, const char *type, int64_t count,
 
 int main(int argc,char *argv[])
 {
-    int c, err = 0, range = 100000, rc, pint = 10000, orphans = 10;
+    int c, err = 0, range = 100000, pint = 10000, orphans = 10;
     char *dbname = NULL, *type = NULL, *pidfile = NULL;
     FILE *pfile;
     int64_t count;
@@ -186,8 +219,8 @@ int main(int argc,char *argv[])
         usage(stderr);
     }
 
-
     count = record_count(dbname, type);
-    rc = select_and_update(dbname, type, count, orphans, range, pint);
-    return rc;
+    select_and_update(dbname, type, count, orphans, range, pint);
+    printf("Complete\n");
+    return 0;
 }
