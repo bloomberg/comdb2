@@ -2333,7 +2333,7 @@ static void *pglogs_asof_thread(void *arg)
         assert(log_compare(&new_asof_lsn, &bdb_asof_current_lsn) >= 0);
         bdb_asof_current_lsn = new_asof_lsn;
         assert(bdb_asof_current_lsn.file);
-        pthread_cond_broadcast(&bdb_asof_current_lsn_cond);
+        Pthread_cond_broadcast(&bdb_asof_current_lsn_cond);
         Pthread_mutex_unlock(&bdb_asof_current_lsn_mutex);
 
 #ifdef ASOF_TRACE

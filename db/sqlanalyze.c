@@ -301,7 +301,7 @@ static void *sampling_thread(void *arg)
     /* release the thread */
     Pthread_mutex_lock(&comp_thd_mutex);
     analyze_cur_comp_threads--;
-    pthread_cond_broadcast(&comp_thd_cond);
+    Pthread_cond_broadcast(&comp_thd_cond);
     Pthread_mutex_unlock(&comp_thd_mutex);
 
     /* cleanup */
@@ -876,7 +876,7 @@ static void *table_thread(void *arg)
     /* release thread */
     Pthread_mutex_lock(&table_thd_mutex);
     analyze_cur_table_threads--;
-    pthread_cond_broadcast(&table_thd_cond);
+    Pthread_cond_broadcast(&table_thd_cond);
     Pthread_mutex_unlock(&table_thd_mutex);
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
 

@@ -2293,7 +2293,7 @@ int comdb2bma_transfer_priority(comdb2bma ma, pthread_t tid)
             COMDB2BMA_UNLOCK(ma);
         else {
             if (ma->nblocks != 0)
-                pthread_cond_broadcast(&ma->cond);
+                Pthread_cond_broadcast(&ma->cond);
             rc = COMDB2BMA_UNLOCK(ma);
         }
     }
@@ -2320,7 +2320,7 @@ int comdb2bma_yield(comdb2bma ma)
             ma->prio_tid = ma->inherit_tid;
             pthread_setspecific(privileged, PRIO_NO);
             if (ma->nblocks != 0)
-                pthread_cond_broadcast(&ma->cond);
+                Pthread_cond_broadcast(&ma->cond);
         } else {
             ma->prio = 0;
             pthread_setspecific(privileged, PRIO_NO);

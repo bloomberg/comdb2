@@ -502,7 +502,7 @@ int do_schema_change_tran(sc_arg_t *arg)
     if (!s->nothrevent) {
         Pthread_mutex_lock(&sc_async_mtx);
         sc_async_threads--;
-        pthread_cond_broadcast(&sc_async_cond);
+        Pthread_cond_broadcast(&sc_async_cond);
         Pthread_mutex_unlock(&sc_async_mtx);
     }
     if (s->resume == SC_NEW_MASTER_RESUME || rc == SC_COMMIT_PENDING ||

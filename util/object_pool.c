@@ -243,7 +243,7 @@ int comdb2_objpool_stop(comdb2_objpool_t op)
     OP_DBG(op, "stop pool");
     Pthread_mutex_lock(&op->data_mutex);
     op->stopped = 1;
-    pthread_cond_broadcast(&op->unexhausted);
+    Pthread_cond_broadcast(&op->unexhausted);
     Pthread_mutex_unlock(&op->data_mutex);
     return 0;
 }
@@ -1125,7 +1125,7 @@ static int opt_capacity(comdb2_objpool_t op, int value)
     OP_DBG(op, "reorganize pool, after");
 
     if (op->nborrowwaits > 0 && !full(op))
-        pthread_cond_broadcast(&op->unexhausted);
+        Pthread_cond_broadcast(&op->unexhausted);
 
     return 0;
 }

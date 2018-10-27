@@ -175,7 +175,7 @@ struct thr_handle *thrman_register(enum thrtype type)
         char buf[1024];
        logmsg(LOGMSG_ERROR, "thrman_register: %s\n", thrman_describe(thr, buf, sizeof(buf)));
     }
-    pthread_cond_broadcast(&cond);
+    Pthread_cond_broadcast(&cond);
     Pthread_mutex_unlock(&mutex);
 
     return thr;
@@ -213,7 +213,7 @@ void thrman_change_type(struct thr_handle *thr, enum thrtype newtype)
        logmsg(LOGMSG_USER, "thrman_change_type: from %s -> %s\n", thrman_type2a(oldtype),
                thrman_describe(thr, buf, sizeof(buf)));
     }
-    pthread_cond_broadcast(&cond);
+    Pthread_cond_broadcast(&cond);
     Pthread_mutex_unlock(&mutex);
 }
 
@@ -237,7 +237,7 @@ static void thrman_destructor(void *param)
         logmsg(LOGMSG_USER, "thrman_destructor: %s\n",
                thrman_describe(thr, buf, sizeof(buf)));
     }
-    pthread_cond_broadcast(&cond);
+    Pthread_cond_broadcast(&cond);
     Pthread_mutex_unlock(&mutex);
 
     if (thr->reqlogger) {

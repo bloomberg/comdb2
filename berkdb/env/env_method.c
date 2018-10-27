@@ -1325,7 +1325,7 @@ __dbenv_set_durable_lsn(dbenv, lsnp, generation)
 		}
 	}
 
-    pthread_cond_broadcast(&gbl_durable_lsn_cond);
+    Pthread_cond_broadcast(&gbl_durable_lsn_cond);
 	Pthread_mutex_unlock(&gbl_durable_lsn_lk);
 }
 

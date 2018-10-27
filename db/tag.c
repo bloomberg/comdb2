@@ -118,7 +118,6 @@ static inline void init_taglock(void)
 #else
     Pthread_mutex_init(&taglock, NULL);
 #endif
-    return 0;
 }
 
 /* set dbstore (or null) value for a column
@@ -163,7 +162,6 @@ int schema_init(void)
 void add_tag_schema(const char *table, struct schema *schema)
 {
     struct dbtag *tag;
-    int rc;
 
     lock_taglock();
 

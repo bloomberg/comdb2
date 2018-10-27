@@ -159,7 +159,7 @@ static void wake_up_consumer(struct consumer *consumer, int force)
     Pthread_mutex_lock(&consumer->mutex);
     if (force || consumer->waiting_for_data) {
         consumer->need_to_wake = 1;
-        pthread_cond_broadcast(&consumer->cond);
+        Pthread_cond_broadcast(&consumer->cond);
     }
     Pthread_mutex_unlock(&consumer->mutex);
 }

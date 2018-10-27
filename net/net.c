@@ -3688,7 +3688,7 @@ static int process_payload_ack(netinfo_type *netinfo_ptr,
         ptr->payload = payload;
         ptr->payloadlen = p_net_ack_message_payload.paylen;
         ptr->ack = 1;
-        pthread_cond_broadcast(&(host_node_ptr->ack_wakeup));
+        Pthread_cond_broadcast(&(host_node_ptr->ack_wakeup));
     }
 
     Pthread_mutex_unlock(&(host_node_ptr->wait_mutex));
@@ -3728,7 +3728,7 @@ static int process_ack(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
     if (ptr != NULL) {
         ptr->outrc = outrc;
         ptr->ack = 1;
-        pthread_cond_broadcast(&(host_node_ptr->ack_wakeup));
+        Pthread_cond_broadcast(&(host_node_ptr->ack_wakeup));
     }
 
     Pthread_mutex_unlock(&(host_node_ptr->wait_mutex));
@@ -4223,7 +4223,7 @@ static void *writer_thread(void *args)
             /* release this before writing to sock*/
             Pthread_mutex_unlock(&(host_node_ptr->enquelk));
 
-            pthread_cond_broadcast(&(host_node_ptr->throttle_wakeup));
+            Pthread_cond_broadcast(&(host_node_ptr->throttle_wakeup));
 
             rc = 0;
             flags = 0;
@@ -5181,7 +5181,7 @@ static void *connect_thread(void *arg)
         Pthread_mutex_lock(&(host_node_ptr->throttle_lock));
         ref += host_node_ptr->throttle_waiters;
         if (host_node_ptr->throttle_waiters > 0)
-            pthread_cond_broadcast(&(host_node_ptr->throttle_wakeup));
+            Pthread_cond_broadcast(&(host_node_ptr->throttle_wakeup));
         Pthread_mutex_unlock(&(host_node_ptr->throttle_lock));
 
         if (ref == 0)

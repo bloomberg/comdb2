@@ -1420,7 +1420,7 @@ static int db_debug(lua_State *lua)
         logmsg(LOGMSG_ERROR, "debug client no longer valid \n");
         sp->debug_clnt = sp->clnt;
         lua_sethook(lua, InstructionCountHook, LUA_MASKCOUNT, 1);
-        pthread_cond_broadcast(&lua_debug_cond);
+        Pthread_cond_broadcast(&lua_debug_cond);
         return 0;
     }
 
@@ -1432,7 +1432,7 @@ static int db_debug(lua_State *lua)
                 /* To be given as lrl value. */
                 sp->debug_clnt = sp->clnt;
                 lua_sethook(lua, InstructionCountHook, LUA_MASKCOUNT, 1);
-                pthread_cond_broadcast(&lua_debug_cond);
+                Pthread_cond_broadcast(&lua_debug_cond);
                 return 0;
             }
             sleep(2);
@@ -1482,7 +1482,7 @@ static int db_db_debug(Lua lua)
         char old_buffer[250];
         read = get_remote_input(lua, buffer, sizeof(buffer));
         if (strncmp(buffer, "cont", 4) == 0) {
-            pthread_cond_broadcast(&lua_debug_cond);
+            Pthread_cond_broadcast(&lua_debug_cond);
             sprintf(buffer, " %s", "_SP.do_next = false \n if (db.emit) then "
                                    "\n db_emit = db.emit \n end");
             finish_execute = 1;
@@ -1522,7 +1522,7 @@ static int db_db_debug(Lua lua)
             replace_from = NULL;
         } else if (read == 0) {
             /* Debugging socket is closed, let the program continue. */
-            pthread_cond_broadcast(&lua_debug_cond);
+            Pthread_cond_broadcast(&lua_debug_cond);
             sprintf(buffer, " %s", "db_emit = db.emit");
             finish_execute = 1;
         } else if (buffer[0] == '\0') {
@@ -2524,7 +2524,7 @@ static void *dispatch_lua_thread(void *arg)
 
     parent_thd->finished_run = 1;
     parent_thd->lua_tid = 0;
-    pthread_cond_broadcast(&parent_thd->lua_thread_cond);
+    Pthread_cond_broadcast(&parent_thd->lua_thread_cond);
     pthread_cond_destroy(&parent_thd->lua_thread_cond);
 
     return NULL;
@@ -5128,7 +5128,7 @@ halt_here:
     }
     clnt->want_stored_procedure_debug = 1;
 wait_here:
-    pthread_cond_broadcast(&lua_debug_cond); /* 1 debugger at a time. */
+    Pthread_cond_broadcast(&lua_debug_cond); /* 1 debugger at a time. */
     Pthread_mutex_lock(&lua_debug_mutex);
     Pthread_cond_wait(&lua_debug_cond, &lua_debug_mutex);
     Pthread_mutex_unlock(&lua_debug_mutex);

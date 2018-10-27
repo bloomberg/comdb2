@@ -729,7 +729,7 @@ __rep_elect_done(dbenv, rep, egen, func, line)
 			__rep_set_egen(dbenv, __func__, __LINE__, egen);
 		else
 			__rep_set_egen(dbenv, __func__, __LINE__, rep->egen+1);
-		pthread_cond_broadcast(&gbl_rep_egen_cd);
+		Pthread_cond_broadcast(&gbl_rep_egen_cd);
 		Pthread_mutex_unlock(&gbl_rep_egen_lk);
 	}
 #ifdef DIAGNOSTIC

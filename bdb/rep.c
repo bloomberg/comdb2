@@ -2550,7 +2550,7 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
         return;
 
     /* wake up anyone who might be waiting to see this seqnum */
-    pthread_cond_broadcast(&(bdb_state->seqnum_info->cond));
+    Pthread_cond_broadcast(&(bdb_state->seqnum_info->cond));
 
     /* new LSN from node: we may need to make the node coherent */
     Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
@@ -5514,7 +5514,7 @@ void *watcher_thread(void *arg)
         Pthread_mutex_lock(&bdb_state->pending_broadcast_lock);
         if (bdb_state->pending_seqnum_broadcast) {
             Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
-            pthread_cond_broadcast(&(bdb_state->seqnum_info->cond));
+            Pthread_cond_broadcast(&(bdb_state->seqnum_info->cond));
             Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
 
             bdb_state->pending_seqnum_broadcast = 0;

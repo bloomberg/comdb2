@@ -284,7 +284,7 @@ static void thd_coalesce_check_ll(void)
 {
     if (coalesce_waiters && busy.count <= coalesce_reqthd_waiters &&
         q_reqs.count == 0) {
-        pthread_cond_broadcast(&coalesce_wakeup);
+        Pthread_cond_broadcast(&coalesce_wakeup);
     }
 }
 

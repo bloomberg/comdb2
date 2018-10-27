@@ -491,7 +491,7 @@ static void *apply_thread(void *arg)
 
 		while (!IN_ELECTION_TALLY_WAITSTART(rep) && !bdb_the_lock_desired() && 
 				(max_dequeue-- > 0) && (q = listc_rtl(&log_queue))) {
-			pthread_cond_broadcast(&release_cond);
+			Pthread_cond_broadcast(&release_cond);
 			if (q->rp->rectype == REP_LOG_MORE) {
 				queue_log_more_count--;
 				log_more_count = queue_log_more_count;
@@ -4298,7 +4298,7 @@ err:
 	listc_rfl(&dbenv->inflight_transactions, rp);
 	listc_abl(&dbenv->inactive_transactions, rp);
 	if (listc_size(&dbenv->inflight_transactions) == 0)
-		pthread_cond_broadcast(&dbenv->recover_cond);
+		Pthread_cond_broadcast(&dbenv->recover_cond);
 	Pthread_mutex_unlock(&dbenv->recover_lk);
 
 	if (!dbenv->lsn_chain) {
