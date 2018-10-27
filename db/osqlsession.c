@@ -459,7 +459,11 @@ void *osql_sess_getbptran(osql_sess_t *sess)
     return bsql;
 }
 
-int osql_sess_lock(osql_sess_t *sess) { Pthread_mutex_lock(&sess->mtx); return 0; }
+int osql_sess_lock(osql_sess_t *sess)
+{
+    Pthread_mutex_lock(&sess->mtx);
+    return 0;
+}
 
 int osql_sess_unlock(osql_sess_t *sess)
 {

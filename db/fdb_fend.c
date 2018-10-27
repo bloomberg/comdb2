@@ -3382,7 +3382,10 @@ fdb_sqlstat_cache_t *fdb_sqlstats_get(fdb_t *fdb)
     return fdb->sqlstats;
 }
 
-void fdb_sqlstats_put(fdb_t *fdb) { Pthread_mutex_unlock(&fdb->sqlstats_mtx); }
+void fdb_sqlstats_put(fdb_t *fdb)
+{
+    Pthread_mutex_unlock(&fdb->sqlstats_mtx);
+}
 
 static int fdb_cursor_set_sql(BtCursor *pCur, const char *sql)
 {

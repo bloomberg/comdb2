@@ -237,15 +237,16 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
         if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
             rc = hash_del(checkboard->rqsuuid, entry);
             if (rc)
-                logmsg(LOGMSG_ERROR, "%s: unable to delete record %llx, rc=%d\n",
-                        __func__, entry->rqid, rc);
+                logmsg(LOGMSG_ERROR,
+                       "%s: unable to delete record %llx, rc=%d\n", __func__,
+                       entry->rqid, rc);
         } else {
             rc = hash_del(checkboard->rqs, entry);
             if (rc) {
                 uuidstr_t us;
-                logmsg(LOGMSG_ERROR, "%s: unable to delete record %llx %s, rc=%d\n",
-                        __func__, entry->rqid,
-                        comdb2uuidstr(clnt->osql.uuid, us), rc);
+                logmsg(LOGMSG_ERROR,
+                       "%s: unable to delete record %llx %s, rc=%d\n", __func__,
+                       entry->rqid, comdb2uuidstr(clnt->osql.uuid, us), rc);
             }
         }
 
@@ -297,7 +298,7 @@ int osql_chkboard_sqlsession_exists(unsigned long long rqid, uuid_t uuid,
     if (!checkboard)
         return 0;
 
-    if (lock) 
+    if (lock)
         Pthread_rwlock_rdlock(&checkboard->rwlock);
 
     if (rqid == OSQL_RQID_USE_UUID)
@@ -305,7 +306,7 @@ int osql_chkboard_sqlsession_exists(unsigned long long rqid, uuid_t uuid,
     else
         rc = (entry = hash_find_readonly(checkboard->rqs, &rqid)) != 0;
 
-    if (lock) 
+    if (lock)
         Pthread_rwlock_unlock(&checkboard->rwlock);
 
     return rc;
@@ -662,7 +663,6 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
         entry->last_updated = comdb2_time_epochms();
 
         Pthread_mutex_unlock(&entry->mtx);
-
     }
 
     Pthread_rwlock_unlock(&checkboard->rwlock);

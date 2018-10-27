@@ -1580,7 +1580,6 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         clnt->ready_for_heartbeats = 0;
         Pthread_mutex_unlock(&clnt->wait_mutex);
 
-
         outrc = rc;
 
         if (sendresponse) {

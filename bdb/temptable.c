@@ -537,11 +537,10 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
         switch (action) {
         case TMPTBL_PRIORITY:
             comdb2_objpool_forcedborrow(bdb_state->temp_table_pool,
-                                             (void **)&table);
+                                        (void **)&table);
             break;
         case TMPTBL_WAIT:
-            comdb2_objpool_borrow(bdb_state->temp_table_pool,
-                                       (void **)&table);
+            comdb2_objpool_borrow(bdb_state->temp_table_pool, (void **)&table);
             break;
         }
     }

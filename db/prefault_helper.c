@@ -297,8 +297,7 @@ int create_prefault_helper_threads(struct dbenv *dbenv, int nthreads)
         prefault_helper_thread_arg->dbenv = dbenv;
         prefault_helper_thread_arg->instance = i;
 
-        Pthread_mutex_init(&(dbenv->prefault_helper.threads[i].mutex),
-                           NULL);
+        Pthread_mutex_init(&(dbenv->prefault_helper.threads[i].mutex), NULL);
 
         Pthread_cond_init(&(dbenv->prefault_helper.threads[i].cond), NULL);
 
@@ -371,7 +370,8 @@ int readaheadpf(struct ireq *iq, struct dbtable *db, int ixnum, unsigned char *k
             /*fprintf(stderr, "readahead signaling helper %d\n", i);*/
 
             Pthread_cond_signal(&(iq->dbenv->prefault_helper.threads[i].cond));
-            Pthread_mutex_unlock(&(iq->dbenv->prefault_helper.threads[i].mutex));
+            Pthread_mutex_unlock(
+                &(iq->dbenv->prefault_helper.threads[i].mutex));
 
             /* Found someone to work for me, break out of loop */
             break;

@@ -197,9 +197,9 @@ int osql_repository_add(osql_sess_t *sess, int *replaced)
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: Unable to hash the new request\n", __func__);
         rc = -2;
-    }
-    else {
-        memcpy(add_uuid_list[add_current_uuid], sess->uuid, sizeof(add_uuid_list[0]));
+    } else {
+        memcpy(add_uuid_list[add_current_uuid], sess->uuid,
+               sizeof(add_uuid_list[0]));
         add_uuid_order[add_current_uuid] = total_ordering++;
         add_current_uuid = ((add_current_uuid + 1) % MAX_UUID_LIST);
     }

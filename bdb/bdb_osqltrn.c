@@ -153,13 +153,19 @@ void bdb_verify_repo_lock() { verify_pthread_mutex(&trn_repo_mtx); }
  * lock the snapshot/serializable transaction repository
  *
  */
-void bdb_osql_trn_repo_lock() { Pthread_mutex_lock(&trn_repo_mtx); }
+void bdb_osql_trn_repo_lock()
+{
+    Pthread_mutex_lock(&trn_repo_mtx);
+}
 
 /**
  * unlock the snapshot/serializable transaction repository
  *
  */
-void bdb_osql_trn_repo_unlock() { Pthread_mutex_unlock(&trn_repo_mtx); }
+void bdb_osql_trn_repo_unlock()
+{
+    Pthread_mutex_unlock(&trn_repo_mtx);
+}
 
 /**
  * Destroy the snapshot/serializable transaction repository

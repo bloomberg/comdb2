@@ -245,7 +245,7 @@ static void *_cron_runner(void *arg)
                    We mark the cron job as working, to exclude access to top
                    event to any other thread !!!
                    */
-                sched->running = 1;     
+                sched->running = 1;
                 Pthread_mutex_unlock(&sched->mtx);
                 event->func(event->source_id, event->arg1, event->arg2, event->arg3,
                             &xerr);

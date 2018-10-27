@@ -702,8 +702,9 @@ static void *thdpool_thd(void *voidarg)
                     /* If there's still no work we'll die. */
                     thr_exit = 1;
                 } else if (rc != 0 && rc != EINTR) {
-                    logmsg(LOGMSG_ERROR, "%s(%s):pthread_cond_timedwait: %d %s\n",
-                            __func__, pool->name, rc, strerror(rc));
+                    logmsg(LOGMSG_ERROR,
+                           "%s(%s):pthread_cond_timedwait: %d %s\n", __func__,
+                           pool->name, rc, strerror(rc));
                 }
             }
 

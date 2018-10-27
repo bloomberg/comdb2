@@ -3213,7 +3213,7 @@ int offload_comm_send_sync_blockreq(char *node, void *buf, int buflen)
                 clock_gettime(CLOCK_REALTIME, &ts);
                 ts.tv_sec += 1;
                 rc = pthread_cond_timedwait(&(p_slock->wait_cond),
-                        &(p_slock->req_lock), &ts);
+                                            &(p_slock->req_lock), &ts);
                 ++nwakeups;
 
                 if (nwakeups == 1000)
@@ -9312,7 +9312,7 @@ static void *uprec_cron_event(uuid_t source_id, void *arg1, void *arg2, void *ar
             ++uprec->ngoods;
         }
 
-done:
+    done:
         // allow the array to take new requests
         uprec->genid = 0;
         uprec->owner = NULL;

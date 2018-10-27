@@ -437,8 +437,9 @@ static inline void bdb_get_writelock_int(bdb_state_type *bdb_state,
 
             Pthread_rwlock_wrlock(lock_handle->bdb_lock);
         } else if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "%s/%s(%s): pthread_rwlock_trywrlock error %d %s\n",
-                    idstr, funcname, __func__, rc, strerror(rc));
+            logmsg(LOGMSG_FATAL,
+                   "%s/%s(%s): pthread_rwlock_trywrlock error %d %s\n", idstr,
+                   funcname, __func__, rc, strerror(rc));
             abort();
         }
 
@@ -532,8 +533,9 @@ void bdb_get_readlock(bdb_state_type *bdb_state, const char *idstr,
 
             Pthread_rwlock_rdlock(lock_handle->bdb_lock);
         } else if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "%s/%s(%s): pthread_rwlock_tryrdlock error %d %s\n",
-                    idstr, funcname, __func__, rc, strerror(rc));
+            logmsg(LOGMSG_FATAL,
+                   "%s/%s(%s): pthread_rwlock_tryrdlock error %d %s\n", idstr,
+                   funcname, __func__, rc, strerror(rc));
             abort();
         }
 

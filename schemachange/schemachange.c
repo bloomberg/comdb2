@@ -1350,12 +1350,14 @@ void sc_printf(struct schema_change_type *s, const char *fmt, ...)
         return;
     }
 
-    if (s && s->sb) Pthread_mutex_lock(&schema_change_sbuf2_lock);
+    if (s && s->sb)
+        Pthread_mutex_lock(&schema_change_sbuf2_lock);
 
     vsb_printf(LOGMSG_INFO, (s) ? s->sb : NULL, "?", "Schema change info: ",
                fmt, args);
 
-    if (s && s->sb) Pthread_mutex_unlock(&schema_change_sbuf2_lock);
+    if (s && s->sb)
+        Pthread_mutex_unlock(&schema_change_sbuf2_lock);
 
     va_end(args);
 }
@@ -1370,12 +1372,14 @@ void sc_errf(struct schema_change_type *s, const char *fmt, ...)
         return;
     }
 
-    if (s && s->sb) Pthread_mutex_lock(&schema_change_sbuf2_lock);
+    if (s && s->sb)
+        Pthread_mutex_lock(&schema_change_sbuf2_lock);
 
     vsb_printf(LOGMSG_ERROR, (s) ? s->sb : NULL, "!", "Schema change error: ",
                fmt, args);
 
-    if (s && s->sb) Pthread_mutex_unlock(&schema_change_sbuf2_lock);
+    if (s && s->sb)
+        Pthread_mutex_unlock(&schema_change_sbuf2_lock);
 
     va_end(args);
 }
