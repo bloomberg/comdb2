@@ -4378,7 +4378,7 @@ int sql_writer(SBUF2 *sb, const char *buf, int nbytes)
     ssize_t nwrite, written = 0;
     struct sql_thread *qikey = pthread_getspecific(query_info_key);
     struct sql_thread *thd = sbuf2getsqlthd(sb);
-    struct sqlclntstate *clnt = thd->clnt;
+    struct sqlclntstate *clnt = thd ? thd->clnt : NULL;
     int retry = -1;
     int released_locks = 0;
 
