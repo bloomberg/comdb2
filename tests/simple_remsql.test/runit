@@ -5,10 +5,9 @@ bash -n "$0" | exit 1
 ################################################################################
 
 
-# args
-# <dbname> <dbdir> <testdir> <autodbname> <autodbnum> <cluster>
+# we rely on the following global variables to be set
 echo "main db vars"
-vars="TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR CDB2_OPTIONS CDB2_CONFIG"
+vars="TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR CDB2_OPTIONS CDB2_CONFIG SECONDARY_DB SECONDARY_DBDIR SECONDARY_DB_CDB2_CONFIG SECONDARY_DB_CDB2_OPTIONS"
 for required in $vars; do
     q=${!required}
     echo "$required=$q" 
@@ -17,243 +16,21 @@ for required in $vars; do
         exit 1
     fi
 done
-
-dbname=$1
-srcdbname=srcdb$DBNAME
-dbdir=$DBDIR
-testdir=$TESTDIR
-cdb2config=$CDB2_CONFIG
-
-DBNAME=$srcdbname
-DBDIR=$TESTDIR/$DBNAME
-#effectively srcdb config -- needed to setup srcdb
-CDB2_CONFIG=$DBDIR/comdb2db.cfg
-CDB2_OPTIONS="--cdb2cfg $CDB2_CONFIG"
-
-echo "remote db vars"
-vars="TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR CDB2_OPTIONS CDB2_CONFIG"
-for required in $vars; do
-    q=${!required}
-    echo "$required=$q" 
-    if [[ -z "$q" ]]; then
-        echo "$required not set" >&2
-        exit 1
-    fi
-done
-
-
-#setup remode db
-$TESTSROOTDIR/setup &> $TESTDIR/logs/$DBNAME.setup
-
-function old()
-{
-testdir=$3
-srcdbname=$4
-srcdbnum=$5
-cluster=$6
-task=$7
-
-#echo ${dbname}
-#echo ${dbdir}
-#echo ${testdir}
-#echo ${srcdbname}
-#echo ${srcdbnum}
-#echo ${cluster}
-#echo ${task}
-
-is_local=0
-mymachine=`/bb/bin/mycpu`
-
-PATH=.:${PATH}
-
-#initialize the source db based on autodbname autodbnum
-
-#generate the lrl file
-srcdbdir="${testdir}/srcdb"
-rm -rf ${srcdbdir} 
-if [[ ! -d ${srcdbdir} ]]; then
-   mkdir ${srcdbdir}
-   if [[ $? != 0 ]] ; then
-      echo "FAILED to create source directory ${srcdbdir}"
-      exit 1
-   fi
-fi
-srclrl="${srcdbdir}/src.lrl"
-
-cat <<EOF > ${srclrl}
-name ${srcdbname}
-dbnum  ${srcdbnum}
-dir    ${srcdbdir}
-EOF
-
-if [[ "${cluster}" != "0" ]]; then
-   cluster_line=`echo ${cluster} | tr ":" " "`
-   echo "cluster nodes $cluster_line" >> ${srclrl}
-fi
-
-#initcomdb2
-echo "Initializing source db $srcdbname"
-initcomdb2 -f ${srclrl} > ${srcdbdir}/${srcdbname}.initcomdb2 2>&1
-if (( $? != 0 )) ; then
-   echo "Failed to initialize source db ${srcdbname}"
-   exit 1
-fi
-
-cchmod +666 $srcdbdir
-chmod +666 $srcdbdir/*
-chmod +666 $srcdbdir/$srcdbname.tmpdbs/*
-chmod +666 $srcdbdir/$srcdbname.txn/*
-
-#echo "Creating archive"
-echo "$COMDB2AR_EXE c $srclrl | /bb/bin/lz4 stdin stdout > ${srcdbdir}/db.lz4"
-$COMDB2AR_EXE c $srclrl | /bb/bin/lz4 stdin stdout > ${srcdbdir}/db.lz4
-
-a_ssh=
-a_scp=
-/bb/bin/bbhost -w $mymachine "cdb2"
-if (( $? == 0 )) ; then
-   a_scp="bb_filexfer"
-   a_ssh="/opt/appssh/bin/ssh"
-else
-   a_scp="scp"
-   a_ssh="ssh"
-fi
-
-#copycomdb2
-
-for node in `echo ${cluster} | tr ":" "\n"`; do
-   if (( ${node} == 0 )); then
-      is_local=1
-      continue;
-   fi
-   nodename=`bbhost -w -m ${node}`
-   nodenames[$node]=$nodename
-   
-   if [[ "$nodename" == "$mymachine" ]] ; then
-      is_local=1
-   fi
-   echo "Copying db $srcdbname to $nodename"
-   #ksh -x /bb/bin/copycomdb2 -H ${srclrl} ${nodename}:
-   #/bb/bin/copycomdb2 ${srclrl} ${nodename}:
-   #if (( $? != 0 )) ; then
-   #   echo "Failed to copy to $nodename"
-   #   exit 1
-   #fi
-   echo $a_ssh $nodename "rm -rf $srcdbdir; mkdir -p $srcdbdir"
-   $a_ssh $nodename "rm -rf $srcdbdir;mkdir -p $srcdbdir"
-   if (( $? != 0 )) ; then
-      echo "Failed to create dir $srcdbdir on $nodename"
-      exit 1
-   fi
-   echo $a_scp ${srcdbdir}/db.lz4 ${nodename}:${srcdbdir}/db.lz4
-   $a_scp ${srcdbdir}/db.lz4 ${nodename}:${srcdbdir}/db.lz4
-   if (( $? != 0 )) ; then
-      echo "Failed to copy ${srcdbdir}/db.lz4 to $nodename"
-      exit 1
-   fi
-   echo $a_ssh $nodename "/bb/bin/lz4 -d ${srcdbdir}/db.lz4 stdout | $COMDB2AR_EXE -C preserve x ${srcdbdir}"
-   $a_ssh $nodename "/bb/bin/lz4 -d ${srcdbdir}/db.lz4 stdout | $COMDB2AR_EXE -C preserve x ${srcdbdir}"
-   if (( $? != 0 )) ; then
-      echo "Failed to extract ${srcdbdir}/db.lz4 on $nodename"
-      exit 1
-   fi
-
-   echo "Fixing modes"
-   $a_ssh $nodename "PATH=/opt/bb/bin/:$PATH; chmod +666 $srcdbdir"
-   $a_ssh $nodename "PATH=/opt/bb/bin/:$PATH; chmod +666 $srcdbdir/*"
-   $a_ssh $nodename "PATH=/opt/bb/bin/:$PATH; chmod +666 $srcdbdir/$srcdbname.txn/*"
-   $a_ssh $nodename "PATH=/opt/bb/bin/:$PATH; chmod +666 $srcdbdir/$srcdbname.tmpdbs/*"
-done
-
-#bring up the cluster
-if (( $is_local == 1 )) ; then
-   node=mymachine
-   echo "Starting up node $node ($task $srcdbname -lrl $srclrl &)"
-   /bb/bin/nstart $srcdbname $task $srcdbname -lrl $srclrl
-fi
-
-for node in ${nodenames[@]} ; do
-   bbhost -w $node ibm
-   if (( $? == 0 )) ; then
-      arch="ibm"
-   else
-      bbhost -w $node linux
-      if (( $? == 0 )) ; then
-         arch="linux_64"
-      else
-         echo "Unknown architecture"
-         exit 1
-      fi
-   fi
-
-   runtask=${task%.tsk}
-   runtask=${runtask%.*}
-   runtask=${runtask}.${arch}.tsk
-
-   echo "Starting up node $node ($runtask $srcdbname -lrl $srclrl &)"
-   $a_ssh $node "/bb/bin/nstart $srcdbname $runtask $srcdbname -lrl $srclrl"
-done
-
-#bring up the proxy
-if (( $is_local == 0 )) ; then
-   nodes=`echo $cluster | tr ":" " "`
-   echo "Bringing up local proxy to ($nodes)"
-   nstart $srcdbname /bb/bin/prox2.tsk $srcdbname $srcdbnum $nodes
-
-
-   #wait for cluster to be up
-   /bb/bin/send $srcdbname redo
-   while :; do 
-      err=`/bb/bin/where $srcdbname | grep "Database is a comdb2" | grep "\-1"`
-      if [[ -z $err ]] ; then
-         break;
-      fi
-      /bb/bin/send $srcdbname redo
-   done
-fi
-}
-
 
 #generate testscripts in new files
 files=`ls *.req.src`
 for file in $files ; do
    newfile=${file%%.src}
-   sed "/^insert /!s/ t$/ LOCAL_$dbname.t/g" $file > $newfile.tmp
-   sed "/^insert /!s/ t / LOCAL_$dbname.t /g" $newfile.tmp > $newfile
+   sed "/^insert /!s/ t$/ LOCAL_$DBNAME.t/g" $file > $newfile.tmp
+   sed "/^insert /!s/ t / LOCAL_$DBNAME.t /g" $newfile.tmp > $newfile
    rm $newfile.tmp
 done
 
 
 #run tests
 echo "Starting tests"
-./remsql_curmoves.sh $dbname $cdb2config $srcdbname  $dbdir $testdir 
+./remsql_curmoves.sh $DBNAME $CDB2_CONFIG $SECONDARY_DB $SECONDARY_DB_CDB2_CONFIG
 result=$?
-
-if (( $result == 0 )) ; then
-   successful=1
-fi
-
-$TESTSROOTDIR/unsetup $successful &> $TESTDIR/logs/$DBNAME.unsetup
-
-
-function old_clenaup(){
-if (( $is_local == 0 )) ; then
-   echo "Exit local proxy"
-   /bb/bin/send $srcdbname exit
-fi
-
-if (( $is_local == 1 )) ; then
-   node=mymachine
-   echo "Exiting node $node"
-   /bb/bin/send $srcdbname exit
-fi
-
-for node in ${nodenames[@]} ; do
-   echo "Exiting node $node ($task $srcdbname -lrl $srclrl &)"
-   $a_ssh $node "/bb/bin/send $srcdbname exit"
-done
-}
-
 
 if (( $result != 0 )) ; then
    echo "FAILURE"
