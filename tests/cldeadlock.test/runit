@@ -204,7 +204,7 @@ function start_downgrade_thread
     [[ $debug == "1" ]] && set -x
     typeset func="start_downgrade_thread"
     write_prompt $func "executing $func"
-    downgrade_loop 10 &
+    downgrade_loop 20 &
     downgrade_pid=$!
 }
 
