@@ -57,7 +57,7 @@ cron_sched_t *cron_add_event(cron_sched_t *sched, const char *name, int epoch,
         created = 1;
 
         Pthread_mutex_init(&sched->mtx, NULL);
-        pthread_cond_init(&sched->cond, NULL);
+        Pthread_cond_init(&sched->cond, NULL);
         listc_init(&sched->events, offsetof(struct cron_event, lnk));
         if (name) {
             sched->name = strdup(name);
@@ -151,7 +151,7 @@ static void _insert_ordered_event(cron_sched_t * sched, cron_event_t *event)
     if (sched->events.top == event) {
         /* new event at the top of the list,
            notify cron to pick up the event */
-        pthread_cond_signal(&sched->cond);
+        Pthread_cond_signal(&sched->cond);
     }
 }
 
@@ -298,7 +298,7 @@ void cron_signal_worker(cron_sched_t *sched)
 {
     Pthread_mutex_lock(&sched->mtx);
 
-    pthread_cond_signal(&sched->cond);
+    Pthread_cond_signal(&sched->cond);
 
     Pthread_mutex_unlock(&sched->mtx);
 }

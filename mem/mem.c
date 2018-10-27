@@ -2120,7 +2120,7 @@ static void comdb2bma_thr_dest(void *bmakey)
                 ma->prio = 0;
 
             if (ma->nblocks != 0)
-                pthread_cond_signal(&ma->cond);
+                Pthread_cond_signal(&ma->cond);
             pthread_mutex_unlock(&ma->alloc->lock);
         }
     }
@@ -2163,7 +2163,7 @@ comdb2bma comdb2bma_create_trace(size_t init, size_t cap, const char *name,
             }
 
             if (ret != NULL) {
-                pthread_cond_init(&ret->cond, NULL);
+                Pthread_cond_init(&ret->cond, NULL);
                 // initialize fields
                 ret->prio = 0;
                 ret->lock = lock ? lock : (&ret->alloc->lock);
@@ -2325,7 +2325,7 @@ int comdb2bma_yield(comdb2bma ma)
             ma->prio = 0;
             pthread_setspecific(privileged, PRIO_NO);
             if (ma->nblocks != 0)
-                pthread_cond_signal(&ma->cond);
+                Pthread_cond_signal(&ma->cond);
         }
 
         if (rc == 0) {
@@ -2798,7 +2798,7 @@ static void comdb2_bfree_int(comdb2bma ma, void *ptr, int lk)
         comdb2_malloc_trim(ma->alloc, 0);
 
     if (ma->nblocks != 0 && mspace_footprint(ma->alloc->m) <= ma->cap)
-        pthread_cond_signal(&ma->cond);
+        Pthread_cond_signal(&ma->cond);
 
     if (lk)
         COMDB2BMA_UNLOCK(ma->lock);

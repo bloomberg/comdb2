@@ -115,7 +115,7 @@ static void *prefault_helper_thread(void *arg)
         dbenv->prefault_helper.threads[i].working_for = gbl_invalid_tid;
         MEMORY_SYNC;
 
-        pthread_cond_wait(&(dbenv->prefault_helper.threads[i].cond),
+        Pthread_cond_wait(&(dbenv->prefault_helper.threads[i].cond),
                           &(dbenv->prefault_helper.mutex));
 
         /* bogus wakeup? */
@@ -244,7 +244,7 @@ static void *prefault_helper_thread(void *arg)
       dbenv->prefault_helper.threads[i].working_for = gbl_invalid_tid;
       MEMORY_SYNC;
       
-      pthread_cond_wait(&(dbenv->prefault_helper.threads[i].cond),
+      Pthread_cond_wait(&(dbenv->prefault_helper.threads[i].cond),
          &(dbenv->prefault_helper.threads[i].mutex));
 
       MEMORY_SYNC;
@@ -300,7 +300,7 @@ int create_prefault_helper_threads(struct dbenv *dbenv, int nthreads)
         Pthread_mutex_init(&(dbenv->prefault_helper.threads[i].mutex),
                            NULL);
 
-        pthread_cond_init(&(dbenv->prefault_helper.threads[i].cond), NULL);
+        Pthread_cond_init(&(dbenv->prefault_helper.threads[i].cond), NULL);
 
         dbenv->prefault_helper.threads[i].pfk_bitmap =
             malloc(8 * gbl_maxblockops);
@@ -370,7 +370,7 @@ int readaheadpf(struct ireq *iq, struct dbtable *db, int ixnum, unsigned char *k
 
             /*fprintf(stderr, "readahead signaling helper %d\n", i);*/
 
-            pthread_cond_signal(&(iq->dbenv->prefault_helper.threads[i].cond));
+            Pthread_cond_signal(&(iq->dbenv->prefault_helper.threads[i].cond));
             Pthread_mutex_unlock(&(iq->dbenv->prefault_helper.threads[i].mutex));
 
             /* Found someone to work for me, break out of loop */

@@ -1385,7 +1385,7 @@ __dbenv_trigger_open(dbenv, fname)
 	t = __db_get_trigger_subscription(fname);
 	Pthread_mutex_lock(&t->lock);
 	t->open = 1;
-	pthread_cond_signal(&t->cond);
+	Pthread_cond_signal(&t->cond);
 	Pthread_mutex_unlock(&t->lock);
 	return 0;
 }
@@ -1399,7 +1399,7 @@ __dbenv_trigger_close(dbenv, fname)
 	t = __db_get_trigger_subscription(fname);
 	Pthread_mutex_lock(&t->lock);
 	t->open = 0;
-	pthread_cond_signal(&t->cond);
+	Pthread_cond_signal(&t->cond);
 	Pthread_mutex_unlock(&t->lock);
 	return 0;
 }

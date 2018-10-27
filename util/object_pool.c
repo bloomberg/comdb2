@@ -274,7 +274,7 @@ int comdb2_objpool_destroy(comdb2_objpool_t op)
             Pthread_mutex_lock(&op->evict_mutex);
             op->evict_thd_run = 0;
 
-            pthread_cond_signal(&op->evict_cond);
+            Pthread_cond_signal(&op->evict_cond);
 
             Pthread_mutex_unlock(&op->evict_mutex);
 
@@ -478,8 +478,8 @@ static int comdb2_objpool_create_int(comdb2_objpool_t *opp, const char *name,
 
     Pthread_mutex_init(&op->evict_mutex, NULL);
 
-    pthread_cond_init(&op->unexhausted, NULL);
-    pthread_cond_init(&op->evict_cond, NULL);
+    Pthread_cond_init(&op->unexhausted, NULL);
+    Pthread_cond_init(&op->evict_cond, NULL);
 
     /* initialize attributes */
     op->capacity = cap;
@@ -623,7 +623,7 @@ static void *eviction_thread(void *arg)
 
         rc = 0;
         if (op->evict_intv_ms == OPT_DISABLE)
-            pthread_cond_wait(&op->evict_cond, &op->evict_mutex);
+            Pthread_cond_wait(&op->evict_cond, &op->evict_mutex);
         else {
             clock_gettime(CLOCK_REALTIME, &tm);
             tm.tv_nsec += 1000000L * op->evict_intv_ms;
@@ -710,14 +710,14 @@ static int objpool_return_int(comdb2_objpool_t op, void *obj)
             Pthread_mutex_lock(&op->evict_mutex);
             Pthread_mutex_unlock(&op->data_mutex);
             OP_DBG(op, "signal evict_cond");
-            pthread_cond_signal(&op->evict_cond);
+            Pthread_cond_signal(&op->evict_cond);
             Pthread_mutex_unlock(&op->evict_mutex);
             return 0;
         }
 
         if (op->nborrowwaits != 0) {
             OP_DBG(op, "signal unexhausted");
-            pthread_cond_signal(&op->unexhausted);
+            Pthread_cond_signal(&op->unexhausted);
         }
     }
 
@@ -795,7 +795,7 @@ static int objpool_borrow_int(comdb2_objpool_t op, void **objp, long nanosecs,
 
             rc = 0;
             if (nanosecs < 0)
-                pthread_cond_wait(&op->unexhausted, &op->data_mutex);
+                Pthread_cond_wait(&op->unexhausted, &op->data_mutex);
             else {
                 clock_gettime(CLOCK_REALTIME, &tm);
                 tm.tv_nsec += nanosecs;
@@ -1159,7 +1159,7 @@ static int opt_evict_intv_ms(comdb2_objpool_t op, int value)
         {
             Pthread_mutex_lock(&op->evict_mutex);
             op->evict_thd_run = 0;
-            pthread_cond_signal(&op->evict_cond);
+            Pthread_cond_signal(&op->evict_cond);
 
             Pthread_mutex_unlock(&op->evict_mutex);
             rc = pthread_join(op->evict_thd, NULL);
@@ -1191,7 +1191,7 @@ static int opt_evict_ratio(comdb2_objpool_t op, int value)
         {
             Pthread_mutex_lock(&op->evict_mutex);
             op->evict_thd_run = 0;
-            pthread_cond_signal(&op->evict_cond);
+            Pthread_cond_signal(&op->evict_cond);
 
             Pthread_mutex_unlock(&op->evict_mutex);
             rc = pthread_join(op->evict_thd, NULL);

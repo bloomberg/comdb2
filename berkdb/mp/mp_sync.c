@@ -233,7 +233,7 @@ mempsync_thd(void *p)
 	mempsync_thread_running = 1;
 	while (!mempsync_thread_should_stop) {
 		Pthread_mutex_lock(&mempsync_lk);
-		pthread_cond_wait(&mempsync_wait, &mempsync_lk);
+		Pthread_cond_wait(&mempsync_wait, &mempsync_lk);
 		if (mempsync_thread_should_stop) {
 			Pthread_mutex_unlock(&mempsync_lk);
 			break;
@@ -330,7 +330,7 @@ mempsync_out_of_band_init(void)
 {
 	int rc;
 	Pthread_mutex_init(&mempsync_lk, NULL);
-	pthread_cond_init(&mempsync_wait, NULL);
+	Pthread_cond_init(&mempsync_wait, NULL);
 
 	rc = pthread_create(&mempsync_tid, NULL, mempsync_thd, gblenv);
 	if (rc) {
@@ -348,7 +348,7 @@ __memp_sync_out_of_band(DB_ENV *dbenv, DB_LSN *lsn)
 
 	Pthread_mutex_lock(&mempsync_lk);
 	mempsync_lsn = *lsn;
-	pthread_cond_signal(&mempsync_wait);
+	Pthread_cond_signal(&mempsync_wait);
 	Pthread_mutex_unlock(&mempsync_lk);
 
 	return 0;
@@ -1007,7 +1007,7 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 	range->t->written_pages += wrote;
 	range->t->done_pages += ar_cnt;
 	range->t->ret = ret;
-	pthread_cond_signal(&range->t->wait);
+	Pthread_cond_signal(&range->t->wait);
 	Pthread_mutex_unlock(&range->t->lk);
 
 	Pthread_mutex_lock(&pgpool_lk);
@@ -1361,7 +1361,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 	pt->total_pages = pt->done_pages = pt->written_pages = 0;
 	pt->ret = pt->nwaits = 0;
 	pthread_mutex_init(&pt->lk, NULL);
-	pthread_cond_init(&pt->wait, NULL);
+	Pthread_cond_init(&pt->wait, NULL);
 
 	/*
 	 * Flush each file by passing it to a thread. This serializes writes
@@ -1457,7 +1457,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 		/* wait for writers to finish */
 		Pthread_mutex_lock(&pt->lk);
 		while (pt->done_pages < pt->total_pages) {
-			pthread_cond_wait(&pt->wait, &pt->lk);
+			Pthread_cond_wait(&pt->wait, &pt->lk);
 		}
 		wrote = pt->written_pages;
 		ret = pt->ret;

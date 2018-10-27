@@ -91,7 +91,7 @@ static void *async_logthd(void *unused)
 
         e = listc_rtl(&sqllog_events);
         while (e == NULL) {
-            pthread_cond_wait(&async_writer_wait, &sql_log_lk);
+            Pthread_cond_wait(&async_writer_wait, &sql_log_lk);
             e = listc_rtl(&sqllog_events);
         }
         /* don't hold lock while possibly doing IO */
@@ -138,7 +138,7 @@ static void async_enqueue(void *buf, int bufsz)
     e->bufsz = bufsz;
     listc_abl(&sqllog_events, e);
 
-    pthread_cond_signal(&async_writer_wait);
+    Pthread_cond_signal(&async_writer_wait);
     Pthread_mutex_unlock(&sql_log_lk);
 }
 
@@ -186,7 +186,7 @@ static void sqllog_changesync(int async)
             e->bufsz = 0;
             e->buf = NULL;
             listc_atl(&sqllog_events, e);
-            pthread_cond_signal(&async_writer_wait);
+            Pthread_cond_signal(&async_writer_wait);
             Pthread_mutex_unlock(&sql_log_lk);
 
             rc = pthread_join(sqllog_threadid, &thread_rc);

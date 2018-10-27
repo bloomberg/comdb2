@@ -1020,7 +1020,7 @@ __memp_send_sparse_page_thread(_)
 			while (spgs.list[ii].sparseness == 0) {
 				/* no entry, cond wait */
 				spgs.wait = 1;
-				pthread_cond_wait(&spgs.cond, &spgs.lock);
+				Pthread_cond_wait(&spgs.cond, &spgs.lock);
 			}
 
 			spgs.wait = 0;
@@ -1099,7 +1099,7 @@ __memp_add_sparse_page(dbenv, id, ufid, pgno, sparseness)
 	spgs.list[ii] = ent;
 
 	if (spgs.wait)
-		pthread_cond_signal(&spgs.cond);
+		Pthread_cond_signal(&spgs.cond);
 
 	Pthread_mutex_unlock(&spgs.lock);
 }

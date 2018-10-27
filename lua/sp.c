@@ -2509,7 +2509,7 @@ static void *dispatch_lua_thread(void *arg)
     clnt.exec_lua_thread = 1;
     clnt.trans_has_sp = 1;
     Pthread_mutex_init(&clnt.wait_mutex, NULL);
-    pthread_cond_init(&clnt.wait_cond, NULL);
+    Pthread_cond_init(&clnt.wait_cond, NULL);
     Pthread_mutex_init(&clnt.write_lock, NULL);
     Pthread_mutex_init(&clnt.dtran_mtx, NULL);
     strcpy(clnt.tzname, parent_clnt->tzname);
@@ -2911,7 +2911,7 @@ static int db_create_thread_int(Lua lua, const char *funcname)
     dbthread_t *lt;
     new_lua_t(lt, dbthread_t, DBTYPES_THREAD);
     Pthread_mutex_init(&lt->lua_thread_mutex, NULL);
-    pthread_cond_init(&lt->lua_thread_cond, NULL);
+    Pthread_cond_init(&lt->lua_thread_cond, NULL);
 
     SP sp = getsp(lua);
     SP newsp = NULL;
@@ -5130,7 +5130,7 @@ halt_here:
 wait_here:
     pthread_cond_broadcast(&lua_debug_cond); /* 1 debugger at a time. */
     Pthread_mutex_lock(&lua_debug_mutex);
-    pthread_cond_wait(&lua_debug_cond, &lua_debug_mutex);
+    Pthread_cond_wait(&lua_debug_cond, &lua_debug_mutex);
     Pthread_mutex_unlock(&lua_debug_mutex);
 do_continue:
     logmsg(LOGMSG_USER, "CoNtInUe \n");

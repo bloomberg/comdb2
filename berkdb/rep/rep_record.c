@@ -843,7 +843,7 @@ __rep_enqueue_log(dbenv, rp, rec, gen)
 		}
 		apply_thd_created = 1;
 	}
-	pthread_cond_signal(&queue_cond);
+	Pthread_cond_signal(&queue_cond);
 	Pthread_mutex_unlock(&rep_queue_lock);
 
 	if (gbl_verbose_fills && (elapsed = (comdb2_time_epochms() - start)) >
@@ -3883,7 +3883,7 @@ worker_thd(struct thdpool *pool, void *work, void *thddata, int op)
 
 	/* Signal if not running inline */
 	if (pool) {
-		pthread_cond_signal(&rq->processor->wait);
+		Pthread_cond_signal(&rq->processor->wait);
 	}
 	Pthread_mutex_unlock(&rq->processor->lk);
 }
@@ -5033,7 +5033,7 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 	if (rp == NULL) {
 		rp = calloc(1, sizeof(struct __recovery_processor));
 		pthread_mutex_init(&rp->lk, NULL);
-		pthread_cond_init(&rp->wait, NULL);
+		Pthread_cond_init(&rp->wait, NULL);
 		memset(&rp->lc, 0, sizeof(rp->lc));
 		rp->recovery_queues = NULL;
 		rp->recpool =

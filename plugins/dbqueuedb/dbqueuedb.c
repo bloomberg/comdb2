@@ -293,7 +293,7 @@ static int add_consumer_int(struct dbtable *db, int consumern,
         set_consumer_options(consumer, opts);
 
         Pthread_mutex_init(&consumer->mutex, NULL);
-        pthread_cond_init(&consumer->cond, NULL);
+        Pthread_cond_init(&consumer->cond, NULL);
     }
 
     if (!checkonly && db)
@@ -828,7 +828,7 @@ static void stop_consumer(struct consumer *consumer)
     // TODO CONSUMER_TYPE_LUA,
     Pthread_mutex_lock(&consumer->mutex);
     consumer->please_stop = 1;
-    pthread_cond_signal(&consumer->cond);
+    Pthread_cond_signal(&consumer->cond);
     Pthread_mutex_unlock(&consumer->mutex);
 
     Pthread_mutex_lock(&consumer->mutex);
@@ -837,7 +837,7 @@ static void stop_consumer(struct consumer *consumer)
         return;
     }
     while (!consumer->stopped) {
-        pthread_cond_wait(&consumer->cond, &consumer->mutex);
+        Pthread_cond_wait(&consumer->cond, &consumer->mutex);
         Pthread_mutex_unlock(&consumer->mutex);
     }
 }

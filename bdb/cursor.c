@@ -2430,7 +2430,7 @@ int bdb_gbl_pglogs_init(bdb_state_type *bdb_state)
             hash_init_o(offsetof(struct asof_cursor, fileid),
                         DB_FILE_ID_LEN * sizeof(unsigned char));
         Pthread_mutex_init(&bdb_asof_current_lsn_mutex, NULL);
-        pthread_cond_init(&bdb_asof_current_lsn_cond, NULL);
+        Pthread_cond_init(&bdb_asof_current_lsn_cond, NULL);
         listc_init(&pglogs_commit_list, offsetof(struct commit_list, lnk));
     }
 

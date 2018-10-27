@@ -256,7 +256,7 @@ struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz)
     pool->dump_on_full = 0;
     pool->stack_sz = DEFAULT_THD_STACKSZ;
 
-    pthread_cond_init(&pool->wait_for_thread, NULL);
+    Pthread_cond_init(&pool->wait_for_thread, NULL);
 
     Pthread_mutex_lock(&pool_list_lk);
     pthread_once(&init_pool_list_once, init_pool_list);
@@ -551,7 +551,7 @@ void thdpool_stop(struct thdpool *pool)
         pool->stopped = 1;
         LISTC_FOR_EACH(&pool->thdlist, thd, thdlist_linkv)
         {
-            pthread_cond_signal(&thd->cond);
+            Pthread_cond_signal(&thd->cond);
         }
     }
     UNLOCK(&pool->mutex);
@@ -651,7 +651,7 @@ static void *thdpool_thd(void *voidarg)
             int thr_exit = 0;
 
             if (pool->wait && pool->waiting_for_thread)
-                pthread_cond_signal(&pool->wait_for_thread);
+                Pthread_cond_signal(&pool->wait_for_thread);
 
             /* Get work.  If there is no work then place us on the free
              * list and wait for work. */
@@ -694,7 +694,7 @@ static void *thdpool_thd(void *voidarg)
                 if (ts) {
                     rc = pthread_cond_timedwait(&thd->cond, &pool->mutex, ts);
                 } else {
-                    pthread_cond_wait(&thd->cond, &pool->mutex);
+                    Pthread_cond_wait(&thd->cond, &pool->mutex);
                 }
                 if (rc == ETIMEDOUT) {
                     /* Make sure we don't get into a hot loop. */
@@ -814,7 +814,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                 return -1;
             }
 
-            pthread_cond_init(&thd->cond, NULL);
+            Pthread_cond_init(&thd->cond, NULL);
             thd->pool = pool;
             listc_atl(&pool->thdlist, thd);
 
@@ -852,7 +852,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
         if (thd == NULL && pool->wait) {
 
             pool->waiting_for_thread = 1;
-            pthread_cond_wait(&pool->wait_for_thread, &pool->mutex);
+            Pthread_cond_wait(&pool->wait_for_thread, &pool->mutex);
             pool->waiting_for_thread = 0;
 
             goto again;
@@ -961,7 +961,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
             comdb2bma_yield_all();
         } else {
             comdb2bma_transfer_priority(blobmem, thd->tid);
-            pthread_cond_signal(&thd->cond);
+            Pthread_cond_signal(&thd->cond);
         }
     }
     UNLOCK(&pool->mutex);

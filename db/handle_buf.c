@@ -163,7 +163,7 @@ int thd_init(void)
         perror_errnum("thd_init:pthread_attr_setdetached", rc);
         return -1;
     }
-    pthread_cond_init(&coalesce_wakeup, NULL);
+    Pthread_cond_init(&coalesce_wakeup, NULL);
     p_thds = pool_setalloc_init(sizeof(struct thd), 0, malloc, free);
     if (p_thds == 0) {
         logmsg(LOGMSG_ERROR, "thd_init:failed thd pool init");
@@ -412,14 +412,14 @@ int free_bigbuf(uint8_t *p_buf, struct buf_lock_t *p_slock)
     p_slock->reply_state = REPLY_STATE_DONE;
     LOCK(&buf_lock) { pool_relablk(p_bufs, p_buf); }
     UNLOCK(&buf_lock);
-    pthread_cond_signal(&(p_slock->wait_cond));
+    Pthread_cond_signal(&(p_slock->wait_cond));
     return 0;
 }
 
 int signal_buflock(struct buf_lock_t *p_slock)
 {
     p_slock->reply_state = REPLY_STATE_DONE;
-    pthread_cond_signal(&(p_slock->wait_cond));
+    Pthread_cond_signal(&(p_slock->wait_cond));
     return 0;
 }
 
@@ -1094,7 +1094,7 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                 if (num >= MAXSTAT)
                     num = MAXSTAT - 1;
                 bkt_thd[num]++; /*count threads*/
-                pthread_cond_signal(&thd->wakeup);
+                Pthread_cond_signal(&thd->wakeup);
                 ndispatch++;
             } else /*i can create one..*/
             {
@@ -1115,7 +1115,7 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                 thd->iq = iq;
                 /*                fprintf(stderr, "added3 %8.8x\n",thd);*/
                 iq->where = "dispatched new";
-                pthread_cond_init(&thd->wakeup, 0);
+                Pthread_cond_init(&thd->wakeup, 0);
                 nthdcreates++;
 #ifdef MONITOR_STACK
                 rc = comdb2_pthread_create(&thd->tid, &attr, thd_req,

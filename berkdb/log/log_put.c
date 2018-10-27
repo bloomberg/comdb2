@@ -1662,7 +1662,7 @@ __log_write_td(arg)
 	Pthread_mutex_lock(&log_write_lk);
 	do {
 		/* Block until there's more to write. */
-		pthread_cond_wait(&log_write_cond, &log_write_lk);
+		Pthread_cond_wait(&log_write_cond, &log_write_lk);
 
 		/* Write whatever segments I can. */
 		__write_inmemory_buffer_lk(dblp, &bytes_written, 0);
@@ -1832,7 +1832,7 @@ __log_fill_segments(dblp, startlsn, lsn, addr, len)
 
 		/* Move to the next segment. */
 		if (segspace == copyamt) {
-			pthread_cond_signal(&log_write_cond);
+			Pthread_cond_signal(&log_write_cond);
 
 			nxtseg = (lp->b_off + copyamt) % lp->buffer_size;
 

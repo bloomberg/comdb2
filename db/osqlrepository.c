@@ -194,7 +194,7 @@ int osql_repository_add(osql_sess_t *sess, int *replaced)
     else
         rc = hash_add(theosql->rqs, sess);
 
-    if (!rc) {
+    if (rc) {
         logmsg(LOGMSG_ERROR, "%s: Unable to hash the new request\n", __func__);
         rc = -2;
     }
@@ -536,8 +536,6 @@ int osql_repository_session_exists(unsigned long long rqid, uuid_t uuid)
 
 void osql_repository_for_each(void *arg, int (*func)(void *, void *))
 {
-    int rc = 0;
-
     osql_repository_t *theosql = get_theosql();
     if (!theosql)
         return;

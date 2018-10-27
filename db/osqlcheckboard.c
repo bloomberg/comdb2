@@ -123,7 +123,7 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
 #endif
 
     Pthread_mutex_init(&entry->mtx, NULL);
-    pthread_cond_init(&entry->cond, NULL);
+    Pthread_cond_init(&entry->cond, NULL);
 
 retry:
 
@@ -365,7 +365,7 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
             }
         }
 
-        pthread_cond_signal(&entry->cond);
+        Pthread_cond_signal(&entry->cond);
         Pthread_mutex_unlock(&entry->mtx);
     }
 
@@ -382,7 +382,7 @@ static inline void signal_master_change(osql_sqlthr_t *rq, char *host,
         logmsg(LOGMSG_INFO, "%s signaling rq new master %s %llx %s\n", line,
                host, rq->rqid, comdb2uuidstr(rq->uuid, us));
     rq->master_changed = 1;
-    pthread_cond_signal(&rq->cond);
+    Pthread_cond_signal(&rq->cond);
 }
 
 int osql_checkboard_master_changed(void *obj, void *arg)

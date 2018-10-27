@@ -739,7 +739,7 @@ __txn_allocate_ltrans(dbenv, ltranid, begin_lsn, rlt)
 		if ((ret = __os_calloc(dbenv, 1, sizeof(LTDESC), &lt)) != 0)
 			goto err;
 		Pthread_mutex_init(&lt->lk, NULL);
-		pthread_cond_init(&lt->wait, NULL);
+		Pthread_cond_init(&lt->wait, NULL);
 	}
 
 	lt->ltranid = ltranid;

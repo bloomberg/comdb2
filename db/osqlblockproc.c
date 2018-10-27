@@ -192,7 +192,7 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
 
     Pthread_mutex_init(&tran->store_mtx, NULL);
     Pthread_mutex_init(&tran->mtx, NULL);
-    pthread_cond_init(&tran->cond, NULL);
+    Pthread_cond_init(&tran->cond, NULL);
 
     iq->blocksql_tran = tran; /* now blockproc knows about it */
 
@@ -756,7 +756,7 @@ int osql_bplog_signal(blocksql_tran_t *tran)
    printf("Signalling tmp=%llu\n", osql_log_time());
 #endif
 
-    pthread_cond_signal(&tran->cond);
+    Pthread_cond_signal(&tran->cond);
     Pthread_mutex_unlock(&tran->mtx);
 
     return 0;
@@ -1263,7 +1263,7 @@ static int osql_bplog_wait(blocksql_tran_t *tran)
 #endif
         rc = pthread_cond_timedwait(&tran->cond, &tran->mtx, &tm_s);
         if (rc && rc != ETIMEDOUT) {
-            logmsg(LOGMSG_ERROR, "pthread_cond_wait: error code %d\n", rc);
+            logmsg(LOGMSG_ERROR, "Pthread_cond_wait: error code %d\n", rc);
             return rc;
         }
 

@@ -280,7 +280,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         while (!s->resume && max_threads > 0 &&
                sc_async_threads >= max_threads) {
             logmsg(LOGMSG_INFO, "Waiting for avaiable schema change threads\n");
-            pthread_cond_wait(&sc_async_cond, &sc_async_mtx);
+            Pthread_cond_wait(&sc_async_cond, &sc_async_mtx);
         }
         sc_async_threads++;
         Pthread_mutex_unlock(&sc_async_mtx);

@@ -98,7 +98,7 @@ int start_prefault_io_threads(struct dbenv *dbenv, int numthreads, int maxq)
            &(dbenv->prefaultiopool.guard));
 
     logmsg(LOGMSG_DEBUG, "prefault cond initialized\n");
-    pthread_cond_init(&dbenv->prefaultiopool.cond, NULL);
+    Pthread_cond_init(&dbenv->prefaultiopool.cond, NULL);
 
     dbenv->prefaultiopool.maxq = maxq;
     dbenv->prefaultiopool.ioq = queue_new();
@@ -164,7 +164,7 @@ unsigned int enque_pfault_ll(struct dbenv *dbenv, pfrq_t *qdata)
         Pthread_mutex_unlock(&(dbenv->prefaultiopool.mutex));
     }
 
-    pthread_cond_signal(&(dbenv->prefaultiopool.cond));
+    Pthread_cond_signal(&(dbenv->prefaultiopool.cond));
     Pthread_mutex_unlock(&(dbenv->prefaultiopool.mutex));
 
     /*fprintf(stderr, "(%d) queued idx %d\n",pthread_self(), ixnum);*/
@@ -489,7 +489,7 @@ static void *prefault_io_thread(void *arg)
         req = (pfrq_t *)queue_next(dbenv->prefaultiopool.ioq);
 
         while (req == NULL) {
-            pthread_cond_wait(&(dbenv->prefaultiopool.cond),
+            Pthread_cond_wait(&(dbenv->prefaultiopool.cond),
                               &(dbenv->prefaultiopool.mutex));
 
             req = (pfrq_t *)queue_next(dbenv->prefaultiopool.ioq);

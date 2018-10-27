@@ -2596,7 +2596,7 @@ static int handle_bad_engine(struct sqlclntstate *clnt)
     clnt->query_rc = -1;
     Pthread_mutex_lock(&clnt->wait_mutex);
     clnt->done = 1;
-    pthread_cond_signal(&clnt->wait_cond);
+    Pthread_cond_signal(&clnt->wait_cond);
     Pthread_mutex_unlock(&clnt->wait_mutex);
     return -1;
 }
@@ -2614,7 +2614,7 @@ static int handle_bad_transaction_mode(struct sqlthdstate *thd,
     clnt->query_rc = 0;
     Pthread_mutex_lock(&clnt->wait_mutex);
     clnt->done = 1;
-    pthread_cond_signal(&clnt->wait_cond);
+    Pthread_cond_signal(&clnt->wait_cond);
     Pthread_mutex_unlock(&clnt->wait_mutex);
     clnt->osql.timings.query_finished = osql_log_time();
     osql_log_time_done(clnt);
@@ -3537,7 +3537,7 @@ static void clean_queries_not_cached_in_srs(struct sqlclntstate *clnt)
 {
     Pthread_mutex_lock(&clnt->wait_mutex);
     clnt->done = 1;
-    pthread_cond_signal(&clnt->wait_cond);
+    Pthread_cond_signal(&clnt->wait_cond);
     Pthread_mutex_unlock(&clnt->wait_mutex);
 }
 
@@ -3668,7 +3668,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
         clnt->query_rc = -1;
         Pthread_mutex_lock(&clnt->wait_mutex);
         clnt->done = 1;
-        pthread_cond_signal(&clnt->wait_cond);
+        Pthread_cond_signal(&clnt->wait_cond);
         Pthread_mutex_unlock(&clnt->wait_mutex);
         clnt->osql.timings.query_finished = osql_log_time();
         osql_log_time_done(clnt);
@@ -3920,7 +3920,7 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     } else {
         Pthread_mutex_lock(&clnt->wait_mutex);
         while (!clnt->done) {
-            pthread_cond_wait(&clnt->wait_cond, &clnt->wait_mutex);
+            Pthread_cond_wait(&clnt->wait_cond, &clnt->wait_mutex);
         }
         Pthread_mutex_unlock(&clnt->wait_mutex);
     }
@@ -5473,7 +5473,7 @@ void start_internal_sql_clnt(struct sqlclntstate *clnt)
     reset_clnt(clnt, NULL, 1);
     plugin_set_callbacks(clnt, internal);
     Pthread_mutex_init(&clnt->wait_mutex, NULL);
-    pthread_cond_init(&clnt->wait_cond, NULL);
+    Pthread_cond_init(&clnt->wait_cond, NULL);
     Pthread_mutex_init(&clnt->write_lock, NULL);
     Pthread_mutex_init(&clnt->dtran_mtx, NULL);
     clnt->dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);

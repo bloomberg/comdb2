@@ -2553,7 +2553,7 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
     Pthread_mutex_init(&(bdb_state->temp_list_lock), NULL);
     bdb_state->logical_transactions_hash = hash_init_o(
         offsetof(tran_type, logical_tranid), sizeof(unsigned long long));
-    pthread_cond_init(&(bdb_state->temptable_wait), NULL);
+    Pthread_cond_init(&(bdb_state->temptable_wait), NULL);
     bdb_state->temp_stats = calloc(1, sizeof(*(bdb_state->temp_stats)));
     pthread_mutexattr_init(&bdb_recursive_mutex);
     pthread_mutexattr_settype(&bdb_recursive_mutex, PTHREAD_MUTEX_RECURSIVE);
@@ -5289,7 +5289,7 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
 
     if (!parent_bdb_state) {
         Pthread_mutex_init(&(bdb_state->seqnum_info->lock), NULL);
-        pthread_cond_init(&(bdb_state->seqnum_info->cond), NULL);
+        Pthread_cond_init(&(bdb_state->seqnum_info->cond), NULL);
         bdb_state->seqnum_info->waitlist =
             calloc(MAXNODES, sizeof(wait_for_lsn_list *));
         bdb_state->seqnum_info->trackpool = pool_setalloc_init(

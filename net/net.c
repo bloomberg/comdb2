@@ -504,7 +504,7 @@ static void close_hostnode_ll(host_node_type *host_node_ptr)
         shutdown_hostnode_socket(host_node_ptr);
 
         /* wake up the writer thread if it's asleep */
-        pthread_cond_signal(&(host_node_ptr->write_wakeup));
+        Pthread_cond_signal(&(host_node_ptr->write_wakeup));
 
         /* call the hostdown routine if provided */
         if (host_node_ptr->netinfo_ptr->hostdown_rtn) {
@@ -1263,7 +1263,7 @@ static int write_message_int(netinfo_type *netinfo_ptr,
 
     /* wake up the writer thread */
     if (flags & WRITE_MSG_NODELAY)
-        pthread_cond_signal(&(host_node_ptr->write_wakeup));
+        Pthread_cond_signal(&(host_node_ptr->write_wakeup));
 
     return 0;
 }
@@ -2700,9 +2700,9 @@ static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
 
     Pthread_mutex_init(&(ptr->throttle_lock), NULL);
 
-    pthread_cond_init(&(ptr->ack_wakeup), NULL);
-    pthread_cond_init(&(ptr->write_wakeup), NULL);
-    pthread_cond_init(&(ptr->throttle_wakeup), NULL);
+    Pthread_cond_init(&(ptr->ack_wakeup), NULL);
+    Pthread_cond_init(&(ptr->write_wakeup), NULL);
+    Pthread_cond_init(&(ptr->throttle_wakeup), NULL);
 
     if (netinfo_ptr->qstat_init_rtn) {
         ptr->qstat = (netinfo_ptr->qstat_init_rtn)(
@@ -4346,7 +4346,7 @@ static void *writer_thread(void *args)
                                &(host_node_ptr->enquelk), &waittime);
 
         /*
-           pthread_cond_wait(&(host_node_ptr->write_wakeup),
+           Pthread_cond_wait(&(host_node_ptr->write_wakeup),
            &(host_node_ptr->enquelk));
          */
 
@@ -5135,7 +5135,7 @@ static void *connect_thread(void *arg)
             netinfo_ptr->new_node_rtn(netinfo_ptr, host_node_ptr->host, host_node_ptr->port);
 
         /* wake writer, if exists */
-        pthread_cond_signal(&(host_node_ptr->write_wakeup));
+        Pthread_cond_signal(&(host_node_ptr->write_wakeup));
         Pthread_mutex_unlock(&(host_node_ptr->write_lock));
 
         if (gbl_verbose_net)
@@ -5187,7 +5187,7 @@ static void *connect_thread(void *arg)
         if (ref == 0)
             break;
 
-        pthread_cond_signal(&(host_node_ptr->write_wakeup));
+        Pthread_cond_signal(&(host_node_ptr->write_wakeup));
         poll(NULL, 0, 1000);
     }
 

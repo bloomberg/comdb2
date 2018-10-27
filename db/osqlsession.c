@@ -777,7 +777,7 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
     /* init sync fields */
     Pthread_mutex_init(&sess->clients_mtx, NULL);
     Pthread_mutex_init(&sess->mtx, NULL);
-    pthread_cond_init(&sess->cond, NULL);
+    Pthread_cond_init(&sess->cond, NULL);
 
     /* init queue of messages */
     sess->que = queue_new();

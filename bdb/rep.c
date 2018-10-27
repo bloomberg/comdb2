@@ -3028,7 +3028,7 @@ again:
     }
 
     else if (rc != ETIMEDOUT && rc != 0) {
-        logmsg(LOGMSG_FATAL, "err from pthread_cond_wait\n");
+        logmsg(LOGMSG_FATAL, "err from pthread_cond_timedwait\n");
         exit(1);
     }
 
@@ -5566,7 +5566,7 @@ int bdb_wait_for_seqnum_from_n(bdb_state_type *bdb_state, seqnum_type *seqnum,
             }
         }
         if (num_acks < n)
-            pthread_cond_wait(&bdb_state->seqnum_info->cond,
+            Pthread_cond_wait(&bdb_state->seqnum_info->cond,
                               &bdb_state->seqnum_info->lock);
         Pthread_mutex_unlock(&bdb_state->seqnum_info->lock);
     }

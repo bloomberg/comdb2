@@ -115,7 +115,7 @@ void thrman_init(void)
         exit(1);
     }
 
-    pthread_cond_init(&cond, NULL);
+    Pthread_cond_init(&cond, NULL);
 
     pthread_attr_init(&gbl_pthread_attr_detached);
     pthread_attr_setdetachstate(&gbl_pthread_attr_detached,

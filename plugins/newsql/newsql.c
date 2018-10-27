@@ -2107,7 +2107,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     clnt.admin = arg->admin;
 
     Pthread_mutex_init(&clnt.wait_mutex, NULL);
-    pthread_cond_init(&clnt.wait_cond, NULL);
+    Pthread_cond_init(&clnt.wait_cond, NULL);
     Pthread_mutex_init(&clnt.write_lock, NULL);
     Pthread_mutex_init(&clnt.dtran_mtx, NULL);
 
