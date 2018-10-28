@@ -58,7 +58,7 @@ enum mach_class get_my_mach_class(void)
 {
     static int have_class = 0;
     static enum mach_class my_class = CLASS_UNKNOWN;
-    char *class;
+    char *class = NULL;
 
     if (!have_class) {
         static const char *delims = " \t\r\n";

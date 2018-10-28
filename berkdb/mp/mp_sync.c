@@ -561,7 +561,7 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 	struct writable_range *range;
 	DB_ENV *dbenv;
 	db_sync_op op;
-	BH *bhp;
+	BH *bhp = NULL;
 	BH_TRACK *bharray;
 	BH **bhparray;
 	DB_MPOOL *dbmp;
@@ -1092,7 +1092,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 	DB_MPOOL_HASH *hp;
 	DB_MPOOL_HASH **hparray;
 	DB_MUTEX *mutexp;
-	MPOOL *c_mp, *mp;
+	MPOOL *c_mp = NULL, *mp;
 	MPOOLFILE *mfp;
 	u_int32_t n_cache;
 	int ar_cnt, ar_max, hb_lock, i, j, pass, remaining, ret, t_ret;

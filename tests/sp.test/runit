@@ -14,7 +14,7 @@ if echo $dbname | grep "snapshotgenerated" ; then
 fi
 
 
-echo "Starting socksql tests"
+echo "Starting tests"
 echo "Using SP_OPTIONS: $SP_OPTIONS"
 ./test.sh $dbname
 rc=$?

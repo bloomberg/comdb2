@@ -504,11 +504,11 @@ __lock_detect_int(dbenv, atype, abortp, can_retry)
 	DB_LOCKREGION *region;
 	DB_LOCKTAB *lt;
 	DB_TXNMGR *tmgr;
-	locker_info *idmap;
+	locker_info *idmap = NULL;
 	sparse_map_t *sparse_map, *sparse_copymap;
-	u_int32_t *bitmap, *copymap, **deadp, *deadwho, **free_me, *free_me_2,
+	u_int32_t *bitmap = NULL, *copymap, **deadp, *deadwho, **free_me, *free_me_2,
 	    *tmpmap;
-	u_int32_t i, keeper, killid, limit, nalloc, nlockers, dwhoix;
+	u_int32_t i, keeper, killid, limit = 0, nalloc = 0, nlockers = 0, dwhoix;
 	u_int32_t lock_max, txn_max;
 	extern int gbl_print_deadlock_cycles;
 	extern int gbl_deadlock_policy_override;

@@ -273,6 +273,7 @@ SP: exec procedure bound(@i, @u, @ll, @ull, @s, @us, @f, @d, @dt, @cstr, @ba, @b
 (version='sptest')
 (version='sptest')
 (version='sptest')
+[exec procedure cons0(true)] failed with rc -3 [local consumer = db:consumer()...]:2: trigger/consumer is only supported under default transaction mode
 (rows deleted=500)
 (name='audit', type='trigger', tbl_name='foraudit', event='add', col='i')
 (name='audit', type='trigger', tbl_name='foraudit', event='del', col='i')

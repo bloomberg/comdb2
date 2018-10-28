@@ -1423,7 +1423,7 @@ static int __lock_wrlock_shared(fdb_t *fdb)
 
 static int __lock_wrlock_exclusive(char *dbname)
 {
-    fdb_t *fdb;
+    fdb_t *fdb = NULL;
     struct sql_thread *thd;
     int rc = FDB_NOERR;
     int idx = -1;
@@ -2067,7 +2067,7 @@ static int _fdb_remote_reconnect(fdb_t *fdb, SBUF2 **psb, char *host, int use_ca
     SBUF2 *sb = *psb;
     int rc = FDB_NOERR;
     static uint64_t old = 0ULL;
-    uint64_t now, then;
+    uint64_t now = 0, then;
 
     if (gbl_fdb_track) {
         logmsg(LOGMSG_USER, "Using node %s\n", host);
@@ -3862,7 +3862,7 @@ int fdb_trans_commit(struct sqlclntstate *clnt)
     fdb_distributed_tran_t *dtran = clnt->dbtran.dtran;
     fdb_tran_t *tran, *tmp;
     fdb_msg_t *msg;
-    int rc;
+    int rc = 0;
 
     if (!dtran)
         return 0;
