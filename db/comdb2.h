@@ -513,13 +513,9 @@ enum RECORD_WRITE_TYPES {
     RECORD_WRITE_MAX = 3
 };
 
-enum RECOVER_DEADLOCK_FLAGS {
-    RECOVER_DEADLOCK_PTRACE = 0x00000001
-};
+enum RECOVER_DEADLOCK_FLAGS { RECOVER_DEADLOCK_PTRACE = 0x00000001 };
 
-enum CURTRAN_FLAGS {
-    CURTRAN_RECOVERY = 0x00000001
-};
+enum CURTRAN_FLAGS { CURTRAN_RECOVERY = 0x00000001 };
 
 /* Raw stats, kept on a per origin machine basis.  This whole struct is
  * essentially an array of unsigneds.  Please don't add any other data

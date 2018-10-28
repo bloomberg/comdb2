@@ -3812,7 +3812,7 @@ again:
     }
     if (rc == 0 && clnt->heartbeat_lock) {
         if (clnt->need_recover_deadlock &&
-                (thd = pthread_getspecific(query_info_key))) {
+            (thd = pthread_getspecific(query_info_key))) {
             rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0);
             clnt->need_recover_deadlock = 0;
         }
@@ -4333,19 +4333,19 @@ int sbuf_is_local(SBUF2 *sb)
 }
 
 static inline int sql_writer_recover_deadlock(struct sql_thread *qikey,
-        struct sql_thread *thd, struct sqlclntstate *clnt)
+                                              struct sql_thread *thd,
+                                              struct sqlclntstate *clnt)
 {
     int count = 0;
 
     /* Sql thread */
     if (qikey) {
         if (release_locks(thd, "slow reader") != 0) {
-            logmsg(LOGMSG_ERROR, "%s release_locks failed\n",
-                    __func__);
+            logmsg(LOGMSG_ERROR, "%s release_locks failed\n", __func__);
             return -1;
         }
         return 0;
-    } 
+    }
 
     /* Appsock/heartbeat thread emitting a row */
     if (clnt && clnt->emitting_flag) {
@@ -4359,8 +4359,9 @@ static inline int sql_writer_recover_deadlock(struct sql_thread *qikey,
             clock_gettime(CLOCK_REALTIME, &ts);
             ts.tv_sec++;
             if (count > 5) {
-                logmsg(LOGMSG_ERROR, "%s wait for sql to release locks, "
-                        "count=%d\n", __func__, count);
+                logmsg(LOGMSG_ERROR,
+                       "%s wait for sql to release locks, count=%d\n", __func__,
+                       count);
             }
             pthread_cond_timedwait(&clnt->write_cond, &clnt->write_lock, &ts);
         } while (clnt->need_recover_deadlock == 1);
@@ -4400,7 +4401,7 @@ retry:
         }
         if (rc == 0) {
             if ((gbl_sql_release_locks_on_slow_reader && !released_locks) ||
-                    bdb_lock_desired(thedb->bdb_env)) {
+                bdb_lock_desired(thedb->bdb_env)) {
                 if ((rc = sql_writer_recover_deadlock(qikey, thd, clnt)) < 0)
                     return -1;
                 if (rc == 0)
