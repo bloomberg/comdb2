@@ -4081,6 +4081,10 @@ static int db_consumer(Lua L)
     dbconsumer_getargs(L, &push_tid, &register_timeoutms);
 
     SP sp = getsp(L);
+    struct sqlclntstate *clnt = sp->clnt;
+    if (clnt->dbtran.mode != TRANLEVEL_SOSQL)
+        return luaL_error(L, "trigger/consumer is only supported under default transaction mode");
+
     if (sp->parent->have_consumer) {
         return 0;
     }
