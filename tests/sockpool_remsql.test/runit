@@ -22,7 +22,7 @@ dbname=$1
 srcdbname=srcdb$DBNAME
 dbdir=$DBDIR
 testdir=$TESTDIR
-cdb2config=$CDB2_CONFIG
+cdb2options=$CDB2_OPTIONS
 
 $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.send('disable_server_sockpool')" | grep ON
 if [[ $? != 0 ]]; then
@@ -65,10 +65,11 @@ files=`ls *.req.src`
 for file in $files ; do
    newfile=${file%%.src}
    sed "s/ t / LOCAL_$dbname.t /g" $file > $newfile
+   sed -i "/^select /!s/ t$/ LOCAL_$dbname.t$/g" $newfile
 done
 
 echo "Populating rows"
-$CDB2SQL_EXE $CDB2_OPTIONS $dbname default - < inserts.req
+$CDB2SQL_EXE $cdb2options $dbname default - < inserts.req
 if [[ $? != 0 ]] ; then
     echo "Inserting rows failed"
     echo "FAILURE"
@@ -78,7 +79,7 @@ fi
 #run tests
 echo "Running sequence of selects"
 i=0; while (( $i != 1000 )); do
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - < load.req
+    $CDB2SQL_EXE $cdb2options $dbname default - < load.req
     result=$?
     if [[ $? != 0 ]] ; then
         echo "Select failed"
