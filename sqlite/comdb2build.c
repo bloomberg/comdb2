@@ -1426,8 +1426,6 @@ clean_arg:
 
 void comdb2getAlias(Parse* pParse, Token* t1)
 {
-    Vdbe *v  = sqlite3GetVdbe(pParse);
-
     if (comdb2AuthenticateUserOp(pParse))
         return;       
 

@@ -140,8 +140,6 @@ enum mach_class get_my_mach_class(void)
     return my_class;
 }
 
-static pthread_mutex_t mach_class_mtx = PTHREAD_MUTEX_INITIALIZER;
-
 enum mach_class get_mach_class(const char *host) { return machine_class(host); }
 
 const char *get_class_str(enum mach_class cls)

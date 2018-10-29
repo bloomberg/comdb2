@@ -494,8 +494,6 @@ void eventlog_add(const struct reqlogger *logger)
     if (eventlog == NULL || !eventlog_enabled)
         return;
 
-    int sz = 0;
-    char *fname;
     cson_value *val;
     cson_object *obj;
 

@@ -996,7 +996,7 @@ __rep_elect(dbenv, nsites, priority, timeout, newgen, eidp)
 	DB_LSN lsn = {0};
 	DB_REP *db_rep;
 	REP *rep;
-	int done, in_progress, ret, tiebreaker, vtype, use_committed_gen, cnt, send_vote2;
+	int done, in_progress, ret, tiebreaker, use_committed_gen, send_vote2;
 	u_int32_t egen, committed_gen = 0, orig_tally, pid, sec, usec;
 	char *send_vote;
 
@@ -1516,7 +1516,6 @@ __rep_get_eid(dbenv, eid_out)
 	DB_ENV *dbenv;
 	char **eid_out;
 {
-	char *eid = db_eid_invalid;
 	DB_REP *db_rep;
 	REP *rep;
 

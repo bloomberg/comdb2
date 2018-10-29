@@ -149,7 +149,6 @@ end:
 int exec_create_timepart(void *tran, bpfunc_t *func, char *err)
 {
     char *json_cmd = NULL;
-    char cmd[256];
     int len = 0;
     int rc;
     struct errstat errst;
@@ -197,7 +196,6 @@ static int prepare_create_timepart(bpfunc_t *tp)
 int exec_drop_timepart(void *tran, bpfunc_t *func, char *err)
 {
     char *json_cmd = NULL;
-    char cmd[256];
     int len = 0;
     int rc;
     struct errstat errst;
@@ -471,7 +469,7 @@ static int exec_set_skipscan(void *tran, bpfunc_t *func, char *err)
 static int exec_genid48_enable(void *tran, bpfunc_t *func, char *err)
 {
     BpfuncGenid48Enable *gn = func->arg->gn_enable;
-    int format = bdb_genid_format(thedb->bdb_env), rc;
+    int format = bdb_genid_format(thedb->bdb_env);
 
     if (gn->enable && format == LLMETA_GENID_48BIT) {
         fprintf(stderr, "%s -- genid48 is already enabled\n", __func__);

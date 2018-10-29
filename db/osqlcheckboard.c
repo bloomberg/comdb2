@@ -353,7 +353,6 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
 
     osql_sqlthr_t *entry = NULL;
     int rc = 0, rc2;
-    uuidstr_t us;
 
     if (!checkboard)
         return 0;

@@ -254,10 +254,8 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
                                       int offset, int is_ha_retry)
 {
     bdb_osql_trn_t *trn = NULL;
-    DB_LSN lsn;
     int rc = 0, durable_lsns = bdb_state->attr->durable_lsns;
     bdb_state_type *parent;
-    DB_LSN durable_lsn = {0};
     uint32_t durable_gen = 0;
     int backfill_required = 0;
     struct bfillhndl *bkfill_hndl = NULL;
@@ -1395,7 +1393,6 @@ int bdb_oldest_active_lsn(bdb_state_type *bdb_state, void *inlsn)
 int bdb_osql_trn_get_lwm(bdb_state_type *bdb_state, void *plsn)
 {
     DB_LSN lsn;
-    DB_LSN crtlsn;
     bdb_osql_trn_t *trn = NULL;
     int rc = 0;
     int trak = 0;

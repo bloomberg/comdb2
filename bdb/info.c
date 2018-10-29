@@ -135,7 +135,6 @@ static void txn_stats(FILE *out, bdb_state_type *bdb_state)
 static void log_stats(FILE *out, bdb_state_type *bdb_state)
 {
     DB_LOG_STAT *stats;
-    char str[100];
 
     bdb_state->dbenv->log_stat(bdb_state->dbenv, &stats, 0);
 
@@ -409,7 +408,6 @@ void bdb_get_rep_stats(bdb_state_type *bdb_state,
                        unsigned long long *retry, int *max_retry)
 {
     DB_REP_STAT *rep_stats;
-    char str[80];
 
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
@@ -438,7 +436,6 @@ void bdb_dump_freelist(FILE *out, int datafile, int stripe, int ixnum,
                        bdb_state_type *bdb_state)
 {
     extern int __db_dump_freepages(DB * dbp, FILE * out);
-    DB *db;
     if (ixnum == -1 && datafile == -1 && stripe == -1) {
         int ix, df, st;
         for (ix = 0; ix < bdb_state->numix; ix++) {
@@ -773,7 +770,7 @@ static void netinfo_dump_hostname(FILE *out, bdb_state_type *bdb_state)
     for (ii = 0; ii < num_nodes && ii < REPMAX; ii++) {
         char *status;
         char *status_mstr;
-        DB_LSN *lsnp, zerolsn;
+        DB_LSN *lsnp;
         char str[100];
         char *coherent_state;
 
@@ -828,7 +825,7 @@ void bdb_short_netinfo_dump(FILE *out, bdb_state_type *bdb_state)
     for (ii = 0; ii < num_nodes && ii < REPMAX; ii++) {
         char *status;
         char *status_mstr;
-        DB_LSN *lsnp, zerolsn;
+        DB_LSN *lsnp;
         char str[100];
 
         if (strcmp(nodes[ii].host,
@@ -950,9 +947,6 @@ static void process_add(bdb_state_type *bdb_state, char *host)
     net_add_to_sanctioned(netinfo, host, 0);
     int count = net_get_all_nodes_connected(netinfo, hostlist);
     for (int i = 0; i < count; i++) {
-        int tmp;
-        uint8_t *p_buf, *p_buf_end;
-        int node = 0;
         int rc = write_add(netinfo, hostlist[i], host);
         if (rc != 0)
             logmsg(LOGMSG_ERROR, "got bad rc %d in process_add\n", rc);
@@ -1130,7 +1124,7 @@ uint64_t bdb_dump_freepage_info_table(bdb_state_type *bdb_state, FILE *out)
     int fd = -1;
     char fname[PATH_MAX];
     char tmpname[PATH_MAX];
-    int numstripes, numblobs;
+    int numstripes;
     int bdberr;
     unsigned int npages;
     uint64_t total_npages = 0;
@@ -1211,7 +1205,6 @@ void bdb_dump_freepage_info_all(bdb_state_type *bdb_state)
 
 const char *bdb_find_net_host(bdb_state_type *bdb_state, const char *host)
 {
-    char *h;
     int nhosts;
     const char *hosts[REPMAX];
     char hlen = strlen(host);
@@ -1970,7 +1963,6 @@ static void bdb_queue_extent_info(FILE *out, bdb_state_type *bdb_state,
 {
     char **names;
     int rc;
-    int i;
     char qname[PATH_MAX];
     char tran_name[PATH_MAX];
 
@@ -2054,7 +2046,7 @@ void bdb_dump_table_dbregs(bdb_state_type *bdb_state)
 void bdb_show_reptimes_compact(bdb_state_type *bdb_state)
 {
     const char *nodes[REPMAX];
-    int numnodes, i;
+    int numnodes;
     int numdisplayed = 0;
     int first = 1;
 
@@ -2084,7 +2076,7 @@ void bdb_show_reptimes_compact(bdb_state_type *bdb_state)
 void bdb_show_reptimes(bdb_state_type *bdb_state)
 {
     const char *nodes[REPMAX];
-    int numnodes, i;
+    int numnodes;
 
     numnodes = net_get_all_nodes(bdb_state->repinfo->netinfo, nodes);
     logmsg(LOGMSG_USER, "%5s %10s %10s    (rolling avg over interval)\n", "node",

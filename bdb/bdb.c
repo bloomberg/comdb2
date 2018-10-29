@@ -863,7 +863,6 @@ void bdb_berkdb_iomap_set(bdb_state_type *bdb_state, int onoff)
 int bdb_berkdb_set_attr(bdb_state_type *bdb_state, char *attr, char *value,
                         int ivalue)
 {
-    char *optname;
     int rc;
 
     rc = bdb_state->dbenv->setattr(bdb_state->dbenv, attr, value, ivalue);

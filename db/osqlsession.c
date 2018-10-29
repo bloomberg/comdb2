@@ -786,9 +786,9 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
 
     osql_sess_t *sess = NULL;
     int rc = 0;
-    uuidstr_t us;
 
 #ifdef TEST_QSQL_REQ
+    uuidstr_t us;
     fprintf(stdout, "%s: Opening request %llu %s\n", __func__, rqid,
             comdb2uuidstr(uuid, us));
 #endif

@@ -882,7 +882,6 @@ static int bdb_berkdb_close_shad(bdb_berkdb_t *pberkdb, int *bdberr)
 static int bdb_berkdb_unpack_shadows(bdb_berkdb_impl_t *berkdb, int *bdberr)
 {
     bdb_shaddb_tag_t *bt = &berkdb->u.sd;
-    bdb_osql_log_dta_ptr_t *log_hdr;
     char *dta;
     int len;
     int rc;
@@ -926,8 +925,6 @@ int bdb_berkdb_firstlast_shad(bdb_berkdb_t *pberkdb,
 {
     bdb_berkdb_impl_t *berkdb = pberkdb->impl;
     bdb_shaddb_tag_t *bt = &berkdb->u.sd;
-    char *dta;
-    int len;
     int rc = IX_OK;
 
     *bdberr = 0;

@@ -4415,8 +4415,6 @@ static void conn_alloc(struct sqlconn *conn, int sz)
     conn->buf = realloc(conn->buf, conn->bufsz);
 }
 
-static LISTC_T(struct sqlconn) conns;
-
 /* handles are always a per-connection deal, and a connection
    always has a dedicated thread, so no need to lock around
    handles */

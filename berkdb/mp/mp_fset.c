@@ -86,7 +86,6 @@ __memp_fset(dbmfp, pgaddr, flags)
 	DB_MPOOL_HASH *hp;
 	MPOOL *c_mp;
 	u_int32_t n_cache;
-	DB_TXN *thrtxn;
 
 	dbenv = dbmfp->dbenv;
 	dbmp = dbenv->mp_handle;

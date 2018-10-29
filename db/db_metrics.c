@@ -260,8 +260,6 @@ static int64_t refresh_diskspace(struct dbenv *dbenv)
 }
 
 /* TODO: this isn't threadsafe. */
-static time_t last_time;
-static int64_t last_counter;
 
 void refresh_queue_size(struct dbenv *dbenv) 
 {

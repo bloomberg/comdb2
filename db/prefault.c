@@ -614,9 +614,7 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
 
             /* just fault in 1 key, no dta */
             case PFRQ_OLDKEY: {
-                int maxlen = 0, fndrrn = 0, err = 0;
-                void *fnddta = NULL;
-                int retries = 0;
+                int fndrrn = 0;
                 unsigned long long genid = 0;
                 char fndkey[MAXKEYLEN];
 
@@ -672,8 +670,7 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
 
             /* just fault in 1 key, no dta */
             case PFRQ_NEWKEY: {
-                int maxlen = 0, fndrrn = 0, err = 0;
-                int retries = 0;
+                int fndrrn = 0;
                 unsigned long long genid = 0;
                 char fndkey[MAXKEYLEN];
 
@@ -743,11 +740,8 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
             case PFRQ_OLDDATA_OLDKEYS: {
                 size_t od_len;
                 int od_len_int;
-                int maxlen = 0, fndlen = 0, err = 0;
-                int fndrrn = 0, ixnum = 0;
-                unsigned long long genid = 0;
-                char primkey[MAXKEYLEN];
-                int doprimkey = 0;
+                int fndlen = 0;
+                int ixnum = 0;
                 unsigned char fnddta[32768];
 
 #ifdef PREFAULT_TRACE
@@ -802,7 +796,7 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
 
                 for (ixnum = 0; ixnum < iq.usedb->nix; ixnum++) {
                     char keytag[MAXTAGLEN];
-                    char key[MAXKEYLEN], keyout[MAXKEYLEN];
+                    char key[MAXKEYLEN];
                     int keysz = 0;
                     keysz = getkeysize(iq.usedb, ixnum);
                     if (keysz < 0) {
@@ -839,11 +833,8 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
             case PFRQ_OLDDATA_OLDKEYS_NEWKEYS: {
                 size_t od_len;
                 int od_len_int;
-                int maxlen = 0, fndlen = 0, err = 0;
-                int fndrrn = 0, ixnum = 0;
-                unsigned long long genid = 0;
-                char primkey[MAXKEYLEN];
-                int doprimkey = 0;
+                int fndlen = 0;
+                int ixnum = 0;
                 struct convert_failure reason;
                 struct schema *dynschema = NULL;
                 char tag[MAXTAGLEN];
@@ -927,7 +918,7 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
                 /* enqueue faults for old keys */
                 for (ixnum = 0; ixnum < iq.usedb->nix; ixnum++) {
                     char keytag[MAXTAGLEN];
-                    char key[MAXKEYLEN], keyout[MAXKEYLEN];
+                    char key[MAXKEYLEN];
                     int keysz = 0;
                     keysz = getkeysize(iq.usedb, ixnum);
                     if (keysz < 0) {
@@ -982,7 +973,7 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
                 /* enqueue faults for new keys */
                 for (ixnum = 0; ixnum < iq.usedb->nix; ixnum++) {
                     char keytag[MAXTAGLEN];
-                    char key[MAXKEYLEN], keyout[MAXKEYLEN];
+                    char key[MAXKEYLEN];
                     int keysz = 0;
                     keysz = getkeysize(iq.usedb, ixnum);
                     if (keysz < 0) {

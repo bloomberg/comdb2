@@ -50,9 +50,7 @@ int fdb_appsock_work(const char *cid, struct sqlclntstate *clnt, int version,
                      char *trim_key, int trim_keylen, SBUF2 *sb)
 {
     int rc = 0;
-    int node = -1;    /* TODO: add source node */
-    int queryid = -1; /* TODO */
-    char *tzname = NULL;
+    /* TODO:int node = -1;     add source node */
 
     clnt->sql = sql;
     clnt->fdb_state.remote_sql_sb = sb;
@@ -136,7 +134,7 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
     char *where;
     struct schema *ixschema;
     struct schema *tblschema;
-    int i, j;
+    int j;
     int first = 1;
     int len;
 

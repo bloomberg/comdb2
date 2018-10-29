@@ -645,7 +645,6 @@ struct statthrargs {
 static void *stat_thread(void *argsptr)
 {
     struct statthrargs *args = argsptr;
-    struct thr_handle *thr_self = thrman_register(THRTYPE_QSTAT);
     thread_started("dbque stat");
     backend_thread_event(args->db->dbenv, COMDB2_THR_EVENT_START_RDONLY);
     stat_thread_int(args->db, args->fullstat, args->walk_queue);
@@ -898,9 +897,6 @@ static enum consumer_t consumer_type(struct consumer *c)
 {
     return c->base.type;
 }
-
-static int gbl_dbqueue_admin_sched_freq = 1;
-static cron_sched_t *dbqueue_admin_sched = NULL;
 
 static int handles_method(const char *method) {
     if (strncmp(method, "remove", 6) == 0 ||

@@ -95,7 +95,6 @@ __log_get_last_lsn(dbenv, lsn)
 	DB_LSN *lsn;
 {
 	DBT rec = { 0 };
-	DB_LOG *dblp;
 	DB_LOGC *logc = NULL;
 	int ret;
 

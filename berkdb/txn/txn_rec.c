@@ -323,7 +323,6 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 	DB_REP *db_rep;
 	REP *rep;
 	DB_TXNHEAD *headp;
-	u_int32_t lockcnt;
 	__txn_regop_rowlocks_args *argp;
 	LTDESC *lt = NULL;
 	int ret;

@@ -281,7 +281,7 @@ static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
 {
     int bdberr;
     void *bdb_handle = bdb_handle_from_ireq(iq);
-    struct dbenv *dbenv = dbenv_from_ireq(iq);
+    /*struct dbenv *dbenv = dbenv_from_ireq(iq);*/
     int rc = 0;
     tran_type *physical_tran = NULL;
     iq->gluewhere = "bdb_tran_begin";
@@ -732,7 +732,7 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
                             void *blkseq, int blklen, void *blkkey,
                             int blkkeylen)
 {
-    int rc, rc2;
+    int rc;
     db_seqnum_type ss;
     char *cnonce = NULL;
     int cn_len;
@@ -3484,7 +3484,6 @@ void net_javasp_op(void *hndl, void *uptr, char *fromnode, int usertype,
 {
     struct new_procedure_op_msg *msg = dtap;
     char *name;
-    char *jarfile;
     char *param;
     char *ptr;
     int rc;
@@ -4177,7 +4176,6 @@ int backend_open(struct dbenv *dbenv)
     int bdberr, ii;
     struct dbtable *db;
     int rc;
-    struct deferred_berkdb_option *opt;
 
     /* open tables */
     for (ii = 0; ii < dbenv->num_dbs; ii++) {
@@ -6323,7 +6321,6 @@ int table_version_set(tran_type *tran, const char *tablename,
                       unsigned long long version)
 {
     struct dbtable *db;
-    unsigned long long ret;
     int rc;
     int bdberr = 0;
 

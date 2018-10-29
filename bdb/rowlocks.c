@@ -78,9 +78,6 @@ struct remembered_record {
 /* Set to 1 to debug compensation records */
 static int debug_comp = 1;
 
-/* Set to 1 to debug locks */
-static int debug_locks = 0;
-
 static int release_locks_for_logical_transaction(bdb_state_type *bdb_state,
                                                  unsigned long long ltranid);
 
@@ -348,7 +345,6 @@ static int get_next_addrem_buffer(bdb_state_type *bdb_state, DB_LSN *lsn,
                             bdb_dump_log(bdb_state->dbenv, &savedlsn);
                             abort();
                         } else {
-                            int iii;
                             *have_record = 1;
                             if (buf)
                                 memcpy(buf, kd->data, kd->len);
@@ -357,6 +353,7 @@ static int get_next_addrem_buffer(bdb_state_type *bdb_state, DB_LSN *lsn,
                             if (outidx)
                                 *outidx = addrem_rec->indx;
 #if 0
+                                int iii;
                                 printf("Retrieving %d len bytes for %d op\n",
                                       kd->len, addrem_rec->opcode);
                                 
@@ -536,7 +533,6 @@ int bdb_reconstruct_delete(bdb_state_type *bdb_state, DB_LSN *startlsn,
                            int *page, int *index, void *key, int keylen,
                            void *data, int datalen, int *outdatalen)
 {
-    DB_LSN savedlsn = *startlsn;
     int outlen[2];
     int rc;
     unsigned char *buf[2];
@@ -547,7 +543,6 @@ int bdb_reconstruct_delete(bdb_state_type *bdb_state, DB_LSN *startlsn,
     int i = 0;
     static int cnt = 0;
     DB_LSN nextlsn;
-    int debugit = 0;
     DB_LSN lsn = *startlsn;
 
     cnt++;
@@ -629,16 +624,11 @@ int bdb_reconstruct_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
                            void *newkey, int *newkeylen, void *newdata,
                            int *newdatalen)
 {
-    DB_LSN savedlsn = *startlsn;
     int outlen;
     int rc;
-    int i = 0;
-    static int cnt = 0;
-    DB_LSN nextlsn, savelsn;
-    int debugit = 0;
+    DB_LSN nextlsn;
     DB_LSN lsn = *startlsn;
     int tmp_page, tmp_index, haveit;
-    int maxfill;
     int pvlen;
 
 /* Get prev data */
@@ -1055,8 +1045,6 @@ int undo_add_ix_lk(bdb_state_type *bdb_state, tran_type *tran, char *table_name,
     unsigned long long genid;
     int rc;
     DBT *key;
-    void *dta;
-    DB_LSN lsn = *undolsn;
 
     *prev = add_ix_lk->prevllsn;
     if (just_load_lsn)
@@ -1345,14 +1333,12 @@ static int undo_physical_transaction(bdb_state_type *bdb_state, tran_type *tran,
     llog_undo_upd_ix_lk_args *upd_ix_lk;
 
     /* Start, commit & comprec */
-    llog_ltran_start_args *start;
     llog_ltran_commit_args *commit;
     llog_ltran_comprec_args *comprec;
 
     struct remembered_record *rrec;
 
     int just_load_lsn = 0;
-    int failed = 0;
 
     *did_something = 0;
 
@@ -1695,7 +1681,6 @@ static int get_ltranid_from_log(bdb_state_type *bdb_state, DBT *logdta,
 
 int dumptrans(void *tranp, void *bdb_statep)
 {
-    bdb_state_type *bdb_state = bdb_statep;
     tran_type *tran = tranp;
 
     logmsg(LOGMSG_USER, "%016llx\n", tran->logical_tranid);
@@ -1771,7 +1756,6 @@ int bdb_run_logical_recovery(bdb_state_type *bdb_state, int is_replicant)
 {
     int rc, i;
     DB_LTRAN *ltranlist;
-    DBT *data_dbt = {0};
     u_int32_t ltrancount;
     tran_type **bdb_tran = NULL;
     int bdberr;
@@ -2024,7 +2008,6 @@ int abort_logical_transaction(bdb_state_type *bdb_state, tran_type *tran,
     rc = 0;
     if (tran->committed_begin_record &&
         bdb_state->repinfo->myhost == bdb_state->repinfo->master_host) {
-        tran_type *physical_tran;
         DB_LSN prev;
 
         prev = tran->last_logical_lsn;
@@ -2268,7 +2251,6 @@ int handle_undo_add_dta(DB_ENV *dbenv, u_int32_t rectype,
     bdb_state_type *parent;
     DB_LSN *lprev;
     bdb_state_type *bdb_state;
-    tran_type *ltrans = NULL;
 
     bdb_state = dbenv->app_private;
     parent = bdb_state->parent;
@@ -2364,8 +2346,6 @@ int handle_undo_add_dta_lk(DB_ENV *dbenv, u_int32_t rectype,
     int rc = 0;
     DB_LSN *lprev;
     bdb_state_type *bdb_state;
-
-    tran_type *ltrans;
 
     bdb_state = dbenv->app_private;
 
@@ -2471,7 +2451,6 @@ int handle_undo_add_ix(DB_ENV *dbenv, u_int32_t rectype,
     int rc = 0;
     DB_LSN *lprev;
     bdb_state_type *bdb_state;
-    tran_type *ltrans = NULL;
 
     bdb_state = dbenv->app_private;
 
@@ -2557,7 +2536,6 @@ int handle_undo_add_ix_lk(DB_ENV *dbenv, u_int32_t rectype,
     int rc = 0;
     DB_LSN *lprev;
     bdb_state_type *bdb_state;
-    tran_type *ltrans;
 
     bdb_state = dbenv->app_private;
 
@@ -2630,8 +2608,8 @@ static unsigned long long gbl_rep_count_logical_commits = 0;
 
 void print_logical_commits_starts(FILE *f)
 {
-    unsigned long long lst = 0, lcm = 0;
 #ifdef COUNT_REP_LTRANS
+    unsigned long long lst = 0, lcm = 0;
     pthread_mutex_lock(&lstlk);
     lst = gbl_rep_count_logical_starts;
     pthread_mutex_unlock(&lstlk);
@@ -2654,7 +2632,6 @@ int handle_commit(DB_ENV *dbenv, u_int32_t rectype,
     DB_LSN *lprev;
     bdb_state_type *bdb_state;
     DB_LSN commit_lsn = *lsn;
-    uint8_t *p, *p_end;
 
     bdb_state = dbenv->app_private;
 
@@ -2743,9 +2720,7 @@ int handle_start(DB_ENV *dbenv, u_int32_t rectype, llog_ltran_start_args *args,
 
     int rc = 0;
     unsigned long long ltranid;
-    tran_type *ltrans;
     bdb_state_type *bdb_state;
-    int bdberr;
 
 #ifdef COUNT_REP_LTRANS
     pthread_mutex_lock(&lstlk);
@@ -2806,7 +2781,6 @@ int handle_comprec(DB_ENV *dbenv, u_int32_t rectype,
     unsigned long long ltranid;
     bdb_state_type *bdb_state;
     DB_LSN undolsn, prevllsn;
-    tran_type *ltrans = NULL;
 
     bdb_state = dbenv->app_private;
     ltranid = args->ltranid;
@@ -2942,7 +2916,6 @@ int bdb_llog_add_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
     int rc;
     DB_LSN lsn;
     bdb_state_type *parent;
-    char rowname[ROWLOCK_KEY_SIZE];
 
     if (gbl_disable_rowlocks_logging)
         return 0;
@@ -2968,7 +2941,6 @@ int bdb_llog_add_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
 
 int bdb_llog_start(bdb_state_type *bdb_state, tran_type *tran, DB_TXN *txn)
 {
-    DBT dbt_tranid = {0};
     int rc;
 
     /* Keep start and commit for last logical lsn */
@@ -2986,9 +2958,6 @@ int bdb_llog_start(bdb_state_type *bdb_state, tran_type *tran, DB_TXN *txn)
 int bdb_llog_comprec(bdb_state_type *bdb_state, tran_type *tran, DB_LSN *lsn)
 {
     int rc;
-    DBT dbt_prevllsn = {0};
-    DBT dbt_complsn = {0};
-
     if (gbl_disable_rowlocks_logging)
         return 0;
 
@@ -3014,13 +2983,9 @@ int llog_ltran_commit_log_wrap(DB_ENV *dbenv, DB_TXN *txnid, DB_LSN *ret_lsnp,
 
 int bdb_llog_commit(bdb_state_type *bdb_state, tran_type *tran, int isabort)
 {
-    DBT dbt_tranid = {0}, dbt_prevllsn = {0};
+    DBT dbt_prevllsn = {0};
     DB_LSN lsn;
     int rc;
-    DBT dbt_gblcontext = {0};
-    unsigned long long gblcontext;
-
-    char str[100];
 
     if (gbl_disable_rowlocks_logging) {
         // tran->logical_tran->is_about_to_commit = 1;
@@ -3086,7 +3051,6 @@ int handle_undo_del_dta(DB_ENV *dbenv, u_int32_t rectype,
     unsigned long long ltranid, genid;
     bdb_state_type *bdb_state;
     DB_LSN *lprev;
-    tran_type *ltrans;
     int rc = 0;
 
     bdb_state = dbenv->app_private;
@@ -3164,7 +3128,6 @@ int handle_undo_del_ix(DB_ENV *dbenv, u_int32_t rectype,
     bdb_state_type *bdb_state;
     DB_LSN *lprev;
     int rc = 0;
-    tran_type *ltrans;
 
     bdb_state = dbenv->app_private;
 
@@ -3243,7 +3206,6 @@ int handle_undo_upd_dta(DB_ENV *dbenv, u_int32_t rectype,
     bdb_state_type *bdb_state;
     DB_LSN *lprev;
     int rc = 0;
-    tran_type *ltrans;
 
     bdb_state = dbenv->app_private;
     ltranid = updop->ltranid;
@@ -3342,7 +3304,6 @@ int handle_undo_upd_ix(DB_ENV *dbenv, u_int32_t rectype,
     unsigned long long ltranid, oldgenid, newgenid;
     bdb_state_type *bdb_state;
     DB_LSN *lprev;
-    tran_type *ltrans;
     int rc = 0;
 
     bdb_state = dbenv->app_private;
@@ -3423,7 +3384,6 @@ static int undo_upd_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
     int rc;
     int inplace = 0;
     void *olddta = NULL;
-    unsigned long long chkgenid;
     static int cnt = 0;
 
     cnt++;
@@ -3501,7 +3461,7 @@ static int undo_upd_ix_lk(bdb_state_type *bdb_state, tran_type *tran,
                           llog_undo_upd_ix_lk_args *upd_ix_lk, DB_LSN *undolsn,
                           DB_LSN *prev, int just_load_lsn)
 {
-    char *key, *data = NULL;
+    char *data = NULL;
     int rc;
     void *diff;
     int difflen;
@@ -3548,7 +3508,6 @@ int bdb_oldest_outstanding_ltran(bdb_state_type *bdb_state, int *ltran_count,
 {
     DB_LTRAN *ltranlist = NULL;
     u_int32_t ltrancount;
-    bdb_state_type *parent = bdb_state;
     DB_LSN oldest = {0};
     int idx, rc;
 
@@ -3585,7 +3544,6 @@ int bdb_prepare_newsi_bkfill(bdb_state_type *bdb_state,
 {
     DB_LTRAN *ltranlist;
     u_int32_t ltrancount;
-    bdb_state_type *parent = bdb_state;
     DB_LSN oldest = {0};
     int idx, rc;
 
@@ -3756,8 +3714,6 @@ int handle_undo_del_dta_lk(DB_ENV *dbenv, u_int32_t rectype,
 {
     bdb_state_type *bdb_state;
     DB_LSN *lprev;
-    tran_type *ltrans;
-
     int rc = 0;
 
     bdb_state = dbenv->app_private;
@@ -4024,7 +3980,6 @@ int handle_undo_upd_ix_lk(DB_ENV *dbenv, u_int32_t rectype,
 {
     bdb_state_type *bdb_state;
     DB_LSN *lprev;
-    tran_type *ltrans;
     int rc = 0;
 
     bdb_state = dbenv->app_private;
@@ -4106,14 +4061,11 @@ int handle_rowlocks_log_bench(DB_ENV *dbenv, u_int32_t rectype,
                               llog_rowlocks_log_bench_args *rl_log_bench,
                               DB_LSN *lsn, db_recops op)
 {
-    unsigned long long ltranid;
     bdb_state_type *bdb_state;
     bdb_state = dbenv->app_private;
 
-    DB_LOCK rowlk1 = {0}, rowlk2 = {0};
     DBT lk1 = {0}, lk2 = {0};
     char mem1[ROWLOCK_KEY_SIZE], mem2[ROWLOCK_KEY_SIZE];
-    int gotrowlock1 = 0, gotrowlock2 = 0;
 
     lk1.data = mem1;
     lk2.data = mem2;

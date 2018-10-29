@@ -170,8 +170,7 @@ static u_int32_t maxdata(berktable_t *tables, int tablecount)
 static void run_test(berktable_t *tables, int tablecount, int txnsize,
                      int iterations)
 {
-    uint64_t start, end, totalrecs = (txnsize * iterations), persecond,
-                         persecnorm;
+    uint64_t start, end, totalrecs = (txnsize * iterations), persecond;
     DB_TXN *tid;
     DBT key = {0}, data = {0};
     u_int32_t commit_flags, mkey, mdata, *keyptr;
