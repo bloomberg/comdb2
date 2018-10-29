@@ -45,6 +45,7 @@
 #include "thdpool.h"
 #include "thread_util.h"
 #include "thread_malloc.h"
+#include <locks_wrap.h>
 
 #include "debug_switches.h"
 
@@ -240,7 +241,7 @@ struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz)
     listc_init(&pool->freelist, offsetof(struct thd, freelist_linkv));
     listc_init(&pool->queue, offsetof(struct workitem, linkv));
 
-    pthread_mutex_init(&pool->mutex, NULL);
+    Pthread_mutex_init(&pool->mutex, NULL);
     pthread_attr_init(&pool->attrs);
     pthread_attr_setstacksize(&pool->attrs, DEFAULT_THD_STACKSZ);
     pthread_attr_setdetachstate(&pool->attrs, PTHREAD_CREATE_DETACHED);
@@ -255,12 +256,12 @@ struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz)
     pool->dump_on_full = 0;
     pool->stack_sz = DEFAULT_THD_STACKSZ;
 
-    pthread_cond_init(&pool->wait_for_thread, NULL);
+    Pthread_cond_init(&pool->wait_for_thread, NULL);
 
-    pthread_mutex_lock(&pool_list_lk);
+    Pthread_mutex_lock(&pool_list_lk);
     pthread_once(&init_pool_list_once, init_pool_list);
     listc_abl(&threadpools, pool);
-    pthread_mutex_unlock(&pool_list_lk);
+    Pthread_mutex_unlock(&pool_list_lk);
 
     /* Register all tunables. */
     register_thdpool_tunables((char *)name, pool);
@@ -419,20 +420,20 @@ void thdpool_list_pools(void)
 {
     struct thdpool *pool;
     logmsg(LOGMSG_USER, "thread pools:\n");
-    pthread_mutex_lock(&pool_list_lk);
+    Pthread_mutex_lock(&pool_list_lk);
     LISTC_FOR_EACH(&threadpools, pool, lnk) { logmsg(LOGMSG_USER, "  %s\n", pool->name); }
-    pthread_mutex_unlock(&pool_list_lk);
+    Pthread_mutex_unlock(&pool_list_lk);
 }
 
 void thdpool_command_to_all(char *line, int lline, int st)
 {
     struct thdpool *pool;
-    pthread_mutex_lock(&pool_list_lk);
+    Pthread_mutex_lock(&pool_list_lk);
     LISTC_FOR_EACH(&threadpools, pool, lnk)
     {
         thdpool_process_message(pool, line, lline, st);
     }
-    pthread_mutex_unlock(&pool_list_lk);
+    Pthread_mutex_unlock(&pool_list_lk);
 }
 
 void thdpool_process_message(struct thdpool *pool, char *line, int lline,
@@ -550,7 +551,7 @@ void thdpool_stop(struct thdpool *pool)
         pool->stopped = 1;
         LISTC_FOR_EACH(&pool->thdlist, thd, thdlist_linkv)
         {
-            pthread_cond_signal(&thd->cond);
+            Pthread_cond_signal(&thd->cond);
         }
     }
     UNLOCK(&pool->mutex);
@@ -650,12 +651,12 @@ static void *thdpool_thd(void *voidarg)
             int thr_exit = 0;
 
             if (pool->wait && pool->waiting_for_thread)
-                pthread_cond_signal(&pool->wait_for_thread);
+                Pthread_cond_signal(&pool->wait_for_thread);
 
             /* Get work.  If there is no work then place us on the free
              * list and wait for work. */
             while (!get_work_ll(thd, &work)) {
-                int rc;
+                int rc = 0;
                 if (listc_size(&pool->thdlist) > pool->minnthd && !ts) {
                     /* we have more threads than we want - wait for a bit then
                      * timeout */
@@ -693,7 +694,7 @@ static void *thdpool_thd(void *voidarg)
                 if (ts) {
                     rc = pthread_cond_timedwait(&thd->cond, &pool->mutex, ts);
                 } else {
-                    rc = pthread_cond_wait(&thd->cond, &pool->mutex);
+                    Pthread_cond_wait(&thd->cond, &pool->mutex);
                 }
                 if (rc == ETIMEDOUT) {
                     /* Make sure we don't get into a hot loop. */
@@ -701,8 +702,9 @@ static void *thdpool_thd(void *voidarg)
                     /* If there's still no work we'll die. */
                     thr_exit = 1;
                 } else if (rc != 0 && rc != EINTR) {
-                    logmsg(LOGMSG_ERROR, "%s(%s):pthread_cond_wait: %d %s\n",
-                            __func__, pool->name, rc, strerror(rc));
+                    logmsg(LOGMSG_ERROR,
+                           "%s(%s):pthread_cond_timedwait: %d %s\n", __func__,
+                           pool->name, rc, strerror(rc));
                 }
             }
 
@@ -813,7 +815,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                 return -1;
             }
 
-            pthread_cond_init(&thd->cond, NULL);
+            Pthread_cond_init(&thd->cond, NULL);
             thd->pool = pool;
             listc_atl(&pool->thdlist, thd);
 
@@ -849,17 +851,9 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
         }
 
         if (thd == NULL && pool->wait) {
-            int rc;
 
             pool->waiting_for_thread = 1;
-            rc = pthread_cond_wait(&pool->wait_for_thread, &pool->mutex);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s:%d pthread_cond_wait rc %d %s\n", __FILE__,
-                        __LINE__, rc, strerror(rc));
-                pool->num_failed_dispatches++;
-                return -1; /* not sure what happens to my mutex here */
-            }
-
+            Pthread_cond_wait(&pool->wait_for_thread, &pool->mutex);
             pool->waiting_for_thread = 0;
 
             goto again;
@@ -968,7 +962,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
             comdb2bma_yield_all();
         } else {
             comdb2bma_transfer_priority(blobmem, thd->tid);
-            pthread_cond_signal(&thd->cond);
+            Pthread_cond_signal(&thd->cond);
         }
     }
     UNLOCK(&pool->mutex);
@@ -1104,12 +1098,14 @@ int thdpool_get_dump_on_full(struct thdpool *pool)
 
 int thdpool_lock(struct thdpool *pool)
 {
-    return pthread_mutex_lock(&pool->mutex);
+    Pthread_mutex_lock(&pool->mutex);
+    return 0;
 }
 
 int thdpool_unlock(struct thdpool *pool)
 {
-    return pthread_mutex_unlock(&pool->mutex);
+    Pthread_mutex_unlock(&pool->mutex);
+    return 0;
 }
 
 struct thdpool *thdpool_next_pool(struct thdpool *pool)

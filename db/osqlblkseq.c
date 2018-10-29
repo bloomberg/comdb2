@@ -41,11 +41,7 @@ int osql_blkseq_init(void)
 {
     int rc = 0;
 
-    if (pthread_rwlock_wrlock(&hlock)) {
-        logmsg(LOGMSG_ERROR, "%s:%d %d(%s)\n", __FILE__, __LINE__, errno,
-                strerror(errno));
-        return -1;
-    }
+    Pthread_rwlock_wrlock(&hlock);
 
     hiqs = hash_init_o(offsetof(struct ireq, seq), sizeof(fstblkseq_t));
     if (!hiqs) {
@@ -54,11 +50,7 @@ int osql_blkseq_init(void)
         rc = -1;
     }
 
-    if (pthread_rwlock_unlock(&hlock)) {
-        logmsg(LOGMSG_ERROR, "%s:%d %d %d(%s)\n", __FILE__, __LINE__, rc, errno,
-                strerror(errno));
-        return -1;
-    }
+    Pthread_rwlock_unlock(&hlock);
 
     return rc;
 }
@@ -75,11 +67,7 @@ int osql_blkseq_register(struct ireq *iq)
     struct ireq *iq_src = NULL;
     int rc = 0;
 
-    if (pthread_rwlock_wrlock(&hlock)) {
-        logmsg(LOGMSG_ERROR, "%s:%d %d(%s)\n", __FILE__, __LINE__, errno,
-                strerror(errno));
-        return OSQL_BLOCKSEQ_INV;
-    }
+    Pthread_rwlock_wrlock(&hlock);
 
     if (!hiqs) {
         rc = OSQL_BLOCKSEQ_INV;
@@ -97,20 +85,11 @@ int osql_blkseq_register(struct ireq *iq)
         /* wait for */
         while (1) {
             /* losing the write lock first run */
-            if (pthread_rwlock_unlock(&hlock)) {
-                logmsg(LOGMSG_ERROR, "%s:%d %d(%s)\n", __FILE__, __LINE__, errno,
-                        strerror(errno));
-                rc = OSQL_BLOCKSEQ_INV;
-                goto done;
-            }
+            Pthread_rwlock_unlock(&hlock);
             poll(NULL, 0, gbl_block_blkseq_poll);
 
             /* rdlock will suffice */
-            if (pthread_rwlock_rdlock(&hlock)) {
-                logmsg(LOGMSG_ERROR, "%s:%d %d(%s)\n", __FILE__, __LINE__, errno,
-                        strerror(errno));
-                rc = OSQL_BLOCKSEQ_INV;
-            }
+            Pthread_rwlock_rdlock(&hlock);
 
             iq_src = hash_find_readonly(hiqs, (const void *)&iq->seq);
             if (!iq_src) {
@@ -123,10 +102,7 @@ int osql_blkseq_register(struct ireq *iq)
     }
 
 done:
-    if (pthread_rwlock_unlock(&hlock)) {
-        logmsg(LOGMSG_ERROR, "%s:%d %d(%s)\n", __FILE__, __LINE__, errno,
-                strerror(errno));
-    }
+    Pthread_rwlock_unlock(&hlock);
     return rc;
 }
 
@@ -137,19 +113,11 @@ done:
  */
 int osql_blkseq_unregister(struct ireq *iq)
 {
-    if (pthread_rwlock_wrlock(&hlock)) {
-        logmsg(LOGMSG_ERROR, "%s:%d %d(%s)\n", __FILE__, __LINE__, errno,
-                strerror(errno));
-        return -1;
-    }
+    Pthread_rwlock_wrlock(&hlock);
 
     if (hiqs) /* Fix a deadlock */
         hash_del(hiqs, iq);
 
-    if (pthread_rwlock_unlock(&hlock)) {
-        logmsg(LOGMSG_ERROR, "%s:%d %d(%s)\n", __FILE__, __LINE__, errno,
-                strerror(errno));
-        return -1;
-    }
+    Pthread_rwlock_unlock(&hlock);
     return 0;
 }

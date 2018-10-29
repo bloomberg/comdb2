@@ -439,9 +439,9 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
 static void luabb_trigger_unregister(dbconsumer_t *q)
 {
     if (q->lock) {
-        pthread_mutex_lock(q->lock);
+        Pthread_mutex_lock(q->lock);
         bdb_trigger_unsubscribe(q->iq.usedb->handle);
-        pthread_mutex_unlock(q->lock);
+        Pthread_mutex_unlock(q->lock);
     }
     int rc;
     int retry = 10;
@@ -663,7 +663,7 @@ static int dbq_poll_int(Lua L, dbconsumer_t *q)
 {
     struct qfound f = {0};
     int rc = dbq_get(&q->iq, 0, NULL, (void**)&f.item, &f.len, &f.dtaoff, NULL, NULL);
-    pthread_mutex_unlock(q->lock);
+    Pthread_mutex_unlock(q->lock);
     getsp(L)->num_instructions = 0;
     if (rc == 0) {
         return dbq_pushargs(L, q, &f);
@@ -682,11 +682,11 @@ static int dbq_poll(Lua L, dbconsumer_t *q, int delay)
             return -1;
         }
         int rc;
-        pthread_mutex_lock(q->lock);
+        Pthread_mutex_lock(q->lock);
 again:  if (*q->open) {
             rc = dbq_poll_int(L, q); // call will release q->lock
         } else {
-            pthread_mutex_unlock(q->lock);
+            Pthread_mutex_unlock(q->lock);
             rc = -2;
         }
         if (rc == 1) {
@@ -699,12 +699,12 @@ again:  if (*q->open) {
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
         ts.tv_sec += (dbq_delay / 1000);
-        pthread_mutex_lock(q->lock);
+        Pthread_mutex_lock(q->lock);
         if (pthread_cond_timedwait(q->cond, q->lock, &ts) == 0) {
             // was woken up -- try getting from queue
             goto again;
         }
-        pthread_mutex_unlock(q->lock);
+        Pthread_mutex_unlock(q->lock);
         delay -= dbq_delay;
         if (delay < 0) {
             return 0;
@@ -905,7 +905,7 @@ static void free_tmptbl(SP sp, tmptbl_info_t *tbl)
 {
     LIST_REMOVE(tbl, entries);
     if (sp->parent == sp) {
-        pthread_mutex_destroy(tbl->lk);
+        Pthread_mutex_destroy(tbl->lk);
         free(tbl->lk);
     }
     free(tbl->sql);
@@ -1100,7 +1100,7 @@ static int create_temp_table(Lua lua, pthread_mutex_t **lk, const char **name)
     }
     // now, actually create the temp table
     *lk = malloc(sizeof(pthread_mutex_t));
-    pthread_mutex_init(*lk, NULL);
+    Pthread_mutex_init(*lk, NULL);
     comdb2_set_tmptbl_lk(*lk);
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
         ;
@@ -1369,9 +1369,9 @@ static int get_remote_input(lua_State *lua, char *buffer, size_t sz)
     if (sp->rc) {
         return luabb_error(lua, sp, "%s: couldn't send results back", __func__);
     }
-    pthread_mutex_lock(&lua_debug_mutex);
+    Pthread_mutex_lock(&lua_debug_mutex);
     int rc = read_response(clnt, RESPONSE_SP_CMD, buffer, sz);
-    pthread_mutex_unlock(&lua_debug_mutex);
+    Pthread_mutex_unlock(&lua_debug_mutex);
     return rc;
 }
 
@@ -1388,14 +1388,14 @@ void *read_client_socket(void *in)
     rc = sbuf2fread(info->buffer, 250, 1, clnt->sb);
     if (rc && (strncmp(info->buffer, "HALT", 4) == 0)) {
         gbl_break_lua = info->thread_id;
-        pthread_mutex_unlock(&lua_debug_mutex);
+        Pthread_mutex_unlock(&lua_debug_mutex);
     } else if (rc) {
         info->has_buffer = 1;
         info_buf = *info;
-        pthread_mutex_unlock(&lua_debug_mutex);
+        Pthread_mutex_unlock(&lua_debug_mutex);
     } else {
         clnt->sb = NULL;
-        pthread_mutex_unlock(&lua_debug_mutex);
+        Pthread_mutex_unlock(&lua_debug_mutex);
     }
     /* Socket is disconnected now. */
     free(info);
@@ -1420,7 +1420,7 @@ static int db_debug(lua_State *lua)
         logmsg(LOGMSG_ERROR, "debug client no longer valid \n");
         sp->debug_clnt = sp->clnt;
         lua_sethook(lua, InstructionCountHook, LUA_MASKCOUNT, 1);
-        pthread_cond_broadcast(&lua_debug_cond);
+        Pthread_cond_broadcast(&lua_debug_cond);
         return 0;
     }
 
@@ -1432,7 +1432,7 @@ static int db_debug(lua_State *lua)
                 /* To be given as lrl value. */
                 sp->debug_clnt = sp->clnt;
                 lua_sethook(lua, InstructionCountHook, LUA_MASKCOUNT, 1);
-                pthread_cond_broadcast(&lua_debug_cond);
+                Pthread_cond_broadcast(&lua_debug_cond);
                 return 0;
             }
             sleep(2);
@@ -1482,7 +1482,7 @@ static int db_db_debug(Lua lua)
         char old_buffer[250];
         read = get_remote_input(lua, buffer, sizeof(buffer));
         if (strncmp(buffer, "cont", 4) == 0) {
-            pthread_cond_broadcast(&lua_debug_cond);
+            Pthread_cond_broadcast(&lua_debug_cond);
             sprintf(buffer, " %s", "_SP.do_next = false \n if (db.emit) then "
                                    "\n db_emit = db.emit \n end");
             finish_execute = 1;
@@ -1522,7 +1522,7 @@ static int db_db_debug(Lua lua)
             replace_from = NULL;
         } else if (read == 0) {
             /* Debugging socket is closed, let the program continue. */
-            pthread_cond_broadcast(&lua_debug_cond);
+            Pthread_cond_broadcast(&lua_debug_cond);
             sprintf(buffer, " %s", "db_emit = db.emit");
             finish_execute = 1;
         } else if (buffer[0] == '\0') {
@@ -2508,23 +2508,23 @@ static void *dispatch_lua_thread(void *arg)
     clnt.must_close_sb = 0;
     clnt.exec_lua_thread = 1;
     clnt.trans_has_sp = 1;
-    pthread_mutex_init(&clnt.wait_mutex, NULL);
-    pthread_cond_init(&clnt.wait_cond, NULL);
-    pthread_mutex_init(&clnt.write_lock, NULL);
-    pthread_mutex_init(&clnt.dtran_mtx, NULL);
+    Pthread_mutex_init(&clnt.wait_mutex, NULL);
+    Pthread_cond_init(&clnt.wait_cond, NULL);
+    Pthread_mutex_init(&clnt.write_lock, NULL);
+    Pthread_mutex_init(&clnt.dtran_mtx, NULL);
     strcpy(clnt.tzname, parent_clnt->tzname);
 
     dispatch_sql_query(&clnt); // --> exec_thread()
 
     cleanup_clnt(&clnt);
-    pthread_mutex_destroy(&clnt.wait_mutex);
+    Pthread_mutex_destroy(&clnt.wait_mutex);
     pthread_cond_destroy(&clnt.wait_cond);
-    pthread_mutex_destroy(&clnt.write_lock);
-    pthread_mutex_destroy(&clnt.dtran_mtx);
+    Pthread_mutex_destroy(&clnt.write_lock);
+    Pthread_mutex_destroy(&clnt.dtran_mtx);
 
     parent_thd->finished_run = 1;
     parent_thd->lua_tid = 0;
-    pthread_cond_broadcast(&parent_thd->lua_thread_cond);
+    Pthread_cond_broadcast(&parent_thd->lua_thread_cond);
     pthread_cond_destroy(&parent_thd->lua_thread_cond);
 
     return NULL;
@@ -2910,8 +2910,8 @@ static int db_create_thread_int(Lua lua, const char *funcname)
     /* Make a new cloned working state. */
     dbthread_t *lt;
     new_lua_t(lt, dbthread_t, DBTYPES_THREAD);
-    pthread_mutex_init(&lt->lua_thread_mutex, NULL);
-    pthread_cond_init(&lt->lua_thread_cond, NULL);
+    Pthread_mutex_init(&lt->lua_thread_mutex, NULL);
+    Pthread_cond_init(&lt->lua_thread_cond, NULL);
 
     SP sp = getsp(lua);
     SP newsp = NULL;
@@ -2987,7 +2987,7 @@ static int dbthread_join(Lua lua1)
 {
     dbthread_t *lt = lua_touserdata(lua1, -1);
     pthread_mutex_t *mtx = &lt->lua_thread_mutex;
-    pthread_mutex_lock(mtx);
+    Pthread_mutex_lock(mtx);
     while (lt->finished_run == 0) {
         check_retry_conditions(lua1, 1);
         struct timespec ts;
@@ -2995,7 +2995,7 @@ static int dbthread_join(Lua lua1)
         ts.tv_sec += 1;
         pthread_cond_timedwait(&lt->lua_thread_cond, mtx, &ts);
     }
-    pthread_mutex_unlock(mtx);
+    Pthread_mutex_unlock(mtx);
 
     Lua lua2 = lt->lua;
     SP sp = lt->sp;
@@ -3671,9 +3671,9 @@ static int db_column_name(Lua L)
         return luaL_error(L,
                           "bad arguments to 'column_name' for typed-statement");
     }
-    pthread_mutex_lock(parent->emit_mutex);
+    Pthread_mutex_lock(parent->emit_mutex);
     if (parent_clnt->osql.sent_column_data) {
-        pthread_mutex_unlock(parent->emit_mutex);
+        Pthread_mutex_unlock(parent->emit_mutex);
         free(name);
         return luaL_error(L, "attempt to change column name");
     }
@@ -3684,7 +3684,7 @@ static int db_column_name(Lua L)
         parent->clntname[index] = NULL;
     }
     parent->clntname[index] = name;
-    pthread_mutex_unlock(parent->emit_mutex);
+    Pthread_mutex_unlock(parent->emit_mutex);
     lua_pushinteger(L, 0);
     return 1;
 }
@@ -3733,15 +3733,15 @@ static int db_column_type(Lua L)
         clnttype = SQLITE_TEXT;
     }
     free(name);
-    pthread_mutex_lock(parent->emit_mutex);
+    Pthread_mutex_lock(parent->emit_mutex);
     if (parent_clnt->osql.sent_column_data) {
-        pthread_mutex_unlock(parent->emit_mutex);
+        Pthread_mutex_unlock(parent->emit_mutex);
         return luaL_error(L, "attempt to change column type");
     }
     new_col_info(sp, index);
     --index;
     parent->clnttype[index] = clnttype;
-    pthread_mutex_unlock(parent->emit_mutex);
+    Pthread_mutex_unlock(parent->emit_mutex);
     lua_pushinteger(L, 0);
     return 1;
 }
@@ -3757,9 +3757,9 @@ static int db_num_columns(Lua L)
         return luaL_error(
             L, "attempt to set number of columns for typed-statement");
     }
-    pthread_mutex_lock(parent->emit_mutex);
+    Pthread_mutex_lock(parent->emit_mutex);
     if (parent_clnt->osql.sent_column_data) {
-        pthread_mutex_unlock(parent->emit_mutex);
+        Pthread_mutex_unlock(parent->emit_mutex);
         return luaL_error(L, "attempt to change number of columns");
     }
     int num_cols = lua_tonumber(L, 2);
@@ -3772,7 +3772,7 @@ static int db_num_columns(Lua L)
     } else {
         new_col_info(sp, num_cols);
     }
-    pthread_mutex_unlock(parent->emit_mutex);
+    Pthread_mutex_unlock(parent->emit_mutex);
     lua_pushinteger(L, 0);
     return 1;
 }
@@ -4827,13 +4827,13 @@ static int l_send_back_row(Lua lua, sqlite3_stmt *stmt, int nargs)
     arg.pingpong = sp->pingpong;
     struct sqlclntstate *clnt = sp->parent->clnt;
     if (clnt->osql.sent_column_data == 0) {
-        pthread_mutex_lock(sp->emit_mutex);
+        Pthread_mutex_lock(sp->emit_mutex);
         if (clnt->osql.sent_column_data == 0) {
             new_col_info(sp, nargs);
             rc = write_response(clnt, RESPONSE_COLUMNS_LUA, &arg, 0);
             clnt->osql.sent_column_data = 1;
         }
-        pthread_mutex_unlock(sp->emit_mutex);
+        Pthread_mutex_unlock(sp->emit_mutex);
         if (rc) return rc;
     }
     int type = stmt ? RESPONSE_ROW : RESPONSE_ROW_LUA;
@@ -5132,29 +5132,29 @@ halt_here:
     }
     clnt->want_stored_procedure_debug = 1;
 wait_here:
-    pthread_cond_broadcast(&lua_debug_cond); /* 1 debugger at a time. */
-    pthread_mutex_lock(&lua_debug_mutex);
-    pthread_cond_wait(&lua_debug_cond, &lua_debug_mutex);
-    pthread_mutex_unlock(&lua_debug_mutex);
+    Pthread_cond_broadcast(&lua_debug_cond); /* 1 debugger at a time. */
+    Pthread_mutex_lock(&lua_debug_mutex);
+    Pthread_cond_wait(&lua_debug_cond, &lua_debug_mutex);
+    Pthread_mutex_unlock(&lua_debug_mutex);
 do_continue:
     logmsg(LOGMSG_USER, "CoNtInUe \n");
     info_buf.has_buffer = 0;
-    pthread_mutex_lock(&lua_debug_mutex);
+    Pthread_mutex_lock(&lua_debug_mutex);
     int rc = sbuf2fread(info_buf.buffer, 250, 1, clnt->sb);
     if (rc && (strncmp(info_buf.buffer, "HALT", 4) == 0)) {
-        pthread_mutex_unlock(&lua_debug_mutex);
+        Pthread_mutex_unlock(&lua_debug_mutex);
         goto halt_here;
     } else if (rc) {
         info_buf.has_buffer = 1;
         if ((strncmp(info_buf.buffer, "cont", 4) == 0)) {
-            pthread_mutex_unlock(&lua_debug_mutex);
+            Pthread_mutex_unlock(&lua_debug_mutex);
             goto do_continue;
         }
         logmsg(LOGMSG_USER, "This was not continue \n");
-        pthread_mutex_unlock(&lua_debug_mutex);
+        Pthread_mutex_unlock(&lua_debug_mutex);
         goto wait_here;
     } else {
-        pthread_mutex_unlock(&lua_debug_mutex);
+        Pthread_mutex_unlock(&lua_debug_mutex);
     }
 
     if (debug_clnt == clnt) {

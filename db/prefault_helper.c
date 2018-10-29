@@ -105,13 +105,7 @@ static void *prefault_helper_thread(void *arg)
     pthread_setspecific(unique_tag_key, thdinfo);
 
     while (1) {
-    again:
-
-        rc = pthread_mutex_lock(&(dbenv->prefault_helper.mutex));
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "prefault_helper couldnt lock\n");
-            exit(1);
-        }
+        Pthread_mutex_lock(&(dbenv->prefault_helper.mutex));
 
         /*fprintf(stderr, "setting working_for(%d) to invalid\n", i);*/
 
@@ -121,18 +115,13 @@ static void *prefault_helper_thread(void *arg)
         dbenv->prefault_helper.threads[i].working_for = gbl_invalid_tid;
         MEMORY_SYNC;
 
-        rc = pthread_cond_wait(&(dbenv->prefault_helper.threads[i].cond),
-                               &(dbenv->prefault_helper.mutex));
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "prefault_helper couldnt unlock\n");
-            exit(1);
-        }
+        Pthread_cond_wait(&(dbenv->prefault_helper.threads[i].cond),
+                          &(dbenv->prefault_helper.mutex));
 
         /* bogus wakeup? */
         if (dbenv->prefault_helper.threads[i].working_for == gbl_invalid_tid) {
-            rc = pthread_mutex_unlock(&(dbenv->prefault_helper.mutex));
-
-            goto again;
+            Pthread_mutex_unlock(&(dbenv->prefault_helper.mutex));
+            continue;
         }
 
         working_for = dbenv->prefault_helper.threads[i].working_for;
@@ -166,11 +155,7 @@ static void *prefault_helper_thread(void *arg)
             break;
         }
 
-        rc = pthread_mutex_unlock(&(dbenv->prefault_helper.mutex));
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "prefault_helper couldnt unlock\n");
-            exit(1);
-        }
+        Pthread_mutex_unlock(&(dbenv->prefault_helper.mutex));
 
         /*poll(NULL, 0, 10);*/
 
@@ -251,12 +236,7 @@ static void *prefault_helper_thread(void *arg)
    {
      again:
 
-      rc = pthread_mutex_lock(&(dbenv->prefault_helper.threads[i].mutex));
-      if (rc != 0)
-      {
-         fprintf(stderr, "prefault_helper couldnt lock\n");
-         exit(1);
-      }
+      Pthread_mutex_lock(&(dbenv->prefault_helper.threads[i].mutex));
       
       /* clear who we're working for - we're idle and available now */
       /*fprintf(stderr, "helper %d working for invalid\n", i);*/
@@ -264,25 +244,15 @@ static void *prefault_helper_thread(void *arg)
       dbenv->prefault_helper.threads[i].working_for = gbl_invalid_tid;
       MEMORY_SYNC;
       
-      rc = pthread_cond_wait(&(dbenv->prefault_helper.threads[i].cond),
+      Pthread_cond_wait(&(dbenv->prefault_helper.threads[i].cond),
          &(dbenv->prefault_helper.threads[i].mutex));
-      if (rc != 0)
-      {
-         fprintf(stderr, "prefault_helper couldnt unlock\n");
-         exit(1);
-      }
 
       MEMORY_SYNC;
 
       /* bogus wakeup? */
       if (dbenv->prefault_helper.threads[i].working_for == gbl_invalid_tid)
       {
-         rc = pthread_mutex_unlock(&(dbenv->prefault_helper.threads[i].mutex));
-         if (rc != 0)
-         {
-            fprintf(stderr, "prefault_helper couldnt unlock\n");
-            exit(1);
-         }
+         Pthread_mutex_unlock(&(dbenv->prefault_helper.threads[i].mutex));
          
          goto again;
       }
@@ -290,12 +260,7 @@ static void *prefault_helper_thread(void *arg)
 
       /*sleep(1);*/
       
-      rc = pthread_mutex_unlock(&(dbenv->prefault_helper.threads[i].mutex));
-      if (rc != 0)
-      {
-         fprintf(stderr, "prefault_helper couldnt unlock\n");
-         exit(1);
-      }
+      Pthread_mutex_unlock(&(dbenv->prefault_helper.threads[i].mutex));
    }
    
    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
@@ -324,11 +289,7 @@ int create_prefault_helper_threads(struct dbenv *dbenv, int nthreads)
         exit(1);
     }
 
-    rc = pthread_mutex_init(&(dbenv->prefault_helper.mutex), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "could not initialize pre-fault data mutex %d\n", rc);
-        exit(1);
-    }
+    Pthread_mutex_init(&(dbenv->prefault_helper.mutex), NULL);
 
     for (i = 0; i < nthreads; i++) {
         prefault_helper_thread_arg =
@@ -336,20 +297,9 @@ int create_prefault_helper_threads(struct dbenv *dbenv, int nthreads)
         prefault_helper_thread_arg->dbenv = dbenv;
         prefault_helper_thread_arg->instance = i;
 
-        rc = pthread_mutex_init(&(dbenv->prefault_helper.threads[i].mutex),
-                                NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "could not initialize pre-fault data mutex %d\n",
-                    i);
-            exit(1);
-        }
+        Pthread_mutex_init(&(dbenv->prefault_helper.threads[i].mutex), NULL);
 
-        rc = pthread_cond_init(&(dbenv->prefault_helper.threads[i].cond), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "could not initialize pre-fault data mutex %d\n",
-                    i);
-            exit(1);
-        }
+        Pthread_cond_init(&(dbenv->prefault_helper.threads[i].cond), NULL);
 
         dbenv->prefault_helper.threads[i].pfk_bitmap =
             malloc(8 * gbl_maxblockops);
@@ -389,7 +339,6 @@ int readaheadpf(struct ireq *iq, struct dbtable *db, int ixnum, unsigned char *k
 {
     pthread_t my_tid;
     pthread_t working_for;
-    int rc;
     int i;
 
     if (!prefault_check_enabled())
@@ -397,23 +346,14 @@ int readaheadpf(struct ireq *iq, struct dbtable *db, int ixnum, unsigned char *k
 
     my_tid = pthread_self();
 
-    rc = pthread_mutex_lock(&(iq->dbenv->prefault_helper.mutex));
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "readahead: couldnt lock main mutex\n");
-        return -1;
-    }
+    Pthread_mutex_lock(&(iq->dbenv->prefault_helper.mutex));
 
     for (i = 0; i < iq->dbenv->prefault_helper.numthreads; i++) {
         if (iq->dbenv->prefault_helper.threads[i].working_for ==
             gbl_invalid_tid) {
             /* found an idle thread to give this to! */
             /*fprintf(stderr, "dispatching to processor %d\n", i);*/
-            rc = pthread_mutex_lock(
-                &(iq->dbenv->prefault_helper.threads[i].mutex));
-            if (rc != 0) {
-                logmsg(LOGMSG_FATAL, "readahead: couldnt lock thread %d mutex\n", i);
-                exit(1);
-            }
+            Pthread_mutex_lock(&(iq->dbenv->prefault_helper.threads[i].mutex));
 
             /* he's working for me! */
             iq->dbenv->prefault_helper.threads[i].working_for = my_tid;
@@ -429,30 +369,16 @@ int readaheadpf(struct ireq *iq, struct dbtable *db, int ixnum, unsigned char *k
 
             /*fprintf(stderr, "readahead signaling helper %d\n", i);*/
 
-            rc = pthread_cond_signal(
-                &(iq->dbenv->prefault_helper.threads[i].cond));
-            if (rc != 0) {
-                logmsg(LOGMSG_FATAL, "readahead: couldnt cond signal thrd %d\n", i);
-                exit(1);
-            }
-
-            rc = pthread_mutex_unlock(
+            Pthread_cond_signal(&(iq->dbenv->prefault_helper.threads[i].cond));
+            Pthread_mutex_unlock(
                 &(iq->dbenv->prefault_helper.threads[i].mutex));
-            if (rc != 0) {
-                logmsg(LOGMSG_FATAL, "readahead: couldnt unlock thrd %d\n", i);
-                exit(1);
-            }
 
             /* Found someone to work for me, break out of loop */
             break;
         }
     }
 
-    rc = pthread_mutex_unlock(&(iq->dbenv->prefault_helper.mutex));
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "readahead: couldnt unlock main mutex\n");
-        exit(1);
-    }
+    Pthread_mutex_unlock(&(iq->dbenv->prefault_helper.mutex));
 
     return 0;
 }
