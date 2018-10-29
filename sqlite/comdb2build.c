@@ -2572,18 +2572,14 @@ static char *format_csc2(struct comdb2_ddl_context *ctx)
                 strbuf_append(csc2, "+ ");
             }
 
-            if ((idx_column->flags & INDEX_IS_EXPR)) {
-                strbuf_appendf(
-                    csc2, "%s%s ",
-                    (idx_column->flags & INDEX_ORDER_DESC) ? "<DESCEND> " : "",
-                    idx_column->name);
-            } else {
-                assert((idx_column->column->flags & COLUMN_DELETED) == 0);
-                strbuf_appendf(
-                    csc2, "%s%s ",
-                    (idx_column->flags & INDEX_ORDER_DESC) ? "<DESCEND> " : "",
-                    idx_column->column->name);
-            }
+            assert(((idx_column->flags & INDEX_IS_EXPR) != 0) ||
+                   ((idx_column->column->flags & COLUMN_DELETED) == 0));
+
+            strbuf_appendf(csc2, "%s%s ",
+                           (idx_column->flags & INDEX_ORDER_DESC) ? "<DESCEND> "
+                                                                  : "",
+                           idx_column->name);
+
             added++;
         }
 
@@ -2688,12 +2684,10 @@ static int gen_key_name(struct comdb2_key *key, const char *table, char *out,
 
     LISTC_FOR_EACH(&key->idx_col_list, idx_column, lnk)
     {
-        if ((idx_column->flags & INDEX_IS_EXPR)) {
-            SNPRINTF(buf, sizeof(buf), pos, "%s", idx_column->name)
-        } else {
-            assert((idx_column->column->flags & COLUMN_DELETED) == 0);
-            SNPRINTF(buf, sizeof(buf), pos, "%s", idx_column->name)
-        }
+        assert(((idx_column->flags & INDEX_IS_EXPR) != 0) ||
+               ((idx_column->column->flags & COLUMN_DELETED) == 0));
+        SNPRINTF(buf, sizeof(buf), pos, "%s", idx_column->name)
+
         if (idx_column->flags & INDEX_ORDER_DESC)
             SNPRINTF(buf, sizeof(buf), pos, "%s", "DESC")
     }
