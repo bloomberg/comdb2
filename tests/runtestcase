@@ -204,12 +204,11 @@ call_setup() {
 
 check_db_at_finish() {
     local LCLDBNM="$1"
-    local LCLDBDIR="$2"
-    local LCLCONFIG="$3"
+    local LCLCONFIG="$2"
     local LCLOPTIONS="--cdb2cfg ${LCLCONFIG}"
 
     for node in ${CLUSTER} ; do
-        out=$($CDB2SQL_EXE ${LCLOPTIONS} --tabs --host $node $LCLDBNAME 'select 1' 2>&1)
+        out=$($CDB2SQL_EXE ${LCLOPTIONS} --tabs --host $node $LCLDBNM 'select 1' 2>&1)
         if [ "$out" != "1" ] ; then
             echo 1
             return
@@ -249,9 +248,10 @@ fi
 
 CHECK_DB_AT_FINISH=${CHECK_DB_AT_FINISH:-1}
 if [ $CHECK_DB_AT_FINISH -eq 1 ] ; then
-    bdown=`check_db_at_finish ${SECONDARY_DB} ${SECONDARY_DBDIR} $SECONDARY_DB_CDB2_CONFIG`
+    bdown=`check_db_at_finish ${DBNAME} $CDB2_CONFIG`
+
     if [[ -z "$dbdown" ]] && [[ -n "${SECONDARY_DB}" ]]; then
-        bdown=`check_db_at_finish ${SECONDARY_DB} ${SECONDARY_DBDIR} $SECONDARY_DB_CDB2_CONFIG`
+        bdown=`check_db_at_finish ${SECONDARY_DB} $SECONDARY_DB_CDB2_CONFIG`
     fi
 fi
 
