@@ -107,20 +107,14 @@ unsigned long long get_id(bdb_state_type *);
 
 struct temp_cursor;
 struct temp_table;
-struct temptablekey;
-struct temptablekey {
-    char keyBuf[50]; /* >= len("+18446744073709551615\0") */
-    struct temptablekey *next;
-};
 struct temptable {
     struct temp_cursor *cursor;
     struct temp_table *tbl;
     int flags;
     int rootPg;
     char *name;
-    int nRef;
+    char keyBuf[50]; /* >= len("+18446744073709551615\0") */
     pthread_mutex_t *lk;
-    struct temptablekey *first;
 };
 
 extern int gbl_partial_indexes;
@@ -143,36 +137,12 @@ static const char *rootPageNumToTempHashKey(
 }
 
 static const char *rootPageNumToPermHashKey(
-  struct temptable *pTbl,
+  char *zKeyBuf,
+  size_t nKeyBuf,
   int iTable
 ){
-  char keyBuf[50]; /* >= len("+18446744073709551615\0") */
-  struct temptablekey *pNext = pTbl->first;
-  snprintf(keyBuf, sizeof(keyBuf), "%d", iTable);
-  while( pNext && strcmp(pNext->keyBuf, keyBuf)!=0 ){
-    pNext = pNext->next;
-  }
-  if( !pNext ){
-    pNext = calloc(1, sizeof(struct temptablekey));
-    snprintf(pNext->keyBuf, sizeof(pNext->keyBuf), "%d", iTable);
-    pNext->next = pTbl->first;
-    pTbl->first = pNext;
-  }
-  return pNext->keyBuf;
-}
-
-static void free_key_bufs(
-  struct temptable *pTbl
-){
-  if( pTbl ){
-    struct temptablekey *pNext = pTbl->first;
-    while( pNext ){
-      struct temptablekey *pSave = pNext;
-      pNext = pNext->next;
-      free(pSave);
-    }
-    pTbl->first = 0;
-  }
+  snprintf(zKeyBuf, nKeyBuf, "%d", iTable);
+  return zKeyBuf;
 }
 
 void free_cached_idx(uint8_t **cached_idx)
@@ -3191,15 +3161,14 @@ int sqlite3BtreeClose(Btree *pBt)
             /* internally this will close cursors open on the table */
             struct temptable *pTbl = (struct temptable *)pElem->data;
 
-            if (pTbl != NULL && --pTbl->nRef <= 0) {
-                if (pTbl->tbl != NULL) {
+            if (pTbl != NULL) {
+                if (pTbl->tbl && --pTbl->tbl->nRef <= 0) {
                     rc = bdb_temp_table_close(thedb->bdb_env, pTbl->tbl, &bdberr);
                 }
                 if (rc == SQLITE_OK) {
                     pTbl->tbl = NULL;
                     free(pTbl->name);
                     pTbl->name = NULL;
-                    free_key_bufs(pTbl);
                     free(pTbl);
                 }
             }
@@ -3917,8 +3886,8 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
         struct temptable *pTbl = sqlite3HashFind(
             &pBt->temp_tables, rootPageNumToTempHashKey(pBt, iTable));
 
-        if (pTbl != NULL && --pTbl->nRef <= 0) {
-            if (pTbl->tbl != NULL) {
+        if (pTbl != NULL) {
+            if (pTbl->tbl && --pTbl->tbl->nRef <= 0) {
                 // NEED TO LOCK HERE??
                 rc = bdb_temp_table_close(thedb->bdb_env, pTbl->tbl, &bdberr);
             } else {
@@ -3928,7 +3897,6 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
                 pTbl->tbl = NULL;
                 free(pTbl->name);
                 pTbl->name = NULL;
-                free_key_bufs(pTbl);
                 free(pTbl);
             }
         } else {
@@ -5094,26 +5062,26 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
         goto done;
     }
 
-    struct temptable *pNewTbl;
+    struct temptable *pNewTbl = calloc(1, sizeof(struct temptable));
 
-    if (tmptbl_clone) {
-        pNewTbl = tmptbl_clone;
-        pNewTbl->nRef++;
-    } else {
-        pNewTbl = calloc(1, sizeof(struct temptable));
-
-        if (unlikely(pNewTbl == NULL)) {
-            logmsg(LOGMSG_ERROR, "%s: calloc(%lu) failed\n", __func__,
-                   sizeof(struct temptable));
-            rc = SQLITE_NOMEM;
-            goto done;
-        }
-
-        pNewTbl->nRef = 1;
+    if (unlikely(pNewTbl == NULL)) {
+        logmsg(LOGMSG_ERROR, "%s: calloc(%lu) failed\n", __func__,
+               sizeof(struct temptable));
+        rc = SQLITE_NOMEM;
+        goto done;
     }
 
     /* creating a temporary table */
-    if (pBt->is_hashtable) {
+    if (tmptbl_clone) {
+        pNewTbl->rootPg = tmptbl_clone->rootPg;
+        pNewTbl->tbl = tmptbl_clone->tbl;
+        if (pNewTbl->tbl != NULL) pNewTbl->tbl->nRef++;
+        if (pNewTbl->name != NULL) {
+            pNewTbl->name = strdup(tmptbl_clone->name);
+        }
+        pNewTbl->lk = tmptbl_clone->lk;
+        pNewTbl->flags = tmptbl_clone->flags;
+    } else if (pBt->is_hashtable) {
         struct temp_table *tbl;
         int bdberr;
 
@@ -5130,7 +5098,7 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
         pNewTbl->name = get_temp_dbname(pBt);
         pNewTbl->lk = NULL;
         pNewTbl->flags = flags;
-    } else if (!tmptbl_clone) {
+    } else {
         struct temp_table *tbl;
         int bdberr;
 
@@ -5160,7 +5128,8 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
                              rootPageNumToTempHashKey(pBt, iTable)) );
 
     struct temptable *pOldTbl = sqlite3HashInsert(&pBt->temp_tables,
-        rootPageNumToPermHashKey(pNewTbl, iTable), pNewTbl);
+        rootPageNumToPermHashKey(pNewTbl->keyBuf, sizeof(pNewTbl->keyBuf),
+        iTable), pNewTbl);
 
     assert( pOldTbl==NULL );
     *piTable = iTable;
@@ -7268,7 +7237,7 @@ sqlite3BtreeCursor_temptable(Btree *pBt,      /* The btree */
     cur->tmptable = calloc(1, sizeof(struct temptable));
 
     if (!cur->tmptable) {
-        logmsg(LOGMSG_ERROR, "%s: calloc sizeof(struct temp_table) failed\n",
+        logmsg(LOGMSG_ERROR, "%s: calloc sizeof(struct temptable) failed\n",
                 __func__);
         return SQLITE_INTERNAL;
     }
