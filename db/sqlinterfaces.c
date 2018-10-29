@@ -3474,8 +3474,9 @@ check_version:
                 }
             }
 
-            views_lock();
             rdlock_schema_lk();
+
+            views_lock();
             got_views_lock = 1;
             if (thd->sqldb) {
                 /* we kept engine, but the versions might have changed while
