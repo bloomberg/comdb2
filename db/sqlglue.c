@@ -3162,7 +3162,7 @@ int sqlite3BtreeClose(Btree *pBt)
             struct temptable *pTbl = (struct temptable *)pElem->data;
 
             if (pTbl != NULL) {
-                if (pTbl->tbl && --pTbl->tbl->nRef <= 0) {
+                if (bdb_temp_rel_ref(pTbl->tbl) <= 0) {
                     rc = bdb_temp_table_close(thedb->bdb_env, pTbl->tbl, &bdberr);
                 }
                 if (rc == SQLITE_OK) {
@@ -3887,7 +3887,7 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
             &pBt->temp_tables, rootPageNumToTempHashKey(pBt, iTable));
 
         if (pTbl != NULL) {
-            if (pTbl->tbl && --pTbl->tbl->nRef <= 0) {
+            if (bdb_temp_rel_ref(pTbl->tbl) <= 0) {
                 // NEED TO LOCK HERE??
                 rc = bdb_temp_table_close(thedb->bdb_env, pTbl->tbl, &bdberr);
             } else {
@@ -5075,7 +5075,7 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
     if (tmptbl_clone) {
         pNewTbl->rootPg = tmptbl_clone->rootPg;
         pNewTbl->tbl = tmptbl_clone->tbl;
-        if (pNewTbl->tbl != NULL) pNewTbl->tbl->nRef++;
+        bdb_temp_add_ref(pNewTbl->tbl);
         if (pNewTbl->name != NULL) {
             pNewTbl->name = strdup(tmptbl_clone->name);
         }
