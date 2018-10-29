@@ -4,14 +4,15 @@ bash -n "$0" | exit 1
 set -x
 dbname=$1
 
-if echo $dbname | grep "snapshotgenerated" ; then
-    lvl=$(cdb2sql ${CDB2_OPTIONS} $dbname default "select value from comdb2_tunables where name='sql_tranlevel_default'")
-    if [ $lvl != "SNAPSHOT ISOLATION" ] ; then
+if echo $DBNAME | grep "snapshotgenerated" ; then
+    lvl=$(cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select value from comdb2_tunables where name='sql_tranlevel_default'")
+    if [ "$lvl" != "SNAPSHOT ISOLATION" ] ; then
        echo "FAILURE: DB is not running in snapshot isolation mode"
        exit 1
     fi
-    cdb2sql ${CDB2_OPTIONS} $dbname default "@send get_newsi_status" 
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default "@send get_newsi_status" 
 fi
+
 
 
 echo "Starting tests"

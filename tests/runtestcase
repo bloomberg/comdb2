@@ -260,7 +260,7 @@ fi
 if [[ -n "$cr" ]] ; then
     echo "!$TESTCASE: failed with core dumped ($cr)"
     echo "!$TESTCASE: failed with core dumped ($cr)" >> ${TESTDIR}/test.log
-elif [[ $rc -eq 124 ]] ; then
+elif [[ -n $bdown ]] ; then
     echo "!$TESTCASE: db was unavailable at finish ($dbdown logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: db was unavailable at finish ($dbdown)" >> ${TESTDIR}/test.log
 elif [[ $rc -eq 124 ]] ; then
@@ -278,7 +278,7 @@ fi
 
 
 
-call_unsetup ${DBNAME} ${DBDIR} $CDB2_OPTIONS
+call_unsetup ${DBNAME} ${DBDIR} $CDB2_CONFIG
 
 if [ -n "${SECONDARY_DB}" ] ; then
     call_unsetup ${SECONDARY_DB} ${SECONDARY_DBDIR} $SECONDARY_DB_CDB2_OPTIONS

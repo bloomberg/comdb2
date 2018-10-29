@@ -18,19 +18,9 @@ fi
 nins=0
 
 
-vars="HOSTNAME TESTID SRCHOME TESTCASE DBNAME DBDIR BUILDDIR TESTSBUILDDIR TESTSROOTDIR TESTDIR TMPDIR CDB2_OPTIONS CDB2_CONFIG COMDB2_EXE CDB2SQL_EXE COMDB2AR_EXE PMUX_EXE pmux_port"
-for required in $vars; do
-    q=${!required}
-    if [[ -z "$q" ]]; then
-        echo "$required not set" >&2
-        exit 1
-    fi
-#    echo "$required=$q"
-done
-
 if echo $DBNAME | grep "snapshotgenerated" ; then
-    lvl=$(cdb2sql ${CDB2_OPTIONS} $DBNAME default "select value from comdb2_tunables where name='sql_tranlevel_default'")
-    if [ $lvl != "SNAPSHOT ISOLATION" ] ; then
+    lvl=$(cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select value from comdb2_tunables where name='sql_tranlevel_default'")
+    if [ "$lvl" != "SNAPSHOT ISOLATION" ] ; then
        echo "FAILURE: DB is not running in snapshot isolation mode"
        exit 1
     fi
