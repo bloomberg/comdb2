@@ -107,15 +107,20 @@ unsigned long long get_id(bdb_state_type *);
 
 struct temp_cursor;
 struct temp_table;
+struct temptablekey;
+struct temptablekey {
+    char keyBuf[50]; /* >= len("+18446744073709551615\0") */
+    struct temptablekey *next;
+};
 struct temptable {
     struct temp_cursor *cursor;
     struct temp_table *tbl;
     int flags;
     int rootPg;
     char *name;
-    char keyBuf[50]; /* >= len("+18446744073709551615\0") */
     int nRef;
     pthread_mutex_t *lk;
+    struct temptablekey *first;
 };
 
 extern int gbl_partial_indexes;
@@ -133,18 +138,41 @@ static const char *rootPageNumToTempHashKey(
   Btree *pBt,
   int iTable
 ){
-  memset(pBt->temp_key_buf, 0, sizeof(pBt->temp_key_buf));
   snprintf(pBt->temp_key_buf, sizeof(pBt->temp_key_buf), "%d", iTable);
   return pBt->temp_key_buf;
 }
 
 static const char *rootPageNumToPermHashKey(
-  char *zKeyBuf,
-  size_t nKeyBuf,
+  struct temptable *pTbl,
   int iTable
 ){
-  snprintf(zKeyBuf, nKeyBuf, "%d", iTable);
-  return zKeyBuf;
+  char keyBuf[50]; /* >= len("+18446744073709551615\0") */
+  struct temptablekey *pNext = pTbl->first;
+  snprintf(keyBuf, sizeof(keyBuf), "%d", iTable);
+  while( pNext && strcmp(pNext->keyBuf, keyBuf)!=0 ){
+    pNext = pNext->next;
+  }
+  if( !pNext ){
+    pNext = calloc(1, sizeof(struct temptablekey));
+    snprintf(pNext->keyBuf, sizeof(pNext->keyBuf), "%d", iTable);
+    pNext->next = pTbl->first;
+    pTbl->first = pNext;
+  }
+  return pNext->keyBuf;
+}
+
+static void free_key_bufs(
+  struct temptable *pTbl
+){
+  if( pTbl ){
+    struct temptablekey *pNext = pTbl->first;
+    while( pNext ){
+      struct temptablekey *pSave = pNext;
+      pNext = pNext->next;
+      free(pSave);
+    }
+    pTbl->first = 0;
+  }
 }
 
 void free_cached_idx(uint8_t **cached_idx)
@@ -3171,6 +3199,7 @@ int sqlite3BtreeClose(Btree *pBt)
                     pTbl->tbl = NULL;
                     free(pTbl->name);
                     pTbl->name = NULL;
+                    free_key_bufs(pTbl);
                     free(pTbl);
                 }
             }
@@ -3899,6 +3928,7 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
                 pTbl->tbl = NULL;
                 free(pTbl->name);
                 pTbl->name = NULL;
+                free_key_bufs(pTbl);
                 free(pTbl);
             }
         } else {
@@ -5130,8 +5160,7 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
                              rootPageNumToTempHashKey(pBt, iTable)) );
 
     struct temptable *pOldTbl = sqlite3HashInsert(&pBt->temp_tables,
-        rootPageNumToPermHashKey(pNewTbl->keyBuf, sizeof(pNewTbl->keyBuf),
-        iTable), pNewTbl);
+        rootPageNumToPermHashKey(pNewTbl, iTable), pNewTbl);
 
     assert( pOldTbl==NULL );
     *piTable = iTable;
