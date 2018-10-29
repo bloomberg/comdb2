@@ -3508,9 +3508,11 @@ check_version:
                 rc = views_sqlite_update(thedb->timepart_views, thd->sqldb,
                                          &xerr, 0);
                 if (rc != VIEW_NOERR) {
-                    logmsg(LOGMSG_ERROR, 
+                    logmsg(LOGMSG_FATAL, 
                             "failed to create views rc=%d errstr=\"%s\"\n",
                             xerr.errval, xerr.errstr);
+                    /* there is no really way forward */
+                    abort();
                 }
                 if (cnonce)
                     set_cnonce(clnt);
