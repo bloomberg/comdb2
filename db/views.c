@@ -2416,7 +2416,7 @@ int timepart_foreach_shard(const char *view_name,
 {
     timepart_views_t *views;
     timepart_view_t *view;
-    int rc;
+    int rc = 0;
     int i;
 
     pthread_rwlock_rdlock(&views_lk);

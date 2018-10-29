@@ -211,7 +211,7 @@ static int get_next_addrem_buffer(bdb_state_type *bdb_state, DB_LSN *lsn,
     void *p = NULL;
     int off = 0;
     DBT logent;
-    u_int32_t rectype;
+    u_int32_t rectype = 0;
     int rc;
     BOVERFLOW *ov;
     BKEYDATA *kd;

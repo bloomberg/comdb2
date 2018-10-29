@@ -734,6 +734,7 @@ static int analyze_table_int(table_descriptor_t *td,
     clnt.osql_max_trans = 0; // allow large transactions
     clnt.sb = sb2;
     sbuf2settimeout(clnt.sb, 0, 0);
+    int sampled_table = 0;
 
     logmsg(LOGMSG_INFO, "Analyze thread starting, table %s (%d%%)\n", td->table, td->scale);
 
@@ -793,7 +794,6 @@ static int analyze_table_int(table_descriptor_t *td,
 
     /* grab the size of the table */
     int64_t totsiz = calc_table_size_analyze(tbl);
-    int sampled_table = 0;
 
     if (sampled_tables_enabled)
         get_sampling_threshold(td->table, &sampling_threshold);

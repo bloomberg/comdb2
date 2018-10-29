@@ -4902,7 +4902,7 @@ static int bdb_cursor_find_merge(bdb_cursor_impl_t *cur, void *key, int keylen,
     char *key_po = NULL;
     int keysize_po = 0;
     unsigned long long genid_po = 0;
-    uint8_t ver_po;
+    uint8_t ver_po = 0;
 
     /* Variables containing 'shadow' data from the shadow-tables. */
     char *dta_sd = NULL;

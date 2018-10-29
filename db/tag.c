@@ -2248,7 +2248,7 @@ static int t2t_with_plan(const struct t2t_plan *plan, const void *from_buf,
 
         const char *from_fieldbuf;
         int from_fieldlen, from_field_idx;
-        blob_buffer_t *from_blob;
+        blob_buffer_t *from_blob = NULL;
         blob_buffer_t *to_blob;
         int from_type;
         const struct field_conv_opts *from_convopts;
@@ -2438,7 +2438,7 @@ static int t2t_with_plan(const struct t2t_plan *plan, const void *from_buf,
             }
         } else {
             /* Write a non-null value into the buffer */
-            int rc, outdtsz;
+            int rc = 0, outdtsz;
 
             /* Client type fields need timezone information.  Server type fields
              * don't since time in the server format is absolute. */
@@ -4248,7 +4248,7 @@ int stag_to_stag_buf_ckey(const char *table, const char *fromtag,
 {
     struct schema *from, *to;
     int field;
-    struct field *from_field, *to_field;
+    struct field *from_field, *to_field = NULL;
     int field_idx;
     int rc;
     int iflags, oflags;
@@ -4510,7 +4510,7 @@ static int default_cmp(int oldlen, const void *oldptr, int newlen,
 int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                     int strict)
 {
-    struct field *fnew, *fold;
+    struct field *fnew = NULL, *fold;
     int rc = SC_NO_CHANGE;
     int change = SC_NO_CHANGE;
     int oidx, nidx;

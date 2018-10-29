@@ -658,7 +658,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
     int rc = 0;
     char *csc2text = NULL;
     char *table_copy = NULL;
-    struct dbtable *db;
+    struct dbtable *db = NULL;
     void *tran = NULL;
     int bdberr;
     int highest_ver;

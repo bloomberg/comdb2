@@ -749,7 +749,7 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
     struct rep_type_berkdb_rep_buf_hdr p_rep_type_berkdb_rep_buf_hdr = {0};
     struct rep_type_berkdb_rep_seqnum p_rep_type_berkdb_rep_seqnum = {0};
     uint8_t *p_buf, *p_buf_end;
-    int rectype;
+    int rectype = 0;
     int i;
     int *seqnum;
     const char *hostlist[REPMAX];
@@ -2288,7 +2288,7 @@ int verify_master_leases_int(bdb_state_type *bdb_state, const char **comlist,
     int verify_trace = bdb_state->attr->verify_master_lease_trace;
     static time_t lastpr = 0;
     static int last_rc = 0;
-    time_t now;
+    time_t now = 0;
     uint64_t ctime = gettimeofday_ms();
     static uint64_t bad_count = 0;
 
@@ -3059,7 +3059,7 @@ int bdb_wait_for_seqnum_from_room(bdb_state_type *bdb_state,
     const char *nodelist[REPMAX];
     int numnodes;
     int rc;
-    int our_room;
+    int our_room = 0;
 
     if (bdb_state->attr->repalwayswait)
         numnodes = net_get_all_nodes(bdb_state->repinfo->netinfo, nodelist);
@@ -4438,8 +4438,8 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
                         int usertype, void *dta, int dtalen, uint8_t is_tcp)
 {
     bdb_state_type *bdb_state;
-    int node;
-    int on_off;
+    int node = 0;
+    int on_off = 0;
     lsn_cmp_type lsn_cmp;
     int in_rep_process_message;
     DB_LSN cur_lsn;
@@ -4824,9 +4824,9 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
     int controlbufsz;
     int recbufcrc;
     int controlbufcrc;
-    struct rep_type_berkdb_rep_ctrlbuf_hdr p_rep_type_berkdb_rep_ctrlbuf_hdr;
-    struct rep_type_berkdb_rep_buf_hdr p_rep_type_berkdb_rep_buf_hdr;
-    struct rep_type_berkdb_rep_seqnum p_rep_type_berkdb_rep_seqnum;
+    struct rep_type_berkdb_rep_ctrlbuf_hdr p_rep_type_berkdb_rep_ctrlbuf_hdr ={0};
+    struct rep_type_berkdb_rep_buf_hdr p_rep_type_berkdb_rep_buf_hdr = {0};
+    struct rep_type_berkdb_rep_seqnum p_rep_type_berkdb_rep_seqnum ={0};
     DBT rec;
     DBT control;
     bdb_state_type *bdb_state;
@@ -4834,7 +4834,7 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
     int seqnum;
     int outrc = 0;
     seqnum_type berkdb_seqnum;
-    int filenum;
+    int filenum = 0;
     unsigned long long master_cmpcontext;
 
     outrc = 0;

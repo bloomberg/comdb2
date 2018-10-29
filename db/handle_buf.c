@@ -338,7 +338,7 @@ void thd_coalesce(struct dbenv *dbenv)
     {
         struct thd *thd;
         int am_req_thd = 0;
-        int num_wait;
+        int num_wait = 0;
 
         /* fstsnd based fastinit can lead to us waiting for ourself.. check if
          * this is one of the request threads and if so that's one less

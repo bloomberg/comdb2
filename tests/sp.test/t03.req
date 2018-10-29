@@ -1,3 +1,4 @@
+set transaction blocksql
 create lua consumer cons_with_tid on (table foraudit for insert and update and delete)
 insert into foraudit values(1)
 select * from foraudit

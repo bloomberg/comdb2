@@ -515,7 +515,7 @@ int toblobask(struct ireq *iq)
     cached_blob_key_t key;
     cached_blob_t *blob;
     char *schemaname;
-    int rc;
+    int rc = 0;
     int is_dynt = 0;
     char table[MAXTABLELEN + 1];
     char cachetag[MAXTAGLEN + 1]; /* as used in the cache */
@@ -524,8 +524,8 @@ int toblobask(struct ireq *iq)
     struct blobask_rsp rsp;
 
     uint8_t *p_buf_out;
-    uint8_t *p_buf_out_rsp_start;
-    uint8_t *p_buf_out_rsp_blob_start;
+    uint8_t *p_buf_out_rsp_start = NULL;
+    uint8_t *p_buf_out_rsp_blob_start = NULL;
 
     /* get our own p_buf_out so that if we fail we don't touch iq's copy */
     p_buf_out = iq->p_buf_out;
