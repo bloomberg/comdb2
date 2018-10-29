@@ -128,13 +128,14 @@ extern int gbl_expressions_indexes;
 ** Don't create new btree, use this one.
 */
 static __thread struct temptable *tmptbl_clone = NULL;
-static __thread char hashKeyBuf[50]; /* >= len("+18446744073709551615\0") */
 
 static const char *rootPageNumToTempHashKey(
+  Btree *pBt,
   int iTable
 ){
-  snprintf(hashKeyBuf, sizeof(hashKeyBuf), "%d", iTable);
-  return hashKeyBuf;
+  memset(pBt->temp_key_buf, 0, sizeof(pBt->temp_key_buf));
+  snprintf(pBt->temp_key_buf, sizeof(pBt->temp_key_buf), "%d", iTable);
+  return pBt->temp_key_buf;
 }
 
 static const char *rootPageNumToPermHashKey(
@@ -3885,7 +3886,7 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
         pthread_mutex_lock(&pBt->temp_tables_lk);
 
         struct temptable *pTbl = sqlite3HashFind(
-            &pBt->temp_tables, rootPageNumToTempHashKey(iTable));
+            &pBt->temp_tables, rootPageNumToTempHashKey(pBt, iTable));
 
         if (pTbl != NULL && --pTbl->nRef <= 0) {
             if (pTbl->tbl != NULL) {
@@ -3911,7 +3912,7 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
             **       the passed string hash key will not be stored.
             */
             struct temptable *pOldTbl = sqlite3HashInsert(
-                &pBt->temp_tables, rootPageNumToTempHashKey(iTable), 0
+                &pBt->temp_tables, rootPageNumToTempHashKey(pBt, iTable), 0
             );
             assert( pOldTbl==pTbl );
         }
@@ -5126,7 +5127,7 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
     assert( iTable>=1 ); /* can never be zero or negative */
     assert( iTable>1 || pBt->temp_tables.count==0 ); /* master page == 1 */
     assert( !sqlite3HashFind(&pBt->temp_tables,
-                             rootPageNumToTempHashKey(iTable)) );
+                             rootPageNumToTempHashKey(pBt, iTable)) );
 
     struct temptable *pOldTbl = sqlite3HashInsert(&pBt->temp_tables,
         rootPageNumToPermHashKey(pNewTbl->keyBuf, sizeof(pNewTbl->keyBuf),
@@ -6343,7 +6344,7 @@ int sqlite3BtreeClearTable(Btree *pBt, int iTable, int *pnChange)
         pthread_mutex_lock(&pBt->temp_tables_lk);
 
         struct temptable *pTbl = sqlite3HashFind(
-            &pBt->temp_tables, rootPageNumToTempHashKey(iTable));
+            &pBt->temp_tables, rootPageNumToTempHashKey(pBt, iTable));
 
         if (pTbl == NULL) {
             logmsg(LOGMSG_ERROR, "%s: table %d not found\n",
@@ -7226,7 +7227,7 @@ sqlite3BtreeCursor_temptable(Btree *pBt,      /* The btree */
     int bdberr = 0;
 
     struct temptable *src = sqlite3HashFind(
-        &pBt->temp_tables, rootPageNumToTempHashKey(iTable));
+        &pBt->temp_tables, rootPageNumToTempHashKey(pBt, iTable));
 
     if (src == NULL) {
         logmsg(LOGMSG_ERROR, "%s: table %d not found\n",
@@ -8122,7 +8123,7 @@ int sqlite3BtreeCursor(
           **       been created yet.  Attempt to do that now.
           */
           if( sqlite3HashFind(&pBt->temp_tables,
-                              rootPageNumToTempHashKey(iTable))==0 ){
+                              rootPageNumToTempHashKey(pBt, iTable))==0 ){
             int tmpPgno;
             pthread_mutex_unlock(&pBt->temp_tables_lk);
             assert( tmptbl_clone==NULL );
@@ -8135,7 +8136,7 @@ int sqlite3BtreeCursor(
         }
         if( rc==SQLITE_OK ){
           assert( sqlite3HashFind(&pBt->temp_tables,
-                                  rootPageNumToTempHashKey(iTable)) );
+                                  rootPageNumToTempHashKey(pBt, iTable)) );
           rc = sqlite3BtreeCursor_temptable(pBt, iTable, wrFlag & BTREE_CUR_WR,
                                             temp_table_cmp, pKeyInfo, cur, thd);
         }
@@ -11210,7 +11211,7 @@ void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
     // aDb[0]: sqlite_master
     // aDb[1]: sqlite_temp_master
     struct temptable *pTbl = sqlite3HashFind(
-        &pSrcBt->temp_tables, rootPageNumToTempHashKey(rootpg));
+        &pSrcBt->temp_tables, rootPageNumToTempHashKey(pSrcBt, rootpg));
 
     if (pTbl == NULL) {
         logmsg(LOGMSG_ERROR, "%s table %d not found, sql:%s\n",

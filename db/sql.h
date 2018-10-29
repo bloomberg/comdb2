@@ -674,6 +674,7 @@ struct Btree {
     Hash temp_tables;
     pthread_mutex_t temp_tables_lk;
     int next_temp_root_pg;
+    char temp_key_buf[50]; /* >= len("+18446744073709551615\0") */
 
     int is_hashtable;
 
