@@ -164,7 +164,11 @@ typedef struct fcon_tag {
     int blah;
 } fcon_tag_t;
 
-enum fdb_cur_stream_state { FDB_CUR_IDLE = 0, FDB_CUR_STREAMING = 1 };
+enum fdb_cur_stream_state {
+    FDB_CUR_IDLE = 0,
+    FDB_CUR_STREAMING = 1,
+    FDB_CUR_ERROR = 2
+};
 
 struct fdb_cursor {
     char *cid;             /* identity of cursor id */
@@ -3075,13 +3079,18 @@ static int fdb_cursor_move_sql(BtCursor *pCur, int how)
                     pCur->bt->fdb->ssl = ssl_cfg;
 #endif
                 } else {
-                    if (rc != FDB_ERR_SSL)
+                    if (rc != FDB_ERR_SSL) {
                         logmsg(LOGMSG_ERROR, "%s: failed to retrieve streaming "
                                              "row rc=%d \"%s\"\n",
                                __func__, rc, errstr);
+                        fdbc->streaming = FDB_CUR_ERROR;
+                    }
                 }
 
                 return rc;
+            } else {
+                fdbc->streaming =
+                    (rc == IX_FNDMORE) ? FDB_CUR_STREAMING : FDB_CUR_IDLE;
             }
         }
 
@@ -3261,13 +3270,18 @@ static int fdb_cursor_find_sql_common(BtCursor *pCur, Mem *key, int nfields,
 
                     rc = SQLITE_SCHEMA_REMOTE;
                 } else {
-                    if (rc != FDB_ERR_SSL)
+                    if (rc != FDB_ERR_SSL) {
                         logmsg(LOGMSG_ERROR, "%s: failed to retrieve streaming "
                                              "row rc=%d \"%s\"\n",
                                __func__, rc, errstr);
+                        fdbc->streaming = FDB_CUR_ERROR;
+                    }
                 }
 
                 return rc;
+            } else {
+                fdbc->streaming =
+                    (rc == IX_FNDMORE) ? FDB_CUR_STREAMING : FDB_CUR_IDLE;
             }
 
             /* if we don't get a row here, it means the concocted sql did not
