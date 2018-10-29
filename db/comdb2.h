@@ -321,8 +321,6 @@ enum BLOCK_OPS {
     NUM_BLOCKOP_OPCODES = 45
 };
 
-
-
 const char *osql_reqtype_str(int type); // used for printing string of type
 
 /*

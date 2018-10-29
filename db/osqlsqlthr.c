@@ -82,14 +82,17 @@ static int check_osql_capacity(struct sql_thread *thd);
 static int access_control_check_sql_write(struct BtCursor *pCur,
                                           struct sql_thread *thd);
 
-
 #ifndef NDEBUG
-#define DEBUG_PRINT_NUMOPS() { \
-    uuidstr_t us; \
-    DEBUGMSG("uuid=%s, replicant_numops=%d\n", comdb2uuidstr(osql->uuid, us), osql->replicant_numops); \
-}
+#define DEBUG_PRINT_NUMOPS()                                                   \
+    {                                                                          \
+        uuidstr_t us;                                                          \
+        DEBUGMSG("uuid=%s, replicant_numops=%d\n",                             \
+                 comdb2uuidstr(osql->uuid, us), osql->replicant_numops);       \
+    }
 #else
-#define DEBUG_PRINT_NUMOPS() {}
+#define DEBUG_PRINT_NUMOPS()                                                   \
+    {                                                                          \
+    }
 #endif
 
 /*
@@ -823,7 +826,7 @@ again:
         goto error;
 
     if (0) {
-error:
+    error:
         retries++;
         if (retries < maxretries) {
             logmsg(LOGMSG_ERROR, 
@@ -1395,9 +1398,9 @@ retry:
     if (rc == 0) {
         osql->replicant_numops++;
         if (osql->rqid == OSQL_RQID_USE_UUID) {
-            rc = osql_send_commit_by_uuid(osql->host, osql->uuid, osql->replicant_numops,
-                                          &osql->xerr, nettype, osql->logsb,
-                                          clnt->query_stats, snap_info_p);
+            rc = osql_send_commit_by_uuid(
+                osql->host, osql->uuid, osql->replicant_numops, &osql->xerr,
+                nettype, osql->logsb, clnt->query_stats, snap_info_p);
         } else {
             rc = osql_send_commit(osql->host, osql->rqid, osql->uuid,
                                   osql->replicant_numops, &osql->xerr, nettype,
@@ -1434,11 +1437,13 @@ static int osql_send_abort_logic(struct sqlclntstate *clnt, int nettype)
     osql->replicant_numops++;
 
     if (osql->rqid == OSQL_RQID_USE_UUID)
-        rc = osql_send_commit_by_uuid(osql->host, osql->uuid, osql->replicant_numops, &xerr, nettype,
+        rc = osql_send_commit_by_uuid(osql->host, osql->uuid,
+                                      osql->replicant_numops, &xerr, nettype,
                                       osql->logsb, clnt->query_stats, NULL);
     else
-        rc = osql_send_commit(osql->host, osql->rqid, osql->uuid, osql->replicant_numops, &xerr,
-                              nettype, osql->logsb, clnt->query_stats, NULL);
+        rc = osql_send_commit(osql->host, osql->rqid, osql->uuid,
+                              osql->replicant_numops, &xerr, nettype,
+                              osql->logsb, clnt->query_stats, NULL);
     /* no need to restart an abort, master will drop the transaction anyway
     RESTART_SOCKSQL; */
     osql->replicant_numops = 0;

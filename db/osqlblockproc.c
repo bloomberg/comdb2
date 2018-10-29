@@ -606,9 +606,8 @@ const char *osql_reqtype_str(int type)
     return typestr[type];
 }
 
-
 static void send_error_to_replicant(int rqid, const char *host, int errval,
-        const char *errstr)
+                                    const char *errstr)
 {
     sorese_info_t sorese_info = {0};
     struct errstat generr = {0};
@@ -622,8 +621,8 @@ static void send_error_to_replicant(int rqid, const char *host, int errval,
     generr.errval = errval;
     strncpy(generr.errstr, errstr, sizeof(generr.errstr));
 
-    int rc = osql_comm_signal_sqlthr_rc(&sorese_info, &generr,
-            RC_INTERNAL_RETRY);
+    int rc =
+        osql_comm_signal_sqlthr_rc(&sorese_info, &generr, RC_INTERNAL_RETRY);
     if (rc) {
         logmsg(LOGMSG_ERROR, "Failed to signal replicant rc=%d\n", rc);
     }
@@ -659,8 +658,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     if (type == OSQL_SCHEMACHANGE)
         iq->tranddl++;
 
-    DEBUGMSG("uuid=%s type=%d (%s) seq=%lld\n",
-             comdb2uuidstr(uuid, us), type, osql_reqtype_str(type), sess->seq);
+    DEBUGMSG("uuid=%s type=%d (%s) seq=%lld\n", comdb2uuidstr(uuid, us), type,
+             osql_reqtype_str(type), sess->seq);
 
     key.seq = sess->seq;
     assert (sess->rqid == rqid);
@@ -675,7 +674,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
      * retries will use same rqid */
     assert(sess->seq == 0 && tran->rows == 0);
     if (sess->seq == 0 && tran->rows > 0) {
-        logmsg(LOGMSG_FATAL, "Malformed transaction, received duplicated first row");
+        logmsg(LOGMSG_FATAL,
+               "Malformed transaction, received duplicated first row");
         abort();
     }
 
@@ -705,32 +705,35 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         return rc_op;
 
     struct errstat *xerr;
-    /* check if type is done -- TODO: can pass type in */
+    /* check if type is done */
     rc = osql_comm_is_done(type, rpl, rplen, rqid == OSQL_RQID_USE_UUID, &xerr,
                            osql_session_get_ireq(sess));
     if (rc == 0)
         return 0;
     
-    // only OSQL_DONE_SNAP, OSQL_DONE, OSQL_DONE_STATS, and OSQL_XERR are processed beyond this point
+    // only OSQL_DONE_SNAP, OSQL_DONE, OSQL_DONE_STATS, and OSQL_XERR 
+    // are processed beyond this point
 
     if (type != OSQL_XERR) { // if tran not aborted
         int done_nops = osql_get_replicant_nops(rpl, rqid == OSQL_RQID_USE_UUID);
         DEBUGMSG("uuid=%s type %s done_nops=%d, seq=%lld %s\n",
-                comdb2uuidstr(uuid, us), osql_reqtype_str(type), done_nops, sess->seq,
-                (done_nops != sess->seq + 1 ? "NO match": ""));
+                comdb2uuidstr(uuid, us), osql_reqtype_str(type), done_nops,
+                sess->seq, (done_nops != sess->seq + 1 ? "NO match": ""));
 
         if(done_nops != sess->seq + 1 /* || (rand() % 3) == 0 */ ) {
             send_error_to_replicant(rqid, sess->offhost,
                     RC_INTERNAL_RETRY,
                     "Master received inconsistent number of opcodes");
 
-            logmsg(LOGMSG_ERROR, "%s: Replicant sent %d opcodes, master received %lld\n", __func__, done_nops, sess->seq + 1);
-            abort(); //for now abort to catch failure cases
+            logmsg(LOGMSG_ERROR, 
+                   "%s: Replicant sent %d opcodes, master received %lld\n",
+                   __func__, done_nops, sess->seq + 1);
 
             // TODO: terminate session so replicant can retry
             // or mark session bad so don't process this session from toblock
-            osql_sess_try_terminate(sess);
-            return 0;
+            //osql_sess_try_terminate(sess);
+            //return 0;
+            abort(); //for now abort to catch failure cases
         }
     }
 
@@ -738,8 +741,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     osql_sess_set_complete(rqid, uuid, sess, xerr);
 
-    /* if we received a too early, check the coherency and mark blackout the
-     * node */
+    /* if we received a too early, check the coherency and mark blackout node */
     if (xerr && xerr->errval == OSQL_TOOEARLY) {
         osql_comm_blkout_node(sess->offhost);
     }

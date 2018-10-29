@@ -4652,12 +4652,13 @@ int osql_send_commit(char *tohost, unsigned long long rqid, uuid_t uuid,
         rpl_ok.dt.nops = nops;
 
         if (logsb) {
-            sbuf2printf(logsb, "[%llu] send commit %s %d %d\n", rqid, osql_reqtype_str(rpl_ok.hd.type), rc, nops);
+            sbuf2printf(logsb, "[%llu] send commit %s %d %d\n", rqid,
+                        osql_reqtype_str(rpl_ok.hd.type), rc, nops);
             sbuf2flush(logsb);
         }
 
-        DEBUGMSG("[%llu] send %s rc = %d, nops = %d\n",
-               rqid, osql_reqtype_str(rpl_ok.hd.type), rc, nops);
+        DEBUGMSG("[%llu] send %s rc = %d, nops = %d\n", rqid,
+                 osql_reqtype_str(rpl_ok.hd.type), rc, nops);
 #if 0
       printf("Sending rqid=%llu tmp=%llu\n", rqid, osql_log_time());
 #endif
@@ -4788,15 +4789,18 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
 
         uuidstr_t us;
         if (logsb) {
-            sbuf2printf(logsb, "[%s] send %s %d %d\n", comdb2uuidstr(uuid, us), osql_reqtype_str(rpl_ok.hd.type), rc, nops);
+            sbuf2printf(logsb, "[%s] send %s %d %d\n", comdb2uuidstr(uuid, us),
+                        osql_reqtype_str(rpl_ok.hd.type), rc, nops);
             sbuf2flush(logsb);
         }
 
-        DEBUGMSG("uuid=%s send %s rc = %d, nops = %d\n", comdb2uuidstr(uuid, us), osql_reqtype_str(rpl_ok.hd.type), rc, nops);
+        DEBUGMSG("uuid=%s send %s rc = %d, nops = %d\n",
+                 comdb2uuidstr(uuid, us), osql_reqtype_str(rpl_ok.hd.type), rc,
+                 nops);
 
         if (!(p_buf = osqlcomm_done_uuid_rpl_put(&rpl_ok, p_buf, p_buf_end))) {
             logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
-                    "osqlcomm_done_uuid_rpl_put");
+                   "osqlcomm_done_uuid_rpl_put");
             if (used_malloc)
                 free(buf);
             return -1;
@@ -4810,7 +4814,7 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
             if (!(p_buf =
                       client_query_stats_put(query_stats, p_buf, p_buf_end))) {
                 logmsg(LOGMSG_ERROR, "%s line %d:%s returns NULL\n", __func__,
-                        __LINE__, "client_query_stats_put");
+                       __LINE__, "client_query_stats_put");
                 if (used_malloc)
                     free(buf);
                 return -1;
@@ -4826,7 +4830,9 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
         memcpy(&rpl_xerr.dt, xerr, sizeof(rpl_xerr.dt));
 
         uuidstr_t us;
-        DEBUGMSG("uuid=%llu send %s rc = %d, nops = %d\n", comdb2uuidstr(uuid, us), osql_reqtype_str(rpl_xerr.hd.type), rc, nops);
+        DEBUGMSG("uuid=%llu send %s rc = %d, nops = %d\n",
+                 comdb2uuidstr(uuid, us), osql_reqtype_str(rpl_xerr.hd.type),
+                 rc, nops);
         if (!osqlcomm_done_xerr_uuid_type_put(&rpl_xerr, p_buf, p_buf_end)) {
             logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
                     "osqlcomm_done_xerr_type_put");
@@ -6649,8 +6655,6 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
     return 0;
 }
 
-
-
 /* get the number of blockops sent in the osql_done packet
  */
 int osql_get_replicant_nops(const char *rpl, int has_uuid)
@@ -6726,7 +6730,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     if (gbl_toblock_net_throttle && is_write_request(type))
         net_throttle_wait(thedb->handle_sibling);
 
-    DEBUGMSG("osql_process_packet(): processing %s (%d)\n", osql_reqtype_str(type), type);
+    DEBUGMSG("osql_process_packet(): processing %s (%d)\n",
+             osql_reqtype_str(type), type);
 
     switch (type) {
     case OSQL_DONE:
