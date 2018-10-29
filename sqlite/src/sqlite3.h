@@ -6368,16 +6368,17 @@ struct sqlite3_module {
   int (*xSavepoint)(sqlite3_vtab *pVTab, int);
   int (*xRelease)(sqlite3_vtab *pVTab, int);
   int (*xRollbackTo)(sqlite3_vtab *pVTab, int);
-
-  /* COMDB2 MODIFICATION */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
   int access_flag;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
-/* COMDB2 MODIFICATION */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
 enum {
   CDB2_ALLOW_ALL,  // Allow access to all
   CDB2_ALLOW_USER, // Limit access only to permitted users
 };
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** CAPI3REF: Virtual Table Indexing Information
