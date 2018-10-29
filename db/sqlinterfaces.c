@@ -2207,6 +2207,9 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
     if (!gbl_locks_check_waiters)
         return 0;
 
+    if (!gbl_sql_release_locks_on_emit_row)
+        return 0;
+
     /* Release locks randomly for testing */
     if (gbl_sql_random_release_interval &&
         !(rand() % gbl_sql_random_release_interval))
@@ -2216,17 +2219,13 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
     if (!bdb_curtran_has_waiters(thedb->bdb_env, clnt->dbtran.cursor_tran))
         return 0;
 
-    /* Release locks an any waiter */
-    if (gbl_sql_release_locks_on_emit_row)
-        return release_locks(thd->sqlthd, "lockwait at emit-row");
+    /* We're emitting a row & have waiters */
+    if (!gbl_rep_wait_release_ms || thedb->master == gbl_mynode)
+        return release_locks(thd->sqlthd, "release locks on emit-row");
 
-    /* Short circuit rep-release if master or not enabled */
-    if (!rep_lock_time_ms || !gbl_rep_wait_release_ms ||
-        thedb->master == gbl_mynode)
-        return 0;
-
-    /* Release if rep-thread has waited too long */
-    if ((comdb2_time_epochms() - rep_lock_time_ms) > gbl_rep_wait_release_ms)
+    /* We're emitting a row and are blocking replication */
+    if (rep_lock_time_ms && (comdb2_time_epochms() - rep_lock_time_ms) >
+            gbl_rep_wait_release_ms)
         return release_locks(thd->sqlthd, "long repwait at emit-row");
 
     return 0;
