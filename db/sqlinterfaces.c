@@ -3801,25 +3801,25 @@ int gbl_client_heartbeat_ms = 100;
 static inline int lock_client_write_lock_int(struct sqlclntstate *clnt, int try)
 {
     struct sql_thread *thd;
-    int rc;
+    int rc = 0, rd_rc = 0;
 
 again:
     if (try) {
         rc = pthread_mutex_trylock(&clnt->write_lock);
     } else {
-        rc = Pthread_mutex_lock(&clnt->write_lock);
+        Pthread_mutex_lock(&clnt->write_lock);
     }
-    if (rc == 0 && clnt->heartbeat_lock) {
+    if (rd_rc == 0 && rc == 0 && clnt->heartbeat_lock) {
         if (clnt->need_recover_deadlock &&
             (thd = pthread_getspecific(query_info_key))) {
-            rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0);
+            rd_rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0);
             clnt->need_recover_deadlock = 0;
         }
         pthread_cond_signal(&clnt->write_cond);
         Pthread_mutex_unlock(&clnt->write_lock);
         goto again;
     }
-    return rc;
+    return rd_rc ? rd_rc : rc;
 }
 
 int lock_client_write_trylock(struct sqlclntstate *clnt)
@@ -3832,9 +3832,9 @@ int lock_client_write_lock(struct sqlclntstate *clnt)
     return lock_client_write_lock_int(clnt, 0);
 }
 
-int unlock_client_write_lock(struct sqlclntstate *clnt)
+void unlock_client_write_lock(struct sqlclntstate *clnt)
 {
-    return Pthread_mutex_unlock(&clnt->write_lock);
+    Pthread_mutex_unlock(&clnt->write_lock);
 }
 
 int dispatch_sql_query(struct sqlclntstate *clnt)

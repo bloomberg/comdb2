@@ -368,7 +368,8 @@ static int newsql_send_hdr(struct sqlclntstate *clnt, int h)
     struct newsqlheader hdr = {0};
     hdr.type = ntohl(h);
     int rc;
-    lock_client_write_lock(clnt);
+    if ((rc = lock_client_write_lock(clnt)) != 0)
+        goto done;
     if ((rc = sbuf2write((char *)&hdr, sizeof(hdr), clnt->sb)) != sizeof(hdr))
         goto done;
     if ((rc = sbuf2flush(clnt->sb)) < 0)
@@ -404,7 +405,8 @@ static int newsql_response_int(struct sqlclntstate *clnt,
     hdr.length = ntohl(len);
 
     int rc;
-    lock_client_write_lock(clnt);
+    if ((rc = lock_client_write_lock(clnt)) != 0)
+        goto done;
     if ((rc = sbuf2write((char *)&hdr, sizeof(hdr), clnt->sb)) != sizeof(hdr))
         goto done;
     if ((rc = sbuf2write((char *)buf, len, clnt->sb)) != len)
@@ -596,10 +598,13 @@ static int newsql_error(struct sqlclntstate *c, char *r, int e)
 
 static int newsql_flush(struct sqlclntstate *clnt)
 {
-    lock_client_write_lock(clnt);
-    int rc = sbuf2flush(clnt->sb);
+    int rc = 0;
+    if ((rc = lock_client_write_lock(clnt)) != 0)
+        goto done;
+    rc = (sbuf2flush(clnt->sb) < 0)
+done:
     unlock_client_write_lock(clnt);
-    return rc < 0;
+    return rc;
 }
 
 static int newsql_heartbeat(struct sqlclntstate *clnt)
@@ -635,7 +640,8 @@ static int newsql_send_postponed_row(struct sqlclntstate *clnt)
     char *row = (char *)appdata->postponed->row;
     size_t len = appdata->postponed->len;
     int rc;
-    lock_client_write_lock(clnt);
+    if ((rc = lock_client_write_lock(clnt)) != 0)
+        goto done;
     if ((rc = sbuf2write(hdr, hdrsz, clnt->sb)) != hdrsz)
         goto done;
     if ((rc = sbuf2write(row, len, clnt->sb)) != len)
