@@ -4796,7 +4796,7 @@ void stmt_set_dtprec(sqlite3_stmt *, int);
 **
 ** ^The sixth, seventh, eighth and ninth parameters (xStep, xFinal, xValue 
 ** and xInverse) passed to sqlite3_create_window_function are pointers to
-** C-lanugage callbacks that implement the new function. xStep and xFinal
+** C-language callbacks that implement the new function. xStep and xFinal
 ** must both be non-NULL. xValue and xInverse may either both be NULL, in
 ** which case a regular aggregate function is created, or must both be 
 ** non-NULL, in which case the new function may be used as either an aggregate
@@ -9355,7 +9355,7 @@ SQLITE_API int sqlite3_deserialize(
 ** in the P argument is held in memory obtained from [sqlite3_malloc64()]
 ** and that SQLite should take ownership of this memory and automatically
 ** free it when it has finished using it.  Without this flag, the caller
-** is resposible for freeing any dynamically allocated memory.
+** is responsible for freeing any dynamically allocated memory.
 **
 ** The SQLITE_DESERIALIZE_RESIZEABLE flag means that SQLite is allowed to
 ** grow the size of the database using calls to [sqlite3_realloc64()].  This
