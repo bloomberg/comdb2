@@ -716,8 +716,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     if (type != OSQL_XERR) { // if tran not aborted
         int done_nops = osql_get_replicant_nops(rpl, rqid == OSQL_RQID_USE_UUID);
         DEBUGMSG("uuid=%s type %s done_nops=%d, seq=%lld %s\n",
-                comdb2uuidstr(uuid, us), osql_reqtype_str(type), done_nops, seq,
-                (done_nops != seq + 1 ? "NO match": ""));
+                comdb2uuidstr(uuid, us), osql_reqtype_str(type), done_nops, sess->seq,
+                (done_nops != sess->seq + 1 ? "NO match": ""));
 
         if(done_nops != sess->seq + 1 /* || (rand() % 3) == 0 */ ) {
             send_error_to_replicant(rqid, sess->offhost,
