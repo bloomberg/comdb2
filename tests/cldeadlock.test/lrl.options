@@ -1,4 +1,7 @@
+enable_snapshot_isolation
 release_locks_trace on
 maxosqltransfer 1000000
 rep_release_wait_ms 10
 logmsg level info
+random_fail_client_write_lock 2
+random_get_curtran_failures 1000

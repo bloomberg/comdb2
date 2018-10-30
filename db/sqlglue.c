@@ -8780,7 +8780,8 @@ int get_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
         return -1;
     }
 
-    if (gbl_random_get_curtran_failures && !(rand() % 1000)) {
+    if (gbl_random_get_curtran_failures && !(rand() %
+                gbl_random_get_curtran_failures)) {
         logmsg(LOGMSG_ERROR, "%s forcing a random curtran failure\n", __func__);
         return -1;
     }
@@ -8995,6 +8996,7 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
                            uint32_t flags)
 {
     int ptrace = (flags & RECOVER_DEADLOCK_PTRACE);
+    int force_fail = (flags & RECOVER_DEADLOCK_FORCE_FAIL);
     struct sqlclntstate *clnt = thd->clnt;
     BtCursor *cur = NULL;
     int rc = 0;
@@ -9107,6 +9109,9 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
 
     /* get a new curtran */
     rc = get_curtran_flags(thedb->bdb_env, clnt, thd, curtran_flags);
+    if (rc == 0 && force_fail)
+        rc = ((rand()%2) ? SQLITE_SCHEMA : -1);
+
     if (rc) {
         if (rc == SQLITE_SCHEMA || rc == SQLITE_COMDB2SCHEMA)
             return SQLITE_COMDB2SCHEMA;

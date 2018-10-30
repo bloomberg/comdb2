@@ -2173,7 +2173,7 @@ static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     return SQLITE_OK;
 }
 
-int release_locks(struct sql_thread *td, const char *trace)
+int release_locks_flags(struct sql_thread *td, const char *trace, uint32_t flags)
 {
     struct sql_thread *qikey = pthread_getspecific(query_info_key);
     struct sql_thread *thd = td ? td : qikey;
@@ -2186,10 +2186,17 @@ int release_locks(struct sql_thread *td, const char *trace)
             logmsg(LOGMSG_USER, "Releasing locks for lockid %d, %s%s\n",
                    bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran), trace,
                    (qikey == NULL) ? " (skip bdblock)" : "");
-        rc = recover_deadlock_flags(thedb->bdb_env, thd, NULL, -1, 0);
+        rc = recover_deadlock_flags(thedb->bdb_env, thd, NULL, -1, flags);
     }
     return rc;
 }
+
+
+int release_locks(struct sql_thread *td, const char *trace)
+{
+    return release_locks_flags(td, trace, 0);
+}
+
 
 /* Release-locks if rep-thread is blocked longer than this many ms */
 int gbl_rep_wait_release_ms = 60000;
@@ -3122,7 +3129,7 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
    send error only once and stop processing at that time)
  */   
 static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
-                    struct sql_state *rec, int *fast_error, 
+                    struct sql_state *rec, int *fast_error,
                     struct errstat *err)
 {
     int rc;
@@ -3797,11 +3804,16 @@ static int send_heartbeat(struct sqlclntstate *clnt)
     } while (0)
 
 int gbl_client_heartbeat_ms = 100;
+int gbl_fail_client_write_lock = 0;
 
 static inline int lock_client_write_lock_int(struct sqlclntstate *clnt, int try)
 {
     struct sql_thread *thd;
     int rc = 0, rd_rc = 0;
+    uint32_t flags = 0;
+
+    if (gbl_fail_client_write_lock && !(rand() % gbl_fail_client_write_lock))
+        flags = RECOVER_DEADLOCK_FORCE_FAIL;
 
 again:
     if (try) {
@@ -3812,12 +3824,16 @@ again:
     if (rd_rc == 0 && rc == 0 && clnt->heartbeat_lock) {
         if (clnt->need_recover_deadlock &&
             (thd = pthread_getspecific(query_info_key))) {
-            rd_rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0);
+            rd_rc = recover_deadlock_flags(thedb->bdb_env, thd, NULL, 0, flags);
             clnt->need_recover_deadlock = 0;
         }
         pthread_cond_signal(&clnt->write_cond);
         Pthread_mutex_unlock(&clnt->write_lock);
         goto again;
+    }
+    if (rd_rc) {
+        logmsg(LOGMSG_WARN, "%s recover_deadlock returned %d\n", __func__,
+                rd_rc);
     }
     return rd_rc ? rd_rc : rc;
 }

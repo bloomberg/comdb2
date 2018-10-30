@@ -598,10 +598,10 @@ static int newsql_error(struct sqlclntstate *c, char *r, int e)
 
 static int newsql_flush(struct sqlclntstate *clnt)
 {
-    int rc = 0;
+    int rc;
     if ((rc = lock_client_write_lock(clnt)) != 0)
         goto done;
-    rc = (sbuf2flush(clnt->sb) < 0)
+    rc = (sbuf2flush(clnt->sb) < 0);
 done:
     unlock_client_write_lock(clnt);
     return rc;

@@ -31,7 +31,7 @@ static inline int failexit(const char *func, int line, int rc)
 
 static inline int retry_rcode(int rc)
 {
-    if (rc == -1 || rc == -5 || rc == 2)
+    if (rc == -1 || rc == -5 || rc == 2 || rc == 4 || rc == 402)
         return 1;
     return 0;
 }
@@ -71,7 +71,7 @@ again:
 }
 
 int select_and_update_orphan(const char *dbname, const char *type,
-        int64_t count, int range, int pint)
+        int snapshot, int64_t count, int range, int pint)
 {
     int sel_rc, upd_rc;
     int64_t target = (rand() % count) / 10, iter = 0;
@@ -89,6 +89,22 @@ int select_and_update_orphan(const char *dbname, const char *type,
     if ((upd_rc = cdb2_open(&upd_hndl, dbname, type, 0)) != 0) {
         fprintf(stderr, "Failed to allocate upd-handle for %s\n", dbname);
         failexit(__func__, __LINE__, upd_rc);
+    }
+
+    if (snapshot) {
+        if ((sel_rc = cdb2_run_statement(sel_hndl,
+                        "set transaction snapshot"))!=0) {
+            fprintf(stderr, "Failed to set select snapshot isolation, %s\n",
+                    cdb2_errstr(sel_hndl));
+            failexit(__func__, __LINE__, sel_rc);
+        }
+
+        if ((upd_rc = cdb2_run_statement(upd_hndl,
+                        "set transaction snapshot"))!=0) {
+            fprintf(stderr, "Failed to set update snapshot isolation, %s\n",
+                    cdb2_errstr(upd_hndl));
+            failexit(__func__, __LINE__, sel_rc);
+        }
     }
 
 sel_again:
@@ -134,7 +150,9 @@ upd_again:
             if (upd_rc != CDB2_OK_DONE) {
                 fprintf(stderr, "Failed next from update cursor, rcode is %d, %s\n",
                         upd_rc, cdb2_errstr(upd_hndl));
-                failexit(__func__, __LINE__, upd_rc);
+                if (!retry_rcode(upd_rc)) {
+                    failexit(__func__, __LINE__, upd_rc);
+                }
             }
             if (pint > 0 && !(cnt % pint))
                 printf("Updated %" PRId64 " records, target is %" PRId64 "\n",
@@ -147,19 +165,19 @@ upd_again:
     return 0;
 }
 
-int select_and_update(const char *dbname, const char *type, int64_t count,
-        int orphans, int range, int pint)
+int select_and_update(const char *dbname, const char *type, int snapshot,
+        int64_t count, int orphans, int range, int pint)
 {
     int i;
     for (i = 0; i < orphans; i++)
-        select_and_update_orphan(dbname, type, count, range, pint);
+        select_and_update_orphan(dbname, type, snapshot, count, range, pint);
     return 0;
 }
 
 
 int main(int argc,char *argv[])
 {
-    int c, err = 0, range = 100000, pint = 10000, orphans = 10;
+    int c, err = 0, range = 100000, pint = 10000, orphans = 10, snapshot = 0;
     char *dbname = NULL, *type = NULL, *pidfile = NULL;
     FILE *pfile;
     int64_t count;
@@ -169,7 +187,7 @@ int main(int argc,char *argv[])
     setvbuf(stderr, NULL, _IOLBF, 0);
     srand(time(NULL) ^ getpid());
 
-    while ((c = getopt(argc,argv,"hd:r:p:t:c:f:"))!=EOF) {
+    while ((c = getopt(argc,argv,"hd:r:p:t:c:f:s"))!=EOF) {
         switch(c) {
             case 'd':
                 dbname = optarg;
@@ -191,6 +209,9 @@ int main(int argc,char *argv[])
                 break;
             case 'o':
                 orphans = atoi(optarg);
+                break;
+            case 's':
+                snapshot = 1;
                 break;
             case 'h':
                 usage(stdout);
@@ -220,7 +241,7 @@ int main(int argc,char *argv[])
     }
 
     count = record_count(dbname, type);
-    select_and_update(dbname, type, count, orphans, range, pint);
+    select_and_update(dbname, type, snapshot, count, orphans, range, pint);
     printf("Complete\n");
     return 0;
 }

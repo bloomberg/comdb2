@@ -1470,4 +1470,16 @@ REGISTER_TUNABLE("rep_release_wait_ms",
                  TUNABLE_INTEGER, &gbl_rep_wait_release_ms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("random_get_curtran_failures",
+                 "Force a random get-curtran failure 1/this many times.  "
+                 "(Default: 0)",
+                 TUNABLE_INTEGER, &gbl_random_get_curtran_failures,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("random_fail_client_write_lock",
+                 "Force a random client write-lock failure 1/this many times.  "
+                 "(Default: 0)",
+                 TUNABLE_INTEGER, &gbl_fail_client_write_lock,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */

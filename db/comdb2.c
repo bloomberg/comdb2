@@ -4929,9 +4929,6 @@ static void register_all_int_switches()
     register_int_switch("debug_sqlthd_failures",
                         "Force sqlthd failures in unusual places",
                         &gbl_debug_sqlthd_failures);
-    register_int_switch("random_get_curtran_failures",
-                        "Force random get_curtran failures",
-                        &gbl_random_get_curtran_failures);
     register_int_switch("abort_invalid_query_info_key",
                         "Abort in thread-teardown for invalid query_info_key",
                         &gbl_abort_invalid_query_info_key);

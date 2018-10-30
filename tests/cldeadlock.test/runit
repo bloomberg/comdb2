@@ -20,7 +20,7 @@ function write_prompt
 function cleanup
 {
     [[ $debug == "1" ]] && set -x
-    typeset func="run_test"
+    typeset func="cleanup"
     write_prompt $func "executing $cleanup"
     j=0
     while [[ $j -lt $cl_iters ]]; do
@@ -152,9 +152,12 @@ function cldeadlock
     [[ $debug == "1" ]] && set -x
     typeset func="cldeadlock"
     typeset iter=$1
+    typeset snapshot=$2
+    typeset snapshot_flag=""
     typeset pidfile=$pidroot.$iter
     write_prompt $func "executing $func-$iter"
-    ${TESTSBUILDDIR}/cldeadlock -d $DBNAME -f $pidfile -c $CDB2_CONFIG -t default 2>&1 | gawk "{print \"[$func-$iter]\", \$0; fflush(); }"
+    [[ "$snapshot" == "1" ]] && snapshot_flag=" -s "
+    ${TESTSBUILDDIR}/cldeadlock -d $DBNAME -f $pidfile $snapshot_flag -c $CDB2_CONFIG -t default 2>&1 | gawk "{print \"[$func-$iter]\", \$0; fflush(); }"
 }
 
 function cldeadlock_threads
@@ -163,9 +166,10 @@ function cldeadlock_threads
     typeset func="cldeadlock_threads"
     write_prompt $func "executing $func"
     typeset iters=${1:-5}
+    typeset snapshot=${2:-0}
     typeset j=0
     while [[ $j -lt $iters ]]; do
-        cldeadlock $j &
+        cldeadlock $j $snapshot &
         cl_pids[$j]=$!
         let j=j+1
     done
@@ -230,6 +234,19 @@ function downgrade_test
     check_coherent
 }
 
+function snapshot_test
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="snapshot_test"
+    write_prompt $func "executing $func"
+    start_coherent_loop 20
+    start_downgrade_thread
+    cldeadlock_threads $cl_iters 1
+    cleanup
+    sleep 10
+    check_coherent
+}
+
 function setup_test
 {
     [[ $debug == "1" ]] && set -x
@@ -246,8 +263,9 @@ function run_test
     typeset func="run_test"
     write_prompt $func "executing $func"
     setup_test
-    downgrade_test
+    snapshot_test
     normal_test
+    downgrade_test
     [[ -f $incoherent_fail ]] && failexit "Cluster went incoherent"
 }
 
