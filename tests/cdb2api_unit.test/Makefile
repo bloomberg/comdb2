@@ -9,7 +9,6 @@ ifeq ($(TEST_TIMEOUT),)
 	export TEST_TIMEOUT=1m
 endif
 
-
 #test_exe: test.c $(SRCHOME)/cdb2api/cdb2api.c $(SRCHOME)/cdb2api/cdb2api.h $(BUILDDIR)/protobuf/sqlquery.pb-c.h
 #	gcc -D_LINUX_SOURCE -g -std=c99 $(CURRDIR)/test.c -I$(SRCHOME)/util -I$(SRCHOME)/bbinc -I$(BUILDDIR)/protobuf -I$(SRCHOME)/cdb2api -o runit
 

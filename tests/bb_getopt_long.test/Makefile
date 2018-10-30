@@ -9,6 +9,7 @@ ifeq ($(TEST_TIMEOUT),)
 	export TEST_TIMEOUT=1m
 endif
 
+
 glgetopt: getopt_test.c $(SRCHOME)/util/bb_getopt_long.c $(SRCHOME)/util/bb_getopt_long.h
 	gcc -g -DNORMAL_GETOPT -std=c99 $(CURRDIR)/getopt_test.c $(SRCHOME)/util/bb_getopt_long.c -I$(SRCHOME)/util -o glgetopt
 
