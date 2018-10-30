@@ -82,7 +82,6 @@
 
 #include "rtcpu.h"
 
-#include <alloca.h>
 #include <intern_strings.h>
 #include "debug_switches.h"
 #include <trigger.h>
@@ -281,7 +280,6 @@ static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
 {
     int bdberr;
     void *bdb_handle = bdb_handle_from_ireq(iq);
-    /*struct dbenv *dbenv = dbenv_from_ireq(iq);*/
     int rc = 0;
     tran_type *physical_tran = NULL;
     iq->gluewhere = "bdb_tran_begin";
@@ -320,6 +318,7 @@ static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
          * Once we're inside a transaction we hold the bdb read lock
          * until we've committed or aborted so no need to worry about this
          * later on. */
+        /* struct dbenv *dbenv = dbenv_from_ireq(iq); */
         if (bdberr == BDBERR_READONLY /*&& dbenv->master!=gbl_mynode*/) {
             /* return NOMASTER so client retries. */
             return ERR_NOMASTER;
@@ -799,7 +798,7 @@ int trans_commit_adaptive(struct ireq *iq, void *trans, char *source_host)
 int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen,
                         void *seqkey, int seqkeylen)
 {
-    int bdberr, rc = 0, *file;
+    int bdberr, rc = 0;
     void *bdb_handle = bdb_handle_from_ireq(iq);
     struct dbenv *dbenv = dbenv_from_ireq(iq);
     db_seqnum_type ss;
@@ -819,7 +818,7 @@ int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen,
     }
 
     /* Single phy-txn logical aborts will set ss to 0: check before waiting */
-    file = (u_int32_t *)&ss;
+    u_int32_t *file = (u_int32_t *)&ss;
     if (*file != 0) {
         trans_wait_for_seqnum_int(bdb_handle, dbenv, iq, gbl_mynode,
                                   -1 /* timeoutms */, 1 /* adaptive */, &ss);
