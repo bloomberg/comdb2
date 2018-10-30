@@ -958,7 +958,6 @@ int bdb_osql_trn_get_oldest_asof_reflsn(DB_LSN *lsnout)
         logmsg(LOGMSG_WARN, "%s: No trn repo???\n", __func__);
     }
 
-done:
     if (pthread_mutex_unlock(&trn_repo_mtx)) {
         logmsg(LOGMSG_ERROR, "%s:%d pthread_mutex_unlock failed\n", __func__,
                 __LINE__);
@@ -1423,7 +1422,6 @@ int bdb_osql_trn_get_lwm(bdb_state_type *bdb_state, void *plsn)
         logmsg(LOGMSG_WARN, "%s: No trn repo???\n", __func__);
     }
 
-done:
     *(DB_LSN *)plsn = lsn;
 
     rc = pthread_mutex_unlock(&trn_repo_mtx);

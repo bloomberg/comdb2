@@ -1065,7 +1065,6 @@ int undo_add_ix_lk(bdb_state_type *bdb_state, tran_type *tran, char *table_name,
     rc = ll_undo_add_ix_lk(bdb_state, tran, table_name, add_ix_lk->ix,
                            key->data, key->size /*add_ix_lk->keylen*/, undolsn);
 
-done:
     if (rc && rc != DB_LOCK_DEADLOCK && debug_comp) {
         bdb_state->dbenv->memp_sync(bdb_state->dbenv, NULL);
         logmsg(LOGMSG_FATAL,
@@ -1101,7 +1100,6 @@ int undo_del_ix_lk(bdb_state_type *bdb_state, tran_type *tran,
     keybuf = calloc(1, keylen);
     dtabuf = calloc(1, dtalen);
 
-debug:
     lsn = *undolsn;
     rc = bdb_reconstruct_delete(bdb_state, undolsn, NULL, NULL, keybuf, keylen,
                                 dtabuf, dtalen, NULL);
@@ -1163,7 +1161,6 @@ int undo_del_ix(bdb_state_type *bdb_state, tran_type *tran,
     keybuf = calloc(1, keylen);
     dtabuf = calloc(1, dtalen);
 
-debug:
     lsn = *undolsn;
     rc = bdb_reconstruct_delete(bdb_state, undolsn, NULL, NULL, keybuf, keylen,
                                 dtabuf, dtalen, &outdatalen);
@@ -3366,7 +3363,6 @@ int handle_undo_upd_ix(DB_ENV *dbenv, u_int32_t rectype,
         __db_err(dbenv, "unknown op type %d in handle_undo_upd_ix\n", (int)op);
         break;
     }
-done:
     *lsn = updop->prev_lsn;
     return rc;
 }
@@ -4052,7 +4048,6 @@ int handle_undo_upd_ix_lk(DB_ENV *dbenv, u_int32_t rectype,
         __db_err(dbenv, "unknown op type %d in handle_undo_upd_ix\n", (int)op);
         break;
     }
-done:
     *lsn = updop->prev_lsn;
     return rc;
 }
@@ -4120,7 +4115,6 @@ int handle_rowlocks_log_bench(DB_ENV *dbenv, u_int32_t rectype,
         break;
     }
 
-done:
     *lsn = rl_log_bench->prev_lsn;
     return 0;
 }

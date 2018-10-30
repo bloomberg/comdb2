@@ -270,7 +270,7 @@ __lock_id_flags(dbenv, idp, flags)
 			F_SET(lk, DB_LOCKER_TRACK);
 	}
 
-err:	UNLOCKREGION(dbenv, lt);
+	UNLOCKREGION(dbenv, lt);
 	unlock_lockers(region);
 	return (ret);
 }

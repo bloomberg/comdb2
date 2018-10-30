@@ -75,8 +75,6 @@ int fdb_svc_cursor_open_sql(char *tid, char *cid, int code_release, int version,
                             int flags, int isuuid, struct sqlclntstate **pclnt)
 {
     struct sqlclntstate *clnt = NULL;
-    int rc;
-
     /* we need to create a private clnt state */
     clnt = (struct sqlclntstate *)calloc(1, sizeof(struct sqlclntstate));
     if (!clnt) {
@@ -850,8 +848,6 @@ int fdb_svc_cursor_delete(struct sqlclntstate *clnt, char *tblname,
     pthread_mutex_unlock(&clnt->dtran_mtx);
 
     clnt->effects.num_deleted++;
-
-done:
 
     rc2 = _fdb_svc_cursor_end(&bCur, clnt, standalone);
     if (!rc) {

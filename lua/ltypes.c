@@ -343,7 +343,7 @@ void luabb_toreal(Lua lua, int idx, double *ret)
         *ret = interval_to_double(&ds->val);
         return;
     }
-err:luabb_type_err(lua, dbtypes.real, idx);
+    luabb_type_err(lua, dbtypes.real, idx);
     *ret = 0; //just to silence warnings -- will never reach here
 }
 

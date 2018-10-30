@@ -482,7 +482,6 @@ static void *fstdump_thread_inner(fstdump_per_thread_t *fstdump, void *sendrec,
         }
     }
 
-done:
     close_retry(dbcp, common);
 
     return NULL;

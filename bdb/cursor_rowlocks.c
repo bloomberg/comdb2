@@ -2152,9 +2152,6 @@ static inline int bdb_berkdb_rowlocks_exit(bdb_berkdb_t *berkdb,
                                            int rcode, int *lkcount, int *bdberr)
 {
     int rc;
-    /* Grab the bdb state */
-    bdb_state_type *bdb_state = berkdb->impl->bdb_state;
-
     /* Pointers to cursors */
     bdb_rowlocks_tag_t *r = &berkdb->impl->u.row;
     bdb_cursor_impl_t *cur = berkdb->impl->cur;

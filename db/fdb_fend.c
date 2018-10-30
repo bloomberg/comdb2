@@ -719,7 +719,6 @@ static int _add_table_and_stats_fdb(fdb_t *fdb, const char *table_name,
                              there is no "sqlite_master" entry for
                              sqlite_master, but
                              that doesn't make the case here to fail */
-retry_find_table:
     /* check if the table exists, and if it does need refreshing
        if it exists and has right version, grab the version and return */
     rc = _table_exists(fdb, table_name, &status, version);
@@ -1474,7 +1473,6 @@ static int __lock_wrlock_exclusive(char *dbname)
         }
     } while (1); /* 1 is the creator */
 
-done:
     pthread_rwlock_unlock(&fdbs.arr_lock);
 
     return rc;
@@ -1991,7 +1989,6 @@ char *fdb_sqlexplain_get_field_name(Vdbe *v, int rootpage, int ixnum,
                                     int fieldnum)
 {
     fdb_tbl_ent_t *ent;
-    int i;
     Table *pTab;
     Index *pIdx;
     Column *pCol;

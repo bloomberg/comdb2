@@ -1652,8 +1652,6 @@ int bdb_osql_log_apply_log(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
         rc = bdb_osql_shadow_set_lastlog(cur->ifn, log, bdberr);
     }
 
-done:
-
     return rc;
 }
 
@@ -3107,7 +3105,6 @@ int bdb_osql_update_shadows_with_pglogs(bdb_cursor_impl_t *cur, DB_LSN lsn,
                                         bdb_osql_trn_t *trn, int *dirty,
                                         int trak, int *bdberr)
 {
-    tran_type *shadow_tran = bdb_osql_trn_get_shadow_tran(trn);
     bdb_state_type *bdb_state = cur->state;
     int rc = 0;
     DBT logdta;
@@ -3133,7 +3130,6 @@ int bdb_osql_update_shadows_with_pglogs(bdb_cursor_impl_t *cur, DB_LSN lsn,
     llog_undo_del_ix_lk_args *del_ix_lk = NULL;
     llog_undo_upd_dta_lk_args *upd_dta_lk = NULL;
     llog_undo_upd_ix_lk_args *upd_ix_lk = NULL;
-    void *logp = NULL;
 
     bzero(&logdta, sizeof(DBT));
     logdta.flags = DB_DBT_REALLOC;
@@ -3384,6 +3380,7 @@ int bdb_osql_update_shadows_with_pglogs(bdb_cursor_impl_t *cur, DB_LSN lsn,
 
         if (rc) {
 #ifdef NEWSI_DEBUG
+            tran_type *shadow_tran = bdb_osql_trn_get_shadow_tran(trn);
             logmsg(LOGMSG_DEBUG,
                    "NEWSI tran %p shadow_tran %p birthlsn[%d][%d] applying log "
                    "lsn[%d][%d] type[%d] genid[%llx] dbnum[%d] dtafile[%d] "

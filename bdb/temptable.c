@@ -1121,7 +1121,6 @@ static int bdb_temp_table_truncate_temp_db(bdb_state_type *bdb_state,
 
     rc = 0;
 
-done:
     return rc;
 }
 
@@ -1278,7 +1277,6 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
         }
     }
 
-done:
     dbgtrace(3, "temp_table_close() = %d %s", rc, db_strerror(rc));
     return rc;
 }
@@ -1393,7 +1391,6 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
 
     free(tbl);
 
-done:
     dbgtrace(3, "temp_table_destroy_lru() = %d %s", rc, db_strerror(rc));
     return rc;
 }
