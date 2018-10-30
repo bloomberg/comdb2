@@ -6648,7 +6648,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
 
 /* get the number of blockops sent in the osql_done packet
  */
-int osql_get_replicant_nops(const char *rpl, int has_uuid)
+int osql_get_replicant_numops(const char *rpl, int has_uuid)
 {
     uint8_t *p_buf = rpl;
     p_buf += (has_uuid ? sizeof(osql_uuid_rpl_t) : sizeof(osql_rpl_t));

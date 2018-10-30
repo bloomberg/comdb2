@@ -415,6 +415,6 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
 
 int osql_close_connection(char *host);
 
-int osql_get_replicant_nops(const char *rpl, int has_uuid);
+int osql_get_replicant_numops(const char *rpl, int has_uuid);
 
 #endif

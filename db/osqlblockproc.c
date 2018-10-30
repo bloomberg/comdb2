@@ -69,7 +69,7 @@
 
 
 int g_osql_blocksql_parallel_max = 5;
-int gbl_osql_check_replicant_nops = 1;
+int gbl_osql_check_replicant_numops = 1;
 extern int gbl_blocksql_grace;
 
 typedef struct blocksql_info {
@@ -710,19 +710,19 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     // are processed beyond this point
 
     if (type != OSQL_XERR) { // if tran not aborted
-        int done_nops = osql_get_replicant_nops(rpl, rqid == OSQL_RQID_USE_UUID);
-        DEBUGMSG("uuid=%s type %s done_nops=%d, seq=%lld %s\n",
-                comdb2uuidstr(uuid, us), osql_reqtype_str(type), done_nops,
-                sess->seq, (done_nops != sess->seq + 1 ? "NO match": ""));
+        int numops = osql_get_replicant_numops(rpl, rqid == OSQL_RQID_USE_UUID);
+        DEBUGMSG("uuid=%s type %s numops=%d, seq=%lld %s\n",
+                comdb2uuidstr(uuid, us), osql_reqtype_str(type), numops,
+                sess->seq, (numops != sess->seq + 1 ? "NO match": ""));
 
-        if(gbl_osql_check_replicant_nops && done_nops != sess->seq + 1) { 
+        if(gbl_osql_check_replicant_numops && numops != sess->seq + 1) { 
             send_error_to_replicant(rqid, sess->offhost,
                     RC_INTERNAL_RETRY,
                     "Master received inconsistent number of opcodes");
 
             logmsg(LOGMSG_ERROR, 
                    "%s: Replicant sent %d opcodes, master received %lld\n",
-                   __func__, done_nops, sess->seq + 1);
+                   __func__, numops, sess->seq + 1);
 
             // TODO: terminate session so replicant can retry
             // or mark session bad so don't process this session from toblock
