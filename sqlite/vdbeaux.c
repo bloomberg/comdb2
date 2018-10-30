@@ -4478,7 +4478,6 @@ static int sqlite3IntFloatCompare(i64 i, double r){
 */
 static inline int sqlite3MemCompare(const Mem *pMem1, const Mem *pMem2,
         const CollSeq *pColl){
-  int rc;
   int f1, f2;
   int combined_flags;
 

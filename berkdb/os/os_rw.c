@@ -106,7 +106,6 @@ static void *
 get_aligned_buffer(void *buf, size_t bufsz, int copy)
 {
 	struct iobuf *b;
-	uintptr_t addr = (uintptr_t) buf;
 
 	b = pthread_getspecific(iobufkey);
 	if (b == NULL) {
@@ -1069,7 +1068,7 @@ __os_iov(dbenv, op, fhp, pgno, pagesize, bufs, nobufs, niop)
 {
 	int ret, i;
 	db_pgno_t c_pgno;
-	size_t single_niop, max_niop, max_bufs;
+	size_t single_niop, max_bufs;
 	struct timespec s, rem;
 	int rc;
 

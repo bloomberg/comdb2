@@ -5356,7 +5356,10 @@ static char* sqlite3ExprDescribe_inner(
     case TK_RP:
     case TK_AS:
     case TK_COMMA:
+        break;
     case TK_ID:
+        /* COMDB2 MODIFICATION */
+        return sqlite3_mprintf("%s", pExpr->u.zToken);
     case TK_INDEXED:
     case TK_ABORT:
     case TK_ACTION:

@@ -175,8 +175,6 @@ int ll_dta_add(bdb_state_type *bdb_state, unsigned long long genid, DB *dbp,
 {
     int outrc = 0, rc;
     int tran_flags;
-    int updateid;
-    int crc;
 
     tran_flags = tran ? 0 : DB_AUTO_COMMIT;
     tran_flags |= flags;
@@ -255,7 +253,6 @@ int ll_dta_del(bdb_state_type *bdb_state, tran_type *tran, int rrn,
     DBT dbt_key = {0};
     DBT dta_out_si = {0};
     DBC *dbcp = NULL;
-    unsigned long long found_genid;
     unsigned long long search_genid;
     int crc;
     int is_blob = 0;
@@ -624,12 +621,10 @@ int ll_key_upd(bdb_state_type *bdb_state, tran_type *tran, char *table_name,
     DBC *dbcp;
     DBT dbt_key = {0};
     DBT dbt_dta = {0};
-    int *found_rrn;
     unsigned long long *found_genid;
     int crc;
     const int genid_sz = sizeof(unsigned long long);
     unsigned char dtacopy_payload[MAXRECSZ + ODH_SIZE_RESERVE + genid_sz];
-    unsigned long long keybuf[512 / sizeof(unsigned long long)];
     int dtacopy_payload_len = 0;
     unsigned char keydata[MAXKEYSZ];
     int llog_payload_len = 8;
@@ -762,8 +757,6 @@ int ll_key_upd(bdb_state_type *bdb_state, tran_type *tran, char *table_name,
             dbt_tbl.data = bdb_state->name;
 
             {
-                DB_LSN crp = parent->last_logical_lsn;
-
                 /* Send key with our logical-log: we can't get to it from the
                  * berkley logs. */
                 iirc = llog_undo_upd_ix_log(
@@ -773,6 +766,8 @@ int ll_key_upd(bdb_state_type *bdb_state, tran_type *tran, char *table_name,
                     &dbt_key, dtalen);
 
                 /*
+                DB_LSN crp = parent->last_logical_lsn;
+
                 fprintf( stderr, "%s:%d upd ix LLSN %d:%d -> %d:%d\n",
                       __FILE__, __LINE__, crp.file, crp.offset,
                       parent->last_logical_lsn.file,
@@ -812,7 +807,6 @@ int ll_key_add(bdb_state_type *bdb_state, unsigned long long ingenid,
                tran_type *tran, int ixnum, DBT *dbt_key, DBT *dbt_data)
 {
     DB *dbp;
-    DBC *dbcp = NULL;
     int rc;
 
     dbp = bdb_state->dbp_ix[ixnum];
@@ -907,7 +901,6 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
     void *freeptr = NULL;
     void *freedtaptr = NULL;
     DB *dbp_add;
-    int got_rowlock = 0;
     int logical_len = 0;
     int add_blob = 0;
     DBT old_dta_out_lcl;
@@ -915,7 +908,6 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
     void *formatted_record = NULL;
     uint32_t formatted_record_len;
     int formatted_record_needsfree = 0;
-    int got_new_lock = 0;
     int oldsz = -1;
     int newstripe = 0;
 
@@ -1486,7 +1478,6 @@ extern int gbl_fullrecovery;
 int ll_checkpoint(bdb_state_type *bdb_state, int force)
 {
     DB_LSN lwm, lwmlsn, curlsn;
-    tran_type *trans;
     int rc;
     int cmp;
     int bdberr;

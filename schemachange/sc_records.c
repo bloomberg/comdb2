@@ -458,12 +458,12 @@ static int convert_record(struct convert_record_data *data)
     }
 
     data->iq.debug = debug_this_request(gbl_debug_until);
-    pthread_mutex_lock(&gbl_sc_lock);
+    Pthread_mutex_lock(&gbl_sc_lock);
     if (gbl_who > 0) {
         gbl_who--;
         data->iq.debug = 1;
     }
-    pthread_mutex_unlock(&gbl_sc_lock);
+    Pthread_mutex_unlock(&gbl_sc_lock);
     if (data->iq.debug) {
         reqlog_new_request(&data->iq); // TODO: cleanup (reset) logger
         reqpushprefixf(&data->iq, "0x%llx: CONVERT_REC ", pthread_self());
@@ -1358,13 +1358,13 @@ static int upgrade_records(struct convert_record_data *data)
 
     // set debug info
     if (gbl_who > 0 || data->iq.debug > 0) {
-        pthread_mutex_lock(&gbl_sc_lock);
+        Pthread_mutex_lock(&gbl_sc_lock);
         data->iq.debug = gbl_who;
         if (data->iq.debug > 0) {
             gbl_who = data->iq.debug - 1;
             data->iq.debug = 1;
         }
-        pthread_mutex_unlock(&gbl_sc_lock);
+        Pthread_mutex_unlock(&gbl_sc_lock);
     }
 
     data->iq.timeoutms = gbl_sc_timeoutms;

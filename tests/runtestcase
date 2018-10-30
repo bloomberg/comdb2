@@ -269,7 +269,7 @@ fi
 if [[ -n "$cr" ]] ; then
     echo "!$TESTCASE: failed with core dumped ($cr)"
     echo "!$TESTCASE: failed with core dumped ($cr)" >> ${TESTDIR}/test.log
-elif [[ -n $dbdown ]] ; then
+elif [[ -n "$dbdown" ]] ; then
     echo "!$TESTCASE: db was unavailable at finish ($dbdown)"
     echo "!$TESTCASE: db was unavailable at finish ($dbdown)" >> ${TESTDIR}/test.log
 elif [[ $rc -eq 124 ]] ; then

@@ -392,7 +392,6 @@ retry_after_fdb_creation:
   */
   if( !already_searched_fdb ){
     int        version = 0; 
-    int        iNewDb;
     char       *zErrDyn = NULL;
 
     if( gbl_fdb_track ){
@@ -2881,10 +2880,10 @@ void sqlite3DropTable(Parse *pParse, SrcList *pName, int isView, int noErr){
     goto exit_drop_table;
   }
   {
-    const char *zTab = SCHEMA_TABLE(iDb);
-    const char *zDb = db->aDb[iDb].zDbSName;
     const char *zArg2 = 0;
 #ifndef SQLITE_OMIT_AUTHORIZATION
+    const char *zTab = SCHEMA_TABLE(iDb);
+    const char *zDb = db->aDb[iDb].zDbSName;
     if( sqlite3AuthCheck(pParse, SQLITE_DELETE, zTab, 0, zDb)){
       goto exit_drop_table;
     }
@@ -2947,8 +2946,10 @@ void sqlite3DropTable(Parse *pParse, SrcList *pName, int isView, int noErr){
      ** on disk.
      */
     sqlite3BeginWriteOperation(pParse, 1, iDb);
-    sqlite3ClearStatTables(pParse, iDb, "tbl", pTab->zName);
-    sqlite3FkDropTable(pParse, pName, pTab);
+    if (!isView){
+        sqlite3ClearStatTables(pParse, iDb, "tbl", pTab->zName);
+        sqlite3FkDropTable(pParse, pName, pTab);
+    }
     sqlite3CodeDropTable(pParse, pTab, iDb, isView);
 
   }else{

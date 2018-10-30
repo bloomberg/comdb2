@@ -1205,7 +1205,6 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
             }
 
             if (rc == IX_DUP) {
-                int upsert_idx = flags >> 8;
                 if ((flags & OSQL_FORCE_VERIFY) != 0) {
                     *errout = OP_FAILED_VERIFY;
                     rc = ERR_VERIFY;

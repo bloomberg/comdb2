@@ -119,7 +119,6 @@ static void bdb_attr_set_int(bdb_state_type *bdb_state, bdb_attr_type *bdb_attr,
         if (bdb_state) {
             if (bdb_state->dbenv) {
                 int rc;
-                const char *fname;
 #if defined(BERKDB_4_5) || defined(BERKDB_46)
                 rc = bdb_state->dbenv->rep_set_limit(bdb_state->dbenv, 0,
                                                      bdb_attr->replimit);

@@ -150,11 +150,11 @@ static unsigned dyntag_next_extra = 1;
 static void blobmem_init(void);
 
 #define LOCK_BLOB_MUTEX()                                                      \
-    pthread_mutex_lock(&blobmutex);                                            \
+    Pthread_mutex_lock(&blobmutex);                                            \
     comdb2bma_mark_locked(blobmem);
 #define UNLOCK_BLOB_MUTEX()                                                    \
     comdb2bma_mark_unlocked(blobmem);                                          \
-    pthread_mutex_unlock(&blobmutex);
+    Pthread_mutex_unlock(&blobmutex);
 
 void blob_print_stats(void)
 {
@@ -182,11 +182,7 @@ void blob_print_stats(void)
 
 int init_blob_cache(void)
 {
-    if (pthread_mutex_init(&blobmutex, NULL) != 0) {
-        logmsg(LOGMSG_ERROR, "init_blob_cache: cannot init mutex: %s\n",
-                strerror(errno));
-        return -1;
-    }
+    Pthread_mutex_init(&blobmutex, NULL);
 
     blobhash = hash_init(sizeof(cached_blob_key_t));
     if (!blobhash) {
@@ -577,7 +573,6 @@ int toblobask(struct ireq *iq)
 
     /* have read up to data */
     if (!strncasecmp((const char *)iq->p_buf_in, ".DYNT.", 6)) {
-        char tmp[6];
         is_dynt = 1;
         strncpy0(cachetag, ".DYNT.", sizeof(cachetag));
     } else {
@@ -1041,7 +1036,6 @@ int check_one_blob_consistency(struct ireq *iq, const char *table,
                                const char *tag, blob_status_t *b, void *record,
                                int blob_index, int cblob)
 {
-    int outrc = 0;
     struct schema *schema = find_tag_schema(table, tag);
     int isondisk = is_tag_ondisk_sc(schema);
 

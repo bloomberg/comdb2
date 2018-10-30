@@ -32,6 +32,7 @@ static const char revid[] = "$Id: txn_method.c,v 11.66 2003/06/30 17:20:30 bosti
 #endif
 
 #include "logmsg.h"
+#include <locks_wrap.h>
 
 static int __txn_get_tx_max __P((DB_ENV *, u_int32_t *));
 static int __txn_get_tx_timestamp __P((DB_ENV *, time_t *));
@@ -260,11 +261,11 @@ __txn_dump_ltrans(dbenv, f, flags)
 {
 	LTDESC *lt, *lttemp;
 
-	pthread_mutex_lock(&dbenv->ltrans_active_lk);
+	Pthread_mutex_lock(&dbenv->ltrans_active_lk);
 	logmsg(LOGMSG_USER, "%4d ACTIVE LOGICAL TRANSACTIONS\n",
 	    listc_size(&dbenv->active_ltrans));
 	LISTC_FOR_EACH_SAFE(&dbenv->active_ltrans, lt, lttemp, lnk) {
 		__txn_print_ltrans(dbenv, lt, f, flags);
 	}
-	pthread_mutex_unlock(&dbenv->ltrans_active_lk);
+	Pthread_mutex_unlock(&dbenv->ltrans_active_lk);
 }

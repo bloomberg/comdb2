@@ -136,7 +136,6 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
     int created_temp_table = 0;
     unsigned long long nrecs = 0;
     unsigned long long recs_looked_at = 0;
-    int have_checksums = 0;
     unsigned int pgno = 0;
     int fd = -1;
     int last, now;

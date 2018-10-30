@@ -31,6 +31,7 @@
 #include "bdb_int.h"
 #include <net.h>
 #include <locks.h>
+#include <locks_wrap.h>
 
 #include <util.h>
 #include <gettimeofday_ms.h>
@@ -458,12 +459,14 @@ static void *udp_reader(void *arg)
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
 
     repinfo_type *repinfo = bdb_state->repinfo;
-    netinfo_type *netinfo = repinfo->netinfo;
     void *data;
     uint8_t buff[1024];
     ssize_t nrecv;
     ack_info *info = (ack_info *)buff;
+#ifdef UDP_DEBUG
+    netinfo_type *netinfo = repinfo->netinfo;
     char straddr[256];
+#endif
     char *from;
     int type;
     int fd = repinfo->udp_fd;
@@ -478,8 +481,8 @@ static void *udp_reader(void *arg)
         socklen_t socklen = sizeof(addr);
         ptr = (struct sockaddr *)&addr;
         nrecv = recvfrom(fd, &buff, sizeof(buff), 0, ptr, &socklen);
-#else
         struct sockaddr_in *paddr = NULL;
+#else
         nrecv = recvfrom(fd, &buff, sizeof(buff), 0, NULL, NULL);
 #endif
 
@@ -703,8 +706,7 @@ int send_myseqnum_to_master_udp(bdb_state_type *bdb_state)
     ack_info *info;
     uint8_t *p_buf;
     uint8_t *p_buf_end;
-    static int lastpr = 0;
-    int rc = 0, now;
+    int rc = 0;
 
     new_ack_info(info, BDB_SEQNUM_TYPE_LEN, bdb_state->repinfo->myhost);
     p_buf = ack_info_data(info);
@@ -741,7 +743,6 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
     const char *hostlist[REPMAX];
     const char *comlist[REPMAX];
     colease_t colease;
-    ack_info *info;
     static int last_count = 0;
 
     colease.issue_time = gettimeofday_ms();
@@ -814,8 +815,7 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
         master_is_coherent = 1;
 
     for (i = 0; i < count; i++) {
-        int catchup_window = bdb_state->attr->catchup_window;
-        pthread_mutex_lock(&(bdb_state->coherent_state_lock));
+        Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
 
         if (!master_is_coherent || bdb_state->coherent_state[
                 nodeix(hostlist[i])] != STATE_COHERENT) {
@@ -823,7 +823,7 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
         }
         do_send = master_is_coherent && (bdb_state->coherent_state[
                 nodeix(hostlist[i])] == STATE_COHERENT);
-        pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+        Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 
         if (do_send) {
             if (use_udp) {
