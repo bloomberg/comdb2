@@ -429,7 +429,6 @@ static void *thd_req(void *vthd)
     struct thd *thd = (struct thd *)vthd;
     struct dbenv *dbenv;
     struct timespec ts;
-    pthread_cond_t *hldcnd;
     int rc;
     int iamwriter = 0;
     struct thread_info *thdinfo;
@@ -830,9 +829,6 @@ static int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
 {
     struct req_hdr hdr;
     uint64_t nowus;
-    int rc, num, ndispatch, iamwriter = 0;
-    struct thd *thd;
-    int numwriterthreads;
 
     nowus = comdb2_time_epochus();
 
@@ -959,7 +955,7 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                      int luxref, unsigned long long rqid, void *p_sinfo,
                      intptr_t curswap)
 {
-    int rc, nowms, num, ndispatch, iamwriter = 0;
+    int rc, num, ndispatch, iamwriter = 0;
     int add_latency = gbl_handle_buf_add_latency_ms;
     struct thd *thd;
     int numwriterthreads;

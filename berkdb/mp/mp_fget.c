@@ -225,7 +225,6 @@ __memp_fget_internal(dbmfp, pgnoaddr, flags, addrp, did_io)
 	u_int32_t n_cache, st_hsearch, alloc_flags;
 	int b_incr, extending, first, ret, is_recovery_page;
 	db_pgno_t falloc_off, falloc_len;
-	DB_TXN *thrtxn;
 
 	uint64_t start_time_us = 0;
 
@@ -880,7 +879,7 @@ __memp_read_recovery_pages(dbmfp)
 	PAGE *pagep;
 	int ret, free_buf, ftype, i;
 	void *fpage;
-	size_t len, nr, pagesize;
+	size_t nr, pagesize;
 	db_pgno_t inpg;
 
 	dbenv = dbmfp->dbenv;
@@ -1004,7 +1003,6 @@ __memp_send_sparse_page_thread(_)
 {
 	DB_ENV *dbenv;
 	int32_t fileid;
-	DB *file_dbp;
 	DBT dbt;
 	db_pgno_t pgno;
 	bdb_state_type *bdb_state;

@@ -151,7 +151,6 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 	void *usr_ptr;
 {
 	DB_CIPHER *db_cipher;
-    uint32_t generation = 0;
 	DBT *dbt, t;
 	DB_LOG *dblp;
 	DB_LSN lsn, old_lsn;
@@ -159,7 +158,6 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 	LOG *lp;
 	int lock_held, need_free, ret;
 	u_int8_t *key;
-	unsigned long long ctx;
 	int rectype = 0;
 	int delay;
 
@@ -1087,13 +1085,11 @@ __log_putr(dblp, lsn, dbt, prev, h)
 {
 	DB_CIPHER *db_cipher;
 	DB_ENV *dbenv;
-	DB_LSN f_lsn;
 	LOG *lp;
 	DB_LSN tmplsn;
 	HDR tmp, *hdr;
-	int ret, t_ret;
-	size_t b_off, nr;
-	u_int32_t w_off;
+	int ret;
+	size_t nr;
 
 	dbenv = dblp->dbenv;
 	lp = dblp->reginfo.primary;
@@ -1653,7 +1649,6 @@ __log_write_td(arg)
 {
 	DB_LOG *dblp;
 	LOG *lp;
-	int ret;
 	uint32_t bytes_written;
 
 	dblp = (DB_LOG *)arg;

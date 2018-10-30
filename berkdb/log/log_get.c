@@ -954,7 +954,6 @@ __log_c_inregion_int(logc, lsn, rlockp, last_lsn, hdr, pp)
 	u_int32_t b_disk, b_region;
 	u_int32_t w_off = 0;
 	u_int32_t st_off;
-	u_int32_t cp_sz;
 	u_int32_t b_remain = 0;
 	u_int32_t inmemlen = 0;
 	int32_t buf_offset = 0;

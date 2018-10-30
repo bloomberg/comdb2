@@ -841,7 +841,6 @@ static int lockvec_as(void *lockdesc, uint32_t id)
     memcpy(mylock, lockdesc, sizeof(mylock));
     shuffle(mylock);
 
-    DB_LOCK gotlock[arraylen(p_lockdesc)];
     DBT mydbt[arraylen(p_lockdesc)];
     DB_LOCKREQ list[arraylen(mylock)];
     for (i = 0; i < arraylen(mydbt); ++i) {

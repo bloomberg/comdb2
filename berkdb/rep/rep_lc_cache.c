@@ -219,7 +219,6 @@ lc_dump_cache(DB_ENV *dbenv, int needlock)
 int
 __lc_cache_feed(DB_ENV *dbenv, DB_LSN lsn, DBT dbt)
 {
-	LC_CACHE *old;
 	LC_CACHE_ENTRY *e;
 	int ret;
 

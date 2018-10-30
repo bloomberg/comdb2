@@ -52,7 +52,6 @@ __memp_dump_bufferpool_info(dbenv, f)
 	DB_MUTEX *mutexp;
 	REGINFO *memreg;
 	MPOOL *mp, *c_mp;
-	MPOOLFILE *bh_mfp;
 	DB_MPOOL *dbmp;
 	int count, n_cache;
 	u_int64_t bufcnt;
@@ -118,7 +117,6 @@ static void dump_page_stats(DB_ENV *dbenv) {
 	DB_TXN_STAT *txn_stats;
 	DB_TXN_ACTIVE *active;
 	int i;
-	char str[100];
 	FILE *out;
 	char *fname;
 	struct tm tm;

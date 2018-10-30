@@ -436,7 +436,6 @@ int handle_llops(SBUF2 *sb, struct dbenv *dbenv)
                 sbuf2printf(sb, "\n");
                 sbuf2flush(sb);
                 if (dtafile == 0 && !raw) {
-                    struct convert_failure fail;
                     /* try to form and find all the keys */
                     for (int i = 0; i < iq.usedb->nix; i++) {
                         char formkey[17 * 1024];
@@ -523,7 +522,6 @@ int handle_llops(SBUF2 *sb, struct dbenv *dbenv)
             p = bdb_llop_find(iq.usedb->handle, trans, 0, stripe, 0, -1, key,
                               keylen, &fndlen, &ver, &errstr);
             if (p) {
-                struct convert_failure fail;
                 /* try to form and find all the keys */
                 for (int i = 0; i < iq.usedb->nix; i++) {
                     char formkey[17 * 1024];

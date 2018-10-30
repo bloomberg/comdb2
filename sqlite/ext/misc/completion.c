@@ -348,7 +348,6 @@ static int completionNext(sqlite3_vtab_cursor *cur){
             "partition_info()", "comdb2_host()", "comdb2_port()",
             "comdb2_dbname()", "comdb2_prevquerycost()", "comdb2_uptime()",
             "comdb2_starttime()", "sys.cmd.send()" };
-        static int j = 0;
         if( pCur->j >= sizeof(cfuncs)/sizeof(char*)) {
           pCur->zCurrentRow = 0;
           pCur->ePhase = COMPLETION_EOF;

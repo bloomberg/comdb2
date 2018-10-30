@@ -298,7 +298,6 @@ static int max_item_size(int pagesize, int checksums)
 static int pagesize_wasteage(int avg_item_sz, int pagesize, int checksums)
 {
     int wasteage;
-    int numitems;
 
     /* Remove size of page header; this is from dbinc/db_page.h
      * QPAGE_NORMAL and QPAGE_CHKSUM. */
@@ -337,7 +336,6 @@ int bdb_queue_best_pagesize(int avg_item_sz)
     int pagesize;
     int bestpagesize;
     int bestwasteage;
-    int ii;
     int checksums = 1; /* assume checksums on for now */
 
     /* Discover the minimum page size that will cover items of this length. */

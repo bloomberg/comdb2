@@ -185,7 +185,6 @@ int sqlite3_stmt_has_remotes(sqlite3_stmt *pStmt)
       sqlite3_mutex_enter(v->db->mutex);
 #if SQLITE_MAX_ATTACHED>30
    /* v->btreeMask is an array */
-      int i;
       if( v->btreeMask[0] >= 4){
         rc = 1;
       }else{

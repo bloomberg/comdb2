@@ -280,7 +280,6 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     int sentops = 0;
     int bdberr = 0;
     int rc = 0;
-    int rc2 = 0;
     int usedb_only = 0;
 
     if (gbl_early_verify && !clnt->early_retry && gbl_osql_send_startgen &&
