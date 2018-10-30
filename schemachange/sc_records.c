@@ -940,10 +940,10 @@ static int convert_record(struct convert_record_data *data)
             }
 
             /* wait for logical redo thread to catch up */
-            pthread_mutex_lock(&data->s->livesc_mtx);
+            Pthread_mutex_lock(&data->s->livesc_mtx);
             if (data->s->curLsn && log_compare(data->s->curLsn, &now) < 0)
                 rc = RC_INTERNAL_RETRY;
-            pthread_mutex_unlock(&data->s->livesc_mtx);
+            Pthread_mutex_unlock(&data->s->livesc_mtx);
             if (rc == RC_INTERNAL_RETRY) {
                 logmsg(LOGMSG_INFO,
                        "%s: got DUP on genid %llx, stripe %d, waiting for "
@@ -1376,7 +1376,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
                 return -1;
             }
             bdb_lock_table_write(s->db->handle, trans);
-            // no one can write at this point
+            // no one can write to this table at this point
             bdb_set_logical_live_sc(s->db->handle);
             trans_abort(&(data.iq), trans);
         }
@@ -2956,9 +2956,11 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
     enum thrtype oldtype = THRTYPE_UNKNOWN;
     int rc = 0;
     int finalizing = 0;
-    bdb_llog_cursor llog_cur = {0};
+    bdb_llog_cursor llog_cur;
     bdb_llog_cursor *pCur = &llog_cur;
     DB_LSN curLsn = {0};
+
+    bzero(pCur, sizeof(bdb_llog_cursor));
 
     if (data->isThread)
         thread_started("logical redo thread");
@@ -3013,9 +3015,9 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
         data->to->schema /*tbl .NEW..ONDISK schema */); // free tagmap only once
 
     data->s->hitLastCnt = 0;
-    pthread_mutex_lock(&data->s->livesc_mtx);
+    Pthread_mutex_lock(&data->s->livesc_mtx);
     data->s->curLsn = &curLsn;
-    pthread_mutex_unlock(&data->s->livesc_mtx);
+    Pthread_mutex_unlock(&data->s->livesc_mtx);
     while (1) {
         if (gbl_sc_abort || data->from->sc_abort || data->s->sc_thd_failed ||
             (data->s->iq && data->s->iq->sc_should_abort)) {
@@ -3044,9 +3046,9 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
             assert(pCur->log == NULL /* i.e. consumed */);
             data->s->hitLastCnt = 0;
         }
-        pthread_mutex_lock(&data->s->livesc_mtx);
+        Pthread_mutex_lock(&data->s->livesc_mtx);
         curLsn = pCur->curLsn;
-        pthread_mutex_unlock(&data->s->livesc_mtx);
+        Pthread_mutex_unlock(&data->s->livesc_mtx);
         int now = comdb2_time_epoch();
         int copy_sc_report_freq = gbl_sc_report_freq;
         if (copy_sc_report_freq > 0 &&
@@ -3091,9 +3093,9 @@ cleanup:
               data->s->tablename, pCur->curLsn.file, pCur->curLsn.offset,
               data->nrecs);
 
-    pthread_mutex_lock(&data->s->livesc_mtx);
+    Pthread_mutex_lock(&data->s->livesc_mtx);
     data->s->curLsn = NULL;
-    pthread_mutex_unlock(&data->s->livesc_mtx);
+    Pthread_mutex_unlock(&data->s->livesc_mtx);
     bdb_llog_cursor_close(pCur);
 
     free(data->s->sc_convert_done);

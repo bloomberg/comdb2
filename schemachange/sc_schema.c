@@ -590,7 +590,7 @@ void verify_schema_change_constraint(struct ireq *iq, struct dbtable *currdb,
     if (!currdb)
         return;
 
-    pthread_rwlock_rdlock(&currdb->sc_live_lk);
+    Pthread_rwlock_rdlock(&currdb->sc_live_lk);
 
     /* if there's no schema change in progress, nothing to verify */
     if (!currdb->sc_to)
@@ -611,7 +611,7 @@ void verify_schema_change_constraint(struct ireq *iq, struct dbtable *currdb,
     }
 
 done:
-    pthread_rwlock_unlock(&currdb->sc_live_lk);
+    Pthread_rwlock_unlock(&currdb->sc_live_lk);
 }
 
 /* After loading new schema file, should call this routine to see if ondisk

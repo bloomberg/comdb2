@@ -841,11 +841,11 @@ int live_sc_post_update(struct ireq *iq, void *trans,
 int live_sc_disable_inplace_blobs(struct ireq *iq)
 {
     int rc = 0;
-    pthread_rwlock_rdlock(&iq->usedb->sc_live_lk);
+    Pthread_rwlock_rdlock(&iq->usedb->sc_live_lk);
     if (iq->usedb->sc_from == iq->usedb && iq->usedb->sc_live_logical &&
         iq->usedb->sc_to->ix_blob)
         rc = 1;
-    pthread_rwlock_unlock(&iq->usedb->sc_live_lk);
+    Pthread_rwlock_unlock(&iq->usedb->sc_live_lk);
     return rc;
 }
 

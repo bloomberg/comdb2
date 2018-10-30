@@ -1579,12 +1579,7 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
     tbl->dbenv = env;
     tbl->dbnum = dbnum;
     tbl->lrl = dyns_get_db_table_size(); /* this gets adjusted later */
-    if (pthread_rwlock_init(&tbl->sc_live_lk, NULL)) {
-        logmsg(LOGMSG_ERROR, "%s:%d failed to init sc_live_lk\n", __func__,
-               __LINE__);
-        cleanup_newdb(tbl);
-        return NULL;
-    }
+    Pthread_rwlock_init(&tbl->sc_live_lk, NULL);
     if (dbnum == 0) {
         /* if no dbnumber then no default tag is required ergo lrl can be 0 */
         if (tbl->lrl < 0)
