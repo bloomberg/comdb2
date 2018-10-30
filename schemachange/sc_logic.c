@@ -190,9 +190,9 @@ static void free_sc(struct schema_change_type *s)
 {
     free_schema_change_type(s);
     /* free any memory csc2 allocated when parsing schema */
-    Pthread_mutex_lock(&csc2_subsystem_mtx);
+    pthread_mutex_lock(&csc2_subsystem_mtx);
     csc2_free_all();
-    Pthread_mutex_unlock(&csc2_subsystem_mtx);
+    pthread_mutex_unlock(&csc2_subsystem_mtx);
 }
 
 static void stop_and_free_sc(int rc, struct schema_change_type *s, int do_free)
@@ -476,12 +476,12 @@ int do_schema_change_tran(sc_arg_t *arg)
 
             /* return NOMASTER for live schemachange writes */
             start_exclusive_backend_request(thedb);
-            Pthread_rwlock_wrlock(&sc_live_rwlock);
+            pthread_rwlock_wrlock(&sc_live_rwlock);
             s->db->sc_to = NULL;
             s->db->sc_from = NULL;
             s->db->sc_abort = 0;
             s->db->sc_downgrading = 1;
-            Pthread_rwlock_unlock(&sc_live_rwlock);
+            pthread_rwlock_unlock(&sc_live_rwlock);
             end_backend_request(thedb);
 
             bdb_close_only(s->newdb->handle, &bdberr);
@@ -500,17 +500,17 @@ int do_schema_change_tran(sc_arg_t *arg)
     }
     s->sc_rc = rc;
     if (!s->nothrevent) {
-        Pthread_mutex_lock(&sc_async_mtx);
+        pthread_mutex_lock(&sc_async_mtx);
         sc_async_threads--;
-        Pthread_cond_broadcast(&sc_async_cond);
-        Pthread_mutex_unlock(&sc_async_mtx);
+        pthread_cond_broadcast(&sc_async_cond);
+        pthread_mutex_unlock(&sc_async_mtx);
     }
     if (s->resume == SC_NEW_MASTER_RESUME || rc == SC_COMMIT_PENDING ||
         (!s->nothrevent && !s->finalize)) {
-        Pthread_mutex_unlock(&s->mtx);
+        pthread_mutex_unlock(&s->mtx);
         return rc;
     }
-    Pthread_mutex_unlock(&s->mtx);
+    pthread_mutex_unlock(&s->mtx);
     if (rc == SC_MASTER_DOWNGRADE) {
         free_sc(s);
     } else {
@@ -539,7 +539,7 @@ int do_schema_change(struct schema_change_type *s)
     arg->iq = iq;
     arg->sc = s;
     arg->trans = NULL;
-    Pthread_mutex_lock(&s->mtx);
+    pthread_mutex_lock(&s->mtx);
     rc = do_schema_change_tran(arg);
     free(iq);
     return rc;
@@ -549,7 +549,7 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
 {
     if (iq == NULL || iq->sc == NULL) abort();
     struct schema_change_type *s = iq->sc;
-    Pthread_mutex_lock(&s->mtx);
+    pthread_mutex_lock(&s->mtx);
     enum thrtype oldtype = prepare_sc_thread(s);
     int rc = SC_OK;
 
@@ -578,7 +578,7 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
         rc = finalize_upgrade_table(s);
 
     reset_sc_thread(oldtype, s);
-    Pthread_mutex_unlock(&s->mtx);
+    pthread_mutex_unlock(&s->mtx);
 
     stop_and_free_sc(rc, s, 0 /*free_sc*/);
     return rc;
@@ -594,13 +594,13 @@ void *sc_resuming_watchdog(void *p)
     logmsg(LOGMSG_INFO, "%s: waking up\n", __func__);
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
     init_fake_ireq(thedb, &iq);
-    Pthread_mutex_lock(&sc_resuming_mtx);
+    pthread_mutex_lock(&sc_resuming_mtx);
     stored_sc = sc_resuming;
     while (stored_sc) {
         iq.sc = stored_sc;
         if (iq.sc->db)
             iq.sc->db->sc_abort = 1;
-        Pthread_mutex_lock(&(iq.sc->mtx));
+        pthread_mutex_lock(&(iq.sc->mtx));
         stored_sc = stored_sc->sc_next;
         logmsg(LOGMSG_INFO, "%s: aborting schema change of table '%s'\n",
                __func__, iq.sc->tablename);
@@ -611,14 +611,14 @@ void *sc_resuming_watchdog(void *p)
                 delete_db(iq.sc->tablename);
         }
         sc_del_unused_files(iq.sc->db);
-        Pthread_mutex_unlock(&(iq.sc->mtx));
+        pthread_mutex_unlock(&(iq.sc->mtx));
         free_schema_change_type(iq.sc);
         iq.sc = NULL;
     }
     sc_resuming = NULL;
     logmsg(LOGMSG_INFO, "%s: existing\n", __func__);
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
-    Pthread_mutex_unlock(&sc_resuming_mtx);
+    pthread_mutex_unlock(&sc_resuming_mtx);
     return NULL;
 }
 
@@ -734,7 +734,7 @@ int resume_schema_change(void)
         logmsg(LOGMSG_INFO, "%s: found '%s'\n", __func__, abort_filename);
     }
 
-    Pthread_mutex_lock(&sc_resuming_mtx);
+    pthread_mutex_lock(&sc_resuming_mtx);
     sc_resuming = NULL;
     for (i = 0; i < thedb->num_dbs; ++i) {
         int bdberr;
@@ -877,7 +877,7 @@ int resume_schema_change(void)
             logmsg(LOGMSG_ERROR, "%s: failed to start sc_resuming_watchdog\n",
                    __FILE__);
     }
-    Pthread_mutex_unlock(&sc_resuming_mtx);
+    pthread_mutex_unlock(&sc_resuming_mtx);
 
     hash_for(tpt_sc_hash, verify_sc_resumed_for_all_shards, NULL);
     hash_for(tpt_sc_hash, process_tpt_sc_hash, NULL);

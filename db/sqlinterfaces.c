@@ -385,9 +385,9 @@ static int send_intrans_response(struct sqlclntstate *clnt)
 
 void handle_failed_dispatch(struct sqlclntstate *clnt, char *errstr)
 {
-    Pthread_mutex_lock(&clnt->wait_mutex);
+    pthread_mutex_lock(&clnt->wait_mutex);
     write_response(clnt, RESPONSE_ERROR_REJECT, errstr, 0);
-    Pthread_mutex_unlock(&clnt->wait_mutex);
+    pthread_mutex_unlock(&clnt->wait_mutex);
 }
 
 char *tranlevel_tostr(int lvl)
@@ -603,10 +603,10 @@ int sqlite3_open_serial(const char *filename, sqlite3 **ppDb,
 {
     int serial = gbl_serialise_sqlite3_open;
     if (serial)
-        Pthread_mutex_lock(&open_serial_lock);
+        pthread_mutex_lock(&open_serial_lock);
     int rc = sqlite3_open(filename, ppDb, thd);
     if (serial)
-        Pthread_mutex_unlock(&open_serial_lock);
+        pthread_mutex_unlock(&open_serial_lock);
     return rc;
 }
 
@@ -635,7 +635,7 @@ void sql_dump_hist_statements(void)
     struct tm tm;
     char rqid[50];
 
-    Pthread_mutex_lock(&gbl_sql_lock);
+    pthread_mutex_lock(&gbl_sql_lock);
     LISTC_FOR_EACH(&thedb->sqlhist, h, lnk)
     {
         time_t t;
@@ -661,7 +661,7 @@ void sql_dump_hist_statements(void)
                    tm.tm_min, tm.tm_sec, rqid, h->time, h->cost, h->sql);
         }
     }
-    Pthread_mutex_unlock(&gbl_sql_lock);
+    pthread_mutex_unlock(&gbl_sql_lock);
 }
 
 static void clear_cost(struct sql_thread *thd)
@@ -754,7 +754,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         h->conn = clnt->conninfo;
     }
 
-    Pthread_mutex_lock(&gbl_sql_lock);
+    pthread_mutex_lock(&gbl_sql_lock);
     {
         quantize(q_sql_min, h->time);
         quantize(q_sql_hour, h->time);
@@ -771,7 +771,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
             listc_abl(&lst, h);
         }
     }
-    Pthread_mutex_unlock(&gbl_sql_lock);
+    pthread_mutex_unlock(&gbl_sql_lock);
     for (h = listc_rtl(&lst); h; h = listc_rtl(&lst)) {
         free(h->sql);
         free(h);
@@ -1042,7 +1042,7 @@ static void log_cost(struct reqlogger *logger, int64_t cost, int64_t rows) {
 int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                      int sendresponse)
 {
-    Pthread_mutex_lock(&clnt->wait_mutex);
+    pthread_mutex_lock(&clnt->wait_mutex);
     clnt->ready_for_heartbeats = 0;
 
     reqlog_new_sql_request(thd->logger, clnt->sql);
@@ -1063,7 +1063,7 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     }
 
 done:
-    Pthread_mutex_unlock(&clnt->wait_mutex);
+    pthread_mutex_unlock(&clnt->wait_mutex);
 
     if (srs_tran_add_query(clnt))
         logmsg(LOGMSG_ERROR, "Fail to create a transaction replay session\n");
@@ -1508,7 +1508,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
         write_response(clnt, RESPONSE_EFFECTS, 0, 0);
 
-        Pthread_mutex_lock(&clnt->wait_mutex);
+        pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
 
         if (sendresponse) {
@@ -1520,7 +1520,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
         outrc = SQLITE_OK; /* the happy case */
 
-        Pthread_mutex_unlock(&clnt->wait_mutex);
+        pthread_mutex_unlock(&clnt->wait_mutex);
 
         if (clnt->osql.replay != OSQL_RETRY_NONE) {
             /* successful retry */
@@ -1576,9 +1576,10 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
             rc = CDB2__ERROR_CODE__TRAN_TOO_BIG;
         }
 
-        Pthread_mutex_lock(&clnt->wait_mutex);
+        pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
-        Pthread_mutex_unlock(&clnt->wait_mutex);
+        pthread_mutex_unlock(&clnt->wait_mutex);
+
 
         outrc = rc;
 
@@ -1845,12 +1846,12 @@ void init_sql_hint_table()
 
 void reinit_sql_hint_table()
 {
-    Pthread_mutex_lock(&gbl_sql_lock);
+    pthread_mutex_lock(&gbl_sql_lock);
     {
         delete_sql_hint_table();
         init_sql_hint_table();
     }
-    Pthread_mutex_unlock(&gbl_sql_lock);
+    pthread_mutex_unlock(&gbl_sql_lock);
 }
 
 static void add_sql_hint_table(char *sql_hint, char *sql_str)
@@ -1866,7 +1867,7 @@ static void add_sql_hint_table(char *sql_hint, char *sql_str)
     entry->sql_str = entry->sql_hint + sql_hint_len;
     memcpy(entry->sql_str, sql_str, sql_len);
 
-    Pthread_mutex_lock(&gbl_sql_lock);
+    pthread_mutex_lock(&gbl_sql_lock);
     {
         if (lrucache_hasentry(sql_hints, &sql_hint) == 0) {
             lrucache_add(sql_hints, entry);
@@ -1875,17 +1876,17 @@ static void add_sql_hint_table(char *sql_hint, char *sql_str)
             logmsg(LOGMSG_ERROR, "Client BUG: Two threads using same SQL tag.\n");
         }
     }
-    Pthread_mutex_unlock(&gbl_sql_lock);
+    pthread_mutex_unlock(&gbl_sql_lock);
 }
 
 static int find_sql_hint_table(char *sql_hint, char **sql_str)
 {
     sql_hint_hash_entry_type *entry;
-    Pthread_mutex_lock(&gbl_sql_lock);
+    pthread_mutex_lock(&gbl_sql_lock);
     {
         entry = lrucache_find(sql_hints, &sql_hint);
     }
-    Pthread_mutex_unlock(&gbl_sql_lock);
+    pthread_mutex_unlock(&gbl_sql_lock);
     if (entry) {
         *sql_str = entry->sql_str;
         return 0;
@@ -1896,11 +1897,11 @@ static int find_sql_hint_table(char *sql_hint, char **sql_str)
 static int has_sql_hint_table(char *sql_hint)
 {
     int ret;
-    Pthread_mutex_lock(&gbl_sql_lock);
+    pthread_mutex_lock(&gbl_sql_lock);
     {
         ret = lrucache_hasentry(sql_hints, &sql_hint);
     }
-    Pthread_mutex_unlock(&gbl_sql_lock);
+    pthread_mutex_unlock(&gbl_sql_lock);
     return ret;
 }
 
@@ -2508,11 +2509,11 @@ void put_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     }
     if ((rec->status & CACHE_HAS_HINT) && (rec->status & CACHE_FOUND_STR)) {
         char *k = rec->cache_hint;
-        Pthread_mutex_lock(&gbl_sql_lock);
+        pthread_mutex_lock(&gbl_sql_lock);
         {
             lrucache_release(sql_hints, &k);
         }
-        Pthread_mutex_unlock(&gbl_sql_lock);
+        pthread_mutex_unlock(&gbl_sql_lock);
     }
 }
 
@@ -2582,9 +2583,9 @@ static void _prepare_error(struct sqlthdstate *thd,
 
 static int send_run_error(struct sqlclntstate *clnt, const char *err, int rc)
 {
-    Pthread_mutex_lock(&clnt->wait_mutex);
+    pthread_mutex_lock(&clnt->wait_mutex);
     clnt->ready_for_heartbeats = 0;
-    Pthread_mutex_unlock(&clnt->wait_mutex);
+    pthread_mutex_unlock(&clnt->wait_mutex);
     return write_response(clnt, RESPONSE_ERROR, (void *)err, rc);
 }
 
@@ -2593,10 +2594,10 @@ static int handle_bad_engine(struct sqlclntstate *clnt)
     logmsg(LOGMSG_ERROR, "unable to obtain sql engine\n");
     send_run_error(clnt, "Client api should change nodes", CDB2ERR_CHANGENODE);
     clnt->query_rc = -1;
-    Pthread_mutex_lock(&clnt->wait_mutex);
+    pthread_mutex_lock(&clnt->wait_mutex);
     clnt->done = 1;
-    Pthread_cond_signal(&clnt->wait_cond);
-    Pthread_mutex_unlock(&clnt->wait_mutex);
+    pthread_cond_signal(&clnt->wait_cond);
+    pthread_mutex_unlock(&clnt->wait_mutex);
     return -1;
 }
 
@@ -2611,10 +2612,10 @@ static int handle_bad_transaction_mode(struct sqlthdstate *thd,
                __func__);
     }
     clnt->query_rc = 0;
-    Pthread_mutex_lock(&clnt->wait_mutex);
+    pthread_mutex_lock(&clnt->wait_mutex);
     clnt->done = 1;
-    Pthread_cond_signal(&clnt->wait_cond);
-    Pthread_mutex_unlock(&clnt->wait_mutex);
+    pthread_cond_signal(&clnt->wait_cond);
+    pthread_mutex_unlock(&clnt->wait_mutex);
     clnt->osql.timings.query_finished = osql_log_time();
     osql_log_time_done(clnt);
     return -2;
@@ -3100,9 +3101,9 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
         }
         clnt->had_errors = 1;
     } else {
-        Pthread_mutex_lock(&clnt->wait_mutex);
+        pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
-        Pthread_mutex_unlock(&clnt->wait_mutex);
+        pthread_mutex_unlock(&clnt->wait_mutex);
         if (!skip_response(clnt)) {
             if (postponed_write)
                 send_row(clnt, NULL, row_id, 0, NULL);
@@ -3534,10 +3535,10 @@ check_version:
 
 static void clean_queries_not_cached_in_srs(struct sqlclntstate *clnt)
 {
-    Pthread_mutex_lock(&clnt->wait_mutex);
+    pthread_mutex_lock(&clnt->wait_mutex);
     clnt->done = 1;
-    Pthread_cond_signal(&clnt->wait_cond);
-    Pthread_mutex_unlock(&clnt->wait_mutex);
+    pthread_cond_signal(&clnt->wait_cond);
+    pthread_mutex_unlock(&clnt->wait_mutex);
 }
 
 static void thr_set_user(int id)
@@ -3665,10 +3666,10 @@ void sqlengine_work_appsock(void *thddata, void *work)
         send_run_error(clnt, "Client api should change nodes",
                        CDB2ERR_CHANGENODE);
         clnt->query_rc = -1;
-        Pthread_mutex_lock(&clnt->wait_mutex);
+        pthread_mutex_lock(&clnt->wait_mutex);
         clnt->done = 1;
-        Pthread_cond_signal(&clnt->wait_cond);
-        Pthread_mutex_unlock(&clnt->wait_mutex);
+        pthread_cond_signal(&clnt->wait_cond);
+        pthread_mutex_unlock(&clnt->wait_mutex);
         clnt->osql.timings.query_finished = osql_log_time();
         osql_log_time_done(clnt);
         return;
@@ -3806,7 +3807,7 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     bzero(&clnt->osql.fdbtimes, sizeof(fdbtimings_t));
     clnt->osql.timings.query_received = osql_log_time();
 
-    Pthread_mutex_lock(&clnt->wait_mutex);
+    pthread_mutex_lock(&clnt->wait_mutex);
     clnt->deadlock_recovered = 0;
     clnt->done = 0;
     clnt->statement_timedout = 0;
@@ -3814,7 +3815,7 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     /* keep track so we can display it in stat thr */
     clnt->appsock_id = getarchtid();
 
-    Pthread_mutex_unlock(&clnt->wait_mutex);
+    pthread_mutex_unlock(&clnt->wait_mutex);
 
     snprintf(msg, sizeof(msg), "%s \"%s\"", clnt->origin, clnt->sql);
     clnt->enque_timeus = comdb2_time_epochus();
@@ -3852,9 +3853,9 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     }
 
     /* successful dispatch or queueing, enable heartbeats */
-    Pthread_mutex_lock(&clnt->wait_mutex);
+    pthread_mutex_lock(&clnt->wait_mutex);
     clnt->ready_for_heartbeats = 1;
-    Pthread_mutex_unlock(&clnt->wait_mutex);
+    pthread_mutex_unlock(&clnt->wait_mutex);
 
     /* SQL thread will unlock mutex when it is done, allowing us to lock it
      * again.  We block until then. */
@@ -3874,16 +3875,16 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
             clock_gettime(CLOCK_REALTIME, &now);
             TIMESPEC_ADD(now, ms100, st);
 
-            Pthread_mutex_lock(&clnt->wait_mutex);
+            pthread_mutex_lock(&clnt->wait_mutex);
             if (clnt->done) {
-                Pthread_mutex_unlock(&clnt->wait_mutex);
+                pthread_mutex_unlock(&clnt->wait_mutex);
                 goto done;
             }
             int rc;
             rc = pthread_cond_timedwait(&clnt->wait_cond, &clnt->wait_mutex,
                                         &st);
             if (clnt->done) {
-                Pthread_mutex_unlock(&clnt->wait_mutex);
+                pthread_mutex_unlock(&clnt->wait_mutex);
                 goto done;
             }
             if (rc == ETIMEDOUT) {
@@ -3912,16 +3913,16 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
 
             if (pthread_mutex_trylock(&clnt->write_lock) == 0) {
                 sbuf2flush(clnt->sb);
-                Pthread_mutex_unlock(&clnt->write_lock);
+                pthread_mutex_unlock(&clnt->write_lock);
             }
-            Pthread_mutex_unlock(&clnt->wait_mutex);
+            pthread_mutex_unlock(&clnt->wait_mutex);
         }
     } else {
-        Pthread_mutex_lock(&clnt->wait_mutex);
+        pthread_mutex_lock(&clnt->wait_mutex);
         while (!clnt->done) {
-            Pthread_cond_wait(&clnt->wait_cond, &clnt->wait_mutex);
+            pthread_cond_wait(&clnt->wait_cond, &clnt->wait_mutex);
         }
-        Pthread_mutex_unlock(&clnt->wait_mutex);
+        pthread_mutex_unlock(&clnt->wait_mutex);
     }
 
 done:
@@ -4721,14 +4722,14 @@ static int execute_sql_query_offload_inner_loop(struct sqlclntstate *clnt,
             */
             if (clnt->dbtran.mode == TRANLEVEL_RECOM ||
                 clnt->dbtran.mode == TRANLEVEL_SERIAL) {
-                Pthread_mutex_lock(&clnt->dtran_mtx);
+                pthread_mutex_lock(&clnt->dtran_mtx);
             }
 
             ret = sqlite3_step(stmt);
 
             if (clnt->dbtran.mode == TRANLEVEL_RECOM ||
                 clnt->dbtran.mode == TRANLEVEL_SERIAL) {
-                Pthread_mutex_unlock(&clnt->dtran_mtx);
+                pthread_mutex_unlock(&clnt->dtran_mtx);
             }
 
             if (ret != SQLITE_ROW) {
@@ -5293,11 +5294,11 @@ static void dump_sql_hint_entry(void *item, void *p)
 void sql_dump_hints(void)
 {
     int count = 0;
-    Pthread_mutex_lock(&gbl_sql_lock);
+    pthread_mutex_lock(&gbl_sql_lock);
     {
         lrucache_foreach(sql_hints, dump_sql_hint_entry, &count);
     }
-    Pthread_mutex_unlock(&gbl_sql_lock);
+    pthread_mutex_unlock(&gbl_sql_lock);
 }
 
 /**
@@ -5349,10 +5350,10 @@ void run_internal_sql(char *sql)
 
     cleanup_clnt(&clnt);
 
-    Pthread_mutex_destroy(&clnt.wait_mutex);
+    pthread_mutex_destroy(&clnt.wait_mutex);
     pthread_cond_destroy(&clnt.wait_cond);
-    Pthread_mutex_destroy(&clnt.write_lock);
-    Pthread_mutex_destroy(&clnt.dtran_mtx);
+    pthread_mutex_destroy(&clnt.write_lock);
+    pthread_mutex_destroy(&clnt.dtran_mtx);
 }
 
 static int internal_write_response(struct sqlclntstate *a, int b, void *c, int d)
@@ -5471,10 +5472,10 @@ void start_internal_sql_clnt(struct sqlclntstate *clnt)
 {
     reset_clnt(clnt, NULL, 1);
     plugin_set_callbacks(clnt, internal);
-    Pthread_mutex_init(&clnt->wait_mutex, NULL);
-    Pthread_cond_init(&clnt->wait_cond, NULL);
-    Pthread_mutex_init(&clnt->write_lock, NULL);
-    Pthread_mutex_init(&clnt->dtran_mtx, NULL);
+    pthread_mutex_init(&clnt->wait_mutex, NULL);
+    pthread_cond_init(&clnt->wait_cond, NULL);
+    pthread_mutex_init(&clnt->write_lock, NULL);
+    pthread_mutex_init(&clnt->dtran_mtx, NULL);
     clnt->dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
     clr_high_availability(clnt);
 }
@@ -5511,8 +5512,8 @@ void end_internal_sql_clnt(struct sqlclntstate *clnt)
     clnt->dbtran.mode = TRANLEVEL_INVALID;
     cleanup_clnt(clnt);
 
-    Pthread_mutex_destroy(&clnt->wait_mutex);
+    pthread_mutex_destroy(&clnt->wait_mutex);
     pthread_cond_destroy(&clnt->wait_cond);
-    Pthread_mutex_destroy(&clnt->write_lock);
-    Pthread_mutex_destroy(&clnt->dtran_mtx);
+    pthread_mutex_destroy(&clnt->write_lock);
+    pthread_mutex_destroy(&clnt->dtran_mtx);
 }

@@ -3201,11 +3201,21 @@ int offload_comm_send_sync_blockreq(char *node, void *buf, int buflen)
     p_slock->sb = NULL;
 
     // initialize lock and cond
-    Pthread_mutex_init(&(p_slock->req_lock), 0);
-    Pthread_cond_init(&(p_slock->wait_cond), NULL);
+    rc = pthread_mutex_init(&(p_slock->req_lock), 0);
+    if (rc != 0) {
+        free(p_slock);
+        return rc;
+    }
 
-    {
-        Pthread_mutex_lock(&(p_slock->req_lock));
+    rc = pthread_cond_init(&(p_slock->wait_cond), NULL);
+    if (rc != 0) {
+        pthread_mutex_destroy(&(p_slock->req_lock));
+        free(p_slock);
+        return rc;
+    }
+
+    rc = pthread_mutex_lock(&(p_slock->req_lock));
+    if (rc == 0) {
         rc = offload_comm_send_blockreq(node, p_slock, buf, buflen);
         if (rc == 0) {
             nwakeups = 0;
@@ -3220,12 +3230,12 @@ int offload_comm_send_sync_blockreq(char *node, void *buf, int buflen)
                     break;
             }
         }
-        Pthread_mutex_unlock(&(p_slock->req_lock));
+        pthread_mutex_unlock(&(p_slock->req_lock));
     }
 
     // clean up
     pthread_cond_destroy(&(p_slock->wait_cond));
-    Pthread_mutex_destroy(&(p_slock->req_lock));
+    pthread_mutex_destroy(&(p_slock->req_lock));
     free(p_slock);
     return rc;
 }
@@ -3284,13 +3294,12 @@ static void net_block_reply(void *hndl, void *uptr, char *fromhost,
     /* using p_slock pointer as the request id now, this contains info about
      * socket request.*/
     struct buf_lock_t *p_slock = (struct buf_lock_t *)net_msg->rqid;
-    {
-        Pthread_mutex_lock(&p_slock->req_lock);
+    if (pthread_mutex_lock(&p_slock->req_lock) == 0) {
         if (p_slock->reply_state == REPLY_STATE_DISCARD) {
             /* The tag request is handled by master. However by the time
                (1000+ seconds) the replicant receives the reply from master,
                the tag request is already discarded. */
-            Pthread_mutex_unlock(&p_slock->req_lock);
+            pthread_mutex_unlock(&p_slock->req_lock);
             cleanup_lock_buffer(p_slock);
         } else {
             p_slock->rc = net_msg->rc;
@@ -3299,7 +3308,7 @@ static void net_block_reply(void *hndl, void *uptr, char *fromhost,
             /* Signal to allow the appsock thread
                to take new request from client. */
             signal_buflock(p_slock);
-            Pthread_mutex_unlock(&p_slock->req_lock);
+            pthread_mutex_unlock(&p_slock->req_lock);
         }
     }
 }
@@ -7847,14 +7856,20 @@ static void net_osql_rcv_echo_pong(void *hndl, void *uptr, char *fromhost,
         return;
     }
 
-    Pthread_mutex_lock(&msgs_mtx);
+    if (pthread_mutex_lock(&msgs_mtx)) {
+        logmsgperror("pthread_mutex_lock");
+        return;
+    }
     if (msgs[msg.idx].idx != msg.idx || msgs[msg.idx].nonce != msg.nonce ||
         msgs[msg.idx].snt != msg.snt) {
         logmsg(LOGMSG_ERROR, "%s: malformed pong\n", __func__);
         return;
     }
 
-    Pthread_mutex_unlock(&msgs_mtx);
+    if (pthread_mutex_unlock(&msgs_mtx)) {
+        logmsgperror("pthread_mutex_unlock");
+        return;
+    }
 
     msgs[msg.idx].rcv = msg.rcv;
 }
@@ -7878,14 +7893,18 @@ int osql_comm_echo(char *tohost, int stream, unsigned long long *sent,
     i = 0;
     for (j = 0; j < stream; j++) {
         /* get an echo message */
-        Pthread_mutex_lock(&msgs_mtx);
+        if (pthread_mutex_lock(&msgs_mtx)) {
+            logmsgperror("pthread_mutex_lock");
+            return -1;
+        }
 
         for (; i < MAX_ECHOES; i++)
             if (msgs[i].nonce == 0)
                 break;
         if (i == MAX_ECHOES) {
             logmsg(LOGMSG_ERROR, "%s: too many echoes pending\n", __func__);
-            Pthread_mutex_unlock(&msgs_mtx);
+            if (pthread_mutex_unlock(&msgs_mtx))
+                logmsgperror("pthread_mutex_unlock");
             return -1;
         }
 
@@ -7898,7 +7917,10 @@ int osql_comm_echo(char *tohost, int stream, unsigned long long *sent,
         msg.idx = msgs[i].idx = i;
         msg.snt = msgs[i].snt = snt;
 
-        Pthread_mutex_unlock(&msgs_mtx);
+        if (pthread_mutex_unlock(&msgs_mtx)) {
+            logmsgperror("pthread_mutex_lock");
+            return -1;
+        }
 
         list[j] = &msgs[i];
 
@@ -8974,15 +8996,24 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
 {
     static int last_step_idex = 0;
     int *ii;
+    int rc;
     osql_rpl_t rpl_op;
     uint8_t *p_buf = (uint8_t *)rpl;
     uint8_t *p_buf_end = p_buf + rplen;
     osqlcomm_rpl_type_get(&rpl_op, p_buf, p_buf_end);
 
     if (seq == 0) {
-        Pthread_mutex_lock(&osqlpf_mutex);
+        rc = pthread_mutex_lock(&osqlpf_mutex);
+        if (rc != 0) {
+            logmsg(LOGMSG_ERROR, "osql_page_prefault: Failed to lock osqlpf_mutex\n");
+            return 1;
+        }
         ii = queue_next(gbl_osqlpf_stepq);
-        Pthread_mutex_unlock(&osqlpf_mutex);
+        rc = pthread_mutex_unlock(&osqlpf_mutex);
+        if (rc != 0) {
+            logmsg(LOGMSG_ERROR, "osql_page_prefault: Failed to unlock osqlpf_mutex\n");
+            return 1;
+        }
         if (ii == NULL) {
             logmsg(LOGMSG_ERROR, "osql io prefault got a BUG!\n");
             exit(1);
@@ -9257,8 +9288,8 @@ static void *uprec_cron_event(uuid_t source_id, void *arg1, void *arg2, void *ar
     struct timespec ts;
     const uint8_t *buf_end;
 
-    {
-        Pthread_mutex_lock(uprec->lk);
+    rc = pthread_mutex_lock(uprec->lk);
+    if (rc == 0) {
         /* construct buffer */
         buf_end = construct_uptbl_buffer(uprec->touch, uprec->genid,
                                          gbl_num_record_upgrades, uprec->buffer,
@@ -9317,7 +9348,7 @@ static void *uprec_cron_event(uuid_t source_id, void *arg1, void *arg2, void *ar
         uprec->genid = 0;
         uprec->owner = NULL;
 
-        Pthread_mutex_unlock(uprec->lk);
+        rc = pthread_mutex_unlock(uprec->lk);
     }
 
     return NULL;
@@ -9374,8 +9405,17 @@ static void uprec_sender_array_init(void)
     uprec->ntimeouts = 0;
 
     // initialize slock
-    Pthread_mutex_init(&(uprec->slock.req_lock), NULL);
-    Pthread_cond_init(&(uprec->slock.wait_cond), NULL);
+    if (pthread_mutex_init(&(uprec->slock.req_lock), NULL) != 0) {
+        logmsg(LOGMSG_FATAL, "%s: failed to create buf_lock_t req_lock.\n",
+                __func__);
+        abort();
+    }
+
+    if (pthread_cond_init(&(uprec->slock.wait_cond), NULL) != 0) {
+        logmsg(LOGMSG_FATAL, "%s: failed to create buf_lock_t wait_cond.\n",
+                __func__);
+        abort();
+    }
 
     uprec->lk = &uprec->slock.req_lock;
     uprec->slock.reply_state = REPLY_STATE_NA;
@@ -9410,10 +9450,12 @@ int offload_comm_send_upgrade_records(struct dbtable *db, unsigned long long gen
     (void)pthread_once(&uprec_sender_array_once, uprec_sender_array_init);
 
     if (uprec->owner == NULL) {
-        Pthread_mutex_lock(uprec->lk);
-        if (uprec->owner == NULL)
-            uprec->owner = db;
-        Pthread_mutex_unlock(uprec->lk);
+        rc = pthread_mutex_lock(uprec->lk);
+        if (rc == 0) {
+            if (uprec->owner == NULL)
+                uprec->owner = db;
+            rc = pthread_mutex_unlock(uprec->lk);
+        }
     }
 
     if (db == uprec->owner) {
@@ -9437,7 +9479,7 @@ int offload_comm_send_upgrade_records(struct dbtable *db, unsigned long long gen
                 uprec->owner = (void *)~(uintptr_t)0;
             }
         }
-        Pthread_mutex_unlock(uprec->lk);
+        rc = pthread_mutex_unlock(uprec->lk);
     }
 
     return rc;

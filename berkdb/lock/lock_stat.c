@@ -41,7 +41,6 @@ static const char revid[] = "$Id: lock_stat.c,v 11.44 2003/09/13 19:20:36 bostic
 #include <execinfo.h>
 #endif
 #include "logmsg.h"
-#include <locks_wrap.h>
 
 static void __lock_dump_locker __P((DB_LOCKTAB *, DB_LOCKER *, FILE *));
 static void __lock_dump_object __P((DB_LOCKTAB *, DB_LOCKOBJ *, FILE *, int));
@@ -402,14 +401,14 @@ __latch_dump_region_int(dbenv, fp)
 	    "Mode", "Page", "Filename");
 
 	for (idx = 0; idx < region->max_latch_lockerid; idx++) {
-		Pthread_mutex_lock(&(lockerid_latches[idx].lock));
+		pthread_mutex_lock(&(lockerid_latches[idx].lock));
 		lid = lockerid_latches[idx].head;
 
 		while (lid) {
 			__dump_lid_latches(dbenv, lid, fp);
 			lid = lid->next;
 		}
-		Pthread_mutex_unlock(&(lockerid_latches[idx].lock));
+		pthread_mutex_unlock(&(lockerid_latches[idx].lock));
 	}
 	return 0;
 }

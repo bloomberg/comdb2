@@ -175,7 +175,7 @@ int fdb_svc_init(void)
         return -1;
     }
 
-    Pthread_rwlock_init(&center->cursors_rwlock, NULL);
+    pthread_rwlock_init(&center->cursors_rwlock, NULL);
     center->cursors_hash = hash_init_user(cidhash, cidcmp, 0, 0);
     center->cursorsuuid_hash =
         hash_init_o(offsetof(svc_cursor_t, ciduuid), sizeof(uuid_t));
@@ -187,7 +187,7 @@ void fdb_svc_destroy(void)
 {
     hash_free(center->cursors_hash);
     hash_free(center->cursorsuuid_hash);
-    Pthread_rwlock_destroy(&center->cursors_rwlock);
+    pthread_rwlock_destroy(&center->cursors_rwlock);
 }
 
 svc_cursor_t *fdb_svc_cursor_open_master(char *tid, char *cid, int version)
@@ -271,7 +271,7 @@ svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int code_release,
         fdb_sequence_request(tran_clnt, trans, seq);
 
         /* free this guy */
-        Pthread_mutex_unlock(&tran_clnt->dtran_mtx);
+        pthread_mutex_unlock(&tran_clnt->dtran_mtx);
     }
 
     if (isuuid) {
@@ -287,12 +287,12 @@ svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int code_release,
                *(unsigned long long *)cur->tid,
                *(unsigned long long *)cur->cid);
 
-    Pthread_rwlock_wrlock(&center->cursors_rwlock);
+    pthread_rwlock_wrlock(&center->cursors_rwlock);
     if (isuuid)
         hash_add(center->cursorsuuid_hash, cur);
     else
         hash_add(center->cursors_hash, cur);
-    Pthread_rwlock_unlock(&center->cursors_rwlock);
+    pthread_rwlock_unlock(&center->cursors_rwlock);
 
     return cur;
 }
@@ -307,13 +307,13 @@ int fdb_svc_cursor_close(char *cid, int isuuid, struct sqlclntstate **pclnt)
     uuidstr_t us;
 
     /* retrieve cursor */
-    Pthread_rwlock_wrlock(&center->cursors_rwlock);
+    pthread_rwlock_wrlock(&center->cursors_rwlock);
     if (isuuid) {
         uuidstr_t us;
         cur = hash_find(center->cursorsuuid_hash, cid);
         if (!cur) {
             comdb2uuidstr((unsigned char *)cid, us);
-            Pthread_rwlock_unlock(&center->cursors_rwlock);
+            pthread_rwlock_unlock(&center->cursors_rwlock);
 
             logmsg(LOGMSG_ERROR, "%s: missing cursor %s\n", __func__, us);
             return -1;
@@ -325,7 +325,7 @@ int fdb_svc_cursor_close(char *cid, int isuuid, struct sqlclntstate **pclnt)
         curkey.cid = cid;
         cur = hash_find(center->cursors_hash, &curkey);
         if (!cur) {
-            Pthread_rwlock_unlock(&center->cursors_rwlock);
+            pthread_rwlock_unlock(&center->cursors_rwlock);
 
             logmsg(LOGMSG_ERROR, "%s: missing cursor %llx\n", __func__,
                     *(unsigned long long *)cid);
@@ -340,7 +340,7 @@ int fdb_svc_cursor_close(char *cid, int isuuid, struct sqlclntstate **pclnt)
                pthread_self(), *(unsigned long long *)cur->cid,
                cur->autocommit);
 
-    Pthread_rwlock_unlock(&center->cursors_rwlock);
+    pthread_rwlock_unlock(&center->cursors_rwlock);
 
     if (cur->bdbc) {
         rc = cur->bdbc->close(cur->bdbc, &bdberr);
@@ -369,7 +369,7 @@ int fdb_svc_cursor_close(char *cid, int isuuid, struct sqlclntstate **pclnt)
                           cur);
 
                 /* free this guy */
-                Pthread_mutex_unlock(&tran_clnt->dtran_mtx);
+                pthread_mutex_unlock(&tran_clnt->dtran_mtx);
             }
 
             (*pclnt)->dbtran.shadow_tran = NULL;
@@ -377,10 +377,10 @@ int fdb_svc_cursor_close(char *cid, int isuuid, struct sqlclntstate **pclnt)
 
         reset_clnt(*pclnt, NULL, 0);
 
-        Pthread_mutex_destroy(&(*pclnt)->wait_mutex);
+        pthread_mutex_destroy(&(*pclnt)->wait_mutex);
         pthread_cond_destroy(&(*pclnt)->wait_cond);
-        Pthread_mutex_destroy(&(*pclnt)->write_lock);
-        Pthread_mutex_destroy(&(*pclnt)->dtran_mtx);
+        pthread_mutex_destroy(&(*pclnt)->write_lock);
+        pthread_mutex_destroy(&(*pclnt)->dtran_mtx);
 
         free(*pclnt);
 
@@ -437,7 +437,7 @@ int fdb_svc_cursor_move(enum svc_move_types type, char *cid, char **data,
     int irc = 0;
 
     /* retrieve cursor */
-    Pthread_rwlock_rdlock(&center->cursors_rwlock);
+    pthread_rwlock_rdlock(&center->cursors_rwlock);
     if (isuuid)
         cur = hash_find_readonly(center->cursorsuuid_hash, cid);
     else {
@@ -445,7 +445,7 @@ int fdb_svc_cursor_move(enum svc_move_types type, char *cid, char **data,
         curkey.cid = cid;
         cur = hash_find_readonly(center->cursors_hash, &curkey);
     }
-    Pthread_rwlock_unlock(&center->cursors_rwlock);
+    pthread_rwlock_unlock(&center->cursors_rwlock);
 
     /* TODO: we assumed here nobody can close this cursor except ourselves; pls
        review
@@ -1202,7 +1202,7 @@ int fdb_svc_cursor_find(char *cid, int keylen, char *key, int last,
     char *use_key;
 
     /* retrieve cursor */
-    Pthread_rwlock_rdlock(&center->cursors_rwlock);
+    pthread_rwlock_rdlock(&center->cursors_rwlock);
     if (isuuid)
         cur = hash_find_readonly(center->cursorsuuid_hash, cid);
     else {
@@ -1210,7 +1210,7 @@ int fdb_svc_cursor_find(char *cid, int keylen, char *key, int last,
         curkey.cid = cid;
         cur = hash_find_readonly(center->cursors_hash, &curkey);
     }
-    Pthread_rwlock_unlock(&center->cursors_rwlock);
+    pthread_rwlock_unlock(&center->cursors_rwlock);
 
     if (cur) {
         if (cur->ixnum < 0) {
@@ -1292,12 +1292,12 @@ int fdb_svc_trans_init(struct sqlclntstate *clnt, const char *tid,
 
     assert(trans != NULL);
 
-    Pthread_mutex_lock(&clnt->dtran_mtx);
+    pthread_mutex_lock(&clnt->dtran_mtx);
 
     trans->dtran = (fdb_distributed_tran_t *)calloc(
         1, sizeof(fdb_distributed_tran_t) + sizeof(fdb_tran_t));
     if (!trans->dtran) {
-        Pthread_mutex_unlock(&clnt->dtran_mtx);
+        pthread_mutex_unlock(&clnt->dtran_mtx);
         logmsg(LOGMSG_ERROR, "%s: calloc!\n", __func__);
         return -1;
     }
@@ -1322,7 +1322,7 @@ int fdb_svc_trans_init(struct sqlclntstate *clnt, const char *tid,
     /* explicit bump of sequence number, waiting for this */
     fdb_tran->seq++;
 
-    Pthread_mutex_unlock(&clnt->dtran_mtx);
+    pthread_mutex_unlock(&clnt->dtran_mtx);
 
     return 0;
 }
@@ -1349,7 +1349,7 @@ int fdb_svc_trans_get_tid(char *cid, char *tid, int isuuid)
     *tid = 0ULL;
 
     /* retrieve cursor */
-    Pthread_rwlock_rdlock(&center->cursors_rwlock);
+    pthread_rwlock_rdlock(&center->cursors_rwlock);
     if (isuuid)
         cur = hash_find_readonly(center->cursorsuuid_hash, cid);
     else {
@@ -1365,7 +1365,7 @@ int fdb_svc_trans_get_tid(char *cid, char *tid, int isuuid)
             memcpy(tid, cur->tid, sizeof(unsigned long long));
     }
 
-    Pthread_rwlock_unlock(&center->cursors_rwlock);
+    pthread_rwlock_unlock(&center->cursors_rwlock);
 
     if (!cur) {
         if (isuuid) {
@@ -1395,14 +1395,14 @@ void fdb_sequence_request(struct sqlclntstate *tran_clnt, fdb_tran_t *trans,
 {
     while (trans->seq < seq) {
         /* free this guy */
-        Pthread_mutex_unlock(&tran_clnt->dtran_mtx);
+        pthread_mutex_unlock(&tran_clnt->dtran_mtx);
 
         /* wait for all the updates to arrive; we could skip that in socksql,
            but I am
            not gonna do that now.  Recom ftw */
         poll(NULL, 0, 10);
 
-        Pthread_mutex_lock(&tran_clnt->dtran_mtx);
+        pthread_mutex_lock(&tran_clnt->dtran_mtx);
     }
 
     /* bump the transactional sequence */

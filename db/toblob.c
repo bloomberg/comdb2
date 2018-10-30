@@ -150,11 +150,11 @@ static unsigned dyntag_next_extra = 1;
 static void blobmem_init(void);
 
 #define LOCK_BLOB_MUTEX()                                                      \
-    Pthread_mutex_lock(&blobmutex);                                            \
+    pthread_mutex_lock(&blobmutex);                                            \
     comdb2bma_mark_locked(blobmem);
 #define UNLOCK_BLOB_MUTEX()                                                    \
     comdb2bma_mark_unlocked(blobmem);                                          \
-    Pthread_mutex_unlock(&blobmutex);
+    pthread_mutex_unlock(&blobmutex);
 
 void blob_print_stats(void)
 {
@@ -182,7 +182,11 @@ void blob_print_stats(void)
 
 int init_blob_cache(void)
 {
-    Pthread_mutex_init(&blobmutex, NULL);
+    if (pthread_mutex_init(&blobmutex, NULL) != 0) {
+        logmsg(LOGMSG_ERROR, "init_blob_cache: cannot init mutex: %s\n",
+                strerror(errno));
+        return -1;
+    }
 
     blobhash = hash_init(sizeof(cached_blob_key_t));
     if (!blobhash) {

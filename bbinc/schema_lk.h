@@ -22,7 +22,6 @@
 #include <stdlib.h>
 
 #include <logmsg.h>
-#include <locks_wrap.h>
 
 extern pthread_rwlock_t schema_lk;
 
@@ -30,7 +29,12 @@ extern pthread_rwlock_t schema_lk;
 static inline void rdlock_schema_int(const char *file, const char *func,
                                      int line)
 {
-    Pthread_rwlock_rdlock(&schema_lk);
+    int rc = pthread_rwlock_rdlock(&schema_lk);
+    if (rc) {
+        logmsg(LOGMSG_FATAL, "%s:%d pthread_rwlock_rdlock failed %d\n", file,
+               line, rc);
+        abort();
+    }
 #ifdef VERBOSE_SCHEMA_LK
     fprintf(stdout, "%llx:RDLOCK %s:%d\n", pthread_self(), func, line);
 #endif
@@ -55,14 +59,24 @@ static inline void unlock_schema_int(const char *file, const char *func,
 #ifdef VERBOSE_SCHEMA_LK
     fprintf(stdout, "%llx:UNLOCK %s:%d\n", pthread_self(), func, line);
 #endif
-    Pthread_rwlock_unlock(&schema_lk);
+    int rc = pthread_rwlock_unlock(&schema_lk);
+    if (rc) {
+        logmsg(LOGMSG_FATAL, "%s:%d pthread_rwlock_unlock failed %d\n", file,
+               line, rc);
+        abort();
+    }
 }
 
 #define wrlock_schema_lk() wrlock_schema_int(__FILE__, __func__, __LINE__)
 static inline void wrlock_schema_int(const char *file, const char *func,
                                      int line)
 {
-    Pthread_rwlock_wrlock(&schema_lk);
+    int rc = pthread_rwlock_wrlock(&schema_lk);
+    if (rc) {
+        logmsg(LOGMSG_FATAL, "%s:%d pthread_rwlock_wrlock failed %d\n", file,
+               line, rc);
+        abort();
+    }
 #ifdef VERBOSE_SCHEMA_LK
     fprintf(stdout, "%llx:WRLOCK %s:%d\n", pthread_self(), func, line);
 #endif

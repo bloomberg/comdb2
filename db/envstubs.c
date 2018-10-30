@@ -26,11 +26,11 @@
 #include <sys/types.h>
 #include <poll.h>
 #include <unistd.h>
+#include <lockassert.h>
 
 #include "comdb2.h"
 #include "machclass.h"
 #include "logmsg.h"
-#include <locks_wrap.h>
 
 enum FASTSEEDPARAMS {
     MCHSHIFT = 18,
@@ -76,11 +76,11 @@ uint64_t comdb2fastseed(void)
 
     retries = 0;
     do {
-        Pthread_mutex_lock(&fastseedlk);
+        assert_pthread_mutex_lock(&fastseedlk);
         epoch = comdb2_time_epoch();
         if (epoch == 0) /* uh oh.. something broken */
         {
-            Pthread_mutex_unlock(&fastseedlk);
+            assert_pthread_mutex_unlock(&fastseedlk);
             logmsg(LOGMSG_ERROR, "err:fastseed:zero epoch! epoch can't be 0!\n");
             seed[0] = seed[1] = 0;
             return -1;
@@ -98,7 +98,7 @@ uint64_t comdb2fastseed(void)
             fastseed_set_dup(dup);
             break;
         }
-        Pthread_mutex_unlock(&fastseedlk);
+        assert_pthread_mutex_unlock(&fastseedlk);
 
         epoch = comdb2_time_epoch();
         if (retries == 0)
@@ -127,7 +127,7 @@ uint64_t comdb2fastseed(void)
 
     /* if here, got 1, and lock is still held */
 
-    Pthread_mutex_unlock(&fastseedlk);
+    assert_pthread_mutex_unlock(&fastseedlk);
 
     seed[0] = epoch;
     seed[1] = (node << MCHSHIFT) | (dup & MAXDUP);

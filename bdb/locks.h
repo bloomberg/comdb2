@@ -19,6 +19,54 @@
 
 extern pthread_key_t lock_key;
 
+#ifdef LOCK_DEBUG
+
+#define Pthread_mutex_lock(mutex_ptr)                                          \
+    {                                                                          \
+        fprintf(stderr, "pthread_mutex_lock try (%d)  %s:%d\n", mutex_ptr,     \
+                __FILE__, __LINE__);                                           \
+        if (pthread_mutex_lock(mutex_ptr) != 0) {                              \
+            fprintf(stderr, "lock failed: %s\n", strerror(errno));             \
+            abort();                                                           \
+        }                                                                      \
+        fprintf(stderr, "pthread_mutex_lock got (%d)  %s:%d\n", mutex_ptr,     \
+                __FILE__, __LINE__);                                           \
+    }
+
+#define Pthread_mutex_unlock(mutex_ptr)                                        \
+    {                                                                          \
+        fprintf(stderr, "pthread_mutex_unlock(%d)  %s:%d\n", mutex_ptr,        \
+                __FILE__, __LINE__);                                           \
+        if (pthread_mutex_unlock(mutex_ptr) != 0) {                            \
+            fprintf(stderr, "unlock failed: %s\n", strerror(errno));           \
+            abort();                                                           \
+        }                                                                      \
+    }
+
+#else
+
+#define Pthread_mutex_lock(mutex_ptr)                                          \
+    {                                                                          \
+        int pt_mutex_rcode;                                                    \
+        if ((pt_mutex_rcode = pthread_mutex_lock(mutex_ptr)) != 0) {           \
+            fprintf(stderr, "pthread_mutex_lock rcode is %d\n",                \
+                    pt_mutex_rcode);                                           \
+            abort();                                                           \
+        }                                                                      \
+    }
+
+#define Pthread_mutex_unlock(mutex_ptr)                                        \
+    {                                                                          \
+        int pt_mutex_rcode;                                                    \
+        if ((pt_mutex_rcode = pthread_mutex_unlock(mutex_ptr)) != 0) {         \
+            fprintf(stderr, "pthread_mutex_unlock rcode is %d\n",              \
+                    pt_mutex_rcode);                                           \
+            abort();                                                           \
+        }                                                                      \
+    }
+
+#endif /* LOCK_DEBUG */
+
 /* Acquire the write lock.  If the current thread already holds the bdb read
  * lock then it is upgraded to a write lock.  If it already holds the write
  * lock then we just increase our reference count. */

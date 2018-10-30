@@ -55,9 +55,9 @@ void handle_proxy_lrl_line(char *line)
         line++;
     ln->line = strdup(line);
 
-    Pthread_rwlock_wrlock(&proxy_config_lk);
+    pthread_rwlock_wrlock(&proxy_config_lk);
     listc_abl(&proxy_config_lines, ln);
-    Pthread_rwlock_unlock(&proxy_config_lk);
+    pthread_rwlock_unlock(&proxy_config_lk);
 }
 
 /* TODO: this shouldn't exist.  there should be some general way
@@ -97,7 +97,7 @@ void reload_proxy_lrl_lines(char *lrlfile)
         }
     }
 
-    Pthread_rwlock_wrlock(&proxy_config_lk);
+    pthread_rwlock_wrlock(&proxy_config_lk);
     l = listc_rtl(&proxy_config_lines);
     while (l) {
         free(l->line);
@@ -106,7 +106,7 @@ void reload_proxy_lrl_lines(char *lrlfile)
     }
 
     proxy_config_lines = new_config;
-    Pthread_rwlock_unlock(&proxy_config_lk);
+    pthread_rwlock_unlock(&proxy_config_lk);
 
     fclose(f);
     printf("Reloaded proxy config\n");
@@ -124,7 +124,7 @@ uint8_t *get_prox2_config_info_put(uint8_t *p_buf, const uint8_t *p_buf_end)
      * the out buffer after releasing the lock; however, I beleive that making
      * a copy (using a malloc for each lnk, then strdup()ing each line) takes
      * longer then it does just to pack the data straight to the buffer */
-    Pthread_rwlock_rdlock(&proxy_config_lk);
+    pthread_rwlock_rdlock(&proxy_config_lk);
     {
         struct db_proxy_config_rsp rsp;
         struct proxy_config_line *p_l;
@@ -146,7 +146,7 @@ uint8_t *get_prox2_config_info_put(uint8_t *p_buf, const uint8_t *p_buf_end)
             }
         }
     }
-    Pthread_rwlock_unlock(&proxy_config_lk);
+    pthread_rwlock_unlock(&proxy_config_lk);
 
     return p_buf;
 }
@@ -155,11 +155,11 @@ void dump_proxy_config(void)
 {
     struct proxy_config_line *l;
 
-    Pthread_rwlock_rdlock(&proxy_config_lk);
+    pthread_rwlock_rdlock(&proxy_config_lk);
     if (listc_size(&proxy_config_lines) > 0)
         printf("Proxy configuration parameters:\n");
     else
         printf("No proxy configuration options loaded from lrl file\n");
     LISTC_FOR_EACH(&proxy_config_lines, l, lnk) { printf("   %s\n", l->line); }
-    Pthread_rwlock_unlock(&proxy_config_lk);
+    pthread_rwlock_unlock(&proxy_config_lk);
 }

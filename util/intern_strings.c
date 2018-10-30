@@ -24,7 +24,6 @@
 #include "mem_util.h"
 #include "mem_override.h"
 #include "logmsg.h"
-#include "locks_wrap.h"
 
 static pthread_once_t once = PTHREAD_ONCE_INIT;
 static pthread_mutex_t intern_lk = PTHREAD_MUTEX_INITIALIZER;
@@ -50,24 +49,24 @@ char *intern(const char *str)
     struct interned_string *s;
 
     pthread_once(&once, init_interned_strings);
-    Pthread_mutex_lock(&intern_lk);
+    pthread_mutex_lock(&intern_lk);
     s = hash_find_readonly(interned_strings, &str);
     if (s == NULL) {
         s = malloc(sizeof(struct interned_string));
         if (s == NULL) {
-            Pthread_mutex_unlock(&intern_lk);
+            pthread_mutex_unlock(&intern_lk);
             return NULL;
         }
         s->str = strdup(str);
         if (s->str == NULL) {
             free(s);
-            Pthread_mutex_unlock(&intern_lk);
+            pthread_mutex_unlock(&intern_lk);
             return NULL;
         }
         hash_add(interned_strings, s);
     }
     s->ref++;
-    Pthread_mutex_unlock(&intern_lk);
+    pthread_mutex_unlock(&intern_lk);
     return s->str;
 }
 
@@ -87,9 +86,9 @@ int isinterned(const char *node)
 {
     struct interned_string *s;
 
-    Pthread_mutex_lock(&intern_lk);
+    pthread_mutex_lock(&intern_lk);
     s = hash_find_readonly(interned_strings, &node);
-    Pthread_mutex_unlock(&intern_lk);
+    pthread_mutex_unlock(&intern_lk);
 
     if (s && s->str == node)
         return 1;
@@ -112,5 +111,5 @@ void cleanup_interned_strings()
     hash_clear(interned_strings);
     hash_free(interned_strings);
     interned_strings = NULL;
-    Pthread_mutex_destroy(&intern_lk);
+    pthread_mutex_destroy(&intern_lk);
 }

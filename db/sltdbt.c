@@ -115,6 +115,7 @@ static int handle_op_block(struct ireq *iq)
     int retries;
     int totpen;
     int penaltyinc;
+    int irc;
     double gbl_penaltyincpercent_d;
 
     if (gbl_readonly || gbl_readonly_sc) {
@@ -157,7 +158,12 @@ retry:
         if (++retries < gbl_maxretries) {
             if (!bdb_attr_get(thedb->bdb_attr,
                               BDB_ATTR_DISABLE_WRITER_PENALTY_DEADLOCK)) {
-                Pthread_mutex_lock(&delay_lock);
+                irc = pthread_mutex_lock(&delay_lock);
+                if (irc != 0) {
+                    logmsg(LOGMSG_FATAL, "pthread_mutex_lock(&delay_lock) %d\n",
+                           irc);
+                    exit(1);
+                }
 
                 penaltyinc = (double)(gbl_maxwthreads - gbl_maxwthreadpenalty) *
                              (gbl_penaltyincpercent_d / iq->retries);
@@ -173,7 +179,12 @@ retry:
                 gbl_maxwthreadpenalty += penaltyinc;
                 totpen += penaltyinc;
 
-                Pthread_mutex_unlock(&delay_lock);
+                irc = pthread_mutex_unlock(&delay_lock);
+                if (irc != 0) {
+                    logmsg(LOGMSG_FATAL,
+                           "pthread_mutex_unlock(&delay_lock) %d\n", irc);
+                    exit(1);
+                }
             }
 
             iq->usedb = iq->origdb;
@@ -195,11 +206,19 @@ retry:
        */
     osql_blkseq_unregister(iq);
 
-    Pthread_mutex_lock(&delay_lock);
+    irc = pthread_mutex_lock(&delay_lock);
+    if (irc != 0) {
+        logmsg(LOGMSG_FATAL, "pthread_mutex_lock(&delay_lock) %d\n", irc);
+        exit(1);
+    }
 
     gbl_maxwthreadpenalty -= totpen;
 
-    Pthread_mutex_unlock(&delay_lock);
+    irc = pthread_mutex_unlock(&delay_lock);
+    if (irc != 0) {
+        logmsg(LOGMSG_FATAL, "pthread_mutex_unlock(&delay_lock) %d\n", irc);
+        exit(1);
+    }
 
     /* return codes we think the proxy understands.  all other cases
        return proxy retry */
@@ -377,10 +396,9 @@ int handle_ireq(struct ireq *iq)
                        We know for sure `request_data' is a `buf_lock_t'. */
                     struct buf_lock_t *p_slock =
                         (struct buf_lock_t *)iq->request_data;
-                    {
-                        Pthread_mutex_lock(&p_slock->req_lock);
+                    if (pthread_mutex_lock(&p_slock->req_lock) == 0) {
                         if (p_slock->reply_state == REPLY_STATE_DISCARD) {
-                            Pthread_mutex_unlock(&p_slock->req_lock);
+                            pthread_mutex_unlock(&p_slock->req_lock);
                             cleanup_lock_buffer(p_slock);
                             free_bigbuf_nosignal(iq->p_buf_out_start);
                         } else {
@@ -388,7 +406,7 @@ int handle_ireq(struct ireq *iq)
                                 iq->sb, iq->p_buf_out_start,
                                 iq->p_buf_out - iq->p_buf_out_start, rc);
                             free_bigbuf(iq->p_buf_out_start, iq->request_data);
-                            Pthread_mutex_unlock(&p_slock->req_lock);
+                            pthread_mutex_unlock(&p_slock->req_lock);
                         }
                     }
                 }

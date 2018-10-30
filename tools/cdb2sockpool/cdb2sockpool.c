@@ -49,7 +49,6 @@
 #include <bb_daemon.h>
 
 #include "cdb2sockpool.h"
-#include <locks_wrap.h>
 
 #define MAX_TYPESTR_LEN 2048
 
@@ -194,11 +193,11 @@ static int get_num_clients()
 static int get_pooled_socket_count()
 {
     int pooled_sockets;
-    Pthread_mutex_lock(&sockpool_lk);
+    pthread_mutex_lock(&sockpool_lk);
     {
         pooled_sockets = pooled_socket_count;
     }
-    Pthread_mutex_unlock(&sockpool_lk);
+    pthread_mutex_unlock(&sockpool_lk);
     return pooled_sockets;
 }
 
@@ -559,7 +558,7 @@ void *client_thd(void *voidarg)
              * pool it our destructor (fd_destructor) will be called and will
              * decrement the count.  Also of course light the shared memory
              * bit to indicate that we have fds available for this dbnum. */
-            Pthread_mutex_lock(&sockpool_lk);
+            pthread_mutex_lock(&sockpool_lk);
             {
                 pooled_socket_count++;
                 if (dbnum > 0) {
@@ -569,7 +568,7 @@ void *client_thd(void *voidarg)
                     dbs_info[dbnum].pool_count++;
                 }
             }
-            Pthread_mutex_unlock(&sockpool_lk);
+            pthread_mutex_unlock(&sockpool_lk);
 
             clnt.stats.fds_donated++;
             gbl_stats.fds_donated++;
@@ -808,7 +807,7 @@ static void do_stat(void)
     syslog(LOG_INFO, "---\n");
     print_all_settings();
     syslog(LOG_INFO, "---\n");
-    Pthread_mutex_lock(&sockpool_lk);
+    pthread_mutex_lock(&sockpool_lk);
     syslog(LOG_INFO, "Currently holding sockets for %d discrete dbnums:\n",
            listc_size(&active_list));
     strbuf *stb = strbuf_new();
@@ -829,7 +828,7 @@ static void do_stat(void)
     if (count > 0)
         syslog(LOG_INFO, "%s", strbuf_buf(stb));
     strbuf_free(stb);
-    Pthread_mutex_unlock(&sockpool_lk);
+    pthread_mutex_unlock(&sockpool_lk);
     syslog(LOG_INFO, "---\n");
     LOCK(&client_lock)
     {

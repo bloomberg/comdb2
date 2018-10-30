@@ -24,7 +24,7 @@
 #include <time.h>
 #include <pthread.h>
 
-#include "locks_wrap.h"
+#include "locks.h"
 #include "net.h"
 #include "net_int.h"
 #include "logmsg.h"

@@ -363,7 +363,7 @@ static void init() {
         pthread_mutexattr_t mattr;
         pthread_mutexattr_init(&mattr);
         pthread_mutexattr_settype(&mattr, PTHREAD_MUTEX_RECURSIVE);
-        Pthread_mutex_init(&lk, &mattr);
+        pthread_mutex_init(&lk, &mattr);
         pthread_key_create(&threadk, thread_done);
         calls = hash_setalloc_init_user(call_hashfunc, call_cmpfunc, dl_malloc, dl_free, 0, sizeof(int));
         listc_init(&blocks, offsetof(struct memblock, alnk));

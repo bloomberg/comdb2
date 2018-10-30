@@ -40,8 +40,8 @@ int bdb_osql_trn_repo_destroy(int *bdberr);
  *
  */
 void bdb_verify_repo_lock();
-void bdb_osql_trn_repo_lock();
-void bdb_osql_trn_repo_unlock();
+int bdb_osql_trn_repo_lock();
+int bdb_osql_trn_repo_unlock();
 
 /**
  *  Register a shadow transaction with the repository

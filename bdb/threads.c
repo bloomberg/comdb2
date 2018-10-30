@@ -45,7 +45,6 @@
 #include <net.h>
 #include "bdb_int.h"
 #include "locks.h"
-#include <locks_wrap.h>
 
 #include <memory_sync.h>
 #include <autoanalyze.h>
@@ -217,14 +216,14 @@ void *master_lease_thread(void *arg)
     bdb_state_type *bdb_state = (bdb_state_type *)arg;
     repinfo_type *repinfo = bdb_state->repinfo;
 
-    Pthread_mutex_lock(&lk);
+    pthread_mutex_lock(&lk);
     if (have_master_lease_thread) {
-        Pthread_mutex_unlock(&lk);
+        pthread_mutex_unlock(&lk);
         return NULL;
     } else {
         have_master_lease_thread = 1;
         bdb_state->master_lease_thread = pthread_self();
-        Pthread_mutex_unlock(&lk);
+        pthread_mutex_unlock(&lk);
     }
 
     assert(!bdb_state->parent);
@@ -248,10 +247,10 @@ void *master_lease_thread(void *arg)
 
     logmsg(LOGMSG_DEBUG, "%s exiting\n", __func__);
     bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDWR);
-    Pthread_mutex_lock(&lk);
+    pthread_mutex_lock(&lk);
     have_master_lease_thread = 0;
     bdb_state->master_lease_thread = 0;
-    Pthread_mutex_unlock(&lk);
+    pthread_mutex_unlock(&lk);
     return NULL;
 }
 
@@ -266,14 +265,14 @@ void *coherency_lease_thread(void *arg)
     repinfo_type *repinfo = bdb_state->repinfo;
     pthread_t tid;
 
-    Pthread_mutex_lock(&lk);
+    pthread_mutex_lock(&lk);
     if (have_coherency_thread) {
-        Pthread_mutex_unlock(&lk);
+        pthread_mutex_unlock(&lk);
         return NULL;
     } else {
         have_coherency_thread = 1;
         bdb_state->coherency_lease_thread = pthread_self();
-        Pthread_mutex_unlock(&lk);
+        pthread_mutex_unlock(&lk);
     }
     assert(!bdb_state->parent);
     thread_started("bdb coherency lease");
@@ -327,10 +326,10 @@ void *coherency_lease_thread(void *arg)
 
     logmsg(LOGMSG_DEBUG, "%s exiting\n", __func__);
     bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDWR);
-    Pthread_mutex_lock(&lk);
+    pthread_mutex_lock(&lk);
     have_coherency_thread = 0;
     bdb_state->coherency_lease_thread = 0;
-    Pthread_mutex_unlock(&lk);
+    pthread_mutex_unlock(&lk);
     return NULL;
 }
 

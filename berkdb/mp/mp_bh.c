@@ -35,7 +35,6 @@ static const char revid[] = "$Id: mp_bh.c,v 11.86 2003/07/02 20:02:37 mjc Exp $"
 #include <dirent.h>
 
 #include <logmsg.h>
-#include <locks_wrap.h>
 #include "comdb2_atomic.h"
 
 char *bdb_trans(const char infile[], char outfile[]);
@@ -370,17 +369,17 @@ __memp_recover_page(dbmfp, hp, bhp, pgno)
 	/* If this is page-0, just read the meta page. */
 	for (i = 0; i <= dbenv->mp_recovery_pages; i++) {
 		/* Lock out other threads */
-		Pthread_mutex_lock(&dbmfp->recp_lk_array[i]);
+		pthread_mutex_lock(&dbmfp->recp_lk_array[i]);
 
 		/* Read page. */
 		if ((ret = __os_io(dbenv, DB_IO_READ,
 		    dbmfp->recp, i, pagesize,
 		    (u_int8_t *)pagep, &nr)) != 0) {
-			Pthread_mutex_unlock(&dbmfp->recp_lk_array[i]);
+			pthread_mutex_unlock(&dbmfp->recp_lk_array[i]);
 			break;
 		}
 
-		Pthread_mutex_unlock(&dbmfp->recp_lk_array[i]);
+		pthread_mutex_unlock(&dbmfp->recp_lk_array[i]);
 
 		/* Verify length. */
 		if (nr < pagesize)
@@ -583,11 +582,11 @@ berkdb_verify_page_lsn_written_to_disk(DB_ENV *dbenv, DB_LSN *lsn)
 	char dir[PATH_MAX];
 	bdb_trans(dbenv->db_home, dir);
 
-	Pthread_mutex_lock(&verifylk);
+	pthread_mutex_lock(&verifylk);
 	d = opendir(dir);
 	if (d == NULL) {
 		__db_err(dbenv, "Can't get directory listing");
-		Pthread_mutex_unlock(&verifylk);
+		pthread_mutex_unlock(&verifylk);
 		return 1;
 	}
 
@@ -608,7 +607,7 @@ berkdb_verify_page_lsn_written_to_disk(DB_ENV *dbenv, DB_LSN *lsn)
 	}
 	closedir(d);
 
-	Pthread_mutex_unlock(&verifylk);
+	pthread_mutex_unlock(&verifylk);
 
 	/* guaranteed written */
 	if (lsn->file < filenum)
@@ -984,15 +983,15 @@ __memp_pgwrite_multi(dbenv, dbmfp, hps, bhps, numpages, wrrec)
 
 			/* Get the next recovery-page index. */
 			else {
-				Pthread_mutex_lock(&dbmfp->recp_idx_lk);
+				pthread_mutex_lock(&dbmfp->recp_idx_lk);
 				idx = dbmfp->rec_idx;
 				dbmfp->rec_idx = (dbmfp->rec_idx %
 				    dbenv->mp_recovery_pages) + 1;
-				Pthread_mutex_unlock(&dbmfp->recp_idx_lk);
+				pthread_mutex_unlock(&dbmfp->recp_idx_lk);
 			}
 
 			/* Lock out other threads */
-			Pthread_mutex_lock(&dbmfp->recp_lk_array[idx]);
+			pthread_mutex_lock(&dbmfp->recp_lk_array[idx]);
 			/* Hack in case we're writing out the meta page. */
 			reclk[i] = idx + 1;
 
@@ -1062,7 +1061,7 @@ err:
 file_dead:
 	/* Unlock the recovery-lock. */
 	for (i = 0; reclk[i] && i < numpages; i++)
-		Pthread_mutex_unlock(&dbmfp->recp_lk_array[reclk[i] - 1]);
+		pthread_mutex_unlock(&dbmfp->recp_lk_array[reclk[i] - 1]);
 
 	/*
 	 * !!!

@@ -46,7 +46,6 @@ static const char revid[] =
 #endif
 
 #include "logmsg.h"
-#include "locks_wrap.h"
 
 static int __dbenv_init __P((DB_ENV *));
 static void __dbenv_err __P((const DB_ENV *, int, const char *, ...));
@@ -1284,7 +1283,7 @@ __dbenv_set_durable_lsn(dbenv, lsnp, generation)
 		abort();
 	}
 
-	Pthread_mutex_lock(&gbl_durable_lsn_lk);
+	pthread_mutex_lock(&gbl_durable_lsn_lk);
 
 	if (generation > dbenv->durable_generation &&
 	    log_compare(lsnp, &dbenv->durable_lsn) < 0) {
@@ -1325,8 +1324,8 @@ __dbenv_set_durable_lsn(dbenv, lsnp, generation)
 		}
 	}
 
-    Pthread_cond_broadcast(&gbl_durable_lsn_cond);
-	Pthread_mutex_unlock(&gbl_durable_lsn_lk);
+    pthread_cond_broadcast(&gbl_durable_lsn_cond);
+	pthread_mutex_unlock(&gbl_durable_lsn_lk);
 }
 
 static void
@@ -1335,10 +1334,10 @@ __dbenv_get_durable_lsn(dbenv, lsnp, generation)
 	DB_LSN *lsnp;
 	uint32_t *generation;
 {
-	Pthread_mutex_lock(&gbl_durable_lsn_lk);
+	pthread_mutex_lock(&gbl_durable_lsn_lk);
 	*lsnp = dbenv->durable_lsn;
 	*generation = dbenv->durable_generation;
-	Pthread_mutex_unlock(&gbl_durable_lsn_lk);
+	pthread_mutex_unlock(&gbl_durable_lsn_lk);
 }
 
 static int
@@ -1352,7 +1351,7 @@ __dbenv_trigger_subscribe(dbenv, fname, cond, lock, open)
 	int rc = 1;
 	struct __db_trigger_subscription *t;
 	t = __db_get_trigger_subscription(fname);
-	Pthread_mutex_lock(&t->lock);
+	pthread_mutex_lock(&t->lock);
 	if (t->open) {
 		++t->active;
 		*cond = &t->cond;
@@ -1360,7 +1359,7 @@ __dbenv_trigger_subscribe(dbenv, fname, cond, lock, open)
 		*open = &t->open;
 		rc = 0;
 	}
-	Pthread_mutex_unlock(&t->lock);
+	pthread_mutex_unlock(&t->lock);
 	return rc;
 }
 
@@ -1383,10 +1382,10 @@ __dbenv_trigger_open(dbenv, fname)
 {
 	struct __db_trigger_subscription *t;
 	t = __db_get_trigger_subscription(fname);
-	Pthread_mutex_lock(&t->lock);
+	pthread_mutex_lock(&t->lock);
 	t->open = 1;
-	Pthread_cond_signal(&t->cond);
-	Pthread_mutex_unlock(&t->lock);
+	pthread_cond_signal(&t->cond);
+	pthread_mutex_unlock(&t->lock);
 	return 0;
 }
 
@@ -1397,9 +1396,9 @@ __dbenv_trigger_close(dbenv, fname)
 {
 	struct __db_trigger_subscription *t;
 	t = __db_get_trigger_subscription(fname);
-	Pthread_mutex_lock(&t->lock);
+	pthread_mutex_lock(&t->lock);
 	t->open = 0;
-	Pthread_cond_signal(&t->cond);
-	Pthread_mutex_unlock(&t->lock);
+	pthread_cond_signal(&t->cond);
+	pthread_mutex_unlock(&t->lock);
 	return 0;
 }

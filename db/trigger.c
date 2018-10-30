@@ -141,9 +141,9 @@ int trigger_register(trigger_reg_t *t)
 {
     GET_BDB_STATE(bdb_state);
     BDB_READLOCK("register trigger");
-    Pthread_mutex_lock(&trighash_lk);
+    pthread_mutex_lock(&trighash_lk);
     int rc = trigger_register_int(t);
-    Pthread_mutex_unlock(&trighash_lk);
+    pthread_mutex_unlock(&trighash_lk);
     BDB_RELLOCK();
     return rc;
 }
@@ -167,9 +167,9 @@ static int trigger_unregister_int(trigger_reg_t *t)
 
 static int trigger_unregister_lk(trigger_reg_t *t)
 {
-    Pthread_mutex_lock(&trighash_lk);
+    pthread_mutex_lock(&trighash_lk);
     int rc = trigger_unregister_int(t);
-    Pthread_mutex_unlock(&trighash_lk);
+    pthread_mutex_unlock(&trighash_lk);
     return rc;
 }
 
@@ -251,18 +251,18 @@ static int trigger_unregister_node_int(const char *host)
 
 int trigger_unregister_node(const char *host)
 {
-    Pthread_mutex_lock(&trighash_lk);
+    pthread_mutex_lock(&trighash_lk);
     int rc = trigger_unregister_node_int(host);
-    Pthread_mutex_unlock(&trighash_lk);
+    pthread_mutex_unlock(&trighash_lk);
     return rc;
 }
 
 void trigger_clear_hash()
 {
-    Pthread_mutex_lock(&trighash_lk);
+    pthread_mutex_lock(&trighash_lk);
     hash_t *old = trigger_hash;
     trigger_hash = NULL;
-    Pthread_mutex_unlock(&trighash_lk);
+    pthread_mutex_unlock(&trighash_lk);
 
     if (old == NULL)
         return;
@@ -294,7 +294,7 @@ int trigger_stat()
         logmsg(LOGMSG_USER, "%s: cannot run on replicant\n", __func__);
         return -1;
     }
-    Pthread_mutex_lock(&trighash_lk);
+    pthread_mutex_lock(&trighash_lk);
     time_t now = time(NULL);
     for (int i = 0; i < thedb->num_qdbs; ++i) {
         struct dbtable *qdb = thedb->qdbs[i];
@@ -316,7 +316,7 @@ int trigger_stat()
                    spname);
         }
     }
-    Pthread_mutex_unlock(&trighash_lk);
+    pthread_mutex_unlock(&trighash_lk);
     return 0;
 }
 
@@ -337,9 +337,9 @@ static int trigger_registered_int(const char *spname)
 
 int trigger_registered(const char *name)
 {
-    Pthread_mutex_lock(&trighash_lk);
+    pthread_mutex_lock(&trighash_lk);
     int rc = trigger_registered_int(name);
-    Pthread_mutex_unlock(&trighash_lk);
+    pthread_mutex_unlock(&trighash_lk);
     return rc;
 }
 

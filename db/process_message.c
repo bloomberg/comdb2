@@ -597,13 +597,13 @@ void bdb_newsi_mempool_stat();
 static pthread_mutex_t exiting_lock = PTHREAD_MUTEX_INITIALIZER;
 static void *clean_exit_thd(void *unused)
 {
-    Pthread_mutex_lock(&exiting_lock);
+    pthread_mutex_lock(&exiting_lock);
     if (gbl_exit) {
-        Pthread_mutex_unlock(&exiting_lock);
+        pthread_mutex_unlock(&exiting_lock);
         return NULL;
     }
     gbl_exit = 1;
-    Pthread_mutex_unlock(&exiting_lock);
+    pthread_mutex_unlock(&exiting_lock);
 
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
     clean_exit();
@@ -3939,11 +3939,11 @@ clipper_usage:
         int i;
         int start, end;
 
-        Pthread_mutex_init(&lk, NULL);
+        pthread_mutex_init(&lk, NULL);
         start = comdb2_time_epochms();
         for (i = 0; i < 100000000; i++) {
-            Pthread_mutex_lock(&lk);
-            Pthread_mutex_unlock(&lk);
+            pthread_mutex_lock(&lk);
+            pthread_mutex_unlock(&lk);
         }
         end = comdb2_time_epochms();
 
@@ -4197,17 +4197,17 @@ clipper_usage:
             logmsg(LOGMSG_USER, "DDLK generator turned off\n");
         }
     } else if (tokcmp(tok, ltok, "locktest") == 0) {
-        Pthread_mutex_lock(&testguard);
+        pthread_mutex_lock(&testguard);
         bdb_locktest(thedb->bdb_env);
-        Pthread_mutex_unlock(&testguard);
+        pthread_mutex_unlock(&testguard);
     } else if (tokcmp(tok, ltok, "berkdelay") == 0) {
         uint32_t commit_delay_ms = 0;
         tok = segtok(line, lline, &st, &ltok);
         if (ltok > 0) {
             commit_delay_ms = toknum(tok, ltok);
-            Pthread_mutex_lock(&testguard);
+            pthread_mutex_lock(&testguard);
             bdb_berktest_commit_delay(commit_delay_ms);
-            Pthread_mutex_unlock(&testguard);
+            pthread_mutex_unlock(&testguard);
         } else {
             logmsg(LOGMSG_USER, "berkdelay requires commit-delay-ms argument\n");
         }
@@ -4216,12 +4216,12 @@ clipper_usage:
         tok = segtok(line, lline, &st, &ltok);
         if (ltok > 0)
             txnsize = toknum(tok, ltok);
-        Pthread_mutex_lock(&testguard);
+        pthread_mutex_lock(&testguard);
         if (txnsize <= 0)
             bdb_berktest_multi(thedb->bdb_env);
         else
             bdb_berktest(thedb->bdb_env, txnsize);
-        Pthread_mutex_unlock(&testguard);
+        pthread_mutex_unlock(&testguard);
     } else if (tokcmp(tok, ltok, "dump_ltran_list") == 0) {
         bdb_dump_logical_tranlist(thedb->bdb_env, stderr);
     } else if (tokcmp(tok, ltok, "clear_rowlocks_stats") == 0) {
@@ -4310,9 +4310,9 @@ clipper_usage:
             logmsg(LOGMSG_ERROR, 
                    "commit_bench requires txn-count & iters-per-txn count\n");
         } else {
-            Pthread_mutex_lock(&testguard);
+            pthread_mutex_lock(&testguard);
             commit_bench(thedb->bdb_env, tcnt, cnt);
-            Pthread_mutex_unlock(&testguard);
+            pthread_mutex_unlock(&testguard);
         }
     } else if (tokcmp(tok, ltok, "rowlocks_bench") == 0) {
         int lcnt = 0;
@@ -4331,9 +4331,9 @@ clipper_usage:
         } else if (lcnt <= 0 || pcnt <= 0) {
             logmsg(LOGMSG_ERROR, "rowlocks_bench requires ltxn-count & ptxn-count\n");
         } else {
-            Pthread_mutex_lock(&testguard);
+            pthread_mutex_lock(&testguard);
             rowlocks_bench(thedb->bdb_env, lcnt, pcnt);
-            Pthread_mutex_unlock(&testguard);
+            pthread_mutex_unlock(&testguard);
         }
     } else if (tokcmp(tok, ltok, "rowlocks_lock1_bench") == 0) {
         int lcnt = 0;
@@ -4354,9 +4354,9 @@ clipper_usage:
         } else if (lcnt <= 0 || pcnt <= 0) {
             logmsg(LOGMSG_ERROR, "rowlocks_lock1_bench requires ltxn-count & ptxn-count\n");
         } else {
-            Pthread_mutex_lock(&testguard);
+            pthread_mutex_lock(&testguard);
             rowlocks_lock1_bench(thedb->bdb_env, lcnt, pcnt);
-            Pthread_mutex_unlock(&testguard);
+            pthread_mutex_unlock(&testguard);
         }
     }
 
@@ -4380,9 +4380,9 @@ clipper_usage:
             logmsg(LOGMSG_ERROR, 
                    "rowlocks_lock2_bench requires ltxn-count & ptxn-count\n");
         } else {
-            Pthread_mutex_lock(&testguard);
+            pthread_mutex_lock(&testguard);
             rowlocks_lock2_bench(thedb->bdb_env, lcnt, pcnt);
-            Pthread_mutex_unlock(&testguard);
+            pthread_mutex_unlock(&testguard);
         }
     } else if (tokcmp(tok, ltok, "deadlock_policy_override") == 0) {
         tok = segtok(line, lline, &st, &ltok);

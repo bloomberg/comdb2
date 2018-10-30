@@ -55,7 +55,6 @@
 #include "bdb_cursor.h"
 #include "bdb_int.h"
 #include "locks.h"
-#include "locks_wrap.h"
 
 #include "bdb_queue.h"
 #include "bdb_queuedb.h"
@@ -1201,7 +1200,7 @@ static void lost_consumers_alarm(bdb_state_type *bdb_state,
         bdb_state->qpriv->last_orphaned_consumers_alarm == now)
         return;
 
-    Pthread_mutex_lock(&mutex);
+    pthread_mutex_lock(&mutex);
 
     if (bdb_state->qpriv->last_orphaned_consumers_alarm != now) {
         new_lost_consumers = lost_consumers;
@@ -1223,7 +1222,7 @@ static void lost_consumers_alarm(bdb_state_type *bdb_state,
         bdb_state->qpriv->last_orphaned_consumers_alarm = now;
     }
 
-    Pthread_mutex_unlock(&mutex);
+    pthread_mutex_unlock(&mutex);
 }
 
 static int bdb_queue_get_int(bdb_state_type *bdb_state, int consumer,

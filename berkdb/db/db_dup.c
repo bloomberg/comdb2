@@ -31,7 +31,6 @@ static const char revid[] = "$Id: db_dup.c,v 11.36 2003/06/30 17:19:44 bostic Ex
 #include <btree/bt_prefix.h>
 #include <btree/bt_cache.h>
 #include <logmsg.h>
-#include <locks_wrap.h>
 
 extern int gbl_keycompr;
 
@@ -193,7 +192,7 @@ __db_pitem_opcode(dbc, pagep, indx, nbytes, hdr, data, opcode)
 	/* If there is an active Lua trigger/consumer, wake it up. */
 	struct __db_trigger_subscription *t = dbp->trigger_subscription;
 	if (t && t->active && (indx & 1)) {
-		Pthread_cond_signal(&t->cond);
+		pthread_cond_signal(&t->cond);
 	}
 
 	/*

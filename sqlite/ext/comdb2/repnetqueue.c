@@ -79,7 +79,7 @@ static void net_to_systable(struct netinfo_struct *netinfo_ptr, void *arg,
     memset(s, 0, sizeof(*s));
     s->max_lsn = malloc(MAX_LSN_STR);
     s->min_lsn = malloc(MAX_LSN_STR);
-    Pthread_mutex_lock(&n->lock);
+    pthread_mutex_lock(&n->lock);
     s->machine = strdup(n->hostname);
     s->total = n->total_count;
     /* "unknown" messages are net-level */
@@ -122,7 +122,7 @@ static void net_to_systable(struct netinfo_struct *netinfo_ptr, void *arg,
             default: s->unknown += n->type_counts[i]; break;
         }
     }
-    Pthread_mutex_unlock(&n->lock);
+    pthread_mutex_unlock(&n->lock);
 }
 
 static int get_rep_net_queues(void **data, int *records) 

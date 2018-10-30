@@ -4,7 +4,6 @@
 #include <dbinc/rep_types.h>
 #include "bdb_int.h"
 #include <rep_qstat.h>
-#include "locks_wrap.h"
 
 int net_get_lsn_rectype(bdb_state_type *bdb_state, const void *buf, int buflen,
                         DB_LSN *lsn, int *myrectype);
@@ -16,7 +15,7 @@ static void *net_init_queue_stats_rtn(netinfo_type *netinfo_type,
                                       const char hostname[])
 {
     net_queue_stat_t *n = calloc(sizeof(*n), 1);
-    Pthread_mutex_init(&n->lock, NULL);
+    pthread_mutex_init(&n->lock, NULL);
     n->nettype = strdup(nettype);
     n->hostname = strdup(hostname);
     n->max_type = -1;
@@ -31,13 +30,13 @@ static void net_start_reader(netinfo_type *netinfo_type, void *netstat)
 static void net_clear_queue_stats_rtn(netinfo_type *netinfo_type, void *netstat)
 {
     net_queue_stat_t *n = (net_queue_stat_t *)netstat;
-    Pthread_mutex_lock(&n->lock);
+    pthread_mutex_lock(&n->lock);
     if (n->type_counts)
         bzero(n->type_counts, sizeof(int) * (n->max_type + 1));
     bzero(&n->max_lsn, sizeof(n->max_lsn));
     bzero(&n->min_lsn, sizeof(n->min_lsn));
     n->unknown_count = n->total_count = 0;
-    Pthread_mutex_unlock(&n->lock);
+    pthread_mutex_unlock(&n->lock);
 }
 
 static void net_enque_write_rtn(netinfo_type *netinfo_ptr, void *netstat,
@@ -52,7 +51,7 @@ static void net_enque_write_rtn(netinfo_type *netinfo_ptr, void *netstat,
     bdb_state = net_get_usrptr(netinfo_ptr);
 
     rc = net_get_lsn_rectype(bdb_state, rec, len, &lsn, &rectype);
-    Pthread_mutex_lock(&n->lock);
+    pthread_mutex_lock(&n->lock);
     if (rc == 0 && rectype < REP_MAX_TYPE) {
         if (n->type_counts == NULL) {
             n->type_counts = calloc(REP_MAX_TYPE, sizeof(int));
@@ -73,7 +72,7 @@ static void net_enque_write_rtn(netinfo_type *netinfo_ptr, void *netstat,
         n->unknown_count++;
         n->total_count++;
     }
-    Pthread_mutex_unlock(&n->lock);
+    pthread_mutex_unlock(&n->lock);
 }
 
 static void net_enque_free(netinfo_type *netinfo_ptr, void *netstat)
@@ -85,7 +84,7 @@ static void net_enque_free(netinfo_type *netinfo_ptr, void *netstat)
     free(n->hostname);
     if (n->type_counts)
         free(n->type_counts);
-    Pthread_mutex_destroy(&n->lock);
+    pthread_mutex_destroy(&n->lock);
     free(n);
 }
 
@@ -102,11 +101,11 @@ int rep_qstat_has_allreq(void)
     net_queue_stat_t *n = (net_queue_stat_t *)reader_qstat;
     if (n == NULL)
         return 0;
-    Pthread_mutex_lock(&n->lock);
+    pthread_mutex_lock(&n->lock);
     if (n->max_type >= REP_ALL_REQ) {
         ret += n->type_counts[REP_ALL_REQ];
     }
-    Pthread_mutex_unlock(&n->lock);
+    pthread_mutex_unlock(&n->lock);
     return ret ? 1 : 0;
 }
 
@@ -116,11 +115,11 @@ int rep_qstat_has_master_req(void)
     net_queue_stat_t *n = (net_queue_stat_t *)reader_qstat;
     if (n == NULL)
         return 0;
-    Pthread_mutex_lock(&n->lock);
+    pthread_mutex_lock(&n->lock);
     if (n->max_type >= REP_MASTER_REQ) {
         ret += n->type_counts[REP_MASTER_REQ];
     }
-    Pthread_mutex_unlock(&n->lock);
+    pthread_mutex_unlock(&n->lock);
     return ret ? 1 : 0;
 }
 
@@ -130,12 +129,12 @@ int rep_qstat_has_fills(void)
     net_queue_stat_t *n = (net_queue_stat_t *)reader_qstat;
     if (n == NULL)
         return 0;
-    Pthread_mutex_lock(&n->lock);
+    pthread_mutex_lock(&n->lock);
     if (n->max_type >= REP_LOG_FILL) {
         ret += n->type_counts[REP_LOG_FILL];
         ret += n->type_counts[REP_LOG_MORE];
     }
-    Pthread_mutex_unlock(&n->lock);
+    pthread_mutex_unlock(&n->lock);
     return ret ? 1 : 0;
 }
 
@@ -144,8 +143,8 @@ void rep_qstat_lsn_range(DB_LSN *min_lsn, DB_LSN *max_lsn)
     net_queue_stat_t *n = (net_queue_stat_t *)reader_qstat;
     if (n == NULL)
         return;
-    Pthread_mutex_lock(&n->lock);
+    pthread_mutex_lock(&n->lock);
     *min_lsn = n->min_lsn;
     *max_lsn = n->max_lsn;
-    Pthread_mutex_unlock(&n->lock);
+    pthread_mutex_unlock(&n->lock);
 }

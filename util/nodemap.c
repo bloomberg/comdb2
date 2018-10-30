@@ -35,7 +35,6 @@
 #include "intern_strings.h"
 
 #include <logmsg.h>
-#include <locks_wrap.h>
 
 struct node_index {
     const char *node;
@@ -98,12 +97,12 @@ static int nodeix_global(const char *node)
     }
 
     /* didn't find in global list, add - now lock*/
-    Pthread_mutex_lock(&lk);
+    pthread_mutex_lock(&lk);
     /* repeat the search in case someone else inserted it */
     for (int i = 0; i < numnodes; i++) {
         if (nodes[i].node == node) {
             /* someone else inserted it, return the index */
-            Pthread_mutex_unlock(&lk);
+            pthread_mutex_unlock(&lk);
             return i;
         }
     }
@@ -117,7 +116,7 @@ static int nodeix_global(const char *node)
     nodes[numnodes].ix = numnodes;
     nodes[numnodes].ref = 0;
     numnodes++;
-    Pthread_mutex_unlock(&lk);
+    pthread_mutex_unlock(&lk);
 
     /* next search will add to local */
     // printf("added global %s->%d\n", node, numnodes-1);

@@ -805,6 +805,8 @@ static int set_defaults()
 */
 int init_gbl_tunables()
 {
+    int rc;
+
     /* Set the default values. */
     if ((set_defaults())) {
         logmsg(LOGMSG_ERROR, "%s:%d Failed to set the default values "
@@ -825,7 +827,14 @@ int init_gbl_tunables()
                        offsetof(comdb2_tunable, name), 0);
     logmsg(LOGMSG_DEBUG, "Global tunables hash initialized\n");
 
-    Pthread_mutex_init(&gbl_tunables->mu, NULL);
+    rc = pthread_mutex_init(&gbl_tunables->mu, NULL);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d Failed to initialize mutex for global tunables.\n",
+               __FILE__, __LINE__);
+        return 1;
+    }
+
     return 0;
 }
 
@@ -851,7 +860,7 @@ int free_gbl_tunables()
         gbl_tunables->hash = NULL;
     }
     free(gbl_tunables->array);
-    Pthread_mutex_destroy(&gbl_tunables->mu);
+    pthread_mutex_destroy(&gbl_tunables->mu);
     free(gbl_tunables);
     gbl_tunables = NULL;
     return 0;
@@ -1302,9 +1311,9 @@ comdb2_tunable_err handle_runtime_tunable(const char *name, const char *value)
         return TUNABLE_ERR_READONLY;
     }
 
-    Pthread_mutex_lock(&gbl_tunables->mu);
+    pthread_mutex_lock(&gbl_tunables->mu);
     ret = update_tunable(t, value);
-    Pthread_mutex_unlock(&gbl_tunables->mu);
+    pthread_mutex_unlock(&gbl_tunables->mu);
 
     return ret;
 }

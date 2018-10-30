@@ -44,7 +44,6 @@ static const char revid[] = "$Id: log_put.c,v 11.145 2003/09/13 19:20:39 bostic 
 #include <netinet/in.h>
 
 #include "logmsg.h"
-#include <locks_wrap.h>
 #include <poll.h>
 
 extern unsigned long long get_commit_context(const void *, uint32_t generation);
@@ -239,14 +238,14 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 
 	ZERO_LSN(old_lsn);
 
-    Pthread_mutex_lock(&gbl_logput_lk);
+    pthread_mutex_lock(&gbl_logput_lk);
 	if ((ret =
 		__log_put_next(dbenv, lsnp, contextp, dbt, udbt, &hdr, &old_lsn,
 		    off_context, key, flags)) != 0)
 		goto panic_check;
 
-    Pthread_cond_broadcast(&gbl_logput_cond);
-    Pthread_mutex_unlock(&gbl_logput_lk);
+    pthread_cond_broadcast(&gbl_logput_cond);
+    pthread_mutex_unlock(&gbl_logput_lk);
 
 	lsn = *lsnp;
 
@@ -377,9 +376,9 @@ err:
 		int now;
 
 		/* Don't lock out anything else */
-		Pthread_mutex_lock(&lk);
+		pthread_mutex_lock(&lk);
 		poll(NULL, 0, delay);
-		Pthread_mutex_unlock(&lk);
+		pthread_mutex_unlock(&lk);
 		count++;
 		if (gbl_commit_delay_trace && (now = time(NULL))-lastpr) {
 			logmsg(LOGMSG_USER, "%s line %d commit-delayed for %d ms, %llu "
@@ -474,11 +473,11 @@ __log_put(dbenv, lsnp, udbt, flags)
 	int ret;
 
 	if (!(flags & DB_LOG_DONT_LOCK))
-		Pthread_rwlock_rdlock(&dbenv->dbreglk);
+		pthread_rwlock_rdlock(&dbenv->dbreglk);
 	ret = __log_put_int(dbenv, lsnp, NULL, udbt, flags, -1, NULL);
 
 	if (!(flags & DB_LOG_DONT_LOCK))
-		Pthread_rwlock_unlock(&dbenv->dbreglk);
+		pthread_rwlock_unlock(&dbenv->dbreglk);
 	return ret;
 }
 
@@ -502,12 +501,12 @@ __log_put_commit_context(dbenv, lsnp, contextp, udbt, flags, off_context,
 	int ret;
 
 	if (!(flags & DB_LOG_DONT_LOCK))
-		Pthread_rwlock_rdlock(&dbenv->dbreglk);
+		pthread_rwlock_rdlock(&dbenv->dbreglk);
 	ret =
 	    __log_put_int(dbenv, lsnp, contextp, udbt, flags, off_context,
 	    usr_ptr);
 	if (!(flags & DB_LOG_DONT_LOCK))
-		Pthread_rwlock_unlock(&dbenv->dbreglk);
+		pthread_rwlock_unlock(&dbenv->dbreglk);
 	return ret;
 }
 
@@ -883,10 +882,10 @@ __write_inmemory_buffer(dblp, write_all)
 	lp = dblp->reginfo.primary;
 
 	if (lp->num_segments > 1) {
-		Pthread_mutex_lock(&log_write_lk);
+		pthread_mutex_lock(&log_write_lk);
 		ret = __write_inmemory_buffer_lk(dblp, NULL, write_all);
 
-		Pthread_mutex_unlock(&log_write_lk);
+		pthread_mutex_unlock(&log_write_lk);
 		return ret;
 	} else {
 		return __log_write(dblp, dblp->bufp, (u_int32_t)lp->b_off);
@@ -1261,9 +1260,9 @@ __log_lwr_lsn(dblp)
 		 * without grabbing log_write_lk.
 		 */
 		if (curseg != lwrseg) {
-			Pthread_mutex_lock(&log_write_lk);
+			pthread_mutex_lock(&log_write_lk);
 			lwrseg = (lp->l_off / lp->segment_size);
-			Pthread_mutex_unlock(&log_write_lk);
+			pthread_mutex_unlock(&log_write_lk);
 		}
 
 		/* The seg_start_lsn_array is protected by the region lock. */
@@ -1659,10 +1658,10 @@ __log_write_td(arg)
 	dblp = (DB_LOG *)arg;
 	lp = dblp->reginfo.primary;
 
-	Pthread_mutex_lock(&log_write_lk);
+	pthread_mutex_lock(&log_write_lk);
 	do {
 		/* Block until there's more to write. */
-		Pthread_cond_wait(&log_write_cond, &log_write_lk);
+		pthread_cond_wait(&log_write_cond, &log_write_lk);
 
 		/* Write whatever segments I can. */
 		__write_inmemory_buffer_lk(dblp, &bytes_written, 0);
@@ -1682,7 +1681,7 @@ __log_write_td(arg)
 	}
 	while (!log_write_td_should_stop);
 
-	Pthread_mutex_unlock(&log_write_lk);
+	pthread_mutex_unlock(&log_write_lk);
 
 	return NULL;
 }
@@ -1768,7 +1767,7 @@ __log_fill_segments(dblp, startlsn, lsn, addr, len)
 			 */
 			nbufs = len / lp->buffer_size;
 
-			Pthread_mutex_lock(&log_write_lk);
+			pthread_mutex_lock(&log_write_lk);
 
 			/* Flush the in-memory buffer. */
 			__write_inmemory_buffer_lk(dblp, NULL, 0);
@@ -1777,7 +1776,7 @@ __log_fill_segments(dblp, startlsn, lsn, addr, len)
 			if ((ret =
 				__log_write(dblp, addr,
 				    nbufs * lp->buffer_size)) != 0) {
-				Pthread_mutex_unlock(&log_write_lk);
+				pthread_mutex_unlock(&log_write_lk);
 				return (ret);
 			}
 
@@ -1795,7 +1794,7 @@ __log_fill_segments(dblp, startlsn, lsn, addr, len)
 			lp->b_off = 0;
 
 			/* I no longer neeed the write lock. */
-			Pthread_mutex_unlock(&log_write_lk);
+			pthread_mutex_unlock(&log_write_lk);
 
 			/* Zero out the last LSN. */
 			ZERO_LSN(seg_lsn_array[lp->num_segments - 1]);
@@ -1832,13 +1831,13 @@ __log_fill_segments(dblp, startlsn, lsn, addr, len)
 
 		/* Move to the next segment. */
 		if (segspace == copyamt) {
-			Pthread_cond_signal(&log_write_cond);
+			pthread_cond_signal(&log_write_cond);
 
 			nxtseg = (lp->b_off + copyamt) % lp->buffer_size;
 
 			/* Can't proceed until this is written to disk. */
 			if (lp->l_off == nxtseg) {
-				Pthread_mutex_lock(&log_write_lk);
+				pthread_mutex_lock(&log_write_lk);
 
 				/* Writer thread didn't flush: write inline. */
 				if (lp->l_off == nxtseg) {
@@ -1847,7 +1846,7 @@ __log_fill_segments(dblp, startlsn, lsn, addr, len)
 					++lp->stat.st_inline_writes;
 				}
 
-				Pthread_mutex_unlock(&log_write_lk);
+				pthread_mutex_unlock(&log_write_lk);
 			}
 
 			assert(lp->l_off != nxtseg);

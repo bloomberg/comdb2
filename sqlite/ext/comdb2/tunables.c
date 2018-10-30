@@ -131,7 +131,7 @@ static int systblTunablesColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,
     comdb2_tunable *tunable =
         gbl_tunables->array[((systbl_tunables_cursor *)cur)->rowid];
 
-    Pthread_mutex_lock(&gbl_tunables->mu);
+    pthread_mutex_lock(&gbl_tunables->mu);
 
     switch (pos) {
     case TUNABLES_COLUMN_NAME:
@@ -193,7 +193,7 @@ static int systblTunablesColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,
     default: assert(0);
     };
 
-    Pthread_mutex_unlock(&gbl_tunables->mu);
+    pthread_mutex_unlock(&gbl_tunables->mu);
 
     return SQLITE_OK;
 }

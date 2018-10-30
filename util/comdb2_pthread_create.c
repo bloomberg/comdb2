@@ -33,7 +33,6 @@
 #include "mem_util.h"
 #include "list.h"
 #include "logmsg.h"
-#include "locks_wrap.h"
 
 #define RW (PROT_READ | PROT_WRITE)
 #define STACK_FREE_DELAY 5
@@ -73,6 +72,7 @@ static void free_memptr(void *inarg)
 
 static void *free_stack_thr(void *unused)
 {
+    int rc;
     thr_arg_t *arg;
     int signal_count;
     size_t stacksz;
@@ -85,9 +85,19 @@ static void *free_stack_thr(void *unused)
 
     while (!db_is_stopped()) {
         //![1]
-        Pthread_mutex_lock(&pthr_mutex);
+        rc = pthread_mutex_lock(&pthr_mutex);
+        if (rc != 0) {
+            logmsg(LOGMSG_FATAL, "%s:%d error %d upon pthread_mutex_lock.\n",
+                    __func__, __LINE__, rc);
+            abort();
+        }
         signal_count = listc_size(&stack_list);
-        Pthread_mutex_unlock(&pthr_mutex);
+        rc = pthread_mutex_unlock(&pthr_mutex);
+        if (rc != 0) {
+            logmsg(LOGMSG_FATAL, "%s:%d error %d upon pthread_mutex_unlock.\n",
+                    __func__, __LINE__, rc);
+            abort();
+        }
 
         //![2]
         if (signal_count == 0) {
@@ -96,7 +106,7 @@ static void *free_stack_thr(void *unused)
         }
 
         //![3]
-        int rc = sleep(STACK_FREE_DELAY);
+        rc = sleep(STACK_FREE_DELAY);
         if (rc != 0) {
             logmsg(LOGMSG_INFO,
                    "%s:%d interrupted with rc %d while sleeping.\n", __func__,
@@ -104,7 +114,12 @@ static void *free_stack_thr(void *unused)
             continue;
         }
 
-        Pthread_mutex_lock(&pthr_mutex);
+        rc = pthread_mutex_lock(&pthr_mutex);
+        if (rc != 0) {
+            logmsg(LOGMSG_FATAL, "%s:%d error %d upon pthread_mutex_lock.\n",
+                    __func__, __LINE__, rc);
+            abort();
+        }
 
         //![4]
         while (signal_count != 0) {
@@ -146,7 +161,12 @@ static void *free_stack_thr(void *unused)
             }
             --signal_count;
         }
-        Pthread_mutex_unlock(&pthr_mutex);
+        rc = pthread_mutex_unlock(&pthr_mutex);
+        if (rc != 0) {
+            logmsg(LOGMSG_FATAL, "%s:%d error %d upon pthread_mutex_unlock.\n",
+                    __func__, __LINE__, rc);
+            abort();
+        }
     }
 
     /* should never reach this point */

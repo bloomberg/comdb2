@@ -46,7 +46,6 @@
  * problems. */
 
 #include "locks.h"
-#include "locks_wrap.h"
 #include "bdb_int.h"
 
 #ifdef __GLIBC__
@@ -485,6 +484,7 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
                                                      int *bdberr)
 {
     struct temp_table *table = NULL;
+    int rc;
 
     /* needed by temptable pool */
     extern pthread_key_t query_info_key;
@@ -508,6 +508,7 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
                 return NULL;
         }
     } else {
+        rc = 0;
         action = TMPTBL_WAIT;
         sql_thread = pthread_getspecific(query_info_key);
 
@@ -525,22 +526,28 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
                          ? TMPTBL_PRIORITY
                          : TMPTBL_WAIT;
         } else if (!comdb2_objpool_available(bdb_state->temp_table_pool)) {
-            Pthread_mutex_lock(&bdb_state->temp_list_lock);
-            if (!bdb_state->haspriosqlthr) {
-                bdb_state->haspriosqlthr = 1;
-                bdb_state->priosqlthr = pthread_self();
-                action = TMPTBL_PRIORITY;
+            rc = pthread_mutex_lock(&bdb_state->temp_list_lock);
+            if (rc == 0) {
+                if (!bdb_state->haspriosqlthr) {
+                    bdb_state->haspriosqlthr = 1;
+                    bdb_state->priosqlthr = pthread_self();
+                    action = TMPTBL_PRIORITY;
+                }
+                rc = pthread_mutex_unlock(&bdb_state->temp_list_lock);
             }
-            Pthread_mutex_unlock(&bdb_state->temp_list_lock);
         }
+
+        if (rc != 0)
+            return NULL;
 
         switch (action) {
         case TMPTBL_PRIORITY:
-            comdb2_objpool_forcedborrow(bdb_state->temp_table_pool,
-                                        (void **)&table);
+            rc = comdb2_objpool_forcedborrow(bdb_state->temp_table_pool,
+                                             (void **)&table);
             break;
         case TMPTBL_WAIT:
-            comdb2_objpool_borrow(bdb_state->temp_table_pool, (void **)&table);
+            rc = comdb2_objpool_borrow(bdb_state->temp_table_pool,
+                                       (void **)&table);
             break;
         }
     }

@@ -61,7 +61,6 @@ static const char revid[] = "$Id: bt_delete.c,v 11.46 2003/06/30 17:19:29 bostic
 
 #include <btree/bt_prefix.h>
 #include <logmsg.h>
-#include <locks_wrap.h>
 
 int genidcmp(const void *hash_genid, const void *genid);
 void genidcpy(void *dest, const void *src);
@@ -260,6 +259,7 @@ __bam_dpages(dbc, stack_epg, norlk)
 
 	DBT split_key;
 	BKEYDATA *tmp_bk;
+	int mutex_rc = 0;
 	int add_to_hash = 0;
 	unsigned int hh;
 	genid_hash *hash = NULL;
@@ -440,7 +440,13 @@ err:		for (; epg <= cp->csp; ++epg) {
 						 * This key (genid)
 						 * exists in hash
 						 */
-                        Pthread_mutex_lock(&(hash->mutex));
+						mutex_rc =
+						    pthread_mutex_lock(&(hash->
+							mutex));
+						if (mutex_rc != 0) {
+							logmsg(LOGMSG_ERROR, 
+    "__bam_root: Failed to lock (hash->mutex)\n");
+						}
 						if (add_to_hash) {
 							// update new page
 							genidsetzero(hashtbl
@@ -456,7 +462,13 @@ err:		for (; epg <= cp->csp; ++epg) {
 							    [hh].genid);
 							hashtbl[hh].pgno = 0;
 						}
-                        Pthread_mutex_unlock(& (hash->mutex));
+						mutex_rc =
+						    pthread_mutex_unlock(&
+						    (hash->mutex));
+						if (mutex_rc != 0) {
+                            logmsg(LOGMSG_ERROR, 
+      "__bam_root: Failed to unlock (hash->mutex)\n");
+						}
 					}
 				}
 			}

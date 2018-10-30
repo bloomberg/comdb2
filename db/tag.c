@@ -84,39 +84,39 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                     int strict);
 int compare_indexes(const char *table, FILE *out);
 
-static inline void lock_taglock_read(void)
+static inline int lock_taglock_read(void)
 {
 #ifdef TAGLOCK_RW_LOCK
-    Pthread_rwlock_rdlock(&taglock);
+    return pthread_rwlock_rdlock(&taglock);
 #else
-    Pthread_mutex_lock(&taglock);
+    return pthread_mutex_lock(&taglock);
 #endif
 }
 
-void lock_taglock(void)
+int lock_taglock(void)
 {
 #ifdef TAGLOCK_RW_LOCK
-    Pthread_rwlock_wrlock(&taglock);
+    return pthread_rwlock_wrlock(&taglock);
 #else
-    Pthread_mutex_lock(&taglock);
+    return pthread_mutex_lock(&taglock);
 #endif
 }
 
-void unlock_taglock(void)
+int unlock_taglock(void)
 {
 #ifdef TAGLOCK_RW_LOCK
-    Pthread_rwlock_unlock(&taglock);
+    return pthread_rwlock_unlock(&taglock);
 #else
-    Pthread_mutex_unlock(&taglock);
+    return pthread_mutex_unlock(&taglock);
 #endif
 }
 
-static inline void init_taglock(void)
+static inline int init_taglock(void)
 {
 #ifdef TAGLOCK_RW_LOCK
-    Pthread_rwlock_init(&taglock, NULL);
+    return pthread_rwlock_init(&taglock, NULL);
 #else
-    Pthread_mutex_init(&taglock, NULL);
+    return pthread_mutex_init(&taglock, NULL);
 #endif
 }
 
@@ -145,7 +145,11 @@ int schema_init(void)
 {
     int rc;
 
-    init_taglock();
+    rc = init_taglock();
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "schema_init:pthread_rwlock_init failed rc=%d\n", rc);
+        return -1;
+    }
     gbl_tag_hash =
         hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
                        offsetof(struct dbtag, tblname), 0);
@@ -162,8 +166,13 @@ int schema_init(void)
 void add_tag_schema(const char *table, struct schema *schema)
 {
     struct dbtag *tag;
+    int rc;
 
-    lock_taglock();
+    rc = lock_taglock();
+    if (rc != 0) {
+        logmsg(LOGMSG_FATAL, "pthread_rwlock_wrlock(&taglock) failed\n");
+        exit(1);
+    }
 
     tag = hash_find_readonly(gbl_tag_hash, &table);
     if (tag == NULL) {
@@ -183,12 +192,20 @@ void add_tag_schema(const char *table, struct schema *schema)
     hash_add(tag->tags, schema);
     listc_abl(&tag->taglist, schema);
 
-    unlock_taglock();
+    rc = unlock_taglock();
+    if (rc != 0) {
+        logmsg(LOGMSG_FATAL, "pthread_rwlock_unlock(&taglock) failed\n");
+        exit(1);
+    }
 }
 
 void del_tag_schema(const char *table, const char *tagname)
 {
-    lock_taglock();
+    int rc = lock_taglock();
+    if (rc != 0) {
+        logmsg(LOGMSG_FATAL, "pthread_rwlock_rwlock(&taglock) failed\n");
+        exit(1);
+    }
 
     struct dbtag *tag = hash_find_readonly(gbl_tag_hash, &table);
     if (tag == NULL) {
@@ -205,21 +222,37 @@ void del_tag_schema(const char *table, const char *tagname)
         }
     }
     /* doesn't exist? */
-    unlock_taglock();
+    rc = unlock_taglock();
+    if (rc != 0) {
+        logmsg(LOGMSG_FATAL, "pthread_rwlock_unlock(&taglock) failed\n");
+        exit(1);
+    }
 }
 
 struct schema *find_tag_schema(const char *table, const char *tagname)
 {
-    lock_taglock_read();
+    int rc = lock_taglock_read();
+    if (unlikely(rc != 0)) {
+        logmsg(LOGMSG_FATAL, "pthread_rwlock_rdlock(&taglock) failed\n");
+        exit(1);
+    }
 
     struct dbtag *tag = hash_find_readonly(gbl_tag_hash, &table);
     if (unlikely(tag == NULL)) {
-        unlock_taglock();
+        rc = unlock_taglock();
+        if (rc != 0) {
+            logmsg(LOGMSG_FATAL, "pthread_rwlock_unlock(&taglock) failed\n");
+            exit(1);
+        }
         return NULL;
     }
     struct schema *s = hash_find_readonly(tag->tags, &tagname);
 
-    unlock_taglock();
+    rc = unlock_taglock();
+    if (unlikely(rc != 0)) {
+        logmsg(LOGMSG_FATAL, "pthread_rwlock_unlock(&taglock) failed\n");
+        exit(1);
+    }
 
     return s;
 }
@@ -6892,7 +6925,7 @@ struct schema *create_version_schema(char *csc2, int version,
     char *tag;
     int rc;
 
-    Pthread_mutex_lock(&csc2_subsystem_mtx);
+    pthread_mutex_lock(&csc2_subsystem_mtx);
     rc = dyns_load_schema_string(csc2, dbenv->envname, gbl_ver_temp_table);
     if (rc) {
         logmsg(LOGMSG_ERROR, "dyns_load_schema_string failed %s:%d\n", __FILE__,
@@ -6923,7 +6956,7 @@ struct schema *create_version_schema(char *csc2, int version,
         logmsg(LOGMSG_ERROR, "malloc failed %s:%d\n", __FILE__, __LINE__);
         goto err;
     }
-    Pthread_mutex_unlock(&csc2_subsystem_mtx);
+    pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     sprintf(tag, gbl_ondisk_ver_fmt, version);
     struct schema *ver_schema = clone_schema(s);
@@ -6941,7 +6974,7 @@ struct schema *create_version_schema(char *csc2, int version,
     return ver_schema;
 
 err:
-    Pthread_mutex_unlock(&csc2_subsystem_mtx);
+    pthread_mutex_unlock(&csc2_subsystem_mtx);
     return NULL;
 }
 
@@ -6996,7 +7029,7 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
     void *old_bdb_handle, *new_bdb_handle;
     char *csc2 = NULL;
 
-    Pthread_mutex_lock(&csc2_subsystem_mtx);
+    pthread_mutex_lock(&csc2_subsystem_mtx);
     rc = get_csc2_file_tran(db->tablename, version, &csc2, &len, tran);
     if (rc) {
         logmsg(LOGMSG_ERROR, "get_csc2_file failed %s:%d\n", __FILE__, __LINE__);
@@ -7041,7 +7074,7 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
         cheap_stack_trace();
         goto err;
     }
-    Pthread_mutex_unlock(&csc2_subsystem_mtx);
+    pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     old_bdb_handle = db->handle;
     new_bdb_handle = newdb->handle;
@@ -7070,7 +7103,7 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
     return 0;
 
 err:
-    Pthread_mutex_unlock(&csc2_subsystem_mtx);
+    pthread_mutex_unlock(&csc2_subsystem_mtx);
     free(csc2);
     return 1;
 }

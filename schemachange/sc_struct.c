@@ -44,7 +44,10 @@ struct schema_change_type *init_schemachange_type(struct schema_change_type *sc)
     sc->dbnum = -1; /* -1 = not changing, anything else = set value */
     sc->original_master_node[0] = 0;
     listc_init(&sc->dests, offsetof(struct dest, lnk));
-    Pthread_mutex_init(&sc->mtx, NULL);
+    if (pthread_mutex_init(&sc->mtx, NULL)) {
+        free_schema_change_type(sc);
+        return NULL;
+    }
     return sc;
 }
 
@@ -81,7 +84,7 @@ void free_schema_change_type(struct schema_change_type *s)
         }
 
         free_dests(s);
-        Pthread_mutex_destroy(&s->mtx);
+        pthread_mutex_destroy(&s->mtx);
 
         if (s->sb && s->must_close_sb) close_appsock(s->sb);
         if (!s->onstack) {

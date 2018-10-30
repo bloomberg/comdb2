@@ -395,9 +395,9 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     sc_printf(s, "starting schema update with seed %llx\n", iq->sc_seed);
 
-    Pthread_mutex_lock(&csc2_subsystem_mtx);
+    pthread_mutex_lock(&csc2_subsystem_mtx);
     if ((rc = load_db_from_schema(s, thedb, &foundix, iq))) {
-        Pthread_mutex_unlock(&csc2_subsystem_mtx);
+        pthread_mutex_unlock(&csc2_subsystem_mtx);
         return rc;
     }
 
@@ -405,7 +405,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     if (newdb == NULL) {
         sc_errf(s, "Internal error\n");
-        Pthread_mutex_unlock(&csc2_subsystem_mtx);
+        pthread_mutex_unlock(&csc2_subsystem_mtx);
         return SC_INTERNAL_ERROR;
     }
     newdb->version = get_csc2_version(newdb->tablename);
@@ -416,7 +416,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         backout(newdb);
         cleanup_newdb(newdb);
         sc_errf(s, "Failed to process schema!\n");
-        Pthread_mutex_unlock(&csc2_subsystem_mtx);
+        pthread_mutex_unlock(&csc2_subsystem_mtx);
         return -1;
     }
 
@@ -427,7 +427,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         int ret = 0;
         ret = new_indexes_syntax_check(iq, newdb);
         if (ret) {
-            Pthread_mutex_unlock(&csc2_subsystem_mtx);
+            pthread_mutex_unlock(&csc2_subsystem_mtx);
             sc_errf(s, "New indexes syntax error\n");
             backout(newdb);
             cleanup_newdb(newdb);
@@ -437,7 +437,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         }
         newdb->ix_blob = newdb->schema->ix_blob;
     }
-    Pthread_mutex_unlock(&csc2_subsystem_mtx);
+    pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     if ((iq == NULL || iq->tranddl <= 1) &&
         verify_constraints_exist(NULL, newdb, newdb, s) != 0) {
@@ -526,12 +526,12 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         return -1;
     }
 
-    Pthread_rwlock_wrlock(&sc_live_rwlock);
+    pthread_rwlock_wrlock(&sc_live_rwlock);
     db->sc_from = s->db = db;
     db->sc_to = s->newdb = newdb;
     db->sc_abort = 0;
     db->sc_downgrading = 0;
-    Pthread_rwlock_unlock(&sc_live_rwlock);
+    pthread_rwlock_unlock(&sc_live_rwlock);
     if (s->resume && s->alteronly && !s->finalize_only) {
         if (gbl_test_sc_resume_race && !stopsc) {
             logmsg(LOGMSG_INFO, "%s:%d sleeping 5s for sc_resume test\n",
