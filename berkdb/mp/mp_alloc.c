@@ -32,6 +32,7 @@ static const char revid[] = "$Id: mp_alloc.c,v 11.40 2003/07/03 02:24:34 bostic 
 #include "util.h"
 #include <cdb2_constants.h>
 #include "logmsg.h"
+#include "locks_wrap.h"
 
 typedef struct {
 	DB_MPOOL_HASH *bucket;
@@ -420,7 +421,7 @@ found:		if (offsetp != NULL)
 				sleeptime++;
 				if (__gbl_max_mpalloc_sleeptime &&
 				    sleeptime > __gbl_max_mpalloc_sleeptime) {
-					pthread_mutex_lock(&dump_once_lk);
+					Pthread_mutex_lock(&dump_once_lk);
 					alarm(10);
 					dump_page_stats(dbenv);
 					_exit(1);

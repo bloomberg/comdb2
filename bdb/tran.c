@@ -47,6 +47,7 @@
 #include "bdb_cursor.h"
 #include "bdb_int.h"
 #include "locks.h"
+#include "locks_wrap.h"
 #include "bdb_osqltrn.h"
 #include "bdb_osqlcur.h"
 
@@ -1237,7 +1238,7 @@ tran_type *bdb_tran_begin_shadow_int(bdb_state_type *bdb_state, int tranclass,
     tran->relinks_hashtbl =
         hash_init_o(PGLOGS_RELINK_KEY_OFFSET, PAGE_KEY_SIZE);
 
-    pthread_mutex_init(&tran->pglogs_mutex, NULL);
+    Pthread_mutex_init(&tran->pglogs_mutex, NULL);
 
     tran->asof_lsn.file = 0;
     tran->asof_lsn.offset = 1;
@@ -1522,8 +1523,7 @@ static int bdb_tran_commit_with_seqnum_int_int(
         if (!bdb_state->attr->synctransactions)
             flags |= DB_TXN_NOSYNC;
 
-        if (bdb_osql_trn_repo_lock())
-            abort();
+        bdb_osql_trn_repo_lock();
 
         /* only generate a log for PARENT transactions */
         if (tran->parent == NULL && add_snapisol_logging(bdb_state)) {
@@ -1574,8 +1574,7 @@ static int bdb_tran_commit_with_seqnum_int_int(
         flags = DB_TXN_DONT_GET_REPO_MTX;
         flags |= (tran->request_ack) ? DB_TXN_REP_ACK : 0;
         rc = tran->tid->commit_getlsn(tran->tid, flags, &lsn, tran);
-        if (bdb_osql_trn_repo_unlock())
-            abort();
+        bdb_osql_trn_repo_unlock();
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, 
                    "%s:%d failed commit_getlsn, rc %d\n", __func__,
@@ -1806,8 +1805,7 @@ static int bdb_tran_commit_with_seqnum_int_int(
             bdb_state->repinfo->myhost == bdb_state->repinfo->master_host &&
             !bdb_state->attr->shadows_nonblocking) {
 
-            if (bdb_osql_trn_repo_lock())
-                abort();
+            bdb_osql_trn_repo_lock();
 
             /* printf("update_shadows_beforecommit tranid %016llx lsn %u:%u\n",
                      tran->logical_tranid, tran->last_logical_lsn.file,
@@ -1815,8 +1813,7 @@ static int bdb_tran_commit_with_seqnum_int_int(
             rc = update_shadows_beforecommit(bdb_state, &tran->last_logical_lsn,
                                              NULL, 1);
 
-            if (bdb_osql_trn_repo_unlock())
-                abort();
+            bdb_osql_trn_repo_unlock();
 
             if (rc) {
                 /* TODO: to we need to abort here??? */

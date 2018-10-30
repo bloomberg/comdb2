@@ -1853,7 +1853,7 @@ int resolveTableName(struct SrcList_item *p, const char *zDB, char *tableName,
 void comdb2timepartRetention(Parse *pParse, Token *nm, Token *lnm, int retention)
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
-
+    BpfuncArg *arg = NULL;
 
     if (comdb2AuthenticateUserOp(pParse))
         goto err;       
@@ -1861,10 +1861,10 @@ void comdb2timepartRetention(Parse *pParse, Token *nm, Token *lnm, int retention
     if (retention < 2)
     {
         setError(pParse, SQLITE_ERROR, "Retention must be 2 or higher");
-        goto clean_arg;
+        return;
     }
 
-    BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
+    arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
     
     if (arg)
         bpfunc_arg__init(arg);
@@ -1886,7 +1886,7 @@ void comdb2timepartRetention(Parse *pParse, Token *nm, Token *lnm, int retention
         goto err;
         
     if (chkAndCopyTableTokens(v, pParse, tp_retention->timepartname, nm, lnm, 1)) 
-        return;  
+        goto clean_arg;
     
     tp_retention->newvalue = retention;
 
@@ -4924,7 +4924,7 @@ cleanup:
 void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
 {
     Vdbe *v;
-    struct dbtable *table;
+    struct dbtable *table = NULL;
     struct schema_change_type *sc;
     struct comdb2_ddl_context *ctx;
     char *idx_name;
@@ -5109,7 +5109,7 @@ cleanup:
 void comdb2putTunable(Parse *pParse, Token *name, Token *value)
 {
     char *t_name;
-    char *t_value;
+    char *t_value = NULL;
     int rc;
     comdb2_tunable_err err;
 

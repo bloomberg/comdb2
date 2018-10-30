@@ -9,6 +9,7 @@
 #include <syslog.h>
 
 #include "logmsg.h"
+#include <locks_wrap.h>
 #include "util.h"
 #include "segstr.h"
 
@@ -170,9 +171,9 @@ static int logmsgv_lk(loglvl lvl, const char *fmt, va_list args)
 static pthread_mutex_t logmsg_lk = PTHREAD_MUTEX_INITIALIZER;
 int logmsgv(loglvl lvl, const char *fmt, va_list args) {
     int ret;
-    pthread_mutex_lock(&logmsg_lk);
+    Pthread_mutex_lock(&logmsg_lk);
     ret = logmsgv_lk(lvl, fmt, args);
-    pthread_mutex_unlock(&logmsg_lk);
+    Pthread_mutex_unlock(&logmsg_lk);
     return ret;
 }
 
@@ -216,7 +217,7 @@ void sqlite3DebugPrintf(const char *zFormat, ...)
     va_list args;
 
 #ifdef NOINTERLEAVE
-    pthread_mutex_lock(&lk);
+    Pthread_mutex_lock(&lk);
 #endif
 
     va_start(args, zFormat);
@@ -224,7 +225,7 @@ void sqlite3DebugPrintf(const char *zFormat, ...)
     va_end(args);
 
 #ifdef NOINTERLEAVE
-    pthread_mutex_unlock(&lk);
+    Pthread_mutex_unlock(&lk);
 #endif
 }
 

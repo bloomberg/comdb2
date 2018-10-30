@@ -164,7 +164,7 @@ queue_consume(struct ireq *iq, const void *fnd, int consumern)
                 poll(0,0,(rand()%25+1));
 
             if (gbl_exclusive_blockop_qconsume) {
-                pthread_rwlock_wrlock(&gbl_block_qconsume_lock);
+                Pthread_rwlock_wrlock(&gbl_block_qconsume_lock);
                 gotlk = 1;
             }
 
@@ -172,7 +172,7 @@ queue_consume(struct ireq *iq, const void *fnd, int consumern)
             if(rc != 0)
             {
                 if (gotlk)
-                    pthread_rwlock_unlock(&gbl_block_qconsume_lock);
+                    Pthread_rwlock_unlock(&gbl_block_qconsume_lock);
                 return -1;
             }
 
@@ -181,7 +181,7 @@ queue_consume(struct ireq *iq, const void *fnd, int consumern)
             {
                 trans_abort(iq, trans);
                 if (gotlk)
-                    pthread_rwlock_unlock(&gbl_block_qconsume_lock);
+                    Pthread_rwlock_unlock(&gbl_block_qconsume_lock);
                 if(rc == RC_INTERNAL_RETRY)
                     continue;
                 else if(rc == IX_NOTFND)
@@ -192,7 +192,7 @@ queue_consume(struct ireq *iq, const void *fnd, int consumern)
 
             rc = trans_commit(iq, trans, 0);
             if (gotlk)
-                pthread_rwlock_unlock(&gbl_block_qconsume_lock);
+                Pthread_rwlock_unlock(&gbl_block_qconsume_lock);
             if(rc == 0)
                 return 0;
             else if(rc == RC_INTERNAL_RETRY)

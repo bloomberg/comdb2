@@ -846,7 +846,7 @@ static inline int bdb_berkdb_rowlocks_nextprev_int(bdb_berkdb_t *berkdb,
     unsigned long long *fgenid = NULL;
 
     /* Genid copy */
-    unsigned long long cgenid;
+    unsigned long long cgenid = 0;
 
     /* Reposition-on-deadlock key */
     char *repokey;

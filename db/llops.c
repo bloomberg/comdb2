@@ -96,7 +96,7 @@ int handle_llops(SBUF2 *sb, struct dbenv *dbenv)
     struct ireq iq;
     int key_alloc = 0, data_alloc = 0, datacopy_alloc = 0;
     uint8_t *key = NULL, *data = NULL, *datacopy = NULL;
-    int keylen, datalen, datacopylen;
+    int keylen = 0, datalen = 0, datacopylen = 0;
     int have_key = 0, have_data = 0, have_datacopy = 0;
     int raw = 1;
     char *errstr = NULL;

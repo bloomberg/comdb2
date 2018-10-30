@@ -11,6 +11,7 @@
 #include "perf.h"
 #include "averager.h"
 #include "list.h"
+#include <locks_wrap.h>
 
 int gbl_timeseries_metrics = 1;
 
@@ -45,9 +46,7 @@ struct time_metric* time_metric_new(char *name) {
     t->avg = averager_new(gbl_metric_maxage, gbl_metric_maxpoints);
     if (t->avg == NULL)
         goto bad;
-    int rc = pthread_mutex_init(&t->lk, NULL);
-    if (rc)
-        goto bad;
+    Pthread_mutex_init(&t->lk, NULL);
 
     listc_abl(&metrics, t);
 
@@ -70,9 +69,9 @@ void time_metric_add(struct time_metric *t, int value) {
     if (!gbl_timeseries_metrics)
         return;
 
-    pthread_mutex_lock(&t->lk);
+    Pthread_mutex_lock(&t->lk);
     averager_add(t->avg, value, now);
-    pthread_mutex_unlock(&t->lk);
+    Pthread_mutex_unlock(&t->lk);
 }
 
 struct time_metric* time_metric_get(char *name) {
@@ -99,16 +98,16 @@ char* time_metric_name(struct time_metric *t) {
 void time_metric_purge_old(struct time_metric *t) {
     time_t now = comdb2_time_epoch();
 
-    pthread_mutex_lock(&t->lk);
+    Pthread_mutex_lock(&t->lk);
     averager_purge_old(t->avg, now);
-    pthread_mutex_unlock(&t->lk);
+    Pthread_mutex_unlock(&t->lk);
 }
 
 int time_metric_get_points(struct time_metric *t, struct point **values, int *nvalues) {
     int rc;
-    pthread_mutex_lock(&t->lk);
+    Pthread_mutex_lock(&t->lk);
     rc = averager_get_points(t->avg, values, nvalues);
-    pthread_mutex_unlock(&t->lk);
+    Pthread_mutex_unlock(&t->lk);
     return rc;
 }
 

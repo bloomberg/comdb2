@@ -2946,8 +2946,10 @@ void sqlite3DropTable(Parse *pParse, SrcList *pName, int isView, int noErr){
      ** on disk.
      */
     sqlite3BeginWriteOperation(pParse, 1, iDb);
-    sqlite3ClearStatTables(pParse, iDb, "tbl", pTab->zName);
-    sqlite3FkDropTable(pParse, pName, pTab);
+    if (!isView){
+        sqlite3ClearStatTables(pParse, iDb, "tbl", pTab->zName);
+        sqlite3FkDropTable(pParse, pName, pTab);
+    }
     sqlite3CodeDropTable(pParse, pTab, iDb, isView);
 
   }else{
@@ -4982,14 +4984,14 @@ char *sqlite3DescribeIndexOrder(
   Table          *pTbl;
   Index          *pIdx;
   int            i;
-  char           *colName;
+  char           *colName = NULL;
   char           *ret, *ret2;
   char           *pDesc;
-  char           *pOperLast;
-  char           *retCond, *retCond2, *retCond3;
+  char           *pOperLast = NULL;
+  char           *retCond = NULL, *retCond2, *retCond3;
   int            done_key;
   char           *ret_cols, *ret_cols2;
-  int            isMovingLeft;
+  int            isMovingLeft = 0;
   char           *pExprDesc = NULL;
   int            isExpr = 0;
 

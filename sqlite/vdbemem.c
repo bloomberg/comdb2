@@ -1960,7 +1960,7 @@ int sqlite3Stat4Column(
   int nHdr;                       /* Size of the header in the record */
   int iHdr;                       /* Next unread header byte */
   int iField;                     /* Next unread data byte */
-  int szField;                    /* Size of the current data field */
+  int szField = 0;                /* Size of the current data field */
   int i;                          /* Column index */
   u8 *a = (u8*)pRec;              /* Typecast byte array */
   Mem *pMem = *ppVal;             /* Write result into this Mem object */

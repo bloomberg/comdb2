@@ -150,11 +150,11 @@ static unsigned dyntag_next_extra = 1;
 static void blobmem_init(void);
 
 #define LOCK_BLOB_MUTEX()                                                      \
-    pthread_mutex_lock(&blobmutex);                                            \
+    Pthread_mutex_lock(&blobmutex);                                            \
     comdb2bma_mark_locked(blobmem);
 #define UNLOCK_BLOB_MUTEX()                                                    \
     comdb2bma_mark_unlocked(blobmem);                                          \
-    pthread_mutex_unlock(&blobmutex);
+    Pthread_mutex_unlock(&blobmutex);
 
 void blob_print_stats(void)
 {
@@ -182,11 +182,7 @@ void blob_print_stats(void)
 
 int init_blob_cache(void)
 {
-    if (pthread_mutex_init(&blobmutex, NULL) != 0) {
-        logmsg(LOGMSG_ERROR, "init_blob_cache: cannot init mutex: %s\n",
-                strerror(errno));
-        return -1;
-    }
+    Pthread_mutex_init(&blobmutex, NULL);
 
     blobhash = hash_init(sizeof(cached_blob_key_t));
     if (!blobhash) {
@@ -515,7 +511,7 @@ int toblobask(struct ireq *iq)
     cached_blob_key_t key;
     cached_blob_t *blob;
     char *schemaname;
-    int rc;
+    int rc = 0;
     int is_dynt = 0;
     char table[MAXTABLELEN + 1];
     char cachetag[MAXTAGLEN + 1]; /* as used in the cache */
@@ -524,8 +520,8 @@ int toblobask(struct ireq *iq)
     struct blobask_rsp rsp;
 
     uint8_t *p_buf_out;
-    uint8_t *p_buf_out_rsp_start;
-    uint8_t *p_buf_out_rsp_blob_start;
+    uint8_t *p_buf_out_rsp_start = NULL;
+    uint8_t *p_buf_out_rsp_blob_start = NULL;
 
     /* get our own p_buf_out so that if we fail we don't touch iq's copy */
     p_buf_out = iq->p_buf_out;

@@ -40,6 +40,7 @@
 #include "bdb_osqlbkfill.h"
 #include "bdb_osqlcur.h"
 #include "locks.h"
+#include "locks_wrap.h"
 
 #include <list.h>
 #include <ctrace.h>
@@ -152,13 +153,19 @@ void bdb_verify_repo_lock() { verify_pthread_mutex(&trn_repo_mtx); }
  * lock the snapshot/serializable transaction repository
  *
  */
-int bdb_osql_trn_repo_lock() { return pthread_mutex_lock(&trn_repo_mtx); }
+void bdb_osql_trn_repo_lock()
+{
+    Pthread_mutex_lock(&trn_repo_mtx);
+}
 
 /**
  * unlock the snapshot/serializable transaction repository
  *
  */
-int bdb_osql_trn_repo_unlock() { return pthread_mutex_unlock(&trn_repo_mtx); }
+void bdb_osql_trn_repo_unlock()
+{
+    Pthread_mutex_unlock(&trn_repo_mtx);
+}
 
 /**
  * Destroy the snapshot/serializable transaction repository
@@ -169,24 +176,15 @@ int bdb_osql_trn_repo_destroy(int *bdberr)
 {
     bdb_osql_trn_repo_t *tmp = trn_repo;
     bdb_osql_trn_t *trn = NULL, *trn2 = NULL;
-    int rc = 0;
 
     if (!tmp)
         return 0;
 
-    rc = pthread_mutex_lock(&trn_repo_mtx);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_lock %d %d\n", rc, errno);
-        *bdberr = BDBERR_BADARGS;
-    }
+    Pthread_mutex_lock(&trn_repo_mtx);
 
     trn_repo = NULL;
 
-    rc = pthread_mutex_unlock(&trn_repo_mtx);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_lock %d %d\n", rc, errno);
-        *bdberr = BDBERR_BADARGS;
-    }
+    Pthread_mutex_unlock(&trn_repo_mtx);
 
     /* this should be clean */
     LISTC_FOR_EACH_SAFE(&tmp->trns, trn, trn2, lnk)
@@ -334,12 +332,7 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
         }
     }
 
-    rc = pthread_mutex_lock(&trn_repo_mtx);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_lock %d %d\n", rc, errno);
-        *bdberr = BDBERR_BADARGS;
-        abort();
-    }
+    Pthread_mutex_lock(&trn_repo_mtx);
 
     if (!trn_repo)
         goto done;
@@ -350,14 +343,7 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
         goto done;
     }
 
-    rc = pthread_mutex_init(&trn->log_mtx, NULL);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_init %d %d\n", rc, errno);
-        *bdberr = BDBERR_BADARGS;
-        free(trn);
-        trn = NULL;
-        goto done;
-    }
+    Pthread_mutex_init(&trn->log_mtx, NULL);
 
     trn->shadow_tran = shadow_tran;
     trn->trak = (trak & SQL_DBG_BDBTRN) || (trn_repo->trak);
@@ -410,10 +396,7 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
                 shadow_tran->birth_lsn.file, shadow_tran->birth_lsn.offset);
 
 done:
-    if (pthread_mutex_unlock(&trn_repo_mtx)) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_unlock %d %d\n", rc, errno);
-        *bdberr = BDBERR_BADARGS;
-    }
+    Pthread_mutex_unlock(&trn_repo_mtx);
 
     if (gbl_new_snapisol) {
         shadow_tran->pglogs_queue_hash =
@@ -477,7 +460,7 @@ done:
                 int counter = 0;
                 DB_LSN latest_commit_lsn;
 
-                pthread_mutex_lock(&bdb_asof_current_lsn_mutex);
+                Pthread_mutex_lock(&bdb_asof_current_lsn_mutex);
                 assert(bdb_latest_commit_lsn.file);
                 latest_commit_lsn = bdb_latest_commit_lsn;
 
@@ -500,7 +483,7 @@ done:
                     pthread_cond_timedwait(&bdb_asof_current_lsn_cond,
                                            &bdb_asof_current_lsn_mutex, &now);
                 }
-                pthread_mutex_unlock(&bdb_asof_current_lsn_mutex);
+                Pthread_mutex_unlock(&bdb_asof_current_lsn_mutex);
 
                 shadow_tran->asof_hashtbl =
                     hash_init_o(PGLOGS_KEY_OFFSET, PAGE_KEY_SIZE);
@@ -535,11 +518,11 @@ done:
 
         if (rc) {
             logmsg(LOGMSG_ERROR, "fail to backfill %d %d\n", rc, *bdberr);
-            pthread_mutex_lock(&trn_repo_mtx);
+            Pthread_mutex_lock(&trn_repo_mtx);
             listc_rfl(&trn_repo->trns, trn);
-            pthread_mutex_destroy(&trn->log_mtx);
+            Pthread_mutex_destroy(&trn->log_mtx);
             free(trn);
-            pthread_mutex_unlock(&trn_repo_mtx);
+            Pthread_mutex_unlock(&trn_repo_mtx);
             return NULL;
         }
     }
@@ -559,11 +542,7 @@ int bdb_osql_trn_unregister(bdb_osql_trn_t *trn, int *bdberr)
     int rc = 0;
     int exit = 0;
 
-    rc = pthread_mutex_lock(&trn_repo_mtx);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_lock %d %d\n", rc, errno);
-        *bdberr = BDBERR_BADARGS;
-    }
+    Pthread_mutex_lock(&trn_repo_mtx);
 
     if (trn_repo)
         listc_rfl(&trn_repo->trns, trn);
@@ -575,11 +554,7 @@ int bdb_osql_trn_unregister(bdb_osql_trn_t *trn, int *bdberr)
           pthread_self(), __FILE__, __LINE__, trn->shadow_tran);
      */
 
-    rc = pthread_mutex_unlock(&trn_repo_mtx);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_lock %d %d\n", rc, errno);
-        *bdberr = BDBERR_BADARGS;
-    }
+    Pthread_mutex_unlock(&trn_repo_mtx);
     if (exit)
         return 0;
 
@@ -598,11 +573,7 @@ int bdb_osql_trn_unregister(bdb_osql_trn_t *trn, int *bdberr)
     }
 
     /* now clean this structure */
-    rc = pthread_mutex_destroy(&trn->log_mtx);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_init %d %d\n", rc, errno);
-        *bdberr = BDBERR_BADARGS;
-    }
+    Pthread_mutex_destroy(&trn->log_mtx);
 
     if (trn->trak)
         logmsg(LOGMSG_USER, "TRK_TRN: unregistered %p rc=%d for shadow=%p\n", trn,
@@ -622,16 +593,10 @@ int bdb_osql_trn_unregister(bdb_osql_trn_t *trn, int *bdberr)
 int bdb_osql_trn_cancel_clients(bdb_osql_log_t *log, int lock_repo, int *bdberr)
 {
     bdb_osql_trn_t *trn = NULL;
-    int rc = 0;
 
     if (lock_repo) {
         /* lock the repository so no transactions will move in/out */
-        rc = pthread_mutex_lock(&trn_repo_mtx);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "pthread_mutex_lock %d %d\n", rc, errno);
-            *bdberr = BDBERR_BADARGS;
-            return -1;
-        }
+        Pthread_mutex_lock(&trn_repo_mtx);
     }
 
     if (trn_repo) {
@@ -641,11 +606,7 @@ int bdb_osql_trn_cancel_clients(bdb_osql_log_t *log, int lock_repo, int *bdberr)
                    trn->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE);
 
             /* lock transaction mutex while registering the snapshot update */
-            rc = pthread_mutex_lock(&trn->log_mtx);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s mutex_lock %d %d\n", __func__, rc, errno);
-                goto done;
-            }
+            Pthread_mutex_lock(&trn->log_mtx);
 
             if (trn->first == log) {
                 trn->cancelled = 1;
@@ -661,41 +622,25 @@ int bdb_osql_trn_cancel_clients(bdb_osql_log_t *log, int lock_repo, int *bdberr)
                             trn, trn->shadow_tran->startgenid);
             }
 
-            rc = pthread_mutex_unlock(&trn->log_mtx);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s mutex_unlock %d %d\n", __func__, rc, errno);
-                goto done;
-            }
+            Pthread_mutex_unlock(&trn->log_mtx);
         }
     } else {
         logmsg(LOGMSG_WARN, "%s: No trn repo???\n", __func__);
     }
 
-done:
     if (lock_repo) {
-        rc = pthread_mutex_unlock(&trn_repo_mtx);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "pthread_mutex_lock %d %d\n", rc, errno);
-            *bdberr = BDBERR_BADARGS;
-        }
+        Pthread_mutex_unlock(&trn_repo_mtx);
     }
 
-    return rc;
+    return 0;
 }
 
 int bdb_osql_trn_count_clients(int *count, int lock_repo, int *bdberr)
 {
-    int rc = 0;
-
     *count = 0;
 
     if (lock_repo) {
-        rc = pthread_mutex_lock(&trn_repo_mtx);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "pthread_mutex_lock %d %d\n", rc, errno);
-            *bdberr = BDBERR_BADARGS;
-            return -1;
-        }
+        Pthread_mutex_lock(&trn_repo_mtx);
     }
 
     bdb_verify_repo_lock();
@@ -705,12 +650,7 @@ int bdb_osql_trn_count_clients(int *count, int lock_repo, int *bdberr)
     }
 
     if (lock_repo) {
-        rc = pthread_mutex_unlock(&trn_repo_mtx);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "pthread_mutex_lock %d %d\n", rc, errno);
-            *bdberr = BDBERR_BADARGS;
-            return -1;
-        }
+        Pthread_mutex_unlock(&trn_repo_mtx);
     }
 
     return 0;
@@ -722,11 +662,7 @@ void bdb_osql_trn_clients_status()
     int count;
     rc = bdberr = 0;
 
-    rc = pthread_mutex_lock(&trn_repo_mtx);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_lock %d %d\n", rc, errno);
-        return;
-    }
+    Pthread_mutex_lock(&trn_repo_mtx);
 
     rc = bdb_osql_trn_count_clients(&count, 0, &bdberr);
     if (rc) {
@@ -736,11 +672,7 @@ void bdb_osql_trn_clients_status()
         logmsg(LOGMSG_USER, "active snapshot: %u\n", count);
     }
 
-    rc = pthread_mutex_unlock(&trn_repo_mtx);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_lock %d %d\n", rc, errno);
-        return;
-    }
+    Pthread_mutex_unlock(&trn_repo_mtx);
 }
 
 /**
@@ -759,12 +691,7 @@ int bdb_osql_trn_check_clients(bdb_osql_log_t *log, int *empty, int lock_repo,
 
     if (lock_repo) {
         /* lock the repository so no transactions will move in/out */
-        rc = pthread_mutex_lock(&trn_repo_mtx);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "pthread_mutex_lock %d %d\n", rc, errno);
-            *bdberr = BDBERR_BADARGS;
-            return -1;
-        }
+        Pthread_mutex_lock(&trn_repo_mtx);
     }
 
     if (trn_repo) {
@@ -796,12 +723,7 @@ int bdb_osql_trn_check_clients(bdb_osql_log_t *log, int *empty, int lock_repo,
 
                 /* lock transaction mutex while registering the snapshot update
                  */
-                rc = pthread_mutex_lock(&trn->log_mtx);
-                if (rc) {
-                    logmsg(LOGMSG_ERROR, "%s mutex_lock %d %d\n", __func__, rc,
-                            errno);
-                    goto done;
-                }
+                Pthread_mutex_lock(&trn->log_mtx);
 
                 if (!trn->first) {
                     trn->first = log;
@@ -815,12 +737,7 @@ int bdb_osql_trn_check_clients(bdb_osql_log_t *log, int *empty, int lock_repo,
                             trn, trn->first, trn->shadow_tran->startgenid,
                             genid);
 
-                rc = pthread_mutex_unlock(&trn->log_mtx);
-                if (rc) {
-                    logmsg(LOGMSG_ERROR, "%s mutex_unlock %d %d\n", __func__, rc,
-                            errno);
-                    goto done;
-                }
+                Pthread_mutex_unlock(&trn->log_mtx);
             } else {
                 /* printf ( "XXX %d LOG %p Skipping transaction %llx<= %llx\n",
                    pthread_self(), log,
@@ -844,13 +761,8 @@ int bdb_osql_trn_check_clients(bdb_osql_log_t *log, int *empty, int lock_repo,
     } else
         *empty = 1;
 
-done:
     if (lock_repo) {
-        rc = pthread_mutex_unlock(&trn_repo_mtx);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "pthread_mutex_lock %d %d\n", rc, errno);
-            *bdberr = BDBERR_BADARGS;
-        }
+        Pthread_mutex_unlock(&trn_repo_mtx);
     }
 
     return rc;
@@ -882,20 +794,20 @@ static pool_t *clients_update_req_pool = NULL;
 struct clients_update_req *allocate_clients_update_req(void)
 {
     struct clients_update_req *rq = NULL;
-    pthread_mutex_lock(&clients_update_req_lk);
+    Pthread_mutex_lock(&clients_update_req_lk);
     if (clients_update_req_pool == NULL)
         clients_update_req_pool = pool_setalloc_init(
             sizeof(struct clients_update_req), 0, malloc, free);
     rq = pool_getablk(clients_update_req_pool);
-    pthread_mutex_unlock(&clients_update_req_lk);
+    Pthread_mutex_unlock(&clients_update_req_lk);
     return rq;
 }
 
 void free_clients_update_req(struct clients_update_req *rq)
 {
-    pthread_mutex_lock(&clients_update_req_lk);
+    Pthread_mutex_lock(&clients_update_req_lk);
     pool_relablk(clients_update_req_pool, rq);
-    pthread_mutex_unlock(&clients_update_req_lk);
+    Pthread_mutex_unlock(&clients_update_req_lk);
 }
 
 static pthread_mutex_t clients_relink_req_lk = PTHREAD_MUTEX_INITIALIZER;
@@ -903,20 +815,20 @@ static pool_t *clients_relink_req_pool = NULL;
 struct clients_relink_req *allocate_clients_relink_req(void)
 {
     struct clients_relink_req *rq = NULL;
-    pthread_mutex_lock(&clients_relink_req_lk);
+    Pthread_mutex_lock(&clients_relink_req_lk);
     if (clients_relink_req_pool == NULL)
         clients_relink_req_pool = pool_setalloc_init(
             sizeof(struct clients_relink_req), 0, malloc, free);
     rq = pool_getablk(clients_relink_req_pool);
-    pthread_mutex_unlock(&clients_relink_req_lk);
+    Pthread_mutex_unlock(&clients_relink_req_lk);
     return rq;
 }
 
 void free_clients_relink_req(struct clients_relink_req *rq)
 {
-    pthread_mutex_lock(&clients_relink_req_lk);
+    Pthread_mutex_lock(&clients_relink_req_lk);
     pool_relablk(clients_relink_req_pool, rq);
-    pthread_mutex_unlock(&clients_relink_req_lk);
+    Pthread_mutex_unlock(&clients_relink_req_lk);
 }
 
 /**
@@ -927,17 +839,12 @@ void free_clients_relink_req(struct clients_relink_req *rq)
 int bdb_osql_trn_get_oldest_asof_reflsn(DB_LSN *lsnout)
 {
     bdb_osql_trn_t *trn = NULL;
-    int rc = 0;
     tran_type *shadow_tran = NULL;
 
     lsnout->file = 0;
     lsnout->offset = 1;
 
-    rc = pthread_mutex_lock(&trn_repo_mtx);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_lock %d %d\n", rc, errno);
-        return -1;
-    }
+    Pthread_mutex_lock(&trn_repo_mtx);
 
     if (trn_repo) {
         LISTC_FOR_EACH(&trn_repo->trns, trn, lnk)
@@ -958,12 +865,9 @@ int bdb_osql_trn_get_oldest_asof_reflsn(DB_LSN *lsnout)
         logmsg(LOGMSG_WARN, "%s: No trn repo???\n", __func__);
     }
 
-    if (pthread_mutex_unlock(&trn_repo_mtx)) {
-        logmsg(LOGMSG_ERROR, "%s:%d pthread_mutex_unlock failed\n", __func__,
-                __LINE__);
-    }
+    Pthread_mutex_unlock(&trn_repo_mtx);
 
-    return rc;
+    return 0;
 }
 
 /**
@@ -1007,26 +911,15 @@ int bdb_osql_trn_asof_ok_to_delete_log(int filenum)
 bdb_osql_log_t *bdb_osql_trn_first_log(bdb_osql_trn_t *trn, int *bdberr)
 {
     bdb_osql_log_t *log = NULL;
-    int rc = 0;
 
     *bdberr = 0;
 
     /* lock transaction mutex while registering the snapshot update */
-    rc = pthread_mutex_lock(&trn->log_mtx);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s mutex_lock %d %d\n", __func__, rc, errno);
-        *bdberr = BDBERR_BUG_KILLME;
-        return NULL;
-    }
+    Pthread_mutex_lock(&trn->log_mtx);
 
     log = trn->first;
 
-    rc = pthread_mutex_unlock(&trn->log_mtx);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s mutex_unlock %d %d\n", __func__, rc, errno);
-        *bdberr = BDBERR_BUG_KILLME;
-        return NULL;
-    }
+    Pthread_mutex_unlock(&trn->log_mtx);
 
     return log;
 }
@@ -1040,27 +933,16 @@ bdb_osql_log_t *bdb_osql_trn_next_log(bdb_osql_trn_t *trn, bdb_osql_log_t *log,
 {
     bdb_osql_log_t *next = NULL;
     unsigned long long genid;
-    int rc = 0;
 
     *bdberr = 0;
 
     /*TODO: no need for this locking! */
     /* lock transaction mutex while registering the snapshot update */
-    rc = pthread_mutex_lock(&trn->log_mtx);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s mutex_lock %d %d\n", __func__, rc, errno);
-        *bdberr = BDBERR_BUG_KILLME;
-        return NULL;
-    }
+    Pthread_mutex_lock(&trn->log_mtx);
 
     next = bdb_osql_log_next(log, &genid);
 
-    rc = pthread_mutex_unlock(&trn->log_mtx);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s mutex_unlock %d %d\n", __func__, rc, errno);
-        *bdberr = BDBERR_BUG_KILLME;
-        return NULL;
-    }
+    Pthread_mutex_unlock(&trn->log_mtx);
 
     return next;
 }
@@ -1347,16 +1229,11 @@ int bdb_oldest_active_lsn(bdb_state_type *bdb_state, void *inlsn)
 {
     DB_LSN lsn, log_lsn;
     bdb_osql_trn_t *trn = NULL;
-    int rc;
 
     lsn.file = INT_MAX;
     __log_txn_lsn(bdb_state->dbenv, &log_lsn, NULL, NULL);
 
-    rc = pthread_mutex_lock(&trn_repo_mtx);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_lock %d %d\n", rc, errno);
-        return -1;
-    }
+    Pthread_mutex_lock(&trn_repo_mtx);
 
     if (trn_repo) {
         LISTC_FOR_EACH(&trn_repo->trns, trn, lnk)
@@ -1374,10 +1251,7 @@ int bdb_oldest_active_lsn(bdb_state_type *bdb_state, void *inlsn)
         }
     }
 
-    rc = pthread_mutex_unlock(&trn_repo_mtx);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_lock %d %d\n", rc, errno);
-    }
+    Pthread_mutex_unlock(&trn_repo_mtx);
 
     // plsn = (DB_LSN *)inlsn;
 
@@ -1393,18 +1267,13 @@ int bdb_osql_trn_get_lwm(bdb_state_type *bdb_state, void *plsn)
 {
     DB_LSN lsn;
     bdb_osql_trn_t *trn = NULL;
-    int rc = 0;
     int trak = 0;
 
     lsn.file = INT_MAX;
     lsn.offset = INT_MAX;
 
     /* lock the repository so no transactions will move in/out */
-    rc = pthread_mutex_lock(&trn_repo_mtx);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_lock %d %d\n", rc, errno);
-        return -1;
-    }
+    Pthread_mutex_lock(&trn_repo_mtx);
 
     if (trn_repo) {
         LISTC_FOR_EACH(&trn_repo->trns, trn, lnk)
@@ -1424,10 +1293,7 @@ int bdb_osql_trn_get_lwm(bdb_state_type *bdb_state, void *plsn)
 
     *(DB_LSN *)plsn = lsn;
 
-    rc = pthread_mutex_unlock(&trn_repo_mtx);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_lock %d %d\n", rc, errno);
-    }
+    Pthread_mutex_unlock(&trn_repo_mtx);
 
-    return rc;
+    return 0;
 }

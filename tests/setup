@@ -121,7 +121,7 @@ mkdir -p $DBDIR $TMPDIR
 
 # setup files:
 # DBNAME looks like this: analyze_new_12758
-echo "!$TESTCASE: creating"
+echo "!$TESTCASE: creating db $DBNAME"
 LRL="$DBDIR/$DBNAME.lrl"
 > ${LRL}
 

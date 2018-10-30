@@ -348,7 +348,7 @@ int fdb_svc_trans_commit(char *tid, enum transaction_level lvl,
     int bdberr = 0;
 
     /* we have to wait for any potential cursor to go away */
-    pthread_mutex_lock(&clnt->dtran_mtx);
+    Pthread_mutex_lock(&clnt->dtran_mtx);
 
     /* we need to wait for not yet arrived cursors, before we wait for them
        to finish!!!
@@ -356,10 +356,11 @@ int fdb_svc_trans_commit(char *tid, enum transaction_level lvl,
     fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
 
     while (clnt->dbtran.dtran->fdb_trans.top->cursors.top != NULL) {
-        pthread_mutex_unlock(&clnt->dtran_mtx);
+        Pthread_mutex_unlock(&clnt->dtran_mtx);
         poll(NULL, 0, 10);
+        Pthread_mutex_lock(&clnt->dtran_mtx);
     }
-    pthread_mutex_unlock(&clnt->dtran_mtx);
+    Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     if (clnt->dbtran.mode == TRANLEVEL_RECOM ||
         clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
@@ -449,7 +450,7 @@ int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
     int bdberr = 0;
 
     /* we have to wait for any potential cursor to go away */
-    pthread_mutex_lock(&clnt->dtran_mtx);
+    Pthread_mutex_lock(&clnt->dtran_mtx);
 
     /* we need to wait for not yet arrived cursors, before we wait for them
        to finish!!!
@@ -457,10 +458,11 @@ int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
     fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
 
     while (clnt->dbtran.dtran->fdb_trans.top->cursors.top != NULL) {
-        pthread_mutex_unlock(&clnt->dtran_mtx);
+        Pthread_mutex_unlock(&clnt->dtran_mtx);
         poll(NULL, 0, 10);
+        Pthread_mutex_lock(&clnt->dtran_mtx);
     }
-    pthread_mutex_unlock(&clnt->dtran_mtx);
+    Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     switch (clnt->dbtran.mode) {
     case TRANLEVEL_RECOM: {
@@ -791,13 +793,13 @@ int fdb_svc_cursor_insert(struct sqlclntstate *clnt, char *tblname,
        it will retrieve the disk row from ondisk_buf! */
     bCur.ondisk_buf = row;
 
-    pthread_mutex_lock(&clnt->dtran_mtx);
+    Pthread_mutex_lock(&clnt->dtran_mtx);
 
     fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
 
     rc = osql_insrec(&bCur, thd, row, rowlen, rowblobs, MAXBLOBS, 0);
 
-    pthread_mutex_unlock(&clnt->dtran_mtx);
+    Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     clnt->effects.num_inserted++;
 
@@ -839,13 +841,13 @@ int fdb_svc_cursor_delete(struct sqlclntstate *clnt, char *tblname,
         return -1;
     }
 
-    pthread_mutex_lock(&clnt->dtran_mtx);
+    Pthread_mutex_lock(&clnt->dtran_mtx);
 
     fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
 
     rc = osql_delrec(&bCur, thd);
 
-    pthread_mutex_unlock(&clnt->dtran_mtx);
+    Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     clnt->effects.num_deleted++;
 
@@ -927,14 +929,14 @@ int fdb_svc_cursor_update(struct sqlclntstate *clnt, char *tblname,
        it will retrieve the disk row from ondisk_buf! */
     bCur.ondisk_buf = row;
 
-    pthread_mutex_lock(&clnt->dtran_mtx);
+    Pthread_mutex_lock(&clnt->dtran_mtx);
 
     fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
 
     rc = osql_updrec(&bCur, thd, row, rowlen, NULL /*TODO : review updCols*/,
                      rowblobs, MAXBLOBS, 0);
 
-    pthread_mutex_unlock(&clnt->dtran_mtx);
+    Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     clnt->effects.num_updated++;
 

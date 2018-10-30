@@ -4174,7 +4174,7 @@ void get_disable_skipscan_all()
 int backend_open(struct dbenv *dbenv)
 {
     int bdberr, ii;
-    struct dbtable *db;
+    struct dbtable *db = NULL;
     int rc;
 
     /* open tables */

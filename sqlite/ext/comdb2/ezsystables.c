@@ -137,7 +137,7 @@ static int systbl_next(sqlite3_vtab_cursor *cur){
 }
 
 static void* get_field_ptr(struct systable *t, char *rec, int column) {
-    void *out;
+    void *out = NULL;
 
     if (t->fields[column].nulloffset >= 0) {
         int *isnull = (int *)(&rec[t->fields[column].nulloffset]);

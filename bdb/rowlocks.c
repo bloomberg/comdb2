@@ -23,6 +23,7 @@
 #include <net.h>
 #include <bdb_int.h>
 #include <locks.h>
+#include <locks_wrap.h>
 #include <ctrace.h>
 #include <string.h>
 #include <strings.h>
@@ -208,7 +209,7 @@ static int get_next_addrem_buffer(bdb_state_type *bdb_state, DB_LSN *lsn,
     void *p = NULL;
     int off = 0;
     DBT logent;
-    u_int32_t rectype;
+    u_int32_t rectype = 0;
     int rc;
     BOVERFLOW *ov;
     BKEYDATA *kd;
@@ -1707,7 +1708,7 @@ static int cancel_all_logical_transactions(bdb_state_type *bdb_state)
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
-    pthread_mutex_lock(&bdb_state->translist_lk);
+    Pthread_mutex_lock(&bdb_state->translist_lk);
     LISTC_FOR_EACH_SAFE(&bdb_state->logical_transactions_list, ltrans, temp,
                         tranlist_lnk)
     {
@@ -1729,7 +1730,7 @@ static int cancel_all_logical_transactions(bdb_state_type *bdb_state)
 
         free(ltrans);
     }
-    pthread_mutex_unlock(&bdb_state->translist_lk);
+    Pthread_mutex_unlock(&bdb_state->translist_lk);
     return 0;
 }
 
@@ -2050,9 +2051,9 @@ static inline tran_type *find_logical_transaction(bdb_state_type *bdb_state,
     if (!parent->passed_dbenv_open)
         return NULL;
 
-    pthread_mutex_lock(&parent->translist_lk);
+    Pthread_mutex_lock(&parent->translist_lk);
     ltrans = hash_find(parent->logical_transactions_hash, &ltranid);
-    pthread_mutex_unlock(&parent->translist_lk);
+    Pthread_mutex_unlock(&parent->translist_lk);
     if (ltrans == NULL) {
         ltrans = bdb_tran_continue_logical(bdb_state, ltranid, 0, &bdberr);
         if (ltrans == NULL) {
@@ -2100,10 +2101,10 @@ static int logical_release_transaction(bdb_state_type *bdb_state,
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
-    pthread_mutex_lock(&bdb_state->translist_lk);
+    Pthread_mutex_lock(&bdb_state->translist_lk);
     ltrans = hash_find(bdb_state->logical_transactions_hash, &ltranid);
     if (ltrans == NULL) {
-        pthread_mutex_unlock(&bdb_state->translist_lk);
+        Pthread_mutex_unlock(&bdb_state->translist_lk);
         logmsg(LOGMSG_DEBUG, 
                 "asked to release locks for an empty transaction %016llx?\n",
                 ltranid);
@@ -2134,7 +2135,7 @@ static int logical_release_transaction(bdb_state_type *bdb_state,
     lockerid = ltrans->logical_lid;
     ltrans->logical_lid = 0;
 
-    pthread_mutex_unlock(&bdb_state->translist_lk);
+    Pthread_mutex_unlock(&bdb_state->translist_lk);
 
     /* This shouldn't happen here */
     if (repcommit && ltrans->got_bdb_lock) {
@@ -2183,15 +2184,15 @@ static int release_locks_for_logical_transaction(bdb_state_type *bdb_state,
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
-    pthread_mutex_lock(&bdb_state->translist_lk);
+    Pthread_mutex_lock(&bdb_state->translist_lk);
     ltrans = hash_find(bdb_state->logical_transactions_hash, &ltranid);
     if (ltrans == NULL) {
-        pthread_mutex_unlock(&bdb_state->translist_lk);
+        Pthread_mutex_unlock(&bdb_state->translist_lk);
         logmsg(LOGMSG_DEBUG, "asked to release locks for an empty transaction %016llx?\n",
                 ltranid);
         return 0;
     }
-    pthread_mutex_unlock(&bdb_state->translist_lk);
+    Pthread_mutex_unlock(&bdb_state->translist_lk);
 
     rc = release_locks_for_logical_transaction_object(bdb_state, ltrans,
                                                       &bdberr);
@@ -2607,13 +2608,13 @@ void print_logical_commits_starts(FILE *f)
 {
 #ifdef COUNT_REP_LTRANS
     unsigned long long lst = 0, lcm = 0;
-    pthread_mutex_lock(&lstlk);
+    Pthread_mutex_lock(&lstlk);
     lst = gbl_rep_count_logical_starts;
-    pthread_mutex_unlock(&lstlk);
+    Pthread_mutex_unlock(&lstlk);
 
-    pthread_mutex_lock(&lcmlk);
+    Pthread_mutex_lock(&lcmlk);
     lcm = gbl_rep_count_logical_commits;
-    pthread_mutex_unlock(&lcmlk);
+    Pthread_mutex_unlock(&lcmlk);
 
     logmsg(LOGMSG_USER, "%llu logical starts\n", lst);
     logmsg(LOGMSG_USER, "%llu logical commits\n", lcm);
@@ -2633,9 +2634,9 @@ int handle_commit(DB_ENV *dbenv, u_int32_t rectype,
     bdb_state = dbenv->app_private;
 
 #ifdef COUNT_REP_LTRANS
-    pthread_mutex_lock(&lcmlk);
+    Pthread_mutex_lock(&lcmlk);
     gbl_rep_count_logical_commits++;
-    pthread_mutex_unlock(&lcmlk);
+    Pthread_mutex_unlock(&lcmlk);
 #endif
 
     /* don't do anything during berkeley recovery */
@@ -2720,9 +2721,9 @@ int handle_start(DB_ENV *dbenv, u_int32_t rectype, llog_ltran_start_args *args,
     bdb_state_type *bdb_state;
 
 #ifdef COUNT_REP_LTRANS
-    pthread_mutex_lock(&lstlk);
+    Pthread_mutex_lock(&lstlk);
     gbl_rep_count_logical_starts++;
-    pthread_mutex_unlock(&lstlk);
+    Pthread_mutex_unlock(&lstlk);
 #endif
 
     bdb_state = dbenv->app_private;
@@ -3589,12 +3590,12 @@ int bdb_get_active_logical_transaction_lsns(bdb_state_type *bdb_state,
     else
         parent = bdb_state;
 
-    pthread_mutex_lock(&parent->translist_lk);
+    Pthread_mutex_lock(&parent->translist_lk);
 
     lsns = malloc(sizeof(DB_LSN) * parent->logical_transactions_list.count);
     if (!lsns) {
         *numlsns = parent->logical_transactions_list.count;
-        pthread_mutex_unlock(&parent->translist_lk);
+        Pthread_mutex_unlock(&parent->translist_lk);
         if (*numlsns == 0)
             return 0;
         *bdberr = BDBERR_MALLOC;
@@ -3616,7 +3617,7 @@ int bdb_get_active_logical_transaction_lsns(bdb_state_type *bdb_state,
     }
     *numlsns = tran_num;
 
-    pthread_mutex_unlock(&parent->translist_lk);
+    Pthread_mutex_unlock(&parent->translist_lk);
     *lsnout = lsns;
     return 0;
 }
