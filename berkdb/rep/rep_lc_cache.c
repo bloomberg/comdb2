@@ -23,6 +23,7 @@
 #include "dbinc_auto/btree_auto.h"
 #include <assert.h>
 #include "logmsg.h"
+#include "locks_wrap.h"
 
 
 /* TODO:
@@ -42,7 +43,7 @@ __lc_cache_init(DB_ENV *dbenv, int reinit)
 			 return ret;
 	} 
 
-	pthread_mutex_lock(&dbenv->lc_cache.lk);
+	Pthread_mutex_lock(&dbenv->lc_cache.lk);
 
 	LC_CACHE *lcc;
 
@@ -65,7 +66,7 @@ __lc_cache_init(DB_ENV *dbenv, int reinit)
 
 	ret = 0;
 err:
-	pthread_mutex_unlock(&dbenv->lc_cache.lk);
+	Pthread_mutex_unlock(&dbenv->lc_cache.lk);
 	return ret;
 }
 
@@ -80,7 +81,7 @@ __lc_cache_destroy(DB_ENV *dbenv)
 	__os_free(dbenv, lcc->ent);
     if (lcc->txnid_hash)
         hash_free(lcc->txnid_hash);
-	pthread_mutex_destroy(&lcc->lk);
+	Pthread_mutex_destroy(&lcc->lk);
 
 	return 0;
 }
@@ -189,7 +190,7 @@ lc_dump_cache(DB_ENV *dbenv, int needlock)
 {
 
 	if (needlock)
-		pthread_mutex_lock(&dbenv->lc_cache.lk);
+		Pthread_mutex_lock(&dbenv->lc_cache.lk);
 
 	LC_CACHE_ENTRY *e;
 
@@ -209,7 +210,7 @@ lc_dump_cache(DB_ENV *dbenv, int needlock)
 	}
 
 	if (needlock)
-		pthread_mutex_unlock(&dbenv->lc_cache.lk);
+		Pthread_mutex_unlock(&dbenv->lc_cache.lk);
 
 	return 0;
 }
@@ -227,7 +228,7 @@ __lc_cache_feed(DB_ENV *dbenv, DB_LSN lsn, DBT dbt)
 	DB_LSN prevlsn;
 	uint8_t *logrec;
 
-	pthread_mutex_lock(&dbenv->lc_cache.lk);
+	Pthread_mutex_lock(&dbenv->lc_cache.lk);
 
 	logrec = dbt.data;
 	if (dbt.size <
@@ -553,7 +554,7 @@ __lc_cache_feed(DB_ENV *dbenv, DB_LSN lsn, DBT dbt)
 done:
 	ret = 0;
 err:
-	pthread_mutex_unlock(&dbenv->lc_cache.lk);
+	Pthread_mutex_unlock(&dbenv->lc_cache.lk);
 	return ret;
 }
 
@@ -569,7 +570,7 @@ __lc_cache_get(DB_ENV *dbenv, DB_LSN *lsnp, LSN_COLLECTION * lcout,
 {
 	LC_CACHE_ENTRY *e;
 
-	pthread_mutex_lock(&dbenv->lc_cache.lk);
+	Pthread_mutex_lock(&dbenv->lc_cache.lk);
 
 	if (dbenv->attr.cache_lc_debug)
 		logmsg(LOGMSG_USER, "looking for " PR_LSN "\n", PARM_LSNP(lsnp));
@@ -600,7 +601,7 @@ __lc_cache_get(DB_ENV *dbenv, DB_LSN *lsnp, LSN_COLLECTION * lcout,
 
 			ZERO_LSN(*lsnp);
 
-			pthread_mutex_unlock(&dbenv->lc_cache.lk);
+			Pthread_mutex_unlock(&dbenv->lc_cache.lk);
 			return 0;
 		} else {
 			if (dbenv->attr.cache_lc_debug ||
@@ -615,7 +616,7 @@ __lc_cache_get(DB_ENV *dbenv, DB_LSN *lsnp, LSN_COLLECTION * lcout,
 		logmsg(LOGMSG_USER, "didn't find txnid %x, " PR_LSN "\n", txnid,
 		    PARM_LSNP(lsnp));
 
-	pthread_mutex_unlock(&dbenv->lc_cache.lk);
+	Pthread_mutex_unlock(&dbenv->lc_cache.lk);
 	return DB_NOTFOUND;
 }
 

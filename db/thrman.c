@@ -107,11 +107,7 @@ void thrman_init(void)
 {
     int rc;
 
-    rc = pthread_mutex_init(&mutex, NULL);
-    if (rc != 0) {
-        perror_errnum("thrman_init:pthread_mutex_init", rc);
-        exit(1);
-    }
+    Pthread_mutex_init(&mutex, NULL);
 
     rc = pthread_key_create(&thrman_key, thrman_destructor);
     if (rc != 0) {
@@ -119,11 +115,7 @@ void thrman_init(void)
         exit(1);
     }
 
-    rc = pthread_cond_init(&cond, NULL);
-    if (rc != 0) {
-        perror_errnum("thrman_init:pthread_cond_init", rc);
-        exit(1);
-    }
+    Pthread_cond_init(&cond, NULL);
 
     pthread_attr_init(&gbl_pthread_attr_detached);
     pthread_attr_setdetachstate(&gbl_pthread_attr_detached,
@@ -131,7 +123,7 @@ void thrman_init(void)
     /* 4 meg stack - there should be a better solution for this..
        some huge sql queries (it's happened) blow out stack during the parsing
        phase. */
-    rc = pthread_attr_setstacksize(&gbl_pthread_attr_detached, 4 * 1024 * 1024);
+    pthread_attr_setstacksize(&gbl_pthread_attr_detached, 4 * 1024 * 1024);
 
     listc_init(&thr_list, offsetof(struct thr_handle, linkv));
 }
@@ -176,15 +168,15 @@ struct thr_handle *thrman_register(enum thrtype type)
         abort();
     }
 
-    pthread_mutex_lock(&mutex);
+    Pthread_mutex_lock(&mutex);
     listc_abl(&thr_list, thr);
     thr_type_counts[type]++;
     if (gbl_thrman_trace) {
         char buf[1024];
        logmsg(LOGMSG_ERROR, "thrman_register: %s\n", thrman_describe(thr, buf, sizeof(buf)));
     }
-    pthread_cond_broadcast(&cond);
-    pthread_mutex_unlock(&mutex);
+    Pthread_cond_broadcast(&cond);
+    Pthread_mutex_unlock(&mutex);
 
     return thr;
 }
@@ -212,7 +204,7 @@ void thrman_change_type(struct thr_handle *thr, enum thrtype newtype)
 
     oldtype = thr->type;
 
-    pthread_mutex_lock(&mutex);
+    Pthread_mutex_lock(&mutex);
     thr_type_counts[thr->type]--;
     thr->type = newtype;
     thr_type_counts[thr->type]++;
@@ -221,8 +213,8 @@ void thrman_change_type(struct thr_handle *thr, enum thrtype newtype)
        logmsg(LOGMSG_USER, "thrman_change_type: from %s -> %s\n", thrman_type2a(oldtype),
                thrman_describe(thr, buf, sizeof(buf)));
     }
-    pthread_cond_broadcast(&cond);
-    pthread_mutex_unlock(&mutex);
+    Pthread_cond_broadcast(&cond);
+    Pthread_mutex_unlock(&mutex);
 }
 
 /* Called from the thrman_key destructor when the thread exits, or manually
@@ -237,7 +229,7 @@ static void thrman_destructor(void *param)
         return;
     }
 
-    pthread_mutex_lock(&mutex);
+    Pthread_mutex_lock(&mutex);
     listc_rfl(&thr_list, thr);
     thr_type_counts[thr->type]--;
     if (gbl_thrman_trace) {
@@ -245,8 +237,8 @@ static void thrman_destructor(void *param)
         logmsg(LOGMSG_USER, "thrman_destructor: %s\n",
                thrman_describe(thr, buf, sizeof(buf)));
     }
-    pthread_cond_broadcast(&cond);
-    pthread_mutex_unlock(&mutex);
+    Pthread_cond_broadcast(&cond);
+    Pthread_mutex_unlock(&mutex);
 
     if (thr->reqlogger) {
         reqlog_free(thr->reqlogger);
@@ -451,9 +443,9 @@ static void thrman_dump_ll(void)
 /* Dump all active threads */
 void thrman_dump(void)
 {
-    pthread_mutex_lock(&mutex);
+    Pthread_mutex_lock(&mutex);
     thrman_dump_ll();
-    pthread_mutex_unlock(&mutex);
+    Pthread_mutex_unlock(&mutex);
 }
 
 /* stop sql connections.  this is needed to stop blocked
@@ -463,7 +455,7 @@ void thrman_stop_sql_connections(void)
     struct thr_handle *thr;
     struct thr_handle *temp;
 
-    pthread_mutex_lock(&mutex);
+    Pthread_mutex_lock(&mutex);
     LISTC_FOR_EACH_SAFE(&thr_list, thr, temp, linkv)
     {
         if (thr->type == THRTYPE_SQLPOOL || thr->type == THRTYPE_SQL ||
@@ -471,7 +463,7 @@ void thrman_stop_sql_connections(void)
             thr->type == THRTYPE_APPSOCK_SQL)
             shutdown(thr->fd, 0);
     }
-    pthread_mutex_unlock(&mutex);
+    Pthread_mutex_unlock(&mutex);
 }
 
 /* See if all threads are gone (or all but myself) */
@@ -526,7 +518,7 @@ static int thrman_check_threads_gone_ll(void *context)
 static void thrman_wait(const char *descr, int (*check_fn_ll)(void *),
                         void *context)
 {
-    pthread_mutex_lock(&mutex);
+    Pthread_mutex_lock(&mutex);
     while (1) {
         struct timespec ts;
         struct timeval tp;
@@ -550,7 +542,7 @@ static void thrman_wait(const char *descr, int (*check_fn_ll)(void *),
             perror_errnum("thrman_coalesce:pthread_cond_timedwait", rc);
         }
     }
-    pthread_mutex_unlock(&mutex);
+    Pthread_mutex_unlock(&mutex);
 }
 
 /* Stop all database threads.  Different thread types get stopped in different
@@ -631,9 +623,9 @@ int thrman_count_type(enum thrtype type)
 {
     int count = 0;
     if (type >= 0 && type < THRTYPE_MAX) {
-        pthread_mutex_lock(&mutex);
+        Pthread_mutex_lock(&mutex);
         count = thr_type_counts[type];
-        pthread_mutex_unlock(&mutex);
+        Pthread_mutex_unlock(&mutex);
     }
     return count;
 }

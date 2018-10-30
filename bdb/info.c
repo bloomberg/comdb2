@@ -27,6 +27,7 @@
 #include "net.h"
 #include "bdb_int.h"
 #include "locks.h"
+#include "locks_wrap.h"
 #include <build/db.h>
 #include <str0.h>
 #include <ctrace.h>

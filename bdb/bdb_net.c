@@ -31,6 +31,7 @@
 #include "bdb_int.h"
 #include <net.h>
 #include <locks.h>
+#include <locks_wrap.h>
 
 #include <util.h>
 #include <gettimeofday_ms.h>
@@ -815,7 +816,7 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
 
     for (i = 0; i < count; i++) {
         int catchup_window = bdb_state->attr->catchup_window;
-        pthread_mutex_lock(&(bdb_state->coherent_state_lock));
+        Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
 
         if (!master_is_coherent || bdb_state->coherent_state[
                 nodeix(hostlist[i])] != STATE_COHERENT) {
@@ -823,7 +824,7 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
         }
         do_send = master_is_coherent && (bdb_state->coherent_state[
                 nodeix(hostlist[i])] == STATE_COHERENT);
-        pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+        Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 
         if (do_send) {
             if (use_udp) {

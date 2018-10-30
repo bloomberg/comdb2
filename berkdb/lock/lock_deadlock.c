@@ -32,6 +32,7 @@ static const char revid[] = "$Id: lock_deadlock.c,v 11.66 2003/11/19 19:59:02 ub
 
 #include "debug_switches.h"
 #include "logmsg.h"
+#include "locks_wrap.h"
 
 extern int verbose_deadlocks;
 extern int gbl_sparse_lockerid_map;
@@ -466,7 +467,7 @@ __lock_detect(dbenv, atype, abortp)
 	int skip;
 
 	/* Run detector if one is not waiting to be run already */
-	pthread_mutex_lock(&qlock);
+	Pthread_mutex_lock(&qlock);
 	if (q) {
 		skip = 1;
 		++detect_skip;
@@ -474,20 +475,20 @@ __lock_detect(dbenv, atype, abortp)
 		skip = 0;
 		q = 1;
 	}
-	pthread_mutex_unlock(&qlock);
+	Pthread_mutex_unlock(&qlock);
 	if (skip) return 0;
 
-	pthread_mutex_lock(&dlock);
+	Pthread_mutex_lock(&dlock);
 	{
-		pthread_mutex_lock(&qlock);
+		Pthread_mutex_lock(&qlock);
 		q = 0;
-		pthread_mutex_unlock(&qlock);
+		Pthread_mutex_unlock(&qlock);
 		int retry = 0;
 		ret = __lock_detect_int(dbenv, atype, abortp, &retry);
 		if (retry)
 			ret = __lock_detect_int(dbenv, atype, abortp, NULL);
 	}
-	pthread_mutex_unlock(&dlock);
+	Pthread_mutex_unlock(&dlock);
 	return ret;
 }
 

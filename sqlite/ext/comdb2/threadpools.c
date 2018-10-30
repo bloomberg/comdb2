@@ -27,6 +27,7 @@
 #include "comdb2systblInt.h"
 #include "list.h"
 #include "thdpool.h"
+#include <locks_wrap.h>
 
 extern pthread_mutex_t pool_list_lk;
 extern LISTC_T(struct thdpool) threadpools;
@@ -120,7 +121,7 @@ static int systblThreadPoolsOpen(sqlite3_vtab *p,
     *ppCursor = &cur->base;
 
     /* Unlocked in systblThreadPoolsClose() */
-    pthread_mutex_lock(&pool_list_lk);
+    Pthread_mutex_lock(&pool_list_lk);
     cur->pool = LISTC_TOP(&threadpools);
 
     return SQLITE_OK;
@@ -128,7 +129,7 @@ static int systblThreadPoolsOpen(sqlite3_vtab *p,
 
 static int systblThreadPoolsClose(sqlite3_vtab_cursor *cur)
 {
-    pthread_mutex_unlock(&pool_list_lk);
+    Pthread_mutex_unlock(&pool_list_lk);
     sqlite3_free(cur);
     return SQLITE_OK;
 }

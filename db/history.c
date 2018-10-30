@@ -39,16 +39,16 @@ int init_history(history *h, size_t size)
     h->hist = calloc(size, sizeof(history_request *));
     h->pool = pool_setalloc_init(sizeof(history_request), size, malloc, free);
     h->total = 0;
-    pthread_mutex_init(&h->lock, NULL);
+    Pthread_mutex_init(&h->lock, NULL);
     return (int)(h->hist && h->pool && !rc);
 }
 
 history_request *hist_get_event(history *h)
 {
     history_request *req;
-    pthread_mutex_lock(&h->lock);
+    Pthread_mutex_lock(&h->lock);
     req = pool_getzblk(h->pool);
-    pthread_mutex_unlock(&h->lock);
+    Pthread_mutex_unlock(&h->lock);
     return req;
 }
 
@@ -58,7 +58,7 @@ void hist_add_event(history *h, history_request *req)
     void *sv1, *sv2;
     sv1 = req->fullrq;
     sv2 = req->fullrsp;
-    pthread_mutex_lock(&h->lock);
+    Pthread_mutex_lock(&h->lock);
     h->hist[h->tail] = req;
     h->tail = (h->tail + 1) % h->size;
     if (h->tail == h->head) {
@@ -66,7 +66,7 @@ void hist_add_event(history *h, history_request *req)
         h->head = (h->head + 1) % h->size;
     }
     h->total++;
-    pthread_mutex_unlock(&h->lock);
+    Pthread_mutex_unlock(&h->lock);
     if (h->wholereq) {
         if (sv1)
             free(sv1);

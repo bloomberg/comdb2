@@ -482,14 +482,14 @@ int live_sc_post_upd_record(struct ireq *iq, void *trans,
  */
 int schema_change_abort_callback(void)
 {
-    pthread_mutex_lock(&gbl_sc_lock);
+    Pthread_mutex_lock(&gbl_sc_lock);
     /* if a schema change is in progress */
     if (gbl_schema_change_in_progress) {
         /* we should safely stop the sc here, but until we find a good way to do
          * that, just kill us */
         exit(1);
     }
-    pthread_mutex_unlock(&gbl_sc_lock);
+    Pthread_mutex_unlock(&gbl_sc_lock);
 
     return 0;
 }
@@ -504,9 +504,9 @@ void sc_del_unused_files_tran(struct dbtable *db, tran_type *tran)
     if (db == NULL)
         return;
 
-    pthread_mutex_lock(&gbl_sc_lock);
+    Pthread_mutex_lock(&gbl_sc_lock);
     sc_del_unused_files_start_ms = comdb2_time_epochms();
-    pthread_mutex_unlock(&gbl_sc_lock);
+    Pthread_mutex_unlock(&gbl_sc_lock);
 
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DELAYED_OLDFILE_CLEANUP)) {
         if (bdb_list_unused_files_tran(db->handle, tran, &bdberr,
@@ -519,9 +519,9 @@ void sc_del_unused_files_tran(struct dbtable *db, tran_type *tran)
             logmsg(LOGMSG_WARN, "errors deleting files\n");
     }
 
-    pthread_mutex_lock(&gbl_sc_lock);
+    Pthread_mutex_lock(&gbl_sc_lock);
     sc_del_unused_files_start_ms = 0;
-    pthread_mutex_unlock(&gbl_sc_lock);
+    Pthread_mutex_unlock(&gbl_sc_lock);
 }
 
 void sc_del_unused_files(struct dbtable *db)
@@ -535,9 +535,9 @@ void sc_del_unused_files_check_progress(void)
 {
     int start_ms;
 
-    pthread_mutex_lock(&gbl_sc_lock);
+    Pthread_mutex_lock(&gbl_sc_lock);
     start_ms = sc_del_unused_files_start_ms;
-    pthread_mutex_unlock(&gbl_sc_lock);
+    Pthread_mutex_unlock(&gbl_sc_lock);
 
     /* if a schema change is in progress */
     if (start_ms) {
