@@ -3081,42 +3081,13 @@ static int nodeup_callback(void *bdb_handle, const char *host)
     return is_node_up(host);
 }
 
-static char *tcmtest_routecpu_down_node = 0;
-
-void tcmtest_routecpu_set_down_node(char *n) { tcmtest_routecpu_down_node = n; }
-
 int is_node_up(const char *host)
 {
-    int rc;
-
-    if (gbl_rtcpu_debug && CLASS_TEST == get_mach_class(gbl_mynode)) {
-        /* For debugging rtcpu problems use an "alternative" rtcpu system.
-         * Basically look for a file in /bbsrc/db/comdb2/rtcpu - if a file
-         * for the node exists, then it is considered rt'd off. */
-        char path[64];
-        struct stat st;
-        int nodeup = 1;
-        snprintf0(path, sizeof(path), "/bbsrc/db/comdb2/rtcpu/%s", host);
-        errno = 0;
-        stat(path, &st);
-        if (errno == 0)
-            nodeup = 0;
-        else if (errno != ENOENT)
-            logmsg(LOGMSG_ERROR, "nodeup_callback: %s: %s\n", path, strerror(errno));
-        return nodeup;
-    }
-
-    if ((tcmtest_routecpu_down_node > 0) &&
-        (host == tcmtest_routecpu_down_node)) {
-        /* keep chatty if we're forcing a node down to debug something */
-        logmsg(LOGMSG_WARN, "%s returning bad-rcode for tcm-test node %s\n",
-                __func__, host);
+    extern char *tcmtest_routecpu_down_node;
+    if (host == tcmtest_routecpu_down_node) {
         return 0;
     }
-
-    rc = machine_is_up(host);
-    return (rc == 1);
-    /*rc could be -1 which means bad node, just return down in that case */
+    return machine_is_up(host);
 }
 
 /* callback to set dynamically configurable election settings */
