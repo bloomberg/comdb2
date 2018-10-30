@@ -69,6 +69,7 @@
 
 
 int g_osql_blocksql_parallel_max = 5;
+int gbl_osql_check_replicant_nops = 1;
 extern int gbl_blocksql_grace;
 
 typedef struct blocksql_info {
@@ -720,7 +721,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                 comdb2uuidstr(uuid, us), osql_reqtype_str(type), done_nops,
                 sess->seq, (done_nops != sess->seq + 1 ? "NO match": ""));
 
-        if(done_nops != sess->seq + 1 /* || (rand() % 3) == 0 */ ) {
+        if(gbl_osql_check_replicant_nops && done_nops != sess->seq + 1) { 
             send_error_to_replicant(rqid, sess->offhost,
                     RC_INTERNAL_RETRY,
                     "Master received inconsistent number of opcodes");
