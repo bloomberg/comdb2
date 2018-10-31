@@ -286,6 +286,16 @@ void sqlite3FingerprintUpdate(sqlite3 *db, SrcList *pTabList, ExprList *pChanges
     MD5Update(&c, (u8*) &onError, sizeof(int));
     MD5Final((unsigned char *)db->fingerprint, &c);
 }
+static void _set_src_recording(
+  Parse *pParse,
+  Select *pSub
+){
+  int tbl;
+  pSub->recording = 1;
+  for(tbl=0; tbl<pSub->pSrc->nSrc; tbl++){
+    SET_CURSOR_RECORDING(pParse, pSub->pSrc->a[tbl].iCursor);
+  }
+}
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -4126,6 +4136,9 @@ static int flattenSubquery(
     p->pLimit = 0;
     pNew = sqlite3SelectDup(db, p, 0);
     p->pLimit = pLimit;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if( p->recording ) _set_src_recording(pParse, pSub);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     p->pOrderBy = pOrderBy;
     p->pSrc = pSrc;
     p->op = TK_ALL;
@@ -4146,6 +4159,10 @@ static int flattenSubquery(
   ** in the outer query.
   */
   pSub = pSub1 = pSubitem->pSelect;
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( p->recording ) _set_src_recording(pParse, pSub);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   /* Delete the transient table structure associated with the
   ** subquery
