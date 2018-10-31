@@ -2173,6 +2173,14 @@ int sqlite3IsRowid(const char *z){
   if( sqlite3StrICmp(z, "OID")==0 ) return 1;
   return 0;
 }
+#ifdef SQLITE_ENABLE_NORMALIZE
+int sqlite3IsRowidN(const char *z, int n){
+  if( sqlite3StrNICmp(z, "_ROWID_", n)==0 ) return 1;
+  if( sqlite3StrNICmp(z, "ROWID", n)==0 ) return 1;
+  if( sqlite3StrNICmp(z, "OID", n)==0 ) return 1;
+  return 0;
+}
+#endif
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 int sqlite3IsComdb2Rowid(const char *z){
