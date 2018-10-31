@@ -5090,6 +5090,7 @@ static int countOfViewOptimization(Parse *pParse, Select *p){
   do{
     if( pSub->op!=TK_ALL && pSub->pPrior ) return 0;  /* Must be UNION ALL */
     if( pSub->pWhere ) return 0;                      /* No WHERE clause */
+    if( pSub->pLimit ) return 0;                      /* No LIMIT clause */
     if( pSub->selFlags & SF_Aggregate ) return 0;     /* Not an aggregate */
     pSub = pSub->pPrior;                              /* Repeat over compound terms */
   }while( pSub );
@@ -5305,6 +5306,16 @@ int sqlite3Select(
   }
 #endif
 
+#ifdef SQLITE_COUNTOFVIEW_OPTIMIZATION
+  if( OptimizationEnabled(db, SQLITE_QueryFlattener|SQLITE_CountOfView)
+   && countOfViewOptimization(pParse, p)
+  ){
+    if( db->mallocFailed ) goto select_end;
+    pEList = p->pEList;
+    pTabList = p->pSrc;
+  }
+#endif
+
   /* Generate code for all sub-queries in the FROM clause
   */
 #if !defined(SQLITE_OMIT_SUBQUERY) || !defined(SQLITE_OMIT_VIEW)
@@ -5436,16 +5447,6 @@ int sqlite3Select(
   if( sqlite3SelectTrace & 0x400 ){
     SELECTTRACE(0x400,pParse,p,("After all FROM-clause analysis:\n"));
     sqlite3TreeViewSelect(0, p, 0);
-  }
-#endif
-
-#ifdef SQLITE_COUNTOFVIEW_OPTIMIZATION
-  if( OptimizationEnabled(db, SQLITE_QueryFlattener|SQLITE_CountOfView)
-   && countOfViewOptimization(pParse, p)
-  ){
-    if( db->mallocFailed ) goto select_end;
-    pEList = p->pEList;
-    pTabList = p->pSrc;
   }
 #endif
 
