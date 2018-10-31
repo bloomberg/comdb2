@@ -3449,6 +3449,14 @@ static void substSelect(
 #endif /* !defined(SQLITE_OMIT_SUBQUERY) || !defined(SQLITE_OMIT_VIEW) */
 
 #if !defined(SQLITE_OMIT_SUBQUERY) || !defined(SQLITE_OMIT_VIEW)
+
+static void _set_src_recording(Parse *pParse, Select *pSub)
+{
+  int tbl;
+  pSub->recording=1;
+  for(tbl=0;tbl<pSub->pSrc->nSrc;tbl++)
+    SET_CURSOR_RECORDING(pParse, pSub->pSrc->a[tbl].iCursor);
+}
 /*
 ** This routine attempts to flatten subqueries as a performance optimization.
 ** This routine returns 1 if it makes changes and 0 if no flattening occurs.
@@ -3793,6 +3801,8 @@ static int flattenSubquery(
     p->pLimit = 0;
     p->pOffset = 0;
     pNew = sqlite3SelectDup(db, p, 0);
+    if (p->recording)
+      _set_src_recording(pParse, pSub);
     sqlite3SelectSetName(pNew, pSub->zSelName);
     p->pOffset = pOffset;
     p->pLimit = pLimit;
@@ -3817,6 +3827,9 @@ static int flattenSubquery(
   ** in the outer query.
   */
   pSub = pSub1 = pSubitem->pSelect;
+
+  if (p->recording)
+    _set_src_recording(pParse, pSub);
 
   /* Delete the transient table structure associated with the
   ** subquery
