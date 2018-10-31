@@ -229,7 +229,6 @@ int fdb_access_control_check(fdb_access_t *acc, const char *dbname,
     if (it && (it->type & type))
         return 0;
 
-fail:
     access_violations++;
     return -1;
 }

@@ -245,7 +245,6 @@ static int db_send(Lua L) {
     FILE *f;
     char buf[1024];
     int rownum = 1;
-    char *s;
     char *cmd;
 
     if (!lua_isstring(L, 1))

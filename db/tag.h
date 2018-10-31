@@ -80,8 +80,8 @@ struct dbtag {
     LISTC_T(struct schema) taglist;
 };
 
-int lock_taglock(void);
-int unlock_taglock(void);
+void lock_taglock(void);
+void unlock_taglock(void);
 
 /* sql_record.flags */
 enum {

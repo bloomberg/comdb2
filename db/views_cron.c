@@ -56,8 +56,8 @@ cron_sched_t *cron_add_event(cron_sched_t *sched, const char *name, int epoch,
         }
         created = 1;
 
-        pthread_mutex_init(&sched->mtx, NULL);
-        pthread_cond_init(&sched->cond, NULL);
+        Pthread_mutex_init(&sched->mtx, NULL);
+        Pthread_cond_init(&sched->cond, NULL);
         listc_init(&sched->events, offsetof(struct cron_event, lnk));
         if (name) {
             sched->name = strdup(name);
@@ -75,15 +75,15 @@ cron_sched_t *cron_add_event(cron_sched_t *sched, const char *name, int epoch,
         }
     }
 
-    pthread_mutex_lock(&sched->mtx);
+    Pthread_mutex_lock(&sched->mtx);
 
     rc = _queue_event(sched, epoch, func, arg1, arg2, arg3, source_id, err);
     if (rc != VIEW_NOERR) {
-        pthread_mutex_unlock(&sched->mtx);
+        Pthread_mutex_unlock(&sched->mtx);
         goto error;
     }
 
-    pthread_mutex_unlock(&sched->mtx);
+    Pthread_mutex_unlock(&sched->mtx);
 
     return sched;
 
@@ -93,7 +93,7 @@ error:
         if (sched->name)
             free(sched->name);
         pthread_cond_destroy(&sched->cond);
-        pthread_mutex_destroy(&sched->mtx);
+        Pthread_mutex_destroy(&sched->mtx);
         free(sched);
         sched = NULL;
     }
@@ -151,7 +151,7 @@ static void _insert_ordered_event(cron_sched_t * sched, cron_event_t *event)
     if (sched->events.top == event) {
         /* new event at the top of the list,
            notify cron to pick up the event */
-        pthread_cond_signal(&sched->cond);
+        Pthread_cond_signal(&sched->cond);
     }
 }
 
@@ -223,7 +223,7 @@ static void *_cron_runner(void *arg)
 
     locked = 0;
     while (!gbl_exit && !db_is_stopped()) {
-        pthread_mutex_lock(&sched->mtx);
+        Pthread_mutex_lock(&sched->mtx);
         locked = 1;
 
         clock_gettime(CLOCK_REALTIME, &now);
@@ -245,11 +245,11 @@ static void *_cron_runner(void *arg)
                    We mark the cron job as working, to exclude access to top
                    event to any other thread !!!
                    */
-                sched->running = 1;     
-                pthread_mutex_unlock(&sched->mtx);
+                sched->running = 1;
+                Pthread_mutex_unlock(&sched->mtx);
                 event->func(event->source_id, event->arg1, event->arg2, event->arg3,
                             &xerr);
-                pthread_mutex_lock(&sched->mtx);
+                Pthread_mutex_lock(&sched->mtx);
                 sched->running = 0;
 
                 if (xerr.errval)
@@ -278,12 +278,12 @@ static void *_cron_runner(void *arg)
             break;
         }
 
-        pthread_mutex_unlock(&sched->mtx);
+        Pthread_mutex_unlock(&sched->mtx);
         locked = 0;
     }
 
     if (locked) {
-        pthread_mutex_unlock(&sched->mtx);
+        Pthread_mutex_unlock(&sched->mtx);
     }
 
     logmsg(LOGMSG_DEBUG, "Exiting cron job for %s\n", sched->name);
@@ -296,11 +296,11 @@ static void *_cron_runner(void *arg)
  */
 void cron_signal_worker(cron_sched_t *sched)
 {
-    pthread_mutex_lock(&sched->mtx);
+    Pthread_mutex_lock(&sched->mtx);
 
-    pthread_cond_signal(&sched->cond);
+    Pthread_cond_signal(&sched->cond);
 
-    pthread_mutex_unlock(&sched->mtx);
+    Pthread_mutex_unlock(&sched->mtx);
 }
 
 /**
@@ -361,7 +361,7 @@ void cron_lock(cron_sched_t *sched)
 {
     struct timespec now;
 
-    pthread_mutex_lock(&sched->mtx);
+    Pthread_mutex_lock(&sched->mtx);
 
     while (sched->running) {
         clock_gettime(CLOCK_REALTIME, &now);
@@ -372,7 +372,7 @@ void cron_lock(cron_sched_t *sched)
 
 void cron_unlock(cron_sched_t *sched)
 {
-    pthread_mutex_unlock(&sched->mtx);
+    Pthread_mutex_unlock(&sched->mtx);
 }
 
 /**

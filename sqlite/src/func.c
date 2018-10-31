@@ -802,7 +802,6 @@ static void partitionInfoFunc(
   int argc,
   sqlite3_value **argv
 ){
-  sqlite3      *db = sqlite3_context_db_handle(context);
   const char   *partition_name;
   const char   *option;
   char         *info;

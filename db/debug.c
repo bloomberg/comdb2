@@ -25,11 +25,11 @@
 #include "comdb2.h"
 #include "tag.h"
 #include "net.h"
-
 #include "nodemap.h"
 #include "logmsg.h"
+#include <intern_strings.h>
+#include <compat.h>
 
-void tcmtest_routecpu_set_down_node(int n);
 int osql_disable_net_test(void);
 int osql_enable_net_test(int testnum);
 
@@ -77,17 +77,16 @@ static void nettest_usage(void)
     logmsg(LOGMSG_USER, "\n");
 }
 
+char *tcmtest_routecpu_down_node;
+
 /* parse debug trap */
 void debug_trap(char *line, int lline)
 {
     char table[MAXTABLELEN];
     char tag[MAXTAGLEN];
-    int i;
-    int rc;
     int st = 0;
     char *tok;
     int ltok;
-    int newvers;
 
     tok = segtok(line, lline, &st, &ltok);
     if (tokcmp(tok, ltok, "delsc") == 0) {
@@ -120,16 +119,24 @@ void debug_trap(char *line, int lline)
             if (ltok <= 0) {
                 logmsg(LOGMSG_ERROR, 
                         "routecpu command requires a node to route-off argument\n");
-            } else {
-                int node = toknum(tok, ltok);
-                if (node > 0) {
-                    tcmtest_routecpu_set_down_node(node);
-                    logmsg(LOGMSG_USER, "enabled routecpu test for node %d\n", node);
-                } else {
-                    tcmtest_routecpu_set_down_node(0);
-                    logmsg(LOGMSG_USER, "disabled routecpu test\n");
-                }
+                return;
             }
+            char *tmphost = tokdup(tok, ltok);
+            char *host = NULL;
+            char *end = NULL;
+            int node = strtol(tmphost, &end, 10);
+            if (*end == 0) { /* consumed entire token */
+                if (node > 0) {
+                    host = hostname(node);
+                }
+            } else {
+                host = intern(tmphost);
+            }
+            free(tmphost);
+            logmsg(LOGMSG_USER, "%s routecpu test for node %s\n",
+                   host ? "enable" : "disable",
+                   host ? host : tcmtest_routecpu_down_node);
+            tcmtest_routecpu_down_node = host;
         }
         /* netdebug tests */
         else if (tokcmp(tok, ltok, "nettest") == 0) {

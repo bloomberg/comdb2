@@ -260,7 +260,6 @@ int bdb_apprec(DB_ENV *dbenv, DBT *log_rec, DB_LSN *lsn, db_recops op)
         if (rc)
             return rc;
         logp = blkseq;
-        int start, end;
         rc = bdb_blkseq_recover(dbenv, rectype, blkseq, lsn, op);
         break;
 

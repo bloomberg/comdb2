@@ -247,11 +247,11 @@ if [[ -z "$cr" ]] && [[ -n "${SECONDARY_DB}" ]] ; then
     cr=`find_cores ${SECONDARY_DB} ${SECONDARY_DBDIR}`
 fi
 
-CHECK_DB_AT_FINISH=${CHECK_DB_AT_FINISH:-1}
+CHECK_DB_AT_FINISH=${CHECK_DB_AT_FINISH:-0}
 if [ $CHECK_DB_AT_FINISH -eq 1 ] ; then
-    bdown=`check_db_at_finish ${SECONDARY_DB} ${SECONDARY_DBDIR} $SECONDARY_DB_CDB2_CONFIG`
+    dbdown=`check_db_at_finish ${SECONDARY_DB} ${SECONDARY_DBDIR} $SECONDARY_DB_CDB2_CONFIG`
     if [[ -z "$dbdown" ]] && [[ -n "${SECONDARY_DB}" ]]; then
-        bdown=`check_db_at_finish ${SECONDARY_DB} ${SECONDARY_DBDIR} $SECONDARY_DB_CDB2_CONFIG`
+        dbdown=`check_db_at_finish ${SECONDARY_DB} ${SECONDARY_DBDIR} $SECONDARY_DB_CDB2_CONFIG`
     fi
 fi
 
@@ -260,7 +260,7 @@ fi
 if [[ -n "$cr" ]] ; then
     echo "!$TESTCASE: failed with core dumped ($cr)"
     echo "!$TESTCASE: failed with core dumped ($cr)" >> ${TESTDIR}/test.log
-elif [[ $rc -eq 124 ]] ; then
+elif [[ -n "$dbdown" ]] ; then
     echo "!$TESTCASE: db was unavailable at finish ($dbdown logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: db was unavailable at finish ($dbdown)" >> ${TESTDIR}/test.log
 elif [[ $rc -eq 124 ]] ; then

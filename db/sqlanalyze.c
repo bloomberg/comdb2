@@ -299,10 +299,10 @@ static void *sampling_thread(void *arg)
     }
 
     /* release the thread */
-    pthread_mutex_lock(&comp_thd_mutex);
+    Pthread_mutex_lock(&comp_thd_mutex);
     analyze_cur_comp_threads--;
-    pthread_cond_broadcast(&comp_thd_cond);
-    pthread_mutex_unlock(&comp_thd_mutex);
+    Pthread_cond_broadcast(&comp_thd_cond);
+    Pthread_mutex_unlock(&comp_thd_mutex);
 
     /* cleanup */
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
@@ -314,18 +314,18 @@ static void *sampling_thread(void *arg)
 static int dispatch_sample_index_thread(index_descriptor_t *ix_des)
 {
     /* grab lock */
-    pthread_mutex_lock(&comp_thd_mutex);
+    Pthread_mutex_lock(&comp_thd_mutex);
 
     /* wait for sampling thread availability */
     while (analyze_cur_comp_threads >= analyze_max_comp_threads) {
-        pthread_cond_wait(&comp_thd_cond, &comp_thd_mutex);
+        Pthread_cond_wait(&comp_thd_cond, &comp_thd_mutex);
     }
 
     /* grab sampling thread */
     analyze_cur_comp_threads++;
 
     /* release */
-    pthread_mutex_unlock(&comp_thd_mutex);
+    Pthread_mutex_unlock(&comp_thd_mutex);
 
     /* dispatch */
     int rc = pthread_create(&ix_des->thread_id, &gbl_pthread_attr_detached,
@@ -339,16 +339,16 @@ static int dispatch_sample_index_thread(index_descriptor_t *ix_des)
 static int wait_for_index(index_descriptor_t *ix_des)
 {
     /* lock index mutex */
-    pthread_mutex_lock(&comp_thd_mutex);
+    Pthread_mutex_lock(&comp_thd_mutex);
 
     /* wait for the state to change */
     while (ix_des->comp_state == SAMPLING_STARTUP ||
            ix_des->comp_state == SAMPLING_RUNNING) {
-        pthread_cond_wait(&comp_thd_cond, &comp_thd_mutex);
+        Pthread_cond_wait(&comp_thd_cond, &comp_thd_mutex);
     }
 
     /* release */
-    pthread_mutex_unlock(&comp_thd_mutex);
+    Pthread_mutex_unlock(&comp_thd_mutex);
 
     return 0;
 }
@@ -886,10 +886,10 @@ static void *table_thread(void *arg)
     }
 
     /* release thread */
-    pthread_mutex_lock(&table_thd_mutex);
+    Pthread_mutex_lock(&table_thd_mutex);
     analyze_cur_table_threads--;
-    pthread_cond_broadcast(&table_thd_cond);
-    pthread_mutex_unlock(&table_thd_mutex);
+    Pthread_cond_broadcast(&table_thd_cond);
+    Pthread_mutex_unlock(&table_thd_mutex);
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
 
     thread_memdestroy();
@@ -903,18 +903,18 @@ static int dispatch_table_thread(table_descriptor_t *td)
 {
     int rc;
     /* grab lock */
-    pthread_mutex_lock(&table_thd_mutex);
+    Pthread_mutex_lock(&table_thd_mutex);
 
     /* wait for thread availability */
     while (analyze_cur_table_threads >= analyze_max_table_threads) {
-        pthread_cond_wait(&table_thd_cond, &table_thd_mutex);
+        Pthread_cond_wait(&table_thd_cond, &table_thd_mutex);
     }
 
     /* grab table thread */
     analyze_cur_table_threads++;
 
     /* release */
-    pthread_mutex_unlock(&table_thd_mutex);
+    Pthread_mutex_unlock(&table_thd_mutex);
 
     /* dispatch */
     rc = pthread_create(&td->thread_id, &gbl_pthread_attr_detached,
@@ -928,16 +928,16 @@ static int dispatch_table_thread(table_descriptor_t *td)
 static int wait_for_table(table_descriptor_t *td)
 {
     /* lock table mutex */
-    pthread_mutex_lock(&table_thd_mutex);
+    Pthread_mutex_lock(&table_thd_mutex);
 
     /* wait for the state to change */
     while (td->table_state == TABLE_STARTUP ||
            td->table_state == TABLE_RUNNING) {
-        pthread_cond_wait(&table_thd_cond, &table_thd_mutex);
+        Pthread_cond_wait(&table_thd_cond, &table_thd_mutex);
     }
 
     /* release */
-    pthread_mutex_unlock(&table_thd_mutex);
+    Pthread_mutex_unlock(&table_thd_mutex);
 
     int rc = 0;
     if (TABLE_COMPLETE == td->table_state) {

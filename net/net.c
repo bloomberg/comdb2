@@ -70,7 +70,7 @@
 #include <plhash.h>
 #include <assert.h>
 
-#include "locks.h"
+#include "locks_wrap.h"
 #include "net.h"
 #include "net_int.h"
 
@@ -504,7 +504,7 @@ static void close_hostnode_ll(host_node_type *host_node_ptr)
         shutdown_hostnode_socket(host_node_ptr);
 
         /* wake up the writer thread if it's asleep */
-        pthread_cond_signal(&(host_node_ptr->write_wakeup));
+        Pthread_cond_signal(&(host_node_ptr->write_wakeup));
 
         /* call the hostdown routine if provided */
         if (host_node_ptr->netinfo_ptr->hostdown_rtn) {
@@ -1263,7 +1263,7 @@ static int write_message_int(netinfo_type *netinfo_ptr,
 
     /* wake up the writer thread */
     if (flags & WRITE_MSG_NODELAY)
-        pthread_cond_signal(&(host_node_ptr->write_wakeup));
+        Pthread_cond_signal(&(host_node_ptr->write_wakeup));
 
     return 0;
 }
@@ -1882,9 +1882,10 @@ int net_send_message_payload_ack(netinfo_type *netinfo_ptr, const char *to_host,
             remove_seqnum_from_waitlist(host_node_ptr, (void**) payloadptr,
                                         payloadlen, seq_ptr->seqnum);
             Pthread_mutex_unlock(&(host_node_ptr->wait_mutex));
-            logmsg(LOGMSG_ERROR, "net_send_message: host %s, "
-                            "got rc = %d from pthread_cond_wait\n",
-                    host_node_ptr->host, rc);
+            logmsg(LOGMSG_ERROR,
+                   "net_send_message: host %s, "
+                   "got rc = %d from pthread_cond_timedwait\n",
+                   host_node_ptr->host, rc);
 
             rc = NET_SEND_FAIL_INTERNAL;
             goto end;
@@ -2663,26 +2664,9 @@ static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
     ptr->wait_list = NULL;
     ptr->distress = 0;
 
-    int rc = pthread_mutex_init(&(ptr->lock), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: couldn't init lock for node %s\n", __func__,
-                ptr->host);
-        goto err;
-    }
-
-    rc = pthread_mutex_init(&(ptr->pool_lock), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: couldn't init pool_lock for node %s\n", __func__,
-                ptr->host);
-        goto err;
-    }
-
-    rc = pthread_mutex_init(&(ptr->timestamp_lock), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: couldn't init timestamp_lock for node %s\n",
-                __func__, ptr->host);
-        goto err;
-    }
+    Pthread_mutex_init(&(ptr->lock), NULL);
+    Pthread_mutex_init(&(ptr->pool_lock), NULL);
+    Pthread_mutex_init(&(ptr->timestamp_lock), NULL);
 
     ptr->user_data_buf = malloc(netinfo_ptr->user_data_buf_size);
 
@@ -2707,54 +2691,19 @@ static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
     }
 #endif /* !PER_THREAD_MALLOC */
 
-    rc = pthread_mutex_init(&(ptr->write_lock), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: couldn't init write_lock for node %s\n", __func__,
-                ptr->host);
-        goto err;
-    }
-    rc = pthread_mutex_init(&(ptr->enquelk), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: couldn't init enquelk for node %s\n", __func__,
-                ptr->host);
-        goto err;
-    }
+    Pthread_mutex_init(&(ptr->write_lock), NULL);
+    Pthread_mutex_init(&(ptr->enquelk), NULL);
 
     ptr->enque_count = 0;
     ptr->enque_bytes = 0;
 
-    rc = pthread_mutex_init(&(ptr->wait_mutex), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: couldn't init wait_mutex for node %s\n", __func__,
-                ptr->host);
-        goto err;
-    }
+    Pthread_mutex_init(&(ptr->wait_mutex), NULL);
 
-    rc = pthread_mutex_init(&(ptr->throttle_lock), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: couldn't init throttle_lock for node %s\n",
-                __func__, ptr->host);
-        goto err;
-    }
+    Pthread_mutex_init(&(ptr->throttle_lock), NULL);
 
-    rc = pthread_cond_init(&(ptr->ack_wakeup), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: couldn't init ack_wakeup for node %s\n", __func__,
-                ptr->host);
-        goto err;
-    }
-    rc = pthread_cond_init(&(ptr->write_wakeup), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: couldn't init write_wakeup for node %s\n",
-                __func__, ptr->host);
-        goto err;
-    }
-    rc = pthread_cond_init(&(ptr->throttle_wakeup), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: couldn't init throttle_wakeup for node %s\n",
-                __func__, hostname);
-        goto err;
-    }
+    Pthread_cond_init(&(ptr->ack_wakeup), NULL);
+    Pthread_cond_init(&(ptr->write_wakeup), NULL);
+    Pthread_cond_init(&(ptr->throttle_wakeup), NULL);
 
     if (netinfo_ptr->qstat_init_rtn) {
         ptr->qstat = (netinfo_ptr->qstat_init_rtn)(
@@ -2868,13 +2817,13 @@ static void rem_from_netinfo_ll(netinfo_type *netinfo_ptr,
                host_node_ptr->have_writer_thread);
     }
     Pthread_mutex_unlock(&(host_node_ptr->lock));
-    pthread_mutex_destroy(&(host_node_ptr->lock));
-    pthread_mutex_destroy(&(host_node_ptr->timestamp_lock));
-    pthread_mutex_destroy(&(host_node_ptr->pool_lock));
-    pthread_mutex_destroy(&(host_node_ptr->write_lock));
-    pthread_mutex_destroy(&(host_node_ptr->enquelk));
-    pthread_mutex_destroy(&(host_node_ptr->wait_mutex));
-    pthread_mutex_destroy(&(host_node_ptr->throttle_lock));
+    Pthread_mutex_destroy(&(host_node_ptr->lock));
+    Pthread_mutex_destroy(&(host_node_ptr->timestamp_lock));
+    Pthread_mutex_destroy(&(host_node_ptr->pool_lock));
+    Pthread_mutex_destroy(&(host_node_ptr->write_lock));
+    Pthread_mutex_destroy(&(host_node_ptr->enquelk));
+    Pthread_mutex_destroy(&(host_node_ptr->wait_mutex));
+    Pthread_mutex_destroy(&(host_node_ptr->throttle_lock));
 
     pthread_cond_destroy(&(host_node_ptr->ack_wakeup));
     pthread_cond_destroy(&(host_node_ptr->write_wakeup));
@@ -3338,11 +3287,7 @@ static netinfo_type *create_netinfo_int(char myhostname[], int myportnum,
         exit(1);
     }
 
-    rc = pthread_mutex_init(&(netinfo_ptr->connlk), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "create_netinfo: couldn't init conn mutex\n");
-        goto fail;
-    }
+    Pthread_mutex_init(&(netinfo_ptr->connlk), NULL);
 
     netinfo_ptr->connpool =
         pool_setalloc_init(sizeof(connect_and_accept_t), 0, malloc, free);
@@ -3351,28 +3296,10 @@ static netinfo_type *create_netinfo_int(char myhostname[], int myportnum,
         goto fail;
     }
 
-    rc = pthread_rwlock_init(&(netinfo_ptr->lock), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "create_netinfo: couldn't init netinfo lock \n");
-        goto fail;
-    }
-    rc = pthread_mutex_init(&(netinfo_ptr->seqlock), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "create_netinfo: couldn't init seqlock mutex\n");
-        goto fail;
-    }
-
-    rc = pthread_mutex_init(&(netinfo_ptr->watchlk), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "create_netinfo: couldn't init watchlk mutex\n");
-        goto fail;
-    }
-
-    rc = pthread_mutex_init(&(netinfo_ptr->sanclk), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "create_netinfo: couldn't init sanclk mutex\n");
-        goto fail;
-    }
+    Pthread_rwlock_init(&(netinfo_ptr->lock), NULL);
+    Pthread_mutex_init(&(netinfo_ptr->seqlock), NULL);
+    Pthread_mutex_init(&(netinfo_ptr->watchlk), NULL);
+    Pthread_mutex_init(&(netinfo_ptr->sanclk), NULL);
 
     netinfo_ptr->pool_size = 512;
     netinfo_ptr->pool_extend = 1024;
@@ -3762,7 +3689,7 @@ static int process_payload_ack(netinfo_type *netinfo_ptr,
         ptr->payload = payload;
         ptr->payloadlen = p_net_ack_message_payload.paylen;
         ptr->ack = 1;
-        pthread_cond_broadcast(&(host_node_ptr->ack_wakeup));
+        Pthread_cond_broadcast(&(host_node_ptr->ack_wakeup));
     }
 
     Pthread_mutex_unlock(&(host_node_ptr->wait_mutex));
@@ -3802,7 +3729,7 @@ static int process_ack(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
     if (ptr != NULL) {
         ptr->outrc = outrc;
         ptr->ack = 1;
-        pthread_cond_broadcast(&(host_node_ptr->ack_wakeup));
+        Pthread_cond_broadcast(&(host_node_ptr->ack_wakeup));
     }
 
     Pthread_mutex_unlock(&(host_node_ptr->wait_mutex));
@@ -4297,7 +4224,7 @@ static void *writer_thread(void *args)
             /* release this before writing to sock*/
             Pthread_mutex_unlock(&(host_node_ptr->enquelk));
 
-            pthread_cond_broadcast(&(host_node_ptr->throttle_wakeup));
+            Pthread_cond_broadcast(&(host_node_ptr->throttle_wakeup));
 
             rc = 0;
             flags = 0;
@@ -4420,7 +4347,7 @@ static void *writer_thread(void *args)
                                &(host_node_ptr->enquelk), &waittime);
 
         /*
-           pthread_cond_wait(&(host_node_ptr->write_wakeup),
+           Pthread_cond_wait(&(host_node_ptr->write_wakeup),
            &(host_node_ptr->enquelk));
          */
 
@@ -4735,20 +4662,20 @@ out:
 void net_subnet_status()
 {
     int i = 0;
-    pthread_mutex_lock(&subnet_mtx);
+    Pthread_mutex_lock(&subnet_mtx);
     for (i = 0; i < num_dedicated_subnets; i++) {
         logmsg(LOGMSG_USER, "Subnet %s %s%s%s", subnet_suffices[i],
                subnet_disabled[i] ? "disabled" : "enabled\n",
                subnet_disabled[i] ? " at " : "",
                subnet_disabled[i] ? ctime(&subnet_disabled[i]) : "");
     }
-    pthread_mutex_unlock(&subnet_mtx);
+    Pthread_mutex_unlock(&subnet_mtx);
 }
 
 void net_set_bad_subnet(const char *subnet)
 {
     int i = 0;
-    pthread_mutex_lock(&subnet_mtx);
+    Pthread_mutex_lock(&subnet_mtx);
     for (i = 0; i < num_dedicated_subnets; i++) {
         if (subnet_suffices[i][0] &&
             strncmp(subnet, subnet_suffices[i], strlen(subnet) + 1) == 0) {
@@ -4762,14 +4689,14 @@ void net_set_bad_subnet(const char *subnet)
                        last_bad_subnet_idx, last_bad_subnet_time);
         }
     }
-    pthread_mutex_unlock(&subnet_mtx);
+    Pthread_mutex_unlock(&subnet_mtx);
 }
 
 void net_clipper(const char *subnet, int is_disable)
 {
     int i = 0;
     time_t now;
-    pthread_mutex_lock(&subnet_mtx);
+    Pthread_mutex_lock(&subnet_mtx);
     for (i = 0; i < num_dedicated_subnets; i++) {
         if (subnet_suffices[i][0] &&
             strncmp(subnet, subnet_suffices[i], strlen(subnet) + 1) == 0) {
@@ -4791,14 +4718,14 @@ void net_clipper(const char *subnet, int is_disable)
             }
         }
     }
-    pthread_mutex_unlock(&subnet_mtx);
+    Pthread_mutex_unlock(&subnet_mtx);
 }
 
 int net_subnet_disabled(const char *subnet)
 {
     int i = 0;
     int rc = 0;
-    pthread_mutex_lock(&subnet_mtx);
+    Pthread_mutex_lock(&subnet_mtx);
     for (i = 0; i < num_dedicated_subnets; i++) {
         if (subnet_suffices[i][0] &&
             strncmp(subnet, subnet_suffices[i], strlen(subnet) + 1) == 0) {
@@ -4806,7 +4733,7 @@ int net_subnet_disabled(const char *subnet)
             break;
         }
     }
-    pthread_mutex_unlock(&subnet_mtx);
+    Pthread_mutex_unlock(&subnet_mtx);
     return rc;
 }
 
@@ -4815,10 +4742,10 @@ int net_add_nondedicated_subnet(void *context, void *value)
     // increment num_dedicated_subnets only once for non dedicated subnet
     if (0 == _non_dedicated_subnet) {
         _non_dedicated_subnet = 1;
-        pthread_mutex_lock(&subnet_mtx);
+        Pthread_mutex_lock(&subnet_mtx);
         subnet_suffices[num_dedicated_subnets] = strdup("");
         num_dedicated_subnets++;
-        pthread_mutex_unlock(&subnet_mtx);
+        Pthread_mutex_unlock(&subnet_mtx);
     }
     return 0;
 }
@@ -4829,30 +4756,30 @@ int net_add_to_subnets(const char *suffix, const char *lrlname)
     printf("net_add_to_subnets subnet '%s'\n", suffix);
 #endif
 
-    pthread_mutex_lock(&subnet_mtx);
+    Pthread_mutex_lock(&subnet_mtx);
     if (num_dedicated_subnets >= MAXSUBNETS) {
         logmsg(LOGMSG_ERROR, "too many subnet suffices (max=%d) in lrl %s\n",
                MAXSUBNETS, lrlname);
-        pthread_mutex_unlock(&subnet_mtx);
+        Pthread_mutex_unlock(&subnet_mtx);
         return -1;
     }
     subnet_suffices[num_dedicated_subnets] = strdup(suffix);
     num_dedicated_subnets++;
-    pthread_mutex_unlock(&subnet_mtx);
+    Pthread_mutex_unlock(&subnet_mtx);
     return 0;
 }
 
 
 void net_cleanup_subnets()
 {
-    pthread_mutex_lock(&subnet_mtx);
+    Pthread_mutex_lock(&subnet_mtx);
     for (uint8_t i = 0; i < num_dedicated_subnets; i++) {
         if (subnet_suffices[i]) {
             free(subnet_suffices[i]);
             subnet_suffices[i] = NULL;
         }
     }
-    pthread_mutex_unlock(&subnet_mtx);
+    Pthread_mutex_unlock(&subnet_mtx);
 }
 
 /* Dedicated subnets are specified in the lrl file:
@@ -4867,14 +4794,14 @@ static int get_dedicated_conhost(host_node_type *host_node_ptr, struct in_addr *
     static unsigned int counter = 0xffff;
     uint8_t ii = 0; // do the loop no more that max subnets
 
-    pthread_mutex_lock(&subnet_mtx);
+    Pthread_mutex_lock(&subnet_mtx);
     if (num_dedicated_subnets == 0) {
 #ifdef DEBUG
         host_node_printf(LOGMSG_USER, host_node_ptr,
                          "Connecting to default hostname/subnet '%s'\n",
                          host_node_ptr->host);
 #endif
-        pthread_mutex_unlock(&subnet_mtx);
+        Pthread_mutex_unlock(&subnet_mtx);
         return comdb2_gethostbyname(&host_node_ptr->host, addr);
     }
 
@@ -4929,7 +4856,7 @@ static int get_dedicated_conhost(host_node_type *host_node_ptr, struct in_addr *
             break;
         }
     }
-    pthread_mutex_unlock(&subnet_mtx);
+    Pthread_mutex_unlock(&subnet_mtx);
     return rc;
 }
 
@@ -5209,7 +5136,7 @@ static void *connect_thread(void *arg)
             netinfo_ptr->new_node_rtn(netinfo_ptr, host_node_ptr->host, host_node_ptr->port);
 
         /* wake writer, if exists */
-        pthread_cond_signal(&(host_node_ptr->write_wakeup));
+        Pthread_cond_signal(&(host_node_ptr->write_wakeup));
         Pthread_mutex_unlock(&(host_node_ptr->write_lock));
 
         if (gbl_verbose_net)
@@ -5255,13 +5182,13 @@ static void *connect_thread(void *arg)
         Pthread_mutex_lock(&(host_node_ptr->throttle_lock));
         ref += host_node_ptr->throttle_waiters;
         if (host_node_ptr->throttle_waiters > 0)
-            pthread_cond_broadcast(&(host_node_ptr->throttle_wakeup));
+            Pthread_cond_broadcast(&(host_node_ptr->throttle_wakeup));
         Pthread_mutex_unlock(&(host_node_ptr->throttle_lock));
 
         if (ref == 0)
             break;
 
-        pthread_cond_signal(&(host_node_ptr->write_wakeup));
+        Pthread_cond_signal(&(host_node_ptr->write_wakeup));
         poll(NULL, 0, 1000);
     }
 
@@ -6156,7 +6083,7 @@ void net_end_appsock(SBUF2 *sb)
         netinfo_ptr = watchlist_node->netinfo_ptr;
 
         /* remove from the watch list, if it's on there */
-        pthread_mutex_lock(&(netinfo_ptr->watchlk));
+        Pthread_mutex_lock(&(netinfo_ptr->watchlk));
         if (watchlist_node->in_watchlist) {
             listc_rfl(&(netinfo_ptr->watchlist), watchlist_node);
         }
@@ -6166,7 +6093,7 @@ void net_end_appsock(SBUF2 *sb)
         sbuf2setrw(sb, watchlist_node->readfn, watchlist_node->writefn);
 
         free(watchlist_node);
-        pthread_mutex_unlock(&(netinfo_ptr->watchlk));
+        Pthread_mutex_unlock(&(netinfo_ptr->watchlk));
     }
 
     sbuf2close(sb);
