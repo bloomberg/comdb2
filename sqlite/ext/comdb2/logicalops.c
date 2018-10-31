@@ -215,9 +215,15 @@ static int json_blob(char *buf, int len, struct schema *sc, int ix,
     assert(ix < sc->nmembers && ix >= 0);
     strbuf_appendf(ds, "{");
     f = &sc->member[ix];
-    strbuf_appendf(ds, "\"%s\":\"x", f->name);
-    strbuf_hex(ds, (void *)buf, len);
-    strbuf_appendf(ds, "\"}");
+    strbuf_appendf(ds, "\"%s\":", f->name);
+    if (buf) {
+        strbuf_appendf(ds, "\"x");
+        strbuf_hex(ds, (void *)buf, len);
+        strbuf_appendf(ds, "\"");
+    } else {
+        strbuf_appendf(ds, "NULL");
+    }
+    strbuf_appendf(ds, "}");
     return 0;
 }
 
@@ -561,13 +567,10 @@ static int produce_update_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
         rc = bdb_reconstruct_inplace_update(bdb_state, &rec->lsn, packedprevbuf,
                 &prevlen, packedbuf, &updlen, NULL, NULL, NULL);
     } else {
-        unsigned long long prevgenid, newgenid;
-        int prevgenidlen, newgenidlen;
         prevlen = updlen = PACKED_MEMORY_SIZE;
-        prevgenidlen = newgenidlen = sizeof(unsigned long long);
-        rc = bdb_reconstruct_update(bdb_state, &rec->lsn, &page, &index,
-                &prevgenid, &prevgenidlen, packedprevbuf, &prevlen, &newgenid,
-                &newgenidlen, packedbuf, &updlen);
+        rc = bdb_reconstruct_update(bdb_state, &rec->lsn, &page, &index, NULL,
+                                    NULL, packedprevbuf, &prevlen, NULL, NULL,
+                                    packedbuf, &updlen);
     }
 
     if (rc != 0) {
@@ -580,23 +583,53 @@ static int produce_update_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
     char *unpacked = retrieve_unpacked_memory(pCur);
     char *unpackedprev = retrieve_unpacked_memory_prev(pCur);
 
-    /* Decompress and upgrade new record to current version */
-    if ((rc = decompress_and_upgrade(pCur, pCur->table, packedbuf, updlen,
-                    dtafile == 0, unpacked, &pCur->odh, &pCur->record, &pCur->reclen)) != 0) {
-        logmsg(LOGMSG_ERROR, "%s line %d error %d reconstructing update for "
-                "%d:%d\n", __func__, __LINE__, rc, rec->lsn.file,
-                rec->lsn.offset);
-        goto done;
-    }
+    if (dtalen > 0) {
+        /* Decompress and upgrade new record to current version */
+        if ((rc = decompress_and_upgrade(pCur, pCur->table, packedbuf, updlen,
+                                         dtafile == 0, unpacked, &pCur->odh,
+                                         &pCur->record, &pCur->reclen)) != 0) {
+            logmsg(LOGMSG_ERROR,
+                   "%s line %d error %d reconstructing update for "
+                   "%d:%d\n",
+                   __func__, __LINE__, rc, rec->lsn.file, rec->lsn.offset);
+            goto done;
+        }
 
-    /* Decompress and upgrade prev record to current version */
-    if ((rc = decompress_and_upgrade(pCur, pCur->table, packedprevbuf, prevlen,
-                    dtafile == 0, unpackedprev, &pCur->oldodh, &pCur->oldrecord,
-                    &pCur->oldreclen)) != 0) {
-        logmsg(LOGMSG_ERROR, "%s line %d error %d reconstructing update for "
-                "%d:%d\n", __func__, __LINE__, rc, rec->lsn.file,
-                rec->lsn.offset);
-        goto done;
+        /* Decompress and upgrade prev record to current version */
+        if ((rc = decompress_and_upgrade(pCur, pCur->table, packedprevbuf,
+                                         prevlen, dtafile == 0, unpackedprev,
+                                         &pCur->oldodh, &pCur->oldrecord,
+                                         &pCur->oldreclen)) != 0) {
+            logmsg(LOGMSG_ERROR,
+                   "%s line %d error %d reconstructing update for "
+                   "%d:%d\n",
+                   __func__, __LINE__, rc, rec->lsn.file, rec->lsn.offset);
+            goto done;
+        }
+    } else if (0 == bdb_inplace_cmp_genids(pCur->db->handle, oldgenid, genid)) {
+        /* Decompress and upgrade new record to current version */
+        if ((rc = decompress_and_upgrade(pCur, pCur->table, packedbuf, updlen,
+                                         dtafile == 0, unpacked, &pCur->odh,
+                                         &pCur->record, &pCur->reclen)) != 0) {
+            logmsg(LOGMSG_ERROR,
+                   "%s line %d error %d reconstructing update for "
+                   "%d:%d\n",
+                   __func__, __LINE__, rc, rec->lsn.file, rec->lsn.offset);
+            goto done;
+        }
+        /* no old blob since old_dta_len == 0 */
+    } else {
+        /* packedprevbuf has the new blob */
+        if ((rc = decompress_and_upgrade(
+                 pCur, pCur->table, packedprevbuf, prevlen, dtafile == 0,
+                 unpacked, &pCur->odh, &pCur->record, &pCur->reclen)) != 0) {
+            logmsg(LOGMSG_ERROR,
+                   "%s line %d error %d reconstructing update for "
+                   "%d:%d\n",
+                   __func__, __LINE__, rc, rec->lsn.file, rec->lsn.offset);
+            goto done;
+        }
+        /* no old blob since old_dta_len == 0 */
     }
 
     if (dtafile == 0) {
@@ -1145,17 +1178,17 @@ static int logicalopsFilter(
 
   bzero(&pCur->llog_cur.minLsn, sizeof(pCur->llog_cur.minLsn));
   if( idxNum & 1 ){
-    const unsigned char *minLsn = sqlite3_value_text(argv[i++]);
-    if (minLsn && parse_lsn(minLsn, &pCur->llog_cur.minLsn)) {
-        return SQLITE_CONV_ERROR;
-    }
+      const unsigned char *minLsn = sqlite3_value_text(argv[i++]);
+      if (minLsn && parse_lsn(minLsn, &pCur->llog_cur.minLsn)) {
+          return SQLITE_CONV_ERROR;
+      }
   }
   bzero(&pCur->llog_cur.maxLsn, sizeof(pCur->llog_cur.maxLsn));
   if( idxNum & 2 ){
-    const unsigned char *maxLsn = sqlite3_value_text(argv[i++]);
-    if (maxLsn && parse_lsn(maxLsn, &pCur->llog_cur.maxLsn)) {
-        return SQLITE_CONV_ERROR;
-    }
+      const unsigned char *maxLsn = sqlite3_value_text(argv[i++]);
+      if (maxLsn && parse_lsn(maxLsn, &pCur->llog_cur.maxLsn)) {
+          return SQLITE_CONV_ERROR;
+      }
   }
   pCur->iRowid = 1;
   return SQLITE_OK;

@@ -936,6 +936,7 @@ int bdb_reconstruct_inplace_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
                 off = 0;
                 foundit = 1;
                 __os_free(bdb_state->dbenv, addrem_rec);
+                break;
             } else {
                 if (B_TYPE(kd) == B_OVERFLOW) {
                     if (LOG_SWAPPED()) {

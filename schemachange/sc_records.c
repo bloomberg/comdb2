@@ -2071,7 +2071,7 @@ static int reconstruct_blob_records(struct convert_record_data *data,
                 free_ptr = add_dta;
             }
 
-            /* Reconstruct the delete. */
+            /* Reconstruct the add. */
             if ((rc = bdb_reconstruct_add(
                      bdb_state, &rec->lsn, NULL, 0, data->blb_buf,
                      MAXBLOBLENGTH + ODH_SIZE, &dtalen, &ixlen)) != 0) {
@@ -2200,6 +2200,7 @@ static int reconstruct_blob_records(struct convert_record_data *data,
                            __func__, __LINE__, rc);
                     goto error;
                 }
+                /* no old blob since old_dta_len == 0 */
             } else {
                 /* old_blb_buf has the new blob */
                 if ((rc = unpack_blob_record(data, data->old_blb_buf, prevlen,
@@ -2208,6 +2209,7 @@ static int reconstruct_blob_records(struct convert_record_data *data,
                            __func__, __LINE__, rc);
                     goto error;
                 }
+                /* no old blob since old_dta_len == 0 */
             }
             break;
         default:
