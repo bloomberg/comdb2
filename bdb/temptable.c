@@ -123,7 +123,6 @@ struct temp_table {
     char filename[512];
     int tblid;
     unsigned long long rowid;
-    int nRef;
 
     unsigned long long num_mem_entries;
     int max_mem_entries;
@@ -1181,18 +1180,6 @@ done:
 
     dbgtrace(3, "temp_table_truncate() = %d", rc);
     return rc;
-}
-
-int bdb_temp_add_ref(struct temp_table *tbl)
-{
-    if (tbl == NULL) return 0; /* prevent > 0 from being true */
-    return ++tbl->nRef;
-}
-
-int bdb_temp_rel_ref(struct temp_table *tbl)
-{
-    if (tbl == NULL) return 1; /* prevent <= 0 from being true */
-    return --tbl->nRef;
 }
 
 /* XXX todo - call bdb_temp_table_truncate() and put on a list at parent

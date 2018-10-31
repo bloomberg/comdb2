@@ -1137,9 +1137,6 @@ struct temp_table *bdb_temp_hashtable_create(bdb_state_type *bdb_state,
 struct temp_table *bdb_temp_table_create_flags(bdb_state_type *bdb_state,
                                                int flags, int *bdberr);
 
-int bdb_temp_add_ref(struct temp_table *tbl);
-int bdb_temp_rel_ref(struct temp_table *tbl);
-
 int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *table,
                          int *bdberr);
 
