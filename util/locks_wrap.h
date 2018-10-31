@@ -39,8 +39,8 @@
         logmsg(LOGMSG_USER, "%d pthread_mutex_init try (%d)  %s:%d\n",         \
                (int)pthread_self(), mutex_ptr, __FILE__, __LINE__);            \
         if (pthread_mutex_init(mutex_ptr, attr) != 0) {                        \
-            logmsg(LOGMSG_FATAL, "%d:%s:%d init failed\n",                     \
-                   (int)pthread_self(), __func__, __LINE__);                   \
+            /*logmsg(LOGMSG_FATAL, "%d:%s:%d init failed\n",*/                     \
+                   /*(int)pthread_self(), __func__, __LINE__);*/                   \
             /* abort(); */                                                     \
         }                                                                      \
         logmsg(LOGMSG_USER, "%d pthread_mutex_init got (%d)  %s:%d\n",         \
@@ -52,8 +52,8 @@
         logmsg(LOGMSG_USER, "%d pthread_mutex_destroy try (%d)  %s:%d\n",      \
                (int)pthread_self(), mutex_ptr, __FILE__, __LINE__);            \
         if (pthread_mutex_destroy(mutex_ptr) != 0) {                           \
-            logmsg(LOGMSG_FATAL, "%d:%s:%d init failed\n",                     \
-                   (int)pthread_self(), __func__, __LINE__);                   \
+            /*logmsg(LOGMSG_FATAL, "%d:%s:%d destroy failed\n",*/                  \
+                   /*(int)pthread_self(), __func__, __LINE__);*/                   \
             /* abort(); */                                                     \
         }                                                                      \
         logmsg(LOGMSG_USER, "%d pthread_mutex_destroy got (%d)  %s:%d\n",      \
@@ -65,8 +65,8 @@
         logmsg(LOGMSG_USER, "%d pthread_mutex_lock try (%d)  %s:%d\n",         \
                (int)pthread_self(), mutex_ptr, __FILE__, __LINE__);            \
         if (pthread_mutex_lock(mutex_ptr) != 0) {                              \
-            logmsg(LOGMSG_FATAL, "%d:%s:%d lock failed\n",                     \
-                   (int)pthread_self(), __func__, __LINE__);                   \
+            /*logmsg(LOGMSG_FATAL, "%d:%s:%d lock failed\n",*/                     \
+                   /*(int)pthread_self(), __func__, __LINE__);*/                   \
             /* abort(); */                                                     \
         }                                                                      \
         logmsg(LOGMSG_USER, "%d pthread_mutex_lock got (%d)  %s:%d\n",         \
