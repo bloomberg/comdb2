@@ -31,21 +31,21 @@
 #define Pthread_cond_wait pthread_cond_wait
 
 #ifdef LOCK_DEBUG
-#  define TRACE(STR, FUNC, OBJ) logmsg(LOGMSG_USER, "%s:%d " #STR " " #FUNC "(%p) thd:%p\n", __func__, __LINE__, OBJ, (void *)pthread_self())
+#  define LKDBG_TRACE(STR, FUNC, OBJ) logmsg(LOGMSG_USER, "%s:%d " #STR " " #FUNC "(%p) thd:%p\n", __func__, __LINE__, OBJ, (void *)pthread_self())
 #else
-#  define TRACE(...)
+#  define LKDBG_TRACE(...)
 #endif
 
 #define WRAP_PTHREAD(FUNC, OBJ, ...)                                           \
     do {                                                                       \
         int rc;                                                                \
-        TRACE(TRY, FUNC, OBJ);                                                 \
+        LKDBG_TRACE(TRY, FUNC, OBJ);                                           \
         if ((rc = FUNC(__VA_ARGS__)) != 0) {                                   \
             logmsg(LOGMSG_USER, "%s:%d " #FUNC "(%p) rc:%d thd:%p\n",          \
                    __func__, __LINE__, OBJ, rc, (void *)pthread_self());       \
             /*abort();*/                                                       \
         }                                                                      \
-        TRACE(GOT, FUNC, OBJ);                                                 \
+        LKDBG_TRACE(GOT, FUNC, OBJ);                                           \
     } while (0)
 
 #define Pthread_mutex_init(o, a)  WRAP_PTHREAD(pthread_mutex_init, o, o, a)
