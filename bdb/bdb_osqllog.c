@@ -4428,10 +4428,10 @@ static int create_logical_payload(bdb_llog_cursor *pCur, DB_LSN regop_lsn,
     DB_LOGC *logc;
     DB_LSN lsn;
 
-    if (rc = retrieve_start_lsn(data, rectype, &lsn))
+    if ((rc = retrieve_start_lsn(data, rectype, &lsn)) != 0)
         return rc;
 
-    if (rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0) != 0) {
+    if ((rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0)) != 0) {
         logmsg(LOGMSG_ERROR, "%s line %d cannot allocate log-cursor\n",
                __func__, __LINE__);
         return -1;
@@ -4439,10 +4439,12 @@ static int create_logical_payload(bdb_llog_cursor *pCur, DB_LSN regop_lsn,
 
     if ((pCur->log = parse_log_for_snapisol(bdb_state, logc, &lsn, 0,
                                             &bdberr)) == NULL) {
+#ifdef LOGICAL_LIVESC_DEBUG
         logmsg(LOGMSG_DEBUG,
                "%s line %d parse_log_for_shadows failed for "
                "%d:%d\n",
                __func__, __LINE__, lsn.file, lsn.offset);
+#endif
         logc->close(logc, 0);
         return 1;
     }
@@ -4459,8 +4461,8 @@ static int bdb_llog_cursor_move(bdb_llog_cursor *pCur)
 
 again:
     do {
-        if (rc = pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data,
-                                 pCur->getflags) != 0) {
+        if ((rc = pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data,
+                                  pCur->getflags)) != 0) {
             pCur->hitLast = 1;
         } else
             pCur->hitLast = 0;
@@ -4477,10 +4479,12 @@ again:
                                             rectype)) {
         /* Reconstructed logical log */
         case 0:
+#ifdef LOGICAL_LIVESC_DEBUG
             logmsg(LOGMSG_DEBUG,
                    "%s line %d couldn't create payload for %d:%d\n", __func__,
                    __LINE__, pCur->curLsn.file, pCur->curLsn.offset);
             assert(pCur->log != NULL);
+#endif
             break;
             /* Go to next */
         case 1:
