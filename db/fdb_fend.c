@@ -628,7 +628,8 @@ static int _table_exists(fdb_t *fdb, const char *table_name,
 
         /* ok, table exists, HURRAY!
            Is the table marked obsolete? */
-        if (table->need_version && table->version != (table->need_version-1)) {
+        if (table->need_version &&
+            table->version != (table->need_version - 1)) {
             *status = TABLE_STALE;
         } else {
             if (comdb2_get_verify_remote_schemas()) {
@@ -781,7 +782,7 @@ static int _add_table_and_stats_fdb(fdb_t *fdb, const char *table_name,
              * lock */
             if (remtbl) {
                 /* table is still around */
-                if ((remtbl->need_version-1) == remtbl->version) {
+                if ((remtbl->need_version - 1) == remtbl->version) {
                     /* table was fixed in the meantime!, drop exclusive lock */
                     rc = FDB_NOERR;
                     *version = remtbl->version;
@@ -789,10 +790,11 @@ static int _add_table_and_stats_fdb(fdb_t *fdb, const char *table_name,
                 } else {
                     /* table is still stale, remove */
                     if (gbl_fdb_track)
-                        logmsg(LOGMSG_USER, "Detected stale table \"%s.%s\" "
-                                            "version %llu required %d\n",
+                        logmsg(LOGMSG_USER,
+                               "Detected stale table \"%s.%s\" "
+                               "version %llu required %d\n",
                                remtbl->fdb->dbname, remtbl->name,
-                               remtbl->version, remtbl->need_version-1);
+                               remtbl->version, remtbl->need_version - 1);
 
                     if (__free_fdb_tbl(remtbl, fdb)) {
                         logmsg(LOGMSG_ERROR, "Error clearing schema for table "
