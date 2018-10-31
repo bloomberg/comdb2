@@ -1347,7 +1347,6 @@ static void exprAnalyze(
 
       pNew = sqlite3PExpr(pParse, pExpr->op, pLeft, pRight);
       transferJoinMarkings(pNew, pExpr);
-      transferJoinMarkings(pNew, pExpr);
       idxNew = whereClauseInsert(pWC, pNew, TERM_DYNAMIC);
       exprAnalyze(pSrc, pWC, idxNew);
     }
