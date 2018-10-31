@@ -3181,7 +3181,7 @@ int sqlite3BtreeClose(Btree *pBt)
                         goto done;
                     }
                 }
-                pTbl->tbl = NULL;
+                /* pTbl->tbl = NULL; */
                 free(pTbl->name);
                 /* pTbl->name = NULL; */
                 free(pTbl);
@@ -3911,7 +3911,7 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
                     rc = SQLITE_OK;
                 }
                 if (rc == SQLITE_OK) {
-                    pTbl->tbl = NULL;
+                    /* pTbl->tbl = NULL; */
                     free(pTbl->name);
                     /* pTbl->name = NULL; */
                     free(pTbl);
