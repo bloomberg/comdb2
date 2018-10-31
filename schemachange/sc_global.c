@@ -76,9 +76,6 @@ int log_sync_time_save;
 
 int stopsc = 0; /* stop schemachange, so it can resume */
 
-pthread_mutex_t sc_logical_redo_lwm_mtx = PTHREAD_MUTEX_INITIALIZER;
-volatile unsigned int sc_logical_redo_lwm = 0;
-
 inline int is_dta_being_rebuilt(struct scplan *plan)
 {
     if (!plan) return 1;
@@ -159,6 +156,7 @@ typedef struct {
     uint64_t seed;
     uint32_t host; /* crc32 of machine name */
     time_t time;
+    uint32_t logical_lwm;
     char mem[1];
 } sc_table_t;
 
@@ -248,10 +246,6 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
             hash_clear(sc_tables);
             hash_free(sc_tables);
             sc_tables = NULL;
-
-            Pthread_mutex_lock(&sc_logical_redo_lwm_mtx);
-            sc_logical_redo_lwm = 0;
-            Pthread_mutex_unlock(&sc_logical_redo_lwm_mtx);
         }
     }
     ctrace("sc_set_running(table=%s running=%d seed=0x%llx): "
@@ -399,19 +393,33 @@ int is_table_in_schema_change(const char *tbname, tran_type *tran)
     return 0;
 }
 
-void sc_set_logical_redo_lwm(unsigned int file)
+void sc_set_logical_redo_lwm(char *table, unsigned int file)
 {
-    Pthread_mutex_lock(&sc_logical_redo_lwm_mtx);
-    if (!sc_logical_redo_lwm || file < sc_logical_redo_lwm)
-        sc_logical_redo_lwm = file;
-    Pthread_mutex_unlock(&sc_logical_redo_lwm_mtx);
+    sc_table_t *sctbl = NULL;
+    Pthread_mutex_lock(&schema_change_in_progress_mutex);
+    assert(sc_tables);
+    sctbl = hash_find_readonly(sc_tables, &table);
+    assert(sctbl);
+    sctbl->logical_lwm = file;
+    Pthread_mutex_unlock(&schema_change_in_progress_mutex);
 }
 
 unsigned int sc_get_logical_redo_lwm()
 {
-    unsigned int lwm;
-    Pthread_mutex_lock(&sc_logical_redo_lwm_mtx);
-    lwm = sc_logical_redo_lwm;
-    Pthread_mutex_unlock(&sc_logical_redo_lwm_mtx);
+    unsigned int bkt;
+    void *ent;
+    sc_table_t *sctbl = NULL;
+    unsigned int lwm = 0;
+    if (!gbl_logical_live_sc)
+        return 0;
+    Pthread_mutex_lock(&schema_change_in_progress_mutex);
+    if (sc_tables)
+        sctbl = hash_first(sc_tables, &ent, &bkt);
+    while (gbl_schema_change_in_progress && sctbl) {
+        if (lwm == 0 || sctbl->logical_lwm < lwm)
+            lwm = sctbl->logical_lwm;
+        sctbl = hash_next(sc_tables, &ent, &bkt);
+    }
+    Pthread_mutex_unlock(&schema_change_in_progress_mutex);
     return lwm;
 }

@@ -76,7 +76,7 @@ void reset_sc_stat();
 int reload_lua();
 int replicant_reload_analyze_stats();
 
-void sc_set_logical_redo_lwm(unsigned int file);
+void sc_set_logical_redo_lwm(char *table, unsigned int file);
 unsigned int sc_get_logical_redo_lwm();
 
 #endif

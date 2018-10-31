@@ -945,7 +945,7 @@ static int convert_record(struct convert_record_data *data)
                 rc = RC_INTERNAL_RETRY;
             Pthread_mutex_unlock(&data->s->livesc_mtx);
             if (rc == RC_INTERNAL_RETRY) {
-                logmsg(LOGMSG_INFO,
+                logmsg(LOGMSG_DEBUG,
                        "%s: got DUP on genid %llx, stripe %d, waiting for "
                        "logical redo to catch up at [%u:%u]\n",
                        __func__, ngenid, data->stripe, now.file, now.offset);
@@ -1361,7 +1361,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
                 return -1;
             }
         }
-        sc_set_logical_redo_lwm(thdData->start_lsn.file);
+        sc_set_logical_redo_lwm(s->tablename, thdData->start_lsn.file);
         thdData->stripe = -1;
         sc_printf(s, "[%s] starting thread for logical live schema change\n",
                   s->tablename);
@@ -2914,7 +2914,7 @@ again:
             }
             data->nrecs--;
         } else
-            sc_set_logical_redo_lwm(pCur->curLsn.file);
+            sc_set_logical_redo_lwm(data->s->tablename, pCur->curLsn.file);
     }
 
 done:

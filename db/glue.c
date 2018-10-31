@@ -6044,7 +6044,6 @@ int ix_check_update_genid(struct ireq *iq, void *trans,
     int reqdtalen = 0;
     unsigned long long foundgenid = 0ULL;
     unsigned long long lastgenid = genid;
-    int lastrrn = 0;
     int fndrrn = 0;
     void *bdb_state = get_bdb_handle_ireq(iq, AUXDB_NONE);
 
