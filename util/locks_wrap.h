@@ -31,7 +31,7 @@
         if ((rc = FUNC(__VA_ARGS__)) != 0) {                                   \
             logmsg(LOGMSG_USER, "%s:%d " #FUNC "(%p) rc:%d thd:%p\n",          \
                    __func__, __LINE__, OBJ, rc, (void *)pthread_self());       \
-            /*abort();*/                                                       \
+            abort();                                                           \
         }                                                                      \
         LKDBG_TRACE(GOT, FUNC, OBJ);                                           \
     } while (0)
