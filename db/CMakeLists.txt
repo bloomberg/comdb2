@@ -27,7 +27,6 @@ set(src
   glue.c
   handle_buf.c
   history.c
-  llops.c
   localrep.c
   lrucache.c
   marshal.c
@@ -171,6 +170,7 @@ add_definitions(
 add_dependencies(comdb2 mem protobuf sqlite db bdb)
 
 target_link_libraries(comdb2
+  ${PLUGIN_LIBRARIES}
   schemachange
   bdb
   util
@@ -196,7 +196,6 @@ target_link_libraries(comdb2
   ${UNWIND_LIBRARY}
   ${UUID_LIBRARY}
   ${ZLIB_LIBRARIES}
-  ${PLUGIN_LIBRARIES}
   ${COMDB2_ROBO_LINK_FLAGS}
 )
 configure_file(copycomdb2 copycomdb2 @ONLY)

@@ -31,7 +31,9 @@
 
 typedef struct stored_proc *SP;
 typedef struct dbstmt_t dbstmt_t;
+typedef struct dbthread_t dbthread_t;
 typedef struct tmptbl_info_t tmptbl_info_t;
+
 struct stored_proc {
     Lua lua;
     int lua_version;
@@ -55,6 +57,7 @@ struct stored_proc {
     int ntypes; //parent only
     char **clntname; //parent only
     int *clnttype; //parent only
+    dbthread_t *parent_thd; //child only
 
     LIST_HEAD(, dbstmt_t) dbstmts;
     LIST_HEAD(, tmptbl_info_t) tmptbls;
