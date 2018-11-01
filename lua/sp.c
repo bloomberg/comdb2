@@ -107,7 +107,7 @@ struct dbstmt_t {
     LIST_ENTRY(dbstmt_t) entries;
 };
 
-typedef struct {
+struct dbthread_t {
     DBTYPES_COMMON;
     pthread_mutex_t lua_thread_mutex;
     pthread_cond_t lua_thread_cond;
@@ -118,7 +118,7 @@ typedef struct {
     SP sp;
     char error[128];
     struct sqlclntstate *clnt;
-} dbthread_t;
+};
 
 typedef struct {
     DBTYPES_COMMON;
@@ -1163,12 +1163,10 @@ static int new_temp_table(Lua lua)
     if (!lua_istable(lua, 2))
         return luabb_error(lua, NULL, "bad argument to 'table'");
 
-    int rc;
     const char *name;
     pthread_mutex_t *lk;
     if (create_temp_table(lua, &lk, &name) == 0) {
         // success - create dbtable
-        rc = 0;
         SP sp = getsp(lua);
         dbtable_t *table;
         new_lua_t(table, dbtable_t, DBTYPES_DBTABLE);
@@ -1186,13 +1184,9 @@ static int new_temp_table(Lua lua)
         // make this fatal for sp
         // temptable name may shadow real tbl name and bad things
         // will happen if sloppy sp keeps using tbl name
-        luaL_error(lua, "failed to create tmptable:%s", name);
-#       if 0
-        rc = 1;
-        lua_pushnil(lua);
-#       endif
+        return luaL_error(lua, "failed to create tmptable:%s", name);
     }
-    lua_pushinteger(lua, rc);
+    lua_pushinteger(lua, 0);
     return 2;
 }
 
@@ -2935,6 +2929,7 @@ static int db_create_thread_int(Lua lua, const char *funcname)
     if (newsp->spversion.version_str)
         newsp->spversion.version_str = strdup(newsp->spversion.version_str);
     newsp->parent = sp->parent;
+    newsp->parent_thd = lt;
 
     if (process_src(newlua, sp->src, &err) != 0) goto bad;
 
@@ -2949,8 +2944,13 @@ static int db_create_thread_int(Lua lua, const char *funcname)
 #ifdef PTHREAD_STACK_MIN
     pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN + 16 * 1024);
 #endif
+    Pthread_mutex_lock(&lt->lua_thread_mutex);
     rc = pthread_create(&lt->lua_tid, &attr, dispatch_lua_thread, lt);
+    /* Wait for child thread to finish cloning btrees if any */
+    Pthread_cond_wait(&lt->lua_thread_cond, &lt->lua_thread_mutex);
+    Pthread_mutex_unlock(&lt->lua_thread_mutex);
     pthread_attr_destroy(&attr);
+
     if (rc == 0) return 1;
     luabb_error(lua, sp, "failed to create thread");
 bad:
@@ -5698,6 +5698,7 @@ static void clone_temp_tables(SP sp)
     if (!src) return;
     sqlite3 *dest = getdb(sp);
     tmptbl_info_t *tbl;
+    Pthread_mutex_lock(&sp->parent_thd->lua_thread_mutex);
     LIST_FOREACH(tbl, &sp->tmptbls, entries)
     {
         strbuf *sql = strbuf_new();
@@ -5707,6 +5708,9 @@ static void clone_temp_tables(SP sp)
         clone_temp_table(dest, src, strbuf_buf(sql), tbl->rootpg);
         strbuf_free(sql);
     }
+    /* Main thread can resume running */
+    Pthread_cond_signal(&sp->parent_thd->lua_thread_cond);
+    Pthread_mutex_unlock(&sp->parent_thd->lua_thread_mutex);
 }
 
 static int begin_sp(struct sqlclntstate *clnt, char **err)
@@ -6236,7 +6240,7 @@ void *exec_trigger(trigger_reg_t *reg)
     // luaL_error() will cause abort()
     dbconsumer_t *q = NULL;
     while (1) {
-        int rc, args;
+        int rc, args = 0;
         char *err = NULL;
         get_curtran(thedb->bdb_env, &clnt);
         if (setup_sp_for_trigger(reg, &err, &thd, &clnt, &q) != 0) {
