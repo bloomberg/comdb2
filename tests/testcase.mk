@@ -40,6 +40,14 @@ export CDB2_OPTIONS=--cdb2cfg $(CDB2_CONFIG)
 export COMDB2_ROOT=$(TESTDIR)
 export COMDB2_UNITTEST?=0
 
+
+ifneq ($(SECONDARY_DB_PREFIX),)
+export SECONDARY_DBNAME=$(SECONDARY_DB_PREFIX)$(DBNAME)
+export SECONDARY_DBDIR=$(TESTDIR)/$(SECONDARY_DBNAME)
+export SECONDARY_CDB2_CONFIG=$(abspath $(SECONDARY_DBDIR)/comdb2db.cfg)
+export SECONDARY_CDB2_OPTIONS=--cdb2cfg $(SECONDARY_CDB2_CONFIG)
+endif
+
 ifneq ($(INSETUP),)
   # we are in setup or running make from within a testdir
   $(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" SKIPSSL="${SKIPSSL}" ${TESTSROOTDIR}/tools/keygen.sh )
