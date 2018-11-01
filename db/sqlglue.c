@@ -3165,26 +3165,29 @@ int sqlite3BtreeClose(Btree *pBt)
             /* internally this will close cursors open on the table */
             struct temptable_entry *pEntry = (struct temptable_entry *)pElem->data;
 
-            if (pEntry == NULL) continue;
-            struct temptable *pTbl = pEntry->value;
+            if (pEntry != NULL) {
+                struct temptable *pTbl = pEntry->value;
 
-            if (pTbl != NULL && --pTbl->nRef <= 0) {
-                if (pTbl->tbl != NULL) {
-                    rc = bdb_temp_table_close(thedb->bdb_env, pTbl->tbl, &bdberr);
-                    if (rc != SQLITE_OK) {
-                        logmsg(LOGMSG_ERROR,
-                               "%s: bdb_temp_table_close bdberr %d\n",
-                               __func__, bdberr);
-                        rc = SQLITE_INTERNAL;
-                        pthread_mutex_unlock(&pBt->temp_tables_lk);
-                        pthread_mutex_unlock(&gbl_sql_lock);
-                        goto done;
+                if (pTbl != NULL && --pTbl->nRef <= 0) {
+                    if (pTbl->tbl != NULL) {
+                        rc = bdb_temp_table_close(thedb->bdb_env, pTbl->tbl, &bdberr);
+                        if (rc != SQLITE_OK) {
+                            logmsg(LOGMSG_ERROR,
+                                   "%s: bdb_temp_table_close bdberr %d\n",
+                                   __func__, bdberr);
+                            rc = SQLITE_INTERNAL;
+                            pthread_mutex_unlock(&pBt->temp_tables_lk);
+                            pthread_mutex_unlock(&gbl_sql_lock);
+                            goto done;
+                        }
                     }
+                    /* pTbl->tbl = NULL; */
+                    free(pTbl->name);
+                    /* pTbl->name = NULL; */
+                    free(pTbl);
                 }
-                /* pTbl->tbl = NULL; */
-                free(pTbl->name);
-                /* pTbl->name = NULL; */
-                free(pTbl);
+                free(pEntry);
+                /* pEntry = NULL; */
             }
         }
         if (thd)
@@ -3932,6 +3935,8 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
                 &pBt->temp_tables, rootPageNumToTempHashKey(iTable), 0
             );
             assert( pOldEntry==pEntry );
+            free(pEntry);
+            /* pEntry = NULL; */
         }
 
         pthread_mutex_unlock(&pBt->temp_tables_lk);
