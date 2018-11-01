@@ -2729,8 +2729,11 @@ static int live_sc_redo_logical_rec(struct convert_record_data *data,
     int rc = 0;
 
     if (rec->dtastripe < 0 || rec->dtastripe >= gbl_dtastripe) {
-        logmsg(LOGMSG_ERROR, "%s:%d rec->dtastripe %d out of range\n", __func__,
-               __LINE__, rec->dtastripe);
+        /* usually it means an ignorable rec->type */
+        logmsg(LOGMSG_DEBUG,
+               "%s:%d rec->dtastripe %d out of range, type %d, lsn[%u:%u]\n",
+               __func__, __LINE__, rec->dtastripe, rec->type, rec->lsn.file,
+               rec->lsn.offset);
         return 0;
     }
     if (!data->s->sc_convert_done[rec->dtastripe] &&
