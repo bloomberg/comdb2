@@ -271,43 +271,6 @@ const char *WriteRespString[] = { RESPONSE_TYPES };
 
 int write_response(struct sqlclntstate *clnt, int R, void *D, int I)
 
-static inline void lock_client_wait_mutex(struct sqlclntstate *clnt)
-{
-    Pthread_mutex_lock(&clnt->wait_mutex);
-    assert(!clnt->have_wait_mutex);
-    clnt->have_wait_mutex = 1;
-}
-
-static inline void unlock_client_wait_mutex(struct sqlclntstate *clnt)
-{
-    assert(clnt->have_wait_mutex);
-    clnt->have_wait_mutex = 0;
-    Pthread_mutex_unlock(&clnt->wait_mutex);
-}
-
-static inline int timedwait_client_wait_mutex(struct sqlclntstate *clnt,
-        struct timespec *ts)
-{
-    int rc;
-    assert(clnt->have_wait_mutex);
-    clnt->have_wait_mutex = 0;
-    rc = pthread_cond_timedwait(&clnt->wait_cond, &clnt->wait_mutex, ts);
-    assert(!clnt->have_wait_mutex);
-    clnt->have_wait_mutex = 1;
-    return rc;
-}
-
-static inline int wait_client_wait_mutex(struct sqlclntstate *clnt)
-{
-    int rc;
-    assert(clnt->have_wait_mutex);
-    clnt->have_wait_mutex = 0;
-    rc = pthread_cond_wait(&clnt->wait_cond, &clnt->wait_mutex);
-    assert(!clnt->have_wait_mutex);
-    clnt->have_wait_mutex = 1;
-    return rc;
-}
-
 int gbl_client_heartbeat_ms = 100;
 int gbl_fail_client_write_lock = 0;
 
@@ -493,9 +456,9 @@ static int send_intrans_response(struct sqlclntstate *clnt)
 
 void handle_failed_dispatch(struct sqlclntstate *clnt, char *errstr)
 {
-    lock_client_wait_mutex(clnt);
+    Pthread_mutex_lock(&clnt->wait_mutex);
     write_response(clnt, RESPONSE_ERROR_REJECT, errstr, 0);
-    unlock_client_wait_mutex(clnt);
+    Pthread_mutex_unlock(&clnt->wait_mutex);
 }
 
 char *tranlevel_tostr(int lvl)
@@ -1150,7 +1113,7 @@ static void log_cost(struct reqlogger *logger, int64_t cost, int64_t rows) {
 int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                      int sendresponse)
 {
-    lock_client_wait_mutex(clnt);
+    Pthread_mutex_lock(&clnt->wait_mutex);
     clnt->ready_for_heartbeats = 0;
 
     reqlog_new_sql_request(thd->logger, clnt->sql);
@@ -1171,7 +1134,7 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     }
 
 done:
-    unlock_client_wait_mutex(clnt);
+    Pthread_mutex_unlock(&clnt->wait_mutex);
 
     if (srs_tran_add_query(clnt))
         logmsg(LOGMSG_ERROR, "Fail to create a transaction replay session\n");
@@ -1616,7 +1579,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
         write_response(clnt, RESPONSE_EFFECTS, 0, 0);
 
-        lock_client_wait_mutex(clnt);
+        Pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
 
         if (sendresponse) {
@@ -1628,7 +1591,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
         outrc = SQLITE_OK; /* the happy case */
 
-        unlock_client_wait_mutex(clnt);
+        Pthread_mutex_unlock(&clnt->wait_mutex);
 
         if (clnt->osql.replay != OSQL_RETRY_NONE) {
             /* successful retry */
@@ -1684,9 +1647,9 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
             rc = CDB2__ERROR_CODE__TRAN_TOO_BIG;
         }
 
-        lock_client_wait_mutex(clnt);
+        Pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
-        unlock_client_wait_mutex(clnt);
+        Pthread_mutex_unlock(&clnt->wait_mutex);
 
         outrc = rc;
 
@@ -2715,9 +2678,9 @@ static void _prepare_error(struct sqlthdstate *thd,
 
 static int send_run_error(struct sqlclntstate *clnt, const char *err, int rc)
 {
-    lock_client_wait_mutex(clnt);
+    Pthread_mutex_lock(&clnt->wait_mutex);
     clnt->ready_for_heartbeats = 0;
-    unlock_client_wait_mutex(clnt);
+    Pthread_mutex_unlock(&clnt->wait_mutex);
     return write_response(clnt, RESPONSE_ERROR, (void *)err, rc);
 }
 
@@ -2726,10 +2689,10 @@ static int handle_bad_engine(struct sqlclntstate *clnt)
     logmsg(LOGMSG_ERROR, "unable to obtain sql engine\n");
     send_run_error(clnt, "Client api should change nodes", CDB2ERR_CHANGENODE);
     clnt->query_rc = -1;
-    lock_client_wait_mutex(clnt);
+    Pthread_mutex_lock(&clnt->wait_mutex);
     clnt->done = 1;
     Pthread_cond_signal(&clnt->wait_cond);
-    unlock_client_wait_mutex(clnt);
+    Pthread_mutex_unlock(&clnt->wait_mutex);
     return -1;
 }
 
@@ -2744,10 +2707,10 @@ static int handle_bad_transaction_mode(struct sqlthdstate *thd,
                __func__);
     }
     clnt->query_rc = 0;
-    lock_client_wait_mutex(clnt);
+    Pthread_mutex_lock(&clnt->wait_mutex);
     clnt->done = 1;
     Pthread_cond_signal(&clnt->wait_cond);
-    unlock_client_wait_mutex(clnt);
+    Pthread_mutex_unlock(&clnt->wait_mutex);
     clnt->osql.timings.query_finished = osql_log_time();
     osql_log_time_done(clnt);
     return -2;
@@ -3233,9 +3196,9 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
         }
         clnt->had_errors = 1;
     } else {
-        lock_client_wait_mutex(clnt);
+        Pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
-        unlock_client_wait_mutex(clnt);
+        Pthread_mutex_unlock(&clnt->wait_mutex);
         if (!skip_response(clnt)) {
             if (postponed_write)
                 send_row(clnt, NULL, row_id, 0, NULL);
@@ -3670,10 +3633,10 @@ check_version:
 
 static void clean_queries_not_cached_in_srs(struct sqlclntstate *clnt)
 {
-    lock_client_wait_mutex(clnt);
+    Pthread_mutex_lock(&clnt->wait_mutex);
     clnt->done = 1;
     Pthread_cond_signal(&clnt->wait_cond);
-    unlock_client_wait_mutex(clnt);
+    Pthread_mutex_unlock(&clnt->wait_mutex);
 }
 
 static void thr_set_user(int id)
@@ -3805,10 +3768,10 @@ void sqlengine_work_appsock(void *thddata, void *work)
         send_run_error(clnt, "Client api should change nodes",
                        CDB2ERR_CHANGENODE);
         clnt->query_rc = -1;
-        lock_client_wait_mutex(clnt);
+        Pthread_mutex_lock(&clnt->wait_mutex);
         clnt->done = 1;
         Pthread_cond_signal(&clnt->wait_cond);
-        unlock_client_wait_mutex(clnt);
+        Pthread_mutex_unlock(&clnt->wait_mutex);
         clnt->osql.timings.query_finished = osql_log_time();
         osql_log_time_done(clnt);
         return;
@@ -3946,7 +3909,7 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     bzero(&clnt->osql.fdbtimes, sizeof(fdbtimings_t));
     clnt->osql.timings.query_received = osql_log_time();
 
-    lock_client_wait_mutex(clnt);
+    Pthread_mutex_lock(&clnt->wait_mutex);
     clnt->deadlock_recovered = 0;
     clnt->done = 0;
     clnt->statement_timedout = 0;
@@ -3954,7 +3917,7 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     /* keep track so we can display it in stat thr */
     clnt->appsock_id = getarchtid();
 
-    unlock_client_wait_mutex(clnt);
+    Pthread_mutex_unlock(&clnt->wait_mutex);
 
     snprintf(msg, sizeof(msg), "%s \"%s\"", clnt->origin, clnt->sql);
     clnt->enque_timeus = comdb2_time_epochus();
@@ -3993,9 +3956,9 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     }
 
     /* successful dispatch or queueing, enable heartbeats */
-    lock_client_wait_mutex(clnt);
+    Pthread_mutex_lock(&clnt->wait_mutex);
     clnt->ready_for_heartbeats = 1;
-    unlock_client_wait_mutex(clnt);
+    Pthread_mutex_unlock(&clnt->wait_mutex);
 
     /* SQL thread will unlock mutex when it is done, allowing us to lock it
      * again.  We block until then. */
@@ -4017,15 +3980,16 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
             mshb.tv_nsec = (gbl_client_heartbeat_ms % 1000) * 1000000;
             TIMESPEC_ADD(now, mshb, st);
 
-            lock_client_wait_mutex(clnt);
+            Pthread_mutex_lock(&clnt->wait_mutex);
             if (clnt->done) {
-                unlock_client_wait_mutex(clnt);
+                Pthread_mutex_unlock(&clnt->wait_mutex);
                 goto done;
             }
             int rc;
-            rc = timedwait_client_wait_mutex(clnt, &st);
+            rc = pthread_cond_timedwait(&clnt->wait_cond, &clnt->wait_mutex,
+                                        &st);
             if (clnt->done) {
-                unlock_client_wait_mutex(clnt);
+                Pthread_mutex_unlock(&clnt->wait_mutex);
                 goto done;
             }
             if (rc == ETIMEDOUT) {
@@ -4054,18 +4018,18 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
 
             if (lock_client_write_trylock(clnt) == 0) {
                 /* Have no clue if I can unlock this yet .. */
-                unlock_client_wait_mutex(clnt);
+                Pthread_mutex_unlock(&clnt->wait_mutex);
                 sbuf2flush(clnt->sb);
                 unlock_client_write_lock(clnt);
             } else
-                unlock_client_wait_mutex(clnt);
+                Pthread_mutex_unlock(&clnt->wait_mutex);
         }
     } else {
-        lock_client_wait_mutex(clnt);
+        Pthread_mutex_lock(&clnt->wait_mutex);
         while (!clnt->done) {
-            wait_client_wait_mutex(clnt);
+            Pthread_cond_wait(&clnt->wait_cond, &clnt->wait_mutex);
         }
-        unlock_client_wait_mutex(clnt);
+        Pthread_mutex_unlock(&clnt->wait_mutex);
     }
 
 done:
