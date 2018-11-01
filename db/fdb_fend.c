@@ -1103,13 +1103,10 @@ static enum mach_class get_fdb_class(const char **p_dbname, int *local)
         } else if (strncasecmp(dbname, "TEST_", 5) == 0) {
             remote_lvl = CLASS_TEST;
             dbname += 5;
-        }
-        else if (strncasecmp(dbname, "UAT_", 4) == 0)
-        {
+        } else if (strncasecmp(dbname, "UAT_", 4) == 0) {
             remote_lvl = CLASS_UAT;
             dbname += 4;
         }
-
 
         *p_dbname = dbname;
     } else {
