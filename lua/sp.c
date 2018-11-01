@@ -2788,6 +2788,13 @@ static void remove_tran_funcs(Lua L)
     lua_pop(L, 1);
 }
 
+static void remove_create_thread(Lua L)
+{
+    luaL_getmetatable(L, dbtypes.db);
+    lua_pushnil(L);
+    lua_setfield(L, -2, "create_thread");
+}
+
 static void remove_consumer(Lua L)
 {
     luaL_getmetatable(L, dbtypes.db);
@@ -2917,6 +2924,7 @@ static int db_create_thread_int(Lua lua, const char *funcname)
     }
     Lua newlua = newsp->lua;
     update_tran_funcs(newlua, sp->clnt->in_client_trans);
+    remove_create_thread(newlua);
 
     lua_sethook(newlua, InstructionCountHook, 0, 1); /*This means no hook.*/
     lt->lua = newlua;
