@@ -668,9 +668,7 @@ struct sql_thread *start_sql_thread(void)
     thd->query_hash = hash_init_user(query_path_component_hash,
                                      query_path_component_cmp, 0, 0);
     Pthread_mutex_init(&thd->lk, NULL);
-    int rc = pthread_setspecific(query_info_key, thd);
-    if (rc != 0)
-        perror_errnum("start_sql_thread: pthread_setspecific", rc);
+    Pthread_setspecific(query_info_key, thd);
     Pthread_mutex_lock(&gbl_sql_lock);
     listc_abl(&thedb->sql_threads, thd);
     Pthread_mutex_unlock(&gbl_sql_lock);

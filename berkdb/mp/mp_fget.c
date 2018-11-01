@@ -1135,10 +1135,7 @@ __memp_init_pgcompact_routines(void)
 		abort();
 	}
 
-	if (pthread_key_create(&no_pgcompact, NULL) != 0) {
-		logmsgperror("pthread_key_create");
-		abort();
-	}
+	Pthread_key_create(&no_pgcompact, NULL);
 }
 /* } page compact runtines END */
 

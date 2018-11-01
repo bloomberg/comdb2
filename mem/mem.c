@@ -430,13 +430,7 @@ int comdb2ma_init(size_t init_sz, size_t max_cap)
             }
 
             root.main_thr_id = pthread_self();
-            rc = pthread_key_create(&root.zone, destroy_zone);
-            if (rc != 0) {
-                COMDB2MA_UNLOCK(&root);
-                destroy_mspace(root.m);
-                root.m = NULL;
-                return rc;
-            }
+            Pthread_key_create(&root.zone, destroy_zone);
 #endif /* PER_THREAD_MALLOC */
 
 #ifndef USE_SYS_ALLOC
@@ -2104,10 +2098,7 @@ static void pfx_ctrace(const char *format, ...)
 /* COMDB2 BLOCKING MEMORY ALLOCATOR { */
 static void privileged_init(void)
 {
-    if (pthread_key_create(&privileged, NULL) != 0) {
-        fprintf(stderr, "failed creating privileged pthread key\n");
-        abort();
-    }
+    Pthread_key_create(&privileged, NULL);
 }
 
 static void comdb2bma_thr_dest(void *bmakey)
@@ -2155,14 +2146,9 @@ comdb2bma comdb2bma_create_trace(size_t init, size_t cap, const char *name,
             if (ret->alloc == NULL) {
                 mspace_free(root.m, ret);
                 ret = NULL;
-            } else if (pthread_key_create(&ret->bmakey, comdb2bma_thr_dest) !=
-                       0) {
-                comdb2ma_destroy_int(ret->alloc);
-                mspace_free(root.m, ret);
-                ret = NULL;
-            }
-
-            if (ret != NULL) {
+            } 
+            else {
+                Pthread_key_create(&ret->bmakey, comdb2bma_thr_dest);
                 Pthread_cond_init(&ret->cond, NULL);
                 // initialize fields
                 ret->prio = 0;
@@ -2198,8 +2184,8 @@ int comdb2bma_destroy(comdb2bma ma)
     if (rc != 0)
         return rc;
 
-    rc = pthread_cond_destroy(&ma->cond);
-    rc = pthread_key_delete(ma->bmakey);
+    Pthread_cond_destroy(&ma->cond);
+    Pthread_key_delete(ma->bmakey);
     rc = comdb2ma_destroy_int(ma->alloc);
 
     mspace_free(root.m, ma);

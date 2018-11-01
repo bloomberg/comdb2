@@ -150,12 +150,8 @@ static int pthread_create_attrs(pthread_t *tid, int detachstate,
     pthread_t local_tid;
     if (!tid)
         tid = &local_tid;
-    rc = pthread_attr_init(&attr);
-    if (rc != 0) {
-        syslog(LOG_ERR, "%s:pthread_attr_init: %d %s\n", __func__, rc,
-               strerror(rc));
-        return -1;
-    }
+    Pthread_attr_init(&attr);
+
     if (stacksize > 0) {
         rc = pthread_attr_setstacksize(&attr, stacksize);
         if (rc != 0) {

@@ -3224,18 +3224,10 @@ static int init(int argc, char **argv)
     /* Initialize the statistics. */
     init_metrics();
 
-    rc = pthread_key_create(&comdb2_open_key, NULL);
-    if (rc) {
-        logmsg(LOGMSG_FATAL, "pthread_key_create comdb2_open_key %d\n", rc);
-        return -1;
-    }
+    Pthread_key_create(&comdb2_open_key, NULL);
 
 #ifndef BERKDB_46
-    rc = pthread_key_create(&DBG_FREE_CURSOR, free);
-    if (rc) {
-        logmsg(LOGMSG_FATAL, "pthread_key_create DBG_FREE_CURSOR %d\n", rc);
-        return -1;
-    }
+    Pthread_key_create(&DBG_FREE_CURSOR, free);
 #endif
 
     if (lrlname == NULL) {
@@ -3690,11 +3682,7 @@ static int init(int argc, char **argv)
         fix_lrl_ixlen(); /* set lrl, ix lengths: ignore lrl file, use info from
                             schema */
 
-        rc = pthread_key_create(&query_info_key, NULL);
-        if (rc) {
-            logmsg(LOGMSG_FATAL, "pthread_key_create query_info_key rc %d\n", rc);
-            return -1;
-        }
+        Pthread_key_create(&query_info_key, NULL);
     }
 
     /* historical requests */

@@ -340,9 +340,8 @@ __txn_begin_main(dbenv, parent, txnpp, flags, retries)
 		   we can trace back to the parent DB_TXN to get its
 		   begin LSN. Do not rush to get the begin LSN as
 		   it may not be needed (eg, readonly txn's). */
-		if (pthread_getspecific(txn_key) == NULL &&
-		    pthread_setspecific(txn_key, (void *)txn) != 0)
-			goto err;
+		if (pthread_getspecific(txn_key) == NULL)
+		    Pthread_setspecific(txn_key, (void *)txn);
 	}
 	return (0);
 
@@ -1532,8 +1531,8 @@ __txn_discard(txnp, flags)
 		__os_free(dbenv, freep);
 	}
 
-	if (dbenv->tx_perfect_ckp && (ret = pthread_setspecific(txn_key, NULL)) != 0)
-		return (ret);
+	if (dbenv->tx_perfect_ckp)
+        Pthread_setspecific(txn_key, NULL);
 
 	return (0);
 }
@@ -1876,8 +1875,8 @@ __txn_end(txnp, is_commit)
 		(void)__txn_checkpoint(dbenv, 0, 0, DB_FORCE);
 	}
 
-	if (dbenv->tx_perfect_ckp && (ret = pthread_setspecific(txn_key, NULL)) != 0)
-		return (ret);
+	if (dbenv->tx_perfect_ckp)
+        Pthread_setspecific(txn_key, NULL);
 
 	return (0);
 }

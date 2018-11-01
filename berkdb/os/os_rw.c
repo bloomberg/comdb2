@@ -54,6 +54,7 @@ static const char revid[] = "$Id: os_rw.c,v 11.30 2003/05/23 21:19:05 bostic Exp
 
 #include <poll.h>
 #include "logmsg.h"
+#include "locks_wrap.h"
 
 uint64_t bb_berkdb_fasttime(void);
 
@@ -89,17 +90,10 @@ free_iobuf(void *p)
 	free(b);
 }
 
-static void
+static inline void
 init_iobuf(void)
 {
-	int rc;
-
-	rc = pthread_key_create(&iobufkey, free_iobuf);
-	if (rc) {
-		logmsg(LOGMSG_FATAL, "can't create iobuf key %d %s\n", rc,
-		    strerror(errno));
-		abort();
-	}
+	Pthread_key_create(&iobufkey, free_iobuf);
 }
 
 static void *
@@ -1456,7 +1450,7 @@ static pthread_key_t berkdb_thread_stats_key;
 void
 bb_berkdb_thread_stats_init(void)
 {
-	pthread_key_create(&berkdb_thread_stats_key, free);
+	Pthread_key_create(&berkdb_thread_stats_key, free);
 	inited = 1;
 }
 

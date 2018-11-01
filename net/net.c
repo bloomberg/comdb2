@@ -3261,11 +3261,7 @@ static netinfo_type *create_netinfo_int(char myhostname[], int myportnum,
         netinfo_ptr->portmux_register_time = comdb2_time_epoch();
     }
 
-    rc = pthread_attr_init(&(netinfo_ptr->pthread_attr_detach));
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "pthread_attr_init failed\n");
-        exit(1);
-    }
+    Pthread_attr_init(&(netinfo_ptr->pthread_attr_detach));
 
     rc = pthread_attr_setdetachstate(&(netinfo_ptr->pthread_attr_detach),
                                      PTHREAD_CREATE_DETACHED);

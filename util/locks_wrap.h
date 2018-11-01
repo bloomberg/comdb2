@@ -16,6 +16,7 @@
 #ifndef _INCLUDED_LOCKS_H
 #define _INCLUDED_LOCKS_H
 
+#include <string.h>
 #include "logmsg.h"
 
 #ifdef LOCK_DEBUG
@@ -29,8 +30,8 @@
         int rc;                                                                \
         LKDBG_TRACE(TRY, FUNC, OBJ);                                           \
         if ((rc = FUNC(__VA_ARGS__)) != 0) {                                   \
-            logmsg(LOGMSG_USER, "%s:%d " #FUNC "(%p) rc:%d thd:%p\n",          \
-                   __func__, __LINE__, OBJ, rc, (void *)pthread_self());       \
+            logmsg(LOGMSG_USER, "%s:%d " #FUNC "(%p) rc:%s thd:%p\n",          \
+                   __func__, __LINE__, OBJ, strerror(rc), (void *)pthread_self());       \
             abort();                                                           \
         }                                                                      \
         LKDBG_TRACE(GOT, FUNC, OBJ);                                           \
@@ -46,17 +47,17 @@
 #define Pthread_rwlock_wrlock(o)  WRAP_PTHREAD(pthread_rwlock_wrlock, o, o)
 #define Pthread_rwlock_unlock(o)  WRAP_PTHREAD(pthread_rwlock_unlock, o, o)
 
-/* pthread_cond_init never returns an error in some architectures */
+/* the following functions never return an error in some architectures */
 #define Pthread_cond_init(o, a) WRAP_PTHREAD(pthread_cond_init, o, o, a)
-
-/* pthread_cond_signal never returns an error in some architectures */
+#define Pthread_cond_destroy(o) WRAP_PTHREAD(pthread_cond_destroy, o, o)
 #define Pthread_cond_signal(o) WRAP_PTHREAD(pthread_cond_signal, o, o)
-
-/* pthread_cond_broadcast never returns an error in some architectures */
 #define Pthread_cond_broadcast(o) WRAP_PTHREAD(pthread_cond_broadcast, o, o)
-
-/* pthread_cond_wait never returns an error in some architectures */
 #define Pthread_cond_wait(co, mo) WRAP_PTHREAD(pthread_cond_wait, co, co, mo)
+#define Pthread_attr_init(o) WRAP_PTHREAD(pthread_attr_init, o, o)
+#define Pthread_attr_destroy(o) WRAP_PTHREAD(pthread_attr_destroy, o, o)
+#define Pthread_key_create(o, f) WRAP_PTHREAD(pthread_key_create, o, o, f)
+#define Pthread_key_delete(o) WRAP_PTHREAD(pthread_key_delete, o, o)
+#define Pthread_setspecific(o, p) WRAP_PTHREAD(pthread_setspecific, o, o, p)
 
 
 #endif

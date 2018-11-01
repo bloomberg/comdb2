@@ -767,11 +767,7 @@ void flush_in_thread(struct dbtable *db, int consumern)
         return;
     }
 
-    rc = pthread_attr_init(&attr);
-    if (rc) {
-        logmsg(LOGMSG_WARN, "%s:pthread_attr_init: %s", __func__, strerror(rc));
-        return;
-    }
+    pthread_attr_init(&attr);
     PTHD_ATTR_SETDETACHED(attr, rc);
     if (rc) {
         logmsg(LOGMSG_WARN, "%s:pthread_attr_setdetached", __func__, strerror(rc));
@@ -798,11 +794,7 @@ void flush_in_thread(struct dbtable *db, int consumern)
                 __func__, rc, strerror(rc));
         free(args);
     }
-    rc = pthread_attr_destroy(&attr);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s:pthread_attr_destroy  %d %s", __func__, rc, strerror(rc));
-        return;
-    }
+    Pthread_attr_destroy(&attr);
 }
 
 void flush_abort(void)

@@ -1959,12 +1959,7 @@ void free_sql(void *p) { free(p); }
 
 void init_current_current_sql_key(void)
 {
-    int rc;
-    rc = pthread_key_create(&current_sql_query_key, free_sql);
-    if (rc) {
-        logmsg(LOGMSG_FATAL, "pthread_key_create current_sql_query_key rc %d\n", rc);
-        exit(1);
-    }
+    Pthread_key_create(&current_sql_query_key, free_sql);
 }
 
 extern int gbl_debug_temptables;

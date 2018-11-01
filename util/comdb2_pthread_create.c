@@ -165,11 +165,7 @@ static void init_memptr_key(void)
         abort();
     }
 
-    if (pthread_attr_init(&free_thr_attrs) != 0) {
-        logmsg(LOGMSG_FATAL, "%s:%d failed to init pthread attrs.\n", __func__,
-                __LINE__);
-        abort();
-    }
+    Pthread_attr_init(&free_thr_attrs);
 
 #ifdef PTHREAD_STACK_MIN
     if (pthread_attr_setstacksize(&free_thr_attrs,
