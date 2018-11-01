@@ -1113,7 +1113,7 @@ void sqlite3VdbeMemSetDouble(Mem *pMem, double val){
 }
 #endif
 
-#ifdef SQLITE_DEBUG
+#if defined(SQLITE_BUILDING_FOR_COMDB2) || defined(SQLITE_DEBUG)
 /*
 ** Return true if the Mem holds a RowSet object.  This routine is intended
 ** for use inside of assert() statements.
@@ -1122,7 +1122,7 @@ int sqlite3VdbeMemIsRowSet(const Mem *pMem){
   return (pMem->flags&(MEM_Blob|MEM_Dyn))==(MEM_Blob|MEM_Dyn)
          && pMem->xDel==sqlite3RowSetDelete;
 }
-#endif
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) || defined(SQLITE_DEBUG) */
 
 /*
 ** Delete any previous value and set the value of pMem to be an
