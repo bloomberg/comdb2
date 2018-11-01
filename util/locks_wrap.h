@@ -36,26 +36,28 @@
 #  define LKDBG_TRACE(...)
 #endif
 
-#define WRAP_PTHREAD(FUNC, OBJ, ...)                                           \
+#define VA_FIRST(a, ...) a
+#define WRAP_PTHREAD(FUNC, ...)                                                \
     do {                                                                       \
         int rc;                                                                \
-        LKDBG_TRACE(TRY, FUNC, OBJ);                                           \
+        LKDBG_TRACE(TRY, FUNC, VA_FIRST(__VA_ARGS__));                         \
         if ((rc = FUNC(__VA_ARGS__)) != 0) {                                   \
             logmsg(LOGMSG_USER, "%s:%d " #FUNC "(%p) rc:%d thd:%p\n",          \
-                   __func__, __LINE__, OBJ, rc, (void *)pthread_self());       \
+                   __func__, __LINE__, VA_FIRST(__VA_ARGS__), rc,              \
+                   (void *)pthread_self());                                    \
             /*abort();*/                                                       \
         }                                                                      \
-        LKDBG_TRACE(GOT, FUNC, OBJ);                                           \
+        LKDBG_TRACE(GOT, FUNC, VA_FIRST(__VA_ARGS__));                         \
     } while (0)
 
-#define Pthread_mutex_init(o, a)  WRAP_PTHREAD(pthread_mutex_init, o, o, a)
-#define Pthread_mutex_destroy(o)  WRAP_PTHREAD(pthread_mutex_destroy, o, o)
-#define Pthread_mutex_lock(o)     WRAP_PTHREAD(pthread_mutex_lock, o, o)
-#define Pthread_mutex_unlock(o)   WRAP_PTHREAD(pthread_mutex_unlock, o, o)
-#define Pthread_rwlock_init(o, a) WRAP_PTHREAD(pthread_rwlock_init, o, o, a)
-#define Pthread_rwlock_destroy(o) WRAP_PTHREAD(pthread_rwlock_destroy, o, o)
-#define Pthread_rwlock_rdlock(o)  WRAP_PTHREAD(pthread_rwlock_rdlock, o, o)
-#define Pthread_rwlock_wrlock(o)  WRAP_PTHREAD(pthread_rwlock_wrlock, o, o)
-#define Pthread_rwlock_unlock(o)  WRAP_PTHREAD(pthread_rwlock_unlock, o, o)
+#define Pthread_mutex_init(o, a)  WRAP_PTHREAD(pthread_mutex_init, o, a)
+#define Pthread_mutex_destroy(o)  WRAP_PTHREAD(pthread_mutex_destroy, o)
+#define Pthread_mutex_lock(o)     WRAP_PTHREAD(pthread_mutex_lock, o)
+#define Pthread_mutex_unlock(o)   WRAP_PTHREAD(pthread_mutex_unlock, o)
+#define Pthread_rwlock_init(o, a) WRAP_PTHREAD(pthread_rwlock_init, o, a)
+#define Pthread_rwlock_destroy(o) WRAP_PTHREAD(pthread_rwlock_destroy, o)
+#define Pthread_rwlock_rdlock(o)  WRAP_PTHREAD(pthread_rwlock_rdlock, o)
+#define Pthread_rwlock_wrlock(o)  WRAP_PTHREAD(pthread_rwlock_wrlock, o)
+#define Pthread_rwlock_unlock(o)  WRAP_PTHREAD(pthread_rwlock_unlock, o)
 
 #endif
