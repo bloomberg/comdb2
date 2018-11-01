@@ -1550,7 +1550,7 @@ static int bdb_tran_commit_with_seqnum_int_int(
                        __LINE__, iirc);
                 *bdberr = BDBERR_MISC;
                 outrc = -1;
-                atexit(abort_at_exit);
+                tran->tid->abort(tran->tid);
                 bdb_osql_trn_repo_unlock();
                 goto cleanup;
             }
@@ -1566,6 +1566,7 @@ static int bdb_tran_commit_with_seqnum_int_int(
                         "%s:update_shadows_beforecommit nonblocking rc %d\n",
                         __func__, rc);
                 *bdberr = rc;
+                tran->tid->abort(tran->tid);
                 bdb_osql_trn_repo_unlock();
                 return -1;
             }

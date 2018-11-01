@@ -24,7 +24,7 @@ function cleanup
     write_prompt $func "executing $cleanup"
     j=0
     while [[ $j -lt $cl_iters ]]; do
-        kill -9 $(cat $pidroot.$j)
+        [[ -f $pidroot.$j ]] && kill -9 $(cat $pidroot.$j)
         let j=j+1
     done
 
@@ -177,6 +177,8 @@ function cldeadlock_threads
     j=0
     while [[ $j -lt $iters ]]; do
         wait ${cl_pids[$j]}
+        cl_pids[$j]=0
+        rm -f $pidroot.$j
         let j=j+1
     done
     export forked_cl=0

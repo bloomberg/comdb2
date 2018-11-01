@@ -9,6 +9,8 @@
 #include <inttypes.h>
 
 static char *argv0=NULL;
+cdb2_hndl_tp **upd_orphans;
+cdb2_hndl_tp **sel_orphans;
 
 void usage(FILE *f)
 {
@@ -71,7 +73,7 @@ again:
 }
 
 int select_and_update_orphan(const char *dbname, const char *type,
-        int snapshot, int64_t count, int range, int pint)
+        int idx, int snapshot, int64_t count, int range, int pint)
 {
     int sel_rc, upd_rc;
     int64_t target = (rand() % count) / 10, iter = 0;
@@ -85,11 +87,13 @@ int select_and_update_orphan(const char *dbname, const char *type,
         fprintf(stderr, "Failed to allocate sel-handle for %s\n", dbname);
         failexit(__func__, __LINE__, sel_rc);
     }
+    sel_orphans[idx] = sel_hndl;
 
     if ((upd_rc = cdb2_open(&upd_hndl, dbname, type, 0)) != 0) {
         fprintf(stderr, "Failed to allocate upd-handle for %s\n", dbname);
         failexit(__func__, __LINE__, upd_rc);
     }
+    upd_orphans[idx] = upd_hndl;
 
     if (snapshot) {
         if ((sel_rc = cdb2_run_statement(sel_hndl,
@@ -168,9 +172,22 @@ upd_again:
 int select_and_update(const char *dbname, const char *type, int snapshot,
         int64_t count, int orphans, int range, int pint)
 {
-    int i;
+    int i, rc;
+    upd_orphans = calloc(orphans, sizeof(cdb2_hndl_tp *));
+    sel_orphans = calloc(orphans, sizeof(cdb2_hndl_tp *));
     for (i = 0; i < orphans; i++)
-        select_and_update_orphan(dbname, type, snapshot, count, range, pint);
+        select_and_update_orphan(dbname, type, i, snapshot, count, range, pint);
+    printf("Closing orphans\n");
+    for (i = 0; i < orphans; i++) {
+        cdb2_close(upd_orphans[i]);
+        while((rc = cdb2_next_record(sel_orphans[i])) == CDB2_OK)
+            ;
+        if (rc != CDB2_OK_DONE) {
+            fprintf(stderr, "closing orphan next_record sel_rc is %d, %s\n", rc,
+                    cdb2_errstr(sel_orphans[i]));
+        }
+        cdb2_close(sel_orphans[i]);
+    }
     return 0;
 }
 

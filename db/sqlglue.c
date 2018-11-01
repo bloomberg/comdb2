@@ -2847,6 +2847,7 @@ static int cursor_move_postop(BtCursor *pCur)
         } else if (gbl_sql_random_release_interval &&
                    !(rand() % gbl_sql_random_release_interval)) {
             rc = release_locks(NULL, "random release cursor_move_postop");
+            release_locks_on_si_lockwait_cnt++;
         }
     }
 
@@ -8870,6 +8871,21 @@ int put_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
     fprintf(stderr, "%llx, %s\n", pthread_self(), __func__);
 #endif
 
+    if (!is_recovery) {
+        if (clnt->dbtran.nLockedRemTables > 0) {
+            int irc = sqlite3UnlockStmtTablesRemotes(clnt);
+            if (irc) {
+                logmsg(LOGMSG_ERROR, "%s: error releasing remote tables rc=%d\n",
+                        __func__, irc);
+            }
+        }
+
+        clnt->dbtran.pStmt =
+            NULL; /* this is pointing to freed memory at this point */
+    }
+
+    clnt->is_overlapping = 0;
+
     if (!clnt->dbtran.cursor_tran) {
         logmsg(LOGMSG_ERROR, "%s called without curtran\n", __func__);
         cheap_stack_trace();
@@ -8890,21 +8906,7 @@ int put_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
         }
     }
 
-    if (!is_recovery) {
-        if (clnt->dbtran.nLockedRemTables > 0) {
-            int irc = sqlite3UnlockStmtTablesRemotes(clnt);
-            if (irc) {
-                logmsg(LOGMSG_ERROR, "%s: error releasing remote tables rc=%d\n",
-                        __func__, irc);
-            }
-        }
-
-        clnt->dbtran.pStmt =
-            NULL; /* this is pointing to freed memory at this point */
-    }
-
     clnt->dbtran.cursor_tran = NULL;
-    clnt->is_overlapping = 0;
 
     return rc;
 }
@@ -8997,6 +8999,7 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
 {
     int ptrace = (flags & RECOVER_DEADLOCK_PTRACE);
     int force_fail = (flags & RECOVER_DEADLOCK_FORCE_FAIL);
+    int fail_type = 0;
     struct sqlclntstate *clnt = thd->clnt;
     BtCursor *cur = NULL;
     int rc = 0;
@@ -9107,14 +9110,23 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
             poll(NULL, 0, sleepms);
     }
 
-    /* get a new curtran */
-    rc = get_curtran_flags(thedb->bdb_env, clnt, thd, curtran_flags);
-    if (rc == 0 && force_fail)
-        rc = ((rand()%2) ? SQLITE_SCHEMA : -1);
+    /* Fake generation-changed failure */
+    if (force_fail && !(fail_type = (rand() % 2))) {
+        clnt->gen_changed = 1;
+        rc = -1;
+    } else
+        rc = get_curtran_flags(thedb->bdb_env, clnt, thd, curtran_flags);
+
+    /* Fake schema-changed failure */
+    if (!rc && fail_type)
+        rc = SQLITE_SCHEMA;
 
     if (rc) {
-        if (rc == SQLITE_SCHEMA || rc == SQLITE_COMDB2SCHEMA)
+        if (rc == SQLITE_SCHEMA || rc == SQLITE_COMDB2SCHEMA) {
+            logmsg(LOGMSG_ERROR,
+                    "%s: failing with SQLITE_COMDB2SCHEMA\n", __func__);
             return SQLITE_COMDB2SCHEMA;
+        }
 
         if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS)) {
             logmsg(LOGMSG_ERROR, 
