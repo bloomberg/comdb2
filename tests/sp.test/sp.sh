@@ -795,6 +795,7 @@ exec procedure sys.cmd.verify("nonexistent")
 select 5
 EOF
 
+#Test passing an array of temp tables to threads
 cdb2sql $SP_OPTIONS - <<'EOF'
 create procedure tmptbls version 'sptest' {
 local function func(tbls)
@@ -803,15 +804,19 @@ local function func(tbls)
     end
 end
 local function main()
+    local thds = {}
     local tbl = db:table("tbl", {{"i", "int"}})
     for i = 1, 20 do
         local tbls = {}
         for j = 1, i do
             table.insert(tbls, tbl)
         end
-        db:create_thread(func, tbls)
+        local thd = db:create_thread(func, tbls)
+        table.insert(thds, thd)
     end
-    db:sleep(2) -- enough time for threads to finish
+    for _, thd in ipairs(thds) do
+        thd:join()
+    end
     db:exec("select i, count(*) from tbl group by i"):emit()
 end
 }$$
