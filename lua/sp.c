@@ -2877,7 +2877,6 @@ static void reset_sp(SP sp)
     sp->ntypes = 0;
     sp->bufsz = 0;
     sp->rc = 0;
-    sp->nrows = 0;
     sp->num_instructions = 0;
     sp->max_num_instructions = gbl_max_lua_instructions;
     LIST_INIT(&sp->dbstmts);
@@ -4833,31 +4832,20 @@ static int l_send_back_row(Lua lua, sqlite3_stmt *stmt, int nargs)
     arg.stmt = stmt;
     arg.sp = sp;
     arg.pingpong = sp->pingpong;
-    struct sqlclntstate *clnt = sp->parent->clnt;
+    SP parent = sp->parent;
+    struct sqlclntstate *clnt = parent->clnt;
     if (clnt->osql.sent_column_data == 0) {
-        Pthread_mutex_lock(sp->emit_mutex);
+        Pthread_mutex_lock(parent->emit_mutex);
         if (clnt->osql.sent_column_data == 0) {
-            new_col_info(sp, nargs);
+            new_col_info(parent, nargs);
             rc = write_response(clnt, RESPONSE_COLUMNS_LUA, &arg, 0);
             clnt->osql.sent_column_data = 1;
         }
-        Pthread_mutex_unlock(sp->emit_mutex);
+        Pthread_mutex_unlock(parent->emit_mutex);
         if (rc) return rc;
     }
     int type = stmt ? RESPONSE_ROW : RESPONSE_ROW_LUA;
     return write_response(clnt, type, &arg, 0);
-}
-
-static int flush_rows(SP sp)
-{
-    if (sp->clnt->sb == NULL)
-        return 0;
-    struct sqlclntstate *clnt = sp->clnt;
-    if ((sp->parent && !sp->parent->clnt->osql.sent_column_data) ||
-        (!sp->parent && sp->nrows == 0)) {
-        return write_response(clnt, RESPONSE_ROW_LAST_DUMMY, NULL, 0);
-    }
-    return write_response(clnt, RESPONSE_ROW_LAST, NULL, 0);
 }
 
 static int push_null(Lua L, int param_type)
@@ -5749,16 +5737,19 @@ static int commit_sp(Lua L, char **err)
     return -222;
 }
 
-static int flush_sp(Lua L, char **err)
+static int flush_sp(SP sp, char **err)
 {
-    /* If we got here, the stored procedure is done generating rows, so flush
-     * the results and we're done */
-    /* TODO: if didn't send rows, need to generate a fake columns header? */
-    SP sp = getsp(L);
     int rc;
-    if ((rc = flush_rows(sp)) == 0) return rc;
-    free(*err);
-    *err = strdup("error while flushing the rows");
+    struct sqlclntstate *clnt = sp->clnt;
+    if (clnt->osql.sent_column_data) {
+        rc = write_response(clnt, RESPONSE_ROW_LAST, NULL, 0);
+    } else {
+        rc = write_response(clnt, RESPONSE_ROW_LAST_DUMMY, NULL, 0);
+    }
+    if (rc) {
+        free(*err);
+        *err = strdup("error while flushing the rows");
+    }
     return rc;
 }
 
@@ -6065,7 +6056,7 @@ static int exec_procedure_int(struct sqlthdstate *thd,
 
     if (sprc) return sprc;
 
-    return flush_sp(L, err);
+    return flush_sp(sp, err);
 }
 
 static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,
