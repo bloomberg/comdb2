@@ -4554,7 +4554,7 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
         }
         free(bindvars);
         snprintf(hndl->errstr, sizeof(hndl->errstr),
-                 "%s: Can't connect to portmux host %s port %d", __func__, host,
+                 "%s: Can't connect to host %s port %d", __func__, host,
                  port);
         return -1;
     }
@@ -4718,7 +4718,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
         }
         if (fd < 0) {
             snprintf(hndl->errstr, sizeof(hndl->errstr),
-                     "%s: Can't connect to portmux host %s port %d", __func__,
+                     "%s: Can't connect to host %s port %d", __func__,
                      host, port);
             return -1;
         }
