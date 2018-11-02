@@ -155,6 +155,7 @@ void wait_for_genid_repl(unsigned long long genid)
 
             Pthread_mutex_unlock(&me.mutex);
             Pthread_mutex_destroy(&me.mutex);
+            pthread_mutexattr_destroy(&attr);
         }
     }
     UNLOCK(&lock);
