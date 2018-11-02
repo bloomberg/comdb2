@@ -152,7 +152,8 @@ static inline int osql_should_restart(struct sqlclntstate *clnt, int rc)
         } else {                                                               \
             restarted = 1;                                                     \
         }                                                                      \
-    } else if (rc) {                                                           \
+    }                                                                          \
+    if (rc) {                                                                  \
         logmsg(LOGMSG_ERROR,                                                   \
                "%s: error writting record to master in offload mode rc=%d!\n", \
                __func__, rc);                                                  \
