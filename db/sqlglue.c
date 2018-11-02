@@ -9137,7 +9137,7 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
         } else {
             logmsg(LOGMSG_ERROR, "%s: fail to open a new curtran, rc=%d\n", __func__,
                     rc);
-            return -500;
+            return ERR_RECOVER_DEADLOCK;
         }
     }
 
