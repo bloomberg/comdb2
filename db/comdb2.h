@@ -3503,7 +3503,8 @@ void sbuf2gettimeout(SBUF2 *sb, int *read, int *write);
 int sbuf2fread_timeout(char *ptr, int size, int nitems, SBUF2 *sb,
                        int *was_timeout);
 int release_locks(struct sql_thread *sql_thd, const char *trace);
-int release_locks_flags(struct sql_thread *sql_thd, const char *trace, uint32_t flags);
+int release_locks_flags(struct sql_thread *sql_thd, const char *trace,
+                        uint32_t flags);
 
 unsigned long long verify_indexes(struct dbtable *db, uint8_t *rec,
                                   blob_buffer_t *blobs, size_t maxblobs,

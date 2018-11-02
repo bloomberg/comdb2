@@ -8781,8 +8781,8 @@ int get_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
         return -1;
     }
 
-    if (gbl_random_get_curtran_failures && !(rand() %
-                gbl_random_get_curtran_failures)) {
+    if (gbl_random_get_curtran_failures &&
+        !(rand() % gbl_random_get_curtran_failures)) {
         logmsg(LOGMSG_ERROR, "%s forcing a random curtran failure\n", __func__);
         return -1;
     }
@@ -8875,8 +8875,9 @@ int put_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
         if (clnt->dbtran.nLockedRemTables > 0) {
             int irc = sqlite3UnlockStmtTablesRemotes(clnt);
             if (irc) {
-                logmsg(LOGMSG_ERROR, "%s: error releasing remote tables rc=%d\n",
-                        __func__, irc);
+                logmsg(LOGMSG_ERROR,
+                       "%s: error releasing remote tables rc=%d\n", __func__,
+                       irc);
             }
         }
 
@@ -9123,8 +9124,8 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
 
     if (rc) {
         if (rc == SQLITE_SCHEMA || rc == SQLITE_COMDB2SCHEMA) {
-            logmsg(LOGMSG_ERROR,
-                    "%s: failing with SQLITE_COMDB2SCHEMA\n", __func__);
+            logmsg(LOGMSG_ERROR, "%s: failing with SQLITE_COMDB2SCHEMA\n",
+                   __func__);
             return SQLITE_COMDB2SCHEMA;
         }
 

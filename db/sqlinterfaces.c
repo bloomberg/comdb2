@@ -301,8 +301,7 @@ again:
     }
     if (rd_rc) {
         logmsg(LOGMSG_WARN, "%s recover_deadlock returned %d\n", __func__,
-                rd_rc);
-        cheap_stack_trace();
+               rd_rc);
         clnt->recover_deadlock_rcode = rd_rc;
     }
     return rd_rc ? rd_rc : rc;
@@ -326,26 +325,28 @@ void unlock_client_write_lock(struct sqlclntstate *clnt)
 void handle_failed_recover_deadlock(struct sqlclntstate *clnt)
 {
     assert(clnt->recover_deadlock_rcode != 0);
-    switch(clnt->recover_deadlock_rcode) {
-        case SQLITE_COMDB2SCHEMA:
-            clnt->ready_for_heartbeats = 0;
-            write_response(clnt, RESPONSE_ERROR,
-                    "Database schema changed during request", CDB2ERR_SCHEMA);
-            logmsg(LOGMSG_INFO, "%s sending CDB2ERR_SCHEMA\n", __func__);
-            break;
-        case SQLITE_CLIENT_CHANGENODE:
-            clnt->ready_for_heartbeats = 0;
-            write_response(clnt, RESPONSE_ERROR,
-                    "Client api should retry request", CDB2ERR_CHANGENODE);
-            logmsg(LOGMSG_INFO, "%s sending CDB2ERR_CHANGENODE\n", __func__);
-            break;
-        default:
-            clnt->ready_for_heartbeats = 0;
-            write_response(clnt, RESPONSE_ERROR,
-                    "Failed to reaquire locks", CDB2ERR_DEADLOCK);
-            logmsg(LOGMSG_INFO, "%s sending CDB2ERR_DEADLOCK on %d\n",
-                    __func__, clnt->recover_deadlock_rcode);
-            break;
+    switch (clnt->recover_deadlock_rcode) {
+    case SQLITE_COMDB2SCHEMA:
+        clnt->ready_for_heartbeats = 0;
+        write_response(clnt, RESPONSE_ERROR,
+                       "Database schema changed during request",
+                       CDB2ERR_SCHEMA);
+        logmsg(LOGMSG_DEBUG, "%s sending CDB2ERR_SCHEMA\n", __func__);
+        break;
+    case SQLITE_CLIENT_CHANGENODE:
+        clnt->ready_for_heartbeats = 0;
+        write_response(clnt, RESPONSE_ERROR, "Client api should retry request",
+                       CDB2ERR_CHANGENODE);
+        logmsg(LOGMSG_DEBUG, "%s sending CDB2ERR_CHANGENODE\n", __func__);
+        break;
+    default:
+        clnt->ready_for_heartbeats = 0;
+        write_response(clnt, RESPONSE_ERROR,
+                       "Failed to reaquire locks on deadlock",
+                       CDB2ERR_DEADLOCK);
+        logmsg(LOGMSG_DEBUG, "%s sending CDB2ERR_DEADLOCK on %d\n", __func__,
+               clnt->recover_deadlock_rcode);
+        break;
     }
 }
 
@@ -2276,12 +2277,10 @@ int release_locks_flags(struct sql_thread *td, const char *trace, uint32_t flags
     return rc;
 }
 
-
 int release_locks(struct sql_thread *td, const char *trace)
 {
     return release_locks_flags(td, trace, 0);
 }
-
 
 /* Release-locks if rep-thread is blocked longer than this many ms */
 int gbl_rep_wait_release_ms = 60000;
@@ -2316,8 +2315,8 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
         return release_locks(thd->sqlthd, "release locks on emit-row");
 
     /* We're emitting a row and are blocking replication */
-    if (rep_lock_time_ms && (comdb2_time_epochms() - rep_lock_time_ms) >
-            gbl_rep_wait_release_ms)
+    if (rep_lock_time_ms &&
+        (comdb2_time_epochms() - rep_lock_time_ms) > gbl_rep_wait_release_ms)
         return release_locks(thd->sqlthd, "long repwait at emit-row");
 
     return 0;
@@ -3212,10 +3211,9 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
 /* The design choice here for communication is to send row data inside this function,
    and delegate the error sending to the caller (since we send multiple rows, but we 
    send error only once and stop processing at that time)
- */   
+ */
 static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
-                    struct sql_state *rec, int *fast_error,
-                    struct errstat *err)
+                    struct sql_state *rec, int *fast_error, struct errstat *err)
 {
     int rc;
     uint64_t row_id = 0;
