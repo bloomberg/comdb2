@@ -83,7 +83,7 @@ int start_prefault_io_threads(struct dbenv *dbenv, int numthreads, int maxq)
     rc = pthread_attr_setstacksize(&attr, 512 * 1024);
     if (rc) {
         perror_errnum("start_pfault_main:pthread_attr_setstacksize", rc);
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
         return -1;
     }
 
@@ -112,7 +112,7 @@ int start_prefault_io_threads(struct dbenv *dbenv, int numthreads, int maxq)
         dbenv->prefaultiopool.numthreads++;
     }
 
-    pthread_attr_destroy(&attr);
+    Pthread_attr_destroy(&attr);
 
     return 0;
 }

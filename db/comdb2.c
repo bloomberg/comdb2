@@ -3217,7 +3217,7 @@ static int init(int argc, char **argv)
 
     gbl_mynodeid = machine_num(gbl_mynode);
 
-    pthread_attr_init(&gbl_pthread_attr);
+    Pthread_attr_init(&gbl_pthread_attr);
     pthread_attr_setstacksize(&gbl_pthread_attr, DEFAULT_THD_STACKSZ);
     pthread_attr_setdetachstate(&gbl_pthread_attr, PTHREAD_CREATE_DETACHED);
 

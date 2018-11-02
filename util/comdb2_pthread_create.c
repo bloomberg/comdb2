@@ -156,7 +156,7 @@ static void *free_stack_thr(void *unused)
 /* initialize memptr key */
 static void init_memptr_key(void)
 {
-    (void)pthread_key_create(&memptr, free_memptr);
+    Pthread_key_create(&memptr, free_memptr);
     __page_size = sysconf(_SC_PAGESIZE);
 
     if (pthread_mutex_init(&pthr_mutex, NULL) != 0) {
@@ -206,7 +206,7 @@ static void *thr_func(void *arg)
     size_t stacksz = thr_arg->stacksz;
 #endif
 
-    pthread_setspecific(memptr, thr_arg);
+    Pthread_setspecific(memptr, thr_arg);
 
     ret = thr_arg->func(thr_arg->arg);
 

@@ -3122,7 +3122,7 @@ int osql_comm_init(struct dbenv *dbenv)
 
     bdb_register_rtoff_callback(dbenv->bdb_env, signal_rtoff);
 
-    pthread_attr_init(&attr);
+    Pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
     pthread_attr_setstacksize(&attr, 100 * 1024);
 
@@ -3224,7 +3224,7 @@ int offload_comm_send_sync_blockreq(char *node, void *buf, int buflen)
     }
 
     // clean up
-    pthread_cond_destroy(&(p_slock->wait_cond));
+    Pthread_cond_destroy(&(p_slock->wait_cond));
     Pthread_mutex_destroy(&(p_slock->req_lock));
     free(p_slock);
     return rc;

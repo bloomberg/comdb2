@@ -159,7 +159,7 @@ static void *watchdog_thread(void *arg)
 
     Pthread_mutex_init(&gbl_watchdog_kill_mutex, NULL);
 
-    pthread_attr_init(&gbl_pthread_joinable_attr);
+    Pthread_attr_init(&gbl_pthread_joinable_attr);
     pthread_attr_setstacksize(&gbl_pthread_joinable_attr, DEFAULT_THD_STACKSZ);
     pthread_attr_setdetachstate(&gbl_pthread_joinable_attr,
                                 PTHREAD_CREATE_JOINABLE);
@@ -448,7 +448,7 @@ void create_watchdog_thread(struct dbenv *dbenv)
     int rc;
     pthread_attr_t attr;
 
-    pthread_attr_init(&attr);
+    Pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
     /* HP needs more stack space to call AttachCurrentThread:
@@ -471,5 +471,5 @@ void create_watchdog_thread(struct dbenv *dbenv)
                " rc %d err %s\n",
                rc, strerror(rc));
 
-    pthread_attr_destroy(&attr);
+    Pthread_attr_destroy(&attr);
 }

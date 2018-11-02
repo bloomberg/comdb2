@@ -767,7 +767,7 @@ static void new_thread_lock_info(bdb_state_type *bdb_state)
         }
     }
 
-    pthread_setspecific(lock_key, lk);
+    Pthread_setspecific(lock_key, lk);
 
     Pthread_mutex_lock(&bdb_state->thread_lock_info_list_mutex);
     listc_atl(&bdb_state->thread_lock_info_list, lk);
@@ -798,7 +798,7 @@ static void delete_thread_lock_info(bdb_state_type *bdb_state)
     if (lk->stack)
         free(lk->stack);
     free(lk);
-    pthread_setspecific(lock_key, NULL);
+    Pthread_setspecific(lock_key, NULL);
 }
 
 void bdb_stripe_get(bdb_state_type *bdb_state)
@@ -813,7 +813,7 @@ void bdb_stripe_get(bdb_state_type *bdb_state)
 
     id = get_threadid(parent);
 
-    pthread_setspecific(parent->tid_key, (void *)id);
+    Pthread_setspecific(parent->tid_key, (void *)id);
 }
 
 void bdb_stripe_done(bdb_state_type *bdb_state)

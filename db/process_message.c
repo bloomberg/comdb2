@@ -640,7 +640,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         pthread_t thread_id;
         pthread_attr_t thd_attr;
 
-        pthread_attr_init(&thd_attr);
+        Pthread_attr_init(&thd_attr);
         pthread_attr_setstacksize(&thd_attr, 4 * 1024); /* 4K */
         pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
 

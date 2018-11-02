@@ -484,7 +484,7 @@ static void *thd_req(void *vthd)
                pthread_self());
         abort();
     }
-    pthread_setspecific(unique_tag_key, thdinfo);
+    Pthread_setspecific(unique_tag_key, thdinfo);
 
     /*printf("started handler %ld thd %p thd->id %ld\n", pthread_self(), thd,
      * thd->tid);*/
@@ -637,7 +637,7 @@ static void *thd_req(void *vthd)
                 {
                     nretire++;
                     listc_rfl(&idle, thd);
-                    pthread_cond_destroy(&thd->wakeup);
+                    Pthread_cond_destroy(&thd->wakeup);
                     thd->tid =
                         -2; /*returned. this is just for info & debugging*/
                     pool_relablk(p_thds, thd); /*release this struct*/
@@ -793,7 +793,7 @@ void cleanup_lock_buffer(struct buf_lock_t *lock_buffer)
 
     /* sbuf2 is owned by the appsock. Don't close it here. */
 
-    pthread_cond_destroy(&lock_buffer->wait_cond);
+    Pthread_cond_destroy(&lock_buffer->wait_cond);
     Pthread_mutex_destroy(&lock_buffer->req_lock);
 
     LOCK(&buf_lock)

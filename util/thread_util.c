@@ -76,7 +76,7 @@ void thread_started(char *name)
     info = malloc(sizeof(struct thread_info));
     info->tid = pthread_self();
     info->archtid = getarchtid();
-    pthread_setspecific(thread_util_key, info);
+    Pthread_setspecific(thread_util_key, info);
     listc_init(&info->resource_list, offsetof(struct thread_resource, lnk));
     info->resource_hash =
         hash_init_o(offsetof(struct thread_resource, resource), sizeof(void *));

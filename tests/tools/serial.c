@@ -149,7 +149,7 @@ int insert_records(config_t *c)
     pthread_t *thds;
     int i, ret;
 
-    pthread_attr_init(&attr);
+    Pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
     thds = calloc(c->threads, sizeof(pthread_t));
 
@@ -170,7 +170,7 @@ int insert_records(config_t *c)
         pthread_join(thds[i], NULL);
     }
 
-    pthread_attr_destroy(&attr);
+    Pthread_attr_destroy(&attr);
     return 0;
 }
 
@@ -396,7 +396,7 @@ int update_records(config_t *c)
     pthread_t *thds;
     int i, ret;
 
-    pthread_attr_init(&attr);
+    Pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
     thds = calloc(c->threads, sizeof(pthread_t));
 
@@ -419,7 +419,7 @@ int update_records(config_t *c)
         pthread_join(thds[i], NULL);
     }
 
-    pthread_attr_destroy(&attr);
+    Pthread_attr_destroy(&attr);
     return 0;
 }
 

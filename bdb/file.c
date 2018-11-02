@@ -2054,7 +2054,7 @@ void create_udpbackup_analyze_thread(bdb_state_type *bdb_state)
 
     logmsg(LOGMSG_INFO, "starting udpbackup_and_autoanalyze_thd thread\n");
 
-    pthread_attr_init(&thd_attr);
+    Pthread_attr_init(&thd_attr);
     pthread_attr_setstacksize(&thd_attr, 4 * 1024); /* 4K */
     pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
 
@@ -5074,7 +5074,7 @@ int create_master_lease_thread(bdb_state_type *bdb_state)
 {
 	pthread_t tid;
 	pthread_attr_t attr;
-	pthread_attr_init(&attr);
+	Pthread_attr_init(&attr);
 	pthread_attr_setstacksize(&attr, 4 * 1024);
 	extern void *master_lease_thread(void *arg);
 	pthread_create(&tid, &attr, master_lease_thread, bdb_state);
@@ -5085,7 +5085,7 @@ void create_coherency_lease_thread(bdb_state_type *bdb_state)
 {
     pthread_t tid;
     pthread_attr_t attr;
-    pthread_attr_init(&attr);
+    Pthread_attr_init(&attr);
     pthread_attr_setstacksize(&attr, 4 * 1024);
     extern void *coherency_lease_thread(void *arg);
     pthread_create(&tid, &attr, coherency_lease_thread, bdb_state);
@@ -5221,7 +5221,7 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
     if (!parent_bdb_state)
         bdb_thread_event(bdb_state, 1);
 
-    pthread_attr_init(&(bdb_state->pthread_attr_detach));
+    Pthread_attr_init(&(bdb_state->pthread_attr_detach));
 
     rc = pthread_attr_setdetachstate(&(bdb_state->pthread_attr_detach),
                                      PTHREAD_CREATE_DETACHED);

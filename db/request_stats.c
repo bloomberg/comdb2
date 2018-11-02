@@ -42,7 +42,7 @@ void user_request_begin(enum request_type type, int flags)
         st = malloc(sizeof(struct per_request_stats));
         if (st == NULL)
             return;
-        pthread_setspecific(key, st);
+        Pthread_setspecific(key, st);
     }
     bzero(st, sizeof(struct per_request_stats));
     st->type = type;

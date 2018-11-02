@@ -2825,9 +2825,9 @@ static void rem_from_netinfo_ll(netinfo_type *netinfo_ptr,
     Pthread_mutex_destroy(&(host_node_ptr->wait_mutex));
     Pthread_mutex_destroy(&(host_node_ptr->throttle_lock));
 
-    pthread_cond_destroy(&(host_node_ptr->ack_wakeup));
-    pthread_cond_destroy(&(host_node_ptr->write_wakeup));
-    pthread_cond_destroy(&(host_node_ptr->throttle_wakeup));
+    Pthread_cond_destroy(&(host_node_ptr->ack_wakeup));
+    Pthread_cond_destroy(&(host_node_ptr->write_wakeup));
+    Pthread_cond_destroy(&(host_node_ptr->throttle_wakeup));
 
     pool_free(host_node_ptr->write_pool);
 #ifndef PER_THREAD_MALLOC

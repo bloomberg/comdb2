@@ -101,7 +101,7 @@ static void *prefault_helper_thread(void *arg)
     thdinfo->ct_del_table = NULL;
     thdinfo->ct_add_table = NULL;
     thdinfo->ct_del_table = NULL;
-    pthread_setspecific(unique_tag_key, thdinfo);
+    Pthread_setspecific(unique_tag_key, thdinfo);
 
     while (1) {
         Pthread_mutex_lock(&(dbenv->prefault_helper.mutex));

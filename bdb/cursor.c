@@ -2459,7 +2459,7 @@ int bdb_gbl_pglogs_init(bdb_state_type *bdb_state)
     }
     else {
         pthread_attr_t thd_attr;
-        pthread_attr_init(&thd_attr);
+        Pthread_attr_init(&thd_attr);
         pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
 #       if defined(PTHREAD_STACK_MIN)
         pthread_attr_setstacksize(&thd_attr, PTHREAD_STACK_MIN + 64 * 1024);
@@ -8855,7 +8855,7 @@ int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt)
         db = state->dbp_data[0];
         stripes = state->attr->dtastripe;
         parallel_count = gbl_parallel_count;
-        pthread_attr_init(&attr);
+        Pthread_attr_init(&attr);
 #ifdef PTHREAD_STACK_MIN
         pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN + 512 * 1024);
 #endif
@@ -8891,7 +8891,7 @@ int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt)
         count += args[i].count;
     }
     if (parallel_count) {
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
     }
     if (rc == 0) *rcnt = count;
     return rc;

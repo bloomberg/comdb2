@@ -113,7 +113,7 @@ get_aligned_buffer(void *buf, size_t bufsz, int copy)
 		if (b->buf == NULL)
 			return NULL;
 #endif
-		pthread_setspecific(iobufkey, b);
+		Pthread_setspecific(iobufkey, b);
 	} else if (b->sz < bufsz) {
 		free(b->buf);
 		b->buf = NULL;
@@ -1465,7 +1465,7 @@ bb_berkdb_get_thread_stats(void)
 		p = pthread_getspecific(berkdb_thread_stats_key);
 		if (!p) {
 			p = calloc(1, sizeof(struct bb_berkdb_thread_stats));
-			pthread_setspecific(berkdb_thread_stats_key, p);
+			Pthread_setspecific(berkdb_thread_stats_key, p);
 		}
 		if (!p)
 			p = &junk;

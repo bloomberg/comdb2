@@ -242,7 +242,7 @@ void thrman_unregister(void)
     struct thr_handle *thr;
     thr = thrman_self();
     if (thr) {
-        pthread_setspecific(thrman_key, NULL);
+        Pthread_setspecific(thrman_key, NULL);
         thrman_destructor(thr);
     }
 }

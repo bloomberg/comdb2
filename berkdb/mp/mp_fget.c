@@ -1112,10 +1112,7 @@ __memp_init_pgcompact_routines(void)
 	if (gbl_pg_compact_thresh <= 0)
 		return;
 
-	if (pthread_attr_init(&spgs.attrs)) {
-		logmsgperror("pthread_attr_init");
-		abort();
-	}
+	Pthread_attr_init(&spgs.attrs);
 
 #ifdef PTHREAD_STACK_MIN
 	/* ~128kB stack size */

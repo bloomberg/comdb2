@@ -157,7 +157,7 @@ static int pthread_create_attrs(pthread_t *tid, int detachstate,
         if (rc != 0) {
             syslog(LOG_ERR, "%s:pthread_attr_getstacksize: %d %s\n", __func__,
                    rc, strerror(rc));
-            pthread_attr_destroy(&attr);
+            Pthread_attr_destroy(&attr);
             return -1;
         }
     }
@@ -165,17 +165,17 @@ static int pthread_create_attrs(pthread_t *tid, int detachstate,
     if (rc != 0) {
         syslog(LOG_ERR, "%s:pthread_attr_setdetachstate: %d %s\n", __func__, rc,
                strerror(rc));
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
         return -1;
     }
     rc = pthread_create(tid, &attr, start_routine, arg);
     if (rc != 0) {
         syslog(LOG_ERR, "%s:pthread_create: %d %s\n", __func__, rc,
                strerror(rc));
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
         return -1;
     }
-    pthread_attr_destroy(&attr);
+    Pthread_attr_destroy(&attr);
     return 0;
 }
 

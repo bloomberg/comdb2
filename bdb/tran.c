@@ -1121,7 +1121,7 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
 
         Pthread_setspecific(bdb_state->seqnum_info->key, tran);
 
-        /*fprintf(stderr, "pthread_setspecific %x to %x\n", bdb_state, tran);*/
+        /*fprintf(stderr, "Pthread_setspecific %x to %x\n", bdb_state, tran);*/
         tran->startlsn.file = 0;
         tran->startlsn.offset = 1;
     }
