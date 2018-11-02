@@ -195,7 +195,7 @@ check_db_at_finish() {
     local LCLOPTIONS="--cdb2cfg ${LCLCONFIG}"
 
     for node in ${CLUSTER} ; do
-        out=$($CDB2SQL_EXE ${LCLOPTIONS} --tabs --host $node $LCLDBNM 'select 1' 2>&1 )
+        out=$(timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs --host $node $LCLDBNM 'select 1' 2>&1)
         if [ "$out" != "1" ] ; then
             echo $out
             return
