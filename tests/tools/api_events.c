@@ -36,14 +36,6 @@ static int TEST_init_once_registration(const char *db, const char *tier)
     cdb2_hndl_tp *hndl = NULL;
 
     cdb2_init = register_once;
-    cdb2_open(&hndl, db, tier, 0);
-
-    cdb2_run_statement(hndl, "SELECT 1");
-    while ((rc = cdb2_next_record(hndl)) == CDB2_OK);
-    cdb2_unregister_event(NULL, init_once_event);
-    cdb2_close(hndl);
-    if (rc != CDB2_OK_DONE)
-        return 1;
     return 0;
 }
 
@@ -53,11 +45,11 @@ static int TEST_simple_register_unregister(const char *db, const char *tier)
     cdb2_event *e1, *e2, *e3, *e4, *e5, *e6, *e7, *e8;
     cdb2_hndl_tp *hndl = NULL;
 
+    cdb2_open(&hndl, db, tier, 0);
     e1 = cdb2_register_event(NULL, CDB2_BEFORE_SEND_QUERY, 0, my_simple_hook, "1", 0);
     e2 = cdb2_register_event(NULL, CDB2_BEFORE_SEND_QUERY, 0, my_simple_hook, "2", 0);
     e3 = cdb2_register_event(NULL, CDB2_BEFORE_SEND_QUERY, 0, my_simple_hook, "3", 0);
     e4 = cdb2_register_event(NULL, CDB2_BEFORE_SEND_QUERY, 0, my_simple_hook, "4", 0);
-    cdb2_open(&hndl, db, tier, 0);
     e5 = cdb2_register_event(hndl, CDB2_BEFORE_SEND_QUERY, 0, my_simple_hook, "5", 0);
     e6 = cdb2_register_event(hndl, CDB2_BEFORE_SEND_QUERY, 0, my_simple_hook, "6", 0);
     e7 = cdb2_register_event(hndl, CDB2_BEFORE_SEND_QUERY, 0, my_simple_hook, "7", 0);
@@ -68,6 +60,7 @@ static int TEST_simple_register_unregister(const char *db, const char *tier)
     if (rc != CDB2_OK_DONE)
         return 1;
 
+    cdb2_unregister_event(NULL, init_once_event);
     puts("------");
 
     cdb2_unregister_event(NULL, e3);

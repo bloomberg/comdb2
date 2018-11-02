@@ -50,6 +50,7 @@ add_exe(nowritetimeout nowritetimeout.c)
 add_exe(api_events api_events.c)
 add_exe(api_libs api_libs.c)
 add_library(api_hello_world_lib SHARED api_hello_world_lib.c)
+list(APPEND test-tools api_hello_world_lib)
 
 add_custom_target(test-tools DEPENDS ${test-tools})
 
@@ -60,7 +61,6 @@ endforeach()
 
 # cdb2api shared object
 target_link_libraries(cdb2_client cdb2api_shared ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
-#target_link_libraries(api_hello_world_lib cdb2api_shared ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
 include_directories(${PROJECT_SOURCE_DIR}/bb ${PROJECT_BINARY_DIR}/protobuf/ )
 add_definitions(-DSBUF2_SERVER=0)
 target_link_libraries(cdb2api_unit cdb2api_shared ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS} )

@@ -507,7 +507,7 @@ Otherwise, the event will be registered locally to the handle, thus will be visi
 | `CDB2_BEFORE_CONNECT` | The callback is called before the API starts connecting to a host. |
 | `CDB2_AFTER_CONNECT` | The callback is called after the attempt to connect. |
 | `CDB2_BEFORE_PMUX` | The callback is called before the API starts querying for the database port from `pmux`. |
-| `CDB2_AFTER_PMUX` | The callback is called after the attempt to database port query. |
+| `CDB2_AFTER_PMUX` | The callback is called after the pmux attempt. |
 | `CDB2_BEFORE_DBINFO` | The callback is called before the API starts retrieving the dbinfo. |
 | `CDB2_AFTER_DBINFO` | The callback is called after the dbinfo attempt. |
 | `CDB2_BEFORE_SEND_QUERY` | The callback is called before the API starts sending a query. |

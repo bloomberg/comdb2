@@ -22,5 +22,7 @@ int main(int argc, char **argv)
     }
     cdb2_open(&hndl, db, tier, 0);
     cdb2_run_statement(hndl, "SELECT 1");
+    cdb2_open(&hndl, db, tier, 0);
+    cdb2_run_statement(hndl, "SELECT 1");
     return 0;
 }
