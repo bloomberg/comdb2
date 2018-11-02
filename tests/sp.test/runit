@@ -19,7 +19,6 @@ echo "Starting tests"
 echo "Using SP_OPTIONS: $SP_OPTIONS"
 ./test.sh $dbname
 rc=$?
-
 if (( $rc != 0 )) ; then
    echo "FAILURE"
    exit 1
