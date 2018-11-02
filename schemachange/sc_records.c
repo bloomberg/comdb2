@@ -2455,7 +2455,7 @@ static int live_sc_redo_delete(struct convert_record_data *data, DB_LOGC *logc,
 
     brecs.genid = rec->genid;
     pbrecs = hash_find(data->blob_hash, &brecs);
-    if (pbrecs) {
+    if (pbrecs && data->to->ix_blob) {
         rc = reconstruct_blob_records(data, logc, pbrecs, logdta);
         if (rc) {
             logmsg(LOGMSG_ERROR,
@@ -2722,19 +2722,36 @@ done:
     return rc;
 }
 
+static inline int is_logical_data_op(bdb_osql_log_rec_t *rec)
+{
+    switch (rec->type) {
+    case DB_llog_undo_add_dta:
+    case DB_llog_undo_add_dta_lk:
+    case DB_llog_undo_del_dta:
+    case DB_llog_undo_del_dta_lk:
+    case DB_llog_undo_upd_dta:
+    case DB_llog_undo_upd_dta_lk:
+        return 1;
+    default:
+        return 0;
+    }
+    return 0;
+}
+
 static int live_sc_redo_logical_rec(struct convert_record_data *data,
                                     DB_LOGC *logc, bdb_osql_log_rec_t *rec,
                                     DBT *logdta)
 {
     int rc = 0;
 
+    if (!is_logical_data_op(rec))
+        return 0;
     if (rec->dtastripe < 0 || rec->dtastripe >= gbl_dtastripe) {
-        /* usually it means an ignorable rec->type */
-        logmsg(LOGMSG_DEBUG,
+        logmsg(LOGMSG_ERROR,
                "%s:%d rec->dtastripe %d out of range, type %d, lsn[%u:%u]\n",
                __func__, __LINE__, rec->dtastripe, rec->type, rec->lsn.file,
                rec->lsn.offset);
-        return 0;
+        return -1;
     }
     if (!data->s->sc_convert_done[rec->dtastripe] &&
         is_genid_right_of_stripe_pointer(data->to->handle, rec->genid,
@@ -2798,44 +2815,33 @@ static int live_sc_redo_logical_log(struct convert_record_data *data,
     /* pre process blob recs */
     LISTC_FOR_EACH_SAFE(&pCur->log->impl->recs, rec, tmp, lnk)
     {
+        if (!is_logical_data_op(rec))
+            continue;
         if (strcasecmp(data->s->tablename, rec->table) != 0)
             continue;
 
-        switch (rec->type) {
-        case DB_llog_undo_add_dta:
-        case DB_llog_undo_add_dta_lk:
-        case DB_llog_undo_del_dta:
-        case DB_llog_undo_del_dta_lk:
-        case DB_llog_undo_upd_dta:
-        case DB_llog_undo_upd_dta_lk:
-            interested = 1;
-            if (rec->dtafile >= 1) {
-                struct blob_recs brecs = {0};
-                struct blob_recs *pbrecs = NULL;
-                listc_rfl(&pCur->log->impl->recs, rec);
-                brecs.genid = rec->genid;
-                pbrecs = hash_find(data->blob_hash, &brecs);
-                if (pbrecs) {
-                    listc_abl(&pbrecs->recs, rec);
-                } else {
-                    pbrecs = calloc(1, sizeof(struct blob_recs));
-                    if (pbrecs == NULL) {
-                        logmsg(LOGMSG_ERROR,
-                               "%s:%d failed to malloc blob rec\n", __func__,
-                               __LINE__);
-                        rc = -1;
-                        goto done;
-                    }
-                    pbrecs->genid = rec->genid;
-                    listc_init(&pbrecs->recs,
-                               offsetof(bdb_osql_log_rec_t, lnk));
-                    listc_abl(&pbrecs->recs, rec);
-                    hash_add(data->blob_hash, pbrecs);
+        interested = 1;
+        if (rec->dtafile >= 1) {
+            struct blob_recs brecs = {0};
+            struct blob_recs *pbrecs = NULL;
+            listc_rfl(&pCur->log->impl->recs, rec);
+            brecs.genid = rec->genid;
+            pbrecs = hash_find(data->blob_hash, &brecs);
+            if (pbrecs) {
+                listc_abl(&pbrecs->recs, rec);
+            } else {
+                pbrecs = calloc(1, sizeof(struct blob_recs));
+                if (pbrecs == NULL) {
+                    logmsg(LOGMSG_ERROR, "%s:%d failed to malloc blob rec\n",
+                           __func__, __LINE__);
+                    rc = -1;
+                    goto done;
                 }
+                pbrecs->genid = rec->genid;
+                listc_init(&pbrecs->recs, offsetof(bdb_osql_log_rec_t, lnk));
+                listc_abl(&pbrecs->recs, rec);
+                hash_add(data->blob_hash, pbrecs);
             }
-            break;
-        default:
-            break;
         }
     }
 
