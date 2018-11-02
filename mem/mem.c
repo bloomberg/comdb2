@@ -2185,7 +2185,7 @@ int comdb2bma_destroy(comdb2bma ma)
         return rc;
 
     Pthread_cond_destroy(&ma->cond);
-    Pthread_key_delete((ma->bmakey));
+    Pthread_key_delete(ma->bmakey);
     rc = comdb2ma_destroy_int(ma->alloc);
 
     mspace_free(root.m, ma);
