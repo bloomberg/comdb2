@@ -58,5 +58,4 @@
 /* pthread_cond_wait never returns an error in some architectures */
 #define Pthread_cond_wait(co, mo) WRAP_PTHREAD(pthread_cond_wait, co, co, mo)
 
-
 #endif

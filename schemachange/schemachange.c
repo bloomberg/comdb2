@@ -1172,8 +1172,7 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
     if (rc) {
         xerr->errval = SC_VIEW_ERR_SC;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "failed to drop table");
-    }
-    else
+    } else
         xerr->errval = SC_VIEW_NOERR;
     return xerr->errval;
 
