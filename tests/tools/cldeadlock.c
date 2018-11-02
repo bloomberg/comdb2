@@ -78,6 +78,7 @@ int select_and_update_orphan(const char *dbname, const char *type,
     int sel_rc, upd_rc;
     int64_t target = (rand() % count) / 10, iter = 0;
     int64_t *sel_val, upd_val, cnt=0;
+    char *host;
     char upd_sql[80];
     cdb2_hndl_tp *sel_hndl;
     cdb2_hndl_tp *upd_hndl;
@@ -88,6 +89,19 @@ int select_and_update_orphan(const char *dbname, const char *type,
         failexit(__func__, __LINE__, sel_rc);
     }
     sel_orphans[idx] = sel_hndl;
+
+    if ((sel_rc = cdb2_run_statement(sel_hndl, "select comdb2_host()")) != 0) {
+        fprintf(stderr, "Failed to select comdb2_host()=%d, %s\n", sel_rc,
+                cdb2_errstr(sel_hndl));
+    } else if ((sel_rc = cdb2_next_record(sel_hndl)) != CDB2_OK) {
+        fprintf(stderr, "Failed next_record for comdb2_host=%d, %s\n", sel_rc,
+                cdb2_errstr(sel_hndl));
+    } else if ((host = (char *)cdb2_column_value(sel_hndl, 0)) == NULL) {
+        fprintf(stderr, "Failed next_record for comdb2_host=%d, %s\n", sel_rc,
+                cdb2_errstr(sel_hndl));
+    } else {
+        printf("Connected to host '%s'\n", host);
+    }
 
     if ((upd_rc = cdb2_open(&upd_hndl, dbname, type, 0)) != 0) {
         fprintf(stderr, "Failed to allocate upd-handle for %s\n", dbname);
@@ -136,10 +150,11 @@ sel_again:
                     upd_val, *sel_val);
 
 upd_again:
-            if ((upd_rc = cdb2_run_statement(upd_hndl, upd_sql)) != 0 &&
-                    upd_rc != CDB2ERR_VERIFY_ERROR) {
-                fprintf(stderr, "Failed to run update statement, rc=%d, %s\n",
-                        upd_rc, cdb2_errstr(upd_hndl));
+            if ((upd_rc = cdb2_run_statement(upd_hndl, upd_sql)) != 0) {
+                if(upd_rc != CDB2ERR_VERIFY_ERROR) {
+                    fprintf(stderr, "Failed to run update statement, rc=%d, %s\n",
+                            upd_rc, cdb2_errstr(upd_hndl));
+                }
                 if (retry_rcode(upd_rc)) {
                     sleep(1);
                     goto upd_again;
@@ -152,8 +167,10 @@ upd_again:
                 ;
 
             if (upd_rc != CDB2_OK_DONE) {
-                fprintf(stderr, "Failed next from update cursor, rcode is %d, %s\n",
-                        upd_rc, cdb2_errstr(upd_hndl));
+                if(upd_rc != CDB2ERR_VERIFY_ERROR) {
+                    fprintf(stderr, "Failed next from update cursor, rcode is %d, %s\n",
+                            upd_rc, cdb2_errstr(upd_hndl));
+                }
                 if (!retry_rcode(upd_rc)) {
                     failexit(__func__, __LINE__, upd_rc);
                 }

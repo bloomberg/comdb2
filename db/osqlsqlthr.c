@@ -831,9 +831,9 @@ again:
 int gbl_random_blkseq_replays;
 int gbl_osql_send_startgen = 1;
 
-static inline int sock_restart_retryable_rcode(int rc)
+static inline int sock_restart_retryable_rcode(int restart_rc)
 {
-    switch(rc) {
+    switch(restart_rc) {
         case SQLITE_TOOBIG:
         case ERR_SC:
         case ERR_RECOVER_DEADLOCK:
@@ -1005,6 +1005,14 @@ retry:
                             "setting rcout to CHANGENODE, errval is %d\n",
                             rc, osql->xerr.errval);
                         rcout = SQLITE_CLIENT_CHANGENODE;
+                    } else if (rc == SQLITE_COMDB2SCHEMA) {
+                        /* Schema has changed */
+                        sql_debug_logf(
+                            clnt, __func__, __LINE__,
+                            "got %d and "
+                            "setting rcout to SQLITE_COMDB2SCHEMA, errval is %d\n",
+                            rc, osql->xerr.errval);
+                        rcout = SQLITE_COMDB2SCHEMA;
                     } else {
                         sql_debug_logf(
                             clnt, __func__, __LINE__,
