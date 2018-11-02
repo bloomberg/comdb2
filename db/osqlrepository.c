@@ -195,7 +195,8 @@ int osql_repository_add(osql_sess_t *sess, int *replaced)
         rc = hash_add(theosql->rqs, sess);
 
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: Unable to hash_add the new request\n", __func__);
+        logmsg(LOGMSG_ERROR, "%s: Unable to hash_add the new request\n",
+               __func__);
         rc = -2;
     } else {
         memcpy(add_uuid_list[add_current_uuid], sess->uuid,
@@ -243,7 +244,8 @@ int osql_repository_rem(osql_sess_t *sess, int lock, const char *func, const cha
     if (rc) {
         char *p = alloca(64);
         p = (char *)util_tohex(p, (char *)sess->uuid, 16);
-        logmsg(LOGMSG_ERROR, "%s: Unable to hash_del the new request\n", __func__); 
+        logmsg(LOGMSG_ERROR, "%s: Unable to hash_del the new request\n",
+               __func__);
         for (int i=0; i<MAX_UUID_LIST;i++) {
 
             if (!memcmp(sess->uuid, add_uuid_list[i], sizeof(add_uuid_list[0]))) {

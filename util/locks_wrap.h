@@ -30,8 +30,8 @@
         int rc;                                                                \
         LKDBG_TRACE(TRY, FUNC, OBJ);                                           \
         if ((rc = FUNC(__VA_ARGS__)) != 0) {                                   \
-            logmsg(LOGMSG_USER, "%s:%d " #FUNC "(%p) rc:%s thd:%p\n",          \
-                   __func__, __LINE__, OBJ, strerror(rc), (void *)pthread_self());       \
+            logmsg(LOGMSG_FATAL, "%s:%d " #FUNC "(%p) rc:%s thd:%p\n",         \
+                   __func__, __LINE__, OBJ, strerror(rc),(void *)pthread_self());       \
             abort();                                                           \
         }                                                                      \
         LKDBG_TRACE(GOT, FUNC, OBJ);                                           \
@@ -62,6 +62,5 @@
 // #define Pthread_setspecific(o, p) WRAP_PTHREAD(pthread_setspecific, o, o, p)
 #define Pthread_key_delete  pthread_key_delete
 #define Pthread_setspecific pthread_setspecific
-
 
 #endif

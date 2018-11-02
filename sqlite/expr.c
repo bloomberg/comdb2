@@ -1411,7 +1411,7 @@ Select *sqlite3SelectDup(sqlite3 *db, Select *p, int flags){
   pNew = sqlite3DbMallocRawNN(db, sizeof(*p) );
   if( pNew==0 ) return 0;
   /* COMDB2 MODIFICATION */
-  pNew->recording = 0;
+  pNew->recording = p->recording;
   pNew->pEList = sqlite3ExprListDup(db, p->pEList, flags);
   pNew->pSrc = sqlite3SrcListDup(db, p->pSrc, flags);
   pNew->pWhere = sqlite3ExprDup(db, p->pWhere, flags);

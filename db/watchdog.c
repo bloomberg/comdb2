@@ -90,7 +90,7 @@ static void *dummy_thread(void *arg) { return NULL; }
 
 static int gbl_watchdog_kill_time;
 static pthread_t gbl_watchdog_kill_tid;
-static pthread_mutex_t gbl_watchdog_kill_mutex;
+static pthread_mutex_t gbl_watchdog_kill_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static int gbl_nowatch = 1; /* start off disabled */
 static int gbl_watchdog_time; /* last timestamp when things were ok */
