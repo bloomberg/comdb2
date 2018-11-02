@@ -18,18 +18,6 @@
 
 #include "logmsg.h"
 
-/* for completeness since pthread_cond_init never returns an error */
-#define Pthread_cond_init pthread_cond_init
-
-/* for completeness since pthread_cond_signal never returns an error */
-#define Pthread_cond_signal pthread_cond_signal
-
-/* for completeness since pthread_cond_broadcast never returns an error */
-#define Pthread_cond_broadcast pthread_cond_broadcast
-
-/* for completeness since pthread_cond_wait never returns an error */
-#define Pthread_cond_wait pthread_cond_wait
-
 #ifdef LOCK_DEBUG
 #  define LKDBG_TRACE(STR, FUNC, OBJ) logmsg(LOGMSG_USER, "%s:%d " #STR " " #FUNC "(%p) thd:%p\n", __func__, __LINE__, OBJ, (void *)pthread_self())
 #else
@@ -42,10 +30,9 @@
         int rc;                                                                \
         LKDBG_TRACE(TRY, FUNC, VA_FIRST(__VA_ARGS__));                         \
         if ((rc = FUNC(__VA_ARGS__)) != 0) {                                   \
-            logmsg(LOGMSG_USER, "%s:%d " #FUNC "(%p) rc:%d thd:%p\n",          \
-                   __func__, __LINE__, VA_FIRST(__VA_ARGS__), rc,              \
-                   (void *)pthread_self());                                    \
-            /*abort();*/                                                       \
+            logmsg(LOGMSG_FATAL, "%s:%d " #FUNC "(%p) rc:%d thd:%p\n",         \
+                   __func__, __LINE__, OBJ, rc, (void *)pthread_self());       \
+            abort();                                                           \
         }                                                                      \
         LKDBG_TRACE(GOT, FUNC, VA_FIRST(__VA_ARGS__));                         \
     } while (0)
@@ -59,5 +46,17 @@
 #define Pthread_rwlock_rdlock(o)  WRAP_PTHREAD(pthread_rwlock_rdlock, o)
 #define Pthread_rwlock_wrlock(o)  WRAP_PTHREAD(pthread_rwlock_wrlock, o)
 #define Pthread_rwlock_unlock(o)  WRAP_PTHREAD(pthread_rwlock_unlock, o)
+
+/* pthread_cond_init never returns an error in some architectures */
+#define Pthread_cond_init(o, a) WRAP_PTHREAD(pthread_cond_init, o, o, a)
+
+/* pthread_cond_signal never returns an error in some architectures */
+#define Pthread_cond_signal(o) WRAP_PTHREAD(pthread_cond_signal, o, o)
+
+/* pthread_cond_broadcast never returns an error in some architectures */
+#define Pthread_cond_broadcast(o) WRAP_PTHREAD(pthread_cond_broadcast, o, o)
+
+/* pthread_cond_wait never returns an error in some architectures */
+#define Pthread_cond_wait(co, mo) WRAP_PTHREAD(pthread_cond_wait, co, co, mo)
 
 #endif

@@ -1089,6 +1089,7 @@ int sc_timepart_add_table(const char *existingTableName,
     do_schema_change_locked(&sc);
 
     xerr->errval = SC_VIEW_NOERR;
+    return xerr->errval;
 
 error:
     free_schema_change_type(&sc);
@@ -1171,10 +1172,9 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
     if (rc) {
         xerr->errval = SC_VIEW_ERR_SC;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "failed to drop table");
-        goto error;
-    }
-
-    xerr->errval = SC_VIEW_NOERR;
+    } else
+        xerr->errval = SC_VIEW_NOERR;
+    return xerr->errval;
 
 error:
     free_schema_change_type(&sc);

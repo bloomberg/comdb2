@@ -348,7 +348,7 @@ static int raise_thd_priority(void)
 
 #endif
 
-int __rep_block_on_inflight_transactions(DB_ENV *dbenv);
+extern int __rep_block_on_inflight_transactions(DB_ENV *dbenv);
 
 int gbl_force_serial_on_writelock = 1;
 
@@ -444,7 +444,7 @@ static inline void bdb_get_writelock_int(bdb_state_type *bdb_state,
         }
 
         /* Wait on rep_processor threads while we have the writelock lock */
-        if (gbl_force_serial_on_writelock)
+        if (gbl_force_serial_on_writelock && lock_handle->passed_dbenv_open)
             __rep_block_on_inflight_transactions(lock_handle->dbenv);
 
         strcpy(lock_handle->bdb_lock_write_idstr, idstr);
