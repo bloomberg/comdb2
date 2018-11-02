@@ -23,20 +23,6 @@ failexit()
     exit -1
 }
 
-assertcnt ()
-{
-    local target=$1
-    local cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
-    if [ $? -ne 0 ] ; then
-        echo "assertcnt: select error"
-    fi
-
-    #echo "count is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "count is now $cnt but should be $target"
-    fi
-}
-
 assert_vers()
 {
     local loc_tbl=$1
@@ -61,15 +47,6 @@ assert_schema()
     fi
 }
 
-do_verify()
-{
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
-
-    if ! grep succeeded verify.out > /dev/null ; then
-        failexit "Verify"
-    fi
-}
-
 assertres ()
 {
     if [ $# != 2 ] ; then 
@@ -86,7 +63,7 @@ assertres ()
 cdb2sql ${CDB2_OPTIONS} $dbnm default "@send debg 10000"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "@send ndebg 10000"
 
-cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t2 (i int primary key)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t2 (i int primary key, data blob)"
 
 max=10000
 strt=1
@@ -94,7 +71,7 @@ end=0
 delta=10
 while [ $end -lt $max ] ; do
     let end=strt+$delta-1
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t2 select * from generate_series($strt,$end)" > ins.out
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t2(i) select * from generate_series($strt,$end)" > ins.out
     rc=$?
     if [ $rc -ne 0 ] ; then
         failexit "Failure from insert "
@@ -120,7 +97,7 @@ while [ $end -lt $max ] ; do
     res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t2 where i >=$strt and i<= $end"`
     assertres $res $delta
 
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "update t2 set i=i-1 where i >=$strt and i<= $end" > upd.out
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "update t2 set i=i-1, data = randomblob(16) where i >=$strt and i<= $end" > upd.out
     rc=$?
     if [ $rc -ne 0 ] ; then
         failexit "Failure from update "
