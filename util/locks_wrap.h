@@ -29,7 +29,7 @@
         int rc;                                                                \
         LKDBG_TRACE(TRY, FUNC, OBJ);                                           \
         if ((rc = FUNC(__VA_ARGS__)) != 0) {                                   \
-            logmsg(LOGMSG_USER, "%s:%d " #FUNC "(%p) rc:%d thd:%p\n",          \
+            logmsg(LOGMSG_FATAL, "%s:%d " #FUNC "(%p) rc:%d thd:%p\n",         \
                    __func__, __LINE__, OBJ, rc, (void *)pthread_self());       \
             abort();                                                           \
         }                                                                      \
