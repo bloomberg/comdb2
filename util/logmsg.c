@@ -171,9 +171,9 @@ static int logmsgv_lk(loglvl lvl, const char *fmt, va_list args)
 static pthread_mutex_t logmsg_lk = PTHREAD_MUTEX_INITIALIZER;
 int logmsgv(loglvl lvl, const char *fmt, va_list args) {
     int ret;
-    Pthread_mutex_lock(&logmsg_lk);
+    pthread_mutex_lock(&logmsg_lk);
     ret = logmsgv_lk(lvl, fmt, args);
-    Pthread_mutex_unlock(&logmsg_lk);
+    pthread_mutex_unlock(&logmsg_lk);
     return ret;
 }
 
@@ -217,7 +217,7 @@ void sqlite3DebugPrintf(const char *zFormat, ...)
     va_list args;
 
 #ifdef NOINTERLEAVE
-    Pthread_mutex_lock(&lk);
+    pthread_mutex_lock(&lk);
 #endif
 
     va_start(args, zFormat);
@@ -225,7 +225,7 @@ void sqlite3DebugPrintf(const char *zFormat, ...)
     va_end(args);
 
 #ifdef NOINTERLEAVE
-    Pthread_mutex_unlock(&lk);
+    pthread_mutex_unlock(&lk);
 #endif
 }
 
