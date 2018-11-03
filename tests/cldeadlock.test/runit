@@ -106,14 +106,25 @@ function create_table
 {
     [[ $debug == "1" ]] && set -x
     typeset func="create_table"
-    typeset tbl=$1
+    typeset tbl=${1:-t1}
     typeset cmd="create table $tbl(a int)"
     write_prompt $func "executing $func"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "$cmd"
     write_prompt $func "$cmd"
     typeset cmd="create index idx1 on $tbl(a)"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "$cmd"
     write_prompt $func "$cmd"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "$cmd"
+}
+
+function drop_table
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="drop_table"
+    typeset tbl=${1:-t1}
+    typeset cmd="drop table $tbl"
+    write_prompt $func "executing $func"
+    write_prompt $func "$cmd"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "$cmd"
 }
 
 function cluster_thread
@@ -134,7 +145,7 @@ function fill_table
     [[ $debug == "1" ]] && set -x
     typeset func="fill_table"
     write_prompt $func "executing $func"
-    typeset tbl=$1
+    typeset tbl=${1:-t1}
     typeset recs=${2:-100000}
     typeset step=${3:-100000}
     typeset count=0
@@ -255,8 +266,8 @@ function setup_test
     typeset func="setup"
     rm -f $incoherent_fail
     write_prompt $func "executing $func"
-    create_table t1
-    fill_table t1
+    create_table
+    fill_table
 }
 
 function run_test
@@ -269,6 +280,7 @@ function run_test
     normal_test
     downgrade_test
     [[ -f $incoherent_fail ]] && failexit "Cluster went incoherent"
+    drop_table
 }
 
 run_test
