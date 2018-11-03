@@ -2259,27 +2259,26 @@ static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     return SQLITE_OK;
 }
 
-int release_locks_flags(struct sql_thread *td, const char *trace, uint32_t flags)
+int release_locks_flags(const char *trace, uint32_t flags)
 {
-    struct sql_thread *qikey = pthread_getspecific(query_info_key);
-    struct sql_thread *thd = td ? td : qikey;
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd ? thd->clnt : NULL;
     int rc = 0;
 
     if (clnt && clnt->dbtran.cursor_tran) {
         extern int gbl_sql_release_locks_trace;
         if (gbl_sql_release_locks_trace)
-            logmsg(LOGMSG_USER, "Releasing locks for lockid %d, %s%s\n",
-                   bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran), trace,
-                   (qikey == NULL) ? " (skip bdblock)" : "");
+            logmsg(LOGMSG_USER, "Releasing locks for lockid %d, %s\n",
+                   bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran),
+                   trace);
         rc = recover_deadlock_flags(thedb->bdb_env, thd, NULL, -1, flags);
     }
     return rc;
 }
 
-int release_locks(struct sql_thread *td, const char *trace)
+int release_locks(const char *trace)
 {
-    return release_locks_flags(td, trace, 0);
+    return release_locks_flags(trace, 0);
 }
 
 /* Release-locks if rep-thread is blocked longer than this many ms */
@@ -2304,7 +2303,7 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
     /* Release locks randomly for testing */
     if (gbl_sql_random_release_interval &&
         !(rand() % gbl_sql_random_release_interval))
-        return release_locks(thd->sqlthd, "random release emit-row");
+        return release_locks("random release emit-row");
 
     /* Short circuit if we don't have any waiters */
     if (!bdb_curtran_has_waiters(thedb->bdb_env, clnt->dbtran.cursor_tran))
@@ -2312,12 +2311,12 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
 
     /* We're emitting a row & have waiters */
     if (!gbl_rep_wait_release_ms || thedb->master == gbl_mynode)
-        return release_locks(thd->sqlthd, "release locks on emit-row");
+        return release_locks("release locks on emit-row");
 
     /* We're emitting a row and are blocking replication */
     if (rep_lock_time_ms &&
         (comdb2_time_epochms() - rep_lock_time_ms) > gbl_rep_wait_release_ms)
-        return release_locks(thd->sqlthd, "long repwait at emit-row");
+        return release_locks("long repwait at emit-row");
 
     return 0;
 }
@@ -3736,13 +3735,9 @@ void sqlengine_work_appsock(void *thddata, void *work)
     struct sqlthdstate *thd = thddata;
     struct sqlclntstate *clnt = work;
     struct sql_thread *sqlthd = thd->sqlthd;
-    if (sqlthd) {
-        sqlthd->clnt = clnt;
-        if (clnt->sb)
-            sbuf2setsqlthd(clnt->sb, sqlthd);
-    } else {
-        abort();
-    }
+
+    assert(sqlthd);
+    sqlthd->clnt = clnt;
 
     thr_set_user(clnt->appsock_id);
 
@@ -4385,15 +4380,14 @@ int sbuf_is_local(SBUF2 *sb)
     return 0;
 }
 
-static inline int sql_writer_recover_deadlock(struct sql_thread *qikey,
-                                              struct sql_thread *thd,
+static inline int sql_writer_recover_deadlock(struct sql_thread *thd,
                                               struct sqlclntstate *clnt)
 {
     int count = 0;
 
     /* Sql thread */
-    if (qikey) {
-        if (release_locks(thd, "slow reader") != 0) {
+    if (thd) {
+        if (release_locks("slow reader") != 0) {
             logmsg(LOGMSG_ERROR, "%s release_locks failed\n", __func__);
             return -1;
         }
@@ -4430,9 +4424,8 @@ int sql_writer(SBUF2 *sb, const char *buf, int nbytes)
 {
     extern int gbl_sql_release_locks_on_slow_reader;
     ssize_t nwrite, written = 0;
-    struct sql_thread *qikey = pthread_getspecific(query_info_key);
-    struct sql_thread *thd = sbuf2getsqlthd(sb);
-    struct sqlclntstate *clnt = thd ? thd->clnt : NULL;
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt = sbuf2getclnt(sb);
     int retry = -1;
     int released_locks = 0;
 
@@ -4446,7 +4439,7 @@ retry:
         int rc = poll(&pd, 1, 100);
 
         if (rc < 0 && (errno == EINTR || errno == EAGAIN)) {
-            if ((rc = sql_writer_recover_deadlock(qikey, thd, clnt)) < 0)
+            if ((rc = sql_writer_recover_deadlock(thd, clnt)) < 0)
                 return -1;
             if (rc == 0)
                 released_locks = 1;
@@ -4455,7 +4448,7 @@ retry:
         if (rc == 0) {
             if ((gbl_sql_release_locks_on_slow_reader && !released_locks) ||
                 bdb_lock_desired(thedb->bdb_env)) {
-                if ((rc = sql_writer_recover_deadlock(qikey, thd, clnt)) < 0)
+                if ((rc = sql_writer_recover_deadlock(thd, clnt)) < 0)
                     return -1;
                 if (rc == 0)
                     released_locks = 1;

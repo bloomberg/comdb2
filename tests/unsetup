@@ -147,6 +147,8 @@ unsetup_db() {
 
     if [[ "$CORE_ON_TIMEOUT" -eq "1" && "$successful" -eq "-1" ]]; then
         core_all_nodes
+    elif [[ "$CORE_ON_FAILURE" -eq "1" && "$successful" -ne "1" ]]; then
+        core_all_nodes
     fi
 
 
@@ -157,7 +159,6 @@ unsetup_db() {
         sleep 1
         
         kill_by_pidfile ${TMPDIR}/${DBNAME}.pid
-
     else
         pidfilelist=""
 

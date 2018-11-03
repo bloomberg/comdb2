@@ -2183,6 +2183,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         sqlthd->clnt->origin[0] = 0;
     }
 
+    sbuf2setclnt(sb, &clnt);
+
     while (query) {
         sql_query = query->sqlquery;
         APPDATA->query = query;
@@ -2326,6 +2328,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     }
 
 done:
+    sbuf2setclnt(sb, NULL);
+
     if (clnt.ctrl_sqlengine == SQLENG_INTRANS_STATE) {
         handle_sql_intrans_unrecoverable_error(&clnt);
     }

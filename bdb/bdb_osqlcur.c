@@ -354,7 +354,7 @@ int bdb_osql_shadow_set_lastlog(bdb_cursor_ifn_t *pcur_ifn,
  *  If any shadow row is added/deleted, mark dirty
  */
 
-int release_locks(struct sql_thread *sql_thd, const char *trace);
+int release_locks(const char *trace);
 
 int bdb_osql_update_shadows(bdb_cursor_ifn_t *pcur_ifn, bdb_osql_trn_t *trn,
                             int *dirty, enum log_ops log_op, int *bdberr)
@@ -462,11 +462,11 @@ int bdb_osql_update_shadows(bdb_cursor_ifn_t *pcur_ifn, bdb_osql_trn_t *trn,
         if (gbl_sql_release_locks_in_update_shadows && !released_locks) {
             extern int gbl_sql_random_release_interval;
             if (bdb_curtran_has_waiters(cur->state, cur->curtran)) {
-                rc = release_locks(NULL, "update shadows");
+                rc = release_locks("update shadows");
                 released_locks = 1;
             } else if (gbl_sql_random_release_interval &&
                        !(rand() % gbl_sql_random_release_interval)) {
-                rc = release_locks(NULL, "random release update shadows");
+                rc = release_locks("random release update shadows");
                 released_locks = 1;
             }
             if (rc != 0) {

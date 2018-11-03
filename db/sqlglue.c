@@ -2842,11 +2842,11 @@ static int cursor_move_postop(BtCursor *pCur)
          clnt->dbtran.mode == TRANLEVEL_SERIAL)) {
         extern int gbl_sql_random_release_interval;
         if (bdb_curtran_has_waiters(thedb->bdb_env, clnt->dbtran.cursor_tran)) {
-            rc = release_locks(NULL, "replication is waiting on si-session");
+            rc = release_locks("replication is waiting on si-session");
             release_locks_on_si_lockwait_cnt++;
         } else if (gbl_sql_random_release_interval &&
                    !(rand() % gbl_sql_random_release_interval)) {
-            rc = release_locks(NULL, "random release cursor_move_postop");
+            rc = release_locks("random release cursor_move_postop");
             release_locks_on_si_lockwait_cnt++;
         }
     }
