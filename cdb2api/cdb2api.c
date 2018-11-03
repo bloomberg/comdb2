@@ -1270,15 +1270,20 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp,
             } else if (strcasecmp("lib", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok) {
-                    void *handle = dlopen(tok, RTLD_NOLOAD | RTLD_NOW | RTLD_GLOBAL);
+                    void *handle =
+                        dlopen(tok, RTLD_NOLOAD | RTLD_NOW | RTLD_GLOBAL);
                     if (handle == NULL) {
                         handle = dlopen(tok, RTLD_NOW | RTLD_GLOBAL);
                         if (handle == NULL)
-                            fprintf(stderr, "dlopen(%s) failed: %s\n", tok, dlerror());
+                            fprintf(stderr, "dlopen(%s) failed: %s\n", tok,
+                                    dlerror());
                         else {
-                            cdb2_init_t libinit = (cdb2_init_t)dlsym(handle, "cdb2_lib_init");
+                            cdb2_init_t libinit =
+                                (cdb2_init_t)dlsym(handle, "cdb2_lib_init");
                             if (libinit == NULL)
-                                fprintf(stderr, "dlsym(cdb2_lib_init) failed: %s\n", dlerror());
+                                fprintf(stderr,
+                                        "dlsym(cdb2_lib_init) failed: %s\n",
+                                        dlerror());
                             else
                                 (*libinit)();
                         }
