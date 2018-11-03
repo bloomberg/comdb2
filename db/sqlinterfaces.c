@@ -4411,7 +4411,7 @@ static inline int sql_writer_recover_deadlock(struct sql_thread *thd,
                        count);
             }
             pthread_cond_timedwait(&clnt->write_cond, &clnt->write_lock, &ts);
-        } while (clnt->need_recover_deadlock == 1);
+        } while (clnt->need_recover_deadlock == 1 && !clnt->done);
         clnt->heartbeat_lock = 0;
         return 0;
     }
