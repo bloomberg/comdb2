@@ -22,6 +22,7 @@ test_get_comdb2db_hosts: unit_get_comdb2db_hosts.c
 	echo '#include "sqlquery.pb-c.h"' >> test_get_comdb2db_hosts.c
 	echo "typedef struct cdb2_query_list_item cdb2_query_list;" >> test_get_comdb2db_hosts.c
 	echo "typedef struct sbuf2 SBUF2;" >> test_get_comdb2db_hosts.c
+	echo "typedef struct {int i;} cdb2_event;" >> test_get_comdb2db_hosts.c
 
 	grep "define MAX_CNONCE_LEN " $(SRCHOME)/cdb2api/cdb2api.c >> test_get_comdb2db_hosts.c
 	grep "define MAX_NODES " $(SRCHOME)/cdb2api/cdb2api.c >> test_get_comdb2db_hosts.c
