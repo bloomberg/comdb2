@@ -833,15 +833,15 @@ int gbl_osql_send_startgen = 1;
 
 static inline int sock_restart_retryable_rcode(int restart_rc)
 {
-    switch(restart_rc) {
-        case SQLITE_TOOBIG:
-        case ERR_SC:
-        case ERR_RECOVER_DEADLOCK:
-        case SQLITE_COMDB2SCHEMA:
-        case SQLITE_CLIENT_CHANGENODE:
-            return 0;
-        default:
-            return 1;
+    switch (restart_rc) {
+    case SQLITE_TOOBIG:
+    case ERR_SC:
+    case ERR_RECOVER_DEADLOCK:
+    case SQLITE_COMDB2SCHEMA:
+    case SQLITE_CLIENT_CHANGENODE:
+        return 0;
+    default:
+        return 1;
     }
 }
 
@@ -997,7 +997,7 @@ retry:
                             rc, osql->xerr.errval);
                         rcout = -109;
                     } else if (osql->xerr.errval == ERR_NOT_DURABLE ||
-                            rc == SQLITE_CLIENT_CHANGENODE) {
+                               rc == SQLITE_CLIENT_CHANGENODE) {
                         /* Ask the client to change nodes */
                         sql_debug_logf(
                             clnt, __func__, __LINE__,
@@ -1007,11 +1007,11 @@ retry:
                         rcout = SQLITE_CLIENT_CHANGENODE;
                     } else if (rc == SQLITE_COMDB2SCHEMA) {
                         /* Schema has changed */
-                        sql_debug_logf(
-                            clnt, __func__, __LINE__,
-                            "got %d and "
-                            "setting rcout to SQLITE_COMDB2SCHEMA, errval is %d\n",
-                            rc, osql->xerr.errval);
+                        sql_debug_logf(clnt, __func__, __LINE__,
+                                       "got %d and "
+                                       "setting rcout to SQLITE_COMDB2SCHEMA, "
+                                       "errval is %d\n",
+                                       rc, osql->xerr.errval);
                         rcout = SQLITE_COMDB2SCHEMA;
                     } else {
                         sql_debug_logf(

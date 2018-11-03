@@ -3207,9 +3207,9 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
     return 0;
 }
 
-/* The design choice here for communication is to send row data inside this function,
-   and delegate the error sending to the caller (since we send multiple rows, but we 
-   send error only once and stop processing at that time)
+/* The design choice here for communication is to send row data inside this
+   function, and delegate the error sending to the caller (since we send
+   multiple rows, but we send error only once and stop processing at that time)
  */
 static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                     struct sql_state *rec, int *fast_error, struct errstat *err)
