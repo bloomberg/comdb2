@@ -3508,7 +3508,7 @@ static int init(int argc, char **argv)
      * to allow them because at least one prod database uses them.
      * Still alow bools for people who want to copy/test prod dbs
      * that use them.  Don't allow new databases to have bools. */
-    if ((get_mach_class(gbl_mynode) == CLASS_TEST) && gbl_create_mode) {
+    if ((get_my_mach_class() == CLASS_TEST) && gbl_create_mode) {
         if (dyns_used_bools()) {
             logmsg(LOGMSG_FATAL, "bools in schema.  This is now deprecated.\n");
             logmsg(LOGMSG_FATAL, "Exiting since this is a test machine.\n");
