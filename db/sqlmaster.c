@@ -310,9 +310,9 @@ int get_copy_rootpages_nolock(struct sql_thread *thd)
 inline int get_copy_rootpages(struct sql_thread *thd)
 {
     int ret;
-    Pthread_rwlock_rdlock(&schema_lk);
+    rdlock_schema_lk();
     ret = get_copy_rootpages_nolock(thd);
-    Pthread_rwlock_unlock(&schema_lk);
+    unlock_schema_lk();
     return ret;
 }
 
