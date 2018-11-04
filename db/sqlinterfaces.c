@@ -322,10 +322,9 @@ void unlock_client_write_lock(struct sqlclntstate *clnt)
     Pthread_mutex_unlock(&clnt->write_lock);
 }
 
-void handle_failed_recover_deadlock(struct sqlclntstate *clnt)
+void handle_failed_recover_deadlock(struct sqlclntstate *clnt, int recover_deadlock_rcode)
 {
-    assert(clnt->recover_deadlock_rcode != 0);
-    switch (clnt->recover_deadlock_rcode) {
+    switch (recover_deadlock_rcode) {
     case SQLITE_COMDB2SCHEMA:
         clnt->ready_for_heartbeats = 0;
         write_response(clnt, RESPONSE_ERROR,
@@ -345,7 +344,7 @@ void handle_failed_recover_deadlock(struct sqlclntstate *clnt)
                        "Failed to reaquire locks on deadlock",
                        CDB2ERR_DEADLOCK);
         logmsg(LOGMSG_DEBUG, "%s sending CDB2ERR_DEADLOCK on %d\n", __func__,
-               clnt->recover_deadlock_rcode);
+               recover_deadlock_rcode);
         break;
     }
 }
@@ -368,7 +367,7 @@ int write_response(struct sqlclntstate *clnt, int R, void *D, int I)
     }
     if (R != RESPONSE_HEARTBEAT && (rd_rc = clnt->recover_deadlock_rcode)) {
         clnt->recover_deadlock_rcode = 0;
-        handle_failed_recover_deadlock(clnt);
+        handle_failed_recover_deadlock(clnt, rd_rc);
         rc = !rc ? rd_rc : rc;
     }
     return rc;
