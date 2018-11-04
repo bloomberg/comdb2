@@ -6743,10 +6743,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                 iq->usedb = iq->sc->db;
             rc = finalize_schema_change(iq, iq->sc_tran);
             iq->usedb = NULL;
-            if (iq->sc_locked) {
-                unlock_schema_lk();
-                iq->sc_locked = 1;
-            }
             if (rc != SC_OK) {
                 return rc; // Change to failed schema change error;
             }

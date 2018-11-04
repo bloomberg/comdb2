@@ -18,6 +18,7 @@
 #include <logmsg.h>
 #include <locks_wrap.h>
 #include <schema_lk.h>
+#define VERBOSE_SCHEMA_LK 1
 
 static pthread_rwlock_t schema_lk = PTHREAD_RWLOCK_INITIALIZER;
 
@@ -25,7 +26,7 @@ inline void rdlock_schema_int(const char *file, const char *func, int line)
 {
     Pthread_rwlock_rdlock(&schema_lk);
 #ifdef VERBOSE_SCHEMA_LK
-    logmsg(LOGMSG_USER "%llx:RDLOCK %s:%d\n", pthread_self(), func, line);
+    logmsg(LOGMSG_USER, "%p:RDLOCK %s:%d\n", (void *)pthread_self(), func, line);
 #endif
 }
 
@@ -33,7 +34,7 @@ inline int tryrdlock_schema_int(const char *file, const char *func, int line)
 {
     int rc = pthread_rwlock_tryrdlock(&schema_lk);
 #ifdef VERBOSE_SCHEMA_LK
-    logmsg(LOGMSG_USER "%llx:TRYRDLOCK RC:%d %s:%d\n", pthread_self(), rc, func,
+    logmsg(LOGMSG_USER, "%p:TRYRDLOCK RC:%d %s:%d\n", (void *)pthread_self(), rc, func,
             line);
 #endif
     return rc;
@@ -42,7 +43,7 @@ inline int tryrdlock_schema_int(const char *file, const char *func, int line)
 inline void unlock_schema_int(const char *file, const char *func, int line)
 {
 #ifdef VERBOSE_SCHEMA_LK
-    logmsg(LOGMSG_USER "%llx:UNLOCK %s:%d\n", pthread_self(), func, line);
+    logmsg(LOGMSG_USER, "%p:UNLOCK %s:%d\n", (void *)pthread_self(), func, line);
 #endif
     Pthread_rwlock_unlock(&schema_lk);
 }
@@ -51,6 +52,6 @@ inline void wrlock_schema_int(const char *file, const char *func, int line)
 {
     Pthread_rwlock_wrlock(&schema_lk);
 #ifdef VERBOSE_SCHEMA_LK
-    logmsg(LOGMSG_USER "%llx:WRLOCK %s:%d\n", pthread_self(), func, line);
+    logmsg(LOGMSG_USER, "%p:WRLOCK %s:%d\n", (void *)pthread_self(), func, line);
 #endif
 }
