@@ -352,12 +352,12 @@ void handle_failed_recover_deadlock(struct sqlclntstate *clnt)
 
 int write_response(struct sqlclntstate *clnt, int R, void *D, int I)
 {
-    int rc, rd_rc = clnt->recover_deadlock_rcode;
+    int rc;
 #ifdef DEBUG
     logmsg(LOGMSG_DEBUG, "write_response(%s,%p,%d)\n", WriteRespString[R], D,
            I);
 #endif
-    if (R != RESPONSE_HEARTBEAT){
+    if (R != RESPONSE_HEARTBEAT) {
         assert(!clnt->emitting_flag);
         clnt->emitting_flag = 1;
     }
@@ -366,7 +366,7 @@ int write_response(struct sqlclntstate *clnt, int R, void *D, int I)
         assert(clnt->emitting_flag);
         clnt->emitting_flag = 0;
     }
-    if (!rd_rc && clnt->recover_deadlock_rcode) {
+    if (R != RESPONSE_HEARTBEAT && clnt->recover_deadlock_rcode) {
         handle_failed_recover_deadlock(clnt);
         rc = !rc ? clnt->recover_deadlock_rcode : rc;
         clnt->recover_deadlock_rcode = 0;
