@@ -357,11 +357,15 @@ int write_response(struct sqlclntstate *clnt, int R, void *D, int I)
     logmsg(LOGMSG_DEBUG, "write_response(%s,%p,%d)\n", WriteRespString[R], D,
            I);
 #endif
-    if (R != RESPONSE_HEARTBEAT)
+    if (R != RESPONSE_HEARTBEAT){
+        assert(!clnt->emitting_flag);
         clnt->emitting_flag = 1;
+    }
     rc = clnt->plugin.write_response(clnt, R, D, I);
-    if (R != RESPONSE_HEARTBEAT)
+    if (R != RESPONSE_HEARTBEAT) {
+        assert(clnt->emitting_flag);
         clnt->emitting_flag = 0;
+    }
     if (!rd_rc && clnt->recover_deadlock_rcode) {
         handle_failed_recover_deadlock(clnt);
         rc = !rc ? clnt->recover_deadlock_rcode : rc;
@@ -4383,7 +4387,7 @@ int sbuf_is_local(SBUF2 *sb)
 static inline int sql_writer_recover_deadlock(struct sql_thread *thd,
                                               struct sqlclntstate *clnt)
 {
-    int count = 0;
+    int count = 0, rc;
 
     /* Sql thread */
     if (thd) {
@@ -4411,9 +4415,11 @@ static inline int sql_writer_recover_deadlock(struct sql_thread *thd,
                        count);
             }
             pthread_cond_timedwait(&clnt->write_cond, &clnt->write_lock, &ts);
-        } while (clnt->need_recover_deadlock == 1 && !clnt->done);
+        } while (clnt->need_recover_deadlock == 1 && clnt->emitting_flag && !clnt->done);
         clnt->heartbeat_lock = 0;
-        return 0;
+        rc = clnt->need_recover_deadlock;
+        clnt->need_recover_deadlock = 0;
+        return rc;
     }
 
     /* Recover deadlock not run */
