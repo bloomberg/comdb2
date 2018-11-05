@@ -1,3 +1,5 @@
+export SECONDARY_DB_PREFIX=srcdb
+
 ifeq ($(TESTSROOTDIR),)
   include ../testcase.mk
 else
@@ -6,5 +8,3 @@ endif
 ifeq ($(TEST_TIMEOUT),)
 	export TEST_TIMEOUT=2m
 endif
-
-export SECONDARY_DB_PREFIX=srcdb

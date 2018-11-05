@@ -30,21 +30,12 @@ mkdir -p ${TESTDIR}/logs/
 
 call_unsetup() {
     [[ $COMDB2_UNITTEST == 1 ]] && return
-
-    local LCLDBNM=$1
-    local LCLDBDIR=$2
-    local LCLCONFIG=$3
-    local LCLOPTIONS="--cdb2cfg ${LCLCONFIG}"
-    CDB2_OPTIONS=$LCLOPTIONS DBNAME=$LCLDBNM DBDIR=$LCLDBDIR ${TESTSROOTDIR}/unsetup $successful &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${LCLDBNM}.unsetup | cut -c11- | grep "^!" )
+    ${TESTSROOTDIR}/unsetup $successful &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.unsetup | cut -c11- | grep "^!" )
 }
 
 warn_long_setup() {
     start=$(date +%s)
-    local LCLDBNM=$1
-    local LCLDBDIR=$2
-    local LCLCONFIG=$3
-    local LCLOPTIONS="--cdb2cfg ${LCLCONFIG}"
-    ( CDB2_OPTIONS=$LCLOPTIONS CDB2_CONFIG=$LCLCONFIG DBNAME=$LCLDBNM DBDIR=$LCLDBDIR ${TESTSROOTDIR}/setup &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${LCLDBNM}.setup | cut -c11- | grep "^!" ) ) &
+    ( ${TESTSROOTDIR}/setup &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.setup | cut -c11- | grep "^!" ) ) &
     pid=$!
     kill -0 $pid >/dev/null 2>&1
     r=$?
@@ -171,31 +162,27 @@ find_cores() {
 call_setup() {
     [[ $COMDB2_UNITTEST == 1 ]] && return
 
-    local LCLDBNM="$1"
-    local LCLDBDIR="$2"
-    local LCLCONFIG="$3"
-    local LCLOPTIONS="--cdb2cfg ${LCLCONFIG}"
     if [[ $SETUP_WARN ]]; then
-         warn_long_setup $LCLDBNM $LCLDBDIR $LCLCONFIG
+         warn_long_setup
          rc=$?
     else
-        { CDB2_OPTIONS="$LCLOPTIONS" CDB2_CONFIG="$LCLCONFIG" DBNAME="$LCLDBNM" DBDIR="$LCLDBDIR" timeout ${SETUP_TIMEOUT} ${TESTSROOTDIR}/setup ${LCLDBNM} $LCLDBDIR 2>&1 || echo $?; } | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${LCLDBNM}.setup | cut -c11- | grep "^!"
+        { timeout ${SETUP_TIMEOUT} ${TESTSROOTDIR}/setup 2>&1 || echo $?; } | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.setup | cut -c11- | grep "^!"
     fi
     sleep 0.8 # wait a bit for any cores
     #last line of .setup file will contain the error rc if any
-    ret=`tail -1 ${TESTDIR}/logs/${LCLDBNM}.setup | cut -c11-`
-    cr=`find_cores $LCLDBNM $LCLDBDIR`
+    ret=`tail -1 ${TESTDIR}/logs/${DBNAME}.setup | cut -c11-`
+    cr=`find_cores`
 
     if [[ -n "$cr" ]] ; then
         echo "!$TESTCASE: setup failed with core dumped ($cr)"
         echo "!$TESTCASE: setup failed with core dumped ($cr)" >> ${TESTDIR}/test.log
-        call_unsetup ${LCLDBNM} ${LCLDBDIR} $LCLCONFIG
+        call_unsetup
         sleep 0.1
         exit 1
     elif [[ $ret != "setup successful" ]] ; then
         echo "!$TESTCASE: setup failed (rc=$ret)" >> ${TESTDIR}/test.log
-        echo "!$TESTCASE: setup failed (rc=$ret) see ${TESTDIR}/logs/${LCLDBNM}.setup"
-        call_unsetup ${LCLDBNM} ${LCLDBDIR} $LCLCONFIG
+        echo "!$TESTCASE: setup failed (rc=$ret) see ${TESTDIR}/logs/${DBNAME}.setup"
+        call_unsetup
         sleep 0.1
         exit 1
     fi
@@ -221,17 +208,7 @@ check_db_at_finish() {
 
 # start the testing: setup, runit, check cores, unsetup
 
-call_setup ${DBNAME} ${DBDIR} "$CDB2_CONFIG" "$CDB2_OPTIONS"
-
-if [ -n "${SECONDARY_DB_PREFIX}" ] ; then
-    export SECONDARY_DB=${SECONDARY_DB_PREFIX}${DBNAME}
-    export SECONDARY_DBDIR=${TESTDIR}/${SECONDARY_DB}
-    export SECONDARY_DB_CDB2_CONFIG=${SECONDARY_DBDIR}/comdb2db.cfg
-    export SECONDARY_DB_CDB2_OPTIONS="--cdb2cfg ${CDB2_CONFIG}"
-    call_setup ${SECONDARY_DB} ${SECONDARY_DBDIR} $SECONDARY_DB_CDB2_CONFIG
-fi
-
-
+call_setup
 echo "!$TESTCASE: running with timeout ${TEST_TIMEOUT}"
 
 timeout ${TEST_TIMEOUT} ./runit ${DBNAME} 2>&1  | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' &> ${TESTDIR}/logs/${DBNAME}.testcase
@@ -243,15 +220,15 @@ sleep 1
 
 cr=`find_cores ${DBNAME} $DBDIR`
 
-if [[ -z "$cr" ]] && [[ -n "${SECONDARY_DB}" ]] ; then
-    cr=`find_cores ${SECONDARY_DB} ${SECONDARY_DBDIR}`
+if [[ -z "$cr" ]] && [[ -n "${SECONDARY_DBNAME}" ]] ; then
+    cr=`find_cores ${SECONDARY_DBNAME} ${SECONDARY_DBDIR}`
 fi
 
 CHECK_DB_AT_FINISH=${CHECK_DB_AT_FINISH:-0}
 if [ $CHECK_DB_AT_FINISH -eq 1 ] ; then
-    dbdown=`check_db_at_finish ${SECONDARY_DB} ${SECONDARY_DBDIR} $SECONDARY_DB_CDB2_CONFIG`
-    if [[ -z "$dbdown" ]] && [[ -n "${SECONDARY_DB}" ]]; then
-        dbdown=`check_db_at_finish ${SECONDARY_DB} ${SECONDARY_DBDIR} $SECONDARY_DB_CDB2_CONFIG`
+    dbdown=`check_db_at_finish ${SECONDARY_DBNAME} ${SECONDARY_DBDIR} $SECONDARY_CDB2_CONFIG`
+    if [[ -z "$dbdown" ]] && [[ -n "${SECONDARY_DBNAME}" ]]; then
+        dbdown=`check_db_at_finish ${SECONDARY_DBNAME} ${SECONDARY_DBDIR} $SECONDARY_CDB2_CONFIG`
     fi
 fi
 
@@ -278,14 +255,11 @@ fi
 
 
 
-call_unsetup ${DBNAME} ${DBDIR} $CDB2_OPTIONS
-
-if [ -n "${SECONDARY_DB}" ] ; then
-    call_unsetup ${SECONDARY_DB} ${SECONDARY_DBDIR} $SECONDARY_DB_CDB2_OPTIONS
-fi
+call_unsetup
 
 DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
 echo Done $TESTCASE with id $TESTID at $DATETIME >> $TESTDIR/test.log
 echo "Duration $SECONDS seconds" >> ${TESTDIR}/logs/${DBNAME}.testcase
 
 exit $rc
+

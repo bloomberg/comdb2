@@ -3274,6 +3274,9 @@ static int init(int argc, char **argv)
 
     init_file_locations(lrlname);
 
+    /* prepare the server class ahead of time */
+    get_my_mach_class();
+
     if (gbl_create_mode && lrlname == NULL) {
        if (gbl_dbdir == NULL)
           gbl_dbdir = comdb2_location("database", "%s", dbname);
@@ -3507,7 +3510,7 @@ static int init(int argc, char **argv)
      * to allow them because at least one prod database uses them.
      * Still alow bools for people who want to copy/test prod dbs
      * that use them.  Don't allow new databases to have bools. */
-    if ((get_mach_class(gbl_mynode) == CLASS_TEST) && gbl_create_mode) {
+    if ((get_my_mach_class() == CLASS_TEST) && gbl_create_mode) {
         if (dyns_used_bools()) {
             logmsg(LOGMSG_FATAL, "bools in schema.  This is now deprecated.\n");
             logmsg(LOGMSG_FATAL, "Exiting since this is a test machine.\n");
@@ -3620,21 +3623,21 @@ static int init(int argc, char **argv)
         /* we would like to open the files under schema lock, so that
            we don't race with a schema change from master (at this point
            environment is opened, but files are not !*/
-        Pthread_rwlock_wrlock(&schema_lk);
+        wrlock_schema_lk();
 
         if (llmeta_load_tables(thedb, dbname)) {
             logmsg(LOGMSG_FATAL, "could not load tables from the low level meta "
                             "table\n");
-            Pthread_rwlock_unlock(&schema_lk);
+            unlock_schema_lk();
             return -1;
         }
 
         if (llmeta_load_timepart(thedb)) {
             logmsg(LOGMSG_ERROR, "could not load time partitions\n");
-            Pthread_rwlock_unlock(&schema_lk);
+            unlock_schema_lk();
             return -1;
         }
-        Pthread_rwlock_unlock(&schema_lk);
+        unlock_schema_lk();
 
         if (llmeta_load_queues(thedb)) {
             logmsg(LOGMSG_FATAL, "could not load queues from the low level meta "
@@ -3718,22 +3721,24 @@ static int init(int argc, char **argv)
     /* open db engine */
     logmsg(LOGMSG_INFO, "starting backend db engine\n");
 
-    Pthread_rwlock_wrlock(&schema_lk);
+    wrlock_schema_lk();
 
     if (backend_open(thedb) != 0) {
         logmsg(LOGMSG_FATAL, "failed to open '%s'\n", dbname);
+        unlock_schema_lk();
         return -1;
     }
 
     if (llmeta_load_tables_older_versions(thedb)) {
         logmsg(LOGMSG_FATAL, "llmeta_load_tables_older_versions failed\n");
+        unlock_schema_lk();
         return -1;
     }
 
     load_dbstore_tableversion(thedb);
 
     gbl_backend_opened = 1;
-    Pthread_rwlock_unlock(&schema_lk);
+    unlock_schema_lk();
 
     sqlinit();
     rc = create_sqlmaster_records(NULL);

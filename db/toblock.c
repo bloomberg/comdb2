@@ -2105,7 +2105,7 @@ static int toblock_outer(struct ireq *iq, block_state_t *blkstate)
 {
     int rc;
     int gaveaway;
-    int i;
+    int i = 0;
     block_state_t blkstate_copy;
     pthread_t my_tid;
     pthread_t working_for;
@@ -2396,9 +2396,8 @@ static void backout_and_abort_tranddl(struct ireq *iq, tran_type *parent)
         rc = trans_commit_logical(iq, iq->sc_logical_tran, gbl_mynode, 0, 1,
                                   NULL, 0, NULL, 0);
         if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d", __func__,
+            logmsg(LOGMSG_ERROR, "%s:%d TRANS_ABORT FAILED RC %d", __func__,
                    __LINE__, rc);
-            comdb2_die(1);
         }
     }
     iq->sc_logical_tran = NULL;
@@ -5619,6 +5618,10 @@ add_blkseq:
 
                 if (rc == BDBERR_NOT_DURABLE)
                     rc = ERR_NOT_DURABLE;
+            }
+            if (iq->sc_locked) {
+                unlock_schema_lk();
+                iq->sc_locked = 0;
             }
         }
 

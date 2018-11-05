@@ -1797,6 +1797,9 @@ int bdb_clean_pglogs_queues(bdb_state_type *bdb_state)
     DB_LSN lsn;
     int count, i;
 
+    if (!gbl_new_snapisol)
+        return 0;
+
     Pthread_mutex_lock(&del_queue_lk);
     bdb_pglogs_min_lsn(bdb_state, &lsn);
 
@@ -3610,6 +3613,9 @@ int bdb_push_pglogs_commit(void *in_bdb_state, DB_LSN commit_lsn, uint32_t gen,
     struct commit_list *lcommit = NULL;
     extern int gbl_durable_set_trace;
     char *master, *eid;
+
+    if (!gbl_new_snapisol)
+        return 0;
 
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;

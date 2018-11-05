@@ -440,7 +440,6 @@ int create_key_from_ireq(struct ireq *iq, int ixnum, int isDelete, char **tail,
                          int *taillen, char *mangled_key, const char *inbuf,
                          int inbuflen, char *outbuf);
 
-extern pthread_rwlock_t schema_lk;
 char* typestr(int type, int len);
 
 #endif

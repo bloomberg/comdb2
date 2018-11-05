@@ -45,7 +45,7 @@ struct node_index {
 
 static int numnodes;
 static struct node_index nodes[MAXNODES];
-static pthread_mutex_t lk;
+static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
 
 volatile static __thread int lnumnodes;
 volatile static __thread struct node_index lnodes[MAXCACHE];
