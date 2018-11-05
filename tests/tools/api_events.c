@@ -8,6 +8,8 @@
 static void *my_simple_hook(cdb2_hndl_tp *hndl, void *user_arg, int argc, void **argv)
 {
     puts((char *)user_arg);
+    if (argc > 0)
+        puts((char *)argv[0]);
     return NULL;
 }
 
@@ -148,6 +150,9 @@ int main(int argc, char **argv)
         cdb2_set_comdb2db_config(conf);
         tier = "default";
     }
+
+    if (argc >= 3)
+        tier = argv[2];
 
     puts("====== SIMPLE REGISTRATION AND UNREGISTRATION ======");
     rc = TEST_simple_register_unregister(db, tier);

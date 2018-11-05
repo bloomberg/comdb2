@@ -807,7 +807,7 @@ static int cdb2_do_tcpconnect(struct in_addr in, int port, int myport,
 static int cdb2_tcpconnecth_to(cdb2_hndl_tp *hndl, const char *host, int port,
                                int myport, int timeoutms)
 {
-    int rc;
+    int rc = 0;
     struct in_addr in;
 
     void *hookrc;
@@ -2037,7 +2037,7 @@ static int cdb2portmux_get(cdb2_hndl_tp *hndl, const char *type,
     char name[128]; /* app/service/dbname */
     char res[32];
     SBUF2 *ss = NULL;
-    int rc, fd, port;
+    int rc, fd, port = -1;
 
     void *hookrc;
     int overwrite_rc = 0;
@@ -2542,14 +2542,14 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, SBUF2 *
                            int ntypes, int *types, int is_begin, int skip_nrows,
                            int retries_done, int do_append, int fromline)
 {
-    int rc;
+    int rc = 0;
 
     void *hookrc;
     int overwrite_rc = 0;
     cdb2_event *e = NULL;
 
     while ((e = cdb2_next_hook(event_hndl, CDB2_BEFORE_SEND_QUERY, e)) != NULL) {
-        hookrc = cdb2_invoke_hook(event_hndl, e, 0, NULL);
+        hookrc = cdb2_invoke_hook(event_hndl, e, 1, CDB2_SQL, sql);
         if (e->ctrls & CDB2_OVERWRITE_RETURN_VALUE) {
             overwrite_rc = 1;
             rc = (int)(intptr_t)hookrc;
@@ -2731,7 +2731,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, SBUF2 *
 
 after_hook:
     while ((e = cdb2_next_hook(event_hndl, CDB2_AFTER_SEND_QUERY, e)) != NULL) {
-        hookrc = cdb2_invoke_hook(event_hndl, e, 1, CDB2_RETURN_VALUE, rc);
+        hookrc = cdb2_invoke_hook(event_hndl, e, 2, CDB2_SQL, sql, CDB2_RETURN_VALUE, rc);
         if (e->ctrls & CDB2_OVERWRITE_RETURN_VALUE)
             rc = (int)(intptr_t)hookrc;
     }
