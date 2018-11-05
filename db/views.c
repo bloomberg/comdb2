@@ -1165,8 +1165,8 @@ void *_view_cron_phase1(uuid_t source_id, void *arg1, void *arg2, void *arg3,
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
 
         BDB_READLOCK(__func__);
-        pthread_rwlock_wrlock(&schema_lk);
-        pthread_rwlock_wrlock(&views_lk);
+        wrlock_schema_lk();
+        Pthread_rwlock_wrlock(&views_lk);
 
         view = _get_view(thedb->timepart_views, name);
         if (!view) {
@@ -1202,8 +1202,8 @@ void *_view_cron_phase1(uuid_t source_id, void *arg1, void *arg2, void *arg3,
 
 done:
     if (run) {
-        pthread_rwlock_unlock(&views_lk);
-        pthread_rwlock_unlock(&schema_lk);
+        Pthread_rwlock_unlock(&views_lk);
+        unlock_schema_lk();
         BDB_RELLOCK();
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
 
@@ -1429,8 +1429,8 @@ void *_view_cron_phase3(uuid_t source_id, void *arg1, void *arg2, void *arg3,
     if (run) {
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
         BDB_READLOCK(__func__);
-        pthread_rwlock_wrlock(&schema_lk);
-        pthread_rwlock_wrlock(&views_lk); /* I might decide to not lock this */
+        wrlock_schema_lk();
+        Pthread_rwlock_wrlock(&views_lk); /* I might decide to not lock this */
 
         rc = _views_rollout_phase3(pShardName, err);
         if (rc != VIEW_NOERR) {
@@ -1438,8 +1438,8 @@ void *_view_cron_phase3(uuid_t source_id, void *arg1, void *arg2, void *arg3,
                     err->errval, err->errstr);
         }
 
-        pthread_rwlock_unlock(&views_lk);
-        pthread_rwlock_unlock(&schema_lk);
+        Pthread_rwlock_unlock(&views_lk);
+        unlock_schema_lk();
         BDB_RELLOCK();
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
     }

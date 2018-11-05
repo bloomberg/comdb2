@@ -16,6 +16,7 @@
 #ifndef _INCLUDED_LOCKS_H
 #define _INCLUDED_LOCKS_H
 
+#include <stdlib.h>
 #include "logmsg.h"
 
 #ifdef LOCK_DEBUG

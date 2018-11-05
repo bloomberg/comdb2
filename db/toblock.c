@@ -2105,7 +2105,7 @@ static int toblock_outer(struct ireq *iq, block_state_t *blkstate)
 {
     int rc;
     int gaveaway;
-    int i;
+    int i = 0;
     block_state_t blkstate_copy;
     pthread_t my_tid;
     pthread_t working_for;
@@ -5618,6 +5618,10 @@ add_blkseq:
 
                 if (rc == BDBERR_NOT_DURABLE)
                     rc = ERR_NOT_DURABLE;
+            }
+            if (iq->sc_locked) {
+                unlock_schema_lk();
+                iq->sc_locked = 0;
             }
         }
 

@@ -3621,21 +3621,21 @@ static int init(int argc, char **argv)
         /* we would like to open the files under schema lock, so that
            we don't race with a schema change from master (at this point
            environment is opened, but files are not !*/
-        Pthread_rwlock_wrlock(&schema_lk);
+        wrlock_schema_lk();
 
         if (llmeta_load_tables(thedb, dbname)) {
             logmsg(LOGMSG_FATAL, "could not load tables from the low level meta "
                             "table\n");
-            Pthread_rwlock_unlock(&schema_lk);
+            unlock_schema_lk();
             return -1;
         }
 
         if (llmeta_load_timepart(thedb)) {
             logmsg(LOGMSG_ERROR, "could not load time partitions\n");
-            Pthread_rwlock_unlock(&schema_lk);
+            unlock_schema_lk();
             return -1;
         }
-        Pthread_rwlock_unlock(&schema_lk);
+        unlock_schema_lk();
 
         if (llmeta_load_queues(thedb)) {
             logmsg(LOGMSG_FATAL, "could not load queues from the low level meta "
@@ -3719,22 +3719,24 @@ static int init(int argc, char **argv)
     /* open db engine */
     logmsg(LOGMSG_INFO, "starting backend db engine\n");
 
-    Pthread_rwlock_wrlock(&schema_lk);
+    wrlock_schema_lk();
 
     if (backend_open(thedb) != 0) {
         logmsg(LOGMSG_FATAL, "failed to open '%s'\n", dbname);
+        unlock_schema_lk();
         return -1;
     }
 
     if (llmeta_load_tables_older_versions(thedb)) {
         logmsg(LOGMSG_FATAL, "llmeta_load_tables_older_versions failed\n");
+        unlock_schema_lk();
         return -1;
     }
 
     load_dbstore_tableversion(thedb);
 
     gbl_backend_opened = 1;
-    Pthread_rwlock_unlock(&schema_lk);
+    unlock_schema_lk();
 
     sqlinit();
     rc = create_sqlmaster_records(NULL);
