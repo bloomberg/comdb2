@@ -2535,11 +2535,12 @@ retry_read:
     return 0;
 }
 
-static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, SBUF2 *sb, const char *dbname,
-                           const char *sql, int n_set_commands,
-                           int n_set_commands_sent, char **set_commands,
-                           int n_bindvars, CDB2SQLQUERY__Bindvalue **bindvars,
-                           int ntypes, int *types, int is_begin, int skip_nrows,
+static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
+                           SBUF2 *sb, const char *dbname, const char *sql,
+                           int n_set_commands, int n_set_commands_sent,
+                           char **set_commands, int n_bindvars,
+                           CDB2SQLQUERY__Bindvalue **bindvars, int ntypes,
+                           int *types, int is_begin, int skip_nrows,
                            int retries_done, int do_append, int fromline)
 {
     int rc = 0;
@@ -2548,7 +2549,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, SBUF2 *
     int overwrite_rc = 0;
     cdb2_event *e = NULL;
 
-    while ((e = cdb2_next_hook(event_hndl, CDB2_BEFORE_SEND_QUERY, e)) != NULL) {
+    while ((e = cdb2_next_hook(event_hndl, CDB2_BEFORE_SEND_QUERY, e)) !=
+           NULL) {
         hookrc = cdb2_invoke_hook(event_hndl, e, 1, CDB2_SQL, sql);
         if (e->ctrls & CDB2_OVERWRITE_RETURN_VALUE) {
             overwrite_rc = 1;
@@ -2731,7 +2733,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, SBUF2 *
 
 after_hook:
     while ((e = cdb2_next_hook(event_hndl, CDB2_AFTER_SEND_QUERY, e)) != NULL) {
-        hookrc = cdb2_invoke_hook(event_hndl, e, 2, CDB2_SQL, sql, CDB2_RETURN_VALUE, rc);
+        hookrc = cdb2_invoke_hook(event_hndl, e, 2, CDB2_SQL, sql,
+                                  CDB2_RETURN_VALUE, rc);
         if (e->ctrls & CDB2_OVERWRITE_RETURN_VALUE)
             rc = (int)(intptr_t)hookrc;
     }
@@ -3886,14 +3889,14 @@ retry_queries:
     if (!hndl->in_trans || is_begin) {
         hndl->query_no = 0;
         rc = cdb2_send_query(
-            hndl, hndl, hndl->sb, hndl->dbname, (char *)sql, hndl->num_set_commands,
-            hndl->num_set_commands_sent, hndl->commands, hndl->n_bindvars,
-            hndl->bindvars, ntypes, types, is_begin, 0, retries_done - 1,
-            is_begin ? 0 : run_last, __LINE__);
+            hndl, hndl, hndl->sb, hndl->dbname, (char *)sql,
+            hndl->num_set_commands, hndl->num_set_commands_sent, hndl->commands,
+            hndl->n_bindvars, hndl->bindvars, ntypes, types, is_begin, 0,
+            retries_done - 1, is_begin ? 0 : run_last, __LINE__);
     } else {
         hndl->query_no += run_last;
-        rc = cdb2_send_query(hndl, hndl, hndl->sb, hndl->dbname, (char *)sql, 0, 0,
-                             NULL, hndl->n_bindvars, hndl->bindvars, ntypes,
+        rc = cdb2_send_query(hndl, hndl, hndl->sb, hndl->dbname, (char *)sql, 0,
+                             0, NULL, hndl->n_bindvars, hndl->bindvars, ntypes,
                              types, 0, 0, 0, run_last, __LINE__);
         if (rc != 0) 
             hndl->query_no -= run_last;
@@ -4740,8 +4743,8 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
             goto free_vars;
         }
     }
-    rc = cdb2_send_query(NULL, hndl, ss, comdb2db_name, sql_query, 0, 0, NULL, 3,
-                         bindvars, 0, NULL, 0, 0, num_retries, 0, __LINE__);
+    rc = cdb2_send_query(NULL, hndl, ss, comdb2db_name, sql_query, 0, 0, NULL,
+                         3, bindvars, 0, NULL, 0, 0, num_retries, 0, __LINE__);
     if (rc)
         debugprint("cdb2_send_query rc = %d\n", rc);
 
