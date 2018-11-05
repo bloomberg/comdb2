@@ -2535,7 +2535,7 @@ retry_read:
     return 0;
 }
 
-static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, const char *dbname,
+static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, SBUF2 *sb, const char *dbname,
                            const char *sql, int n_set_commands,
                            int n_set_commands_sent, char **set_commands,
                            int n_bindvars, CDB2SQLQUERY__Bindvalue **bindvars,
@@ -2548,8 +2548,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, const char *dbname,
     int overwrite_rc = 0;
     cdb2_event *e = NULL;
 
-    while ((e = cdb2_next_hook(hndl, CDB2_BEFORE_SEND_QUERY, e)) != NULL) {
-        hookrc = cdb2_invoke_hook(hndl, e, 0, NULL);
+    while ((e = cdb2_next_hook(event_hndl, CDB2_BEFORE_SEND_QUERY, e)) != NULL) {
+        hookrc = cdb2_invoke_hook(event_hndl, e, 0, NULL);
         if (e->ctrls & CDB2_OVERWRITE_RETURN_VALUE) {
             overwrite_rc = 1;
             rc = (int)(intptr_t)hookrc;
@@ -2730,8 +2730,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, const char *dbname,
     rc = 0;
 
 after_hook:
-    while ((e = cdb2_next_hook(hndl, CDB2_AFTER_SEND_QUERY, e)) != NULL) {
-        hookrc = cdb2_invoke_hook(hndl, e, 1, CDB2_RETURN_VALUE, rc);
+    while ((e = cdb2_next_hook(event_hndl, CDB2_AFTER_SEND_QUERY, e)) != NULL) {
+        hookrc = cdb2_invoke_hook(event_hndl, e, 1, CDB2_RETURN_VALUE, rc);
         if (e->ctrls & CDB2_OVERWRITE_RETURN_VALUE)
             rc = (int)(intptr_t)hookrc;
     }
@@ -3278,7 +3278,7 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
 
     hndl->in_trans = 0;
     debugprint("sending 'begin' to %s\n", host);
-    rc = cdb2_send_query(hndl, hndl->sb, hndl->dbname, "begin",
+    rc = cdb2_send_query(hndl, hndl, hndl->sb, hndl->dbname, "begin",
                          hndl->num_set_commands, hndl->num_set_commands_sent,
                          hndl->commands, 0, NULL, 0, NULL, 1, 0, num_retry, 0,
                          __LINE__);
@@ -3439,7 +3439,7 @@ static int retry_queries_and_skip(cdb2_hndl_tp *hndl, int num_retry,
     }
     hndl->is_retry = num_retry;
 
-    rc = cdb2_send_query(hndl, hndl->sb, hndl->dbname, hndl->sql,
+    rc = cdb2_send_query(hndl, hndl, hndl->sb, hndl->dbname, hndl->sql,
                          hndl->num_set_commands, hndl->num_set_commands_sent,
                          hndl->commands, hndl->n_bindvars, hndl->bindvars,
                          hndl->ntypes, hndl->types, 0, skip_nrows, num_retry, 0,
@@ -3886,13 +3886,13 @@ retry_queries:
     if (!hndl->in_trans || is_begin) {
         hndl->query_no = 0;
         rc = cdb2_send_query(
-            hndl, hndl->sb, hndl->dbname, (char *)sql, hndl->num_set_commands,
+            hndl, hndl, hndl->sb, hndl->dbname, (char *)sql, hndl->num_set_commands,
             hndl->num_set_commands_sent, hndl->commands, hndl->n_bindvars,
             hndl->bindvars, ntypes, types, is_begin, 0, retries_done - 1,
             is_begin ? 0 : run_last, __LINE__);
     } else {
         hndl->query_no += run_last;
-        rc = cdb2_send_query(hndl, hndl->sb, hndl->dbname, (char *)sql, 0, 0,
+        rc = cdb2_send_query(hndl, hndl, hndl->sb, hndl->dbname, (char *)sql, 0, 0,
                              NULL, hndl->n_bindvars, hndl->bindvars, ntypes,
                              types, 0, 0, 0, run_last, __LINE__);
         if (rc != 0) 
@@ -4740,7 +4740,7 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
             goto free_vars;
         }
     }
-    rc = cdb2_send_query(NULL, ss, comdb2db_name, sql_query, 0, 0, NULL, 3,
+    rc = cdb2_send_query(NULL, hndl, ss, comdb2db_name, sql_query, 0, 0, NULL, 3,
                          bindvars, 0, NULL, 0, 0, num_retries, 0, __LINE__);
     if (rc)
         debugprint("cdb2_send_query rc = %d\n", rc);
@@ -5642,6 +5642,14 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
         strcpy(hndl->policy, "random_room");
     }
 
+    /* We might be blocked by pmux if connecting to a host
+       without either knowing the port or allowing pmux routing.
+       We might be blocked by comdb2db if connecting to a tier.
+       Get our events ready. */
+    rc = refresh_gbl_events_on_hndl(hndl);
+    if (rc != 0)
+        goto out;
+
     if (hndl->flags & CDB2_DIRECT_CPU) {
         hndl->num_hosts = 1;
         /* Get defaults from comdb2db.cfg */
@@ -5682,14 +5690,12 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     if (hndl->send_stack)
         comdb2_cheapstack_char_array(hndl->stack, MAX_STACK);
 
+out:
     if (log_calls) {
         fprintf(stderr, "%p> cdb2_open(dbname: \"%s\", type: \"%s\", flags: "
                         "%x) = %d => %p\n",
                 (void *)pthread_self(), dbname, type, hndl->flags, rc, *handle);
     }
-
-    if (rc == 0)
-        rc = refresh_gbl_events_on_hndl(hndl);
 
     return rc;
 }
