@@ -56,88 +56,7 @@ static struct rmtpol cluster_pol = {"cluster with", {0}, {0}, 0, 0, 0};
 
 enum mach_class get_my_mach_class(void)
 {
-    static int have_class = 0;
-    static enum mach_class my_class = CLASS_UNKNOWN;
-    char *class = NULL;
-
-    if (!have_class) {
-        static const char *delims = " \t\r\n";
-        char line[512];
-        char *tok;
-        FILE *fh;
-        char hostname[64];
-
-        /* whatever the outcome, don't do this again */
-        have_class = 1;
-
-        if (gethostname(hostname, sizeof(hostname)) == -1) {
-            logmsg(LOGMSG_ERROR, "%s:gethostname: %d %s\n", __func__, errno,
-                    strerror(errno));
-            return CLASS_UNKNOWN;
-        }
-
-        /* TODO: find a way around? only use if exists? */
-        char *bbcpu = comdb2_location("config", "bbcpu.lst");
-        fh = fopen(bbcpu, "r");
-        if (!fh) {
-            logmsg(LOGMSG_ERROR, "%s: error opening %s: %d %s\n", __func__, bbcpu,
-                    errno, strerror(errno));
-            free(bbcpu);
-            return CLASS_UNKNOWN;
-        }
-        free(bbcpu);
-
-        while (fgets(line, sizeof(line), fh)) {
-            char *lasts;
-            tok = strtok_r(line, delims, &lasts);
-            if (tok && strcmp(tok, hostname) == 0) {
-                tok = strtok_r(NULL, delims, &lasts);
-
-                /* Choose the weakest class listed in bbcpu. */
-                while (tok) {
-                    if (strcmp(tok, "alpha") == 0) {
-                        if (my_class == CLASS_UNKNOWN ||
-                            my_class > CLASS_ALPHA) {
-                            my_class = CLASS_ALPHA;
-                            class = "alpha";
-                        }
-                    }
-                    if (strcmp(tok, "cdbuat") == 0) {
-                        if (my_class == CLASS_UNKNOWN || my_class > CLASS_UAT) {
-                            my_class = CLASS_UAT;
-                            class = "uat";
-                        }
-                    } else if (strcmp(tok, "beta") == 0) {
-                        if (my_class == CLASS_UNKNOWN ||
-                            my_class > CLASS_BETA) {
-                            my_class = CLASS_BETA;
-                            class = "beta";
-                        }
-                    } else if (strcmp(tok, "prod") == 0) {
-                        if (my_class == CLASS_UNKNOWN) {
-                            my_class = CLASS_PROD;
-                            class = "prod";
-                        }
-                    } else if (strcmp(tok, "tstpr") == 0) {
-                        my_class = CLASS_TEST;
-                        class = "tstpr";
-                    }
-
-                    tok = strtok_r(NULL, delims, &lasts);
-                }
-
-                if (my_class != CLASS_UNKNOWN) {
-                    logmsg(LOGMSG_ERROR, "Identified %s as class %s in bin/bbcpu.lst\n",
-                           hostname, class);
-                }
-
-                break;
-            }
-        }
-        fclose(fh);
-    }
-
-    return my_class;
+    return get_mach_class(gbl_mynode);
 }
 
 enum mach_class get_mach_class(const char *host) { return machine_class(host); }
@@ -155,6 +74,8 @@ const char *get_class_str(enum mach_class cls)
         return "beta";
     case CLASS_PROD:
         return "prod";
+    case CLASS_UAT:
+        return "uat";
     }
 }
 
@@ -168,7 +89,7 @@ static int disable_rmt_dbupdates(const char *mach)
     enum mach_class rmtclass, myclass;
 
     rmtclass = get_mach_class(mach);
-    myclass = get_mach_class(gbl_mynode);
+    myclass = get_my_mach_class();
 
     if (rmtclass == CLASS_TEST && rmtclass != CLASS_BETA &&
         myclass != CLASS_TEST)
@@ -216,7 +137,7 @@ int allow_write_from_remote(const char *host)
     rc = allow_action_from_remote(host, &write_pol);
     if (rc == -1) {
         /* default logic: allow writes from same or higher classes. */
-        if (get_mach_class(host) >= get_mach_class(gbl_mynode))
+        if (get_mach_class(host) >= get_my_mach_class())
             rc = 1;
         else
             rc = 0;
@@ -231,7 +152,7 @@ int allow_cluster_from_remote(const char *host)
     if (rc == -1) {
         /* default logic: only cluster with like machines i.e. alpha with alpha,
          * beta with beta etc. */
-        if (get_mach_class(host) == get_mach_class(gbl_mynode))
+        if (get_mach_class(host) == get_my_mach_class())
             rc = 1;
         else
             rc = 0;
@@ -377,7 +298,7 @@ int process_allow_command(char *line, int lline)
 
         if (if_mach > 0 && if_mach != gbl_mynode)
             goto ignore;
-        if (if_cls != CLASS_UNKNOWN && if_cls != get_mach_class(gbl_mynode))
+        if (if_cls != CLASS_UNKNOWN && if_cls != get_my_mach_class())
             goto ignore;
     }
 
