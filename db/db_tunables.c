@@ -197,6 +197,7 @@ extern int gbl_create_default_user;
 extern int gbl_allow_neg_column_size;
 extern int gbl_client_heartbeat_ms;
 extern int gbl_rep_wait_release_ms;
+extern int gbl_rep_wait_core_ms;
 extern int gbl_random_get_curtran_failures;
 extern int gbl_fail_client_write_lock;
 
