@@ -16,7 +16,8 @@
 #ifndef _INCLUDED_LOCKS_H
 #define _INCLUDED_LOCKS_H
 
-#include <string.h>
+#include <string.h>  // for strerror
+#include <stdlib.h>  // for abort
 #include "logmsg.h"
 
 #ifdef LOCK_DEBUG
@@ -30,8 +31,8 @@
         int rc;                                                                \
         LKDBG_TRACE(TRY, FUNC, OBJ);                                           \
         if ((rc = FUNC(__VA_ARGS__)) != 0) {                                   \
-            logmsg(LOGMSG_FATAL, "%s:%d " #FUNC "(%p) rc:%s thd:%p\n",         \
-                   __func__, __LINE__, OBJ, strerror(rc),                      \
+            logmsg(LOGMSG_FATAL, "%s:%d " #FUNC "(%p) rc:%d(%s) thd:%p\n",     \
+                   __func__, __LINE__, OBJ, rc, strerror(rc),                  \
                    (void *)pthread_self());                                    \
             abort();                                                           \
         }                                                                      \

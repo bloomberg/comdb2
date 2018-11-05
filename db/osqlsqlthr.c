@@ -144,12 +144,13 @@ static inline int osql_should_restart(struct sqlclntstate *clnt, int rc)
 #define RESTART_SOCKSQL_KEEP_RQID(keep_rqid)                                   \
     restarted = 0;                                                             \
     if (osql_should_restart(clnt, rc)) {                                       \
-        restarted = 1;                                                         \
         rc = osql_sock_restart(clnt, gbl_survive_n_master_swings, keep_rqid);  \
         if (rc) {                                                              \
             logmsg(LOGMSG_ERROR,                                               \
                    "%s: failed to restart socksql session rc=%d\n", __func__,  \
                    rc);                                                        \
+        } else {                                                               \
+            restarted = 1;                                                     \
         }                                                                      \
     }                                                                          \
     if (rc) {                                                                  \
@@ -206,7 +207,7 @@ static int osql_send_del_logic(struct BtCursor *pCur, struct sql_thread *thd)
 int osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
 {
     struct sqlclntstate *clnt = thd->clnt;
-    int restarted = 0;
+    int restarted;
     int rc = 0;
 
     if ((rc = access_control_check_sql_write(pCur, thd)))
@@ -220,7 +221,7 @@ int osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
         do {
             rc = osql_send_del_logic(pCur, thd);
             RESTART_SOCKSQL;
-        } while (restarted && rc == 0);
+        } while (restarted);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s:%d %s - failed to send socksql delrec rc=%d\n", __FILE__,
@@ -305,7 +306,7 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
                 int nData, blob_buffer_t *blobs, int maxblobs, int flags)
 {
     struct sqlclntstate *clnt = thd->clnt;
-    int restarted = 0;
+    int restarted;
     int rc = 0;
 
     if ((rc = access_control_check_sql_write(pCur, thd)))
@@ -320,7 +321,7 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
             rc = osql_send_ins_logic(pCur, thd, pData, nData, blobs, maxblobs,
                                      flags);
             RESTART_SOCKSQL;
-        } while (restarted && rc == 0);
+        } while (restarted);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s:%d %s - failed to send socksql insrec rc=%d\n", __FILE__,
@@ -419,7 +420,7 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
                 int flags)
 {
     struct sqlclntstate *clnt = thd->clnt;
-    int restarted = 0;
+    int restarted;
     int rc = 0;
 
     if ((rc = access_control_check_sql_write(pCur, thd)))
@@ -435,7 +436,7 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
                                      maxblobs, flags);
 
             RESTART_SOCKSQL;
-        } while (restarted && rc == 0);
+        } while (restarted);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s:%d %s - failed to send socksql updrec rc=%d\n", __FILE__,
@@ -1180,7 +1181,7 @@ static int osql_send_usedb_logic_int(char *tablename, struct sqlclntstate *clnt,
                              nettype, osql->logsb,
                              comdb2_table_version(tablename));
         RESTART_SOCKSQL;
-    } while (restarted && rc == 0);
+    } while (restarted);
 
     if (rc == SQLITE_OK) {
         /* cache the sent tablename */
@@ -1212,7 +1213,7 @@ inline int osql_send_updstat_logic(struct BtCursor *pCur,
         rc = osql_send_updstat(osql->host, osql->rqid, osql->uuid, pCur->genid,
                                pData, nData, nStat, nettype, osql->logsb);
         RESTART_SOCKSQL;
-    } while (restarted && rc == 0);
+    } while (restarted);
 
     return rc;
 }
@@ -1321,7 +1322,7 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
 {
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
-    int restarted = 0;
+    int restarted;
     snap_uid_t snap_info, *snap_info_p = NULL;
 
     /* reset the tablename */
@@ -1370,7 +1371,7 @@ retry:
 
     RESTART_SOCKSQL_KEEP_RQID(is_retry);
 
-    if (rc == SQLITE_OK && restarted) {
+    if (restarted) {
         /* we need to reset the commit here */
         goto retry;
     }
@@ -1452,7 +1453,7 @@ int osql_query_dbglog(struct sql_thread *thd, int queryid)
                               queryid, NET_OSQL_SOCK_RPL);
         /* not sure if we want to restart this */
         RESTART_SOCKSQL;
-    } while (restarted && rc == 0);
+    } while (restarted);
     return rc;
 }
 
@@ -1552,7 +1553,7 @@ static int osql_send_recordgenid_logic(struct BtCursor *pCur,
             }
         }
         RESTART_SOCKSQL;
-    } while (restarted && rc == 0);
+    } while (restarted);
 
     return rc;
 }
@@ -1728,7 +1729,7 @@ int osql_schemachange_logic(struct schema_change_type *sc,
             rc = osql_send_schemachange(osql->host, rqid, thd->clnt->osql.uuid,
                                         sc, NET_OSQL_SOCK_RPL, osql->logsb);
             RESTART_SOCKSQL;
-        } while (restarted && rc == 0);
+        } while (restarted);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s:%d %s - failed to send socksql schemachange rc=%d\n",
@@ -1767,7 +1768,7 @@ int osql_bpfunc_logic(struct sql_thread *thd, BpfuncArg *arg)
             rc = osql_send_bpfunc(osql->host, rqid, thd->clnt->osql.uuid, arg,
                                   NET_OSQL_SOCK_RPL, osql->logsb);
             RESTART_SOCKSQL;
-        } while (restarted && rc == 0);
+        } while (restarted);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s:%d %s - failed to send socksql bpfunc rc=%d\n", __FILE__,
