@@ -589,30 +589,28 @@ Table *sqlite3LocateTable(
   if( p==0 ){
     const char *zMsg = flags & LOCATE_VIEW ? "no such view" : "no such table";
 #ifndef SQLITE_OMIT_VIRTUALTABLE
-    if( sqlite3FindDbName(db, zDbase)<1 ){
-      /* If zName is the not the name of a table in the schema created using
-      ** CREATE, then check to see if it is the name of an virtual table that
-      ** can be an eponymous virtual table. */
+    /* If zName is the not the name of a table in the schema created using
+    ** CREATE, then check to see if it is the name of an virtual table that
+    ** can be an eponymous virtual table. */
+    Module *pMod = (Module*)sqlite3HashFind(&db->aModule, zName);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-      {
-        /* comdb2sys_foobar -> comdb2_foobar */
-        const char comdb2sys[] = "comdb2sys_";
-        const size_t len = sizeof(comdb2sys)-1;
-        if( strncasecmp(zName, comdb2sys, len)==0 ){
-          char *tmp = alloca(strlen(zName));
-          strcpy(tmp, "comdb2_");
-          strcat(tmp, zName + len);
-          zName = tmp;
-        }
+    {
+      /* comdb2sys_foobar -> comdb2_foobar */
+      const char comdb2sys[] = "comdb2sys_";
+      const size_t len = sizeof(comdb2sys)-1;
+      if( strncasecmp(zName, comdb2sys, len)==0 ){
+        char *tmp = alloca(strlen(zName));
+        strcpy(tmp, "comdb2_");
+        strcat(tmp, zName + len);
+        zName = tmp;
       }
+    }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-      Module *pMod = (Module*)sqlite3HashFind(&db->aModule, zName);
-      if( pMod==0 && sqlite3_strnicmp(zName, "pragma_", 7)==0 ){
-        pMod = sqlite3PragmaVtabRegister(db, zName);
-      }
-      if( pMod && sqlite3VtabEponymousTableInit(pParse, pMod) ){
-        return pMod->pEpoTab;
-      }
+    if( pMod==0 && sqlite3_strnicmp(zName, "pragma_", 7)==0 ){
+      pMod = sqlite3PragmaVtabRegister(db, zName);
+    }
+    if( pMod && sqlite3VtabEponymousTableInit(pParse, pMod) ){
+      return pMod->pEpoTab;
     }
 #endif
     if( (flags & LOCATE_NOERR)==0 ){
