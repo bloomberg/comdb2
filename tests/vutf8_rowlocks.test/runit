@@ -34,8 +34,6 @@ dbnm=$1
 
 
 # fastinit
-cdb2sql ${CDB2_OPTIONS} $dbnm default "@send debg 100"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "@send ndebg 100"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b) values (1, 'aaaaaaa')"
