@@ -143,17 +143,11 @@ static int ctag_to_stag_int(const char *table, const char *ctag,
 
 int schema_init(void)
 {
-    int rc;
-
     init_taglock();
     gbl_tag_hash =
         hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
                        offsetof(struct dbtag, tblname), 0);
-    rc = pthread_key_create(&unique_tag_key, free);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "schema_init:pthread_key_create failed rc=%d\n", rc);
-        return -1;
-    }
+    Pthread_key_create(&unique_tag_key, free);
 
     logmsg(LOGMSG_INFO, "Schema module init ok\n");
     return 0;

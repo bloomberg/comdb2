@@ -1031,7 +1031,7 @@ void *convert_records_thd(struct convert_record_data *data)
 
     if (gbl_pg_compact_thresh > 0) {
         /* Disable page compaction only if page compaction is enabled. */
-        (void)pthread_setspecific(no_pgcompact, (void *)1);
+        Pthread_setspecific(no_pgcompact, (void *)1);
     }
 
     /* convert each record */
@@ -1222,7 +1222,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
 
         data.isThread = 1;
 
-        pthread_attr_init(&attr);
+        Pthread_attr_init(&attr);
         pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
         pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
@@ -1294,7 +1294,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         }
 
         /* destroy attr */
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
     }
 
     print_final_sc_stat(&data);
@@ -1657,7 +1657,7 @@ int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
         data.isThread = 1;
 
         // init pthread attributes
-        pthread_attr_init(&attr);
+        Pthread_attr_init(&attr);
         pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
         pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
@@ -1703,7 +1703,7 @@ int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
             }
         }
 
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
     }
 
     convert_record_data_cleanup(&data);

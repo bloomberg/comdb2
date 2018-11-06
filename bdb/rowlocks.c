@@ -2142,7 +2142,7 @@ static int logical_release_transaction(bdb_state_type *bdb_state,
         abort();
     }
 
-    pthread_setspecific(bdb_state->seqnum_info->key, NULL);
+    Pthread_setspecific(bdb_state->seqnum_info->key, NULL);
     free(ltrans);
 
     return 0;

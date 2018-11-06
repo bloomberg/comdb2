@@ -267,7 +267,7 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
 #endif
 
         /* free sql thread registration entry */
-        pthread_cond_destroy(&entry->cond);
+        Pthread_cond_destroy(&entry->cond);
         Pthread_mutex_destroy(&entry->mtx);
         free(entry);
 

@@ -622,7 +622,7 @@ struct temp_cursor *bdb_temp_table_cursor(bdb_state_type *bdb_state,
 #endif
     cur->key = NULL;
     cur->data = NULL;
-/*pthread_setspecific(tbl->curkey, cur);*/
+/*Pthread_setspecific(tbl->curkey, cur);*/
 done:
     if (cur) {
         listc_abl(&tbl->cursors, cur);
@@ -645,7 +645,7 @@ int bdb_temp_table_insert(bdb_state_type *bdb_state, struct temp_cursor *cur,
     if (rc <= 0)
         goto done;
 
-    /*pthread_setspecific(cur->tbl->curkey, cur);*/
+    /*Pthread_setspecific(cur->tbl->curkey, cur);*/
     memset(&dkey, 0, sizeof(DBT));
     memset(&ddata, 0, sizeof(DBT));
     dkey.flags = ddata.flags = DB_DBT_USERMEM;
@@ -683,7 +683,7 @@ int bdb_temp_table_update(bdb_state_type *bdb_state, struct temp_cursor *cur,
         return -1;
     }
 
-    /*pthread_setspecific(cur->tbl->curkey, cur);*/
+    /*Pthread_setspecific(cur->tbl->curkey, cur);*/
 
     memset(&dkey, 0, sizeof(DBT));
     memset(&ddata, 0, sizeof(DBT));
@@ -802,7 +802,7 @@ static int bdb_temp_table_first_last(bdb_state_type *bdb_state,
         }
     }
 
-    /*pthread_setspecific(cur->tbl->curkey, cur);*/
+    /*Pthread_setspecific(cur->tbl->curkey, cur);*/
 
     memset(&dkey, 0, sizeof(DBT));
     memset(&ddata, 0, sizeof(DBT));
@@ -894,7 +894,7 @@ static int bdb_temp_table_next_prev_norewind(bdb_state_type *bdb_state,
         }
     }
 
-    /*pthread_setspecific(cur->tbl->curkey, cur);*/
+    /*Pthread_setspecific(cur->tbl->curkey, cur);*/
 
     memset(&dkey, 0, sizeof(DBT));
     memset(&ddata, 0, sizeof(DBT));
@@ -934,7 +934,7 @@ inline static int bdb_temp_table_next_prev(bdb_state_type *bdb_state,
                                     int how)
 {
 
-    /*pthread_setspecific(cur->tbl->curkey, cur);*/
+    /*Pthread_setspecific(cur->tbl->curkey, cur);*/
     if (!cur->valid) {
         if (how == DB_NEXT)
             return bdb_temp_table_first_last(bdb_state, cur, bdberr, DB_FIRST);
@@ -1408,7 +1408,7 @@ int bdb_temp_table_delete(bdb_state_type *bdb_state, struct temp_cursor *cur,
         goto done;
     }
 
-    /*pthread_setspecific(cur->tbl->curkey, cur);*/
+    /*Pthread_setspecific(cur->tbl->curkey, cur);*/
     if (!cur->valid) {
         rc = -1;
         goto done;
@@ -1518,7 +1518,7 @@ int bdb_temp_table_find(bdb_state_type *bdb_state, struct temp_cursor *cur,
 
     assert(cur->cur != NULL);
 
-    /*pthread_setspecific(cur->tbl->curkey, cur);*/
+    /*Pthread_setspecific(cur->tbl->curkey, cur);*/
 
     memset(&dkey, 0, sizeof(DBT));
     memset(&ddata, 0, sizeof(DBT));
@@ -1629,7 +1629,7 @@ int bdb_temp_table_find_exact(bdb_state_type *bdb_state,
         return bdb_temp_table_find_exact_hash(cur, key, keylen);
     }
 
-    /*pthread_setspecific(cur->tbl->curkey, cur);*/
+    /*Pthread_setspecific(cur->tbl->curkey, cur);*/
 
     memset(&dkey, 0, sizeof(DBT));
     memset(&ddata, 0, sizeof(DBT));
@@ -1735,7 +1735,7 @@ int bdb_temp_table_close_cursor(bdb_state_type *bdb_state,
            Closing a cursor may invoke a search if we deleted items through that
            cursor.  The search (custom search routine)
            will need access to thread-specific data. */
-        /*pthread_setspecific(cur->tbl->curkey, NULL);*/
+        /*Pthread_setspecific(cur->tbl->curkey, NULL);*/
     }
 
     listc_rfl(&tbl->cursors, cur);

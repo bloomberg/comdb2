@@ -101,7 +101,7 @@ static void *prefault_helper_thread(void *arg)
     thdinfo->ct_del_table = NULL;
     thdinfo->ct_add_table = NULL;
     thdinfo->ct_del_table = NULL;
-    pthread_setspecific(unique_tag_key, thdinfo);
+    Pthread_setspecific(unique_tag_key, thdinfo);
 
     while (1) {
         Pthread_mutex_lock(&(dbenv->prefault_helper.mutex));
@@ -275,11 +275,7 @@ int create_prefault_helper_threads(struct dbenv *dbenv, int nthreads)
 
     dbenv->prefault_helper.numthreads = 0;
 
-    rc = pthread_attr_init(&attr);
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "create_prefault_helper_threads: pthread_attr_init\n");
-        exit(1);
-    }
+    Pthread_attr_init(&attr);
 
     rc = pthread_attr_setstacksize(&attr, 512 * 1024);
     if (rc) {
@@ -324,11 +320,7 @@ int create_prefault_helper_threads(struct dbenv *dbenv, int nthreads)
         dbenv->prefault_helper.numthreads++;
     }
 
-    rc = pthread_attr_destroy(&attr);
-    if (rc)
-        /* we don't return an error here, what would be the point? */
-        perror_errnum("create_prefault_helper_threads:pthread_attr_destroy",
-                      rc);
+    Pthread_attr_destroy(&attr);
 
     return 0;
 }

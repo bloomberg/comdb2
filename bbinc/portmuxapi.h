@@ -91,7 +91,7 @@ typedef enum {
  * int main(int argc, char *argv[])
  * {
  *     // initialize attribute for client threads
- *     pthread_attr_init(&attr);
+ *     Pthread_attr_init(&attr);
  *     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
  *
  *     // alright wait for client

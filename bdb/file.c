@@ -1507,10 +1507,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
 
 /* free our dynamically allocated memory */
 #ifdef NOTYET
-    rc = pthread_attr_destroy(&(bdb_state->pthread_attr_detach));
-    if (rc != 0)
-        /* we don't return error if this fails, what's the point? */
-        logmsg(LOGMSG_ERROR, "%s: pthread_attr_destroy failed: %d\n", __func__, rc);
+    Pthread_attr_destroy(&(bdb_state->pthread_attr_detach));
 #endif
 
     /* clear temp table environments */
@@ -2057,7 +2054,7 @@ void create_udpbackup_analyze_thread(bdb_state_type *bdb_state)
 
     logmsg(LOGMSG_INFO, "starting udpbackup_and_autoanalyze_thd thread\n");
 
-    pthread_attr_init(&thd_attr);
+    Pthread_attr_init(&thd_attr);
     pthread_attr_setstacksize(&thd_attr, 4 * 1024); /* 4K */
     pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
 
@@ -5024,25 +5021,11 @@ extern pthread_key_t lockmgr_key;
 
 static void run_once(void)
 {
-    int rc;
+    Pthread_key_create(&lockmgr_key, NULL);
 
-    rc = pthread_key_create(&lockmgr_key, NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "pthread_key_create(lockmgr_key) failed\n");
-        abort();
-    }
+    Pthread_key_create(&bdb_key, NULL);
 
-    rc = pthread_key_create(&bdb_key, NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "pthread_key_create(bdb_key) failed\n");
-        abort();
-    }
-
-    rc = pthread_key_create(&lock_key, bdb_lock_destructor);
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "pthread_key_create(lock_key) failed\n");
-        abort();
-    }
+    Pthread_key_create(&lock_key, bdb_lock_destructor);
 }
 
 static void deadlock_happened(struct berkdb_deadlock_info *deadlock_info)
@@ -5091,8 +5074,8 @@ int create_master_lease_thread(bdb_state_type *bdb_state)
 {
 	pthread_t tid;
 	pthread_attr_t attr;
-	pthread_attr_init(&attr);
-	pthread_attr_setstacksize(&attr, 4 * 1024);
+        Pthread_attr_init(&attr);
+        pthread_attr_setstacksize(&attr, 4 * 1024);
 	extern void *master_lease_thread(void *arg);
 	pthread_create(&tid, &attr, master_lease_thread, bdb_state);
     return 0;
@@ -5102,7 +5085,7 @@ void create_coherency_lease_thread(bdb_state_type *bdb_state)
 {
     pthread_t tid;
     pthread_attr_t attr;
-    pthread_attr_init(&attr);
+    Pthread_attr_init(&attr);
     pthread_attr_setstacksize(&attr, 4 * 1024);
     extern void *coherency_lease_thread(void *arg);
     pthread_create(&tid, &attr, coherency_lease_thread, bdb_state);
@@ -5211,11 +5194,7 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
             bdb_bdblock_debug_init(bdb_state);
         }
 
-        rc = pthread_key_create(&(bdb_state->tid_key), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "pthread_key_create failed\n");
-            exit(1);
-        }
+        Pthread_key_create(&(bdb_state->tid_key), NULL);
 
         Pthread_mutex_init(&(bdb_state->numthreads_lock), NULL);
         Pthread_mutex_init(&(bdb_state->id_lock), NULL);
@@ -5242,11 +5221,7 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
     if (!parent_bdb_state)
         bdb_thread_event(bdb_state, 1);
 
-    rc = pthread_attr_init(&(bdb_state->pthread_attr_detach));
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "pthread_attr_init failed\n");
-        exit(1);
-    }
+    Pthread_attr_init(&(bdb_state->pthread_attr_detach));
 
     rc = pthread_attr_setdetachstate(&(bdb_state->pthread_attr_detach),
                                      PTHREAD_CREATE_DETACHED);
@@ -5311,11 +5286,7 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
 
         bdb_state->stripe_pool_start = 0;
 
-        rc = pthread_key_create(&(bdb_state->seqnum_info->key), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "pthread_key_create failed\n");
-            exit(1);
-        }
+        Pthread_key_create(&(bdb_state->seqnum_info->key), NULL);
 
         bdb_state->attr = bdb_attr;
         bdb_state->usr_ptr = usr_ptr;

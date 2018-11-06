@@ -1112,10 +1112,7 @@ __memp_init_pgcompact_routines(void)
 	if (gbl_pg_compact_thresh <= 0)
 		return;
 
-	if (pthread_attr_init(&spgs.attrs)) {
-		logmsgperror("pthread_attr_init");
-		abort();
-	}
+	Pthread_attr_init(&spgs.attrs);
 
 #ifdef PTHREAD_STACK_MIN
 	/* ~128kB stack size */
@@ -1135,10 +1132,7 @@ __memp_init_pgcompact_routines(void)
 		abort();
 	}
 
-	if (pthread_key_create(&no_pgcompact, NULL) != 0) {
-		logmsgperror("pthread_key_create");
-		abort();
-	}
+	Pthread_key_create(&no_pgcompact, NULL);
 }
 /* } page compact runtines END */
 

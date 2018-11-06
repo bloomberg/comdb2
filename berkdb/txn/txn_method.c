@@ -51,13 +51,10 @@ static pthread_once_t init_txn_key_once = PTHREAD_ONCE_INIT;
  * __txn_init_key --
  * Initialize txn_key which is used by pefect checkpoints.
  */
-static void
+static inline void
 __txn_init_key(void)
 {
-	if (pthread_key_create(&txn_key, NULL) != 0) {
-		logmsgperror("pthread_key_create");
-		abort();
-	}
+	Pthread_key_create(&txn_key, NULL);
 }
 
 /*
@@ -89,10 +86,7 @@ __txn_get_first_dirty_begin_lsn(dfl)
 			thrlcltxn = thrlcltxn->parent;
 		} while (thrlcltxn->parent != NULL);
 
-		if (pthread_setspecific(txn_key, thrlcltxn) != 0) {
-			logmsgperror("pthread_setspecific");
-			abort();
-		}
+		Pthread_setspecific(txn_key, thrlcltxn);
 	}
 
 	return (thrlcltxn->we_start_at_this_lsn);

@@ -1959,12 +1959,7 @@ void free_sql(void *p) { free(p); }
 
 void init_current_current_sql_key(void)
 {
-    int rc;
-    rc = pthread_key_create(&current_sql_query_key, free_sql);
-    if (rc) {
-        logmsg(LOGMSG_FATAL, "pthread_key_create current_sql_query_key rc %d\n", rc);
-        exit(1);
-    }
+    Pthread_key_create(&current_sql_query_key, free_sql);
 }
 
 extern int gbl_debug_temptables;
@@ -2313,9 +2308,9 @@ void thr_set_current_sql(const char *sql)
         prevsql = pthread_getspecific(current_sql_query_key);
         if (prevsql) {
             free(prevsql);
-            pthread_setspecific(current_sql_query_key, NULL);
+            Pthread_setspecific(current_sql_query_key, NULL);
         }
-        pthread_setspecific(current_sql_query_key, strdup(sql));
+        Pthread_setspecific(current_sql_query_key, strdup(sql));
     }
 }
 
@@ -5351,7 +5346,7 @@ void run_internal_sql(char *sql)
     cleanup_clnt(&clnt);
 
     Pthread_mutex_destroy(&clnt.wait_mutex);
-    pthread_cond_destroy(&clnt.wait_cond);
+    Pthread_cond_destroy(&clnt.wait_cond);
     Pthread_mutex_destroy(&clnt.write_lock);
     Pthread_mutex_destroy(&clnt.dtran_mtx);
 }
@@ -5513,7 +5508,7 @@ void end_internal_sql_clnt(struct sqlclntstate *clnt)
     cleanup_clnt(clnt);
 
     Pthread_mutex_destroy(&clnt->wait_mutex);
-    pthread_cond_destroy(&clnt->wait_cond);
+    Pthread_cond_destroy(&clnt->wait_cond);
     Pthread_mutex_destroy(&clnt->write_lock);
     Pthread_mutex_destroy(&clnt->dtran_mtx);
 }

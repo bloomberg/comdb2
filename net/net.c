@@ -2825,9 +2825,9 @@ static void rem_from_netinfo_ll(netinfo_type *netinfo_ptr,
     Pthread_mutex_destroy(&(host_node_ptr->wait_mutex));
     Pthread_mutex_destroy(&(host_node_ptr->throttle_lock));
 
-    pthread_cond_destroy(&(host_node_ptr->ack_wakeup));
-    pthread_cond_destroy(&(host_node_ptr->write_wakeup));
-    pthread_cond_destroy(&(host_node_ptr->throttle_wakeup));
+    Pthread_cond_destroy(&(host_node_ptr->ack_wakeup));
+    Pthread_cond_destroy(&(host_node_ptr->write_wakeup));
+    Pthread_cond_destroy(&(host_node_ptr->throttle_wakeup));
 
     pool_free(host_node_ptr->write_pool);
 #ifndef PER_THREAD_MALLOC
@@ -3261,11 +3261,7 @@ static netinfo_type *create_netinfo_int(char myhostname[], int myportnum,
         netinfo_ptr->portmux_register_time = comdb2_time_epoch();
     }
 
-    rc = pthread_attr_init(&(netinfo_ptr->pthread_attr_detach));
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "pthread_attr_init failed\n");
-        exit(1);
-    }
+    Pthread_attr_init(&(netinfo_ptr->pthread_attr_detach));
 
     rc = pthread_attr_setdetachstate(&(netinfo_ptr->pthread_attr_detach),
                                      PTHREAD_CREATE_DETACHED);

@@ -299,8 +299,8 @@ int comdb2_objpool_destroy(comdb2_objpool_t op)
     /* clean up mutexes and conditions */
     Pthread_mutex_destroy(&op->data_mutex);
     Pthread_mutex_destroy(&op->evict_mutex);
-    pthread_cond_destroy(&op->unexhausted);
-    pthread_cond_destroy(&op->evict_cond);
+    Pthread_cond_destroy(&op->unexhausted);
+    Pthread_cond_destroy(&op->evict_cond);
 
     free(op);
 
@@ -489,8 +489,8 @@ static int comdb2_objpool_create_int(comdb2_objpool_t *opp, const char *name,
     if (op->objs == NULL) {
         Pthread_mutex_destroy(&op->data_mutex);
         Pthread_mutex_destroy(&op->evict_mutex);
-        pthread_cond_destroy(&op->unexhausted);
-        pthread_cond_destroy(&op->evict_cond);
+        Pthread_cond_destroy(&op->unexhausted);
+        Pthread_cond_destroy(&op->evict_cond);
         free(op);
         return ENOMEM;
     }
@@ -518,8 +518,8 @@ static int comdb2_objpool_create_int(comdb2_objpool_t *opp, const char *name,
     default:
         Pthread_mutex_destroy(&op->data_mutex);
         Pthread_mutex_destroy(&op->evict_mutex);
-        pthread_cond_destroy(&op->unexhausted);
-        pthread_cond_destroy(&op->evict_cond);
+        Pthread_cond_destroy(&op->unexhausted);
+        Pthread_cond_destroy(&op->evict_cond);
         free(op);
         return EINVAL;
     }
