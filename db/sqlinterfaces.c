@@ -2953,8 +2953,7 @@ static int get_prepared_bound_stmt(struct sqlthdstate *thd,
 static void handle_stored_proc(struct sqlthdstate *, struct sqlclntstate *);
 
 static void handle_expert_query(struct sqlthdstate *thd,
-                                struct sqlclntstate *clnt,
-                                int *outrc)
+                                struct sqlclntstate *clnt, int *outrc)
 {
     int rc;
     char *zErr = 0;
@@ -3708,7 +3707,7 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
     if (thd->sqldb == NULL || rc) {
         handle_bad_engine(clnt);
         return;
-    } 
+    }
 
     reqlog_set_origin(thd->logger, "%s", clnt->origin);
 
