@@ -5928,6 +5928,15 @@ struct sqlite3_module {
   int (*xSavepoint)(sqlite3_vtab *pVTab, int);
   int (*xRelease)(sqlite3_vtab *pVTab, int);
   int (*xRollbackTo)(sqlite3_vtab *pVTab, int);
+
+  /* COMDB2 MODIFICATION */
+  int access_flag;
+};
+
+/* COMDB2 MODIFICATION */
+enum {
+  CDB2_ALLOW_ALL,  // Allow access to all
+  CDB2_ALLOW_USER, // Limit access only to permitted users
 };
 
 /*

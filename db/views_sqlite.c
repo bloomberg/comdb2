@@ -38,7 +38,7 @@ int views_sqlite_update(timepart_views_t *views, sqlite3 *db,
     int i;
 
     if (lock)
-        pthread_rwlock_rdlock(&views_lk);
+        Pthread_rwlock_rdlock(&views_lk);
 
     /* look at the in-memory views and check sqlite views */
     for (i = 0; i < views->nviews; i++) {
@@ -87,7 +87,7 @@ int views_sqlite_update(timepart_views_t *views, sqlite3 *db,
 
 done:
     if (lock)
-        pthread_rwlock_unlock(&views_lk);
+        Pthread_rwlock_unlock(&views_lk);
 
     return rc;
 }
@@ -169,7 +169,6 @@ static char *_views_create_view_query(timepart_view_t *view, sqlite3 *db,
     char *tmp_str = NULL;
     char *ret_str = NULL;
     const char *table0name;
-    Table *pTbl;
     int i;
 
     if (view->nshards == 0) {
@@ -183,6 +182,7 @@ static char *_views_create_view_query(timepart_view_t *view, sqlite3 *db,
 #if 0
    This is not ready yet, let us use the struct dbtable instead 
    /* extract schema from first table */
+   Table *pTbl;
    pTbl = sqlite3FindTableCheckOnly(db, table0name, NULL);
    if(!pTbl)
    {

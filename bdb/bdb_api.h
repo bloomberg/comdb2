@@ -1770,7 +1770,7 @@ int bdb_get_lock_counters(bdb_state_type *bdb_state, int64_t *deadlocks, int64_t
                           int64_t *requests);
 
 int bdb_get_bpool_counters(bdb_state_type *bdb_state, int64_t *bpool_hits,
-                           int64_t *bpool_misses);
+                           int64_t *bpool_misses, int64_t *rw_evicts);
 
 int bdb_master_should_reject(bdb_state_type *bdb_state);
 
@@ -1887,10 +1887,13 @@ int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key,
                       int *lenout);
 int bdb_blkseq_find(bdb_state_type *bdb_state, tran_type *tran, void *key,
                     int klen, void **dtaout, int *lenout);
-int bdb_blkseq_dumpall(bdb_state_type *bdb_state, uint8_t stripe);
+void bdb_blkseq_dumpall(bdb_state_type *bdb_state);
 int bdb_recover_blkseq(bdb_state_type *bdb_state);
 int bdb_blkseq_dumplogs(bdb_state_type *bdb_state);
 int bdb_blkseq_can_delete_log(bdb_state_type *bdb_state, int lognum);
+void bdb_blkseq_for_each(bdb_state_type *bdb_state, void *arg,
+                         void (*func)(int, int, void *, void *, void *,
+                                      void *));
 
 /* low level calls to add things to a single btree for debugging and emergency
  * repair */
@@ -2075,5 +2078,9 @@ int bdb_fill_cluster_info(void **data, int *num_nodes);
 
 void wait_for_sc_to_stop(void);
 void allow_sc_to_run(void);
+
+int bdb_lock_stats(bdb_state_type *bdb_state, int64_t *nlocks);
+
+int bdb_rep_stats(bdb_state_type *bdb_state, int64_t *nrep_deadlocks);
 
 #endif

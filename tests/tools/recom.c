@@ -39,14 +39,14 @@ static inline int run_statement(cdb2_hndl_tp *sqlh, const char *sql, int iter)
 
     rc = cdb2_run_statement(sqlh, sql);
     if(verbose && CDB2ERR_VERIFY_ERROR == rc) {
-        fprintf(stdout, "Thread %llx verify error.\n", pthread_self());
+        fprintf(stdout, "Thread %p verify error.\n", (void *)pthread_self());
         return rc;
     }
     
     if(rc)
     {
-        fprintf( stderr, "Thread %llx error %d while running '%s' on iter %d.\n", 
-                pthread_self(), rc, sql, iter);
+        fprintf(stderr, "Thread %p error %d while running '%s' on iter %d.\n", 
+                (void *)pthread_self(), rc, sql, iter);
         fprintf( stderr, "Error string: '%s'.\n", cdb2_errstr(sqlh));
         exit(1);
     }
@@ -64,8 +64,7 @@ static inline int run_statement(cdb2_hndl_tp *sqlh, const char *sql, int iter)
 /* Run and retrieve id */
 static inline int run_statement_get_rtn(cdb2_hndl_tp *sqlh, const char *sql, int ignoredups, int iter, int isupdate)
 {
-    int rc, cnt=0, err=0, rtn;
-    char *cstr;
+    int rc, err=0, rtn;
     long long val;
 
     do
@@ -73,15 +72,15 @@ static inline int run_statement_get_rtn(cdb2_hndl_tp *sqlh, const char *sql, int
         rc = cdb2_run_statement(sqlh, sql);
         if(verbose && CDB2ERR_VERIFY_ERROR == rc)
         {
-            fprintf(stderr, "Thread %llx verify error.\n", pthread_self());
+            fprintf(stderr, "Thread %p verify error.\n", (void *)pthread_self());
         }
     }
     while(CDB2ERR_VERIFY_ERROR == rc);
     
     if(rc)
     {
-        fprintf( stderr, "Thread %llx error %d while running '%s'.\n", 
-                pthread_self(), rc, sql);
+        fprintf( stderr, "Thread %p error %d while running '%s'.\n", 
+                (void *)pthread_self(), rc, sql);
         exit(1);
     }
 
@@ -104,8 +103,8 @@ static inline int run_statement_get_rtn(cdb2_hndl_tp *sqlh, const char *sql, int
             val = *(long long *)cdb2_column_value(sqlh, 0);
             if(!ignoredups)
             {
-                fprintf(stderr, "Thread %llx found another record when running '%s' on iteration %d.\n", 
-                        pthread_self(), sql, iter);
+                fprintf(stderr, "Thread %p found another record when running '%s' on iteration %d.\n", 
+                        (void *)pthread_self(), sql, iter);
             }
             rc = cdb2_next_record(sqlh);
             err++;
@@ -138,7 +137,7 @@ void *work_func(void *arg)
     intptr_t td = (intptr_t)arg;
     cdb2_hndl_tp *sqlh;
     char sql[128];
-    int ii, rc, id, upd, upd2, rtn;
+    int ii, rc, id, rtn;
 
     char *conf = getenv("CDB2_CONFIG");
     if (conf)
@@ -150,7 +149,7 @@ void *work_func(void *arg)
     {
         if(cdb2_open(&sqlh, dbname, "default", CDB2_RANDOM))
         {
-            fprintf(stderr, "Error allocating an sql handle in thread %llx.\n", pthread_self());
+            fprintf(stderr, "Error allocating an sql handle in thread %p.\n", (void *)pthread_self());
             exit(1);
         }
         rc = cdb2_run_statement(sqlh, "SET VERIFYRETRY OFF");
@@ -170,12 +169,20 @@ void *work_func(void *arg)
         //printf("%d: sel sql: %s, id=%d\n", td, sql, id);
 
         sqlite3_snprintf(sizeof(sql), sql, "UPDATE t1 SET id=%d WHERE id=%d", id+1, id);
-        //printf("%d: upd1 sql: %s\n", td, sql);
-        upd = run_statement_get_rtn(sqlh, sql, 0, ii, 1);
+#if 0        
+        int upd;
+        printf("%d: upd1 sql: %s\n", td, sql);
+        upd = 
+#endif
+        run_statement_get_rtn(sqlh, sql, 0, ii, 1);
 
         sqlite3_snprintf(sizeof(sql), sql, "UPDATE t1 SET id=%d WHERE id=%d", id+2, id+1);
-        //printf("%d: upd2 sql: %s\n", td, sql);
-        upd2 = run_statement_get_rtn(sqlh, sql, 0, ii, 1);
+#if 0
+        printf("%d: upd2 sql: %s\n", td, sql);
+        int upd2;
+        upd2 = 
+#endif
+        run_statement_get_rtn(sqlh, sql, 0, ii, 1);
 
         sqlite3_snprintf(sizeof(sql), sql, "COMMIT");
         rtn = run_statement(sqlh, sql, ii);
@@ -184,20 +191,20 @@ void *work_func(void *arg)
         if(rtn == 0) 
            ii++;
     }
-    printf("%d: Thread Done\n", td);
+    printf("%d: Thread Done\n", (int) td);
     return NULL;
 }
 
 int main(int argc,char *argv[])
 {
-    int c, err=0, numthds=5, rc, do_fastinit=1;
+    int c, err=0, numthds=5, rc;
     cdb2_hndl_tp *sqlh;
     pthread_t *thds;
     argv0=argv[0];
     char sql[128];
 
     /* char *optarg=argument, int optind = argv index  */
-    while ((c = getopt(argc,argv,"vxi:d:t:h"))!=EOF)
+    while ((c = getopt(argc,argv,"vi:d:t:h"))!=EOF)
     {
             switch(c)
             {
@@ -207,10 +214,6 @@ int main(int argc,char *argv[])
 
                 case 't':
                     numthds=atoi(optarg);
-                    break;
-
-                case 'x':
-                    do_fastinit=0;
                     break;
 
                 case 'h':

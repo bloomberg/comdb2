@@ -441,7 +441,6 @@ struct dbenv *read_lrl_file_int(struct dbenv *dbenv, const char *lrlname,
 {
     FILE *ff;
     char line[512] = {0}; // valgrind doesn't like sse42 instructions
-    int rc;
     struct lrlfile *lrlfile;
     struct read_lrl_option_type options = {
         .lineno = 0, .lrlname = lrlname, .dbname = dbenv->envname,
@@ -558,7 +557,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
     int st = 0;
     int ltok;
     int ii, kk;
-    int num;
     int rc;
 
     tok = segtok(line, len, &st, &ltok);

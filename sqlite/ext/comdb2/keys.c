@@ -95,6 +95,8 @@ static int systblKeysOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   memset(pCur, 0, sizeof(*pCur));
   *ppCursor = &pCur->base;
 
+  comdb2_next_allowed_table(&pCur->iRowid);
+
   return SQLITE_OK;
 }
 
@@ -130,6 +132,8 @@ static int systblKeysNext(sqlite3_vtab_cursor *cur){
       }
     } while( pCur->iRowid < thedb->num_dbs );
   }
+
+  comdb2_next_allowed_table(&pCur->iRowid);
 
   return SQLITE_OK;
 }

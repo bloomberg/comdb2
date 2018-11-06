@@ -198,7 +198,11 @@ public class DatabaseDiscovery {
             io.flush();
 
             String line = io.readLine(32);
-            return Integer.parseInt(line);
+            try {
+                return Integer.parseInt(line);
+            } catch (NumberFormatException nfe) {
+                return -1;
+            }
         } finally {
             try {
                 if (io != null)

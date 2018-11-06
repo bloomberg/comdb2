@@ -72,7 +72,6 @@ __memp_fput_internal(dbmfp, pgaddr, flags, pgorder)
 	MPOOL *c_mp;
 	u_int32_t n_cache;
 	int adjust, ret, incr_count = 1;
-	DB_TXN *thrtxn;
 
 	dbenv = dbmfp->dbenv;
 	MPF_ILLEGAL_BEFORE_OPEN(dbmfp, "DB_MPOOLFILE->put");
@@ -139,7 +138,6 @@ __memp_fput_internal(dbmfp, pgaddr, flags, pgorder)
 	    (dbenv->open_flags & DB_INIT_TXN)) {
 		static const char zerobuf[32] = { 0 };
 		u_int8_t *data = bhp->buf;
-		DB_LSN *lsnp = (DB_LSN *)(data + dbmfp->lsn_offset);
 
 		if (memcmp(data, zerobuf, sizeof(zerobuf)) == 0) {
 			__db_err(dbenv, "%s %s: zero LSN for page %u", __func__,

@@ -224,7 +224,7 @@ static void flushdump(struct reqlogger *logger, struct output *out)
                 logmsg(LOGMSG_USER, "%.*s", (int)iov[i].iov_len,
                        (char *)iov[i].iov_base);
         } else {
-            int dum = writev(out->fd, iov, niov);
+            writev(out->fd, iov, niov);
         }
         logger->dumplinepos = 0;
     }
@@ -384,7 +384,7 @@ static struct output *get_output_ll(const char *filename)
     out->refcount = 1;
     out->fd = fd;
     listc_atl(&outputs, out);
-    pthread_mutex_init(&out->mutex, NULL);
+    Pthread_mutex_init(&out->mutex, NULL);
     return out;
 }
 
@@ -465,7 +465,6 @@ static const char *dblrangestr(const struct dblrange *range, char *buf,
 static void printrule(struct logrule *rule, FILE *fh, const char *p)
 {
     char b[32];
-    int rc, opcode;
     logmsgf(LOGMSG_USER, fh, "%sRULE '%s'", p, rule->name);
     if (!rule->active) logmsgf(LOGMSG_USER, fh, " (INACTIVE)");
     logmsgf(LOGMSG_USER, fh, "\n");
@@ -595,11 +594,10 @@ static void scanrules_ll(void)
 
 int reqlog_init(const char *dbname)
 {
-    struct logrule *rule;
     struct output *out;
     char *filename;
 
-    pthread_mutex_init(&rules_mutex, NULL);
+    Pthread_mutex_init(&rules_mutex, NULL);
     listc_init(&rules, offsetof(struct logrule, linkv));
     listc_init(&outputs, offsetof(struct output, linkv));
 
@@ -613,7 +611,7 @@ int reqlog_init(const char *dbname)
     out->refcount = 1;
     default_out = out;
     listc_atl(&outputs, out);
-    pthread_mutex_init(&out->mutex, NULL);
+    Pthread_mutex_init(&out->mutex, NULL);
 
     filename = comdb2_location("logs", "%s.longreqs", dbname);
     long_request_out = get_output_ll(filename);
@@ -851,7 +849,7 @@ void reqlog_process_message(char *line, int st, int lline)
             logmsg(LOGMSG_USER, "rulename='%s'\n", rulename);
         }
 
-        pthread_mutex_lock(&rules_mutex);
+        Pthread_mutex_lock(&rules_mutex);
         LISTC_FOR_EACH(&rules, rule, linkv)
         {
             if (strcmp(rulename, rule->name) == 0) {
@@ -862,7 +860,7 @@ void reqlog_process_message(char *line, int st, int lline)
             rule = new_rule_ll(rulename);
             if (!rule) {
                 logmsg(LOGMSG_ERROR, "error creating new rule %s\n", rulename);
-                pthread_mutex_unlock(&rules_mutex);
+                Pthread_mutex_unlock(&rules_mutex);
                 return;
             }
         }
@@ -957,7 +955,7 @@ void reqlog_process_message(char *line, int st, int lline)
             printrule(rule, stdout, "");
         }
         scanrules_ll();
-        pthread_mutex_unlock(&rules_mutex);
+        Pthread_mutex_unlock(&rules_mutex);
     }
 }
 
@@ -980,7 +978,7 @@ void reqlog_stat(void)
         logmsg(LOGMSG_USER, "not set\n");
     else
         logmsg(LOGMSG_USER, "%f\n", gbl_sql_cost_error_threshold);
-    pthread_mutex_lock(&rules_mutex);
+    Pthread_mutex_lock(&rules_mutex);
     logmsg(LOGMSG_USER, "%d rules currently active\n", rules.count);
     LISTC_FOR_EACH(&rules, rule, linkv)
     {
@@ -991,7 +989,7 @@ void reqlog_stat(void)
         logmsg(LOGMSG_USER, "Output file open: %s\n", out->filename);
     }
     eventlog_status();
-    pthread_mutex_unlock(&rules_mutex);
+    Pthread_mutex_unlock(&rules_mutex);
 }
 
 struct reqlogger *reqlog_alloc(void)
@@ -1373,7 +1371,6 @@ void reqlog_setflag(struct reqlogger *logger, unsigned flag)
 /* figure out what to log for this request */
 static void reqlog_start_request(struct reqlogger *logger)
 {
-    struct logrule *rule;
     int gather;
     int ii;
 
@@ -1577,11 +1574,11 @@ static void log_header_ll(struct reqlogger *logger, struct output *out)
 static void log_header(struct reqlogger *logger, struct output *out,
                        int is_long)
 {
-    pthread_mutex_lock(&rules_mutex);
-    pthread_mutex_lock(&out->mutex);
+    Pthread_mutex_lock(&rules_mutex);
+    Pthread_mutex_lock(&out->mutex);
     log_header_ll(logger, out);
-    pthread_mutex_unlock(&out->mutex);
-    pthread_mutex_unlock(&rules_mutex);
+    Pthread_mutex_unlock(&out->mutex);
+    Pthread_mutex_unlock(&rules_mutex);
 }
 
 static void log_all_events(struct reqlogger *logger, struct output *out)
@@ -1618,11 +1615,11 @@ static void log_rule(struct reqlogger *logger, struct output *out,
 {
     struct logevent *event;
 
-    pthread_mutex_lock(&out->mutex);
+    Pthread_mutex_lock(&out->mutex);
     prefix_init(&logger->prefix);
     log_header_ll(logger, out);
     if (event_mask == 0) {
-        pthread_mutex_unlock(&out->mutex);
+        Pthread_mutex_unlock(&out->mutex);
         return;
     }
     /* print all events that this rule wanted to log */
@@ -1654,7 +1651,7 @@ static void log_rule(struct reqlogger *logger, struct output *out,
             break;
 
         default:
-            pthread_mutex_unlock(&out->mutex);
+            Pthread_mutex_unlock(&out->mutex);
             logmsg(LOGMSG_ERROR, "%s: bad event type %d?!\n", __func__,
                    event->type);
             return;
@@ -1664,7 +1661,7 @@ static void log_rule(struct reqlogger *logger, struct output *out,
     logger->prefix.pos = 0;
     dump(logger, out, "----------", 10);
     flushdump(logger, out);
-    pthread_mutex_unlock(&out->mutex);
+    Pthread_mutex_unlock(&out->mutex);
 }
 
 static int inrange(const struct range *range, int value)
@@ -1768,7 +1765,7 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
 
     /* now see if this matches any of our rules */
     if (rules.count != 0) {
-        pthread_mutex_lock(&rules_mutex);
+        Pthread_mutex_lock(&rules_mutex);
         LISTC_FOR_EACH_SAFE(&rules, rule, tmprule, linkv)
         {
             if (!rule->active) {
@@ -1872,7 +1869,7 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
             free(use_rule);
         }
 
-        pthread_mutex_unlock(&rules_mutex);
+        Pthread_mutex_unlock(&rules_mutex);
     }
 
     /* check for bad cstrings */
@@ -2021,7 +2018,6 @@ void init_clientstats_table()
 static nodestats_t *add_clientstats(const char *task, const char *stack,
                                     int node, int fd)
 {
-    int ret = -1;
     int task_len, stack_len;
     nodestats_t *old_entry = NULL;
     nodestats_t *entry = NULL;
@@ -2038,7 +2034,7 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
         return NULL;
     }
 
-    pthread_mutex_init(&entry->mtx, 0);
+    Pthread_mutex_init(&entry->mtx, 0);
     entry->ref = 1;
 
     memcpy(entry->mem, task, task_len);
@@ -2047,7 +2043,7 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
     memcpy(entry->mem + task_len, stack, stack_len);
     entry->stack = entry->mem + task_len;
 
-    entry->checksum = crc32c(entry->mem, task_len + stack_len);
+    entry->checksum = crc32c((const uint8_t *)entry->mem, task_len + stack_len);
     entry->node = node;
     entry->host = intern(nodeat(node));
 
@@ -2055,7 +2051,7 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
         bzero(&(entry->addr), sizeof(struct in_addr));
     } else {
         struct sockaddr_in peeraddr;
-        int len = sizeof(peeraddr);
+        socklen_t len = sizeof(peeraddr);
         bzero(&peeraddr, sizeof(peeraddr));
         if (getpeername(fd, (struct sockaddr *)&peeraddr, &len) < 0) {
             logmsg(LOGMSG_ERROR, "%s: getpeername failed fd %d: %d %s\n",
@@ -2066,22 +2062,22 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
         }
     }
 
-    pthread_rwlock_wrlock(&clientstats_lk);
+    Pthread_rwlock_wrlock(&clientstats_lk);
     {
         entry_chk = hash_find(clientstats, entry);
         if (entry_chk) {
             free(entry);
             entry = entry_chk;
-            pthread_mutex_lock(&entry->mtx);
+            Pthread_mutex_lock(&entry->mtx);
             entry->ref++;
             if (entry->ref == 1) {
-                pthread_mutex_lock(&clntlru_mtx);
+                Pthread_mutex_lock(&clntlru_mtx);
                 listc_rfl(&clntlru, entry);
-                pthread_mutex_unlock(&clntlru_mtx);
+                Pthread_mutex_unlock(&clntlru_mtx);
             }
-            pthread_mutex_unlock(&entry->mtx);
+            Pthread_mutex_unlock(&entry->mtx);
         } else {
-            pthread_mutex_lock(&clntlru_mtx);
+            Pthread_mutex_lock(&clntlru_mtx);
             while (hash_get_num_entries(clientstats) + 1 >
                    gbl_max_clientstats_cache) {
                 old_entry = listc_rtl(&clntlru);
@@ -2096,11 +2092,11 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
                     break;
                 }
             }
-            pthread_mutex_unlock(&clntlru_mtx);
+            Pthread_mutex_unlock(&clntlru_mtx);
             hash_add(clientstats, entry);
         }
     }
-    pthread_rwlock_unlock(&clientstats_lk);
+    Pthread_rwlock_unlock(&clientstats_lk);
 
     return entry;
 }
@@ -2111,21 +2107,21 @@ static nodestats_t *find_clientstats(unsigned checksum, int node, int fd)
     nodestats_t *entry = NULL;
     key.checksum = checksum;
     key.node = node;
-    pthread_rwlock_rdlock(&clientstats_lk);
+    Pthread_rwlock_rdlock(&clientstats_lk);
     {
         entry = hash_find_readonly(clientstats, &key);
         if (entry) {
-            pthread_mutex_lock(&entry->mtx);
+            Pthread_mutex_lock(&entry->mtx);
             entry->ref++;
             if (entry->ref == 1) {
-                pthread_mutex_lock(&clntlru_mtx);
+                Pthread_mutex_lock(&clntlru_mtx);
                 listc_rfl(&clntlru, entry);
-                pthread_mutex_unlock(&clntlru_mtx);
+                Pthread_mutex_unlock(&clntlru_mtx);
             }
-            pthread_rwlock_unlock(&clientstats_lk);
+            Pthread_rwlock_unlock(&clientstats_lk);
             if (*(unsigned *)&(entry->addr) == 0 && fd > 0) {
                 struct sockaddr_in peeraddr;
-                int len = sizeof(peeraddr);
+                socklen_t len = sizeof(peeraddr);
                 bzero(&peeraddr, sizeof(peeraddr));
                 if (getpeername(fd, (struct sockaddr *)&peeraddr, &len) < 0) {
                     logmsg(LOGMSG_ERROR,
@@ -2137,11 +2133,11 @@ static nodestats_t *find_clientstats(unsigned checksum, int node, int fd)
                            sizeof(struct in_addr));
                 }
             }
-            pthread_mutex_unlock(&entry->mtx);
+            Pthread_mutex_unlock(&entry->mtx);
             return entry;
         }
     }
-    pthread_rwlock_unlock(&clientstats_lk);
+    Pthread_rwlock_unlock(&clientstats_lk);
     return NULL;
 }
 
@@ -2152,10 +2148,10 @@ static int release_clientstats(unsigned checksum, int node)
     nodestats_t *entry = NULL;
     key.checksum = checksum;
     key.node = node;
-    pthread_rwlock_rdlock(&clientstats_lk);
+    Pthread_rwlock_rdlock(&clientstats_lk);
     {
         if ((entry = hash_find_readonly(clientstats, &key)) != NULL) {
-            pthread_mutex_lock(&entry->mtx);
+            Pthread_mutex_lock(&entry->mtx);
             entry->ref--;
             if (entry->ref < 0) {
                 logmsg(LOGMSG_ERROR,
@@ -2164,16 +2160,16 @@ static int release_clientstats(unsigned checksum, int node)
                 entry->ref = 0;
             }
             if (entry->ref == 0) {
-                pthread_mutex_lock(&clntlru_mtx);
+                Pthread_mutex_lock(&clntlru_mtx);
                 listc_abl(&clntlru, entry);
-                pthread_mutex_unlock(&clntlru_mtx);
+                Pthread_mutex_unlock(&clntlru_mtx);
             }
-            pthread_mutex_unlock(&entry->mtx);
+            Pthread_mutex_unlock(&entry->mtx);
         } else {
             rc = -1;
         }
     }
-    pthread_rwlock_unlock(&clientstats_lk);
+    Pthread_rwlock_unlock(&clientstats_lk);
     return rc;
 }
 
@@ -2181,7 +2177,6 @@ struct rawnodestats *get_raw_node_stats(const char *task, const char *stack,
                                         char *host, int fd)
 {
     struct nodestats *nodestats = NULL;
-    struct rawnodestats *rawnodestats = NULL;
     unsigned checksum;
     int namelen, node;
     int task_len, stack_len = 0;
@@ -2202,7 +2197,7 @@ struct rawnodestats *get_raw_node_stats(const char *task, const char *stack,
     }
     memcpy(tmp, NAME(task), task_len);
     memcpy(tmp + task_len, NAME(stack), stack_len);
-    checksum = crc32c(tmp, namelen);
+    checksum = crc32c((const uint8_t *)tmp, namelen);
     if ((nodestats = find_clientstats(checksum, node, fd)) == NULL) {
         nodestats = add_clientstats(task, stack, node, fd);
         if (nodestats == NULL) {
@@ -2237,7 +2232,7 @@ int release_node_stats(const char *task, const char *stack, char *host)
         return -1;
     memcpy(tmp, NAME(task), task_len);
     memcpy(tmp + task_len, NAME(stack), stack_len);
-    checksum = crc32c(tmp, namelen);
+    checksum = crc32c((const uint8_t *)tmp, namelen);
     if (release_clientstats(checksum, nodeix(host)) != 0) {
         logmsg(LOGMSG_ERROR,
                "%s: failed to release host=%s, node=%d, task=%s, stack=%s\n",
@@ -2285,7 +2280,7 @@ void process_nodestats(void)
     span_ms = comdb2_time_epochms() - last_time_ms;
     last_time_ms = comdb2_time_epochms();
 
-    pthread_rwlock_rdlock(&clientstats_lk);
+    Pthread_rwlock_rdlock(&clientstats_lk);
 
     nclnts = hash_get_num_entries(clientstats);
     if (nclnts == 0)
@@ -2305,7 +2300,6 @@ void process_nodestats(void)
         unsigned *nowptr;
         unsigned *prevptr;
         unsigned *bucketptr;
-        struct rawnodestats *rawnodestats;
         nodestats = list[i];
 
         nowptr = (unsigned *)&nodestats->rawtotals;
@@ -2328,7 +2322,7 @@ void process_nodestats(void)
         nodestats->cur_bucket = next_bucket;
     }
 done:
-    pthread_rwlock_unlock(&clientstats_lk);
+    Pthread_rwlock_unlock(&clientstats_lk);
     if (list)
         free(list);
 }
@@ -2379,7 +2373,7 @@ struct summary_nodestats *get_nodestats_summary(unsigned *nodes_cnt,
     int i;
     int nclnts = 0;
 
-    pthread_rwlock_rdlock(&clientstats_lk);
+    Pthread_rwlock_rdlock(&clientstats_lk);
 
     nclnts = hash_get_num_entries(clientstats);
     if (nclnts == 0)
@@ -2519,7 +2513,7 @@ struct summary_nodestats *get_nodestats_summary(unsigned *nodes_cnt,
     max_clients = ii;
 
 done:
-    pthread_rwlock_unlock(&clientstats_lk);
+    Pthread_rwlock_unlock(&clientstats_lk);
     if (list)
         free(list);
     *nodes_cnt = max_clients;
@@ -2540,7 +2534,7 @@ void nodestats_node_report(FILE *fh, const char *prefix, int disp_rates,
     int i;
     int nclnts = 0;
 
-    pthread_rwlock_rdlock(&clientstats_lk);
+    Pthread_rwlock_rdlock(&clientstats_lk);
 
     nclnts = hash_get_num_entries(clientstats);
     if (nclnts == 0)
@@ -2598,7 +2592,7 @@ void nodestats_node_report(FILE *fh, const char *prefix, int disp_rates,
     }
 
 done:
-    pthread_rwlock_unlock(&clientstats_lk);
+    Pthread_rwlock_unlock(&clientstats_lk);
     if (list)
         free(list);
 }
@@ -2608,8 +2602,6 @@ void nodestats_report(FILE *fh, const char *prefix, int disp_rates)
     unsigned max_clients;
     unsigned ii;
     struct summary_nodestats *summaries;
-    struct nodestats *nodestats;
-    struct rawnodestats snap;
 
     if (!prefix) prefix = "";
 

@@ -18,6 +18,7 @@ while [[ $# -gt 0 && $1 = -* ]]; do
     shift
 done
 
+# this script assumes the following environment variables are set
 vars="HOSTNAME TESTID SRCHOME TESTCASE DBNAME DBDIR BUILDDIR TESTSBUILDDIR TESTSROOTDIR TESTDIR TMPDIR CDB2_OPTIONS CDB2_CONFIG COMDB2_EXE CDB2SQL_EXE COMDB2AR_EXE PMUX_EXE pmux_port"
 for required in $vars; do
     q=${!required}
@@ -28,8 +29,10 @@ for required in $vars; do
 #    echo "$required=$q"
 done
 
+# set paths
 source $TESTSROOTDIR/setup.common
 
+# get full path
 DBDIR=$(readlink -f $DBDIR)
 
 # Setup a debugger to run comdb2 server
@@ -89,124 +92,6 @@ if [[ -n ${DEBUGGER} ]]; then
     NOCOLOR='\033[0m'
 fi
 
-if [[ $debug -eq 1 ]]; then
-    set +x
-    export PATH="$paths:${PATH}"
-    SETENV="${PWD}/setenv.sh "
-    RUNTEST="${PWD}/runtest.sh "
-    echo "Once db is ready, please run: $RUNTEST"
-    echo "#!/usr/bin/env bash" > $RUNTEST
-    echo "#!/usr/bin/env bash" > $SETENV
-    #echo "set +x"  >> $RUNTEST
-    for env in $vars; do
-        echo "export $env=\"${!env}\"" >> $SETENV
-    done
-    echo "export PATH=${paths}"':${PATH}' >> $SETENV
-    [[ -n "$CLUSTER" ]] && echo 'export CLUSTER="'$CLUSTER'"' >> $SETENV
-    [[ -n "$SKIPSSL" ]] && echo 'export SKIPSSL="'$SKIPSSL'"' >> $SETENV
-    echo ". $SETENV" >> $RUNTEST
-    echo "cd ${TESTSROOTDIR}/${TESTCASE}.test/" >> $RUNTEST
-    echo "./runit ${DBNAME} \$1 " >> $RUNTEST
-    echo "echo; echo; echo;" >> $RUNTEST
-    echo "${TESTSROOTDIR}/unsetup" >> $RUNTEST
-    echo
-    echo
-    chmod +x $SETENV
-    chmod +x $RUNTEST
-fi
-
-# TESTDIR looks like this: tests/test_12758
-# DBDIR looks like this: tests/test_12758/analyzenew12758
-mkdir -p $DBDIR $TMPDIR
-
-# setup files:
-# DBNAME looks like this: analyze_new_12758
-echo "!$TESTCASE: creating"
-LRL="$DBDIR/$DBNAME.lrl"
-> ${LRL}
-
-if [[ -z $SKIPSSL ]] ; then
-    cat >> ${LRL} <<EOPTIONS
-ssl_client_mode REQUIRE
-ssl_cert_path $TESTDIR
-EOPTIONS
-fi
-
-echo "logmsg level debug" >> ${LRL}
-
-if [[ -f ${TESTSROOTDIR}/${TESTCASE}.test/lrl ]]; then
-    cat ${TESTSROOTDIR}/${TESTCASE}.test/lrl >> ${LRL}
-fi
-if [[ -f "${TESTSROOTDIR}/${TESTCASE}.test/lrl.options" ]]; then
-    cat ${TESTSROOTDIR}/${TESTCASE}.test/lrl.options >> ${LRL}
-fi
-
-cat >> ${LRL} <<EOPTIONS
-name    $DBNAME
-dir     $DBDIR
-
-setattr MASTER_REJECT_REQUESTS 0
-EOPTIONS
-
-if [[ -n "$CUSTOMLRLPATH" ]]; then
-    cat $CUSTOMLRLPATH >> ${LRL}
-fi
-
-df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> ${LRL}
-echo "make_slow_replicants_incoherent off" >> ${LRL}
-
-# If CLUSTER is defined, populate config and lrl with that info
-if [[ -n "$CLUSTER" ]]; then
-    echo $DBNAME 0 $CLUSTER > $CDB2_CONFIG
-    echo "comdb2_config:default_type=testsuite" >> $CDB2_CONFIG
-    echo "cluster nodes $CLUSTER" >> ${LRL}
-    if [[ -n "$DEDICATED_NETWORK_SUFFIXES" ]] ; then
-        echo "dedicated_network_suffixes  $DEDICATED_NETWORK_SUFFIXES" >> ${LRL}
-    fi
-else
-    mkdir -p $(dirname $CDB2_CONFIG)
-    echo "comdb2_config:default_type=local" >> $CDB2_CONFIG
-fi
-
-# Configure client SSL
-echo "comdb2_config:ssl_cert_path=$TESTDIR" >>$CDB2_CONFIG
-echo "comdb2_config:allow_pmux_route:true" >> $CDB2_CONFIG
-
-set +e
-
-# If PMUXPORT is defined we will overwrite the default pmux port with that
-if [ -n "${PMUXPORT}" ] ; then
-    pmux_socket=/tmp/pmux.socket.${PMUXPORT}
-    echo "comdb2_config:portmuxport=${PMUXPORT}" >> $CDB2_CONFIG
-    echo "portmux_port ${PMUXPORT}" >> ${LRL}
-    echo "portmux_bind_path $pmux_socket" >> ${LRL}
-fi
-
-SSH_OPT="-o StrictHostKeyChecking=no "
-
-for csc2 in $(ls *.csc2 2>/dev/null); do
-    table=${csc2%%.csc2}
-    cp $PWD/$csc2 $DBDIR/
-done >> ${LRL}
-
-mkdir -p $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2
-cd $DBDIR >/dev/null
-
-PARAMS="$DBNAME --no-global-lrl"
-export LOGDIR=$TESTDIR/logs
-
-# The script occasionally fails here. Let's find out what the rc is.
-set +e
-$COMDB2_EXE --create --lrl ${LRL} --pidfile ${TMPDIR}/$DBNAME.pid $PARAMS &> $LOGDIR/${DBNAME}.init
-rc=$?
-rm -f ${DBNAME}.trap
-if [[ $rc -ne 0 ]]; then
-    failexit "Error rc=$rc while initializing DB, see $LOGDIR/${DBNAME}.init "
-fi
-echo "${DBNAME} created successfully"
-
-set -e
-
 check_db_port_running_local() {
     local dbport=`grep "\[ERROR\] net_listen: FAILED TO BIND to port" $LOGDIR/${DBNAME}.db | grep -Po "port [0-9]*" | cut -f2 -d" " `
     if [ "x$dbport" == "x" ] ; then
@@ -242,131 +127,273 @@ check_db_port_running_node() {
 }
 
 
-# test largecsc2 throws error about col width
-#if grep "ERROR" $LOGDIR/${DBNAME}.init | grep -v largecsc2 ; then
-#    echo "Error while initializing DB, see $LOGDIR/${DBNAME}.init "
-#    exit 1
-#fi
+setup_db() {
+    # TESTDIR looks like this: tests/test_12758
+    # DBDIR looks like this: tests/test_12758/analyzenew12758
+    mkdir -p $DBDIR $TMPDIR
 
-# start it
-if [[ -z "$CLUSTER" ]]; then
+    # setup files:
+    # DBNAME looks like this: analyze_new_12758
+    echo "!$TESTCASE: creating db $DBNAME"
+    LRL="$DBDIR/$DBNAME.lrl"
+    > ${LRL}
 
-    if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
-        echo -e "!$TESTCASE: Execute the following command in a separate terminal: ${TEXTCOLOR}cd $DBDIR && ${DEBUG_PREFIX} $COMDB2_EXE $PARAMS --pidfile ${TMPDIR}/$DBNAME.pid${NOCOLOR}"
-        exit 0
+    if [[ -z $SKIPSSL ]] ; then
+        echo -e "ssl_client_mode REQUIRE\nssl_cert_path $TESTDIR" >> ${LRL}
     fi
 
-    echo "!$TESTCASE: starting single node"
-    ${DEBUG_PREFIX} $COMDB2_EXE $PARAMS --pidfile ${TMPDIR}/${DBNAME}.pid &> $LOGDIR/${DBNAME}.db &
-    dbpid=$!
+    echo "logmsg level debug" >> ${LRL}
+
+    if [[ -f lrl ]]; then
+        cat lrl >> ${LRL}
+    fi
+    if [[ -f lrl.options ]]; then
+        cat lrl.options >> ${LRL}
+    fi
+
+    echo -e "name    ${DBNAME}\ndir     ${DBDIR}\n\nsetattr MASTER_REJECT_REQUESTS 0" >> ${LRL}
+
+    if [[ -n "$CUSTOMLRLPATH" ]]; then
+        cat $CUSTOMLRLPATH >> ${LRL}
+    fi
+
+    df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> ${LRL}
+    echo "make_slow_replicants_incoherent off" >> ${LRL}
+
+    # If CLUSTER is defined, populate config and lrl with that info
+    if [[ -n "$CLUSTER" ]]; then
+        echo $DBNAME 0 $CLUSTER > $CDB2_CONFIG
+        echo "comdb2_config:default_type=testsuite" >> $CDB2_CONFIG
+        echo "cluster nodes $CLUSTER" >> ${LRL}
+        if [[ -n "$DEDICATED_NETWORK_SUFFIXES" ]] ; then
+            echo "dedicated_network_suffixes  $DEDICATED_NETWORK_SUFFIXES" >> ${LRL}
+        fi
+    else
+        mkdir -p $(dirname $CDB2_CONFIG)
+        echo "comdb2_config:default_type=local" >> $CDB2_CONFIG
+    fi
+
+    # Configure client SSL
+    echo "comdb2_config:ssl_cert_path=$TESTDIR" >>$CDB2_CONFIG
+    echo "comdb2_config:allow_pmux_route:true" >> $CDB2_CONFIG
 
     set +e
 
-    kill -0 `cat ${TMPDIR}/${DBNAME}.pid` > /dev/null
-    if [ $? -eq 1 ] ; then
-        echo "pid ${TMPDIR}/${DBNAME}.pid: `cat ${TMPDIR}/${DBNAME}.pid` is not alive"
-        check_db_port_running_local # this error is immediate so we should be able to catch it early
+    # If PMUXPORT is defined we will overwrite the default pmux port with that
+    if [ -n "${PMUXPORT}" ] ; then
+        pmux_socket=/tmp/pmux.socket.${PMUXPORT}
+        echo "comdb2_config:portmuxport=${PMUXPORT}" >> $CDB2_CONFIG
+        echo "portmux_port ${PMUXPORT}" >> ${LRL}
+        echo "portmux_bind_path $pmux_socket" >> ${LRL}
     fi
 
-    out=
-    # wait until we can query it
-    echo "!$TESTCASE: waiting until ready"
-    while [[ "$out" != "1" ]]; do
-        sleep 1
-        out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $DBNAME default 'select 1' 2> /dev/null)
-        $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs $DBNAME 'select 1' &> $LOGDIR/${DBNAME}.conn
-    done
-else
-    echo "!$TESTCASE: copying to cluster"
-    if [[ -n "$NUMNODESTOUSE" ]]; then
-        echo "$TESTCASE: cluster is $CLUSTER"
+    SSH_OPT="-o StrictHostKeyChecking=no "
+
+    for csc2 in $(ls *.csc2 2>/dev/null); do
+        table=${csc2%%.csc2}
+        cp $PWD/$csc2 $DBDIR/
+    done >> ${LRL}
+
+    mkdir -p $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2
+    cd $DBDIR >/dev/null
+
+    PARAMS="$DBNAME --no-global-lrl"
+    export LOGDIR=$TESTDIR/logs
+
+    # The script occasionally fails here. Let's find out what the rc is.
+    set +e
+    $COMDB2_EXE --create --lrl ${LRL} --pidfile ${TMPDIR}/$DBNAME.pid $PARAMS &> $LOGDIR/${DBNAME}.init
+    rc=$?
+    rm -f ${DBNAME}.trap
+    if [[ $rc -ne 0 ]]; then
+        failexit "Error rc=$rc while initializing DB, see $LOGDIR/${DBNAME}.init "
     fi
-    COMDB2AR_AROPTS="-C preserve"
-    COMDB2AR_EXOPTS="-x $COMDB2_EXE"
+    echo "${DBNAME} created successfully"
 
-    ARFILE=$DBDIR/${DBNAME}.ar
-    $COMDB2AR_EXE $COMDB2AR_AROPTS c ${LRL} 2> $LOGDIR/${DBNAME}.arstatus > $ARFILE
-    [ ! -f $ARFILE ] && echo "failed to create $ARFILE" && exit 1
+    set -e
 
-    i=0
-    declare -a pids
-    for node in ${CLUSTER}; do
-        if [ $node == $HOSTNAME ] ; then
-            continue
-        fi
-        cat $ARFILE | ssh $SSH_OPT $node "cd ${DBDIR}; $COMDB2AR_EXE $COMDB2AR_EXOPTS $COMDB2AR_AROPTS -u 95 x $DBDIR" &> $LOGDIR/${DBNAME}.${node}.copy &
-        pids[$i]=$!
-        let i=i+1
-    done
-    i=0
-    for node in ${CLUSTER}; do
-        if [ $node == $HOSTNAME ] ; then
-            continue
-        fi
-        wait ${pids[$i]}
-        if [[ $? -ne 0 ]]; then
-            echo "FAILED: copying ${LRL} ${node}: see $LOGDIR/${DBNAME}.${node}.copy"
-            exit 1
-        fi
-        let i=i+1
-    done
 
-    echo "export COMDB2_ROOT=$COMDB2_ROOT" >> ${TESTDIR}/replicant_vars
-    CMD="cd ${DBDIR}; source ${TESTDIR}/replicant_vars ; ${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl ${LRL} --pidfile ${TMPDIR}/$DBNAME.pid 2>&1 | tee $TESTDIR/${DBNAME}.db"
-    echo "!$TESTCASE: starting"
-    for node in $CLUSTER; do
-        if [ $node == $HOSTNAME ] ; then # dont ssh to ourself -- just start db locally
-            if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
-                echo -e "!$TESTCASE: Execute the following command on ${node}: ${TEXTCOLOR}${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl ${LRL} --pidfile ${TMPDIR}/${DBNAME}.${node}.pid${NOCOLOR}"
-            else
-                ${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl ${LRL} --pidfile ${TMPDIR}/${DBNAME}.${node}.pid &> $LOGDIR/${DBNAME}.${node}.db &
-            fi
-            continue
-        fi
+    # test largecsc2 throws error about col width
+    #if grep "ERROR" $LOGDIR/${DBNAME}.init | grep -v largecsc2 ; then
+    #    echo "Error while initializing DB, see $LOGDIR/${DBNAME}.init "
+    #    exit 1
+    #fi
+
+    # start it
+    if [[ -z "$CLUSTER" ]]; then
 
         if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
-            echo -e "!$TESTCASE: Execute the following command on ${node}: ${TEXTCOLOR}${CMD}${NOCOLOR}"
-        else
-            scp $SSH_OPT ${TESTDIR}/replicant_vars $node:${TESTDIR}/replicant_vars
-            # redirect output from CMD to a subshell which runs awk to prepend time
-            # could also use connection sharing and close master ssh session in unsetup
-            ssh -n $SSH_OPT -tt $node ${CMD} &>$LOGDIR/${DBNAME}.${node}.db &
-            # $! will be pid of ssh (if we had used pipe, $! would be pid of awk)
-            echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
+            echo -e "!$TESTCASE: Execute the following command in a separate terminal: ${TEXTCOLOR}cd $DBDIR && ${DEBUG_PREFIX} $COMDB2_EXE $PARAMS --pidfile ${TMPDIR}/$DBNAME.pid${NOCOLOR}"
+            exit 0
         fi
-    done
 
-    set +e
-    #check for failure in starting any of the nodes
-    sleep 1
-    for node in $CLUSTER; do
-        kill -0 `cat ${TMPDIR}/${DBNAME}.${node}.pid` > /dev/null
+        echo "!$TESTCASE: starting single node"
+        ${DEBUG_PREFIX} $COMDB2_EXE $PARAMS --pidfile ${TMPDIR}/${DBNAME}.pid &> $LOGDIR/${DBNAME}.db &
+        dbpid=$!
+
+        set +e
+
+        kill -0 `cat ${TMPDIR}/${DBNAME}.pid` > /dev/null
         if [ $? -eq 1 ] ; then
-            echo "pid ${TMPDIR}/${DBNAME}.${node}.pid: `cat ${TMPDIR}/${DBNAME}.${node}.pid` is not alive"
-            check_db_port_running_node $node # this error is immediate so we should be able to catch it early
+            echo "pid ${TMPDIR}/${DBNAME}.pid: `cat ${TMPDIR}/${DBNAME}.pid` is not alive"
+            check_db_port_running_local # this error is immediate so we should be able to catch it early
         fi
+
+        out=
+        # wait until we can query it
+        echo "!$TESTCASE: waiting until ready"
+        while [[ "$out" != "1" ]]; do
+            sleep 1
+            out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $DBNAME default 'select 1' 2> /dev/null)
+            $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs $DBNAME 'select 1' &> $LOGDIR/${DBNAME}.conn
+        done
+    else
+        echo "!$TESTCASE: copying to cluster"
+        if [[ -n "$NUMNODESTOUSE" ]]; then
+            echo "$TESTCASE: cluster is $CLUSTER"
+        fi
+        COMDB2AR_AROPTS="-C preserve"
+        COMDB2AR_EXOPTS="-x $COMDB2_EXE"
+
+        ARFILE=$DBDIR/${DBNAME}.ar
+        $COMDB2AR_EXE $COMDB2AR_AROPTS c ${LRL} 2> $LOGDIR/${DBNAME}.arstatus > $ARFILE
+        [ ! -f $ARFILE ] && echo "failed to create $ARFILE" && exit 1
+
+        i=0
+        declare -a pids
+        for node in ${CLUSTER}; do
+            if [ $node == $HOSTNAME ] ; then
+                continue
+            fi
+            cat $ARFILE | ssh $SSH_OPT $node "cd ${DBDIR}; $COMDB2AR_EXE $COMDB2AR_EXOPTS $COMDB2AR_AROPTS -u 95 x $DBDIR" &> $LOGDIR/${DBNAME}.${node}.copy &
+            pids[$i]=$!
+            let i=i+1
+        done
+        i=0
+        for node in ${CLUSTER}; do
+            if [ $node == $HOSTNAME ] ; then
+                continue
+            fi
+            wait ${pids[$i]}
+            if [[ $? -ne 0 ]]; then
+                echo "FAILED: copying ${LRL} ${node}: see $LOGDIR/${DBNAME}.${node}.copy"
+                exit 1
+            fi
+            let i=i+1
+        done
+
+        echo "export COMDB2_ROOT=$COMDB2_ROOT" >> ${TESTDIR}/replicant_vars
+        CMD="cd ${DBDIR}; source ${TESTDIR}/replicant_vars ; ${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl ${LRL} --pidfile ${TMPDIR}/$DBNAME.pid 2>&1 | tee $TESTDIR/${DBNAME}.db"
+        echo "!$TESTCASE: starting"
+        for node in $CLUSTER; do
+            if [ $node == $HOSTNAME ] ; then # dont ssh to ourself -- just start db locally
+                if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
+                    echo -e "!$TESTCASE: Execute the following command on ${node}: ${TEXTCOLOR}${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl ${LRL} --pidfile ${TMPDIR}/${DBNAME}.${node}.pid${NOCOLOR}"
+                else
+                    ${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl ${LRL} --pidfile ${TMPDIR}/${DBNAME}.${node}.pid &> $LOGDIR/${DBNAME}.${node}.db &
+                fi
+                continue
+            fi
+
+            if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
+                echo -e "!$TESTCASE: Execute the following command on ${node}: ${TEXTCOLOR}${CMD}${NOCOLOR}"
+            else
+                scp $SSH_OPT ${TESTDIR}/replicant_vars $node:${TESTDIR}/replicant_vars
+                # redirect output from CMD to a subshell which runs awk to prepend time
+                # could also use connection sharing and close master ssh session in unsetup
+                ssh -n $SSH_OPT -tt $node ${CMD} &>$LOGDIR/${DBNAME}.${node}.db &
+                # $! will be pid of ssh (if we had used pipe, $! would be pid of awk)
+                echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
+            fi
+        done
+
+        set +e
+        #check for failure in starting any of the nodes
+        sleep 1
+        for node in $CLUSTER; do
+            kill -0 `cat ${TMPDIR}/${DBNAME}.${node}.pid` > /dev/null
+            if [ $? -eq 1 ] ; then
+                echo "pid ${TMPDIR}/${DBNAME}.${node}.pid: `cat ${TMPDIR}/${DBNAME}.${node}.pid` is not alive"
+                check_db_port_running_node $node # this error is immediate so we should be able to catch it early
+            fi
+        done
+
+        echo "!$TESTCASE: waiting until ready"
+        for node in $CLUSTER; do
+            echo "If we can't talk to any of the nodes the test will timeout"
+            out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
+            while  [[ "$out" != "1" ]]; do
+                sleep 2
+                out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
+                $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' &> $LOGDIR/${DBNAME}.${node}.conn
+            done
+            $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select comdb2_host()' &>> $LOGDIR/${DBNAME}.${node}.conn
+            out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select comdb2_host()' 2>&1)
+            if [ "$out" != "$node" ] ; then
+                sleep 1
+                failexit "comdb2_host() '$out' != expected '$node'"
+            fi
+        done
+        for node in $CLUSTER; do
+            $CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $DBNAME --host $node 'exec procedure sys.cmd.send("udp stat all")'
+            $CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $DBNAME --host $node 'exec procedure sys.cmd.send("udp ping all")'
+        done
+    fi
+}
+
+# setup primary db for the test
+setup_db
+
+if [ -n "${SECONDARY_DB_PREFIX}" ] ; then
+    sec_vars="SECONDARY_DBNAME SECONDARY_DBDIR SECONDARY_CDB2_OPTIONS"
+    for required in $sec_vars; do
+        q=${!required}
+        if [[ -z "$q" ]]; then
+            echo "$required not set" >&2
+            exit 1
+        fi
+        echo "$required=$q"
     done
 
-    echo "!$TESTCASE: waiting until ready"
-    for node in $CLUSTER; do
-        echo "If we can't talk to any of the nodes the test will timeout"
-        out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
-        while  [[ "$out" != "1" ]]; do
-            sleep 2
-            out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
-            $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' &> $LOGDIR/${DBNAME}.${node}.conn
-        done
-        $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select comdb2_host()' &>> $LOGDIR/${DBNAME}.${node}.conn
-        out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select comdb2_host()' 2>&1)
-        if [ "$out" != "$node" ] ; then
-            sleep 1
-            failexit "comdb2_host() '$out' != expected '$node'"
-        fi
-    done
-    for node in $CLUSTER; do
-        $CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $DBNAME --host $node 'exec procedure sys.cmd.send("udp stat all")'
-        $CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $DBNAME --host $node 'exec procedure sys.cmd.send("udp ping all")'
-    done
+
+    # setup secondary db for the test, if specified
+    DBNAME="${SECONDARY_DBNAME}" DBDIR="${SECONDARY_DBDIR}" CDB2_CONFIG="$SECONDARY_CDB2_CONFIG" CDB2_OPTIONS="${SECONDARY_CDB2_OPTIONS}" setup_db
 fi
+
+
+if [[ $debug -eq 1 ]]; then
+    set +x
+    export PATH="$paths:${PATH}"
+    SETENV="${PWD}/setenv.sh "
+    RUNTEST="${PWD}/runtest.sh "
+    echo "Once db is ready, please run: $RUNTEST"
+    echo "#!/usr/bin/env bash" > $RUNTEST
+    echo "#!/usr/bin/env bash" > $SETENV
+    #echo "set +x"  >> $RUNTEST
+    for env in $vars; do
+        echo "export $env=\"${!env}\"" >> $SETENV
+    done
+    if [ -n "${SECONDARY_DB_PREFIX}" ] ; then
+        echo "export SECONDARY_DB_PREFIX=\"${SECONDARY_DB_PREFIX}\"" >> $SETENV
+        echo "export SECONDARY_DBNAME=\"${SECONDARY_DBNAME}\"" >> $SETENV
+        echo "export SECONDARY_DBDIR=\"${SECONDARY_DBDIR}\"" >> $SETENV
+        echo "export SECONDARY_CDB2_OPTIONS=\"${SECONDARY_CDB2_OPTIONS}\"" >> $SETENV
+    fi
+    echo "export PATH=${paths}"':${PATH}' >> $SETENV
+    [[ -n "$CLUSTER" ]] && echo 'export CLUSTER="'$CLUSTER'"' >> $SETENV
+    [[ -n "$SKIPSSL" ]] && echo 'export SKIPSSL="'$SKIPSSL'"' >> $SETENV
+    echo ". $SETENV" >> $RUNTEST
+    echo "cd ${TESTSROOTDIR}/${TESTCASE}.test/" >> $RUNTEST
+    echo "./runit ${DBNAME} " >> $RUNTEST
+    echo "echo; echo; echo;" >> $RUNTEST
+    echo "${TESTSROOTDIR}/unsetup" >> $RUNTEST
+    echo
+    echo
+    chmod +x $SETENV
+    chmod +x $RUNTEST
+fi
+
+
+
 
 echo 'setup successful'

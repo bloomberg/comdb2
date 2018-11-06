@@ -139,7 +139,6 @@ void test_01()
 // https://github.com/bloomberg/comdb2/issues/963
 void test_02()
 {
-    int rc;
     cdb2_hndl_tp *hndl = NULL;
     char str_buf[] = {'h', 'e', 'l', 'l', 'o', '\0', 'f', 'o', 'o'};
     const char *hello = "hello";

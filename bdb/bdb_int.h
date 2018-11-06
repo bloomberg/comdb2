@@ -1266,7 +1266,7 @@ int ip_updates_enabled(bdb_state_type *bdb_state);
 void delete_log_files(bdb_state_type *bdb_state);
 void delete_log_files_list(bdb_state_type *bdb_state, char **list);
 void delete_log_files_chkpt(bdb_state_type *bdb_state);
-int bdb_checkpoint_list_init();
+void bdb_checkpoint_list_init();
 int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp);
 void bdb_checkpoint_list_get_ckplsn_before_lsn(DB_LSN lsn, DB_LSN *lsnout);
 
@@ -1862,6 +1862,7 @@ char *bdb_coherent_state_string(const char *);
 /* ugly, but need to signal shutdown */
 int osql_process_message_decom(char *);
 void osql_net_exiting(void);
+void osql_cleanup_netinfo(void);
 
 int bdb_list_all_fileids_for_newsi(bdb_state_type *, hash_t *);
 

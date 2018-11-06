@@ -174,6 +174,7 @@ const sqlite3_module systblPluginsModule = {
     0,                       /* xRollback */
     0,                       /* xFindMethod */
     0,                       /* xRename */
+    .access_flag = CDB2_ALLOW_USER,
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2))       \

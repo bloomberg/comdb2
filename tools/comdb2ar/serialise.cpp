@@ -529,6 +529,12 @@ void parse_lrl_file(const std::string& lrlpath,
                     throw LRLError(path, lineno, "missing spfile");
                 }
                 p_support_files->push_back(path);
+            } else if(tok == "timepartitions") {
+                std::string path;
+                if(!(liness >> path)) {
+                    throw LRLError(path, lineno, "missing timepartitions file");
+                }
+                p_support_files->push_back(path);
             } else if(tok == "nonames") {
                 *p_nonames = true;
             } else if (tok == "usenames") {

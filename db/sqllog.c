@@ -46,7 +46,6 @@ static off_t sqllog_rollat_size = 0;
 static int sqllog_keep_files = 2;
 /* Apparently this is a "feature" that "standard" products have. */
 static int sqllog_every_n = 0;
-static int sqllog_every_counter = 0;
 static int sqllog_use_async = 1;
 #define DEFAULT_ASYNC_MAXSIZE 1024 * 1024 * 4
 static int sqllog_async_maxsize = DEFAULT_ASYNC_MAXSIZE;
@@ -84,7 +83,7 @@ static void *async_logthd(void *unused)
     int rc;
 
     for (;;) {
-        pthread_mutex_lock(&sql_log_lk);
+        Pthread_mutex_lock(&sql_log_lk);
         if (e) {
             async_size -= e->bufsz;
             free_event(e);
@@ -92,11 +91,11 @@ static void *async_logthd(void *unused)
 
         e = listc_rtl(&sqllog_events);
         while (e == NULL) {
-            pthread_cond_wait(&async_writer_wait, &sql_log_lk);
+            Pthread_cond_wait(&async_writer_wait, &sql_log_lk);
             e = listc_rtl(&sqllog_events);
         }
         /* don't hold lock while possibly doing IO */
-        pthread_mutex_unlock(&sql_log_lk);
+        Pthread_mutex_unlock(&sql_log_lk);
 
         /* this is our cue to stop */
         if (e->buf == 0 && e->bufsz == 0) {
@@ -122,12 +121,12 @@ static void async_enqueue(void *buf, int bufsz)
     if (!async_have_thread)
         sqllog_changesync(1);
 
-    pthread_mutex_lock(&sql_log_lk);
+    Pthread_mutex_lock(&sql_log_lk);
 
     if ((sqllog_async_maxsize && (async_size + bufsz > sqllog_async_maxsize)) ||
         gbl_log_all_sql == 0) {
         async_ndrops++;
-        pthread_mutex_unlock(&sql_log_lk);
+        Pthread_mutex_unlock(&sql_log_lk);
         return;
     }
 
@@ -139,15 +138,14 @@ static void async_enqueue(void *buf, int bufsz)
     e->bufsz = bufsz;
     listc_abl(&sqllog_events, e);
 
-    pthread_cond_signal(&async_writer_wait);
-    pthread_mutex_unlock(&sql_log_lk);
+    Pthread_cond_signal(&async_writer_wait);
+    Pthread_mutex_unlock(&sql_log_lk);
 }
 
 static pthread_t sqllog_threadid;
 
 static void sqllog_async_init_once(void)
 {
-    int rc;
     listc_init(&sqllog_events, offsetof(struct log_event, lnk));
     event_pool = pool_setalloc_init(sizeof(struct log_event), 20, malloc, free);
     if (event_pool == NULL) {
@@ -166,7 +164,7 @@ static void sqllog_changesync(int async)
 
     pthread_once(&async_init_once, sqllog_async_init_once);
 
-    pthread_mutex_lock(&sql_log_lk);
+    Pthread_mutex_lock(&sql_log_lk);
     if (async == 0) {
         /* changing to sync? eat everything on the async queue  - treat them as
          * drops */
@@ -182,20 +180,20 @@ static void sqllog_changesync(int async)
             e = pool_getablk(event_pool);
             if (e == NULL) {
                 logmsg(LOGMSG_ERROR, "%s:%d out of memory\n", __FILE__, __LINE__);
-                pthread_mutex_unlock(&sql_log_lk);
+                Pthread_mutex_unlock(&sql_log_lk);
                 return;
             }
             e->bufsz = 0;
             e->buf = NULL;
             listc_atl(&sqllog_events, e);
-            pthread_cond_signal(&async_writer_wait);
-            pthread_mutex_unlock(&sql_log_lk);
+            Pthread_cond_signal(&async_writer_wait);
+            Pthread_mutex_unlock(&sql_log_lk);
 
             rc = pthread_join(sqllog_threadid, &thread_rc);
             if (rc)
                 logmsg(LOGMSG_WARN, "rc %d waiting for sqllog thread\n", rc);
 
-            pthread_mutex_lock(&sql_log_lk);
+            Pthread_mutex_lock(&sql_log_lk);
         }
         async_have_thread = 0;
         sqllog_use_async = 0;
@@ -207,7 +205,7 @@ static void sqllog_changesync(int async)
         sqllog_use_async = 1;
         async_have_thread = 1;
     }
-    pthread_mutex_unlock(&sql_log_lk);
+    Pthread_mutex_unlock(&sql_log_lk);
 }
 
 static FILE *sqllog_open(int quiet)
@@ -298,9 +296,9 @@ again:
 
 static int sqllog_enable(void)
 {
-    pthread_mutex_lock(&sql_log_lk);
+    Pthread_mutex_lock(&sql_log_lk);
     if (gbl_log_all_sql == 1) {
-        pthread_mutex_unlock(&sql_log_lk);
+        Pthread_mutex_unlock(&sql_log_lk);
         logmsg(LOGMSG_ERROR, "SQL logging already enabled\n");
         return 1;
     }
@@ -308,13 +306,13 @@ static int sqllog_enable(void)
     if (sqllog == NULL) {
         sqllog = sqllog_open(0);
         if (sqllog == NULL) {
-            pthread_mutex_unlock(&sql_log_lk);
+            Pthread_mutex_unlock(&sql_log_lk);
             return 1;
         }
     }
 
     gbl_log_all_sql = 1;
-    pthread_mutex_unlock(&sql_log_lk);
+    Pthread_mutex_unlock(&sql_log_lk);
     logmsg(LOGMSG_USER, "SQL logging enabled\n");
 
     return 0;
@@ -322,15 +320,15 @@ static int sqllog_enable(void)
 
 static int sqllog_disable(void)
 {
-    pthread_mutex_lock(&sql_log_lk);
+    Pthread_mutex_lock(&sql_log_lk);
     if (gbl_log_all_sql == 0) {
-        pthread_mutex_unlock(&sql_log_lk);
+        Pthread_mutex_unlock(&sql_log_lk);
         logmsg(LOGMSG_ERROR, "SQL logging already disabled\n");
         return 1;
     }
     gbl_log_all_sql = 0;
     fflush(sqllog);
-    pthread_mutex_unlock(&sql_log_lk);
+    Pthread_mutex_unlock(&sql_log_lk);
     sqllog_changesync(0);
     logmsg(LOGMSG_USER, "SQL logging disabled\n");
 
@@ -339,15 +337,15 @@ static int sqllog_disable(void)
 
 static int sqllog_flush(void)
 {
-    pthread_mutex_lock(&sql_log_lk);
+    Pthread_mutex_lock(&sql_log_lk);
     if (sqllog == NULL) {
         logmsg(LOGMSG_ERROR, "SQL log not open (logging %senabled)\n",
                 gbl_log_all_sql ? "" : "not ");
-        pthread_mutex_unlock(&sql_log_lk);
+        Pthread_mutex_unlock(&sql_log_lk);
         return 1;
     }
     fflush(sqllog);
-    pthread_mutex_unlock(&sql_log_lk);
+    Pthread_mutex_unlock(&sql_log_lk);
     logmsg(LOGMSG_USER, "Flushed SQL log\n");
 
     return 0;
@@ -366,7 +364,7 @@ static int sqllog_roll_locked(int nkeep, int quiet)
     if (sqllog == NULL) {
         logmsg(LOGMSG_ERROR, "SQL log not open (logging %senabled)\n",
                 gbl_log_all_sql ? "" : "not ");
-        pthread_mutex_unlock(&sql_log_lk);
+        Pthread_mutex_unlock(&sql_log_lk);
         return 1;
     }
     fflush(sqllog);
@@ -386,9 +384,9 @@ static int sqllog_roll_locked(int nkeep, int quiet)
 static int sqllog_roll(int nkeep)
 {
     int rc;
-    pthread_mutex_lock(&sql_log_lk);
+    Pthread_mutex_lock(&sql_log_lk);
     rc = sqllog_roll_locked(nkeep, 0);
-    pthread_mutex_unlock(&sql_log_lk);
+    Pthread_mutex_unlock(&sql_log_lk);
     return rc;
 }
 
@@ -396,17 +394,6 @@ static int log_async(struct sqlclntstate *clnt, int cost, int nrows, int timems)
 {
     /* HERE */
     return 0;
-}
-
-void sqllog_log_statement(struct sqlclntstate *clnt, int cost, int nrows,
-                          int timems)
-{
-    struct timeval t;
-    int32_t ival;
-    int sqllen;
-    int rc;
-
-    /* HERE */
 }
 
 void sqllogger_process_message(char *line, int lline)

@@ -3768,7 +3768,7 @@ case OP_ReadCookie: {               /* out2 */
   assert( pOp->p3<SQLITE_N_BTREE_META );
   assert( iDb>=0 && iDb<db->nDb );
   assert( db->aDb[iDb].pBt!=0 );
-  assert( DbMaskTest(p->btreeMask, iDb) );
+  //COMDB2_MODIFICATION: assert( DbMaskTest(p->btreeMask, iDb) );
 
   sqlite3BtreeGetMeta(db->aDb[iDb].pBt, iCookie, (u32 *)&iMeta);
   pOut = out2Prerelease(p, pOp);
@@ -3790,7 +3790,7 @@ case OP_SetCookie: {
   Db *pDb;
   assert( pOp->p2<SQLITE_N_BTREE_META );
   assert( pOp->p1>=0 && pOp->p1<db->nDb );
-  assert( DbMaskTest(p->btreeMask, pOp->p1) );
+  //COMDB2_MODIFICATION: assert( DbMaskTest(p->btreeMask, pOp->p1) );
   assert( p->readOnly==0 );
   pDb = &db->aDb[pOp->p1];
   assert( pDb->pBt!=0 );
@@ -3926,7 +3926,7 @@ case OP_OpenWrite:
   iDb = pOp->p3;
   flag = 0;
   assert( iDb>=0 && iDb<db->nDb );
-  assert( DbMaskTest(p->btreeMask, iDb) );
+  //COMDB2_MODIFICATION: assert( DbMaskTest(p->btreeMask, iDb) );
   pDb = &db->aDb[iDb];
   pX = pDb->pBt;
   assert( pX!=0 );
@@ -4776,9 +4776,13 @@ case OP_NewRowid: {           /* out2 */
   i64 v;                 /* The new rowid */
   VdbeCursor *pC;        /* Cursor of table to get the new rowid */
   int res;               /* Result of an sqlite3BtreeLast() */
+#ifndef SQLITE_BUILDING_FOR_COMDB2
   int cnt;               /* Counter to limit the number of searches */
+#endif
+#ifndef SQLITE_OMIT_AUTOINCREMENT
   Mem *pMem;             /* Register holding largest rowid for AUTOINCREMENT */
   VdbeFrame *pFrame;     /* Root frame of VDBE */
+#endif
 
   v = 0;
   res = 0;
@@ -5967,7 +5971,7 @@ case OP_Destroy: {     /* out2 */
     goto abort_due_to_error;
   }else{
     iDb = pOp->p3;
-    assert( DbMaskTest(p->btreeMask, iDb) );
+    //COMDB2_MODIFICATION: assert( DbMaskTest(p->btreeMask, iDb) );
     iMoved = 0;  /* Not needed.  Only to silence a warning. */
     rc = sqlite3BtreeDropTable(db->aDb[iDb].pBt, pOp->p1, &iMoved);
     pOut->flags = MEM_Int;
@@ -6008,7 +6012,7 @@ case OP_Clear: {
  
   nChange = 0;
   assert( p->readOnly==0 );
-  assert( DbMaskTest(p->btreeMask, pOp->p2) );
+  //COMDB2_MODIFICATION: assert( DbMaskTest(p->btreeMask, pOp->p2) );
   rc = sqlite3BtreeClearTable(
       db->aDb[pOp->p2].pBt, pOp->p1, (pOp->p3 ? &nChange : 0)
   );
@@ -6082,7 +6086,7 @@ case OP_CreateTable: {          /* out2 */
   pOut = out2Prerelease(p, pOp);
   pgno = 0;
   assert( pOp->p1>=0 && pOp->p1<db->nDb );
-  assert( DbMaskTest(p->btreeMask, pOp->p1) );
+  //COMDB2_MODIFICATION: assert( DbMaskTest(p->btreeMask, pOp->p1) );
   assert( p->readOnly==0 );
   pDb = &db->aDb[pOp->p1];
   assert( pDb->pBt!=0 );
@@ -6251,7 +6255,7 @@ case OP_IntegrityCk: {
   assert( (pnErr->flags & (MEM_Str|MEM_Blob))==0 );
   pIn1 = &aMem[pOp->p1];
   assert( pOp->p5<db->nDb );
-  assert( DbMaskTest(p->btreeMask, pOp->p5) );
+  //COMDB2_MODIFICATION: assert( DbMaskTest(p->btreeMask, pOp->p5) );
   z = sqlite3BtreeIntegrityCheck(db->aDb[pOp->p5].pBt, aRoot, nRoot,
                                  (int)pnErr->u.i, &nErr);
   pnErr->u.i -= nErr;
@@ -6981,7 +6985,7 @@ case OP_IncrVacuum: {        /* jump */
   Btree *pBt;
 
   assert( pOp->p1>=0 && pOp->p1<db->nDb );
-  assert( DbMaskTest(p->btreeMask, pOp->p1) );
+  //COMDB2_MODIFICATION: assert( DbMaskTest(p->btreeMask, pOp->p1) );
   assert( p->readOnly==0 );
   pBt = db->aDb[pOp->p1].pBt;
   rc = sqlite3BtreeIncrVacuum(pBt);
@@ -7035,7 +7039,7 @@ case OP_TableLock: {
   if( isWriteLock || 0==(db->flags&SQLITE_ReadUncommitted) ){
     int p1 = pOp->p1; 
     assert( p1>=0 && p1<db->nDb );
-    assert( DbMaskTest(p->btreeMask, p1) );
+    //COMDB2_MODIFICATION: assert( DbMaskTest(p->btreeMask, p1) );
     assert( isWriteLock==0 || isWriteLock==1 );
     rc = sqlite3BtreeLockTable(db->aDb[p1].pBt, pOp->p2, isWriteLock);
     if( rc ){
@@ -7136,6 +7140,12 @@ case OP_VOpen: {
     goto abort_due_to_error;
   }
   pModule = pVtab->pModule;
+
+  /* COMDB2 MODIFICATION */
+  int comdb2_check_vtab_access(sqlite3*, sqlite3_module*);
+  rc = comdb2_check_vtab_access(db, pModule);
+  if( rc ) goto abort_due_to_error;
+
   rc = pModule->xOpen(pVtab, &pVCur);
   sqlite3VtabImportErrmsg(p, pVtab);
   if( rc ) goto abort_due_to_error;

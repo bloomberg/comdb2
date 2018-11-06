@@ -33,6 +33,7 @@
 #include "mem_util.h"
 #include "list.h"
 #include "logmsg.h"
+#include "locks_wrap.h"
 
 #define RW (PROT_READ | PROT_WRITE)
 #define STACK_FREE_DELAY 5
@@ -72,7 +73,6 @@ static void free_memptr(void *inarg)
 
 static void *free_stack_thr(void *unused)
 {
-    int rc;
     thr_arg_t *arg;
     int signal_count;
     size_t stacksz;
@@ -85,19 +85,9 @@ static void *free_stack_thr(void *unused)
 
     while (!db_is_stopped()) {
         //![1]
-        rc = pthread_mutex_lock(&pthr_mutex);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "%s:%d error %d upon pthread_mutex_lock.\n",
-                    __func__, __LINE__, rc);
-            abort();
-        }
+        Pthread_mutex_lock(&pthr_mutex);
         signal_count = listc_size(&stack_list);
-        rc = pthread_mutex_unlock(&pthr_mutex);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "%s:%d error %d upon pthread_mutex_unlock.\n",
-                    __func__, __LINE__, rc);
-            abort();
-        }
+        Pthread_mutex_unlock(&pthr_mutex);
 
         //![2]
         if (signal_count == 0) {
@@ -106,7 +96,7 @@ static void *free_stack_thr(void *unused)
         }
 
         //![3]
-        rc = sleep(STACK_FREE_DELAY);
+        int rc = sleep(STACK_FREE_DELAY);
         if (rc != 0) {
             logmsg(LOGMSG_INFO,
                    "%s:%d interrupted with rc %d while sleeping.\n", __func__,
@@ -114,12 +104,7 @@ static void *free_stack_thr(void *unused)
             continue;
         }
 
-        rc = pthread_mutex_lock(&pthr_mutex);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "%s:%d error %d upon pthread_mutex_lock.\n",
-                    __func__, __LINE__, rc);
-            abort();
-        }
+        Pthread_mutex_lock(&pthr_mutex);
 
         //![4]
         while (signal_count != 0) {
@@ -161,12 +146,7 @@ static void *free_stack_thr(void *unused)
             }
             --signal_count;
         }
-        rc = pthread_mutex_unlock(&pthr_mutex);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "%s:%d error %d upon pthread_mutex_unlock.\n",
-                    __func__, __LINE__, rc);
-            abort();
-        }
+        Pthread_mutex_unlock(&pthr_mutex);
     }
 
     /* should never reach this point */
@@ -176,7 +156,7 @@ static void *free_stack_thr(void *unused)
 /* initialize memptr key */
 static void init_memptr_key(void)
 {
-    (void)pthread_key_create(&memptr, free_memptr);
+    Pthread_key_create(&memptr, free_memptr);
     __page_size = sysconf(_SC_PAGESIZE);
 
     if (pthread_mutex_init(&pthr_mutex, NULL) != 0) {
@@ -185,11 +165,7 @@ static void init_memptr_key(void)
         abort();
     }
 
-    if (pthread_attr_init(&free_thr_attrs) != 0) {
-        logmsg(LOGMSG_FATAL, "%s:%d failed to init pthread attrs.\n", __func__,
-                __LINE__);
-        abort();
-    }
+    Pthread_attr_init(&free_thr_attrs);
 
 #ifdef PTHREAD_STACK_MIN
     if (pthread_attr_setstacksize(&free_thr_attrs,
@@ -230,7 +206,7 @@ static void *thr_func(void *arg)
     size_t stacksz = thr_arg->stacksz;
 #endif
 
-    pthread_setspecific(memptr, thr_arg);
+    Pthread_setspecific(memptr, thr_arg);
 
     ret = thr_arg->func(thr_arg->arg);
 

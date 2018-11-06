@@ -114,6 +114,17 @@ struct consumer
 
     int please_stop;
     int stopped;
+
+    /* The following data is used to report about the inactivity in the
+     * consumption of events from the queue.
+     */
+    time_t inactive_since; /* timestamp since when events were not consumed
+                              from the queue. */
+    time_t last_checked;   /* timestamp when activity on the event queue was
+                              last checked (done every sec). */
+    unsigned long long event_genid; /* genid of the event in the front of the
+                                       queue waiting to be consumed when last
+                                       checked. */
 };
 
 
@@ -145,28 +156,12 @@ static int wake_all_consumers_all_queues(struct dbenv *dbenv, int force)
  * variable - otherwise no effect. */
 static void wake_up_consumer(struct consumer *consumer, int force)
 {
-    int rc;
-
-    rc = pthread_mutex_lock(&consumer->mutex);
-    if (rc != 0)
-        logmsg(LOGMSG_ERROR, "%s: "
-                "pthread_mutex_lock %d %s\n",
-                __func__, rc, strerror(rc));
-    else {
-        if (force || consumer->waiting_for_data) {
-            consumer->need_to_wake = 1;
-            rc = pthread_cond_broadcast(&consumer->cond);
-            if (rc != 0)
-                logmsg(LOGMSG_ERROR, "%s: "
-                        "pthread_cond_broadcast %d %s\n",
-                        __func__, rc, strerror(rc));
-        }
+    Pthread_mutex_lock(&consumer->mutex);
+    if (force || consumer->waiting_for_data) {
+        consumer->need_to_wake = 1;
+        Pthread_cond_broadcast(&consumer->cond);
     }
-    rc = pthread_mutex_unlock(&consumer->mutex);
-    if (rc != 0)
-        logmsg(LOGMSG_ERROR, "%s: "
-                "pthread_mutex_unlock %d %s\n",
-                __func__, rc, strerror(rc));
+    Pthread_mutex_unlock(&consumer->mutex);
 }
 
 static int wake_all_consumers(struct dbtable *db, int force)
@@ -176,7 +171,7 @@ static int wake_all_consumers(struct dbtable *db, int force)
     if (db->dbtype != DBTYPE_QUEUEDB)
         return -1;
 
-    pthread_rwlock_rdlock(&db->consumer_lk);
+    Pthread_rwlock_rdlock(&db->consumer_lk);
     if (db->dbtype == DBTYPE_QUEUE || db->dbtype == DBTYPE_QUEUEDB) {
         for (consumern = 0; consumern < MAXCONSUMERS; consumern++) {
             struct consumer *consumer = db->consumers[consumern];
@@ -184,13 +179,13 @@ static int wake_all_consumers(struct dbtable *db, int force)
                 wake_up_consumer(consumer, force);
         }
     }
-    pthread_rwlock_unlock(&db->consumer_lk);
+    Pthread_rwlock_unlock(&db->consumer_lk);
     return 0;
 }
 
 static void consumer_destroy(struct consumer *consumer)
 {
-    pthread_cond_destroy(&consumer->cond);
+    Pthread_cond_destroy(&consumer->cond);
     free(consumer);
 }
 
@@ -209,7 +204,7 @@ static int add_consumer_int(struct dbtable *db, int consumern,
     int rc = 0;
 
     if (!checkonly && db->dbtype == DBTYPE_QUEUEDB)
-        pthread_rwlock_wrlock(&db->consumer_lk);
+        Pthread_rwlock_wrlock(&db->consumer_lk);
 
     if (checkonly) {
         if (strncmp(method, "lua:", 4) != 0 &&
@@ -297,8 +292,8 @@ static int add_consumer_int(struct dbtable *db, int consumern,
         /* Allow unrecognised options */
         set_consumer_options(consumer, opts);
 
-        pthread_mutex_init(&consumer->mutex, NULL);
-        pthread_cond_init(&consumer->cond, NULL);
+        Pthread_mutex_init(&consumer->mutex, NULL);
+        Pthread_cond_init(&consumer->cond, NULL);
     }
 
     if (!checkonly && db)
@@ -310,7 +305,7 @@ static int add_consumer_int(struct dbtable *db, int consumern,
 
 done:
     if (!checkonly && db->dbtype == DBTYPE_QUEUEDB)
-        pthread_rwlock_unlock(&db->consumer_lk);
+        Pthread_rwlock_unlock(&db->consumer_lk);
     return rc;
 }
 
@@ -366,6 +361,90 @@ int set_consumer_options(struct consumer *consumer, const char *opts)
     return nerrors;
 }
 
+/* Returns the genid of the event in the front of the queue. */
+static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
+                                                  int consumer)
+{
+    unsigned long long genid;
+    int rc;
+    struct ireq iq;
+    void *fnddta;
+    size_t fnddtalen;
+    size_t fnddtaoff;
+    uint8_t *open;
+    pthread_mutex_t *mu;
+    pthread_cond_t *cond;
+
+    init_fake_ireq(table->dbenv, &iq);
+    iq.usedb = table;
+    genid = 0;
+
+    rc = bdb_trigger_subscribe(table->handle, &cond, &mu, &open);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR,
+               "dbq_get_front_genid: bdb_trigger_subscribe "
+               "failed (rc: %d)\n",
+               rc);
+        return 0;
+    }
+    Pthread_mutex_lock(mu);
+
+    if (*open != 1) {
+        goto skip;
+    }
+
+    rc = dbq_get(&iq, consumer, NULL, (void **)&fnddta, &fnddtalen, &fnddtaoff,
+                 NULL, NULL);
+    if (rc == 0) {
+        genid = dbq_item_genid(fnddta);
+    } else if (rc != IX_NOTFND) {
+        logmsg(LOGMSG_ERROR,
+               "dbq_get_front_genid: dbq_item_genid failed "
+               "(rc: %d)\n",
+               rc);
+    }
+
+skip:
+    rc = bdb_trigger_unsubscribe(table->handle);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR,
+               "dbq_get_front_genid: bdb_trigger_unsubscribe "
+               "failed (rc: %d)\n",
+               rc);
+    }
+    Pthread_mutex_unlock(mu);
+
+    return genid;
+}
+
+static void dbqueue_check_inactivity(struct consumer *consumer)
+{
+    time_t current_time = time(NULL);
+    time_t diff = current_time - consumer->last_checked;
+    time_t intervals = 60; /* in seconds */
+
+    if (diff && diff >= intervals) {
+        unsigned long long genid;
+
+        genid = dbqueue_get_front_genid(consumer->db, consumer->consumern);
+
+        if (!genid)
+            return;
+
+        if (genid == consumer->event_genid) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: event(s) has not been consumed for last "
+                   "%ld secs.\n",
+                   consumer->procedure_name,
+                   current_time - consumer->inactive_since);
+        } else {
+            consumer->event_genid = genid;
+            consumer->inactive_since = current_time;
+        }
+        consumer->last_checked = current_time;
+    }
+}
+
 static pthread_mutex_t dbqueuedb_admin_lk = PTHREAD_MUTEX_INITIALIZER;
 static int dbqueuedb_admin_running = 0;
 
@@ -376,22 +455,22 @@ static void admin(struct dbenv *dbenv, int type)
 {
     int iammaster = (dbenv->master == gbl_mynode) ? 1 : 0;
 
-    pthread_mutex_lock(&dbqueuedb_admin_lk);
+    Pthread_mutex_lock(&dbqueuedb_admin_lk);
     if (dbqueuedb_admin_running) {
-        pthread_mutex_unlock(&dbqueuedb_admin_lk);
+        Pthread_mutex_unlock(&dbqueuedb_admin_lk);
         return;
     }
     dbqueuedb_admin_running = 1;
-    pthread_mutex_unlock(&dbqueuedb_admin_lk);
+    Pthread_mutex_unlock(&dbqueuedb_admin_lk);
 
-    /* if we are master then make sure all the queues are running */
+    /* If we are master then make sure all the queues are running */
     if (iammaster && !dbenv->stopped && !dbenv->exiting) {
         for (int ii = 0; ii < dbenv->num_qdbs; ii++) {
             if (dbenv->qdbs[ii] == NULL)
                 continue;
             if (dbenv->qdbs[ii]->dbtype == DBTYPE_QUEUEDB) {
                 struct dbtable *db = dbenv->qdbs[ii];
-                pthread_rwlock_rdlock(&db->consumer_lk);
+                Pthread_rwlock_rdlock(&db->consumer_lk);
                 for (int consumern = 0; consumern < MAXCONSUMERS; consumern++) {
                     struct consumer *consumer = db->consumers[consumern];
                     if (!consumer)
@@ -400,10 +479,12 @@ static void admin(struct dbenv *dbenv, int type)
                         continue;
                     switch (consumer->base.type) {
                     case CONSUMER_TYPE_LUA:
+                        dbqueue_check_inactivity(consumer);
+
                         if (!trigger_registered(consumer->procedure_name)) {
                             char *name = consumer->procedure_name;
-                            char *host;
-                            host = net_get_osql_node(thedb->handle_sibling);
+                            char *host =
+                                net_get_osql_node(thedb->handle_sibling);
                             if (host == NULL && thedb->nsiblings == 1) {
                                 trigger_start(name); // standalone
                             } else {
@@ -413,16 +494,19 @@ static void admin(struct dbenv *dbenv, int type)
                             }
                         }
                         break;
+                    case CONSUMER_TYPE_DYNLUA:
+                        dbqueue_check_inactivity(consumer);
+                        break;
                     }
                 }
-                pthread_rwlock_unlock(&db->consumer_lk);
+                Pthread_rwlock_unlock(&db->consumer_lk);
             }
         }
     }
 
-    pthread_mutex_lock(&dbqueuedb_admin_lk);
+    Pthread_mutex_lock(&dbqueuedb_admin_lk);
     dbqueuedb_admin_running = 0;
-    pthread_mutex_unlock(&dbqueuedb_admin_lk);
+    Pthread_mutex_unlock(&dbqueuedb_admin_lk);
 }
 
 static int stat_callback(int consumern, size_t length,
@@ -486,7 +570,7 @@ static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
                bdbstats->n_old_way_frags_consumed);
 
         if (db->dbtype == DBTYPE_QUEUEDB)
-            pthread_rwlock_rdlock(&db->consumer_lk);
+            Pthread_rwlock_rdlock(&db->consumer_lk);
         for (ii = 0; ii < MAXCONSUMERS; ii++) {
             struct consumer *consumer = db->consumers[ii];
 
@@ -530,7 +614,7 @@ static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
                 logmsg(LOGMSG_USER, "    empty\n");
         }
         if (db->dbtype == DBTYPE_QUEUEDB)
-            pthread_rwlock_unlock(&db->consumer_lk);
+            Pthread_rwlock_unlock(&db->consumer_lk);
 
         logmsg(LOGMSG_USER, "-----\n");
     }
@@ -545,7 +629,6 @@ struct statthrargs {
 static void *stat_thread(void *argsptr)
 {
     struct statthrargs *args = argsptr;
-    struct thr_handle *thr_self = thrman_register(THRTYPE_QSTAT);
     thread_started("dbque stat");
     backend_thread_event(args->db->dbenv, COMDB2_THR_EVENT_START_RDONLY);
     stat_thread_int(args->db, args->fullstat, args->walk_queue);
@@ -571,7 +654,7 @@ static void queue_stat(struct dbtable *db, int full, int walk_queue, int blockin
     args->walk_queue = walk_queue;
 
     if (blocking) {
-        pthread_attr_init(&attr);
+        Pthread_attr_init(&attr);
         pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
         pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
     }
@@ -580,7 +663,7 @@ static void queue_stat(struct dbtable *db, int full, int walk_queue, int blockin
                         stat_thread, args);
 
     if (blocking) {
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
     }
 
     if (rc != 0) {
@@ -684,22 +767,18 @@ void flush_in_thread(struct dbtable *db, int consumern)
         return;
     }
 
-    rc = pthread_attr_init(&attr);
-    if (rc) {
-        logmsg(LOGMSG_WARN, "%s:pthread_attr_init: %s", __func__, strerror(rc));
-        return;
-    }
+    Pthread_attr_init(&attr);
     PTHD_ATTR_SETDETACHED(attr, rc);
     if (rc) {
         logmsg(LOGMSG_WARN, "%s:pthread_attr_setdetached", __func__, strerror(rc));
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
         return;
     }
     pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
 
     args = malloc(sizeof(struct flush_thd_data));
     if (!args) {
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
         logmsg(LOGMSG_ERROR, "%s: out of memory\n", __func__);
         return;
     }
@@ -715,11 +794,7 @@ void flush_in_thread(struct dbtable *db, int consumern)
                 __func__, rc, strerror(rc));
         free(args);
     }
-    rc = pthread_attr_destroy(&attr);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s:pthread_attr_destroy  %d %s", __func__, rc, strerror(rc));
-        return;
-    }
+    Pthread_attr_destroy(&attr);
 }
 
 void flush_abort(void)
@@ -742,19 +817,19 @@ static void stop_consumer(struct consumer *consumer)
     }
 
     // TODO CONSUMER_TYPE_LUA,
-    pthread_mutex_lock(&consumer->mutex);
+    Pthread_mutex_lock(&consumer->mutex);
     consumer->please_stop = 1;
-    pthread_cond_signal(&consumer->cond);
-    pthread_mutex_unlock(&consumer->mutex);
+    Pthread_cond_signal(&consumer->cond);
+    Pthread_mutex_unlock(&consumer->mutex);
 
-    pthread_mutex_lock(&consumer->mutex);
+    Pthread_mutex_lock(&consumer->mutex);
     if (consumer->stopped) {
-        pthread_mutex_unlock(&consumer->mutex);
+        Pthread_mutex_unlock(&consumer->mutex);
         return;
     }
     while (!consumer->stopped) {
-        pthread_cond_wait(&consumer->cond, &consumer->mutex);
-        pthread_mutex_unlock(&consumer->mutex);
+        Pthread_cond_wait(&consumer->cond, &consumer->mutex);
+        Pthread_mutex_unlock(&consumer->mutex);
     }
 }
 
@@ -762,21 +837,21 @@ static void stop_consumer(struct consumer *consumer)
  * mark "no longer stopped" so admin can do it's thing */
 static void restart_consumer(struct consumer *consumer)
 {
-    pthread_mutex_lock(&consumer->mutex);
+    Pthread_mutex_lock(&consumer->mutex);
     consumer->stopped = 0;
-    pthread_mutex_unlock(&consumer->mutex);
+    Pthread_mutex_unlock(&consumer->mutex);
 }
 
 int stop_consumers(struct dbtable *db)
 {
     if (db->dbtype != DBTYPE_QUEUEDB)
         return -1;
-    pthread_rwlock_rdlock(&db->consumer_lk);
+    Pthread_rwlock_rdlock(&db->consumer_lk);
     for (int i = 0; i < MAXCONSUMERS; i++) {
         if (db->consumers[i])
             stop_consumer(db->consumers[i]);
     }
-    pthread_rwlock_unlock(&db->consumer_lk);
+    Pthread_rwlock_unlock(&db->consumer_lk);
     return 0;
 }
 
@@ -784,12 +859,12 @@ int restart_consumers(struct dbtable *db)
 {
     if (db->dbtype != DBTYPE_QUEUEDB)
         return -1;
-    pthread_rwlock_rdlock(&db->consumer_lk);
+    Pthread_rwlock_rdlock(&db->consumer_lk);
     for (int i = 0; i < MAXCONSUMERS; i++) {
         if (db->consumers[i])
             restart_consumer(db->consumers[i]);
     }
-    pthread_rwlock_unlock(&db->consumer_lk);
+    Pthread_rwlock_unlock(&db->consumer_lk);
 
     return 0;
 }
@@ -798,9 +873,6 @@ static enum consumer_t consumer_type(struct consumer *c)
 {
     return c->base.type;
 }
-
-static int gbl_dbqueue_admin_sched_freq = 1;
-static cron_sched_t *dbqueue_admin_sched = NULL;
 
 static int handles_method(const char *method) {
     if (strncmp(method, "remove", 6) == 0 ||

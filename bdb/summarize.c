@@ -136,7 +136,6 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
     int created_temp_table = 0;
     unsigned long long nrecs = 0;
     unsigned long long recs_looked_at = 0;
-    int have_checksums = 0;
     unsigned int pgno = 0;
     int fd = -1;
     int last, now;
@@ -231,7 +230,7 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
                If the checksum doesn't match, just skip the page. This should be
                rare
                (only happen for pagesizes larger than default). */
-            size_t sumlen;
+            size_t sumlen = 0;
             if (F_ISSET(dbp, DB_AM_CHKSUM)) {
                 chksum_t algo = IS_CRC32C(page) ? algo_crc32c : algo_hash4;
                 switch (TYPE(page)) {

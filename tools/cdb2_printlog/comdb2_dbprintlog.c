@@ -282,7 +282,7 @@ static int
 comdb2_bam_repl_print(curlog_t * c)
 {
 	__bam_repl_args *argp = (__bam_repl_args *) c->argp;
-	char data[32], *btree, *operation, *p, *gn;
+	char data[32], *btree;
 	hash_t *h = dbreg_hash();
 	trak_dbreg_t *dbreg;
 

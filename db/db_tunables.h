@@ -1004,7 +1004,10 @@ REGISTER_TUNABLE("sort_nulls_with_header",
                  TUNABLE_BOOLEAN, &gbl_sort_nulls_correctly, READONLY | NOARG,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("spfile", NULL, TUNABLE_STRING, &gbl_spfile_name, READONLY,
-                 NULL, NULL, spfile_update, NULL);
+                 NULL, NULL, file_update, NULL);
+REGISTER_TUNABLE("timepartitions", NULL, TUNABLE_STRING,
+                 &gbl_timepart_file_name, READONLY, NULL, NULL, file_update,
+                 NULL);
 REGISTER_TUNABLE("sqlflush", "Force flushing the current record "
                              "stream to client every specified "
                              "number of records. (Default: 0)",
@@ -1169,6 +1172,8 @@ REGISTER_TUNABLE("bdblock_debug", NULL, TUNABLE_BOOLEAN, &gbl_bdblock_debug,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.autoanalyze", "debug autoanalyze operations",
                  TUNABLE_BOOLEAN, &gbl_debug_aa, NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.osql_random_restart", "randomly restart osql operations",
+                 TUNABLE_BOOLEAN, &gbl_osql_random_restart, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("bdboslog", NULL, TUNABLE_INTEGER, &gbl_namemangle_loglevel,
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("deadlock_rep_retry_max", NULL, TUNABLE_INTEGER,
@@ -1443,6 +1448,10 @@ REGISTER_TUNABLE("handle_buf_latency_ms",
                  "(Default: 0)",
                  TUNABLE_INTEGER, &gbl_handle_buf_add_latency_ms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("queuedb_timeout_sec",
+                 "Unassign Lua consumer/trigger if no heartbeat received for this time",
+                 TUNABLE_INTEGER, &gbl_queuedb_timeout_sec, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("osql_send_startgen",
                  "Send start-generation in osql stream.  (Default: on)",

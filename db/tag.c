@@ -84,39 +84,39 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                     int strict);
 int compare_indexes(const char *table, FILE *out);
 
-static inline int lock_taglock_read(void)
+static inline void lock_taglock_read(void)
 {
 #ifdef TAGLOCK_RW_LOCK
-    return pthread_rwlock_rdlock(&taglock);
+    Pthread_rwlock_rdlock(&taglock);
 #else
-    return pthread_mutex_lock(&taglock);
+    Pthread_mutex_lock(&taglock);
 #endif
 }
 
-int lock_taglock(void)
+void lock_taglock(void)
 {
 #ifdef TAGLOCK_RW_LOCK
-    return pthread_rwlock_wrlock(&taglock);
+    Pthread_rwlock_wrlock(&taglock);
 #else
-    return pthread_mutex_lock(&taglock);
+    Pthread_mutex_lock(&taglock);
 #endif
 }
 
-int unlock_taglock(void)
+void unlock_taglock(void)
 {
 #ifdef TAGLOCK_RW_LOCK
-    return pthread_rwlock_unlock(&taglock);
+    Pthread_rwlock_unlock(&taglock);
 #else
-    return pthread_mutex_unlock(&taglock);
+    Pthread_mutex_unlock(&taglock);
 #endif
 }
 
-static inline int init_taglock(void)
+static inline void init_taglock(void)
 {
 #ifdef TAGLOCK_RW_LOCK
-    return pthread_rwlock_init(&taglock, NULL);
+    Pthread_rwlock_init(&taglock, NULL);
 #else
-    return pthread_mutex_init(&taglock, NULL);
+    Pthread_mutex_init(&taglock, NULL);
 #endif
 }
 
@@ -143,21 +143,11 @@ static int ctag_to_stag_int(const char *table, const char *ctag,
 
 int schema_init(void)
 {
-    int rc;
-
-    rc = init_taglock();
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "schema_init:pthread_rwlock_init failed rc=%d\n", rc);
-        return -1;
-    }
+    init_taglock();
     gbl_tag_hash =
         hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
                        offsetof(struct dbtag, tblname), 0);
-    rc = pthread_key_create(&unique_tag_key, free);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "schema_init:pthread_key_create failed rc=%d\n", rc);
-        return -1;
-    }
+    Pthread_key_create(&unique_tag_key, free);
 
     logmsg(LOGMSG_INFO, "Schema module init ok\n");
     return 0;
@@ -166,13 +156,8 @@ int schema_init(void)
 void add_tag_schema(const char *table, struct schema *schema)
 {
     struct dbtag *tag;
-    int rc;
 
-    rc = lock_taglock();
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "pthread_rwlock_wrlock(&taglock) failed\n");
-        exit(1);
-    }
+    lock_taglock();
 
     tag = hash_find_readonly(gbl_tag_hash, &table);
     if (tag == NULL) {
@@ -192,20 +177,12 @@ void add_tag_schema(const char *table, struct schema *schema)
     hash_add(tag->tags, schema);
     listc_abl(&tag->taglist, schema);
 
-    rc = unlock_taglock();
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "pthread_rwlock_unlock(&taglock) failed\n");
-        exit(1);
-    }
+    unlock_taglock();
 }
 
 void del_tag_schema(const char *table, const char *tagname)
 {
-    int rc = lock_taglock();
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "pthread_rwlock_rwlock(&taglock) failed\n");
-        exit(1);
-    }
+    lock_taglock();
 
     struct dbtag *tag = hash_find_readonly(gbl_tag_hash, &table);
     if (tag == NULL) {
@@ -222,37 +199,21 @@ void del_tag_schema(const char *table, const char *tagname)
         }
     }
     /* doesn't exist? */
-    rc = unlock_taglock();
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "pthread_rwlock_unlock(&taglock) failed\n");
-        exit(1);
-    }
+    unlock_taglock();
 }
 
 struct schema *find_tag_schema(const char *table, const char *tagname)
 {
-    int rc = lock_taglock_read();
-    if (unlikely(rc != 0)) {
-        logmsg(LOGMSG_FATAL, "pthread_rwlock_rdlock(&taglock) failed\n");
-        exit(1);
-    }
+    lock_taglock_read();
 
     struct dbtag *tag = hash_find_readonly(gbl_tag_hash, &table);
     if (unlikely(tag == NULL)) {
-        rc = unlock_taglock();
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "pthread_rwlock_unlock(&taglock) failed\n");
-            exit(1);
-        }
+        unlock_taglock();
         return NULL;
     }
     struct schema *s = hash_find_readonly(tag->tags, &tagname);
 
-    rc = unlock_taglock();
-    if (unlikely(rc != 0)) {
-        logmsg(LOGMSG_FATAL, "pthread_rwlock_unlock(&taglock) failed\n");
-        exit(1);
-    }
+    unlock_taglock();
 
     return s;
 }
@@ -1466,10 +1427,8 @@ int clone_server_to_client_tag(const char *table, const char *fromtag,
                                const char *newtag)
 {
     struct schema *from, *to;
-    void *typebuf;
-    int field, offset, sz;
+    int field, offset;
     struct field *from_field, *to_field;
-    int field_idx;
     int rc;
 
     from = find_tag_schema(table, fromtag);
@@ -1536,9 +1495,7 @@ static int create_key_schema(struct dbtable *db, struct schema *schema, int alt)
     int ix;
     int piece;
     struct field *m;
-    int npieces;
     int offset;
-    int flags;
     char altname[MAXTAGLEN];
     char tmptagname[MAXTAGLEN];
     char *where;
@@ -1585,7 +1542,6 @@ static int create_key_schema(struct dbtable *db, struct schema *schema, int alt)
              strcasecmp(schema->tag, ".NEW..ONDISK") == 0) &&
             (db->ixschema && db->ixschema[ix] == NULL))
             db->ixschema[ix] = s;
-        npieces = s->nmembers;
         offset = 0;
         for (piece = 0; piece < s->nmembers; piece++) {
             m = &s->member[piece];
@@ -1829,7 +1785,6 @@ int client_keylen_to_server_keylen(const char *table, const char *tag,
                                    int ixnum, int keylen)
 {
     char skeytag[MAXTAGLEN];
-    char ckeytag[MAXTAGLEN];
     struct schema *from, *to;
     int fnum;
     int slen = 0;
@@ -1986,8 +1941,6 @@ void convert_failure_reason_str(const struct convert_failure *reason,
                                 const char *table, const char *fromtag,
                                 const char *totag, char *out, size_t outlen)
 {
-    struct schema *from;
-    struct schema *to;
     const char *str = "?";
     int len;
 
@@ -2215,7 +2168,6 @@ static int t2t_with_plan(const struct t2t_plan *plan, const void *from_buf,
     char *temp_buf = NULL;
     int server_sort_off;
     unsigned char *to_bufptr = to_buf;
-    int to_bufpos = 0;
     int out_len = 0;
 
     /* See if we're doomed before we even start.  The only reason this can
@@ -2257,8 +2209,7 @@ static int t2t_with_plan(const struct t2t_plan *plan, const void *from_buf,
 
         const char *from_fieldbuf;
         int from_fieldlen, from_field_idx;
-        struct field_conv_opts convopts;
-        blob_buffer_t *from_blob;
+        blob_buffer_t *from_blob = NULL;
         blob_buffer_t *to_blob;
         int from_type;
         const struct field_conv_opts *from_convopts;
@@ -2448,7 +2399,7 @@ static int t2t_with_plan(const struct t2t_plan *plan, const void *from_buf,
             }
         } else {
             /* Write a non-null value into the buffer */
-            int rc, outdtsz;
+            int rc = 0, outdtsz;
 
             /* Client type fields need timezone information.  Server type fields
              * don't since time in the server format is absolute. */
@@ -2575,7 +2526,6 @@ int static_tag_blob_conversion(const char *table, const char *ctag,
 {
     struct schema *scm;
     struct field *fld;
-    blob_buffer_t *blob;
     client_blob_tp *clb;
     int ii;
 
@@ -3212,7 +3162,6 @@ int vtag_to_ondisk(struct dbtable *db, uint8_t *rec, int *len, uint8_t ver,
     void *from;
     int rc;
     struct convert_failure reason;
-    bdb_state_type *bdb_state;
 
     if (!db || !db->instant_schema_change || !rec)
         return 0;
@@ -3318,7 +3267,6 @@ static int _stag_to_ctag_buf(const char *table, const char *stag,
     struct schema *to;
     struct field *to_field, *from_field;
     int field_idx;
-    int ext_tm_offset_adj = 0, add_offset_adj = 0;
     int rc;
     unsigned char *outbuf = (unsigned char *)outbufp;
     int null;
@@ -3805,7 +3753,7 @@ int remap_update_columns(const char *table, const char *intag,
                          const int *incols, const char *outtag, int *outcols)
 {
     struct schema *insc, *outsc;
-    int field, i, idx;
+    int i, idx;
 
     insc = find_tag_schema(table, intag);
     if (NULL == insc) {
@@ -3844,7 +3792,7 @@ int remap_update_columns(const char *table, const char *intag,
 int describe_update_columns(const char *table, const char *tag, int *updCols)
 {
     struct schema *ondisk, *chk;
-    int field, i;
+    int i;
     int same_tag = 0;
 
     ondisk = find_tag_schema(table, ".ONDISK");
@@ -3901,7 +3849,6 @@ static int stag_to_stag_field(const char *inbuf, char *outbuf, int flags,
     struct field *to_field = &tosch->member[field];
     int rec_srt_off = gbl_sort_nulls_correctly ? 0 : 1;
     int rc;
-    char *exprdta = NULL;
 
     int iflags = 0;
     int oflags = 0;
@@ -4171,7 +4118,6 @@ int stag_to_stag_buf_cachedmap(int tagmap[], struct schema *from,
                                struct convert_failure *fail_reason,
                                blob_buffer_t *inblobs, int maxblobs)
 {
-    int same_tag = 0;
     int rc = 0;
 
     if (fail_reason)
@@ -4263,13 +4209,12 @@ int stag_to_stag_buf_ckey(const char *table, const char *fromtag,
 {
     struct schema *from, *to;
     int field;
-    struct field *from_field, *to_field;
+    struct field *from_field, *to_field = NULL;
     int field_idx;
     int rc;
     int iflags, oflags;
     int rec_srt_off = 1;
     int nmembers;
-    int ixlen;
 
     if (gbl_sort_nulls_correctly)
         rec_srt_off = 0;
@@ -4473,8 +4418,6 @@ int compare_tag(const char *table, const char *tag, FILE *out)
 {
     struct dbtable *db;
     struct schema *old, *new;
-    struct field *fnew, *fold;
-    int fidx;
     char oldtag[MAXTAGLEN + 16];
     char newtag[MAXTAGLEN + 16];
 
@@ -4528,7 +4471,7 @@ static int default_cmp(int oldlen, const void *oldptr, int newlen,
 int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                     int strict)
 {
-    struct field *fnew, *fold;
+    struct field *fnew = NULL, *fold;
     int rc = SC_NO_CHANGE;
     int change = SC_NO_CHANGE;
     int oidx, nidx;
@@ -4716,8 +4659,6 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
 
     /* Verify that new fields have one of dbstore or null */
     for (nidx = 0; nidx < new->nmembers; ++nidx) {
-        char buf[256] = "";
-        int oldflags, newflags;
         int found;
         fnew = &new->member[nidx];
         found = 0;
@@ -4943,8 +4884,6 @@ int compare_indexes(const char *table, FILE *out)
 {
     struct dbtable *tbl;
     struct schema *old, *new;
-    struct field *fnew, *fold;
-    int fidx;
     int ix;
     char ixbuf[MAXTAGLEN * 2]; /* .NEW..ONDISK_ix_xxxx */
     char oldtag[MAXTAGLEN + 16];
@@ -5017,7 +4956,6 @@ void printrecord(char *buf, struct schema *sc, int len)
     double dval;
     int null = 0;
     int flen = 0;
-    int rc;
 
 #ifdef _LINUX_SOURCE
     opts.flags |= FLD_CONV_LENDIAN;
@@ -5039,7 +4977,7 @@ void printrecord(char *buf, struct schema *sc, int len)
         }
         switch (f->type) {
         case SERVER_UINT:
-            rc = SERVER_UINT_to_CLIENT_UINT(
+            SERVER_UINT_to_CLIENT_UINT(
                 buf + f->offset, flen, &opts /*convopts*/, NULL /*blob*/,
                 &uival, 8, &null, &outdtsz, &opts /*convopts*/, NULL /*blob*/);
             if (null)
@@ -5048,16 +4986,16 @@ void printrecord(char *buf, struct schema *sc, int len)
                 logmsg(LOGMSG_USER, "%s=%llu", f->name, uival);
             break;
         case SERVER_BINT:
-            rc = SERVER_BINT_to_CLIENT_INT(
-                buf + f->offset, flen, &opts /*convopts*/, NULL /*blob*/, &ival,
-                8, &null, &outdtsz, &opts /*convopts*/, NULL /*blob*/);
+            SERVER_BINT_to_CLIENT_INT(buf + f->offset, flen, &opts /*convopts*/,
+                                      NULL /*blob*/, &ival, 8, &null, &outdtsz,
+                                      &opts /*convopts*/, NULL /*blob*/);
             if (null)
                 logmsg(LOGMSG_USER, "%s=NULL", f->name);
             else
                 logmsg(LOGMSG_USER, "%s=%lld", f->name, ival);
             break;
         case SERVER_BREAL:
-            rc = SERVER_BREAL_to_CLIENT_REAL(
+            SERVER_BREAL_to_CLIENT_REAL(
                 buf + f->offset, flen, &opts /*convopts*/, NULL /*blob*/, &dval,
                 8, &null, &outdtsz, &opts /*convopts*/, NULL /*blob*/);
             if (null)
@@ -5067,7 +5005,7 @@ void printrecord(char *buf, struct schema *sc, int len)
             break;
         case SERVER_BCSTR:
             sval = malloc(flen + 1);
-            rc = SERVER_BCSTR_to_CLIENT_CSTR(
+            SERVER_BCSTR_to_CLIENT_CSTR(
                 buf + f->offset, flen, &opts /*convopts*/, NULL /*blob*/, sval,
                 flen + 1, &null, &outdtsz, &opts /*convopts*/, NULL /*blob*/);
             if (null)
@@ -5078,7 +5016,7 @@ void printrecord(char *buf, struct schema *sc, int len)
             break;
         case SERVER_BYTEARRAY:
             sval = malloc(flen);
-            rc = SERVER_BYTEARRAY_to_CLIENT_BYTEARRAY(
+            SERVER_BYTEARRAY_to_CLIENT_BYTEARRAY(
                 buf + f->offset, flen, &opts /*convopts*/, NULL /*blob*/, sval,
                 flen, &null, &outdtsz, &opts /*convopts*/, NULL /*blob*/);
             if (null)
@@ -5227,12 +5165,8 @@ static int add_cmacc_stmt_int(struct dbtable *db, int alt, int side_effects)
 {
     /* loaded from csc2 at this point */
     int field;
-    int nfields;
     int rc;
-    int flags;
-    int piece, npieces;
     struct schema *schema;
-    struct field *m;
     char buf[MAXCOLNAME + 1] = {0}; /* scratch space buffer */
     int offset;
     int ntags;
@@ -5286,7 +5220,6 @@ static int add_cmacc_stmt_int(struct dbtable *db, int alt, int side_effects)
         int is_disk_schema = (strncasecmp(rtag, ".ONDISK", 7) == 0);
 
         for (field = 0; field < schema->nmembers; field++) {
-            int outdtsz = 0;
             int padval;
             int type;
             int sz;
@@ -5487,6 +5420,9 @@ static int add_cmacc_stmt_int(struct dbtable *db, int alt, int side_effects)
                 rc = clone_server_to_client_tag(db->tablename, ".NEW..ONDISK",
                                                 ".NEW..ONDISK_CLIENT");
             }
+            if (rc)
+                logmsg(LOGMSG_ERROR,
+                       "clone_server_to_client_tag returns error rc=%d", rc);
 
             if (side_effects) {
                 char sname_buf[MAXTAGLEN], cname_buf[MAXTAGLEN];
@@ -5543,8 +5479,6 @@ void fix_lrl_ixlen_tran(tran_type *tran)
     char namebuf[MAXTAGLEN + 1];
     struct dbtable *db;
     int nix;
-    int ver;
-    int rc;
 
     for (tbl = 0; tbl < thedb->num_dbs; tbl++) {
         db = thedb->dbs[tbl];
@@ -5584,9 +5518,6 @@ void fix_lrl_ixlen()
     fix_lrl_ixlen_tran(NULL);
 }
 
-static int tablecount = 0;
-static int tagcount = 0;
-
 int have_all_schemas(void)
 {
     int tbl, ix;
@@ -5594,7 +5525,6 @@ int have_all_schemas(void)
     int bad = 0;
     struct schema *sqlite_stat1 = NULL;
     struct field *table_field = NULL, *index_field = NULL;
-    int tbl_len = 0;
 
     sqlite_stat1 = find_tag_schema("sqlite_stat1", ".ONDISK");
     if (sqlite_stat1) {
@@ -5794,7 +5724,6 @@ struct schema *new_dynamic_schema(const char *s, int len, int trace)
     const char *fieldname;
     int fieldname_len;
     int ftype, flen, foffset, fattr, fresrv, fdsize;
-    int rc;
     int maxoffset = -1;
     int maxoffsetix = -1;
     struct field tmpfld;
@@ -6435,7 +6364,7 @@ void commit_schemas(const char *tblname)
      * is very ugly code.  Sorry. */
     if (1) {
         struct schema **s;
-        int i = 0, j;
+        int i = 0;
         int count = to_be_freed.count;
 
         s = malloc(sizeof(struct schema *) * count);
@@ -6729,7 +6658,6 @@ void update_dbstore(struct dbtable *db)
     for (int v = 1; v <= db->version; ++v) {
         char tag[MAXTAGLEN];
         struct schema *ver;
-        int position;
         snprintf(tag, sizeof tag, gbl_ondisk_ver_fmt, v);
         ver = find_tag_schema(db->tablename, tag);
         if (ver == NULL) {
@@ -6865,8 +6793,6 @@ void rename_schema(const char *oldname, char *newname)
 void freeschema_internals(struct schema *schema)
 {
     int i;
-    char *blank = "";
-
     free(schema->tag);
     for (i = 0; i < schema->nmembers; i++) {
         if (schema->member[i].in_default) {
@@ -6960,7 +6886,7 @@ struct schema *create_version_schema(char *csc2, int version,
     char *tag;
     int rc;
 
-    pthread_mutex_lock(&csc2_subsystem_mtx);
+    Pthread_mutex_lock(&csc2_subsystem_mtx);
     rc = dyns_load_schema_string(csc2, dbenv->envname, gbl_ver_temp_table);
     if (rc) {
         logmsg(LOGMSG_ERROR, "dyns_load_schema_string failed %s:%d\n", __FILE__,
@@ -6991,7 +6917,7 @@ struct schema *create_version_schema(char *csc2, int version,
         logmsg(LOGMSG_ERROR, "malloc failed %s:%d\n", __FILE__, __LINE__);
         goto err;
     }
-    pthread_mutex_unlock(&csc2_subsystem_mtx);
+    Pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     sprintf(tag, gbl_ondisk_ver_fmt, version);
     struct schema *ver_schema = clone_schema(s);
@@ -7009,7 +6935,7 @@ struct schema *create_version_schema(char *csc2, int version,
     return ver_schema;
 
 err:
-    pthread_mutex_unlock(&csc2_subsystem_mtx);
+    Pthread_mutex_unlock(&csc2_subsystem_mtx);
     return NULL;
 }
 
@@ -7064,7 +6990,7 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
     void *old_bdb_handle, *new_bdb_handle;
     char *csc2 = NULL;
 
-    pthread_mutex_lock(&csc2_subsystem_mtx);
+    Pthread_mutex_lock(&csc2_subsystem_mtx);
     rc = get_csc2_file_tran(db->tablename, version, &csc2, &len, tran);
     if (rc) {
         logmsg(LOGMSG_ERROR, "get_csc2_file failed %s:%d\n", __FILE__, __LINE__);
@@ -7109,7 +7035,7 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
         cheap_stack_trace();
         goto err;
     }
-    pthread_mutex_unlock(&csc2_subsystem_mtx);
+    Pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     old_bdb_handle = db->handle;
     new_bdb_handle = newdb->handle;
@@ -7138,7 +7064,7 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
     return 0;
 
 err:
-    pthread_mutex_unlock(&csc2_subsystem_mtx);
+    Pthread_mutex_unlock(&csc2_subsystem_mtx);
     free(csc2);
     return 1;
 }
@@ -7444,7 +7370,8 @@ int extract_decimal_quantum(struct dbtable *db, int ix, char *inbuf, char *poutb
             if (bdb_attr_get(thedb->bdb_attr,
                              BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
                 logmsg(LOGMSG_USER, "Dec extract IN:\n");
-                hexdump(LOGMSG_USER, &inbuf[s->member[i].offset],
+                hexdump(LOGMSG_USER,
+                        (unsigned char *)&inbuf[s->member[i].offset],
                         s->member[i].len);
                 logmsg(LOGMSG_USER, "\n");
             }
@@ -7460,7 +7387,8 @@ int extract_decimal_quantum(struct dbtable *db, int ix, char *inbuf, char *poutb
             if (bdb_attr_get(thedb->bdb_attr,
                              BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
                 logmsg(LOGMSG_USER, "Dec extract OUT:\n");
-                hexdump(LOGMSG_USER, &inbuf[s->member[i].offset],
+                hexdump(LOGMSG_USER,
+                        (unsigned char *)&inbuf[s->member[i].offset],
                         s->member[i].len);
                 logmsg(LOGMSG_USER, "\n");
             }

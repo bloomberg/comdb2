@@ -368,14 +368,14 @@ static int newsql_send_hdr(struct sqlclntstate *clnt, int h)
     struct newsqlheader hdr = {0};
     hdr.type = ntohl(h);
     int rc;
-    pthread_mutex_lock(&clnt->write_lock);
+    Pthread_mutex_lock(&clnt->write_lock);
     if ((rc = sbuf2write((char *)&hdr, sizeof(hdr), clnt->sb)) != sizeof(hdr))
         goto done;
     if ((rc = sbuf2flush(clnt->sb)) < 0)
         goto done;
     rc = 0;
 done:
-    pthread_mutex_unlock(&clnt->write_lock);
+    Pthread_mutex_unlock(&clnt->write_lock);
     return rc;
 }
 
@@ -404,7 +404,7 @@ static int newsql_response_int(struct sqlclntstate *clnt,
     hdr.length = ntohl(len);
 
     int rc;
-    pthread_mutex_lock(&clnt->write_lock);
+    Pthread_mutex_lock(&clnt->write_lock);
     if ((rc = sbuf2write((char *)&hdr, sizeof(hdr), clnt->sb)) != sizeof(hdr))
         goto done;
     if ((rc = sbuf2write((char *)buf, len, clnt->sb)) != len)
@@ -413,7 +413,7 @@ static int newsql_response_int(struct sqlclntstate *clnt,
         goto done;
     rc = 0;
 done:
-    pthread_mutex_unlock(&clnt->write_lock);
+    Pthread_mutex_unlock(&clnt->write_lock);
     return rc;
 }
 
@@ -596,9 +596,9 @@ static int newsql_error(struct sqlclntstate *c, char *r, int e)
 
 static int newsql_flush(struct sqlclntstate *clnt)
 {
-    pthread_mutex_lock(&clnt->write_lock);
+    Pthread_mutex_lock(&clnt->write_lock);
     int rc = sbuf2flush(clnt->sb);
-    pthread_mutex_unlock(&clnt->write_lock);
+    Pthread_mutex_unlock(&clnt->write_lock);
     return rc < 0;
 }
 
@@ -635,14 +635,14 @@ static int newsql_send_postponed_row(struct sqlclntstate *clnt)
     char *row = (char *)appdata->postponed->row;
     size_t len = appdata->postponed->len;
     int rc;
-    pthread_mutex_lock(&clnt->write_lock);
+    Pthread_mutex_lock(&clnt->write_lock);
     if ((rc = sbuf2write(hdr, hdrsz, clnt->sb)) != hdrsz)
         goto done;
     if ((rc = sbuf2write(row, len, clnt->sb)) != len)
         goto done;
     rc = 0;
 done:
-    pthread_mutex_unlock(&clnt->write_lock);
+    Pthread_mutex_unlock(&clnt->write_lock);
     return rc;
 }
 
@@ -1047,12 +1047,14 @@ static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
 static int newsql_ping_pong(struct sqlclntstate *clnt)
 {
     struct newsqlheader hdr;
-    if (sbuf2fread((void *)&hdr, sizeof(hdr), 1, clnt->sb) != 1) {
-        return -1;
-    }
-    if (ntohl(hdr.type) != RESPONSE_HEADER__SQL_RESPONSE_PONG) {
-        return -2;
-    }
+    int rc, r, w, timeout = 0;
+    sbuf2gettimeout(clnt->sb, &r, &w);
+    sbuf2settimeout(clnt->sb, 1000, w);
+    rc = sbuf2fread_timeout((void *)&hdr, sizeof(hdr), 1, clnt->sb, &timeout);
+    sbuf2settimeout(clnt->sb, r, w);
+    if (timeout) return -1;
+    if (rc != 1) return -2;
+    if (ntohl(hdr.type) != RESPONSE_HEADER__SQL_RESPONSE_PONG) return -3;
     return 0;
 }
 
@@ -1896,7 +1898,7 @@ retry_read:
             if (p != NULL || errno != ETIMEDOUT)
                 break;
 
-            pthread_mutex_lock(&clnt->wait_mutex);
+            Pthread_mutex_lock(&clnt->wait_mutex);
             clnt->heartbeat = 1;
             if (clnt->ready_for_heartbeats == 0) {
                 pre_enabled = 1;
@@ -1904,13 +1906,13 @@ retry_read:
             }
             newsql_heartbeat(clnt);
             fdb_heartbeats(clnt);
-            pthread_mutex_unlock(&clnt->wait_mutex);
+            Pthread_mutex_unlock(&clnt->wait_mutex);
         }
 
     if (pre_enabled) {
-        pthread_mutex_lock(&clnt->wait_mutex);
+        Pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
-        pthread_mutex_unlock(&clnt->wait_mutex);
+        Pthread_mutex_unlock(&clnt->wait_mutex);
         pre_enabled = 0;
     }
 
@@ -1936,7 +1938,7 @@ retry_read:
         if (query || errno != ETIMEDOUT)
             break;
 
-        pthread_mutex_lock(&clnt->wait_mutex);
+        Pthread_mutex_lock(&clnt->wait_mutex);
         if (clnt->heartbeat == 0)
             clnt->heartbeat = 1;
         if (clnt->ready_for_heartbeats == 0) {
@@ -1945,14 +1947,14 @@ retry_read:
         }
         newsql_heartbeat(clnt);
         fdb_heartbeats(clnt);
-        pthread_mutex_unlock(&clnt->wait_mutex);
+        Pthread_mutex_unlock(&clnt->wait_mutex);
     }
     free(p);
 
     if (pre_enabled) {
-        pthread_mutex_lock(&clnt->wait_mutex);
+        Pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
-        pthread_mutex_unlock(&clnt->wait_mutex);
+        Pthread_mutex_unlock(&clnt->wait_mutex);
     }
 
     if (!query || errno != 0) {
@@ -2104,10 +2106,10 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     clnt.tzname[0] = '\0';
     clnt.admin = arg->admin;
 
-    pthread_mutex_init(&clnt.wait_mutex, NULL);
-    pthread_cond_init(&clnt.wait_cond, NULL);
-    pthread_mutex_init(&clnt.write_lock, NULL);
-    pthread_mutex_init(&clnt.dtran_mtx, NULL);
+    Pthread_mutex_init(&clnt.wait_mutex, NULL);
+    Pthread_cond_init(&clnt.wait_cond, NULL);
+    Pthread_mutex_init(&clnt.write_lock, NULL);
+    Pthread_mutex_init(&clnt.dtran_mtx, NULL);
 
     if (!clnt.admin &&
         active_appsock_conns >
@@ -2360,10 +2362,10 @@ done:
     close_appsock(sb);
     cleanup_clnt(&clnt);
 
-    pthread_mutex_destroy(&clnt.wait_mutex);
-    pthread_cond_destroy(&clnt.wait_cond);
-    pthread_mutex_destroy(&clnt.write_lock);
-    pthread_mutex_destroy(&clnt.dtran_mtx);
+    Pthread_mutex_destroy(&clnt.wait_mutex);
+    Pthread_cond_destroy(&clnt.wait_cond);
+    Pthread_mutex_destroy(&clnt.write_lock);
+    Pthread_mutex_destroy(&clnt.dtran_mtx);
 
     return APPSOCK_RETURN_OK;
 }

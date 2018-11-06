@@ -546,7 +546,7 @@ DEF_ATTR(
     REMOVE_COMMITDELAY_ON_COHERENT_CLUSTER,
     remove_commitdelay_on_coherent_cluster, BOOLEAN, 1,
     "Stop delaying commits when all the nodes in the cluster are coherent.")
-DEF_ATTR(DISABLE_SERVER_SOCKPOOL, disable_sockpool, BOOLEAN, 1,
+DEF_ATTR(DISABLE_SERVER_SOCKPOOL, disable_sockpool, BOOLEAN, 0,
          "Don't get connections to other databases from sockpool.")
 DEF_ATTR(TIMEOUT_SERVER_SOCKPOOL, timeout_sockpool, SECS, 10,
          "Timeout for getting a connection to another database from sockpool.")
@@ -607,6 +607,9 @@ DEF_ATTR(TIMEPART_CHECK_SHARD_EXISTENCE, timepart_check_shard_existence,
 DEF_ATTR(
     IGNORE_BAD_TABLE, ignore_bad_table, BOOLEAN, 0,
     "Allow a database with a corrupt table to come up, without that table.")
+
+DEF_ATTR(TIMEOUT_FDB_TRANS_SYNC, timeout_fdb_trans_sync, MSECS, 4000, "Timeout for retrieving a foreign table transaction")
+
 DEF_ATTR(TIMEPART_NO_ROLLOUT, timepart_no_rollout, BOOLEAN, 0,
          "Prevent new rollouts for time partitions.")
 /* Keep enabled for the merge */
@@ -640,7 +643,7 @@ DEF_ATTR(STARTUP_SYNC_ATTEMPTS, startup_sync_attempts, QUANTITY, 5, NULL)
 DEF_ATTR(DEBUG_TIMEPART_CRON, dbg_timepart_cron, BOOLEAN, 0, NULL)
 DEF_ATTR(DEBUG_TIMEPART_SQLITE, dbg_timepart_SQLITE, BOOLEAN, 0, NULL)
 DEF_ATTR(DELAY_FILE_OPEN, delay_file_open, MSECS, 0, NULL)
-DEF_ATTR(DELAY_LOCK_TABLE_RECORD_C, delay_lock_table_record_c, MSECS, 0, NULL)
+DEF_ATTR(DELAY_WRITES_IN_RECORD_C, delay_writes_in_record_c, MSECS, 0, NULL)
 
 DEF_ATTR(NET_SEND_GBLCONTEXT, net_send_gblcontext, BOOLEAN, 0,
          "Enable net_send for USER_TYPE_GBLCONTEXT.")

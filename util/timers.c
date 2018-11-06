@@ -27,6 +27,7 @@
 #include <timers.h>
 
 #include <logmsg.h>
+#include <locks_wrap.h>
 
 /* timer traps */
 static pthread_mutex_t timerlk = PTHREAD_MUTEX_INITIALIZER;
@@ -141,10 +142,10 @@ static int new_timer(int ms, int parm, int oneshot, int dolock)
     struct timer t;
 
     if (dolock)
-        pthread_mutex_lock(&timerlk);
+        Pthread_mutex_lock(&timerlk);
     if (ntimers == MAXTIMERS) {
         if (dolock)
-            pthread_mutex_unlock(&timerlk);
+            Pthread_mutex_unlock(&timerlk);
         return -1;
     }
 
@@ -157,9 +158,9 @@ static int new_timer(int ms, int parm, int oneshot, int dolock)
     fixup(ntimers);
     ntimers++;
 
-    pthread_cond_signal(&timerwait);
+    Pthread_cond_signal(&timerwait);
     if (dolock)
-        pthread_mutex_unlock(&timerlk);
+        Pthread_mutex_unlock(&timerlk);
     return 0;
 }
 
@@ -171,7 +172,7 @@ int comdb2_timprm(int ms, int parm)
 int remove_timer(int parm, int dolock)
 {
     if (dolock)
-        pthread_mutex_lock(&timerlk);
+        Pthread_mutex_lock(&timerlk);
     for (int i = 0; i < ntimers; i++) {
         if (timers[i].parm == parm) {
             if (i != ntimers - 1) {
@@ -180,14 +181,14 @@ int remove_timer(int parm, int dolock)
             }
             ntimers--;
             if (dolock)
-                pthread_cond_signal(&timerwait);
+                Pthread_cond_signal(&timerwait);
             if (dolock)
-                pthread_mutex_unlock(&timerlk);
+                Pthread_mutex_unlock(&timerlk);
             return 0;
         }
     }
     if (dolock)
-        pthread_mutex_unlock(&timerlk);
+        Pthread_mutex_unlock(&timerlk);
     return -1;
 }
 
@@ -211,9 +212,9 @@ void *timer_thread(void *p)
     int ms;
     for (;;) {
         tnow = comdb2_time_epochms();
-        pthread_mutex_lock(&timerlk);
+        Pthread_mutex_lock(&timerlk);
         while (ntimers == 0)
-            pthread_cond_wait(&timerwait, &timerlk);
+            Pthread_cond_wait(&timerwait, &timerlk);
         t = timers[0];
         tnow = comdb2_time_epochms();
         if (t.next > tnow) {
@@ -251,6 +252,6 @@ void *timer_thread(void *p)
             if (!oneshot)
                 new_timer(ms, waitft_parm.parm, 0, 0);
         }
-        pthread_mutex_unlock(&timerlk);
+        Pthread_mutex_unlock(&timerlk);
     }
 }

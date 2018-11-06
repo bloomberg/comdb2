@@ -55,6 +55,7 @@
 #include "bdb_cursor.h"
 #include "bdb_int.h"
 #include "locks.h"
+#include "locks_wrap.h"
 
 #include "bdb_queue.h"
 #include "bdb_queuedb.h"
@@ -297,7 +298,6 @@ static int max_item_size(int pagesize, int checksums)
 static int pagesize_wasteage(int avg_item_sz, int pagesize, int checksums)
 {
     int wasteage;
-    int numitems;
 
     /* Remove size of page header; this is from dbinc/db_page.h
      * QPAGE_NORMAL and QPAGE_CHKSUM. */
@@ -336,7 +336,6 @@ int bdb_queue_best_pagesize(int avg_item_sz)
     int pagesize;
     int bestpagesize;
     int bestwasteage;
-    int ii;
     int checksums = 1; /* assume checksums on for now */
 
     /* Discover the minimum page size that will cover items of this length. */
@@ -1200,7 +1199,7 @@ static void lost_consumers_alarm(bdb_state_type *bdb_state,
         bdb_state->qpriv->last_orphaned_consumers_alarm == now)
         return;
 
-    pthread_mutex_lock(&mutex);
+    Pthread_mutex_lock(&mutex);
 
     if (bdb_state->qpriv->last_orphaned_consumers_alarm != now) {
         new_lost_consumers = lost_consumers;
@@ -1222,7 +1221,7 @@ static void lost_consumers_alarm(bdb_state_type *bdb_state,
         bdb_state->qpriv->last_orphaned_consumers_alarm = now;
     }
 
-    pthread_mutex_unlock(&mutex);
+    Pthread_mutex_unlock(&mutex);
 }
 
 static int bdb_queue_get_int(bdb_state_type *bdb_state, int consumer,

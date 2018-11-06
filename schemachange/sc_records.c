@@ -458,12 +458,12 @@ static int convert_record(struct convert_record_data *data)
     }
 
     data->iq.debug = debug_this_request(gbl_debug_until);
-    pthread_mutex_lock(&gbl_sc_lock);
+    Pthread_mutex_lock(&gbl_sc_lock);
     if (gbl_who > 0) {
         gbl_who--;
         data->iq.debug = 1;
     }
-    pthread_mutex_unlock(&gbl_sc_lock);
+    Pthread_mutex_unlock(&gbl_sc_lock);
     if (data->iq.debug) {
         reqlog_new_request(&data->iq); // TODO: cleanup (reset) logger
         reqpushprefixf(&data->iq, "0x%llx: CONVERT_REC ", pthread_self());
@@ -1031,7 +1031,7 @@ void *convert_records_thd(struct convert_record_data *data)
 
     if (gbl_pg_compact_thresh > 0) {
         /* Disable page compaction only if page compaction is enabled. */
-        (void)pthread_setspecific(no_pgcompact, (void *)1);
+        Pthread_setspecific(no_pgcompact, (void *)1);
     }
 
     /* convert each record */
@@ -1222,7 +1222,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
 
         data.isThread = 1;
 
-        pthread_attr_init(&attr);
+        Pthread_attr_init(&attr);
         pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
         pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
@@ -1294,7 +1294,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         }
 
         /* destroy attr */
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
     }
 
     print_final_sc_stat(&data);
@@ -1358,13 +1358,13 @@ static int upgrade_records(struct convert_record_data *data)
 
     // set debug info
     if (gbl_who > 0 || data->iq.debug > 0) {
-        pthread_mutex_lock(&gbl_sc_lock);
+        Pthread_mutex_lock(&gbl_sc_lock);
         data->iq.debug = gbl_who;
         if (data->iq.debug > 0) {
             gbl_who = data->iq.debug - 1;
             data->iq.debug = 1;
         }
-        pthread_mutex_unlock(&gbl_sc_lock);
+        Pthread_mutex_unlock(&gbl_sc_lock);
     }
 
     data->iq.timeoutms = gbl_sc_timeoutms;
@@ -1657,7 +1657,7 @@ int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
         data.isThread = 1;
 
         // init pthread attributes
-        pthread_attr_init(&attr);
+        Pthread_attr_init(&attr);
         pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
         pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
@@ -1703,7 +1703,7 @@ int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
             }
         }
 
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
     }
 
     convert_record_data_cleanup(&data);

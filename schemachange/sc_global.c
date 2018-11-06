@@ -27,7 +27,6 @@
 
 #include <plhash.h>
 
-pthread_rwlock_t schema_lk = PTHREAD_RWLOCK_INITIALIZER;
 pthread_mutex_t schema_change_in_progress_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t fastinit_in_progress_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t schema_change_sbuf2_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -178,7 +177,7 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
     printf("%s: %d\n", __func__, running);
     comdb2_linux_cheap_stack_trace();
 #endif
-    pthread_mutex_lock(&schema_change_in_progress_mutex);
+    Pthread_mutex_lock(&schema_change_in_progress_mutex);
     if (sc_tables == NULL) {
         sc_tables =
             hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
@@ -190,14 +189,14 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
         if (running && table &&
             (sctbl = hash_find_readonly(sc_tables, &table)) != NULL &&
             sctbl->seed != seed) {
-            pthread_mutex_unlock(&schema_change_in_progress_mutex);
+            Pthread_mutex_unlock(&schema_change_in_progress_mutex);
             logmsg(LOGMSG_INFO,
                    "schema change for table %s already in progress\n", table);
             return -1;
         } else if (!running && table &&
                    (sctbl = hash_find_readonly(sc_tables, &table)) != NULL &&
                    seed && sctbl->seed != seed) {
-            pthread_mutex_unlock(&schema_change_in_progress_mutex);
+            Pthread_mutex_unlock(&schema_change_in_progress_mutex);
             logmsg(LOGMSG_ERROR,
                    "cannot stop schema change for table %s: wrong seed given\n",
                    table);
@@ -207,7 +206,7 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
     if (running) {
         /* this is an osql replay of a resuming schema change */
         if (sctbl) {
-            pthread_mutex_unlock(&schema_change_in_progress_mutex);
+            Pthread_mutex_unlock(&schema_change_in_progress_mutex);
             return 0;
         }
         if (table) {
@@ -247,7 +246,7 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
            "gbl_schema_change_in_progress %d\n",
            table, running, (unsigned long long)seed,
            gbl_schema_change_in_progress);
-    pthread_mutex_unlock(&schema_change_in_progress_mutex);
+    Pthread_mutex_unlock(&schema_change_in_progress_mutex);
     return 0;
 }
 
@@ -256,7 +255,7 @@ void sc_status(struct dbenv *dbenv)
     unsigned int bkt;
     void *ent;
     sc_table_t *sctbl = NULL;
-    pthread_mutex_lock(&schema_change_in_progress_mutex);
+    Pthread_mutex_lock(&schema_change_in_progress_mutex);
     if (sc_tables)
         sctbl = hash_first(sc_tables, &ent, &bkt);
     while (gbl_schema_change_in_progress && sctbl) {
@@ -290,7 +289,7 @@ void sc_status(struct dbenv *dbenv)
     if (!gbl_schema_change_in_progress) {
         logmsg(LOGMSG_USER, "schema change running   NO\n");
     }
-    pthread_mutex_unlock(&schema_change_in_progress_mutex);
+    Pthread_mutex_unlock(&schema_change_in_progress_mutex);
 }
 
 void reset_sc_stat()
@@ -302,7 +301,7 @@ void reset_sc_stat()
  * change (removing temp tables etc). */
 void live_sc_off(struct dbtable *db)
 {
-    pthread_rwlock_wrlock(&sc_live_rwlock);
+    Pthread_rwlock_wrlock(&sc_live_rwlock);
     db->sc_to = NULL;
     db->sc_from = NULL;
     db->sc_abort = 0;
@@ -312,7 +311,7 @@ void live_sc_off(struct dbtable *db)
     db->sc_deletes = 0;
     db->sc_nrecs = 0;
     db->sc_prev_nrecs = 0;
-    pthread_rwlock_unlock(&sc_live_rwlock);
+    Pthread_rwlock_unlock(&sc_live_rwlock);
 }
 
 int reload_lua()

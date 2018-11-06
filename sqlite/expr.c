@@ -1411,7 +1411,7 @@ Select *sqlite3SelectDup(sqlite3 *db, Select *p, int flags){
   pNew = sqlite3DbMallocRawNN(db, sizeof(*p) );
   if( pNew==0 ) return 0;
   /* COMDB2 MODIFICATION */
-  pNew->recording = 0;
+  pNew->recording = p->recording;
   pNew->pEList = sqlite3ExprListDup(db, p->pEList, flags);
   pNew->pSrc = sqlite3SrcListDup(db, p->pSrc, flags);
   pNew->pWhere = sqlite3ExprDup(db, p->pWhere, flags);
@@ -5356,7 +5356,10 @@ static char* sqlite3ExprDescribe_inner(
     case TK_RP:
     case TK_AS:
     case TK_COMMA:
+        break;
     case TK_ID:
+        /* COMDB2 MODIFICATION */
+        return sqlite3_mprintf("%s", pExpr->u.zToken);
     case TK_INDEXED:
     case TK_ABORT:
     case TK_ACTION:
@@ -5571,7 +5574,7 @@ static char* sqlite3ExprDescribe_inner(
       return ret;
     }
     case TK_STRING: {
-      return sqlite3_mprintf("'%s'", pExpr->u.zToken);
+      return sqlite3_mprintf("'%q'", pExpr->u.zToken);
     }
     case TK_JOIN_KW:
     case TK_DEFAULT: {

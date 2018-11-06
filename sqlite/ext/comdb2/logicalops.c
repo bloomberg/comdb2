@@ -32,6 +32,7 @@
 #include "util.h"
 #include <bdb/bdb_int.h>
 #include "llog_ext.h"
+#include "comdb2systbl.h"
 
 /* Allocate maximum for unpacking */
 #define PACKED_MEMORY_SIZE (MAXBLOBLENGTH + 7)
@@ -1423,6 +1424,7 @@ sqlite3_module systblLogicalOpsModule = {
   0,                         /* xRollback */
   0,                         /* xFindMethod */
   0,                         /* xRename */
+  .access_flag = CDB2_ALLOW_USER,
 };
 
 

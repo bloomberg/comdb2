@@ -123,8 +123,16 @@ Variable | Description
 
 You can export your own `DBDIR`/`DBNAME` when running a single test. 
 
-Export `CLUSTER` to a list of machines you want to use for a clustered test.  The
-test suite will run as the user running the test suite.  It assumes you have
+Export `CLUSTER` to a list of machines you want to use for a clustered test.
+If you want to run multiple tests at the same time and have each one the tests 
+run in a subset of the $CLUSTER nodes, you can export NUMNODESTOUSE and every
+individual test will run in a cluster of $NUMNODESTOUSE as a randomly selected
+subset of $CLUSTER.
+For example, the following command will run all the tests in the tests directory, 
+each test in a randomly selected cluster of three nodes: 
+   make -j 4 -k CLUSTER='node1 node2 node3 node4 node5' NUMNODESTOUSE=3
+
+The test suite will run as the user running the test suite.  It assumes you have
 ssh and all the keys set up to allow password-less authentication between the
 current machine and the machines in the cluster.  comdb2 needs to be installed
 on the cluster machines.  Path to `${DBDIR}` must accessible to the current user.

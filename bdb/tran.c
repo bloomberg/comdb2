@@ -47,6 +47,7 @@
 #include "bdb_cursor.h"
 #include "bdb_int.h"
 #include "locks.h"
+#include "locks_wrap.h"
 #include "bdb_osqltrn.h"
 #include "bdb_osqlcur.h"
 
@@ -67,9 +68,6 @@ extern int __txn_getpriority(DB_TXN *txnp, int *priority);
 int __lock_dump_region_lockerid __P((DB_ENV *, const char *, FILE *, u_int32_t lockerid));
 #endif
 
-/* Count these */
-static int outoforderlwm = 0;
-
 int bdb_tran_clear_request_ack(tran_type *tran)
 {
     tran->request_ack = 0;
@@ -88,9 +86,6 @@ tran_type *bdb_tran_begin_logical_norowlocks_int(bdb_state_type *bdb_state,
 {
     tran_type *tran;
     int rc;
-    DB_TXN *parent_tid;
-    bdb_state_type *child;
-    int i;
     unsigned int flags = 0;
 
     /* One day this will change.  One day.
@@ -346,7 +341,6 @@ int berkdb_commit_logical(DB_ENV *dbenv, void *state, uint64_t ltranid,
                           DB_LSN *lsn)
 {
     int rc;
-    tran_type *txn;
     bdb_state_type *bdb_state;
 
     bdb_state = (bdb_state_type *)state;
@@ -355,6 +349,7 @@ int berkdb_commit_logical(DB_ENV *dbenv, void *state, uint64_t ltranid,
         bdb_state = bdb_state->parent;
 
 #ifdef DEBUG_TXN_LIST
+    tran_type *txn;
     LOCK(&bdb_state->translist_lk)
     {
         txn = hash_find(bdb_state->logical_transactions_hash, &ltranid);
@@ -635,10 +630,6 @@ tran_type *bdb_tran_begin_logical_int_int(bdb_state_type *bdb_state,
     int rc = 0;
     int step;
     int ismaster;
-    DB_TXN *parent_tid;
-    bdb_state_type *child;
-    int i;
-    unsigned int flags;
 
     /* One day this will change.  One day.
        We really want a bdb_env_type and a bdb_table_type.
@@ -707,10 +698,7 @@ tran_type *bdb_tran_begin_logical_int_int(bdb_state_type *bdb_state,
     tran->parent_state = bdb_state;
 
     /* Put this tran in seqnum_info->key */
-    rc = pthread_setspecific(bdb_state->seqnum_info->key, tran);
-    if (rc != 0) {
-        abort();
-    }
+    Pthread_setspecific(bdb_state->seqnum_info->key, tran);
 
     if (getlock) {
         BDB_READLOCK("trans_start_logical");
@@ -837,8 +825,7 @@ tran_type *bdb_tran_begin_phys(bdb_state_type *bdb_state,
                                tran_type *logical_tran)
 {
     int rc, flags = 0;
-    extern int gbl_micro_retry_on_deadlock, gbl_locks_check_waiters,
-        gbl_rowlocks_commit_on_waiters;
+    extern int gbl_locks_check_waiters, gbl_rowlocks_commit_on_waiters;
     tran_type *tran;
 
     if (logical_tran->tranclass != TRANCLASS_LOGICAL) {
@@ -913,10 +900,8 @@ tran_type *bdb_tran_begin_phys(bdb_state_type *bdb_state,
 static inline unsigned long long lag_bytes(bdb_state_type *bdb_state)
 {
     const char *connlist[REPMAX];
-    int count, numnodes, i;
+    int count, i;
     char *master_host = bdb_state->repinfo->master_host;
-    int now;
-    static int lastpr = 0;
     uint64_t lagbytes;
     DB_LSN minlsn, masterlsn;
 
@@ -1103,8 +1088,6 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
     tran_type *tran;
     int rc;
     DB_TXN *parent_tid;
-    bdb_state_type *child;
-    int i;
     unsigned int flags;
 
     /*fprintf(stderr, "calling bdb_tran_begin_ll_int\n");*/
@@ -1130,19 +1113,15 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
 
         parent->committed_child = 0; /* reset this, there are children */
     } else {
-        DB_LSN lsn;
         parent_tid = NULL;
 
         tran->committed_child =
             1; /* set this by default for the parent trans */
         tran->master = 1;
 
-        rc = pthread_setspecific(bdb_state->seqnum_info->key, tran);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "pthread_setspecific failed\n");
-        }
+        Pthread_setspecific(bdb_state->seqnum_info->key, tran);
 
-        /*fprintf(stderr, "pthread_setspecific %x to %x\n", bdb_state, tran);*/
+        /*fprintf(stderr, "Pthread_setspecific %x to %x\n", bdb_state, tran);*/
         tran->startlsn.file = 0;
         tran->startlsn.offset = 1;
     }
@@ -1253,7 +1232,7 @@ tran_type *bdb_tran_begin_shadow_int(bdb_state_type *bdb_state, int tranclass,
     tran->relinks_hashtbl =
         hash_init_o(PGLOGS_RELINK_KEY_OFFSET, PAGE_KEY_SIZE);
 
-    pthread_mutex_init(&tran->pglogs_mutex, NULL);
+    Pthread_mutex_init(&tran->pglogs_mutex, NULL);
 
     tran->asof_lsn.file = 0;
     tran->asof_lsn.offset = 1;
@@ -1465,10 +1444,7 @@ static int bdb_tran_commit_with_seqnum_int_int(
     void *blkkey, int blkkeylen)
 {
     int rc = 0, outrc = 0;
-    DB_LSN *lsnptr;
     unsigned int flags;
-    int failed_to_log=0;
-    int logical_commit_retries = 0;
     int needed_to_abort = 0;
     int set_seqnum = 0;
     uint32_t generation = 0;
@@ -1541,8 +1517,7 @@ static int bdb_tran_commit_with_seqnum_int_int(
         if (!bdb_state->attr->synctransactions)
             flags |= DB_TXN_NOSYNC;
 
-        if (bdb_osql_trn_repo_lock())
-            abort();
+        bdb_osql_trn_repo_lock();
 
         /* only generate a log for PARENT transactions */
         if (tran->parent == NULL && add_snapisol_logging(bdb_state)) {
@@ -1569,7 +1544,6 @@ static int bdb_tran_commit_with_seqnum_int_int(
                 *bdberr = BDBERR_MISC;
                 outrc = -1;
                 atexit(abort_at_exit);
-                failed_to_log = 1;
                 bdb_osql_trn_repo_unlock();
                 goto cleanup;
             }
@@ -1594,8 +1568,7 @@ static int bdb_tran_commit_with_seqnum_int_int(
         flags = DB_TXN_DONT_GET_REPO_MTX;
         flags |= (tran->request_ack) ? DB_TXN_REP_ACK : 0;
         rc = tran->tid->commit_getlsn(tran->tid, flags, &lsn, tran);
-        if (bdb_osql_trn_repo_unlock())
-            abort();
+        bdb_osql_trn_repo_unlock();
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, 
                    "%s:%d failed commit_getlsn, rc %d\n", __func__,
@@ -1677,8 +1650,6 @@ static int bdb_tran_commit_with_seqnum_int_int(
         }
 
         if (blkseq) {
-            int blkseq_rc;
-
             *bdberr = 0;
             rc = bdb_blkseq_insert(bdb_state, physical_tran, blkkey, blkkeylen,
                                    blkseq, blklen, NULL, NULL);
@@ -1828,8 +1799,7 @@ static int bdb_tran_commit_with_seqnum_int_int(
             bdb_state->repinfo->myhost == bdb_state->repinfo->master_host &&
             !bdb_state->attr->shadows_nonblocking) {
 
-            if (bdb_osql_trn_repo_lock())
-                abort();
+            bdb_osql_trn_repo_lock();
 
             /* printf("update_shadows_beforecommit tranid %016llx lsn %u:%u\n",
                      tran->logical_tranid, tran->last_logical_lsn.file,
@@ -1837,8 +1807,7 @@ static int bdb_tran_commit_with_seqnum_int_int(
             rc = update_shadows_beforecommit(bdb_state, &tran->last_logical_lsn,
                                              NULL, 1);
 
-            if (bdb_osql_trn_repo_unlock())
-                abort();
+            bdb_osql_trn_repo_unlock();
 
             if (rc) {
                 /* TODO: to we need to abort here??? */
@@ -2008,9 +1977,7 @@ cleanup:
     /* if we are the master and we free tran we need to get rid of the stored
      * reference so functions like berkdb_send_rtn don't try to use it */
     if (tran->master) {
-        rc = pthread_setspecific(bdb_state->seqnum_info->key, NULL);
-        if (rc != 0)
-            logmsg(LOGMSG_ERROR, "pthread_setspecific failed\n");
+        Pthread_setspecific(bdb_state->seqnum_info->key, NULL);
     }
 
     if (tran->trak)
@@ -2235,7 +2202,6 @@ int bdb_tran_abort_int_int(bdb_state_type *bdb_state, tran_type *tran,
 {
     int rc = 0;
     int outrc = 0;
-    DB_LSN *lsnptr;
 
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
@@ -2334,9 +2300,7 @@ cleanup:
     /* if we are the master and we free tran we need to get rid of the stored
      * reference so functions like berkdb_send_rtn don't try to use it */
     if (tran->master) {
-        rc = pthread_setspecific(bdb_state->seqnum_info->key, NULL);
-        if (rc != 0)
-            logmsg(LOGMSG_ERROR, "pthread_setspecific failed\n");
+        Pthread_setspecific(bdb_state->seqnum_info->key, NULL);
     }
 
     if (tran->trak)
@@ -2371,7 +2335,7 @@ int bdb_tran_abort_int(bdb_state_type *bdb_state, tran_type *tran, int *bdberr,
 int bdb_tran_abort_wrap(bdb_state_type *bdb_state, tran_type *tran, int *bdberr,
                         int *priority)
 {
-    int rc, dead;
+    int rc;
     int has_bdblock;
 
     /* if we were passed a child, find his parent */
@@ -2392,7 +2356,6 @@ int bdb_tran_abort_wrap(bdb_state_type *bdb_state, tran_type *tran, int *bdberr,
     else
         has_bdblock = 1;
 
-    dead = tran->rep_handle_dead;
     rc =
         bdb_tran_abort_int(bdb_state, tran, bdberr, NULL, 0, NULL, 0, priority);
 
@@ -2483,8 +2446,6 @@ cursor_tran_t *bdb_get_cursortran(bdb_state_type *bdb_state, int lowpri,
 
 int bdb_curtran_has_waiters(bdb_state_type *bdb_state, cursor_tran_t *curtran)
 {
-    int rc;
-
     if (!curtran || curtran->lockerid == 0)
         return 0;
 
