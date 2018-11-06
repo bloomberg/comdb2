@@ -8,6 +8,7 @@ export cl_pids
 export cl_thd_pid=0
 export coherent_pid=0
 export downgrade_pid=0
+export core_on_coherent_failure=1
 export pidroot=cldeadlock
 export incoherent_fail=incoherent.fail
 
@@ -21,7 +22,7 @@ function cleanup
 {
     [[ $debug == "1" ]] && set -x
     typeset func="cleanup"
-    write_prompt $func "executing $cleanup"
+    write_prompt $func "executing $func"
     j=0
     while [[ $j -lt $cl_iters ]]; do
         [[ -f $pidroot.$j ]] && kill -9 $(cat $pidroot.$j)
@@ -47,6 +48,29 @@ function failexit
     exit -1
 }
 
+function core_all_nodes
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="core_all_nodes"
+    write_prompt $func "executing $func"
+    local node
+    local pidfl=${TMPDIR}/${DBNAME}.pid
+    if [[ -z "$CLUSTER" ]] || [[ `echo $CLUSTER | grep $HOSTNAME ` ]]; then
+        if [[ -n "$CLUSTER" ]] ; then
+            pidfl=${TMPDIR}/${DBNAME}.$HOSTNAME.pid
+        fi
+        cat ${pidfl} | xargs kill -6 
+    fi
+
+    for node in ${CLUSTER} ; do
+        if [ $node == $HOSTNAME ] ; then
+            continue
+        fi
+        pidfl=${TMPDIR}/${DBNAME}.pid
+        ssh -o StrictHostKeyChecking=no $node "cat ${pidfl} | xargs kill -6 " </dev/null
+    done
+}
+
 function check_coherent
 {
     [[ $debug == "1" ]] && set -x
@@ -64,6 +88,7 @@ function check_coherent
         write_prompt $func "incoherent count $count"
         if [[ "$count" -ge "$max_incoherent" ]] ; then
             touch $incoherent_fail
+            [[ "$core_on_coherent_failure" == 1 ]] && core_all_nodes
             failexit "cluster is not coherent"
         fi
         sleep 1
