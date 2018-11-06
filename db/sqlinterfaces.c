@@ -322,7 +322,8 @@ void unlock_client_write_lock(struct sqlclntstate *clnt)
     Pthread_mutex_unlock(&clnt->write_lock);
 }
 
-void handle_failed_recover_deadlock(struct sqlclntstate *clnt, int recover_deadlock_rcode)
+void handle_failed_recover_deadlock(struct sqlclntstate *clnt,
+                                    int recover_deadlock_rcode)
 {
     switch (recover_deadlock_rcode) {
     case SQLITE_COMDB2SCHEMA:
@@ -3577,8 +3578,8 @@ check_version:
             if (!clnt->dbtran.cursor_tran) {
                 int ctrc = get_curtran(thedb->bdb_env, clnt);
                 if (ctrc) {
-                    logmsg(LOGMSG_ERROR,
-                           "%s td %d: unable to get a CURSOR transaction, rc = %d!\n",
+                    logmsg(LOGMSG_ERROR, "%s td %d: unable to get a CURSOR "
+                                         "transaction, rc = %d!\n",
                            __func__, pthread_self(), ctrc);
                     if (thd->sqldb) {
                         delete_prepared_stmts(thd);
@@ -3787,8 +3788,9 @@ void sqlengine_work_appsock(void *thddata, void *work)
     /* everything going in is cursor based */
     int rc = get_curtran(thedb->bdb_env, clnt);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s td %d: unable to get a CURSOR transaction, rc=%d!\n",
-                __func__, pthread_self(), rc);
+        logmsg(LOGMSG_ERROR,
+               "%s td %d: unable to get a CURSOR transaction, rc=%d!\n",
+               __func__, pthread_self(), rc);
         send_run_error(clnt, "Client api should change nodes",
                        CDB2ERR_CHANGENODE);
         clnt->query_rc = -1;
@@ -4442,7 +4444,8 @@ static inline int sql_writer_recover_deadlock(struct sql_thread *thd,
                        count);
             }
             pthread_cond_timedwait(&clnt->write_cond, &clnt->write_lock, &ts);
-        } while (clnt->need_recover_deadlock == 1 && clnt->emitting_flag && !clnt->done);
+        } while (clnt->need_recover_deadlock == 1 && clnt->emitting_flag &&
+                 !clnt->done);
         clnt->heartbeat_lock = 0;
         rc = clnt->need_recover_deadlock;
         clnt->need_recover_deadlock = 0;

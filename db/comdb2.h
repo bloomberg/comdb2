@@ -376,37 +376,41 @@ enum RCODES {
     ERR_RMTDB_NESTED = 198,    /* reserved for use by rmtdb/prox2 */
     ERR_BADREQ = 199,          /* bad request parameters */
     ERR_TRAN_TOO_BIG = 208,
-    ERR_BLOCK_FAILED = 220,    /* block update failed */
-    ERR_NOTSERIAL = 230,       /* transaction not serializable */
-    ERR_SC = 240,              /* schemachange failed */
-    RC_INTERNAL_RETRY = 300,   /* need to retry comdb upper level request */
+    ERR_BLOCK_FAILED = 220,  /* block update failed */
+    ERR_NOTSERIAL = 230,     /* transaction not serializable */
+    ERR_SC = 240,            /* schemachange failed */
+    RC_INTERNAL_RETRY = 300, /* need to retry comdb upper level request */
     ERR_CONVERT_DTA = 301,
     ERR_CONVERT_IX = 301,
     ERR_KEYFORM_UNIMP = 303,
     RC_TRAN_TOO_COMPLEX = 304, /* too many rrns allocated per trans */
     RC_TRAN_CLIENT_RETRY = 305,
-    ERR_BLOB_TOO_LARGE = 306,  /* a blob exceeded MAXBLOBLENGTH */
-    ERR_BUF_TOO_SMALL = 307,   /* buffer provided too small to fit data  */
-    ERR_NO_BUFFER = 308,       /* can't get fstsnd buffer  */
-    ERR_JAVASP_ABORT = 309,    /* stored procedure ordered this trans aborted */
-    ERR_NO_SUCH_TABLE = 310,   /* operation tried to use non-existant table */
-    ERR_CALLBACK = 311,        /* operation failed due to errors in callback */
-    ERR_TRAN_FAILED = 312,     /* could not start of finish transaction */
-    ERR_CONSTR = 313,          /* could not complete the operation becouse of constraints in the table */
-    ERR_SC_COMMIT = 314,       /* schema change in its final stages; proxy should retry */
-    ERR_INDEX_DISABLED = 315,  /* can't read from a disabled index */
+    ERR_BLOB_TOO_LARGE = 306, /* a blob exceeded MAXBLOBLENGTH */
+    ERR_BUF_TOO_SMALL = 307,  /* buffer provided too small to fit data  */
+    ERR_NO_BUFFER = 308,      /* can't get fstsnd buffer  */
+    ERR_JAVASP_ABORT = 309,   /* stored procedure ordered this trans aborted */
+    ERR_NO_SUCH_TABLE = 310,  /* operation tried to use non-existant table */
+    ERR_CALLBACK = 311,       /* operation failed due to errors in callback */
+    ERR_TRAN_FAILED = 312,    /* could not start of finish transaction */
+    ERR_CONSTR =
+        313, /* could not complete the operation becouse of constraints in the
+                table */
+    ERR_SC_COMMIT =
+        314, /* schema change in its final stages; proxy should retry */
+    ERR_INDEX_DISABLED = 315, /* can't read from a disabled index */
     ERR_CONFIG_FAILED = 316,
     ERR_NO_RECORDS_FOUND = 317,
     ERR_NULL_CONSTRAINT = 318,
     ERR_VERIFY_PI = 319,
     ERR_UNCOMMITABLE_TXN =
         404, /* txn is uncommitable, returns ERR_VERIFY rather than retry */
-    ERR_INCOHERENT = 996,      /* prox2 understands it should retry another node for 996 */
+    ERR_INCOHERENT =
+        996, /* prox2 understands it should retry another node for 996 */
     ERR_SQL_PREPARE = 1003,
-    ERR_NO_AUXDB = 2000,       /* requested auxiliary database not available */
-    ERR_SQL_PREP = 2001,       /* block sql error in sqlite3_prepare */
-    ERR_LIMIT = 2002,          /* sql request exceeds max cost */
-    ERR_NOT_DURABLE = 2003,    /* commit didn't make it to a majority */
+    ERR_NO_AUXDB = 2000,    /* requested auxiliary database not available */
+    ERR_SQL_PREP = 2001,    /* block sql error in sqlite3_prepare */
+    ERR_LIMIT = 2002,       /* sql request exceeds max cost */
+    ERR_NOT_DURABLE = 2003, /* commit didn't make it to a majority */
     ERR_RECOVER_DEADLOCK = 2004
 };
 
