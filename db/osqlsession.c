@@ -144,7 +144,7 @@ static void _destroy_session(osql_sess_t **prq, int phase)
 
         queue_free(rq->que);
     case 1:
-        pthread_cond_destroy(&rq->cond);
+        Pthread_cond_destroy(&rq->cond);
     case 2:
         Pthread_mutex_destroy(&rq->mtx);
     case 3:

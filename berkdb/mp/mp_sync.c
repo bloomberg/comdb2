@@ -1476,7 +1476,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 	}
 
 	Pthread_mutex_destroy(&pt->lk);
-	pthread_cond_destroy(&pt->wait);
+	Pthread_cond_destroy(&pt->wait);
 done:
         /*
          * If doing a checkpoint or flushing a file for the application, we

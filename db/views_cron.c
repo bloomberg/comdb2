@@ -92,7 +92,7 @@ error:
     if (sched && created) {
         if (sched->name)
             free(sched->name);
-        pthread_cond_destroy(&sched->cond);
+        Pthread_cond_destroy(&sched->cond);
         Pthread_mutex_destroy(&sched->mtx);
         free(sched);
         sched = NULL;

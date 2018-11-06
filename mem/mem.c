@@ -430,13 +430,7 @@ int comdb2ma_init(size_t init_sz, size_t max_cap)
             }
 
             root.main_thr_id = pthread_self();
-            rc = pthread_key_create(&root.zone, destroy_zone);
-            if (rc != 0) {
-                COMDB2MA_UNLOCK(&root);
-                destroy_mspace(root.m);
-                root.m = NULL;
-                return rc;
-            }
+            Pthread_key_create(&root.zone, destroy_zone);
 #endif /* PER_THREAD_MALLOC */
 
 #ifndef USE_SYS_ALLOC
@@ -1303,7 +1297,7 @@ static comdb2ma get_area(int indx)
             zone = mspace_calloc(root.m, COMDB2MA_COUNT, sizeof(comdb2ma));
             COMDB2MA_UNLOCK(&root);
         }
-        pthread_setspecific(root.zone, (void *)zone);
+        Pthread_setspecific(root.zone, (void *)zone);
     }
 
     if (zone[indx] == NULL) {
@@ -2104,10 +2098,7 @@ static void pfx_ctrace(const char *format, ...)
 /* COMDB2 BLOCKING MEMORY ALLOCATOR { */
 static void privileged_init(void)
 {
-    if (pthread_key_create(&privileged, NULL) != 0) {
-        fprintf(stderr, "failed creating privileged pthread key\n");
-        abort();
-    }
+    Pthread_key_create(&privileged, NULL);
 }
 
 static void comdb2bma_thr_dest(void *bmakey)
@@ -2155,14 +2146,9 @@ comdb2bma comdb2bma_create_trace(size_t init, size_t cap, const char *name,
             if (ret->alloc == NULL) {
                 mspace_free(root.m, ret);
                 ret = NULL;
-            } else if (pthread_key_create(&ret->bmakey, comdb2bma_thr_dest) !=
-                       0) {
-                comdb2ma_destroy_int(ret->alloc);
-                mspace_free(root.m, ret);
-                ret = NULL;
-            }
-
-            if (ret != NULL) {
+            } 
+            else {
+                Pthread_key_create(&ret->bmakey, comdb2bma_thr_dest);
                 Pthread_cond_init(&ret->cond, NULL);
                 // initialize fields
                 ret->prio = 0;
@@ -2198,8 +2184,8 @@ int comdb2bma_destroy(comdb2bma ma)
     if (rc != 0)
         return rc;
 
-    rc = pthread_cond_destroy(&ma->cond);
-    rc = pthread_key_delete(ma->bmakey);
+    Pthread_cond_destroy(&ma->cond);
+    Pthread_key_delete(ma->bmakey);
     rc = comdb2ma_destroy_int(ma->alloc);
 
     mspace_free(root.m, ma);
@@ -2286,7 +2272,7 @@ int comdb2bma_transfer_priority(comdb2bma ma, pthread_t tid)
             ma->prio_tid = tid;
 
             if (!ma->giveback)
-                pthread_setspecific(privileged, PRIO_NO);
+                Pthread_setspecific(privileged, PRIO_NO);
         }
 
         if (rc != 0)
@@ -2318,12 +2304,12 @@ int comdb2bma_yield(comdb2bma ma)
                and the ancestor wants it back, pass it over
                and then broadcast */
             ma->prio_tid = ma->inherit_tid;
-            pthread_setspecific(privileged, PRIO_NO);
+            Pthread_setspecific(privileged, PRIO_NO);
             if (ma->nblocks != 0)
                 Pthread_cond_broadcast(&ma->cond);
         } else {
             ma->prio = 0;
-            pthread_setspecific(privileged, PRIO_NO);
+            Pthread_setspecific(privileged, PRIO_NO);
             if (ma->nblocks != 0)
                 Pthread_cond_signal(&ma->cond);
         }
@@ -2351,13 +2337,13 @@ static void comdb2bma_check_prio_all(void)
 
     if (COMDB2MA_LOCK(&root) == 0) {
         if (root.m != NULL) {
-            pthread_setspecific(privileged, PRIO_NO);
+            Pthread_setspecific(privileged, PRIO_NO);
             LISTC_FOR_EACH(&(root.blist), curpos, lnk)
             {
                 // no need to lock. we're fine with dirty reads here.
                 if (curpos->prio &&
                     pthread_equal(pthread_self(), curpos->prio_tid)) {
-                    pthread_setspecific(privileged, PRIO_YES);
+                    Pthread_setspecific(privileged, PRIO_YES);
                     break;
                 }
             }
@@ -2516,14 +2502,14 @@ static void *comdb2_bmalloc_int(comdb2bma ma, size_t n, int block, int lk,
     if (ret != NULL && !ma->prio && mspace_footprint(ma->alloc->m) > ma->cap) {
         ma->prio_tid = pthread_self();
         ma->prio = 1;
-        pthread_setspecific(privileged, PRIO_YES);
+        Pthread_setspecific(privileged, PRIO_YES);
     }
 
     if (lk)
         COMDB2BMA_UNLOCK(ma);
 
     if (ret != NULL)
-        pthread_setspecific(ma->bmakey, ma);
+        Pthread_setspecific(ma->bmakey, ma);
 
     return ret;
 }
@@ -2623,14 +2609,14 @@ static void *comdb2_bcalloc_int(comdb2bma ma, size_t n, size_t size, int block,
     if (ret != NULL && !ma->prio && mspace_footprint(ma->alloc->m) > ma->cap) {
         ma->prio_tid = pthread_self();
         ma->prio = 1;
-        pthread_setspecific(privileged, PRIO_YES);
+        Pthread_setspecific(privileged, PRIO_YES);
     }
 
     if (lk)
         COMDB2BMA_UNLOCK(ma);
 
     if (ret != NULL)
-        pthread_setspecific(ma->bmakey, ma);
+        Pthread_setspecific(ma->bmakey, ma);
 
     return ret;
 }
@@ -2743,14 +2729,14 @@ static void *comdb2_brealloc_int(comdb2bma ma, void *ptr, size_t n, int block,
     if (ret != NULL && !ma->prio && mspace_footprint(ma->alloc->m) > ma->cap) {
         ma->prio_tid = pthread_self();
         ma->prio = 1;
-        pthread_setspecific(privileged, PRIO_YES);
+        Pthread_setspecific(privileged, PRIO_YES);
     }
 
     if (lk)
         COMDB2BMA_UNLOCK(ma);
 
     if (ret != NULL)
-        pthread_setspecific(ma->bmakey, ma);
+        Pthread_setspecific(ma->bmakey, ma);
 
     return ret;
 }

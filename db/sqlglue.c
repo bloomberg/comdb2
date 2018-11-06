@@ -697,9 +697,7 @@ struct sql_thread *start_sql_thread(void)
     thd->query_hash = hash_init_user(query_path_component_hash,
                                      query_path_component_cmp, 0, 0);
     Pthread_mutex_init(&thd->lk, NULL);
-    int rc = pthread_setspecific(query_info_key, thd);
-    if (rc != 0)
-        perror_errnum("start_sql_thread: pthread_setspecific", rc);
+    Pthread_setspecific(query_info_key, thd);
     Pthread_mutex_lock(&gbl_sql_lock);
     listc_abl(&thedb->sql_threads, thd);
     Pthread_mutex_unlock(&gbl_sql_lock);
@@ -724,7 +722,7 @@ void done_sql_thread(void)
         listc_rfl(&thedb->sql_threads, thd);
         Pthread_mutex_unlock(&gbl_sql_lock);
         Pthread_mutex_destroy(&thd->lk);
-        pthread_setspecific(query_info_key, NULL);
+        Pthread_setspecific(query_info_key, NULL);
         if (thd->buf) {
             free(thd->buf);
             thd->buf = NULL;
@@ -12081,7 +12079,7 @@ static int run_verify_indexes_query(char *sql, struct schema *sc, Mem *min,
         free(clnt.query_stats);
 
     Pthread_mutex_destroy(&clnt.wait_mutex);
-    pthread_cond_destroy(&clnt.wait_cond);
+    Pthread_cond_destroy(&clnt.wait_cond);
     Pthread_mutex_destroy(&clnt.write_lock);
     Pthread_mutex_destroy(&clnt.dtran_mtx);
 

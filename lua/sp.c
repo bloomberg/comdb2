@@ -2512,14 +2512,14 @@ static void *dispatch_lua_thread(void *arg)
 
     cleanup_clnt(&clnt);
     Pthread_mutex_destroy(&clnt.wait_mutex);
-    pthread_cond_destroy(&clnt.wait_cond);
+    Pthread_cond_destroy(&clnt.wait_cond);
     Pthread_mutex_destroy(&clnt.write_lock);
     Pthread_mutex_destroy(&clnt.dtran_mtx);
 
     parent_thd->finished_run = 1;
     parent_thd->lua_tid = 0;
     Pthread_cond_broadcast(&parent_thd->lua_thread_cond);
-    pthread_cond_destroy(&parent_thd->lua_thread_cond);
+    Pthread_cond_destroy(&parent_thd->lua_thread_cond);
 
     return NULL;
 }
@@ -2940,7 +2940,7 @@ static int db_create_thread_int(Lua lua, const char *funcname)
     copy_state_stacks(lua, newlua, 1);
 
     pthread_attr_t attr; // small stack for dispatch_lua_thread
-    pthread_attr_init(&attr);
+    Pthread_attr_init(&attr);
 #ifdef PTHREAD_STACK_MIN
     pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN + 16 * 1024);
 #endif
@@ -2949,7 +2949,7 @@ static int db_create_thread_int(Lua lua, const char *funcname)
     /* Wait for child thread to finish cloning btrees if any */
     Pthread_cond_wait(&lt->lua_thread_cond, &lt->lua_thread_mutex);
     Pthread_mutex_unlock(&lt->lua_thread_mutex);
-    pthread_attr_destroy(&attr);
+    Pthread_attr_destroy(&attr);
 
     if (rc == 0) return 1;
     luabb_error(lua, sp, "failed to create thread");

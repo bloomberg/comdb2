@@ -698,10 +698,7 @@ tran_type *bdb_tran_begin_logical_int_int(bdb_state_type *bdb_state,
     tran->parent_state = bdb_state;
 
     /* Put this tran in seqnum_info->key */
-    rc = pthread_setspecific(bdb_state->seqnum_info->key, tran);
-    if (rc != 0) {
-        abort();
-    }
+    Pthread_setspecific(bdb_state->seqnum_info->key, tran);
 
     if (getlock) {
         BDB_READLOCK("trans_start_logical");
@@ -1122,12 +1119,9 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
             1; /* set this by default for the parent trans */
         tran->master = 1;
 
-        rc = pthread_setspecific(bdb_state->seqnum_info->key, tran);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "pthread_setspecific failed\n");
-        }
+        Pthread_setspecific(bdb_state->seqnum_info->key, tran);
 
-        /*fprintf(stderr, "pthread_setspecific %x to %x\n", bdb_state, tran);*/
+        /*fprintf(stderr, "Pthread_setspecific %x to %x\n", bdb_state, tran);*/
         tran->startlsn.file = 0;
         tran->startlsn.offset = 1;
     }
@@ -1983,9 +1977,7 @@ cleanup:
     /* if we are the master and we free tran we need to get rid of the stored
      * reference so functions like berkdb_send_rtn don't try to use it */
     if (tran->master) {
-        rc = pthread_setspecific(bdb_state->seqnum_info->key, NULL);
-        if (rc != 0)
-            logmsg(LOGMSG_ERROR, "pthread_setspecific failed\n");
+        Pthread_setspecific(bdb_state->seqnum_info->key, NULL);
     }
 
     if (tran->trak)
@@ -2308,9 +2300,7 @@ cleanup:
     /* if we are the master and we free tran we need to get rid of the stored
      * reference so functions like berkdb_send_rtn don't try to use it */
     if (tran->master) {
-        rc = pthread_setspecific(bdb_state->seqnum_info->key, NULL);
-        if (rc != 0)
-            logmsg(LOGMSG_ERROR, "pthread_setspecific failed\n");
+        Pthread_setspecific(bdb_state->seqnum_info->key, NULL);
     }
 
     if (tran->trak)

@@ -156,7 +156,7 @@ static void *free_stack_thr(void *unused)
 /* initialize memptr key */
 static void init_memptr_key(void)
 {
-    (void)pthread_key_create(&memptr, free_memptr);
+    Pthread_key_create(&memptr, free_memptr);
     __page_size = sysconf(_SC_PAGESIZE);
 
     if (pthread_mutex_init(&pthr_mutex, NULL) != 0) {
@@ -165,11 +165,7 @@ static void init_memptr_key(void)
         abort();
     }
 
-    if (pthread_attr_init(&free_thr_attrs) != 0) {
-        logmsg(LOGMSG_FATAL, "%s:%d failed to init pthread attrs.\n", __func__,
-                __LINE__);
-        abort();
-    }
+    Pthread_attr_init(&free_thr_attrs);
 
 #ifdef PTHREAD_STACK_MIN
     if (pthread_attr_setstacksize(&free_thr_attrs,
@@ -210,7 +206,7 @@ static void *thr_func(void *arg)
     size_t stacksz = thr_arg->stacksz;
 #endif
 
-    pthread_setspecific(memptr, thr_arg);
+    Pthread_setspecific(memptr, thr_arg);
 
     ret = thr_arg->func(thr_arg->arg);
 
