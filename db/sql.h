@@ -462,7 +462,6 @@ struct sqlclntstate {
     pthread_cond_t wait_cond;
     pthread_mutex_t write_lock;
     pthread_cond_t write_cond;
-    int have_wait_mutex;
     int query_rc;
 
     struct rawnodestats *rawnodestats;
