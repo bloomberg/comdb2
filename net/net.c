@@ -3206,7 +3206,7 @@ void print_net_memstat(int human_readable)
 }
 #endif
 
-static netinfo_type *create_netinfo_int(char myhostname[], int myportnum,
+netinfo_type *create_netinfo_int(char myhostname[], int myportnum,
                                         int myfd, char app[], char service[],
                                         char instance[], int fake, int offload,
                                         int ischild, int use_getservbyname)
