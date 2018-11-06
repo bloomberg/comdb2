@@ -29,6 +29,7 @@
 #include "mem_datetime.h"
 #include "mem_override.h"
 #include "logmsg.h"
+#include "locks_wrap.h"
 
 #ifndef TZ_ABBR_MAX_LEN
 #define TZ_ABBR_MAX_LEN 16
@@ -2492,13 +2493,13 @@ struct tm *outtm;
 {
     struct tm *ret = NULL;
 
-    pthread_mutex_lock(&global_dt_mutex);
+    Pthread_mutex_lock(&global_dt_mutex);
 
     if (!db_tzset(name)) ret = db_localsub(timeval, 0L, &tm);
 
     if (ret) memcpy(outtm, ret, sizeof(struct tm));
 
-    pthread_mutex_unlock(&global_dt_mutex);
+    Pthread_mutex_unlock(&global_dt_mutex);
 
     if (ret) return 0;
     return -1;
@@ -2756,11 +2757,11 @@ struct tm *const tmp;
     db_time_t ret = -1;
 
 
-    pthread_mutex_lock(&global_dt_mutex);
+    Pthread_mutex_lock(&global_dt_mutex);
 
     if (!db_tzset(name)) ret = db_time1(tmp, db_localsub, 0L);
 
-    pthread_mutex_unlock(&global_dt_mutex);
+    Pthread_mutex_unlock(&global_dt_mutex);
 
     return ret;
 }
