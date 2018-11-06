@@ -2953,18 +2953,22 @@ static int get_prepared_bound_stmt(struct sqlthdstate *thd,
 static void handle_stored_proc(struct sqlthdstate *, struct sqlclntstate *);
 
 static void handle_expert_query(struct sqlthdstate *thd,
-                                struct sqlclntstate *clnt)
+                                struct sqlclntstate *clnt,
+                                int *outrc)
 {
     int rc;
     char *zErr = 0;
 
+    *outrc = 0;
     rdlock_schema_lk();
     rc = sqlengine_prepare_engine(thd, clnt, 1);
     unlock_schema_lk();
     if (thd->sqldb == NULL) {
-        return handle_bad_engine(clnt);
+        *outrc = handle_bad_engine(clnt);
+        return;
     } else if (rc) {
-        return rc;
+        *outrc = rc;
+        return;
     }
 
     rc = -1;
@@ -3055,7 +3059,7 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
         }
         return 1;
     } else if (clnt->is_expert) {
-        handle_expert_query(thd, clnt);
+        handle_expert_query(thd, clnt, outrc);
         return 1;
     }
 
@@ -3567,6 +3571,7 @@ check_version:
         }
     }
     assert(!thd->sqldb || rc == SQLITE_OK || rc == SQLITE_SCHEMA_REMOTE);
+
     if (gbl_enable_sql_stmt_caching && (thd->stmt_caching_table == NULL)) {
         init_stmt_caching_table(thd);
     }
@@ -3578,7 +3583,7 @@ check_version:
             if (!clnt->dbtran.cursor_tran) {
                 int ctrc = get_curtran(thedb->bdb_env, clnt);
                 if (ctrc) {
-                    logmsg(LOGMSG_ERROR, "%s td %d: unable to get a CURSOR "
+                    logmsg(LOGMSG_ERROR, "%s td %lu: unable to get a CURSOR "
                                          "transaction, rc = %d!\n",
                            __func__, pthread_self(), ctrc);
                     if (thd->sqldb) {
@@ -3699,11 +3704,11 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
     rdlock_schema_lk();
     rc = sqlengine_prepare_engine(thd, clnt, 1);
     unlock_schema_lk();
-    if (thd->sqldb == NULL) {
-        return handle_bad_engine(clnt);
-    } else if (rc) {
-        return rc;
-    }
+
+    if (thd->sqldb == NULL || rc) {
+        handle_bad_engine(clnt);
+        return;
+    } 
 
     reqlog_set_origin(thd->logger, "%s", clnt->origin);
 
@@ -3789,7 +3794,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
     int rc = get_curtran(thedb->bdb_env, clnt);
     if (rc) {
         logmsg(LOGMSG_ERROR,
-               "%s td %d: unable to get a CURSOR transaction, rc=%d!\n",
+               "%s td %lu: unable to get a CURSOR transaction, rc=%d!\n",
                __func__, pthread_self(), rc);
         send_run_error(clnt, "Client api should change nodes",
                        CDB2ERR_CHANGENODE);
