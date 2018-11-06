@@ -2034,33 +2034,11 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
         return NULL;
     }
 
-    Pthread_mutex_init(&entry->mtx, 0);
-    entry->ref = 1;
-
+    /* Construct our hashtable key: crc32c(task + stack) + nodeix. */
     memcpy(entry->mem, task, task_len);
-    entry->task = entry->mem;
-
     memcpy(entry->mem + task_len, stack, stack_len);
-    entry->stack = entry->mem + task_len;
-
     entry->checksum = crc32c((const uint8_t *)entry->mem, task_len + stack_len);
     entry->node = node;
-    entry->host = intern(nodeat(node));
-
-    if (fd < 0) {
-        bzero(&(entry->addr), sizeof(struct in_addr));
-    } else {
-        struct sockaddr_in peeraddr;
-        socklen_t len = sizeof(peeraddr);
-        bzero(&peeraddr, sizeof(peeraddr));
-        if (getpeername(fd, (struct sockaddr *)&peeraddr, &len) < 0) {
-            logmsg(LOGMSG_ERROR, "%s: getpeername failed fd %d: %d %s\n",
-                   __func__, fd, errno, strerror(errno));
-            bzero(&(entry->addr), sizeof(struct in_addr));
-        } else {
-            memcpy(&(entry->addr), &peeraddr.sin_addr, sizeof(struct in_addr));
-        }
-    }
 
     Pthread_rwlock_wrlock(&clientstats_lk);
     {
@@ -2077,6 +2055,30 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
             }
             Pthread_mutex_unlock(&entry->mtx);
         } else {
+            entry->task = entry->mem;
+            entry->stack = entry->mem + task_len;
+            entry->host = intern(nodeat(node));
+            Pthread_mutex_init(&entry->mtx, 0);
+            entry->ref = 1;
+            entry->rawtotals.svc_time = time_metric_new("svc_time");
+            entry->prevtotals.svc_time = entry->rawtotals.svc_time;
+
+            if (fd < 0) {
+                bzero(&(entry->addr), sizeof(struct in_addr));
+            } else {
+                struct sockaddr_in peeraddr;
+                socklen_t len = sizeof(peeraddr);
+                bzero(&peeraddr, sizeof(peeraddr));
+                if (getpeername(fd, (struct sockaddr *)&peeraddr, &len) < 0) {
+                    logmsg(LOGMSG_ERROR,
+                           "%s: getpeername failed fd %d: %d %s\n", __func__,
+                           fd, errno, strerror(errno));
+                    bzero(&(entry->addr), sizeof(struct in_addr));
+                } else {
+                    memcpy(&(entry->addr), &peeraddr.sin_addr,
+                           sizeof(struct in_addr));
+                }
+            }
             Pthread_mutex_lock(&clntlru_mtx);
             while (hash_get_num_entries(clientstats) + 1 >
                    gbl_max_clientstats_cache) {
@@ -2302,6 +2304,8 @@ void process_nodestats(void)
         unsigned *bucketptr;
         nodestats = list[i];
 
+        time_metric_purge_old(nodestats->rawtotals.svc_time);
+
         nowptr = (unsigned *)&nodestats->rawtotals;
         prevptr = (unsigned *)&nodestats->prevtotals;
 
@@ -2414,6 +2418,7 @@ struct summary_nodestats *get_nodestats_summary(unsigned *nodes_cnt,
         summaries[ii].sql_queries = snap.sql_queries;
         summaries[ii].sql_steps = snap.sql_steps;
         summaries[ii].sql_rows = snap.sql_rows;
+        summaries[ii].svc_time = time_metric_average(snap.svc_time);
 
         for (opcode = 0; opcode < MAXTYPCNT; opcode++) {
             unsigned n = snap.opcode_counts[opcode];

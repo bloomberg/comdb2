@@ -525,7 +525,8 @@ enum CURTRAN_FLAGS { CURTRAN_RECOVERY = 0x00000001 };
 
 /* Raw stats, kept on a per origin machine basis.  This whole struct is
  * essentially an array of unsigneds.  Please don't add any other data
- * type as this allows us to easily sum it and diff it in a loop in reqlog.c.
+ * type above `svc_time' as this allows us to easily sum it and diff it in a
+ * loop in reqlog.c.
  * All of these stats are counters. */
 struct rawnodestats {
     unsigned opcode_counts[MAXTYPCNT];
@@ -533,8 +534,11 @@ struct rawnodestats {
     unsigned sql_queries;
     unsigned sql_steps;
     unsigned sql_rows;
+
+    struct time_metric *svc_time; /* <-- offsetof */
 };
-#define NUM_RAW_NODESTATS (sizeof(struct rawnodestats) / sizeof(unsigned))
+#define NUM_RAW_NODESTATS                                                      \
+    (offsetof(struct rawnodestats, svc_time) / sizeof(unsigned))
 
 struct summary_nodestats {
     char *host;
@@ -559,6 +563,7 @@ struct summary_nodestats {
     unsigned sql_queries;
     unsigned sql_steps;
     unsigned sql_rows;
+    double svc_time;
 };
 
 /* records in sql master db look like this (no appended rrn info) */
