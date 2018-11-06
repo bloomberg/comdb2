@@ -31,7 +31,6 @@ const sqlite3_module systblTransactionLogsModule;
 const sqlite3_module systblMetricsModule;
 const sqlite3_module systblTimeseriesModule;
 const sqlite3_module systblReplStatsModule;
-const sqlite3_module systblActivelocksModule;
 const sqlite3_module systblLogicalOpsModule;
 const sqlite3_module systblSystabsModule;
 
@@ -43,6 +42,7 @@ int systblNetUserfuncsInit(sqlite3 *db);
 int systblClusterInit(sqlite3 *db);
 int systblActiveOsqlsInit(sqlite3 *db);
 int systblBlkseqInit(sqlite3 *db);
+int systblFingerprintsInit(sqlite3 *);
 
 int comdb2_next_allowed_table(sqlite3_int64 *tabId);
 
