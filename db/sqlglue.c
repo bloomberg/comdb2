@@ -1995,8 +1995,8 @@ int new_indexes_syntax_check(struct ireq *iq, struct dbtable *db)
 
     rc = get_curtran(thedb->bdb_env, &client);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: unable to get a CURSOR transaction, rc = %d!\n",
-                __func__, rc);
+        logmsg(LOGMSG_ERROR, "%s: td %d unable to get a CURSOR transaction, "
+                "rc = %d!\n", __func__, pthread_self(), rc);
         goto done;
     }
     got_curtran = 1;

@@ -2954,11 +2954,19 @@ static void handle_stored_proc(struct sqlthdstate *, struct sqlclntstate *);
 static void handle_expert_query(struct sqlthdstate *thd,
                                 struct sqlclntstate *clnt)
 {
-    rdlock_schema_lk();
-    sqlengine_prepare_engine(thd, clnt, 1);
-    unlock_schema_lk();
-    int rc = -1;
+    int rc;
     char *zErr = 0;
+
+    rdlock_schema_lk();
+    rc = sqlengine_prepare_engine(thd, clnt, 1);
+    unlock_schema_lk();
+    if (thd->sqldb == NULL) {
+        return handle_bad_engine(clnt);
+    } else if (rc) {
+        return rc;
+    }
+
+    rc = -1;
     sqlite3expert *p = sqlite3_expert_new(thd->sqldb, &zErr);
 
     if (p) {
@@ -3035,9 +3043,15 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
         return 1;
     } else if (clnt->is_explain) { // only via newsql--cdb2api
         rdlock_schema_lk();
-        sqlengine_prepare_engine(thd, clnt, 1);
-        *outrc = newsql_dump_query_plan(clnt, thd->sqldb);
+        rc = sqlengine_prepare_engine(thd, clnt, 1);
         unlock_schema_lk();
+        if (thd->sqldb == NULL) {
+            *outrc = handle_bad_engine(clnt);
+        } else if (!rc) {
+            *outrc = newsql_dump_query_plan(clnt, thd->sqldb);
+        } else {
+            *outrc = rc;
+        }
         return 1;
     } else if (clnt->is_expert) {
         handle_expert_query(thd, clnt);
@@ -3551,6 +3565,7 @@ check_version:
             thd->sqldb = NULL;
         }
     }
+    assert(!thd->sqldb || rc == SQLITE_OK || rc == SQLITE_SCHEMA_REMOTE);
     if (gbl_enable_sql_stmt_caching && (thd->stmt_caching_table == NULL)) {
         init_stmt_caching_table(thd);
     }
@@ -3560,11 +3575,18 @@ check_version:
             unlock_schema_lk();
 
             if (!clnt->dbtran.cursor_tran) {
-                rc = get_curtran(thedb->bdb_env, clnt);
-                if (rc) {
+                int ctrc = get_curtran(thedb->bdb_env, clnt);
+                if (ctrc) {
                     logmsg(LOGMSG_ERROR,
-                           "%s: unable to get a CURSOR transaction, rc = %d!\n",
-                           __func__, rc);
+                           "%s td %d: unable to get a CURSOR transaction, rc = %d!\n",
+                           __func__, pthread_self(), ctrc);
+                    if (thd->sqldb) {
+                        delete_prepared_stmts(thd);
+                        sqlite3_close(thd->sqldb);
+                        thd->sqldb = NULL;
+                    }
+                    rdlock_schema_lk();
+                    return ctrc;
                 } else {
                     got_curtran = 1;
                 }
@@ -3663,6 +3685,7 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
 {
     struct sqlthdstate *thd = thddata;
     struct sqlclntstate *clnt = work;
+    int rc;
 
     if (!clnt->exec_lua_thread)
         abort();
@@ -3673,8 +3696,13 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
     clnt->deque_timeus = comdb2_time_epochus();
 
     rdlock_schema_lk();
-    sqlengine_prepare_engine(thd, clnt, 1);
+    rc = sqlengine_prepare_engine(thd, clnt, 1);
     unlock_schema_lk();
+    if (thd->sqldb == NULL) {
+        return handle_bad_engine(clnt);
+    } else if (rc) {
+        return rc;
+    }
 
     reqlog_set_origin(thd->logger, "%s", clnt->origin);
 
@@ -3759,8 +3787,8 @@ void sqlengine_work_appsock(void *thddata, void *work)
     /* everything going in is cursor based */
     int rc = get_curtran(thedb->bdb_env, clnt);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: unable to get a CURSOR transaction, rc=%d!\n",
-                __func__, rc);
+        logmsg(LOGMSG_ERROR, "%s td %d: unable to get a CURSOR transaction, rc=%d!\n",
+                __func__, pthread_self(), rc);
         send_run_error(clnt, "Client api should change nodes",
                        CDB2ERR_CHANGENODE);
         clnt->query_rc = -1;
