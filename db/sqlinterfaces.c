@@ -3582,9 +3582,9 @@ check_version:
             if (!clnt->dbtran.cursor_tran) {
                 int ctrc = get_curtran(thedb->bdb_env, clnt);
                 if (ctrc) {
-                    logmsg(LOGMSG_ERROR, "%s td %lu: unable to get a CURSOR "
-                                         "transaction, rc = %d!\n",
-                           __func__, pthread_self(), ctrc);
+                    logmsg(LOGMSG_ERROR,
+                           "%s td %lu: unable to get a CURSOR transaction, "
+                           "rc = %d!\n", __func__, pthread_self(), ctrc);
                     if (thd->sqldb) {
                         delete_prepared_stmts(thd);
                         sqlite3_close(thd->sqldb);

@@ -5164,8 +5164,8 @@ void *watcher_thread(void *arg)
         if (rep_wait_core_ms && rep_lock_wait_time_ms &&
             (comdb2_time_epochms() - rep_lock_wait_time_ms) >
                 rep_wait_core_ms) {
-            logmsg(LOGMSG_FATAL, "%s: coring, rep thread blocked too long (%d "
-                                 "ms)\n",
+            logmsg(LOGMSG_FATAL,
+                   "%s: coring, rep thread blocked too long (%d ms)\n",
                    __func__);
             lock_info_lockers(stdout, bdb_state);
             abort();
