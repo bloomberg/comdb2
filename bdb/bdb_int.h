@@ -447,6 +447,7 @@ struct tran_tag {
 
     /* Set to 1 if this is a schema change txn */
     int schema_change_txn;
+    struct tran_tag *sc_parent_tran;
 
     /* cache the versions of dta files to catch schema changes and fastinits */
     int table_version_cache_sz;

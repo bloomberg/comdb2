@@ -261,10 +261,17 @@ void *bdb_get_physical_tran(tran_type *ltran)
     return ltran->physical_tran;
 }
 
+void *bdb_get_sc_parent_tran(tran_type *ltran)
+{
+    assert(ltran->tranclass == TRANCLASS_LOGICAL);
+    return ltran->sc_parent_tran;
+}
+
 void bdb_ltran_get_schema_lock(tran_type *ltran)
 {
     ltran->get_schema_lock = 1;
     ltran->single_physical_transaction = 1;
+    ltran->schema_change_txn = 1;
 }
 
 void bdb_ltran_put_schema_lock(tran_type *ltran)
@@ -1618,6 +1625,13 @@ static int bdb_tran_commit_with_seqnum_int_int(
         if (tran->aborted) {
             needed_to_abort = 1;
 
+            if (tran->schema_change_txn && tran->sc_parent_tran) {
+                tran->physical_tran = tran->sc_parent_tran;
+                tran->sc_parent_tran = NULL;
+                tran->get_schema_lock = 0;
+                tran->schema_change_txn = 0; // done
+            }
+
             if (tran->physical_tran) {
                 bdb_tran_abort_phys(bdb_state, tran->physical_tran);
             }
@@ -1633,6 +1647,19 @@ static int bdb_tran_commit_with_seqnum_int_int(
                 goto cleanup;
             }
             lsn = tran->last_regop_lsn;
+        } else if (tran->schema_change_txn && tran->sc_parent_tran) {
+            rc = bdb_tran_commit(bdb_state, tran->physical_tran, bdberr);
+            if (rc) {
+                logmsg(
+                    LOGMSG_ERROR,
+                    "%s:%d failed to commit physical tran rc %d, bdberr %d\n",
+                    __func__, __LINE__, rc, bdberr);
+                outrc = -1;
+                goto cleanup;
+            }
+            tran->physical_tran = tran->sc_parent_tran;
+            tran->sc_parent_tran = NULL;
+            tran->schema_change_txn = 0; // done
         }
 
         /* we need to start a transaction, write a commit log record,
