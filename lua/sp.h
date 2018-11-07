@@ -29,7 +29,7 @@ struct spversion_t {
 };
 
 int exec_procedure(struct sqlthdstate *, struct sqlclntstate *, char **err);
-int exec_thread(struct sqlthdstate *, struct sqlclntstate *);
+void exec_thread(struct sqlthdstate *, struct sqlclntstate *);
 void *exec_trigger(struct trigger_reg *);
 void close_sp(struct sqlclntstate *);
 
