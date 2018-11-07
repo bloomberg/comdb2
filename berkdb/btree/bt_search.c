@@ -227,7 +227,7 @@ genid_hash_init(DB_ENV *dbenv, int szkb)
 		}
 	}
 
-	 pthread_mutex_init(&(h->mutex), NULL);
+	Pthread_mutex_init(&(h->mutex), NULL);
 
 	if (__os_calloc(dbenv, h->ntbl, sizeof(__genid_pgno), &(h->tbl)) != 0) {
 		__os_free(dbenv, h);
