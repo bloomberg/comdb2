@@ -17,7 +17,7 @@
 #define SQLITE_CORE 1
 
 #include <comdb2systblInt.h>
-#include <ext/comdb2/ezsystables.h>
+#include <ezsystables.h>
 
 static int fingerprints_callback(void **data, int *npoints)
 {
