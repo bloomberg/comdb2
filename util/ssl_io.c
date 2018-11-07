@@ -102,14 +102,8 @@ static int hostname_wildcard_match(const char *s, const char *p)
         return 0;
 
     /* RFC6125 Rule 1 */
-    dotasterisk = strstr(p, ".*");
-    if (dotasterisk != NULL)
-        return 1;
-
-    /* RFC6125 Rule 3 */
-    if (strlen(p) < 3 ||
-            p[0] != '*' ||
-            p[1] != '.')
+    dotasterisk = strstr(p, "*");
+    if (strcspn(p, ".") < dotasterisk - p)
         return 1;
 
     ts = s;
