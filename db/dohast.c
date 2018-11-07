@@ -23,6 +23,8 @@
 
 #define ast_verbose bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DOHAST_VERBOSE)
 
+static void node_free(dohsql_node_t **pnode, sqlite3 *db);
+
 char *generate_columns(sqlite3 *db, ExprList *c, const char **tbl)
 {
     char *cols = NULL;
@@ -232,11 +234,25 @@ ast_t *ast_init(void)
     return ast;
 }
 
-void ast_destroy(ast_t **ast)
+void ast_destroy(ast_t **past, sqlite3 *db)
 {
-    free((*ast)->stack);
-    free(*ast);
-    *ast = NULL;
+    int i;
+    ast_t *ast = *past;
+
+    *past = NULL;
+    for(i=0;i<ast->nused;i++) {
+        if (ast->stack[i].obj) {
+            switch(ast->stack[i].op) {
+                case AST_TYPE_SELECT:
+                case AST_TYPE_UNION: {
+                    node_free((dohsql_node_t**)&ast->stack[i].obj, db);
+                    break;
+                }
+            }
+        }
+    }
+    free(ast->stack);
+    free(ast);
 }
 
 static dohsql_node_t *gen_oneselect(Vdbe *v, Select *p, Expr *extraRows)
@@ -267,19 +283,19 @@ static dohsql_node_t *gen_oneselect(Vdbe *v, Select *p, Expr *extraRows)
     return node;
 }
 
-static void node_free(Vdbe *v, dohsql_node_t **pnode)
+static void node_free(dohsql_node_t **pnode, sqlite3* db)
 {
     dohsql_node_t *node = *pnode;
     int i;
 
     /* children */
     for (i = 0; i < node->nnodes && node->nodes[i]; i++) {
-        node_free(v, &node->nodes[i]);
+        node_free(&node->nodes[i], db);
     }
 
     /* current node */
     if ((*pnode)->sql) {
-        sqlite3DbFree(v->db, (*pnode)->sql);
+        sqlite3DbFree(db, (*pnode)->sql);
     }
     free(*pnode);
     *pnode = NULL;
@@ -333,7 +349,7 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
             crt->pOrderBy = NULL;
 
         if (!(*psub)) {
-            node_free(v, &node);
+            node_free(&node, v->db);
             goto done;
         }
         if (psub != node->nodes) {
@@ -342,7 +358,7 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
             sqlite3DbFree(v->db, node->sql);
             node->sql = tmp;
             if (!tmp) {
-                node_free(v, &node);
+                node_free(&node, v->db);
                 goto done;
             }
         } else {

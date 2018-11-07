@@ -32,8 +32,9 @@ enum ast_type {
 
 ast_t *ast_init(void);
 struct Vdbe;
+struct sqlite3;
 int ast_push(ast_t *ast, enum ast_type op, struct Vdbe *v, void *obj);
-void ast_destroy(ast_t **ast);
+void ast_destroy(ast_t **ast, struct sqlite3 *db);
 void ast_print(ast_t *ast);
 
 #endif
