@@ -266,29 +266,10 @@ int disable_server_sql_timeouts(void)
             gbl_sql_no_timeouts_on_release_locks);
 }
 
-/* copied content from WriteResponsesEnum in sql.h */
-const char *WriteRespString[] = {
-    "RESPONSE_COLUMNS",
-    "RESPONSE_COLUMNS_LUA",
-    "RESPONSE_COLUMNS_STR",
-    "RESPONSE_COST",
-    "RESPONSE_DEBUG",
-    "RESPONSE_EFFECTS",
-    "RESPONSE_ERROR",
-    "RESPONSE_ERROR_ACCESS",
-    "RESPONSE_ERROR_BAD_STATE",
-    "RESPONSE_ERROR_PREPARE",
-    "RESPONSE_ERROR_PREPARE_RETRY",
-    "RESPONSE_ERROR_REJECT",
-    "RESPONSE_FLUSH",
-    "RESPONSE_HEARTBEAT",
-    "RESPONSE_ROW",
-    "RESPONSE_ROW_LAST",
-    "RESPONSE_ROW_LAST_DUMMY",
-    "RESPONSE_ROW_LUA",
-    "RESPONSE_ROW_STR",
-    "RESPONSE_TRACE",
-};
+#define XRESPONSE(x) #x,
+const char *WriteRespString[] = { RESPONSE_TYPES };
+#undef XRESPONSE
+
 int write_response(struct sqlclntstate *clnt, int R, void *D, int I)
 {
 #ifdef DEBUG
