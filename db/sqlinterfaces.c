@@ -3557,7 +3557,7 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
 
     reqlog_set_origin(thd->logger, "%s", clnt->origin);
 
-    clnt->query_rc = exec_thread(thd, clnt);
+    exec_thread(thd, clnt);
 
     sql_reset_sqlthread(thd->sqlthd);
 

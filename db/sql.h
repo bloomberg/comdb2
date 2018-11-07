@@ -502,7 +502,6 @@ struct sqlclntstate {
     int trans_has_sp;
     struct stored_proc *sp;
     int exec_lua_thread;
-    int sp_cdata_sent;
     int want_stored_procedure_trace;
     int want_stored_procedure_debug;
     char spname[MAX_SPNAME + 1];
