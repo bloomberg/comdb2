@@ -2013,18 +2013,18 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
     if (iq->tranddl) {
         irc = trans_start_logical_sc(iq, &(iq->sc_logical_tran));
         if (gbl_rowlocks && irc == 0) { // rowlock
-            tran_type *phys_tran = NULL;
+            tran_type *sc_parent = NULL;
             if (parent_trans)
                 *parent_trans = NULL;
             *trans = iq->sc_logical_tran;
-            phys_tran = bdb_get_sc_parent_tran(iq->sc_logical_tran);
+            sc_parent = bdb_get_sc_parent_tran(iq->sc_logical_tran);
             iq->sc_logical_tran = NULL; // use trans in rowlocks
-            if (phys_tran == NULL) {
+            if (sc_parent == NULL) {
                 irc = -1;
                 logmsg(LOGMSG_ERROR, "%s:%d failed to get physical tran\n",
                        __func__, __LINE__);
             } else
-                irc = trans_start_sc(iq, phys_tran, &(iq->sc_tran));
+                irc = trans_start_sc(iq, sc_parent, &(iq->sc_tran));
         } else if (irc == 0) { // pagelock
             if (parent_trans) {
                 *parent_trans = bdb_get_physical_tran(iq->sc_logical_tran);

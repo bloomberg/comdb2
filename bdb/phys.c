@@ -203,7 +203,7 @@ int get_physical_transaction(bdb_state_type *bdb_state, tran_type *logical_tran,
             return rc;
         }
         if (logical_tran->single_physical_transaction &&
-            logical_tran->schema_change_txn) {
+            logical_tran->schema_change_txn && gbl_rowlocks) {
             int bdberr = 0;
             logical_tran->sc_parent_tran = logical_tran->physical_tran;
             logical_tran->physical_tran = bdb_tran_begin(
