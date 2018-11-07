@@ -294,15 +294,15 @@ again:
             (thd = pthread_getspecific(query_info_key))) {
             rd_rc = recover_deadlock_flags(thedb->bdb_env, thd, NULL, 0, flags);
             clnt->need_recover_deadlock = 0;
+            clnt->recover_deadlock_rcode = rd_rc;
+            if (rd_rc) {
+                logmsg(LOGMSG_WARN, "%s recover_deadlock returned %d\n", __func__,
+                        rd_rc);
+            }
         }
         pthread_cond_signal(&clnt->write_cond);
         Pthread_mutex_unlock(&clnt->write_lock);
         goto again;
-    }
-    if (rd_rc) {
-        logmsg(LOGMSG_WARN, "%s recover_deadlock returned %d\n", __func__,
-               rd_rc);
-        clnt->recover_deadlock_rcode = rd_rc;
     }
     return rd_rc ? rd_rc : rc;
 }
