@@ -488,7 +488,7 @@ static int wait_for_unlock_notify(sqlite3 *db){
   }
 
   /* Destroy the mutex and condition variables. */
-  Pthread_cond_destroy(&un.cond);
+  pthread_cond_destroy(&un.cond);
   pthread_mutex_destroy(&un.mutex);
 
   return rc;

@@ -301,7 +301,7 @@ static void sendToServer(SqlMessage *pMsg){
   /* Destroy the mutex and condition variable of the message.
   */
   pthread_mutex_destroy(&pMsg->clientMutex);
-  Pthread_cond_destroy(&pMsg->clientWakeup);
+  pthread_cond_destroy(&pMsg->clientWakeup);
 }
 
 /*
