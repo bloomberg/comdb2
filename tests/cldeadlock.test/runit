@@ -53,7 +53,7 @@ function print_locks
     [[ $debug == "1" ]] && set -x
     typeset func="print_locks"
     write_prompt $func "executing $func"
-    if [[ -n "$CLUSTER" ]]; then
+    if [[ -z "$CLUSTER" ]]; then
         write_prompt $func "Lock dump:"
         $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.send(\"bdb lockinfo lockers\")"
     else
@@ -96,17 +96,20 @@ function check_coherent
     typeset count=0
     typeset max_incoherent=${1:-10}
     typeset r=0
+    typeset incoh="NOT-CHECKED"
     master=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.send(\"bdb cluster\")" | grep MASTER | cut -f1 -d":" | tr -d '[:space:]') 2>/dev/null
     if [[ -n "$master" ]] ; then
         incoh=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.send(\"bdb cluster\")" | grep COHERENT)
         r=$?
+    else
+        write_prompt $func "Failed to find master"
     fi
     while [[ $r == 0 ]]; do
         let count=count+1
-        write_prompt $func "incoherent count $count"
+        write_prompt $func "incoherent count $count, $incoh master is $master"
         if [[ "$count" -ge "$max_incoherent" ]] ; then
             touch $incoherent_fail
-            write_prompt $func $incoh
+            write_prompt $func "$incoh"
             [[ "$core_on_coherent_failure" == 1 ]] && core_all_nodes
             failexit "cluster is not coherent"
         fi
@@ -115,6 +118,8 @@ function check_coherent
         if [[ -n "$master" ]] ; then
             incoh=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.send(\"bdb cluster\")" | grep COHERENT)
             r=$?
+        else
+            write_prompt $func "Failed to find master"
         fi
     done
 }
