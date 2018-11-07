@@ -159,8 +159,8 @@ static int remaining_timeoutms(int startms, int timeoutms)
     return (elapsedms < timeoutms) ? timeoutms - elapsedms : 0;
 }
 
-static int portmux_cmd(const char *cmd, const char *app, const char *service,
-                       const char *instance, const char *post)
+int portmux_cmd(const char *cmd, const char *app, const char *service,
+                const char *instance, const char *post)
 {
     char name[strlen(app) + strlen(service) + strlen(instance) + 3 +
               MAX_DBNAME_LENGTH];
