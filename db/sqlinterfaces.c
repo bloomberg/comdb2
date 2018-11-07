@@ -49,7 +49,6 @@
 #include <sbuf2.h>
 #include <bdb_api.h>
 
-#include "pb_alloc.h"
 #include "comdb2.h"
 #include "types.h"
 #include "tag.h"
