@@ -7152,8 +7152,7 @@ static int rootpcompare(const void *p1, const void *p2)
     return strcmp(tp1->zName, tp2->zName);
 }
 
-int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, struct sql_thread *thd,
-                              int after_recovery)
+static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
 {
     if (pStmt == NULL)
         return 0;
@@ -7173,8 +7172,7 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, struct sql_thread *thd,
     if (nTables == 0)
         return 0;
 
-    if (thd == NULL)
-        thd = pthread_getspecific(query_info_key);
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd->clnt;
 
     if (NULL == clnt->dbtran.cursor_tran) {
@@ -7378,12 +7376,12 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, struct sql_thread *thd,
 
 int sqlite3LockStmtTables(sqlite3_stmt *pStmt)
 {
-    return sqlite3LockStmtTables_int(pStmt, NULL, 0);
+    return sqlite3LockStmtTables_int(pStmt, 0);
 }
 
-int sqlite3LockStmtTablesRecover(sqlite3_stmt *pStmt, struct sql_thread *thd)
+int sqlite3LockStmtTablesRecover(sqlite3_stmt *pStmt)
 {
-    return sqlite3LockStmtTables_int(pStmt, thd, 1);
+    return sqlite3LockStmtTables_int(pStmt, 1);
 }
 
 void sql_remote_schema_changed(struct sqlclntstate *clnt, sqlite3_stmt *pStmt)
@@ -8760,7 +8758,7 @@ int osql_check_shadtbls(bdb_state_type *bdb_env, struct sqlclntstate *clnt,
 int gbl_random_get_curtran_failures;
 
 int get_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
-                      struct sql_thread *thd, uint32_t flags)
+                      uint32_t flags)
 {
     cursor_tran_t *curtran_out = NULL;
     int rcode = 0;
@@ -8841,7 +8839,7 @@ retry:
 
     /* check if we have table locks that were dropped during recovery */
     if (clnt->dbtran.pStmt) {
-        rc = sqlite3LockStmtTablesRecover(clnt->dbtran.pStmt, thd);
+        rc = sqlite3LockStmtTablesRecover(clnt->dbtran.pStmt);
         if (!rc) {
             /* NOTE: we need to make sure the versions are the same */
 
@@ -8857,7 +8855,7 @@ retry:
 
 int get_curtran(bdb_state_type *bdb_state, struct sqlclntstate *clnt)
 {
-    return get_curtran_flags(bdb_state, clnt, NULL, 0);
+    return get_curtran_flags(bdb_state, clnt, 0);
 }
 
 int put_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
@@ -9117,7 +9115,7 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
         clnt->gen_changed = 1;
         rc = -1;
     } else
-        rc = get_curtran_flags(thedb->bdb_env, clnt, thd, curtran_flags);
+        rc = get_curtran_flags(thedb->bdb_env, clnt, curtran_flags);
 
     /* Fake schema-changed failure */
     if (!rc && fail_type)
