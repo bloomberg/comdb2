@@ -269,7 +269,7 @@ int disable_server_sql_timeouts(void)
 const char *WriteRespString[] = { RESPONSE_TYPES };
 #undef XRESPONSE
 
-int write_response(struct sqlclntstate *clnt, int R, void *D, int I)
+int write_response(struct sqlclntstate *clnt, int R, void *D, int I);
 
 int gbl_client_heartbeat_ms = 100;
 int gbl_fail_client_write_lock = 0;
