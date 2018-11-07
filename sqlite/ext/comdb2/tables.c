@@ -276,6 +276,8 @@ int comdb2SystblInit(
       rc = systblActiveOsqlsInit(db);
   if (rc == SQLITE_OK)
       rc = systblBlkseqInit(db);
+  if (rc == SQLITE_OK)
+      rc = systblFingerprintsInit(db);
 #endif
   return rc;
 }
