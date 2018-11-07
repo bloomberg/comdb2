@@ -114,6 +114,8 @@ set all_graphs {
      {line CASE {optx expr} {loop {line WHEN expr THEN expr} {}}
            {optx ELSE expr} END}
      {line raise-function}
+     {line /window-func ( {or {line {toploop expr ,}} {} *} ) 
+           {opt filter} OVER {or {line ( window-defn )} /window-name}}
   }
   literal-value {
     or
@@ -155,7 +157,6 @@ set all_graphs {
       {line DO
           {or
               {line NOTHING}
-              {line REPLACE}
               {line UPDATE SET {loop {line /column-name = expr} ,} {optx WHERE expr}}
           }
       }
@@ -185,6 +186,7 @@ set all_graphs {
               {optx FROM {or {loop table-or-subquery ,} join-clause}}
               {optx WHERE expr}
               {optx GROUP BY {loop expr ,} {optx HAVING expr}}
+              {optx WINDOW {loop {line /window-name AS window-defn} ,}}
           }
           {line VALUES {loop {line ( {toploop expr ,} )} ,}}
        }
@@ -206,6 +208,7 @@ set all_graphs {
             {optx FROM {or {loop table-or-subquery ,} join-clause}}
             {optx WHERE expr}
             {optx GROUP BY {loop expr ,} {optx HAVING expr}}
+            {optx WINDOW {loop {line /window-name AS window-defn} ,}}
         }
         {line VALUES {loop {line ( {toploop expr ,} )} ,}}
   }
@@ -298,6 +301,41 @@ set all_graphs {
            {or /newline /end-of-input}}
       {line /* {loop nil /anything-except-*/}
            {or */ /end-of-input}}
+  }
+  filter {
+    line FILTER ( WHERE expr )
+  }
+  window-defn {
+    line {opt PARTITION BY {loop expr ,}}
+         {opt ORDER BY {loop ordering-term ,}}
+         {opt frame-spec}
+  }
+  frame-spec {
+    line {or RANGE ROWS} {or
+       {line BETWEEN {or {line UNBOUNDED PRECEDING}
+                         {line expr PRECEDING}
+                         {line CURRENT ROW}
+                         {line expr FOLLOWING}
+                     }
+             AND {or     {line expr PRECEDING}
+                         {line CURRENT ROW}
+                         {line expr FOLLOWING}
+                         {line UNBOUNDED FOLLOWING}
+                 }
+       }
+       {or   {line UNBOUNDED PRECEDING}
+             {line expr PRECEDING}
+             {line CURRENT ROW}
+             {line expr FOLLOWING}
+       }
+    }
+  }
+  function-invocation {
+     line /function-name ( {or {line {optx DISTINCT} {toploop expr ,}} {} *} )
+  }
+  window-function-invocation {
+    line /window-func ( {or {line {toploop expr ,}} {} *} )
+         {opt filter} OVER {or {line ( window-defn )} /window-name}
   }
   create-table {stack
     {line CREATE TABLE {opt IF NOT EXISTS}}
@@ -604,7 +642,6 @@ set all_graphs {
       {line NOT NULL }
       {line PRIMARY KEY {opt {or {line ASC } {line DESC } } } }
       {line UNIQUE }
-      {line KEY }
       {line {opt CONSTRAINT constraint-name } foreign-key-def }
       {line OPTION DBPAD = signed-number }
   }
@@ -613,7 +650,7 @@ set all_graphs {
       or
       {line
           {stack
-              {line {or {line UNIQUE } {line KEY } }
+              {line {or {line UNIQUE } }
                   {opt index-name } ( index-column-list ) }
               {line {opt OPTION DATACOPY } {opt WHERE expr } }
           }
