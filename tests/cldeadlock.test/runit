@@ -143,7 +143,7 @@ function coherent_loop
 {
     [[ $debug == "1" ]] && set -x
     typeset func="check_coherent"
-    typeset max_incoherent=${1:-1}
+    typeset max_incoherent=${1:-10}
     write_prompt $func "executing $func"
     while :; do 
         check_coherent $max_incoherent
@@ -257,7 +257,7 @@ function start_coherent_loop
 {
     [[ $debug == "1" ]] && set -x
     typeset func="start_coherent_loop"
-    typeset max_incoherent=${1:-1}
+    typeset max_incoherent=${1:-10}
     write_prompt $func "executing $func"
     coherent_loop $max_incoherent &
     coherent_pid=$!
@@ -277,7 +277,7 @@ function normal_test
     [[ $debug == "1" ]] && set -x
     typeset func="normal_test"
     write_prompt $func "executing $func"
-    start_coherent_loop
+    start_coherent_loop 2
     cldeadlock_threads $cl_iters
     check_coherent
     cleanup
@@ -325,8 +325,8 @@ function run_test
     typeset func="run_test"
     write_prompt $func "executing $func"
     setup_test
-    snapshot_test
     normal_test
+    snapshot_test
     downgrade_test
     [[ -f $incoherent_fail ]] && failexit "Cluster went incoherent"
     drop_table
