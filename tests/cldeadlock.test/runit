@@ -11,6 +11,7 @@ export downgrade_pid=0
 export core_on_coherent_failure=1
 export pidroot=cldeadlock
 export incoherent_fail=incoherent.fail
+export incoherent_file=incoherent.check
 
 function write_prompt
 {
@@ -105,6 +106,7 @@ function check_coherent
         write_prompt $func "Failed to find master"
     fi
     while [[ $r == 0 ]]; do
+        touch $incoherent_file
         let count=count+1
         write_prompt $func "incoherent count $count, $incoh master is $master"
         if [[ "$count" -ge "$max_incoherent" ]] ; then
@@ -122,6 +124,7 @@ function check_coherent
             write_prompt $func "Failed to find master"
         fi
     done
+    rm -f $incoherent_file
 }
 
 function downgrade_loop
@@ -132,6 +135,9 @@ function downgrade_loop
     typeset sleeptime=${1:-1}
     while :; do
         sleep $sleeptime
+        while [[ -f "$incoherent_file" ]]; do
+            sleep 1
+        done
         write_prompt $func "downgrading master"
         for x in $CLUSTER; do
             $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $x "exec procedure sys.cmd.send(\"downgrade\")" >/dev/null 2>&1
@@ -279,7 +285,6 @@ function normal_test
     write_prompt $func "executing $func"
     start_coherent_loop 2
     cldeadlock_threads $cl_iters
-    check_coherent
     cleanup
 }
 
@@ -293,7 +298,6 @@ function downgrade_test
     cldeadlock_threads $cl_iters
     cleanup
     sleep 10
-    check_coherent
 }
 
 function snapshot_test
@@ -306,7 +310,6 @@ function snapshot_test
     cldeadlock_threads $cl_iters 1
     cleanup
     sleep 10
-    check_coherent
 }
 
 function setup_test
