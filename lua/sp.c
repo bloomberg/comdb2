@@ -78,7 +78,7 @@ pthread_mutex_t lua_debug_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t lua_debug_cond = PTHREAD_COND_INITIALIZER;
 
 struct tmptbl_info_t {
-    int rootpg;
+    struct temptable tbl;
     char *sql;
     char name[MAXTABLELEN * 2]; // namespace.name
     pthread_mutex_t *lk;
@@ -1159,8 +1159,7 @@ static int comdb2_table(Lua lua)
         // go through tmp tbls
         SP sp = getsp(lua);
         tmptbl_info_t *tbl;
-        LIST_FOREACH(tbl, &sp->tmptbls, entries)
-        {
+        LIST_FOREACH(tbl, &sp->tmptbls, entries) {
             char n3[MAXTABLELEN], n4[MAXTABLELEN];
             two_part_tbl_name(tbl->name, n3, n4);
             if (strcasecmp(n2, n4) == 0) {
@@ -2559,15 +2558,14 @@ int mycallback(void *arg_, int cols, char **text, char **name)
     SP sp2 = arg->sp2;
 
     tmptbl_info_t *tmp1;
-    LIST_FOREACH(tmp1, &sp1->tmptbls, entries)
-    {
+    LIST_FOREACH(tmp1, &sp1->tmptbls, entries) {
         char n1[MAXTABLELEN], n2[MAXTABLELEN];
         two_part_tbl_name(tmp1->name, n1, n2);
         if (strcmp(text[0], n2) == 0) {
             tmptbl_info_t *tmp2 = malloc(sizeof(tmptbl_info_t));
             strcpy(tmp2->name, tmp1->name);
             tmp2->lk = tmp1->lk;
-            tmp2->rootpg = atoi(text[1]);
+            tmp2->tbl = get_tbl_by_rootpg(getdb(sp1), atoi(text[1]));
             tmp2->sql = strdup(text[2]);
             LIST_INSERT_HEAD(&sp2->tmptbls, tmp2, entries);
             return 0;
@@ -2946,8 +2944,7 @@ static int db_create_thread_int(Lua lua, const char *funcname)
     char *err = NULL;
     int rc;
     if ((newsp = create_sp(&err)) == NULL) {
-        free(err);
-        return -1;
+        goto bad;
     }
     Lua newlua = newsp->lua;
     update_tran_funcs(newlua, sp->clnt->in_client_trans);
@@ -2984,13 +2981,10 @@ static int db_create_thread_int(Lua lua, const char *funcname)
 #ifdef PTHREAD_STACK_MIN
     pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN + 16 * 1024);
 #endif
-    Pthread_mutex_lock(&thd->lua_thread_mutex);
     rc = pthread_create(&thd->lua_tid, &attr, dispatch_lua_thread, thd);
     Pthread_attr_destroy(&attr);
     if (rc == 0) {
         /* Wait for child thread to finish cloning btrees if any */
-        Pthread_cond_wait(&thd->lua_thread_cond, &thd->lua_thread_mutex);
-        Pthread_mutex_unlock(&thd->lua_thread_mutex);
         LIST_INSERT_HEAD(&sp->dbthds, thd, entries);
         dbthread_t *lt;
         new_lua_t(lt, dbthread_t, DBTYPES_THREAD);
@@ -3021,7 +3015,8 @@ static void dbthread_join_int(Lua L, dbthread_type *thd)
     pthread_mutex_t *mtx = &thd->lua_thread_mutex;
     pthread_cond_t *cond = &thd->lua_thread_cond;
     Pthread_mutex_lock(mtx);
-    while (thd->status == THREAD_STATUS_RUNNING) {
+    while (thd->status == THREAD_STATUS_DISPATCH_WAITING ||
+           thd->status == THREAD_STATUS_RUNNING) {
         check_retry_conditions(L, 1);
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
@@ -5747,22 +5742,17 @@ static void clone_temp_tables(SP sp)
     sqlite3 *src = getdb(sp->parent);
     if (!src) return;
     sqlite3 *dest = getdb(sp);
-    tmptbl_info_t *tbl;
-    Pthread_mutex_lock(&sp->parent_thd->lua_thread_mutex);
-    LIST_FOREACH(tbl, &sp->tmptbls, entries)
-    {
+    tmptbl_info_t *tmp;
+    LIST_FOREACH(tmp, &sp->tmptbls, entries) {
         strbuf *sql = strbuf_new();
-        const char *create = tbl->sql;
+        const char *create = tmp->sql;
         create += sizeof("CREATE TABLE");
         strbuf_appendf(sql, "CREATE TEMP TABLE %s", create);
         sp->clnt->skip_peer_chk = 1;
-        clone_temp_table(dest, src, strbuf_buf(sql), tbl->rootpg);
+        clone_temp_table(dest, src, strbuf_buf(sql), &tmp->tbl);
         sp->clnt->skip_peer_chk = 0;
         strbuf_free(sql);
     }
-    /* Main thread can resume running */
-    Pthread_cond_signal(&sp->parent_thd->lua_thread_cond);
-    Pthread_mutex_unlock(&sp->parent_thd->lua_thread_mutex);
 }
 
 static int begin_sp(struct sqlclntstate *clnt, char **err)

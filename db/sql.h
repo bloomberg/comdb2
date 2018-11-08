@@ -660,6 +660,15 @@ struct query_path_component {
     LINKC_T(struct query_path_component) lnk;
 };
 
+struct temptable {
+    struct temp_cursor *cursor;
+    struct temp_table *tbl;
+    int flags;
+    char *name;
+    Btree *owner;
+    pthread_mutex_t *lk;
+};
+
 struct Btree {
     /* for debugging */
     int btreeid;
@@ -946,8 +955,8 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
 
 void clearClientSideRow(struct sqlclntstate *clnt);
 void comdb2_set_tmptbl_lk(pthread_mutex_t *);
-void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
-                      int rootpg);
+struct temptable get_tbl_by_rootpg(const sqlite3 *, int);
+void clone_temp_table(sqlite3 *, const sqlite3 *, const char *, struct temptable *);
 int sqlengine_prepare_engine(struct sqlthdstate *, struct sqlclntstate *,
                              int recreate);
 int sqlserver2sqlclient_error(int rc);
