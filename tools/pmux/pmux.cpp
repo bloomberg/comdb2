@@ -705,6 +705,12 @@ static int run_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds, char *in,
         for (auto it : active_services) {
             conn_printf(c, "%s\n", it.c_str());
         }
+    } else if (strcmp(cmd, "exit") == 0) {
+        if (c.writable)
+            return 1;
+        else {
+            disallowed_write(c, cmd);
+        }
     } else if (strcmp(cmd, "range") == 0) {
         for (auto &range : port_ranges) {
             conn_printf(c, "%d:%d\n", range.first, range.second);
