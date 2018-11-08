@@ -9229,6 +9229,7 @@ static int ddguard_bdb_cursor_find(struct sql_thread *thd, BtCursor *pCur,
     int cmp;
 
     struct sqlclntstate *clnt;
+    assert(bdb_lockref() > 0);
     clnt = thd->clnt;
     CurRangeArr **append_to;
     if (pCur->range) {
@@ -9435,6 +9436,7 @@ static int ddguard_bdb_cursor_find_last_dup(struct sql_thread *thd,
 
     struct sqlclntstate *clnt;
     clnt = thd->clnt;
+    assert(bdb_lockref() > 0);
     CurRangeArr **append_to;
     if (pCur->range) {
         if (pCur->range->idxnum == -1 && pCur->range->islocked == 0) {
@@ -9634,6 +9636,7 @@ static int ddguard_bdb_cursor_move(struct sql_thread *thd, BtCursor *pCur,
     int rc = 0;
     int deadlock_on_last = 0;
 
+    assert(bdb_lockref() > 0);
     /* check authentication */
     if (authenticate_cursor(pCur, AUTHENTICATE_READ) != 0)
         return IX_ACCESS;

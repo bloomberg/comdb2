@@ -1673,6 +1673,7 @@ void analyze_set_headroom(uint64_t);
 int bdb_is_open(bdb_state_type *bdb_state);
 
 void bdb_checklock(bdb_state_type *);
+int bdb_lockref(void);
 void berkdb_set_max_rep_retries(int max);
 void bdb_set_recovery(bdb_state_type *);
 tran_type *bdb_tran_begin_set_retries(bdb_state_type *, tran_type *parent,
