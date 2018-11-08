@@ -283,7 +283,7 @@ function normal_test
     [[ $debug == "1" ]] && set -x
     typeset func="normal_test"
     write_prompt $func "executing $func"
-    start_coherent_loop 2
+    start_coherent_loop 10
     cldeadlock_threads $cl_iters
     cleanup
 }
