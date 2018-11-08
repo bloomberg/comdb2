@@ -8846,6 +8846,9 @@ retry:
         } else {
             logmsg(LOGMSG_ERROR, "%s: failed to lock back tables!, rc %d\n",
                    __func__, rc);
+
+            bdb_put_cursortran(bdb_state, curtran_out, curtran_flags, &bdberr);
+            clnt->dbtran.cursor_tran = NULL;
             rcode = rc;
         }
     }
