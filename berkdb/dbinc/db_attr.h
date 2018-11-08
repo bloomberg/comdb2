@@ -12,7 +12,7 @@ BERK_DEF_ATTR(start_recovery_at_dbregs, "Start recovery at dbregs", BERK_ATTR_TY
 BERK_DEF_ATTR(apprec_track_lsn_ranges, "During recovery track lsn ranges", BERK_ATTR_TYPE_BOOLEAN, 1)
 BERK_DEF_ATTR(dbreg_errors_fatal, "dbreg errors fatal", BERK_ATTR_TYPE_BOOLEAN, 0)
 BERK_DEF_ATTR(warn_nondbreg_records, "warn on non-dbreg records before checkpoint", BERK_ATTR_TYPE_BOOLEAN, 0)
-BERK_DEF_ATTR(num_write_retries, "number of times to retry writes on ENOSPC", BERK_ATTR_TYPE_INTEGER, 32)
+BERK_DEF_ATTR(num_write_retries, "number of times to retry writes on ENOSPC", BERK_ATTR_TYPE_INTEGER, 128)
 BERK_DEF_ATTR(debug_enospc_chance, "DEBUG %% random ENOSPC on writes", BERK_ATTR_TYPE_PERCENT, 0)
 BERK_DEF_ATTR(check_zero_lsn_writes, "Warn on writing pages with zero LSNs", BERK_ATTR_TYPE_BOOLEAN, 1)
 BERK_DEF_ATTR(abort_zero_lsn_writes, "Abort on writing pages with zero headers", BERK_ATTR_TYPE_BOOLEAN, 0)
