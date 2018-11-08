@@ -21,7 +21,7 @@ echo "done adding rows"
 # take the db, bring it back up, and run some tests on it
 cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('exit')"
 sleep 10
-ln ${COMDB2_EXE} cdb2_verify 
+cp ${COMDB2_EXE} cdb2_verify 
 
 for file in ${DBDIR}/*.datas* ${DBDIR}/*.index; do
     ./cdb2_verify $file
