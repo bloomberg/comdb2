@@ -199,7 +199,7 @@ static int systblConstraintsColumn(
     }
   }
   return SQLITE_OK; 
-};
+}
 
 /*
 ** Return the rowid for the current rule. We arrive at this number by

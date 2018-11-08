@@ -223,7 +223,7 @@ static int timepartShardsColumn(
 
   timepart_systable_shard_column(ctx, tpid, shardid, i);
   return SQLITE_OK;
-};
+}
 
 
 const sqlite3_module systblTimepartShardsModule = {
@@ -345,7 +345,7 @@ static int timepartEventsColumn(
 
   timepart_events_column(ctx, pCur->iRowid, i);
   return SQLITE_OK;
-};
+}
 
 
 const sqlite3_module systblTimepartEventsModule = {
