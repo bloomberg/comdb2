@@ -9058,11 +9058,11 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
     /* free curtran */
     rc = put_curtran_flags(thedb->bdb_env, clnt, curtran_flags);
     if (rc) {
+        recover_deadlock_sc_cleanup(thd);
         if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS)) {
             logmsg(LOGMSG_ERROR, 
                     "%s: fail to put curtran, rc=%d, return changenode\n",
                     __func__, rc);
-            recover_deadlock_sc_cleanup(thd);
             return SQLITE_CLIENT_CHANGENODE;
         } else {
             logmsg(LOGMSG_ERROR, "%s: fail to close curtran, rc=%d\n", __func__, rc);
@@ -9125,6 +9125,7 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
         rc = SQLITE_SCHEMA;
 
     if (rc) {
+        recover_deadlock_sc_cleanup(thd);
         if (rc == SQLITE_SCHEMA || rc == SQLITE_COMDB2SCHEMA) {
             logmsg(LOGMSG_ERROR, "%s: failing with SQLITE_COMDB2SCHEMA\n",
                    __func__);
@@ -9167,6 +9168,7 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
                     Pthread_mutex_unlock(&thd->lk);
                     logmsg(LOGMSG_ERROR, "bdb_cursor_lock returned %d %d\n", rc,
                             bdberr);
+                    recover_deadlock_sc_cleanup(thd);
                     return -700;
                 }
             }
@@ -9200,6 +9202,7 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s returned %d %d\n", __func__, rc, bdberr);
             Pthread_mutex_unlock(&thd->lk);
+            recover_deadlock_sc_cleanup(thd);
             return -800;
         }
     }
