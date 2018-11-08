@@ -145,12 +145,11 @@ static int get_svc_port(const char *svc)
 static bool is_port_in_range(int port)
 {
     for (auto &range : port_ranges) {
-        if (range.first <= port && port <=  range.second)
+        if (range.first <= port && port <= range.second)
             return true;
     }
     return false;
 }
-
 
 static void dealloc_port_int(const std::map<std::string, int>::iterator &it)
 {
@@ -402,7 +401,8 @@ static int tcp_listen(uint16_t port)
 
 static void dealloc_svc_running_on_port(int port)
 {
-    for (std::map<std::string, int>::iterator it = port_map.begin(); it != port_map.end(); ++it) {
+    for (std::map<std::string, int>::iterator it = port_map.begin();
+         it != port_map.end(); ++it) {
         if (it->second == port) {
             int port = it->second;
             pmux_store->del_port(it->first.c_str());
@@ -415,7 +415,7 @@ static void dealloc_svc_running_on_port(int port)
 }
 
 /* Service svc is informing us that it is using a certain port.
- * If port is in use by another service we need to update the 
+ * If port is in use by another service we need to update the
  * mapping. If port is outside of range, we still need to honor
  * and store it in the mapping.
  */
@@ -435,14 +435,14 @@ static int use_port(const char *svc, int port)
 
     // now find what's running in our port
     const auto &it = free_ports.find(port);
-    
+
     // find who's using port and dealloc it since db is up and running
     // on the specified port which it is trying to register with pmux
     dealloc_svc_running_on_port(port);
 
     if (is_port_in_range(port)) {
         const auto &it = free_ports.find(port);
-        assert (it != free_ports.end()); // port should be free
+        assert(it != free_ports.end()); // port should be free
         free_ports.erase(it);
     }
     std::pair<std::string, int> kv(svc, port);
@@ -483,7 +483,6 @@ static int dealloc_port(const char *svc)
 
     return 0;
 }
-
 
 #if 0
 static char hexmap[] = {'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'};
@@ -695,7 +694,7 @@ static int run_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds, char *in,
 #endif
             }
         } else if (svc == nullptr) {
-                conn_printf(c, "-1 missing service name\n");
+            conn_printf(c, "-1 missing service name\n");
         } else {
             disallowed_write(c, cmd);
         }
@@ -716,18 +715,22 @@ static int run_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds, char *in,
             conn_printf(c, "%d:%d\n", range.first, range.second);
         }
     } else if (strcmp(cmd, "help") == 0) {
-        conn_printf(c,
+        conn_printf(
+            c,
             "active                  : list active connections\n"
             "del service             : forget port assignment for service\n"
-            "exit                    : shutdown pmux (may be restarted by system)\n"
+            "exit                    : shutdown pmux (may be restarted by "
+            "system)\n"
             "get [/echo] service     : discover port for service\n"
             "hello service           : keep active connection\n"
             "help                    : this help message\n"
-            "range                   : print port range which this pmux can assign\n"
+            "range                   : print port range which this pmux can "
+            "assign\n"
             "reg service             : obtain/discover port for new service\n"
             "rte                     : get route to instance service/port\n"
             "stat                    : dump some stats\n"
-            "use service port        : set specific port registration for service\n"
+            "use service port        : set specific port registration for "
+            "service\n"
             "used (or list)          : dump active port assignments\n");
     } else {
         conn_printf(c, "-1 unknown command, type 'help' for a brief usage description\n");

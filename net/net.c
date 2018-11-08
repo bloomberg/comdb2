@@ -3206,10 +3206,10 @@ void print_net_memstat(int human_readable)
 }
 #endif
 
-netinfo_type *create_netinfo_int(char myhostname[], int myportnum,
-                                        int myfd, char app[], char service[],
-                                        char instance[], int fake, int offload,
-                                        int ischild, int use_getservbyname)
+netinfo_type *create_netinfo_int(char myhostname[], int myportnum, int myfd,
+                                 char app[], char service[], char instance[],
+                                 int fake, int offload, int ischild,
+                                 int use_getservbyname)
 {
     netinfo_type *netinfo_ptr;
     host_node_type *host_node_ptr;
