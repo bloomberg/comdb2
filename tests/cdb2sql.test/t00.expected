@@ -25,6 +25,7 @@ unknown @ls sub-command foo
 (name='comdb2_columns')
 (name='comdb2_completion')
 (name='comdb2_constraints')
+(name='comdb2_fingerprints')
 (name='comdb2_keycomponents')
 (name='comdb2_keys')
 (name='comdb2_keywords')

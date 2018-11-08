@@ -277,29 +277,32 @@ enum {
   ERR_CONVERSION_DT = -5,
 };
 
-/* write response */
-enum WriteResponsesEnum {
-    RESPONSE_COLUMNS,
-    RESPONSE_COLUMNS_LUA,
-    RESPONSE_COLUMNS_STR,
-    RESPONSE_COST,
-    RESPONSE_DEBUG,
-    RESPONSE_EFFECTS,
-    RESPONSE_ERROR,
-    RESPONSE_ERROR_ACCESS,
-    RESPONSE_ERROR_BAD_STATE,
-    RESPONSE_ERROR_PREPARE,
-    RESPONSE_ERROR_PREPARE_RETRY,
-    RESPONSE_ERROR_REJECT,
-    RESPONSE_FLUSH,
-    RESPONSE_HEARTBEAT,
-    RESPONSE_ROW,
-    RESPONSE_ROW_LAST,
-    RESPONSE_ROW_LAST_DUMMY,
-    RESPONSE_ROW_LUA,
-    RESPONSE_ROW_STR,
-    RESPONSE_TRACE,
-};
+
+#define RESPONSE_TYPES                                                         \
+    XRESPONSE(RESPONSE_COLUMNS)                                                \
+    XRESPONSE(RESPONSE_COLUMNS_LUA)                                            \
+    XRESPONSE(RESPONSE_COLUMNS_STR)                                            \
+    XRESPONSE(RESPONSE_COST)                                                   \
+    XRESPONSE(RESPONSE_DEBUG)                                                  \
+    XRESPONSE(RESPONSE_EFFECTS)                                                \
+    XRESPONSE(RESPONSE_ERROR)                                                  \
+    XRESPONSE(RESPONSE_ERROR_ACCESS)                                           \
+    XRESPONSE(RESPONSE_ERROR_BAD_STATE)                                        \
+    XRESPONSE(RESPONSE_ERROR_PREPARE)                                          \
+    XRESPONSE(RESPONSE_ERROR_PREPARE_RETRY)                                    \
+    XRESPONSE(RESPONSE_ERROR_REJECT)                                           \
+    XRESPONSE(RESPONSE_FLUSH)                                                  \
+    XRESPONSE(RESPONSE_HEARTBEAT)                                              \
+    XRESPONSE(RESPONSE_ROW)                                                    \
+    XRESPONSE(RESPONSE_ROW_LAST)                                               \
+    XRESPONSE(RESPONSE_ROW_LAST_DUMMY)                                         \
+    XRESPONSE(RESPONSE_ROW_LUA)                                                \
+    XRESPONSE(RESPONSE_ROW_STR)                                                \
+    XRESPONSE(RESPONSE_TRACE)
+
+#define XRESPONSE(x) x,
+enum WriteResponsesEnum { RESPONSE_TYPES };
+#undef XRESPONSE
 
 /* read response */
 enum {

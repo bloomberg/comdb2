@@ -65,10 +65,9 @@ static pthread_once_t init_key_once = PTHREAD_ONCE_INIT;
 static void free_memptr(void *inarg)
 {
     thr_arg_t *arg = (thr_arg_t *)inarg;
-    if (pthread_mutex_lock(&pthr_mutex) == 0) {
-        listc_abl(&stack_list, arg);
-        pthread_mutex_unlock(&pthr_mutex);
-    }
+    Pthread_mutex_lock(&pthr_mutex);
+    listc_abl(&stack_list, arg);
+    Pthread_mutex_unlock(&pthr_mutex);
 }
 
 static void *free_stack_thr(void *unused)
@@ -159,12 +158,7 @@ static void init_memptr_key(void)
     Pthread_key_create(&memptr, free_memptr);
     __page_size = sysconf(_SC_PAGESIZE);
 
-    if (pthread_mutex_init(&pthr_mutex, NULL) != 0) {
-        logmsg(LOGMSG_FATAL, "%s:%d failed to init pthread mutex.\n", __func__,
-                __LINE__);
-        abort();
-    }
-
+    Pthread_mutex_init(&pthr_mutex, NULL);
     Pthread_attr_init(&free_thr_attrs);
 
 #ifdef PTHREAD_STACK_MIN

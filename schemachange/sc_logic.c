@@ -544,7 +544,7 @@ int do_schema_change_locked(struct schema_change_type *s)
     /* the only callers are lightweight timepartition events,
        which already have schema lock */
     arg->iq->sc_locked = 1;
-    pthread_mutex_lock(&s->mtx);
+    Pthread_mutex_lock(&s->mtx);
     rc = do_schema_change_tran(arg);
     free(iq);
     return rc;
