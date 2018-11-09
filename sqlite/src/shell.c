@@ -3386,7 +3386,7 @@ static int completionFilter(
       pCur->zPrefix = sqlite3_mprintf("%s", sqlite3_value_text(argv[iArg]));
       if( pCur->zPrefix==0 ) return SQLITE_NOMEM;
     }
-    iArg++;
+    iArg = 1;
   }
   if( idxNum & 2 ){
     pCur->nLine = sqlite3_value_bytes(argv[iArg]);
@@ -3394,7 +3394,6 @@ static int completionFilter(
       pCur->zLine = sqlite3_mprintf("%s", sqlite3_value_text(argv[iArg]));
       if( pCur->zLine==0 ) return SQLITE_NOMEM;
     }
-    iArg++;
   }
   if( pCur->zLine!=0 && pCur->zPrefix==0 ){
     int i = pCur->nLine;
@@ -6585,8 +6584,8 @@ void sqlite3_expert_destroy(sqlite3expert*);
 
 #ifndef SQLITE_OMIT_VIRTUALTABLE 
 
-typedef sqlite3_int64 i64;
-typedef sqlite3_uint64 u64;
+/* typedef sqlite3_int64 i64; */
+/* typedef sqlite3_uint64 u64; */
 
 typedef struct IdxColumn IdxColumn;
 typedef struct IdxConstraint IdxConstraint;
@@ -13614,6 +13613,7 @@ static int do_meta_command(char *zLine, ShellState *p){
         { "enable_qpsg",      SQLITE_DBCONFIG_ENABLE_QPSG            },
         { "trigger_eqp",      SQLITE_DBCONFIG_TRIGGER_EQP            },
         { "reset_database",   SQLITE_DBCONFIG_RESET_DATABASE         },
+        { "defensive",        SQLITE_DBCONFIG_DEFENSIVE              },
     };
     int ii, v;
     open_db(p, 0);
