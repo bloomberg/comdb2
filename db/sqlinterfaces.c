@@ -4472,7 +4472,6 @@ int sql_writer(SBUF2 *sb, const char *buf, int nbytes)
 {
     extern int gbl_sql_release_locks_on_slow_reader;
     ssize_t nwrite, written = 0;
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = sbuf2getclnt(sb);
     int retry = -1;
     int released_locks = 0;
