@@ -1600,8 +1600,8 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                     }
                 }
             }
-            verify_schema_change_constraint(iq, iq->usedb, trans, od_dta,
-                                            ins_keys);
+            verify_schema_change_constraint(iq, iq->usedb, trans, od_dta, NULL,
+                                            0, ins_keys);
         } break;
         case BLOCK2_DELKL:
             logmsg(LOGMSG_USER, "keyless del\n");

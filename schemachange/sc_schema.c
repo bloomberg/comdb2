@@ -87,7 +87,7 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
         snprintf(lcl_tag, sizeof lcl_tag, ".NEW..ONDISK_IX_%d", lcl_idx);
 
         /* Data -> Key : ONDISK -> .ONDISK_IX_nn */
-        if (iq->idxInsert)
+        if (iq->idxInsert && !convert)
             memcpy(lcl_key, iq->idxInsert[lcl_idx], db->ix_keylen[lcl_idx]);
         else
             rc = stag_to_stag_buf_blobs(db->tablename, from, od_dta, lcl_tag,
@@ -585,6 +585,7 @@ int sc_cmp_fileids(unsigned long long a, unsigned long long b)
 
 void verify_schema_change_constraint(struct ireq *iq, struct dbtable *currdb,
                                      void *trans, void *od_dta,
+                                     blob_buffer_t *blobs, int maxblobs,
                                      unsigned long long ins_keys)
 {
     if (!currdb)
@@ -605,7 +606,7 @@ void verify_schema_change_constraint(struct ireq *iq, struct dbtable *currdb,
 
     int rebuild = currdb->sc_to->plan && currdb->sc_to->plan->dta_plan;
     if (verify_record_constraint(iq, currdb->sc_to, trans, od_dta, ins_keys,
-                                 NULL, 0, ".ONDISK", rebuild, 1) != 0) {
+                                 blobs, maxblobs, ".ONDISK", rebuild, 1) != 0) {
         currdb->sc_abort = 1;
         MEMORY_SYNC;
     }
