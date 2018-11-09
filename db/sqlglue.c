@@ -10796,7 +10796,7 @@ void stat4dump(int more, char *table, int istrace)
                 const char *comma = "";
                 while (hdroffset < hdrsz) {
                     u32 type;
-                    Mem m;
+                    Mem m = {0};
                     hdroffset += sqlite3GetVarint32(in + hdroffset, &type);
                     dataoffset +=
                         sqlite3VdbeSerialGet(in + dataoffset, type, &m);

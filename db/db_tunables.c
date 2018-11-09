@@ -758,7 +758,7 @@ static int sql_tranlevel_default_update(void *context, void *value)
     }
     gbl_sql_tranlevel_preserved = gbl_sql_tranlevel_default;
     logmsg(LOGMSG_USER, "Set default transaction level to %s\n",
-           (char *)sql_tranlevel_default_value());
+           (char *)sql_tranlevel_default_value(NULL));
     return 0;
 }
 
