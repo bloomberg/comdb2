@@ -4428,7 +4428,7 @@ static inline int sql_writer_recover_deadlock(struct sql_thread *thd,
     int count = 0, rc;
 
     /* Short circuit */
-    if (clnt->failed_recover_deadlock) {
+    if (!clnt || clnt->failed_recover_deadlock) {
         assert(bdb_lockref() == 0);
         return 1;
     }
