@@ -9057,6 +9057,7 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
 
     /* free curtran */
     rc = put_curtran_flags(thedb->bdb_env, clnt, curtran_flags);
+    assert(bdb_lockref() == 0);
     if (rc) {
         recover_deadlock_sc_cleanup(thd);
         if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS)) {
@@ -9114,17 +9115,18 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
     }
 
     /* Fake generation-changed failure */
-    if (force_fail && !(fail_type = (rand() % 2))) {
-        clnt->gen_changed = 1;
-        rc = -1;
+    if (force_fail) {
+        if (!(fail_type = (rand() % 2))) {
+            clnt->gen_changed = 1;
+            rc = -1;
+        } else {
+            rc = SQLITE_SCHEMA;
+        }
     } else
         rc = get_curtran_flags(thedb->bdb_env, clnt, curtran_flags);
 
-    /* Fake schema-changed failure */
-    if (!rc && fail_type)
-        rc = SQLITE_SCHEMA;
-
     if (rc) {
+        assert(bdb_lockref() == 0);
         recover_deadlock_sc_cleanup(thd);
         if (rc == SQLITE_SCHEMA || rc == SQLITE_COMDB2SCHEMA) {
             logmsg(LOGMSG_ERROR, "%s: failing with SQLITE_COMDB2SCHEMA\n",

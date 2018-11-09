@@ -297,6 +297,7 @@ again:
             clnt->need_recover_deadlock = 0;
             clnt->recover_deadlock_rcode = rd_rc;
             if (rd_rc) {
+                assert(bdb_lockref() == 0);
                 logmsg(LOGMSG_WARN, "%s recover_deadlock returned %d\n", __func__,
                         rd_rc);
             }
@@ -327,7 +328,7 @@ void handle_failed_recover_deadlock(struct sqlclntstate *clnt,
                                     int recover_deadlock_rcode)
 {
     clnt->failed_recover_deadlock = 1;
-    assert(bdb_lockref() > 0);
+    assert(bdb_lockref() == 0);
     switch (recover_deadlock_rcode) {
     case SQLITE_COMDB2SCHEMA:
         clnt->ready_for_heartbeats = 0;
