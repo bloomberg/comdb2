@@ -731,7 +731,7 @@ static int bdb_fstdumpdta_sendsz_int(bdb_state_type *bdb_state, SBUF2 *sb,
         int numthreads = 0;
         pthread_attr_t attr;
 
-        pthread_attr_init(&attr);
+        Pthread_attr_init(&attr);
         pthread_attr_setstacksize(&attr,
                                   bdb_state->attr->fstdump_thread_stacksz);
 
@@ -774,7 +774,7 @@ static int bdb_fstdumpdta_sendsz_int(bdb_state_type *bdb_state, SBUF2 *sb,
             }
         }
 
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
 
     } else if (bdb_state->attr->dtastripe &&
                bdb_state->attr->fstdump_maxthreads > 0) {
@@ -786,7 +786,7 @@ static int bdb_fstdumpdta_sendsz_int(bdb_state_type *bdb_state, SBUF2 *sb,
         int numthreads = 0;
         pthread_attr_t attr;
 
-        pthread_attr_init(&attr);
+        Pthread_attr_init(&attr);
         pthread_attr_setstacksize(&attr,
                                   bdb_state->attr->fstdump_thread_stacksz);
 
@@ -834,7 +834,7 @@ static int bdb_fstdumpdta_sendsz_int(bdb_state_type *bdb_state, SBUF2 *sb,
             }
         }
 
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
     } else if (bdb_state->attr->dtastripe) {
         /* non-multithreaded approach, for comparison */
         int ndta;

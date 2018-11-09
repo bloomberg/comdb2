@@ -105,17 +105,6 @@
 
 unsigned long long get_id(bdb_state_type *);
 
-struct temp_cursor;
-struct temp_table;
-struct temptable {
-    struct temp_cursor *cursor;
-    struct temp_table *tbl;
-    int flags;
-    char *name;
-    Btree *owner;
-    pthread_mutex_t *lk;
-};
-
 extern int gbl_partial_indexes;
 #define SQLITE3BTREE_KEY_SET_INS(IX) (clnt->ins_keys |= (1ULL << (IX)))
 #define SQLITE3BTREE_KEY_SET_DEL(IX) (clnt->del_keys |= (1ULL << (IX)))
@@ -668,9 +657,7 @@ struct sql_thread *start_sql_thread(void)
     thd->query_hash = hash_init_user(query_path_component_hash,
                                      query_path_component_cmp, 0, 0);
     Pthread_mutex_init(&thd->lk, NULL);
-    int rc = pthread_setspecific(query_info_key, thd);
-    if (rc != 0)
-        perror_errnum("start_sql_thread: pthread_setspecific", rc);
+    Pthread_setspecific(query_info_key, thd);
     Pthread_mutex_lock(&gbl_sql_lock);
     listc_abl(&thedb->sql_threads, thd);
     Pthread_mutex_unlock(&gbl_sql_lock);
@@ -695,7 +682,7 @@ void done_sql_thread(void)
         listc_rfl(&thedb->sql_threads, thd);
         Pthread_mutex_unlock(&gbl_sql_lock);
         Pthread_mutex_destroy(&thd->lk);
-        pthread_setspecific(query_info_key, NULL);
+        Pthread_setspecific(query_info_key, NULL);
         if (thd->buf) {
             free(thd->buf);
             thd->buf = NULL;
@@ -10855,22 +10842,18 @@ out:
 }
 
 void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
-                      int rootpg)
+                      struct temptable *tbl)
 {
     int rc;
     char *err = NULL;
-    // aDb[0]: sqlite_master
-    // aDb[1]: sqlite_temp_master
-    Btree *s = &src->aDb[1].pBt[0];
-
     sqlite3_stmt *stmt;
     sqlite3_prepare_v2(dest, sql, -1, &stmt, NULL);
-    tmptbl_clone = &s->temp_tables[rootpg];
+    tmptbl_clone = tbl;
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
         ;
     tmptbl_clone = NULL;
     if (rc != SQLITE_DONE) {
-        logmsg(LOGMSG_ERROR, "%s rc:%d err:%s sql:%s\n", __func__, rc, err, sql);
+        logmsg(LOGMSG_FATAL, "%s rc:%d err:%s sql:%s\n", __func__, rc, err, sql);
         abort();
     }
     sqlite3_finalize(stmt);
@@ -11619,7 +11602,7 @@ static int run_verify_indexes_query(char *sql, struct schema *sc, Mem *min,
         free(clnt.query_stats);
 
     Pthread_mutex_destroy(&clnt.wait_mutex);
-    pthread_cond_destroy(&clnt.wait_cond);
+    Pthread_cond_destroy(&clnt.wait_cond);
     Pthread_mutex_destroy(&clnt.write_lock);
     Pthread_mutex_destroy(&clnt.dtran_mtx);
 
@@ -11940,4 +11923,10 @@ int comdb2_check_vtab_access(sqlite3 *db, sqlite3_module *module)
     }
     assert(0);
     return 0;
+}
+
+struct temptable get_tbl_by_rootpg(const sqlite3 *db, int i)
+{
+    // aDb[1]: sqlite_temp_master
+    return db->aDb[1].pBt[0].temp_tables[i];
 }

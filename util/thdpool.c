@@ -242,7 +242,7 @@ struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz)
     listc_init(&pool->queue, offsetof(struct workitem, linkv));
 
     Pthread_mutex_init(&pool->mutex, NULL);
-    pthread_attr_init(&pool->attrs);
+    Pthread_attr_init(&pool->attrs);
     pthread_attr_setstacksize(&pool->attrs, DEFAULT_THD_STACKSZ);
     pthread_attr_setdetachstate(&pool->attrs, PTHREAD_CREATE_DETACHED);
 
@@ -739,7 +739,7 @@ thread_exit:
     if (delt_fn)
         delt_fn(pool, thddata);
 
-    pthread_cond_destroy(&thd->cond);
+    Pthread_cond_destroy(&thd->cond);
 
     thread_memdestroy();
 
@@ -840,7 +840,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                 errUNLOCK(&pool->mutex);
                 logmsg(LOGMSG_ERROR, "%s(%s):pthread_create: %d %s\n", __func__,
                         pool->name, rc, strerror(rc));
-                pthread_cond_destroy(&thd->cond);
+                Pthread_cond_destroy(&thd->cond);
                 free(thd);
                 return -1;
             }

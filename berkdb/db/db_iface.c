@@ -34,6 +34,7 @@ static const char revid[] = "$Id: db_iface.c,v 11.106 2003/10/02 02:57:46 margo 
 #include <walkback.h>
 
 #include <debug_switches.h>
+#include <locks_wrap.h>
 
 #ifndef TESTSUITE
 extern pthread_key_t comdb2_open_key;
@@ -473,7 +474,7 @@ __db_cursor_ser_pp(dbp, txn, dbcs, dbcp, flags)
 			stack_pc_getlist(NULL, vptr->stack, MAXSTACKDEPTH,
 			    &vptr->nframes);
 #endif
-			pthread_setspecific(comdb2_open_key, vptr);
+			Pthread_setspecific(comdb2_open_key, vptr);
 		}
 #endif
 	}
@@ -710,7 +711,7 @@ __db_cursor_real(dbp, txn, txn_clone, dbcp_old, lid_clone, dbcs, dbcp, flags,
 					    "error allocating __dbg_free_cursor\n");
 				} else {
 					p->counter = 1;
-					pthread_setspecific(DBG_FREE_CURSOR, p);
+					Pthread_setspecific(DBG_FREE_CURSOR, p);
 				}
 			}
 #endif

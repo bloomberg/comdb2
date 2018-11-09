@@ -185,7 +185,7 @@ static int systblQueuesColumn(
     }
   }
   return SQLITE_OK;
-};
+}
 
 /*
 ** Return the rowid for the current row. The rowid is the just the

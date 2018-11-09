@@ -15,7 +15,6 @@
  */
 
 #include <list.h>
-#include "pb_alloc.h"
 #include "comdb2.h"
 #include "sql.h"
 #include "osql_srs.h"

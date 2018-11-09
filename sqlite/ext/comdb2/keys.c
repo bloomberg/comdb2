@@ -189,7 +189,7 @@ static int systblKeysColumn(
     }
   }
   return SQLITE_OK; 
-};
+}
 
 /*
 ** Return the rowid for the current key. We arrive at this number by

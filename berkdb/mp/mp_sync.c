@@ -1025,7 +1025,7 @@ init_trickle_threads(void)
 	thdpool_set_maxthds(trickle_thdpool, 4);
 	thdpool_set_maxqueue(trickle_thdpool, 8000);
 	thdpool_set_longwaitms(trickle_thdpool, 30000);
-	pthread_mutex_init(&pgpool_lk, NULL);
+	Pthread_mutex_init(&pgpool_lk, NULL);
 
 	pgpool =
 	    pool_setalloc_init(sizeof(struct writable_range), 0, malloc, free);
@@ -1356,7 +1356,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 			
 	pt->total_pages = pt->done_pages = pt->written_pages = 0;
 	pt->ret = pt->nwaits = 0;
-	pthread_mutex_init(&pt->lk, NULL);
+	Pthread_mutex_init(&pt->lk, NULL);
 	Pthread_cond_init(&pt->wait, NULL);
 
 	/*
@@ -1476,7 +1476,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 	}
 
 	Pthread_mutex_destroy(&pt->lk);
-	pthread_cond_destroy(&pt->wait);
+	Pthread_cond_destroy(&pt->wait);
 done:
         /*
          * If doing a checkpoint or flushing a file for the application, we

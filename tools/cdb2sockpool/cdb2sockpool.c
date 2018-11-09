@@ -150,18 +150,14 @@ static int pthread_create_attrs(pthread_t *tid, int detachstate,
     pthread_t local_tid;
     if (!tid)
         tid = &local_tid;
-    rc = pthread_attr_init(&attr);
-    if (rc != 0) {
-        syslog(LOG_ERR, "%s:pthread_attr_init: %d %s\n", __func__, rc,
-               strerror(rc));
-        return -1;
-    }
+    Pthread_attr_init(&attr);
+
     if (stacksize > 0) {
         rc = pthread_attr_setstacksize(&attr, stacksize);
         if (rc != 0) {
             syslog(LOG_ERR, "%s:pthread_attr_getstacksize: %d %s\n", __func__,
                    rc, strerror(rc));
-            pthread_attr_destroy(&attr);
+            Pthread_attr_destroy(&attr);
             return -1;
         }
     }
@@ -169,17 +165,17 @@ static int pthread_create_attrs(pthread_t *tid, int detachstate,
     if (rc != 0) {
         syslog(LOG_ERR, "%s:pthread_attr_setdetachstate: %d %s\n", __func__, rc,
                strerror(rc));
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
         return -1;
     }
     rc = pthread_create(tid, &attr, start_routine, arg);
     if (rc != 0) {
         syslog(LOG_ERR, "%s:pthread_create: %d %s\n", __func__, rc,
                strerror(rc));
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
         return -1;
     }
-    pthread_attr_destroy(&attr);
+    Pthread_attr_destroy(&attr);
     return 0;
 }
 

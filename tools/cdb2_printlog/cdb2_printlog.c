@@ -102,8 +102,8 @@ int tool_cdb2_printlog_main(argc, argv)
 
 	comdb2ma_init(0, 0);
 
-	pthread_key_create(&comdb2_open_key, NULL);
-	pthread_key_create(&DBG_FREE_CURSOR, NULL);
+	Pthread_key_create(&comdb2_open_key, NULL);
+	Pthread_key_create(&DBG_FREE_CURSOR, NULL);
 
 	if ((ret = cdb2_print_version_check(progname)) != 0)
 		return (ret);

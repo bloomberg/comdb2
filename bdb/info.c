@@ -1094,12 +1094,12 @@ int bdb_run_in_a_thread(bdb_state_type *bdb_state,
     struct bdb_thread_args *args;
 
     pthread_attr_t attr;
-    pthread_attr_init(&attr);
+    Pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
     pthread_attr_setstacksize(&attr, 1024 * 128);
     args = malloc(sizeof(struct bdb_thread_args));
     if (args == NULL) {
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
         errno = ENOMEM;
         return -1;
     }

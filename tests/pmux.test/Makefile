@@ -4,7 +4,7 @@ else
   include $(TESTSROOTDIR)/testcase.mk
 endif
 ifeq ($(TEST_TIMEOUT),)
-	export TEST_TIMEOUT=3m
+	export TEST_TIMEOUT=1m
 endif
 
 # this is a local test, don't need cluster
