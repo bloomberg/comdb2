@@ -651,6 +651,7 @@ struct sqlclntstate {
     int need_recover_deadlock;
     int recover_deadlock_rcode;
     int heartbeat_lock;
+    int failed_recover_deadlock;
 };
 
 /* Query stats. */

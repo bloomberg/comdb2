@@ -278,6 +278,7 @@ static inline int lock_client_write_lock_int(struct sqlclntstate *clnt, int try)
 {
     struct sql_thread *thd;
     int rc = 0, rd_rc = clnt->recover_deadlock_rcode;
+    int frc = clnt->failed_recover_deadlock;
     uint32_t flags = 0;
 
     if (gbl_fail_client_write_lock && !(rand() % gbl_fail_client_write_lock))
@@ -289,7 +290,7 @@ again:
     } else {
         Pthread_mutex_lock(&clnt->write_lock);
     }
-    if (rd_rc == 0 && rc == 0 && clnt->heartbeat_lock) {
+    if (rd_rc == 0 && frc == 0 && rc == 0 && clnt->heartbeat_lock) {
         if (clnt->need_recover_deadlock &&
             (thd = pthread_getspecific(query_info_key))) {
             rd_rc = recover_deadlock_flags(thedb->bdb_env, thd, NULL, 0, flags);
@@ -325,6 +326,7 @@ void unlock_client_write_lock(struct sqlclntstate *clnt)
 void handle_failed_recover_deadlock(struct sqlclntstate *clnt,
                                     int recover_deadlock_rcode)
 {
+    clnt->failed_recover_deadlock = 1;
     switch (recover_deadlock_rcode) {
     case SQLITE_COMDB2SCHEMA:
         clnt->ready_for_heartbeats = 0;
@@ -348,6 +350,7 @@ void handle_failed_recover_deadlock(struct sqlclntstate *clnt,
                recover_deadlock_rcode);
         break;
     }
+    clnt->failed_recover_deadlock = 0;
 }
 
 int write_response(struct sqlclntstate *clnt, int R, void *D, int I)
