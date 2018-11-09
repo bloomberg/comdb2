@@ -413,6 +413,9 @@ static int newsql_response_int(struct sqlclntstate *clnt,
         goto done;
     rc = 0;
 done:
+    /* Cannot be heartbeat, (that uses only newsql_send_hdr).
+     * We must clear this flag under clnt->write_lock */
+    clnt->emitting_flag = 0;
     unlock_client_write_lock(clnt);
     return rc;
 }

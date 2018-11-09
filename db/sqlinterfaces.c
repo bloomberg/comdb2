@@ -367,10 +367,7 @@ int write_response(struct sqlclntstate *clnt, int R, void *D, int I)
         clnt->emitting_flag = 1;
     }
     rc = clnt->plugin.write_response(clnt, R, D, I);
-    if (R != RESPONSE_HEARTBEAT) {
-        assert(clnt->emitting_flag);
-        clnt->emitting_flag = 0;
-    }
+    /* emitting_flag must be cleared while holding lock (in plugin) */
     if (R != RESPONSE_HEARTBEAT && (rd_rc = clnt->recover_deadlock_rcode)) {
         clnt->recover_deadlock_rcode = 0;
         handle_failed_recover_deadlock(clnt, rd_rc);
