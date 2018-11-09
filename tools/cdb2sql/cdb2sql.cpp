@@ -909,9 +909,24 @@ int Result_buffer::append_column(cdb2_hndl_tp *hndl, int col) {
     /* Append the column to the last row. */
     result.back().push_back(column);
 
-    /* Update the max display size. */
-    if (column.length() > width[col]) {
-        width[col] = column.length();
+    /* Update the maximum display width. */
+    int disp_width;
+    if ((cdb2_column_type(hndl, col) == CDB2_CSTRING)) {
+        const char *str = column.c_str();
+        int count = 0;
+        while (*str) {
+            // count all but 10xxxxxx
+            if (((*str) & 0xc0) != 0x80) {
+                count ++;
+            }
+            str ++;
+        }
+        disp_width = count;
+    } else {
+        disp_width = column.length();
+    }
+    if (disp_width > width[col]) {
+        width[col] = disp_width;
     }
 
     return 0;
