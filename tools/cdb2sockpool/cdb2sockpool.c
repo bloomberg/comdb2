@@ -75,7 +75,7 @@ struct db_number_info {
     LINKC_T(struct db_number_info) linkv;
 };
 
-static hash_t * dbs_info_hash = NULL;
+static hash_t *dbs_info_hash = NULL;
 
 struct client {
     /* client file descriptor */
@@ -213,16 +213,16 @@ static void fd_destructor(enum socket_pool_event event, const char *typestr,
     }
 
     pooled_socket_count--;
-   if(dbnum > 0 ) {
-      struct db_number_info *dbs_info;
-      dbs_info = hash_find(dbs_info_hash, &dbnum);
-      if (dbs_info) {
-          dbs_info->pool_count--;
-          if(dbs_info->pool_count == 0) {
-             listc_rfl(&active_list, dbs_info);
-          }
-      }
-   }
+    if (dbnum > 0) {
+        struct db_number_info *dbs_info;
+        dbs_info = hash_find(dbs_info_hash, &dbnum);
+        if (dbs_info) {
+            dbs_info->pool_count--;
+            if (dbs_info->pool_count == 0) {
+                listc_rfl(&active_list, dbs_info);
+            }
+        }
+    }
 }
 
 int recvall(int fd, void *bufp, int len)
@@ -560,18 +560,18 @@ void *client_thd(void *voidarg)
             pthread_mutex_lock(&sockpool_lk);
             {
                 pooled_socket_count++;
-                if(dbnum > 0) {
-                   struct db_number_info *dbs_info;
-                   dbs_info = hash_find(dbs_info_hash, &dbnum);
-                   if (dbs_info == NULL) {
-                       dbs_info = calloc(1, sizeof(struct db_number_info));
-                       dbs_info->dbnum = dbnum;
-                       hash_add(dbs_info_hash, dbs_info);
-                   }
-                   if(dbs_info->pool_count == 0) {
-                      listc_atl(&active_list, dbs_info);
-                   }
-                   dbs_info->pool_count++;
+                if (dbnum > 0) {
+                    struct db_number_info *dbs_info;
+                    dbs_info = hash_find(dbs_info_hash, &dbnum);
+                    if (dbs_info == NULL) {
+                        dbs_info = calloc(1, sizeof(struct db_number_info));
+                        dbs_info->dbnum = dbnum;
+                        hash_add(dbs_info_hash, dbs_info);
+                    }
+                    if (dbs_info->pool_count == 0) {
+                        listc_atl(&active_list, dbs_info);
+                    }
+                    dbs_info->pool_count++;
                 }
             }
             pthread_mutex_unlock(&sockpool_lk);
@@ -1181,7 +1181,7 @@ int main(int argc, char *argv[])
     socket_pool_set_max_fds(POOL_MAX_FDS);
     socket_pool_set_max_fds_per_typestr(POOL_MAX_FDS_PER_DB);
 
-    dbs_info_hash = hash_init( sizeof( int32_t ) );
+    dbs_info_hash = hash_init(sizeof(int32_t));
 
     listc_init(&active_list, offsetof(struct db_number_info, linkv));
     listc_init(&client_list, offsetof(struct client, linkv));
