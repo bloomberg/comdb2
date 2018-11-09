@@ -559,7 +559,7 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 	DB_MPOOL_HASH **hparray;
 	DB_MUTEX *mutexp;
 	MPOOLFILE *mfp;
-	int ar_cnt, hb_lock, i, j, pass, remaining, ret, t_ret;
+	int ar_cnt, hb_lock, i, j, pass, remaining, ret;
 	int wait_cnt, write_cnt, wrote;
 	int sgio, gathered, delay_write;
 	db_pgno_t off_gather;
@@ -1025,7 +1025,7 @@ init_trickle_threads(void)
 	thdpool_set_maxthds(trickle_thdpool, 4);
 	thdpool_set_maxqueue(trickle_thdpool, 8000);
 	thdpool_set_longwaitms(trickle_thdpool, 30000);
-	pthread_mutex_init(&pgpool_lk, NULL);
+	Pthread_mutex_init(&pgpool_lk, NULL);
 
 	pgpool =
 	    pool_setalloc_init(sizeof(struct writable_range), 0, malloc, free);
@@ -1081,20 +1081,16 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 	DB_MPOOL *dbmp;
 	DB_MPOOL_HASH *hp;
 	DB_MPOOL_HASH **hparray;
-	DB_MUTEX *mutexp;
 	MPOOL *c_mp = NULL, *mp;
 	MPOOLFILE *mfp;
 	u_int32_t n_cache;
-	int ar_cnt, ar_max, hb_lock, i, j, pass, remaining, ret, t_ret;
-	int wait_cnt, write_cnt, wrote;
+	int ar_cnt, ar_max, i, j, pass, ret, t_ret;
+	int wrote;
 	int do_parallel;
 	struct trickler *pt;
 	struct writable_range *range;
 	int start, end;
 	int memp_sync_files_time = 0;
-	db_pgno_t off_gather = 0;
-	int gathered = 0;
-	int delay_write = 0;
 	DB_LSN oldest_first_dirty_tx_begin_lsn;
 	int accum_sync, accum_skip;
 	BH_TRACK swap;
@@ -1360,7 +1356,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 			
 	pt->total_pages = pt->done_pages = pt->written_pages = 0;
 	pt->ret = pt->nwaits = 0;
-	pthread_mutex_init(&pt->lk, NULL);
+	Pthread_mutex_init(&pt->lk, NULL);
 	Pthread_cond_init(&pt->wait, NULL);
 
 	/*
@@ -1480,7 +1476,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 	}
 
 	Pthread_mutex_destroy(&pt->lk);
-	pthread_cond_destroy(&pt->wait);
+	Pthread_cond_destroy(&pt->wait);
 done:
         /*
          * If doing a checkpoint or flushing a file for the application, we

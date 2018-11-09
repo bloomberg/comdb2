@@ -229,11 +229,6 @@ int luabb_istype(lua_State *lua, int index, dbtypes_enum type)
 
 int luabb_error(Lua lua, SP sp, const char *fmt, ...)
 {
-    lua_Debug ar;
-    int rc;
-    const char *w = NULL;   // where
-    ptrdiff_t wl = 0;       // where len
-
     char c[1];
     va_list args;
     int len;
@@ -257,9 +252,9 @@ int luabb_error(Lua lua, SP sp, const char *fmt, ...)
     extern int gbl_allow_lua_print;
     if (gbl_allow_lua_print)  {
         luaL_where(lua, 0);
-        const char *src = lua_tostring(lua, -1);
         lua_pop(lua, 1);
 #if 0
+        const char *src = lua_tostring(lua, -1);
         if (sp && sp->spname)
             fprintf(stderr, "ERROR in SP:%s Ver:%d %s:%s\n",
               sp->spname, sp->spversion, out, src);
@@ -338,7 +333,6 @@ void luabb_typeconvert_int(Lua l, int pos, dbtypes_enum to, const char *to_str)
         return;
     }
 
-    const char *fstr, *tstr;
     all_types_t u;
     switch (to) {
     case DBTYPES_LSTRING:

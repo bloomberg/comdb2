@@ -60,7 +60,6 @@ void dbqueuedb_coalesce(struct dbenv *dbenv) {
 }
 
 int dbqueuedb_restart_consumers(struct dbtable *db) {
-    int type;
     comdb2_queue_consumer_t *handler; 
 
     for (int i = 0; i < CONSUMER_TYPE_LAST; i++) {
@@ -160,7 +159,6 @@ queue_consume(struct ireq *iq, const void *fnd, int consumern)
         {
             tran_type *trans;
             int rc;
-            int startms, diffms;
 
             if(retries > 10)
                 poll(0,0,(rand()%25+1));

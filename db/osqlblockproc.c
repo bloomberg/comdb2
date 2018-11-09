@@ -545,7 +545,7 @@ int osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func, 
 
 
         /* destroy transaction */
-        pthread_cond_destroy(&tran->cond);
+        Pthread_cond_destroy(&tran->cond);
         Pthread_mutex_destroy(&tran->mtx);
         Pthread_mutex_destroy(&tran->store_mtx);
 

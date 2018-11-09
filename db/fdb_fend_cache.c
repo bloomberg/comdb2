@@ -198,7 +198,6 @@ static int fdb_sqlstat_cache_populate(struct sqlclntstate *clnt, fdb_t *fdb,
     char *sql_stat1 = "select * from sqlite_stat1";
     char *sql_stat4 = "select * from sqlite_stat4 where tbl not like 'cdb2.%'";
     int rc;
-    int flags;
 
     /* fake a BtCursor */
     cur = calloc(1, sizeof(BtCursor) + sizeof(Btree));
@@ -348,7 +347,6 @@ static void fdb_sqlstat_cache_depopulate(fdb_sqlstat_cache_t *cache)
 void fdb_sqlstat_cache_destroy(fdb_sqlstat_cache_t **pcache)
 {
     fdb_sqlstat_cache_t *cache;
-    int rc;
 
     cache = *pcache;
 
@@ -376,7 +374,6 @@ fdb_cursor_if_t *fdb_sqlstat_cache_cursor_open(struct sqlclntstate *clnt,
     fdb_sqlstat_table_t *tbl;
     fdb_sqlstat_cursor_t *fdbc;
     fdb_cursor_if_t *fdbc_if;
-    int rc = 0;
     int bdberr = 0;
 
     cache = fdb_sqlstats_get(fdb);

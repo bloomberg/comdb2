@@ -30,6 +30,7 @@ static const char revid[] =
 #include <crc32c.h>
 #include <syslog.h>
 #include <logmsg.h>
+#include <locks_wrap.h>
 
 int db_init __P((DB_ENV *, char *, int, u_int32_t, int *));
 int dump __P((DB *, int, int));
@@ -62,7 +63,7 @@ tool_cdb2_dump_main(argc, argv)
 	char *dopt, *home, passwd[1024], *subname;
 	FILE *crypto;
 
-	pthread_key_create(&comdb2_open_key, NULL);
+	Pthread_key_create(&comdb2_open_key, NULL);
 
 	if ((ret = version_check(progname)) != 0)
 		return (ret);

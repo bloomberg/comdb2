@@ -86,9 +86,6 @@ tran_type *bdb_tran_begin_logical_norowlocks_int(bdb_state_type *bdb_state,
 {
     tran_type *tran;
     int rc;
-    DB_TXN *parent_tid;
-    bdb_state_type *child;
-    int i;
     unsigned int flags = 0;
 
     /* One day this will change.  One day.
@@ -264,10 +261,17 @@ void *bdb_get_physical_tran(tran_type *ltran)
     return ltran->physical_tran;
 }
 
+void *bdb_get_sc_parent_tran(tran_type *ltran)
+{
+    assert(ltran->tranclass == TRANCLASS_LOGICAL);
+    return ltran->sc_parent_tran;
+}
+
 void bdb_ltran_get_schema_lock(tran_type *ltran)
 {
     ltran->get_schema_lock = 1;
     ltran->single_physical_transaction = 1;
+    ltran->schema_change_txn = 1;
 }
 
 void bdb_ltran_put_schema_lock(tran_type *ltran)
@@ -344,7 +348,6 @@ int berkdb_commit_logical(DB_ENV *dbenv, void *state, uint64_t ltranid,
                           DB_LSN *lsn)
 {
     int rc;
-    tran_type *txn;
     bdb_state_type *bdb_state;
 
     bdb_state = (bdb_state_type *)state;
@@ -353,6 +356,7 @@ int berkdb_commit_logical(DB_ENV *dbenv, void *state, uint64_t ltranid,
         bdb_state = bdb_state->parent;
 
 #ifdef DEBUG_TXN_LIST
+    tran_type *txn;
     LOCK(&bdb_state->translist_lk)
     {
         txn = hash_find(bdb_state->logical_transactions_hash, &ltranid);
@@ -633,10 +637,6 @@ tran_type *bdb_tran_begin_logical_int_int(bdb_state_type *bdb_state,
     int rc = 0;
     int step;
     int ismaster;
-    DB_TXN *parent_tid;
-    bdb_state_type *child;
-    int i;
-    unsigned int flags;
 
     /* One day this will change.  One day.
        We really want a bdb_env_type and a bdb_table_type.
@@ -705,10 +705,7 @@ tran_type *bdb_tran_begin_logical_int_int(bdb_state_type *bdb_state,
     tran->parent_state = bdb_state;
 
     /* Put this tran in seqnum_info->key */
-    rc = pthread_setspecific(bdb_state->seqnum_info->key, tran);
-    if (rc != 0) {
-        abort();
-    }
+    Pthread_setspecific(bdb_state->seqnum_info->key, tran);
 
     if (getlock) {
         BDB_READLOCK("trans_start_logical");
@@ -835,8 +832,7 @@ tran_type *bdb_tran_begin_phys(bdb_state_type *bdb_state,
                                tran_type *logical_tran)
 {
     int rc, flags = 0;
-    extern int gbl_micro_retry_on_deadlock, gbl_locks_check_waiters,
-        gbl_rowlocks_commit_on_waiters;
+    extern int gbl_locks_check_waiters, gbl_rowlocks_commit_on_waiters;
     tran_type *tran;
 
     if (logical_tran->tranclass != TRANCLASS_LOGICAL) {
@@ -911,10 +907,8 @@ tran_type *bdb_tran_begin_phys(bdb_state_type *bdb_state,
 static inline unsigned long long lag_bytes(bdb_state_type *bdb_state)
 {
     const char *connlist[REPMAX];
-    int count, numnodes, i;
+    int count, i;
     char *master_host = bdb_state->repinfo->master_host;
-    int now;
-    static int lastpr = 0;
     uint64_t lagbytes;
     DB_LSN minlsn, masterlsn;
 
@@ -1101,7 +1095,6 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
     tran_type *tran;
     int rc;
     DB_TXN *parent_tid;
-    int i;
     unsigned int flags;
 
     /*fprintf(stderr, "calling bdb_tran_begin_ll_int\n");*/
@@ -1127,19 +1120,15 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
 
         parent->committed_child = 0; /* reset this, there are children */
     } else {
-        DB_LSN lsn;
         parent_tid = NULL;
 
         tran->committed_child =
             1; /* set this by default for the parent trans */
         tran->master = 1;
 
-        rc = pthread_setspecific(bdb_state->seqnum_info->key, tran);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "pthread_setspecific failed\n");
-        }
+        Pthread_setspecific(bdb_state->seqnum_info->key, tran);
 
-        /*fprintf(stderr, "pthread_setspecific %x to %x\n", bdb_state, tran);*/
+        /*fprintf(stderr, "Pthread_setspecific %x to %x\n", bdb_state, tran);*/
         tran->startlsn.file = 0;
         tran->startlsn.offset = 1;
     }
@@ -1636,6 +1625,13 @@ static int bdb_tran_commit_with_seqnum_int_int(
         if (tran->aborted) {
             needed_to_abort = 1;
 
+            if (tran->schema_change_txn && tran->sc_parent_tran) {
+                tran->physical_tran = tran->sc_parent_tran;
+                tran->sc_parent_tran = NULL;
+                tran->get_schema_lock = 0;
+                tran->schema_change_txn = 0; // done
+            }
+
             if (tran->physical_tran) {
                 bdb_tran_abort_phys(bdb_state, tran->physical_tran);
             }
@@ -1651,6 +1647,19 @@ static int bdb_tran_commit_with_seqnum_int_int(
                 goto cleanup;
             }
             lsn = tran->last_regop_lsn;
+        } else if (tran->schema_change_txn && tran->sc_parent_tran) {
+            rc = bdb_tran_commit(bdb_state, tran->physical_tran, bdberr);
+            if (rc) {
+                logmsg(
+                    LOGMSG_ERROR,
+                    "%s:%d failed to commit physical tran rc %d, bdberr %d\n",
+                    __func__, __LINE__, rc, bdberr);
+                outrc = -1;
+                goto cleanup;
+            }
+            tran->physical_tran = tran->sc_parent_tran;
+            tran->sc_parent_tran = NULL;
+            tran->schema_change_txn = 0; // done
         }
 
         /* we need to start a transaction, write a commit log record,
@@ -1995,9 +2004,7 @@ cleanup:
     /* if we are the master and we free tran we need to get rid of the stored
      * reference so functions like berkdb_send_rtn don't try to use it */
     if (tran->master) {
-        rc = pthread_setspecific(bdb_state->seqnum_info->key, NULL);
-        if (rc != 0)
-            logmsg(LOGMSG_ERROR, "pthread_setspecific failed\n");
+        Pthread_setspecific(bdb_state->seqnum_info->key, NULL);
     }
 
     if (tran->trak)
@@ -2320,9 +2327,7 @@ cleanup:
     /* if we are the master and we free tran we need to get rid of the stored
      * reference so functions like berkdb_send_rtn don't try to use it */
     if (tran->master) {
-        rc = pthread_setspecific(bdb_state->seqnum_info->key, NULL);
-        if (rc != 0)
-            logmsg(LOGMSG_ERROR, "pthread_setspecific failed\n");
+        Pthread_setspecific(bdb_state->seqnum_info->key, NULL);
     }
 
     if (tran->trak)

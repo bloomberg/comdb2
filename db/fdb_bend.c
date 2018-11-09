@@ -303,8 +303,6 @@ int fdb_svc_cursor_close(char *cid, int isuuid, struct sqlclntstate **pclnt)
     svc_cursor_t *cur;
     int rc = 0;
     int bdberr = 0;
-    int commit;
-    uuidstr_t us;
 
     /* retrieve cursor */
     Pthread_rwlock_wrlock(&center->cursors_rwlock);
@@ -378,7 +376,7 @@ int fdb_svc_cursor_close(char *cid, int isuuid, struct sqlclntstate **pclnt)
         reset_clnt(*pclnt, NULL, 0);
 
         Pthread_mutex_destroy(&(*pclnt)->wait_mutex);
-        pthread_cond_destroy(&(*pclnt)->wait_cond);
+        Pthread_cond_destroy(&(*pclnt)->wait_cond);
         Pthread_mutex_destroy(&(*pclnt)->write_lock);
         Pthread_mutex_destroy(&(*pclnt)->dtran_mtx);
 
@@ -512,7 +510,6 @@ static int fdb_fetch_blob_into_sqlite_mem(svc_cursor_t *cur, struct schema *sc,
     blob_status_t blobs;
     int bdberr;
 
-    struct ireq iq;
     int rc;
     int nretries = 0;
 
@@ -591,7 +588,6 @@ static int fdb_get_data_int(svc_cursor_t *cur, struct schema *sc, char *in,
     double dval;
     int outdtsz = 0;
     int rc = 0;
-    Vdbe *vdbe = NULL;
     struct field *f = &(sc->member[fnum]);
     char *in_orig = in = in + f->offset;
 
@@ -911,7 +907,6 @@ static int fdb_get_data_int(svc_cursor_t *cur, struct schema *sc, char *in,
         break;
 
     case SERVER_DECIMAL: {
-        int i;
         null = stype_is_null(in);
         if (null) {
             m->flags = MEM_Null;
@@ -1007,14 +1002,10 @@ static int fdb_ondisk_to_packed_sqlite_tz(struct dbtable *db, struct schema *s,
                                           svc_cursor_t *cur)
 {
     Mem *m;
-    int fnum;
     int i;
     int rc = 0;
     int datasz = 0;
     int hdrsz = 0;
-    int remainingsz = 0;
-    int sz;
-    unsigned char *hdrbuf, *dtabuf;
     int ncols = 0;
     int nField;
     int rec_srt_off = gbl_sort_nulls_correctly ? 0 : 1;
@@ -1033,6 +1024,8 @@ static int fdb_ondisk_to_packed_sqlite_tz(struct dbtable *db, struct schema *s,
     *reqsize = 0;
 
 #if 0
+    int sz;
+    int fnum;
    for (fnum = 0; fnum < nField; fnum++) {
       bzero(&m[fnum], sizeof(Mem));
       rc = fdb_get_data_int(cur, s, in, fnum, &m[fnum], 1, genid);
@@ -1072,10 +1065,11 @@ static int fdb_ondisk_to_packed_sqlite_tz(struct dbtable *db, struct schema *s,
    __FILE__, __LINE__, hdrsz, ncols, maxout);*/
 
 #if 0
-   hdrbuf = out;
-   dtabuf = out + hdrsz;
+    unsigned char *hdrbuf, *dtabuf;
+    hdrbuf = out;
+    dtabuf = out + hdrsz;
 
-   /* enough room? */
+    /* enough room? */
    if (maxout > 0 && (datasz + hdrsz) > maxout) {
       fprintf (stderr, "AAAAA!?!?\n");
       rc = -2;
@@ -1088,6 +1082,7 @@ static int fdb_ondisk_to_packed_sqlite_tz(struct dbtable *db, struct schema *s,
    sz = sqlite3PutVarint(hdrbuf, hdrsz);
    hdrbuf += sz;
 
+    int remainingsz = 0;
    /* keep track of the size remaining */
    remainingsz = datasz;
 

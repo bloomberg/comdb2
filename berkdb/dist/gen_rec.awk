@@ -732,8 +732,8 @@ function print_function() {
 		}
 	for (i = 0; i < nvars; i ++)
 		if (modes[i] == "DBT" || modes[i] == "PGDBT") {
-			printf("\tu_int32_t i;\n") >> CFILE
-			printf("\tint ch;\n") >> CFILE
+			#printf("\tu_int32_t i;\n") >> CFILE
+			#printf("\tint ch;\n") >> CFILE
 			break;
 		}
 	printf("\tint ret;\n\n") >> CFILE;

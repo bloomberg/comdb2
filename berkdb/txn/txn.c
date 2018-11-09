@@ -340,9 +340,8 @@ __txn_begin_main(dbenv, parent, txnpp, flags, retries)
 		   we can trace back to the parent DB_TXN to get its
 		   begin LSN. Do not rush to get the begin LSN as
 		   it may not be needed (eg, readonly txn's). */
-		if (pthread_getspecific(txn_key) == NULL &&
-		    pthread_setspecific(txn_key, (void *)txn) != 0)
-			goto err;
+		if (pthread_getspecific(txn_key) == NULL)
+		    Pthread_setspecific(txn_key, (void *)txn);
 	}
 	return (0);
 
@@ -728,7 +727,7 @@ __txn_allocate_ltrans(dbenv, ltranid, begin_lsn, rlt)
     DB_LSN *begin_lsn;
     LTDESC **rlt;
 {
-	LTDESC *lt = NULL, *hflt;
+	LTDESC *lt = NULL;
 	int ret = 0;
 
 	Pthread_mutex_lock(&dbenv->ltrans_inactive_lk);
@@ -749,6 +748,7 @@ __txn_allocate_ltrans(dbenv, ltranid, begin_lsn, rlt)
 
 	Pthread_mutex_lock(&dbenv->ltrans_hash_lk);
 #ifdef LTRANS_DEBUG
+	LTDESC *hflt;
 	assert(!(hflt = hash_find(dbenv->ltrans_hash, lt)));
 #endif
 	hash_add(dbenv->ltrans_hash, lt);
@@ -823,14 +823,12 @@ __txn_deallocate_ltrans(dbenv, lt)
 	DB_ENV *dbenv;
 	LTDESC *lt;
 {
-	RLLIST *rlist;
-	LTDESC *hflt;
-
 	assert(lt->active_txn_count == 0);
 	lt->flags = 0;
 
 	Pthread_mutex_lock(&dbenv->ltrans_hash_lk);
 #ifdef LTRANS_DEBUG
+	LTDESC *hflt;
 	assert(hflt = hash_find(dbenv->ltrans_hash, lt));
 #endif
 	hash_del(dbenv->ltrans_hash, lt);
@@ -885,7 +883,6 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	DB_LOCKREQ request;
 	DB_TXN *kid;
 	LTDESC *lt = NULL;
-	DB_LOCK *lks = NULL;
 	TXN_DETAIL *td;
 	u_int32_t lflags, ltranflags = 0;
 	int32_t timestamp;
@@ -1534,8 +1531,8 @@ __txn_discard(txnp, flags)
 		__os_free(dbenv, freep);
 	}
 
-	if (dbenv->tx_perfect_ckp && (ret = pthread_setspecific(txn_key, NULL)) != 0)
-		return (ret);
+	if (dbenv->tx_perfect_ckp)
+        Pthread_setspecific(txn_key, NULL);
 
 	return (0);
 }
@@ -1878,8 +1875,8 @@ __txn_end(txnp, is_commit)
 		(void)__txn_checkpoint(dbenv, 0, 0, DB_FORCE);
 	}
 
-	if (dbenv->tx_perfect_ckp && (ret = pthread_setspecific(txn_key, NULL)) != 0)
-		return (ret);
+	if (dbenv->tx_perfect_ckp)
+        Pthread_setspecific(txn_key, NULL);
 
 	return (0);
 }
@@ -2456,7 +2453,6 @@ __txn_preclose(dbenv)
 	DB_TXNMGR *mgr;
 	DB_TXNREGION *region;
 	int do_closefiles, ret;
-	void *bdb_state = dbenv->app_private;
 
 	mgr = (DB_TXNMGR *)dbenv->tx_handle;
 	region = mgr->reginfo.primary;
@@ -2589,7 +2585,6 @@ dumptxn(DB_ENV * dbenv, DB_LSN * lsnpp)
 
 	logmsg(LOGMSG_USER, "{ %d log records\n", lc.nlsns);
 	for (int i = lc.nlsns - 1; i >= 0; i--) {
-		DB *db;
 		u_int32_t type;
 
 		if (a) {

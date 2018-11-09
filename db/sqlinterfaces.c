@@ -49,7 +49,6 @@
 #include <sbuf2.h>
 #include <bdb_api.h>
 
-#include "pb_alloc.h"
 #include "comdb2.h"
 #include "types.h"
 #include "tag.h"
@@ -266,29 +265,10 @@ int disable_server_sql_timeouts(void)
             gbl_sql_no_timeouts_on_release_locks);
 }
 
-/* copied content from WriteResponsesEnum in sql.h */
-const char *WriteRespString[] = {
-    "RESPONSE_COLUMNS",
-    "RESPONSE_COLUMNS_LUA",
-    "RESPONSE_COLUMNS_STR",
-    "RESPONSE_COST",
-    "RESPONSE_DEBUG",
-    "RESPONSE_EFFECTS",
-    "RESPONSE_ERROR",
-    "RESPONSE_ERROR_ACCESS",
-    "RESPONSE_ERROR_BAD_STATE",
-    "RESPONSE_ERROR_PREPARE",
-    "RESPONSE_ERROR_PREPARE_RETRY",
-    "RESPONSE_ERROR_REJECT",
-    "RESPONSE_FLUSH",
-    "RESPONSE_HEARTBEAT",
-    "RESPONSE_ROW",
-    "RESPONSE_ROW_LAST",
-    "RESPONSE_ROW_LAST_DUMMY",
-    "RESPONSE_ROW_LUA",
-    "RESPONSE_ROW_STR",
-    "RESPONSE_TRACE",
-};
+#define XRESPONSE(x) #x,
+const char *WriteRespString[] = { RESPONSE_TYPES };
+#undef XRESPONSE
+
 int write_response(struct sqlclntstate *clnt, int R, void *D, int I)
 {
 #ifdef DEBUG
@@ -1959,12 +1939,7 @@ void free_sql(void *p) { free(p); }
 
 void init_current_current_sql_key(void)
 {
-    int rc;
-    rc = pthread_key_create(&current_sql_query_key, free_sql);
-    if (rc) {
-        logmsg(LOGMSG_FATAL, "pthread_key_create current_sql_query_key rc %d\n", rc);
-        exit(1);
-    }
+    Pthread_key_create(&current_sql_query_key, free_sql);
 }
 
 extern int gbl_debug_temptables;
@@ -2313,9 +2288,9 @@ void thr_set_current_sql(const char *sql)
         prevsql = pthread_getspecific(current_sql_query_key);
         if (prevsql) {
             free(prevsql);
-            pthread_setspecific(current_sql_query_key, NULL);
+            Pthread_setspecific(current_sql_query_key, NULL);
         }
-        pthread_setspecific(current_sql_query_key, strdup(sql));
+        Pthread_setspecific(current_sql_query_key, strdup(sql));
     }
 }
 
@@ -3582,7 +3557,7 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
 
     reqlog_set_origin(thd->logger, "%s", clnt->origin);
 
-    clnt->query_rc = exec_thread(thd, clnt);
+    exec_thread(thd, clnt);
 
     sql_reset_sqlthread(thd->sqlthd);
 
@@ -4416,8 +4391,6 @@ static void conn_alloc(struct sqlconn *conn, int sz)
     conn->bufsz = sz;
     conn->buf = realloc(conn->buf, conn->bufsz);
 }
-
-static LISTC_T(struct sqlconn) conns;
 
 /* handles are always a per-connection deal, and a connection
    always has a dedicated thread, so no need to lock around
@@ -5353,7 +5326,7 @@ void run_internal_sql(char *sql)
     cleanup_clnt(&clnt);
 
     Pthread_mutex_destroy(&clnt.wait_mutex);
-    pthread_cond_destroy(&clnt.wait_cond);
+    Pthread_cond_destroy(&clnt.wait_cond);
     Pthread_mutex_destroy(&clnt.write_lock);
     Pthread_mutex_destroy(&clnt.dtran_mtx);
 }
@@ -5515,7 +5488,7 @@ void end_internal_sql_clnt(struct sqlclntstate *clnt)
     cleanup_clnt(clnt);
 
     Pthread_mutex_destroy(&clnt->wait_mutex);
-    pthread_cond_destroy(&clnt->wait_cond);
+    Pthread_cond_destroy(&clnt->wait_cond);
     Pthread_mutex_destroy(&clnt->write_lock);
     Pthread_mutex_destroy(&clnt->dtran_mtx);
 }

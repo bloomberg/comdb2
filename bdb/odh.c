@@ -200,7 +200,6 @@ static void write_odh(void *buf, const struct odh *odh, uint8_t flags)
 {
     uint32_t len = odh->length;
     uint16_t updid = odh->updateid;
-    const uint8_t *in;
     uint8_t *out = buf;
 
     /* byte 1: flags */
@@ -226,7 +225,6 @@ static void write_odh(void *buf, const struct odh *odh, uint8_t flags)
 static void read_odh(const void *buf, struct odh *odh)
 {
     const uint8_t *in = buf;
-    uint8_t *out;
     uint32_t len;
     uint16_t updid;
 
@@ -647,7 +645,6 @@ int bdb_unpack(bdb_state_type *bdb_state, const void *from, size_t fromlen,
 static int bdb_write_updateid(bdb_state_type *bdb_state, void *buf,
                               size_t buflen, int updateid)
 {
-    int rc;
     struct odh odh;
 
     if (!bdb_state->ondisk_header) {
@@ -674,7 +671,6 @@ static int bdb_write_updateid(bdb_state_type *bdb_state, void *buf,
 int bdb_retrieve_updateid(bdb_state_type *bdb_state, const void *from,
                           size_t fromlen)
 {
-    int rc;
     struct odh odh_in;
 
     if (!bdb_state->ondisk_header) {
@@ -801,7 +797,6 @@ int bdb_update_updateid(bdb_state_type *bdb_state, DBC *dbcp,
     DBT key, data;
     struct odh myodh;
     int rc, oldupdateid, newupdateid;
-    unsigned long long *genptr = NULL;
     char ondiskh[ODH_SIZE];
 
     /* fail if there are no ondisk headers */
@@ -1141,7 +1136,6 @@ int bdb_put(bdb_state_type *bdb_state, DB *db, DB_TXN *tid, DBT *key, DBT *data,
             u_int32_t flags)
 {
     int rc, updateid = -1, ipu = ip_updates_enabled(bdb_state);
-    struct odh odh_in;
     unsigned long long *genptr = NULL;
 
     if (ipu && key->size >= 8) {

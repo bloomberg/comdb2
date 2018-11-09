@@ -241,7 +241,7 @@ __dir_pgread_multi(dbmfp, pgno, numpages, pages)
 {
 	DB_ENV *dbenv;
 	MPOOLFILE *mfp;
-	size_t len, nr, pagesize;
+	size_t nr, pagesize;
 	int cntpage;
 	int ret, idx;
 
@@ -305,21 +305,19 @@ __memp_recover_page(dbmfp, hp, bhp, pgno)
 {
 
 	DB_ENV *dbenv;
-	DB dummydb, *dbp;
 	DB_LSN page_lsn, largest_lsn;
 	DB_MPREG *mpreg;
 	MPOOLFILE *mfp;
 	DB_MPOOL *dbmp;
 	MPOOL *c_mp;
 	DB_MUTEX *mutexp;
-	DBT dbt, *dbtp;
-	size_t len, nr, pagesize;
+	DBT *dbtp;
+	size_t nr, pagesize;
 	DB_PGINFO duminfo = { 0 }, *pginfo;
 	PAGE *pagep;
 	int ret, i, pgidx, free_buf, ftype;
 	u_int32_t n_cache;
 	db_pgno_t inpg;
-	DB_TXN *thrtxn;
 
 	dbenv = dbmfp->dbenv;
 	mfp = dbmfp->mfp;

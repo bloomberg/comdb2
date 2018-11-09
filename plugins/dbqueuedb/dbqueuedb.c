@@ -185,7 +185,7 @@ static int wake_all_consumers(struct dbtable *db, int force)
 
 static void consumer_destroy(struct consumer *consumer)
 {
-    pthread_cond_destroy(&consumer->cond);
+    Pthread_cond_destroy(&consumer->cond);
     free(consumer);
 }
 
@@ -629,7 +629,6 @@ struct statthrargs {
 static void *stat_thread(void *argsptr)
 {
     struct statthrargs *args = argsptr;
-    struct thr_handle *thr_self = thrman_register(THRTYPE_QSTAT);
     thread_started("dbque stat");
     backend_thread_event(args->db->dbenv, COMDB2_THR_EVENT_START_RDONLY);
     stat_thread_int(args->db, args->fullstat, args->walk_queue);
@@ -655,7 +654,7 @@ static void queue_stat(struct dbtable *db, int full, int walk_queue, int blockin
     args->walk_queue = walk_queue;
 
     if (blocking) {
-        pthread_attr_init(&attr);
+        Pthread_attr_init(&attr);
         pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
         pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
     }
@@ -664,7 +663,7 @@ static void queue_stat(struct dbtable *db, int full, int walk_queue, int blockin
                         stat_thread, args);
 
     if (blocking) {
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
     }
 
     if (rc != 0) {
@@ -768,22 +767,18 @@ void flush_in_thread(struct dbtable *db, int consumern)
         return;
     }
 
-    rc = pthread_attr_init(&attr);
-    if (rc) {
-        logmsg(LOGMSG_WARN, "%s:pthread_attr_init: %s", __func__, strerror(rc));
-        return;
-    }
+    Pthread_attr_init(&attr);
     PTHD_ATTR_SETDETACHED(attr, rc);
     if (rc) {
         logmsg(LOGMSG_WARN, "%s:pthread_attr_setdetached", __func__, strerror(rc));
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
         return;
     }
     pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
 
     args = malloc(sizeof(struct flush_thd_data));
     if (!args) {
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
         logmsg(LOGMSG_ERROR, "%s: out of memory\n", __func__);
         return;
     }
@@ -799,11 +794,7 @@ void flush_in_thread(struct dbtable *db, int consumern)
                 __func__, rc, strerror(rc));
         free(args);
     }
-    rc = pthread_attr_destroy(&attr);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s:pthread_attr_destroy  %d %s", __func__, rc, strerror(rc));
-        return;
-    }
+    Pthread_attr_destroy(&attr);
 }
 
 void flush_abort(void)
@@ -882,9 +873,6 @@ static enum consumer_t consumer_type(struct consumer *c)
 {
     return c->base.type;
 }
-
-static int gbl_dbqueue_admin_sched_freq = 1;
-static cron_sched_t *dbqueue_admin_sched = NULL;
 
 static int handles_method(const char *method) {
     if (strncmp(method, "remove", 6) == 0 ||

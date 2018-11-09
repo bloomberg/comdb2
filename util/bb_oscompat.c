@@ -59,6 +59,7 @@ void set_hostbyname(hostbyname *impl)
 
 #ifdef _IBM_SOURCE
 #include <pthread.h>
+#include <locks_wrap.h>
 static pthread_mutex_t servbyname_lk = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
@@ -73,13 +74,13 @@ void comdb2_getservbyname(const char *name, const char *proto, short *port)
 #   elif defined(_SUN_SOURCE)
     result = getservbyname_r(name, proto, &result_buf, buf, sizeof(buf));
 #   elif defined(_IBM_SOURCE)
-    pthread_mutex_lock(&servbyname_lk);
+    Pthread_mutex_lock(&servbyname_lk);
     result = getservbyname(name, proto);
     if (result) {
         result_buf = *result;
         result = &result_buf;
     }
-    pthread_mutex_unlock(&servbyname_lk);
+    Pthread_mutex_unlock(&servbyname_lk);
 #   endif
     if (result) {
         *port = result->s_port;

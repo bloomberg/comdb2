@@ -335,15 +335,13 @@ static void *fstdump_thread_inner(fstdump_per_thread_t *fstdump, void *sendrec,
                                   void *databuf, size_t buffer_length)
 {
     fstdump_t *common = fstdump->common;
-    int fndrrn, fndlen, rc, rrn;
+    int rc, rrn;
     unsigned long long genid;
-    unsigned char *fnddta;
     unsigned char *retkey = NULL;
     unsigned long long lastkey;
 
     DBC *dbcp;
     DBT key, data;
-    void *p;
     int need_advance = 1;
 
     memset(&key, 0, sizeof(key));
@@ -485,7 +483,6 @@ static void *fstdump_thread_inner(fstdump_per_thread_t *fstdump, void *sendrec,
         }
     }
 
-done:
     close_retry(dbcp, common);
 
     return NULL;
@@ -734,7 +731,7 @@ static int bdb_fstdumpdta_sendsz_int(bdb_state_type *bdb_state, SBUF2 *sb,
         int numthreads = 0;
         pthread_attr_t attr;
 
-        pthread_attr_init(&attr);
+        Pthread_attr_init(&attr);
         pthread_attr_setstacksize(&attr,
                                   bdb_state->attr->fstdump_thread_stacksz);
 
@@ -777,7 +774,7 @@ static int bdb_fstdumpdta_sendsz_int(bdb_state_type *bdb_state, SBUF2 *sb,
             }
         }
 
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
 
     } else if (bdb_state->attr->dtastripe &&
                bdb_state->attr->fstdump_maxthreads > 0) {
@@ -789,7 +786,7 @@ static int bdb_fstdumpdta_sendsz_int(bdb_state_type *bdb_state, SBUF2 *sb,
         int numthreads = 0;
         pthread_attr_t attr;
 
-        pthread_attr_init(&attr);
+        Pthread_attr_init(&attr);
         pthread_attr_setstacksize(&attr,
                                   bdb_state->attr->fstdump_thread_stacksz);
 
@@ -837,7 +834,7 @@ static int bdb_fstdumpdta_sendsz_int(bdb_state_type *bdb_state, SBUF2 *sb,
             }
         }
 
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
     } else if (bdb_state->attr->dtastripe) {
         /* non-multithreaded approach, for comparison */
         int ndta;
@@ -968,8 +965,6 @@ struct dtadump *bdb_dtadump_start(bdb_state_type *bdb_state, int *bdberr,
                                   int is_blob, int nr)
 {
     struct dtadump *dump;
-    int rc;
-    unsigned long long genid = 0;
     int i;
     int dtanum;
 

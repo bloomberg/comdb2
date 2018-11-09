@@ -105,19 +105,10 @@ static void thrman_destructor(void *param);
 
 void thrman_init(void)
 {
-    int rc;
-
     Pthread_mutex_init(&mutex, NULL);
-
-    rc = pthread_key_create(&thrman_key, thrman_destructor);
-    if (rc != 0) {
-        perror_errnum("thrman_init:pthread_key_create", rc);
-        exit(1);
-    }
-
+    Pthread_key_create(&thrman_key, thrman_destructor);
     Pthread_cond_init(&cond, NULL);
-
-    pthread_attr_init(&gbl_pthread_attr_detached);
+    Pthread_attr_init(&gbl_pthread_attr_detached);
     pthread_attr_setdetachstate(&gbl_pthread_attr_detached,
                                 PTHREAD_CREATE_DETACHED);
     /* 4 meg stack - there should be a better solution for this..
@@ -134,8 +125,6 @@ void thrman_init(void)
 struct thr_handle *thrman_register(enum thrtype type)
 {
     struct thr_handle *thr;
-    int rc;
-
     if (type < 0 || type >= THRTYPE_MAX) {
         logmsg(LOGMSG_ERROR, "thrman_register: type=%d out of range\n", type);
         return NULL;
@@ -160,14 +149,7 @@ struct thr_handle *thrman_register(enum thrtype type)
     thr->type = type;
     thr->fd = -1;
 
-    rc = pthread_setspecific(thrman_key, thr);
-    if (rc != 0) {
-        char buf[1024];
-        logmsg(LOGMSG_FATAL, "thrman_register(%s): pthread_setspecific: %d %s\n",
-                thrman_type2a(type), rc, strerror(rc));
-        abort();
-    }
-
+    Pthread_setspecific(thrman_key, thr);
     Pthread_mutex_lock(&mutex);
     listc_abl(&thr_list, thr);
     thr_type_counts[type]++;
@@ -222,7 +204,6 @@ void thrman_change_type(struct thr_handle *thr, enum thrtype newtype)
 static void thrman_destructor(void *param)
 {
     struct thr_handle *thr = param;
-    int rc;
 
     if (!thr) {
         logmsg(LOGMSG_ERROR, "thrman_destructor: thr==NULL\n");
@@ -261,7 +242,7 @@ void thrman_unregister(void)
     struct thr_handle *thr;
     thr = thrman_self();
     if (thr) {
-        pthread_setspecific(thrman_key, NULL);
+        Pthread_setspecific(thrman_key, NULL);
         thrman_destructor(thr);
     }
 }

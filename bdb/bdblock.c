@@ -348,7 +348,7 @@ static int raise_thd_priority(void)
 
 #endif
 
-int __rep_block_on_inflight_transactions(DB_ENV *dbenv);
+extern int __rep_block_on_inflight_transactions(DB_ENV *dbenv);
 
 int gbl_force_serial_on_writelock = 1;
 
@@ -444,7 +444,7 @@ static inline void bdb_get_writelock_int(bdb_state_type *bdb_state,
         }
 
         /* Wait on rep_processor threads while we have the writelock lock */
-        if (gbl_force_serial_on_writelock)
+        if (gbl_force_serial_on_writelock && lock_handle->passed_dbenv_open)
             __rep_block_on_inflight_transactions(lock_handle->dbenv);
 
         strcpy(lock_handle->bdb_lock_write_idstr, idstr);
@@ -505,7 +505,6 @@ void bdb_get_readlock(bdb_state_type *bdb_state, const char *idstr,
     thread_lock_info_type *lk = pthread_getspecific(lock_key);
     bdb_state_type *lock_handle = bdb_state;
     int rc;
-    int cnt;
 
     if (lock_handle->parent)
         lock_handle = lock_handle->parent;
@@ -768,7 +767,7 @@ static void new_thread_lock_info(bdb_state_type *bdb_state)
         }
     }
 
-    pthread_setspecific(lock_key, lk);
+    Pthread_setspecific(lock_key, lk);
 
     Pthread_mutex_lock(&bdb_state->thread_lock_info_list_mutex);
     listc_atl(&bdb_state->thread_lock_info_list, lk);
@@ -799,7 +798,7 @@ static void delete_thread_lock_info(bdb_state_type *bdb_state)
     if (lk->stack)
         free(lk->stack);
     free(lk);
-    pthread_setspecific(lock_key, NULL);
+    Pthread_setspecific(lock_key, NULL);
 }
 
 void bdb_stripe_get(bdb_state_type *bdb_state)
@@ -814,7 +813,7 @@ void bdb_stripe_get(bdb_state_type *bdb_state)
 
     id = get_threadid(parent);
 
-    pthread_setspecific(parent->tid_key, (void *)id);
+    Pthread_setspecific(parent->tid_key, (void *)id);
 }
 
 void bdb_stripe_done(bdb_state_type *bdb_state)

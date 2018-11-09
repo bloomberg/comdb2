@@ -46,6 +46,7 @@
 #include <segstring.h>
 #include "nodemap.h"
 #include <logmsg.h>
+#include <locks_wrap.h>
 
 pthread_key_t bdb_key;
 pthread_key_t lock_key;
@@ -73,8 +74,6 @@ extern bdb_state_type *gbl_bdb_state;
 
 void bdb_set_key(bdb_state_type *bdb_state)
 {
-    int rc;
-
     if (gbl_bdb_state)
         return;
 
@@ -84,10 +83,7 @@ void bdb_set_key(bdb_state_type *bdb_state)
 
     gbl_bdb_state = bdb_state;
 
-    rc = pthread_setspecific(bdb_key, bdb_state);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "pthread_setspecific failed\n");
-    }
+    Pthread_setspecific(bdb_key, bdb_state);
 }
 
 void *mymalloc(size_t size)
@@ -863,7 +859,6 @@ void bdb_berkdb_iomap_set(bdb_state_type *bdb_state, int onoff)
 int bdb_berkdb_set_attr(bdb_state_type *bdb_state, char *attr, char *value,
                         int ivalue)
 {
-    char *optname;
     int rc;
 
     rc = bdb_state->dbenv->setattr(bdb_state->dbenv, attr, value, ivalue);

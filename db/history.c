@@ -33,7 +33,6 @@ extern pthread_attr_t sndatt;
 int init_history(history *h, size_t size)
 {
     int rc = 0;
-    pthread_t stat_thread_tid;
     h->size = size;
     h->head = h->tail = 0;
     h->hist = calloc(size, sizeof(history_request *));

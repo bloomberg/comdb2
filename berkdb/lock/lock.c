@@ -271,7 +271,7 @@ __lock_id_flags(dbenv, idp, flags)
 			F_SET(lk, DB_LOCKER_TRACK);
 	}
 
-err:	UNLOCKREGION(dbenv, lt);
+	UNLOCKREGION(dbenv, lt);
 	unlock_lockers(region);
 	return (ret);
 }
@@ -951,8 +951,6 @@ __latch_clear_tracked_writelocks(DB_ENV *dbenv, u_int32_t lockerid)
 {
 	int ret;
 	DB_LOCKERID_LATCH_NODE *lidptr;
-	DB_LATCH *latch, *nextlatch;
-	DB_ILOCK_LATCH *lnode, *next;
 
 	if ((ret = __find_latch_lockerid(dbenv, lockerid, &lidptr,
 	    GETLOCKER_CREATE)) != 0)
@@ -1321,7 +1319,6 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 	DB_LOCKREQ *list, **elistp;
 {
 	struct __db_lock *lp, *next_lock;
-	DB_LOCK lock;
 	DB_LOCKER *sh_locker;
 	DB_LOCKOBJ *sh_obj;
 	DB_LOCKREGION *region;
@@ -2054,8 +2051,6 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 	int grant_dirty, no_dd, ret, t_ret;
 	extern int gbl_locks_check_waiters;
 
-	/* Set a locker's status */
-	int locker_deadlock = 0;
 	/*
 	 * We decide what action to take based on what
 	 * locks are already held and what locks are
@@ -2744,7 +2739,6 @@ upgrade:
 				/* We had to wait on this lock - call our
 				 * callback to record some basic info about
 				 * the lock. */
-				u_int8_t *ptr;
 				gbl_bb_log_lock_waits_fn(sh_obj->lockobj.data,
 				    sh_obj->lockobj.size, U2M(x2 - x1));
 			}
@@ -3069,7 +3063,6 @@ __lock_downgrade(dbenv, lock, new_mode, flags)
 	DB_LOCKOBJ *obj;
 	DB_LOCKREGION *region;
 	DB_LOCKTAB *lt;
-	u_int32_t indx;
 	u_int32_t partition;
 	int ret;
 	int state_changed;
@@ -3684,7 +3677,6 @@ __lock_set_timeout_internal(dbenv, locker, timeout, op)
 	DB_LOCKREGION *region;
 	DB_LOCKTAB *lt;
 	u_int32_t locker_ndx;
-	u_int32_t locker_partition;
 	int ret;
 
 	lt = dbenv->lk_handle;
@@ -4089,7 +4081,6 @@ __inherit_latches(DB_ENV *dbenv, u_int32_t locker, u_int32_t plocker,
 {
 	DB_LOCKERID_LATCH_NODE *lid, *plid;
 	DB_LATCH *latch, *pvlatch;
-	DB_ILOCK_LATCH *lnode;
 	int ret;
 
 	if ((ret = __find_latch_lockerid(dbenv, locker, &lid,
@@ -4146,7 +4137,7 @@ __lock_inherit_locks(lt, locker, flags)
 	DB_LOCKER *sh_locker, *sh_parent;
 	DB_LOCKOBJ *obj;
 	DB_LOCKREGION *region;
-	int ret, ret2;
+	int ret;
 	struct __db_lock *hlp, *lp;
 	u_int32_t ndx, partition;
 	int state_changed;
@@ -4867,7 +4858,7 @@ __lock_fix_list(dbenv, list_dbt, nlocks, has_pglk_lsn)
 	struct __db_lockobj_lsn *obj_lsn = NULL;
 	struct __db_dbt_internal *obj;
 	DB_LOCK_ILOCK *lock, *plock;
-	u_int32_t i, j, nfid, npgno, size, nlsns, k;
+	u_int32_t i, j, nfid, npgno, size, nlsns;
 	int ret;
 	u_int8_t *data = NULL, *dp = NULL;
 	struct __db_lock_lsn *lsnp;
@@ -5350,7 +5341,7 @@ __lock_get_rowlocks_list(dbenv, locker, flags, lock_mode, list, locklist,
 	u_int32_t *lockcnt;
 
 {
-	u_int32_t i, j, totlocks, nlocks, ngenids, locker_ndx;
+	u_int32_t i, j, totlocks, ngenids, locker_ndx;
 	u_int64_t genid, tmpgenid;
 	u_int8_t lockmem[31];
 	DB_LOCKREGION *region;
@@ -5850,7 +5841,6 @@ __rowlock_sort_cmp(a, b)
 {
 	const DBT **d1, **d2;
 	char *fi1, *fi2;
-	int cmp;
 
 	d1 = (const DBT **)a;
 	d2 = (const DBT **)b;
@@ -5945,7 +5935,6 @@ __lock_to_dbt_unlocked(dbenv, lock, dbt)
 	struct __db_lock *lockp;
 	u_int8_t *lockdata;
 	int rc = 0;
-	void **ptr;
 
 	lockp = (struct __db_lock *)R_ADDR(&lt->reginfo, lock->off);
 	if (lock->gen != lockp->gen) {
@@ -6186,7 +6175,7 @@ __lock_set_parent_has_pglk_lsn(DB_ENV *dbenv, u_int32_t parentid,
 	DB_LOCKREGION *region = lt->reginfo.primary;
 	DB_LOCKER *locker;
 	DB_LOCKER *parent_locker;
-	int ndx, ret;
+	int ndx;
 
 	if (use_page_latches(dbenv))
 		return __latch_set_parent_has_pglk_lsn(dbenv, parentid, lockid);
@@ -6220,7 +6209,6 @@ __lock_update_tracked_writelocks_lsn_pp(DB_ENV *dbenv, DB_TXN *txnp,
 	DB_LOCKREGION *region = lt->reginfo.primary;
 	DB_LOCKER *locker;
 	u_int32_t i = 0;
-	DBT *np;
 	struct __db_lock *lp;
 	DB_LOCKOBJ *lockobj;
 	DB_LOCK_ILOCK *ilock;

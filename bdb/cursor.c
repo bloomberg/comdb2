@@ -1797,6 +1797,9 @@ int bdb_clean_pglogs_queues(bdb_state_type *bdb_state)
     DB_LSN lsn;
     int count, i;
 
+    if (!gbl_new_snapisol)
+        return 0;
+
     Pthread_mutex_lock(&del_queue_lk);
     bdb_pglogs_min_lsn(bdb_state, &lsn);
 
@@ -2456,7 +2459,7 @@ int bdb_gbl_pglogs_init(bdb_state_type *bdb_state)
     }
     else {
         pthread_attr_t thd_attr;
-        pthread_attr_init(&thd_attr);
+        Pthread_attr_init(&thd_attr);
         pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
 #       if defined(PTHREAD_STACK_MIN)
         pthread_attr_setstacksize(&thd_attr, PTHREAD_STACK_MIN + 64 * 1024);
@@ -3610,6 +3613,9 @@ int bdb_push_pglogs_commit(void *in_bdb_state, DB_LSN commit_lsn, uint32_t gen,
     struct commit_list *lcommit = NULL;
     extern int gbl_durable_set_trace;
     char *master, *eid;
+
+    if (!gbl_new_snapisol)
+        return 0;
 
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
@@ -8849,7 +8855,7 @@ int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt)
         db = state->dbp_data[0];
         stripes = state->attr->dtastripe;
         parallel_count = gbl_parallel_count;
-        pthread_attr_init(&attr);
+        Pthread_attr_init(&attr);
 #ifdef PTHREAD_STACK_MIN
         pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN + 512 * 1024);
 #endif
@@ -8885,7 +8891,7 @@ int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt)
         count += args[i].count;
     }
     if (parallel_count) {
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
     }
     if (rc == 0) *rcnt = count;
     return rc;

@@ -573,7 +573,6 @@ int toblobask(struct ireq *iq)
 
     /* have read up to data */
     if (!strncasecmp((const char *)iq->p_buf_in, ".DYNT.", 6)) {
-        char tmp[6];
         is_dynt = 1;
         strncpy0(cachetag, ".DYNT.", sizeof(cachetag));
     } else {
@@ -1037,7 +1036,6 @@ int check_one_blob_consistency(struct ireq *iq, const char *table,
                                const char *tag, blob_status_t *b, void *record,
                                int blob_index, int cblob)
 {
-    int outrc = 0;
     struct schema *schema = find_tag_schema(table, tag);
     int isondisk = is_tag_ondisk_sc(schema);
 

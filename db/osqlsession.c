@@ -144,7 +144,7 @@ static void _destroy_session(osql_sess_t **prq, int phase)
 
         queue_free(rq->que);
     case 1:
-        pthread_cond_destroy(&rq->cond);
+        Pthread_cond_destroy(&rq->cond);
     case 2:
         Pthread_mutex_destroy(&rq->mtx);
     case 3:
@@ -781,6 +781,7 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
 
     /* init sync fields */
     Pthread_mutex_init(&sess->clients_mtx, NULL);
+    Pthread_mutex_init(&sess->completed_lock, NULL);
     Pthread_mutex_init(&sess->mtx, NULL);
     Pthread_cond_init(&sess->cond, NULL);
 

@@ -628,7 +628,8 @@ static int _table_exists(fdb_t *fdb, const char *table_name,
 
         /* ok, table exists, HURRAY!
            Is the table marked obsolete? */
-        if (table->need_version && table->version != table->need_version) {
+        if (table->need_version &&
+            table->version != (table->need_version - 1)) {
             *status = TABLE_STALE;
         } else {
             if (comdb2_get_verify_remote_schemas()) {
@@ -641,7 +642,7 @@ static int _table_exists(fdb_t *fdb, const char *table_name,
                                             "%lld, cached %lld\n",
                                fdb->dbname, table_name, remote_version,
                                table->version);
-                        table->need_version = remote_version;
+                        table->need_version = remote_version + 1;
                         *status = TABLE_STALE;
                     } else {
                         /* table version correct, make sure to pass this
@@ -715,7 +716,7 @@ static int _add_table_and_stats_fdb(fdb_t *fdb, const char *table_name,
 {
     enum table_status status;
     int rc = FDB_NOERR;
-    fdb_tbl_t *tbl, *tbl_stat1, *tbl_stat4;
+    fdb_tbl_t *tbl;
     int initial;
     fdb_tbl_ent_t *found_ent;
     int is_sqlite_master; /* corner case when sqlite_master is the first query
@@ -723,7 +724,6 @@ static int _add_table_and_stats_fdb(fdb_t *fdb, const char *table_name,
                              there is no "sqlite_master" entry for
                              sqlite_master, but
                              that doesn't make the case here to fail */
-retry_find_table:
     /* check if the table exists, and if it does need refreshing
        if it exists and has right version, grab the version and return */
     rc = _table_exists(fdb, table_name, &status, version);
@@ -782,7 +782,7 @@ retry_find_table:
              * lock */
             if (remtbl) {
                 /* table is still around */
-                if (remtbl->need_version == remtbl->version) {
+                if ((remtbl->need_version - 1) == remtbl->version) {
                     /* table was fixed in the meantime!, drop exclusive lock */
                     rc = FDB_NOERR;
                     *version = remtbl->version;
@@ -790,10 +790,11 @@ retry_find_table:
                 } else {
                     /* table is still stale, remove */
                     if (gbl_fdb_track)
-                        logmsg(LOGMSG_USER, "Detected stale table \"%s.%s\" "
-                                            "version %llu required %d\n",
+                        logmsg(LOGMSG_USER,
+                               "Detected stale table \"%s.%s\" "
+                               "version %llu required %d\n",
                                remtbl->fdb->dbname, remtbl->name,
-                               remtbl->version, remtbl->need_version);
+                               remtbl->version, remtbl->need_version - 1);
 
                     if (__free_fdb_tbl(remtbl, fdb)) {
                         logmsg(LOGMSG_ERROR, "Error clearing schema for table "
@@ -913,7 +914,6 @@ static int check_table_fdb(fdb_t *fdb, fdb_tbl_t *tbl, int initial,
     int irc = FDB_NOERR;
     fdb_cursor_if_t *fdbc_if;
     fdb_cursor_t *fdbc;
-    int node;
     char sql[256];
     char *row;
     int rowlen;
@@ -930,7 +930,6 @@ static int check_table_fdb(fdb_t *fdb, fdb_tbl_t *tbl, int initial,
     init_cursor(cur, NULL, (Btree *)(cur + 1));
     cur->bt->fdb = fdb;
     cur->bt->is_remote = 1;
-    struct sql_thread *thd = cur->thd;
     struct sqlclntstate *clnt = cur->clnt;
 
 run:
@@ -1083,7 +1082,7 @@ static enum mach_class get_fdb_class(const char **p_dbname, int *local)
 
     *local = 0;
 
-    my_lvl = get_mach_class(gbl_mynode);
+    my_lvl = get_my_mach_class();
 
     /* extract class if any */
     if (strchr(dbname, '_') != NULL) {
@@ -1104,6 +1103,9 @@ static enum mach_class get_fdb_class(const char **p_dbname, int *local)
         } else if (strncasecmp(dbname, "TEST_", 5) == 0) {
             remote_lvl = CLASS_TEST;
             dbname += 5;
+        } else if (strncasecmp(dbname, "UAT_", 4) == 0) {
+            remote_lvl = CLASS_UAT;
+            dbname += 4;
         }
 
         *p_dbname = dbname;
@@ -1479,7 +1481,6 @@ static int __lock_wrlock_exclusive(char *dbname)
         }
     } while (1); /* 1 is the creator */
 
-done:
     Pthread_rwlock_unlock(&fdbs.arr_lock);
 
     return rc;
@@ -1558,7 +1559,6 @@ static fdb_tbl_ent_t *get_fdb_tbl_ent_by_rootpage(int rootpage)
 char *fdb_sqlexplain_get_name(int rootpage)
 {
     fdb_tbl_ent_t *ent;
-    fdb_t *fdb;
     char tmp[1024];
 
     ent = get_fdb_tbl_ent_by_rootpage(rootpage);
@@ -1888,7 +1888,6 @@ int fdb_cursor_move_master(BtCursor *pCur, int *pRes, int how)
     const char *zTblName = sqlite->init.zTblName;
     fdb_t *fdb = pCur->bt->fdb;
     fdb_tbl_t *tbl = NULL;
-    fdb_tbl_ent_t *ret;
     int step = 0;
 
     assert(fdb != NULL);
@@ -1998,10 +1997,6 @@ char *fdb_sqlexplain_get_field_name(Vdbe *v, int rootpage, int ixnum,
                                     int fieldnum)
 {
     fdb_tbl_ent_t *ent;
-    fdb_t *fdb;
-    int i;
-    char tmp[1024];
-    int iDb;
     Table *pTab;
     Index *pIdx;
     Column *pCol;
@@ -2047,12 +2042,12 @@ char *fdb_sqlexplain_get_field_name(Vdbe *v, int rootpage, int ixnum,
  */
 Schema *fdb_sqlite_get_schema(Btree *pBt, int nbytes)
 {
-    fdb_t *fdb = pBt->fdb;
 
     assert(pBt->is_remote && pBt->fdb != NULL);
 
     /* TODO: switch to sharing schemas for fdbs */
     /*
+    fdb_t *fdb = pBt->fdb;
     Pthread_mutex_lock(&fdb->dbcon_mtx);
     if (fdb->schema == NULL)
     {
@@ -2068,7 +2063,6 @@ Schema *fdb_sqlite_get_schema(Btree *pBt, int nbytes)
 static int _fdb_remote_reconnect(fdb_t *fdb, SBUF2 **psb, char *host, int use_cache)
 {
     SBUF2 *sb = *psb;
-    int rc = FDB_NOERR;
     static uint64_t old = 0ULL;
     uint64_t now = 0, then;
 
@@ -2326,7 +2320,6 @@ static fdb_cursor_if_t *_fdb_cursor_open_remote(struct sqlclntstate *clnt,
 {
     fdb_cursor_if_t *fdbc_if;
     fdb_cursor_t *fdbc;
-    fdb_tbl_ent_t *ent;
     int rc;
     char *tid;
     int isuuid = gbl_noenv_messages;
@@ -2440,7 +2433,6 @@ fdb_cursor_if_t *fdb_cursor_open(struct sqlclntstate *clnt, BtCursor *pCur,
     int rc;
     int source_rootpage;
     int flags;
-    int errval = FDB_NOERR;
 
     assert(pCur->bt->is_remote);
 
@@ -2573,8 +2565,6 @@ static void fdb_cursor_close_on_open(BtCursor *pCur, int cache)
  */
 static int fdb_cursor_close(BtCursor *pCur)
 {
-    int rc = 0;
-
     if (pCur->fdbc) {
         /*TODO: check sqlite_stat cursors and their caching */
 
@@ -2794,7 +2784,6 @@ static char *fdb_cursor_id(BtCursor *pCur)
 
 static int fdb_serialize_key(BtCursor *pCur, Mem *key, int nfields)
 {
-    int rc = 0;
     int fnum = 0;
     u32 type = 0;
     int sz;
@@ -2971,7 +2960,6 @@ static int fdb_cursor_move_sql(BtCursor *pCur, int how)
     enum run_sql_flags flags = FDB_RUN_SQL_NORMAL;
     unsigned long long start_rpc;
     unsigned long long end_rpc;
-    int error = 0;
 
     if (fdbc) {
         start_rpc = osql_log_time();
@@ -3052,7 +3040,7 @@ static int fdb_cursor_move_sql(BtCursor *pCur, int how)
                        multiple sql engines, maybe with different
                        values if the remote table is schema changed repeatedly
                        */
-                    fdbc->ent->tbl->need_version = remote_version;
+                    fdbc->ent->tbl->need_version = remote_version + 1;
 
                     rc = SQLITE_SCHEMA_REMOTE;
                 } else if (rc == FDB_ERR_FDB_VERSION) {
@@ -3266,7 +3254,7 @@ static int fdb_cursor_find_sql_common(BtCursor *pCur, Mem *key, int nfields,
                        multiple sql engines, maybe with different
                        values if the remote table is schema changed repeatedly
                        */
-                    fdbc->ent->tbl->need_version = remote_version;
+                    fdbc->ent->tbl->need_version = remote_version + 1;
 
                     rc = SQLITE_SCHEMA_REMOTE;
                 } else {
@@ -3829,7 +3817,6 @@ fdb_tran_t *fdb_trans_begin_or_join(struct sqlclntstate *clnt, fdb_t *fdb,
 {
     fdb_distributed_tran_t *dtran;
     fdb_tran_t *tran;
-    int rc = 0;
 
     Pthread_mutex_lock(&clnt->dtran_mtx);
 
@@ -4237,7 +4224,7 @@ static void fdb_clear_schema(const char *dbname, const char *tblname,
          fprintf(stderr, "Unknown table \"%s\" in db \"%s\"\n", tblname, dbname);
          already_updated = 1;
       }
-      else if (tbl->version == tbl->need_version)
+      else if (tbl->version == tbl->need_version + 1)
       {
          if (gbl_fdb_track)
          {
@@ -4393,7 +4380,6 @@ int fdb_process_message(const char *line, int lline)
     int st = 0;
     int ltok = 0;
     char *tok;
-    int rc;
 
     tok = segtok((char *)line, lline, &st, &ltok);
     if (ltok == 0) {
@@ -4587,7 +4573,6 @@ int fdb_table_exists(int rootpage)
 int fdb_lock_table(sqlite3_stmt *pStmt, struct sqlclntstate *clnt, Table *tab,
                    fdb_tbl_ent_t **p_ent)
 {
-    int rc;
     fdb_tbl_ent_t *ent;
     int rootpage = tab->tnum;
     int version = tab->version;
