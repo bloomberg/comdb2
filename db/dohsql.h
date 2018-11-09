@@ -25,7 +25,8 @@ struct dohsql_node {
     int ncols;
     struct dohsql_node **nodes;
     int nnodes;
-    int has_order;
+    int order_size;
+    int* order_dir;
 };
 typedef struct dohsql_node dohsql_node_t;
 

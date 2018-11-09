@@ -80,6 +80,8 @@ struct dohsql {
     int active;
     int *order;
     int top_idx;
+    int order_size;
+    int *order_dir;
 };
 typedef struct dohsql dohsql_t;
 
@@ -87,7 +89,7 @@ static void sqlengine_work_shard_pp(struct thdpool *pool, void *work,
                                     void *thddata, int op);
 static void sqlengine_work_shard(struct thdpool *pool, void *work,
                                  void *thddata);
-static int order_init(dohsql_t *conns);
+static int order_init(dohsql_t *conns, dohsql_node_t *node);
 static int dohsql_dist_next_row_ordered(struct sqlclntstate *clnt,
                                         sqlite3_stmt *stmt);
 
@@ -917,8 +919,8 @@ int dohsql_distribute(dohsql_node_t *node)
     conns->conns = (dohsql_connector_t *)(conns + 1);
     conns->nconns = node->nnodes;
     conns->ncols = node->ncols;
-    if (node->has_order) {
-        if (order_init(conns)) {
+    if (node->order_size) {
+        if (order_init(conns, node)) {
             free(conns);
             return SHARD_ERR_MALLOC;
         }
@@ -970,8 +972,10 @@ int dohsql_end_distribute(struct sqlclntstate *clnt)
         _shard_disconnect(&conns->conns[i]);
     }
 
-    if (clnt->conns->order)
+    if (clnt->conns->order) {
         free(clnt->conns->order);
+        free(clnt->conns->order_dir);
+    }
     free(clnt->conns);
     _master_clnt_reset(clnt);
     clnt->conns = NULL;
@@ -1123,10 +1127,13 @@ static int _cmp(dohsql_t *conns, int idx_a, int idx_b)
         a = conns->conns[order[idx_a]].que->lst.top->obj;
         b = conns->conns[order[idx_b]].que->lst.top->obj;
 
-        for (i = 0; i < conns->ncols; i++) {
+        for (i = 0; i < conns->order_size/*conns->ncols*/; i++) {
             ret = sqlite3MemCompare(&a[i], &b[i], NULL);
-            if (ret)
+            if (ret) {
+                if (conns->order_dir[i])
+                    ret = -ret;
                 break;
+            }
         }
     }
 
@@ -1383,7 +1390,7 @@ retry_row:
     goto retry_row;
 }
 
-int order_init(dohsql_t *conns)
+int order_init(dohsql_t *conns, dohsql_node_t *node)
 {
     int i;
     conns->order = (int *)calloc(sizeof(int), conns->nconns);
@@ -1397,6 +1404,11 @@ int order_init(dohsql_t *conns)
     for (i = 0; i < conns->active; i++) {
         conns->order[i] = i;
     }
+
+    conns->order_size = node->order_size;
+    conns->order_dir = node->order_dir;
+    node->order_size = 0;
+    node->order_dir = NULL;
 
     return SHARD_NOERR;
 }

@@ -41,13 +41,13 @@ char *generate_columns(sqlite3 *db, ExprList *c, const char **tbl)
         if (!cols)
             cols = sqlite3_mprintf("%s.\"%s\"%s%s%s", expr->pTab->zName,
                                    c->a[i].pExpr->u.zToken,
-                                   (c->a[i].zName) ? " AS \"" : "",
+                                   (c->a[i].zName) ? " aS \"" : "",
                                    (c->a[i].zName) ? c->a[i].zName : "",
                                    (c->a[i].zName) ? "\" " : "");
         else
             cols = sqlite3_mprintf("%s, %s.\"%s\"%s%s%s", cols,
                                    expr->pTab->zName, c->a[i].pExpr->u.zToken,
-                                   (c->a[i].zName) ? " AS \"" : "",
+                                   (c->a[i].zName) ? " aS \"" : "",
                                    (c->a[i].zName) ? c->a[i].zName : "",
                                    (c->a[i].zName) ? "\" " : "");
         if (!cols)
@@ -59,7 +59,7 @@ char *generate_columns(sqlite3 *db, ExprList *c, const char **tbl)
     return cols;
 }
 
-static char *describeExprList(Vdbe *v, const ExprList *lst)
+static char *describeExprList(Vdbe *v, const ExprList *lst, int *order_size, int **order_dir)
 {
     char *ret;
     char *tmp;
@@ -69,13 +69,30 @@ static char *describeExprList(Vdbe *v, const ExprList *lst)
     ret = sqlite3ExprDescribe(v, lst->a[0].pExpr);
     if (!ret)
         return NULL;
+
+    /* handle descending keys */
+    *order_size = lst->nExpr;
+    *order_dir = (int*)malloc((*order_size) * sizeof(int));
+    if (!*order_dir) {
+        sqlite3DbFree(v->db, ret);
+        return NULL;
+    }
+
+    if (((*order_dir)[0] = lst->a[0].sortOrder) != 0) {
+        tmp = sqlite3_mprintf("%s DeSC", ret);
+        sqlite3DbFree(v->db, ret);
+        ret = tmp;
+    }
     for (i = 1; i < lst->nExpr; i++) {
         newterm = sqlite3ExprDescribe(v, lst->a[i].pExpr);
         if (!newterm) {
             sqlite3DbFree(v->db, ret);
+            if (*order_dir)
+                free(*order_dir);
             return NULL;
         }
-        tmp = sqlite3_mprintf("%s, %s", ret, newterm);
+        tmp = sqlite3_mprintf("%s, %s%s", ret, newterm,
+                (((*order_dir)[i] = lst->a[i].sortOrder)!=0)?" DeSC":"");
         sqlite3DbFree(v->db, newterm);
         sqlite3DbFree(v->db, ret);
         ret = tmp;
@@ -85,7 +102,7 @@ static char *describeExprList(Vdbe *v, const ExprList *lst)
 }
 
 char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
-                              int *has_order)
+                              int *order_size, int **order_dir)
 {
     char *cols = NULL;
     const char *tbl = NULL;
@@ -117,12 +134,11 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
     }
 
     if (p->pOrderBy) {
-        orderby = describeExprList(v, p->pOrderBy);
+        orderby = describeExprList(v, p->pOrderBy, order_size, order_dir);
         if (!orderby) {
             sqlite3DbFree(db, where);
             return NULL;
         }
-        *has_order = 1;
     }
 
     cols = generate_columns(db, p->pEList, &tbl);
@@ -255,7 +271,7 @@ void ast_destroy(ast_t **past, sqlite3 *db)
     free(ast);
 }
 
-static dohsql_node_t *gen_oneselect(Vdbe *v, Select *p, Expr *extraRows)
+static dohsql_node_t *gen_oneselect(Vdbe *v, Select *p, Expr *extraRows, int *order_size, int **order_dir)
 {
     dohsql_node_t *node;
     Select *prior = p->pPrior;
@@ -266,10 +282,15 @@ static dohsql_node_t *gen_oneselect(Vdbe *v, Select *p, Expr *extraRows)
     node = (dohsql_node_t *)calloc(1, sizeof(dohsql_node_t));
     if (!node)
         return NULL;
+    
+    if (!order_size) {
+        order_size = &node->order_size;
+        order_dir = &node->order_dir;
+    }
 
     node->type = AST_TYPE_SELECT;
     p->pPrior = p->pNext = NULL;
-    node->sql = sqlite_struct_to_string(v, p, extraRows, &node->has_order);
+    node->sql = sqlite_struct_to_string(v, p, extraRows, order_size, order_dir);
     p->pPrior = prior;
     p->pNext = next;
 
@@ -297,6 +318,9 @@ static void node_free(dohsql_node_t **pnode, sqlite3* db)
     if ((*pnode)->sql) {
         sqlite3DbFree(db, (*pnode)->sql);
     }
+    if ((*pnode)->order_dir) {
+        free( (*pnode)->order_dir);
+    }
     free(*pnode);
     *pnode = NULL;
 }
@@ -320,8 +344,6 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
     node->nodes = (dohsql_node_t **)(node + 1);
     node->nnodes = span;
     node->ncols = p->pEList->nExpr;
-    if (p->pOrderBy)
-        node->has_order = 1;
 
     psub = node->nodes;
 
@@ -342,7 +364,7 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
     /* generate queries */
     while (crt) {
         crt->pOrderBy = p->pOrderBy;
-        *psub = gen_oneselect(v, crt, (pOffset != p->pOffset) ? pOffset : NULL);
+        *psub = gen_oneselect(v, crt, (pOffset != p->pOffset) ? pOffset : NULL, &node->order_size, &node->order_dir);
         crt->pLimit = NULL;
         crt->pOffset = NULL;
         if (crt != p)
@@ -404,7 +426,7 @@ static dohsql_node_t *gen_select(Vdbe *v, Select *p)
         return NULL;
 
     if (p->op == TK_SELECT)
-        ret = gen_oneselect(v, p, NULL);
+        ret = gen_oneselect(v, p, NULL, NULL, NULL);
     else
         ret = gen_union(v, p, span);
 
