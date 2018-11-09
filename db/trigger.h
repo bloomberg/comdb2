@@ -58,7 +58,7 @@ typedef struct trigger_reg {
     int elect_cookie;
     genid_t trigger_cookie;
     int spname_len;
-    char spname[0]; // spname_len + 1
+    char *spname; // spname_len + 1
     // hostname[]
 } trigger_reg_t;
 

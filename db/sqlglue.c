@@ -2065,7 +2065,7 @@ static int move_is_nop(BtCursor *pCur, int *pRes)
    The sqlite library "thinks" it is running un-modified.
 
    Please only expose interfaces in this file that are ACTUAL sqlite interfaces
-   needed to host the library.  All other code belongs in sqlsupport.c
+   needed to host the library.
  */
 
 #define UNIMPLEMENTED 99999
@@ -3346,9 +3346,9 @@ done:
     return rc;
 }
 
-/* This really belongs in sqlsupport.c, but in needs access to
-   internals of Btree, and I don't want to expose that plague-infested
-   pile of excrement outside this module. */
+/* This in needs access to internals of Btree, 
+ * and I don't want to expose that plague-infested
+ * pile of excrement outside this module. */
 int sql_set_transaction_mode(sqlite3 *db, struct sqlclntstate *clnt, int mode)
 {
     int i;

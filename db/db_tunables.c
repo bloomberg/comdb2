@@ -715,7 +715,7 @@ static int hostname_update(void *context, void *value)
 int ctrace_set_rollat(void *unused, void *value);
 
 /* Return the value for sql_tranlevel_default. */
-static void *sql_tranlevel_default_value()
+static void *sql_tranlevel_default_value(void *context)
 {
     switch (gbl_sql_tranlevel_default) {
     case SQL_TDEF_COMDB2: return "COMDB2";
