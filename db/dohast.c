@@ -378,26 +378,29 @@ static dohsql_node_t *gen_select(Vdbe *v, Select *p)
 {
     Select *crt;
     int span = 0;
-    dohsql_node_t *ret;
-
-    p->selFlags |= SF_ASTIncluded;
-
-    /* no with, joins or subqueries */
-    if (p->pSrc->nSrc == 0 /*with*/ || p->pSrc->nSrc > 1 /*joins*/ ||
-        p->pSrc->a->pSelect /*subquery*/)
-        return NULL;
-
-    /* only handle union all */
+    dohsql_node_t *ret = NULL;
+    int not_recognized = 0;
+   
+    /* mark everything done, either way or another */
     crt = p;
     while (crt) {
+        crt->selFlags |= SF_ASTIncluded;
         span++;
+        /* only handle union all */
         if (crt->op != TK_SELECT && crt->op != TK_ALL)
-            return NULL;
+            not_recognized = 1;
+
         crt = crt->pPrior;
     }
 
-    /* this is the insert rowset which links values on pNext!*/
-    if (span == 1 && p->op == TK_ALL)
+
+    /* no with, joins or subqueries */
+    if (not_recognized ||
+        p->pSrc->nSrc == 0 /*with*/ ||
+        p->pSrc->nSrc > 1 /*joins*/ ||
+        p->pSrc->a->pSelect /*subquery*/ ||
+        (span == 1 && p->op == TK_ALL) /* insert rowset which links values on pNext */
+       ) 
         return NULL;
 
     if (p->op == TK_SELECT)
