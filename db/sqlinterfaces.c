@@ -327,6 +327,7 @@ void handle_failed_recover_deadlock(struct sqlclntstate *clnt,
                                     int recover_deadlock_rcode)
 {
     clnt->failed_recover_deadlock = 1;
+    assert(bdb_lockref() > 0);
     switch (recover_deadlock_rcode) {
     case SQLITE_COMDB2SCHEMA:
         clnt->ready_for_heartbeats = 0;
@@ -4426,8 +4427,10 @@ static inline int sql_writer_recover_deadlock(struct sql_thread *thd,
     int count = 0, rc;
 
     /* Short circuit */
-    if (clnt->failed_recover_deadlock)
+    if (clnt->failed_recover_deadlock) {
+        assert(bdb_lockref() > 0);
         return 1;
+    }
 
     /* Sql thread */
     if (thd) {
