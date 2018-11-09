@@ -232,7 +232,7 @@ if [[ -z "$cr" ]] && [[ -n "${SECONDARY_DBNAME}" ]] ; then
 fi
 
 if [[ -z "${CHECK_DB_AT_FINISH}" ]] ; then
-   if [[ $COMDB2_UNITTEST != 1 ]] ; then
+   if [[ "$COMDB2_UNITTEST" != 1 ]] ; then
        CHECK_DB_AT_FINISH=1
    else
        CHECK_DB_AT_FINISH=0
