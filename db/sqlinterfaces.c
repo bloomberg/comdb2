@@ -4425,6 +4425,10 @@ static inline int sql_writer_recover_deadlock(struct sql_thread *thd,
 {
     int count = 0, rc;
 
+    /* Short circuit */
+    if (clnt->failed_recover_deadlock)
+        return 1;
+
     /* Sql thread */
     if (thd) {
         if (release_locks("slow reader") != 0) {
