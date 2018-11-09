@@ -1756,8 +1756,17 @@ clipper_usage:
             ssl_stats();
 #endif
         } else {
-            logmsg(LOGMSG_ERROR, "bad stat command\n");
-            print_help_page(HELP_STAT);
+            int rc = 1;
+            struct message_handler *h;
+            LISTC_FOR_EACH(&dbenv->message_handlers, h, lnk) {
+                if ((rc = h->handle(dbenv, line + start_st)) == 0) {
+                    break;
+                }
+            }
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "bad stat command\n");
+                print_help_page(HELP_STAT);
+            }
         }
     } else if (tokcmp(tok, ltok, "on") == 0) {
         change_switch(1, line, lline, st);
