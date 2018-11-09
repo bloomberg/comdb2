@@ -31,6 +31,7 @@
 #include <limits.h>
 
 #include "cdb2api.h"
+#include <sockpool_p.h>
 
 #include "sqlquery.pb-c.h"
 #include "sqlresponse.pb-c.h"
@@ -145,6 +146,7 @@ pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 #include <netdb.h>
 
+int sockpool_msg_ver = 0;
 static pthread_once_t init_once = PTHREAD_ONCE_INIT;
 static int log_calls = 0; /* ONE-TIME */
 
@@ -1388,6 +1390,7 @@ struct sockaddr_sun {
     char sun_path[108];
 };
 
+#if 0
 struct sockpool_hello {
     char magic[4];
     int protocol_version;
@@ -1402,8 +1405,7 @@ struct sockpool_msg_vers0 {
     int timeout;
     char typestr[48];
 };
-
-enum { SOCKPOOL_DONATE = 0, SOCKPOOL_REQUEST = 1 };
+#endif
 
 static int open_sockpool_ll(void)
 {
@@ -1427,7 +1429,7 @@ static int open_sockpool_ll(void)
 
     /* Connected - write hello message */
     memcpy(hello.magic, "SQLP", 4);
-    hello.protocol_version = 0;
+    hello.protocol_version = sockpool_msg_ver;
     hello.pid = _PID;
     hello.slot = 0;
 
@@ -1489,6 +1491,9 @@ static void reset_sockpool(void)
 // cdb2_socket_pool_get_ll: lockless
 static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
 {
+    struct sockpool_msg_vers0 msg0 = {0};
+    struct sockpool_msg_vers1 msg1 = {0};
+
     if (sockpool_enabled == 0) {
         time_t current_time = time(NULL);
         /* Check every 10 seconds. */
@@ -1510,17 +1515,23 @@ static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
         }
     }
 
-    struct sockpool_msg_vers0 msg = {0};
-    if (strlen(typestr) >= sizeof(msg.typestr)) {
-        return -1;
+    void *msg = NULL;
+    int msg_len = 0;
+
+    if (sockpool_msg_ver == 0) {
+        msg = &msg0;
+        msg_len = sizeof(msg0);
+        if (strlen(typestr) >= sizeof(msg0.typestr)) {
+            return -1;
+        }
+        /* Please may I have a file descriptor */
+        msg0.request = SOCKPOOL_REQUEST;
+        msg0.dbnum = dbnum;
+        strncpy(msg0.typestr, typestr, sizeof(msg0.typestr) - 1);
     }
-    /* Please may I have a file descriptor */
-    msg.request = SOCKPOOL_REQUEST;
-    msg.dbnum = dbnum;
-    strncpy(msg.typestr, typestr, sizeof(msg.typestr) - 1);
 
     errno = 0;
-    int rc = send_fd(sockpool_fd, &msg, sizeof(msg), -1);
+    int rc = send_fd(sockpool_fd, msg, msg_len, -1);
     if (rc != PASSFD_SUCCESS) {
         fprintf(stderr, "%s: send_fd rc %d errno %d %s\n", __func__, rc, errno,
                 strerror(errno));
@@ -1533,7 +1544,7 @@ static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
     /* Read reply from server.  It can legitimately not send
      * us a file descriptor. */
     errno = 0;
-    rc = recv_fd(sockpool_fd, &msg, sizeof(msg), &fd);
+    rc = recv_fd(sockpool_fd, &msg0, sizeof(msg0), &fd);
     if (rc != PASSFD_SUCCESS) {
         fprintf(stderr, "%s: recv_fd rc %d errno %d %s\n", __func__, rc, errno,
                 strerror(errno));
@@ -1543,7 +1554,7 @@ static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
     }
     if (fd == -1 && port) {
         short gotport;
-        memcpy((char *)&gotport, (char *)&msg.padding[1], 2);
+        memcpy((char *)&gotport, (char *)&msg0.padding[1], 2);
         *port = ntohs(gotport);
     }
     return fd;
@@ -1580,14 +1591,24 @@ void cdb2_socket_pool_donate_ext(const char *typestr, int fd, int ttl,
 
         struct sockpool_msg_vers0 msg = {0};
         if (sockpool_fd != -1 && (strlen(typestr) < sizeof(msg.typestr))) {
+            struct sockpool_msg_vers0 msg0 = {0};
+            struct sockpool_msg_vers1 msg1 = {0};
+
+            void *msg = NULL;
+            int msg_len = 0;
             int rc;
-            msg.request = SOCKPOOL_DONATE;
-            msg.dbnum = dbnum;
-            msg.timeout = ttl;
-            strncpy(msg.typestr, typestr, sizeof(msg.typestr) - 1);
+
+            if (sockpool_msg_ver == 0) {
+                msg = &msg0;
+                msg_len = sizeof(msg0);
+                msg0.request = SOCKPOOL_DONATE;
+                msg0.dbnum = dbnum;
+                msg0.timeout = ttl;
+                strncpy(msg0.typestr, typestr, sizeof(msg0.typestr) - 1);
+            }
 
             errno = 0;
-            rc = send_fd(sockpool_fd, &msg, sizeof(msg), fd);
+            rc = send_fd(sockpool_fd, msg, msg_len, fd);
             if (rc != PASSFD_SUCCESS) {
                 fprintf(stderr, "%s: send_fd rc %d errno %d %s\n", __func__, rc,
                         errno, strerror(errno));
