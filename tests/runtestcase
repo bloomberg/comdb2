@@ -67,7 +67,7 @@ find_cores() {
     local COREAGE=60
     local CPAT=$(< /proc/sys/kernel/core_pattern)  # like cat core_pattern
     local COREDIR=$(dirname $CPAT 2>/dev/null)
-    if [ "x$COREDIR" == "x" ] || [ "x$COREDIR" == "x." ] ; then 
+    if [ "x$COREDIR" == "x" ] || [ "x$COREDIR" == "x." ] ; then  # when just 'core'
         COREDIR=$LCLDBDIR
     else
         CPAT=`basename $CPAT`
@@ -171,7 +171,13 @@ call_setup() {
     sleep 0.8 # wait a bit for any cores
     #last line of .setup file will contain the error rc if any
     ret=`tail -1 ${TESTDIR}/logs/${DBNAME}.setup | cut -c11-`
-    cr=`find_cores`
+
+    cr=`find_cores ${DBNAME} $DBDIR`
+
+    if [[ -z "$cr" ]] && [[ -n "${SECONDARY_DBNAME}" ]] ; then
+        cr=`find_cores ${SECONDARY_DBNAME} ${SECONDARY_DBDIR}`
+    fi
+
 
     if [[ -n "$cr" ]] ; then
         echo "!$TESTCASE: setup failed with core dumped ($cr)"
