@@ -28,6 +28,7 @@ static const char revid[] =
 #include "build/db.h"
 #include "build/db_int.h"
 #include "dbinc/db_page.h"
+#include "locks_wrap.h"
 
 #if (! _SUN_SOURCE )
 #include "dbinc/btree.h"
@@ -101,8 +102,8 @@ int tool_cdb2_printlog_main(argc, argv)
 
 	comdb2ma_init(0, 0);
 
-	pthread_key_create(&comdb2_open_key, NULL);
-	pthread_key_create(&DBG_FREE_CURSOR, NULL);
+	Pthread_key_create(&comdb2_open_key, NULL);
+	Pthread_key_create(&DBG_FREE_CURSOR, NULL);
 
 	if ((ret = cdb2_print_version_check(progname)) != 0)
 		return (ret);
@@ -256,7 +257,7 @@ int tool_cdb2_printlog_main(argc, argv)
 
 	/* Default to 1. */
 	st.ondisk_header = 1;
-	pthread_mutex_init(&st.gblcontext_lock, NULL);
+	Pthread_mutex_init(&st.gblcontext_lock, NULL);
 
 	gbl_bdb_state = &st;
 	dbenv->app_private = &st;

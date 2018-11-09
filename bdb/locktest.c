@@ -44,6 +44,7 @@ typedef unsigned int u_int;
 #include <gettimeofday_ms.h>
 #include <errno.h>
 #include <logmsg.h>
+#include <locks_wrap.h>
 
 static pthread_attr_t locktest_attr;
 static DB_ENV *dbenv = NULL;
@@ -841,7 +842,6 @@ static int lockvec_as(void *lockdesc, uint32_t id)
     memcpy(mylock, lockdesc, sizeof(mylock));
     shuffle(mylock);
 
-    DB_LOCK gotlock[arraylen(p_lockdesc)];
     DBT mydbt[arraylen(p_lockdesc)];
     DB_LOCKREQ list[arraylen(mylock)];
     for (i = 0; i < arraylen(mydbt); ++i) {
@@ -992,14 +992,14 @@ void bdb_locktest(void *_bdb_state)
     bdb_state_type *bdb_state = _bdb_state;
     dbenv = bdb_state->dbenv;
 #endif
-    pthread_attr_init(&locktest_attr);
+    Pthread_attr_init(&locktest_attr);
     pthread_attr_setstacksize(&locktest_attr, 3 * 1024 * 1024);
     void *ret;
     pthread_t t;
     uint64_t before = gettimeofday_ms();
     pthread_create(&t, NULL, locktest, io_override_get_std());
     pthread_join(t, &ret);
-    pthread_attr_destroy(&locktest_attr);
+    Pthread_attr_destroy(&locktest_attr);
     uint64_t after = gettimeofday_ms();
     uint64_t diff = after - before;
     fprintf(stderr, "total runtime: %" PRIu64 "ms (%0.2fs)\n", diff,

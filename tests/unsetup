@@ -134,45 +134,55 @@ flush_node() {
 }
 
 
-if [[ "$NOKILL_ON_TIMEOUT" -eq 1 && "$successful" -eq "-1" ]]; then
-    echo "Unsetup deferred"
-    exit 0
-fi
-
-if [[ "$DUMPLOCK_ON_TIMEOUT" -eq "1" && "$successful" -eq "-1" ]]; then
-    dumplock_all_nodes
-fi
-
-
-if [[ "$CORE_ON_TIMEOUT" -eq "1" && "$successful" -eq "-1" ]]; then
-    core_all_nodes
-fi
-
-
-if [[ -z "$CLUSTER" ]]; then
-    cdb2sql ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("flush")' &
-    sleep 1
-    cdb2sql ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("reql events off")' &
-    sleep 1
-    
-    kill_by_pidfile ${TMPDIR}/${DBNAME}.pid
-
-else
-    pidfilelist=""
-
-    for node in $CLUSTER; do
-        flush_node $node &
-        build_pidfilelist ${TMPDIR}/${DBNAME}.${node}.pid
-    done
-    wait
-
-    # for clustered, killing ssh session which is running comdb2 cmd 
-    # will kill server on that node
-    if [ -n "$pidfilelist" ] ; then
-        echo "killing $pidfilelist"
-        kill -9 $pidfilelist
+unsetup_db() {
+    if [[ "$NOKILL_ON_TIMEOUT" -eq 1 && "$successful" -eq "-1" ]]; then
+        echo "Unsetup deferred"
+        exit 0
     fi
+
+    if [[ "$DUMPLOCK_ON_TIMEOUT" -eq "1" && "$successful" -eq "-1" ]]; then
+        dumplock_all_nodes
+    fi
+
+
+    if [[ "$CORE_ON_TIMEOUT" -eq "1" && "$successful" -eq "-1" ]]; then
+        core_all_nodes
+    fi
+
+
+    if [[ -z "$CLUSTER" ]]; then
+        cdb2sql ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("flush")' &
+        sleep 1
+        cdb2sql ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("reql events off")' &
+        sleep 1
+        
+        kill_by_pidfile ${TMPDIR}/${DBNAME}.pid
+
+    else
+        pidfilelist=""
+
+        for node in $CLUSTER; do
+            flush_node $node &
+            build_pidfilelist ${TMPDIR}/${DBNAME}.${node}.pid
+        done
+        wait
+
+        # for clustered, killing ssh session which is running comdb2 cmd 
+        # will kill server on that node
+        if [ -n "$pidfilelist" ] ; then
+            echo "killing $pidfilelist"
+            kill -9 $pidfilelist
+        fi
+    fi
+
+    cleanup_cluster
+}
+
+unsetup_db
+
+if [ -n "${SECONDARY_DB_PREFIX}" ] ; then
+    # setup secondary db for the test, if specified
+    DBNAME="${SECONDARY_DBNAME}" DBDIR="${SECONDARY_DBDIR}" CDB2_OPTIONS="${SECONDARY_CDB2_OPTIONS}" unsetup_db
 fi
 
-cleanup_cluster
 echo "Unsetup completed"

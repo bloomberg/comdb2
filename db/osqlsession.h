@@ -41,7 +41,8 @@ struct osql_sess {
     pthread_mutex_t mtx; /* mutex and cond for thread sync */
     pthread_cond_t cond;
 
-    struct ireq *iq; /* iq owning this session */
+    struct ireq *iq; /* iq owning this session -- set to NULL once dispatched */
+    struct ireq *iqcopy; /* iq owning this session */
     char *offhost;   /* where is the sql peer of this session, 0 for local */
 
     char tzname[DB_MAX_TZNAMEDB]; /* tzname used for this request */

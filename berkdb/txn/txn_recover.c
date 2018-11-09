@@ -209,7 +209,6 @@ __txn_get_prepared(dbenv, xids, txns, count, retp, flags)
 	long i;
 	int nrestores, open_files, ret, t_ret;
 	void *txninfo;
-	void *bdb_state = dbenv->app_private;
 
 	*retp = 0;
 

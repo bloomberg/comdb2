@@ -637,6 +637,7 @@ tran_type *bdb_start_ltran_rep_sc(bdb_state_type *bdb_state,
 void bdb_set_tran_lockerid(tran_type *tran, uint32_t lockerid);
 void bdb_get_tran_lockerid(tran_type *tran, uint32_t *lockerid);
 void *bdb_get_physical_tran(tran_type *ltran);
+void *bdb_get_sc_parent_tran(tran_type *ltran);
 void bdb_ltran_get_schema_lock(tran_type *ltran);
 void bdb_ltran_put_schema_lock(tran_type *ltran);
 
@@ -1887,10 +1888,13 @@ int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key,
                       int *lenout);
 int bdb_blkseq_find(bdb_state_type *bdb_state, tran_type *tran, void *key,
                     int klen, void **dtaout, int *lenout);
-int bdb_blkseq_dumpall(bdb_state_type *bdb_state, uint8_t stripe);
+void bdb_blkseq_dumpall(bdb_state_type *bdb_state);
 int bdb_recover_blkseq(bdb_state_type *bdb_state);
 int bdb_blkseq_dumplogs(bdb_state_type *bdb_state);
 int bdb_blkseq_can_delete_log(bdb_state_type *bdb_state, int lognum);
+void bdb_blkseq_for_each(bdb_state_type *bdb_state, void *arg,
+                         void (*func)(int, int, void *, void *, void *,
+                                      void *));
 
 /* low level calls to add things to a single btree for debugging and emergency
  * repair */

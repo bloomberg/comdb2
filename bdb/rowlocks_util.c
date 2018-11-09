@@ -30,7 +30,7 @@ int bdb_get_row_lock_pfunc(bdb_state_type *bdb_state, int rowlock_lid, int idx,
                            int how)
 {
     DB_LOCK lk = {0}, *lkptr;
-    int rc, pagelockcount = 0;
+    int rc;
 
     /* Return the lock if the caller wants it */
     if (rlk) {
@@ -86,6 +86,7 @@ int bdb_get_row_lock_pfunc(bdb_state_type *bdb_state, int rowlock_lid, int idx,
         }
 
 #if defined DEBUG_ROWLOCKS
+        int pagelockcount = 0;
         /*
          * It turns out that there are (apparently) cases where a txn will hold
          * onto a pagelock even after a cursor has been closed.  I'm not sure

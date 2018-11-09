@@ -128,7 +128,7 @@ static int start_physical_transaction(bdb_state_type *bdb_state,
                                       tran_type **outtran)
 {
     tran_type *physical_tran;
-    int rc, bdberr;
+    int rc;
 
     physical_tran = bdb_tran_begin_phys(bdb_state, logical_tran);
     if (physical_tran == NULL) {
@@ -190,20 +190,35 @@ int get_physical_transaction(bdb_state_type *bdb_state, tran_type *logical_tran,
             assert(!logical_tran->physical_tran);
         }
     }
-
-    if (!logical_tran->physical_tran &&
-        (rc = start_physical_transaction(bdb_state, logical_tran, outtran) !=
-              0)) {
-        int ismaster;
-        ismaster =
-            (bdb_state->repinfo->myhost == bdb_state->repinfo->master_host);
-        if (!ismaster && !bdb_state->in_recovery) {
-            logmsg(LOGMSG_ERROR,
-                   "Master change while getting physical tran.\n");
-            return BDBERR_READONLY;
+    if (!logical_tran->physical_tran) {
+        rc = start_physical_transaction(bdb_state, logical_tran, outtran);
+        if (rc != 0) {
+            int ismaster =
+                (bdb_state->repinfo->myhost == bdb_state->repinfo->master_host);
+            if (!ismaster && !bdb_state->in_recovery) {
+                logmsg(LOGMSG_ERROR,
+                       "Master change while getting physical tran.\n");
+                return BDBERR_READONLY;
+            }
+            return rc;
         }
-        return rc;
+        if (logical_tran->single_physical_transaction &&
+            logical_tran->schema_change_txn && gbl_rowlocks) {
+            int bdberr = 0;
+            logical_tran->sc_parent_tran = logical_tran->physical_tran;
+            logical_tran->physical_tran = bdb_tran_begin(
+                bdb_state, logical_tran->sc_parent_tran, &bdberr);
+            logical_tran->physical_tran->logical_tran = logical_tran;
+            logical_tran->physical_tran->tranclass = TRANCLASS_PHYSICAL;
+            if (logical_tran->physical_tran == NULL) {
+                logmsg(LOGMSG_ERROR,
+                       "%s:%d failed to start child tran for sc, bdberr=%d\n",
+                       __func__, __LINE__, bdberr);
+                return -1;
+            }
+        }
     }
+
     *outtran = logical_tran->physical_tran;
     return 0;
 }
@@ -486,8 +501,6 @@ int phys_dta_upd(bdb_state_type *bdb_state, int rrn,
     DB_LOCK *oldrowlk = NULL;
 
     /* Masked genids */
-    unsigned long long maskedold;
-    unsigned long long maskednew;
     unsigned long long orignew = *newgenid;
     DB_LSN last_regop_lsn = logical_tran->last_regop_lsn;
 
@@ -610,7 +623,6 @@ int phys_key_add(bdb_state_type *bdb_state, tran_type *logical_tran,
     int retry_count = bdb_state->attr->pagedeadlock_retries;
     int max_poll = bdb_state->attr->pagedeadlock_maxpoll;
     tran_type *physical_tran = NULL;
-    unsigned long long ixhash;
 
     /* New row */
     DBT *newlkptr = NULL;
@@ -848,7 +860,6 @@ int phys_key_upd(bdb_state_type *bdb_state, tran_type *logical_tran,
     int retry_count = bdb_state->attr->pagedeadlock_retries;
     int max_poll = bdb_state->attr->pagedeadlock_maxpoll;
     tran_type *physical_tran = NULL;
-    DBT old_dta;
 
     if (flibc_ntohll(oldgenid) >= flibc_ntohll(newgenid))
         abort();

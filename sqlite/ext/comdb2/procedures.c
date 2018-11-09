@@ -325,7 +325,7 @@ static int systblSPsColumn(
       break;
   }
   return SQLITE_OK;
-};
+}
 
 static int systblSPsRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){
   systbl_sps_cursor *pCur = (systbl_sps_cursor*)cur;

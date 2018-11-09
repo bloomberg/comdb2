@@ -32,6 +32,7 @@
 #include <bdb_osqlcur.h>
 #include <flibc.h>
 #include <locks.h>
+#include <locks_wrap.h>
 
 #include <logmsg.h>
 #include <tohex.h>
@@ -102,7 +103,6 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
 int bdb_osql_log_repo_init(int *bdberr)
 {
     bdb_osql_log_repo_t *tmp = NULL;
-    int rc = 0;
 
     if (log_repo) {
 
@@ -119,22 +119,8 @@ int bdb_osql_log_repo_init(int *bdberr)
 
     listc_init(&tmp->logs, offsetof(bdb_osql_log_t, lnk));
 
-    rc = pthread_rwlock_init(&tmp->tail_lock, NULL);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s pthread_mutex_init %d %d\n", __func__, rc, errno);
-        *bdberr = BDBERR_BADARGS;
-        free(tmp);
-        return -1;
-    }
-
-    rc = pthread_mutex_init(&tmp->clients_mtx, NULL);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s pthread_mutex_init %d %d\n", __func__, rc, errno);
-        *bdberr = BDBERR_BADARGS;
-        pthread_rwlock_destroy(&tmp->tail_lock);
-        free(tmp);
-        return -1;
-    }
+    Pthread_rwlock_init(&tmp->tail_lock, NULL);
+    Pthread_mutex_init(&tmp->clients_mtx, NULL);
 
     tmp->trak = 0; /* hook this up to a higher lvl */
     log_repo = tmp;
@@ -149,7 +135,6 @@ int bdb_osql_log_repo_destroy(int *bdberr)
 {
     bdb_osql_log_repo_t *tmp = log_repo;
     bdb_osql_log_t *log = NULL, *log2 = NULL;
-    int rc = 0;
 
     if (tmp)
         return 0;
@@ -168,23 +153,12 @@ int bdb_osql_log_repo_destroy(int *bdberr)
         bdb_osql_log_destroy(log);
     }
 
-    rc = pthread_rwlock_destroy(&tmp->tail_lock);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_init %d %d\n", rc, errno);
-        *bdberr = BDBERR_BADARGS;
-        rc = -1;
-    }
-
-    rc = pthread_mutex_destroy(&tmp->clients_mtx);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_init %d %d\n", rc, errno);
-        *bdberr = BDBERR_BADARGS;
-        rc = -1;
-    }
+    Pthread_rwlock_destroy(&tmp->tail_lock);
+    Pthread_mutex_destroy(&tmp->clients_mtx);
 
     free(tmp);
 
-    return rc;
+    return 0;
 }
 
 /**
@@ -798,15 +772,6 @@ bdb_osql_comprec_reference_rec(bdb_state_type *bdb_state, DB_LSN *lsn,
 {
     u_int32_t rectype = 0;
     int rc = 0;
-    llog_undo_add_dta_args *add_dta;
-    llog_undo_add_ix_args *add_ix;
-    llog_ltran_commit_args *commit;
-    llog_ltran_start_args *start;
-    llog_ltran_comprec_args *comprec;
-    llog_undo_del_dta_args *del_dta;
-    llog_undo_del_ix_args *del_ix;
-    llog_undo_upd_dta_args *upd_dta;
-    llog_undo_upd_ix_args *upd_ix;
 
     /* Rowlocks types */
     llog_undo_add_dta_lk_args *add_dta_lk;
@@ -1042,12 +1007,7 @@ int bdb_osql_log_register_clients(bdb_osql_log_t *log, int clients, int *bdberr)
     /* printf("XXX %p LOG %p Calling log_register with %d clients\n",
      * pthread_self(), log, clients); */
 
-    rc = pthread_mutex_lock(&log_repo->clients_mtx);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_lock %d %d\n", rc, errno);
-        *bdberr = BDBERR_BUG_KILLME;
-        return -1;
-    }
+    Pthread_mutex_lock(&log_repo->clients_mtx);
 
     log->impl->clients = clients;
 
@@ -1064,12 +1024,7 @@ int bdb_osql_log_register_clients(bdb_osql_log_t *log, int clients, int *bdberr)
        - link this new log to the list
      */
 
-    rc = pthread_mutex_unlock(&log_repo->clients_mtx);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_unlock %d %d\n", rc, errno);
-        *bdberr = BDBERR_BUG_KILLME;
-        return -1;
-    }
+    Pthread_mutex_unlock(&log_repo->clients_mtx);
 
     return 0;
 }
@@ -1134,11 +1089,7 @@ int bdb_osql_log_insert(bdb_state_type *bdb_state, bdb_osql_log_t *log,
        on the tail
        See also: bdb_osql_log_next
      */
-    rc = pthread_rwlock_wrlock(&log_repo->tail_lock);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s wrlock %d %d\n", __func__, rc, errno);
-        *bdberr = BDBERR_BUG_KILLME;
-    }
+    Pthread_rwlock_wrlock(&log_repo->tail_lock);
 
     if (log_repo->trak)
         logmsg(LOGMSG_USER, "REPOLOGS: add log %p\n", log);
@@ -1165,7 +1116,7 @@ int bdb_osql_log_insert(bdb_state_type *bdb_state, bdb_osql_log_t *log,
 
         rc = bdb_osql_log_destroy(log);
         if (rc) {
-            pthread_rwlock_unlock(&log_repo->tail_lock);
+            Pthread_rwlock_unlock(&log_repo->tail_lock);
             *bdberr = rc;
             return -1;
         }
@@ -1175,11 +1126,7 @@ int bdb_osql_log_insert(bdb_state_type *bdb_state, bdb_osql_log_t *log,
     }
 
     /* we can run garbage collection, under client_mtx lock */
-    rc = pthread_mutex_lock(&log_repo->clients_mtx);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s unlock %d %d\n", __func__, rc, errno);
-        *bdberr = BDBERR_BUG_KILLME;
-    }
+    Pthread_mutex_lock(&log_repo->clients_mtx);
 
     /* first pass, free whatever we don't need anymore */
     LISTC_FOR_EACH_SAFE(&log_repo->logs, log1, log2, lnk)
@@ -1226,17 +1173,8 @@ int bdb_osql_log_insert(bdb_state_type *bdb_state, bdb_osql_log_t *log,
         }
     }
 
-    rc = pthread_mutex_unlock(&log_repo->clients_mtx);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s unlock %d %d\n", __func__, rc, errno);
-        *bdberr = BDBERR_BUG_KILLME;
-    }
-
-    rc = pthread_rwlock_unlock(&log_repo->tail_lock);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s unlock %d %d\n", __func__, rc, errno);
-        *bdberr = BDBERR_BUG_KILLME;
-    }
+    Pthread_mutex_unlock(&log_repo->clients_mtx);
+    Pthread_rwlock_unlock(&log_repo->tail_lock);
 
     /* at this point, the tail was updated, the log counts
        the clients needed, and those clients have the list
@@ -1593,7 +1531,6 @@ int bdb_osql_log_apply_log(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
                            bdb_osql_log_t *log, bdb_osql_trn_t *trn, int *dirty,
                            enum log_ops log_op, int trak, int *bdberr)
 {
-    tran_type *shadow_tran = bdb_osql_trn_get_shadow_tran(trn);
     bdb_osql_log_rec_t *rec = NULL;
     int rc = 0;
 
@@ -1662,8 +1599,6 @@ int bdb_osql_log_apply_log(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
         rc = bdb_osql_shadow_set_lastlog(cur->ifn, log, bdberr);
     }
 
-done:
-
     return rc;
 }
 
@@ -1700,10 +1635,6 @@ bdb_osql_log_t *parse_log_for_shadows_int(bdb_state_type *bdb_state,
      * records from addcur */
     llog_ltran_comprec_args *comprec = NULL;
 
-    /* Rowlocks benchmark record */
-    llog_rowlocks_log_bench_args *rl_log = NULL;
-
-    unsigned long long genid = 0;
     int done = 0;
 
     /*
@@ -2372,7 +2303,6 @@ void bdb_update_ltran_lsns(bdb_state_type *bdb_state, DB_LSN regop_lsn,
     unsigned long long ltranid;
     tran_type *ltrans = NULL;
     int rc = 0;
-    int bdberr;
 
     if (!gbl_new_snapisol)
         return;
@@ -2438,14 +2368,14 @@ void bdb_update_ltran_lsns(bdb_state_type *bdb_state, DB_LSN regop_lsn,
         ltranid = argrlp->ltranid;
     }
 
-    pthread_mutex_lock(&bdb_state->translist_lk);
+    Pthread_mutex_lock(&bdb_state->translist_lk);
     ltrans = hash_find(bdb_state->logical_transactions_hash, &ltranid);
     if (ltrans) {
         ltrans->last_logical_lsn = lsn;
         ltrans->last_physical_commit_lsn = lsn;
         ltrans->last_regop_lsn = regop_lsn;
     }
-    pthread_mutex_unlock(&bdb_state->translist_lk);
+    Pthread_mutex_unlock(&bdb_state->translist_lk);
 
 done:
     if (logdta.data)
@@ -2550,7 +2480,6 @@ static int undo_get_prevlsn(bdb_state_type *bdb_state, DBT *logdta,
     llog_undo_add_dta_args *add_dta;
     llog_undo_add_ix_args *add_ix;
     llog_ltran_commit_args *commit;
-    llog_ltran_start_args *start;
     llog_ltran_comprec_args *comprec;
     llog_undo_del_dta_args *del_dta;
     llog_undo_del_ix_args *del_ix;
@@ -2728,25 +2657,14 @@ static int undo_get_prevlsn(bdb_state_type *bdb_state, DBT *logdta,
 struct bdb_osql_log *bdb_osql_log_last(int *bdberr)
 {
     bdb_osql_log_t *ret = NULL;
-    int rc = 0;
 
-    rc = pthread_rwlock_rdlock(&log_repo->tail_lock);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s wrlock %d %d\n", __func__, rc, errno);
-        *bdberr = BDBERR_BUG_KILLME;
-        return NULL;
-    }
+    Pthread_rwlock_rdlock(&log_repo->tail_lock);
 
     ret = log_repo->logs.bot;
     if (log_repo->trak)
         logmsg(LOGMSG_ERROR, "REPOLOGS: rtn tail log %p\n", ret);
 
-    rc = pthread_rwlock_unlock(&log_repo->tail_lock);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s unlock %d %d\n", __func__, rc, errno);
-        *bdberr = BDBERR_BUG_KILLME;
-        return NULL;
-    }
+    Pthread_rwlock_unlock(&log_repo->tail_lock);
 
     return ret;
 }
@@ -2878,14 +2796,9 @@ static int bdb_osql_log_try_run_optimized(bdb_cursor_impl_t *cur,
     int outrc = 0;
     DBT logdta;
     int offset = 0;
-    int dttype;
-    int updlen;
     int page = 0;
     int index = 0;
-    int version = 0;
-    int use_addcur = 0;
     u_int32_t rectype;
-    llog_undo_del_dta_args *del_dta = NULL;
     llog_undo_upd_dta_args *upd_dta = NULL;
 
     *bdberr = 0;
@@ -3128,41 +3041,19 @@ int bdb_osql_update_shadows_with_pglogs(bdb_cursor_impl_t *cur, DB_LSN lsn,
                                         bdb_osql_trn_t *trn, int *dirty,
                                         int trak, int *bdberr)
 {
-    tran_type *shadow_tran = bdb_osql_trn_get_shadow_tran(trn);
     bdb_state_type *bdb_state = cur->state;
     int rc = 0;
     DBT logdta;
-    DB_LSN undolsn;
-    DB_LSN prev_lsn;
     u_int32_t rectype = 0;
-    void *key;
-    int idx;
     DB_LOGC *logcur = NULL;
 
     void *free_ptr = NULL;
-    bdb_osql_log_addc_ptr_t *addptr;
-    int use_addcur = 0;
-    int inplace = 0;
-    void *keybuf;
-    int keylen;
-    int updlen;
-    void *dtabuf;
-    void *freeme;
-    int page;
-    int index;
-    int curpage;
-    int curidx;
-    int offset;
-    int dtalen;
     int skip = 0;
 
     bdb_osql_log_rec_t *rec = NULL;
 
     llog_undo_add_dta_args *add_dta = NULL;
     llog_undo_add_ix_args *add_ix = NULL;
-    llog_ltran_commit_args *commit = NULL;
-    llog_ltran_start_args *start = NULL;
-    llog_ltran_comprec_args *comprec = NULL;
     llog_undo_del_dta_args *del_dta = NULL;
     llog_undo_del_ix_args *del_ix = NULL;
     llog_undo_upd_dta_args *upd_dta = NULL;
@@ -3175,9 +3066,6 @@ int bdb_osql_update_shadows_with_pglogs(bdb_cursor_impl_t *cur, DB_LSN lsn,
     llog_undo_del_ix_lk_args *del_ix_lk = NULL;
     llog_undo_upd_dta_lk_args *upd_dta_lk = NULL;
     llog_undo_upd_ix_lk_args *upd_ix_lk = NULL;
-    void *logp = NULL;
-
-    int i;
 
     bzero(&logdta, sizeof(DBT));
     logdta.flags = DB_DBT_REALLOC;
@@ -3428,6 +3316,7 @@ int bdb_osql_update_shadows_with_pglogs(bdb_cursor_impl_t *cur, DB_LSN lsn,
 
         if (rc) {
 #ifdef NEWSI_DEBUG
+            tran_type *shadow_tran = bdb_osql_trn_get_shadow_tran(trn);
             logmsg(LOGMSG_DEBUG,
                    "NEWSI tran %p shadow_tran %p birthlsn[%d][%d] applying log "
                    "lsn[%d][%d] type[%d] genid[%llx] dbnum[%d] dtafile[%d] "
@@ -3516,7 +3405,6 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
     llog_undo_del_ix_lk_args *del_ix_lk = NULL;
     llog_undo_upd_ix_args *upd_ix = NULL;
     llog_undo_upd_ix_lk_args *upd_ix_lk = NULL;
-    llog_ltran_comprec_args *comprec = NULL;
     void *free_ptr = NULL;
     bdb_osql_log_addc_ptr_t *addptr;
     u_int32_t rectype;
@@ -3529,8 +3417,6 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
     void *freeme;
     int page;
     int index;
-    int curpage;
-    int curidx;
     int rc = 0;
     int offset;
     int dtalen;
@@ -3779,7 +3665,6 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
     case DB_llog_undo_add_dta_lk: {
         unsigned long long genid;
         short dtastripe, dtafile;
-        int dtalen;
 
         if (rec->type == DB_llog_undo_add_dta_lk) {
             if (llog_dta) {
@@ -4370,7 +4255,6 @@ int bdb_osql_log_is_optim_data(void *buf)
 int bdb_osql_log_unregister(tran_type *tran, bdb_osql_log_t *firstlog,
                             bdb_osql_log_t *lastlog, int trak)
 {
-    int rc = 0;
     int registered = 0;
 
     if ((firstlog && !lastlog) || (!firstlog && lastlog)) {
@@ -4378,11 +4262,7 @@ int bdb_osql_log_unregister(tran_type *tran, bdb_osql_log_t *firstlog,
         return -1;
     }
 
-    rc = pthread_mutex_lock(&log_repo->clients_mtx);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_lock %d %d\n", rc, errno);
-        return -1;
-    }
+    Pthread_mutex_lock(&log_repo->clients_mtx);
 
     registered = bdb_osql_log_undo_required(tran, firstlog);
 
@@ -4417,11 +4297,7 @@ int bdb_osql_log_unregister(tran_type *tran, bdb_osql_log_t *firstlog,
         registered = bdb_osql_log_undo_required(tran, firstlog);
     } while (1);
 
-    rc = pthread_mutex_unlock(&log_repo->clients_mtx);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_unlock %d %d\n", rc, errno);
-        return -1;
-    }
+    Pthread_mutex_unlock(&log_repo->clients_mtx);
 
     return 0;
 }

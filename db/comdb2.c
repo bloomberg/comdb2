@@ -357,6 +357,7 @@ int gbl_sort_nulls_correctly = 1;
 int gbl_check_client_tags = 1;
 char *gbl_lrl_fname = NULL;
 char *gbl_spfile_name = NULL;
+char *gbl_timepart_file_name = NULL;
 int gbl_max_lua_instructions = 10000;
 int gbl_check_wrong_cmd = 1;
 int gbl_updategenids = 0;
@@ -777,15 +778,15 @@ struct dbtable *getdbbynum(int num)
 {
     int ii;
     struct dbtable *p_db = NULL;
-    pthread_rwlock_rdlock(&thedb_lock);
+    Pthread_rwlock_rdlock(&thedb_lock);
     for (ii = 0; ii < thedb->num_dbs; ii++) {
         if (thedb->dbs[ii]->dbnum == num) {
             p_db = thedb->dbs[ii];
-            pthread_rwlock_unlock(&thedb_lock);
+            Pthread_rwlock_unlock(&thedb_lock);
             return p_db;
         }
     }
-    pthread_rwlock_unlock(&thedb_lock);
+    Pthread_rwlock_unlock(&thedb_lock);
     return 0;
 }
 
@@ -800,9 +801,9 @@ struct dbtable *get_dbtable_by_name(const char *p_name)
 {
     struct dbtable *p_db = NULL;
 
-    pthread_rwlock_rdlock(&thedb_lock);
+    Pthread_rwlock_rdlock(&thedb_lock);
     p_db = hash_find_readonly(thedb->db_hash, &p_name);
-    pthread_rwlock_unlock(&thedb_lock);
+    Pthread_rwlock_unlock(&thedb_lock);
 
     return p_db;
 }
@@ -1498,7 +1499,6 @@ struct dbtable *newqdb(struct dbenv *env, const char *name, int avgsz, int pages
                   int isqueuedb)
 {
     struct dbtable *tbl;
-    int rc;
 
     tbl = calloc(1, sizeof(struct dbtable));
     tbl->tablename = strdup(name);
@@ -1508,12 +1508,7 @@ struct dbtable *newqdb(struct dbenv *env, const char *name, int avgsz, int pages
     tbl->queue_pagesize_override = pagesize;
 
     if (tbl->dbtype == DBTYPE_QUEUEDB) {
-        rc = pthread_rwlock_init(&tbl->consumer_lk, NULL);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "create consumer rwlock rc %d %s\n", rc,
-                    strerror(rc));
-            return NULL;
-        }
+        Pthread_rwlock_init(&tbl->consumer_lk, NULL);
     }
 
     return tbl;
@@ -2374,7 +2369,7 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
     dbenv->log_delete_filenum = -1;
     listc_init(&dbenv->log_delete_state_list,
                offsetof(struct log_delete_state, linkv));
-    pthread_mutex_init(&dbenv->log_delete_counter_mutex, NULL);
+    Pthread_mutex_init(&dbenv->log_delete_counter_mutex, NULL);
 
     /* assume I want a cluster, unless overridden by -local or cluster none */
 
@@ -2384,7 +2379,7 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
                offsetof(struct managed_component, lnk));
     listc_init(&dbenv->managed_coordinators,
                offsetof(struct managed_component, lnk));
-    pthread_mutex_init(&dbenv->incoherent_lk, NULL);
+    Pthread_mutex_init(&dbenv->incoherent_lk, NULL);
 
     /* Initialize the table/queue hashes. */
     dbenv->db_hash =
@@ -2446,12 +2441,7 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
         logmsg(LOGMSG_ERROR, "couldn't allocate long transaction lookup table\n");
         return NULL;
     }
-    if (pthread_mutex_init(&dbenv->long_trn_mtx, NULL) != 0) {
-        logmsg(LOGMSG_ERROR, "couldn't allocate long transaction lookup table\n");
-        hash_free(dbenv->long_trn_table);
-        dbenv->long_trn_table = NULL;
-        return NULL;
-    }
+    Pthread_mutex_init(&dbenv->long_trn_mtx, NULL);
 
     if (gbl_local_mode) {
         /*force no siblings for local mode*/
@@ -2582,6 +2572,29 @@ static int dump_queuedbs(char *dir)
     return 0;
 }
 
+static int dump_timepartitions(const char *dir, const char *dbname,
+                               const char *filename)
+{
+    int has_tp = 0;
+    char path[PATH_MAX];
+    snprintf(path, sizeof(path), "%s/%s_%s", dir, dbname, filename);
+    FILE *f = fopen(path, "w");
+    if (f == NULL) {
+        logmsg(LOGMSG_ERROR, "%s:fopen(\"%s\"):%s\n", __func__, path,
+               strerror(errno));
+        return -1;
+    }
+
+    /* save the configuration */
+    has_tp = timepart_dump_timepartitions(f);
+
+    fclose(f);
+    logmsg(LOGMSG_INFO, "%s wrote time partitions configuration in: %s\n",
+           __func__, path);
+
+    return has_tp;
+}
+
 int repopulate_lrl(const char *p_lrl_fname_out)
 {
     /* can't put this on stack, it will overflow appsock thread */
@@ -2663,11 +2676,18 @@ int repopulate_lrl(const char *p_lrl_fname_out)
         return -1;
     }
 
+    int has_tp = dump_timepartitions(p_data->lrl_fname_out_dir, thedb->envname,
+                                     TIMEPART_FILE_NAME);
+    if (has_tp < 0) {
+        free(p_data);
+        return -1;
+    }
+
     /* write out the lrl */
     if (rewrite_lrl_un_llmeta(getresourcepath("lrl"), p_lrl_fname_out,
                               p_data->p_table_names, p_data->p_csc2_paths,
                               p_data->table_nums, thedb->num_dbs,
-                              p_data->lrl_fname_out_dir, has_sp)) {
+                              p_data->lrl_fname_out_dir, has_sp, has_tp)) {
         logmsg(LOGMSG_ERROR, "%s: rewrite_lrl_un_llmeta failed\n", __func__);
 
         free(p_data);
@@ -3197,25 +3217,17 @@ static int init(int argc, char **argv)
 
     gbl_mynodeid = machine_num(gbl_mynode);
 
-    pthread_attr_init(&gbl_pthread_attr);
+    Pthread_attr_init(&gbl_pthread_attr);
     pthread_attr_setstacksize(&gbl_pthread_attr, DEFAULT_THD_STACKSZ);
     pthread_attr_setdetachstate(&gbl_pthread_attr, PTHREAD_CREATE_DETACHED);
 
     /* Initialize the statistics. */
     init_metrics();
 
-    rc = pthread_key_create(&comdb2_open_key, NULL);
-    if (rc) {
-        logmsg(LOGMSG_FATAL, "pthread_key_create comdb2_open_key %d\n", rc);
-        return -1;
-    }
+    Pthread_key_create(&comdb2_open_key, NULL);
 
 #ifndef BERKDB_46
-    rc = pthread_key_create(&DBG_FREE_CURSOR, free);
-    if (rc) {
-        logmsg(LOGMSG_FATAL, "pthread_key_create DBG_FREE_CURSOR %d\n", rc);
-        return -1;
-    }
+    Pthread_key_create(&DBG_FREE_CURSOR, free);
 #endif
 
     if (lrlname == NULL) {
@@ -3251,6 +3263,9 @@ static int init(int argc, char **argv)
     }
 
     init_file_locations(lrlname);
+
+    /* prepare the server class ahead of time */
+    get_my_mach_class();
 
     if (gbl_create_mode && lrlname == NULL) {
        if (gbl_dbdir == NULL)
@@ -3485,7 +3500,7 @@ static int init(int argc, char **argv)
      * to allow them because at least one prod database uses them.
      * Still alow bools for people who want to copy/test prod dbs
      * that use them.  Don't allow new databases to have bools. */
-    if ((get_mach_class(gbl_mynode) == CLASS_TEST) && gbl_create_mode) {
+    if ((get_my_mach_class() == CLASS_TEST) && gbl_create_mode) {
         if (dyns_used_bools()) {
             logmsg(LOGMSG_FATAL, "bools in schema.  This is now deprecated.\n");
             logmsg(LOGMSG_FATAL, "Exiting since this is a test machine.\n");
@@ -3598,21 +3613,21 @@ static int init(int argc, char **argv)
         /* we would like to open the files under schema lock, so that
            we don't race with a schema change from master (at this point
            environment is opened, but files are not !*/
-        pthread_rwlock_wrlock(&schema_lk);
+        wrlock_schema_lk();
 
         if (llmeta_load_tables(thedb, dbname)) {
             logmsg(LOGMSG_FATAL, "could not load tables from the low level meta "
                             "table\n");
-            pthread_rwlock_unlock(&schema_lk);
+            unlock_schema_lk();
             return -1;
         }
 
         if (llmeta_load_timepart(thedb)) {
             logmsg(LOGMSG_ERROR, "could not load time partitions\n");
-            pthread_rwlock_unlock(&schema_lk);
+            unlock_schema_lk();
             return -1;
         }
-        pthread_rwlock_unlock(&schema_lk);
+        unlock_schema_lk();
 
         if (llmeta_load_queues(thedb)) {
             logmsg(LOGMSG_FATAL, "could not load queues from the low level meta "
@@ -3670,11 +3685,7 @@ static int init(int argc, char **argv)
         fix_lrl_ixlen(); /* set lrl, ix lengths: ignore lrl file, use info from
                             schema */
 
-        rc = pthread_key_create(&query_info_key, NULL);
-        if (rc) {
-            logmsg(LOGMSG_FATAL, "pthread_key_create query_info_key rc %d\n", rc);
-            return -1;
-        }
+        Pthread_key_create(&query_info_key, NULL);
     }
 
     /* historical requests */
@@ -3696,22 +3707,24 @@ static int init(int argc, char **argv)
     /* open db engine */
     logmsg(LOGMSG_INFO, "starting backend db engine\n");
 
-    pthread_rwlock_wrlock(&schema_lk);
+    wrlock_schema_lk();
 
     if (backend_open(thedb) != 0) {
         logmsg(LOGMSG_FATAL, "failed to open '%s'\n", dbname);
+        unlock_schema_lk();
         return -1;
     }
 
     if (llmeta_load_tables_older_versions(thedb)) {
         logmsg(LOGMSG_FATAL, "llmeta_load_tables_older_versions failed\n");
+        unlock_schema_lk();
         return -1;
     }
 
     load_dbstore_tableversion(thedb);
 
     gbl_backend_opened = 1;
-    pthread_rwlock_unlock(&schema_lk);
+    unlock_schema_lk();
 
     sqlinit();
     rc = create_sqlmaster_records(NULL);
@@ -3762,6 +3775,13 @@ static int init(int argc, char **argv)
 
         if (gbl_spfile_name) {
             read_spfile(gbl_spfile_name);
+        }
+
+        if (gbl_timepart_file_name) {
+            if (timepart_apply_file(gbl_timepart_file_name)) {
+                logmsg(LOGMSG_FATAL, "Failed to create time partitions!\n");
+                return -1;
+            }
         }
 
         if (llmeta_set_qdbs() != 0) {
@@ -5016,19 +5036,6 @@ struct tool tool_callbacks[] = {
    NULL
 };
 
-static void wait_for_coherent()
-{
-    const unsigned int cslp = 10000;                 /* 10000us == 10ms */
-    const unsigned int wrn_cnt = 5 * 1000000 / cslp; /* 5s */
-    unsigned int counter = 1;
-    while (!bdb_am_i_coherent(thedb->bdb_env)) {
-        if ((++counter % wrn_cnt) == 0) {
-            logmsg(LOGMSG_ERROR, "I am still incoherent\n");
-        }
-        usleep(cslp);
-    }
-}
-
 int main(int argc, char **argv)
 {
     int rc;
@@ -5189,7 +5196,6 @@ int main(int argc, char **argv)
     // db started - disable recsize kludge so
     // new schemachanges won't allow broken size.
     gbl_broken_max_rec_sz = 0;
-    wait_for_coherent();
 
     if (run_init_plugins()) {
         logmsg(LOGMSG_FATAL, "Initializer plugin failed\n");
@@ -5219,10 +5225,10 @@ int main(int argc, char **argv)
 
 int add_db(struct dbtable *db)
 {
-    pthread_rwlock_wrlock(&thedb_lock);
+    Pthread_rwlock_wrlock(&thedb_lock);
 
     if (hash_find_readonly(thedb->db_hash, db) != 0) {
-        pthread_rwlock_unlock(&thedb_lock);
+        Pthread_rwlock_unlock(&thedb_lock);
         return -1;
     }
 
@@ -5234,7 +5240,7 @@ int add_db(struct dbtable *db)
     /* Add table to the hash. */
     hash_add(thedb->db_hash, db);
 
-    pthread_rwlock_unlock(&thedb_lock);
+    Pthread_rwlock_unlock(&thedb_lock);
     return 0;
 }
 
@@ -5242,7 +5248,7 @@ void delete_db(char *db_name)
 {
     int idx;
 
-    pthread_rwlock_wrlock(&thedb_lock);
+    Pthread_rwlock_wrlock(&thedb_lock);
     if ((idx = getdbidxbyname(db_name)) < 0) {
         logmsg(LOGMSG_FATAL, "%s: failed to find tbl for deletion: %s\n", __func__,
                 db_name);
@@ -5259,7 +5265,7 @@ void delete_db(char *db_name)
 
     thedb->num_dbs -= 1;
     thedb->dbs[thedb->num_dbs] = NULL;
-    pthread_rwlock_unlock(&thedb_lock);
+    Pthread_rwlock_unlock(&thedb_lock);
 }
 
 /* rename in memory db names; fragile */
@@ -5271,7 +5277,7 @@ int rename_db(struct dbtable *db, const char *newname)
     if (!tag_name || !bdb_name)
         return -1;
 
-    pthread_rwlock_wrlock(&thedb_lock);
+    Pthread_rwlock_wrlock(&thedb_lock);
 
     /* tags */
     rename_schema(db->tablename, tag_name);
@@ -5285,14 +5291,14 @@ int rename_db(struct dbtable *db, const char *newname)
     db->version = 0; /* reset, new table */
     hash_add(thedb->db_hash, db);
 
-    pthread_rwlock_unlock(&thedb_lock);
+    Pthread_rwlock_unlock(&thedb_lock);
     return 0;
 }
 
 void replace_db_idx(struct dbtable *p_db, int idx)
 {
     int move = 0;
-    pthread_rwlock_wrlock(&thedb_lock);
+    Pthread_rwlock_wrlock(&thedb_lock);
 
     if (idx < 0 || idx >= thedb->num_dbs ||
         strcasecmp(thedb->dbs[idx]->tablename, p_db->tablename) != 0) {
@@ -5318,7 +5324,7 @@ void replace_db_idx(struct dbtable *p_db, int idx)
         hash_add(thedb->db_hash, p_db);
     }
 
-    pthread_rwlock_unlock(&thedb_lock);
+    Pthread_rwlock_unlock(&thedb_lock);
 }
 
 void epoch2a(int epoch, char *buf, size_t buflen)
@@ -5395,23 +5401,23 @@ int check_current_schemas(void)
 
 void log_delete_add_state(struct dbenv *dbenv, struct log_delete_state *state)
 {
-    pthread_mutex_lock(&dbenv->log_delete_counter_mutex);
+    Pthread_mutex_lock(&dbenv->log_delete_counter_mutex);
     listc_atl(&dbenv->log_delete_state_list, state);
-    pthread_mutex_unlock(&dbenv->log_delete_counter_mutex);
+    Pthread_mutex_unlock(&dbenv->log_delete_counter_mutex);
 }
 
 void log_delete_rem_state(struct dbenv *dbenv, struct log_delete_state *state)
 {
-    pthread_mutex_lock(&dbenv->log_delete_counter_mutex);
+    Pthread_mutex_lock(&dbenv->log_delete_counter_mutex);
     listc_rfl(&dbenv->log_delete_state_list, state);
-    pthread_mutex_unlock(&dbenv->log_delete_counter_mutex);
+    Pthread_mutex_unlock(&dbenv->log_delete_counter_mutex);
 }
 
 void log_delete_counter_change(struct dbenv *dbenv, int action)
 {
     struct log_delete_state *pstate;
     int filenum;
-    pthread_mutex_lock(&dbenv->log_delete_counter_mutex);
+    Pthread_mutex_lock(&dbenv->log_delete_counter_mutex);
     switch (action) {
     case LOG_DEL_ABS_ON:
         dbenv->log_delete = 1;
@@ -5432,7 +5438,7 @@ void log_delete_counter_change(struct dbenv *dbenv, int action)
         }
     }
     dbenv->log_delete_filenum = filenum;
-    pthread_mutex_unlock(&dbenv->log_delete_counter_mutex);
+    Pthread_mutex_unlock(&dbenv->log_delete_counter_mutex);
 }
 
 inline int debug_this_request(int until)

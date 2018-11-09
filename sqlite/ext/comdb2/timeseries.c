@@ -132,7 +132,7 @@ static int systblTimeseriesColumn(
   }
 
   return SQLITE_OK;
-};
+}
 
 static int systblTimeseriesRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){
   systbl_metrics_cursor *pCur = (systbl_metrics_cursor*)cur;

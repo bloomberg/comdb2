@@ -343,7 +343,7 @@ void luabb_toreal(Lua lua, int idx, double *ret)
         *ret = interval_to_double(&ds->val);
         return;
     }
-err:luabb_type_err(lua, dbtypes.real, idx);
+    luabb_type_err(lua, dbtypes.real, idx);
     *ret = 0; //just to silence warnings -- will never reach here
 }
 
@@ -582,7 +582,6 @@ void luabb_todatetime(lua_State *lua, int idx, datetime_t *ret)
     const char *str;
     cdb2_client_datetime_t cdtms;
     cdb2_client_datetimeus_t cdtus;
-    dbtypes_enum dbtype;
 
     SP sp = getsp(lua);
     const char *tzname = sp->clnt->tzname;

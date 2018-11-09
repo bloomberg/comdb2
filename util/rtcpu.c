@@ -34,6 +34,7 @@
 #include "nodemap.h"
 #include "machclass.h"
 #include "logmsg.h"
+#include "locks_wrap.h"
 
 static int machine_is_up_default(const char *host);
 static int machine_status_init(void);
@@ -112,13 +113,16 @@ static int machine_status_init(void)
     return 0;
 }
 
-static enum mach_class my_class = CLASS_UNKNOWN;
-
 extern char *gbl_mynode;
 
 /* pthread_once? */
 static int machine_class_default(const char *host)
 {
+    static enum mach_class my_class = CLASS_UNKNOWN;
+    static pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
+
+    Pthread_mutex_lock(&mtx);
+
     if (my_class == CLASS_UNKNOWN) {
         char *envclass;
         cdb2_hndl_tp *db = NULL;
@@ -197,6 +201,9 @@ static int machine_class_default(const char *host)
         if (db)
             cdb2_close(db);
     }
+
+    Pthread_mutex_unlock(&mtx);
+
     return my_class;
 }
 

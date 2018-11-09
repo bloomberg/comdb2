@@ -25,6 +25,7 @@ static const char revid[] = "$Id: log_get.c,v 11.98 2003/09/13 19:20:38 bostic E
 #include "dbinc/db_swap.h"
 #include "dbinc/hash.h"
 #include <epochlib.h>
+#include <locks_wrap.h>
 
 typedef enum { L_ALREADY, L_ACQUIRED, L_NONE } RLOCK;
 
@@ -90,7 +91,7 @@ static inline int __log_cursor_cache(dbenv, logcp)
     if (!dbenv->attr.log_cursor_cache)
         return -1;
 
-    pthread_mutex_lock(&curlk);
+    Pthread_mutex_lock(&curlk);
     if (curhd) 
     {
         logc = curhd;
@@ -98,7 +99,7 @@ static inline int __log_cursor_cache(dbenv, logcp)
         if (curhd) curhd->prev = NULL;
         logc->next = logc->prev = NULL;
     }
-    pthread_mutex_unlock(&curlk);
+    Pthread_mutex_unlock(&curlk);
     *logcp = logc;
     return logc ? 0 : -1;
 }
@@ -228,12 +229,12 @@ __log_c_close(logc)
             (void)__os_closehandle(dbenv, logc->c_fhp);
             logc->c_fhp = NULL;
         }
-        pthread_mutex_lock(&curlk);
+        Pthread_mutex_lock(&curlk);
         logc->prev = NULL;
         logc->next = curhd;
         if (curhd) curhd->prev = logc;
         curhd = logc;
-        pthread_mutex_unlock(&curlk);
+        Pthread_mutex_unlock(&curlk);
         return (0);
     }
 
@@ -947,19 +948,18 @@ __log_c_inregion_int(logc, lsn, rlockp, last_lsn, hdr, pp)
 	DB_LSN *seg_lsn_array;
 	DB_LSN *seg_start_lsn_array;
 	DB_LSN f_lsn;
-	DB_LSN a_lsn;
+	DB_LSN a_lsn = {0};
 	LOG *lp;
 	size_t len, nr;
 	u_int32_t b_disk, b_region;
-	u_int32_t w_off;
+	u_int32_t w_off = 0;
 	u_int32_t st_off;
-	u_int32_t cp_sz;
-	u_int32_t b_remain;
+	u_int32_t b_remain = 0;
 	u_int32_t inmemlen = 0;
-	int32_t buf_offset;
-	u_int32_t curseg, oldseg;
+	int32_t buf_offset = 0;
+	u_int32_t curseg = 0, oldseg = 0;
 	int ret, st, tot;
-	u_int8_t *p;
+	u_int8_t *p = NULL;
 
 	dbenv = logc->dbenv;
 	dblp = dbenv->lg_handle;

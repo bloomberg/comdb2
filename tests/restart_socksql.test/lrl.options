@@ -1,4 +1,3 @@
-table t1 alltypes.csc2
 logmsg level debug
 extended_sql_debug_trace on
 on cause_random_blkseq_replays

@@ -17,7 +17,7 @@
 #ifdef __sun
 #define __EXTENSIONS__
 #endif
-#include <limits.h> // PTHREAD_STACK_MIN
+#include <limits.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -78,7 +78,7 @@ pthread_mutex_t lua_debug_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t lua_debug_cond = PTHREAD_COND_INITIALIZER;
 
 struct tmptbl_info_t {
-    int rootpg;
+    struct temptable tbl;
     char *sql;
     char name[MAXTABLELEN * 2]; // namespace.name
     pthread_mutex_t *lk;
@@ -107,18 +107,31 @@ struct dbstmt_t {
     LIST_ENTRY(dbstmt_t) entries;
 };
 
-typedef struct {
-    DBTYPES_COMMON;
+typedef enum {
+    THREAD_STATUS_DISPATCH_WAITING,
+    THREAD_STATUS_DISPATCH_FAILED,
+    THREAD_STATUS_RUNNING,
+    THREAD_STATUS_FINISHED,
+    THREAD_STATUS_JOINED
+} thread_status;
+
+struct dbthread_type {
     pthread_mutex_t lua_thread_mutex;
     pthread_cond_t lua_thread_cond;
-    int finished_run;
+    thread_status status;
     pthread_t lua_tid;
     char *sql;
     Lua lua;
     SP sp;
     char error[128];
     struct sqlclntstate *clnt;
-} dbthread_t;
+    LIST_ENTRY(dbthread_type) entries;
+};
+
+typedef struct {
+    DBTYPES_COMMON;
+    dbthread_type *thd;
+}dbthread_t;
 
 typedef struct {
     DBTYPES_COMMON;
@@ -439,9 +452,9 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
 static void luabb_trigger_unregister(dbconsumer_t *q)
 {
     if (q->lock) {
-        pthread_mutex_lock(q->lock);
+        Pthread_mutex_lock(q->lock);
         bdb_trigger_unsubscribe(q->iq.usedb->handle);
-        pthread_mutex_unlock(q->lock);
+        Pthread_mutex_unlock(q->lock);
     }
     int rc;
     int retry = 10;
@@ -663,7 +676,7 @@ static int dbq_poll_int(Lua L, dbconsumer_t *q)
 {
     struct qfound f = {0};
     int rc = dbq_get(&q->iq, 0, NULL, (void**)&f.item, &f.len, &f.dtaoff, NULL, NULL);
-    pthread_mutex_unlock(q->lock);
+    Pthread_mutex_unlock(q->lock);
     getsp(L)->num_instructions = 0;
     if (rc == 0) {
         return dbq_pushargs(L, q, &f);
@@ -682,11 +695,11 @@ static int dbq_poll(Lua L, dbconsumer_t *q, int delay)
             return -1;
         }
         int rc;
-        pthread_mutex_lock(q->lock);
+        Pthread_mutex_lock(q->lock);
 again:  if (*q->open) {
             rc = dbq_poll_int(L, q); // call will release q->lock
         } else {
-            pthread_mutex_unlock(q->lock);
+            Pthread_mutex_unlock(q->lock);
             rc = -2;
         }
         if (rc == 1) {
@@ -699,12 +712,12 @@ again:  if (*q->open) {
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
         ts.tv_sec += (dbq_delay / 1000);
-        pthread_mutex_lock(q->lock);
+        Pthread_mutex_lock(q->lock);
         if (pthread_cond_timedwait(q->cond, q->lock, &ts) == 0) {
             // was woken up -- try getting from queue
             goto again;
         }
-        pthread_mutex_unlock(q->lock);
+        Pthread_mutex_unlock(q->lock);
         delay -= dbq_delay;
         if (delay < 0) {
             return 0;
@@ -905,7 +918,7 @@ static void free_tmptbl(SP sp, tmptbl_info_t *tbl)
 {
     LIST_REMOVE(tbl, entries);
     if (sp->parent == sp) {
-        pthread_mutex_destroy(tbl->lk);
+        Pthread_mutex_destroy(tbl->lk);
         free(tbl->lk);
     }
     free(tbl->sql);
@@ -1066,6 +1079,10 @@ static int create_temp_table(Lua lua, pthread_mutex_t **lk, const char **name)
     const char *comma = "";
     for (size_t i = 1; i <= num; ++i) {
         lua_rawgeti(lua, 2, i);
+        if (!lua_istable(lua, -1)) {
+            luabb_error(lua, sp, "bad argument (columns) to 'table'");
+            goto out;
+        }
         if (lua_objlen(lua, -1) != 2) { // need {"name", "type"}
             luabb_error(lua, sp, "bad argument (columns) to 'table'");
             goto out;
@@ -1100,7 +1117,7 @@ static int create_temp_table(Lua lua, pthread_mutex_t **lk, const char **name)
     }
     // now, actually create the temp table
     *lk = malloc(sizeof(pthread_mutex_t));
-    pthread_mutex_init(*lk, NULL);
+    Pthread_mutex_init(*lk, NULL);
     comdb2_set_tmptbl_lk(*lk);
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
         ;
@@ -1142,8 +1159,7 @@ static int comdb2_table(Lua lua)
         // go through tmp tbls
         SP sp = getsp(lua);
         tmptbl_info_t *tbl;
-        LIST_FOREACH(tbl, &sp->tmptbls, entries)
-        {
+        LIST_FOREACH(tbl, &sp->tmptbls, entries) {
             char n3[MAXTABLELEN], n4[MAXTABLELEN];
             two_part_tbl_name(tbl->name, n3, n4);
             if (strcasecmp(n2, n4) == 0) {
@@ -1163,13 +1179,15 @@ static int new_temp_table(Lua lua)
     if (!lua_istable(lua, 2))
         return luabb_error(lua, NULL, "bad argument to 'table'");
 
-    int rc;
     const char *name;
     pthread_mutex_t *lk;
-    if (create_temp_table(lua, &lk, &name) == 0) {
+
+    SP sp = getsp(lua);
+    sp->clnt->skip_peer_chk = 1;
+    int rc = create_temp_table(lua, &lk, &name);
+    sp->clnt->skip_peer_chk = 0;
+    if (rc  == 0) {
         // success - create dbtable
-        rc = 0;
-        SP sp = getsp(lua);
         dbtable_t *table;
         new_lua_t(table, dbtable_t, DBTYPES_DBTABLE);
         table->is_temp_tbl = 1;
@@ -1186,13 +1204,9 @@ static int new_temp_table(Lua lua)
         // make this fatal for sp
         // temptable name may shadow real tbl name and bad things
         // will happen if sloppy sp keeps using tbl name
-        luaL_error(lua, "failed to create tmptable:%s", name);
-#       if 0
-        rc = 1;
-        lua_pushnil(lua);
-#       endif
+        return luaL_error(lua, sp->error);
     }
-    lua_pushinteger(lua, rc);
+    lua_pushinteger(lua, 0);
     return 2;
 }
 
@@ -1369,9 +1383,9 @@ static int get_remote_input(lua_State *lua, char *buffer, size_t sz)
     if (sp->rc) {
         return luabb_error(lua, sp, "%s: couldn't send results back", __func__);
     }
-    pthread_mutex_lock(&lua_debug_mutex);
+    Pthread_mutex_lock(&lua_debug_mutex);
     int rc = read_response(clnt, RESPONSE_SP_CMD, buffer, sz);
-    pthread_mutex_unlock(&lua_debug_mutex);
+    Pthread_mutex_unlock(&lua_debug_mutex);
     return rc;
 }
 
@@ -1388,14 +1402,14 @@ void *read_client_socket(void *in)
     rc = sbuf2fread(info->buffer, 250, 1, clnt->sb);
     if (rc && (strncmp(info->buffer, "HALT", 4) == 0)) {
         gbl_break_lua = info->thread_id;
-        pthread_mutex_unlock(&lua_debug_mutex);
+        Pthread_mutex_unlock(&lua_debug_mutex);
     } else if (rc) {
         info->has_buffer = 1;
         info_buf = *info;
-        pthread_mutex_unlock(&lua_debug_mutex);
+        Pthread_mutex_unlock(&lua_debug_mutex);
     } else {
         clnt->sb = NULL;
-        pthread_mutex_unlock(&lua_debug_mutex);
+        Pthread_mutex_unlock(&lua_debug_mutex);
     }
     /* Socket is disconnected now. */
     free(info);
@@ -1420,7 +1434,7 @@ static int db_debug(lua_State *lua)
         logmsg(LOGMSG_ERROR, "debug client no longer valid \n");
         sp->debug_clnt = sp->clnt;
         lua_sethook(lua, InstructionCountHook, LUA_MASKCOUNT, 1);
-        pthread_cond_broadcast(&lua_debug_cond);
+        Pthread_cond_broadcast(&lua_debug_cond);
         return 0;
     }
 
@@ -1432,7 +1446,7 @@ static int db_debug(lua_State *lua)
                 /* To be given as lrl value. */
                 sp->debug_clnt = sp->clnt;
                 lua_sethook(lua, InstructionCountHook, LUA_MASKCOUNT, 1);
-                pthread_cond_broadcast(&lua_debug_cond);
+                Pthread_cond_broadcast(&lua_debug_cond);
                 return 0;
             }
             sleep(2);
@@ -1482,7 +1496,7 @@ static int db_db_debug(Lua lua)
         char old_buffer[250];
         read = get_remote_input(lua, buffer, sizeof(buffer));
         if (strncmp(buffer, "cont", 4) == 0) {
-            pthread_cond_broadcast(&lua_debug_cond);
+            Pthread_cond_broadcast(&lua_debug_cond);
             sprintf(buffer, " %s", "_SP.do_next = false \n if (db.emit) then "
                                    "\n db_emit = db.emit \n end");
             finish_execute = 1;
@@ -1522,7 +1536,7 @@ static int db_db_debug(Lua lua)
             replace_from = NULL;
         } else if (read == 0) {
             /* Debugging socket is closed, let the program continue. */
-            pthread_cond_broadcast(&lua_debug_cond);
+            Pthread_cond_broadcast(&lua_debug_cond);
             sprintf(buffer, " %s", "db_emit = db.emit");
             finish_execute = 1;
         } else if (buffer[0] == '\0') {
@@ -1962,7 +1976,7 @@ static int stmt_bind_int(Lua lua, sqlite3_stmt *stmt, int name, int value)
 
     dttz_t dt;
     const char *c;
-    const void *p;
+    const void *p = NULL;
     blob_t *b;
     intv_t *i;
     datetime_t *d;
@@ -2495,38 +2509,40 @@ static const char *commit_parent(Lua L)
 
 static void *dispatch_lua_thread(void *arg)
 {
-    dbthread_t *parent_thd = arg;
-    struct sqlclntstate *parent_clnt = parent_thd->clnt;
+    dbthread_type *thd = arg;
+    struct sqlclntstate *parent_clnt = thd->clnt;
     struct sqlclntstate clnt;
     reset_clnt(&clnt, parent_clnt->sb, 1);
     clnt.want_stored_procedure_trace = parent_clnt->want_stored_procedure_trace;
     clnt.dbtran.mode = parent_clnt->dbtran.mode;
     clnt.appdata = parent_clnt->appdata;
     clnt.plugin = parent_clnt->plugin;
-    clnt.sp = parent_thd->sp;
-    clnt.sql = parent_thd->sql;
+    clnt.sp = thd->sp;
+    clnt.sql = thd->sql;
     clnt.must_close_sb = 0;
     clnt.exec_lua_thread = 1;
     clnt.trans_has_sp = 1;
-    pthread_mutex_init(&clnt.wait_mutex, NULL);
-    pthread_cond_init(&clnt.wait_cond, NULL);
-    pthread_mutex_init(&clnt.write_lock, NULL);
-    pthread_mutex_init(&clnt.dtran_mtx, NULL);
+    clnt.queue_me = 1;
+    Pthread_mutex_init(&clnt.wait_mutex, NULL);
+    Pthread_cond_init(&clnt.wait_cond, NULL);
+    Pthread_mutex_init(&clnt.write_lock, NULL);
+    Pthread_mutex_init(&clnt.dtran_mtx, NULL);
     strcpy(clnt.tzname, parent_clnt->tzname);
-
-    dispatch_sql_query(&clnt); // --> exec_thread()
-
+    if (dispatch_sql_query(&clnt) == 0) { // --> exec_thread()
+        thd->status = THREAD_STATUS_FINISHED;
+    } else {
+        snprintf0(thd->error, sizeof(thd->error), "failed to dispatch thread");
+        thd->status = THREAD_STATUS_DISPATCH_FAILED;
+    }
+    /* Done running -- wake up anyone blocked on join */
+    Pthread_mutex_lock(&thd->lua_thread_mutex);
+    Pthread_cond_signal(&thd->lua_thread_cond);
+    Pthread_mutex_unlock(&thd->lua_thread_mutex);
     cleanup_clnt(&clnt);
-    pthread_mutex_destroy(&clnt.wait_mutex);
-    pthread_cond_destroy(&clnt.wait_cond);
-    pthread_mutex_destroy(&clnt.write_lock);
-    pthread_mutex_destroy(&clnt.dtran_mtx);
-
-    parent_thd->finished_run = 1;
-    parent_thd->lua_tid = 0;
-    pthread_cond_broadcast(&parent_thd->lua_thread_cond);
-    pthread_cond_destroy(&parent_thd->lua_thread_cond);
-
+    Pthread_mutex_destroy(&clnt.wait_mutex);
+    Pthread_cond_destroy(&clnt.wait_cond);
+    Pthread_mutex_destroy(&clnt.write_lock);
+    Pthread_mutex_destroy(&clnt.dtran_mtx);
     return NULL;
 }
 
@@ -2542,15 +2558,14 @@ int mycallback(void *arg_, int cols, char **text, char **name)
     SP sp2 = arg->sp2;
 
     tmptbl_info_t *tmp1;
-    LIST_FOREACH(tmp1, &sp1->tmptbls, entries)
-    {
+    LIST_FOREACH(tmp1, &sp1->tmptbls, entries) {
         char n1[MAXTABLELEN], n2[MAXTABLELEN];
         two_part_tbl_name(tmp1->name, n1, n2);
         if (strcmp(text[0], n2) == 0) {
             tmptbl_info_t *tmp2 = malloc(sizeof(tmptbl_info_t));
             strcpy(tmp2->name, tmp1->name);
             tmp2->lk = tmp1->lk;
-            tmp2->rootpg = atoi(text[1]);
+            tmp2->tbl = get_tbl_by_rootpg(getdb(sp1), atoi(text[1]));
             tmp2->sql = strdup(text[2]);
             LIST_INSERT_HEAD(&sp2->tmptbls, tmp2, entries);
             return 0;
@@ -2568,7 +2583,10 @@ static int copy_tmptbl_info(dbtable_t *t, SP sp1, SP sp2)
                  "where type='table' and tbl_name='%s'",
             n2);
     mycallback_t arg = {.sp1 = sp1, .sp2 = sp2};
-    return sqlite3_exec(getdb(sp1), sql, mycallback, &arg, NULL);
+    sp1->clnt->skip_peer_chk = 1;
+    int rc = sqlite3_exec(getdb(sp1), sql, mycallback, &arg, NULL);
+    sp1->clnt->skip_peer_chk = 0;
+    return rc;
 }
 
 #define copy_type(dbtype, lua_t)                                               \
@@ -2794,6 +2812,13 @@ static void remove_tran_funcs(Lua L)
     lua_pop(L, 1);
 }
 
+static void remove_create_thread(Lua L)
+{
+    luaL_getmetatable(L, dbtypes.db);
+    lua_pushnil(L);
+    lua_setfield(L, -2, "create_thread");
+}
+
 static void remove_consumer(Lua L)
 {
     luaL_getmetatable(L, dbtypes.db);
@@ -2828,8 +2853,7 @@ static void update_tran_funcs(Lua L, int in_tran)
 static void drop_temp_tables(SP sp)
 {
     tmptbl_info_t *tbl;
-    LIST_FOREACH(tbl, &sp->tmptbls, entries)
-    {
+    LIST_FOREACH(tbl, &sp->tmptbls, entries) {
         char n1[MAXTABLELEN], n2[MAXTABLELEN];
         two_part_tbl_name(tbl->name, n1, n2);
         char drop_sql[128];
@@ -2876,7 +2900,6 @@ static void reset_sp(SP sp)
     sp->ntypes = 0;
     sp->bufsz = 0;
     sp->rc = 0;
-    sp->nrows = 0;
     sp->num_instructions = 0;
     sp->max_num_instructions = gbl_max_lua_instructions;
     LIST_INIT(&sp->dbstmts);
@@ -2905,36 +2928,45 @@ static void close_sp_int(SP sp, int freesp)
     free(sp);
 }
 
+static void free_dbthread_type(dbthread_type *thd)
+{
+    if (!thd) return;
+    Pthread_mutex_destroy(&thd->lua_thread_mutex);
+    Pthread_cond_destroy(&thd->lua_thread_cond);
+    free(thd);
+}
+
 static int db_create_thread_int(Lua lua, const char *funcname)
 {
-    /* Make a new cloned working state. */
-    dbthread_t *lt;
-    new_lua_t(lt, dbthread_t, DBTYPES_THREAD);
-    pthread_mutex_init(&lt->lua_thread_mutex, NULL);
-    pthread_cond_init(&lt->lua_thread_cond, NULL);
-
+    dbthread_type *thd = NULL;
     SP sp = getsp(lua);
     SP newsp = NULL;
     char *err = NULL;
     int rc;
     if ((newsp = create_sp(&err)) == NULL) {
-        free(err);
-        return -1;
+        goto bad;
     }
     Lua newlua = newsp->lua;
     update_tran_funcs(newlua, sp->clnt->in_client_trans);
+    remove_create_thread(newlua);
 
     lua_sethook(newlua, InstructionCountHook, 0, 1); /*This means no hook.*/
-    lt->lua = newlua;
-    lt->sp = newsp;
-    lt->sql = sp->clnt->sql;
-    lt->clnt = sp->clnt;
+
+    thd = calloc(sizeof(dbthread_type), 1);
+    thd->lua = newlua;
+    thd->sp = newsp;
+    thd->sql = sp->clnt->sql;
+    thd->clnt = sp->clnt;
+    thd->status = THREAD_STATUS_DISPATCH_WAITING;
+    Pthread_mutex_init(&thd->lua_thread_mutex, NULL);
+    Pthread_cond_init(&thd->lua_thread_cond, NULL);
 
     strcpy(newsp->spname, sp->spname);
     newsp->spversion = sp->spversion;
     if (newsp->spversion.version_str)
         newsp->spversion.version_str = strdup(newsp->spversion.version_str);
     newsp->parent = sp->parent;
+    newsp->parent_thd = thd;
 
     if (process_src(newlua, sp->src, &err) != 0) goto bad;
 
@@ -2945,24 +2977,30 @@ static int db_create_thread_int(Lua lua, const char *funcname)
     copy_state_stacks(lua, newlua, 1);
 
     pthread_attr_t attr; // small stack for dispatch_lua_thread
-    pthread_attr_init(&attr);
+    Pthread_attr_init(&attr);
 #ifdef PTHREAD_STACK_MIN
     pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN + 16 * 1024);
 #endif
-    rc = pthread_create(&lt->lua_tid, &attr, dispatch_lua_thread, lt);
-    pthread_attr_destroy(&attr);
-    if (rc == 0) return 1;
-    luabb_error(lua, sp, "failed to create thread");
-bad:
+    rc = pthread_create(&thd->lua_tid, &attr, dispatch_lua_thread, thd);
+    Pthread_attr_destroy(&attr);
+    if (rc == 0) {
+        /* Wait for child thread to finish cloning btrees if any */
+        LIST_INSERT_HEAD(&sp->dbthds, thd, entries);
+        dbthread_t *lt;
+        new_lua_t(lt, dbthread_t, DBTYPES_THREAD);
+        lt->thd = thd;
+        return 1;
+    }
+    luabb_error(lua, sp, strerror(rc));
+bad:free_dbthread_type(thd);
     free(err);
-    lua_close(newlua);
-    reset_sp(newsp);
+    close_sp_int(newsp, 1);
     return 0;
 }
 
 static int dbthread_error(lua_State *lua)
 {
-    dbthread_t *lt = lua_touserdata(lua, -1);
+    dbthread_type *lt = ((dbthread_t *)lua_touserdata(lua, -1))->thd;
     if (lt) {
         lua_pushstring(lua, lt->error);
         return 1;
@@ -2972,37 +3010,55 @@ static int dbthread_error(lua_State *lua)
     }
 }
 
-static int dbthread_free(lua_State *lua)
+static void dbthread_join_int(Lua L, dbthread_type *thd)
 {
-    dbthread_t *lt = lua_touserdata(lua, -1);
-    void *rc;
-    if ((lt->finished_run == 0) && lt->lua_tid) {
-        pthread_join(lt->lua_tid, &rc);
-        lt->lua_tid = 0;
+    pthread_mutex_t *mtx = &thd->lua_thread_mutex;
+    pthread_cond_t *cond = &thd->lua_thread_cond;
+    Pthread_mutex_lock(mtx);
+    while (thd->status == THREAD_STATUS_DISPATCH_WAITING ||
+           thd->status == THREAD_STATUS_RUNNING) {
+        check_retry_conditions(L, 1);
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_sec += 1;
+        pthread_cond_timedwait(cond, mtx, &ts);
     }
-    return 0;
+    pthread_join(thd->lua_tid, NULL);
+    thd->status = THREAD_STATUS_JOINED;
+    Pthread_mutex_unlock(mtx);
 }
 
 static int dbthread_join(Lua lua1)
 {
-    dbthread_t *lt = lua_touserdata(lua1, -1);
-    pthread_mutex_t *mtx = &lt->lua_thread_mutex;
-    pthread_mutex_lock(mtx);
-    while (lt->finished_run == 0) {
-        check_retry_conditions(lua1, 1);
-        struct timespec ts;
-        clock_gettime(CLOCK_REALTIME, &ts);
-        ts.tv_sec += 1;
-        pthread_cond_timedwait(&lt->lua_thread_cond, mtx, &ts);
+    dbthread_type *thd = ((dbthread_t *)lua_touserdata(lua1, -1))->thd;
+    if (thd->status == THREAD_STATUS_JOINED) {
+        return 0;
     }
-    pthread_mutex_unlock(mtx);
-
-    Lua lua2 = lt->lua;
-    SP sp = lt->sp;
+    if (thd->status == THREAD_STATUS_DISPATCH_FAILED) {
+        dbthread_join_int(lua1, thd);
+        return 0;
+    }
+    dbthread_join_int(lua1, thd);
+    Lua lua2 = thd->lua;
+    SP sp2 = thd->sp;
     int num_returns = copy_state_stacks(lua2, lua1, 0);
-    if (sp->error) strncpy(lt->error, sp->error, sizeof(lt->error));
-    close_sp_int(sp, 1);
+    if (sp2->error) strncpy(thd->error, sp2->error, sizeof(thd->error));
+    close_sp_int(sp2, 1);
     return num_returns;
+}
+
+static int join_threads(SP sp)
+{
+    Lua L = sp->lua;
+    dbthread_type *thd, *tmp;
+    LIST_FOREACH_SAFE(thd, &sp->dbthds, entries, tmp) {
+        LIST_REMOVE(thd, entries);
+        if (thd->status != THREAD_STATUS_JOINED) {
+            dbthread_join_int(L, thd);
+        }
+        free_dbthread_type(thd);
+    }
+    return 0;
 }
 
 static int dbstmt_free(Lua L)
@@ -3671,9 +3727,9 @@ static int db_column_name(Lua L)
         return luaL_error(L,
                           "bad arguments to 'column_name' for typed-statement");
     }
-    pthread_mutex_lock(parent->emit_mutex);
+    Pthread_mutex_lock(parent->emit_mutex);
     if (parent_clnt->osql.sent_column_data) {
-        pthread_mutex_unlock(parent->emit_mutex);
+        Pthread_mutex_unlock(parent->emit_mutex);
         free(name);
         return luaL_error(L, "attempt to change column name");
     }
@@ -3684,7 +3740,7 @@ static int db_column_name(Lua L)
         parent->clntname[index] = NULL;
     }
     parent->clntname[index] = name;
-    pthread_mutex_unlock(parent->emit_mutex);
+    Pthread_mutex_unlock(parent->emit_mutex);
     lua_pushinteger(L, 0);
     return 1;
 }
@@ -3733,15 +3789,15 @@ static int db_column_type(Lua L)
         clnttype = SQLITE_TEXT;
     }
     free(name);
-    pthread_mutex_lock(parent->emit_mutex);
+    Pthread_mutex_lock(parent->emit_mutex);
     if (parent_clnt->osql.sent_column_data) {
-        pthread_mutex_unlock(parent->emit_mutex);
+        Pthread_mutex_unlock(parent->emit_mutex);
         return luaL_error(L, "attempt to change column type");
     }
     new_col_info(sp, index);
     --index;
     parent->clnttype[index] = clnttype;
-    pthread_mutex_unlock(parent->emit_mutex);
+    Pthread_mutex_unlock(parent->emit_mutex);
     lua_pushinteger(L, 0);
     return 1;
 }
@@ -3757,9 +3813,9 @@ static int db_num_columns(Lua L)
         return luaL_error(
             L, "attempt to set number of columns for typed-statement");
     }
-    pthread_mutex_lock(parent->emit_mutex);
+    Pthread_mutex_lock(parent->emit_mutex);
     if (parent_clnt->osql.sent_column_data) {
-        pthread_mutex_unlock(parent->emit_mutex);
+        Pthread_mutex_unlock(parent->emit_mutex);
         return luaL_error(L, "attempt to change number of columns");
     }
     int num_cols = lua_tonumber(L, 2);
@@ -3772,7 +3828,7 @@ static int db_num_columns(Lua L)
     } else {
         new_col_info(sp, num_cols);
     }
-    pthread_mutex_unlock(parent->emit_mutex);
+    Pthread_mutex_unlock(parent->emit_mutex);
     lua_pushinteger(L, 0);
     return 1;
 }
@@ -3921,7 +3977,7 @@ static int db_now(Lua lua)
     SP sp;
     dttz_t dt;
     const char *tz;
-    int precision;
+    int precision = 0;
     struct timespec ts;
     datetime_t datetime;
     cdb2_client_datetimeus_t cdtus;
@@ -4081,6 +4137,10 @@ static int db_consumer(Lua L)
     dbconsumer_getargs(L, &push_tid, &register_timeoutms);
 
     SP sp = getsp(L);
+    struct sqlclntstate *clnt = sp->clnt;
+    if (clnt->dbtran.mode != TRANLEVEL_SOSQL)
+        return luaL_error(L, "trigger/consumer is only supported under default transaction mode");
+
     if (sp->parent->have_consumer) {
         return 0;
     }
@@ -4289,7 +4349,6 @@ static void init_dbstmt_funcs(Lua L)
 }
 
 static const struct luaL_Reg dbthread_funcs[] = {
-    {"__gc", dbthread_free},
     {"join", dbthread_join},
     {"sqlerror", dbthread_error}, // every error isn't from SQL -- deprecate
     {"error", dbthread_error},
@@ -4821,31 +4880,20 @@ static int l_send_back_row(Lua lua, sqlite3_stmt *stmt, int nargs)
     arg.stmt = stmt;
     arg.sp = sp;
     arg.pingpong = sp->pingpong;
-    struct sqlclntstate *clnt = sp->parent->clnt;
+    SP parent = sp->parent;
+    struct sqlclntstate *clnt = parent->clnt;
     if (clnt->osql.sent_column_data == 0) {
-        pthread_mutex_lock(sp->emit_mutex);
+        Pthread_mutex_lock(parent->emit_mutex);
         if (clnt->osql.sent_column_data == 0) {
-            new_col_info(sp, nargs);
+            new_col_info(parent, nargs);
             rc = write_response(clnt, RESPONSE_COLUMNS_LUA, &arg, 0);
             clnt->osql.sent_column_data = 1;
         }
-        pthread_mutex_unlock(sp->emit_mutex);
+        Pthread_mutex_unlock(parent->emit_mutex);
         if (rc) return rc;
     }
     int type = stmt ? RESPONSE_ROW : RESPONSE_ROW_LUA;
     return write_response(clnt, type, &arg, 0);
-}
-
-static int flush_rows(SP sp)
-{
-    if (sp->clnt->sb == NULL)
-        return 0;
-    struct sqlclntstate *clnt = sp->clnt;
-    if ((sp->parent && !sp->parent->clnt->osql.sent_column_data) ||
-        (!sp->parent && sp->nrows == 0)) {
-        return write_response(clnt, RESPONSE_ROW_LAST_DUMMY, NULL, 0);
-    }
-    return write_response(clnt, RESPONSE_ROW_LAST, NULL, 0);
 }
 
 static int push_null(Lua L, int param_type)
@@ -5128,29 +5176,29 @@ halt_here:
     }
     clnt->want_stored_procedure_debug = 1;
 wait_here:
-    pthread_cond_broadcast(&lua_debug_cond); /* 1 debugger at a time. */
-    pthread_mutex_lock(&lua_debug_mutex);
-    pthread_cond_wait(&lua_debug_cond, &lua_debug_mutex);
-    pthread_mutex_unlock(&lua_debug_mutex);
+    Pthread_cond_broadcast(&lua_debug_cond); /* 1 debugger at a time. */
+    Pthread_mutex_lock(&lua_debug_mutex);
+    Pthread_cond_wait(&lua_debug_cond, &lua_debug_mutex);
+    Pthread_mutex_unlock(&lua_debug_mutex);
 do_continue:
     logmsg(LOGMSG_USER, "CoNtInUe \n");
     info_buf.has_buffer = 0;
-    pthread_mutex_lock(&lua_debug_mutex);
+    Pthread_mutex_lock(&lua_debug_mutex);
     int rc = sbuf2fread(info_buf.buffer, 250, 1, clnt->sb);
     if (rc && (strncmp(info_buf.buffer, "HALT", 4) == 0)) {
-        pthread_mutex_unlock(&lua_debug_mutex);
+        Pthread_mutex_unlock(&lua_debug_mutex);
         goto halt_here;
     } else if (rc) {
         info_buf.has_buffer = 1;
         if ((strncmp(info_buf.buffer, "cont", 4) == 0)) {
-            pthread_mutex_unlock(&lua_debug_mutex);
+            Pthread_mutex_unlock(&lua_debug_mutex);
             goto do_continue;
         }
         logmsg(LOGMSG_USER, "This was not continue \n");
-        pthread_mutex_unlock(&lua_debug_mutex);
+        Pthread_mutex_unlock(&lua_debug_mutex);
         goto wait_here;
     } else {
-        pthread_mutex_unlock(&lua_debug_mutex);
+        Pthread_mutex_unlock(&lua_debug_mutex);
     }
 
     if (debug_clnt == clnt) {
@@ -5433,6 +5481,7 @@ static int run_sp(struct sqlclntstate *clnt, int argcnt, char **err)
     int verifyretry_off = clnt->verifyretry_off;
     clnt->verifyretry_off = 1;
     int rc = run_sp_int(clnt, argcnt, err);
+    join_threads(clnt->sp);
     clnt->verifyretry_off = verifyretry_off;
     return rc;
 }
@@ -5693,14 +5742,15 @@ static void clone_temp_tables(SP sp)
     sqlite3 *src = getdb(sp->parent);
     if (!src) return;
     sqlite3 *dest = getdb(sp);
-    tmptbl_info_t *tbl;
-    LIST_FOREACH(tbl, &sp->tmptbls, entries)
-    {
+    tmptbl_info_t *tmp;
+    LIST_FOREACH(tmp, &sp->tmptbls, entries) {
         strbuf *sql = strbuf_new();
-        const char *create = tbl->sql;
+        const char *create = tmp->sql;
         create += sizeof("CREATE TABLE");
         strbuf_appendf(sql, "CREATE TEMP TABLE %s", create);
-        clone_temp_table(dest, src, strbuf_buf(sql), tbl->rootpg);
+        sp->clnt->skip_peer_chk = 1;
+        clone_temp_table(dest, src, strbuf_buf(sql), &tmp->tbl);
+        sp->clnt->skip_peer_chk = 0;
         strbuf_free(sql);
     }
 }
@@ -5733,16 +5783,19 @@ static int commit_sp(Lua L, char **err)
     return -222;
 }
 
-static int flush_sp(Lua L, char **err)
+static int flush_sp(SP sp, char **err)
 {
-    /* If we got here, the stored procedure is done generating rows, so flush
-     * the results and we're done */
-    /* TODO: if didn't send rows, need to generate a fake columns header? */
-    SP sp = getsp(L);
     int rc;
-    if ((rc = flush_rows(sp)) == 0) return rc;
-    free(*err);
-    *err = strdup("error while flushing the rows");
+    struct sqlclntstate *clnt = sp->clnt;
+    if (clnt->osql.sent_column_data) {
+        rc = write_response(clnt, RESPONSE_ROW_LAST, NULL, 0);
+    } else {
+        rc = write_response(clnt, RESPONSE_ROW_LAST_DUMMY, NULL, 0);
+    }
+    if (rc) {
+        free(*err);
+        *err = strdup("error while flushing the rows");
+    }
     return rc;
 }
 
@@ -5986,8 +6039,6 @@ static int exec_thread_int(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     sp->clnt = clnt;
     sp->thd = thd;
     Lua L = sp->lua;
-    clnt->exec_lua_thread = 0;
-
     if (tryrdlock_schema_lk() != 0) {
         return -1;
     }
@@ -6001,11 +6052,7 @@ static int exec_thread_int(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
     if ((rc = run_sp(clnt, args, &err)) != 0) return rc;
 
-    if ((rc = commit_sp(L, &err)) != 0) return rc;
-
-    // dbthread_join() performs clean-up
-    lua_gc(L, LUA_GCCOLLECT, 0);
-    return rc;
+    return commit_sp(L, &err);
 }
 
 static int exec_procedure_int(struct sqlthdstate *thd,
@@ -6049,7 +6096,7 @@ static int exec_procedure_int(struct sqlthdstate *thd,
 
     if (sprc) return sprc;
 
-    return flush_sp(L, err);
+    return flush_sp(sp, err);
 }
 
 static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,
@@ -6232,7 +6279,7 @@ void *exec_trigger(trigger_reg_t *reg)
     // luaL_error() will cause abort()
     dbconsumer_t *q = NULL;
     while (1) {
-        int rc, args;
+        int rc, args = 0;
         char *err = NULL;
         get_curtran(thedb->bdb_env, &clnt);
         if (setup_sp_for_trigger(reg, &err, &thd, &clnt, &q) != 0) {
@@ -6299,14 +6346,17 @@ void *exec_trigger(trigger_reg_t *reg)
     return NULL;
 }
 
-int exec_thread(struct sqlthdstate *thd, struct sqlclntstate *clnt)
+void exec_thread(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
+    SP sp = clnt->sp;
+    Lua L = sp->lua;
     get_curtran(thedb->bdb_env, clnt);
-    int rc = exec_thread_int(thd, clnt);
+    sp->parent_thd->status = THREAD_STATUS_RUNNING;
+    exec_thread_int(thd, clnt);
+    lua_gc(L, LUA_GCCOLLECT, 0);
     drop_temp_tables(clnt->sp);
     free_tmptbls(clnt->sp);
     put_curtran(thedb->bdb_env, clnt);
-    return rc;
 }
 
 int exec_procedure(struct sqlthdstate *thd, struct sqlclntstate *clnt, char **err)

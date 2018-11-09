@@ -1426,8 +1426,6 @@ clean_arg:
 
 void comdb2getAlias(Parse* pParse, Token* t1)
 {
-    Vdbe *v  = sqlite3GetVdbe(pParse);
-
     if (comdb2AuthenticateUserOp(pParse))
         return;       
 
@@ -1855,7 +1853,7 @@ int resolveTableName(struct SrcList_item *p, const char *zDB, char *tableName,
 void comdb2timepartRetention(Parse *pParse, Token *nm, Token *lnm, int retention)
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
-
+    BpfuncArg *arg = NULL;
 
     if (comdb2AuthenticateUserOp(pParse))
         goto err;       
@@ -1863,10 +1861,10 @@ void comdb2timepartRetention(Parse *pParse, Token *nm, Token *lnm, int retention
     if (retention < 2)
     {
         setError(pParse, SQLITE_ERROR, "Retention must be 2 or higher");
-        goto clean_arg;
+        return;
     }
 
-    BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
+    arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
     
     if (arg)
         bpfunc_arg__init(arg);
@@ -1888,7 +1886,7 @@ void comdb2timepartRetention(Parse *pParse, Token *nm, Token *lnm, int retention
         goto err;
         
     if (chkAndCopyTableTokens(v, pParse, tp_retention->timepartname, nm, lnm, 1)) 
-        return;  
+        goto clean_arg;
     
     tp_retention->newvalue = retention;
 
@@ -1996,10 +1994,11 @@ struct comdb2_column {
 /* Index column flags */
 enum {
     INDEX_ORDER_DESC = 1 << 0,
+    INDEX_IS_EXPR = 1 << 2,
 };
 
 struct comdb2_index_column {
-    /* Column name */
+    /* Column name or csc2 style expression */
     char *name;
     /* Index column flags */
     uint8_t flags;
@@ -2569,15 +2568,18 @@ static char *format_csc2(struct comdb2_ddl_context *ctx)
         struct comdb2_index_column *idx_column;
         LISTC_FOR_EACH(&key->idx_col_list, idx_column, lnk)
         {
-            assert((idx_column->column->flags & COLUMN_DELETED) == 0);
-
             if (added > 0) {
                 strbuf_append(csc2, "+ ");
             }
-            strbuf_appendf(
-                csc2, "%s%s ",
-                (idx_column->flags & INDEX_ORDER_DESC) ? "<DESCEND> " : "",
-                idx_column->column->name);
+
+            assert(((idx_column->flags & INDEX_IS_EXPR) != 0) ||
+                   ((idx_column->column->flags & COLUMN_DELETED) == 0));
+
+            strbuf_appendf(csc2, "%s%s ",
+                           (idx_column->flags & INDEX_ORDER_DESC) ? "<DESCEND> "
+                                                                  : "",
+                           idx_column->name);
+
             added++;
         }
 
@@ -2682,8 +2684,10 @@ static int gen_key_name(struct comdb2_key *key, const char *table, char *out,
 
     LISTC_FOR_EACH(&key->idx_col_list, idx_column, lnk)
     {
-        assert((idx_column->column->flags & COLUMN_DELETED) == 0);
+        assert(((idx_column->flags & INDEX_IS_EXPR) != 0) ||
+               ((idx_column->column->flags & COLUMN_DELETED) == 0));
         SNPRINTF(buf, sizeof(buf), pos, "%s", idx_column->name)
+
         if (idx_column->flags & INDEX_ORDER_DESC)
             SNPRINTF(buf, sizeof(buf), pos, "%s", "DESC")
     }
@@ -3942,7 +3946,6 @@ static void comdb2AddIndexInt(
 {
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     struct comdb2_key *key;
-    struct comdb2_column *column;
 
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
@@ -4022,8 +4025,9 @@ static void comdb2AddIndexInt(
       pList == 0 imples that the PRIMARY/UNIQUE/DUP key was specified in the
       column definition.
     */
-    struct comdb2_index_column *idx_column;
     if (pList == 0) {
+        struct comdb2_column *column;
+        struct comdb2_index_column *idx_column;
         idx_column =
             comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_index_column));
         if (idx_column == 0)
@@ -4046,49 +4050,93 @@ static void comdb2AddIndexInt(
         if (idxType == SQLITE_IDXTYPE_PRIMARYKEY) {
             column->flags |= COLUMN_NO_NULL;
         }
-
     } else {
+        struct comdb2_index_column *idx_column;
         struct ExprList_item *pListItem;
         int i;
 
         /* Validate the index column list. */
         sqlite3ExprListCheckLength(pParse, pList, "index");
         for (i = 0, pListItem = pList->a; i < pList->nExpr; i++, pListItem++) {
-            /* TODO: Index on expression is currently not supported
-             * in DDL syntax. */
-            if ((pListItem->pExpr->op != TK_ID) &&
-                (pListItem->pExpr->op != TK_STRING)) {
-                pParse->rc = SQLITE_ERROR;
-                sqlite3ErrorMsg(pParse, "Invalid index column list");
-                goto cleanup;
-            }
 
             idx_column =
                 comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_index_column));
             if (idx_column == 0)
                 goto oom;
 
-            column = find_column_by_name(ctx, pList->a[i].pExpr->u.zToken);
-            if (column == 0) {
+            switch (pListItem->pExpr->op) {
+            case TK_ID: // fallthrough
+            case TK_STRING: {
+                struct comdb2_column *column;
+                column = find_column_by_name(ctx, pListItem->pExpr->u.zToken);
+                if (column == 0) {
+                    pParse->rc = SQLITE_ERROR;
+                    sqlite3ErrorMsg(pParse, "Unknown column '%s'.",
+                                    pListItem->pExpr->u.zToken);
+                    goto cleanup;
+                }
+                idx_column->name = column->name;
+
+                /* For a PRIMARY KEY, force all its columns to be NOT NULL. */
+                if (idxType == SQLITE_IDXTYPE_PRIMARYKEY) {
+                    column->flags |= COLUMN_NO_NULL;
+                }
+                idx_column->column = column;
+                break;
+            }
+            case TK_CAST: {
+                Vdbe *v;
+                char *type;
+                char *ptr;
+                char *expr;
+                size_t expr_sz;
+
+                v = sqlite3GetVdbe(pParse);
+                expr = sqlite3ExprDescribe(v, pListItem->pExpr->pLeft);
+                if (!expr) {
+                    pParse->rc = SQLITE_ERROR;
+                    sqlite3ErrorMsg(pParse, "Invalid expression");
+                    goto cleanup;
+                }
+
+                expr_sz = strlen(expr) + 50;
+                idx_column->name = comdb2_malloc(ctx->mem, expr_sz);
+                if (idx_column->name == 0) {
+                    goto oom;
+                }
+
+                type = comdb2_strndup(ctx->mem, pListItem->pExpr->u.zToken,
+                                      strlen(pListItem->pExpr->u.zToken) + 1);
+                ptr = type;
+                while (*ptr) {
+                    switch (*ptr) {
+                    case '(':
+                        *ptr = '[';
+                        break;
+                    case ')':
+                        *ptr = ']';
+                        break;
+                    }
+                    *ptr = tolower(*ptr);
+                    ++ptr;
+                }
+                snprintf(idx_column->name, expr_sz, "(%s)\"%s\"", type, expr);
+                idx_column->flags |= INDEX_IS_EXPR;
+                idx_column->column = 0;
+                break;
+            }
+            default:
                 pParse->rc = SQLITE_ERROR;
-                sqlite3ErrorMsg(pParse, "Unknown column '%s'.",
-                                pList->a[i].pExpr->u.zToken);
+                sqlite3ErrorMsg(pParse, "Invalid index column list");
                 goto cleanup;
             }
 
-            idx_column->name = column->name;
-            if (pList->a[i].sortOrder == SQLITE_SO_DESC) {
+            if (pListItem->sortOrder == SQLITE_SO_DESC) {
                 idx_column->flags |= INDEX_ORDER_DESC;
             }
-            idx_column->column = column;
 
             /* Add the index column to the list. */
             listc_abl(&key->idx_col_list, idx_column);
-
-            /* For a PRIMARY KEY, force all its columns to be NOT NULL. */
-            if (idxType == SQLITE_IDXTYPE_PRIMARYKEY) {
-                column->flags |= COLUMN_NO_NULL;
-            }
         }
     }
 
@@ -4926,7 +4974,7 @@ cleanup:
 void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
 {
     Vdbe *v;
-    struct dbtable *table;
+    struct dbtable *table = NULL;
     struct schema_change_type *sc;
     struct comdb2_ddl_context *ctx;
     char *idx_name;
@@ -5111,7 +5159,7 @@ cleanup:
 void comdb2putTunable(Parse *pParse, Token *name, Token *value)
 {
     char *t_name;
-    char *t_value;
+    char *t_value = NULL;
     int rc;
     comdb2_tunable_err err;
 

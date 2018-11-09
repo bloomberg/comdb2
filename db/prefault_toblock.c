@@ -51,13 +51,11 @@ static int add_record_prefault(
     char tag[MAXTAGLEN + 1];
     int taglen = p_buf_tag_name_end - p_buf_tag_name;
     int reclen = p_buf_rec_end - p_buf_rec;
-    int is_od_tag;
     int rc;
     int retrc;
     int expected_dat_len;
     struct schema *dynschema = NULL;
     void *od_dta;
-    size_t od_len;
     int prefixes = 0;
     unsigned char lclnulls[32];
     const char *ondisktag;
@@ -107,8 +105,6 @@ static int add_record_prefault(
     if (strcmp(tag, ondisktag) == 0) {
         /* we have the ondisk data already, no conversion needed */
         od_dta = p_buf_rec;
-        od_len = reclen;
-        is_od_tag = 1;
     } else {
         struct convert_failure reason;
 
@@ -213,7 +209,6 @@ upd_record_prefault(struct ireq *iq, void *primkey, int rrn,
     int rc, retrc = 0, prefixes = 0;
     int expected_dat_len;
     struct schema *dynschema = NULL;
-    size_t od_len;
     char tag[MAXTAGLEN + 1];
     unsigned char lclnulls[32];
 
@@ -362,17 +357,11 @@ err:
 int prefault_toblock(struct ireq *iq_in, void *ptr_in, int helper_thread,
                      unsigned int seqnum, int *abort)
 {
-    int ii, jj, datoff, datlen = 0, num_reqs, maxoff, curoff, lastoff;
-    int rc, ixnum = 0, ixkeylen, rrnoff, rrn, dbnum;
-    int vptr = 0, vlen, newlen, dtalen, irc, taglen = 0;
-    int source_node;
-    char *vdta, *newdta;
-    int fndrrn = 0, fndlen = 0;
+    int num_reqs;
+    int rc, dbnum;
+    int ii;
     char tbltag[64];
-    union packedreq *packedreq;
     /* for updates */
-    int ondisk_size = 0;
-    int saved_rrn = 0;
 
     int addrrn;
     unsigned char nulls[MAXNULLBITS];
@@ -478,6 +467,8 @@ int prefault_toblock(struct ireq *iq_in, void *ptr_in, int helper_thread,
                 p_buf_data_end, nulls, &err[numerrs].errcode,
                 &err[numerrs].ixnum, &addrrn, &genid, ii, /*blkpos*/
                 helper_thread, seqnum, RECFLAGS_DYNSCHEMA_NULLS_ONLY, flush);
+            if (rc)
+                reqprintf(iq, "add_record_prefault rc=%d\n", rc);
 
             break;
         }
@@ -514,6 +505,8 @@ int prefault_toblock(struct ireq *iq_in, void *ptr_in, int helper_thread,
                 ii, /*blkpos*/
                 helper_thread, seqnum, RECFLAGS_DYNSCHEMA_NULLS_ONLY, flush);
 
+            if (rc)
+                reqprintf(iq, "upd_record_prefault rc=%d\n", rc);
             break;
         }
 
@@ -534,6 +527,8 @@ int prefault_toblock(struct ireq *iq_in, void *ptr_in, int helper_thread,
                                      ii,               /*blkpos*/
                                      helper_thread, seqnum, 0, /* flags */
                                      flush);
+            if (rc)
+                reqprintf(iq, "del_record_prefault rc=%d\n", rc);
 
             break;
         }

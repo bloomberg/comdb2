@@ -1,0 +1,5 @@
+schema
+{
+   int      a
+   cstring  b[10]
+}

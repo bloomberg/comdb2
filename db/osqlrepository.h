@@ -121,4 +121,6 @@ int osql_repository_cancelall(void);
  */
 int osql_repository_session_exists(unsigned long long rqid, uuid_t uuid);
 
+void osql_repository_for_each(void *arg, int (*func)(void *, void *));
+
 #endif

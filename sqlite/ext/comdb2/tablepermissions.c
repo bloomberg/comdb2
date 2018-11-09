@@ -55,7 +55,7 @@ static int permissionsConnect(
   sqlite3_vtab **ppVtab,
   char **pErr
 ){
-  systbl_permissions_vtab *pNew;
+  systbl_permissions_vtab *pNew = NULL;
   int rc;
 
   /* Column numbers */
@@ -185,7 +185,7 @@ static int permissionsColumn(
     }
   }
   return SQLITE_OK;
-};
+}
 
 static int permissionsRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){
   permissions_cursor *pCur = (permissions_cursor*)cur;

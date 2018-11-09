@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#set -x
+# set -x
 # on exit call_unsetup
 
 TEST_TIMEOUT=${TEST_TIMEOUT:-5m}
@@ -62,12 +62,13 @@ warn_long_setup() {
 find_cores() {
     # assumes core location and pattern is the same as local machine
     # for all machines in cluster 
+    local LCLDBNM=$1
+    local LCLDBDIR=$2
     local COREAGE=60
-
     local CPAT=$(< /proc/sys/kernel/core_pattern)  # like cat core_pattern
     local COREDIR=$(dirname $CPAT 2>/dev/null)
-    if [ "x$COREDIR" == "x" ] || [ "x$COREDIR" == "x." ] ; then 
-        COREDIR=$DBDIR
+    if [ "x$COREDIR" == "x" ] || [ "x$COREDIR" == "x." ] ; then  # when just 'core'
+        COREDIR=$LCLDBDIR
     else
         CPAT=`basename $CPAT`
     fi
@@ -75,7 +76,7 @@ find_cores() {
     grep '%e\|%t\|%u\|%g\|%s\|%h\|%p' /proc/sys/kernel/core_pattern > /dev/null && has_pattern=1
     local COREFL="$COREDIR/$CPAT"
     local CORECMD="find ${COREDIR} -mmin -$COREAGE -regex '$COREFL' 2> /dev/null"
-    local PIDFL=${TMPDIR}/${DBNAME}.pid
+    local PIDFL=${TMPDIR}/${LCLDBNM}.pid
 
 
     # always check localhost because thats where we create db
@@ -91,18 +92,18 @@ find_cores() {
 
     eval cr=\$\(${CORECMD}\)       # or can do cr=$(eval ${CORECMD}) or cr=$(find ${COREDIR} | grep $COREFL)
     if [[ -n "$cr" ]] ; then
-        echo "Core file $HOSTNAME:${cr} copied to $DBDIR" > $DBDIR/core_stacktrace.$HOSTNAME.txt
-        ln ${cr} -t $DBDIR || cp ${cr} $DBDIR #if can't hardlink then just copy
-        which gdb > /dev/null && [ -f $cr ] && echo 'where' | gdb -q $COMDB2_EXE $cr &>> $DBDIR/core_stacktrace.$HOSTNAME.txt
-        ln $COMDB2_EXE -t $DBDIR #make a hardlink of the executable as well
+        echo "Core file $HOSTNAME:${cr} copied to $LCLDBDIR" > $LCLDBDIR/core_stacktrace.$HOSTNAME.txt
+        ln ${cr} -t $LCLDBDIR || cp ${cr} $LCLDBDIR #if can't hardlink then just copy
+        which gdb > /dev/null && [ -f $cr ] && echo 'where' | gdb -q $COMDB2_EXE $cr &>> $LCLDBDIR/core_stacktrace.$HOSTNAME.txt
+        ln $COMDB2_EXE -t $LCLDBDIR #make a hardlink of the executable as well
         echo $cr # this is the return value of the function
-        echo "    see $DBDIR/core_stacktrace.$HOSTNAME.txt"
+        echo "    see $LCLDBDIR/core_stacktrace.$HOSTNAME.txt"
     fi
 
 
     if [[ -n "$CLUSTER" ]] ; then
         #check again for clustered local crash
-        PIDFL=${TMPDIR}/${DBNAME}.$HOSTNAME.pid
+        PIDFL=${TMPDIR}/${LCLDBNM}.$HOSTNAME.pid
         if [ $has_pattern -eq 1 ] ; then
             local PID=$(cat ${PIDFL} 2> /dev/null)
             COREFL=`echo $CPAT | sed "s/%e/comdb2/g; s/.%t/.[^.]*/g; s/.%u/.[^.]*/g; s/.%g/.[^.]*/; s/.%s/.[^.]*/; s/.%h/.[^.]*/; s/%p/$PID/g; s/\.\./\./;"`
@@ -115,12 +116,12 @@ find_cores() {
 
         eval cr=\$\(${CORECMD}\)       # or can do cr=$(eval ${CORECMD}) or cr=$(find ${COREDIR} | grep $COREFL)
         if [[ -n "$cr" ]] ; then
-            echo "Core file $HOSTNAME:${cr} copied to $DBDIR" > $DBDIR/core_stacktrace.$HOSTNAME.txt
-            cp ${cr} $DBDIR
-            which gdb > /dev/null && [ -f $cr ] && echo 'where' | gdb -q $COMDB2_EXE $cr &>> $DBDIR/core_stacktrace.$HOSTNAME.txt
-            ln $COMDB2_EXE -t $DBDIR #make a hardlink of the executable as well
+            echo "Core file $HOSTNAME:${cr} copied to $LCLDBDIR" > $LCLDBDIR/core_stacktrace.$HOSTNAME.txt
+            cp ${cr} $LCLDBDIR
+            which gdb > /dev/null && [ -f $cr ] && echo 'where' | gdb -q $COMDB2_EXE $cr &>> $LCLDBDIR/core_stacktrace.$HOSTNAME.txt
+            ln $COMDB2_EXE -t $LCLDBDIR #make a hardlink of the executable as well
             echo $cr # this is the return value of the function
-            echo "    see $DBDIR/core_stacktrace.$HOSTNAME.txt"
+            echo "    see $LCLDBDIR/core_stacktrace.$HOSTNAME.txt"
         fi
     fi
 
@@ -129,7 +130,7 @@ find_cores() {
             continue
         fi
         if [ $has_pattern -eq 1 ] ; then
-            PIDFL=${TMPDIR}/${DBNAME}.pid
+            PIDFL=${TMPDIR}/${LCLDBNM}.pid
             local PID=`ssh -o StrictHostKeyChecking=no $node "cat ${PIDFL} 2> /dev/null" </dev/null`
             if [ "x$PID" == "x" ] ; then
                 continue
@@ -146,12 +147,12 @@ find_cores() {
             local space=$(df .  | awk '{print $4}' | grep -v Available)
             local size=$(ssh $node "ls -s $cr | cut -f1 -d' '")
             if [[ $space -lt $size ]] ; then 
-                local copy_core=$DBDIR/${node}.`basename $cr`
+                local copy_core=$LCLDBDIR/${node}.`basename $cr`
                 scp -o StrictHostKeyChecking=no $node:${cr} $copy_core < /dev/null
-                echo "Core file $node:${cr} copied to $copy_core" > $DBDIR/core_stacktrace.$node.txt
-                echo 'where' | gdb -q $COMDB2_EXE $copy_core &>> $DBDIR/core_stacktrace.$node.txt
-                ln $COMDB2_EXE -t $DBDIR #make a hardlink of the executable as well
-                echo "    see $DBDIR/core_stacktrace.$node.txt"
+                echo "Core file $node:${cr} copied to $copy_core" > $LCLDBDIR/core_stacktrace.$node.txt
+                echo 'where' | gdb -q $COMDB2_EXE $copy_core &>> $LCLDBDIR/core_stacktrace.$node.txt
+                ln $COMDB2_EXE -t $LCLDBDIR #make a hardlink of the executable as well
+                echo "    see $LCLDBDIR/core_stacktrace.$node.txt"
             fi
         fi
     done
@@ -170,7 +171,13 @@ call_setup() {
     sleep 0.8 # wait a bit for any cores
     #last line of .setup file will contain the error rc if any
     ret=`tail -1 ${TESTDIR}/logs/${DBNAME}.setup | cut -c11-`
-    cr=`find_cores`
+
+    cr=`find_cores ${DBNAME} $DBDIR`
+
+    if [[ -z "$cr" ]] && [[ -n "${SECONDARY_DBNAME}" ]] ; then
+        cr=`find_cores ${SECONDARY_DBNAME} ${SECONDARY_DBDIR}`
+    fi
+
 
     if [[ -n "$cr" ]] ; then
         echo "!$TESTCASE: setup failed with core dumped ($cr)"
@@ -188,18 +195,57 @@ call_setup() {
 }
 
 
+check_db_at_finish() {
+    local LCLDBNM="$1"
+    local LCLDBDIR="$2"
+    local LCLCONFIG="$3"
+    local LCLOPTIONS="--cdb2cfg ${LCLCONFIG}"
+
+    for node in ${CLUSTER} ; do
+        out=$($CDB2SQL_EXE ${LCLOPTIONS} --tabs --host $node $LCLDBNAME 'select 1' 2>&1)
+        if [ "$out" != "1" ] ; then
+            echo 1
+            return
+        fi
+    done
+}
+
+
+
+# start the testing: setup, runit, check cores, unsetup
+
 call_setup
 echo "!$TESTCASE: running with timeout ${TEST_TIMEOUT}"
 
 timeout ${TEST_TIMEOUT} ./runit ${DBNAME} 2>&1  | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' &> ${TESTDIR}/logs/${DBNAME}.testcase
 
+# get the return code from the first phase of the pipe
 rc=${PIPESTATUS[0]}
 sleep 1
-cr=`find_cores`
+
+
+cr=`find_cores ${DBNAME} $DBDIR`
+
+if [[ -z "$cr" ]] && [[ -n "${SECONDARY_DBNAME}" ]] ; then
+    cr=`find_cores ${SECONDARY_DBNAME} ${SECONDARY_DBDIR}`
+fi
+
+CHECK_DB_AT_FINISH=${CHECK_DB_AT_FINISH:-0}
+if [ $CHECK_DB_AT_FINISH -eq 1 ] ; then
+    dbdown=`check_db_at_finish ${SECONDARY_DBNAME} ${SECONDARY_DBDIR} $SECONDARY_CDB2_CONFIG`
+    if [[ -z "$dbdown" ]] && [[ -n "${SECONDARY_DBNAME}" ]]; then
+        dbdown=`check_db_at_finish ${SECONDARY_DBNAME} ${SECONDARY_DBDIR} $SECONDARY_CDB2_CONFIG`
+    fi
+fi
+
+
 
 if [[ -n "$cr" ]] ; then
     echo "!$TESTCASE: failed with core dumped ($cr)"
     echo "!$TESTCASE: failed with core dumped ($cr)" >> ${TESTDIR}/test.log
+elif [[ -n "$dbdown" ]] ; then
+    echo "!$TESTCASE: db was unavailable at finish ($dbdown logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
+    echo "!$TESTCASE: db was unavailable at finish ($dbdown)" >> ${TESTDIR}/test.log
 elif [[ $rc -eq 124 ]] ; then
     echo "!$TESTCASE: timeout (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: timeout" >> ${TESTDIR}/test.log
@@ -213,6 +259,8 @@ else
     echo "!$TESTCASE: failed" >> ${TESTDIR}/test.log
 fi
 
+
+
 call_unsetup
 
 DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
@@ -220,3 +268,4 @@ echo Done $TESTCASE with id $TESTID at $DATETIME >> $TESTDIR/test.log
 echo "Duration $SECONDS seconds" >> ${TESTDIR}/logs/${DBNAME}.testcase
 
 exit $rc
+

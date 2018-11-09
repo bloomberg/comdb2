@@ -85,7 +85,7 @@ showparams:
 
 
 %_generated: basicops
-	@N=`$(TESTSROOTDIR)/tools/get_test_counter.sh` && echo TESTID=${TESTID} rrunning in $(TESTDIR) $@ $$N/${TOTAL}
+	@N=`$(TESTSROOTDIR)/tools/get_test_counter.sh` && echo TESTID=${TESTID} running in $(TESTDIR) $@ $$N/${TOTAL}
 	@tools/create_generated_tests.sh `tools/get_testopts_path.sh $@` $(TESTDIR)
 	@$(MAKE) -skC $(TESTDIR)/$@.test
 

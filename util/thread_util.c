@@ -33,6 +33,7 @@
 #include "thdpool.h"
 #include "cheapstack.h"
 #include <inttypes.h>
+#include "locks_wrap.h"
 
 #define MAX_RESOURCE_TYPE 255
 #define MAXSTACKDEPTH 64
@@ -75,7 +76,7 @@ void thread_started(char *name)
     info = malloc(sizeof(struct thread_info));
     info->tid = pthread_self();
     info->archtid = getarchtid();
-    pthread_setspecific(thread_util_key, info);
+    Pthread_setspecific(thread_util_key, info);
     listc_init(&info->resource_list, offsetof(struct thread_resource, lnk));
     info->resource_hash =
         hash_init_o(offsetof(struct thread_resource, resource), sizeof(void *));
@@ -160,13 +161,7 @@ void thread_util_register_describe_function(int type, void (*func)(void *))
 
 void thread_util_init(void)
 {
-    int rc;
-
-    rc = pthread_key_create(&thread_util_key, thread_ended);
-    if (rc) {
-        printf("%s:%d pthread_key_create rc %d\n", __FILE__, __LINE__, rc);
-        exit(1);
-    }
+    Pthread_key_create(&thread_util_key, thread_ended);
     thread_started("main");
 }
 

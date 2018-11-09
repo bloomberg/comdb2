@@ -331,6 +331,7 @@ struct netinfo_struct {
     int enque_reorder_lookahead;
     int portmux_register_interval;
     int portmux_register_time;
+    int port_from_lrl;
 
     int use_getservbyname;
     int hellofd;
