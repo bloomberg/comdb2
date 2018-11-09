@@ -128,7 +128,7 @@ static int systblTblSizeColumn(
     }
   }
   return SQLITE_OK;
-};
+}
 
 /*
 ** Return the rowid for the current row. The rowid is the just the

@@ -22,8 +22,8 @@ struct __db_trigger_subscription *__db_get_trigger_subscription(const char *name
 	if (s == NULL) {
 		s = calloc(1, sizeof(struct __db_trigger_subscription));
 		s->name = strdup(name);
-		pthread_cond_init(&s->cond, NULL);
-		pthread_mutex_init(&s->lock, NULL);
+		Pthread_cond_init(&s->cond, NULL);
+		Pthread_mutex_init(&s->lock, NULL);
 		hash_add(htab, s);
 	}
 	Pthread_mutex_unlock(&subscription_lk);

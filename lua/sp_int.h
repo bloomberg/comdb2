@@ -31,7 +31,7 @@
 
 typedef struct stored_proc *SP;
 typedef struct dbstmt_t dbstmt_t;
-typedef struct dbthread_t dbthread_t;
+typedef struct dbthread_type dbthread_type;
 typedef struct tmptbl_info_t tmptbl_info_t;
 
 struct stored_proc {
@@ -45,7 +45,6 @@ struct stored_proc {
     struct sqlclntstate *debug_clnt;
     struct sqlthdstate *thd;
     int bufsz;
-    long long nrows;
     int num_instructions;
     int max_num_instructions;
     uint8_t *buf;
@@ -57,10 +56,11 @@ struct stored_proc {
     int ntypes; //parent only
     char **clntname; //parent only
     int *clnttype; //parent only
-    dbthread_t *parent_thd; //child only
+    dbthread_type *parent_thd; //child only
 
     LIST_HEAD(, dbstmt_t) dbstmts;
     LIST_HEAD(, tmptbl_info_t) tmptbls;
+    LIST_HEAD(, dbthread_type) dbthds;
 
     dbstmt_t *prev_dbstmt; // for db_bind -- deprecated
 

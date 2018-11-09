@@ -114,7 +114,7 @@ static int systblTablesColumn(
 
   sqlite3_result_text(ctx, x, -1, NULL);
   return SQLITE_OK;
-};
+}
 
 /*
 ** Return the rowid for the current row. The rowid is the just the
