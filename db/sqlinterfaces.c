@@ -276,7 +276,7 @@ int gbl_fail_client_write_lock = 0;
 
 static inline int lock_client_write_lock_int(struct sqlclntstate *clnt, int try)
 {
-    struct sql_thread *thd;
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
     int rc = 0, rd_rc = clnt->recover_deadlock_rcode;
     int frc = clnt->failed_recover_deadlock;
     uint32_t flags = 0;
@@ -284,6 +284,8 @@ static inline int lock_client_write_lock_int(struct sqlclntstate *clnt, int try)
     if (gbl_fail_client_write_lock && !(rand() % gbl_fail_client_write_lock))
         flags = RECOVER_DEADLOCK_FORCE_FAIL;
 
+    if (thd && clnt)
+        clnt->emitting_flag = 1;
 again:
     if (try) {
         rc = pthread_mutex_trylock(&clnt->write_lock);
@@ -291,8 +293,7 @@ again:
         Pthread_mutex_lock(&clnt->write_lock);
     }
     if (rd_rc == 0 && frc == 0 && rc == 0 && clnt->heartbeat_lock) {
-        if (clnt->need_recover_deadlock &&
-            (thd = pthread_getspecific(query_info_key))) {
+        if (clnt->need_recover_deadlock && thd) {
             rd_rc = recover_deadlock_flags(thedb->bdb_env, thd, NULL, 0, flags);
             clnt->need_recover_deadlock = 0;
             clnt->recover_deadlock_rcode = rd_rc;
@@ -321,6 +322,9 @@ int lock_client_write_lock(struct sqlclntstate *clnt)
 
 void unlock_client_write_lock(struct sqlclntstate *clnt)
 {
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    if (thd && clnt)
+        clnt->emitting_flag = 0;
     Pthread_mutex_unlock(&clnt->write_lock);
 }
 
@@ -362,12 +366,8 @@ int write_response(struct sqlclntstate *clnt, int R, void *D, int I)
     logmsg(LOGMSG_DEBUG, "write_response(%s,%p,%d)\n", WriteRespString[R], D,
            I);
 #endif
-    if (R != RESPONSE_HEARTBEAT) {
-        assert(!clnt->emitting_flag);
-        clnt->emitting_flag = 1;
-    }
     rc = clnt->plugin.write_response(clnt, R, D, I);
-    /* emitting_flag must be cleared while holding lock (in plugin) */
+
     if (R != RESPONSE_HEARTBEAT && (rd_rc = clnt->recover_deadlock_rcode)) {
         clnt->recover_deadlock_rcode = 0;
         handle_failed_recover_deadlock(clnt, rd_rc);
@@ -4419,9 +4419,9 @@ int sbuf_is_local(SBUF2 *sb)
     return 0;
 }
 
-static inline int sql_writer_recover_deadlock(struct sql_thread *thd,
-                                              struct sqlclntstate *clnt)
+static inline int sql_writer_recover_deadlock(struct sqlclntstate *clnt)
 {
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
     int count = 0, rc;
 
     /* Short circuit */
@@ -4487,7 +4487,7 @@ retry:
         int rc = poll(&pd, 1, 100);
 
         if (rc < 0 && (errno == EINTR || errno == EAGAIN)) {
-            if ((rc = sql_writer_recover_deadlock(thd, clnt)) < 0)
+            if ((rc = sql_writer_recover_deadlock(clnt)) < 0)
                 return -1;
             if (rc == 0)
                 released_locks = 1;
@@ -4496,7 +4496,7 @@ retry:
         if (rc == 0) {
             if ((gbl_sql_release_locks_on_slow_reader && !released_locks) ||
                 bdb_lock_desired(thedb->bdb_env)) {
-                if ((rc = sql_writer_recover_deadlock(thd, clnt)) < 0)
+                if ((rc = sql_writer_recover_deadlock(clnt)) < 0)
                     return -1;
                 if (rc == 0)
                     released_locks = 1;
