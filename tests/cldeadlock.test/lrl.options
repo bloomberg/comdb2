@@ -7,3 +7,4 @@ logmsg level info
 random_fail_client_write_lock 2
 rep_release_wait_ms 500
 random_get_curtran_failures 1000
+setattr checkpointtime 10
