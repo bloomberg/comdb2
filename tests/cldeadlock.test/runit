@@ -293,7 +293,7 @@ function downgrade_test
     [[ $debug == "1" ]] && set -x
     typeset func="downgrade_test"
     write_prompt $func "executing $func"
-    start_coherent_loop 20
+    start_coherent_loop 30
     start_downgrade_thread
     cldeadlock_threads $cl_iters
     cleanup
@@ -305,7 +305,7 @@ function snapshot_test
     [[ $debug == "1" ]] && set -x
     typeset func="snapshot_test"
     write_prompt $func "executing $func"
-    start_coherent_loop 20
+    start_coherent_loop 30
     start_downgrade_thread
     cldeadlock_threads $cl_iters 1
     cleanup
