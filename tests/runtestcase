@@ -2,6 +2,7 @@
 
 # set -x
 # on exit call_unsetup
+trap "call_unsetup \"0\"" INT EXIT
 
 TEST_TIMEOUT=${TEST_TIMEOUT:-5m}
 if [[ "$(arch)" == "armv7l" ]] ; then
@@ -270,7 +271,7 @@ else
     echo "!$TESTCASE: failed" >> ${TESTDIR}/test.log
 fi
 
-
+trap - INT EXIT
 
 call_unsetup
 
