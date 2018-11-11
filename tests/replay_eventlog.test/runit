@@ -267,9 +267,11 @@ else
 fi
 
 count=`wc -l $logflunziped | cut -f 1 -d' '`
-CSHOULDBE=8244 # number of lines that should be in the log
-if [ $count != $CSHOULDBE ] ; then 
+CSHOULDBE=8244 # number of lines that should be in the log when single node
+if [[ -z "$CLUSTER" ]] && [[ $count -ne $CSHOULDBE ]] ; then 
     failexit "$logflunziped contains $count rather than $CSHOULDBE entries"
+elif [ $count -lt 4142 ] ; then
+    failexit "$logflunziped contains $count which is too few entries"
 fi
 
 set -e
