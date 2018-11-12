@@ -296,7 +296,7 @@ again:
     }
     if (clnt->heartbeat_lock && thd) {
         if (clnt->need_recover_deadlock) {
-            if (!clnt->recover_deadlock_rcode) {
+            if (!clnt->recover_deadlock_rcode && !clnt->skip_recover_deadlock) {
                 clnt->recover_deadlock_rcode = recover_deadlock_flags(
                         thedb->bdb_env, thd, NULL, 0, flags);
             }
@@ -335,7 +335,6 @@ void unlock_client_write_lock(struct sqlclntstate *clnt)
 void handle_failed_recover_deadlock(struct sqlclntstate *clnt,
                                     int recover_deadlock_rcode)
 {
-    assert(clnt->recover_deadlock_rcode != 0);
     clnt->ready_for_heartbeats = 0;
     assert(bdb_lockref() == 0);
     switch (recover_deadlock_rcode) {
@@ -370,8 +369,10 @@ int write_response(struct sqlclntstate *clnt, int R, void *D, int I)
     rc = clnt->plugin.write_response(clnt, R, D, I);
 
     if (R != RESPONSE_HEARTBEAT && (rd_rc = clnt->recover_deadlock_rcode)) {
-        handle_failed_recover_deadlock(clnt, rd_rc);
+        clnt->skip_recover_deadlock = 1;
         clnt->recover_deadlock_rcode = 0;
+        handle_failed_recover_deadlock(clnt, rd_rc);
+        clnt->skip_recover_deadlock = 0;
         rc = !rc ? rd_rc : rc;
     }
     return rc;
