@@ -2543,7 +2543,7 @@ static void *dispatch_lua_thread(void *arg)
     Pthread_mutex_destroy(&clnt.wait_mutex);
     Pthread_cond_destroy(&clnt.wait_cond);
     Pthread_mutex_destroy(&clnt.write_lock);
-    pthread_cond_destroy(&clnt.write_cond);
+    Pthread_cond_destroy(&clnt.write_cond);
     Pthread_mutex_destroy(&clnt.dtran_mtx);
     return NULL;
 }

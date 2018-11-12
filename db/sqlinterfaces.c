@@ -299,11 +299,11 @@ again:
             clnt->recover_deadlock_rcode = rd_rc;
             if (rd_rc) {
                 assert(bdb_lockref() == 0);
-                logmsg(LOGMSG_WARN, "%s recover_deadlock returned %d\n", __func__,
-                        rd_rc);
+                logmsg(LOGMSG_WARN, "%s recover_deadlock returned %d\n",
+                       __func__, rd_rc);
             }
         }
-        pthread_cond_signal(&clnt->write_cond);
+        Pthread_cond_signal(&clnt->write_cond);
         Pthread_mutex_unlock(&clnt->write_lock);
         goto again;
     }
@@ -332,23 +332,21 @@ void handle_failed_recover_deadlock(struct sqlclntstate *clnt,
                                     int recover_deadlock_rcode)
 {
     clnt->failed_recover_deadlock = 1;
+    clnt->ready_for_heartbeats = 0;
     assert(bdb_lockref() == 0);
     switch (recover_deadlock_rcode) {
     case SQLITE_COMDB2SCHEMA:
-        clnt->ready_for_heartbeats = 0;
         write_response(clnt, RESPONSE_ERROR,
                        "Database schema changed during request",
                        CDB2ERR_SCHEMA);
         logmsg(LOGMSG_DEBUG, "%s sending CDB2ERR_SCHEMA\n", __func__);
         break;
     case SQLITE_CLIENT_CHANGENODE:
-        clnt->ready_for_heartbeats = 0;
         write_response(clnt, RESPONSE_ERROR, "Client api should retry request",
                        CDB2ERR_CHANGENODE);
         logmsg(LOGMSG_DEBUG, "%s sending CDB2ERR_CHANGENODE\n", __func__);
         break;
     default:
-        clnt->ready_for_heartbeats = 0;
         write_response(clnt, RESPONSE_ERROR,
                        "Failed to reaquire locks on deadlock",
                        CDB2ERR_DEADLOCK);
@@ -3586,7 +3584,8 @@ check_version:
                 if (ctrc) {
                     logmsg(LOGMSG_ERROR,
                            "%s td %lu: unable to get a CURSOR transaction, "
-                           "rc = %d!\n", __func__, pthread_self(), ctrc);
+                           "rc = %d!\n",
+                           __func__, pthread_self(), ctrc);
                     if (thd->sqldb) {
                         delete_prepared_stmts(thd);
                         sqlite3_close(thd->sqldb);
@@ -4049,12 +4048,10 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
             }
 
             if (lock_client_write_trylock(clnt) == 0) {
-                /* Have no clue if I can unlock this yet .. */
-                Pthread_mutex_unlock(&clnt->wait_mutex);
                 sbuf2flush(clnt->sb);
                 unlock_client_write_lock(clnt);
-            } else
-                Pthread_mutex_unlock(&clnt->wait_mutex);
+            }
+            Pthread_mutex_unlock(&clnt->wait_mutex);
         }
     } else {
         Pthread_mutex_lock(&clnt->wait_mutex);
@@ -5518,7 +5515,7 @@ void run_internal_sql(char *sql)
     Pthread_mutex_destroy(&clnt.wait_mutex);
     Pthread_cond_destroy(&clnt.wait_cond);
     Pthread_mutex_destroy(&clnt.write_lock);
-    pthread_cond_destroy(&clnt.write_cond);
+    Pthread_cond_destroy(&clnt.write_cond);
     Pthread_mutex_destroy(&clnt.dtran_mtx);
 }
 
@@ -5682,6 +5679,6 @@ void end_internal_sql_clnt(struct sqlclntstate *clnt)
     Pthread_mutex_destroy(&clnt->wait_mutex);
     Pthread_cond_destroy(&clnt->wait_cond);
     Pthread_mutex_destroy(&clnt->write_lock);
-    pthread_cond_destroy(&clnt->write_cond);
+    Pthread_cond_destroy(&clnt->write_cond);
     Pthread_mutex_destroy(&clnt->dtran_mtx);
 }

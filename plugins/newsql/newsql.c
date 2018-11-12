@@ -413,8 +413,6 @@ static int newsql_response_int(struct sqlclntstate *clnt,
         goto done;
     rc = 0;
 done:
-    /* Cannot be heartbeat, (that uses only newsql_send_hdr).
-     * We must clear this flag under clnt->write_lock */
     unlock_client_write_lock(clnt);
     return rc;
 }
@@ -2372,7 +2370,7 @@ done:
     Pthread_mutex_destroy(&clnt.wait_mutex);
     Pthread_cond_destroy(&clnt.wait_cond);
     Pthread_mutex_destroy(&clnt.write_lock);
-    pthread_cond_destroy(&clnt.write_cond);
+    Pthread_cond_destroy(&clnt.write_cond);
     Pthread_mutex_destroy(&clnt.dtran_mtx);
 
     return APPSOCK_RETURN_OK;

@@ -848,8 +848,8 @@ int bdb_reconstruct_inplace_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
         /* Find a btree-replace log record. */
         if (rectype == DB___bam_repl) {
             /* Invoke berkeley's 'read-repl-log' routine. */
-            if (0 !=
-                (rc = __bam_repl_read_int(bdb_state->dbenv, logent.data, 0, &repl))) {
+            if (0 != (rc = __bam_repl_read_int(bdb_state->dbenv, logent.data, 0,
+                                               &repl))) {
                 logmsg(LOGMSG_ERROR, "__bam_repl_read rc %d\n", rc);
                 goto done;
             }
