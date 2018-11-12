@@ -270,7 +270,7 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp,
 
     /* inline cleanup */
     if (queue_count(conn->que_free) > 10) {
-        trimQue(stmt, conn->que, 5);
+        trimQue(stmt, conn->que_free, 5);
     }
     pthread_mutex_unlock(&conn->mtx);
 
