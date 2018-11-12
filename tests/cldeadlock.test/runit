@@ -329,7 +329,7 @@ function run_test
     write_prompt $func "executing $func"
     setup_test
     normal_test
-    snapshot_test
+    #snapshot_test
     downgrade_test
     [[ -f $incoherent_fail ]] && failexit "Cluster went incoherent"
     drop_table
