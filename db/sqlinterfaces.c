@@ -288,7 +288,8 @@ static inline int lock_client_write_lock_int(struct sqlclntstate *clnt, int try)
 again:
     if (try) {
         if ((rc = pthread_mutex_trylock(&clnt->write_lock))) {
-            clnt->emitting_flag = 0;
+            if (thd && clnt)
+                clnt->emitting_flag = 0;
             return rc;
         }
    } else {
@@ -4423,7 +4424,7 @@ int sbuf_is_local(SBUF2 *sb)
 static inline int sql_writer_recover_deadlock(struct sqlclntstate *clnt)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
-    int count = 0;
+    int count = 0, ref;
 
     /* Short circuit */
     if (!clnt || clnt->skip_recover_deadlock) {
@@ -4434,11 +4435,11 @@ static inline int sql_writer_recover_deadlock(struct sqlclntstate *clnt)
     /* Sql thread */
     if (thd) {
         if (release_locks("slow reader") != 0) {
-            assert(bdb_lockref() == 0);
+            assert((ref = bdb_lockref()) == 0);
             logmsg(LOGMSG_ERROR, "%s release_locks failed\n", __func__);
             return 1;
         }
-        assert(bdb_lockref() > 0);
+        assert((ref = bdb_lockref()) > 0);
         return 0;
     }
 

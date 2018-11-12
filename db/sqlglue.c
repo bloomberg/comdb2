@@ -9209,14 +9209,14 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
                            bdb_cursor_ifn_t *bdbcur, int sleepms,
                            uint32_t flags)
 {
-    int rc;
+    int rc, ref;
     rc = recover_deadlock_flags_int(bdb_state, thd, bdbcur, sleepms, flags);
     if (rc != 0) {
         put_curtran_flags(thedb->bdb_env, thd->clnt, CURTRAN_RECOVERY);
         recover_deadlock_sc_cleanup(thd);
-        assert(bdb_lockref() == 0);
+        assert((ref = bdb_lockref()) == 0);
     } else {
-        assert(bdb_lockref() > 0);
+        assert((ref = bdb_lockref()) > 0);
     }
     return rc;
 }
