@@ -2,6 +2,7 @@
 
 # set -x
 # on exit call_unsetup
+trap "call_unsetup \"0\"" INT EXIT
 
 TEST_TIMEOUT=${TEST_TIMEOUT:-5m}
 if [[ "$(arch)" == "armv7l" ]] ; then
@@ -197,14 +198,21 @@ call_setup() {
 
 check_db_at_finish() {
     local LCLDBNM="$1"
-    local LCLDBDIR="$2"
-    local LCLCONFIG="$3"
+    local LCLCONFIG="$2"
     local LCLOPTIONS="--cdb2cfg ${LCLCONFIG}"
 
-    for node in ${CLUSTER} ; do
-        out=$($CDB2SQL_EXE ${LCLOPTIONS} --tabs --host $node $LCLDBNAME 'select 1' 2>&1)
+    if [[ -z "$CLUSTER" ]] ; then
+        out=$(timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs --host localhost $LCLDBNM 'select 1' 2>&1 | tee ${TESTDIR}/logs/${LCLDBNM}.atfinish)
         if [ "$out" != "1" ] ; then
-            echo 1
+            echo $out
+            return
+        fi
+
+    fi
+    for node in ${CLUSTER} ; do
+        out=$(timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs --host $node $LCLDBNM 'select 1' 2>&1 | tee ${TESTDIR}/logs/${LCLDBNM}.atfinish)
+        if [ "$out" != "1" ] ; then
+            echo $out
             return
         fi
     done
@@ -230,11 +238,21 @@ if [[ -z "$cr" ]] && [[ -n "${SECONDARY_DBNAME}" ]] ; then
     cr=`find_cores ${SECONDARY_DBNAME} ${SECONDARY_DBDIR}`
 fi
 
-CHECK_DB_AT_FINISH=${CHECK_DB_AT_FINISH:-0}
+if [[ -z "${CHECK_DB_AT_FINISH}" ]] ; then
+   if [[ "$COMDB2_UNITTEST" != 1 ]] ; then
+       CHECK_DB_AT_FINISH=1
+   else
+       CHECK_DB_AT_FINISH=0
+   fi
+fi
+    
+
+
 if [ $CHECK_DB_AT_FINISH -eq 1 ] ; then
-    dbdown=`check_db_at_finish ${SECONDARY_DBNAME} ${SECONDARY_DBDIR} $SECONDARY_CDB2_CONFIG`
+    dbdown=`check_db_at_finish ${DBNAME} $CDB2_CONFIG`
+
     if [[ -z "$dbdown" ]] && [[ -n "${SECONDARY_DBNAME}" ]]; then
-        dbdown=`check_db_at_finish ${SECONDARY_DBNAME} ${SECONDARY_DBDIR} $SECONDARY_CDB2_CONFIG`
+        dbdown=`check_db_at_finish ${SECONDARY_DBNAME} $SECONDARY_CDB2_CONFIG`
     fi
 fi
 
@@ -244,7 +262,7 @@ if [[ -n "$cr" ]] ; then
     echo "!$TESTCASE: failed with core dumped ($cr)"
     echo "!$TESTCASE: failed with core dumped ($cr)" >> ${TESTDIR}/test.log
 elif [[ -n "$dbdown" ]] ; then
-    echo "!$TESTCASE: db was unavailable at finish ($dbdown logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
+    echo "!$TESTCASE: db was unavailable at finish ($dbdown)"
     echo "!$TESTCASE: db was unavailable at finish ($dbdown)" >> ${TESTDIR}/test.log
 elif [[ $rc -eq 124 ]] ; then
     echo "!$TESTCASE: timeout (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
@@ -259,7 +277,7 @@ else
     echo "!$TESTCASE: failed" >> ${TESTDIR}/test.log
 fi
 
-
+trap - INT EXIT
 
 call_unsetup
 
