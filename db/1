@@ -140,7 +140,8 @@ static const char *HELP_MAIN[] = {
     "detach_mtrap   - detach currently running mtrap thread",
     "cton           - use constraint logic",
     "ctof           - stop using constraint logic",
-    "debg #         - operation debugging", "who #          - who debugging",
+    "debg #         - operation debugging",
+    "who #          - who debugging",
     "meta ...       - meta db debugging",
     "netdon         - net direct writes (non-queued) on!",
     "netdof         - net direct writes (non-queued) off!",
@@ -166,20 +167,28 @@ static const char *HELP_MAIN[] = {
     "replicants",
     "allow ...      - same format as in lrl file",
     "disallow ...   - same format as in lrl file",
-    "bdb ...        - backend commands", "debug ...      - misc debugging",
+    "bdb ...        - backend commands",
+    "debug ...      - misc debugging",
     "blob ...       - blob subsystem commands",
     "sql ...        - sql subsystem commands",
     "help stat      - other general status query commands",
     "help bdb       - database backend commands",
     "help schema    - schema related commands",
-    "help fstblk    - fstblk commands", "help compr     - compression commands",
-    "help analyze   - analyze commands", "exit           - exit task", NULL};
+    "help fstblk    - fstblk commands",
+    "help compr     - compression commands",
+    "help analyze   - analyze commands",
+    "exit           - exit task",
+    NULL};
 
 static const char *HELP_JAVA[] = {
-    "Java stored procedure engine commands:-", "java stat",
-    "java load <name> <jar> [args...]", "java reload <name> <jar> [args...]",
-    "java unload <name>", "java sigjava           - Set JVM signal handlers",
-    "java sigorig           - Set pre-JVM signal handlers", NULL};
+    "Java stored procedure engine commands:-",
+    "java stat",
+    "java load <name> <jar> [args...]",
+    "java reload <name> <jar> [args...]",
+    "java unload <name>",
+    "java sigjava           - Set JVM signal handlers",
+    "java sigorig           - Set pre-JVM signal handlers",
+    NULL};
 static const char *HELP_STAT[] = {
     "Database status query commands:-",
     "stat                       - basic status report",
@@ -206,7 +215,8 @@ static const char *HELP_STAT[] = {
     "stat mtrap                 - show mtrap system stats",
     "dmpl                       - dump threads",
     "dmptrn                     - show long transaction stats",
-    "dmpcts                     - show table constraints", NULL,
+    "dmpcts                     - show table constraints",
+    NULL,
 };
 static const char *HELP_SQL[] = {
     "sql ...",
@@ -216,7 +226,8 @@ static const char *HELP_SQL[] = {
     "cancel N           - cancel running statement with id N",
     "cancelcnonce N      - cancel running statement with cnonce N",
     "wrtimeout N        - set write timeout in ms",
-    "help               - this information", NULL,
+    "help               - this information",
+    NULL,
 };
 static const char *HELP_SCHEMA[] = {
     "Commands for inspecting and altering schema information:-",
@@ -238,9 +249,10 @@ static const char *HELP_SCHEMA[] = {
     "dmpcts                         - show table constraints",
     "dumptags                       - list known tags",
     "screportfreq                   - set progress report frequency in seconds",
-    "Live schema change specific commands:-", "scdelay #                      "
-                                              "- set conversion thread delay "
-                                              "in milliseconds",
+    "Live schema change specific commands:-",
+    "scdelay #                      "
+    "- set conversion thread delay "
+    "in milliseconds",
     "scwrdelay #                    - set transaction delay while in live "
     "schema",
     "                                 change in milliseconds",
@@ -258,10 +270,12 @@ static const char *HELP_COMPR[] = {
     "compr <table> <alg> - change compression algorithm for table",
     "bcompr <table> <alg> - change compression algorithm for blobs in table",
     "                      Compression algorithms are:",
-    "                      1 - zlib, 0 - none", "",
+    "                      1 - zlib, 0 - none",
+    "",
     "To rebuild a table with different compression options:",
     "load <table> <file.csc2> <odh> <alg> <blobalg>",
-    "  where odh is 1 or 0 (required for compression).", NULL};
+    "  where odh is 1 or 0 (required for compression).",
+    NULL};
 static const char *HELP_ANALYZE[] = {
     "Commands for setting analyze options:-",
     "stat analyze       - print analyze stats",
@@ -293,7 +307,8 @@ static const char *HELP_MEMSTAT[] = {
     "Caution should be used when setting the frequency. Performance issues may "
     "result "
     "if auto reporting too frequently.",
-    "", "Examples",
+    "",
+    "Examples",
     "memstat hr - display memstats on all subsystems in human readable format",
     "memstat total_asc - display memstats on all subsystems sorted by memory "
     "usage",
@@ -301,8 +316,12 @@ static const char *HELP_MEMSTAT[] = {
     "match the pattern 'berkdb*', sorted by memory usage",
     "memstat total_asc group_by_name - display memstats on all subsystems, "
     "order by memory usage, group by name",
-    "", "Columns", "name  - area name", "scope - scope of the area",
-    "MT    - Multi-thread safe", "init  - initial size",
+    "",
+    "Columns",
+    "name  - area name",
+    "scope - scope of the area",
+    "MT    - Multi-thread safe",
+    "init  - initial size",
     "cap   - maximum capacity",
     "file  - in which file the allocator is created",
     "line  - at which line the allocator is created",
@@ -310,8 +329,8 @@ static const char *HELP_MEMSTAT[] = {
     "amount consumed by all subsystems",
     "used  - actual used memory. A small chunk (~1KB on 64-bit and ~0.5KB "
     "bytes on 32-bit, typically) will be reserved by dlmalloc.",
-    "free  - free memory", NULL};
-
+    "free  - free memory",
+    NULL};
 
 static int comdb2_toknum(const char *tok, int ltok, int *output)
 {
@@ -372,8 +391,10 @@ void replication_stats(struct dbenv *dbenv)
                dbenv->total_reptime_ms / dbenv->num_txns);
         logmsg(LOGMSG_USER, "   Max txn sz           %lu\n",
                dbenv->biggest_txn);
-        logmsg(LOGMSG_USER, "   Max rep timeout      %d\n", dbenv->max_timeout_ms);
-        logmsg(LOGMSG_USER, "   Max rep time         %d\n", dbenv->max_reptime_ms);
+        logmsg(LOGMSG_USER, "   Max rep timeout      %d\n",
+               dbenv->max_timeout_ms);
+        logmsg(LOGMSG_USER, "   Max rep time         %d\n",
+               dbenv->max_reptime_ms);
     }
 }
 
@@ -478,7 +499,8 @@ int process_sync_command(struct dbenv *dbenv, char *line, int lline, int st)
                 dbenv->rep_sync = REP_SYNC_ROOM;
 
             else {
-                logmsg(LOGMSG_USER, "rep_sync must be full,source,room or none\n");
+                logmsg(LOGMSG_USER,
+                       "rep_sync must be full,source,room or none\n");
                 break;
             }
         } else if (tokcmp(tok, ltok, "adapt") == 0) {
@@ -486,7 +508,8 @@ int process_sync_command(struct dbenv *dbenv, char *line, int lline, int st)
              * the bdb level */
             tok = segtok(line, lline, &st, &ltok);
             if (ltok == 0) {
-                logmsg(LOGMSG_ERROR, "adapt must be followed by a directive and a numerical "
+                logmsg(LOGMSG_ERROR,
+                       "adapt must be followed by a directive and a numerical "
                        "parameter\n");
                 break;
             } else {
@@ -494,7 +517,8 @@ int process_sync_command(struct dbenv *dbenv, char *line, int lline, int st)
                 int ltok2;
                 tok2 = segtok(line, lline, &st, &ltok2);
                 if (ltok2 == 0) {
-                    logmsg(LOGMSG_ERROR, "adapt must be followed by a directive and a "
+                    logmsg(LOGMSG_ERROR,
+                           "adapt must be followed by a directive and a "
                            "numerical parameter\n");
                     break;
                 }
@@ -502,13 +526,17 @@ int process_sync_command(struct dbenv *dbenv, char *line, int lline, int st)
             }
 
             if (tokcmp(tok, ltok, "min") == 0)
-                logmsg(LOGMSG_ERROR, "sync adapt commands are now deprecated\n");
+                logmsg(LOGMSG_ERROR,
+                       "sync adapt commands are now deprecated\n");
             else if (tokcmp(tok, ltok, "max") == 0)
-                logmsg(LOGMSG_ERROR, "sync adapt commands are now deprecated\n");
+                logmsg(LOGMSG_ERROR,
+                       "sync adapt commands are now deprecated\n");
             else if (tokcmp(tok, ltok, "base") == 0)
-                logmsg(LOGMSG_ERROR, "sync adapt commands are now deprecated\n");
+                logmsg(LOGMSG_ERROR,
+                       "sync adapt commands are now deprecated\n");
             else if (tokcmp(tok, ltok, "bpms") == 0)
-                logmsg(LOGMSG_ERROR, "sync adapt commands are now deprecated\n");
+                logmsg(LOGMSG_ERROR,
+                       "sync adapt commands are now deprecated\n");
             else {
                 logmsg(LOGMSG_ERROR, "unrecognised adapt command\n");
                 break;
@@ -517,7 +545,8 @@ int process_sync_command(struct dbenv *dbenv, char *line, int lline, int st)
             int num;
             tok = segtok(line, lline, &st, &ltok);
             if (ltok == 0) {
-                logmsg(LOGMSG_ERROR, "atleast must be followed by a directive and a "
+                logmsg(LOGMSG_ERROR,
+                       "atleast must be followed by a directive and a "
                        "numerical parameter\n");
                 break;
             }
@@ -527,24 +556,40 @@ int process_sync_command(struct dbenv *dbenv, char *line, int lline, int st)
         } else {
             logmsg(LOGMSG_USER, " ez options:\n");
             logmsg(LOGMSG_USER, "     sync <full|normal|source|none>\n");
-            logmsg(LOGMSG_USER, "          full - full cache coherency, osync logs\n");
-            logmsg(LOGMSG_USER, "          normal - full cache coherency, 10 second log "
-                                "sync\n");
-            logmsg(LOGMSG_USER, "          source - source cache coherency, 10 second log "
-                                "sync\n");
-            logmsg(LOGMSG_USER, "          none - no cache coherency, 30 second log sync\n");
+            logmsg(LOGMSG_USER,
+                   "          full - full cache coherency, osync logs\n");
+            logmsg(LOGMSG_USER,
+                   "          normal - full cache coherency, 10 second log "
+                   "sync\n");
+            logmsg(LOGMSG_USER,
+                   "          source - source cache coherency, 10 second log "
+                   "sync\n");
+            logmsg(LOGMSG_USER,
+                   "          none - no cache coherency, 30 second log sync\n");
             logmsg(LOGMSG_USER, " advanced options:\n");
-            logmsg(LOGMSG_USER, "     sync rep-sync <full|source|none> -replication sync\n");
-            logmsg(LOGMSG_USER, "     sync log-delete <on|off [re-enable_time_in_minutes]>\n");
-            logmsg(LOGMSG_USER, "     sync log-delete-now - delete logs as soone as we can\n");
-            logmsg(LOGMSG_USER, "     sync log-delete-before - delete log files that "
-                                "predate this msgtrap\n");
-            logmsg(LOGMSG_USER, "     sync log-sync-time <seconds> - how often to sync log\n");
-            logmsg(LOGMSG_USER, "     sync adapt min  - min rep timeout in ms\n");
-            logmsg(LOGMSG_USER, "     sync adapt max  - max rep timeout in ms\n");
-            logmsg(LOGMSG_USER, "     sync adapt base - base rep timeout in ms\n");
-            logmsg(LOGMSG_USER, "     sync adapt bpms - bytes per ms for adaptive rep "
-                                "timeout\n");
+            logmsg(LOGMSG_USER,
+                   "     sync rep-sync <full|source|none> -replication sync\n");
+            logmsg(
+                LOGMSG_USER,
+                "     sync log-delete <on|off [re-enable_time_in_minutes]>\n");
+            logmsg(
+                LOGMSG_USER,
+                "     sync log-delete-now - delete logs as soone as we can\n");
+            logmsg(LOGMSG_USER,
+                   "     sync log-delete-before - delete log files that "
+                   "predate this msgtrap\n");
+            logmsg(
+                LOGMSG_USER,
+                "     sync log-sync-time <seconds> - how often to sync log\n");
+            logmsg(LOGMSG_USER,
+                   "     sync adapt min  - min rep timeout in ms\n");
+            logmsg(LOGMSG_USER,
+                   "     sync adapt max  - max rep timeout in ms\n");
+            logmsg(LOGMSG_USER,
+                   "     sync adapt base - base rep timeout in ms\n");
+            logmsg(LOGMSG_USER,
+                   "     sync adapt bpms - bytes per ms for adaptive rep "
+                   "timeout\n");
             return -1;
         }
     }
@@ -567,22 +612,22 @@ static void on_off_trap(char *line, int lline, int *st, int *ltok, char *msg,
         return;
     } else if (tokcmp(tok, *ltok, "on") == 0) {
         if (*value) {
-           logmsg(LOGMSG_USER, "%s is already on\n", msg);
+            logmsg(LOGMSG_USER, "%s is already on\n", msg);
             return;
         } else {
-           logmsg(LOGMSG_USER, "%s is now on\n", msg);
+            logmsg(LOGMSG_USER, "%s is now on\n", msg);
             *value = 1;
         }
     } else if (tokcmp(tok, *ltok, "off") == 0) {
         if (!*value) {
-           logmsg(LOGMSG_USER, "%s is already off\n", msg);
+            logmsg(LOGMSG_USER, "%s is already off\n", msg);
             return;
         } else {
-           logmsg(LOGMSG_USER, "%s is now off\n", msg);
+            logmsg(LOGMSG_USER, "%s is now off\n", msg);
             *value = 0;
         }
     } else {
-       logmsg(LOGMSG_USER, "Expected on/off for %s command\n", trap);
+        logmsg(LOGMSG_USER, "Expected on/off for %s command\n", trap);
     }
 }
 
@@ -649,16 +694,13 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             logmsgperror("create exit thread: pthread_create");
             exit(1);
         }
-    } else if(tokcmp(tok,ltok, "partinfo")==0) {
+    } else if (tokcmp(tok, ltok, "partinfo") == 0) {
         char opt[128];
 
-        tok=segtok(line, lline, &st, &ltok);
-        if(ltok != 0)
-        {
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok != 0) {
             tokcpy0(tok, ltok, opt, sizeof(opt));
-        }
-        else
-        {
+        } else {
             snprintf(opt, sizeof(opt), "all");
         }
 
@@ -673,36 +715,29 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         tokcpy0(tok, ltok, subnet, sizeof(subnet));
         logmsg(LOGMSG_INFO, "Killling subnet %s\n", subnet);
         kill_subnet(subnet);
-    }
-    else if(tokcmp(tok,ltok, "netclipper")==0)
-    {
+    } else if (tokcmp(tok, ltok, "netclipper") == 0) {
         int flag;
         char *subnet;
-        tok=segtok(line, lline, &st, &ltok);
+        tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
-clipper_usage:
+        clipper_usage:
             logmsg(LOGMSG_USER, "Usage: netclipper disable|enable subnet\n");
             return -1;
         }
-        if (tokcmp(tok, ltok, "disable")==0)
-        {
-            flag = 1;   
-        }
-        else if (tokcmp(tok, ltok, "enable")==0)
-        {
+        if (tokcmp(tok, ltok, "disable") == 0) {
+            flag = 1;
+        } else if (tokcmp(tok, ltok, "enable") == 0) {
             flag = 0;
-        }
-        else 
+        } else
             goto clipper_usage;
 
-        tok=segtok(line, lline, &st, &ltok);
-        if (ltok == 0) 
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0)
             goto clipper_usage;
-        subnet = tokdup(tok, ltok);  
+        subnet = tokdup(tok, ltok);
         net_clipper(subnet, flag);
         free(subnet);
-    }
-    else if (tokcmp(tok, ltok, "fdbdebg") == 0) {
+    } else if (tokcmp(tok, ltok, "fdbdebg") == 0) {
         extern int gbl_fdb_track;
 
         int dbgflag;
@@ -759,7 +794,8 @@ clipper_usage:
 
             tok = segtok(line, lline, &st, &ltok);
             if (tokcmp(tok, ltok, "stripe") != 0) {
-                logmsg(LOGMSG_ERROR, "Input error (was expecting stripe directive)\n");
+                logmsg(LOGMSG_ERROR,
+                       "Input error (was expecting stripe directive)\n");
                 goto freelisthelp;
             }
 
@@ -779,10 +815,11 @@ clipper_usage:
 
         if (0) {
         freelisthelp:
-           logmsg(LOGMSG_USER, "Dump freelist of a given btree.\n");
-           logmsg(LOGMSG_USER, "freelist <tablename> datafile <number>  stripe <number>\n");
-           logmsg(LOGMSG_USER, "freelist <tablename> index    <number>\n");
-           logmsg(LOGMSG_USER, "freelist <tablename> all\n");
+            logmsg(LOGMSG_USER, "Dump freelist of a given btree.\n");
+            logmsg(LOGMSG_USER,
+                   "freelist <tablename> datafile <number>  stripe <number>\n");
+            logmsg(LOGMSG_USER, "freelist <tablename> index    <number>\n");
+            logmsg(LOGMSG_USER, "freelist <tablename> all\n");
         }
     }
     /*
@@ -809,7 +846,8 @@ clipper_usage:
         tok = tokdup(tok, ltok);
         newmaster = intern(tok);
         free(tok);
-        logmsg(LOGMSG_USER, "Trying to transfer master to node %s\n", newmaster);
+        logmsg(LOGMSG_USER, "Trying to transfer master to node %s\n",
+               newmaster);
         bdb_transfermaster_tonode(dbenv->dbs[0]->handle, newmaster);
     } else if (tokcmp(tok, ltok, "synccluster") == 0) {
 
@@ -825,9 +863,9 @@ clipper_usage:
             }
         }
         if (outrc) {
-           logmsg(LOGMSG_USER, "sync cluster failed. \n");
+            logmsg(LOGMSG_USER, "sync cluster failed. \n");
         } else {
-           logmsg(LOGMSG_USER, "sync cluster done. \n");
+            logmsg(LOGMSG_USER, "sync cluster done. \n");
         }
     } else if (tokcmp(tok, ltok, "whohas") == 0) {
         int pgno = -1;
@@ -841,12 +879,11 @@ clipper_usage:
             logmsg(LOGMSG_ERROR, "incorrect page no %d\n", pgno);
     } else if (tokcmp(tok, ltok, "deletelogs") == 0) {
         logmsg(LOGMSG_ERROR, "Calling delete logs function\n");
-        extern void delete_log_files(bdb_state_type *bdb_state);
+        extern void delete_log_files(bdb_state_type * bdb_state);
         delete_log_files(thedb->bdb_env);
     } else if (tokcmp(tok, ltok, "pushnext") == 0) {
         push_next_log();
-    }
-    else if (tokcmp(tok, ltok, "netpoll") == 0) {
+    } else if (tokcmp(tok, ltok, "netpoll") == 0) {
         int pval;
         tok = segtok(line, lline, &st, &ltok);
         pval = toknum(tok, ltok);
@@ -949,17 +986,17 @@ clipper_usage:
         }
     } else if (tokcmp(tok, ltok, "pageordertrace") == 0) {
         if (gbl_enable_pageorder_trace) {
-           logmsg(LOGMSG_USER, "pageorder trace already on\n");
+            logmsg(LOGMSG_USER, "pageorder trace already on\n");
         } else {
             gbl_enable_pageorder_trace = 1;
-           logmsg(LOGMSG_USER, "pageorder trace enabled\n");
+            logmsg(LOGMSG_USER, "pageorder trace enabled\n");
         }
     } else if (tokcmp(tok, ltok, "nopageordertrace") == 0) {
         if (!gbl_enable_pageorder_trace) {
-           logmsg(LOGMSG_USER, "pageorder trace already off\n");
+            logmsg(LOGMSG_USER, "pageorder trace already off\n");
         } else {
             gbl_enable_pageorder_trace = 0;
-           logmsg(LOGMSG_USER, "pageorder trace disabled\n");
+            logmsg(LOGMSG_USER, "pageorder trace disabled\n");
         }
     }
 
@@ -968,9 +1005,10 @@ clipper_usage:
 
         tok = segtok(line, lline, &st, &ltok);
         num = toknum(tok, ltok);
-        logmsg(LOGMSG_USER, "setting blocksql maximmum concurrent in-transaction "
-                        "sessions to %d\n",
-                num);
+        logmsg(LOGMSG_USER,
+               "setting blocksql maximmum concurrent in-transaction "
+               "sessions to %d\n",
+               num);
 
         osql_bplog_setlimit(num);
     }
@@ -1001,105 +1039,110 @@ clipper_usage:
             unsigned long long genid;
             tokcpy0(tok, ltok, genid_c, sizeof(genid_c));
             if (!strcmp(genid_c, "auto")) {
-               logmsg(LOGMSG_FATAL, "AUTO PURGE\n");
+                logmsg(LOGMSG_FATAL, "AUTO PURGE\n");
                 /* purge the first few genids we find.
                    Used for testing purposes. */
                 purge_by_genid(db, NULL);
             } else {
                 genid = strtoull(genid_c, NULL, 0);
-               logmsg(LOGMSG_USER, "purge genid: 0x%llx\n", genid);
+                logmsg(LOGMSG_USER, "purge genid: 0x%llx\n", genid);
                 purge_by_genid(db, &genid);
             }
             tok = segtok(line, lline, &st, &ltok);
         }
     } else if (tokcmp(tok, ltok, "pfrmtof") == 0) {
         if (!gbl_pfaultrmt) {
-           logmsg(LOGMSG_USER, "remote pfault already switched off for dtastripe\n");
+            logmsg(LOGMSG_USER,
+                   "remote pfault already switched off for dtastripe\n");
         } else {
             gbl_pfaultrmt = 0;
-           logmsg(LOGMSG_USER, "remote pfault turned off for dtastripe\n");
+            logmsg(LOGMSG_USER, "remote pfault turned off for dtastripe\n");
         }
 
     } else if (tokcmp(tok, ltok, "disable_pageorder_recsz_check") == 0) {
-       logmsg(LOGMSG_USER, "Disabled pageorder records per page check\n");
+        logmsg(LOGMSG_USER, "Disabled pageorder records per page check\n");
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_DISABLE_PAGEORDER_RECSZ_CHK, 1);
     } else if (tokcmp(tok, ltok, "enable_pageorder_recsz_check") == 0) {
-       logmsg(LOGMSG_USER, "Enabled pageorder records per page check\n");
+        logmsg(LOGMSG_USER, "Enabled pageorder records per page check\n");
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_DISABLE_PAGEORDER_RECSZ_CHK, 0);
     } else if (tokcmp(tok, ltok, "disable_osql_prefault") == 0) {
         if (!gbl_osqlpfault_threads) {
-           logmsg(LOGMSG_USER, "Osql io prefault is already disabled\n");
+            logmsg(LOGMSG_USER, "Osql io prefault is already disabled\n");
         } else {
             gbl_osqlpfault_threads = 0;
-           logmsg(LOGMSG_USER, "Disabled osql io prefault.\n");
+            logmsg(LOGMSG_USER, "Disabled osql io prefault.\n");
         }
     } else if (tokcmp(tok, ltok, "enable_osql_prefault") == 0) {
         if (gbl_osqlpfault_threads) {
-           logmsg(LOGMSG_USER, "Osql io prefault is already enabled\n");
+            logmsg(LOGMSG_USER, "Osql io prefault is already enabled\n");
         } else {
             if (!thdpool_get_maxthds(gbl_osqlpfault_thdpool)) {
-                logmsg(LOGMSG_ERROR, "Please set max threads for osqlpfaultpool first\n");
+                logmsg(LOGMSG_ERROR,
+                       "Please set max threads for osqlpfaultpool first\n");
                 logmsg(LOGMSG_ERROR, "Osql io prefault is NOT enabled\n");
             } else {
                 gbl_osqlpfault_threads = 1;
-               logmsg(LOGMSG_USER, "Enabled osql io prefault.\n");
+                logmsg(LOGMSG_USER, "Enabled osql io prefault.\n");
             }
         }
     } else if (tokcmp(tok, ltok, "get_osql_prefault_status") == 0) {
         if (gbl_osqlpfault_threads) {
-           logmsg(LOGMSG_USER, "Osql io prefault is ENABLED\n");
+            logmsg(LOGMSG_USER, "Osql io prefault is ENABLED\n");
         } else {
-           logmsg(LOGMSG_USER, "Osql io prefault is DISABLED\n");
+            logmsg(LOGMSG_USER, "Osql io prefault is DISABLED\n");
         }
         thdpool_print_stats(stdout, gbl_osqlpfault_thdpool);
     } else if (tokcmp(tok, ltok, "set_udp_prefault_latency") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok) {
             gbl_prefault_latency = toknum(tok, ltok);
-           logmsg(LOGMSG_USER, "set prefault latency to %d seconds\n",
+            logmsg(LOGMSG_USER, "set prefault latency to %d seconds\n",
                    gbl_prefault_latency);
         } else {
-           logmsg(LOGMSG_USER, "set_udp_prefault_latency requires a number argument\n");
+            logmsg(LOGMSG_USER,
+                   "set_udp_prefault_latency requires a number argument\n");
         }
     } else if (tokcmp(tok, ltok, "get_udp_prefault_status") == 0) {
         if (gbl_prefault_udp) {
-           logmsg(LOGMSG_USER, "prefault upd was enabled on this node\n");
+            logmsg(LOGMSG_USER, "prefault upd was enabled on this node\n");
         } else {
-           logmsg(LOGMSG_USER, "prefault upd was disabled on this node\n");
+            logmsg(LOGMSG_USER, "prefault upd was disabled on this node\n");
         }
         thdpool_print_stats(stdout, gbl_udppfault_thdpool);
     } else if (tokcmp(tok, ltok, "page_compact_thresh_ff") == 0) {
         tok = segtok(line, lline, &st, &ltok);
-        double tmpthresh =
-            (ltok <= 0) ? 0.346 : (toknumd(tok, ltok) / 100.0F);
+        double tmpthresh = (ltok <= 0) ? 0.346 : (toknumd(tok, ltok) / 100.0F);
         if (gbl_pg_compact_thresh <= 0 && tmpthresh > 0)
-            logmsg(LOGMSG_ERROR, "Change requires enabling page compaction in the LRL.\n");
+            logmsg(LOGMSG_ERROR,
+                   "Change requires enabling page compaction in the LRL.\n");
         else {
             gbl_pg_compact_thresh = tmpthresh;
-            logmsg(LOGMSG_USER, "set page compact fill ratio threshold to %.2f%%\n",
-                    gbl_pg_compact_thresh * 100);
+            logmsg(LOGMSG_USER,
+                   "set page compact fill ratio threshold to %.2f%%\n",
+                   gbl_pg_compact_thresh * 100);
         }
     } else if (tokcmp(tok, ltok, "get_page_compact_status") == 0) {
         if (gbl_pg_compact_thresh > 0) {
-           logmsg(LOGMSG_USER, "Page compact enabled. Thresh %.2f%%. Target %.2f%%.\n",
+            logmsg(LOGMSG_USER,
+                   "Page compact enabled. Thresh %.2f%%. Target %.2f%%.\n",
                    gbl_pg_compact_thresh * 100, gbl_pg_compact_target_ff * 100);
         } else {
-           logmsg(LOGMSG_USER, "Page compact is disabled.\n");
+            logmsg(LOGMSG_USER, "Page compact is disabled.\n");
         }
         thdpool_print_stats(stdout, gbl_pgcompact_thdpool);
     } else if (tokcmp(tok, ltok, "pageordertrace") == 0) {
         if (gbl_enable_pageorder_trace) {
-           logmsg(LOGMSG_USER, "pageorder trace already on\n");
+            logmsg(LOGMSG_USER, "pageorder trace already on\n");
         } else {
             gbl_enable_pageorder_trace = 1;
-           logmsg(LOGMSG_USER, "pageorder trace enabled\n");
+            logmsg(LOGMSG_USER, "pageorder trace enabled\n");
         }
     } else if (tokcmp(tok, ltok, "nopageordertrace") == 0) {
         if (!gbl_enable_pageorder_trace) {
-           logmsg(LOGMSG_USER, "pageorder trace already off\n");
+            logmsg(LOGMSG_USER, "pageorder trace already off\n");
         } else {
             gbl_enable_pageorder_trace = 0;
-           logmsg(LOGMSG_USER, "pageorder trace disabled\n");
+            logmsg(LOGMSG_USER, "pageorder trace disabled\n");
         }
     } else if (tokcmp(tok, ltok, "delfiles") == 0) {
         char table[MAXTABLELEN];
@@ -1135,7 +1178,7 @@ clipper_usage:
             return -1;
         }
 
-       logmsg(LOGMSG_USER, "successfully deleted files\n");
+        logmsg(LOGMSG_USER, "successfully deleted files\n");
     }
 
     /* Temporary message-trap to delete the stale backup stats from llmeta. */
@@ -1153,7 +1196,7 @@ clipper_usage:
         reinit_sql_hint_table();
     } else if (tokcmp(tok, ltok, "scon") == 0) {
         if (gbl_report) {
-           logmsg(LOGMSG_USER, "request report already on\n");
+            logmsg(LOGMSG_USER, "request report already on\n");
         } else {
             gbl_report = 1; /* update rate to log */
             gbl_report_last = comdb2_time_epochms();
@@ -1162,24 +1205,24 @@ clipper_usage:
         }
     } else if (tokcmp(tok, ltok, "scof") == 0) {
         if (gbl_report) {
-           logmsg(LOGMSG_USER, "request report turned off\n");
+            logmsg(LOGMSG_USER, "request report turned off\n");
         } else {
             logmsg(LOGMSG_USER, "request report already off\n");
         }
         gbl_report = 0; /* update rate to log */
     } else if (tokcmp(tok, ltok, "erron") == 0) {
         if (dbenv->errstaton) {
-           logmsg(LOGMSG_USER, "db error report already on\n");
+            logmsg(LOGMSG_USER, "db error report already on\n");
         } else {
             dbenv->errstaton = 1; /* ON */
-           logmsg(LOGMSG_USER, "db error report turned on\n");
+            logmsg(LOGMSG_USER, "db error report turned on\n");
         }
     } else if (tokcmp(tok, ltok, "erroff") == 0) {
         if (!dbenv->errstaton) {
-           logmsg(LOGMSG_USER, "db error report already off\n");
+            logmsg(LOGMSG_USER, "db error report already off\n");
         } else {
             dbenv->errstaton = 0; /* OFF */
-           logmsg(LOGMSG_USER, "db error report turned off\n");
+            logmsg(LOGMSG_USER, "db error report turned off\n");
         }
 
     } else if (tokcmp(tok, ltok, "resource") == 0) {
@@ -1229,7 +1272,8 @@ clipper_usage:
 
             tok = segtok(line, lline, &st, &ltok);
             if (ltok == 0) {
-                logmsg(LOGMSG_ERROR, "expected name of stored procedure to unload\n");
+                logmsg(LOGMSG_ERROR,
+                       "expected name of stored procedure to unload\n");
                 return -1;
             }
             name = tokdup(tok, ltok);
@@ -1237,9 +1281,11 @@ clipper_usage:
             rc = javasp_unload_procedure(name);
 
             if (rc == 0)
-                logmsg(LOGMSG_ERROR, "unloaded stored procedure '%s': SUCCESS\n", name);
+                logmsg(LOGMSG_ERROR,
+                       "unloaded stored procedure '%s': SUCCESS\n", name);
             else
-                logmsg(LOGMSG_ERROR, "could not unload stored procedure '%s'\n", name);
+                logmsg(LOGMSG_ERROR, "could not unload stored procedure '%s'\n",
+                       name);
 
             free(name);
         } else if (tokcmp(tok, ltok, "load") == 0 ||
@@ -1252,7 +1298,8 @@ clipper_usage:
 
             tok = segtok(line, lline, &st, &ltok);
             if (ltok == 0) {
-                logmsg(LOGMSG_ERROR, "expected name of stored procedure to %s\n", opname);
+                logmsg(LOGMSG_ERROR,
+                       "expected name of stored procedure to %s\n", opname);
                 free(opname);
                 return -1;
             }
@@ -1281,11 +1328,11 @@ clipper_usage:
                     rc = javasp_load_procedure(name, jarfile, param);
 
                 if (rc == 0)
-                    logmsg(LOGMSG_USER, "%sed stored procedure '%s': SUCCESS\n", opname,
-                            name);
+                    logmsg(LOGMSG_USER, "%sed stored procedure '%s': SUCCESS\n",
+                           opname, name);
                 else
-                    logmsg(LOGMSG_ERROR, "%sing stored procedure '%s' FAILED\n", opname,
-                            name);
+                    logmsg(LOGMSG_ERROR, "%sing stored procedure '%s' FAILED\n",
+                           opname, name);
             }
 
             free(name);
@@ -1298,8 +1345,10 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "diag") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (tokcmp(tok, ltok, "help") == 0) {
-            logmsg(LOGMSG_USER, "diag rrn <tablename> #  - dump record with given rrn\n");
-            logmsg(LOGMSG_USER, "diag dump <tablename> # - dump .dta# file of table\n");
+            logmsg(LOGMSG_USER,
+                   "diag rrn <tablename> #  - dump record with given rrn\n");
+            logmsg(LOGMSG_USER,
+                   "diag dump <tablename> # - dump .dta# file of table\n");
         } else if (tokcmp(tok, ltok, "dump") == 0) {
             char table[MAXTABLELEN];
             int dtanum;
@@ -1340,9 +1389,10 @@ clipper_usage:
     else if (tokcmp(tok, ltok, "get_blkmax") == 0) {
         extern int get_blkmax(void);
         int blkmax = get_blkmax();
-        logmsg(LOGMSG_USER, 
-                "Maximum concurrent block-processor threads is %d, maxwt is %d\n",
-                blkmax, gbl_maxwthreads);
+        logmsg(
+            LOGMSG_USER,
+            "Maximum concurrent block-processor threads is %d, maxwt is %d\n",
+            blkmax, gbl_maxwthreads);
     }
 
     /*
@@ -1406,21 +1456,24 @@ clipper_usage:
         }
 
     pagesize_usage:
-        logmsg(LOGMSG_USER, "pagesize set <tablename> <data|blob|index> <pagesize>\n"
+        logmsg(LOGMSG_USER,
+               "pagesize set <tablename> <data|blob|index> <pagesize>\n"
                "<pagesize> specified in bytes: 65536 for 64K pages\n");
         return -1;
 
     pagesize_done:
-       logmsg(LOGMSG_USER, "bdb_set_pagesize %s %d rc: %d\n", which, n, rc);
+        logmsg(LOGMSG_USER, "bdb_set_pagesize %s %d rc: %d\n", which, n, rc);
         return 0;
     }
 
     else if (tokcmp(tok, ltok, "blob") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (tokcmp(tok, ltok, "help") == 0) {
-           logmsg(LOGMSG_USER, "blob stat         - status report\n");
-           logmsg(LOGMSG_USER, "blob purge #      - set purge time in seconds\n");
-           logmsg(LOGMSG_USER, "blob lose #       - lose cached blobs (debug aid)\n");
+            logmsg(LOGMSG_USER, "blob stat         - status report\n");
+            logmsg(LOGMSG_USER,
+                   "blob purge #      - set purge time in seconds\n");
+            logmsg(LOGMSG_USER,
+                   "blob lose #       - lose cached blobs (debug aid)\n");
         } else if (tokcmp(tok, ltok, "stat") == 0) {
             blob_print_stats();
         } else if (tokcmp(tok, ltok, "purge") == 0) {
@@ -1429,13 +1482,15 @@ clipper_usage:
             n = toknum(tok, ltok);
             if (n > 0) {
                 gbl_blob_maxage = n;
-                logmsg(LOGMSG_USER, "set blob purge time to %d seconds\n", gbl_blob_maxage);
+                logmsg(LOGMSG_USER, "set blob purge time to %d seconds\n",
+                       gbl_blob_maxage);
             } else
                 logmsg(LOGMSG_ERROR, "bad purge time to blob purge command\n");
         } else if (tokcmp(tok, ltok, "lose") == 0) {
             tok = segtok(line, lline, &st, &ltok);
             gbl_blob_lose_debug = toknum(tok, ltok);
-            logmsg(LOGMSG_ERROR, "gbl_blob_lose_debug=%d\n", gbl_blob_lose_debug);
+            logmsg(LOGMSG_ERROR, "gbl_blob_lose_debug=%d\n",
+                   gbl_blob_lose_debug);
         } else {
             logmsg(LOGMSG_ERROR, "unknown blob command <%.*s>\n", ltok, tok);
         }
@@ -1658,13 +1713,15 @@ clipper_usage:
             extern int gbl_starttime;
             logmsg(LOGMSG_USER, "uptime                  %ds\n",
                    gbl_epoch_time - gbl_starttime);
-            logmsg(LOGMSG_USER, "readonly                %c\n", gbl_readonly ? 'Y' : 'N');
+            logmsg(LOGMSG_USER, "readonly                %c\n",
+                   gbl_readonly ? 'Y' : 'N');
             logmsg(LOGMSG_USER, "num sql queries         %u\n", gbl_nsql);
             logmsg(LOGMSG_USER, "num new sql queries     %u\n", gbl_nnewsql);
             logmsg(LOGMSG_USER, "num master rejects      %u\n",
                    gbl_masterrejects);
             logmsg(LOGMSG_USER, "sql ticks               %llu\n", gbl_sqltick);
-            logmsg(LOGMSG_USER, "sql deadlocks recover attempts %llu failures %llu\n",
+            logmsg(LOGMSG_USER,
+                   "sql deadlocks recover attempts %llu failures %llu\n",
                    gbl_sql_deadlock_reconstructions, gbl_sql_deadlock_failures);
             logmsg(LOGMSG_USER, "blocksql->socksql reqs  %lld\n",
                    gbl_converted_blocksql_requests);
@@ -1678,7 +1735,8 @@ clipper_usage:
             sc_status(dbenv);
             print_dbs(dbenv);
             backend_stat(dbenv);
-            logmsg(LOGMSG_USER, "version: %s.%s\n", gbl_db_release_name, gbl_db_build_name);
+            logmsg(LOGMSG_USER, "version: %s.%s\n", gbl_db_release_name,
+                   gbl_db_build_name);
             logmsg(LOGMSG_USER, "Codename:      \"%s\"\n", gbl_db_release_name);
         } else if (tokcmp(tok, ltok, "ixstat") == 0) {
             ixstats(dbenv);
@@ -1717,16 +1775,20 @@ clipper_usage:
             trigger_stat();
         } else if (tokcmp(tok, ltok, "keycompr") == 0) {
             extern uint64_t num_compressed;
-            logmsg(LOGMSG_ERROR, "number of pages compressed: %" PRIu64 "\n", num_compressed);
+            logmsg(LOGMSG_ERROR, "number of pages compressed: %" PRIu64 "\n",
+                   num_compressed);
 
             extern uint64_t total_pgsz;
-            logmsg(LOGMSG_ERROR, "total page size processed: %" PRIu64 "\n", total_pgsz);
+            logmsg(LOGMSG_ERROR, "total page size processed: %" PRIu64 "\n",
+                   total_pgsz);
 
             extern uint64_t free_before_size;
-            logmsg(LOGMSG_ERROR, "total before free size: %" PRIu64 "\n", free_before_size);
+            logmsg(LOGMSG_ERROR, "total before free size: %" PRIu64 "\n",
+                   free_before_size);
 
             extern uint64_t free_after_size;
-            logmsg(LOGMSG_ERROR, "total after free size: %" PRIu64 "\n", free_after_size);
+            logmsg(LOGMSG_ERROR, "total after free size: %" PRIu64 "\n",
+                   free_after_size);
 
             int i;
             for (i = 0; i < thedb->num_dbs; ++i) {
@@ -1793,10 +1855,12 @@ clipper_usage:
             logmsg(LOGMSG_ERROR, "must specify max number of threads\n");
         else {
             gbl_maxthreads = z; /* max # of threads */
-            logmsg(LOGMSG_USER, "max number of threads set to %d\n", gbl_maxthreads);
+            logmsg(LOGMSG_USER, "max number of threads set to %d\n",
+                   gbl_maxthreads);
             if (gbl_maxwthreads > gbl_maxthreads) {
-                logmsg(LOGMSG_USER, "reducing max number of writer threads to %d\n",
-                        gbl_maxthreads);
+                logmsg(LOGMSG_USER,
+                       "reducing max number of writer threads to %d\n",
+                       gbl_maxthreads);
                 gbl_maxwthreads = gbl_maxthreads;
             }
         }
@@ -1807,12 +1871,14 @@ clipper_usage:
         if (z < 1)
             logmsg(LOGMSG_ERROR, "must specify max number of writer threads\n");
         else if (z > gbl_maxthreads) {
-            logmsg(LOGMSG_ERROR, "number of writer threads must be <= to total number of "
+            logmsg(LOGMSG_ERROR,
+                   "number of writer threads must be <= to total number of "
                    "threads (%d)\n",
                    gbl_maxthreads);
         } else {
             gbl_maxwthreads = z; /* max # of threads */
-           logmsg(LOGMSG_USER, "max number of writer threads set to %d\n", gbl_maxwthreads);
+            logmsg(LOGMSG_USER, "max number of writer threads set to %d\n",
+                   gbl_maxwthreads);
         }
     }
 
@@ -1829,17 +1895,20 @@ clipper_usage:
             logmsg(LOGMSG_ERROR, "bad max number of items on queue\n");
         else {
             gbl_maxqueue = z; /* max pending requests.*/
-            logmsg(LOGMSG_USER, "max number of items on queue set to %d\n", gbl_maxqueue);
+            logmsg(LOGMSG_USER, "max number of items on queue set to %d\n",
+                   gbl_maxqueue);
         }
     } else if (tokcmp(tok, ltok, "ling") == 0) {
         int z;
         tok = segtok(line, lline, &st, &ltok);
         z = toknum(tok, ltok);
         if (z < 1)
-            logmsg(LOGMSG_ERROR, "must specify number of seconds for idle thread linger\n");
+            logmsg(LOGMSG_ERROR,
+                   "must specify number of seconds for idle thread linger\n");
         else {
             gbl_thd_linger = z; /* max pending requests.*/
-            logmsg(LOGMSG_USER, "number of seconds for idle thread linger set to %d\n",
+            logmsg(LOGMSG_USER,
+                   "number of seconds for idle thread linger set to %d\n",
                    gbl_thd_linger);
         }
     } else if (tokcmp(tok, ltok, "reql") == 0) {
@@ -1871,12 +1940,14 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "inflatelog") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
-            logmsg(LOGMSG_USER, "Will inflate logs by %d%%.\n", gbl_inflate_log);
+            logmsg(LOGMSG_USER, "Will inflate logs by %d%%.\n",
+                   gbl_inflate_log);
         } else {
             int il = toknum(tok, ltok);
             if (il >= 0) {
                 gbl_inflate_log = il;
-                logmsg(LOGMSG_USER, "Will inflate logs by %d%%\n", gbl_inflate_log);
+                logmsg(LOGMSG_USER, "Will inflate logs by %d%%\n",
+                       gbl_inflate_log);
             } else {
                 logmsg(LOGMSG_ERROR, "Invalid argument for inflatelog\n");
             }
@@ -1933,7 +2004,8 @@ clipper_usage:
         extern int gbl_ckp_sleep_before_sync;
         tok = segtok(line, lline, &st, &ltok);
         gbl_ckp_sleep_before_sync = (ltok != 0) ? toknum(tok, ltok) : 5;
-        logmsg(LOGMSG_USER, "gbl_ckp_sleep_before_sync is now %d milliseconds\n",
+        logmsg(LOGMSG_USER,
+               "gbl_ckp_sleep_before_sync is now %d milliseconds\n",
                gbl_ckp_sleep_before_sync);
     } else if (tokcmp(tok, ltok, "load") == 0) {
         char fname[128];
@@ -1984,8 +2056,8 @@ clipper_usage:
             }
         }
         if ((compress != 0 || compress_blobs != 0) && odh == 0) {
-            logmsg(LOGMSG_ERROR, 
-                    "Error - compression requires ODHs to be present\n");
+            logmsg(LOGMSG_ERROR,
+                   "Error - compression requires ODHs to be present\n");
             return -1;
         }
 
@@ -1993,8 +2065,8 @@ clipper_usage:
         rc = change_schema(table, fname, odh, compress, compress_blobs);
         if (rc != 0) {
             if (rc == -99)
-                logmsg(LOGMSG_ERROR, 
-                        "schema change already in progress, will not do\n");
+                logmsg(LOGMSG_ERROR,
+                       "schema change already in progress, will not do\n");
             else
                 logmsg(LOGMSG_ERROR, "error with schema change thread\n");
         }
@@ -2018,7 +2090,8 @@ clipper_usage:
             int newdtastripe;
             newdtastripe = toknum(tok, ltok);
             if (newdtastripe <= gbl_dtastripe || newdtastripe > 16) {
-                logmsg(LOGMSG_ERROR, "bad stripe factor %d, current factor is %d\n",
+                logmsg(LOGMSG_ERROR,
+                       "bad stripe factor %d, current factor is %d\n",
                        newdtastripe, gbl_dtastripe);
                 return -1;
             }
@@ -2053,10 +2126,12 @@ clipper_usage:
         tok = segtok(line, lline, &st, &ltok);
         szkb = toknum(tok, ltok);
         if (szkb <= 0) {
-            logmsg(LOGMSG_ERROR, "Invalid hash size. init_with_bthash DISABLED\n");
+            logmsg(LOGMSG_ERROR,
+                   "Invalid hash size. init_with_bthash DISABLED\n");
         } else {
             gbl_init_with_bthash = szkb;
-            logmsg(LOGMSG_USER, "Init with bthash %dkb per stripe\n", gbl_init_with_bthash);
+            logmsg(LOGMSG_USER, "Init with bthash %dkb per stripe\n",
+                   gbl_init_with_bthash);
         }
     } else if (tokcmp(tok, ltok, "bthash") == 0) {
         char table[MAXTABLELEN];
@@ -2082,7 +2157,8 @@ clipper_usage:
         tok = segtok(line, lline, &st, &ltok);
         szkb = toknum(tok, ltok);
         if (szkb <= 0) {
-            logmsg(LOGMSG_ERROR, "Invalid hash size. Please give positive hash size in kb\n");
+            logmsg(LOGMSG_ERROR,
+                   "Invalid hash size. Please give positive hash size in kb\n");
             return -1;
         }
 
@@ -2101,7 +2177,8 @@ clipper_usage:
         tok = segtok(line, lline, &st, &ltok);
         szkb = toknum(tok, ltok);
         if (szkb <= 0) {
-            logmsg(LOGMSG_ERROR, "Invalid hash size. Please give positive hash size in kb\n");
+            logmsg(LOGMSG_ERROR,
+                   "Invalid hash size. Please give positive hash size in kb\n");
             return -1;
         }
         /* All tables */
@@ -2236,21 +2313,24 @@ clipper_usage:
         if (ltok != 0) {
             gbl_sc_report_freq = toknum(tok, ltok);
         }
-        logmsg(LOGMSG_USER, "schema change report frequency is now %d seconds\n",
+        logmsg(LOGMSG_USER,
+               "schema change report frequency is now %d seconds\n",
                gbl_sc_report_freq);
     } else if (tokcmp(tok, ltok, "scdelay") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok != 0) {
             gbl_sc_usleep = toknum(tok, ltok) * 1000;
         }
-        logmsg(LOGMSG_USER, "live schema change sleep is now %dms (for sc thread)\n",
+        logmsg(LOGMSG_USER,
+               "live schema change sleep is now %dms (for sc thread)\n",
                gbl_sc_usleep / 1000);
     } else if (tokcmp(tok, ltok, "scwrdelay") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok != 0) {
             gbl_sc_wrusleep = toknum(tok, ltok) * 1000;
         }
-        logmsg(LOGMSG_USER, "live schema change sleep is now %dms (for writer threads)\n",
+        logmsg(LOGMSG_USER,
+               "live schema change sleep is now %dms (for writer threads)\n",
                gbl_sc_wrusleep / 1000);
     } else if (tokcmp(tok, ltok, "scabort") == 0) {
         logmsg(LOGMSG_USER, "Will abort schema change\n");
@@ -2259,7 +2339,7 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "scforceabort") == 0) {
         logmsg(LOGMSG_USER, "Forcibly resetting schema change flat\n");
         sc_set_running(NULL, 0, 0, NULL, 0);
-    } else if (tokcmp(tok, ltok, "get_db_dir")==0) {
+    } else if (tokcmp(tok, ltok, "get_db_dir") == 0) {
         logmsg(LOGMSG_USER, "Database Base Directory: %s\n", thedb->basedir);
     } else if (tokcmp(tok, ltok, "debug") == 0) {
         debug_trap(line + st, lline - st);
@@ -2303,9 +2383,8 @@ clipper_usage:
                 if (!rc) {
                     logmsg(LOGMSG_USER, "set password for %s\n", user);
                 } else {
-                    logmsg(LOGMSG_ERROR, 
-                            "FAILED set password for %s rc=%d\n",
-                            user, rc);
+                    logmsg(LOGMSG_ERROR, "FAILED set password for %s rc=%d\n",
+                           user, rc);
                 }
             } else if (tokcmp(tok, ltok, "read") == 0) {
                 tok = segtok(line, lline, &st, &ltok);
@@ -2318,10 +2397,11 @@ clipper_usage:
                                              &bdberr);
                 if (!rc) {
                     logmsg(LOGMSG_USER, "set read for %s and table %s\n", user,
-                            table);
+                           table);
                 } else {
-                    logmsg(LOGMSG_ERROR, "FAILED set read for %s rc=%d bdberr=%d\n",
-                            user, rc, bdberr);
+                    logmsg(LOGMSG_ERROR,
+                           "FAILED set read for %s rc=%d bdberr=%d\n", user, rc,
+                           bdberr);
                 }
             } else if (tokcmp(tok, ltok, "write") == 0) {
                 tok = segtok(line, lline, &st, &ltok);
@@ -2334,18 +2414,20 @@ clipper_usage:
                                               &bdberr);
                 if (!rc) {
                     logmsg(LOGMSG_USER, "set write for %s and table %s\n", user,
-                            table);
+                           table);
                 } else {
-                    logmsg(LOGMSG_ERROR, "FAILED set write for %s rc=%d bdberr=%d\n",
-                            user, rc, bdberr);
+                    logmsg(LOGMSG_ERROR,
+                           "FAILED set write for %s rc=%d bdberr=%d\n", user,
+                           rc, bdberr);
                 }
             } else if (tokcmp(tok, ltok, "authentication") == 0) {
                 rc = bdb_authentication_set(dbenv->bdb_env, NULL, 1, &bdberr);
                 if (rc == 0) {
                     logmsg(LOGMSG_USER, "authentication enabled\n");
                 } else {
-                    logmsg(LOGMSG_ERROR, "FAILED enable authentication rc=%d bdberr=%d\n",
-                            rc, bdberr);
+                    logmsg(LOGMSG_ERROR,
+                           "FAILED enable authentication rc=%d bdberr=%d\n", rc,
+                           bdberr);
                 }
             } else if (tokcmp(tok, ltok, "tableXnode") == 0) {
                 rc = bdb_accesscontrol_tableXnode_set(dbenv->bdb_env, NULL,
@@ -2353,9 +2435,9 @@ clipper_usage:
                 if (rc == 0) {
                     logmsg(LOGMSG_USER, "enabled access control tableXnode\n");
                 } else {
-                    logmsg(LOGMSG_ERROR, 
-                            "FAILED enable tableXnode rc=%d bdberr=%d\n", rc,
-                            bdberr);
+                    logmsg(LOGMSG_ERROR,
+                           "FAILED enable tableXnode rc=%d bdberr=%d\n", rc,
+                           bdberr);
                 }
             } else {
                 logmsg(LOGMSG_ERROR, "unrecognized \"%.*s\"\n", ltok, tok);
@@ -2373,7 +2455,7 @@ clipper_usage:
                 rc = bdb_tbl_access_read_get(dbenv->bdb_env, NULL, table, user,
                                              &bdberr);
                 logmsg(LOGMSG_ERROR, "rc = %d (\"%s\")\n", rc,
-                        (rc == 0) ? "enabled" : "disabled");
+                       (rc == 0) ? "enabled" : "disabled");
             } else if (tokcmp(tok, ltok, "write") == 0) {
                 tok = segtok(line, lline, &st, &ltok);
                 tokcpy(tok, ltok, table);
@@ -2384,17 +2466,17 @@ clipper_usage:
                 rc = bdb_tbl_access_write_get(dbenv->bdb_env, NULL, table, user,
                                               &bdberr);
                 logmsg(LOGMSG_ERROR, "rc = %d (\"%s\")\n", rc,
-                        (rc == 0) ? "enabled" : "disabled");
+                       (rc == 0) ? "enabled" : "disabled");
 
             } else if (tokcmp(tok, ltok, "authentication") == 0) {
                 rc = bdb_authentication_get(dbenv->bdb_env, NULL, &bdberr);
                 logmsg(LOGMSG_ERROR, "rc = %d (\"%s\")\n", rc,
-                        (rc == 0) ? "enabled" : "disabled");
+                       (rc == 0) ? "enabled" : "disabled");
             } else if (tokcmp(tok, ltok, "tableXnode") == 0) {
                 rc = bdb_accesscontrol_tableXnode_get(dbenv->bdb_env, NULL,
                                                       &bdberr);
                 logmsg(LOGMSG_ERROR, "rc = %d (\"%s\")\n", rc,
-                        (rc == 0) ? "enabled" : "disabled");
+                       (rc == 0) ? "enabled" : "disabled");
             } else {
                 logmsg(LOGMSG_ERROR, "unrecognized \"%.*s\"\n", ltok, tok);
             }
@@ -2412,12 +2494,12 @@ clipper_usage:
                 rc = bdb_tbl_access_read_delete(dbenv->bdb_env, NULL, table,
                                                 user, &bdberr);
                 if (rc == 0) {
-                    logmsg(LOGMSG_ERROR, "deleted read for %s and table %s\n", user,
-                            table);
+                    logmsg(LOGMSG_ERROR, "deleted read for %s and table %s\n",
+                           user, table);
                 } else {
-                    logmsg(LOGMSG_ERROR, 
-                            "FAILED delete read for %s rc=%d bdberr=%d\n", user,
-                            rc, bdberr);
+                    logmsg(LOGMSG_ERROR,
+                           "FAILED delete read for %s rc=%d bdberr=%d\n", user,
+                           rc, bdberr);
                 }
             } else if (tokcmp(tok, ltok, "write") == 0) {
                 tok = segtok(line, lline, &st, &ltok);
@@ -2429,12 +2511,12 @@ clipper_usage:
                 rc = bdb_tbl_access_write_delete(dbenv->bdb_env, NULL, table,
                                                  user, &bdberr);
                 if (rc == 0) {
-                    logmsg(LOGMSG_ERROR, "deleted write for %s and table %s\n", user,
-                            table);
+                    logmsg(LOGMSG_ERROR, "deleted write for %s and table %s\n",
+                           user, table);
                 } else {
-                    logmsg(LOGMSG_ERROR, 
-                            "FAILED delete write for %s rc=%d bdberr=%d\n",
-                            user, rc, bdberr);
+                    logmsg(LOGMSG_ERROR,
+                           "FAILED delete write for %s rc=%d bdberr=%d\n", user,
+                           rc, bdberr);
                 }
             } else {
                 logmsg(LOGMSG_ERROR, "unknown option \"%.*s\"\n", ltok, tok);
@@ -2452,9 +2534,9 @@ clipper_usage:
         if (tokcmp(tok, ltok, "list") == 0) {
             rc = bdb_llmeta_list_records(thedb->bdb_env, &bdberr);
             if (rc) {
-                logmsg(LOGMSG_ERROR, 
-                        "%s:%d: failed to list all options rc=%d bdberr=%d\n",
-                        __FILE__, __LINE__, rc, bdberr);
+                logmsg(LOGMSG_ERROR,
+                       "%s:%d: failed to list all options rc=%d bdberr=%d\n",
+                       __FILE__, __LINE__, rc, bdberr);
             }
         } else {
             logmsg(LOGMSG_ERROR, "unknown option \"%.*s\"\n", ltok, tok);
@@ -2515,7 +2597,8 @@ clipper_usage:
         int freq;
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
-           logmsg(LOGMSG_USER, "Currently flushing every %d records\n", gbl_sqlflush_freq);
+            logmsg(LOGMSG_USER, "Currently flushing every %d records\n",
+                   gbl_sqlflush_freq);
             return -1;
         }
         freq = toknum(tok, ltok);
@@ -2529,7 +2612,8 @@ clipper_usage:
         int tmout;
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
-            logmsg(LOGMSG_USER, "Timing out sbuf after %dms\n", gbl_sbuftimeout);
+            logmsg(LOGMSG_USER, "Timing out sbuf after %dms\n",
+                   gbl_sbuftimeout);
             return -1;
         }
         tmout = toknum(tok, ltok);
@@ -2573,7 +2657,8 @@ clipper_usage:
         }
         dbgflag = toknum(tok, ltok);
         gbl_time_osql = dbgflag;
-        logmsg(LOGMSG_USER, "sqllogtime %s\n", (gbl_time_osql) ? "enabled" : "disabled");
+        logmsg(LOGMSG_USER, "sqllogtime %s\n",
+               (gbl_time_osql) ? "enabled" : "disabled");
     } else if (tokcmp(tok, ltok, "fdblogtime") == 0) {
         int dbgflag;
         tok = segtok(line, lline, &st, &ltok);
@@ -2583,7 +2668,8 @@ clipper_usage:
         }
         dbgflag = toknum(tok, ltok);
         gbl_time_fdb = dbgflag;
-        logmsg(LOGMSG_USER, "fdblogtime %s\n", (gbl_time_fdb) ? "enabled" : "disabled");
+        logmsg(LOGMSG_USER, "fdblogtime %s\n",
+               (gbl_time_fdb) ? "enabled" : "disabled");
     } else if (tokcmp(tok, ltok, "osqlenginetrack") == 0) {
         int dbgflag;
         tok = segtok(line, lline, &st, &ltok);
@@ -2624,7 +2710,8 @@ clipper_usage:
         if (rc == 0) {
             int i = 0;
             for (i = 0; i < stream; i++) {
-               logmsg(LOGMSG_USER, "%s: total=%llu msec sent=%llu msec return=%llu msec "
+                logmsg(LOGMSG_USER,
+                       "%s: total=%llu msec sent=%llu msec return=%llu msec "
                        "(%llu %llu %llu)\n",
                        host, received[i] - sent[i], replied[i] - sent[i],
                        received[i] - replied[i], sent[i], replied[i],
@@ -2692,8 +2779,8 @@ clipper_usage:
 
         rc = offload_comm_send_upgrade_record(tbl, genid);
         if (rc != 0)
-            logmsg(LOGMSG_ERROR, 
-                    "Error in offload_comm_send_upgrade_record. rc = %d\n", rc);
+            logmsg(LOGMSG_ERROR,
+                   "Error in offload_comm_send_upgrade_record. rc = %d\n", rc);
         free(tbl);
     } else if (tokcmp(tok, ltok, "upgradetable") == 0) {
         // TODO this should be a schemachange cmd. Used for testing only.
@@ -2712,23 +2799,27 @@ clipper_usage:
             gbl_num_record_upgrades = 32;
         else
             gbl_num_record_upgrades = toknum(tok, ltok);
-       logmsg(LOGMSG_USER, "Upgrade ahead enabled with size %d.\n",
+        logmsg(LOGMSG_USER, "Upgrade ahead enabled with size %d.\n",
                gbl_num_record_upgrades);
     } else if (tokcmp(tok, ltok, "disable_upgrade_ahead") == 0) {
         gbl_num_record_upgrades = toknum(tok, ltok);
-       logmsg(LOGMSG_USER, "Upgrade ahead disabled.\n");
+        logmsg(LOGMSG_USER, "Upgrade ahead disabled.\n");
     } else if (tokcmp(tok, ltok, "checkctags") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
             if (gbl_check_client_tags == 0) {
-               logmsg(LOGMSG_USER, "currently check tag logic is off\n");
+                logmsg(LOGMSG_USER, "currently check tag logic is off\n");
             } else if (gbl_check_client_tags == 1) {
-                logmsg(LOGMSG_USER, "currently check tag logic will return error to client\n");
+                logmsg(
+                    LOGMSG_USER,
+                    "currently check tag logic will return error to client\n");
             } else if (gbl_check_client_tags == 2) {
-               logmsg(LOGMSG_USER, "currently check tag logic will produce soft warning\n");
+                logmsg(LOGMSG_USER,
+                       "currently check tag logic will produce soft warning\n");
             } else {
-                logmsg(LOGMSG_ERROR, "currently check tag logic in unknown state! %d\n",
-                        gbl_check_client_tags);
+                logmsg(LOGMSG_ERROR,
+                       "currently check tag logic in unknown state! %d\n",
+                       gbl_check_client_tags);
             }
             return 0;
         }
@@ -2736,19 +2827,21 @@ clipper_usage:
             logmsg(LOGMSG_USER, "check tag logic is now off\n");
             gbl_check_client_tags = 0;
         } else if (tokcmp(tok, ltok, "soft") == 0) {
-           logmsg(LOGMSG_USER, "check tag logic will now produce warning\n");
+            logmsg(LOGMSG_USER, "check tag logic will now produce warning\n");
             gbl_check_client_tags = 2;
         } else if (tokcmp(tok, ltok, "full") == 0) {
-            logmsg(LOGMSG_USER, "check tag logic will now error out to client\n");
+            logmsg(LOGMSG_USER,
+                   "check tag logic will now error out to client\n");
             gbl_check_client_tags = 1;
         } else {
             char tokv[32];
             bzero(tokv, sizeof(tokv));
             strncpy(tokv, tok,
                     (ltok >= sizeof(tokv)) ? (sizeof(tokv) - 1) : ltok);
-            logmsg(LOGMSG_ERROR, "Invalid command for checktags '%s'. use one of "
-                            "'off','soft','full'. seek help!\n",
-                    tokv);
+            logmsg(LOGMSG_ERROR,
+                   "Invalid command for checktags '%s'. use one of "
+                   "'off','soft','full'. seek help!\n",
+                   tokv);
         }
 
         return 0;
@@ -2767,30 +2860,35 @@ clipper_usage:
                     gbl_sqlhistsz = n;
                 }
             }
-            logmsg(LOGMSG_ERROR, "Keeping stats on last %d sql statements\n", gbl_sqlhistsz);
+            logmsg(LOGMSG_ERROR, "Keeping stats on last %d sql statements\n",
+                   gbl_sqlhistsz);
         } else if (tokcmp(tok, ltok, "hist") == 0) {
             sql_dump_hist_statements();
         } else if (tokcmp(tok, ltok, "cancel") == 0) {
             int qid;
             tok = segtok(line, lline, &st, &ltok);
             if (ltok == 0 || (qid = toknum(tok, ltok)) == 0)
-                logmsg(LOGMSG_ERROR, "Usage: sql cancel queryid.  You can get query id with "
+                logmsg(LOGMSG_ERROR,
+                       "Usage: sql cancel queryid.  You can get query id with "
                        "\"sql dump\".\n");
             else
                 cancel_sql_statement(qid);
         } else if (tokcmp(tok, ltok, "cancelcnonce") == 0) {
             tok = segtok(line, lline, &st, &ltok);
             if (ltok == 0)
-                logmsg(LOGMSG_ERROR, "Usage: sql cancelcnonce CNONCE.  You can get cnonce with "
-                       "\"sql dump\".\n");
+                logmsg(
+                    LOGMSG_ERROR,
+                    "Usage: sql cancelcnonce CNONCE.  You can get cnonce with "
+                    "\"sql dump\".\n");
             else {
-                char * cnonce = strdup(tok);
+                char *cnonce = strdup(tok);
                 cancel_sql_statement_with_cnonce(cnonce);
             }
         } else if (tokcmp(tok, ltok, "wrtimeout") == 0) {
             tok = segtok(line, lline, &st, &ltok);
             gbl_sqlwrtimeoutms = toknum(tok, ltok);
-           logmsg(LOGMSG_USER, "SQL write timeout now set to %d ms\n", gbl_sqlwrtimeoutms);
+            logmsg(LOGMSG_USER, "SQL write timeout now set to %d ms\n",
+                   gbl_sqlwrtimeoutms);
         } else if (tokcmp(tok, ltok, "help") == 0) {
             print_help_page(HELP_SQL);
         } else if (tokcmp(tok, ltok, "testrun") == 0) {
@@ -2808,21 +2906,22 @@ clipper_usage:
         tok = segtok(line, lline, &st, &ltok);
         if (tokcmp(tok, ltok, "on") == 0) {
             if (gbl_replicate_local) {
-               logmsg(LOGMSG_USER, "Local replicants already enabled\n");
+                logmsg(LOGMSG_USER, "Local replicants already enabled\n");
                 return 1;
             }
             gbl_replicate_local = 1;
-           logmsg(LOGMSG_USER, "Local replicants enabled\n");
+            logmsg(LOGMSG_USER, "Local replicants enabled\n");
         } else if (tokcmp(tok, ltok, "off") == 0) {
             if (gbl_replicate_local == 0) {
-               logmsg(LOGMSG_USER, "Local replicants already isabled\n");
+                logmsg(LOGMSG_USER, "Local replicants already isabled\n");
                 return 1;
             }
             gbl_replicate_local = 0;
-           logmsg(LOGMSG_USER, "Local replicants disabled\n");
+            logmsg(LOGMSG_USER, "Local replicants disabled\n");
         } else {
             logmsg(LOGMSG_ERROR, "Local replicant options\n");
-            logmsg(LOGMSG_ERROR, "  on   - enable  (must have correct tables set up)\n");
+            logmsg(LOGMSG_ERROR,
+                   "  on   - enable  (must have correct tables set up)\n");
             logmsg(LOGMSG_ERROR, "  off  - disable\n");
         }
         return 0;
@@ -2833,15 +2932,16 @@ clipper_usage:
             return 0;
         } else if (tokcmp(tok, ltok, "sample") == 0) {
             analyze_enable_sampled_indicies();
-           logmsg(LOGMSG_USER, "Enabled sampling tables for analyze\n");
+            logmsg(LOGMSG_USER, "Enabled sampling tables for analyze\n");
         } else if (tokcmp(tok, ltok, "nosample") == 0) {
             analyze_disable_sampled_indicies();
-           logmsg(LOGMSG_USER, "Disabled sampling tables for analyze\n");
+            logmsg(LOGMSG_USER, "Disabled sampling tables for analyze\n");
         } else if (tokcmp(tok, ltok, "thresh") == 0) {
             int thresh = 0;
             tok = segtok(line, lline, &st, &ltok);
             if (ltok <= 0) {
-               logmsg(LOGMSG_USER, "Analyze thresh command needs a size-argument\n");
+                logmsg(LOGMSG_USER,
+                       "Analyze thresh command needs a size-argument\n");
                 return 0;
             }
             thresh = toknum(tok, ltok);
@@ -2852,7 +2952,8 @@ clipper_usage:
             int maxtd = 0;
             tok = segtok(line, lline, &st, &ltok);
             if (ltok <= 0) {
-                logmsg(LOGMSG_ERROR, "Analyze tblthd command requires number-of-threads!\n");
+                logmsg(LOGMSG_ERROR,
+                       "Analyze tblthd command requires number-of-threads!\n");
                 return 0;
             }
             maxtd = toknum(tok, ltok);
@@ -2861,7 +2962,8 @@ clipper_usage:
             int maxtd = 0;
             tok = segtok(line, lline, &st, &ltok);
             if (ltok <= 0) {
-                logmsg(LOGMSG_ERROR, "Analyze compthd command requires number-of-threads!\n");
+                logmsg(LOGMSG_ERROR,
+                       "Analyze compthd command requires number-of-threads!\n");
                 return 0;
             }
             maxtd = toknum(tok, ltok);
@@ -2870,22 +2972,26 @@ clipper_usage:
             uint64_t headroom = 0;
             tok = segtok(line, lline, &st, &ltok);
             if (ltok <= 0) {
-                logmsg(LOGMSG_ERROR, "Analyze headroom command needs a %%argument\n");
+                logmsg(LOGMSG_ERROR,
+                       "Analyze headroom command needs a %%argument\n");
                 return 0;
             }
             headroom = toknum(tok, ltok);
             analyze_set_headroom(headroom);
         } else if (tokcmp(tok, ltok, "backout") == 0) {
             tok = segtok(line, lline, &st, &ltok);
-            char * table = NULL;
-            if (ltok > 0) 
+            char *table = NULL;
+            if (ltok > 0)
                 table = tokdup(tok, ltok);
             SBUF2 *sb = sbuf2open(fileno(stdout), 0);
             handle_backout(sb, table);
-            if(table) free(table);
-        } else if(tokcmp(tok,ltok,"abort") == 0) {
-            if(!analyze_is_running()) {
-                logmsg(LOGMSG_ERROR, "Analyze is not running [or not running on this node].\n");
+            if (table)
+                free(table);
+        } else if (tokcmp(tok, ltok, "abort") == 0) {
+            if (!analyze_is_running()) {
+                logmsg(
+                    LOGMSG_ERROR,
+                    "Analyze is not running [or not running on this node].\n");
                 return 0;
             }
 
@@ -2911,7 +3017,7 @@ clipper_usage:
                 f = fopen(fname, "w");
                 if (f == NULL) {
                     logmsg(LOGMSG_ERROR, "Can't open %s: %s\n", fname,
-                            strerror(errno));
+                           strerror(errno));
                     free(fname);
                     return 0;
                 }
@@ -2931,7 +3037,7 @@ clipper_usage:
                 f = fopen(fname, "w");
                 if (f == NULL) {
                     logmsg(LOGMSG_ERROR, "Can't open %s: %s\n", fname,
-                            strerror(errno));
+                           strerror(errno));
                     free(fname);
                     return 0;
                 }
@@ -3071,7 +3177,8 @@ clipper_usage:
                 logmsg(LOGMSG_USER, "%s stripe %d ", iq.usedb->tablename,
                        stripe);
                 if (rc == 0)
-                   logmsg(LOGMSG_USER, "%016llx %d", genid, bdb_genid_timestamp(genid));
+                    logmsg(LOGMSG_USER, "%016llx %d", genid,
+                           bdb_genid_timestamp(genid));
                 else if (rc == 1)
                     logmsg(LOGMSG_USER, "no records");
                 else
@@ -3084,18 +3191,18 @@ clipper_usage:
     else if (tokcmp(tok, ltok, "exclusive_blockop_qconsume") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
-           logmsg(LOGMSG_USER, "gbl_exclusive_blockop_qconsume is %s\n",
+            logmsg(LOGMSG_USER, "gbl_exclusive_blockop_qconsume is %s\n",
                    gbl_exclusive_blockop_qconsume ? "on" : "off");
             return 0;
         }
         if (tokcmp(tok, ltok, "on") == 0) {
-           logmsg(LOGMSG_USER, "Enabled gbl_exclusive_blockop_qconsume\n");
+            logmsg(LOGMSG_USER, "Enabled gbl_exclusive_blockop_qconsume\n");
             gbl_exclusive_blockop_qconsume = 1;
         } else if (tokcmp(tok, ltok, "off") == 0) {
-           logmsg(LOGMSG_USER, "Disabled gbl_exclusive_blockop_qconsume\n");
+            logmsg(LOGMSG_USER, "Disabled gbl_exclusive_blockop_qconsume\n");
             gbl_exclusive_blockop_qconsume = 0;
         } else {
-           logmsg(LOGMSG_USER, "gbl_exclusive_blockop_qconsume is %s\n",
+            logmsg(LOGMSG_USER, "gbl_exclusive_blockop_qconsume is %s\n",
                    gbl_exclusive_blockop_qconsume ? "on" : "off");
         }
     } else if (tokcmp(tok, ltok, "getfilever") == 0) {
@@ -3139,9 +3246,10 @@ clipper_usage:
 
         if (rc || bdberr != BDBERR_NOERROR)
             logmsg(LOGMSG_ERROR, "bdb_get_file_version failed with rc: %d, ",
-                    bdberr);
+                   bdberr);
         else {
-            logmsg(LOGMSG_USER, "bdb_get_file_version succeeded: %016llx\n", file_version);
+            logmsg(LOGMSG_USER, "bdb_get_file_version succeeded: %016llx\n",
+                   file_version);
         }
     } else if (tokcmp(tok, ltok, "newfilever") == 0) {
         /*TODO add ability to specify version_num*/
@@ -3187,21 +3295,25 @@ clipper_usage:
 
         if (rc || bdberr != BDBERR_NOERROR)
             logmsg(LOGMSG_ERROR, "bdb_new_file_version failed with rc: %d, ",
-                    bdberr);
+                   bdberr);
         else
-            logmsg(LOGMSG_USER, "bdb_new_file_version succeeded: %016llx\n", file_version);
+            logmsg(LOGMSG_USER, "bdb_new_file_version succeeded: %016llx\n",
+                   file_version);
     } else if (tokcmp(tok, ltok, "usellmeta") == 0) {
-        logmsg(LOGMSG_USER, "All dbs using this version of comdb2 use llmeta\n");
+        logmsg(LOGMSG_USER,
+               "All dbs using this version of comdb2 use llmeta\n");
     } else if (tokcmp(tok, ltok, "dumpllmeta") == 0) {
         llmeta_dump_mapping(thedb);
     } else if (tokcmp(tok, ltok, "sql_time_threshold") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
-           logmsg(LOGMSG_USER, "SQL warn threshold is %dms\n", gbl_sql_time_threshold);
+            logmsg(LOGMSG_USER, "SQL warn threshold is %dms\n",
+                   gbl_sql_time_threshold);
             return 0;
         }
         gbl_sql_time_threshold = toknum(tok, ltok);
-        logmsg(LOGMSG_USER, "Set SQL warn threshold to %dms\n", gbl_sql_time_threshold);
+        logmsg(LOGMSG_USER, "Set SQL warn threshold to %dms\n",
+               gbl_sql_time_threshold);
     } else if (tokcmp(tok, ltok, "toblock_net_throttle") == 0) {
         gbl_toblock_net_throttle = 1;
         logmsg(LOGMSG_USER, "I will throttle my writes in apply_changes\n");
@@ -3211,13 +3323,14 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "enque_flush_interval") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected time value for enque_flush_interval\n");
+            logmsg(LOGMSG_ERROR,
+                   "Expected time value for enque_flush_interval\n");
             return 0;
         }
         gbl_enque_flush_interval = toknum(tok, ltok);
 
         logmsg(LOGMSG_USER, "net_set_enque_flush_interval %d\n",
-                gbl_enque_flush_interval);
+               gbl_enque_flush_interval);
         net_set_enque_flush_interval(thedb->handle_sibling,
                                      gbl_enque_flush_interval);
     }
@@ -3226,24 +3339,26 @@ clipper_usage:
         extern int gbl_slow_rep_process_txn_maxms;
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected value for slow_rep_process_txn_maxms\n");
+            logmsg(LOGMSG_ERROR,
+                   "Expected value for slow_rep_process_txn_maxms\n");
             return 0;
         }
         gbl_slow_rep_process_txn_maxms = toknum(tok, ltok);
         logmsg(LOGMSG_USER, "slow_rep_process_txn_maxms set to %d ms\n",
-                gbl_slow_rep_process_txn_maxms);
+               gbl_slow_rep_process_txn_maxms);
     }
 
     else if (tokcmp(tok, ltok, "slow_rep_process_txn_freq") == 0) {
         extern int gbl_slow_rep_process_txn_freq;
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected value for slow_rep_process_txn_freq\n");
+            logmsg(LOGMSG_ERROR,
+                   "Expected value for slow_rep_process_txn_freq\n");
             return 0;
         }
         gbl_slow_rep_process_txn_freq = toknum(tok, ltok);
         logmsg(LOGMSG_USER, "slow_rep_process_txn_freq set to %d ms\n",
-                gbl_slow_rep_process_txn_freq);
+               gbl_slow_rep_process_txn_freq);
     }
 
     else if (tokcmp(tok, ltok, "netuse") == 0) {
@@ -3253,35 +3368,38 @@ clipper_usage:
         int num_nodes;
         rc = net_get_network_usage(thedb->handle_sibling, &written, &read,
                                    &waits, &reorders);
-        logmsg(LOGMSG_USER, 
+        logmsg(
+            LOGMSG_USER,
             "Read: %llu    Written: %llu    Throttles: %llu   Reorders: %llu\n",
             read, written, waits, reorders);
         num_nodes = net_get_all_nodes(thedb->handle_sibling, hosts);
         if (num_nodes > 0) {
             int i;
             const char *host;
-            logmsg(LOGMSG_USER, "%5s %15s %15s %15s %15s\n", "Node", "Read", "Written",
-                   "Throttles", "Reorders");
+            logmsg(LOGMSG_USER, "%5s %15s %15s %15s %15s\n", "Node", "Read",
+                   "Written", "Throttles", "Reorders");
             for (i = 0; i < num_nodes; i++) {
                 host = hosts[i];
                 rc = net_get_host_network_usage(thedb->handle_sibling, host,
                                                 &written, &read, &waits,
                                                 &reorders);
                 if (rc == 0)
-                    logmsg(LOGMSG_USER, "%20s %15llu %15llu %15llu %15llu\n", host, read,
-                           written, waits, reorders);
+                    logmsg(LOGMSG_USER, "%20s %15llu %15llu %15llu %15llu\n",
+                           host, read, written, waits, reorders);
             }
         }
     } else if (tokcmp(tok, ltok, "sc_del_unused_files_threshold") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
-            logmsg(LOGMSG_USER, "gbl_sc_del_unused_files_threshold_ms is %dms\n",
+            logmsg(LOGMSG_USER,
+                   "gbl_sc_del_unused_files_threshold_ms is %dms\n",
                    gbl_sc_del_unused_files_threshold_ms);
             return 0;
         }
 
         gbl_sc_del_unused_files_threshold_ms = toknum(tok, ltok);
-        logmsg(LOGMSG_USER, "setting gbl_sc_del_unused_files_threshold_ms to %dms\n",
+        logmsg(LOGMSG_USER,
+               "setting gbl_sc_del_unused_files_threshold_ms to %dms\n",
                gbl_sc_del_unused_files_threshold_ms);
     } else if (tokcmp(tok, ltok, "dumpsqlattr") == 0) {
         sqlite3_dump_tunables();
@@ -3337,10 +3455,14 @@ clipper_usage:
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
             if (gbl_rangextunit == 0) {
-                logmsg(LOGMSG_USER, "No per-buffer limit set on old range-extract opcodes\n");
+                logmsg(
+                    LOGMSG_USER,
+                    "No per-buffer limit set on old range-extract opcodes\n");
                 return -1;
             } else {
-                logmsg(LOGMSG_USER, "Per-buffer limit on old range-extract opcodes set to %d\n",
+                logmsg(
+                    LOGMSG_USER,
+                    "Per-buffer limit on old range-extract opcodes set to %d\n",
                     gbl_rangextunit);
             }
         }
@@ -3349,9 +3471,11 @@ clipper_usage:
             logmsg(LOGMSG_ERROR, "Invalid limit\n");
             return -1;
         } else if (num == 0) {
-           logmsg(LOGMSG_USER, "Disabled old range extract per-buffer limits\n");
+            logmsg(LOGMSG_USER,
+                   "Disabled old range extract per-buffer limits\n");
         } else {
-           logmsg(LOGMSG_USER, "Old rangeextract per-buffer limit set to %d records\n",
+            logmsg(LOGMSG_USER,
+                   "Old rangeextract per-buffer limit set to %d records\n",
                    num);
         }
         gbl_rangextunit = num;
@@ -3359,14 +3483,17 @@ clipper_usage:
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
             if (gbl_honor_rangextunit_for_old_apis)
-               logmsg(LOGMSG_USER, "Not honoring limit for old rangeextract calls\n");
+                logmsg(LOGMSG_USER,
+                       "Not honoring limit for old rangeextract calls\n");
             else
-               logmsg(LOGMSG_USER, "Honoring limit for old rangeextract calls\n");
+                logmsg(LOGMSG_USER,
+                       "Honoring limit for old rangeextract calls\n");
         } else if (tokcmp(tok, ltok, "on") == 0) {
             logmsg(LOGMSG_USER, "Will honor limit for old rangextract calls\n");
             gbl_honor_rangextunit_for_old_apis = 1;
         } else if (tokcmp(tok, ltok, "off") == 0) {
-            logmsg(LOGMSG_ERROR, "Won't honor limit for old rangextract calls\n");
+            logmsg(LOGMSG_ERROR,
+                   "Won't honor limit for old rangextract calls\n");
             gbl_honor_rangextunit_for_old_apis = 0;
         } else {
             logmsg(LOGMSG_ERROR, "Expected on/off for oldrangexlim\n");
@@ -3447,7 +3574,8 @@ clipper_usage:
         onoff = bdb_attr_get(thedb->bdb_attr,
                              BDB_ATTR_DEADLOCK_WRITERS_WITH_LEAST_WRITES);
         if (onoff == 0) {
-            logmsg(LOGMSG_USER, "DEADLOCK_WRITERS_WITH_LEAST_WRITES is disabled\n");
+            logmsg(LOGMSG_USER,
+                   "DEADLOCK_WRITERS_WITH_LEAST_WRITES is disabled\n");
             return 0;
         }
 
@@ -3455,10 +3583,11 @@ clipper_usage:
             bdb_get_rep_stats(dbenv->dbs[0]->handle, &msgs_processed,
                               &msgs_sent, &txns_applied, &rep_retry,
                               &max_retries);
-            logmsg(LOGMSG_USER, "Retries: %lld, max %d, limit %d\n", rep_retry, max_retries,
-                   retry_limit);
+            logmsg(LOGMSG_USER, "Retries: %lld, max %d, limit %d\n", rep_retry,
+                   max_retries, retry_limit);
         } else if (tokcmp(tok, ltok, "help") == 0) {
-            logmsg(LOGMSG_USER, 
+            logmsg(
+                LOGMSG_USER,
                 "off      : disable DEADLOCK_WRITERS_WITH_LEAST_WRITES mode\n"
                 "on       : enable DEADLOCK_WRITERS_WITH_LEAST_WRITES mode\n"
                 "limit n  : set max retries before auto-disable (current %d)\n",
@@ -3468,7 +3597,8 @@ clipper_usage:
             bdb_attr_set(thedb->bdb_attr,
                          BDB_ATTR_DEADLOCK_WRITERS_WITH_LEAST_WRITES, 1);
         } else if (tokcmp(tok, ltok, "off") == 0) {
-            logmsg(LOGMSG_USER, "Disabled DEADLOCK_WRITERS_WITH_LEAST_WRITES\n");
+            logmsg(LOGMSG_USER,
+                   "Disabled DEADLOCK_WRITERS_WITH_LEAST_WRITES\n");
             bdb_attr_set(thedb->bdb_attr,
                          BDB_ATTR_DEADLOCK_WRITERS_WITH_LEAST_WRITES, 0);
         } else if (tokcmp(tok, ltok, "limit") == 0) {
@@ -3502,7 +3632,8 @@ clipper_usage:
         logmsg(LOGMSG_ERROR, "Set deadlock retry limit to %d\n", lim);
     } else if (tokcmp(tok, ltok, "enable_cache_internal_nodes") == 0) {
         gbl_enable_cache_internal_nodes = 1;
-        logmsg(LOGMSG_USER, "Will increase cache-priority for btree internal nodes.\n");
+        logmsg(LOGMSG_USER,
+               "Will increase cache-priority for btree internal nodes.\n");
     } else if (tokcmp(tok, ltok, "badwrite_intvl") == 0) {
         int tmp;
         tok = segtok(line, lline, &st, &ltok);
@@ -3512,7 +3643,8 @@ clipper_usage:
         }
         tmp = toknum(tok, ltok);
         if (tmp >= 0) {
-            logmsg(LOGMSG_ERROR, "Will force a bad-write and abort randomly every %d "
+            logmsg(LOGMSG_ERROR,
+                   "Will force a bad-write and abort randomly every %d "
                    "pgwrites.\n",
                    tmp);
             gbl_test_badwrite_intvl = tmp;
@@ -3538,21 +3670,24 @@ clipper_usage:
         }
         tmp = toknum(tok, ltok);
         if (tmp >= 1) {
-            logmsg(LOGMSG_USER, "Will force a blob-race condition once every %d lookups.\n",
+            logmsg(LOGMSG_USER,
+                   "Will force a blob-race condition once every %d lookups.\n",
                    tmp);
             gbl_test_blob_race = tmp;
         } else if (tmp == 0) {
             logmsg(LOGMSG_USER, "Disabled blob-race testing.\n");
             gbl_test_blob_race = 0;
         } else {
-            logmsg(LOGMSG_ERROR, "Invalid test_blob_race value: should be above 2 (or 0 to "
+            logmsg(LOGMSG_ERROR,
+                   "Invalid test_blob_race value: should be above 2 (or 0 to "
                    "disable).\n");
         }
     }
 
     else if (tokcmp(tok, ltok, "disable_cache_internal_nodes") == 0) {
         gbl_enable_cache_internal_nodes = 0;
-        logmsg(LOGMSG_USER, "Will treat btree internal nodes the same as leaf-nodes.\n");
+        logmsg(LOGMSG_USER,
+               "Will treat btree internal nodes the same as leaf-nodes.\n");
     } else if (tokcmp(tok, ltok, "instant_schema_change") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (tokcmp(tok, ltok, "on") == 0)
@@ -3560,7 +3695,7 @@ clipper_usage:
         else if (tokcmp(tok, ltok, "off") == 0)
             gbl_init_with_instant_sc = 0;
         logmsg(LOGMSG_ERROR, "Instant schema change: %s\n",
-                gbl_init_with_instant_sc ? "On" : "Off");
+               gbl_init_with_instant_sc ? "On" : "Off");
     } else if (tokcmp(tok, ltok, "getver") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
@@ -3570,8 +3705,9 @@ clipper_usage:
         char *dbname = tokdup(tok, ltok);
         struct dbtable *db = get_dbtable_by_name(dbname);
         if (db) {
-            logmsg(LOGMSG_USER, "table:%s  odh:%s  instant_schema_change:%s  "
-                                "inplace_updates:%s  version:%d\n",
+            logmsg(LOGMSG_USER,
+                   "table:%s  odh:%s  instant_schema_change:%s  "
+                   "inplace_updates:%s  version:%d\n",
                    db->tablename, YESNO(db->instant_schema_change),
                    YESNO(db->inplace_updates), YESNO(db->odh), db->version);
         } else {
@@ -3638,8 +3774,8 @@ clipper_usage:
         db->inplace_updates = state;
         bdb_set_inplace_updates(db->handle, state);
         put_db_inplace_updates(db, NULL, state);
-        logmsg(LOGMSG_USER, "inplace update turned %s for table: %s\n", state ? "on" : "off",
-               dbname);
+        logmsg(LOGMSG_USER, "inplace update turned %s for table: %s\n",
+               state ? "on" : "off", dbname);
 
     out:
         free(dbname);
@@ -3667,7 +3803,9 @@ clipper_usage:
 
         tmp = toknum(tok, ltok);
         if (tmp >= 0) {
-            logmsg(LOGMSG_USER, "Will release locks randomly an average once every %d checks\n",
+            logmsg(
+                LOGMSG_USER,
+                "Will release locks randomly an average once every %d checks\n",
                 tmp);
             gbl_sql_random_release_interval = tmp;
         } else {
@@ -3678,12 +3816,14 @@ clipper_usage:
         int tmp;
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected value for blocksql_verify_retry_max\n");
+            logmsg(LOGMSG_ERROR,
+                   "Expected value for blocksql_verify_retry_max\n");
             return 0;
         }
         tmp = toknum(tok, ltok);
         if (tmp >= 0) {
-            logmsg(LOGMSG_USER, "Osql transaction will repeat %d times if verify error (was "
+            logmsg(LOGMSG_USER,
+                   "Osql transaction will repeat %d times if verify error (was "
                    "%d times)\n",
                    tmp, gbl_osql_verify_retries_max);
             gbl_osql_verify_retries_max = tmp;
@@ -3697,7 +3837,8 @@ clipper_usage:
         }
         tmp = toknum(tok, ltok);
         if (tmp >= 0) {
-           logmsg(LOGMSG_USER, "Osql will do extended genid-checking after %d verify "
+            logmsg(LOGMSG_USER,
+                   "Osql will do extended genid-checking after %d verify "
                    "errors (was %d)\n",
                    tmp, gbl_osql_verify_ext_chk);
             gbl_osql_verify_ext_chk = tmp;
@@ -3716,7 +3857,8 @@ clipper_usage:
             return 0;
         }
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGE_ORDER_TABLESCAN, state);
-        logmsg(LOGMSG_USER, "Page order table scan set to %s.\n", state ? "on" : "off");
+        logmsg(LOGMSG_USER, "Page order table scan set to %s.\n",
+               state ? "on" : "off");
     }
 
     /* page_order_scan per-table message trap */
@@ -3743,7 +3885,8 @@ clipper_usage:
             }
 
             bdb_enable_page_scan_for_table(db->handle);
-            logmsg(LOGMSG_USER, "Enabled page order table scan for '%s'\n", table);
+            logmsg(LOGMSG_USER, "Enabled page order table scan for '%s'\n",
+                   table);
             free(table);
             return 0;
         }
@@ -3767,7 +3910,8 @@ clipper_usage:
             }
 
             bdb_disable_page_scan_for_table(db->handle);
-            logmsg(LOGMSG_ERROR, "Disabled page order table scan for '%s'\n", table);
+            logmsg(LOGMSG_ERROR, "Disabled page order table scan for '%s'\n",
+                   table);
             free(table);
 
             return 0;
@@ -3790,7 +3934,8 @@ clipper_usage:
                 }
 
                 pgscan = bdb_get_page_scan_for_table(db->handle);
-                logmsg(LOGMSG_USER, "Page-order tablescan for table '%s' is %s\n", table,
+                logmsg(LOGMSG_USER,
+                       "Page-order tablescan for table '%s' is %s\n", table,
                        pgscan ? "enabled" : "disabled");
                 free(table);
                 return 0;
@@ -3803,7 +3948,8 @@ clipper_usage:
                 db = dbenv->dbs[ii];
                 table = db->tablename;
                 int pgscan = bdb_get_page_scan_for_table(db->handle);
-                logmsg(LOGMSG_USER, "Page-order tablescan for table '%s' is %s\n", table,
+                logmsg(LOGMSG_USER,
+                       "Page-order tablescan for table '%s' is %s\n", table,
                        pgscan ? "enabled" : "disabled");
             }
 
@@ -3818,12 +3964,15 @@ clipper_usage:
                                  BDB_ATTR_DISABLE_PGORDER_MIN_NEXTS);
 
             logmsg(LOGMSG_USER, "Global page order table scan flag is %s\n",
-                    global ? "enabled" : "disabled");
-            logmsg(LOGMSG_USER, "Disable page order scan for tables with more than %d%% "
-                    "skip pages.\n",
-                    percent);
-            logmsg(LOGMSG_USER, "Only disable page order scan if there are at least %d pages\n",
-                    nexts);
+                   global ? "enabled" : "disabled");
+            logmsg(LOGMSG_USER,
+                   "Disable page order scan for tables with more than %d%% "
+                   "skip pages.\n",
+                   percent);
+            logmsg(
+                LOGMSG_USER,
+                "Only disable page order scan if there are at least %d pages\n",
+                nexts);
             logmsg(LOGMSG_USER, "Skip-ratio trace is %s\n",
                    gbl_skip_ratio_trace ? "on" : "off");
 
@@ -3835,7 +3984,8 @@ clipper_usage:
             int tmp;
             tok = segtok(line, lline, &st, &ltok);
             if (ltok == 0) {
-                logmsg(LOGMSG_ERROR, "Expected page-order disable-threshold percentage\n");
+                logmsg(LOGMSG_ERROR,
+                       "Expected page-order disable-threshold percentage\n");
                 return 0;
             }
             tmp = toknum(tok, ltok);
@@ -3847,7 +3997,8 @@ clipper_usage:
 
             bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_DISABLE_PGORDER_THRESHOLD,
                          tmp);
-            logmsg(LOGMSG_USER, "Disable page order scan for %d%% or more skip-pages.\n",
+            logmsg(LOGMSG_USER,
+                   "Disable page order scan for %d%% or more skip-pages.\n",
                    tmp);
             return 0;
         }
@@ -3869,7 +4020,8 @@ clipper_usage:
 
             bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_DISABLE_PGORDER_MIN_NEXTS,
                          tmp);
-           logmsg(LOGMSG_USER, "Disable page-order tablescan for tables with at least %d "
+            logmsg(LOGMSG_USER,
+                   "Disable page-order tablescan for tables with at least %d "
                    "pages.\n",
                    tmp);
             return 0;
@@ -3897,24 +4049,33 @@ clipper_usage:
         /* Help menu */
         if (ltok == 0 || tokcmp(tok, ltok, "help") == 0) {
             logmsg(LOGMSG_USER, "%s help             - this menu\n", cmd);
-            logmsg(LOGMSG_USER, "%s enable  <table>  - enable page-order scans on <table>\n",
+            logmsg(LOGMSG_USER,
+                   "%s enable  <table>  - enable page-order scans on <table>\n",
                    cmd);
-            logmsg(LOGMSG_USER, "%s disable <table>  - disable page-order scans on <table>\n",
-                   cmd);
-            logmsg(LOGMSG_ERROR, "%s thresh  <prcnt>  - set auto-disable minimum skip/next "
+            logmsg(
+                LOGMSG_USER,
+                "%s disable <table>  - disable page-order scans on <table>\n",
+                cmd);
+            logmsg(LOGMSG_ERROR,
+                   "%s thresh  <prcnt>  - set auto-disable minimum skip/next "
                    "ratio\n",
                    cmd);
-            logmsg(LOGMSG_ERROR, "%s minnext <count>  - set auto-disable minimum pages\n",
+            logmsg(LOGMSG_ERROR,
+                   "%s minnext <count>  - set auto-disable minimum pages\n",
                    cmd);
-            logmsg(LOGMSG_ERROR, "%s skiptrc <on|off> - enable/disable skip-trace\n", cmd);
-            logmsg(LOGMSG_ERROR, "%s stat    <table>  - print enabled status for <table>\n",
+            logmsg(LOGMSG_ERROR,
+                   "%s skiptrc <on|off> - enable/disable skip-trace\n", cmd);
+            logmsg(LOGMSG_ERROR,
+                   "%s stat    <table>  - print enabled status for <table>\n",
                    cmd);
-            logmsg(LOGMSG_ERROR, "%s stat             - print enabled status\n", cmd);
+            logmsg(LOGMSG_ERROR, "%s stat             - print enabled status\n",
+                   cmd);
             return 0;
         }
 
         /* Unknown */
-        logmsg(LOGMSG_ERROR, "%s : Unknown command.  Use 'page_order_scan help' for menu\n",
+        logmsg(LOGMSG_ERROR,
+               "%s : Unknown command.  Use 'page_order_scan help' for menu\n",
                cmd);
     }
 
@@ -3923,9 +4084,11 @@ clipper_usage:
         tok = segtok(line, lline, &st, &ltok);
         ii = toknum(tok, ltok);
         if (ii < 0 || ii > 100) {
-            logmsg(LOGMSG_ERROR, "Max tablescan cache should be between 0 and 100.\n");
+            logmsg(LOGMSG_ERROR,
+                   "Max tablescan cache should be between 0 and 100.\n");
         } else {
-            logmsg(LOGMSG_USER, "Set max tablescan cache utilization to %d.\n", ii);
+            logmsg(LOGMSG_USER, "Set max tablescan cache utilization to %d.\n",
+                   ii);
             bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_TABLESCAN_CACHE_UTILIZATION,
                          ii);
         }
@@ -3933,7 +4096,8 @@ clipper_usage:
         bdb_verify_dbreg(thedb->bdb_env);
     } else if (tokcmp(tok, ltok, "delayed") == 0) {
         extern unsigned int gbl_delayed_skip;
-        logmsg(LOGMSG_USER, "Number of skipped delayed_key_adds: %u\n", gbl_delayed_skip);
+        logmsg(LOGMSG_USER, "Number of skipped delayed_key_adds: %u\n",
+               gbl_delayed_skip);
     } else if (tokcmp(tok, ltok, "lockspeed") == 0) {
         pthread_mutex_t lk;
         int i;
@@ -4039,7 +4203,8 @@ clipper_usage:
                 logmsg(LOGMSG_USER, "UDP turned off\n");
             }
         } else {
-            logmsg(LOGMSG_USER, "usage:\n"
+            logmsg(LOGMSG_USER,
+                   "usage:\n"
                    "  udp on\n"
                    "  udp off -Disable use of UDP to send ack\n"
                    "  udp stat [replication|offloadsql|all] (replication is "
@@ -4049,9 +4214,11 @@ clipper_usage:
                    "  udp ping <all|ip:port|node #>\n");
         }
     } else if (tokcmp(tok, ltok, "dumpslows") == 0) {
-        logmsg(LOGMSG_USER, "slowdown for memp_fget:   %dns\n", __slow_memp_fget_ns);
+        logmsg(LOGMSG_USER, "slowdown for memp_fget:   %dns\n",
+               __slow_memp_fget_ns);
         logmsg(LOGMSG_USER, "slowdown for page reads:  %dns\n", __slow_read_ns);
-        logmsg(LOGMSG_USER, "slowdown for page writes: %dns\n", __slow_write_ns);
+        logmsg(LOGMSG_USER, "slowdown for page writes: %dns\n",
+               __slow_write_ns);
     } else if (tokcmp(tok, ltok, "slowfget") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok <= 0) {
@@ -4148,10 +4315,10 @@ clipper_usage:
             tok = segtok(line, lline, &st, &ltok);
             tokcpy0(tok, ltok, table, sizeof(table));
             FILE *f = io_override_get_std();
-            SBUF2 *sb = sbuf2open(fileno((f?f:stdout)), 0);
+            SBUF2 *sb = sbuf2open(fileno((f ? f : stdout)), 0);
             handle_testcompr(sb, table);
         } else {
-            logmsg(LOGMSG_USER, 
+            logmsg(LOGMSG_USER,
                    "testcompr table <tbl> - Test compression for table tbl\n"
                    "testcompr percent <number> - Default 10%%\n"
                    "testcompr max <number> - Set to 0 to process all records; "
@@ -4161,19 +4328,19 @@ clipper_usage:
         logmsg(LOGMSG_USER, "Current tunables:\nCompress %d%% of the records",
                gbl_testcompr_percent);
         if (gbl_testcompr_max) {
-           logmsg(LOGMSG_USER, ", upto a max of %d", gbl_testcompr_max);
+            logmsg(LOGMSG_USER, ", upto a max of %d", gbl_testcompr_max);
         }
-       logmsg(LOGMSG_USER, "\n");
+        logmsg(LOGMSG_USER, "\n");
     } else if (tokcmp(tok, ltok, "decimal_rounding") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok > 0 && tok[0]) {
             gbl_decimal_rounding = dec_parse_rounding(tok, ltok);
-           logmsg(LOGMSG_USER, "Default decimal rounding is %s\n",
+            logmsg(LOGMSG_USER, "Default decimal rounding is %s\n",
                    dec_print_mode(gbl_decimal_rounding));
         } else {
-            logmsg(LOGMSG_USER, 
-                    "Missing option for decimal rounding, current is %s\n",
-                    dec_print_mode(gbl_decimal_rounding));
+            logmsg(LOGMSG_USER,
+                   "Missing option for decimal rounding, current is %s\n",
+                   dec_print_mode(gbl_decimal_rounding));
         }
     } else if (tokcmp(tok, ltok, "localrep") == 0) {
         struct dbtable *db;
@@ -4192,7 +4359,8 @@ clipper_usage:
         tok = segtok(line, lline, &st, &ltok);
         gbl_ddlk = toknum(tok, ltok);
         if (gbl_ddlk) {
-            logmsg(LOGMSG_USER, "1 in every %d lock requests will deadlock\n", gbl_ddlk);
+            logmsg(LOGMSG_USER, "1 in every %d lock requests will deadlock\n",
+                   gbl_ddlk);
         } else {
             logmsg(LOGMSG_USER, "DDLK generator turned off\n");
         }
@@ -4209,7 +4377,8 @@ clipper_usage:
             bdb_berktest_commit_delay(commit_delay_ms);
             Pthread_mutex_unlock(&testguard);
         } else {
-            logmsg(LOGMSG_USER, "berkdelay requires commit-delay-ms argument\n");
+            logmsg(LOGMSG_USER,
+                   "berkdelay requires commit-delay-ms argument\n");
         }
     } else if (tokcmp(tok, ltok, "berktest") == 0) {
         uint32_t txnsize = 0;
@@ -4248,13 +4417,15 @@ clipper_usage:
         logmsg(LOGMSG_ERROR, "Disabled cheapstack for explicit net flush\n");
     } else if (tokcmp(tok, ltok, "rowlocks_bench_logical_rectype") == 0) {
         gbl_rowlocks_bench_logical_rectype = 1;
-        logmsg(LOGMSG_ERROR, "I will consider rowlocks_bench record (10019) a logical "
+        logmsg(LOGMSG_ERROR,
+               "I will consider rowlocks_bench record (10019) a logical "
                "rectype\n");
     }
 
     else if (tokcmp(tok, ltok, "rowlocks_bench_no_logical_rectype") == 0) {
         gbl_rowlocks_bench_logical_rectype = 0;
-        logmsg(LOGMSG_ERROR, "I will not consider rowlocks_bench record (10019) a logical "
+        logmsg(LOGMSG_ERROR,
+               "I will not consider rowlocks_bench record (10019) a logical "
                "rectype\n");
     }
 
@@ -4273,17 +4444,20 @@ clipper_usage:
         logmsg(LOGMSG_ERROR, "I acquire all rowlocks\n");
     } else if (tokcmp(tok, ltok, "disable_rowlock_locking") == 0) {
         gbl_disable_rowlocks = 1;
-        logmsg(LOGMSG_ERROR, "I will not actually acquire any rowlocks (but will still "
+        logmsg(LOGMSG_ERROR,
+               "I will not actually acquire any rowlocks (but will still "
                "follow the codepath)\n");
     }
 
     else if (tokcmp(tok, ltok, "dispatch_bench") == 0) {
         gbl_dispatch_rowlocks_bench = 1;
-        logmsg(LOGMSG_ERROR, 
-               "I will dispatch rowlocks_bench record (10019) to db_dispatch\n");
+        logmsg(
+            LOGMSG_ERROR,
+            "I will dispatch rowlocks_bench record (10019) to db_dispatch\n");
     } else if (tokcmp(tok, ltok, "dont_dispatch_bench") == 0) {
         gbl_dispatch_rowlocks_bench = 0;
-        logmsg(LOGMSG_USER, "I will not dispatch rowlocks_bench record (10019) to "
+        logmsg(LOGMSG_USER,
+               "I will not dispatch rowlocks_bench record (10019) to "
                "db_dispatch\n");
     } else if (tokcmp(tok, ltok, "disable_rowlocks_sleepns") == 0) {
         tok = segtok(line, lline, &st, &ltok);
@@ -4292,7 +4466,7 @@ clipper_usage:
             if (sleepns >= 0)
                 gbl_disable_rowlocks_sleepns = sleepns;
         }
-       logmsg(LOGMSG_USER, "disable_rowlocks_sleepns is %d\n",
+        logmsg(LOGMSG_USER, "disable_rowlocks_sleepns is %d\n",
                gbl_disable_rowlocks_sleepns);
     } else if (tokcmp(tok, ltok, "commit_bench") == 0) {
         int tcnt = 0;
@@ -4307,7 +4481,7 @@ clipper_usage:
         if (thedb->master != gbl_mynode) {
             logmsg(LOGMSG_ERROR, "I am not the master node\n");
         } else if (tcnt <= 0 || cnt <= 0) {
-            logmsg(LOGMSG_ERROR, 
+            logmsg(LOGMSG_ERROR,
                    "commit_bench requires txn-count & iters-per-txn count\n");
         } else {
             Pthread_mutex_lock(&testguard);
@@ -4329,7 +4503,8 @@ clipper_usage:
         } else if (!gbl_rowlocks) {
             logmsg(LOGMSG_ERROR, "I am not in rowlocks mode\n");
         } else if (lcnt <= 0 || pcnt <= 0) {
-            logmsg(LOGMSG_ERROR, "rowlocks_bench requires ltxn-count & ptxn-count\n");
+            logmsg(LOGMSG_ERROR,
+                   "rowlocks_bench requires ltxn-count & ptxn-count\n");
         } else {
             Pthread_mutex_lock(&testguard);
             rowlocks_bench(thedb->bdb_env, lcnt, pcnt);
@@ -4352,7 +4527,8 @@ clipper_usage:
         } else if (!gbl_rowlocks) {
             logmsg(LOGMSG_ERROR, "I am not in rowlocks mode\n");
         } else if (lcnt <= 0 || pcnt <= 0) {
-            logmsg(LOGMSG_ERROR, "rowlocks_lock1_bench requires ltxn-count & ptxn-count\n");
+            logmsg(LOGMSG_ERROR,
+                   "rowlocks_lock1_bench requires ltxn-count & ptxn-count\n");
         } else {
             Pthread_mutex_lock(&testguard);
             rowlocks_lock1_bench(thedb->bdb_env, lcnt, pcnt);
@@ -4377,7 +4553,7 @@ clipper_usage:
         } else if (!gbl_rowlocks) {
             logmsg(LOGMSG_ERROR, "I am not in rowlocks mode\n");
         } else if (lcnt <= 0 || pcnt <= 0) {
-            logmsg(LOGMSG_ERROR, 
+            logmsg(LOGMSG_ERROR,
                    "rowlocks_lock2_bench requires ltxn-count & ptxn-count\n");
         } else {
             Pthread_mutex_lock(&testguard);
@@ -4464,14 +4640,14 @@ clipper_usage:
             logmsg(LOGMSG_USER, "Replication score report already on\n");
         } else {
             gbl_repscore = 1;
-           logmsg(LOGMSG_USER, "Replication score report on\n");
+            logmsg(LOGMSG_USER, "Replication score report on\n");
         }
     } else if (tokcmp(tok, ltok, "repscof") == 0) {
         if (!gbl_repscore) {
-           logmsg(LOGMSG_USER, "Replication score report already off\n");
+            logmsg(LOGMSG_USER, "Replication score report already off\n");
         } else {
             gbl_repscore = 0;
-           logmsg(LOGMSG_USER, "Replication score report off\n");
+            logmsg(LOGMSG_USER, "Replication score report off\n");
         }
     } else if (tokcmp(tok, ltok, "surprise") == 0) {
         gbl_surprise = 1;
@@ -4516,10 +4692,10 @@ clipper_usage:
 #ifdef _LINUX_SOURCE
     } else if (tokcmp(tok, ltok, "rcache") == 0) {
         gbl_rcache = true;
-       logmsg(LOGMSG_USER, "enabled rcache\n");
+        logmsg(LOGMSG_USER, "enabled rcache\n");
     } else if (tokcmp(tok, ltok, "norcache") == 0) {
         gbl_rcache = false;
-       logmsg(LOGMSG_USER, "disabled rcache\n");
+        logmsg(LOGMSG_USER, "disabled rcache\n");
 #endif
     } else if (tokcmp(tok, ltok, "swing") == 0) {
         extern int gbl_master_changes;
@@ -4587,7 +4763,8 @@ clipper_usage:
             tok = segtok(line, lline, &st, &ltok);
             if (ltok != 0)
                 gbl_memstat_freq = toknum(tok, ltok);
-           logmsg(LOGMSG_USER, "auto report memstat every %d seconds\n", gbl_memstat_freq);
+            logmsg(LOGMSG_USER, "auto report memstat every %d seconds\n",
+                   gbl_memstat_freq);
 #ifndef COMDB2MA_OMIT_DEBUG
         } else if (tokcmp(tok, ltok, "debug") == 0) {
             tok = segtok(line, lline, &st, &ltok);
@@ -4745,7 +4922,7 @@ clipper_usage:
             if (ltok == 0)
                 logmsg(LOGMSG_ERROR, "Need table name to clear\n");
             else {
-               logmsg(LOGMSG_USER, "Clearing entry for '%s'\n", tok);
+                logmsg(LOGMSG_USER, "Clearing entry for '%s'\n", tok);
                 table = tokdup(tok, ltok);
                 db = get_dbtable_by_name(table);
                 if (!db) {
@@ -4753,7 +4930,8 @@ clipper_usage:
                 } else {
                     int lrc = bdb_del_table_csonparameters(NULL, table);
                     if (lrc)
-                        logmsg(LOGMSG_ERROR, "Error deleting tbl params for tbl %s\n", table);
+                        logmsg(LOGMSG_ERROR,
+                               "Error deleting tbl params for tbl %s\n", table);
                     else
                         print_tableparams();
                 }
@@ -4812,7 +4990,8 @@ void fastcount(char *tablename)
     struct dbtable *p_db;
 
     if (!(p_db = get_dbtable_by_name(tablename))) {
-        logmsg(LOGMSG_ERROR, "%s: couldn't find table: %s\n", __func__, tablename);
+        logmsg(LOGMSG_ERROR, "%s: couldn't find table: %s\n", __func__,
+               tablename);
         return;
     }
 
@@ -4822,7 +5001,7 @@ void fastcount(char *tablename)
     numrecs = dtasize / recsize;
 
     logmsg(LOGMSG_USER, "table %s has approximately %d records\n", tablename,
-            numrecs);
+           numrecs);
 }
 
 static void dump_table_sizes(struct dbenv *dbenv)
@@ -4868,13 +5047,14 @@ static void dump_table_sizes(struct dbenv *dbenv)
                (int)percent);
         logmsg(LOGMSG_USER, "(dta %s", fmt_size(b, sizeof(b), db->dtasize));
         for (ii = 0; ii < db->nix; ii++) {
-           logmsg(LOGMSG_USER, ", ix%d %s", ii, fmt_size(b, sizeof(b), db->ixsizes[ii]));
+            logmsg(LOGMSG_USER, ", ix%d %s", ii,
+                   fmt_size(b, sizeof(b), db->ixsizes[ii]));
         }
         for (ii = 0; ii < db->numblobs; ii++) {
-           logmsg(LOGMSG_USER, ", blob%d %s", ii,
+            logmsg(LOGMSG_USER, ", blob%d %s", ii,
                    fmt_size(b, sizeof(b), db->blobsizes[ii]));
         }
-       logmsg(LOGMSG_USER, ")\n");
+        logmsg(LOGMSG_USER, ")\n");
     }
     for (ndb = 0; ndb < dbenv->num_qdbs; ndb++) {
         db = dbenv->qdbs[ndb];
@@ -4891,15 +5071,16 @@ static void dump_table_sizes(struct dbenv *dbenv)
         percent = (logsize * 100ULL) / total;
     else
         percent = 0;
-   logmsg(LOGMSG_USER, "%-*s sz %12s %3d%% (%u logs)\n", maxtblname + 6, "log files",
-           fmt_size(b, sizeof(b), logsize), (int)percent, num_logs);
+    logmsg(LOGMSG_USER, "%-*s sz %12s %3d%% (%u logs)\n", maxtblname + 6,
+           "log files", fmt_size(b, sizeof(b), logsize), (int)percent,
+           num_logs);
 
-   logmsg(LOGMSG_USER, "GRAND TOTAL %s\n", fmt_size(b, sizeof(b), total));
+    logmsg(LOGMSG_USER, "GRAND TOTAL %s\n", fmt_size(b, sizeof(b), total));
 
     rc = statvfs(thedb->basedir, &st);
     if (rc == -1) {
         logmsg(LOGMSG_ERROR, "cannot get file system data for %s: %d %s\n",
-                thedb->basedir, errno, strerror(errno));
+               thedb->basedir, errno, strerror(errno));
     } else {
         uint64_t fsavail, fstotal;
         fsavail = (uint64_t)st.f_bavail * (uint64_t)st.f_frsize;
