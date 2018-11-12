@@ -190,7 +190,7 @@ __db_shalloc(p, len, align, retp)
 	size_t *sp;
 	void *rp;
 
-	uint64_t start_time_us;
+	uint64_t start_time_us = 0;
 
 	if (gbl_bb_berkdb_enable_shalloc_timing)
 		start_time_us = bb_berkdb_fasttime();
@@ -306,7 +306,7 @@ __db_shalloc_free(regionp, ptr)
 	if (ptr == NULL)
 		return;
 
-	uint64_t start_time_us;
+	uint64_t start_time_us = 0;
 
 	if (gbl_bb_berkdb_enable_shalloc_timing)
 		start_time_us = bb_berkdb_fasttime();

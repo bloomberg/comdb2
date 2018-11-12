@@ -226,9 +226,9 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
         return -1;
     }
 
-    pthread_mutex_init(&tran->store_mtx, NULL);
-    pthread_mutex_init(&tran->mtx, NULL);
-    pthread_cond_init(&tran->cond, NULL);
+    Pthread_mutex_init(&tran->store_mtx, NULL);
+    Pthread_mutex_init(&tran->mtx, NULL);
+    Pthread_cond_init(&tran->cond, NULL);
 
     iq->blocksql_tran = tran; /* now blockproc knows about it */
 
@@ -398,9 +398,9 @@ int osql_bplog_schemachange(struct ireq *iq)
     iq->sc = sc = iq->sc_pending;
     iq->sc_pending = NULL;
     while (sc != NULL) {
-        pthread_mutex_lock(&sc->mtx);
+        Pthread_mutex_lock(&sc->mtx);
         sc->nothrevent = 1;
-        pthread_mutex_unlock(&sc->mtx);
+        Pthread_mutex_unlock(&sc->mtx);
         iq->sc = sc->sc_next;
         if (sc->sc_rc == SC_COMMIT_PENDING) {
             sc->sc_next = iq->sc_pending;
@@ -419,9 +419,9 @@ int osql_bplog_schemachange(struct ireq *iq)
     }
     if (rc) {
         extern pthread_mutex_t csc2_subsystem_mtx;
-        pthread_mutex_lock(&csc2_subsystem_mtx);
+        Pthread_mutex_lock(&csc2_subsystem_mtx);
         csc2_free_all();
-        pthread_mutex_unlock(&csc2_subsystem_mtx);
+        Pthread_mutex_unlock(&csc2_subsystem_mtx);
     }
     logmsg(LOGMSG_INFO, ">>> DDL SCHEMA CHANGE RC %d <<<\n", rc);
     return rc;
@@ -542,10 +542,10 @@ int osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func, 
     int rc = 0;
     int bdberr = 0;
     blocksql_info_t *info = NULL, *tmp = NULL;
-    pthread_mutex_lock(&kludgelk);
+    Pthread_mutex_lock(&kludgelk);
     blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
     iq->blocksql_tran = NULL;
-    pthread_mutex_unlock(&kludgelk);
+    Pthread_mutex_unlock(&kludgelk);
 
     if (tran) {
 
@@ -582,9 +582,9 @@ int osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func, 
 
 
         /* destroy transaction */
-        pthread_cond_destroy(&tran->cond);
-        pthread_mutex_destroy(&tran->mtx);
-        pthread_mutex_destroy(&tran->store_mtx);
+        Pthread_cond_destroy(&tran->cond);
+        Pthread_mutex_destroy(&tran->mtx);
+        Pthread_mutex_destroy(&tran->store_mtx);
 
         rc = bdb_temp_table_close(thedb->bdb_env, tran->db, &bdberr);
         if (rc != 0) {
@@ -764,10 +764,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     assert(sess->rqid == rqid);
 
     /* add the op into the temporary table */
-    if ((rc = pthread_mutex_lock(&tran->store_mtx))) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_lock: error code %d\n", rc);
-        return rc;
-    }
+    Pthread_mutex_lock(&tran->store_mtx);
 
     if (sess->seq == 0 && osql_session_is_sorese(sess) && tran->rows > 0) {
         /* lets make sure that the temp table is empty since commit retries will
@@ -788,9 +785,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                 "malformed transaction, received duplicated first row",
                 sizeof(generr.errstr));
 
-        if ((rc = pthread_mutex_unlock(&tran->store_mtx))) {
-            logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
-        }
+        Pthread_mutex_unlock(&tran->store_mtx);
 
         rc = osql_comm_signal_sqlthr_rc(&sorese_info, &generr,
                 RC_INTERNAL_RETRY);
@@ -821,10 +816,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     tran->rows++;
 
-    if ((rc = pthread_mutex_unlock(&tran->store_mtx))) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
-        return rc;
-    }
+    Pthread_mutex_unlock(&tran->store_mtx);
 
     if (rc_op)
         return rc_op;
@@ -875,30 +867,18 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
  */
 int osql_bplog_signal(blocksql_tran_t *tran)
 {
-
-    int rc = 0;
-
     /* signal block processor that one done event arrived */
-    if ((rc = pthread_mutex_lock(&tran->mtx))) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_lock: error code %d\n", rc);
-        return rc;
-    }
+    Pthread_mutex_lock(&tran->mtx);
 
     tran->dowait = 0;
 #if 0
    printf("Signalling tmp=%llu\n", osql_log_time());
 #endif
 
-    if ((rc = pthread_cond_signal(&tran->cond))) {
-        logmsg(LOGMSG_ERROR, "pthread_cond_signal: error code %d\n", rc);
-    }
+    Pthread_cond_signal(&tran->cond);
+    Pthread_mutex_unlock(&tran->mtx);
 
-    if ((rc = pthread_mutex_unlock(&tran->mtx))) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_lock: error code %d\n", rc);
-        return rc;
-    }
-
-    return rc;
+    return 0;
 }
 
 /**
@@ -1328,10 +1308,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     struct temp_cursor *dbc = NULL;
 
     /* lock the table (it should get no more access anway) */
-    if ((rc = pthread_mutex_lock(&tran->store_mtx))) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_lock: error code %d\n", rc);
-        return rc;
-    }
+    Pthread_mutex_lock(&tran->store_mtx);
 
     *nops = 0;
 
@@ -1353,9 +1330,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     /* create a cursor */
     dbc = bdb_temp_table_cursor(thedb->bdb_env, tran->db, NULL, &bdberr);
     if (!dbc || bdberr) {
-        if ((rc = pthread_mutex_unlock(&tran->store_mtx))) {
-            logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
-        }
+        Pthread_mutex_unlock(&tran->store_mtx);
         logmsg(LOGMSG_ERROR, "%s: failed to create cursor bdberr = %d\n", __func__,
                 bdberr);
         return ERR_INTERNAL;
@@ -1373,10 +1348,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
         }
     }
 
-    if ((rc = pthread_mutex_unlock(&tran->store_mtx)) != 0) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
-        return rc;
-    }
+    Pthread_mutex_unlock(&tran->store_mtx);
 
     /* close the cursor */
     rc = bdb_temp_table_close_cursor(thedb->bdb_env, dbc, &bdberr);
@@ -1399,10 +1371,7 @@ static int osql_bplog_wait(blocksql_tran_t *tran)
     tm_s.tv_sec += gbl_osql_blockproc_timeout_sec;
 
     /* signal block processor that one done event arrived */
-    if ((rc = pthread_mutex_lock(&tran->mtx))) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_lock: error code %d\n", rc);
-        return rc;
-    }
+    Pthread_mutex_lock(&tran->mtx);
 
     if (tran->dowait) {
 #if 0
@@ -1410,7 +1379,7 @@ static int osql_bplog_wait(blocksql_tran_t *tran)
 #endif
         rc = pthread_cond_timedwait(&tran->cond, &tran->mtx, &tm_s);
         if (rc && rc != ETIMEDOUT) {
-            logmsg(LOGMSG_ERROR, "pthread_cond_wait: error code %d\n", rc);
+            logmsg(LOGMSG_ERROR, "Pthread_cond_wait: error code %d\n", rc);
             return rc;
         }
 
@@ -1419,10 +1388,7 @@ static int osql_bplog_wait(blocksql_tran_t *tran)
         tran->dowait = 1;
     }
 
-    if ((rc = pthread_mutex_unlock(&tran->mtx))) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_lock: error code %d\n", rc);
-        return rc;
-    }
+    Pthread_mutex_unlock(&tran->mtx);
 
     return rc;
 }
@@ -1570,9 +1536,9 @@ void *osql_commit_timepart_resuming_sc(void *p)
     iq.sc = sc = sc_pending;
     sc_pending = NULL;
     while (sc != NULL) {
-        pthread_mutex_lock(&sc->mtx);
+        Pthread_mutex_lock(&sc->mtx);
         sc->nothrevent = 1;
-        pthread_mutex_unlock(&sc->mtx);
+        Pthread_mutex_unlock(&sc->mtx);
         iq.sc = sc->sc_next;
         if (sc->sc_rc == SC_COMMIT_PENDING) {
             sc->sc_next = sc_pending;

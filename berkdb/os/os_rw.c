@@ -54,6 +54,7 @@ static const char revid[] = "$Id: os_rw.c,v 11.30 2003/05/23 21:19:05 bostic Exp
 
 #include <poll.h>
 #include "logmsg.h"
+#include "locks_wrap.h"
 
 uint64_t bb_berkdb_fasttime(void);
 
@@ -89,24 +90,16 @@ free_iobuf(void *p)
 	free(b);
 }
 
-static void
+static inline void
 init_iobuf(void)
 {
-	int rc;
-
-	rc = pthread_key_create(&iobufkey, free_iobuf);
-	if (rc) {
-		logmsg(LOGMSG_FATAL, "can't create iobuf key %d %s\n", rc,
-		    strerror(errno));
-		abort();
-	}
+	Pthread_key_create(&iobufkey, free_iobuf);
 }
 
 static void *
 get_aligned_buffer(void *buf, size_t bufsz, int copy)
 {
 	struct iobuf *b;
-	uintptr_t addr = (uintptr_t) buf;
 
 	b = pthread_getspecific(iobufkey);
 	if (b == NULL) {
@@ -120,7 +113,7 @@ get_aligned_buffer(void *buf, size_t bufsz, int copy)
 		if (b->buf == NULL)
 			return NULL;
 #endif
-		pthread_setspecific(iobufkey, b);
+		Pthread_setspecific(iobufkey, b);
 	} else if (b->sz < bufsz) {
 		free(b->buf);
 		b->buf = NULL;
@@ -1069,7 +1062,7 @@ __os_iov(dbenv, op, fhp, pgno, pagesize, bufs, nobufs, niop)
 {
 	int ret, i;
 	db_pgno_t c_pgno;
-	size_t single_niop, max_niop, max_bufs;
+	size_t single_niop, max_bufs;
 	struct timespec s, rem;
 	int rc;
 
@@ -1457,7 +1450,7 @@ static pthread_key_t berkdb_thread_stats_key;
 void
 bb_berkdb_thread_stats_init(void)
 {
-	pthread_key_create(&berkdb_thread_stats_key, free);
+	Pthread_key_create(&berkdb_thread_stats_key, free);
 	inited = 1;
 }
 
@@ -1472,7 +1465,7 @@ bb_berkdb_get_thread_stats(void)
 		p = pthread_getspecific(berkdb_thread_stats_key);
 		if (!p) {
 			p = calloc(1, sizeof(struct bb_berkdb_thread_stats));
-			pthread_setspecific(berkdb_thread_stats_key, p);
+			Pthread_setspecific(berkdb_thread_stats_key, p);
 		}
 		if (!p)
 			p = &junk;

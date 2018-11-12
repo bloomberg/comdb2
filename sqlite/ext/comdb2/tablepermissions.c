@@ -42,6 +42,11 @@ struct permissions_cursor {
   int nTables;
 };
 
+typedef struct {
+    sqlite3_vtab base; /* Base class - must be first */
+    sqlite3 *db;       /* To access registered system tables */
+} systbl_permissions_vtab;
+
 static int permissionsConnect(
   sqlite3 *db,
   void *pAux,
@@ -50,7 +55,7 @@ static int permissionsConnect(
   sqlite3_vtab **ppVtab,
   char **pErr
 ){
-  sqlite3_vtab *pNew;
+  systbl_permissions_vtab *pNew = NULL;
   int rc;
 
   /* Column numbers */
@@ -63,10 +68,14 @@ static int permissionsConnect(
   rc = sqlite3_declare_vtab(db, "CREATE TABLE comdb2_tablepermissions"
                                 "(tablename,username,READ,WRITE,DDL);");
   if( rc==SQLITE_OK ){
-    pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
+    pNew = sqlite3_malloc( sizeof(systbl_permissions_vtab) );
     if( pNew==0 ) return SQLITE_NOMEM;
-    memset(pNew, 0, sizeof(*pNew));
+    memset(pNew, 0, sizeof(systbl_permissions_vtab));
+    pNew->db = db;
   }
+
+  *ppVtab = (sqlite3_vtab *)pNew;
+
   return rc;
 }
 
@@ -79,13 +88,18 @@ static int permissionsDisconnect(sqlite3_vtab *pVtab){
 }
 
 static int permissionsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
+  systbl_permissions_vtab *vtab = (systbl_permissions_vtab *)p;
+
   permissions_cursor *pCur = sqlite3_malloc(sizeof(*pCur));
   if( pCur==0 ) return SQLITE_NOMEM;
   memset(pCur, 0, sizeof(*pCur));
+
   struct sql_thread *thd = pthread_getspecific(query_info_key);
   char *usr = thd->clnt->user;
+
   rdlock_schema_lk();
-  pCur->ppTables = sqlite3_malloc(sizeof(char*) * thedb->num_dbs);
+  pCur->ppTables = sqlite3_malloc(sizeof(char*) * (thedb->num_dbs +
+                                                   vtab->db->aModule.count));
   for(int i=0;i<thedb->num_dbs;++i) {
     // skip sqlite_stat* ?
     char *tbl = thedb->dbs[i]->tablename;
@@ -97,6 +111,14 @@ static int permissionsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   }
   bdb_user_get_all(&pCur->ppUsers, &pCur->nUsers);
   unlock_schema_lk();
+
+  HashElem *systbl;
+  for(systbl = sqliteHashFirst(&vtab->db->aModule);
+      systbl;
+      systbl = sqliteHashNext(systbl)) {
+    pCur->ppTables[pCur->nTables++] = strdup(systbl->pKey);
+  }
+
   *ppCursor = &pCur->base;
   return SQLITE_OK;
 }
@@ -163,7 +185,7 @@ static int permissionsColumn(
     }
   }
   return SQLITE_OK;
-};
+}
 
 static int permissionsRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){
   permissions_cursor *pCur = (permissions_cursor*)cur;

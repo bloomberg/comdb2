@@ -23,6 +23,7 @@
 #include "build/db.h"
 #include "dbinc/db_swap.h"
 #include "dbinc_auto/txn_auto.h"
+#include "comdb2systbl.h"
 
 /* Column numbers */
 #define TRANLOG_COLUMN_START        0
@@ -64,6 +65,7 @@ static int tranlogConnect(
 ){
   sqlite3_vtab *pNew;
   int rc;
+
   rc = sqlite3_declare_vtab(db,
      "CREATE TABLE x(minlsn hidden,maxlsn hidden, flags hidden,lsn,rectype integer,generation integer,timestamp integer,payload)");
   if( rc==SQLITE_OK ){
@@ -81,6 +83,7 @@ static int tranlogDisconnect(sqlite3_vtab *pVtab){
 
 static int tranlogOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   tranlog_cursor *pCur;
+
   pCur = sqlite3_malloc( sizeof(*pCur) );
   if( pCur==0 ) return SQLITE_NOMEM;
   memset(pCur, 0, sizeof(*pCur));
@@ -187,9 +190,9 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
           /* Wait on a condition variable */
           clock_gettime(CLOCK_REALTIME, &ts);
           ts.tv_nsec += (200 * 1000000);
-          pthread_mutex_lock(&gbl_durable_lsn_lk);
+          Pthread_mutex_lock(&gbl_durable_lsn_lk);
           pthread_cond_timedwait(&gbl_durable_lsn_cond, &gbl_durable_lsn_lk, &ts);
-          pthread_mutex_unlock(&gbl_durable_lsn_lk);
+          Pthread_mutex_unlock(&gbl_durable_lsn_lk);
 
       } while (1);
   }
@@ -205,9 +208,9 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
               struct timespec ts;
               clock_gettime(CLOCK_REALTIME, &ts);
               ts.tv_nsec += (200 * 1000000);
-              pthread_mutex_lock(&gbl_logput_lk);
+              Pthread_mutex_lock(&gbl_logput_lk);
               pthread_cond_timedwait(&gbl_logput_cond, &gbl_logput_lk, &ts);
-              pthread_mutex_unlock(&gbl_logput_lk);
+              Pthread_mutex_unlock(&gbl_logput_lk);
 
               int sleepms = 100;
               while (bdb_the_lock_desired()) {
@@ -582,6 +585,7 @@ sqlite3_module systblTransactionLogsModule = {
   0,                         /* xRollback */
   0,                         /* xFindMethod */
   0,                         /* xRename */
+  .access_flag = CDB2_ALLOW_USER
 };
 
 

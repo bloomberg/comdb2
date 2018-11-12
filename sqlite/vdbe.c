@@ -4776,9 +4776,13 @@ case OP_NewRowid: {           /* out2 */
   i64 v;                 /* The new rowid */
   VdbeCursor *pC;        /* Cursor of table to get the new rowid */
   int res;               /* Result of an sqlite3BtreeLast() */
+#ifndef SQLITE_BUILDING_FOR_COMDB2
   int cnt;               /* Counter to limit the number of searches */
+#endif
+#ifndef SQLITE_OMIT_AUTOINCREMENT
   Mem *pMem;             /* Register holding largest rowid for AUTOINCREMENT */
   VdbeFrame *pFrame;     /* Root frame of VDBE */
+#endif
 
   v = 0;
   res = 0;
@@ -7136,6 +7140,12 @@ case OP_VOpen: {
     goto abort_due_to_error;
   }
   pModule = pVtab->pModule;
+
+  /* COMDB2 MODIFICATION */
+  int comdb2_check_vtab_access(sqlite3*, sqlite3_module*);
+  rc = comdb2_check_vtab_access(db, pModule);
+  if( rc ) goto abort_due_to_error;
+
   rc = pModule->xOpen(pVtab, &pVCur);
   sqlite3VtabImportErrmsg(p, pVtab);
   if( rc ) goto abort_due_to_error;

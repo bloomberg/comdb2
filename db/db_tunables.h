@@ -1004,7 +1004,10 @@ REGISTER_TUNABLE("sort_nulls_with_header",
                  TUNABLE_BOOLEAN, &gbl_sort_nulls_correctly, READONLY | NOARG,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("spfile", NULL, TUNABLE_STRING, &gbl_spfile_name, READONLY,
-                 NULL, NULL, spfile_update, NULL);
+                 NULL, NULL, file_update, NULL);
+REGISTER_TUNABLE("timepartitions", NULL, TUNABLE_STRING,
+                 &gbl_timepart_file_name, READONLY, NULL, NULL, file_update,
+                 NULL);
 REGISTER_TUNABLE("sqlflush", "Force flushing the current record "
                              "stream to client every specified "
                              "number of records. (Default: 0)",

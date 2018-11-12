@@ -516,7 +516,6 @@ __memp_stat_hash(reginfo, mp, dirtyp)
 	MPOOL *mp;
 	u_int32_t *dirtyp;
 {
-	DB_MPOOL_HASH *hp;
 	u_int32_t dirty;
 
 	dirty = (u_int32_t)mp->stat.st_page_dirty;

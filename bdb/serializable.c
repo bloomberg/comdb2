@@ -60,12 +60,10 @@ int serial_check_this_txn(bdb_state_type *bdb_state, DB_LSN lsn, void *ranges)
     DB_LOGC *cur = NULL;
     u_int32_t rectype = 0;
     void *key;
-    int idx;
 
     llog_undo_add_dta_args *add_dta;
     llog_undo_add_ix_args *add_ix;
     llog_ltran_commit_args *commit;
-    llog_ltran_start_args *start;
     llog_ltran_comprec_args *comprec;
     llog_undo_del_dta_args *del_dta;
     llog_undo_del_ix_args *del_ix;
@@ -347,7 +345,6 @@ static int osql_serial_check(bdb_state_type *bdb_state, void *ranges,
     DB_LSN prevlsn;
     DB_LSN curlsn;
     u_int32_t rectype = 0;
-    u_int32_t prev_rectype = 0;
     __txn_regop_args *argp = NULL;
     __txn_regop_gen_args *arggenp = NULL;
     __txn_regop_rowlocks_args *argrlp = NULL;

@@ -3,66 +3,13 @@ bash -n "$0" | exit 1
 
 dbname=$1
 
-echo "Starting socksql tests"
+echo "Starting tests"
 echo "Using SP_OPTIONS: $SP_OPTIONS"
 ./test.sh $dbname
 rc=$?
 if (( $rc != 0 )) ; then
-   echo "SOCKSQL FAILURE"
+   echo "FAILURE"
    exit 1
 fi
 
-echo "SOCKSQL SUCCESS"
-
-cdb2config=$CDB2_CONFIG
-cdb2options=$CDB2_OPTIONS
-snapdb=snapshot$dbname
-dbdir=$DBDIR
-
-DBNAME=$snapdb
-DBDIR=$TESTDIR/$DBNAME
-CDB2_CONFIG=$DBDIR/comdb2db.cfg
-CDB2_OPTIONS="--cdb2cfg $CDB2_CONFIG"
-
-echo "sql_tranlevel_default snapisol" > "$TESTDIR/customlrl"
-export CUSTOMLRLPATH=$TESTDIR/customlrl
-
-#setup another db with default transaction snapisol
-echo "Setting up snapshot db"
-timeout 2m ${TESTSROOTDIR}/setup &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.setup | cut -c11- | grep "^!" )
-rc=$?
-if [[ $rc -ne 0 ]]; then
-    echo "snapshot db setup failed (rc=$rc)"
-    $TESTSROOTDIR/unsetup &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.unsetup | cut -c11- | grep "^!" )
-    DBNAME=$dbname
-    DBDIR=$dbdir
-    CDB2_CONFIG=$cdb2config
-    CDB2_OPTIONS=$cdb2options
-    CUSTOMLRLPATH=''
-    exit 1
-fi
-
-echo "Starting snapshot tests"
-SP_OPTIONS="-s --cdb2cfg $CDB2_CONFIG $DBNAME default"
-echo "Using SP_OPTIONS: $SP_OPTIONS"
-./test.sh $snapdb
-rc=$?
-
-echo "Cleaning up snapshot db"
-successful=1
-if (( $rc != 0 )) ; then
-    successful=0
-fi
-${TESTSROOTDIR}/unsetup $successful &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.unsetup | cut -c11- | grep "^!" )
-
-DBNAME=$dbname
-DBDIR=$dbdir
-CDB2_CONFIG=$cdb2config
-CDB2_OPTIONS=$cdb2options
-
-if (( $rc != 0 )) ; then
-   echo "SNAPSHOT FAILURE"
-   exit 1
-fi
-
-echo "SNAPSHOT SUCCESS"
+echo "SUCCESS"

@@ -30,6 +30,7 @@ static const char revid[] = "$Id: db_cam.c,v 11.140 2003/11/18 18:20:48 mjc Exp 
 #include <pthread.h>
 
 #include <logmsg.h>
+#include <locks_wrap.h>
 
 #ifndef TESTSUITE
 extern pthread_key_t comdb2_open_key;
@@ -91,7 +92,7 @@ __db_c_close_ll(dbc, countmein)
 		p = pthread_getspecific(comdb2_open_key);
 		if (p) {
 			free(p);
-			pthread_setspecific(comdb2_open_key, NULL);
+			Pthread_setspecific(comdb2_open_key, NULL);
 		}
 		dbc->pp_allocated = 0;
 #endif
@@ -806,7 +807,7 @@ __db_c_idup(dbc_orig, dbcp, flags)
 				logmsg(LOGMSG_ERROR, "error allocating __dbg_free_cursor\n");
 			} else {
 				p->counter = 1;
-				pthread_setspecific(DBG_FREE_CURSOR, p);
+				Pthread_setspecific(DBG_FREE_CURSOR, p);
 			}
 		}
 #endif

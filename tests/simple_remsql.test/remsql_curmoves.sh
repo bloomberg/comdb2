@@ -8,9 +8,9 @@
 # <dbname> <autodbname> <dbdir> <testdir>
 a_remdbname=$1
 a_remcdb2config=$2
+#srcdb:
 a_dbname=$3
-a_dbdir=$4
-a_testdir=$5
+a_cdb2config=$4
 
 
 # find input files
@@ -86,7 +86,7 @@ for testcase in $files ; do
     if [[ -z $is_insert ]] ; then
 
       # run command
-      cmd="cdb2sql -s ${CDB2_OPTIONS} $a_dbname default - < $testcase > $output 2>&1"
+      cmd="cdb2sql -s --cdb2cfg ${a_cdb2config} $a_dbname default - < $testcase > $output 2>&1"
       echo $cmd
       eval $cmd
 

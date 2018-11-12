@@ -41,6 +41,7 @@ static const char revid[] = "$Id: lock_stat.c,v 11.44 2003/09/13 19:20:36 bostic
 #include <execinfo.h>
 #endif
 #include "logmsg.h"
+#include <locks_wrap.h>
 
 static void __lock_dump_locker __P((DB_LOCKTAB *, DB_LOCKER *, FILE *));
 static void __lock_dump_object __P((DB_LOCKTAB *, DB_LOCKOBJ *, FILE *, int));
@@ -338,7 +339,6 @@ __dump_lid_latches(dbenv, lid, fp)
 		    ((addr -(u_int8_t *) & region->latches[0])/sizeof(*latch));
 
 		for (lnode = latch->listhead; lnode; lnode = lnode->next) {
-			char fileid[DB_FILE_ID_LEN];
 			char *namep = NULL, *mode = NULL;
 			u_int8_t *ptr = lnode->lock;
 			db_pgno_t pgno;
@@ -388,8 +388,6 @@ __latch_dump_region_int(dbenv, fp)
 	DB_LOCKREGION *region = lt->reginfo.primary;
 	DB_LOCKERID_LATCH_LIST *lockerid_latches = region->lockerid_latches;
 	DB_LOCKERID_LATCH_NODE *lid = NULL;
-	DB_ILOCK_LATCH *lnode = NULL;
-	DB_LATCH *latch = NULL;
 
 	PANIC_CHECK(dbenv);
 	ENV_REQUIRES_CONFIG(dbenv, lt, "latch_dump_region", DB_INIT_LOCK);
@@ -401,14 +399,14 @@ __latch_dump_region_int(dbenv, fp)
 	    "Mode", "Page", "Filename");
 
 	for (idx = 0; idx < region->max_latch_lockerid; idx++) {
-		pthread_mutex_lock(&(lockerid_latches[idx].lock));
+		Pthread_mutex_lock(&(lockerid_latches[idx].lock));
 		lid = lockerid_latches[idx].head;
 
 		while (lid) {
 			__dump_lid_latches(dbenv, lid, fp);
 			lid = lid->next;
 		}
-		pthread_mutex_unlock(&(lockerid_latches[idx].lock));
+		Pthread_mutex_unlock(&(lockerid_latches[idx].lock));
 	}
 	return 0;
 }
@@ -440,7 +438,6 @@ __lock_locker_lockcount(dbenv, id, nlocks)
 	DB_LOCKTAB *lt = dbenv->lk_handle;
 	DB_LOCKREGION *region = lt->reginfo.primary;
 	DB_LOCKER *locker;
-	int ret = 0;
 
 	int ndx;
 
@@ -471,7 +468,6 @@ __lock_locker_pagelockcount(dbenv, id, nlocks)
 	DB_LOCKER *locker;
 	struct __db_lock *lp;
 	int cnt = 0;
-	int ret = 0;
 	int ndx;
 
 	LOCKER_INDX(lt, region, id, ndx)
@@ -748,7 +744,6 @@ __collect_lock(DB_LOCKTAB *lt, DB_LOCKER *lip, struct __db_lock *lp,
 static int
 __collect_locker(DB_LOCKTAB *lt, DB_LOCKER *lip, collect_locks_f func, void *arg)
 {
-	int have_waiters = 0;
 	struct __db_lock *lp;
 
 	lp = SH_LIST_FIRST(&lip->heldby, __db_lock);
@@ -765,7 +760,6 @@ __lock_collect(DB_ENV *dbenv, collect_locks_f func, void *arg)
 {
 	DB_LOCKTAB *lt;
 	DB_LOCKER *lip;
-	DB_LOCKOBJ *op;
 	DB_LOCKREGION *lrp;
 	int i, j;
 
@@ -858,7 +852,6 @@ __lock_dump_locker_int(lt, lip, fp, just_active_locks)
 				u_int32_t *fidp, type;
 				u_int8_t *ptr;
 				char *namep;
-				const char *mode, *status;
 
 				lockobj = lp->lockobj;
 				ptr = lockobj->lockobj.data;
@@ -1116,7 +1109,6 @@ __lock_printlock_int(lt, lp, ispgno, fp, just_active_locks)
 
 	/* see if its a comdb2 table lock */
 	else if (lockobj->lockobj.size == 32) {
-		char fileid[DB_FILE_ID_LEN];
 		char tablename[64];
 
 		bzero(tablename, 64);
@@ -1244,7 +1236,6 @@ berkdb_dump_locks_for_tran(DB_ENV *dbenv, DB_TXN *txn)
 	DB_LOCKREGION *lrp;
 	DB_LOCKER *lip;
 	int done = 0;
-	struct __db_lock *lp;
 	u_int32_t i;
 	u_int32_t j;
 

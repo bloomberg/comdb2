@@ -101,7 +101,6 @@ __os_fsync(dbenv, fhp)
 {
 	int ret, retries, ckalmn;
 	uint64_t x1 = 0, x2 = 0;
-	struct bb_berkdb_thread_stats *p, *t;
 
 	ckalmn = __berkdb_fsync_alarm_ms;
 

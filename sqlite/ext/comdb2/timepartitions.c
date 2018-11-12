@@ -21,6 +21,7 @@
 #endif
 
 #include "views.h"
+#include "comdb2systbl.h"
 
 typedef struct timepart_cursor timepart_cursor;
 struct timepart_cursor {
@@ -108,7 +109,7 @@ static int timepartColumn(
 
   timepart_systable_column(ctx, pCur->iRowid, i);
   return SQLITE_OK;
-};
+}
 
 /* cursor rowid */
 static int timepartRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){
@@ -165,6 +166,7 @@ const sqlite3_module systblTimepartModule = {
   0,                   /* xRollback */
   0,                   /* xFindMethod */
   0,                   /* xRename */
+  .access_flag = CDB2_ALLOW_USER,
 };
 
 static int timepartShardsConnect(
@@ -221,7 +223,7 @@ static int timepartShardsColumn(
 
   timepart_systable_shard_column(ctx, tpid, shardid, i);
   return SQLITE_OK;
-};
+}
 
 
 const sqlite3_module systblTimepartShardsModule = {
@@ -245,6 +247,7 @@ const sqlite3_module systblTimepartShardsModule = {
   0,                    /* xRollback */
   0,                    /* xFindMethod */
   0,                    /* xRename */
+  .access_flag = CDB2_ALLOW_USER,
 };
 
 
@@ -342,7 +345,7 @@ static int timepartEventsColumn(
 
   timepart_events_column(ctx, pCur->iRowid, i);
   return SQLITE_OK;
-};
+}
 
 
 const sqlite3_module systblTimepartEventsModule = {
@@ -366,6 +369,7 @@ const sqlite3_module systblTimepartEventsModule = {
   0,                    /* xRollback */
   0,                    /* xFindMethod */
   0,                    /* xRename */
+  .access_flag = CDB2_ALLOW_USER,
 };
 
 #endif /* SQLITE_BUILDING_FOR_COMDB2 */

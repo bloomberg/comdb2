@@ -49,6 +49,7 @@
 #include <bb_daemon.h>
 
 #include "cdb2sockpool.h"
+#include <locks_wrap.h>
 
 #define MAX_TYPESTR_LEN 2048
 
@@ -75,6 +76,8 @@ struct db_number_info {
     LINKC_T(struct db_number_info) linkv;
 };
 
+static hash_t *dbs_info_hash = NULL;
+
 struct client {
     /* client file descriptor */
     int fd;
@@ -97,11 +100,6 @@ static int foreground_mode = 0;
 
 static struct stat save_st;
 
-/* Keep a count of how many sockets we have per database number and which
- * dbnums are active.  This is all protected using the BB_MUTEX_SOCKET_POOL
- * lock. */
-static struct db_number_info *dbs_info;
-static int num_dbs;
 static LISTC_T(struct db_number_info) active_list;
 
 /* Keep an overall count of pooled sockets */
@@ -149,18 +147,14 @@ static int pthread_create_attrs(pthread_t *tid, int detachstate,
     pthread_t local_tid;
     if (!tid)
         tid = &local_tid;
-    rc = pthread_attr_init(&attr);
-    if (rc != 0) {
-        syslog(LOG_ERR, "%s:pthread_attr_init: %d %s\n", __func__, rc,
-               strerror(rc));
-        return -1;
-    }
+    Pthread_attr_init(&attr);
+
     if (stacksize > 0) {
         rc = pthread_attr_setstacksize(&attr, stacksize);
         if (rc != 0) {
             syslog(LOG_ERR, "%s:pthread_attr_getstacksize: %d %s\n", __func__,
                    rc, strerror(rc));
-            pthread_attr_destroy(&attr);
+            Pthread_attr_destroy(&attr);
             return -1;
         }
     }
@@ -168,17 +162,17 @@ static int pthread_create_attrs(pthread_t *tid, int detachstate,
     if (rc != 0) {
         syslog(LOG_ERR, "%s:pthread_attr_setdetachstate: %d %s\n", __func__, rc,
                strerror(rc));
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
         return -1;
     }
     rc = pthread_create(tid, &attr, start_routine, arg);
     if (rc != 0) {
         syslog(LOG_ERR, "%s:pthread_create: %d %s\n", __func__, rc,
                strerror(rc));
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
         return -1;
     }
-    pthread_attr_destroy(&attr);
+    Pthread_attr_destroy(&attr);
     return 0;
 }
 
@@ -193,11 +187,11 @@ static int get_num_clients()
 static int get_pooled_socket_count()
 {
     int pooled_sockets;
-    pthread_mutex_lock(&sockpool_lk);
+    Pthread_mutex_lock(&sockpool_lk);
     {
         pooled_sockets = pooled_socket_count;
     }
-    pthread_mutex_unlock(&sockpool_lk);
+    Pthread_mutex_unlock(&sockpool_lk);
     return pooled_sockets;
 }
 
@@ -216,12 +210,14 @@ static void fd_destructor(enum socket_pool_event event, const char *typestr,
     }
 
     pooled_socket_count--;
-
-    if (dbnum > 0 && dbnum < num_dbs) {
-        dbs_info[dbnum].pool_count--;
-        if (dbs_info[dbnum].pool_count == 0) {
-            /*comdb2_shm_clr_flag(dbnum, CMDB2_SHMFLG_FDAVAIL);*/
-            listc_rfl(&active_list, &dbs_info[dbnum]);
+    if (dbnum > 0) {
+        struct db_number_info *dbs_info;
+        dbs_info = hash_find(dbs_info_hash, &dbnum);
+        if (dbs_info) {
+            dbs_info->pool_count--;
+            if (dbs_info->pool_count == 0) {
+                listc_rfl(&active_list, dbs_info);
+            }
         }
     }
 }
@@ -489,7 +485,7 @@ void *client_thd(void *voidarg)
                 continue;
             }
 
-            if (msg0.dbnum < 0 || msg0.dbnum >= num_dbs) {
+            if (msg0.dbnum < 0) {
                 syslog(
                     LOG_NOTICE,
                     "%s: received fd for out of range dbnum %d typestr '%s'\n",
@@ -558,17 +554,24 @@ void *client_thd(void *voidarg)
              * pool it our destructor (fd_destructor) will be called and will
              * decrement the count.  Also of course light the shared memory
              * bit to indicate that we have fds available for this dbnum. */
-            pthread_mutex_lock(&sockpool_lk);
+            Pthread_mutex_lock(&sockpool_lk);
             {
                 pooled_socket_count++;
                 if (dbnum > 0) {
-                    if (dbs_info[dbnum].pool_count == 0) {
-                        listc_atl(&active_list, &dbs_info[dbnum]);
+                    struct db_number_info *dbs_info;
+                    dbs_info = hash_find(dbs_info_hash, &dbnum);
+                    if (dbs_info == NULL) {
+                        dbs_info = calloc(1, sizeof(struct db_number_info));
+                        dbs_info->dbnum = dbnum;
+                        hash_add(dbs_info_hash, dbs_info);
                     }
-                    dbs_info[dbnum].pool_count++;
+                    if (dbs_info->pool_count == 0) {
+                        listc_atl(&active_list, dbs_info);
+                    }
+                    dbs_info->pool_count++;
                 }
             }
-            pthread_mutex_unlock(&sockpool_lk);
+            Pthread_mutex_unlock(&sockpool_lk);
 
             clnt.stats.fds_donated++;
             gbl_stats.fds_donated++;
@@ -807,7 +810,7 @@ static void do_stat(void)
     syslog(LOG_INFO, "---\n");
     print_all_settings();
     syslog(LOG_INFO, "---\n");
-    pthread_mutex_lock(&sockpool_lk);
+    Pthread_mutex_lock(&sockpool_lk);
     syslog(LOG_INFO, "Currently holding sockets for %d discrete dbnums:\n",
            listc_size(&active_list));
     strbuf *stb = strbuf_new();
@@ -828,7 +831,7 @@ static void do_stat(void)
     if (count > 0)
         syslog(LOG_INFO, "%s", strbuf_buf(stb));
     strbuf_free(stb);
-    pthread_mutex_unlock(&sockpool_lk);
+    Pthread_mutex_unlock(&sockpool_lk);
     syslog(LOG_INFO, "---\n");
     LOCK(&client_lock)
     {
@@ -1175,16 +1178,7 @@ int main(int argc, char *argv[])
     socket_pool_set_max_fds(POOL_MAX_FDS);
     socket_pool_set_max_fds_per_typestr(POOL_MAX_FDS_PER_DB);
 
-    /*num_dbs = gbltbls_get_max_dbnum() + 1;*/
-    num_dbs = 262144;
-    dbs_info = calloc(num_dbs, sizeof(struct db_number_info));
-    if (!dbs_info) {
-        syslog(LOG_ERR, "Out of memory for %d dbs\n", num_dbs);
-        exit(1);
-    }
-    for (dbnum = 0; dbnum < num_dbs; dbnum++) {
-        dbs_info[dbnum].dbnum = dbnum;
-    }
+    dbs_info_hash = hash_init(sizeof(int32_t));
 
     listc_init(&active_list, offsetof(struct db_number_info, linkv));
     listc_init(&client_list, offsetof(struct client, linkv));

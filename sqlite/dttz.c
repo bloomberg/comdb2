@@ -323,9 +323,7 @@ static void daysFunc(sqlite3_context *context, int argc, sqlite3_value **argv){
 /* Seperate function with no args which gives microsecond precision for datetime. */
 static void currentTS(sqlite3_context *context, int argc, sqlite3_value **argv)
 {
-   struct timespec *tspec;
    dttz_t dt;
-   const unsigned char *msus;
    assert(context->pVdbe);
 
    timespec_to_dttz(&context->pVdbe->tspec, &dt, DTTZ_PREC_USEC);
@@ -341,7 +339,6 @@ extern pthread_key_t query_info_key;
 
 static void nowFunc(sqlite3_context *context, int argc, sqlite3_value **argv)
 {
-   struct timespec *tspec;
    dttz_t dt;
    int precision = 0;
    const unsigned char *msus;

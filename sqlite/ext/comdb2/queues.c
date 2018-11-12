@@ -116,6 +116,7 @@ static int get_stats(struct systbl_queues_cursor *pCur) {
 */
 static int systblQueuesOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   systbl_queues_cursor *pCur;
+
   pCur = sqlite3_malloc( sizeof(*pCur) );
   if( pCur==0 ) return SQLITE_NOMEM;
   memset(pCur, 0, sizeof(*pCur));
@@ -184,7 +185,7 @@ static int systblQueuesColumn(
     }
   }
   return SQLITE_OK;
-};
+}
 
 /*
 ** Return the rowid for the current row. The rowid is the just the
@@ -253,6 +254,7 @@ const sqlite3_module systblQueuesModule = {
   0,                            /* xRollback */
   0,                            /* xFindMethod */
   0,                            /* xRename */
+  .access_flag = CDB2_ALLOW_USER,
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \

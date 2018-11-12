@@ -81,6 +81,9 @@ static int systblTblSizeOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   if( pCur==0 ) return SQLITE_NOMEM;
   memset(pCur, 0, sizeof(*pCur));
   *ppCursor = &pCur->base;
+
+  comdb2_next_allowed_table(&pCur->iRowid);
+
   return SQLITE_OK;
 }
 
@@ -97,8 +100,8 @@ static int systblTblSizeClose(sqlite3_vtab_cursor *cur){
 */
 static int systblTblSizeNext(sqlite3_vtab_cursor *cur){
   systbl_tblsize_cursor *pCur = (systbl_tblsize_cursor*)cur;
-
   pCur->iRowid++;
+  comdb2_next_allowed_table(&pCur->iRowid);
   return SQLITE_OK;
 }
 
@@ -125,7 +128,7 @@ static int systblTblSizeColumn(
     }
   }
   return SQLITE_OK;
-};
+}
 
 /*
 ** Return the rowid for the current row. The rowid is the just the

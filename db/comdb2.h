@@ -26,6 +26,7 @@
 #define MAXVER 255
 
 #define SP_FILE_NAME "stored_procedures.sp"
+#define TIMEPART_FILE_NAME "time_partitions.tp"
 #define REPOP_QDB_FMT "%s/%s.%d.queuedb" /* /dir/dbname.num.ext */
 
 #define DEFAULT_USER "default"
@@ -2466,10 +2467,6 @@ void cleanup_sqlite_master();
 void create_sqlite_master();
 int destroy_sqlite_master(master_entry_t *, int);
 int new_indexes_syntax_check(struct ireq *iq, struct dbtable *db);
-void handle_isql(struct dbtable *db, SBUF2 *sb);
-void handle_timesql(SBUF2 *sb, struct dbtable *db);
-int handle_sql(SBUF2 *sb);
-int handle_llops(SBUF2 *sb, struct dbenv *dbenv);
 void sql_dump_running_statements(void);
 char *stradd(char **s1, char *s2, int freeit);
 void dbgtrace(int, char *, ...);
@@ -3374,7 +3371,7 @@ extern int gbl_max_sql_hint_cache;
 
 /* Remote cursor support */
 /* use portmux to open an SBUF2 to local db or proxied db */
-SBUF2 *connect_remote_db(const char *dbname, const char *service, char *host);
+SBUF2* connect_remote_db(const char *protocol, const char *dbname, const char *service, char *host, int use_cache);
 int get_rootpage_numbers(int nums);
 
 void sql_dump_hints(void);
@@ -3491,7 +3488,7 @@ int find_constraint(struct dbtable *db, constraint_t *ct);
 /**
  * Disconnect a socket and tries to save it in sockpool
  */
-void disconnect_remote_db(const char *dbname, const char *service, char *host,
+void disconnect_remote_db(const char *protocol, const char *dbname, const char *service, char *host,
                           SBUF2 **psb);
 
 void sbuf2gettimeout(SBUF2 *sb, int *read, int *write);

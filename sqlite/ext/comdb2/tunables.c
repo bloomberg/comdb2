@@ -29,8 +29,6 @@
 
 /*
   comdb2_tunables: query various attributes of tunables.
-
-  TODO(Nirbhay): Check user permissions
 */
 
 typedef struct {
@@ -133,7 +131,7 @@ static int systblTunablesColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,
     comdb2_tunable *tunable =
         gbl_tunables->array[((systbl_tunables_cursor *)cur)->rowid];
 
-    pthread_mutex_lock(&gbl_tunables->mu);
+    Pthread_mutex_lock(&gbl_tunables->mu);
 
     switch (pos) {
     case TUNABLES_COLUMN_NAME:
@@ -195,7 +193,7 @@ static int systblTunablesColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,
     default: assert(0);
     };
 
-    pthread_mutex_unlock(&gbl_tunables->mu);
+    Pthread_mutex_unlock(&gbl_tunables->mu);
 
     return SQLITE_OK;
 }
@@ -229,6 +227,7 @@ const sqlite3_module systblTunablesModule = {
     0,                        /* xRollback */
     0,                        /* xFindMethod */
     0,                        /* xRename */
+    .access_flag = CDB2_ALLOW_USER,
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2))       \

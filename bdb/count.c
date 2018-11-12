@@ -51,11 +51,8 @@ int bdb_count_int(bdb_state_type *bdb_state, int *bdberr)
     DBC *dbcp;
     int lowrecnum;
     int highrecnum;
-    int lowrrn;
-    int highrrn;
     int numrecs;
     int smallest_index = 0;
-    const int BUFFER_LENGTH = 1024 * 1024;
 
     size_t buffer_length;
     void *buffer;

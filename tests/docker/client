@@ -8,6 +8,7 @@ chmod 700 ~/.ssh/id_rsa
 cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
 export CLUSTER="$(cat common/cluster)"
 echo "CLUSTER is $CLUSTER"
+export DEDICATED_NETWORK_SUFFIXES='-n3 -n4'
 
 # wait for all the nodes to signal that they're ready
 numnodes=0

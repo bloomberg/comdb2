@@ -293,7 +293,6 @@ int local_replicant_log_delete_for_update(struct ireq *iq, void *trans, int rrn,
 {
     /* log the delete.  once the update succeeds we log the add
        - otherwise the whole thing gets aborted. */
-    long long id;
     struct dbtable *savedb;
     struct delop {
         char table[MAXTABLELEN];
@@ -391,7 +390,6 @@ int local_replicant_log_add_for_update(struct ireq *iq, void *trans, int rrn,
     struct dbtable *savedb;
     int fndlen;
     int odsz, clsz;
-    unsigned long long oldgenid;
     int rc;
     int using_newblobs = 0;
     blob_status_t newblobs[MAXBLOBS] = {0};
@@ -658,7 +656,6 @@ int add_oplog_entry(struct ireq *iq, void *trans, int type, void *logrec,
     unsigned long long genid = 0;
     struct oprec rec;
     blob_buffer_t blobs[MAXBLOBS] = {0};
-    char *p;
     struct dbtable *db;
     struct ireq aiq;
 

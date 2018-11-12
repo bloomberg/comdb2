@@ -1,0 +1,1 @@
+select max(id) from t

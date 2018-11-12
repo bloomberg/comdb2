@@ -33,7 +33,6 @@
  */
 static int db_cluster(Lua L)
 {
-    char *hosts[REPMAX];
     int nnodes;
     struct host_node_info nodes[REPMAX];
 
@@ -83,14 +82,12 @@ static int db_cluster(Lua L)
  *
  */
 static int db_comdbg_tables(Lua L) {
-    struct dbtable *db;
     int rownum = 1;
 
     /* TODO: locking protocol for this is... */
     lua_createtable(L, 0, 0);
     for (int dbn = 0; dbn < thedb->num_dbs; dbn++) {
-        struct dbtable *db;
-        db = thedb->dbs[dbn];
+        struct dbtable *db = thedb->dbs[dbn];
         if (db->dbnum) {
             for (int ix = 0; ix < db->nix; ix++) {
                 lua_createtable(L, 8, 0); 
@@ -207,9 +204,9 @@ static int db_comdb_analyze(Lua L) {
 static int db_comdb_verify(Lua L) {
     SP sp = getsp(L);
     sp->max_num_instructions = 1000000; //allow large number of steps
-    char *tbl = NULL;
+    char *tblname = NULL;
     if (lua_isstring(L, 1)) {
-        tbl = (char *) lua_tostring(L, -1);
+        tblname = (char *) lua_tostring(L, -1);
     }
 
     char *cols[] = {"out"};
@@ -218,26 +215,20 @@ static int db_comdb_verify(Lua L) {
 
     int rc = 0;
 
-    if (!tbl || strlen(tbl) < 1) {
+    if (!tblname || strlen(tblname) < 1) {
         db_verify_table_callback(L, "Usage: verify(\"<table>\")");
         return luaL_error(L, "Verify failed.");
     }
 
-    struct dbtable *t;
-    int found = 0;
-    for (int dbn = 0; dbn < thedb->num_dbs; dbn++) {
-        struct dbtable *t = thedb->dbs[dbn];
-        if (strcmp(tbl, t->tablename) == 0) {
-            found = 1;
-            break;
-        }
-    }
-    if (found) {
-        logmsg(LOGMSG_USER, "db_comdb_verify: verify table '%s'\n", tbl);
-        rc = verify_table(tbl, NULL, 1, 0, db_verify_table_callback, L); //freq 1, fix 0
+    struct dbtable *db = get_dbtable_by_name(tblname);
+    if (db) {
+        logmsg(LOGMSG_USER, "db_comdb_verify: verify table '%s'\n", tblname);
+        rc = verify_table(tblname, NULL, 1, 0, db_verify_table_callback, L); //freq 1, fix 0
     }
     else {
-        db_verify_table_callback(L, "Table does not exist.");
+        char buf[128] = {0};
+        snprintf(buf, sizeof(buf), "Table \"%s\" does not exist.", tblname);
+        db_verify_table_callback(L, buf);
         rc = 1;
     }
     if (rc) {
@@ -254,7 +245,6 @@ static int db_send(Lua L) {
     FILE *f;
     char buf[1024];
     int rownum = 1;
-    char *s;
     char *cmd;
 
     if (!lua_isstring(L, 1))

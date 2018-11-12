@@ -65,7 +65,6 @@ void perror_errnum(const char *s, int errnum)
             (void)strerror_r(errnum, errmsg, sizeof(errmsg));
     */
     char *errmsg;
-    char errmsgb[100];
 
 /* we use the deprecated sys_errlist, as strerror_r isnt available
    on the version of sunos we use (5.9) */
@@ -73,6 +72,7 @@ void perror_errnum(const char *s, int errnum)
 #ifdef _LINUX_SOURCE
     errmsg = strerror(errnum);
 #elif _SUN_SOURCE
+    char errmsgb[100];
     strerror_r(errnum, errmsgb, sizeof(errmsgb));
     errmsg = errmsgb;
 #else
@@ -99,7 +99,6 @@ int strcmpfunc(char **a, char **b, int len)
 u_int strhashfunc(u_char **keyp, int len)
 {
     unsigned hash;
-    int jj;
     u_char *key = *keyp;
     for (hash = 0; *key; key++)
         hash = ((hash % 8388013) << 8) + (TOUPPER(*key));
@@ -230,8 +229,6 @@ int rewrite_lrl_remove_tables(const char *lrlname)
     char line[1024];
     int ntables = 0;
     int err = 0;
-    int have_use_llmeta = 0;
-    int have_table_comment = 0;
 
     if (!lrlname)
         return 0;
@@ -296,6 +293,8 @@ int rewrite_lrl_remove_tables(const char *lrlname)
             continue;
         if (ltok && tokcmp(tok, ltok, "queuedb") == 0)
             continue;
+        if (ltok && tokcmp(tok, ltok, "timepartitions") == 0)
+            continue;
 
         /* echo the line back out unchanged */
         sbuf2printf(sbnew, "%s", line);
@@ -348,7 +347,8 @@ int rewrite_lrl_remove_tables(const char *lrlname)
 int rewrite_lrl_un_llmeta(const char *p_lrl_fname_in,
                           const char *p_lrl_fname_out, char *p_table_names[],
                           char *p_csc2_paths[], int table_nums[],
-                          size_t num_tables, char *out_lrl_dir, int has_sp)
+                          size_t num_tables, char *out_lrl_dir, int has_sp,
+                          int has_timepartitions)
 {
     unsigned i;
     int fd_out;
@@ -356,7 +356,6 @@ int rewrite_lrl_un_llmeta(const char *p_lrl_fname_in,
     SBUF2 *sb_out;
     SBUF2 *sb_in;
     char line[1024];
-    int ntables = 0;
 
     fd_in = open(p_lrl_fname_in, O_RDONLY);
     if (fd_in == -1) {
@@ -416,6 +415,12 @@ int rewrite_lrl_un_llmeta(const char *p_lrl_fname_in,
     if (has_sp) {
         sbuf2printf(sb_out, "spfile %s/%s_%s", out_lrl_dir, thedb->envname,
                     SP_FILE_NAME);
+        sbuf2printf(sb_out, "\n");
+    }
+
+    if (has_timepartitions) {
+        sbuf2printf(sb_out, "timepartitions %s/%s_%s", out_lrl_dir,
+                    thedb->envname, TIMEPART_FILE_NAME);
         sbuf2printf(sb_out, "\n");
     }
 

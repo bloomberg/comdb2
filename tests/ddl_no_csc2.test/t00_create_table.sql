@@ -344,3 +344,17 @@ DROP TABLE t1;
 DROP TABLE t2;
 
 CREATE TABLE t1(i INT, j DEFAULT 1) $$
+
+CREATE TABLE t1(v CSTRING(10), UNIQUE(CAST(v || 'aaa' AS CSTRING(10))))$$
+SELECT csc2 FROM sqlite_master WHERE tbl_name = 't1' AND type = 'table';
+DROP TABLE t1;
+
+# Test an invalid case of providing expression without CAST()
+CREATE TABLE t1(json vutf8(128), UNIQUE (json_extract(json, '$.a')))$$
+
+CREATE TABLE t1(json vutf8(128), UNIQUE (CAST(json_extract(json, '$.a') AS int)), UNIQUE (CAST(json_extract(json, '$.b') AS cstring(10)))) $$
+SELECT csc2 FROM sqlite_master WHERE tbl_name = 't1' AND type = 'table';
+INSERT INTO t1 VALUES ('{"a":0,"b":"zero"}'), ('{"a":1,"b":"one"}');
+INSERT INTO t1 VALUES ('{"a":0,"b":"zero"}'), ('{"a":1,"b":"one"}');
+SELECT * FROM t1;
+DROP TABLE t1;

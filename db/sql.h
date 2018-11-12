@@ -247,6 +247,7 @@ typedef struct sqlclntstate_fdb {
     char **fdb_ids;       /* the fdb for which we have affinity */
     char **fdb_nodes;     /* node numbers preferred for each fdb in fdb_ids */
     int *fdb_last_status; /* used to mark a node bad after a failure */
+    int failed_heartbeats; /* used to signal failed communication with remotes */
 } sqlclntstate_fdb_t;
 
 CurRange *currange_new();
@@ -277,29 +278,32 @@ enum {
   ERR_CONVERSION_DT = -5,
 };
 
-/* write response */
-enum WriteResponsesEnum {
-    RESPONSE_COLUMNS,
-    RESPONSE_COLUMNS_LUA,
-    RESPONSE_COLUMNS_STR,
-    RESPONSE_COST,
-    RESPONSE_DEBUG,
-    RESPONSE_EFFECTS,
-    RESPONSE_ERROR,
-    RESPONSE_ERROR_ACCESS,
-    RESPONSE_ERROR_BAD_STATE,
-    RESPONSE_ERROR_PREPARE,
-    RESPONSE_ERROR_PREPARE_RETRY,
-    RESPONSE_ERROR_REJECT,
-    RESPONSE_FLUSH,
-    RESPONSE_HEARTBEAT,
-    RESPONSE_ROW,
-    RESPONSE_ROW_LAST,
-    RESPONSE_ROW_LAST_DUMMY,
-    RESPONSE_ROW_LUA,
-    RESPONSE_ROW_STR,
-    RESPONSE_TRACE,
-};
+
+#define RESPONSE_TYPES                                                         \
+    XRESPONSE(RESPONSE_COLUMNS)                                                \
+    XRESPONSE(RESPONSE_COLUMNS_LUA)                                            \
+    XRESPONSE(RESPONSE_COLUMNS_STR)                                            \
+    XRESPONSE(RESPONSE_COST)                                                   \
+    XRESPONSE(RESPONSE_DEBUG)                                                  \
+    XRESPONSE(RESPONSE_EFFECTS)                                                \
+    XRESPONSE(RESPONSE_ERROR)                                                  \
+    XRESPONSE(RESPONSE_ERROR_ACCESS)                                           \
+    XRESPONSE(RESPONSE_ERROR_BAD_STATE)                                        \
+    XRESPONSE(RESPONSE_ERROR_PREPARE)                                          \
+    XRESPONSE(RESPONSE_ERROR_PREPARE_RETRY)                                    \
+    XRESPONSE(RESPONSE_ERROR_REJECT)                                           \
+    XRESPONSE(RESPONSE_FLUSH)                                                  \
+    XRESPONSE(RESPONSE_HEARTBEAT)                                              \
+    XRESPONSE(RESPONSE_ROW)                                                    \
+    XRESPONSE(RESPONSE_ROW_LAST)                                               \
+    XRESPONSE(RESPONSE_ROW_LAST_DUMMY)                                         \
+    XRESPONSE(RESPONSE_ROW_LUA)                                                \
+    XRESPONSE(RESPONSE_ROW_STR)                                                \
+    XRESPONSE(RESPONSE_TRACE)
+
+#define XRESPONSE(x) x,
+enum WriteResponsesEnum { RESPONSE_TYPES };
+#undef XRESPONSE
 
 /* read response */
 enum {
@@ -499,7 +503,6 @@ struct sqlclntstate {
     int trans_has_sp;
     struct stored_proc *sp;
     int exec_lua_thread;
-    int sp_cdata_sent;
     int want_stored_procedure_trace;
     int want_stored_procedure_debug;
     char spname[MAX_SPNAME + 1];
@@ -656,6 +659,15 @@ struct query_path_component {
     int nwrite;
     int nblobs;
     LINKC_T(struct query_path_component) lnk;
+};
+
+struct temptable {
+    struct temp_cursor *cursor;
+    struct temp_table *tbl;
+    int flags;
+    char *name;
+    Btree *owner;
+    pthread_mutex_t *lk;
 };
 
 struct Btree {
@@ -944,8 +956,8 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
 
 void clearClientSideRow(struct sqlclntstate *clnt);
 void comdb2_set_tmptbl_lk(pthread_mutex_t *);
-void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
-                      int rootpg);
+struct temptable get_tbl_by_rootpg(const sqlite3 *, int);
+void clone_temp_table(sqlite3 *, const sqlite3 *, const char *, struct temptable *);
 int sqlengine_prepare_engine(struct sqlthdstate *, struct sqlclntstate *,
                              int recreate);
 int sqlserver2sqlclient_error(int rc);
