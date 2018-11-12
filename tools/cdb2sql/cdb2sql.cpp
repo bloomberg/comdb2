@@ -679,7 +679,7 @@ static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
         if (printmode & DISP_CLASSIC)
             fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
         if (string_blobs) {
-            char *c = (char *) val;
+            char *c = (char *)val;
             int len = cdb2_column_size(cdb2h, col);
             fputc('\'', stdout);
             while (len > 0) {
@@ -752,46 +752,47 @@ static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
     }
 }
 
-class Result_buffer {
-private:
-    std::vector<int> width; /* Max display size per column */
+class Result_buffer
+{
+  private:
+    std::vector<int> column_type;  /* Column types */
+    std::vector<int> column_width; /* Max display size per column */
     std::list<std::list<std::string>> result;
     std::string errmsg;
     int print_separator();
+    /* Returns the number of characters in the string. Only supports utf-8. */
+    int num_chars(std::string str);
 
-public:
+  public:
     int append_header(cdb2_hndl_tp *hndl);
     int append_row(cdb2_hndl_tp *hndl);
     int append_column(cdb2_hndl_tp *hndl, int col);
     int print_result();
 };
 
-int Result_buffer::append_header(cdb2_hndl_tp *hndl) {
+int Result_buffer::append_header(cdb2_hndl_tp *hndl)
+{
     std::list<std::string> header;
-    int ncols;
-    char *col;
 
-    ncols = cdb2_numcolumns(cdb2h);
-    if (ncols == 0) {
-        return 0;
-    }
-
-    for (int i = 0; i < ncols; i ++) {
-        col = (char *) cdb2_column_name(cdb2h, i);
-        header.push_back(std::string(col));
-        width.push_back(strlen(col));
+    for (int i = 0; i < cdb2_numcolumns(cdb2h); i++) {
+        const char *column_name = (char *)cdb2_column_name(cdb2h, i);
+        header.push_back(std::string(column_name));
+        column_type.push_back(cdb2_column_type(hndl, i));
+        column_width.push_back(num_chars(column_name));
     }
     result.push_back(header);
     return 0;
 }
 
-int Result_buffer::append_row(cdb2_hndl_tp *hndl) {
+int Result_buffer::append_row(cdb2_hndl_tp *hndl)
+{
     std::list<std::string> row;
     result.push_back(row);
     return 0;
 }
 
-int Result_buffer::append_column(cdb2_hndl_tp *hndl, int col) {
+int Result_buffer::append_column(cdb2_hndl_tp *hndl, int col)
+{
     std::string column;
     char buffer[512];
     void *val;
@@ -802,7 +803,7 @@ int Result_buffer::append_column(cdb2_hndl_tp *hndl, int col) {
     if (val == NULL) {
         column = "NULL";
     } else {
-        switch (cdb2_column_type(hndl, col)) {
+        switch (column_type[col]) {
         case CDB2_INTEGER:
             column = std::to_string(*(long long *)val);
             break;
@@ -812,7 +813,7 @@ int Result_buffer::append_column(cdb2_hndl_tp *hndl, int col) {
             column = buffer;
             break;
         case CDB2_CSTRING: {
-            char *c = (char *) val;
+            char *c = (char *)val;
             column += "'";
 
             while (*c) {
@@ -829,7 +830,7 @@ int Result_buffer::append_column(cdb2_hndl_tp *hndl, int col) {
             int len = cdb2_column_size(cdb2h, col);
 
             if (string_blobs) {
-                char *c = (char *) val;
+                char *c = (char *)val;
                 column += '\'';
                 while (len > 0) {
                     if (isprint(*c) || *c == '\n' || *c == '\t') {
@@ -844,7 +845,7 @@ int Result_buffer::append_column(cdb2_hndl_tp *hndl, int col) {
                 column += '\'';
             } else {
                 column += "x'";
-                for (int i = 0; i < len; i ++) {
+                for (int i = 0; i < len; i++) {
                     snprintf(buffer, sizeof(buffer), "%02x",
                              (unsigned int)((char *)val)[i]);
                     column += buffer;
@@ -906,42 +907,33 @@ int Result_buffer::append_column(cdb2_hndl_tp *hndl, int col) {
         }
     }
 
+    int width;
+    if ((column_type[col] == CDB2_CSTRING)) {
+        width = num_chars(column);
+    } else {
+        width = column.length();
+    }
+    if (width > column_width[col]) {
+        column_width[col] = width;
+    }
+
     /* Append the column to the last row. */
     result.back().push_back(column);
-
-    /* Update the maximum display width. */
-    int disp_width;
-    if ((cdb2_column_type(hndl, col) == CDB2_CSTRING)) {
-        const char *str = column.c_str();
-        int count = 0;
-        while (*str) {
-            // count all but 10xxxxxx
-            if (((*str) & 0xc0) != 0x80) {
-                count ++;
-            }
-            str ++;
-        }
-        disp_width = count;
-    } else {
-        disp_width = column.length();
-    }
-    if (disp_width > width[col]) {
-        width[col] = disp_width;
-    }
 
     return 0;
 }
 
-int Result_buffer::print_separator() {
+int Result_buffer::print_separator()
+{
     std::ostream &out = (printmode & DISP_STDERR) ? std::cerr : std::cout;
 
     out << "+";
-    for (int i = 0; i < width.size(); i ++) {
-        for (int j = 0; j < width[i] + 2; j ++) {
+    for (int i = 0; i < column_width.size(); i++) {
+        for (int j = 0; j < column_width[i] + 2; j++) {
             out << "-";
         }
 
-        if (i < (width.size() - 1)) {
+        if (i < (column_width.size() - 1)) {
             out << "+";
         }
     }
@@ -950,13 +942,14 @@ int Result_buffer::print_separator() {
     return 0;
 }
 
-int Result_buffer::print_result() {
+int Result_buffer::print_result()
+{
     int col;
     int spaces;
     bool is_header = true;
     std::ostream &out = (printmode & DISP_STDERR) ? std::cerr : std::cout;
 
-    if (width.size() == 0) {
+    if (column_width.size() == 0) {
         return 0;
     }
 
@@ -970,13 +963,17 @@ int Result_buffer::print_result() {
             std::string column = row.front();
             out << " " << column;
             /* Fill spaces */
-            spaces = width[col] - column.length();
-            for (int i = 0; i < spaces; i ++) {
+            if (column_type[col] == CDB2_CSTRING) {
+                spaces = column_width[col] - num_chars(column);
+            } else {
+                spaces = column_width[col] - column.length();
+            }
+            for (int i = 0; i < spaces; i++) {
                 out << " ";
             }
             out << " |";
             row.pop_front();
-            col ++;
+            col++;
         }
         out << std::endl;
 
@@ -988,6 +985,20 @@ int Result_buffer::print_result() {
         }
     }
     return 0;
+}
+
+int Result_buffer::num_chars(std::string str)
+{
+    const char *c_str = str.c_str();
+    int count = 0;
+    while (*c_str) {
+        /* UTF-8 encoding: Count all but 10xxxxxx */
+        if (((*c_str) & 0xc0) != 0x80) {
+            count ++;
+        }
+        c_str++;
+    }
+    return count;
 }
 
 static int run_statement(const char *sql, int ntypes, int *types,
@@ -1148,9 +1159,8 @@ static int run_statement(const char *sql, int ntypes, int *types,
 
     Result_buffer res;
 
-    if (printmode & DISP_TABULAR) {
-        res.append_header(cdb2h);
-    }
+    /* Whether header has been included */
+    bool header_added = false;
 
     /* Print rows */
     while ((rc = cdb2_next_record(cdb2h)) == CDB2_OK) {
@@ -1165,6 +1175,10 @@ static int run_statement(const char *sql, int ntypes, int *types,
             }
             printf(") values (");
         } else if (printmode & DISP_TABULAR) {
+            if (!header_added && (printmode & DISP_TABULAR)) {
+                res.append_header(cdb2h);
+                header_added = true;
+            }
             res.append_row(cdb2h);
         }
 
