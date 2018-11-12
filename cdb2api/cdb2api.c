@@ -3793,6 +3793,9 @@ read_record:
 
         /* Decrement retry counter: It is not a real retry. */
         --retries_done;
+        /* Resend client info (argv0, cheapstack and etc.)
+           over the SSL connection. */
+        hndl->sent_client_info = 0;
         GOTO_RETRY_QUERIES();
 #else
         sprintf(hndl->errstr, "%s: The database requires SSL connections.",

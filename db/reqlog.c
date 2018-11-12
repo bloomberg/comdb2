@@ -2085,6 +2085,8 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
                 old_entry = listc_rtl(&clntlru);
                 if (old_entry) {
                     hash_del(clientstats, old_entry);
+                    Pthread_mutex_destroy(&old_entry->mtx);
+                    time_metric_free(old_entry->rawtotals.svc_time);
                     free(old_entry);
                 } else {
                     logmsg(LOGMSG_ERROR,

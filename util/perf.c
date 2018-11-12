@@ -60,6 +60,15 @@ bad:
     return NULL;
 }
 
+void time_metric_free(struct time_metric *t)
+{
+    listc_rfl(&metrics, t);
+    Pthread_mutex_destroy(&t->lk);
+    free(t->name);
+    if (t->avg)
+        averager_destroy(t->avg);
+}
+
 void time_metric_add(struct time_metric *t, int value) {
     if (!gbl_timeseries_metrics)
         return;
