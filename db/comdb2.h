@@ -65,7 +65,6 @@ typedef long long tranid_t;
 #include <queue.h>
 #include <compile_time_assert.h>
 #include <history.h>
-#include <comdb2_info.h>
 #include <comdb2_dbinfo.h>
 #include <comdb2_trn_intrl.h>
 #include <sqlthdpool.h>

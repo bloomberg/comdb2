@@ -99,7 +99,6 @@ void berk_memp_sync_alarm_ms(int);
 #include "bdb_access.h"
 #include "analyze.h"
 
-#include "comdb2_info.h"
 #include "osqlcomm.h"
 #include <cdb2_constants.h>
 
