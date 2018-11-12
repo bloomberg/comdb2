@@ -994,7 +994,7 @@ int Result_buffer::num_chars(std::string str)
     while (*c_str) {
         /* UTF-8 encoding: Count all but 10xxxxxx */
         if (((*c_str) & 0xc0) != 0x80) {
-            count ++;
+            count++;
         }
         c_str++;
     }
