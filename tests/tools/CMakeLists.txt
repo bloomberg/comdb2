@@ -1,5 +1,6 @@
 include_directories(
   ${PROJECT_SOURCE_DIR}/bbinc
+  ${PROJECT_SOURCE_DIR}/sockpool
   ${PROJECT_SOURCE_DIR}/cdb2api
   ${PROJECT_SOURCE_DIR}/comdb2rle
   ${PROJECT_SOURCE_DIR}/datetime
