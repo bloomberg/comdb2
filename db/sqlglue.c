@@ -8787,10 +8787,9 @@ int get_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
     }
 
     if (clnt->gen_changed) {
-        logmsg(LOGMSG_ERROR,
+        logmsg(LOGMSG_DEBUG,
                "td %lu %s line %d calling get_curtran on gen_changed\n",
                pthread_self(), __func__, __LINE__);
-        cheap_stack_trace();
     }
 
 retry:
@@ -8823,10 +8822,9 @@ retry:
         bdb_put_cursortran(bdb_state, curtran_out, curtran_flags, &bdberr);
         curtran_out = NULL;
         clnt->gen_changed = 1;
-        logmsg(LOGMSG_ERROR, "td %u %s: failing because generation has changed: "
+        logmsg(LOGMSG_DEBUG, "td %u %s: failing because generation has changed: "
                         "orig-gen=%u, cur-gen=%u\n",
                 (uint32_t)pthread_self(), __func__, clnt->init_gen, curgen);
-        cheap_stack_trace();
         return -1;
     }
 
@@ -8890,15 +8888,14 @@ int put_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
     clnt->is_overlapping = 0;
 
     if (!clnt->dbtran.cursor_tran) {
-        logmsg(LOGMSG_ERROR, "%s called without curtran\n", __func__);
-        cheap_stack_trace();
+        logmsg(LOGMSG_DEBUG, "%s called without curtran\n", __func__);
         return -1;
     }
 
     rc = bdb_put_cursortran(bdb_state, clnt->dbtran.cursor_tran, curtran_flags,
                             &bdberr);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: %lu rc %d bdberror %d\n", __func__,
+        logmsg(LOGMSG_DEBUG, "%s: %lu rc %d bdberror %d\n", __func__,
                pthread_self(), rc, bdberr);
         ctrace("%s: rc %d bdberror %d\n", __func__, rc, bdberr);
         if (bdberr == BDBERR_BUG_KILLME) {
@@ -8996,7 +8993,7 @@ static void recover_deadlock_sc_cleanup(struct sql_thread *thd)
 /* BIG NOTE:
    carefull about double calling this function
  */
-int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
+static int recover_deadlock_flags_int(bdb_state_type *bdb_state, struct sql_thread *thd,
                            bdb_cursor_ifn_t *bdbcur, int sleepms,
                            uint32_t flags)
 {
@@ -9059,7 +9056,6 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
     rc = put_curtran_flags(thedb->bdb_env, clnt, curtran_flags);
     assert(bdb_lockref() == 0);
     if (rc) {
-        recover_deadlock_sc_cleanup(thd);
         if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS)) {
             logmsg(LOGMSG_ERROR, 
                     "%s: fail to put curtran, rc=%d, return changenode\n",
@@ -9126,8 +9122,6 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
         rc = get_curtran_flags(thedb->bdb_env, clnt, curtran_flags);
 
     if (rc) {
-        assert(bdb_lockref() == 0);
-        recover_deadlock_sc_cleanup(thd);
         if (rc == SQLITE_SCHEMA || rc == SQLITE_COMDB2SCHEMA) {
             logmsg(LOGMSG_ERROR, "%s: failing with SQLITE_COMDB2SCHEMA\n",
                    __func__);
@@ -9170,7 +9164,6 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
                     Pthread_mutex_unlock(&thd->lk);
                     logmsg(LOGMSG_ERROR, "bdb_cursor_lock returned %d %d\n", rc,
                             bdberr);
-                    recover_deadlock_sc_cleanup(thd);
                     return -700;
                 }
             }
@@ -9183,7 +9176,6 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
                        cur->db->tableversion);
                 sqlite3VdbeError(cur->vdbe, "table \"%s\" was schema changed",
                                  cur->db->tablename);
-                recover_deadlock_sc_cleanup(thd);
                 return SQLITE_COMDB2SCHEMA;
             } else if (!cur->bt->is_remote && cur->db) {
                 if (cur->ixnum == -1)
@@ -9204,7 +9196,6 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s returned %d %d\n", __func__, rc, bdberr);
             Pthread_mutex_unlock(&thd->lk);
-            recover_deadlock_sc_cleanup(thd);
             return -800;
         }
     }
@@ -9212,6 +9203,22 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
     Pthread_mutex_unlock(&thd->lk);
 
     return 0;
+}
+
+int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
+                           bdb_cursor_ifn_t *bdbcur, int sleepms,
+                           uint32_t flags)
+{
+    int rc;
+    rc = recover_deadlock_flags_int(bdb_state, thd, bdbcur, sleepms, flags);
+    if (rc != 0) {
+        put_curtran_flags(thedb->bdb_env, thd->clnt, CURTRAN_RECOVERY);
+        recover_deadlock_sc_cleanup(thd);
+        assert(bdb_lockref() == 0);
+    } else {
+        assert(bdb_lockref() > 0);
+    }
+    return rc;
 }
 
 int recover_deadlock(bdb_state_type *bdb_state, struct sql_thread *thd,

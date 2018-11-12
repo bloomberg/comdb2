@@ -2516,7 +2516,7 @@ int bdb_put_cursortran(bdb_state_type *bdb_state, cursor_tran_t *curtran,
     }
 
     if (!curtran) {
-        logmsg(LOGMSG_ERROR, "bdb_put_cursortran called with null curtran\n");
+        logmsg(LOGMSG_DEBUG, "bdb_put_cursortran called with null curtran\n");
         *bdberr = BDBERR_BADARGS;
         return -1;
     }
