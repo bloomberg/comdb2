@@ -3137,7 +3137,7 @@ static int cdb2_query_with_hint(cdb2_hndl_tp *hndl, const char *sqlquery,
        */
     *hint = malloc(fw_end + SQLCACHEHINTLENGTH + 4 + len_id + 1);
     strncpy(*hint, sqlstr, fw_end);
-    /* Add the CDB2_SQL HINT */
+    /* Add the SQL HINT */
     strncpy(*hint + fw_end, SQLCACHEHINT, SQLCACHEHINTLENGTH);
     strncpy(*hint + fw_end + SQLCACHEHINTLENGTH, short_identifier, len_id);
     strncpy(*hint + fw_end + SQLCACHEHINTLENGTH + len_id, " */ ", 5);
