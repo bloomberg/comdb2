@@ -295,4 +295,14 @@ assertbadexitcode $exitCode
 cdb2sql ${CDB2_OPTIONS} $a_dbn default "rebuild t4"
 cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.verify('t4')"
 
+echo "disable in-place updates when uniqnulls are enabled"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "create table t5 options ipu off { schema{ int i null=yes } keys { uniqnulls \"IDX\" = i} }"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.verify('t5')"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into t5 values (NULL)"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.verify('t5')"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "update t5 set i = NULL"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.verify('t5')"
+res=`cdb2sql --tabs ${CDB2_OPTIONS} $a_dbn default "select i from t5 order by i"`
+assertres "${res}" $'NULL'
+
 echo "Testcase passed."
