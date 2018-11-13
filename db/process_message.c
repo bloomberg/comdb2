@@ -4772,32 +4772,35 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "logmsg") == 0) {
         logmsg_process_message(line, lline);
     } else {
-        comdb2_tunable_err rc;
+        // see if any plugins know how to handle this
+        struct message_handler *h;
+        rc = 1;
+        LISTC_FOR_EACH(&dbenv->message_handlers, h, lnk)
+        {
+            rc = h->handle(dbenv, line + start_st);
+            if (rc == 0)
+                break;
+        }
 
-        /*
-          As we are here, it could be a dynamic tunable. Let's try looking
-          it up in the global tunables' list and updating it, if found.
-        */
-        rc = handle_lrl_tunable(tok, ltok, line + st, lline - st, DYNAMIC);
-        switch (rc) {
-        case TUNABLE_ERR_OK: break;
-        case TUNABLE_ERR_INVALID_TUNABLE: {
-            /* One more chance - this could be handled by a plugin */
-            struct message_handler *h;
-            LISTC_FOR_EACH(&dbenv->message_handlers, h, lnk) {
-                rc = h->handle(dbenv, line + start_st);
-                if (rc == 0)
-                    break;
-            }
-
-            if (rc)
+        if (rc) {
+            /*
+              Finally check if this is one of the dynamic tunables. Let's try
+              looking it up in the global tunables' list and updating it, if
+              found.
+            */
+            rc = handle_lrl_tunable(tok, ltok, line + st, lline - st, DYNAMIC);
+            switch (rc) {
+            case TUNABLE_ERR_OK:
+                return 0;
+            case TUNABLE_ERR_INVALID_TUNABLE:
                 logmsg(LOGMSG_ERROR, "Unknown command <%.*s>\n", ltok, tok);
-            break;
+                break;
+            default:
+                logmsg(LOGMSG_ERROR, "%s", tunable_error(rc));
+                break;
+            }
+            return -1;
         }
-        default:
-            logmsg(LOGMSG_ERROR, "%s", tunable_error(rc));
-        }
-        return rc;
     }
     return 0;
 }
