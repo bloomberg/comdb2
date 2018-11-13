@@ -76,6 +76,8 @@ struct db_number_info {
     LINKC_T(struct db_number_info) linkv;
 };
 
+static hash_t *dbs_info_hash = NULL;
+
 struct client {
     /* client file descriptor */
     int fd;
@@ -98,11 +100,6 @@ static int foreground_mode = 0;
 
 static struct stat save_st;
 
-/* Keep a count of how many sockets we have per database number and which
- * dbnums are active.  This is all protected using the BB_MUTEX_SOCKET_POOL
- * lock. */
-static struct db_number_info *dbs_info;
-static int num_dbs;
 static LISTC_T(struct db_number_info) active_list;
 
 /* Keep an overall count of pooled sockets */
@@ -213,12 +210,14 @@ static void fd_destructor(enum socket_pool_event event, const char *typestr,
     }
 
     pooled_socket_count--;
-
-    if (dbnum > 0 && dbnum < num_dbs) {
-        dbs_info[dbnum].pool_count--;
-        if (dbs_info[dbnum].pool_count == 0) {
-            /*comdb2_shm_clr_flag(dbnum, CMDB2_SHMFLG_FDAVAIL);*/
-            listc_rfl(&active_list, &dbs_info[dbnum]);
+    if (dbnum > 0) {
+        struct db_number_info *dbs_info;
+        dbs_info = hash_find(dbs_info_hash, &dbnum);
+        if (dbs_info) {
+            dbs_info->pool_count--;
+            if (dbs_info->pool_count == 0) {
+                listc_rfl(&active_list, dbs_info);
+            }
         }
     }
 }
@@ -486,7 +485,7 @@ void *client_thd(void *voidarg)
                 continue;
             }
 
-            if (msg0.dbnum < 0 || msg0.dbnum >= num_dbs) {
+            if (msg0.dbnum < 0) {
                 syslog(
                     LOG_NOTICE,
                     "%s: received fd for out of range dbnum %d typestr '%s'\n",
@@ -559,10 +558,17 @@ void *client_thd(void *voidarg)
             {
                 pooled_socket_count++;
                 if (dbnum > 0) {
-                    if (dbs_info[dbnum].pool_count == 0) {
-                        listc_atl(&active_list, &dbs_info[dbnum]);
+                    struct db_number_info *dbs_info;
+                    dbs_info = hash_find(dbs_info_hash, &dbnum);
+                    if (dbs_info == NULL) {
+                        dbs_info = calloc(1, sizeof(struct db_number_info));
+                        dbs_info->dbnum = dbnum;
+                        hash_add(dbs_info_hash, dbs_info);
                     }
-                    dbs_info[dbnum].pool_count++;
+                    if (dbs_info->pool_count == 0) {
+                        listc_atl(&active_list, dbs_info);
+                    }
+                    dbs_info->pool_count++;
                 }
             }
             Pthread_mutex_unlock(&sockpool_lk);
@@ -1172,16 +1178,7 @@ int main(int argc, char *argv[])
     socket_pool_set_max_fds(POOL_MAX_FDS);
     socket_pool_set_max_fds_per_typestr(POOL_MAX_FDS_PER_DB);
 
-    /*num_dbs = gbltbls_get_max_dbnum() + 1;*/
-    num_dbs = 262144;
-    dbs_info = calloc(num_dbs, sizeof(struct db_number_info));
-    if (!dbs_info) {
-        syslog(LOG_ERR, "Out of memory for %d dbs\n", num_dbs);
-        exit(1);
-    }
-    for (dbnum = 0; dbnum < num_dbs; dbnum++) {
-        dbs_info[dbnum].dbnum = dbnum;
-    }
+    dbs_info_hash = hash_init(sizeof(int32_t));
 
     listc_init(&active_list, offsetof(struct db_number_info, linkv));
     listc_init(&client_list, offsetof(struct client, linkv));

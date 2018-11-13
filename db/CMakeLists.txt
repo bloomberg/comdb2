@@ -68,7 +68,6 @@ set(src
   sqlmaster.c
   sqloffload.c
   sqlstat1.c
-  sqlsupport.c
   tag.c
   testcompr.c
   thrman.c
@@ -78,7 +77,6 @@ set(src
   trans.c
   translistener.c
   trigger.c
-  twophase.c
   utf8.c
   verify.c
   views.c

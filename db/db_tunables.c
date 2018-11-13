@@ -715,7 +715,7 @@ static int hostname_update(void *context, void *value)
 int ctrace_set_rollat(void *unused, void *value);
 
 /* Return the value for sql_tranlevel_default. */
-static void *sql_tranlevel_default_value()
+static void *sql_tranlevel_default_value(void *context)
 {
     switch (gbl_sql_tranlevel_default) {
     case SQL_TDEF_COMDB2: return "COMDB2";
@@ -758,7 +758,7 @@ static int sql_tranlevel_default_update(void *context, void *value)
     }
     gbl_sql_tranlevel_preserved = gbl_sql_tranlevel_default;
     logmsg(LOGMSG_USER, "Set default transaction level to %s\n",
-           (char *)sql_tranlevel_default_value());
+           (char *)sql_tranlevel_default_value(NULL));
     return 0;
 }
 

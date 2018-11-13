@@ -1,5 +1,5 @@
 /*
-   Copyright 2017 Bloomberg Finance L.P.
+   Copyright 2017, 2018 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -608,7 +608,7 @@ static int newsql_heartbeat(struct sqlclntstate *clnt)
         return 0;
     if (!clnt->ready_for_heartbeats)
         return 0;
-    return newsql_send_hdr(clnt, 0);
+    return newsql_send_hdr(clnt, RESPONSE_HEADER__SQL_RESPONSE_HEARTBEAT);
 }
 
 static int newsql_save_postponed_row(struct sqlclntstate *clnt,
