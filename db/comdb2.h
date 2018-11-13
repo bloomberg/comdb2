@@ -3334,11 +3334,11 @@ int dump_spfile(char *path, const char *dblrl, char *file_name);
 int read_spfile(char *file);
 
 struct bdb_cursor_ifn;
-int recover_deadlock(bdb_state_type *, struct sql_thread *,
-                     struct bdb_cursor_ifn *, int sleepms);
+
 int recover_deadlock_flags(bdb_state_type *, struct sql_thread *,
                            struct bdb_cursor_ifn *, int sleepms,
-                           uint32_t flags);
+                           const char *func, int line, uint32_t flags);
+#define recover_deadlock(state, thd, cur, sleepms) recover_deadlock_flags(state, thd, cur, sleepms, __func__, __LINE__, RECOVER_DEADLOCK_PTRACE)
 int pause_pagelock_cursors(void *arg);
 int count_pagelock_cursors(void *arg);
 int compare_indexes(const char *table, FILE *out);
@@ -3506,8 +3506,9 @@ void disconnect_remote_db(const char *protocol, const char *dbname, const char *
 void sbuf2gettimeout(SBUF2 *sb, int *read, int *write);
 int sbuf2fread_timeout(char *ptr, int size, int nitems, SBUF2 *sb,
                        int *was_timeout);
-int release_locks(const char *trace);
-int release_locks_flags(const char *trace, uint32_t flags);
+int release_locks_flags(const char *trace, const char *func, int line,
+                        uint32_t flags);
+#define release_locks(trace) release_locks_flags(trace, __func__, __LINE__, 0)
 
 unsigned long long verify_indexes(struct dbtable *db, uint8_t *rec,
                                   blob_buffer_t *blobs, size_t maxblobs,

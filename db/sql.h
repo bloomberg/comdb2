@@ -434,6 +434,10 @@ struct clnt_ddl_context {
     comdb2ma mem;
 };
 
+#if INSTRUMENT_RECOVER_DEADLOCK_FAILURE
+#define RECOVER_DEADLOCK_MAX_STACK 16348
+#endif
+
 /* Client specific sql state */
 struct sqlclntstate {
     /* appsock plugin specific data */
@@ -652,6 +656,12 @@ struct sqlclntstate {
     int recover_deadlock_rcode;
     int heartbeat_lock;
     int skip_recover_deadlock;
+#ifdef INSTRUMENT_RECOVER_DEADLOCK_FAILURE
+    const char *recover_deadlock_func;
+    int recover_deadlock_line;
+    pthread_t recover_deadlock_thd;
+    char recover_deadlock_stack[RECOVER_DEADLOCK_MAX_STACK];
+#endif
 };
 
 /* Query stats. */

@@ -292,17 +292,18 @@ again:
                 clnt->emitting_flag = 0;
             return rc;
         }
-   } else {
+    } else {
         Pthread_mutex_lock(&clnt->write_lock);
     }
     if (clnt->heartbeat_lock && thd) {
         if (clnt->need_recover_deadlock) {
-            if (!clnt->recover_deadlock_rcode && !clnt->skip_recover_deadlock) {
-                clnt->recover_deadlock_rcode = recover_deadlock_flags(
-                        thedb->bdb_env, thd, NULL, 0, flags);
-            }
+            /* Call only if there isn't a previous failure */
+            if (!clnt->recover_deadlock_rcode && !clnt->skip_recover_deadlock)
+                recover_deadlock_flags(thedb->bdb_env, thd, NULL, 0, __func__,
+                        __LINE__, flags);
             clnt->need_recover_deadlock = 0;
-            if (clnt->recover_deadlock_rcode) {
+            if (clnt->recover_deadlock_rcode || 
+                    clnt->skip_recover_deadlock) {
                 assert(bdb_lockref() == 0);
                 logmsg(LOGMSG_WARN, "%s recover_deadlock returned %d\n",
                        __func__, clnt->recover_deadlock_rcode);
@@ -362,21 +363,11 @@ void handle_failed_recover_deadlock(struct sqlclntstate *clnt,
 
 int write_response(struct sqlclntstate *clnt, int R, void *D, int I)
 {
-    int rc, rd_rc;
 #ifdef DEBUG
     logmsg(LOGMSG_DEBUG, "write_response(%s,%p,%d)\n", WriteRespString[R], D,
            I);
 #endif
-    rc = clnt->plugin.write_response(clnt, R, D, I);
-
-    if (R != RESPONSE_HEARTBEAT && (rd_rc = clnt->recover_deadlock_rcode)) {
-        clnt->skip_recover_deadlock = 1;
-        clnt->recover_deadlock_rcode = 0;
-        handle_failed_recover_deadlock(clnt, rd_rc);
-        clnt->skip_recover_deadlock = 0;
-        rc = !rc ? rd_rc : rc;
-    }
-    return rc;
+    return clnt->plugin.write_response(clnt, R, D, I);
 }
 
 int read_response(struct sqlclntstate *clnt, int R, void *D, int I)
@@ -1158,7 +1149,6 @@ static int handle_sql_wrongstate(struct sqlthdstate *thd,
                                  struct sqlclntstate *clnt)
 {
 
-
     sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
 
     reqlog_new_sql_request(thd->logger, clnt->sql);
@@ -1671,7 +1661,8 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
     /* if this is a retry, let the upper layer free the structure */
     if (clnt->osql.replay == OSQL_RETRY_NONE) {
         if (srs_tran_destroy(clnt))
-            logmsg(LOGMSG_ERROR, "Fail to destroy transaction replay session\n");
+            logmsg(LOGMSG_ERROR,
+                   "Fail to destroy transaction replay session\n");
     }
 
 done:
@@ -2268,11 +2259,12 @@ static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     return SQLITE_OK;
 }
 
-int release_locks_flags(const char *trace, uint32_t flags)
+int release_locks_flags(const char *trace, const char *func, int line,
+        uint32_t flags)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd ? thd->clnt : NULL;
-    int rc = 0;
+    int rc = -1;
 
     if (clnt && clnt->dbtran.cursor_tran) {
         extern int gbl_sql_release_locks_trace;
@@ -2280,14 +2272,10 @@ int release_locks_flags(const char *trace, uint32_t flags)
             logmsg(LOGMSG_USER, "Releasing locks for lockid %d, %s\n",
                    bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran),
                    trace);
-        rc = recover_deadlock_flags(thedb->bdb_env, thd, NULL, -1, flags);
+        rc = recover_deadlock_flags(thedb->bdb_env, thd, NULL, -1, func, line,
+                flags);
     }
     return rc;
-}
-
-int release_locks(const char *trace)
-{
-    return release_locks_flags(trace, 0);
 }
 
 /* Release-locks if rep-thread is blocked longer than this many ms */
@@ -3233,6 +3221,21 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
     return 0;
 }
 
+static inline int check_recover_deadlock(struct sqlclntstate *clnt)
+{
+    int rc;
+
+    if ((rc = clnt->recover_deadlock_rcode)) {
+        clnt->skip_recover_deadlock = 1;
+        clnt->recover_deadlock_rcode = 0;
+        handle_failed_recover_deadlock(clnt, rc);
+        clnt->skip_recover_deadlock = 0;
+        logmsg(LOGMSG_ERROR, "%s: failing on recover_deadlock error\n",
+                __func__);
+    }
+    return rc;
+}
+
 /* The design choice here for communication is to send row data inside this
    function, and delegate the error sending to the caller (since we send
    multiple rows, but we send error only once and stop processing at that time)
@@ -3638,9 +3641,9 @@ check_version:
                 rc = views_sqlite_update(thedb->timepart_views, thd->sqldb,
                                          &xerr, 0);
                 if (rc != VIEW_NOERR) {
-                    logmsg(LOGMSG_FATAL, 
-                            "failed to create views rc=%d errstr=\"%s\"\n",
-                            xerr.errval, xerr.errstr);
+                    logmsg(LOGMSG_FATAL,
+                           "failed to create views rc=%d errstr=\"%s\"\n",
+                           xerr.errval, xerr.errstr);
                     /* there is no really way forward */
                     abort();
                 }
@@ -4460,9 +4463,8 @@ static inline int sql_writer_recover_deadlock(struct sqlclntstate *clnt)
                        count);
             }
             pthread_cond_timedwait(&clnt->write_cond, &clnt->write_lock, &ts);
-            assert(clnt->emitting_flag);
-            assert(!clnt->done);
-        } while (clnt->need_recover_deadlock == 1);
+        /* Must check emitting_flag && done to handle trylock failures */
+        } while (clnt->need_recover_deadlock == 1 && clnt->emitting_flag);
         assert(clnt->need_recover_deadlock == 0);
         clnt->heartbeat_lock = 0;
         return 0;

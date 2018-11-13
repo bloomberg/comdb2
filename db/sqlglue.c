@@ -533,6 +533,11 @@ static int sql_tick(struct sql_thread *thd, int uses_bdb_locking)
     if (clnt->statement_timedout)
         return SQLITE_LIMIT;
 
+    if (clnt->recover_deadlock_rcode) {
+        assert(bdb_lockref() == 0);
+        return clnt->recover_deadlock_rcode;
+    }
+
     if (uses_bdb_locking && bdb_lock_desired(thedb->bdb_env)) {
         int sleepms;
 
@@ -3348,7 +3353,7 @@ done:
     return rc;
 }
 
-/* This in needs access to internals of Btree, 
+/* This in needs access to internals of Btree,
  * and I don't want to expose that plague-infested
  * pile of excrement outside this module. */
 int sql_set_transaction_mode(sqlite3 *db, struct sqlclntstate *clnt, int mode)
@@ -8822,9 +8827,10 @@ retry:
         bdb_put_cursortran(bdb_state, curtran_out, curtran_flags, &bdberr);
         curtran_out = NULL;
         clnt->gen_changed = 1;
-        logmsg(LOGMSG_DEBUG, "td %u %s: failing because generation has changed: "
-                        "orig-gen=%u, cur-gen=%u\n",
-                (uint32_t)pthread_self(), __func__, clnt->init_gen, curgen);
+        logmsg(LOGMSG_DEBUG,
+               "td %u %s: failing because generation has changed: "
+               "orig-gen=%u, cur-gen=%u\n",
+               (uint32_t)pthread_self(), __func__, clnt->init_gen, curgen);
         return -1;
     }
 
@@ -8993,9 +8999,11 @@ static void recover_deadlock_sc_cleanup(struct sql_thread *thd)
 /* BIG NOTE:
    carefull about double calling this function
  */
-static int recover_deadlock_flags_int(bdb_state_type *bdb_state, struct sql_thread *thd,
-                           bdb_cursor_ifn_t *bdbcur, int sleepms,
-                           uint32_t flags)
+static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
+                                      struct sql_thread *thd,
+                                      bdb_cursor_ifn_t *bdbcur, int sleepms,
+                                      const char *func, int line,
+                                      uint32_t flags)
 {
     int ptrace = (flags & RECOVER_DEADLOCK_PTRACE);
     int force_fail = (flags & RECOVER_DEADLOCK_FORCE_FAIL);
@@ -9008,6 +9016,11 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state, struct sql_thre
 #if 0
    char buf[160];
 #endif
+    if (clnt->recover_deadlock_rcode) {
+        assert(bdb_lockref() == 0);
+        return clnt->recover_deadlock_rcode;
+    }
+
     int new_mode = debug_switch_recover_deadlock_newmode();
 
     if (bdb_lock_desired(thedb->bdb_env)) {
@@ -9205,27 +9218,39 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state, struct sql_thre
     return 0;
 }
 
+int comdb2_cheapstack_char_array(char *str, int maxln);
+
 int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
                            bdb_cursor_ifn_t *bdbcur, int sleepms,
-                           uint32_t flags)
+                           const char *func, int line, uint32_t flags)
 {
     int rc, ref;
-    rc = recover_deadlock_flags_int(bdb_state, thd, bdbcur, sleepms, flags);
+    assert(!thd->clnt->recover_deadlock_rcode &&
+            !thd->clnt->skip_recover_deadlock);
+    rc = thd->clnt->recover_deadlock_rcode =
+        recover_deadlock_flags_int(bdb_state, thd, bdbcur, sleepms, func, line,
+                flags);
     if (rc != 0) {
         put_curtran_flags(thedb->bdb_env, thd->clnt, CURTRAN_RECOVERY);
+#if INSTRUMENT_RECOVER_DEADLOCK_FAILURE
+        thd->clnt->recover_deadlock_func = func;
+        thd->clnt->recover_deadlock_line = line;
+        thd->clnt->recover_deadlock_thd = pthread_self();
+        comdb2_cheapstack_char_array(thd->clnt->recover_deadlock_stack,
+                RECOVER_DEADLOCK_MAX_STACK);
+#endif
         recover_deadlock_sc_cleanup(thd);
         assert((ref = bdb_lockref()) == 0);
     } else {
         assert((ref = bdb_lockref()) > 0);
+#if INSTRUMENT_RECOVER_DEADLOCK_FAILURE
+        thd->clnt->recover_deadlock_func = NULL;
+        thd->clnt->recover_deadlock_line = 0;
+        thd->clnt->recover_deadlock_thd = 0;
+        thd->clnt->recover_deadlock_stack[0] = '\0';
+#endif
     }
     return rc;
-}
-
-int recover_deadlock(bdb_state_type *bdb_state, struct sql_thread *thd,
-                     bdb_cursor_ifn_t *bdbcur, int sleepms)
-{
-    return recover_deadlock_flags(bdb_state, thd, bdbcur, sleepms,
-                                  RECOVER_DEADLOCK_PTRACE);
 }
 
 static int ddguard_bdb_cursor_find(struct sql_thread *thd, BtCursor *pCur,
@@ -9767,7 +9792,7 @@ int sqlglue_release_genid(unsigned long long genid, int *bdberr)
             if (cur->bdbcur /*&& cur->genid == genid */) {
                 if (cur->bdbcur->unlock(cur->bdbcur, bdberr)) {
                     logmsg(LOGMSG_ERROR, "%s: failed to unlock cursor %d\n",
-                            __func__, *bdberr);
+                           __func__, *bdberr);
                     Pthread_mutex_unlock(&thd->lk);
                     return -100;
                 }
