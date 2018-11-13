@@ -3716,8 +3716,10 @@ retry_queries:
             is_begin ? 0 : run_last, __LINE__);
     } else {
         /* Latch the SQL only if we're in a SNAPSHOT HASQL txn. */
-        if (hndl->snapshot_file != 0)
+        if (hndl->snapshot_file != 0) {
+            free(hndl->sql);
             hndl->sql = strdup(sql);
+        }
 
         hndl->query_no += run_last;
         rc = cdb2_send_query(hndl, hndl->sb, hndl->dbname, (char *)sql, 0, 0,
