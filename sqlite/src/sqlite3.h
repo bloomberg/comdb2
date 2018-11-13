@@ -125,7 +125,7 @@ extern "C" {
 */
 #define SQLITE_VERSION        "3.26.0"
 #define SQLITE_VERSION_NUMBER 3026000
-#define SQLITE_SOURCE_ID      "2018-11-09 20:22:43 54ded1d3ebfb0872631f778754b1f4e411ae798711208c1c0e841562972ffad0"
+#define SQLITE_SOURCE_ID      "2018-11-09 20:22:43 54ded1d3ebfb0872631f778754b1f4e411ae798711208c1c0e841562972falt1"
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <types.h>
@@ -6409,7 +6409,17 @@ struct sqlite3_module {
   int (*xSavepoint)(sqlite3_vtab *pVTab, int);
   int (*xRelease)(sqlite3_vtab *pVTab, int);
   int (*xRollbackTo)(sqlite3_vtab *pVTab, int);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  int access_flag;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+enum {
+  CDB2_ALLOW_ALL,  /* Allow access to all */
+  CDB2_ALLOW_USER, /* Limit access only to permitted users */
+};
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** CAPI3REF: Virtual Table Indexing Information
