@@ -2884,14 +2884,10 @@ int cdb2_close(cdb2_hndl_tp *hndl)
         hndl->commands = NULL;
     }
 
-    if (hndl->query)
-        free(hndl->query);
-
-    if (hndl->query_hint)
-        free(hndl->query_hint);
-
-    if (hndl->hint)
-        free(hndl->hint);
+    free(hndl->query);
+    free(hndl->query_hint);
+    free(hndl->hint);
+    free(hndl->sql);
 
     cdb2_clearbindings(hndl);
     cdb2_free_context_msgs(hndl);
@@ -3708,7 +3704,6 @@ retry_queries:
 
     clear_responses(hndl);
 
-    hndl->sql = (char *)sql;
     hndl->ntypes = ntypes;
     hndl->types = types;
 
@@ -3720,6 +3715,10 @@ retry_queries:
             hndl->bindvars, ntypes, types, is_begin, 0, retries_done - 1,
             is_begin ? 0 : run_last, __LINE__);
     } else {
+        /* Latch the SQL only if we're in a SNAPSHOT HASQL txn. */
+        if (hndl->snapshot_file != 0)
+            hndl->sql = strdup(sql);
+
         hndl->query_no += run_last;
         rc = cdb2_send_query(hndl, hndl->sb, hndl->dbname, (char *)sql, 0, 0,
                              NULL, hndl->n_bindvars, hndl->bindvars, ntypes,
