@@ -59,6 +59,7 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
                               new_dta, &reason);
         if (rc) goto bad;
         od_dta = new_dta;
+        from = ".NEW..ONDISK";
     }
 
     init_fake_ireq(thedb, &ruleiq);
