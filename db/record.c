@@ -1548,10 +1548,9 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         if (iq->osql_step_ix)
             gbl_osqlpf_step[*(iq->osql_step_ix)].step += 1;
 
-        int key_unique = (iq->usedb->ix_dupes[ixnum] == 0);
         int same_key = (memcmp(newkey, oldkey, keysize) == 0);
-        if (gbl_key_updates && (key_unique || same_genid_with_upd) &&
-            same_key &&
+        if (gbl_key_updates && same_genid_with_upd &&
+            same_key && !ix_isnullk(iq->usedb, newkey, ixnum) &&
             (!gbl_partial_indexes || !iq->usedb->ix_partial ||
              ((ins_keys & (1ULL << ixnum)) &&
               (del_keys & (1ULL << ixnum))))) { /* in place key update */
