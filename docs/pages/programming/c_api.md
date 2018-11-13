@@ -544,8 +544,8 @@ Besides the user argument, one can request additional arguments by setting `argc
 | `CDB2_AFTER_DBINFO` | The server hostname | The database port | N/A | 0 on success; Non-zero on failure | 
 | `CDB2_BEFORE_SEND_QUERY` | The server hostname | The database port | The SQL query | N/A |
 | `CDB2_AFTER_SEND_QUERY` | The server hostname | The database port | The SQL query | 0 on success; Non-zero on failure |
-| `CDB2_BEFORE_READ_RECORD` | The server hostname | The database port | The SQL query | N/A |
-| `CDB2_AFTER_READ_RECORD` | The server hostname | The database port | The SQL query | 0 on success; Non-zero on failure |
+| `CDB2_BEFORE_READ_RECORD` | The server hostname | The database port | N/A | N/A |
+| `CDB2_AFTER_READ_RECORD` | The server hostname | The database port | N/A | 0 on success; Non-zero on failure |
 
 Return Value:
 

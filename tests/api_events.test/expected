@@ -31,3 +31,6 @@ cdb2_next_record_int: Timeout while reading response from server
 ====== EVENT THAT OVERWRITES ITS USER ARG ======
 1, SELECT 1
 2, SELECT 2
+====== OPEN/CLOSE ======
+3, nil
+4, nil

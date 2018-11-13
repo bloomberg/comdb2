@@ -143,13 +143,12 @@ static void *my_overwrite_user_arg_hook(cdb2_hndl_tp *hndl, void *user_arg, int 
         return (void*)(intptr_t)cnt;
     }
 
-    printf("%d, %s\n", (int)(intptr_t)user_arg, argv[0]);
+    printf("%d, %s\n", (int)(intptr_t)user_arg, argv[0] == NULL ? "nil" : argv[0]);
     return NULL;
 }
 
 static int TEST_modify_user_arg_event(const char *db, const char *tier)
 {
-    int rc;
     cdb2_event *e1, *e2;
     cdb2_hndl_tp *h1 = NULL, *h2 = NULL;
 
@@ -161,6 +160,21 @@ static int TEST_modify_user_arg_event(const char *db, const char *tier)
     cdb2_run_statement(h2, "SELECT 2");
     cdb2_unregister_event(NULL, e1);
     cdb2_unregister_event(NULL, e2);
+    cdb2_close(h1);
+    cdb2_close(h2);
+    return 0;
+}
+
+static int TEST_open_close_event(const char *db, const char *tier)
+{
+    cdb2_hndl_tp *h1 = NULL, *h2;
+    cdb2_event *e1, *e2;
+    e1 = cdb2_register_event(NULL, CDB2_OPEN, CDB2_AS_DEFAULT_USER_ARG, my_overwrite_user_arg_hook, NULL, 0);
+    e2 = cdb2_register_event(NULL, CDB2_CLOSE, 0, my_overwrite_user_arg_hook, NULL, 1, CDB2_SQL);
+    cdb2_open(&h1, db, tier, 0);
+    cdb2_open(&h2, db, tier, 0);
+    cdb2_close(h1);
+    cdb2_close(h2);
     return 0;
 }
 
@@ -203,5 +217,11 @@ int main(int argc, char **argv)
     rc = TEST_modify_user_arg_event(db, tier);
     if (rc != 0)
         return rc;
+
+    puts("====== OPEN/CLOSE ======");
+    rc = TEST_open_close_event(db, tier);
+    if (rc != 0)
+        return rc;
+
     return 0;
 }

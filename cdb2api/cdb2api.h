@@ -262,7 +262,11 @@ typedef enum cdb2_event_type {
     CDB2_BEFORE_SEND_QUERY = 1 << 6,
     CDB2_AFTER_SEND_QUERY = 1 << 7,
     CDB2_BEFORE_READ_RECORD = 1 << 8,
-    CDB2_AFTER_READ_RECORD = 1 << 9
+    CDB2_AFTER_READ_RECORD = 1 << 9,
+
+    /* Lifecycle events */
+    CDB2_OPEN = 1 << 30,
+    CDB2_CLOSE = 1 << 31,
 } cdb2_event_type;
 
 typedef enum cdb2_event_arg {

@@ -3000,6 +3000,8 @@ int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects)
 int cdb2_close(cdb2_hndl_tp *hndl)
 {
     cdb2_event *curre, *preve;
+    void *hookrc;
+    int rc = 0;
 
     if (log_calls)
         fprintf(stderr, "%p> cdb2_close(%p)\n", (void *)pthread_self(), hndl);
@@ -3080,6 +3082,12 @@ int cdb2_close(cdb2_hndl_tp *hndl)
     }
 #endif
 
+    curre = NULL;
+    while ((curre = cdb2_next_hook(hndl, CDB2_CLOSE, curre)) != NULL) {
+        hookrc = cdb2_invoke_hook(hndl, curre, 1, CDB2_RETURN_VALUE, rc);
+        PROCESS_EVENT_CTRL_AFTER(curre, rc, hookrc);
+    }
+
     curre = hndl->events.next;
     while (curre != NULL) {
         preve = curre;
@@ -3088,7 +3096,7 @@ int cdb2_close(cdb2_hndl_tp *hndl)
     }
 
     free(hndl);
-    return 0;
+    return rc;
 }
 
 /* make_random_str() will return a randomly generated string
@@ -5593,6 +5601,8 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
 {
     cdb2_hndl_tp *hndl;
     int rc = 0;
+    void *hookrc;
+    cdb2_event *e = NULL;
 
     pthread_mutex_lock(&cdb2_cfg_lock);
     pthread_once(&init_once, do_init_once);
@@ -5645,10 +5655,6 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
         strcpy(hndl->policy, "random_room");
     }
 
-    /* We might be blocked by pmux if connecting to a host
-       without either knowing the port or allowing pmux routing.
-       We might be blocked by comdb2db if connecting to a tier.
-       Get our events ready. */
     rc = refresh_gbl_events_on_hndl(hndl);
     if (rc != 0)
         goto out;
@@ -5700,6 +5706,12 @@ out:
                 (void *)pthread_self(), dbname, type, hndl->flags, rc, *handle);
     }
 
+    if (hndl != NULL) {
+        while ((e = cdb2_next_hook(hndl, CDB2_OPEN, e)) != NULL) {
+            hookrc = cdb2_invoke_hook(hndl, e, 1, CDB2_RETURN_VALUE, rc);
+            PROCESS_EVENT_CTRL_AFTER(e, rc, hookrc);
+        }
+    }
     return rc;
 }
 
@@ -5890,7 +5902,7 @@ static void *cdb2_invoke_hook(cdb2_hndl_tp *hndl, cdb2_event *e, int argc, ...)
 
     const char *hostname;
     int port;
-    const char *sql;
+    const char *sql = NULL;
     void *rc;
 
     /* Fast return if no arguments need to be passed to the callback. */
@@ -5901,11 +5913,9 @@ static void *cdb2_invoke_hook(cdb2_hndl_tp *hndl, cdb2_event *e, int argc, ...)
     if (hndl == NULL || hndl->connected_host < 0) {
         hostname = NULL;
         port = -1;
-        sql = NULL;
     } else {
         hostname = hndl->hosts[hndl->connected_host];
         port = hndl->ports[hndl->connected_host];
-        sql = hndl->sql;
     }
     rc = 0;
 
