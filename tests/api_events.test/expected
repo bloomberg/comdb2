@@ -28,3 +28,6 @@ SQL is SELECT 1
 ====== EVENT THAT INTERCEPTS AND OVERWRITES THE RETURN VALUE ======
 cdb2_run_statement_typed_int: Cannot connect to db
 cdb2_next_record_int: Timeout while reading response from server
+====== EVENT THAT OVERWRITES ITS USER ARG ======
+1, SELECT 1
+2, SELECT 2

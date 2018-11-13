@@ -247,7 +247,8 @@ int cdb2_is_ssl_encrypted(cdb2_hndl_tp *hndl);
 int cdb2_clear_ack(cdb2_hndl_tp *hndl);
 
 typedef enum cdb2_event_ctrl {
-    CDB2_OVERWRITE_RETURN_VALUE = 1
+    CDB2_OVERWRITE_RETURN_VALUE = 1,
+    CDB2_AS_DEFAULT_USER_ARG = 1 << 1
 } cdb2_event_ctrl;
 
 typedef enum cdb2_event_type {
