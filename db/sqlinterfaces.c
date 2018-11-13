@@ -594,12 +594,12 @@ int sqlite3_close_serial(sqlite3 **ppDb)
 {
     int rc = SQLITE_ERROR;
     int serial = gbl_serialise_sqlite3_open;
-    if( serial ) pthread_mutex_lock(&open_serial_lock);
+    if( serial ) Pthread_mutex_lock(&open_serial_lock);
     if( ppDb && *ppDb ){
         rc = sqlite3_close(*ppDb);
         if( rc==SQLITE_OK ) *ppDb = NULL;
     }
-    if( serial ) pthread_mutex_unlock(&open_serial_lock);
+    if( serial ) Pthread_mutex_unlock(&open_serial_lock);
     return rc;
 }
 
