@@ -276,7 +276,7 @@ static int get_next_addrem_buffer(bdb_state_type *bdb_state, DB_LSN *lsn,
 
         switch (rectype) {
         case DB___db_addrem:
-            __db_addrem_read(bdb_state->dbenv, logent.data, &addrem_rec);
+            __db_addrem_read_int(bdb_state->dbenv, logent.data, 0, &addrem_rec);
             p = addrem_rec;
 
             /* skip if last record was a pg_free - this isn't one of our addrems
@@ -375,7 +375,7 @@ static int get_next_addrem_buffer(bdb_state_type *bdb_state, DB_LSN *lsn,
             break;
 
         case DB___db_big:
-            __db_big_read(bdb_state->dbenv, logent.data, &big_rec);
+            __db_big_read_int(bdb_state->dbenv, logent.data, 0, &big_rec);
             p = big_rec;
 
             off -= big_rec->dbt.size;
@@ -491,7 +491,7 @@ int bdb_dump_log(DB_ENV *dbenv, DB_LSN *startlsn)
                 BKEYDATA *kd;
 
                 __db_addrem_args *addrem;
-                __db_addrem_read(dbenv, dbt.data, &addrem);
+                __db_addrem_read_int(dbenv, dbt.data, 0, &addrem);
                 if (addrem->hdr.data)
                     kd = addrem->hdr.data;
                 else
@@ -506,7 +506,7 @@ int bdb_dump_log(DB_ENV *dbenv, DB_LSN *startlsn)
                 free(addrem);
             } else if (generic_record->type == DB___db_debug) {
                 __db_debug_args *debug;
-                __db_debug_read(dbenv, dbt.data, &debug);
+                __db_debug_read_int(dbenv, dbt.data, 0, &debug);
 
                 logmsg(LOGMSG_USER, "debug: %s", (char *)debug->key.data);
 
@@ -752,7 +752,7 @@ int bdb_reconstruct_key_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
                       (u_int8_t *)logent.data + 2 * sizeof(u_int32_t));
 
         if (rectype == DB___bam_repl) {
-            rc = __bam_repl_read(bdb_state->dbenv, logent.data, &repl);
+            rc = __bam_repl_read_int(bdb_state->dbenv, logent.data, 0, &repl);
             if (rc) {
                 logmsg(LOGMSG_ERROR, "__bam_repl_read rc %d\n", rc);
                 goto done;
@@ -848,8 +848,8 @@ int bdb_reconstruct_inplace_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
         /* Find a btree-replace log record. */
         if (rectype == DB___bam_repl) {
             /* Invoke berkeley's 'read-repl-log' routine. */
-            if (0 !=
-                (rc = __bam_repl_read(bdb_state->dbenv, logent.data, &repl))) {
+            if (0 != (rc = __bam_repl_read_int(bdb_state->dbenv, logent.data, 0,
+                                               &repl))) {
                 logmsg(LOGMSG_ERROR, "__bam_repl_read rc %d\n", rc);
                 goto done;
             }
@@ -903,7 +903,7 @@ int bdb_reconstruct_inplace_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
         /* For big-record updates, we want the addrem that is deleting the
          * payload */
         if (rectype == DB___db_addrem) {
-            __db_addrem_read(bdb_state->dbenv, logent.data, &addrem_rec);
+            __db_addrem_read_int(bdb_state->dbenv, logent.data, 0, &addrem_rec);
             if (IS_REM_OPCODE(addrem_rec->opcode)) {
                 ovcur = origd;
                 ovlen = origd_sz;
@@ -948,7 +948,7 @@ int bdb_reconstruct_inplace_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
         }
 
         if (rectype == DB___db_big) {
-            __db_big_read(bdb_state->dbenv, logent.data, &big_rec);
+            __db_big_read_int(bdb_state->dbenv, logent.data, 0, &big_rec);
             if (big_rec->opcode == DB_REM_BIG) {
                 off -= big_rec->dbt.size;
                 assert(off >= 0);

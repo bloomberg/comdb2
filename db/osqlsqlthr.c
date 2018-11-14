@@ -731,7 +731,7 @@ again:
 
             osql_unregister_sqlthr(clnt);
 
-            return SQLITE_BUSY;
+            return rc;
         }
 
         logmsg(LOGMSG_DEBUG, "%s recovered deadlock\n", __func__);
@@ -741,7 +741,7 @@ again:
         if (clnt->deadlock_recovered > 100) {
             osql_unregister_sqlthr(clnt);
 
-            return SQLITE_BUSY;
+            return ERR_RECOVER_DEADLOCK;
         }
     }
 
@@ -830,6 +830,20 @@ again:
 
 int gbl_random_blkseq_replays;
 int gbl_osql_send_startgen = 1;
+
+static inline int sock_restart_retryable_rcode(int restart_rc)
+{
+    switch (restart_rc) {
+    case SQLITE_TOOBIG:
+    case ERR_SC:
+    case ERR_RECOVER_DEADLOCK:
+    case SQLITE_COMDB2SCHEMA:
+    case SQLITE_CLIENT_CHANGENODE:
+        return 0;
+    default:
+        return 1;
+    }
+}
 
 /**
  * Terminates a sosql session
@@ -964,7 +978,7 @@ retry:
                         rc = osql_sock_restart(
                             clnt, 1,
                             1 /*no new rqid*/); /* retry at higher level */
-                        if (rc != SQLITE_TOOBIG && rc != ERR_SC) {
+                        if (sock_restart_retryable_rcode(rc)) {
                             if (gbl_master_swing_sock_restart_sleep) {
                                 sleep(gbl_master_swing_sock_restart_sleep);
                             }
@@ -982,7 +996,8 @@ retry:
                             "%d setting rcout to -109\n",
                             rc, osql->xerr.errval);
                         rcout = -109;
-                    } else if (osql->xerr.errval == ERR_NOT_DURABLE) {
+                    } else if (osql->xerr.errval == ERR_NOT_DURABLE ||
+                               rc == SQLITE_CLIENT_CHANGENODE) {
                         /* Ask the client to change nodes */
                         sql_debug_logf(
                             clnt, __func__, __LINE__,
@@ -990,6 +1005,14 @@ retry:
                             "setting rcout to CHANGENODE, errval is %d\n",
                             rc, osql->xerr.errval);
                         rcout = SQLITE_CLIENT_CHANGENODE;
+                    } else if (rc == SQLITE_COMDB2SCHEMA) {
+                        /* Schema has changed */
+                        sql_debug_logf(clnt, __func__, __LINE__,
+                                       "got %d and "
+                                       "setting rcout to SQLITE_COMDB2SCHEMA, "
+                                       "errval is %d\n",
+                                       rc, osql->xerr.errval);
+                        rcout = SQLITE_COMDB2SCHEMA;
                     } else {
                         sql_debug_logf(
                             clnt, __func__, __LINE__,

@@ -434,6 +434,10 @@ struct clnt_ddl_context {
     comdb2ma mem;
 };
 
+#if INSTRUMENT_RECOVER_DEADLOCK_FAILURE
+#define RECOVER_DEADLOCK_MAX_STACK 16348
+#endif
+
 /* Client specific sql state */
 struct sqlclntstate {
     /* appsock plugin specific data */
@@ -459,8 +463,9 @@ struct sqlclntstate {
     /* For SQL engine dispatch. */
     int inited_mutex;
     pthread_mutex_t wait_mutex;
-    pthread_mutex_t write_lock;
     pthread_cond_t wait_cond;
+    pthread_mutex_t write_lock;
+    pthread_cond_t write_cond;
     int query_rc;
 
     struct rawnodestats *rawnodestats;
@@ -646,6 +651,17 @@ struct sqlclntstate {
     int admin;
 
     uint32_t start_gen;
+    int emitting_flag;
+    int need_recover_deadlock;
+    int recover_deadlock_rcode;
+    int heartbeat_lock;
+    int skip_recover_deadlock;
+#ifdef INSTRUMENT_RECOVER_DEADLOCK_FAILURE
+    const char *recover_deadlock_func;
+    int recover_deadlock_line;
+    pthread_t recover_deadlock_thd;
+    char recover_deadlock_stack[RECOVER_DEADLOCK_MAX_STACK];
+#endif
 };
 
 /* Query stats. */
@@ -898,6 +914,10 @@ extern int gbl_master_swing_sock_restart_sleep;
  */
 int get_curtran(bdb_state_type *bdb_state, struct sqlclntstate *clnt);
 int put_curtran(bdb_state_type *bdb_state, struct sqlclntstate *clnt);
+int get_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
+                      uint32_t flags);
+int put_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
+                      uint32_t flags);
 
 unsigned long long osql_log_time(void);
 void osql_log_time_done(struct sqlclntstate *clnt);

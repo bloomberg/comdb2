@@ -225,6 +225,7 @@ check_db_at_finish() {
 # start the testing: setup, runit, check cores, unsetup
 
 call_setup
+
 echo "!$TESTCASE: running with timeout ${TEST_TIMEOUT}"
 
 timeout ${TEST_TIMEOUT} ./runit ${DBNAME} 2>&1  | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' &> ${TESTDIR}/logs/${DBNAME}.testcase
