@@ -202,16 +202,18 @@ check_db_at_finish() {
     local LCLOPTIONS="--cdb2cfg ${LCLCONFIG}"
 
     if [[ -z "$CLUSTER" ]] ; then
-        out=$(timeout 1m $CDB2SQL_EXE -v ${LCLOPTIONS} --tabs --host localhost $LCLDBNM 'select 1' 2>&1 | tee ${TESTDIR}/logs/${LCLDBNM}.atfinish)
+        out=$(timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs --host localhost $LCLDBNM 'select 1' 2>&1)
         if [ "$out" != "1" ] ; then
+            timeout 1m $CDB2SQL_EXE -v ${LCLOPTIONS} --tabs --host localhost $LCLDBNM 'select 1' &> ${TESTDIR}/logs/${LCLDBNM}.atfinish
             echo $out
             return
         fi
 
     fi
     for node in ${CLUSTER} ; do
-        out=$(timeout 1m $CDB2SQL_EXE -v ${LCLOPTIONS} --tabs --host $node $LCLDBNM 'select 1' 2>&1 | tee ${TESTDIR}/logs/${LCLDBNM}.${node}.atfinish)
+        out=$(timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs --host $node $LCLDBNM 'select 1' 2>&1)
         if [ "$out" != "1" ] ; then
+            timeout 1m $CDB2SQL_EXE -v ${LCLOPTIONS} --tabs --host $node $LCLDBNM 'select 1' &> ${TESTDIR}/logs/${LCLDBNM}.${node}.atfinish
             echo $out
             return
         fi
