@@ -171,23 +171,23 @@ static cdb2_event *cdb2_next_handler(cdb2_hndl_tp *, cdb2_event_type,
 static void *cdb2_invoke_handler(cdb2_hndl_tp *, cdb2_event *, int, ...);
 static int refresh_gbl_events_on_hndl(cdb2_hndl_tp *);
 
-#define PROCESS_EVENT_CTRL_BEFORE(e, rc, handlerrc, ovwrrc)    \
+#define PROCESS_EVENT_CTRL_BEFORE(h, e, rc, handlerrc, ovwrrc)    \
 do {                                                        \
     if (e->ctrls & CDB2_OVERWRITE_RETURN_VALUE) {           \
         ovwrrc = 1;                                         \
         rc = (int)(intptr_t)handlerrc;                         \
     }                                                       \
     if (e->ctrls & CDB2_AS_DEFAULT_USER_ARG)                \
-        hndl->user_arg = handlerrc;                            \
+        h->user_arg = handlerrc;                            \
 } while (0)
 
-#define PROCESS_EVENT_CTRL_AFTER(e, rc, handlerrc)             \
+#define PROCESS_EVENT_CTRL_AFTER(h, e, rc, handlerrc)             \
 do {                                                        \
     if (e->ctrls & CDB2_OVERWRITE_RETURN_VALUE) {           \
         rc = (int)(intptr_t)handlerrc;                         \
     }                                                       \
     if (e->ctrls & CDB2_AS_DEFAULT_USER_ARG)                \
-        hndl->user_arg = handlerrc;                            \
+        h->user_arg = handlerrc;                            \
 } while (0)
 
 typedef void (*cdb2_init_t)(void);
@@ -195,6 +195,8 @@ typedef void (*cdb2_init_t)(void);
 /* Undocumented compile-time initialization routine. */
 #ifndef CDB2_INIT
 #define CDB2_INIT NULL
+#else
+extern void CDB2_INIT(void);
 #endif
 cdb2_init_t cdb2_init = CDB2_INIT;
 
@@ -965,7 +967,7 @@ static int cdb2_tcpconnecth_to(cdb2_hndl_tp *hndl, const char *host, int port,
     while ((e = cdb2_next_handler(hndl, CDB2_BEFORE_CONNECT, e)) != NULL) {
         handlerrc =
             cdb2_invoke_handler(hndl, e, 2, CDB2_HOSTNAME, host, CDB2_PORT, port);
-        PROCESS_EVENT_CTRL_BEFORE(e, rc, handlerrc, overwrite_rc);
+        PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, handlerrc, overwrite_rc);
     }
 
     if (overwrite_rc)
@@ -980,7 +982,7 @@ after_handler:
     while ((e = cdb2_next_handler(hndl, CDB2_AFTER_CONNECT, e)) != NULL) {
         handlerrc = cdb2_invoke_handler(hndl, e, 3, CDB2_HOSTNAME, host, CDB2_PORT,
                                   port, CDB2_RETURN_VALUE, rc);
-        PROCESS_EVENT_CTRL_AFTER(e, rc, handlerrc);
+        PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, handlerrc);
     }
     return rc;
 }
@@ -2062,7 +2064,7 @@ static int cdb2portmux_get(cdb2_hndl_tp *hndl, const char *type,
     while ((e = cdb2_next_handler(hndl, CDB2_BEFORE_PMUX, e)) != NULL) {
         handlerrc = cdb2_invoke_handler(hndl, e, 2, CDB2_HOSTNAME, remote_host,
                                   CDB2_PORT, CDB2_PORTMUXPORT);
-        PROCESS_EVENT_CTRL_BEFORE(e, port, handlerrc, overwrite_rc);
+        PROCESS_EVENT_CTRL_BEFORE(hndl, e, port, handlerrc, overwrite_rc);
     }
 
     if (overwrite_rc)
@@ -2125,7 +2127,7 @@ after_handler:
         handlerrc =
             cdb2_invoke_handler(hndl, e, 3, CDB2_HOSTNAME, remote_host, CDB2_PORT,
                              CDB2_PORTMUXPORT, CDB2_RETURN_VALUE, port);
-        PROCESS_EVENT_CTRL_AFTER(e, port, handlerrc);
+        PROCESS_EVENT_CTRL_AFTER(hndl, e, port, handlerrc);
     }
     return port;
 }
@@ -2325,7 +2327,7 @@ static int cdb2_read_record(cdb2_hndl_tp *hndl, uint8_t **buf, int *len, int *ty
 
     while ((e = cdb2_next_handler(hndl, CDB2_BEFORE_READ_RECORD, e)) != NULL) {
         handlerrc = cdb2_invoke_handler(hndl, e, 0, NULL);
-        PROCESS_EVENT_CTRL_BEFORE(e, rc, handlerrc, overwrite_rc);
+        PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, handlerrc, overwrite_rc);
     }
 
     if (overwrite_rc)
@@ -2431,7 +2433,7 @@ retry:
 after_handler:
     while ((e = cdb2_next_handler(hndl, CDB2_AFTER_READ_RECORD, e)) != NULL) {
         handlerrc = cdb2_invoke_handler(hndl, e, 1, CDB2_RETURN_VALUE, rc);
-        PROCESS_EVENT_CTRL_AFTER(e, rc, handlerrc);
+        PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, handlerrc);
     }
     return rc;
 }
@@ -2560,7 +2562,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
     while ((e = cdb2_next_handler(event_hndl, CDB2_BEFORE_SEND_QUERY, e)) !=
            NULL) {
         handlerrc = cdb2_invoke_handler(event_hndl, e, 1, CDB2_SQL, sql);
-        PROCESS_EVENT_CTRL_BEFORE(e, rc, handlerrc, overwrite_rc);
+        PROCESS_EVENT_CTRL_BEFORE(event_hndl, e, rc, handlerrc, overwrite_rc);
     }
 
     if (overwrite_rc)
@@ -2740,7 +2742,7 @@ after_handler:
     while ((e = cdb2_next_handler(event_hndl, CDB2_AFTER_SEND_QUERY, e)) != NULL) {
         handlerrc = cdb2_invoke_handler(event_hndl, e, 2, CDB2_SQL, sql,
                                   CDB2_RETURN_VALUE, rc);
-        PROCESS_EVENT_CTRL_AFTER(e, rc, handlerrc);
+        PROCESS_EVENT_CTRL_AFTER(event_hndl, e, rc, handlerrc);
     }
     return rc;
 }
@@ -3085,7 +3087,7 @@ int cdb2_close(cdb2_hndl_tp *hndl)
     curre = NULL;
     while ((curre = cdb2_next_handler(hndl, CDB2_CLOSE, curre)) != NULL) {
         handlerrc = cdb2_invoke_handler(hndl, curre, 1, CDB2_RETURN_VALUE, rc);
-        PROCESS_EVENT_CTRL_AFTER(curre, rc, handlerrc);
+        PROCESS_EVENT_CTRL_AFTER(hndl, curre, rc, handlerrc);
     }
 
     curre = hndl->events.next;
@@ -4865,7 +4867,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
     while ((e = cdb2_next_handler(hndl, CDB2_BEFORE_DBINFO, e)) != NULL) {
         handlerrc =
             cdb2_invoke_handler(hndl, e, 2, CDB2_HOSTNAME, host, CDB2_PORT, -1);
-        PROCESS_EVENT_CTRL_BEFORE(e, rc, handlerrc, overwrite_rc);
+        PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, handlerrc, overwrite_rc);
     }
 
     if (overwrite_rc)
@@ -5026,7 +5028,7 @@ after_handler:
     while ((e = cdb2_next_handler(hndl, CDB2_AFTER_DBINFO, e)) != NULL) {
         handlerrc = cdb2_invoke_handler(hndl, e, 3, CDB2_HOSTNAME, host, CDB2_PORT,
                                   port, CDB2_RETURN_VALUE, rc);
-        PROCESS_EVENT_CTRL_AFTER(e, rc, handlerrc);
+        PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, handlerrc);
     }
     return rc;
 }
@@ -5707,7 +5709,7 @@ out:
     if (hndl != NULL) {
         while ((e = cdb2_next_handler(hndl, CDB2_OPEN, e)) != NULL) {
             handlerrc = cdb2_invoke_handler(hndl, e, 1, CDB2_RETURN_VALUE, rc);
-            PROCESS_EVENT_CTRL_AFTER(e, rc, handlerrc);
+            PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, handlerrc);
         }
     }
     return rc;
