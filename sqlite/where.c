@@ -4474,8 +4474,9 @@ WhereInfo *sqlite3WhereBegin(
   u8 bFordelete = 0;         /* OPFLAG_FORDELETE or zero, as appropriate */
   Expr *pNewExpr = pWhere;
 
-  if(comdb2_shard_table_constraints(pParse, pTabList->a[0].zName, 
-              pTabList->a[0].zDatabase, &pNewExpr)) {
+  if(pTabList->nSrc>0 &&
+     comdb2_shard_table_constraints(pParse, pTabList->a[0].zName,
+                                    pTabList->a[0].zDatabase, &pNewExpr)) {
       pWhere = pNewExpr;
   }
 

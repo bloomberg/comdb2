@@ -25,35 +25,40 @@
 
 static void node_free(dohsql_node_t **pnode, sqlite3 *db);
 
-char *generate_columns(sqlite3 *db, ExprList *c, const char **tbl)
+static char* _gen_col_expr(Vdbe *v, Expr *expr, const char **tblname);
+
+static char *generate_columns(Vdbe *v, ExprList *c, const char **tbl)
 {
+    sqlite3 *db = v->db;
     char *cols = NULL;
     Expr *expr = NULL;
+    char *sExpr;
     int i;
 
+
+    if (tbl)
+        *tbl = NULL;
     for (i = 0; i < c->nExpr; i++) {
         expr = c->a[i].pExpr;
-        if (expr->op != TK_COLUMN) {
+        if ((sExpr = _gen_col_expr(v, expr, tbl)) == NULL) {
             if (cols)
                 sqlite3DbFree(db, cols);
             return NULL;
         }
         if (!cols)
-            cols = sqlite3_mprintf("%s.\"%s\"%s%s%s", expr->pTab->zName,
-                                   c->a[i].pExpr->u.zToken,
+            cols = sqlite3_mprintf("%s%s%s%s",
+                                   sExpr,
                                    (c->a[i].zName) ? " aS \"" : "",
                                    (c->a[i].zName) ? c->a[i].zName : "",
                                    (c->a[i].zName) ? "\" " : "");
         else
-            cols = sqlite3_mprintf("%s, %s.\"%s\"%s%s%s", cols,
-                                   expr->pTab->zName, c->a[i].pExpr->u.zToken,
+            cols = sqlite3_mprintf("%s, %s%s%s%s", cols, sExpr,
                                    (c->a[i].zName) ? " aS \"" : "",
                                    (c->a[i].zName) ? c->a[i].zName : "",
                                    (c->a[i].zName) ? "\" " : "");
+        sqlite3DbFree(db, sExpr);
         if (!cols)
             return NULL;
-        if (tbl)
-            *tbl = expr->pTab->zName;
     }
 
     return cols;
@@ -141,14 +146,19 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
         }
     }
 
-    cols = generate_columns(db, p->pEList, &tbl);
+    cols = generate_columns(v, p->pEList, &tbl);
     if (!cols) {
         sqlite3DbFree(db, orderby);
         sqlite3DbFree(db, where);
         return NULL;
     }
 
-    if (!p->pLimit) {
+    if (unlikely(!tbl)) {
+        select = sqlite3_mprintf("SeLeCT %s%s%s%s%s", cols,
+                                 (where) ? " WHeRe " : "", (where) ? where : "",
+                                 (orderby) ? " oRDeR By " : "",
+                                 (orderby) ? orderby : "");
+    } else if (!p->pLimit) {
         select = sqlite3_mprintf("SeLeCT %s FRoM %s%s%s%s%s", cols, tbl,
                                  (where) ? " WHeRe " : "", (where) ? where : "",
                                  (orderby) ? " oRDeR By " : "",
@@ -437,7 +447,7 @@ int ast_push(ast_t *ast, enum ast_type op, Vdbe *v, void *obj)
 {
     int ignore = 0;
 
-    if (is_parallel_shard())
+    if (dohsql_is_parallel_shard())
         return 0;
 
     if (ast->nused >= ast->nalloc) {
@@ -590,4 +600,42 @@ int comdb2_check_parallel(Parse *pParse)
         }
     }
     return 0;
+}
+
+
+static int _exprCallback(Walker *pWalker, Expr *pExpr)
+{
+    fprintf(stderr, "Checking %d\n", pExpr->op);
+    switch(pExpr->op){
+        case TK_COLUMN:
+            if (pWalker->pParse)
+                return WRC_Abort;
+            pWalker->pParse = (Parse*)pExpr->pTab->zName;
+        case TK_PLUS:
+        case TK_MINUS:
+        case TK_INTEGER:
+            return WRC_Continue;
+        default: return WRC_Abort;
+    }
+}
+
+static int _selectCallback(Walker *pWalker, Select *pSelect)
+{
+    return WRC_Continue;
+}
+
+static char* _gen_col_expr(Vdbe *v, Expr *expr, const char **tblname)
+{
+  Walker w = {0};
+
+  w.pParse = NULL;
+  w.xExprCallback = _exprCallback;
+  w.xSelectCallback = _selectCallback;
+  if (sqlite3WalkExpr(&w, expr) != WRC_Continue)
+      return NULL;
+
+  if (tblname)
+      *tblname = (const char*)w.pParse;
+
+  return  sqlite3ExprDescribe(v, expr);
 }

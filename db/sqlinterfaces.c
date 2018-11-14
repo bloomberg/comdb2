@@ -5418,6 +5418,10 @@ int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
         break;
     }
 
+    if (rc == 0 && unlikely(clnt->conns)) {
+        return dohsql_error(clnt, errstr);
+    }
+
     return rc;
 }
 
@@ -5555,6 +5559,8 @@ int sqlserver2sqlclient_error(int rc)
         return SQLHERR_ROLLBACK_NOLOG; /* this will suffice */
     case SQLITE_COMDB2SCHEMA:
         return CDB2ERR_SCHEMA;
+    case CDB2ERR_PREPARE_ERROR:
+        return CDB2ERR_PREPARE_ERROR;
     default:
         return CDB2ERR_UNKNOWN;
     }

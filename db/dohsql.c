@@ -68,6 +68,7 @@ struct dohsql {
     row_t *row;
     int row_src;
     int rc;
+    int child_err;          /* if a child error occurred, which one?*/
     /* LIMIT support */
     int limitRegs[MAX_MEM_IDX]; /* sqlite engine limit registers*/
     int limit;                  /* any limit */
@@ -399,7 +400,7 @@ static void _signal_children_master_is_done(dohsql_t *conns)
     }
 }
 
-static int _get_a_parallel_row(dohsql_t *conns, row_t **prow)
+static int _get_a_parallel_row(dohsql_t *conns, row_t **prow, int *error_child)
 {
     int child_num;
     int rc = SQLITE_DONE;
@@ -418,7 +419,10 @@ static int _get_a_parallel_row(dohsql_t *conns, row_t **prow)
         if (CHILD_ERROR(child_num)) {
             /* debatable if we wanna clear cached rows before check for error */
             rc = conns->conns[child_num].rc;
+            if (error_child)
+                *error_child = child_num; 
             pthread_mutex_unlock(&conns->conns[child_num].mtx);
+
             /* we could envision a case when child is retried for cut 2*/
             /* for now, signal all children that we are done and pass error
                to caller */
@@ -544,15 +548,24 @@ static int dohsql_dist_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 wait_for_others:
     rc = 0;
     empty = 1;
-    rc = _get_a_parallel_row(conns, &row);
+    rc = _get_a_parallel_row(conns, &row, &conns->child_err);
     if (rc == SQLITE_ROW) {
         assert(row);
         goto got_row;
     }
     if (rc == SQLITE_OK)
         empty = 0;
-    else if (rc != SQLITE_DONE)
+    else if (rc != SQLITE_DONE) {
+
+        /* it seems some shard failed, reset current since we are bailing out */
+        if (conns->conns[0].rc != SQLITE_DONE) {
+            if (verbose)
+                logmsg(LOGMSG_DEBUG, "RESET STMT CLIENT FAILED!\n");
+            sqlite3_reset(stmt);
+        }
+
         return rc;
+    }
 
     /* no row in others (yet) */
     if (conns->conns[0].rc != SQLITE_DONE) {
@@ -593,8 +606,8 @@ got_row:
 
 static int dohsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
 {
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s %d\n", pthread_self(), __func__, t);
+    /*if (gbl_plugin_api_debug)*/
+        logmsg(LOGMSG_WARN, "%lx %s type %d code %d\n", pthread_self(), __func__, t, i);
     switch (t) {
     case RESPONSE_COLUMNS:
         return inner_columns(c, a);
@@ -603,15 +616,25 @@ static int dohsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
     case RESPONSE_DEBUG:
         return 0 /*newsql_debug(c, a)*/;
     case RESPONSE_ERROR:
-        return 0 /*newsql_error(c, a, i)*/;
+        c->saved_rc = i;
+        c->saved_errstr = strdup((char*)a);
+        return 0;
     case RESPONSE_ERROR_ACCESS:
-        return 0 /*newsql_error(c, a, CDB2ERR_ACCESS)*/;
+        c->saved_rc = CDB2ERR_ACCESS;
+        c->saved_errstr = strdup((char*)a);
+        return 0;
     case RESPONSE_ERROR_BAD_STATE:
-        return 0 /*newsql_error(c, a, CDB2ERR_BADSTATE)*/;
+        c->saved_rc = CDB2ERR_BADSTATE;
+        c->saved_errstr = strdup((char*)a);
+        return 0;
     case RESPONSE_ERROR_PREPARE:
-        return 0 /*newsql_error(c, a, CDB2ERR_PREPARE_ERROR)*/;
+        c->saved_rc = CDB2ERR_PREPARE_ERROR;
+        c->saved_errstr = strdup((char*)a);
+        return 0;
     case RESPONSE_ERROR_REJECT:
-        return 0 /*newsql_error(c, a, CDB2ERR_REJECTED)*/;
+        c->saved_rc = CDB2ERR_REJECTED;
+        c->saved_errstr = strdup((char*)a);
+        return 0;
     case RESPONSE_FLUSH:
         return 0 /*newsql_flush(c)*/;
     case RESPONSE_HEARTBEAT:
@@ -1413,8 +1436,26 @@ int order_init(dohsql_t *conns, dohsql_node_t *node)
     return SHARD_NOERR;
 }
 
-int is_parallel_shard(void)
+int dohsql_is_parallel_shard(void)
 {
     GET_CLNT;
     return (clnt->conns || DOHSQL_CLIENT);
+}
+
+/**
+ * Retrieve error from a distributed execution plan, if any
+ *
+ */
+int dohsql_error(struct sqlclntstate *clnt, const char **errstr)
+{
+    struct sqlclntstate *child_clnt;
+
+    if (clnt && clnt->conns && clnt->conns->child_err)  {
+        child_clnt = clnt->conns->conns[clnt->conns->child_err].clnt;
+        *errstr = child_clnt->saved_errstr;
+        return child_clnt->saved_rc;
+    }
+
+    *errstr = NULL;
+    return 0;
 }

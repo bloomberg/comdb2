@@ -62,6 +62,12 @@ void dohsql_wait_for_master(sqlite3_stmt *stmt, struct sqlclntstate *clnt);
  * Return 1 if this sql thread servers a parallel statement
  *
  */
-int is_parallel_shard(void);
+int dohsql_is_parallel_shard(void);
+
+/**
+ * Retrieve error from a distributed execution plan, if any
+ *
+ */
+int dohsql_error(struct sqlclntstate *clnt, const char **errstr);
 
 #endif
