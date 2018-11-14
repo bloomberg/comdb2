@@ -3506,9 +3506,8 @@ void disconnect_remote_db(const char *protocol, const char *dbname, const char *
 void sbuf2gettimeout(SBUF2 *sb, int *read, int *write);
 int sbuf2fread_timeout(char *ptr, int size, int nitems, SBUF2 *sb,
                        int *was_timeout);
-int release_locks_flags(const char *trace, const char *func, int line,
-                        uint32_t flags);
-#define release_locks(trace) release_locks_flags(trace, __func__, __LINE__, 0)
+int release_locks_int(const char *trace, const char *func, int line);
+#define release_locks(trace) release_locks_int(trace, __func__, __LINE__)
 
 unsigned long long verify_indexes(struct dbtable *db, uint8_t *rec,
                                   blob_buffer_t *blobs, size_t maxblobs,

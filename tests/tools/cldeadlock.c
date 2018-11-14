@@ -62,7 +62,7 @@ again:
     }
 
     if ((rc = cdb2_next_record(hndl)) != CDB2_OK) {
-        fprintf(stderr, "cdb2_next_record returns %d, %s\n", rc,
+        fprintf(stderr, "Failed cdb2_next_record returns %d, %s\n", rc,
                 cdb2_errstr(hndl));
         failexit(__func__, __LINE__, rc);
     }
@@ -180,7 +180,12 @@ upd_again:
                         cnt, target);
         }
     }
-    printf("Orphaning connections after %" PRId64 " records\n", iter);
+    if (sel_rc != CDB2_OK) {
+        fprintf(stderr, "Select next_record returns %d, '%s'\n", sel_rc,
+                cdb2_errstr(sel_hndl));
+    } else {
+        printf("Orphaning connections after %" PRId64 " records\n", iter);
+    }
 
     // Intentionally orphan handles
     return 0;
@@ -200,7 +205,7 @@ int select_and_update(const char *dbname, const char *type, int snapshot,
         while((rc = cdb2_next_record(sel_orphans[i])) == CDB2_OK)
             ;
         if (rc != CDB2_OK_DONE) {
-            fprintf(stderr, "closing orphan next_record sel_rc is %d, %s\n", rc,
+            fprintf(stderr, "Closing orphan next_record sel_rc is %d, %s\n", rc,
                     cdb2_errstr(sel_orphans[i]));
         }
         cdb2_close(sel_orphans[i]);

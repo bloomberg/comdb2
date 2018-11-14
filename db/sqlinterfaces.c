@@ -334,33 +334,6 @@ void unlock_client_write_lock(struct sqlclntstate *clnt)
     Pthread_mutex_unlock(&clnt->write_lock);
 }
 
-void handle_failed_recover_deadlock(struct sqlclntstate *clnt,
-                                    int recover_deadlock_rcode)
-{
-    clnt->ready_for_heartbeats = 0;
-    assert(bdb_lockref() == 0);
-    switch (recover_deadlock_rcode) {
-    case SQLITE_COMDB2SCHEMA:
-        write_response(clnt, RESPONSE_ERROR,
-                       "Database schema changed during request",
-                       CDB2ERR_SCHEMA);
-        logmsg(LOGMSG_DEBUG, "%s sending CDB2ERR_SCHEMA\n", __func__);
-        break;
-    case SQLITE_CLIENT_CHANGENODE:
-        write_response(clnt, RESPONSE_ERROR, "Client api should retry request",
-                       CDB2ERR_CHANGENODE);
-        logmsg(LOGMSG_DEBUG, "%s sending CDB2ERR_CHANGENODE\n", __func__);
-        break;
-    default:
-        write_response(clnt, RESPONSE_ERROR,
-                       "Failed to reaquire locks on deadlock",
-                       CDB2ERR_DEADLOCK);
-        logmsg(LOGMSG_DEBUG, "%s sending CDB2ERR_DEADLOCK on %d\n", __func__,
-               recover_deadlock_rcode);
-        break;
-    }
-}
-
 int write_response(struct sqlclntstate *clnt, int R, void *D, int I)
 {
 #ifdef DEBUG
@@ -2259,8 +2232,7 @@ static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     return SQLITE_OK;
 }
 
-int release_locks_flags(const char *trace, const char *func, int line,
-        uint32_t flags)
+int release_locks_int(const char *trace, const char *func, int line)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd ? thd->clnt : NULL;
@@ -2273,7 +2245,7 @@ int release_locks_flags(const char *trace, const char *func, int line,
                    bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran),
                    trace);
         rc = recover_deadlock_flags(thedb->bdb_env, thd, NULL, -1, func, line,
-                flags);
+                0);
     }
     return rc;
 }
@@ -3219,21 +3191,6 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
         }
     }
     return 0;
-}
-
-static inline int check_recover_deadlock(struct sqlclntstate *clnt)
-{
-    int rc;
-
-    if ((rc = clnt->recover_deadlock_rcode)) {
-        clnt->skip_recover_deadlock = 1;
-        clnt->recover_deadlock_rcode = 0;
-        handle_failed_recover_deadlock(clnt, rc);
-        clnt->skip_recover_deadlock = 0;
-        logmsg(LOGMSG_ERROR, "%s: failing on recover_deadlock error\n",
-                __func__);
-    }
-    return rc;
 }
 
 /* The design choice here for communication is to send row data inside this

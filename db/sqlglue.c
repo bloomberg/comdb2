@@ -509,6 +509,58 @@ int get_calls_per_sec(void) { return calls_per_second; }
 
 void reset_calls_per_sec(void) { calls_per_second = 0; }
 
+static void handle_failed_recover_deadlock(struct sqlclntstate *clnt,
+                                    int recover_deadlock_rcode)
+{
+    clnt->ready_for_heartbeats = 0;
+    assert(bdb_lockref() == 0);
+    switch (recover_deadlock_rcode) {
+    case SQLITE_COMDB2SCHEMA:
+        clnt->osql.xerr.errval = CDB2ERR_SCHEMA;
+        errstat_cat_str(&clnt->osql.xerr,
+                        "Database schema changed during request");
+        write_response(clnt, RESPONSE_ERROR,
+                       "Database schema changed during request",
+                       CDB2ERR_SCHEMA);
+        logmsg(LOGMSG_DEBUG, "%s sending CDB2ERR_SCHEMA\n", __func__);
+        break;
+    case SQLITE_CLIENT_CHANGENODE:
+        clnt->osql.xerr.errval = CDB2ERR_CHANGENODE;
+        errstat_cat_str(&clnt->osql.xerr,
+                        "Client api should retry request");
+        write_response(clnt, RESPONSE_ERROR, "Client api should retry request",
+                       CDB2ERR_CHANGENODE);
+        logmsg(LOGMSG_DEBUG, "%s sending CDB2ERR_CHANGENODE\n", __func__);
+        break;
+    default:
+        clnt->osql.xerr.errval = CDB2ERR_DEADLOCK;
+        errstat_cat_str(&clnt->osql.xerr,
+                        "Failed to reaquire locks on deadlock");
+        write_response(clnt, RESPONSE_ERROR,
+                       "Failed to reaquire locks on deadlock",
+                       CDB2ERR_DEADLOCK);
+        logmsg(LOGMSG_DEBUG, "%s sending CDB2ERR_DEADLOCK on %d\n", __func__,
+               recover_deadlock_rcode);
+        break;
+    }
+}
+
+static inline int check_recover_deadlock(struct sqlclntstate *clnt)
+{
+    int rc;
+
+    if ((rc = clnt->recover_deadlock_rcode)) {
+        assert(bdb_lockref() == 0);
+        clnt->skip_recover_deadlock = 1;
+        clnt->recover_deadlock_rcode = 0;
+        handle_failed_recover_deadlock(clnt, rc);
+        clnt->skip_recover_deadlock = 0;
+        logmsg(LOGMSG_ERROR, "%s: failing on recover_deadlock error\n",
+                __func__);
+    }
+    return rc;
+}
+
 /*
    This is called every time the db does something (find/next/etc. on a cursor).
    The query is aborted if this returns non-zero.
@@ -533,10 +585,8 @@ static int sql_tick(struct sql_thread *thd, int uses_bdb_locking)
     if (clnt->statement_timedout)
         return SQLITE_LIMIT;
 
-    if (clnt->recover_deadlock_rcode) {
-        assert(bdb_lockref() == 0);
-        return clnt->recover_deadlock_rcode;
-    }
+    if ((rc = check_recover_deadlock(clnt)))
+        return rc;
 
     if (uses_bdb_locking && bdb_lock_desired(thedb->bdb_env)) {
         int sleepms;
@@ -550,12 +600,8 @@ static int sql_tick(struct sql_thread *thd, int uses_bdb_locking)
 
         rc = recover_deadlock(thedb->bdb_env, thd, NULL, sleepms);
 
-        if (rc != 0) {
-            if (rc < 0)
-                return SQLITE_BUSY;
-            else
-                return rc;
-        }
+        if ((rc = check_recover_deadlock(clnt)))
+            return rc;
 
         logmsg(LOGMSG_DEBUG, "%s recovered deadlock\n", __func__);
 
@@ -564,13 +610,9 @@ static int sql_tick(struct sql_thread *thd, int uses_bdb_locking)
                !(rand() % gbl_sql_random_release_interval)) {
 
         rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "recover_deadlock returned %d\n", rc);
-            if (rc < 0)
-                return SQLITE_BUSY;
-            else
-                return rc;
-        }
+
+        if ((rc = check_recover_deadlock(clnt)))
+            return rc;
 
         logmsg(LOGMSG_DEBUG, "%s recovered deadlock\n", __func__);
 
