@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# We currently kill -9 the nodes rather than send exit
+# In future we could exit by doing send exit, but it has to 
+# function properly first (by cleaning up correctly)
 
 set -x
 
@@ -20,7 +23,7 @@ kill_by_pidfile() {
         if [[ $? -eq 0 ]]; then
             echo "${TESTCASE}: killing $pid"
             if [ "`echo $pstr | awk '{ print $1 }' | xargs basename`" = "comdb2" ] ; then
-                kill -6 $pid
+                kill -9 $pid
             else
                 kill $pid
             fi
@@ -42,7 +45,7 @@ build_pidfilelist() {
             rm -f $pidfile
         fi
     else
-        echo "kill_by_pidfile: pidfile $pidfile does not exist"
+        echo "build_pidfilelist: pidfile $pidfile does not exist"
     fi
 }
 
