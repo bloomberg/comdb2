@@ -3173,6 +3173,7 @@ int sqlite3BtreeClose(Btree *pBt)
                             logmsg(LOGMSG_ERROR,
                                    "%s: bdb_temp_table_close bdberr %d\n",
                                    __func__, bdberr);
+                            ++pTbl->nRef; /* UNDO */
                             rc = SQLITE_INTERNAL;
                             Pthread_mutex_unlock(&pBt->temp_tables_lk);
                             Pthread_mutex_unlock(&gbl_sql_lock);
@@ -3904,6 +3905,7 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
                         logmsg(LOGMSG_ERROR,
                                "%s:bdb_temp_table_close bdberr %d\n",
                                __func__, bdberr);
+                        ++pTbl->nRef; /* UNDO */
                         rc = SQLITE_INTERNAL;
                     }
                 } else {
