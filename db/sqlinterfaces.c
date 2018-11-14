@@ -4422,9 +4422,8 @@ static inline int sql_writer_recover_deadlock(struct sqlclntstate *clnt)
             pthread_cond_timedwait(&clnt->write_cond, &clnt->write_lock, &ts);
         /* Must check emitting_flag && done to handle trylock failures */
         } while (clnt->need_recover_deadlock == 1 && clnt->emitting_flag);
-        assert(clnt->need_recover_deadlock == 0);
         clnt->heartbeat_lock = 0;
-        return 0;
+        return clnt->need_recover_deadlock;
     }
 
     /* Recover deadlock not run */
