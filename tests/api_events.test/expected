@@ -34,3 +34,7 @@ cdb2_next_record_int: Timeout while reading response from server
 ====== OPEN/CLOSE ======
 3, nil
 4, nil
+====== RUN STATEMENT/NEXT RECORD ======
+SQL is SELECT "You may say I'm a dreamer, but I'm not the only one."
+RC is 0
+RC is 1

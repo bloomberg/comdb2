@@ -264,6 +264,14 @@ typedef enum cdb2_event_type {
     CDB2_BEFORE_READ_RECORD = 1 << 8,
     CDB2_AFTER_READ_RECORD = 1 << 9,
 
+    /* Logical operation events.
+       A logicial operation event typically
+       consists of multiple network events. */
+    CDB2_BEFORE_RUN_STATEMENT = 1 << 10,
+    CDB2_AFTER_RUN_STATEMENT = 1 << 11,
+    CDB2_BEFORE_NEXT_RECORD = 1 << 12,
+    CDB2_AFTER_NEXT_RECORD = 1 << 13,
+
     /* Lifecycle events */
     CDB2_OPEN = 1 << 30,
     CDB2_CLOSE = 1 << 31,

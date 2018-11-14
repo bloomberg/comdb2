@@ -19,6 +19,12 @@ static void *my_arg_hook(cdb2_hndl_tp *hndl, void *user_arg, int argc, void **ar
     return NULL;
 }
 
+static void *my_rc_hook(cdb2_hndl_tp *hndl, void *user_arg, int argc, void **argv)
+{
+    printf("RC is %d\n", (int)(intptr_t)argv[0]);
+    return NULL;
+}
+
 static void *my_overwrite_rc_hook(cdb2_hndl_tp *hndl, void *user_arg, int argc, void **argv)
 {
     return (void*)(intptr_t)(-1);
@@ -34,9 +40,6 @@ static void register_once(void)
 static int TEST_init_once_registration(const char *db, const char *tier)
 {
     extern void (*cdb2_init)(void);
-    int rc;
-    cdb2_hndl_tp *hndl = NULL;
-
     cdb2_init = register_once;
     return 0;
 }
@@ -143,7 +146,7 @@ static void *my_overwrite_user_arg_hook(cdb2_hndl_tp *hndl, void *user_arg, int 
         return (void*)(intptr_t)cnt;
     }
 
-    printf("%d, %s\n", (int)(intptr_t)user_arg, argv[0] == NULL ? "nil" : argv[0]);
+    printf("%d, %s\n", (int)(intptr_t)user_arg, argv[0] == NULL ? "nil" : (char *)argv[0]);
     return NULL;
 }
 
@@ -167,7 +170,7 @@ static int TEST_modify_user_arg_event(const char *db, const char *tier)
 
 static int TEST_open_close_event(const char *db, const char *tier)
 {
-    cdb2_hndl_tp *h1 = NULL, *h2;
+    cdb2_hndl_tp *h1, *h2;
     cdb2_event *e1, *e2;
     e1 = cdb2_register_event(NULL, CDB2_OPEN, CDB2_AS_DEFAULT_USER_ARG, my_overwrite_user_arg_hook, NULL, 0);
     e2 = cdb2_register_event(NULL, CDB2_CLOSE, 0, my_overwrite_user_arg_hook, NULL, 1, CDB2_SQL);
@@ -175,6 +178,22 @@ static int TEST_open_close_event(const char *db, const char *tier)
     cdb2_open(&h2, db, tier, 0);
     cdb2_close(h1);
     cdb2_close(h2);
+    cdb2_unregister_event(NULL, e1);
+    cdb2_unregister_event(NULL, e2);
+    return 0;
+}
+
+static int TEST_run_stmt_next_record_events(const char *db, const char *tier)
+{
+    int rc;
+    cdb2_hndl_tp *h;
+    cdb2_event *e1, *e2;
+    cdb2_open(&h, db, tier, 0);
+    e1 = cdb2_register_event(h, CDB2_AFTER_RUN_STATEMENT, 0, my_arg_hook, NULL, 1, CDB2_SQL);
+    e2 = cdb2_register_event(h, CDB2_AFTER_NEXT_RECORD, 0, my_rc_hook, NULL, 1, CDB2_RETURN_VALUE);
+    cdb2_run_statement(h, "SELECT \"You may say I'm a dreamer, but I'm not the only one.\"");
+    while ((rc = cdb2_next_record(h)) == CDB2_OK);
+    cdb2_close(h);
     return 0;
 }
 
@@ -220,6 +239,11 @@ int main(int argc, char **argv)
 
     puts("====== OPEN/CLOSE ======");
     rc = TEST_open_close_event(db, tier);
+    if (rc != 0)
+        return rc;
+
+    puts("====== RUN STATEMENT/NEXT RECORD ======");
+    rc = TEST_run_stmt_next_record_events(db, tier);
     if (rc != 0)
         return rc;
 

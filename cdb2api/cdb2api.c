@@ -2326,7 +2326,7 @@ static int cdb2_read_record(cdb2_hndl_tp *hndl, uint8_t **buf, int *len, int *ty
     cdb2_event *e = NULL;
 
     while ((e = cdb2_next_handler(hndl, CDB2_BEFORE_READ_RECORD, e)) != NULL) {
-        handlerrc = cdb2_invoke_handler(hndl, e, 0, NULL);
+        handlerrc = cdb2_invoke_handler(hndl, e, 0);
         PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, handlerrc, overwrite_rc);
     }
 
@@ -2924,6 +2924,18 @@ int cdb2_next_record(cdb2_hndl_tp *hndl)
 {
     int rc = 0;
 
+    void *handlerrc;
+    int overwrite_rc = 0;
+    cdb2_event *e = NULL;
+
+    while ((e = cdb2_next_handler(hndl, CDB2_BEFORE_NEXT_RECORD, e)) != NULL) {
+        handlerrc = cdb2_invoke_handler(hndl, e, 0);
+        PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, handlerrc, overwrite_rc);
+    }
+
+    if (overwrite_rc)
+        goto after_handler;
+
     if (hndl->in_trans && !hndl->read_intrans_results && !hndl->is_read) {
         rc = CDB2_OK_DONE;
     } else if (hndl->lastresponse && hndl->first_record_read == 0) {
@@ -2946,6 +2958,13 @@ int cdb2_next_record(cdb2_hndl_tp *hndl)
     if (log_calls)
         fprintf(stderr, "%p> cdb2_next_record(%p) = %d\n",
                 (void *)pthread_self(), hndl, rc);
+
+after_handler:
+    while ((e = cdb2_next_handler(hndl, CDB2_AFTER_NEXT_RECORD, e)) != NULL) {
+        handlerrc = cdb2_invoke_handler(hndl, e, 1, CDB2_RETURN_VALUE, rc);
+        PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, handlerrc);
+    }
+
     return rc;
 }
 
@@ -4365,6 +4384,18 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
 {
     int rc = 0;
 
+    void *handlerrc;
+    int overwrite_rc = 0;
+    cdb2_event *e = NULL;
+
+    while ((e = cdb2_next_handler(hndl, CDB2_BEFORE_RUN_STATEMENT, e)) != NULL) {
+        handlerrc = cdb2_invoke_handler(hndl, e, 1, CDB2_SQL, sql);
+        PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, handlerrc, overwrite_rc);
+    }
+
+    if (overwrite_rc)
+        goto after_handler;
+
     if (hndl->temp_trans && hndl->in_trans) {
         cdb2_run_statement_typed_int(hndl, "rollback", 0, NULL, __LINE__);
     }
@@ -4378,7 +4409,7 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
         rc = cdb2_run_statement_typed_int(hndl, "begin", 0, NULL, __LINE__);
         if (rc) {
             debugprint("cdb2_run_statement_typed_int rc = %d\n", rc);
-            return rc;
+            goto after_handler;
         }
         hndl->temp_trans = 1;
     }
@@ -4416,6 +4447,14 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
             fprintf(stderr, "] = %d\n", rc);
         }
     }
+
+after_handler:
+    while ((e = cdb2_next_handler(hndl, CDB2_AFTER_RUN_STATEMENT, e)) != NULL) {
+        handlerrc = cdb2_invoke_handler(hndl, e, 2, CDB2_SQL, sql,
+                                  CDB2_RETURN_VALUE, rc);
+        PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, handlerrc);
+    }
+
     return rc;
 }
 

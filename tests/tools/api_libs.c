@@ -4,7 +4,7 @@
 #define WITH_DL_LIBS 1
 #include <cdb2api.c>
 
-static void gbl_init_once(void)
+void gbl_init_once(void)
 {
     puts("HELLO WORLD");
 }
