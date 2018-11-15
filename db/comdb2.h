@@ -65,7 +65,6 @@ typedef long long tranid_t;
 #include <queue.h>
 #include <compile_time_assert.h>
 #include <history.h>
-#include <comdb2_info.h>
 #include <comdb2_dbinfo.h>
 #include <comdb2_trn_intrl.h>
 #include <sqlthdpool.h>
@@ -360,54 +359,58 @@ enum OSQL_RPL_TYPE {
 enum DEBUGREQ { DEBUG_METADB_PUT = 1 };
 
 enum RCODES {
-      RC_OK = 0 /*SUCCESS*/
-    , ERR_VERIFY = 4 /*failed verify on updwver*/
-    , ERR_CORRUPT = 8 /*CORRUPT INDEX*/
-    , ERR_BADRRN = 9 /* findbyrrn on bad rrn */
-    , ERR_ACCESS = 10 /* access denied */
-    , ERR_DTA_FAILED = 11 /*failed operation on data */
-    , ERR_INTERNAL = 177 /*internal logic error.*/
-    , ERR_REJECTED = 188 /*request rejected*/
-    , RC_INTERNAL_FORWARD = 193 /*forwarded block request*/
-    , ERR_FAILED_FORWARD = 194 /*block update failed to send to remote*/
-    , ERR_READONLY = 195 /*database is currently read-only*/
-    , ERR_NOMASTER = 1000 /*database has no master, it is readonly*/
-    , ERR_NESTED = 1001 /*this is not master, returns actual master*/
-    , ERR_RMTDB_NESTED = 198 /*reserved for use by rmtdb/prox2*/
-    , ERR_BADREQ = 199 /*bad request parameters*/
-    , ERR_TRAN_TOO_BIG = 208 
-    , ERR_BLOCK_FAILED = 220 /*block update failed*/
-    , ERR_NOTSERIAL = 230 /*transaction not serializable*/
-    , ERR_SC = 240 /*schemachange failed*/
-    , RC_INTERNAL_RETRY = 300 /*need to retry comdb upper level request*/
-    , ERR_CONVERT_DTA = 301
-    , ERR_CONVERT_IX = 301
-    , ERR_KEYFORM_UNIMP = 303
-    , RC_TRAN_TOO_COMPLEX = 304 /* too many rrns allocated per trans */
-    , RC_TRAN_CLIENT_RETRY = 305
-    , ERR_BLOB_TOO_LARGE = 306 /* a blob exceeded MAXBLOBLENGTH */
-    , ERR_BUF_TOO_SMALL = 307 /* buffer provided too small to fit data */
-    , ERR_NO_BUFFER = 308 /* can't get fstsnd buffer */
-    , ERR_JAVASP_ABORT = 309 /* stored procedure ordered this trans aborted */
-    , ERR_NO_SUCH_TABLE = 310 /* operation tried to use non-existant table */
-    , ERR_CALLBACK = 311 /* operation failed due to errors in callback */
-    , ERR_TRAN_FAILED = 312 /* could not start of finish transaction */
-    , ERR_CONSTR = 313 /* could not complete the operation becouse of
-                        constraints in the table*/
-    , ERR_SC_COMMIT = 314 /* schema change in its final stages; proxy
-                           should retry */
-    , ERR_INDEX_DISABLED = 315 /* can't read from a disabled index */
-    , ERR_CONFIG_FAILED = 316
-    , ERR_NO_RECORDS_FOUND = 317
-    , ERR_NULL_CONSTRAINT = 318
-    , ERR_VERIFY_PI = 319
-    , ERR_UNCOMMITABLE_TXN = 404 /* txn is uncommitable, returns ERR_VERIFY rather than retry */
-    , ERR_INCOHERENT = 996 /* prox2 understands it should retry another node for 996 */
-    , ERR_SQL_PREPARE = 1003
-    , ERR_NO_AUXDB = 2000 /* requested auxiliary database not available */
-    , ERR_SQL_PREP = 2001 /* block sql error in sqlite3_prepare */
-    , ERR_LIMIT = 2002 /* sql request exceeds max cost */
-    , ERR_NOT_DURABLE = 2003 /* commit didn't make it to a majority */
+    RC_OK = 0,                 /* SUCCESS */
+    ERR_VERIFY = 4,            /* failed verify on updwver */
+    ERR_CORRUPT = 8,           /* CORRUPT INDEX */
+    ERR_BADRRN = 9,            /* findbyrrn on bad rrn  */
+    ERR_ACCESS = 10,           /* access denied  */
+    ERR_DTA_FAILED = 11,       /* failed operation on data  */
+    ERR_INTERNAL = 177,        /* internal logic error. */
+    ERR_REJECTED = 188,        /* request rejected */
+    RC_INTERNAL_FORWARD = 193, /* forwarded block request */
+    ERR_FAILED_FORWARD = 194,  /* block update failed to send to remote */
+    ERR_READONLY = 195,        /* database is currently read-only */
+    ERR_NOMASTER = 1000,       /* database has no master, it is readonly */
+    ERR_NESTED = 1001,         /* this is not master, returns actual master */
+    ERR_RMTDB_NESTED = 198,    /* reserved for use by rmtdb/prox2 */
+    ERR_BADREQ = 199,          /* bad request parameters */
+    ERR_TRAN_TOO_BIG = 208,
+    ERR_BLOCK_FAILED = 220,  /* block update failed */
+    ERR_NOTSERIAL = 230,     /* transaction not serializable */
+    ERR_SC = 240,            /* schemachange failed */
+    RC_INTERNAL_RETRY = 300, /* need to retry comdb upper level request */
+    ERR_CONVERT_DTA = 301,
+    ERR_CONVERT_IX = 301,
+    ERR_KEYFORM_UNIMP = 303,
+    RC_TRAN_TOO_COMPLEX = 304, /* too many rrns allocated per trans */
+    RC_TRAN_CLIENT_RETRY = 305,
+    ERR_BLOB_TOO_LARGE = 306, /* a blob exceeded MAXBLOBLENGTH */
+    ERR_BUF_TOO_SMALL = 307,  /* buffer provided too small to fit data  */
+    ERR_NO_BUFFER = 308,      /* can't get fstsnd buffer  */
+    ERR_JAVASP_ABORT = 309,   /* stored procedure ordered this trans aborted */
+    ERR_NO_SUCH_TABLE = 310,  /* operation tried to use non-existant table */
+    ERR_CALLBACK = 311,       /* operation failed due to errors in callback */
+    ERR_TRAN_FAILED = 312,    /* could not start of finish transaction */
+    ERR_CONSTR =
+        313, /* could not complete the operation becouse of constraints in the
+                table */
+    ERR_SC_COMMIT =
+        314, /* schema change in its final stages; proxy should retry */
+    ERR_INDEX_DISABLED = 315, /* can't read from a disabled index */
+    ERR_CONFIG_FAILED = 316,
+    ERR_NO_RECORDS_FOUND = 317,
+    ERR_NULL_CONSTRAINT = 318,
+    ERR_VERIFY_PI = 319,
+    ERR_UNCOMMITABLE_TXN =
+        404, /* txn is uncommitable, returns ERR_VERIFY rather than retry */
+    ERR_INCOHERENT =
+        996, /* prox2 understands it should retry another node for 996 */
+    ERR_SQL_PREPARE = 1003,
+    ERR_NO_AUXDB = 2000,    /* requested auxiliary database not available */
+    ERR_SQL_PREP = 2001,    /* block sql error in sqlite3_prepare */
+    ERR_LIMIT = 2002,       /* sql request exceeds max cost */
+    ERR_NOT_DURABLE = 2003, /* commit didn't make it to a majority */
+    ERR_RECOVER_DEADLOCK = 2004
 };
 
 #define IS_BAD_IX_FND_RCODE(rc)                                                \
@@ -512,6 +515,13 @@ enum RECORD_WRITE_TYPES {
     RECORD_WRITE_DEL = 2,
     RECORD_WRITE_MAX = 3
 };
+
+enum RECOVER_DEADLOCK_FLAGS {
+    RECOVER_DEADLOCK_PTRACE = 0x00000001,
+    RECOVER_DEADLOCK_FORCE_FAIL = 0x00000002
+};
+
+enum CURTRAN_FLAGS { CURTRAN_RECOVERY = 0x00000001 };
 
 /* Raw stats, kept on a per origin machine basis.  This whole struct is
  * essentially an array of unsigneds.  Please don't add any other data
@@ -3323,10 +3333,11 @@ int dump_spfile(char *path, const char *dblrl, char *file_name);
 int read_spfile(char *file);
 
 struct bdb_cursor_ifn;
-int recover_deadlock(bdb_state_type *, struct sql_thread *,
-                     struct bdb_cursor_ifn *, int sleepms);
-int recover_deadlock_silent(bdb_state_type *, struct sql_thread *,
-                            struct bdb_cursor_ifn *, int sleepms);
+
+int recover_deadlock_flags(bdb_state_type *, struct sql_thread *,
+                           struct bdb_cursor_ifn *, int sleepms,
+                           const char *func, int line, uint32_t flags);
+#define recover_deadlock(state, thd, cur, sleepms) recover_deadlock_flags(state, thd, cur, sleepms, __func__, __LINE__, RECOVER_DEADLOCK_PTRACE)
 int pause_pagelock_cursors(void *arg);
 int count_pagelock_cursors(void *arg);
 int compare_indexes(const char *table, FILE *out);
@@ -3496,7 +3507,8 @@ void disconnect_remote_db(const char *protocol, const char *dbname, const char *
 void sbuf2gettimeout(SBUF2 *sb, int *read, int *write);
 int sbuf2fread_timeout(char *ptr, int size, int nitems, SBUF2 *sb,
                        int *was_timeout);
-int release_locks(const char *trace);
+int release_locks_int(const char *trace, const char *func, int line);
+#define release_locks(trace) release_locks_int(trace, __func__, __LINE__)
 
 unsigned long long verify_indexes(struct dbtable *db, uint8_t *rec,
                                   blob_buffer_t *blobs, size_t maxblobs,

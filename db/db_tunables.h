@@ -1458,6 +1458,36 @@ REGISTER_TUNABLE("osql_send_startgen",
                  TUNABLE_BOOLEAN, &gbl_osql_send_startgen,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("client_heartbeat_ms",
+                 "Number of milliseconds between client api heartbeats.  "
+                 "(Default: 100)",
+                 TUNABLE_INTEGER, &gbl_client_heartbeat_ms,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("rep_release_wait_ms",
+                 "Release sql-locks if rep-thd is blocked for this many ms."
+                 "  (Default: 60000)",
+                 TUNABLE_INTEGER, &gbl_rep_wait_release_ms,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("rep_wait_core_ms",
+                 "Abort if rep-thread waits longer than this threshold for "
+                 "locks.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_rep_wait_core_ms,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("random_get_curtran_failures",
+                 "Force a random get-curtran failure 1/this many times.  "
+                 "(Default: 0)",
+                 TUNABLE_INTEGER, &gbl_random_get_curtran_failures,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("random_fail_client_write_lock",
+                 "Force a random client write-lock failure 1/this many times.  "
+                 "(Default: 0)",
+                 TUNABLE_INTEGER, &gbl_fail_client_write_lock,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("reorder_socksql_no_deadlock", "Reorder sock sql to have no deadlocks ",
                  TUNABLE_BOOLEAN, &gbl_reorder_socksql_no_deadlock,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);

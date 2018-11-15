@@ -2603,7 +2603,7 @@ dumptxn(DB_ENV * dbenv, DB_LSN * lsnpp)
 			DB *db;
 			char *name;
 
-			ret = __db_addrem_read(dbenv, dbt.data, &a);
+			ret = __db_addrem_read_int(dbenv, dbt.data, 0, &a);
 			if (ret) {
 				__db_err(dbenv, "can't decode addrem record\n");
 				goto done;

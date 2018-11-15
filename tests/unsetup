@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# We currently kill -9 the nodes rather than send exit
+# In future we could exit by doing send exit, but it has to 
+# function properly first (by cleaning up correctly)
 
 set -x
 
@@ -42,7 +45,7 @@ build_pidfilelist() {
             rm -f $pidfile
         fi
     else
-        echo "kill_by_pidfile: pidfile $pidfile does not exist"
+        echo "build_pidfilelist: pidfile $pidfile does not exist"
     fi
 }
 
@@ -147,6 +150,8 @@ unsetup_db() {
 
     if [[ "$CORE_ON_TIMEOUT" -eq "1" && "$successful" -eq "-1" ]]; then
         core_all_nodes
+    elif [[ "$CORE_ON_FAILURE" -eq "1" && "$successful" -ne "1" ]]; then
+        core_all_nodes
     fi
 
 
@@ -157,7 +162,6 @@ unsetup_db() {
         sleep 1
         
         kill_by_pidfile ${TMPDIR}/${DBNAME}.pid
-
     else
         pidfilelist=""
 

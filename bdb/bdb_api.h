@@ -1673,6 +1673,7 @@ void analyze_set_headroom(uint64_t);
 int bdb_is_open(bdb_state_type *bdb_state);
 
 void bdb_checklock(bdb_state_type *);
+int bdb_lockref(void);
 void berkdb_set_max_rep_retries(int max);
 void bdb_set_recovery(bdb_state_type *);
 tran_type *bdb_tran_begin_set_retries(bdb_state_type *, tran_type *parent,
@@ -1841,6 +1842,8 @@ enum {
     ,
     LLMETA_GENID_FORMAT_MAX = 2
 };
+
+enum { BDB_CURTRAN_LOW_PRIORITY = 0x00000001 };
 
 int bdb_get_rowlocks_state(int *rlstate, int *bdberr);
 int bdb_set_rowlocks_state(tran_type *input_trans, int rlstate, int *bdberr);
