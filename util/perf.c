@@ -13,6 +13,9 @@
 #include "list.h"
 #include <locks_wrap.h>
 
+#include "mem_util.h"
+#include "mem_override.h"
+
 int gbl_timeseries_metrics = 1;
 
 static LISTC_T(struct time_metric) metrics;
