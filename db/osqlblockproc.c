@@ -64,6 +64,7 @@
 #include "osqlrepository.h"
 #include "comdb2uuid.h"
 #include "bpfunc.h"
+#include "crc32c.h"
 
 #include "logmsg.h"
 
@@ -648,48 +649,35 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
                        oplog_key_t *key)
 {
     key->tbl_idx = USHRT_MAX;
-    if (type == OSQL_USEDB) {
+    switch(type) {
+    case OSQL_USEDB: {
+        /* usedb is always called prior to any other osql event */
         const char *get_tablename_from_rpl(const char *rpl);
         const char *tablename = get_tablename_from_rpl(rpl);
         assert(tablename); //table or queue name
         if (tablename && !is_tablename_queue(tablename, strlen(tablename))) {
-            struct dbtable *tbl = get_dbtable_by_name(tablename);
-            if(tbl) {
-                iq->usedb = tbl;
-                sess->tbl_idx = iq->usedb->dbs_idx + 1;
-                key->tbl_idx = sess->tbl_idx;
-            } else {
-                key->tbl_idx = 0;
-                /* selectv_recom sends usedb with a non existing table
-                 * let this get saved in the tmptbl */
-                logmsg(LOGMSG_DEBUG, "REORDER: no such table: for now call abort(): tablename='%s'\n", tablename);
-            }
-#if DEBUG_REORDER 
-            logmsg(LOGMSG_DEBUG, "REORDER: tablename='%s' idx=%d\n", tablename, (iq->usedb?iq->usedb->dbs_idx:-1));
-#endif
-        }
-    }
-    else if (!iq->usedb) { 
-#if DEBUG_REORDER 
-        logmsg(LOGMSG_DEBUG, "REORDER: usedb not set for type=%d(%s)\n", type,  osql_reqtype_str(type));
-#endif
-        if (type == OSQL_DONE_SNAP || type == OSQL_DONE || type == OSQL_DONE_STATS ||
-                type == OSQL_INSREC || type == OSQL_UPDREC || type == OSQL_DELREC ||
-                type == OSQL_INSERT || type == OSQL_UPDATE || type == OSQL_DELETE ||
-                type == OSQL_INSIDX || type == OSQL_DELIDX || type == OSQL_RECGENID ||
-                type == OSQL_QBLOB || type == OSQL_UPDCOLS) {
-            logmsg(LOGMSG_DEBUG, "REORDER: no usedb: for now call abort()\n");
-            //TODO: need to cleanup this session; for now abort for testing
-            abort();
-        }
-    }
+            strncpy(sess->tablename, tablename, sizeof(sess->tablename));
+            sess->tbl_idx = get_dbtable_idx_by_name(tablename) + 1;
+            key->tbl_idx = sess->tbl_idx;
 
-    if (type == OSQL_UPDATE || type == OSQL_DELETE || type == OSQL_UPDREC ||
-        type == OSQL_DELREC || type == OSQL_INSERT || type == OSQL_INSREC) {
+#if DEBUG_REORDER 
+            logmsg(LOGMSG_DEBUG, "REORDER: tablename='%s' idx=%d\n", tablename, sess->tbl_idx);
+#endif
+        }
+        break;
+    }
+    case OSQL_UPDATE: 
+    case OSQL_DELETE: 
+    case OSQL_UPDREC: 
+    case OSQL_DELREC: 
+    case OSQL_INSERT: 
+    case OSQL_INSREC: {
         enum { OSQLCOMM_UUID_RPL_TYPE_LEN = 4 + 4 + 16 };
         unsigned long long genid = 0;
         if (type == OSQL_INSERT || type == OSQL_INSREC) {
-            genid = bdb_get_next_genid(iq->usedb->handle);
+            genid = get_next_genid_for_table(sess->tablename);
+            if (genid == 0) /* table not found so assign nonzero genid */
+                genid = -1;
 #if DEBUG_REORDER 
             logmsg(LOGMSG_DEBUG, "REORDER: Creating genid 0x%llx\n", genid);
 #endif
@@ -698,25 +686,29 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
             const char *p_buf = rpl + OSQLCOMM_UUID_RPL_TYPE_LEN; 
             buf_no_net_get(&(genid), sizeof(genid), p_buf, p_buf + sizeof(genid));
 #if DEBUG_REORDER 
-            logmsg(LOGMSG_DEBUG, "REORDER: Receiving genid 0x%llx\n", genid);
+            logmsg(LOGMSG_DEBUG, "REORDER: Received genid 0x%llx\n", genid);
 #endif
         }
-        assert(0 != genid);
         sess->last_genid = genid;
-
-        key->tbl_idx = sess->tbl_idx;
-        key->genid = sess->last_genid;
-        key->stripe = get_dtafile_from_genid(key->genid);
         key->isrec = 1; //sort rec after qblobs
-        assert(key->stripe >= 0);
-    } else if (type == OSQL_QBLOB  || type == OSQL_DELIDX || 
-               type == OSQL_INSIDX || type == OSQL_UPDCOLS) {
+        /* FALL THROUGH TO NEXT CASE */
+    }
+    case OSQL_QBLOB:
+    case OSQL_DELIDX:
+    case OSQL_INSIDX:
+    case OSQL_UPDCOLS: {
         key->tbl_idx = sess->tbl_idx;
         key->genid = sess->last_genid;
         key->stripe = get_dtafile_from_genid(key->genid);
+        assert(0 != key->genid);
         assert(key->stripe >= 0);
-    } else if (type == OSQL_RECGENID) {
+        break;
+    } 
+    case OSQL_RECGENID: {
         key->tbl_idx = sess->tbl_idx;
+        break;
+    }
+    default: break;
     }
 }
 

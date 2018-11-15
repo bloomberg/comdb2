@@ -92,8 +92,9 @@ struct osql_sess {
     int retries;      /* how many times this session was retried */
 
     int queryid;
+    char tablename[MAXTABLELEN];   // remember tablename in saveop for reordering
     unsigned long long last_genid; // rememberg updrec and insrec genid for qblobs
-    int tbl_idx;
+    uint16_t tbl_idx;
     bool is_reorder_on : 1;
 };
 
@@ -254,7 +255,7 @@ int osql_session_testterminate(void *obj, void *arg);
 osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
                                    int type, unsigned long long rqid,
                                    uuid_t uuid, char *fromhost, struct ireq *iq,
-                                   int *replaced, uint32_t flags);
+                                   int *replaced, bool is_reorder_on);
 
 char *osql_sess_tag(osql_sess_t *sess);
 void *osql_sess_tagbuf(osql_sess_t *sess);

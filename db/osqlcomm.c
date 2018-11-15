@@ -7541,7 +7541,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
 
     osql_sess_t *sess = NULL;
     osql_req_t req;
-    osql_uuid_req_t uuid_req;
+    bool is_reorder_on = false;
     uint8_t *p_req_buf = dtap;
     const uint8_t *p_req_buf_end = p_req_buf + dtalen;
     int rc = 0;
@@ -7559,6 +7559,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
 
     /* grab the request */
     if (osql_nettype_is_uuid(nettype)) {
+        osql_uuid_req_t uuid_req;
         sql = (char *)osqlcomm_req_uuid_type_get(&uuid_req, p_req_buf,
                                                  p_req_buf_end);
 
@@ -7567,11 +7568,15 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
         req.sqlqlen = uuid_req.sqlqlen;
         req.rqid = OSQL_RQID_USE_UUID;
         req.ntails = uuid_req.ntails;
-        req.flags = uuid_req.flags;
+        req.flags = uuid_req.flags; // NB: we will loose the 0x80 and up flags
         memcpy(req.tzname, uuid_req.tzname, sizeof(uuid_req.tzname));
         comdb2uuidcpy(uuid, uuid_req.uuid);
         comdb2uuidcpy(sorese_info.uuid, uuid_req.uuid);
+        is_reorder_on = ((uuid_req.flags & OSQL_FLAGS_REORDER_ON) != 0);
 
+#if DEBUG_REORDER
+    logmsg(LOGMSG_DEBUG, "REORDER: req.flags %x\n", uuid_req.flags);
+#endif
     } else {
         sql = (char *)osqlcomm_req_type_get(&req, p_req_buf, p_req_buf_end);
         comdb2uuid_clear(uuid);
@@ -7633,7 +7638,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
        added session have sess->iq set
        to avoid racing against signal_rtoff code */
     sess = osql_sess_create_sock(sqlret, sqllenret, req.tzname, type, req.rqid,
-                                 uuid, fromhost, iq, &replaced, uuid_req.flags);
+                                 uuid, fromhost, iq, &replaced, is_reorder_on);
     if (replaced) {
         assert(sess == NULL);
         destroy_ireq(thedb, iq);
@@ -7647,8 +7652,8 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
         free(malcd);
         goto done;
     }
-#if DEBUG_REORDER 
-    logmsg(LOGMSG_DEBUG, "REORDER: created sess %p, with req.flags %x, sess->is_reorder_on %d\n", sess, uuid_req.flags, sess->is_reorder_on);
+#if DEBUG_REORDER
+    logmsg(LOGMSG_DEBUG, "REORDER: created sess %p, with sess->is_reorder_on %d\n", sess, sess->is_reorder_on);
 #endif
 
 #if 0
