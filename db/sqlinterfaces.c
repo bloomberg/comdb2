@@ -78,7 +78,7 @@
 #include "osqlshadtbl.h"
 
 #include <sqlresponse.pb-c.h>
-#include <ext/expert/sqlite3expert.h>
+#include <sqlite3expert.h>
 
 #include <alloca.h>
 #include <fsnap.h>
