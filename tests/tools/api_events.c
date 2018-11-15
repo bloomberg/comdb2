@@ -155,7 +155,7 @@ static int TEST_modify_user_arg_event(const char *db, const char *tier)
     cdb2_event *e1, *e2;
     cdb2_hndl_tp *h1 = NULL, *h2 = NULL;
 
-    e1 = cdb2_register_event(NULL, CDB2_BEFORE_SEND_QUERY, CDB2_AS_DEFAULT_USER_ARG, my_overwrite_user_arg_hook, NULL, 0, NULL);
+    e1 = cdb2_register_event(NULL, CDB2_BEFORE_SEND_QUERY, CDB2_AS_HANDLE_SPECIFIC_ARG, my_overwrite_user_arg_hook, NULL, 0, NULL);
     e2 = cdb2_register_event(NULL, CDB2_AFTER_SEND_QUERY, 0, my_overwrite_user_arg_hook, NULL, 1, CDB2_SQL);
     cdb2_open(&h1, db, tier, 0);
     cdb2_run_statement(h1, "SELECT 1");
@@ -172,8 +172,8 @@ static int TEST_open_close_event(const char *db, const char *tier)
 {
     cdb2_hndl_tp *h1, *h2;
     cdb2_event *e1, *e2;
-    e1 = cdb2_register_event(NULL, CDB2_OPEN, CDB2_AS_DEFAULT_USER_ARG, my_overwrite_user_arg_hook, NULL, 0);
-    e2 = cdb2_register_event(NULL, CDB2_CLOSE, 0, my_overwrite_user_arg_hook, NULL, 1, CDB2_SQL);
+    e1 = cdb2_register_event(NULL, CDB2_AT_OPEN, CDB2_AS_HANDLE_SPECIFIC_ARG, my_overwrite_user_arg_hook, NULL, 0);
+    e2 = cdb2_register_event(NULL, CDB2_AT_CLOSE, 0, my_overwrite_user_arg_hook, NULL, 1, CDB2_SQL);
     cdb2_open(&h1, db, tier, 0);
     cdb2_open(&h2, db, tier, 0);
     cdb2_close(h1);
@@ -189,8 +189,8 @@ static int TEST_run_stmt_next_record_events(const char *db, const char *tier)
     cdb2_hndl_tp *h;
     cdb2_event *e1, *e2;
     cdb2_open(&h, db, tier, 0);
-    e1 = cdb2_register_event(h, CDB2_AFTER_RUN_STATEMENT, 0, my_arg_hook, NULL, 1, CDB2_SQL);
-    e2 = cdb2_register_event(h, CDB2_AFTER_NEXT_RECORD, 0, my_rc_hook, NULL, 1, CDB2_RETURN_VALUE);
+    e1 = cdb2_register_event(h, CDB2_AT_EXIT_RUN_STATEMENT, 0, my_arg_hook, NULL, 1, CDB2_SQL);
+    e2 = cdb2_register_event(h, CDB2_AT_EXIT_NEXT_RECORD, 0, my_rc_hook, NULL, 1, CDB2_RETURN_VALUE);
     cdb2_run_statement(h, "SELECT \"You may say I'm a dreamer, but I'm not the only one.\"");
     while ((rc = cdb2_next_record(h)) == CDB2_OK);
     cdb2_close(h);

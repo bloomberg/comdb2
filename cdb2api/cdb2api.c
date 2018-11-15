@@ -166,28 +166,28 @@ struct cdb2_event {
 static pthread_mutex_t cdb2_event_mutex = PTHREAD_MUTEX_INITIALIZER;
 static cdb2_event cdb2_gbl_events;
 static int cdb2_gbl_event_version;
-static cdb2_event *cdb2_next_handler(cdb2_hndl_tp *, cdb2_event_type,
-                                     cdb2_event *);
-static void *cdb2_invoke_handler(cdb2_hndl_tp *, cdb2_event *, int, ...);
+static cdb2_event *cdb2_next_callback(cdb2_hndl_tp *, cdb2_event_type,
+                                      cdb2_event *);
+static void *cdb2_invoke_callback(cdb2_hndl_tp *, cdb2_event *, int, ...);
 static int refresh_gbl_events_on_hndl(cdb2_hndl_tp *);
 
-#define PROCESS_EVENT_CTRL_BEFORE(h, e, rc, handlerrc, ovwrrc)                 \
+#define PROCESS_EVENT_CTRL_BEFORE(h, e, rc, callbackrc, ovwrrc)                \
     do {                                                                       \
         if (e->ctrls & CDB2_OVERWRITE_RETURN_VALUE) {                          \
             ovwrrc = 1;                                                        \
-            rc = (int)(intptr_t)handlerrc;                                     \
+            rc = (int)(intptr_t)callbackrc;                                    \
         }                                                                      \
-        if (e->ctrls & CDB2_AS_DEFAULT_USER_ARG)                               \
-            h->user_arg = handlerrc;                                           \
+        if (e->ctrls & CDB2_AS_HANDLE_SPECIFIC_ARG)                            \
+            h->user_arg = callbackrc;                                          \
     } while (0)
 
-#define PROCESS_EVENT_CTRL_AFTER(h, e, rc, handlerrc)                          \
+#define PROCESS_EVENT_CTRL_AFTER(h, e, rc, callbackrc)                         \
     do {                                                                       \
         if (e->ctrls & CDB2_OVERWRITE_RETURN_VALUE) {                          \
-            rc = (int)(intptr_t)handlerrc;                                     \
+            rc = (int)(intptr_t)callbackrc;                                    \
         }                                                                      \
-        if (e->ctrls & CDB2_AS_DEFAULT_USER_ARG)                               \
-            h->user_arg = handlerrc;                                           \
+        if (e->ctrls & CDB2_AS_HANDLE_SPECIFIC_ARG)                            \
+            h->user_arg = callbackrc;                                          \
     } while (0)
 
 typedef void (*cdb2_init_t)(void);
@@ -960,29 +960,30 @@ static int cdb2_tcpconnecth_to(cdb2_hndl_tp *hndl, const char *host, int port,
     int rc = 0;
     struct in_addr in;
 
-    void *handlerrc;
+    void *callbackrc;
     int overwrite_rc = 0;
     cdb2_event *e = NULL;
 
-    while ((e = cdb2_next_handler(hndl, CDB2_BEFORE_CONNECT, e)) != NULL) {
-        handlerrc = cdb2_invoke_handler(hndl, e, 2, CDB2_HOSTNAME, host,
-                                        CDB2_PORT, port);
-        PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, handlerrc, overwrite_rc);
+    while ((e = cdb2_next_callback(hndl, CDB2_BEFORE_CONNECT, e)) != NULL) {
+        callbackrc = cdb2_invoke_callback(hndl, e, 2, CDB2_HOSTNAME, host,
+                                          CDB2_PORT, port);
+        PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, callbackrc, overwrite_rc);
     }
 
     if (overwrite_rc)
-        goto after_handler;
+        goto after_callback;
 
     if ((rc = cdb2_tcpresolve(host, &in, &port)) != 0)
-        goto after_handler;
+        goto after_callback;
 
     rc = cdb2_do_tcpconnect(in, port, myport, timeoutms);
 
-after_handler:
-    while ((e = cdb2_next_handler(hndl, CDB2_AFTER_CONNECT, e)) != NULL) {
-        handlerrc = cdb2_invoke_handler(hndl, e, 3, CDB2_HOSTNAME, host,
-                                        CDB2_PORT, port, CDB2_RETURN_VALUE, rc);
-        PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, handlerrc);
+after_callback:
+    while ((e = cdb2_next_callback(hndl, CDB2_AFTER_CONNECT, e)) != NULL) {
+        callbackrc =
+            cdb2_invoke_callback(hndl, e, 3, CDB2_HOSTNAME, host, CDB2_PORT,
+                                 port, CDB2_RETURN_VALUE, rc);
+        PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
     }
     return rc;
 }
@@ -2057,25 +2058,26 @@ static int cdb2portmux_get(cdb2_hndl_tp *hndl, const char *type,
     SBUF2 *ss = NULL;
     int rc, fd, port = -1;
 
-    void *handlerrc;
+    void *callbackrc;
     int overwrite_rc = 0;
     cdb2_event *e = NULL;
 
-    while ((e = cdb2_next_handler(hndl, CDB2_BEFORE_PMUX, e)) != NULL) {
-        handlerrc = cdb2_invoke_handler(hndl, e, 2, CDB2_HOSTNAME, remote_host,
-                                        CDB2_PORT, CDB2_PORTMUXPORT);
-        PROCESS_EVENT_CTRL_BEFORE(hndl, e, port, handlerrc, overwrite_rc);
+    while ((e = cdb2_next_callback(hndl, CDB2_BEFORE_PMUX, e)) != NULL) {
+        callbackrc =
+            cdb2_invoke_callback(hndl, e, 2, CDB2_HOSTNAME, remote_host,
+                                 CDB2_PORT, CDB2_PORTMUXPORT);
+        PROCESS_EVENT_CTRL_BEFORE(hndl, e, port, callbackrc, overwrite_rc);
     }
 
     if (overwrite_rc)
-        goto after_handler;
+        goto after_callback;
 
     rc = snprintf(name, sizeof(name), "%s/%s/%s", app, service, instance);
     if (rc < 1 || rc >= sizeof(name)) {
         debugprint("ERROR: can not fit entire string into name '%s/%s/%s'\n",
                    app, service, instance);
         port = -1;
-        goto after_handler;
+        goto after_callback;
     }
 
     debugprint("name %s\n", name);
@@ -2092,7 +2094,7 @@ static int cdb2portmux_get(cdb2_hndl_tp *hndl, const char *type,
             __func__, __LINE__, instance, type, remote_host, CDB2_PORTMUXPORT,
             errno, strerror(errno));
         port = -1;
-        goto after_handler;
+        goto after_callback;
     }
     ss = sbuf2open(fd, 0);
     if (ss == 0) {
@@ -2101,7 +2103,7 @@ static int cdb2portmux_get(cdb2_hndl_tp *hndl, const char *type,
         close(fd);
         debugprint("sbuf2open returned 0\n");
         port = -1;
-        goto after_handler;
+        goto after_callback;
     }
     sbuf2settimeout(ss, CDB2_CONNECT_TIMEOUT, CDB2_CONNECT_TIMEOUT);
     sbuf2printf(ss, "get %s\n", name);
@@ -2114,7 +2116,7 @@ static int cdb2portmux_get(cdb2_hndl_tp *hndl, const char *type,
         snprintf(hndl->errstr, sizeof(hndl->errstr),
                  "%s:%d Invalid response from portmux.\n", __func__, __LINE__);
         port = -1;
-        goto after_handler;
+        goto after_callback;
     }
     port = atoi(res);
     if (port <= 0) {
@@ -2122,12 +2124,12 @@ static int cdb2portmux_get(cdb2_hndl_tp *hndl, const char *type,
                  "%s:%d Invalid response from portmux.\n", __func__, __LINE__);
         port = -1;
     }
-after_handler:
-    while ((e = cdb2_next_handler(hndl, CDB2_AFTER_PMUX, e)) != NULL) {
-        handlerrc = cdb2_invoke_handler(hndl, e, 3, CDB2_HOSTNAME, remote_host,
-                                        CDB2_PORT, CDB2_PORTMUXPORT,
-                                        CDB2_RETURN_VALUE, port);
-        PROCESS_EVENT_CTRL_AFTER(hndl, e, port, handlerrc);
+after_callback:
+    while ((e = cdb2_next_callback(hndl, CDB2_AFTER_PMUX, e)) != NULL) {
+        callbackrc = cdb2_invoke_callback(
+            hndl, e, 3, CDB2_HOSTNAME, remote_host, CDB2_PORT, CDB2_PORTMUXPORT,
+            CDB2_RETURN_VALUE, port);
+        PROCESS_EVENT_CTRL_AFTER(hndl, e, port, callbackrc);
     }
     return port;
 }
@@ -2321,17 +2323,17 @@ static int cdb2_read_record(cdb2_hndl_tp *hndl, uint8_t **buf, int *len, int *ty
     int b_read;
     int rc = 0; /* Make compilers happy. */
 
-    void *handlerrc;
+    void *callbackrc;
     int overwrite_rc = 0;
     cdb2_event *e = NULL;
 
-    while ((e = cdb2_next_handler(hndl, CDB2_BEFORE_READ_RECORD, e)) != NULL) {
-        handlerrc = cdb2_invoke_handler(hndl, e, 0);
-        PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, handlerrc, overwrite_rc);
+    while ((e = cdb2_next_callback(hndl, CDB2_BEFORE_READ_RECORD, e)) != NULL) {
+        callbackrc = cdb2_invoke_callback(hndl, e, 0);
+        PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, callbackrc, overwrite_rc);
     }
 
     if (overwrite_rc)
-        goto after_handler;
+        goto after_callback;
 
 retry:
     b_read = sbuf2fread((char *)&hdr, 1, sizeof(hdr), sb);
@@ -2341,7 +2343,7 @@ retry:
         debugprint("bad read or numbytes, b_read=%d, sizeof(hdr)=(%lu):\n",
                    b_read, sizeof(hdr));
         rc = -1;
-        goto after_handler;
+        goto after_callback;
     }
 
     hdr.type = ntohl(hdr.type);
@@ -2354,11 +2356,11 @@ retry:
     if (hdr.type == RESPONSE_HEADER__SQL_RESPONSE_SSL) {
         if (type == NULL) {
             rc = -1;
-            goto after_handler;
+            goto after_callback;
         }
         *type = hdr.type;
         rc = 0;
-        goto after_handler;
+        goto after_callback;
     }
 
     if (hdr.length == 0) {
@@ -2374,7 +2376,7 @@ retry:
     if ((*buf) == NULL) {
         fprintf(stderr, "%s: out of memory realloc(%d)\n", __func__, hdr.length);
         rc = -1;
-        goto after_handler;
+        goto after_callback;
     }
 
     b_read = sbuf2fread((char *)(*buf), 1, hdr.length, sb);
@@ -2386,7 +2388,7 @@ retry:
         debugprint("bad read or numbytes, b_read(%d) != *len(%d) type(%d)\n",
                    b_read, *len, *type);
         rc = -1;
-        goto after_handler;
+        goto after_callback;
     }
     if (hdr.type == RESPONSE_HEADER__SQL_RESPONSE_TRACE) {
         CDB2SQLRESPONSE *response =
@@ -2422,7 +2424,7 @@ retry:
             free(locbuf);
             if (rc < 0) {
                 rc = -1;
-                goto after_handler;
+                goto after_callback;
             }
         }
         debugprint("- going to retry\n");
@@ -2430,10 +2432,10 @@ retry:
     }
 
     rc = 0;
-after_handler:
-    while ((e = cdb2_next_handler(hndl, CDB2_AFTER_READ_RECORD, e)) != NULL) {
-        handlerrc = cdb2_invoke_handler(hndl, e, 1, CDB2_RETURN_VALUE, rc);
-        PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, handlerrc);
+after_callback:
+    while ((e = cdb2_next_callback(hndl, CDB2_AFTER_READ_RECORD, e)) != NULL) {
+        callbackrc = cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE, rc);
+        PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
     }
     return rc;
 }
@@ -2555,18 +2557,18 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
 {
     int rc = 0;
 
-    void *handlerrc;
+    void *callbackrc;
     int overwrite_rc = 0;
     cdb2_event *e = NULL;
 
-    while ((e = cdb2_next_handler(event_hndl, CDB2_BEFORE_SEND_QUERY, e)) !=
+    while ((e = cdb2_next_callback(event_hndl, CDB2_BEFORE_SEND_QUERY, e)) !=
            NULL) {
-        handlerrc = cdb2_invoke_handler(event_hndl, e, 1, CDB2_SQL, sql);
-        PROCESS_EVENT_CTRL_BEFORE(event_hndl, e, rc, handlerrc, overwrite_rc);
+        callbackrc = cdb2_invoke_callback(event_hndl, e, 1, CDB2_SQL, sql);
+        PROCESS_EVENT_CTRL_BEFORE(event_hndl, e, rc, callbackrc, overwrite_rc);
     }
 
     if (overwrite_rc)
-        goto after_handler;
+        goto after_callback;
 
     if (log_calls) {
         fprintf(stderr, "td 0x%p %s line %d\n", (void *)pthread_self(),
@@ -2713,7 +2715,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
         debugprint("sbuf2flush rc = %d\n", rc);
         free(buf);
         rc = -1;
-        goto after_handler;
+        goto after_callback;
     }
 
     if (do_append && hndl->in_trans) {
@@ -2738,12 +2740,12 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
 
     rc = 0;
 
-after_handler:
-    while ((e = cdb2_next_handler(event_hndl, CDB2_AFTER_SEND_QUERY, e)) !=
+after_callback:
+    while ((e = cdb2_next_callback(event_hndl, CDB2_AFTER_SEND_QUERY, e)) !=
            NULL) {
-        handlerrc = cdb2_invoke_handler(event_hndl, e, 2, CDB2_SQL, sql,
-                                        CDB2_RETURN_VALUE, rc);
-        PROCESS_EVENT_CTRL_AFTER(event_hndl, e, rc, handlerrc);
+        callbackrc = cdb2_invoke_callback(event_hndl, e, 2, CDB2_SQL, sql,
+                                          CDB2_RETURN_VALUE, rc);
+        PROCESS_EVENT_CTRL_AFTER(event_hndl, e, rc, callbackrc);
     }
     return rc;
 }
@@ -2925,17 +2927,18 @@ int cdb2_next_record(cdb2_hndl_tp *hndl)
 {
     int rc = 0;
 
-    void *handlerrc;
+    void *callbackrc;
     int overwrite_rc = 0;
     cdb2_event *e = NULL;
 
-    while ((e = cdb2_next_handler(hndl, CDB2_BEFORE_NEXT_RECORD, e)) != NULL) {
-        handlerrc = cdb2_invoke_handler(hndl, e, 0);
-        PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, handlerrc, overwrite_rc);
+    while ((e = cdb2_next_callback(hndl, CDB2_AT_ENTER_NEXT_RECORD, e)) !=
+           NULL) {
+        callbackrc = cdb2_invoke_callback(hndl, e, 0);
+        PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, callbackrc, overwrite_rc);
     }
 
     if (overwrite_rc)
-        goto after_handler;
+        goto after_callback;
 
     if (hndl->in_trans && !hndl->read_intrans_results && !hndl->is_read) {
         rc = CDB2_OK_DONE;
@@ -2960,10 +2963,11 @@ int cdb2_next_record(cdb2_hndl_tp *hndl)
         fprintf(stderr, "%p> cdb2_next_record(%p) = %d\n",
                 (void *)pthread_self(), hndl, rc);
 
-after_handler:
-    while ((e = cdb2_next_handler(hndl, CDB2_AFTER_NEXT_RECORD, e)) != NULL) {
-        handlerrc = cdb2_invoke_handler(hndl, e, 1, CDB2_RETURN_VALUE, rc);
-        PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, handlerrc);
+after_callback:
+    while ((e = cdb2_next_callback(hndl, CDB2_AT_EXIT_NEXT_RECORD, e)) !=
+           NULL) {
+        callbackrc = cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE, rc);
+        PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
     }
 
     return rc;
@@ -3022,7 +3026,7 @@ int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects)
 int cdb2_close(cdb2_hndl_tp *hndl)
 {
     cdb2_event *curre, *preve;
-    void *handlerrc;
+    void *callbackrc;
     int rc = 0;
 
     if (log_calls)
@@ -3105,9 +3109,10 @@ int cdb2_close(cdb2_hndl_tp *hndl)
 #endif
 
     curre = NULL;
-    while ((curre = cdb2_next_handler(hndl, CDB2_CLOSE, curre)) != NULL) {
-        handlerrc = cdb2_invoke_handler(hndl, curre, 1, CDB2_RETURN_VALUE, rc);
-        PROCESS_EVENT_CTRL_AFTER(hndl, curre, rc, handlerrc);
+    while ((curre = cdb2_next_callback(hndl, CDB2_AT_CLOSE, curre)) != NULL) {
+        callbackrc =
+            cdb2_invoke_callback(hndl, curre, 1, CDB2_RETURN_VALUE, rc);
+        PROCESS_EVENT_CTRL_AFTER(hndl, curre, rc, callbackrc);
     }
 
     curre = hndl->events.next;
@@ -4385,18 +4390,18 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
 {
     int rc = 0;
 
-    void *handlerrc;
+    void *callbackrc;
     int overwrite_rc = 0;
     cdb2_event *e = NULL;
 
-    while ((e = cdb2_next_handler(hndl, CDB2_BEFORE_RUN_STATEMENT, e)) !=
+    while ((e = cdb2_next_callback(hndl, CDB2_AT_ENTER_RUN_STATEMENT, e)) !=
            NULL) {
-        handlerrc = cdb2_invoke_handler(hndl, e, 1, CDB2_SQL, sql);
-        PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, handlerrc, overwrite_rc);
+        callbackrc = cdb2_invoke_callback(hndl, e, 1, CDB2_SQL, sql);
+        PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, callbackrc, overwrite_rc);
     }
 
     if (overwrite_rc)
-        goto after_handler;
+        goto after_callback;
 
     if (hndl->temp_trans && hndl->in_trans) {
         cdb2_run_statement_typed_int(hndl, "rollback", 0, NULL, __LINE__);
@@ -4411,7 +4416,7 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
         rc = cdb2_run_statement_typed_int(hndl, "begin", 0, NULL, __LINE__);
         if (rc) {
             debugprint("cdb2_run_statement_typed_int rc = %d\n", rc);
-            goto after_handler;
+            goto after_callback;
         }
         hndl->temp_trans = 1;
     }
@@ -4450,11 +4455,12 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
         }
     }
 
-after_handler:
-    while ((e = cdb2_next_handler(hndl, CDB2_AFTER_RUN_STATEMENT, e)) != NULL) {
-        handlerrc = cdb2_invoke_handler(hndl, e, 2, CDB2_SQL, sql,
-                                        CDB2_RETURN_VALUE, rc);
-        PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, handlerrc);
+after_callback:
+    while ((e = cdb2_next_callback(hndl, CDB2_AT_EXIT_RUN_STATEMENT, e)) !=
+           NULL) {
+        callbackrc = cdb2_invoke_callback(hndl, e, 2, CDB2_SQL, sql,
+                                          CDB2_RETURN_VALUE, rc);
+        PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
     }
 
     return rc;
@@ -4901,18 +4907,18 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
     int rc = 0; /* Make compilers happy. */
     int port = 0;
 
-    void *handlerrc;
+    void *callbackrc;
     int overwrite_rc = 0;
     cdb2_event *e = NULL;
 
-    while ((e = cdb2_next_handler(hndl, CDB2_BEFORE_DBINFO, e)) != NULL) {
-        handlerrc =
-            cdb2_invoke_handler(hndl, e, 2, CDB2_HOSTNAME, host, CDB2_PORT, -1);
-        PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, handlerrc, overwrite_rc);
+    while ((e = cdb2_next_callback(hndl, CDB2_BEFORE_DBINFO, e)) != NULL) {
+        callbackrc = cdb2_invoke_callback(hndl, e, 2, CDB2_HOSTNAME, host,
+                                          CDB2_PORT, -1);
+        PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, callbackrc, overwrite_rc);
     }
 
     if (overwrite_rc)
-        goto after_handler;
+        goto after_callback;
 
     debugprint("entering\n");
 
@@ -4923,14 +4929,14 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
             "ERROR: can not fit entire string 'comdb2/%s/%s/newsql/%s'\n",
             dbname, type, hndl->policy);
         rc = -1;
-        goto after_handler;
+        goto after_callback;
     }
     int fd = cdb2_socket_pool_get(newsql_typestr, dbnum, NULL);
     debugprint("cdb2_socket_pool_get fd %d, host '%s'\n", fd, host);
     if (fd < 0) {
         if (host == NULL) {
             rc = -1;
-            goto after_handler;
+            goto after_callback;
         }
 
         if (!cdb2_allow_pmux_route) {
@@ -4941,7 +4947,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
             }
             if (port < 0) {
                 rc = -1;
-                goto after_handler;
+                goto after_callback;
             }
             fd = cdb2_tcpconnecth_to(hndl, host, port, 0, CDB2_CONNECT_TIMEOUT);
         } else {
@@ -4953,7 +4959,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
                      "%s: Can't connect to host %s port %d", __func__, host,
                      port);
             rc = -1;
-            goto after_handler;
+            goto after_callback;
         }
         sb = sbuf2open(fd, 0);
         if (sb == 0) {
@@ -4961,7 +4967,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
                      "%s:%d out of memory\n", __func__, __LINE__);
             close(fd);
             rc = -1;
-            goto after_handler;
+            goto after_callback;
         }
         if (hndl->is_admin)
             sbuf2printf(sb, "@");
@@ -4974,7 +4980,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
                      "%s:%d out of memory\n", __func__, __LINE__);
             close(fd);
             rc = -1;
-            goto after_handler;
+            goto after_callback;
         }
     }
 
@@ -5006,7 +5012,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
     if (rc != sizeof(hdr)) {
         sbuf2close(sb);
         rc = -1;
-        goto after_handler;
+        goto after_callback;
     }
 
     hdr.type = ntohl(hdr.type);
@@ -5018,7 +5024,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
         sprintf(hndl->errstr, "%s: out of memory", __func__);
         sbuf2close(sb);
         rc = -1;
-        goto after_handler;
+        goto after_callback;
     }
 
     rc = sbuf2fread(p, 1, hdr.length, sb);
@@ -5029,7 +5035,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
         sbuf2close(sb);
         free(p);
         rc = -1;
-        goto after_handler;
+        goto after_callback;
     }
     CDB2DBINFORESPONSE *dbinfo_response = cdb2__dbinforesponse__unpack(
         NULL, hdr.length, (const unsigned char *)p);
@@ -5040,7 +5046,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
         sbuf2close(sb);
         free(p);
         rc = -1;
-        goto after_handler;
+        goto after_callback;
     }
 
     parse_dbresponse(dbinfo_response, valid_hosts, valid_ports, master_node,
@@ -5065,11 +5071,12 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
 
     rc = (*num_valid_hosts > 0) ? 0 : -1;
 
-after_handler:
-    while ((e = cdb2_next_handler(hndl, CDB2_AFTER_DBINFO, e)) != NULL) {
-        handlerrc = cdb2_invoke_handler(hndl, e, 3, CDB2_HOSTNAME, host,
-                                        CDB2_PORT, port, CDB2_RETURN_VALUE, rc);
-        PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, handlerrc);
+after_callback:
+    while ((e = cdb2_next_callback(hndl, CDB2_AFTER_DBINFO, e)) != NULL) {
+        callbackrc =
+            cdb2_invoke_callback(hndl, e, 3, CDB2_HOSTNAME, host, CDB2_PORT,
+                                 port, CDB2_RETURN_VALUE, rc);
+        PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
     }
     return rc;
 }
@@ -5642,7 +5649,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
 {
     cdb2_hndl_tp *hndl;
     int rc = 0;
-    void *handlerrc;
+    void *callbackrc;
     cdb2_event *e = NULL;
 
     pthread_mutex_lock(&cdb2_cfg_lock);
@@ -5748,9 +5755,10 @@ out:
     }
 
     if (hndl != NULL) {
-        while ((e = cdb2_next_handler(hndl, CDB2_OPEN, e)) != NULL) {
-            handlerrc = cdb2_invoke_handler(hndl, e, 1, CDB2_RETURN_VALUE, rc);
-            PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, handlerrc);
+        while ((e = cdb2_next_callback(hndl, CDB2_AT_OPEN, e)) != NULL) {
+            callbackrc =
+                cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE, rc);
+            PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
         }
     }
     return rc;
@@ -5919,8 +5927,8 @@ int cdb2_unregister_event(cdb2_hndl_tp *hndl, cdb2_event *event)
     return 0;
 }
 
-static cdb2_event *cdb2_next_handler(cdb2_hndl_tp *hndl, cdb2_event_type type,
-                                     cdb2_event *e)
+static cdb2_event *cdb2_next_callback(cdb2_hndl_tp *hndl, cdb2_event_type type,
+                                      cdb2_event *e)
 {
     if (e != NULL)
         e = e->next;
@@ -5935,8 +5943,8 @@ static cdb2_event *cdb2_next_handler(cdb2_hndl_tp *hndl, cdb2_event_type type,
     return e;
 }
 
-static void *cdb2_invoke_handler(cdb2_hndl_tp *hndl, cdb2_event *e, int argc,
-                                 ...)
+static void *cdb2_invoke_callback(cdb2_hndl_tp *hndl, cdb2_event *e, int argc,
+                                  ...)
 {
     int i;
     va_list ap;

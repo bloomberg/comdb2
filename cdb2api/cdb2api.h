@@ -248,7 +248,7 @@ int cdb2_clear_ack(cdb2_hndl_tp *hndl);
 
 typedef enum cdb2_event_ctrl {
     CDB2_OVERWRITE_RETURN_VALUE = 1,
-    CDB2_AS_DEFAULT_USER_ARG = 1 << 1
+    CDB2_AS_HANDLE_SPECIFIC_ARG = 1 << 1
 } cdb2_event_ctrl;
 
 typedef enum cdb2_event_type {
@@ -267,14 +267,14 @@ typedef enum cdb2_event_type {
     /* Logical operation events.
        A logicial operation event typically
        consists of multiple network events. */
-    CDB2_BEFORE_RUN_STATEMENT = 1 << 10,
-    CDB2_AFTER_RUN_STATEMENT = 1 << 11,
-    CDB2_BEFORE_NEXT_RECORD = 1 << 12,
-    CDB2_AFTER_NEXT_RECORD = 1 << 13,
+    CDB2_AT_ENTER_RUN_STATEMENT = 1 << 10,
+    CDB2_AT_EXIT_RUN_STATEMENT = 1 << 11,
+    CDB2_AT_ENTER_NEXT_RECORD = 1 << 12,
+    CDB2_AT_EXIT_NEXT_RECORD = 1 << 13,
 
     /* Lifecycle events */
-    CDB2_OPEN = 1 << 30,
-    CDB2_CLOSE = 1 << 31,
+    CDB2_AT_OPEN = 1 << 30,
+    CDB2_AT_CLOSE = 1 << 31,
 } cdb2_event_type;
 
 typedef enum cdb2_event_arg {
