@@ -9064,6 +9064,7 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
     }
 
     int new_mode = debug_switch_recover_deadlock_newmode();
+    assert(bdb_lockref() > 0);
 
     if (bdb_lock_desired(thedb->bdb_env)) {
         if (!sleepms)
@@ -9183,7 +9184,7 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
             return SQLITE_COMDB2SCHEMA;
         }
 
-        if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS)) {
+        if (clnt->gen_changed) {
             logmsg(LOGMSG_ERROR, 
                     "%s: fail to open a new curtran, rc=%d, return changenode\n",
                     __func__, rc);

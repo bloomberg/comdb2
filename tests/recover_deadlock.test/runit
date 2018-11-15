@@ -109,7 +109,7 @@ cdb2sql --host $mach $dbnm "select * from t1 order by id" > select.out 2>&1 &
 sleep 1
 cdb2sql ${CDB2_OPTIONS} $dbnm default "drop index idx"
 wait
-grep "rc -110.* schema changed" select.out
+grep "rc -110.*schema.*change" select.out
 if [[ $? != 0 ]]; then
     echo "expected select to fail but it succeeded"
     exit 1
@@ -122,7 +122,7 @@ cdb2sql --host $mach $dbnm "select * from t1" > select.out 2>&1 &
 sleep 1
 cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
 wait
-grep "rc -110.* schema changed" select.out
+grep "rc -110.*schema.*change" select.out
 if [[ $? != 0 ]]; then
     echo "expected select to fail but it succeeded"
     exit 1
