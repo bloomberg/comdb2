@@ -159,7 +159,7 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
                             (where) ? where : "", (orderby) ? " oRDeR By " : "",
                             (orderby) ? orderby : "");
     } else if (!p->pLimit) {
-        select = sqlite3_mprintf("SeLeCT %s FRoM %s%s%s%s%s", cols, tbl,
+        select = sqlite3_mprintf("SeLeCT %s FRoM \"%s\"%s%s%s%s", cols, tbl,
                                  (where) ? " WHeRe " : "", (where) ? where : "",
                                  (orderby) ? " oRDeR By " : "",
                                  (orderby) ? orderby : "");
@@ -181,7 +181,7 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
                 return NULL;
             }
             select = sqlite3_mprintf(
-                "SeLeCT %s FRoM %s%s%s%s%s "
+                "SeLeCT %s FRoM \"%s\"%s%s%s%s "
                 "LiMit (CaSe wHeN (%s)<0 THeN (%s) eLSe ((%s) + "
                 "(CaSe wHeN (%s)<0 THeN 0 eLSe (%s) eND)"
                 ") eND) oFFSeT (%s)",
@@ -190,7 +190,7 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
                 limit, limit, offset, offset, offset);
         } else if (!extraRows) {
             select = sqlite3_mprintf(
-                "SeLeCT %s FRoM %s%s%s%s%s LiMit %s", cols, tbl,
+                "SeLeCT %s FRoM \"%s\"%s%s%s%s LiMit %s", cols, tbl,
                 (where) ? " WHeRe " : "", (where) ? where : "",
                 (orderby) ? " oRDeR By " : "", (orderby) ? orderby : "", limit);
         } else {
@@ -203,7 +203,7 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
                 return NULL;
             }
             select = sqlite3_mprintf(
-                "SeLeCT %s FRoM %s%s%s%s%s LiMit (CaSe wHeN (%s)<0 THeN (%s) "
+                "SeLeCT %s FRoM \"%s\"%s%s%s%s LiMit (CaSe wHeN (%s)<0 THeN (%s) "
                 "eLSe ((%s) + "
                 "(CaSe wHeN (%s)<0 THeN 0 eLSe (%s) eND)"
                 ") eND)",
