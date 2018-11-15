@@ -2983,7 +2983,7 @@ int cdb2_run_statement(cdb2_hndl_tp *hndl, const char *sql)
 static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response,
                              char valid_hosts[][64], int *valid_ports,
                              int *master_node, int *num_valid_hosts,
-                             int *num_valid_sameroom_hosts
+                             int *num_valid_sameroom_hosts, int debug_trace
 #if WITH_SSL
                              , peer_ssl_mode *s_mode
 #endif
@@ -2998,6 +2998,20 @@ static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response,
         *num_valid_sameroom_hosts = 0;
     int myroom = 0;
     int i = 0;
+
+    if (debug_trace) {
+        /* Print a list of nodes received via dbinforesponse. */
+        fprintf(stderr, "dbinforesponse:\n%s (master)\n",
+                dbinfo_response->master->name);
+        for (i = 0; i < num_hosts; i++) {
+            CDB2DBINFORESPONSE__Nodeinfo *currnode = dbinfo_response->nodes[i];
+            if (strcmp(dbinfo_response->master->name, currnode->name) == 0) {
+                continue;
+            }
+            fprintf(stderr, "%s\n", currnode->name);
+        }
+    }
+
     for (i = 0; i < num_hosts; i++) {
         CDB2DBINFORESPONSE__Nodeinfo *currnode = dbinfo_response->nodes[i];
         if (!myroom) {
@@ -3126,7 +3140,7 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
             cdb2__dbinforesponse__unpack(NULL, len, hndl->first_buf);
         parse_dbresponse(dbinfo_response, hndl->hosts, hndl->ports,
                          &hndl->master, &hndl->num_hosts,
-                         &hndl->num_hosts_sameroom
+                         &hndl->num_hosts_sameroom, hndl->debug_trace
 #if WITH_SSL
                          ,
                          &hndl->s_sslmode
@@ -3830,7 +3844,8 @@ read_record:
         CDB2DBINFORESPONSE *dbinfo_resp = NULL;
         dbinfo_resp = cdb2__dbinforesponse__unpack(NULL, len, hndl->first_buf);
         parse_dbresponse(dbinfo_resp, hndl->hosts, hndl->ports, &hndl->master,
-                         &hndl->num_hosts, &hndl->num_hosts_sameroom
+                         &hndl->num_hosts, &hndl->num_hosts_sameroom,
+                         hndl->debug_trace
 #if WITH_SSL
                          ,
                          &hndl->s_sslmode
@@ -4805,7 +4820,8 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
     }
 
     parse_dbresponse(dbinfo_response, valid_hosts, valid_ports, master_node,
-                     num_valid_hosts, num_valid_sameroom_hosts
+                     num_valid_hosts, num_valid_sameroom_hosts,
+                     hndl->debug_trace
 #if WITH_SSL
                      , &hndl->s_sslmode
 #endif
