@@ -605,7 +605,6 @@ int comdb2_check_parallel(Parse *pParse)
 
 static int _exprCallback(Walker *pWalker, Expr *pExpr)
 {
-    fprintf(stderr, "Checking %d\n", pExpr->op);
     switch(pExpr->op){
         case TK_COLUMN:
             if (pWalker->pParse)

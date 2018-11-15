@@ -398,7 +398,7 @@ struct plugin_callbacks {
     const intv_t *(*column_interval)(struct sqlclntstate *, sqlite3_stmt *, int,
                                      int); /* sqlite3_column_interval*/
     int (*sqlite_error)(struct sqlclntstate *, sqlite3_stmt *,
-                        char **errstr); /* sqlite3_errcode */
+                        const char **errstr); /* sqlite3_errcode */
 };
 
 #define make_plugin_callback(clnt, name, func)                                 \
@@ -1066,9 +1066,9 @@ response_func read_response;
 int sql_writer(SBUF2 *, const char *, int);
 int typestr_to_type(const char *ctype);
 int column_count(struct sqlclntstate *, sqlite3_stmt *);
-int sqlite_error(struct sqlclntstate *, sqlite3_stmt *, char **errstr);
+int sqlite_error(struct sqlclntstate *, sqlite3_stmt *, const char **errstr);
 int next_row(struct sqlclntstate *, sqlite3_stmt *);
-int sqlite_stmt_error(sqlite3_stmt *stmt, char **errstr);
+int sqlite_stmt_error(sqlite3_stmt *stmt, const char **errstr);
 
 #define SQLITE_PROTO_API(ret, type)                                            \
     ret column_##type(struct sqlclntstate *, sqlite3_stmt *, int)

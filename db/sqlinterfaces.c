@@ -382,7 +382,7 @@ FUNC_COLUMN_TYPE(int, bytes)
 FUNC_COLUMN_TYPE(const void *, blob)
 FUNC_COLUMN_TYPE(const dttz_t *, datetime)
 
-int sqlite_stmt_error(sqlite3_stmt *stmt, char **errstr)
+int sqlite_stmt_error(sqlite3_stmt *stmt, const char **errstr)
 {
     sqlite3 *db = sqlite3_db_handle(stmt);
     int errcode;
@@ -396,7 +396,7 @@ int sqlite_stmt_error(sqlite3_stmt *stmt, char **errstr)
     return errcode;
 }
 
-int sqlite_error(struct sqlclntstate *clnt, sqlite3_stmt *stmt, char **errstr)
+int sqlite_error(struct sqlclntstate *clnt, sqlite3_stmt *stmt, const char **errstr)
 {
     if (clnt && clnt->plugin.sqlite_error)
         return clnt->plugin.sqlite_error(clnt, stmt, errstr);
@@ -479,6 +479,12 @@ int has_parallel_sql(struct sqlclntstate *clnt)
         if (thd)
             clnt = thd->clnt;
     }
+    /* disable anything involving shared shadows;
+       recom requires a read-only share;
+       snapisol and serializable requires a read-write share
+    */
+    if (!clnt || clnt->dbtran.mode != TRANLEVEL_SOSQL)
+        return 0;
 
     return clnt && clnt->plugin.has_parallel_sql &&
            clnt->plugin.has_parallel_sql(clnt);

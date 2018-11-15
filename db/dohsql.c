@@ -339,7 +339,7 @@ static sqlite3_value *dohsql_dist_column_value(struct sqlclntstate *clnt,
 #define Q_UNLOCK(x) pthread_mutex_unlock(&conns->conns[x].mtx)
 
 static int dohsql_dist_sqlite_error(struct sqlclntstate *clnt,
-                                    sqlite3_stmt *stmt, char **errstr)
+                                    sqlite3_stmt *stmt, const char **errstr)
 {
     dohsql_t *conns = clnt->conns;
     int errcode;
@@ -355,7 +355,7 @@ static int dohsql_dist_sqlite_error(struct sqlclntstate *clnt,
     errcode = conns->conns[src].rc;
 
     if (errcode != SQLITE_ROW && errcode != SQLITE_DONE)
-        *errstr = (char *)conns->row;
+        *errstr = (const char *)conns->row;
 
     Q_UNLOCK(src);
 
@@ -606,7 +606,7 @@ got_row:
 
 static int dohsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
 {
-    /*if (gbl_plugin_api_debug)*/
+    if (gbl_plugin_api_debug)
         logmsg(LOGMSG_WARN, "%lx %s type %d code %d\n", pthread_self(), __func__, t, i);
     switch (t) {
     case RESPONSE_COLUMNS:
