@@ -5058,7 +5058,7 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
     int rc = SQLITE_OK;
     struct sql_thread *thd;
 
-    Pthread_mutex_lock(&pBt->gbl_temptable_lock);
+    Pthread_mutex_lock(&gbl_temptable_lock);
     if ((thd = pthread_getspecific(query_info_key)) == NULL) {
         rc = SQLITE_INTERNAL;
         logmsg(LOGMSG_ERROR, "%s rc: %d\n", __func__, rc);
