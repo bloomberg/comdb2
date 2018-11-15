@@ -674,7 +674,6 @@ struct Btree {
 
     /* hash table of temp tables, keyed on root page number and its mutex */
     Hash temp_tables;
-    pthread_mutex_t temp_tables_lk;
     int next_temp_root_pg;
 
     int is_hashtable;
