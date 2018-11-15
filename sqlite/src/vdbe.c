@@ -8366,7 +8366,8 @@ case OP_OpFuncExec: {
   testcase( f->rc==SQLITE_DONE );
   testcase( f->rc!=SQLITE_OK && f->rc!=SQLITE_DONE );
   if( f->rc ){
-    p->rc = rc = f->rc;
+    rc = f->rc;
+    p->rc = rc==SQLITE_DONE ? SQLITE_OK : rc;
     sqlite3SetString(&p->zErrMsg, db, f->errorMsg);
   }
   testcase( rc==SQLITE_OK );
