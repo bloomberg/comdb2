@@ -336,7 +336,8 @@ static char *legacy_options[] = {
     "logput window 1",
     "osql_send_startgen off",
     "create_default_user",
-    "allow_negative_column_size"
+    "allow_negative_column_size",
+    "reorder_socksql_no_deadlock off"
 };
 int gbl_legacy_defaults = 0;
 int pre_read_legacy_defaults(void *_, void *__)

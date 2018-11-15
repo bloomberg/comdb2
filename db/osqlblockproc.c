@@ -68,8 +68,6 @@
 
 #include "logmsg.h"
 
-#define DEBUG_REORDER 1
-
 int g_osql_blocksql_parallel_max = 5;
 extern int gbl_blocksql_grace;
 
