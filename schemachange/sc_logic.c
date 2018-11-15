@@ -1316,10 +1316,11 @@ int scdone_abort_cleanup(struct ireq *iq)
     struct schema_change_type *s = iq->sc;
     mark_schemachange_over(s->tablename);
     sc_set_running(s->tablename, 0, iq->sc_seed, gbl_mynode, time(NULL));
-    if (s->addonly && && s->db && s->db->handle) {
-        delete_temp_table(iq, s->db);
-    } else if (s->db && s->db->handle) {
-        sc_del_unused_files(s->db);
+    if (s->db && s->db->handle) {
+        if(s->addonly)
+            delete_temp_table(iq, s->db);
+        else 
+            sc_del_unused_files(s->db);
     }
     broadcast_sc_end(s->tablename, iq->sc_seed);
     return 0;
