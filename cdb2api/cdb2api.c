@@ -2985,9 +2985,10 @@ static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response,
                              int *master_node, int *num_valid_hosts,
                              int *num_valid_sameroom_hosts, int debug_trace
 #if WITH_SSL
-                             , peer_ssl_mode *s_mode
+                             ,
+                             peer_ssl_mode *s_mode
 #endif
-                             )
+)
 {
     if (log_calls)
         fprintf(stderr, "td %d %s:%d\n", (uint32_t)pthread_self(), __func__,
@@ -3145,7 +3146,7 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
                          ,
                          &hndl->s_sslmode
 #endif
-                         );
+        );
         cdb2__dbinforesponse__free_unpacked(dbinfo_response, NULL);
         debugprint("type=%d returning 1\n", type);
 
@@ -3850,7 +3851,7 @@ read_record:
                          ,
                          &hndl->s_sslmode
 #endif
-                         );
+        );
         cdb2__dbinforesponse__free_unpacked(dbinfo_resp, NULL);
 
         newsql_disconnect(hndl, hndl->sb, __LINE__);
@@ -4823,9 +4824,10 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
                      num_valid_hosts, num_valid_sameroom_hosts,
                      hndl->debug_trace
 #if WITH_SSL
-                     , &hndl->s_sslmode
+                     ,
+                     &hndl->s_sslmode
 #endif
-                     );
+    );
 
     cdb2__dbinforesponse__free_unpacked(dbinfo_response, NULL);
 
