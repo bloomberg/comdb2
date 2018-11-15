@@ -655,7 +655,6 @@ struct sqlclntstate {
     int need_recover_deadlock;
     int recover_deadlock_rcode;
     int heartbeat_lock;
-    int skip_recover_deadlock;
 #ifdef INSTRUMENT_RECOVER_DEADLOCK_FAILURE
     const char *recover_deadlock_func;
     int recover_deadlock_line;
