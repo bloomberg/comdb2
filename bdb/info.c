@@ -682,7 +682,7 @@ void fill_dbinfo(void *p_response, bdb_state_type *bdb_state)
             bdb_state->callback->getroom_rtn(bdb_state, nodes[j].host)) {
             nodeinfos[i] = malloc(sizeof(CDB2DBINFORESPONSE__Nodeinfo));
             cdb2__dbinforesponse__nodeinfo__init(nodeinfos[i]);
-            nodeinfos[i]->number = 0; /* will not be used by client */
+            nodeinfos[i]->number = j;
             nodeinfos[i]->port = nodes[j].port;
             nodeinfos[i]->has_port = 1;
             nodeinfos[i]->has_room = 1;
@@ -690,7 +690,7 @@ void fill_dbinfo(void *p_response, bdb_state_type *bdb_state)
                 bdb_state->callback->getroom_rtn(bdb_state, nodes[j].host);
             nodeinfos[i]->name = strdup(nodes[j].host);
             if (strcmp(bdb_state->repinfo->master_host, nodes[j].host) == 0) {
-                master->number = 0; /* will not be used by client */
+                master->number = j;
                 master->incoherent = 0;
                 master->has_port = 1;
                 master->has_room = 1;
@@ -721,7 +721,7 @@ void fill_dbinfo(void *p_response, bdb_state_type *bdb_state)
             bdb_state->callback->getroom_rtn(bdb_state, nodes[j].host)) {
             nodeinfos[i] = malloc(sizeof(CDB2DBINFORESPONSE__Nodeinfo));
             cdb2__dbinforesponse__nodeinfo__init(nodeinfos[i]);
-            nodeinfos[i]->number = 0;
+            nodeinfos[i]->number = j;
             nodeinfos[i]->port = nodes[j].port;
             nodeinfos[i]->has_port = 1;
             nodeinfos[i]->has_room = 1;
@@ -729,7 +729,7 @@ void fill_dbinfo(void *p_response, bdb_state_type *bdb_state)
                 bdb_state->callback->getroom_rtn(bdb_state, nodes[j].host);
             nodeinfos[i]->name = strdup(nodes[j].host);
             if (strcmp(bdb_state->repinfo->master_host, nodes[j].host) == 0) {
-                master->number = 0;
+                master->number = j;
                 master->incoherent = 0;
                 master->has_port = 1;
                 master->port = nodes[j].port;
