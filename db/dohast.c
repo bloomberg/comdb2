@@ -25,7 +25,7 @@
 
 static void node_free(dohsql_node_t **pnode, sqlite3 *db);
 
-static char* _gen_col_expr(Vdbe *v, Expr *expr, const char **tblname);
+static char *_gen_col_expr(Vdbe *v, Expr *expr, const char **tblname);
 
 static char *generate_columns(Vdbe *v, ExprList *c, const char **tbl)
 {
@@ -34,7 +34,6 @@ static char *generate_columns(Vdbe *v, ExprList *c, const char **tbl)
     Expr *expr = NULL;
     char *sExpr;
     int i;
-
 
     if (tbl)
         *tbl = NULL;
@@ -46,8 +45,7 @@ static char *generate_columns(Vdbe *v, ExprList *c, const char **tbl)
             return NULL;
         }
         if (!cols)
-            cols = sqlite3_mprintf("%s%s%s%s",
-                                   sExpr,
+            cols = sqlite3_mprintf("%s%s%s%s", sExpr,
                                    (c->a[i].zName) ? " aS \"" : "",
                                    (c->a[i].zName) ? c->a[i].zName : "",
                                    (c->a[i].zName) ? "\" " : "");
@@ -64,7 +62,8 @@ static char *generate_columns(Vdbe *v, ExprList *c, const char **tbl)
     return cols;
 }
 
-static char *describeExprList(Vdbe *v, const ExprList *lst, int *order_size, int **order_dir)
+static char *describeExprList(Vdbe *v, const ExprList *lst, int *order_size,
+                              int **order_dir)
 {
     char *ret;
     char *tmp;
@@ -77,7 +76,7 @@ static char *describeExprList(Vdbe *v, const ExprList *lst, int *order_size, int
 
     /* handle descending keys */
     *order_size = lst->nExpr;
-    *order_dir = (int*)malloc((*order_size) * sizeof(int));
+    *order_dir = (int *)malloc((*order_size) * sizeof(int));
     if (!*order_dir) {
         sqlite3DbFree(v->db, ret);
         return NULL;
@@ -96,8 +95,9 @@ static char *describeExprList(Vdbe *v, const ExprList *lst, int *order_size, int
                 free(*order_dir);
             return NULL;
         }
-        tmp = sqlite3_mprintf("%s, %s%s", ret, newterm,
-                (((*order_dir)[i] = lst->a[i].sortOrder)!=0)?" DeSC":"");
+        tmp = sqlite3_mprintf(
+            "%s, %s%s", ret, newterm,
+            (((*order_dir)[i] = lst->a[i].sortOrder) != 0) ? " DeSC" : "");
         sqlite3DbFree(v->db, newterm);
         sqlite3DbFree(v->db, ret);
         ret = tmp;
@@ -154,10 +154,10 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
     }
 
     if (unlikely(!tbl)) {
-        select = sqlite3_mprintf("SeLeCT %s%s%s%s%s", cols,
-                                 (where) ? " WHeRe " : "", (where) ? where : "",
-                                 (orderby) ? " oRDeR By " : "",
-                                 (orderby) ? orderby : "");
+        select =
+            sqlite3_mprintf("SeLeCT %s%s%s%s%s", cols, (where) ? " WHeRe " : "",
+                            (where) ? where : "", (orderby) ? " oRDeR By " : "",
+                            (orderby) ? orderby : "");
     } else if (!p->pLimit) {
         select = sqlite3_mprintf("SeLeCT %s FRoM %s%s%s%s%s", cols, tbl,
                                  (where) ? " WHeRe " : "", (where) ? where : "",
@@ -266,14 +266,14 @@ void ast_destroy(ast_t **past, sqlite3 *db)
     ast_t *ast = *past;
 
     *past = NULL;
-    for(i=0;i<ast->nused;i++) {
+    for (i = 0; i < ast->nused; i++) {
         if (ast->stack[i].obj) {
-            switch(ast->stack[i].op) {
-                case AST_TYPE_SELECT:
-                case AST_TYPE_UNION: {
-                    node_free((dohsql_node_t**)&ast->stack[i].obj, db);
-                    break;
-                }
+            switch (ast->stack[i].op) {
+            case AST_TYPE_SELECT:
+            case AST_TYPE_UNION: {
+                node_free((dohsql_node_t **)&ast->stack[i].obj, db);
+                break;
+            }
             }
         }
     }
@@ -281,7 +281,8 @@ void ast_destroy(ast_t **past, sqlite3 *db)
     free(ast);
 }
 
-static dohsql_node_t *gen_oneselect(Vdbe *v, Select *p, Expr *extraRows, int *order_size, int **order_dir)
+static dohsql_node_t *gen_oneselect(Vdbe *v, Select *p, Expr *extraRows,
+                                    int *order_size, int **order_dir)
 {
     dohsql_node_t *node;
     Select *prior = p->pPrior;
@@ -292,7 +293,7 @@ static dohsql_node_t *gen_oneselect(Vdbe *v, Select *p, Expr *extraRows, int *or
     node = (dohsql_node_t *)calloc(1, sizeof(dohsql_node_t));
     if (!node)
         return NULL;
-    
+
     if (!order_size) {
         order_size = &node->order_size;
         order_dir = &node->order_dir;
@@ -314,7 +315,7 @@ static dohsql_node_t *gen_oneselect(Vdbe *v, Select *p, Expr *extraRows, int *or
     return node;
 }
 
-static void node_free(dohsql_node_t **pnode, sqlite3* db)
+static void node_free(dohsql_node_t **pnode, sqlite3 *db)
 {
     dohsql_node_t *node = *pnode;
     int i;
@@ -329,7 +330,7 @@ static void node_free(dohsql_node_t **pnode, sqlite3* db)
         sqlite3DbFree(db, (*pnode)->sql);
     }
     if ((*pnode)->order_dir) {
-        free( (*pnode)->order_dir);
+        free((*pnode)->order_dir);
     }
     free(*pnode);
     *pnode = NULL;
@@ -374,7 +375,8 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
     /* generate queries */
     while (crt) {
         crt->pOrderBy = p->pOrderBy;
-        *psub = gen_oneselect(v, crt, (pOffset != p->pOffset) ? pOffset : NULL, &node->order_size, &node->order_dir);
+        *psub = gen_oneselect(v, crt, (pOffset != p->pOffset) ? pOffset : NULL,
+                              &node->order_size, &node->order_dir);
         crt->pLimit = NULL;
         crt->pOffset = NULL;
         if (crt != p)
@@ -412,7 +414,7 @@ static dohsql_node_t *gen_select(Vdbe *v, Select *p)
     int span = 0;
     dohsql_node_t *ret = NULL;
     int not_recognized = 0;
-   
+
     /* mark everything done, either way or another */
     crt = p;
     while (crt) {
@@ -425,14 +427,12 @@ static dohsql_node_t *gen_select(Vdbe *v, Select *p)
         crt = crt->pPrior;
     }
 
-
     /* no with, joins or subqueries */
-    if (not_recognized ||
-        p->pSrc->nSrc == 0 /*with*/ ||
-        p->pSrc->nSrc > 1 /*joins*/ ||
-        p->pSrc->a->pSelect /*subquery*/ ||
-        (span == 1 && p->op == TK_ALL) /* insert rowset which links values on pNext */
-       ) 
+    if (not_recognized || p->pSrc->nSrc == 0 /*with*/ ||
+        p->pSrc->nSrc > 1 /*joins*/ || p->pSrc->a->pSelect /*subquery*/ ||
+        (span == 1 &&
+         p->op == TK_ALL) /* insert rowset which links values on pNext */
+    )
         return NULL;
 
     if (p->op == TK_SELECT)
@@ -602,19 +602,19 @@ int comdb2_check_parallel(Parse *pParse)
     return 0;
 }
 
-
 static int _exprCallback(Walker *pWalker, Expr *pExpr)
 {
-    switch(pExpr->op){
-        case TK_COLUMN:
-            if (pWalker->pParse)
-                return WRC_Abort;
-            pWalker->pParse = (Parse*)pExpr->pTab->zName;
-        case TK_PLUS:
-        case TK_MINUS:
-        case TK_INTEGER:
-            return WRC_Continue;
-        default: return WRC_Abort;
+    switch (pExpr->op) {
+    case TK_COLUMN:
+        if (pWalker->pParse)
+            return WRC_Abort;
+        pWalker->pParse = (Parse *)pExpr->pTab->zName;
+    case TK_PLUS:
+    case TK_MINUS:
+    case TK_INTEGER:
+        return WRC_Continue;
+    default:
+        return WRC_Abort;
     }
 }
 
@@ -623,18 +623,18 @@ static int _selectCallback(Walker *pWalker, Select *pSelect)
     return WRC_Continue;
 }
 
-static char* _gen_col_expr(Vdbe *v, Expr *expr, const char **tblname)
+static char *_gen_col_expr(Vdbe *v, Expr *expr, const char **tblname)
 {
-  Walker w = {0};
+    Walker w = {0};
 
-  w.pParse = NULL;
-  w.xExprCallback = _exprCallback;
-  w.xSelectCallback = _selectCallback;
-  if (sqlite3WalkExpr(&w, expr) != WRC_Continue)
-      return NULL;
+    w.pParse = NULL;
+    w.xExprCallback = _exprCallback;
+    w.xSelectCallback = _selectCallback;
+    if (sqlite3WalkExpr(&w, expr) != WRC_Continue)
+        return NULL;
 
-  if (tblname && w.pParse)
-      *tblname = (const char*)w.pParse;
+    if (tblname && w.pParse)
+        *tblname = (const char *)w.pParse;
 
-  return  sqlite3ExprDescribe(v, expr);
+    return sqlite3ExprDescribe(v, expr);
 }

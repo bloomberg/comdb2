@@ -396,7 +396,8 @@ int sqlite_stmt_error(sqlite3_stmt *stmt, const char **errstr)
     return errcode;
 }
 
-int sqlite_error(struct sqlclntstate *clnt, sqlite3_stmt *stmt, const char **errstr)
+int sqlite_error(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
+                 const char **errstr)
 {
     if (clnt && clnt->plugin.sqlite_error)
         return clnt->plugin.sqlite_error(clnt, stmt, errstr);
