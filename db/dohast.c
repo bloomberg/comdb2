@@ -633,7 +633,7 @@ static char* _gen_col_expr(Vdbe *v, Expr *expr, const char **tblname)
   if (sqlite3WalkExpr(&w, expr) != WRC_Continue)
       return NULL;
 
-  if (tblname)
+  if (tblname && w.pParse)
       *tblname = (const char*)w.pParse;
 
   return  sqlite3ExprDescribe(v, expr);
