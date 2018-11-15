@@ -259,9 +259,17 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
         zNew[len-1] ='\0';
         */
         if (pMem->zMalloc == pMem->z) {
+            sqlite3_mutex_enter(sqlite3_db_mutex(sqldb));
+            sqlite3DbFree(sqldb, pMem->zMalloc);
+            sqlite3_mutex_leave(sqlite3_db_mutex(sqldb));
+
             pMem->zMalloc = pMem->z = zNew;
             pMem->szMalloc = pMem->n = len;
         } else {
+            sqlite3_mutex_enter(sqlite3_db_mutex(sqldb));
+            sqlite3DbFree(sqldb, pMem->z);
+            sqlite3_mutex_leave(sqlite3_db_mutex(sqldb));
+
             pMem->z = zNew;
             pMem->n = len;
         }
