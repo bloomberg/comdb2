@@ -588,3 +588,54 @@ tag "tag1"
 		vutf8 alltypes_vutf8_2[16] 
 	}
 ')
+(csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+')
+(csc2='schema
+	{
+		int i null = yes 
+		short j null = yes 
+	}
+')
+(csc2='schema
+	{
+		int i null = yes 
+		int j dbstore = 0 null = yes 
+	}
+')
+(csc2='schema
+	{
+		int i null = yes 
+		int j dbstore = 0 
+	}
+')
+[ALTER TABLE t1 DROP COLUMN j, ADD COLUMN j int] failed with rc -3 Cannot DROP and ADD same column in an ALTER command.
+[ALTER TABLE t1 ALTER COLUMN i INT, DROP COLUMN i] failed with rc -3 Table must have at least one column.
+[ALTER TABLE t1 ALTER COLUMN ii] failed with rc -3 No type specified.
+[ALTER TABLE t1 ALTER COLUMN ii INT] failed with rc -3 Column 'ii' does not exist.
+[ALTER TABLE t1 ALTER COLUMN i INT, DROP COLUMN i, ADD COLUMN i INT] failed with rc -3 Cannot DROP and ADD same column in an ALTER command.
+(csc2='schema
+	{
+		short i null = yes 
+	}
+')
+(csc2='schema
+	{
+		int i null = yes 
+	}
+')
+(csc2='schema
+	{
+		int i null = yes 
+	}
+')
+[ALTER TABLE t1 ALTER ADD j INT, ALTER COLUMN j SHORT] failed with rc -3 Invalid type specified.
+(csc2='schema
+	{
+		int i null = yes 
+		short j null = yes 
+	}
+')

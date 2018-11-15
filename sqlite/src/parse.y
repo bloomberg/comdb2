@@ -1864,6 +1864,8 @@ alter_table_drop_column ::= DROP kwcolumn_opt nm(Y). {
   comdb2DropColumn(pParse, &Y);
 }
 
+alter_table_alter_column ::= ALTER kwcolumn_opt columnname carglist.
+
 alter_table_add_pk ::= ADD tconspk.
 alter_table_drop_pk ::= DROP PRIMARY KEY. {
   comdb2DropPrimaryKey(pParse);
@@ -1883,8 +1885,15 @@ alter_table_drop_index ::= DROP INDEX nm(I). {
   comdb2AlterDropIndex(pParse, &I);
 }
 
-alter_table_action ::= alter_table_add_column.
-alter_table_action ::= alter_table_drop_column.
+alter_table_action ::= alter_table_add_column. {
+  comdb2AlterFinalizeColumn(pParse, ALTER_ADD_COLUMN);
+}
+alter_table_action ::= alter_table_drop_column. {
+  comdb2AlterFinalizeColumn(pParse, ALTER_DROP_COLUMN);
+}
+alter_table_action ::= alter_table_alter_column. {
+  comdb2AlterFinalizeColumn(pParse, ALTER_ALTER_COLUMN);
+}
 alter_table_action ::= alter_table_add_pk.
 alter_table_action ::= alter_table_drop_pk.
 alter_table_action ::= alter_table_add_fk.
