@@ -11,7 +11,7 @@ inline int initOpFunc(OpFunc* o, size_t len)
     assert( o != NULL );
     
     if( len > 0 ){
-        o->buf = o->readNext = o->writeNext = malloc(len);
+        o->buf = o->readNext = o->writeNext = calloc(1, len);
     }else{
         o->buf = o->readNext = o->writeNext = NULL;
     }

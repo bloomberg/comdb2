@@ -8360,17 +8360,20 @@ case OP_OpFuncExec: {
   assert( f && f->func );
   rc = f->func(f);
   testcase( rc==SQLITE_OK );
-  testcase( rc!=SQLITE_OK );
+  testcase( rc==SQLITE_DONE );
+  testcase( rc!=SQLITE_OK && rc!=SQLITE_DONE );
   testcase( f->rc==SQLITE_OK );
-  testcase( f->rc!=SQLITE_OK );
+  testcase( f->rc==SQLITE_DONE );
+  testcase( f->rc!=SQLITE_OK && f->rc!=SQLITE_DONE );
   if( f->rc ){
     p->rc = rc = f->rc;
     sqlite3SetString(&p->zErrMsg, db, f->errorMsg);
   }
   testcase( rc==SQLITE_OK );
+  testcase( rc==SQLITE_DONE );
   testcase( rc==SQLITE_COMDB2SCHEMA );
   testcase( rc!=SQLITE_OK && rc!=SQLITE_COMDB2SCHEMA );
-  if( rc==SQLITE_COMDB2SCHEMA ){
+  if( rc==SQLITE_DONE || rc==SQLITE_COMDB2SCHEMA ){
     goto vdbe_return;
   }else if( rc ){
     goto abort_due_to_error;

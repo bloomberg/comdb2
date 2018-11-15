@@ -1701,6 +1701,7 @@ int comdb2genidcontainstime(void)
 
 int producekw(OpFunc *f)
 {
+    int found = 0;
     for (int i=0; i < sqlite3_keyword_count(); i++)
     {
         if ((f->int_arg != KW_ALL) && (f->int_arg != KW_RES))
@@ -1710,9 +1711,10 @@ int producekw(OpFunc *f)
         int nName = 0;
         if( sqlite3_keyword_name(i, &zName, &nName)==SQLITE_OK ){
             opFuncPrintf(f, "%.*s", nName, zName);
+            found++;
         }
     }
-    f->rc = SQLITE_OK;
+    f->rc = found>0 ? SQLITE_OK : SQLITE_DONE;
     f->errorMsg = NULL;
     return SQLITE_OK;
 }
