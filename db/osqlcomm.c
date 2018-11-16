@@ -51,7 +51,6 @@
 
 #define BLKOUT_DEFAULT_DELTA 5
 #define MAX_CLUSTER 16
-#define DEBUG_REORDER 0
 
 #define UNK_ERR_SEND_RETRY 10
 /**
@@ -6721,9 +6720,11 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     if (gbl_toblock_net_throttle && is_write_request(type))
         net_throttle_wait(thedb->handle_sibling);
 
+#if DEBUG_REORDER
     const char *osql_reqtype_str(int type);
-    logmsg(LOGMSG_DEBUG, "%p osql_process_packet(): processing %s\n",
-           (void *)pthread_self(), osql_reqtype_str(type));
+    logmsg(LOGMSG_DEBUG, "%p %s: processing %s\n", (void *)pthread_self(),
+           __func__, osql_reqtype_str(type));
+#endif
 
     switch (type) {
     case OSQL_DONE:
@@ -6959,7 +6960,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         osql_ins_t dt;
         unsigned char *pData = NULL;
         int rrn = 0;
-        unsigned long long genid = 0;
         int is_legacy = (type == OSQL_INSREC);
 
         const uint8_t *p_buf_end;
@@ -7059,12 +7059,11 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         (*receivedrows)++;
     } break;
     case OSQL_STARTGEN: {
-        osql_startgen_t dt;
-        unsigned char *pData = NULL;
+        osql_startgen_t dt = {0};
         uint32_t cur_gen;
         const uint8_t *p_buf_end;
         p_buf_end = p_buf + sizeof(osql_startgen_t);
-        pData = (uint8_t *)osqlcomm_startgen_type_get(&dt, p_buf, p_buf_end);
+        osqlcomm_startgen_type_get(&dt, p_buf, p_buf_end);
         cur_gen = bdb_get_rep_gen(thedb->bdb_env);
         if (cur_gen != dt.start_gen) {
             err->errcode = OP_FAILED_VERIFY;
@@ -8098,11 +8097,10 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     } break;
 
     case OSQL_STARTGEN: {
-        osql_startgen_t dt;
-        unsigned char *pData = NULL;
+        osql_startgen_t dt = {0};
         uint8_t *p_buf_end;
         p_buf_end = p_buf + sizeof(osql_startgen_t);
-        pData = (uint8_t *)osqlcomm_startgen_type_get(&dt, p_buf, p_buf_end);
+        osqlcomm_startgen_type_get(&dt, p_buf, p_buf_end);
         sbuf2printf(logsb, "[%llx %s] %s start_gen = %u\n", id, us,
                     "OSQL_STARTGEN", dt.start_gen);
     } break;
@@ -9063,10 +9061,8 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
         osql_upd_t dt;
         uint8_t *p_buf = (uint8_t *)&((osql_upd_rpl_t *)rpl)->dt;
         unsigned char *pData;
-        unsigned long long genid;
         pData = (uint8_t *)osqlcomm_upd_type_get(&dt, p_buf, p_buf_end,
                                                  rpl_op.type == OSQL_UPDATE);
-        genid = dt.genid;
         enque_osqlpfault_olddata_oldkeys_newkeys(*last_db, dt.genid, pData,
                                                  dt.nData, last_step_idex, rqid,
                                                  uuid, seq);
