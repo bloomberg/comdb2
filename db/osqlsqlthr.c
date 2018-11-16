@@ -803,7 +803,7 @@ error:
         logmsg(LOGMSG_ERROR, 
                "Error in restablishing the sosql session, rc=%d, retries=%d\n",
                rc, retries);
-    } while (retries < maxretries)
+    } while (retries < maxretries);
 
     if (rc) {
         sql_debug_logf(clnt, __func__, __LINE__,
