@@ -2190,13 +2190,13 @@ clipper_usage:
         tokcpy(tok, ltok, table);
 
         stat_bt_hash_table_reset(table);
-    } else if (tokcmp(tok, ltok, "fastinit") == 0) {
+    } else if (tokcmp(tok, ltok, "fastinit") == 0 ||
+               tokcmp(tok, ltok, "reinit") == 0) {
         char table[MAXTABLELEN];
         if (thedb->master != gbl_mynode) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
             return -1;
         }
-
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR, "Expected db name\n");
@@ -2207,24 +2207,7 @@ clipper_usage:
                    MAXTABLELEN - 1);
             return -1;
         }
-
         tokcpy(tok, ltok, table);
-
-        /*
-           char fname[128];
-           tok=segtok(line,lline,&st,&ltok);
-           if (ltok == 0) {
-           printf("Expected schema file\n");
-           return -1;
-           }
-           if (ltok >= sizeof(fname) - 1) {
-           printf("Invalid file name: too long (max %d)\n", sizeof(fname) - 1);
-           return -1;
-           }
-           tokcpy(tok, ltok, fname);
-         */
-
-        /* and here we go... */
         rc = fastinit_table(dbenv, table);
         if (rc != 0) {
             if (rc == -99)
@@ -2479,31 +2462,6 @@ clipper_usage:
                tokcmp(tok, ltok, "clrpol") == 0 ||
                tokcmp(tok, ltok, "setclass") == 0) {
         process_allow_command(line + stsav, llinesav - stsav);
-    } else if (tokcmp(tok, ltok, "reinit") == 0) {
-        struct dbtable *db;
-        char dbname[100];
-
-        if (gbl_mynode != thedb->master) {
-            logmsg(LOGMSG_ERROR, "Please run reinit on master\n");
-            return -1;
-        }
-
-        tok = segtok(line, lline, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "usage: reinit tablename\n");
-            return -1;
-        }
-        tokcpy(tok, ltok, dbname);
-        db = get_dbtable_by_name(dbname);
-        if (db == NULL) {
-            logmsg(LOGMSG_ERROR, "No such db %s\n", dbname);
-        } else {
-            rc = reinit_db(db);
-            if (rc)
-                logmsg(LOGMSG_ERROR, "reinit %s failed rc %d\n", dbname, rc);
-            else
-                logmsg(LOGMSG_USER, "reinit %s ok\n", dbname);
-        }
     } else if (tokcmp(tok, ltok, "fastcount") == 0) {
         struct dbtable *db;
         char dbname[100];

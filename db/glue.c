@@ -5565,69 +5565,6 @@ retry:
     return rc;
 }
 
-int reinit_db(struct dbtable *db)
-{
-    int rc, bdberr;
-    void *bdb_handle;
-    int retries = 0;
-    tran_type *trans;
-    struct ireq iq = {0};
-
-    bdb_handle = get_bdb_handle(db, AUXDB_NONE);
-    if (!bdb_handle)
-        return ERR_NO_AUXDB;
-    iq.is_fake = 1;
-    iq.usedb = db;
-
-/*stop_threads(db->dbenv);*/
-
-retry:
-    rc = trans_start(&iq, NULL, &trans);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "tran_start failed, rc=%d\n", rc); /* shouldn't happen */
-        rc = ERR_INTERNAL;
-        goto done;
-    }
-    rc = bdb_reinit(bdb_handle, trans, &bdberr);
-    if (bdberr == RC_INTERNAL_RETRY) {
-        if (retries > 9999999) {
-            logmsg(LOGMSG_ERROR, "*ERROR*) bdb_reinit too much contention %d count %d\n",
-                   bdberr, retries);
-            rc = ERR_INTERNAL;
-            goto done;
-        }
-        retries++;
-        rc = trans_abort(&iq, trans);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "tran_abort failed, rc=%d\n", rc); /* shouldn't happen */
-            rc = ERR_INTERNAL;
-            goto done;
-        }
-        goto retry;
-    } else if (rc) {
-        int rc2;
-        logmsg(LOGMSG_ERROR, "reinit_db %s error %d\n", db->tablename, bdberr);
-        rc2 = trans_abort(&iq, trans);
-        if (rc2) {
-            logmsg(LOGMSG_ERROR, "tran_abort failed, rc=%d\n", rc2); /* shouldn't happen */
-            rc = ERR_INTERNAL;
-            goto done;
-        }
-        goto done;
-    }
-    /* wait for 5 minutes for this to complete... */
-    rc = trans_commit_timeout(&iq, trans, gbl_mynode, 5 * 60 * 1000);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "tran_commit failed, rc=%d\n", rc); /* shouldn't happen */
-        rc = ERR_INTERNAL;
-        goto done;
-    }
-
-done:
-    /*resume_threads(db->dbenv);*/
-    return rc;
-}
-
 int count_db(struct dbtable *db)
 {
     int bdberr;

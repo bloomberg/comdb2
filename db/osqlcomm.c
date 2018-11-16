@@ -7215,21 +7215,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         (*receivedrows)++;
     } break;
-    case OSQL_CLRTBL: {
-        if (logsb) {
-            uuidstr_t us;
-            sbuf2printf(logsb, "[%llu %s] OSQL_CLRTBL %s\n", rqid,
-                        comdb2uuidstr(uuid, us), iq->usedb->tablename);
-            sbuf2flush(logsb);
-        }
-
-        rc = reinit_db(iq->usedb);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "%s: reinit_db failed w/ rc = %d\n", __func__, rc);
-            return conv_rc_sql2blkop(iq, step, -1, rc, err, NULL, 0);
-        } else
-            logmsg(LOGMSG_INFO, "Cleared ok\n");
-    } break;
     case OSQL_UPDCOLS: {
         osql_updcols_t dt;
         const uint8_t *p_buf_end = p_buf + sizeof(osql_updcols_t);
@@ -8134,12 +8119,6 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         sbuf2printf(logsb, "\n] -> ");
         sbuf2printf(logsb, " %llx (%d:%lld)\n", lclgenid, rrn, lclgenid);
-    } break;
-
-    case OSQL_CLRTBL: {
-        sbuf2printf(logsb, "[%llx %s] OSQL_CLRTBL %s\n", id, us,
-                    iq->usedb->tablename);
-        sbuf2flush(logsb);
     } break;
 
     case OSQL_UPDCOLS: {

@@ -6210,33 +6210,18 @@ int sqlite3BtreeClearTable(Btree *pBt, int iTable, int *pnChange)
             goto done;
         }
     } else {
-        struct dbtable *db;
-
-        db = get_sqlite_db(thd, iTable, &ixnum);
+        struct dbtable *db = get_sqlite_db(thd, iTable, &ixnum);
         if (ixnum != -1) {
             rc = SQLITE_OK;
             goto done;
         }
-
-        /* If we are in analyze, lie.  Otherwise we end up with an empty, and
-         * then worse,
-         * half-filled stat table during the analyze. */
+        /* If we are in analyze, lie.  Otherwise we end up with an empty,
+         * and then worse, half-filled stat table during the analyze. */
         if (clnt->is_analyze && is_sqlite_stat(db->tablename)) {
             rc = SQLITE_OK;
             goto done;
         }
-
-        if (clnt->dbtran.mode == TRANLEVEL_SOSQL ||
-            clnt->dbtran.mode == TRANLEVEL_RECOM ||
-            clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
-            clnt->dbtran.mode == TRANLEVEL_SERIAL) {
-            if (db->n_constraints == 0)
-                rc = osql_cleartable(thd, db->tablename);
-            else
-                rc = -1;
-        } else {
-            rc = reinit_db(db);
-        }
+        rc = db->n_constraints == 0 ? osql_cleartable(thd, db->tablename) : -1;
         if (rc) {
             logmsg(LOGMSG_ERROR, "sqlite3BtreeClearTable: error rc = %d\n", rc);
             rc = SQLITE_INTERNAL;
