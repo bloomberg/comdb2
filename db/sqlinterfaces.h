@@ -74,5 +74,7 @@ void start_internal_sql_clnt(struct sqlclntstate *clnt);
 int run_internal_sql_clnt(struct sqlclntstate *clnt, char *sql);
 void end_internal_sql_clnt(struct sqlclntstate *clnt);
 void reset_clnt_flags(struct sqlclntstate *);
+int lock_client_write_lock(struct sqlclntstate *clnt);
+void unlock_client_write_lock(struct sqlclntstate *clnt);
 
 #endif

@@ -21,6 +21,7 @@ add_exe(comdb2_blobtest comdb2_blobtest.c)
 add_exe(comdb2_sqltest client_datetime.c endian_core.c md5.c slt_comdb2.c slt_sqlite.c sqllogictest.c)
 add_exe(crle crle.c)
 add_exe(hatest hatest.c)
+add_exe(cldeadlock cldeadlock.c)
 add_exe(insert_lots_mt insert_lots_mt.cpp)
 add_exe(leakcheck leakcheck.c)
 add_exe(localrep localrep.c strbuf.c)
@@ -62,6 +63,7 @@ target_link_libraries(cdb2api_unit cdb2api_shared ${OPENSSL_LIBRARIES} ${PROTOBU
 
 # needs readline!
 target_link_libraries(hatest cdb2api ${READLINE_LIBRARY} ${CURSES_LIBRARIES} ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
+target_link_libraries(cldeadlock cdb2api ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
 
 # sqlite3_snprintf
 target_link_libraries(comdb2_sqltest cdb2api ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${SQLITE3_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS} -lm)
@@ -71,6 +73,6 @@ target_link_libraries(recom cdb2api ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} $
 # everything!
 target_link_libraries(stepper cdb2api mem dlmalloc util ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
 
-foreach(executable blob bound cdb2api_caller cdb2bind comdb2_blobtest insert_lots_mt leakcheck localrep overflow_blobtest selectv serial sicountbug sirace simple_ssl utf8 insert register breakloop cdb2_client hatest comdb2_sqltest ptrantest recom stepper multithd cdb2_open verify_atomics_work cdb2api_unit malloc_resize_test cdb2_close_early cdb2api_read_intrans_results ssl_multi_certs_one_process nowritetimeout)
+foreach(executable blob bound cdb2api_caller cdb2bind comdb2_blobtest insert_lots_mt leakcheck localrep overflow_blobtest selectv serial sicountbug sirace simple_ssl utf8 insert register breakloop cdb2_client hatest cldeadlock comdb2_sqltest ptrantest recom stepper multithd cdb2_open verify_atomics_work cdb2api_unit malloc_resize_test cdb2_close_early cdb2api_read_intrans_results ssl_multi_certs_one_process nowritetimeout)
     target_link_libraries(${executable} ${UNWIND_LIBRARY})
 endforeach()

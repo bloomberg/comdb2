@@ -780,19 +780,8 @@ __db_refresh(dbp, txn, flags, deferred_closep)
 	    (t_ret = __db_sync(dbp)) != 0 && ret == 0)
 		ret = t_ret;
 
-	/*
-	 * Go through the active cursors and call the cursor recycle routine,
-	 * which resolves pending operations and moves the cursors onto the
-	 * free list.  Then, walk the free list and call the cursor destroy
-	 * routine.  Note that any failure on a close is considered "really
-	 * bad" and we just break out of the loop and force forward.
-	 */
-	while ((dbc = TAILQ_FIRST(&dbp->active_queue)) != NULL)
-		if ((t_ret = __db_c_close(dbc)) != 0) {
-			if (ret == 0)
-				ret = t_ret;
-			break;
-		}
+	/* Comdb2 shouldn't close dbhandles with active cursors */
+	DB_ASSERT(TAILQ_FIRST(&dbp->active_queue) == NULL);
 
 	while ((dbc = TAILQ_FIRST(&dbp->free_queue)) != NULL)
 		if ((t_ret = __db_c_destroy(dbc)) != 0) {

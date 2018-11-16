@@ -944,7 +944,7 @@ __os_physwrite(dbenv, fhp, addr, len, nwp)
 	size_t *nwp;
 {
 	size_t offset;
-	ssize_t nw;
+	ssize_t nw = 0;
 	int ret, retries;
 	u_int8_t *taddr;
 
@@ -958,23 +958,57 @@ __os_physwrite(dbenv, fhp, addr, len, nwp)
 		    cur_off <= sb.st_size);
 	}
 #endif
-
 	retries = 0;
-	for (taddr = addr, offset = 0; offset < len; taddr += nw, offset += nw)
-retry:		if ((nw = DB_GLOBAL(j_write) != NULL ?
+
+	int debug_enospc = dbenv->attr.debug_enospc_chance;
+	off_t off = 0;
+
+	for (taddr = addr, offset = 0; offset < len; taddr += nw, offset += nw) {
+		if (debug_enospc)
+			off = lseek(fhp->fd, (off_t) 0, SEEK_CUR);
+
+retry:
+		nw = DB_GLOBAL(j_write) != NULL ?
 			DB_GLOBAL(j_write)(fhp->fd, taddr, len - offset) :
-			F_ISSET(fhp,
-			    DB_FH_DIRECT) ? __berkdb_direct_write(fhp->fd,
-			    taddr, len - offset) : write(fhp->fd, taddr,
-			    len - offset))<0) {
+			F_ISSET(fhp, DB_FH_DIRECT) ? 
+			__berkdb_direct_write(fhp->fd, taddr, len - offset) : write(fhp->fd, taddr,
+					len - offset);
+		if (debug_enospc && off >= 0) {
+			int p = rand() % 100;
+
+			if (p < dbenv->attr.debug_enospc_chance && nw > 0) {
+				off_t rc = lseek(fhp->fd, off, SEEK_SET);
+				if (rc == off) {
+					nw = -1;
+					errno = ENOSPC;
+				}
+				else {
+					/* We got positioned into the limbo somewhere (how?)
+					 * so it's not safe to proceed. */
+					__db_err(dbenv, "lseek: fd %d off %lu, wanted %lu\n", fhp->fd,
+							rc, off);
+					return errno;
+				}
+			}
+		}
+		if (nw < 0) {
 			ret = __os_get_errno();
+			if (ret == ENOSPC) {
+				logmsg(LOGMSG_WARN, "%s write fd %d sz %d retry %d\n",
+						__func__, fhp->fd, (int) (len - offset), retries);
+				if (++retries < dbenv->attr.num_write_retries) {
+					poll(NULL, 0, 10);
+					goto retry;
+				}
+			}
 			if ((ret == EINTR || ret == EBUSY) &&
-			    ++retries < DB_RETRY)
+					++retries < dbenv->attr.num_write_retries)
 				goto retry;
 			__db_err(dbenv, "write: %p, %lu: %s",
-			    taddr, (u_long) len - offset, strerror(ret));
+					taddr, (u_long) len - offset, strerror(ret));
 			return (ret);
 		}
+	}
 	*nwp = len;
 	return (0);
 }
@@ -1034,7 +1068,7 @@ __berkdb_direct_pwritev(DB_ENV *dbenv,
 			}
 		}
 		if (nretries > 0) {
-			logmsg(LOGMSG_ERROR, "pwrite fd %d sz %d off %ld retry %d\n",
+			logmsg(LOGMSG_WARN, "pwrite fd %d sz %d off %ld retry %d\n",
 			    fd, (int)(nobufs * pagesize), offset, nretries);
 			poll(NULL, 0, 10);
 		}

@@ -78,6 +78,7 @@ struct sbuf2 {
 
 #if SBUF2_SERVER
     comdb2ma allocator;
+    struct sqlclntstate *clnt;
 #endif
 
 #if WITH_SSL
@@ -744,6 +745,7 @@ SBUF2 *SBUF2_FUNC(sbuf2open)(int fd, int flags)
     sb->flags = flags;
 #if SBUF2_SERVER
     sb->allocator = alloc;
+    sb->clnt = NULL;
 #endif
 
 #if SBUF2_UNGETC
@@ -802,6 +804,18 @@ int SBUF2_FUNC(sbuf2eof)(SBUF2 *sb)
         else
             return -1;
     }
+}
+#endif
+
+#if SBUF2_SERVER
+void SBUF2_FUNC(sbuf2setclnt)(SBUF2 *sb, struct sqlclntstate *clnt)
+{
+    sb->clnt = clnt;
+}
+
+struct sqlclntstate *SBUF2_FUNC(sbuf2getclnt)(SBUF2 *sb)
+{
+    return sb->clnt;
 }
 #endif
 

@@ -147,7 +147,7 @@ find_cores() {
             echo "$node:$cr" # this is the return value of the function
             local space=$(df .  | awk '{print $4}' | grep -v Available)
             local size=$(ssh $node "ls -s $cr | cut -f1 -d' '")
-            if [[ $space -lt $size ]] ; then 
+            if [[ $size -lt $space ]] ; then # if there is space, copy locally
                 local copy_core=$LCLDBDIR/${node}.`basename $cr`
                 scp -o StrictHostKeyChecking=no $node:${cr} $copy_core < /dev/null
                 echo "Core file $node:${cr} copied to $copy_core" > $LCLDBDIR/core_stacktrace.$node.txt
@@ -225,6 +225,7 @@ check_db_at_finish() {
 # start the testing: setup, runit, check cores, unsetup
 
 call_setup
+
 echo "!$TESTCASE: running with timeout ${TEST_TIMEOUT}"
 
 timeout ${TEST_TIMEOUT} ./runit ${DBNAME} 2>&1  | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' &> ${TESTDIR}/logs/${DBNAME}.testcase
