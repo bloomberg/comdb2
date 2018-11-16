@@ -726,7 +726,7 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "recover_deadlock returned %d\n", rc);
                 osql_unregister_sqlthr(clnt);
-                return SQLITE_BUSY;
+                return rc;
             }
 
             clnt->deadlock_recovered++;
@@ -737,7 +737,7 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
                                             BDB_ATTR_SOSQL_MAX_DEADLOCK_RECOVERED);
             if (clnt->deadlock_recovered > max_dead_rec) {
                 osql_unregister_sqlthr(clnt);
-                return SQLITE_BUSY;
+                return ERR_RECOVER_DEADLOCK;
             }
         }
 
@@ -760,16 +760,16 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
                 logmsg(LOGMSG_USER,
                        "0x%lu Restarting clnt->osql.rqid=%llx against %s\n",
                        pthread_self(), clnt->osql.rqid, thedb->master);
-            /* osql_sock_start will call osql_reuse_sqlthr() */
+            /* TODO: osql_sock_start will also call osql_reuse_sqlthr() */
+            rc = osql_reuse_sqlthr(clnt, thedb->master);
+            if (rc)
+                return SQLITE_INTERNAL;
         }
 
         rc = osql_sock_start(clnt, (clnt->dbtran.mode == TRANLEVEL_SOSQL)
                                        ? OSQL_SOCK_REQ
                                        : OSQL_RECOM_REQ,
                              keep_session);
-        if (rc == SQLITE_INTERNAL)
-            return rc;
-
         if (rc) {
             sql_debug_logf(clnt, __func__, __LINE__, "osql_sock_start returns %d\n",
                            rc);
@@ -795,13 +795,15 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
         if (unlikely(rc == -2 || rc == -3))
             rc = 0;
 
+        if (!rc)
+            break;
+
 error:
-        if (rc)
-            logmsg(LOGMSG_ERROR, 
-                "Error in restablishing the sosql session, rc=%d, retries=%d\n",
-                rc, retries);
+        logmsg(LOGMSG_ERROR, 
+               "Error in restablishing the sosql session, rc=%d, retries=%d\n",
+               rc, retries);
         retries++;
-    } while (rc && (retries < maxretries))
+    } while (retries < maxretries)
 
     if (rc) {
         sql_debug_logf(clnt, __func__, __LINE__,
