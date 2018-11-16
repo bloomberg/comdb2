@@ -162,8 +162,8 @@ extern int gbl_snapisol;
 extern int gbl_logical_live_sc;
 int bdb_logical_logging_enabled()
 {
-    if (gbl_bdb_state->attr->snapisol || gbl_snapisol || gbl_rowlocks ||
-        gbl_logical_live_sc)
+    if ((gbl_bdb_state && gbl_bdb_state->attr->snapisol) || gbl_snapisol ||
+        gbl_rowlocks || gbl_logical_live_sc)
         return 1;
     return 0;
 }
