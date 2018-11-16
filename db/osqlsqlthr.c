@@ -799,10 +799,10 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
             break;
 
 error:
+        retries++;
         logmsg(LOGMSG_ERROR, 
                "Error in restablishing the sosql session, rc=%d, retries=%d\n",
                rc, retries);
-        retries++;
     } while (retries < maxretries)
 
     if (rc) {
