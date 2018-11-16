@@ -3882,6 +3882,9 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
                 pBt->btreeid, iTable, sqlite3ErrStr(rc));
 
     if (pBt->is_temporary) {
+        struct sql_thread *thd = pthread_getspecific(query_info_key);
+        assert(thd);
+
         struct sqlclntstate *clnt = thd->clnt;
         assert(clnt);
 
