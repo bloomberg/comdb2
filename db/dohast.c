@@ -361,8 +361,21 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
 
     pLimit = p->pLimit;
     pOffset = p->pOffset;
+    /* syntax errors */
+    crt = p->pPrior;
+    while(crt) {
+        /* no limit in the middle */
+        if (crt->pLimit)
+            return NULL;
+        /* no order by in the middle */
+        if (crt->pOrderBy)
+            return NULL;
+        crt = crt->pPrior;
+    }
+
     crt = p;
     if (crt->pPrior) {
+
         /* go from left to right */
         while (crt->pPrior) {
             crt->pLimit = pLimit;
