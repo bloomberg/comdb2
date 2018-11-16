@@ -704,8 +704,7 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
         cheap_stack_trace();
     }
 
-    while(retries <= maxretries) {
-        retries++;
+    do {
         /* if we're shaking really badly, back off */
         if (retries > 1)
             usleep(retries * 10000); //sleep for a multiple of 10ms
@@ -774,7 +773,7 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
         if (rc) {
             sql_debug_logf(clnt, __func__, __LINE__, "osql_sock_start returns %d\n",
                            rc);
-            continue;
+            goto error;
         }
 
         /* process messages from cache */
@@ -796,15 +795,15 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
         if (unlikely(rc == -2 || rc == -3))
             rc = 0;
 
-        if (!rc)
-            break;
+error:
+        if (rc)
+            logmsg(LOGMSG_ERROR, 
+                "Error in restablishing the sosql session, rc=%d, retries=%d\n",
+                rc, retries);
+        retries++;
+    } while (rc && (retries < maxretries))
 
-        logmsg(LOGMSG_ERROR, 
-            "Error in restablishing the sosql session, rc=%d, retries=%d\n",
-            rc, retries);
-    }
-
-    if (retries > maxretries) {
+    if (rc) {
         sql_debug_logf(clnt, __func__, __LINE__,
                        "failed %d times to restart socksql session\n", retries);
         logmsg(LOGMSG_ERROR,
