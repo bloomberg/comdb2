@@ -461,6 +461,9 @@ int ast_push(ast_t *ast, enum ast_type op, Vdbe *v, void *obj)
 {
     int ignore = 0;
 
+    if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DOHAST_DISABLE))
+        return 0;
+
     if (dohsql_is_parallel_shard())
         return 0;
 

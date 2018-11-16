@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=888)
+(TUNABLES_COUNT=889)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -213,6 +213,7 @@
 (name='disable_upgrade_ahead', description='Sets 'enable_upgrade_ahead' to 0.', type='BOOLEAN', value='ON', read_only='Y')
 (name='disable_writer_penalty_deadlock', description='If set, won't shrink max #writers on deadlock.', type='BOOLEAN', value='OFF', read_only='N')
 (name='disallow_portmux_route', description='Disables 'allow_portmux_route'', type='BOOLEAN', value='OFF', read_only='Y')
+(name='dohast_disable', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='dohast_verbose', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='dohsql_disable', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='dohsql_verbose', description='', type='BOOLEAN', value='OFF', read_only='N')
