@@ -379,6 +379,7 @@ int fdb_svc_cursor_close(char *cid, int isuuid, struct sqlclntstate **pclnt)
         Pthread_cond_destroy(&(*pclnt)->wait_cond);
         Pthread_mutex_destroy(&(*pclnt)->write_lock);
         Pthread_mutex_destroy(&(*pclnt)->dtran_mtx);
+        Pthread_mutex_destroy(&(*pclnt)->temp_table_mtx);
 
         free(*pclnt);
 
