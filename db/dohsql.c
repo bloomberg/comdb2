@@ -1460,3 +1460,25 @@ int dohsql_error(struct sqlclntstate *clnt, const char **errstr)
     *errstr = NULL;
     return 0;
 }
+
+
+/** 
+ * End distribution of the original sql query had a delayed syntax error 
+ *
+ */
+void dohsql_handle_delayed_syntax_error(struct sqlclntstate *clnt)
+{
+    int rc;
+
+    if (!clnt->conns)
+        return;
+
+    _signal_children_master_is_done(clnt->conns);
+
+    rc = dohsql_end_distribute(clnt);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: failed to clear parallel distribution rc=%d",
+                __func__, rc);
+    }
+}
+

@@ -70,4 +70,10 @@ int dohsql_is_parallel_shard(void);
  */
 int dohsql_error(struct sqlclntstate *clnt, const char **errstr);
 
+/** 
+ * End distribution of the original sql query had a delayed syntax error 
+ *
+ */
+void dohsql_handle_delayed_syntax_error(struct sqlclntstate *clnt);
+
 #endif
