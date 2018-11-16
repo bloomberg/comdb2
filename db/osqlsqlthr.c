@@ -1526,53 +1526,6 @@ int osql_query_dbglog(struct sql_thread *thd, int queryid)
     return rc;
 }
 
-#if 0
-static int osql_send_cleartable_osqlsosql(struct sql_thread *thd, char *dbname) {
-
-   osqlstate_t          *osql = &thd->clnt->osql;
-   netinfo_type         *netinfo_ptr = (netinfo_type*)theosql->handle_sibling;
-   osql_clrtbl_rpl_t    clr_rpl;
-   int                  rc = 0;
-
-   /* limit transaction*/
-   if(rc = check_osql_capacity (thd)) return rc;
-
-   rc = osql_send_usedb_int(thd, dbname, NET_OSQL_BLOCK_RPL);
-   if (rc == SQLITE_OK) {
-
-      clr_rpl.hd.type = OSQL_CLRTBL;
-      clr_rpl.hd.sid = osql->rqid;
-
-      if(osql->logsb) {
-         sbuf2printf(thd->clnt->osql.logsb, "[%llu] send OSQL_CLRTBL %s\n", osql->rqid, dbname);
-         sbuf2flush(thd->clnt->osql.logsb);
-      }
-
-      if(offload_net_send(netinfo_ptr, osql->host, NET_OSQL_BLOCK_RPL, &clr_rpl, sizeof(clr_rpl), 1)) {
-         rc = SQLITE_INTERNAL;
-         fprintf(stderr,
-               "%s: error writting record to master in offload mode!\n", __func__);
-      } else
-         rc = SQLITE_OK;
-   }
-
-   return rc;
-}
-
-static int osql_send_cleartable_recom(struct sql_thread *thd, char *dbname) {
-    fprintf(stderr, "cleartable not implemented yet\n");
-    return -1;
-}
-int osql_cleartable(struct sql_thread *thd, char *dbname) {
-    if(thd->clnt->dbtran.mode == TRANLEVEL_OSQL ||
-          thd->clnt->dbtran.mode == TRANLEVEL_SOSQL)
-        return osql_send_cleartable_osqlsosql(thd, dbname);
-    else
-        return osql_send_cleartable_recom(thd, dbname);
-}
-
-#endif
-
 /**
  * Record a genid with the current transaction so we can
  * verify its existence upon commit

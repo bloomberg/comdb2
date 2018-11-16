@@ -204,8 +204,6 @@ char *osql_breq2a(int op)
         return "OSQL_DELREC";
     case OSQL_INSREC:
         return "OSQL_INSREC";
-    case OSQL_CLRTBL:
-        return "OSQL_CLRTBL";
     case OSQL_QBLOB:
         return "OSQL_QBLOB";
     case OSQL_UPDREC:

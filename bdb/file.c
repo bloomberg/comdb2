@@ -280,7 +280,6 @@ void bdb_checkpoint_list_get_ckp_before_timestamp(int timestamp, DB_LSN *lsnout)
 static void set_some_flags(bdb_state_type *bdb_state, DB *dbp, char *name)
 {
     if (bdb_state->attr->checksums) {
-        logmsg(LOGMSG_INFO, "enabling checksums for %s\n", name);
         if (dbp->set_flags(dbp, DB_CHKSUM) != 0) {
             logmsg(LOGMSG_ERROR, "error enabling checksums\n");
         }
@@ -6117,77 +6116,6 @@ bdb_state_type *bdb_create_more_lite(const char name[], const char dir[],
     return ret;
 }
 
-static int bdb_reinit_int(bdb_state_type *bdb_state, tran_type *tran,
-                          int *bdberr)
-{
-    int i;
-    int dtanum;
-    u_int32_t nrecs = 0;
-    int rc;
-    u_int32_t nrecs_ix[MAXINDEX];
-
-    *bdberr = 0;
-
-    if (!bdb_state->read_write) {
-        *bdberr = BDBERR_READONLY;
-        return -1;
-    }
-
-    /* truncate keys */
-    for (i = 0; i < bdb_state->numix; i++) {
-        rc = bdb_state->dbp_ix[i]->truncate(bdb_state->dbp_ix[i], tran->tid,
-                                            &nrecs_ix[i], 0);
-        if (rc == DB_LOCK_DEADLOCK) {
-            *bdberr = BDBERR_DEADLOCK;
-            return -1;
-        } else if (rc) {
-            *bdberr = BDBERR_MISC;
-            return -1;
-        }
-    }
-
-    /* truncate all data records and blobs, count the data records */
-    for (dtanum = 0; dtanum < bdb_state->numdtafiles; dtanum++) {
-        int strnum;
-        for (strnum = bdb_get_datafile_num_files(bdb_state, dtanum) - 1;
-             strnum >= 0; strnum--) {
-            u_int32_t ndtarecs;
-            DB *dbp = bdb_state->dbp_data[dtanum][strnum];
-            dbp->truncate(dbp, tran->tid, &ndtarecs, 0);
-            if (rc == DB_LOCK_DEADLOCK) {
-                *bdberr = BDBERR_DEADLOCK;
-                return -1;
-            } else if (rc) {
-                *bdberr = BDBERR_MISC;
-                return -1;
-            }
-            if (0 == dtanum)
-                nrecs += ndtarecs;
-        }
-    }
-
-    /* sanity check # records removed */
-    for (i = 0; i < bdb_state->numix; i++) {
-        if (nrecs != nrecs_ix[i]) {
-           logmsg(LOGMSG_ERROR, "key/data mismatch! ix %d nrecs %d data nrecs %d\n", i,
-                   nrecs_ix[i], nrecs);
-        }
-    }
-
-    return 0;
-}
-
-/* remove all records from a database (keys, data, free list) */
-int bdb_reinit(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
-{
-    int rc;
-
-    BDB_READLOCK("bdb_reinit");
-    rc = bdb_reinit_int(bdb_state, tran, bdberr);
-    BDB_RELLOCK();
-    return rc;
-}
-
 void bdb_remove_fileid_pglogs(bdb_state_type *bdb_state, unsigned char *fileid);
 
 /* Pass in mangled file name, this will delete it. */
@@ -7750,8 +7678,6 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
                 print(bdb_state, "failed to collect old file (list full) %s\n",
                       ent->d_name);
             } else {
-                logmsg(LOGMSG_INFO, "%s: collected file %s\n", __func__,
-                       ent->d_name);
                 print(bdb_state, "collected old file %s\n", ent->d_name);
             }
         } else {
