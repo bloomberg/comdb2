@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=885)
+(TUNABLES_COUNT=886)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -747,6 +747,7 @@
 (name='sort_nulls_with_header', description='Using record headers in key sorting. (Default: on)', type='BOOLEAN', value='ON', read_only='Y')
 (name='sosql_ddl_max_commit_wait_sec', description='Wait for the master to commit a DDL transaction for up to this long.', type='INTEGER', value='259200', read_only='N')
 (name='sosql_max_commit_wait_sec', description='Wait for the master to commit a transaction for up to this long.', type='INTEGER', value='600', read_only='N')
+(name='sosql_max_deadlock_recovered', description='On replicants, maximum deadlock recovered count allowed.', type='INTEGER', value='100', read_only='N')
 (name='sosql_poke_freq_sec', description='On replicants, check this often for transaction status.', type='INTEGER', value='1', read_only='N')
 (name='sosql_poke_timeout_sec', description='On replicants, when checking on master for transaction status, retry the check after this many seconds.', type='INTEGER', value='2', read_only='N')
 (name='spfile', description='', type='STRING', value=NULL, read_only='Y')
