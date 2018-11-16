@@ -834,7 +834,6 @@ unsigned long long get_next_genid_for_table(const char *tablename)
     return genid;
 }
 
-
 struct dbtable *getqueuebyname(const char *name)
 {
     return hash_find_readonly(thedb->qdb_hash, &name);

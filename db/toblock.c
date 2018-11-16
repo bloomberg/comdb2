@@ -5537,7 +5537,8 @@ add_blkseq:
                     char *bskey = alloca(iq->snap_info.keylen + 1);
                     memcpy(bskey, iq->snap_info.key, iq->snap_info.keylen);
                     bskey[iq->snap_info.keylen] = '\0';
-                    logmsg(LOGMSG_USER, "blkseq add '%s', outrc=%d errval=%d "
+                    logmsg(LOGMSG_USER,
+                           "blkseq add '%s', outrc=%d errval=%d "
                            "errstr='%s', rcout=%d commit-rc=%d\n",
                            bskey, outrc, iq->errstat.errval, iq->errstat.errstr,
                            iq->sorese.rcout, irc);

@@ -92,8 +92,9 @@ struct osql_sess {
     int retries;      /* how many times this session was retried */
 
     int queryid;
-    char tablename[MAXTABLELEN];   // remember tablename in saveop for reordering
-    unsigned long long last_genid; // rememberg updrec and insrec genid for qblobs
+    char tablename[MAXTABLELEN]; // remember tablename in saveop for reordering
+    unsigned long long
+        last_genid; // rememberg updrec and insrec genid for qblobs
     uint16_t tbl_idx;
     bool is_reorder_on : 1;
 };

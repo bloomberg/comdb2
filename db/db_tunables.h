@@ -1488,8 +1488,9 @@ REGISTER_TUNABLE("random_fail_client_write_lock",
                  TUNABLE_INTEGER, &gbl_fail_client_write_lock,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("reorder_socksql_no_deadlock", "Reorder sock sql to have no deadlocks ",
-                 TUNABLE_BOOLEAN, &gbl_reorder_socksql_no_deadlock,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("reorder_socksql_no_deadlock",
+                 "Reorder sock sql to have no deadlocks ", TUNABLE_BOOLEAN,
+                 &gbl_reorder_socksql_no_deadlock, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

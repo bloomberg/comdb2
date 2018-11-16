@@ -165,7 +165,8 @@ static int osql_bplog_key_cmp(void *usermem, int key1len, const void *key1,
 
     // need to sort by genid correctly
     int cmp = bdb_cmp_genids(k1->genid, k2->genid);
-    if (cmp) return cmp;
+    if (cmp)
+        return cmp;
 
     if (k1->isrec < k2->isrec) {
         return -1;
@@ -647,28 +648,29 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
                        oplog_key_t *key)
 {
     key->tbl_idx = USHRT_MAX;
-    switch(type) {
+    switch (type) {
     case OSQL_USEDB: {
         /* usedb is always called prior to any other osql event */
         const char *get_tablename_from_rpl(const char *rpl);
         const char *tablename = get_tablename_from_rpl(rpl);
-        assert(tablename); //table or queue name
+        assert(tablename); // table or queue name
         if (tablename && !is_tablename_queue(tablename, strlen(tablename))) {
             strncpy(sess->tablename, tablename, sizeof(sess->tablename));
             sess->tbl_idx = get_dbtable_idx_by_name(tablename) + 1;
             key->tbl_idx = sess->tbl_idx;
 
-#if DEBUG_REORDER 
-            logmsg(LOGMSG_DEBUG, "REORDER: tablename='%s' idx=%d\n", tablename, sess->tbl_idx);
+#if DEBUG_REORDER
+            logmsg(LOGMSG_DEBUG, "REORDER: tablename='%s' idx=%d\n", tablename,
+                   sess->tbl_idx);
 #endif
         }
         break;
     }
-    case OSQL_UPDATE: 
-    case OSQL_DELETE: 
-    case OSQL_UPDREC: 
-    case OSQL_DELREC: 
-    case OSQL_INSERT: 
+    case OSQL_UPDATE:
+    case OSQL_DELETE:
+    case OSQL_UPDREC:
+    case OSQL_DELREC:
+    case OSQL_INSERT:
     case OSQL_INSREC: {
         enum { OSQLCOMM_UUID_RPL_TYPE_LEN = 4 + 4 + 16 };
         unsigned long long genid = 0;
@@ -676,19 +678,19 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
             genid = get_next_genid_for_table(sess->tablename);
             if (genid == 0) /* table not found so assign nonzero genid */
                 genid = -1;
-#if DEBUG_REORDER 
+#if DEBUG_REORDER
             logmsg(LOGMSG_DEBUG, "REORDER: Creating genid 0x%llx\n", genid);
 #endif
-        }
-        else {
-            const char *p_buf = rpl + OSQLCOMM_UUID_RPL_TYPE_LEN; 
-            buf_no_net_get(&(genid), sizeof(genid), p_buf, p_buf + sizeof(genid));
-#if DEBUG_REORDER 
+        } else {
+            const char *p_buf = rpl + OSQLCOMM_UUID_RPL_TYPE_LEN;
+            buf_no_net_get(&(genid), sizeof(genid), p_buf,
+                           p_buf + sizeof(genid));
+#if DEBUG_REORDER
             logmsg(LOGMSG_DEBUG, "REORDER: Received genid 0x%llx\n", genid);
 #endif
         }
         sess->last_genid = genid;
-        key->isrec = 1; //sort rec after qblobs
+        key->isrec = 1; // sort rec after qblobs
         /* FALL THROUGH TO NEXT CASE */
     }
     case OSQL_QBLOB:
@@ -701,12 +703,13 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
         assert(0 != key->genid);
         assert(key->stripe >= 0);
         break;
-    } 
+    }
     case OSQL_RECGENID: {
         key->tbl_idx = sess->tbl_idx;
         break;
     }
-    default: break;
+    default:
+        break;
     }
 }
 
@@ -721,7 +724,7 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
 int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                       unsigned long long rqid, uuid_t uuid, int type)
 {
-#if DEBUG_REORDER 
+#if DEBUG_REORDER
     logmsg(LOGMSG_DEBUG, "REORDER: saving for sess %p\n", sess);
 #endif
     blocksql_tran_t *tran = (blocksql_tran_t *)osql_sess_getbptran(sess);
@@ -743,9 +746,10 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     if (type == OSQL_SCHEMACHANGE)
         iq->tranddl++;
 
-#if DEBUG_REORDER 
-    logmsg(LOGMSG_DEBUG, "Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%lld\n",
-           rqid, type, osql_reqtype_str(type), osql_log_time(), sess->seq);
+#if DEBUG_REORDER
+    logmsg(LOGMSG_DEBUG,
+           "Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%lld\n", rqid,
+           type, osql_reqtype_str(type), osql_log_time(), sess->seq);
 #endif
     if (sess->is_reorder_on) {
         setup_reorder_key(type, sess, iq, rpl, &key);
@@ -786,11 +790,14 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         return -1;
     }
 
-#if DEBUG_REORDER 
+#if DEBUG_REORDER
     char mus[37];
     comdb2uuidstr(uuid, mus);
-    logmsg(LOGMSG_DEBUG, "%p:%s: rqid=%llx uuid=%s SAVING tp=%d(%s), tbl_idx=%d, stripe=%d, genid=0x%llx, seq=%d\n", 
-            (void *)pthread_self(), __func__, rqid, mus, type, osql_reqtype_str(type), key.tbl_idx, key.stripe, key.genid, key.seq);
+    logmsg(LOGMSG_DEBUG,
+           "%p:%s: rqid=%llx uuid=%s SAVING tp=%d(%s), tbl_idx=%d, stripe=%d, "
+           "genid=0x%llx, seq=%d\n",
+           (void *)pthread_self(), __func__, rqid, mus, type,
+           osql_reqtype_str(type), key.tbl_idx, key.stripe, key.genid, key.seq);
 #endif
 
     rc_op = bdb_temp_table_put(thedb->bdb_env, tran->db, &key, sizeof(key), rpl,
@@ -1171,12 +1178,13 @@ static int process_this_session(
         reqlog_set_rqid(iq->reqlogger, uuid, sizeof(uuid));
     reqlog_set_event(iq->reqlogger, "txn");
 
-#if DEBUG_REORDER 
+#if DEBUG_REORDER
     // if needed to check content of socksql temp table, dump with:
-    void bdb_temp_table_debug_dump(bdb_state_type *bdb_state, tmpcursor_t *cur);
+    void bdb_temp_table_debug_dump(bdb_state_type * bdb_state,
+                                   tmpcursor_t * cur);
     bdb_temp_table_debug_dump(thedb->bdb_env, dbc);
 #endif
-    
+
     /* go through each record */
     rc = bdb_temp_table_first(thedb->bdb_env, dbc, bdberr);
     if (rc && rc != IX_EMPTY && rc != IX_NOTFND) {
@@ -1193,11 +1201,15 @@ static int process_this_session(
     }
 
     while (!rc && !rc_out) {
-        oplog_key_t* opkey = (oplog_key_t *)bdb_temp_table_key(dbc);
-#if DEBUG_REORDER 
+        oplog_key_t *opkey = (oplog_key_t *)bdb_temp_table_key(dbc);
+#if DEBUG_REORDER
         char mus[37];
         comdb2uuidstr(uuid, mus);
-        logmsg(LOGMSG_DEBUG, "REORDER: READ key rqid=%lld, uuid=%s, tbl_idx=%d, stripe=%d, genid=0x%llx, seq=%d\n", rqid, mus, opkey->tbl_idx, opkey->stripe, opkey->genid, opkey->seq);
+        logmsg(LOGMSG_DEBUG,
+               "REORDER: READ key rqid=%lld, uuid=%s, tbl_idx=%d, stripe=%d, "
+               "genid=0x%llx, seq=%d\n",
+               rqid, mus, opkey->tbl_idx, opkey->stripe, opkey->genid,
+               opkey->seq);
 #endif
 
         char *data = bdb_temp_table_data(dbc);
@@ -1228,7 +1240,6 @@ static int process_this_session(
             /* error processing, can be a verify error or deadlock */
             break;
         }
-
 
         if (lastrcv != receivedrows && is_rowlocks_transaction(iq_tran)) {
             rowlocks_check_commit_physical(thedb->bdb_env, iq_tran, ++countops);

@@ -529,8 +529,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
              * the socksql add operations */
             assert(genid != 0);
             rc = dat_set(iq, trans, od_dta, od_len, *rrn, *genid);
-        }
-        else
+        } else
             rc = dat_add(iq, trans, od_dta, od_len, genid, rrn);
 
         if (iq->debug) {

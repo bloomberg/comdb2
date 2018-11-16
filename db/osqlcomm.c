@@ -3913,14 +3913,18 @@ int osql_send_qblob(char *tohost, unsigned long long rqid, uuid_t uuid,
         sbuf2flush(logsb);
     }
 
-#if DEBUG_REORDER 
-logmsg(LOGMSG_DEBUG, "REORDER: putting blob id=%d, seq=%d, bloblen(datalen)=%d, sent=%d\n", blobid, seq, datalen, sent);
-if (datalen > 0) {
-    char *blah;
-    void hexdumpbuf(char *key, int keylen, char **buf);
-    hexdumpbuf(data, datalen, &blah);
-    logmsg(LOGMSG_DEBUG, "REORDER: hexdump datalen=%d blob='%s'\n", datalen, blah);
-}
+#if DEBUG_REORDER
+    logmsg(
+        LOGMSG_DEBUG,
+        "REORDER: putting blob id=%d, seq=%d, bloblen(datalen)=%d, sent=%d\n",
+        blobid, seq, datalen, sent);
+    if (datalen > 0) {
+        char *blah;
+        void hexdumpbuf(char *key, int keylen, char **buf);
+        hexdumpbuf(data, datalen, &blah);
+        logmsg(LOGMSG_DEBUG, "REORDER: hexdump datalen=%d blob='%s'\n", datalen,
+               blah);
+    }
 #endif
 
     if (datalen > sent)
@@ -6828,8 +6832,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             if (newest_shard) {
                 free(newest_shard);
             } else {
-                logmsg(LOGMSG_ERROR, "%s: broken time partition %s\n",
-                       __func__, tablename);
+                logmsg(LOGMSG_ERROR, "%s: broken time partition %s\n", __func__,
+                       tablename);
 
                 return conv_rc_sql2blkop(iq, step, -1, ERR_NO_SUCH_TABLE, err,
                                          tablename, 0);
@@ -6983,7 +6987,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         }
 
         int addflags = RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_DONT_LOCK_TBL;
-        if (newgenid != 0) 
+        if (newgenid != 0)
             addflags |= RECFLAGS_KEEP_GENID;
 
         if (osql_get_delayed(iq) == 0 && iq->usedb->n_constraints == 0 &&
@@ -7042,9 +7046,9 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             }
 
             if (logsb)
-                sbuf2printf(logsb,
-                            "Added new record failed, rrn = %d, newgenid=%llx\n",
-                            rrn, bdb_genid_to_host_order(newgenid));
+                sbuf2printf(
+                    logsb, "Added new record failed, rrn = %d, newgenid=%llx\n",
+                    rrn, bdb_genid_to_host_order(newgenid));
 
             return rc; /*this is blkproc rc */
         } else {
@@ -7052,8 +7056,10 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                 sbuf2printf(logsb, "Added new record rrn = %d, newgenid=%llx\n",
                             rrn, bdb_genid_to_host_order(newgenid));
         }
-#if DEBUG_REORDER 
-        logmsg(LOGMSG_DEBUG, "REORDER: Added new record rrn = %d, newgenid=%llx\n", rrn, bdb_genid_to_host_order(newgenid));
+#if DEBUG_REORDER
+        logmsg(LOGMSG_DEBUG,
+               "REORDER: Added new record rrn = %d, newgenid=%llx\n", rrn,
+               bdb_genid_to_host_order(newgenid));
 #endif
 
         (*receivedrows)++;
@@ -7574,7 +7580,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
         is_reorder_on = ((uuid_req.flags & OSQL_FLAGS_REORDER_ON) != 0);
 
 #if DEBUG_REORDER
-    logmsg(LOGMSG_DEBUG, "REORDER: req.flags %x\n", uuid_req.flags);
+        logmsg(LOGMSG_DEBUG, "REORDER: req.flags %x\n", uuid_req.flags);
 #endif
     } else {
         sql = (char *)osqlcomm_req_type_get(&req, p_req_buf, p_req_buf_end);
@@ -7652,7 +7658,9 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
         goto done;
     }
 #if DEBUG_REORDER
-    logmsg(LOGMSG_DEBUG, "REORDER: created sess %p, with sess->is_reorder_on %d\n", sess, sess->is_reorder_on);
+    logmsg(LOGMSG_DEBUG,
+           "REORDER: created sess %p, with sess->is_reorder_on %d\n", sess,
+           sess->is_reorder_on);
 #endif
 
 #if 0
@@ -8297,7 +8305,6 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
     return 0;
 }
-
 
 /**
  * Send RECGENID
