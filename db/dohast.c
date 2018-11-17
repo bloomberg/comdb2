@@ -21,7 +21,8 @@
 #include "dohsql.h"
 #include "sql.h"
 
-#define ast_verbose bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DOHAST_VERBOSE)
+int gbl_dohast_disable = 0;
+int gbl_dohast_verbose = 0;
 
 static void node_free(dohsql_node_t **pnode, sqlite3 *db);
 
@@ -461,7 +462,7 @@ int ast_push(ast_t *ast, enum ast_type op, Vdbe *v, void *obj)
 {
     int ignore = 0;
 
-    if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DOHAST_DISABLE))
+    if (gbl_dohast_disable)
         return 0;
 
     if (dohsql_is_parallel_shard())
@@ -497,7 +498,7 @@ int ast_push(ast_t *ast, enum ast_type op, Vdbe *v, void *obj)
     }
     }
 
-    if (ast_verbose && !ignore) {
+    if (gbl_dohast_verbose && !ignore) {
         ast_print(ast);
     }
 
@@ -567,7 +568,7 @@ int comdb2_check_parallel(Parse *pParse)
     dohsql_node_t *node;
     int i;
 
-    if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DOHSQL_DISABLE))
+    if (gbl_dohsql_disable)
         return 0;
 
     if (has_parallel_sql(NULL) == 0)
@@ -592,14 +593,14 @@ int comdb2_check_parallel(Parse *pParse)
         return 0;
 
     if (node->type == AST_TYPE_SELECT) {
-        if (ast_verbose)
+        if (gbl_dohast_verbose)
             logmsg(LOGMSG_DEBUG, "%lx Single query \"%s\"\n", pthread_self(),
                    node->sql);
         return 0;
     }
 
     if (node->type == AST_TYPE_UNION) {
-        if (ast_verbose) {
+        if (gbl_dohast_verbose) {
             logmsg(LOGMSG_DEBUG, "%lx Parallelizable union %d threads:\n",
                    pthread_self(), node->nnodes);
             for (i = 0; i < node->nnodes; i++) {

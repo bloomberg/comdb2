@@ -1781,6 +1781,11 @@ extern char *gbl_dbdir;
 
 extern double gbl_cpupercent;
 
+extern int gbl_dohsql_disable;
+extern int gbl_dohsql_verbose;
+extern int gbl_dohast_disable;
+extern int gbl_dohast_verbose;
+
 /* init routines */
 int appsock_init(void);
 int thd_init(void);

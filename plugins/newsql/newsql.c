@@ -1325,7 +1325,7 @@ static int newsql_get_high_availability(struct sqlclntstate *clnt)
 
 static int newsql_has_parallel_sql(struct sqlclntstate *clnt)
 {
-    return bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DOHSQL_DISABLE) == 0;
+    return !gbl_dohsql_disable;
 }
 
 static void newsql_add_steps(struct sqlclntstate *clnt, double steps)

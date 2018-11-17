@@ -24,8 +24,8 @@ limitations under the License.
 #include "sqlinterfaces.h"
 #include "memcompare.c"
 
-static int gbl_plugin_api_debug = 0;
-#define verbose bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DOHSQL_VERBOSE)
+int gbl_dohsql_disable = 0;
+int gbl_dohsql_verbose = 0;
 
 struct col {
     int type;
@@ -85,6 +85,8 @@ struct dohsql {
     int *order_dir;
 };
 typedef struct dohsql dohsql_t;
+
+static int gbl_plugin_api_debug = 0;
 
 static void sqlengine_work_shard_pp(struct thdpool *pool, void *work,
                                     void *thddata, int op);
@@ -156,7 +158,7 @@ static void sqlengine_work_shard(struct thdpool *pool, void *work,
     clnt->query_rc = handle_sqlite_requests(thd, clnt);
 
     if (clnt->query_rc != SQLITE_OK) {
-        if (verbose)
+        if (gbl_dohsql_verbose)
             logmsg(LOGMSG_DEBUG, "XXX: client %p returned error %d\n",
                    clnt->plugin.state, clnt->query_rc);
         handle_child_error(clnt, clnt->query_rc);
@@ -213,7 +215,7 @@ static void trimQue(sqlite3_stmt *stmt, queue_type *que, int limit)
     return;
     while (queue_count(que) > limit) {
         row = queue_next(que);
-        if (verbose)
+        if (gbl_dohsql_verbose)
             logmsg(LOGMSG_DEBUG, "XXX: %p freed older row limit %d\n", que,
                    limit);
         sqlite3CloneResultFree(stmt, &row);
@@ -233,7 +235,7 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp,
     pthread_mutex_lock(&conn->mtx);
 
     if (conn->status == DOH_MASTER_DONE) {
-        if (verbose)
+        if (gbl_dohsql_verbose)
             logmsg(LOGMSG_DEBUG, "%lx %s master done q %d qf %d\n",
                    pthread_self(), __func__, queue_count(conn->que),
                    queue_count(conn->que_free));
@@ -251,7 +253,7 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp,
 
     /* try to steal an old row */
     if (queue_count(conn->que_free) > 0) {
-        if (verbose)
+        if (gbl_dohsql_verbose)
             logmsg(LOGMSG_DEBUG, "%lx %s retrieved older row\n", pthread_self(),
                    __func__);
         oldrow = queue_next(conn->que_free);
@@ -265,7 +267,7 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp,
     pthread_mutex_lock(&conn->mtx);
     conn->rc = SQLITE_ROW;
     queue_add(conn->que, row);
-    if (verbose)
+    if (gbl_dohsql_verbose)
         logmsg(LOGMSG_DEBUG, "%lx XXX: %p added new row\n", pthread_self(),
                conn);
 
@@ -391,7 +393,7 @@ static void _signal_children_master_is_done(dohsql_t *conns)
     for (child_num = 1; child_num < conns->nconns; child_num++) {
         pthread_mutex_lock(&conns->conns[child_num].mtx);
         if (conns->conns[child_num].status != DOH_CLIENT_DONE) {
-            if (verbose)
+            if (gbl_dohsql_verbose)
                 logmsg(LOGMSG_DEBUG, "%s: signalling client done, ignoring\n",
                        __func__);
             conns->conns[child_num].status = DOH_MASTER_DONE;
@@ -432,7 +434,7 @@ static int _get_a_parallel_row(dohsql_t *conns, row_t **prow, int *error_child)
         rc = SQLITE_OK;
         if (queue_count(conns->conns[child_num].que) > 0) {
             *prow = queue_next(conns->conns[child_num].que);
-            if (verbose)
+            if (gbl_dohsql_verbose)
                 logmsg(LOGMSG_DEBUG, "XXX: %p retrieved row\n",
                        &conns->conns[child_num]);
             add_row(conns, child_num, *prow);
@@ -441,7 +443,7 @@ static int _get_a_parallel_row(dohsql_t *conns, row_t **prow, int *error_child)
         pthread_mutex_unlock(&conns->conns[child_num].mtx);
     }
 
-    if (verbose)
+    if (gbl_dohsql_verbose)
         logmsg(LOGMSG_DEBUG, "XXX: parallel row rc = %d\n", rc);
 
     return rc;
@@ -454,7 +456,7 @@ static int init_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 
     rc = sqlite3_step(stmt);
 
-    if (verbose) {
+    if (gbl_dohsql_verbose) {
         logmsg(LOGMSG_DEBUG, "%lx %s: sqlite3_step rc %d\n", pthread_self(),
                __func__, rc);
         if (conns->limitRegs[ILIMIT_SAVED_MEM_IDX] > 0)
@@ -484,11 +486,11 @@ static int _check_limit(sqlite3_stmt *stmt, dohsql_t *conns)
 {
     if (conns->limitRegs[ILIMIT_SAVED_MEM_IDX] > 0 && conns->limit >= 0 &&
         conns->nrows >= conns->limit) {
-        if (verbose)
+        if (gbl_dohsql_verbose)
             logmsg(LOGMSG_DEBUG, "%lx REACHED LIMIT rc =%d!\n", pthread_self(),
                    conns->conns[0].rc);
         if (conns->conns[0].rc != SQLITE_DONE) {
-            if (verbose)
+            if (gbl_dohsql_verbose)
                 logmsg(LOGMSG_DEBUG, "RESET STMT!\n");
             sqlite3_reset(stmt);
         }
@@ -505,7 +507,7 @@ static int _check_offset(dohsql_t *conns)
     if (conns->limitRegs[IOFFSET_SAVED_MEM_IDX] &&
         conns->skipped < conns->offset) {
         conns->skipped++;
-        if (verbose)
+        if (gbl_dohsql_verbose)
             logmsg(LOGMSG_DEBUG,
                    "XXX: skipped client %d row skipped %d, offset =%d\n",
                    conns->row_src, conns->skipped, conns->offset);
@@ -513,7 +515,7 @@ static int _check_offset(dohsql_t *conns)
         return SQLITE_OK;
     }
 
-    if (verbose)
+    if (gbl_dohsql_verbose)
         logmsg(LOGMSG_DEBUG, "XXX: returned source %d row\n", conns->row_src);
     return SQLITE_ROW;
 }
@@ -529,7 +531,7 @@ static int dohsql_dist_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     int empty;
     int rc;
 
-    if (verbose)
+    if (gbl_dohsql_verbose)
         logmsg(LOGMSG_DEBUG, "%lx %s: start\n", pthread_self(), __func__);
     if (conns->nrows == 0) {
         rc = init_next_row(clnt, stmt);
@@ -559,7 +561,7 @@ wait_for_others:
 
         /* it seems some shard failed, reset current since we are bailing out */
         if (conns->conns[0].rc != SQLITE_DONE) {
-            if (verbose)
+            if (gbl_dohsql_verbose)
                 logmsg(LOGMSG_DEBUG, "RESET STMT CLIENT FAILED!\n");
             sqlite3_reset(stmt);
         }
@@ -571,7 +573,7 @@ wait_for_others:
     if (conns->conns[0].rc != SQLITE_DONE) {
         rc = sqlite3_step(stmt);
 
-        if (verbose)
+        if (gbl_dohsql_verbose)
             logmsg(LOGMSG_DEBUG, "%s: rc =%d\n", __func__, rc);
 
         if (rc == SQLITE_DONE)
@@ -1049,7 +1051,7 @@ int comdb2_register_limit(int iLimit, int iSavedLimit)
     if (unlikely(clnt->conns)) {
         clnt->conns->limitRegs[ILIMIT_SAVED_MEM_IDX] = iSavedLimit;
         clnt->conns->limitRegs[ILIMIT_MEM_IDX] = iLimit;
-        if (verbose)
+        if (gbl_dohsql_verbose)
             logmsg(LOGMSG_DEBUG, "%lx setting saved limit to %d limit is %d\n",
                    pthread_self(), iSavedLimit, iLimit);
         return 1;
@@ -1064,7 +1066,7 @@ void comdb2_register_offset(int iOffset, int iLimitOffset, int iSavedOffset)
         clnt->conns->limitRegs[IOFFSET_SAVED_MEM_IDX] = iSavedOffset;
         clnt->conns->limitRegs[IOFFSETLIMIT_MEM_IDX] = iLimitOffset;
         clnt->conns->limitRegs[IOFFSET_MEM_IDX] = iOffset;
-        if (verbose)
+        if (gbl_dohsql_verbose)
             logmsg(LOGMSG_DEBUG,
                    "%lx setting saved offset to %d offset is %d\n",
                    pthread_self(), iSavedOffset, iOffset);
@@ -1089,7 +1091,7 @@ void comdb2_handle_limit(Vdbe *v, Mem *m)
         reg = &v->aMem[conns->limitRegs[ILIMIT_SAVED_MEM_IDX]];
         /* limit */
         conns->limit = sqlite3_value_int64(reg);
-        if (verbose)
+        if (gbl_dohsql_verbose)
             logmsg(LOGMSG_DEBUG, "%lx found limit %d from register %d\n",
                    pthread_self(), conns->limit, conns->limitRegs[0]);
     } else {
@@ -1098,7 +1100,7 @@ void comdb2_handle_limit(Vdbe *v, Mem *m)
             /* offset */
             conns->offset = sqlite3_value_int64(reg);
 
-            if (verbose)
+            if (gbl_dohsql_verbose)
                 logmsg(LOGMSG_DEBUG,
                        "%lx found offset %d from register %d, adjusting limit "
                        "to %d"
@@ -1203,7 +1205,7 @@ static void _print_order_info(dohsql_t *conns, const char *label)
     int *order = conns->order;
     int i;
 
-    if (!verbose)
+    if (!gbl_dohsql_verbose)
         return;
 
     logmsg(LOGMSG_DEBUG,
@@ -1235,7 +1237,7 @@ static int q_top(dohsql_t *conns)
         order[last] = order[ret];
         order[ret] = -1;
     }
-    if (verbose)
+    if (gbl_dohsql_verbose)
         _print_order_info(conns, "retrieved_ordered_row");
 
     return ret_val;
@@ -1270,7 +1272,7 @@ static void _move_client_done(dohsql_t *conns, int idx)
     int last;
 
     last = (conns->top_idx + conns->active - 1) % conns->nconns;
-    if (verbose)
+    if (gbl_dohsql_verbose)
         logmsg(LOGMSG_DEBUG, "%lx %s: client %d done\n", pthread_self(),
                __func__, order[idx]);
     if (last != idx)
@@ -1278,7 +1280,7 @@ static void _move_client_done(dohsql_t *conns, int idx)
     order[last] = -1;
     conns->active--;
 
-    if (verbose)
+    if (gbl_dohsql_verbose)
         _print_order_info(conns, "client_done");
 }
 
@@ -1296,7 +1298,7 @@ static void _move_client_row(dohsql_t *conns, int idx)
     }
     q_insert(conns, idx);
 
-    if (verbose)
+    if (gbl_dohsql_verbose)
         _print_order_info(conns, "insert_new_row");
 }
 
@@ -1329,7 +1331,7 @@ static int dohsql_dist_next_row_ordered(struct sqlclntstate *clnt,
     int rc = SQLITE_OK;
     int que_idx;
 
-    if (verbose)
+    if (gbl_dohsql_verbose)
         logmsg(LOGMSG_DEBUG, "%lx %s: start\n", pthread_self(), __func__);
     if (conns->nrows == 0) {
         rc = _local_step(clnt, stmt, 0);
@@ -1356,7 +1358,7 @@ retry_row:
         ret_row = queue_next(conns->conns[found].que);
         Q_UNLOCK(found);
 
-        if (verbose)
+        if (gbl_dohsql_verbose)
             logmsg(LOGMSG_DEBUG, "Retrieved client %d row %p\n", found,
                    ret_row);
 
