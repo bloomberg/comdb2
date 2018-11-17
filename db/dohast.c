@@ -554,9 +554,9 @@ const char *ast_param_str(enum ast_type type, void *obj)
 void ast_print(ast_t *ast)
 {
     int i;
-    logmsg(LOGMSG_ERROR, "AST: [%d]\n", ast->nused);
+    logmsg(LOGMSG_DEBUG, "AST: [%d]\n", ast->nused);
     for (i = 0; i < ast->nused; i++)
-        logmsg(LOGMSG_ERROR, "\t %d. %s \"%s\"\n", i,
+        logmsg(LOGMSG_DEBUG, "\t %d. %s \"%s\"\n", i,
                ast_type_str(ast->stack[i].op),
                ast_param_str(ast->stack[i].op, ast->stack[i].obj));
 }
