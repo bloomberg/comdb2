@@ -64,4 +64,31 @@
 #define Pthread_key_delete(a)       WRAP_PTHREAD(pthread_key_delete, a)
 #define Pthread_setspecific(a, b)   WRAP_PTHREAD(pthread_setspecific, a, b)
 
+#define Pthread_mutex_alloc_and_init(a, b)                                     \
+    do {                                                                       \
+        pthread_mutex_t *pMutex = calloc(1, sizeof(pthread_mutex_t));          \
+        if (pMutex == NULL) {                                                  \
+            logmsg(LOGMSG_FATAL,                                               \
+                   "%s:%d OUT OF MEMORY thd:%p\n",                             \
+                   __func__, __LINE__, (void *)pthread_self());                \
+            abort();                                                           \
+        }                                                                      \
+        Pthread_mutex_init(pMutex, (b));                                       \
+        (a) = pMutex;                                                          \
+    } while (0)
+
+#define Pthread_mutex_destroy_and_free(a)                                      \
+    do {                                                                       \
+        pthread_mutex_t *pMutex = (a);                                         \
+        if (pMutex == NULL) {                                                  \
+            logmsg(LOGMSG_FATAL,                                               \
+                   "%s:%d INVALID_MUTEX thd:%p\n",                             \
+                   __func__, __LINE__, (void *)pthread_self());                \
+            abort();                                                           \
+        }                                                                      \
+        Pthread_mutex_destroy(pMutex);                                         \
+        free(pMutex);                                                          \
+        (a) = NULL;                                                            \
+    } while (0)
+
 #endif

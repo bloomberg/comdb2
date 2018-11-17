@@ -5368,7 +5368,7 @@ void run_internal_sql(char *sql)
     Pthread_cond_destroy(&clnt.wait_cond);
     Pthread_mutex_destroy(&clnt.write_lock);
     Pthread_mutex_destroy(&clnt.dtran_mtx);
-    Pthread_mutex_destroy(&clnt.temp_table_mtx);
+    Pthread_mutex_destroy_and_free(clnt.temp_table_mtx);
 }
 
 static int internal_write_response(struct sqlclntstate *a, int b, void *c, int d)
@@ -5491,7 +5491,7 @@ void start_internal_sql_clnt(struct sqlclntstate *clnt)
     Pthread_cond_init(&clnt->wait_cond, NULL);
     Pthread_mutex_init(&clnt->write_lock, NULL);
     Pthread_mutex_init(&clnt->dtran_mtx, NULL);
-    Pthread_mutex_init(&clnt->temp_table_mtx, NULL);
+    Pthread_mutex_alloc_and_init(clnt->temp_table_mtx, NULL);
     clnt->dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
     clr_high_availability(clnt);
 }
@@ -5532,5 +5532,5 @@ void end_internal_sql_clnt(struct sqlclntstate *clnt)
     Pthread_cond_destroy(&clnt->wait_cond);
     Pthread_mutex_destroy(&clnt->write_lock);
     Pthread_mutex_destroy(&clnt->dtran_mtx);
-    Pthread_mutex_destroy(&clnt->temp_table_mtx);
+    Pthread_mutex_destroy_and_free(clnt->temp_table_mtx);
 }
