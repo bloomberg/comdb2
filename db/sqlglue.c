@@ -11289,7 +11289,9 @@ void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
     }
 
     sqlite3_stmt *stmt;
+    Pthread_mutex_unlock(clnt->temp_table_mtx);
     rc = sqlite3_prepare_v2(dest, sql, -1, &stmt, NULL);
+    Pthread_mutex_lock(clnt->temp_table_mtx);
 
     if (rc != SQLITE_OK) {
         logmsg(LOGMSG_ERROR, "%s rc:%d err:%s sql:%s\n",
