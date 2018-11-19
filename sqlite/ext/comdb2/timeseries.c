@@ -194,26 +194,30 @@ static int systblTimeseriesBestIndex(
 }
 
 const sqlite3_module systblTimeseriesModule = {
-  0,                            /* iVersion */
-  0,                            /* xCreate */
-  systblTimeseriesConnect,       /* xConnect */
-  systblTimeseriesBestIndex,     /* xBestIndex */
-  systblTimeseriesDisconnect,    /* xDisconnect */
-  0,                            /* xDestroy */
-  systblTimeseriesOpen,          /* xOpen - open a cursor */
-  systblTimeseriesClose,         /* xClose - close a cursor */
-  systblTimeseriesFilter,        /* xFilter - configure scan constraints */
-  systblTimeseriesNext,          /* xNext - advance a cursor */
-  systblTimeseriesEof,           /* xEof - check for end of scan */
-  systblTimeseriesColumn,        /* xColumn - read data */
-  systblTimeseriesRowid,         /* xRowid - read data */
-  0,                            /* xUpdate */
-  0,                            /* xBegin */
-  0,                            /* xSync */
-  0,                            /* xCommit */
-  0,                            /* xRollback */
-  0,                            /* xFindMethod */
-  0,                            /* xRename */
+  0,                          /* iVersion */
+  0,                          /* xCreate */
+  systblTimeseriesConnect,    /* xConnect */
+  systblTimeseriesBestIndex,  /* xBestIndex */
+  systblTimeseriesDisconnect, /* xDisconnect */
+  0,                          /* xDestroy */
+  systblTimeseriesOpen,       /* xOpen - open a cursor */
+  systblTimeseriesClose,      /* xClose - close a cursor */
+  systblTimeseriesFilter,     /* xFilter - configure scan constraints */
+  systblTimeseriesNext,       /* xNext - advance a cursor */
+  systblTimeseriesEof,        /* xEof - check for end of scan */
+  systblTimeseriesColumn,     /* xColumn - read data */
+  systblTimeseriesRowid,      /* xRowid - read data */
+  0,                          /* xUpdate */
+  0,                          /* xBegin */
+  0,                          /* xSync */
+  0,                          /* xCommit */
+  0,                          /* xRollback */
+  0,                          /* xFindMethod */
+  0,                          /* xRename */
+  0,                          /* xSavepoint */
+  0,                          /* xRelease */
+  0,                          /* xRollbackTo */
+  0,                          /* xShadowName */
   .access_flag = CDB2_ALLOW_USER,
 };
 

@@ -2117,6 +2117,7 @@ struct Table {
 #define TF_StatsUsed       0x0100    /* Query planner decisions affected by
                                      ** Index.aiRowLogEst[] values */
 #define TF_HasNotNull      0x0200    /* Contains NOT NULL constraints */
+#define TF_Shadow          0x0400    /* True for a shadow table */
 
 /*
 ** Test to see whether or not a table is a virtual table.  This is
@@ -4489,9 +4490,9 @@ void sqlite3ResolveSelectNames(Parse*, Select*, NameContext*);
 void sqlite3ResolveSelfReference(Parse*,Table*,int,Expr*,ExprList*);
 int sqlite3ResolveOrderGroupBy(Parse*, Select*, ExprList*, const char*);
 void sqlite3ColumnDefault(Vdbe *, Table *, int, int);
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
 void sqlite3AlterFinishAddColumn(Parse *, Token *);
 void sqlite3AlterBeginAddColumn(Parse *, SrcList *);
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
 void *sqlite3RenameTokenMap(Parse*, void*, Token*);
 void sqlite3RenameTokenRemap(Parse*, void *pTo, void *pFrom);
 void sqlite3RenameExprUnmap(Parse*, Expr*);

@@ -565,26 +565,30 @@ static int tranlogBestIndex(
 ** generate_series virtual table.
 */
 sqlite3_module systblTransactionLogsModule = {
-  0,                         /* iVersion */
-  0,                         /* xCreate */
-  tranlogConnect,            /* xConnect */
-  tranlogBestIndex,          /* xBestIndex */
-  tranlogDisconnect,         /* xDisconnect */
-  0,                         /* xDestroy */
-  tranlogOpen,               /* xOpen - open a cursor */
-  tranlogClose,              /* xClose - close a cursor */
-  tranlogFilter,             /* xFilter - configure scan constraints */
-  tranlogNext,               /* xNext - advance a cursor */
-  tranlogEof,                /* xEof - check for end of scan */
-  tranlogColumn,             /* xColumn - read data */
-  tranlogRowid,              /* xRowid - read data */
-  0,                         /* xUpdate */
-  0,                         /* xBegin */
-  0,                         /* xSync */
-  0,                         /* xCommit */
-  0,                         /* xRollback */
-  0,                         /* xFindMethod */
-  0,                         /* xRename */
+  0,                 /* iVersion */
+  0,                 /* xCreate */
+  tranlogConnect,    /* xConnect */
+  tranlogBestIndex,  /* xBestIndex */
+  tranlogDisconnect, /* xDisconnect */
+  0,                 /* xDestroy */
+  tranlogOpen,       /* xOpen - open a cursor */
+  tranlogClose,      /* xClose - close a cursor */
+  tranlogFilter,     /* xFilter - configure scan constraints */
+  tranlogNext,       /* xNext - advance a cursor */
+  tranlogEof,        /* xEof - check for end of scan */
+  tranlogColumn,     /* xColumn - read data */
+  tranlogRowid,      /* xRowid - read data */
+  0,                 /* xUpdate */
+  0,                 /* xBegin */
+  0,                 /* xSync */
+  0,                 /* xCommit */
+  0,                 /* xRollback */
+  0,                 /* xFindMethod */
+  0,                 /* xRename */
+  0,                 /* xSavepoint */
+  0,                 /* xRelease */
+  0,                 /* xRollbackTo */
+  0,                 /* xShadowName */
   .access_flag = CDB2_ALLOW_USER
 };
 
