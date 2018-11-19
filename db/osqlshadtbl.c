@@ -122,15 +122,13 @@ static int osql_destroy_bpfunc_temptbl(bdb_state_type *bdb_state,
 
 #ifndef NDEBUG
 #define DEBUG_PRINT_NUMOPS()                                                   \
-    {                                                                          \
+    do {                                                                       \
         uuidstr_t us;                                                          \
         DEBUGMSG("uuid=%s, replicant_numops=%d\n",                             \
                  comdb2uuidstr(osql->uuid, us), osql->replicant_numops);       \
-    }
+    } while(0)
 #else
-#define DEBUG_PRINT_NUMOPS()                                                   \
-    {                                                                          \
-    }
+#define DEBUG_PRINT_NUMOPS()
 #endif
 
 static int free_it(void *obj, void *arg)

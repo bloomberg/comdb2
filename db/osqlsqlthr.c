@@ -84,15 +84,13 @@ static int access_control_check_sql_write(struct BtCursor *pCur,
 
 #ifndef NDEBUG
 #define DEBUG_PRINT_NUMOPS()                                                   \
-    {                                                                          \
+    do {                                                                       \
         uuidstr_t us;                                                          \
         DEBUGMSG("uuid=%s, replicant_numops=%d\n",                             \
                  comdb2uuidstr(osql->uuid, us), osql->replicant_numops);       \
-    }
+    } while(0)
 #else
-#define DEBUG_PRINT_NUMOPS()                                                   \
-    {                                                                          \
-    }
+#define DEBUG_PRINT_NUMOPS()
 #endif
 
 /*

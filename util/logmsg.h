@@ -24,9 +24,7 @@ typedef enum {
     logmsg(LOGMSG_DEBUG, "tid 0x%lu %s:%d " fmt, pthread_self(), __func__,     \
            __LINE__, ##args)
 #else
-#define DEBUGMSG(fmt, args...)                                                 \
-    do {                                                                       \
-    } while (0)
+#define DEBUGMSG(fmt, args...)
 #endif
 
 int logmsg(loglvl lvl, const char *fmt, ...) FORMAT_PRINTF(2, 3);
