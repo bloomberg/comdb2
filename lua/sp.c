@@ -2528,12 +2528,18 @@ static void *dispatch_lua_thread(void *arg)
     Pthread_mutex_init(&clnt.write_lock, NULL);
     Pthread_mutex_init(&clnt.dtran_mtx, NULL);
     strcpy(clnt.tzname, parent_clnt->tzname);
+
+
+
+
     if (dispatch_sql_query(&clnt) == 0) { // --> exec_thread()
         thd->status = THREAD_STATUS_FINISHED;
     } else {
         snprintf0(thd->error, sizeof(thd->error), "failed to dispatch thread");
         thd->status = THREAD_STATUS_DISPATCH_FAILED;
     }
+
+
     /* Done running -- wake up anyone blocked on join */
     Pthread_mutex_lock(&thd->lua_thread_mutex);
     Pthread_cond_signal(&thd->lua_thread_cond);
@@ -2967,7 +2973,7 @@ static int db_create_thread_int(Lua lua, const char *funcname)
         newsp->spversion.version_str = strdup(newsp->spversion.version_str);
     newsp->parent = sp->parent;
     newsp->parent_thd = thd;
-    newsp->parent_sqlthd = newsp->thd;
+    newsp->parent_sqlthd = sp->thd;
 
     if (process_src(newlua, sp->src, &err) != 0) goto bad;
 
