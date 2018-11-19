@@ -705,30 +705,30 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                            osql_session_get_ireq(sess));
     if (rc == 0)
         return 0;
-    
-    // only OSQL_DONE_SNAP, OSQL_DONE, OSQL_DONE_STATS, and OSQL_XERR 
+
+    // only OSQL_DONE_SNAP, OSQL_DONE, OSQL_DONE_STATS, and OSQL_XERR
     // are processed beyond this point
 
     if (type != OSQL_XERR) { // if tran not aborted
         int numops = osql_get_replicant_numops(rpl, rqid == OSQL_RQID_USE_UUID);
         DEBUGMSG("uuid=%s type %s numops=%d, seq=%lld %s\n",
-                comdb2uuidstr(uuid, us), osql_reqtype_str(type), numops,
-                sess->seq, (numops != sess->seq + 1 ? "NO match": ""));
+                 comdb2uuidstr(uuid, us), osql_reqtype_str(type), numops,
+                 sess->seq, (numops != sess->seq + 1 ? "NO match" : ""));
 
-        if(gbl_osql_check_replicant_numops && numops != sess->seq + 1) { 
-            send_error_to_replicant(rqid, sess->offhost,
-                    RC_INTERNAL_RETRY,
-                    "Master received inconsistent number of opcodes");
+        if (gbl_osql_check_replicant_numops && numops != sess->seq + 1) {
+            send_error_to_replicant(
+                rqid, sess->offhost, RC_INTERNAL_RETRY,
+                "Master received inconsistent number of opcodes");
 
-            logmsg(LOGMSG_ERROR, 
+            logmsg(LOGMSG_ERROR,
                    "%s: Replicant sent %d opcodes, master received %lld\n",
                    __func__, numops, sess->seq + 1);
 
             // TODO: terminate session so replicant can retry
             // or mark session bad so don't process this session from toblock
-            //osql_sess_try_terminate(sess);
-            //return 0;
-            abort(); //for now abort to catch failure cases
+            // osql_sess_try_terminate(sess);
+            // return 0;
+            abort(); // for now abort to catch failure cases
         }
     }
 
