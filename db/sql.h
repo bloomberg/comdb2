@@ -469,7 +469,6 @@ struct sqlclntstate {
     enum ctrl_sqleng ctrl_sqlengine; /* use to mark a begin/end out of state,
                                         see enum ctrl_sqleng
                                      */
-    pthread_mutex_t *temp_table_mtx; /* for "sqlglue.c" temp table subsystem */
     int intrans; /* THIS FIELD IS USED BY sqlglue.c TO RECORD THE ENTRANCE (=1)
                    AND THE EXIT(=0) in a sql transaction marked by a succesfull
                    call to BeginTrans, and Commit/Rollback respectively
@@ -871,6 +870,7 @@ struct sql_thread {
     int rootpage_nentries;
     unsigned char had_temptables;
     unsigned char had_tablescans;
+    pthread_mutex_t *temp_table_mtx; /* for "sqlglue.c" temp table subsystem */
 };
 
 /* makes master swing verbose */
