@@ -2527,7 +2527,6 @@ static void *dispatch_lua_thread(void *arg)
     Pthread_cond_init(&clnt.wait_cond, NULL);
     Pthread_mutex_init(&clnt.write_lock, NULL);
     Pthread_mutex_init(&clnt.dtran_mtx, NULL);
-    clnt.temp_table_mtx = parent_clnt->temp_table_mtx;
     strcpy(clnt.tzname, parent_clnt->tzname);
     if (dispatch_sql_query(&clnt) == 0) { // --> exec_thread()
         thd->status = THREAD_STATUS_FINISHED;
@@ -2544,7 +2543,6 @@ static void *dispatch_lua_thread(void *arg)
     Pthread_cond_destroy(&clnt.wait_cond);
     Pthread_mutex_destroy(&clnt.write_lock);
     Pthread_mutex_destroy(&clnt.dtran_mtx);
-    clnt.temp_table_mtx = NULL;
     return NULL;
 }
 
@@ -2969,6 +2967,7 @@ static int db_create_thread_int(Lua lua, const char *funcname)
         newsp->spversion.version_str = strdup(newsp->spversion.version_str);
     newsp->parent = sp->parent;
     newsp->parent_thd = thd;
+    newsp->parent_sqlthd = newsp->thd;
 
     if (process_src(newlua, sp->src, &err) != 0) goto bad;
 
@@ -6354,7 +6353,10 @@ void exec_thread(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     Lua L = sp->lua;
     get_curtran(thedb->bdb_env, clnt);
     sp->parent_thd->status = THREAD_STATUS_RUNNING;
+    pthread_mutex_t *saved_temp_table_mtx = thd->sqlthd->temp_table_mtx;
+    thd->sqlthd->temp_table_mtx = sp->parent_sqlthd->sqlthd->temp_table_mtx;
     exec_thread_int(thd, clnt);
+    thd->sqlthd->temp_table_mtx = saved_temp_table_mtx;
     lua_gc(L, LUA_GCCOLLECT, 0);
     drop_temp_tables(clnt->sp);
     free_tmptbls(clnt->sp);
