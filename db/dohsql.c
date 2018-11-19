@@ -212,7 +212,6 @@ static int inner_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 static void trimQue(sqlite3_stmt *stmt, queue_type *que, int limit)
 {
     row_t *row;
-    return;
     while (queue_count(que) > limit) {
         row = queue_next(que);
         if (gbl_dohsql_verbose)
@@ -983,6 +982,14 @@ int dohsql_end_distribute(struct sqlclntstate *clnt)
 
     if (!clnt->conns)
         return SHARD_NOERR;
+
+    if (conns->row && conns->row_src) {
+        pthread_mutex_lock(&conns->conns[conns->row_src].mtx);
+        queue_add(conns->conns[conns->row_src].que_free, conns->row);
+        pthread_mutex_unlock(&conns->conns[conns->row_src].mtx);
+        conns->row = NULL;
+        conns->row_src = 0;
+    }
 
     for (i = 1; i < conns->nconns; i++) {
         pthread_mutex_lock(&conns->conns[i].mtx);
