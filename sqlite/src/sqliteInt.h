@@ -4490,9 +4490,9 @@ void sqlite3ResolveSelectNames(Parse*, Select*, NameContext*);
 void sqlite3ResolveSelfReference(Parse*,Table*,int,Expr*,ExprList*);
 int sqlite3ResolveOrderGroupBy(Parse*, Select*, ExprList*, const char*);
 void sqlite3ColumnDefault(Vdbe *, Table *, int, int);
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
 void sqlite3AlterFinishAddColumn(Parse *, Token *);
 void sqlite3AlterBeginAddColumn(Parse *, SrcList *);
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
 void *sqlite3RenameTokenMap(Parse*, void*, Token*);
 void sqlite3RenameTokenRemap(Parse*, void *pTo, void *pFrom);
 void sqlite3RenameExprUnmap(Parse*, Expr*);
