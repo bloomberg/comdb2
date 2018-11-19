@@ -195,6 +195,11 @@ extern int gbl_handle_buf_add_latency_ms;
 extern int gbl_osql_send_startgen;
 extern int gbl_create_default_user;
 extern int gbl_allow_neg_column_size;
+extern int gbl_client_heartbeat_ms;
+extern int gbl_rep_wait_release_ms;
+extern int gbl_rep_wait_core_ms;
+extern int gbl_random_get_curtran_failures;
+extern int gbl_fail_client_write_lock;
 
 extern long long sampling_threshold;
 
@@ -716,7 +721,7 @@ static int hostname_update(void *context, void *value)
 int ctrace_set_rollat(void *unused, void *value);
 
 /* Return the value for sql_tranlevel_default. */
-static void *sql_tranlevel_default_value()
+static void *sql_tranlevel_default_value(void *context)
 {
     switch (gbl_sql_tranlevel_default) {
     case SQL_TDEF_COMDB2: return "COMDB2";
@@ -759,7 +764,7 @@ static int sql_tranlevel_default_update(void *context, void *value)
     }
     gbl_sql_tranlevel_preserved = gbl_sql_tranlevel_default;
     logmsg(LOGMSG_USER, "Set default transaction level to %s\n",
-           (char *)sql_tranlevel_default_value());
+           (char *)sql_tranlevel_default_value(NULL));
     return 0;
 }
 

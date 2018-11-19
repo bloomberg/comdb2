@@ -1239,7 +1239,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         struct lrl_handler *h;
         rc = 1;
         LISTC_FOR_EACH(&dbenv->lrl_handlers, h, lnk) {
-            rc = h->handle(dbenv, line);
+            rc = h->handle(dbenv, tok);
             if (rc == 0)
                 break;
         }

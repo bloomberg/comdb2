@@ -1550,7 +1550,7 @@ static int bdb_tran_commit_with_seqnum_int_int(
                        __LINE__, iirc);
                 *bdberr = BDBERR_MISC;
                 outrc = -1;
-                atexit(abort_at_exit);
+                tran->tid->abort(tran->tid);
                 bdb_osql_trn_repo_unlock();
                 goto cleanup;
             }
@@ -1566,6 +1566,7 @@ static int bdb_tran_commit_with_seqnum_int_int(
                         "%s:update_shadows_beforecommit nonblocking rc %d\n",
                         __func__, rc);
                 *bdberr = rc;
+                tran->tid->abort(tran->tid);
                 bdb_osql_trn_repo_unlock();
                 return -1;
             }
@@ -2423,10 +2424,11 @@ int bdb_tran_abort_logical(bdb_state_type *bdb_state, tran_type *tran,
     because of this we make sure we get a bdb read lock, even though
     the upper layer will reaquire it again
  */
-cursor_tran_t *bdb_get_cursortran(bdb_state_type *bdb_state, int lowpri,
+cursor_tran_t *bdb_get_cursortran(bdb_state_type *bdb_state, uint32_t flags,
                                   int *bdberr)
 {
     cursor_tran_t *curtran = NULL;
+    int lowpri = (flags & BDB_CURTRAN_LOW_PRIORITY);
     int rc = 0;
 
     if (bdb_state->parent) {
@@ -2501,7 +2503,7 @@ int bdb_free_curtran_locks(bdb_state_type *bdb_state, cursor_tran_t *curtran,
 }
 
 int bdb_put_cursortran(bdb_state_type *bdb_state, cursor_tran_t *curtran,
-                       int *bdberr)
+                       uint32_t flags, int *bdberr)
 {
     int haslocks = 0;
     int rc = 0;
@@ -2514,7 +2516,7 @@ int bdb_put_cursortran(bdb_state_type *bdb_state, cursor_tran_t *curtran,
     }
 
     if (!curtran) {
-        logmsg(LOGMSG_ERROR, "bdb_put_cursortran called with null curtran\n");
+        logmsg(LOGMSG_DEBUG, "bdb_put_cursortran called with null curtran\n");
         *bdberr = BDBERR_BADARGS;
         return -1;
     }

@@ -1098,7 +1098,7 @@ int delete_temp_table(struct ireq *iq, struct dbtable *newdb)
 
     for (i = 0; i < 1000; i++) {
         if (!s->retry_bad_genids)
-            sc_errf(s, "removing temp table for <%s>\n", newdb->tablename);
+            sc_printf(s, "removing temp table for <%s>\n", newdb->tablename);
         if ((rc = bdb_del(newdb->handle, tran, &bdberr)) ||
             bdberr != BDBERR_NOERROR) {
             rc = -1;
@@ -1290,7 +1290,6 @@ int backout_schema_changes(struct ireq *iq, tran_type *tran)
                 delete_db(s->tablename);
             if (s->newdb) {
                 backout_schemas(s->newdb->tablename);
-                cleanup_newdb(s->newdb);
             }
         } else if (s->db) {
             if (s->already_finalized)
@@ -1316,10 +1315,13 @@ int scdone_abort_cleanup(struct ireq *iq)
     struct schema_change_type *s = iq->sc;
     mark_schemachange_over(s->tablename);
     sc_set_running(s->tablename, 0, iq->sc_seed, gbl_mynode, time(NULL));
-    if (s->addonly && s->db->handle) {
-        delete_temp_table(iq, s->db);
-    } else if (s->db) {
-        sc_del_unused_files(s->db);
+    if (s->db && s->db->handle) {
+        if (s->addonly) {
+            delete_temp_table(iq, s->db);
+            cleanup_newdb(s->db);
+        } else {
+            sc_del_unused_files(s->db);
+        }
     }
     broadcast_sc_end(s->tablename, iq->sc_seed);
     return 0;

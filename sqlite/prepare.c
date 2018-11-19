@@ -797,7 +797,7 @@ static int sqlite3LockAndPrepare(
   sqlite3BtreeEnterAll(db);
   /* COMDB2 MODIFICATION */
   rc = sqlite3Prepare(db, zSql, nBytes, saveSqlFlag, pOld, ppStmt, pzTail, flags);
-  if( rc==SQLITE_SCHEMA ){
+  while( rc == SQLITE_SCHEMA ){
     sqlite3_finalize(*ppStmt);
     /* COMDB2 MODIFICATION */
     rc = sqlite3Prepare(db, zSql, nBytes, saveSqlFlag, pOld, ppStmt, pzTail, flags);

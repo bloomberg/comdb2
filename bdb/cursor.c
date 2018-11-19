@@ -2026,6 +2026,7 @@ void bdb_delete_logfile_pglogs(bdb_state_type *bdb_state, int filenum)
             Pthread_mutex_lock(&e->pglogs_mutex);
             bdb_return_logfile_pglogs_hashtbl(e->pglogs_hashtbl, bdb_state);
             bdb_return_logfile_relinks_hashtbl(e->relinks_hashtbl, bdb_state);
+            Pthread_mutex_unlock(&e->pglogs_mutex);
             Pthread_mutex_destroy(&e->pglogs_mutex);
             free(e);
             logmsg(LOGMSG_INFO, "%s: deleted filenum %d\n", __func__, filenum);

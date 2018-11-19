@@ -1458,6 +1458,36 @@ REGISTER_TUNABLE("osql_send_startgen",
                  TUNABLE_BOOLEAN, &gbl_osql_send_startgen,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("client_heartbeat_ms",
+                 "Number of milliseconds between client api heartbeats.  "
+                 "(Default: 100)",
+                 TUNABLE_INTEGER, &gbl_client_heartbeat_ms,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("rep_release_wait_ms",
+                 "Release sql-locks if rep-thd is blocked for this many ms."
+                 "  (Default: 60000)",
+                 TUNABLE_INTEGER, &gbl_rep_wait_release_ms,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("rep_wait_core_ms",
+                 "Abort if rep-thread waits longer than this threshold for "
+                 "locks.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_rep_wait_core_ms,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("random_get_curtran_failures",
+                 "Force a random get-curtran failure 1/this many times.  "
+                 "(Default: 0)",
+                 TUNABLE_INTEGER, &gbl_random_get_curtran_failures,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("random_fail_client_write_lock",
+                 "Force a random client write-lock failure 1/this many times.  "
+                 "(Default: 0)",
+                 TUNABLE_INTEGER, &gbl_fail_client_write_lock,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("osql_check_replicant_numops",
                  "Check replicant nops sent in osql stream. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_osql_check_replicant_numops,
