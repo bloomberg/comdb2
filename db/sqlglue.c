@@ -3066,19 +3066,6 @@ int sqlite3BtreeClearTableOfCursor(BtCursor *pCur)
     return sqlite3BtreeClearTable(pCur->bt, pCur->rootpage, 0);
 }
 
-/* no-op calls about altering tables */
-void sqlite3AlterFinishAddColumn(Parse *pParse, Token *pColDef)
-{
-    logmsg(LOGMSG_FATAL, "STUB sqlite3AlterFinishAddColumn called!\n");
-    exit(1);
-}
-
-void sqlite3AlterBeginAddColumn(Parse *pParse, SrcList *pSrc)
-{
-    logmsg(LOGMSG_FATAL, "STUB sqlite3AlterBeginAddColumn called\n");
-    exit(1);
-}
-
 /*
  ** This call is a no-op if no write-transaction is currently active on pBt.
  **
@@ -10325,25 +10312,6 @@ int sqlite3BtreeCursorSize(void) { return sizeof(BtCursor); }
  ** of run-time by skipping the initialization of those elements.
  */
 void sqlite3BtreeCursorZero(BtCursor *p) { bzero(p, sizeof(*p)); }
-
-/* rowid caching is optional - we can always return that nothing is
-   cached.  do that for now, this can be an optimization for later */
-/*
- ** Set the cached rowid value of every cursor in the same database file
- ** as pCur and having the same root page number as pCur.  The value is
- ** set to iRowid.
- **
- ** Only positive rowid values are considered valid for this cache.
- ** The cache is initialized to zero, indicating an invalid cache.
- ** A btree will work fine with zero or negative rowids.  We just cannot
- ** cache zero or negative rowids, which means tables that use zero or
- ** negative rowids might run a little slower.  But in practice, zero
- ** or negative rowids are very uncommon so this should not be a problem.
- */
-void sqlite3BtreeSetCachedRowid(BtCursor *pCur, sqlite3_int64 iRowid)
-{
-    /* don't need to do anything here */
-}
 
 /*
  ** Clear the current cursor position.
