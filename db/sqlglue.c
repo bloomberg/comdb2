@@ -5076,7 +5076,7 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
         logmsg(LOGMSG_ERROR, "%s rc: %d\n", __func__, rc);
         goto done;
     }
-    if (!clnt->limits.temptables_ok) {
+    if (!thd->clnt->limits.temptables_ok) {
         rc = SQLITE_LIMIT;
         goto done;
     }
