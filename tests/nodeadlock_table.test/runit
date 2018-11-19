@@ -71,6 +71,7 @@ insert into t1 (f,g,j,b) values (11, 0, 111, x'abcd')
 insert into t1 (f,g,j,b) values (12, 0, 112, x'abcd')
 EOF
 
+echo "event logging should already be on, no need to @send reql events on"
 
 cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
 for node in $cluster ; do
@@ -80,7 +81,6 @@ for node in $cluster ; do
     cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('bdb setattr DELAY_WRITES_IN_RECORD_C 1000')"
     cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('print_deadlock_cycles on')"
     cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('track_curtran_locks on')"
-    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('reql events on')"
     cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('reql events detailed on')"
 #    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('reql trace')"
 #    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('reql go')"
@@ -89,10 +89,12 @@ done
 
 master=`getmaster`
 
-echo turn off ordering
-for node in $cluster ; do
-    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('reorder_socksql_no_deadlock off')"
-done
+logenabled=`cdb2sql ${CDB2_OPTIONS} --tabs $DBNAME --host $master "exec procedure sys.cmd.send('reql stat')" | grep "Eventlog enabled" `
+if [ "x$logenabled" == "x" ]; then
+    cdb2sql ${CDB2_OPTIONS} --tabs $DBNAME --host $master "exec procedure sys.cmd.send('reql stat')"
+    failexit "Eventlog is not enabled $master"
+fi
+
 
 echo run two transactions that will get in a deadlock
 echo will see DEADLOCK-CYCLE: in db log
@@ -114,12 +116,7 @@ if ! diff content.expected content.out ; then
     failexit "content not what it is supposed to be"
 fi
 
-echo turn on ordering
-for node in $cluster ; do
-    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('reorder_socksql_no_deadlock on')"
-done
-
-echo there should be NO dedlocks now
+echo run two transactions that will get in a deadlock again
 f1 2 &
 f2 2 &
 
@@ -234,13 +231,24 @@ logflunziped=${logfl}.unzipped
 zcat $logfl > $logflunziped
 
 ddlk_cnt=`grep -c deadlock_cycle $logflunziped `
-if [ $ddlk_cnt != 1 ]; then
-    failexit "expected 1 deadlock in eventslog (from first trans), found $ddlk_cnt"
-fi
+cnonce_cnt=`grep deadlock_cycle $logflunziped | sed 's/}/}\n/' | grep -c cnonce`
 
-cnonce_cnt=`grep deadlock_cycle $logflunziped | head -1 | sed 's/}/}\n/' | grep -c cnonce`
-if [ $cnonce_cnt != 2 ]; then
-    failexit "expected 2 cnonces reported part of deadlock_cycle in eventslog, found $cnonce_cnt"
+if echo $DBNAME | grep 'noreorder' ; then
+    if [ $ddlk_cnt != 3 ]; then
+        failexit "expected 3 deadlocks in eventslog (from first trans), found $ddlk_cnt"
+    fi
+
+    if [ $cnonce_cnt != 6 ]; then
+        failexit "expected 6 cnonces reported part of deadlock_cycle in eventslog, found $cnonce_cnt"
+    fi
+else
+    if [ $ddlk_cnt -gt 0 ]; then
+        failexit "expected no deadlocks in eventslog, found $ddlk_cnt"
+    fi
+
+    if [ $cnonce_cnt -gt 0 ]; then
+        failexit "expected no cnonces reported part of deadlock_cycle in eventslog, found $cnonce_cnt"
+    fi
 fi
 
 echo "Testcase passed."

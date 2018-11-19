@@ -1,2 +1,1 @@
-reorder_socksql_no_deadlock off
-logmsg level debug
+dtastripe 1
