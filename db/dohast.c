@@ -134,7 +134,7 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
         return NULL; /* no group by */
     if (p->pSrc->nSrc > 1)
         return NULL; /* no joins */
-    
+
     if (p->pPrior && p->op != TK_ALL)
         return NULL; /* only union all */
 
@@ -432,12 +432,12 @@ static int skip_tables(Select *p)
 {
     int i;
     int j;
-    char* ignored[] = {"comdb2_", "sqlite_", NULL};
+    char *ignored[] = {"comdb2_", "sqlite_", NULL};
     int lens[] = {7, 7, 0};
 
-    for(i=0;i<p->pSrc->nSrc;i++) {
-        j=0;
-        while(ignored[j]) {
+    for (i = 0; i < p->pSrc->nSrc; i++) {
+        j = 0;
+        while (ignored[j]) {
             if (strncasecmp(p->pSrc->a[i].zName, ignored[j], lens[j]) == 0)
                 return 1;
             j++;
@@ -463,7 +463,7 @@ static dohsql_node_t *gen_select(Vdbe *v, Select *p)
             not_recognized = 1;
 
         /* skip certain tables */
-        if (skip_tables(crt)) 
+        if (skip_tables(crt))
             not_recognized = 1;
 
         crt = crt->pPrior;
