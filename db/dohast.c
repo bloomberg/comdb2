@@ -53,9 +53,9 @@ static char *generate_columns(Vdbe *v, ExprList *c, const char **tbl)
                                    (c->a[i].zName) ? "\" " : "");
         else {
             accum = sqlite3_mprintf("%s, %s%s%s%s", cols, sExpr,
-                                   (c->a[i].zName) ? " aS \"" : "",
-                                   (c->a[i].zName) ? c->a[i].zName : "",
-                                   (c->a[i].zName) ? "\" " : "");
+                                    (c->a[i].zName) ? " aS \"" : "",
+                                    (c->a[i].zName) ? c->a[i].zName : "",
+                                    (c->a[i].zName) ? "\" " : "");
             sqlite3DbFree(db, cols);
             cols = accum;
         }

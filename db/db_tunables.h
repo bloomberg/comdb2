@@ -1482,25 +1482,25 @@ REGISTER_TUNABLE("random_get_curtran_failures",
                  TUNABLE_INTEGER, &gbl_random_get_curtran_failures,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("dohsql_disable", 
-                 "Disable running queries in distributed mode",
-                 TUNABLE_BOOLEAN, &gbl_dohsql_disable, 
-                 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("dohsql_disable",
+                 "Disable running queries in distributed mode", TUNABLE_BOOLEAN,
+                 &gbl_dohsql_disable, 0, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("dohsql_verbose", 
+REGISTER_TUNABLE("dohsql_verbose",
                  "Run distributed queries in verbose/debug mode",
-                 TUNABLE_BOOLEAN, &gbl_dohsql_verbose, 
-                 0, NULL, NULL, NULL, NULL);
+                 TUNABLE_BOOLEAN, &gbl_dohsql_verbose, 0, NULL, NULL, NULL,
+                 NULL);
 
-REGISTER_TUNABLE("dohast_disable", 
-                 "Disable generating AST for queries. This disables distributed mode as well.",
-                 TUNABLE_BOOLEAN, &gbl_dohast_disable, 
-                 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("dohast_disable",
+                 "Disable generating AST for queries. This disables "
+                 "distributed mode as well.",
+                 TUNABLE_BOOLEAN, &gbl_dohast_disable, 0, NULL, NULL, NULL,
+                 NULL);
 
-REGISTER_TUNABLE("dohast_verbose", 
+REGISTER_TUNABLE("dohast_verbose",
                  "Print debug information when creating AST for statements",
-                 TUNABLE_BOOLEAN, &gbl_dohast_verbose, 
-                 0, NULL, NULL, NULL, NULL);
+                 TUNABLE_BOOLEAN, &gbl_dohast_verbose, 0, NULL, NULL, NULL,
+                 NULL);
 
 REGISTER_TUNABLE("random_fail_client_write_lock",
                  "Force a random client write-lock failure 1/this many times.  "

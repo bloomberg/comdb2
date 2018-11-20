@@ -3518,7 +3518,7 @@ int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
             if (allocd_str)
                 free(allocd_str);
             allocd_str = strdup(dohsql_get_sql(clnt, 0));
-            rec.sql = (const char*)allocd_str;
+            rec.sql = (const char *)allocd_str;
             continue;
         }
 
@@ -3566,7 +3566,7 @@ int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
     sqlite_done(thd, clnt, &rec, rc);
 
-    if(allocd_str)
+    if (allocd_str)
         free(allocd_str);
     return rc;
 }
