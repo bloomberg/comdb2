@@ -512,33 +512,29 @@ void reset_calls_per_sec(void) { calls_per_second = 0; }
 static void handle_failed_recover_deadlock(struct sqlclntstate *clnt,
                                     int recover_deadlock_rcode)
 {
+    struct Vdbe *vdbe = (struct Vdbe *)clnt->dbtran.pStmt;
     clnt->ready_for_heartbeats = 0;
     assert(bdb_lockref() == 0);
     switch (recover_deadlock_rcode) {
     case SQLITE_COMDB2SCHEMA:
         clnt->osql.xerr.errval = CDB2ERR_SCHEMA;
+        sqlite3VdbeError(vdbe, "Database schema was changed");
         errstat_cat_str(&clnt->osql.xerr,
-                        "Database schema changed during request");
-        write_response(clnt, RESPONSE_ERROR,
-                       "Database schema changed during request",
-                       CDB2ERR_SCHEMA);
+                        "Database schema was changed during request");
         logmsg(LOGMSG_DEBUG, "%s sending CDB2ERR_SCHEMA\n", __func__);
         break;
     case SQLITE_CLIENT_CHANGENODE:
         clnt->osql.xerr.errval = CDB2ERR_CHANGENODE;
         errstat_cat_str(&clnt->osql.xerr,
                         "Client api should retry request");
-        write_response(clnt, RESPONSE_ERROR, "Client api should retry request",
-                       CDB2ERR_CHANGENODE);
+        sqlite3VdbeError(vdbe, "New master under snapshot");
         logmsg(LOGMSG_DEBUG, "%s sending CDB2ERR_CHANGENODE\n", __func__);
         break;
     default:
         clnt->osql.xerr.errval = CDB2ERR_DEADLOCK;
         errstat_cat_str(&clnt->osql.xerr,
                         "Failed to reaquire locks on deadlock");
-        write_response(clnt, RESPONSE_ERROR,
-                       "Failed to reaquire locks on deadlock",
-                       CDB2ERR_DEADLOCK);
+        sqlite3VdbeError(vdbe, "Failed to reaquire locks on deadlock");
         logmsg(LOGMSG_DEBUG, "%s sending CDB2ERR_DEADLOCK on %d\n", __func__,
                recover_deadlock_rcode);
         break;
@@ -551,14 +547,11 @@ static inline int check_recover_deadlock(struct sqlclntstate *clnt)
 
     if ((rc = clnt->recover_deadlock_rcode)) {
         assert(bdb_lockref() == 0);
-        clnt->skip_recover_deadlock = 1;
-        clnt->recover_deadlock_rcode = 0;
         handle_failed_recover_deadlock(clnt, rc);
-        clnt->skip_recover_deadlock = 0;
         logmsg(LOGMSG_ERROR, "%s: failing on recover_deadlock error\n",
                 __func__);
     }
-    return rc;
+    return rc < 0 ? SQLITE_BUSY : rc;
 }
 
 /*
@@ -9063,6 +9056,7 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
         return clnt->recover_deadlock_rcode;
     }
 
+    assert(bdb_lockref() > 0);
     int new_mode = debug_switch_recover_deadlock_newmode();
 
     if (bdb_lock_desired(thedb->bdb_env)) {
@@ -9177,20 +9171,24 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
         rc = get_curtran_flags(thedb->bdb_env, clnt, curtran_flags);
 
     if (rc) {
+        struct Vdbe *vdbe = (struct Vdbe *)clnt->dbtran.pStmt;
         if (rc == SQLITE_SCHEMA || rc == SQLITE_COMDB2SCHEMA) {
             logmsg(LOGMSG_ERROR, "%s: failing with SQLITE_COMDB2SCHEMA\n",
                    __func__);
+            sqlite3VdbeError(vdbe, "Database was schema changed");
             return SQLITE_COMDB2SCHEMA;
         }
 
-        if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS)) {
+        if (clnt->gen_changed) {
             logmsg(LOGMSG_ERROR, 
                     "%s: fail to open a new curtran, rc=%d, return changenode\n",
                     __func__, rc);
+            sqlite3VdbeError(vdbe, "New master under snapshot");
             return SQLITE_CLIENT_CHANGENODE;
         } else {
             logmsg(LOGMSG_ERROR, "%s: fail to open a new curtran, rc=%d\n", __func__,
                     rc);
+            sqlite3VdbeError(vdbe, "Failed to reaquire locks on deadlock");
             return ERR_RECOVER_DEADLOCK;
         }
     }
@@ -9267,8 +9265,6 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
                            const char *func, int line, uint32_t flags)
 {
     int rc, ref;
-    assert(!thd->clnt->recover_deadlock_rcode &&
-            !thd->clnt->skip_recover_deadlock);
     rc = thd->clnt->recover_deadlock_rcode =
         recover_deadlock_flags_int(bdb_state, thd, bdbcur, sleepms, func, line,
                 flags);

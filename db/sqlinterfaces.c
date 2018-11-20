@@ -278,10 +278,6 @@ static inline int lock_client_write_lock_int(struct sqlclntstate *clnt, int try)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     int rc = 0;
-    uint32_t flags = 0;
-
-    if (gbl_fail_client_write_lock && !(rand() % gbl_fail_client_write_lock))
-        flags = RECOVER_DEADLOCK_FORCE_FAIL;
 
     if (thd && clnt)
         clnt->emitting_flag = 1;
@@ -298,12 +294,16 @@ again:
     if (clnt->heartbeat_lock && thd) {
         if (clnt->need_recover_deadlock) {
             /* Call only if there isn't a previous failure */
-            if (!clnt->recover_deadlock_rcode && !clnt->skip_recover_deadlock)
+            if (!clnt->recover_deadlock_rcode) {
+                uint32_t flags = 0;
+                if (gbl_fail_client_write_lock && !(rand() %
+                            gbl_fail_client_write_lock))
+                    flags = RECOVER_DEADLOCK_FORCE_FAIL;
                 recover_deadlock_flags(thedb->bdb_env, thd, NULL, 0, __func__,
                         __LINE__, flags);
+            }
             clnt->need_recover_deadlock = 0;
-            if (clnt->recover_deadlock_rcode || 
-                    clnt->skip_recover_deadlock) {
+            if (clnt->recover_deadlock_rcode) {
                 assert(bdb_lockref() == 0);
                 logmsg(LOGMSG_WARN, "%s recover_deadlock returned %d\n",
                        __func__, clnt->recover_deadlock_rcode);
@@ -4387,7 +4387,7 @@ static inline int sql_writer_recover_deadlock(struct sqlclntstate *clnt)
     int count = 0, ref;
 
     /* Short circuit */
-    if (!clnt || clnt->skip_recover_deadlock) {
+    if (!clnt) {
         assert(bdb_lockref() == 0);
         return 1;
     }
@@ -4420,11 +4420,10 @@ static inline int sql_writer_recover_deadlock(struct sqlclntstate *clnt)
                        count);
             }
             pthread_cond_timedwait(&clnt->write_cond, &clnt->write_lock, &ts);
-        /* Must check emitting_flag && done to handle trylock failures */
+        /* Must check emitting_flag to handle trylock failures */
         } while (clnt->need_recover_deadlock == 1 && clnt->emitting_flag);
-        assert(clnt->need_recover_deadlock == 0);
         clnt->heartbeat_lock = 0;
-        return 0;
+        return clnt->need_recover_deadlock;
     }
 
     /* Recover deadlock not run */

@@ -69,6 +69,7 @@
 #include "logmsg.h"
 
 int g_osql_blocksql_parallel_max = 5;
+int gbl_osql_check_replicant_numops = 1;
 extern int gbl_blocksql_grace;
 
 typedef struct blocksql_info {
@@ -275,11 +276,10 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
     while (tran->pending.top && !error) {
 
         /* go through the list of pending requests and if there are any
-            that have not received responses over a certain window, poke them */
+           that have not received responses over a certain window, poke them */
         /* if we find any complete lists, move them from pending to complete */
         /* if the session finished with deadlock on replicant, or failed
-           session,
-           resubmit it */
+           session, resubmit it */
         LISTC_FOR_EACH_SAFE(&tran->pending, info, temp, p_reqs)
         {
 
@@ -428,8 +428,7 @@ int osql_bplog_schemachange(struct ireq *iq)
 }
 
 /**
- * Wait for all pending osql sessions of this transaction to
- * finish
+ * Wait for all pending osql sessions of this transaction to finish
  * Once all finished ok, we apply all the changes
  */
 int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,
@@ -713,6 +712,28 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
     }
 }
 
+
+static void send_error_to_replicant(int rqid, const char *host, int errval,
+                                    const char *errstr)
+{
+    sorese_info_t sorese_info = {0};
+    struct errstat generr = {0};
+
+    logmsg(LOGMSG_ERROR, "%s: %s\n", __func__, errstr);
+
+    sorese_info.rqid = rqid;
+    sorese_info.host = host;
+    sorese_info.type = -1; /* I don't need it */
+
+    generr.errval = errval;
+    strncpy(generr.errstr, errstr, sizeof(generr.errstr));
+
+    int rc =
+        osql_comm_signal_sqlthr_rc(&sorese_info, &generr, RC_INTERNAL_RETRY);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "Failed to signal replicant rc=%d\n", rc);
+    }
+}
 /**
  * Inserts the op in the iq oplog
  * If sql processing is local, this is called by sqlthread
@@ -739,55 +760,32 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     struct ireq *iq = osql_session_get_ireq(sess);
     int rc = 0, rc_op = 0;
     oplog_key_t key = {0};
-    struct errstat *xerr;
     int bdberr;
     int debug = 0;
+    uuidstr_t us;
 
     if (type == OSQL_SCHEMACHANGE)
         iq->tranddl++;
 
-#if DEBUG_REORDER
-    logmsg(LOGMSG_DEBUG,
-           "Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%lld\n", rqid,
-           type, osql_reqtype_str(type), osql_log_time(), sess->seq);
-#endif
+    assert(sess->rqid == rqid);
+    key.seq = sess->seq;
     if (sess->is_reorder_on) {
         setup_reorder_key(type, sess, iq, rpl, &key);
     }
-    key.seq = sess->seq;
-    assert(sess->rqid == rqid);
+#if DEBUG_REORDER
+    DEBUGMSG("uuid=%s type=%d (%s) seq=%lld\n", comdb2uuidstr(uuid, us), type,
+             osql_reqtype_str(type), sess->seq);
+#endif
 
     /* add the op into the temporary table */
     Pthread_mutex_lock(&tran->store_mtx);
 
-    if (sess->seq == 0 && osql_session_is_sorese(sess) && tran->rows > 0) {
-        /* lets make sure that the temp table is empty since commit retries will
-         * use same rqid*/
-        sorese_info_t sorese_info = {0};
-        struct errstat generr = {0};
-
-        logmsg(LOGMSG_ERROR, "%s Broken transaction, received first seq row but "
-                "session already has rows?\n",
-                __func__);
-
-        sorese_info.rqid = rqid;
-        sorese_info.host = sess->offhost;
-        sorese_info.type = -1; /* I don't need it */
-
-        generr.errval = RC_INTERNAL_RETRY;
-        strncpy(generr.errstr,
-                "malformed transaction, received duplicated first row",
-                sizeof(generr.errstr));
-
-        Pthread_mutex_unlock(&tran->store_mtx);
-
-        rc = osql_comm_signal_sqlthr_rc(&sorese_info, &generr,
-                RC_INTERNAL_RETRY);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "Failed to signal replicant rc=%d\n", rc);
-        }
-
-        return -1;
+    /* make sure that the temp table is empty since commit
+     * retries will use same rqid */
+    if (sess->seq == 0 && tran->rows > 0) {
+        logmsg(LOGMSG_FATAL,
+               "Malformed transaction, received duplicated first row");
+        abort();
     }
 
 #if DEBUG_REORDER
@@ -818,15 +816,44 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     if (rc_op)
         return rc_op;
 
+    struct errstat *xerr;
+    /* check if type is done */
     rc = osql_comm_is_done(type, rpl, rplen, rqid == OSQL_RQID_USE_UUID, &xerr,
                            osql_session_get_ireq(sess));
     if (rc == 0)
         return 0;
 
+    // only OSQL_DONE_SNAP, OSQL_DONE, OSQL_DONE_STATS, and OSQL_XERR
+    // are processed beyond this point
+
+    if (type != OSQL_XERR) { // if tran not aborted
+        int numops = osql_get_replicant_numops(rpl, rqid == OSQL_RQID_USE_UUID);
+        DEBUGMSG("uuid=%s type %s numops=%d, seq=%lld %s\n",
+                 comdb2uuidstr(uuid, us), osql_reqtype_str(type), numops,
+                 sess->seq, (numops != sess->seq + 1 ? "NO match" : ""));
+
+        if (gbl_osql_check_replicant_numops && numops != sess->seq + 1) {
+            send_error_to_replicant(
+                rqid, sess->offhost, RC_INTERNAL_RETRY,
+                "Master received inconsistent number of opcodes");
+
+            logmsg(LOGMSG_ERROR,
+                   "%s: Replicant sent %d opcodes, master received %lld\n",
+                   __func__, numops, sess->seq + 1);
+
+            // TODO: terminate session so replicant can retry
+            // or mark session bad so don't process this session from toblock
+            // osql_sess_try_terminate(sess);
+            // return 0;
+            abort(); // for now abort to catch failure cases
+        }
+    }
+
+    /* TODO: check the generation and fail early if it does not match */
+
     osql_sess_set_complete(rqid, uuid, sess, xerr);
 
-    /* if we received a too early, check the coherency and mark blackout the
-     * node */
+    /* if we received a too early, check the coherency and mark blackout node */
     if (xerr && xerr->errval == OSQL_TOOEARLY) {
         osql_comm_blkout_node(sess->offhost);
     }
@@ -841,7 +868,6 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     }
 
     if (osql_session_is_sorese(sess)) {
-
         osql_sess_lock(sess);
         osql_sess_lock_complete(sess);
         if (!osql_sess_dispatched(sess) && !osql_sess_is_terminated(sess)) {
@@ -1166,7 +1192,6 @@ static int process_this_session(
     int receivedrows = 0;
     int flags = 0;
     uuid_t uuid;
-    uuidstr_t us;
 
     iq->queryid = osql_sess_queryid(sess);
 
@@ -1195,6 +1220,7 @@ static int process_this_session(
     }
 
     if (rc == IX_NOTFND) {
+        uuidstr_t us;
         comdb2uuidstr(uuid, us);
         logmsg(LOGMSG_ERROR, "%s: session %llx %s has no update rows?\n", __func__,
                 rqid, us);
