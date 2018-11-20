@@ -510,7 +510,7 @@ found:		if (offsetp != NULL)
 		 */
 		ret = 0;
 		if (F_ISSET(bhp, BH_DIRTY)) {
-			if (aggressive == 0) {
+			if (aggressive == 0 || F_ISSET(bhp, BH_LOCKED)) {
 				++c_mp->stat.st_rw_evict_skip;
 				goto next_hb;
 			}

@@ -37,6 +37,7 @@ static const char revid[] = "$Id: mp_bh.c,v 11.86 2003/07/02 20:02:37 mjc Exp $"
 #include <logmsg.h>
 #include <locks_wrap.h>
 #include "comdb2_atomic.h"
+#include <sys/poll.h>
 
 char *bdb_trans(const char infile[], char outfile[]);
 extern int gbl_test_badwrite_intvl;
@@ -766,6 +767,7 @@ __memp_pgwrite_int(dbenv, dbmfp, hp, bhp, wrrec)
 	return __memp_pgwrite_multi(dbenv, dbmfp, &hp, &bhp, 1, wrrec);
 }
 
+int gbl_callpgin_latency = 0;
 
 /*
  * __memp_pgwrite_multi --
@@ -780,7 +782,7 @@ __memp_pgwrite_multi(dbenv, dbmfp, hps, bhps, numpages, wrrec)
 	BH **bhps;
 	int numpages, wrrec;
 {
-	DB_LSN tmplsn, maxlsn;
+	DB_LSN tmplsn, maxlsn = {0};
 	MPOOLFILE *mfp;
 	DB_MPOOL_HASH *hp;
 	BH *bhp = NULL;
@@ -1080,8 +1082,11 @@ file_dead:
 		 * If we rewrote the page, it will need processing by the pgin
 		 * routine before reuse.
 		 */
-		if (callpgin[i])
+		if (callpgin[i]) {
+            if (gbl_callpgin_latency > 0)
+                poll(NULL, NULL, gbl_callpgin_latency);
 			F_SET(bhp, BH_CALLPGIN);
+        }
 	}
 
 	/*
