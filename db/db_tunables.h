@@ -1454,7 +1454,7 @@ REGISTER_TUNABLE("queuedb_timeout_sec",
                  TUNABLE_INTEGER, &gbl_queuedb_timeout_sec, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("osql_send_startgen",
-                 "Send start-generation in osql stream.  (Default: on)",
+                 "Send start-generation in osql stream. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_osql_send_startgen,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
@@ -1486,6 +1486,11 @@ REGISTER_TUNABLE("random_fail_client_write_lock",
                  "Force a random client write-lock failure 1/this many times.  "
                  "(Default: 0)",
                  TUNABLE_INTEGER, &gbl_fail_client_write_lock,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("osql_check_replicant_numops",
+                 "Check replicant nops sent in osql stream. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_osql_check_replicant_numops,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

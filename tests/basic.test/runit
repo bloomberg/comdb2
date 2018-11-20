@@ -36,15 +36,16 @@ failexit()
 
 assertcnt ()
 {
-    local target=$1
-    local cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
+    local tbl=$1
+    local target=$2
+    local cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from $tbl")
     if [ $? -ne 0 ] ; then
         echo "assertcnt: select error"
     fi
 
     #echo "count is now $cnt"
     if [[ $cnt != $target ]] ; then
-        failexit "count is now $cnt but should be $target"
+        failexit "tbl $tbl count is now $cnt but should be $target"
     fi
 }
 
@@ -313,11 +314,49 @@ if ! diff  dupupd.txt dupupd.exp; then
     failexit "Expected failure when executing bad procedure"
 fi
 
+assertcnt t2 2
+
 echo "begin
 select count(*) from t1
 select count(*) from t2
 select count(*) from t2 where i = 1
-commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans.txt
+commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans1.txt
+
+# test transaction of diff sizes
+echo "begin
+insert into t2 values(3)
+commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans2.txt
+
+assertcnt t2 3
+
+echo "begin
+insert into t2 values(4)
+insert into t2 values(5)
+commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans3.txt
+
+assertcnt t2 5
+
+echo "begin
+insert into t2 values(6)
+insert into t2 values(7)
+insert into t2 values(8)
+commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans4.txt
+
+assertcnt t2 8
+
+# test rollback
+echo "begin
+insert into t2 values(9)
+rollback" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans5.txt
+
+assertcnt t2 8
+
+echo "begin
+insert into t2 values(9)
+insert into t2 values(10)
+rollback" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans5.txt
+
+assertcnt t2 8
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure nonexistent(4)" &> badproc.txt
 echo "[exec procedure nonexistent(4)] failed with rc -3 no such procedure: nonexistent ver:0" > badproc.exp
@@ -334,13 +373,13 @@ assert_schema t1 alltypes.csc2
 
 let NEWNUMREC=$((2*INITNUMREC))
 insert_records 1 $NEWNUMREC
-assertcnt $NEWNUMREC
+assertcnt t1 $NEWNUMREC
 
 update_records 1 $NEWNUMREC
-assertcnt $NEWNUMREC
+assertcnt t1 $NEWNUMREC
 
 delete_records $((INITNUMREC+1)) $NEWNUMREC
-assertcnt $INITNUMREC
+assertcnt t1 $INITNUMREC
 
 
 echo "Now call task that uses cdb2api to ins/upd/del"

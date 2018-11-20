@@ -261,6 +261,7 @@ extern int gbl_queuedb_timeout_sec;
 extern int gbl_timeseries_metrics;
 extern int gbl_metric_maxpoints;
 extern int gbl_metric_maxage;
+extern int gbl_osql_check_replicant_numops;
 
 /*
   =========================================================

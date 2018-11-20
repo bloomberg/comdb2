@@ -311,7 +311,7 @@ int osql_sess_set_complete(unsigned long long rqid, uuid_t uuid,
  *   - SQLITE_DEADLOCK
  *   - SQLITE_TOOEARLY
  */
-static int is_session_repeatable(int code)
+static inline int is_session_repeatable(int code)
 {
     if (code ==
         SQLITE_DEADLOCK) /* sql thread deadlocked with replication thread */
@@ -728,6 +728,7 @@ static int osql_poke_replicant(osql_sess_t *sess)
             rc = -1;
         }
 
+        /* TODO: clean this up -- this does nothing */
         /* Decrement throttle for retry */
         osql_bplog_session_is_done(sess->iq);
 
@@ -950,25 +951,25 @@ int osql_sess_try_terminate(osql_sess_t *sess)
 {
     int rc;
     int completed = 0;
-    if (rc = osql_sess_lock(sess)) {
+    if ((rc = osql_sess_lock(sess))) {
         logmsg(LOGMSG_ERROR, "%s:%d osql_sess_lock rc %d\n", __func__, __LINE__,
                rc);
         return -1;
     }
-    if (rc = osql_sess_lock_complete(sess)) {
+    if ((rc = osql_sess_lock_complete(sess))) {
         logmsg(LOGMSG_ERROR, "%s:%d osql_sess_lock_complete rc %d\n", __func__,
                __LINE__, rc);
         osql_sess_unlock(sess);
         return -1;
     }
     completed = sess->completed | sess->dispatched;
-    if (rc = osql_sess_unlock_complete(sess)) {
+    if ((rc = osql_sess_unlock_complete(sess))) {
         logmsg(LOGMSG_ERROR, "%s:%d osql_sess_unlock_complete rc %d\n",
                __func__, __LINE__, rc);
         osql_sess_unlock(sess);
         return -1;
     }
-    if (rc = osql_sess_unlock(sess)) {
+    if ((rc = osql_sess_unlock(sess))) {
         logmsg(LOGMSG_ERROR, "%s:%d osql_sess_unlock rc %d\n", __func__,
                __LINE__, rc);
         return -1;
