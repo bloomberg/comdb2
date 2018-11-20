@@ -588,9 +588,9 @@ int comdb2_check_parallel(Parse *pParse)
 
     node = (dohsql_node_t *)ast->stack[0].obj;
 
-    if (strcasestr(node->sql, "sqlite_"))
+    if (strstr(node->sql, "sqlite_"))
         return 0;
-    if (strcasestr(node->sql, "comdb2_"))
+    if (strstr(node->sql, "comdb2_"))
         return 0;
 
     if (pParse->explain && pParse->explain != 3)
