@@ -21,7 +21,7 @@
 #include "dohsql.h"
 #include "sql.h"
 
-int gbl_dohast_disable = 0;
+int gbl_dohast_disable = 1;
 int gbl_dohast_verbose = 0;
 
 static void node_free(dohsql_node_t **pnode, sqlite3 *db);
