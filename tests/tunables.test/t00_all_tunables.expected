@@ -213,7 +213,7 @@
 (name='disable_upgrade_ahead', description='Sets 'enable_upgrade_ahead' to 0.', type='BOOLEAN', value='ON', read_only='Y')
 (name='disable_writer_penalty_deadlock', description='If set, won't shrink max #writers on deadlock.', type='BOOLEAN', value='OFF', read_only='N')
 (name='disallow_portmux_route', description='Disables 'allow_portmux_route'', type='BOOLEAN', value='OFF', read_only='Y')
-(name='dohast_disable', description='Disable generating AST for queries. This disables distributed mode as well.', type='BOOLEAN', value='OFF', read_only='N')
+(name='dohast_disable', description='Disable generating AST for queries. This disables distributed mode as well.', type='BOOLEAN', value='ON', read_only='N')
 (name='dohast_verbose', description='Print debug information when creating AST for statements', type='BOOLEAN', value='OFF', read_only='N')
 (name='dohsql_disable', description='Disable running queries in distributed mode', type='BOOLEAN', value='OFF', read_only='N')
 (name='dohsql_verbose', description='Run distributed queries in verbose/debug mode', type='BOOLEAN', value='OFF', read_only='N')
