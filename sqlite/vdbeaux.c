@@ -5293,44 +5293,43 @@ Mem* sqlite3GetCachedResultRow(sqlite3_stmt *pStmt, int *nColumns)
   return NULL;
 }
 
-Mem* sqlite3CloneResult(sqlite3_stmt *pStmt, Mem **ppMem)
+Mem* sqlite3CloneResult(sqlite3_stmt *pStmt, Mem *pMem)
 {
-    Vdbe *p = (Vdbe*)pStmt;
-    Mem *pMem = ppMem?*ppMem:NULL;
-    int i, rc;
-    int ncols = p->nResColumn;
-    Mem *cols = p->pResultSet;
+  Vdbe *p = (Vdbe*)pStmt;
+  int i, rc;
+  int ncols = p->nResColumn;
+  Mem *cols = p->pResultSet;
 
-    if (!p) abort();
+  if (!p) abort();
 
-    if (!pMem)
-        pMem = sqlite3Malloc(sizeof(Mem)*ncols);
-    if (!pMem)
-        return NULL;
+  if (!pMem) {
+    pMem = sqlite3Malloc(sizeof(Mem)*ncols);
     bzero(pMem, sizeof(*pMem)*ncols);
+  }
+  if (!pMem)
+    return NULL;
 
-    for(i=0;i<ncols;i++) {
-        rc = sqlite3VdbeMemCopy(&pMem[i], &cols[i]);
-        if (rc)
-            return NULL;
-    }
-    *ppMem = pMem;
+  for(i=0;i<ncols;i++) {
+    rc = sqlite3VdbeMemCopy(&pMem[i], &cols[i]);
+    if (rc)
+      return NULL;
+  }
 
-    return pMem;
+  return pMem;
 }
 
 int sqlite3CloneResultFree(sqlite3_stmt *pStmt, Mem **ppMem)
 {
-    Vdbe *p = (Vdbe*)pStmt;
-    Mem *pMem = *ppMem;
+  Vdbe *p = (Vdbe*)pStmt;
+  Mem *pMem = *ppMem;
 
-    if (pMem) {
-        releaseMemArray(pMem, p->nResColumn);    
-        sqlite3DbFree(p->db,pMem); 
-        *ppMem = NULL;
-    }
+  if (pMem) {
+    releaseMemArray(pMem, p->nResColumn);    
+    sqlite3DbFree(p->db,pMem); 
+    *ppMem = NULL;
+  }
 
-    return 0;
+  return 0;
 }
 
 #ifdef SQLITE_ENABLE_PREUPDATE_HOOK

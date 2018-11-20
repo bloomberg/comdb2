@@ -217,6 +217,7 @@ static void trimQue(sqlite3_stmt *stmt, queue_type *que, int limit)
         if (gbl_dohsql_verbose)
             logmsg(LOGMSG_DEBUG, "XXX: %p freed older row limit %d\n", que,
                    limit);
+        /*fprintf(stderr, "XXX: uncloned %p\n", row);*/
         sqlite3CloneResultFree(stmt, &row);
     }
 }
@@ -259,7 +260,9 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp,
     }
     pthread_mutex_unlock(&conn->mtx);
 
-    row = sqlite3CloneResult(stmt, &oldrow);
+    row = sqlite3CloneResult(stmt, oldrow);
+    /*if (!oldrow)
+        fprintf(stderr, "XXX: cloned %p\n", row);*/
     if (!row)
         return SHARD_ERR_GENERIC;
 
@@ -887,6 +890,8 @@ static void _shard_disconnect(dohsql_connector_t *conn)
     free(conn->thr_where);
     queue_free(conn->que);
     queue_free(conn->que_free);
+    if (conn->cols)
+        free(conn->cols);
 
     free(clnt->sql);
     clnt->sql = NULL;
@@ -1001,7 +1006,7 @@ int dohsql_end_distribute(struct sqlclntstate *clnt)
         pthread_mutex_unlock(&conns->conns[i].mtx);
     }
 
-    for (i = 1; i < conns->nconns; i++) {
+    for (i = 0; i < conns->nconns; i++) {
         _shard_disconnect(&conns->conns[i]);
     }
 

@@ -3504,6 +3504,7 @@ int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     struct errstat err = {0};
     struct sql_state rec = {0};
     rec.sql = clnt->sql;
+    char *allocd_str = NULL;
 
     do {
         /* clean old stats */
@@ -3514,7 +3515,10 @@ int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         if (rc == SQLITE_SCHEMA_REMOTE)
             continue;
         if (rc == SQLITE_SCHEMA_DOHSQL) {
-            rec.sql = strdup(dohsql_get_sql(clnt, 0));
+            if (allocd_str)
+                free(allocd_str);
+            allocd_str = strdup(dohsql_get_sql(clnt, 0));
+            rec.sql = (const char*)allocd_str;
             continue;
         }
 
@@ -3561,6 +3565,9 @@ int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     post_run_reqlog(thd, clnt, &rec);
 
     sqlite_done(thd, clnt, &rec, rc);
+
+    if(allocd_str)
+        free(allocd_str);
     return rc;
 }
 
