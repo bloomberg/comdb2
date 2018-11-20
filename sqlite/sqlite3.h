@@ -446,6 +446,7 @@ SQLITE_API int sqlite3_exec(
 #define SQLITE_WARNING     28   /* Warnings from sqlite3_log() */
 #define SQLITE_SCHEMA_REMOTE 50 /* when a distributed schema has
                                    inconsistent local cache */
+#define SQLITE_SCHEMA_DOHSQL 51 /* see dohsql */
 #define SQLITE_ROW         100  /* sqlite3_step() has another row ready */
 #define SQLITE_DONE        101  /* sqlite3_step() has finished executing */
 

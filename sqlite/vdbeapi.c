@@ -791,7 +791,8 @@ end_of_step:
            rc == SQLITE_ABORT
            /* COMDB2 MODIFICATION */
            ||
-           rc == SQLITE_TOOBIG || rc == SQLITE_ACCESS || SQLITE_SCHEMA_REMOTE);
+           rc == SQLITE_TOOBIG || rc == SQLITE_ACCESS || SQLITE_SCHEMA_REMOTE ||
+           rc == SQLITE_SCHEMA_DOHSQL);
   assert( (p->rc!=SQLITE_ROW && p->rc!=SQLITE_DONE) || p->rc==p->rcApp );
   if( p->isPrepareV2 && rc!=SQLITE_ROW && rc!=SQLITE_DONE ){
     /* If this statement was prepared using sqlite3_prepare_v2(), and an

@@ -85,6 +85,7 @@ typedef long long tranid_t;
 #include "thrman.h"
 #include "comdb2uuid.h"
 #include "machclass.h"
+#include "shard_range.h"
 #include "tunables.h"
 #include "comdb2_plugin.h"
 
@@ -667,6 +668,8 @@ struct dbtable {
     signed char ix_collattr[MAXINDEX];
     signed char ix_nullsallowed[MAXINDEX];
     signed char ix_disabled[MAXINDEX];
+
+    shard_limits_t *sharding;
 
     int numblobs;
 
@@ -1779,6 +1782,11 @@ extern unsigned int gbl_max_num_compact_pages_per_txn;
 extern char *gbl_dbdir;
 
 extern double gbl_cpupercent;
+
+extern int gbl_dohsql_disable;
+extern int gbl_dohsql_verbose;
+extern int gbl_dohast_disable;
+extern int gbl_dohast_verbose;
 
 /* init routines */
 int appsock_init(void);
@@ -3537,6 +3545,8 @@ extern int gbl_ckp_sleep_before_sync;
 
 int set_rowlocks(void *trans, int enable);
 
+void init_sqlclntstate(struct sqlclntstate *clnt, char *tid, int isuuid);
+
 /* 0: Return null constraint error for not-null constraint violation on updates
    1: Return conversion error instead */
 extern int gbl_upd_null_cstr_return_conv_err;
@@ -3558,6 +3568,8 @@ int rename_table_options(void *tran, struct dbtable *db, const char *newname);
 
 int comdb2_get_verify_remote_schemas(void);
 void comdb2_set_verify_remote_schemas(void);
+
+const char *thrman_get_where(struct thr_handle *thr);
 
 int repopulate_lrl(const char *p_lrl_fname_out);
 void plugin_post_dbenv_hook(struct dbenv *dbenv);

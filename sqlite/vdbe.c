@@ -1609,6 +1609,9 @@ case OP_IntCopy: {            /* out2 */
   assert( (pIn1->flags & MEM_Int)!=0 );
   pOut = &aMem[pOp->p2];
   sqlite3VdbeMemSetInt64(pOut, pIn1->u.i);
+  /* COMDB2 MODIFICATION */
+  extern void comdb2_handle_limit(Vdbe*,Mem*);
+  comdb2_handle_limit(p, pIn1);
   break;
 }
 
@@ -6618,7 +6621,7 @@ case OP_IfPos: {        /* jump, in1 */
   assert( pIn1->flags&MEM_Int );
   VdbeBranchTaken( pIn1->u.i>0, 2);
   if( pIn1->u.i>0 ){
-    pIn1->u.i -= pOp->p3;
+      pIn1->u.i -= pOp->p3;
     goto jump_to_p2;
   }
   break;
@@ -7758,6 +7761,7 @@ abort_due_to_error:
    && rc != SQLITE_TRAN_NOLOG
    && rc != SQLITE_TRAN_NOUNDO
    && rc != SQLITE_SCHEMA_REMOTE
+   && rc != SQLITE_SCHEMA_DOHSQL
   ){
     rc = SQLITE_ERROR;
   }

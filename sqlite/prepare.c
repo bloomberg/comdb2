@@ -770,6 +770,10 @@ end_prepare:
   sqlite3ParserReset(&sParse);
   rc = sqlite3ApiExit(db, rc);
   assert( (rc&db->errMask)==rc );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if(sParse.ast) ast_destroy(&sParse.ast, db);
+#endif
+
   return rc;
 }
 
