@@ -1076,17 +1076,16 @@ file_dead:
 		hp = hps[i];
 
 		MUTEX_UNLOCK(dbenv, &bhp->mutex);
+        if (gbl_callpgin_latency > 0)
+            poll(NULL, NULL, gbl_callpgin_latency);
 		MUTEX_LOCK(dbenv, &hp->hash_mutex);
 
 		/*
 		 * If we rewrote the page, it will need processing by the pgin
 		 * routine before reuse.
 		 */
-		if (callpgin[i]) {
-            if (gbl_callpgin_latency > 0)
-                poll(NULL, NULL, gbl_callpgin_latency);
+		if (callpgin[i])
 			F_SET(bhp, BH_CALLPGIN);
-        }
 	}
 
 	/*
