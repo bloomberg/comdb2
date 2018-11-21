@@ -6,6 +6,7 @@
 struct time_metric;
 
 struct time_metric* time_metric_new(char *name);
+void time_metric_free(struct time_metric *t);
 void time_metric_add(struct time_metric *t, int value);
 struct time_metric* time_metric_get(char *name);
 struct time_metric* time_metric_first(void);

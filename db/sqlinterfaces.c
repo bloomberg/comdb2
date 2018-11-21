@@ -822,6 +822,8 @@ static void add_steps(struct sqlclntstate *clnt, double steps)
 static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
                                struct sqlclntstate *clnt, int stmt_rc)
 {
+    struct rawnodestats *rawnodestats;
+
     if (thd == NULL || clnt == NULL) {
         return;
     }
@@ -884,8 +886,9 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     reqlog_set_rows(logger, clnt->nrows);
     reqlog_end_request(logger, stmt_rc, __func__, __LINE__);
 
-    if (clnt->rawnodestats) {
-        clnt->rawnodestats->sql_steps += thd->nmove + thd->nfind + thd->nwrite;
+    if ((rawnodestats = clnt->rawnodestats) != NULL) {
+        rawnodestats->sql_steps += thd->nmove + thd->nfind + thd->nwrite;
+        time_metric_add(rawnodestats->svc_time, h->time);
     }
 
     thd->nmove = thd->nfind = thd->nwrite = thd->ntmpread = thd->ntmpwrite = 0;

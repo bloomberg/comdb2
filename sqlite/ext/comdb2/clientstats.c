@@ -55,6 +55,7 @@ enum {
     COLUMN_SQL_QUERIES,
     COLUMN_SQL_STEPS,
     COLUMN_SQL_ROWS,
+    COLUMN_SVC_TIME
 };
 
 static int systblClientStatsConnect(sqlite3 *db, void *pAux, int argc,
@@ -70,7 +71,7 @@ static int systblClientStatsConnect(sqlite3 *db, void *pAux, int argc,
             "\"upds\" INTEGER, \"dels\" INTEGER, \"bsql\" INTEGER, \"recom\" "
             "INTEGER, \"snapisol\" INTEGER, \"serial\" INTEGER, "
             "\"sql_queries\" INTEGER, \"sql_steps\" INTEGER, \"sql_rows\" "
-            "INTEGER)");
+            "INTEGER, \"svc_time\" DOUBLE)");
 
     if (rc == SQLITE_OK) {
         if ((*ppVtab = sqlite3_malloc(sizeof(sqlite3_vtab))) == 0) {
@@ -212,6 +213,9 @@ static int systblClientStatsColumn(sqlite3_vtab_cursor *cur,
         break;
     case COLUMN_SQL_ROWS:
         sqlite3_result_int64(ctx, summaries[ii].sql_rows);
+        break;
+    case COLUMN_SVC_TIME:
+        sqlite3_result_double(ctx, summaries[ii].svc_time);
         break;
     default: assert(0);
     };

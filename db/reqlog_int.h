@@ -223,8 +223,8 @@ struct nodestats {
     /* previous totals for last time quanta */
     struct rawnodestats prevtotals;
 
-    /* keep a diff of reqs/second for th last few seconds so we can
-     * caculate a smoothis reqs/second.  this may not get updated regularaly
+    /* keep a diff of reqs/second for the last few seconds so we can
+     * caculate a smooth reqs/second.  this may not get updated regularly
      * so we record epochms times. */
     unsigned cur_bucket;
     struct rawnodestats raw_buckets[NUM_BUCKETS];
