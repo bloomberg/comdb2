@@ -1515,9 +1515,8 @@ REGISTER_TUNABLE("osql_check_replicant_numops",
 
 REGISTER_TUNABLE("callpgin_latency_ms",
                  "Introduce artificial latency before the pgin flag is set.  "
-                 "(Default: off)", 
+                 "(Default: off)",
                  TUNABLE_BOOLEAN, &gbl_callpgin_latency_ms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-
 
 #endif /* _DB_TUNABLES_H */
