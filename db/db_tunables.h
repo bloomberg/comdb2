@@ -1513,10 +1513,10 @@ REGISTER_TUNABLE("osql_check_replicant_numops",
                  TUNABLE_BOOLEAN, &gbl_osql_check_replicant_numops,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("callpgin_latency",
+REGISTER_TUNABLE("callpgin_latency_ms",
                  "Introduce artificial latency before the pgin flag is set.  "
                  "(Default: off)", 
-                 TUNABLE_BOOLEAN, &gbl_callpgin_latency,
+                 TUNABLE_BOOLEAN, &gbl_callpgin_latency_ms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 

@@ -767,7 +767,7 @@ __memp_pgwrite_int(dbenv, dbmfp, hp, bhp, wrrec)
 	return __memp_pgwrite_multi(dbenv, dbmfp, &hp, &bhp, 1, wrrec);
 }
 
-int gbl_callpgin_latency = 0;
+int gbl_callpgin_latency_ms = 0;
 
 /*
  * __memp_pgwrite_multi --
@@ -1076,8 +1076,8 @@ file_dead:
 		hp = hps[i];
 
 		MUTEX_UNLOCK(dbenv, &bhp->mutex);
-        if (gbl_callpgin_latency > 0)
-            poll(NULL, NULL, gbl_callpgin_latency);
+		if (gbl_callpgin_latency_ms > 0)
+			poll(NULL, NULL, gbl_callpgin_latency_ms);
 		MUTEX_LOCK(dbenv, &hp->hash_mutex);
 
 		/*
