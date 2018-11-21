@@ -6678,7 +6678,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     const size_t tag_name_ondisk_len = 8 /*includes NUL*/;
     int type;
     unsigned long long id;
-    uuidstr_t us;
 
     if (rqid == OSQL_RQID_USE_UUID) {
         osql_uuid_rpl_t rpl;
@@ -6687,9 +6686,10 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         p_buf = osqlcomm_uuid_rpl_type_get(&rpl, p_buf, p_buf_end);
         type = rpl.type;
         id = OSQL_RQID_USE_UUID;
-        comdb2uuidstr(rpl.uuid, us);
         if (comdb2uuidcmp(rpl.uuid, uuid)) {
+            uuidstr_t us;
             uuidstr_t passedus;
+            comdb2uuidstr(rpl.uuid, us);
             comdb2uuidstr(uuid, passedus);
             logmsg(LOGMSG_FATAL, "uuid mismatch: passed in %s, in packet %s\n",
                     passedus, us);
@@ -6734,6 +6734,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         p_buf = osqlcomm_done_type_get(&dt, p_buf, p_buf_end);
 
         if (logsb) {
+            uuidstr_t us;
             sbuf2printf(logsb, "[%llu %s] OSQL_DONE %d %d\n", rqid,
                         comdb2uuidstr(uuid, us), dt.nops, dt.rc);
             sbuf2flush(logsb);
@@ -6814,6 +6815,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         }
 
         if (logsb) {
+            uuidstr_t us;
             sbuf2printf(logsb, "[%llu %s] OSQL_USEDB %*.s\n", rqid,
                         comdb2uuidstr(uuid, us), dt.tablenamelen, tablename);
             sbuf2flush(logsb);
@@ -6895,6 +6897,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         if (logsb) {
             unsigned long long lclgenid = bdb_genid_to_host_order(dt.genid);
+            uuidstr_t us;
             sbuf2printf(logsb, "[%llu %s] %s %llx (2:%lld)\n", rqid,
                         comdb2uuidstr(uuid, us),
                         recv_dk ? "OSQL_DELETE" : "OSQL_DELREC", lclgenid,
@@ -6975,6 +6978,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         if (logsb) {
             int jj = 0;
+            uuidstr_t us;
             sbuf2printf(logsb, "[%llu %s] %s [\n", rqid,
                         comdb2uuidstr(uuid, us),
                         is_legacy ? "OSQL_INSREC" : "OSQL_INSERT");
@@ -7070,10 +7074,11 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                             "cur_gen %u, return verify error\n",
                             dt.start_gen, cur_gen);
             }
+            uuidstr_t us;
             logmsg(LOGMSG_DEBUG,
                    "[%llx %s] Startgen check failed, start_gen "
                    "%u, cur_gen %u\n",
-                   id, us, dt.start_gen, cur_gen);
+                   id, comdb2uuidstr(uuid, us), dt.start_gen, cur_gen);
             return ERR_VERIFY;
         }
     } break;
@@ -7102,6 +7107,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         if (logsb) {
             int jj = 0;
+            uuidstr_t us;
             sbuf2printf(
                 logsb, "[%llu %s] OSQL_UPDREC rrn = %d, genid = %llx[\n", rqid,
                 comdb2uuidstr(uuid, us), rrn, bdb_genid_to_host_order(genid));
@@ -7211,6 +7217,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     } break;
     case OSQL_CLRTBL: {
         if (logsb) {
+            uuidstr_t us;
             sbuf2printf(logsb, "[%llu %s] OSQL_CLRTBL %s\n", rqid,
                         comdb2uuidstr(uuid, us), iq->usedb->tablename);
             sbuf2flush(logsb);
@@ -7232,6 +7239,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         if (logsb) {
             int jj;
+            uuidstr_t us;
             sbuf2printf(logsb, "[%llu %s] OSQL_UPDCOLS %d [\n", rqid,
                         comdb2uuidstr(uuid, us), dt.ncols);
             for (jj = 0; jj < dt.ncols; jj++)
@@ -7317,6 +7325,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         pData = (uint8_t *)osqlcomm_index_type_get(&dt, p_buf, p_buf_end);
         if (logsb) {
             int jj = 0;
+            uuidstr_t us;
             sbuf2printf(logsb, "[%llu %s] %s ixnum %d [\n", rqid,
                         comdb2uuidstr(uuid, us), dt.ixnum,
                         isDelete ? "OSQL_DELIDX" : "OSQL_INSIDX");
@@ -7354,6 +7363,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         if (logsb) {
             int jj = 0;
+            uuidstr_t us;
             sbuf2printf(logsb, "[%llu %s] OSQL_QBLOB %d %d [\n", rqid,
                         comdb2uuidstr(uuid, us), dt.id, dt.bloblen);
             for (jj = 0; jj < dt.bloblen; jj++)
@@ -7445,6 +7455,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         rc = ix_check_genid(iq, trans, dt.genid, &bdberr);
 
         if (logsb) {
+            uuidstr_t us;
             sbuf2printf(logsb,
                         "[%llu %s] OSQL_RECGENID %llx (%llu) -> rc = %d\n",
                         rqid, comdb2uuidstr(uuid, us), lclgenid, lclgenid, rc);
@@ -7504,6 +7515,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                 lnode->func = func;
                 listc_abl(&iq->bpfunc_lst, lnode);
                 if (logsb) {
+                    uuidstr_t us;
                     sbuf2printf(logsb, "[%llu %s] OSQL_BPFUNC type %d\n", rqid,
                                 comdb2uuidstr(uuid, us), func->arg->type);
                     sbuf2flush(logsb);
@@ -7517,13 +7529,14 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         free(rpl);
         return rc;
     } break;
-    default:
-
+    default: {
+        uuidstr_t us;
         logmsg(LOGMSG_ERROR, "%s [%llu %s] RECEIVED AN UNKNOWN OFF OPCODE %u, "
                         "failing the transaction\n",
                 __func__, rqid, comdb2uuidstr(uuid, us), type);
 
         return conv_rc_sql2blkop(iq, step, -1, ERR_BADREQ, err, NULL, 0);
+    }
     }
 
     return 0;
