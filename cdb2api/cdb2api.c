@@ -825,7 +825,7 @@ static cdb2_ssl_sess_list cdb2_ssl_sess_cache;
 typedef struct cnonce {
     long hostid;
     int pid;
-    cdb2_hndl_tp *hndl;
+    struct cdb2_hndl *hndl;
     uint64_t seq;
 } cnonce_t;
 
