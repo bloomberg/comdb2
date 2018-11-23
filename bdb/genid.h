@@ -108,6 +108,6 @@ static inline int get_dtafile_from_genid(unsigned long long genid)
 }
 
 struct bdb_state_type;
-unsigned long long bdb_get_next_genid(struct bdb_state_type *bdb_state);
+unsigned long long bdb_get_next_genid(bdb_state_type *bdb_state);
 
 #endif

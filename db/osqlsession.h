@@ -95,6 +95,7 @@ struct osql_sess {
     char tablename[MAXTABLELEN]; // remember tablename in saveop for reordering
     unsigned long long
         last_genid; // rememberg updrec and insrec genid for qblobs
+    int stripeid; // stripe id for thread affinity for add_record()
     uint16_t tbl_idx;
     bool is_reorder_on : 1;
 };

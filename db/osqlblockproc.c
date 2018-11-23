@@ -643,6 +643,29 @@ const char *osql_reqtype_str(int type)
     return typestr[type];
 }
 
+/* get the next genid for table 'tablename'
+ * If we are NOT doing round robin stripes then we get the next genid 
+ * by using active stripe id
+ *
+ * If we are doing round robin, we need to use actual table handle
+ */
+static unsigned long long get_next_genid_for_table(osql_sess_t *sess)
+{
+    unsigned long long genid = 0;
+    if (likely(!bdb_attr_get(thedb->bdb_attr, BDB_ATTR_ROUND_ROBIN_STRIPES))) {
+        if (sess->stripeid < 0) { // initialized to -1
+            // will call bdb_stripe_done in saveop osql_done or cleanup of sess
+            sess->stripeid = bdb_stripe_get(thedb->bdb_env);
+        }
+        genid = bdb_get_next_genid(thedb->bdb_env);
+    } else {
+        struct dbtable *tbl = get_dbtable_by_name(sess->tablename);
+        if (tbl)
+            genid = bdb_get_next_genid(tbl->handle);
+    }
+    return genid;
+}
+
 void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
                        oplog_key_t *key)
 {
@@ -674,7 +697,7 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
         enum { OSQLCOMM_UUID_RPL_TYPE_LEN = 4 + 4 + 16 };
         unsigned long long genid = 0;
         if (type == OSQL_INSERT || type == OSQL_INSREC) {
-            genid = get_next_genid_for_table(sess->tablename);
+            genid = get_next_genid_for_table(sess);
             if (genid == 0) /* table not found so assign nonzero genid */
                 genid = -1;
 #if DEBUG_REORDER
@@ -762,7 +785,6 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     oplog_key_t key = {0};
     int bdberr;
     int debug = 0;
-    uuidstr_t us;
 
     if (type == OSQL_SCHEMACHANGE)
         iq->tranddl++;
@@ -773,6 +795,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         setup_reorder_key(type, sess, iq, rpl, &key);
     }
 #if DEBUG_REORDER
+    uuidstr_t us;
     DEBUGMSG("uuid=%s type=%d (%s) seq=%lld\n", comdb2uuidstr(uuid, us), type,
              osql_reqtype_str(type), sess->seq);
 #endif
@@ -789,7 +812,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     }
 
 #if DEBUG_REORDER
-    char mus[37];
+    uuidstr_t mus;
     comdb2uuidstr(uuid, mus);
     logmsg(LOGMSG_DEBUG,
            "%p:%s: rqid=%llx uuid=%s SAVING tp=%d(%s), tbl_idx=%d, stripe=%d, "
@@ -826,8 +849,14 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     // only OSQL_DONE_SNAP, OSQL_DONE, OSQL_DONE_STATS, and OSQL_XERR
     // are processed beyond this point
 
+    if (sess->stripeid >= 0) {
+        bdb_stripe_done(thedb->bdb_env);
+        sess->stripeid = -1;
+    }
+
     if (type != OSQL_XERR) { // if tran not aborted
         int numops = osql_get_replicant_numops(rpl, rqid == OSQL_RQID_USE_UUID);
+        uuidstr_t us;
         DEBUGMSG("uuid=%s type %s numops=%d, seq=%lld %s\n",
                  comdb2uuidstr(uuid, us), osql_reqtype_str(type), numops,
                  sess->seq, (numops != sess->seq + 1 ? "NO match" : ""));
@@ -1229,7 +1258,7 @@ static int process_this_session(
     while (!rc && !rc_out) {
         oplog_key_t *opkey = (oplog_key_t *)bdb_temp_table_key(dbc);
 #if DEBUG_REORDER
-        char mus[37];
+        uuidstr_t mus;
         comdb2uuidstr(uuid, mus);
         logmsg(LOGMSG_DEBUG,
                "REORDER: READ key rqid=%lld, uuid=%s, tbl_idx=%d, stripe=%d, "

@@ -822,18 +822,6 @@ struct dbtable *get_dbtable_by_name(const char *p_name)
     return p_db;
 }
 
-unsigned long long get_next_genid_for_table(const char *tablename)
-{
-    struct dbtable *tbl = NULL;
-    unsigned long long genid = 0;
-    Pthread_rwlock_rdlock(&thedb_lock);
-    tbl = hash_find_readonly(thedb->db_hash, &tablename);
-    if (tbl)
-        genid = bdb_get_next_genid(tbl->handle);
-    Pthread_rwlock_unlock(&thedb_lock);
-    return genid;
-}
-
 struct dbtable *getqueuebyname(const char *name)
 {
     return hash_find_readonly(thedb->qdb_hash, &name);

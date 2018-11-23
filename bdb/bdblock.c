@@ -812,7 +812,7 @@ static void delete_thread_lock_info(bdb_state_type *bdb_state)
     Pthread_setspecific(lock_key, NULL);
 }
 
-void bdb_stripe_get(bdb_state_type *bdb_state)
+int bdb_stripe_get(bdb_state_type *bdb_state)
 {
     size_t id;
     bdb_state_type *parent;
@@ -825,6 +825,7 @@ void bdb_stripe_get(bdb_state_type *bdb_state)
     id = get_threadid(parent);
 
     Pthread_setspecific(parent->tid_key, (void *)id);
+    return id;
 }
 
 void bdb_stripe_done(bdb_state_type *bdb_state)

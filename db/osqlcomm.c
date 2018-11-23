@@ -3919,11 +3919,11 @@ int osql_send_qblob(char *tohost, unsigned long long rqid, uuid_t uuid,
         "REORDER: putting blob id=%d, seq=%d, bloblen(datalen)=%d, sent=%d\n",
         blobid, seq, datalen, sent);
     if (datalen > 0) {
-        char *blah;
+        char *tmpstr;
         void hexdumpbuf(char *key, int keylen, char **buf);
-        hexdumpbuf(data, datalen, &blah);
+        hexdumpbuf(data, datalen, &tmpstr);
         logmsg(LOGMSG_DEBUG, "REORDER: hexdump datalen=%d blob='%s'\n", datalen,
-               blah);
+               tmpstr);
     }
 #endif
 
