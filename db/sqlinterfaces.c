@@ -2259,7 +2259,7 @@ void init_sql_hint_table()
     sql_hints = lrucache_init(sqlhint_hash, sqlhint_cmp, free,
                               offsetof(sql_hint_hash_entry_type, lnk),
                               offsetof(sql_hint_hash_entry_type, sql_hint),
-                              sizeof(char *), gbl_max_sql_hint_cache);
+                              sizeof(char *), gbl_max_sql_hint_cache, 0);
 }
 
 void reinit_sql_hint_table()
@@ -2288,7 +2288,7 @@ static void add_sql_hint_table(char *sql_hint, char *sql_str)
     Pthread_mutex_lock(&gbl_sql_lock);
     {
         if (lrucache_hasentry(sql_hints, &sql_hint) == 0) {
-            lrucache_add(sql_hints, entry);
+            lrucache_add(sql_hints, entry, 0);
         } else {
             free(entry);
             logmsg(LOGMSG_ERROR, "Client BUG: Two threads using same SQL tag.\n");

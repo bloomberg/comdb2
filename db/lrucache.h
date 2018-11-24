@@ -27,14 +27,18 @@ struct lrucache {
     int offset;
     int keyoff;
     int keysz;
+    int64_t size;
+    int64_t maxsize;
     listc_t lru;
     listc_t used;
 };
 
 struct lrucache_link {
     linkc_t lnk;
+    int size;
     int ref;
     int hits;
+    int invalid;
 };
 
 typedef struct lrucache lrucache;
@@ -42,16 +46,17 @@ typedef struct lrucache_link lrucache_link;
 
 struct lrucache *lrucache_init(hashfunc_t *hashfunc, cmpfunc_t *cmpfunc,
                                void (*freefunc)(void *), int offset, int keyoff,
-                               int keysz, int maxent);
+                               int keysz, int maxent, int64_t maxsize);
 void *lrucache_find(struct lrucache *cache, void *key);
 
 int lrucache_hasentry(struct lrucache *cache, void *key);
 
-void lrucache_add(struct lrucache *cache, void *item);
+void lrucache_add(struct lrucache *cache, void *item, int64_t size);
 void lrucache_destroy(struct lrucache *cache);
 void lrucache_foreach(struct lrucache *cache, void (*display)(void *, void *),
                       void *usrptr);
 void lrucache_set_maxent(struct lrucache *cache, int maxent);
 void lrucache_release(struct lrucache *cache, void *key);
+void lrucache_invalidate(struct lrucache *cache, void *key);
 
 #endif
