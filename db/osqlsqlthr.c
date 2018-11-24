@@ -735,7 +735,7 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
 
         /* if we're shaking really badly, back off */
         if (retries > 1)
-            usleep(retries * 10000); //sleep for a multiple of 10ms
+            usleep(retries * 10000); // sleep for a multiple of 10ms
 
         /* we need to check if we need bdb write lock here to prevent a master
            upgrade blockade */
@@ -744,9 +744,9 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
             if (sleepms > 1000)
                 sleepms = 1000;
 
-            logmsg(LOGMSG_ERROR, 
-                    "%s:%d bdb lock desired, recover deadlock with sleepms=%d\n",
-                    __func__, __LINE__, sleepms);
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d bdb lock desired, recover deadlock with sleepms=%d\n",
+                   __func__, __LINE__, sleepms);
 
             rc = recover_deadlock(thedb->bdb_env, thd, NULL, sleepms);
             if (rc != 0) {
@@ -759,8 +759,8 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
             logmsg(LOGMSG_DEBUG, "%s recovered deadlock (count %d)\n", __func__,
                    clnt->deadlock_recovered);
 
-            int max_dead_rec = bdb_attr_get(thedb->bdb_attr,
-                                            BDB_ATTR_SOSQL_MAX_DEADLOCK_RECOVERED);
+            int max_dead_rec = bdb_attr_get(
+                thedb->bdb_attr, BDB_ATTR_SOSQL_MAX_DEADLOCK_RECOVERED);
             if (clnt->deadlock_recovered > max_dead_rec) {
                 osql_unregister_sqlthr(clnt);
                 return ERR_RECOVER_DEADLOCK;
@@ -792,13 +792,14 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
                 return SQLITE_INTERNAL;
         }
 
-        rc = osql_sock_start(clnt, (clnt->dbtran.mode == TRANLEVEL_SOSQL)
-                                       ? OSQL_SOCK_REQ
-                                       : OSQL_RECOM_REQ,
+        rc = osql_sock_start(clnt,
+                             (clnt->dbtran.mode == TRANLEVEL_SOSQL)
+                                 ? OSQL_SOCK_REQ
+                                 : OSQL_RECOM_REQ,
                              keep_session);
         if (rc) {
-            sql_debug_logf(clnt, __func__, __LINE__, "osql_sock_start returns %d\n",
-                           rc);
+            sql_debug_logf(clnt, __func__, __LINE__,
+                           "osql_sock_start returns %d\n", rc);
             logmsg(LOGMSG_ERROR, "osql_sock_start error rc=%d, retries=%d\n",
                    rc, retries);
             continue;
@@ -807,7 +808,8 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
         /* process messages from cache */
         rc = osql_shadtbl_process(clnt, &sentops, &bdberr, 1);
         if (rc == SQLITE_TOOBIG) {
-            logmsg(LOGMSG_ERROR, "%s: transaction too big %d\n", __func__, sentops);
+            logmsg(LOGMSG_ERROR, "%s: transaction too big %d\n", __func__,
+                   sentops);
             return rc;
         }
         if (rc == ERR_SC) {
@@ -824,7 +826,7 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
             rc = 0;
 
         if (rc)
-            logmsg(LOGMSG_ERROR, 
+            logmsg(LOGMSG_ERROR,
                    "Error in restablishing sosql session, rc=%d, retries=%d\n",
                    rc, retries);
     } while (rc && retries < maxretries);
