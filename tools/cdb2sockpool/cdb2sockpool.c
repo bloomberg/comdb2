@@ -1126,7 +1126,7 @@ int main(int argc, char *argv[])
     extern int optind, optopt;
 
     int c;
-    int listenfd, dbnum;
+    int listenfd;
     struct sockaddr_un serv_addr;
 
     sigignore(SIGPIPE);

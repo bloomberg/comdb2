@@ -1775,7 +1775,6 @@ void comdb2getAnalyzeCoverage(Parse* pParse, Token *nm, Token *lnm)
 void comdb2CreateRangePartition(Parse *pParse, Token *nm, Token *col,
         ExprList* limits)
 {
-    sqlite3 *db = pParse->db;
     Vdbe *v  = sqlite3GetVdbe(pParse);
     char tblname[MAXTABLELEN];
 

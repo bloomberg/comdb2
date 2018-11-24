@@ -1142,7 +1142,7 @@ static int _cmp(dohsql_t *conns, int idx_a, int idx_b)
     int *order = conns->order;
     row_t *a, *b;
     int i;
-    int ret;
+    int ret = 0;
     int qc_a, qc_b;
 
     if (idx_a == idx_b)
