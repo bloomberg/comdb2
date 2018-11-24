@@ -3624,5 +3624,6 @@ extern int gbl_bpfunc_auth_gen;
 void plugin_run_periodically(void (*callback)(void), int seconds);
 
 extern int gbl_disable_tpsc_tblvers;
+int64_t gbl_result_cache_size;
 
 #endif /* !INCLUDED_COMDB2_H */
