@@ -134,6 +134,7 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
         return NULL; /* no group by */
     if (p->pSrc->nSrc > 1)
         return NULL; /* no joins */
+
     if (p->pPrior && p->op != TK_ALL)
         return NULL; /* only union all */
 
@@ -427,6 +428,24 @@ done:
     return node;
 }
 
+static int skip_tables(Select *p)
+{
+    int i;
+    int j;
+    char *ignored[] = {"comdb2_", "sqlite_", NULL};
+    int lens[] = {7, 7, 0};
+
+    for (i = 0; i < p->pSrc->nSrc; i++) {
+        j = 0;
+        while (ignored[j]) {
+            if (strncasecmp(p->pSrc->a[i].zName, ignored[j], lens[j]) == 0)
+                return 1;
+            j++;
+        }
+    }
+    return 0;
+}
+
 static dohsql_node_t *gen_select(Vdbe *v, Select *p)
 {
     Select *crt;
@@ -441,6 +460,10 @@ static dohsql_node_t *gen_select(Vdbe *v, Select *p)
         span++;
         /* only handle union all */
         if (crt->op != TK_SELECT && crt->op != TK_ALL)
+            not_recognized = 1;
+
+        /* skip certain tables */
+        if (skip_tables(crt))
             not_recognized = 1;
 
         crt = crt->pPrior;
@@ -587,11 +610,6 @@ int comdb2_check_parallel(Parse *pParse)
         return 0;
 
     node = (dohsql_node_t *)ast->stack[0].obj;
-
-    if (strstr(node->sql, "sqlite_"))
-        return 0;
-    if (strstr(node->sql, "comdb2_"))
-        return 0;
 
     if (pParse->explain && pParse->explain != 3)
         return 0;
