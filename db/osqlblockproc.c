@@ -644,7 +644,7 @@ const char *osql_reqtype_str(int type)
 }
 
 /* get the next genid for table 'tablename'
- * If we are NOT doing round robin stripes then we get the next genid 
+ * If we are NOT doing round robin stripes then we get the next genid
  * by using active stripe id
  *
  * If we are doing round robin, we need to use actual table handle
@@ -713,8 +713,7 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
         }
         sess->last_genid = genid;
         key->isrec = 1; // sort rec after qblobs
-        /* FALL THROUGH TO NEXT CASE */
-    }
+    } /* FALL THROUGH TO NEXT CASE */
     case OSQL_QBLOB:
     case OSQL_DELIDX:
     case OSQL_INSIDX:
@@ -734,7 +733,6 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
         break;
     }
 }
-
 
 static void send_error_to_replicant(int rqid, const char *host, int errval,
                                     const char *errstr)
