@@ -93,6 +93,7 @@ extern int n_commit_time;
 extern pthread_mutex_t commit_stat_lk;
 extern pthread_mutex_t osqlpf_mutex;
 extern int gbl_prefault_udp;
+extern int gbl_reorder_socksql_no_deadlock;
 
 #if 0
 #define BACKOUT                                                                \
@@ -2213,7 +2214,6 @@ static int toblock_outer(struct ireq *iq, block_state_t *blkstate)
             gotlk = 1;
         }
 
-        extern int gbl_reorder_socksql_no_deadlock;
         if (!gbl_reorder_socksql_no_deadlock)
             bdb_stripe_get(iq->dbenv->bdb_env);
 

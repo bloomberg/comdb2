@@ -120,7 +120,6 @@ int osql_close_session(struct ireq *iq, osql_sess_t **psess, int is_linked, cons
 
 static void _destroy_session(osql_sess_t **prq, int phase)
 {
-
     osql_sess_t *rq = *prq;
     uuidstr_t us;
 
