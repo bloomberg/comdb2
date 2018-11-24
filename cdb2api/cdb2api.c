@@ -2869,14 +2869,10 @@ int cdb2_close(cdb2_hndl_tp *hndl)
         hndl->commands = NULL;
     }
 
-    if (hndl->query)
-        free(hndl->query);
-
-    if (hndl->query_hint)
-        free(hndl->query_hint);
-
-    if (hndl->hint)
-        free(hndl->hint);
+    free(hndl->query);
+    free(hndl->query_hint);
+    free(hndl->hint);
+    free(hndl->sql);
 
     cdb2_clearbindings(hndl);
     cdb2_free_context_msgs(hndl);
@@ -2968,11 +2964,12 @@ int cdb2_run_statement(cdb2_hndl_tp *hndl, const char *sql)
 static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response,
                              char valid_hosts[][64], int *valid_ports,
                              int *master_node, int *num_valid_hosts,
-                             int *num_valid_sameroom_hosts
+                             int *num_valid_sameroom_hosts, int debug_trace
 #if WITH_SSL
-                             , peer_ssl_mode *s_mode
+                             ,
+                             peer_ssl_mode *s_mode
 #endif
-                             )
+)
 {
     if (log_calls)
         fprintf(stderr, "td %d %s:%d\n", (uint32_t)pthread_self(), __func__,
@@ -2983,6 +2980,20 @@ static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response,
         *num_valid_sameroom_hosts = 0;
     int myroom = 0;
     int i = 0;
+
+    if (debug_trace) {
+        /* Print a list of nodes received via dbinforesponse. */
+        fprintf(stderr, "dbinforesponse:\n%s (master)\n",
+                dbinfo_response->master->name);
+        for (i = 0; i < num_hosts; i++) {
+            CDB2DBINFORESPONSE__Nodeinfo *currnode = dbinfo_response->nodes[i];
+            if (strcmp(dbinfo_response->master->name, currnode->name) == 0) {
+                continue;
+            }
+            fprintf(stderr, "%s\n", currnode->name);
+        }
+    }
+
     for (i = 0; i < num_hosts; i++) {
         CDB2DBINFORESPONSE__Nodeinfo *currnode = dbinfo_response->nodes[i];
         if (!myroom) {
@@ -3111,12 +3122,12 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
             cdb2__dbinforesponse__unpack(NULL, len, hndl->first_buf);
         parse_dbresponse(dbinfo_response, hndl->hosts, hndl->ports,
                          &hndl->master, &hndl->num_hosts,
-                         &hndl->num_hosts_sameroom
+                         &hndl->num_hosts_sameroom, hndl->debug_trace
 #if WITH_SSL
                          ,
                          &hndl->s_sslmode
 #endif
-                         );
+        );
         cdb2__dbinforesponse__free_unpacked(dbinfo_response, NULL);
         debugprint("type=%d returning 1\n", type);
 
@@ -3676,7 +3687,6 @@ retry_queries:
 
     clear_responses(hndl);
 
-    hndl->sql = (char *)sql;
     hndl->ntypes = ntypes;
     hndl->types = types;
 
@@ -3688,6 +3698,12 @@ retry_queries:
             hndl->bindvars, ntypes, types, is_begin, 0, retries_done - 1,
             is_begin ? 0 : run_last, __LINE__);
     } else {
+        /* Latch the SQL only if we're in a SNAPSHOT HASQL txn. */
+        if (hndl->snapshot_file != 0) {
+            free(hndl->sql);
+            hndl->sql = strdup(sql);
+        }
+
         hndl->query_no += run_last;
         rc = cdb2_send_query(hndl, hndl->sb, hndl->dbname, (char *)sql, 0, 0,
                              NULL, hndl->n_bindvars, hndl->bindvars, ntypes,
@@ -3778,6 +3794,9 @@ read_record:
 
         /* Decrement retry counter: It is not a real retry. */
         --retries_done;
+        /* Resend client info (argv0, cheapstack and etc.)
+           over the SSL connection. */
+        hndl->sent_client_info = 0;
         GOTO_RETRY_QUERIES();
 #else
         sprintf(hndl->errstr, "%s: The database requires SSL connections.",
@@ -3796,12 +3815,13 @@ read_record:
         CDB2DBINFORESPONSE *dbinfo_resp = NULL;
         dbinfo_resp = cdb2__dbinforesponse__unpack(NULL, len, hndl->first_buf);
         parse_dbresponse(dbinfo_resp, hndl->hosts, hndl->ports, &hndl->master,
-                         &hndl->num_hosts, &hndl->num_hosts_sameroom
+                         &hndl->num_hosts, &hndl->num_hosts_sameroom,
+                         hndl->debug_trace
 #if WITH_SSL
                          ,
                          &hndl->s_sslmode
 #endif
-                         );
+        );
         cdb2__dbinforesponse__free_unpacked(dbinfo_resp, NULL);
 
         newsql_disconnect(hndl, hndl->sb, __LINE__);
@@ -4756,11 +4776,13 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
     }
 
     parse_dbresponse(dbinfo_response, valid_hosts, valid_ports, master_node,
-                     num_valid_hosts, num_valid_sameroom_hosts
+                     num_valid_hosts, num_valid_sameroom_hosts,
+                     hndl->debug_trace
 #if WITH_SSL
-                     , &hndl->s_sslmode
+                     ,
+                     &hndl->s_sslmode
 #endif
-                     );
+    );
 
     cdb2__dbinforesponse__free_unpacked(dbinfo_response, NULL);
 

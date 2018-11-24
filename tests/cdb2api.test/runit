@@ -35,5 +35,18 @@ for testreq in `ls t*.req` ; do
         exit 1
     fi
 done
+
+# This test checks that master host returned in dbinforesponse matches with
+# one in comdb2_cluster system table. List of nodes in dbinforesponse gets
+# printed to stderr in debug mode.
+master_host=$(CDB2_DEBUG=1 cdb2sql --tabs ${CDB2_OPTIONS} $dbname default "select host from comdb2_cluster where is_master='Y'" 2> cdb2_debug.log)
+master_host_dbinfo=$(cat cdb2_debug.log | grep "(master)" | cut -d' ' -f1)
+if [[ "${master_host}" == "${master_host_dbinfo}" ]] ; then
+    echo "passed"
+else
+    echo "failed .. master hosts do not match! expected: ${master_host}, got: ${master_host_dbinfo}"
+    exit 1
+fi
+
 echo
 exit 0

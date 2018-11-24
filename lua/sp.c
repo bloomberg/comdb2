@@ -1232,6 +1232,7 @@ static int disable_global_variables(lua_State *lua)
 static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
 {
     SP sp = getsp(lua);
+    struct sqlclntstate *clnt = sp->clnt;
     int rc = sqlite3_step(stmt);
 
     if (rc == SQLITE_DONE) {
@@ -1242,9 +1243,9 @@ static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
 
     lua_newtable(lua);
 
-    int ncols = sqlite3_column_count(stmt);
+    int ncols = column_count(clnt, stmt);
     for (int col = 0; col < ncols; col++) {
-        int type = sqlite3_column_type(stmt, col);
+        int type = column_type(clnt, stmt, col);
         switch (type) {
         case SQLITE_NULL: {
             int sqltype =
@@ -1253,24 +1254,24 @@ static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
             break;
         }
         case SQLITE_INTEGER: {
-            long long ival = sqlite3_column_int64(stmt, col);
+            long long ival = column_int64(clnt, stmt, col);
             luabb_pushinteger(lua, ival);
             break;
         }
         case SQLITE_FLOAT: {
-            double dval = sqlite3_column_double(stmt, col);
+            double dval = column_double(clnt, stmt, col);
             luabb_pushreal(lua, dval);
             break;
         }
         case SQLITE_TEXT: {
-            char *tval = (char *)sqlite3_column_text(stmt, col);
+            char *tval = (char *)column_text(clnt, stmt, col);
             luabb_pushcstring(lua, tval);
             break;
         }
         case SQLITE_DATETIME: {
             cdb2_client_datetime_t cdt;
             datetime_t datetime;
-            const dttz_t *dt = sqlite3_column_datetime(stmt, col);
+            const dttz_t *dt = column_datetime(clnt, stmt, col);
             dttz_to_client_datetime(dt, stmt_tzname(stmt), &cdt);
             client_datetime_to_datetime_t(&cdt, &datetime, 0);
             luabb_pushdatetime(lua, &datetime);
@@ -1279,7 +1280,7 @@ static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
         case SQLITE_DATETIMEUS: {
             cdb2_client_datetimeus_t cdt;
             datetime_t datetime;
-            const dttz_t *dt = sqlite3_column_datetime(stmt, col);
+            const dttz_t *dt = column_datetime(clnt, stmt, col);
             dttz_to_client_datetimeus(dt, stmt_tzname(stmt), &cdt);
             client_datetimeus_to_datetime_t(&cdt, &datetime, 0);
             luabb_pushdatetime(lua, &datetime);
@@ -1287,27 +1288,27 @@ static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
         }
         case SQLITE_BLOB: {
             blob_t blob;
-            blob.length = sqlite3_column_bytes(stmt, col);
-            blob.data = (char *)sqlite3_column_blob(stmt, col);
+            blob.length = column_bytes(clnt, stmt, col);
+            blob.data = (char *)column_blob(clnt, stmt, col);
             luabb_pushblob(lua, &blob);
             break;
         }
         case SQLITE_INTERVAL_YM: {
             const intv_t *val =
-                sqlite3_column_interval(stmt, col, SQLITE_AFF_INTV_MO);
+                column_interval(clnt, stmt, col, SQLITE_AFF_INTV_MO);
             luabb_pushintervalym(lua, val);
             break;
         }
         case SQLITE_INTERVAL_DSUS:
         case SQLITE_INTERVAL_DS: {
             const intv_t *val =
-                sqlite3_column_interval(stmt, col, SQLITE_AFF_INTV_SE);
+                column_interval(clnt, stmt, col, SQLITE_AFF_INTV_SE);
             luabb_pushintervalds(lua, val);
             break;
         }
         case SQLITE_DECIMAL: {
             const intv_t *val =
-                sqlite3_column_interval(stmt, col, SQLITE_AFF_DECIMAL);
+                column_interval(clnt, stmt, col, SQLITE_AFF_DECIMAL);
             luabb_pushdecimal(lua, &val->u.dec);
             break;
         }
@@ -2093,7 +2094,7 @@ static int luatable_emit(Lua L)
     SP sp = getsp(L);
     sqlite3_stmt *stmt = get_sqlrow_stmt(L);
     if (stmt) {
-        cols = sqlite3_column_count(stmt);
+        cols = column_count(NULL, stmt);
     } else if (sp->parent->ntypes) {
         push_clnt_cols(L, sp);
         lua_pop(L, 1);
@@ -3158,7 +3159,7 @@ static int dbstmt_emit(Lua L)
     no_stmt_chk(L, dbstmt);
     setup_first_sqlite_step(sp, dbstmt);
     sqlite3_stmt *stmt = dbstmt->stmt;
-    int cols = sqlite3_column_count(stmt);
+    int cols = column_count(NULL, stmt);
     int rc;
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
         if (l_send_back_row(L, stmt, cols) != 0) {

@@ -192,9 +192,6 @@ static long long get_num_rows_from_stat1(struct dbtable *tbldb)
     /* Grab the tag schema, or punt. */
     if (!(s = find_tag_schema(tbldb->tablename, ".ONDISK_ix_0"))) {
         /* This is not an error. This just means the table has no indexes. */
-        logmsg(LOGMSG_INFO, "%s: Could not retrieve the row count from stat1 "
-                            "because table \"%s\" has no indexes.\n",
-               __func__, tbldb->tablename);
         goto abort;
     }
 

@@ -1195,8 +1195,6 @@ void bdb_temp_table_reset_datapointers(struct temp_cursor *cur);
 
 void *bdb_temp_table_get_cur(struct temp_cursor *skippy);
 
-int bdb_reinit(bdb_state_type *bdb_state, tran_type *tran, int *bdberr);
-
 void bdb_get_cache_stats(bdb_state_type *bdb_state, uint64_t *hits,
                          uint64_t *misses, uint64_t *reads, uint64_t *writes,
                          uint64_t *thits, uint64_t *tmisses);

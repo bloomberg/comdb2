@@ -4583,7 +4583,6 @@ int osql_send_commit(char *tohost, unsigned long long rqid, uuid_t uuid,
                      snap_uid_t *snap_info)
 {
     osql_done_rpl_t rpl_ok = {0};
-
     osql_done_xerr_t rpl_xerr = {0};
     int b_sz;
     int used_malloc = 0;
@@ -4644,10 +4643,13 @@ int osql_send_commit(char *tohost, unsigned long long rqid, uuid_t uuid,
         rpl_ok.dt.nops = nops;
 
         if (logsb) {
-            sbuf2printf(logsb, "[%llu] send OSQL_DONE %d %d\n", rqid, rc, nops);
+            sbuf2printf(logsb, "[%llu] send commit %s %d %d\n", rqid,
+                        osql_reqtype_str(rpl_ok.hd.type), rc, nops);
             sbuf2flush(logsb);
         }
 
+        DEBUGMSG("[%llu] send %s rc = %d, nops = %d\n", rqid,
+                 osql_reqtype_str(rpl_ok.hd.type), rc, nops);
 #if 0
       printf("Sending rqid=%llu tmp=%llu\n", rqid, osql_log_time());
 #endif
@@ -4715,7 +4717,6 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
                              snap_uid_t *snap_info)
 {
     osql_done_uuid_rpl_t rpl_ok = {0};
-
     osql_done_xerr_uuid_t rpl_xerr = {0};
     int b_sz;
     int used_malloc = 0;
@@ -4777,20 +4778,20 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
             rpl_ok.dt.rc = SQLITE_DONE;
         rpl_ok.dt.nops = nops;
 
+        uuidstr_t us;
         if (logsb) {
-            uuidstr_t us;
-            sbuf2printf(logsb, "[%s] send OSQL_DONE %d %d\n",
-                        comdb2uuidstr(uuid, us), rc, nops);
+            sbuf2printf(logsb, "[%s] send %s %d %d\n", comdb2uuidstr(uuid, us),
+                        osql_reqtype_str(rpl_ok.hd.type), rc, nops);
             sbuf2flush(logsb);
         }
 
-#if 0
-      printf("Sending rqid=%llu tmp=%llu\n", rqid, osql_log_time());
-#endif
+        DEBUGMSG("uuid=%s send %s rc = %d, nops = %d\n",
+                 comdb2uuidstr(uuid, us), osql_reqtype_str(rpl_ok.hd.type), rc,
+                 nops);
 
         if (!(p_buf = osqlcomm_done_uuid_rpl_put(&rpl_ok, p_buf, p_buf_end))) {
             logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
-                    "osqlcomm_done_rpl_put");
+                   "osqlcomm_done_uuid_rpl_put");
             if (used_malloc)
                 free(buf);
             return -1;
@@ -4804,7 +4805,7 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
             if (!(p_buf =
                       client_query_stats_put(query_stats, p_buf, p_buf_end))) {
                 logmsg(LOGMSG_ERROR, "%s line %d:%s returns NULL\n", __func__,
-                        __LINE__, "osqlcomm_done_rpl_put");
+                       __LINE__, "client_query_stats_put");
                 if (used_malloc)
                     free(buf);
                 return -1;
@@ -4819,6 +4820,10 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
 
         memcpy(&rpl_xerr.dt, xerr, sizeof(rpl_xerr.dt));
 
+        uuidstr_t us;
+        DEBUGMSG("uuid=%llu send %s rc = %d, nops = %d\n",
+                 comdb2uuidstr(uuid, us), osql_reqtype_str(rpl_xerr.hd.type),
+                 rc, nops);
         if (!osqlcomm_done_xerr_uuid_type_put(&rpl_xerr, p_buf, p_buf_end)) {
             logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
                     "osqlcomm_done_xerr_type_put");
@@ -6641,6 +6646,18 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
     return 0;
 }
 
+/* get the number of blockops sent in the osql_done packet
+ */
+int osql_get_replicant_numops(const char *rpl, int has_uuid)
+{
+    uint8_t *p_buf = rpl;
+    p_buf += (has_uuid ? sizeof(osql_uuid_rpl_t) : sizeof(osql_rpl_t));
+    osql_done_t dt = {0};
+    const uint8_t *p_buf_end = p_buf + sizeof(osql_done_t);
+    osqlcomm_done_type_get(&dt, p_buf, p_buf_end);
+    return dt.nops;
+}
+
 /**
  * Handles each packet and calls record.c functions
  * to apply to received row updates
@@ -6661,7 +6678,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     const size_t tag_name_ondisk_len = 8 /*includes NUL*/;
     int type;
     unsigned long long id;
-    uuidstr_t us;
 
     if (rqid == OSQL_RQID_USE_UUID) {
         osql_uuid_rpl_t rpl;
@@ -6670,9 +6686,10 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         p_buf = osqlcomm_uuid_rpl_type_get(&rpl, p_buf, p_buf_end);
         type = rpl.type;
         id = OSQL_RQID_USE_UUID;
-        comdb2uuidstr(rpl.uuid, us);
         if (comdb2uuidcmp(rpl.uuid, uuid)) {
+            uuidstr_t us;
             uuidstr_t passedus;
+            comdb2uuidstr(rpl.uuid, us);
             comdb2uuidstr(uuid, passedus);
             logmsg(LOGMSG_FATAL, "uuid mismatch: passed in %s, in packet %s\n",
                     passedus, us);
@@ -6704,10 +6721,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     if (gbl_toblock_net_throttle && is_write_request(type))
         net_throttle_wait(thedb->handle_sibling);
 
-    const char *osql_reqtype_str(int type);
-
-    logmsg(LOGMSG_DEBUG, "osql_process_packet(): processing %s\n",
-           osql_reqtype_str(type));
+    DEBUGMSG("osql_process_packet(): processing %s (%d)\n",
+             osql_reqtype_str(type), type);
 
     switch (type) {
     case OSQL_DONE:
@@ -6719,6 +6734,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         p_buf = osqlcomm_done_type_get(&dt, p_buf, p_buf_end);
 
         if (logsb) {
+            uuidstr_t us;
             sbuf2printf(logsb, "[%llu %s] OSQL_DONE %d %d\n", rqid,
                         comdb2uuidstr(uuid, us), dt.nops, dt.rc);
             sbuf2flush(logsb);
@@ -6758,7 +6774,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         // TODO Notify all bpfunc of success
 
-        /* dt->nops carries the possible conversion error index */
+        /* dt.nops carries the possible conversion error index */
         rc = conv_rc_sql2blkop(iq, step, -1, dt.rc, err, NULL, dt.nops);
 
         if (type == OSQL_DONE_SNAP) {
@@ -6799,6 +6815,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         }
 
         if (logsb) {
+            uuidstr_t us;
             sbuf2printf(logsb, "[%llu %s] OSQL_USEDB %*.s\n", rqid,
                         comdb2uuidstr(uuid, us), dt.tablenamelen, tablename);
             sbuf2flush(logsb);
@@ -6880,6 +6897,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         if (logsb) {
             unsigned long long lclgenid = bdb_genid_to_host_order(dt.genid);
+            uuidstr_t us;
             sbuf2printf(logsb, "[%llu %s] %s %llx (2:%lld)\n", rqid,
                         comdb2uuidstr(uuid, us),
                         recv_dk ? "OSQL_DELETE" : "OSQL_DELREC", lclgenid,
@@ -6960,6 +6978,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         if (logsb) {
             int jj = 0;
+            uuidstr_t us;
             sbuf2printf(logsb, "[%llu %s] %s [\n", rqid,
                         comdb2uuidstr(uuid, us),
                         is_legacy ? "OSQL_INSREC" : "OSQL_INSERT");
@@ -7055,10 +7074,11 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                             "cur_gen %u, return verify error\n",
                             dt.start_gen, cur_gen);
             }
+            uuidstr_t us;
             logmsg(LOGMSG_DEBUG,
                    "[%llx %s] Startgen check failed, start_gen "
                    "%u, cur_gen %u\n",
-                   id, us, dt.start_gen, cur_gen);
+                   id, comdb2uuidstr(uuid, us), dt.start_gen, cur_gen);
             return ERR_VERIFY;
         }
     } break;
@@ -7087,6 +7107,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         if (logsb) {
             int jj = 0;
+            uuidstr_t us;
             sbuf2printf(
                 logsb, "[%llu %s] OSQL_UPDREC rrn = %d, genid = %llx[\n", rqid,
                 comdb2uuidstr(uuid, us), rrn, bdb_genid_to_host_order(genid));
@@ -7194,20 +7215,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         (*receivedrows)++;
     } break;
-    case OSQL_CLRTBL: {
-        if (logsb) {
-            sbuf2printf(logsb, "[%llu %s] OSQL_CLRTBL %s\n", rqid,
-                        comdb2uuidstr(uuid, us), iq->usedb->tablename);
-            sbuf2flush(logsb);
-        }
-
-        rc = reinit_db(iq->usedb);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "%s: reinit_db failed w/ rc = %d\n", __func__, rc);
-            return conv_rc_sql2blkop(iq, step, -1, rc, err, NULL, 0);
-        } else
-            logmsg(LOGMSG_INFO, "Cleared ok\n");
-    } break;
     case OSQL_UPDCOLS: {
         osql_updcols_t dt;
         const uint8_t *p_buf_end = p_buf + sizeof(osql_updcols_t);
@@ -7217,6 +7224,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         if (logsb) {
             int jj;
+            uuidstr_t us;
             sbuf2printf(logsb, "[%llu %s] OSQL_UPDCOLS %d [\n", rqid,
                         comdb2uuidstr(uuid, us), dt.ncols);
             for (jj = 0; jj < dt.ncols; jj++)
@@ -7302,6 +7310,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         pData = (uint8_t *)osqlcomm_index_type_get(&dt, p_buf, p_buf_end);
         if (logsb) {
             int jj = 0;
+            uuidstr_t us;
             sbuf2printf(logsb, "[%llu %s] %s ixnum %d [\n", rqid,
                         comdb2uuidstr(uuid, us), dt.ixnum,
                         isDelete ? "OSQL_DELIDX" : "OSQL_INSIDX");
@@ -7339,6 +7348,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         if (logsb) {
             int jj = 0;
+            uuidstr_t us;
             sbuf2printf(logsb, "[%llu %s] OSQL_QBLOB %d %d [\n", rqid,
                         comdb2uuidstr(uuid, us), dt.id, dt.bloblen);
             for (jj = 0; jj < dt.bloblen; jj++)
@@ -7430,6 +7440,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         rc = ix_check_genid(iq, trans, dt.genid, &bdberr);
 
         if (logsb) {
+            uuidstr_t us;
             sbuf2printf(logsb,
                         "[%llu %s] OSQL_RECGENID %llx (%llu) -> rc = %d\n",
                         rqid, comdb2uuidstr(uuid, us), lclgenid, lclgenid, rc);
@@ -7489,6 +7500,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                 lnode->func = func;
                 listc_abl(&iq->bpfunc_lst, lnode);
                 if (logsb) {
+                    uuidstr_t us;
                     sbuf2printf(logsb, "[%llu %s] OSQL_BPFUNC type %d\n", rqid,
                                 comdb2uuidstr(uuid, us), func->arg->type);
                     sbuf2flush(logsb);
@@ -7502,13 +7514,14 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         free(rpl);
         return rc;
     } break;
-    default:
-
+    default: {
+        uuidstr_t us;
         logmsg(LOGMSG_ERROR, "%s [%llu %s] RECEIVED AN UNKNOWN OFF OPCODE %u, "
                         "failing the transaction\n",
                 __func__, rqid, comdb2uuidstr(uuid, us), type);
 
         return conv_rc_sql2blkop(iq, step, -1, ERR_BADREQ, err, NULL, 0);
+    }
     }
 
     return 0;
@@ -7953,9 +7966,7 @@ int osql_comm_echo(char *tohost, int stream, unsigned long long *sent,
 }
 
 /**
- * Interprets each packet and log info
- * about it
- *
+ * Interprets each packet and log info about it
  */
 int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                     void *trans, char *msg, int msglen, int *flags,
@@ -8070,7 +8081,7 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     } break;
 
     case OSQL_STARTGEN: {
-        osql_startgen_t dt;
+        osql_startgen_t dt = {0};
         unsigned char *pData = NULL;
         uint8_t *p_buf_end;
         p_buf_end = p_buf + sizeof(osql_startgen_t);
@@ -8108,12 +8119,6 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         sbuf2printf(logsb, "\n] -> ");
         sbuf2printf(logsb, " %llx (%d:%lld)\n", lclgenid, rrn, lclgenid);
-    } break;
-
-    case OSQL_CLRTBL: {
-        sbuf2printf(logsb, "[%llx %s] OSQL_CLRTBL %s\n", id, us,
-                    iq->usedb->tablename);
-        sbuf2flush(logsb);
     } break;
 
     case OSQL_UPDCOLS: {
