@@ -1314,6 +1314,7 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
        for socksql, recom, snapisol and serial */
     if (!strncasecmp(clnt->sql, "begin", 5)) {
         clnt->snapshot = 0;
+        clnt->last_was_write = 1;
 
         /*fprintf(stderr, "got begin\n");*/
         if (clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS) {
@@ -1347,6 +1348,7 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
         }
     } else if (!strncasecmp(clnt->sql, "commit", 6)) {
         clnt->snapshot = 0;
+        clnt->last_was_write = 1;
 
         if (clnt->ctrl_sqlengine != SQLENG_INTRANS_STATE &&
             clnt->ctrl_sqlengine != SQLENG_STRT_STATE) {
@@ -1363,6 +1365,7 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
         }
     } else if (!strncasecmp(clnt->sql, "rollback", 8)) {
         clnt->snapshot = 0;
+        clnt->last_was_write = 1;
 
         if (clnt->ctrl_sqlengine != SQLENG_INTRANS_STATE &&
             clnt->ctrl_sqlengine != SQLENG_STRT_STATE)
