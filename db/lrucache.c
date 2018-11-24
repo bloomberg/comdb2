@@ -184,6 +184,7 @@ void lrucache_release(struct lrucache *cache, void *key)
 
         if (lent->invalid) {
             int ret = hash_del(cache->h, ent);
+            listc_rfl(&cache->lru, ent);
             if (ret == 0)
                 cache->freefunc(ent);
         }
@@ -233,6 +234,7 @@ void lrucache_invalidate(struct lrucache *cache, void *key) {
         // last user will delete on return
         if (lent->ref == 0) {
             int ret = hash_del(cache->h, ent);
+            listc_rfl(&cache->lru, ent);
             if (ret == 0)
                 cache->freefunc(ent);
         }

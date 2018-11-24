@@ -767,8 +767,10 @@ struct sqlclntstate {
     char* origin_host;
     LINKC_T(struct sqlclntstate) lnk;
 
+    // result cache
     LISTC_T(struct cached_response_fragment) response_fragments;
     int cached_response_size;
+    int last_was_write;
 };
 
 /* Query stats. */

@@ -2169,6 +2169,9 @@ static void init_lrucache(void) {
             20, 0, gbl_result_cache_size);
 }
 
+int64_t gbl_cached_sql_hits = 0;
+pthread_mutex_t rscachelk = PTHREAD_MUTEX_INITIALIZER;
+
 #define APPDATA ((struct newsql_appdata *)(clnt.appdata))
 static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 {
@@ -2349,15 +2352,23 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         clnt.sql = sql_query->sql_query;
         clnt.added_to_hist = 0;
 
+        logmsg(LOGMSG_DEBUG, "intrans %d sql %s\n", clnt.in_client_trans, sql_query->sql_query);
+
         struct cached_response *rsp = NULL;
-        if (gbl_result_cache_size) {
+        if (gbl_result_cache_size && !clnt.in_client_trans) {
             checksum_query(sql_query, query_checksum);
+            pthread_mutex_lock(&rscachelk);
             rsp = lrucache_find(cached_responses, query_checksum);
+            pthread_mutex_unlock(&rscachelk);
             if (rsp) {
-                printf("Response from cache\n");
+                logmsg(LOGMSG_DEBUG, "Response from cache\n");
                 sbuf2write(rsp->response, rsp->response_size, sb);
                 sbuf2flush(sb);
+                gbl_cached_sql_hits++;
                 query = read_newsql_query(dbenv, &clnt, sb);
+                pthread_mutex_lock(&rscachelk);
+                lrucache_release(cached_responses, rsp);
+                pthread_mutex_unlock(&rscachelk);
                 continue;
             }
         }
@@ -2500,9 +2511,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
         struct cached_response_fragment *f;
         char *p = NULL;
-        if (!rsp) {
+        if (!rsp && !clnt.last_was_write && !clnt.in_client_trans) {
             rsp = malloc(offsetof(struct cached_response, response) + clnt.cached_response_size);
-            assert(rsp);
             p = rsp->response;
             memcpy(rsp->request_checksum, query_checksum, 20);
             rsp->response_size  = clnt.cached_response_size;
@@ -2519,8 +2529,11 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
             f = listc_rtl(&clnt.response_fragments);
         }
         clnt.cached_response_size = 0;
-        if (rsp)
+        if (rsp) {
+            pthread_mutex_lock(&rscachelk);
             lrucache_add(cached_responses, rsp, offsetof(struct cached_response, response) + clnt.cached_response_size);
+            pthread_mutex_unlock(&rscachelk);
+        }
 
         query = read_newsql_query(dbenv, &clnt, sb);
     }
