@@ -440,7 +440,7 @@ bdb_osql_updix_rec(llog_undo_upd_ix_args *upd_ix, DB_LSN *lsn, int *bdberr)
     unsigned long long genid = upd_ix->oldgenid;
 
     if (flibc_ntohll(upd_ix->oldgenid) >= flibc_ntohll(upd_ix->newgenid)) {
-        logmsg(LOGMSG_FATAL, "Oldgenid %"PRIu64" >= negenid %"PRIu64"\n",
+        logmsg(LOGMSG_FATAL, "Oldgenid %" PRIu64 " >= negenid %" PRIu64 "\n",
                flibc_ntohll(upd_ix->oldgenid), flibc_ntohll(upd_ix->newgenid));
         abort();
     }
@@ -721,7 +721,7 @@ bdb_osql_updix_lk_rec(llog_undo_upd_ix_lk_args *upd_ix_lk, DB_LSN *lsn,
 
     if (flibc_ntohll(upd_ix_lk->oldgenid) >=
         flibc_ntohll(upd_ix_lk->newgenid)) {
-        logmsg(LOGMSG_FATAL, "Oldgenid %"PRIu64" >= negenid %"PRIu64"\n",
+        logmsg(LOGMSG_FATAL, "Oldgenid %" PRIu64 " >= negenid %" PRIu64 "\n",
                flibc_ntohll(upd_ix_lk->oldgenid),
                flibc_ntohll(upd_ix_lk->newgenid));
         abort();
