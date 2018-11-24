@@ -4849,14 +4849,22 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     int wrtimeoutsec, notimeout = disable_server_sql_timeouts();
     if (initial) {
         bzero(clnt, sizeof(*clnt));
+        listc_init(&clnt->response_fragments, offsetof(struct cached_response_fragment, lnk));
     }
     else {
-       clnt->sql_since_reset = 0;
-       clnt->num_resets++;
-       clnt->last_reset_time = comdb2_time_epoch();
-       clnt_change_state(clnt, CONNECTION_RESET);
-    }
+        clnt->sql_since_reset = 0;
+        clnt->num_resets++;
+        clnt->last_reset_time = comdb2_time_epoch();
+        clnt_change_state(clnt, CONNECTION_RESET);
 
+        struct cached_response_fragment *f;
+        f = listc_rtl(&clnt->response_fragments);
+        while (f) {
+            free(f);
+            f = listc_rtl(&clnt->response_fragments);
+        }
+    }
+    clnt->cached_response_size = 0;
     if (clnt->rawnodestats) {
         release_node_stats(clnt->argv0, clnt->stack, clnt->origin);
         clnt->rawnodestats = NULL;

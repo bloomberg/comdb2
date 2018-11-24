@@ -509,6 +509,12 @@ struct clnt_ddl_context {
 #define RECOVER_DEADLOCK_MAX_STACK 16348
 #endif
 
+struct cached_response_fragment {
+    LINKC_T(struct cached_response_fragment) lnk;
+    int sz;
+    uint8_t buf[1];
+};
+
 /* Client specific sql state */
 struct sqlclntstate {
     /* appsock plugin specific data */
@@ -760,6 +766,9 @@ struct sqlclntstate {
     int last_pid;
     char* origin_host;
     LINKC_T(struct sqlclntstate) lnk;
+
+    LISTC_T(struct cached_response_fragment) response_fragments;
+    int cached_response_size;
 };
 
 /* Query stats. */
