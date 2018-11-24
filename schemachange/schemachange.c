@@ -1004,7 +1004,6 @@ int add_schema_change_tables()
 int sc_timepart_add_table(const char *existingTableName,
                           const char *newTableName, struct errstat *xerr)
 {
-    bdb_state_type *bdb_state = thedb->bdb_env;
     struct schema_change_type sc = {0};
     char *schemabuf = NULL;
     struct dbtable *db;
@@ -1096,7 +1095,6 @@ error:
 
 int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
 {
-    bdb_state_type *bdb_state = thedb->bdb_env;
     struct schema_change_type sc = {0};
     struct dbtable *db;
     char *schemabuf = NULL;

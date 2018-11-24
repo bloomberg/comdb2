@@ -770,7 +770,7 @@ void flush_in_thread(struct dbtable *db, int consumern)
     Pthread_attr_init(&attr);
     PTHD_ATTR_SETDETACHED(attr, rc);
     if (rc) {
-        logmsg(LOGMSG_WARN, "%s:pthread_attr_setdetached", __func__, strerror(rc));
+        logmsg(LOGMSG_WARN, "%s:pthread_attr_setdetached %s", __func__, strerror(rc));
         Pthread_attr_destroy(&attr);
         return;
     }

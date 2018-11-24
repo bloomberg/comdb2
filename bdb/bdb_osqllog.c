@@ -440,7 +440,7 @@ bdb_osql_updix_rec(llog_undo_upd_ix_args *upd_ix, DB_LSN *lsn, int *bdberr)
     unsigned long long genid = upd_ix->oldgenid;
 
     if (flibc_ntohll(upd_ix->oldgenid) >= flibc_ntohll(upd_ix->newgenid)) {
-        logmsg(LOGMSG_FATAL, "Oldgenid %llx >= negenid %llx\n",
+        logmsg(LOGMSG_FATAL, "Oldgenid %"PRIu64" >= negenid %"PRIu64"\n",
                flibc_ntohll(upd_ix->oldgenid), flibc_ntohll(upd_ix->newgenid));
         abort();
     }
@@ -721,7 +721,7 @@ bdb_osql_updix_lk_rec(llog_undo_upd_ix_lk_args *upd_ix_lk, DB_LSN *lsn,
 
     if (flibc_ntohll(upd_ix_lk->oldgenid) >=
         flibc_ntohll(upd_ix_lk->newgenid)) {
-        logmsg(LOGMSG_FATAL, "Oldgenid %llx >= negenid %llx\n",
+        logmsg(LOGMSG_FATAL, "Oldgenid %"PRIu64" >= negenid %"PRIu64"\n",
                flibc_ntohll(upd_ix_lk->oldgenid),
                flibc_ntohll(upd_ix_lk->newgenid));
         abort();
@@ -996,8 +996,6 @@ int bdb_osql_log_destroy(bdb_osql_log_t *log)
  */
 int bdb_osql_log_register_clients(bdb_osql_log_t *log, int clients, int *bdberr)
 {
-    int rc = 0;
-
     *bdberr = 0;
     if (!log_repo) {
         *bdberr = BDBERR_BADARGS;
@@ -1290,7 +1288,7 @@ static int bdb_osql_log_apply_ll(bdb_state_type *bdb_state,
                 logmsg(LOGMSG_USER,
                        "INSERTED DT[%d:%d]:\n\tkeylen=%zu\n\tkey=\"",
                        rec->dbnum, tableid, sizeof(genid));
-                hexdump(LOGMSG_USER, (char *)&genid, sizeof(genid));
+                hexdump(LOGMSG_USER, (unsigned char *)&genid, sizeof(genid));
                 logmsg(LOGMSG_USER, "\"\n\tdatalen=%d\n\tdata=\"", dtalen);
                 hexdump(LOGMSG_USER, dta, dtalen);
                 logmsg(LOGMSG_USER, "\"\n");
@@ -1395,9 +1393,9 @@ static int bdb_osql_log_apply_ll(bdb_state_type *bdb_state,
                        rec->dbnum, tableid,
                        (bdb_state->ixdups[tableid]) ? "dupd" : "uniq",
                        newkeylen);
-                hexdump(LOGMSG_USER, newkey, newkeylen);
+                hexdump(LOGMSG_USER, (unsigned char *)newkey, newkeylen);
                 logmsg(LOGMSG_USER, "\"\n\tdatalen=%d\n\tdata=\"", use_datalen);
-                hexdump(LOGMSG_USER, use_data, use_datalen);
+                hexdump(LOGMSG_USER, (unsigned char *)use_data, use_datalen);
                 logmsg(LOGMSG_USER, "\"\n");
             }
 
@@ -3929,7 +3927,7 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
     case DB_llog_undo_upd_ix:
     case DB_llog_undo_upd_ix_lk: {
         int ix;
-        unsigned long long oldgenid, newgenid;
+        unsigned long long newgenid;
         DBT *key;
         int collattrlen;
         char *collattr;
@@ -3953,7 +3951,6 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
 
             ix = upd_ix_lk->ix;
             key = &upd_ix_lk->key;
-            oldgenid = upd_ix_lk->oldgenid;
             newgenid = upd_ix_lk->newgenid;
         } else {
             if (llog_dta) {
@@ -3968,7 +3965,6 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
 
             ix = upd_ix->ix;
             key = &upd_ix->key;
-            oldgenid = upd_ix->oldgenid;
             newgenid = upd_ix->newgenid;
         }
 

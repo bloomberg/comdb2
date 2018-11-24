@@ -104,11 +104,13 @@ static void
 free_ent(DB_ENV *dbenv, LC_CACHE_ENTRY * e)
 {
 	if (e && e->txnid) {
+#ifndef NDEBUG
 		LC_CACHE_ENTRY *fnd;
 
 		/* XXX remove this if you see it */
 		assert((fnd =
 			hash_find(dbenv->lc_cache.txnid_hash, &e->txnid)) == e);
+#endif
 		hash_del(dbenv->lc_cache.txnid_hash, e);
 		free_lsn_collection(dbenv, &e->lc);
 		e->txnid = 0;

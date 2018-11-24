@@ -5468,7 +5468,7 @@ __lock_list_parse_pglogs_int(dbenv, locker, flags, lock_mode, list, maxlsn,
 	DB_LOCK ret_lock;
 	DB_LOCK_ILOCK *lock;
 	DB_LOCKER *sh_locker;
-	DB_LOCKTAB *lt;
+	DB_LOCKTAB *lt = NULL;
 	DB_LOCKREGION *region;
 	db_pgno_t save_pgno;
 	u_int16_t npgno, size;
@@ -5618,7 +5618,7 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
 	DB_LOCK ret_lock;
 	DB_LOCK_ILOCK *lock;
 	DB_LOCKER *sh_locker;
-	DB_LOCKTAB *lt;
+	DB_LOCKTAB *lt = NULL;
 	DB_LOCKREGION *region;
 	db_pgno_t save_pgno;
 	u_int16_t npgno, size;
@@ -5971,10 +5971,9 @@ __lock_to_dbt(dbenv, lock, dbt)
 	DBT *dbt;
 {
 	int rc;
-	DB_LOCKTAB *lt = dbenv->lk_handle;
-	LOCKREGION(dbenv, lt);
+	LOCKREGION(dbenv, dbenv->lk_handle);
 	rc = __lock_to_dbt_unlocked(dbenv, lock, dbt);
-	UNLOCKREGION(dbenv, lt);
+	UNLOCKREGION(dbenv, dbenv->lk_handle);
 	return rc;
 }
 

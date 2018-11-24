@@ -7139,6 +7139,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             hash_add(iq->vfy_genid_hash, g);
         }
 
+#ifndef NDEBUG
         /* Sanity check the osql blob optimization. */
         if (*flags & OSQL_PROCESS_FLAGS_BLOB_OPTIMIZATION) {
             int ncols;
@@ -7156,6 +7157,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                 }
             }
         }
+#endif
 
         rc = upd_record(
             iq, trans, NULL, rrn, genid, tag_name_ondisk,
