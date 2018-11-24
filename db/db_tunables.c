@@ -21,6 +21,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <inttypes.h>
+
 #include "comdb2.h"
 #include "tunables.h"
 #include "logmsg.h"
@@ -1009,7 +1011,9 @@ oom_err:
 const char *tunable_type(comdb2_tunable_type type)
 {
     switch (type) {
-    case TUNABLE_INTEGER: return "INTEGER";
+    case TUNABLE_INTEGER: 
+    case TUNABLE_INT64:
+        return "INTEGER";
     case TUNABLE_DOUBLE: return "DOUBLE";
     case TUNABLE_BOOLEAN: return "BOOLEAN";
     case TUNABLE_STRING: return "STRING";
@@ -1036,7 +1040,7 @@ int register_db_tunables(struct dbenv *db)
     0           Success
     1           Failure
 */
-int parse_int(const char *value, int *num)
+int parse_int(const char *value, int64_t *num)
 {
     char *endptr;
 
@@ -1107,7 +1111,7 @@ int parse_double(const char *value, double *num)
 */
 static int parse_bool(const char *value, int *num)
 {
-    int n;
+    int64_t n;
 
     if (!(strncasecmp(value, "on", sizeof("on"))) ||
         !(strncasecmp(value, "yes", sizeof("yes")))) {
@@ -1177,12 +1181,19 @@ static comdb2_tunable_err update_tunable(comdb2_tunable *t, const char *value)
     assert(t);
 
     switch (t->type) {
-    case TUNABLE_INTEGER: {
-        int num;
+    case TUNABLE_INTEGER: 
+    case TUNABLE_INT64:
+        {
+        int64_t num;
         PARSE_TOKEN;
 
         if ((ret = parse_int(buf, &num))) {
             logmsg(LOGMSG_ERROR, "Invalid argument for '%s'.\n", t->name);
+            return TUNABLE_ERR_INVALID_VALUE;
+        }
+        if (t->type == TUNABLE_INTEGER && num > INT_MAX) {
+            logmsg(LOGMSG_ERROR,
+                    "invalid argument for '%s' (outside integer range).\n", t->name);
             return TUNABLE_ERR_INVALID_VALUE;
         }
 
@@ -1193,7 +1204,7 @@ static comdb2_tunable_err update_tunable(comdb2_tunable *t, const char *value)
         if ((t->flags & SIGNED) == 0) {
             if (((t->flags & NOZERO) != 0) && (num <= 0)) {
                 logmsg(LOGMSG_ERROR,
-                       "Invalid argument for '%s' (should be > 0).\n", t->name);
+                       "invalid argument for '%s' (should be > 0).\n", t->name);
                 return TUNABLE_ERR_INVALID_VALUE;
             } else if (num < 0) {
                 logmsg(LOGMSG_ERROR,
@@ -1213,11 +1224,13 @@ static comdb2_tunable_err update_tunable(comdb2_tunable *t, const char *value)
 
         if (t->update) {
             DO_UPDATE(t, &num);
-        } else {
+        } else if (t->type == TUNABLE_INTEGER) {
             *(int *)t->var = num;
+        } else if (t->type == TUNABLE_INT64) {
+            *(int64_t *)t->var = num;
         }
 
-        logmsg(LOGMSG_DEBUG, "Tunable '%s' set to %d\n", t->name, num);
+        logmsg(LOGMSG_DEBUG, "Tunable '%s' set to %"PRId64"\n", t->name, num);
         break;
     }
     case TUNABLE_DOUBLE: {
@@ -1420,7 +1433,7 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
           set for the tunable, in which case its ok.
         */
         if (((t->flags & NOARG) != 0) &&
-            ((t->type == TUNABLE_INTEGER) || (t->type == TUNABLE_BOOLEAN))) {
+            ((t->type == TUNABLE_INTEGER) || (t->type == TUNABLE_BOOLEAN) || (t->type == TUNABLE_INT64))) {
 
             strcpy(buf, "1");
 

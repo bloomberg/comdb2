@@ -3615,6 +3615,7 @@ extern int64_t gbl_temptable_create_reqs;
 extern int64_t gbl_temptable_spills;
 
 extern int gbl_disable_tpsc_tblvers;
+int64_t gbl_result_cache_size;
 
 extern int gbl_osql_odh_blob;
 extern int gbl_pbkdf2_iterations;

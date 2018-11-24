@@ -96,6 +96,7 @@ typedef enum {
 */
 typedef enum {
     TUNABLE_INTEGER,
+    TUNABLE_INT64,
     TUNABLE_DOUBLE,
     TUNABLE_BOOLEAN,
     TUNABLE_STRING,
