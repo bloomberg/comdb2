@@ -3833,6 +3833,11 @@ expr_code_doover:
         break;
       }
 
+      if (!(pDef->funcFlags & SQLITE_FUNC_CONSTANT)) {
+          extern void comdb2_results_not_cachable();
+          comdb2_results_not_cachable();
+      }
+
       /* Attempt a direct implementation of the built-in COALESCE() and
       ** IFNULL() functions.  This avoids unnecessary evaluation of
       ** arguments past the first non-NULL argument.

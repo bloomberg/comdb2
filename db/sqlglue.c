@@ -10764,6 +10764,13 @@ const char *comdb2_get_sql(void)
     return NULL;
 }
 
+void comdb2_results_not_cachable(void) {
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+
+    if (thd)
+        thd->clnt->last_was_write = 1;
+}
+
 int gbl_fdb_track_hints = 0;
 static void sqlite3BtreeCursorHint_Range(BtCursor *pCur, const Expr *pExpr)
 {
