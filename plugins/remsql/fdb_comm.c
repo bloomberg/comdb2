@@ -1569,8 +1569,6 @@ static const char *__tran_2_str(enum transaction_level lvl)
 
 void fdb_msg_print_message_uuid(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
 {
-    int rc;
-    int i;
     unsigned long long t = osql_log_time();
     uuidstr_t cus;
     uuidstr_t tus;
@@ -1724,8 +1722,6 @@ void fdb_msg_print_message_uuid(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
 
 void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
 {
-    int rc;
-    int i;
     unsigned long long t = osql_log_time();
     int isuuid;
     char prf[512];
@@ -2548,8 +2544,6 @@ int fdb_bend_cursor_close(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 {
     struct sqlclntstate *clnt = (arg) ? arg->clnt : NULL;
     char *cid = msg->cc.cid;
-    char *tid = msg->cc.tid;
-    int seq = msg->cc.seq;
     int rc;
 
     /* NOTE
@@ -2631,8 +2625,6 @@ int fdb_bend_send_row(SBUF2 *sb, fdb_msg_t *msg, char *cid,
 
 int fdb_bend_cursor_move(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 {
-    struct dbtable *db;
-    char *cid = msg->cm.cid;
     unsigned long long genid;
     int rc = 0;
     char *data;
@@ -3032,15 +3024,10 @@ int fdb_bend_update(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 int fdb_bend_index(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 {
     struct sqlclntstate *clnt = arg->clnt;
-    unsigned long long genid = msg->ix.genid;
     int is_delete = msg->ix.is_delete;
     int ixnum = msg->ix.ixnum;
     char *ix = msg->ix.ix;
     int ixlen = msg->ix.ixlen;
-    int rootpage = msg->ix.rootpage;
-    int version = msg->ix.version;
-    int seq = msg->ix.seq;
-    int rc;
 
     unsigned char *pIdx = NULL;
 
@@ -3276,7 +3263,6 @@ int fdb_bend_trans_commit(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 {
     char *tid = msg->tr.tid;
     enum transaction_level lvl = msg->tr.lvl;
-    int flags = msg->tr.flags;
     int seq = msg->tr.seq;
     int rc = 0, rc2;
     struct sqlclntstate *clnt = arg->clnt;
@@ -3315,7 +3301,6 @@ int fdb_bend_trans_rollback(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 {
     char *tid = msg->tr.tid;
     enum transaction_level lvl = msg->tr.lvl;
-    int flags = msg->tr.flags;
     int seq = msg->tr.seq;
     int rc = 0;
     struct sqlclntstate *clnt = arg->clnt;
@@ -3466,7 +3451,7 @@ int handle_remsql_request(comdb2_appsock_arg_t *arg)
     char line[128];
     int rc = FDB_NOERR;
     static uint64_t old = 0ULL;
-    uint64_t now;
+    uint64_t now = 0;
     uint64_t then;
 
     dbenv = arg->dbenv;
@@ -3623,10 +3608,11 @@ int handle_remtran_request(comdb2_appsock_arg_t *arg)
 
     done_sql_thread();
 
-    pthread_mutex_destroy(&svc_cb_arg.clnt->wait_mutex);
-    pthread_cond_destroy(&svc_cb_arg.clnt->wait_cond);
-    pthread_mutex_destroy(&svc_cb_arg.clnt->write_lock);
-    pthread_mutex_destroy(&svc_cb_arg.clnt->dtran_mtx);
+    Pthread_mutex_destroy(&svc_cb_arg.clnt->wait_mutex);
+    Pthread_cond_destroy(&svc_cb_arg.clnt->wait_cond);
+    Pthread_mutex_destroy(&svc_cb_arg.clnt->write_lock);
+    Pthread_cond_destroy(&svc_cb_arg.clnt->write_cond);
+    Pthread_mutex_destroy(&svc_cb_arg.clnt->dtran_mtx);
 
     free(svc_cb_arg.clnt);
     svc_cb_arg.clnt = NULL;

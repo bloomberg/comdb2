@@ -271,6 +271,14 @@ static void process_lrl(
                 makebasename(path);
                 makeabs(new_path, datadestdir, path);
                 line = "spfile " + new_path;
+            } else if(tok == "timepartitions") {
+                std::string path,new_path;
+                if(!(liness >> path)) {
+                    throw LRLError(filename, lineno, "missing timepartitions file");
+                }
+                makebasename(path);
+                makeabs(new_path, datadestdir, path);
+                line = "timepartitions " + new_path;
             } else if(tok == "cluster" && (liness >> tok)
                     && tok == "nodes" && strip_cluster_info) {
                 // Strip this line from the output.  Since this test above

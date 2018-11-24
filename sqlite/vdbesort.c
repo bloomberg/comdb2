@@ -1004,10 +1004,10 @@ int sqlite3VdbeSorterInit(
     }
 
     if( !sqlite3TempInMemory(db) ){
-      i64 mxCache;                /* Cache size in bytes*/
       u32 szPma = sqlite3GlobalConfig.szPma;
       pSorter->mnPmaSize = szPma * pgsz;
       /* COMDB2 MODIFICATION
+      i64 mxCache;                // Cache size in bytes
       mxCache = db->aDb[0].pSchema->cache_size;
       if( mxCache<0 ){
         // A negative cache-size value C indicates that the cache is abs(C)

@@ -783,7 +783,6 @@ static void partitionInfoFunc(
   int argc,
   sqlite3_value **argv
 ){
-  sqlite3      *db = sqlite3_context_db_handle(context);
   const char   *partition_name;
   const char   *option;
   char         *info;
@@ -2189,9 +2188,10 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(guid,               1, 0, 0, guidFromStrFunc  ),
     FUNCTION(guid_str,           1, 0, 0, guidFromByteFunc ),
     FUNCTION(nullif,             2, 0, 1, nullifFunc       ),
-#ifndef SQLITE_BUILDING_FOR_COMDB2
+//#ifndef SQLITE_BUILDING_FOR_COMDB2
     DFUNCTION(sqlite_version,    0, 0, 0, versionFunc      ),
     DFUNCTION(sqlite_source_id,  0, 0, 0, sourceidFunc     ),
+#ifndef SQLITE_BUILDING_FOR_COMDB2
     FUNCTION(sqlite_log,         2, 0, 0, errlogFunc       ),
     VFUNCTION(last_insert_rowid, 0, 0, 0, last_insert_rowid),
     VFUNCTION(changes,           0, 0, 0, changes          ),

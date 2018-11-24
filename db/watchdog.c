@@ -90,7 +90,7 @@ static void *dummy_thread(void *arg) { return NULL; }
 
 static int gbl_watchdog_kill_time;
 static pthread_t gbl_watchdog_kill_tid;
-static pthread_mutex_t gbl_watchdog_kill_mutex;
+static pthread_mutex_t gbl_watchdog_kill_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static int gbl_nowatch = 1; /* start off disabled */
 static int gbl_watchdog_time; /* last timestamp when things were ok */
@@ -101,33 +101,33 @@ extern pthread_attr_t gbl_pthread_attr;
 
 void watchdog_set_alarm(int seconds)
 {
-    pthread_mutex_lock(&gbl_watchdog_kill_mutex);
+    Pthread_mutex_lock(&gbl_watchdog_kill_mutex);
 
     /* if theres already an alarm, leave it alone */
     if (gbl_watchdog_kill_time) {
-        pthread_mutex_unlock(&gbl_watchdog_kill_mutex);
+        Pthread_mutex_unlock(&gbl_watchdog_kill_mutex);
         return;
     }
 
     gbl_watchdog_kill_time = comdb2_time_epoch() + seconds;
     gbl_watchdog_kill_tid = pthread_self();
 
-    pthread_mutex_unlock(&gbl_watchdog_kill_mutex);
+    Pthread_mutex_unlock(&gbl_watchdog_kill_mutex);
 }
 
 void watchdog_cancel_alarm(void)
 {
-    pthread_mutex_lock(&gbl_watchdog_kill_mutex);
+    Pthread_mutex_lock(&gbl_watchdog_kill_mutex);
 
     /* if no alarm is set, its an error */
     if (!gbl_watchdog_kill_time) {
-        pthread_mutex_unlock(&gbl_watchdog_kill_mutex);
+        Pthread_mutex_unlock(&gbl_watchdog_kill_mutex);
         return;
     }
 
     /* if the currently set alarm isnt ours, leave it alone */
     if (gbl_watchdog_kill_tid != pthread_self()) {
-        pthread_mutex_unlock(&gbl_watchdog_kill_mutex);
+        Pthread_mutex_unlock(&gbl_watchdog_kill_mutex);
         return;
     }
 
@@ -135,7 +135,7 @@ void watchdog_cancel_alarm(void)
     gbl_watchdog_kill_tid = 0;
     gbl_watchdog_kill_time = 0;
 
-    pthread_mutex_unlock(&gbl_watchdog_kill_mutex);
+    Pthread_mutex_unlock(&gbl_watchdog_kill_mutex);
 }
 
 int gbl_epoch_time; /* db has been up gbl_epoch_time - gbl_starttime seconds */
@@ -157,13 +157,9 @@ static void *watchdog_thread(void *arg)
     uint64_t master_lastlsnbytes = 0, master_curlsnbytes;
     int sockpool_timeout;
 
-    rc = pthread_mutex_init(&gbl_watchdog_kill_mutex, NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "pthread_mutex_init gbl_watchdog_kill_mutex failed\n");
-        exit(1);
-    }
+    Pthread_mutex_init(&gbl_watchdog_kill_mutex, NULL);
 
-    pthread_attr_init(&gbl_pthread_joinable_attr);
+    Pthread_attr_init(&gbl_pthread_joinable_attr);
     pthread_attr_setstacksize(&gbl_pthread_joinable_attr, DEFAULT_THD_STACKSZ);
     pthread_attr_setdetachstate(&gbl_pthread_joinable_attr,
                                 PTHREAD_CREATE_JOINABLE);
@@ -452,7 +448,7 @@ void create_watchdog_thread(struct dbenv *dbenv)
     int rc;
     pthread_attr_t attr;
 
-    pthread_attr_init(&attr);
+    Pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
     /* HP needs more stack space to call AttachCurrentThread:
@@ -475,5 +471,5 @@ void create_watchdog_thread(struct dbenv *dbenv)
                " rc %d err %s\n",
                rc, strerror(rc));
 
-    pthread_attr_destroy(&attr);
+    Pthread_attr_destroy(&attr);
 }

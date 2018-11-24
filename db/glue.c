@@ -82,7 +82,6 @@
 
 #include "rtcpu.h"
 
-#include <alloca.h>
 #include <intern_strings.h>
 #include "debug_switches.h"
 #include <trigger.h>
@@ -281,7 +280,6 @@ static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
 {
     int bdberr;
     void *bdb_handle = bdb_handle_from_ireq(iq);
-    struct dbenv *dbenv = dbenv_from_ireq(iq);
     int rc = 0;
     tran_type *physical_tran = NULL;
     iq->gluewhere = "bdb_tran_begin";
@@ -320,6 +318,7 @@ static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
          * Once we're inside a transaction we hold the bdb read lock
          * until we've committed or aborted so no need to worry about this
          * later on. */
+        /* struct dbenv *dbenv = dbenv_from_ireq(iq); */
         if (bdberr == BDBERR_READONLY /*&& dbenv->master!=gbl_mynode*/) {
             /* return NOMASTER so client retries. */
             return ERR_NOMASTER;
@@ -732,7 +731,7 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
                             void *blkseq, int blklen, void *blkkey,
                             int blkkeylen)
 {
-    int rc, rc2;
+    int rc;
     db_seqnum_type ss;
     char *cnonce = NULL;
     int cn_len;
@@ -799,7 +798,7 @@ int trans_commit_adaptive(struct ireq *iq, void *trans, char *source_host)
 int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen,
                         void *seqkey, int seqkeylen)
 {
-    int bdberr, rc = 0, *file;
+    int bdberr, rc = 0;
     void *bdb_handle = bdb_handle_from_ireq(iq);
     struct dbenv *dbenv = dbenv_from_ireq(iq);
     db_seqnum_type ss;
@@ -819,7 +818,7 @@ int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen,
     }
 
     /* Single phy-txn logical aborts will set ss to 0: check before waiting */
-    file = (u_int32_t *)&ss;
+    u_int32_t *file = (u_int32_t *)&ss;
     if (*file != 0) {
         trans_wait_for_seqnum_int(bdb_handle, dbenv, iq, gbl_mynode,
                                   -1 /* timeoutms */, 1 /* adaptive */, &ss);
@@ -3081,42 +3080,13 @@ static int nodeup_callback(void *bdb_handle, const char *host)
     return is_node_up(host);
 }
 
-static char *tcmtest_routecpu_down_node = 0;
-
-void tcmtest_routecpu_set_down_node(char *n) { tcmtest_routecpu_down_node = n; }
-
 int is_node_up(const char *host)
 {
-    int rc;
-
-    if (gbl_rtcpu_debug && CLASS_TEST == get_mach_class(gbl_mynode)) {
-        /* For debugging rtcpu problems use an "alternative" rtcpu system.
-         * Basically look for a file in /bbsrc/db/comdb2/rtcpu - if a file
-         * for the node exists, then it is considered rt'd off. */
-        char path[64];
-        struct stat st;
-        int nodeup = 1;
-        snprintf0(path, sizeof(path), "/bbsrc/db/comdb2/rtcpu/%s", host);
-        errno = 0;
-        stat(path, &st);
-        if (errno == 0)
-            nodeup = 0;
-        else if (errno != ENOENT)
-            logmsg(LOGMSG_ERROR, "nodeup_callback: %s: %s\n", path, strerror(errno));
-        return nodeup;
-    }
-
-    if ((tcmtest_routecpu_down_node > 0) &&
-        (host == tcmtest_routecpu_down_node)) {
-        /* keep chatty if we're forcing a node down to debug something */
-        logmsg(LOGMSG_WARN, "%s returning bad-rcode for tcm-test node %s\n",
-                __func__, host);
+    extern char *tcmtest_routecpu_down_node;
+    if (host == tcmtest_routecpu_down_node) {
         return 0;
     }
-
-    rc = machine_is_up(host);
-    return (rc == 1);
-    /*rc could be -1 which means bad node, just return down in that case */
+    return machine_is_up(host);
 }
 
 /* callback to set dynamically configurable election settings */
@@ -3484,7 +3454,6 @@ void net_javasp_op(void *hndl, void *uptr, char *fromnode, int usertype,
 {
     struct new_procedure_op_msg *msg = dtap;
     char *name;
-    char *jarfile;
     char *param;
     char *ptr;
     int rc;
@@ -4175,9 +4144,8 @@ void get_disable_skipscan_all()
 int backend_open(struct dbenv *dbenv)
 {
     int bdberr, ii;
-    struct dbtable *db;
+    struct dbtable *db = NULL;
     int rc;
-    struct deferred_berkdb_option *opt;
 
     /* open tables */
     for (ii = 0; ii < dbenv->num_dbs; ii++) {
@@ -5597,69 +5565,6 @@ retry:
     return rc;
 }
 
-int reinit_db(struct dbtable *db)
-{
-    int rc, bdberr;
-    void *bdb_handle;
-    int retries = 0;
-    tran_type *trans;
-    struct ireq iq = {0};
-
-    bdb_handle = get_bdb_handle(db, AUXDB_NONE);
-    if (!bdb_handle)
-        return ERR_NO_AUXDB;
-    iq.is_fake = 1;
-    iq.usedb = db;
-
-/*stop_threads(db->dbenv);*/
-
-retry:
-    rc = trans_start(&iq, NULL, &trans);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "tran_start failed, rc=%d\n", rc); /* shouldn't happen */
-        rc = ERR_INTERNAL;
-        goto done;
-    }
-    rc = bdb_reinit(bdb_handle, trans, &bdberr);
-    if (bdberr == RC_INTERNAL_RETRY) {
-        if (retries > 9999999) {
-            logmsg(LOGMSG_ERROR, "*ERROR*) bdb_reinit too much contention %d count %d\n",
-                   bdberr, retries);
-            rc = ERR_INTERNAL;
-            goto done;
-        }
-        retries++;
-        rc = trans_abort(&iq, trans);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "tran_abort failed, rc=%d\n", rc); /* shouldn't happen */
-            rc = ERR_INTERNAL;
-            goto done;
-        }
-        goto retry;
-    } else if (rc) {
-        int rc2;
-        logmsg(LOGMSG_ERROR, "reinit_db %s error %d\n", db->tablename, bdberr);
-        rc2 = trans_abort(&iq, trans);
-        if (rc2) {
-            logmsg(LOGMSG_ERROR, "tran_abort failed, rc=%d\n", rc2); /* shouldn't happen */
-            rc = ERR_INTERNAL;
-            goto done;
-        }
-        goto done;
-    }
-    /* wait for 5 minutes for this to complete... */
-    rc = trans_commit_timeout(&iq, trans, gbl_mynode, 5 * 60 * 1000);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "tran_commit failed, rc=%d\n", rc); /* shouldn't happen */
-        rc = ERR_INTERNAL;
-        goto done;
-    }
-
-done:
-    /*resume_threads(db->dbenv);*/
-    return rc;
-}
-
 int count_db(struct dbtable *db)
 {
     int bdberr;
@@ -6323,7 +6228,6 @@ int table_version_set(tran_type *tran, const char *tablename,
                       unsigned long long version)
 {
     struct dbtable *db;
-    unsigned long long ret;
     int rc;
     int bdberr = 0;
 

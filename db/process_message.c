@@ -597,13 +597,13 @@ void bdb_newsi_mempool_stat();
 static pthread_mutex_t exiting_lock = PTHREAD_MUTEX_INITIALIZER;
 static void *clean_exit_thd(void *unused)
 {
-    pthread_mutex_lock(&exiting_lock);
+    Pthread_mutex_lock(&exiting_lock);
     if (gbl_exit) {
-        pthread_mutex_unlock(&exiting_lock);
+        Pthread_mutex_unlock(&exiting_lock);
         return NULL;
     }
     gbl_exit = 1;
-    pthread_mutex_unlock(&exiting_lock);
+    Pthread_mutex_unlock(&exiting_lock);
 
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
     clean_exit();
@@ -613,8 +613,7 @@ static void *clean_exit_thd(void *unused)
 int process_command(struct dbenv *dbenv, char *line, int lline, int st)
 {
     char *tok;
-    int ltok, tst, ntok, stsav = st, llinesav = lline;
-    int i = 0;
+    int ltok, stsav = st, llinesav = lline;
     int rc = 0;
     int start_st = st;
 
@@ -641,7 +640,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         pthread_t thread_id;
         pthread_attr_t thd_attr;
 
-        pthread_attr_init(&thd_attr);
+        Pthread_attr_init(&thd_attr);
         pthread_attr_setstacksize(&thd_attr, 4 * 1024); /* 4K */
         pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
 
@@ -1757,8 +1756,17 @@ clipper_usage:
             ssl_stats();
 #endif
         } else {
-            logmsg(LOGMSG_ERROR, "bad stat command\n");
-            print_help_page(HELP_STAT);
+            int rc = 1;
+            struct message_handler *h;
+            LISTC_FOR_EACH(&dbenv->message_handlers, h, lnk) {
+                if ((rc = h->handle(dbenv, line + start_st)) == 0) {
+                    break;
+                }
+            }
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "bad stat command\n");
+                print_help_page(HELP_STAT);
+            }
         }
     } else if (tokcmp(tok, ltok, "on") == 0) {
         change_switch(1, line, lline, st);
@@ -2114,7 +2122,6 @@ clipper_usage:
 
     } else if (tokcmp(tok, ltok, "delbthash") == 0) {
         char table[MAXTABLELEN];
-        int szkb;
         if (thedb->master != gbl_mynode) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
             return -1;
@@ -2153,8 +2160,6 @@ clipper_usage:
 
     } else if (tokcmp(tok, ltok, "bthashstat") == 0) {
         char table[MAXTABLELEN];
-        int szkb;
-
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR, "Expected db name\n");
@@ -2171,8 +2176,6 @@ clipper_usage:
         stat_bt_hash_table(table);
     } else if (tokcmp(tok, ltok, "clearbthashstat") == 0) {
         char table[MAXTABLELEN];
-        int szkb;
-
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR, "Expected db name\n");
@@ -2187,14 +2190,13 @@ clipper_usage:
         tokcpy(tok, ltok, table);
 
         stat_bt_hash_table_reset(table);
-    } else if (tokcmp(tok, ltok, "fastinit") == 0) {
-        char fname[128];
+    } else if (tokcmp(tok, ltok, "fastinit") == 0 ||
+               tokcmp(tok, ltok, "reinit") == 0) {
         char table[MAXTABLELEN];
         if (thedb->master != gbl_mynode) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
             return -1;
         }
-
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR, "Expected db name\n");
@@ -2205,23 +2207,7 @@ clipper_usage:
                    MAXTABLELEN - 1);
             return -1;
         }
-
         tokcpy(tok, ltok, table);
-
-        /*
-           tok=segtok(line,lline,&st,&ltok);
-           if (ltok == 0) {
-           printf("Expected schema file\n");
-           return -1;
-           }
-           if (ltok >= sizeof(fname) - 1) {
-           printf("Invalid file name: too long (max %d)\n", sizeof(fname) - 1);
-           return -1;
-           }
-           tokcpy(tok, ltok, fname);
-         */
-
-        /* and here we go... */
         rc = fastinit_table(dbenv, table);
         if (rc != 0) {
             if (rc == -99)
@@ -2451,9 +2437,6 @@ clipper_usage:
     }
 
     else if (tokcmp(tok, ltok, "llmeta") == 0) {
-        char table[MAXTABLELEN];
-        char user[17];
-        char password[17];
         int rc;
         int bdberr;
 
@@ -2479,31 +2462,6 @@ clipper_usage:
                tokcmp(tok, ltok, "clrpol") == 0 ||
                tokcmp(tok, ltok, "setclass") == 0) {
         process_allow_command(line + stsav, llinesav - stsav);
-    } else if (tokcmp(tok, ltok, "reinit") == 0) {
-        struct dbtable *db;
-        char dbname[100];
-
-        if (gbl_mynode != thedb->master) {
-            logmsg(LOGMSG_ERROR, "Please run reinit on master\n");
-            return -1;
-        }
-
-        tok = segtok(line, lline, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "usage: reinit tablename\n");
-            return -1;
-        }
-        tokcpy(tok, ltok, dbname);
-        db = get_dbtable_by_name(dbname);
-        if (db == NULL) {
-            logmsg(LOGMSG_ERROR, "No such db %s\n", dbname);
-        } else {
-            rc = reinit_db(db);
-            if (rc)
-                logmsg(LOGMSG_ERROR, "reinit %s failed rc %d\n", dbname, rc);
-            else
-                logmsg(LOGMSG_USER, "reinit %s ok\n", dbname);
-        }
     } else if (tokcmp(tok, ltok, "fastcount") == 0) {
         struct dbtable *db;
         char dbname[100];
@@ -2604,7 +2562,6 @@ clipper_usage:
         }
 
     } else if (tokcmp(tok, ltok, "osqlecho") == 0) {
-        int tonode;
         int stream;
         unsigned long long *sent;
         unsigned long long *replied;
@@ -2886,7 +2843,6 @@ clipper_usage:
             headroom = toknum(tok, ltok);
             analyze_set_headroom(headroom);
         } else if (tokcmp(tok, ltok, "backout") == 0) {
-            int maxtd = 0;
             tok = segtok(line, lline, &st, &ltok);
             char * table = NULL;
             if (ltok > 0) 
@@ -3950,11 +3906,11 @@ clipper_usage:
         int i;
         int start, end;
 
-        pthread_mutex_init(&lk, NULL);
+        Pthread_mutex_init(&lk, NULL);
         start = comdb2_time_epochms();
         for (i = 0; i < 100000000; i++) {
-            pthread_mutex_lock(&lk);
-            pthread_mutex_unlock(&lk);
+            Pthread_mutex_lock(&lk);
+            Pthread_mutex_unlock(&lk);
         }
         end = comdb2_time_epochms();
 
@@ -4208,16 +4164,17 @@ clipper_usage:
             logmsg(LOGMSG_USER, "DDLK generator turned off\n");
         }
     } else if (tokcmp(tok, ltok, "locktest") == 0) {
-        pthread_mutex_lock(&testguard);
+        Pthread_mutex_lock(&testguard);
         bdb_locktest(thedb->bdb_env);
-        pthread_mutex_unlock(&testguard);
+        Pthread_mutex_unlock(&testguard);
     } else if (tokcmp(tok, ltok, "berkdelay") == 0) {
         uint32_t commit_delay_ms = 0;
         tok = segtok(line, lline, &st, &ltok);
         if (ltok > 0) {
             commit_delay_ms = toknum(tok, ltok);
-            pthread_mutex_lock(&testguard);
-            pthread_mutex_unlock(&testguard);
+            Pthread_mutex_lock(&testguard);
+            bdb_berktest_commit_delay(commit_delay_ms);
+            Pthread_mutex_unlock(&testguard);
         } else {
             logmsg(LOGMSG_USER, "berkdelay requires commit-delay-ms argument\n");
         }
@@ -4226,12 +4183,12 @@ clipper_usage:
         tok = segtok(line, lline, &st, &ltok);
         if (ltok > 0)
             txnsize = toknum(tok, ltok);
-        pthread_mutex_lock(&testguard);
+        Pthread_mutex_lock(&testguard);
         if (txnsize <= 0)
             bdb_berktest_multi(thedb->bdb_env);
         else
             bdb_berktest(thedb->bdb_env, txnsize);
-        pthread_mutex_unlock(&testguard);
+        Pthread_mutex_unlock(&testguard);
     } else if (tokcmp(tok, ltok, "dump_ltran_list") == 0) {
         bdb_dump_logical_tranlist(thedb->bdb_env, stderr);
     } else if (tokcmp(tok, ltok, "clear_rowlocks_stats") == 0) {
@@ -4320,9 +4277,9 @@ clipper_usage:
             logmsg(LOGMSG_ERROR, 
                    "commit_bench requires txn-count & iters-per-txn count\n");
         } else {
-            pthread_mutex_lock(&testguard);
+            Pthread_mutex_lock(&testguard);
             commit_bench(thedb->bdb_env, tcnt, cnt);
-            pthread_mutex_unlock(&testguard);
+            Pthread_mutex_unlock(&testguard);
         }
     } else if (tokcmp(tok, ltok, "rowlocks_bench") == 0) {
         int lcnt = 0;
@@ -4341,9 +4298,9 @@ clipper_usage:
         } else if (lcnt <= 0 || pcnt <= 0) {
             logmsg(LOGMSG_ERROR, "rowlocks_bench requires ltxn-count & ptxn-count\n");
         } else {
-            pthread_mutex_lock(&testguard);
+            Pthread_mutex_lock(&testguard);
             rowlocks_bench(thedb->bdb_env, lcnt, pcnt);
-            pthread_mutex_unlock(&testguard);
+            Pthread_mutex_unlock(&testguard);
         }
     } else if (tokcmp(tok, ltok, "rowlocks_lock1_bench") == 0) {
         int lcnt = 0;
@@ -4364,9 +4321,9 @@ clipper_usage:
         } else if (lcnt <= 0 || pcnt <= 0) {
             logmsg(LOGMSG_ERROR, "rowlocks_lock1_bench requires ltxn-count & ptxn-count\n");
         } else {
-            pthread_mutex_lock(&testguard);
+            Pthread_mutex_lock(&testguard);
             rowlocks_lock1_bench(thedb->bdb_env, lcnt, pcnt);
-            pthread_mutex_unlock(&testguard);
+            Pthread_mutex_unlock(&testguard);
         }
     }
 
@@ -4390,9 +4347,9 @@ clipper_usage:
             logmsg(LOGMSG_ERROR, 
                    "rowlocks_lock2_bench requires ltxn-count & ptxn-count\n");
         } else {
-            pthread_mutex_lock(&testguard);
+            Pthread_mutex_lock(&testguard);
             rowlocks_lock2_bench(thedb->bdb_env, lcnt, pcnt);
-            pthread_mutex_unlock(&testguard);
+            Pthread_mutex_unlock(&testguard);
         }
     } else if (tokcmp(tok, ltok, "deadlock_policy_override") == 0) {
         tok = segtok(line, lline, &st, &ltok);
@@ -4545,12 +4502,7 @@ clipper_usage:
         if (ltok == 0)
             return 0;
         if (tokcmp(tok, ltok, "dump") == 0) {
-            int nstripes =
-                bdb_attr_get(thedb->bdb_attr, BDB_ATTR_PRIVATE_BLKSEQ_STRIPES);
-            for (int stripe = 0; stripe < nstripes; stripe++) {
-               logmsg(LOGMSG_USER, "stripe %d\n", stripe);
-                bdb_blkseq_dumpall(thedb->bdb_env, stripe);
-            }
+            bdb_blkseq_dumpall(thedb->bdb_env);
         } else if (tokcmp(tok, ltok, "logdel") == 0) {
             bdb_blkseq_dumplogs(thedb->bdb_env);
         }
@@ -4741,9 +4693,7 @@ clipper_usage:
             free(tblname);
         } else {
             char *str = NULL;
-            int lrc;
-
-            lrc = timepart_serialize(thedb->timepart_views, &str, 1);
+            timepart_serialize(thedb->timepart_views, &str, 1);
 
             if (str) {
                 logmsg(LOGMSG_USER, "%s\n", str);
@@ -4780,32 +4730,35 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "logmsg") == 0) {
         logmsg_process_message(line, lline);
     } else {
-        comdb2_tunable_err rc;
+        // see if any plugins know how to handle this
+        struct message_handler *h;
+        rc = 1;
+        LISTC_FOR_EACH(&dbenv->message_handlers, h, lnk)
+        {
+            rc = h->handle(dbenv, line + start_st);
+            if (rc == 0)
+                break;
+        }
 
-        /*
-          As we are here, it could be a dynamic tunable. Let's try looking
-          it up in the global tunables' list and updating it, if found.
-        */
-        rc = handle_lrl_tunable(tok, ltok, line + st, lline - st, DYNAMIC);
-        switch (rc) {
-        case TUNABLE_ERR_OK: break;
-        case TUNABLE_ERR_INVALID_TUNABLE: {
-            /* One more chance - this could be handled by a plugin */
-            struct message_handler *h;
-            LISTC_FOR_EACH(&dbenv->message_handlers, h, lnk) {
-                rc = h->handle(dbenv, line + start_st);
-                if (rc == 0)
-                    break;
-            }
-
-            if (rc)
+        if (rc) {
+            /*
+              Finally check if this is one of the dynamic tunables. Let's try
+              looking it up in the global tunables' list and updating it, if
+              found.
+            */
+            rc = handle_lrl_tunable(tok, ltok, line + st, lline - st, DYNAMIC);
+            switch (rc) {
+            case TUNABLE_ERR_OK:
+                return 0;
+            case TUNABLE_ERR_INVALID_TUNABLE:
                 logmsg(LOGMSG_ERROR, "Unknown command <%.*s>\n", ltok, tok);
-            break;
+                break;
+            default:
+                logmsg(LOGMSG_ERROR, "%s", tunable_error(rc));
+                break;
+            }
+            return -1;
         }
-        default:
-            logmsg(LOGMSG_ERROR, "%s", tunable_error(rc));
-        }
-        return rc;
     }
     return 0;
 }

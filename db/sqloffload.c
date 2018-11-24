@@ -204,8 +204,6 @@ char *osql_breq2a(int op)
         return "OSQL_DELREC";
     case OSQL_INSREC:
         return "OSQL_INSREC";
-    case OSQL_CLRTBL:
-        return "OSQL_CLRTBL";
     case OSQL_QBLOB:
         return "OSQL_QBLOB";
     case OSQL_UPDREC:
@@ -249,7 +247,7 @@ char *osql_breq2a(int op)
     }
 }
 
-int block2_sorese(struct ireq *iq, const char *sql, int sqlen, int block2_type)
+void block2_sorese(struct ireq *iq, const char *sql, int sqlen, int block2_type)
 {
 
     struct thr_handle *thr_self = thrman_self();
@@ -259,8 +257,6 @@ int block2_sorese(struct ireq *iq, const char *sql, int sqlen, int block2_type)
 
     thrman_wheref(thr_self, "%s [%s %s %llx]", req2a(iq->opcode),
                   breq2a(block2_type), iq->sorese.host, iq->sorese.rqid);
-
-    return 0;
 }
 
 extern int gbl_early_verify;
@@ -280,7 +276,6 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     int sentops = 0;
     int bdberr = 0;
     int rc = 0;
-    int rc2 = 0;
     int usedb_only = 0;
 
     if (gbl_early_verify && !clnt->early_retry && gbl_osql_send_startgen &&
@@ -472,10 +467,11 @@ int recom_abort(struct sqlclntstate *clnt)
     return sorese_abort(clnt, OSQL_RECOM_REQ);
 }
 
-int block2_serial(struct ireq *iq, const char *sql, int sqlen)
+inline int block2_serial(struct ireq *iq, const char *sql, int sqlen)
 {
 
-    return block2_sorese(iq, sql, sqlen, BLOCK2_SERIAL);
+    block2_sorese(iq, sql, sqlen, BLOCK2_SERIAL);
+    return 0;
 }
 
 int snapisol_commit(struct sqlclntstate *clnt, struct sql_thread *thd,

@@ -630,6 +630,45 @@ function run_eighth_test
     fi
 }
 
+function run_ninth_test
+{
+    typeset ipid=''
+    nrecs=$1
+	echo "run_ninth_test: SC to add constraint and change column type, SC should pass"
+
+    EXTRA=10000
+	echo "adding $EXTRA records to one stripe"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure addrecs($EXTRA)"  #add large numbers at offset > 0.1M
+
+    #SC_FORCE_DELAY is needed because "verify constraints" is very-very fast
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')"
+
+    rm failedalter
+    do_alter t9 &
+
+	echo "delay 2 sec, then start update which should not matter"
+    sleep 2
+
+    echo "update t2.a = a"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "update t2 set a=a"
+    wait
+
+    if [ -f failedalter ] ; then
+        failexit "SC should not fail"
+    fi
+    rm failedalter
+
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 0')"
+
+    assertcnt $((EXTRA))
+    do_verify
+    echo "rebuild tbl for verification"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild $tbl"
+    if [ $? -ne 0 ] ; then
+        failexit "SC should not fail rebuild"
+    fi
+}
+
 
 cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
 
@@ -747,5 +786,13 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "create table $tbl  { `cat t2.csc2 ` }"
 run_eighth_test 1000
 flushall
 
+#run ninth test
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table $tbl"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table $foreigntbl"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table $foreigntbl  { `cat $foreigntbl.csc2 ` }"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table $tbl  { `cat t2.csc2 ` }"
+
+run_ninth_test 1000
+flushall
 
 echo "Success"

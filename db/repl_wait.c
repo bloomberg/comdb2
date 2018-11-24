@@ -31,6 +31,7 @@
 #include "repl_wait.h"
 #include "switches.h"
 #include "logmsg.h"
+#include <locks_wrap.h>
 
 #include <mem_uncategorized.h>
 #include <mem_override.h>
@@ -69,7 +70,7 @@ void repl_list_init(void)
 {
     pool = pool_setalloc_init(sizeof(struct repl_object), 0, malloc, free);
     hash = hash_init(sizeof(unsigned long long));
-    pthread_mutex_init(&lock, NULL);
+    Pthread_mutex_init(&lock, NULL);
     register_int_switch("repl_wait",
                         "Replication wait system enabled for queues", &enabled);
 }
@@ -136,8 +137,8 @@ void wait_for_genid_repl(unsigned long long genid)
             pthread_mutexattr_init(&attr);
             pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_NORMAL);
 
-            pthread_mutex_init(&me.mutex, &attr);
-            pthread_mutex_lock(&me.mutex);
+            Pthread_mutex_init(&me.mutex, &attr);
+            Pthread_mutex_lock(&me.mutex);
             me.next = obj->waiter_list;
             obj->waiter_list = &me;
 
@@ -148,11 +149,13 @@ void wait_for_genid_repl(unsigned long long genid)
                 /* Try to double lock the mutex - this will block until
                  * the mutex is unlocked by clearing the genid from the
                  * list. */
-                pthread_mutex_lock(&me.mutex);
+                Pthread_mutex_lock(&me.mutex);
             }
             xLOCK(&lock);
 
-            pthread_mutex_destroy(&me.mutex);
+            Pthread_mutex_unlock(&me.mutex);
+            Pthread_mutex_destroy(&me.mutex);
+            pthread_mutexattr_destroy(&attr);
         }
     }
     UNLOCK(&lock);
@@ -175,7 +178,7 @@ void clear_trans_from_repl_list(struct repl_object *head)
             for (waiter = head->waiter_list; waiter != NULL;
                  waiter = next_waiter) {
                 next_waiter = waiter->next;
-                pthread_mutex_unlock(&waiter->mutex);
+                Pthread_mutex_unlock(&waiter->mutex);
             }
 
             hash_del(hash, head);

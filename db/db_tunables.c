@@ -195,6 +195,11 @@ extern int gbl_handle_buf_add_latency_ms;
 extern int gbl_osql_send_startgen;
 extern int gbl_create_default_user;
 extern int gbl_allow_neg_column_size;
+extern int gbl_client_heartbeat_ms;
+extern int gbl_rep_wait_release_ms;
+extern int gbl_rep_wait_core_ms;
+extern int gbl_random_get_curtran_failures;
+extern int gbl_fail_client_write_lock;
 
 extern long long sampling_threshold;
 
@@ -207,6 +212,7 @@ extern uint8_t _non_dedicated_subnet;
 
 extern char *gbl_crypto;
 extern char *gbl_spfile_name;
+extern char *gbl_timepart_file_name;
 extern char *gbl_portmux_unix_socket;
 
 /* util/ctrace.c */
@@ -255,6 +261,7 @@ extern int gbl_queuedb_timeout_sec;
 extern int gbl_timeseries_metrics;
 extern int gbl_metric_maxpoints;
 extern int gbl_metric_maxage;
+extern int gbl_osql_check_replicant_numops;
 
 /*
   =========================================================
@@ -478,22 +485,19 @@ static int maxq_update(void *context, void *value)
     return 0;
 }
 
-static int spfile_update(void *context, void *value)
+static int file_update(void *context, void *value)
 {
-    comdb2_tunable *tunable;
-    char *spfile_tmp;
-    char *tok;
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    int len = strlen((char *)value);
     int st = 0;
     int ltok;
-    int len;
+    char *tok = segtok(value, len, &st, &ltok);
+    char *file_tmp = tokdup(tok, ltok);
 
-    tunable = (comdb2_tunable *)context;
-    len = strlen((char *)value);
-    tok = segtok(value, len, &st, &ltok);
-    spfile_tmp = tokdup(tok, ltok);
     free(*(char **)tunable->var);
-    *(char **)tunable->var = getdbrelpath(spfile_tmp);
-    free(spfile_tmp);
+    *(char **)tunable->var = getdbrelpath(file_tmp);
+    free(file_tmp);
+
     return 0;
 }
 
@@ -717,7 +721,7 @@ static int hostname_update(void *context, void *value)
 int ctrace_set_rollat(void *unused, void *value);
 
 /* Return the value for sql_tranlevel_default. */
-static void *sql_tranlevel_default_value()
+static void *sql_tranlevel_default_value(void *context)
 {
     switch (gbl_sql_tranlevel_default) {
     case SQL_TDEF_COMDB2: return "COMDB2";
@@ -749,7 +753,7 @@ static int sql_tranlevel_default_update(void *context, void *value)
         gbl_sql_tranlevel_default = SQL_TDEF_SOCK;
     } else if (tokcmp(tok, ltok, "recom") == 0) {
         gbl_sql_tranlevel_default = SQL_TDEF_RECOM;
-    } else if (tokcmp(tok, ltok, "snapisol") == 0) {
+    } else if (tokcmp(tok, ltok, "snapshot") == 0) {
         gbl_sql_tranlevel_default = SQL_TDEF_SNAPISOL;
     } else if (tokcmp(tok, ltok, "serial") == 0) {
         gbl_sql_tranlevel_default = SQL_TDEF_SERIAL;
@@ -760,7 +764,7 @@ static int sql_tranlevel_default_update(void *context, void *value)
     }
     gbl_sql_tranlevel_preserved = gbl_sql_tranlevel_default;
     logmsg(LOGMSG_USER, "Set default transaction level to %s\n",
-           (char *)sql_tranlevel_default_value());
+           (char *)sql_tranlevel_default_value(NULL));
     return 0;
 }
 
@@ -807,8 +811,6 @@ static int set_defaults()
 */
 int init_gbl_tunables()
 {
-    int rc;
-
     /* Set the default values. */
     if ((set_defaults())) {
         logmsg(LOGMSG_ERROR, "%s:%d Failed to set the default values "
@@ -829,14 +831,7 @@ int init_gbl_tunables()
                        offsetof(comdb2_tunable, name), 0);
     logmsg(LOGMSG_DEBUG, "Global tunables hash initialized\n");
 
-    rc = pthread_mutex_init(&gbl_tunables->mu, NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR,
-               "%s:%d Failed to initialize mutex for global tunables.\n",
-               __FILE__, __LINE__);
-        return 1;
-    }
-
+    Pthread_mutex_init(&gbl_tunables->mu, NULL);
     return 0;
 }
 
@@ -862,7 +857,7 @@ int free_gbl_tunables()
         gbl_tunables->hash = NULL;
     }
     free(gbl_tunables->array);
-    pthread_mutex_destroy(&gbl_tunables->mu);
+    Pthread_mutex_destroy(&gbl_tunables->mu);
     free(gbl_tunables);
     gbl_tunables = NULL;
     return 0;
@@ -1313,9 +1308,9 @@ comdb2_tunable_err handle_runtime_tunable(const char *name, const char *value)
         return TUNABLE_ERR_READONLY;
     }
 
-    pthread_mutex_lock(&gbl_tunables->mu);
+    Pthread_mutex_lock(&gbl_tunables->mu);
     ret = update_tunable(t, value);
-    pthread_mutex_unlock(&gbl_tunables->mu);
+    Pthread_mutex_unlock(&gbl_tunables->mu);
 
     return ret;
 }

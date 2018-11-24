@@ -2112,6 +2112,12 @@ static void computeLimitRegisters(Parse *pParse, Select *p, int iBreak){
       VdbeComment((v, "LIMIT counter"));
       sqlite3VdbeAddOp2(v, OP_IfNot, iLimit, iBreak); VdbeCoverage(v);
     }
+    /* COMDB2 MODIFICATION */
+    extern int comdb2_register_limit(int, int);
+    int is_parallel;
+    if ((is_parallel = comdb2_register_limit(iLimit, ++pParse->nMem)) != 0) {
+     sqlite3VdbeAddOp2(v, OP_IntCopy, iLimit, pParse->nMem); VdbeCoverage(v);
+    }
     if( p->pOffset ){
       p->iOffset = iOffset = ++pParse->nMem;
       pParse->nMem++;   /* Allocate an extra register for limit+offset */
@@ -2120,6 +2126,12 @@ static void computeLimitRegisters(Parse *pParse, Select *p, int iBreak){
       VdbeComment((v, "OFFSET counter"));
       sqlite3VdbeAddOp3(v, OP_OffsetLimit, iLimit, iOffset+1, iOffset);
       VdbeComment((v, "LIMIT+OFFSET"));
+      /* COMDB2 MODIFICATION */
+      extern void comdb2_register_offset(int, int, int);
+      if (is_parallel){
+        comdb2_register_offset(iOffset, iOffset+1, ++pParse->nMem);
+        sqlite3VdbeAddOp2(v, OP_IntCopy, iOffset, pParse->nMem); VdbeCoverage(v);
+      }
     }
   }
 }
@@ -3449,6 +3461,14 @@ static void substSelect(
 #endif /* !defined(SQLITE_OMIT_SUBQUERY) || !defined(SQLITE_OMIT_VIEW) */
 
 #if !defined(SQLITE_OMIT_SUBQUERY) || !defined(SQLITE_OMIT_VIEW)
+
+static void _set_src_recording(Parse *pParse, Select *pSub)
+{
+  int tbl;
+  pSub->recording=1;
+  for(tbl=0;tbl<pSub->pSrc->nSrc;tbl++)
+    SET_CURSOR_RECORDING(pParse, pSub->pSrc->a[tbl].iCursor);
+}
 /*
 ** This routine attempts to flatten subqueries as a performance optimization.
 ** This routine returns 1 if it makes changes and 0 if no flattening occurs.
@@ -3793,6 +3813,8 @@ static int flattenSubquery(
     p->pLimit = 0;
     p->pOffset = 0;
     pNew = sqlite3SelectDup(db, p, 0);
+    if (p->recording)
+      _set_src_recording(pParse, pSub);
     sqlite3SelectSetName(pNew, pSub->zSelName);
     p->pOffset = pOffset;
     p->pLimit = pLimit;
@@ -3817,6 +3839,9 @@ static int flattenSubquery(
   ** in the outer query.
   */
   pSub = pSub1 = pSubitem->pSelect;
+
+  if (p->recording)
+    _set_src_recording(pParse, pSub);
 
   /* Delete the transient table structure associated with the
   ** subquery
@@ -5090,6 +5115,7 @@ static int countOfViewOptimization(Parse *pParse, Select *p){
   do{
     if( pSub->op!=TK_ALL && pSub->pPrior ) return 0;  /* Must be UNION ALL */
     if( pSub->pWhere ) return 0;                      /* No WHERE clause */
+    if( pSub->pLimit ) return 0;                      /* No LIMIT clause */
     if( pSub->selFlags & SF_Aggregate ) return 0;     /* Not an aggregate */
     pSub = pSub->pPrior;                              /* Repeat over compound terms */
   }while( pSub );
@@ -5250,6 +5276,7 @@ int sqlite3Select(
   }
 #endif
 
+
   /* Try to flatten subqueries in the FROM clause up into the main query
   */
 #if !defined(SQLITE_OMIT_SUBQUERY) || !defined(SQLITE_OMIT_VIEW)
@@ -5290,6 +5317,11 @@ int sqlite3Select(
   v = sqlite3GetVdbe(pParse);
   if( v==0 ) goto select_end;
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if(!pParse->ast) pParse->ast = ast_init();
+  ast_push(pParse->ast, AST_TYPE_SELECT, v, p);
+#endif
+
 #ifndef SQLITE_OMIT_COMPOUND_SELECT
   /* Handle compound SELECT statements using the separate multiSelect()
   ** procedure.
@@ -5302,6 +5334,16 @@ int sqlite3Select(
     pParse->nSelectIndent--;
 #endif
     return rc;
+  }
+#endif
+
+#ifdef SQLITE_COUNTOFVIEW_OPTIMIZATION
+  if( OptimizationEnabled(db, SQLITE_QueryFlattener|SQLITE_CountOfView)
+   && countOfViewOptimization(pParse, p)
+  ){
+    if( db->mallocFailed ) goto select_end;
+    pEList = p->pEList;
+    pTabList = p->pSrc;
   }
 #endif
 
@@ -5436,16 +5478,6 @@ int sqlite3Select(
   if( sqlite3SelectTrace & 0x400 ){
     SELECTTRACE(0x400,pParse,p,("After all FROM-clause analysis:\n"));
     sqlite3TreeViewSelect(0, p, 0);
-  }
-#endif
-
-#ifdef SQLITE_COUNTOFVIEW_OPTIMIZATION
-  if( OptimizationEnabled(db, SQLITE_QueryFlattener|SQLITE_CountOfView)
-   && countOfViewOptimization(pParse, p)
-  ){
-    if( db->mallocFailed ) goto select_end;
-    pEList = p->pEList;
-    pTabList = p->pSrc;
   }
 #endif
 

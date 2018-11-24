@@ -76,8 +76,8 @@ static inline void shallowFreeOpFuncSetup(OpFuncSetup* stp)
 }
 
 static int   OPFUNC_NOROWS_NCOLS = 0;
-static const char* OPFUNC_NOROWS_COLNAMES[] = {};
-static int   OPFUNC_NOROWS_COLTYPES[] = {};
+static const char* OPFUNC_NOROWS_COLNAMES[] = {0};
+static int   OPFUNC_NOROWS_COLTYPES[] = {0};
 static size_t   OPFUNC_NOROWS_BUFSIZE = 0;
 
 static inline OpFuncSetup* getNoRowsSetup()

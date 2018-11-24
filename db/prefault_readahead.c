@@ -35,7 +35,6 @@ int prefault_readahead(struct dbtable *db, int ixnum, unsigned char *key, int ke
 {
     unsigned long long genids[MAXGENIDS];
     int rc;
-    int num_genids_gotten;
     int i;
     int num_gotten;
     struct ireq iq;

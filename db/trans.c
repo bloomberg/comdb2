@@ -56,7 +56,7 @@ int purge_expired_long_transactions(struct dbenv *dbenv)
     int rc = 0, i = 0;
     struct purge_trn_type purgebuf;
     memset(&purgebuf, 0, sizeof(struct purge_trn_type));
-    rc = pthread_mutex_lock(&dbenv->long_trn_mtx);
+    Pthread_mutex_lock(&dbenv->long_trn_mtx);
     /*fprintf(stderr, "purging transactions\n");*/
 
     rc = hash_for(dbenv->long_trn_table, check_trn_purge, &purgebuf);
@@ -84,29 +84,21 @@ int purge_expired_long_transactions(struct dbenv *dbenv)
     }
     /*fprintf(stderr, "purged %d transactions\n",purgebuf.count);*/
 
-    rc = pthread_mutex_unlock(&dbenv->long_trn_mtx);
+    Pthread_mutex_unlock(&dbenv->long_trn_mtx);
     return 0;
 }
 
 int add_new_transaction_entry(struct dbenv *dbenv, void *entry)
 {
     int rc = 0;
-    rc = pthread_mutex_lock(&dbenv->long_trn_mtx);
-    if (rc != 0) {
-        fprintf(stderr, "Failed to lock trn table mutex\n");
-        return ERR_INTERNAL;
-    }
+    Pthread_mutex_lock(&dbenv->long_trn_mtx);
     rc = hash_add(dbenv->long_trn_table, entry);
     if (rc != 0) {
-        rc = pthread_mutex_unlock(&dbenv->long_trn_mtx);
-        return ERR_INTERNAL;
+        rc = ERR_INTERNAL;
     }
     /*listc_abl(&dbenv->long_trn_list, entry);*/
-    if (pthread_mutex_unlock(&dbenv->long_trn_mtx) != 0) {
-        fprintf(stderr, "Failed to unlock trn table mutex\n");
-        return ERR_INTERNAL;
-    }
-    return 0;
+    Pthread_mutex_unlock(&dbenv->long_trn_mtx);
+    return rc;
 }
 
 void tran_dump(struct long_trn_stat *tstats)

@@ -347,7 +347,7 @@ static struct thread_info *get_thread_info(void) {
         ti = dl_malloc(sizeof(struct thread_info));
         ti->tid = pthread_self();
         listc_init(&ti->blocks, offsetof(struct memblock, tlnk));
-        pthread_setspecific(threadk, ti);
+        Pthread_setspecific(threadk, ti);
     }
     return ti;
 }
@@ -363,8 +363,8 @@ static void init() {
         pthread_mutexattr_t mattr;
         pthread_mutexattr_init(&mattr);
         pthread_mutexattr_settype(&mattr, PTHREAD_MUTEX_RECURSIVE);
-        pthread_mutex_init(&lk, &mattr);
-        pthread_key_create(&threadk, thread_done);
+        Pthread_mutex_init(&lk, &mattr);
+        Pthread_key_create(&threadk, thread_done);
         calls = hash_setalloc_init_user(call_hashfunc, call_cmpfunc, dl_malloc, dl_free, 0, sizeof(int));
         listc_init(&blocks, offsetof(struct memblock, alnk));
         init_symtab();

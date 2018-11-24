@@ -33,7 +33,29 @@
 struct errstat;
 struct sqlclntstate;
 
-struct osql_sqlthr;
+struct osql_sqlthr {
+    unsigned long long rqid; /* osql rq id */
+    uuid_t uuid;             /* request id, take 2 */
+    char *master;            /* who was the master I was talking to */
+    int done;            /* result of socksql, recom, snapisol and serial master
+                            transactions*/
+    struct errstat err;  /* valid if done = 1 */
+    int type;            /* type of the request, enum OSQL_REQ_TYPE */
+    pthread_mutex_t mtx; /* mutex and cond for commitrc sync */
+    pthread_cond_t cond;
+    int master_changed; /* set if we detect that node we were waiting for was
+                           disconnected */
+    int nops;
+
+    unsigned long long register_time;
+
+    int status;       /* poking support; status at the last check */
+    int timestamp;    /* poking support: timestamp at the last check */
+    int last_updated; /* poking support: when was the last time I got info, 0 is
+                         never */
+    int last_checked; /* poking support: when was the loast poke sent */
+    struct sqlclntstate *clnt; /* cache clnt */
+};
 typedef struct osql_sqlthr osql_sqlthr_t;
 
 /**

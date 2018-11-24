@@ -204,7 +204,6 @@ int bdb_llop_del(bdb_state_type *bdb_state, void *trans, int stripe,
     int rc = 0;
     tran_type *t = (tran_type *)trans;
     DB *db;
-    unsigned long long genid;
     int made_trans = 0;
 
     *errstr = NULL;
@@ -317,7 +316,6 @@ void *bdb_llop_find(bdb_state_type *bdb_state, void *trans, int raw, int stripe,
     DBT dkey = {0}, ddata = {0};
     int rc;
     DB *db;
-    unsigned long long genid;
     tran_type *t = (tran_type *)trans;
     DB_TXN *txn;
 

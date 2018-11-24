@@ -59,6 +59,7 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
                               new_dta, &reason);
         if (rc) goto bad;
         od_dta = new_dta;
+        from = ".NEW..ONDISK";
     }
 
     init_fake_ireq(thedb, &ruleiq);
@@ -567,12 +568,11 @@ inline int check_option_coherency(struct schema_change_type *s, struct dbtable *
 
 int sc_request_disallowed(SBUF2 *sb)
 {
-    char *from;
-
-    from = intern(get_origin_mach_by_buf(sb));
+    char *from = intern(get_origin_mach_by_buf(sb));
     /* Allow if we can't figure out where it came from - don't want this
        to break in production. */
     if (from == NULL) return 0;
+    if (strcmp(from, "localhost") == 0) return 0;
     if (!allow_write_from_remote(from)) return 1;
     return 0;
 }
@@ -965,8 +965,6 @@ void transfer_db_settings(struct dbtable *olddb, struct dbtable *newdb)
     if (gbl_blobstripe) {
         newdb->blobstripe_genid = olddb->blobstripe_genid;
         bdb_set_blobstripe_genid(newdb->handle, newdb->blobstripe_genid);
-        logmsg(LOGMSG_INFO, "transfered blobstripe genid 0x%llx to new table\n",
-               newdb->blobstripe_genid);
     }
     memcpy(newdb->typcnt, olddb->typcnt, sizeof(olddb->typcnt));
     memcpy(newdb->blocktypcnt, olddb->blocktypcnt, sizeof(olddb->blocktypcnt));

@@ -75,13 +75,15 @@ enum CDB2_ErrorCode {
 }
 
 enum ResponseHeader {
-   SQL_RESPONSE    = 1002;
-   DBINFO_RESPONSE = 1005;
-   SQL_EFFECTS     = 1006;
-   SQL_RESPONSE_PING = 1007; // SQL_RESPONSE + requesting ack
-   SQL_RESPONSE_PONG = 1008;
-   SQL_RESPONSE_TRACE = 1009;
-   SQL_RESPONSE_SSL = 1010; // SSL header + empty payload to trigger client SSL
+   SQL_RESPONSE_HEARTBEAT   = 205;  // This is same as FSQL_HEARTBEAT
+   SQL_RESPONSE             = 1002;
+   DBINFO_RESPONSE          = 1005;
+   SQL_EFFECTS              = 1006;
+   SQL_RESPONSE_PING        = 1007; // SQL_RESPONSE + requesting ack
+   SQL_RESPONSE_PONG        = 1008;
+   SQL_RESPONSE_TRACE       = 1009;
+   SQL_RESPONSE_SSL         = 1010; // SSL header + empty payload to trigger
+                                    // client SSL
 }
 
 enum ResponseType {
@@ -106,7 +108,7 @@ message CDB2_DBINFORESPONSE {
         optional int32   port = 5;
     }
     required nodeinfo master = 1;
-    repeated nodeinfo nodes  = 2;     // These are slave nodes, we need to parse through these only.
+    repeated nodeinfo nodes  = 2;     // These are replicants, we need to parse through these only.
     optional bool require_ssl = 3;
 }
 

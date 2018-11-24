@@ -28,6 +28,7 @@
 #include "debug_switches.h"
 #include "logmsg.h"
 
+
 #ifdef SQLITE_DEBUG
 /*
 ** Check invariants on a Mem object.
@@ -1939,7 +1940,8 @@ int sqlite3Stat4ValueFromExpr(
   return stat4ValueFromExpr(pParse, pExpr, affinity, 0, ppVal);
 }
 
-#include <serialget.c>
+#include <memcompare.c>
+/*#include <serialget.c>*/
 
 /*
 ** Extract the iCol-th column from the nRec-byte record in pRec.  Write
@@ -1960,7 +1962,7 @@ int sqlite3Stat4Column(
   int nHdr;                       /* Size of the header in the record */
   int iHdr;                       /* Next unread header byte */
   int iField;                     /* Next unread data byte */
-  int szField;                    /* Size of the current data field */
+  int szField = 0;                /* Size of the current data field */
   int i;                          /* Column index */
   u8 *a = (u8*)pRec;              /* Typecast byte array */
   Mem *pMem = *ppVal;             /* Write result into this Mem object */
@@ -3068,5 +3070,43 @@ done:
    return rc;
 }
 
-
+/* COMDB2 MODIFICATION */
+/*
+** Compare 2 unpacked rows
+**
+*/
+int sqlite3RecordCompareExprList(UnpackedRecord *rec, Mem *mems)
+{
+  int i;
+  int rc = 0;
+  
+  for(i=0;i<rec->nField;i++)
+  {
+    rc=sqlite3MemCompare(&rec->aMem[i], &mems[i], NULL);
+    if (rc)
+        return rc;
+  }
+  return rc;
+}
+/* 
+** Convert a SIMPLE expression to a Mem array
+**
+*/
+int sqlite3ExprList2MemArray(ExprList *list, Mem *mems)
+{
+  int i;
+  for(i=0;i<list->nExpr;i++)
+  {
+    switch(list->a[i].pExpr->op)
+    {
+      case TK_INTEGER:
+        mems[i].flags = MEM_Int;
+        mems[i].u.i = list->a[i].pExpr->u.iValue;
+        break; 
+      default:
+        return -1;  
+    }
+  }
+  return 0;
+}
 #endif /* SQLITE_BUILDING_FOR_COMDB2 */

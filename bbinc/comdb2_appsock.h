@@ -63,6 +63,6 @@ typedef struct comdb2_appsock comdb2_appsock_t;
         0,                   /* Execution count */                             \
         0,                   /* Flags */                                       \
         handle_##X##_request /* Handler function */                            \
-    };
+    }
 
 #endif /* ! __INCLUDED_COMDB2_APPSOCK_H */

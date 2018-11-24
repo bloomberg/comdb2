@@ -69,6 +69,7 @@
 
 
 int g_osql_blocksql_parallel_max = 5;
+int gbl_osql_check_replicant_numops = 1;
 extern int gbl_blocksql_grace;
 
 
@@ -160,7 +161,7 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
         return -1;
     }
 
-    pthread_mutex_init(&tran->store_mtx, NULL);
+    Pthread_mutex_init(&tran->store_mtx, NULL);
 
     iq->blocksql_tran = tran; /* now blockproc knows about it */
 
@@ -208,7 +209,6 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
         tran->iscomplete = 1;
         break;
     case SESS_DONE_ERROR_REPEATABLE:
-
         /* generate a new id for this session */
         if (iq->sorese.type) {
             /* this is socksql, recom, snapisol or serial; no retry here
@@ -292,9 +292,9 @@ int osql_bplog_schemachange(struct ireq *iq)
     iq->sc = sc = iq->sc_pending;
     iq->sc_pending = NULL;
     while (sc != NULL) {
-        pthread_mutex_lock(&sc->mtx);
+        Pthread_mutex_lock(&sc->mtx);
         sc->nothrevent = 1;
-        pthread_mutex_unlock(&sc->mtx);
+        Pthread_mutex_unlock(&sc->mtx);
         iq->sc = sc->sc_next;
         if (sc->sc_rc == SC_COMMIT_PENDING) {
             sc->sc_next = iq->sc_pending;
@@ -313,17 +313,16 @@ int osql_bplog_schemachange(struct ireq *iq)
     }
     if (rc) {
         extern pthread_mutex_t csc2_subsystem_mtx;
-        pthread_mutex_lock(&csc2_subsystem_mtx);
+        Pthread_mutex_lock(&csc2_subsystem_mtx);
         csc2_free_all();
-        pthread_mutex_unlock(&csc2_subsystem_mtx);
+        Pthread_mutex_unlock(&csc2_subsystem_mtx);
     }
     logmsg(LOGMSG_INFO, ">>> DDL SCHEMA CHANGE RC %d <<<\n", rc);
     return rc;
 }
 
 /**
- * Wait for all pending osql sessions of this transaction to
- * finish
+ * Wait for all pending osql sessions of this transaction to finish
  * Once all finished ok, we apply all the changes
  */
 int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,
@@ -432,10 +431,10 @@ void osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func,
 {
     int rc = 0;
     int bdberr = 0;
-    pthread_mutex_lock(&kludgelk);
+    Pthread_mutex_lock(&kludgelk);
     blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
     iq->blocksql_tran = NULL;
-    pthread_mutex_unlock(&kludgelk);
+    Pthread_mutex_unlock(&kludgelk);
 
     if (!tran) 
         return;
@@ -450,7 +449,7 @@ void osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func,
     osql_close_session(iq, &tran->sess, are_sessions_linked, func, callfunc, line);
 
     /* destroy transaction */
-    pthread_mutex_destroy(&tran->store_mtx);
+    Pthread_mutex_destroy(&tran->store_mtx);
 
     rc = bdb_temp_table_close(thedb->bdb_env, tran->db, &bdberr);
     if (rc != 0) {
@@ -508,6 +507,27 @@ const char *osql_reqtype_str(int type)
     return typestr[type];
 }
 
+static void send_error_to_replicant(int rqid, const char *host, int errval,
+                                    const char *errstr)
+{
+    sorese_info_t sorese_info = {0};
+    struct errstat generr = {0};
+
+    logmsg(LOGMSG_ERROR, "%s: %s\n", __func__, errstr);
+
+    sorese_info.rqid = rqid;
+    sorese_info.host = host;
+    sorese_info.type = -1; /* I don't need it */
+
+    generr.errval = errval;
+    strncpy(generr.errstr, errstr, sizeof(generr.errstr));
+
+    int rc =
+        osql_comm_signal_sqlthr_rc(&sorese_info, &generr, RC_INTERNAL_RETRY);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "Failed to signal replicant rc=%d\n", rc);
+    }
+}
 
 /**
  * Inserts the op in the iq oplog
@@ -532,57 +552,29 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     struct ireq *iq = osql_session_get_ireq(sess);
     int rc = 0, rc_op = 0;
     oplog_key_t key = {0};
-    struct errstat *xerr;
     int bdberr;
     int debug = 0;
+    uuidstr_t us;
 
     if (type == OSQL_SCHEMACHANGE)
         iq->tranddl++;
 
-#if 0
-    printf("Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n",
-           rqid, type, osql_reqtype_str(type), osql_log_time(), sess->seq);
-#endif
+    DEBUGMSG("uuid=%s type=%d (%s) seq=%lld\n", comdb2uuidstr(uuid, us), type,
+             osql_reqtype_str(type), sess->seq);
 
     key.seq = sess->seq;
     assert (sess->rqid == rqid);
 
     /* add the op into the temporary table */
-    if ((rc = pthread_mutex_lock(&tran->store_mtx))) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_lock: error code %d\n", rc);
-        return rc;
-    }
+    Pthread_mutex_lock(&tran->store_mtx);
 
-    if (sess->seq == 0 && osql_session_is_sorese(sess) && tran->rows > 0) {
-        /* lets make sure that the temp table is empty since commit retries will
-         * use same rqid*/
-        sorese_info_t sorese_info = {0};
-        struct errstat generr = {0};
-
-        logmsg(LOGMSG_ERROR, "%s Broken transaction, received first seq row but "
-                "session already has rows?\n",
-                __func__);
-
-        sorese_info.rqid = rqid;
-        sorese_info.host = sess->offhost;
-        sorese_info.type = -1; /* I don't need it */
-
-        generr.errval = RC_INTERNAL_RETRY;
-        strncpy(generr.errstr,
-                "malformed transaction, received duplicated first row",
-                sizeof(generr.errstr));
-
-        if ((rc = pthread_mutex_unlock(&tran->store_mtx))) {
-            logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
-        }
-
-        rc = osql_comm_signal_sqlthr_rc(&sorese_info, &generr,
-                RC_INTERNAL_RETRY);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "Failed to signal replicant rc=%d\n", rc);
-        }
-
-        return -1;
+    /* make sure that the temp table is empty since commit
+     * retries will use same rqid */
+    assert(sess->seq == 0 && tran->rows == 0);
+    if (sess->seq == 0 && tran->rows > 0) {
+        logmsg(LOGMSG_FATAL,
+               "Malformed transaction, received duplicated first row");
+        abort();
     }
 
 #if 0 
@@ -602,23 +594,49 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     tran->rows++;
 
-    if ((rc = pthread_mutex_unlock(&tran->store_mtx))) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
-        return rc;
-    }
+    Pthread_mutex_unlock(&tran->store_mtx);
 
     if (rc_op)
         return rc_op;
 
+    struct errstat *xerr;
+    /* check if type is done */
     rc = osql_comm_is_done(type, rpl, rplen, rqid == OSQL_RQID_USE_UUID, &xerr,
                            osql_session_get_ireq(sess));
     if (rc == 0)
         return 0;
 
+    // only OSQL_DONE_SNAP, OSQL_DONE, OSQL_DONE_STATS, and OSQL_XERR
+    // are processed beyond this point
+
+    if (type != OSQL_XERR) { // if tran not aborted
+        int numops = osql_get_replicant_numops(rpl, rqid == OSQL_RQID_USE_UUID);
+        DEBUGMSG("uuid=%s type %s numops=%d, seq=%lld %s\n",
+                 comdb2uuidstr(uuid, us), osql_reqtype_str(type), numops,
+                 sess->seq, (numops != sess->seq + 1 ? "NO match" : ""));
+
+        if (gbl_osql_check_replicant_numops && numops != sess->seq + 1) {
+            send_error_to_replicant(
+                rqid, sess->offhost, RC_INTERNAL_RETRY,
+                "Master received inconsistent number of opcodes");
+
+            logmsg(LOGMSG_ERROR,
+                   "%s: Replicant sent %d opcodes, master received %lld\n",
+                   __func__, numops, sess->seq + 1);
+
+            // TODO: terminate session so replicant can retry
+            // or mark session bad so don't process this session from toblock
+            // osql_sess_try_terminate(sess);
+            // return 0;
+            abort(); // for now abort to catch failure cases
+        }
+    }
+
+    /* TODO: check the generation and fail early if it does not match */
+
     osql_sess_set_complete(rqid, uuid, sess, xerr);
 
-    /* if we received a too early, check the coherency and mark blackout the
-     * node */
+    /* if we received a too early, check the coherency and mark blackout node */
     if (xerr && xerr->errval == OSQL_TOOEARLY) {
         osql_comm_blkout_node(sess->offhost);
     }
@@ -629,7 +647,6 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     }
 
     if (osql_session_is_sorese(sess)) {
-
         osql_sess_lock(sess);
         osql_sess_lock_complete(sess);
         if (!osql_sess_dispatched(sess) && !osql_sess_is_terminated(sess)) {
@@ -936,7 +953,6 @@ static int process_this_session(
     int receivedrows = 0;
     int flags = 0;
     uuid_t uuid;
-    uuidstr_t us;
 
     iq->queryid = osql_sess_queryid(sess);
 
@@ -959,6 +975,7 @@ static int process_this_session(
     key_next = key_crt = *(oplog_key_t *)bdb_temp_table_key(dbc);
 
     if (rc == IX_NOTFND) {
+        uuidstr_t us;
         comdb2uuidstr(uuid, us);
         logmsg(LOGMSG_ERROR, "%s: session %llx %s has no update rows?\n", __func__,
                 rqid, us);
@@ -1070,10 +1087,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     struct temp_cursor *dbc = NULL;
 
     /* lock the table (it should get no more access anway) */
-    if ((rc = pthread_mutex_lock(&tran->store_mtx))) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_lock: error code %d\n", rc);
-        return rc;
-    }
+    Pthread_mutex_lock(&tran->store_mtx);
 
     *nops = 0;
 
@@ -1095,9 +1109,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     /* create a cursor */
     dbc = bdb_temp_table_cursor(thedb->bdb_env, tran->db, NULL, &bdberr);
     if (!dbc || bdberr) {
-        if ((rc = pthread_mutex_unlock(&tran->store_mtx))) {
-            logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
-        }
+        Pthread_mutex_unlock(&tran->store_mtx);
         logmsg(LOGMSG_ERROR, "%s: failed to create cursor bdberr = %d\n", __func__,
                 bdberr);
         return ERR_INTERNAL;
@@ -1112,10 +1124,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
                                       err, logsb, dbc, func);
     }
 
-    if ((rc = pthread_mutex_unlock(&tran->store_mtx)) != 0) {
-        logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
-        return rc;
-    }
+    Pthread_mutex_unlock(&tran->store_mtx);
 
     /* close the cursor */
     rc = bdb_temp_table_close_cursor(thedb->bdb_env, dbc, &bdberr);
@@ -1256,9 +1265,9 @@ void *osql_commit_timepart_resuming_sc(void *p)
     iq.sc = sc = sc_pending;
     sc_pending = NULL;
     while (sc != NULL) {
-        pthread_mutex_lock(&sc->mtx);
+        Pthread_mutex_lock(&sc->mtx);
         sc->nothrevent = 1;
-        pthread_mutex_unlock(&sc->mtx);
+        Pthread_mutex_unlock(&sc->mtx);
         iq.sc = sc->sc_next;
         if (sc->sc_rc == SC_COMMIT_PENDING) {
             sc->sc_next = sc_pending;

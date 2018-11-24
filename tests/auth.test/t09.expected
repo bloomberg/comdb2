@@ -131,6 +131,7 @@
 (candidate='PUT')
 (candidate='QUERY')
 (candidate='RAISE')
+(candidate='RANGE')
 (candidate='READ')
 (candidate='READONLY')
 (candidate='REBUILD')

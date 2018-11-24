@@ -27,6 +27,7 @@
 #include "net.h"
 #include "bdb_int.h"
 #include "locks.h"
+#include "locks_wrap.h"
 #include <build/db.h>
 #include <str0.h>
 #include <ctrace.h>
@@ -135,7 +136,6 @@ static void txn_stats(FILE *out, bdb_state_type *bdb_state)
 static void log_stats(FILE *out, bdb_state_type *bdb_state)
 {
     DB_LOG_STAT *stats;
-    char str[100];
 
     bdb_state->dbenv->log_stat(bdb_state->dbenv, &stats, 0);
 
@@ -409,7 +409,6 @@ void bdb_get_rep_stats(bdb_state_type *bdb_state,
                        unsigned long long *retry, int *max_retry)
 {
     DB_REP_STAT *rep_stats;
-    char str[80];
 
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
@@ -438,7 +437,6 @@ void bdb_dump_freelist(FILE *out, int datafile, int stripe, int ixnum,
                        bdb_state_type *bdb_state)
 {
     extern int __db_dump_freepages(DB * dbp, FILE * out);
-    DB *db;
     if (ixnum == -1 && datafile == -1 && stripe == -1) {
         int ix, df, st;
         for (ix = 0; ix < bdb_state->numix; ix++) {
@@ -684,15 +682,15 @@ void fill_dbinfo(void *p_response, bdb_state_type *bdb_state)
             bdb_state->callback->getroom_rtn(bdb_state, nodes[j].host)) {
             nodeinfos[i] = malloc(sizeof(CDB2DBINFORESPONSE__Nodeinfo));
             cdb2__dbinforesponse__nodeinfo__init(nodeinfos[i]);
-            nodeinfos[i]->number = 0; /* will not be used by client */
+            nodeinfos[i]->number = j;
             nodeinfos[i]->port = nodes[j].port;
             nodeinfos[i]->has_port = 1;
             nodeinfos[i]->has_room = 1;
             nodeinfos[i]->room =
                 bdb_state->callback->getroom_rtn(bdb_state, nodes[j].host);
             nodeinfos[i]->name = strdup(nodes[j].host);
-            if (strcmp(bdb_state->repinfo->master_host, nodes[i].host) == 0) {
-                master->number = 0; /* will not be used by client */
+            if (strcmp(bdb_state->repinfo->master_host, nodes[j].host) == 0) {
+                master->number = j;
                 master->incoherent = 0;
                 master->has_port = 1;
                 master->has_room = 1;
@@ -723,15 +721,15 @@ void fill_dbinfo(void *p_response, bdb_state_type *bdb_state)
             bdb_state->callback->getroom_rtn(bdb_state, nodes[j].host)) {
             nodeinfos[i] = malloc(sizeof(CDB2DBINFORESPONSE__Nodeinfo));
             cdb2__dbinforesponse__nodeinfo__init(nodeinfos[i]);
-            nodeinfos[i]->number = 0;
+            nodeinfos[i]->number = j;
             nodeinfos[i]->port = nodes[j].port;
             nodeinfos[i]->has_port = 1;
             nodeinfos[i]->has_room = 1;
             nodeinfos[i]->room =
                 bdb_state->callback->getroom_rtn(bdb_state, nodes[j].host);
             nodeinfos[i]->name = strdup(nodes[j].host);
-            if (strcmp(bdb_state->repinfo->master_host, nodes[i].host) == 0) {
-                master->number = 0;
+            if (strcmp(bdb_state->repinfo->master_host, nodes[j].host) == 0) {
+                master->number = j;
                 master->incoherent = 0;
                 master->has_port = 1;
                 master->port = nodes[j].port;
@@ -759,9 +757,8 @@ void fill_dbinfo(void *p_response, bdb_state_type *bdb_state)
 static void netinfo_dump_hostname(FILE *out, bdb_state_type *bdb_state)
 {
     struct host_node_info nodes[REPMAX];
-    int num_nodes, ii, iammaster;
+    int num_nodes, ii;
 
-    iammaster = bdb_state->repinfo->myhost == bdb_state->repinfo->master_host;
     num_nodes = net_get_nodes_info(bdb_state->repinfo->netinfo, REPMAX, nodes);
 
     logmsgf(LOGMSG_USER, out, "db engine cluster status\n");
@@ -773,7 +770,7 @@ static void netinfo_dump_hostname(FILE *out, bdb_state_type *bdb_state)
     for (ii = 0; ii < num_nodes && ii < REPMAX; ii++) {
         char *status;
         char *status_mstr;
-        DB_LSN *lsnp, zerolsn;
+        DB_LSN *lsnp;
         char str[100];
         char *coherent_state;
 
@@ -828,7 +825,7 @@ void bdb_short_netinfo_dump(FILE *out, bdb_state_type *bdb_state)
     for (ii = 0; ii < num_nodes && ii < REPMAX; ii++) {
         char *status;
         char *status_mstr;
-        DB_LSN *lsnp, zerolsn;
+        DB_LSN *lsnp;
         char str[100];
 
         if (strcmp(nodes[ii].host,
@@ -950,9 +947,6 @@ static void process_add(bdb_state_type *bdb_state, char *host)
     net_add_to_sanctioned(netinfo, host, 0);
     int count = net_get_all_nodes_connected(netinfo, hostlist);
     for (int i = 0; i < count; i++) {
-        int tmp;
-        uint8_t *p_buf, *p_buf_end;
-        int node = 0;
         int rc = write_add(netinfo, hostlist[i], host);
         if (rc != 0)
             logmsg(LOGMSG_ERROR, "got bad rc %d in process_add\n", rc);
@@ -1099,12 +1093,12 @@ int bdb_run_in_a_thread(bdb_state_type *bdb_state,
     struct bdb_thread_args *args;
 
     pthread_attr_t attr;
-    pthread_attr_init(&attr);
+    Pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
     pthread_attr_setstacksize(&attr, 1024 * 128);
     args = malloc(sizeof(struct bdb_thread_args));
     if (args == NULL) {
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
         errno = ENOMEM;
         return -1;
     }
@@ -1130,7 +1124,7 @@ uint64_t bdb_dump_freepage_info_table(bdb_state_type *bdb_state, FILE *out)
     int fd = -1;
     char fname[PATH_MAX];
     char tmpname[PATH_MAX];
-    int numstripes, numblobs;
+    int numstripes;
     int bdberr;
     unsigned int npages;
     uint64_t total_npages = 0;
@@ -1211,10 +1205,9 @@ void bdb_dump_freepage_info_all(bdb_state_type *bdb_state)
 
 const char *bdb_find_net_host(bdb_state_type *bdb_state, const char *host)
 {
-    char *h;
     int nhosts;
     const char *hosts[REPMAX];
-    char hlen = strlen(host);
+    size_t hlen = strlen(host);
     const char *fnd = NULL;
     int multiple = 0;
     char *me;
@@ -1970,7 +1963,6 @@ static void bdb_queue_extent_info(FILE *out, bdb_state_type *bdb_state,
 {
     char **names;
     int rc;
-    int i;
     char qname[PATH_MAX];
     char tran_name[PATH_MAX];
 
@@ -2054,7 +2046,7 @@ void bdb_dump_table_dbregs(bdb_state_type *bdb_state)
 void bdb_show_reptimes_compact(bdb_state_type *bdb_state)
 {
     const char *nodes[REPMAX];
-    int numnodes, i;
+    int numnodes;
     int numdisplayed = 0;
     int first = 1;
 
@@ -2084,7 +2076,7 @@ void bdb_show_reptimes_compact(bdb_state_type *bdb_state)
 void bdb_show_reptimes(bdb_state_type *bdb_state)
 {
     const char *nodes[REPMAX];
-    int numnodes, i;
+    int numnodes;
 
     numnodes = net_get_all_nodes(bdb_state->repinfo->netinfo, nodes);
     logmsg(LOGMSG_USER, "%5s %10s %10s    (rolling avg over interval)\n", "node",

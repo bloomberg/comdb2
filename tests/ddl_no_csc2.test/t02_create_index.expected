@@ -119,3 +119,13 @@ keys
 [CREATE INDEX idx1 ON t1('i+i')] failed with rc -3 Unknown column 'i+i'.
 [CREATE INDEX idx1 ON t1(where i > 1)] failed with rc -3 near "where": syntax error
 [CREATE INDEX idx1 ON t1(wherei > 1)] failed with rc -3 Invalid index column list
+(csc2='schema
+	{
+		cstring v[10] null = yes 
+	}
+keys
+	{
+		dup "idx1" = (cstring[10])"( v || 'aaa' )" 
+	}
+')
+(csc2=NULL)

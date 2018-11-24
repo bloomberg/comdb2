@@ -422,7 +422,6 @@ static inline int numRowsToNumSamplesEst(u64 n)
 ** value is a pointer to the the Stat4Accum object encoded as a blob (i.e. 
 ** the size of the blob is sizeof(void*) bytes). 
 */
-static int initnum;
 static void statInit(
   sqlite3_context *context,
   int argc,

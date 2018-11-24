@@ -327,9 +327,23 @@ A primary key created using ```CREATE TABLE (II)``` implicitly creates a
 ```UNIQUE``` index named ```COMDB2_PK``` with all key columns marked
 ```NOT NULL```.
 
-See also:
+Comdb2 allows creation of indexes only on fields with fixed-sized types. For
+instance, an attempt to create index on a blob or vutf8 field would result in
+error. In termns of syntax, ```indexes on expressions``` need a little extra
+care in Comdb2. The expression *must* be casted to a fixed-sized type.
 
-[table-schema](table_schema.html)
+```
+CREATE TABLE t1(`json` VUTF8(128),
+                UNIQUE (CAST(JSON_EXTRACT(`json`, '$.a') AS INT)),
+                UNIQUE (CAST(JSON_EXTRACT(`json`, '$.b') AS CSTRING(10))))$$
+```
+
+The list of allowed types that the expression in an index be casted to as well
+as the syntax required to define an index on expression using CSC2 schema, can
+be found [here](table_schema.html#indexes-on-expressions).
+
+See also:
+[Schema definition language (CSC2)](table_schema.html)
 
 ### CREATE LUA TRIGGER
 

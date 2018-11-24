@@ -67,6 +67,7 @@
 #include <cheapstack.h>
 #include "bdb_int.h"
 #include "locks.h"
+#include "locks_wrap.h"
 #include <time.h>
 #include <ctrace.h>
 #include <list.h>
@@ -139,15 +140,11 @@ pthread_mutex_t ckp_lst_mtx;
 int ckp_lst_ready = 0;
 extern int gbl_set_seqnum_trace;
 
-int bdb_checkpoint_list_init()
+void bdb_checkpoint_list_init()
 {
-    int rc = 0;
     listc_init(&ckp_lst, offsetof(struct checkpoint_list, lnk));
-    rc = pthread_mutex_init(&ckp_lst_mtx, NULL);
-    if (rc)
-        logmsg(LOGMSG_ERROR, "%s: pthread_mutex_init init rc %d\n", __func__, rc);
+    Pthread_mutex_init(&ckp_lst_mtx, NULL);
     ckp_lst_ready = 1;
-    return rc;
 }
 
 int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp)
@@ -283,7 +280,6 @@ void bdb_checkpoint_list_get_ckp_before_timestamp(int timestamp, DB_LSN *lsnout)
 static void set_some_flags(bdb_state_type *bdb_state, DB *dbp, char *name)
 {
     if (bdb_state->attr->checksums) {
-        logmsg(LOGMSG_INFO, "enabling checksums for %s\n", name);
         if (dbp->set_flags(dbp, DB_CHKSUM) != 0) {
             logmsg(LOGMSG_ERROR, "error enabling checksums\n");
         }
@@ -1429,27 +1425,25 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     DB_TXN *tid;
     netinfo_type *netinfo_ptr = bdb_state->repinfo->netinfo;
 
-    BDB_READLOCK("bdb_close_int");
-
-    /* force a checkpoint */
-    rc = ll_checkpoint(bdb_state, 1);
-
-    /* lock everyone out of the bdb code */
-    BDB_WRITELOCK("bdb_close_int");
-
     if (is_real_netinfo(netinfo_ptr)) {
         /* get me off the network */
         net_send_decom_all(netinfo_ptr, gbl_mynode);
         osql_process_message_decom(gbl_mynode);
 
-        /* kludge -- need something like net_send_message_payload_ack */
         sleep(2);
 
         net_exiting(netinfo_ptr);
         osql_net_exiting();
 
-        sleep(1);
     }
+    net_cleanup_netinfo(netinfo_ptr);
+    osql_cleanup_netinfo();
+
+    /* lock everyone out of the bdb code */
+    BDB_WRITELOCK(__func__);
+
+    /* force a checkpoint */
+    rc = ll_checkpoint(bdb_state, 1);
 
     /* if we were passed a child, find his parent */
     if (bdb_state->parent)
@@ -1512,10 +1506,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
 
 /* free our dynamically allocated memory */
 #ifdef NOTYET
-    rc = pthread_attr_destroy(&(bdb_state->pthread_attr_detach));
-    if (rc != 0)
-        /* we don't return error if this fails, what's the point? */
-        logmsg(LOGMSG_ERROR, "%s: pthread_attr_destroy failed: %d\n", __func__, rc);
+    Pthread_attr_destroy(&(bdb_state->pthread_attr_detach));
 #endif
 
     /* clear temp table environments */
@@ -1557,8 +1548,6 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     memset(bdb_state, 0xff, sizeof(bdb_state));
     free(bdb_state);
      */
-
-    /* net_cleanup_netinfo(netinfo_ptr); */
 
     /* DO NOT RELEASE the write lock.  just let it be. */
     return 0;
@@ -1974,7 +1963,7 @@ static void panic_func(DB_ENV *dbenv, int errval)
 
     pid = getpid();
     snprintf(buf, sizeof(buf), "pstack %d", pid);
-    int dum = system(buf);
+    system(buf);
 
     /* this code sometimes deadlocks.  install a timer - if it
        fires, we
@@ -2064,7 +2053,7 @@ void create_udpbackup_analyze_thread(bdb_state_type *bdb_state)
 
     logmsg(LOGMSG_INFO, "starting udpbackup_and_autoanalyze_thd thread\n");
 
-    pthread_attr_init(&thd_attr);
+    Pthread_attr_init(&thd_attr);
     pthread_attr_setstacksize(&thd_attr, 4 * 1024); /* 4K */
     pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
 
@@ -2557,14 +2546,14 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
         logmsg(LOGMSG_INFO, "Temptable pool enabled.\n");
     }
 
-    pthread_mutex_init(&(bdb_state->temp_list_lock), NULL);
+    Pthread_mutex_init(&(bdb_state->temp_list_lock), NULL);
     bdb_state->logical_transactions_hash = hash_init_o(
         offsetof(tran_type, logical_tranid), sizeof(unsigned long long));
-    pthread_cond_init(&(bdb_state->temptable_wait), NULL);
+    Pthread_cond_init(&(bdb_state->temptable_wait), NULL);
     bdb_state->temp_stats = calloc(1, sizeof(*(bdb_state->temp_stats)));
     pthread_mutexattr_init(&bdb_recursive_mutex);
     pthread_mutexattr_settype(&bdb_recursive_mutex, PTHREAD_MUTEX_RECURSIVE);
-    pthread_mutex_init(&bdb_state->translist_lk, &bdb_recursive_mutex);
+    Pthread_mutex_init(&bdb_state->translist_lk, &bdb_recursive_mutex);
     listc_init(&bdb_state->logical_transactions_list,
                offsetof(struct tran_tag, tranlist_lnk));
 
@@ -3418,9 +3407,9 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
         extern pthread_mutex_t bdb_asof_current_lsn_mutex;
         extern DB_LSN bdb_asof_current_lsn;
 
-        pthread_mutex_lock(&bdb_asof_current_lsn_mutex);
+        Pthread_mutex_lock(&bdb_asof_current_lsn_mutex);
         asoflsn = bdb_asof_current_lsn;
-        pthread_mutex_unlock(&bdb_asof_current_lsn_mutex);
+        Pthread_mutex_unlock(&bdb_asof_current_lsn_mutex);
 
         if (asoflsn.file <= lowfilenum) {
             if (bdb_state->attr->debug_log_deletion) {
@@ -3780,20 +3769,20 @@ static pthread_mutex_t logdelete_lk = PTHREAD_MUTEX_INITIALIZER;
 
 void logdelete_lock(void)
 {
-    pthread_mutex_lock(&logdelete_lk);
+    Pthread_mutex_lock(&logdelete_lk);
 }
 
 void logdelete_unlock(void)
 {
-    pthread_mutex_unlock(&logdelete_lk);
+    Pthread_mutex_unlock(&logdelete_lk);
 }
 
 void delete_log_files(bdb_state_type *bdb_state)
 {
     BDB_READLOCK("logdelete_thread");
-    pthread_mutex_lock(&logdelete_lk);
+    Pthread_mutex_lock(&logdelete_lk);
     delete_log_files_int(bdb_state);
-    pthread_mutex_unlock(&logdelete_lk);
+    Pthread_mutex_unlock(&logdelete_lk);
     BDB_RELLOCK();
 }
 
@@ -4872,7 +4861,7 @@ static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
                                              int timeout, uint32_t newgen,
                                              int *done)
 {
-    int rc;
+    int rc = 0;
     char *lock_str;
 
     if (done) {
@@ -5031,25 +5020,11 @@ extern pthread_key_t lockmgr_key;
 
 static void run_once(void)
 {
-    int rc;
+    Pthread_key_create(&lockmgr_key, NULL);
 
-    rc = pthread_key_create(&lockmgr_key, NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "pthread_key_create(lockmgr_key) failed\n");
-        abort();
-    }
+    Pthread_key_create(&bdb_key, NULL);
 
-    rc = pthread_key_create(&bdb_key, NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "pthread_key_create(bdb_key) failed\n");
-        abort();
-    }
-
-    rc = pthread_key_create(&lock_key, bdb_lock_destructor);
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "pthread_key_create(lock_key) failed\n");
-        abort();
-    }
+    Pthread_key_create(&lock_key, bdb_lock_destructor);
 }
 
 static void deadlock_happened(struct berkdb_deadlock_info *deadlock_info)
@@ -5098,8 +5073,8 @@ int create_master_lease_thread(bdb_state_type *bdb_state)
 {
 	pthread_t tid;
 	pthread_attr_t attr;
-	pthread_attr_init(&attr);
-	pthread_attr_setstacksize(&attr, 4 * 1024);
+        Pthread_attr_init(&attr);
+        pthread_attr_setstacksize(&attr, 4 * 1024);
 	extern void *master_lease_thread(void *arg);
 	pthread_create(&tid, &attr, master_lease_thread, bdb_state);
     return 0;
@@ -5109,7 +5084,7 @@ void create_coherency_lease_thread(bdb_state_type *bdb_state)
 {
     pthread_t tid;
     pthread_attr_t attr;
-    pthread_attr_init(&attr);
+    Pthread_attr_init(&attr);
     pthread_attr_setstacksize(&attr, 4 * 1024);
     extern void *coherency_lease_thread(void *arg);
     pthread_create(&tid, &attr, coherency_lease_thread, bdb_state);
@@ -5218,64 +5193,34 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
             bdb_bdblock_debug_init(bdb_state);
         }
 
-        rc = pthread_key_create(&(bdb_state->tid_key), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "pthread_key_create failed\n");
-            exit(1);
-        }
+        Pthread_key_create(&(bdb_state->tid_key), NULL);
 
-        rc = pthread_mutex_init(&(bdb_state->numthreads_lock), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "numthreads_lockx failed\n");
-            exit(1);
-        }
-
-        rc = pthread_mutex_init(&(bdb_state->id_lock), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "id_lock failed\n");
-            exit(1);
-        }
-
-        rc = pthread_mutex_init(&(bdb_state->gblcontext_lock), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "gblcontext_lock failed\n");
-            exit(1);
-        }
+        Pthread_mutex_init(&(bdb_state->numthreads_lock), NULL);
+        Pthread_mutex_init(&(bdb_state->id_lock), NULL);
+        Pthread_mutex_init(&(bdb_state->gblcontext_lock), NULL);
 
         bdb_state->last_downgrade_time = calloc(sizeof(uint64_t), MAXNODES);
         bdb_state->master_lease = calloc(sizeof(uint64_t), MAXNODES);
-        pthread_mutex_init(&(bdb_state->master_lease_lk), NULL);
+        Pthread_mutex_init(&(bdb_state->master_lease_lk), NULL);
 
         bdb_state->coherent_state = malloc(sizeof(int) * MAXNODES);
         for (int i = 0; i < MAXNODES; i++)
             bdb_state->coherent_state[i] = STATE_COHERENT;
 
-        rc = pthread_mutex_init(&(bdb_state->coherent_state_lock), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "coherent_state_lock failed\n");
-            exit(1);
-        }
+        Pthread_mutex_init(&(bdb_state->coherent_state_lock), NULL);
 
         bdb_state->gblcontext = 0;
 
         bdb_lock_init(bdb_state);
 
-        rc = pthread_mutex_init(&bdb_state->durable_lsn_lk, NULL);
-        if (rc) {
-            logmsg(LOGMSG_FATAL, "durable_lsn_lk failed\n");
-            exit(1);
-        }
+        Pthread_mutex_init(&bdb_state->durable_lsn_lk, NULL);
     }
 
     /* XXX this looks wrong */
     if (!parent_bdb_state)
         bdb_thread_event(bdb_state, 1);
 
-    rc = pthread_attr_init(&(bdb_state->pthread_attr_detach));
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "pthread_attr_init failed\n");
-        exit(1);
-    }
+    Pthread_attr_init(&(bdb_state->pthread_attr_detach));
 
     rc = pthread_attr_setdetachstate(&(bdb_state->pthread_attr_detach),
                                      PTHREAD_CREATE_DETACHED);
@@ -5307,34 +5252,18 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
         bdb_state->seqnum_info = parent_bdb_state->seqnum_info;
     }
 
-    rc = pthread_mutex_init(&(bdb_state->exit_lock), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "exit mutex failed\n");
-        exit(1);
-    }
+    Pthread_mutex_init(&(bdb_state->exit_lock), NULL);
 
     /* initialize this thing high so any findnexts that happen before we
        get a broadcast from master will not skip anything */
     bdb_state->master_cmpcontext = flibc_htonll(ULLONG_MAX);
 
     bdb_state->seed = 0;
-    rc = pthread_mutex_init(&(bdb_state->seed_lock), NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "seed mutex failed\n");
-        exit(1);
-    }
+    Pthread_mutex_init(&(bdb_state->seed_lock), NULL);
 
     if (!parent_bdb_state) {
-        rc = pthread_mutex_init(&(bdb_state->seqnum_info->lock), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "seqnum_info mutex failed\n");
-            exit(1);
-        }
-        rc = pthread_cond_init(&(bdb_state->seqnum_info->cond), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "seqnum_info cond failed\n");
-            exit(1);
-        }
+        Pthread_mutex_init(&(bdb_state->seqnum_info->lock), NULL);
+        Pthread_cond_init(&(bdb_state->seqnum_info->cond), NULL);
         bdb_state->seqnum_info->waitlist =
             calloc(MAXNODES, sizeof(wait_for_lsn_list *));
         bdb_state->seqnum_info->trackpool = pool_setalloc_init(
@@ -5356,28 +5285,15 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
 
         bdb_state->stripe_pool_start = 0;
 
-        rc = pthread_key_create(&(bdb_state->seqnum_info->key), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "pthread_key_create failed\n");
-            exit(1);
-        }
+        Pthread_key_create(&(bdb_state->seqnum_info->key), NULL);
 
         bdb_state->attr = bdb_attr;
         bdb_state->usr_ptr = usr_ptr;
         bdb_state->callback = bdb_callback;
 
         bdb_state->bdb_lock = mymalloc(sizeof(pthread_rwlock_t));
-        rc = pthread_rwlock_init(bdb_state->bdb_lock, NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "rwlock_init failed\n");
-            exit(1);
-        }
-
-        rc = pthread_mutex_init(&(bdb_state->children_lock), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "children_lock failed\n");
-            exit(1);
-        }
+        Pthread_rwlock_init(bdb_state->bdb_lock, NULL);
+        Pthread_mutex_init(&(bdb_state->children_lock), NULL);
 
     } else {
         bdb_state->parent = parent_bdb_state;
@@ -5452,12 +5368,7 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
     */
 
     bdb_state->pending_seqnum_broadcast = 0;
-    rc = pthread_mutex_init(&bdb_state->pending_broadcast_lock, NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "init pending_broadcast_lock failed\n");
-        *bdberr = BDBERR_MISC;
-        return NULL;
-    }
+    Pthread_mutex_init(&bdb_state->pending_broadcast_lock, NULL);
 
     if (bdbtype == BDBTYPE_QUEUE || bdbtype == BDBTYPE_QUEUEDB) {
         bdb_queue_init_priv(bdb_state);
@@ -5522,40 +5433,15 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
         /* chain back a pointer to our bdb_state for later */
         net_set_usrptr(bdb_state->repinfo->netinfo, bdb_state);
 
-        rc = pthread_mutex_init(&(bdb_state->repinfo->elect_mutex), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "init elect mutex failed\n");
-            *bdberr = BDBERR_MISC;
-            return NULL;
-        }
+        Pthread_mutex_init(&(bdb_state->repinfo->elect_mutex), NULL);
 
-        rc = pthread_mutex_init(&(bdb_state->repinfo->upgrade_lock), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "init upgrade_lock failed\n");
-            *bdberr = BDBERR_MISC;
-            return NULL;
-        }
+        Pthread_mutex_init(&(bdb_state->repinfo->upgrade_lock), NULL);
 
-        rc = pthread_mutex_init(&(bdb_state->repinfo->send_lock), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "init send_lock failed\n");
-            *bdberr = BDBERR_MISC;
-            return NULL;
-        }
+        Pthread_mutex_init(&(bdb_state->repinfo->send_lock), NULL);
 
-        rc = pthread_mutex_init(&(bdb_state->repinfo->receive_lock), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "init receive_lock failed\n");
-            *bdberr = BDBERR_MISC;
-            return NULL;
-        }
+        Pthread_mutex_init(&(bdb_state->repinfo->receive_lock), NULL);
 
-        rc = pthread_mutex_init(&(bdb_state->repinfo->appseqnum_lock), NULL);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "init appseqnum_lock failed\n");
-            *bdberr = BDBERR_MISC;
-            return NULL;
-        }
+        Pthread_mutex_init(&(bdb_state->repinfo->appseqnum_lock), NULL);
 
         /* set up the appseqnum array.  we tag all packets we put out
            on the network with our own application level sequence
@@ -5801,12 +5687,7 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
         }
 
         bdb_state->last_dta = 0;
-        rc = pthread_mutex_init(&bdb_state->last_dta_lk, NULL);
-        if (rc) {
-            logmsg(LOGMSG_FATAL, "Can't init last_dta_lk err %d %s\n", rc,
-                    strerror(rc));
-            exit(1);
-        }
+        Pthread_mutex_init(&bdb_state->last_dta_lk, NULL);
     }
 
     bdb_state->isopen = 1;
@@ -6233,77 +6114,6 @@ bdb_state_type *bdb_create_more_lite(const char name[], const char dir[],
     BDB_RELLOCK();
 
     return ret;
-}
-
-static int bdb_reinit_int(bdb_state_type *bdb_state, tran_type *tran,
-                          int *bdberr)
-{
-    int i;
-    int dtanum;
-    u_int32_t nrecs = 0;
-    int rc;
-    u_int32_t nrecs_ix[MAXINDEX];
-
-    *bdberr = 0;
-
-    if (!bdb_state->read_write) {
-        *bdberr = BDBERR_READONLY;
-        return -1;
-    }
-
-    /* truncate keys */
-    for (i = 0; i < bdb_state->numix; i++) {
-        rc = bdb_state->dbp_ix[i]->truncate(bdb_state->dbp_ix[i], tran->tid,
-                                            &nrecs_ix[i], 0);
-        if (rc == DB_LOCK_DEADLOCK) {
-            *bdberr = BDBERR_DEADLOCK;
-            return -1;
-        } else if (rc) {
-            *bdberr = BDBERR_MISC;
-            return -1;
-        }
-    }
-
-    /* truncate all data records and blobs, count the data records */
-    for (dtanum = 0; dtanum < bdb_state->numdtafiles; dtanum++) {
-        int strnum;
-        for (strnum = bdb_get_datafile_num_files(bdb_state, dtanum) - 1;
-             strnum >= 0; strnum--) {
-            u_int32_t ndtarecs;
-            DB *dbp = bdb_state->dbp_data[dtanum][strnum];
-            dbp->truncate(dbp, tran->tid, &ndtarecs, 0);
-            if (rc == DB_LOCK_DEADLOCK) {
-                *bdberr = BDBERR_DEADLOCK;
-                return -1;
-            } else if (rc) {
-                *bdberr = BDBERR_MISC;
-                return -1;
-            }
-            if (0 == dtanum)
-                nrecs += ndtarecs;
-        }
-    }
-
-    /* sanity check # records removed */
-    for (i = 0; i < bdb_state->numix; i++) {
-        if (nrecs != nrecs_ix[i]) {
-           logmsg(LOGMSG_ERROR, "key/data mismatch! ix %d nrecs %d data nrecs %d\n", i,
-                   nrecs_ix[i], nrecs);
-        }
-    }
-
-    return 0;
-}
-
-/* remove all records from a database (keys, data, free list) */
-int bdb_reinit(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
-{
-    int rc;
-
-    BDB_READLOCK("bdb_reinit");
-    rc = bdb_reinit_int(bdb_state, tran, bdberr);
-    BDB_RELLOCK();
-    return rc;
 }
 
 void bdb_remove_fileid_pglogs(bdb_state_type *bdb_state, unsigned char *fileid);
@@ -7469,7 +7279,6 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
     int rc = 0;
     char table_prefix[80];
     unsigned long long file_version;
-    unsigned long long version_num;
 
     struct dirent *buf;
     struct dirent *ent;
@@ -7566,7 +7375,6 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
         /* brute force scan to find any files on disk that we aren't
          * actually using */
         int found_in_llmeta = 0;
-        int i;
 
         /* We have to check new. prefix for schemachange first.
          * See NOTE in bdb_is_new_sc_file()
@@ -7870,8 +7678,6 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
                 print(bdb_state, "failed to collect old file (list full) %s\n",
                       ent->d_name);
             } else {
-                logmsg(LOGMSG_INFO, "%s: collected file %s\n", __func__,
-                       ent->d_name);
                 print(bdb_state, "collected old file %s\n", ent->d_name);
             }
         } else {

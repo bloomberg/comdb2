@@ -232,6 +232,17 @@ void sqlite3FinishCoding(Parse *pParse){
     if( pParse->pAinc!=0 && pParse->nTab==0 ) pParse->nTab = 1;
     sqlite3VdbeMakeReady(v, pParse);
     pParse->rc = SQLITE_DONE;
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if (pParse->ast) {
+        extern int comdb2_check_parallel(Parse*);
+        if (comdb2_check_parallel(pParse)) {
+            pParse->rc = SQLITE_SCHEMA_DOHSQL;
+            return;
+        }
+    }
+#endif
+
   }else{
     pParse->rc = SQLITE_ERROR;
   }
@@ -391,8 +402,7 @@ retry_after_fdb_creation:
   ** remotely
   */
   if( !already_searched_fdb ){
-    int        version; 
-    int        iNewDb;
+    int        version = 0; 
     char       *zErrDyn = NULL;
 
     if( gbl_fdb_track ){
@@ -2881,10 +2891,10 @@ void sqlite3DropTable(Parse *pParse, SrcList *pName, int isView, int noErr){
     goto exit_drop_table;
   }
   {
-    const char *zTab = SCHEMA_TABLE(iDb);
-    const char *zDb = db->aDb[iDb].zDbSName;
     const char *zArg2 = 0;
 #ifndef SQLITE_OMIT_AUTHORIZATION
+    const char *zTab = SCHEMA_TABLE(iDb);
+    const char *zDb = db->aDb[iDb].zDbSName;
     if( sqlite3AuthCheck(pParse, SQLITE_DELETE, zTab, 0, zDb)){
       goto exit_drop_table;
     }
@@ -2947,8 +2957,10 @@ void sqlite3DropTable(Parse *pParse, SrcList *pName, int isView, int noErr){
      ** on disk.
      */
     sqlite3BeginWriteOperation(pParse, 1, iDb);
-    sqlite3ClearStatTables(pParse, iDb, "tbl", pTab->zName);
-    sqlite3FkDropTable(pParse, pName, pTab);
+    if (!isView){
+        sqlite3ClearStatTables(pParse, iDb, "tbl", pTab->zName);
+        sqlite3FkDropTable(pParse, pName, pTab);
+    }
     sqlite3CodeDropTable(pParse, pTab, iDb, isView);
 
   }else{
@@ -4150,6 +4162,7 @@ SrcList *sqlite3SrcListAppend(
   }
   pItem->zName = sqlite3NameFromToken(db, pTable);
   pItem->zDatabase = sqlite3NameFromToken(db, pDatabase);
+
   return pList;
 }
 
@@ -4983,14 +4996,14 @@ char *sqlite3DescribeIndexOrder(
   Table          *pTbl;
   Index          *pIdx;
   int            i;
-  char           *colName;
+  char           *colName = NULL;
   char           *ret, *ret2;
   char           *pDesc;
-  char           *pOperLast;
-  char           *retCond, *retCond2, *retCond3;
+  char           *pOperLast = NULL;
+  char           *retCond = NULL, *retCond2, *retCond3;
   int            done_key;
   char           *ret_cols, *ret_cols2;
-  int            isMovingLeft;
+  int            isMovingLeft = 0;
   char           *pExprDesc = NULL;
   int            isExpr = 0;
 

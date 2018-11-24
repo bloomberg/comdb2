@@ -27,7 +27,6 @@ set(src
   glue.c
   handle_buf.c
   history.c
-  llops.c
   localrep.c
   lrucache.c
   marshal.c
@@ -69,7 +68,6 @@ set(src
   sqlmaster.c
   sqloffload.c
   sqlstat1.c
-  sqlsupport.c
   tag.c
   testcompr.c
   thrman.c
@@ -79,13 +77,15 @@ set(src
   trans.c
   translistener.c
   trigger.c
-  twophase.c
   utf8.c
   verify.c
   views.c
   views_cron.c
   views_persist.c
   watchdog.c
+  shard_range.c
+  dohsql.c
+  dohast.c
   ${PROJECT_BINARY_DIR}/protobuf/bpfunc.pb-c.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_dump/cdb2_dump.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_printlog/cdb2_printlog.c
@@ -170,6 +170,7 @@ add_definitions(
 add_dependencies(comdb2 mem protobuf sqlite db bdb)
 
 target_link_libraries(comdb2
+  ${PLUGIN_LIBRARIES}
   schemachange
   bdb
   util
@@ -195,7 +196,6 @@ target_link_libraries(comdb2
   ${UNWIND_LIBRARY}
   ${UUID_LIBRARY}
   ${ZLIB_LIBRARIES}
-  ${PLUGIN_LIBRARIES}
   ${COMDB2_ROBO_LINK_FLAGS}
 )
 configure_file(copycomdb2 copycomdb2 @ONLY)

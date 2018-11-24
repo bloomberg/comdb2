@@ -4478,7 +4478,6 @@ static int sqlite3IntFloatCompare(i64 i, double r){
 */
 static inline int sqlite3MemCompare(const Mem *pMem1, const Mem *pMem2,
         const CollSeq *pColl){
-  int rc;
   int f1, f2;
   int combined_flags;
 
@@ -5293,6 +5292,46 @@ Mem* sqlite3GetCachedResultRow(sqlite3_stmt *pStmt, int *nColumns)
 
   return NULL;
 }
+
+Mem* sqlite3CloneResult(sqlite3_stmt *pStmt, Mem *pMem)
+{
+  Vdbe *p = (Vdbe*)pStmt;
+  int i, rc;
+  int ncols = p->nResColumn;
+  Mem *cols = p->pResultSet;
+
+  if (!p) abort();
+
+  if (!pMem) {
+    pMem = sqlite3Malloc(sizeof(Mem)*ncols);
+    bzero(pMem, sizeof(*pMem)*ncols);
+  }
+  if (!pMem)
+    return NULL;
+
+  for(i=0;i<ncols;i++) {
+    rc = sqlite3VdbeMemCopy(&pMem[i], &cols[i]);
+    if (rc)
+      return NULL;
+  }
+
+  return pMem;
+}
+
+int sqlite3CloneResultFree(sqlite3_stmt *pStmt, Mem **ppMem)
+{
+  Vdbe *p = (Vdbe*)pStmt;
+  Mem *pMem = *ppMem;
+
+  if (pMem) {
+    releaseMemArray(pMem, p->nResColumn);    
+    sqlite3DbFree(p->db,pMem); 
+    *ppMem = NULL;
+  }
+
+  return 0;
+}
+
 #ifdef SQLITE_ENABLE_PREUPDATE_HOOK
 
 /*
