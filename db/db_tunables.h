@@ -1530,9 +1530,14 @@ REGISTER_TUNABLE("osql_check_replicant_numops",
                  TUNABLE_BOOLEAN, &gbl_osql_check_replicant_numops,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE(
-    "disable_tpsc_tblvers",
-    "Disable table version checks for time partition schema changes",
-    TUNABLE_BOOLEAN, &gbl_disable_tpsc_tblvers, NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("disable_tpsc_tblvers",
+                 "Disable table version checks for time partition schema "
+                 "changes", TUNABLE_BOOLEAN, &gbl_disable_tpsc_tblvers, NOARG,
+                 NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("abort_irregular_set_durable_lsn",
+                 "Abort incorrect calls to set_durable_lsn. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_abort_irregular_set_durable_lsn,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

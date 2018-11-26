@@ -3064,7 +3064,6 @@ int bdb_wait_for_seqnum_from_room(bdb_state_type *bdb_state,
     int i;
     const char *nodelist[REPMAX];
     int numnodes;
-    int rc = 0;
     int our_room = 0;
 
     if (bdb_state->attr->repalwayswait)
@@ -3081,13 +3080,11 @@ int bdb_wait_for_seqnum_from_room(bdb_state_type *bdb_state,
         if (bdb_state->callback->getroom_rtn) {
             if ((bdb_state->callback->getroom_rtn(bdb_state, nodelist[i])) ==
                 our_room)
-                rc = bdb_wait_for_seqnum_from_node(bdb_state, seqnum,
+                bdb_wait_for_seqnum_from_node(bdb_state, seqnum,
                                                    nodelist[i]);
         } else {
-            rc = bdb_wait_for_seqnum_from_node(bdb_state, seqnum, nodelist[i]);
+            bdb_wait_for_seqnum_from_node(bdb_state, seqnum, nodelist[i]);
         }
-        if (rc)
-            logmsg(LOGMSG_WARN, "%s:%d rc = %d\n", __FILE__, __LINE__, rc);
     }
 
     return 0;
@@ -3551,7 +3548,6 @@ int bdb_wait_for_seqnum_from_all_adaptive_newcoh(bdb_state_type *bdb_state,
 /* let everyone know what logfile we are currently using */
 void send_filenum_to_all(bdb_state_type *bdb_state, int filenum, int nodelay)
 {
-    int rc;
     int count;
     int filenum_net;
     const char *hostlist[REPMAX];
@@ -3571,7 +3567,7 @@ void send_filenum_to_all(bdb_state_type *bdb_state, int filenum, int nodelay)
 
     count = net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist);
     for (i = 0; i < count; i++) {
-        rc = net_send(bdb_state->repinfo->netinfo, hostlist[i],
+        net_send(bdb_state->repinfo->netinfo, hostlist[i],
                       USER_TYPE_BERKDB_FILENUM, &filenum_net, sizeof(int),
                       nodelay);
         if (rc)
@@ -4899,14 +4895,14 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
            came from the network */
 
         if (p_buf - ((uint8_t *)dta) > dtalen) {
-            logmsg(LOGMSG_FATAL, "buf-dta != dtalen\n");
-            logmsg(LOGMSG_FATAL, "%p %p %d\n", p_buf, dta, dtalen);
-            exit(1);
+            logmsg(LOGMSG_ERROR, "buf-dta != dtalen\n");
+            logmsg(LOGMSG_ERROR, "%p %p %d\n", p_buf, dta, dtalen);
+            return -1;
         }
 
         if ((controlbufsz + recbufsz) > dtalen) {
-            logmsg(LOGMSG_FATAL, "controlbufsz+recbufsz too big\n");
-            exit(1);
+            logmsg(LOGMSG_ERROR, "controlbufsz+recbufsz too big\n");
+            return -1;
         }
 
         if (bdb_state->rep_trace) {
@@ -4935,13 +4931,13 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
             /*fprintf(stderr, "2) repchecksum\n");*/
 
             if (crc32c(rec.data, rec.size) != recbufcrc) {
-                logmsg(LOGMSG_FATAL, "CRC MISMATCH on rec\n");
-                exit(1);
+                logmsg(LOGMSG_ERROR, "CRC MISMATCH on rec\n");
+                return -1;
             }
 
             if (crc32c(control.data, control.size) != controlbufcrc) {
-                logmsg(LOGMSG_FATAL, "CRC MISMATCH on control\n");
-                exit(1);
+                logmsg(LOGMSG_ERROR, "CRC MISMATCH on control\n");
+                return -1;
             }
         }
 
@@ -5589,12 +5585,16 @@ int bdb_wait_for_seqnum_from_n(bdb_state_type *bdb_state, seqnum_type *seqnum,
                     &bdb_state->seqnum_info->seqnums[nodeix(connlist[i])],
                     seqnum) >= 0) {
                 num_acks++;
+<<<<<<< HEAD
             } /*TODO: delete this
             else {
                 DB_LSN *l;
                 l = (DB_LSN *)&bdb_state->seqnum_info
                         ->seqnums[nodeix(connlist[i])];
             } */
+=======
+            }
+>>>>>>> Various fixes
         }
         if (num_acks < n)
             Pthread_cond_wait(&bdb_state->seqnum_info->cond,

@@ -1270,6 +1270,7 @@ __dbenv_set_comdb2_dirs(dbenv, data_dir, txn_dir, tmp_dir)
 
 pthread_mutex_t gbl_durable_lsn_lk = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t gbl_durable_lsn_cond = PTHREAD_COND_INITIALIZER;
+int gbl_abort_irregular_set_durable_lsn = 0;
 
 static void
 __dbenv_set_durable_lsn(dbenv, lsnp, generation)
@@ -1279,17 +1280,24 @@ __dbenv_set_durable_lsn(dbenv, lsnp, generation)
 {
 	extern int gbl_durable_set_trace;
 
-	if (lsnp->file == 2147483647) {
-		logmsg(LOGMSG_FATAL, "huh? setting file to 2147483647?\n");
-		abort();
+	if (lsnp->file == 2147483647 || lsnp->file == 0) {
+		logmsg(LOGMSG_ERROR, "%s: invalid LSN file=2147483647?\n",
+                __func__);
+        if (gbl_abort_irregular_set_durable_lsn)
+            abort();
+        return;
 	}
 
 	Pthread_mutex_lock(&gbl_durable_lsn_lk);
 
 	if (generation > dbenv->durable_generation &&
 	    log_compare(lsnp, &dbenv->durable_lsn) < 0) {
-		logmsg(LOGMSG_FATAL, "Aborting on reversing durable lsn\n");
-		abort();
+		logmsg(LOGMSG_ERROR, "%s: lower LSN from later generation\n",
+                __func__);
+        if (gbl_abort_irregular_set_durable_lsn)
+            abort();
+        Pthread_mutex_unlock(&gbl_durable_lsn_lk);
+        return;
 	}
 
 	if (dbenv->durable_generation < generation ||
@@ -1304,12 +1312,6 @@ __dbenv_set_durable_lsn(dbenv, lsnp, generation)
 			       dbenv->durable_lsn.file,
 			       dbenv->durable_lsn.offset,
 			       dbenv->durable_generation);
-		}
-
-		if (lsnp->file == 0) {
-			logmsg(LOGMSG_FATAL, "Aborting on attempt to set "
-					     "durable lsn file to 0\n");
-			abort();
 		}
 	} else {
 		/* This can happen if two commit threads can race against each
