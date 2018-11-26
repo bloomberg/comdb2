@@ -3385,8 +3385,9 @@ inline netinfo_type *create_netinfo_offload(char myhostname[], int myportnum,
                                             int myfd, char app[],
                                             char service[], char instance[])
 {
+    extern int gbl_accept_on_child_nets;
     return create_netinfo_int(myhostname, myportnum, myfd, app, service,
-                              instance, 0, 1, 1, 0);
+                              instance, 0, 1, !gbl_accept_on_child_nets, 0);
 }
 
 void net_count_nodes_ex(netinfo_type *netinfo_ptr, int *total_ptr,
