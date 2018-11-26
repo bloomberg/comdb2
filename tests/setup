@@ -162,7 +162,6 @@ setup_db() {
     fi
 
     df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> ${LRL}
-    echo "make_slow_replicants_incoherent off" >> ${LRL}
 
     # If CLUSTER is defined, populate config and lrl with that info
     if [[ -n "$CLUSTER" ]]; then
