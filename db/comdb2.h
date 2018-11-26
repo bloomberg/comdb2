@@ -798,12 +798,12 @@ struct dbtable {
     struct dbstore dbstore[MAXCOLUMNS];
     int odh;
     /* csc2 schema version increased on instantaneous schemachange */
-    int schema_version; 
+    int schema_version;
     int instant_schema_change;
     int inplace_updates;
     /* tableversion is an ever increasing counter which is incremented for
      * every schema change (add, alter, drop, etc.) but not for fastinit */
-    unsigned long long tableversion; 
+    unsigned long long tableversion;
 
     /* map of tag fields for schema version to curr schema */
     unsigned int * versmap[MAXVER + 1];

@@ -6316,7 +6316,8 @@ void commit_schemas(const char *tblname)
                                 "commit_schemas: out of memory on malloc\n");
                         exit(1);
                     }
-                    sprintf(newname, "%s%d", gbl_ondisk_ver, db->schema_version);
+                    sprintf(newname, "%s%d", gbl_ondisk_ver,
+                            db->schema_version);
                     ver_schema = clone_schema(sc);
                     free(ver_schema->tag);
                     ver_schema->tag = newname;
@@ -7084,7 +7085,8 @@ int reload_after_bulkimport(struct dbtable *db, tran_type *tran)
     int rc;
     int bdberr;
     if ((rc = table_version_upsert(db, tran, &bdberr)) != 0) {
-        logmsg(LOGMSG_ERROR, "Failed updating table version bdberr %d\n", bdberr);
+        logmsg(LOGMSG_ERROR, "Failed updating table version bdberr %d\n",
+               bdberr);
         return rc;
     }
     update_dbstore(db);
