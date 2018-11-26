@@ -530,21 +530,17 @@ void bdb_transfermaster_tonode(bdb_state_type *bdb_state, char *tohost)
     bdb_downgrade_noelect(bdb_state);
 
     numsleeps = 0;
-    int tohost_node = nodeix(tohost); //note: tohost == hostlist[i]
+    DB_LSN tohost_lsn = bdb_state->seqnum_info->seqnums[nodeix(tohost)].lsn;
+    DB_LSN myhost_lsn = bdb_state->seqnum_info->seqnums[nodeix(myhost)].lsn;
 again:
-    if (((bdb_state->seqnum_info->seqnums[tohost_node].lsn.file >
-          bdb_state->seqnum_info->seqnums[nodeix(myhost)].lsn.file) ||
-         (((bdb_state->seqnum_info->seqnums[tohost_node].lsn.file) ==
-           (bdb_state->seqnum_info->seqnums[nodeix(myhost)].lsn.file)) &&
-          ((bdb_state->seqnum_info->seqnums[tohost_node].lsn.offset) >=
-           (bdb_state->seqnum_info->seqnums[nodeix(myhost)].lsn.offset)))) &&
-        ((bdb_state->callback->nodeup_rtn(bdb_state, hostlist[i])))) {
-        logmsg(LOGMSG_INFO, "%s: to-be-upgraded node %s is up-to-date %d:%d, us %d:%d\n",
-                __func__, tohost,
-                bdb_state->seqnum_info->seqnums[tohost_node].lsn.file,
-                bdb_state->seqnum_info->seqnums[tohost_node].lsn.offset,
-                bdb_state->seqnum_info->seqnums[tohost_node].lsn.file,
-                bdb_state->seqnum_info->seqnums[tohost_node].lsn.offset);
+    if (((tohost_lsn.file > myhost_lsn.file) ||
+         (tohost_lsn.file == myhost_lsn.file &&
+          tohost_lsn.offset >= myhost_lsn.offset)) &&
+        (bdb_state->callback->nodeup_rtn(bdb_state, tohost))) {
+        logmsg(LOGMSG_INFO,
+               "%s: to-be-upgraded node %s is up-to-date %d:%d, us %d:%d\n",
+               __func__, tohost, tohost_lsn.file, tohost_lsn.offset,
+               myhost_lsn.file, myhost_lsn.offset);
     } else {
         numsleeps++;
         if (numsleeps > 2) {
@@ -2240,12 +2236,13 @@ static void calculate_durable_lsn(bdb_state_type *bdb_state, DB_LSN *dlsn,
 
     Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
     for (j = 0; j < nodecount; j++) {
+        int node_ix = nodeix(nodelist[j]);
         memcpy(&nodelsns[index],
-               &bdb_state->seqnum_info->seqnums[nodeix(nodelist[j])].lsn,
+               &bdb_state->seqnum_info->seqnums[node_ix].lsn,
                sizeof(DB_LSN));
         /* Consider only generation matches that aren't in catch-up mode */
-        if ((mygen == (nodegens[index] = bdb_state->seqnum_info->seqnums[nodeix(nodelist[j])].generation)) && 
-            (bdb_state->seqnum_info->seqnums[nodeix(nodelist[j])].lsn.file != 2147483647)) {
+        if ((mygen == (nodegens[index] = bdb_state->seqnum_info->seqnums[node_ix].generation)) && 
+            (bdb_state->seqnum_info->seqnums[node_ix].lsn.file != 2147483647)) {
             index++;
         }
     }
@@ -2669,18 +2666,19 @@ static void bdb_zap_lsn_waitlist(bdb_state_type *bdb_state, const char *host) {
 
     /* clear statistics */
     Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
-    if (bdb_state->seqnum_info->time_minute[nodeix(host)])
-        averager_clear(bdb_state->seqnum_info->time_minute[nodeix(host)]);
-    if (bdb_state->seqnum_info->time_10seconds[nodeix(host)])
-        averager_clear(bdb_state->seqnum_info->time_10seconds[nodeix(host)]);
+    int node_ix = nodeix(host);
+    if (bdb_state->seqnum_info->time_minute[node_ix])
+        averager_clear(bdb_state->seqnum_info->time_minute[node_ix]);
+    if (bdb_state->seqnum_info->time_10seconds[node_ix])
+        averager_clear(bdb_state->seqnum_info->time_10seconds[node_ix]);
 
     /* clear any lsns we were waiting for */
     struct waiting_for_lsn *waitforlsn;
-    if (bdb_state->seqnum_info->waitlist[nodeix(host)]) {
-        waitforlsn = (struct waiting_for_lsn *) listc_rtl(bdb_state->seqnum_info->waitlist[nodeix(host)]);
+    if (bdb_state->seqnum_info->waitlist[node_ix]) {
+        waitforlsn = (struct waiting_for_lsn *) listc_rtl(bdb_state->seqnum_info->waitlist[node_ix]);
         while (waitforlsn) {
             pool_relablk(bdb_state->seqnum_info->trackpool, waitforlsn);
-            waitforlsn = (struct waiting_for_lsn *) listc_rtl(bdb_state->seqnum_info->waitlist[nodeix(host)]);
+            waitforlsn = (struct waiting_for_lsn *) listc_rtl(bdb_state->seqnum_info->waitlist[node_ix]);
         }
     }
 
@@ -3089,6 +3087,7 @@ int bdb_wait_for_seqnum_from_room(bdb_state_type *bdb_state,
             bdb_state, bdb_state->repinfo->myhost));
 
     for (i = 0; i < numnodes; i++) {
+        int rc = 0;
         if (bdb_state->callback->getroom_rtn) {
             if ((bdb_state->callback->getroom_rtn(bdb_state, nodelist[i])) ==
                 our_room)
@@ -3096,6 +3095,10 @@ int bdb_wait_for_seqnum_from_room(bdb_state_type *bdb_state,
         } else {
             bdb_wait_for_seqnum_from_node(bdb_state, seqnum, nodelist[i]);
         }
+        if (rc)
+            logmsg(LOGMSG_DEBUG,
+                   "%s:bdb_wait_for_seqnum_from_node %s returned rc=%d\n",
+                   __func__, nodelist[i], rc);
     }
 
     return 0;
@@ -3585,7 +3588,7 @@ void send_filenum_to_all(bdb_state_type *bdb_state, int filenum, int nodelay)
                       USER_TYPE_BERKDB_FILENUM, &filenum_net, sizeof(int),
                       nodelay);
         if (rc)
-            logmsg(LOGMSG_WARN, "%s:%d rc = %d\n", __FILE__, __LINE__, rc);
+            logmsg(LOGMSG_DEBUG, "%s:net_send returned rc=%d\n", __func__, rc);
     }
 }
 
@@ -3596,8 +3599,8 @@ void bdb_get_myseqnum(bdb_state_type *bdb_state, seqnum_type *seqnum)
     } else {
         Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
 
-        memcpy(seqnum, &(bdb_state->seqnum_info
-                             ->seqnums[nodeix(bdb_state->repinfo->myhost)]),
+        int myhost_ix = nodeix(bdb_state->repinfo->myhost);
+        memcpy(seqnum, &(bdb_state->seqnum_info->seqnums[myhost_ix]),
                sizeof(seqnum_type));
 
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
@@ -3620,8 +3623,8 @@ int get_myseqnum(bdb_state_type *bdb_state, uint8_t *p_net_seqnum)
     } else {
         Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
 
-        memcpy(&seqnum, &(bdb_state->seqnum_info
-                              ->seqnums[nodeix(bdb_state->repinfo->myhost)]),
+        int myhost_ix = nodeix(bdb_state->repinfo->myhost);
+        memcpy(&seqnum, &(bdb_state->seqnum_info ->seqnums[myhost_ix]),
                sizeof(seqnum_type));
 
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
@@ -3739,10 +3742,9 @@ void bdb_set_seqnum(void *in_bdb_state)
 
     if (lastlsn.file > 0) {
         Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
-        bdb_state->seqnum_info->seqnums[nodeix(bdb_state->repinfo->myhost)]
-            .lsn = lastlsn;
-        bdb_state->seqnum_info->seqnums[nodeix(bdb_state->repinfo->myhost)]
-            .generation = mygen;
+        int myhost_ix = nodeix(bdb_state->repinfo->myhost);
+        bdb_state->seqnum_info->seqnums[myhost_ix].lsn = lastlsn;
+        bdb_state->seqnum_info->seqnums[myhost_ix].generation = mygen;
 
         if (gbl_set_seqnum_trace && (now = time(NULL)) - lastpr) {
             logmsg(LOGMSG_USER, "%s line %d set %s seqnum to %d:%d gen %d\n",
@@ -3996,11 +3998,10 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     case DB_REP_ISPERM: {
         bdb_state->repinfo->repstats.rep_isperm++;
 
-        char *mynode = bdb_state->repinfo->myhost;
-
         Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
-        bdb_state->seqnum_info->seqnums[nodeix(mynode)].lsn = permlsn;
-        bdb_state->seqnum_info->seqnums[nodeix(mynode)].generation = generation;
+        int myhost_ix = nodeix(bdb_state->repinfo->myhost);
+        bdb_state->seqnum_info->seqnums[myhost_ix].lsn = permlsn;
+        bdb_state->seqnum_info->seqnums[myhost_ix].generation = generation;
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
 
         /*
