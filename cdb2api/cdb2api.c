@@ -29,7 +29,6 @@
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
 #include <limits.h>
-#include <inttypes.h>
 
 #include "cdb2api.h"
 
@@ -822,22 +821,22 @@ struct cdb2_ssl_sess_list {
 static cdb2_ssl_sess_list cdb2_ssl_sess_cache;
 #endif
 
-typedef struct cnonce {
-    long hostid;
-    int pid;
-    struct cdb2_hndl *hndl;
-    uint64_t seq;
-} cnonce_t;
-
-#define CNONCE_STR_FMT_PFX "%ld-%d-%p-"
-#define CNONCE_STR_FMT_SFX "%" PRIx64
-#define CNONCE_STR_ARG_PFX(C) (C).hostid, (C).pid, (C).hndl
-#define CNONCE_STR_ARG_SFX(C) (C).seq
+#define CNONCE_STR_FMT "%ld-%d-%p-"
+#define CNONCE_STR_ARG(C) (C).hostid, (C).pid, (C).hndl
 #define CNONCE_STR_SZ 52 /* 8 + 1 + 8 + 1 + 16 + 1 + 16 + 1 (NUL) */
 
 #define CNT_BITS 12
 #define TIME_MASK (-1ULL << CNT_BITS)
 #define CNT_MASK (-1ULL ^ TIME_MASK)
+
+typedef struct cnonce {
+    long hostid;
+    int pid;
+    struct cdb2_hndl *hndl;
+    uint64_t seq;
+    int ofs;
+    char str[CNONCE_STR_SZ];
+} cnonce_t;
 
 struct cdb2_hndl {
     char dbname[64];
@@ -866,8 +865,6 @@ struct cdb2_hndl {
     int flags;
     char errstr[1024];
     cnonce_t cnonce;
-    int cnonce_pfx_ofs;
-    char cnonce_str[CNONCE_STR_SZ];
     char *sql;
     int ntypes;
     int *types;
@@ -2459,8 +2456,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, const char *dbname,
 
         /* Have a query id associated with each transaction/query */
         sqlquery.has_cnonce = 1;
-        sqlquery.cnonce.data = (uint8_t *)hndl->cnonce_str;
-        sqlquery.cnonce.len = strlen(hndl->cnonce_str);
+        sqlquery.cnonce.data = (uint8_t *)hndl->cnonce.str;
+        sqlquery.cnonce.len = strlen(hndl->cnonce.str);
 
         if (hndl->snapshot_file) {
             CDB2SQLQUERY__Snapshotinfo snapshotinfo = CDB2__SQLQUERY__SNAPSHOTINFO__INIT;
@@ -2570,7 +2567,7 @@ static int retry_queries_and_skip(cdb2_hndl_tp *hndl, int num_retry,
     do {                                                                       \
         debugprint("%s: cnonce '%s' [%d][%d] "                                 \
                    "returning %d\n",                                           \
-                   rcode == 0 ? "" : "XXX ", hndl->cnonce_str,                 \
+                   rcode == 0 ? "" : "XXX ", hndl->cnonce.str,                 \
                    hndl->snapshot_file, hndl->snapshot_offset, rcode);         \
         return (rcode);                                                        \
     } while (0)
@@ -2579,7 +2576,7 @@ static int retry_queries_and_skip(cdb2_hndl_tp *hndl, int num_retry,
     do {                                                                       \
         debugprint("cnonce '%s' [%d][%d] "                                     \
                    "returning %d\n",                                           \
-                   hndl->cnonce_str, hndl->snapshot_file,                      \
+                   hndl->cnonce.str, hndl->snapshot_file,                      \
                    hndl->snapshot_offset, rcode);                              \
         return (rcode);                                                        \
     } while (0)
@@ -2888,10 +2885,16 @@ static int next_cnonce(cdb2_hndl_tp *hndl)
     int rc;
     struct timeval tv;
     uint64_t cnt, seq, tm, now;
+    cnonce_t *c;
+
+    static char hex[] = "0123456789abcdef";
+    char *in, *out, *end;
+
     rc = gettimeofday(&tv, NULL);
     if (rc != 0)
         return rc;
-    seq = hndl->cnonce.seq;
+    c = &hndl->cnonce;
+    seq = c->seq;
     tm = (seq & TIME_MASK) >> CNT_BITS;
     now = tv.tv_sec * 1000000 + tv.tv_usec;
     if (now == tm) {
@@ -2901,25 +2904,33 @@ static int next_cnonce(cdb2_hndl_tp *hndl)
                      "Transaction rate too high.");
             rc = E2BIG;
         } else {
-            hndl->cnonce.seq = (seq & TIME_MASK) | cnt;
-            sprintf(hndl->cnonce_str + hndl->cnonce_pfx_ofs, CNONCE_STR_FMT_SFX,
-                    CNONCE_STR_ARG_SFX(hndl->cnonce));
+            c->seq = (seq & TIME_MASK) | cnt;
         }
     } else if (now > tm) {
         if (tm == 0) {
-            hndl->cnonce.hostid = _MACHINE_ID;
-            hndl->cnonce.pid = _PID;
-            hndl->cnonce.hndl = hndl;
-            hndl->cnonce_pfx_ofs = sprintf(hndl->cnonce_str, CNONCE_STR_FMT_PFX,
-                                           CNONCE_STR_ARG_PFX(hndl->cnonce));
+            c->hostid = _MACHINE_ID;
+            c->pid = _PID;
+            c->hndl = hndl;
+            c->ofs =
+                sprintf(c->str, CNONCE_STR_FMT, c->hostid, c->pid, c->hndl);
         }
-        hndl->cnonce.seq = (now << CNT_BITS);
-        sprintf(hndl->cnonce_str + hndl->cnonce_pfx_ofs, CNONCE_STR_FMT_SFX,
-                CNONCE_STR_ARG_SFX(hndl->cnonce));
+        c->seq = (now << CNT_BITS);
     } else {
         rc = EINVAL;
     }
 
+    if (rc == 0) {
+        in = (char *)&c->seq;
+        end = in + sizeof(c->seq);
+        out = c->str + c->ofs;
+
+        while (in != end) {
+            char i = *(in++);
+            *(out++) = hex[(i & 0xf0) >> 4];
+            *(out++) = hex[i & 0x0f];
+        }
+        *out = 0;
+    }
     return rc;
 }
 
@@ -3602,7 +3613,7 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
 
                 if ((rc = next_cnonce(hndl)) != 0)
                     PRINT_RETURN(rc);
-                cdb2_query_with_hint(hndl, sql, hndl->cnonce_str, &hndl->hint,
+                cdb2_query_with_hint(hndl, sql, hndl->cnonce.str, &hndl->hint,
                                      &hndl->query_hint);
 
                 sql = hndl->query_hint;
@@ -4295,7 +4306,7 @@ const char *cdb2_cnonce(cdb2_hndl_tp *hndl)
     if (hndl == NULL)
         return "unallocated cdb2 handle";
 
-    return hndl->cnonce_str;
+    return hndl->cnonce.str;
 }
 
 const char *cdb2_errstr(cdb2_hndl_tp *hndl)
