@@ -810,7 +810,8 @@ static int read_stream(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr,
             } else if (errno == EINTR) { /* just read again */
                 continue;
             } else {
-                logmsgperror("read_stream");
+                host_node_printf(LOGMSG_USER, host_node_ptr, "%s:%s\n", __func__,
+                                 strerror(errno));
                 break;
             }
         } else { /* n == 0; EOF */
@@ -3830,8 +3831,8 @@ static int process_user_message(netinfo_type *netinfo_ptr,
         host_node_ptr->running_user_func = 0;
         Pthread_mutex_unlock(&(host_node_ptr->timestamp_lock));
     } else {
-        logmsg(LOGMSG_INFO, "%s: got an unexpected usertype from %s, ut=%d\n",
-               __func__, host_node_ptr->host, usertype);
+        host_node_printf(LOGMSG_INFO, host_node_ptr,
+                         "%s: unexpected usertype:%d\n", __func__, usertype);
     }
 
     if (ack_state)
@@ -6389,7 +6390,7 @@ int net_init(netinfo_type *netinfo_ptr)
          host_node_ptr = host_node_ptr->next) {
         add_to_sanctioned_nolock(netinfo_ptr, host_node_ptr->host,
                                  host_node_ptr->port);
-        logmsg(LOGMSG_INFO, "adding %s to sanctioned\n", host_node_ptr->host);
+        host_node_printf(LOGMSG_INFO, host_node_ptr, "adding to sanctioned\n");
     }
 
     /* create heartbeat writer thread */
