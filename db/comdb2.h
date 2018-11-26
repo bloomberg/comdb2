@@ -1795,7 +1795,6 @@ extern int gbl_dohast_verbose;
 extern int gbl_dohsql_max_queued_kb_highwm;
 extern int gbl_dohsql_full_queue_poll_msec;
 
-
 /* init routines */
 int appsock_init(void);
 int thd_init(void);

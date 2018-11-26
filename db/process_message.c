@@ -205,10 +205,11 @@ static const char *HELP_STAT[] = {
     "stat switch                - show switch statuses",
     "stat clnt [#] [rates|totals]- show per client request stats",
     "stat mtrap                 - show mtrap system stats",
-    "stat dohsql                - show distributed sql stats", 
+    "stat dohsql                - show distributed sql stats",
     "dmpl                       - dump threads",
     "dmptrn                     - show long transaction stats",
-    "dmpcts                     - show table constraints", NULL,
+    "dmpcts                     - show table constraints",
+    NULL,
 };
 static const char *HELP_SQL[] = {
     "sql ...",

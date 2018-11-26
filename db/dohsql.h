@@ -77,10 +77,9 @@ int dohsql_error(struct sqlclntstate *clnt, const char **errstr);
 void dohsql_handle_delayed_syntax_error(struct sqlclntstate *clnt);
 
 /**
- * Return global stats 
+ * Return global stats
  *
  */
 void dohsql_stats(void);
-
 
 #endif
