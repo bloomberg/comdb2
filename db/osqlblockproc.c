@@ -670,7 +670,6 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     /* make sure that the temp table is empty since commit
      * retries will use same rqid */
-    assert(sess->seq == 0 && tran->rows == 0);
     if (sess->seq == 0 && tran->rows > 0) {
         logmsg(LOGMSG_FATAL,
                "Malformed transaction, received duplicated first row");
