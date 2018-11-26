@@ -199,7 +199,7 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
 
     if (tran->iscomplete) // already complete this is a replicant replay??
         return 0;
-    
+
     /* if the session finished with deadlock on replicant, or failed
        session, resubmit it */
 
@@ -238,8 +238,8 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
         } else {
             if (stop_time + gbl_blocksql_grace /*seconds grace time*/ <=
                 comdb2_time_epoch()) {
-                logmsg(LOGMSG_ERROR, 
-                        "blocksql session closing early, db stopped\n");
+                logmsg(LOGMSG_ERROR,
+                       "blocksql session closing early, db stopped\n");
                 return ERR_NOMASTER;
             }
         }
@@ -411,9 +411,8 @@ char *osql_get_tran_summary(struct ireq *iq)
 
         nametype = osql_sorese_type_to_str(iq->sorese.type);
 
-        snprintf(ret, sz, "%s tot=[%u %u] rtt=[%u %u] rtrs=[%u %u]",
-                 nametype, min_tottm, max_tottm, min_rtt, max_rtt,
-                 min_rtrs, max_rtrs);
+        snprintf(ret, sz, "%s tot=[%u %u] rtt=[%u %u] rtrs=[%u %u]", nametype,
+                 min_tottm, max_tottm, min_rtt, max_rtt, min_rtrs, max_rtrs);
         ret[sz - 1] = '\0';
     }
 
@@ -427,7 +426,8 @@ char *osql_get_tran_summary(struct ireq *iq)
  * (sltdbt.c)
  */
 static pthread_mutex_t kludgelk = PTHREAD_MUTEX_INITIALIZER;
-void osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func, const char *callfunc, int line)
+void osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func,
+                     const char *callfunc, int line)
 {
     int rc = 0;
     int bdberr = 0;
@@ -436,7 +436,7 @@ void osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func,
     iq->blocksql_tran = NULL;
     Pthread_mutex_unlock(&kludgelk);
 
-    if (!tran) 
+    if (!tran)
         return;
 
     /* null this here, since the clients of sessions could still use
@@ -446,7 +446,8 @@ void osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func,
      */
 
     /* remove the sessions from repository and free them */
-    osql_close_session(iq, &tran->sess, are_sessions_linked, func, callfunc, line);
+    osql_close_session(iq, &tran->sess, are_sessions_linked, func, callfunc,
+                       line);
 
     /* destroy transaction */
     Pthread_mutex_destroy(&tran->store_mtx);
@@ -454,7 +455,7 @@ void osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func,
     rc = bdb_temp_table_close(thedb->bdb_env, tran->db, &bdberr);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "%s: failed close table rc=%d bdberr=%d\n",
-                __func__, rc, bdberr);
+               __func__, rc, bdberr);
     } else {
         tran->db = NULL;
     }
@@ -1118,8 +1119,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     listc_init(&iq->bpfunc_lst, offsetof(bpfunc_lstnode_t, linkct));
 
     /* go through the complete list and apply all the changes */
-    if(tran->iscomplete)
-    {
+    if (tran->iscomplete) {
         out_rc = process_this_session(iq, iq_tran, tran->sess, &bdberr, nops,
                                       err, logsb, dbc, func);
     }
@@ -1203,8 +1203,8 @@ void osql_bplog_time_done(struct ireq *iq)
         osql_sess_getsummary(tran->sess, &tottm, &rtt, &rtrs);
         snprintf0(msg + len, sizeof(msg) - len,
                   " %s(rqid=%llu time=%u lastrtt=%u retries=%u)",
-                  (tran->iscomplete ? "C" : "F"),
-                  osql_sess_getrqid(tran->sess), tottm, rtt, rtrs);
+                  (tran->iscomplete ? "C" : "F"), osql_sess_getrqid(tran->sess),
+                  tottm, rtt, rtrs);
         len = strlen(msg);
     }
     logmsg(LOGMSG_USER, "%s]\n", msg);
