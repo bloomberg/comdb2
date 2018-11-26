@@ -8470,7 +8470,9 @@ int bdb_get_default_versioned_sp(char *name, char **version)
         uint8_t buf[LLMETA_IXLEN];
     } u = {{0}};
     u.sp.key = htonl(LLMETA_DEFAULT_VERSIONED_SP);
-    strcpy(u.sp.name, name);
+    if (strlen(name) >= LLMETA_IXLEN)
+        return -1;
+    strncpy(u.sp.name, name, sizeof(u.sp.name));
     char **versions;
     int rc, bdberr, num;
     rc = kv_get(&u, sizeof(u), (void ***)&versions, &num, &bdberr);
