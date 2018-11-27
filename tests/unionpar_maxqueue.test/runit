@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
-# Cursor moves testcase for comdb2
-################################################################################
-
 TMPDIR=${TMPDIR:-/tmp}
 
 set -e 
@@ -13,24 +10,21 @@ a_dbn=$1
 r="cdb2sql -s ${CDB2_OPTIONS} $a_dbn default"
 
 echo "Inserting rows"
-i=-1
-while [ "$i" != "-100" ] ; do
-    $r "insert into t values ($i, '123456789')"
-    let i=i-1
-done
-i=0
-while [ "$i" != "1000000" ] ; do
-    $r "insert into t2 values ($i, '123456789')"
-    let i=i+1
-done
+$r "insert into t select value from generate_series(-99, 0)"
 
+$r << "EOF"
+set maxtransize 1000000000
+insert into t2 select value from generate_series(1, 1000000)
+EOF
+
+$r "alter table t add b cstring(1000) default '          '"
+$r "alter table t2 add b cstring(1000) default '          '"
 
 $r "exec procedure sys.cmd.send('dohsql_max_queued_kb_highwm 2000')"
 
-$r "select a,b from t union all select a,b from t2 order by a"
+$r "select a,b from t union all select a,b from t2 order by a" | wc -l
 
 $r "exec procedure sys.cmd.send('stat dohsql')" > log.out 2>&1
-
 
 
 # get testcase output
@@ -54,3 +48,4 @@ if [[ "$testcase_output" != "$expected_output" ]]; then
     fi
 
 echo "Testcase passed."
+

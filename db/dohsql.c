@@ -254,8 +254,6 @@ static void trimQue(dohsql_connector_t *conn, sqlite3_stmt *stmt,
 
     while (queue_count(que) > limit) {
         row = queue_next(que);
-        if (!row)
-            abort();
         if (gbl_dohsql_verbose)
             logmsg(LOGMSG_DEBUG, "XXX: %p freed older row limit %d\n", que,
                    limit);
@@ -263,6 +261,7 @@ static void trimQue(dohsql_connector_t *conn, sqlite3_stmt *stmt,
 
         if (gbl_dohsql_max_queued_kb_highwm) {
             conn->queue_size -= row_size;
+            fprintf(stderr, "XXX: %s %d %lld\n", __func__, queue_count(que), conn->queue_size);
         }
     }
 }
@@ -285,10 +284,15 @@ static void _track_que_free(dohsql_connector_t *conn)
 static void _que_limiter(dohsql_connector_t *conn, sqlite3_stmt *stmt,
                          int row_size)
 {
-    if (gbl_dohsql_max_queued_kb_highwm)
+    if (gbl_dohsql_max_queued_kb_highwm) {
         conn->queue_size += row_size;
+        fprintf(stderr, "XXX: %s %d %d %lld\n", __func__, queue_count(conn->que), queue_count(conn->que_free), conn->queue_size);
+    }
 
 cleanup:
+    if ((conn->queue_size / 252 != (queue_count(conn->que) + queue_count(conn->que_free))) &&
+    (conn->queue_size / 252 != (queue_count(conn->que) + queue_count(conn->que_free)+1)))
+    abort();
     /* inline cleanup */
     if (queue_count(conn->que_free) > gbl_dohsql_que_free_highwm) {
         _track_que_free(conn);
@@ -367,8 +371,6 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp,
 
     pthread_mutex_lock(&conn->mtx);
     conn->rc = SQLITE_ROW;
-    if (!row)
-        abort();
     if (queue_add(conn->que, row))
         abort();
 
@@ -473,10 +475,10 @@ static void add_row(dohsql_t *conns, int i, row_t *row)
         /* put the used row in the free list */
         if (i != conns->row_src)
             pthread_mutex_lock(&conns->conns[conns->row_src].mtx);
-        if (!conns->row)
-            abort();
         if (queue_add(conns->conns[conns->row_src].que_free, conns->row))
             abort();
+        fprintf(stderr, "XXX: %s moved row to que_free len %d\n", __func__,
+        queue_count(conns->conns[conns->row_src].que_free));
         if (i != conns->row_src)
             pthread_mutex_unlock(&conns->conns[conns->row_src].mtx);
     }
@@ -764,9 +766,11 @@ static int dohsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
     case RESPONSE_COST:
     case RESPONSE_EFFECTS:
     case RESPONSE_ERROR_PREPARE_RETRY:
-        return 0;
     case RESPONSE_COLUMNS_LUA:
+        return 0;
     default:
+        logmsg(LOGMSG_ERROR, "Unsupported option %d\n", t);
+        fprintf(stderr, "Unsupported option %d\n", t);
         abort();
     }
     return 0;
@@ -1108,8 +1112,6 @@ int dohsql_end_distribute(struct sqlclntstate *clnt, struct reqlogger *logger)
 
     if (conns->row && conns->row_src) {
         pthread_mutex_lock(&conns->conns[conns->row_src].mtx);
-        if (!conns->row)
-            abort();
         if (queue_add(conns->conns[conns->row_src].que_free, conns->row))
             abort();
         pthread_mutex_unlock(&conns->conns[conns->row_src].mtx);
@@ -1480,8 +1482,6 @@ static int _local_step(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
 
     conns->conns[0].rc = init_next_row(clnt, stmt);
     if (conns->conns[0].rc == SQLITE_ROW) {
-        if (!((Vdbe *)stmt)->pResultSet)
-            abort();
         if (queue_add(conns->conns[0].que, ((Vdbe *)stmt)->pResultSet))
             abort();
         _move_client_row(conns, crt_idx);
