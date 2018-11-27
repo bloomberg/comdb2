@@ -2162,13 +2162,12 @@ struct cached_response {
 
 unsigned int response_hash(const void *key, int len) {
     unsigned int h = 0;
-    union {
-        struct cache_key k;
-        int i[8];
-    } u;
-    memcpy(&u.k, key, len);
-    for (int i = 0; i < sizeof(u.i)/sizeof(int); i++)
-        h ^= u.i[i];
+
+    struct cache_key *k = (struct cache_key*) key;
+    int *p = (int*) k->request_checksum;
+
+    for (int i = 0; i < sizeof(k->request_checksum)/sizeof(int); i++)
+        h ^= p[i];
     return h;
 }
 
