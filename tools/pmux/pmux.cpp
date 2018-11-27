@@ -1004,7 +1004,8 @@ int main(int argc, char **argv)
             dbname = strdup(optarg);
             break;
         case 'b':
-            if (strlen(optarg) >= sizeof(serv_addr.sun_path)) {
+            if (strlen(optarg) >= sizeof(serv_addr.sun_path) ||
+                strlen(optarg) >= sizeof(unix_bind_path)) {
                 fprintf(stderr, "Filename too long: %s\n", optarg);
                 exit(2);
             }
