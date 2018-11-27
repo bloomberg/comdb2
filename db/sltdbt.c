@@ -278,8 +278,6 @@ int handle_ireq(struct ireq *iq)
         iq->p_buf_in_end = iq->p_buf_in = NULL;
         rc = ERR_BADREQ;
     } else {
-        logmsg(LOGMSG_DEBUG, "request : %s\n", opcode->name);
-
         if (gbl_rowlocks && (opcode->opcode != OP_BLOCK) &&
             (opcode->opcode != OP_FWD_BLOCK)) {
             rc = ERR_BADREQ;

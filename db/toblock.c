@@ -5480,12 +5480,6 @@ add_blkseq:
                                        &replay_data, &replay_len);
             }
 
-            if (iq->seqlen == sizeof(uuid_t)) {
-                uuidstr_t us;
-                uuid_t u;
-                memcpy(&u, iq->seq, iq->seqlen);
-                comdb2uuidstr(u, us);
-            }
             /* force a parent-deadlock for cdb2tcm */
             if ((tcm_testpoint(TCM_PARENT_DEADLOCK)) && (0 == (rand() % 20))) {
                 logmsg(LOGMSG_DEBUG, "tcm forcing parent retry\n");

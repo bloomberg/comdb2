@@ -3615,8 +3615,11 @@ int bdb_push_pglogs_commit(void *in_bdb_state, DB_LSN commit_lsn, uint32_t gen,
     extern int gbl_durable_set_trace;
     char *master, *eid;
 
-    if (!gbl_new_snapisol)
+    if (!gbl_new_snapisol) {
+        bdb_latest_commit_lsn = commit_lsn;
+        bdb_latest_commit_gen = gen;
         return 0;
+    }
 
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;

@@ -2418,7 +2418,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 					__func__, __LINE__, *eidp, rp->gen, vi_egen, rep->egen);
 		}
 
-		if (!IN_ELECTION_TALLY(rep) && vi_egen >= rep->egen) {
+		if (!IN_ELECTION_TALLY(rep) && vi_egen > rep->egen) {
 			logmsg(LOGMSG_DEBUG, "%s line %d not in election and vote2-egen %d "
 					"> rep->egen (%d): returning HOLDELECTION\n", __func__, 
 					__LINE__, vi_egen, rep->egen);
@@ -4680,6 +4680,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	}
 
 
+#ifndef NDEBUG
 	if (txn_rl_args) {
 		int cmp;
 		if (txn_rl_args->lflags & DB_TXN_LOGICAL_BEGIN) {
@@ -4690,6 +4691,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			assert(!IS_ZERO_LSN(lt->begin_lsn));
 		}
 	}
+#endif
 
 	/*
 	 * The set of records for a transaction may include dbreg_register
@@ -5018,7 +5020,6 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 	DB_LOCK lsnlock;
 	REP *rep = NULL;
 	u_int32_t txnid = 0;
-	int cmp;
 	LTDESC *lt = NULL;
 	__txn_regop_args *txn_args = NULL;
 	__txn_regop_gen_args *txn_gen_args = NULL;
@@ -5380,7 +5381,9 @@ bad_resize:	;
 	qsort(rp->lc.array, rp->lc.nlsns, sizeof(struct logrecord),
 		__rep_lsn_cmp);
 
+#ifndef NDEBUG
 	if (txn_rl_args) {
+		int cmp;
 		if (txn_rl_args->lflags & DB_TXN_LOGICAL_BEGIN) {
 			assert((cmp =
 				log_compare(&txn_rl_args->begin_lsn,
@@ -5389,6 +5392,7 @@ bad_resize:	;
 			assert(!IS_ZERO_LSN(lt->begin_lsn));
 		}
 	}
+#endif
 
 	/* If we had any log records in this transaction that may affect the next transaction, 
 	 * process this transaction inline */

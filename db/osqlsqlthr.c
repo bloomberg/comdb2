@@ -624,9 +624,7 @@ int osql_block_commit(struct sql_thread *thd)
  * This is called on the replicant node and starts a sosql session,
  * which creates a blockprocessor peer on the master node
  * Returns ok if the packet is sent successful to the master
- * if keep_rqid, this is a retry and we want to
- * keep the same rqid
- *
+ * If keep_rqid, this is a retry and we want to keep the same rqid
  */
 int osql_sock_start(struct sqlclntstate *clnt, int type, int keep_rqid)
 {
@@ -707,6 +705,7 @@ retry:
             logmsg(LOGMSG_WARN, "Retrying to find the master retries=%d \n",
                     retries);
             poll(NULL, 0, 500);
+            goto retry;
         } else {
             logmsg(LOGMSG_ERROR, "%s: no master for %llu!\n", __func__, osql->rqid);
             errstat_set_rc(&osql->xerr, ERR_NOMASTER);
@@ -728,7 +727,9 @@ retry:
     } else {
         /* this is a replay with same rqid, already registered */
         /* sets to the same node */
-        osql_reuse_sqlthr(clnt, osql->host);
+        rc = osql_reuse_sqlthr(clnt, osql->host);
+        if (rc)
+            return SQLITE_INTERNAL;
     }
 
     /* socksql: check if this is a verify retry, and if we got enough of those
@@ -774,11 +775,9 @@ retry:
 
 int gbl_master_swing_sock_restart_sleep = 0;
 /**
- * Restart a broken socksql connection by opening
- * a new blockproc on the provided master and
- * sending the cache rows to resume the current.
+ * Restart a broken socksql connection by opening a new blockproc on the
+ * provided master and sending the cache rows to resume the current.
  * If keep_session is set, the same rqid is used for the replay
- *
  */
 int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
                       int keep_session)
@@ -790,121 +789,115 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
     osqlstate_t *osql = &clnt->osql;
     struct sql_thread *thd = pthread_getspecific(query_info_key);
 
-    retries = 0;
-
     if (!thd) {
         logmsg(LOGMSG_ERROR, "%s:%d Bug, not sql thread !\n", __func__, __LINE__);
         cheap_stack_trace();
     }
 
-again:
-    sentops = 0;
-    osql->replicant_numops = 0;
+    do {
+        retries++;
+        sentops = 0;
+        osql->replicant_numops = 0;
 
-    /* we need to check if we need bdb write lock here to prevent a master
-       upgrade blockade */
-    if (thd && bdb_lock_desired(thedb->bdb_env)) {
-        int sleepms = 100 * clnt->deadlock_recovered;
-        if (sleepms > 1000)
-            sleepms = 1000;
+        /* if we're shaking really badly, back off */
+        if (retries > 1)
+            usleep(retries * 10000); // sleep for a multiple of 10ms
 
-        logmsg(LOGMSG_ERROR, 
-                "%s:%d bdb lock desired, recover deadlock with sleepms=%d\n",
-                __func__, __LINE__, sleepms);
+        /* we need to check if we need bdb write lock here to prevent a master
+           upgrade blockade */
+        if (thd && bdb_lock_desired(thedb->bdb_env)) {
+            int sleepms = 100 * clnt->deadlock_recovered;
+            if (sleepms > 1000)
+                sleepms = 1000;
 
-        rc = recover_deadlock(thedb->bdb_env, thd, NULL, sleepms);
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d bdb lock desired, recover deadlock with sleepms=%d\n",
+                   __func__, __LINE__, sleepms);
 
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "recover_deadlock returned %d\n", rc);
+            rc = recover_deadlock(thedb->bdb_env, thd, NULL, sleepms);
+            if (rc != 0) {
+                logmsg(LOGMSG_ERROR, "recover_deadlock returned %d\n", rc);
+                osql_unregister_sqlthr(clnt);
+                return rc;
+            }
 
-            osql_unregister_sqlthr(clnt);
+            clnt->deadlock_recovered++;
+            logmsg(LOGMSG_DEBUG, "%s recovered deadlock (count %d)\n", __func__,
+                   clnt->deadlock_recovered);
 
+            int max_dead_rec = bdb_attr_get(
+                thedb->bdb_attr, BDB_ATTR_SOSQL_MAX_DEADLOCK_RECOVERED);
+            if (clnt->deadlock_recovered > max_dead_rec) {
+                osql_unregister_sqlthr(clnt);
+                return ERR_RECOVER_DEADLOCK;
+            }
+        }
+
+        if (osql->tablename) {
+            free(osql->tablename);
+            osql->tablename = NULL;
+            osql->tablenamelen = 0;
+        }
+
+        if (!keep_session) {
+            if (gbl_master_swing_osql_verbose)
+                logmsg(LOGMSG_USER, "%lu Starting %llx\n", pthread_self(),
+                       clnt->osql.rqid);
+            /* unregister this osql thread from checkboard */
+            rc = osql_unregister_sqlthr(clnt);
+            if (rc)
+                return SQLITE_INTERNAL;
+        } else {
+            if (gbl_master_swing_osql_verbose)
+                logmsg(LOGMSG_USER,
+                       "0x%lu Restarting clnt->osql.rqid=%llx against %s\n",
+                       pthread_self(), clnt->osql.rqid, thedb->master);
+            /* TODO: osql_sock_start will also call osql_reuse_sqlthr() */
+            rc = osql_reuse_sqlthr(clnt, thedb->master);
+            if (rc)
+                return SQLITE_INTERNAL;
+        }
+
+        rc = osql_sock_start(clnt,
+                             (clnt->dbtran.mode == TRANLEVEL_SOSQL)
+                                 ? OSQL_SOCK_REQ
+                                 : OSQL_RECOM_REQ,
+                             keep_session);
+        if (rc) {
+            sql_debug_logf(clnt, __func__, __LINE__,
+                           "osql_sock_start returns %d\n", rc);
+            logmsg(LOGMSG_ERROR, "osql_sock_start error rc=%d, retries=%d\n",
+                   rc, retries);
+            continue;
+        }
+
+        /* process messages from cache */
+        rc = osql_shadtbl_process(clnt, &sentops, &bdberr, 1);
+        if (rc == SQLITE_TOOBIG) {
+            logmsg(LOGMSG_ERROR, "%s: transaction too big %d\n", __func__,
+                   sentops);
+            return rc;
+        }
+        if (rc == ERR_SC) {
+            logmsg(LOGMSG_ERROR, "%s: schema change error\n", __func__);
             return rc;
         }
 
-        logmsg(LOGMSG_DEBUG, "%s recovered deadlock\n", __func__);
-
-        clnt->deadlock_recovered++;
-
-        if (clnt->deadlock_recovered > 100) {
-            osql_unregister_sqlthr(clnt);
-
-            return ERR_RECOVER_DEADLOCK;
+        if (keep_session && gbl_master_swing_sock_restart_sleep) {
+            sleep(gbl_master_swing_sock_restart_sleep);
         }
-    }
 
-    if (osql->tablename) {
-        free(osql->tablename);
-        osql->tablename = NULL;
-        osql->tablenamelen = 0;
-    }
+        /* selectv skip optimization, not an error */
+        if (unlikely(rc == -2 || rc == -3))
+            rc = 0;
 
-    if (!keep_session) {
-        if (gbl_master_swing_osql_verbose)
-            logmsg(LOGMSG_USER, "%lu Starting %llx\n", pthread_self(),
-                   clnt->osql.rqid);
-        /* unregister this osql thread from checkboard */
-        rc = osql_unregister_sqlthr(clnt);
         if (rc)
-            return SQLITE_INTERNAL;
-    } else {
-        if (gbl_master_swing_osql_verbose)
-            logmsg(LOGMSG_USER,
-                   "0x%lu Restarting clnt->osql.rqid=%llx against %s\n",
-                   pthread_self(), clnt->osql.rqid, thedb->master);
-        /* we should reset this ! */
-        rc = osql_reuse_sqlthr(clnt, thedb->master);
-        if (rc)
-            return SQLITE_INTERNAL;
-    }
+            logmsg(LOGMSG_ERROR,
+                   "Error in restablishing sosql session, rc=%d, retries=%d\n",
+                   rc, retries);
+    } while (rc && retries < maxretries);
 
-    rc = osql_sock_start(clnt, (clnt->dbtran.mode == TRANLEVEL_SOSQL)
-                                   ? OSQL_SOCK_REQ
-                                   : OSQL_RECOM_REQ,
-                         keep_session);
     if (rc) {
-        sql_debug_logf(clnt, __func__, __LINE__, "osql_sock_start returns %d\n",
-                       rc);
-        goto error;
-    }
-
-    /* process messages from cache */
-    rc = osql_shadtbl_process(clnt, &sentops, &bdberr, 1);
-    if (rc == SQLITE_TOOBIG) {
-        logmsg(LOGMSG_ERROR, "%s: transaction too big %d\n", __func__, sentops);
-        return rc;
-    }
-    if (rc == ERR_SC) {
-        logmsg(LOGMSG_ERROR, "%s: schema change error\n", __func__);
-        return rc;
-    }
-
-    if (keep_session && gbl_master_swing_sock_restart_sleep) {
-        sleep(gbl_master_swing_sock_restart_sleep);
-    }
-
-    /* selectv skip optimization, not an error */
-    if (unlikely(rc == -2 || rc == -3))
-        rc = 0;
-
-    if (rc)
-        goto error;
-
-    if (0) {
-    error:
-        retries++;
-        if (retries < maxretries) {
-            logmsg(LOGMSG_ERROR, 
-                "Error in restablishing the sosql session, rc=%d, retries=%d\n",
-                rc, retries);
-
-            /* if we're shaking really badly, back off */
-            if (retries > 1)
-                sleep(retries);
-
-            goto again;
-        }
-
         sql_debug_logf(clnt, __func__, __LINE__,
                        "failed %d times to restart socksql session\n", retries);
         logmsg(LOGMSG_ERROR,
@@ -1591,53 +1584,6 @@ int osql_query_dbglog(struct sql_thread *thd, int queryid)
     DEBUG_PRINT_NUMOPS();
     return rc;
 }
-
-#if 0
-static int osql_send_cleartable_osqlsosql(struct sql_thread *thd, char *dbname) {
-
-   osqlstate_t          *osql = &thd->clnt->osql;
-   netinfo_type         *netinfo_ptr = (netinfo_type*)theosql->handle_sibling;
-   osql_clrtbl_rpl_t    clr_rpl;
-   int                  rc = 0;
-
-   /* limit transaction*/
-   if(rc = check_osql_capacity (thd)) return rc;
-
-   rc = osql_send_usedb_int(thd, dbname, NET_OSQL_BLOCK_RPL);
-   if (rc == SQLITE_OK) {
-
-      clr_rpl.hd.type = OSQL_CLRTBL;
-      clr_rpl.hd.sid = osql->rqid;
-
-      if(osql->logsb) {
-         sbuf2printf(thd->clnt->osql.logsb, "[%llu] send OSQL_CLRTBL %s\n", osql->rqid, dbname);
-         sbuf2flush(thd->clnt->osql.logsb);
-      }
-
-      if(offload_net_send(netinfo_ptr, osql->host, NET_OSQL_BLOCK_RPL, &clr_rpl, sizeof(clr_rpl), 1)) {
-         rc = SQLITE_INTERNAL;
-         fprintf(stderr,
-               "%s: error writting record to master in offload mode!\n", __func__);
-      } else
-         rc = SQLITE_OK;
-   }
-
-   return rc;
-}
-
-static int osql_send_cleartable_recom(struct sql_thread *thd, char *dbname) {
-    fprintf(stderr, "cleartable not implemented yet\n");
-    return -1;
-}
-int osql_cleartable(struct sql_thread *thd, char *dbname) {
-    if(thd->clnt->dbtran.mode == TRANLEVEL_OSQL ||
-          thd->clnt->dbtran.mode == TRANLEVEL_SOSQL)
-        return osql_send_cleartable_osqlsosql(thd, dbname);
-    else
-        return osql_send_cleartable_recom(thd, dbname);
-}
-
-#endif
 
 /**
  * Record a genid with the current transaction so we can
