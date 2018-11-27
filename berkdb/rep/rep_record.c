@@ -2418,7 +2418,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 					__func__, __LINE__, *eidp, rp->gen, vi_egen, rep->egen);
 		}
 
-		if (!IN_ELECTION_TALLY(rep) && vi_egen >= rep->egen) {
+		if (!IN_ELECTION_TALLY(rep) && vi_egen > rep->egen) {
 			logmsg(LOGMSG_DEBUG, "%s line %d not in election and vote2-egen %d "
 					"> rep->egen (%d): returning HOLDELECTION\n", __func__, 
 					__LINE__, vi_egen, rep->egen);
