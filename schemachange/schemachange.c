@@ -161,9 +161,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                            s->fastinit, s->alteronly);
                 }
                 free_schema_change_type(stored_sc);
-            } else
-                logmsg(LOGMSG_INFO, "No ongoing schema change of table %s\n",
-                       s->tablename);
+            }
         }
     }
 
@@ -474,8 +472,6 @@ int fastinit_table(struct dbenv *dbenvin, char *table)
         logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
         return -1;
     }
-    bzero(s, sizeof(struct schema_change_type));
-    s->type = DBTYPE_TAGGED_TABLE;
     strncpy0(s->tablename, db->tablename, sizeof(s->tablename));
 
     if (get_csc2_file(db->tablename, -1 /*highest csc2_version*/, &s->newcsc2,
@@ -486,16 +482,18 @@ int fastinit_table(struct dbenv *dbenvin, char *table)
     }
 
     s->nothrevent = 1;
+    s->finalize = 1;
     s->fastinit = 1;
     s->same_schema = 1;
-    s->nothrevent = 1;
     s->headers = -1;
     s->compress = -1;
     s->compress_blobs = -1;
     s->ip_updates = -1;
     s->instant_sc = -1;
 
-    return start_schema_change(s);
+    if (start_schema_change(s) != 0)
+        return -1;
+    return local_replicant_write_clear(NULL, NULL, get_dbtable_by_name(table));
 }
 
 int do_dryrun(struct schema_change_type *s)
@@ -1006,7 +1004,6 @@ int add_schema_change_tables()
 int sc_timepart_add_table(const char *existingTableName,
                           const char *newTableName, struct errstat *xerr)
 {
-    bdb_state_type *bdb_state = thedb->bdb_env;
     struct schema_change_type sc = {0};
     char *schemabuf = NULL;
     struct dbtable *db;
@@ -1098,7 +1095,6 @@ error:
 
 int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
 {
-    bdb_state_type *bdb_state = thedb->bdb_env;
     struct schema_change_type sc = {0};
     struct dbtable *db;
     char *schemabuf = NULL;

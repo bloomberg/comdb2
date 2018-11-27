@@ -68,7 +68,6 @@ set(src
   sqlmaster.c
   sqloffload.c
   sqlstat1.c
-  sqlsupport.c
   tag.c
   testcompr.c
   thrman.c
@@ -78,13 +77,15 @@ set(src
   trans.c
   translistener.c
   trigger.c
-  twophase.c
   utf8.c
   verify.c
   views.c
   views_cron.c
   views_persist.c
   watchdog.c
+  shard_range.c
+  dohsql.c
+  dohast.c
   ${PROJECT_BINARY_DIR}/protobuf/bpfunc.pb-c.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_dump/cdb2_dump.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_printlog/cdb2_printlog.c

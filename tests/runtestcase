@@ -2,6 +2,7 @@
 
 # set -x
 # on exit call_unsetup
+trap "call_unsetup \"0\"" INT EXIT
 
 TEST_TIMEOUT=${TEST_TIMEOUT:-5m}
 if [[ "$(arch)" == "armv7l" ]] ; then
@@ -146,7 +147,7 @@ find_cores() {
             echo "$node:$cr" # this is the return value of the function
             local space=$(df .  | awk '{print $4}' | grep -v Available)
             local size=$(ssh $node "ls -s $cr | cut -f1 -d' '")
-            if [[ $space -lt $size ]] ; then 
+            if [[ $size -lt $space ]] ; then # if there is space, copy locally
                 local copy_core=$LCLDBDIR/${node}.`basename $cr`
                 scp -o StrictHostKeyChecking=no $node:${cr} $copy_core < /dev/null
                 echo "Core file $node:${cr} copied to $copy_core" > $LCLDBDIR/core_stacktrace.$node.txt
@@ -197,14 +198,23 @@ call_setup() {
 
 check_db_at_finish() {
     local LCLDBNM="$1"
-    local LCLDBDIR="$2"
-    local LCLCONFIG="$3"
+    local LCLCONFIG="$2"
     local LCLOPTIONS="--cdb2cfg ${LCLCONFIG}"
 
-    for node in ${CLUSTER} ; do
-        out=$($CDB2SQL_EXE ${LCLOPTIONS} --tabs --host $node $LCLDBNAME 'select 1' 2>&1)
+    if [[ -z "$CLUSTER" ]] ; then
+        out=$(timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --admin --tabs --host localhost $LCLDBNM 'select 1' 2>&1)
         if [ "$out" != "1" ] ; then
-            echo 1
+            timeout 1m $CDB2SQL_EXE -v ${LCLOPTIONS} --admin --tabs --host localhost $LCLDBNM 'select 1' &> ${TESTDIR}/logs/${LCLDBNM}.atfinish
+            echo $out
+            return
+        fi
+
+    fi
+    for node in ${CLUSTER} ; do
+        out=$(timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --admin --tabs --host $node $LCLDBNM 'select 1' 2>&1)
+        if [ "$out" != "1" ] ; then
+            timeout 1m $CDB2SQL_EXE -v ${LCLOPTIONS} --admin --tabs --host $node $LCLDBNM 'select 1' &> ${TESTDIR}/logs/${LCLDBNM}.${node}.atfinish
+            echo $out
             return
         fi
     done
@@ -215,6 +225,7 @@ check_db_at_finish() {
 # start the testing: setup, runit, check cores, unsetup
 
 call_setup
+
 echo "!$TESTCASE: running with timeout ${TEST_TIMEOUT}"
 
 timeout ${TEST_TIMEOUT} ./runit ${DBNAME} 2>&1  | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' &> ${TESTDIR}/logs/${DBNAME}.testcase
@@ -230,11 +241,21 @@ if [[ -z "$cr" ]] && [[ -n "${SECONDARY_DBNAME}" ]] ; then
     cr=`find_cores ${SECONDARY_DBNAME} ${SECONDARY_DBDIR}`
 fi
 
-CHECK_DB_AT_FINISH=${CHECK_DB_AT_FINISH:-0}
+if [[ -z "${CHECK_DB_AT_FINISH}" ]] ; then
+   if [[ "$COMDB2_UNITTEST" != 1 ]] ; then
+       CHECK_DB_AT_FINISH=1
+   else
+       CHECK_DB_AT_FINISH=0
+   fi
+fi
+    
+
+
 if [ $CHECK_DB_AT_FINISH -eq 1 ] ; then
-    dbdown=`check_db_at_finish ${SECONDARY_DBNAME} ${SECONDARY_DBDIR} $SECONDARY_CDB2_CONFIG`
+    dbdown=`check_db_at_finish ${DBNAME} $CDB2_CONFIG`
+
     if [[ -z "$dbdown" ]] && [[ -n "${SECONDARY_DBNAME}" ]]; then
-        dbdown=`check_db_at_finish ${SECONDARY_DBNAME} ${SECONDARY_DBDIR} $SECONDARY_CDB2_CONFIG`
+        dbdown=`check_db_at_finish ${SECONDARY_DBNAME} $SECONDARY_CDB2_CONFIG`
     fi
 fi
 
@@ -244,7 +265,7 @@ if [[ -n "$cr" ]] ; then
     echo "!$TESTCASE: failed with core dumped ($cr)"
     echo "!$TESTCASE: failed with core dumped ($cr)" >> ${TESTDIR}/test.log
 elif [[ -n "$dbdown" ]] ; then
-    echo "!$TESTCASE: db was unavailable at finish ($dbdown logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
+    echo "!$TESTCASE: db was unavailable at finish ($dbdown)"
     echo "!$TESTCASE: db was unavailable at finish ($dbdown)" >> ${TESTDIR}/test.log
 elif [[ $rc -eq 124 ]] ; then
     echo "!$TESTCASE: timeout (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
@@ -259,7 +280,7 @@ else
     echo "!$TESTCASE: failed" >> ${TESTDIR}/test.log
 fi
 
-
+trap - INT EXIT
 
 call_unsetup
 

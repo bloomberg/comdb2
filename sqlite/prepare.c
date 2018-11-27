@@ -770,6 +770,10 @@ end_prepare:
   sqlite3ParserReset(&sParse);
   rc = sqlite3ApiExit(db, rc);
   assert( (rc&db->errMask)==rc );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if(sParse.ast) ast_destroy(&sParse.ast, db);
+#endif
+
   return rc;
 }
 
@@ -797,7 +801,7 @@ static int sqlite3LockAndPrepare(
   sqlite3BtreeEnterAll(db);
   /* COMDB2 MODIFICATION */
   rc = sqlite3Prepare(db, zSql, nBytes, saveSqlFlag, pOld, ppStmt, pzTail, flags);
-  if( rc==SQLITE_SCHEMA ){
+  while( rc == SQLITE_SCHEMA ){
     sqlite3_finalize(*ppStmt);
     /* COMDB2 MODIFICATION */
     rc = sqlite3Prepare(db, zSql, nBytes, saveSqlFlag, pOld, ppStmt, pzTail, flags);

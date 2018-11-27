@@ -152,7 +152,7 @@ newdb=srcdb$dbname
 newdbdir=$TESTDIR/$newdb
 newlrl=$newdbdir/$newdb.lrl
 
-if [ -z $CLUSTER ]; then
+if [ -z "$CLUSTER" ]; then
     ./clonedb.sh.actual
 
     echo "Bringing the $newdb up"

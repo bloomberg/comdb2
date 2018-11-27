@@ -682,15 +682,15 @@ void fill_dbinfo(void *p_response, bdb_state_type *bdb_state)
             bdb_state->callback->getroom_rtn(bdb_state, nodes[j].host)) {
             nodeinfos[i] = malloc(sizeof(CDB2DBINFORESPONSE__Nodeinfo));
             cdb2__dbinforesponse__nodeinfo__init(nodeinfos[i]);
-            nodeinfos[i]->number = 0; /* will not be used by client */
+            nodeinfos[i]->number = j;
             nodeinfos[i]->port = nodes[j].port;
             nodeinfos[i]->has_port = 1;
             nodeinfos[i]->has_room = 1;
             nodeinfos[i]->room =
                 bdb_state->callback->getroom_rtn(bdb_state, nodes[j].host);
             nodeinfos[i]->name = strdup(nodes[j].host);
-            if (strcmp(bdb_state->repinfo->master_host, nodes[i].host) == 0) {
-                master->number = 0; /* will not be used by client */
+            if (strcmp(bdb_state->repinfo->master_host, nodes[j].host) == 0) {
+                master->number = j;
                 master->incoherent = 0;
                 master->has_port = 1;
                 master->has_room = 1;
@@ -721,15 +721,15 @@ void fill_dbinfo(void *p_response, bdb_state_type *bdb_state)
             bdb_state->callback->getroom_rtn(bdb_state, nodes[j].host)) {
             nodeinfos[i] = malloc(sizeof(CDB2DBINFORESPONSE__Nodeinfo));
             cdb2__dbinforesponse__nodeinfo__init(nodeinfos[i]);
-            nodeinfos[i]->number = 0;
+            nodeinfos[i]->number = j;
             nodeinfos[i]->port = nodes[j].port;
             nodeinfos[i]->has_port = 1;
             nodeinfos[i]->has_room = 1;
             nodeinfos[i]->room =
                 bdb_state->callback->getroom_rtn(bdb_state, nodes[j].host);
             nodeinfos[i]->name = strdup(nodes[j].host);
-            if (strcmp(bdb_state->repinfo->master_host, nodes[i].host) == 0) {
-                master->number = 0;
+            if (strcmp(bdb_state->repinfo->master_host, nodes[j].host) == 0) {
+                master->number = j;
                 master->incoherent = 0;
                 master->has_port = 1;
                 master->port = nodes[j].port;
@@ -757,9 +757,8 @@ void fill_dbinfo(void *p_response, bdb_state_type *bdb_state)
 static void netinfo_dump_hostname(FILE *out, bdb_state_type *bdb_state)
 {
     struct host_node_info nodes[REPMAX];
-    int num_nodes, ii, iammaster;
+    int num_nodes, ii;
 
-    iammaster = bdb_state->repinfo->myhost == bdb_state->repinfo->master_host;
     num_nodes = net_get_nodes_info(bdb_state->repinfo->netinfo, REPMAX, nodes);
 
     logmsgf(LOGMSG_USER, out, "db engine cluster status\n");
@@ -1208,7 +1207,7 @@ const char *bdb_find_net_host(bdb_state_type *bdb_state, const char *host)
 {
     int nhosts;
     const char *hosts[REPMAX];
-    char hlen = strlen(host);
+    size_t hlen = strlen(host);
     const char *fnd = NULL;
     int multiple = 0;
     char *me;

@@ -375,6 +375,8 @@ DEF_ATTR(SOSQL_POKE_TIMEOUT_SEC, sosql_poke_timeout_sec, QUANTITY, 2,
          "the check after this many seconds.")
 DEF_ATTR(SOSQL_POKE_FREQ_SEC, sosql_poke_freq_sec, QUANTITY, 1,
          "On replicants, check this often for transaction status.")
+DEF_ATTR(SOSQL_MAX_DEADLOCK_RECOVERED, sosql_max_deadlock_recovered, QUANTITY,
+         100, "On replicants, maximum deadlock recovered count allowed.")
 DEF_ATTR(SQL_QUEUEING_DISABLE_TRACE, sql_queueing_disable, BOOLEAN, 0,
          "Disable trace when SQL requests are starting to queue.")
 DEF_ATTR(SQL_QUEUEING_CRITICAL_TRACE, sql_queueing_critical_trace, QUANTITY,

@@ -109,7 +109,7 @@ static int timepartColumn(
 
   timepart_systable_column(ctx, pCur->iRowid, i);
   return SQLITE_OK;
-};
+}
 
 /* cursor rowid */
 static int timepartRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){

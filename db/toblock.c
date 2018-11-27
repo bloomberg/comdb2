@@ -1925,6 +1925,9 @@ int toblock(struct ireq *iq)
     /* TODO why is this here? */
     MEMORY_SYNC;
 
+    if (iq->debug)
+        reqprintf(iq, "BLOCK NUM REQS %d", blkstate.numreq);
+
     /* validate number of reqs */
     if (blkstate.numreq < 1 || blkstate.numreq > MAXBLOCKOPS) {
         if (iq->debug)
@@ -2585,6 +2588,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 break;
             if (block_state_set_next(iq, p_blkstate, hdr.nxt))
                 break;
+
+            if (iq->debug)
+                reqprintf(iq, "PRE LOOP REQ %d: %d", opnum, hdr.opcode);
 
             if (hdr.opcode > 0 && hdr.opcode < BLOCK_MAXOPCODE)
                 opcode_counts[gbl_blockop_count_xrefs[hdr.opcode]]++;
@@ -4351,11 +4357,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 }
             }
 
-            rc = block2_sorese(iq, (char *)p_buf_sqlq, sql.sqlqlen, hdr.opcode);
-            if (rc != RC_OK) {
-                numerrs = 1;
-                BACKOUT;
-            }
+            block2_sorese(iq, (char *)p_buf_sqlq, sql.sqlqlen, hdr.opcode);
             break;
         }
 
@@ -5477,12 +5479,6 @@ add_blkseq:
                                        &replay_data, &replay_len);
             }
 
-            if (iq->seqlen == sizeof(uuid_t)) {
-                uuidstr_t us;
-                uuid_t u;
-                memcpy(&u, iq->seq, iq->seqlen);
-                comdb2uuidstr(u, us);
-            }
             /* force a parent-deadlock for cdb2tcm */
             if ((tcm_testpoint(TCM_PARENT_DEADLOCK)) && (0 == (rand() % 20))) {
                 logmsg(LOGMSG_DEBUG, "tcm forcing parent retry\n");

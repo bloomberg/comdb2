@@ -1756,8 +1756,17 @@ clipper_usage:
             ssl_stats();
 #endif
         } else {
-            logmsg(LOGMSG_ERROR, "bad stat command\n");
-            print_help_page(HELP_STAT);
+            int rc = 1;
+            struct message_handler *h;
+            LISTC_FOR_EACH(&dbenv->message_handlers, h, lnk) {
+                if ((rc = h->handle(dbenv, line + start_st)) == 0) {
+                    break;
+                }
+            }
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "bad stat command\n");
+                print_help_page(HELP_STAT);
+            }
         }
     } else if (tokcmp(tok, ltok, "on") == 0) {
         change_switch(1, line, lline, st);
@@ -2181,13 +2190,13 @@ clipper_usage:
         tokcpy(tok, ltok, table);
 
         stat_bt_hash_table_reset(table);
-    } else if (tokcmp(tok, ltok, "fastinit") == 0) {
+    } else if (tokcmp(tok, ltok, "fastinit") == 0 ||
+               tokcmp(tok, ltok, "reinit") == 0) {
         char table[MAXTABLELEN];
         if (thedb->master != gbl_mynode) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
             return -1;
         }
-
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR, "Expected db name\n");
@@ -2198,24 +2207,7 @@ clipper_usage:
                    MAXTABLELEN - 1);
             return -1;
         }
-
         tokcpy(tok, ltok, table);
-
-        /*
-           char fname[128];
-           tok=segtok(line,lline,&st,&ltok);
-           if (ltok == 0) {
-           printf("Expected schema file\n");
-           return -1;
-           }
-           if (ltok >= sizeof(fname) - 1) {
-           printf("Invalid file name: too long (max %d)\n", sizeof(fname) - 1);
-           return -1;
-           }
-           tokcpy(tok, ltok, fname);
-         */
-
-        /* and here we go... */
         rc = fastinit_table(dbenv, table);
         if (rc != 0) {
             if (rc == -99)
@@ -2470,31 +2462,6 @@ clipper_usage:
                tokcmp(tok, ltok, "clrpol") == 0 ||
                tokcmp(tok, ltok, "setclass") == 0) {
         process_allow_command(line + stsav, llinesav - stsav);
-    } else if (tokcmp(tok, ltok, "reinit") == 0) {
-        struct dbtable *db;
-        char dbname[100];
-
-        if (gbl_mynode != thedb->master) {
-            logmsg(LOGMSG_ERROR, "Please run reinit on master\n");
-            return -1;
-        }
-
-        tok = segtok(line, lline, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "usage: reinit tablename\n");
-            return -1;
-        }
-        tokcpy(tok, ltok, dbname);
-        db = get_dbtable_by_name(dbname);
-        if (db == NULL) {
-            logmsg(LOGMSG_ERROR, "No such db %s\n", dbname);
-        } else {
-            rc = reinit_db(db);
-            if (rc)
-                logmsg(LOGMSG_ERROR, "reinit %s failed rc %d\n", dbname, rc);
-            else
-                logmsg(LOGMSG_USER, "reinit %s ok\n", dbname);
-        }
     } else if (tokcmp(tok, ltok, "fastcount") == 0) {
         struct dbtable *db;
         char dbname[100];
@@ -4763,32 +4730,35 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "logmsg") == 0) {
         logmsg_process_message(line, lline);
     } else {
-        comdb2_tunable_err rc;
+        // see if any plugins know how to handle this
+        struct message_handler *h;
+        rc = 1;
+        LISTC_FOR_EACH(&dbenv->message_handlers, h, lnk)
+        {
+            rc = h->handle(dbenv, line + start_st);
+            if (rc == 0)
+                break;
+        }
 
-        /*
-          As we are here, it could be a dynamic tunable. Let's try looking
-          it up in the global tunables' list and updating it, if found.
-        */
-        rc = handle_lrl_tunable(tok, ltok, line + st, lline - st, DYNAMIC);
-        switch (rc) {
-        case TUNABLE_ERR_OK: break;
-        case TUNABLE_ERR_INVALID_TUNABLE: {
-            /* One more chance - this could be handled by a plugin */
-            struct message_handler *h;
-            LISTC_FOR_EACH(&dbenv->message_handlers, h, lnk) {
-                rc = h->handle(dbenv, line + start_st);
-                if (rc == 0)
-                    break;
-            }
-
-            if (rc)
+        if (rc) {
+            /*
+              Finally check if this is one of the dynamic tunables. Let's try
+              looking it up in the global tunables' list and updating it, if
+              found.
+            */
+            rc = handle_lrl_tunable(tok, ltok, line + st, lline - st, DYNAMIC);
+            switch (rc) {
+            case TUNABLE_ERR_OK:
+                return 0;
+            case TUNABLE_ERR_INVALID_TUNABLE:
                 logmsg(LOGMSG_ERROR, "Unknown command <%.*s>\n", ltok, tok);
-            break;
+                break;
+            default:
+                logmsg(LOGMSG_ERROR, "%s", tunable_error(rc));
+                break;
+            }
+            return -1;
         }
-        default:
-            logmsg(LOGMSG_ERROR, "%s", tunable_error(rc));
-        }
-        return rc;
     }
     return 0;
 }

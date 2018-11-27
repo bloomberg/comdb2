@@ -660,6 +660,7 @@ echo "Starting schemachange"
 (cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild t2" > rebuild_t2.log 2>&1 || touch rebuild_t2.failed) &
 (cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild t3" > rebuild_t3.log 2>&1 || touch rebuild_t3.failed) &
 
+sleep 10
 echo "wait for sc to finish"
 wait_for_sc
 

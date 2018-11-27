@@ -2418,7 +2418,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 					__func__, __LINE__, *eidp, rp->gen, vi_egen, rep->egen);
 		}
 
-		if (!IN_ELECTION_TALLY(rep) && vi_egen >= rep->egen) {
+		if (!IN_ELECTION_TALLY(rep) && vi_egen > rep->egen) {
 			logmsg(LOGMSG_DEBUG, "%s line %d not in election and vote2-egen %d "
 					"> rep->egen (%d): returning HOLDELECTION\n", __func__, 
 					__LINE__, vi_egen, rep->egen);
@@ -4353,6 +4353,7 @@ int bdb_transfer_pglogs_to_queues(void *bdb_state, void *pglogs,
 	int32_t timestamp, unsigned long long context);
 
 static unsigned long long getlock_poll_count = 0;
+int gbl_rep_lock_time_ms = 0;
 
 /*
  * __rep_process_txn --
@@ -4583,10 +4584,14 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			uint32_t flags =
 				LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
 				LOCK_GET_LIST_PRINTLOCK : 0);
+			assert(gbl_rep_lock_time_ms == 0);
+			gbl_rep_lock_time_ms = comdb2_time_epochms();
 			ret =
 				__lock_get_list_context(dbenv, lockid, flags,
 				DB_LOCK_WRITE, lock_dbt, &context, &(rctl->lsn),
 				&pglogs, &keycnt);
+			assert(gbl_rep_lock_time_ms != 0);
+			gbl_rep_lock_time_ms = 0;
 			if (ret != 0)
 				goto err;
 
@@ -4598,9 +4603,13 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			uint32_t flags =
 				LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
 				LOCK_GET_LIST_PRINTLOCK : 0);
+			assert(gbl_rep_lock_time_ms == 0);
+			gbl_rep_lock_time_ms = comdb2_time_epochms();
 			ret =
 				__lock_get_list(dbenv, lockid, flags, DB_LOCK_WRITE,
 				lock_dbt, &(rctl->lsn), &pglogs, &keycnt, stdout);
+			assert(gbl_rep_lock_time_ms != 0);
+			gbl_rep_lock_time_ms = 0;
 			if (ret != 0)
 				goto err;
 
@@ -4671,6 +4680,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	}
 
 
+#ifndef NDEBUG
 	if (txn_rl_args) {
 		int cmp;
 		if (txn_rl_args->lflags & DB_TXN_LOGICAL_BEGIN) {
@@ -4681,6 +4691,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			assert(!IS_ZERO_LSN(lt->begin_lsn));
 		}
 	}
+#endif
 
 	/*
 	 * The set of records for a transaction may include dbreg_register
@@ -5009,7 +5020,6 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 	DB_LOCK lsnlock;
 	REP *rep = NULL;
 	u_int32_t txnid = 0;
-	int cmp;
 	LTDESC *lt = NULL;
 	__txn_regop_args *txn_args = NULL;
 	__txn_regop_gen_args *txn_gen_args = NULL;
@@ -5270,9 +5280,13 @@ bad_resize:	;
 		uint32_t flags =
 			LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
 			LOCK_GET_LIST_PRINTLOCK : 0);
+		assert(gbl_rep_lock_time_ms == 0);
+		gbl_rep_lock_time_ms = comdb2_time_epochms();
 		ret =
 			__lock_get_list_context(dbenv, lockid, flags, DB_LOCK_WRITE,
 			lock_dbt, &rp->context, &(rctl->lsn), &pglogs, &keycnt);
+		assert(gbl_rep_lock_time_ms != 0);
+		gbl_rep_lock_time_ms = 0;
 		if (ret != 0)
 			goto err;
 
@@ -5284,9 +5298,13 @@ bad_resize:	;
 		uint32_t flags =
 			LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
 			LOCK_GET_LIST_PRINTLOCK : 0);
+		assert(gbl_rep_lock_time_ms == 0);
+		gbl_rep_lock_time_ms = comdb2_time_epochms();
 		ret =
 			__lock_get_list(dbenv, lockid, flags, DB_LOCK_WRITE,
 			lock_dbt, &(rctl->lsn), &pglogs, &keycnt, stdout);
+		assert(gbl_rep_lock_time_ms != 0);
+		gbl_rep_lock_time_ms = 0;
 		if (ret != 0)
 			goto err;
 
@@ -5363,7 +5381,9 @@ bad_resize:	;
 	qsort(rp->lc.array, rp->lc.nlsns, sizeof(struct logrecord),
 		__rep_lsn_cmp);
 
+#ifndef NDEBUG
 	if (txn_rl_args) {
+		int cmp;
 		if (txn_rl_args->lflags & DB_TXN_LOGICAL_BEGIN) {
 			assert((cmp =
 				log_compare(&txn_rl_args->begin_lsn,
@@ -5372,6 +5392,7 @@ bad_resize:	;
 			assert(!IS_ZERO_LSN(lt->begin_lsn));
 		}
 	}
+#endif
 
 	/* If we had any log records in this transaction that may affect the next transaction, 
 	 * process this transaction inline */

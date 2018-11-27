@@ -14,4 +14,27 @@
    limitations under the License.
  */
 
-/* sqlsupport.c has joined sqlglue.c in an unholy union */
+#ifndef INCLUDED_AST_H
+#define INCLUDED_AST_H
+
+struct ast;
+typedef struct ast ast_t;
+
+enum ast_type {
+    AST_TYPE_INVALID = 0,
+    AST_TYPE_SELECT = 1,
+    AST_TYPE_INSERT = 2,
+    AST_TYPE_UNION = 3,
+    AST_TYPE_IN = 4,
+    AST_TYPE_DELETE = 5,
+    AST_TYPE_UPDATE = 6
+};
+
+ast_t *ast_init(void);
+struct Vdbe;
+struct sqlite3;
+int ast_push(ast_t *ast, enum ast_type op, struct Vdbe *v, void *obj);
+void ast_destroy(ast_t **ast, struct sqlite3 *db);
+void ast_print(ast_t *ast);
+
+#endif
