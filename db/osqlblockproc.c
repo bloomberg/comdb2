@@ -825,7 +825,9 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
            osql_reqtype_str(type), key.tbl_idx, key.stripe, key.genid, key.seq, key.rectype);
 #endif
 
-    if (sess->is_reorder_on && (type == OSQL_INSERT || type == OSQL_INSREC) ) {
+    if (sess->is_reorder_on && sess->last_genid == 0 &&
+            (type == OSQL_INSERT || type == OSQL_INSREC || type == OSQL_QBLOB || 
+             type == OSQL_DELIDX || type == OSQL_INSIDX || type == OSQL_UPDCOLS) ) {
         rc_op = bdb_temp_table_put(thedb->bdb_env, tran->db_ins, &key, sizeof(key), rpl,
                                    rplen, NULL, &bdberr);
     } else {

@@ -371,52 +371,81 @@ if ! diff badproc.txt badproc.exp ; then
 fi
 set -e
 
-INITNUMREC=100
+
+# https://github.com/bloomberg/comdb2/issues/1080
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table if exists t3"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t3 (i int unique, j int)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t3 values(1, 1)"
+assertres "`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select * from t3'`" "1	1"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "update t3 set j = j+1 where i = 1"
+assertres "`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select * from t3'`" "1	2"
+echo "begin 
+insert into t3 values(2, 1)
+insert into t3 values(3, 1)
+commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default -
+assertres "`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select * from t3' | xargs echo `" "1 2 2 1 3 1"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t3"
+
+
+#make sure insert with blob works
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table if exists t4"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t4 (i int unique, j blob(2))"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t4 values(1, x'aabbccdd')"
+assertres "`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select * from t4'`" "1	x'aabbccdd'"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "update t4 set j = x'aabbccee' where i = 1"
+assertres "`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select * from t4'`" "1	x'aabbccee'"
+echo "begin
+insert into t4 values(2, x'aaaaaaaa')
+insert into t4 values(3, x'bbbbbbbb')
+commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default -
+assertres "`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select * from t4' | xargs echo `" "1 xaabbccee 2 xaaaaaaaa 3 xbbbbbbbb"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t4"
+
+
+# make sure inplace update works
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table if exists t5"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t5 (i int unique)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t5 values(1)"
+out=$(cdb2sql ${CDB2_OPTIONS} --tabs $dbnm default "select cast(rowid / 4294967296 as int) & 4043243520 from t5")
+if [[ "$out" != "0" ]]; then
+    failexit "Insert should have update id 0"
+fi
+cdb2sql ${CDB2_OPTIONS} $dbnm default "update t5 set i = 1"
+out=$(cdb2sql ${CDB2_OPTIONS} --tabs $dbnm default "select cast(rowid / 4294967296 as int) & 4043243520 from t5")
+if [[ "$out" == "0" ]]; then
+    failexit "Inplace update should update updateid to nonzero"
+fi
+
+
+
+
+test_t1() {
+	INITNUMREC=100
 
 #table t1 was added upon init of the DB from lrl.options
-assert_vers t1 0
-assert_schema t1 alltypes.csc2
+	assert_vers t1 0
+	assert_schema t1 alltypes.csc2
 
-let NEWNUMREC=$((2*INITNUMREC))
-insert_records 1 $NEWNUMREC
-assertcnt t1 $NEWNUMREC
+	let NEWNUMREC=$((2*INITNUMREC))
+	insert_records 1 $NEWNUMREC
+	assertcnt t1 $NEWNUMREC
 
-update_records 1 $NEWNUMREC
-assertcnt t1 $NEWNUMREC
+	update_records 1 $NEWNUMREC
+	assertcnt t1 $NEWNUMREC
 
-delete_records $((INITNUMREC+1)) $NEWNUMREC
-assertcnt t1 $INITNUMREC
+	delete_records $((INITNUMREC+1)) $NEWNUMREC
+	assertcnt t1 $INITNUMREC
 
 
-echo "Now call task that uses cdb2api to ins/upd/del"
-${TESTSBUILDDIR}/cdb2api_caller $dbnm > cdb2api_caller.out
+	echo "Now call task that uses cdb2api to ins/upd/del"
+	${TESTSBUILDDIR}/cdb2api_caller $dbnm > cdb2api_caller.out
 
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select * from t1" > select_all.out
+	cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select * from t1" > select_all.out
+}
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("sql hist")'
 
 res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 1"`
 assertres $res 1
-
-# https://github.com/bloomberg/comdb2/issues/1080
-cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1 (i int unique, j int)"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1 values(1, 1)"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set j = j+1 where i = 1"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
-
-# make sure inplace update works
-cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table if exists t1"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1 (i int unique)"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1 values(1)"
-out=$(cdb2sql ${CDB2_OPTIONS} --tabs $dbnm default "select cast(rowid / 4294967296 as int) & 4043243520 from t1")
-if [[ "$out" != "0" ]]; then
-    failexit "Insert should have update id 0"
-fi
-cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set i = 1"
-out=$(cdb2sql ${CDB2_OPTIONS} --tabs $dbnm default "select cast(rowid / 4294967296 as int) & 4043243520 from t1")
-if [[ "$out" == "0" ]]; then
-    failexit "Inplace update should update updateid to nonzero"
-fi
 
 echo "Success"
