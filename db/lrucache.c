@@ -183,10 +183,8 @@ void lrucache_release(struct lrucache *cache, void *key)
         listc_abl(&cache->lru, ent);
 
         if (lent->invalid) {
-            int ret = hash_del(cache->h, ent);
             listc_rfl(&cache->lru, ent);
-            if (ret == 0)
-                cache->freefunc(ent);
+            cache->freefunc(ent);
         }
     }
 }
@@ -229,14 +227,13 @@ void lrucache_invalidate(struct lrucache *cache, void *key) {
         struct lrucache_link *lent;
         lent = (struct lrucache_link *)((uintptr_t)ent + cache->offset);
         lent->invalid = 1;
+        hash_del(cache->h, ent);
 
         // if the entry isn't referenced, delete it in place, otherwise
         // last user will delete on return
         if (lent->ref == 0) {
-            int ret = hash_del(cache->h, ent);
             listc_rfl(&cache->lru, ent);
-            if (ret == 0)
-                cache->freefunc(ent);
+            cache->freefunc(ent);
         }
     }
 }

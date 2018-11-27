@@ -2147,26 +2147,42 @@ static void checksum_query(CDB2SQLQUERY *q, unsigned char out[20]) {
 static lrucache *cached_responses;
 static pthread_once_t once = PTHREAD_ONCE_INIT;
 
+
+struct cache_key {
+    unsigned long long gen;
+    unsigned char request_checksum[20];
+};
+
 struct cached_response {
-    char request_checksum[20];
+    struct cache_key key;
     struct lrucache_link lnk;
     int response_size;
     char response[1];
 };
 
 unsigned int response_hash(const void *key, int len) {
-    /* TODO */
-    return 0;
+    unsigned int h = 0;
+    union {
+        struct cache_key k;
+        int i[8];
+    } u;
+    memcpy(&u.k, key, len);
+    for (int i = 0; i < sizeof(u.i)/sizeof(int); i++)
+        h ^= u.i[i];
+    return h;
 }
 
 int response_cmp(const void *key1, const void *key2, int len) {
-    return memcmp(key1, key2, len);
+    struct cache_key *k1 = (struct cache_key*) key1;
+    struct cache_key *k2 = (struct cache_key*) key2;
+    int cmp = memcmp(k1->request_checksum, k2->request_checksum, 20) == 0 && (k1->gen == k2->gen);
+    return !cmp;
 }
 
 static void init_lrucache(void) {
     cached_responses = lrucache_init(response_hash, response_cmp, free, 
-            offsetof(struct cached_response, lnk), offsetof(struct cached_response, request_checksum),
-            20, 0, gbl_result_cache_size);
+            offsetof(struct cached_response, lnk), offsetof(struct cached_response, key),
+            sizeof(struct cache_key), 0, gbl_result_cache_size);
 }
 
 int64_t gbl_cached_sql_hits = 0;
@@ -2352,14 +2368,13 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         clnt.sql = sql_query->sql_query;
         clnt.added_to_hist = 0;
 
-        logmsg(LOGMSG_DEBUG, "intrans %d sql %s\n", clnt.in_client_trans, sql_query->sql_query);
-
         struct cached_response *rsp = NULL;
-        if (gbl_result_cache_size && !clnt.in_client_trans) {
+        if (gbl_result_cache_size) {
+            struct cache_key k;
             checksum_query(sql_query, query_checksum);
-            pthread_mutex_lock(&rscachelk);
-            rsp = lrucache_find(cached_responses, query_checksum);
-            pthread_mutex_unlock(&rscachelk);
+            memcpy(k.request_checksum, query_checksum, sizeof(query_checksum));
+            k.gen = bdb_get_commit_genid(thedb->bdb_env, NULL);
+            rsp = lrucache_find(cached_responses, &k);
             if (rsp) {
                 logmsg(LOGMSG_DEBUG, "Response from cache\n");
                 sbuf2write(rsp->response, rsp->response_size, sb);
@@ -2514,7 +2529,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         if (!rsp && !clnt.last_was_write && !clnt.in_client_trans) {
             rsp = malloc(offsetof(struct cached_response, response) + clnt.cached_response_size);
             p = rsp->response;
-            memcpy(rsp->request_checksum, query_checksum, 20);
+            memcpy(rsp->key.request_checksum, query_checksum, 20);
+            rsp->key.gen = bdb_get_commit_genid(thedb->bdb_env, NULL);
             rsp->response_size  = clnt.cached_response_size;
         }
 
