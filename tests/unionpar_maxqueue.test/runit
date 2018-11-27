@@ -24,28 +24,15 @@ $r "exec procedure sys.cmd.send('dohsql_max_queued_kb_highwm 2000')"
 
 $r "select a,b from t union all select a,b from t2 order by a" | wc -l
 
-$r "exec procedure sys.cmd.send('stat dohsql')"|egrep -v "length" > log.out 2>&1
+maxsize=`$r "exec procedure sys.cmd.send('stat dohsql')"| grep bytes| awk '{ print $4;}'`
 
+echo "Queue maximum size was $maxsize"
 
 # get testcase output
-testcase_output=$(cat log.out)
-
-# get expected output
-expected_output=$(cat log.expected)
-
-# verify 
-if [[ "$testcase_output" != "$expected_output" ]]; then
-
-        echo "  ^^^^^^^^^^^^"
-        echo " FAILED TEST " 
-        echo "Use 'diff <expected-output> <my-output>' to see why:"
-        echo "> diff ${PWD}/{log.out,log.expected}"
-        echo " "
-        diff log.out log.expected
-        echo " "
-        exit 1
-
-    fi
-
-echo "Testcase passed."
-
+if (( $maxsize > 2000000 )) ; then
+    echo "Failure queue size too large $maxsize"
+    exit 1
+else
+    echo "Limited queue size $maxsize"
+    echo "Testcase passed."
+fi

@@ -212,6 +212,9 @@ static void sqlengine_work_shard(struct thdpool *pool, void *work,
     osql_log_time_done(clnt);
 
     /*thrman_setid(thrman_self(), "[done]");*/
+
+    /* after this clnt is toast */
+    ((dohsql_connector_t *)clnt->plugin.state)->status = DOH_CLIENT_DONE;
 }
 
 static int inner_type(sqlite3_stmt *stmt, int col)
@@ -261,7 +264,7 @@ static void trimQue(dohsql_connector_t *conn, sqlite3_stmt *stmt,
 
         if (gbl_dohsql_max_queued_kb_highwm) {
             conn->queue_size -= row_size;
-            fprintf(stderr, "XXX: %s %d %lld\n", __func__, queue_count(que), conn->queue_size);
+            /*fprintf(stderr, "XXX: %s %d %lld\n", __func__, queue_count(que), conn->queue_size);*/
         }
     }
 }
@@ -286,13 +289,13 @@ static void _que_limiter(dohsql_connector_t *conn, sqlite3_stmt *stmt,
 {
     if (gbl_dohsql_max_queued_kb_highwm) {
         conn->queue_size += row_size;
-        fprintf(stderr, "XXX: %s %d %d %lld\n", __func__, queue_count(conn->que), queue_count(conn->que_free), conn->queue_size);
+        /*fprintf(stderr, "XXX: %s %d %d %lld\n", __func__, queue_count(conn->que), queue_count(conn->que_free), conn->queue_size);*/
     }
 
 cleanup:
-    if ((conn->queue_size / 252 != (queue_count(conn->que) + queue_count(conn->que_free))) &&
+    /*if ((conn->queue_size / 252 != (queue_count(conn->que) + queue_count(conn->que_free))) &&
     (conn->queue_size / 252 != (queue_count(conn->que) + queue_count(conn->que_free)+1)))
-    abort();
+    abort();*/
     /* inline cleanup */
     if (queue_count(conn->que_free) > gbl_dohsql_que_free_highwm) {
         _track_que_free(conn);
@@ -477,8 +480,8 @@ static void add_row(dohsql_t *conns, int i, row_t *row)
             pthread_mutex_lock(&conns->conns[conns->row_src].mtx);
         if (queue_add(conns->conns[conns->row_src].que_free, conns->row))
             abort();
-        fprintf(stderr, "XXX: %s moved row to que_free len %d\n", __func__,
-        queue_count(conns->conns[conns->row_src].que_free));
+        /*fprintf(stderr, "XXX: %s moved row to que_free len %d\n", __func__,
+        queue_count(conns->conns[conns->row_src].que_free));*/
         if (i != conns->row_src)
             pthread_mutex_unlock(&conns->conns[conns->row_src].mtx);
     }
@@ -770,7 +773,6 @@ static int dohsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
         return 0;
     default:
         logmsg(LOGMSG_ERROR, "Unsupported option %d\n", t);
-        fprintf(stderr, "Unsupported option %d\n", t);
         abort();
     }
     return 0;
@@ -1208,7 +1210,10 @@ void dohsql_wait_for_master(sqlite3_stmt *stmt, struct sqlclntstate *clnt)
     trimQue(conn, stmt, conn->que, 0);
     trimQue(conn, stmt, conn->que_free, 0);
 
+    /*
+        This has to be done after the sql thread has done touching clnt structure
     conn->status = DOH_CLIENT_DONE;
+    */
 
     pthread_mutex_unlock(&conn->mtx);
 }
