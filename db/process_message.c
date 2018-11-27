@@ -3541,7 +3541,8 @@ clipper_usage:
             logmsg(LOGMSG_USER, "table:%s  odh:%s  instant_schema_change:%s  "
                                 "inplace_updates:%s  version:%d\n",
                    db->tablename, YESNO(db->instant_schema_change),
-                   YESNO(db->inplace_updates), YESNO(db->odh), db->version);
+                   YESNO(db->inplace_updates), YESNO(db->odh),
+                   db->schema_version);
         } else {
             logmsg(LOGMSG_ERROR, "no such table: %s\n", dbname);
         }
@@ -3569,8 +3570,8 @@ clipper_usage:
         }
         struct dbtable *db = get_dbtable_by_name(dbname);
         if (db) {
-            db->version = ver;
-            bdb_set_csc2_version(db->handle, db->version);
+            db->schema_version = ver;
+            bdb_set_csc2_version(db->handle, db->schema_version);
         } else {
             logmsg(LOGMSG_ERROR, "no such table: %s\n", dbname);
         }

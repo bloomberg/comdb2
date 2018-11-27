@@ -866,7 +866,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
 
         new_bdb_handle = newdb->handle;
 
-        rc = bdb_get_csc2_highest(tran, table, &newdb->version, &bdberr);
+        rc = bdb_get_csc2_highest(tran, table, &newdb->schema_version, &bdberr);
         if (rc) {
             logmsg(LOGMSG_FATAL, "bdb_get_csc2_highest() failed! PANIC!!\n");
             /* FIXME */

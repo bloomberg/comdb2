@@ -1264,9 +1264,9 @@ int dryrun_int(struct schema_change_type *s, struct dbtable *db, struct dbtable 
         } else {
             sbuf2printf(s->sb, ">There is no change in the schema\n");
         }
-    } else if (db->version >= MAXVER && newdb->instant_schema_change) {
-        sbuf2printf(s->sb, ">Table is at version: %d MAXVER: %d\n", db->version,
-                    MAXVER);
+    } else if (db->schema_version >= MAXVER && newdb->instant_schema_change) {
+        sbuf2printf(s->sb, ">Table is at version: %d MAXVER: %d\n", 
+                    db->schema_version, MAXVER);
         sbuf2printf(s->sb, ">Will need to rebuild table\n");
     }
 

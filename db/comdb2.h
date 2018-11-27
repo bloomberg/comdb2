@@ -791,12 +791,12 @@ struct dbtable {
 
     struct dbstore dbstore[MAXCOLUMNS];
     int odh;
-    int version;
+    int schema_version; // csc2 schema version increased on instantaneous schemachange
     int instant_schema_change;
     int inplace_updates;
     unsigned long long tableversion;
 
-    /* map of tag fields for version to curr schema */
+    /* map of tag fields for schema version to curr schema */
     unsigned int * versmap[MAXVER + 1];
     /* is tag version compatible with ondisk schema */
     uint8_t vers_compat_ondisk[MAXVER + 1];

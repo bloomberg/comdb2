@@ -1419,7 +1419,7 @@ static int upgrade_records(struct convert_record_data *data)
         return -2;
     }
 
-    if (recver != data->to->version) {
+    if (recver != data->to->schema_version) {
         // rewrite the record if not ondisk version
         p_buf_data = (uint8_t *)data->dta_buf;
         p_buf_data_end = p_buf_data + data->from->lrl;
@@ -1537,7 +1537,7 @@ static int upgrade_records(struct convert_record_data *data)
 
     if (data->s->fulluprecs)
         return 1;
-    else if (recver == data->to->version)
+    else if (recver == data->to->schema_version)
         return 0;
     else if (data->nrecs >= data->s->partialuprecs)
         return 0;
