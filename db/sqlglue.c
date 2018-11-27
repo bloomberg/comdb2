@@ -9191,20 +9191,23 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
         if (rc == SQLITE_SCHEMA || rc == SQLITE_COMDB2SCHEMA) {
             logmsg(LOGMSG_ERROR, "%s: failing with SQLITE_COMDB2SCHEMA\n",
                    __func__);
-            sqlite3VdbeError(vdbe, "Database was schema changed");
+            if (vdbe)
+                sqlite3VdbeError(vdbe, "Database was schema changed");
             return SQLITE_COMDB2SCHEMA;
         }
 
         if (clnt->gen_changed) {
             logmsg(LOGMSG_ERROR, 
-                    "%s: fail to open a new curtran, rc=%d, return changenode\n",
-                    __func__, rc);
-            sqlite3VdbeError(vdbe, "New master under snapshot");
+                   "%s: fail to open a new curtran, rc=%d, return "
+                   "changenode\n", __func__, rc);
+            if (vdbe)
+                sqlite3VdbeError(vdbe, "New master under snapshot");
             return SQLITE_CLIENT_CHANGENODE;
         } else {
-            logmsg(LOGMSG_ERROR, "%s: fail to open a new curtran, rc=%d\n", __func__,
-                    rc);
-            sqlite3VdbeError(vdbe, "Failed to reaquire locks on deadlock");
+            logmsg(LOGMSG_ERROR, "%s: fail to open a new curtran, rc=%d\n",
+                   __func__, rc);
+            if (vdbe)
+                sqlite3VdbeError(vdbe, "Failed to reaquire locks on deadlock");
             return ERR_RECOVER_DEADLOCK;
         }
     }
