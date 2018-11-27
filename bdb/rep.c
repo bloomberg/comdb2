@@ -4395,6 +4395,12 @@ int enqueue_pg_compact_work(bdb_state_type *bdb_state, int32_t fileid,
     pgcomp_rcv_t *rcv;
     int rc;
 
+    if (size > PGCOMPMAXLEN) {
+        logmsg(LOGMSG_WARN, "%s %d: page compaction request too long.\n",
+               __FILE__, __LINE__);
+        return E2BIG;
+    }
+
     rcv = malloc(sizeof(pgcomp_rcv_t) + size);
     if (rcv == NULL)
         rc = ENOMEM;
