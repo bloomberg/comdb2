@@ -4143,6 +4143,7 @@ static int execute_sql_query(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     /* All requests that do not require a sqlite engine are processed next,
      * rc != 0 means processing done */
     if ((rc = handle_non_sqlite_requests(thd, clnt, &outrc)) != 0) {
+        comdb2_results_not_cachable();
         return outrc;
     }
 

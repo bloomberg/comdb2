@@ -2168,6 +2168,7 @@ unsigned int response_hash(const void *key, int len) {
 
     for (int i = 0; i < sizeof(k->request_checksum)/sizeof(int); i++)
         h ^= p[i];
+
     return h;
 }
 

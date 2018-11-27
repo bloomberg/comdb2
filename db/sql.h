@@ -1207,4 +1207,5 @@ void clnt_change_state(struct sqlclntstate *clnt, enum connection_state state);
 void clnt_register(struct sqlclntstate *clnt);
 void clnt_unregister(struct sqlclntstate *clnt);
 
+void comdb2_results_not_cachable(void);
 #endif
