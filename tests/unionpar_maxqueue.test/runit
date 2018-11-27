@@ -24,7 +24,7 @@ $r "exec procedure sys.cmd.send('dohsql_max_queued_kb_highwm 2000')"
 
 $r "select a,b from t union all select a,b from t2 order by a" | wc -l
 
-$r "exec procedure sys.cmd.send('stat dohsql')" > log.out 2>&1
+$r "exec procedure sys.cmd.send('stat dohsql')"|egrep -v "length" > log.out 2>&1
 
 
 # get testcase output
