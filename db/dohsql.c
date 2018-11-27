@@ -264,7 +264,8 @@ static void trimQue(dohsql_connector_t *conn, sqlite3_stmt *stmt,
 
         if (gbl_dohsql_max_queued_kb_highwm) {
             conn->queue_size -= row_size;
-            /*fprintf(stderr, "XXX: %s %d %lld\n", __func__, queue_count(que), conn->queue_size);*/
+            /*fprintf(stderr, "XXX: %s %d %lld\n", __func__, queue_count(que),
+             * conn->queue_size);*/
         }
     }
 }
@@ -289,13 +290,15 @@ static void _que_limiter(dohsql_connector_t *conn, sqlite3_stmt *stmt,
 {
     if (gbl_dohsql_max_queued_kb_highwm) {
         conn->queue_size += row_size;
-        /*fprintf(stderr, "XXX: %s %d %d %lld\n", __func__, queue_count(conn->que), queue_count(conn->que_free), conn->queue_size);*/
+        /*fprintf(stderr, "XXX: %s %d %d %lld\n", __func__,
+         * queue_count(conn->que), queue_count(conn->que_free),
+         * conn->queue_size);*/
     }
 
 cleanup:
-    /*if ((conn->queue_size / 252 != (queue_count(conn->que) + queue_count(conn->que_free))) &&
-    (conn->queue_size / 252 != (queue_count(conn->que) + queue_count(conn->que_free)+1)))
-    abort();*/
+    /*if ((conn->queue_size / 252 != (queue_count(conn->que) +
+    queue_count(conn->que_free))) && (conn->queue_size / 252 !=
+    (queue_count(conn->que) + queue_count(conn->que_free)+1))) abort();*/
     /* inline cleanup */
     if (queue_count(conn->que_free) > gbl_dohsql_que_free_highwm) {
         _track_que_free(conn);
@@ -1211,8 +1214,8 @@ void dohsql_wait_for_master(sqlite3_stmt *stmt, struct sqlclntstate *clnt)
     trimQue(conn, stmt, conn->que_free, 0);
 
     /*
-        This has to be done after the sql thread has done touching clnt structure
-    conn->status = DOH_CLIENT_DONE;
+        This has to be done after the sql thread has done touching clnt
+    structure conn->status = DOH_CLIENT_DONE;
     */
 
     pthread_mutex_unlock(&conn->mtx);
