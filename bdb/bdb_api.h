@@ -1202,7 +1202,7 @@ void bdb_get_cache_stats(bdb_state_type *bdb_state, uint64_t *hits,
                          uint64_t *thits, uint64_t *tmisses);
 void bdb_thread_event(bdb_state_type *bdb_state, int event);
 
-int bdb_stripe_get(bdb_state_type *bdb_state);
+void bdb_stripe_get(bdb_state_type *bdb_state);
 void bdb_stripe_done(bdb_state_type *bdb_state);
 
 int bdb_count(bdb_state_type *bdb_state, int *bdberr);

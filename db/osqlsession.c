@@ -123,10 +123,6 @@ static void _destroy_session(osql_sess_t **prq, int phase)
     osql_sess_t *rq = *prq;
     uuidstr_t us;
 
-    if (rq->stripeid >= 0) {
-        bdb_stripe_done(thedb->bdb_env);
-        rq->stripeid = -1;
-    }
     free_blob_buffers(rq->blobs, MAXBLOBS);
     switch (phase) {
     case 0:
@@ -804,7 +800,6 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
     sess->offhost = fromhost;
     sess->start = sess->initstart = time(NULL);
     sess->is_reorder_on = is_reorder_on;
-    sess->stripeid = -1;
 
     if (tzname)
         strncpy(sess->tzname, tzname, sizeof(sess->tzname));

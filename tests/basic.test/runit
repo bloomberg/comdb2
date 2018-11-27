@@ -282,6 +282,9 @@ done
 echo "core location:" 
 cat  /proc/sys/kernel/core_pattern
 
+#cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("debg 100")'
+#cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("ndebg 100")'
+
 echo "create, alter, drop table t2"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t2  { `cat alltypes.csc2 ` }"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t2  { `cat alltypes.csc2 ` }"
@@ -323,6 +326,9 @@ select count(*) from t2 where i = 1
 commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans1.txt
 
 # test transaction of diff sizes
+echo "begin
+commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans0.txt
+
 echo "begin
 insert into t2 values(3)
 commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans2.txt

@@ -222,8 +222,7 @@ void *osql_create_request(const char *sql, int sqlen, int type,
 int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                         void *trans, char *msg, int msglen, int *flags,
                         int **updCols, blob_buffer_t blobs[MAXBLOBS], int step,
-                        struct block_err *err, int *receivedrows, SBUF2 *logsb,
-                        unsigned long long newgenid);
+                        struct block_err *err, int *receivedrows, SBUF2 *logsb);
 
 /**
  * Handles each packet and start schema change
@@ -234,7 +233,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
                               int *flags, int **updCols,
                               blob_buffer_t blobs[MAXBLOBS], int step,
                               struct block_err *err, int *receivedrows,
-                              SBUF2 *logsb, unsigned long long newgenid);
+                              SBUF2 *logsb);
 /**
  * Sends a user command to offload net (used by "osqlnet")
  *

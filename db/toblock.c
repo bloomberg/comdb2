@@ -2214,13 +2214,11 @@ static int toblock_outer(struct ireq *iq, block_state_t *blkstate)
             gotlk = 1;
         }
 
-        if (!gbl_reorder_socksql_no_deadlock)
-            bdb_stripe_get(iq->dbenv->bdb_env);
+        bdb_stripe_get(iq->dbenv->bdb_env);
 
         rc = toblock_main(iq->jsph, iq, blkstate);
 
-        if (!gbl_reorder_socksql_no_deadlock)
-            bdb_stripe_done(iq->dbenv->bdb_env);
+        bdb_stripe_done(iq->dbenv->bdb_env);
 
         if (gotlk)
             Pthread_rwlock_unlock(&gbl_block_qconsume_lock);

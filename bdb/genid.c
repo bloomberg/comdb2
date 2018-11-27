@@ -591,13 +591,6 @@ unsigned long long bdb_get_a_genid(bdb_state_type *bdb_state)
     return get_genid(bdb_state, 0);
 }
 
-/* get a unique genid that can be used in comdb2 prefault to reference next
- * block to allocate by database for new data records. */
-inline unsigned long long bdb_get_next_genid(struct bdb_state_type *bdb_state)
-{
-    return get_genid(bdb_state, bdb_get_active_stripe_int(bdb_state));
-}
-
 /* set the genid's participant stripe value & return the new genid */
 unsigned long long set_participant_stripeid(bdb_state_type *bdb_state,
                                             int stripeid,

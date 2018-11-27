@@ -6149,15 +6149,13 @@ static int get_blkout(time_t now, char *nodes[REPMAX], int *nds)
 static void net_osql_rpl(void *hndl, void *uptr, char *fromnode, int usertype,
                          void *dtap, int dtalen, uint8_t is_tcp)
 {
-
     int found = 0;
     int rc = 0;
     uuid_t uuid;
     int type = 0;
     unsigned long long rqid;
-    uint8_t *p_buf, *p_buf_end;
-    p_buf = (uint8_t *)dtap;
-    p_buf_end = (p_buf + dtalen);
+    uint8_t *p_buf = (uint8_t *)dtap;
+    uint8_t *p_buf_end = (p_buf + dtalen);
 
     stats[netrpl2req(usertype)].rcv++;
 
@@ -6195,7 +6193,7 @@ static void net_osql_rpl(void *hndl, void *uptr, char *fromnode, int usertype,
 
 #ifdef TEST_OSQL
     fprintf(stdout, "%s: calling sorese_rcvrpl type=%d sid=%llu\n", __func__,
-            netrpl2req, ((osql_rpl_t *)dtap)->sid);
+            netrpl2req(type), ((osql_rpl_t *)dtap)->sid);
 #endif
 #if 0
     printf("NET RPL rqid=%llu tmp=%llu\n", ((osql_rpl_t*)dtap)->sid, osql_log_time());
@@ -6549,7 +6547,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
                               int *flags, int **updCols,
                               blob_buffer_t blobs[MAXBLOBS], int step,
                               struct block_err *err, int *receivedrows,
-                              SBUF2 *logsb, unsigned long long newgenid)
+                              SBUF2 *logsb)
 {
     const uint8_t *p_buf;
     const uint8_t *p_buf_end;
@@ -6687,8 +6685,7 @@ int osql_get_replicant_numops(const char *rpl, int has_uuid)
 int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                         void *trans, char *msg, int msglen, int *flags,
                         int **updCols, blob_buffer_t blobs[MAXBLOBS], int step,
-                        struct block_err *err, int *receivedrows, SBUF2 *logsb,
-                        unsigned long long newgenid)
+                        struct block_err *err, int *receivedrows, SBUF2 *logsb)
 {
     const uint8_t *p_buf;
     const uint8_t *p_buf_end;
@@ -6983,6 +6980,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         osql_ins_t dt;
         unsigned char *pData = NULL;
         int rrn = 0;
+        unsigned long long newgenid = 0;
         int is_legacy = (type == OSQL_INSREC);
 
         const uint8_t *p_buf_end;
@@ -7006,9 +7004,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         }
 
         int addflags = RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_DONT_LOCK_TBL;
-        if (newgenid != 0)
-            addflags |= RECFLAGS_KEEP_GENID;
-
         if (osql_get_delayed(iq) == 0 && iq->usedb->n_constraints == 0 &&
             gbl_goslow == 0) {
             addflags |= RECFLAGS_NO_CONSTRAINTS;
@@ -7186,7 +7181,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             NULL, NULL,                            /* vrec */
             NULL,                                  /*nulls, no need as no
                                                      ctag2stag is called */
-            *updCols, blobs, MAXBLOBS, &newgenid, dt.ins_keys, dt.del_keys,
+            *updCols, blobs, MAXBLOBS, &genid, dt.ins_keys, dt.del_keys,
             &err->errcode, &err->ixnum, BLOCK2_UPDKL, step,
             RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_DONT_LOCK_TBL |
                 RECFLAGS_DONT_SKIP_BLOBS /* because we only receive info about
