@@ -821,6 +821,17 @@ struct cdb2_ssl_sess_list {
 static cdb2_ssl_sess_list cdb2_ssl_sess_cache;
 #endif
 
+/* A cnonce is composed of
+   - 32 bits of machine ID
+   - 32 bits of process PID
+   - 32 or 64 bits of handle address
+   - 52 bits for the epoch time in microseconds
+   - 12 bits for the sequence number
+
+   The allocation allows a handle to run at a maximum transaction rate of
+   4096 txn/us (~4 billion transactions per second) till September 17, 2112.
+
+   See next_cnonce() for details. */
 #define CNONCE_STR_FMT "%ld-%d-%p-"
 #define CNONCE_STR_SZ 52 /* 8 + 1 + 8 + 1 + 16 + 1 + 16 + 1 (NUL) */
 
@@ -2881,6 +2892,16 @@ int cdb2_close(cdb2_hndl_tp *hndl)
 
 static int next_cnonce(cdb2_hndl_tp *hndl)
 {
+    /* 1. Get the current epoch in microseconds.
+       2. If the epoch is equal to the time embedded in `seq',
+          increment the sequence number. If the sequence number wraps
+          around 0, return an error.
+       3. If the epoch is greater than the time embedded in `seq',
+          3.1 If the embedded time is 0, which means this is the 1st time
+              a cnonce is generated, initialze `hostid', `pid' and `hndl'.
+          embed the epoch to `seq' and reset the sequence number to 0.
+       4. Otherwise, return an error. */
+
     int rc;
     struct timeval tv;
     uint64_t cnt, seq, tm, now;
