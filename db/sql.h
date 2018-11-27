@@ -770,7 +770,7 @@ struct sqlclntstate {
     // result cache
     LISTC_T(struct cached_response_fragment) response_fragments;
     int cached_response_size;
-    int last_was_write;
+    int dont_cache_this_request;
 };
 
 /* Query stats. */

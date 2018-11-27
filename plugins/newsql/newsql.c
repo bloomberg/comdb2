@@ -2525,7 +2525,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
         struct cached_response_fragment *f;
         char *p = NULL;
-        if (!rsp && !clnt.last_was_write && !clnt.in_client_trans) {
+        if (!rsp && !clnt.dont_cache_this_request && !clnt.in_client_trans) {
             rsp = malloc(offsetof(struct cached_response, response) + clnt.cached_response_size);
             p = rsp->response;
             memcpy(rsp->key.request_checksum, query_checksum, 20);
