@@ -443,6 +443,8 @@ test_t1() {
 	cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select * from t1" > select_all.out
 }
 
+test_t1
+
 cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("sql hist")'
 
 res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 1"`

@@ -1287,27 +1287,13 @@ static int process_this_session(
         char *data = NULL;
         int datalen = 0;
         if (drain_adds) {
-            if( ! (opkey_ins->tbl_idx < opkey->tbl_idx || 
-                (opkey_ins->tbl_idx == opkey->tbl_idx && add_stripe < opkey->stripe)) ){
-                drain_adds = 0;
-                continue;
-            }
             data = bdb_temp_table_data(dbc_ins);
             datalen = bdb_temp_table_datasize(dbc_ins);
-        }
-        else {
-            /* if cursor valid for dbc_ins, and if we changed table/stripe and
-             * prev table/strip match dbc_ins table/stripe then we process adds
-             */
-            if (rc_ins == 0 && (opkey_ins->tbl_idx < opkey->tbl_idx || 
-                (opkey_ins->tbl_idx == opkey->tbl_idx && add_stripe < opkey->stripe))
-               ) {
-                drain_adds = 1;
-                continue;
-            }
+        } else {
             data = bdb_temp_table_data(dbc);
             datalen = bdb_temp_table_datasize(dbc);
         }
+
 
 #if DEBUG_REORDER
         uuidstr_t mus;
@@ -1356,16 +1342,30 @@ static int process_this_session(
         }
 
         step++;
+
         if (drain_adds) {
             rc_ins = bdb_temp_table_next(thedb->bdb_env, dbc_ins, bdberr);
-            if (rc_ins != 0) 
+            if(rc_ins != 0 || ! (opkey_ins->tbl_idx < opkey->tbl_idx || 
+                (opkey_ins->tbl_idx == opkey->tbl_idx && add_stripe < opkey->stripe)) ){
                 drain_adds = 0;
+            }
             else
                 opkey_ins = (oplog_key_t *)bdb_temp_table_key(dbc_ins);
         } else {
             rc = bdb_temp_table_next(thedb->bdb_env, dbc, bdberr);
+            if (rc != 0) continue;
             opkey = (oplog_key_t *)bdb_temp_table_key(dbc);
+            /* if cursor valid for dbc_ins, and if we changed table/stripe and
+             * prev table/strip match dbc_ins table/stripe then we process adds
+             */
+            if (rc_ins == 0 && (opkey_ins->tbl_idx < opkey->tbl_idx || 
+                (opkey_ins->tbl_idx == opkey->tbl_idx && add_stripe < opkey->stripe))
+               ) {
+                drain_adds = 1;
+            }
         }
+
+
     }
 
     /* if for some reason the session has not completed correctly,
