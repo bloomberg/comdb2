@@ -308,7 +308,7 @@ static int do_finalize(ddl_t func, struct ireq *iq,
 
 static int check_table_version(struct ireq *iq, struct schema_change_type *sc)
 {
-    if (sc->addonly || sc->resume)
+    if (sc->addonly || sc->resume || sc->fix_tp_badvers)
         return 0;
     int rc, bdberr;
     unsigned long long version;

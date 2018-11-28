@@ -189,8 +189,6 @@ void test_read_comdb2db_cfg()
     char *dbname = "mydb";
     int num_db_hosts = 0;
     int dbnum = 0;
-    int dbname_found = 0;
-    int comdb2db_found = 0;
     int stack_at_open = 0;
 
     const char *buf = 
@@ -200,29 +198,16 @@ void test_read_comdb2db_cfg()
 ";
 
 
-/*
-static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp, char *comdb2db_name, 
-                              const char *buf, char comdb2db_hosts[][64],
-                              int *num_hosts, int *comdb2db_num, char *dbname,
-                              char db_hosts[][64], int *num_db_hosts,
-                              int *dbnum, int *dbname_found,
-                              int *comdb2db_found, int *stack_at_open)
-                              */
-
-
     read_comdb2db_cfg(&hndl, fp, comdb2db_name,
                       buf, comdb2db_hosts,
                       &num_hosts, &comdb2db_num, dbname,
                       db_hosts, &num_db_hosts,
-                      &dbnum, &dbname_found,
-                      &comdb2db_found, &stack_at_open);
+                      &dbnum, &stack_at_open);
 
     assert(num_hosts == 0);
     assert(comdb2db_num == 0);
     assert(num_db_hosts == 0);
     assert(dbnum == 0);
-    assert(dbname_found == 0);
-    assert(comdb2db_found == 0);
 
     const char *buf2 = 
 "\n\
@@ -237,11 +222,9 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp, char *comdb2db_name,
                       buf2, comdb2db_hosts,
                       &num_hosts, &comdb2db_num, dbname,
                       db_hosts, &num_db_hosts,
-                      &dbnum, &dbname_found,
-                      &comdb2db_found, &stack_at_open);
+                      &dbnum, &stack_at_open);
 
     assert(num_hosts == 5);
-    assert(comdb2db_found == 1);
     assert(comdb2db_num == 0);
     assert(strcmp(comdb2db_hosts[0], "a") == 0);
     assert(strcmp(comdb2db_hosts[1], "b") == 0);
@@ -260,7 +243,6 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp, char *comdb2db_name,
     //TODO: this is not set: assert(strcmp(hndl.cluster, "testsuite") == 0);
 
     assert(dbnum == 0);
-    assert(dbname_found == 1);
 }
 
 

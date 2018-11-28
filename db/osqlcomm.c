@@ -6504,6 +6504,7 @@ static inline int is_write_request(int type)
 
 void free_cached_idx(uint8_t **cached_idx);
 
+int gbl_disable_tpsc_tblvers = 0;
 int start_schema_change_tran_wrapper(const char *tblname,
                                      timepart_sc_arg_t *arg)
 {
@@ -6512,6 +6513,9 @@ int start_schema_change_tran_wrapper(const char *tblname,
     int rc;
 
     strncpy0(sc->tablename, tblname, sizeof(sc->tablename));
+    if (gbl_disable_tpsc_tblvers) {
+        sc->fix_tp_badvers = 1;
+    }
 
     rc = start_schema_change_tran(iq, sc->tran);
     if (rc != SC_ASYNC && rc != SC_COMMIT_PENDING) {

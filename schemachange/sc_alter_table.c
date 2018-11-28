@@ -783,13 +783,22 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
         (!s->fastinit &&
          BDB_ATTR_GET(thedb->bdb_attr, SC_DONE_SAME_TRAN) == 0)) {
         /* reliable per table versioning */
-        rc = table_version_upsert(db, transac, &bdberr);
+        if (unlikely(gbl_disable_tpsc_tblvers && s->fix_tp_badvers)) {
+            rc = table_version_set(transac, db->tablename,
+                                   s->usedbtablevers + 1);
+            db->tableversion = s->usedbtablevers + 1;
+        } else
+            rc = table_version_upsert(db, transac, &bdberr);
         if (rc) {
             sc_errf(s, "Failed updating table version bdberr %d\n", bdberr);
             goto failed;
         }
     } else {
-        db->tableversion = table_version_select(db, transac);
+        if (unlikely(gbl_disable_tpsc_tblvers && s->fix_tp_badvers)) {
+            rc = table_version_set(transac, db->tablename, s->usedbtablevers);
+            db->tableversion = s->usedbtablevers;
+        } else
+            db->tableversion = table_version_select(db, transac);
         sc_printf(s, "Reusing version %d for same schema\n", db->tableversion);
     }
 

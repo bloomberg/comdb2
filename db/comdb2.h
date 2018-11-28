@@ -3581,4 +3581,6 @@ void plugin_post_dbenv_hook(struct dbenv *dbenv);
 
 int64_t gbl_temptable_spills;
 
+extern int gbl_disable_tpsc_tblvers;
+
 #endif /* !INCLUDED_COMDB2_H */

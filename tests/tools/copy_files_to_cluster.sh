@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# this is run once by test/Makefile 
+# if running make within a testdir it is run by makefile.mk
 
 #set -x
 
@@ -10,6 +12,16 @@ for required in $vars; do
         exit 1
     fi
 #    echo "$required=$q"
+done
+
+#make sure files exist
+files="COMDB2_EXE CDB2SQL_EXE COMDB2AR_EXE PMUX_EXE"
+for file in $files; do
+    f=${!file}
+    if [[ ! -f $f ]] ; then
+        echo "file $f does not exist" >&2
+        exit 1
+    fi
 done
 
 pmux_port=${pmux_port:-5105}
