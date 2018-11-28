@@ -2751,8 +2751,9 @@ clipper_usage:
                 logmsg(LOGMSG_ERROR, "Usage: sql cancelcnonce CNONCE.  You can get cnonce with "
                        "\"sql dump\".\n");
             else {
-                char * cnonce = strdup(tok);
+                char *cnonce = tokdup(tok, ltok);
                 cancel_sql_statement_with_cnonce(cnonce);
+                free(cnonce);
             }
         } else if (tokcmp(tok, ltok, "wrtimeout") == 0) {
             tok = segtok(line, lline, &st, &ltok);

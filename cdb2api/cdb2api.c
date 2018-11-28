@@ -322,6 +322,7 @@ static void do_init_once(void)
     _PID = getpid();
     _MACHINE_ID = gethostid();
     _ARGV0 = getargv0();
+    srand(time(NULL));
 }
 
 /* if sqlstr is a read stmt will return 1 otherwise return 0
@@ -820,7 +821,32 @@ struct cdb2_ssl_sess_list {
 static cdb2_ssl_sess_list cdb2_ssl_sess_cache;
 #endif
 
-#define MAX_CNONCE_LEN 100
+/* A cnonce is composed of
+   - 32 bits of machine ID
+   - 32 bits of process PID
+   - 32 or 64 bits of handle address
+   - 52 bits for the epoch time in microseconds
+   - 12 bits for the sequence number
+
+   The allocation allows a handle to run at a maximum transaction rate of
+   4096 txn/us (~4 billion transactions per second) till September 17, 2112.
+
+   See next_cnonce() for details. */
+#define CNONCE_STR_FMT "%ld-%d-%p-"
+#define CNONCE_STR_SZ 52 /* 8 + 1 + 8 + 1 + 16 + 1 + 16 + 1 (NUL) */
+
+#define CNT_BITS 12
+#define TIME_MASK (-1ULL << CNT_BITS)
+#define CNT_MASK (-1ULL ^ TIME_MASK)
+
+typedef struct cnonce {
+    long hostid;
+    int pid;
+    struct cdb2_hndl *hndl;
+    uint64_t seq;
+    int ofs;
+    char str[CNONCE_STR_SZ];
+} cnonce_t;
 
 struct cdb2_hndl {
     char dbname[64];
@@ -848,8 +874,7 @@ struct cdb2_hndl {
     int use_hint;
     int flags;
     char errstr[1024];
-    char cnonce[MAX_CNONCE_LEN];
-    int cnonce_len;
+    cnonce_t cnonce;
     char *sql;
     int ntypes;
     int *types;
@@ -2046,34 +2071,6 @@ static inline int cdb2_try_connect_range(cdb2_hndl_tp *hndl, int begin, int end)
 
 static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl);
 
-/* combine hashes similar to hash_combine from boost library */
-static uint64_t val_combine(uint64_t lhs, uint64_t rhs)
-{
-    lhs ^= rhs + 0x9e3779b9 + (lhs << 6) + (lhs >> 2);
-    return lhs;
-}
-
-static int cdb2_random_int()
-{
-    static __thread unsigned short rand_state[3] = {0};
-    if (rand_state[0] == 0) {
-        struct timeval tv;
-        gettimeofday(&tv, NULL);
-        /* Initialize rand_state once per thread
-         * _PID will ensure that cnonce will be different accross processes
-
-         * Get the initial random state by using thread id and time info. */
-        uint32_t tmp[2];
-        tmp[0] = tv.tv_sec;
-        tmp[1] = tv.tv_usec;
-        uint64_t hash = val_combine(*(uint64_t *)tmp, (uint64_t)pthread_self());
-        rand_state[0] = hash;
-        rand_state[1] = hash >> 16;
-        rand_state[2] = hash >> 32;
-    }
-    return nrand48(rand_state);
-}
-
 static inline int cdb2_try_resolve_ports(cdb2_hndl_tp *hndl)
 {
     for (int i = 0; i < hndl->num_hosts; i++) {
@@ -2105,10 +2102,10 @@ retry_connect:
     if ((hndl->node_seq == 0) &&
         ((hndl->flags & CDB2_RANDOM) || ((hndl->flags & CDB2_RANDOMROOM) &&
                                          (hndl->num_hosts_sameroom == 0)))) {
-        hndl->node_seq = cdb2_random_int() % hndl->num_hosts;
+        hndl->node_seq = rand() % hndl->num_hosts;
     } else if ((hndl->flags & CDB2_RANDOMROOM) && (hndl->node_seq == 0) &&
                (hndl->num_hosts_sameroom > 0)) {
-        hndl->node_seq = cdb2_random_int() % hndl->num_hosts_sameroom;
+        hndl->node_seq = rand() % hndl->num_hosts_sameroom;
         /* First try on same room. */
         if (0 == cdb2_try_on_same_room(hndl))
             return 0;
@@ -2468,12 +2465,10 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, const char *dbname,
             features[n_features++] = CDB2_CLIENT_FEATURES__SKIP_INTRANS_RESULTS;
         }
 
-        if (hndl->cnonce_len > 0) {
-            /* Have a query id associated with each transaction/query */
-            sqlquery.has_cnonce = 1;
-            sqlquery.cnonce.data = (uint8_t*)hndl->cnonce;
-            sqlquery.cnonce.len = hndl->cnonce_len;
-        }
+        /* Have a query id associated with each transaction/query */
+        sqlquery.has_cnonce = 1;
+        sqlquery.cnonce.data = (uint8_t *)hndl->cnonce.str;
+        sqlquery.cnonce.len = strlen(hndl->cnonce.str);
 
         if (hndl->snapshot_file) {
             CDB2SQLQUERY__Snapshotinfo snapshotinfo = CDB2__SQLQUERY__SNAPSHOTINFO__INIT;
@@ -2583,9 +2578,8 @@ static int retry_queries_and_skip(cdb2_hndl_tp *hndl, int num_retry,
     do {                                                                       \
         debugprint("%s: cnonce '%s' [%d][%d] "                                 \
                    "returning %d\n",                                           \
-                   rcode == 0 ? "" : "XXX ",                                   \
-                   hndl->cnonce ? hndl->cnonce : "(nil)", hndl->snapshot_file, \
-                   hndl->snapshot_offset, rcode);                              \
+                   rcode == 0 ? "" : "XXX ", hndl->cnonce.str,                 \
+                   hndl->snapshot_file, hndl->snapshot_offset, rcode);         \
         return (rcode);                                                        \
     } while (0)
 
@@ -2593,7 +2587,7 @@ static int retry_queries_and_skip(cdb2_hndl_tp *hndl, int num_retry,
     do {                                                                       \
         debugprint("cnonce '%s' [%d][%d] "                                     \
                    "returning %d\n",                                           \
-                   hndl->cnonce ? hndl->cnonce : "(nil)", hndl->snapshot_file, \
+                   hndl->cnonce.str, hndl->snapshot_file,                      \
                    hndl->snapshot_offset, rcode);                              \
         return (rcode);                                                        \
     } while (0)
@@ -2893,30 +2887,68 @@ int cdb2_close(cdb2_hndl_tp *hndl)
     return 0;
 }
 
-/* make_random_str() will return a randomly generated string
- * this is used to get a cnonce, composed of four components:
- * the first part is the id of this host machine
- * the second part is the PID of this client process
- * the third part is the current time usec portion
- * the fourth part is a [pseudo]random number
- */
-static void make_random_str(char *str, size_t max_len, int *len)
+static int next_cnonce(cdb2_hndl_tp *hndl)
 {
-    static __thread char cached_portion[23] = {0}; // 2*10 digits + 2 '-' + '\n'
-    static __thread size_t cached_portion_len = 0;
-    if (cached_portion_len == 0) {
-        cached_portion_len =
-            snprintf(cached_portion, sizeof(cached_portion) - 1, "%d-%d-",
-                     cdb2_hostid(), _PID);
-    }
+    /* 1. Get the current epoch in microseconds.
+       2. If the epoch is equal to the time embedded in `seq',
+          increment the sequence number. If the sequence number wraps
+          around 0, return an error.
+       3. If the epoch is greater than the time embedded in `seq',
+          3.1 If the embedded time is 0, which means this is the 1st time
+              a cnonce is generated, initialze `hostid', `pid' and `hndl'.
+          embed the epoch to `seq' and reset the sequence number to 0.
+       4. Otherwise, return an error. */
+
+    int rc;
     struct timeval tv;
-    gettimeofday(&tv, NULL);
-    int randval = cdb2_random_int();
-    strncpy(str, cached_portion, cached_portion_len);
-    *len = cached_portion_len;
-    *len += snprintf(str + cached_portion_len, max_len - cached_portion_len,
-                     "%d-%d", (int)tv.tv_usec, randval);
-    return;
+    uint64_t cnt, seq, tm, now;
+    cnonce_t *c;
+
+    static char hex[] = "0123456789abcdef";
+    char *in, *out, *end;
+
+    rc = gettimeofday(&tv, NULL);
+    if (rc != 0)
+        return rc;
+    c = &hndl->cnonce;
+    seq = c->seq;
+    tm = (seq & TIME_MASK) >> CNT_BITS;
+    now = tv.tv_sec * 1000000 + tv.tv_usec;
+    if (now == tm) {
+        cnt = ((seq & CNT_MASK) + 1) & CNT_MASK;
+        if (cnt == 0) {
+            snprintf(hndl->errstr, sizeof(hndl->errstr),
+                     "Transaction rate too high.");
+            rc = E2BIG;
+        } else {
+            c->seq = (seq & TIME_MASK) | cnt;
+        }
+    } else if (now > tm) {
+        if (tm == 0) {
+            c->hostid = _MACHINE_ID;
+            c->pid = _PID;
+            c->hndl = hndl;
+            c->ofs =
+                sprintf(c->str, CNONCE_STR_FMT, c->hostid, c->pid, c->hndl);
+        }
+        c->seq = (now << CNT_BITS);
+    } else {
+        rc = EINVAL;
+    }
+
+    if (rc == 0) {
+        in = (char *)&c->seq;
+        end = in + sizeof(c->seq);
+        out = c->str + c->ofs;
+
+        while (in != end) {
+            char i = *(in++);
+            *(out++) = hex[(i & 0xf0) >> 4];
+            *(out++) = hex[i & 0x0f];
+        }
+        *out = 0;
+    }
+    return rc;
 }
 
 static int cdb2_query_with_hint(cdb2_hndl_tp *hndl, const char *sqlquery,
@@ -3596,11 +3628,9 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
                 hndl->query = malloc(len + 1);
                 strcpy(hndl->query, sql);
 
-                char c_hint[128];
-                int length;
-                make_random_str(c_hint, sizeof(c_hint), &length);
-
-                cdb2_query_with_hint(hndl, sql, c_hint, &hndl->hint,
+                if ((rc = next_cnonce(hndl)) != 0)
+                    PRINT_RETURN(rc);
+                cdb2_query_with_hint(hndl, sql, hndl->cnonce.str, &hndl->hint,
                                      &hndl->query_hint);
 
                 sql = hndl->query_hint;
@@ -3610,7 +3640,8 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
 
     if (!hndl->in_trans) { /* only one cnonce for a transaction. */
         clear_snapshot_info(hndl, __LINE__);
-        make_random_str(hndl->cnonce, MAX_CNONCE_LEN, &hndl->cnonce_len);
+        if ((rc = next_cnonce(hndl)) != 0)
+            PRINT_RETURN(rc);
     }
     hndl->retry_all = 1;
     int run_last = 1;
@@ -4300,7 +4331,7 @@ const char *cdb2_cnonce(cdb2_hndl_tp *hndl)
     if (hndl == NULL)
         return "unallocated cdb2 handle";
 
-    return hndl->cnonce;
+    return hndl->cnonce.str;
 }
 
 const char *cdb2_errstr(cdb2_hndl_tp *hndl)
@@ -4937,10 +4968,10 @@ retry:
     int node_seq = 0;
     if ((hndl->flags & CDB2_RANDOM) ||
         ((hndl->flags & CDB2_RANDOMROOM) && (hndl->num_hosts_sameroom == 0))) {
-        node_seq = cdb2_random_int() % hndl->num_hosts;
+        node_seq = rand() % hndl->num_hosts;
     } else if ((hndl->flags & CDB2_RANDOMROOM) &&
                (hndl->num_hosts_sameroom > 0)) {
-        node_seq = cdb2_random_int() % hndl->num_hosts_sameroom;
+        node_seq = rand() % hndl->num_hosts_sameroom;
         /* Try dbinfo on same room first */
         for (i = 0; i < hndl->num_hosts_sameroom; i++) {
             int try_node = (node_seq + i) % hndl->num_hosts_sameroom;
