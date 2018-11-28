@@ -66,6 +66,7 @@
 #include "bpfunc.h"
 
 #include "logmsg.h"
+#define DEBUG_REORDER 0
 
 int g_osql_blocksql_parallel_max = 5;
 int gbl_osql_check_replicant_numops = 1;
@@ -111,8 +112,8 @@ typedef struct oplog_key {
     uint16_t tbl_idx;
     uint8_t stripe;
     unsigned long long genid;
+    uint8_t is_rec; // 1 for record because it needs to go after blobs
     uint32_t seq;  // record and blob will share the same seq
-    uint8_t rectype; // {enum blob, updrec, rec }record needs to go after blobs
 } oplog_key_t;
 
 static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
@@ -128,7 +129,7 @@ static int req2blockop(int reqtype);
  * The bplog key-compare function - required because memcmp changes
  * the order of temp_table_next on little-endian machines.
  *
- * key will compare by rqid, uuid, table, stripe, genid, sequence, then rectype
+ * key will compare by rqid, uuid, table, stripe, genid, is_rec, then sequence
  */
 static int osql_bplog_key_cmp(void *usermem, int key1len, const void *key1,
                               int key2len, const void *key2)
@@ -168,19 +169,18 @@ static int osql_bplog_key_cmp(void *usermem, int key1len, const void *key1,
     if (cmp)
         return cmp;
 
+    if (k1->is_rec < k2->is_rec) {
+        return -1;
+    }
+
+    if (k1->is_rec > k2->is_rec) {
+        return 1;
+    }
     if (k1->seq < k2->seq) {
         return -1;
     }
 
     if (k1->seq > k2->seq) {
-        return 1;
-    }
-
-    if (k1->rectype < k2->rectype) {
-        return -1;
-    }
-
-    if (k1->rectype > k2->rectype) {
         return 1;
     }
 
@@ -691,8 +691,9 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
         enum { OSQLCOMM_UUID_RPL_TYPE_LEN = 4 + 4 + 16 };
         unsigned long long genid = 0;
         if (type == OSQL_INSERT || type == OSQL_INSREC) {
+            genid = sess->ins_seq++;
 #if DEBUG_REORDER
-            logmsg(LOGMSG_DEBUG, "REORDER: ADD genid 0\n");
+            logmsg(LOGMSG_DEBUG, "REORDER: INS genid (seq) 0x%llx\n", genid);
 #endif
         } else {
             const char *p_buf = rpl + OSQLCOMM_UUID_RPL_TYPE_LEN;
@@ -703,7 +704,7 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
 #endif
         }
         sess->last_genid = genid;
-        sess->last_seq = key->seq; // qblob same seq as rec
+        key->is_rec = 1;
     } /* FALL THROUGH TO NEXT CASE */
     case OSQL_QBLOB:
     case OSQL_DELIDX:
@@ -712,7 +713,6 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
         key->tbl_idx = sess->tbl_idx;
         key->genid = sess->last_genid;
         key->stripe = get_dtafile_from_genid(key->genid);
-        key->seq = sess->last_seq;
         assert(key->stripe >= 0);
         break;
     }
@@ -724,18 +724,18 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
         break;
     }
 
-    // need different rectype because key should be unique
     switch(type){
-    case OSQL_QBLOB: key->rectype = 0; break;
-    case OSQL_DELIDX: key->rectype = 1; break;
-    case OSQL_INSIDX: key->rectype = 2; break;
-    case OSQL_UPDCOLS: key->rectype = 3; break;
+    case OSQL_QBLOB:
+    case OSQL_DELIDX:
+    case OSQL_INSIDX:
+    case OSQL_UPDCOLS: break; /* keep last_is_ins as is */
     case OSQL_UPDATE:
     case OSQL_DELETE:
     case OSQL_UPDREC:
-    case OSQL_DELREC:
+    case OSQL_DELREC: sess->last_is_ins = 0; break;
     case OSQL_INSERT:
-    case OSQL_INSREC: key->rectype = 4; break;
+    case OSQL_INSREC: sess->last_is_ins = 1; break;
+    default:          sess->last_is_ins = 0; break;
     }
 }
 
@@ -795,9 +795,6 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     assert(sess->rqid == rqid);
     key.seq = sess->seq;
-    if (sess->is_reorder_on) {
-        setup_reorder_key(type, sess, iq, rpl, &key);
-    }
 #if DEBUG_REORDER
     uuidstr_t us;
     DEBUGMSG("uuid=%s type=%d (%s) seq=%lld\n", comdb2uuidstr(uuid, us), type,
@@ -815,25 +812,27 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         abort();
     }
 
+    struct temp_table *tmptbl = tran->db;
+    if (sess->is_reorder_on) {
+        setup_reorder_key(type, sess, iq, rpl, &key);
+        if(sess->last_is_ins) {
+            tmptbl = tran->db_ins;
+        }
+    } 
+
 #if DEBUG_REORDER
     uuidstr_t mus;
     comdb2uuidstr(uuid, mus);
     logmsg(LOGMSG_DEBUG,
-           "%p:%s: rqid=%llx uuid=%s REORDER: SAVING tp=%d(%s), tbl_idx=%d, stripe=%d, "
-           "genid=0x%llx, seq=%d, rectype=%d\n",
-           (void *)pthread_self(), __func__, rqid, mus, type,
-           osql_reqtype_str(type), key.tbl_idx, key.stripe, key.genid, key.seq, key.rectype);
+           "%p:%s: rqid=%llx uuid=%s REORDER: SAVING %s tp=%d(%s), tbl_idx=%d,"
+           "stripe=%d, genid=0x%llx, seq=%d, is_rec=%d\n",
+           (void *)pthread_self(), __func__, rqid, mus, (tmptbl == tran->db_ins ? "(INS) " : " "), type,
+           osql_reqtype_str(type), key.tbl_idx, key.stripe, key.genid, key.seq, key.is_rec);
 #endif
 
-    if (sess->is_reorder_on && sess->last_genid == 0 &&
-            (type == OSQL_INSERT || type == OSQL_INSREC || type == OSQL_QBLOB || 
-             type == OSQL_DELIDX || type == OSQL_INSIDX || type == OSQL_UPDCOLS) ) {
-        rc_op = bdb_temp_table_put(thedb->bdb_env, tran->db_ins, &key, sizeof(key), rpl,
-                                   rplen, NULL, &bdberr);
-    } else {
-        rc_op = bdb_temp_table_put(thedb->bdb_env, tran->db, &key, sizeof(key), rpl,
-                                   rplen, NULL, &bdberr);
-    }
+
+    rc_op = bdb_temp_table_put(thedb->bdb_env, tmptbl, &key, sizeof(key), rpl,
+                               rplen, NULL, &bdberr);
     if (rc_op) {
         logmsg(LOGMSG_ERROR, "%s: fail to put oplog seq=%llu rc=%d bdberr=%d\n",
                __func__, sess->seq, rc_op, bdberr);
@@ -1301,12 +1300,16 @@ static int process_this_session(
         uint8_t *p_buf = (uint8_t *)data;
         int type = 0;
         buf_get(&type, sizeof(type), p_buf, p_buf + sizeof(type));
+        oplog_key_t *k_ptr = opkey;
+        if (drain_adds) {
+            k_ptr = opkey_ins;
+        }
 
         logmsg(LOGMSG_DEBUG,
                "%p:%s: rqid=%llx uuid=%s REORDER: READ tp=%d(%s), tbl_idx=%d, stripe=%d, "
-               "genid=0x%llx, seq=%d, rectype=%d\n",
+               "genid=0x%llx, seq=%d, is_rec=%d\n",
                (void *)pthread_self(), __func__, rqid, mus, type,
-               osql_reqtype_str(type), opkey->tbl_idx, opkey->stripe, opkey->genid, opkey->seq, opkey->rectype);
+               osql_reqtype_str(type), k_ptr->tbl_idx, k_ptr->stripe, k_ptr->genid, k_ptr->seq, k_ptr->is_rec);
 
 #endif
 
@@ -1320,9 +1323,6 @@ static int process_this_session(
             reqlog_set_error(iq->reqlogger, "ERR_NOMASTER", ERR_NOMASTER);
             return ERR_NOMASTER /*OSQL_FAILDISPATCH*/;
         }
-
-        if (iq->osql_step_ix)
-            gbl_osqlpf_step[*(iq->osql_step_ix)].step = opkey->seq << 7;
 
         lastrcv = receivedrows;
 
@@ -1343,6 +1343,9 @@ static int process_this_session(
 
         step++;
 
+
+//        get_next_merge_tmps(dbc, dbc_ins, &opkey, &opkey_ins, &drain_adds, ,&data, &datalen);
+//get_next_merge_tmps(dbc, dbc_ins, &opkey, &opkey_ins, &drain_adds, ,&data, &datalen) {
         if (drain_adds) {
             rc_ins = bdb_temp_table_next(thedb->bdb_env, dbc_ins, bdberr);
             if(rc_ins != 0 || ! (opkey_ins->tbl_idx < opkey->tbl_idx || 
@@ -1364,9 +1367,13 @@ static int process_this_session(
                 drain_adds = 1;
             }
         }
-
+//}
 
     }
+
+
+    if (iq->osql_step_ix)
+        gbl_osqlpf_step[*(iq->osql_step_ix)].step = opkey->seq << 7;
 
     /* if for some reason the session has not completed correctly,
        this will free the eventually allocated buffers */
