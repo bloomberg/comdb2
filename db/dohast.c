@@ -436,7 +436,8 @@ static int skip_tables(Select *p)
     int lens[] = {7, 7, 0};
 
     for (i = 0; i < p->pSrc->nSrc; i++) {
-        if(!p->pSrc->a[i].zName) continue; /* skip subqueries */
+        if (!p->pSrc->a[i].zName)
+            continue; /* skip subqueries */
         j = 0;
         while (ignored[j]) {
             if (strncasecmp(p->pSrc->a[i].zName, ignored[j], lens[j]) == 0)
