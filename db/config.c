@@ -336,7 +336,8 @@ static char *legacy_options[] = {"disallow write from beta if prod",
                                  "osql_send_startgen off",
                                  "create_default_user",
                                  "allow_negative_column_size",
-                                 "osql_check_replicant_numops 0"};
+                                 "osql_check_replicant_numops 0",
+                                 "disable_tpsc_tblvers"};
 int gbl_legacy_defaults = 0;
 int pre_read_legacy_defaults(void *_, void *__)
 {

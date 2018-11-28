@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=890)
+(TUNABLES_COUNT=891)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -208,6 +208,7 @@
 (name='disable_stable_for_ipu', description='For inplace update tables, disable stable find-next cursors', type='BOOLEAN', value='ON', read_only='N')
 (name='disable_tagged_api', description='Disables 'enable_tagged_api'', type='BOOLEAN', value='ON', read_only='N')
 (name='disable_temptable_pool', description='Sets 'temptable_limit' to 0.', type='BOOLEAN', value='OFF', read_only='Y')
+(name='disable_tpsc_tblvers', description='Disable table version checks for time partition schema changes', type='BOOLEAN', value='OFF', read_only='N')
 (name='disable_update_shadows', description='stub out update shadows code', type='BOOLEAN', value='OFF', read_only='N')
 (name='disable_update_stripe_change', description='Enable to move records between stripes on an update.', type='BOOLEAN', value='ON', read_only='N')
 (name='disable_upgrade_ahead', description='Sets 'enable_upgrade_ahead' to 0.', type='BOOLEAN', value='ON', read_only='Y')
