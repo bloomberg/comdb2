@@ -1275,32 +1275,39 @@ void osql_bplog_setlimit(int limit) { g_osql_blocksql_parallel_max = limit; }
 /************************* INTERNALS
  * ***************************************************/
 
-
-static inline int init_ins_tbl(struct reqlogger *reqlogger, struct temp_cursor *dbc_ins, oplog_key_t **opkey_ins, uint8_t *add_stripe_p, int *bdberr)
+static inline int init_ins_tbl(struct reqlogger *reqlogger,
+                               struct temp_cursor *dbc_ins,
+                               oplog_key_t **opkey_ins, uint8_t *add_stripe_p,
+                               int *bdberr)
 {
-    if (!dbc_ins) 
+    if (!dbc_ins)
         return 0;
 
     int rc_ins = bdb_temp_table_first(thedb->bdb_env, dbc_ins, bdberr);
     if (rc_ins && rc_ins != IX_EMPTY && rc_ins != IX_NOTFND) {
         reqlog_set_error(reqlogger, "bdb_temp_table_first failed", rc_ins);
-        logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_first failed rc_ins=%d bdberr=%d\n",
-                __func__, rc_ins, *bdberr);
+        logmsg(LOGMSG_ERROR,
+               "%s: bdb_temp_table_first failed rc_ins=%d bdberr=%d\n",
+               __func__, rc_ins, *bdberr);
         return rc_ins;
     }
     if (rc_ins == 0)
         *opkey_ins = (oplog_key_t *)bdb_temp_table_key(dbc_ins);
 
-    //extern int bdb_get_active_stripe(bdb_state_type *bdb_state);
-    if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_ROUND_ROBIN_STRIPES)) 
-        *add_stripe_p = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DTASTRIPE); // add after last stripe
-    else 
+    // extern int bdb_get_active_stripe(bdb_state_type *bdb_state);
+    if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_ROUND_ROBIN_STRIPES))
+        *add_stripe_p = bdb_attr_get(
+            thedb->bdb_attr, BDB_ATTR_DTASTRIPE); // add after last stripe
+    else
         *add_stripe_p = bdb_get_active_stripe(thedb->bdb_env);
 
     return 0;
 }
 
-static inline void get_tmptbl_data_and_len(struct temp_cursor *dbc, struct temp_cursor *dbc_ins, bool drain_adds, char **data_p, int *datalen_p) 
+static inline void get_tmptbl_data_and_len(struct temp_cursor *dbc,
+                                           struct temp_cursor *dbc_ins,
+                                           bool drain_adds, char **data_p,
+                                           int *datalen_p)
 {
     if (drain_adds) {
         *data_p = bdb_temp_table_data(dbc_ins);
@@ -1573,11 +1580,12 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     }
 
     if (tran->db_ins) {
-        dbc_ins = bdb_temp_table_cursor(thedb->bdb_env, tran->db_ins, NULL, &bdberr);
+        dbc_ins =
+            bdb_temp_table_cursor(thedb->bdb_env, tran->db_ins, NULL, &bdberr);
         if (!dbc || bdberr) {
             Pthread_mutex_unlock(&tran->store_mtx);
-            logmsg(LOGMSG_ERROR, "%s: failed to create cursor bdberr = %d\n", __func__,
-                    bdberr);
+            logmsg(LOGMSG_ERROR, "%s: failed to create cursor bdberr = %d\n",
+                   __func__, bdberr);
             return ERR_INTERNAL;
         }
     }
@@ -1606,8 +1614,8 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     if (dbc_ins) {
         rc = bdb_temp_table_close_cursor(thedb->bdb_env, dbc_ins, &bdberr);
         if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "%s: failed close cursor rc=%d bdberr=%d\n", __func__,
-                    rc, bdberr);
+            logmsg(LOGMSG_ERROR, "%s: failed close cursor rc=%d bdberr=%d\n",
+                   __func__, rc, bdberr);
         }
     }
 
