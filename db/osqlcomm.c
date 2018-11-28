@@ -8006,8 +8006,7 @@ int osql_comm_echo(char *tohost, int stream, unsigned long long *sent,
 int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                     void *trans, char *msg, int msglen, int *flags,
                     int **updCols, blob_buffer_t blobs[MAXBLOBS], int step,
-                    struct block_err *err, int *receivedrows, SBUF2 *logsb,
-                    unsigned long long newgenid)
+                    struct block_err *err, int *receivedrows, SBUF2 *logsb)
 {
     uint8_t *p_buf = (uint8_t *)msg;
     uint8_t *p_buf_end =

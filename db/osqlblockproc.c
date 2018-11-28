@@ -1272,6 +1272,9 @@ void osql_bplog_setlimit(int limit) { g_osql_blocksql_parallel_max = limit; }
 
 static inline int init_ins_tbl(struct reqlogger *reqlogger, struct temp_cursor *dbc_ins, oplog_key_t **opkey_ins, uint8_t *add_stripe_p, int *bdberr)
 {
+    if (!dbc_ins) 
+        return 0;
+
     int rc_ins = bdb_temp_table_first(thedb->bdb_env, dbc_ins, bdberr);
     if (rc_ins && rc_ins != IX_EMPTY && rc_ins != IX_NOTFND) {
         reqlog_set_error(reqlogger, "bdb_temp_table_first failed", rc_ins);
@@ -1397,7 +1400,8 @@ static int process_this_session(
     // if needed to check content of socksql temp table, dump with:
     void bdb_temp_table_debug_dump(bdb_state_type * bdb_state, tmpcursor_t * cur);
     bdb_temp_table_debug_dump(thedb->bdb_env, dbc);
-    bdb_temp_table_debug_dump(thedb->bdb_env, dbc_ins);
+    if (dbc_ins)
+        bdb_temp_table_debug_dump(thedb->bdb_env, dbc_ins);
 #endif
 
     /* go through each record */
@@ -1553,12 +1557,14 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
         return ERR_INTERNAL;
     }
 
-    dbc_ins = bdb_temp_table_cursor(thedb->bdb_env, tran->db_ins, NULL, &bdberr);
-    if (!dbc || bdberr) {
-        Pthread_mutex_unlock(&tran->store_mtx);
-        logmsg(LOGMSG_ERROR, "%s: failed to create cursor bdberr = %d\n", __func__,
-                bdberr);
-        return ERR_INTERNAL;
+    if (tran->db_ins) {
+        dbc_ins = bdb_temp_table_cursor(thedb->bdb_env, tran->db_ins, NULL, &bdberr);
+        if (!dbc || bdberr) {
+            Pthread_mutex_unlock(&tran->store_mtx);
+            logmsg(LOGMSG_ERROR, "%s: failed to create cursor bdberr = %d\n", __func__,
+                    bdberr);
+            return ERR_INTERNAL;
+        }
     }
 
     listc_init(&iq->bpfunc_lst, offsetof(bpfunc_lstnode_t, linkct));
@@ -1582,10 +1588,12 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
                 rc, bdberr);
     }
 
-    rc = bdb_temp_table_close_cursor(thedb->bdb_env, dbc_ins, &bdberr);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: failed close cursor rc=%d bdberr=%d\n", __func__,
-                rc, bdberr);
+    if (dbc_ins) {
+        rc = bdb_temp_table_close_cursor(thedb->bdb_env, dbc_ins, &bdberr);
+        if (rc != 0) {
+            logmsg(LOGMSG_ERROR, "%s: failed close cursor rc=%d bdberr=%d\n", __func__,
+                    rc, bdberr);
+        }
     }
 
     return out_rc;

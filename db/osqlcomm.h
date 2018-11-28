@@ -336,8 +336,7 @@ int osql_send_dbglog(char *tohost, unsigned long long rqid, uuid_t uuid,
 int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                     void *trans, char *msg, int msglen, int *flags,
                     int **updCols, blob_buffer_t blobs[MAXBLOBS], int step,
-                    struct block_err *err, int *receivedrows, SBUF2 *logsb,
-                    unsigned long long newgenid);
+                    struct block_err *err, int *receivedrows, SBUF2 *logsb);
 
 /* Append a tail to an osql request */
 int osql_add_to_request(osql_req_t **req, int type, void *buf, int len);
