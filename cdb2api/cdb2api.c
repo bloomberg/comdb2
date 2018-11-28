@@ -2085,7 +2085,7 @@ static int cdb2_random_int()
         gettimeofday(&tv, NULL);
         /* Initialize rand_state once per thread
          * _PID will ensure that cnonce will be different accross processes
-          * Get the initial random state by using thread id and time info. */
+         * Get the initial random state by using thread id and time info. */
         uint32_t tmp[2];
         tmp[0] = tv.tv_sec;
         tmp[1] = tv.tv_usec;
