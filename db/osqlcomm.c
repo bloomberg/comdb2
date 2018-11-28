@@ -7644,7 +7644,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     }
 
 #if 0
-    printf( "Creating request %llu\n", osql_log_time());
+   printf( "Creating request %llu\n", osql_log_time());
 #endif
 
     /* start a block processor */

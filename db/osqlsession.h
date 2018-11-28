@@ -94,7 +94,8 @@ struct osql_sess {
     int queryid;
     char tablename[MAXTABLELEN]; // remember tablename in saveop for reordering
     unsigned long long last_genid; // remember updrec/insrec genid for qblobs
-    unsigned long long ins_seq;   // remember key seq for inserts into ins tmp table
+    unsigned long long
+        ins_seq; // remember key seq for inserts into ins tmp table
     uint16_t tbl_idx;
     bool last_is_ins : 1; // 1 if processing INSERT, 0 for any other oql type
     bool is_reorder_on : 1;
