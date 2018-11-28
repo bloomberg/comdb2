@@ -654,7 +654,6 @@ int osql_serial_send_readset(struct sqlclntstate *clnt, int nettype)
  */
 int osql_block_commit(struct sql_thread *thd)
 {
-
     return osql_send_commit_logic(thd->clnt, 0, NET_OSQL_BLOCK_RPL);
 }
 
@@ -1007,6 +1006,11 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type)
             return SQLITE_ABORT;
         }
     }
+
+    if (0 == osql->replicant_numops) { // transaction is empty
+        goto err;
+    }
+
 
     osql->timings.commit_start = osql_log_time();
 
