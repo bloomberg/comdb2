@@ -291,14 +291,15 @@ DROP TABLE t5;
 
 CREATE TABLE t1(unique INT UNIQUE) $$
 CREATE TABLE t1(key INT KEY) $$
-CREATE TABLE t1('unique' INT UNIQUE) $$
-CREATE TABLE t2('key' INT KEY) $$
+CREATE TABLE t2('unique' INT UNIQUE) $$
+CREATE TABLE t3('key' INT KEY) $$
 SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
 DROP TABLE t1;
 DROP TABLE t2;
+DROP TABLE t3;
 
 CREATE TABLE t1(i INT, j INT, key idx1 (i, j), key idx2 (i DESC, j ASC), key idx3 (i ASC, j DESC), key idx4 (i DESC, j DESC))$$
 CREATE TABLE t2(i INT REFERENCES t1(i)) $$

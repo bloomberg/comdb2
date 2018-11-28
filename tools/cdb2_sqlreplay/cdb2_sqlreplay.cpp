@@ -264,8 +264,10 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val,
                  strcmp(type, "datetimeus") == 0 ||
                  strcmp(type, "interval month") == 0 ||
                  strcmp(type, "interval sec") == 0 ||
-                 strcmp(type, "interval usec") == 0 
-                 ) {
+                 strcmp(type, "interval usec") == 0 ||
+                 strcmp(type, "intervalmonth") == 0 ||
+                 strcmp(type, "intervalsec") == 0 ||
+                 strcmp(type, "intervalusec") == 0) {
             const char *strp = get_strprop(bp, "value");
             if (strp == nullptr) {
                 std::cerr << "error getting " << type << " value of bound parameter " << name << std::endl;

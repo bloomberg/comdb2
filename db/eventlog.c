@@ -249,9 +249,9 @@ void eventlog_bind_interval(cson_array *arr, const char *name, intv_t *tv)
 {
     const char *type;
     switch (tv->type) {
-    case INTV_YM_TYPE: type = "interval month"; break;
-    case INTV_DS_TYPE: type = "interval sec"; break;
-    case INTV_DSUS_TYPE: type = "interval usec"; break;
+    case INTV_YM_TYPE: type = "intervalmonth"; break;
+    case INTV_DS_TYPE: type = "intervalsec"; break;
+    case INTV_DSUS_TYPE: type = "intervalusec"; break;
     default: return;
     }
     cson_object *bobj = eventlog_append_name(arr, name, type);

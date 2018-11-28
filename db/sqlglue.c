@@ -1902,17 +1902,17 @@ char *sqltype(struct field *f, char *buf, int len)
 
     case CLIENT_INTVYM:
     case SERVER_INTVYM:
-        snprintf(buf, len, "interval month");
+        snprintf(buf, len, "intervalmonth");
         return buf;
 
     case CLIENT_INTVDS:
     case SERVER_INTVDS:
-        snprintf(buf, len, "interval sec");
+        snprintf(buf, len, "intervalsec");
         return buf;
 
     case CLIENT_INTVDSUS:
     case SERVER_INTVDSUS:
-        snprintf(buf, len, "interval usec");
+        snprintf(buf, len, "intervalusec");
         return buf;
 
     case SERVER_DECIMAL:
