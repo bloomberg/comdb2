@@ -1040,8 +1040,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp,
                               char comdb2db_hosts[][64], int *num_hosts,
                               int *comdb2db_num, const char *dbname,
                               char db_hosts[][64], int *num_db_hosts,
-                              int *dbnum, int *dbname_found,
-                              int *comdb2db_found, int *stack_at_open)
+                              int *dbnum, int *stack_at_open)
 {
     char line[PATH_MAX > 2048 ? PATH_MAX : 2048] = {0};
     int line_no = 0;
@@ -1063,7 +1062,6 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp,
                 strcpy(comdb2db_hosts[*num_hosts], tok);
                 (*num_hosts)++;
                 tok = strtok_r(NULL, " :,", &last);
-                *comdb2db_found = 1;
             }
         } else if (dbname && (strcasecmp(dbname, tok) == 0)) {
             tok = strtok_r(NULL, " :,", &last);
@@ -1075,7 +1073,6 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp,
                 strcpy(db_hosts[*num_db_hosts], tok);
                 tok = strtok_r(NULL, " :,", &last);
                 (*num_db_hosts)++;
-                *dbname_found = 1;
             }
         } else if (strcasecmp("comdb2_config", tok) == 0) {
             tok = strtok_r(NULL, " =:,", &last);
@@ -1223,12 +1220,13 @@ static int get_config_file(const char *dbname, char *f, size_t s)
     return 0;
 }
 
-/* read all available comdb2 configuration files
- */
+/* Read all available comdb2 configuration files.
+   The function returns -1 if the config file path is longer than PATH_MAX;
+   returns 0 otherwise. */
 static int read_available_comdb2db_configs(
     cdb2_hndl_tp *hndl, char comdb2db_hosts[][64], const char *comdb2db_name,
     int *num_hosts, int *comdb2db_num, const char *dbname, char db_hosts[][64],
-    int *num_db_hosts, int *dbnum, int *comdb2db_found, int *dbname_found)
+    int *num_db_hosts, int *dbnum)
 {
     char filename[PATH_MAX];
     FILE *fp;
@@ -1240,7 +1238,9 @@ static int read_available_comdb2db_configs(
     pthread_mutex_lock(&cdb2_cfg_lock);
     if (get_config_file(dbname, filename, sizeof(filename)) != 0) {
         pthread_mutex_unlock(&cdb2_cfg_lock);
-        return -1; // set error string?
+        snprintf(hndl->errstr, sizeof(hndl->errstr),
+                 "Config file name too long.");
+        return -1;
     }
 
     if (num_hosts)
@@ -1252,8 +1252,7 @@ static int read_available_comdb2db_configs(
     if (CDB2DBCONFIG_BUF != NULL) {
         read_comdb2db_cfg(NULL, NULL, comdb2db_name, CDB2DBCONFIG_BUF,
                           comdb2db_hosts, num_hosts, comdb2db_num, dbname,
-                          db_hosts, num_db_hosts, dbnum, dbname_found,
-                          comdb2db_found, send_stack);
+                          db_hosts, num_db_hosts, dbnum, send_stack);
         fallback_on_bb_bin = 0;
     } else {
         if (*CDB2DBCONFIG_NOBBENV != '\0') {
@@ -1261,8 +1260,7 @@ static int read_available_comdb2db_configs(
             if (fp != NULL) {
                 read_comdb2db_cfg(NULL, fp, comdb2db_name, NULL, comdb2db_hosts,
                                   num_hosts, comdb2db_num, dbname, db_hosts,
-                                  num_db_hosts, dbnum, dbname_found,
-                                  comdb2db_found, send_stack);
+                                  num_db_hosts, dbnum, send_stack);
                 fclose(fp);
                 fallback_on_bb_bin = 0;
             }
@@ -1279,8 +1277,7 @@ static int read_available_comdb2db_configs(
         if (fp != NULL) {
             read_comdb2db_cfg(NULL, fp, comdb2db_name, NULL, comdb2db_hosts,
                               num_hosts, comdb2db_num, dbname, db_hosts,
-                              num_db_hosts, dbnum, dbname_found, comdb2db_found,
-                              send_stack);
+                              num_db_hosts, dbnum, send_stack);
             fclose(fp);
         }
     }
@@ -1289,8 +1286,7 @@ static int read_available_comdb2db_configs(
     if (fp != NULL) {
         read_comdb2db_cfg(hndl, fp, comdb2db_name, NULL, comdb2db_hosts,
                           num_hosts, comdb2db_num, dbname, db_hosts,
-                          num_db_hosts, dbnum, dbname_found, comdb2db_found,
-                          send_stack);
+                          num_db_hosts, dbnum, send_stack);
         fclose(fp);
     }
     pthread_mutex_unlock(&cdb2_cfg_lock);
@@ -1347,34 +1343,39 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
                               const char *comdb2db_name, int *num_hosts,
                               int *comdb2db_num, const char *dbname,
                               char *dbtype, char db_hosts[][64],
-                              int *num_db_hosts, int *dbnum, int just_defaults)
+                              int *num_db_hosts, int *dbnum, int read_cfg,
+                              int dbinfo_or_dns)
 {
     int rc;
-    int comdb2db_found = 0;
-    int dbname_found = 0;
 
     if (hndl)
         debugprint("entering\n");
 
-    rc = read_available_comdb2db_configs(
-        hndl, comdb2db_hosts, comdb2db_name, num_hosts, comdb2db_num, dbname,
-        db_hosts, num_db_hosts, dbnum, &comdb2db_found, &dbname_found);
-    if (rc == -1)
-        return rc;
+    if (read_cfg) {
+        rc = read_available_comdb2db_configs(
+            hndl, comdb2db_hosts, comdb2db_name, num_hosts, comdb2db_num,
+            dbname, db_hosts, num_db_hosts, dbnum);
+        if (rc == -1)
+            return rc;
+        if (master)
+            *master = -1;
+    }
 
-    if (master)
-        *master = -1;
+    if (dbinfo_or_dns) {
+        /* If previous call to the function successfully retrieved hosts,
+           return 0. */
+        if (*num_hosts > 0 || *num_db_hosts > 0)
+            return 0;
+        /* If we have a cached connection to comdb2db in the sockpool, use it to
+           get comdb2db dbinfo. */
+        rc = cdb2_dbinfo_query(hndl, cdb2_default_cluster, comdb2db_name,
+                               *comdb2db_num, NULL, comdb2db_hosts,
+                               comdb2db_ports, master, num_hosts, NULL);
+        /* DNS lookup comdb2db hosts. */
+        if (rc != 0)
+            rc = get_host_by_name(comdb2db_name, comdb2db_hosts, num_hosts);
+    }
 
-    if (just_defaults || comdb2db_found || dbname_found)
-        return 0;
-
-    rc = cdb2_dbinfo_query(hndl, cdb2_default_cluster, comdb2db_name,
-                           *comdb2db_num, NULL, comdb2db_hosts, comdb2db_ports,
-                           master, num_hosts, NULL);
-    if (rc == 0)
-        return 0;
-
-    rc = get_host_by_name(comdb2db_name, comdb2db_hosts, num_hosts);
     return rc;
 }
 
@@ -4803,7 +4804,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
 static inline void only_read_config()
 {
     read_available_comdb2db_configs(NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-                                    NULL, NULL, NULL, NULL);
+                                    NULL, NULL);
 }
 
 static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
@@ -4829,10 +4830,12 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
         }
     }
 
-    get_comdb2db_hosts(hndl, comdb2db_hosts, comdb2db_ports, &master,
-                       comdb2db_name, &num_comdb2db_hosts, &comdb2db_num,
-                       hndl->dbname, hndl->cluster, hndl->hosts,
-                       &(hndl->num_hosts), &hndl->dbnum, 1);
+    rc = get_comdb2db_hosts(hndl, comdb2db_hosts, comdb2db_ports, &master,
+                            comdb2db_name, &num_comdb2db_hosts, &comdb2db_num,
+                            hndl->dbname, hndl->cluster, hndl->hosts,
+                            &(hndl->num_hosts), &hndl->dbnum, 1, 0);
+    if (rc != 0)
+        return rc;
 
     if ((cdb2_default_cluster[0] != '\0') && (cdb2_comdb2dbname[0] != '\0')) {
         strcpy(comdb2db_name, cdb2_comdb2dbname);
@@ -4860,7 +4863,7 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
         rc = get_comdb2db_hosts(
             hndl, comdb2db_hosts, comdb2db_ports, &master, comdb2db_name,
             &num_comdb2db_hosts, &comdb2db_num, hndl->dbname, hndl->cluster,
-            hndl->hosts, &(hndl->num_hosts), &hndl->dbnum, 0);
+            hndl->hosts, &(hndl->num_hosts), &hndl->dbnum, 0, 1);
         if (rc != 0 || (num_comdb2db_hosts == 0 && hndl->num_hosts == 0)) {
             sprintf(hndl->errstr, "cdb2_get_dbhosts: no %s hosts found.",
                     comdb2db_name);

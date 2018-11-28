@@ -157,31 +157,32 @@ public class DatabaseDiscovery {
     /* Get comdb2db hosts from config file or DNS.
        Throws an IOException on error. */
     private static void getComdb2dbHosts(Comdb2Handle hndl,
-            boolean just_defaults) throws IOException {
+            boolean readCfg, boolean dbinfoOrDNS) throws IOException {
         /*
          * Load conf from path specified in system property
          * CDB2DBCONFIG_PROP (comdb2db.cfg), defaulting to
          * CDB2DBCONFIG_NOBBENV (/opt/bb/etc/cdb2/config/comdb2db.cfg) if the
          * property is not specified.
          */
-        String configPath = System.getProperty(CDB2DBCONFIG_PROP, CDB2DBCONFIG_NOBBENV);
-        boolean rc = readComdb2dbCfg(configPath, hndl);
-        if (!rc) /* fall back to /bb/bin if noenv conf not found */
-            rc = readComdb2dbCfg(CDB2DBCONFIG_LOCAL, hndl);
-        readComdb2dbCfg(CDB2DBCONFIG_NOBBENV_PATH + hndl.myDbName + ".cfg", hndl);
+        if (readCfg) {
+            String configPath = System.getProperty(CDB2DBCONFIG_PROP, CDB2DBCONFIG_NOBBENV);
+            boolean rc = readComdb2dbCfg(configPath, hndl);
+            if (!rc) /* fall back to /bb/bin if noenv conf not found */
+                rc = readComdb2dbCfg(CDB2DBCONFIG_LOCAL, hndl);
+            readComdb2dbCfg(CDB2DBCONFIG_NOBBENV_PATH + hndl.myDbName + ".cfg", hndl);
+        }
 
-        if (just_defaults)
-            return;
+        if (dbinfoOrDNS) {
+            if (hndl.comdb2dbHosts.size() > 0 || hndl.myDbHosts.size() > 0)
+                return;
 
-        if (hndl.comdb2dbHosts.size() > 0 || hndl.myDbHosts.size() > 0)
-            return;
-
-        String comdb2db_bdns = String.format("%s-%s.%s",
-                (hndl.defaultType != null) ? hndl.defaultType : hndl.myDbCluster,
-                hndl.comdb2dbName, hndl.dnssuffix);
-        InetAddress inetAddress[] = InetAddress.getAllByName(comdb2db_bdns);
-        for (int i = 0; i < inetAddress.length; i++)
-            hndl.comdb2dbHosts.add(inetAddress[i].getHostAddress());
+            String comdb2db_bdns = String.format("%s-%s.%s",
+                    (hndl.defaultType != null) ? hndl.defaultType : hndl.myDbCluster,
+                    hndl.comdb2dbName, hndl.dnssuffix);
+            InetAddress inetAddress[] = InetAddress.getAllByName(comdb2db_bdns);
+            for (int i = 0; i < inetAddress.length; i++)
+                hndl.comdb2dbHosts.add(inetAddress[i].getHostAddress());
+        }
     }
 
     /* Returns port number. Throws an IOException on error. */
@@ -490,7 +491,7 @@ public class DatabaseDiscovery {
             if (hndl.myDbHosts.size() == 0) {
                 try {
                     /* get default conf without DNS lookup */
-                    getComdb2dbHosts(hndl, true);
+                    getComdb2dbHosts(hndl, true, false);
                 } catch (IOException ioe) {
                     /* Ignore. */
                 }
@@ -509,7 +510,7 @@ public class DatabaseDiscovery {
                 }
 
                 try {
-                    getComdb2dbHosts(hndl, false);
+                    getComdb2dbHosts(hndl, false, true);
                 } catch (IOException ioe) {
                     throw new NoDbHostFoundException(hndl.comdb2dbName,
                             "Could not find database hosts from DNS and config files.",
