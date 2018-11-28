@@ -1721,5 +1721,9 @@ REGISTER_TUNABLE("serialize_reads_like_writes",
 
 REGISTER_TUNABLE("result_cache_size", "SQL result cache size",
                  TUNABLE_INT64, &gbl_result_cache_size, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE(
+    "disable_tpsc_tblvers",
+    "Disable table version checks for time partition schema changes",
+    TUNABLE_BOOLEAN, &gbl_disable_tpsc_tblvers, NOARG, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */
