@@ -66,7 +66,7 @@
 #include "bpfunc.h"
 
 #include "logmsg.h"
-#define DEBUG_REORDER 0
+#define DEBUG_REORDER 1
 
 int g_osql_blocksql_parallel_max = 5;
 int gbl_osql_check_replicant_numops = 1;
@@ -187,6 +187,59 @@ static int osql_bplog_key_cmp(void *usermem, int key1len, const void *key1,
     return 0;
 }
 
+static int osql_bplog_instbl_key_cmp(void *usermem, int key1len, const void *key1,
+                                     int key2len, const void *key2)
+{
+    assert(sizeof(oplog_key_t) == key1len);
+    assert(sizeof(oplog_key_t) == key2len);
+
+#ifdef _SUN_SOURCE
+    oplog_key_t t1, t2;
+    memcpy(&t1, key1, key1len);
+    memcpy(&t2, key2, key2len);
+    oplog_key_t *k1 = &t1;
+    oplog_key_t *k2 = &t2;
+#else
+    oplog_key_t *k1 = (oplog_key_t *)key1;
+    oplog_key_t *k2 = (oplog_key_t *)key2;
+#endif
+
+    if (k1->tbl_idx < k2->tbl_idx) {
+        return -1;
+    }
+
+    if (k1->tbl_idx > k2->tbl_idx) {
+        return 1;
+    }
+
+    //in this case genid is just a counter
+    if (k1->genid < k2->genid) {
+        return -1;
+    }
+
+    if (k1->genid > k2->genid) {
+        return 1;
+    }
+
+    if (k1->is_rec < k2->is_rec) {
+        return -1;
+    }
+
+    if (k1->is_rec > k2->is_rec) {
+        return 1;
+    }
+    if (k1->seq < k2->seq) {
+        return -1;
+    }
+
+    if (k1->seq > k2->seq) {
+        return 1;
+    }
+
+    return 0;
+}
+
+
 /**
  * Adds the current session to the bplog pending session list.
  * If there is no bplog created, it creates one.
@@ -255,7 +308,7 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
     }
 
     bdb_temp_table_set_cmp_func(tran->db, osql_bplog_key_cmp);
-    bdb_temp_table_set_cmp_func(tran->db_ins, osql_bplog_key_cmp);
+    bdb_temp_table_set_cmp_func(tran->db_ins, osql_bplog_instbl_key_cmp);
 
     tran->dowait = 1;
 
@@ -691,7 +744,7 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
         enum { OSQLCOMM_UUID_RPL_TYPE_LEN = 4 + 4 + 16 };
         unsigned long long genid = 0;
         if (type == OSQL_INSERT || type == OSQL_INSREC) {
-            genid = sess->ins_seq++;
+            genid = ++sess->ins_seq;
 #if DEBUG_REORDER
             logmsg(LOGMSG_DEBUG, "REORDER: INS genid (seq) 0x%llx\n", genid);
 #endif
@@ -1306,9 +1359,9 @@ static int process_this_session(
         }
 
         logmsg(LOGMSG_DEBUG,
-               "%p:%s: rqid=%llx uuid=%s REORDER: READ tp=%d(%s), tbl_idx=%d, stripe=%d, "
+               "%p:%s: rqid=%llx uuid=%s REORDER: READ %s tp=%d(%s), tbl_idx=%d, stripe=%d, "
                "genid=0x%llx, seq=%d, is_rec=%d\n",
-               (void *)pthread_self(), __func__, rqid, mus, type,
+               (void *)pthread_self(), __func__, rqid, mus, (k_ptr == opkey_ins ? "(ins)" : " "), type,
                osql_reqtype_str(type), k_ptr->tbl_idx, k_ptr->stripe, k_ptr->genid, k_ptr->seq, k_ptr->is_rec);
 
 #endif
@@ -1348,15 +1401,15 @@ static int process_this_session(
 //get_next_merge_tmps(dbc, dbc_ins, &opkey, &opkey_ins, &drain_adds, ,&data, &datalen) {
         if (drain_adds) {
             rc_ins = bdb_temp_table_next(thedb->bdb_env, dbc_ins, bdberr);
+            if(rc_ins == 0)
+                opkey_ins = (oplog_key_t *)bdb_temp_table_key(dbc_ins);
             if(rc_ins != 0 || ! (opkey_ins->tbl_idx < opkey->tbl_idx || 
                 (opkey_ins->tbl_idx == opkey->tbl_idx && add_stripe < opkey->stripe)) ){
                 drain_adds = 0;
             }
-            else
-                opkey_ins = (oplog_key_t *)bdb_temp_table_key(dbc_ins);
         } else {
             rc = bdb_temp_table_next(thedb->bdb_env, dbc, bdberr);
-            if (rc != 0) continue;
+            if (rc != 0) break;
             opkey = (oplog_key_t *)bdb_temp_table_key(dbc);
             /* if cursor valid for dbc_ins, and if we changed table/stripe and
              * prev table/strip match dbc_ins table/stripe then we process adds
