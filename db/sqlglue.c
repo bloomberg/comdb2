@@ -4458,7 +4458,8 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag, int *pSchemaVersi
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd->clnt;
 
-    clnt->dont_cache_this_request = wrflag;
+    if (wrflag)
+        comdb2_results_not_cachable();
 
 #ifdef DEBUG_TRAN
     if (gbl_debug_sql_opcodes) {

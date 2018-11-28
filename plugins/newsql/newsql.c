@@ -2368,13 +2368,18 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         clnt.sql = sql_query->sql_query;
         clnt.added_to_hist = 0;
 
+        // cacheable unless we determine (later) otherwise
+        clnt.dont_cache_this_request = 0;
+
         struct cached_response *rsp = NULL;
         if (gbl_result_cache_size) {
             struct cache_key k;
             checksum_query(sql_query, query_checksum);
             memcpy(k.request_checksum, query_checksum, sizeof(query_checksum));
             k.gen = bdb_get_commit_genid(thedb->bdb_env, NULL);
+            pthread_mutex_lock(&rscachelk);
             rsp = lrucache_find(cached_responses, &k);
+            pthread_mutex_unlock(&rscachelk);
             if (rsp) {
                 logmsg(LOGMSG_DEBUG, "Response from cache\n");
                 sbuf2write(rsp->response, rsp->response_size, sb);
