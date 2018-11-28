@@ -179,12 +179,12 @@ static int connect_instance(int servicefd, char *name)
 
 int client_func(int fd)
 {
-    char service[256]= {0};
+    char service[256] = {0};
     int listenfd = fd;
 #ifdef VERBOSE
     fprintf(stderr, "Starting client thread \n");
 #endif
-    ssize_t n = read(listenfd, service, sizeof(service)-1);
+    ssize_t n = read(listenfd, service, sizeof(service) - 1);
 #ifdef VERBOSE
     fprintf(stderr, "%s\n", service);
 #endif
@@ -750,7 +750,7 @@ done:
 static int do_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds)
 {
     connection &c = connections[fd.fd];
-    ssize_t n = read(fd.fd, c.inbuf + c.inoff, (sizeof(c.inbuf)-1) - c.inoff);
+    ssize_t n = read(fd.fd, c.inbuf + c.inoff, (sizeof(c.inbuf) - 1) - c.inoff);
     if (n <= 0) {
         unwatchfd(fd);
         return 0;
