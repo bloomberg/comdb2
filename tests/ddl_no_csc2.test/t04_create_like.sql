@@ -1,8 +1,8 @@
-CREATE TABLE t1(i INT, j INT, key idx1 (i, j), key idx2 (i DESC, j ASC), key idx3 (i ASC, j DESC), key idx4 (i DESC, j DESC))$$
+CREATE TABLE t1(i INT, j INT, INDEX idx1 (i, j), INDEX idx2 (i DESC, j ASC), INDEX idx3 (i ASC, j DESC), INDEX idx4 (i DESC, j DESC))$$
 CREATE TABLE t2(i INT PRIMARY KEY)$$
 CREATE TABLE t3(i INT REFERENCES t1(i DESC)) $$
 CREATE TABLE t4(i INT, j INT, FOREIGN KEY (i, j) REFERENCES t1(i, j)) $$
-CREATE TABLE t5(i INT UNIQUE, j INT, KEY(i,j), UNIQUE(i,j), KEY dup_key(i,j), UNIQUE 'unique_key'(j,i))$$
+CREATE TABLE t5(i INT UNIQUE, j INT, INDEX(i,j), UNIQUE(i,j), INDEX dup_key(i,j), UNIQUE 'unique_key'(j,i))$$
 CREATE TABLE t1_copy like t1 $$
 CREATE TABLE t2_copy like t2 $$
 CREATE TABLE t3_copy like t3 $$
