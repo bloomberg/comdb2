@@ -93,7 +93,7 @@ getmembers()
 }
 
 echo check all .*sql entries for fingerprint
-echo 'fd8e98dcae717b2d869fb2a95ed72bbb' > exp.txt
+echo '9646641fb53ffc0e87ffcb7808c4c93e' > exp.txt
 IFS=$'\n'
 for line in `grep 'sql","sql": "select 1"' $logflunziped ` ; do
     getmembers $line > out.txt
@@ -105,7 +105,7 @@ done
 
 
 echo check all .*sql entries for fingerprint
-echo 'fd8e98dcae717b2d869fb2a95ed72bbb' > exp.txt
+echo '9646641fb53ffc0e87ffcb7808c4c93e' > exp.txt
 IFS=$'\n'
 for line in `grep 'sql","sql": "select 2"' $logflunziped ` ; do
     getmembers $line > out.txt
