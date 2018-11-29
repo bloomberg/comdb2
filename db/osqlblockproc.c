@@ -66,7 +66,6 @@
 #include "bpfunc.h"
 
 #include "logmsg.h"
-//#define DEBUG_REORDER 1
 
 int g_osql_blocksql_parallel_max = 5;
 int gbl_osql_check_replicant_numops = 1;
@@ -1424,7 +1423,6 @@ static int process_this_session(
 
         lastrcv = receivedrows;
 
-        iq->debug = 1;
         /* this locks pages */
         rc_out = func(iq, rqid, uuid, iq_tran, data, datalen, &flags, &updCols,
                       blobs, step, err, &receivedrows, logsb);
