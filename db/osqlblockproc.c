@@ -125,6 +125,14 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
 static int osql_bplog_wait(blocksql_tran_t *tran);
 static int req2blockop(int reqtype);
 
+#define CMP_KEY_MEMBER(k1, k2, var) \
+    if (k1->var < k2->var) { \
+        return -1; \
+    } \
+    if (k1->var > k2->var) { \
+        return 1; \
+    }
+
 /**
  * The bplog key-compare function - required because memcmp changes
  * the order of temp_table_next on little-endian machines.
@@ -148,41 +156,16 @@ static int osql_bplog_key_cmp(void *usermem, int key1len, const void *key1,
     oplog_key_t *k2 = (oplog_key_t *)key2;
 #endif
 
-    if (k1->tbl_idx < k2->tbl_idx) {
-        return -1;
-    }
-
-    if (k1->tbl_idx > k2->tbl_idx) {
-        return 1;
-    }
-
-    if (k1->stripe < k2->stripe) {
-        return -1;
-    }
-
-    if (k1->stripe > k2->stripe) {
-        return 1;
-    }
+    CMP_KEY_MEMBER(k1, k2, tbl_idx);
+    CMP_KEY_MEMBER(k1, k2, stripe);
 
     // need to sort by genid correctly
     int cmp = bdb_cmp_genids(k1->genid, k2->genid);
     if (cmp)
         return cmp;
 
-    if (k1->is_rec < k2->is_rec) {
-        return -1;
-    }
-
-    if (k1->is_rec > k2->is_rec) {
-        return 1;
-    }
-    if (k1->seq < k2->seq) {
-        return -1;
-    }
-
-    if (k1->seq > k2->seq) {
-        return 1;
-    }
+    CMP_KEY_MEMBER(k1, k2, is_rec);
+    CMP_KEY_MEMBER(k1, k2, seq);
 
     return 0;
 }
@@ -205,38 +188,11 @@ static int osql_bplog_instbl_key_cmp(void *usermem, int key1len,
     oplog_key_t *k2 = (oplog_key_t *)key2;
 #endif
 
-    if (k1->tbl_idx < k2->tbl_idx) {
-        return -1;
-    }
-
-    if (k1->tbl_idx > k2->tbl_idx) {
-        return 1;
-    }
-
-    // in this case genid is just a counter
-    if (k1->genid < k2->genid) {
-        return -1;
-    }
-
-    if (k1->genid > k2->genid) {
-        return 1;
-    }
-
-    if (k1->is_rec < k2->is_rec) {
-        return -1;
-    }
-
-    if (k1->is_rec > k2->is_rec) {
-        return 1;
-    }
-    if (k1->seq < k2->seq) {
-        return -1;
-    }
-
-    if (k1->seq > k2->seq) {
-        return 1;
-    }
-
+    CMP_KEY_MEMBER(k1, k2, tbl_idx);
+    CMP_KEY_MEMBER(k1, k2, stripe);
+    CMP_KEY_MEMBER(k1, k2, genid); // in this case genid is just a counter
+    CMP_KEY_MEMBER(k1, k2, is_rec);
+    CMP_KEY_MEMBER(k1, k2, seq);
     return 0;
 }
 
@@ -302,11 +258,11 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
 
     if (sess->is_reorder_on) {
         tran->db_ins = bdb_temp_table_create(thedb->bdb_env, &bdberr);
-        if (!tran->db_ins || bdberr) {
+        if (!tran->db_ins) {
+            // We can stll work without a INS table
             logmsg(LOGMSG_ERROR,
                    "%s: failed to create temp table for INS bdberr=%d\n",
                    __func__, bdberr);
-            sess->is_reorder_on = 0; // turn reorder off since no INS table
         } else
             bdb_temp_table_set_cmp_func(tran->db_ins,
                                         osql_bplog_instbl_key_cmp);
