@@ -229,7 +229,7 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
         } else if (!table && gbl_schema_change_in_progress)
             gbl_schema_change_in_progress--;
 
-        if (gbl_schema_change_in_progress == 0 || (!table && !seed)) {
+        if (gbl_schema_change_in_progress <= 0 || (!table && !seed)) {
             gbl_sc_resume_start = 0;
             gbl_schema_change_in_progress = 0;
             sc_async_threads = 0;
@@ -238,9 +238,10 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
             sc_tables = NULL;
         }
     }
-    ctrace("sc_set_running(running=%d seed=0x%llx): "
+    ctrace("sc_set_running(table=%s running=%d seed=0x%llx): "
            "gbl_schema_change_in_progress %d\n",
-           running, (unsigned long long)seed, gbl_schema_change_in_progress);
+           table ? table : "", running, (unsigned long long)seed,
+           gbl_schema_change_in_progress);
     Pthread_mutex_unlock(&schema_change_in_progress_mutex);
     return 0;
 }
