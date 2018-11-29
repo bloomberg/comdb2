@@ -449,6 +449,16 @@ int osql_bplog_schemachange(struct ireq *iq)
         sc = iq->sc_pending;
         while (sc != NULL) {
             next = sc->sc_next;
+            if (sc->newdb && sc->newdb->handle) {
+                int bdberr = 0;
+                sc->db->sc_to = NULL;
+                sc->db->sc_from = NULL;
+                sc->db->sc_abort = 0;
+                sc->db->sc_downgrading = 1;
+                bdb_close_only(sc->newdb->handle, &bdberr);
+                freedb(sc->newdb);
+                sc->newdb = NULL;
+            }
             sc_set_running(sc->tablename, 0, iq->sc_seed, NULL, 0);
             free_schema_change_type(sc);
             sc = next;
