@@ -310,6 +310,32 @@ void live_sc_off(struct dbtable *db)
     Pthread_rwlock_unlock(&sc_live_rwlock);
 }
 
+void sc_set_downgrading(struct schema_change_type *s)
+{
+    struct ireq iq = {0};
+    tran_type *tran = NULL;
+    init_fake_ireq(thedb, &iq);
+    iq.usedb = s->db;
+    trans_start(&iq, NULL, &tran);
+    if (tran == NULL) {
+        logmsg(LOGMSG_FATAL, "%s: failed to start tran\n", __func__);
+        abort();
+    }
+
+    /* make sure no one writes to the tale */
+    bdb_lock_table_write(s->db->handle, tran);
+
+    Pthread_rwlock_wrlock(&sc_live_rwlock);
+    /* live_sc_post* code will look at this and return errors properly */
+    s->db->sc_downgrading = 1;
+    s->db->sc_to = NULL;
+    s->db->sc_from = NULL;
+    s->db->sc_abort = 0;
+    Pthread_rwlock_unlock(&sc_live_rwlock);
+
+    trans_abort(&iq, tran);
+}
+
 int reload_lua()
 {
     ++gbl_lua_version;
