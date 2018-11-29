@@ -322,7 +322,7 @@ void sc_set_downgrading(struct schema_change_type *s)
         abort();
     }
 
-    /* make sure no one writes to the tale */
+    /* make sure no one writes to the table */
     bdb_lock_table_write(s->db->handle, tran);
 
     Pthread_rwlock_wrlock(&sc_live_rwlock);

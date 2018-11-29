@@ -505,6 +505,7 @@ int do_schema_change_tran(sc_arg_t *arg)
     }
     Pthread_mutex_unlock(&s->mtx);
     if (rc == SC_MASTER_DOWNGRADE) {
+        sc_set_running(s->tablename, 0, iq->sc_seed, NULL, 0);
         free_sc(s);
     } else {
         stop_and_free_sc(rc, s, 1 /*do_free*/);
