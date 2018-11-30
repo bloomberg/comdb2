@@ -237,3 +237,30 @@ void lrucache_invalidate(struct lrucache *cache, void *key) {
         }
     }
 }
+
+void lrucache_invalidate_if(struct lrucache *cache, enum lrucache_action (*callback)(void *ent, void *usrptr), void *usrptr) {
+    void *ent, *next;
+
+    for (ent = cache->lru.top; ent; ent = next) {
+        struct lrucache_link *lent;
+        lent = (struct lrucache_link *)((char*) ent + cache->offset);
+        next = lent->lnk.next;
+
+        enum lrucache_action rc;
+        rc = callback(ent, usrptr);
+        switch (rc) {
+            case LRUCACHE_ACTION_CONTINUE:
+                break;
+
+            case LRUCACHE_ACTION_INVALIDATE:
+                lrucache_invalidate(cache, ((char*) ent) + cache->keyoff);
+                break;
+
+            case LRUCACHE_ACTION_STOP:
+            default:
+                goto done;
+        }
+    }
+done:
+    return;
+}

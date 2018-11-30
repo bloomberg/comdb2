@@ -1078,6 +1078,21 @@ static int send_incoherent_message(int num_online, int duration)
     return 0;
 }
 
+struct periodic_thing_to_run {
+    void (*callback)(void);
+    int period;
+};
+
+static int num_things_to_run = 0;
+static struct periodic_thing_to_run *things_to_run;
+
+void plugin_run_periodically(void (*callback)(void), int seconds) {
+    things_to_run = realloc(things_to_run, num_things_to_run * sizeof(struct periodic_thing_to_run));
+    things_to_run[num_things_to_run].callback = callback;
+    things_to_run[num_things_to_run].period = seconds;
+    num_things_to_run++;
+}
+
 /* sorry guys, i hijacked this to be more of a "purge stuff in general" thread
  * -- SJ
  * now blkseq doesn't exist anymore much less a purge function for it, now this
@@ -1100,6 +1115,10 @@ static void *purge_old_blkseq_thread(void *arg)
     sleep(1);
 
     while (!db_is_stopped()) {
+        for (int i = 0; i < num_things_to_run; i++) {
+            if (loop % things_to_run[i].period == 0)
+                things_to_run[i].callback();
+        }
 
         /* Check del unused files progress about twice per threshold  */
         if (!(loop % (gbl_sc_del_unused_files_threshold_ms /

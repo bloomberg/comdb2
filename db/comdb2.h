@@ -3620,4 +3620,7 @@ int64_t gbl_result_cache_size;
 extern int gbl_osql_odh_blob;
 extern int gbl_pbkdf2_iterations;
 extern int gbl_bpfunc_auth_gen;
+
+void plugin_run_periodically(void (*callback)(void), int seconds);
+
 #endif /* !INCLUDED_COMDB2_H */

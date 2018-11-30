@@ -41,6 +41,12 @@ struct lrucache_link {
     int invalid;
 };
 
+enum lrucache_action {
+    LRUCACHE_ACTION_CONTINUE   = 0,
+    LRUCACHE_ACTION_INVALIDATE = 1,
+    LRUCACHE_ACTION_STOP       = 2
+};
+
 typedef struct lrucache lrucache;
 typedef struct lrucache_link lrucache_link;
 
@@ -58,5 +64,6 @@ void lrucache_foreach(struct lrucache *cache, void (*display)(void *, void *),
 void lrucache_set_maxent(struct lrucache *cache, int maxent);
 void lrucache_release(struct lrucache *cache, void *key);
 void lrucache_invalidate(struct lrucache *cache, void *key);
+void lrucache_invalidate_if(struct lrucache *cache, enum lrucache_action (*callback)(void *ent, void *usrptr), void *usrptr);
 
 #endif

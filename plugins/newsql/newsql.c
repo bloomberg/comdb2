@@ -2145,8 +2145,6 @@ static void checksum_query(CDB2SQLQUERY *q, unsigned char out[20]) {
 }
 
 static lrucache *cached_responses;
-static pthread_once_t once = PTHREAD_ONCE_INIT;
-
 
 struct cache_key {
     unsigned long long gen;
@@ -2179,10 +2177,16 @@ int response_cmp(const void *key1, const void *key2, int len) {
     return !cmp;
 }
 
-static void init_lrucache(void) {
+static void invalidate_result_cache(void) {
+    /* HERE */
+}
+
+static int newsql_init(void *unused) {
     cached_responses = lrucache_init(response_hash, response_cmp, free, 
             offsetof(struct cached_response, lnk), offsetof(struct cached_response, key),
             sizeof(struct cache_key), 0, gbl_result_cache_size);
+    plugin_run_periodically(invalidate_result_cache, 5);
+    return 0;
 }
 
 int64_t gbl_cached_sql_hits = 0;
@@ -2198,8 +2202,6 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     struct sbuf2 *sb;
     struct dbenv *dbenv;
     struct dbtable *tab;
-
-    pthread_once(&once, init_lrucache);
 
     thr_self = arg->thr_self;
     dbenv = arg->dbenv;
