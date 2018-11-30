@@ -1087,7 +1087,7 @@ static int num_things_to_run = 0;
 static struct periodic_thing_to_run *things_to_run;
 
 void plugin_run_periodically(void (*callback)(void), int seconds) {
-    things_to_run = realloc(things_to_run, num_things_to_run * sizeof(struct periodic_thing_to_run));
+    things_to_run = realloc(things_to_run, (num_things_to_run+1) * sizeof(struct periodic_thing_to_run));
     things_to_run[num_things_to_run].callback = callback;
     things_to_run[num_things_to_run].period = seconds;
     num_things_to_run++;

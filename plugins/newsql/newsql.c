@@ -2144,6 +2144,9 @@ static void checksum_query(CDB2SQLQUERY *q, unsigned char out[20]) {
     SHA256_Final(out, &ctx);
 }
 
+int64_t gbl_cached_sql_hits = 0;
+pthread_mutex_t rscachelk = PTHREAD_MUTEX_INITIALIZER;
+
 static lrucache *cached_responses;
 
 struct cache_key {
@@ -2177,8 +2180,26 @@ int response_cmp(const void *key1, const void *key2, int len) {
     return !cmp;
 }
 
+static enum lrucache_action maybe_invalidate_cache_entry(void *entp, void *usrptr) {
+    struct cached_response *ent = (struct cached_response *) entp;
+    unsigned long long last_context = *(unsigned long long*)usrptr;
+
+    if (last_context != ent->key.gen) {
+        return LRUCACHE_ACTION_INVALIDATE;
+    }
+    else
+        return LRUCACHE_ACTION_CONTINUE;
+}
+
 static void invalidate_result_cache(void) {
-    /* HERE */
+    unsigned long long last_context_id = 0;
+
+    if (last_context_id == 0)
+        last_context_id = bdb_get_commit_genid(thedb->bdb_env, NULL);
+
+    pthread_mutex_lock(&rscachelk);
+    lrucache_invalidate_if(cached_responses, maybe_invalidate_cache_entry, &last_context_id);
+    pthread_mutex_unlock(&rscachelk);
 }
 
 static int newsql_init(void *unused) {
@@ -2188,9 +2209,6 @@ static int newsql_init(void *unused) {
     plugin_run_periodically(invalidate_result_cache, 5);
     return 0;
 }
-
-int64_t gbl_cached_sql_hits = 0;
-pthread_mutex_t rscachelk = PTHREAD_MUTEX_INITIALIZER;
 
 #define APPDATA ((struct newsql_appdata *)(clnt.appdata))
 static int handle_newsql_request(comdb2_appsock_arg_t *arg)
@@ -2387,6 +2405,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
                 sbuf2write(rsp->response, rsp->response_size, sb);
                 sbuf2flush(sb);
                 gbl_cached_sql_hits++;
+                cdb2__query__free_unpacked(query, &pb_alloc);
                 query = read_newsql_query(dbenv, &clnt, sb);
                 pthread_mutex_lock(&rscachelk);
                 lrucache_release(cached_responses, rsp);
