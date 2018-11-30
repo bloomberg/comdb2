@@ -810,8 +810,11 @@ static int read_stream(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr,
             } else if (errno == EINTR) { /* just read again */
                 continue;
             } else {
-                host_node_printf(LOGMSG_USER, host_node_ptr, "%s:%s\n", __func__,
-                                 strerror(errno));
+                if (host_node_ptr)
+                    host_node_printf(LOGMSG_USER, host_node_ptr, "%s:%s\n",
+                                     __func__, strerror(errno));
+                else
+                    logmsgperror(__func__);
                 break;
             }
         } else { /* n == 0; EOF */
