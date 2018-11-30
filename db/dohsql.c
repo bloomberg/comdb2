@@ -264,8 +264,6 @@ static void trimQue(dohsql_connector_t *conn, sqlite3_stmt *stmt,
 
         if (gbl_dohsql_max_queued_kb_highwm) {
             conn->queue_size -= row_size;
-            /*fprintf(stderr, "XXX: %s %d %lld\n", __func__, queue_count(que),
-             * conn->queue_size);*/
         }
     }
 }
@@ -290,15 +288,9 @@ static void _que_limiter(dohsql_connector_t *conn, sqlite3_stmt *stmt,
 {
     if (gbl_dohsql_max_queued_kb_highwm) {
         conn->queue_size += row_size;
-        /*fprintf(stderr, "XXX: %s %d %d %lld\n", __func__,
-         * queue_count(conn->que), queue_count(conn->que_free),
-         * conn->queue_size);*/
     }
 
 cleanup:
-    /*if ((conn->queue_size / 252 != (queue_count(conn->que) +
-    queue_count(conn->que_free))) && (conn->queue_size / 252 !=
-    (queue_count(conn->que) + queue_count(conn->que_free)+1))) abort();*/
     /* inline cleanup */
     if (queue_count(conn->que_free) > gbl_dohsql_que_free_highwm) {
         _track_que_free(conn);
@@ -483,8 +475,6 @@ static void add_row(dohsql_t *conns, int i, row_t *row)
             pthread_mutex_lock(&conns->conns[conns->row_src].mtx);
         if (queue_add(conns->conns[conns->row_src].que_free, conns->row))
             abort();
-        /*fprintf(stderr, "XXX: %s moved row to que_free len %d\n", __func__,
-        queue_count(conns->conns[conns->row_src].que_free));*/
         if (i != conns->row_src)
             pthread_mutex_unlock(&conns->conns[conns->row_src].mtx);
     }

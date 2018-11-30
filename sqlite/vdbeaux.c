@@ -5315,12 +5315,12 @@ Mem* sqlite3CloneResult(sqlite3_stmt *pStmt, Mem *pMem, long long *pSize)
 
   if (!p) abort();
 
+  *pSize = 0LL;
   if (!pMem) {
     pMem = sqlite3Malloc(sizeof(Mem)*ncols);
     if (!pMem)
       return NULL;
     bzero(pMem, sizeof(*pMem)*ncols);
-    *pSize = 0LL;
   } else {
     *pSize -= memRowSize(pMem, ncols);
   }
