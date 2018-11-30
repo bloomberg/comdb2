@@ -885,7 +885,7 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
     /* Don't lose precious flags like this */
     newdb->inplace_updates = s->headers && s->ip_updates;
     newdb->instant_schema_change = s->headers && s->instant_sc;
-    newdb->version = get_csc2_version(newdb->tablename);
+    newdb->schema_version = get_csc2_version(newdb->tablename);
 
     if (add_cmacc_stmt(newdb, 1) != 0) {
         backout_schemas(newdb->tablename);

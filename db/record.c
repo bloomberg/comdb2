@@ -1175,7 +1175,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                         "DTALEN %u FNDLEN %u VER %d RC %d",
                     rrn, vgenid, od_len, fndlen, ver, rc);
 
-            if (rc == 0 && ver == iq->usedb->version) {
+            if (rc == 0 && ver == iq->usedb->schema_version) {
                 // record is at ondisk version, return
                 retrc = rc;
                 goto err;

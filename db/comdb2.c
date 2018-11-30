@@ -2039,7 +2039,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname)
             rc = 1;
             break;
         }
-        tbl->version = ver;
+        tbl->schema_version = ver;
 
         /* We only want to load older schema versions for ODH databases.  ODH
          * information
@@ -5284,7 +5284,7 @@ int rename_db(struct dbtable *db, const char *newname)
     /* db */
     hash_del(thedb->db_hash, db);
     db->tablename = (char *)newname;
-    db->version = 0; /* reset, new table */
+    db->schema_version = 0; /* reset, new table */
     hash_add(thedb->db_hash, db);
 
     Pthread_rwlock_unlock(&thedb_lock);

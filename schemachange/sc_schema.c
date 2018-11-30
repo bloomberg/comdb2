@@ -441,7 +441,7 @@ int prepare_table_version_one(tran_type *tran, struct dbtable *db,
     }
 
     /* db's version has been reset */
-    bdberr = bdb_reset_csc2_version(tran, db->tablename, db->version);
+    bdberr = bdb_reset_csc2_version(tran, db->tablename, db->schema_version);
     if (bdberr != BDBERR_NOERROR) return SC_BDB_ERROR;
 
     /* Add latest csc2 as version 1 */
@@ -478,7 +478,7 @@ int prepare_table_version_one(tran_type *tran, struct dbtable *db,
 
 struct dbtable *create_db_from_schema(struct dbenv *thedb,
                                  struct schema_change_type *s, int dbnum,
-                                 int foundix, int version)
+                                 int foundix, int schema_version)
 {
     struct dbtable *newdb =
         newdb_from_schema(thedb, s->tablename, NULL, dbnum, foundix, 0);
@@ -490,7 +490,7 @@ struct dbtable *create_db_from_schema(struct dbenv *thedb,
     /* don't lose precious flags like this */
     newdb->instant_schema_change = s->headers && s->instant_sc;
     newdb->inplace_updates = s->headers && s->ip_updates;
-    newdb->version = version;
+    newdb->schema_version = schema_version;
 
     return newdb;
 }
@@ -989,14 +989,14 @@ void set_odh_options_tran(struct dbtable *db, tran_type *tran)
     get_db_inplace_updates_tran(db, &db->inplace_updates, tran);
     get_db_compress_tran(db, &compr, tran);
     get_db_compress_blobs_tran(db, &blob_compr, tran);
-    db->version = get_csc2_version_tran(db->tablename, tran);
+    db->schema_version = get_csc2_version_tran(db->tablename, tran);
 
     set_bdb_option_flags(db, db->odh, db->inplace_updates,
-                         db->instant_schema_change, db->version, compr,
+                         db->instant_schema_change, db->schema_version, compr,
                          blob_compr, datacopy_odh);
 
     /*
-    if (db->version < 0)
+    if (db->schema_version < 0)
         return -1;
 
     return 0;
