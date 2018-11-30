@@ -364,7 +364,7 @@ static int comdb2CheckOpAccess(void) {
     return SQLITE_OK;
 }
 
-static int comdb2AuthenticateUserOp(Parse* pParse)
+int comdb2AuthenticateUserOp(Parse* pParse)
 {
     int rc;
     rc = comdb2CheckOpAccess();
