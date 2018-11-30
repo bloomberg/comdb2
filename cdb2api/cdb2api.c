@@ -322,7 +322,6 @@ static void do_init_once(void)
     _PID = getpid();
     _MACHINE_ID = gethostid();
     _ARGV0 = getargv0();
-    srand(time(NULL));
 }
 
 /* if sqlstr is a read stmt will return 1 otherwise return 0
@@ -2071,6 +2070,33 @@ static inline int cdb2_try_connect_range(cdb2_hndl_tp *hndl, int begin, int end)
 
 static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl);
 
+/* combine hashes similar to hash_combine from boost library */
+static uint64_t val_combine(uint64_t lhs, uint64_t rhs)
+{
+    lhs ^= rhs + 0x9e3779b9 + (lhs << 6) + (lhs >> 2);
+    return lhs;
+}
+
+static int cdb2_random_int()
+{
+    static __thread unsigned short rand_state[3] = {0};
+    if (rand_state[0] == 0) {
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        /* Initialize rand_state once per thread
+         * _PID will ensure that cnonce will be different accross processes
+         * Get the initial random state by using thread id and time info. */
+        uint32_t tmp[2];
+        tmp[0] = tv.tv_sec;
+        tmp[1] = tv.tv_usec;
+        uint64_t hash = val_combine(*(uint64_t *)tmp, (uint64_t)pthread_self());
+        rand_state[0] = hash;
+        rand_state[1] = hash >> 16;
+        rand_state[2] = hash >> 32;
+    }
+    return nrand48(rand_state);
+}
+
 static inline int cdb2_try_resolve_ports(cdb2_hndl_tp *hndl)
 {
     for (int i = 0; i < hndl->num_hosts; i++) {
@@ -2102,10 +2128,10 @@ retry_connect:
     if ((hndl->node_seq == 0) &&
         ((hndl->flags & CDB2_RANDOM) || ((hndl->flags & CDB2_RANDOMROOM) &&
                                          (hndl->num_hosts_sameroom == 0)))) {
-        hndl->node_seq = rand() % hndl->num_hosts;
+        hndl->node_seq = cdb2_random_int() % hndl->num_hosts;
     } else if ((hndl->flags & CDB2_RANDOMROOM) && (hndl->node_seq == 0) &&
                (hndl->num_hosts_sameroom > 0)) {
-        hndl->node_seq = rand() % hndl->num_hosts_sameroom;
+        hndl->node_seq = cdb2_random_int() % hndl->num_hosts_sameroom;
         /* First try on same room. */
         if (0 == cdb2_try_on_same_room(hndl))
             return 0;
