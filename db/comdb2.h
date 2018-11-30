@@ -3626,4 +3626,6 @@ void plugin_run_periodically(void (*callback)(void), int seconds);
 extern int gbl_disable_tpsc_tblvers;
 int64_t gbl_result_cache_size;
 
+void plugin_run_periodically(void (*callback)(void), int seconds);
+
 #endif /* !INCLUDED_COMDB2_H */
