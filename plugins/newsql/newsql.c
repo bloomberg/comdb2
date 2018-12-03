@@ -185,7 +185,7 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
                     clnt, __func__, __LINE__,
                     "master returned "
                     "durable-lsn [%d][%d], clnt->is_hasql_retry=%d\n",
-                    *file, *offset, clnt->is_hasql_retry);
+                    snapinfo_file, snapinfo_offset, clnt->is_hasql_retry);
             } else {
                 sql_debug_logf(clnt, __func__, __LINE__,
                                "durable-lsn request "
@@ -2048,6 +2048,8 @@ extern int gbl_allow_incoherent_sql;
 
 int64_t gbl_denied_appsock_connection_count = 0;
 
+int gbl_abort_on_invalid_snapinfo = 0;
+
 #define APPDATA ((struct newsql_appdata *)(clnt.appdata))
 static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 {
@@ -2195,6 +2197,18 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         sql_query = query->sqlquery;
         APPDATA->query = query;
         APPDATA->sqlquery = sql_query;
+
+        if (sql_query->snapshot_info && sql_query->snapshot_info->file < 0) {
+            logmsg(LOGMSG_ERROR,
+                   "%s line %d: invalid lsn from client [%d][%d]\n", __func__,
+                   __LINE__, sql_query->snapshot_info->file,
+                   sql_query->snapshot_info->offset);
+            if (gbl_abort_on_invalid_snapinfo)
+                abort();
+            sql_query->snapshot_info->file = 0;
+            sql_query->snapshot_info->offset = 0;
+        }
+
         clnt.sql = sql_query->sql_query;
         if (!clnt.in_client_trans) {
             bzero(&clnt.effects, sizeof(clnt.effects));

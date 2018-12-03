@@ -87,3 +87,4 @@ rep_verify_will_recover_trace on
 
 # Log location
 #location logs /db/logs
+abort_invalid_snapinfo on

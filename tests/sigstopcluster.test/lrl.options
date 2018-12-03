@@ -83,3 +83,4 @@ on dump_blkseq
 
 # Log location
 #location logs /db/logs
+abort_invalid_snapinfo on

@@ -1535,4 +1535,10 @@ REGISTER_TUNABLE(
     "Disable table version checks for time partition schema changes",
     TUNABLE_BOOLEAN, &gbl_disable_tpsc_tblvers, NOARG, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("abort_invalid_snapinfo",
+                 "Abort server if client sends invalid snapinfo",
+                 TUNABLE_BOOLEAN, &gbl_abort_on_invalid_snapinfo,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+
 #endif /* _DB_TUNABLES_H */

@@ -5,3 +5,4 @@ do reql events n
 do reql events detailed on
 debug.osql_random_restart on
 osql_verify_retry_max 0
+abort_invalid_snapinfo on

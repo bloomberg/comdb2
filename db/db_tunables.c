@@ -200,6 +200,7 @@ extern int gbl_rep_wait_release_ms;
 extern int gbl_rep_wait_core_ms;
 extern int gbl_random_get_curtran_failures;
 extern int gbl_fail_client_write_lock;
+extern int gbl_abort_on_invalid_snapinfo;
 
 extern long long sampling_threshold;
 
