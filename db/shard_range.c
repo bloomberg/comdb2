@@ -184,9 +184,8 @@ int comdb2_shard_table_constraints(Parse *pParser, const char *zName,
                 /* column */
                 sqlite3ExprAlloc(pParse->db, TK_COLUMN, &tok, 0),
                 /* limit */
-                sqlite3ExprDup(pParse->db, db->shards[0]->limits->a[idx-1].pExpr, 0),
-                0);
-        pExprLeft->pLeft->pTab = pTab;
+                sqlite3ExprDup(pParse->db, db->shards[0]->limits->a[idx-1].pExpr, 0));
+        pExprLeft->pLeft->y.pTab = pTab;
     } else {
         pExprLeft = NULL;
     }
@@ -196,30 +195,29 @@ int comdb2_shard_table_constraints(Parse *pParser, const char *zName,
                 /* column */
                 sqlite3ExprAlloc(pParse->db, TK_COLUMN, &tok, 0),
                 /* limit */
-                sqlite3ExprDup(pParse->db, db->shards[0]->limits->a[idx].pExpr, 0),
-                0);
-        pExprRight->pLeft->pTab = pTab;
+                sqlite3ExprDup(pParse->db, db->shards[0]->limits->a[idx].pExpr, 0));
+        pExprRight->pLeft->y.pTab = pTab;
     } else {
         pExprRight = NULL;
     }
 #endif
     if (db->sharding->low[idx - 1]) {
         pExprLeft = sqlite3ExprDup(pParser->db, db->sharding->low[idx - 1], 0);
-        pExprLeft->pLeft->pTab = pTab;
+        pExprLeft->pLeft->y.pTab = pTab;
     } else {
         pExprLeft = NULL;
     }
     if (db->sharding->high[idx - 1]) {
         pExprRight =
             sqlite3ExprDup(pParser->db, db->sharding->high[idx - 1], 0);
-        pExprRight->pLeft->pTab = pTab;
+        pExprRight->pLeft->y.pTab = pTab;
     } else {
         pExprRight = NULL;
     }
     if (pExprLeft) {
         if (pExprRight) {
-            pExprRight->pLeft->pTab = pTab;
-            pExpr = sqlite3PExpr(pParser, TK_AND, pExprLeft, pExprRight, 0);
+            pExprRight->pLeft->y.pTab = pTab;
+            pExpr = sqlite3PExpr(pParser, TK_AND, pExprLeft, pExprRight);
         } else {
             pExpr = pExprLeft;
         }
@@ -228,7 +226,7 @@ int comdb2_shard_table_constraints(Parse *pParser, const char *zName,
         pExpr = pExprRight;
     }
 
-    *pWhere = sqlite3PExpr(pParser, TK_AND, *pWhere, pExpr, 0);
+    *pWhere = sqlite3PExpr(pParser, TK_AND, *pWhere, pExpr);
 
     return SHARD_NOERR_DONE;
 }
@@ -260,8 +258,7 @@ static Expr *_create_low(Parse *pParser, struct Token *col, int iColumn,
                        /* column */
                        sqlite3ExprAlloc(pParser->db, TK_COLUMN, col, 0),
                        /* limit */
-                       sqlite3ExprDup(pParser->db, list->a[shard - 2].pExpr, 0),
-                       0);
+                       sqlite3ExprDup(pParser->db, list->a[shard - 2].pExpr, 0));
     if (ret) {
         ret->pLeft->iColumn = iColumn;
     }
@@ -284,8 +281,7 @@ static Expr *_create_high(Parse *pParser, struct Token *col, int iColumn,
                        /* column */
                        sqlite3ExprAlloc(pParser->db, TK_COLUMN, col, 0),
                        /* limit */
-                       sqlite3ExprDup(pParser->db, list->a[shard - 1].pExpr, 0),
-                       0);
+                       sqlite3ExprDup(pParser->db, list->a[shard - 1].pExpr, 0));
     if (ret) {
         ret->pLeft->iColumn = iColumn;
     }
