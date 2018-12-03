@@ -628,6 +628,7 @@ int gbl_check_wrong_db = 1;
 int gbl_broken_max_rec_sz = 0;
 int gbl_private_blkseq = 1;
 int gbl_use_blkseq = 1;
+int gbl_reorder_socksql_no_deadlock = 1;
 
 char *gbl_recovery_options = NULL;
 
@@ -789,11 +790,25 @@ struct dbtable *getdbbynum(int num)
     return 0;
 }
 
+/* lockless -- thedb_lock should be gotten from caller */
 int getdbidxbyname(const char *p_name)
 {
     struct dbtable *tbl;
     tbl = hash_find_readonly(thedb->db_hash, &p_name);
     return (tbl) ? tbl->dbs_idx : -1;
+}
+
+/* get the index offset of table tablename in thedb->dbs array
+ * notice that since the caller does not hold the lock, accessing
+ * thedb->dbs[idx] can result in undefined behavior if that table
+ * is dropped and idx would point to a different table or worse
+ */
+int get_dbtable_idx_by_name(const char *tablename)
+{
+    Pthread_rwlock_rdlock(&thedb_lock);
+    int idx = getdbidxbyname(tablename);
+    Pthread_rwlock_unlock(&thedb_lock);
+    return idx;
 }
 
 struct dbtable *get_dbtable_by_name(const char *p_name)

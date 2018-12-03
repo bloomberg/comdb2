@@ -253,6 +253,7 @@ extern bool gbl_rcache;
 
 static char *name = NULL;
 static int ctrace_gzip;
+extern int gbl_reorder_socksql_no_deadlock;
 
 int gbl_ddl_cascade_drop = 1;
 extern int gbl_queuedb_genid_filename;
