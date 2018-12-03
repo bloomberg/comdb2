@@ -848,7 +848,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     struct temp_table *tmptbl = tran->db;
     if (sess->is_reorder_on) {
         setup_reorder_key(type, sess, iq, rpl, &key);
-        if (sess->last_is_ins) { // insert into ins temp table
+        if (sess->last_is_ins && tran->db_ins) { // insert into ins temp table
             tmptbl = tran->db_ins;
         }
     }
@@ -885,10 +885,12 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     if (type != OSQL_XERR) { // if tran not aborted
         int numops = osql_get_replicant_numops(rpl, rqid == OSQL_RQID_USE_UUID);
+#ifndef NDEBUG
         uuidstr_t us;
         DEBUGMSG("uuid=%s type %s numops=%d, seq=%lld %s\n",
                  comdb2uuidstr(uuid, us), osql_reqtype_str(type), numops,
                  sess->seq, (numops != sess->seq + 1 ? "NO match" : ""));
+#endif
 
         if (gbl_osql_check_replicant_numops && numops != sess->seq + 1) {
             send_error_to_replicant(
@@ -1230,6 +1232,9 @@ void osql_bplog_setlimit(int limit) { g_osql_blocksql_parallel_max = limit; }
 /************************* INTERNALS
  * ***************************************************/
 
+
+/* initialize the ins tmp table pointer to the first item if any
+ */
 static inline int init_ins_tbl(struct reqlogger *reqlogger,
                                struct temp_cursor *dbc_ins,
                                oplog_key_t **opkey_ins, uint8_t *add_stripe_p,
@@ -1249,7 +1254,7 @@ static inline int init_ins_tbl(struct reqlogger *reqlogger,
     if (rc_ins == 0)
         *opkey_ins = (oplog_key_t *)bdb_temp_table_key(dbc_ins);
 
-    // extern int bdb_get_active_stripe(bdb_state_type *bdb_state);
+    // active stripe is set from toblock_outer, that's where the adds will go
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_ROUND_ROBIN_STRIPES))
         *add_stripe_p = bdb_attr_get(
             thedb->bdb_attr, BDB_ATTR_DTASTRIPE); // add after last stripe
@@ -1259,6 +1264,9 @@ static inline int init_ins_tbl(struct reqlogger *reqlogger,
     return 0;
 }
 
+/* Fetch the data from the appropriate temp table
+ * based on drain_adds variable which is initally set to 0
+ */
 static inline void get_tmptbl_data_and_len(struct temp_cursor *dbc,
                                            struct temp_cursor *dbc_ins,
                                            bool drain_adds, char **data_p,
@@ -1273,9 +1281,12 @@ static inline void get_tmptbl_data_and_len(struct temp_cursor *dbc,
     }
 }
 
-// if key_ins tbl_idx < key tbl_idx return true
-// if tbl_idx is same, return true if add_stripe < opkey->stripe
-// return false otherwise
+/* utility function to determine if row from ins tmp tbl sorts less than
+ * row from normal temp tbl:
+ * if key_ins tbl_idx < key tbl_idx return true
+ * if tbl_idx is same, return true if add_stripe < opkey->stripe
+ * return false otherwise
+ */
 static inline bool ins_is_less(oplog_key_t *opkey_ins, oplog_key_t *opkey,
                                int add_stripe)
 {
@@ -1286,6 +1297,11 @@ static inline bool ins_is_less(oplog_key_t *opkey_ins, oplog_key_t *opkey,
            (opkey_ins->tbl_idx == opkey->tbl_idx && add_stripe < opkey->stripe);
 }
 
+/* Get the next record from either the ins tmp table or from the 
+ * generic one, depending on from where we read previous record,
+ * and on which entry is smaller (ins tmp tbl, or normal tmp tbl). 
+ * Drain adds in add_stripe only after doing the upd/dels for that stripe
+ */
 static inline int
 get_next_merge_tmps(struct temp_cursor *dbc, struct temp_cursor *dbc_ins,
                     oplog_key_t **opkey, oplog_key_t **opkey_ins,
@@ -1293,15 +1309,15 @@ get_next_merge_tmps(struct temp_cursor *dbc, struct temp_cursor *dbc_ins,
 {
     if (*drain_adds_p) {
         int rc = bdb_temp_table_next(thedb->bdb_env, dbc_ins, bdberr);
-        if (rc != 0) {
-            *drain_adds_p = 0;
+        if (rc != 0) { // ins tbl contains no more records
+            *drain_adds_p = false;
             *opkey_ins = NULL;
             return 0;
         }
 
         *opkey_ins = (oplog_key_t *)bdb_temp_table_key(dbc_ins);
         if (!ins_is_less(*opkey_ins, *opkey, add_stripe))
-            *drain_adds_p = 0;
+            *drain_adds_p = false;
     } else {
         int rc = bdb_temp_table_next(thedb->bdb_env, dbc, bdberr);
         if (rc)
@@ -1311,7 +1327,7 @@ get_next_merge_tmps(struct temp_cursor *dbc, struct temp_cursor *dbc_ins,
         /* if cursor valid for dbc_ins, and if we changed table/stripe and
          * prev table/strip match dbc_ins table/stripe then process adds */
         if (ins_is_less(*opkey_ins, *opkey, add_stripe))
-            *drain_adds_p = 1;
+            *drain_adds_p = true;
     }
     return 0;
 }
@@ -1355,7 +1371,7 @@ static int process_this_session(
     int *updCols = NULL;
 
     /* session info */
-    blob_buffer_t blobs[MAXBLOBS] = {0};
+    blob_buffer_t blobs[MAXBLOBS] = {{0}};
     int step = 0;
     int receivedrows = 0;
     int flags = 0;
@@ -1398,9 +1414,8 @@ static int process_this_session(
 
     oplog_key_t *opkey = (oplog_key_t *)bdb_temp_table_key(dbc);
     oplog_key_t *opkey_ins = NULL;
-    // do the adds after you do the upd/dels of a stripe
     uint8_t add_stripe = 0;
-    bool drain_adds = 0;
+    bool drain_adds = false; // we always start by reading normal tmp tbl
     rc = init_ins_tbl(iq->reqlogger, dbc_ins, &opkey_ins, &add_stripe, bdberr);
     if (rc)
         return rc;
@@ -1408,6 +1423,7 @@ static int process_this_session(
     while (!rc && !rc_out) {
         char *data = NULL;
         int datalen = 0;
+        // fetch the data from the appropriate temp table -- based on drain_adds
         get_tmptbl_data_and_len(dbc, dbc_ins, drain_adds, &data, &datalen);
         DEBUG_PRINT_TMPBL_READ();
 
