@@ -327,9 +327,9 @@ void sqlite3DeleteFrom(
 #endif
     
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if(!pParse->ast) pParse->ast = ast_init();
-    ast_push(pParse->ast, AST_TYPE_DELETE, v, NULL);
-#endif
+  if( !pParse->ast ) pParse->ast = ast_init();
+  ast_push(pParse->ast, AST_TYPE_DELETE, v, NULL);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 #ifdef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
   if( !isView ){
