@@ -69,6 +69,7 @@ extern int __berkdb_read_alarm_ms;
 #include "timers.h"
 #include "crc32c.h"
 #include "ssl_bend.h"
+#include "dohsql.h"
 
 #include <trigger.h>
 #include <sc_stripes.h>
@@ -204,9 +205,11 @@ static const char *HELP_STAT[] = {
     "stat switch                - show switch statuses",
     "stat clnt [#] [rates|totals]- show per client request stats",
     "stat mtrap                 - show mtrap system stats",
+    "stat dohsql                - show distributed sql stats",
     "dmpl                       - dump threads",
     "dmptrn                     - show long transaction stats",
-    "dmpcts                     - show table constraints", NULL,
+    "dmpcts                     - show table constraints",
+    NULL,
 };
 static const char *HELP_SQL[] = {
     "sql ...",
@@ -1487,8 +1490,6 @@ clipper_usage:
         int thread_id = toknum(tok, ltok);
         gbl_break_lua = thread_id;
     } else if (tokcmp(tok, ltok, "stat") == 0) {
-        /* Sam J - allow us to get much more status from an op1 window by
-         * forwarding commands to the bdb backend. */
         tok = segtok(line, lline, &st, &ltok);
         if (tokcmp(tok, ltok, "bdb") == 0) {
             /* Forward request to backend, which has its own safety checks
@@ -1751,6 +1752,8 @@ clipper_usage:
             fdb_stat_alias();
         } else if (tokcmp(tok, ltok, "uprecs") == 0) {
             upgrade_records_stats();
+        } else if (tokcmp(tok, ltok, "dohsql") == 0) {
+            dohsql_stats();
 #if WITH_SSL
         } else if (tokcmp(tok, ltok, "ssl") == 0) {
             ssl_stats();
