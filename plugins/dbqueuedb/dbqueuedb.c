@@ -45,7 +45,6 @@
 #include <epochlib.h>
 #include <bb_stdint.h>
 #include <str0.h>
-#include <machpthread.h>
 #include <memory_sync.h>
 #include <rtcpu.h>
 #include <segstring.h>
@@ -655,7 +654,7 @@ static void queue_stat(struct dbtable *db, int full, int walk_queue, int blockin
 
     if (blocking) {
         Pthread_attr_init(&attr);
-        pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
+        Pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
         pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
     }
 
@@ -768,14 +767,8 @@ void flush_in_thread(struct dbtable *db, int consumern)
     }
 
     Pthread_attr_init(&attr);
-    PTHD_ATTR_SETDETACHED(attr, rc);
-    if (rc) {
-        logmsg(LOGMSG_WARN, "%s:pthread_attr_setdetached %s", __func__,
-               strerror(rc));
-        Pthread_attr_destroy(&attr);
-        return;
-    }
-    pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
+    Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    Pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
 
     args = malloc(sizeof(struct flush_thd_data));
     if (!args) {

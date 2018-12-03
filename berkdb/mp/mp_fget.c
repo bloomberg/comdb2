@@ -1116,7 +1116,7 @@ __memp_init_pgcompact_routines(void)
 
 #ifdef PTHREAD_STACK_MIN
 	/* ~128kB stack size */
-	if (pthread_attr_setstacksize(&spgs.attrs, (PTHREAD_STACK_MIN + 0x20000)) != 0) {
+	if (Pthread_attr_setstacksize(&spgs.attrs, (PTHREAD_STACK_MIN + 0x20000)) != 0) {
 		logmsgperror("pthread_attr_setstacksize");
 		abort();
 	}
@@ -1133,6 +1133,7 @@ __memp_init_pgcompact_routines(void)
 	}
 
 	Pthread_key_create(&no_pgcompact, NULL);
+        Pthread_attr_destroy(&spgs.attrs);
 }
 /* } page compact runtines END */
 

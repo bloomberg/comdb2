@@ -243,7 +243,7 @@ struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz)
 
     Pthread_mutex_init(&pool->mutex, NULL);
     Pthread_attr_init(&pool->attrs);
-    pthread_attr_setstacksize(&pool->attrs, DEFAULT_THD_STACKSZ);
+    Pthread_attr_setstacksize(&pool->attrs, DEFAULT_THD_STACKSZ);
     pthread_attr_setdetachstate(&pool->attrs, PTHREAD_CREATE_DETACHED);
 
     /* 1 meg default mem per thread for thread_malloc() */
@@ -326,7 +326,7 @@ void thdpool_set_stack_size(struct thdpool *pool, size_t sz_bytes)
     LOCK(&pool->mutex)
     {
         pool->stack_sz = sz_bytes;
-        pthread_attr_setstacksize(&pool->attrs, pool->stack_sz);
+        Pthread_attr_setstacksize(&pool->attrs, pool->stack_sz);
     }
     UNLOCK(&pool->mutex);
 }

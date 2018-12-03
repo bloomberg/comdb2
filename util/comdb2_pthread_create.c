@@ -162,12 +162,8 @@ static void init_memptr_key(void)
     Pthread_attr_init(&free_thr_attrs);
 
 #ifdef PTHREAD_STACK_MIN
-    if (pthread_attr_setstacksize(&free_thr_attrs,
-                                  (PTHREAD_STACK_MIN + 0x4000)) != 0) {
-        logmsg(LOGMSG_FATAL, "%s:%d failed to set thr stack size.\n", __func__,
-                __LINE__);
-        abort();
-    }
+    Pthread_attr_setstacksize(&free_thr_attrs,
+                                  (PTHREAD_STACK_MIN + 0x4000));
 #endif
 
     if (pthread_attr_setdetachstate(&free_thr_attrs, PTHREAD_CREATE_DETACHED) !=

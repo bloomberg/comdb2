@@ -3281,17 +3281,12 @@ netinfo_type *create_netinfo_int(char myhostname[], int myportnum, int myfd,
     }
 
 #ifdef DEBUG
-    rc = pthread_attr_setstacksize(&(netinfo_ptr->pthread_attr_detach),
+    Pthread_attr_setstacksize(&(netinfo_ptr->pthread_attr_detach),
                                    1024 * 1024);
 #else
-    rc = pthread_attr_setstacksize(&(netinfo_ptr->pthread_attr_detach),
+    Pthread_attr_setstacksize(&(netinfo_ptr->pthread_attr_detach),
                                    1024 * 256);
 #endif
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "pthread_attr_setstacksize failed: %d %s\n", errno,
-                strerror(errno));
-        exit(1);
-    }
 
     Pthread_mutex_init(&(netinfo_ptr->connlk), NULL);
 

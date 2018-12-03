@@ -3119,7 +3119,7 @@ int osql_comm_init(struct dbenv *dbenv)
 
     Pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-    pthread_attr_setstacksize(&attr, 100 * 1024);
+    Pthread_attr_setstacksize(&attr, 100 * 1024);
 
     rc = pthread_create(&stat_hbeat_tid, &attr, osql_heartbeat_thread, NULL);
 
@@ -3128,6 +3128,8 @@ int osql_comm_init(struct dbenv *dbenv)
                 strerror(errno));
         return -1;
     }
+
+    Pthread_attr_destroy(&attr);
 
     return 0;
 }

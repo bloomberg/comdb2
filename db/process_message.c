@@ -644,7 +644,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         pthread_attr_t thd_attr;
 
         Pthread_attr_init(&thd_attr);
-        pthread_attr_setstacksize(&thd_attr, 4 * 1024); /* 4K */
+        Pthread_attr_setstacksize(&thd_attr, PTHREAD_STACK_MIN);
         pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
 
         int rc = pthread_create(&thread_id, &thd_attr, clean_exit_thd, NULL);
@@ -652,6 +652,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             logmsgperror("create exit thread: pthread_create");
             exit(1);
         }
+        Pthread_attr_destroy(&attr);
     } else if(tokcmp(tok,ltok, "partinfo")==0) {
         char opt[128];
 

@@ -2982,7 +2982,7 @@ static int db_create_thread_int(Lua lua, const char *funcname)
     pthread_attr_t attr; // small stack for dispatch_lua_thread
     Pthread_attr_init(&attr);
 #ifdef PTHREAD_STACK_MIN
-    pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN + 16 * 1024);
+    Pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN + 16 * 1024);
 #endif
     rc = pthread_create(&thd->lua_tid, &attr, dispatch_lua_thread, thd);
     Pthread_attr_destroy(&attr);
