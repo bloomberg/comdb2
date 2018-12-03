@@ -364,7 +364,7 @@ static int comdb2CheckOpAccess(void) {
     return SQLITE_OK;
 }
 
-static int comdb2AuthenticateUserOp(Parse* pParse)
+int comdb2AuthenticateUserOp(Parse* pParse)
 {
     int rc;
     rc = comdb2CheckOpAccess();
@@ -1276,6 +1276,9 @@ clean_arg:
 
 void comdb2enableGenid48(Parse* pParse, int enable)
 {
+    if (comdb2AuthenticateUserOp(pParse))
+        return;
+
     Vdbe *v  = sqlite3GetVdbe(pParse);
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
 
@@ -1306,6 +1309,9 @@ err:
 
 void comdb2enableRowlocks(Parse* pParse, int enable)
 {
+    if (comdb2AuthenticateUserOp(pParse))
+        return;
+
     Vdbe *v  = sqlite3GetVdbe(pParse);
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
 
@@ -1969,11 +1975,17 @@ out:
 
 void comdb2schemachangeCommitsleep(Parse* pParse, int num)
 {
+    if (comdb2AuthenticateUserOp(pParse))
+        return;
+
     gbl_commit_sleep = num;
 }
 
 void comdb2schemachangeConvertsleep(Parse* pParse, int num)
 {
+    if (comdb2AuthenticateUserOp(pParse))
+        return;
+
     gbl_convert_sleep = num;
 }
 
@@ -5176,6 +5188,9 @@ void comdb2putTunable(Parse *pParse, Token *name, Token *value)
     char *t_value = NULL;
     int rc;
     comdb2_tunable_err err;
+
+    if (comdb2AuthenticateUserOp(pParse))
+        return;
 
     rc = create_string_from_token(NULL, pParse, &t_name, name);
     if (rc != SQLITE_OK)
