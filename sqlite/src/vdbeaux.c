@@ -5610,9 +5610,8 @@ Mem* sqlite3CloneResult(
   nCols = p->nResColumn;
   pCols = p->pResultSet;
   if( !pMem ){
-    pMem = sqlite3DbMalloc(p->db, sizeof(Mem) * nCols);
+    pMem = sqlite3DbMallocZero(p->db, sizeof(Mem) * nCols);
     if( !pMem ) return 0;
-    memset(pMem, 0, sizeof(Mem) * nCols);
   }
   for(i=0; i<nCols; i++){
     rc = sqlite3VdbeMemCopy(&pMem[i], &pCols[i]);
