@@ -2731,13 +2731,10 @@ int sqlite3CodeSubselect(
       pKeyInfo = isRowid ? 0 : sqlite3KeyInfoAlloc(pParse->db, nVal, 1);
 
       if( ExprHasProperty(pExpr, EP_xIsSelect) ){
-
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-          if(!pParse->ast) pParse->ast = ast_init();
-          ast_push(pParse->ast, AST_TYPE_IN, v, NULL);
-#endif
-
+        if( !pParse->ast ) pParse->ast = ast_init();
+        ast_push(pParse->ast, AST_TYPE_IN, v, NULL);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         /* Case 1:     expr IN (SELECT ...)
         **
         ** Generate code to write the results of the select into the temporary

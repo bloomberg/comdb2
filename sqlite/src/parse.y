@@ -132,7 +132,9 @@ ecmd ::= cmdx SEMI.
 ecmd ::= explain cmdx.
 explain ::= EXPLAIN.              { pParse->explain = 1; }
 explain ::= EXPLAIN QUERY PLAN.   { pParse->explain = 2; }
+%ifdef SQLITE_BUILDING_FOR_COMDB2
 explain ::= EXPLAIN DISTRIBUTION. { pParse->explain = 3; }
+%endif SQLITE_BUILDING_FOR_COMDB2
 %endif  SQLITE_OMIT_EXPLAIN
 cmdx ::= cmd.           { sqlite3FinishCoding(pParse); }
 
@@ -521,9 +523,6 @@ tcons ::= PRIMARY KEY LP sortlist(X) autoinc(I) RP onconf(R).
 tcons ::= UNIQUE LP sortlist(X) RP onconf(R).
                                  {sqlite3CreateIndex(pParse,0,0,0,X,R,0,0,0,0,
                                        SQLITE_IDXTYPE_UNIQUE);}
-tcons ::= INDEX nm_opt(I) LP sortlist(X) RP with_opt(O) scanpt(BW) where_opt(W) scanpt(AW).
-                                 {comdb2AddIndex(pParse,&I,X,0,W,BW,AW,
-                                       SQLITE_SO_ASC,SQLITE_IDXTYPE_DUPKEY,O);}
 %endif !SQLITE_BUILDING_FOR_COMDB2
 %ifdef SQLITE_BUILDING_FOR_COMDB2
 %type nm_opt {Token}
@@ -539,6 +538,9 @@ tcons ::= PRIMARY KEY LP sortlist(X) autoinc(I) RP onconf(R). {
 }
 tcons ::= UNIQUE nm_opt(I) LP sortlist(X) RP onconf(R) with_opt(O) scanpt(BW) where_opt(W) scanpt(AW). {
   comdb2AddIndex(pParse, &I, X, R, W, BW, AW, SQLITE_SO_ASC, SQLITE_IDXTYPE_UNIQUE, O);
+}
+tcons ::= INDEX nm_opt(I) LP sortlist(X) RP with_opt(O) scanpt(BW) where_opt(W) scanpt(AW). {
+  comdb2AddIndex(pParse, &I, X, 0, W, BW, AW, SQLITE_SO_ASC, SQLITE_IDXTYPE_DUPKEY, O);
 }
 tcons ::= FOREIGN KEY LP eidlist(FA) RP
           REFERENCES nm(T) LP eidlist(TA) RP refargs(R) defer_subclause_opt(D). {

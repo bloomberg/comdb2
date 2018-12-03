@@ -239,9 +239,9 @@ void sqlite3Update(
 #endif
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if(!pParse->ast) pParse->ast = ast_init();
-    ast_push(pParse->ast, AST_TYPE_UPDATE, v, NULL);
-#endif
+  if( !pParse->ast ) pParse->ast = ast_init();
+  ast_push(pParse->ast, AST_TYPE_UPDATE, v, NULL);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 #ifdef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
   if( !isView ){
