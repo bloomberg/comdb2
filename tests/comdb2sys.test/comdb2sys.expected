@@ -83,7 +83,7 @@
 [select * from comdb2_tablesizes order by tablename] rc 0
 (KEYWORDS_COUNT=200)
 [SELECT COUNT(*) AS KEYWORDS_COUNT FROM comdb2_keywords] rc 0
-(RESERVED_KW=199)
+(RESERVED_KW=200)
 [SELECT COUNT(*) AS RESERVED_KW FROM comdb2_keywords WHERE reserved = 'Y'] rc 0
 (NONRESERVED_KW=0)
 [SELECT COUNT(*) AS NONRESERVED_KW FROM comdb2_keywords WHERE reserved = 'N'] rc 0
