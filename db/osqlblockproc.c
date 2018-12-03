@@ -124,12 +124,12 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
 static int osql_bplog_wait(blocksql_tran_t *tran);
 static int req2blockop(int reqtype);
 
-#define CMP_KEY_MEMBER(k1, k2, var) \
-    if (k1->var < k2->var) { \
-        return -1; \
-    } \
-    if (k1->var > k2->var) { \
-        return 1; \
+#define CMP_KEY_MEMBER(k1, k2, var)                                            \
+    if (k1->var < k2->var) {                                                   \
+        return -1;                                                             \
+    }                                                                          \
+    if (k1->var > k2->var) {                                                   \
+        return 1;                                                              \
     }
 
 /**
@@ -721,6 +721,7 @@ void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
     case OSQL_UPDCOLS: {
         key->tbl_idx = sess->tbl_idx;
         key->genid = sess->last_genid;
+        /* NB: this stripe is only used for ordering, NOT for inserting */
         key->stripe = get_dtafile_from_genid(key->genid);
         assert(key->stripe >= 0);
         break;
