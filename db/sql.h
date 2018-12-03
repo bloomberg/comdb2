@@ -122,6 +122,8 @@ typedef struct osqlstate {
     int tablenamelen;        /* tablename length */
     int sentops;             /* number of operations per statement */
     int tran_ops;            /* actual number of operations for a transaction */
+    int replicant_numops; /* total num of ops sent by replicant to master which
+                             includes USEDB, BLOB, etc. */
 
     SBUF2 *logsb; /* help debugging */
 
@@ -262,6 +264,8 @@ void currange_free(CurRange *cr);
 
 struct stored_proc;
 struct lua_State;
+struct dohsql;
+typedef struct dohsql dohsql_t;
 
 enum early_verify_error {
     EARLY_ERR_VERIFY = 1,
@@ -339,6 +343,9 @@ typedef int(skip_row_func)(struct sqlclntstate *, uint64_t);
 typedef int(log_context_func)(struct sqlclntstate *, struct reqlogger *);
 typedef uint64_t(ret_uint64_func)(struct sqlclntstate *);
 
+#define SQLITE_CALLBACK_API(ret, name)                                         \
+    ret (*column_##name)(struct sqlclntstate *, sqlite3_stmt *, int)
+
 struct plugin_callbacks {
     response_func *write_response; /* newsql_write_response */
     response_func *read_response; /* newsql_read_response */
@@ -369,6 +376,7 @@ struct plugin_callbacks {
     plugin_func *set_high_availability; /* newsql_set_high_availability */
     plugin_func *clr_high_availability; /* newsql_clr_high_availability */
     plugin_func *get_high_availability; /* newsql_get_high_availability*/
+    plugin_func *has_parallel_sql;      /* newsql_has_parallel_sql */
 
     add_steps_func *add_steps; /* newsql_add_steps */
     setup_client_info_func *setup_client_info; /* newsql_setup_client_info */
@@ -377,10 +385,28 @@ struct plugin_callbacks {
     ret_uint64_func *get_client_starttime; /* newsql_get_client_starttime */
     plugin_func *get_client_retries;       /* newsql_get_client_retries */
     plugin_func *send_intrans_response; /* newsql_send_intrans_response */
+    /* optional */
+    void *state;
+    int (*column_count)(struct sqlclntstate *,
+                        sqlite3_stmt *); /* sqlite3_column_count */
+    int (*next_row)(struct sqlclntstate *, sqlite3_stmt *); /* sqlite3_step */
+    SQLITE_CALLBACK_API(int, type);                   /* sqlite3_column_type */
+    SQLITE_CALLBACK_API(sqlite_int64, int64);         /* sqlite3_column_int64*/
+    SQLITE_CALLBACK_API(double, double);              /* sqlite3_column_double*/
+    SQLITE_CALLBACK_API(const unsigned char *, text); /* sqlite3_column_text */
+    SQLITE_CALLBACK_API(int, bytes);                  /* sqlite3_column_bytes */
+    SQLITE_CALLBACK_API(const void *, blob);          /* sqlite3_column_bytes */
+    SQLITE_CALLBACK_API(const dttz_t *, datetime); /* sqlite3_column_datetime */
+    const intv_t *(*column_interval)(struct sqlclntstate *, sqlite3_stmt *, int,
+                                     int); /* sqlite3_column_interval*/
+    int (*sqlite_error)(struct sqlclntstate *, sqlite3_stmt *,
+                        const char **errstr); /* sqlite3_errcode */
 };
 
 #define make_plugin_callback(clnt, name, func)                                 \
     (clnt)->plugin.func = name##_##func
+#define make_plugin_optional_null(clnt, name)                                  \
+    (clnt)->plugin.column_##name = NULL
 
 #define plugin_set_callbacks(clnt, name)                                       \
     do {                                                                       \
@@ -405,6 +431,7 @@ struct plugin_callbacks {
         make_plugin_callback(clnt, name, set_high_availability);               \
         make_plugin_callback(clnt, name, clr_high_availability);               \
         make_plugin_callback(clnt, name, get_high_availability);               \
+        make_plugin_callback(clnt, name, has_parallel_sql);                    \
         make_plugin_callback(clnt, name, add_steps);                           \
         make_plugin_callback(clnt, name, setup_client_info);                   \
         make_plugin_callback(clnt, name, skip_row);                            \
@@ -412,6 +439,17 @@ struct plugin_callbacks {
         make_plugin_callback(clnt, name, get_client_starttime);                \
         make_plugin_callback(clnt, name, get_client_retries);                  \
         make_plugin_callback(clnt, name, send_intrans_response);               \
+        make_plugin_optional_null(clnt, count);                                \
+        make_plugin_optional_null(clnt, type);                                 \
+        make_plugin_optional_null(clnt, int64);                                \
+        make_plugin_optional_null(clnt, double);                               \
+        make_plugin_optional_null(clnt, text);                                 \
+        make_plugin_optional_null(clnt, bytes);                                \
+        make_plugin_optional_null(clnt, blob);                                 \
+        make_plugin_optional_null(clnt, datetime);                             \
+        make_plugin_optional_null(clnt, interval);                             \
+        (clnt)->plugin.state = NULL;                                           \
+        (clnt)->plugin.next_row = NULL;                                        \
     } while (0)
 
 int param_count(struct sqlclntstate *);
@@ -420,6 +458,7 @@ int param_value(struct sqlclntstate *, struct param_data *, int);
 int override_count(struct sqlclntstate *);
 int get_cnonce(struct sqlclntstate *, snap_uid_t *);
 int has_high_availability(struct sqlclntstate *);
+int has_parallel_sql(struct sqlclntstate *);
 int set_high_availability(struct sqlclntstate *);
 int clr_high_availability(struct sqlclntstate *);
 uint64_t get_client_starttime(struct sqlclntstate *);
@@ -433,6 +472,10 @@ struct clnt_ddl_context {
     /* Memory allocator of the comdb2_ddl_context */
     comdb2ma mem;
 };
+
+#if INSTRUMENT_RECOVER_DEADLOCK_FAILURE
+#define RECOVER_DEADLOCK_MAX_STACK 16348
+#endif
 
 /* Client specific sql state */
 struct sqlclntstate {
@@ -459,8 +502,9 @@ struct sqlclntstate {
     /* For SQL engine dispatch. */
     int inited_mutex;
     pthread_mutex_t wait_mutex;
-    pthread_mutex_t write_lock;
     pthread_cond_t wait_cond;
+    pthread_mutex_t write_lock;
+    pthread_cond_t write_cond;
     int query_rc;
 
     struct rawnodestats *rawnodestats;
@@ -639,6 +683,13 @@ struct sqlclntstate {
     int statement_query_effects;
 
     int verify_remote_schemas;
+
+    /* sharding scheme */
+    dohsql_t *conns;
+    int nconns;
+    int conns_idx;
+    int shard_slice;
+
     char *argv0;
     char *stack;
 
@@ -646,6 +697,16 @@ struct sqlclntstate {
     int admin;
 
     uint32_t start_gen;
+    int emitting_flag;
+    int need_recover_deadlock;
+    int recover_deadlock_rcode;
+    int heartbeat_lock;
+#ifdef INSTRUMENT_RECOVER_DEADLOCK_FAILURE
+    const char *recover_deadlock_func;
+    int recover_deadlock_line;
+    pthread_t recover_deadlock_thd;
+    char recover_deadlock_stack[RECOVER_DEADLOCK_MAX_STACK];
+#endif
 };
 
 /* Query stats. */
@@ -871,6 +932,9 @@ struct sql_thread {
     unsigned char had_temptables;
     unsigned char had_tablescans;
     pthread_mutex_t *temp_table_mtx; /* for "sqlglue.c" temp table subsystem */
+
+    /* current shard; cut 0 we support only one partition */
+    int crtshard;
 };
 
 /* makes master swing verbose */
@@ -890,6 +954,10 @@ extern int gbl_master_swing_sock_restart_sleep;
  */
 int get_curtran(bdb_state_type *bdb_state, struct sqlclntstate *clnt);
 int put_curtran(bdb_state_type *bdb_state, struct sqlclntstate *clnt);
+int get_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
+                      uint32_t flags);
+int put_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
+                      uint32_t flags);
 
 unsigned long long osql_log_time(void);
 void osql_log_time_done(struct sqlclntstate *clnt);
@@ -991,6 +1059,22 @@ response_func write_response;
 response_func read_response;
 int sql_writer(SBUF2 *, const char *, int);
 int typestr_to_type(const char *ctype);
+int column_count(struct sqlclntstate *, sqlite3_stmt *);
+int sqlite_error(struct sqlclntstate *, sqlite3_stmt *, const char **errstr);
+int next_row(struct sqlclntstate *, sqlite3_stmt *);
+int sqlite_stmt_error(sqlite3_stmt *stmt, const char **errstr);
+
+#define SQLITE_PROTO_API(ret, type)                                            \
+    ret column_##type(struct sqlclntstate *, sqlite3_stmt *, int)
+
+SQLITE_PROTO_API(int, type);
+SQLITE_PROTO_API(sqlite_int64, int64);
+SQLITE_PROTO_API(double, double);
+SQLITE_PROTO_API(const unsigned char *, text);
+SQLITE_PROTO_API(int, bytes);
+SQLITE_PROTO_API(const void *, blob);
+SQLITE_PROTO_API(const dttz_t *, datetime);
+const intv_t *column_interval(struct sqlclntstate *, sqlite3_stmt *, int, int);
 
 struct query_stats {
     int64_t nfstrap;

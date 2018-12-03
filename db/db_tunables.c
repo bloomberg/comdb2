@@ -195,6 +195,11 @@ extern int gbl_handle_buf_add_latency_ms;
 extern int gbl_osql_send_startgen;
 extern int gbl_create_default_user;
 extern int gbl_allow_neg_column_size;
+extern int gbl_client_heartbeat_ms;
+extern int gbl_rep_wait_release_ms;
+extern int gbl_rep_wait_core_ms;
+extern int gbl_random_get_curtran_failures;
+extern int gbl_fail_client_write_lock;
 
 extern long long sampling_threshold;
 
@@ -256,6 +261,7 @@ extern int gbl_queuedb_timeout_sec;
 extern int gbl_timeseries_metrics;
 extern int gbl_metric_maxpoints;
 extern int gbl_metric_maxage;
+extern int gbl_osql_check_replicant_numops;
 
 /*
   =========================================================

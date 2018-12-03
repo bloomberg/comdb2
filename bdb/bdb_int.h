@@ -1787,6 +1787,14 @@ void poke_updateid(void *buf, int updateid);
 void bdb_genid_sanity_check(bdb_state_type *bdb_state, unsigned long long genid,
                             int stripe);
 
+/* If the page is from a dta file, `data` is a genid and `size` is 8 bytes.
+   If the page is from an index file, `data` is (ixdata + genid) and
+   `size` is sizeof(genid) + max record size. */
+
+#include <cdb2_constants.h> /* for COMDB2_MAX_RECORD_SIZE */
+#include "genid.h"          /* for genid_t */
+#define PGCOMPMAXLEN (sizeof(genid_t) + COMDB2_MAX_RECORD_SIZE)
+
 /* Request on the wire */
 typedef struct pgcomp_snd {
     int32_t id;

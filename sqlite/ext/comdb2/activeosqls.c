@@ -72,7 +72,7 @@ static int collect_osql_session(void *obj, void *arg)
         o->id = malloc(20);
         snprintf(o->id, 20, "%llx", rq->rqid);
     }
-    o->nops = clnt->osql.sentops;
+    o->nops = clnt->osql.replicant_numops;
     o->start_time = rq->register_time;
     o->commit_time = clnt->osql.timings.commit_start;
     o->nretries = clnt->verify_retries;

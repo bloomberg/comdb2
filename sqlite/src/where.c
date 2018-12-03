@@ -43,6 +43,9 @@ static int whereLoopResize(sqlite3*, WhereLoop*, int);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) || defined(SQLITE_TEST) || defined(SQLITE_DEBUG) */
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+int shard_check_parallelism(int iTable);
+int comdb2_shard_table_constraints(Parse *pParse, 
+        const char *zName, const char *zDatabase, Expr **pWhere);
 int is_comdb2_index_unique(const char *tbl, char *idx);
 int comdb2_get_planner_effort();
 
@@ -4654,6 +4657,15 @@ WhereInfo *sqlite3WhereBegin(
   int rc;                    /* Return code */
   u8 bFordelete = 0;         /* OPFLAG_FORDELETE or zero, as appropriate */
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  Expr *pNewExpr = pWhere;
+  if( pTabList->nSrc>0 &&
+      comdb2_shard_table_constraints(pParse, pTabList->a[0].zName,
+                                     pTabList->a[0].zDatabase, &pNewExpr) ){
+    pWhere = pNewExpr;
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
   assert( (wctrlFlags & WHERE_ONEPASS_MULTIROW)==0 || (
         (wctrlFlags & WHERE_ONEPASS_DESIRED)!=0 
      && (wctrlFlags & WHERE_OR_SUBCLAUSE)==0 
@@ -5103,6 +5115,13 @@ WhereInfo *sqlite3WhereBegin(
       if( op ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
         sqlite3VdbeAddTable(v, pTab);
+        /* we are encoding an index access; for the outer most index scan, 
+           try to parallelize the access */
+        if( shard_check_parallelism(pIx->tnum) ){
+          pParse->rc = SQLITE_SCHEMA;
+          pParse->nErr++;
+          goto whereBeginError;
+        }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
         sqlite3VdbeAddOp3(v, op, iIndexCur, pIx->tnum, iDb);

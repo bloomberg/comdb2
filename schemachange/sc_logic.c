@@ -308,7 +308,7 @@ static int do_finalize(ddl_t func, struct ireq *iq,
 
 static int check_table_version(struct ireq *iq, struct schema_change_type *sc)
 {
-    if (sc->addonly || sc->resume)
+    if (sc->addonly || sc->resume || sc->fix_tp_badvers)
         return 0;
     int rc, bdberr;
     unsigned long long version;
@@ -1098,7 +1098,7 @@ int delete_temp_table(struct ireq *iq, struct dbtable *newdb)
 
     for (i = 0; i < 1000; i++) {
         if (!s->retry_bad_genids)
-            sc_errf(s, "removing temp table for <%s>\n", newdb->tablename);
+            sc_printf(s, "removing temp table for <%s>\n", newdb->tablename);
         if ((rc = bdb_del(newdb->handle, tran, &bdberr)) ||
             bdberr != BDBERR_NOERROR) {
             rc = -1;
@@ -1264,9 +1264,9 @@ int dryrun_int(struct schema_change_type *s, struct dbtable *db, struct dbtable 
         } else {
             sbuf2printf(s->sb, ">There is no change in the schema\n");
         }
-    } else if (db->version >= MAXVER && newdb->instant_schema_change) {
-        sbuf2printf(s->sb, ">Table is at version: %d MAXVER: %d\n", db->version,
-                    MAXVER);
+    } else if (db->schema_version >= MAXVER && newdb->instant_schema_change) {
+        sbuf2printf(s->sb, ">Table is at version: %d MAXVER: %d\n", 
+                    db->schema_version, MAXVER);
         sbuf2printf(s->sb, ">Will need to rebuild table\n");
     }
 
@@ -1290,7 +1290,6 @@ int backout_schema_changes(struct ireq *iq, tran_type *tran)
                 delete_db(s->tablename);
             if (s->newdb) {
                 backout_schemas(s->newdb->tablename);
-                cleanup_newdb(s->newdb);
             }
         } else if (s->db) {
             if (s->already_finalized)
@@ -1316,10 +1315,13 @@ int scdone_abort_cleanup(struct ireq *iq)
     struct schema_change_type *s = iq->sc;
     mark_schemachange_over(s->tablename);
     sc_set_running(s->tablename, 0, iq->sc_seed, gbl_mynode, time(NULL));
-    if (s->addonly && s->db->handle) {
-        delete_temp_table(iq, s->db);
-    } else if (s->db) {
-        sc_del_unused_files(s->db);
+    if (s->db && s->db->handle) {
+        if (s->addonly) {
+            delete_temp_table(iq, s->db);
+            cleanup_newdb(s->db);
+        } else {
+            sc_del_unused_files(s->db);
+        }
     }
     broadcast_sc_end(s->tablename, iq->sc_seed);
     return 0;

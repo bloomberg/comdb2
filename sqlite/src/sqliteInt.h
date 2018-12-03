@@ -19,6 +19,7 @@
 #include <cheapstack.h>
 #include "tunables.h"
 #include "fwd_types.h"
+#include "ast.h"
 #undef debug_raw
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
@@ -3003,6 +3004,9 @@ struct Select {
 #define SF_Converted      0x10000  /* By convertCompoundSelectToSubquery() */
 #define SF_IncludeHidden  0x20000  /* Include hidden columns in output */
 #define SF_ComplexResult  0x40000  /* Result contains subquery or function */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#define SF_ASTIncluded  0x1000000  /* AST Generated */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** The results of a SELECT can be distributed in several ways, as defined
@@ -3292,6 +3296,7 @@ struct Parse {
   int recording[MAX_CURSOR_IDS/sizeof(int)]; /* which cursors are recording? */
   u8 write;                 /* Write transaction during sqlite3FinishCoding? */
   Cdb2DDL *comdb2_ddl_ctx;  /* Context for DDL commands */
+  ast_t *ast;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
@@ -4939,6 +4944,11 @@ void sqlite3FingerprintDelete(sqlite3 *db, SrcList *pTabList, Expr *pWhere);
 void sqlite3FingerprintInsert(sqlite3 *db, SrcList *, Select *, IdList *, With *);
 void sqlite3FingerprintUpdate(sqlite3 *db, SrcList *pTabList, ExprList *pChanges, Expr *pWhere, int onError);
 void comdb2WriteTransaction(Parse*);
+
+int sqlite3RecordCompareExprList(UnpackedRecord *rec, Mem *mems);
+int sqlite3ExprList2MemArray(ExprList *list, Mem *mems);
+Mem* sqlite3CloneResult(sqlite3_stmt *pStmt, Mem *cols);
+int sqlite3CloneResultFree(sqlite3_stmt *pStmt, Mem **cols);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 int sqlite3ExprVectorSize(Expr *pExpr);

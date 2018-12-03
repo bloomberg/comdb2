@@ -969,12 +969,15 @@ llmeta_tbl_op_access_put(struct llmeta_tbl_op_access *p_tbl_access,
 
 /*******************************************************************************/
 
+enum { LLMETA_USER_LEN = 16 };
+
 struct llmeta_user_password {
     int file_type;
-    char user[16];
+    char user[LLMETA_USER_LEN];
 };
 
-enum { LLMETA_USER_PASSWORD_LEN = 4 + 16 };
+enum { LLMETA_USER_PASSWORD_LEN = LLMETA_FILE_TYPE_KEY_LEN  + LLMETA_USER_LEN };
+
 BB_COMPILE_TIME_ASSERT(llmeta_user_password_len,
                        sizeof(struct llmeta_user_password) ==
                            LLMETA_USER_PASSWORD_LEN);
@@ -8470,7 +8473,9 @@ int bdb_get_default_versioned_sp(char *name, char **version)
         uint8_t buf[LLMETA_IXLEN];
     } u = {{0}};
     u.sp.key = htonl(LLMETA_DEFAULT_VERSIONED_SP);
-    strcpy(u.sp.name, name);
+    if (strlen(name) >= LLMETA_IXLEN)
+        return -1;
+    strncpy(u.sp.name, name, sizeof(u.sp.name));
     char **versions;
     int rc, bdberr, num;
     rc = kv_get(&u, sizeof(u), (void ***)&versions, &num, &bdberr);
@@ -8714,60 +8719,71 @@ typedef struct {
         passwd_v0 p0;
     } u;
 } passwd_hash;
-#define ITERATIONS 1000
+static int llmeta_get_user_passwd(char *user, llmetakey_t type, void ***out)
+{
+    int bdberr;
+    int num = 0;
+    passwd_key key;
+    memset(&key, 0, sizeof(key));
+    key.passwd.file_type = htonl(type);
+    strcpy(key.passwd.user, user);
+    int rc = kv_get(&key, sizeof(key), out, &num, &bdberr);
+    if (rc == 0 && num == 1) return 0;
+    if (*out) {
+        void **data = *out;
+        for (int i = 0; i < num; ++i) {
+            free(data[i]);
+        }
+        free(*out);
+        *out = NULL;
+    }
+    return 1;
+}
+#define ITERATIONS_V0 1000
+#define ITERATIONS_V1 16 * 1024
 int bdb_user_password_check(char *user, char *passwd, int *valid_user)
 {
-    passwd_key key = {{0}};
-    if (valid_user)
-        *valid_user = 0;
-    size_t ulen = strlen(user) + 1;
-    if (ulen > sizeof(key.passwd.user))
-        return -1;
-    // check cleartext password
-    memcpy(key.passwd.user, user, ulen);
-    key.passwd.file_type = htonl(LLMETA_USER_PASSWORD);
+    int passwd_rc = 1;
     void **data = NULL;
-    int bdberr, num = 0, rc = 1;
-    rc = kv_get(&key, sizeof(key), &data, &num, &bdberr);
-    if (rc == 0 && num == 1) {
-        rc = strcmp(data[0], passwd);
+    if (valid_user) {
+        *valid_user = 0;
+    }
+    size_t ulen = strlen(user) + 1;
+    if (ulen > LLMETA_USER_LEN) {
+        goto out;
+    }
+    // check cleartext password
+    if (llmeta_get_user_passwd(user, LLMETA_USER_PASSWORD, &data) == 0) {
+        passwd_rc = strcmp(data[0], passwd);
         if (valid_user)
             *valid_user = 1;
-        goto out;
-    } else if (rc || num < 0 || num > 1) {
-        logmsg(LOGMSG_ERROR, "%s rc:%d num:%d\n", __func__, rc, num);
-        rc = 1;
         goto out;
     }
     // check password hash
-    key.passwd.file_type = htonl(LLMETA_USER_PASSWORD_HASH);
-    rc = kv_get(&key, sizeof(key), &data, &num, &bdberr);
-    if (rc == 0 && num == 1) {
-        passwd_hash computed, *stored = data[0];
-        if (stored->ver != 0) {
-            logmsg(LOGMSG_ERROR, "unknown password version");
-            goto out;
-        }
-        if (valid_user)
-            *valid_user = 1;
-        PKCS5_PBKDF2_HMAC_SHA1(passwd, strlen(passwd), stored->u.p0.salt,
-                               sizeof(stored->u.p0.salt), ITERATIONS,
-                               sizeof(computed.u.p0.hash), computed.u.p0.hash);
-        rc = CRYPTO_memcmp(computed.u.p0.hash, stored->u.p0.hash,
-                    sizeof(stored->u.p0.hash));
-        goto out;
-    } else {
-        logmsg(LOGMSG_ERROR, "%s rc:%d num:%d\n", __func__, rc, num);
-        rc = 1;
+    if (llmeta_get_user_passwd(user, LLMETA_USER_PASSWORD_HASH, &data) != 0) {
         goto out;
     }
+    unsigned iterations;
+    passwd_hash computed, *stored = data[0];
+    switch (stored->ver) {
+    case 0: iterations = ITERATIONS_V0; break;
+    case 1: iterations = ITERATIONS_V1; break;
+    default: logmsg(LOGMSG_ERROR, "bad passwd ver:%u", stored->ver); goto out;
+    }
+    if (valid_user) {
+        *valid_user = 1;
+    }
+    PKCS5_PBKDF2_HMAC_SHA1(passwd, strlen(passwd), stored->u.p0.salt,
+                           sizeof(stored->u.p0.salt), iterations,
+                           sizeof(computed.u.p0.hash), computed.u.p0.hash);
+    passwd_rc = CRYPTO_memcmp(computed.u.p0.hash, stored->u.p0.hash,
+                sizeof(stored->u.p0.hash));
 out:
     if (data) {
-        for (int i = 0; i < num; ++i)
-            free(data[i]);
+        free(*data);
         free(data);
     }
-    return rc;
+    return passwd_rc;
 }
 int bdb_user_password_set(tran_type *tran, char *user, char *passwd)
 {
@@ -8783,10 +8799,10 @@ int bdb_user_password_set(tran_type *tran, char *user, char *passwd)
         return rc;
     key.passwd.file_type = htonl(LLMETA_USER_PASSWORD_HASH);
     passwd_hash data;
-    data.ver = 0;
+    data.ver = 1;
     RAND_bytes(data.u.p0.salt, sizeof(data.u.p0.salt));
     PKCS5_PBKDF2_HMAC_SHA1(passwd, strlen(passwd), data.u.p0.salt,
-                           sizeof(data.u.p0.salt), ITERATIONS,
+                           sizeof(data.u.p0.salt), ITERATIONS_V1,
                            sizeof(data.u.p0.hash), data.u.p0.hash);
     return kv_put(tran, &key, &data, sizeof(data), &bdberr);
 }

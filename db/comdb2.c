@@ -2041,7 +2041,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname)
             rc = 1;
             break;
         }
-        tbl->version = ver;
+        tbl->schema_version = ver;
 
         /* We only want to load older schema versions for ODH databases.  ODH
          * information
@@ -4930,9 +4930,6 @@ static void register_all_int_switches()
     register_int_switch("debug_sqlthd_failures",
                         "Force sqlthd failures in unusual places",
                         &gbl_debug_sqlthd_failures);
-    register_int_switch("random_get_curtran_failures",
-                        "Force random get_curtran failures",
-                        &gbl_random_get_curtran_failures);
     register_int_switch("abort_invalid_query_info_key",
                         "Abort in thread-teardown for invalid query_info_key",
                         &gbl_abort_invalid_query_info_key);
@@ -5289,7 +5286,7 @@ int rename_db(struct dbtable *db, const char *newname)
     /* db */
     hash_del(thedb->db_hash, db);
     db->tablename = (char *)newname;
-    db->version = 0; /* reset, new table */
+    db->schema_version = 0; /* reset, new table */
     hash_add(thedb->db_hash, db);
 
     Pthread_rwlock_unlock(&thedb_lock);

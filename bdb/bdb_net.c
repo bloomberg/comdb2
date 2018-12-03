@@ -912,12 +912,6 @@ int send_pg_compact_req(bdb_state_type *bdb_state, int32_t fileid,
     uint8_t *p_buf;
     repinfo_type *repinfo;
 
-/* If the page is from a dta file, `data` is a genid and `size` is 8 bytes.
-   However we may have variant-length data if the page is from ix where `data`
-   is (ixdata + genid).  Given the fact that we don't touch overflow pages
-   and comdb2 maximum page size is 64K, `size` can't be larger than 32K. */
-#define PGCOMPMAXLEN (1U << 15)
-
     if (size > PGCOMPMAXLEN)
         return E2BIG;
 

@@ -1175,7 +1175,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                         "DTALEN %u FNDLEN %u VER %d RC %d",
                     rrn, vgenid, od_len, fndlen, ver, rc);
 
-            if (rc == 0 && ver == iq->usedb->version) {
+            if (rc == 0 && ver == iq->usedb->schema_version) {
                 // record is at ondisk version, return
                 retrc = rc;
                 goto err;
@@ -1541,6 +1541,9 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
           - if the key doesnt allow dups (it doesnt contain a genid) then we
             can always do an in place key update if the key didnt change,
             ie, poke in the new genid to the dta portion of the key.
+          - *NOTE* the above is no longer always true if the 'uniqnulls'
+            option is enabled for the key.  in that case, in place key update
+            cannot be done if any key component is actually NULL.
           - if the key allows dups (has a genid on the right side of the key)
             then we can only do the in place update if the genid (minus the
             updateid portion) didnt change, ie if an in place dta update
@@ -1550,7 +1553,8 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 
         int key_unique = (iq->usedb->ix_dupes[ixnum] == 0);
         int same_key = (memcmp(newkey, oldkey, keysize) == 0);
-        if (gbl_key_updates && (key_unique || same_genid_with_upd) &&
+        if (gbl_key_updates && ((key_unique &&
+            !ix_isnullk(iq->usedb, newkey, ixnum)) || same_genid_with_upd) &&
             same_key &&
             (!gbl_partial_indexes || !iq->usedb->ix_partial ||
              ((ins_keys & (1ULL << ixnum)) &&

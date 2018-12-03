@@ -577,7 +577,6 @@ void bdb_rellock(bdb_state_type *bdb_state, const char *funcname, int line)
 {
     thread_lock_info_type *lk = pthread_getspecific(lock_key);
     bdb_state_type *lock_handle = bdb_state;
-    int rc;
 
     /*printf("rel [%2d] %*s%s %s %d\n", lk->lockref, (lk->lockref-1)*2, "",
      * funcname, lk->ident, line);*/
@@ -608,6 +607,7 @@ void bdb_rellock(bdb_state_type *bdb_state, const char *funcname, int line)
             rel_lock_log(bdb_state);
 
 #ifdef _SUN_SOURCE
+        int rc;
         if (lk->locktype == WRITELOCK && lk->loweredpri) {
             rc = raise_thd_priority();
             if (0 == rc)
@@ -666,6 +666,17 @@ void bdb_checklock(bdb_state_type *bdb_state)
            locktype2str(lk->locktype), lk->ident ? lk->ident : "?",
            lk->lockref);
     abort_lk(lk);
+}
+
+int bdb_lockref(void)
+{
+    thread_lock_info_type *lk = pthread_getspecific(lock_key);
+    if (lk == NULL) {
+        logmsg(LOGMSG_FATAL, "%s: bdb lock not inited in this thread\n",
+               __func__);
+        abort();
+    }
+    return lk->lockref;
 }
 
 static int get_threadid(bdb_state_type *bdb_state)

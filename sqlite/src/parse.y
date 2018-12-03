@@ -132,6 +132,7 @@ ecmd ::= cmdx SEMI.
 ecmd ::= explain cmdx.
 explain ::= EXPLAIN.              { pParse->explain = 1; }
 explain ::= EXPLAIN QUERY PLAN.   { pParse->explain = 2; }
+explain ::= EXPLAIN DISTRIBUTION. { pParse->explain = 3; }
 %endif  SQLITE_OMIT_EXPLAIN
 cmdx ::= cmd.           { sqlite3FinishCoding(pParse); }
 
@@ -261,15 +262,25 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
 %ifdef SQLITE_OMIT_COMPOUND_SELECT
   EXCEPT INTERSECT UNION
 %endif SQLITE_OMIT_COMPOUND_SELECT
+%ifndef SQLITE_BUILDING_FOR_COMDB2
 %ifndef SQLITE_OMIT_WINDOWFUNC
   CURRENT FOLLOWING PARTITION PRECEDING RANGE UNBOUNDED
 %endif SQLITE_OMIT_WINDOWFUNC
+%endif
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+%ifndef SQLITE_OMIT_WINDOWFUNC
+  CURRENT FOLLOWING PARTITION PRECEDING RANGE UNBOUNDED
+%endif SQLITE_OMIT_WINDOWFUNC
+%ifdef SQLITE_OMIT_WINDOWFUNC
+  RANGE
+%endif SQLITE_OMIT_WINDOWFUNC
+%endif
   REINDEX RENAME CTIME_KW IF
 %ifdef SQLITE_BUILDING_FOR_COMDB2
   ADD AGGREGATE ALIAS ANALYZEEXPERT ANALYZESQLITE AUTHENTICATION
   BLOBFIELD BULKIMPORT
   CHECK COMMITSLEEP CONSUMER CONVERTSLEEP COVERAGE CRLE
-  DATA DATABLOB DATACOPY DBPAD DEFERRABLE DISABLE DRYRUN
+  DATA DATABLOB DATACOPY DBPAD DEFERRABLE DISABLE DISTRIBUTION DRYRUN
   ENABLE FUNCTION GENID48 GET GRANT IPU ISC KW LUA LZ4 NONE
   ODH OFF OP OPTION OPTIONS
   PAGEORDER PASSWORD PERIOD PROCEDURE PUT
@@ -436,6 +447,10 @@ ccons ::= UNIQUE onconf(R).      {
 }
 ccons ::= REFERENCES nm(T) LP eidlist(TA) RP refargs(R).
                                  {comdb2CreateForeignKey(pParse,0,&T,TA,R);}
+ccons ::= INDEX onconf(R).       {
+    comdb2AddIndex(pParse, 0, 0, R, 0, 0, 0, SQLITE_SO_ASC,
+                   SQLITE_IDXTYPE_DUPKEY, 0);
+}
 %endif SQLITE_BUILDING_FOR_COMDB2
 %ifndef SQLITE_BUILDING_FOR_COMDB2
 ccons ::= UNIQUE onconf(R).      {sqlite3CreateIndex(pParse,0,0,0,0,R,0,0,0,0,
@@ -506,6 +521,9 @@ tcons ::= PRIMARY KEY LP sortlist(X) autoinc(I) RP onconf(R).
 tcons ::= UNIQUE LP sortlist(X) RP onconf(R).
                                  {sqlite3CreateIndex(pParse,0,0,0,X,R,0,0,0,0,
                                        SQLITE_IDXTYPE_UNIQUE);}
+tcons ::= INDEX nm_opt(I) LP sortlist(X) RP with_opt(O) scanpt(BW) where_opt(W) scanpt(AW).
+                                 {comdb2AddIndex(pParse,&I,X,0,W,BW,AW,
+                                       SQLITE_SO_ASC,SQLITE_IDXTYPE_DUPKEY,O);}
 %endif !SQLITE_BUILDING_FOR_COMDB2
 %ifdef SQLITE_BUILDING_FOR_COMDB2
 %type nm_opt {Token}
@@ -2150,6 +2168,10 @@ cmd ::= BULKIMPORT nm(A) DOT nm(B) nm(C) DOT nm(D). {
 }
 
 ////////////////////////////// CREATE PARTITION ///////////////////////////////
+
+cmd ::= createkw RANGE PARTITION ON nm(A) WHERE columnname(B) IN LP exprlist(C) RP. {
+    comdb2CreateRangePartition(pParse, &A, &B, C);
+}
 
 cmd ::= createkw TIME PARTITION ON nm(A) AS nm(P) PERIOD STRING(D) RETENTION INTEGER(R) START STRING(S). {
     comdb2WriteTransaction(pParse);

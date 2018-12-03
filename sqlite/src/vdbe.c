@@ -1701,6 +1701,10 @@ case OP_IntCopy: {            /* out2 */
   assert( (pIn1->flags & MEM_Int)!=0 );
   pOut = &aMem[pOp->p2];
   sqlite3VdbeMemSetInt64(pOut, pIn1->u.i);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  extern void comdb2_handle_limit(Vdbe*,Mem*);
+  comdb2_handle_limit(p, pIn1);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   break;
 }
 
@@ -8534,6 +8538,7 @@ abort_due_to_error:
    && rc!=SQLITE_TRAN_NOLOG
    && rc!=SQLITE_TRAN_NOUNDO
    && rc!=SQLITE_SCHEMA_REMOTE
+   && rc!=SQLITE_SCHEMA_DOHSQL
   ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   rc = SQLITE_ERROR;

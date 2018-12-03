@@ -185,7 +185,7 @@ int load_new_table_schema_tran(struct dbenv *dbenv, tran_type *tran,
 
     if (debug_switch_skip_table_schema_check()) return 0;
     if (db && db->sc_to) {
-        version = db->sc_to->version;
+        version = db->sc_to->schema_version;
     } else {
         version = get_csc2_version_tran(table, tran);
         if (version < 0) {

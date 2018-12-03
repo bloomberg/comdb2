@@ -241,11 +241,6 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
     ctrace("sc_set_running(running=%d seed=0x%llx): "
            "gbl_schema_change_in_progress %d\n",
            running, (unsigned long long)seed, gbl_schema_change_in_progress);
-    logmsg(LOGMSG_INFO,
-           "sc_set_running(table=%s running=%d seed=0x%llx): "
-           "gbl_schema_change_in_progress %d\n",
-           table, running, (unsigned long long)seed,
-           gbl_schema_change_in_progress);
     Pthread_mutex_unlock(&schema_change_in_progress_mutex);
     return 0;
 }

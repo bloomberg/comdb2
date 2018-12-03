@@ -2452,6 +2452,13 @@ static void computeLimitRegisters(Parse *pParse, Select *p, int iBreak){
       VdbeComment((v, "LIMIT counter"));
       sqlite3VdbeAddOp2(v, OP_IfNot, iLimit, iBreak); VdbeCoverage(v);
     }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    extern int comdb2_register_limit(int, int);
+    int is_parallel;
+    if( (is_parallel = comdb2_register_limit(iLimit, ++pParse->nMem))!=0 ){
+      sqlite3VdbeAddOp2(v, OP_IntCopy, iLimit, pParse->nMem);
+    }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( pLimit->pRight ){
       p->iOffset = iOffset = ++pParse->nMem;
       pParse->nMem++;   /* Allocate an extra register for limit+offset */
@@ -2460,6 +2467,13 @@ static void computeLimitRegisters(Parse *pParse, Select *p, int iBreak){
       VdbeComment((v, "OFFSET counter"));
       sqlite3VdbeAddOp3(v, OP_OffsetLimit, iLimit, iOffset+1, iOffset);
       VdbeComment((v, "LIMIT+OFFSET"));
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      extern void comdb2_register_offset(int, int, int);
+      if( is_parallel ){
+        comdb2_register_offset(iOffset, iOffset+1, ++pParse->nMem);
+        sqlite3VdbeAddOp2(v, OP_IntCopy, iOffset, pParse->nMem);
+      }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
   }
 }
@@ -6061,6 +6075,11 @@ int sqlite3Select(
     }
   }
 #endif
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( !pParse->ast ) pParse->ast = ast_init();
+  ast_push(pParse->ast, AST_TYPE_SELECT, v, p);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 #ifndef SQLITE_OMIT_COMPOUND_SELECT
   /* Handle compound SELECT statements using the separate multiSelect()

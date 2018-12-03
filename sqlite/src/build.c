@@ -267,6 +267,17 @@ void sqlite3FinishCoding(Parse *pParse){
     if( pParse->pAinc!=0 && pParse->nTab==0 ) pParse->nTab = 1;
     sqlite3VdbeMakeReady(v, pParse);
     pParse->rc = SQLITE_DONE;
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if (pParse->ast) {
+        extern int comdb2_check_parallel(Parse*);
+        if (comdb2_check_parallel(pParse)) {
+            pParse->rc = SQLITE_SCHEMA_DOHSQL;
+            return;
+        }
+    }
+#endif
+
   }else{
     pParse->rc = SQLITE_ERROR;
   }

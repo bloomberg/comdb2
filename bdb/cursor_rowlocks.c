@@ -421,15 +421,17 @@ int bdb_berkdb_rowlocks_unlock(bdb_berkdb_t *pberkdb, int *bdberr)
 int bdb_berkdb_rowlocks_lock(bdb_berkdb_t *pberkdb, struct cursor_tran *curtran,
                              int *bdberr)
 {
-    bdb_berkdb_impl_t *berkdb = pberkdb->impl;
-    bdb_rowlocks_tag_t *r = &pberkdb->impl->u.row;
     int rc = 0;
 
+#ifndef NDEBUG
+    bdb_berkdb_impl_t *berkdb = pberkdb->impl;
     /* If you're not rowlocks you shouldn't be here */
     assert(BERKDB_REAL_ROWLOCKS == berkdb->type);
 
+    bdb_rowlocks_tag_t *r = &pberkdb->impl->u.row;
     /* Cursor better be null */
     assert(NULL == r->pagelock_cursor);
+#endif
 
     /* Open a cursor */
     rc = open_pagelock_cursor(pberkdb);
@@ -677,7 +679,6 @@ static inline int switch_bulk_test(bdb_berkdb_t *berkdb, int dir)
     bdb_state_type *bdb_state;
 
     /* Cursors */
-    bdb_cursor_impl_t *cur;
     bdb_rowlocks_tag_t *r;
 
     /* Bulk size */
@@ -686,7 +687,6 @@ static inline int switch_bulk_test(bdb_berkdb_t *berkdb, int dir)
     /* Convenience vars */
     bdb_state = berkdb->impl->bdb_state;
     r = &berkdb->impl->u.row;
-    cur = berkdb->impl->cur;
 
     /* Already enabled */
     if (r->use_bulk)

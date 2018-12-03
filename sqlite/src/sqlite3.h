@@ -125,7 +125,7 @@ extern "C" {
 */
 #define SQLITE_VERSION        "3.26.0"
 #define SQLITE_VERSION_NUMBER 3026000
-#define SQLITE_SOURCE_ID      "2018-11-19 21:22:42 50333dc3e835669f575a705978b7760b1382cabd1eb0a19c88ec8bc977a6f8b3"
+#define SQLITE_SOURCE_ID      "2018-12-03 14:53:55 7cccccfc946a5af08c1250b9271b920841f4f1bd5338c4b35aee0211261falt1"
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <types.h>
@@ -458,6 +458,7 @@ SQLITE_API int sqlite3_exec(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #define SQLITE_SCHEMA_REMOTE      50 /* distributed schema has inconsistent 
                                       * local cache */
+#define SQLITE_SCHEMA_DOHSQL      51 /* see dohsql */
 #define SQLITE_DEADLOCK          200 /* deadlock happened, transaction aborted */
 #define SQLITE_ACCESS            201 /* failed permissions */
 #define SQLITE_LIMIT             202 /* query hit configured max cost */
@@ -3666,7 +3667,7 @@ SQLITE_API int sqlite3_limit(sqlite3*, int id, int newVal);
 ** <dd>The SQLITE_PREPARE_NORMALIZE flag indicates that a normalized
 ** representation of the SQL statement should be calculated and then
 ** associated with the prepared statement, which can be obtained via
-** the [sqlite3_normalized_sql()] interface.  The semantics used to
+** the [sqlite3_normalized_sql()] interface.)^  The semantics used to
 ** normalize a SQL statement are unspecified and subject to change.
 ** At a minimum, literal values will be replaced with suitable
 ** placeholders.
@@ -7339,6 +7340,7 @@ SQLITE_API int sqlite3_test_control(int op, ...);
 #define SQLITE_TESTCTRL_OPTIMIZATIONS           15
 #define SQLITE_TESTCTRL_ISKEYWORD               16  /* NOT USED */
 #define SQLITE_TESTCTRL_SCRATCHMALLOC           17  /* NOT USED */
+#define SQLITE_TESTCTRL_INTERNAL_FUNCTIONS      17
 #define SQLITE_TESTCTRL_LOCALTIME_FAULT         18
 #define SQLITE_TESTCTRL_EXPLAIN_STMT            19  /* NOT USED */
 #define SQLITE_TESTCTRL_ONCE_RESET_THRESHOLD    19
@@ -9521,7 +9523,7 @@ struct sqlite3_rtree_query_info {
   sqlite3_int64 iRowid;             /* Rowid for current entry */
   sqlite3_rtree_dbl rParentScore;   /* Score of parent node */
   int eParentWithin;                /* Visibility of parent node */
-  int eWithin;                      /* OUT: Visiblity */
+  int eWithin;                      /* OUT: Visibility */
   sqlite3_rtree_dbl rScore;         /* OUT: Write the score here */
   /* The following fields are only available in 3.8.11 and later */
   sqlite3_value **apSqlParam;       /* Original SQL values of parameters */

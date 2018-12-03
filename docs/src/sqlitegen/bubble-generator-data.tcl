@@ -642,6 +642,7 @@ set all_graphs {
       {line NOT NULL }
       {line PRIMARY KEY {opt {or {line ASC } {line DESC } } } }
       {line UNIQUE }
+      {line INDEX }
       {line {opt CONSTRAINT constraint-name } foreign-key-def }
       {line OPTION DBPAD = signed-number }
   }
@@ -650,7 +651,7 @@ set all_graphs {
       or
       {line
           {stack
-              {line {or {line UNIQUE } }
+              {line {or {line UNIQUE } {line INDEX } }
                   {opt index-name } ( index-column-list ) }
               {line {opt OPTION DATACOPY } {opt WHERE expr } }
           }

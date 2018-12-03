@@ -4395,6 +4395,12 @@ int enqueue_pg_compact_work(bdb_state_type *bdb_state, int32_t fileid,
     pgcomp_rcv_t *rcv;
     int rc;
 
+    if (size > PGCOMPMAXLEN) {
+        logmsg(LOGMSG_WARN, "%s %d: page compaction request too long.\n",
+               __FILE__, __LINE__);
+        return E2BIG;
+    }
+
     rcv = malloc(sizeof(pgcomp_rcv_t) + size);
     if (rcv == NULL)
         rc = ENOMEM;
@@ -5078,9 +5084,12 @@ int request_delaymore(void *bdb_state_in)
     return rc;
 }
 
+int gbl_rep_wait_core_ms = 0;
+
 void *watcher_thread(void *arg)
 {
     bdb_state_type *bdb_state;
+    extern int gbl_rep_lock_time_ms;
     char *master_host = db_eid_invalid;
     int i;
     int j;
@@ -5153,6 +5162,20 @@ void *watcher_thread(void *arg)
         if (bdb_state->attr->master_lease && !bdb_state->master_lease_thread) {
             void create_master_lease_thread(bdb_state_type * bdb_state);
             create_master_lease_thread(bdb_state);
+        }
+
+        int rep_lock_wait_time_ms = gbl_rep_lock_time_ms;
+        int rep_wait_core_ms = gbl_rep_wait_core_ms;
+        int elapsed;
+
+        if (rep_wait_core_ms && rep_lock_wait_time_ms &&
+            (elapsed = (comdb2_time_epochms() - rep_lock_wait_time_ms)) >
+                rep_wait_core_ms) {
+            logmsg(LOGMSG_FATAL,
+                   "%s: coring, rep thread blocked too long (%d ms)\n",
+                   __func__, elapsed);
+            lock_info_lockers(stdout, bdb_state);
+            abort();
         }
 
         /* are we incoherent?  see how we're doing, lets send commitdelay

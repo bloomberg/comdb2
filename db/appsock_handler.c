@@ -406,7 +406,7 @@ int set_rowlocks(void *trans, int enable)
         return -1;
     }
 
-    if (gbl_rowlocks) {
+    if (enable) {
         gbl_sql_tranlevel_preserved = gbl_sql_tranlevel_default;
         gbl_sql_tranlevel_default = SQL_TDEF_SNAPISOL;
     } else {

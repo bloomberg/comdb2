@@ -205,6 +205,9 @@ static Keyword aKeywordTable[] = {
   { "DESC",             "TK_DESC",         ALWAYS                 },
   { "DETACH",           "TK_DETACH",       ATTACH                 },
   { "DISTINCT",         "TK_DISTINCT",     ALWAYS                 },
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  { "DISTRIBUTION",     "TK_DISTRIBUTION", ALWAYS                 },
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   { "DO",               "TK_DO",           UPSERT                 },
   { "DROP",             "TK_DROP",         ALWAYS                 },
   { "END",              "TK_END",          ALWAYS                 },
@@ -273,7 +276,11 @@ static Keyword aKeywordTable[] = {
   { "PRIMARY",          "TK_PRIMARY",      ALWAYS                 },
   { "QUERY",            "TK_QUERY",        EXPLAIN                },
   { "RAISE",            "TK_RAISE",        TRIGGER                },
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  { "RANGE",            "TK_RANGE",        ALWAYS                 },
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   { "RANGE",            "TK_RANGE",        WINDOWFUNC             },
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   { "RECURSIVE",        "TK_RECURSIVE",    CTE                    },
   { "REFERENCES",       "TK_REFERENCES",   FKEY                   },
   { "REGEXP",           "TK_LIKE_KW",      ALWAYS                 },

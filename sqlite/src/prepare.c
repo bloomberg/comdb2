@@ -832,6 +832,9 @@ static int sqlite3Prepare(
 end_prepare:
 
   sqlite3ParserReset(&sParse);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( sParse.ast ) ast_destroy(&sParse.ast, db);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   return rc;
 }
 static int sqlite3LockAndPrepare(

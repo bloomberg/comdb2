@@ -2731,6 +2731,13 @@ int sqlite3CodeSubselect(
       pKeyInfo = isRowid ? 0 : sqlite3KeyInfoAlloc(pParse->db, nVal, 1);
 
       if( ExprHasProperty(pExpr, EP_xIsSelect) ){
+
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+          if(!pParse->ast) pParse->ast = ast_init();
+          ast_push(pParse->ast, AST_TYPE_IN, v, NULL);
+#endif
+
         /* Case 1:     expr IN (SELECT ...)
         **
         ** Generate code to write the results of the select into the temporary
@@ -5805,30 +5812,32 @@ static char* sqlite3ExprDescribe_inner(
       int  i;
       char *left, *ret2, *ret = NULL;
 
-      if( pExpr->x.pList->nExpr == 0 ){
-        break;
-      }
+      if(!(pExpr->flags & EP_Subquery)) {
+        if( pExpr->x.pList->nExpr == 0 ){
+          break;
+        }
 
-      left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime);
-      if( !left ){
-        return NULL;
-      }
-      ret = sqlite3_mprintf(" %s IN ", left);
-
-      sqlite3DbFree(v->db, left);
-
-      for(i =0; i< pExpr->x.pList->nExpr; i++){
-        left = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[i].pExpr,
-                     atRuntime);
+        left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime);
         if( !left ){
-          sqlite3DbFree(v->db, ret);
           return NULL;
         }
-        ret2 = sqlite3_mprintf("%s%s%s%s", ret, (i)?", ":"( ", left,
-         (i==pExpr->x.pList->nExpr-1)?" )":"");
-        sqlite3DbFree(v->db, ret);
+        ret = sqlite3_mprintf(" %s IN ", left);
+
         sqlite3DbFree(v->db, left);
-        ret = ret2;
+
+        for(i =0; i< pExpr->x.pList->nExpr; i++){
+          left = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[i].pExpr,
+                  atRuntime);
+          if( !left ){
+            sqlite3DbFree(v->db, ret);
+            return NULL;
+          }
+          ret2 = sqlite3_mprintf("%s%s%s%s", ret, (i)?", ":"( ", left,
+                  (i==pExpr->x.pList->nExpr-1)?" )":"");
+          sqlite3DbFree(v->db, ret);
+          sqlite3DbFree(v->db, left);
+          ret = ret2;
+        }
       }
 
       return ret;
@@ -6018,11 +6027,64 @@ static char* sqlite3ExprDescribe_inner(
     }
     case TK_VARIABLE: {
       int iBindVar = pExpr->iColumn;
-      Mem *m = &v->aVar[iBindVar-1];
-
-      return print_mem(m);
+      if (atRuntime) {
+          Mem *m = &v->aVar[iBindVar-1];
+          return print_mem(m);
+      }else{
+        return sqlite3_mprintf("%s", pExpr->u.zToken);
+      }
     }
-    case TK_CASE:
+    case TK_CASE: {
+      char *ret = NULL;
+      char *tmp = NULL;
+      int i = 0;
+      int nelem = pExpr->x.pList->nExpr;
+      if (pExpr->pLeft) {
+        tmp = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime);
+        if (!tmp)
+            return NULL;
+        ret = sqlite3_mprintf("case %s ", tmp);
+        sqlite3DbFree(v->db, tmp);
+      } else {
+        ret = sqlite3_mprintf("case ");
+      }
+      if (!ret) 
+        return NULL;
+
+      do { 
+        char *c = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[i++].pExpr, atRuntime);
+        if (!c) {
+          sqlite3DbFree(v->db, ret);
+          return NULL;
+        }
+        if (i == nelem) {
+            assert(i>1);
+            tmp = sqlite3_mprintf("%s else %s", ret, c);
+            sqlite3DbFree(v->db, c);
+            sqlite3DbFree(v->db, ret);
+            ret = tmp;
+            break;
+        } else {
+          char *d = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[i++].pExpr, atRuntime);
+          if (!d) {
+            sqlite3DbFree(v->db, c);
+            sqlite3DbFree(v->db, ret);
+            return NULL;
+          }
+          tmp = sqlite3_mprintf("%s when %s then %s", ret, c, d);
+          sqlite3DbFree(v->db, ret);
+          sqlite3DbFree(v->db, c);
+          sqlite3DbFree(v->db, d);
+          if(!tmp)
+            return NULL;
+
+          ret = tmp;
+          if (i == nelem) break;
+        }
+      } while(1);
+
+      return ret;
+    }
     case TK_WHEN:
     case TK_THEN:
     case TK_ELSE:
@@ -6053,53 +6115,72 @@ static char* sqlite3ExprDescribe_inner(
       /* dh: not all the functions can be blindely passed remotely! */
       if(strncasecmp(pExpr->u.zToken, "now", 3) == 0)
       { 
-        dttz_t dt;
-        int prec;
+        if(atRuntime)
+        {
+          dttz_t dt;
+          int prec;
         
-        prec = v->dtprec;
-        if(pExpr->x.pList && pExpr->x.pList->nExpr == 1) {
-          if(pExpr->x.pList->a[0].pExpr->op == TK_STRING) {
-            DTTZ_TEXT_TO_PREC(pExpr->x.pList->a[0].pExpr->u.zToken,
-                              prec, 0, goto default_prec);
-          } else if( pExpr->x.pList->a[0].pExpr->op == TK_INTEGER
-                  && (pExpr->x.pList->a[0].pExpr->u.iValue == DTTZ_PREC_MSEC 
-                     ||
-                     pExpr->x.pList->a[0].pExpr->u.iValue == DTTZ_PREC_USEC)) {
-            prec = pExpr->x.pList->a[0].pExpr->u.iValue;
+          prec = v->dtprec;
+          if(pExpr->x.pList && pExpr->x.pList->nExpr == 1) {
+            if(pExpr->x.pList->a[0].pExpr->op == TK_STRING) {
+              DTTZ_TEXT_TO_PREC(pExpr->x.pList->a[0].pExpr->u.zToken,
+                                prec, 0, goto default_prec);
+            } else if( pExpr->x.pList->a[0].pExpr->op == TK_INTEGER
+                    && (pExpr->x.pList->a[0].pExpr->u.iValue == DTTZ_PREC_MSEC 
+                       ||
+                       pExpr->x.pList->a[0].pExpr->u.iValue == DTTZ_PREC_USEC)) {
+              prec = pExpr->x.pList->a[0].pExpr->u.iValue;
+            }
           }
-        }
 default_prec:
-        timespec_to_dttz(&v->tspec, &dt, prec);
+          timespec_to_dttz(&v->tspec, &dt, prec);
 
-        return sqlite3_mprintf("cast(%lld.%*.*u as datetime)",  
-                               dt.dttz_sec, prec, prec, dt.dttz_frac);
+          return sqlite3_mprintf("cast(%lld.%*.*u as datetime)",  
+                                 dt.dttz_sec, prec, prec, dt.dttz_frac);
+        }
+        else
+        {   
+            if(pExpr->x.pList) 
+            {
+                assert(pExpr->x.pList->nExpr == 1);
+                return sqlite3_mprintf("now(\'%s\')", 
+                                       pExpr->x.pList->a[0].pExpr->u.zToken);
+            }
+            else
+                return sqlite3_mprintf("now()");
+        }
       }
       /* default, pass the function remotely */
-      if( pExpr->x.pList->nExpr <= 0 )
-        return sqlite3_mprintf(" %s ( )", pExpr->u.zToken);
-      char *arg = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[0].pExpr,
-                                            atRuntime);
-      if( !arg )
-        return NULL;
-      ret = sqlite3_mprintf(" %s ( %s", pExpr->u.zToken, arg);
-      sqlite3DbFree(v->db, arg);
-      arg = NULL;
-      for( i = 1; i < pExpr->x.pList->nExpr; i++ ) {
-        arg = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[i].pExpr,
-                                        atRuntime);
+      if( !pExpr->x.pList ) {
+        /* no arguments */
+        return sqlite3_mprintf(" %s() ", pExpr->u.zToken);
+      } else {
+        if( pExpr->x.pList->nExpr <= 0 )
+          return sqlite3_mprintf(" %s ( )", pExpr->u.zToken);
+        char *arg = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[0].pExpr,
+                                              atRuntime);
         if( !arg )
           return NULL;
-        ret2 = sqlite3_mprintf("%s, %s", ret, arg);
+        ret = sqlite3_mprintf(" %s ( %s", pExpr->u.zToken, arg);
         sqlite3DbFree(v->db, arg);
+        arg = NULL;
+        for( i = 1; i < pExpr->x.pList->nExpr; i++ ) {
+          arg = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[i].pExpr,
+                                        atRuntime);
+          if( !arg )
+            return NULL;
+          ret2 = sqlite3_mprintf("%s, %s", ret, arg);
+          sqlite3DbFree(v->db, arg);
+          sqlite3DbFree(v->db, ret);
+          ret = ret2;
+          arg = NULL;
+          ret2 = NULL;
+        }
+        ret2 = sqlite3_mprintf("%s ) ", ret);
         sqlite3DbFree(v->db, ret);
         ret = ret2;
-        arg = NULL;
-        ret2 = NULL;
+        return ret;
       }
-      ret2 = sqlite3_mprintf("%s ) ", ret);
-      sqlite3DbFree(v->db, ret);
-      ret = ret2;
-      return ret;
     }
     case TK_COLUMN: {
       if( atRuntime ){

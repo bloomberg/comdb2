@@ -924,7 +924,7 @@ keys
 	}
 keys
 	{
-		uniqnulls "$KEY_A513E531" = unique 
+		uniqnulls "$KEY_8CDB51C3" = unique 
 	}
 ')
 (type='index', name='$$KEY_A513E531_424C1931', tbl_name='t1', rootpage=5, sql='create index "$$KEY_A513E531_424C1931" on "t1" ("unique");', csc2=NULL)

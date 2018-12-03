@@ -22,6 +22,7 @@
 #include <logmsg.h>
 #include <str0.h>
 #include <zlib.h>
+#include <shard_range.h>
 #include "cdb2_constants.h"
 
 extern pthread_key_t query_info_key;
@@ -97,7 +98,7 @@ static inline int isRemote(Parse *pParse, Token **t1, Token **t2)
 /* chkAndCopyTable expects the dst (OUT) buffer to be of MAXTABLELEN size. */
 static inline
 int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
-                    size_t name_len, int mustexist)
+                    size_t name_len, int mustexist, int check_shard)
 {
     int rc = 0;
     char *table_name;
@@ -170,8 +171,10 @@ int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
             goto cleanup;
         }
 
-        if (timepart_is_shard(dst, 1, NULL)) {
-            rc = setError(pParse, SQLITE_ERROR, "Shards cannot be schema changed independently");
+        if (check_shard && timepart_is_shard(dst, 1, NULL))
+        {
+            setError(pParse, SQLITE_ERROR, "Shards cannot be schema changed independently");
+            rc = SQLITE_ERROR;
             goto cleanup;
         }
 
@@ -238,7 +241,8 @@ static inline int copyNoSqlToken(
 }
 
 static inline int chkAndCopyTableTokens(Vdbe *v, Parse *pParse, char *dst,
-                                        Token *t1, Token *t2, int mustexist)
+                                        Token *t1, Token *t2, int mustexist,
+                                        int check_shard)
 {
     int rc;
 
@@ -252,7 +256,7 @@ static inline int chkAndCopyTableTokens(Vdbe *v, Parse *pParse, char *dst,
         return rc;
     }
 
-    if ((rc = chkAndCopyTable(pParse, dst, t1->z, t1->n, mustexist))) {
+    if ((rc = chkAndCopyTable(pParse, dst, t1->z, t1->n, mustexist, check_shard))) {
         return rc;
     }
 
@@ -355,7 +359,7 @@ static int comdb2CheckOpAccess(void) {
     return SQLITE_OK;
 }
 
-static int comdb2AuthenticateUserOp(Parse* pParse)
+int comdb2AuthenticateUserOp(Parse* pParse)
 {
     int rc;
     rc = comdb2CheckOpAccess();
@@ -589,7 +593,7 @@ void comdb2CreateTableCSC2(
     if (noErr && get_dbtable_by_name(table))
         goto out;
 
-    if (chkAndCopyTableTokens(v, pParse, sc->tablename, pName1, pName2, 0))
+    if (chkAndCopyTableTokens(v, pParse, sc->tablename, pName1, pName2, 0, 1))
         goto out;
 
     if (authenticateSC(sc->tablename, pParse))
@@ -626,7 +630,7 @@ void comdb2AlterTableCSC2(
         return;
     }
 
-    if (chkAndCopyTableTokens(v, pParse,sc->tablename, pName1, pName2, 1))
+    if (chkAndCopyTableTokens(v, pParse,sc->tablename, pName1, pName2, 1, 1))
         goto out;
 
     if (authenticateSC(sc->tablename, pParse))
@@ -664,7 +668,7 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
     }
 
     if (chkAndCopyTable(pParse, sc->tablename, pName->a[0].zName,
-                        strlen(pName->a[0].zName), 1))
+                        strlen(pName->a[0].zName), 1, 1))
         goto out;
 
     if (authenticateSC(sc->tablename, pParse))
@@ -700,7 +704,7 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
         return;
     }
 
-    if (chkAndCopyTableTokens(v, pParse,sc->tablename, nm, lnm, 1))
+    if (chkAndCopyTableTokens(v, pParse,sc->tablename, nm, lnm, 1, 1))
         goto out;
 
     if (authenticateSC(sc->tablename, pParse))
@@ -776,7 +780,7 @@ void comdb2Truncate(Parse* pParse, Token* nm, Token* lnm)
         return;
     }
 
-    if (chkAndCopyTableTokens(v, pParse,sc->tablename, nm, lnm, 1))
+    if (chkAndCopyTableTokens(v, pParse,sc->tablename, nm, lnm, 1, 1))
         goto out;
 
     if (authenticateSC(sc->tablename, pParse))
@@ -814,7 +818,7 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
         return;
     }
 
-    if (chkAndCopyTableTokens(v,pParse,sc->tablename, nm, lnm, 1))
+    if (chkAndCopyTableTokens(v,pParse,sc->tablename, nm, lnm, 1, 1))
         goto out;
 
     if (authenticateSC(sc->tablename, pParse))
@@ -1015,7 +1019,8 @@ void comdb2CreateTimePartition(Parse* pParse, Token* table,
         setError(pParse, SQLITE_NOMEM, "Out of Memory");
         goto clean_arg;
     }
-    if (table && chkAndCopyTableTokens(v, pParse, tp->tablename, table, NULL, 1))
+    memset(tp->tablename, '\0', MAXTABLELEN);
+    if (table && chkAndCopyTableTokens(v, pParse, tp->tablename, table, NULL, 1, 1))
         goto err;
 
     tp->partition_name = (char*) malloc(MAXTABLELEN);
@@ -1169,7 +1174,7 @@ void comdb2analyze(Parse* pParse, int opt, Token* nm, Token* lnm, int pc)
         if (!tablename)
             goto err;
 
-        if (chkAndCopyTableTokens(v, pParse, tablename, nm, lnm, 1)) {
+        if (chkAndCopyTableTokens(v, pParse, tablename, nm, lnm, 1, 1)) {
             free(tablename);
             goto err;
         }
@@ -1208,7 +1213,7 @@ void comdb2analyzeCoverage(Parse* pParse, Token* nm, Token* lnm, int newscale)
     ancov_f->tablename = (char*) malloc(MAXTABLELEN);
     if (!ancov_f->tablename) goto err;
         
-    if (chkAndCopyTableTokens(v, pParse, ancov_f->tablename, nm, lnm, 1)) 
+    if (chkAndCopyTableTokens(v, pParse, ancov_f->tablename, nm, lnm, 1, 1)) 
         goto clean_arg;  
     
     ancov_f->newvalue = newscale;
@@ -1247,7 +1252,7 @@ void comdb2setSkipscan(Parse* pParse, Token* nm, Token* lnm, int enable)
     ancov_f->tablename = (char*) malloc(MAXTABLELEN);
     if (!ancov_f->tablename) goto err;
         
-    if (chkAndCopyTableTokens(v, pParse, ancov_f->tablename, nm, lnm, 1)) 
+    if (chkAndCopyTableTokens(v, pParse, ancov_f->tablename, nm, lnm, 1, 1)) 
         goto clean_arg;  
     
     ancov_f->newvalue = enable;
@@ -1264,6 +1269,9 @@ clean_arg:
 
 void comdb2enableGenid48(Parse* pParse, int enable)
 {
+    if (comdb2AuthenticateUserOp(pParse))
+        return;
+
     Vdbe *v  = sqlite3GetVdbe(pParse);
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
 
@@ -1294,6 +1302,9 @@ err:
 
 void comdb2enableRowlocks(Parse* pParse, int enable)
 {
+    if (comdb2AuthenticateUserOp(pParse))
+        return;
+
     Vdbe *v  = sqlite3GetVdbe(pParse);
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
 
@@ -1348,7 +1359,7 @@ void comdb2analyzeThreshold(Parse* pParse, Token* nm, Token* lnm, int newthresho
     if (!anthr_f->tablename)
         goto err;
         
-    if (chkAndCopyTableTokens(v, pParse, anthr_f->tablename, nm, lnm, 1)) 
+    if (chkAndCopyTableTokens(v, pParse, anthr_f->tablename, nm, lnm, 1, 1)) 
         return;  
     
     anthr_f->newvalue = newthreshold;
@@ -1398,7 +1409,7 @@ void comdb2setAlias(Parse* pParse, Token* name, Token* url)
     arg->type = BPFUNC_ALIAS;
     alias_f->name = (char*) malloc(MAXTABLELEN);
 
-    if (chkAndCopyTableTokens(v, pParse, alias_f->name, name, NULL, 0))
+    if (chkAndCopyTableTokens(v, pParse, alias_f->name, name, NULL, 0, 1))
         goto clean_arg;
 
     assert (*url->z == '\'' || *url->z == '\"');
@@ -1507,7 +1518,7 @@ void comdb2grant(Parse *pParse, int revoke, int permission, Token *nm,
                     "Can't GRANT/REVOKE non-READ permissions on system table");
                 goto clean_arg;
             }
-        } else if (chkAndCopyTableTokens(v, pParse, grant->table, nm, lnm, 1)) {
+        } else if (chkAndCopyTableTokens(v, pParse, grant->table, nm, lnm, 1, 1)) {
             goto clean_arg;
         }
     }
@@ -1758,11 +1769,23 @@ void comdb2getAnalyzeCoverage(Parse* pParse, Token *nm, Token *lnm)
     OpFuncSetup stp = {1, colname, &coltype, 256};
     char *tablename = (char*) malloc (MAXTABLELEN);
 
-    if (chkAndCopyTableTokens(v, pParse, tablename, nm, lnm, 1)) 
+    if (chkAndCopyTableTokens(v, pParse, tablename, nm, lnm, 1, 1)) 
         free(tablename);
     else
         comdb2prepareOpFunc(v, pParse, 0, tablename, &produceAnalyzeCoverage, 
                             (vdbeFuncArgFree)  &free, &stp);
+}
+
+void comdb2CreateRangePartition(Parse *pParse, Token *nm, Token *col,
+        ExprList* limits)
+{
+    Vdbe *v  = sqlite3GetVdbe(pParse);
+    char tblname[MAXTABLELEN];
+
+    if(chkAndCopyTableTokens(v, pParse, tblname, nm, NULL, 1, 0))
+        return;
+
+    shard_range_create(pParse, tblname, col, limits);
 }
 
 static int produceAnalyzeThreshold(OpFunc *f)
@@ -1794,14 +1817,11 @@ void comdb2getAnalyzeThreshold(Parse* pParse, Token *nm, Token *lnm)
     OpFuncSetup stp = {1, colname, &coltype, 256};
     char *tablename = (char*) malloc (MAXTABLELEN);
 
-    if (chkAndCopyTableTokens(v, pParse, tablename, nm, lnm, 1)) goto clean;
-    
-    comdb2prepareOpFunc(v, pParse, 0, tablename, &produceAnalyzeThreshold, (vdbeFuncArgFree)  &free, &stp);
-
-    return;
-
-clean:
-    free(tablename);
+    if (chkAndCopyTableTokens(v, pParse, tablename, nm, lnm, 1, 1)) 
+        free(tablename);
+    else
+        comdb2prepareOpFunc(v, pParse, 0, tablename, &produceAnalyzeThreshold,
+                            (vdbeFuncArgFree)  &free, &stp);
 }
 
 int resolveTableName(struct SrcList_item *p, const char *zDB, char *tableName,
@@ -1883,7 +1903,7 @@ void comdb2timepartRetention(Parse *pParse, Token *nm, Token *lnm, int retention
     if (!tp_retention->timepartname)
         goto err;
         
-    if (chkAndCopyTableTokens(v, pParse, tp_retention->timepartname, nm, lnm, 1)) 
+    if (chkAndCopyTableTokens(v, pParse, tp_retention->timepartname, nm, lnm, 1, 1)) 
         goto clean_arg;
     
     tp_retention->newvalue = retention;
@@ -1930,7 +1950,7 @@ void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName,
         return;
     }
 
-    if (chkAndCopyTableTokens(v, pParse, sc->tablename, pSrcName, NULL, 1))
+    if (chkAndCopyTableTokens(v, pParse, sc->tablename, pSrcName, NULL, 1, 1))
         goto out;
 
     if (authenticateSC(sc->tablename, pParse))
@@ -1953,11 +1973,17 @@ out:
 
 void comdb2schemachangeCommitsleep(Parse* pParse, int num)
 {
+    if (comdb2AuthenticateUserOp(pParse))
+        return;
+
     gbl_commit_sleep = num;
 }
 
 void comdb2schemachangeConvertsleep(Parse* pParse, int num)
 {
+    if (comdb2AuthenticateUserOp(pParse))
+        return;
+
     gbl_convert_sleep = num;
 }
 
@@ -3518,7 +3544,7 @@ void comdb2AlterTableEnd(Parse *pParse)
         goto oom;
 
     if ((chkAndCopyTable(pParse, sc->tablename, ctx->schema->name,
-                         strlen(ctx->schema->name), 1)))
+                         strlen(ctx->schema->name), 1, 0)))
         goto cleanup;
 
     if (authenticateSC(sc->tablename, pParse))
@@ -3638,7 +3664,7 @@ void comdb2CreateTableEnd(
         goto oom;
 
     if ((chkAndCopyTable(pParse, sc->tablename, ctx->schema->name,
-                         strlen(ctx->schema->name), 0)))
+                         strlen(ctx->schema->name), 0, 0)))
         goto cleanup;
 
     if (authenticateSC(sc->tablename, pParse))
@@ -4401,7 +4427,7 @@ void comdb2CreateIndex(
         goto cleanup;
 
     if ((chkAndCopyTable(pParse, sc->tablename, ctx->schema->name,
-                         strlen(ctx->schema->name), 1)))
+                         strlen(ctx->schema->name), 1, 1)))
         goto cleanup;
 
     if (authenticateSC(sc->tablename, pParse))
@@ -5093,7 +5119,7 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
         goto cleanup;
 
     if ((chkAndCopyTable(pParse, sc->tablename, ctx->schema->name,
-                         strlen(ctx->schema->name), 1)))
+                         strlen(ctx->schema->name), 1, 1)))
         goto cleanup;
 
     if (authenticateSC(sc->tablename, pParse))
@@ -5173,6 +5199,9 @@ void comdb2putTunable(Parse *pParse, Token *name, Token *value)
     char *t_value = NULL;
     int rc;
     comdb2_tunable_err err;
+
+    if (comdb2AuthenticateUserOp(pParse))
+        return;
 
     rc = create_string_from_token(NULL, pParse, &t_name, name);
     if (rc != SQLITE_OK)

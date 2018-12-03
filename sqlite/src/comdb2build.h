@@ -73,6 +73,7 @@ void comdb2AlterDropIndex(Parse *, Token *);
 void comdb2enableGenid48(Parse*, int);
 void comdb2enableRowlocks(Parse*, int);
 void comdb2analyzeCoverage(Parse*, Token*, Token*, int val);
+void comdb2CreateRangePartition(Parse *pParse, Token*, Token*, ExprList*);
 void comdb2getAnalyzeCoverage(Parse* pParse, Token *nm, Token *lnm);
 void comdb2analyzeThreshold(Parse*, Token*, Token*, int th);
 void comdb2getAnalyzeThreshold(Parse* pParse, Token *nm, Token *lnm);
@@ -126,5 +127,7 @@ enum
 
 void comdb2getkw(Parse* pParse, int reserved);
 int comdb2TokenToStr(Token *nm, char *buf, size_t len);
+
+int comdb2AuthenticateUserOp(Parse* pParse);
 
 #endif // COMDB2BUILD_H

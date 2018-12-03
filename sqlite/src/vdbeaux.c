@@ -5596,6 +5596,45 @@ Mem *sqlite3GetCachedResultRow(
   }
   return NULL;
 }
+
+Mem* sqlite3CloneResult(
+  sqlite3_stmt *pStmt,
+  Mem *pMem
+){
+  Vdbe *p = (Vdbe*)pStmt;
+  int nCols;
+  Mem *pCols;
+  int i, rc;
+
+  assert( p );
+  nCols = p->nResColumn;
+  pCols = p->pResultSet;
+  if( !pMem ){
+    pMem = sqlite3DbMalloc(p->db, sizeof(Mem) * nCols);
+    if( !pMem ) return 0;
+    memset(pMem, 0, sizeof(Mem) * nCols);
+  }
+  for(i=0; i<nCols; i++){
+    rc = sqlite3VdbeMemCopy(&pMem[i], &pCols[i]);
+    if( rc ) return 0;
+  }
+  return pMem;
+}
+
+int sqlite3CloneResultFree(
+  sqlite3_stmt *pStmt,
+  Mem **ppMem
+){
+  Vdbe *p = (Vdbe*)pStmt;
+  Mem *pMem = *ppMem;
+
+  if( pMem ){
+    releaseMemArray(pMem, p->nResColumn);    
+    sqlite3DbFree(p->db, pMem); 
+    *ppMem = 0;
+  }
+  return 0;
+}
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 #ifdef SQLITE_ENABLE_PREUPDATE_HOOK
