@@ -544,7 +544,7 @@ Besides the user argument, one can request additional arguments by setting `argc
 |Event Type|`CDB2_HOSTNAME`|`CDB2_PORT`|`CDB2_SQL`|`CDB2_RETURN_VALUE`|
 |---|---|---|---|---|
 | `CDB2_BEFORE_CONNECT` | The hostname to connect to | The port to connect to | N/A | N/A |
-| `CDB2_AFTER_CONNECT` | The hostname to connect to | The port to connect to | N/A | 0 on success; Non-zero on failure |
+| `CDB2_AFTER_CONNECT` | The hostname to connect to | The port to connect to | N/A | file descriptor |
 | `CDB2_BEFORE_PMUX` | The server hostname | The pmux port | N/A | N/A |
 | `CDB2_AFTER_PMUX` | The server hostname | The pmux port | N/A | The database port |
 | `CDB2_BEFORE_DBINFO` | The server hostname  | The database port | N/A | N/A |
