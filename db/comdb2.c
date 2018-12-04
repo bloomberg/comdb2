@@ -176,6 +176,7 @@ pthread_key_t comdb2_open_key;
 /*---GLOBAL SETTINGS---*/
 const char *const gbl_db_release_name = QUOTE(COMDB2_RELEASE);
 const char *const gbl_db_build_name = QUOTE(COMDB2_BUILD);
+const char *const gbl_db_git_version_sha = QUOTE(GIT_VERSION_SHA=COMDB2_GIT_VERSION_SHA);
 int gbl_enque_flush_interval;
 int gbl_enque_reorder_lookahead = 20;
 int gbl_morecolumns = 0;
