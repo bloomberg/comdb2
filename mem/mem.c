@@ -581,7 +581,7 @@ int comdb2ma_nice(int niceness)
             if (root.mspace_max == INT_MAX)
                 mallopt(M_ARENA_MAX, 1);
             else {
-                narena = root.mspace_max >> niceness - NICE_MODERATE;
+                narena = root.mspace_max >> (niceness - NICE_MODERATE);
                 mallopt(M_ARENA_MAX, narena == 0 ? 1 : narena);
             }
         }
@@ -1129,8 +1129,10 @@ char *comdb2_strndup_static(int indx, const char *s, size_t n)
 
 struct mallinfo comdb2_mallinfo_static(int indx)
 {
+#ifdef INSECURE
     struct mallinfo empty = {0};
     STATIC_RANGE_CHECK(indx, empty);
+#endif
     return comdb2_mallinfo(get_area(indx));
 }
 

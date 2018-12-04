@@ -3582,6 +3582,9 @@ int bdb_relink_pglogs(void *bdb_state, unsigned char *fileid, db_pgno_t pgno,
 
     rc = bdb_update_relinks_fileid_queues(bdb_state, fileid, pgno, prev_pgno,
                                           next_pgno, lsn);
+    if (rc)
+        logmsg(LOGMSG_USER, "%s:%d rc = %d\n", __func__, __LINE__, rc);
+
 
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
@@ -8128,7 +8131,6 @@ static int update_pglogs_from_global_queues_int(
     bdb_cursor_impl_t *cur, struct pglogs_queue_cursor *qcur, int *bdberr)
 {
     struct pglogs_queue_key *current, *prev, *last;
-    DB_LSN last_lsn = {0};
 
 #ifdef NEWSI_STAT
     struct timeval before, after, diff;
@@ -8158,7 +8160,6 @@ static int update_pglogs_from_global_queues_int(
 
         if (!current && prev && found_greater) {
             update_pglogs_from_queue(cur->shadow_tran, qcur->fileid, prev);
-            last_lsn = prev->commit_lsn;
             current = prev;
         }
 
@@ -8175,8 +8176,6 @@ static int update_pglogs_from_global_queues_int(
     while (current && current != last) {
         current = current->lnk.next;
         update_pglogs_from_queue(cur->shadow_tran, qcur->fileid, current);
-        if (current->type == PGLOGS_QUEUE_PAGE)
-            last_lsn = current->commit_lsn;
     }
 
     if (qcur->last != current) {

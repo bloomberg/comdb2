@@ -392,6 +392,8 @@ int bdb_release_ltran_locks(bdb_state_type *bdb_state, struct tran_tag *ltran,
 
     /* Shouldn't fail */
     assert(0 == rc);
+    if (rc)
+        logmsg(LOGMSG_USER, "%s:%d rc = %d\n", __func__, __LINE__, rc);
 
     /* Make sure this is NULL */
     assert(NULL == ltran->tid);
@@ -401,6 +403,8 @@ int bdb_release_ltran_locks(bdb_state_type *bdb_state, struct tran_tag *ltran,
 
     /* Shouldn't fail */
     assert(0 == rc);
+    if (rc)
+        logmsg(LOGMSG_USER, "%s:%d rc = %d\n", __func__, __LINE__, rc);
 
     /* Invalid lockerid */
     ltran->logical_lid = 0;
@@ -1654,7 +1658,7 @@ static int bdb_tran_commit_with_seqnum_int_int(
                 logmsg(
                     LOGMSG_ERROR,
                     "%s:%d failed to commit physical tran rc %d, bdberr %d\n",
-                    __func__, __LINE__, rc, bdberr);
+                    __func__, __LINE__, rc, *bdberr);
                 outrc = -1;
                 goto cleanup;
             }

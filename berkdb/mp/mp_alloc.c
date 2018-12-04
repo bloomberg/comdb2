@@ -183,7 +183,7 @@ static void dump_page_stats(DB_ENV *dbenv) {
 	logmsgf(LOGMSG_USER, out, "st_page_trickle: %"PRId64"\n", mpool_stats->st_page_trickle);
 	logmsgf(LOGMSG_USER, out, "st_pages: %"PRId64"\n", mpool_stats->st_pages);
 	logmsgf(LOGMSG_USER, out, "st_page_clean: %"PRId64"\n", mpool_stats->st_page_clean);
-	logmsgf(LOGMSG_USER, out, "st_page_dirty: %"PRId64"\n", mpool_stats->st_page_dirty);
+	logmsgf(LOGMSG_USER, out, "st_page_dirty: %"PRId32"\n", mpool_stats->st_page_dirty);
 	logmsgf(LOGMSG_USER, out, "st_hash_buckets: %"PRId64"\n", mpool_stats->st_hash_buckets);
 	logmsgf(LOGMSG_USER, out, "st_hash_searches: %"PRId64"\n", mpool_stats->st_hash_searches);
 	logmsgf(LOGMSG_USER, out, "st_hash_longest: %"PRId64"\n", mpool_stats->st_hash_longest);

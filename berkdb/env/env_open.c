@@ -1094,8 +1094,8 @@ __db_appname(dbenv, appname, file, tmp_oflags, fhpp, namep)
 	/* Everything else is relative to the environment home. */
 	if (dbenv != NULL)
 		a = dbenv->db_home;
-
-retry:	/*
+	/*
+retry:
 	 * DB_APP_NONE:
 	 *      DB_HOME/file
 	 * DB_APP_DATA:

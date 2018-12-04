@@ -77,7 +77,7 @@ static int systblClientStatsConnect(sqlite3 *db, void *pAux, int argc,
         if ((*ppVtab = sqlite3_malloc(sizeof(sqlite3_vtab))) == 0) {
             return SQLITE_NOMEM;
         }
-        memset(*ppVtab, 0, sizeof(*ppVtab));
+        memset(*ppVtab, 0, sizeof(sqlite3_vtab));
     }
 
     return SQLITE_OK;

@@ -357,7 +357,7 @@ int refresh_metrics(void)
         fclose(f);
         long num_threads;
         unsigned long vmsize;
-        rc = sscanf(line, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*lu %*lu %*lu %*lu %*lu %*lu %*ld %*ld %*ld %*ld %ld %*ld %*llu %lu", &num_threads, &vmsize);
+        rc = sscanf(line, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %*u %*u %*d %*d %*d %*d %ld %*d %*u %lu", &num_threads, &vmsize);
         if (rc == 2) {
             stats.threads = num_threads;
             stats.memory_usage = vmsize / (1024*1024);
@@ -480,7 +480,7 @@ static void update_cpu_percent(void)
       fclose(f);
       unsigned long utime, stime;
       /* usertime=14 systemtime=15 */
-      int rc = sscanf(line, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*lu %*lu %*lu %*lu %lu %lu", &utime, &stime);
+      int rc = sscanf(line, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %lu %lu", &utime, &stime);
       if (rc == 2) {
          if (last_time == 0) {
             cpu_percent = 0;
