@@ -998,6 +998,12 @@ static int newsql_trace(struct sqlclntstate *clnt, char *info)
                                1);
 }
 
+static int newsql_cost(struct sqlclntstate *clnt)
+{
+    dump_client_query_stats(clnt->dbglog, clnt->query_stats);
+    return 0;
+}
+
 static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
 {
     switch (t) {
@@ -1035,8 +1041,9 @@ static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
         return newsql_row_str(c, a, i);
     case RESPONSE_TRACE:
         return newsql_trace(c, a);
-    /* fastsql only messages */
     case RESPONSE_COST:
+        return newsql_cost(c);
+    /* fastsql only messages */
     case RESPONSE_EFFECTS:
     case RESPONSE_ERROR_PREPARE_RETRY:
         return 0;
@@ -1652,8 +1659,8 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                 sqlstr += 6;
                 sqlstr = skipws(sqlstr);
 
-                int rc = fdb_access_control_create(clnt, sqlstr);
-                if (rc) {
+                int fdbrc = fdb_access_control_create(clnt, sqlstr);
+                if (fdbrc) {
                     logmsg(
                         LOGMSG_ERROR,
                         "%s: failed to process remote access settings \"%s\"\n",
