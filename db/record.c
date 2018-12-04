@@ -2848,7 +2848,10 @@ int del_new_record(struct ireq *iq, void *trans, unsigned long long genid,
                 rc = blob_del(iq, trans, 2 /*rrn*/, ngenid, blobn);
                 if (iq->debug)
                     reqprintf(iq, "DEL GENID 0x%llx RC %d", ngenid, rc);
-                if (rc != 0) {
+                if (rc != IX_NOTFND && rc != 0) /* like in upd_new_record() */
+                {
+                    logmsg(LOGMSG_ERROR, "%s: genid 0x%llx blobn %d failed\n",
+                           __func__, ngenid, blobn);
                     retrc = rc;
                     goto err;
                 }
