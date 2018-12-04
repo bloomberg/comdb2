@@ -1282,7 +1282,7 @@ __checkpoint_open(DB_ENV *dbenv, const char *db_home)
 	char buf[PATH_MAX];
 	char fname[PATH_MAX];
 	const char *pbuf;
-	struct __db_checkpoint ckpt = { 0 };
+	struct __db_checkpoint ckpt = {{0}};
 	DB_LSN lsn;
 	size_t sz;
 

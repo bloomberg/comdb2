@@ -257,6 +257,8 @@ foreach(EXT_DIR ${EXT_DIRS})
   )
 endforeach()
 
+set_source_files_properties(${BERK_C} ${GEN_C} ${GEN_EXT_H} PROPERTIES COMPILE_FLAGS "-Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-label")
+
 add_library(db ${BERK_C} ${GEN_C} ${GEN_EXT_H})
 include_directories(
   build

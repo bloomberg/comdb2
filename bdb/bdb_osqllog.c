@@ -1288,7 +1288,7 @@ static int bdb_osql_log_apply_ll(bdb_state_type *bdb_state,
                 logmsg(LOGMSG_USER,
                        "INSERTED DT[%d:%d]:\n\tkeylen=%zu\n\tkey=\"",
                        rec->dbnum, tableid, sizeof(genid));
-                hexdump(LOGMSG_USER, (unsigned char *)&genid, sizeof(genid));
+                hexdump(LOGMSG_USER, (char *)&genid, sizeof(genid));
                 logmsg(LOGMSG_USER, "\"\n\tdatalen=%d\n\tdata=\"", dtalen);
                 hexdump(LOGMSG_USER, dta, dtalen);
                 logmsg(LOGMSG_USER, "\"\n");
@@ -1393,9 +1393,9 @@ static int bdb_osql_log_apply_ll(bdb_state_type *bdb_state,
                        rec->dbnum, tableid,
                        (bdb_state->ixdups[tableid]) ? "dupd" : "uniq",
                        newkeylen);
-                hexdump(LOGMSG_USER, (unsigned char *)newkey, newkeylen);
+                hexdump(LOGMSG_USER, newkey, newkeylen);
                 logmsg(LOGMSG_USER, "\"\n\tdatalen=%d\n\tdata=\"", use_datalen);
-                hexdump(LOGMSG_USER, (unsigned char *)use_data, use_datalen);
+                hexdump(LOGMSG_USER, use_data, use_datalen);
                 logmsg(LOGMSG_USER, "\"\n");
             }
 

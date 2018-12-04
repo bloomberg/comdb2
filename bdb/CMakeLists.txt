@@ -73,6 +73,7 @@ add_custom_command(
   COMMAND dist/genrec.sh ${CMAKE_CURRENT_SOURCE_DIR}/llog.src llog_auto.c llog_auto.h rec_llog
   COMMAND dist/geninc.sh llog llog_ext.h llog_auto.c
 )
+set_source_files_properties(llog_auto.c count.c PROPERTIES COMPILE_FLAGS "-Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-label")
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}

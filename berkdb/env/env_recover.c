@@ -145,7 +145,7 @@ err:
 int
 __checkpoint_get(DB_ENV *dbenv, DB_LSN *lsnout)
 {
-	struct __db_checkpoint ckpt = { 0 };
+	struct __db_checkpoint ckpt = {{0}};
 	int rc;
 
 	/*

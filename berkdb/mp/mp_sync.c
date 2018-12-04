@@ -158,7 +158,7 @@ __checkpoint_verify(DB_ENV *dbenv)
 int
 __checkpoint_save(DB_ENV *dbenv, DB_LSN *lsn, int in_recovery)
 {
-	struct __db_checkpoint ckpt = { 0 };
+	struct __db_checkpoint ckpt = {{0}};
 	int rc;
 	size_t niop = 0;
 

@@ -1017,7 +1017,7 @@ static int bdb_tran_commit_phys_getlsn_flags(bdb_state_type *bdb_state,
 
     if (lsn->file && flags & DB_TXN_REP_ACK) {
         int timeoutms = -1;
-        seqnum_type seqnum = {0};
+        seqnum_type seqnum = {{0}};
         memcpy(&seqnum.lsn, lsn, sizeof(*lsn));
         bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &seqnum.generation);
         bdb_wait_for_seqnum_from_all_adaptive_newcoh(bdb_state, &seqnum, 0,

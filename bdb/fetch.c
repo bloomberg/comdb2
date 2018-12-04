@@ -602,13 +602,9 @@ static int bdb_fetch_int_ll(
     int found;
     int search_recnum;
     int flags;
-    int flags_copy;
-    unsigned long long key_genid;
-    unsigned long long dta_genid;
     unsigned long long masked_genid;
     int havedta;
     int ixlen_full;
-    int ixdups;
     int keycontainsgenid;
     int ixrecnum;
     DB *dbp;
@@ -632,8 +628,6 @@ static int bdb_fetch_int_ll(
 
     uint8_t *ver = &args->ver;
 
-    key_genid = 0;
-    dta_genid = 0;
     foundrrn = 0;
     foundgenid = 0;
     *bdberr = BDBERR_NOERROR;
@@ -667,7 +661,6 @@ static int bdb_fetch_int_ll(
 
         ixlen_full = sizeof(unsigned long long); /* len of a gmonid */
         keycontainsgenid = 0;
-        ixdups = 0;
         ixrecnum = 0;
         lookahead = 0;
         dbp = NULL; /* will be set later */
@@ -681,7 +674,6 @@ static int bdb_fetch_int_ll(
 
         ixlen_full = bdb_state->ixlen[ixnum];
         keycontainsgenid = bdb_keycontainsgenid(bdb_state, ixnum);
-        ixdups = bdb_state->ixdups[ixnum];
         ixrecnum = bdb_state->ixrecnum[ixnum];
         dbp = bdb_state->dbp_ix[ixnum];
     }
@@ -872,7 +864,6 @@ before_first_lookup:
 
     dbcp = NULL;
 
-    flags_copy = flags;
     if (cur_ser) {
         if (CURSOR_SER_ENABLED(bdb_state) && attempt_deserializaion &&
             cur_ser->is_valid) {
@@ -888,10 +879,7 @@ before_first_lookup:
                     *rrn = 0;
                     return -1;
                 }
-            } else
-                /* get the record the cursor was pointing to before
-                 * serializaiton */
-                flags_copy = DB_CURRENT;
+            }
         }
 
         /* we will mark this valid again if we successfully call
@@ -2301,6 +2289,8 @@ static int bdb_fetch_int(int return_dta, int direction, int lookahead,
         /* don't loose bdberr pls */
         arc = bdb_tran_abort_int(bdb_state, tran, &bdberr2, NULL, 0, NULL, 0,
                                  NULL);
+        if (arc)
+            logmsg(LOGMSG_USER, "%s:%d arc=%d\n", __FILE__, __LINE__, arc);
     }
     return llrc;
 }

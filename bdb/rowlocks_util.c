@@ -58,7 +58,7 @@ int bdb_get_row_lock_pfunc(bdb_state_type *bdb_state, int rowlock_lid, int idx,
     /* Would have blocked */
     if (rc == DB_LOCK_NOTGRANTED) {
         /* Stash the lsn here */
-        DBCPS plsn = {0};
+        DBCPS plsn = {{0}};
 
         /* Pause all pagelock cursors in this txn */
         if (pfunc) {
@@ -197,7 +197,7 @@ int bdb_get_row_lock_minmaxlk_pfunc(bdb_state_type *bdb_state, int rowlock_lid,
 
     /* Would block */
     if (rc == DB_LOCK_NOTGRANTED) {
-        DBCPS plsn = {0};
+        DBCPS plsn = {{0}};
 
         if (pfunc) {
             rc = pfunc(parg);

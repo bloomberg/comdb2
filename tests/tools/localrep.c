@@ -172,13 +172,15 @@ uint64_t flibc_ntohll(uint64_t net_order)
     return host_order;
 }
 
-void hexdump(void *pp, int len) {
+/*
+void hexdump(const void *pp, int len) {
     uint8_t *p = (uint8_t*) pp;
     for (int i = 0; i < len; i++) {
         printf("%02x", p[i]);
     }
     printf("\n");
 }
+*/
 
 static void flip_value(void *value, int type) {
     uint32_t i;

@@ -3525,7 +3525,7 @@ int osql_send_startgen(char *tohost, unsigned long long rqid, uuid_t uuid,
         return OSQL_SEND_ERROR_WRONGMASTER;
 
     if (rqid == OSQL_RQID_USE_UUID) {
-        osql_startgen_uuid_rpl_t startgen_uuid_rpl = {0};
+        osql_startgen_uuid_rpl_t startgen_uuid_rpl = {{0}};
         uint8_t *p_buf = buf;
         uint8_t *p_buf_end = (p_buf + OSQLCOMM_STARTGEN_UUID_RPL_LEN);
         msglen = OSQLCOMM_STARTGEN_UUID_RPL_LEN;
@@ -3542,7 +3542,7 @@ int osql_send_startgen(char *tohost, unsigned long long rqid, uuid_t uuid,
         type = osql_net_type_to_net_uuid_type(NET_OSQL_SOCK_RPL);
 
     } else {
-        osql_startgen_rpl_t startgen_rpl = {0};
+        osql_startgen_rpl_t startgen_rpl = {{0}};
         uint8_t *p_buf = buf;
         uint8_t *p_buf_end = (p_buf + OSQLCOMM_STARTGEN_RPL_LEN);
         msglen = OSQLCOMM_STARTGEN_RPL_LEN;
@@ -3596,7 +3596,7 @@ int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
         return OSQL_SEND_ERROR_WRONGMASTER;
 
     if (rqid == OSQL_RQID_USE_UUID) {
-        osql_usedb_rpl_uuid_t usedb_uuid_rpl = {0};
+        osql_usedb_rpl_uuid_t usedb_uuid_rpl = {{0}};
         uint8_t *p_buf = buf;
         uint8_t *p_buf_end = (p_buf + OSQLCOMM_USEDB_RPL_UUID_TYPE_LEN);
 
@@ -3618,7 +3618,7 @@ int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
         }
         type = osql_net_type_to_net_uuid_type(NET_OSQL_SOCK_RPL);
     } else {
-        osql_usedb_rpl_t usedb_rpl = {0};
+        osql_usedb_rpl_t usedb_rpl = {{0}};
         uint8_t *p_buf = buf;
         uint8_t *p_buf_end = (p_buf + OSQLCOMM_USEDB_RPL_TYPE_LEN);
 
@@ -3701,7 +3701,7 @@ int osql_send_updcols(char *tohost, unsigned long long rqid, uuid_t uuid,
     p_buf = buf;
     p_buf_end = (p_buf + totlen);
     if (rqid == OSQL_RQID_USE_UUID) {
-        osql_updcols_uuid_rpl_t rpl = {0};
+        osql_updcols_uuid_rpl_t rpl = {{0}};
 
         rpl.hd.type = OSQL_UPDCOLS;
         comdb2uuidcpy(rpl.hd.uuid, uuid);
@@ -3719,7 +3719,7 @@ int osql_send_updcols(char *tohost, unsigned long long rqid, uuid_t uuid,
 
         type = osql_net_type_to_net_uuid_type(type);
     } else {
-        osql_updcols_rpl_t rpl = {0};
+        osql_updcols_rpl_t rpl = {{0}};
         rpl.hd.type = OSQL_UPDCOLS;
         rpl.hd.sid = rqid;
         rpl.dt.seq = seq;
@@ -3772,7 +3772,7 @@ int osql_send_index(char *tohost, unsigned long long rqid, uuid_t uuid,
         return OSQL_SEND_ERROR_WRONGMASTER;
 
     if (rqid == OSQL_RQID_USE_UUID) {
-        osql_index_uuid_rpl_t index_uuid_rpl = {0};
+        osql_index_uuid_rpl_t index_uuid_rpl = {{0}};
 
         index_uuid_rpl.hd.type = isDelete ? OSQL_DELIDX : OSQL_INSIDX;
         comdb2uuidcpy(index_uuid_rpl.hd.uuid, uuid);
@@ -3793,7 +3793,7 @@ int osql_send_index(char *tohost, unsigned long long rqid, uuid_t uuid,
         /* override message type */
         type = osql_net_type_to_net_uuid_type(NET_OSQL_SOCK_RPL);
     } else {
-        osql_index_rpl_t index_rpl = {0};
+        osql_index_rpl_t index_rpl = {{0}};
 
         index_rpl.hd.type = isDelete ? OSQL_DELIDX : OSQL_INSIDX;
         index_rpl.hd.sid = rqid;
@@ -3846,13 +3846,13 @@ int osql_send_qblob(char *tohost, unsigned long long rqid, uuid_t uuid,
     uint8_t *p_buf_end;
     int rc = 0;
     int msgsz = 0;
-    osql_qblob_rpl_t rpl = {0};
+    osql_qblob_rpl_t rpl = {{0}};
 
     if (check_master(tohost))
         return OSQL_SEND_ERROR_WRONGMASTER;
 
     if (rqid == OSQL_RQID_USE_UUID) {
-        osql_qblob_uuid_rpl_t rpl_uuid = {0};
+        osql_qblob_uuid_rpl_t rpl_uuid = {{0}};
         p_buf_end = p_buf + OSQLCOMM_QBLOB_UUID_RPL_TYPE_LEN;
 
         rpl_uuid.hd.type = OSQL_QBLOB;
@@ -3957,7 +3957,7 @@ int osql_send_updrec(char *tohost, unsigned long long rqid, uuid_t uuid,
     int rc = 0;
     int sent;
     int msgsz;
-    osql_upd_rpl_t upd_rpl = {0};
+    osql_upd_rpl_t upd_rpl = {{0}};
     int send_dk = 0;
 
     if (gbl_partial_indexes && ins_keys != -1ULL && del_keys != -1ULL)
@@ -3967,7 +3967,7 @@ int osql_send_updrec(char *tohost, unsigned long long rqid, uuid_t uuid,
         return OSQL_SEND_ERROR_WRONGMASTER;
 
     if (rqid == OSQL_RQID_USE_UUID) {
-        osql_upd_uuid_rpl_t upd_uuid_rpl = {0};
+        osql_upd_uuid_rpl_t upd_uuid_rpl = {{0}};
 
         if (send_dk) {
             p_buf_end = buf + OSQLCOMM_UPD_UUID_RPL_TYPE_LEN;
@@ -4134,8 +4134,8 @@ int osql_send_updstat(char *tohost, unsigned long long rqid, uuid_t uuid,
                       unsigned long long seq, char *pData, int nData, int nStat,
                       int type, SBUF2 *logsb)
 {
-    osql_updstat_rpl_t updstat_rpl = {0};
-    osql_updstat_uuid_rpl_t updstat_rpl_uuid = {0};
+    osql_updstat_rpl_t updstat_rpl = {{0}};
+    osql_updstat_uuid_rpl_t updstat_rpl_uuid = {{0}};
 
     uint8_t
         buf[OSQLCOMM_UPDSTAT_RPL_TYPE_LEN > OSQLCOMM_UPDSTAT_UUID_RPL_TYPE_LEN
@@ -4231,7 +4231,7 @@ int osql_send_insrec(char *tohost, unsigned long long rqid, uuid_t uuid,
     if (rqid == OSQL_RQID_USE_UUID) {
         int len = OSQLCOMM_INS_UUID_RPL_TYPE_LEN;
         int flags = 0;
-        osql_ins_uuid_rpl_t ins_uuid_rpl = {0};
+        osql_ins_uuid_rpl_t ins_uuid_rpl = {{0}};
 
         ins_uuid_rpl.hd.type = OSQL_INSERT;
         comdb2uuidcpy(ins_uuid_rpl.hd.uuid, uuid);
@@ -4271,7 +4271,7 @@ int osql_send_insrec(char *tohost, unsigned long long rqid, uuid_t uuid,
         /* override message type */
         type = osql_net_type_to_net_uuid_type(NET_OSQL_SOCK_RPL);
     } else {
-        osql_ins_rpl_t ins_rpl = {0};
+        osql_ins_rpl_t ins_rpl = {{0}};
 
         if (send_dk || upsert_flags) {
             logmsg(LOGMSG_ERROR,
@@ -4325,7 +4325,7 @@ int osql_send_dbq_consume(char *tohost, unsigned long long rqid, uuid_t uuid,
     union {
         osql_uuid_dbq_consume_t uuid;
         osql_dbq_consume_t rqid;
-    } rpl = {0};
+    } rpl = {{0}};
     if (check_master(tohost))
         return OSQL_SEND_ERROR_WRONGMASTER;
     if (logsb) {
@@ -4377,7 +4377,7 @@ int osql_send_delrec(char *tohost, unsigned long long rqid, uuid_t uuid,
     if (check_master(tohost))
         return OSQL_SEND_ERROR_WRONGMASTER;
     if (rqid == OSQL_RQID_USE_UUID) {
-        osql_del_uuid_rpl_t del_uuid_rpl = {0};
+        osql_del_uuid_rpl_t del_uuid_rpl = {{0}};
         if (send_dk) {
             p_buf_end = p_buf + OSQLCOMM_OSQL_DEL_UUID_RPL_TYPE_LEN;
             msgsz = OSQLCOMM_OSQL_DEL_UUID_RPL_TYPE_LEN;
@@ -4400,7 +4400,7 @@ int osql_send_delrec(char *tohost, unsigned long long rqid, uuid_t uuid,
         }
         type = osql_net_type_to_net_uuid_type(type);
     } else {
-        osql_del_rpl_t del_rpl = {0};
+        osql_del_rpl_t del_rpl = {{0}};
         if (send_dk) {
             p_buf_end = p_buf + OSQLCOMM_OSQL_DEL_RPL_TYPE_LEN;
             msgsz = OSQLCOMM_OSQL_DEL_RPL_TYPE_LEN;
@@ -4504,7 +4504,7 @@ int osql_send_serial(char *tohost, unsigned long long rqid, uuid_t uuid,
     p_buf_end = (p_buf + b_sz);
 
     if (rqid == OSQL_RQID_USE_UUID) {
-        osql_serial_uuid_rpl_t serial_rpl = {0};
+        osql_serial_uuid_rpl_t serial_rpl = {{0}};
 
         serial_rpl.hd.type =
             (type == NET_OSQL_SERIAL_RPL || 
@@ -4545,7 +4545,7 @@ int osql_send_serial(char *tohost, unsigned long long rqid, uuid_t uuid,
         }
 
     } else {
-        osql_serial_rpl_t serial_rpl = {0};
+        osql_serial_rpl_t serial_rpl = {{0}};
 
         serial_rpl.hd.type =
             (type == NET_OSQL_SERIAL_RPL ||
@@ -4594,8 +4594,8 @@ int osql_send_commit(char *tohost, unsigned long long rqid, uuid_t uuid,
                      struct client_query_stats *query_stats,
                      snap_uid_t *snap_info)
 {
-    osql_done_rpl_t rpl_ok = {0};
-    osql_done_xerr_t rpl_xerr = {0};
+    osql_done_rpl_t rpl_ok = {{0}};
+    osql_done_xerr_t rpl_xerr = {{0}};
     int b_sz;
     int used_malloc = 0;
     int snap_info_length = 0;
@@ -4728,8 +4728,8 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
                              struct client_query_stats *query_stats,
                              snap_uid_t *snap_info)
 {
-    osql_done_uuid_rpl_t rpl_ok = {0};
-    osql_done_xerr_uuid_t rpl_xerr = {0};
+    osql_done_uuid_rpl_t rpl_ok = {{0}};
+    osql_done_xerr_uuid_t rpl_xerr = {{0}};
     int b_sz;
     int used_malloc = 0;
     int snap_info_length = 0;
@@ -4875,7 +4875,7 @@ static void osql_blocksql_failed_dispatch(netinfo_type *netinfo_ptr,
                                           uuid_t uuid, int rc)
 {
 
-    osql_done_xerr_t rpl_xerr = {0};
+    osql_done_xerr_t rpl_xerr = {{0}};
     uint8_t buf[sizeof(rpl_xerr)];
     uint8_t *p_buf = buf;
     uint8_t *p_buf_end = p_buf + sizeof(rpl_xerr);
@@ -5216,8 +5216,8 @@ int osql_comm_signal_sqlthr_rc(sorese_info_t *sorese, struct errstat *xerr,
     if (sorese->host) {
         /* remote */
         if (sorese->rqid == OSQL_RQID_USE_UUID) {
-            osql_done_xerr_uuid_t rpl_xerr = {0};
-            osql_done_uuid_rpl_t rpl_ok = {0};
+            osql_done_xerr_uuid_t rpl_xerr = {{0}};
+            osql_done_uuid_rpl_t rpl_ok = {{0}};
 
             if (rc) {
                 uint8_t *p_buf = buf;
@@ -5256,8 +5256,8 @@ int osql_comm_signal_sqlthr_rc(sorese_info_t *sorese, struct errstat *xerr,
             }
             type = osql_net_type_to_net_uuid_type(NET_OSQL_SIGNAL);
         } else {
-            osql_done_xerr_t rpl_xerr = {0};
-            osql_done_rpl_t rpl_ok = {0};
+            osql_done_xerr_t rpl_xerr = {{0}};
+            osql_done_rpl_t rpl_ok = {{0}};
 
             if (rc) {
                 uint8_t *p_buf = buf;
@@ -5610,7 +5610,7 @@ static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
         if (rqid == OSQL_RQID_USE_UUID) {
             p_buf = bufuuid;
             p_buf_end = p_buf + OSQLCOMM_EXISTS_UUID_RPL_TYPE_LEN;
-            osql_exists_uuid_rpl_t rpl = {0};
+            osql_exists_uuid_rpl_t rpl = {{0}};
 
             rpl.hd.type = OSQL_EXISTS;
             comdb2uuidcpy(rpl.hd.uuid, uuid);
@@ -5632,7 +5632,7 @@ static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
             p_buf_end = p_buf + OSQLCOMM_EXISTS_RPL_TYPE_LEN;
 
             /* send a done with an error, lost request */
-            osql_exists_rpl_t rpl = {0};
+            osql_exists_rpl_t rpl = {{0}};
 
             rpl.hd.type = OSQL_EXISTS;
             rpl.hd.sid = rqid;

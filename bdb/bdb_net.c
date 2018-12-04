@@ -158,7 +158,7 @@ int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t generation)
         lastpr = now;
     }
 
-    seqnum_type seqnum = {0};
+    seqnum_type seqnum = {{0}};
     seqnum.lsn = permlsn;
     seqnum.commit_generation = generation;
     bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &seqnum.generation);

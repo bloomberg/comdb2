@@ -205,7 +205,6 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
     }
     pgsz = dbp->pgsize;
     page = malloc(pgsz);
-    uint8_t *max = (uint8_t *)page + pgsz;
     rc = lseek(fd, 0, SEEK_SET);
     if (rc) {
         logmsg(LOGMSG_ERROR, "can't rewind to start of file\n");

@@ -1098,11 +1098,15 @@ static int bdb_temp_table_truncate_temp_db(bdb_state_type *bdb_state,
     if (rc == 0) {
         /*fprintf(stderr, "deleting\n");*/
         rc2 = dbcur->c_del(dbcur, 0);
+        if (rc2)
+            logmsg(LOGMSG_USER, "%s:%d rc2=%d\n", __func__, __LINE__, rc2);
     }
 
     while (rc == 0) {
         rc = dbcur->c_get(dbcur, &dbt_key, &dbt_data, DB_NEXT);
         rc2 = dbcur->c_del(dbcur, 0);
+        if (rc2)
+            logmsg(LOGMSG_USER, "%s:%d rc2=%d\n", __func__, __LINE__, rc2);
         /*fprintf(stderr, "deleting\n");*/
     }
 

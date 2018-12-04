@@ -1279,9 +1279,6 @@ static int open_retry(DBC **dbcp, fstdump_per_thread_t *fstdump,
 {
     int retries = 0;
     int rc = 0;
-    bdb_state_type *bdb_state;
-
-    bdb_state = common->bdb_state;
 
     while (retries < gbl_maxretries) {
         if ((rc = fstdump->dbp->cursor(fstdump->dbp, NULL, dbcp, 0)) == 0) {
