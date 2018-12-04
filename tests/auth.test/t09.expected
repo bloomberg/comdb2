@@ -55,6 +55,7 @@
 (candidate='DETACH')
 (candidate='DISABLE')
 (candidate='DISTINCT')
+(candidate='DISTRIBUTION')
 (candidate='DO')
 (candidate='DROP')
 (candidate='DRYRUN')
