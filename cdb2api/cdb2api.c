@@ -5650,6 +5650,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     cdb2_hndl_tp *hndl;
     int rc = 0;
     void *callbackrc;
+    int overwrite_rc = 0;
     cdb2_event *e = NULL;
 
     pthread_mutex_lock(&cdb2_cfg_lock);
@@ -5707,6 +5708,15 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     if (rc != 0)
         goto out;
 
+    while ((e = cdb2_next_callback(hndl, CDB2_AT_OPEN, e)) != NULL) {
+        callbackrc =
+            cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE, rc);
+        PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, callbackrc, overwrite_rc);
+    }
+
+    if (overwrite_rc)
+        goto out;
+
     if (hndl->flags & CDB2_DIRECT_CPU) {
         hndl->num_hosts = 1;
         /* Get defaults from comdb2db.cfg */
@@ -5752,14 +5762,6 @@ out:
         fprintf(stderr, "%p> cdb2_open(dbname: \"%s\", type: \"%s\", flags: "
                         "%x) = %d => %p\n",
                 (void *)pthread_self(), dbname, type, hndl->flags, rc, *handle);
-    }
-
-    if (hndl != NULL) {
-        while ((e = cdb2_next_callback(hndl, CDB2_AT_OPEN, e)) != NULL) {
-            callbackrc =
-                cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE, rc);
-            PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
-        }
     }
     return rc;
 }
