@@ -19,6 +19,12 @@ static const char revid[] = "$Id: mp_fget.c,v 11.81 2003/09/25 02:15:16 sue Exp 
 
 #include <string.h>
 #include <pthread.h>
+
+#ifdef __sun
+   /* for PTHREAD_STACK_MIN on Solaris */
+#  define __EXTENSIONS__
+#endif
+
 #endif
 
 #include "db_int.h"
@@ -1116,10 +1122,7 @@ __memp_init_pgcompact_routines(void)
 
 #ifdef PTHREAD_STACK_MIN
 	/* ~128kB stack size */
-	if (Pthread_attr_setstacksize(&spgs.attrs, (PTHREAD_STACK_MIN + 0x20000)) != 0) {
-		logmsgperror("pthread_attr_setstacksize");
-		abort();
-	}
+	Pthread_attr_setstacksize(&spgs.attrs, (PTHREAD_STACK_MIN + 0x20000));
 #endif
 
 	if (pthread_attr_setdetachstate(&spgs.attrs, PTHREAD_CREATE_DETACHED) != 0) {

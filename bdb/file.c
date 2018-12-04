@@ -34,7 +34,13 @@
 #include <errno.h>
 #include <dirent.h>
 #include <fcntl.h>
+
+#ifdef __sun
+   /* for PTHREAD_STACK_MIN on Solaris */
+#  define __EXTENSIONS__
+#endif
 #include <limits.h>
+
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <pthread.h>
@@ -5085,7 +5091,7 @@ int create_master_lease_thread(bdb_state_type *bdb_state)
         Pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN);
 	extern void *master_lease_thread(void *arg);
 	pthread_create(&tid, &attr, master_lease_thread, bdb_state);
-        pthread_attr_destroy(&attr);
+    Pthread_attr_destroy(&attr);
     return 0;
 }
 
@@ -5134,11 +5140,6 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
     pthread_t dummy_tid;
     const char *tmp;
     extern unsigned gbl_blob_sz_thresh_bytes;
-
-    pthread_attr_t attr;
-
-    Pthread_attr_init(&attr);
-    Pthread_attr_setstacksize(&attr, 1024 * 1024);
 
     pthread_once(&ONCE_LOCK, run_once);
 
@@ -5498,6 +5499,9 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
 
         /* dont create all these aux helper threads for a run of initcomdb2 */
         if (!create && !gbl_exit) {
+            pthread_attr_t attr;
+            Pthread_attr_init(&attr);
+            Pthread_attr_setstacksize(&attr, 1024 * 1024);
             /*
               create checkpoint thread.
               this thread periodically applied changes reflected in the
@@ -5529,6 +5533,8 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
                 *bdberr = BDBERR_MISC;
                 return NULL;
             }
+
+            Pthread_attr_destroy(&attr);
 
             /* create the deadlock detect thread if we arent doing auto
                deadlock detection */

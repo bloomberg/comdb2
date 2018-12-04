@@ -17,6 +17,11 @@
 extern int __berkdb_write_alarm_ms;
 extern int __berkdb_read_alarm_ms;
 
+#ifdef __sun
+   /* for PTHREAD_STACK_MIN on Solaris */
+#  define __EXTENSIONS__
+#endif
+
 #include <pthread.h>
 
 #include "limit_fortify.h"
@@ -652,7 +657,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             logmsgperror("create exit thread: pthread_create");
             exit(1);
         }
-        Pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&thd_attr);
     } else if(tokcmp(tok,ltok, "partinfo")==0) {
         char opt[128];
 
