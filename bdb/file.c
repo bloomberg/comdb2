@@ -5534,8 +5534,6 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
                 return NULL;
             }
 
-            Pthread_attr_destroy(&attr);
-
             /* create the deadlock detect thread if we arent doing auto
                deadlock detection */
             if (!bdb_state->attr->autodeadlockdetect) {
@@ -5578,12 +5576,14 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
                       "logfiles will be deleted in logdelete_thread\n");
                 rc = pthread_create(&(bdb_state->logdelete_thread), &attr,
                                     logdelete_thread, bdb_state);
-                if (rc != 0) {
-                    logmsg(LOGMSG_ERROR, "unable to create checkpoint thread\n");
+                if (rc) {
+                    logmsg(LOGMSG_ERROR, "unable to create logdelete thread rc %d %s\n", rc, strerror(rc));
                     *bdberr = BDBERR_MISC;
                     return NULL;
                 }
             }
+
+            Pthread_attr_destroy(&attr);
         }
 
         /* This bit needs to be exclusive.  We don't want replication messages
