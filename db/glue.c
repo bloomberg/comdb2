@@ -2955,6 +2955,7 @@ static int new_master_callback(void *bdb_handle, char *host)
     dbenv->gen = gen;
     /*this is only used when handle not established yet. */
     if (host == gbl_mynode) {
+        trigger_clear_hash();
         if (oldmaster != host) {
             logmsg(LOGMSG_WARN, "I AM NEW MASTER NODE %s\n", host);
             gbl_master_changes++;
@@ -2965,7 +2966,6 @@ static int new_master_callback(void *bdb_handle, char *host)
                         "one was in progress it will have to be restarted\n");
             }
             load_auto_analyze_counters();
-            trigger_clear_hash();
             trigger_timepart = 1;
 
             if (oldgen != gen) {
@@ -4296,8 +4296,8 @@ int backend_open(struct dbenv *dbenv)
         /* now tell bdb what the flags are - CRUCIAL that this is done
          * before any records are read/written from/to these tables. */
         set_bdb_option_flags(d, d->odh, d->inplace_updates,
-                             d->instant_schema_change, d->version, compress,
-                             compress_blobs, datacopy_odh);
+                             d->instant_schema_change, d->schema_version,
+                             compress, compress_blobs, datacopy_odh);
 
         ctrace("Table %s  "
                "ver %d  "
@@ -4305,7 +4305,7 @@ int backend_open(struct dbenv *dbenv)
                "isc %s  "
                "odh_datacopy %s  "
                "ipu %s",
-               d->tablename, d->version, d->odh ? "yes" : "no",
+               d->tablename, d->schema_version, d->odh ? "yes" : "no",
                d->instant_schema_change ? "yes" : "no",
                datacopy_odh ? "yes" : "no", d->inplace_updates ? "yes" : "no");
     }

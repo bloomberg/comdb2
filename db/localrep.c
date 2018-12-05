@@ -653,7 +653,7 @@ int add_oplog_entry(struct ireq *iq, void *trans, int type, void *logrec,
     uint8_t *p_buf_data;
     const uint8_t *p_buf_data_end;
     uint8_t buf[OPREC_SIZE] = {0};
-    unsigned long long genid;
+    unsigned long long genid = 0;
     struct oprec rec;
     blob_buffer_t blobs[MAXBLOBS] = {0};
     struct dbtable *db;
@@ -727,7 +727,7 @@ int add_local_commit_entry(struct ireq *iq, void *trans, long long seqno,
     uint8_t buf[COMMITREC_SIZE] = {0};
     int err, fix;
     int rrn;
-    unsigned long long genid;
+    unsigned long long genid = 0;
     blob_buffer_t blobs[MAXBLOBS] = {0};
     struct commitrec rec;
 

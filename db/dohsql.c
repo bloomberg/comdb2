@@ -26,6 +26,13 @@ limitations under the License.
 
 int gbl_dohsql_disable = 0;
 int gbl_dohsql_verbose = 0;
+int gbl_dohsql_max_queued_kb_highwm = 10000000; /* 10 GB */
+int gbl_dohsql_full_queue_poll_msec = 10;       /* 10msec */
+/* for now we keep this tunning "private */
+static int gbl_dohsql_track_stats = 1;
+static int gbl_dohsql_que_free_highwm = 10;
+static int gbl_dohsql_que_free_lowwm = 5;
+static int gbl_dohsql_max_queued_kb_lowwm = 1000; /* 1 GB */
 
 struct col {
     int type;
@@ -34,6 +41,13 @@ struct col {
 typedef struct col my_col_t;
 
 enum doh_status { DOH_RUNNING = 0, DOH_MASTER_DONE = 1, DOH_CLIENT_DONE = 2 };
+
+struct dohsql_connector_stats {
+    int max_queue_len;         /* over the execution time */
+    int max_free_queue_len;    /* -- " -- */
+    long long max_queue_bytes; /* -- " -- */
+};
+typedef struct dohsql_connector_stats dohsql_connector_stats_t;
 
 struct dohsql_connector {
     struct sqlclntstate *clnt;
@@ -46,8 +60,9 @@ struct dohsql_connector {
     int rc;
     int nrows;              /* current total queued rows */
     enum doh_status status; /* caller is done */
+    long long queue_size;   /* size of queue in bytes */
+    dohsql_connector_stats_t stats;
 };
-
 typedef struct dohsql_connector dohsql_connector_t;
 
 typedef Mem row_t;
@@ -59,6 +74,13 @@ enum {
     IOFFSET_SAVED_MEM_IDX = 4,
     MAX_MEM_IDX = 5
 };
+
+struct dohsql_req_stats {
+    int max_queue_len;         /* among all shards */
+    int max_free_queue_len;    /* -- " -- */
+    long long max_queue_bytes; /* -- " -- */
+};
+typedef struct dohsql_req_stats dohsql_req_stats_t;
 
 struct dohsql {
     int nconns;
@@ -83,8 +105,23 @@ struct dohsql {
     int top_idx;
     int order_size;
     int *order_dir;
+    /* stats */
+    dohsql_req_stats_t stats;
 };
 typedef struct dohsql dohsql_t;
+
+struct dohsql_stats {
+    long long num_reqs;
+    int max_distribution;
+    int max_queue_len;
+    int max_free_queue_len;
+    long long max_queue_bytes;
+};
+typedef struct dohsql_stats dohsql_stats_t;
+
+pthread_mutex_t dohsql_stats_mtx = PTHREAD_MUTEX_INITIALIZER;
+dohsql_stats_t gbl_dohsql_stats;       /* updated only on request completion */
+dohsql_stats_t gbl_dohsql_stats_dirty; /* updated dynamically, unlocked */
 
 static int gbl_plugin_api_debug = 0;
 
@@ -175,6 +212,9 @@ static void sqlengine_work_shard(struct thdpool *pool, void *work,
     osql_log_time_done(clnt);
 
     /*thrman_setid(thrman_self(), "[done]");*/
+
+    /* after this clnt is toast */
+    ((dohsql_connector_t *)clnt->plugin.state)->status = DOH_CLIENT_DONE;
 }
 
 static int inner_type(sqlite3_stmt *stmt, int col)
@@ -209,16 +249,77 @@ static int inner_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     return 0;
 }
 
-static void trimQue(sqlite3_stmt *stmt, queue_type *que, int limit)
+static void trimQue(dohsql_connector_t *conn, sqlite3_stmt *stmt,
+                    queue_type *que, int limit)
 {
     row_t *row;
+    long long row_size;
+
     while (queue_count(que) > limit) {
         row = queue_next(que);
         if (gbl_dohsql_verbose)
             logmsg(LOGMSG_DEBUG, "XXX: %p freed older row limit %d\n", que,
                    limit);
-        /*fprintf(stderr, "XXX: uncloned %p\n", row);*/
-        sqlite3CloneResultFree(stmt, &row);
+        sqlite3CloneResultFree(stmt, &row, &row_size);
+
+        if (gbl_dohsql_max_queued_kb_highwm) {
+            conn->queue_size -= row_size;
+        }
+    }
+}
+
+/* locked */
+static void _track_que_free(dohsql_connector_t *conn)
+{
+    if (unlikely(!gbl_dohsql_track_stats))
+        return;
+
+    int len = queue_count(conn->que_free);
+    if (conn->stats.max_free_queue_len < len) {
+        conn->stats.max_free_queue_len = len;
+        if (gbl_dohsql_stats_dirty.max_free_queue_len < len)
+            gbl_dohsql_stats_dirty.max_free_queue_len = len;
+    }
+}
+
+/* conn is locked */
+static void _que_limiter(dohsql_connector_t *conn, sqlite3_stmt *stmt,
+                         int row_size)
+{
+    if (gbl_dohsql_max_queued_kb_highwm) {
+        conn->queue_size += row_size;
+    }
+
+cleanup:
+    /* inline cleanup */
+    if (queue_count(conn->que_free) > gbl_dohsql_que_free_highwm) {
+        _track_que_free(conn);
+        trimQue(conn, stmt, conn->que_free, gbl_dohsql_que_free_lowwm);
+    }
+
+    if (gbl_dohsql_max_queued_kb_highwm) {
+        if (conn->queue_size > gbl_dohsql_max_queued_kb_highwm * 1000) {
+            if ((conn->queue_size > gbl_dohsql_max_queued_kb_lowwm * 1000) &&
+                conn->status != DOH_MASTER_DONE) {
+                pthread_mutex_unlock(&conn->mtx);
+                poll(NULL, 0, gbl_dohsql_full_queue_poll_msec);
+                pthread_mutex_lock(&conn->mtx);
+                goto cleanup;
+            }
+        }
+    }
+    if (likely(gbl_dohsql_track_stats)) {
+        int tmp = queue_count(conn->que);
+        if (conn->stats.max_queue_len < tmp) {
+            conn->stats.max_queue_len = tmp;
+            if (gbl_dohsql_stats_dirty.max_queue_len < tmp)
+                gbl_dohsql_stats_dirty.max_queue_len = tmp;
+        }
+        if (conn->stats.max_queue_bytes < conn->queue_size) {
+            conn->stats.max_queue_bytes = conn->queue_size;
+            if (gbl_dohsql_stats_dirty.max_queue_bytes < conn->queue_size)
+                gbl_dohsql_stats_dirty.max_queue_bytes = conn->queue_size;
+        }
     }
 }
 
@@ -227,6 +328,7 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp,
 {
     dohsql_connector_t *conn = (dohsql_connector_t *)clnt->plugin.state;
     sqlite3_stmt *stmt = resp->stmt;
+    long long row_size;
 
     row_t *row;
     row_t *oldrow;
@@ -240,8 +342,9 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp,
                    pthread_self(), __func__, queue_count(conn->que),
                    queue_count(conn->que_free));
         /* work is done, need to clean-up */
-        trimQue(stmt, conn->que, 0);
-        trimQue(stmt, conn->que_free, 0);
+        _track_que_free(conn);
+        trimQue(conn, stmt, conn->que, 0);
+        trimQue(conn, stmt, conn->que_free, 0);
 
         conn->rc = SQLITE_DONE; /* signal master this is clear */
 
@@ -260,23 +363,21 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp,
     }
     pthread_mutex_unlock(&conn->mtx);
 
-    row = sqlite3CloneResult(stmt, oldrow);
-    /*if (!oldrow)
-        fprintf(stderr, "XXX: cloned %p\n", row);*/
+    row = sqlite3CloneResult(stmt, oldrow, &row_size);
     if (!row)
         return SHARD_ERR_GENERIC;
 
     pthread_mutex_lock(&conn->mtx);
     conn->rc = SQLITE_ROW;
-    queue_add(conn->que, row);
+    if (queue_add(conn->que, row))
+        abort();
+
     if (gbl_dohsql_verbose)
         logmsg(LOGMSG_DEBUG, "%lx XXX: %p added new row\n", pthread_self(),
                conn);
 
-    /* inline cleanup */
-    if (queue_count(conn->que_free) > 10) {
-        trimQue(stmt, conn->que_free, 5);
-    }
+    _que_limiter(conn, stmt, row_size);
+
     pthread_mutex_unlock(&conn->mtx);
 
     return SHARD_NOERR;
@@ -372,7 +473,8 @@ static void add_row(dohsql_t *conns, int i, row_t *row)
         /* put the used row in the free list */
         if (i != conns->row_src)
             pthread_mutex_lock(&conns->conns[conns->row_src].mtx);
-        queue_add(conns->conns[conns->row_src].que_free, conns->row);
+        if (queue_add(conns->conns[conns->row_src].que_free, conns->row))
+            abort();
         if (i != conns->row_src)
             pthread_mutex_unlock(&conns->conns[conns->row_src].mtx);
     }
@@ -413,10 +515,10 @@ static int _get_a_parallel_row(dohsql_t *conns, row_t **prow, int *error_child)
 
     for (child_num = 1; child_num < conns->nconns && (*prow) == NULL;
          child_num++) {
-        pthread_mutex_lock(&conns->conns[child_num].mtx);
+        Q_LOCK(child_num);
         /* done */
         if (CHILD_DONE(child_num)) {
-            pthread_mutex_unlock(&conns->conns[child_num].mtx);
+            Q_UNLOCK(child_num);
             continue;
         }
         /* error */
@@ -425,7 +527,7 @@ static int _get_a_parallel_row(dohsql_t *conns, row_t **prow, int *error_child)
             rc = conns->conns[child_num].rc;
             if (error_child)
                 *error_child = child_num;
-            pthread_mutex_unlock(&conns->conns[child_num].mtx);
+            Q_UNLOCK(child_num);
 
             /* we could envision a case when child is retried for cut 2*/
             /* for now, signal all children that we are done and pass error
@@ -442,7 +544,7 @@ static int _get_a_parallel_row(dohsql_t *conns, row_t **prow, int *error_child)
             add_row(conns, child_num, *prow);
             rc = SQLITE_ROW;
         }
-        pthread_mutex_unlock(&conns->conns[child_num].mtx);
+        Q_UNLOCK(child_num);
     }
 
     if (gbl_dohsql_verbose)
@@ -660,9 +762,10 @@ static int dohsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
     case RESPONSE_COST:
     case RESPONSE_EFFECTS:
     case RESPONSE_ERROR_PREPARE_RETRY:
-        return 0;
     case RESPONSE_COLUMNS_LUA:
+        return 0;
     default:
+        logmsg(LOGMSG_ERROR, "Unsupported option %d\n", t);
         abort();
     }
     return 0;
@@ -977,10 +1080,24 @@ int dohsql_distribute(dohsql_node_t *node)
         }
     }
 
+    if (gbl_dohsql_track_stats) {
+        gbl_dohsql_stats_dirty.num_reqs++;
+        if (gbl_dohsql_stats_dirty.max_distribution < conns->nconns)
+            gbl_dohsql_stats_dirty.max_distribution = conns->nconns;
+
+        pthread_mutex_lock(&dohsql_stats_mtx);
+        if (gbl_dohsql_max_queued_kb_lowwm > gbl_dohsql_max_queued_kb_highwm)
+            gbl_dohsql_max_queued_kb_lowwm =
+                (gbl_dohsql_max_queued_kb_highwm / 2)
+                    ? gbl_dohsql_max_queued_kb_highwm / 2
+                    : 1;
+        pthread_mutex_unlock(&dohsql_stats_mtx);
+    }
+
     return SHARD_NOERR;
 }
 
-int dohsql_end_distribute(struct sqlclntstate *clnt)
+int dohsql_end_distribute(struct sqlclntstate *clnt, struct reqlogger *logger)
 {
     dohsql_t *conns = clnt->conns;
     int i;
@@ -990,7 +1107,8 @@ int dohsql_end_distribute(struct sqlclntstate *clnt)
 
     if (conns->row && conns->row_src) {
         pthread_mutex_lock(&conns->conns[conns->row_src].mtx);
-        queue_add(conns->conns[conns->row_src].que_free, conns->row);
+        if (queue_add(conns->conns[conns->row_src].que_free, conns->row))
+            abort();
         pthread_mutex_unlock(&conns->conns[conns->row_src].mtx);
         conns->row = NULL;
         conns->row_src = 0;
@@ -1007,7 +1125,44 @@ int dohsql_end_distribute(struct sqlclntstate *clnt)
     }
 
     for (i = 0; i < conns->nconns; i++) {
+        if (likely(gbl_dohsql_track_stats)) {
+            if (conns->stats.max_queue_len <
+                conns->conns[i].stats.max_queue_len)
+                conns->stats.max_queue_len =
+                    conns->conns[i].stats.max_queue_len;
+            if (conns->stats.max_free_queue_len <
+                conns->conns[i].stats.max_free_queue_len)
+                conns->stats.max_free_queue_len =
+                    conns->conns[i].stats.max_free_queue_len;
+            if (conns->stats.max_queue_bytes <
+                conns->conns[i].stats.max_queue_bytes)
+                conns->stats.max_queue_bytes =
+                    conns->conns[i].stats.max_queue_bytes;
+        }
         _shard_disconnect(&conns->conns[i]);
+    }
+    if (likely(gbl_dohsql_track_stats)) {
+        pthread_mutex_lock(&dohsql_stats_mtx);
+        gbl_dohsql_stats.num_reqs++;
+        if (gbl_dohsql_stats.max_distribution < conns->nconns)
+            gbl_dohsql_stats.max_distribution = conns->nconns;
+        if (gbl_dohsql_stats.max_queue_len < conns->stats.max_queue_len)
+            gbl_dohsql_stats.max_queue_len = conns->stats.max_queue_len;
+        if (gbl_dohsql_stats.max_free_queue_len <
+            conns->stats.max_free_queue_len)
+            gbl_dohsql_stats.max_free_queue_len =
+                conns->stats.max_free_queue_len;
+        if (gbl_dohsql_stats.max_queue_bytes < conns->stats.max_queue_bytes)
+            gbl_dohsql_stats.max_queue_bytes = conns->stats.max_queue_bytes;
+        pthread_mutex_unlock(&dohsql_stats_mtx);
+    }
+
+    if (logger) {
+        reqlog_logf(
+            logger, REQL_INFO,
+            "dist %d max_queue %d max_free_queue %d max_queued_bytes %lld\n",
+            conns->nconns, conns->stats.max_queue_len,
+            conns->stats.max_free_queue_len, conns->stats.max_queue_bytes);
     }
 
     if (clnt->conns->order) {
@@ -1044,10 +1199,14 @@ void dohsql_wait_for_master(sqlite3_stmt *stmt, struct sqlclntstate *clnt)
         }
     }
 
-    trimQue(stmt, conn->que, 0);
-    trimQue(stmt, conn->que_free, 0);
+    _track_que_free(conn);
+    trimQue(conn, stmt, conn->que, 0);
+    trimQue(conn, stmt, conn->que_free, 0);
 
-    conn->status = DOH_CLIENT_DONE;
+    /*
+        This has to be done after the sql thread has done touching clnt
+    structure conn->status = DOH_CLIENT_DONE;
+    */
 
     pthread_mutex_unlock(&conn->mtx);
 }
@@ -1142,7 +1301,7 @@ static int _cmp(dohsql_t *conns, int idx_a, int idx_b)
     int *order = conns->order;
     row_t *a, *b;
     int i;
-    int ret;
+    int ret = 0;
     int qc_a, qc_b;
 
     if (idx_a == idx_b)
@@ -1321,7 +1480,8 @@ static int _local_step(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
 
     conns->conns[0].rc = init_next_row(clnt, stmt);
     if (conns->conns[0].rc == SQLITE_ROW) {
-        queue_add(conns->conns[0].que, ((Vdbe *)stmt)->pResultSet);
+        if (queue_add(conns->conns[0].que, ((Vdbe *)stmt)->pResultSet))
+            abort();
         _move_client_row(conns, crt_idx);
     } else if (conns->conns[0].rc == SQLITE_DONE) {
         _move_client_done(conns, crt_idx);
@@ -1368,13 +1528,13 @@ retry_row:
 
         Q_LOCK(found);
         ret_row = queue_next(conns->conns[found].que);
-        Q_UNLOCK(found);
 
         if (gbl_dohsql_verbose)
             logmsg(LOGMSG_DEBUG, "Retrieved client %d row %p\n", found,
                    ret_row);
 
         add_row(conns, found, ret_row);
+        Q_UNLOCK(found);
 
         rc = _check_offset(conns);
         if (rc != SQLITE_ROW) {
@@ -1488,9 +1648,31 @@ void dohsql_handle_delayed_syntax_error(struct sqlclntstate *clnt)
 
     _signal_children_master_is_done(clnt->conns);
 
-    rc = dohsql_end_distribute(clnt);
+    rc = dohsql_end_distribute(clnt, NULL);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed to clear parallel distribution rc=%d",
                __func__, rc);
     }
+}
+
+/**
+ * Return global stats
+ *
+ */
+void dohsql_stats(void)
+{
+    logmsg(LOGMSG_USER, "Num requests: %lld [%lld]\n",
+           gbl_dohsql_stats.num_reqs, gbl_dohsql_stats_dirty.num_reqs);
+    logmsg(LOGMSG_USER, "Max distribution: %d [%d]\n",
+           gbl_dohsql_stats.max_distribution,
+           gbl_dohsql_stats_dirty.max_distribution);
+    logmsg(LOGMSG_USER, "Max queue length: %d [%d]\n",
+           gbl_dohsql_stats.max_queue_len,
+           gbl_dohsql_stats_dirty.max_queue_len);
+    logmsg(LOGMSG_USER, "Max free queue length: %d [%d]\n",
+           gbl_dohsql_stats.max_free_queue_len,
+           gbl_dohsql_stats_dirty.max_free_queue_len);
+    logmsg(LOGMSG_USER, "Max queue bytes: %lld [%lld]\n",
+           gbl_dohsql_stats.max_queue_bytes,
+           gbl_dohsql_stats_dirty.max_queue_bytes);
 }

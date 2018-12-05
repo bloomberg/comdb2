@@ -32,7 +32,6 @@
 #include <epochlib.h>
 #include <list.h>
 #include <lockmacro.h>
-#include <machpthread.h>
 #include <pool.h>
 #include <time.h>
 
@@ -151,14 +150,9 @@ static void thd_io_complete(void)
 
 int thd_init(void)
 {
-    int rc;
     Pthread_mutex_init(&lock, 0);
     Pthread_attr_init(&attr);
-    PTHD_ATTR_SETDETACHED(attr, rc);
-    if (rc) {
-        perror_errnum("thd_init:pthread_attr_setdetached", rc);
-        return -1;
-    }
+    Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
     Pthread_cond_init(&coalesce_wakeup, NULL);
     p_thds = pool_setalloc_init(sizeof(struct thd), 0, malloc, free);
     if (p_thds == 0) {
@@ -202,7 +196,7 @@ int thd_init(void)
     listc_init(&busy, offsetof(struct thd, lnk));
     bdb_set_io_control(thd_io_start, thd_io_complete);
     logmsg(LOGMSG_INFO, "thd_init: thread subsystem initialized\n");
-    rc = pthread_attr_setstacksize(&attr, 4096 * 1024);
+    Pthread_attr_setstacksize(&attr, 4096 * 1024);
     return 0;
 }
 

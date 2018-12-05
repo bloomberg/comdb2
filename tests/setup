@@ -60,6 +60,10 @@ if [[ -n ${DEBUGGER} ]]; then
         ;;
     callgrind)
         DEBUG_PREFIX="valgrind --tool=callgrind --instr-atstart=yes --dump-instr=yes --collect-jumps=yes --callgrind-out-file=$TESTDIR/$TESTCASE.callgrind"
+        if [[ -n ${COLLECTFUNC} ]]; then
+            # collect info on $COLLECTFUNC only
+            DEBUG_PREFIX="valgrind --tool=callgrind --collect-atstart=no --toggle-collect="${COLLECTFUNC}" --dump-instr=yes --collect-jumps=yes --callgrind-out-file=$TESTDIR/$TESTCASE.callgrind"
+        fi
         if [[ -z ${INTERACTIVE_DEBUG} ]]; then
             INTERACTIVE_DEBUG=0
         fi

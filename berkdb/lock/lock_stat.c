@@ -699,7 +699,7 @@ __collect_lock(DB_LOCKTAB *lt, DB_LOCKER *lip, struct __db_lock *lp,
 
 		case (32):
 			memcpy(tablename, ptr, 28);
-			snprintf(rectype, sizeof(rectype), "TABLELOCK", tablename);
+			snprintf(rectype, sizeof(rectype), "TABLELOCK %s", tablename);
 			namep = tablename;
 			break;
 

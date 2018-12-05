@@ -80,7 +80,7 @@ static std::vector<std::pair<int, int>> port_ranges;
 struct connection {
     int fd;
     std::list<std::string> out;
-    char inbuf[128];
+    char inbuf[256];
     int inoff;
     bool writable;
     bool is_hello;
@@ -179,12 +179,12 @@ static int connect_instance(int servicefd, char *name)
 
 int client_func(int fd)
 {
-    char service[128];
+    char service[256] = {0};
     int listenfd = fd;
 #ifdef VERBOSE
     fprintf(stderr, "Starting client thread \n");
 #endif
-    ssize_t n = read(listenfd, service, sizeof(service));
+    ssize_t n = read(listenfd, service, sizeof(service) - 1);
 #ifdef VERBOSE
     fprintf(stderr, "%s\n", service);
 #endif
@@ -750,7 +750,7 @@ done:
 static int do_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds)
 {
     connection &c = connections[fd.fd];
-    ssize_t n = read(fd.fd, c.inbuf + c.inoff, sizeof(c.inbuf) - c.inoff);
+    ssize_t n = read(fd.fd, c.inbuf + c.inoff, (sizeof(c.inbuf) - 1) - c.inoff);
     if (n <= 0) {
         unwatchfd(fd);
         return 0;
@@ -1004,7 +1004,8 @@ int main(int argc, char **argv)
             dbname = strdup(optarg);
             break;
         case 'b':
-            if (strlen(optarg) >= sizeof(serv_addr.sun_path)) {
+            if (strlen(optarg) >= sizeof(serv_addr.sun_path) ||
+                strlen(optarg) >= sizeof(unix_bind_path)) {
                 fprintf(stderr, "Filename too long: %s\n", optarg);
                 exit(2);
             }

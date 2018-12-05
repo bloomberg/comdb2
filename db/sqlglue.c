@@ -8686,38 +8686,23 @@ void cancel_sql_statement(int id)
         logmsg(LOGMSG_USER, "Query %d not found (finished?)\n", id);
 }
 
-/* cancel sql statement with the given hex representation of cnonce */
+/* cancel sql statement with the given cnonce */
 void cancel_sql_statement_with_cnonce(const char *cnonce)
 {
     if(!cnonce) return;
 
     struct sql_thread *thd;
     int found = 0;
+    snap_uid_t snap;
+    size_t cnonce_len = strlen(cnonce);
 
     Pthread_mutex_lock(&gbl_sql_lock);
     LISTC_FOR_EACH(&thedb->sql_threads, thd, lnk)
     {
-        found = 1;
-        snap_uid_t snap;
-
         if (thd->clnt && get_cnonce(thd->clnt, &snap) == 0) {
-            const char *sptr = cnonce;
-            int cnt = 0;
-            void luabb_fromhex(uint8_t *out, const uint8_t *in, size_t len);
-            while(*sptr) {
-                uint8_t num;
-                luabb_fromhex(&num, (const uint8_t *)sptr, 2);
-                sptr+=2;
-
-                if (cnt > snap.keylen || snap.key[cnt] != num) {
-                    found = 0;
-                    break;
-                }
-                cnt++;
-            }
-            if (found && cnt != snap.keylen)
-                found = 0;
-
+            if (snap.keylen != cnonce_len)
+                continue;
+            found = (memcmp(snap.key, cnonce, cnonce_len) == 0);
             if (found) {
                 thd->clnt->stop_this_statement = 1;
                 break;
@@ -9191,20 +9176,23 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
         if (rc == SQLITE_SCHEMA || rc == SQLITE_COMDB2SCHEMA) {
             logmsg(LOGMSG_ERROR, "%s: failing with SQLITE_COMDB2SCHEMA\n",
                    __func__);
-            sqlite3VdbeError(vdbe, "Database was schema changed");
+            if (vdbe)
+                sqlite3VdbeError(vdbe, "Database was schema changed");
             return SQLITE_COMDB2SCHEMA;
         }
 
         if (clnt->gen_changed) {
             logmsg(LOGMSG_ERROR, 
-                    "%s: fail to open a new curtran, rc=%d, return changenode\n",
-                    __func__, rc);
-            sqlite3VdbeError(vdbe, "New master under snapshot");
+                   "%s: fail to open a new curtran, rc=%d, return "
+                   "changenode\n", __func__, rc);
+            if (vdbe)
+                sqlite3VdbeError(vdbe, "New master under snapshot");
             return SQLITE_CLIENT_CHANGENODE;
         } else {
-            logmsg(LOGMSG_ERROR, "%s: fail to open a new curtran, rc=%d\n", __func__,
-                    rc);
-            sqlite3VdbeError(vdbe, "Failed to reaquire locks on deadlock");
+            logmsg(LOGMSG_ERROR, "%s: fail to open a new curtran, rc=%d\n",
+                   __func__, rc);
+            if (vdbe)
+                sqlite3VdbeError(vdbe, "Failed to reaquire locks on deadlock");
             return ERR_RECOVER_DEADLOCK;
         }
     }

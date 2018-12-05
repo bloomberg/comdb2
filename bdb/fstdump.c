@@ -732,7 +732,7 @@ static int bdb_fstdumpdta_sendsz_int(bdb_state_type *bdb_state, SBUF2 *sb,
         pthread_attr_t attr;
 
         Pthread_attr_init(&attr);
-        pthread_attr_setstacksize(&attr,
+        Pthread_attr_setstacksize(&attr,
                                   bdb_state->attr->fstdump_thread_stacksz);
 
         bzero(perthread, sizeof(perthread));
@@ -787,7 +787,7 @@ static int bdb_fstdumpdta_sendsz_int(bdb_state_type *bdb_state, SBUF2 *sb,
         pthread_attr_t attr;
 
         Pthread_attr_init(&attr);
-        pthread_attr_setstacksize(&attr,
+        Pthread_attr_setstacksize(&attr,
                                   bdb_state->attr->fstdump_thread_stacksz);
 
         bzero(&args, sizeof(args));

@@ -1421,13 +1421,9 @@ void send_cancel_cnonce(const char *cnonce)
         cdb2_close(cdb2h_2);
         return;
     }
-    char expanded[256];
-    for (int i = 0; i < 256 / 2 && cnonce[i] != '\0'; i++) {
-        sprintf(&expanded[i * 2], "%2x", cnonce[i]);
-    }
     char sql[256];
     snprintf(sql, 255, "exec procedure sys.cmd.send('sql cancelcnonce %s')",
-             expanded);
+             cnonce);
     if (debug_trace) printf("Cancel sql string '%s'\n", sql);
     rc = cdb2_run_statement(cdb2h_2, sql);
     if (!rc)

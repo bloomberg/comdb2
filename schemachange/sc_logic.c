@@ -180,7 +180,6 @@ static int master_downgrading(struct schema_change_type *s)
         logmsg(
             LOGMSG_WARN,
             "Master node downgrading - new master will resume schemachange\n");
-        gbl_schema_change_in_progress = 0;
         return SC_MASTER_DOWNGRADE;
     }
     return SC_OK;
@@ -308,7 +307,7 @@ static int do_finalize(ddl_t func, struct ireq *iq,
 
 static int check_table_version(struct ireq *iq, struct schema_change_type *sc)
 {
-    if (sc->addonly || sc->resume)
+    if (sc->addonly || sc->resume || sc->fix_tp_badvers)
         return 0;
     int rc, bdberr;
     unsigned long long version;
@@ -477,15 +476,7 @@ int do_schema_change_tran(sc_arg_t *arg)
                 backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
 
             /* return NOMASTER for live schemachange writes */
-            start_exclusive_backend_request(thedb);
-            Pthread_rwlock_wrlock(&sc_live_rwlock);
-            s->db->sc_to = NULL;
-            s->db->sc_from = NULL;
-            s->db->sc_abort = 0;
-            s->db->sc_downgrading = 1;
-            Pthread_rwlock_unlock(&sc_live_rwlock);
-            end_backend_request(thedb);
-
+            sc_set_downgrading(s);
             bdb_close_only(s->newdb->handle, &bdberr);
             freedb(s->newdb);
             s->newdb = NULL;
@@ -514,6 +505,7 @@ int do_schema_change_tran(sc_arg_t *arg)
     }
     Pthread_mutex_unlock(&s->mtx);
     if (rc == SC_MASTER_DOWNGRADE) {
+        sc_set_running(s->tablename, 0, iq->sc_seed, NULL, 0);
         free_sc(s);
     } else {
         stop_and_free_sc(rc, s, 1 /*do_free*/);
@@ -1264,9 +1256,9 @@ int dryrun_int(struct schema_change_type *s, struct dbtable *db, struct dbtable 
         } else {
             sbuf2printf(s->sb, ">There is no change in the schema\n");
         }
-    } else if (db->version >= MAXVER && newdb->instant_schema_change) {
-        sbuf2printf(s->sb, ">Table is at version: %d MAXVER: %d\n", db->version,
-                    MAXVER);
+    } else if (db->schema_version >= MAXVER && newdb->instant_schema_change) {
+        sbuf2printf(s->sb, ">Table is at version: %d MAXVER: %d\n", 
+                    db->schema_version, MAXVER);
         sbuf2printf(s->sb, ">Will need to rebuild table\n");
     }
 

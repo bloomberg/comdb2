@@ -1648,6 +1648,21 @@ static int process_local_shadtbl_skp(struct sqlclntstate *clnt, shad_tbl_t *tbl,
                 return SQLITE_TOOBIG;
             }
 
+            if (osql->is_reorder_on) {
+                rc = osql_send_delrec(osql->host, osql->rqid, osql->uuid, genid,
+                                      (gbl_partial_indexes && tbl->ix_partial)
+                                          ? get_del_keys(clnt, tbl, genid)
+                                          : -1ULL,
+                                      osql_nettype, osql->logsb);
+                if (rc) {
+                    logmsg(LOGMSG_ERROR,
+                           "%s: error writting record to master in offload "
+                           "mode %d!\n",
+                           __func__, rc);
+                    return SQLITE_INTERNAL;
+                }
+            }
+
             rc = process_local_shadtbl_index(clnt, tbl, bdberr, genid, 1);
             if (rc) {
                 logmsg(LOGMSG_ERROR,
@@ -1657,15 +1672,19 @@ static int process_local_shadtbl_skp(struct sqlclntstate *clnt, shad_tbl_t *tbl,
                 return SQLITE_INTERNAL;
             }
 
-            rc = osql_send_delrec(osql->host, osql->rqid, osql->uuid, genid,
-                                  (gbl_partial_indexes && tbl->ix_partial)
-                                      ? get_del_keys(clnt, tbl, genid)
-                                      : -1ULL,
-                                  osql_nettype, osql->logsb);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: error writting record to master in offload mode %d!\n",
-                    __func__, rc);
-                return SQLITE_INTERNAL;
+            if (!osql->is_reorder_on) {
+                rc = osql_send_delrec(osql->host, osql->rqid, osql->uuid, genid,
+                                      (gbl_partial_indexes && tbl->ix_partial)
+                                          ? get_del_keys(clnt, tbl, genid)
+                                          : -1ULL,
+                                      osql_nettype, osql->logsb);
+                if (rc) {
+                    logmsg(LOGMSG_ERROR,
+                           "%s: error writting record to master in offload "
+                           "mode %d!\n",
+                           __func__, rc);
+                    return SQLITE_INTERNAL;
+                }
             }
             osql->replicant_numops++;
             DEBUG_PRINT_NUMOPS();
@@ -1928,6 +1947,21 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
         else if (rc == IX_FND)
             goto next;
 
+        if (osql->is_reorder_on) {
+            rc = osql_send_insrec(osql->host, osql->rqid, osql->uuid, key,
+                                  (gbl_partial_indexes && tbl->ix_partial)
+                                      ? get_ins_keys(clnt, tbl, key)
+                                      : -1ULL,
+                                  data, ldata, osql_nettype, osql->logsb,
+                                  get_rec_flags(clnt, tbl, key, 1));
+
+            if (rc) {
+                logmsg(LOGMSG_USER,
+                       "%s: error writting record to master in offload mode!\n",
+                       __func__);
+                return SQLITE_INTERNAL;
+            }
+        }
         rc = process_local_shadtbl_index(clnt, tbl, bdberr, key, 0);
         if (rc) {
             logmsg(LOGMSG_ERROR,
@@ -1949,18 +1983,20 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
             return SQLITE_TOOBIG;
         }
 
-        rc = osql_send_insrec(osql->host, osql->rqid, osql->uuid, key,
-                              (gbl_partial_indexes && tbl->ix_partial)
-                                  ? get_ins_keys(clnt, tbl, key)
-                                  : -1ULL,
-                              data, ldata, osql_nettype, osql->logsb,
-                              get_rec_flags(clnt, tbl, key, 1));
+        if (!osql->is_reorder_on) {
+            rc = osql_send_insrec(osql->host, osql->rqid, osql->uuid, key,
+                                  (gbl_partial_indexes && tbl->ix_partial)
+                                      ? get_ins_keys(clnt, tbl, key)
+                                      : -1ULL,
+                                  data, ldata, osql_nettype, osql->logsb,
+                                  get_rec_flags(clnt, tbl, key, 1));
 
-        if (rc) {
-            logmsg(LOGMSG_USER,
-                   "%s: error writting record to master in offload mode!\n",
-                   __func__);
-            return SQLITE_INTERNAL;
+            if (rc) {
+                logmsg(LOGMSG_USER,
+                       "%s: error writting record to master in offload mode!\n",
+                       __func__);
+                return SQLITE_INTERNAL;
+            }
         }
         osql->replicant_numops++;
         DEBUG_PRINT_NUMOPS();
@@ -2029,6 +2065,24 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
             ((tbl->nops + crt_nops) > clnt->osql_max_trans)) {
             return SQLITE_TOOBIG;
         }
+        if (osql->is_reorder_on) {
+            rc = osql_send_updrec(osql->host, osql->rqid, osql->uuid, genid,
+                                  (gbl_partial_indexes && tbl->ix_partial)
+                                      ? get_ins_keys(clnt, tbl, *seq)
+                                      : -1ULL,
+                                  (gbl_partial_indexes && tbl->ix_partial)
+                                      ? get_del_keys(clnt, tbl, genid)
+                                      : -1ULL,
+                                  data, ldata, osql_nettype, osql->logsb);
+
+            if (rc) {
+                rc = SQLITE_INTERNAL;
+                logmsg(LOGMSG_ERROR,
+                       "%s: error writting record to master in offload mode!\n",
+                       __func__);
+                break;
+            }
+        }
 
         int *updCols = NULL;
         rc = process_local_shadtbl_updcols(clnt, tbl, &updCols, bdberr, *seq);
@@ -2053,20 +2107,23 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
             free(updCols);
         }
 
-        rc = osql_send_updrec(osql->host, osql->rqid, osql->uuid, genid,
-                              (gbl_partial_indexes && tbl->ix_partial)
-                                  ? get_ins_keys(clnt, tbl, *seq)
-                                  : -1ULL,
-                              (gbl_partial_indexes && tbl->ix_partial)
-                                  ? get_del_keys(clnt, tbl, genid)
-                                  : -1ULL,
-                              data, ldata, osql_nettype, osql->logsb);
+        if (!osql->is_reorder_on) {
+            rc = osql_send_updrec(osql->host, osql->rqid, osql->uuid, genid,
+                                  (gbl_partial_indexes && tbl->ix_partial)
+                                      ? get_ins_keys(clnt, tbl, *seq)
+                                      : -1ULL,
+                                  (gbl_partial_indexes && tbl->ix_partial)
+                                      ? get_del_keys(clnt, tbl, genid)
+                                      : -1ULL,
+                                  data, ldata, osql_nettype, osql->logsb);
 
-        if (rc) {
-            rc = SQLITE_INTERNAL;
-            logmsg(LOGMSG_ERROR, "%s: error writting record to master in offload mode!\n",
-                    __func__);
-            break;
+            if (rc) {
+                rc = SQLITE_INTERNAL;
+                logmsg(LOGMSG_ERROR,
+                       "%s: error writting record to master in offload mode!\n",
+                       __func__);
+                break;
+            }
         }
         osql->replicant_numops++;
         DEBUG_PRINT_NUMOPS();

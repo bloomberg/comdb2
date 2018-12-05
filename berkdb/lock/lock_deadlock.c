@@ -506,7 +506,7 @@ __lock_detect_int(dbenv, atype, abortp, can_retry)
 	DB_LOCKTAB *lt;
 	DB_TXNMGR *tmgr;
 	locker_info *idmap = NULL;
-	sparse_map_t *sparse_map, *sparse_copymap;
+	sparse_map_t *sparse_map = NULL, *sparse_copymap;
 	u_int32_t *bitmap = NULL, *copymap, **deadp, *deadwho, **free_me, *free_me_2,
 	    *tmpmap;
 	u_int32_t i, keeper, killid, limit = 0, nalloc = 0, nlockers = 0, dwhoix;

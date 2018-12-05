@@ -155,6 +155,26 @@ assertres "$zeros" "$((N-1))"
 other=`grep "entries:16" entry_counts.out | wc -l`
 assertres "$other" "1"
 
+
+for i in `seq 1 $N` ; do
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "insert into t2 values($i)"
+done
+
+assertcnt t2 16
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('bdb dblist')" > dblist2.out
+for i in `seq 1 $N` ; do
+    fileid=`cat dblist2.out | grep "XXX.t2_" | grep datas$((i-1)) | awk '{print $1}'`
+    [ "x$fileid" == "x" ] && failexit "dblist does not contain info about t2"
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('bdb pgdump $fileid 1')" | grep "entries:"
+done > entry_counts2.out
+
+
+zeros=`grep "entries:2" entry_counts2.out | wc -l`
+assertres "$zeros" "$((N-1))"
+other=`grep "entries:18" entry_counts2.out | wc -l`
+assertres "$other" "1"
+
+
 call_unsetup 1
 trap - INT EXIT
 

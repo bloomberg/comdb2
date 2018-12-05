@@ -5293,7 +5293,20 @@ Mem* sqlite3GetCachedResultRow(sqlite3_stmt *pStmt, int *nColumns)
   return NULL;
 }
 
-Mem* sqlite3CloneResult(sqlite3_stmt *pStmt, Mem *pMem)
+static long long memRowSize(Mem *pMem, int nMems)
+{
+  unsigned long long size = sizeof(Mem)*nMems;
+  int i;
+
+  for(i=0;i<nMems;i++) {
+    if (pMem[i].flags & (MEM_Str|MEM_Blob)) {
+        size += pMem[i].n+2;
+    }
+  }
+  return size;
+}
+
+Mem* sqlite3CloneResult(sqlite3_stmt *pStmt, Mem *pMem, long long *pSize)
 {
   Vdbe *p = (Vdbe*)pStmt;
   int i, rc;
@@ -5302,28 +5315,33 @@ Mem* sqlite3CloneResult(sqlite3_stmt *pStmt, Mem *pMem)
 
   if (!p) abort();
 
+  *pSize = 0LL;
   if (!pMem) {
     pMem = sqlite3Malloc(sizeof(Mem)*ncols);
+    if (!pMem)
+      return NULL;
     bzero(pMem, sizeof(*pMem)*ncols);
+  } else {
+    *pSize -= memRowSize(pMem, ncols);
   }
-  if (!pMem)
-    return NULL;
 
   for(i=0;i<ncols;i++) {
     rc = sqlite3VdbeMemCopy(&pMem[i], &cols[i]);
     if (rc)
       return NULL;
   }
+  *pSize += memRowSize(pMem, ncols);
 
   return pMem;
 }
 
-int sqlite3CloneResultFree(sqlite3_stmt *pStmt, Mem **ppMem)
+int sqlite3CloneResultFree(sqlite3_stmt *pStmt, Mem **ppMem, long long *pSize)
 {
   Vdbe *p = (Vdbe*)pStmt;
   Mem *pMem = *ppMem;
 
   if (pMem) {
+    *pSize = memRowSize(*ppMem, p->nResColumn);
     releaseMemArray(pMem, p->nResColumn);    
     sqlite3DbFree(p->db,pMem); 
     *ppMem = NULL;

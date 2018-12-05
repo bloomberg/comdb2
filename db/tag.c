@@ -3061,12 +3061,12 @@ int vtag_to_ondisk_vermap(struct dbtable *db, uint8_t *rec, int *len, uint8_t ve
     /* version sanity check */
     if (unlikely(ver == 0)) {
         logmsg(LOGMSG_FATAL, "%s:%d %s() %s %d -> %d\n", __FILE__, __LINE__,
-               __func__, db->tablename, ver, db->version);
+               __func__, db->tablename, ver, db->schema_version);
         cheap_stack_trace();
         exit(1);
     }
 
-    if (ver == db->version) {
+    if (ver == db->schema_version) {
         goto done;
     }
 
@@ -3094,7 +3094,7 @@ int vtag_to_ondisk_vermap(struct dbtable *db, uint8_t *rec, int *len, uint8_t ve
         from_schema = find_tag_schema(db->tablename, ver_tag);
         if (unlikely(from_schema == NULL)) {
             logmsg(LOGMSG_FATAL, "%s:%d %s() %s %d -> %d\n", __FILE__, __LINE__,
-                   __func__, db->tablename, ver, db->version);
+                   __func__, db->tablename, ver, db->schema_version);
             cheap_stack_trace();
             exit(1);
         }
@@ -3169,12 +3169,12 @@ int vtag_to_ondisk(struct dbtable *db, uint8_t *rec, int *len, uint8_t ver,
     /* version sanity check */
     if (unlikely(ver == 0)) {
         logmsg(LOGMSG_FATAL, "%s:%d %s() %s %d -> %d\n", __FILE__, __LINE__,
-               __func__, db->tablename, ver, db->version);
+               __func__, db->tablename, ver, db->schema_version);
         cheap_stack_trace();
         exit(1);
     }
 
-    if (ver == db->version) {
+    if (ver == db->schema_version) {
         goto done;
     }
 
@@ -3192,7 +3192,7 @@ int vtag_to_ondisk(struct dbtable *db, uint8_t *rec, int *len, uint8_t ver,
     from_schema = find_tag_schema(db->tablename, ver_tag);
     if (unlikely(from_schema == NULL)) {
         logmsg(LOGMSG_FATAL, "%s:%d %s() %s %d -> %d\n", __FILE__, __LINE__,
-               __func__, db->tablename, ver, db->version);
+               __func__, db->tablename, ver, db->schema_version);
         cheap_stack_trace();
         exit(1);
     }
@@ -6319,7 +6319,7 @@ void commit_schemas(const char *tblname)
                                 "commit_schemas: out of memory on malloc\n");
                         exit(1);
                     }
-                    sprintf(newname, "%s%d", gbl_ondisk_ver, db->version);
+                    sprintf(newname, "%s%d", gbl_ondisk_ver, db->schema_version);
                     ver_schema = clone_schema(sc);
                     free(ver_schema->tag);
                     ver_schema->tag = newname;
@@ -6337,7 +6337,7 @@ void commit_schemas(const char *tblname)
              * if nn >= current version drop it */
             int ver;
             sscanf(sc->tag, gbl_ondisk_ver_fmt, &ver);
-            if (ver >= db->version) {
+            if (ver >= db->schema_version) {
                 listc_rfl(&dbt->taglist, sc);
                 listc_abl(&to_be_freed, sc);
                 sc = NULL;
@@ -6655,7 +6655,7 @@ void update_dbstore(struct dbtable *db)
 
     bzero(db->dbstore, sizeof db->dbstore);
 
-    for (int v = 1; v <= db->version; ++v) {
+    for (int v = 1; v <= db->schema_version; ++v) {
         char tag[MAXTAGLEN];
         struct schema *ver;
         snprintf(tag, sizeof tag, gbl_ondisk_ver_fmt, v);
@@ -6857,7 +6857,7 @@ void freedb_int(struct dbtable *db, struct dbtable *replace)
                 db->dbstore[i].data = NULL;
             }
         }
-        for (int v = 1; v <= db->version; ++v) {
+        for (int v = 1; v <= db->schema_version; ++v) {
             if (db->versmap[v]) {
                 free(db->versmap[v]);
                 db->versmap[v] = NULL;
@@ -6944,7 +6944,7 @@ static void clear_existing_schemas(struct dbtable *db)
     struct schema *schema;
     char tag[64];
     int i;
-    for (i = 1; i <= db->version; ++i) {
+    for (i = 1; i <= db->schema_version; ++i) {
         sprintf(tag, gbl_ondisk_ver_fmt, i);
         schema = find_tag_schema(db->tablename, tag);
         del_tag_schema(db->tablename, tag);
@@ -7012,7 +7012,7 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
         logmsg(LOGMSG_ERROR, "newdb_from_schema failed %s:%d\n", __FILE__, __LINE__);
         goto err;
     }
-    newdb->version = version;
+    newdb->schema_version = version;
     newdb->dbnum = db->dbnum;
     rc = add_cmacc_stmt(newdb, 0);
     if (rc) {

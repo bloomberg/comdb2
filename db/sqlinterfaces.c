@@ -2518,11 +2518,13 @@ void query_stats_setup(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     /* reqlog */
     setup_reqlog(thd, clnt);
 
-    /* fingerprint info */
-    if (gbl_fingerprint_queries)
-        sqlite3_fingerprint_enable(thd->sqldb);
-    else
-        sqlite3_fingerprint_disable(thd->sqldb);
+    if (thd->sqldb != NULL) {
+        /* fingerprint info */
+        if (gbl_fingerprint_queries)
+            sqlite3_fingerprint_enable(thd->sqldb);
+        else
+            sqlite3_fingerprint_disable(thd->sqldb);
+    }
 
     /* using case sensitive like? enable */
     if (clnt->using_case_insensitive_like)
@@ -3430,6 +3432,9 @@ static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 {
     sqlite3_stmt *stmt = rec->stmt;
 
+    if (clnt->conns)
+        dohsql_end_distribute(clnt, thd->logger);
+
     sql_statement_done(thd->sqlthd, thd->logger, clnt, outrc);
 
     if (stmt && !((Vdbe *)stmt)->explain && ((Vdbe *)stmt)->nScan > 1 &&
@@ -3455,9 +3460,6 @@ static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
        the next read in sqlite master will find them and try to use them
      */
     clearClientSideRow(clnt);
-
-    if (clnt->conns)
-        dohsql_end_distribute(clnt);
 }
 
 static void handle_stored_proc(struct sqlthdstate *thd,
@@ -3465,6 +3467,7 @@ static void handle_stored_proc(struct sqlthdstate *thd,
 {
     struct sql_state rec = {0};
     char *errstr;
+    query_stats_setup(thd, clnt);
     reqlog_set_event(thd->logger, "sp");
     clnt->trans_has_sp = 1;
     int rc = exec_procedure(thd, clnt, &errstr);

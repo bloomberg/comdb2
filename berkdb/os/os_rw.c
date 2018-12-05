@@ -1094,7 +1094,7 @@ __os_iov(dbenv, op, fhp, pgno, pagesize, bufs, nobufs, niop)
 	size_t pagesize, nobufs, *niop;
 	u_int8_t **bufs;
 {
-	int ret, i;
+	int ret = 0, i;
 	db_pgno_t c_pgno;
 	size_t single_niop, max_bufs;
 	struct timespec s, rem;
@@ -1157,7 +1157,7 @@ __os_iov(dbenv, op, fhp, pgno, pagesize, bufs, nobufs, niop)
 	DB_ASSERT(F_ISSET(fhp, DB_FH_OPENED) &&
 	    fhp->fd != -1 && DB_GLOBAL(j_read) != NULL);
 
-	uint64_t x1, x2;
+	uint64_t x1 = 0, x2;
 
 	max_bufs = nobufs;
 	*niop = 0;

@@ -791,12 +791,12 @@ struct dbtable {
 
     struct dbstore dbstore[MAXCOLUMNS];
     int odh;
-    int version;
+    int schema_version; // csc2 schema version increased on instantaneous schemachange
     int instant_schema_change;
     int inplace_updates;
     unsigned long long tableversion;
 
-    /* map of tag fields for version to curr schema */
+    /* map of tag fields for schema version to curr schema */
     unsigned int * versmap[MAXVER + 1];
     /* is tag version compatible with ondisk schema */
     uint8_t vers_compat_ondisk[MAXVER + 1];
@@ -1792,6 +1792,8 @@ extern int gbl_dohsql_disable;
 extern int gbl_dohsql_verbose;
 extern int gbl_dohast_disable;
 extern int gbl_dohast_verbose;
+extern int gbl_dohsql_max_queued_kb_highwm;
+extern int gbl_dohsql_full_queue_poll_msec;
 
 /* init routines */
 int appsock_init(void);
@@ -3504,6 +3506,7 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
 int cmp_index_int(struct schema *oldix, struct schema *newix, char *descr,
                   size_t descrlen);
 int getdbidxbyname(const char *p_name);
+int get_dbtable_idx_by_name(const char *tablename);
 int open_temp_db_resume(struct dbtable *db, char *prefix, int resume, int temp,
                         tran_type *tran);
 int find_constraint(struct dbtable *db, constraint_t *ct);
@@ -3579,5 +3582,7 @@ int repopulate_lrl(const char *p_lrl_fname_out);
 void plugin_post_dbenv_hook(struct dbenv *dbenv);
 
 int64_t gbl_temptable_spills;
+
+extern int gbl_disable_tpsc_tblvers;
 
 #endif /* !INCLUDED_COMDB2_H */

@@ -448,6 +448,9 @@ int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
     int rc;
     int bdberr = 0;
 
+    if (unlikely(!clnt)) /* extra protection against malicious packets and bugs */
+        return -1;
+
     /* we have to wait for any potential cursor to go away */
     Pthread_mutex_lock(&clnt->dtran_mtx);
 

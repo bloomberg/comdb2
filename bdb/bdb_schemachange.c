@@ -185,7 +185,7 @@ retry:
     }
 
     uint32_t sctype = ntohl(*((uint32_t *)type->data));
-    if ((sctype == alter || sctype == fastinit) &&
+    if ((sctype == alter || sctype == fastinit || sctype == bulkimport) &&
         (strncmp(ch_bdb_state->name, "sqlite_stat",
                  sizeof("sqlite_stat") - 1) != 0))
         bdb_lock_table_write(ch_bdb_state, tran);

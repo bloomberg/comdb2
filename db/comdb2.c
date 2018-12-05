@@ -176,6 +176,7 @@ pthread_key_t comdb2_open_key;
 /*---GLOBAL SETTINGS---*/
 const char *const gbl_db_release_name = QUOTE(COMDB2_RELEASE);
 const char *const gbl_db_build_name = QUOTE(COMDB2_BUILD);
+const char *const gbl_db_git_version_sha = QUOTE(GIT_VERSION_SHA=COMDB2_GIT_VERSION_SHA);
 int gbl_enque_flush_interval;
 int gbl_enque_reorder_lookahead = 20;
 int gbl_morecolumns = 0;
@@ -628,6 +629,7 @@ int gbl_check_wrong_db = 1;
 int gbl_broken_max_rec_sz = 0;
 int gbl_private_blkseq = 1;
 int gbl_use_blkseq = 1;
+int gbl_reorder_socksql_no_deadlock = 1;
 
 char *gbl_recovery_options = NULL;
 
@@ -789,11 +791,25 @@ struct dbtable *getdbbynum(int num)
     return 0;
 }
 
+/* lockless -- thedb_lock should be gotten from caller */
 int getdbidxbyname(const char *p_name)
 {
     struct dbtable *tbl;
     tbl = hash_find_readonly(thedb->db_hash, &p_name);
     return (tbl) ? tbl->dbs_idx : -1;
+}
+
+/* get the index offset of table tablename in thedb->dbs array
+ * notice that since the caller does not hold the lock, accessing
+ * thedb->dbs[idx] can result in undefined behavior if that table
+ * is dropped and idx would point to a different table or worse
+ */
+int get_dbtable_idx_by_name(const char *tablename)
+{
+    Pthread_rwlock_rdlock(&thedb_lock);
+    int idx = getdbidxbyname(tablename);
+    Pthread_rwlock_unlock(&thedb_lock);
+    return idx;
 }
 
 struct dbtable *get_dbtable_by_name(const char *p_name)
@@ -2039,7 +2055,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname)
             rc = 1;
             break;
         }
-        tbl->version = ver;
+        tbl->schema_version = ver;
 
         /* We only want to load older schema versions for ODH databases.  ODH
          * information
@@ -3217,7 +3233,7 @@ static int init(int argc, char **argv)
     gbl_mynodeid = machine_num(gbl_mynode);
 
     Pthread_attr_init(&gbl_pthread_attr);
-    pthread_attr_setstacksize(&gbl_pthread_attr, DEFAULT_THD_STACKSZ);
+    Pthread_attr_setstacksize(&gbl_pthread_attr, DEFAULT_THD_STACKSZ);
     pthread_attr_setdetachstate(&gbl_pthread_attr, PTHREAD_CREATE_DETACHED);
 
     /* Initialize the statistics. */
@@ -5284,7 +5300,7 @@ int rename_db(struct dbtable *db, const char *newname)
     /* db */
     hash_del(thedb->db_hash, db);
     db->tablename = (char *)newname;
-    db->version = 0; /* reset, new table */
+    db->schema_version = 0; /* reset, new table */
     hash_add(thedb->db_hash, db);
 
     Pthread_rwlock_unlock(&thedb_lock);

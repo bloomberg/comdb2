@@ -577,7 +577,6 @@ void bdb_rellock(bdb_state_type *bdb_state, const char *funcname, int line)
 {
     thread_lock_info_type *lk = pthread_getspecific(lock_key);
     bdb_state_type *lock_handle = bdb_state;
-    int rc;
 
     /*printf("rel [%2d] %*s%s %s %d\n", lk->lockref, (lk->lockref-1)*2, "",
      * funcname, lk->ident, line);*/
@@ -608,6 +607,7 @@ void bdb_rellock(bdb_state_type *bdb_state, const char *funcname, int line)
             rel_lock_log(bdb_state);
 
 #ifdef _SUN_SOURCE
+        int rc;
         if (lk->locktype == WRITELOCK && lk->loweredpri) {
             rc = raise_thd_priority();
             if (0 == rc)
@@ -814,7 +814,6 @@ static void delete_thread_lock_info(bdb_state_type *bdb_state)
 
 void bdb_stripe_get(bdb_state_type *bdb_state)
 {
-    size_t id;
     bdb_state_type *parent;
 
     if (bdb_state->parent)
@@ -822,14 +821,13 @@ void bdb_stripe_get(bdb_state_type *bdb_state)
     else
         parent = bdb_state;
 
-    id = get_threadid(parent);
+    size_t id = get_threadid(parent);
 
     Pthread_setspecific(parent->tid_key, (void *)id);
 }
 
 void bdb_stripe_done(bdb_state_type *bdb_state)
 {
-    size_t id;
     bdb_state_type *parent;
 
     if (bdb_state->parent)
@@ -837,7 +835,7 @@ void bdb_stripe_done(bdb_state_type *bdb_state)
     else
         parent = bdb_state;
 
-    id = (size_t)pthread_getspecific(parent->tid_key);
+    size_t id = (size_t)pthread_getspecific(parent->tid_key);
 
     return_threadid(parent, id);
 }
