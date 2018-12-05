@@ -473,6 +473,7 @@ static void *udp_reader(void *arg)
     int type;
     int fd = repinfo->udp_fd;
     uint8_t *p_buf, *p_buf_end;
+    uint8_t *buff_end = buff + 1024;
     filepage_type fp;
 
     while (1) {
@@ -502,7 +503,6 @@ static void *udp_reader(void *arg)
         if (ack_info_size(info) != nrecv) {
             fprintf(stderr, "%s:invalid read of %zd (header suggests: %u)\n",
                     __func__, nrecv, ack_info_size(info));
-            ++recl_udp;
             continue;
         }
 
@@ -513,17 +513,18 @@ static void *udp_reader(void *arg)
             logmsg(LOGMSG_ERROR,
                    "unexpected to/from setting: from=%d to=%d type=%d\n",
                    info->from, info->to, info->type);
-            ++recl_udp;
             continue;
         }
 
         from = ack_info_from_host(info);
         /* sanity check? */
-        if (info->hdrsz + info->fromlen > sizeof(buff) ||
+        if (from == NULL || from <= (char *)buff ||
+            from + info->fromlen - 1 >= (char *)buff_end ||
             from[info->fromlen - 1] != 0) {
-            fprintf(stderr, "invalid packet? %d %d\n",
-                    info->hdrsz + info->fromlen > sizeof(buff),
-                    from[info->fromlen] != 0);
+            logmsg(LOGMSG_ERROR,
+                   "invalid packet? hdrsz=%u fromlen=%d from=%p buff=%p "
+                   "buff_end=%p\n",
+                   info->hdrsz, info->fromlen, from, buff, buff_end);
             fsnapf(stdout, info, 64);
             continue;
         }
