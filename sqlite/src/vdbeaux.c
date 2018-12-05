@@ -5634,7 +5634,7 @@ Mem* sqlite3CloneResult(
     rc = sqlite3VdbeMemCopy(&pMem[i], &pCols[i]);
     if( rc ) return 0;
   }
-  *pSize += memRowSize(pMem, ncols);
+  *pSize += memRowSize(pMem, nCols);
   return pMem;
 }
 
