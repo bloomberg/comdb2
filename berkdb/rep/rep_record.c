@@ -7147,13 +7147,15 @@ __truncate_repdb(dbenv)
 		db_rep->rep_db = dbp;
 
 		Pthread_attr_init(&attr);
-		pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+		Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+		Pthread_attr_setstacksize(&attr, 1024 * 1024);
 
 		rc = pthread_create(&tid, &attr, del_thd, delr);
 		if (rc != 0) {
 			logmsg(LOGMSG_FATAL, "couldnt create del_thd\n");
 			exit(1);
 		}
+		Pthread_attr_destroy(&attr);
 
 		MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
 	}
