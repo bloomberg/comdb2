@@ -59,7 +59,9 @@ enum {
     OSQL_FLAGS_CHECK_SELFLOCK = 0x00000008,
     OSQL_FLAGS_ROWLOCKS = 0x00000010,
     OSQL_FLAGS_GENID48 = 0x00000020,
-    OSQL_FLAGS_SCDONE = 0x00000040
+    OSQL_FLAGS_SCDONE = 0x00000040,
+    /* indicates if blkseq reordering is turned on */
+    OSQL_FLAGS_REORDER_ON = 0x00000080,
 };
 
 int osql_open(struct dbenv *dbenv);
@@ -70,7 +72,8 @@ int get_osql_maxtransfer(void);
 
 char *osql_breq2a(int op);
 
-int block2_sorese(struct ireq *iq, const char *sql, int sqlen, int block2_type);
+void block2_sorese(struct ireq *iq, const char *sql, int sqlen,
+                   int block2_type);
 
 int req2netreq(int reqtype);
 int req2netrpl(int reqtype);

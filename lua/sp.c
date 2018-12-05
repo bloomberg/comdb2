@@ -449,7 +449,7 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
     }
     return rc;
 }
-static void luabb_trigger_unregister(dbconsumer_t *q)
+static void luabb_trigger_unregister(Lua L, dbconsumer_t *q)
 {
     if (q->lock) {
         Pthread_mutex_lock(q->lock);
@@ -466,6 +466,7 @@ static void luabb_trigger_unregister(dbconsumer_t *q)
         case NET_SEND_FAIL_INTERNAL:
         case NET_SEND_FAIL_INVALIDNODE:
         case NET_SEND_FAIL_TIMEOUT:
+            if (L) check_retry_conditions(L, 1);
             sleep(1);
             break;
         default:
@@ -880,7 +881,7 @@ static int dbconsumer_emit(Lua L)
 static int dbconsumer_free(Lua L)
 {
     dbconsumer_t *q = luaL_checkudata(L, 1, dbtypes.dbconsumer);
-    luabb_trigger_unregister(q);
+    luabb_trigger_unregister(L, q);
     return 0;
 }
 
@@ -1232,6 +1233,7 @@ static int disable_global_variables(lua_State *lua)
 static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
 {
     SP sp = getsp(lua);
+    struct sqlclntstate *clnt = sp->clnt;
     int rc = sqlite3_step(stmt);
 
     if (rc == SQLITE_DONE) {
@@ -1242,9 +1244,9 @@ static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
 
     lua_newtable(lua);
 
-    int ncols = sqlite3_column_count(stmt);
+    int ncols = column_count(clnt, stmt);
     for (int col = 0; col < ncols; col++) {
-        int type = sqlite3_column_type(stmt, col);
+        int type = column_type(clnt, stmt, col);
         switch (type) {
         case SQLITE_NULL: {
             int sqltype =
@@ -1253,24 +1255,24 @@ static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
             break;
         }
         case SQLITE_INTEGER: {
-            long long ival = sqlite3_column_int64(stmt, col);
+            long long ival = column_int64(clnt, stmt, col);
             luabb_pushinteger(lua, ival);
             break;
         }
         case SQLITE_FLOAT: {
-            double dval = sqlite3_column_double(stmt, col);
+            double dval = column_double(clnt, stmt, col);
             luabb_pushreal(lua, dval);
             break;
         }
         case SQLITE_TEXT: {
-            char *tval = (char *)sqlite3_column_text(stmt, col);
+            char *tval = (char *)column_text(clnt, stmt, col);
             luabb_pushcstring(lua, tval);
             break;
         }
         case SQLITE_DATETIME: {
             cdb2_client_datetime_t cdt;
             datetime_t datetime;
-            const dttz_t *dt = sqlite3_column_datetime(stmt, col);
+            const dttz_t *dt = column_datetime(clnt, stmt, col);
             dttz_to_client_datetime(dt, stmt_tzname(stmt), &cdt);
             client_datetime_to_datetime_t(&cdt, &datetime, 0);
             luabb_pushdatetime(lua, &datetime);
@@ -1279,7 +1281,7 @@ static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
         case SQLITE_DATETIMEUS: {
             cdb2_client_datetimeus_t cdt;
             datetime_t datetime;
-            const dttz_t *dt = sqlite3_column_datetime(stmt, col);
+            const dttz_t *dt = column_datetime(clnt, stmt, col);
             dttz_to_client_datetimeus(dt, stmt_tzname(stmt), &cdt);
             client_datetimeus_to_datetime_t(&cdt, &datetime, 0);
             luabb_pushdatetime(lua, &datetime);
@@ -1287,27 +1289,27 @@ static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
         }
         case SQLITE_BLOB: {
             blob_t blob;
-            blob.length = sqlite3_column_bytes(stmt, col);
-            blob.data = (char *)sqlite3_column_blob(stmt, col);
+            blob.length = column_bytes(clnt, stmt, col);
+            blob.data = (char *)column_blob(clnt, stmt, col);
             luabb_pushblob(lua, &blob);
             break;
         }
         case SQLITE_INTERVAL_YM: {
             const intv_t *val =
-                sqlite3_column_interval(stmt, col, SQLITE_AFF_INTV_MO);
+                column_interval(clnt, stmt, col, SQLITE_AFF_INTV_MO);
             luabb_pushintervalym(lua, val);
             break;
         }
         case SQLITE_INTERVAL_DSUS:
         case SQLITE_INTERVAL_DS: {
             const intv_t *val =
-                sqlite3_column_interval(stmt, col, SQLITE_AFF_INTV_SE);
+                column_interval(clnt, stmt, col, SQLITE_AFF_INTV_SE);
             luabb_pushintervalds(lua, val);
             break;
         }
         case SQLITE_DECIMAL: {
             const intv_t *val =
-                sqlite3_column_interval(stmt, col, SQLITE_AFF_DECIMAL);
+                column_interval(clnt, stmt, col, SQLITE_AFF_DECIMAL);
             luabb_pushdecimal(lua, &val->u.dec);
             break;
         }
@@ -2093,7 +2095,7 @@ static int luatable_emit(Lua L)
     SP sp = getsp(L);
     sqlite3_stmt *stmt = get_sqlrow_stmt(L);
     if (stmt) {
-        cols = sqlite3_column_count(stmt);
+        cols = column_count(NULL, stmt);
     } else if (sp->parent->ntypes) {
         push_clnt_cols(L, sp);
         lua_pop(L, 1);
@@ -2981,7 +2983,7 @@ static int db_create_thread_int(Lua lua, const char *funcname)
     pthread_attr_t attr; // small stack for dispatch_lua_thread
     Pthread_attr_init(&attr);
 #ifdef PTHREAD_STACK_MIN
-    pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN + 16 * 1024);
+    Pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN + 16 * 1024);
 #endif
     rc = pthread_create(&thd->lua_tid, &attr, dispatch_lua_thread, thd);
     Pthread_attr_destroy(&attr);
@@ -3158,7 +3160,7 @@ static int dbstmt_emit(Lua L)
     no_stmt_chk(L, dbstmt);
     setup_first_sqlite_step(sp, dbstmt);
     sqlite3_stmt *stmt = dbstmt->stmt;
-    int cols = sqlite3_column_count(stmt);
+    int cols = column_count(NULL, stmt);
     int rc;
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
         if (l_send_back_row(L, stmt, cols) != 0) {
@@ -6279,6 +6281,7 @@ void *exec_trigger(trigger_reg_t *reg)
 
     // We're making unprotected calls to lua below.
     // luaL_error() will cause abort()
+    Lua L = NULL;
     dbconsumer_t *q = NULL;
     while (1) {
         int rc, args = 0;
@@ -6291,7 +6294,7 @@ void *exec_trigger(trigger_reg_t *reg)
             goto bad;
         }
         SP sp = clnt.sp;
-        Lua L = sp->lua;
+        L = sp->lua;
         if ((args = dbconsumer_get_int(L, q)) < 0) {
             err = strdup(sp->error);
             goto bad;
@@ -6330,7 +6333,7 @@ void *exec_trigger(trigger_reg_t *reg)
     }
     put_curtran(thedb->bdb_env, &clnt);
     if (q) {
-        luabb_trigger_unregister(q);
+        luabb_trigger_unregister(L, q);
         logmsg(LOGMSG_DEBUG, "trigger:%s %016" PRIx64 " finished\n", reg->spname, q->info.trigger_cookie);
         free(q);
     } else {
@@ -6338,7 +6341,7 @@ void *exec_trigger(trigger_reg_t *reg)
         q = alloca(dbconsumer_sz(reg->spname));
         q->lock = NULL;
         memcpy(&q->info, reg, trigger_reg_sz(reg->spname));
-        luabb_trigger_unregister(q);
+        luabb_trigger_unregister(L, q);
     }
     close_sp(&clnt);
     cleanup_clnt(&clnt);

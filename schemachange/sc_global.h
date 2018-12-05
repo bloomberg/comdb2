@@ -78,6 +78,7 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
                    time_t time);
 void sc_status(struct dbenv *dbenv);
 void live_sc_off(struct dbtable *db);
+void sc_set_downgrading(struct schema_change_type *s);
 void reset_sc_stat();
 int reload_lua();
 int replicant_reload_analyze_stats();

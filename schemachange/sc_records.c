@@ -1223,7 +1223,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         data.isThread = 1;
 
         Pthread_attr_init(&attr);
-        pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
+        Pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
         pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
         /* start one thread for each stripe */
@@ -1419,7 +1419,7 @@ static int upgrade_records(struct convert_record_data *data)
         return -2;
     }
 
-    if (recver != data->to->version) {
+    if (recver != data->to->schema_version) {
         // rewrite the record if not ondisk version
         p_buf_data = (uint8_t *)data->dta_buf;
         p_buf_data_end = p_buf_data + data->from->lrl;
@@ -1537,7 +1537,7 @@ static int upgrade_records(struct convert_record_data *data)
 
     if (data->s->fulluprecs)
         return 1;
-    else if (recver == data->to->version)
+    else if (recver == data->to->schema_version)
         return 0;
     else if (data->nrecs >= data->s->partialuprecs)
         return 0;
@@ -1658,7 +1658,7 @@ int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
 
         // init pthread attributes
         Pthread_attr_init(&attr);
-        pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
+        Pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
         pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
         for (idx = 0; idx != gbl_dtastripe; ++idx) {

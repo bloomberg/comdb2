@@ -85,6 +85,7 @@ typedef long long tranid_t;
 #include "thrman.h"
 #include "comdb2uuid.h"
 #include "machclass.h"
+#include "shard_range.h"
 #include "tunables.h"
 #include "comdb2_plugin.h"
 
@@ -320,6 +321,8 @@ enum BLOCK_OPS {
     NUM_BLOCKOP_OPCODES = 45
 };
 
+const char *osql_reqtype_str(int type); // used for printing string of type
+
 /*
    type will identify if there is a new record and type the new record is *
    PLEASE update osql_reqtype_str() when adding to this structure
@@ -525,7 +528,8 @@ enum CURTRAN_FLAGS { CURTRAN_RECOVERY = 0x00000001 };
 
 /* Raw stats, kept on a per origin machine basis.  This whole struct is
  * essentially an array of unsigneds.  Please don't add any other data
- * type as this allows us to easily sum it and diff it in a loop in reqlog.c.
+ * type above `svc_time' as this allows us to easily sum it and diff it in a
+ * loop in reqlog.c.
  * All of these stats are counters. */
 struct rawnodestats {
     unsigned opcode_counts[MAXTYPCNT];
@@ -533,8 +537,11 @@ struct rawnodestats {
     unsigned sql_queries;
     unsigned sql_steps;
     unsigned sql_rows;
+
+    struct time_metric *svc_time; /* <-- offsetof */
 };
-#define NUM_RAW_NODESTATS (sizeof(struct rawnodestats) / sizeof(unsigned))
+#define NUM_RAW_NODESTATS                                                      \
+    (offsetof(struct rawnodestats, svc_time) / sizeof(unsigned))
 
 struct summary_nodestats {
     char *host;
@@ -559,6 +566,7 @@ struct summary_nodestats {
     unsigned sql_queries;
     unsigned sql_steps;
     unsigned sql_rows;
+    double svc_time;
 };
 
 /* records in sql master db look like this (no appended rrn info) */
@@ -665,6 +673,8 @@ struct dbtable {
     signed char ix_collattr[MAXINDEX];
     signed char ix_nullsallowed[MAXINDEX];
     signed char ix_disabled[MAXINDEX];
+
+    shard_limits_t *sharding;
 
     int numblobs;
 
@@ -781,12 +791,12 @@ struct dbtable {
 
     struct dbstore dbstore[MAXCOLUMNS];
     int odh;
-    int version;
+    int schema_version; // csc2 schema version increased on instantaneous schemachange
     int instant_schema_change;
     int inplace_updates;
     unsigned long long tableversion;
 
-    /* map of tag fields for version to curr schema */
+    /* map of tag fields for schema version to curr schema */
     unsigned int * versmap[MAXVER + 1];
     /* is tag version compatible with ondisk schema */
     uint8_t vers_compat_ondisk[MAXVER + 1];
@@ -1778,6 +1788,13 @@ extern char *gbl_dbdir;
 
 extern double gbl_cpupercent;
 
+extern int gbl_dohsql_disable;
+extern int gbl_dohsql_verbose;
+extern int gbl_dohast_disable;
+extern int gbl_dohast_verbose;
+extern int gbl_dohsql_max_queued_kb_highwm;
+extern int gbl_dohsql_full_queue_poll_msec;
+
 /* init routines */
 int appsock_init(void);
 int thd_init(void);
@@ -2382,7 +2399,6 @@ int has_index_changed(struct dbtable *db, char *keynm, int ct_check, int newkey,
 int resume_schema_change(void);
 
 void debug_trap(char *line, int lline);
-int reinit_db(struct dbtable *db);
 int count_db(struct dbtable *db);
 int compact_db(struct dbtable *db, int timeout, int freefs);
 int ix_find_last_dup_rnum_kl(struct ireq *iq, int ixnum, void *key, int keylen,
@@ -3490,6 +3506,7 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
 int cmp_index_int(struct schema *oldix, struct schema *newix, char *descr,
                   size_t descrlen);
 int getdbidxbyname(const char *p_name);
+int get_dbtable_idx_by_name(const char *tablename);
 int open_temp_db_resume(struct dbtable *db, char *prefix, int resume, int temp,
                         tran_type *tran);
 int find_constraint(struct dbtable *db, constraint_t *ct);
@@ -3535,6 +3552,8 @@ extern int gbl_ckp_sleep_before_sync;
 
 int set_rowlocks(void *trans, int enable);
 
+void init_sqlclntstate(struct sqlclntstate *clnt, char *tid, int isuuid);
+
 /* 0: Return null constraint error for not-null constraint violation on updates
    1: Return conversion error instead */
 extern int gbl_upd_null_cstr_return_conv_err;
@@ -3557,9 +3576,13 @@ int rename_table_options(void *tran, struct dbtable *db, const char *newname);
 int comdb2_get_verify_remote_schemas(void);
 void comdb2_set_verify_remote_schemas(void);
 
+const char *thrman_get_where(struct thr_handle *thr);
+
 int repopulate_lrl(const char *p_lrl_fname_out);
 void plugin_post_dbenv_hook(struct dbenv *dbenv);
 
 int64_t gbl_temptable_spills;
+
+extern int gbl_disable_tpsc_tblvers;
 
 #endif /* !INCLUDED_COMDB2_H */

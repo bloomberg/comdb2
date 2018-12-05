@@ -702,6 +702,8 @@ struct sql_thread *start_sql_thread(void)
     listc_abl(&thedb->sql_threads, thd);
     Pthread_mutex_unlock(&gbl_sql_lock);
 
+    thd->crtshard = 0;
+
     return thd;
 }
 
@@ -5647,6 +5649,35 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
                                  .cmp = bias_cmp,
                                  .cur = pCur,
                                  .unpacked = pIdxKey};
+
+/* here, if we are a splinter, we update the key properly */
+#if 0
+        if(thd->crtshard >=  1) {
+            struct db *db = thedb->dbs[pCur->tblnum];
+            shard_limits_t*shards = db->shards[pCur->ixnum];
+
+            /* if the key is before our start, update the search to start
+               if the key is bigger than start if next shard (if any), return EOF
+               otherwise use the actual key */
+            if(thd->crtshard>1) {
+                /*adjust left */
+                if(sqlite3RecordCompareExprList(pIdxKey, 
+                            &shards->mems[thd->crtshard-2]) < 0) {
+                    /* replace pIdxKey with shards->mems */
+                    /* THIS IS HACK! leaks and crashes
+                    pIdxKey->aMem = shards->mems; */
+                }
+            }
+            if(thd->crtshard-1 < shards->limits->nExpr) {
+                /*adjust right */
+                if(sqlite3RecordCompareExprList(pIdxKey, 
+                            &shards->mems[thd->crtshard-1])>=0) {
+                    /* the result is eof */
+                }
+            }
+            
+        }
+#endif
         ondisk_len = rc =
             sqlite_unpacked_to_ondisk(pCur, pIdxKey, fail_reason, &info);
         if (rc < 0) {
@@ -6179,33 +6210,18 @@ int sqlite3BtreeClearTable(Btree *pBt, int iTable, int *pnChange)
             goto done;
         }
     } else {
-        struct dbtable *db;
-
-        db = get_sqlite_db(thd, iTable, &ixnum);
+        struct dbtable *db = get_sqlite_db(thd, iTable, &ixnum);
         if (ixnum != -1) {
             rc = SQLITE_OK;
             goto done;
         }
-
-        /* If we are in analyze, lie.  Otherwise we end up with an empty, and
-         * then worse,
-         * half-filled stat table during the analyze. */
+        /* If we are in analyze, lie.  Otherwise we end up with an empty,
+         * and then worse, half-filled stat table during the analyze. */
         if (clnt->is_analyze && is_sqlite_stat(db->tablename)) {
             rc = SQLITE_OK;
             goto done;
         }
-
-        if (clnt->dbtran.mode == TRANLEVEL_SOSQL ||
-            clnt->dbtran.mode == TRANLEVEL_RECOM ||
-            clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
-            clnt->dbtran.mode == TRANLEVEL_SERIAL) {
-            if (db->n_constraints == 0)
-                rc = osql_cleartable(thd, db->tablename);
-            else
-                rc = -1;
-        } else {
-            rc = reinit_db(db);
-        }
+        rc = db->n_constraints == 0 ? osql_cleartable(thd, db->tablename) : -1;
         if (rc) {
             logmsg(LOGMSG_ERROR, "sqlite3BtreeClearTable: error rc = %d\n", rc);
             rc = SQLITE_INTERNAL;
@@ -8670,38 +8686,23 @@ void cancel_sql_statement(int id)
         logmsg(LOGMSG_USER, "Query %d not found (finished?)\n", id);
 }
 
-/* cancel sql statement with the given hex representation of cnonce */
+/* cancel sql statement with the given cnonce */
 void cancel_sql_statement_with_cnonce(const char *cnonce)
 {
     if(!cnonce) return;
 
     struct sql_thread *thd;
     int found = 0;
+    snap_uid_t snap;
+    size_t cnonce_len = strlen(cnonce);
 
     Pthread_mutex_lock(&gbl_sql_lock);
     LISTC_FOR_EACH(&thedb->sql_threads, thd, lnk)
     {
-        found = 1;
-        snap_uid_t snap;
-
         if (thd->clnt && get_cnonce(thd->clnt, &snap) == 0) {
-            const char *sptr = cnonce;
-            int cnt = 0;
-            void luabb_fromhex(uint8_t *out, const uint8_t *in, size_t len);
-            while(*sptr) {
-                uint8_t num;
-                luabb_fromhex(&num, (const uint8_t *)sptr, 2);
-                sptr+=2;
-
-                if (cnt > snap.keylen || snap.key[cnt] != num) {
-                    found = 0;
-                    break;
-                }
-                cnt++;
-            }
-            if (found && cnt != snap.keylen)
-                found = 0;
-
+            if (snap.keylen != cnonce_len)
+                continue;
+            found = (memcmp(snap.key, cnonce, cnonce_len) == 0);
             if (found) {
                 thd->clnt->stop_this_statement = 1;
                 break;
@@ -9175,20 +9176,23 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
         if (rc == SQLITE_SCHEMA || rc == SQLITE_COMDB2SCHEMA) {
             logmsg(LOGMSG_ERROR, "%s: failing with SQLITE_COMDB2SCHEMA\n",
                    __func__);
-            sqlite3VdbeError(vdbe, "Database was schema changed");
+            if (vdbe)
+                sqlite3VdbeError(vdbe, "Database was schema changed");
             return SQLITE_COMDB2SCHEMA;
         }
 
         if (clnt->gen_changed) {
             logmsg(LOGMSG_ERROR, 
-                    "%s: fail to open a new curtran, rc=%d, return changenode\n",
-                    __func__, rc);
-            sqlite3VdbeError(vdbe, "New master under snapshot");
+                   "%s: fail to open a new curtran, rc=%d, return "
+                   "changenode\n", __func__, rc);
+            if (vdbe)
+                sqlite3VdbeError(vdbe, "New master under snapshot");
             return SQLITE_CLIENT_CHANGENODE;
         } else {
-            logmsg(LOGMSG_ERROR, "%s: fail to open a new curtran, rc=%d\n", __func__,
-                    rc);
-            sqlite3VdbeError(vdbe, "Failed to reaquire locks on deadlock");
+            logmsg(LOGMSG_ERROR, "%s: fail to open a new curtran, rc=%d\n",
+                   __func__, rc);
+            if (vdbe)
+                sqlite3VdbeError(vdbe, "Failed to reaquire locks on deadlock");
             return ERR_RECOVER_DEADLOCK;
         }
     }

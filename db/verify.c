@@ -373,7 +373,7 @@ int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
 
     stacksize = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_VERIFY_THREAD_STACKSZ);
     Pthread_attr_init(&attr);
-    pthread_attr_setstacksize(&attr, stacksize);
+    Pthread_attr_setstacksize(&attr, stacksize);
 
     if ((rc = pthread_create(&v.tid, &attr, verify_td, &v))) {
         logmsg(LOGMSG_ERROR, "%s unable to create thread for verify: %s\n",

@@ -150,13 +150,7 @@ static int pthread_create_attrs(pthread_t *tid, int detachstate,
     Pthread_attr_init(&attr);
 
     if (stacksize > 0) {
-        rc = pthread_attr_setstacksize(&attr, stacksize);
-        if (rc != 0) {
-            syslog(LOG_ERR, "%s:pthread_attr_getstacksize: %d %s\n", __func__,
-                   rc, strerror(rc));
-            Pthread_attr_destroy(&attr);
-            return -1;
-        }
+        Pthread_attr_setstacksize(&attr, stacksize);
     }
     rc = pthread_attr_setdetachstate(&attr, detachstate);
     if (rc != 0) {
@@ -1126,7 +1120,7 @@ int main(int argc, char *argv[])
     extern int optind, optopt;
 
     int c;
-    int listenfd, dbnum;
+    int listenfd;
     struct sockaddr_un serv_addr;
 
     sigignore(SIGPIPE);

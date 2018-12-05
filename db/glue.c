@@ -2955,6 +2955,7 @@ static int new_master_callback(void *bdb_handle, char *host)
     dbenv->gen = gen;
     /*this is only used when handle not established yet. */
     if (host == gbl_mynode) {
+        trigger_clear_hash();
         if (oldmaster != host) {
             logmsg(LOGMSG_WARN, "I AM NEW MASTER NODE %s\n", host);
             gbl_master_changes++;
@@ -2965,7 +2966,6 @@ static int new_master_callback(void *bdb_handle, char *host)
                         "one was in progress it will have to be restarted\n");
             }
             load_auto_analyze_counters();
-            trigger_clear_hash();
             trigger_timepart = 1;
 
             if (oldgen != gen) {
@@ -4296,8 +4296,8 @@ int backend_open(struct dbenv *dbenv)
         /* now tell bdb what the flags are - CRUCIAL that this is done
          * before any records are read/written from/to these tables. */
         set_bdb_option_flags(d, d->odh, d->inplace_updates,
-                             d->instant_schema_change, d->version, compress,
-                             compress_blobs, datacopy_odh);
+                             d->instant_schema_change, d->schema_version,
+                             compress, compress_blobs, datacopy_odh);
 
         ctrace("Table %s  "
                "ver %d  "
@@ -4305,7 +4305,7 @@ int backend_open(struct dbenv *dbenv)
                "isc %s  "
                "odh_datacopy %s  "
                "ipu %s",
-               d->tablename, d->version, d->odh ? "yes" : "no",
+               d->tablename, d->schema_version, d->odh ? "yes" : "no",
                d->instant_schema_change ? "yes" : "no",
                datacopy_odh ? "yes" : "no", d->inplace_updates ? "yes" : "no");
     }
@@ -5562,69 +5562,6 @@ retry:
         }
         return map_unhandled_bdb_rcode("bdb_queue_walk", bdberr, 0);
     }
-    return rc;
-}
-
-int reinit_db(struct dbtable *db)
-{
-    int rc, bdberr;
-    void *bdb_handle;
-    int retries = 0;
-    tran_type *trans;
-    struct ireq iq = {0};
-
-    bdb_handle = get_bdb_handle(db, AUXDB_NONE);
-    if (!bdb_handle)
-        return ERR_NO_AUXDB;
-    iq.is_fake = 1;
-    iq.usedb = db;
-
-/*stop_threads(db->dbenv);*/
-
-retry:
-    rc = trans_start(&iq, NULL, &trans);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "tran_start failed, rc=%d\n", rc); /* shouldn't happen */
-        rc = ERR_INTERNAL;
-        goto done;
-    }
-    rc = bdb_reinit(bdb_handle, trans, &bdberr);
-    if (bdberr == RC_INTERNAL_RETRY) {
-        if (retries > 9999999) {
-            logmsg(LOGMSG_ERROR, "*ERROR*) bdb_reinit too much contention %d count %d\n",
-                   bdberr, retries);
-            rc = ERR_INTERNAL;
-            goto done;
-        }
-        retries++;
-        rc = trans_abort(&iq, trans);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "tran_abort failed, rc=%d\n", rc); /* shouldn't happen */
-            rc = ERR_INTERNAL;
-            goto done;
-        }
-        goto retry;
-    } else if (rc) {
-        int rc2;
-        logmsg(LOGMSG_ERROR, "reinit_db %s error %d\n", db->tablename, bdberr);
-        rc2 = trans_abort(&iq, trans);
-        if (rc2) {
-            logmsg(LOGMSG_ERROR, "tran_abort failed, rc=%d\n", rc2); /* shouldn't happen */
-            rc = ERR_INTERNAL;
-            goto done;
-        }
-        goto done;
-    }
-    /* wait for 5 minutes for this to complete... */
-    rc = trans_commit_timeout(&iq, trans, gbl_mynode, 5 * 60 * 1000);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "tran_commit failed, rc=%d\n", rc); /* shouldn't happen */
-        rc = ERR_INTERNAL;
-        goto done;
-    }
-
-done:
-    /*resume_threads(db->dbenv);*/
     return rc;
 }
 

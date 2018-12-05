@@ -160,7 +160,7 @@ static void *watchdog_thread(void *arg)
     Pthread_mutex_init(&gbl_watchdog_kill_mutex, NULL);
 
     Pthread_attr_init(&gbl_pthread_joinable_attr);
-    pthread_attr_setstacksize(&gbl_pthread_joinable_attr, DEFAULT_THD_STACKSZ);
+    Pthread_attr_setstacksize(&gbl_pthread_joinable_attr, DEFAULT_THD_STACKSZ);
     pthread_attr_setdetachstate(&gbl_pthread_joinable_attr,
                                 PTHREAD_CREATE_JOINABLE);
 
@@ -457,7 +457,7 @@ void create_watchdog_thread(struct dbenv *dbenv)
        but it still seems to hold true for 1.4 on our hardware.
 
        DEFAULT_THD_STACKSZ is 512k on HP */
-    pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
+    Pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
 
     rc = pthread_create(&dbenv->watchdog_tid, &attr, watchdog_thread, thedb);
     if (rc)

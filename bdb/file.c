@@ -34,7 +34,13 @@
 #include <errno.h>
 #include <dirent.h>
 #include <fcntl.h>
+
+#ifdef __sun
+/* for PTHREAD_STACK_MIN on Solaris */
+#define __EXTENSIONS__
+#endif
 #include <limits.h>
+
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <pthread.h>
@@ -280,7 +286,6 @@ void bdb_checkpoint_list_get_ckp_before_timestamp(int timestamp, DB_LSN *lsnout)
 static void set_some_flags(bdb_state_type *bdb_state, DB *dbp, char *name)
 {
     if (bdb_state->attr->checksums) {
-        logmsg(LOGMSG_INFO, "enabling checksums for %s\n", name);
         if (dbp->set_flags(dbp, DB_CHKSUM) != 0) {
             logmsg(LOGMSG_ERROR, "error enabling checksums\n");
         }
@@ -2055,7 +2060,7 @@ void create_udpbackup_analyze_thread(bdb_state_type *bdb_state)
     logmsg(LOGMSG_INFO, "starting udpbackup_and_autoanalyze_thd thread\n");
 
     Pthread_attr_init(&thd_attr);
-    pthread_attr_setstacksize(&thd_attr, 4 * 1024); /* 4K */
+    Pthread_attr_setstacksize(&thd_attr, 128 * 1024); /* 4K */
     pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
 
     int rc = pthread_create(&thread_id, &thd_attr,
@@ -2746,14 +2751,21 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
       rep_start\n\n\n");
     */
 
+    pthread_attr_t attr;
+    Pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    Pthread_attr_setstacksize(&attr, 1024 * 1024);
+
     /* create the watcher thread */
     logmsg(LOGMSG_DEBUG, "creating the watcher thread\n");
-    rc = pthread_create(&(bdb_state->watcher_thread), NULL, watcher_thread,
+    rc = pthread_create(&(bdb_state->watcher_thread), &attr, watcher_thread,
                         bdb_state);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "couldnt create watcher thread\n");
         return NULL;
     }
+
+    Pthread_attr_destroy(&attr);
 
     if (0) {
         extern void *lwm_printer_thd(void *p);
@@ -5075,10 +5087,11 @@ int create_master_lease_thread(bdb_state_type *bdb_state)
 	pthread_t tid;
 	pthread_attr_t attr;
         Pthread_attr_init(&attr);
-        pthread_attr_setstacksize(&attr, 4 * 1024);
-	extern void *master_lease_thread(void *arg);
-	pthread_create(&tid, &attr, master_lease_thread, bdb_state);
-    return 0;
+        Pthread_attr_setstacksize(&attr, 128 * 1024);
+        extern void *master_lease_thread(void *arg);
+        pthread_create(&tid, &attr, master_lease_thread, bdb_state);
+        Pthread_attr_destroy(&attr);
+        return 0;
 }
 
 void create_coherency_lease_thread(bdb_state_type *bdb_state)
@@ -5086,9 +5099,10 @@ void create_coherency_lease_thread(bdb_state_type *bdb_state)
     pthread_t tid;
     pthread_attr_t attr;
     Pthread_attr_init(&attr);
-    pthread_attr_setstacksize(&attr, 4 * 1024);
+    Pthread_attr_setstacksize(&attr, 128 * 1024);
     extern void *coherency_lease_thread(void *arg);
     pthread_create(&tid, &attr, coherency_lease_thread, bdb_state);
+    Pthread_attr_destroy(&attr);
 }
 
 static comdb2bma bdb_blobmem;
@@ -5229,6 +5243,7 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
         logmsg(LOGMSG_FATAL, "pthread_attr_setdetachstate failed\n");
         exit(1);
     }
+    Pthread_attr_setstacksize(&bdb_state->pthread_attr_detach, 1024 * 1024);
 
     if (bdbtype == BDBTYPE_TABLE || bdbtype == BDBTYPE_LITE)
         bdb_state->lrl = lrl;
@@ -5483,13 +5498,16 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
 
         /* dont create all these aux helper threads for a run of initcomdb2 */
         if (!create && !gbl_exit) {
+            pthread_attr_t attr;
+            Pthread_attr_init(&attr);
+            Pthread_attr_setstacksize(&attr, 1024 * 1024);
             /*
               create checkpoint thread.
               this thread periodically applied changes reflected in the
               log files to the database files, allowing us to remove
               log files.
               */
-            rc = pthread_create(&(bdb_state->checkpoint_thread), NULL,
+            rc = pthread_create(&(bdb_state->checkpoint_thread), &attr,
                                 checkpoint_thread, bdb_state);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "unable to create checkpoint thread - rc=%d "
@@ -5505,7 +5523,7 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
               so that a read can be done without incurring a last minute
               write in an effort to make memory available for the read
               */
-            rc = pthread_create(&(bdb_state->memp_trickle_thread), NULL,
+            rc = pthread_create(&(bdb_state->memp_trickle_thread), &attr,
                                 memp_trickle_thread, bdb_state);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "unable to create memp_trickle thread - rc=%d "
@@ -5518,7 +5536,7 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
             /* create the deadlock detect thread if we arent doing auto
                deadlock detection */
             if (!bdb_state->attr->autodeadlockdetect) {
-                rc = pthread_create(&dummy_tid, NULL, deadlockdetect_thread,
+                rc = pthread_create(&dummy_tid, &attr, deadlockdetect_thread,
                                     bdb_state);
             }
 
@@ -5555,14 +5573,18 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
             } else {
                 print(bdb_state,
                       "logfiles will be deleted in logdelete_thread\n");
-                rc = pthread_create(&(bdb_state->logdelete_thread), NULL,
+                rc = pthread_create(&(bdb_state->logdelete_thread), &attr,
                                     logdelete_thread, bdb_state);
-                if (rc != 0) {
-                    logmsg(LOGMSG_ERROR, "unable to create checkpoint thread\n");
+                if (rc) {
+                    logmsg(LOGMSG_ERROR,
+                           "unable to create logdelete thread rc %d %s\n", rc,
+                           strerror(rc));
                     *bdberr = BDBERR_MISC;
                     return NULL;
                 }
             }
+
+            Pthread_attr_destroy(&attr);
         }
 
         /* This bit needs to be exclusive.  We don't want replication messages
@@ -6115,77 +6137,6 @@ bdb_state_type *bdb_create_more_lite(const char name[], const char dir[],
     BDB_RELLOCK();
 
     return ret;
-}
-
-static int bdb_reinit_int(bdb_state_type *bdb_state, tran_type *tran,
-                          int *bdberr)
-{
-    int i;
-    int dtanum;
-    u_int32_t nrecs = 0;
-    int rc;
-    u_int32_t nrecs_ix[MAXINDEX];
-
-    *bdberr = 0;
-
-    if (!bdb_state->read_write) {
-        *bdberr = BDBERR_READONLY;
-        return -1;
-    }
-
-    /* truncate keys */
-    for (i = 0; i < bdb_state->numix; i++) {
-        rc = bdb_state->dbp_ix[i]->truncate(bdb_state->dbp_ix[i], tran->tid,
-                                            &nrecs_ix[i], 0);
-        if (rc == DB_LOCK_DEADLOCK) {
-            *bdberr = BDBERR_DEADLOCK;
-            return -1;
-        } else if (rc) {
-            *bdberr = BDBERR_MISC;
-            return -1;
-        }
-    }
-
-    /* truncate all data records and blobs, count the data records */
-    for (dtanum = 0; dtanum < bdb_state->numdtafiles; dtanum++) {
-        int strnum;
-        for (strnum = bdb_get_datafile_num_files(bdb_state, dtanum) - 1;
-             strnum >= 0; strnum--) {
-            u_int32_t ndtarecs;
-            DB *dbp = bdb_state->dbp_data[dtanum][strnum];
-            dbp->truncate(dbp, tran->tid, &ndtarecs, 0);
-            if (rc == DB_LOCK_DEADLOCK) {
-                *bdberr = BDBERR_DEADLOCK;
-                return -1;
-            } else if (rc) {
-                *bdberr = BDBERR_MISC;
-                return -1;
-            }
-            if (0 == dtanum)
-                nrecs += ndtarecs;
-        }
-    }
-
-    /* sanity check # records removed */
-    for (i = 0; i < bdb_state->numix; i++) {
-        if (nrecs != nrecs_ix[i]) {
-           logmsg(LOGMSG_ERROR, "key/data mismatch! ix %d nrecs %d data nrecs %d\n", i,
-                   nrecs_ix[i], nrecs);
-        }
-    }
-
-    return 0;
-}
-
-/* remove all records from a database (keys, data, free list) */
-int bdb_reinit(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
-{
-    int rc;
-
-    BDB_READLOCK("bdb_reinit");
-    rc = bdb_reinit_int(bdb_state, tran, bdberr);
-    BDB_RELLOCK();
-    return rc;
 }
 
 void bdb_remove_fileid_pglogs(bdb_state_type *bdb_state, unsigned char *fileid);
@@ -7750,8 +7701,6 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
                 print(bdb_state, "failed to collect old file (list full) %s\n",
                       ent->d_name);
             } else {
-                logmsg(LOGMSG_INFO, "%s: collected file %s\n", __func__,
-                       ent->d_name);
                 print(bdb_state, "collected old file %s\n", ent->d_name);
             }
         } else {

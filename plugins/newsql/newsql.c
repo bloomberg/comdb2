@@ -55,6 +55,7 @@ int sbuf_is_local(SBUF2 *sb);
 
 static int newsql_clr_snapshot(struct sqlclntstate *);
 static int newsql_has_high_availability(struct sqlclntstate *);
+static int newsql_has_parallel_sql(struct sqlclntstate *);
 
 struct newsqlheader {
     int type;        /*  newsql request/response type */
@@ -431,7 +432,7 @@ static int get_col_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
     if (sql_query->n_types) {
         type = sql_query->types[col];
     } else if (stmt) {
-        type = sqlite3_column_type(stmt, col);
+        type = column_type(clnt, stmt, col);
     }
     if (type == SQLITE_NULL) {
         type = typestr_to_type(sqlite3_column_decltype(stmt, col));
@@ -492,7 +493,7 @@ extern int gbl_return_long_column_names;
 
 static int newsql_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 {
-    int ncols = sqlite3_column_count(stmt);
+    int ncols = column_count(clnt, stmt);
     struct newsql_appdata *appdata = get_newsql_appdata(clnt, ncols);
     CDB2SQLRESPONSE__Column cols[ncols];
     CDB2SQLRESPONSE__Column *value[ncols];
@@ -523,7 +524,7 @@ static int newsql_columns_lua(struct sqlclntstate *clnt,
 {
     int ncols = arg->ncols;
     sqlite3_stmt *stmt = arg->stmt;
-    if (stmt && sqlite3_column_count(stmt) != ncols) {
+    if (stmt && column_count(clnt, stmt) != ncols) {
         return -1;
     }
     struct newsql_appdata *appdata = get_newsql_appdata(clnt, ncols);
@@ -726,7 +727,7 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
     if (stmt == NULL) {
         return newsql_send_postponed_row(clnt);
     }
-    int ncols = sqlite3_column_count(stmt);
+    int ncols = column_count(clnt, stmt);
     struct newsql_appdata *appdata = get_newsql_appdata(clnt, ncols);
     assert(ncols == appdata->count);
     int flip = 0;
@@ -741,35 +742,35 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
     for (int i = 0; i < ncols; ++i) {
         value[i] = &cols[i];
         cdb2__sqlresponse__column__init(&cols[i]);
-        if (sqlite3_column_type(stmt, i) == SQLITE_NULL) {
+        if (column_type(clnt, stmt, i) == SQLITE_NULL) {
             newsql_null(cols, i);
             continue;
         }
         int type = appdata->type[i];
         switch (type) {
         case SQLITE_INTEGER: {
-            int64_t i64 = sqlite3_column_int64(stmt, i);
+            int64_t i64 = column_int64(clnt, stmt, i);
             newsql_integer(cols, i, i64, flip);
             break;
         }
         case SQLITE_FLOAT: {
-            double d = sqlite3_column_double(stmt, i);
+            double d = column_double(clnt, stmt, i);
             newsql_double(cols, i, d, flip);
             break;
         }
         case SQLITE_TEXT: {
-            cols[i].value.len = sqlite3_column_bytes(stmt, i) + 1;
-            cols[i].value.data = (uint8_t *)sqlite3_column_text(stmt, i);
+            cols[i].value.len = column_bytes(clnt, stmt, i) + 1;
+            cols[i].value.data = (uint8_t *)column_text(clnt, stmt, i);
             break;
         }
         case SQLITE_BLOB: {
-            cols[i].value.len = sqlite3_column_bytes(stmt, i);
-            cols[i].value.data = (uint8_t *)sqlite3_column_blob(stmt, i);
+            cols[i].value.len = column_bytes(clnt, stmt, i);
+            cols[i].value.data = (uint8_t *)column_blob(clnt, stmt, i);
             break;
         }
         case SQLITE_DATETIME:
         case SQLITE_DATETIMEUS: {
-            const dttz_t *d = sqlite3_column_datetime(stmt, i);
+            const dttz_t *d = column_datetime(clnt, stmt, i);
             cdb2_client_datetime_t *c = alloca(sizeof(*c));
             if (convDttz2ClientDatetime(d, stmt_tzname(stmt), c, type) != 0) {
                 char *e =
@@ -796,14 +797,14 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
         }
         case SQLITE_INTERVAL_YM: {
             const intv_t *val =
-                sqlite3_column_interval(stmt, i, SQLITE_AFF_INTV_MO);
+                column_interval(clnt, stmt, i, SQLITE_AFF_INTV_MO);
             newsql_ym(cols, i, val, flip);
             break;
         }
         case SQLITE_INTERVAL_DS:
         case SQLITE_INTERVAL_DSUS: {
             const intv_t *val =
-                sqlite3_column_interval(stmt, i, SQLITE_AFF_INTV_SE);
+                column_interval(clnt, stmt, i, SQLITE_AFF_INTV_SE);
             newsql_ds(cols, i, val, flip);
             break;
         }
@@ -1320,6 +1321,11 @@ static int newsql_get_high_availability(struct sqlclntstate *clnt)
         }
     }
     return is_snap_uid_retry(clnt);
+}
+
+static int newsql_has_parallel_sql(struct sqlclntstate *clnt)
+{
+    return !gbl_dohsql_disable;
 }
 
 static void newsql_add_steps(struct sqlclntstate *clnt, double steps)

@@ -2030,7 +2030,11 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host)
     hostdown_buf->bdb_state = bdb_state;
     hostdown_buf->host = host;
 
-    rc = pthread_create(&tid, NULL, hostdown_thread, hostdown_buf);
+    pthread_attr_t attr;
+    Pthread_attr_init(&attr);
+    Pthread_attr_setstacksize(&attr, 128 * 1024);
+
+    rc = pthread_create(&tid, &attr, hostdown_thread, hostdown_buf);
     if (rc != 0) {
         logmsg(LOGMSG_FATAL, "%s: pthread_create hostdown_thread: %d %s\n", __func__,
                 rc, strerror(rc));
@@ -2042,6 +2046,7 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host)
                 rc, strerror(rc));
         exit(1);
     }
+    Pthread_attr_destroy(&attr);
     return 0;
 }
 
@@ -4394,6 +4399,12 @@ int enqueue_pg_compact_work(bdb_state_type *bdb_state, int32_t fileid,
 {
     pgcomp_rcv_t *rcv;
     int rc;
+
+    if (size > PGCOMPMAXLEN) {
+        logmsg(LOGMSG_WARN, "%s %d: page compaction request too long.\n",
+               __FILE__, __LINE__);
+        return E2BIG;
+    }
 
     rcv = malloc(sizeof(pgcomp_rcv_t) + size);
     if (rcv == NULL)

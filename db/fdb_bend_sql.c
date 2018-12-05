@@ -43,7 +43,6 @@
 extern int gbl_fdb_track;
 extern int blockproc2sql_error(int rc, const char *func, int line);
 
-static void init_sqlclntstate(struct sqlclntstate *clnt, char *cid, int isuuid);
 
 int fdb_appsock_work(const char *cid, struct sqlclntstate *clnt, int version,
                      enum run_sql_flags flags, char *sql, int sqllen,
@@ -276,7 +275,7 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
     return 0;
 }
 
-static void init_sqlclntstate(struct sqlclntstate *clnt, char *tid, int isuuid)
+void init_sqlclntstate(struct sqlclntstate *clnt, char *tid, int isuuid)
 {
     start_internal_sql_clnt(clnt);
     clnt->dbtran.mode = TRANLEVEL_SOSQL;
@@ -448,6 +447,9 @@ int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
 {
     int rc;
     int bdberr = 0;
+
+    if (unlikely(!clnt)) /* extra protection against malicious packets and bugs */
+        return -1;
 
     /* we have to wait for any potential cursor to go away */
     Pthread_mutex_lock(&clnt->dtran_mtx);

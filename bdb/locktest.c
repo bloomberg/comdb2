@@ -993,7 +993,7 @@ void bdb_locktest(void *_bdb_state)
     dbenv = bdb_state->dbenv;
 #endif
     Pthread_attr_init(&locktest_attr);
-    pthread_attr_setstacksize(&locktest_attr, 3 * 1024 * 1024);
+    Pthread_attr_setstacksize(&locktest_attr, 3 * 1024 * 1024);
     void *ret;
     pthread_t t;
     uint64_t before = gettimeofday_ms();

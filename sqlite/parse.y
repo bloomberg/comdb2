@@ -119,6 +119,7 @@ explain ::= .
 %ifndef SQLITE_OMIT_EXPLAIN
 explain ::= EXPLAIN.              { pParse->explain = 1; }
 explain ::= EXPLAIN QUERY PLAN.   { pParse->explain = 2; }
+explain ::= EXPLAIN DISTRIBUTION. { pParse->explain = 3; }
 %endif  SQLITE_OMIT_EXPLAIN
 cmdx ::= cmd.           { sqlite3FinishCoding(pParse); }
 
@@ -240,10 +241,9 @@ columnname(A) ::= nm(A) typetoken(Y). {comdb2AddColumn(pParse,&A,&Y);}
 //
 %fallback ID
   ABORT ACTION AFTER ANALYZE ASC ATTACH BEFORE BEGIN BY CASCADE CAST COLUMNKW
-  CONFLICT DATABASE DEFERRED DESC DETACH DO
-  EACH END EXCLUSIVE EXPLAIN FAIL
+  CONFLICT DATABASE DEFERRED DESC DETACH DISTRIBUTION EACH END EXCLUSIVE EXPLAIN FAIL
   IGNORE IMMEDIATE INITIALLY INSTEAD LIKE_KW MATCH NO PLAN
-  QUERY OF OFFSET PRAGMA RAISE RECURSIVE RELEASE REPLACE RESTRICT ROW
+  QUERY KEY OF OFFSET PRAGMA RAISE RECURSIVE RELEASE REPLACE RESTRICT ROW
   ROLLBACK SAVEPOINT TEMP TRIGGER VACUUM VIEW VIRTUAL WITH WITHOUT
 %ifdef SQLITE_OMIT_COMPOUND_SELECT
   EXCEPT INTERSECT UNION
@@ -256,7 +256,7 @@ columnname(A) ::= nm(A) typetoken(Y). {comdb2AddColumn(pParse,&A,&Y);}
   COMMITSLEEP CONSUMER CONVERTSLEEP COVERAGE CRLE DATA DATABLOB DATACOPY DBPAD
   DEFERRABLE DISABLE DRYRUN ENABLE FOR FUNCTION GENID48 GET GRANT
   IPU ISC KW LUA LZ4 NONE ODH OFF OP OPTIONS PAGEORDER PARTITION PASSWORD PERIOD
-  PROCEDURE PUT REBUILD READ READONLY REC RESERVED RETENTION REVOKE RLE
+  PROCEDURE PUT RANGE REBUILD READ READONLY REC RESERVED RETENTION REVOKE RLE
   ROWLOCKS SCALAR SCHEMACHANGE SKIPSCAN START SUMMARIZE THREADS THRESHOLD TIME
   TRUNCATE TUNABLE VERSION WRITE DDL USERSCHEMA ZLIB .
 %wildcard ANY.
@@ -329,7 +329,7 @@ ccons ::= UNIQUE onconf(R).      {
     comdb2AddIndex(pParse, 0, 0, R, 0, SQLITE_SO_ASC,
                    SQLITE_IDXTYPE_UNIQUE, 0);
 }
-ccons ::= KEY onconf(R).         {
+ccons ::= INDEX onconf(R).         {
     comdb2AddIndex(pParse, 0, 0, R, 0, SQLITE_SO_ASC,
                    SQLITE_IDXTYPE_DUPKEY, 0);
 }
@@ -399,7 +399,7 @@ tcons ::= UNIQUE nm_opt(I) LP sortlist(X) RP with_opt(O) where_opt(W). {
     comdb2AddIndex(pParse, &I, X, 0, &W, SQLITE_SO_ASC, SQLITE_IDXTYPE_UNIQUE,
                    O);
 }
-tcons ::= KEY nm_opt(I) LP sortlist(X) RP with_opt(O) where_opt(W). {
+tcons ::= INDEX nm_opt(I) LP sortlist(X) RP with_opt(O) where_opt(W). {
     comdb2AddIndex(pParse, &I, X, 0, &W, SQLITE_SO_ASC, SQLITE_IDXTYPE_DUPKEY,
                    O);
 }
@@ -1944,6 +1944,12 @@ table_opt ::= TABLE.
 
 cmd ::= BULKIMPORT nm(A) DOT nm(B) nm(C) DOT nm(D). {
     comdb2bulkimport(pParse, &A, &B, &C, &D);
+}
+
+//////////////////// COMDB2 RANGE PARTITION //////////////////////////////////
+//
+cmd ::= createkw RANGE PARTITION ON nm(A) WHERE columnname(B) IN LP exprlist(C) RP. {
+    comdb2CreateRangePartition(pParse, &A, &B, C);
 }
 
 //////////////////// COMDB2 PARTITION //////////////////////////////////

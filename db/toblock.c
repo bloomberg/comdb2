@@ -93,6 +93,7 @@ extern int n_commit_time;
 extern pthread_mutex_t commit_stat_lk;
 extern pthread_mutex_t osqlpf_mutex;
 extern int gbl_prefault_udp;
+extern int gbl_reorder_socksql_no_deadlock;
 
 #if 0
 #define BACKOUT                                                                \
@@ -1925,6 +1926,9 @@ int toblock(struct ireq *iq)
     /* TODO why is this here? */
     MEMORY_SYNC;
 
+    if (iq->debug)
+        reqprintf(iq, "BLOCK NUM REQS %d", blkstate.numreq);
+
     /* validate number of reqs */
     if (blkstate.numreq < 1 || blkstate.numreq > MAXBLOCKOPS) {
         if (iq->debug)
@@ -2585,6 +2589,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 break;
             if (block_state_set_next(iq, p_blkstate, hdr.nxt))
                 break;
+
+            if (iq->debug)
+                reqprintf(iq, "PRE LOOP REQ %d: %d", opnum, hdr.opcode);
 
             if (hdr.opcode > 0 && hdr.opcode < BLOCK_MAXOPCODE)
                 opcode_counts[gbl_blockop_count_xrefs[hdr.opcode]]++;
@@ -4351,11 +4358,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 }
             }
 
-            rc = block2_sorese(iq, (char *)p_buf_sqlq, sql.sqlqlen, hdr.opcode);
-            if (rc != RC_OK) {
-                numerrs = 1;
-                BACKOUT;
-            }
+            block2_sorese(iq, (char *)p_buf_sqlq, sql.sqlqlen, hdr.opcode);
             break;
         }
 
@@ -5477,12 +5480,6 @@ add_blkseq:
                                        &replay_data, &replay_len);
             }
 
-            if (iq->seqlen == sizeof(uuid_t)) {
-                uuidstr_t us;
-                uuid_t u;
-                memcpy(&u, iq->seq, iq->seqlen);
-                comdb2uuidstr(u, us);
-            }
             /* force a parent-deadlock for cdb2tcm */
             if ((tcm_testpoint(TCM_PARENT_DEADLOCK)) && (0 == (rand() % 20))) {
                 logmsg(LOGMSG_DEBUG, "tcm forcing parent retry\n");
@@ -5537,8 +5534,9 @@ add_blkseq:
                     char *bskey = alloca(iq->snap_info.keylen + 1);
                     memcpy(bskey, iq->snap_info.key, iq->snap_info.keylen);
                     bskey[iq->snap_info.keylen] = '\0';
-                    logmsg(LOGMSG_USER, "blkseq add '%s', outrc=%d errval=%d "
-                                        "errstr='%s', rcout=%d commit-rc=%d\n",
+                    logmsg(LOGMSG_USER,
+                           "blkseq add '%s', outrc=%d errval=%d "
+                           "errstr='%s', rcout=%d commit-rc=%d\n",
                            bskey, outrc, iq->errstat.errval, iq->errstat.errstr,
                            iq->sorese.rcout, irc);
                 }

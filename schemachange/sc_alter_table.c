@@ -128,12 +128,12 @@ static int prepare_changes(struct schema_change_type *s, struct dbtable *db,
     }
 
     /* rebuild if ran out of version numbers */
-    if (newdb->version >= MAXVER && newdb->instant_schema_change) {
+    if (newdb->schema_version >= MAXVER && newdb->instant_schema_change) {
         sc_printf(s, "exhausted versions. forcing rebuild at %d\n",
-                  newdb->version);
+                  newdb->schema_version);
         if (s->dryrun)
             sbuf2printf(s->sb, ">table version: %d. will have to rebuild.\n",
-                        newdb->version);
+                        newdb->schema_version);
         s->force_rebuild = 1;
         changed = SC_TAG_CHANGE;
     }
@@ -146,12 +146,12 @@ static void adjust_version(int changed, struct scinfo *scinfo,
 {
     /* if we don't want to merely bump the version, reset it to 0. */
     if (changed == SC_TAG_CHANGE && newdb->instant_schema_change) {
-        newdb->version = 0;
+        newdb->schema_version = 0;
     }
     /* if we're disabling instant sc, reset the version to 0. */
     else if (db->instant_schema_change && !newdb->instant_schema_change) {
         /* instant schema change is being removed */
-        newdb->version = 0;
+        newdb->schema_version = 0;
     }
     /* if we are enabling instant sc, set the version to 1. */
     else if (db->odh && !db->instant_schema_change &&
@@ -161,7 +161,7 @@ static void adjust_version(int changed, struct scinfo *scinfo,
          * will correspond to the latest csc2 version. start
          * instant version at 2 and treat physical version 0
          * as version 1 */
-        newdb->version = 1;
+        newdb->schema_version = 1;
     }
 
     /* if only index or constraints have changed don't bump version */
@@ -173,12 +173,12 @@ static void adjust_version(int changed, struct scinfo *scinfo,
         || (!scinfo->olddb_instant_sc &&
             s->instant_sc) /* bump version if enabled instant sc */
         ) {
-        ++newdb->version;
+        ++newdb->schema_version;
     } else if (ondisk_changed == SC_NO_CHANGE /* nothing changed ondisk */
                && changed == SC_TAG_CHANGE    /* plan says it did change */
-               && newdb->version == 0 && newdb->plan &&
+               && newdb->schema_version == 0 && newdb->plan &&
                newdb->plan->dta_plan == -1 && newdb->plan->plan_convert == 1) {
-        ++newdb->version;
+        ++newdb->schema_version;
     }
 }
 
@@ -189,7 +189,7 @@ static int prepare_version_for_dbs_without_instant_sc(tran_type *tran,
     int rc;
 
     if (db->odh && !db->instant_schema_change && newdb->instant_schema_change &&
-        newdb->version == 2) {
+        newdb->schema_version == 2) {
         /* Old db had ODH but not instant schema change.
          * The physical records will have version 0 &
          * will correspond to the latest csc2 version. Start
@@ -408,7 +408,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
         return SC_INTERNAL_ERROR;
     }
-    newdb->version = get_csc2_version(newdb->tablename);
+    newdb->schema_version = get_csc2_version(newdb->tablename);
 
     newdb->iq = iq;
 
@@ -514,7 +514,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
        however the new db gets its meta table assigned further down,
        so we can't set meta options until we're there. */
     set_bdb_option_flags(newdb, s->headers, s->ip_updates,
-                         newdb->instant_schema_change, newdb->version,
+                         newdb->instant_schema_change, newdb->schema_version,
                          s->compress, s->compress_blobs, datacopy_odh);
 
     /* set sc_genids, 0 them if we are starting a new schema change, or
@@ -668,9 +668,9 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     gbl_sc_commit_count++;
 
     /*begin updating things*/
-    if (newdb->version == 1) {
+    if (newdb->schema_version == 1) {
         /* newdb's version has been reset */
-        bdberr = bdb_reset_csc2_version(transac, db->tablename, db->version);
+        bdberr = bdb_reset_csc2_version(transac, db->tablename, db->schema_version);
         if (bdberr != BDBERR_NOERROR)
             goto backout;
     }
@@ -763,7 +763,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     if (!gbl_create_mode) {
         logmsg(LOGMSG_INFO, "Table %s is at version: %d\n", newdb->tablename,
-               newdb->version);
+               newdb->schema_version);
     }
 
     llmeta_dump_mapping_table_tran(transac, thedb, db->tablename, 1);
@@ -783,13 +783,22 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
         (!s->fastinit &&
          BDB_ATTR_GET(thedb->bdb_attr, SC_DONE_SAME_TRAN) == 0)) {
         /* reliable per table versioning */
-        rc = table_version_upsert(db, transac, &bdberr);
+        if (unlikely(gbl_disable_tpsc_tblvers && s->fix_tp_badvers)) {
+            rc = table_version_set(transac, db->tablename,
+                                   s->usedbtablevers + 1);
+            db->tableversion = s->usedbtablevers + 1;
+        } else
+            rc = table_version_upsert(db, transac, &bdberr);
         if (rc) {
             sc_errf(s, "Failed updating table version bdberr %d\n", bdberr);
             goto failed;
         }
     } else {
-        db->tableversion = table_version_select(db, transac);
+        if (unlikely(gbl_disable_tpsc_tblvers && s->fix_tp_badvers)) {
+            rc = table_version_set(transac, db->tablename, s->usedbtablevers);
+            db->tableversion = s->usedbtablevers;
+        } else
+            db->tableversion = table_version_select(db, transac);
         sc_printf(s, "Reusing version %d for same schema\n", db->tableversion);
     }
 
@@ -831,7 +840,7 @@ backout:
 
     logmsg(LOGMSG_WARN,
            "##### BACKOUT #####   %s v: %d sc:%d lrl: %d odh:%d bdb:%p\n",
-           db->tablename, db->version, db->instant_schema_change, db->lrl,
+           db->tablename, db->schema_version, db->instant_schema_change, db->lrl,
            db->odh, db->handle);
 
     return -1;

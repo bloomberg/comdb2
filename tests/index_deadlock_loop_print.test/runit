@@ -31,20 +31,26 @@ schema
 }
 keys
 {
-    dup "PK"=i
+    "PK"=i
 }
 }
 EOF
 
 
-cdb2sql ${CDB2_OPTIONS} $dbnm default 'insert into t1 select * from generate_series(1,1002)'
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'insert into t1 values(1002)' #make sure 1002 has lower genid than 1 so no reordering
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'insert into t1 select * from generate_series(1,1001)'
 
+cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set i=3 where i=3"
+#FTR print genid as follows. Note that the last 2 bytes are stripe and updid:
+# stripe     4 bits -- the rightmost digit (max 16),
+# update id 12 bits -- next three digits (max 4096)
+cdb2sql ${CDB2_OPTIONS} $dbnm default "select printf('%llx',comdb2_rowid) as genid, i from t1 order by i" > content0.out
 
 cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
 for node in $cluster ; do
-#    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('debg 500')"
-#    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('ndebg 500')"
-#    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('bdb verbdeadlock 1')"
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('debg 500')"
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('ndebg 500')"
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('bdb verbdeadlock 1')"
 #    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('on verbose_deadlocks')"
     cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('bdb setattr DELAY_WRITES_IN_RECORD_C 1000')"
     cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('print_deadlock_cycles on')"
@@ -55,7 +61,7 @@ done
 f1() {
     cdb2sql ${CDB2_OPTIONS} $dbnm default <<"EOF"
 begin
-delete from t1 where i=1
+delete from t1 where i=500
 delete from t1 where i=1001
 commit
 EOF
@@ -65,7 +71,7 @@ f2() {
     cdb2sql ${CDB2_OPTIONS} $dbnm default <<"EOF"
 begin
 delete from t1 where i=1002
-delete from t1 where i=2
+delete from t1 where i=501
 commit
 EOF
 }
@@ -78,7 +84,8 @@ f2 &
 wait
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "select i as value from t1 order by i" > content1.out
-cdb2sql ${CDB2_OPTIONS} $dbnm default 'select * from generate_series(3,1000)' > content2.out
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'select * from generate_series(1,499)' > content2.out
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'select * from generate_series(502,1000)' >> content2.out
 
 if ! diff $PWD/{content1.out,content2.out} ; then 
     failexit "content not what it is supposed to be"

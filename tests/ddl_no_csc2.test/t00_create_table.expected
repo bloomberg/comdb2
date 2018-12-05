@@ -670,9 +670,9 @@ keys
 [CREATE TABLE t1(i INT, b BLOB(100) DEFAULT 'xxxxx')] failed with rc 240 Error at line   4: CANNOT SPECIFY LOAD/STORE OPTIONS FOR BLOB/DATE FIELDS
 (rows inserted=1)
 (i=1, f1=1.100000, f2=1.100000, f3=1.100000)
-[CREATE TABLE t6(i INT, KEY COMDB2_PK(i))] failed with rc -3 Invalid key name 'COMDB2_PK'.
-[CREATE TABLE t6(i INT, j INT, KEY 'dup'(i), KEY 'dup'(j))] failed with rc -3 Index 'dup' already exists.
-[CREATE TABLE t6(i INT, j INT, KEY 'xxxx'(i), UNIQUE 'xxxx'(j))] failed with rc -3 Index 'xxxx' already exists.
+[CREATE TABLE t6(i INT, INDEX COMDB2_PK(i))] failed with rc -3 Invalid key name 'COMDB2_PK'.
+[CREATE TABLE t6(i INT, j INT, INDEX 'dup'(i), INDEX 'dup'(j))] failed with rc -3 Index 'dup' already exists.
+[CREATE TABLE t6(i INT, j INT, INDEX 'xxxx'(i), UNIQUE 'xxxx'(j))] failed with rc -3 Index 'xxxx' already exists.
 (tablename='t1', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t1', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t2', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
@@ -781,8 +781,8 @@ keys
 ')
 [CREATE TABLE t1(i INT UNIQUE ASC)] failed with rc -3 near "ASC": syntax error
 [CREATE TABLE t1(i INT UNIQUE DESC)] failed with rc -3 near "DESC": syntax error
-[CREATE TABLE t1(i INT KEY ASC)] failed with rc -3 near "ASC": syntax error
-[CREATE TABLE t1(i INT KEY DESC)] failed with rc -3 near "DESC": syntax error
+[CREATE TABLE t1(i INT INDEX ASC)] failed with rc -3 near "ASC": syntax error
+[CREATE TABLE t1(i INT INDEX DESC)] failed with rc -3 near "DESC": syntax error
 (tablename='t1', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
 (tablename='t2', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
 (tablename='t3', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
@@ -846,31 +846,43 @@ keys
 ')
 (type='index', name='$$KEY_3FDDB096_3FDDB096', tbl_name='t5', rootpage=13, sql='create index "$$KEY_3FDDB096_3FDDB096" on "t5" ("j" DESC, "i");', csc2=NULL)
 [CREATE TABLE t1(unique INT UNIQUE)] failed with rc -3 near "unique": syntax error
-[CREATE TABLE t1(key INT KEY)] failed with rc -3 near "key": syntax error
-(tablename='t1', columnname='unique', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
-(tablename='t2', columnname='key', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
-(tablename='t1', keyname='$KEY_A513E531', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
-(tablename='t2', keyname='$KEY_A82281A0', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
-(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("unique" int);', csc2='schema
-	{
-		int unique null = yes 
-	}
-keys
-	{
-		uniqnulls "$KEY_A513E531" = unique 
-	}
-')
-(type='index', name='$$KEY_A513E531_424C1931', tbl_name='t1', rootpage=5, sql='create index "$$KEY_A513E531_424C1931" on "t1" ("unique");', csc2=NULL)
-(type='table', name='t2', tbl_name='t2', rootpage=6, sql='create table "t2"("key" int);', csc2='schema
+[CREATE TABLE t1(key INT KEY)] failed with rc -3 Invalid type specified.
+(tablename='t1', columnname='key', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t2', columnname='unique', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t3', columnname='key', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t1', keyname='$KEY_99CA9B3D', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t2', keyname='$KEY_8CDB51C3', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t3', keyname='$KEY_E558A14', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("key" int);', csc2='schema
 	{
 		int key null = yes 
 	}
 keys
 	{
-		dup "$KEY_A82281A0" = key 
+		dup "$KEY_99CA9B3D" = key 
 	}
 ')
-(type='index', name='$$KEY_A82281A0_A82281A0', tbl_name='t2', rootpage=7, sql='create index "$$KEY_A82281A0_A82281A0" on "t2" ("key");', csc2=NULL)
+(type='index', name='$$KEY_99CA9B3D_99CA9B3D', tbl_name='t1', rootpage=5, sql='create index "$$KEY_99CA9B3D_99CA9B3D" on "t1" ("key");', csc2=NULL)
+(type='table', name='t2', tbl_name='t2', rootpage=6, sql='create table "t2"("unique" int);', csc2='schema
+	{
+		int unique null = yes 
+	}
+keys
+	{
+		uniqnulls "$KEY_8CDB51C3" = unique 
+	}
+')
+(type='index', name='$$KEY_8CDB51C3_73A403AC', tbl_name='t2', rootpage=7, sql='create index "$$KEY_8CDB51C3_73A403AC" on "t2" ("unique");', csc2=NULL)
+(type='table', name='t3', tbl_name='t3', rootpage=8, sql='create table "t3"("key" int);', csc2='schema
+	{
+		int key null = yes 
+	}
+keys
+	{
+		dup "$KEY_E558A14" = key 
+	}
+')
+(type='index', name='$$KEY_E558A14_E558A14', tbl_name='t3', rootpage=9, sql='create index "$$KEY_E558A14_E558A14" on "t3" ("key");', csc2=NULL)
 (tablename='t1', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t1', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t2', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')

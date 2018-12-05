@@ -253,6 +253,7 @@ extern bool gbl_rcache;
 
 static char *name = NULL;
 static int ctrace_gzip;
+extern int gbl_reorder_socksql_no_deadlock;
 
 int gbl_ddl_cascade_drop = 1;
 extern int gbl_queuedb_genid_filename;
@@ -261,6 +262,7 @@ extern int gbl_queuedb_timeout_sec;
 extern int gbl_timeseries_metrics;
 extern int gbl_metric_maxpoints;
 extern int gbl_metric_maxage;
+extern int gbl_osql_check_replicant_numops;
 
 /*
   =========================================================

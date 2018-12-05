@@ -17,6 +17,11 @@
 extern int __berkdb_write_alarm_ms;
 extern int __berkdb_read_alarm_ms;
 
+#ifdef __sun
+/* for PTHREAD_STACK_MIN on Solaris */
+#define __EXTENSIONS__
+#endif
+
 #include <pthread.h>
 
 #include "limit_fortify.h"
@@ -69,6 +74,7 @@ extern int __berkdb_read_alarm_ms;
 #include "timers.h"
 #include "crc32c.h"
 #include "ssl_bend.h"
+#include "dohsql.h"
 
 #include <trigger.h>
 #include <sc_stripes.h>
@@ -204,9 +210,11 @@ static const char *HELP_STAT[] = {
     "stat switch                - show switch statuses",
     "stat clnt [#] [rates|totals]- show per client request stats",
     "stat mtrap                 - show mtrap system stats",
+    "stat dohsql                - show distributed sql stats",
     "dmpl                       - dump threads",
     "dmptrn                     - show long transaction stats",
-    "dmpcts                     - show table constraints", NULL,
+    "dmpcts                     - show table constraints",
+    NULL,
 };
 static const char *HELP_SQL[] = {
     "sql ...",
@@ -641,7 +649,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         pthread_attr_t thd_attr;
 
         Pthread_attr_init(&thd_attr);
-        pthread_attr_setstacksize(&thd_attr, 4 * 1024); /* 4K */
+        Pthread_attr_setstacksize(&thd_attr, 128 * 1024);
         pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
 
         int rc = pthread_create(&thread_id, &thd_attr, clean_exit_thd, NULL);
@@ -649,6 +657,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             logmsgperror("create exit thread: pthread_create");
             exit(1);
         }
+        Pthread_attr_destroy(&thd_attr);
     } else if(tokcmp(tok,ltok, "partinfo")==0) {
         char opt[128];
 
@@ -1487,8 +1496,6 @@ clipper_usage:
         int thread_id = toknum(tok, ltok);
         gbl_break_lua = thread_id;
     } else if (tokcmp(tok, ltok, "stat") == 0) {
-        /* Sam J - allow us to get much more status from an op1 window by
-         * forwarding commands to the bdb backend. */
         tok = segtok(line, lline, &st, &ltok);
         if (tokcmp(tok, ltok, "bdb") == 0) {
             /* Forward request to backend, which has its own safety checks
@@ -1751,6 +1758,8 @@ clipper_usage:
             fdb_stat_alias();
         } else if (tokcmp(tok, ltok, "uprecs") == 0) {
             upgrade_records_stats();
+        } else if (tokcmp(tok, ltok, "dohsql") == 0) {
+            dohsql_stats();
 #if WITH_SSL
         } else if (tokcmp(tok, ltok, "ssl") == 0) {
             ssl_stats();
@@ -2190,13 +2199,13 @@ clipper_usage:
         tokcpy(tok, ltok, table);
 
         stat_bt_hash_table_reset(table);
-    } else if (tokcmp(tok, ltok, "fastinit") == 0) {
+    } else if (tokcmp(tok, ltok, "fastinit") == 0 ||
+               tokcmp(tok, ltok, "reinit") == 0) {
         char table[MAXTABLELEN];
         if (thedb->master != gbl_mynode) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
             return -1;
         }
-
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR, "Expected db name\n");
@@ -2207,24 +2216,7 @@ clipper_usage:
                    MAXTABLELEN - 1);
             return -1;
         }
-
         tokcpy(tok, ltok, table);
-
-        /*
-           char fname[128];
-           tok=segtok(line,lline,&st,&ltok);
-           if (ltok == 0) {
-           printf("Expected schema file\n");
-           return -1;
-           }
-           if (ltok >= sizeof(fname) - 1) {
-           printf("Invalid file name: too long (max %d)\n", sizeof(fname) - 1);
-           return -1;
-           }
-           tokcpy(tok, ltok, fname);
-         */
-
-        /* and here we go... */
         rc = fastinit_table(dbenv, table);
         if (rc != 0) {
             if (rc == -99)
@@ -2479,31 +2471,6 @@ clipper_usage:
                tokcmp(tok, ltok, "clrpol") == 0 ||
                tokcmp(tok, ltok, "setclass") == 0) {
         process_allow_command(line + stsav, llinesav - stsav);
-    } else if (tokcmp(tok, ltok, "reinit") == 0) {
-        struct dbtable *db;
-        char dbname[100];
-
-        if (gbl_mynode != thedb->master) {
-            logmsg(LOGMSG_ERROR, "Please run reinit on master\n");
-            return -1;
-        }
-
-        tok = segtok(line, lline, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "usage: reinit tablename\n");
-            return -1;
-        }
-        tokcpy(tok, ltok, dbname);
-        db = get_dbtable_by_name(dbname);
-        if (db == NULL) {
-            logmsg(LOGMSG_ERROR, "No such db %s\n", dbname);
-        } else {
-            rc = reinit_db(db);
-            if (rc)
-                logmsg(LOGMSG_ERROR, "reinit %s failed rc %d\n", dbname, rc);
-            else
-                logmsg(LOGMSG_USER, "reinit %s ok\n", dbname);
-        }
     } else if (tokcmp(tok, ltok, "fastcount") == 0) {
         struct dbtable *db;
         char dbname[100];
@@ -2793,8 +2760,9 @@ clipper_usage:
                 logmsg(LOGMSG_ERROR, "Usage: sql cancelcnonce CNONCE.  You can get cnonce with "
                        "\"sql dump\".\n");
             else {
-                char * cnonce = strdup(tok);
+                char *cnonce = tokdup(tok, ltok);
                 cancel_sql_statement_with_cnonce(cnonce);
+                free(cnonce);
             }
         } else if (tokcmp(tok, ltok, "wrtimeout") == 0) {
             tok = segtok(line, lline, &st, &ltok);
@@ -3582,7 +3550,8 @@ clipper_usage:
             logmsg(LOGMSG_USER, "table:%s  odh:%s  instant_schema_change:%s  "
                                 "inplace_updates:%s  version:%d\n",
                    db->tablename, YESNO(db->instant_schema_change),
-                   YESNO(db->inplace_updates), YESNO(db->odh), db->version);
+                   YESNO(db->inplace_updates), YESNO(db->odh),
+                   db->schema_version);
         } else {
             logmsg(LOGMSG_ERROR, "no such table: %s\n", dbname);
         }
@@ -3610,8 +3579,8 @@ clipper_usage:
         }
         struct dbtable *db = get_dbtable_by_name(dbname);
         if (db) {
-            db->version = ver;
-            bdb_set_csc2_version(db->handle, db->version);
+            db->schema_version = ver;
+            bdb_set_csc2_version(db->handle, db->schema_version);
         } else {
             logmsg(LOGMSG_ERROR, "no such table: %s\n", dbname);
         }

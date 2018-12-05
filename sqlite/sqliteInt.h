@@ -20,6 +20,10 @@
 #include "tunables.h"
 #include "fwd_types.h"
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#include "ast.h"
+#endif
+
 #undef debug_raw
 /* Special Comments:
 **
@@ -2815,6 +2819,8 @@ struct Select {
 #define SF_MaybeConvert   0x08000  /* Need convertCompoundSelectToSubquery() */
 #define SF_Converted      0x10000  /* By convertCompoundSelectToSubquery() */
 #define SF_IncludeHidden  0x20000  /* Include hidden columns in output */
+/* COMDB2 MODIFICATION */
+#define SF_ASTIncluded  0x1000000  /* AST Generated */
 
 
 /*
@@ -3112,6 +3118,9 @@ struct Parse {
   With *pWithToFree;        /* Free this WITH object at the end of the parse */
   u8 write;                 /* Flag to indicate write transaction during sqlite3FinishCoding */
   Cdb2DDL *comdb2_ddl_ctx;  /* Context for DDL commands */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  ast_t *ast;
+#endif
 };
 
 /* COMDB2 MODIFICATION */
@@ -4573,5 +4582,11 @@ void sqlite3FingerprintDelete(sqlite3 *db, SrcList *pTabList, Expr *pWhere);
 void sqlite3FingerprintInsert(sqlite3 *db, SrcList *, Select *, IdList *, With *);
 void sqlite3FingerprintUpdate(sqlite3 *db, SrcList *pTabList, ExprList *pChanges, Expr *pWhere, int onError);
 void comdb2WriteTransaction(Parse*);
+
+/* COMDB2 MODIFICATION */
+int sqlite3RecordCompareExprList(UnpackedRecord *rec, Mem *mems);
+int sqlite3ExprList2MemArray(ExprList *list, Mem *mems);
+Mem* sqlite3CloneResult(sqlite3_stmt *pStmt, Mem *cols, long long *pSize);
+int sqlite3CloneResultFree(sqlite3_stmt *pStmt, Mem **cols, long long *pSize);
 
 #endif /* _SQLITEINT_H_ */
