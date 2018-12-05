@@ -711,6 +711,7 @@
 (name='request_durable_lsn_trace', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='requeue_on_tran_dispatch', description='Requeue transactional statement if not enough threads', type='BOOLEAN', value='ON', read_only='N')
 (name='reset_deadlock_race', description='reset_deadlock_race', type='BOOLEAN', value='OFF', read_only='N')
+(name='result_cache_size', description='SQL result cache size', type='INTEGER', value='0', read_only='N')
 (name='retry', description='', type='INTEGER', value='10', read_only='Y')
 (name='return_long_column_names', description='Enables returning of long column names. (Default: ON)', type='BOOLEAN', value='ON', read_only='N')
 (name='rl_retry_on_deadlock', description='retry micro commit on deadlock', type='BOOLEAN', value='ON', read_only='N')
