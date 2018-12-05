@@ -965,7 +965,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	 * abort (if its parent aborts), and otherwise its parent or ultimate
 	 * ancestor will write synchronously.
 	 */
-#ifdef DEBUG
+#ifndef NDEBUG
     int iszero = 0;
 	if (IS_ZERO_LSN(txnp->last_lsn)) {
 		/* Put a breakpoint here */

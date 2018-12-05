@@ -3248,7 +3248,7 @@ int handle_undo_upd_dta(DB_ENV *dbenv, u_int32_t rectype,
                 // else
             } else {
                 int lllen = sizeof(unsigned long long);
-#ifdef DEBUG
+#ifndef NDEBUG
                 int old_dta_len = updop->old_dta_len;
 #endif
                 irc = bdb_reconstruct_update(
@@ -3394,7 +3394,7 @@ static int undo_upd_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
             assert(offset == 0 && updlen == olddta_len);
         inplace = 1;
     } else {
-#ifdef DEBUG
+#ifndef NDEBUG
         int cklen = olddta_len;
 #endif
         rc =
@@ -3924,7 +3924,7 @@ int handle_undo_upd_dta_lk(DB_ENV *dbenv, u_int32_t rectype,
                                                      &updop->old_dta_len, NULL,
                                                      NULL, &offset, NULL, NULL);
             } else {
-#ifdef DEBUG
+#ifndef NDEBUG
                 int cklen = updop->old_dta_len;
 #endif
                 int lllsz = sizeof(unsigned long long);
