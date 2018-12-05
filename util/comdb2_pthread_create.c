@@ -162,8 +162,7 @@ static void init_memptr_key(void)
     Pthread_attr_init(&free_thr_attrs);
 
 #ifdef PTHREAD_STACK_MIN
-    Pthread_attr_setstacksize(&free_thr_attrs,
-                                  (PTHREAD_STACK_MIN + 0x4000));
+    Pthread_attr_setstacksize(&free_thr_attrs, (PTHREAD_STACK_MIN + 0x4000));
 #endif
 
     if (pthread_attr_setdetachstate(&free_thr_attrs, PTHREAD_CREATE_DETACHED) !=

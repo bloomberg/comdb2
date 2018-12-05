@@ -81,7 +81,7 @@ int start_prefault_io_threads(struct dbenv *dbenv, int numthreads, int maxq)
     Pthread_attr_init(&attr);
 
     Pthread_attr_setstacksize(&attr, 512 * 1024);
-    
+
     Pthread_mutex_init(&dbenv->prefaultiopool.mutex, NULL);
     dbenv->prefaultiopool.guard = 0xabababab;
     logmsg(LOGMSG_DEBUG, "&(dbenv->prefaultiopool.guard) = %p\n",

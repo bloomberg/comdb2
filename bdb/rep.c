@@ -2032,7 +2032,7 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host)
 
     pthread_attr_t attr;
     Pthread_attr_init(&attr);
-    Pthread_attr_setstacksize(&attr, 128*1024);
+    Pthread_attr_setstacksize(&attr, 128 * 1024);
 
     rc = pthread_create(&tid, &attr, hostdown_thread, hostdown_buf);
     if (rc != 0) {

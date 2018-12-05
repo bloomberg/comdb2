@@ -3281,11 +3281,9 @@ netinfo_type *create_netinfo_int(char myhostname[], int myportnum, int myfd,
     }
 
 #ifdef DEBUG
-    Pthread_attr_setstacksize(&(netinfo_ptr->pthread_attr_detach),
-                                   1024 * 1024);
+    Pthread_attr_setstacksize(&(netinfo_ptr->pthread_attr_detach), 1024 * 1024);
 #else
-    Pthread_attr_setstacksize(&(netinfo_ptr->pthread_attr_detach),
-                                   1024 * 256);
+    Pthread_attr_setstacksize(&(netinfo_ptr->pthread_attr_detach), 1024 * 256);
 #endif
 
     Pthread_mutex_init(&(netinfo_ptr->connlk), NULL);

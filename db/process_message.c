@@ -18,8 +18,8 @@ extern int __berkdb_write_alarm_ms;
 extern int __berkdb_read_alarm_ms;
 
 #ifdef __sun
-   /* for PTHREAD_STACK_MIN on Solaris */
-#  define __EXTENSIONS__
+/* for PTHREAD_STACK_MIN on Solaris */
+#define __EXTENSIONS__
 #endif
 
 #include <pthread.h>
