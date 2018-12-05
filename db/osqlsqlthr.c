@@ -57,6 +57,7 @@
 
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
+extern int gbl_reorder_socksql_no_deadlock;
 
 int gbl_survive_n_master_swings = 600;
 int gbl_master_retry_poll_ms = 100;
@@ -181,9 +182,26 @@ static inline int osql_should_restart(struct sqlclntstate *clnt, int rc)
  */
 static int osql_send_del_logic(struct BtCursor *pCur, struct sql_thread *thd)
 {
+    struct sqlclntstate *clnt = thd->clnt;
+    osqlstate_t *osql = &clnt->osql;
+
     int rc = osql_send_usedb_logic(pCur, thd, NET_OSQL_SOCK_RPL);
     if (rc != SQLITE_OK)
         return rc;
+
+    if (osql->is_reorder_on) {
+        rc = osql_send_delrec(osql->host, osql->rqid, osql->uuid, pCur->genid,
+                              (gbl_partial_indexes && pCur->db->ix_partial)
+                                  ? clnt->del_keys
+                                  : -1ULL,
+                              NET_OSQL_SOCK_RPL, osql->logsb);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
+                   __LINE__, __func__, rc);
+            return rc;
+        }
+    }
 
     if (gbl_expressions_indexes && pCur->db->ix_expr) {
         rc = osql_send_delidx_logic(pCur, thd->clnt, NET_OSQL_SOCK_RPL);
@@ -195,16 +213,18 @@ static int osql_send_del_logic(struct BtCursor *pCur, struct sql_thread *thd)
         }
     }
 
-    struct sqlclntstate *clnt = thd->clnt;
-    osqlstate_t *osql = &clnt->osql;
-    rc = osql_send_delrec(
-        osql->host, osql->rqid, osql->uuid, pCur->genid,
-        (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->del_keys : -1ULL,
-        NET_OSQL_SOCK_RPL, osql->logsb);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s:%d %s - failed to send socksql row rc=%d\n",
-               __FILE__, __LINE__, __func__, rc);
-        return rc;
+    if (!osql->is_reorder_on) {
+        rc = osql_send_delrec(osql->host, osql->rqid, osql->uuid, pCur->genid,
+                              (gbl_partial_indexes && pCur->db->ix_partial)
+                                  ? clnt->del_keys
+                                  : -1ULL,
+                              NET_OSQL_SOCK_RPL, osql->logsb);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
+                   __LINE__, __func__, rc);
+            return rc;
+        }
     }
     osql->replicant_numops++;
     DEBUG_PRINT_NUMOPS();
@@ -274,9 +294,26 @@ static int osql_send_ins_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                char *pData, int nData, blob_buffer_t *blobs,
                                int maxblobs, int flags)
 {
+    osqlstate_t *osql = &thd->clnt->osql;
+
     int rc = osql_send_usedb_logic(pCur, thd, NET_OSQL_SOCK_RPL);
     if (rc != SQLITE_OK)
         return rc;
+
+    if (osql->is_reorder_on) {
+        rc = osql_send_insrec(
+            osql->host, osql->rqid, osql->uuid, pCur->genid,
+            (gbl_partial_indexes && pCur->db->ix_partial) ? thd->clnt->ins_keys
+                                                          : -1ULL,
+            pData, nData, NET_OSQL_SOCK_RPL, osql->logsb, flags);
+
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
+                   __LINE__, __func__, rc);
+            return rc;
+        }
+    }
 
     if (gbl_expressions_indexes && pCur->db->ix_expr) {
         rc = osql_send_insidx_logic(pCur, thd->clnt, NET_OSQL_SOCK_RPL);
@@ -288,7 +325,6 @@ static int osql_send_ins_logic(struct BtCursor *pCur, struct sql_thread *thd,
         }
     }
 
-    osqlstate_t *osql = &thd->clnt->osql;
     rc = osql_send_qblobs_logic(pCur, osql, NULL, blobs, NET_OSQL_SOCK_RPL);
     if (rc != SQLITE_OK) {
         logmsg(LOGMSG_ERROR, "%s:%d %s - failed to send socksql row rc=%d\n",
@@ -296,16 +332,19 @@ static int osql_send_ins_logic(struct BtCursor *pCur, struct sql_thread *thd,
         return rc;
     }
 
-    rc = osql_send_insrec(osql->host, osql->rqid, osql->uuid, pCur->genid,
-                          (gbl_partial_indexes && pCur->db->ix_partial)
-                              ? thd->clnt->ins_keys
-                              : -1ULL,
-                          pData, nData, NET_OSQL_SOCK_RPL, osql->logsb, flags);
+    if (!osql->is_reorder_on) {
+        rc = osql_send_insrec(
+            osql->host, osql->rqid, osql->uuid, pCur->genid,
+            (gbl_partial_indexes && pCur->db->ix_partial) ? thd->clnt->ins_keys
+                                                          : -1ULL,
+            pData, nData, NET_OSQL_SOCK_RPL, osql->logsb, flags);
 
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s:%d %s - failed to send socksql row rc=%d\n",
-               __FILE__, __LINE__, __func__, rc);
-        return rc;
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
+                   __LINE__, __func__, rc);
+            return rc;
+        }
     }
     osql->replicant_numops++;
     DEBUG_PRINT_NUMOPS();
@@ -367,9 +406,28 @@ static int osql_send_upd_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                char *pData, int nData, int *updCols,
                                blob_buffer_t *blobs, int maxblobs, int flags)
 {
+    osqlstate_t *osql = &thd->clnt->osql;
+
     int rc = osql_send_usedb_logic(pCur, thd, NET_OSQL_SOCK_RPL);
     if (rc != SQLITE_OK)
         return rc;
+
+    if (osql->is_reorder_on) {
+        rc = osql_send_updrec(
+            osql->host, osql->rqid, osql->uuid, pCur->genid,
+            (gbl_partial_indexes && pCur->db->ix_partial) ? thd->clnt->ins_keys
+                                                          : -1ULL,
+            (gbl_partial_indexes && pCur->db->ix_partial) ? thd->clnt->del_keys
+                                                          : -1ULL,
+            pData, nData, NET_OSQL_SOCK_RPL, osql->logsb);
+
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
+                   __LINE__, __func__, rc);
+            return rc;
+        }
+    }
 
     if (gbl_expressions_indexes && pCur->db->ix_expr) {
         rc = osql_send_delidx_logic(pCur, thd->clnt, NET_OSQL_SOCK_RPL);
@@ -389,7 +447,6 @@ static int osql_send_upd_logic(struct BtCursor *pCur, struct sql_thread *thd,
         }
     }
 
-    osqlstate_t *osql = &thd->clnt->osql;
     rc = osql_send_qblobs_logic(pCur, osql, updCols, blobs, NET_OSQL_SOCK_RPL);
     if (rc != SQLITE_OK) {
         logmsg(LOGMSG_ERROR, "%s:%d %s - failed to send socksql row rc=%d\n",
@@ -411,18 +468,21 @@ static int osql_send_upd_logic(struct BtCursor *pCur, struct sql_thread *thd,
         DEBUG_PRINT_NUMOPS();
     }
 
-    rc = osql_send_updrec(
-        osql->host, osql->rqid, osql->uuid, pCur->genid,
-        (gbl_partial_indexes && pCur->db->ix_partial) ? thd->clnt->ins_keys
-                                                      : -1ULL,
-        (gbl_partial_indexes && pCur->db->ix_partial) ? thd->clnt->del_keys
-                                                      : -1ULL,
-        pData, nData, NET_OSQL_SOCK_RPL, osql->logsb);
+    if (!osql->is_reorder_on) {
+        rc = osql_send_updrec(
+            osql->host, osql->rqid, osql->uuid, pCur->genid,
+            (gbl_partial_indexes && pCur->db->ix_partial) ? thd->clnt->ins_keys
+                                                          : -1ULL,
+            (gbl_partial_indexes && pCur->db->ix_partial) ? thd->clnt->del_keys
+                                                          : -1ULL,
+            pData, nData, NET_OSQL_SOCK_RPL, osql->logsb);
 
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s:%d %s - failed to send socksql row rc=%d\n",
-               __FILE__, __LINE__, __func__, rc);
-        return rc;
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
+                   __LINE__, __func__, rc);
+            return rc;
+        }
     }
 
     osql->replicant_numops++;
@@ -561,7 +621,8 @@ int osql_block_commit(struct sql_thread *thd)
 }
 
 /**
- * Starts a sosql session, which creates a blockprocessor peer
+ * This is called on the replicant node and starts a sosql session,
+ * which creates a blockprocessor peer on the master node
  * Returns ok if the packet is sent successful to the master
  * If keep_rqid, this is a retry and we want to keep the same rqid
  */
@@ -589,6 +650,8 @@ int osql_sock_start(struct sqlclntstate *clnt, int type, int keep_rqid)
             assert(osql->rqid);
         }
     }
+
+    osql->is_reorder_on = gbl_reorder_socksql_no_deadlock;
 
     /* lets reset error, this could be a retry */
     osql->xerr.errval = 0;
@@ -677,6 +740,9 @@ retry:
         flags |= OSQL_FLAGS_CHECK_SELFLOCK;
     else
         flags = 0;
+
+    if (osql->is_reorder_on)
+        flags |= OSQL_FLAGS_REORDER_ON;
 
     /* send request to blockprocessor */
     rc = osql_comm_send_socksqlreq(osql->host, clnt->sql, strlen(clnt->sql) + 1,

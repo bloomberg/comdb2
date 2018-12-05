@@ -1502,11 +1502,28 @@ REGISTER_TUNABLE("dohast_verbose",
                  TUNABLE_BOOLEAN, &gbl_dohast_verbose, 0, NULL, NULL, NULL,
                  NULL);
 
+REGISTER_TUNABLE("dohsql_max_queued_kb_highwm",
+                 "Maximum shard queue size, in KB; shard sqlite will pause "
+                 "once queued bytes limit is reached.",
+                 TUNABLE_INTEGER, &gbl_dohsql_max_queued_kb_highwm, 0, NULL,
+                 NULL, NULL, NULL);
+
+REGISTER_TUNABLE(
+    "dohsql_full_queue_poll_msec",
+    "Poll milliseconds while waiting for coordinator to consume from queue.",
+    TUNABLE_INTEGER, &gbl_dohsql_full_queue_poll_msec, 0, NULL, NULL, NULL,
+    NULL);
+
 REGISTER_TUNABLE("random_fail_client_write_lock",
                  "Force a random client write-lock failure 1/this many times.  "
                  "(Default: 0)",
                  TUNABLE_INTEGER, &gbl_fail_client_write_lock,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("reorder_socksql_no_deadlock",
+                 "Reorder sock sql to have no deadlocks ", TUNABLE_BOOLEAN,
+                 &gbl_reorder_socksql_no_deadlock, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("osql_check_replicant_numops",
                  "Check replicant nops sent in osql stream. (Default: on)",

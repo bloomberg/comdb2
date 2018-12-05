@@ -67,7 +67,6 @@
 
 #include "logmsg.h"
 
-
 int g_osql_blocksql_parallel_max = 5;
 int gbl_osql_check_replicant_numops = 1;
 extern int gbl_blocksql_grace;
@@ -90,8 +89,9 @@ struct blocksql_tran {
         complete; /* list of complete sessions for this block sql */
 
     pthread_mutex_t store_mtx; /* mutex for db access - those are non-env dbs */
-    struct temp_table *db;     /* temp table that keeps the list of ops for all
-                                  current sessions */
+
+    struct temp_table *db_ins; /* keeps the list of INSERT ops for a session */
+    struct temp_table *db;     /* keeps the list of all other ops */
 
     pthread_mutex_t mtx; /* mutex and cond for notifying when any session
                            has completed */
@@ -108,7 +108,11 @@ struct blocksql_tran {
 };
 
 typedef struct oplog_key {
-    unsigned long long seq;
+    uint16_t tbl_idx;
+    uint8_t stripe;
+    unsigned long long genid;
+    uint8_t is_rec; // 1 for record because it needs to go after blobs
+    uint32_t seq;   // record and blob will share the same seq
 } oplog_key_t;
 
 static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
@@ -120,9 +124,19 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
 static int osql_bplog_wait(blocksql_tran_t *tran);
 static int req2blockop(int reqtype);
 
+#define CMP_KEY_MEMBER(k1, k2, var)                                            \
+    if (k1->var < k2->var) {                                                   \
+        return -1;                                                             \
+    }                                                                          \
+    if (k1->var > k2->var) {                                                   \
+        return 1;                                                              \
+    }
+
 /**
  * The bplog key-compare function - required because memcmp changes
  * the order of temp_table_next on little-endian machines.
+ *
+ * key will compare by rqid, uuid, table, stripe, genid, is_rec, then sequence
  */
 static int osql_bplog_key_cmp(void *usermem, int key1len, const void *key1,
                               int key2len, const void *key2)
@@ -141,14 +155,43 @@ static int osql_bplog_key_cmp(void *usermem, int key1len, const void *key1,
     oplog_key_t *k2 = (oplog_key_t *)key2;
 #endif
 
-    if (k1->seq < k2->seq) {
-        return -1;
-    }
+    CMP_KEY_MEMBER(k1, k2, tbl_idx);
+    CMP_KEY_MEMBER(k1, k2, stripe);
 
-    if (k1->seq > k2->seq) {
-        return 1;
-    }
+    // need to sort by genid correctly
+    int cmp = bdb_cmp_genids(k1->genid, k2->genid);
+    if (cmp)
+        return cmp;
 
+    CMP_KEY_MEMBER(k1, k2, is_rec);
+    CMP_KEY_MEMBER(k1, k2, seq);
+
+    return 0;
+}
+
+static int osql_bplog_instbl_key_cmp(void *usermem, int key1len,
+                                     const void *key1, int key2len,
+                                     const void *key2)
+{
+    assert(sizeof(oplog_key_t) == key1len);
+    assert(sizeof(oplog_key_t) == key2len);
+
+#ifdef _SUN_SOURCE
+    oplog_key_t t1, t2;
+    memcpy(&t1, key1, key1len);
+    memcpy(&t2, key2, key2len);
+    oplog_key_t *k1 = &t1;
+    oplog_key_t *k2 = &t2;
+#else
+    oplog_key_t *k1 = (oplog_key_t *)key1;
+    oplog_key_t *k2 = (oplog_key_t *)key2;
+#endif
+
+    CMP_KEY_MEMBER(k1, k2, tbl_idx);
+    CMP_KEY_MEMBER(k1, k2, stripe);
+    CMP_KEY_MEMBER(k1, k2, genid); // in this case genid is just a counter
+    CMP_KEY_MEMBER(k1, k2, is_rec);
+    CMP_KEY_MEMBER(k1, k2, seq);
     return 0;
 }
 
@@ -211,6 +254,18 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
     }
 
     bdb_temp_table_set_cmp_func(tran->db, osql_bplog_key_cmp);
+
+    if (sess->is_reorder_on) {
+        tran->db_ins = bdb_temp_table_create(thedb->bdb_env, &bdberr);
+        if (!tran->db_ins) {
+            // We can stll work without a INS table
+            logmsg(LOGMSG_ERROR,
+                   "%s: failed to create temp table for INS bdberr=%d\n",
+                   __func__, bdberr);
+        } else
+            bdb_temp_table_set_cmp_func(tran->db_ins,
+                                        osql_bplog_instbl_key_cmp);
+    }
 
     tran->dowait = 1;
 
@@ -335,6 +390,8 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
 
 int sc_set_running(char *table, int running, uint64_t seed, const char *host,
                    time_t time);
+void sc_set_downgrading(struct schema_change_type *s);
+
 /**
  * Apply all schema changes and wait for them to finish
  */
@@ -386,6 +443,26 @@ int osql_bplog_schemachange(struct ireq *iq)
         Pthread_mutex_lock(&csc2_subsystem_mtx);
         csc2_free_all();
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
+    }
+    if (rc == ERR_NOMASTER) {
+        /* free schema changes that have finished without marking schema change
+         * over in llmeta so new master can resume properly */
+        struct schema_change_type *next;
+        sc = iq->sc_pending;
+        while (sc != NULL) {
+            next = sc->sc_next;
+            if (sc->newdb && sc->newdb->handle) {
+                int bdberr = 0;
+                sc_set_downgrading(sc);
+                bdb_close_only(sc->newdb->handle, &bdberr);
+                freedb(sc->newdb);
+                sc->newdb = NULL;
+            }
+            sc_set_running(sc->tablename, 0, iq->sc_seed, NULL, 0);
+            free_schema_change_type(sc);
+            sc = next;
+        }
+        iq->sc_pending = NULL;
     }
     logmsg(LOGMSG_INFO, ">>> DDL SCHEMA CHANGE RC %d <<<\n", rc);
     return rc;
@@ -557,6 +634,14 @@ int osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func, 
             tran->db = NULL;
         }
 
+        if (tran->db_ins) {
+            rc = bdb_temp_table_close(thedb->bdb_env, tran->db_ins, &bdberr);
+            if (rc != 0) {
+                logmsg(LOGMSG_ERROR, "%s: failed close table rc=%d bdberr=%d\n",
+                       __func__, rc, bdberr);
+            }
+        }
+
         free(tran);
 
         /* free the space for sql strings */
@@ -607,6 +692,92 @@ const char *osql_reqtype_str(int type)
     return typestr[type];
 }
 
+void setup_reorder_key(int type, osql_sess_t *sess, struct ireq *iq, char *rpl,
+                       oplog_key_t *key)
+{
+    key->tbl_idx = USHRT_MAX;
+    switch (type) {
+    case OSQL_USEDB: {
+        /* usedb is always called prior to any other osql event */
+        extern const char *get_tablename_from_rpl(const char *rpl);
+        const char *tablename = get_tablename_from_rpl(rpl);
+        assert(tablename); // table or queue name
+        if (tablename && !is_tablename_queue(tablename, strlen(tablename))) {
+            strncpy(sess->tablename, tablename, sizeof(sess->tablename));
+            sess->tbl_idx = get_dbtable_idx_by_name(tablename) + 1;
+            key->tbl_idx = sess->tbl_idx;
+
+#if DEBUG_REORDER
+            logmsg(LOGMSG_DEBUG, "REORDER: tablename='%s' idx=%d\n", tablename,
+                   sess->tbl_idx);
+#endif
+        }
+        break;
+    }
+    case OSQL_UPDATE:
+    case OSQL_DELETE:
+    case OSQL_UPDREC:
+    case OSQL_DELREC:
+    case OSQL_INSERT:
+    case OSQL_INSREC: {
+        enum { OSQLCOMM_UUID_RPL_TYPE_LEN = 4 + 4 + 16 };
+        unsigned long long genid = 0;
+        if (type == OSQL_INSERT || type == OSQL_INSREC) {
+            genid = ++sess->ins_seq;
+#if DEBUG_REORDER
+            logmsg(LOGMSG_DEBUG, "REORDER: INS genid (seq) 0x%llx\n", genid);
+#endif
+        } else {
+            const char *p_buf = rpl + OSQLCOMM_UUID_RPL_TYPE_LEN;
+            buf_no_net_get(&genid, sizeof(genid), p_buf, p_buf + sizeof(genid));
+#if DEBUG_REORDER
+            logmsg(LOGMSG_DEBUG, "REORDER: Received genid 0x%llx\n", genid);
+#endif
+        }
+        sess->last_genid = genid;
+        key->is_rec = 1;
+    } /* FALL THROUGH TO NEXT CASE */
+    case OSQL_QBLOB:
+    case OSQL_DELIDX:
+    case OSQL_INSIDX:
+    case OSQL_UPDCOLS: {
+        key->tbl_idx = sess->tbl_idx;
+        key->genid = sess->last_genid;
+        /* NB: this stripe is only used for ordering, NOT for inserting */
+        key->stripe = get_dtafile_from_genid(key->genid);
+        assert(key->stripe >= 0);
+        break;
+    }
+    case OSQL_RECGENID: {
+        key->tbl_idx = sess->tbl_idx;
+        break;
+    }
+    default:
+        break;
+    }
+
+    switch (type) {
+    case OSQL_QBLOB:
+    case OSQL_DELIDX:
+    case OSQL_INSIDX:
+    case OSQL_UPDCOLS:
+        break; /* keep last_is_ins as is */
+    case OSQL_UPDATE:
+    case OSQL_DELETE:
+    case OSQL_UPDREC:
+    case OSQL_DELREC:
+        sess->last_is_ins = 0;
+        break;
+    case OSQL_INSERT:
+    case OSQL_INSREC:
+        sess->last_is_ins = 1;
+        break;
+    default:
+        sess->last_is_ins = 0;
+        break;
+    }
+}
+
 static void send_error_to_replicant(int rqid, const char *host, int errval,
                                     const char *errstr)
 {
@@ -629,6 +800,23 @@ static void send_error_to_replicant(int rqid, const char *host, int errval,
     }
 }
 
+#if DEBUG_REORDER
+#define DEBUG_PRINT_TMPBL_SAVING()                                             \
+    uuidstr_t mus;                                                             \
+    comdb2uuidstr(uuid, mus);                                                  \
+    logmsg(                                                                    \
+        LOGMSG_DEBUG,                                                          \
+        "%p:%s: rqid=%llx uuid=%s REORDER: SAVING %s tp=%d(%s), tbl_idx=%d,"   \
+        "stripe=%d, genid=0x%llx, seq=%d, is_rec=%d\n",                        \
+        (void *)pthread_self(), __func__, rqid, mus,                           \
+        (tmptbl == tran->db_ins ? "(INS) " : " "), type,                       \
+        osql_reqtype_str(type), key.tbl_idx, key.stripe, key.genid, key.seq,   \
+        key.is_rec);
+
+#else
+#define DEBUG_PRINT_TMPBL_SAVING()
+#endif
+
 /**
  * Inserts the op in the iq oplog
  * If sql processing is local, this is called by sqlthread
@@ -640,6 +828,9 @@ static void send_error_to_replicant(int rqid, const char *host, int errval,
 int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                       unsigned long long rqid, uuid_t uuid, int type)
 {
+#if DEBUG_REORDER
+    logmsg(LOGMSG_DEBUG, "REORDER: saving for sess %p\n", sess);
+#endif
     blocksql_tran_t *tran = (blocksql_tran_t *)osql_sess_getbptran(sess);
     if (!tran || !tran->db) {
         /* something has gone wrong dispatching the socksql request, ignoring
@@ -654,16 +845,17 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     oplog_key_t key = {0};
     int bdberr;
     int debug = 0;
-    uuidstr_t us;
 
     if (type == OSQL_SCHEMACHANGE)
         iq->tranddl++;
 
+    assert(sess->rqid == rqid);
+    key.seq = sess->seq;
+#if DEBUG_REORDER
+    uuidstr_t us;
     DEBUGMSG("uuid=%s type=%d (%s) seq=%lld\n", comdb2uuidstr(uuid, us), type,
              osql_reqtype_str(type), sess->seq);
-
-    key.seq = sess->seq;
-    assert (sess->rqid == rqid);
+#endif
 
     /* add the op into the temporary table */
     Pthread_mutex_lock(&tran->store_mtx);
@@ -676,11 +868,17 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         abort();
     }
 
-#if 0 
-   printf("%s: rqid=%llx Saving op type=%d\n", __func__, rqid, ntohl(*((int*)rpl)));
-#endif
+    struct temp_table *tmptbl = tran->db;
+    if (sess->is_reorder_on) {
+        setup_reorder_key(type, sess, iq, rpl, &key);
+        if (sess->last_is_ins && tran->db_ins) { // insert into ins temp table
+            tmptbl = tran->db_ins;
+        }
+    }
 
-    rc_op = bdb_temp_table_put(thedb->bdb_env, tran->db, &key, sizeof(key), rpl,
+    DEBUG_PRINT_TMPBL_SAVING();
+
+    rc_op = bdb_temp_table_put(thedb->bdb_env, tmptbl, &key, sizeof(key), rpl,
                                rplen, NULL, &bdberr);
     if (rc_op) {
         logmsg(LOGMSG_ERROR, "%s: fail to put oplog seq=%llu rc=%d bdberr=%d\n",
@@ -710,9 +908,12 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     if (type != OSQL_XERR) { // if tran not aborted
         int numops = osql_get_replicant_numops(rpl, rqid == OSQL_RQID_USE_UUID);
+#ifndef NDEBUG
+        uuidstr_t us;
         DEBUGMSG("uuid=%s type %s numops=%d, seq=%lld %s\n",
                  comdb2uuidstr(uuid, us), osql_reqtype_str(type), numops,
                  sess->seq, (numops != sess->seq + 1 ? "NO match" : ""));
+#endif
 
         if (gbl_osql_check_replicant_numops && numops != sess->seq + 1) {
             send_error_to_replicant(
@@ -1054,23 +1255,146 @@ void osql_bplog_setlimit(int limit) { g_osql_blocksql_parallel_max = limit; }
 /************************* INTERNALS
  * ***************************************************/
 
+
+/* initialize the ins tmp table pointer to the first item if any
+ */
+static inline int init_ins_tbl(struct reqlogger *reqlogger,
+                               struct temp_cursor *dbc_ins,
+                               oplog_key_t **opkey_ins, uint8_t *add_stripe_p,
+                               int *bdberr)
+{
+    if (!dbc_ins)
+        return 0;
+
+    int rc_ins = bdb_temp_table_first(thedb->bdb_env, dbc_ins, bdberr);
+    if (rc_ins && rc_ins != IX_EMPTY && rc_ins != IX_NOTFND) {
+        reqlog_set_error(reqlogger, "bdb_temp_table_first failed", rc_ins);
+        logmsg(LOGMSG_ERROR,
+               "%s: bdb_temp_table_first failed rc_ins=%d bdberr=%d\n",
+               __func__, rc_ins, *bdberr);
+        return rc_ins;
+    }
+    if (rc_ins == 0)
+        *opkey_ins = (oplog_key_t *)bdb_temp_table_key(dbc_ins);
+
+    // active stripe is set from toblock_outer, that's where the adds will go
+    if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_ROUND_ROBIN_STRIPES))
+        *add_stripe_p = bdb_attr_get(
+            thedb->bdb_attr, BDB_ATTR_DTASTRIPE); // add after last stripe
+    else
+        *add_stripe_p = bdb_get_active_stripe(thedb->bdb_env);
+
+    return 0;
+}
+
+/* Fetch the data from the appropriate temp table
+ * based on drain_adds variable which is initally set to 0
+ */
+static inline void get_tmptbl_data_and_len(struct temp_cursor *dbc,
+                                           struct temp_cursor *dbc_ins,
+                                           bool drain_adds, char **data_p,
+                                           int *datalen_p)
+{
+    if (drain_adds) {
+        *data_p = bdb_temp_table_data(dbc_ins);
+        *datalen_p = bdb_temp_table_datasize(dbc_ins);
+    } else {
+        *data_p = bdb_temp_table_data(dbc);
+        *datalen_p = bdb_temp_table_datasize(dbc);
+    }
+}
+
+/* utility function to determine if row from ins tmp tbl sorts less than
+ * row from normal temp tbl:
+ * if key_ins tbl_idx < key tbl_idx return true
+ * if tbl_idx is same, return true if add_stripe < opkey->stripe
+ * return false otherwise
+ */
+static inline bool ins_is_less(oplog_key_t *opkey_ins, oplog_key_t *opkey,
+                               int add_stripe)
+{
+    if (!opkey_ins)
+        return false;
+
+    return opkey_ins->tbl_idx < opkey->tbl_idx ||
+           (opkey_ins->tbl_idx == opkey->tbl_idx && add_stripe < opkey->stripe);
+}
+
+/* Get the next record from either the ins tmp table or from the 
+ * generic one, depending on from where we read previous record,
+ * and on which entry is smaller (ins tmp tbl, or normal tmp tbl). 
+ * Drain adds in add_stripe only after doing the upd/dels for that stripe
+ */
+static inline int
+get_next_merge_tmps(struct temp_cursor *dbc, struct temp_cursor *dbc_ins,
+                    oplog_key_t **opkey, oplog_key_t **opkey_ins,
+                    bool *drain_adds_p, int *bdberr, int add_stripe)
+{
+    if (*drain_adds_p) {
+        int rc = bdb_temp_table_next(thedb->bdb_env, dbc_ins, bdberr);
+        if (rc != 0) { // ins tbl contains no more records
+            *drain_adds_p = false;
+            *opkey_ins = NULL;
+            return 0;
+        }
+
+        *opkey_ins = (oplog_key_t *)bdb_temp_table_key(dbc_ins);
+        if (!ins_is_less(*opkey_ins, *opkey, add_stripe))
+            *drain_adds_p = false;
+    } else {
+        int rc = bdb_temp_table_next(thedb->bdb_env, dbc, bdberr);
+        if (rc)
+            return rc;
+
+        *opkey = (oplog_key_t *)bdb_temp_table_key(dbc);
+        /* if cursor valid for dbc_ins, and if we changed table/stripe and
+         * prev table/strip match dbc_ins table/stripe then process adds */
+        if (ins_is_less(*opkey_ins, *opkey, add_stripe))
+            *drain_adds_p = true;
+    }
+    return 0;
+}
+
+#if DEBUG_REORDER
+#define DEBUG_PRINT_TMPBL_READ()                                               \
+    uuidstr_t mus;                                                             \
+    comdb2uuidstr(uuid, mus);                                                  \
+    uint8_t *p_buf = (uint8_t *)data;                                          \
+    int type = 0;                                                              \
+    buf_get(&type, sizeof(type), p_buf, p_buf + sizeof(type));                 \
+    oplog_key_t *k_ptr = opkey;                                                \
+    if (drain_adds) {                                                          \
+        k_ptr = opkey_ins;                                                     \
+    }                                                                          \
+    logmsg(LOGMSG_DEBUG,                                                       \
+           "%p:%s: rqid=%llx uuid=%s REORDER: READ %s tp=%d(%s), tbl_idx=%d, " \
+           "stripe=%d, "                                                       \
+           "genid=0x%llx, seq=%d, is_rec=%d\n",                                \
+           (void *)pthread_self(), __func__, rqid, mus,                        \
+           (k_ptr == opkey_ins ? "(ins)" : " "), type, osql_reqtype_str(type), \
+           k_ptr->tbl_idx, k_ptr->stripe, k_ptr->genid, k_ptr->seq,            \
+           k_ptr->is_rec);
+
+#else
+#define DEBUG_PRINT_TMPBL_READ()
+#endif
+
 static int process_this_session(
     struct ireq *iq, void *iq_tran, osql_sess_t *sess, int *bdberr, int *nops,
     struct block_err *err, SBUF2 *logsb, struct temp_cursor *dbc,
+    struct temp_cursor *dbc_ins,
     int (*func)(struct ireq *, unsigned long long, uuid_t, void *, char *, int,
                 int *, int **, blob_buffer_t blobs[MAXBLOBS], int,
                 struct block_err *, int *, SBUF2 *))
 {
-
     unsigned long long rqid = osql_sess_getrqid(sess);
-    oplog_key_t key_next, key_crt;
     int countops = 0;
     int lastrcv = 0;
     int rc = 0, rc_out = 0;
     int *updCols = NULL;
 
     /* session info */
-    blob_buffer_t blobs[MAXBLOBS] = {0};
+    blob_buffer_t blobs[MAXBLOBS] = {{0}};
     int step = 0;
     int receivedrows = 0;
     int flags = 0;
@@ -1086,6 +1410,15 @@ static int process_this_session(
         reqlog_set_rqid(iq->reqlogger, uuid, sizeof(uuid));
     reqlog_set_event(iq->reqlogger, "txn");
 
+#if DEBUG_REORDER
+    // if needed to check content of socksql temp table, dump with:
+    void bdb_temp_table_debug_dump(bdb_state_type * bdb_state,
+                                   tmpcursor_t * cur);
+    bdb_temp_table_debug_dump(thedb->bdb_env, dbc);
+    if (dbc_ins)
+        bdb_temp_table_debug_dump(thedb->bdb_env, dbc_ins);
+#endif
+
     /* go through each record */
     rc = bdb_temp_table_first(thedb->bdb_env, dbc, bdberr);
     if (rc && rc != IX_EMPTY && rc != IX_NOTFND) {
@@ -1094,7 +1427,6 @@ static int process_this_session(
                 __func__, rc, *bdberr);
         return rc;
     }
-    key_next = key_crt = *(oplog_key_t *)bdb_temp_table_key(dbc);
 
     if (rc == IX_NOTFND) {
         uuidstr_t us;
@@ -1103,10 +1435,20 @@ static int process_this_session(
                 rqid, us);
     }
 
-    while (!rc && !rc_out) {
+    oplog_key_t *opkey = (oplog_key_t *)bdb_temp_table_key(dbc);
+    oplog_key_t *opkey_ins = NULL;
+    uint8_t add_stripe = 0;
+    bool drain_adds = false; // we always start by reading normal tmp tbl
+    rc = init_ins_tbl(iq->reqlogger, dbc_ins, &opkey_ins, &add_stripe, bdberr);
+    if (rc)
+        return rc;
 
-        char *data = bdb_temp_table_data(dbc);
-        int datalen = bdb_temp_table_datasize(dbc);
+    while (!rc && !rc_out) {
+        char *data = NULL;
+        int datalen = 0;
+        // fetch the data from the appropriate temp table -- based on drain_adds
+        get_tmptbl_data_and_len(dbc, dbc_ins, drain_adds, &data, &datalen);
+        DEBUG_PRINT_TMPBL_READ();
 
         if (bdb_lock_desired(thedb->bdb_env)) {
             logmsg(LOGMSG_ERROR, "%lu %s:%d blocksql session closing early\n",
@@ -1117,9 +1459,6 @@ static int process_this_session(
             reqlog_set_error(iq->reqlogger, "ERR_NOMASTER", ERR_NOMASTER);
             return ERR_NOMASTER /*OSQL_FAILDISPATCH*/;
         }
-
-        if (iq->osql_step_ix)
-            gbl_osqlpf_step[*(iq->osql_step_ix)].step = key_next.seq << 7;
 
         lastrcv = receivedrows;
 
@@ -1137,25 +1476,13 @@ static int process_this_session(
             rowlocks_check_commit_physical(thedb->bdb_env, iq_tran, ++countops);
         }
 
-        key_crt = key_next; /* save previous key */
-
-        rc = bdb_temp_table_next(thedb->bdb_env, dbc, bdberr);
-        if (!rc) {
-            /* are we still on the same rqid */
-            key_next = *(oplog_key_t *)bdb_temp_table_key(dbc);
-            /* check correct sequence; this is an attempt to
-               catch dropped packets - not that we would do that purposely */
-            if (key_next.seq != key_crt.seq + 1) {
-                uuidstr_t us;
-                comdb2uuidstr(uuid, us);
-                logmsg(LOGMSG_ERROR, "%s: session %llu %s has missing packets [jump "
-                                "%llu to %llu], aborting\n",
-                        __func__, rqid, us, key_crt.seq, key_next.seq);
-                rc = OSQL_SKIPSEQ;
-            }
-        }
         step++;
+        rc = get_next_merge_tmps(dbc, dbc_ins, &opkey, &opkey_ins, &drain_adds,
+                                 bdberr, add_stripe);
     }
+
+    if (iq->osql_step_ix)
+        gbl_osqlpf_step[*(iq->osql_step_ix)].step = opkey->seq << 7;
 
     /* if for some reason the session has not completed correctly,
        this will free the eventually allocated buffers */
@@ -1214,6 +1541,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     int out_rc = 0;
     int bdberr = 0;
     struct temp_cursor *dbc = NULL;
+    struct temp_cursor *dbc_ins = NULL;
 
     /* lock the table (it should get no more access anway) */
     Pthread_mutex_lock(&tran->store_mtx);
@@ -1244,13 +1572,24 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
         return ERR_INTERNAL;
     }
 
+    if (tran->db_ins) {
+        dbc_ins =
+            bdb_temp_table_cursor(thedb->bdb_env, tran->db_ins, NULL, &bdberr);
+        if (!dbc || bdberr) {
+            Pthread_mutex_unlock(&tran->store_mtx);
+            logmsg(LOGMSG_ERROR, "%s: failed to create cursor bdberr = %d\n",
+                   __func__, bdberr);
+            return ERR_INTERNAL;
+        }
+    }
+
     listc_init(&iq->bpfunc_lst, offsetof(bpfunc_lstnode_t, linkct));
 
     /* go through the complete list and apply all the changes */
     LISTC_FOR_EACH(&tran->complete, info, c_reqs)
     {
         out_rc = process_this_session(iq, iq_tran, info->sess, &bdberr, nops,
-                                      err, logsb, dbc, func);
+                                      err, logsb, dbc, dbc_ins, func);
         if (out_rc) {
             break;
         }
@@ -1261,8 +1600,16 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     /* close the cursor */
     rc = bdb_temp_table_close_cursor(thedb->bdb_env, dbc, &bdberr);
     if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: failed close cursor rc=%d bdberr=%d\n", __func__,
-                rc, bdberr);
+        logmsg(LOGMSG_ERROR, "%s: failed close cursor rc=%d bdberr=%d\n",
+               __func__, rc, bdberr);
+    }
+
+    if (dbc_ins) {
+        rc = bdb_temp_table_close_cursor(thedb->bdb_env, dbc_ins, &bdberr);
+        if (rc != 0) {
+            logmsg(LOGMSG_ERROR, "%s: failed close cursor rc=%d bdberr=%d\n",
+                   __func__, rc, bdberr);
+        }
     }
 
     return out_rc;

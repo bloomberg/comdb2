@@ -63,6 +63,10 @@
 #define Pthread_key_create(a, b)    WRAP_PTHREAD(pthread_key_create, a, b)
 #define Pthread_key_delete(a)       WRAP_PTHREAD(pthread_key_delete, a)
 #define Pthread_setspecific(a, b)   WRAP_PTHREAD(pthread_setspecific, a, b)
+#define Pthread_attr_setstacksize(a, b)                                        \
+    WRAP_PTHREAD(pthread_attr_setstacksize, a, b)
+#define Pthread_attr_setdetachstate(a, b)                                      \
+    WRAP_PTHREAD(pthread_attr_setdetachstate, a, b)
 
 #define Pthread_mutex_alloc_and_init(a, b)                                     \
     do {                                                                       \

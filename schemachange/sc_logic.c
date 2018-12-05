@@ -180,7 +180,6 @@ static int master_downgrading(struct schema_change_type *s)
         logmsg(
             LOGMSG_WARN,
             "Master node downgrading - new master will resume schemachange\n");
-        gbl_schema_change_in_progress = 0;
         return SC_MASTER_DOWNGRADE;
     }
     return SC_OK;
@@ -477,15 +476,7 @@ int do_schema_change_tran(sc_arg_t *arg)
                 backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
 
             /* return NOMASTER for live schemachange writes */
-            start_exclusive_backend_request(thedb);
-            Pthread_rwlock_wrlock(&sc_live_rwlock);
-            s->db->sc_to = NULL;
-            s->db->sc_from = NULL;
-            s->db->sc_abort = 0;
-            s->db->sc_downgrading = 1;
-            Pthread_rwlock_unlock(&sc_live_rwlock);
-            end_backend_request(thedb);
-
+            sc_set_downgrading(s);
             bdb_close_only(s->newdb->handle, &bdberr);
             freedb(s->newdb);
             s->newdb = NULL;
@@ -514,6 +505,7 @@ int do_schema_change_tran(sc_arg_t *arg)
     }
     Pthread_mutex_unlock(&s->mtx);
     if (rc == SC_MASTER_DOWNGRADE) {
+        sc_set_running(s->tablename, 0, iq->sc_seed, NULL, 0);
         free_sc(s);
     } else {
         stop_and_free_sc(rc, s, 1 /*do_free*/);

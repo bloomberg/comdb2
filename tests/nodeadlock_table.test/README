@@ -1,4 +1,7 @@
-This tests runs two transactions which deadlock with each other 
+When reordering is turned on, there should be no deadlocks when inserting
+into two tables. Here is a scenario of two transactions 
+which previously would result in a deadlock:
+
 by inserting into two tables in opposite order:
 T1: insert into t1 then t2
 T2: insert into t2 then t1
@@ -18,3 +21,5 @@ Eventlog for the deadlock loop will appear only if setting is turned on:
 Eventlog entry will look like this:
 
 {"time": 1499873882991794,"host": "node1","deadlock_cycle": [{"cnonce": "8323329-27057-959039-1013043383","lid": "0x80000012","lcount": 5},{"cnonce": "8323329-27056-958938-1013043383","lid": "0x80000010","lcount": 5,"victim": true}]}
+
+

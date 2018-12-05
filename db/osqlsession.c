@@ -120,7 +120,6 @@ int osql_close_session(struct ireq *iq, osql_sess_t **psess, int is_linked, cons
 
 static void _destroy_session(osql_sess_t **prq, int phase)
 {
-
     osql_sess_t *rq = *prq;
     uuidstr_t us;
 
@@ -753,15 +752,15 @@ osql_req_t *osql_sess_getreq(osql_sess_t *sess) { return sess->req; }
 
 /**
  * Creates an sock osql session and add it to the repository
+ * Runs on master node when an initial sorese message is received
  * Returns created object if success, NULL otherwise
  *
  */
 osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
                                    int type, unsigned long long rqid,
                                    uuid_t uuid, char *fromhost, struct ireq *iq,
-                                   int *replaced)
+                                   int *replaced, bool is_reorder_on)
 {
-
     osql_sess_t *sess = NULL;
     int rc = 0;
 
@@ -800,6 +799,7 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
     sess->type = type;
     sess->offhost = fromhost;
     sess->start = sess->initstart = time(NULL);
+    sess->is_reorder_on = is_reorder_on;
 
     if (tzname)
         strncpy(sess->tzname, tzname, sizeof(sess->tzname));

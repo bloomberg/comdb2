@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+TMPDIR=${TMPDIR:-/tmp}
+
+set -e 
+
+# args
+a_dbn=$1
+r="cdb2sql -s ${CDB2_OPTIONS} $a_dbn default"
+
+echo "Inserting rows"
+$r "insert into t select value from generate_series(-99, 0)"
+
+$r << "EOF"
+set maxtransize 1000000000
+insert into t2 select value from generate_series(1, 1000000)
+EOF
+
+$r "alter table t add b cstring(1000) default '          '"
+$r "alter table t2 add b cstring(1000) default '          '"
+
+$r "exec procedure sys.cmd.send('dohsql_max_queued_kb_highwm 2000')"
+
+$r "select a,b from t union all select a,b from t2 order by a" | wc -l
+
+maxsize=`$r "exec procedure sys.cmd.send('stat dohsql')"| grep bytes| awk '{ print $4;}'`
+
+echo "Queue maximum size was $maxsize"
+
+# get testcase output
+if (( $maxsize > 2000000 )) ; then
+    echo "Failure queue size too large $maxsize"
+    exit 1
+else
+    echo "Limited queue size $maxsize"
+    echo "Testcase passed."
+fi

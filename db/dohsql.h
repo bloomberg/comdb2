@@ -40,7 +40,7 @@ int dohsql_distribute(dohsql_node_t *node);
  * Terminate a parallel execution
  *
  */
-int dohsql_end_distribute(struct sqlclntstate *clnt);
+int dohsql_end_distribute(struct sqlclntstate *clnt, struct reqlogger *logger);
 
 /**
  * Get sql for a certain parallel engine
@@ -75,5 +75,11 @@ int dohsql_error(struct sqlclntstate *clnt, const char **errstr);
  *
  */
 void dohsql_handle_delayed_syntax_error(struct sqlclntstate *clnt);
+
+/**
+ * Return global stats
+ *
+ */
+void dohsql_stats(void);
 
 #endif

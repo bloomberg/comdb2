@@ -2463,7 +2463,7 @@ int bdb_gbl_pglogs_init(bdb_state_type *bdb_state)
         Pthread_attr_init(&thd_attr);
         pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
 #       if defined(PTHREAD_STACK_MIN)
-        pthread_attr_setstacksize(&thd_attr, PTHREAD_STACK_MIN + 64 * 1024);
+        Pthread_attr_setstacksize(&thd_attr, PTHREAD_STACK_MIN + 64 * 1024);
 #       endif
         hash_t *fileid_tbl = NULL;
         fileid_tbl = hash_init_o(0, DB_FILE_ID_LEN);
@@ -8861,7 +8861,7 @@ int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt)
         parallel_count = gbl_parallel_count;
         Pthread_attr_init(&attr);
 #ifdef PTHREAD_STACK_MIN
-        pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN + 512 * 1024);
+        Pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN + 512 * 1024);
 #endif
     } else { // index
         db = &state->dbp_ix[ixnum];

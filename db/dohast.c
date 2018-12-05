@@ -21,7 +21,7 @@
 #include "dohsql.h"
 #include "sql.h"
 
-int gbl_dohast_disable = 1;
+int gbl_dohast_disable = 0;
 int gbl_dohast_verbose = 0;
 
 static void node_free(dohsql_node_t **pnode, sqlite3 *db);
@@ -436,6 +436,8 @@ static int skip_tables(Select *p)
     int lens[] = {7, 7, 0};
 
     for (i = 0; i < p->pSrc->nSrc; i++) {
+        if (!p->pSrc->a[i].zName)
+            continue; /* skip subqueries */
         j = 0;
         while (ignored[j]) {
             if (strncasecmp(p->pSrc->a[i].zName, ignored[j], lens[j]) == 0)

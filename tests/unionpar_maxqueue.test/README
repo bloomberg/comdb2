@@ -1,0 +1,2 @@
+This test validates the limit on the queued bytes for parallel queries.
+

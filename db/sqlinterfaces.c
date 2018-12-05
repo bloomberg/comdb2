@@ -3473,6 +3473,9 @@ static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 {
     sqlite3_stmt *stmt = rec->stmt;
 
+    if (clnt->conns)
+        dohsql_end_distribute(clnt, thd->logger);
+
     sql_statement_done(thd->sqlthd, thd->logger, clnt, outrc);
 
     if (stmt && !((Vdbe *)stmt)->explain && ((Vdbe *)stmt)->nScan > 1 &&
@@ -3498,9 +3501,6 @@ static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
        the next read in sqlite master will find them and try to use them
      */
     clearClientSideRow(clnt);
-
-    if (clnt->conns)
-        dohsql_end_distribute(clnt);
 }
 
 static void handle_stored_proc(struct sqlthdstate *thd,

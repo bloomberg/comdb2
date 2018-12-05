@@ -277,12 +277,7 @@ int create_prefault_helper_threads(struct dbenv *dbenv, int nthreads)
 
     Pthread_attr_init(&attr);
 
-    rc = pthread_attr_setstacksize(&attr, 512 * 1024);
-    if (rc) {
-        logmsg(LOGMSG_FATAL, 
-                "create_prefault_helper_threads: pthread_attr_setstacksize\n");
-        exit(1);
-    }
+    Pthread_attr_setstacksize(&attr, 512 * 1024);
 
     Pthread_mutex_init(&(dbenv->prefault_helper.mutex), NULL);
 

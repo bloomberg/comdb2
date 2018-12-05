@@ -2955,6 +2955,7 @@ static int new_master_callback(void *bdb_handle, char *host)
     dbenv->gen = gen;
     /*this is only used when handle not established yet. */
     if (host == gbl_mynode) {
+        trigger_clear_hash();
         if (oldmaster != host) {
             logmsg(LOGMSG_WARN, "I AM NEW MASTER NODE %s\n", host);
             gbl_master_changes++;
@@ -2965,7 +2966,6 @@ static int new_master_callback(void *bdb_handle, char *host)
                         "one was in progress it will have to be restarted\n");
             }
             load_auto_analyze_counters();
-            trigger_clear_hash();
             trigger_timepart = 1;
 
             if (oldgen != gen) {
