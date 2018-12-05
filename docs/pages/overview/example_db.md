@@ -18,7 +18,7 @@ $ comdb2 --create testdb  &
 $ comdb2 testdb &
 ...
 # Run queries
-$ cdb2sql testdb 'select 1+1 as "math"'
+$ cdb2sql testdb local 'select 1+1 as "math"'
 (math=2)
 ```
 
@@ -78,7 +78,7 @@ Comdb2 uses a pretty standard-ish SQL DML dialect.  It uses [SQLite](http://sqli
 
 ```sh
 # create a simple table with a number and a unique index on that number
-$ cdb2sql testdb '
+$ cdb2sql testdb local '
   create table numbers {
       schema {
           int number
@@ -91,25 +91,25 @@ $ cdb2sql testdb '
 '
 
 # can we insert a number?
-$ cdb2sql testdb 'insert into numbers(number) values(0)'
+$ cdb2sql testdb local 'insert into numbers(number) values(0)'
 [insert into numbers values(0)] rc 0
 
 # can we read it back?
-$ cdb2sql testdb 'select number from numbers'
+$ cdb2sql testdb local 'select number from numbers'
 (number=0)
 
 # can we insert a duplicate?
-$ cdb2sql testdb 'insert into numbers (number)values(0)'
+$ cdb2sql testdb local 'insert into numbers (number)values(0)'
 [insert into numbers(number) values(0)] failed with rc 299 OP #3 BLOCK2_SEQV2(824): add key constraint duplicate key 'NUM' on table 'numbers' index 0
 # no, we can't since we have a unique index
 
 # insert a bunch of numbers
 $ for num in $(seq 1 1000); do
    echo "insert into numbers(number) values($num)"
-done | cdb2sql testdb - >/dev/null
+done | cdb2sql testdb local - >/dev/null
 # we don't want to see success messages for every row, but will still see errors
 
-$ cdb2sql testdb 'select count(*) as count from numbers'
+$ cdb2sql testdb local 'select count(*) as count from numbers'
 (count=1001)
 ```
 
