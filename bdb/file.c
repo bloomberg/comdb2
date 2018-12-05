@@ -34,7 +34,13 @@
 #include <errno.h>
 #include <dirent.h>
 #include <fcntl.h>
+
+#ifdef __sun
+/* for PTHREAD_STACK_MIN on Solaris */
+#define __EXTENSIONS__
+#endif
 #include <limits.h>
+
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <pthread.h>
@@ -2054,7 +2060,7 @@ void create_udpbackup_analyze_thread(bdb_state_type *bdb_state)
     logmsg(LOGMSG_INFO, "starting udpbackup_and_autoanalyze_thd thread\n");
 
     Pthread_attr_init(&thd_attr);
-    pthread_attr_setstacksize(&thd_attr, 4 * 1024); /* 4K */
+    Pthread_attr_setstacksize(&thd_attr, 128 * 1024); /* 4K */
     pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
 
     int rc = pthread_create(&thread_id, &thd_attr,
@@ -2745,14 +2751,21 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
       rep_start\n\n\n");
     */
 
+    pthread_attr_t attr;
+    Pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    Pthread_attr_setstacksize(&attr, 1024 * 1024);
+
     /* create the watcher thread */
     logmsg(LOGMSG_DEBUG, "creating the watcher thread\n");
-    rc = pthread_create(&(bdb_state->watcher_thread), NULL, watcher_thread,
+    rc = pthread_create(&(bdb_state->watcher_thread), &attr, watcher_thread,
                         bdb_state);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "couldnt create watcher thread\n");
         return NULL;
     }
+
+    Pthread_attr_destroy(&attr);
 
     if (0) {
         extern void *lwm_printer_thd(void *p);
@@ -5074,10 +5087,11 @@ int create_master_lease_thread(bdb_state_type *bdb_state)
 	pthread_t tid;
 	pthread_attr_t attr;
         Pthread_attr_init(&attr);
-        pthread_attr_setstacksize(&attr, 4 * 1024);
-	extern void *master_lease_thread(void *arg);
-	pthread_create(&tid, &attr, master_lease_thread, bdb_state);
-    return 0;
+        Pthread_attr_setstacksize(&attr, 128 * 1024);
+        extern void *master_lease_thread(void *arg);
+        pthread_create(&tid, &attr, master_lease_thread, bdb_state);
+        Pthread_attr_destroy(&attr);
+        return 0;
 }
 
 void create_coherency_lease_thread(bdb_state_type *bdb_state)
@@ -5085,9 +5099,10 @@ void create_coherency_lease_thread(bdb_state_type *bdb_state)
     pthread_t tid;
     pthread_attr_t attr;
     Pthread_attr_init(&attr);
-    pthread_attr_setstacksize(&attr, 4 * 1024);
+    Pthread_attr_setstacksize(&attr, 128 * 1024);
     extern void *coherency_lease_thread(void *arg);
     pthread_create(&tid, &attr, coherency_lease_thread, bdb_state);
+    Pthread_attr_destroy(&attr);
 }
 
 static comdb2bma bdb_blobmem;
@@ -5228,6 +5243,7 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
         logmsg(LOGMSG_FATAL, "pthread_attr_setdetachstate failed\n");
         exit(1);
     }
+    Pthread_attr_setstacksize(&bdb_state->pthread_attr_detach, 1024 * 1024);
 
     if (bdbtype == BDBTYPE_TABLE || bdbtype == BDBTYPE_LITE)
         bdb_state->lrl = lrl;
@@ -5482,13 +5498,16 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
 
         /* dont create all these aux helper threads for a run of initcomdb2 */
         if (!create && !gbl_exit) {
+            pthread_attr_t attr;
+            Pthread_attr_init(&attr);
+            Pthread_attr_setstacksize(&attr, 1024 * 1024);
             /*
               create checkpoint thread.
               this thread periodically applied changes reflected in the
               log files to the database files, allowing us to remove
               log files.
               */
-            rc = pthread_create(&(bdb_state->checkpoint_thread), NULL,
+            rc = pthread_create(&(bdb_state->checkpoint_thread), &attr,
                                 checkpoint_thread, bdb_state);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "unable to create checkpoint thread - rc=%d "
@@ -5504,7 +5523,7 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
               so that a read can be done without incurring a last minute
               write in an effort to make memory available for the read
               */
-            rc = pthread_create(&(bdb_state->memp_trickle_thread), NULL,
+            rc = pthread_create(&(bdb_state->memp_trickle_thread), &attr,
                                 memp_trickle_thread, bdb_state);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "unable to create memp_trickle thread - rc=%d "
@@ -5517,7 +5536,7 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
             /* create the deadlock detect thread if we arent doing auto
                deadlock detection */
             if (!bdb_state->attr->autodeadlockdetect) {
-                rc = pthread_create(&dummy_tid, NULL, deadlockdetect_thread,
+                rc = pthread_create(&dummy_tid, &attr, deadlockdetect_thread,
                                     bdb_state);
             }
 
@@ -5554,14 +5573,18 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
             } else {
                 print(bdb_state,
                       "logfiles will be deleted in logdelete_thread\n");
-                rc = pthread_create(&(bdb_state->logdelete_thread), NULL,
+                rc = pthread_create(&(bdb_state->logdelete_thread), &attr,
                                     logdelete_thread, bdb_state);
-                if (rc != 0) {
-                    logmsg(LOGMSG_ERROR, "unable to create checkpoint thread\n");
+                if (rc) {
+                    logmsg(LOGMSG_ERROR,
+                           "unable to create logdelete thread rc %d %s\n", rc,
+                           strerror(rc));
                     *bdberr = BDBERR_MISC;
                     return NULL;
                 }
             }
+
+            Pthread_attr_destroy(&attr);
         }
 
         /* This bit needs to be exclusive.  We don't want replication messages
