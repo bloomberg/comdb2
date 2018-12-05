@@ -229,7 +229,7 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
         } else if (!table && gbl_schema_change_in_progress)
             gbl_schema_change_in_progress--;
 
-        if (gbl_schema_change_in_progress == 0 || (!table && !seed)) {
+        if (gbl_schema_change_in_progress <= 0 || (!table && !seed)) {
             gbl_sc_resume_start = 0;
             gbl_schema_change_in_progress = 0;
             sc_async_threads = 0;
@@ -238,9 +238,10 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
             sc_tables = NULL;
         }
     }
-    ctrace("sc_set_running(running=%d seed=0x%llx): "
+    ctrace("sc_set_running(table=%s running=%d seed=0x%llx): "
            "gbl_schema_change_in_progress %d\n",
-           running, (unsigned long long)seed, gbl_schema_change_in_progress);
+           table ? table : "", running, (unsigned long long)seed,
+           gbl_schema_change_in_progress);
     Pthread_mutex_unlock(&schema_change_in_progress_mutex);
     return 0;
 }
@@ -307,6 +308,32 @@ void live_sc_off(struct dbtable *db)
     db->sc_nrecs = 0;
     db->sc_prev_nrecs = 0;
     Pthread_rwlock_unlock(&sc_live_rwlock);
+}
+
+void sc_set_downgrading(struct schema_change_type *s)
+{
+    struct ireq iq = {0};
+    tran_type *tran = NULL;
+    init_fake_ireq(thedb, &iq);
+    iq.usedb = s->db;
+    trans_start(&iq, NULL, &tran);
+    if (tran == NULL) {
+        logmsg(LOGMSG_FATAL, "%s: failed to start tran\n", __func__);
+        abort();
+    }
+
+    /* make sure no one writes to the table */
+    bdb_lock_table_write(s->db->handle, tran);
+
+    Pthread_rwlock_wrlock(&sc_live_rwlock);
+    /* live_sc_post* code will look at this and return errors properly */
+    s->db->sc_downgrading = 1;
+    s->db->sc_to = NULL;
+    s->db->sc_from = NULL;
+    s->db->sc_abort = 0;
+    Pthread_rwlock_unlock(&sc_live_rwlock);
+
+    trans_abort(&iq, tran);
 }
 
 int reload_lua()

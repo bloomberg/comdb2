@@ -390,6 +390,8 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
 
 int sc_set_running(char *table, int running, uint64_t seed, const char *host,
                    time_t time);
+void sc_set_downgrading(struct schema_change_type *s);
+
 /**
  * Apply all schema changes and wait for them to finish
  */
@@ -441,6 +443,26 @@ int osql_bplog_schemachange(struct ireq *iq)
         Pthread_mutex_lock(&csc2_subsystem_mtx);
         csc2_free_all();
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
+    }
+    if (rc == ERR_NOMASTER) {
+        /* free schema changes that have finished without marking schema change
+         * over in llmeta so new master can resume properly */
+        struct schema_change_type *next;
+        sc = iq->sc_pending;
+        while (sc != NULL) {
+            next = sc->sc_next;
+            if (sc->newdb && sc->newdb->handle) {
+                int bdberr = 0;
+                sc_set_downgrading(sc);
+                bdb_close_only(sc->newdb->handle, &bdberr);
+                freedb(sc->newdb);
+                sc->newdb = NULL;
+            }
+            sc_set_running(sc->tablename, 0, iq->sc_seed, NULL, 0);
+            free_schema_change_type(sc);
+            sc = next;
+        }
+        iq->sc_pending = NULL;
     }
     logmsg(LOGMSG_INFO, ">>> DDL SCHEMA CHANGE RC %d <<<\n", rc);
     return rc;
