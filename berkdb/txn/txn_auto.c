@@ -183,7 +183,6 @@ do_malloc:
 		bp += sizeof(locks->size);
 		memcpy(bp, locks->data, locks->size);
 		bp += locks->size;
-      if (gbl_snapisol)
       {
          /* save location in the log stream, if any */
          if (locks->size > 0)
