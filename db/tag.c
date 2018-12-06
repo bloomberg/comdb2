@@ -6656,7 +6656,7 @@ void update_dbstore(struct dbtable *db)
 
     bzero(db->dbstore, sizeof db->dbstore);
     logmsg(LOGMSG_DEBUG, "%s table '%s' version %d\n", __func__, db->tablename,
-           db->version);
+           db->schema_version);
 
     for (int v = 1; v <= db->schema_version; ++v) {
         char tag[MAXTAGLEN];
@@ -7028,7 +7028,7 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
     newdb->dtastripe = gbl_dtastripe;
 
     /* reopen db no tran - i.e. auto commit */
-    newdb->handle = bdb_open_more(
+    newdb->handle = bdb_open_more_tran(
         db->tablename, thedb->basedir, newdb->lrl, newdb->nix,
         (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
         newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,

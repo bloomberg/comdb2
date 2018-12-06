@@ -5341,7 +5341,6 @@ int rename_db(struct dbtable *db, const char *newname)
     hash_del(thedb->db_hash, db);
     db->tablename = (char *)newname;
     db->schema_version = 0; /* reset, new table */
-    db->version = 0; /* reset, new table */
     hash_add(thedb->db_hash, db);
 
     Pthread_rwlock_unlock(&thedb_lock);
@@ -5634,7 +5633,6 @@ retry_tran:
 
     if (llmeta_load_timepart(thedb)) {
         logmsg(LOGMSG_ERROR, "could not load time partitions\n");
-        pthread_rwlock_unlock(&schema_lk);
         abort();
     }
 
