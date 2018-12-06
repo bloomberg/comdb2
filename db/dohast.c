@@ -398,7 +398,6 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
         *psub = gen_oneselect(v, crt, (pOffset != p->pLimit->pRight) ? pOffset : NULL,
                               &node->order_size, &node->order_dir);
         crt->pLimit = NULL;
-        crt->pLimit->pRight = NULL;
         if (crt != p)
             crt->pOrderBy = NULL;
 
