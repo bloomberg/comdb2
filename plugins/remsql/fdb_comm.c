@@ -2464,7 +2464,7 @@ static int fdb_msg_write_message(SBUF2 *sb, fdb_msg_t *msg, int flush)
         return FDB_ERR_UNSUPPORTED;
     }
 
-    unsigned long long t = osql_log_time();
+    /*unsigned long long t = osql_log_time();*/
     if (flush /*&& (msg->hd.type != FDB_MSG_RUN_SQL)*/) {
         /*
         fprintf(stderr, "Flushing %llu\n", t);
@@ -2478,8 +2478,9 @@ static int fdb_msg_write_message(SBUF2 *sb, fdb_msg_t *msg, int flush)
         }
     }
 
-    t = osql_log_time();
-    /*fprintf(stderr, "Done %s %llu\n", __func__, t);*/
+    /*
+     t = osql_log_time();
+     fprintf(stderr, "Done %s %llu\n", __func__, t);*/
     return 0;
 }
 
@@ -3542,9 +3543,9 @@ int handle_remtran_request(comdb2_appsock_arg_t *arg)
     }
 
     memcpy(&open_msg, &msg, sizeof open_msg);
-    open_msg.tid = open_msg.tiduuid;
+    open_msg.tid = (char *)open_msg.tiduuid;
     uuidstr_t us;
-    comdb2uuidstr(open_msg.tid, us);
+    comdb2uuidstr((unsigned char *)open_msg.tid, us);
 
     /* TODO: review the no-timeout transaction later on */
     if (gbl_notimeouts) {
