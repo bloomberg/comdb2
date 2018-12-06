@@ -1815,7 +1815,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         javasp_trans_care_about(iq->jsph, JAVASP_TRANS_LISTEN_AFTER_UPD)) {
         struct javasp_rec *joldrec;
         struct javasp_rec *jnewrec;
-        blob_status_t new_rec_blobs[MAXBLOBS] = {0};
+        blob_status_t new_rec_blobs[MAXBLOBS] = {{0}};
 
         /* old record no longer exists - don't set trans or rrn */
         joldrec = javasp_alloc_rec(old_dta, od_len, iq->usedb->tablename);

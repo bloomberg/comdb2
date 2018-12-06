@@ -320,17 +320,17 @@ extern int gbl_rowlocks;
 
 int bdb_llog_rowlocks(bdb_state_type *bdb_state, scdone_t type, int *bdberr)
 {
-    char *str;
+    //char *str;
     int rc;
 
     assert(type == rowlocks_on || type == rowlocks_off);
 
     if (type == rowlocks_on) {
         assert(!gbl_rowlocks);
-        str = "enable_rowlocks";
+        //str = "enable_rowlocks";
     } else {
         assert(gbl_rowlocks);
-        str = "disable_rowlocks";
+        //str = "disable_rowlocks";
     }
 
     if (type == rowlocks_on)
@@ -343,7 +343,7 @@ int bdb_llog_rowlocks(bdb_state_type *bdb_state, scdone_t type, int *bdberr)
 
 int bdb_llog_genid_format(bdb_state_type *bdb_state, scdone_t type, int *bdberr)
 {
-    char *str;
+    //char *str;
     int rc, format;
 
     assert(type == genid48_enable || type == genid48_disable);
@@ -352,11 +352,11 @@ int bdb_llog_genid_format(bdb_state_type *bdb_state, scdone_t type, int *bdberr)
     if (type == genid48_enable) {
         assert(format == LLMETA_GENID_ORIGINAL);
         format = LLMETA_GENID_48BIT;
-        str = "enable_genid48";
+        //str = "enable_genid48";
     } else {
         assert(format == LLMETA_GENID_48BIT);
         format = LLMETA_GENID_ORIGINAL;
-        str = "disable_genid48";
+        //str = "disable_genid48";
     }
 
     bdb_genid_set_format(bdb_state, format);
