@@ -5795,6 +5795,8 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
             if (!cdb2_allow_pmux_route) {
                 hndl->ports[0] = cdb2portmux_get(hndl, type, type, "comdb2",
                                                  "replication", dbname);
+                if (hndl->ports[0] < 0)
+                    rc = -1;
             } else {
                 hndl->ports[0] = CDB2_PORTMUXPORT;
             }
