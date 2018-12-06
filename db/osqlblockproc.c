@@ -78,10 +78,8 @@ struct blocksql_tran {
      * need a lock */
     pthread_mutex_t store_mtx; /* mutex for db access - those are non-env dbs */
     struct dbtable *last_db;
-    struct temp_table *db;     /* temp table that keeps the list of ops for all
-                                  current sessions */
     struct temp_table *db_ins; /* keeps the list of INSERT ops for a session */
-    struct temp_table *db;     /* keeps the list of all other ops */
+    struct temp_table *db;     /* keeps the list of all OTHER ops */
 
     pthread_mutex_t mtx; /* mutex and cond for notifying when any session
                            has completed */
@@ -1463,7 +1461,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
 
     /* go through the complete list and apply all the changes */
     if (tran->iscomplete) {
-        out_rc = process_this_session(iq, iq_tran, info->sess, &bdberr, nops,
+        out_rc = process_this_session(iq, iq_tran, tran->sess, &bdberr, nops,
                                       err, logsb, dbc, dbc_ins, func);
     }
 
