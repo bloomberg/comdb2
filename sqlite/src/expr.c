@@ -5804,7 +5804,36 @@ static char* sqlite3ExprDescribe_inner(
 
       return ret;
     }
-    case TK_BETWEEN: break;
+    case TK_BETWEEN: {
+        if (pExpr->x.pList->nExpr != 2) {
+            return NULL;
+        }
+        char *col = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime);
+        if (!col) {
+            return NULL;
+        }
+        char *left = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[0].pExpr,
+                atRuntime);
+        if (!left) {
+            sqlite3DbFree(v->db, col);
+            return NULL;
+        }
+        char *right = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[1].pExpr,
+                atRuntime);
+        if (!right) {
+            sqlite3DbFree(v->db, left);
+            sqlite3DbFree(v->db, col);
+            return NULL;
+        }
+        char *ret = sqlite3_mprintf("((%s) between (%s) and (%s))",
+            col, left, right);
+    
+        sqlite3DbFree(v->db, right);
+        sqlite3DbFree(v->db, left);
+        sqlite3DbFree(v->db, col);
+
+        return ret;
+    }
     case TK_IN: {
       int  i;
       char *left, *ret2, *ret = NULL;
@@ -5955,6 +5984,10 @@ static char* sqlite3ExprDescribe_inner(
     case TK_NULL : {
       return sqlite3_mprintf("NULL");
     }
+    case TK_SELECT:
+    case TK_SELECTV: {
+      return NULL; /* ignore subqueries */
+    }
     case TK_PRIMARY:
     case TK_UNIQUE:
     case TK_REFERENCES:
@@ -5970,8 +6003,6 @@ static char* sqlite3ExprDescribe_inner(
     case TK_ALL:
     case TK_EXCEPT:
     case TK_INTERSECT:
-    case TK_SELECT:
-    case TK_SELECTV:
     case TK_DISTINCT:
     case TK_DOT:
     case TK_FROM:
