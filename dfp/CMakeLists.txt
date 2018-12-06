@@ -21,7 +21,9 @@ elseif(${CMAKE_SYSTEM_NAME} STREQUAL "AIX")
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL "SunOS")
     add_definitions(-DDECLITEND=0)
 endif()
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-maybe-uninitialized -Wno-missing-braces -Wno-unused-variable -Wno-unused-but-set-variable")
+if(${CMAKE_SYSTEM_NAME} STREQUAL Linux)
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-maybe-uninitialized -Wno-missing-braces -Wno-unused-variable -Wno-unused-but-set-variable")
+endif()
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/decNumber
   ${CMAKE_CURRENT_BINARY_DIR}

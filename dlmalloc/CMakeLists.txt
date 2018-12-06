@@ -1,3 +1,5 @@
 add_library(dlmalloc dlmalloc.c)
-set_source_files_properties(dlmalloc.c PROPERTIES COMPILE_FLAGS "-Wno-unused-value -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-label")
+if(${CMAKE_SYSTEM_NAME} STREQUAL Linux)
+  set_source_files_properties(dlmalloc.c PROPERTIES COMPILE_FLAGS "-Wno-unused-value -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-label")
+endif()
 include_directories(${PROJECT_SOURCE_DIR}/util)

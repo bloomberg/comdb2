@@ -257,7 +257,9 @@ foreach(EXT_DIR ${EXT_DIRS})
   )
 endforeach()
 
-set_source_files_properties(${BERK_C} ${GEN_C} ${GEN_EXT_H} PROPERTIES COMPILE_FLAGS "-Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-label")
+if(${CMAKE_SYSTEM_NAME} STREQUAL Linux)
+  set_source_files_properties(${BERK_C} ${GEN_C} ${GEN_EXT_H} PROPERTIES COMPILE_FLAGS "-Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-label")
+endif()
 
 add_library(db ${BERK_C} ${GEN_C} ${GEN_EXT_H})
 include_directories(
