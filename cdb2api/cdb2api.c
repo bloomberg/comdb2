@@ -2172,7 +2172,7 @@ void cdb2_use_hint(cdb2_hndl_tp *hndl)
 static inline int cdb2_try_connect_range(cdb2_hndl_tp *hndl, int begin, int max)
 {
     for (int j = 0; j < max; j++) {
-        int i = (begin+j)%max;
+        int i = (begin + j) % max;
         hndl->node_seq = i + 1;
         if (i == hndl->master || hndl->ports[i] <= 0 ||
             i == hndl->connected_host || hndl->hosts_connected[i] == 1)
@@ -2253,7 +2253,8 @@ retry_connect:
                (hndl->num_hosts_sameroom > 0)) {
         hndl->node_seq = cdb2_random_int() % hndl->num_hosts_sameroom;
         /* First try on same room. */
-        if (0 == cdb2_try_connect_range(hndl, hndl->node_seq, hndl->num_hosts_sameroom))
+        if (0 == cdb2_try_connect_range(hndl, hndl->node_seq,
+                                        hndl->num_hosts_sameroom))
             return 0;
     }
 
