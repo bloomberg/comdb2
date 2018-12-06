@@ -4153,7 +4153,6 @@ int cpu_throttle_threshold = 100000;
 
 double gbl_cpupercent;
 
-
 extern int64_t gbl_cached_sql_hits;
 
 void *statthd(void *p)

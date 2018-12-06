@@ -1208,4 +1208,6 @@ void clnt_register(struct sqlclntstate *clnt);
 void clnt_unregister(struct sqlclntstate *clnt);
 
 void comdb2_results_not_cachable(void);
+extern int64_t gbl_cached_sql_hits;
+
 #endif

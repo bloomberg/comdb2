@@ -386,9 +386,15 @@ static void append_response_fragment(struct sqlclntstate *clnt, void *buf, int s
     struct cached_response_fragment *f = malloc(offsetof(struct cached_response_fragment, buf) + sz);
     f->sz = sz;
 
+    if (clnt->dont_cache_this_request)
+        return;
+
     memcpy(f->buf, buf, sz);
     listc_abl(&clnt->response_fragments, f);
     clnt->cached_response_size += sz;
+
+    if (clnt->cached_response_size > gbl_result_cache_size)
+        comdb2_results_not_cachable();
 }
 
 #define NEWSQL_MAX_RESPONSE_ON_STACK (16 * 1024)
@@ -2210,6 +2216,45 @@ static int newsql_init(void *unused) {
     return 0;
 }
 
+static void update_response_cache(struct sqlclntstate *clnt, unsigned char *query_checksum) {
+    struct cached_response_fragment *f;
+    char *p;
+    struct cached_response *rsp;
+
+    rsp = malloc(offsetof(struct cached_response, response) + clnt->cached_response_size);
+    p = rsp->response;
+    memcpy(rsp->key.request_checksum, query_checksum, 20);
+    rsp->key.gen = bdb_get_commit_genid(thedb->bdb_env, NULL);
+    rsp->response_size  = clnt->cached_response_size;
+
+    f = listc_rtl(&clnt->response_fragments);
+    while (f) {
+        if (rsp) {
+            memcpy(p, f->buf, f->sz);
+            p += f->sz;
+        }
+
+        free(f);
+        f = listc_rtl(&clnt->response_fragments);
+    }
+    clnt->cached_response_size = 0;
+    if (rsp) {
+        pthread_mutex_lock(&rscachelk);
+        lrucache_add(cached_responses, rsp, offsetof(struct cached_response, response) + clnt->cached_response_size);
+        pthread_mutex_unlock(&rscachelk);
+    }
+}
+
+static void clear_response_fragments(struct sqlclntstate *clnt) {
+    struct cached_response_fragment *f;
+
+    f = listc_rtl(&clnt->response_fragments);
+    while (f) {
+        free(f);
+        f = listc_rtl(&clnt->response_fragments);
+    }
+}
+
 #define APPDATA ((struct newsql_appdata *)(clnt.appdata))
 static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 {
@@ -2391,8 +2436,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         // cacheable unless we determine (later) otherwise
         clnt.dont_cache_this_request = 0;
 
-        struct cached_response *rsp = NULL;
         if (gbl_result_cache_size) {
+            struct cached_response *rsp = NULL;
             struct cache_key k;
             checksum_query(sql_query, query_checksum);
             memcpy(k.request_checksum, query_checksum, sizeof(query_checksum));
@@ -2401,7 +2446,6 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
             rsp = lrucache_find(cached_responses, &k);
             pthread_mutex_unlock(&rscachelk);
             if (rsp) {
-                logmsg(LOGMSG_DEBUG, "Response from cache\n");
                 sbuf2write(rsp->response, rsp->response_size, sb);
                 sbuf2flush(sb);
                 gbl_cached_sql_hits++;
@@ -2413,6 +2457,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
                 continue;
             }
         }
+        else
+            comdb2_results_not_cachable();
 
         if (!clnt.in_client_trans) {
             bzero(&clnt.effects, sizeof(clnt.effects));
@@ -2550,32 +2596,10 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
             APPDATA->query = NULL;
         }
 
-        struct cached_response_fragment *f;
-        char *p = NULL;
-        if (gbl_result_cache_size && !rsp && !clnt.dont_cache_this_request && !clnt.in_client_trans) {
-            rsp = malloc(offsetof(struct cached_response, response) + clnt.cached_response_size);
-            p = rsp->response;
-            memcpy(rsp->key.request_checksum, query_checksum, 20);
-            rsp->key.gen = bdb_get_commit_genid(thedb->bdb_env, NULL);
-            rsp->response_size  = clnt.cached_response_size;
-        }
+        if (gbl_result_cache_size && !clnt.dont_cache_this_request && !clnt.in_client_trans)
+            update_response_cache(&clnt, query_checksum);
 
-        f = listc_rtl(&clnt.response_fragments);
-        while (f) {
-            if (rsp) {
-                memcpy(p, f->buf, f->sz);
-                p += f->sz;
-            }
-
-            free(f);
-            f = listc_rtl(&clnt.response_fragments);
-        }
-        clnt.cached_response_size = 0;
-        if (rsp) {
-            pthread_mutex_lock(&rscachelk);
-            lrucache_add(cached_responses, rsp, offsetof(struct cached_response, response) + clnt.cached_response_size);
-            pthread_mutex_unlock(&rscachelk);
-        }
+        clear_response_fragments(&clnt);
 
         query = read_newsql_query(dbenv, &clnt, sb);
     }
