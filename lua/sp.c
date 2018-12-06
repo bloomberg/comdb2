@@ -2531,18 +2531,12 @@ static void *dispatch_lua_thread(void *arg)
     Pthread_cond_init(&clnt.write_cond, NULL);
     Pthread_mutex_init(&clnt.dtran_mtx, NULL);
     strcpy(clnt.tzname, parent_clnt->tzname);
-
-
-
-
     if (dispatch_sql_query(&clnt) == 0) { // --> exec_thread()
         thd->status = THREAD_STATUS_FINISHED;
     } else {
         snprintf0(thd->error, sizeof(thd->error), "failed to dispatch thread");
         thd->status = THREAD_STATUS_DISPATCH_FAILED;
     }
-
-
     /* Done running -- wake up anyone blocked on join */
     Pthread_mutex_lock(&thd->lua_thread_mutex);
     Pthread_cond_signal(&thd->lua_thread_cond);
