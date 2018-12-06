@@ -205,9 +205,6 @@ static Keyword aKeywordTable[] = {
   { "DESC",             "TK_DESC",         ALWAYS                 },
   { "DETACH",           "TK_DETACH",       ATTACH                 },
   { "DISTINCT",         "TK_DISTINCT",     ALWAYS                 },
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  { "DISTRIBUTION",     "TK_DISTRIBUTION", ALWAYS                 },
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   { "DO",               "TK_DO",           UPSERT                 },
   { "DROP",             "TK_DROP",         ALWAYS                 },
   { "END",              "TK_END",          ALWAYS                 },
@@ -341,6 +338,7 @@ static Keyword aKeywordTable[] = {
   { "DBPAD",            "TK_DBPAD",          ALWAYS               },
   { "DDL",              "TK_DDL",            ALWAYS               },
   { "DISABLE",          "TK_DISABLE",        ALWAYS               },
+  { "DISTRIBUTION",     "TK_DISTRIBUTION",   ALWAYS               },
   { "DRYRUN",           "TK_DRYRUN",         ALWAYS               },
   { "ENABLE",           "TK_ENABLE",         ALWAYS               },
   { "FUNCTION",         "TK_FUNCTION",       ALWAYS               },
