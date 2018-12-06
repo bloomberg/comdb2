@@ -68,6 +68,11 @@ struct HashElem {
 void sqlite3HashInit(Hash*);
 void *sqlite3HashInsert(Hash*, const char *pKey, void *pData);
 void *sqlite3HashFind(const Hash*, const char *pKey);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#ifdef SQLITE_ENABLE_NORMALIZE
+void *sqlite3HashFindN(const Hash*, const char *pKey, int nKey);
+#endif /* SQLITE_ENABLE_NORMALIZE */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 void sqlite3HashClear(Hash*);
 
 /*
