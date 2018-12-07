@@ -57,6 +57,7 @@ struct stored_proc {
     char **clntname; //parent only
     int *clnttype; //parent only
     dbthread_type *parent_thd; //child only
+    struct sqlthdstate *parent_sqlthd; //child only
 
     LIST_HEAD(, dbstmt_t) dbstmts;
     LIST_HEAD(, tmptbl_info_t) tmptbls;

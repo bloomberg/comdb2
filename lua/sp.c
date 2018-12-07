@@ -78,7 +78,7 @@ pthread_mutex_t lua_debug_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t lua_debug_cond = PTHREAD_COND_INITIALIZER;
 
 struct tmptbl_info_t {
-    struct temptable tbl;
+    int rootpg;
     char *sql;
     char name[MAXTABLELEN * 2]; // namespace.name
     pthread_mutex_t *lk;
@@ -2569,7 +2569,7 @@ int mycallback(void *arg_, int cols, char **text, char **name)
             tmptbl_info_t *tmp2 = malloc(sizeof(tmptbl_info_t));
             strcpy(tmp2->name, tmp1->name);
             tmp2->lk = tmp1->lk;
-            tmp2->tbl = get_tbl_by_rootpg(getdb(sp1), atoi(text[1]));
+            tmp2->rootpg = atoi(text[1]);
             tmp2->sql = strdup(text[2]);
             LIST_INSERT_HEAD(&sp2->tmptbls, tmp2, entries);
             return 0;
@@ -2971,6 +2971,7 @@ static int db_create_thread_int(Lua lua, const char *funcname)
         newsp->spversion.version_str = strdup(newsp->spversion.version_str);
     newsp->parent = sp->parent;
     newsp->parent_thd = thd;
+    newsp->parent_sqlthd = sp->thd;
 
     if (process_src(newlua, sp->src, &err) != 0) goto bad;
 
@@ -5753,7 +5754,7 @@ static void clone_temp_tables(SP sp)
         create += sizeof("CREATE TABLE");
         strbuf_appendf(sql, "CREATE TEMP TABLE %s", create);
         sp->clnt->skip_peer_chk = 1;
-        clone_temp_table(dest, src, strbuf_buf(sql), &tmp->tbl);
+        clone_temp_table(dest, src, strbuf_buf(sql), tmp->rootpg);
         sp->clnt->skip_peer_chk = 0;
         strbuf_free(sql);
     }
@@ -6357,7 +6358,10 @@ void exec_thread(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     Lua L = sp->lua;
     get_curtran(thedb->bdb_env, clnt);
     sp->parent_thd->status = THREAD_STATUS_RUNNING;
+    pthread_mutex_t *saved_temp_table_mtx = thd->sqlthd->temp_table_mtx;
+    thd->sqlthd->temp_table_mtx = sp->parent_sqlthd->sqlthd->temp_table_mtx;
     exec_thread_int(thd, clnt);
+    thd->sqlthd->temp_table_mtx = saved_temp_table_mtx;
     lua_gc(L, LUA_GCCOLLECT, 0);
     drop_temp_tables(clnt->sp);
     free_tmptbls(clnt->sp);

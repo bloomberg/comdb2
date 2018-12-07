@@ -1384,6 +1384,8 @@ void clean_exit(void)
 {
     int alarmtime = (gbl_exit_alarm_sec > 0 ? gbl_exit_alarm_sec : 300);
 
+    logmsg(LOGMSG_INFO, "CLEAN EXIT: alarm time %d\n", alarmtime);
+
     /* this defaults to 5 minutes */
     alarm(alarmtime);
 

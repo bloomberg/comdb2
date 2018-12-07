@@ -428,16 +428,15 @@ void explain_data_prepare(IndentInfo *p, Vdbe *v)
     int pc;           /* Index of operation in p->aiIndent[] */
 
     const int opNext[] = {OP_Next, OP_Prev, /* OP_VPrev, */ OP_VNext,
-                          OP_SorterNext, OP_NextIfOpen, OP_PrevIfOpen, 0};
+                          OP_SorterNext, 0};
     const int opYield[] = {OP_Yield,      OP_SeekLT, OP_SeekGT,
                            OP_RowSetRead, OP_Rewind, 0};
     const int opGoto[] = {OP_Goto, 0};
 
     // unused: const char *azNext[] = {"Next",       "Prev",       "VPrev",
-    // "VNext",
-    //                        "SorterNext", "NextIfOpen", "PrevIfOpen", 0};
+    //                                 "VNext",      "SorterNext", 0};
     // unused: const char *azYield[] = {"Yield",      "SeekLT", "SeekGT",
-    //                         "RowSetRead", "Rewind", 0};
+    //                                  "RowSetRead", "Rewind", 0};
     // unused: const char *azGoto[] = {"Goto", 0};
 
     /* Try to figure out if this is really an EXPLAIN statement. If this
@@ -843,12 +842,12 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         if (info && info->aSortOrder) {
             int i;
             strbuf_append(out, " sort order (");
-            for (i = 0; i < info->nField; i++) {
+            for (i = 0; i < info->nAllField; i++) {
                 if (info->aSortOrder[i])
                     strbuf_append(out, "desc");
                 else
                     strbuf_append(out, "asc");
-                if (i != info->nField - 1)
+                if (i != info->nAllField - 1)
                     strbuf_append(out, ", ");
             }
             strbuf_append(out, ")");
@@ -885,10 +884,11 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         strbuf_appendf(out, "If no such records exist, go to %d", op->p2);
         break;
     }
-    case OP_Seek:
+    case OP_DeferredSeek:
         strbuf_appendf(out, "Move cursor [%d] to rowid of index cursor [%d]",
-                       op->p1, op->p2);
+                       op->p3, op->p1);
         break;
+    case OP_IfNoHope:
     case OP_NoConflict:
     case OP_NotFound:
     case OP_Found:
@@ -941,10 +941,9 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         strbuf_append(
             out, "Move change counter to database handle's change counter.");
         break;
-    case OP_RowKey:
     case OP_RowData:
-        strbuf_appendf(out, "R%d = %s from cursor [%d] on ", op->p2,
-                       op->opcode == OP_RowKey ? "key" : "data", op->p1);
+        strbuf_appendf(out, "R%d = key or data from cursor [%d] on ", op->p2,
+                       op->p1);
         print_cursor_description(out, &cur[op->p1]);
         break;
     case OP_Rowid:
@@ -975,13 +974,11 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
                        op->p1);
         break;
     case OP_Next:
-    case OP_NextIfOpen:
         strbuf_appendf(
             out, "Move cursor [%d] to next entry. If entry exists, go to %d",
             op->p1, op->p2);
         break;
     case OP_Prev:
-    case OP_PrevIfOpen:
         strbuf_appendf(
             out,
             "Move cursor [%d] to previous entry. If entry exists, go to %d",
@@ -1066,8 +1063,8 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         strbuf_appendf(out, "If R%d != 0 then R%d -= %d, jump to %d", op->p1,
                        op->p1, op->p3, op->p2);
         break;
-    case OP_AggStep0:
     case OP_AggStep:
+    case OP_AggStep1:
         strbuf_appendf(out, "R%d = %s(", op->p3,
                        ((struct FuncDef *)op->p4.pFunc)->zName);
         for (int i = 0; i < op->p5; ++i) {
@@ -1102,12 +1099,12 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         if (info && info->aSortOrder) {
             int i;
             strbuf_append(out, " sort order (");
-            for (i = 0; i < info->nField; i++) {
+            for (i = 0; i < info->nAllField; i++) {
                 if (info->aSortOrder[i])
                     strbuf_append(out, "desc");
                 else
                     strbuf_append(out, "asc");
-                if (i != info->nField - 1)
+                if (i != info->nAllField - 1)
                     strbuf_append(out, ", ");
             }
             strbuf_append(out, ")");
@@ -1141,9 +1138,9 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         strbuf_append(out, "Read and parse all entries from the MASTER tables");
         break;
 
-    case OP_CreateTable:
+    case OP_CreateBtree:
         strbuf_appendf(
-            out, "Create new temp table. Root page number of the new table "
+            out, "Create new btree. Root page number of the new btree "
                  "in R%d ",
             op->p2);
         break;
@@ -1228,8 +1225,9 @@ int newsql_dump_query_plan(struct sqlclntstate *clnt, sqlite3 *hndl)
 
     sqlite3_stmt *stmt = NULL;
     char *eos;
-    int rc = sqlite3_prepare_flags(hndl, sql, -1, &stmt, (const char **)&eos,
-                                   SQLITE3_ENABLE_QUERY_PLAN);
+    char *newSql = sqlite3_mprintf("EXPLAIN QUERY PLAN %s", sql);
+    int rc = sqlite3_prepare_v2(hndl, newSql, -1, &stmt, (const char **)&eos);
+    if( newSql ) sqlite3_free(newSql);
     sqlite3WhereTrace = 0;
     if (f) 
         io_override_set_std(NULL);

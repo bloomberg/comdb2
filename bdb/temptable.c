@@ -339,9 +339,7 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
     else
         parent = bdb_state;
 
-    tbl = malloc(sizeof(struct temp_table));
-    tbl->next = NULL;
-    tbl->tmpdb = NULL;
+    tbl = calloc(1, sizeof(struct temp_table));
     tbl->cmpfunc = key_memcmp;
 
     rc = db_env_create(&dbenv_temp, 0);

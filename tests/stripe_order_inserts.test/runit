@@ -94,7 +94,7 @@ cdb2sql --tabs ${CDB2_OPTIONS} -f ins.in $dbnm default
 #cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure addrecs('t1', $N)"
 
 assertcnt t1 8
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select printf("%llx",comdb2_rowid%16) as genid from t1' > stripes.out
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select printf("%llx",cast(substr(comdb2_rowid,3) as integer)%16) as genid from t1' > stripes.out
 for i in `seq 1 $N` ; do
     cnt=`grep $((i-1)) stripes.out | wc -l`
     assertres "$cnt" "1"

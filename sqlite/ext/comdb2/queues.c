@@ -234,12 +234,12 @@ static int systblQueuesBestIndex(
 }
 
 const sqlite3_module systblQueuesModule = {
-  0,                            /* iVersion */
-  0,                            /* xCreate */
+  0,                         /* iVersion */
+  0,                         /* xCreate */
   systblQueuesConnect,       /* xConnect */
   systblQueuesBestIndex,     /* xBestIndex */
   systblQueuesDisconnect,    /* xDisconnect */
-  0,                            /* xDestroy */
+  0,                         /* xDestroy */
   systblQueuesOpen,          /* xOpen - open a cursor */
   systblQueuesClose,         /* xClose - close a cursor */
   systblQueuesFilter,        /* xFilter - configure scan constraints */
@@ -247,13 +247,17 @@ const sqlite3_module systblQueuesModule = {
   systblQueuesEof,           /* xEof - check for end of scan */
   systblQueuesColumn,        /* xColumn - read data */
   systblQueuesRowid,         /* xRowid - read data */
-  0,                            /* xUpdate */
-  0,                            /* xBegin */
-  0,                            /* xSync */
-  0,                            /* xCommit */
-  0,                            /* xRollback */
-  0,                            /* xFindMethod */
-  0,                            /* xRename */
+  0,                         /* xUpdate */
+  0,                         /* xBegin */
+  0,                         /* xSync */
+  0,                         /* xCommit */
+  0,                         /* xRollback */
+  0,                         /* xFindMethod */
+  0,                         /* xRename */
+  0,                         /* xSavepoint */
+  0,                         /* xRelease */
+  0,                         /* xRollbackTo */
+  0,                         /* xShadowName */
   .access_flag = CDB2_ALLOW_USER,
 };
 
