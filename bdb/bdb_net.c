@@ -150,10 +150,10 @@ int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t generation)
 
     cnt++;
     if (gbl_ack_trace && (now = time(NULL)) > lastpr) {
-        fprintf(stderr,
-                "Sending ack %d:%d, generation=%u cnt=%llu diff=%llu, udp=%d\n",
-                permlsn.file, permlsn.offset, generation, cnt, cnt - lpcnt,
-                gbl_udp);
+        logmsg(LOGMSG_ERROR,
+               "Sending ack %d:%d, generation=%u cnt=%llu diff=%llu, udp=%d\n",
+               permlsn.file, permlsn.offset, generation, cnt, cnt - lpcnt,
+               gbl_udp);
         lpcnt = cnt;
         lastpr = now;
     }
@@ -177,7 +177,7 @@ int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t generation)
     if (unlikely(bdb_state->rep_trace)) {
         char str[80];
         lsn_to_str(str, &seqnum.lsn);
-        fprintf(stderr, "sending NEWSEQ to %s <%s>\n", master, str);
+        logmsg(LOGMSG_ERROR, "sending NEWSEQ to %s <%s>\n", master, str);
     }
 
     if (gbl_udp) {
@@ -252,7 +252,7 @@ static int send_timestamp(bdb_state_type *bdb_state, const char *to, int type)
         ack_info_from_cpu(info);
         return net_send(bdb_state->repinfo->netinfo, to, type, info, size, 1);
     default:
-        fprintf(stderr, "unknown timestamp type: %d\n", type);
+        logmsg(LOGMSG_ERROR, "unknown timestamp type: %d\n", type);
         return 1;
     }
 }
@@ -306,7 +306,7 @@ void udp_ping_ip(bdb_state_type *bdb_state, char *ip)
         logmsgperror("upd_ping_ip:inet_pton");
         return;
     } else if (rc == 0) {
-        fprintf(stderr, "%s not a valid address\n", ip);
+        logmsg(LOGMSG_ERROR, "%s not a valid address\n", ip);
         return;
     }
     addr.sin_port = htons(port);
@@ -476,6 +476,9 @@ static void *udp_reader(void *arg)
     uint8_t *buff_end = buff + 1024;
     filepage_type fp;
 
+    static time_t lastpr = 0;
+    time_t now;
+
     while (1) {
 #ifdef UDP_DEBUG
         struct sockaddr_in addr;
@@ -501,8 +504,12 @@ static void *udp_reader(void *arg)
         }
 
         if (ack_info_size(info) != nrecv) {
-            fprintf(stderr, "%s:invalid read of %zd (header suggests: %u)\n",
-                    __func__, nrecv, ack_info_size(info));
+            if ((now = time(NULL)) > lastpr) {
+                logmsg(LOGMSG_ERROR,
+                       "%s:invalid read of %zd (header suggests: %u)\n",
+                       __func__, nrecv, ack_info_size(info));
+                lastpr = now;
+            }
             continue;
         }
 
@@ -510,9 +517,12 @@ static void *udp_reader(void *arg)
          * luxury - read them from
          * the packet past the data payload. */
         if (info->to != 0 && info->from != 0) {
-            logmsg(LOGMSG_ERROR,
-                   "unexpected to/from setting: from=%d to=%d type=%d\n",
-                   info->from, info->to, info->type);
+            if ((now = time(NULL)) > lastpr) {
+                logmsg(LOGMSG_ERROR,
+                       "unexpected to/from setting: from=%d to=%d type=%d\n",
+                       info->from, info->to, info->type);
+                lastpr = now;
+            }
             continue;
         }
 
@@ -521,11 +531,14 @@ static void *udp_reader(void *arg)
         if (from == NULL || from <= (char *)buff ||
             from + info->fromlen - 1 >= (char *)buff_end ||
             from[info->fromlen - 1] != 0) {
-            logmsg(LOGMSG_ERROR,
-                   "invalid packet? hdrsz=%u fromlen=%d from=%p buff=%p "
-                   "buff_end=%p\n",
-                   info->hdrsz, info->fromlen, from, buff, buff_end);
-            fsnapf(stdout, info, 64);
+            if ((now = time(NULL)) > lastpr) {
+                logmsg(LOGMSG_ERROR,
+                       "invalid packet? hdrsz=%u fromlen=%d from=%p buff=%p "
+                       "buff_end=%p\n",
+                       info->hdrsz, info->fromlen, from, buff, buff_end);
+                fsnapf(stdout, info, 64);
+                lastpr = now;
+            }
             continue;
         }
         from = intern(from);
@@ -609,8 +622,12 @@ static void *udp_reader(void *arg)
 
 
         default:
-            printf("%s: recd unknown packet type:%d from:%s\n", __func__, type,
-                   from);
+            if ((now = time(NULL)) > lastpr) {
+                logmsg(LOGMSG_ERROR,
+                       "%s: recd unknown packet type:%d from:%s\n", __func__,
+                       type, from);
+                lastpr = now;
+            }
             break;
         }
 
@@ -725,9 +742,9 @@ int send_myseqnum_to_master_udp(bdb_state_type *bdb_state)
 
         count++;
         if ((now = time(NULL)) > lastpr) {
-            fprintf(stderr,
-                    "%s: get_myseqnum returned non-0, count=%" PRIu64 "\n",
-                    __func__, count);
+            logmsg(LOGMSG_ERROR,
+                   "%s: get_myseqnum returned non-0, count=%" PRIu64 "\n",
+                   __func__, count);
             lastpr = now;
         }
     }
