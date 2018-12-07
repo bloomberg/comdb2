@@ -3515,7 +3515,7 @@ int is_tablename_queue(const char * tablename, int len)
 int osql_send_startgen(char *tohost, unsigned long long rqid, uuid_t uuid,
                        uint32_t start_gen, int type, SBUF2 *logsb)
 {
-    uint8_t buf[OSQLCOMM_STARTGEN_UUID_RPL_LEN > OSQLCOMM_STARTGEN_RPL_LEN
+    uint8_t buf[(int)OSQLCOMM_STARTGEN_UUID_RPL_LEN > (int)OSQLCOMM_STARTGEN_RPL_LEN
                     ? OSQLCOMM_STARTGEN_UUID_RPL_LEN
                     : OSQLCOMM_STARTGEN_RPL_LEN];
     int msglen;
@@ -3588,7 +3588,7 @@ int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
     int rc = 0;
     int sent;
 
-    uint8_t buf[OSQLCOMM_USEDB_RPL_UUID_TYPE_LEN > OSQLCOMM_USEDB_RPL_TYPE_LEN
+    uint8_t buf[(int)OSQLCOMM_USEDB_RPL_UUID_TYPE_LEN > (int)OSQLCOMM_USEDB_RPL_TYPE_LEN
                     ? OSQLCOMM_USEDB_RPL_UUID_TYPE_LEN
                     : OSQLCOMM_USEDB_RPL_TYPE_LEN];
 
@@ -3761,7 +3761,7 @@ int osql_send_index(char *tohost, unsigned long long rqid, uuid_t uuid,
                     char *pData, int nData, int type, SBUF2 *logsb)
 {
     int msglen;
-    uint8_t buf[OSQLCOMM_INDEX_RPL_TYPE_LEN > OSQLCOMM_INDEX_UUID_RPL_TYPE_LEN
+    uint8_t buf[(int)OSQLCOMM_INDEX_RPL_TYPE_LEN > (int)OSQLCOMM_INDEX_UUID_RPL_TYPE_LEN
                     ? OSQLCOMM_INDEX_RPL_TYPE_LEN
                     : OSQLCOMM_INDEX_UUID_RPL_TYPE_LEN];
     int rc = 0;
@@ -3839,7 +3839,7 @@ int osql_send_qblob(char *tohost, unsigned long long rqid, uuid_t uuid,
                     int datalen, SBUF2 *logsb)
 {
     int sent;
-    uint8_t buf[OSQLCOMM_QBLOB_UUID_RPL_TYPE_LEN > OSQLCOMM_QBLOB_RPL_TYPE_LEN
+    uint8_t buf[(int)OSQLCOMM_QBLOB_UUID_RPL_TYPE_LEN > (int)OSQLCOMM_QBLOB_RPL_TYPE_LEN
                     ? OSQLCOMM_QBLOB_UUID_RPL_TYPE_LEN
                     : OSQLCOMM_QBLOB_RPL_TYPE_LEN];
     uint8_t *p_buf = buf;
@@ -3949,7 +3949,7 @@ int osql_send_updrec(char *tohost, unsigned long long rqid, uuid_t uuid,
                      unsigned long long del_keys, char *pData, int nData,
                      int type, SBUF2 *logsb)
 {
-    uint8_t buf[OSQLCOMM_UPD_UUID_RPL_TYPE_LEN > OSQLCOMM_UPD_RPL_TYPE_LEN
+    uint8_t buf[(int)OSQLCOMM_UPD_UUID_RPL_TYPE_LEN > (int)OSQLCOMM_UPD_RPL_TYPE_LEN
                     ? OSQLCOMM_UPD_UUID_RPL_TYPE_LEN
                     : OSQLCOMM_UPD_RPL_TYPE_LEN];
     uint8_t *p_buf = buf;
@@ -4138,7 +4138,7 @@ int osql_send_updstat(char *tohost, unsigned long long rqid, uuid_t uuid,
     osql_updstat_uuid_rpl_t updstat_rpl_uuid = {{0}};
 
     uint8_t
-        buf[OSQLCOMM_UPDSTAT_RPL_TYPE_LEN > OSQLCOMM_UPDSTAT_UUID_RPL_TYPE_LEN
+        buf[(int)OSQLCOMM_UPDSTAT_RPL_TYPE_LEN > (int)OSQLCOMM_UPDSTAT_UUID_RPL_TYPE_LEN
                 ? OSQLCOMM_UPDSTAT_RPL_TYPE_LEN
                 : OSQLCOMM_UPDSTAT_UUID_RPL_TYPE_LEN];
     uint8_t *p_buf = buf;
@@ -4213,7 +4213,7 @@ int osql_send_insrec(char *tohost, unsigned long long rqid, uuid_t uuid,
                      int upsert_flags)
 {
     int msglen;
-    uint8_t buf[OSQLCOMM_INS_RPL_TYPE_LEN > OSQLCOMM_INS_UUID_RPL_TYPE_LEN
+    uint8_t buf[(int)OSQLCOMM_INS_RPL_TYPE_LEN > (int)OSQLCOMM_INS_UUID_RPL_TYPE_LEN
                     ? OSQLCOMM_INS_RPL_TYPE_LEN
                     : OSQLCOMM_INS_UUID_RPL_TYPE_LEN];
     int rc = 0;
@@ -4362,7 +4362,7 @@ int osql_send_delrec(char *tohost, unsigned long long rqid, uuid_t uuid,
                      int type, SBUF2 *logsb)
 {
     uint8_t
-        buf[OSQLCOMM_OSQL_DEL_RPL_TYPE_LEN > OSQLCOMM_OSQL_DEL_UUID_RPL_TYPE_LEN
+        buf[(int)OSQLCOMM_OSQL_DEL_RPL_TYPE_LEN > (int)OSQLCOMM_OSQL_DEL_UUID_RPL_TYPE_LEN
                 ? OSQLCOMM_OSQL_DEL_RPL_TYPE_LEN
                 : OSQLCOMM_OSQL_DEL_UUID_RPL_TYPE_LEN];
     uint8_t *p_buf = buf;

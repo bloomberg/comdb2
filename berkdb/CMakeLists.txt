@@ -257,10 +257,6 @@ foreach(EXT_DIR ${EXT_DIRS})
   )
 endforeach()
 
-if(${CMAKE_SYSTEM_NAME} STREQUAL Linux)
-  set_source_files_properties(${BERK_C} ${GEN_C} ${GEN_EXT_H} PROPERTIES COMPILE_FLAGS "-Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-label")
-endif()
-
 add_library(db ${BERK_C} ${GEN_C} ${GEN_EXT_H})
 include_directories(
   build
@@ -276,7 +272,9 @@ include_directories(
   ${LZ4_INCLUDE_DIR}
   ${OPENSSL_INCLUDE_DIR}
 )
-if(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+if (${CMAKE_C_COMPILER_ID} STREQUAL GNU OR ${CMAKE_C_COMPILER_ID} STREQUAL Clang)
+  set_source_files_properties(${BERK_C} ${GEN_C} ${GEN_EXT_H} PROPERTIES COMPILE_FLAGS "-Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-label")
+elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
   set_target_properties(db PROPERTIES COMPILE_FLAGS -Wno-knr-promoted-parameter)
 endif()
 add_definitions(-DSTDC_HEADERS)
