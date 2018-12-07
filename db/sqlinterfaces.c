@@ -735,6 +735,46 @@ void sql_dlmalloc_init(void)
     sqlite3_config(SQLITE_CONFIG_MALLOC, &m);
 }
 
+static int comdb2_authorizer_for_sqlite(
+  void *pArg,        /* IN: NOT USED */
+  int code,          /* IN: NOT USED */
+  const char *zArg1, /* IN: NOT USED */
+  const char *zArg2, /* IN: NOT USED */
+  const char *zArg3, /* IN: NOT USED */
+  const char *zArg4  /* IN: NOT USED */
+#ifdef SQLITE_USER_AUTHENTICATION
+  ,const char *zArg5 /* IN: NOT USED */
+#endif
+){
+  switch( code ){
+    case SQLITE_CREATE_INDEX:
+    case SQLITE_CREATE_TABLE:
+    case SQLITE_CREATE_TEMP_INDEX:
+    case SQLITE_CREATE_TEMP_TABLE:
+    case SQLITE_CREATE_TEMP_TRIGGER:
+    case SQLITE_CREATE_TEMP_VIEW:
+    case SQLITE_CREATE_TRIGGER:
+    case SQLITE_CREATE_VIEW:
+    case SQLITE_DROP_INDEX:
+    case SQLITE_DROP_TABLE:
+    case SQLITE_DROP_TEMP_INDEX:
+    case SQLITE_DROP_TEMP_TABLE:
+    case SQLITE_DROP_TEMP_TRIGGER:
+    case SQLITE_DROP_TEMP_VIEW:
+    case SQLITE_DROP_TRIGGER:
+    case SQLITE_DROP_VIEW:
+#if !defined(SQLITE_DEBUG)
+    case SQLITE_PRAGMA:
+#endif
+    case SQLITE_ALTER_TABLE:
+    case SQLITE_CREATE_VTABLE:
+    case SQLITE_DROP_VTABLE:
+      return SQLITE_DENY;
+    default:
+      return SQLITE_OK;
+  }
+}
+
 static pthread_mutex_t open_serial_lock = PTHREAD_MUTEX_INITIALIZER;
 int sqlite3_open_serial(const char *filename, sqlite3 **ppDb,
                         struct sqlthdstate *thd)
@@ -4020,9 +4060,11 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
         return;
     }
 
+    sqlite3_set_authorizer(thd->sqldb, comdb2_authorizer_for_sqlite, NULL);
     reqlog_set_origin(thd->logger, "%s", clnt->origin);
 
     exec_thread(thd, clnt);
+    sqlite3_set_authorizer(thd->sqldb, NULL, NULL);
 
     sql_reset_sqlthread(thd->sqlthd);
 
