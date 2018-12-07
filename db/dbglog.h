@@ -47,7 +47,7 @@ struct dbglog_impl {
     void (*dbglog_record_db_write)(struct ireq *, char *);
     void (*dump_client_query_stats)(struct sbuf2 *, struct client_query_stats *);
     void (*dump_client_query_stats_packed)(struct sbuf2 *, const uint8_t *);
-    int (*process_debug_pragma)(struct sqlclntstate *, const char*);
+    int (*process_debug_pragma)(struct sqlclntstate *, const char *);
     int (*mmap_dbglog_file)(unsigned long long, void **, size_t *, int *);
     int (*munmap_dbglog_file)(unsigned long long, void *, size_t, int);
 };
