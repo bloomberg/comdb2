@@ -859,8 +859,7 @@ int bdb_reconstruct_inplace_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
                 /* Make sure that our sizes agree. */
                 if (origd_sz && *origd_sz > 0 && *origd_sz != repl->orig.size) {
                     logmsg(LOGMSG_FATAL,
-                           "%s line %d origd-sz %d != orig-sz "
-                           "%d\n",
+                           "%s line %d origd-sz %d != orig-sz %d\n",
                            __func__, __LINE__, *origd_sz, repl->orig.size);
                     abort();
                 }
@@ -875,8 +874,7 @@ int bdb_reconstruct_inplace_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
             if (newd) {
                 if (newd_sz && *newd_sz > 0 && *newd_sz != repl->repl.size) {
                     logmsg(LOGMSG_FATAL,
-                           "%s line %d newd-sz %d != repl-sz "
-                           "%d\n",
+                           "%s line %d newd-sz %d != repl-sz %d\n",
                            __func__, __LINE__, *newd_sz, repl->repl.size);
                     abort();
                 }
