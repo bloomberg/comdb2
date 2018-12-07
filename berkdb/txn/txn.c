@@ -491,10 +491,8 @@ __txn_begin_int_int(txn, retries, we_start_at_this_lsn, flags)
 	if (we_start_at_this_lsn)
 		*we_start_at_this_lsn = begin_lsn;
 
-    if (!recovery && (ret = pthread_rwlock_rdlock(&dbenv->recoverlk)) != 0) {
-        logmsg(LOGMSG_FATAL, "%s error getting recoverlk, %d\n", __func__, ret);
-        abort();
-    }
+    if (!recovery)
+        Pthread_rwlock_rdlock(&dbenv->recoverlk);
 
 	R_LOCK(dbenv, &mgr->reginfo);
 	if (!F_ISSET(txn, TXN_COMPENSATE) && F_ISSET(region, TXN_IN_RECOVERY)) {
@@ -612,7 +610,7 @@ __txn_begin_int_int(txn, retries, we_start_at_this_lsn, flags)
 err:
 	R_UNLOCK(dbenv, &mgr->reginfo);
 	if (!recovery)
-		pthread_rwlock_unlock(&dbenv->recoverlk);
+		Pthread_rwlock_unlock(&dbenv->recoverlk);
 	return (ret);
 }
 
@@ -1262,7 +1260,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	}
 
 	if (F_ISSET(txnp, TXN_RECOVER_LOCK)) {
-		pthread_rwlock_unlock(&dbenv->recoverlk);
+		Pthread_rwlock_unlock(&dbenv->recoverlk);
 		F_CLR(txnp, TXN_RECOVER_LOCK);
 	}
 
@@ -1486,7 +1484,7 @@ __txn_abort(txnp)
 		 return (__db_panic(dbenv, ret));
 
 	if (F_ISSET(txnp, TXN_RECOVER_LOCK)) {
-		pthread_rwlock_unlock(&dbenv->recoverlk);
+		Pthread_rwlock_unlock(&dbenv->recoverlk);
 		F_CLR(txnp, TXN_RECOVER_LOCK);
 	}
 
@@ -2211,10 +2209,7 @@ __txn_checkpoint(dbenv, kbytes, minutes, flags)
 	}
 
 do_ckp:	
-    if ((ret = pthread_rwlock_rdlock(&dbenv->recoverlk)) != 0) {
-        logmsg(LOGMSG_FATAL, "%s error getting recoverlk, %d\n", __func__, ret);
-        abort();
-    }
+    Pthread_rwlock_rdlock(&dbenv->recoverlk);
 
     /* Retrieve lsn again after locking */
 	__log_txn_lsn(dbenv, &ckp_lsn, &mbytes, &bytes);
@@ -2251,7 +2246,7 @@ do_ckp:
 		__db_err(dbenv,
 		    "txn_checkpoint: failed to flush the buffer cache %s",
 		    db_strerror(ret));
-        pthread_rwlock_unlock(&dbenv->recoverlk);
+        Pthread_rwlock_unlock(&dbenv->recoverlk);
 		return (ret);
 	}
 
@@ -2297,7 +2292,7 @@ do_ckp:
 		 * __txn_checkpoint() writes a checkpoint in the log.
 		 */
 		if (dbenv->tx_perfect_ckp && log_compare(&ckp_lsn, &last_ckp) <= 0) {
-            pthread_rwlock_unlock(&dbenv->recoverlk);
+            Pthread_rwlock_unlock(&dbenv->recoverlk);
 			return (0);
         }
 
@@ -2321,7 +2316,7 @@ do_ckp:
 		if (ret) {
 			Pthread_rwlock_unlock(&dbenv->dbreglk);
 			MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
-            pthread_rwlock_unlock(&dbenv->recoverlk);
+            Pthread_rwlock_unlock(&dbenv->recoverlk);
 			return ret;
 		}
 
@@ -2348,7 +2343,7 @@ do_ckp:
 			    db_strerror(ret));
 			Pthread_rwlock_unlock(&dbenv->dbreglk);
 			MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
-            pthread_rwlock_unlock(&dbenv->recoverlk);
+            Pthread_rwlock_unlock(&dbenv->recoverlk);
 			return (ret);
 		}
 		Pthread_rwlock_unlock(&dbenv->dbreglk);
@@ -2359,7 +2354,7 @@ do_ckp:
 			logmsg(LOGMSG_ERROR, 
                 "%s: failed to push to checkpoint list, ret %d\n",
 			    __func__, ret);
-            pthread_rwlock_unlock(&dbenv->recoverlk);
+            Pthread_rwlock_unlock(&dbenv->recoverlk);
 			return ret;
 		}
 
@@ -2367,7 +2362,7 @@ do_ckp:
 		if (ret == 0)
 			__txn_updateckp(dbenv, &ckp_lsn);	/* this is the output lsn from txn_ckp_log */
 	}
-    pthread_rwlock_unlock(&dbenv->recoverlk);
+    Pthread_rwlock_unlock(&dbenv->recoverlk);
 	return (ret);
 }
 

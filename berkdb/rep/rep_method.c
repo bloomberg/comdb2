@@ -914,7 +914,7 @@ static int
 __rep_lock_recovery_lock(dbenv)
     DB_ENV *dbenv;
 {
-    pthread_rwlock_rdlock(&dbenv->recoverlk);
+    Pthread_rwlock_rdlock(&dbenv->recoverlk);
     return 0;
 }
 
@@ -922,7 +922,7 @@ static int
 __rep_unlock_recovery_lock(dbenv)
     DB_ENV *dbenv;
 {
-    pthread_rwlock_unlock(&dbenv->recoverlk);
+    Pthread_rwlock_unlock(&dbenv->recoverlk);
     return 0;
 }
 

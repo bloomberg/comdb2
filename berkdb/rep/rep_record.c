@@ -3819,11 +3819,11 @@ __rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	int rc, now;
 	bbtime_t start = {0}, end = {0};
 
-    pthread_mutex_lock(&apply_lk);
+    Pthread_mutex_lock(&apply_lk);
 	getbbtime(&start);
 	rc = __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled);
 	getbbtime(&end);
-    pthread_mutex_unlock(&apply_lk);
+    Pthread_mutex_unlock(&apply_lk);
 	usecs = diff_bbtime(&end, &start);
 	rep_apply_count++;
 	rep_apply_usc += usecs;
@@ -6461,11 +6461,7 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online)
 	if (dbenv->recovery_start_callback)
 		dbenv->recovery_start_callback(dbenv);
 
-    if ((ret = pthread_rwlock_wrlock(&dbenv->recoverlk)) != 0) {
-        logmsg(LOGMSG_FATAL, "%s error getting recoverlk, %d\n", __func__,
-                ret);
-        abort();
-    }
+    Pthread_rwlock_wrlock(&dbenv->recoverlk);
     have_recover_lk = 1;
 
 restart:
@@ -6581,7 +6577,7 @@ restart:
     logmsg(LOGMSG_INFO, "%s finished truncate, trunclsnp is [%d:%d]\n", __func__,
             trunclsnp->file, trunclsnp->offset);
 
-    pthread_rwlock_unlock(&dbenv->recoverlk);
+    Pthread_rwlock_unlock(&dbenv->recoverlk);
     have_recover_lk = 0;
 
 	if (online) {
@@ -6599,7 +6595,7 @@ restart:
 
 err:
     if (have_recover_lk)
-        pthread_rwlock_unlock(&dbenv->recoverlk);
+        Pthread_rwlock_unlock(&dbenv->recoverlk);
 
 	if ((t_ret = __log_c_close(logc)) != 0 && ret == 0)
 		ret = t_ret;
@@ -7542,14 +7538,14 @@ __rep_verify_match(dbenv, rp, savetime, online)
 	 * and we lost.  We must give up.
 	 */
 
-    pthread_mutex_lock(&apply_lk);
+    Pthread_mutex_lock(&apply_lk);
 	MUTEX_LOCK(dbenv, db_rep->db_mutexp);
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 	done = savetime != rep->timestamp;
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	if (done) {
 		MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
-        pthread_mutex_unlock(&apply_lk);
+        Pthread_mutex_unlock(&apply_lk);
 		return (0);
 	}
 
@@ -7651,7 +7647,7 @@ __rep_verify_match(dbenv, rp, savetime, online)
     }
 
 	if ((ret = __rep_dorecovery(dbenv, &rp->lsn, &trunclsn, online)) != 0) {
-        pthread_mutex_unlock(&apply_lk);
+        Pthread_mutex_unlock(&apply_lk);
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
         if (!online)
             rep->in_recovery = 0;
@@ -7770,7 +7766,7 @@ errunlock:	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	gbl_passed_repverify = 1;
 
 err:
-    pthread_mutex_unlock(&apply_lk);
+    Pthread_mutex_unlock(&apply_lk);
 
 	return (ret);
 }

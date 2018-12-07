@@ -107,13 +107,13 @@ void *memp_trickle_thread(void *arg)
     int nwrote;
     int rc;
 
-    pthread_mutex_lock(&lk);
+    Pthread_mutex_lock(&lk);
     if (have_memp_trickle_thread) {
-        pthread_mutex_unlock(&lk);
+        Pthread_mutex_unlock(&lk);
         return NULL;
     }
     have_memp_trickle_thread = 1;
-    pthread_mutex_unlock(&lk);
+    Pthread_mutex_unlock(&lk);
 
     bdb_state = (bdb_state_type *)arg;
 
@@ -399,13 +399,13 @@ void *checkpoint_thread(void *arg)
     static int have_checkpoint_thd = 0;
     static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
 
-    pthread_mutex_lock(&lk);
+    Pthread_mutex_lock(&lk);
     if (have_checkpoint_thd) {
-        pthread_mutex_unlock(&lk);
+        Pthread_mutex_unlock(&lk);
         return NULL;
     }
     have_checkpoint_thd = 1;
-    pthread_mutex_unlock(&lk);
+    Pthread_mutex_unlock(&lk);
 
     thread_started("bdb checkpoint");
 

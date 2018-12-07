@@ -1737,7 +1737,7 @@ static int bdb_truncate_pglog_queue(bdb_state_type *bdb_state,
                                     DB_LSN trunclsn)
 {
     struct pglogs_queue_key *qe, *del_qe = NULL;
-    pthread_rwlock_wrlock(&queue->queue_lk);
+    Pthread_rwlock_wrlock(&queue->queue_lk);
     qe = LISTC_TOP(&queue->queue_keys);
 
     while (qe) {
@@ -1775,7 +1775,7 @@ done:
     free(buf);
 #endif
 
-    pthread_rwlock_unlock(&queue->queue_lk);
+    Pthread_rwlock_unlock(&queue->queue_lk);
 
     return 0;
 }
@@ -2220,9 +2220,9 @@ int truncate_asof_pglogs(bdb_state_type *bdb_state, int file, int offset)
     if (!gbl_new_snapisol || !gbl_snapisol)
         return 0;
     bdb_clean_pglogs_queues(bdb_state, lsn, 1);
-    pthread_mutex_lock(&bdb_asof_current_lsn_mutex);
+    Pthread_mutex_lock(&bdb_asof_current_lsn_mutex);
     bdb_asof_current_lsn = lsn;
-    pthread_mutex_unlock(&bdb_asof_current_lsn_mutex);
+    Pthread_mutex_unlock(&bdb_asof_current_lsn_mutex);
     return 0;
 }
 
@@ -2534,7 +2534,7 @@ int bdb_gbl_pglogs_init(bdb_state_type *bdb_state)
     else {
         pthread_attr_t thd_attr;
         Pthread_attr_init(&thd_attr);
-        pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
+        Pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
 #       if defined(PTHREAD_STACK_MIN)
         Pthread_attr_setstacksize(&thd_attr, PTHREAD_STACK_MIN + 64 * 1024);
 #       endif

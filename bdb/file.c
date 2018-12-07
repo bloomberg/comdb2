@@ -2062,7 +2062,7 @@ void create_udpbackup_analyze_thread(bdb_state_type *bdb_state)
 
     Pthread_attr_init(&thd_attr);
     Pthread_attr_setstacksize(&thd_attr, 128 * 1024); /* 4K */
-    pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
+    Pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
 
     int rc = pthread_create(&thread_id, &thd_attr,
                             udpbackup_and_autoanalyze_thd, (void *)bdb_state);
@@ -2763,7 +2763,7 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
 
     pthread_attr_t attr;
     Pthread_attr_init(&attr);
-    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
     Pthread_attr_setstacksize(&attr, 1024 * 1024);
 
     /* create the watcher thread */
@@ -3322,7 +3322,7 @@ static int bdb_calc_min_truncate(bdb_state_type *bdb_state)
     int rc;
     int lowfilenum;
     int32_t timestamp;
-    pthread_rwlock_wrlock(&min_trunc_lk);
+    Pthread_rwlock_wrlock(&min_trunc_lk);
     lowfilenum = get_lowfilenum_sanclist(bdb_state);
     rc = bdb_state->dbenv->min_truncate_lsn_timestamp(
         bdb_state->dbenv, lowfilenum, &lsn, &timestamp);
@@ -3335,7 +3335,7 @@ static int bdb_calc_min_truncate(bdb_state_type *bdb_state)
         gbl_min_truncate_offset = 0;
         gbl_min_truncate_timestamp = 0;
     }
-    pthread_rwlock_unlock(&min_trunc_lk);
+    Pthread_rwlock_unlock(&min_trunc_lk);
     return rc;
 }
 
@@ -3344,14 +3344,14 @@ int bdb_min_truncate(bdb_state_type *bdb_state, int *file, int *offset,
 {
     if (gbl_min_truncate_file < 1)
         bdb_calc_min_truncate(bdb_state);
-    pthread_rwlock_rdlock(&min_trunc_lk);
+    Pthread_rwlock_rdlock(&min_trunc_lk);
     if (file)
         *file = gbl_min_truncate_file;
     if (offset)
         *offset = gbl_min_truncate_offset;
     if (timestamp)
         *timestamp = gbl_min_truncate_timestamp;
-    pthread_rwlock_unlock(&min_trunc_lk);
+    Pthread_rwlock_unlock(&min_trunc_lk);
     return 0;
 }
 
@@ -5338,12 +5338,8 @@ static bdb_state_type *bdb_open_int(
 
     Pthread_attr_init(&(bdb_state->pthread_attr_detach));
 
-    rc = pthread_attr_setdetachstate(&(bdb_state->pthread_attr_detach),
+    Pthread_attr_setdetachstate(&(bdb_state->pthread_attr_detach),
                                      PTHREAD_CREATE_DETACHED);
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "pthread_attr_setdetachstate failed\n");
-        exit(1);
-    }
     Pthread_attr_setstacksize(&bdb_state->pthread_attr_detach, 1024 * 1024);
 
     if (bdbtype == BDBTYPE_TABLE || bdbtype == BDBTYPE_LITE)

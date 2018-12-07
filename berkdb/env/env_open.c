@@ -313,11 +313,7 @@ __dbenv_open(dbenv, db_home, flags, mode)
     Pthread_rwlock_init(&dbenv->dbreglk, NULL);
     Pthread_rwlock_init(&dbenv->recoverlk, NULL);
 
-    ret = pthread_rwlock_init(&dbenv->recoverlk, NULL);
-    if (ret) {
-        __db_err(dbenv, "Can't create recoverlk lock %d %s", ret, strerror(ret));
-        goto err;
-    }
+    Pthread_rwlock_init(&dbenv->recoverlk, NULL);
 
 	/*
 	 * Initialize the subsystems.
