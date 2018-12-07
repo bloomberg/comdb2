@@ -27,6 +27,9 @@
 #include "ctrace.h"
 #include "logmsg.h"
 
+#include <mem_util.h>
+#include <mem_override.h>
+
 struct quantize {
     int step;
     int qmax;
