@@ -2273,7 +2273,7 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(comdb2_dbname,     0, 0, 0, comdb2DbnameFunc),
     FUNCTION(comdb2_prevquerycost,0,0,0, comdb2PrevquerycostFunc),
     FUNCTION(comdb2_starttime,  0, 0, 0, comdb2StartTimeFunc),
-#ifndef SQLITE_BUILDING_FOR_COMDB2_DBGLOG
+#ifdef SQLITE_BUILDING_FOR_COMDB2_DBGLOG
     FUNCTION(dbglog_cookie,     0, 0, 0, dbglogCookieFunc),
     FUNCTION(dbglog_begin,      1, 0, 0, dbglogBeginFunc),
     FUNCTION(dbglog_end,        1, 0, 0, dbglogEndFunc),

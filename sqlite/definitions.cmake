@@ -46,4 +46,6 @@ if(${CMAKE_BUILD_TYPE} STREQUAL Debug)
   add_definitions(-DSQLITE_DEBUG)
 endif()
 
-
+if (EXTRA_PLUGINS)
+  add_definitions(-DSQLITE_BUILDING_FOR_COMDB2_DBGLOG)
+endif()
