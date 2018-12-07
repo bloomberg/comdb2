@@ -67,6 +67,7 @@ static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
     }
 
     set_odh_options_tran(db, tran);
+    update_dbstore(db);
     create_sqlmaster_records(tran);
     create_sqlite_master();
     ++gbl_dbopen_gen;
