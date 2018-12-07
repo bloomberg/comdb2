@@ -142,9 +142,8 @@ typedef enum {
         33 /* reliable table version, updated by any schema change
             */
     ,
-    LLMETA_TABLE_PARAMETERS =
-        34 /* store various parameter values for tables stored
-        as a blob */
+    LLMETA_TABLE_PARAMETERS = 34 /* store various parameter values for tables
+                              stored as a blob */
     ,
     LLMETA_ROWLOCKS_STATE = 35
     /* for some reason we skip 36 */
@@ -9088,12 +9087,14 @@ int bdb_rename_csc2_version(tran_type *trans, const char *tblname,
                        ver);
                 return rc;
             }
-            logmsg(LOGMSG_DEBUG, "%s added table '%s' (old table '%s') version "
-                                 "%d\n",
+            logmsg(LOGMSG_DEBUG,
+                   "%s added table '%s' (old table '%s') version "
+                   "%d\n",
                    __func__, newtblname, tblname, ver);
         } else {
-            logmsg(LOGMSG_DEBUG, "%s didn't find old table '%s' version %d (so "
-                                 "not adding new-table '%s'?)\n",
+            logmsg(LOGMSG_DEBUG,
+                   "%s didn't find old table '%s' version %d (so "
+                   "not adding new-table '%s'?)\n",
                    __func__, tblname, ver, newtblname);
         }
 

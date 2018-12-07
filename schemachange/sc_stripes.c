@@ -96,9 +96,10 @@ int do_alter_stripes_int(struct schema_change_type *s)
             db = thedb->dbs[ii];
             rc = bdb_rename_blob1(db->handle, phys_tran, &genid, &bdberr);
             if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "morestripe: couldn't rename blob 1 for table "
-                                "'%s' bdberr %d\n",
-                        db->tablename, bdberr);
+                logmsg(LOGMSG_ERROR,
+                       "morestripe: couldn't rename blob 1 for table "
+                       "'%s' bdberr %d\n",
+                       db->tablename, bdberr);
                 bdb_tran_abort(thedb->bdb_env, sc_logical_tran, &bdberr);
                 return SC_BDB_ERROR;
             }
@@ -108,8 +109,8 @@ int do_alter_stripes_int(struct schema_change_type *s)
             rc = put_blobstripe_genid(db, phys_tran, genid);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR,
-                        "morestripe: couldn't record genid for table '%s'\n",
-                        db->tablename);
+                       "morestripe: couldn't record genid for table '%s'\n",
+                       db->tablename);
                 bdb_tran_abort(thedb->bdb_env, sc_logical_tran, &bdberr);
                 resume_threads(thedb);
                 return SC_INTERNAL_ERROR;
@@ -119,7 +120,8 @@ int do_alter_stripes_int(struct schema_change_type *s)
              */
             db->blobstripe_genid = genid;
 
-            logmsg(LOGMSG_INFO,"Converted table '%s' to blobstripe with genid 0x%llx\n",
+            logmsg(LOGMSG_INFO,
+                   "Converted table '%s' to blobstripe with genid 0x%llx\n",
                    db->tablename, genid);
         }
     }
@@ -143,7 +145,8 @@ int do_alter_stripes_int(struct schema_change_type *s)
     bdb_set_global_stripe_info(phys_tran, newdtastripe, newblobstripe, &bdberr);
     apply_new_stripe_settings(newdtastripe, newblobstripe);
 
-    if (open_all_dbs_tran(phys_tran) != 0) exit(1);
+    if (open_all_dbs_tran(phys_tran) != 0)
+        exit(1);
 
     if ((rc = bdb_llog_scdone_tran(thedb->bdb_env, change_stripe, phys_tran,
                                    NULL, &bdberr)) != 0) {
@@ -158,7 +161,7 @@ int do_alter_stripes_int(struct schema_change_type *s)
     }
 
     logmsg(LOGMSG_INFO, "MORESTRIPED SUCCESSFULLY\n");
-    logmsg(LOGMSG_INFO, "New settings are: dtastripe %d blobstripe? %s\n", newdtastripe,
-           newblobstripe ? "YES" : "NO");
+    logmsg(LOGMSG_INFO, "New settings are: dtastripe %d blobstripe? %s\n",
+           newdtastripe, newblobstripe ? "YES" : "NO");
     return SC_OK;
 }

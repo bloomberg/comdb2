@@ -122,7 +122,6 @@ int find_log_timestamp(bdb_state_type *bdb_state, time_t time,
         logrec.data = NULL;
     }
 
-
     if (gbl_verbose_physrep) {
         logmsg(LOGMSG_USER, "%s ts is %lld, {%u:%u}\n", __func__, my_time,
                rec_lsn.file, rec_lsn.offset);
@@ -134,7 +133,8 @@ int find_log_timestamp(bdb_state_type *bdb_state, time_t time,
     return 0;
 }
 
-static int get_next_matchable(DB_LOGC *logc, LOG_INFO *info, int check_current, DBT *logrec)
+static int get_next_matchable(DB_LOGC *logc, LOG_INFO *info, int check_current,
+                              DBT *logrec)
 {
     int rc;
     u_int32_t rectype;
@@ -150,14 +150,14 @@ static int get_next_matchable(DB_LOGC *logc, LOG_INFO *info, int check_current, 
     if (check_current) {
         if ((rc = logc->get(logc, &match_lsn, logrec, DB_SET)) != 0) {
             logmsg(LOGMSG_ERROR, "%s: can't find log record {%d:%d}, rc %d\n",
-                    __func__, info->file, info->offset, rc);
+                   __func__, info->file, info->offset, rc);
             return 1;
         }
         LOGCOPY_32(&rectype, logrec->data);
         if (matchable_log_type(rectype)) {
             if (gbl_verbose_physrep) {
                 logmsg(LOGMSG_USER, "%s: initial rec {%u:%u} is matchable\n",
-                        __func__, info->file, info->offset);
+                       __func__, info->file, info->offset);
             }
             assert(info->file == match_lsn.file);
             assert(info->offset == match_lsn.offset);
@@ -169,8 +169,10 @@ static int get_next_matchable(DB_LOGC *logc, LOG_INFO *info, int check_current, 
     do {
         rc = logc->get(logc, &match_lsn, logrec, DB_PREV);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: can't get prev log record for {%d:%d} rc"
-                    "%d\n", __func__, match_lsn.file, match_lsn.offset, rc);
+            logmsg(LOGMSG_ERROR,
+                   "%s: can't get prev log record for {%d:%d} rc"
+                   "%d\n",
+                   __func__, match_lsn.file, match_lsn.offset, rc);
             free(logrec->data);
             logrec->data = NULL;
             return 1;
@@ -252,7 +254,8 @@ LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db,
 
     logrec.flags = DB_DBT_REALLOC;
 
-    while (!(rc = get_next_matchable(logc, &start_info, match_current, &logrec))) {
+    while (
+        !(rc = get_next_matchable(logc, &start_info, match_current, &logrec))) {
         match_current = 0;
         snprintf(
             sql_cmd, sizeof(sql_cmd),
@@ -264,8 +267,9 @@ LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db,
             if ((rc = cdb2_next_record(repl_db)) == CDB2_OK) {
                 lsn = (char *)cdb2_column_value(repl_db, 0);
                 if (!lsn) {
-                    logmsg(LOGMSG_ERROR, "%s: null lsn for probe of {%d:%d}."
-                                         " going to next record\n",
+                    logmsg(LOGMSG_ERROR,
+                           "%s: null lsn for probe of {%d:%d}."
+                           " going to next record\n",
                            __func__, start_info.file, start_info.offset);
                     continue;
                 }
@@ -278,8 +282,9 @@ LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db,
                 /* check if lsns match, if not, then get next matchable */
                 if (match_file != start_info.file ||
                     match_offset != start_info.offset) {
-                    logmsg(LOGMSG_ERROR, "%s %d not same lsn{%u:%u} vs "
-                                         "{%u:%u}??? \n",
+                    logmsg(LOGMSG_ERROR,
+                           "%s %d not same lsn{%u:%u} vs "
+                           "{%u:%u}??? \n",
                            __func__, start_info.file, start_info.offset,
                            match_file, match_offset);
                     continue;
@@ -311,16 +316,18 @@ LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db,
             } else {
                 /* Didn't find a record: just go to previous */
                 if (gbl_verbose_physrep) {
-                    logmsg(LOGMSG_USER, "%s: probe of {%d:%d} failed, going to "
-                                        "previous\n",
+                    logmsg(LOGMSG_USER,
+                           "%s: probe of {%d:%d} failed, going to "
+                           "previous\n",
                            __func__, start_info.file, start_info.offset);
                 }
             }
         } else {
             /* Run statement failure: close cursor and handle & return */
             if (gbl_verbose_physrep) {
-                logmsg(LOGMSG_USER, "%s: %s returns %d, '%s': closing "
-                                    "connection\n",
+                logmsg(LOGMSG_USER,
+                       "%s: %s returns %d, '%s': closing "
+                       "connection\n",
                        __func__, sql_cmd, rc, cdb2_errstr(repl_db));
             }
             logc->close(logc, 0);

@@ -26,7 +26,7 @@ LOG_INFO handle_truncation(cdb2_hndl_tp *repl_db, LOG_INFO latest_info)
 
     if (gbl_verbose_physrep) {
         logmsg(LOGMSG_USER, "Rewind to lsn: {%u:%u}\n", match_lsn.file,
-                match_lsn.offset);
+               match_lsn.offset);
     }
 
     truncate_log(match_lsn.file, match_lsn.offset, 1);

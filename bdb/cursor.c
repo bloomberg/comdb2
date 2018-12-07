@@ -1733,8 +1733,8 @@ retrieve_fileid_pglogs_queue(unsigned char *fileid, int create)
 
 /* Delete from the large-end of pglogs queues after truncating the log */
 static int bdb_truncate_pglog_queue(bdb_state_type *bdb_state,
-                                 struct fileid_pglogs_queue *queue,
-                                 DB_LSN trunclsn)
+                                    struct fileid_pglogs_queue *queue,
+                                    DB_LSN trunclsn)
 {
     struct pglogs_queue_key *qe, *del_qe = NULL;
     pthread_rwlock_wrlock(&queue->queue_lk);
@@ -1770,8 +1770,8 @@ static int bdb_truncate_pglog_queue(bdb_state_type *bdb_state,
 done:
 #ifdef ASOF_TRACE
     hexdumpbuf(queue->fileid, DB_FILE_ID_LEN, &buf);
-    logmsg(LOGMSG_INFO, "%s: fileid[%s], trunclsn[%d][%d], count %u\n", __func__,
-           buf, trunclsn.file, trunclsn.offset, count);
+    logmsg(LOGMSG_INFO, "%s: fileid[%s], trunclsn[%d][%d], count %u\n",
+           __func__, buf, trunclsn.file, trunclsn.offset, count);
     free(buf);
 #endif
 
@@ -2211,11 +2211,11 @@ static inline void set_del_lsn(const char *func, unsigned int line,
 #endif
 }
 
-/* Remove pglogs & clear queues for anything larger than LSN.  
+/* Remove pglogs & clear queues for anything larger than LSN.
  * Called while holding recoverlk in write mode. */
 int truncate_asof_pglogs(bdb_state_type *bdb_state, int file, int offset)
 {
-    DB_LSN lsn = { .file = file, .offset = offset};
+    DB_LSN lsn = {.file = file, .offset = offset};
     bdb_clean_pglogs_queues(bdb_state, lsn, 1);
     pthread_mutex_lock(&bdb_asof_current_lsn_mutex);
     bdb_asof_current_lsn = lsn;

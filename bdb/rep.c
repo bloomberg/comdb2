@@ -5154,7 +5154,8 @@ void send_downgrade_and_lose(bdb_state_type *bdb_state)
 
 extern int gbl_dump_locks_on_repwait;
 extern int gbl_lock_get_list_start;
-int bdb_clean_pglogs_queues(bdb_state_type *bdb_state, DB_LSN lsn, int truncate);
+int bdb_clean_pglogs_queues(bdb_state_type *bdb_state, DB_LSN lsn,
+                            int truncate);
 extern int db_is_stopped();
 extern int db_is_exiting();
 
@@ -5253,7 +5254,7 @@ void *watcher_thread(void *arg)
         BDB_READLOCK("watcher_thread");
 
         if (!gbl_new_snapisol_asof) {
-            DB_LSN lsn={0};
+            DB_LSN lsn = {0};
             bdb_clean_pglogs_queues(bdb_state, lsn, 0);
         }
 

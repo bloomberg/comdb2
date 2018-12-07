@@ -2096,7 +2096,8 @@ extern int gbl_rowlocks;
 
 extern int comdb2_is_standalone(DB_ENV *dbenv);
 extern int comdb2_reload_schemas(DB_ENV *dbenv, DB_LSN *lsn);
-extern int comdb2_replicated_truncate(DB_ENV *dbenv, DB_LSN *lsn, int is_master);
+extern int comdb2_replicated_truncate(DB_ENV *dbenv, DB_LSN *lsn,
+                                      int is_master);
 extern int comdb2_recovery_cleanup(DB_ENV *dbenv, DB_LSN *lsn, int is_master);
 
 int bdb_is_standalone(void *dbenv, void *in_bdb_state)
@@ -4105,8 +4106,8 @@ deadlock_again:
                         && strncasecmp(bdb_state->name, "sqlite_stat", 11) != 0)
                         /* don't compact sqlite_stat tables */
                         db_flags |= DB_OLCOMPACT;
-                    rc = dbp->open(dbp, tid, tmpname, NULL, dta_type,
-                            db_flags, db_mode);
+                    rc = dbp->open(dbp, tid, tmpname, NULL, dta_type, db_flags,
+                                   db_mode);
                     logmsg(LOGMSG_DEBUG, "dbp->open %s type=%d rc %d\n",
                            tmpname, dbp->type, rc);
                 } while ((tid == NULL) && iter++ < 100 &&
@@ -4215,8 +4216,7 @@ deadlock_again:
         }
 
         print(bdb_state, "opening %s\n", tmpname);
-        rc =
-            dbp->open(dbp, tid, tmpname, NULL, dta_type, db_flags, db_mode);
+        rc = dbp->open(dbp, tid, tmpname, NULL, dta_type, db_flags, db_mode);
         if (rc != 0) {
             if (rc == DB_LOCK_DEADLOCK) {
                 logmsg(LOGMSG_FATAL, "deadlock in open\n");

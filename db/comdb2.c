@@ -5525,10 +5525,10 @@ int comdb2_recovery_cleanup(void *dbenv, void *inlsn, int is_master)
     int *offset = &(((int *)(inlsn))[1]);
     int rc;
     logmsg(LOGMSG_INFO, "%s starting for [%d:%d] as %s\n", __func__, *file,
-            *offset, is_master ? "MASTER" : "REPLICANT");
+           *offset, is_master ? "MASTER" : "REPLICANT");
     rc = truncate_asof_pglogs(thedb->bdb_env, *file, *offset);
     logmsg(LOGMSG_INFO, "%s complete [%d:%d] rc=%d\n", __func__, *file, *offset,
-            rc);
+           rc);
     return rc;
 }
 
@@ -5538,11 +5538,11 @@ int comdb2_replicated_truncate(void *dbenv, void *inlsn, int is_master)
     int *offset = &(((int *)(inlsn))[1]);
 
     logmsg(LOGMSG_INFO, "%s starting for [%d:%d] as %s\n", __func__, *file,
-            *offset, is_master ? "MASTER" : "REPLICANT");
+           *offset, is_master ? "MASTER" : "REPLICANT");
     if (is_master && !gbl_is_physical_replicant) {
         /* We've asked the replicants to truncate their log files.  The master
          * incremented it's generation number before truncating.  The newmaster
-         * message with the higher generation forces the replicants into 
+         * message with the higher generation forces the replicants into
          * REP_VERIFY_MATCH */
         send_newmaster(thedb->bdb_env);
     }
@@ -5550,7 +5550,7 @@ int comdb2_replicated_truncate(void *dbenv, void *inlsn, int is_master)
     /* Run logical recovery */
     if (gbl_rowlocks)
         bdb_run_logical_recovery(thedb->bdb_env,
-                is_master && !gbl_is_physical_replicant);
+                                 is_master && !gbl_is_physical_replicant);
 
     logmsg(LOGMSG_INFO, "%s complete [%d:%d]\n", __func__, *file, *offset);
 
