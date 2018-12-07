@@ -58,6 +58,27 @@ sc_resume
 # 'make all'. These tests however can be run individually.
 
 DISABLED TESTS:
+deadlock_policy.test
+overflowblobs.test        -- timesout
+halt_processor_tds.test   -- requires a cluster
+rowlocks_blkseq.test
+jepsen_a6.test            -- jepsen tests require java & root access
+jepsen_a6_nemesis.test
+jepsen_atomic_writes.test
+jepsen_bank_nemesis.test
+jepsen_bank.test
+jepsen_dirty_reads.test
+jepsen_g2.test
+jepsen_register_nemesis.test
+jepsen_register.test
+jepsen_sets_nemesis.test
+jepsen_sets.test
+killcluster.test
+register_linearizable.test
+sigstopcluster.test
+cinsert_linearizable.test
+netloss.test              -- does not pass most of the time; requires kernel 4.x & docker 17.x
+restart_socksql.test      -- dont run this for now since masterbranch fails it
 <END>
 
 # vim: set sw=4 ts=4 et:

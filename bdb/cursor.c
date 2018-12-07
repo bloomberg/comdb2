@@ -2216,6 +2216,7 @@ static inline void set_del_lsn(const char *func, unsigned int line,
 int truncate_asof_pglogs(bdb_state_type *bdb_state, int file, int offset)
 {
     DB_LSN lsn = {.file = file, .offset = offset};
+    extern int gbl_snapisol;
     if (!gbl_new_snapisol || !gbl_snapisol)
         return 0;
     bdb_clean_pglogs_queues(bdb_state, lsn, 1);
