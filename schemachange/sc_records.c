@@ -930,25 +930,29 @@ static int convert_record(struct convert_record_data *data)
             addflags, 0);
 
         if (data->s->logical_livesc && rc == IX_DUP) {
-            DB_LSN now = {0};
-            bdb_get_commit_genid(thedb->bdb_env, &now);
-            if (now.file <= 1 && now.offset == 0) {
-                logmsg(LOGMSG_ERROR, "%s:%d failed to get current lsn\n",
-                       __func__, __LINE__);
-                rc = ERR_INTERNAL;
-                goto err;
+            if (data->dup_genid != ngenid) {
+                bdb_get_commit_genid(thedb->bdb_env, &data->dup_wait);
+                if (data->dup_wait.file <= 1 && data->dup_wait.offset == 0) {
+                    logmsg(LOGMSG_ERROR, "%s:%d failed to get current lsn\n",
+                           __func__, __LINE__);
+                    rc = ERR_INTERNAL;
+                    goto err;
+                }
             }
+            data->dup_genid = ngenid;
 
             /* wait for logical redo thread to catch up */
             Pthread_mutex_lock(&data->s->livesc_mtx);
-            if (data->s->curLsn && log_compare(data->s->curLsn, &now) < 0)
+            if (data->s->curLsn &&
+                log_compare(data->s->curLsn, &data->dup_wait) < 0)
                 rc = RC_INTERNAL_RETRY;
             Pthread_mutex_unlock(&data->s->livesc_mtx);
             if (rc == RC_INTERNAL_RETRY) {
                 logmsg(LOGMSG_DEBUG,
                        "%s: got DUP on genid %llx, stripe %d, waiting for "
                        "logical redo to catch up at [%u:%u]\n",
-                       __func__, ngenid, data->stripe, now.file, now.offset);
+                       __func__, ngenid, data->stripe, data->dup_wait.file,
+                       data->dup_wait.offset);
                 poll(NULL, 0, 100);
             }
         }
@@ -2408,6 +2412,17 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
             goto done;
         }
         if (rc) {
+            if (data->s->iq) {
+                if (rc == IX_DUP)
+                    reqerrstr(data->s->iq, ERR_SC,
+                              "add key constraint duplicate key '%s' on table "
+                              "'%s' index %d",
+                              get_keynm_from_db_idx(data->to, ixfailnum),
+                              data->to->tablename, ixfailnum);
+                else
+                    reqerrstr(data->s->iq, ERR_SC,
+                              "unable to add record rc = %d", rc);
+            }
             logmsg(LOGMSG_ERROR, "%s:%d failed to add new record rc=%d %s\n",
                    __func__, __LINE__, rc,
                    errstat_get_str(&(data->iq.errstat)));
