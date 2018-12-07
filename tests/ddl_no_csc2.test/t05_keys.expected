@@ -81,7 +81,7 @@ keys
 	}
 keys
 	{
-		dup "$KEY_4DE4D8DB" = i 
+		dup "t1_i" = i 
 	}
 ')
 (csc2=NULL)
@@ -97,7 +97,7 @@ keys
 	}
 keys
 	{
-		dup "$KEY_4DE4D8DB" = i 
+		dup "t1_i" = i 
 	}
 ')
 (csc2=NULL)

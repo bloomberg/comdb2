@@ -485,7 +485,7 @@ ifcapable subquery {
     count {
       SELECT * FROM t1 WHERE x IN (1,7) AND y IN (9,10) ORDER BY 1;
     }
-  } {2 1 9 6}
+  } {2 1 9 7}
   do_test where-5.15 {
     count {
       SELECT * FROM t1 WHERE x IN (1,7) AND y IN (9,16) ORDER BY 1;
@@ -577,7 +577,7 @@ do_test where-6.7.2 {
   cksort {
     SELECT * FROM t3 WHERE b>0 ORDER BY a LIMIT 1
   }
-} {1 100 4 sort}
+} {1 100 4 nosort}
 ifcapable subquery {
   do_test where-6.8a {
     cksort {

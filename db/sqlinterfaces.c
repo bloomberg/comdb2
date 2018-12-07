@@ -78,7 +78,7 @@
 #include "osqlshadtbl.h"
 
 #include <sqlresponse.pb-c.h>
-#include <ext/expert/sqlite3expert.h>
+#include <sqlite3expert.h>
 
 #include <alloca.h>
 #include <fsnap.h>
@@ -745,6 +745,19 @@ int sqlite3_open_serial(const char *filename, sqlite3 **ppDb,
     int rc = sqlite3_open(filename, ppDb, thd);
     if (serial)
         Pthread_mutex_unlock(&open_serial_lock);
+    return rc;
+}
+
+int sqlite3_close_serial(sqlite3 **ppDb)
+{
+    int rc = SQLITE_ERROR;
+    int serial = gbl_serialise_sqlite3_open;
+    if( serial ) Pthread_mutex_lock(&open_serial_lock);
+    if( ppDb && *ppDb ){
+        rc = sqlite3_close(*ppDb);
+        if( rc==SQLITE_OK ) *ppDb = NULL;
+    }
+    if( serial ) Pthread_mutex_unlock(&open_serial_lock);
     return rc;
 }
 
@@ -2283,11 +2296,13 @@ static int reload_analyze(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         }
         got_curtran = 1;
     }
+    sqlite3_mutex_enter(sqlite3_db_mutex(thd->sqldb));
     if ((rc = sqlite3AnalysisLoad(thd->sqldb, 0)) == SQLITE_OK) {
         thd->analyze_gen = analyze_gen;
     } else {
         logmsg(LOGMSG_ERROR, "%s sqlite3AnalysisLoad rc:%d\n", __func__, rc);
     }
+    sqlite3_mutex_leave(sqlite3_db_mutex(thd->sqldb));
     if (got_curtran && put_curtran(thedb->bdb_env, clnt)) {
         logmsg(LOGMSG_ERROR, "%s failed to put_curtran\n", __func__);
     }
@@ -2388,15 +2403,18 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
     return 0;
 }
 
-static int check_sql(struct sqlclntstate *clnt, int *sp)
+static int check_sql(struct sqlclntstate *clnt, int *sp, int *pragma)
 {
+    int tempPragma = 0;
     char buf[256];
     char *sql = clnt->sql;
     size_t len = sizeof("exec") - 1;
+    if (pragma == NULL) pragma = &tempPragma;
     if (strncasecmp(sql, "exec", len) == 0) {
         sql += len;
         if (isspace(*sql)) {
             *sp = 1;
+            *pragma = 0;
             return 0;
         }
     }
@@ -2404,8 +2422,13 @@ static int check_sql(struct sqlclntstate *clnt, int *sp)
     if (strncasecmp(sql, "pragma", len) == 0) {
         sql += len;
         if (isspace(*sql)) {
-            goto error;
+            if (*pragma) {
+                return 0;
+            } else {
+                goto error;
+            }
         }
+        *pragma = 0;
         return 0;
     }
     len = sizeof("create") - 1;
@@ -2413,11 +2436,13 @@ static int check_sql(struct sqlclntstate *clnt, int *sp)
         char *trigger = sql;
         trigger += len;
         if (!isspace(*trigger)) {
+            *pragma = 0;
             return 0;
         }
         trigger = skipws(trigger);
         len = sizeof("trigger") - 1;
         if (strncasecmp(trigger, "trigger", len) != 0) {
+            *pragma = 0;
             return 0;
         }
         trigger += len;
@@ -2425,6 +2450,7 @@ static int check_sql(struct sqlclntstate *clnt, int *sp)
             goto error;
         }
     }
+    *pragma = 0;
     return 0;
 
 error: /* pretend that a real prepare error occured */
@@ -2840,7 +2866,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
             rc = sqlite3LockStmtTables(rec->stmt);
         } else if (rc == SQLITE_ERROR && comdb2_get_verify_remote_schemas()) {
             sqlite3ResetFdbSchemas(thd->sqldb);
-            return rc = SQLITE_SCHEMA_REMOTE;
+            return SQLITE_SCHEMA_REMOTE;
         }
         if (rc != SQLITE_SCHEMA_REMOTE) {
             break;
@@ -3115,7 +3141,14 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
 
     /* additional non-sqlite requests */
     int stored_proc = 0;
-    if ((rc = check_sql(clnt, &stored_proc)) != 0) {
+
+#if defined(SQLITE_DEBUG) || defined(COMDB2_ALLOW_SQLITE_PRAGMA)
+    int is_pragma = 1; /* allowed for debug builds, etc */
+    if ((rc = check_sql(clnt, &stored_proc, &is_pragma)) != 0)
+#else
+    if ((rc = check_sql(clnt, &stored_proc, 0)) != 0)
+#endif
+    {
         // TODO: set this: outrc = rc;
         return rc;
     }
@@ -3124,6 +3157,14 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
         handle_stored_proc(thd, clnt);
         *outrc = 0;
         return 1;
+#if defined(SQLITE_DEBUG) || defined(COMDB2_ALLOW_SQLITE_PRAGMA)
+    } else if (is_pragma) {
+        /* currently, all PRAGMA requests, when allowed, are handled
+        ** by SQLite */
+        logmsg(LOGMSG_WARN, "%s:%d %s ALLOWING PRAGMA [%s]\n", __FILE__,
+               __LINE__, __func__, clnt->sql);
+        return 0;
+#endif
     } else if (clnt->is_explain) { // only via newsql--cdb2api
         rdlock_schema_lk();
         rc = sqlengine_prepare_engine(thd, clnt, 1);
@@ -3835,8 +3876,7 @@ check_version:
                 return rc;
             }
             delete_prepared_stmts(thd);
-            sqlite3_close(thd->sqldb);
-            thd->sqldb = NULL;
+            sqlite3_close_serial(&thd->sqldb);
         }
     }
     assert(!thd->sqldb || rc == SQLITE_OK || rc == SQLITE_SCHEMA_REMOTE);
@@ -3885,9 +3925,9 @@ check_version:
             thd->analyze_gen = gbl_analyze_gen;
             int rc = sqlite3_open_serial("db", &thd->sqldb, thd);
             if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "%s:sqlite3_open_serial failed %d\n", __func__,
-                        rc);
-                thd->sqldb = NULL;
+                logmsg(LOGMSG_ERROR, "%s:sqlite3_open_serial failed %d: %s\n", __func__,
+                       rc, sqlite3_errmsg(thd->sqldb));
+                sqlite3_close_serial(&thd->sqldb);
                 /* there is no really way forward, grab core */
                 abort();
             }
@@ -4006,9 +4046,9 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
         /* open sqlite db without copying rootpages */
         rc = sqlite3_open_serial("db", &thd->sqldb, thd);
         if (unlikely(rc != 0)) {
-            logmsg(LOGMSG_ERROR, "%s:sqlite3_open_serial failed %d\n", __func__,
-                   rc);
-            thd->sqldb = NULL;
+            logmsg(LOGMSG_ERROR, "%s:sqlite3_open_serial failed %d: %s\n", __func__,
+                   rc, sqlite3_errmsg(thd->sqldb));
+            sqlite3_close_serial(&thd->sqldb);
         } else {
             /* setting gen to -1 so real SQLs will reopen vm */
             thd->dbopen_gen = -1;
@@ -4384,8 +4424,7 @@ void sqlengine_thd_end(struct thdpool *pool, struct sqlthdstate *thd)
 
     if (thd->stmt_caching_table)
         delete_stmt_caching_table(thd->stmt_caching_table);
-    if (thd->sqldb)
-        sqlite3_close(thd->sqldb);
+    sqlite3_close_serial(&thd->sqldb);
 
     /* AZ moved after the close which uses thd for rollbackall */
     done_sql_thread();

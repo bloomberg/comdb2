@@ -170,12 +170,12 @@ static int systblMetricsRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid)
 }
 
 const sqlite3_module systblMetricsModule = {
-    0,                     /* iVersion */
-    0,                     /* xCreate */
+    0,                       /* iVersion */
+    0,                       /* xCreate */
     systblMetricsConnect,    /* xConnect */
     systblMetricsBestIndex,  /* xBestIndex */
     systblMetricsDisconnect, /* xDisconnect */
-    0,                     /* xDestroy */
+    0,                       /* xDestroy */
     systblMetricsOpen,       /* xOpen - open a cursor */
     systblMetricsClose,      /* xClose - close a cursor */
     systblMetricsFilter,     /* xFilter - configure scan constraints */
@@ -183,13 +183,17 @@ const sqlite3_module systblMetricsModule = {
     systblMetricsEof,        /* xEof - check for end of scan */
     systblMetricsColumn,     /* xColumn - read data */
     systblMetricsRowid,      /* xRowid - read data */
-    0,                     /* xUpdate */
-    0,                     /* xBegin */
-    0,                     /* xSync */
-    0,                     /* xCommit */
-    0,                     /* xRollback */
-    0,                     /* xFindMethod */
-    0,                     /* xRename */
+    0,                       /* xUpdate */
+    0,                       /* xBegin */
+    0,                       /* xSync */
+    0,                       /* xCommit */
+    0,                       /* xRollback */
+    0,                       /* xFindMethod */
+    0,                       /* xRename */
+    0,                       /* xSavepoint */
+    0,                       /* xRelease */
+    0,                       /* xRollbackTo */
+    0,                       /* xShadowName */
     .access_flag = CDB2_ALLOW_USER,
 };
 

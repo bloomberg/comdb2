@@ -93,11 +93,11 @@ getmembers()
 }
 
 echo check all .*sql entries for fingerprint
-echo '9646641fb53ffc0e87ffcb7808c4c93e' > exp.txt
+echo 'a39f4f2bcb22a50ccf6c9f4c7c0b0dcf' > exp.txt
 IFS=$'\n'
 for line in `grep 'sql","sql": "select 1"' $logflunziped ` ; do
     getmembers $line > out.txt
-    #echo $line | python -c "import sys, json; txt=json.load(sys.stdin); print txt['fingerprint']" > out.txt
+    #echo $line | python -c "import sys, json; txt=json.load(sys.stdin); print txt['fingerprint']" >> dbg.txt
     if ! diff out.txt exp.txt ; then
         failexit 'output is different from expected'
     fi 
@@ -105,11 +105,11 @@ done
 
 
 echo check all .*sql entries for fingerprint
-echo '9646641fb53ffc0e87ffcb7808c4c93e' > exp.txt
+echo 'a39f4f2bcb22a50ccf6c9f4c7c0b0dcf' > exp.txt
 IFS=$'\n'
 for line in `grep 'sql","sql": "select 2"' $logflunziped ` ; do
     getmembers $line > out.txt
-#    echo $line | python -c "import sys, json; txt=json.load(sys.stdin); print txt['fingerprint']" > out.txt
+    #echo $line | python -c "import sys, json; txt=json.load(sys.stdin); print txt['fingerprint']" >> dbg.txt
     if ! diff out.txt exp.txt ; then
         failexit 'output is different from expected'
     fi 
@@ -120,7 +120,7 @@ echo '00000000000000000000000000000000' > exp.txt
 grep 'sql","sql": "nonsense"' $logflunziped | while read line ;
 do
     getmembers $line > out.txt
-    #echo $line | python -c "import sys, json; txt=json.load(sys.stdin); print txt['error_code']; print txt['error']; print txt['fingerprint']" > out.txt
+    #echo $line | python -c "import sys, json; txt=json.load(sys.stdin); print txt['error_code']; print txt['error']; print txt['fingerprint']" >> dbg.txt
     if ! diff out.txt exp.txt ; then
         failexit 'output is different from expected'
     fi
@@ -132,17 +132,17 @@ near "nonsense": syntax error
 00000000000000000000000000000000' > exp.txt
 line=`grep '"sql","sql": "nonsense"' $logflunziped`
 getmembers $line > out.txt
-#grep '"sql","sql": "nonsense"' $logflunziped | python -c "import sys, json; txt=json.load(sys.stdin); print txt['error_code']; print txt['error']; print txt['fingerprint']" > out.txt
+#grep '"sql","sql": "nonsense"' $logflunziped | python -c "import sys, json; txt=json.load(sys.stdin); print txt['error_code']; print txt['error']; print txt['fingerprint']" >> dbg.txt
 if ! diff out.txt exp.txt ; then
     failexit 'output is different from expected'
 fi
 
 echo check all .*sql entries for fingerprint
-echo 'e95d2065e6ee80006932de9fe9dbbb42' > exp.txt
+echo '33344e85e324ece0130e849406c7c87d' > exp.txt
 grep 'sql","sql": "select \* from nonexistent"' $logflunziped | while read line ; 
 do
     getmembers $line > out.txt
-    #echo $line | python -c "import sys, json; txt=json.load(sys.stdin); print txt['error_code']; print txt['error']; print txt['fingerprint']" > out.txt
+    #echo $line | python -c "import sys, json; txt=json.load(sys.stdin); print txt['error_code']; print txt['error']; print txt['fingerprint']" >> dbg.txt
     if ! diff out.txt exp.txt ; then
         failexit 'output is different from expected'
     fi
@@ -151,10 +151,10 @@ done
 echo check the sql parameter now
 echo '1
 no such table: nonexistent
-e95edba146dfbbff622bc2b94f1de9a6' > exp.txt
+33344e85e324ece0130e849406c7c87d' > exp.txt
 line=`grep '"sql","sql": "select \* from nonexistent"' $logflunziped`
 getmembers $line > out.txt
-#grep '"sql","sql": "select \* from nonexistent"' $logflunziped | python -c "import sys, json; txt=json.load(sys.stdin); print txt['error_code']; print txt['error']; print txt['fingerprint']" > out.txt
+#grep '"sql","sql": "select \* from nonexistent"' $logflunziped | python -c "import sys, json; txt=json.load(sys.stdin); print txt['error_code']; print txt['error']; print txt['fingerprint']" >> dbg.txt
 if ! diff out.txt exp.txt ; then
     failexit 'output is different from expected'
 fi

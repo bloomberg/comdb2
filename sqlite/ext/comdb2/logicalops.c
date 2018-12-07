@@ -1406,17 +1406,17 @@ static int logicalopsBestIndex(
 sqlite3_module systblLogicalOpsModule = {
   0,                         /* iVersion */
   0,                         /* xCreate */
-  logicalopsConnect,            /* xConnect */
-  logicalopsBestIndex,          /* xBestIndex */
-  logicalopsDisconnect,         /* xDisconnect */
+  logicalopsConnect,         /* xConnect */
+  logicalopsBestIndex,       /* xBestIndex */
+  logicalopsDisconnect,      /* xDisconnect */
   0,                         /* xDestroy */
-  logicalopsOpen,               /* xOpen - open a cursor */
-  logicalopsClose,              /* xClose - close a cursor */
-  logicalopsFilter,             /* xFilter - configure scan constraints */
-  logicalopsNext,               /* xNext - advance a cursor */
-  logicalopsEof,                /* xEof - check for end of scan */
-  logicalopsColumn,             /* xColumn - read data */
-  logicalopsRowid,              /* xRowid - read data */
+  logicalopsOpen,            /* xOpen - open a cursor */
+  logicalopsClose,           /* xClose - close a cursor */
+  logicalopsFilter,          /* xFilter - configure scan constraints */
+  logicalopsNext,            /* xNext - advance a cursor */
+  logicalopsEof,             /* xEof - check for end of scan */
+  logicalopsColumn,          /* xColumn - read data */
+  logicalopsRowid,           /* xRowid - read data */
   0,                         /* xUpdate */
   0,                         /* xBegin */
   0,                         /* xSync */
@@ -1424,6 +1424,10 @@ sqlite3_module systblLogicalOpsModule = {
   0,                         /* xRollback */
   0,                         /* xFindMethod */
   0,                         /* xRename */
+  0,                         /* xSavepoint */
+  0,                         /* xRelease */
+  0,                         /* xRollbackTo */
+  0,                         /* xShadowName */
   .access_flag = CDB2_ALLOW_USER,
 };
 
