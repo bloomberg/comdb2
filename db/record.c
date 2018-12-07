@@ -2840,6 +2840,14 @@ int del_new_record(struct ireq *iq, void *trans, unsigned long long genid,
         }
     } else /* have a plan:  only delete blobs we are told to */
     {
+        /* Currently, blobs rebuilds imply data rebuild at the current
+         * implementation. The only case when blob files are touched without
+         * data files is adding a blob/vutf8 field. And since new blob/vutf8
+         * fields are guaranteed to be NULL, ideally we should not need to worry
+         * about deleting blobs in live_sc_post_delete() in this case. (i.e. The
+         * whole "else" case in the code can be removed.) However, I am keeping
+         * the code there in case we support real blob-only rebuild in the
+         * future. */
         int blobn;
 
         /* No data file.  Delete blobs manually as required. */
