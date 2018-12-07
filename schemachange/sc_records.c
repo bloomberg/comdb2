@@ -1334,6 +1334,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         }
         *thdData = data;
         if (s->resume) {
+            /* get lsn where we left off */
             rc = bdb_get_sc_start_lsn(NULL, s->tablename, &(thdData->start_lsn),
                                       &bdberr);
             if (rc) {
@@ -1344,6 +1345,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
                 return -1;
             }
         } else {
+            /* start lsn of this schema change */
             bdb_get_commit_genid(thedb->bdb_env, &(thdData->start_lsn));
             if (thdData->start_lsn.file <= 1 &&
                 thdData->start_lsn.offset == 0) {
@@ -1368,6 +1370,8 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         thdData->isThread = 1;
 
         if (BDB_ATTR_GET(thedb->bdb_attr, SNAPISOL) == 0) {
+            /* enable logical logging for this table for the duration of the
+             * schema change */
             rc = trans_start_sc(&(data.iq), NULL, &trans);
             if (rc || trans == NULL) {
                 logmsg(LOGMSG_ERROR, "%s:%d failed to start tran rc = %d\n",
@@ -1398,6 +1402,8 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         }
     } else {
         if (s->resume) {
+            /* if schema change was run in logical redo mode and logical redo sc
+             * is disabled in resume, abort the schema change */
             int rc = 0, bdberr = 0;
             rc = bdb_get_sc_start_lsn(NULL, s->tablename, &(data.start_lsn),
                                       &bdberr);
@@ -1923,13 +1929,13 @@ struct blob_recs {
     LISTC_T(bdb_osql_log_rec_t) recs; /* list of undo records */
 };
 
-static int free_blob_recs(void *obj, void *arg)
+static void clear_recs_list(void *recs)
 {
-    struct blob_recs *pbrecs = obj;
+    listc_t *l = (listc_t *)recs;
     bdb_osql_log_rec_t *rec = NULL, *tmp = NULL;
-    LISTC_FOR_EACH_SAFE(&pbrecs->recs, rec, tmp, lnk)
+    LISTC_FOR_EACH_SAFE(l, rec, tmp, lnk)
     {
-        listc_rfl(&pbrecs->recs, rec);
+        listc_rfl(l, rec);
         if (rec->comprec) {
             if (rec->comprec->table)
                 free(rec->comprec->table);
@@ -1939,6 +1945,12 @@ static int free_blob_recs(void *obj, void *arg)
             free(rec->table);
         free(rec);
     }
+}
+
+static int free_blob_recs(void *obj, void *arg)
+{
+    struct blob_recs *pbrecs = obj;
+    clear_recs_list(&pbrecs->recs);
     free(pbrecs);
     return 0;
 }
@@ -2683,14 +2695,21 @@ static int live_sc_redo_update(struct convert_record_data *data, DB_LOGC *logc,
     if (!data->s->sc_convert_done[rec->dtastripe] &&
         is_genid_right_of_stripe_pointer(data->to->handle, genid,
                                          data->sc_genids[rec->dtastripe])) {
+        /* if the newgenid is to the right of the sc cursor, we only need to
+         * delete the old record */
         rc = del_new_record(&data->iq, data->trans, oldgenid, -1ULL,
                             data->oldodh.recptr, data->freeblb, 0);
     } else {
+        /* try to update the record in the new btree */
         rc = upd_new_record(&data->iq, data->trans, oldgenid,
                             data->oldodh.recptr, genid, data->odh.recptr, -1ULL,
                             -1ULL, updlen, updCols, data->wrblb, 0,
                             data->freeblb, data->wrblb, 0);
         if (rc == ERR_VERIFY) {
+            /* either the oldgenid is not found or the newgenid already exists
+             * -- try delete the oldgenid again.
+             * TODO: differentiate the above two cases and no need to call
+             * delete again for the first case */
             rc = del_new_record(&data->iq, data->trans, oldgenid, -1ULL,
                                 data->oldodh.recptr, data->freeblb, 0);
         }
@@ -2744,8 +2763,6 @@ static int live_sc_redo_logical_rec(struct convert_record_data *data,
 {
     int rc = 0;
 
-    if (!is_logical_data_op(rec))
-        return 0;
     if (rec->dtastripe < 0 || rec->dtastripe >= gbl_dtastripe) {
         logmsg(LOGMSG_ERROR,
                "%s:%d rec->dtastripe %d out of range, type %d, lsn[%u:%u]\n",
@@ -2756,14 +2773,18 @@ static int live_sc_redo_logical_rec(struct convert_record_data *data,
     if (!data->s->sc_convert_done[rec->dtastripe] &&
         is_genid_right_of_stripe_pointer(data->to->handle, rec->genid,
                                          data->sc_genids[rec->dtastripe])) {
+        /* skip those still to the right of sc cursor */
         return 0;
     }
     switch (rec->type) {
     case DB_llog_undo_add_dta:
     case DB_llog_undo_add_dta_lk:
         if (bdb_inplace_cmp_genids(data->to->handle, rec->genid,
-                                   data->sc_genids[rec->dtastripe]) == 0)
+                                   data->sc_genids[rec->dtastripe]) == 0) {
+            /* small optimization to skip last record that was done by the
+             * convert thread */
             return 0;
+        }
         rc = live_sc_redo_add(data, logc, rec, logdta);
         if (rc) {
             logmsg(LOGMSG_ERROR,
@@ -2811,20 +2832,27 @@ static int live_sc_redo_logical_log(struct convert_record_data *data,
     int interested = 0;
     DBT logdta = {0};
     logdta.flags = DB_DBT_REALLOC;
+    LISTC_T(bdb_osql_log_rec_t) recs; /* list of relevant undo records */
+    listc_init(&recs, offsetof(bdb_osql_log_rec_t, lnk));
 
-    /* pre process blob recs */
+    /* pre process recs */
     LISTC_FOR_EACH_SAFE(&pCur->log->impl->recs, rec, tmp, lnk)
     {
+        /* skip if it is not data operations */
         if (!is_logical_data_op(rec))
             continue;
+        /* skip logical ops that are not relevant to the table */
         if (strcasecmp(data->s->tablename, rec->table) != 0)
             continue;
 
+        /* get one op that needs to be redone - mark interested */
         interested = 1;
+        listc_rfl(&pCur->log->impl->recs, rec);
+
         if (rec->dtafile >= 1) {
+            /* put blob records into a list hash based on genid */
             struct blob_recs brecs = {0};
             struct blob_recs *pbrecs = NULL;
-            listc_rfl(&pCur->log->impl->recs, rec);
             brecs.genid = rec->genid;
             pbrecs = hash_find(data->blob_hash, &brecs);
             if (pbrecs) {
@@ -2842,19 +2870,23 @@ static int live_sc_redo_logical_log(struct convert_record_data *data,
                 listc_abl(&pbrecs->recs, rec);
                 hash_add(data->blob_hash, pbrecs);
             }
+        } else {
+            /* put relevant log records into a linked list so we don't need to
+             * loop on the transaction's logical operations list anymore */
+            listc_abl(&recs, rec);
         }
+    }
+
+    if (!interested) {
+        /* nothing to do if none of the logical ops are relevant to the table */
+        rc = 0;
+        goto done;
     }
 
     if ((rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0)) != 0) {
         logmsg(LOGMSG_ERROR, "%s:%d failed to get log-cursor %d\n", __func__,
                __LINE__, rc);
         rc = -1;
-        goto done;
-    }
-
-    if (!interested) {
-        /* nothing to do */
-        rc = 0;
         goto done;
     }
 
@@ -2876,10 +2908,9 @@ again:
         reqpushprefixf(&data->iq, "0x%llx: LOGICAL REDO ", pthread_self());
     }
 
-    LISTC_FOR_EACH(&pCur->log->impl->recs, rec, lnk)
+    /* redo each of the log records revelant to this table */
+    LISTC_FOR_EACH(&recs, rec, lnk)
     {
-        if (strcasecmp(data->s->tablename, rec->table) != 0)
-            continue;
         if (data->s->sc_thd_failed) {
             if (!data->s->retry_bad_genids)
                 sc_errf(data->s,
@@ -2895,6 +2926,7 @@ again:
             rc = -1;
             goto done;
         }
+        /* redo this logical op */
         rc = live_sc_redo_logical_rec(data, logc, rec, &logdta);
         if (rc) {
             logmsg(LOGMSG_ERROR,
@@ -2948,6 +2980,8 @@ done:
 
     reqlog_end_request(data->iq.reqlogger, 0, __func__, __LINE__);
 
+    /* free memory used in this function */
+    clear_recs_list(&recs);
     clear_blob_hash(data->blob_hash);
     data->trans = NULL;
     if (rc && !data->s->sc_thd_failed)
@@ -2988,16 +3022,17 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
     }
     data->iq.reqlogger = thrman_get_reqlogger(thr_self);
 
+    /* starting time and lsn of the schema change */
     sc_printf(data->s, "[%s] logical redo %s at [%u:%u]\n", data->s->tablename,
               data->s->resume ? "resumes" : "starts", data->start_lsn.file,
               data->start_lsn.offset);
     data->lasttime = comdb2_time_epoch();
     pCur->minLsn = data->start_lsn;
 
+    /* init all buffer needed by this thread to do logical redo so we don't need
+     * to malloc & free every single time */
     data->rec = allocate_db_record(data->to->tablename, ".NEW..ONDISK");
-
     data->iq.usedb = data->to;
-
     data->blob_hash = hash_init_o(offsetof(struct blob_recs, genid),
                                   sizeof(unsigned long long));
     if (!data->blob_hash) {
@@ -3026,10 +3061,14 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
         data->to->schema /*tbl .NEW..ONDISK schema */); // free tagmap only once
 
     data->s->hitLastCnt = 0;
+
+    /* s->curLsn is used to synchronize between logical redo thread and convert
+     * record threads in order to correctly detect unique key violations */
     Pthread_mutex_lock(&data->s->livesc_mtx);
     data->s->curLsn = &curLsn;
     Pthread_mutex_unlock(&data->s->livesc_mtx);
     while (1) {
+        /* abort schema change if we need to */
         if (gbl_sc_abort || data->from->sc_abort || data->s->sc_thd_failed ||
             (data->s->iq && data->s->iq->sc_should_abort)) {
             sc_errf(data->s,
@@ -3038,6 +3077,7 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
                     data->s->tablename);
             goto cleanup;
         }
+        /* get the next transaction's logical ops from the log files */
         if (bdb_llog_cursor_next(pCur) != 0) {
             sc_printf(data->s, "[%s] logical redo failed at [%u:%u]\n",
                       data->s->tablename, pCur->curLsn.file,
@@ -3046,6 +3086,7 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
             goto cleanup;
         }
         if (pCur->log && !pCur->hitLast) {
+            /* redo this transaction against the new btrees */
             rc = live_sc_redo_logical_log(data, pCur);
             if (rc) {
                 sc_printf(data->s, "[%s] logical redo failed at [%u:%u]\n",

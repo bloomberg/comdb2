@@ -164,6 +164,10 @@ int check_index(struct ireq *iq, void *trans, int ixnum,
     return 0;
 }
 
+/*
+ * For logical_livesc, function returns ERR_VERIFY if
+ * the record being added is already in the btree.
+ */
 int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                const uint8_t *p_buf_tag_name_end, uint8_t *p_buf_rec,
                const uint8_t *p_buf_rec_end, const unsigned char fldnullmap[32],
@@ -2404,15 +2408,19 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
  * have been enabled.
  *
  * If deferredAdd is set, we want to defer adding new keys to indices
- * (which will be done from constraints.c:delayed_key_adds()) because 
- * adding the keys here can result in SC aborting when it shouldn't 
+ * (which will be done from constraints.c:delayed_key_adds()) because
+ * adding the keys here can result in SC aborting when it shouldn't
  * (in the case when update causes a conflict in one of the keys--transaction
- * should abort rather, and that will be caught by constraints.c). 
+ * should abort rather, and that will be caught by constraints.c).
  *
- * Note that we can't call upd_new_record() from delayed_key_adds() because 
+ * Note that we can't call upd_new_record() from delayed_key_adds() because
  * there we lack the old_dta record. So to update happens partially in this
  * function (delete old data and idxs, adding new data0), and the rest in
  * upd_new_record_add2indices() which will finally add to the indices.
+ *
+ * For logical_livesc, verify_retry == 0 and function returns ERR_VERIFY if
+ * the oldgenid is not found in the new table or the newgenid already exists
+ * in the new table.
  */
 
 int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
@@ -2821,6 +2829,9 @@ err:
  * The old data has to be passed in because we may not be rebuilding the
  * data file - in which case it's annoying and painful to have to get the
  * record from the other schema.
+ *
+ * For logical_livesc, verify_retry == 0 and function returns ERR_VERIFY if
+ * the genid is not found in the new table.
  */
 int del_new_record(struct ireq *iq, void *trans, unsigned long long genid,
                    unsigned long long del_keys, const void *old_dta,
