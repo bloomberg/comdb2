@@ -1,0 +1,259 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -x
+
+#kill any background jobs remaining upon exiting
+trap 'kill $(jobs -pr)' SIGINT SIGTERM EXIT
+
+# Number of records I will add.
+nrecs=100
+
+# Max number of schema changes
+max_nusc=100
+function failexit
+{
+    echo "Failed $1"
+    exit -1
+}
+
+assertcnt ()
+{
+    local tbl=$1
+    local target=$2
+    local cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select count(*) from $tbl")
+    if [ $? -ne 0 ] ; then
+        echo "assertcnt: select error"
+    fi
+
+    #echo "count is now $cnt"
+    if [[ $cnt != $target ]] ; then
+        failexit "tbl $tbl count is now $cnt but should be $target"
+    fi
+}
+
+
+
+function do_verify
+{
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.verify('$tbl')" &> verify.out
+
+    if cat verify.out | grep -i success > /dev/null ; then
+        failexit "failed verify"
+    fi
+}
+
+
+function do_rebuild_track_pid
+{
+    typeset loc_DBNAME=$1
+    typeset loc_tbl=$2
+    typeset track_pid=$3
+    typeset scnt=0
+    while `kill -0 $track_pid 2>/dev/null` && [[ $scnt -lt $max_nusc ]]; do
+
+        echo "Running rebuild iteration $scnt"
+        cdb2sql ${CDB2_OPTIONS} $loc_DBNAME default "rebuild $loc_tbl"
+
+        if [[ $? != 0 ]]; then
+            kill -9 $track_pid
+            failexit "Error schema-changing on iteration $scnt"
+        fi
+        echo "Done with rebuild iteration $scnt"
+
+        echo "Running verify"
+        do_verify $loc_DBNAME $loc_tbl
+        echo "Done with verify"
+        let scnt=scnt+1
+    done
+
+    echo "Success!  Performed $scnt schema-changes."
+
+    return 0
+}
+
+
+function insert_records
+{
+    j=0
+    echo "Inserting $nrecs records."
+
+    while [[ $j -lt $nrecs ]]; do 
+        #insert next, if error continue to try again
+        cdb2sql ${CDB2_OPTIONS} $DBNAME default "insert into $tbl(a,b,c,d,e,f) values ($j,'test1',x'1234',$((j*2)),$j,$j)"  >> insert.out 2>&1
+        if [ $? -ne 0 ] ; then
+            continue
+        fi
+        let j=j+1
+        assertcnt $j
+        if [ $1 -gt 0 ] ; then
+            sleep 0.1
+        fi
+    done
+    echo "Done inserting $nrecs records."
+}
+
+
+
+
+function run_test
+{
+    typeset ipid=''
+
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default "truncate $tbl"
+
+    insert_records 0 &
+    typeset ipid=$!
+
+    do_rebuild_track_pid $DBNAME $tbl $ipid
+    wait
+
+    assertcnt $nrecs
+    do_verify
+}
+
+
+insert_into_t1() {
+    while [ $? -eq 0 ] ; do
+        cdb2sql ${CDB2_OPTIONS} $DBNAME default "insert into t1 values($RANDOM)"
+    done &> ins.out
+}
+
+insert_into_t2() {
+    local cnt=0
+    while [ $cnt -lt $nrecs ] ; do
+        echo "insert into t2 values($RANDOM)"
+        let cnt=cnt+1
+    done | cdb2sql ${CDB2_OPTIONS} $DBNAME default - &> ins2.out
+    assertcnt t2 $nrecs
+}
+
+function getmaster {
+    cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+}
+
+
+test_update_delay_writes() {
+    echo test_update_delay_writes make sure that drop table is stuck on writes waiting for table lock
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default "create table t3 (i int primary key)"
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default "insert into t3 select * from generate_series(1,100)"
+    assertcnt t3 100
+
+    master=`getmaster`
+    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $master "exec procedure sys.cmd.send('bdb setattr DELAY_WRITES_IN_RECORD_C 40')"
+
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default "update t3 set i=i+1 where 1" &> upd1.out &
+    upd1=$!
+    echo update will get tablelock and so will lock out 'drop tbl' until update is completed
+    sleep 1
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default "drop table t3"
+
+    wait
+    echo '(rows updated=100)' > upd1.exp
+    if ! diff upd1.out upd1.exp ; then
+        failexit "upd1.out upd1.exp differ"
+    fi
+    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $master "exec procedure sys.cmd.send('bdb setattr DELAY_WRITES_IN_RECORD_C 0')"
+}
+
+test_update_delay_done() {
+    echo test_update_delay_done make sure that process_this_session after dropping returns error correctly
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default "create table t3 (i int primary key)"
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default "insert into t3 select * from generate_series(1,100)"
+    assertcnt t3 100
+
+    master=`getmaster`
+    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $master "exec procedure sys.cmd.send('bdb setattr DELAY_AFTER_SAVEOP_DONE 10000')"
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default "update t3 set i=i+1 where 1" &> upd2.out &
+    upd2=$!
+    sleep 1
+    echo the saveop OSQL_DONE will be sleeping 10s for the update meanwhile we will perform the drop tbl
+    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $master "exec procedure sys.cmd.send('bdb setattr DELAY_AFTER_SAVEOP_DONE 0')"
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default "drop table t3"
+    wait
+
+    echo '[update t3 set i=i+1 where 1] failed with rc 304 no such table "t3"' > upd2.exp
+    if ! diff upd2.out upd2.exp ; then
+        failexit "upd2.out upd2.exp differ"
+    fi
+}
+
+test_update_delay_usedb() {
+    echo test_update_delay_usedb make sure that all the inserts subsequent to usedb are processed correctly and that process this session returns error correctly
+
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default "create table t3 (i int primary key)"
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default "insert into t3 select * from generate_series(1,100)"
+    assertcnt t3 100
+
+    master=`getmaster`
+    echo delay after usedb on master
+    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $master "exec procedure sys.cmd.send('bdb setattr DELAY_AFTER_SAVEOP_USEDB 3000')"
+
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default "update t3 set i=i+1 where 1" &> upd3.out &
+    upd3=$!
+    sleep 1
+
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default "drop table t3"
+    sleep 1
+    wait
+
+    echo '[update t3 set i=i+1 where 1] failed with rc -3 no such table: t3' > upd3.exp
+    if ! diff upd3.out upd3.exp ; then if ! diff upd3.out upd2.exp ; then
+        failexit "upd3.out and [upd3.exp , upd2.exp] differ"
+    fi; fi
+    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $master "exec procedure sys.cmd.send('bdb setattr DELAY_AFTER_SAVEOP_USEDB 0')"
+}
+
+
+
+
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "create table t1 (i int)"
+
+insert_into_t1 &
+ins1=$!
+
+max_iter=10
+t=0
+while [ $t -lt ${max_iter} ] ; do
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default "create table t2 (i int)"
+    insert_into_t2
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default "drop table t2"
+    let t=t+1
+done
+
+if `kill -0 $ins1` ; then
+    echo insert still running -- all is well
+    kill $ins1
+else
+    failexit "insert into t1 has failed"
+fi
+
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "update t3 set i=i+1 where 1" &> upd0.out
+echo '[update t3 set i=i+1 where 1] failed with rc -3 no such table: t3' > upd0.exp
+if ! diff upd0.out upd0.exp ; then
+    failexit "upd0.out upd0.exp differ"
+fi
+
+master=`getmaster`
+cdb2sql ${CDB2_OPTIONS} $DBNAME --host $master "exec procedure sys.cmd.send('debg 600')"
+cdb2sql ${CDB2_OPTIONS} $DBNAME --host $master "exec procedure sys.cmd.send('ndebg 600')"
+
+t=0
+while [ $t -lt ${max_iter} ] ; do
+    test_update_delay_writes
+    let t=t+1
+done
+
+t=0
+while [ $t -lt ${max_iter} ] ; do
+    test_update_delay_done
+    let t=t+1
+done
+
+t=0
+while [ $t -lt ${max_iter} ] ; do
+    test_update_delay_usedb
+    let t=t+1
+done
+
+echo "Success"
