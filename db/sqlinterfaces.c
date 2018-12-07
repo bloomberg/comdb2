@@ -1842,7 +1842,8 @@ static void delete_last_stmt_entry(struct sqlthdstate *thd, void *list)
     stmt_hash_entry_type *entry = listc_rbl(list);
     int rc = hash_del(thd->stmt_caching_table, entry);
     if (rc)
-        logmsg(LOGMSG_ERROR, "delete_last_stmt_entry: hash_del returning rc=%d\n", rc);
+        logmsg(LOGMSG_ERROR,
+               "delete_last_stmt_entry: hash_del returning rc=%d\n", rc);
     assert(rc == 0);
     cleanup_stmt_entry(entry);
 }
@@ -1867,7 +1868,8 @@ static void remove_stmt_entry(struct sqlthdstate *thd,
     listc_rfl(list, entry);
     int rc = hash_del(thd->stmt_caching_table, entry->sql);
     if (rc)
-        logmsg(LOGMSG_ERROR, "remove_stmt_entry: hash_del returning rc=%d\n", rc);
+        logmsg(LOGMSG_ERROR, "remove_stmt_entry: hash_del returning rc=%d\n",
+               rc);
     assert(rc == 0);
 }
 

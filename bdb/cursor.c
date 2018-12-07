@@ -3585,7 +3585,6 @@ int bdb_relink_pglogs(void *bdb_state, unsigned char *fileid, db_pgno_t pgno,
     if (rc)
         logmsg(LOGMSG_USER, "%s:%d rc = %d\n", __func__, __LINE__, rc);
 
-
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
     timeval_diff(&before, &after, &diff);

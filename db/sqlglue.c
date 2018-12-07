@@ -9322,7 +9322,7 @@ int pause_pagelock_cursors(void *arg)
     {
         if (cur->bdbcur) {
             int rc = cur->bdbcur->pause(cur->bdbcur, &bdberr);
-            if(0 == rc)
+            if (0 == rc)
                 abort();
         }
     }

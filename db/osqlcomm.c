@@ -5774,8 +5774,8 @@ static void *osql_heartbeat_thread(void *arg)
             rc =
                 net_send_message(comm->handle_sibling, thedb->master,
                                  NET_HBEAT_SQL, &buf, sizeof(buf), 0, 5 * 1000);
-            if (rc)
-                logmsg(LOGMSG_INFO, "%s:%d rc=%d\n", __FILE__, __LINE__, rc);
+        if (rc)
+            logmsg(LOGMSG_INFO, "%s:%d rc=%d\n", __FILE__, __LINE__, rc);
 
         poll(NULL, 0, gbl_osql_heartbeat_send * 1000);
     }
@@ -6420,7 +6420,8 @@ static void net_serial_req(void *hndl, void *uptr, char *fromhost, int usertype,
  * here *****/
 
 static int conv_rc_sql2blkop(struct ireq *iq, int step, int ixnum, int rc,
-                             struct block_err *err, const char *tablename, int idxerr)
+                             struct block_err *err, const char *tablename,
+                             int idxerr)
 {
     int ret = 0;
     /* TODO: maybe we want a more explicit error code ! */
@@ -6680,7 +6681,9 @@ const char *get_tablename_from_rpl(const uint8_t *rpl)
  */
 int osql_get_replicant_numops(const char *rpl, int has_uuid)
 {
-    const uint8_t *p_buf = (const uint8_t *)rpl + (has_uuid ? sizeof(osql_uuid_rpl_t) : sizeof(osql_rpl_t));
+    const uint8_t *p_buf =
+        (const uint8_t *)rpl +
+        (has_uuid ? sizeof(osql_uuid_rpl_t) : sizeof(osql_rpl_t));
     osql_done_t dt = {0};
     const uint8_t *p_buf_end = p_buf + sizeof(osql_done_t);
     osqlcomm_done_type_get(&dt, p_buf, p_buf_end);
@@ -6831,7 +6834,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         p_buf_end = (uint8_t *)p_buf + sizeof(osql_usedb_t);
         const char *tablename;
 
-        tablename = (const char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
+        tablename =
+            (const char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
 
         // get table lock
         rc = bdb_lock_tablename_read(thedb->bdb_env, tablename, trans);
@@ -8070,7 +8074,8 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         p_buf_end = p_buf + sizeof(osql_usedb_t);
         const char *tablename;
 
-        tablename = (const char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
+        tablename =
+            (const char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
 
         sbuf2printf(logsb, "[%llx us] OSQL_USEDB \"%s\"\n", id, us, tablename);
     } break;
@@ -9047,7 +9052,8 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
         const char *tablename;
         struct dbtable *db;
 
-        tablename = (const char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
+        tablename =
+            (const char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
 
         db = get_dbtable_by_name(tablename);
         if (db == NULL) {

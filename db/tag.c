@@ -7370,8 +7370,7 @@ int extract_decimal_quantum(struct dbtable *db, int ix, char *inbuf, char *poutb
             if (bdb_attr_get(thedb->bdb_attr,
                              BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
                 logmsg(LOGMSG_USER, "Dec extract IN:\n");
-                hexdump(LOGMSG_USER,
-                        &inbuf[s->member[i].offset],
+                hexdump(LOGMSG_USER, &inbuf[s->member[i].offset],
                         s->member[i].len);
                 logmsg(LOGMSG_USER, "\n");
             }
@@ -7387,8 +7386,7 @@ int extract_decimal_quantum(struct dbtable *db, int ix, char *inbuf, char *poutb
             if (bdb_attr_get(thedb->bdb_attr,
                              BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
                 logmsg(LOGMSG_USER, "Dec extract OUT:\n");
-                hexdump(LOGMSG_USER,
-                        &inbuf[s->member[i].offset],
+                hexdump(LOGMSG_USER, &inbuf[s->member[i].offset],
                         s->member[i].len);
                 logmsg(LOGMSG_USER, "\n");
             }

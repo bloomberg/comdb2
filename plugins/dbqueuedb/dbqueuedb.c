@@ -215,8 +215,8 @@ static int add_consumer_int(struct dbtable *db, int consumern,
     }
 
     if (!checkonly && db && (db->dbtype != DBTYPE_QUEUEDB)) {
-        logmsg(LOGMSG_ERROR, "%s: %s is not a queue\n",
-               __func__, db->tablename);
+        logmsg(LOGMSG_ERROR, "%s: %s is not a queue\n", __func__,
+               db->tablename);
         rc = -1;
         goto done;
     }

@@ -170,10 +170,10 @@ int bdb_compr2algo(const char *a)
 
 static inline char *snodhf(char *buf, size_t buflen, const struct odh *odh)
 {
-    snprintf(
-        buf, buflen, "length:%u updid:%u csc2vers:%u flags:%x (compr %s)",
-        (unsigned)odh->length, (unsigned)odh->updateid, (unsigned)odh->csc2vers,
-        (unsigned)odh->flags, bdb_algo2compr(odh->flags & ODH_FLAG_COMPR_MASK));
+    snprintf(buf, buflen, "length:%u updid:%u csc2vers:%u flags:%x (compr %s)",
+             (unsigned)odh->length, (unsigned)odh->updateid,
+             (unsigned)odh->csc2vers, (unsigned)odh->flags,
+             bdb_algo2compr(odh->flags & ODH_FLAG_COMPR_MASK));
     return buf;
 }
 
