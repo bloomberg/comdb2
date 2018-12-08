@@ -177,7 +177,7 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
             sqlite3DbFree(db, cols);
             return NULL;
         }
-        if (p->pLimit->pRight) {
+        if (/* p->pLimit && */ p->pLimit->pRight) {
             offset = sqlite3ExprDescribe(v, p->pLimit->pRight);
             if (!offset) {
                 sqlite3DbFree(db, limit);
@@ -366,7 +366,7 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
     psub = node->nodes;
 
     pLimit = p->pLimit;
-    pOffset = p->pLimit->pRight;
+    pOffset = p->pLimit ? p->pLimit->pRight : 0;
     /* syntax errors */
     crt = p->pPrior;
     while (crt) {
@@ -388,14 +388,18 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
             crt = crt->pPrior;
         }
         crt->pLimit = pLimit;
-        crt->pLimit->pRight = pOffset;
-        p->pLimit->pRight = NULL;
+        if (crt->pLimit) crt->pLimit->pRight = pOffset;
+        if (p->pLimit) p->pLimit->pRight = NULL;
     }
 
     /* generate queries */
     while (crt) {
         crt->pOrderBy = p->pOrderBy;
-        *psub = gen_oneselect(v, crt, (pOffset != p->pLimit->pRight) ? pOffset : NULL,
+        Expr *pExtraRows = NULL;
+        if (pOffset != (p->pLimit ? p->pLimit->pRight : NULL)) {
+            pExtraRows = pOffset;
+        }
+        *psub = gen_oneselect(v, crt, pExtraRows,
                               &node->order_size, &node->order_dir);
         crt->pLimit = NULL;
         if (crt != p)
@@ -422,7 +426,7 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
     }
 done:
     p->pLimit = pLimit;
-    p->pLimit->pRight = pOffset;
+    if (p->pLimit) p->pLimit->pRight = pOffset;
 
     return node;
 }
