@@ -114,7 +114,7 @@ static void *pushlogs_thread(void *voidarg)
 
         /* put some junk into meta table */
         init_fake_ireq(thedb, &iq);
-        db = thedb->dbs[0];
+        db = &thedb->static_table;
         iq.usedb = db;
         rc = trans_start(&iq, NULL, &trans);
         if (rc != 0) {

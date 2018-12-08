@@ -1063,7 +1063,7 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
     p_buf_op_hdr_end = p_buf;
 
     /* provide db[0], it doesn't matter anyway */
-    db = thedb->dbs[0];
+    db = &thedb->static_table;
     usekl.dbnum = db->dbnum;
     usekl.taglen = strlen(db->tablename) + 1 /*NUL byte*/;
 

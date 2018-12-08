@@ -860,6 +860,42 @@ function assert_count
     fi
 }
 
+# Make sure we work with no sqlite_stat1 & sqlite_stat4
+function del_tables
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="delete_every_table"
+
+    del_tables_lsn_1=$(get_current_lsn)
+    del_tables_col_1=$(get_comdb2_columns)
+
+    write_prompt $func "Dropping sqlite_stat1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table sqlite_stat1"
+    del_tables_lsn_2=$(get_current_lsn)
+    del_tables_col_2=$(get_comdb2_columns)
+
+    write_prompt $func "Dropping sqlite_stat4"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table sqlite_stat4"
+    del_tables_lsn_3=$(get_current_lsn)
+    del_tables_col_3=$(get_comdb2_columns)
+
+    write_prompt $func "Adding t1"
+    create_table t1
+    insert_record t1
+
+    write_prompt $func "Truncating to dropped tables"
+    truncate_log "$del_tables_lsn_3"
+    assert_comdb2_columns "$del_tables_col_3"
+
+    write_prompt $func "Truncating to dropped sqlite_stat1"
+    truncate_log "$del_tables_lsn_2"
+    assert_comdb2_columns "$del_tables_col_2"
+
+    write_prompt $func "Truncating to beginning"
+    truncate_log "$del_tables_lsn_1"
+    assert_comdb2_columns "$del_tables_col_1"
+}
+
 function add_tables
 {
     [[ $debug == "1" ]] && set -x
@@ -1671,6 +1707,7 @@ function tear_down
 
 function run_tests
 {
+    del_tables
     add_tables
     drop_tables
     rename_tables

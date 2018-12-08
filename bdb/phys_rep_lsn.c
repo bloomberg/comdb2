@@ -6,7 +6,7 @@
 #include "bdb_int.h"
 #include <dbinc/db_swap.h>
 #include "phys_rep_lsn.h"
-#include "ext/comdb2/tranlog.h"
+#include "tranlog.h"
 #include <cdb2api.h>
 #include <parse_lsn.h>
 #include "locks.h"

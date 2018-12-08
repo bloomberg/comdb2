@@ -3381,7 +3381,7 @@ void testrep(int niter, int recsz)
     stuff = malloc(recsz);
 
     init_fake_ireq(thedb, &iq);
-    iq.usedb = thedb->dbs[0];
+    iq.usedb = &thedb->static_table;
 
     n = 0;
     now = last = comdb2_time_epochms();

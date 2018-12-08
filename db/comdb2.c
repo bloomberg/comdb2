@@ -751,6 +751,8 @@ int init_gbl_tunables();
 int free_gbl_tunables();
 int register_db_tunables(struct dbenv *tbl);
 
+#define COMDB2_STATIC_TABLE "_comdb2_static_table"
+
 int destroy_plugins(void);
 void register_plugin_tunables(void);
 int install_static_plugins(void);
@@ -819,6 +821,8 @@ struct dbtable *get_dbtable_by_name(const char *p_name)
     Pthread_rwlock_rdlock(&thedb_lock);
     p_db = hash_find_readonly(thedb->db_hash, &p_name);
     Pthread_rwlock_unlock(&thedb_lock);
+    if (!p_db && !strcmp(p_name, COMDB2_STATIC_TABLE))
+        p_db = &thedb->static_table;
 
     return p_db;
 }
@@ -1982,8 +1986,6 @@ static int llmeta_load_queues(struct dbenv *dbenv)
 
     return 0;
 }
-
-#define COMDB2_STATIC_TABLE "_comdb2_static_table"
 
 /* gets the table names and dbnums from the low level meta table and sets up the
  * dbenv accordingly.  returns 0 on success and anything else otherwise */

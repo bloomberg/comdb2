@@ -83,6 +83,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/util
   ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/sqlite/src
+  ${PROJECT_SOURCE_DIR}/sqlite/ext/comdb2
   ${PROJECT_SOURCE_DIR}/berkdb
   ${PROJECT_SOURCE_DIR}/berkdb/build
   ${PROJECT_BINARY_DIR}/berkdb

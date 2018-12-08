@@ -4409,7 +4409,7 @@ const char *sqlite3BtreeGetJournalname(Btree *pBt)
 
 void get_current_lsn(struct sqlclntstate *clnt)
 {
-    struct dbtable *db = thedb->dbs[0]; /* this is not used but required */
+    struct dbtable *db = &thedb->static_table; /* this is not used but required */
     if (db) {
         bdb_get_current_lsn(db->handle, &(clnt->file), &(clnt->offset));
     } else {
@@ -4444,7 +4444,7 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
     }
 
     init_fake_ireq(thedb, &iq);
-    iq.usedb = thedb->dbs[0]; /* this is not used but required */
+    iq.usedb = &thedb->static_table; /* this is not used but required */
 
     switch (clnt->dbtran.mode) {
     default:

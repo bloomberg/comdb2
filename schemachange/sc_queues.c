@@ -353,8 +353,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
     /* TODO: other checks: procedure with this name must not exist either */
 
     init_fake_ireq(thedb, &iq);
-    /* this really needs to go away... */
-    iq.usedb = thedb->dbs[0];
+    iq.usedb = &thedb->static_table;
 
     rc = trans_start(&iq, NULL, (void *)&tran);
     if (rc) {

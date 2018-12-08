@@ -117,7 +117,7 @@ static int mark_sc_in_llmeta_tran(struct schema_change_type *s, void *trans)
             if (s->resume) {
                 sc_errf(s, "failed to resume schema change, downgrading to "
                            "give another master a shot\n");
-                bdb_transfermaster(thedb->dbs[0]->handle);
+                bdb_transfermaster(thedb->static_table.handle);
             }
         }
     }

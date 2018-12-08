@@ -50,7 +50,7 @@ int do_alter_stripes_int(struct schema_change_type *s)
     wrlock_schema_lk();
 
     init_fake_ireq(thedb, &iq);
-    iq.usedb = thedb->dbs[0];
+    iq.usedb = &thedb->static_table;
     iq.tranddl = 1;
 
     rc = trans_start_logical_sc(&iq, &sc_logical_tran);
