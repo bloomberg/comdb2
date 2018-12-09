@@ -393,7 +393,7 @@ int bdb_release_ltran_locks(bdb_state_type *bdb_state, struct tran_tag *ltran,
     /* Shouldn't fail */
     assert(0 == rc);
     if (rc)
-        logmsg(LOGMSG_USER, "%s:%d rc = %d\n", __func__, __LINE__, rc);
+        logmsg(LOGMSG_WARN, "%s:%d rc = %d\n", __func__, __LINE__, rc);
 
     /* Make sure this is NULL */
     assert(NULL == ltran->tid);
@@ -404,7 +404,7 @@ int bdb_release_ltran_locks(bdb_state_type *bdb_state, struct tran_tag *ltran,
     /* Shouldn't fail */
     assert(0 == rc);
     if (rc)
-        logmsg(LOGMSG_USER, "%s:%d rc = %d\n", __func__, __LINE__, rc);
+        logmsg(LOGMSG_WARN, "%s:%d rc = %d\n", __func__, __LINE__, rc);
 
     /* Invalid lockerid */
     ltran->logical_lid = 0;

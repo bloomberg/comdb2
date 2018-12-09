@@ -1965,6 +1965,7 @@ err:
     if (recnum) {
         switch (direction) {
         case FETCH_INT_CUR_BY_RECNUM:
+            /*TODO: parameters swapped here? */
             memcpy(recnum, &search_recnum, sizeof(int));
             break;
 
@@ -2290,7 +2291,7 @@ static int bdb_fetch_int(int return_dta, int direction, int lookahead,
         arc = bdb_tran_abort_int(bdb_state, tran, &bdberr2, NULL, 0, NULL, 0,
                                  NULL);
         if (arc)
-            logmsg(LOGMSG_USER, "%s:%d arc=%d\n", __FILE__, __LINE__, arc);
+            logmsg(LOGMSG_WARN, "%s:%d arc=%d\n", __FILE__, __LINE__, arc);
     }
     return llrc;
 }

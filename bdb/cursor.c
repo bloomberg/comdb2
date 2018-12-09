@@ -3583,7 +3583,7 @@ int bdb_relink_pglogs(void *bdb_state, unsigned char *fileid, db_pgno_t pgno,
     rc = bdb_update_relinks_fileid_queues(bdb_state, fileid, pgno, prev_pgno,
                                           next_pgno, lsn);
     if (rc)
-        logmsg(LOGMSG_USER, "%s:%d rc = %d\n", __func__, __LINE__, rc);
+        logmsg(LOGMSG_WARN, "%s:%d rc = %d\n", __func__, __LINE__, rc);
 
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);

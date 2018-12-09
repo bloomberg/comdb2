@@ -3087,7 +3087,7 @@ int bdb_wait_for_seqnum_from_room(bdb_state_type *bdb_state,
             rc = bdb_wait_for_seqnum_from_node(bdb_state, seqnum, nodelist[i]);
         }
         if (rc)
-            logmsg(LOGMSG_USER, "%s:%d rc = %d\n", __FILE__, __LINE__, rc);
+            logmsg(LOGMSG_WARN, "%s:%d rc = %d\n", __FILE__, __LINE__, rc);
     }
 
     return 0;
@@ -3575,7 +3575,7 @@ void send_filenum_to_all(bdb_state_type *bdb_state, int filenum, int nodelay)
                       USER_TYPE_BERKDB_FILENUM, &filenum_net, sizeof(int),
                       nodelay);
         if (rc)
-            logmsg(LOGMSG_USER, "%s:%d rc = %d\n", __FILE__, __LINE__, rc);
+            logmsg(LOGMSG_WARN, "%s:%d rc = %d\n", __FILE__, __LINE__, rc);
     }
 }
 
