@@ -4196,6 +4196,15 @@ static int db_consumer(Lua L)
     return 1;
 }
 
+static int db_get_event_tid(Lua L)
+{
+    luaL_checkudata(L, 1, dbtypes.db);
+    if (lua_getmetatable(L, -1) == 0)
+        return 0;
+    lua_getfield(L, -1, "__metatable");
+    return luabb_type(L, -1) == DBTYPES_INTEGER ? 1 : 0;
+}
+
 static int db_bootstrap(Lua L)
 {
     luaL_checkudata(L, 1, dbtypes.db);
@@ -4271,6 +4280,7 @@ static const luaL_Reg db_funcs[] = {
     {"error", db_error},
     /************ CONSUMER **************/
     {"consumer", db_consumer},
+    {"get_event_tid", db_get_event_tid},
     /************** DEBUG ***************/
     {"debug", db_debug},
     {"db_debug", db_db_debug},
@@ -5738,6 +5748,11 @@ static int push_trigger_args_int(Lua L, dbconsumer_t *q, struct qfound *f, char 
         *err = strdup("consume_field failed");
         return -1;
     }
+
+    lua_newtable(L);
+    luabb_pushinteger(L, f->item->trans.tid);
+    lua_setfield(L, -2, "__metatable");
+    lua_setmetatable(L, -2);
 
     return 1; // trigger sp receives only one argument
 }
