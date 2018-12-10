@@ -404,6 +404,7 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
 
     /* generate queries */
     while (crt) {
+        assert(crt==p || !crt->pOrderBy); /* can "restore" to NULL? */
         crt->pOrderBy = p->pOrderBy;
         *psub = gen_oneselect(v, crt, NULL,
                               &node->order_size, &node->order_dir);
@@ -431,6 +432,10 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
         psub++;
     }
 done:
+    while (crt) {
+        crt->pLimit = NULL;
+        crt = crt->pNext;
+    }
 #ifdef SQLITE_DEBUG
     crt = p;
     while( crt->pPrior ){
