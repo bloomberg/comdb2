@@ -439,6 +439,7 @@ done:
                "%s: Select %p has Limit %p, orig %p, no offset %p\n",
                __func__, crt, crt->pLimit, pLimit, pLimitNoOffset);
       }
+      crt = crt->pPrior;
     }
 #endif
     if (pLimitNoOffset != NULL && pLimitNoOffset != pLimit) {
