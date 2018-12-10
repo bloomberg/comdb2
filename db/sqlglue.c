@@ -10948,7 +10948,7 @@ static void sqlite3BtreeCursorHint_Range(BtCursor *pCur, const Expr *pExpr)
         if (gbl_fdb_track_hints)
             logmsg(LOGMSG_USER, "Hint \"%s\"\n", expr);
 
-        sqlite3DbFree(pCur->sqlite, expr);
+        sqlite3_free(expr);
     }
 }
 

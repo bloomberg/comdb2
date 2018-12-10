@@ -5717,7 +5717,7 @@ static char* sqlite3ExprDescribe_inner(
 
       char *ret = sqlite3_mprintf("NOT %s", expr);
 
-      sqlite3DbFree(v->db, expr);
+      sqlite3_free(expr);
 
       return ret;
     }
@@ -5748,7 +5748,7 @@ static char* sqlite3ExprDescribe_inner(
 
       char *ret = sqlite3_mprintf("cast(%s as %s)", left, pExpr->u.zToken);
         
-      sqlite3DbFree(v->db, left);
+      sqlite3_free(left);
 
       return ret;
     }
@@ -5793,14 +5793,14 @@ static char* sqlite3ExprDescribe_inner(
       }
       char *right = sqlite3ExprDescribe_inner(v, pExpr->pRight, atRuntime);
       if( !right ){
-        sqlite3DbFree(v->db, left);
+        sqlite3_free(left);
         return NULL;
       }
 
       char *ret = sqlite3_mprintf("( %s %s %s )",
                         left, binary_op(pExpr->op), right);
-      sqlite3DbFree(v->db, left);
-      sqlite3DbFree(v->db, right);
+      sqlite3_free(left);
+      sqlite3_free(right);
 
       return ret;
     }
@@ -5820,19 +5820,19 @@ static char* sqlite3ExprDescribe_inner(
         }
         ret = sqlite3_mprintf(" %s IN ", left);
 
-        sqlite3DbFree(v->db, left);
+        sqlite3_free(left);
 
         for(i =0; i< pExpr->x.pList->nExpr; i++){
           left = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[i].pExpr,
                   atRuntime);
           if( !left ){
-            sqlite3DbFree(v->db, ret);
+            sqlite3_free(ret);
             return NULL;
           }
           ret2 = sqlite3_mprintf("%s%s%s%s", ret, (i)?", ":"( ", left,
                   (i==pExpr->x.pList->nExpr-1)?" )":"");
-          sqlite3DbFree(v->db, ret);
-          sqlite3DbFree(v->db, left);
+          sqlite3_free(ret);
+          sqlite3_free(left);
           ret = ret2;
         }
       }
@@ -5846,7 +5846,7 @@ static char* sqlite3ExprDescribe_inner(
       }
       char *ret = sqlite3_mprintf("( %s IS NULL )", left);
 
-      sqlite3DbFree(v->db, left);
+      sqlite3_free(left);
 
       return ret;
     }
@@ -5857,7 +5857,7 @@ static char* sqlite3ExprDescribe_inner(
       }
       char *ret = sqlite3_mprintf("( %s NOT NULL )", left);
 
-      sqlite3DbFree(v->db, left);
+      sqlite3_free(left);
 
       return ret;
     }
@@ -5873,14 +5873,14 @@ static char* sqlite3ExprDescribe_inner(
       }
       char *right = sqlite3ExprDescribe_inner(v, pExpr->pRight, atRuntime);
       if( !right ){
-        sqlite3DbFree(v->db, left);
+        sqlite3_free(left);
         return NULL;
       }
       char *ret = sqlite3_mprintf("( %s %s %s )", left,
        binary_op(pExpr->op), right);
 
-      sqlite3DbFree(v->db, left);
-      sqlite3DbFree(v->db, right);
+      sqlite3_free(left);
+      sqlite3_free(right);
 
       return ret;
     }
@@ -5895,15 +5895,15 @@ static char* sqlite3ExprDescribe_inner(
       }
       char *right = sqlite3ExprDescribe_inner(v, pExpr->pRight, atRuntime);
       if( !right ){
-        sqlite3DbFree(v->db, left);
+        sqlite3_free(left);
         return NULL;
       }
 
       char *ret = sqlite3_mprintf("( %s %s %s )", left, binary_op(pExpr->op),
        right);
 
-      sqlite3DbFree(v->db, left);
-      sqlite3DbFree(v->db, right);
+      sqlite3_free(left);
+      sqlite3_free(right);
 
       return ret;
     }
@@ -5921,14 +5921,14 @@ static char* sqlite3ExprDescribe_inner(
       }
       char *right = sqlite3ExprDescribe_inner(v, pExpr->pRight, atRuntime);
       if( !right ){
-        sqlite3DbFree(v->db, left);
+        sqlite3_free(left);
         return NULL;
       }
       char *ret = sqlite3_mprintf("( %s %s %s )", left, binary_op(pExpr->op),
        right);
 
-      sqlite3DbFree(v->db, left);
-      sqlite3DbFree(v->db, right);
+      sqlite3_free(left);
+      sqlite3_free(right);
 
       return ret;
     }
@@ -5941,7 +5941,7 @@ static char* sqlite3ExprDescribe_inner(
         return NULL;
       char *ret = sqlite3_mprintf("( ~ %s )", left);
 
-      sqlite3DbFree(v->db, left);
+      sqlite3_free(left);
 
       return ret;
     }
@@ -6041,7 +6041,7 @@ static char* sqlite3ExprDescribe_inner(
         if (!tmp)
             return NULL;
         ret = sqlite3_mprintf("case %s ", tmp);
-        sqlite3DbFree(v->db, tmp);
+        sqlite3_free(tmp);
       } else {
         ret = sqlite3_mprintf("case ");
       }
@@ -6051,27 +6051,27 @@ static char* sqlite3ExprDescribe_inner(
       do { 
         char *c = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[i++].pExpr, atRuntime);
         if (!c) {
-          sqlite3DbFree(v->db, ret);
+          sqlite3_free(ret);
           return NULL;
         }
         if (i == nelem) {
             assert(i>1);
             tmp = sqlite3_mprintf("%s else %s", ret, c);
-            sqlite3DbFree(v->db, c);
-            sqlite3DbFree(v->db, ret);
+            sqlite3_free(c);
+            sqlite3_free(ret);
             ret = tmp;
             break;
         } else {
           char *d = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[i++].pExpr, atRuntime);
           if (!d) {
-            sqlite3DbFree(v->db, c);
-            sqlite3DbFree(v->db, ret);
+            sqlite3_free(c);
+            sqlite3_free(ret);
             return NULL;
           }
           tmp = sqlite3_mprintf("%s when %s then %s", ret, c, d);
-          sqlite3DbFree(v->db, ret);
-          sqlite3DbFree(v->db, c);
-          sqlite3DbFree(v->db, d);
+          sqlite3_free(ret);
+          sqlite3_free(c);
+          sqlite3_free(d);
           if(!tmp)
             return NULL;
 
@@ -6159,7 +6159,7 @@ default_prec:
         if( !arg )
           return NULL;
         ret = sqlite3_mprintf(" %s ( %s", pExpr->u.zToken, arg);
-        sqlite3DbFree(v->db, arg);
+        sqlite3_free(arg);
         arg = NULL;
         for( i = 1; i < pExpr->x.pList->nExpr; i++ ) {
           arg = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[i].pExpr,
@@ -6167,14 +6167,14 @@ default_prec:
           if( !arg )
             return NULL;
           ret2 = sqlite3_mprintf("%s, %s", ret, arg);
-          sqlite3DbFree(v->db, arg);
-          sqlite3DbFree(v->db, ret);
+          sqlite3_free(arg);
+          sqlite3_free(ret);
           ret = ret2;
           arg = NULL;
           ret2 = NULL;
         }
         ret2 = sqlite3_mprintf("%s ) ", ret);
-        sqlite3DbFree(v->db, ret);
+        sqlite3_free(ret);
         ret = ret2;
         return ret;
       }
@@ -6195,7 +6195,7 @@ default_prec:
        if( !left ) return NULL;
        char *ret = sqlite3_mprintf("( - ( %s ) )", left);
 
-       sqlite3DbFree(v->db, left);
+       sqlite3_free(left);
 
        return ret;
     }
@@ -6204,7 +6204,7 @@ default_prec:
        if( !left ) return NULL;
        char *ret = sqlite3_mprintf("( + ( %s ) )", left);
 
-       sqlite3DbFree(v->db, left);
+       sqlite3_free(left);
 
        return ret;
     }
