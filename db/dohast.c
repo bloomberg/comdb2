@@ -348,6 +348,7 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
     dohsql_node_t *node;
     dohsql_node_t **psub;
     Select *crt;
+    Expr *pLimitNoOffset = NULL;
     Expr *pLimit = NULL;
     Expr *pOffset = NULL;
 
@@ -367,6 +368,7 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
 
     pLimit = p->pLimit;
     pOffset = p->pLimit ? p->pLimit->pRight : 0;
+
     /* syntax errors */
     crt = p->pPrior;
     while (crt) {
@@ -381,25 +383,29 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
 
     crt = p;
     if (crt->pPrior) {
+        if (pLimit->pRight) {
+            Expr *pSavedRight = pLimit->pRight;
+            pLimit->pRight = 0;
+            pLimitNoOffset = sqlite3ExprDup(v->db, pLimit, 0);
+            pLimit->pRight = pSavedRight;
+        }else{
+            pLimitNoOffset = pLimit;
+        }
 
         /* go from left to right */
         while (crt->pPrior) {
-            crt->pLimit = pLimit;
+            assert(crt==p || !crt->pLimit); /* can "restore" to NULL? */
+            crt->pLimit = pLimitNoOffset;
             crt = crt->pPrior;
         }
         crt->pLimit = pLimit;
-        if (crt->pLimit) crt->pLimit->pRight = pOffset;
-        if (p->pLimit) p->pLimit->pRight = NULL;
+        if (pLimit) pLimit->pRight = NULL;
     }
 
     /* generate queries */
     while (crt) {
         crt->pOrderBy = p->pOrderBy;
-        Expr *pExtraRows = NULL;
-        if (pOffset != (p->pLimit ? p->pLimit->pRight : NULL)) {
-            pExtraRows = pOffset;
-        }
-        *psub = gen_oneselect(v, crt, pExtraRows,
+        *psub = gen_oneselect(v, crt, NULL,
                               &node->order_size, &node->order_dir);
         crt->pLimit = NULL;
         if (crt != p)
@@ -425,6 +431,19 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
         psub++;
     }
 done:
+#ifdef SQLITE_DEBUG
+    crt = p;
+    while( crt->pPrior ){
+      if( crt->pLimit ){
+        logmsg(LOGMSG_DEBUG,
+               "%s: Select %p has Limit %p, orig %p, no offset %p\n",
+               __func__, crt, crt->pLimit, pLimit, pLimitNoOffset);
+      }
+    }
+#endif
+    if (pLimitNoOffset != NULL && pLimitNoOffset != pLimit) {
+        sqlite3ExprDelete(v->db, pLimitNoOffset);
+    }
     p->pLimit = pLimit;
     if (p->pLimit) p->pLimit->pRight = pOffset;
 
