@@ -7,7 +7,7 @@ permalink: triggers.html
 
 ## Lua Triggers
 
-The server can be setup to run a stored procedure when records are inserted, updated or deleted from a table. The stored procedure is called once per row that is changed. This is true even if the transaction changes several rows in one commit. The stored procedure receives one argument - a Lua table which contains data describing the changes to the row:
+The server can be set up to run a stored procedure when records are inserted, updated or deleted from a table. The stored procedure is called once per row that is changed. This is true even if the transaction changes several rows in one commit. The stored procedure receives one argument (an event) - it is a Lua table which contains data describing the changes to the row:
 
 ```
 id = unique id associated with this event
@@ -17,6 +17,7 @@ new = nil|{Lua-table with values which were updated/inserted}
 old = nil|{Lua-table with values which were updated/deleted}
 ```
 
+The trigger procedure can obtain the transaction-id for a given event by passing it to `db:get_event_tid()`.
 
 The [CREATE LUA TRIGGER](sql.html#create-lua-trigger) statement creates the named-trigger for insert/update/delete 
 of specified fields from the specified table. Let us see a few examples. Consider a table `t` with columns `i`, `j`,
@@ -94,20 +95,20 @@ schema {
 `audit.lua:`
 
 ```
-local function main(chg)
+local function main(event)
 	local audit = db:table("audit_tbl")
-	if chg.new ~= nil then
-		chg.new = db:table_to_json(chg.new)
+	if event.new ~= nil then
+		event.new = db:table_to_json(event.new)
 	end
-	if chg.old ~= nil then
-		chg.old = db:table_to_json(chg.old)
+	if event.old ~= nil then
+		event.old = db:table_to_json(event.old)
 	end
 	--match audit_tbl schema
-	chg.logtime = db:now()
-	chg.tbl = chg.name
-	chg.name = nil
-	chg.id = nil
-	return audit:insert(chg)
+	event.logtime = db:now()
+	event.tbl = event.name
+	event.name = nil
+	event.id = nil
+	return audit:insert(event)
 end
 ```
 
@@ -192,16 +193,18 @@ cdb2sql testdb default "CREATE LUA CONSUMER watch_t ON (TABLE t FOR INSERT AND U
 Start two different cdb2sql sessions:
 
 ```
-cdb2sql testdb default -             cdb2sql testdb default -
-                                   cdb2sql> exec procedure watch_t()
-cdb2sql> insert into t values(1,1) (id=x'00000200ccd20657', name='t', new='{"i":1,"j":1}', old=NULL, type='add')
-(rows inserted='1')
-cdb2sql> insert into t values(2,2) (id=x'00000200ddd20657', name='t', new='{"i":2,"j":2}', old=NULL, type='add')
-(rows inserted='1')
-cdb2sql> update t set i = i + 1    (id=x'00000200e9d20657', name='t', new='{"i":2,"j":1}', old='{"i":1,"j":1}', type='upd')
-(rows updated='2')                 (id=x'00000400e9d20657', name='t', new='{"i":3,"j":2}', old='{"i":2,"j":2}', type='upd')
-cdb2sql> delete from t where 1     (id=x'00000100f2d20657', name='t', new=NULL, old='{"i":2,"j":1}', type='del')
-(rows deleted='2')                 (id=x'00000200f2d20657', name='t', new=NULL, old='{"i":3,"j":2}', type='del')
+cdb2sql testdb default -                cdb2sql testdb default -
+                                        cdb2sql> exec procedure watch_t()
+cdb2sql> insert into t values(1,1)
+                                        (id=x'00000200ccd20657', name='t', new='{"i":1,"j":1}', old=NULL, type='add')
+cdb2sql> insert into t values(2,2)
+                                        (id=x'00000200ddd20657', name='t', new='{"i":2,"j":2}', old=NULL, type='add')
+cdb2sql> update t set i = i + 1
+                                        (id=x'00000200e9d20657', name='t', new='{"i":2,"j":1}', old='{"i":1,"j":1}', type='upd')
+                                        (id=x'00000400e9d20657', name='t', new='{"i":3,"j":2}', old='{"i":2,"j":2}', type='upd')
+cdb2sql> delete from t where 1
+                                        (id=x'00000100f2d20657', name='t', new=NULL, old='{"i":2,"j":1}', type='del')
+                                        (id=x'00000200f2d20657', name='t', new=NULL, old='{"i":3,"j":2}', type='del')
 ```
 
 The system provides a unique `id` for each event delivered to consumer. If client successfully processed an event, but crashed before requesting next row, the database will send the last event again. `id` may be useful to detect such a condition.
@@ -257,7 +260,16 @@ Specify timeout (in milliseconds) to wait for registration with master. For exam
 x.with_tid = true | false (default)
 ```
 
-When `with_tid` is `true`, Lua table returned by `dbconsumer:get/poll()` include additional property (`tid`). All events belonging to same originating transaction will have the same `tid`. This can be used by application to detect transaction boundaries as tid changes.
+When `with_tid` is `true`, Lua table returned by `dbconsumer:get/poll()` include additional property (`tid`). This is the same `tid` returned by `db:get_event_tid()`
+
+###db:get_event_tid
+
+```
+tid = db:get_event_tid(x)
+    x: Lua table returned by `dbconsumer:get/poll()` or argument passed to a `main` in Lua trigger.
+```
+
+Returns transaction-id (tid) for a given event. All events belonging to same originating transaction will have the same `tid`. This can be used by application to detect transaction boundaries as tid changes. `tid`s are not unique like event's `id` and will eventually recycle.
 
 ### dbconsumer:get
 
@@ -292,7 +304,6 @@ Specify timeout (in milliseconds) to wait for event to be generated in the syste
 Description:
 
 Consumes the last event obtained by `dbconsumer:get/poll()`. Creates a new transaction if no explicit transaction was ongoing.
-
 
 ### dbconsumer:emit
 

@@ -22,6 +22,9 @@ local function main()
         if change.id then
             change.id = "642" -- some constant value
         end    
+        if change.tid ~= db:get_event_tid(change) then
+            return -200, "tid mismatch"
+        end
         if change.tid then
             change.tid = 246  -- some constant number
         end    
