@@ -383,7 +383,7 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
 
     crt = p;
     if (crt->pPrior) {
-        if (pLimit->pRight) {
+        if (pLimit && pLimit->pRight) {
             Expr *pSavedRight = pLimit->pRight;
             pLimit->pRight = 0;
             pLimitNoOffset = sqlite3ExprDup(v->db, pLimit, 0);
