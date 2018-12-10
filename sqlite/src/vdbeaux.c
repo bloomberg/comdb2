@@ -5621,20 +5621,28 @@ Mem* sqlite3CloneResult(
   Mem *pCols;
   int i, rc;
   assert( p );
+  sqlite3_mutex_enter(sqlite3_db_mutex(p->db));
   nCols = p->nResColumn;
   pCols = p->pResultSet;
   *pSize = 0LL;
   if( !pMem ){
     pMem = sqlite3DbMallocZero(p->db, sizeof(Mem) * nCols);
-    if( !pMem ) return 0;
+    if( !pMem ){
+      sqlite3_mutex_leave(sqlite3_db_mutex(p->db));
+      return 0;
+    }
   }else{
     *pSize -= memRowSize(pMem, nCols);
   }
   for(i=0; i<nCols; i++){
     rc = sqlite3VdbeMemCopy(&pMem[i], &pCols[i]);
-    if( rc ) return 0;
+    if( rc ){
+      sqlite3_mutex_leave(sqlite3_db_mutex(p->db));
+      return 0;
+    }
   }
   *pSize += memRowSize(pMem, nCols);
+  sqlite3_mutex_leave(sqlite3_db_mutex(p->db));
   return pMem;
 }
 
@@ -5645,12 +5653,15 @@ int sqlite3CloneResultFree(
 ){
   Vdbe *p = (Vdbe*)pStmt;
   Mem *pMem = *ppMem;
+  assert( p );
+  sqlite3_mutex_enter(sqlite3_db_mutex(p->db));
   if( pMem ){
     *pSize = memRowSize(*ppMem, p->nResColumn);
     releaseMemArray(pMem, p->nResColumn);    
     sqlite3DbFree(p->db, pMem);
     *ppMem = 0;
   }
+  sqlite3_mutex_leave(sqlite3_db_mutex(p->db));
   return 0;
 }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
