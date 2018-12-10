@@ -398,8 +398,7 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
             crt->pLimit = pLimitNoOffset;
             crt = crt->pPrior;
         }
-        crt->pLimit = pLimit;
-        if (pLimit) pLimit->pRight = NULL;
+        crt->pLimit = pLimitNoOffset;
     }
 
     /* generate queries */
