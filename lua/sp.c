@@ -3763,11 +3763,6 @@ static int db_column_type(Lua L)
         free(name);
         return luaL_error(L, "bad arguments to 'column_type'");
     }
-    struct sqlclntstate *parent_clnt = parent->clnt;
-    if (override_count(parent_clnt)) {
-        free(name);
-        return luaL_error(L, "attempt to set column type for typed-statement");
-    }
     int clnttype;
     if (strcmp(name, "short") == 0 || strcmp(name, "int") == 0 ||
         strcmp(name, "integer") == 0 || strcmp(name, "longlong") == 0 ||
@@ -3794,14 +3789,26 @@ static int db_column_type(Lua L)
         clnttype = SQLITE_TEXT;
     }
     free(name);
+    struct sqlclntstate *parent_clnt = parent->clnt;
+    int num = override_count(parent_clnt);
+    if (num) {
+        do {
+            if (index <= num) {
+                int type = override_type(parent_clnt, index - 1);
+                if (type == clnttype)
+                    break;
+            }
+            return luaL_error(
+                L, "attempt to change column type for typed-statement");
+        } while (0);
+    }
     Pthread_mutex_lock(parent->emit_mutex);
     if (parent_clnt->osql.sent_column_data) {
         Pthread_mutex_unlock(parent->emit_mutex);
         return luaL_error(L, "attempt to change column type");
     }
     new_col_info(sp, index);
-    --index;
-    parent->clnttype[index] = clnttype;
+    parent->clnttype[index - 1] = clnttype;
     Pthread_mutex_unlock(parent->emit_mutex);
     lua_pushinteger(L, 0);
     return 1;
@@ -3814,16 +3821,17 @@ static int db_num_columns(Lua L)
     SP sp = getsp(L);
     SP parent = sp->parent;
     struct sqlclntstate *parent_clnt = parent->clnt;
-    if (override_count(parent_clnt)) {
+    int num = override_count(parent_clnt);
+    int num_cols = lua_tonumber(L, 2);
+    if (num && num != num_cols) {
         return luaL_error(
-            L, "attempt to set number of columns for typed-statement");
+            L, "attempt to change number of columns for typed-statement");
     }
     Pthread_mutex_lock(parent->emit_mutex);
     if (parent_clnt->osql.sent_column_data) {
         Pthread_mutex_unlock(parent->emit_mutex);
         return luaL_error(L, "attempt to change number of columns");
     }
-    int num_cols = lua_tonumber(L, 2);
     if (num_cols < parent->ntypes) {
         for (int i = num_cols - 1; i < parent->ntypes; ++i) {
             free(parent->clntname[i]);
