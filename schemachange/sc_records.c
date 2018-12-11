@@ -880,6 +880,15 @@ static int convert_record(struct convert_record_data *data)
 
     unsigned long long dirty_keys = -1ULL;
 
+    if (data->s->use_new_genids) {
+        assert(!gbl_use_plan);
+        ngenid = get_genid(thedb->bdb_env, get_dtafile_from_genid(check_genid));
+    } else {
+        ngenid = check_genid;
+    }
+    if (ngenid != genid)
+        data->n_genids_changed++;
+
     rc = prepare_and_verify_newdb_record(data, dta, dtalen, &dirty_keys, 1);
     if (rc) {
         sc_errf(data->s,
@@ -890,15 +899,6 @@ static int convert_record(struct convert_record_data *data)
             return -2; /* convertion failure */
         goto err;
     }
-
-    if (data->s->use_new_genids) {
-        assert(!gbl_use_plan);
-        ngenid = get_genid(thedb->bdb_env, get_dtafile_from_genid(check_genid));
-    } else {
-        ngenid = check_genid;
-    }
-    if (ngenid != genid)
-        data->n_genids_changed++;
 
     int addflags = RECFLAGS_NO_TRIGGERS | RECFLAGS_NO_CONSTRAINTS |
                    RECFLAGS_NEW_SCHEMA | RECFLAGS_KEEP_GENID;
@@ -929,34 +929,6 @@ static int convert_record(struct convert_record_data *data)
             0,            /* blkpos */
             addflags, 0);
 
-        if (data->s->logical_livesc && rc == IX_DUP) {
-            if (data->dup_genid != ngenid) {
-                bdb_get_commit_genid(thedb->bdb_env, &data->dup_wait);
-                if (data->dup_wait.file <= 1 && data->dup_wait.offset == 0) {
-                    logmsg(LOGMSG_ERROR, "%s:%d failed to get current lsn\n",
-                           __func__, __LINE__);
-                    rc = ERR_INTERNAL;
-                    goto err;
-                }
-            }
-            data->dup_genid = ngenid;
-
-            /* wait for logical redo thread to catch up */
-            Pthread_mutex_lock(&data->s->livesc_mtx);
-            if (data->s->curLsn &&
-                log_compare(data->s->curLsn, &data->dup_wait) < 0)
-                rc = RC_INTERNAL_RETRY;
-            Pthread_mutex_unlock(&data->s->livesc_mtx);
-            if (rc == RC_INTERNAL_RETRY) {
-                logmsg(LOGMSG_DEBUG,
-                       "%s: got DUP on genid %llx, stripe %d, waiting for "
-                       "logical redo to catch up at [%u:%u]\n",
-                       __func__, ngenid, data->stripe, data->dup_wait.file,
-                       data->dup_wait.offset);
-                poll(NULL, 0, 100);
-            }
-        }
-
         if (rc)
             goto err;
     }
@@ -977,13 +949,41 @@ static int convert_record(struct convert_record_data *data)
         }
     }
 
-err: /*if (is_schema_change_doomed())*/
+err:
+    if (data->s->logical_livesc && (rc == IX_DUP || rc == ERR_CONSTR)) {
+        /* handle constraints violations */
+        if (data->cv_genid != ngenid) {
+            /* get current lsn if this is a new constraint violation */
+            bdb_get_commit_genid(thedb->bdb_env, &data->cv_wait_lsn);
+            if (data->cv_wait_lsn.file <= 1 && data->cv_wait_lsn.offset == 0) {
+                logmsg(LOGMSG_ERROR, "%s:%d failed to get current lsn\n",
+                       __func__, __LINE__);
+                rc = ERR_INTERNAL;
+            }
+            /* remember genid of the record that last violated constraints */
+            data->cv_genid = ngenid;
+        }
+
+        Pthread_mutex_lock(&data->s->livesc_mtx);
+        /* wait for logical redo thread to catch up to the lsn at which the
+         * constraint violation was first detected */
+        if (data->s->curLsn &&
+            log_compare(data->s->curLsn, &data->cv_wait_lsn) < 0)
+            rc = RC_INTERNAL_RETRY;
+        Pthread_mutex_unlock(&data->s->livesc_mtx);
+        if (rc == RC_INTERNAL_RETRY) {
+            logmsg(LOGMSG_DEBUG,
+                   "%s: got constraints violations on genid %llx, stripe %d, "
+                   "waiting for logical redo to catch up at [%u:%u]\n",
+                   __func__, ngenid, data->stripe, data->cv_wait_lsn.file,
+                   data->cv_wait_lsn.offset);
+        }
+    }
+
     if (gbl_sc_abort || data->from->sc_abort ||
         (data->s->iq && data->s->iq->sc_should_abort)) {
-        /*
-        rc = ERR_CONSTR;
-        break;
-        */
+        trans_abort(&data->iq, data->trans);
+        data->trans = NULL;
         return -1;
     }
 
@@ -1475,7 +1475,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
             }
         }
 
-        /* wait for all threads to complete */
+        /* wait for all convert threads to complete */
         for (ii = 0; ii < gbl_dtastripe; ++ii) {
             void *ret;
 

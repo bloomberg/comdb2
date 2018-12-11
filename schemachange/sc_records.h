@@ -72,10 +72,11 @@ struct convert_record_data {
     hash_t *blob_hash;
     struct odh odh;
     struct odh oldodh;
-    DB_LSN dup_wait; /* for logical_livesc, wait for redo thread to catup at
-                        this LSN if we get DUP when converting the records */
-    unsigned long long
-        dup_genid; /* the genid of the record that we get DUP error on */
+    DB_LSN cv_wait_lsn; /* for logical_livesc, wait for redo thread to catup at
+                           this LSN if we get constraint violations when
+                           converting the records */
+    unsigned long long cv_genid; /* the genid of the record that we get
+                                    constraint violation on */
 };
 
 int convert_all_records(struct dbtable *from, struct dbtable *to,
