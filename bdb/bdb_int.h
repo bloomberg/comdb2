@@ -470,6 +470,7 @@ struct tran_tag {
 
     /* Newsi pglogs queue hash */
     hash_t *pglogs_queue_hash;
+    u_int32_t flags;
 };
 
 struct seqnum_t {

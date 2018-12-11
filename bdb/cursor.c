@@ -1737,6 +1737,10 @@ static int bdb_truncate_pglog_queue(bdb_state_type *bdb_state,
                                     DB_LSN trunclsn)
 {
     struct pglogs_queue_key *qe, *del_qe = NULL;
+    struct asof_cursor *cur = NULL;
+
+    cur = hash_find(bdb_asof_cursor_hash, queue->fileid);
+
     Pthread_rwlock_wrlock(&queue->queue_lk);
     qe = LISTC_TOP(&queue->queue_keys);
 
@@ -1755,8 +1759,13 @@ static int bdb_truncate_pglog_queue(bdb_state_type *bdb_state,
 #endif
 
     if (!del_qe) {
+        if (cur)
+            cur->cur = NULL;
         goto done;
     }
+
+    if (cur)
+        cur->cur = del_qe->lnk.prev;
 
     /* Remove from the bottom of the list and return */
     do {
@@ -1879,10 +1888,12 @@ int bdb_clean_pglogs_queues(bdb_state_type *bdb_state, DB_LSN lsn, int truncate)
         if (!(queue = retrieve_fileid_pglogs_queue(fileid, 0)))
             abort();
 
-        if (truncate)
+        if (truncate) {
             bdb_truncate_pglog_queue(bdb_state, queue, lsn);
-        else
+        }
+        else {
             bdb_clean_pglog_queue(bdb_state, queue, lsn, NULL);
+        }
 
         free(qh.fileids[i]);
     }
@@ -2216,11 +2227,18 @@ static inline void set_del_lsn(const char *func, unsigned int line,
 int truncate_asof_pglogs(bdb_state_type *bdb_state, int file, int offset)
 {
     DB_LSN lsn = {.file = file, .offset = offset};
+    struct commit_list *lcommit;
     extern int gbl_snapisol;
     if (!gbl_new_snapisol || !gbl_snapisol)
         return 0;
     bdb_clean_pglogs_queues(bdb_state, lsn, 1);
     Pthread_mutex_lock(&bdb_asof_current_lsn_mutex);
+    lcommit = LISTC_BOT(&pglogs_commit_list);
+    while (lcommit && log_compare(&lcommit->commit_lsn, &lsn) > 0) {
+        listc_rbl(&pglogs_commit_list);
+        return_pglogs_commit_list(lcommit);
+        lcommit = LISTC_BOT(&pglogs_commit_list);
+    }
     bdb_asof_current_lsn = lsn;
     Pthread_mutex_unlock(&bdb_asof_current_lsn_mutex);
     return 0;

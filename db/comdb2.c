@@ -5583,7 +5583,7 @@ int comdb2_reload_schemas(void *dbenv, void *inlsn)
     logmsg(LOGMSG_INFO, "%s starting for [%d:%d]\n", __func__, *file, *offset);
     wrlock_schema_lk();
 retry_tran:
-    tran = bdb_tran_begin_flags(thedb->bdb_env, NULL, &bdberr, 0);
+    tran = bdb_tran_begin_flags(thedb->bdb_env, NULL, &bdberr, BDB_TRAN_NOLOG);
     if (tran == NULL) {
         logmsg(LOGMSG_FATAL, "%s: failed to start tran\n", __func__);
         abort();
@@ -5708,6 +5708,7 @@ retry_tran:
 
     if ((rc = bdb_tran_commit(thedb->bdb_env, tran, &bdberr)) != 0) {
         logmsg(LOGMSG_FATAL, "%s: bdb_tran_commit returns %d\n", __func__, rc);
+        bdb_flush(thedb->bdb_env, &bdberr);
         abort();
     }
 
