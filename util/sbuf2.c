@@ -201,6 +201,13 @@ int SBUF2_FUNC(sbuf2putc)(SBUF2 *sb, char c)
     int rc;
     if (sb == 0)
         return -1;
+
+    if (sb->wbuf==NULL) {
+        /*lazily establish write buffer*/
+        sb->wbuf = malloc(sb->lbuf);
+        if (sb->wbuf==NULL) return -1;
+    }
+
     if ((sb->whd == sb->lbuf - 1 && sb->wtl == 0) || (sb->whd == sb->wtl - 1)) {
         rc = sbuf2flush(sb);
         if (rc < 0)
@@ -242,6 +249,11 @@ int SBUF2_FUNC(sbuf2write)(char *ptr, int nbytes, SBUF2 *sb)
     int rc, off, left, written = 0;
     if (sb == 0)
         return -1;
+    if (sb->wbuf==NULL) {
+        /*lazily establish write buffer*/
+        sb->wbuf = malloc(sb->lbuf);
+        if (sb->wbuf==NULL) return -1;
+    }
     off = 0;
     left = nbytes;
     while (left > 0) {
@@ -308,6 +320,11 @@ int SBUF2_FUNC(sbuf2getc)(SBUF2 *sb)
     if (sb == 0)
         return -1;
 
+    if (sb->rbuf==NULL) {
+        /* lazily establish read buffer*/
+        sb->rbuf=malloc(sb->lbuf);
+        if (sb->rbuf==NULL) return -1;
+    }
 #if SBUF2_UNGETC
     if (sb->ungetc_buf_len > 0) {
         sb->ungetc_buf_len--;
@@ -391,6 +408,13 @@ static int sbuf2fread_int(char *ptr, int size, int nitems,
 {
     int need = size * nitems;
     int done = 0;
+
+    if (sb->rbuf==NULL) {
+        /* lazily establish read buffer*/
+        sb->rbuf=malloc(sb->lbuf);
+        if (sb->rbuf==NULL) return -1;
+    }
+
 
 #if SBUF2_UNGETC
     if (sb->ungetc_buf_len > 0) {
@@ -697,22 +721,12 @@ int SBUF2_FUNC(sbuf2setbufsize)(SBUF2 *sb, unsigned int size)
 {
     if (size < 1024)
         size = 1024;
-    if (sb->rbuf)
-        free(sb->rbuf);
-    if (sb->wbuf)
-        free(sb->wbuf);
+    free(sb->rbuf);
+    free(sb->wbuf);
     sb->rbuf = sb->wbuf = 0;
     sb->rhd = sb->rtl = 0;
     sb->whd = sb->wtl = 0;
     sb->lbuf = size;
-    sb->rbuf = malloc(size);
-    sb->wbuf = malloc(size);
-    if (sb->rbuf == NULL || sb->wbuf == NULL) {
-        free(sb->rbuf);
-        free(sb->wbuf);
-        free(sb);
-        return ENOMEM;
-    }
     return 0;
 }
 
