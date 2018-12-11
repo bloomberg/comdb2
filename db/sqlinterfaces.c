@@ -2582,6 +2582,11 @@ int override_count(struct sqlclntstate *clnt)
     return clnt->plugin.override_count(clnt);
 }
 
+int override_type(struct sqlclntstate *clnt, int i)
+{
+    return clnt->plugin.override_type(clnt, i);
+}
+
 static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                             struct sql_state *rec)
 {
@@ -5869,6 +5874,10 @@ static int internal_param_value(struct sqlclntstate *a, struct param_data *b, in
     return -1;
 }
 static int internal_override_count(struct sqlclntstate *a)
+{
+    return 0;
+}
+static int internal_override_type(struct sqlclntstate *a, int b)
 {
     return 0;
 }
