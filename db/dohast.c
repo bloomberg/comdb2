@@ -388,13 +388,13 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
             pLimit->pRight = 0;
             pLimitNoOffset = sqlite3ExprDup(v->db, pLimit, 0);
             pLimit->pRight = pSavedRight;
-        }else{
+        } else {
             pLimitNoOffset = pLimit;
         }
 
         /* go from left to right */
         while (crt->pPrior) {
-            assert(crt==p || !crt->pLimit); /* can "restore" to NULL? */
+            assert(crt == p || !crt->pLimit); /* can "restore" to NULL? */
             crt->pLimit = pLimitNoOffset;
             crt = crt->pPrior;
         }
@@ -403,10 +403,10 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
 
     /* generate queries */
     while (crt) {
-        assert(crt==p || !crt->pOrderBy); /* can "restore" to NULL? */
+        assert(crt == p || !crt->pOrderBy); /* can "restore" to NULL? */
         crt->pOrderBy = p->pOrderBy;
-        *psub = gen_oneselect(v, crt, NULL,
-                              &node->order_size, &node->order_dir);
+        *psub =
+            gen_oneselect(v, crt, NULL, &node->order_size, &node->order_dir);
         crt->pLimit = NULL;
         if (crt != p)
             crt->pOrderBy = NULL;
@@ -437,20 +437,21 @@ done:
     }
 #ifdef SQLITE_DEBUG
     crt = p;
-    while( crt->pPrior ){
-      if( crt->pLimit ){
-        logmsg(LOGMSG_DEBUG,
-               "%s: Select %p has Limit %p, orig %p, no offset %p\n",
-               __func__, crt, crt->pLimit, pLimit, pLimitNoOffset);
-      }
-      crt = crt->pPrior;
+    while (crt->pPrior) {
+        if (crt->pLimit) {
+            logmsg(LOGMSG_DEBUG,
+                   "%s: Select %p has Limit %p, orig %p, no offset %p\n",
+                   __func__, crt, crt->pLimit, pLimit, pLimitNoOffset);
+        }
+        crt = crt->pPrior;
     }
 #endif
     if (pLimitNoOffset != NULL && pLimitNoOffset != pLimit) {
         sqlite3ExprDelete(v->db, pLimitNoOffset);
     }
     p->pLimit = pLimit;
-    if (p->pLimit) p->pLimit->pRight = pOffset;
+    if (p->pLimit)
+        p->pLimit->pRight = pOffset;
 
     return node;
 }
