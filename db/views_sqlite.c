@@ -112,7 +112,7 @@ int views_sqlite_add_view(timepart_view_t *view, sqlite3 *db,
     rc = _views_run_sql(db, stmt_str, err);
 
     /* free the statement */
-    sqlite3DbFree(db, stmt_str);
+    sqlite3_free(stmt_str);
 
     if (rc != VIEW_NOERR) {
         return err->errval;
@@ -145,7 +145,7 @@ int _views_sqlite_del_view(const char *view_name, sqlite3 *db,
     rc = _views_run_sql(db, stmt_str, err);
 
     /* free the statement */
-    sqlite3DbFree(db, stmt_str);
+    sqlite3_free(stmt_str);
 
     return rc;
 }
@@ -225,9 +225,9 @@ static char *_views_create_view_query(timepart_view_t *view, sqlite3 *db,
         tmp_str = sqlite3_mprintf("%s%sSELECT %s FROM \"%s\"", select_str,
                                   (i > 0) ? " UNION ALL " : "", cols_str,
                                   view->shards[i].tblname);
-        sqlite3DbFree(db, select_str);
+        sqlite3_free(select_str);
         if (!tmp_str) {
-            sqlite3DbFree(db, cols_str);
+            sqlite3_free(cols_str);
             goto malloc;
         }
         select_str = tmp_str;
@@ -242,13 +242,13 @@ static char *_views_create_view_query(timepart_view_t *view, sqlite3 *db,
 #endif
     ret_str = sqlite3_mprintf("CREATE VIEW %s AS %s", view->name, select_str);
     if (!ret_str) {
-        sqlite3DbFree(db, select_str);
-        sqlite3DbFree(db, cols_str);
+        sqlite3_free(select_str);
+        sqlite3_free(cols_str);
         goto malloc;
     }
 
-    sqlite3DbFree(db, select_str);
-    sqlite3DbFree(db, cols_str);
+    sqlite3_free(select_str);
+    sqlite3_free(cols_str);
 
     dbg_verbose_sqlite("Generated:\n\"%s\"\n", ret_str);
 
@@ -302,7 +302,7 @@ static int _views_run_sql(sqlite3 *db, const char *stmt_str,
         }
 
         if (errstr)
-            sqlite3DbFree(db, errstr);
+            sqlite3_free(errstr);
         return err->errval;
     }
 

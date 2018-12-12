@@ -4948,7 +4948,7 @@ void comdb2WriteTransaction(Parse*);
 int sqlite3RecordCompareExprList(UnpackedRecord *rec, Mem *mems);
 int sqlite3ExprList2MemArray(ExprList *list, Mem *mems);
 Mem* sqlite3CloneResult(sqlite3_stmt *pStmt, Mem *cols, long long *pSize);
-int sqlite3CloneResultFree(sqlite3_stmt *pStmt, Mem **cols, long long *pSize);
+void sqlite3CloneResultFree(sqlite3_stmt *pStmt, Mem **cols, long long *pSize);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 int sqlite3ExprVectorSize(Expr *pExpr);
