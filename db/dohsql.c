@@ -405,11 +405,9 @@ static int dohsql_dist_column_count(struct sqlclntstate *clnt,
     static ret dohsql_dist_column_##type(struct sqlclntstate *clnt,            \
                                          sqlite3_stmt *stmt, int iCol)         \
     {                                                                          \
-        ret res;                                                               \
         dohsql_t *conns = clnt->conns;                                         \
-        if (conns->row_src == 0) {                                             \
+        if (conns->row_src == 0)                                               \
             return sqlite3_column_##type(stmt, iCol);                          \
-        }                                                                      \
         return sqlite3_value_##type(&conns->row[iCol]);                        \
     }
 
@@ -427,10 +425,7 @@ static const intv_t *dohsql_dist_column_interval(struct sqlclntstate *clnt,
 {
     dohsql_t *conns = clnt->conns;
     if (conns->row_src == 0)
-    {
         return sqlite3_column_interval(stmt, iCol, type);
-    }
-
     return sqlite3_value_interval(&conns->row[iCol], type);
 }
 
@@ -440,9 +435,7 @@ static sqlite3_value *dohsql_dist_column_value(struct sqlclntstate *clnt,
     dohsql_t *conns = clnt->conns;
 
     if (conns->row_src == 0)
-    {
         return sqlite3_column_value(stmt, i);
-    }
 
     return &conns->row[i];
 }
@@ -1277,6 +1270,7 @@ void comdb2_handle_limit(Vdbe *v, Mem *m)
             reg = &v->aMem[conns->limitRegs[IOFFSET_SAVED_MEM_IDX]];
             /* offset */
             conns->offset = sqlite3_value_int64(reg);
+
             if (gbl_dohsql_verbose)
                 logmsg(LOGMSG_DEBUG,
                        "%lx found offset %d from register %d, adjusting limit "
