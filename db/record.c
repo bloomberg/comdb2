@@ -1421,22 +1421,19 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         if (flags == RECFLAGS_UPGRADE_RECORD) {
             rc = dat_upgrade(iq, trans, od_dta, od_len, vgenid);
             *genid = vgenid;
+            if (iq->debug)
+                reqprintf(iq, "dat_upgrade RRN %d VGENID 0x%llx RC %d", rrn,
+                          vgenid, rc);
         } else {
             rc = dat_upv(iq, trans, 0, /*vptr*/
                          NULL,         /*vdta*/
                          0,            /*vlen*/
                          vgenid, od_dta, od_len, rrn, genid, 0,
                          iq->blkstate->modnum);
+            if (iq->debug)
+                reqprintf(iq, "dat_upv RRN %d VGENID 0x%llx GENID 0x%llx RC %d",
+                          rrn, vgenid, *genid, rc);
         }
-    }
-
-    if (iq->debug) {
-        if (flags & RECFLAGS_UPGRADE_RECORD)
-            reqprintf(iq, "dat_upgrade RRN %d VGENID 0x%llx RC %d", rrn, vgenid,
-                      rc);
-        else
-            reqprintf(iq, "dat_upv RRN %d VGENID 0x%llx GENID 0x%llx RC %d",
-                      rrn, vgenid, *genid, rc);
     }
 
     if (rc != 0) {

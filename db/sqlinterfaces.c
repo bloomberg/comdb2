@@ -225,7 +225,7 @@ static int sql_debug_logf_int(struct sqlclntstate *clnt, const char *func,
     }
     va_end(args_c);
 
-    logmsg(LOGMSG_USER, "%s %s line %d: %s", cnonce, func, line, s);
+    logmsg(LOGMSG_USER, "cnonce=%s %s line %d: %s", cnonce, func, line, s);
 
     free(s);
     return 0;

@@ -145,8 +145,14 @@ static inline int osql_should_restart(struct sqlclntstate *clnt, int rc)
         return 1;
     }
 
-    if (gbl_osql_random_restart && (rand() % 10) == 0) {
-        logmsg(LOGMSG_USER, "Forcing random-restart\n");
+    if (gbl_osql_random_restart && (rand() % 100) == 0) {
+        uuidstr_t us;
+        snap_uid_t snap = {0};
+        get_cnonce(clnt, &snap);
+        logmsg(LOGMSG_USER, 
+               "Forcing random-restart of uuid=%s cnonce=%*s after nops=%d\n",
+               comdb2uuidstr(clnt->osql.uuid, us), snap.keylen, snap.key,
+               clnt->osql.replicant_numops);
         return 1;
     }
 
@@ -840,18 +846,24 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
         }
 
         if (!keep_session) {
+            uuidstr_t us;
             if (gbl_master_swing_osql_verbose)
-                logmsg(LOGMSG_USER, "%lu Starting %llx\n", pthread_self(),
-                       clnt->osql.rqid);
+                logmsg(LOGMSG_USER, 
+                       "0x%lu Starting new session rqid=%llx, uuid=%s\n",
+                       pthread_self(), clnt->osql.rqid, 
+                       comdb2uuidstr(clnt->osql.uuid, us));
             /* unregister this osql thread from checkboard */
             rc = osql_unregister_sqlthr(clnt);
             if (rc)
                 return SQLITE_INTERNAL;
         } else {
+            uuidstr_t us;
             if (gbl_master_swing_osql_verbose)
                 logmsg(LOGMSG_USER,
-                       "0x%lu Restarting clnt->osql.rqid=%llx against %s\n",
-                       pthread_self(), clnt->osql.rqid, thedb->master);
+                       "0x%lu Restarting rqid=%llx uuid=%s against %s\n",
+                       pthread_self(), clnt->osql.rqid,
+                       comdb2uuidstr(clnt->osql.uuid, us),
+                       thedb->master);
             /* TODO: osql_sock_start will also call osql_reuse_sqlthr() */
             rc = osql_reuse_sqlthr(clnt, thedb->master);
             if (rc)
@@ -1467,34 +1479,31 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
         snap_info_p = &snap_info;
     }
 
-retry:
-    rc = 0;
+    do {
+        rc = 0;
 
-    if (gbl_osql_send_startgen && clnt->start_gen > 0) {
-        osql->replicant_numops++;
-        rc = osql_send_startgen(osql->host, osql->rqid, osql->uuid,
-                                clnt->start_gen, nettype, osql->logsb);
-    }
-
-    if (rc == 0) {
-        osql->replicant_numops++;
-        if (osql->rqid == OSQL_RQID_USE_UUID) {
-            rc = osql_send_commit_by_uuid(
-                osql->host, osql->uuid, osql->replicant_numops, &osql->xerr,
-                nettype, osql->logsb, clnt->query_stats, snap_info_p);
-        } else {
-            rc = osql_send_commit(osql->host, osql->rqid, osql->uuid,
-                                  osql->replicant_numops, &osql->xerr, nettype,
-                                  osql->logsb, clnt->query_stats, NULL);
+        if (gbl_osql_send_startgen && clnt->start_gen > 0) {
+            osql->replicant_numops++;
+            rc = osql_send_startgen(osql->host, osql->rqid, osql->uuid,
+                                    clnt->start_gen, nettype, osql->logsb);
         }
-    }
 
-    RESTART_SOCKSQL_KEEP_RQID(is_retry);
+        if (rc == 0) {
+            osql->replicant_numops++;
+            if (osql->rqid == OSQL_RQID_USE_UUID) {
+                rc = osql_send_commit_by_uuid(
+                    osql->host, osql->uuid, osql->replicant_numops, &osql->xerr,
+                    nettype, osql->logsb, clnt->query_stats, snap_info_p);
+            } else {
+                rc = osql_send_commit(osql->host, osql->rqid, osql->uuid,
+                                      osql->replicant_numops, &osql->xerr, nettype,
+                                      osql->logsb, clnt->query_stats, NULL);
+            }
+        }
+        RESTART_SOCKSQL_KEEP_RQID(is_retry);
 
-    if (restarted) {
-        /* we need to reset the commit here */
-        goto retry;
-    }
+    } while (restarted);
+
     osql->replicant_numops = 0; // reset for next time
 
     return rc;

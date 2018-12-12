@@ -63,7 +63,7 @@ assertres ()
 cdb2sql ${CDB2_OPTIONS} $dbnm default "@send debg 10000"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "@send ndebg 10000"
 
-cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t2 (i int primary key, data blob)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t2 (i int primary key, upd_count int default 0, data blob, orig_i int)"
 
 max=10000
 strt=1
@@ -86,6 +86,8 @@ while [ $end -lt $max ] ; do
     assertres $res $end
 done
 
+#set orig_i column before updating colum i values
+cdb2sql ${CDB2_OPTIONS} $dbnm default "update t2 set orig_i=i where 1"
 
 strt=1
 end=0
@@ -97,19 +99,27 @@ while [ $end -lt $max ] ; do
     res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t2 where i >=$strt and i<= $end"`
     assertres $res $delta
 
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "update t2 set i=i-1, data = randomblob(16) where i >=$strt and i<= $end" > upd.out
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "update t2 set i=i-1, upd_count=upd_count+1, data = randomblob(16) where i >=$strt and i<= $end" > upd.out
     rc=$?
     if [ $rc -ne 0 ] ; then
         failexit "Failure from update "
     fi
+
+
     echo "(rows updated=$delta)" > upd.exp
     if ! diff upd.out upd.exp ; then
-        failexit "Error with the insert"
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t2 where orig_i >=$strt and orig_i<= $end" > sel_orig_i.out
+        failexit "Error with the insert see sel_orig_i.out"
     fi
     let strt=$end+1
 done
 
 
+cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t2 where upd_count!=1" > sel2.out
+
+if [ `wc -c sel2.out | cut -f1 -d' '` -ne 0 ] ; then 
+    failexit "Some rows were not updated once, see sel2.out"
+fi
 
 
 echo "Success"
