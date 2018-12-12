@@ -927,12 +927,10 @@ clipper_usage:
         bdb_osql_trn_clients_status();
         logmsg(LOGMSG_USER, "Release locks on snapisol lockwait count: %llu\n",
                release_locks_on_si_lockwait_cnt);
-#ifdef NEWSI_MEMPOOL
         if (gbl_new_snapisol) {
             logmsg(LOGMSG_USER, "newsi memory pool stat:\n");
             bdb_newsi_mempool_stat();
         }
-#endif
 #ifdef NEWSI_STAT
         bdb_print_logfile_pglogs_stat();
     } else if (tokcmp(tok, ltok, "clear_newsi_status") == 0) {

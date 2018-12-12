@@ -253,7 +253,6 @@ struct timestamp_lsn_key {
     unsigned long long context;
 };
 
-#ifdef NEWSI_ASOF_USE_TEMPTABLE
 typedef struct pglogs_tmptbl_key {
     db_pgno_t pgno;
     DB_LSN commit_lsn;
@@ -276,13 +275,6 @@ typedef struct relinks_tmptbl_key {
 } relinks_tmptbl_key;
 typedef logfile_pglog_hashkey logfile_relink_hashkey;
 #define LOGFILE_PAGE_KEY_SIZE (DB_FILE_ID_LEN * sizeof(unsigned char))
-#else
-typedef struct pglogs_logical_key logfile_pglog_hashkey;
-typedef struct pglogs_relink_key logfile_relink_hashkey;
-#define LOGFILE_PAGE_KEY_SIZE                                                  \
-    (DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t))
-#endif
-
 #define LOGFILE_PGLOG_OFFSET (offsetof(logfile_pglog_hashkey, fileid))
 #define LOGFILE_RELINK_OFFSET (offsetof(logfile_relink_hashkey, fileid))
 

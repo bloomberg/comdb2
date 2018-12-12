@@ -196,7 +196,7 @@ static int bdb_checkpoint_list_ok_to_delete_log(int min_keep_logs_age,
     return 1;
 }
 
-void bdb_delete_logfile_pglogs(bdb_state_type *bdb_state, int filenum);
+void bdb_delete_logfile_pglogs(bdb_state_type *bdb_state, int filenum, int flags);
 void bdb_delete_timestamp_lsn(bdb_state_type *bdb_state, int32_t timestamp);
 extern pthread_mutex_t bdb_gbl_recoverable_lsn_mutex;
 extern DB_LSN bdb_gbl_recoverable_lsn;
@@ -243,7 +243,7 @@ static void bdb_snapshot_asof_delete_log(bdb_state_type *bdb_state, int filenum,
                                          time_t timestamp)
 {
     bdb_checkpoint_list_delete_log(filenum);
-    bdb_delete_logfile_pglogs(bdb_state, filenum);
+    bdb_delete_logfile_pglogs(bdb_state, filenum, 0);
     bdb_delete_timestamp_lsn(bdb_state, timestamp);
 }
 
