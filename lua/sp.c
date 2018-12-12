@@ -835,11 +835,14 @@ static int lua_consumer_impl(Lua L, dbconsumer_t *q)
     if ((rc = osql_dbq_consume_logic(clnt, q->info.spname, q->genid)) != 0) {
         if (start) {
             osql_sock_abort(clnt, OSQL_SOCK_REQ);
+            clnt->intrans = 0;
         }
         luaL_error(L, "%s osql_dbq_consume_logic rc:%d\n", __func__, rc);
     }
     if (start) {
-        if ((rc = osql_sock_commit(clnt, OSQL_SOCK_REQ)) != 0) {
+        rc = osql_sock_commit(clnt, OSQL_SOCK_REQ);
+        clnt->intrans = 0;
+        if (rc) {
             luaL_error(L, "%s osql_sock_commit rc:%d\n", __func__, rc);
         }
     } else {
