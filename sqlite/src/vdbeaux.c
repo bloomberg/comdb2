@@ -5611,53 +5611,81 @@ static long long memRowSize(
   return size;
 }
 
-Mem* sqlite3CloneResult(
-  sqlite3_stmt *pStmt,
-  Mem *pMem,
-  long long *pSize
+int sqlite3_value_dup_inplace(
+  sqlite3_value *pNew,
+  const sqlite3_value *pOrig
+){
+  if( pOrig==0 || pNew==0 ) return SQLITE_MISUSE;
+  memset(pNew, 0, sizeof(Mem));
+  memcpy(pNew, pOrig, MEMCELLSIZE);
+  pNew->flags &= ~MEM_Dyn;
+  pNew->db = 0;
+  if( pNew->flags&(MEM_Str|MEM_Blob) ){
+    int rc;
+    pNew->flags &= ~(MEM_Static|MEM_Dyn);
+    pNew->flags |= MEM_Ephem;
+    rc = sqlite3VdbeMemMakeWriteable(pNew);
+    if( rc!=SQLITE_OK ) return rc;
+  }
+  return SQLITE_OK;
+}
+
+void sqlite3_value_free_inplace(sqlite3_value *v){
+  if( !v ) return;
+  sqlite3VdbeMemRelease((Mem *)v);
+}
+
+Mem *sqlite3CloneResult(
+  sqlite3_stmt *pStmt, /* in */
+  Mem *pMem,           /* in, out */
+  long long *pSize     /* in, out */
 ){
   Vdbe *p = (Vdbe*)pStmt;
-  int nCols;
-  Mem *pCols;
-  int i, rc;
-  assert( p );
-  nCols = p->nResColumn;
-  pCols = p->pResultSet;
+  int i, rc, nCols = p->nResColumn;
+  Mem *pCols = p->pResultSet;
+  Mem *pMalloc = 0;
   *pSize = 0LL;
   if( !pMem ){
-    pMem = sqlite3_malloc64(p->db, sizeof(Mem) * nCols);
+    pMem = pMalloc = sqlite3_malloc64(sizeof(Mem) * nCols);
     if( !pMem ) return 0;
-    memset(pMem, 0, sizeof(Mem) * nCols);
   }else{
     *pSize -= memRowSize(pMem, nCols);
   }
+  memset(pMem, 0, sizeof(Mem) * nCols);
   for(i=0; i<nCols; i++){
-    Mem *pDup = sqlite3_value_dup(&pCols[i]);
-    if( pDup==0 ) return 0;
-    memcpy(&pMem[i], pDup, sizeof(Mem));
+    rc = sqlite3_value_dup_inplace(&pMem[i], &pCols[i]);
+    if( rc!=SQLITE_OK ) goto error;
   }
   *pSize += memRowSize(pMem, nCols);
+  goto done;
+error:
+  if( pMalloc ){
+    for(i=0; i<nCols; i++){
+      sqlite3_value_free_inplace(&pMalloc[i]);
+    }
+    sqlite3_free(pMalloc);
+    pMalloc = 0;
+  }
+  return pMalloc;
+done:
   return pMem;
 }
 
-int sqlite3CloneResultFree(
+void sqlite3CloneResultFree(
   sqlite3_stmt *pStmt,
   Mem **ppMem,
   long long *pSize
 ){
   Vdbe *p = (Vdbe*)pStmt;
+  int i, nCols = p->nResColumn;
   Mem *pMem = *ppMem;
-  assert( p );
-  if( pMem ){
-    int i;
-    *pSize = memRowSize(*ppMem, p->nResColumn);
-    for(i=0; i<p->nResColumn; i++){
-      sqlite3_value_free(&pMem[i]);
-    }
-    sqlite3_free(pMem);
-    *ppMem = 0;
+  if( !pMem ) return;
+  *pSize = memRowSize(pMem, nCols);
+  for(i=0; i<nCols; i++){
+    sqlite3_value_free_inplace(&pMem[i]);
   }
-  return 0;
+  sqlite3_free(pMem);
+  *ppMem = 0;
 }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
