@@ -3445,7 +3445,7 @@ int osql_comm_send_poke(char *tohost, unsigned long long rqid, uuid_t uuid,
 
         poke.tstamp = comdb2_time_epoch();
 
-        poke.from = nodenum(gbl_mynode);
+        poke.from = gbl_mynodeid;
         poke.to = nodenum(tohost);
         poke.rqid = rqid;
 
