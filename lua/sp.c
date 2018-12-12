@@ -6048,16 +6048,21 @@ static int exec_thread_int(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         return -1;
     }
     clone_temp_tables(sp);
+    comdb2_setup_authorizer_for_sqlite(thd->sqldb, 1);
     unlock_schema_lk();
     int args = lua_gettop(L) - 1;
     int rc;
     char *err = NULL;
 
-    if ((rc = begin_sp(clnt, &err)) != 0) return rc;
+    if ((rc = begin_sp(clnt, &err)) != 0) goto done;
 
-    if ((rc = run_sp(clnt, args, &err)) != 0) return rc;
+    if ((rc = run_sp(clnt, args, &err)) != 0) goto done;
 
-    return commit_sp(L, &err);
+    rc = commit_sp(L, &err);
+
+ done:
+    comdb2_setup_authorizer_for_sqlite(thd->sqldb, 0);
+    return rc;
 }
 
 static int exec_procedure_int(struct sqlthdstate *thd,
@@ -6069,39 +6074,43 @@ static int exec_procedure_int(struct sqlthdstate *thd,
     int rc, args, new_vm;
     *err = NULL;
 
+    comdb2_setup_authorizer_for_sqlite(thd->sqldb, 1);
     reqlog_set_event(thd->logger, "sp");
 
-    if ((rc = get_spname(clnt, &s, spname, err)) != 0)
-        return rc;
+    if ((rc = get_spname(clnt, &s, spname, err)) != 0) goto done;
 
-    if (strcmp(spname, "debug") == 0) return debug_sp(clnt);
+    if (strcmp(spname, "debug") == 0) { rc = debug_sp(clnt); goto done; }
 
-    if ((rc = setup_sp(spname, thd, clnt, &new_vm, err)) != 0) return rc;
+    if ((rc = setup_sp(spname, thd, clnt, &new_vm, err)) != 0) goto done;
 
     SP sp = clnt->sp;
     Lua L = sp->lua;
 
-    if ((rc = process_src(L, sp->src, err)) != 0) return rc;
+    if ((rc = process_src(L, sp->src, err)) != 0) goto done;
 
-    if ((rc = get_func_by_name(L, "main", err)) != 0) return rc;
+    if ((rc = get_func_by_name(L, "main", err)) != 0) goto done;
 
     update_tran_funcs(L, clnt->in_client_trans);
 
     if (IS_SYS(spname)) init_sys_funcs(L);
 
-    if ((rc = push_args(&s, clnt, err, &args)) != 0) return rc;
+    if ((rc = push_args(&s, clnt, err, &args)) != 0) goto done;
 
-    if ((rc = begin_sp(clnt, err)) != 0) return rc;
+    if ((rc = begin_sp(clnt, err)) != 0) goto done;
 
-    if ((rc = run_sp(clnt, args, err)) != 0) return rc;
+    if ((rc = run_sp(clnt, args, err)) != 0) goto done;
 
-    if ((rc = emit_result(L, &sprc, err)) != 0) return rc;
+    if ((rc = emit_result(L, &sprc, err)) != 0) goto done;
 
-    if ((rc = commit_sp(L, err)) != 0) return rc;
+    if ((rc = commit_sp(L, err)) != 0) goto done;
 
-    if (sprc) return sprc;
+    if (sprc) { rc = sprc; goto done; }
 
-    return flush_sp(sp, err);
+    rc = flush_sp(sp, err);
+
+ done:
+    comdb2_setup_authorizer_for_sqlite(thd->sqldb, 0);
+    return rc;
 }
 
 static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,

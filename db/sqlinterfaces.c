@@ -750,7 +750,7 @@ static int comdb2_authorizer_for_sqlite(
     case SQLITE_CREATE_INDEX:
     case SQLITE_CREATE_TABLE:
     case SQLITE_CREATE_TEMP_INDEX:
-    case SQLITE_CREATE_TEMP_TABLE:
+    /* case SQLITE_CREATE_TEMP_TABLE: *//* REQD: Lua "db:thread" command? */
     case SQLITE_CREATE_TEMP_TRIGGER:
     case SQLITE_CREATE_TEMP_VIEW:
     case SQLITE_CREATE_TRIGGER:
@@ -785,6 +785,15 @@ static int comdb2_authorizer_for_sqlite(
       return SQLITE_DENY;
     default:
       return SQLITE_OK;
+  }
+}
+
+void comdb2_setup_authorizer_for_sqlite(sqlite3 *db, int bEnable){
+  if( !db ) return;
+  if( bEnable ){
+    sqlite3_set_authorizer(db, comdb2_authorizer_for_sqlite, NULL);
+  }else{
+    sqlite3_set_authorizer(db, NULL, NULL);
   }
 }
 
@@ -4073,11 +4082,9 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
         return;
     }
 
-    sqlite3_set_authorizer(thd->sqldb, comdb2_authorizer_for_sqlite, NULL);
     reqlog_set_origin(thd->logger, "%s", clnt->origin);
 
     exec_thread(thd, clnt);
-    sqlite3_set_authorizer(thd->sqldb, NULL, NULL);
 
     sql_reset_sqlthread(thd->sqlthd);
 
