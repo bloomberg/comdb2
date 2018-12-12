@@ -48,6 +48,7 @@
 #include "views.h"
 #include "str0.h"
 #include "sc_struct.h"
+#include <compat.h>
 
 #define BLKOUT_DEFAULT_DELTA 5
 #define MAX_CLUSTER 16
@@ -3444,8 +3445,8 @@ int osql_comm_send_poke(char *tohost, unsigned long long rqid, uuid_t uuid,
 
         poke.tstamp = comdb2_time_epoch();
 
-        poke.from = 0;
-        poke.to = 0;
+        poke.from = gbl_mynodeid;
+        poke.to = nodenum(tohost);
         poke.rqid = rqid;
 
         if (!(p_buf = osqlcomm_poke_type_put(&poke, p_buf, p_buf_end))) {
