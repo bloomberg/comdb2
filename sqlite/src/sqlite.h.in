@@ -2990,6 +2990,21 @@ int sqlite3_set_authorizer(
 #define SQLITE_SAVEPOINT            32   /* Operation       Savepoint Name  */
 #define SQLITE_COPY                  0   /* No longer used */
 #define SQLITE_RECURSIVE            33   /* NULL            NULL            */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#define SQLITE_REBUILD_TABLE       160   /* NULL            NULL            */
+#define SQLITE_REBUILD_INDEX       161   /* NULL            NULL            */
+#define SQLITE_TRUNCATE_TABLE      162   /* NULL            NULL            */
+#define SQLITE_TRUNCATE_INDEX      163   /* NULL            NULL            */
+#define SQLITE_CREATE_PROC         164   /* NULL            NULL            */
+#define SQLITE_ALTER_PROC          165   /* NULL            NULL            */
+#define SQLITE_DROP_PROC           166   /* NULL            NULL            */
+#define SQLITE_CREATE_PART         167   /* NULL            NULL            */
+#define SQLITE_DROP_PART           168   /* NULL            NULL            */
+#define SQLITE_GET_TUNABLE         169   /* NULL            NULL            */
+#define SQLITE_PUT_TUNABLE         170   /* NULL            NULL            */
+#define SQLITE_GRANT               171   /* NULL            NULL            */
+#define SQLITE_REVOKE              172   /* NULL            NULL            */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** CAPI3REF: Tracing And Profiling Functions

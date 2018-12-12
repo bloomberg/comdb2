@@ -769,6 +769,19 @@ static int comdb2_authorizer_for_sqlite(
     case SQLITE_ALTER_TABLE:
     case SQLITE_CREATE_VTABLE:
     case SQLITE_DROP_VTABLE:
+    case SQLITE_REBUILD_TABLE:  /* COMDB2 ONLY */
+    case SQLITE_REBUILD_INDEX:  /* COMDB2 ONLY */
+    case SQLITE_TRUNCATE_TABLE: /* COMDB2 ONLY */
+    case SQLITE_TRUNCATE_INDEX: /* COMDB2 ONLY */
+    case SQLITE_CREATE_PROC:    /* COMDB2 ONLY */
+    case SQLITE_ALTER_PROC:     /* COMDB2 ONLY */
+    case SQLITE_DROP_PROC:      /* COMDB2 ONLY */
+    case SQLITE_CREATE_PART:    /* COMDB2 ONLY */
+    case SQLITE_DROP_PART:      /* COMDB2 ONLY */
+    case SQLITE_GET_TUNABLE:    /* COMDB2 ONLY */
+    case SQLITE_PUT_TUNABLE:    /* COMDB2 ONLY */
+    case SQLITE_GRANT:          /* COMDB2 ONLY */
+    case SQLITE_REVOKE:         /* COMDB2 ONLY */
       return SQLITE_DENY;
     default:
       return SQLITE_OK;
