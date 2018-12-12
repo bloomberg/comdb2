@@ -1072,10 +1072,16 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         util_tohex(printkey, fstseqnum, seqlen);
     }
 
+    char *cnonce = NULL;
+    if (iq->have_snap_info) {
+        cnonce = alloca(iq->snap_info.keylen + 1);
+        memcpy(cnonce, iq->snap_info.key, iq->snap_info.keylen);
+        cnonce[iq->snap_info.keylen] = '\0';
+    }
+
     logmsg(LOGMSG_WARN,
-           "%s from line %d replay returns %d for fstblk %s, cnonce %*s!\n",
-           __func__, line, outrc, printkey, iq->snap_info.keylen,
-           iq->snap_info.key);
+           "%s from line %d replay returns %d for fstblk %s, cnonce %s\n",
+           __func__, line, outrc, printkey, cnonce);
     free(printkey);
 
     /* If the latest commit is durable, then the blkseq commit must be durable.  
@@ -1084,24 +1090,16 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS) &&
             !bdb_latest_commit_is_durable(thedb->bdb_env)) {
         if (iq->have_snap_info) {
-            char *bskey = alloca(iq->snap_info.keylen + 1);
-            memcpy(bskey, iq->snap_info.key, iq->snap_info.keylen);
-            bskey[iq->snap_info.keylen] = '\0';
-            logmsg(
-                LOGMSG_ERROR,
-                "%u replay rc changed from %d to NOT_DURABLE for blkseq '%s'\n",
-                line, outrc, bskey);
+            logmsg(LOGMSG_ERROR, "%u replay rc changed from %d to NOT_DURABLE "
+                   "for blkseq '%s'\n", line, outrc, cnonce);
         }
         outrc = ERR_NOT_DURABLE;
     }
 
     if (gbl_dump_blkseq && iq->have_snap_info) {
-        char *bskey = alloca(iq->snap_info.keylen + 1);
-        memcpy(bskey, iq->snap_info.key, iq->snap_info.keylen);
-        bskey[iq->snap_info.keylen] = '\0';
         logmsg(LOGMSG_USER, "Replay case for '%s' rc=%d, errval=%d errstr='%s' "
                             "rcout=%d\n",
-               bskey, outrc, iq->errstat.errval, iq->errstat.errstr,
+               cnonce, outrc, iq->errstat.errval, iq->errstat.errstr,
                iq->sorese.rcout);
     }
     blkseq_replay_count++;
