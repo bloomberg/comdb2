@@ -785,8 +785,8 @@ void comdb2RebuildFull(Parse* p, Token* nm,Token* lnm, int opt)
 {
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
-        if( sqlite3AuthCheck(pParse, SQLITE_REBUILD_TABLE, 0, 0, 0)){
-            setError(pParse, SQLITE_AUTH, "comdb2: not authorized");
+        if( sqlite3AuthCheck(p, SQLITE_REBUILD_TABLE, 0, 0, 0)){
+            setError(p, SQLITE_AUTH, "comdb2: not authorized");
             return;
         }
     }
@@ -800,8 +800,8 @@ void comdb2RebuildData(Parse* p, Token* nm, Token* lnm, int opt)
 {
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
-        if( sqlite3AuthCheck(pParse, SQLITE_REBUILD_TABLE, 0, 0, 0)){
-            setError(pParse, SQLITE_AUTH, "comdb2: not authorized");
+        if( sqlite3AuthCheck(p, SQLITE_REBUILD_TABLE, 0, 0, 0)){
+            setError(p, SQLITE_AUTH, "comdb2: not authorized");
             return;
         }
     }
@@ -814,8 +814,8 @@ void comdb2RebuildDataBlob(Parse* p,Token* nm, Token* lnm, int opt)
 {
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
-        if( sqlite3AuthCheck(pParse, SQLITE_REBUILD_TABLE, 0, 0, 0)){
-            setError(pParse, SQLITE_AUTH, "comdb2: not authorized");
+        if( sqlite3AuthCheck(p, SQLITE_REBUILD_TABLE, 0, 0, 0)){
+            setError(p, SQLITE_AUTH, "comdb2: not authorized");
             return;
         }
     }
