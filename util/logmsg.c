@@ -1,3 +1,4 @@
+#include <alloca.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
@@ -82,7 +83,7 @@ static int logmsgv_lk(loglvl lvl, const char *fmt, va_list args)
 {
     if (!fmt) return 0;
 
-    char *msg;
+    char *msg, *savmsg;
     char timestamp[200];
     va_list argscpy;
     FILE *f;
@@ -104,10 +105,13 @@ static int logmsgv_lk(loglvl lvl, const char *fmt, va_list args)
     int len = vsnprintf(buf, 1, fmt, argscpy);
     va_end(argscpy);
 
-    if (len == 0 || len == 1)
-        msg = strdup(fmt);
-    else
-        msg = malloc(len+2);
+    if (len < 1024) {
+        msg = alloca(len + 1);
+        savmsg = NULL;
+    } else {
+        msg = malloc(len + 1);
+        savmsg = msg;
+    }
 
     va_copy(argscpy, args);
     vsnprintf(msg, len+1, fmt, argscpy); 
@@ -133,7 +137,6 @@ static int logmsgv_lk(loglvl lvl, const char *fmt, va_list args)
                      tm.tm_sec);
         }
     }
-    char *savmsg = msg;
     while (do_time && ! override && ended_with_newline && *msg != 0) {
         char *s;
         ret += fprintf(f, "%s", timestamp);

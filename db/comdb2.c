@@ -4558,7 +4558,8 @@ static void iomap_off(void *p)
         bdb_berkdb_iomap_set(thedb->bdb_env, 0);
 }
 
-cron_sched_t *memstat_sched;
+/* Global cron job scheduler for time-insensitive, lightweight jobs. */
+cron_sched_t *gbl_cron;
 static void *memstat_cron_event(void *arg1, void *arg2, void *arg3, void *arg4,
                                 struct errstat *err)
 {
@@ -4570,7 +4571,7 @@ static void *memstat_cron_event(void *arg1, void *arg2, void *arg3, void *arg4,
 
     if (gbl_memstat_freq > 0) {
         tm = comdb2_time_epoch() + gbl_memstat_freq;
-        rc = cron_add_event(memstat_sched, NULL, tm, (FCRON) memstat_cron_event, NULL,
+        rc = cron_add_event(gbl_cron, NULL, tm, (FCRON) memstat_cron_event, NULL,
                             NULL, NULL, NULL, err);
 
         if (rc == NULL)
@@ -4592,7 +4593,7 @@ static void *memstat_cron_kickoff(void *arg1, void *arg2, void *arg3,
             gbl_memstat_freq);
 
     tm = comdb2_time_epoch() + gbl_memstat_freq;
-    rc = cron_add_event(memstat_sched, NULL, tm, (FCRON) memstat_cron_event, NULL, NULL,
+    rc = cron_add_event(gbl_cron, NULL, tm, (FCRON) memstat_cron_event, NULL, NULL,
                         NULL, NULL, err);
     if (rc == NULL)
         logmsg(LOGMSG_ERROR, "Failed to schedule next memstat event. "
@@ -4607,11 +4608,11 @@ static int comdb2ma_stats_cron(void)
     struct errstat xerr = {0};
 
     if (gbl_memstat_freq > 0) {
-        memstat_sched = cron_add_event(
-            memstat_sched, memstat_sched == NULL ? "memstat_cron" : NULL,
+        gbl_cron = cron_add_event(
+            gbl_cron, gbl_cron == NULL ? "Global Job Scheduler" : NULL,
             INT_MIN, (FCRON) memstat_cron_kickoff, NULL, NULL, NULL, NULL, &xerr);
 
-        if (memstat_sched == NULL)
+        if (gbl_cron == NULL)
             logmsg(LOGMSG_ERROR, "Failed to schedule memstat cron job. "
                             "rc = %d, errstr = %s\n",
                     xerr.errval, xerr.errstr);
