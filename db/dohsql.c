@@ -34,18 +34,6 @@ static int gbl_dohsql_que_free_highwm = 10;
 static int gbl_dohsql_que_free_lowwm = 5;
 static int gbl_dohsql_max_queued_kb_lowwm = 1000; /* 1 GB */
 
-#define VDBE_ENTER_MUTEX(p) \
-  sqlite3_mutex_enter(sqlite3_db_mutex(((Vdbe*)p)->db));
-
-#define VDBE_LEAVE_MUTEX(p) \
-  sqlite3_mutex_leave(sqlite3_db_mutex(((Vdbe*)p)->db));
-
-#define MEM_ENTER_MUTEX(p) \
-  sqlite3_mutex_enter(sqlite3_db_mutex(((Mem*)p)->db));
-
-#define MEM_LEAVE_MUTEX(p) \
-  sqlite3_mutex_leave(sqlite3_db_mutex(((Mem*)p)->db));
-
 struct col {
     int type;
     char *name;
@@ -231,7 +219,6 @@ static void sqlengine_work_shard(struct thdpool *pool, void *work,
 
 static int inner_type(sqlite3_stmt *stmt, int col)
 {
-    VDBE_ENTER_MUTEX(stmt);
     int type = sqlite3_column_type(stmt, col);
     if (type == SQLITE_NULL) {
         type = typestr_to_type(sqlite3_column_decltype(stmt, col));
@@ -239,7 +226,6 @@ static int inner_type(sqlite3_stmt *stmt, int col)
     if (type == SQLITE_DECIMAL) {
         type = SQLITE_TEXT;
     }
-    VDBE_LEAVE_MUTEX(stmt);
     return type;
 }
 
@@ -248,9 +234,7 @@ static int inner_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     dohsql_connector_t *conn = (dohsql_connector_t *)clnt->plugin.state;
     int ncols, i;
 
-    VDBE_ENTER_MUTEX(stmt);
     ncols = sqlite3_column_count(stmt);
-    VDBE_LEAVE_MUTEX(stmt);
 
     if (!conn->cols || conn->ncols < ncols) {
         conn->cols = (my_col_t *)realloc(conn->cols, ncols * sizeof(my_col_t));
@@ -424,15 +408,9 @@ static int dohsql_dist_column_count(struct sqlclntstate *clnt,
         ret res;                                                               \
         dohsql_t *conns = clnt->conns;                                         \
         if (conns->row_src == 0) {                                             \
-            VDBE_ENTER_MUTEX(stmt);                                            \
-            res = sqlite3_column_##type(stmt, iCol);                           \
-            VDBE_LEAVE_MUTEX(stmt);                                            \
-            return res;                                                        \
+            return sqlite3_column_##type(stmt, iCol);                          \
         }                                                                      \
-        MEM_ENTER_MUTEX(&conns->row[iCol]);                                    \
-        res = sqlite3_value_##type(&conns->row[iCol]);                         \
-        MEM_LEAVE_MUTEX(&conns->row[iCol]);                                    \
-        return res;                                                            \
+        return sqlite3_value_##type(&conns->row[iCol]);                        \
     }
 
 FUNC_COLUMN_TYPE(int, type)
@@ -447,20 +425,13 @@ static const intv_t *dohsql_dist_column_interval(struct sqlclntstate *clnt,
                                                  sqlite3_stmt *stmt, int iCol,
                                                  int type)
 {
-    intv_t *res;
     dohsql_t *conns = clnt->conns;
     if (conns->row_src == 0)
     {
-        VDBE_ENTER_MUTEX(stmt);
-        res = sqlite3_column_interval(stmt, iCol, type);
-        VDBE_LEAVE_MUTEX(stmt);
-        return res;
+        return sqlite3_column_interval(stmt, iCol, type);
     }
 
-    VDBE_ENTER_MUTEX(stmt);
-    res = sqlite3_value_interval(&conns->row[iCol], type);
-    VDBE_LEAVE_MUTEX(stmt);
-    return res;
+    return sqlite3_value_interval(&conns->row[iCol], type);
 }
 
 static sqlite3_value *dohsql_dist_column_value(struct sqlclntstate *clnt,
@@ -470,11 +441,7 @@ static sqlite3_value *dohsql_dist_column_value(struct sqlclntstate *clnt,
 
     if (conns->row_src == 0)
     {
-        sqlite3_value *res;
-        VDBE_ENTER_MUTEX(stmt);
-        res = sqlite3_column_value(stmt, i);
-        VDBE_LEAVE_MUTEX(stmt);
-        return res;
+        return sqlite3_column_value(stmt, i);
     }
 
     return &conns->row[i];
@@ -1301,9 +1268,7 @@ void comdb2_handle_limit(Vdbe *v, Mem *m)
     if (m == &v->aMem[conns->limitRegs[ILIMIT_MEM_IDX]]) {
         reg = &v->aMem[conns->limitRegs[ILIMIT_SAVED_MEM_IDX]];
         /* limit */
-        VDBE_ENTER_MUTEX(v);
         conns->limit = sqlite3_value_int64(reg);
-        VDBE_LEAVE_MUTEX(v);
         if (gbl_dohsql_verbose)
             logmsg(LOGMSG_DEBUG, "%lx found limit %d from register %d\n",
                    pthread_self(), conns->limit, conns->limitRegs[0]);
@@ -1311,10 +1276,7 @@ void comdb2_handle_limit(Vdbe *v, Mem *m)
         if (m == &v->aMem[conns->limitRegs[IOFFSET_MEM_IDX]]) {
             reg = &v->aMem[conns->limitRegs[IOFFSET_SAVED_MEM_IDX]];
             /* offset */
-            VDBE_ENTER_MUTEX(v);
             conns->offset = sqlite3_value_int64(reg);
-            VDBE_LEAVE_MUTEX(v);
-
             if (gbl_dohsql_verbose)
                 logmsg(LOGMSG_DEBUG,
                        "%lx found offset %d from register %d, adjusting limit "
