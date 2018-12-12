@@ -5638,7 +5638,7 @@ void sqlite3_value_free_inplace(sqlite3_value *v){
 Mem *sqlite3CloneResult(
   sqlite3_stmt *pStmt, /* in */
   Mem *pMem,           /* in, out */
-  long long *pSize     /* in, out */
+  long long *pSize     /* out */
 ){
   Vdbe *p = (Vdbe*)pStmt;
   int i, rc, nCols = p->nResColumn;
