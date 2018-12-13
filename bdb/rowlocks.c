@@ -1858,7 +1858,7 @@ int abort_logical_transaction(bdb_state_type *bdb_state, tran_type *tran,
     int rc = 0, deadlkcnt = 0;
     int did_something = 0;
     DBT logdta;
-    DB_LSN lsn, undolsn, getlsn, start_phys_txn, last_regop_lsn;
+    DB_LSN lsn, undolsn, getlsn, start_phys_txn = {0}, last_regop_lsn;
     u_int32_t rectype;
 
     tran->aborted = 1;

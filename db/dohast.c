@@ -30,7 +30,6 @@ static char *_gen_col_expr(Vdbe *v, Expr *expr, const char **tblname);
 
 static char *generate_columns(Vdbe *v, ExprList *c, const char **tbl)
 {
-    sqlite3 *db = v->db;
     char *cols = NULL;
     char *accum = NULL;
     Expr *expr = NULL;
@@ -118,7 +117,6 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
     const char *tbl = NULL;
     char *select = NULL;
     char *where = NULL;
-    sqlite3 *db = v->db;
     char *limit = NULL;
     char *offset = NULL;
     char *extra = NULL;
