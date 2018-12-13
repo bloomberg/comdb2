@@ -1102,7 +1102,7 @@ static int bdb_temp_table_truncate_temp_db(bdb_state_type *bdb_state,
         /*fprintf(stderr, "deleting\n");*/
         rc = dbcur->c_get(dbcur, &dbt_key, &dbt_data, DB_NEXT);
     }
-    //assert(rc == DB_KEYEMPTY || rc == DB_NOTFOUND);
+    // assert(rc == DB_KEYEMPTY || rc == DB_NOTFOUND);
 
     dbcur->c_close(dbcur);
     return 0;
