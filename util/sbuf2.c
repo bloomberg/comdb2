@@ -202,10 +202,11 @@ int SBUF2_FUNC(sbuf2putc)(SBUF2 *sb, char c)
     if (sb == 0)
         return -1;
 
-    if (sb->wbuf==NULL) {
-        /*lazily establish write buffer*/
+    if (sb->wbuf == NULL) {
+        /* lazily establish write buffer */
         sb->wbuf = malloc(sb->lbuf);
-        if (sb->wbuf==NULL) return -1;
+        if (sb->wbuf == NULL)
+            return -1;
     }
 
     if ((sb->whd == sb->lbuf - 1 && sb->wtl == 0) || (sb->whd == sb->wtl - 1)) {
@@ -249,10 +250,11 @@ int SBUF2_FUNC(sbuf2write)(char *ptr, int nbytes, SBUF2 *sb)
     int rc, off, left, written = 0;
     if (sb == 0)
         return -1;
-    if (sb->wbuf==NULL) {
-        /*lazily establish write buffer*/
+    if (sb->wbuf == NULL) {
+        /* lazily establish write buffer */
         sb->wbuf = malloc(sb->lbuf);
-        if (sb->wbuf==NULL) return -1;
+        if (sb->wbuf == NULL)
+            return -1;
     }
     off = 0;
     left = nbytes;
@@ -320,10 +322,11 @@ int SBUF2_FUNC(sbuf2getc)(SBUF2 *sb)
     if (sb == 0)
         return -1;
 
-    if (sb->rbuf==NULL) {
-        /* lazily establish read buffer*/
-        sb->rbuf=malloc(sb->lbuf);
-        if (sb->rbuf==NULL) return -1;
+    if (sb->rbuf == NULL) {
+        /* lazily establish read buffer */
+        sb->rbuf = malloc(sb->lbuf);
+        if (sb->rbuf == NULL)
+            return -1;
     }
 #if SBUF2_UNGETC
     if (sb->ungetc_buf_len > 0) {
@@ -409,12 +412,12 @@ static int sbuf2fread_int(char *ptr, int size, int nitems,
     int need = size * nitems;
     int done = 0;
 
-    if (sb->rbuf==NULL) {
-        /* lazily establish read buffer*/
-        sb->rbuf=malloc(sb->lbuf);
-        if (sb->rbuf==NULL) return -1;
+    if (sb->rbuf == NULL) {
+        /* lazily establish read buffer */
+        sb->rbuf = malloc(sb->lbuf);
+        if (sb->rbuf == NULL)
+            return -1;
     }
-
 
 #if SBUF2_UNGETC
     if (sb->ungetc_buf_len > 0) {
