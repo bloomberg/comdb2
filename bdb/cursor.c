@@ -1263,7 +1263,7 @@ static int truncate_pglogs(void *obj, void *arg)
     rc = bdb_temp_table_first(bdb_state, ent->tmpcur, &bdberr);
     while (!rc) {
         pglogs_tmptbl_key *rec = bdb_temp_table_key(ent->tmpcur);
-        if (log_compare(&rec->commit_lsn, &slsn->lsn) > 0) {
+        if (log_compare(&rec->commit_lsn, &slsn->lsn) >= 0) {
             rc = bdb_temp_table_delete(bdb_state, ent->tmpcur, &bdberr);
             if (rc) {
                 logmsg(LOGMSG_ERROR, "%s:%d failed to delete pglogs-key in "
@@ -1618,7 +1618,7 @@ static int bdb_truncate_pglog_queue(bdb_state_type *bdb_state,
 
     while (qe) {
         if (qe->type == PGLOGS_QUEUE_PAGE &&
-            (log_compare(&qe->commit_lsn, &trunclsn) > 0)) {
+            (log_compare(&qe->commit_lsn, &trunclsn) >= 0)) {
             del_qe = qe;
             break;
         }
@@ -1637,7 +1637,7 @@ static int bdb_truncate_pglog_queue(bdb_state_type *bdb_state,
         while(cur_qe && cur_qe->type != PGLOGS_QUEUE_PAGE)
             cur_qe = cur_qe->lnk.prev;
 
-        if (cur_qe && log_compare(&cur_qe->commit_lsn, &trunclsn) > 0)
+        if (cur_qe && log_compare(&cur_qe->commit_lsn, &trunclsn) >= 0)
             cur->cur = del_qe->lnk.prev;
     } 
 
@@ -2091,7 +2091,7 @@ int truncate_asof_pglogs(bdb_state_type *bdb_state, int file, int offset)
     bdb_clean_pglogs_queues(bdb_state, lsn, 1);
     Pthread_mutex_lock(&bdb_asof_current_lsn_mutex);
     lcommit = LISTC_BOT(&pglogs_commit_list);
-    while (lcommit && log_compare(&lcommit->commit_lsn, &lsn) > 0) {
+    while (lcommit && log_compare(&lcommit->commit_lsn, &lsn) >= 0) {
         listc_rbl(&pglogs_commit_list);
         return_pglogs_commit_list(lcommit);
         lcommit = LISTC_BOT(&pglogs_commit_list);
@@ -2110,7 +2110,7 @@ int truncate_asof_pglogs(bdb_state_type *bdb_state, int file, int offset)
     } else
         Pthread_mutex_unlock(&logfile_pglogs_repo_mutex);
 
-    bdb_asof_current_lsn = lsn;
+    bdb_asof_current_lsn.file = bdb_asof_current_lsn.offset = 0;
     Pthread_mutex_unlock(&bdb_asof_current_lsn_mutex);
     return 0;
 }
