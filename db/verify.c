@@ -311,7 +311,7 @@ static int verify_table_int(const char *table, SBUF2 *sb,
     } else {
         assert(tran && "tran is null but should not be");
         assert(db && "db is null but should not be");
-        blob_buffer_t blob_buf[MAXBLOBS] = {0};
+        blob_buffer_t blob_buf[MAXBLOBS] = {{0}};
         rc = bdb_verify(
             sb, db->handle, db, verify_formkey_callback, verify_blobsizes_callback,
             (int (*)(void *, void *, int *, uint8_t))vtag_to_ondisk_vermap,

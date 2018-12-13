@@ -858,9 +858,9 @@ int bdb_reconstruct_inplace_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
             if (origd) {
                 /* Make sure that our sizes agree. */
                 if (origd_sz && *origd_sz > 0 && *origd_sz != repl->orig.size) {
-                    logmsg(LOGMSG_FATAL, "%s line %d origd-sz %d != orig-sz "
-                                         "%d\n",
-                           __func__, __LINE__, origd_sz, repl->orig.size);
+                    logmsg(LOGMSG_FATAL,
+                           "%s line %d origd-sz %d != orig-sz %d\n", __func__,
+                           __LINE__, *origd_sz, repl->orig.size);
                     abort();
                 }
 
@@ -873,9 +873,9 @@ int bdb_reconstruct_inplace_update(bdb_state_type *bdb_state, DB_LSN *startlsn,
 
             if (newd) {
                 if (newd_sz && *newd_sz > 0 && *newd_sz != repl->repl.size) {
-                    logmsg(LOGMSG_FATAL, "%s line %d newd-sz %d != repl-sz "
-                                         "%d\n",
-                           __func__, __LINE__, newd_sz, repl->repl.size);
+                    logmsg(LOGMSG_FATAL,
+                           "%s line %d newd-sz %d != repl-sz %d\n", __func__,
+                           __LINE__, *newd_sz, repl->repl.size);
                     abort();
                 }
 
@@ -1042,8 +1042,6 @@ int undo_add_ix_lk(bdb_state_type *bdb_state, tran_type *tran, char *table_name,
                    llog_undo_add_ix_lk_args *add_ix_lk, DB_LSN *undolsn,
                    DB_LSN *prev, int just_load_lsn)
 {
-    unsigned long long tranid;
-    unsigned long long genid;
     int rc;
     DBT *key;
 
@@ -1054,11 +1052,13 @@ int undo_add_ix_lk(bdb_state_type *bdb_state, tran_type *tran, char *table_name,
     /* TODO: change this back */
     /*key = malloc(add_ix_lk->keylen);*/
 
-    tranid = add_ix_lk->ltranid;
-    genid = add_ix_lk->genid;
     key = &add_ix_lk->key;
 
 #if 0
+    unsigned long long genid;
+    genid = add_ix_lk->genid;
+    unsigned long long tranid;
+    tranid = add_ix_lk->ltranid;
    printf("undo_add_ix genid %016llx  ltranid %016llx table %s\n", genid, tranid, table_name);
    fsnapf(stdout, key, add_ix->keylen);
 #endif
@@ -1083,7 +1083,6 @@ int undo_del_ix_lk(bdb_state_type *bdb_state, tran_type *tran,
 {
     int ix;
     unsigned long long genid;
-    unsigned long long ltranid;
     char *table;
     int rc;
     DB_LSN lsn;
@@ -1116,7 +1115,6 @@ int undo_del_ix_lk(bdb_state_type *bdb_state, tran_type *tran,
     memcpy(&genid, dtabuf, sizeof(unsigned long long));
 
     table = del_ix_lk->table.data;
-    ltranid = del_ix_lk->ltranid;
     ix = del_ix_lk->ix;
 
     rc = ll_undo_del_ix_lk(bdb_state, tran, table, genid, ix, undolsn, keybuf,
@@ -1143,7 +1141,6 @@ int undo_del_ix(bdb_state_type *bdb_state, tran_type *tran,
 {
     int ix;
     unsigned long long genid;
-    unsigned long long ltranid;
     char *table;
     int rc;
     DB_LSN lsn;
@@ -1177,7 +1174,6 @@ int undo_del_ix(bdb_state_type *bdb_state, tran_type *tran,
     memcpy(&genid, dtabuf, sizeof(unsigned long long));
 
     table = del_ix->table.data;
-    ltranid = del_ix->ltranid;
     ix = del_ix->ix;
 
     rc = ll_undo_del_ix_lk(bdb_state, tran, table, genid, ix, undolsn, keybuf,
@@ -1195,7 +1191,6 @@ int undo_del_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
                     DB_LSN *prev, int just_load_lsn)
 {
     unsigned long long genid;
-    unsigned long long ltranid;
     char *table;
     int rc;
     void *dtabuf;
@@ -1224,7 +1219,6 @@ int undo_del_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
     }
 
     table = del_dta_lk->table.data;
-    ltranid = del_dta_lk->ltranid;
 
     rc = ll_undo_del_dta_lk(bdb_state, tran, table, genid, undolsn,
                             del_dta_lk->dtafile, del_dta_lk->dtastripe, dtabuf,
@@ -1864,7 +1858,7 @@ int abort_logical_transaction(bdb_state_type *bdb_state, tran_type *tran,
     int rc = 0, deadlkcnt = 0;
     int did_something = 0;
     DBT logdta;
-    DB_LSN lsn, undolsn, getlsn, start_phys_txn, last_regop_lsn;
+    DB_LSN lsn, undolsn, getlsn, start_phys_txn = {0}, last_regop_lsn;
     u_int32_t rectype;
 
     tran->aborted = 1;
@@ -2006,10 +2000,6 @@ int abort_logical_transaction(bdb_state_type *bdb_state, tran_type *tran,
     rc = 0;
     if (tran->committed_begin_record &&
         bdb_state->repinfo->myhost == bdb_state->repinfo->master_host) {
-        DB_LSN prev;
-
-        prev = tran->last_logical_lsn;
-
         if (!tran->physical_tran) {
             bdb_tran_begin_phys(bdb_state, tran);
         }
@@ -2096,8 +2086,6 @@ static int logical_release_transaction(bdb_state_type *bdb_state,
                                        int repcommit)
 {
     tran_type *ltrans;
-    int lockerid;
-
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
@@ -2131,8 +2119,6 @@ static int logical_release_transaction(bdb_state_type *bdb_state,
         }
     }
 
-    /* Grab the lockerid & set it to 0 in the structure */
-    lockerid = ltrans->logical_lid;
     ltrans->logical_lid = 0;
 
     Pthread_mutex_unlock(&bdb_state->translist_lk);
@@ -2246,12 +2232,10 @@ int handle_undo_add_dta(DB_ENV *dbenv, u_int32_t rectype,
                         db_recops op)
 {
     int rc = 0;
-    bdb_state_type *parent;
     DB_LSN *lprev;
     bdb_state_type *bdb_state;
 
     bdb_state = dbenv->app_private;
-    parent = bdb_state->parent;
 
     /* comdb2_db_printlog calls this with a null state, so handle it.
        We only need to handle it for DB_TXN_PRINT */
@@ -2981,7 +2965,6 @@ int llog_ltran_commit_log_wrap(DB_ENV *dbenv, DB_TXN *txnid, DB_LSN *ret_lsnp,
 
 int bdb_llog_commit(bdb_state_type *bdb_state, tran_type *tran, int isabort)
 {
-    DBT dbt_prevllsn = {0};
     DB_LSN lsn;
     int rc;
 
@@ -2991,8 +2974,6 @@ int bdb_llog_commit(bdb_state_type *bdb_state, tran_type *tran, int isabort)
     }
 
     lsn = tran->logical_tran->last_logical_lsn;
-    dbt_prevllsn.data = &lsn;
-    dbt_prevllsn.size = sizeof(DB_LSN);
 
     /* rep only marks a replication event for logical transactions perm
        if this is set */
@@ -3267,7 +3248,9 @@ int handle_undo_upd_dta(DB_ENV *dbenv, u_int32_t rectype,
                 // else
             } else {
                 int lllen = sizeof(unsigned long long);
+#ifndef NDEBUG
                 int old_dta_len = updop->old_dta_len;
+#endif
                 irc = bdb_reconstruct_update(
                     bdb_state, &lll, NULL, NULL, &lllgenid, &lllen, llldta,
                     &updop->old_dta_len, NULL, NULL, NULL, NULL);
@@ -3376,7 +3359,6 @@ static int undo_upd_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
     bdb_state_type *table;
     unsigned long long oldgenid;
     unsigned long long newgenid;
-    unsigned long long ltranid;
     int olddta_len;
     int rc;
     int inplace = 0;
@@ -3393,7 +3375,6 @@ static int undo_upd_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
     tablename = upd_dta_lk->table.data;
     table = bdb_get_table_by_name(bdb_state, tablename);
 
-    ltranid = upd_dta_lk->ltranid;
     oldgenid = upd_dta_lk->oldgenid;
     newgenid = upd_dta_lk->newgenid;
     olddta_len = upd_dta_lk->old_dta_len;
@@ -3413,7 +3394,9 @@ static int undo_upd_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
             assert(offset == 0 && updlen == olddta_len);
         inplace = 1;
     } else {
+#ifndef NDEBUG
         int cklen = olddta_len;
+#endif
         rc =
             bdb_reconstruct_update(bdb_state, undolsn, NULL, NULL, NULL, 0,
                                    olddta, &olddta_len, NULL, NULL, NULL, NULL);
@@ -3941,7 +3924,9 @@ int handle_undo_upd_dta_lk(DB_ENV *dbenv, u_int32_t rectype,
                                                      &updop->old_dta_len, NULL,
                                                      NULL, &offset, NULL, NULL);
             } else {
+#ifndef NDEBUG
                 int cklen = updop->old_dta_len;
+#endif
                 int lllsz = sizeof(unsigned long long);
                 irc = bdb_reconstruct_update(
                     bdb_state, &lll, NULL, NULL, &lllgenid, &lllsz, llldta,
@@ -4060,14 +4045,6 @@ int handle_rowlocks_log_bench(DB_ENV *dbenv, u_int32_t rectype,
     bdb_state_type *bdb_state;
     bdb_state = dbenv->app_private;
 
-    DBT lk1 = {0}, lk2 = {0};
-    char mem1[ROWLOCK_KEY_SIZE], mem2[ROWLOCK_KEY_SIZE];
-
-    lk1.data = mem1;
-    lk2.data = mem2;
-
-    int rc = 0;
-
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
     if (bdb_state && !bdb_state->passed_dbenv_open)
@@ -4081,7 +4058,6 @@ int handle_rowlocks_log_bench(DB_ENV *dbenv, u_int32_t rectype,
     switch (op) {
     case DB_TXN_BACKWARD_ROLL:
     case DB_TXN_ABORT:
-        rc = 0;
         break;
 
     case DB_TXN_APPLY:

@@ -475,9 +475,7 @@ static int fdb_sqlstat_cursor_close(BtCursor *cur)
 
 static char *fdb_sqlstat_cursor_id(BtCursor *pCur)
 {
-    static uuid_t fake = {0};
-
-    return fake;
+    return NULL;
 }
 
 static char *fdb_sqlstat_cursor_get_data(BtCursor *pCur)

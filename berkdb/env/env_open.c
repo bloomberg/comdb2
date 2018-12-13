@@ -1094,8 +1094,8 @@ __db_appname(dbenv, appname, file, tmp_oflags, fhpp, namep)
 	/* Everything else is relative to the environment home. */
 	if (dbenv != NULL)
 		a = dbenv->db_home;
-
-retry:	/*
+	/*
+retry:
 	 * DB_APP_NONE:
 	 *      DB_HOME/file
 	 * DB_APP_DATA:
@@ -1282,7 +1282,7 @@ __checkpoint_open(DB_ENV *dbenv, const char *db_home)
 	char buf[PATH_MAX];
 	char fname[PATH_MAX];
 	const char *pbuf;
-	struct __db_checkpoint ckpt = { 0 };
+	struct __db_checkpoint ckpt = {{0}};
 	DB_LSN lsn;
 	size_t sz;
 

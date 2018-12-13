@@ -19,6 +19,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <alloca.h>
+
+#undef NDEBUG
 #include <assert.h>
 #include <comdb2rle.c> //need access to static funcs
 

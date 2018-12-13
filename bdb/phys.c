@@ -619,7 +619,7 @@ int phys_key_add(bdb_state_type *bdb_state, tran_type *logical_tran,
                  unsigned long long genid, int ixnum, DBT *dbt_key,
                  DBT *dbt_data)
 {
-    int rc, line, micro_retry, retry = 0;
+    int rc, micro_retry, retry = 0;
     int retry_count = bdb_state->attr->pagedeadlock_retries;
     int max_poll = bdb_state->attr->pagedeadlock_maxpoll;
     tran_type *physical_tran = NULL;
@@ -634,7 +634,6 @@ int phys_key_add(bdb_state_type *bdb_state, tran_type *logical_tran,
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s failed get physical tran rc %d\n", __func__,
                rc);
-        line = __LINE__;
         goto done;
     }
 
@@ -662,7 +661,6 @@ int phys_key_add(bdb_state_type *bdb_state, tran_type *logical_tran,
             if (rc) {
                 logmsg(LOGMSG_ERROR, "%s failed get physical tran rc %d\n",
                        __func__, rc);
-                line = __LINE__;
                 goto done;
             }
             tran_allocate_rlptr(logical_tran, &newlkptr, &newrowlk);
@@ -673,7 +671,6 @@ int phys_key_add(bdb_state_type *bdb_state, tran_type *logical_tran,
             logmsg(LOGMSG_ERROR,
                    "%s failed to lock row index write genid %llx rc %d\n",
                    __func__, genid, rc);
-            line = __LINE__;
             goto done;
         }
     }

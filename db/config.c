@@ -1091,7 +1091,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             logmsg(LOGMSG_INFO, "sql default mode is %s\n",
                    (gbl_sql_tranlevel_default == SQL_TDEF_SOCK) ? "socksql"
                                                                 : "blocksql");
-        } else if (ltok == 9 && !strncasecmp(tok, "blocksock", 9) ||
+        } else if ((ltok == 9 && !strncasecmp(tok, "blocksock", 9)) ||
                    tokcmp(tok, ltok, "default") == 0) {
             gbl_upgrade_blocksql_2_socksql = 1;
             if (gbl_sql_tranlevel_default == SQL_TDEF_BLOCK) {

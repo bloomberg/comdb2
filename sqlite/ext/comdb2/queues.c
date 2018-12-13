@@ -80,7 +80,7 @@ static int systblQueuesDisconnect(sqlite3_vtab *pVtab){
 }
 
 static int get_stats(struct systbl_queues_cursor *pCur) {
-  struct consumer_stat stats[MAXCONSUMERS] = {0};
+  struct consumer_stat stats[MAXCONSUMERS] = {{0}};
   unsigned long long depth = 0;
   char *spname = NULL;
 

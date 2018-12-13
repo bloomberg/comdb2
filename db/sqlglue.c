@@ -7007,7 +7007,7 @@ int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
             if (bdb_attr_get(thedb->bdb_attr,
                              BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
                 logmsg(LOGMSG_USER, "Dec set quantum IN:\n");
-                hexdump(LOGMSG_USER, (unsigned char *)new_in, f->len);
+                hexdump(LOGMSG_USER, new_in, f->len);
                 logmsg(LOGMSG_USER, "\n");
             }
 
@@ -7039,7 +7039,7 @@ int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
             if (bdb_attr_get(thedb->bdb_attr,
                              BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
                 logmsg(LOGMSG_USER, "Dec set quantum OUT:\n");
-                hexdump(LOGMSG_USER, (unsigned char *)new_in, f->len);
+                hexdump(LOGMSG_USER, new_in, f->len);
                 logmsg(LOGMSG_USER, "\n");
             }
 
@@ -9322,7 +9322,8 @@ int pause_pagelock_cursors(void *arg)
     {
         if (cur->bdbcur) {
             int rc = cur->bdbcur->pause(cur->bdbcur, &bdberr);
-            assert(0 == rc);
+            if (0 == rc)
+                abort();
         }
     }
 
@@ -11266,7 +11267,7 @@ void stat4dump(int more, char *table, int istrace)
                 const char *comma = "";
                 while (hdroffset < hdrsz) {
                     u32 type;
-                    Mem m = {0};
+                    Mem m = {{0}};
                     hdroffset += sqlite3GetVarint32(in + hdroffset, &type);
                     dataoffset +=
                         sqlite3VdbeSerialGet(in + dataoffset, type, &m);

@@ -158,7 +158,7 @@ int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t generation)
         lastpr = now;
     }
 
-    seqnum_type seqnum = {{0}, 0};
+    seqnum_type seqnum = {{0}};
     seqnum.lsn = permlsn;
     seqnum.commit_generation = generation;
     bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &seqnum.generation);
@@ -705,12 +705,10 @@ int send_myseqnum_to_master_udp(bdb_state_type *bdb_state)
     int get_myseqnum(bdb_state_type * bdb_state, uint8_t * p_net_seqnum);
     ack_info *info;
     uint8_t *p_buf;
-    uint8_t *p_buf_end;
     int rc = 0;
 
     new_ack_info(info, BDB_SEQNUM_TYPE_LEN, bdb_state->repinfo->myhost);
     p_buf = ack_info_data(info);
-    p_buf_end = p_buf + BDB_SEQNUM_TYPE_LEN;
 
     if (0 == (rc = get_myseqnum(bdb_state, p_buf))) {
         info->from = 0;

@@ -310,8 +310,6 @@ __memp_recover_page(dbmfp, hp, bhp, pgno)
 	MPOOLFILE *mfp;
 	DB_MPOOL *dbmp;
 	MPOOL *c_mp;
-	DB_MUTEX *mutexp;
-	DBT *dbtp;
 	size_t nr, pagesize;
 	DB_PGINFO duminfo = { 0 }, *pginfo;
 	PAGE *pagep;
@@ -323,13 +321,11 @@ __memp_recover_page(dbmfp, hp, bhp, pgno)
 	mfp = dbmfp->mfp;
 	pagesize = mfp->stat.st_pagesize;
 	dbmp = dbenv->mp_handle;
-	mutexp = &hp->hash_mutex;
 	n_cache = NCACHE(dbmp->reginfo[0].primary, bhp->mf_offset, bhp->pgno);
 	c_mp = dbmp->reginfo[n_cache].primary;
 
 	pgidx = -1;
 	free_buf = 0;
-	dbtp = NULL;
 
 	ZERO_LSN(largest_lsn);
 
@@ -447,13 +443,13 @@ __memp_pgread(dbmfp, hp, bhp, can_create, is_recovery_page)
 	MPOOLFILE *mfp;
 	DB_MUTEX *mutexp;
 	size_t len, nr, pagesize;
-	int ret, try_recover, recovered_page;
+	int ret, try_recover;
 
 	mutexp = &hp->hash_mutex;
 	dbenv = dbmfp->dbenv;
 	mfp = dbmfp->mfp;
 	pagesize = mfp->stat.st_pagesize;
-	recovered_page = try_recover = 0;
+	try_recover = 0;
 
 	/* We should never be called with a dirty or a locked buffer. */
 	DB_ASSERT(!F_ISSET(bhp, BH_DIRTY | BH_DIRTY_CREATE | BH_LOCKED));
@@ -523,7 +519,6 @@ recover_page:
 			    "recovery required", (u_long) bhp->pgno);
 			return (__db_panic(dbenv, DB_RUNRECOVERY));
 		}
-		recovered_page = 1;
 		++try_recover;
 	}
 

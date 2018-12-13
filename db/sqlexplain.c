@@ -1255,7 +1255,7 @@ int newsql_dump_query_plan(struct sqlclntstate *clnt, sqlite3 *hndl)
         if (maxwidth < oplen)
             maxwidth = oplen;
     }
-    struct cursor_info cur[MAXCUR] = {0};
+    struct cursor_info cur[MAXCUR] = {{0}};
 
     for (int pc = 0; pc < v->nOp; pc++) {
         int indent = indentation.aiIndent[pc];

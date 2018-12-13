@@ -3759,7 +3759,7 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(struct sqlclntstate *clnt,
             free(msg);
             return NULL;
         }
-        tran->tid = (unsigned char *)tran->tiduuid;
+        tran->tid = (char *)tran->tiduuid;
 
         tran->isuuid = clnt->osql.rqid == OSQL_RQID_USE_UUID;
         if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {

@@ -392,7 +392,7 @@ int local_replicant_log_add_for_update(struct ireq *iq, void *trans, int rrn,
     int odsz, clsz;
     int rc;
     int using_newblobs = 0;
-    blob_status_t newblobs[MAXBLOBS] = {0};
+    blob_status_t newblobs[MAXBLOBS] = {{0}};
     uint8_t *lim;
 
     /* NOTE: 80% of this routine is a copy-and-paste job from
@@ -655,7 +655,7 @@ int add_oplog_entry(struct ireq *iq, void *trans, int type, void *logrec,
     uint8_t buf[OPREC_SIZE] = {0};
     unsigned long long genid = 0;
     struct oprec rec;
-    blob_buffer_t blobs[MAXBLOBS] = {0};
+    blob_buffer_t blobs[MAXBLOBS] = {{0}};
     struct dbtable *db;
     struct ireq aiq;
 
@@ -728,7 +728,7 @@ int add_local_commit_entry(struct ireq *iq, void *trans, long long seqno,
     int err, fix;
     int rrn;
     unsigned long long genid = 0;
-    blob_buffer_t blobs[MAXBLOBS] = {0};
+    blob_buffer_t blobs[MAXBLOBS] = {{0}};
     struct commitrec rec;
 
     struct dbtable *db;

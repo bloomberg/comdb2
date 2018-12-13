@@ -661,7 +661,6 @@ static void *thd_req(void *vthd)
 static int reterr(intptr_t curswap, struct thd *thd, struct ireq *iq, int rc)
 /* 040307dh: 64bits */
 {
-    int is_legacy_fstsnd = 1;
     if (thd || iq) {
         LOCK(&lock)
         {
@@ -686,13 +685,11 @@ static int reterr(intptr_t curswap, struct thd *thd, struct ireq *iq, int rc)
                     } else {
                         sndbak_socket(iq->sb, NULL, 0, ERR_INTERNAL);
                     }
-                    is_legacy_fstsnd = 0;
                 } else if (iq->is_sorese) {
                     if (iq->sorese.osqllog) {
                         sbuf2close(iq->sorese.osqllog);
                         iq->sorese.osqllog = NULL;
                     }
-                    is_legacy_fstsnd = 0;
                 }
                 pool_relablk(p_reqs, iq);
             }

@@ -1291,7 +1291,6 @@ __log_flush_int(dblp, lsnp, release)
 	DB_LSN flush_lsn, f_lsn, s_lsn;
 	DB_MUTEX *flush_mutexp;
 	LOG *lp;
-	size_t b_off;
 	u_int32_t ncommit, w_off, listcnt;
 	int do_flush, first, ret, wrote_inmem;
 
@@ -1511,7 +1510,6 @@ flush:	MUTEX_LOCK(dbenv, flush_mutexp);
 	 * First get the current state of the buffer since
 	 * another write may come in, but we may not flush it.
 	 */
-	b_off = lp->b_off;
 	w_off = lp->w_off;
 	f_lsn = lp->f_lsn;
 
@@ -1710,7 +1708,7 @@ __log_fill_segments(dblp, startlsn, lsn, addr, len)
 {
 	LOG *lp;
 	DB_LSN *seg_lsn_array, *seg_start_lsn_array;
-	u_int32_t bsize, curseg, segoff, nbufs;
+	u_int32_t curseg, segoff, nbufs;
 	size_t copyamt, segspace, nxtseg;
 	int ret;
 
@@ -1718,8 +1716,6 @@ __log_fill_segments(dblp, startlsn, lsn, addr, len)
 	pthread_once(&log_write_once, __log_write_segments_init);
 
 	lp = dblp->reginfo.primary;
-
-	bsize = lp->buffer_size;
 
 	seg_lsn_array = R_ADDR(&dblp->reginfo, lp->segment_lsns_off);
 	seg_start_lsn_array =

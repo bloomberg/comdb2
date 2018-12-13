@@ -215,8 +215,8 @@ static int add_consumer_int(struct dbtable *db, int consumern,
     }
 
     if (!checkonly && db && (db->dbtype != DBTYPE_QUEUEDB)) {
-        logmsg(LOGMSG_ERROR, "%d: %s is not a queue\n",
-               __func__, db->tablename);
+        logmsg(LOGMSG_ERROR, "%s: %s is not a queue\n", __func__,
+               db->tablename);
         rc = -1;
         goto done;
     }
@@ -370,7 +370,7 @@ static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
     void *fnddta;
     size_t fnddtalen;
     size_t fnddtaoff;
-    uint8_t *open;
+    const uint8_t *open;
     pthread_mutex_t *mu;
     pthread_cond_t *cond;
 
@@ -533,7 +533,7 @@ static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
     if (db->dbtype != DBTYPE_QUEUE && db->dbtype != DBTYPE_QUEUEDB)
         logmsg(LOGMSG_ERROR, "'%s' is not a queue\n", db->tablename);
     else {
-        int ii, rc;
+        int ii;
         struct ireq iq;
         struct consumer_stat stats[MAXCONSUMERS];
         int flags = 0;
@@ -551,7 +551,7 @@ static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
             flags = BDB_QUEUE_WALK_FIRST_ONLY;
         if (fullstat)
             flags |= BDB_QUEUE_WALK_KNOWN_CONSUMERS_ONLY;
-        rc = dbq_walk(&iq, flags, stat_callback, stats);
+        dbq_walk(&iq, flags, stat_callback, stats);
 
         logmsg(LOGMSG_USER, "queue '%s':-\n", db->tablename);
         logmsg(LOGMSG_USER, "  geese added     %u\n", db->num_goose_adds);

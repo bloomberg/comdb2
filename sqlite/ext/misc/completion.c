@@ -324,7 +324,6 @@ static int completionNext(sqlite3_vtab_cursor *cur){
           "sys.cmd.send()",
           "table_version()",
         };
-        static int j = 0;
         if( pCur->j >= sizeof(cfuncs)/sizeof(char*)) {
           pCur->zCurrentRow = 0;
           pCur->ePhase = COMPLETION_EOF;

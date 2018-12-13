@@ -182,6 +182,8 @@ static void *prefault_helper_thread(void *arg)
             rc = prefault_toblock(iq, blkstate, i,
                                   dbenv->prefault_helper.threads[i].seqnum,
                                   &(dbenv->prefault_helper.threads[i].abort));
+            if (rc)
+                logmsg(LOGMSG_ERROR, "%s:%d rc=%d\n", __func__, __LINE__, rc);
 
             /*fprintf(stderr, "helper %d working for invalid2\n", i);*/
             thrman_where(thr_self, NULL);
@@ -190,6 +192,8 @@ static void *prefault_helper_thread(void *arg)
         case PREFAULT_READAHEAD:
             thrman_where(thr_self, "prefault_readahead");
             rc = prefault_readahead(db, ixnum, key, keylen, numreadahead);
+            if (rc)
+                logmsg(LOGMSG_ERROR, "%s:%d rc=%d\n", __func__, __LINE__, rc);
             thrman_where(thr_self, NULL);
             break;
         }

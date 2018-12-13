@@ -158,7 +158,7 @@ __checkpoint_verify(DB_ENV *dbenv)
 int
 __checkpoint_save(DB_ENV *dbenv, DB_LSN *lsn, int in_recovery)
 {
-	struct __db_checkpoint ckpt = { 0 };
+	struct __db_checkpoint ckpt = {{0}};
 	int rc;
 	size_t niop = 0;
 
@@ -1084,7 +1084,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 	MPOOL *c_mp = NULL, *mp;
 	MPOOLFILE *mfp;
 	u_int32_t n_cache;
-	int ar_cnt, ar_max, i, j, pass, ret, t_ret;
+	int ar_cnt, ar_max, i, j, ret, t_ret;
 	int wrote;
 	int do_parallel;
 	struct trickler *pt;
@@ -1127,7 +1127,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 	accum_sync = accum_skip = 0;
 	dbmp = dbenv->mp_handle;
 	mp = dbmp->reginfo[0].primary;
-	pass = wrote = 0;
+	wrote = 0;
 
 	do_parallel = gbl_parallel_memptrickle;
 
