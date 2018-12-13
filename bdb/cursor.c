@@ -1271,8 +1271,8 @@ static int truncate_pglogs(void *obj, void *arg)
                         rc, bdberr);
                 abort();
             }
-        } else
-            rc = bdb_temp_table_next(bdb_state, ent->tmpcur, &bdberr);
+        } 
+        rc = bdb_temp_table_next(bdb_state, ent->tmpcur, &bdberr);
     }
     return 0;
 }
@@ -2100,7 +2100,7 @@ int truncate_asof_pglogs(bdb_state_type *bdb_state, int file, int offset)
         Pthread_mutex_unlock(&logfile_pglogs_repo_mutex);
         slsn.bdb_state = bdb_state;
         slsn.lsn = lsn;
-        hash_for(l_entry->pglogs_hashtbl, truncate_pglogs, &lsn);
+        hash_for(l_entry->pglogs_hashtbl, truncate_pglogs, &slsn);
         Pthread_mutex_unlock(&l_entry->pglogs_mutex);
     } else
         Pthread_mutex_unlock(&logfile_pglogs_repo_mutex);
