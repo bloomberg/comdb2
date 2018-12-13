@@ -1056,6 +1056,7 @@ static int enable_global_variables(lua_State *lua)
 }
 
 static int lua_prepare_sql(Lua, SP, const char *sql, sqlite3_stmt **);
+static int lua_prepare_sql_no_auth(Lua, SP, const char *sql, sqlite3_stmt **);
 
 /*
 ** Lua stack:
@@ -1110,7 +1111,7 @@ static int create_temp_table(Lua lua, pthread_mutex_t **lk, const char **name)
     strbuf_free(sql);
     sql = NULL;
     sqlite3_stmt *stmt;
-    if ((rc = lua_prepare_sql(lua, sp, ddl, &stmt)) != 0) {
+    if ((rc = lua_prepare_sql_no_auth(lua, sp, ddl, &stmt)) != 0) {
         goto out;
     }
 
@@ -2047,14 +2048,15 @@ static int dbstmt_bind_int(Lua lua, dbstmt_t *dbstmt)
 }
 
 static int lua_prepare_sql_int(Lua L, SP sp, const char *sql,
-                               sqlite3_stmt **stmt, struct sql_state *rec)
+                               sqlite3_stmt **stmt, struct sql_state *rec,
+                               int flags)
 {
     struct errstat err = {0};
     struct sql_state rec_lcl = {0};
     struct sql_state *rec_ptr = rec ? rec : &rec_lcl;
     rec_ptr->sql = sql;
-    sp->rc = sp->initial ? get_prepared_stmt(sp->thd, sp->clnt, rec_ptr, &err)
-                         : get_prepared_stmt_try_lock(sp->thd, sp->clnt, rec_ptr, &err);
+    sp->rc = sp->initial ? get_prepared_stmt(sp->thd, sp->clnt, rec_ptr, &err, flags)
+                         : get_prepared_stmt_try_lock(sp->thd, sp->clnt, rec_ptr, &err, flags);
     sp->initial = 0;
     if (sp->rc == 0) {
         *stmt = rec_ptr->stmt;
@@ -2069,7 +2071,12 @@ static int lua_prepare_sql_int(Lua L, SP sp, const char *sql,
 
 static int lua_prepare_sql(Lua L, SP sp, const char *sql, sqlite3_stmt **stmt)
 {
-    return lua_prepare_sql_int(L, sp, sql, stmt, NULL);
+    return lua_prepare_sql_int(L, sp, sql, stmt, NULL, PREPARE_AUTHORIZER);
+}
+
+static int lua_prepare_sql_no_auth(Lua L, SP sp, const char *sql, sqlite3_stmt **stmt)
+{
+    return lua_prepare_sql_int(L, sp, sql, stmt, NULL, PREPARE_NONE);
 }
 
 static void push_clnt_cols(Lua L, SP sp)
@@ -3417,7 +3424,7 @@ static int db_prepare(Lua L)
     }
     sqlite3_stmt *stmt = NULL;
     struct sql_state *rec = calloc(1, sizeof(*rec));
-    if (lua_prepare_sql_int(L, sp, sql, &stmt, rec) != 0) {
+    if (lua_prepare_sql_int(L, sp, sql, &stmt, rec, PREPARE_AUTHORIZER) != 0) {
         free(rec);
         return 2;
     }
@@ -6074,21 +6081,16 @@ static int exec_thread_int(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         return -1;
     }
     clone_temp_tables(sp);
-    comdb2_setup_authorizer_for_sqlite(thd->sqldb, 1);
     unlock_schema_lk();
     int args = lua_gettop(L) - 1;
     int rc;
     char *err = NULL;
 
-    if ((rc = begin_sp(clnt, &err)) != 0) goto done;
+    if ((rc = begin_sp(clnt, &err)) != 0) return rc;
 
-    if ((rc = run_sp(clnt, args, &err)) != 0) goto done;
+    if ((rc = run_sp(clnt, args, &err)) != 0) return rc;
 
-    rc = commit_sp(L, &err);
-
- done:
-    comdb2_setup_authorizer_for_sqlite(thd->sqldb, 0);
-    return rc;
+    return commit_sp(L, &err);
 }
 
 static int exec_procedure_int(struct sqlthdstate *thd,
@@ -6100,43 +6102,39 @@ static int exec_procedure_int(struct sqlthdstate *thd,
     int rc, args, new_vm;
     *err = NULL;
 
-    comdb2_setup_authorizer_for_sqlite(thd->sqldb, 1);
     reqlog_set_event(thd->logger, "sp");
 
-    if ((rc = get_spname(clnt, &s, spname, err)) != 0) goto done;
+    if ((rc = get_spname(clnt, &s, spname, err)) != 0)
+        return rc;
 
-    if (strcmp(spname, "debug") == 0) { rc = debug_sp(clnt); goto done; }
+    if (strcmp(spname, "debug") == 0) return debug_sp(clnt);
 
-    if ((rc = setup_sp(spname, thd, clnt, &new_vm, err)) != 0) goto done;
+    if ((rc = setup_sp(spname, thd, clnt, &new_vm, err)) != 0) return rc;
 
     SP sp = clnt->sp;
     Lua L = sp->lua;
 
-    if ((rc = process_src(L, sp->src, err)) != 0) goto done;
+    if ((rc = process_src(L, sp->src, err)) != 0) return rc;
 
-    if ((rc = get_func_by_name(L, "main", err)) != 0) goto done;
+    if ((rc = get_func_by_name(L, "main", err)) != 0) return rc;
 
     update_tran_funcs(L, clnt->in_client_trans);
 
     if (IS_SYS(spname)) init_sys_funcs(L);
 
-    if ((rc = push_args(&s, clnt, err, &args)) != 0) goto done;
+    if ((rc = push_args(&s, clnt, err, &args)) != 0) return rc;
 
-    if ((rc = begin_sp(clnt, err)) != 0) goto done;
+    if ((rc = begin_sp(clnt, err)) != 0) return rc;
 
-    if ((rc = run_sp(clnt, args, err)) != 0) goto done;
+    if ((rc = run_sp(clnt, args, err)) != 0) return rc;
 
-    if ((rc = emit_result(L, &sprc, err)) != 0) goto done;
+    if ((rc = emit_result(L, &sprc, err)) != 0) return rc;
 
-    if ((rc = commit_sp(L, err)) != 0) goto done;
+    if ((rc = commit_sp(L, err)) != 0) return rc;
 
-    if (sprc) { rc = sprc; goto done; }
+    if (sprc) return sprc;
 
-    rc = flush_sp(sp, err);
-
- done:
-    comdb2_setup_authorizer_for_sqlite(thd->sqldb, 0);
-    return rc;
+    return flush_sp(sp, err);
 }
 
 static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,
