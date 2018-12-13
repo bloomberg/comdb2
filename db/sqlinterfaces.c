@@ -788,7 +788,7 @@ static int comdb2_authorizer_for_sqlite(
   }
 }
 
-void comdb2_setup_authorizer_for_sqlite(sqlite3 *db, int bEnable){
+static void comdb2_setup_authorizer_for_sqlite(sqlite3 *db, int bEnable){
   if( !db ) return;
   if( bEnable ){
     sqlite3_set_authorizer(db, comdb2_authorizer_for_sqlite, NULL);
