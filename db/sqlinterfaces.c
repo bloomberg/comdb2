@@ -2904,8 +2904,10 @@ int sqlengine_prepare_engine(struct sqlthdstate *thd,
 static int get_prepared_stmt_int(struct sqlthdstate *thd,
                                  struct sqlclntstate *clnt,
                                  struct sql_state *rec, struct errstat *err,
-                                 int recreate)
+                                 int flags)
 {
+    int recreate = (flags & PREPARE_RECREATE);
+    int authorizer = (flags & PREPARE_AUTHORIZER);
     int rc = sqlengine_prepare_engine(thd, clnt, recreate);
     if (thd->sqldb == NULL) {
         return handle_bad_engine(clnt);
@@ -2922,7 +2924,9 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     /* if we did not get a cached stmt, need to prepare it in sql engine */
     while (rec->stmt == NULL) {
         clnt->no_transaction = 1;
+        if (authorizer) comdb2_setup_authorizer_for_sqlite(thd->sqldb, 1);
         rc = sqlite3_prepare_v2(thd->sqldb, rec->sql, -1, &rec->stmt, &tail);
+        if (authorizer) comdb2_setup_authorizer_for_sqlite(thd->sqldb, 0);
         clnt->no_transaction = 0;
         if (rc == SQLITE_OK) {
             rc = sqlite3LockStmtTables(rec->stmt);
@@ -2956,10 +2960,11 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 }
 
 int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
-                      struct sql_state *rec, struct errstat *err)
+                      struct sql_state *rec, struct errstat *err, int flags)
 {
     rdlock_schema_lk();
-    int rc = get_prepared_stmt_int(thd, clnt, rec, err, 1);
+    int rc = get_prepared_stmt_int(thd, clnt, rec, err,
+                                   flags | PREPARE_RECREATE);
     unlock_schema_lk();
     if (gbl_stable_rootpages_test) {
         static int skip = 0;
@@ -2978,7 +2983,7 @@ int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 */
 int get_prepared_stmt_try_lock(struct sqlthdstate *thd,
                                struct sqlclntstate *clnt, struct sql_state *rec,
-                               struct errstat *err)
+                               struct errstat *err, int flags)
 {
     if (tryrdlock_schema_lk() != 0) {
         // only schemachange will wrlock(schema)
@@ -2986,7 +2991,8 @@ int get_prepared_stmt_try_lock(struct sqlthdstate *thd,
                        "Returning SQLITE_SCHEMA on tryrdlock failure\n");
         return SQLITE_SCHEMA;
     }
-    int rc = get_prepared_stmt_int(thd, clnt, rec, err, 0);
+    int rc = get_prepared_stmt_int(thd, clnt, rec, err,
+                                   flags & ~PREPARE_RECREATE);
     unlock_schema_lk();
     return rc;
 }
@@ -3090,7 +3096,7 @@ static int get_prepared_bound_stmt(struct sqlthdstate *thd,
                                    struct errstat *err)
 {
     int rc;
-    if ((rc = get_prepared_stmt(thd, clnt, rec, err)) != 0) {
+    if ((rc = get_prepared_stmt(thd, clnt, rec, err, PREPARE_NONE)) != 0) {
         return rc;
     }
 
