@@ -727,6 +727,15 @@ struct query_path_component {
     LINKC_T(struct query_path_component) lnk;
 };
 
+struct temptable {
+    struct temp_cursor *cursor;
+    struct temp_table *tbl;
+    int flags;
+    char *name;
+    Btree *owner;
+    pthread_mutex_t *lk;
+};
+
 struct Btree {
     /* for debugging */
     int btreeid;
@@ -736,16 +745,13 @@ struct Btree {
 
     LISTC_T(BtCursor) cursors;
 
-    /* temp table stuff */
     int is_temporary;
-
-    /* hash table of temp tables, keyed on root page number and its mutex */
-    Hash temp_tables;
-    int next_temp_root_pg;
-
     int is_hashtable;
-
     int is_remote;
+
+    /* number and array of temp tables under this btree (generally 1) */
+    int num_temp_tables;
+    struct temptable *temp_tables;
 
     void *schema;
     void (*free_schema)(void *);
@@ -937,7 +943,6 @@ struct sql_thread {
     int rootpage_nentries;
     unsigned char had_temptables;
     unsigned char had_tablescans;
-    pthread_mutex_t *temp_table_mtx; /* for "sqlglue.c" temp table subsystem */
 
     /* current shard; cut 0 we support only one partition */
     int crtshard;
@@ -1021,8 +1026,8 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
 
 void clearClientSideRow(struct sqlclntstate *clnt);
 void comdb2_set_tmptbl_lk(pthread_mutex_t *);
-void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
-                      int rootpg);
+struct temptable get_tbl_by_rootpg(const sqlite3 *, int);
+void clone_temp_table(sqlite3 *, const sqlite3 *, const char *, struct temptable *);
 int sqlengine_prepare_engine(struct sqlthdstate *, struct sqlclntstate *,
                              int recreate);
 int sqlserver2sqlclient_error(int rc);
