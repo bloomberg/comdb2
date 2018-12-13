@@ -1961,72 +1961,65 @@ err:
     }
 
     /* if we were told to retrieve the record number, do it now */
-    if (recnum) {
-        switch (direction) {
-        case FETCH_INT_CUR_BY_RECNUM:
-            break;
+    if (recnum && direction != FETCH_INT_CUR_BY_RECNUM) {
+        *recnum = -1;
 
-        default:
-            *recnum = -1;
+        if (ixrecnum) {
+            if (ixfound)
+                memcpy(tmp_key, ixfound, ixlen_full);
 
-            if (ixrecnum) {
-                if (ixfound)
-                    memcpy(tmp_key, ixfound, ixlen_full);
+            memset(&dbt_key, 0, sizeof(dbt_key));
+            memset(&dbt_data, 0, sizeof(dbt_data));
 
-                memset(&dbt_key, 0, sizeof(dbt_key));
-                memset(&dbt_data, 0, sizeof(dbt_data));
+            dbt_key.flags = DB_DBT_USERMEM;
+            dbt_key.data = tmp_key;
+            dbt_key.size = ixlen_full;
+            dbt_key.ulen = sizeof(tmp_key);
 
-                dbt_key.flags = DB_DBT_USERMEM;
-                dbt_key.data = tmp_key;
-                dbt_key.size = ixlen_full;
-                dbt_key.ulen = sizeof(tmp_key);
+            dbt_data.flags = DB_DBT_USERMEM;
+            dbt_data.data = tmp_data;
+            dbt_data.size = sizeof(tmp_data);
+            dbt_data.ulen = sizeof(tmp_data);
 
-                dbt_data.flags = DB_DBT_USERMEM;
-                dbt_data.data = tmp_data;
-                dbt_data.size = sizeof(tmp_data);
-                dbt_data.ulen = sizeof(tmp_data);
-
-                if (keycontainsgenid) {
-                    masked_genid = get_search_genid(bdb_state, foundgenid);
-                    memcpy(tmp_key + ixlen_full, &masked_genid,
-                           sizeof(unsigned long long));
-                    dbt_key.size += sizeof(unsigned long long);
-                }
-
-                rc = fetch_cget(bdb_state, ixnum, dbcp, &dbt_key, &dbt_data,
-                                DB_SET);
-
-                if (rc != 0) {
-                    /* return DEADLOCK */
-                    if (CURSOR_SER_ENABLED(bdb_state) && cur_ser &&
-                        !lookahead) {
-                        rc = dbcp->c_close_ser(dbcp, &cur_ser->dbcs);
-                        cur_ser->is_valid = !rc;
-                    } else
-                        rc = dbcp->c_close(dbcp);
-                    *bdberr = BDBERR_DEADLOCK;
-
-                    outrc = -1;
-                    *recnum = -1;
-                    return outrc;
-                }
-
-                memset(&dbt_data, 0, sizeof(dbt_data));
-                dbt_data.data = recnum;
-                dbt_data.ulen = sizeof(int);
-                dbt_data.flags = DB_DBT_USERMEM;
-
-                rc = fetch_cget(bdb_state, ixnum, dbcp, &dbt_key, &dbt_data,
-                                DB_GET_RECNO);
-
-                if ((rc == DB_REP_HANDLE_DEAD) || (rc == DB_LOCK_DEADLOCK)) {
-                    *bdberr = BDBERR_DEADLOCK;
-                }
-
-                if (rc != 0)
-                    *recnum = -1;
+            if (keycontainsgenid) {
+                masked_genid = get_search_genid(bdb_state, foundgenid);
+                memcpy(tmp_key + ixlen_full, &masked_genid,
+                       sizeof(unsigned long long));
+                dbt_key.size += sizeof(unsigned long long);
             }
-            break;
+
+            rc = fetch_cget(bdb_state, ixnum, dbcp, &dbt_key, &dbt_data,
+                            DB_SET);
+
+            if (rc != 0) {
+                /* return DEADLOCK */
+                if (CURSOR_SER_ENABLED(bdb_state) && cur_ser &&
+                    !lookahead) {
+                    rc = dbcp->c_close_ser(dbcp, &cur_ser->dbcs);
+                    cur_ser->is_valid = !rc;
+                } else
+                    rc = dbcp->c_close(dbcp);
+                *bdberr = BDBERR_DEADLOCK;
+
+                outrc = -1;
+                *recnum = -1;
+                return outrc;
+            }
+
+            memset(&dbt_data, 0, sizeof(dbt_data));
+            dbt_data.data = recnum;
+            dbt_data.ulen = sizeof(int);
+            dbt_data.flags = DB_DBT_USERMEM;
+
+            rc = fetch_cget(bdb_state, ixnum, dbcp, &dbt_key, &dbt_data,
+                            DB_GET_RECNO);
+
+            if ((rc == DB_REP_HANDLE_DEAD) || (rc == DB_LOCK_DEADLOCK)) {
+                *bdberr = BDBERR_DEADLOCK;
+            }
+
+            if (rc != 0)
+                *recnum = -1;
         }
     }
     /********************************************************************/
