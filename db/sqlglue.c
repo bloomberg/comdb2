@@ -757,7 +757,7 @@ static int free_queryhash(void *obj, void *arg)
 
 /* sql thread pool relies on this being safe to call even if we didn't
  * register with start_sql_thread */
-void done_sql_thread(void)
+void done_sql_thread(int shared)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     if (thd) {
@@ -765,7 +765,10 @@ void done_sql_thread(void)
         listc_rfl(&thedb->sql_threads, thd);
         Pthread_mutex_unlock(&gbl_sql_lock);
         Pthread_mutex_destroy(&thd->lk);
-        Pthread_mutex_destroy_and_free(thd->temp_table_mtx);
+        if (shared) {
+            Pthread_mutex_destroy_and_free(thd->temp_table_mtx);
+        }
+        thd->temp_table_mtx = NULL;
         Pthread_setspecific(query_info_key, NULL);
         if (thd->buf) {
             free(thd->buf);
@@ -2098,7 +2101,7 @@ done:
         logmsg(LOGMSG_ERROR, "%s: failed to close curtran\n", __func__);
     if (hndl)
         sqlite3_close(hndl);
-    done_sql_thread();
+    done_sql_thread(0);
     sql_mem_shutdown(NULL);
     return rc;
 }
@@ -11307,7 +11310,7 @@ put:
     put_curtran(thedb->bdb_env, &clnt);
 out:
     thd->clnt = NULL;
-    done_sql_thread();
+    done_sql_thread(0);
     sql_mem_shutdown(NULL);
     thread_memdestroy();
 }
