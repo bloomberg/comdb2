@@ -1046,6 +1046,7 @@ enum prepare_flags {
 };
 struct sql_state {
     enum cache_status status;          /* populated by get_prepared_stmt */
+    int prepFlags;                     /* flags to get_prepared_stmt */
     sqlite3_stmt *stmt;                /* cached engine, if any */
     char cache_hint[HINT_LEN];         /* hint copy, if any */
     const char *sql;                   /* the actual string used */

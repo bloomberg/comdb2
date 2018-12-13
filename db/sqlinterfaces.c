@@ -2656,9 +2656,12 @@ int override_type(struct sqlclntstate *clnt, int i)
 }
 
 static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
-                            struct sql_state *rec)
+                            struct sql_state *rec, int flags)
 {
+    rec->prepFlags = flags;
     rec->status = CACHE_DISABLED;
+    if (flags & PREPARE_AUTHORIZER)
+        return;
     if (gbl_enable_sql_stmt_caching == STMT_CACHE_NONE)
         return;
     if (gbl_enable_sql_stmt_caching == STMT_CACHE_PARAM &&
@@ -2713,6 +2716,9 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
                                  struct sqlclntstate *clnt,
                                  struct sql_state *rec, int outrc)
 {
+    if (rec->prepFlags & PREPARE_AUTHORIZER) {
+        return 1;
+    }
     if (gbl_enable_sql_stmt_caching == STMT_CACHE_NONE) {
         return 1;
     }
@@ -2929,7 +2935,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         return handle_bad_transaction_mode(thd, clnt);
     }
     query_stats_setup(thd, clnt);
-    get_cached_stmt(thd, clnt, rec);
+    get_cached_stmt(thd, clnt, rec, flags);
     const char *tail = NULL;
 
     /* if we did not get a cached stmt, need to prepare it in sql engine */
