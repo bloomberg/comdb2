@@ -192,7 +192,7 @@ static void *create_master_row(struct dbtable **dbs, int num_dbs, int rootpage,
 {
     /* text type, text name, text tbl_name, integer rootpage, text sql, text
      * csc2 */
-    Mem mems[6] = {0};
+    Mem mems[6] = {{{0}}};
     struct dbtable *tbl;
     char *etype;
     char name[128];

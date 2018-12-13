@@ -60,7 +60,7 @@ static void bdb_attr_set_int(bdb_state_type *bdb_state, bdb_attr_type *bdb_attr,
     case BDB_ATTR_COMMITDELAY:
         /* set delay */
         if (value > bdb_attr->commitdelaymax) {
-            logmsg(LOGMSG_USER, "Capping delay to commitdelaymax of %s ms\n",
+            logmsg(LOGMSG_USER, "Capping delay to commitdelaymax of %d ms\n",
                    bdb_attr->commitdelaymax);
             bdb_attr->commitdelay = bdb_attr->commitdelaymax;
         } else

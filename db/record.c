@@ -1421,22 +1421,19 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         if (flags == RECFLAGS_UPGRADE_RECORD) {
             rc = dat_upgrade(iq, trans, od_dta, od_len, vgenid);
             *genid = vgenid;
+            if (iq->debug)
+                reqprintf(iq, "dat_upgrade RRN %d VGENID 0x%llx RC %d", rrn,
+                          vgenid, rc);
         } else {
             rc = dat_upv(iq, trans, 0, /*vptr*/
                          NULL,         /*vdta*/
                          0,            /*vlen*/
                          vgenid, od_dta, od_len, rrn, genid, 0,
                          iq->blkstate->modnum);
+            if (iq->debug)
+                reqprintf(iq, "dat_upv RRN %d VGENID 0x%llx GENID 0x%llx RC %d",
+                          rrn, vgenid, *genid, rc);
         }
-    }
-
-    if (iq->debug) {
-        if (flags & RECFLAGS_UPGRADE_RECORD)
-            reqprintf(iq, "dat_upgrade RRN %d VGENID 0x%llx RC %d", rrn, vgenid,
-                      rc);
-        else
-            reqprintf(iq, "dat_upv RRN %d VGENID 0x%llx GENID 0x%llx RC %d",
-                      rrn, vgenid, *genid, rc);
     }
 
     if (rc != 0) {
@@ -1815,7 +1812,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         javasp_trans_care_about(iq->jsph, JAVASP_TRANS_LISTEN_AFTER_UPD)) {
         struct javasp_rec *joldrec;
         struct javasp_rec *jnewrec;
-        blob_status_t new_rec_blobs[MAXBLOBS] = {0};
+        blob_status_t new_rec_blobs[MAXBLOBS] = {{0}};
 
         /* old record no longer exists - don't set trans or rrn */
         joldrec = javasp_alloc_rec(old_dta, od_len, iq->usedb->tablename);

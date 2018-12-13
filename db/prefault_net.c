@@ -62,6 +62,8 @@ static void send_to_all(struct dbenv *dbenv, void *dta, int dtalen, int flush)
     for (i = 0; i < count; i++) {
         rc = net_send(dbenv->handle_sibling, hostlist[i], NET_PREFAULT2_OPS,
                       dta, dtalen, flush);
+        if (rc)
+            logmsg(LOGMSG_ERROR, "%s:%d rc=%d\n", __func__, __LINE__, rc);
     }
 }
 

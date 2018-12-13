@@ -3582,6 +3582,8 @@ int bdb_relink_pglogs(void *bdb_state, unsigned char *fileid, db_pgno_t pgno,
 
     rc = bdb_update_relinks_fileid_queues(bdb_state, fileid, pgno, prev_pgno,
                                           next_pgno, lsn);
+    if (rc)
+        logmsg(LOGMSG_WARN, "%s:%d rc = %d\n", __func__, __LINE__, rc);
 
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
@@ -3744,7 +3746,7 @@ int bdb_latest_commit_is_durable(void *in_bdb_state)
     extern int gbl_durable_replay_test;
     char *master;
     bdb_state_type *bdb_state = (bdb_state_type *)in_bdb_state;
-    seqnum_type ss = {0};
+    seqnum_type ss = {{0}};
     int timeoutms;
     int needwait = 0;
     int rc = 0;
@@ -5003,9 +5005,9 @@ step1:
 
             if (cur->trak) {
                 logmsg(LOGMSG_USER, "Cur %p found 0x", cur);
-                hexdump(LOGMSG_USER, (unsigned char *)key_rl, keysize_rl);
+                hexdump(LOGMSG_USER, key_rl, keysize_rl);
                 logmsg(LOGMSG_USER, " data 0x");
-                hexdump(LOGMSG_USER, (unsigned char *)dta_rl, dtasize_rl);
+                hexdump(LOGMSG_USER, dta_rl, dtasize_rl);
                 logmsg(LOGMSG_USER, " in real table.\n");
             }
         }
@@ -5164,9 +5166,9 @@ step1:
 
                 if (cur->trak) {
                     logmsg(LOGMSG_USER, "Cur %p found 0x", cur);
-                    hexdump(LOGMSG_USER, (unsigned char *)key_po, keysize_po);
+                    hexdump(LOGMSG_USER, key_po, keysize_po);
                     logmsg(LOGMSG_USER, " data 0x");
-                    hexdump(LOGMSG_USER, (unsigned char *)dta_po, dtasize_po);
+                    hexdump(LOGMSG_USER, dta_po, dtasize_po);
                     logmsg(LOGMSG_USER, " in virtual stripe.\n");
                 }
             } else {
@@ -5262,9 +5264,9 @@ step1:
 
             if (cur->trak) {
                 logmsg(LOGMSG_USER, "Cur %p found 0x", cur);
-                hexdump(LOGMSG_USER, (unsigned char *)key_sd, keysize_sd);
+                hexdump(LOGMSG_USER, key_sd, keysize_sd);
                 logmsg(LOGMSG_USER, " data 0x");
-                hexdump(LOGMSG_USER, (unsigned char *)dta_sd, dtasize_sd);
+                hexdump(LOGMSG_USER, dta_sd, dtasize_sd);
                 logmsg(LOGMSG_USER, " in shadow table.\n");
             }
 #if MERGE_DEBUG
@@ -5467,7 +5469,6 @@ static void set_datacopy(bdb_cursor_impl_t *cur, void *dta, int len)
 /* this is a shadowed btree merging function */
 static int bdb_cursor_move_merge(bdb_cursor_impl_t *cur, int how, int *bdberr)
 {
-
     char *dta_rl = NULL;
     int dtasize_rl = 0;
     char *key_rl = NULL;
@@ -5605,11 +5606,11 @@ step1:
             logmsg(LOGMSG_USER, 
                     "Cur %p idx-real-move how=%d rc=%d srch: keylen=%d key=0x",
                     cur, how, rc, last_keylen);
-            hexdump(LOGMSG_USER, (unsigned char *)last_key, last_keylen);
+            hexdump(LOGMSG_USER, last_key, last_keylen);
 
             if (IX_FND == rc) {
                 logmsg(LOGMSG_USER, " found: keylen=%d key=0x", keysize_rl);
-                hexdump(LOGMSG_USER, (unsigned char *)key_rl, keysize_rl);
+                hexdump(LOGMSG_USER, key_rl, keysize_rl);
                 logmsg(LOGMSG_USER, " stripe %d page %d idx %d", cur->idx, page_rl,
                         index_rl);
             } else {
@@ -5901,9 +5902,9 @@ step1:
         if (skip) {
             if (cur->trak) {
                 logmsg(LOGMSG_USER, "cur %p skipping page-order key 0x", cur);
-                hexdump(LOGMSG_USER, (unsigned char *)key_rl, keysize_rl);
+                hexdump(LOGMSG_USER, key_rl, keysize_rl);
                 logmsg(LOGMSG_USER, " dta 0x");
-                hexdump(LOGMSG_USER, (unsigned char *)dta_rl, dtasize_rl);
+                hexdump(LOGMSG_USER, dta_rl, dtasize_rl);
                 logmsg(LOGMSG_USER, "\n");
             }
 
@@ -6076,11 +6077,11 @@ step1:
                 "Cur %p %s idx-shad-move how=%d rc=%d srch: keylen=%d key=0x",
                 cur, cur->pageorder ? "pageorder(?) " : "", how, rc,
                 last_keylen);
-            hexdump(LOGMSG_USER, (unsigned char *)last_key, last_keylen);
+            hexdump(LOGMSG_USER, last_key, last_keylen);
 
             if (IX_FND == rc) {
                 logmsg(LOGMSG_USER, " found: keylen=%d dta=0x", keysize_sd);
-                hexdump(LOGMSG_USER, (unsigned char *)key_sd, keysize_sd);
+                hexdump(LOGMSG_USER, key_sd, keysize_sd);
             } else {
                 logmsg(LOGMSG_USER, " (not found)");
             }
@@ -8128,7 +8129,6 @@ static int update_pglogs_from_global_queues_int(
     bdb_cursor_impl_t *cur, struct pglogs_queue_cursor *qcur, int *bdberr)
 {
     struct pglogs_queue_key *current, *prev, *last;
-    DB_LSN last_lsn = {0};
 
 #ifdef NEWSI_STAT
     struct timeval before, after, diff;
@@ -8158,7 +8158,6 @@ static int update_pglogs_from_global_queues_int(
 
         if (!current && prev && found_greater) {
             update_pglogs_from_queue(cur->shadow_tran, qcur->fileid, prev);
-            last_lsn = prev->commit_lsn;
             current = prev;
         }
 
@@ -8175,8 +8174,6 @@ static int update_pglogs_from_global_queues_int(
     while (current && current != last) {
         current = current->lnk.next;
         update_pglogs_from_queue(cur->shadow_tran, qcur->fileid, current);
-        if (current->type == PGLOGS_QUEUE_PAGE)
-            last_lsn = current->commit_lsn;
     }
 
     if (qcur->last != current) {

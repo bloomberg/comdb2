@@ -5296,7 +5296,7 @@ char *getIndexCond(sqlite3 *db, const char *colName, const char *op, Mem *m)
 
   ret = sqlite3_mprintf("(%s) %s %s", colName, op, value);
 
-  sqlite3DbFree(db, value);
+  sqlite3_free(value);
 
   return ret;
 }
@@ -5430,7 +5430,7 @@ char *sqlite3DescribeIndexOrder(
 
   done_key = 0;
   if( isExpr ){
-    sqlite3DbFree(db, pExprDesc);
+    sqlite3_free(pExprDesc);
     pExprDesc = NULL;
     isExpr = 0;
   }
@@ -5453,7 +5453,7 @@ char *sqlite3DescribeIndexOrder(
 
       ret2 = sqlite3_mprintf("%s, (%s)%s", ret,
         isExpr?pExprDesc:colName, pDesc);
-      sqlite3DbFree(db, ret);
+      sqlite3_free(ret);
       ret = ret2;
     }
     /* should I include the column? - check if request is NOT rowid
@@ -5465,7 +5465,7 @@ char *sqlite3DescribeIndexOrder(
     }else{
       ret_cols2 = sqlite3_mprintf("%s, NULL", ret_cols);
     }
-    sqlite3DbFree(db, ret_cols);
+    sqlite3_free(ret_cols);
     ret_cols = ret_cols2;
 
     if( !done_key ){
@@ -5475,8 +5475,8 @@ char *sqlite3DescribeIndexOrder(
 
         retCond3 = sqlite3_mprintf("%s AND %s", retCond, retCond2);
 
-        sqlite3DbFree(db, retCond);
-        sqlite3DbFree(db, retCond2);
+        sqlite3_free(retCond);
+        sqlite3_free(retCond2);
 
         retCond = retCond3;
 
@@ -5487,7 +5487,7 @@ char *sqlite3DescribeIndexOrder(
       /*fprintf(stderr, "\"%s\" -> \"%s\"\n", isExpr?pExprDesc:colName, ret);*/
     }
     if( isExpr ){
-       sqlite3DbFree(db, pExprDesc);
+       sqlite3_free(pExprDesc);
        pExprDesc = NULL;
        isExpr = 0;
     }
@@ -5498,16 +5498,16 @@ char *sqlite3DescribeIndexOrder(
     /* index probes */
     if( op == OP_Found || op == OP_NotFound ){
       ret2 = sqlite3_mprintf(" %s ORDER BY %s LIMIT 1", retCond, ret);
-      sqlite3DbFree(db, retCond);
+      sqlite3_free(retCond);
     }else{
       ret2 = sqlite3_mprintf(" %s ORDER BY %s", retCond, ret);
-      sqlite3DbFree(db, retCond);
+      sqlite3_free(retCond);
     }
   }else{
     ret2 = sqlite3_mprintf(" ORDER BY %s", ret);
   }
 
-  sqlite3DbFree(db, ret);
+  sqlite3_free(ret);
 
   *columns = ret_cols;
    

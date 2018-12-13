@@ -1089,7 +1089,7 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         strbuf_appendf(out, " hint \"%s\"",
                        (descr) ? descr : "(expression not parseable, see 592)");
         if (descr)
-            sqlite3DbFree(hndl, descr);
+            sqlite3_free(descr);
         break;
     case OP_SorterOpen:
         strbuf_appendf(out, "Open sorter new table with %d field(s) and cursor "
@@ -1255,7 +1255,7 @@ int newsql_dump_query_plan(struct sqlclntstate *clnt, sqlite3 *hndl)
         if (maxwidth < oplen)
             maxwidth = oplen;
     }
-    struct cursor_info cur[MAXCUR] = {0};
+    struct cursor_info cur[MAXCUR] = {{0}};
 
     for (int pc = 0; pc < v->nOp; pc++) {
         int indent = indentation.aiIndent[pc];

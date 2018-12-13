@@ -1485,10 +1485,8 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 				F_SET(sh_locker, DB_LOCKER_DELETED);
 
 			/* Now traverse the locks, releasing each one. */
-			lp = NULL;
-			for (sh_locker &&
-			    (lp = SH_LIST_FIRST(&sh_locker->heldby, __db_lock));
-			    lp != NULL; lp = next_lock) {
+			lp = sh_locker ? SH_LIST_FIRST(&sh_locker->heldby, __db_lock) : NULL;
+			for ( ; lp != NULL; lp = next_lock) {
 				sh_obj = lp->lockobj;
 				next_lock = SH_LIST_NEXT(lp,
 				    locker_links, __db_lock);
@@ -1560,9 +1558,8 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 				goto up_done;
 
 			/* Same loop but with latches */
-			latch = NULL;
-			for (latch_lockerid && (latch = latch_lockerid->head);
-			    latch;) {
+			latch = latch_lockerid ? latch_lockerid->head : NULL;
+			for ( ; latch ; ) {
 				lnode = latch->listhead;
 				while (lnode) {
 					nextlnode = lnode->next;
@@ -2600,7 +2597,7 @@ upgrade:
 			__os_clock(dbenv, &now, NULL);
 
 			if ((now - conftime) > 1) {
-				logmsg(LOGMSG_USER, "st_nconflicts is %d\n",
+				logmsg(LOGMSG_USER, "st_nconflicts is %ld\n",
 				    region->stat.st_nconflicts);
 				conftime = now;
 			}

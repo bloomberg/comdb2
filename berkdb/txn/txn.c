@@ -888,7 +888,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	int32_t timestamp;
 	uint32_t gen;
 	u_int64_t context = 0;
-	int ret, t_ret, iszero = 0, elect_highest_committed_gen;
+	int ret, t_ret, elect_highest_committed_gen;
 
 	dbenv = txnp->mgrp->dbenv;
 
@@ -965,10 +965,13 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	 * abort (if its parent aborts), and otherwise its parent or ultimate
 	 * ancestor will write synchronously.
 	 */
+#ifndef NDEBUG
+    int iszero = 0;
 	if (IS_ZERO_LSN(txnp->last_lsn)) {
 		/* Put a breakpoint here */
 		iszero = 1;
 	}
+#endif
 
 	extern int dumptxn(DB_ENV *, DB_LSN *);
 	extern int gbl_dumptxn_at_commit;
@@ -1784,11 +1787,9 @@ __txn_end(txnp, is_commit)
 	DB_TXNREGION *region;
 	TXN_DETAIL *tp;
 	int do_closefiles, ret;
-	void *bdb_state;
 
 	mgr = txnp->mgrp;
 	dbenv = mgr->dbenv;
-	bdb_state = dbenv->app_private;
 	region = mgr->reginfo.primary;
 	do_closefiles = 0;
 

@@ -343,6 +343,7 @@ typedef void(setup_client_info_func)(struct sqlclntstate *, struct sqlthdstate *
 typedef int(skip_row_func)(struct sqlclntstate *, uint64_t);
 typedef int(log_context_func)(struct sqlclntstate *, struct reqlogger *);
 typedef uint64_t(ret_uint64_func)(struct sqlclntstate *);
+typedef int(override_type_func)(struct sqlclntstate *, int);
 
 #define SQLITE_CALLBACK_API(ret, name)                                         \
     ret (*column_##name)(struct sqlclntstate *, sqlite3_stmt *, int)
@@ -363,6 +364,7 @@ struct plugin_callbacks {
 
     // run_statement_typed
     plugin_func *override_count; /* newsql_override_count */
+    override_type_func *override_type; /* newsql_override_type */
 
     plugin_func *has_cnonce; /* newsql_has_cnonce */
     plugin_func *set_cnonce; /* newsql_set_cnonce */
@@ -421,6 +423,7 @@ struct plugin_callbacks {
         make_plugin_callback(clnt, name, param_index);                         \
         make_plugin_callback(clnt, name, param_value);                         \
         make_plugin_callback(clnt, name, override_count);                      \
+        make_plugin_callback(clnt, name, override_type);                       \
         make_plugin_callback(clnt, name, has_cnonce);                          \
         make_plugin_callback(clnt, name, set_cnonce);                          \
         make_plugin_callback(clnt, name, clr_cnonce);                          \
@@ -457,6 +460,7 @@ int param_count(struct sqlclntstate *);
 int param_index(struct sqlclntstate *, const char *, int64_t *);
 int param_value(struct sqlclntstate *, struct param_data *, int);
 int override_count(struct sqlclntstate *);
+int override_type(struct sqlclntstate *, int);
 int get_cnonce(struct sqlclntstate *, snap_uid_t *);
 int has_high_availability(struct sqlclntstate *);
 int has_parallel_sql(struct sqlclntstate *);

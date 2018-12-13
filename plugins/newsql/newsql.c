@@ -1193,6 +1193,16 @@ static int newsql_override_count(struct sqlclntstate *clnt)
     return appdata->sqlquery->n_types;
 }
 
+static int newsql_override_type(struct sqlclntstate *clnt, int i)
+{
+    struct newsql_appdata *appdata = clnt->appdata;
+    int n = appdata->sqlquery->n_types;
+    if (n && i >= 0 && i < n) {
+        return appdata->sqlquery->types[i];
+    }
+    return 0;
+}
+
 static int newsql_clr_cnonce(struct sqlclntstate *clnt)
 {
     struct newsql_appdata *appdata = clnt->appdata;

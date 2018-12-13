@@ -64,7 +64,7 @@ static int systblOpcodeHandlersConnect(sqlite3 *db, void *pAux, int argc,
         if ((*ppVtab = sqlite3_malloc(sizeof(sqlite3_vtab))) == 0) {
             return SQLITE_NOMEM;
         }
-        memset(*ppVtab, 0, sizeof(*ppVtab));
+        memset(*ppVtab, 0, sizeof(sqlite3_vtab));
     }
 
     return 0;

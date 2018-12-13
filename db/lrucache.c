@@ -167,9 +167,6 @@ void lrucache_foreach(struct lrucache *cache, void (*display)(void *, void *),
     logmsg(LOGMSG_USER, "lru:\n");
     ent = cache->lru.top;
     while (ent) {
-        struct lrucache_link *lent;
-        lent = (struct lrucache_link *)((uintptr_t)ent + cache->offset);
-
         display(ent, usrptr);
 
         uintptr_t p = (uintptr_t)ent + cache->lru.diff +
@@ -181,9 +178,6 @@ void lrucache_foreach(struct lrucache *cache, void (*display)(void *, void *),
     logmsg(LOGMSG_USER, "used:\n");
     ent = cache->used.top;
     while (ent) {
-        struct lrucache_link *lent;
-        lent = (struct lrucache_link *)((uintptr_t)ent + cache->offset);
-
         display(ent, usrptr);
 
         uintptr_t p = (uintptr_t)ent + cache->lru.diff +

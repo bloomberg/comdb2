@@ -827,6 +827,12 @@ static int dohsql_override_count(struct sqlclntstate *a)
         logmsg(LOGMSG_WARN, "%lx %s TODO\n", pthread_self(), __func__);
     return 0;
 }
+static int dohsql_override_type(struct sqlclntstate *a, int b)
+{
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%lx %s TODO\n", pthread_self(), __func__);
+    return 0;
+}
 static int dohsql_clr_cnonce(struct sqlclntstate *a)
 {
     if (gbl_plugin_api_debug)

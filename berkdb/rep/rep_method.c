@@ -274,14 +274,12 @@ __rep_start(dbenv, dbt, gen, flags)
 
 			if (sleep_cnt > gbl_rep_method_max_sleep_cnt &&
 				gbl_rep_method_max_sleep_cnt > 0) {
-				int rc;
-
 				logmsg(LOGMSG_FATAL, "%s:%d:%s: Exiting after waiting too long for replication message thread.\n",
 					__FILE__, __LINE__, __func__);
 				pid = getpid();
 				snprintf(cmd, sizeof(cmd), "pstack %d",
 					(int)pid);
-				rc = system(cmd);
+				system(cmd);
 				abort();
 			}
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
@@ -902,7 +900,6 @@ __retrieve_logged_generation_commitlsn(dbenv, lsn, gen)
 {
 	DBT rec;
 	DB_LOGC *logc;
-	DB_LOG *dblp;
 	DB_REP *db_rep;
 	DB_LSN lastlsn, curlsn;
 	REP *rep;
@@ -915,7 +912,6 @@ __retrieve_logged_generation_commitlsn(dbenv, lsn, gen)
 
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
-	dblp = dbenv->lg_handle;
 
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 	*lsn = rep->committed_lsn;
@@ -930,7 +926,7 @@ __retrieve_logged_generation_commitlsn(dbenv, lsn, gen)
 		return (ret);
 
 	memset(&rec, 0, sizeof(rec));
-	memset(lsn, 0, sizeof(lsn));
+	memset(lsn, 0, sizeof(*lsn));
 
 	if ((ret = __log_c_get(logc, &lastlsn, &rec, DB_LAST)) != 0)
 		goto err;
@@ -1451,6 +1447,9 @@ __rep_wait(dbenv, timeout, eidp, outegen, inegen, flags)
         }
         Pthread_mutex_lock(&gbl_rep_egen_lk);
         rc = pthread_cond_timedwait(&gbl_rep_egen_cd, &gbl_rep_egen_lk, &tm);
+        if (rc && rc != ETIMEDOUT) 
+            logmsg(LOGMSG_ERROR, "Err rc=%d from pthread_cond_timedwait\n", rc);
+
         *outegen = rep->egen;
         Pthread_mutex_unlock(&gbl_rep_egen_lk);
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);

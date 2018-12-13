@@ -462,7 +462,6 @@ int ll_key_del(bdb_state_type *bdb_state, tran_type *tran, int ixnum, void *key,
     DBC *dbcp;
     DBT dbt_key = {0};
     DBT dbt_dta = {0};
-    int *found_rrn;
     unsigned long long *found_genid;
     int keydata[3]; /* genid or rrn + genid for verification */
     int crc;
@@ -472,7 +471,6 @@ int ll_key_del(bdb_state_type *bdb_state, tran_type *tran, int ixnum, void *key,
     dbt_key.data = key;
     dbt_key.size = keylen;
 
-    found_rrn = NULL;
     found_genid = (unsigned long long *)(keydata);
 
     switch (tran->tranclass) {
@@ -621,7 +619,6 @@ int ll_key_upd(bdb_state_type *bdb_state, tran_type *tran, char *table_name,
     DBC *dbcp;
     DBT dbt_key = {0};
     DBT dbt_dta = {0};
-    unsigned long long *found_genid;
     int crc;
     const int genid_sz = sizeof(unsigned long long);
     unsigned char dtacopy_payload[MAXRECSZ + ODH_SIZE_RESERVE + genid_sz];
@@ -657,8 +654,6 @@ int ll_key_upd(bdb_state_type *bdb_state, tran_type *tran, char *table_name,
             llog_payload_len = dtacopy_payload_len = dtalen + genid_sz;
         }
     }
-
-    found_genid = (unsigned long long *)(keydata);
 
     switch (tran->tranclass) {
     case TRANCLASS_BERK:
@@ -806,10 +801,7 @@ done:
 int ll_key_add(bdb_state_type *bdb_state, unsigned long long ingenid,
                tran_type *tran, int ixnum, DBT *dbt_key, DBT *dbt_data)
 {
-    DB *dbp;
     int rc;
-
-    dbp = bdb_state->dbp_ix[ixnum];
 
     switch (tran->tranclass) {
     case TRANCLASS_BERK:
@@ -901,7 +893,6 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
     void *freeptr = NULL;
     void *freedtaptr = NULL;
     DB *dbp_add;
-    int logical_len = 0;
     int add_blob = 0;
     DBT old_dta_out_lcl;
     char *oldrec = NULL;
@@ -1053,9 +1044,6 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
             /* Grab malloceddta to possibly free later. */
             malloceddta = old_dta_out_lcl.data;
         }
-
-        /* Retrieve the actual record length for the logical log. */
-        logical_len = old_dta_out_lcl.size;
 
         /* Unpack if we need the record to return or verify. */
         if (0 == rc && (verify_updateid || !dta || old_dta_out || verify_dta)) {

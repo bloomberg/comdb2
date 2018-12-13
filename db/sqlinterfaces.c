@@ -184,7 +184,7 @@ static int sql_debug_logf_int(struct sqlclntstate *clnt, const char *func,
 {
     char *s;
     int cn_len;
-    snap_uid_t snap = {0};
+    snap_uid_t snap = {{0}};
     char *cnonce;
     int len;
     int nchars;
@@ -225,7 +225,7 @@ static int sql_debug_logf_int(struct sqlclntstate *clnt, const char *func,
     }
     va_end(args_c);
 
-    logmsg(LOGMSG_USER, "%s %s line %d: %s", cnonce, func, line, s);
+    logmsg(LOGMSG_USER, "cnonce=%s %s line %d: %s", cnonce, func, line, s);
 
     free(s);
     return 0;
@@ -1903,6 +1903,9 @@ static void delete_last_stmt_entry(struct sqlthdstate *thd, void *list)
 {
     stmt_hash_entry_type *entry = listc_rbl(list);
     int rc = hash_del(thd->stmt_caching_table, entry);
+    if (rc)
+        logmsg(LOGMSG_ERROR,
+               "delete_last_stmt_entry: hash_del returning rc=%d\n", rc);
     assert(rc == 0);
     cleanup_stmt_entry(entry);
 }
@@ -1926,6 +1929,9 @@ static void remove_stmt_entry(struct sqlthdstate *thd,
     }
     listc_rfl(list, entry);
     int rc = hash_del(thd->stmt_caching_table, entry->sql);
+    if (rc)
+        logmsg(LOGMSG_ERROR, "remove_stmt_entry: hash_del returning rc=%d\n",
+               rc);
     assert(rc == 0);
 }
 
@@ -2265,7 +2271,7 @@ static void compare_estimate_cost(sqlite3_stmt *stmt)
             double rActual;
             double delta;
             int isSignificant;
-        } discrepancies[MAX_DISC_SHOW] = {0};
+        } discrepancies[MAX_DISC_SHOW] = {{0}};
         int hasDiscrepancy = 0;
 
         for (i = n = 0; 1; i++) {
@@ -2642,6 +2648,11 @@ int param_value(struct sqlclntstate *clnt, struct param_data *param, int n)
 int override_count(struct sqlclntstate *clnt)
 {
     return clnt->plugin.override_count(clnt);
+}
+
+int override_type(struct sqlclntstate *clnt, int i)
+{
+    return clnt->plugin.override_type(clnt, i);
 }
 
 static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
@@ -5931,6 +5942,10 @@ static int internal_param_value(struct sqlclntstate *a, struct param_data *b, in
     return -1;
 }
 static int internal_override_count(struct sqlclntstate *a)
+{
+    return 0;
+}
+static int internal_override_type(struct sqlclntstate *a, int b)
 {
     return 0;
 }

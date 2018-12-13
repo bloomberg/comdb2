@@ -1229,6 +1229,7 @@ __lock_locker_haslocks(dbenv, lockerid)
 	return haslocks;
 }
 
+/* TODO: fix (we dont print anything) or remove
 void
 berkdb_dump_locks_for_tran(DB_ENV *dbenv, DB_TXN *txn)
 {
@@ -1250,19 +1251,14 @@ berkdb_dump_locks_for_tran(DB_ENV *dbenv, DB_TXN *txn)
 		lock_locker_partition(lrp, i);
 
 		for (j = 0; j < lrp->locker_p_size && !done; j++) {
-			for (lip =
-			    SH_TAILQ_FIRST(&lrp->locker_tab[i][j], __db_locker);
+			for (lip = SH_TAILQ_FIRST(&lrp->locker_tab[i][j], __db_locker);
 			    lip != NULL &&!done;
 			    lip = SH_TAILQ_NEXT(lip, links, __db_locker)) {
 				if (lip->id == lockerid) {
 					struct __db_lock *lp;
 
-					for (lp =
-					    SH_LIST_FIRST(&lip->heldby,
-						__db_lock); lp;
-					    lp =
-					    SH_LIST_NEXT(lp, locker_links,
-						__db_lock)) {
+					for (lp = SH_LIST_FIRST(&lip->heldby, __db_lock); lp;
+					    lp = SH_LIST_NEXT(lp, locker_links, __db_lock)) {
 						DB_LOCKOBJ *lockobj;
 						lockobj = lp->lockobj;
 					}
@@ -1274,6 +1270,7 @@ berkdb_dump_locks_for_tran(DB_ENV *dbenv, DB_TXN *txn)
 	}
 	UNLOCKREGION(dbenv, lt);
 }
+*/
 
 void
 berkdb_dump_lockers_summary(DB_ENV *dbenv)

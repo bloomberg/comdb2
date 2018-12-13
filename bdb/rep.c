@@ -3064,7 +3064,7 @@ int bdb_wait_for_seqnum_from_room(bdb_state_type *bdb_state,
     int i;
     const char *nodelist[REPMAX];
     int numnodes;
-    int rc;
+    int rc = 0;
     int our_room = 0;
 
     if (bdb_state->attr->repalwayswait)
@@ -3086,6 +3086,8 @@ int bdb_wait_for_seqnum_from_room(bdb_state_type *bdb_state,
         } else {
             rc = bdb_wait_for_seqnum_from_node(bdb_state, seqnum, nodelist[i]);
         }
+        if (rc)
+            logmsg(LOGMSG_WARN, "%s:%d rc = %d\n", __FILE__, __LINE__, rc);
     }
 
     return 0;
@@ -3126,7 +3128,6 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
     const char *nodelist[REPMAX];
     const char *connlist[REPMAX];
     int durable_lsns = bdb_state->attr->durable_lsns;
-    const char *skiplist[REPMAX];
     int catchup_window = bdb_state->attr->catchup_window;
     int do_slow_node_check = 0;
     DB_LSN *masterlsn;
@@ -3219,7 +3220,6 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
                 if (wait)
                     numwait++;
             } else {
-                skiplist[numskip] = connlist[i];
                 numskip++;
                 num_incoh++;
             }
@@ -3276,7 +3276,7 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
      * allow a waitms of ZERO for the remaining nodes - we've run out of
      * patience!  Note that I *do* want to go into the loop below so that we
      * mark the stragglers incoherent.  The do { } while loop above gaurantees
-     * that the nodelist and skiplist are correctly set up. */
+     * that nodelist is correctly set up. */
     end_time = comdb2_time_epochms();
     we_used = end_time - begin_time;
     waitms =
@@ -3574,6 +3574,8 @@ void send_filenum_to_all(bdb_state_type *bdb_state, int filenum, int nodelay)
         rc = net_send(bdb_state->repinfo->netinfo, hostlist[i],
                       USER_TYPE_BERKDB_FILENUM, &filenum_net, sizeof(int),
                       nodelay);
+        if (rc)
+            logmsg(LOGMSG_WARN, "%s:%d rc = %d\n", __FILE__, __LINE__, rc);
     }
 }
 
@@ -3748,7 +3750,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     int rc;
     int r;
     char *master;
-    int gen, egen;
+    uint32_t gen, egen;
     DB_LSN permlsn;
     uint32_t generation, commit_generation;
     int outrc;
@@ -5587,11 +5589,12 @@ int bdb_wait_for_seqnum_from_n(bdb_state_type *bdb_state, seqnum_type *seqnum,
                     &bdb_state->seqnum_info->seqnums[nodeix(connlist[i])],
                     seqnum) >= 0) {
                 num_acks++;
-            } else {
+            } /*TODO: delete this
+            else {
                 DB_LSN *l;
                 l = (DB_LSN *)&bdb_state->seqnum_info
                         ->seqnums[nodeix(connlist[i])];
-            }
+            } */
         }
         if (num_acks < n)
             Pthread_cond_wait(&bdb_state->seqnum_info->cond,

@@ -5839,7 +5839,7 @@ int ix_fetch_last_key_tran(struct ireq *iq, void *tran, int write, int ixnum,
 extern int gbl_use_fastseed_for_comdb2_seqno;
 long long get_unique_longlong(struct dbenv *env)
 {
-    long long id;
+    long long id = 0;
 
     if (gbl_use_fastseed_for_comdb2_seqno) {
         uint64_t uid;

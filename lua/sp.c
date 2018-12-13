@@ -835,11 +835,14 @@ static int lua_consumer_impl(Lua L, dbconsumer_t *q)
     if ((rc = osql_dbq_consume_logic(clnt, q->info.spname, q->genid)) != 0) {
         if (start) {
             osql_sock_abort(clnt, OSQL_SOCK_REQ);
+            clnt->intrans = 0;
         }
         luaL_error(L, "%s osql_dbq_consume_logic rc:%d\n", __func__, rc);
     }
     if (start) {
-        if ((rc = osql_sock_commit(clnt, OSQL_SOCK_REQ)) != 0) {
+        rc = osql_sock_commit(clnt, OSQL_SOCK_REQ);
+        clnt->intrans = 0;
+        if (rc) {
             luaL_error(L, "%s osql_sock_commit rc:%d\n", __func__, rc);
         }
     } else {
@@ -3763,11 +3766,6 @@ static int db_column_type(Lua L)
         free(name);
         return luaL_error(L, "bad arguments to 'column_type'");
     }
-    struct sqlclntstate *parent_clnt = parent->clnt;
-    if (override_count(parent_clnt)) {
-        free(name);
-        return luaL_error(L, "attempt to set column type for typed-statement");
-    }
     int clnttype;
     if (strcmp(name, "short") == 0 || strcmp(name, "int") == 0 ||
         strcmp(name, "integer") == 0 || strcmp(name, "longlong") == 0 ||
@@ -3794,14 +3792,26 @@ static int db_column_type(Lua L)
         clnttype = SQLITE_TEXT;
     }
     free(name);
+    struct sqlclntstate *parent_clnt = parent->clnt;
+    int num = override_count(parent_clnt);
+    if (num) {
+        do {
+            if (index <= num) {
+                int type = override_type(parent_clnt, index - 1);
+                if (type == clnttype)
+                    break;
+            }
+            return luaL_error(
+                L, "attempt to change column type for typed-statement");
+        } while (0);
+    }
     Pthread_mutex_lock(parent->emit_mutex);
     if (parent_clnt->osql.sent_column_data) {
         Pthread_mutex_unlock(parent->emit_mutex);
         return luaL_error(L, "attempt to change column type");
     }
     new_col_info(sp, index);
-    --index;
-    parent->clnttype[index] = clnttype;
+    parent->clnttype[index - 1] = clnttype;
     Pthread_mutex_unlock(parent->emit_mutex);
     lua_pushinteger(L, 0);
     return 1;
@@ -3814,16 +3824,17 @@ static int db_num_columns(Lua L)
     SP sp = getsp(L);
     SP parent = sp->parent;
     struct sqlclntstate *parent_clnt = parent->clnt;
-    if (override_count(parent_clnt)) {
+    int num = override_count(parent_clnt);
+    int num_cols = lua_tonumber(L, 2);
+    if (num && num != num_cols) {
         return luaL_error(
-            L, "attempt to set number of columns for typed-statement");
+            L, "attempt to change number of columns for typed-statement");
     }
     Pthread_mutex_lock(parent->emit_mutex);
     if (parent_clnt->osql.sent_column_data) {
         Pthread_mutex_unlock(parent->emit_mutex);
         return luaL_error(L, "attempt to change number of columns");
     }
-    int num_cols = lua_tonumber(L, 2);
     if (num_cols < parent->ntypes) {
         for (int i = num_cols - 1; i < parent->ntypes; ++i) {
             free(parent->clntname[i]);
@@ -4196,6 +4207,15 @@ static int db_consumer(Lua L)
     return 1;
 }
 
+static int db_get_event_tid(Lua L)
+{
+    luaL_checkudata(L, 1, dbtypes.db);
+    if (lua_getmetatable(L, -1) == 0)
+        return 0;
+    lua_getfield(L, -1, "__metatable");
+    return luabb_type(L, -1) == DBTYPES_INTEGER ? 1 : 0;
+}
+
 static int db_bootstrap(Lua L)
 {
     luaL_checkudata(L, 1, dbtypes.db);
@@ -4271,6 +4291,7 @@ static const luaL_Reg db_funcs[] = {
     {"error", db_error},
     /************ CONSUMER **************/
     {"consumer", db_consumer},
+    {"get_event_tid", db_get_event_tid},
     /************** DEBUG ***************/
     {"debug", db_debug},
     {"db_debug", db_db_debug},
@@ -5738,6 +5759,11 @@ static int push_trigger_args_int(Lua L, dbconsumer_t *q, struct qfound *f, char 
         *err = strdup("consume_field failed");
         return -1;
     }
+
+    lua_newtable(L);
+    luabb_pushinteger(L, f->item->trans.tid);
+    lua_setfield(L, -2, "__metatable");
+    lua_setmetatable(L, -2);
 
     return 1; // trigger sp receives only one argument
 }

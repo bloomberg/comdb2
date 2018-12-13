@@ -46,6 +46,7 @@
 #include "comdb2uuid.h"
 
 char *tranlevel_tostr(int lvl);
+struct sqlthdstate;
 struct sqlclntstate;
 int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
                      sqlite3_stmt *stmt, const char **errstr);

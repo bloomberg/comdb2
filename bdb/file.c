@@ -2120,7 +2120,7 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
     char our_lsn_str[80];
     seqnum_type master_seqnum;
     uint64_t gap = 0, prev_gap = 0;
-    int catchup_state;
+    int catchup_state = 0;
     DB_LSN starting_lsn;
     int starting_time;
     char *myhost;
@@ -4679,13 +4679,11 @@ static int bdb_downgrade_int(bdb_state_type *bdb_state, int noelect,
     int outrc;
     bdb_state_type *child;
     int i;
-    int retries;
 
     outrc = 0;
     if (downgraded)
         *downgraded = 0;
 
-    retries = 0;
     if (!bdb_state->repinfo->upgrade_allowed) {
         logmsg(LOGMSG_DEBUG, "bdb_downgrade: not allowed (bdb_open has not "
                              "completed yet)\n");
@@ -5595,7 +5593,7 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
         BDB_WRITELOCK("bdb_open_int");
 
         char *master;
-        int gen, egen;
+        uint32_t gen, egen;
 
         if (bdb_get_rep_master(bdb_state, &master, &gen, &egen) == 0 &&
             net_get_mynode(bdb_state->repinfo->netinfo) == master) {

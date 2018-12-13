@@ -123,7 +123,7 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
   struct sql_thread *thd = NULL;
   tranlog_cursor *pCur = (tranlog_cursor*)cur;
   DB_LSN durable_lsn = {0};
-  int durable_gen=0, rc, getflags;
+  uint32_t durable_gen=0, rc, getflags;
   bdb_state_type *bdb_state = thedb->bdb_env;
 
   if (pCur->notDurable || pCur->hitLast)
@@ -197,7 +197,7 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
       } while (1);
   }
 
-  if (rc = pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data, getflags) != 0) {
+  if ((rc = pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data, getflags)) != 0) {
       if (getflags != DB_NEXT && getflags != DB_PREV) {
           return SQLITE_INTERNAL;
       }
@@ -222,7 +222,7 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
                   if (sleepms > 10000)
                       sleepms = 10000;
               }
-          } while (rc = pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data, DB_NEXT));
+          } while ((rc = pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data, DB_NEXT)));
           rc = pCur->logc->get(pCur->logc, &pCur->curLsn,
                   &pCur->data, DB_NEXT) != 0;
       } else {
@@ -242,9 +242,9 @@ static inline void tranlog_lsn_to_str(char *st, DB_LSN *lsn)
     sprintf(st, "{%d:%d}", lsn->file, lsn->offset);
 }
 
-static inline int parse_lsn(const char *lsnstr, DB_LSN *lsn)
+static inline int parse_lsn(const unsigned char *lsnstr, DB_LSN *lsn)
 {
-    const char *p = lsnstr;
+    const char *p = (const char *)lsnstr;
     int file, offset;
     while (*p != '\0' && *p == ' ') p++;
     skipws(p);
@@ -482,14 +482,14 @@ static int tranlogFilter(
 
   bzero(&pCur->minLsn, sizeof(pCur->minLsn));
   if( idxNum & 1 ){
-    const char *minLsn = sqlite3_value_text(argv[i++]);
+    const unsigned char *minLsn = sqlite3_value_text(argv[i++]);
     if (minLsn && parse_lsn(minLsn, &pCur->minLsn)) {
         return SQLITE_CONV_ERROR;
     }
   }
   bzero(&pCur->maxLsn, sizeof(pCur->maxLsn));
   if( idxNum & 2 ){
-    const char *maxLsn = sqlite3_value_text(argv[i++]);
+    const unsigned char *maxLsn = sqlite3_value_text(argv[i++]);
     if (maxLsn && parse_lsn(maxLsn, &pCur->maxLsn)) {
         return SQLITE_CONV_ERROR;
     }

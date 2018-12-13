@@ -1575,7 +1575,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     if (tran->db_ins) {
         dbc_ins =
             bdb_temp_table_cursor(thedb->bdb_env, tran->db_ins, NULL, &bdberr);
-        if (!dbc || bdberr) {
+        if (!dbc_ins || bdberr) {
             Pthread_mutex_unlock(&tran->store_mtx);
             logmsg(LOGMSG_ERROR, "%s: failed to create cursor bdberr = %d\n",
                    __func__, bdberr);

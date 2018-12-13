@@ -294,13 +294,12 @@ done:
         }
     }
     if (made_trans && t) {
-        int crc;
         if (rc == 0) {
             int bdberr;
             rc = bdb_tran_commit(bdb_state, t, &bdberr);
         } else {
             int bdberr;
-            crc = bdb_tran_abort(bdb_state, t, &bdberr);
+            bdb_tran_abort(bdb_state, t, &bdberr);
             /* don't override the original return code */
         }
     }

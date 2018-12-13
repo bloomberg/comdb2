@@ -2695,15 +2695,15 @@ static char *_build_run_sql_from_hint(BtCursor *pCur, Mem *m, int ncols,
 
 done:
     if (columnsDesc) {
-        sqlite3DbFree(sqlitedb, columnsDesc);
+        sqlite3_free(columnsDesc);
     }
 
     if (whereDesc) {
-        sqlite3DbFree(sqlitedb, whereDesc);
+        sqlite3_free(whereDesc);
     }
 
     if (orderDesc) {
-        sqlite3DbFree(sqlitedb, orderDesc);
+        sqlite3_free(orderDesc);
     }
 
     if (gbl_fdb_track)
@@ -3759,7 +3759,7 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(struct sqlclntstate *clnt,
             free(msg);
             return NULL;
         }
-        tran->tid = (unsigned char *)tran->tiduuid;
+        tran->tid = (char *)tran->tiduuid;
 
         tran->isuuid = clnt->osql.rqid == OSQL_RQID_USE_UUID;
         if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
