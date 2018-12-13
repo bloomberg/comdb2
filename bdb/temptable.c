@@ -1095,26 +1095,17 @@ static int bdb_temp_table_truncate_temp_db(bdb_state_type *bdb_state,
     }
 
     rc = dbcur->c_get(dbcur, &dbt_key, &dbt_data, DB_FIRST);
-    if (rc == 0) {
-        /*fprintf(stderr, "deleting\n");*/
-        rc2 = dbcur->c_del(dbcur, 0);
-        if (rc2)
-            logmsg(LOGMSG_WARN, "%s:%d rc2=%d\n", __func__, __LINE__, rc2);
-    }
-
     while (rc == 0) {
-        rc = dbcur->c_get(dbcur, &dbt_key, &dbt_data, DB_NEXT);
         rc2 = dbcur->c_del(dbcur, 0);
         if (rc2)
             logmsg(LOGMSG_WARN, "%s:%d rc2=%d\n", __func__, __LINE__, rc2);
         /*fprintf(stderr, "deleting\n");*/
+        rc = dbcur->c_get(dbcur, &dbt_key, &dbt_data, DB_NEXT);
     }
+    //assert(rc == DB_KEYEMPTY || rc == DB_NOTFOUND);
 
     dbcur->c_close(dbcur);
-
-    rc = 0;
-
-    return rc;
+    return 0;
 }
 
 int bdb_temp_table_truncate(bdb_state_type *bdb_state, struct temp_table *tbl,

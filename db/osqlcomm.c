@@ -5776,12 +5776,13 @@ static void *osql_heartbeat_thread(void *arg)
         osqlcomm_hbeat_type_put(&(msg), p_buf, p_buf_end);
 
         osql_comm_t *comm = get_thecomm();
-        if (g_osql_ready && comm)
+        if (g_osql_ready && comm) {
             rc =
                 net_send_message(comm->handle_sibling, thedb->master,
                                  NET_HBEAT_SQL, &buf, sizeof(buf), 0, 5 * 1000);
-        if (rc)
-            logmsg(LOGMSG_INFO, "%s:%d rc=%d\n", __FILE__, __LINE__, rc);
+            if (rc && rc != NET_SEND_FAIL_SENDTOME)
+                logmsg(LOGMSG_INFO, "%s:%d rc=%d\n", __FILE__, __LINE__, rc);
+        }
 
         poll(NULL, 0, gbl_osql_heartbeat_send * 1000);
     }

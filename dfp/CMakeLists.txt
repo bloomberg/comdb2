@@ -22,7 +22,7 @@ elseif(${CMAKE_SYSTEM_NAME} STREQUAL "SunOS")
     add_definitions(-DDECLITEND=0)
 endif()
 if (${CMAKE_C_COMPILER_ID} STREQUAL GNU OR ${CMAKE_C_COMPILER_ID} STREQUAL Clang)
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-maybe-uninitialized -Wno-missing-braces -Wno-unused-variable -Wno-unused-but-set-variable")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-all")
 endif()
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/decNumber
