@@ -750,7 +750,7 @@ static int comdb2_authorizer_for_sqlite(
     case SQLITE_CREATE_INDEX:
     case SQLITE_CREATE_TABLE:
     case SQLITE_CREATE_TEMP_INDEX:
-    /* case SQLITE_CREATE_TEMP_TABLE: *//* REQD: Lua "db:thread" command? */
+    case SQLITE_CREATE_TEMP_TABLE:
     case SQLITE_CREATE_TEMP_TRIGGER:
     case SQLITE_CREATE_TEMP_VIEW:
     case SQLITE_CREATE_TRIGGER:
