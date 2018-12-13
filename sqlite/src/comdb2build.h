@@ -41,12 +41,6 @@
 #define SET_ANALYZE_THREAD(opt, val) opt += (val & 0xFFFF)
 #define GET_ANALYZE_THREAD(opt) (opt & 0xFFFF)
 
-enum {
-    ALTER_ADD_COLUMN = 1 << 0,
-    ALTER_DROP_COLUMN = 1 << 1,
-    ALTER_ALTER_COLUMN = 1 << 2,
-};
-
 int  readIntFromToken(Token* t, int *rst);
 int  comdb2SqlSchemaChange_tran(OpFunc *arg);
 void comdb2CreateTableCSC2(Parse *, Token *, Token *, int, Token *, int, int);
@@ -55,6 +49,8 @@ void comdb2DropTable(Parse *pParse, SrcList *pName);
 void comdb2AlterTableStart(Parse *, Token *, Token *, int);
 void comdb2AlterFinalizeColumn(Parse *pParse, int action);
 void comdb2AlterTableEnd(Parse *);
+void comdb2AlterColumnStart(Parse *);
+void comdb2AlterColumnEnd(Parse *);
 void comdb2CreateTableStart(Parse *, Token *, Token *, int, int, int, int);
 void comdb2CreateTableEnd(Parse *, Token *, Token *, u8, int);
 void comdb2CreateTableLikeEnd(Parse *, Token *, Token *);

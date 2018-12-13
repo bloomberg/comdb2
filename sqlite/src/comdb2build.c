@@ -2110,7 +2110,7 @@ struct comdb2_schema {
 enum {
     DDL_NOOP = 1 << 0,
     DDL_DRYRUN = 1 << 1,
-    DDL_ALTER = 1 << 2,
+    DDL_ALTER_COLUMN = 1 << 2, /* Processing ALTER TABLE .. ALTER COLUMN .. */
 };
 
 /* DDL context for CREATE/ALTER command */
@@ -3501,7 +3501,6 @@ void comdb2AlterTableStart(
         setError(pParse, SQLITE_NOMEM, "System out of memory");
         return;
     }
-    ctx->flags |= DDL_ALTER;
 
     ctx->schema->name = comdb2_strndup(ctx->mem, pName1->z, pName1->n);
     if (ctx->schema->name == 0)
@@ -3741,15 +3740,20 @@ cleanup:
     return;
 }
 
+static int check_dependent_keys(struct comdb2_ddl_context *ctx,
+                                const char *column, int drop);
+
 void comdb2AddColumn(Parse *pParse, /* Parser context */
                      Token *pName,  /* Name of the column */
                      Token *pType   /* Type of the column */
 )
 {
     struct comdb2_column *column;
+    struct comdb2_column *current;
     char type[pType->n + 1];
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     int rc;
+    int column_exists;
 
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
@@ -3793,19 +3797,59 @@ void comdb2AddColumn(Parse *pParse, /* Parser context */
     }
     column->type = (uint8_t)rc;
 
-    /* For ALTER TABLE .. ALTER COLUMN the altered column is intially appended
-     * to the column list via this function, thus the following check needs to
-     * be skipped.
-     */
-    if ((ctx->flags & DDL_ALTER) == 0) {
-        struct comdb2_column *current;
-        LISTC_FOR_EACH(&ctx->schema->column_list, current, lnk)
-        {
-            if (strcasecmp(column->name, current->name) == 0) {
+    column_exists = 0;
+    LISTC_FOR_EACH(&ctx->schema->column_list, current, lnk)
+    {
+        if ((strcasecmp(column->name, current->name) == 0) &&
+            ((current->flags & COLUMN_DELETED) == 0)) {
+            column_exists = 1;
+            break;
+        }
+    }
+
+    if (column_exists == 1) {
+        if ((ctx->flags & DDL_ALTER_COLUMN) != 0) {
+            /* Check whether an index is referring to this column. */
+            if (check_dependent_keys(ctx, current->name, gbl_ddl_cascade_drop)) {
                 pParse->rc = SQLITE_ERROR;
-                sqlite3ErrorMsg(pParse, "Duplicate column name '%s'.",
+                sqlite3ErrorMsg(pParse,
+                                "Column '%s' cannot be dropped as it is part "
+                                "of an existing key.",
                                 current->name);
                 goto cleanup;
+            }
+
+            /* Mark the existing column as deleted. */
+            current->flags |= COLUMN_DELETED;
+        } else {
+            pParse->rc = SQLITE_ERROR;
+            sqlite3ErrorMsg(pParse, "Duplicate column name '%s'.",
+                            current->name);
+            goto cleanup;
+        }
+    } else {
+        if ((ctx->flags & DDL_ALTER_COLUMN) != 0) {
+            pParse->rc = SQLITE_ERROR;
+            sqlite3ErrorMsg(pParse, "Column '%s' not found.", current->name);
+            goto cleanup;
+        } else {
+            /* We cannot allow dropping and adding the same column in the same
+             * ALTER TABLE command as that could potentially switch the position
+             * of the column in the resulting csc2 schema. Which, if allowed,
+             * would cause the csc2 system to simply "re-position the existing
+             * column along with all its data" - not something user actually
+             * asked for.
+             */
+            LISTC_FOR_EACH_REVERSE(&ctx->schema->column_list, current, lnk)
+            {
+                if ((strcasecmp(column->name, current->name) == 0) &&
+                    ((current->flags & COLUMN_DELETED) != 0)) {
+                    sqlite3ErrorMsg(pParse,
+                                    "Cannot DROP and ADD same column in an "
+                                    "ALTER command.");
+                    pParse->rc = SQLITE_MISUSE;
+                    goto cleanup;
+                }
             }
         }
     }
@@ -3822,89 +3866,48 @@ cleanup:
     return;
 }
 
-/* Finalize ALTER TABLE .. ADD/DROP/ALTER COLUMN (sub-)command. */
-void comdb2AlterFinalizeColumn(Parse *pParse, int action)
+void comdb2AlterColumnStart(Parse *pParse)
 {
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+    if (ctx == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
+        return;
+    }
+    ctx->flags |= DDL_ALTER_COLUMN;
+    return;
+}
+
+void comdb2AlterColumnEnd(Parse *pParse)
+{
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     struct comdb2_column *current;
     struct comdb2_column *last_column = 0;
-    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+    int column_exists = 0;
 
     if (ctx == 0) {
         /* An error must have been set. */
         assert(pParse->rc != 0);
         return;
     }
+    ctx->flags &= (~DDL_ALTER_COLUMN);
 
-    if ((ctx->flags & DDL_NOOP) != 0) {
-        goto cleanup;
+    last_column = listc_rbl(&ctx->schema->column_list);
+    LISTC_FOR_EACH(&ctx->schema->column_list, current, lnk)
+    {
+        if (strcasecmp(last_column->name, current->name) == 0) {
+            assert((current->flags & COLUMN_DELETED));
+            column_exists = 1;
+            break;
+        }
     }
 
-    switch (action) {
-    case ALTER_ADD_COLUMN: {
-        /* We cannot allow dropping and adding the same column in the same
-         * ALTER TABLE command as that could potentially switch the position
-         * of the column in the resulting csc2 schema. Which, if allowed,
-         * would cause the csc2 system to simply "re-position the existing
-         * column along with all its data" - not something user actually
-         * asked for.
-         */
-        LISTC_FOR_EACH_REVERSE(&ctx->schema->column_list, current, lnk)
-        {
-            if (!last_column) {
-                last_column = current;
-                continue;
-            }
+    assert(column_exists == 1);
 
-            if (strcasecmp(last_column->name, current->name) == 0) {
-                if ((current->flags & COLUMN_DELETED) != 0) {
-                    sqlite3ErrorMsg(pParse,
-                                    "Cannot DROP and ADD same column in an "
-                                    "ALTER command.");
-                    pParse->rc = SQLITE_MISUSE;
-                } else {
-                    sqlite3ErrorMsg(pParse, "Duplicate column name '%s'.",
-                                    current->name);
-                    pParse->rc = SQLITE_ERROR;
-                }
-                goto cleanup;
-            }
-        }
-    } break;
-    case ALTER_DROP_COLUMN:
-        break;
-    case ALTER_ALTER_COLUMN: {
-        /* Replace the 'old' column in the column list with the newly
-         * appended 'altered' column.
-         */
-        int exists = 0;
-        last_column = listc_rbl(&ctx->schema->column_list);
-        LISTC_FOR_EACH(&ctx->schema->column_list, current, lnk)
-        {
-            if ((strcasecmp(last_column->name, current->name) == 0) &&
-                (current->flags & COLUMN_DELETED) == 0) {
-                exists = 1;
-                break;
-            }
-        }
-
-        if (exists == 0) {
-            pParse->rc = SQLITE_ERROR;
-            sqlite3ErrorMsg(pParse, "Column '%s' does not exist.",
-                            last_column->name);
-            goto cleanup;
-        }
-
-        listc_add_before(&ctx->schema->column_list, last_column, current);
-        listc_rfl(&ctx->schema->column_list, current);
-    } break;
-    default:
-        assert(0);
-        break;
-    }
-    return;
-
-cleanup:
-    free_ddl_context(pParse);
+    /* Add the new altered version of the column before the existing
+     * (to-be-dropped) column.
+     */
+    listc_add_before(&ctx->schema->column_list, current, last_column);
     return;
 }
 
@@ -4096,33 +4099,20 @@ static void comdb2AddIndexInt(
         return;
     }
 
+    key = comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_key));
+    if (key == 0)
+        goto oom;
+
     if (keyname) {
         if (idxType != SQLITE_IDXTYPE_PRIMARYKEY && is_pk(keyname)) {
             pParse->rc = SQLITE_ERROR;
             sqlite3ErrorMsg(pParse, "Invalid key name '%s'.", keyname);
             goto cleanup;
         }
-
-        /*
-          Also check if a key already exists with the same name. For indices
-          created via CREATE INDEX (SQLITE_IDXTYPE_APPDEF) this check has
-          already been done to address IF NOT EXISTS.
-        */
-        if (idxType != SQLITE_IDXTYPE_APPDEF &&
-            find_idx_by_name(ctx, keyname)) {
-            pParse->rc = SQLITE_ERROR;
-            sqlite3ErrorMsg(pParse, "Index '%s' already exists.", keyname);
-            goto cleanup;
-        }
+        key->name = keyname;
     } else {
         /* Key name not specified, will be generated later. */
     }
-
-    key = comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_key));
-    if (key == 0)
-        goto oom;
-
-    key->name = keyname;
 
     switch (idxType) {
     case SQLITE_IDXTYPE_APPDEF:
@@ -4295,20 +4285,24 @@ static void comdb2AddIndexInt(
     */
     if (key->name == 0) {
         char *keyname = comdb2_malloc(ctx->mem, MAXGENKEYLEN);
-
         if (keyname == 0) {
             goto oom;
         }
 
         gen_key_name(key, ctx->schema->name, keyname, MAXGENKEYLEN);
-
-        /* Check if a key already exists with the same name. */
-        if (find_idx_by_name(ctx, keyname)) {
-            pParse->rc = SQLITE_ERROR;
-            sqlite3ErrorMsg(pParse, "Index '%s' already exists.", keyname);
-            goto cleanup;
-        }
         key->name = keyname;
+    }
+
+    /*
+      Check if a key already exists with the same name. For indices
+      created via CREATE INDEX (SQLITE_IDXTYPE_APPDEF) this check has
+      already been done to address IF NOT EXISTS.
+    */
+    if (idxType != SQLITE_IDXTYPE_APPDEF &&
+        find_idx_by_name(ctx, key->name)) {
+        pParse->rc = SQLITE_ERROR;
+        sqlite3ErrorMsg(pParse, "Index '%s' already exists.", key->name);
+        goto cleanup;
     }
 
     /* Add the key to the list. */
