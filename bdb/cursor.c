@@ -1259,16 +1259,17 @@ static int truncate_pglogs(void *obj, void *arg)
     struct statelsn *slsn = (struct statelsn *)arg;
     bdb_state_type *bdb_state = slsn->bdb_state;
     logfile_pglog_hashkey *ent = (logfile_pglog_hashkey *)obj;
-    assert (ent->tmpcur != NULL);
+    assert(ent->tmpcur != NULL);
     rc = bdb_temp_table_first(bdb_state, ent->tmpcur, &bdberr);
     while (!rc) {
         pglogs_tmptbl_key *rec = bdb_temp_table_key(ent->tmpcur);
         if (log_compare(&rec->commit_lsn, &slsn->lsn) >= 0) {
             rc = bdb_temp_table_delete(bdb_state, ent->tmpcur, &bdberr);
             if (rc) {
-                logmsg(LOGMSG_ERROR, "%s:%d failed to delete pglogs-key in "
-                        "temp table. rd %d bdberr %d\n", __func__, __LINE__,
-                        rc, bdberr);
+                logmsg(LOGMSG_ERROR,
+                       "%s:%d failed to delete pglogs-key in "
+                       "temp table. rc %d bdberr %d\n",
+                       __func__, __LINE__, rc, bdberr);
                 abort();
             }
         } 
@@ -1764,8 +1765,7 @@ int bdb_clean_pglogs_queues(bdb_state_type *bdb_state, DB_LSN lsn, int truncate)
 
         if (truncate) {
             bdb_truncate_pglog_queue(bdb_state, queue, lsn);
-        }
-        else {
+        } else {
             bdb_clean_pglog_queue(bdb_state, queue, lsn, NULL);
         }
 
@@ -2084,7 +2084,7 @@ int truncate_asof_pglogs(bdb_state_type *bdb_state, int file, int offset)
     DB_LSN lsn = {.file = file, .offset = offset};
     struct logfile_pglogs_entry *l_entry;
     struct commit_list *lcommit;
-    int del_log = file+1;
+    int del_log = file + 1;
     extern int gbl_snapisol;
     if (!gbl_new_snapisol || !gbl_snapisol)
         return 0;
@@ -3091,7 +3091,7 @@ void bdb_delete_timestamp_lsn(bdb_state_type *bdb_state, int32_t timestamp)
     Pthread_mutex_lock(&bdb_gbl_timestamp_lsn_mutex);
     rc = bdb_temp_table_first(bdb_state, bdb_gbl_timestamp_lsn_cur, &bdberr);
     while (!rc) {
-       foundkey = bdb_temp_table_key(bdb_gbl_timestamp_lsn_cur);
+        foundkey = bdb_temp_table_key(bdb_gbl_timestamp_lsn_cur);
         if (foundkey->timestamp > timestamp)
             break;
 #ifdef NEWSI_DEBUG

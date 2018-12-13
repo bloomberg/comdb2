@@ -1148,7 +1148,7 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
     if (inflags & BDB_TRAN_RECOVERY)
         flags |= DB_TXN_RECOVERY;
 
-    tran->flags |= (inflags & (BDB_TRAN_NOLOG|BDB_TRAN_RECOVERY));
+    tran->flags |= (inflags & (BDB_TRAN_NOLOG | BDB_TRAN_RECOVERY));
 
     switch (tran->tranclass) {
     case TRANCLASS_SNAPISOL:
@@ -1547,7 +1547,7 @@ static int bdb_tran_commit_with_seqnum_int_int(
 
         /* only generate a log for PARENT transactions */
         if (tran->parent == NULL && add_snapisol_logging(bdb_state) &&
-                !(tran->flags & BDB_TRAN_NOLOG)) {
+            !(tran->flags & BDB_TRAN_NOLOG)) {
             tran_type *parent = (tran->parent) ? tran->parent : tran; /*nop*/
             int iirc;
             int isabort;
