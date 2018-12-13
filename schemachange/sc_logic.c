@@ -471,6 +471,9 @@ int do_schema_change_tran(sc_arg_t *arg)
         rc = do_alter_stripes(s);
 
     if (rc == SC_MASTER_DOWNGRADE) {
+        while (s->logical_livesc) {
+            poll(NULL, 0, 100);
+        }
         if (s && s->newdb && s->newdb->handle) {
             int bdberr;
 
@@ -1285,7 +1288,7 @@ int backout_schema_changes(struct ireq *iq, tran_type *tran)
     s = iq->sc = iq->sc_pending;
     while (s != NULL) {
         while (s->logical_livesc) {
-            usleep(200);
+            poll(NULL, 0, 100);
         }
         if (s->addonly) {
             if (s->addonly == SC_DONE_ADD)

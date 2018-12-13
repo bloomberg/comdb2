@@ -977,6 +977,10 @@ err:
                    "waiting for logical redo to catch up at [%u:%u]\n",
                    __func__, ngenid, data->stripe, data->cv_wait_lsn.file,
                    data->cv_wait_lsn.offset);
+            trans_abort(&data->iq, data->trans);
+            data->trans = NULL;
+            poll(0, 0, 200);
+            return 1;
         }
     }
 
@@ -3090,6 +3094,11 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
                     "[%s] Stoping work on logical redo because we are told to "
                     "abort\n",
                     data->s->tablename);
+            goto cleanup;
+        }
+        if (stopsc) {
+            sc_errf(data->s, "[%s] %s stopping due to master swings\n",
+                    data->s->tablename, __func__);
             goto cleanup;
         }
         /* get the next transaction's logical ops from the log files */
