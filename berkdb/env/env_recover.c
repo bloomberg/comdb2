@@ -1093,7 +1093,7 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 		    &txninfo)) != 0)
 		goto err;
 
-	__fileid_track_init(dbenv);
+    __fileid_track_free(dbenv);
 
 	log_recovery_progress(0, -1);
 	dbenv->recovery_pass = DB_TXN_OPENFILES;
@@ -1178,9 +1178,6 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 	if (ret != 0 && ret != DB_NOTFOUND)
 		goto err;
 
-	ret = __fileid_track_free(dbenv);
-	if (ret)
-		goto err;
 	log_recovery_progress(2, -1);
 
 	/*

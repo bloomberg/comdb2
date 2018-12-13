@@ -1608,7 +1608,7 @@ static int bdb_truncate_pglog_queue(bdb_state_type *bdb_state,
                                     struct fileid_pglogs_queue *queue,
                                     DB_LSN trunclsn)
 {
-    struct pglogs_queue_key *qe, *del_qe = NULL;
+    struct pglogs_queue_key *qe, *del_qe = NULL, *cur_qe;
     struct asof_cursor *cur = NULL;
 
     cur = hash_find(bdb_asof_cursor_hash, queue->fileid);
@@ -1633,8 +1633,13 @@ static int bdb_truncate_pglog_queue(bdb_state_type *bdb_state,
     if (!del_qe)
         goto done;
 
-    if (cur && log_compare(&cur->cur->commit_lsn, &trunclsn) > 0)
-        cur->cur = del_qe->lnk.prev;
+    if (cur && (cur_qe = cur->cur)) {
+        while(cur_qe && cur_qe->type != PGLOGS_QUEUE_PAGE)
+            cur_qe = cur_qe->lnk.prev;
+
+        if (cur_qe && log_compare(&cur_qe->commit_lsn, &trunclsn) > 0)
+            cur->cur = del_qe->lnk.prev;
+    } 
 
     /* Remove from the bottom of the list and return */
     do {

@@ -6594,6 +6594,11 @@ restart:
         dbenv->rep_truncate_callback(dbenv, trunclsnp, i_am_master);
 
 err:
+    if (i_am_master) {
+        void allow_sc_to_run(void);
+        allow_sc_to_run();
+    }
+
     if (have_recover_lk)
         Pthread_rwlock_unlock(&dbenv->recoverlk);
 
