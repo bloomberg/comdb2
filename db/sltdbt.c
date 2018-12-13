@@ -328,8 +328,9 @@ int handle_ireq(struct ireq *iq)
 
             if (iq->debug) {
                 uuidstr_t us;
-                reqprintf(iq, "sorese returning rqid=%llu %s node=%s type=%d "
-                              "nops=%d rcout=%d retried=%d RC=%d errval=%d\n",
+                reqprintf(iq,
+                          "sorese returning rqid=%llu uuid=%s node=%s type=%d "
+                          "nops=%d rcout=%d retried=%d RC=%d errval=%d\n",
                           iq->sorese.rqid, comdb2uuidstr(iq->sorese.uuid, us),
                           iq->sorese.host, iq->sorese.type, iq->sorese.nops,
                           iq->sorese.rcout, iq->sorese.osql_retry, rc,
