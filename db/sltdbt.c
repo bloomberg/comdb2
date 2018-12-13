@@ -328,7 +328,7 @@ int handle_ireq(struct ireq *iq)
 
             if (iq->debug) {
                 uuidstr_t us;
-                reqprintf(iq, 
+                reqprintf(iq,
                           "sorese returning rqid=%llu uuid=%s node=%s type=%d "
                           "nops=%d rcout=%d retried=%d RC=%d errval=%d\n",
                           iq->sorese.rqid, comdb2uuidstr(iq->sorese.uuid, us),

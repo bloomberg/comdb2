@@ -149,7 +149,7 @@ static inline int osql_should_restart(struct sqlclntstate *clnt, int rc)
         uuidstr_t us;
         snap_uid_t snap = {0};
         get_cnonce(clnt, &snap);
-        logmsg(LOGMSG_USER, 
+        logmsg(LOGMSG_USER,
                "Forcing random-restart of uuid=%s cnonce=%*s after nops=%d\n",
                comdb2uuidstr(clnt->osql.uuid, us), snap.keylen, snap.key,
                clnt->osql.replicant_numops);
@@ -848,9 +848,9 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
         if (!keep_session) {
             uuidstr_t us;
             if (gbl_master_swing_osql_verbose)
-                logmsg(LOGMSG_USER, 
+                logmsg(LOGMSG_USER,
                        "0x%lu Starting new session rqid=%llx, uuid=%s\n",
-                       pthread_self(), clnt->osql.rqid, 
+                       pthread_self(), clnt->osql.rqid,
                        comdb2uuidstr(clnt->osql.uuid, us));
             /* unregister this osql thread from checkboard */
             rc = osql_unregister_sqlthr(clnt);
@@ -862,8 +862,7 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
                 logmsg(LOGMSG_USER,
                        "0x%lu Restarting rqid=%llx uuid=%s against %s\n",
                        pthread_self(), clnt->osql.rqid,
-                       comdb2uuidstr(clnt->osql.uuid, us),
-                       thedb->master);
+                       comdb2uuidstr(clnt->osql.uuid, us), thedb->master);
             /* TODO: osql_sock_start will also call osql_reuse_sqlthr() */
             rc = osql_reuse_sqlthr(clnt, thedb->master);
             if (rc)
@@ -1495,9 +1494,9 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
                     osql->host, osql->uuid, osql->replicant_numops, &osql->xerr,
                     nettype, osql->logsb, clnt->query_stats, snap_info_p);
             } else {
-                rc = osql_send_commit(osql->host, osql->rqid, osql->uuid,
-                                      osql->replicant_numops, &osql->xerr, nettype,
-                                      osql->logsb, clnt->query_stats, NULL);
+                rc = osql_send_commit(
+                    osql->host, osql->rqid, osql->uuid, osql->replicant_numops,
+                    &osql->xerr, nettype, osql->logsb, clnt->query_stats, NULL);
             }
         }
         RESTART_SOCKSQL_KEEP_RQID(is_retry);

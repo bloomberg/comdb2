@@ -1090,15 +1090,18 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS) &&
             !bdb_latest_commit_is_durable(thedb->bdb_env)) {
         if (iq->have_snap_info) {
-            logmsg(LOGMSG_ERROR, "%u replay rc changed from %d to NOT_DURABLE "
-                   "for blkseq '%s'\n", line, outrc, cnonce);
+            logmsg(LOGMSG_ERROR,
+                   "%u replay rc changed from %d to NOT_DURABLE "
+                   "for blkseq '%s'\n",
+                   line, outrc, cnonce);
         }
         outrc = ERR_NOT_DURABLE;
     }
 
     if (gbl_dump_blkseq && iq->have_snap_info) {
-        logmsg(LOGMSG_USER, "Replay case for '%s' rc=%d, errval=%d errstr='%s' "
-                            "rcout=%d\n",
+        logmsg(LOGMSG_USER,
+               "Replay case for '%s' rc=%d, errval=%d errstr='%s' "
+               "rcout=%d\n",
                cnonce, outrc, iq->errstat.errval, iq->errstat.errstr,
                iq->sorese.rcout);
     }
