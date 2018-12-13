@@ -18,6 +18,11 @@
 #include <stdlib.h>
 #include <alloca.h>
 
+#ifndef BUILDING_TOOLS
+#include <mem_util.h>
+#include <mem_override.h>
+#endif
+
 static inline char hex(unsigned char a)
 {
     if (a < 10)

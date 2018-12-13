@@ -1156,7 +1156,8 @@ clipper_usage:
         /* This is defined in malloc.h, as is struct mallinfo.  Including
          * malloc.h
          * causes a clash between mallinfo there and in dlmalloc.h. */
-        dlmalloc_stats();
+        void malloc_stats();
+        malloc_stats();
 #endif
     } else if (tokcmp(tok, ltok, "deletehints") == 0) {
         reinit_sql_hint_table();

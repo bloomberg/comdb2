@@ -29,6 +29,9 @@
 #include "logmsg.h"
 #include "locks_wrap.h"
 
+#include <mem_util.h>
+#include <mem_override.h>
+
 // macros
 //#define OBJ_POOL_DEBUG
 #define min(x, y) ((x) < (y) ? (x) : (y))

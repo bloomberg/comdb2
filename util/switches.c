@@ -28,6 +28,9 @@
 #include "switches.h"
 #include "logmsg.h"
 
+#include <mem_util.h>
+#include <mem_override.h>
+
 struct switch_type {
     const char *name;
     const char *descr;
