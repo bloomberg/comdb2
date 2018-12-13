@@ -2110,7 +2110,8 @@ int truncate_asof_pglogs(bdb_state_type *bdb_state, int file, int offset)
     } else
         Pthread_mutex_unlock(&logfile_pglogs_repo_mutex);
 
-    bdb_asof_current_lsn.file = bdb_asof_current_lsn.offset = 0;
+    bdb_asof_current_lsn.file = 1;
+    bdb_asof_current_lsn.offset = 0;
     Pthread_mutex_unlock(&bdb_asof_current_lsn_mutex);
     return 0;
 }
@@ -2136,7 +2137,6 @@ static void *pglogs_asof_thread(void *arg)
         Pthread_mutex_lock(&bdb_asof_current_lsn_mutex);
         new_asof_lsn = bdb_asof_current_lsn;
         set_del_lsn(__func__, __LINE__, &del_lsn, &bdb_asof_current_lsn);
-        assert(new_asof_lsn.file);
         lcommit = LISTC_TOP(&pglogs_commit_list);
         bcommit = LISTC_BOT(&pglogs_commit_list);
         pglogs_commit_list.top = pglogs_commit_list.bot = NULL;
