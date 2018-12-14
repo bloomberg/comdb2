@@ -5222,7 +5222,12 @@ int main(int argc, char **argv)
 
     extern void *timer_thread(void *);
     pthread_t timer_tid;
-    rc = pthread_create(&timer_tid, NULL, timer_thread, NULL);
+    pthread_attr_t timer_attr;
+    Pthread_attr_init(&timer_attr);
+    Pthread_attr_setstacksize(&timer_attr, DEFAULT_THD_STACKSZ);
+    Pthread_attr_setdetachstate(&timer_attr, PTHREAD_CREATE_JOINABLE);
+    rc = pthread_create(&timer_tid, &timer_attr, timer_thread, NULL);
+    Pthread_attr_destroy(&timer_attr);
     if (rc) {
         logmsg(LOGMSG_FATAL, "Can't create timer thread %d %s\n", rc, strerror(rc));
         return 1;
