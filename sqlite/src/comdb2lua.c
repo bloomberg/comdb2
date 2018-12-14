@@ -267,14 +267,6 @@ void comdb2DropTrigger(Parse *parse, int dynamic, Token *proc)
 
 #define comdb2CreateFunc(parse, proc, pfx, type)                               \
     do {                                                                       \
-#ifndef SQLITE_OMIT_AUTHORIZATION
-        {                                                                      \
-            if( sqlite3AuthCheck(parse, SQLITE_CREATE_LUA_FUNCTION, 0, 0, 0) ){\
-                sqlite3ErrorMsg(parse, COMDB2_NOT_AUTHORIZED_ERRMSG);          \
-                return;                                                        \
-            }                                                                  \
-        }                                                                      \
-#endif
         char spname[MAX_SPNAME];                                               \
         if (comdb2AuthenticateUserOp(parse))                                   \
             return;                                                            \
@@ -301,24 +293,34 @@ void comdb2DropTrigger(Parse *parse, int dynamic, Token *proc)
 
 void comdb2CreateScalarFunc(Parse *parse, Token *proc)
 {
-	comdb2CreateFunc(parse, proc, s, scalar);
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {                                                                      
+        if( sqlite3AuthCheck(parse, SQLITE_CREATE_LUA_FUNCTION, 0, 0, 0) ){
+            sqlite3ErrorMsg(parse, COMDB2_NOT_AUTHORIZED_ERRMSG);          
+            return;                                                        
+        }                                                                  
+    }                                                                      
+#endif
+
+    comdb2CreateFunc(parse, proc, s, scalar);
 }
 
 void comdb2CreateAggFunc(Parse *parse, Token *proc)
 {
-	comdb2CreateFunc(parse, proc, a, aggregate);
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {                                                                      
+        if( sqlite3AuthCheck(parse, SQLITE_CREATE_LUA_FUNCTION, 0, 0, 0) ){
+            sqlite3ErrorMsg(parse, COMDB2_NOT_AUTHORIZED_ERRMSG);          
+            return;                                                        
+        }                                                                  
+    }                                                                      
+#endif
+
+    comdb2CreateFunc(parse, proc, a, aggregate);
 }
 
 #define comdb2DropFunc(parse, proc, pfx, type)                                 \
     do {                                                                       \
-#ifndef SQLITE_OMIT_AUTHORIZATION
-        {                                                                      \
-            if( sqlite3AuthCheck(parse, SQLITE_DROP_LUA_FUNCTION, 0, 0, 0) ){  \
-                sqlite3ErrorMsg(parse, COMDB2_NOT_AUTHORIZED_ERRMSG);          \
-                return;                                                        \
-            }                                                                  \
-        }                                                                      \
-#endif
         char spname[MAX_SPNAME];                                               \
         if (comdb2AuthenticateUserOp(parse))                                   \
             return;                                                            \
@@ -341,11 +343,28 @@ void comdb2CreateAggFunc(Parse *parse, Token *proc)
 
 void comdb2DropScalarFunc(Parse *parse, Token *proc)
 {
-	comdb2DropFunc(parse, proc, s, scalar);
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {                                                                      
+        if( sqlite3AuthCheck(parse, SQLITE_DROP_LUA_FUNCTION, 0, 0, 0) ){
+            sqlite3ErrorMsg(parse, COMDB2_NOT_AUTHORIZED_ERRMSG);          
+            return;                                                        
+        }                                                                  
+    }                                                                      
+#endif
+
+    comdb2DropFunc(parse, proc, s, scalar);
 }
 
 void comdb2DropAggFunc(Parse *parse, Token *proc)
 {
-	comdb2DropFunc(parse, proc, a, aggregate);
-}
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {                                                                      
+        if( sqlite3AuthCheck(parse, SQLITE_DROP_LUA_FUNCTION, 0, 0, 0) ){
+            sqlite3ErrorMsg(parse, COMDB2_NOT_AUTHORIZED_ERRMSG);          
+            return;                                                        
+        }                                                                  
+    }                                                                      
+#endif
 
+    comdb2DropFunc(parse, proc, a, aggregate);
+}
