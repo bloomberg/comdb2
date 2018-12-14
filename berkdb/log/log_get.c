@@ -141,9 +141,9 @@ __log_cursor_complete(dbenv, logcp, bpsize, maxrec)
 
         logc->dbenv = dbenv;
         logc->close = __log_c_close_pp;
-        logc->get = __log_c_get_pp;
-        logc->setflags = __log_c_setflags_pp;
-        logc->stat = __log_c_stat_pp;
+		logc->get = __log_c_get_pp;
+		logc->setflags = __log_c_setflags_pp;
+		logc->stat = __log_c_stat_pp;
     }
     logc->incursor_count = 0;
     logc->ondisk_count = 0;
@@ -296,8 +296,8 @@ __log_c_setflags_pp(logc, flags)
 	DB_LOGC *logc;
 	u_int32_t flags;
 {
-    logc->flags = flags;
-    return 0;
+	logc->flags = flags;
+	return 0;
 }
 
 /*
@@ -1131,9 +1131,9 @@ __log_c_inregion_int(logc, lsn, rlockp, last_lsn, hdr, pp)
 			}
 		} else {
 			w_off = lp->w_off;
-            /* Probe for a non-existant log record (for rep-verify) */
-            if (w_off > lsn->offset)
-                return (DB_NOTFOUND);
+			/* Probe for a non-existant log record (for rep-verify) */
+			if (w_off > lsn->offset)
+				return (DB_NOTFOUND);
 			p = dblp->bufp + (lsn->offset - w_off);
 			memcpy(hdr, p, hdr->size);
 		}
