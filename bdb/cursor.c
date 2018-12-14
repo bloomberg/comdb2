@@ -1272,7 +1272,7 @@ static int truncate_pglogs(void *obj, void *arg)
                        __func__, __LINE__, rc, bdberr);
                 abort();
             }
-        } 
+        }
         rc = bdb_temp_table_next(bdb_state, ent->tmpcur, &bdberr);
     }
     return 0;
@@ -1635,12 +1635,12 @@ static int bdb_truncate_pglog_queue(bdb_state_type *bdb_state,
         goto done;
 
     if (cur && (cur_qe = cur->cur)) {
-        while(cur_qe && cur_qe->type != PGLOGS_QUEUE_PAGE)
+        while (cur_qe && cur_qe->type != PGLOGS_QUEUE_PAGE)
             cur_qe = cur_qe->lnk.prev;
 
         if (cur_qe && log_compare(&cur_qe->commit_lsn, &trunclsn) >= 0)
             cur->cur = del_qe->lnk.prev;
-    } 
+    }
 
     /* Remove from the bottom of the list and return */
     do {
