@@ -3107,8 +3107,8 @@ void print_net_memstat(int human_readable)
     netinfo_type *netinfo_ptr;
     host_node_type *host_node_ptr;
 
-    size_t seq_netinfo, hostlen;
-    int npool, nused, nblocks;
+    size_t seq_netinfo;
+    int npool, nused, nblocks, hostlen;
     int total_npool, total_nused, total_nblocks;
     struct mallinfo mspinfo;
     int total_numsp, total_nfmsp;
@@ -3125,7 +3125,8 @@ void print_net_memstat(int human_readable)
     {
         hostlen = 10;
         netinfo_ptr = curpos->netinfo_ptr;
-        logmsg(LOGMSG_USER, "netinfo #%-4u(%p): app = %s, service = %s, instance = %s\n",
+        logmsg(LOGMSG_USER,
+               "netinfo #%-4zu(%p): app = %s, service = %s, instance = %s\n",
                seq_netinfo, netinfo_ptr, netinfo_ptr->app, netinfo_ptr->service,
                netinfo_ptr->instance);
 
@@ -3166,7 +3167,8 @@ void print_net_memstat(int human_readable)
             logmsg(LOGMSG_USER, "%-*s | ", hostlen, host_node_ptr->host);
 
             if (!human_readable)
-                logmsg(LOGMSG_USER, "%12d | %12d | %12d | %12d | %12d | %12d\n", npool,
+                logmsg(LOGMSG_USER,
+                       "%12d | %12d | %12d | %12zu | %12zu | %12zu\n", npool,
                        nused, npool - nused,
                        mspinfo.uordblks + mspinfo.fordblks, mspinfo.uordblks,
                        mspinfo.fordblks);
@@ -3518,6 +3520,13 @@ static int read_hostlist(netinfo_type *netinfo_ptr, SBUF2 *sb, char *hosts[],
     for (i = 0; i < *numhosts; i++) {
         if (hosts[i][0] == '.') {
             int len = atoi(&hosts[i][1]);
+            if (len > 4096) {
+                for (int j = 0; j < *numhosts; j++) {
+                    free(hosts[j]);
+                }
+                free(data);
+                return 1;
+            }
             hosts[i] = realloc(hosts[i], len);
             p_buf = (uint8_t *)buf_no_net_get(hosts[i], len, p_buf, p_buf_end);
         }
@@ -3667,7 +3676,8 @@ static int process_payload_ack(netinfo_type *netinfo_ptr,
     seqnum = p_net_ack_message_payload.seqnum;
     outrc = p_net_ack_message_payload.outrc;
 
-    if (p_net_ack_message_payload.paylen > 1024)
+    if (p_net_ack_message_payload.paylen > 1024 ||
+        p_net_ack_message_payload.paylen <= 0)
         return -1;
 
     payload = malloc(p_net_ack_message_payload.paylen);
@@ -4079,6 +4089,11 @@ static int process_decom_name(netinfo_type *netinfo_ptr,
         return -1;
     }
     hostlen = ntohl(hostlen);
+    if (hostlen > 256) {
+        logmsg(LOGMSG_ERROR, "%s:absurd length for hostname, %d\n", __func__,
+               hostlen);
+        return -1;
+    }
     host = malloc(hostlen);
     if (host == NULL) {
         logmsg(LOGMSG_ERROR, "%s:err can't allocate %d bytes for hostname\n",

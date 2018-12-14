@@ -3064,7 +3064,6 @@ int bdb_wait_for_seqnum_from_room(bdb_state_type *bdb_state,
     int i;
     const char *nodelist[REPMAX];
     int numnodes;
-    int rc = 0;
     int our_room = 0;
 
     if (bdb_state->attr->repalwayswait)
@@ -3081,13 +3080,10 @@ int bdb_wait_for_seqnum_from_room(bdb_state_type *bdb_state,
         if (bdb_state->callback->getroom_rtn) {
             if ((bdb_state->callback->getroom_rtn(bdb_state, nodelist[i])) ==
                 our_room)
-                rc = bdb_wait_for_seqnum_from_node(bdb_state, seqnum,
-                                                   nodelist[i]);
+                bdb_wait_for_seqnum_from_node(bdb_state, seqnum, nodelist[i]);
         } else {
-            rc = bdb_wait_for_seqnum_from_node(bdb_state, seqnum, nodelist[i]);
+            bdb_wait_for_seqnum_from_node(bdb_state, seqnum, nodelist[i]);
         }
-        if (rc)
-            logmsg(LOGMSG_WARN, "%s:%d rc = %d\n", __FILE__, __LINE__, rc);
     }
 
     return 0;
@@ -3763,16 +3759,17 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     int done = 0;
     int master_confused = 0;
 
+    /* don't give it to berkeley db if we havent started rep yet */
+    if (!bdb_state->rep_started || control == NULL) {
+        return 0;
+    }
+
     rep_control_type *rep_control;
     rep_control = control->data;
 
     rectype = ntohl(rep_control->rectype);
     generation = ntohl(rep_control->gen);
 
-    /* don't give it to berkeley db if we havent started rep yet */
-    if (!bdb_state->rep_started) {
-        return 0;
-    }
 
     outrc = 0;
 
@@ -4460,7 +4457,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
     uint8_t *p_buf;
     uint8_t *p_buf_end;
     pgcomp_snd_t pgsnd;
-    const void *pgsnd_pl_pos;
+    const uint8_t *pgsnd_pl_pos;
 
     /* get a pointer back to our bdb_state */
     bdb_state = usr_ptr;
@@ -4486,62 +4483,93 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         break;
 
     case USER_TYPE_ADD:
-        p_buf = (uint8_t *)dta;
-        p_buf_end = ((uint8_t *)dta + dtalen);
-        buf_get(&node, sizeof(int), p_buf, p_buf_end);
+        if (!dta || dtalen < sizeof(int)) {
+            logmsg(LOGMSG_ERROR, "%s add called with invalid args\n", __func__);
+        } else {
+            p_buf = (uint8_t *)dta;
+            p_buf_end = ((uint8_t *)dta + dtalen);
+            buf_get(&node, sizeof(int), p_buf, p_buf_end);
 
-        print(bdb_state, "adding node %d to sanctioned list\n", node);
-        net_add_to_sanctioned(bdb_state->repinfo->netinfo, hostname(node), 0);
+            print(bdb_state, "adding node %d to sanctioned list\n", node);
+            net_add_to_sanctioned(bdb_state->repinfo->netinfo, hostname(node),
+                                  0);
+        }
         net_ack_message(ack_handle, 0);
         break;
 
     case USER_TYPE_ADD_NAME:
-        print(bdb_state, "adding host %s to sanctioned list\n", (char *)dta);
-        net_add_to_sanctioned(bdb_state->repinfo->netinfo, intern((char *)dta),
-                              0);
+        if (!dta || ((char *)dta)[dtalen - 1] != '\0') {
+            logmsg(LOGMSG_ERROR, "%s add_name called with invalid args\n",
+                   __func__);
+        } else {
+            print(bdb_state, "adding host %s to sanctioned list\n",
+                  (char *)dta);
+            net_add_to_sanctioned(bdb_state->repinfo->netinfo,
+                                  intern((char *)dta), 0);
+        }
         net_ack_message(ack_handle, 0);
         break;
 
     case USER_TYPE_DEL:
-        p_buf = (uint8_t *)dta;
-        p_buf_end = ((uint8_t *)dta + dtalen);
-        buf_get(&node, sizeof(int), p_buf, p_buf_end);
+        if (!dta || dtalen < sizeof(int)) {
+            logmsg(LOGMSG_ERROR, "%s del called with invalid args\n", __func__);
+        } else {
+            p_buf = (uint8_t *)dta;
+            p_buf_end = ((uint8_t *)dta + dtalen);
+            buf_get(&node, sizeof(int), p_buf, p_buf_end);
 
-        print(bdb_state, "removing node %d from sanctioned list\n", node);
-        net_del_from_sanctioned(bdb_state->repinfo->netinfo, hostname(node));
+            print(bdb_state, "removing node %d from sanctioned list\n", node);
+            net_del_from_sanctioned(bdb_state->repinfo->netinfo,
+                                    hostname(node));
+        }
         net_ack_message(ack_handle, 0);
         break;
 
     case USER_TYPE_DEL_NAME:
-        print(bdb_state, "removing host %s from sanctioned list\n",
-              (char *)dta);
-        net_del_from_sanctioned(bdb_state->repinfo->netinfo,
-                                intern((char *)dta));
+        if (!dta || ((char *)dta)[dtalen - 1] != '\0') {
+            logmsg(LOGMSG_ERROR, "%s del_name called with invalid args\n",
+                   __func__);
+        } else {
+            print(bdb_state, "removing host %s from sanctioned list\n",
+                  (char *)dta);
+            net_del_from_sanctioned(bdb_state->repinfo->netinfo,
+                                    intern((char *)dta));
+        }
         net_ack_message(ack_handle, 0);
         break;
 
     case USER_TYPE_DECOM_DEPRECATED: {
         char *host;
-        p_buf = (uint8_t *)dta;
-        p_buf_end = ((uint8_t *)dta + dtalen);
-        buf_get(&node, sizeof(int), p_buf, p_buf_end);
-        logmsg(LOGMSG_DEBUG, "--- got decom for node %d\n", node);
-        logmsg(LOGMSG_DEBUG, "acking message\n");
-        net_ack_message(ack_handle, 0);
-        host = hostname(node);
-        osql_decom_node(host);
-        net_decom_node(bdb_state->repinfo->netinfo, host);
+        if (!dta || dtalen < sizeof(int)) {
+            logmsg(LOGMSG_ERROR, "%s decom_dep called with bad args\n",
+                   __func__);
+        } else {
+            p_buf = (uint8_t *)dta;
+            p_buf_end = ((uint8_t *)dta + dtalen);
+            buf_get(&node, sizeof(int), p_buf, p_buf_end);
+            logmsg(LOGMSG_DEBUG, "--- got decom for node %d\n", node);
+            logmsg(LOGMSG_DEBUG, "acking message\n");
+            net_ack_message(ack_handle, 0);
+            host = hostname(node);
+            osql_decom_node(host);
+            net_decom_node(bdb_state->repinfo->netinfo, host);
+        }
         break;
     }
 
     case USER_TYPE_DECOM_NAME_DEPRECATED: {
         char *host;
-        logmsg(LOGMSG_DEBUG, "--- got decom for node %s\n", (char *)dta);
-        logmsg(LOGMSG_DEBUG, "acking message\n");
-        net_ack_message(ack_handle, 0);
-        host = intern((char *)dta);
-        osql_decom_node(host);
-        net_decom_node(bdb_state->repinfo->netinfo, host);
+        if (!dta || ((char *)dta)[dtalen - 1] != '\0') {
+            logmsg(LOGMSG_ERROR, "%s decom_name_dep called with invalid args\n",
+                   __func__);
+        } else {
+            logmsg(LOGMSG_DEBUG, "--- got decom for node %s\n", (char *)dta);
+            logmsg(LOGMSG_DEBUG, "acking message\n");
+            net_ack_message(ack_handle, 0);
+            host = intern((char *)dta);
+            osql_decom_node(host);
+            net_decom_node(bdb_state->repinfo->netinfo, host);
+        }
         break;
     }
 
@@ -4555,14 +4583,10 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
     }
 
     case USER_TYPE_TRANSFERMASTER:
-        p_buf = (uint8_t *)dta;
-        p_buf_end = ((uint8_t *)dta + dtalen);
-        buf_get(&node, sizeof(int), p_buf, p_buf_end);
-
         /* Prevent race against watcher thread. */
         bdb_state->repinfo->dont_elect_untill_time = comdb2_time_epoch() + 5;
 
-        logmsg(LOGMSG_INFO, "transfer master recieved\n");
+        logmsg(LOGMSG_INFO, "transfer master received\n");
         /* Don't ack this - if we get this message we want an election. */
         break;
 
@@ -4571,8 +4595,6 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         logmsg(LOGMSG_INFO, "transfer master received\n");
         bdb_state->repinfo->dont_elect_untill_time = comdb2_time_epoch() + 5;
         bdb_state->need_to_upgrade = 1;
-
-        /* Don't ack this - if we get this message we want an election. */
         net_ack_message(ack_handle, 0);
         break;
 
@@ -4585,7 +4607,13 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
 
         get_my_lsn(bdb_state, &cur_lsn);
 
-        bdb_lsn_cmp_type_get(&lsn_cmp, p_buf, p_buf_end);
+        if (!dta ||
+            (bdb_lsn_cmp_type_get(&lsn_cmp, p_buf, p_buf_end) == NULL)) {
+            logmsg(LOGMSG_ERROR, "%s lsncmp called with invalid args\n",
+                   __func__);
+            net_ack_message(ack_handle, 1);
+            return;
+        }
 
         bdb_state->dbenv->rep_flush(bdb_state->dbenv);
 
@@ -4617,14 +4645,18 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
     }
 
     case USER_TYPE_REPTRC:
-        p_buf = (uint8_t *)dta;
-        p_buf_end = ((uint8_t *)dta + dtalen);
-        buf_get(&on_off, sizeof(int), p_buf, p_buf_end);
+        if (!dta || dtalen < sizeof(int)) {
+            logmsg(LOGMSG_ERROR, "%s reptrc called with bad args\n", __func__);
+        } else {
+            p_buf = (uint8_t *)dta;
+            p_buf_end = ((uint8_t *)dta + dtalen);
+            buf_get(&on_off, sizeof(int), p_buf, p_buf_end);
 
-        logmsg(LOGMSG_USER, "node %s told me to set rep trace to %d\n", from_host,
-                on_off);
+            logmsg(LOGMSG_USER, "node %s told me to set rep trace to %d\n",
+                   from_host, on_off);
 
-        bdb_state->rep_trace = on_off;
+            bdb_state->rep_trace = on_off;
+        }
 
         net_ack_message(ack_handle, 0);
         break;
@@ -4651,20 +4683,34 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
     } break;
 
     case USER_TYPE_TCP_TIMESTAMP:
+        if (!dta || dtalen < sizeof(ack_info)) {
+            logmsg(LOGMSG_ERROR, "%s tcp_timestamp called with bad args\n",
+                   __func__);
+            return;
+        }
         handle_tcp_timestamp(bdb_state, dta, from_host);
         break;
 
     case USER_TYPE_TCP_TIMESTAMP_ACK:
+        if (!dta || dtalen < sizeof(ack_info)) {
+            logmsg(LOGMSG_ERROR, "%s tcp_timestamp_ack called with bad args\n",
+                   __func__);
+            return;
+        }
         handle_tcp_timestamp_ack(bdb_state, dta);
         break;
 
     case USER_TYPE_PING_TIMESTAMP:
+        if (!dta || dtalen < sizeof(ack_info)) {
+            logmsg(LOGMSG_ERROR, "%s tcp_timestamp_ack called with bad args\n",
+                   __func__);
+            return;
+        }
         handle_ping_timestamp(bdb_state, dta, from_host);
         break;
 
     case USER_TYPE_ANALYZED_TBL: {
-        // TODO (NC): Buffer way too big for a table name? (see: MAXTABLELEN)
-        char tblname[256] = {0};
+        char tblname[MAXTABLELEN + 1] = {0};
         memcpy(tblname, dta, MIN(dtalen, (sizeof(tblname) - 1)));
         ctrace("MASTER received notification, tbl %s was analyzed\n", tblname);
         void reset_aa_counter(char *tblname);
@@ -4674,7 +4720,14 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
     case USER_TYPE_PAGE_COMPACT:
         p_buf = (uint8_t *)dta;
         p_buf_end = ((uint8_t *)dta + dtalen);
-        pgsnd_pl_pos = pgcomp_snd_type_get(&pgsnd, p_buf, p_buf_end);
+        if (!dta || ((pgsnd_pl_pos = pgcomp_snd_type_get(&pgsnd, p_buf,
+                                                         p_buf_end)) == NULL)) {
+            logmsg(LOGMSG_ERROR,
+                   "%s user_type_lsncmp called with invalid "
+                   "args\n",
+                   __func__);
+            return;
+        }
         enqueue_pg_compact_work(bdb_state, pgsnd.id, pgsnd.size, pgsnd_pl_pos);
         break;
 
@@ -4899,14 +4952,14 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
            came from the network */
 
         if (p_buf - ((uint8_t *)dta) > dtalen) {
-            logmsg(LOGMSG_FATAL, "buf-dta != dtalen\n");
-            logmsg(LOGMSG_FATAL, "%p %p %d\n", p_buf, dta, dtalen);
-            exit(1);
+            logmsg(LOGMSG_ERROR, "buf-dta != dtalen\n");
+            logmsg(LOGMSG_ERROR, "%p %p %d\n", p_buf, dta, dtalen);
+            return -1;
         }
 
         if ((controlbufsz + recbufsz) > dtalen) {
-            logmsg(LOGMSG_FATAL, "controlbufsz+recbufsz too big\n");
-            exit(1);
+            logmsg(LOGMSG_ERROR, "controlbufsz+recbufsz too big\n");
+            return -1;
         }
 
         if (bdb_state->rep_trace) {
@@ -4935,13 +4988,13 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
             /*fprintf(stderr, "2) repchecksum\n");*/
 
             if (crc32c(rec.data, rec.size) != recbufcrc) {
-                logmsg(LOGMSG_FATAL, "CRC MISMATCH on rec\n");
-                exit(1);
+                logmsg(LOGMSG_ERROR, "CRC MISMATCH on rec\n");
+                return -1;
             }
 
             if (crc32c(control.data, control.size) != controlbufcrc) {
-                logmsg(LOGMSG_FATAL, "CRC MISMATCH on control\n");
-                exit(1);
+                logmsg(LOGMSG_ERROR, "CRC MISMATCH on control\n");
+                return -1;
             }
         }
 
@@ -5005,19 +5058,13 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
         break;
 
     case USER_TYPE_GBLCONTEXT:
-        memcpy(&master_cmpcontext, dta, sizeof(unsigned long long));
-
-        if (bdb_state->repinfo->master_host != bdb_state->repinfo->myhost) {
-            bdb_state->got_gblcontext = 1;
-
-            /*
-            fprintf(stderr, "D setting bdb_state->gblcontext to  0x%08llx\n",
-               bdb_state->gblcontext);
-            */
-
-            set_gblcontext(bdb_state, master_cmpcontext);
+        if (dtalen >= sizeof(unsigned long long)) {
+            memcpy(&master_cmpcontext, dta, sizeof(unsigned long long));
+            if (bdb_state->repinfo->master_host != bdb_state->repinfo->myhost) {
+                bdb_state->got_gblcontext = 1;
+                set_gblcontext(bdb_state, master_cmpcontext);
+            }
         }
-
         break;
 
     case USER_TYPE_MASTERCMPCONTEXTLIST:
@@ -5589,12 +5636,7 @@ int bdb_wait_for_seqnum_from_n(bdb_state_type *bdb_state, seqnum_type *seqnum,
                     &bdb_state->seqnum_info->seqnums[nodeix(connlist[i])],
                     seqnum) >= 0) {
                 num_acks++;
-            } /*TODO: delete this
-            else {
-                DB_LSN *l;
-                l = (DB_LSN *)&bdb_state->seqnum_info
-                        ->seqnums[nodeix(connlist[i])];
-            } */
+            }
         }
         if (num_acks < n)
             Pthread_cond_wait(&bdb_state->seqnum_info->cond,

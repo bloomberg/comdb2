@@ -3413,7 +3413,7 @@ static void net_morestripe_and_open_all_dbs(void *hndl, void *uptr,
     struct net_morestripe_msg *msg;
     msg = dtap;
 
-    if (dtalen < sizeof(struct net_morestripe_msg)) {
+    if (dtalen < sizeof(struct net_morestripe_msg) || dtap == NULL) {
         logmsg(LOGMSG_ERROR, "net_morestripe_and_open_all_dbs: bad msglen %d\n",
                 dtalen);
         net_ack_message(hndl, 1);
@@ -3458,7 +3458,7 @@ void net_javasp_op(void *hndl, void *uptr, char *fromnode, int usertype,
     char *ptr;
     int rc;
 
-    if (dtalen < offsetof(struct new_procedure_op_msg, text)) {
+    if (dtap == NULL || dtalen < offsetof(struct new_procedure_op_msg, text)) {
         net_ack_message(hndl, 1);
         return;
     }
