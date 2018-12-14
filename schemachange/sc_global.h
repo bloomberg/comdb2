@@ -72,7 +72,7 @@ extern int stopsc;        /* stop schemachange, so it can resume */
 
 int is_dta_being_rebuilt(struct scplan *plan);
 const char *get_sc_to_name();
-void wait_for_sc_to_stop();
+void wait_for_sc_to_stop(const char *operation);
 void allow_sc_to_run();
 int sc_set_running(char *table, int running, uint64_t seed, const char *host,
                    time_t time);

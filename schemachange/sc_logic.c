@@ -38,6 +38,8 @@
 #include "logmsg.h"
 #include "comdb2_atomic.h"
 
+extern int gbl_is_physical_replicant;
+
 /**** Utility functions */
 
 static enum thrtype prepare_sc_thread(struct schema_change_type *s)
@@ -115,7 +117,7 @@ static int mark_sc_in_llmeta_tran(struct schema_change_type *s, void *trans)
             if (s->resume) {
                 sc_errf(s, "failed to resume schema change, downgrading to "
                            "give another master a shot\n");
-                bdb_transfermaster(thedb->dbs[0]->handle);
+                bdb_transfermaster(thedb->static_table.handle);
             }
         }
     }
@@ -180,6 +182,7 @@ static int master_downgrading(struct schema_change_type *s)
         logmsg(
             LOGMSG_WARN,
             "Master node downgrading - new master will resume schemachange\n");
+        set_schema_change_in_progress(__func__, __LINE__, 0);
         return SC_MASTER_DOWNGRADE;
     }
     return SC_OK;
@@ -404,9 +407,7 @@ int do_alter_stripes(struct schema_change_type *s)
 
     if (!s->resume) set_sc_flgs(s);
 
-    rc = propose_sc(s);
-
-    if (rc == SC_OK) rc = do_alter_stripes_int(s);
+    rc = do_alter_stripes_int(s);
 
     if (master_downgrading(s)) return SC_MASTER_DOWNGRADE;
 
@@ -417,6 +418,7 @@ int do_alter_stripes(struct schema_change_type *s)
     if ((s->type != DBTYPE_TAGGED_TABLE) && gbl_pushlogs_after_sc)
         push_next_log();
 
+    s->finalize = 1;
     return rc;
 }
 
@@ -705,7 +707,11 @@ int resume_schema_change(void)
     int is_shard = 0;
     char *viewname = NULL;
 
-    /* if we're not the master node then we can't do schema change! */
+    /* if we're not the master node/phys replicant then we can't do schema
+     * change! */
+    if (gbl_is_physical_replicant) {
+        return 0;
+    }
     if (thedb->master != gbl_mynode) {
         logmsg(LOGMSG_WARN,
                "resume_schema_change: not the master, cannot resume a"

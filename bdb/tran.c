@@ -1094,7 +1094,8 @@ int bdb_tran_abort_phys(bdb_state_type *bdb_state, tran_type *tran)
 
 static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
                                         tran_type *parent, int retries,
-                                        int tranclass, int *bdberr)
+                                        int tranclass, int *bdberr,
+                                        u_int32_t inflags)
 {
     tran_type *tran;
     int rc;
@@ -1144,6 +1145,11 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
     if (!bdb_state->attr->synctransactions)
         flags |= DB_TXN_NOSYNC;
 
+    if (inflags & BDB_TRAN_RECOVERY)
+        flags |= DB_TXN_RECOVERY;
+
+    tran->flags |= (inflags & (BDB_TRAN_NOLOG | BDB_TRAN_RECOVERY));
+
     switch (tran->tranclass) {
     case TRANCLASS_SNAPISOL:
     case TRANCLASS_SERIALIZABLE:
@@ -1191,12 +1197,12 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
 
 static tran_type *bdb_tran_begin_berk_int(bdb_state_type *bdb_state,
                                           tran_type *parent, int retries,
-                                          int *bdberr)
+                                          int *bdberr, u_int32_t flags)
 {
     tran_type *tran;
 
     tran = bdb_tran_begin_ll_int(bdb_state, parent, retries, TRANCLASS_BERK,
-                                 bdberr);
+                                 bdberr, flags);
 
     return tran;
 }
@@ -1224,7 +1230,7 @@ tran_type *bdb_tran_begin_shadow_int(bdb_state_type *bdb_state, int tranclass,
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
-    tran = bdb_tran_begin_ll_int(bdb_state, NULL, 0, tranclass, bdberr);
+    tran = bdb_tran_begin_ll_int(bdb_state, NULL, 0, tranclass, bdberr, 0);
 
     /* we do this for query isolation in socksql with row caching;
        snapshot/serializable will set this again while holding the trn_repo
@@ -1310,7 +1316,8 @@ static tran_type *bdb_tran_begin_logical_pp(bdb_state_type *bdb_state, int trak,
 }
 
 static tran_type *bdb_tran_begin_pp(bdb_state_type *bdb_state,
-                                    tran_type *parent, int retries, int *bdberr)
+                                    tran_type *parent, int retries, int *bdberr,
+                                    u_int32_t flags)
 {
     tran_type *tran;
 
@@ -1320,7 +1327,7 @@ static tran_type *bdb_tran_begin_pp(bdb_state_type *bdb_state,
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
-    tran = bdb_tran_begin_berk_int(bdb_state, parent, retries, bdberr);
+    tran = bdb_tran_begin_berk_int(bdb_state, parent, retries, bdberr, flags);
     /* NOTE: we don't release this lock until commit/rollback time */
     if (!tran) {
         BDB_RELLOCK();
@@ -1382,7 +1389,15 @@ tran_type *bdb_tran_begin(bdb_state_type *bdb_state, tran_type *parent,
                           int *bdberr)
 {
     tran_type *tran;
-    tran = bdb_tran_begin_pp(bdb_state, parent, 0, bdberr);
+    tran = bdb_tran_begin_pp(bdb_state, parent, 0, bdberr, 0);
+    return tran;
+}
+
+tran_type *bdb_tran_begin_flags(bdb_state_type *bdb_state, tran_type *parent,
+                                int *bdberr, u_int32_t flags)
+{
+    tran_type *tran;
+    tran = bdb_tran_begin_pp(bdb_state, parent, 0, bdberr, flags);
     return tran;
 }
 
@@ -1391,7 +1406,7 @@ tran_type *bdb_tran_begin_set_retries(bdb_state_type *bdb_state,
                                       int *bdberr)
 {
     tran_type *tran;
-    tran = bdb_tran_begin_pp(bdb_state, parent, retries, bdberr);
+    tran = bdb_tran_begin_pp(bdb_state, parent, retries, bdberr, 0);
     return tran;
 }
 
@@ -1531,7 +1546,8 @@ static int bdb_tran_commit_with_seqnum_int_int(
         bdb_osql_trn_repo_lock();
 
         /* only generate a log for PARENT transactions */
-        if (tran->parent == NULL && add_snapisol_logging(bdb_state)) {
+        if (tran->parent == NULL && add_snapisol_logging(bdb_state) &&
+            !(tran->flags & BDB_TRAN_NOLOG)) {
             tran_type *parent = (tran->parent) ? tran->parent : tran; /*nop*/
             int iirc;
             int isabort;

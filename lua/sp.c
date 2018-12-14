@@ -1652,28 +1652,11 @@ static char *load_default_src(char *spname, struct spversion_t *spversion,
 
 #define IS_SYS(spname) (!strncasecmp(spname, "sys.", 4))
 
-static char *load_src(char *spname, struct spversion_t *spversion,
-                      int bootstrap, char **err)
+static char *load_user_src(char *spname, struct spversion_t *spversion,
+        int bootstrap, char **err)
 {
-    int rc, bdb_err;
-    char *src;
-    int size = 0;
-    if (IS_SYS(spname)) {
-        src = find_syssp(spname);
-        if (src == NULL) {
-            *err = no_such_procedure(spname, spversion);
-            return NULL;
-        }
-        if (bootstrap) {
-            size = strlen(src) + 1;
-            char *bsrc = malloc(size + sizeof(bootstrap_src));
-            strcpy(bsrc, src);
-            strcat(bsrc, bootstrap_src);
-            return bsrc;
-        } else {
-            return strdup(src);
-        }
-    }
+    char *src = NULL;
+    int size, bdb_err, rc;
     if (spversion->version_num == 0 && spversion->version_str == NULL) {
         if ((src = load_default_src(spname, spversion, &size)) == NULL) {
             *err = no_such_procedure(spname, spversion);
@@ -1697,6 +1680,38 @@ static char *load_src(char *spname, struct spversion_t *spversion,
         src = realloc(src, size + sizeof(bootstrap_src));
         strcat(src, bootstrap_src);
     }
+    return src;
+}
+
+static char *load_src(char *spname, struct spversion_t *spversion,
+                      int bootstrap, char **err)
+{
+    char *src, *sys_src;
+    int size;
+    char *override = NULL;
+    if (IS_SYS(spname)) {
+        sys_src = find_syssp(spname, &override);
+        if (sys_src == NULL) {
+            *err = no_such_procedure(spname, spversion);
+            return NULL;
+        }
+        if (override && (src = load_user_src(override, spversion, bootstrap,
+                        err))) {
+            return src;
+        }
+
+        size = strlen(sys_src) + 1;
+        if (bootstrap) {
+            char *bsrc = malloc(size + sizeof(bootstrap_src));
+            strcpy(bsrc, sys_src);
+            strcat(bsrc, bootstrap_src);
+            return bsrc;
+        } else {
+            return strdup(sys_src);
+        }
+    }
+
+    src = load_user_src(spname, spversion, bootstrap, err);
     return src;
 }
 
@@ -4062,6 +4077,14 @@ static int db_setdatetimeprecision(lua_State *lua)
     return rc;
 }
 
+static int db_getdbname(Lua L)
+{
+    extern char gbl_dbname[MAX_DBNAME_LENGTH];
+    SP sp = getsp(L);
+    lua_pushstring(L, gbl_dbname);
+    return 1;
+}
+
 static int db_getdatetimeprecision(Lua L)
 {
     SP sp = getsp(L);
@@ -4283,6 +4306,7 @@ static const luaL_Reg db_funcs[] = {
     {"gettimezone", db_gettimezone},
     {"setdatetimeprecision", db_setdatetimeprecision},
     {"getdatetimeprecision", db_getdatetimeprecision},
+    {"getdbname", db_getdbname},
     {"bind", db_bind},
     {"null", db_null},
     {"NULL", db_null}, // why upper-case? -- deprecate

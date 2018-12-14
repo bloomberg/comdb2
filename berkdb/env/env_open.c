@@ -65,6 +65,33 @@ db_version(majverp, minverp, patchp)
 	return ((char *)DB_VERSION_STRING);
 }
 
+extern int gbl_instrument_dblist;
+
+static inline void 
+clear_adj_fileid(dbenv, func)
+	DB_ENV *dbenv;
+	const char *func;
+{
+	int i;
+	DB *db;
+
+	for (i = 1; i <= dbenv->maxdb; i++) {
+		db = listc_rtl(&dbenv->dbs[i]);
+		while (db) {
+			if (gbl_instrument_dblist)
+				logmsg(LOGMSG_DEBUG, "%s removing db %p adj_fileid %u from "
+						"dbenv %p list %p\n", func, db, db->adj_fileid, dbenv,
+						&dbenv->dbs[db->adj_fileid]);
+			db->inadjlist = 0;
+			if (!db->dblistlinks.le_prev)
+				abort();
+			LIST_REMOVE(db, dblistlinks);
+			db->dblistlinks.le_prev = NULL;
+			db = listc_rtl(&dbenv->dbs[i]);
+		}
+	}
+}
+
 /*
  * __dbenv_open --
  *	DB_ENV->open.
@@ -284,6 +311,10 @@ __dbenv_open(dbenv, db_home, flags, mode)
 	dbenv->open_flags = flags;
 
     Pthread_rwlock_init(&dbenv->dbreglk, NULL);
+    Pthread_rwlock_init(&dbenv->recoverlk, NULL);
+
+    Pthread_rwlock_init(&dbenv->recoverlk, NULL);
+
 	/*
 	 * Initialize the subsystems.
 	 *
@@ -514,18 +545,7 @@ foundlsn:
 	 * region for environments and db handles.  So, the mpool region must
 	 * already be initialized.
 	 */
-	{
-		int i;
-		DB *db;
-
-		for (i = 1; i < dbenv->maxdb; i++) {
-			db = listc_rtl(&dbenv->dbs[i]);
-			while (db) {
-				db->inadjlist = 0;
-				db = listc_rtl(&dbenv->dbs[i]);
-			}
-		}
-	}
+	clear_adj_fileid(dbenv, __func__);
 	LIST_INIT(&dbenv->dblist);
 	if (F_ISSET(dbenv, DB_ENV_THREAD) && LF_ISSET(DB_INIT_MPOOL)) {
 		dbmp = dbenv->mp_handle;
@@ -921,6 +941,7 @@ __dbenv_refresh(dbenv, orig_flags, rep_check)
 	 * we close databases and try to acquire the mutex when we close
 	 * log file handles.  Ick.
 	 */
+	clear_adj_fileid(dbenv, __func__);
 	LIST_INIT(&dbenv->dblist);
 	if (dbenv->dblist_mutexp != NULL) {
 		dbmp = dbenv->mp_handle;

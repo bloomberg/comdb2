@@ -116,7 +116,8 @@ __dbreg_register_recover(dbenv, dbtp, lsnp, op, info)
 		if (prev && dbenv->attr.consolidate_dbreg_ranges &&
 		    strlen(prev->fname)+1 == argp->name.size &&
 		    strcmp(prev->fname, argp->name.data) == 0) {
-			/* do nothing */
+            DB_ASSERT(prev->end.file == 0);
+            DB_ASSERT(log_compare(&prev->start, lsnp) < 0);
 		} else {
 			__os_malloc(dbenv, sizeof(struct lsn_range), &r);
 			/* end is not defined until we get to the
@@ -135,6 +136,7 @@ __dbreg_register_recover(dbenv, dbtp, lsnp, op, info)
 				/* the range ends here */
 				prev->end.file = lsnp->file;
 				prev->end.offset = lsnp->offset;
+                DB_ASSERT(log_compare(&prev->start, lsnp) < 0);
 			}
 			listc_abl(&ft->ranges[argp->fileid], r);
 		}

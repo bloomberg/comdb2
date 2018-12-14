@@ -24,6 +24,7 @@
 #include "dbinc/db_swap.h"
 #include "dbinc_auto/txn_auto.h"
 #include "comdb2systbl.h"
+#include "parse_lsn.h"
 
 /* Column numbers */
 #define TRANLOG_COLUMN_START        0
@@ -136,6 +137,7 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
                   __func__, __LINE__, rc);
           return SQLITE_INTERNAL;
       }
+      pCur->logc->setflags(pCur->logc, DB_LOG_SILENT_ERR);
       pCur->openCursor = 1;
       pCur->data.flags = DB_DBT_REALLOC;
 
@@ -244,46 +246,11 @@ static inline void tranlog_lsn_to_str(char *st, DB_LSN *lsn)
 
 static inline int parse_lsn(const unsigned char *lsnstr, DB_LSN *lsn)
 {
-    const char *p = (const char *)lsnstr;
-    int file, offset;
-    while (*p != '\0' && *p == ' ') p++;
-    skipws(p);
+    unsigned int file, offset;
 
-    /* Parse opening '{' */
-    if (*p != '{')
+    if (char_to_lsn(lsnstr, &file, &offset)) {
         return -1;
-    p++;
-    skipws(p);
-    if ( !isnum(p) )
-        return -1;
-
-    /* Parse file */
-    file = atoi(p);
-    while( isnum(p) )
-        p++;
-    skipws(p);
-    if ( *p != ':' )
-        return -1;
-    p++;
-    skipws(p);
-    if ( !isnum(p) )
-        return -1;
-
-    /* Parse offset */
-    offset = atoi(p);
-    while( isnum(p) )
-        p++;
-
-    skipws(p);
-
-    /* Parse closing '}' */
-    if (*p != '}')
-        return -1;
-    p++;
-
-    skipws(p);
-    if (*p != '\0')
-        return -1;
+    }
 
     lsn->file = file;
     lsn->offset = offset;
@@ -337,6 +304,41 @@ static u_int32_t get_generation_from_ckp_record(char *data)
     u_int32_t generation;
     LOGCOPY_32( &generation, &data[4 + 4 + 8 + 8 + 8 + 4] );
     return generation;
+}
+
+u_int64_t get_timestamp_from_matchable_record(char *data)
+{
+    u_int32_t rectype = 0;
+    u_int32_t dood = 0;
+    if (data)
+    {
+        LOGCOPY_32(&rectype, data); 
+        dood = *(uint32_t *)(data);
+        logmsg(LOGMSG_DEBUG, "%s rec: %ld, dood: %ld\n", __func__, rectype,
+                dood);
+    }
+    else
+    {
+        logmsg(LOGMSG_DEBUG, "No data, so can't get rectype!\n");
+    }
+
+    if (rectype == DB___txn_regop_gen){
+        return get_timestamp_from_regop_gen_record(data);
+    }
+
+    if (rectype == DB___txn_regop_rowlocks) {
+        return get_timestamp_from_regop_rowlocks_record(data);
+    }
+
+    if (rectype == DB___txn_regop) {
+        return get_timestamp_from_regop_record(data);
+    }
+
+    if (rectype == DB___txn_ckp) {
+        return get_timestamp_from_ckp_record(data);
+    }
+
+    return -1;
 }
 
 /*

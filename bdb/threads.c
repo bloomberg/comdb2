@@ -102,8 +102,18 @@ void *memp_trickle_thread(void *arg)
 {
     unsigned int time;
     bdb_state_type *bdb_state;
+    static int have_memp_trickle_thread = 0;
+    static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
     int nwrote;
     int rc;
+
+    Pthread_mutex_lock(&lk);
+    if (have_memp_trickle_thread) {
+        Pthread_mutex_unlock(&lk);
+        return NULL;
+    }
+    have_memp_trickle_thread = 1;
+    Pthread_mutex_unlock(&lk);
 
     bdb_state = (bdb_state_type *)arg;
 
@@ -386,13 +396,20 @@ void *checkpoint_thread(void *arg)
     DB_LSN logfile;
     DB_LSN crtlogfile;
     int broken;
+    static int have_checkpoint_thd = 0;
+    static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
+
+    Pthread_mutex_lock(&lk);
+    if (have_checkpoint_thd) {
+        Pthread_mutex_unlock(&lk);
+        return NULL;
+    }
+    have_checkpoint_thd = 1;
+    Pthread_mutex_unlock(&lk);
 
     thread_started("bdb checkpoint");
 
     bdb_state = (bdb_state_type *)arg;
-
-    bdb_state = (bdb_state_type *)arg;
-
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 

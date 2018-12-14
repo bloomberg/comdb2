@@ -168,6 +168,7 @@ extern int gbl_verbose_repdups;
 extern int gbl_apply_thread_pollms;
 extern int gbl_warn_queue_latency_threshold;
 extern int gbl_req_all_threshold;
+extern int gbl_req_all_time_threshold;
 extern int gbl_req_delay_count_threshold;
 extern int gbl_rep_verify_always_grab_writelock;
 extern int gbl_rep_verify_will_recover_trace;
@@ -200,6 +201,16 @@ extern int gbl_rep_wait_release_ms;
 extern int gbl_rep_wait_core_ms;
 extern int gbl_random_get_curtran_failures;
 extern int gbl_fail_client_write_lock;
+extern int gbl_instrument_dblist;
+extern int gbl_replicated_truncate_timeout;
+extern int gbl_match_on_ckp;
+extern int gbl_verbose_physrep;
+extern int gbl_blocking_physrep;
+extern int gbl_verbose_set_sc_in_progress;
+extern int gbl_physrep_reconnect_penalty;
+extern int gbl_physrep_register_interval;
+extern int gbl_logdelete_lock_trace;
+extern int gbl_flush_log_at_checkpoint;
 
 extern long long sampling_threshold;
 

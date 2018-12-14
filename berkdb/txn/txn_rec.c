@@ -619,8 +619,13 @@ __txn_ckp_recover(dbenv, dbtp, lsnp, op, info)
 {
 	DB_REP *db_rep;
 	REP *rep;
+	DB_TXNREGION *region;
+	DB_TXNMGR *mgr;
 	__txn_ckp_args *argp;
 	int ret;
+
+	mgr = dbenv->tx_handle;
+	region = mgr->reginfo.primary;
 
 #ifdef DEBUG_RECOVER
 	__txn_ckp_print(dbenv, dbtp, lsnp, op, info);
@@ -628,8 +633,12 @@ __txn_ckp_recover(dbenv, dbtp, lsnp, op, info)
 	if ((ret = __txn_ckp_read(dbenv, dbtp->data, &argp)) != 0)
 		return (ret);
 
-	if (op == DB_TXN_BACKWARD_ROLL)
+	if (op == DB_TXN_BACKWARD_ROLL) {
+		DB_LSN last_ckp = argp->last_ckp;
 		__db_txnlist_ckp(dbenv, info, lsnp);
+		__checkpoint_save(dbenv, &last_ckp, 1);
+		region->last_ckp = argp->last_ckp;
+	}
 
 	if (op == DB_TXN_FORWARD_ROLL) {
 		/* Record the max generation number that we've seen. */
@@ -639,6 +648,9 @@ __txn_ckp_recover(dbenv, dbtp, lsnp, op, info)
 			if (argp->rep_gen > rep->recover_gen)
 				rep->recover_gen = argp->rep_gen;
 		}
+        __log_flush(dbenv, NULL);
+		__checkpoint_save(dbenv, lsnp, 1);
+		region->last_ckp = *lsnp;
 	}
 
 	*lsnp = argp->last_ckp;

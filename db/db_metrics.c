@@ -82,6 +82,9 @@ struct comdb2_metrics_store {
     int64_t rep_deadlocks;
     int64_t rw_evicts;
     int64_t standing_queue_time;
+    int64_t minimum_truncation_file;
+    int64_t minimum_truncation_offset;
+    int64_t minimum_truncation_timestamp;
 };
 
 static struct comdb2_metrics_store stats;
@@ -197,28 +200,33 @@ comdb2_metric gbl_metrics[] = {
     {"denied_appsocks", "Number of denied appsock connections",
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
      &stats.denied_appsock_connections, NULL},
-    {"locks", "Number of currently held locks",
-     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
-     &stats.locks, NULL},
-    {"temptable_spills", "Number of temptables that had to be spilled to disk-backed tables",
+    {"locks", "Number of currently held locks", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.locks, NULL},
+    {"temptable_spills",
+     "Number of temptables that had to be spilled to disk-backed tables",
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
      &stats.temptable_spills, NULL},
-    {"net_drops", "Number of packets that didn't fit on network queue and were dropped",
-     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
-     &stats.net_drops, NULL},
-    {"net_queue_size", "Size of largest outgoing net queue", 
-     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, 
-     &stats.net_queue_size, NULL},
-    {"rep_deadlocks", "Replication deadlocks", 
-     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
-     &stats.rep_deadlocks, NULL},
-    {"rw_evictions", "Dirty page evictions", 
-     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
-     &stats.rw_evicts, NULL},
-    {"standing_queue_time", "How long the database has had a standing queue", 
-     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, 
-     &stats.standing_queue_time, NULL}
-};
+    {"net_drops",
+     "Number of packets that didn't fit on network queue and were dropped",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.net_drops,
+     NULL},
+    {"net_queue_size", "Size of largest outgoing net queue", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.net_queue_size, NULL},
+    {"rep_deadlocks", "Replication deadlocks", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.rep_deadlocks, NULL},
+    {"rw_evictions", "Dirty page evictions", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.rw_evicts, NULL},
+    {"standing_queue_time", "How long the database has had a standing queue",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.standing_queue_time, NULL},
+    {"minimum_truncation_file", "Minimum truncation file", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.minimum_truncation_file, NULL},
+    {"minimum_truncation_offset", "Minimum truncation offset",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.minimum_truncation_offset, NULL},
+    {"minimum_truncation_timestamp", "Minimum truncation timestamp",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.minimum_truncation_timestamp, NULL}};
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
     switch (t) {
@@ -293,6 +301,8 @@ int refresh_metrics(void)
     int rc;
     const struct bdb_thread_stats *pstats;
     extern int active_appsock_conns; int bdberr;
+    int min_file, min_offset;
+    int32_t min_timestamp;
 
     /* Check whether the server is exiting. */
     if (thedb->exiting || thedb->stopped)
@@ -423,6 +433,10 @@ int refresh_metrics(void)
 
     stats.standing_queue_time = metrics_standing_queue_time();
 
+    bdb_min_truncate(thedb->bdb_env, &min_file, &min_offset, &min_timestamp);
+    stats.minimum_truncation_file = min_file;
+    stats.minimum_truncation_offset = min_offset;
+    stats.minimum_truncation_timestamp = min_timestamp;
     return 0;
 }
 

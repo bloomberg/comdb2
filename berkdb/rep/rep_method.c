@@ -55,11 +55,18 @@ static int __rep_set_rep_transport __P((DB_ENV *, char *,
 	int (*)(DB_ENV *, const DBT *, const DBT *, const DB_LSN *,
 		char *, int, void *)));
 static int __rep_set_check_standalone __P((DB_ENV *, int (*)(DB_ENV *)));
+static int __rep_set_truncate_sc_callback __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *)));
+static int __rep_set_rep_truncate_callback __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *, int is_master)));
+static int __rep_set_rep_recovery_cleanup __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *, int is_master)));
+static int __rep_lock_recovery_lock __P((DB_ENV *));
+static int __rep_unlock_recovery_lock __P((DB_ENV *));
 static int __rep_set_rep_db_pagesize __P((DB_ENV *, int));
 static int __rep_get_rep_db_pagesize __P((DB_ENV *, int *));
 static int __rep_start __P((DB_ENV *, DBT *, u_int32_t, u_int32_t));
 static int __rep_stat __P((DB_ENV *, DB_REP_STAT **, u_int32_t));
 static int __rep_wait __P((DB_ENV *, u_int32_t, char **, u_int32_t *, u_int32_t, u_int32_t));
+
+extern int gbl_is_physical_replicant;
 
 #ifndef TESTSUITE
 void bdb_get_writelock(void *bdb_state,
@@ -114,6 +121,12 @@ __rep_dbenv_create(dbenv)
 		dbenv->set_rep_limit = __rep_set_limit;
 		dbenv->set_rep_request = __rep_set_request;
 		dbenv->set_rep_transport = __rep_set_rep_transport;
+		dbenv->set_truncate_sc_callback = __rep_set_truncate_sc_callback;
+		dbenv->set_rep_truncate_callback = __rep_set_rep_truncate_callback;
+		dbenv->set_rep_recovery_cleanup = __rep_set_rep_recovery_cleanup;
+		dbenv->rep_set_gen = __rep_set_gen_pp;
+		dbenv->lock_recovery_lock = __rep_lock_recovery_lock;
+		dbenv->unlock_recovery_lock = __rep_unlock_recovery_lock;
 		dbenv->set_check_standalone = __rep_set_check_standalone;
 		dbenv->set_rep_db_pagesize = __rep_set_rep_db_pagesize;
 		dbenv->get_rep_db_pagesize = __rep_get_rep_db_pagesize;
@@ -307,8 +320,8 @@ __rep_start(dbenv, dbt, gen, flags)
 			 * we become a client and the original master
 			 * that opened them becomes a master again.
 			 */
-			if ((ret = __rep_preclose(dbenv, 1)) != 0)
-				goto errunlock;
+            if (!gbl_is_physical_replicant && ((ret = __rep_preclose(dbenv, 1)) != 0))
+                goto errunlock;
 		}
 
 		redo_prepared = 0;
@@ -392,12 +405,15 @@ __rep_start(dbenv, dbt, gen, flags)
 		 * Take a transaction checkpoint so that our new generation
 		 * number get written to the log.
 		 */
-		if ((t_ret = __txn_checkpoint(dbenv, 0, 0, DB_FORCE)) != 0 &&
-		    ret == 0)
-			ret = t_ret;
-		if (redo_prepared &&
-		    (t_ret = __rep_restore_prepared(dbenv)) != 0 && ret == 0)
-			ret = t_ret;
+        if (!gbl_is_physical_replicant)
+        {
+            if ((t_ret = __txn_checkpoint(dbenv, 0, 0, DB_FORCE)) != 0 &&
+                    ret == 0)
+                ret = t_ret;
+            if (redo_prepared &&
+                    (t_ret = __rep_restore_prepared(dbenv)) != 0 && ret == 0)
+                ret = t_ret;
+        }
 	} else {
 		init_db = 0;
 		announce = role_chg || rep->master_id == db_eid_invalid;
@@ -863,6 +879,64 @@ __rep_set_check_standalone(dbenv, f_check_standalone)
 		return (EINVAL);
 	}
 	dbenv->check_standalone = f_check_standalone;
+	return (0);
+}
+
+static int
+__rep_set_rep_recovery_cleanup(dbenv, rep_recovery_cleanup)
+	DB_ENV *dbenv;
+	int (*rep_recovery_cleanup) __P((DB_ENV *, DB_LSN *lsn, int is_master));
+{
+	PANIC_CHECK(dbenv);
+	if (rep_recovery_cleanup == NULL) {
+		__db_err(dbenv, "DB_ENV->set_rep_recovery_cleanup: no function specified");
+		return (EINVAL);
+	}
+	dbenv->rep_recovery_cleanup = rep_recovery_cleanup;
+	return (0);
+}
+
+static int
+__rep_set_rep_truncate_callback(dbenv, rep_truncate_callback)
+	DB_ENV *dbenv;
+	int (*rep_truncate_callback) __P((DB_ENV *, DB_LSN *lsn, int is_master));
+{
+	PANIC_CHECK(dbenv);
+	if (rep_truncate_callback == NULL) {
+		__db_err(dbenv, "DB_ENV->set_rep_truncate_sc_callback: no function specified");
+		return (EINVAL);
+	}
+	dbenv->rep_truncate_callback = rep_truncate_callback;
+	return (0);
+}
+
+static int
+__rep_lock_recovery_lock(dbenv)
+    DB_ENV *dbenv;
+{
+    Pthread_rwlock_rdlock(&dbenv->recoverlk);
+    return 0;
+}
+
+static int
+__rep_unlock_recovery_lock(dbenv)
+    DB_ENV *dbenv;
+{
+    Pthread_rwlock_unlock(&dbenv->recoverlk);
+    return 0;
+}
+
+static int
+__rep_set_truncate_sc_callback(dbenv, truncate_sc_callback)
+	DB_ENV *dbenv;
+	int (*truncate_sc_callback) __P((DB_ENV *, DB_LSN *lsn));
+{
+	PANIC_CHECK(dbenv);
+	if (truncate_sc_callback == NULL) {
+		__db_err(dbenv, "DB_ENV->truncate_sc_callback: no function specified");
+		return (EINVAL);
+	}
+	dbenv->truncate_sc_callback = truncate_sc_callback;
 	return (0);
 }
 

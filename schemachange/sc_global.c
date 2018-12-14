@@ -93,6 +93,17 @@ inline int is_dta_being_rebuilt(struct scplan *plan)
     return 0;
 }
 
+int gbl_verbose_set_sc_in_progress = 0;
+
+void set_schema_change_in_progress(const char *func, int line, int val)
+{
+    if (gbl_verbose_set_sc_in_progress) {
+        logmsg(LOGMSG_USER, "%s line %d set schema_change_in_progress to %d\n",
+               func, line, val);
+    }
+    gbl_schema_change_in_progress = val;
+}
+
 const char *get_sc_to_name(const char *name)
 {
     static char pref[256] = {0};
@@ -111,10 +122,10 @@ const char *get_sc_to_name(const char *name)
     return NULL;
 }
 
-void wait_for_sc_to_stop(void)
+void wait_for_sc_to_stop(const char *operation)
 {
     stopsc = 1;
-    logmsg(LOGMSG_INFO, "%s: set stopsc\n", __func__);
+    logmsg(LOGMSG_INFO, "%s: set stopsc for %s\n", __func__, operation);
     if (gbl_schema_change_in_progress) {
         logmsg(LOGMSG_INFO, "giving schemachange time to stop\n");
         int waited = 0;
@@ -123,8 +134,8 @@ void wait_for_sc_to_stop(void)
             waited++;
             if (waited > 10)
                 logmsg(LOGMSG_ERROR,
-                       "downgrade waiting schema changes to stop for: %ds\n",
-                       waited);
+                       "%s: waiting schema changes to stop for: %ds\n",
+                       operation, waited);
             if (waited > 60) {
                 logmsg(LOGMSG_FATAL,
                        "schema changes take too long to stop, waited %ds\n",
@@ -132,7 +143,7 @@ void wait_for_sc_to_stop(void)
                 abort();
             }
         }
-        logmsg(LOGMSG_INFO, "proceeding with downgrade (waited for: %ds)\n",
+        logmsg(LOGMSG_INFO, "proceeding with %s (waited for: %ds)\n", operation,
                waited);
     }
     extern int gbl_test_sc_resume_race;
@@ -220,18 +231,24 @@ int sc_set_running(char *table, int running, uint64_t seed, const char *host,
             sctbl->time = time;
             hash_add(sc_tables, sctbl);
         }
-        gbl_schema_change_in_progress++;
+        set_schema_change_in_progress(__func__, __LINE__,
+                                      gbl_schema_change_in_progress + 1);
     } else { /* not running */
         if (table && (sctbl = hash_find_readonly(sc_tables, &table)) != NULL) {
             hash_del(sc_tables, sctbl);
             free(sctbl);
-            gbl_schema_change_in_progress--;
-        } else if (!table && gbl_schema_change_in_progress)
-            gbl_schema_change_in_progress--;
+            if (gbl_schema_change_in_progress > 0)
+                set_schema_change_in_progress(
+                    __func__, __LINE__, gbl_schema_change_in_progress - 1);
+        } else if (!table && gbl_schema_change_in_progress) {
+            if (gbl_schema_change_in_progress > 0)
+                set_schema_change_in_progress(
+                    __func__, __LINE__, gbl_schema_change_in_progress - 1);
+        }
 
         if (gbl_schema_change_in_progress <= 0 || (!table && !seed)) {
             gbl_sc_resume_start = 0;
-            gbl_schema_change_in_progress = 0;
+            set_schema_change_in_progress(__func__, __LINE__, 0);
             sc_async_threads = 0;
             hash_clear(sc_tables);
             hash_free(sc_tables);

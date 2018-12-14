@@ -332,6 +332,21 @@ __rep_set_gen(dbenv, func, line, gen)
 }
 
 /*
+ * __rep_set_gen_pp --
+ *  Exposed as a utility function to help with distributed truncate.
+ *
+ * PUBLIC: void __rep_set_gen_pp __P((DB_ENV *, uint32_t gen));
+ */
+void
+__rep_set_gen_pp(dbenv, gen)
+	DB_ENV *dbenv;
+	uint32_t gen;
+{
+    __rep_set_gen(dbenv, __func__, __LINE__, gen);
+}
+
+
+/*
  * __rep_set_egen --
  *  Called as a utility function to see places where an instance's 
  * replication election generation can be changed.

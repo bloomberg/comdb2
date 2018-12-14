@@ -6710,8 +6710,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     const uint8_t *p_buf;
     const uint8_t *p_buf_end;
     int rc = 0;
-    struct dbtable *db =
-        (iq->usedb) ? iq->usedb : thedb->dbs[0]; /*add to first if no usedb*/
+    struct dbtable *db = (iq->usedb) ? iq->usedb : &thedb->static_table;
     const unsigned char tag_name_ondisk[] = ".ONDISK";
     const size_t tag_name_ondisk_len = 8 /*includes NUL*/;
     int type;

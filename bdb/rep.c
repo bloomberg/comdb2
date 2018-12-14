@@ -69,6 +69,7 @@
 #include <trigger.h>
 #include "printformats.h"
 #include <llog_auto.h>
+#include "phys_rep_lsn.h"
 #include "logmsg.h"
 #include <compat.h>
 
@@ -312,15 +313,14 @@ const uint8_t *rep_udp_filepage_type_get(filepage_type *p_filepage_type,
     return p_buf;
 }
 
-enum { REP_DB_LSN_TYPE_SIZE = 4 + 4 };
+enum { DB_LSN_TYPE_SIZE = 4 + 4 };
 
-BB_COMPILE_TIME_ASSERT(rep_db_lsn_type, sizeof(DB_LSN) == REP_DB_LSN_TYPE_SIZE);
+BB_COMPILE_TIME_ASSERT(db_lsn_type, sizeof(DB_LSN) == DB_LSN_TYPE_SIZE);
 
-static const uint8_t *rep_db_lsn_type_get(DB_LSN *p_db_lsn,
-                                          const uint8_t *p_buf,
-                                          const uint8_t *p_buf_end)
+const uint8_t *db_lsn_type_get(DB_LSN *p_db_lsn, const uint8_t *p_buf,
+                               const uint8_t *p_buf_end)
 {
-    if (p_buf_end < p_buf || REP_DB_LSN_TYPE_SIZE > (p_buf_end - p_buf))
+    if (p_buf_end < p_buf || DB_LSN_TYPE_SIZE > (p_buf_end - p_buf))
         return NULL;
 
     p_buf =
@@ -331,11 +331,10 @@ static const uint8_t *rep_db_lsn_type_get(DB_LSN *p_db_lsn,
     return p_buf;
 }
 
-static const uint8_t *rep_db_lsn_type_put(const DB_LSN *p_db_lsn,
-                                          uint8_t *p_buf,
-                                          const uint8_t *p_buf_end)
+const uint8_t *db_lsn_type_put(const DB_LSN *p_db_lsn, uint8_t *p_buf,
+                               const uint8_t *p_buf_end)
 {
-    if (p_buf_end < p_buf || REP_DB_LSN_TYPE_SIZE > (p_buf_end - p_buf))
+    if (p_buf_end < p_buf || DB_LSN_TYPE_SIZE > (p_buf_end - p_buf))
         return NULL;
 
     p_buf =
@@ -952,7 +951,7 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
 
                     p_buf = (uint8_t *)lsnp;
                     p_buf_end = (uint8_t *)lsnp + sizeof(DB_LSN);
-                    rep_db_lsn_type_get(&(tran->savelsn), p_buf, p_buf_end);
+                    db_lsn_type_get(&(tran->savelsn), p_buf, p_buf_end);
 
                     /*
                        char str[80];
@@ -2193,6 +2192,13 @@ uint32_t bdb_get_rep_gen(bdb_state_type *bdb_state)
     return mygen;
 }
 
+void send_newmaster(bdb_state_type *bdb_state)
+{
+    uint32_t mygen;
+    bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, 0, DB_REP_MASTER);
+    bdb_add_dummy_llmeta();
+}
+
 /* Called by the master to periodically broadcast the durable lsn.  The
  * algorithm: sort lsns of all nodes (including master's).  The durable lsn will
  * be in the (n/2)th spot.  We can only make claims about durability for things
@@ -3155,6 +3161,9 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
     if ((seqnum->lsn.file == 0) && (seqnum->lsn.offset == 0))
         return 0;
 
+    logmsg(LOGMSG_DEBUG, "%s waiting for %s\n", __func__,
+           lsn_to_str(str, &(seqnum->lsn)));
+
     begin_time = comdb2_time_epochms();
 
     /* lame, i know.  go into a loop polling once per second to see if
@@ -3740,6 +3749,8 @@ void bdb_set_seqnum(void *in_bdb_state)
     }
 }
 
+int gbl_online_recovery = 1;
+
 static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
                           DBT *rec)
 {
@@ -3751,6 +3762,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     uint32_t generation, commit_generation;
     int outrc;
     int time1, time2;
+    int online = gbl_online_recovery;
     char *oldmaster = NULL;
     int force_election = 0;
     int rectype;
@@ -3792,8 +3804,9 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
        locks.
        Grab the bdb_writelock here rather than inside of berkdb so that we avoid
        racing against a rep_start. */
-    if (rectype == REP_VERIFY && bdb_state->dbenv->rep_verify_will_recover(
-                                     bdb_state->dbenv, control, rec)) {
+    if (!online && rectype == REP_VERIFY &&
+        bdb_state->dbenv->rep_verify_will_recover(bdb_state->dbenv, control,
+                                                  rec)) {
         BDB_WRITELOCK_REP("bdb_rep_verify");
         got_writelock = 1;
     }
@@ -3813,8 +3826,9 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     if (debug_switch_rep_delay())
         sleep(2);
 
-    r = bdb_state->dbenv->rep_process_message(
-        bdb_state->dbenv, control, rec, &host, &permlsn, &commit_generation);
+    r = bdb_state->dbenv->rep_process_message(bdb_state->dbenv, control, rec,
+                                              &host, &permlsn,
+                                              &commit_generation, online);
 
     if (got_vote2lock) {
         if (bdb_get_rep_master(bdb_state, &master, &gen, &egen) != 0) {
@@ -4451,9 +4465,11 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
     bdb_state_type *bdb_state;
     int node = 0;
     int on_off = 0;
+    uint32_t gen;
     lsn_cmp_type lsn_cmp;
     int in_rep_process_message;
     DB_LSN cur_lsn;
+    DB_LSN trunc_lsn;
     uint8_t *p_buf;
     uint8_t *p_buf_end;
     pgcomp_snd_t pgsnd;
@@ -4729,6 +4745,20 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
             return;
         }
         enqueue_pg_compact_work(bdb_state, pgsnd.id, pgsnd.size, pgsnd_pl_pos);
+        break;
+
+    case USER_TYPE_TRUNCATE_LOG:
+        p_buf = (uint8_t *)dta;
+        p_buf_end = ((uint8_t *)dta + dtalen);
+        if ((db_lsn_type_get(&trunc_lsn, p_buf, p_buf_end)) == NULL) {
+            logmsg(LOGMSG_ERROR, "%s %d: failed to get trunc-lsn\n", __func__,
+                   __LINE__);
+        } else {
+            logmsg(LOGMSG_INFO, "Truncating log to %d:%d\n", trunc_lsn.file,
+                   trunc_lsn.offset);
+            truncate_log_lock(bdb_state, trunc_lsn.file, trunc_lsn.offset, 0);
+        }
+        net_ack_message(ack_handle, 0);
         break;
 
     default:
@@ -5124,7 +5154,8 @@ void send_downgrade_and_lose(bdb_state_type *bdb_state)
 
 extern int gbl_dump_locks_on_repwait;
 extern int gbl_lock_get_list_start;
-int bdb_clean_pglogs_queues(bdb_state_type *bdb_state);
+int bdb_clean_pglogs_queues(bdb_state_type *bdb_state, DB_LSN lsn,
+                            int truncate);
 extern int db_is_stopped();
 extern int db_is_exiting();
 
@@ -5145,6 +5176,7 @@ void *watcher_thread(void *arg)
     bdb_state_type *bdb_state;
     extern int gbl_rep_lock_time_ms;
     char *master_host = db_eid_invalid;
+    int stopped_count = 0;
     int i;
     int j;
     int time_now, time_then;
@@ -5184,7 +5216,7 @@ void *watcher_thread(void *arg)
 
     bdb_state->repinfo->disable_watcher = 0;
 
-    while (!db_is_exiting()) {
+    while (1) {
         time_now = comdb2_time_epoch();
         time_then = bdb_state->repinfo->disable_watcher;
 
@@ -5199,13 +5231,32 @@ void *watcher_thread(void *arg)
             sleep(diff);
         }
 
+        if (db_is_stopped()) {
+            stopped_count++;
+            if (stopped_count > 30) {
+                logmsg(LOGMSG_FATAL, "%s db stopped for %d seconds, aborting\n",
+                       __func__, stopped_count);
+                abort();
+            }
+            if (stopped_count > 3) {
+                logmsg(LOGMSG_WARN, "%s db stopped for %d seconds\n", __func__,
+                       stopped_count);
+            }
+            sleep(1);
+            gbl_watcher_thread_ran = comdb2_time_epoch();
+            continue;
+        }
+        stopped_count = 0;
+
         i++;
         j++;
 
         BDB_READLOCK("watcher_thread");
 
-        if (!gbl_new_snapisol_asof)
-            bdb_clean_pglogs_queues(bdb_state);
+        if (!gbl_new_snapisol_asof) {
+            DB_LSN lsn = {0};
+            bdb_clean_pglogs_queues(bdb_state, lsn, 0);
+        }
 
         if (bdb_state->attr->coherency_lease &&
             !bdb_state->coherency_lease_thread) {

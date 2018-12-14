@@ -253,7 +253,6 @@ struct timestamp_lsn_key {
     unsigned long long context;
 };
 
-#ifdef NEWSI_ASOF_USE_TEMPTABLE
 typedef struct pglogs_tmptbl_key {
     db_pgno_t pgno;
     DB_LSN commit_lsn;
@@ -276,13 +275,6 @@ typedef struct relinks_tmptbl_key {
 } relinks_tmptbl_key;
 typedef logfile_pglog_hashkey logfile_relink_hashkey;
 #define LOGFILE_PAGE_KEY_SIZE (DB_FILE_ID_LEN * sizeof(unsigned char))
-#else
-typedef struct pglogs_logical_key logfile_pglog_hashkey;
-typedef struct pglogs_relink_key logfile_relink_hashkey;
-#define LOGFILE_PAGE_KEY_SIZE                                                  \
-    (DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t))
-#endif
-
 #define LOGFILE_PGLOG_OFFSET (offsetof(logfile_pglog_hashkey, fileid))
 #define LOGFILE_RELINK_OFFSET (offsetof(logfile_relink_hashkey, fileid))
 
@@ -470,6 +462,7 @@ struct tran_tag {
 
     /* Newsi pglogs queue hash */
     hash_t *pglogs_queue_hash;
+    u_int32_t flags;
 };
 
 struct seqnum_t {
@@ -1075,7 +1068,8 @@ enum {
     USER_TYPE_ADD_NAME,
     USER_TYPE_DEL_NAME,
     USER_TYPE_TRANSFERMASTER_NAME,
-    USER_TYPE_REQ_START_LSN
+    USER_TYPE_REQ_START_LSN,
+    USER_TYPE_TRUNCATE_LOG
 };
 
 void print(bdb_state_type *bdb_state, char *format, ...);
@@ -1415,8 +1409,6 @@ int ll_rowlocks_bench(bdb_state_type *bdb_state, tran_type *tran, int op,
 int ll_checkpoint(bdb_state_type *bdb_state, int force);
 
 int bdb_llog_start(bdb_state_type *bdb_state, tran_type *tran, DB_TXN *txn);
-
-int bdb_run_logical_recovery(bdb_state_type *bdb_state, int locks_only);
 
 tran_type *bdb_tran_continue_logical(bdb_state_type *bdb_state,
                                      unsigned long long tranid, int trak,
@@ -1782,6 +1774,8 @@ uint8_t *rep_berkdb_seqnum_type_put(const seqnum_type *p_seqnum_type,
                                     uint8_t *p_buf, const uint8_t *p_buf_end);
 uint8_t *rep_udp_filepage_type_put(const filepage_type *p_filepage_type,
                                    uint8_t *p_buf, const uint8_t *p_buf_end);
+const uint8_t *db_lsn_type_put(const DB_LSN *p_db_lsn, uint8_t *p_buf,
+                               const uint8_t *p_buf_end);
 void poke_updateid(void *buf, int updateid);
 
 void bdb_genid_sanity_check(bdb_state_type *bdb_state, unsigned long long genid,

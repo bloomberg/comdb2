@@ -1304,6 +1304,13 @@ REGISTER_TUNABLE("req_all_threshold",
                  "this amount or more.  (Default: 10000000)",
                  TUNABLE_INTEGER, &gbl_req_all_threshold,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("req_all_time_threshold",
+                 "Use req_all if a replicant hasn't updated its "
+                 "lsn in more than this many ms.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_req_all_time_threshold,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("fill_throttle",
                  "Throttle fill-reqs to once per fill-throttle ms.  "
                  "(Default: 500ms)",
@@ -1539,6 +1546,62 @@ REGISTER_TUNABLE("disable_tpsc_tblvers",
 REGISTER_TUNABLE("abort_irregular_set_durable_lsn",
                  "Abort incorrect calls to set_durable_lsn. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_abort_irregular_set_durable_lsn,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("instrument_dblist",
+                 "Extended dblist-trace in berkley.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_instrument_dblist,
+                 READONLY | EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("match_on_ckp",
+                 "Allow rep_verify_match on ckp records.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_match_on_ckp, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("verbose_physrep",
+                 "Print extended physrep trace.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_verbose_physrep, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("physrep_reconnect_penalty",
+                 "Physrep wait seconds before retry to the same node.  "
+                 "(Default: 5)",
+                 TUNABLE_INTEGER, &gbl_physrep_reconnect_penalty, 0, NULL, NULL,
+                 NULL, NULL);
+
+REGISTER_TUNABLE("verbose_physrep",
+                 "Print extended physrep trace.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_verbose_physrep, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("physrep_register_interval",
+                 "Interval for physical replicant re-registration.  "
+                 "(Default: 3600)",
+                 TUNABLE_INTEGER, &gbl_physrep_register_interval, 0, NULL, NULL,
+                 NULL, NULL);
+
+REGISTER_TUNABLE("blocking_physrep",
+                 "Physical replicant blocks on select.  "
+                 "(Default: false)",
+                 TUNABLE_BOOLEAN, &gbl_blocking_physrep, 0, NULL, NULL, NULL,
+                 NULL);
+
+REGISTER_TUNABLE("logdelete_lock_trace",
+                 "Print trace getting and releasing the logdelete lock.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_logdelete_lock_trace,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("flush_log_at_checkpoint",
+                 "Replicants flush the log at checkpoint records.  "
+                 "(Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_flush_log_at_checkpoint,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("verbose_set_sc_in_progress",
+                 "Prints a line of trace when sc_in_progress is set.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_verbose_set_sc_in_progress,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

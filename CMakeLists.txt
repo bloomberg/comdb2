@@ -83,9 +83,6 @@ else()
   add_definitions(-DUSE_SYS_ALLOC)
 endif()
 
-add_definitions(-DNEWSI_ASOF_USE_TEMPTABLE)
-add_definitions(-DNEWSI_MEMPOOL)
-
 if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL x86_64 OR ${CMAKE_SYSTEM_PROCESSOR} STREQUAL armv7l)
   # This is mostly misused as little-endian
   add_definitions(-D_LINUX_SOURCE)
