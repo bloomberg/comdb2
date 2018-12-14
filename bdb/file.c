@@ -109,6 +109,7 @@ extern int gbl_early;
 extern int gbl_exit;
 extern int gbl_fullrecovery;
 extern char *gbl_mynode;
+extern size_t gbl_blobmem_cap;
 
 #define FILENAMELEN 100
 
@@ -5214,7 +5215,6 @@ static comdb2bma bdb_blobmem;
 static pthread_once_t bdb_blobmem_once = PTHREAD_ONCE_INIT;
 static void bdb_blobmem_init_once(void)
 {
-    extern size_t gbl_blobmem_cap;
     bdb_blobmem = comdb2bma_create(0, gbl_blobmem_cap, "bdb/blob", NULL);
     if (bdb_blobmem == NULL) {
         logmsg(LOGMSG_FATAL, "failed creating bdb blob allocator\n");

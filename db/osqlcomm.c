@@ -4840,7 +4840,7 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
 
 #ifndef NDEBUG
         uuidstr_t us;
-        DEBUGMSG("uuid=%llu send %s rc = %d, nops = %d\n",
+        DEBUGMSG("uuid=%s send %s rc = %d, nops = %d\n",
                  comdb2uuidstr(uuid, us), osql_reqtype_str(rpl_xerr.hd.type),
                  rc, nops);
 #endif

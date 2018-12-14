@@ -57,6 +57,7 @@
 extern int gbl_throttle_sql_overload_dump_sec;
 extern int thdpool_alarm_on_queing(int len);
 extern int gbl_disable_exit_on_thread_error;
+extern comdb2bma blobmem;
 
 struct thd {
     pthread_t tid;
@@ -755,7 +756,6 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
     int enqueue_front = (flags & THDPOOL_ENQUEUE_FRONT);
     int force_dispatch = (flags & THDPOOL_FORCE_DISPATCH);
     time_t crt_dump;
-    extern comdb2bma blobmem;
 
     LOCK(&pool->mutex)
     {

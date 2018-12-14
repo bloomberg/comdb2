@@ -327,6 +327,10 @@ void sqlite3DeleteFrom(
 #endif
     
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+  v = sqlite3GetVdbe(pParse);
+  if( v==0 ){
+    goto delete_from_cleanup;
+  }
   if( !pParse->ast ) pParse->ast = ast_init();
   ast_push(pParse->ast, AST_TYPE_DELETE, v, NULL);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

@@ -173,6 +173,15 @@ struct __db_trigger_subscription;
 
 #include "db_dbt.h"
 
+/* Compiler hints for branch prediction */
+#if defined(__GNUC__) || defined(__IBMC__)
+#  define likely(x) __builtin_expect(!!(x), 1)
+#  define unlikely(x) __builtin_expect(!!(x), 0)
+#else
+#  define likely(X) (X)
+#  define unlikely(X) (X)
+#endif
+
 /*
  * Common flags --
  *	Interfaces which use any of these common flags should never have

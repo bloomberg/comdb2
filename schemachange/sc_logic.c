@@ -820,7 +820,7 @@ int resume_schema_change(void)
             if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) &&
                 s->rqid == 0 && comdb2uuid_is_zero(s->uuid)) {
                 s->resume = SC_RESUME;
-                if (unlikely(timepart_is_shard(s->tablename, 1, &viewname))) {
+                if (timepart_is_shard(s->tablename, 1, &viewname)) {
                     logmsg(LOGMSG_INFO,
                            "Resuming schema change for view '%s' shard '%s'\n",
                            viewname, s->tablename);

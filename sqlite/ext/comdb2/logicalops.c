@@ -432,7 +432,6 @@ static int json_record(logicalops_cursor *pCur, char *buf, int len,
     int printed = 0;
     int null = 0;
     int flen = 0;
-    int rc;
     void *in;
 
 #ifdef _LINUX_SOURCE
@@ -460,7 +459,7 @@ static int json_record(logicalops_cursor *pCur, char *buf, int len,
         }
         switch (f->type) {
         case SERVER_UINT:
-            rc = SERVER_UINT_to_CLIENT_UINT(
+            SERVER_UINT_to_CLIENT_UINT(
                 buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/,
                 &uival, 8, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
             if (printed)
@@ -472,7 +471,7 @@ static int json_record(logicalops_cursor *pCur, char *buf, int len,
             printed=1;
             break;
         case SERVER_BINT:
-            rc = SERVER_BINT_to_CLIENT_INT(
+            SERVER_BINT_to_CLIENT_INT(
                 buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/, &ival,
                 8, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
             if (printed)
@@ -484,7 +483,7 @@ static int json_record(logicalops_cursor *pCur, char *buf, int len,
             printed=1;
             break;
         case SERVER_BREAL:
-            rc = SERVER_BREAL_to_CLIENT_REAL(
+            SERVER_BREAL_to_CLIENT_REAL(
                 buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/, &dval,
                 8, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
             if (printed)
@@ -497,7 +496,7 @@ static int json_record(logicalops_cursor *pCur, char *buf, int len,
             break;
         case SERVER_BCSTR:
             sval = realloc(sval, flen + 1);
-            rc = SERVER_BCSTR_to_CLIENT_CSTR(
+            SERVER_BCSTR_to_CLIENT_CSTR(
                 buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/, sval,
                 flen + 1, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
             if (printed)
@@ -522,7 +521,7 @@ static int json_record(logicalops_cursor *pCur, char *buf, int len,
             break;
         case SERVER_DATETIME:
             sval = realloc(sval,100);
-            rc = SERVER_DATETIME_to_CLIENT_CSTR(
+            SERVER_DATETIME_to_CLIENT_CSTR(
                 buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/, sval,
                 100, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
             if (printed)
@@ -536,7 +535,7 @@ static int json_record(logicalops_cursor *pCur, char *buf, int len,
             break;
         case SERVER_INTVYM:
             sval = realloc(sval,100);
-            rc = SERVER_INTVYM_to_CLIENT_CSTR(
+            SERVER_INTVYM_to_CLIENT_CSTR(
                 buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/, sval,
                 100, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
             if (printed)
@@ -550,7 +549,7 @@ static int json_record(logicalops_cursor *pCur, char *buf, int len,
             break;
         case SERVER_DECIMAL:
             sval = realloc(sval,100);
-            rc = SERVER_DECIMAL_to_CLIENT_CSTR(
+            SERVER_DECIMAL_to_CLIENT_CSTR(
                 buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/, sval,
                 100, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
             if (printed)
@@ -564,7 +563,7 @@ static int json_record(logicalops_cursor *pCur, char *buf, int len,
             break;
         case SERVER_DATETIMEUS:
             sval = realloc(sval,100);
-            rc = SERVER_DATETIMEUS_to_CLIENT_CSTR(
+            SERVER_DATETIMEUS_to_CLIENT_CSTR(
                 buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/, sval,
                 100, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
             if (printed)
@@ -578,7 +577,7 @@ static int json_record(logicalops_cursor *pCur, char *buf, int len,
             break;
         case SERVER_INTVDS:
             sval = realloc(sval,100);
-            rc = SERVER_INTVDS_to_CLIENT_CSTR(
+            SERVER_INTVDS_to_CLIENT_CSTR(
                 buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/, sval,
                 100, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
             if (printed)
@@ -592,7 +591,7 @@ static int json_record(logicalops_cursor *pCur, char *buf, int len,
             break;
         case SERVER_INTVDSUS:
             sval = realloc(sval,100);
-            rc = SERVER_INTVDSUS_to_CLIENT_CSTR(
+            SERVER_INTVDSUS_to_CLIENT_CSTR(
                 buf + f->offset, flen, opts /*convopts*/, NULL /*blob*/, sval,
                 100, &null, &outdtsz, opts /*convopts*/, NULL /*blob*/);
             if (printed)
@@ -722,6 +721,7 @@ static int produce_update_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
     }
 
     assert(dtalen <= PACKED_MEMORY_SIZE);
+    ASSERT_PARAMETER(dtalen);
     genid_format(pCur, genid, pCur->genid, sizeof(pCur->genid));
     genid_format(pCur, oldgenid, pCur->oldgenid, sizeof(pCur->oldgenid));
     if (dtafile == 0)

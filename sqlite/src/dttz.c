@@ -71,13 +71,12 @@ void register_date_functions(sqlite3 * db) {
         { "months",                  1, monthsFunc       , NULL, NULL},
         { "current_timestamp",       0, currentTS        , NULL, NULL},
     };
-    int rc;
-    int i;
 
-    for(i=0;i<sizeof(aFuncs)/sizeof(aFuncs[0]); i++){
-        rc = sqlite3_create_function(db, aFuncs[i].zName, aFuncs[i].nArg, 
-                SQLITE_ANY|SQLITE_DETERMINISTIC, 0, aFuncs[i].xFunc,
-                aFuncs[i].xStep, aFuncs[i].xFinal);
+    for (int i = 0; i < sizeof(aFuncs) / sizeof(aFuncs[0]); i++) {
+        sqlite3_create_function(db, aFuncs[i].zName, aFuncs[i].nArg,
+                                SQLITE_ANY | SQLITE_DETERMINISTIC, 0,
+                                aFuncs[i].xFunc, aFuncs[i].xStep,
+                                aFuncs[i].xFinal);
     }
 }
 

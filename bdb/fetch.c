@@ -600,7 +600,6 @@ static int bdb_fetch_int_ll(
     int past_three_outrc;
     int foundrrn;
     int found;
-    int search_recnum;
     int flags;
     unsigned long long masked_genid;
     int havedta;
@@ -1965,8 +1964,6 @@ err:
     if (recnum) {
         switch (direction) {
         case FETCH_INT_CUR_BY_RECNUM:
-            /*TODO: parameters swapped here? */
-            memcpy(recnum, &search_recnum, sizeof(int));
             break;
 
         default:

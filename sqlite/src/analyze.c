@@ -1646,6 +1646,8 @@ static void analyzeOneTable(
 #endif
     sqlite3VdbeJumpHere(v, jZeroRows);
   }
+#else /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
+  UNUSED_PARAMETER(needTableCnt);
 #endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
 

@@ -24,10 +24,6 @@
 ** occur.
 */
 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-static int i_am_not_an_empty_file;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 #include "sqliteInt.h"
 
 /* Forward references to internal structures */
