@@ -698,7 +698,7 @@ set all_graphs {
                   {or
                       {line ADD
                           {or
-                              {line column-name column-type
+                              {line {opt COLUMN} column-name column-type
                                   {opt {loop {line column-constraint } { , } } }
                               }
                               {line PRIMARY KEY ( index-column-list ) }
@@ -714,10 +714,13 @@ set all_graphs {
                           }
                       }
                       {line ALTER
+                          {line {opt COLUMN} column-name }
                           {or
-                              {line column-name column-type
-                                  {opt {loop {line column-constraint } { , } } }
-                              }
+                              {line {opt SET DATA} TYPE column-type }
+                              {line SET DEFAULT expr }
+                              {line DROP DEFAULT }
+                              {line SET NOT NULL }
+                              {line DROP NOT NULL }
                           }
                       }
                       {line DROP
