@@ -3548,6 +3548,7 @@ int bdb_wait_for_seqnum_from_all_adaptive_newcoh(bdb_state_type *bdb_state,
 /* let everyone know what logfile we are currently using */
 void send_filenum_to_all(bdb_state_type *bdb_state, int filenum, int nodelay)
 {
+    int rc;
     int count;
     int filenum_net;
     const char *hostlist[REPMAX];
@@ -3567,7 +3568,7 @@ void send_filenum_to_all(bdb_state_type *bdb_state, int filenum, int nodelay)
 
     count = net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist);
     for (i = 0; i < count; i++) {
-        net_send(bdb_state->repinfo->netinfo, hostlist[i],
+        rc = net_send(bdb_state->repinfo->netinfo, hostlist[i],
                       USER_TYPE_BERKDB_FILENUM, &filenum_net, sizeof(int),
                       nodelay);
         if (rc)
@@ -5636,16 +5637,7 @@ int bdb_wait_for_seqnum_from_n(bdb_state_type *bdb_state, seqnum_type *seqnum,
                     &bdb_state->seqnum_info->seqnums[nodeix(connlist[i])],
                     seqnum) >= 0) {
                 num_acks++;
-<<<<<<< HEAD
-            } /*TODO: delete this
-            else {
-                DB_LSN *l;
-                l = (DB_LSN *)&bdb_state->seqnum_info
-                        ->seqnums[nodeix(connlist[i])];
-            } */
-=======
             }
->>>>>>> Various fixes
         }
         if (num_acks < n)
             Pthread_cond_wait(&bdb_state->seqnum_info->cond,
