@@ -7028,11 +7028,11 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
     newdb->dtastripe = gbl_dtastripe;
 
     /* reopen db no tran - i.e. auto commit */
-    newdb->handle = bdb_open_more_tran(
+    newdb->handle = bdb_open_more(
         db->tablename, thedb->basedir, newdb->lrl, newdb->nix,
         (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
         newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
-        newdb->numblobs + 1, thedb->bdb_env, tran, 0, &bdberr);
+        newdb->numblobs + 1, thedb->bdb_env, &bdberr);
 
     if (bdberr != 0 || newdb->handle == NULL) {
         logmsg(LOGMSG_ERROR, "reload_schema handle %p bdberr %d\n",

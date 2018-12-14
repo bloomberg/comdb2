@@ -4109,8 +4109,8 @@ deadlock_again:
                         db_flags |= DB_OLCOMPACT;
                     rc = dbp->open(dbp, tid, tmpname, NULL, dta_type, db_flags,
                                    db_mode);
-                    logmsg(LOGMSG_DEBUG, "dbp->open %s type=%d rc %d\n",
-                           tmpname, dbp->type, rc);
+                    logmsg(LOGMSG_DEBUG, "dbp->open %s type=%d dbp=%p txn=%p rc %d flags=0x%X\n",
+                           tmpname, dbp->type, dbp, tid, rc, dbp->flags);
                 } while ((tid == NULL) && iter++ < 100 &&
                          rc == DB_LOCK_DEADLOCK);
 
