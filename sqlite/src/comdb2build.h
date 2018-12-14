@@ -47,7 +47,6 @@ void comdb2CreateTableCSC2(Parse *, Token *, Token *, int, Token *, int, int);
 void comdb2AlterTableCSC2(Parse *, Token *, Token *, int, Token *, int dryrun);
 void comdb2DropTable(Parse *pParse, SrcList *pName);
 void comdb2AlterTableStart(Parse *, Token *, Token *, int);
-void comdb2AlterFinalizeColumn(Parse *pParse, int action);
 void comdb2AlterTableEnd(Parse *);
 void comdb2AlterColumnStart(Parse *, Token *);
 void comdb2AlterColumnEnd(Parse *);
