@@ -290,13 +290,11 @@ static LOG_INFO handle_record(LOG_INFO prev_info)
     void *blob;
     int blob_len;
     char *lsn;
-    int64_t rectype;
     int64_t *timestamp;
     int rc;
     unsigned int file, offset;
 
     lsn = (char *)cdb2_column_value(repl_db, 0);
-    rectype = *(int64_t *)cdb2_column_value(repl_db, 1);
     timestamp = (int64_t *)cdb2_column_value(repl_db, 3);
     blob = cdb2_column_value(repl_db, 4);
     blob_len = cdb2_column_size(repl_db, 4);
@@ -314,8 +312,8 @@ static LOG_INFO handle_record(LOG_INFO prev_info)
             curr_time = time(NULL);
             if (gbl_verbose_physrep) {
                 logmsg(LOGMSG_USER,
-                       "Deferring update, commit-ts %lld, "
-                       "target %d\n",
+                       "Deferring update, commit-ts %ld, "
+                       "target %ld\n",
                        *timestamp, curr_time + gbl_deferred_phys_update);
             }
         }
@@ -521,7 +519,7 @@ static int find_new_repl_db(void)
         if (gbl_verbose_physrep) {
             logmsg(LOGMSG_USER,
                    "%s: couldn't connect to any machine, sleeping for 1\n",
-                   __func__, i);
+                   __func__);
         }
 
         sleep(1);

@@ -4465,7 +4465,6 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
     bdb_state_type *bdb_state;
     int node = 0;
     int on_off = 0;
-    uint32_t gen;
     lsn_cmp_type lsn_cmp;
     int in_rep_process_message;
     DB_LSN cur_lsn;

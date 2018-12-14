@@ -2513,8 +2513,8 @@ struct __db_env {
     void (*rep_set_gen)(DB_ENV *, uint32_t gen);
 	int (*set_rep_recovery_cleanup) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn, int is_master)));
     int (*rep_recovery_cleanup)(DB_ENV *, DB_LSN *lsn, int is_master);
-    void (*lock_recovery_lock)(DB_ENV *);
-    void (*unlock_recovery_lock)(DB_ENV *);
+    int (*lock_recovery_lock)(DB_ENV *);
+    int (*unlock_recovery_lock)(DB_ENV *);
 	/* Trigger/consumer signalling support */
 	int(*trigger_subscribe) __P((DB_ENV *, const char *, pthread_cond_t **,
 				     pthread_mutex_t **, const uint8_t **active));
