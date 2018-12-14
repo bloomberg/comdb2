@@ -878,7 +878,7 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
 
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
-        if( sqlite3AuthCheck(pParse, SQLITE_TRUNCATE_INDEX, 0, 0, 0) ){
+        if( sqlite3AuthCheck(pParse, SQLITE_REBUILD_INDEX, 0, 0, 0) ){
             setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
             return;
         }
@@ -1001,7 +1001,7 @@ void comdb2DefaultProcedure(Parse *pParse, Token *nm, Token *ver, int str)
 
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
-        if( sqlite3AuthCheck(pParse, SQLITE_ALTER_PROC, 0, 0, 0) ){
+        if( sqlite3AuthCheck(pParse, SQLITE_PUT_TUNABLE, 0, 0, 0) ){
             setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
             return;
         }

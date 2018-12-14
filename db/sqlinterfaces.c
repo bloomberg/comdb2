@@ -774,9 +774,7 @@ static int comdb2_authorizer_for_sqlite(
     case SQLITE_REBUILD_DATA:        /* COMDB2 ONLY */
     case SQLITE_REBUILD_DATABLOB:    /* COMDB2 ONLY */
     case SQLITE_TRUNCATE_TABLE:      /* COMDB2 ONLY */
-    case SQLITE_TRUNCATE_INDEX:      /* COMDB2 ONLY */
     case SQLITE_CREATE_PROC:         /* COMDB2 ONLY */
-    case SQLITE_ALTER_PROC:          /* COMDB2 ONLY */
     case SQLITE_DROP_PROC:           /* COMDB2 ONLY */
     case SQLITE_CREATE_PART:         /* COMDB2 ONLY */
     case SQLITE_DROP_PART:           /* COMDB2 ONLY */
