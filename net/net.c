@@ -914,7 +914,7 @@ void comdb2_nanosleep(struct timespec *req)
 void net_delay(const char *host)
 {
     int delay = debug_switch_net_delay();
-    if (unlikely(delay)) {
+    if (delay) {
         if (delay > net_delay_max)
             return;
         int other_room;
@@ -2512,7 +2512,7 @@ void net_inc_recv_cnt_from(netinfo_type *netinfo_ptr, char *host)
 {
     Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
     host_node_type *host_node_ptr = get_host_node_cache_ll(netinfo_ptr, host);
-    if (unlikely(!host_node_ptr)) {
+    if (!host_node_ptr) {
         Pthread_rwlock_unlock(&(netinfo_ptr->lock));
         logmsg(LOGMSG_ERROR, "%s: node not found %s\n", __func__, host);
         return;
@@ -2574,7 +2574,7 @@ void print_node_udp_stat(char *prefix, netinfo_type *netinfo_ptr,
 {
     Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
     host_node_type *host_node_ptr = get_host_node_cache_ll(netinfo_ptr, host);
-    if (unlikely(!host_node_ptr)) {
+    if (!host_node_ptr) {
         Pthread_rwlock_unlock(&(netinfo_ptr->lock));
         logmsg(LOGMSG_ERROR, "%s: node not found %s\n", __func__, host);
         return;
@@ -2598,7 +2598,7 @@ ssize_t net_udp_send(int udp_fd, netinfo_type *netinfo_ptr, const char *host,
     Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
     host_node_type *host_node_ptr = get_host_node_cache_ll(netinfo_ptr, host);
 
-    if (unlikely(!host_node_ptr)) {
+    if (!host_node_ptr) {
         Pthread_rwlock_unlock(&(netinfo_ptr->lock));
         extern const char *db_eid_invalid;
         if (strcmp(host, db_eid_invalid) == 0)

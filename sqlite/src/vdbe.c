@@ -5150,6 +5150,8 @@ case OP_NewRowid: {           /* out2 */
   assert( pC->uc.pCursor!=0 );
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   {
+    UNUSED_PARAMETER2(res, cnt);
+    UNUSED_PARAMETER2(pMem, pFrame);
     extern i64 sqlite3BtreeNewRowid(BtCursor *pCur);
     v = sqlite3BtreeNewRowid(pC->uc.pCursor);
   }
@@ -7704,7 +7706,7 @@ case OP_VOpen: {
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   int comdb2_check_vtab_access(sqlite3*, sqlite3_module*);
-  rc = comdb2_check_vtab_access(db, pModule);
+  rc = comdb2_check_vtab_access(db, (sqlite3_module*)pModule);
   if( rc ) goto abort_due_to_error;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 

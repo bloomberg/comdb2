@@ -558,7 +558,7 @@ static int swrite(SBUF2 *sb, const char *cc, int len)
 
 int SBUF2_FUNC(sbuf2unbufferedwrite)(SBUF2 *sb, const char *cc, int len)
 {
-    int n, ioerr;
+    int n;
 #if !WITH_SSL
     n = write(sb->fd, cc, len);
 #else
@@ -569,7 +569,7 @@ ssl_downgrade:
         ERR_clear_error();
         n = SSL_write(sb->ssl, cc, len);
         if (n <= 0) {
-            ioerr = SSL_get_error(sb->ssl, n);
+            int ioerr = SSL_get_error(sb->ssl, n);
             switch (ioerr) {
             case SSL_ERROR_WANT_READ:
                 errno = EAGAIN;
@@ -639,7 +639,7 @@ static int sread(SBUF2 *sb, char *cc, int len)
 
 int SBUF2_FUNC(sbuf2unbufferedread)(SBUF2 *sb, char *cc, int len)
 {
-    int n, ioerr;
+    int n;
 #if !WITH_SSL
     n = read(sb->fd, cc, len);
 #else
@@ -650,7 +650,7 @@ ssl_downgrade:
         ERR_clear_error();
         n = SSL_read(sb->ssl, cc, len);
         if (n <= 0) {
-            ioerr = SSL_get_error(sb->ssl, n);
+            int ioerr = SSL_get_error(sb->ssl, n);
             switch (ioerr) {
             case SSL_ERROR_WANT_READ:
                 errno = EAGAIN;

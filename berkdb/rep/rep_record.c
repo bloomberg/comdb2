@@ -720,8 +720,8 @@ static void *apply_thread(void *arg)
 		}
 
         int request_all_records = 0;
-        if (gbl_req_all_threshold && (bytes_behind > gbl_req_all_threshold) ||
-                IS_ZERO_LSN(first_repdb_lsn))
+        if (gbl_req_all_threshold && (bytes_behind > gbl_req_all_threshold ||
+                IS_ZERO_LSN(first_repdb_lsn)))
             request_all_records = 1;
 
         if (gbl_req_all_time_threshold && (comdb2_time_epochms() - 

@@ -783,6 +783,7 @@ done:
 
     /* Abort if I didn't find it */
     assert(found_repl);
+    (void)found_repl;
 
     return rc;
 }

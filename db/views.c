@@ -1159,7 +1159,7 @@ void *_view_cron_phase1(uuid_t source_id, void *arg1, void *arg2, void *arg3,
     assert(arg3 == NULL);
 
     run = (!gbl_exit);
-    if (run && thedb->master != gbl_mynode || gbl_is_physical_replicant)
+    if (run && (thedb->master != gbl_mynode || gbl_is_physical_replicant))
         run = 0;
 
     if (run) {
@@ -1314,7 +1314,7 @@ void *_view_cron_phase2(uuid_t source_id, void *arg1, void *arg2, void *arg3,
     assert(arg3 == NULL);
 
     run = (!gbl_exit);
-    if (run && thedb->master != gbl_mynode || gbl_is_physical_replicant)
+    if (run && (thedb->master != gbl_mynode || gbl_is_physical_replicant))
         run = 0;
 
     if (run) {
@@ -1424,7 +1424,7 @@ void *_view_cron_phase3(uuid_t source_id, void *arg1, void *arg2, void *arg3,
     }
 
     run = (!gbl_exit);
-    if (run && thedb->master != gbl_mynode || gbl_is_physical_replicant)
+    if (run && (thedb->master != gbl_mynode || gbl_is_physical_replicant))
         run = 0;
 
     if (run) {

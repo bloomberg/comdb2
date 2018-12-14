@@ -2801,6 +2801,7 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
         }
     }
     assert(found);
+    ASSERT_PARAMETER(found);
 
 done:
     gen_constraint_name_int(buf, pos, out, out_size);
@@ -4794,6 +4795,7 @@ void comdb2DeferForeignKey(Parse *pParse, int isDeferred)
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
+        ASSERT_PARAMETER(ctx);
         sqlite3DeferForeignKey(pParse, isDeferred);
         return;
     }

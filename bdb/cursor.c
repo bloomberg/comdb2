@@ -8659,6 +8659,7 @@ struct count_arg {
     int rc;
 };
 
+#define UNUSED(x) ((void)(x))
 static void *db_count(void *varg)
 {
     int rc;
@@ -8687,6 +8688,10 @@ static void *db_count(void *varg)
         void *bulk;
         DB_MULTIPLE_INIT(bulk, &v);
         DB_MULTIPLE_KEY_NEXT(bulk, &v, kk, ks, vv, vs);
+        UNUSED(kk);
+        UNUSED(vv);
+        UNUSED(ks);
+        UNUSED(vs);
         while (bulk) {
             ++count;
             DB_MULTIPLE_KEY_NEXT(bulk, &v, kk, ks, vv, vs);
