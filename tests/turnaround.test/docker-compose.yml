@@ -1,0 +1,105 @@
+version: '3'
+
+networks:
+    primary:
+    n3:
+    n4:
+
+services:
+    client:
+        cap_add:
+            - SYS_PTRACE
+        hostname: c1
+        networks:
+            - primary
+        build:
+            context: .
+            dockerfile: Dockerfile.client
+        volumes:
+            - ./log:/log
+    m1:
+        cap_add:
+            - SYS_PTRACE
+        hostname: m1
+        build:
+            context: .
+            dockerfile: Dockerfile.database
+        networks:
+            primary:
+            n3:
+                aliases: 
+                    - m1-n3
+            n4:
+                aliases: 
+                    - m1-n4
+        volumes:
+            - ./log:/log
+    m2:
+        cap_add:
+            - SYS_PTRACE
+        hostname: m2
+        build:
+            context: .
+            dockerfile: Dockerfile.database
+        networks:
+            primary:
+            n3:
+                aliases: 
+                    - m2-n3
+            n4:
+                aliases: 
+                    - m2-n4
+        volumes:
+            - ./log:/log
+    m3:
+        cap_add:
+            - SYS_PTRACE
+        hostname: m3
+        build:
+            context: .
+            dockerfile: Dockerfile.database
+        networks:
+            primary:
+            n3:
+                aliases: 
+                    - m3-n3
+            n4:
+                aliases: 
+                    - m3-n4
+        volumes:
+            - ./log:/log
+    m4:
+        cap_add:
+            - SYS_PTRACE
+        hostname: m4
+        build:
+            context: .
+            dockerfile: Dockerfile.database
+        networks:
+            primary:
+            n3:
+                aliases: 
+                    - m4-n3
+            n4:
+                aliases: 
+                    - m4-n4
+        volumes:
+            - ./log:/log
+
+    m5:
+        cap_add:
+            - SYS_PTRACE
+        hostname: m5
+        build:
+            context: .
+            dockerfile: Dockerfile.database
+        networks:
+            primary:
+            n3:
+                aliases: 
+                    - m5-n3
+            n4:
+                aliases: 
+                    - m5-n4
+        volumes:
+            - ./log:/log

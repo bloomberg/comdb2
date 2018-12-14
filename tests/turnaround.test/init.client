@@ -1,0 +1,59 @@
+#!/bin/bash
+
+mkdir "/opt/bb/etc/cdb2/config.d/"
+echo "testdb 0 m1 m2 m3 m4 m5" > /opt/bb/etc/cdb2/config.d/testdb.cfg
+
+function wait_for_all {
+    echo "Waiting for databases"
+    while :; do
+        nodes=0
+        for m in {1..5}; do
+            host=m${m}
+            h=$(cdb2sql --tabs testdb @${host} "select comdb2_host()" 2>/dev/null)
+            if [[ "$h" != "$host" ]]; then
+                echo "   still waiting for $host"
+                sleep 1
+                break
+            else
+                echo "   $host ok"
+                nodes=$(($nodes+1))
+            fi
+        done
+        if [[ $nodes -eq 5 ]]; then
+            break
+        fi
+    done
+    echo "cluster is fully up"
+}
+
+echo "Waiting for databases"
+wait_for_all
+touch /log/ready
+
+function load {
+    while :; do
+        cdb2sql testdb dev "insert into t values(1)"  >/dev/null 2>&1
+        sleep 0.01
+    done
+}
+
+cdb2sql testdb dev "create table t(a int)"
+load &
+sleep 2
+
+last=0
+for i in {0..9}; do
+    out=$(cdb2sql --tabs testdb dev 'select count(*) from t')
+    diff=$(($out-$last))
+    echo "Progress check: $out records, last was $last diff $diff"
+    last=$out
+    host=$(( ($i%5)+1  ))
+    host=m${host}
+    echo "Turning $host"
+    cdb2sql testdb @${host} "exec procedure sys.cmd.send('exit')" >/dev/null
+    sleep 5
+    wait_for_all
+    cdb2sql --tabs testdb dev "exec procedure sys.cmd.send('bdb cluster')" >/dev/null
+done
+
+touch /log/success

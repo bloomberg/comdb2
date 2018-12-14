@@ -1,0 +1,9 @@
+ARG version=latest
+FROM comdb2:${version}
+
+RUN mkdir /opt/bb/var/cdb2/testdb
+
+ADD db.tar /opt/bb/var/cdb2/
+COPY init.db /init.db
+
+ENTRYPOINT /init.db
