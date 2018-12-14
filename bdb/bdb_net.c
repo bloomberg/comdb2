@@ -424,6 +424,8 @@ void udp_prefault_all(bdb_state_type *bdb_state, unsigned int fileid,
 static void print_ping_rtt(ack_info *info)
 {
     struct timeval now, *sent, diff;
+    if (info == NULL)
+        return;
     gettimeofday(&now, NULL);
     sent = ack_info_data(info);
     timeval_diff(sent, &now, &diff);

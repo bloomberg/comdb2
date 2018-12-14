@@ -3518,6 +3518,13 @@ static int read_hostlist(netinfo_type *netinfo_ptr, SBUF2 *sb, char *hosts[],
     for (i = 0; i < *numhosts; i++) {
         if (hosts[i][0] == '.') {
             int len = atoi(&hosts[i][1]);
+            if (len > 4096) {
+                for (int j = 0; j < *numhosts; j++) {
+                    free(hosts[j]);
+                }
+                free(data);
+                return 1;
+            }
             hosts[i] = realloc(hosts[i], len);
             p_buf = (uint8_t *)buf_no_net_get(hosts[i], len, p_buf, p_buf_end);
         }
@@ -4079,7 +4086,7 @@ static int process_decom_name(netinfo_type *netinfo_ptr,
                __func__, rc);
         return -1;
     }
-   hostlen = ntohl(hostlen);
+    hostlen = ntohl(hostlen);
     if (hostlen > 256) {
         logmsg(LOGMSG_ERROR, "%s:absurd length for hostname, %d\n",
                __func__, hostlen);

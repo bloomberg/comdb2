@@ -3760,16 +3760,17 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     int done = 0;
     int master_confused = 0;
 
+    /* don't give it to berkeley db if we havent started rep yet */
+    if (!bdb_state->rep_started || control == NULL) {
+        return 0;
+    }
+
     rep_control_type *rep_control;
     rep_control = control->data;
 
     rectype = ntohl(rep_control->rectype);
     generation = ntohl(rep_control->gen);
 
-    /* don't give it to berkeley db if we havent started rep yet */
-    if (!bdb_state->rep_started) {
-        return 0;
-    }
 
     outrc = 0;
 
@@ -5053,19 +5054,13 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
         break;
 
     case USER_TYPE_GBLCONTEXT:
-        memcpy(&master_cmpcontext, dta, sizeof(unsigned long long));
-
-        if (bdb_state->repinfo->master_host != bdb_state->repinfo->myhost) {
-            bdb_state->got_gblcontext = 1;
-
-            /*
-            fprintf(stderr, "D setting bdb_state->gblcontext to  0x%08llx\n",
-               bdb_state->gblcontext);
-            */
-
-            set_gblcontext(bdb_state, master_cmpcontext);
+        if (dtalen >= sizeof(unsigned long long)) {
+            memcpy(&master_cmpcontext, dta, sizeof(unsigned long long));
+            if (bdb_state->repinfo->master_host != bdb_state->repinfo->myhost) {
+                bdb_state->got_gblcontext = 1;
+                set_gblcontext(bdb_state, master_cmpcontext);
+            }
         }
-
         break;
 
     case USER_TYPE_MASTERCMPCONTEXTLIST:
