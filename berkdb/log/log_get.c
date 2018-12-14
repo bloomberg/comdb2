@@ -1131,6 +1131,9 @@ __log_c_inregion_int(logc, lsn, rlockp, last_lsn, hdr, pp)
 			}
 		} else {
 			w_off = lp->w_off;
+            /* Probe for a non-existant log record (for rep-verify) */
+            if (w_off > lsn->offset)
+                return (DB_NOTFOUND);
 			p = dblp->bufp + (lsn->offset - w_off);
 			memcpy(hdr, p, hdr->size);
 		}
