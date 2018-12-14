@@ -3741,9 +3741,6 @@ cleanup:
     return;
 }
 
-static int check_dependent_keys(struct comdb2_ddl_context *ctx,
-                                const char *column, int drop);
-
 void comdb2AddColumn(Parse *pParse, /* Parser context */
                      Token *pName,  /* Name of the column */
                      Token *pType   /* Type of the column */
@@ -3809,9 +3806,9 @@ void comdb2AddColumn(Parse *pParse, /* Parser context */
     }
 
     if (column_exists == 1) {
-            pParse->rc = SQLITE_ERROR;
-            sqlite3ErrorMsg(pParse, "Duplicate column name '%s'.", current->name);
-            goto cleanup;
+        pParse->rc = SQLITE_ERROR;
+        sqlite3ErrorMsg(pParse, "Duplicate column name '%s'.", current->name);
+        goto cleanup;
     } else {
         /* We cannot allow dropping and adding the same column in the same
          * ALTER TABLE command as that could potentially switch the position
@@ -3824,7 +3821,9 @@ void comdb2AddColumn(Parse *pParse, /* Parser context */
         {
             if ((strcasecmp(column->name, current->name) == 0) &&
                 ((current->flags & COLUMN_DELETED) != 0)) {
-                sqlite3ErrorMsg(pParse, "Cannot DROP and ADD same column in an ALTER command.");
+                sqlite3ErrorMsg(
+                    pParse,
+                    "Cannot DROP and ADD same column in an ALTER command.");
                 pParse->rc = SQLITE_MISUSE;
                 goto cleanup;
             }
@@ -3844,13 +3843,14 @@ cleanup:
 }
 
 static void comdb2ColumnSetDefault(
-  Parse *pParse,                /* Parsing context */
-  struct comdb2_column *column, /* Set the default value of this column */
-  Expr *pExpr,                  /* The parsed expression of the default value */
-  const char *zStart,           /* Start of the default value text */
-  const char *zEnd              /* First character past end of defaut value
-                                   text */
-){
+    Parse *pParse,                /* Parsing context */
+    struct comdb2_column *column, /* Set the default value of this column */
+    Expr *pExpr,        /* The parsed expression of the default value */
+    const char *zStart, /* Start of the default value text */
+    const char *zEnd    /* First character past end of defaut value
+                           text */
+)
+{
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     char *def;
     int def_len;
@@ -3875,11 +3875,12 @@ oom:
 }
 
 void comdb2AddDefaultValue(
-  Parse *pParse,           /* Parsing context */
-  Expr *pExpr,             /* The parsed expression of the default value */
-  const char *zStart,      /* Start of the default value text */
-  const char *zEnd         /* First character past end of defaut value text */
-){
+    Parse *pParse,      /* Parsing context */
+    Expr *pExpr,        /* The parsed expression of the default value */
+    const char *zStart, /* Start of the default value text */
+    const char *zEnd    /* First character past end of defaut value text */
+)
+{
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     struct comdb2_column *column;
 
@@ -4263,8 +4264,7 @@ static void comdb2AddIndexInt(
       created via CREATE INDEX (SQLITE_IDXTYPE_APPDEF) this check has
       already been done to address IF NOT EXISTS.
     */
-    if (idxType != SQLITE_IDXTYPE_APPDEF &&
-        find_idx_by_name(ctx, key->name)) {
+    if (idxType != SQLITE_IDXTYPE_APPDEF && find_idx_by_name(ctx, key->name)) {
         pParse->rc = SQLITE_ERROR;
         sqlite3ErrorMsg(pParse, "Index '%s' already exists.", key->name);
         goto cleanup;
