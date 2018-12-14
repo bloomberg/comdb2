@@ -719,8 +719,13 @@ set all_graphs {
                               {line {opt SET DATA} TYPE column-type }
                               {line SET DEFAULT expr }
                               {line DROP DEFAULT }
-                              {line SET NOT NULL }
-                              {line DROP NOT NULL }
+                              {line
+                                  {or
+                                      {line SET }
+                                      {line DROP }
+                                  }
+                                  NOT NULL
+                              }
                           }
                       }
                       {line DROP
