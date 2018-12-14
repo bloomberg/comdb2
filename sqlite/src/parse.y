@@ -2377,10 +2377,10 @@ cmd ::= DROP LUA AGGREGATE FUNCTION nm(A). {
   comdb2DropAggFunc(pParse,&A);
 }
 cmd ::= DROP LUA TRIGGER nm(A). {
-  comdb2DropTrigger(pParse,&A);
+  comdb2DropTrigger(pParse,0,&A);
 }
 cmd ::= DROP LUA CONSUMER nm(A). {
-  comdb2DropTrigger(pParse,&A);
+  comdb2DropTrigger(pParse,1,&A);
 }
 %endif SQLITE_BUILDING_FOR_COMDB2
 

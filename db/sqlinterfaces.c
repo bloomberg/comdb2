@@ -753,7 +753,7 @@ static int comdb2_authorizer_for_sqlite(
     case SQLITE_CREATE_TEMP_TABLE:
     case SQLITE_CREATE_TEMP_TRIGGER:
     case SQLITE_CREATE_TEMP_VIEW:
-    case SQLITE_CREATE_TRIGGER:
+    case SQLITE_CREATE_TRIGGER: /* NOTE: Always blocked by check_sql(). */
     case SQLITE_CREATE_VIEW:
     case SQLITE_DROP_INDEX:
     case SQLITE_DROP_TABLE:
@@ -764,24 +764,32 @@ static int comdb2_authorizer_for_sqlite(
     case SQLITE_DROP_TRIGGER:
     case SQLITE_DROP_VIEW:
 #if !defined(SQLITE_DEBUG)
-    case SQLITE_PRAGMA:
+    case SQLITE_PRAGMA: /* NOTE: Non-debug build blocked by check_sql(). */
 #endif
     case SQLITE_ALTER_TABLE:
     case SQLITE_CREATE_VTABLE:
     case SQLITE_DROP_VTABLE:
-    case SQLITE_REBUILD_TABLE:  /* COMDB2 ONLY */
-    case SQLITE_REBUILD_INDEX:  /* COMDB2 ONLY */
-    case SQLITE_TRUNCATE_TABLE: /* COMDB2 ONLY */
-    case SQLITE_TRUNCATE_INDEX: /* COMDB2 ONLY */
-    case SQLITE_CREATE_PROC:    /* COMDB2 ONLY */
-    case SQLITE_ALTER_PROC:     /* COMDB2 ONLY */
-    case SQLITE_DROP_PROC:      /* COMDB2 ONLY */
-    case SQLITE_CREATE_PART:    /* COMDB2 ONLY */
-    case SQLITE_DROP_PART:      /* COMDB2 ONLY */
-    case SQLITE_GET_TUNABLE:    /* COMDB2 ONLY */
-    case SQLITE_PUT_TUNABLE:    /* COMDB2 ONLY */
-    case SQLITE_GRANT:          /* COMDB2 ONLY */
-    case SQLITE_REVOKE:         /* COMDB2 ONLY */
+    case SQLITE_REBUILD_TABLE:       /* COMDB2 ONLY */
+    case SQLITE_REBUILD_INDEX:       /* COMDB2 ONLY */
+    case SQLITE_REBUILD_DATA:        /* COMDB2 ONLY */
+    case SQLITE_REBUILD_DATABLOB:    /* COMDB2 ONLY */
+    case SQLITE_TRUNCATE_TABLE:      /* COMDB2 ONLY */
+    case SQLITE_TRUNCATE_INDEX:      /* COMDB2 ONLY */
+    case SQLITE_CREATE_PROC:         /* COMDB2 ONLY */
+    case SQLITE_ALTER_PROC:          /* COMDB2 ONLY */
+    case SQLITE_DROP_PROC:           /* COMDB2 ONLY */
+    case SQLITE_CREATE_PART:         /* COMDB2 ONLY */
+    case SQLITE_DROP_PART:           /* COMDB2 ONLY */
+    case SQLITE_GET_TUNABLE:         /* COMDB2 ONLY */
+    case SQLITE_PUT_TUNABLE:         /* COMDB2 ONLY */
+    case SQLITE_GRANT:               /* COMDB2 ONLY */
+    case SQLITE_REVOKE:              /* COMDB2 ONLY */
+    case SQLITE_CREATE_LUA_FUNCTION: /* COMDB2 ONLY */
+    case SQLITE_DROP_LUA_FUNCTION:   /* COMDB2 ONLY */
+    case SQLITE_CREATE_LUA_TRIGGER:  /* COMDB2 ONLY */
+    case SQLITE_DROP_LUA_TRIGGER:    /* COMDB2 ONLY */
+    case SQLITE_CREATE_LUA_CONSUMER: /* COMDB2 ONLY */
+    case SQLITE_DROP_LUA_CONSUMER:   /* COMDB2 ONLY */
       return SQLITE_DENY;
     default:
       return SQLITE_OK;

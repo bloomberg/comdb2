@@ -123,9 +123,9 @@ extern "C" {
 ** [sqlite3_libversion_number()], [sqlite3_sourceid()],
 ** [sqlite_version()] and [sqlite_source_id()].
 */
-#define SQLITE_VERSION        "3.26.0"
-#define SQLITE_VERSION_NUMBER 3026000
-#define SQLITE_SOURCE_ID      "2018-12-03 14:53:55 7cccccfc946a5af08c1250b9271b920841f4f1bd5338c4b35aee0211261falt1"
+#define SQLITE_VERSION        "3.27.0"
+#define SQLITE_VERSION_NUMBER 3027000
+#define SQLITE_SOURCE_ID      "2018-12-14 15:25:54 cb9dae2de5ee972e1d27bea1db62c7de4a242c318b0494d27e74f43d07cdalt1"
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <types.h>
@@ -2993,17 +2993,25 @@ SQLITE_API int sqlite3_set_authorizer(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #define SQLITE_REBUILD_TABLE       160   /* NULL            NULL            */
 #define SQLITE_REBUILD_INDEX       161   /* NULL            NULL            */
-#define SQLITE_TRUNCATE_TABLE      162   /* NULL            NULL            */
-#define SQLITE_TRUNCATE_INDEX      163   /* NULL            NULL            */
-#define SQLITE_CREATE_PROC         164   /* NULL            NULL            */
-#define SQLITE_ALTER_PROC          165   /* NULL            NULL            */
-#define SQLITE_DROP_PROC           166   /* NULL            NULL            */
-#define SQLITE_CREATE_PART         167   /* NULL            NULL            */
-#define SQLITE_DROP_PART           168   /* NULL            NULL            */
-#define SQLITE_GET_TUNABLE         169   /* NULL            NULL            */
-#define SQLITE_PUT_TUNABLE         170   /* NULL            NULL            */
-#define SQLITE_GRANT               171   /* NULL            NULL            */
-#define SQLITE_REVOKE              172   /* NULL            NULL            */
+#define SQLITE_REBUILD_DATA        162   /* NULL            NULL            */
+#define SQLITE_REBUILD_DATABLOB    163   /* NULL            NULL            */
+#define SQLITE_TRUNCATE_TABLE      164   /* NULL            NULL            */
+#define SQLITE_TRUNCATE_INDEX      165   /* NULL            NULL            */
+#define SQLITE_CREATE_PROC         166   /* NULL            NULL            */
+#define SQLITE_ALTER_PROC          167   /* NULL            NULL            */
+#define SQLITE_DROP_PROC           168   /* NULL            NULL            */
+#define SQLITE_CREATE_PART         169   /* NULL            NULL            */
+#define SQLITE_DROP_PART           170   /* NULL            NULL            */
+#define SQLITE_GET_TUNABLE         171   /* NULL            NULL            */
+#define SQLITE_PUT_TUNABLE         172   /* NULL            NULL            */
+#define SQLITE_GRANT               173   /* NULL            NULL            */
+#define SQLITE_REVOKE              174   /* NULL            NULL            */
+#define SQLITE_CREATE_LUA_FUNCTION 175   /* NULL            NULL            */
+#define SQLITE_DROP_LUA_FUNCTION   176   /* NULL            NULL            */
+#define SQLITE_CREATE_LUA_TRIGGER  177   /* NULL            NULL            */
+#define SQLITE_DROP_LUA_TRIGGER    178   /* NULL            NULL            */
+#define SQLITE_CREATE_LUA_CONSUMER 179   /* NULL            NULL            */
+#define SQLITE_DROP_LUA_CONSUMER   180   /* NULL            NULL            */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
