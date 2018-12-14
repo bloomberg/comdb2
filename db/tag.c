@@ -1742,14 +1742,10 @@ int partial_key_length(const char *dbname, const char *keyname,
     char *s;
     int plen;
     int is_last = 0;
-    int space_err = 0;
 
     struct schema *sc = find_tag_schema(dbname, keyname);
     if (sc == NULL)
         return -1;
-
-    if (len > 0 && strnchr(pstring, len, ' '))
-        space_err = 1;
 
     tok = segtokx((char *)pstring, len, &toff, &tlen, "+");
     while (tlen > 0) {
@@ -7098,7 +7094,6 @@ int reload_all_db_tran(tran_type *tran)
 {
     int table;
     int rc;
-    int bdberr;
     for (rc = 0, table = 0; table < thedb->num_dbs && rc == 0; table++) {
         struct dbtable *db = thedb->dbs[table];
         backout_schemas(db->tablename);
@@ -7115,26 +7110,6 @@ int reload_all_db_tran(tran_type *tran)
         db->tableversion = table_version_select(db, tran);
         update_dbstore(db);
     }
-
-    /* Seems like this should be outside of the loop */
-    /*
-    create_sqlmaster_records(tran);
-    create_sqlite_master();
-    */
-
-    /*
-    for (table = 0; table < thedb->num_dbs && rc == 0; table++) {
-        struct dbtable *db = thedb->dbs[table];
-        if ((db->handle = bdb_open_more_tran(db->tablename, db->dbenv->basedir,
-                        db->lrl, db->nix, db->ix_keylen, db->ix_dupes,
-                        db->ix_recnums, db->ix_datacopy, db->ix_collattr,
-                        db->ix_nullsallowed, db->numblobs + 1, thedb->bdb_env,
-                        tran, &bdberr)) == NULL) {
-            logmsg(LOGMSG_ERROR, "Failed to bdb_open_more_tran %s\n",
-    db->tablename);
-        }
-    }
-    */
 
     return 0;
 }
