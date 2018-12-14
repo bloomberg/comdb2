@@ -1532,8 +1532,9 @@ REGISTER_TUNABLE("osql_check_replicant_numops",
 
 REGISTER_TUNABLE("disable_tpsc_tblvers",
                  "Disable table version checks for time partition schema "
-                 "changes", TUNABLE_BOOLEAN, &gbl_disable_tpsc_tblvers, NOARG,
-                 NULL, NULL, NULL, NULL);
+                 "changes",
+                 TUNABLE_BOOLEAN, &gbl_disable_tpsc_tblvers, NOARG, NULL, NULL,
+                 NULL, NULL);
 
 REGISTER_TUNABLE("abort_irregular_set_durable_lsn",
                  "Abort incorrect calls to set_durable_lsn. (Default: off)",

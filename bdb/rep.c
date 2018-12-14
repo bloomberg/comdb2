@@ -3080,8 +3080,7 @@ int bdb_wait_for_seqnum_from_room(bdb_state_type *bdb_state,
         if (bdb_state->callback->getroom_rtn) {
             if ((bdb_state->callback->getroom_rtn(bdb_state, nodelist[i])) ==
                 our_room)
-                bdb_wait_for_seqnum_from_node(bdb_state, seqnum,
-                                                   nodelist[i]);
+                bdb_wait_for_seqnum_from_node(bdb_state, seqnum, nodelist[i]);
         } else {
             bdb_wait_for_seqnum_from_node(bdb_state, seqnum, nodelist[i]);
         }
@@ -4492,19 +4491,21 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
             buf_get(&node, sizeof(int), p_buf, p_buf_end);
 
             print(bdb_state, "adding node %d to sanctioned list\n", node);
-            net_add_to_sanctioned(bdb_state->repinfo->netinfo, hostname(node), 0);
+            net_add_to_sanctioned(bdb_state->repinfo->netinfo, hostname(node),
+                                  0);
         }
         net_ack_message(ack_handle, 0);
         break;
 
     case USER_TYPE_ADD_NAME:
-        if (!dta || ((char *)dta)[dtalen - 1] != '\0')  {
+        if (!dta || ((char *)dta)[dtalen - 1] != '\0') {
             logmsg(LOGMSG_ERROR, "%s add_name called with invalid args\n",
-                    __func__);
+                   __func__);
         } else {
-            print(bdb_state, "adding host %s to sanctioned list\n", (char *)dta);
-            net_add_to_sanctioned(bdb_state->repinfo->netinfo, intern((char *)dta),
-                    0);
+            print(bdb_state, "adding host %s to sanctioned list\n",
+                  (char *)dta);
+            net_add_to_sanctioned(bdb_state->repinfo->netinfo,
+                                  intern((char *)dta), 0);
         }
         net_ack_message(ack_handle, 0);
         break;
@@ -4518,20 +4519,21 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
             buf_get(&node, sizeof(int), p_buf, p_buf_end);
 
             print(bdb_state, "removing node %d from sanctioned list\n", node);
-            net_del_from_sanctioned(bdb_state->repinfo->netinfo, hostname(node));
+            net_del_from_sanctioned(bdb_state->repinfo->netinfo,
+                                    hostname(node));
         }
         net_ack_message(ack_handle, 0);
         break;
 
     case USER_TYPE_DEL_NAME:
-        if (!dta || ((char *)dta)[dtalen - 1] != '\0')  {
+        if (!dta || ((char *)dta)[dtalen - 1] != '\0') {
             logmsg(LOGMSG_ERROR, "%s del_name called with invalid args\n",
-                    __func__);
+                   __func__);
         } else {
             print(bdb_state, "removing host %s from sanctioned list\n",
-                    (char *)dta);
+                  (char *)dta);
             net_del_from_sanctioned(bdb_state->repinfo->netinfo,
-                    intern((char *)dta));
+                                    intern((char *)dta));
         }
         net_ack_message(ack_handle, 0);
         break;
@@ -4540,7 +4542,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         char *host;
         if (!dta || dtalen < sizeof(int)) {
             logmsg(LOGMSG_ERROR, "%s decom_dep called with bad args\n",
-                    __func__);
+                   __func__);
         } else {
             p_buf = (uint8_t *)dta;
             p_buf_end = ((uint8_t *)dta + dtalen);
@@ -4557,9 +4559,9 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
 
     case USER_TYPE_DECOM_NAME_DEPRECATED: {
         char *host;
-        if (!dta || ((char *)dta)[dtalen - 1] != '\0')  {
+        if (!dta || ((char *)dta)[dtalen - 1] != '\0') {
             logmsg(LOGMSG_ERROR, "%s decom_name_dep called with invalid args\n",
-                    __func__);
+                   __func__);
         } else {
             logmsg(LOGMSG_DEBUG, "--- got decom for node %s\n", (char *)dta);
             logmsg(LOGMSG_DEBUG, "acking message\n");
@@ -4605,9 +4607,10 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
 
         get_my_lsn(bdb_state, &cur_lsn);
 
-        if (!dta || (bdb_lsn_cmp_type_get(&lsn_cmp, p_buf, p_buf_end) == NULL)) {
+        if (!dta ||
+            (bdb_lsn_cmp_type_get(&lsn_cmp, p_buf, p_buf_end) == NULL)) {
             logmsg(LOGMSG_ERROR, "%s lsncmp called with invalid args\n",
-                    __func__);
+                   __func__);
             net_ack_message(ack_handle, 1);
             return;
         }
@@ -4643,15 +4646,14 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
 
     case USER_TYPE_REPTRC:
         if (!dta || dtalen < sizeof(int)) {
-            logmsg(LOGMSG_ERROR, "%s reptrc called with bad args\n",
-                    __func__);
+            logmsg(LOGMSG_ERROR, "%s reptrc called with bad args\n", __func__);
         } else {
             p_buf = (uint8_t *)dta;
             p_buf_end = ((uint8_t *)dta + dtalen);
             buf_get(&on_off, sizeof(int), p_buf, p_buf_end);
 
-            logmsg(LOGMSG_USER, "node %s told me to set rep trace to %d\n", from_host,
-                    on_off);
+            logmsg(LOGMSG_USER, "node %s told me to set rep trace to %d\n",
+                   from_host, on_off);
 
             bdb_state->rep_trace = on_off;
         }
@@ -4683,7 +4685,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
     case USER_TYPE_TCP_TIMESTAMP:
         if (!dta || dtalen < sizeof(ack_info)) {
             logmsg(LOGMSG_ERROR, "%s tcp_timestamp called with bad args\n",
-                    __func__);
+                   __func__);
             return;
         }
         handle_tcp_timestamp(bdb_state, dta, from_host);
@@ -4692,23 +4694,23 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
     case USER_TYPE_TCP_TIMESTAMP_ACK:
         if (!dta || dtalen < sizeof(ack_info)) {
             logmsg(LOGMSG_ERROR, "%s tcp_timestamp_ack called with bad args\n",
-                    __func__);
+                   __func__);
             return;
-        } 
+        }
         handle_tcp_timestamp_ack(bdb_state, dta);
         break;
 
     case USER_TYPE_PING_TIMESTAMP:
         if (!dta || dtalen < sizeof(ack_info)) {
             logmsg(LOGMSG_ERROR, "%s tcp_timestamp_ack called with bad args\n",
-                    __func__);
+                   __func__);
             return;
         }
         handle_ping_timestamp(bdb_state, dta, from_host);
         break;
 
     case USER_TYPE_ANALYZED_TBL: {
-        char tblname[MAXTABLELEN+1] = {0};
+        char tblname[MAXTABLELEN + 1] = {0};
         memcpy(tblname, dta, MIN(dtalen, (sizeof(tblname) - 1)));
         ctrace("MASTER received notification, tbl %s was analyzed\n", tblname);
         void reset_aa_counter(char *tblname);
@@ -4719,11 +4721,13 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         p_buf = (uint8_t *)dta;
         p_buf_end = ((uint8_t *)dta + dtalen);
         if (!dta || ((pgsnd_pl_pos = pgcomp_snd_type_get(&pgsnd, p_buf,
-                        p_buf_end)) == NULL)) {
-            logmsg(LOGMSG_ERROR, "%s user_type_lsncmp called with invalid "
-                    "args\n", __func__);
+                                                         p_buf_end)) == NULL)) {
+            logmsg(LOGMSG_ERROR,
+                   "%s user_type_lsncmp called with invalid "
+                   "args\n",
+                   __func__);
             return;
-        } 
+        }
         enqueue_pg_compact_work(bdb_state, pgsnd.id, pgsnd.size, pgsnd_pl_pos);
         break;
 
