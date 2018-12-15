@@ -6401,19 +6401,22 @@ recovery_getlocks(dbenv, lockid, lock_dbt, lsn)
 	return ret;
 }
 
-static int
+static void
 recovery_release_locks(dbenv, lockid)
 	DB_ENV *dbenv;
 	u_int32_t lockid;
 {
-	int ret, t_ret;
+	int ret;
 	DB_LOCKREQ req = {0};
 	req.op = DB_LOCK_PUT_ALL;
-	if ((t_ret = __lock_vec(dbenv, lockid, 0, &req, 1, NULL)) != 0 && ret == 0)
-		ret = t_ret;
-	if ((t_ret = __lock_id_free(dbenv, lockid)) != 0 && ret == 0)
-		ret = t_ret;
-	return ret;
+	if ((ret = __lock_vec(dbenv, lockid, 0, &req, 1, NULL)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s: __lock_vec returns %d\n", ret);
+		abort();
+	}
+	if ((ret = __lock_id_free(dbenv, lockid)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s: __lock_id_free returns %d\n", ret);
+		abort();
+	}
 }
 
 static int

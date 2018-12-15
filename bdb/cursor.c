@@ -1729,7 +1729,7 @@ int bdb_clean_pglogs_queues(bdb_state_type *bdb_state, DB_LSN lsn, int truncate)
     struct pglogs_queue_heads qh;
     int count, i;
 
-    if (!gbl_new_snapisol)
+    if (!gbl_new_snapisol || !logfile_pglogs_repo_ready)
         return 0;
 
     Pthread_mutex_lock(&del_queue_lk);
