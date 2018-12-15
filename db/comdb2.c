@@ -5082,7 +5082,7 @@ struct tool {
 
 struct tool tool_callbacks[] = {
    TOOLS
-   NULL
+   {NULL, NULL}
 };
 
 int main(int argc, char **argv)

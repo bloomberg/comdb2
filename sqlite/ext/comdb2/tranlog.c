@@ -248,7 +248,7 @@ static inline int parse_lsn(const unsigned char *lsnstr, DB_LSN *lsn)
 {
     unsigned int file, offset;
 
-    if (char_to_lsn(lsnstr, &file, &offset)) {
+    if (char_to_lsn((char *)lsnstr, &file, &offset)) {
         return -1;
     }
 
@@ -314,7 +314,7 @@ u_int64_t get_timestamp_from_matchable_record(char *data)
     {
         LOGCOPY_32(&rectype, data); 
         dood = *(uint32_t *)(data);
-        logmsg(LOGMSG_DEBUG, "%s rec: %ld, dood: %ld\n", __func__, rectype,
+        logmsg(LOGMSG_DEBUG, "%s rec: %u, dood: %u\n", __func__, rectype,
                 dood);
     }
     else

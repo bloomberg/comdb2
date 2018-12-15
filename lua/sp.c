@@ -4080,7 +4080,6 @@ static int db_setdatetimeprecision(lua_State *lua)
 static int db_getdbname(Lua L)
 {
     extern char gbl_dbname[MAX_DBNAME_LENGTH];
-    SP sp = getsp(L);
     lua_pushstring(L, gbl_dbname);
     return 1;
 }

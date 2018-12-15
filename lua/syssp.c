@@ -257,7 +257,8 @@ static int db_comdb_truncate_log(Lua L) {
         return luaL_error(L, "Require a string for the lsn");
     }
 
-    int rc, file, offset; 
+    int rc;
+    unsigned int file, offset;
     int min_file, min_offset;
   
     if ((rc = char_to_lsn(lsnstr, &file, &offset)) != 0) {

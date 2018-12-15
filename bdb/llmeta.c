@@ -4503,7 +4503,7 @@ int bdb_set_global_stripe_info(tran_type *tran, int stripes, int blobstripe,
 {
     int rc;
     int started_our_own_transaction = 0;
-    char buf[LLMETA_GLOBAL_STRIPE_INFO_LEN];
+    uint8_t buf[LLMETA_GLOBAL_STRIPE_INFO_LEN];
     struct llmeta_global_stripe_info stripe_info;
     char key[LLMETA_IXLEN] = {0};
     struct llmeta_file_type_key file_type_key;

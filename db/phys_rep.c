@@ -501,7 +501,7 @@ static int find_new_repl_db(void)
                     if (gbl_verbose_physrep) {
                         logmsg(LOGMSG_USER,
                                "%s skipping mach %s db %s tier %d idx %d: on "
-                               "recent last_fail @%d vs %d\n",
+                               "recent last_fail @%ld vs %d\n",
                                __func__, cnct->hostname, cnct->dbname, i, j,
                                cnct->last_failed, now);
                     }

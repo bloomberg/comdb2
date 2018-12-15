@@ -111,7 +111,7 @@ int find_log_timestamp(bdb_state_type *bdb_state, time_t time,
 
         my_time = get_timestamp_from_matchable_record(logrec.data);
         if (gbl_verbose_physrep) {
-            logmsg(LOGMSG_USER, "%s my ts is %lld, {%u:%u}\n", __func__,
+            logmsg(LOGMSG_USER, "%s my ts is %"PRIu64", {%u:%u}\n", __func__,
                    my_time, rec_lsn.file, rec_lsn.offset);
         }
 
@@ -123,7 +123,7 @@ int find_log_timestamp(bdb_state_type *bdb_state, time_t time,
     }
 
     if (gbl_verbose_physrep) {
-        logmsg(LOGMSG_USER, "%s ts is %lld, {%u:%u}\n", __func__, my_time,
+        logmsg(LOGMSG_USER, "%s ts is %"PRIu64", {%u:%u}\n", __func__, my_time,
                rec_lsn.file, rec_lsn.offset);
     }
 
@@ -209,7 +209,6 @@ int truncate_log_lock(bdb_state_type *bdb_state, unsigned int file,
                       unsigned int offset, uint32_t flags)
 {
     extern int gbl_online_recovery;
-    DB_LSN trunc_lsn;
     char *msg = "truncate log";
     int online = gbl_online_recovery;
 
@@ -283,7 +282,7 @@ LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db,
                 if (match_file != start_info.file ||
                     match_offset != start_info.offset) {
                     logmsg(LOGMSG_ERROR,
-                           "%s %d not same lsn{%u:%u} vs "
+                           "%s not same lsn{%u:%u} vs "
                            "{%u:%u}??? \n",
                            __func__, start_info.file, start_info.offset,
                            match_file, match_offset);
