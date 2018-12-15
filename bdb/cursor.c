@@ -2086,7 +2086,7 @@ int truncate_asof_pglogs(bdb_state_type *bdb_state, int file, int offset)
     struct commit_list *lcommit;
     int del_log = file + 1;
     extern int gbl_snapisol;
-    if (!gbl_new_snapisol || !gbl_snapisol)
+    if (!gbl_new_snapisol || !gbl_snapisol || !logfile_pglogs_repo_ready)
         return 0;
     bdb_clean_pglogs_queues(bdb_state, lsn, 1);
     Pthread_mutex_lock(&bdb_asof_current_lsn_mutex);
