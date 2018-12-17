@@ -168,9 +168,6 @@ typedef struct {
     /* Do not register tunables any more. */
     int freeze;
 
-    /* Array of all the registered tunables. */
-    comdb2_tunable **array;
-
     /* HASH of all the registered tunables (for quick lookup by name). */
     hash_t *hash;
 
@@ -183,11 +180,11 @@ typedef struct {
     do {                                                                       \
         comdb2_tunable t = {NAME,     DESCR,     TYPE,      VAR_PTR,   FLAGS,  \
                             VALUE_FN, VERIFY_FN, UPDATE_FN, DESTROY_FN};       \
-        register_tunable(t);                                                   \
+        register_tunable(&t);                                                  \
     } while (0)
 
 /* Resigter the tunable to the array of tunables. */
-int register_tunable(comdb2_tunable tunable);
+int register_tunable(comdb2_tunable *tunable);
 
 /* Returns name of the specified tunable type. */
 const char *tunable_type(comdb2_tunable_type type);
