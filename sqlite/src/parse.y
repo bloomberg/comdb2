@@ -288,7 +288,7 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
   PAGEORDER PASSWORD PERIOD PROCEDURE PUT
   REBUILD READ READONLY REC RESERVED RETENTION REVOKE RLE ROWLOCKS
   SCALAR SCHEMACHANGE SKIPSCAN START SUMMARIZE
-  THREADS THRESHOLD TIME TRUNCATE TUNABLE
+  THREADS THRESHOLD TIME TRUNCATE TUNABLE TYPE
   VERSION WRITE DDL USERSCHEMA ZLIB
 %endif SQLITE_BUILDING_FOR_COMDB2
   .
@@ -1864,6 +1864,33 @@ alter_table_drop_column ::= DROP kwcolumn_opt nm(Y). {
   comdb2DropColumn(pParse, &Y);
 }
 
+set_data_opt ::= .
+set_data_opt ::= SET DATA.
+
+alter_table_alter_column_start ::= ALTER kwcolumn_opt nm(Y). {
+  comdb2AlterColumnStart(pParse, &Y);
+}
+
+alter_table_alter_column_cmd ::= set_data_opt TYPE typetoken(Y). {
+  comdb2AlterColumnType(pParse,&Y);
+}
+alter_table_alter_column_cmd ::= SET DEFAULT scanpt(A) term(X) scanpt(Z). {
+  comdb2AlterColumnSetDefault(pParse,X,A,Z);
+}
+alter_table_alter_column_cmd ::= DROP DEFAULT. {
+  comdb2AlterColumnDropDefault(pParse);
+}
+alter_table_alter_column_cmd ::= SET NOT NULL. {
+  comdb2AlterColumnSetNotNull(pParse);
+}
+alter_table_alter_column_cmd ::= DROP NOT NULL. {
+  comdb2AlterColumnDropNotNull(pParse);
+}
+alter_table_alter_column ::= alter_table_alter_column_start
+                             alter_table_alter_column_cmd. {
+  comdb2AlterColumnEnd(pParse);
+}
+
 alter_table_add_pk ::= ADD tconspk.
 alter_table_drop_pk ::= DROP PRIMARY KEY. {
   comdb2DropPrimaryKey(pParse);
@@ -1885,6 +1912,7 @@ alter_table_drop_index ::= DROP INDEX nm(I). {
 
 alter_table_action ::= alter_table_add_column.
 alter_table_action ::= alter_table_drop_column.
+alter_table_action ::= alter_table_alter_column.
 alter_table_action ::= alter_table_add_pk.
 alter_table_action ::= alter_table_drop_pk.
 alter_table_action ::= alter_table_add_fk.

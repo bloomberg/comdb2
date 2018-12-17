@@ -381,6 +381,7 @@ static Keyword aKeywordTable[] = {
   { "TIME",             "TK_TIME",           ALWAYS               },
   { "TRUNCATE",         "TK_TRUNCATE",       ALWAYS               },
   { "TUNABLE",          "TK_TUNABLE",        ALWAYS               },
+  { "TYPE",             "TK_TYPE",           ALWAYS               },
   { "USERSCHEMA",       "TK_USERSCHEMA",     ALWAYS               },
   { "VERSION",          "TK_VERSION",        ALWAYS               },
   { "WRITE",            "TK_WRITE",          ALWAYS               },
