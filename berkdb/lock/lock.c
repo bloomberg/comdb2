@@ -3794,17 +3794,14 @@ __lock_getlocker_int(lt, locker, indx, partition, create, retries, retp,
 	 */
 	if (sh_locker == NULL && create) {
 		/* Create new locker and then insert it into hash table. */
-		if ((sh_locker =
-			SH_TAILQ_FIRST(&region->free_lockers[partition],
+		if ((sh_locker = SH_TAILQ_FIRST(&region->free_lockers[partition],
 			    __db_locker)) == NULL) {
 			unsigned i, num;
 			++region->nwlkr_scale[partition];
-			num = region->locker_p_size
-			    * region->nwlkr_scale[partition];
+			num = region->locker_p_size * region->nwlkr_scale[partition];
 			PRINTF(nwlkr_scale, "add lkr:%d part:%d sc:%d\n",
 			    num, partition, region->nwlkr_scale[partition]);
-			int ret = __os_malloc(dbenv,
-			    sizeof(DB_LOCKER) * num, &sh_locker);
+			int ret = __os_malloc(dbenv, sizeof(DB_LOCKER) * num, &sh_locker);
 			if (ret != 0) {
 				__db_err(dbenv, __db_lock_err,
 				    "locker entries");
@@ -3872,11 +3869,12 @@ __lock_getlocker_int(lt, locker, indx, partition, create, retries, retp,
 		if (gbl_print_deadlock_cycles) {
 			extern __thread snap_uid_t *osql_snap_info; /* contains cnonce */
 			if(osql_snap_info) sh_locker->snap_info = osql_snap_info;
+			else sh_locker->snap_info = NULL;
 		}
 	}
 
 	*retp = sh_locker;
-	return (0);
+	return 0;
 }
 
 /*
