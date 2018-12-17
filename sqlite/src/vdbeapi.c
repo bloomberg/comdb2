@@ -1108,7 +1108,7 @@ static const Mem *columnNullValue(void){
     = {
         /* .u          = */ {0},
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-        /* .du         = */ {0},
+        /* .du         = */ {{0}},
         /* .tz         = */ (char*)0,
         /* .dtprec     = */ (int)0,
         /* .flags      = */ (u32)MEM_Null,

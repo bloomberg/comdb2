@@ -4176,7 +4176,7 @@ TYPES_INLINE int CLIENT_PSTR2_to_SERVER_BCSTR(
 
     uint8_t hdr = 0;
     bset(&hdr, data_bit);
-    if (inlen > outlen - 1) {
+    if ((unsigned int)inlen > (unsigned int)outlen - 1) {
         if (inopts && inopts->flags & FLD_CONV_TRUNCATE) {
             inlen = outlen - 1;
         } else {
@@ -4188,7 +4188,7 @@ TYPES_INLINE int CLIENT_PSTR2_to_SERVER_BCSTR(
     memset(out + inlen, 0, outlen - inlen);
     *outdtsz = inlen;
 
-    if (olen > outlen - 1) {
+    if ((unsigned int)olen > (unsigned int)outlen - 1) {
         // Can't just set truncate bit
         // 1. aaa
         // 2. zzz
