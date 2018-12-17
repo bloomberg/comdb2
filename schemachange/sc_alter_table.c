@@ -650,6 +650,9 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     db->sc_to = newdb;
 
+    if (db->sc_live_logical)
+        bdb_clear_logical_live_sc(db->handle);
+
     if (gbl_sc_abort || db->sc_abort || iq->sc_should_abort) {
         sc_errf(s, "Aborting schema change %s\n", s->tablename);
         goto backout;

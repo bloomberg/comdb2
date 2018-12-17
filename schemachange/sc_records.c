@@ -3176,7 +3176,6 @@ cleanup:
 
     free(data->s->sc_convert_done);
     data->s->sc_convert_done = NULL;
-    bdb_clear_logical_live_sc(data->s->db->handle);
     data->s->logical_livesc = 0;
 
     free(data);

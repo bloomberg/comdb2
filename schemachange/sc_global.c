@@ -317,7 +317,10 @@ void live_sc_off(struct dbtable *db)
     db->sc_deletes = 0;
     db->sc_nrecs = 0;
     db->sc_prev_nrecs = 0;
-    db->sc_live_logical = 0;
+    if (db->sc_live_logical) {
+        bdb_clear_logical_live_sc(db->handle);
+        db->sc_live_logical = 0;
+    }
     Pthread_rwlock_unlock(&db->sc_live_lk);
 }
 
@@ -343,6 +346,9 @@ void sc_set_downgrading(struct schema_change_type *s)
     s->db->sc_from = NULL;
     s->db->sc_abort = 0;
     Pthread_rwlock_unlock(&s->db->sc_live_lk);
+
+    if (s->db->sc_live_logical)
+        bdb_clear_logical_live_sc(s->db->handle);
 
     trans_abort(&iq, tran);
 }
