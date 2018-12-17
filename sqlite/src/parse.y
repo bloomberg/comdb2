@@ -1859,7 +1859,7 @@ alter_table_csc2 ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) comdb2opt(O)
   comdb2AlterTableCSC2(pParse,&Y,&Z,O,&C,D);
 }
 
-alter_table_add_column ::=  ADD kwcolumn_opt columnname carglist.
+alter_table_add_column ::= ADD kwcolumn_opt columnname carglist.
 alter_table_drop_column ::= DROP kwcolumn_opt nm(Y). {
   comdb2DropColumn(pParse, &Y);
 }
