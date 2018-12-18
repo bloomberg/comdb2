@@ -617,6 +617,7 @@ void ast_print(ast_t *ast)
                ast_param_str(ast->stack[i].op, ast->stack[i].obj));
 }
 
+
 int comdb2_check_parallel(Parse *pParse)
 {
     ast_t *ast = pParse->ast;
@@ -639,8 +640,11 @@ int comdb2_check_parallel(Parse *pParse)
 
     node = (dohsql_node_t *)ast->stack[0].obj;
 
-    if (pParse->explain && pParse->explain != 3)
+    if (pParse->explain) {
+        if (pParse->explain == 3)
+            explain_distribution(node);
         return 0;
+    }
 
     if (node->type == AST_TYPE_SELECT) {
         if (gbl_dohast_verbose)
