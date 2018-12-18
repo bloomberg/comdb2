@@ -75,6 +75,7 @@ struct stored_proc {
 
 #define getsp(x) ((SP)lua_getsp(x))
 
+int luabb_isblob(Lua, int index);
 void luabb_toblob(Lua, int index, blob_t *);
 const char *luabb_tostring(Lua, int index);
 void luabb_todatetime(Lua, int index, datetime_t *);

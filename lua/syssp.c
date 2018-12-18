@@ -561,6 +561,23 @@ static int db_comdb_register_replicant(Lua L)
     return 1;
 }
 
+static int db_comdb_exec_socksql(Lua L)
+{
+    char *host, *errstr;
+    int usertype, errval;
+    DB_LSN commit_lsn = {0};
+    blob_t data;
+    if (!lua_isstring(L, 1) || !lua_isnumber(L, 2) || !luabb_isblob(L, 3)) {
+        logmsg(LOGMSG_ERROR, "%s invalid arguments\n");
+        return luaL_error(L, "Exec-socksql failed.");
+    }
+    host = (char *)lua_tostring(L, 1);
+    usertype = lua_tonumber(L, 2);
+    luabb_toblob(L, 3, &data);
+    physwrite_exec(host, usertype, data->data, data->length, &errval, &errstr,
+            &commit_lsn);
+}
+
 static const luaL_Reg sys_funcs[] = {
     { "cluster", db_cluster },
     { "comdbg_tables", db_comdbg_tables },
@@ -574,6 +591,7 @@ static const luaL_Reg sys_funcs[] = {
     { "start_replication", db_comdb_start_replication },
     { "stop_replication", db_comdb_stop_replication },
     { "register_replicant", db_comdb_register_replicant },
+    { "exec_socksql", db_comdb_exec_socksql },
     { NULL, NULL }
 }; 
 
@@ -745,6 +763,34 @@ static struct sp_source syssps[] = {
         "    end\n"
         "end\n",
         "register_replicant"
+    }
+
+    ,{
+        "sys.cmd.exec_socksql",
+        "local function main(host, usertype, data)\n"
+        "    local schema = {\n"
+        "        { 'int',    'rcode' },\n"
+        "        { 'int',    'errval' },\n"
+        "        { 'string', 'errstr' },\n"
+        "        { 'string', 'lsn' },\n"
+        "        { 'int',    'inserts' },\n"
+        "        { 'int',    'updates' },\n"
+        "        { 'int',    'deletes' },\n"
+        "        { 'int',    'cupdates' },\n"
+        "        { 'int',    'cdeletes' },\n"
+        "    }\n"
+        "    db:num_columns(table.getn(schema))\n"
+        "    for i, v in ipairs(schema) do\n"
+        "        db:column_name(v[2], i)\n"
+        "        db:column_type(v[1], i)\n"
+        "    end\n"
+        "    local rep_machs\n"
+        "    result = sys.exec_socksql(host, usertype, data)\n"
+        "    for i, v in ipairs(result) do\n"
+        "        db:emit(v)\n"
+        "    end\n"
+        "end\n",
+        "exec_socksql"
     }
 };
 

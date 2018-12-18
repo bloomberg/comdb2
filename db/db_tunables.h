@@ -1681,6 +1681,16 @@ REGISTER_TUNABLE("blocking_physrep",
                  TUNABLE_BOOLEAN, &gbl_blocking_physrep, 0, NULL, NULL, NULL,
                  NULL);
 
+REGISTER_TUNABLE("physrep_write",
+                 "Allow physical replicant writes.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_physwrite, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("physrep_write_shared_handle",
+                 "Maintain only a single connection against cluster.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_physwrite_shared_handle, 0, NULL, NULL,
+                 NULL, NULL);
+
 REGISTER_TUNABLE("logdelete_lock_trace",
                  "Print trace getting and releasing the logdelete lock.  "
                  "(Default: off)",

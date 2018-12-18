@@ -480,6 +480,13 @@ const char *luabb_tostring(Lua L, int idx)
     return NULL;
 }
 
+int luabb_isblob(Lua lua, int idx)
+{
+    int type = luabb_type(lua, idx);
+    return (type == DBTYPES_LSTRING || type == DBTYPES_CSTRING ||
+            type == DBTYPES_BLOB);
+}
+
 void luabb_toblob(Lua lua, int idx, blob_t *ret)
 {
     const char *c;
