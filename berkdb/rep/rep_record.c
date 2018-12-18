@@ -459,7 +459,7 @@ static void *apply_thread(void *arg)
 	LOG *lp;
 	DB_LOG *dblp;
 	DB_LSN master_lsn, my_lsn, my_last_lsn, first_repdb_lsn;
-    int last_lsn_change_time;
+    int last_lsn_change_time = 0;
 	DB_ENV *dbenv = (DB_ENV *)arg;
 	struct queued_log *q;
 	struct timespec ts;
@@ -6410,11 +6410,11 @@ recovery_release_locks(dbenv, lockid)
 	DB_LOCKREQ req = {0};
 	req.op = DB_LOCK_PUT_ALL;
 	if ((ret = __lock_vec(dbenv, lockid, 0, &req, 1, NULL)) != 0) {
-		logmsg(LOGMSG_FATAL, "%s: __lock_vec returns %d\n", ret);
+		logmsg(LOGMSG_FATAL, "%s: __lock_vec returns %d\n", __func__, ret);
 		abort();
 	}
 	if ((ret = __lock_id_free(dbenv, lockid)) != 0) {
-		logmsg(LOGMSG_FATAL, "%s: __lock_id_free returns %d\n", ret);
+		logmsg(LOGMSG_FATAL, "%s: __lock_id_free returns %d\n", __func__, ret);
 		abort();
 	}
 }

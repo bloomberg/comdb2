@@ -3955,12 +3955,13 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
             **       the hash entry is being deleted (not stored); therefore,
             **       the passed string hash key will not be stored.
             */
-            struct temptable_entry *pOldEntry = sqlite3HashInsert(
-                &pBt->temp_tables, rootPageNumToTempHashKey(iTable), 0
-            );
+#ifndef NDEBUG
+            struct temptable_entry *pOldEntry =
+#endif
+                sqlite3HashInsert(&pBt->temp_tables,
+                                  rootPageNumToTempHashKey(iTable), 0);
             assert( pOldEntry==pEntry );
             free(pEntry);
-            /* pEntry = NULL; */
         }
 
         Pthread_mutex_unlock(thd->temp_table_mtx);
@@ -5188,9 +5189,14 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
 
     pNewEntry->rootPg = iTable;
 
-    struct temptable_entry *pOldEntry = sqlite3HashInsert(&pBt->temp_tables,
-        rootPageNumToPermHashKey(pNewEntry->keyBuf, sizeof(pNewEntry->keyBuf),
-        iTable), pNewEntry);
+#ifndef NDEBUG
+    struct temptable_entry *pOldEntry =
+#endif
+        sqlite3HashInsert(&pBt->temp_tables,
+                          rootPageNumToPermHashKey(pNewEntry->keyBuf,
+                                                   sizeof(pNewEntry->keyBuf),
+                                                   iTable),
+                          pNewEntry);
 
     assert( pOldEntry==NULL );
     *piTable = iTable;
@@ -9605,7 +9611,7 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
                            bdb_cursor_ifn_t *bdbcur, int sleepms,
                            const char *func, int line, uint32_t flags)
 {
-    int rc, ref;
+    int rc;
     rc = thd->clnt->recover_deadlock_rcode =
         recover_deadlock_flags_int(bdb_state, thd, bdbcur, sleepms, func, line,
                 flags);
@@ -9619,9 +9625,9 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
                 RECOVER_DEADLOCK_MAX_STACK);
 #endif
         recover_deadlock_sc_cleanup(thd);
-        assert((ref = bdb_lockref()) == 0);
+        assert(bdb_lockref() == 0);
     } else {
-        assert((ref = bdb_lockref()) > 0);
+        assert(bdb_lockref() > 0);
 #if INSTRUMENT_RECOVER_DEADLOCK_FAILURE
         thd->clnt->recover_deadlock_func = NULL;
         thd->clnt->recover_deadlock_line = 0;

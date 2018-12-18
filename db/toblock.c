@@ -779,7 +779,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                           int replay_data_len, unsigned int line)
 {
     int rc = 0;
-    int outrc, snapinfo_outrc = 0, snapinfo = 0;
+    int outrc = 0, snapinfo_outrc = 0, snapinfo = 0;
     uint8_t buf_fstblk[FSTBLK_HEADER_LEN + FSTBLK_PRE_RSPKL_LEN +
                        BLOCK_RSPKL_LEN + FSTBLK_RSPERR_LEN + FSTBLK_RSPOK_LEN +
                        (BLOCK_ERR_LEN * MAXBLOCKOPS)];
