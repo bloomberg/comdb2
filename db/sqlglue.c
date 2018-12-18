@@ -3956,9 +3956,9 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
             **       the passed string hash key will not be stored.
             */
 #ifndef NDEBUG
-            struct temptable_entry *pOldEntry = 
+            struct temptable_entry *pOldEntry =
 #endif
-                sqlite3HashInsert(&pBt->temp_tables, 
+                sqlite3HashInsert(&pBt->temp_tables,
                                   rootPageNumToTempHashKey(iTable), 0);
             assert( pOldEntry==pEntry );
             free(pEntry);
@@ -5190,11 +5190,13 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
     pNewEntry->rootPg = iTable;
 
 #ifndef NDEBUG
-    struct temptable_entry *pOldEntry = 
+    struct temptable_entry *pOldEntry =
 #endif
         sqlite3HashInsert(&pBt->temp_tables,
-            rootPageNumToPermHashKey(pNewEntry->keyBuf,
-                sizeof(pNewEntry->keyBuf), iTable), pNewEntry);
+                          rootPageNumToPermHashKey(pNewEntry->keyBuf,
+                                                   sizeof(pNewEntry->keyBuf),
+                                                   iTable),
+                          pNewEntry);
 
     assert( pOldEntry==NULL );
     *piTable = iTable;
