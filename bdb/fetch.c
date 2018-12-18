@@ -1988,13 +1988,12 @@ err:
                 dbt_key.size += sizeof(unsigned long long);
             }
 
-            rc = fetch_cget(bdb_state, ixnum, dbcp, &dbt_key, &dbt_data,
-                            DB_SET);
+            rc =
+                fetch_cget(bdb_state, ixnum, dbcp, &dbt_key, &dbt_data, DB_SET);
 
             if (rc != 0) {
                 /* return DEADLOCK */
-                if (CURSOR_SER_ENABLED(bdb_state) && cur_ser &&
-                    !lookahead) {
+                if (CURSOR_SER_ENABLED(bdb_state) && cur_ser && !lookahead) {
                     rc = dbcp->c_close_ser(dbcp, &cur_ser->dbcs);
                     cur_ser->is_valid = !rc;
                 } else
