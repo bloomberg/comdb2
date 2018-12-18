@@ -502,7 +502,7 @@ int osql_sess_unlock_complete(osql_sess_t *sess)
  *
  */
 int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
-                    int datalen, int *found)
+                    int datalen, int *found, int8_t flags)
 {
     int rc = 0;
     int is_msg_done = 0;

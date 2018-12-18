@@ -218,6 +218,7 @@ extern int gbl_physrep_reconnect_penalty;
 extern int gbl_physrep_register_interval;
 extern int gbl_physwrite;
 extern int gbl_physwrite_shared_handle;
+extern int gbl_physwrite_wait_commit;
 extern int gbl_logdelete_lock_trace;
 extern int gbl_flush_log_at_checkpoint;
 extern int gbl_online_recovery;

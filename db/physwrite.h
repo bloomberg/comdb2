@@ -17,6 +17,19 @@
 #ifndef INCLUDED_PHYSWRITE_H
 #define INCLUDED_PHYSWRITE_H
 
+typedef physwrite_results {
+    pthread_mutex_t lk;
+    pthread_mutex_t cd;
+    int errval;
+    char *errstr;
+    int inserts;
+    int updates;
+    int deletes;
+    int cupdates;
+    int cdeletes;
+} 
+physwrite_results_t;
+
 int physwrite_route_packet(int usertype, void *data, int datalen);
 
 int physwrite_route_packet_tails(int usertype, void *data, int datalen,
