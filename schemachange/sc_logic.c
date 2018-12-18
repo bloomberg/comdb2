@@ -746,6 +746,10 @@ int resume_schema_change(void)
         int bdberr;
         void *packed_sc_data = NULL;
         size_t packed_sc_data_len;
+
+        // unset downgrading flag
+        thedb->dbs[i]->sc_downgrading = 0;
+
         if (bdb_get_in_schema_change(NULL /*tran*/, thedb->dbs[i]->tablename,
                                      &packed_sc_data, &packed_sc_data_len,
                                      &bdberr) ||

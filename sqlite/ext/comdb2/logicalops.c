@@ -617,9 +617,9 @@ static int produce_update_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
                    __func__, __LINE__, rc, rec->lsn.file, rec->lsn.offset);
             goto done;
         }
-        /* no old blob since old_dta_len == 0 */
+        /* no old data since old_dta_len == 0 */
     } else {
-        /* packedprevbuf has the new blob */
+        /* packedprevbuf has the new data */
         if ((rc = decompress_and_upgrade(
                  pCur, pCur->table, packedprevbuf, prevlen, dtafile == 0,
                  unpacked, &pCur->odh, &pCur->record, &pCur->reclen)) != 0) {
@@ -629,7 +629,7 @@ static int produce_update_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
                    __func__, __LINE__, rc, rec->lsn.file, rec->lsn.offset);
             goto done;
         }
-        /* no old blob since old_dta_len == 0 */
+        /* no old data since dtalen == 0 */
     }
 
     if (dtafile == 0) {

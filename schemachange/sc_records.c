@@ -3023,6 +3023,7 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
     bdb_llog_cursor llog_cur;
     bdb_llog_cursor *pCur = &llog_cur;
     DB_LSN curLsn = {0};
+    DB_LSN finalizeLsn = {0};
 
     bzero(pCur, sizeof(bdb_llog_cursor));
 
@@ -3125,6 +3126,9 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
         Pthread_mutex_lock(&data->s->livesc_mtx);
         curLsn = pCur->curLsn;
         Pthread_mutex_unlock(&data->s->livesc_mtx);
+        if (finalizing && log_compare(&curLsn, &finalizeLsn) >= 0) {
+            break; // done
+        }
         int now = comdb2_time_epoch();
         int copy_sc_report_freq = gbl_sc_report_freq;
         if (copy_sc_report_freq > 0 &&
@@ -3143,6 +3147,8 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
                 if (finalizing)
                     break;
                 finalizing = 1;
+                // get the lsn of current end of log
+                bdb_get_commit_genid(thedb->bdb_env, &finalizeLsn);
             }
             poll(NULL, 0, 100);
             data->s->hitLastCnt++;
