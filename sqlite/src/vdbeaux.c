@@ -2983,7 +2983,7 @@ int sqlite3VdbeHalt(Vdbe *p){
     if( p->rc==SQLITE_OK ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
       (void)
-#endif
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       sqlite3VdbeCheckFk(p, 0);
     }
   
