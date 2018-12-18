@@ -147,7 +147,7 @@ static inline int osql_should_restart(struct sqlclntstate *clnt, int rc)
 
     if (gbl_osql_random_restart && (rand() % 100) == 0) {
         uuidstr_t us;
-        snap_uid_t snap = {0};
+        snap_uid_t snap = {{0}};
         get_cnonce(clnt, &snap);
         logmsg(LOGMSG_USER,
                "Forcing random-restart of uuid=%s cnonce=%*s after nops=%d\n",
