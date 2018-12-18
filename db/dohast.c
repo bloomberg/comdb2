@@ -168,7 +168,7 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
                                  (orderby) ? " oRDeR By " : "",
                                  (orderby) ? orderby : "");
     } else {
-        limit = sqlite3ExprDescribe(v, p->pLimit);
+        limit = sqlite3ExprDescribe(v, p->pLimit->pLeft);
         if (!limit) {
             sqlite3_free(orderby);
             sqlite3_free(where);
