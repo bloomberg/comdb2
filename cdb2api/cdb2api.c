@@ -2531,7 +2531,10 @@ retry_connect:
                hndl->node_seq, hndl->flags, hndl->num_hosts,
                hndl->num_hosts_sameroom);
 
-    if ((hndl->node_seq == 0) &&
+
+    if (hndl->flags & CDB2_CONNECT_MASTER) {
+        hndl->node_seq = hndl->master;
+    } else if ((hndl->node_seq == 0) &&
         ((hndl->flags & CDB2_RANDOM) || ((hndl->flags & CDB2_RANDOMROOM) &&
                                          (hndl->num_hosts_sameroom == 0)))) {
         hndl->node_seq = getRandomExclude(hndl->num_hosts, hndl->master);
@@ -4878,6 +4881,14 @@ void cdb2_cluster_info(cdb2_hndl_tp *hndl, char **cluster, int *ports, int max,
         if (ports)
             (ports[i]) = hndl->ports[i];
     }
+}
+
+const char *cdb2_master(cdb2_hndl_tp *hndl)
+{
+    if (hndl == NULL)
+        return "unallocated cdb2 handle";
+
+    return hndl->hosts[hndl->master];
 }
 
 const char *cdb2_cnonce(cdb2_hndl_tp *hndl)

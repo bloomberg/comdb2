@@ -48,6 +48,7 @@
 #include "views.h"
 #include "str0.h"
 #include "sc_struct.h"
+#include <physwrites.h>
 #include <compat.h>
 #include <unistd.h>
 
@@ -5810,7 +5811,7 @@ static void *osql_heartbeat_thread(void *arg)
 }
 
 /* this function routes the packet in the case of local communication */
-static int net_local_route_packet(int usertype, void *data, int datalen)
+static int net_local_route_packet(int usertype, void *data, int datalen, uint8_t flags)
 {
     switch (usertype) {
     case NET_OSQL_BLOCK_RPL:
@@ -5944,9 +5945,14 @@ out:
     return rc;
 }
 
+extern int gbl_is_physical_replicant;
+int gbl_physwrite = 1;
+
 /* this wrapper tries to provide a reliable net_send that will prevent loosing
    packets
    due to queue being full */
+
+static time_t last_physrep_write = 0;
 static int offload_net_send(const char *host, int usertype, void *data,
                             int datalen, int nodelay)
 {
@@ -5963,6 +5969,17 @@ static int offload_net_send(const char *host, int usertype, void *data,
 
     if (!host) {
         /* local save, this is calling sorese_rvprpl_master */
+        if (gbl_is_physical_replicant) {
+            time_t now;
+            if (gbl_physwrite) 
+                return physwrite_route_packet(usertype, data, datalen);
+            if ((now = time(NULL)) > last_physrep_write) {
+                logmsg(LOGMSG_ERROR, "Preventing write on read-only physical "
+                       "replicant (enable 'physrep_write' to allow writes)\n");
+                last_physrep_write = now;
+            }
+            return -1;
+        }
         net_local_route_packet(usertype, data, datalen);
         return 0;
     }
@@ -6076,6 +6093,19 @@ static int offload_net_send_tails(const char *host, int usertype, void *data,
                                 nodelay, ntails, tails, tailens);
         } else {
             /* local save */
+            if (gbl_is_physical_replicant) {
+                time_t now;
+
+                if (gbl_physwrite) 
+                    return physwrite_route_packet_tails(usertype, data, datalen,
+                            ntails, tails[0], tailens[0]);
+                if ((now = time(NULL)) > last_write) {
+                    logmsg(LOGMSG_ERROR, "Preventing write on read-only "
+                            "physical replicant (enable 'physrep_write' to "
+                            "allow writes)\n");
+                    last_write = now;
+                }
+            }
             rc = net_local_route_packet_tails(usertype, data, datalen, ntails,
                                               tails, tailens);
         }

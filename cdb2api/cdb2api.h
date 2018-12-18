@@ -35,7 +35,8 @@ enum cdb2_hndl_alloc_flags {
     CDB2_RANDOM = 8,
     CDB2_RANDOMROOM = 16,
     CDB2_ROOM = 32,
-    CDB2_ADMIN = 64
+    CDB2_ADMIN = 64,
+    CDB2_CONNECT_MASTER = 128,
 };
 
 enum cdb2_request_type {
@@ -214,6 +215,7 @@ int cdb2_column_size(cdb2_hndl_tp *hndl, int col);
 void *cdb2_column_value(cdb2_hndl_tp *hndl, int col);
 const char *cdb2_errstr(cdb2_hndl_tp *hndl);
 const char *cdb2_cnonce(cdb2_hndl_tp *hndl);
+const char *cdb2_master(cdb2_hndl_tp *hndl);
 void cdb2_set_debug_trace(cdb2_hndl_tp *hndl);
 void cdb2_dump_ports(cdb2_hndl_tp *hndl, FILE *out);
 void cdb2_cluster_info(cdb2_hndl_tp *hndl, char **cluster, int *ports, int max, int *count);
