@@ -634,10 +634,28 @@ __txn_ckp_recover(dbenv, dbtp, lsnp, op, info)
 		return (ret);
 
 	if (op == DB_TXN_BACKWARD_ROLL) {
+		DB_LOGC *logc;
 		DB_LSN last_ckp = argp->last_ckp;
+		DBT data_dbt;
 		__db_txnlist_ckp(dbenv, info, lsnp);
-		__checkpoint_save(dbenv, &last_ckp, 1);
-		region->last_ckp = argp->last_ckp;
+		if ((ret = __log_cursor(dbenv, &logc)) != 0) {
+			logmsg(LOGMSG_FATAL, "%s unable to allocate log_cursor, rc=%d\n",
+					__func__, ret);
+			return (ret);
+		}
+
+		memset(&data_dbt, 0, sizeof(data_dbt));
+		data_dbt.flags = DB_DBT_USERMEM | DB_DBT_PARTIAL;
+		data_dbt.ulen = 0;
+
+		if ((ret = __log_c_get(logc, &last_ckp, &data_dbt, DB_SET)) == 0) {
+			__checkpoint_save(dbenv, &last_ckp, 1);
+			region->last_ckp = argp->last_ckp;
+		} else {
+			logmsg(LOGMSG_DEBUG, "%s not saving lsn %d:%d on backwards roll\n",
+					__func__, last_ckp.file, last_ckp.offset);
+		}
+		__log_c_close(logc);
 	}
 
 	if (op == DB_TXN_FORWARD_ROLL) {
