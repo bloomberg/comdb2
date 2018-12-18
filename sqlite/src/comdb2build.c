@@ -2113,6 +2113,8 @@ struct comdb2_ddl_context {
     comdb2ma mem;
     /* Only used during ALTER TABLE */
     struct comdb2_column *alter_column;
+    /* Table name */
+    char tablename[MAXTABLELEN];
 };
 
 /* Type properties */
@@ -2766,7 +2768,7 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
             break;
         }
     }
-    assert(found);
+    ASSERT_PARAMETER(found);
 
     /* Parent table name */
     SNPRINTF(buf, sizeof(buf), pos, "%s", pConstraint->table[parent_idx])
@@ -2796,7 +2798,6 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
             break;
         }
     }
-    assert(found);
     ASSERT_PARAMETER(found);
 
 done:
@@ -3481,7 +3482,6 @@ void comdb2AlterTableStart(
     int dryrun     /* Whether its a dryrun? */
 )
 {
-    struct schema_change_type *sc = 0;
     struct comdb2_ddl_context *ctx;
 
     assert(pParse->comdb2_ddl_ctx == 0);
@@ -3490,15 +3490,11 @@ void comdb2AlterTableStart(
     if (ctx == 0)
         goto oom;
 
-    sc = new_schemachange_type();
-    if (sc == 0)
-        goto oom;
-    ctx->sc = sc;
-
-    if ((chkAndCopyTableTokens(pParse, sc->tablename, pName1, pName2, 1, 0, 0)))
+    if ((chkAndCopyTableTokens(pParse, ctx->tablename, pName1, pName2, 1, 0,
+                               0)))
         goto cleanup;
 
-    ctx->schema->name = comdb2_strdup(ctx->mem, sc->tablename);
+    ctx->schema->name = comdb2_strdup(ctx->mem, ctx->tablename);
     if (ctx->schema->name == 0)
         goto oom;
 
@@ -3519,7 +3515,6 @@ oom:
     setError(pParse, SQLITE_NOMEM, "System out of memory");
 
 cleanup:
-    free_schema_change_type(sc);
     free_ddl_context(pParse);
     return;
 }
@@ -3529,7 +3524,6 @@ cleanup:
 */
 void comdb2AlterTableEnd(Parse *pParse)
 {
-    struct schema_change_type *sc = 0;
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     Vdbe *v;
 
@@ -3540,7 +3534,12 @@ void comdb2AlterTableEnd(Parse *pParse)
     }
 
     v = sqlite3GetVdbe(pParse);
-    sc = ctx->sc;
+
+    struct schema_change_type *sc = new_schemachange_type();
+    if (sc == 0)
+        goto oom;
+
+    memcpy(sc->tablename, ctx->tablename, MAXTABLELEN);
 
     sc->alteronly = 1;
     sc->nothrevent = 1;
@@ -3566,6 +3565,9 @@ void comdb2AlterTableEnd(Parse *pParse)
                         (vdbeFuncArgFree)&free_schema_change_type);
     return;
 
+oom:
+    setError(pParse, SQLITE_NOMEM, "System out of memory");
+
 cleanup:
     free_schema_change_type(sc);
     free_ddl_context(pParse);
@@ -3582,7 +3584,6 @@ void comdb2CreateTableStart(
     int noErr      /* Do nothing if table already exists */
 )
 {
-    struct schema_change_type *sc = 0;
     struct comdb2_ddl_context *ctx;
     int table_exists = 0;
 
@@ -3598,23 +3599,18 @@ void comdb2CreateTableStart(
     if (ctx == 0)
         goto oom;
 
-    sc = new_schemachange_type();
-    if (sc == 0)
-        goto oom;
-    ctx->sc = sc;
-
-    if (chkAndCopyTableTokens(pParse, sc->tablename, pName1, pName2,
+    if (chkAndCopyTableTokens(pParse, ctx->tablename, pName1, pName2,
                               (noErr) ? ERROR_IGNORE : ERROR_ON_TBL_FOUND, 1,
                               &table_exists))
         goto cleanup;
 
-    ctx->schema->name = comdb2_strdup(ctx->mem, sc->tablename);
+    ctx->schema->name = comdb2_strdup(ctx->mem, ctx->tablename);
     if (ctx->schema->name == 0)
         goto oom;
 
     if (noErr && table_exists) {
         ctx->flags |= DDL_NOOP;
-        logmsg(LOGMSG_DEBUG, "Table '%s' already exists.", sc->tablename);
+        logmsg(LOGMSG_DEBUG, "Table '%s' already exists.", ctx->tablename);
         /* We'll not free the context here, as the flag's needed later. */
         goto out;
     }
@@ -3624,7 +3620,6 @@ void comdb2CreateTableStart(
 oom:
     setError(pParse, SQLITE_NOMEM, "System out of memory");
 cleanup:
-    free_schema_change_type(sc);
     free_ddl_context(pParse);
 out:
     return;
@@ -3638,8 +3633,8 @@ void comdb2CreateTableEnd(
     int comdb2Opts /* Comdb2 specific table options. */
 )
 {
-    struct schema_change_type *sc = 0;
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+    struct schema_change_type *sc = 0;
     Vdbe *v;
 
     if (use_sqlite_impl(pParse)) {
@@ -3659,7 +3654,12 @@ void comdb2CreateTableEnd(
     }
 
     v = sqlite3GetVdbe(pParse);
-    sc = ctx->sc;
+
+    sc = new_schemachange_type();
+    if (sc == 0)
+        goto oom;
+
+    memcpy(sc->tablename, ctx->tablename, MAXTABLELEN);
 
     sc->addonly = 1;
     sc->nothrevent = 1;
@@ -3678,6 +3678,8 @@ void comdb2CreateTableEnd(
                     (vdbeFuncArgFree)&free_schema_change_type);
     return;
 
+oom:
+    setError(pParse, SQLITE_NOMEM, "System out of memory");
 cleanup:
     free_schema_change_type(sc);
     free_ddl_context(pParse);
@@ -4399,7 +4401,7 @@ void comdb2CreateIndex(
     int temp)
 {
     Vdbe *v;
-    struct schema_change_type *sc;
+    struct schema_change_type *sc = 0;
     struct comdb2_ddl_context *ctx;
     char *keyname;
 
@@ -4424,7 +4426,6 @@ void comdb2CreateIndex(
     sc = new_schemachange_type();
     if (sc == 0)
         goto oom;
-    ctx->sc = sc;
 
     ctx->schema->name = comdb2_strdup(ctx->mem, pTblName->a[0].zName);
     if (ctx->schema->name == 0)
@@ -4826,10 +4827,8 @@ cleanup:
 
 void comdb2DeferForeignKey(Parse *pParse, int isDeferred)
 {
-    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (use_sqlite_impl(pParse)) {
-        assert(ctx == 0);
-        ASSERT_PARAMETER(ctx);
+        ASSERT_PARAMETER(pParse->comdb2_ddl_ctx == 0);
         sqlite3DeferForeignKey(pParse, isDeferred);
         return;
     }
@@ -5048,7 +5047,7 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
 {
     Vdbe *v;
     struct dbtable *table = NULL;
-    struct schema_change_type *sc;
+    struct schema_change_type *sc = 0;
     struct comdb2_ddl_context *ctx;
     char *idx_name;
     char *tbl_name = 0;
@@ -5065,7 +5064,6 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
     sc = new_schemachange_type();
     if (sc == 0)
         goto oom;
-    ctx->sc = sc;
 
     /* Index name */
     idx_name = comdb2_strndup(ctx->mem, pName1->z, pName1->n);
