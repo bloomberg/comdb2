@@ -2,6 +2,7 @@
 #include <cdb2api.h>
 #include <pthread.h>
 #include <osqlcomm.h>
+#include <osqlsession.h>
 #include <thread_malloc.h>
 
 int gbl_phywrite_shared_handle = 0;
@@ -106,7 +107,6 @@ int physwrite_route_packet_tails(int usertype, void data, int datalen,
         dup = comdb2_bmalloc(blobmem, datalen + tailen);
     else
         dup = malloc(datalen + taillen);
-
     memmove(dup, data, datalen);
     memmove(dup + datalen, tail, tailen);
     rc = physwrite_route_packet(usertype, dup, datalen + tailen);
@@ -115,7 +115,9 @@ int physwrite_route_packet_tails(int usertype, void data, int datalen,
 }
 
 int physwrite_exec(char *host, int usertype, void *data, int datalen,
-        int *errval, char **errstr, int *inserts, int *updates,
-        int *deletes, int *cupdates, int *cdeletes, DB_LSN *commit_lsn)
+        int *errval, char **errstr, int *inserts, int *updates, int *deletes,
+        int *cupdates, int *cdeletes, DB_LSN *commit_lsn)
 {
+    int rc;
+    rc = net_route_packet_flags(usertype, data, datalen, PHYSWRITE);
 }

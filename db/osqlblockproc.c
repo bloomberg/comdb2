@@ -937,7 +937,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         if (!osql_sess_dispatched(sess) && !osql_sess_is_terminated(sess)) {
             osql_session_set_ireq(sess, NULL);
             osql_sess_set_dispatched(sess, 1);
-            rc = handle_buf_sorese(thedb, iq, debug);
+            rc = handle_buf_sorese(thedb, iq, debug, flags);
         }
         osql_sess_unlock_complete(sess);
         osql_sess_unlock(sess);
