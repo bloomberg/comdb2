@@ -904,9 +904,17 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 #endif
 
         if (gbl_osql_check_replicant_numops && numops != sess->seq + 1) {
-            send_error_to_replicant(
-                rqid, sess->offhost, RC_INTERNAL_RETRY,
-                "Master received inconsistent number of opcodes");
+            /* This is inline, so don't bother locking */
+            if (iq->physwrite_results) {
+                iq->physwrite_results.dispatched = 1;
+                iq->physwrite_results.done = 1;
+                iq->errstr = strdup("Master received inconsistent number of opcodes");
+                iq->errval = RC_INTERNAL_RETRY;
+            } else {
+                send_error_to_replicant(
+                        rqid, sess->offhost, RC_INTERNAL_RETRY,
+                        "Master received inconsistent number of opcodes");
+            }
 
             logmsg(LOGMSG_ERROR,
                    "%s: Replicant sent %d opcodes, master received %lld\n",
@@ -941,6 +949,13 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
             osql_session_set_ireq(sess, NULL);
             osql_sess_set_dispatched(sess, 1);
             rc = handle_buf_sorese(thedb, iq, debug, flags);
+            if (iq->physwrite_results) {
+                iq->physwrite_results.dispatched = 1;
+                if (rc) {
+                    iq->physwrite_results.done = 1;
+                    iq->physwrite_results.errval = RC_INTERNAL_RETRY;
+                }
+            }
         }
         osql_sess_unlock_complete(sess);
         osql_sess_unlock(sess);
