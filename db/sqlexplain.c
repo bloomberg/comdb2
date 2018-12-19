@@ -116,6 +116,7 @@ static void print_field(Vdbe *v, struct cursor_info *cinfo, int num, char *buf)
     
     struct dbtable *db = NULL;
     if (cinfo->tbl < thedb->num_dbs) {
+        assert(cinfo->tbl >= 0);
         db = thedb->dbs[cinfo->tbl];
     }
 
@@ -181,6 +182,8 @@ static int print_cursor_description(strbuf *out, struct cursor_info *cinfo)
         strbuf_appendf(out, "temp_%d", cinfo->tbl);
     } else {
         struct dbtable *db;
+
+        assert(cinfo->tbl >= 0);
         db = thedb->dbs[cinfo->tbl];
 
         if (cinfo->ix != -1) {
@@ -361,7 +364,12 @@ static void describe_cursor(Vdbe *v, int pc, struct cursor_info *cur)
     if (op->p3 <= 1) {
         struct sql_thread *sqlthd = pthread_getspecific(query_info_key);
         struct dbtable *db = get_sqlite_db(sqlthd, op->p2, &cur->ix);
-        cur->tbl = db->dbs_idx;
+        if (db != NULL) {
+            cur->tbl = db->dbs_idx;
+        } else {
+            cur->ix = -1;
+            cur->tbl = -1;
+        }
         cur->rootpage = op->p2;
         if (op->p3 == 1)
             cur->istemp = 1;
