@@ -744,8 +744,8 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
                            op->p1);
             print_cursor_description(out, &cur[op->p1]);
         } else {
-            op = &v->aOp[pc_];
-            strbuf_appendf(out, "%3d [%*s]: ", pc_, largestwidth,
+            op = &v->aOp[pc];
+            strbuf_appendf(out, "%3d [%*s]: ", pc, largestwidth,
                            sqlite3OpcodeName(op->opcode));
             strbuf_appendf(out, "%*s", indent * 4, "");
             strbuf_appendf(out, "R%d = R%d..R%d [", op->p3, op->p1,
