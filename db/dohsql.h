@@ -82,4 +82,10 @@ void dohsql_handle_delayed_syntax_error(struct sqlclntstate *clnt);
  */
 void dohsql_stats(void);
 
+/**
+ * Return explain distribution information
+ *
+ */
+void explain_distribution(dohsql_node_t *node);
+
 #endif

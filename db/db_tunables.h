@@ -1604,4 +1604,11 @@ REGISTER_TUNABLE("verbose_set_sc_in_progress",
                  TUNABLE_BOOLEAN, &gbl_verbose_set_sc_in_progress,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("send_failed_dispatch_message",
+                 "Send explicit failed-dispatch message to the api.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_send_failed_dispatch_message,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+
 #endif /* _DB_TUNABLES_H */
