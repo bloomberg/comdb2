@@ -443,7 +443,7 @@ set all_graphs {
     line GET {or
       {line ALIAS /table-name}
       {line ANALYZE {or COVERAGE THRESHOLD} /table-name}
-      {line {or {or NOT} RESERVED} KW}
+      {line {opt {line {opt NOT} RESERVED}} KW}
     }
   }
   put {
