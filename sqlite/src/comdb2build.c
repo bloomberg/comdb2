@@ -5098,11 +5098,8 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
             goto cleanup;
 
         table = get_dbtable_by_name(tbl_name);
-        if (table == 0) {
-            pParse->rc = SQLITE_ERROR;
-            sqlite3ErrorMsg(pParse, "Table '%s' not found.", tbl_name);
-            goto cleanup;
-        }
+        /* Already checked in chkAndCopyTable(). */
+        assert(table);
 
         /* Check whether an index exist with the specified name. */
         for (int i = 0; i < table->schema->nix; i++) {
