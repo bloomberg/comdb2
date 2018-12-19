@@ -724,25 +724,47 @@ set all_graphs {
               {line RENAME TO new-table-name}
               {loop
                   {or
-                      {line ADD column-name column-type
-                          {opt {loop {line column-constraint } { , } } }
+                      {line ADD
+                          {or
+                              {line {opt COLUMN} column-name column-type
+                                  {opt {loop {line column-constraint } { , } } }
+                              }
+                              {line PRIMARY KEY ( index-column-list ) }
+                              {stack
+                                  {line {opt UNIQUE } INDEX index-name
+                                      ( index-column-list ) }
+                                  {line {opt WITH DATACOPY } {opt WHERE expr } }
+                              }
+                              {stack
+                                  {line {opt CONSTRAINT constraint-name } }
+                                  {line FOREIGN KEY ( index-column-list ) foreign-key-def }
+                              }
+                          }
                       }
-                      {line DROP {opt COLUMN} column-name }
-                      {stack
-                          {line ADD {opt UNIQUE } INDEX index-name
-                              ( index-column-list ) }
-                          {line {opt OPTION DATACOPY } {opt WHERE expr } }
+                      {line ALTER
+                          {line {opt COLUMN} column-name }
+                          {or
+                              {line {opt SET DATA} TYPE column-type }
+                              {line SET DEFAULT expr }
+                              {line DROP DEFAULT }
+                              {line
+                                  {or
+                                      {line SET }
+                                      {line DROP }
+                                  }
+                                  NOT NULL
+                              }
+                          }
                       }
-                      {line DROP INDEX index-name }
-                      {line ADD PRIMARY KEY ( index-column-list ) }
-                      {line DROP PRIMARY KEY }
-                      {stack
-                          {line ADD {opt CONSTRAINT constraint-name } }
-                          {line FOREIGN KEY ( index-column-list ) foreign-key-def }
+                      {line DROP
+                          {or
+                              {line {opt COLUMN} column-name }
+                                   {line DROP INDEX index-name }
+                              {line PRIMARY KEY }
+                              {line FOREIGN KEY constraint-name }
+                          }
                       }
-                      {line DROP FOREIGN KEY constraint-name }
                   }
-                  { , }
               }
               {line DO NOTHING }
           }
