@@ -511,7 +511,8 @@ void explain_data_delete(IndentInfo *p)
 }
 
 void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
-                          int largestwidth, int pc, struct cursor_info *cur)
+                          int largestwidth, int pc, struct cursor_info *cur,
+                          int *pSkipCount)
 {
     char str[2];
     Op *op = &v->aOp[pc];
@@ -744,12 +745,16 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
                            op->p1);
             print_cursor_description(out, &cur[op->p1]);
         } else {
-            op = &v->aOp[pc];
+            Op *colOp = &v->aOp[pc];
+            op = &v->aOp[pc_];
             strbuf_appendf(out, "%3d [%*s]: ", pc, largestwidth,
-                           sqlite3OpcodeName(op->opcode));
+                           sqlite3OpcodeName(colOp->opcode));
             strbuf_appendf(out, "%*s", indent * 4, "");
-            strbuf_appendf(out, "R%d = R%d..R%d [", op->p3, op->p1,
-                           op->p1 + op->p2 - 1);
+            if (v->aOp[pc_].opcode == OP_ResultRow) {
+                strbuf_appendf(out, "R%d..R%d [", op->p1, op->p1 + op->p2 - 1);
+            } else {
+                strbuf_appendf(out, "R%d = R%d..R%d [", op->p3, op->p1, op->p1 + op->p2 - 1);
+            }
 
             cursor = v->aOp[pc].p1;
             while (v->aOp[pc].opcode == OP_Column) {
@@ -766,6 +771,8 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
                 ++pc;
             }
             strbuf_appendf(out, " (from cursor %d)]", cursor);
+            strbuf_appendf(out, " (count:%d)", col_count);
+            *pSkipCount = col_count - 1;
         }
         break;
     }
@@ -1211,7 +1218,7 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         strbuf_append(out, "???");
         break;
     }
-    if (op->zComment)
+    if (op->zComment && *pSkipCount == 0)
         strbuf_appendf(out, " (cmnt:%s)", op->zComment);
 }
 
@@ -1269,7 +1276,11 @@ int newsql_dump_query_plan(struct sqlclntstate *clnt, sqlite3 *hndl)
         int indent = indentation.aiIndent[pc];
         if (indent < 0)
             indent = 0;
-        get_one_explain_line(hndl, out, v, indent, maxwidth, pc, cur);
+        int skipCount = 0;
+        get_one_explain_line(
+            hndl, out, v, indent, maxwidth, pc, cur, &skipCount
+        );
+        if (skipCount != 0) pc += skipCount;
         char *row[] = {(char*)strbuf_buf(out)};
         write_response(clnt, RESPONSE_ROW_STR, row, 1);
         strbuf_clear(out);
