@@ -443,16 +443,22 @@ set all_graphs {
     line GET {or
       {line ALIAS /table-name}
       {line ANALYZE {or COVERAGE THRESHOLD} /table-name}
+      {line {or {or NOT} RESERVED} KW}
     }
   }
   put {
     line PUT {or
-      {line ANALYZE {or COVERAGE THRESHOLD} /table-name /numeric-literal}
-      {line DEFAULT PROCEDURE /procedure-name {or /string-literal /numeric-literal}}
       {line ALIAS /local-table-name /remote-table-name}
-      {line PASSWORD {or OFF /string-literal} FOR /user-name}
+      {line ANALYZE {or COVERAGE THRESHOLD} /table-name /numeric-literal}
       {line AUTHENTICATION {or ON OFF}}
+      {line DEFAULT PROCEDURE /procedure-name {or /string-literal /numeric-literal}}
+      {line GENID48 {or ENABLE DISABLE}}
+      {line PASSWORD {or OFF /string-literal} FOR /user-name}
+      {line ROWLOCKS {or ENABLE DISABLE}}
+      {line SCHEMACHANGE {or COMMITSLEEP CONVERTSLEEP} /numeric-literal}
+      {line SKIPSCAN {or ENABLE DISABLE}}
       {line TIME PARTITION /partition-name RETENTION /numeric-literal}
+      {line TUNABLE /string-literal {or /string-literal /numeric-literal}}
     }
   }
   set-stmt {
