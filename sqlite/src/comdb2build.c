@@ -4412,7 +4412,7 @@ void comdb2CreateIndex(
     int temp)
 {
     Vdbe *v;
-    struct schema_change_type *sc = 0;
+    struct schema_change_type *sc;
     struct comdb2_ddl_context *ctx;
     char *keyname;
 
