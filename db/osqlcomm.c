@@ -48,7 +48,7 @@
 #include "views.h"
 #include "str0.h"
 #include "sc_struct.h"
-#include <physwrites.h>
+#include <physwrite.h>
 #include <compat.h>
 #include <unistd.h>
 
@@ -2923,7 +2923,7 @@ static int offload_net_send_tails(const char *host, int usertype, void *data,
 static int get_blkout(time_t now, char *nodes[REPMAX], int *nds);
 
 static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
-                         int nettype);
+                         int nettype, uint8_t flags);
 static int netrpl2req(int netrpltype);
 
 static void net_osql_rcv_echo_ping(void *hndl, void *uptr, char *fromnode,
@@ -7657,6 +7657,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
 #define OSQL_BP_MAXLEN (32 * 1024)
 
+extern __thread physwrite_results_t *physwrite_results;
+
 static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
                          int nettype, uint8_t flags)
 {
@@ -7755,7 +7757,15 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
         goto done;
     }
 
-    iq->is_physwrite = (flags & PHYSWRITE);
+    if (flags & PHYSWRITE) {
+        iq->is_physwrite = 1;
+        assert(physwrite_results);
+        iq->physwrite_results = physwrite_results;
+    } else {
+        iq->is_physwrite = 0;
+        assert(!physwrite_results);
+        iq->physwrite_results = NULL;
+    }
 
     /* create the request */
     /* NOTE: this adds the session to the repository; we make sure that freshly

@@ -1329,6 +1329,8 @@ struct ireq {
     /* The stats for the origin node of this request (can be NULL) */
     struct rawnodestats *rawnodestats;
 
+    physwrite_results_t *physwrite_results;
+
     /* copy of blkseq */
     uint8_t seq[MAX_SEQ_LEN];
 
@@ -1418,6 +1420,7 @@ struct ireq {
     bool sc_locked : 1;
     bool have_snap_info : 1;
     bool sc_should_abort : 1;
+    bool is_physwrite : 1;
 
     int written_row_count;
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */

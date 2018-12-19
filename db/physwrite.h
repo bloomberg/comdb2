@@ -17,9 +17,12 @@
 #ifndef INCLUDED_PHYSWRITE_H
 #define INCLUDED_PHYSWRITE_H
 
-typedef physwrite_results {
+typedef struct physwrite_results_s {
     pthread_mutex_t lk;
     pthread_mutex_t cd;
+    int dispatched;
+    int done;
+    DB_LSN commit_lsn;
     int errval;
     char *errstr;
     int inserts;
@@ -27,8 +30,7 @@ typedef physwrite_results {
     int deletes;
     int cupdates;
     int cdeletes;
-} 
-physwrite_results_t;
+} physwrite_results_t;
 
 int physwrite_route_packet(int usertype, void *data, int datalen);
 

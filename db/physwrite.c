@@ -5,8 +5,10 @@
 #include <osqlsession.h>
 #include <thread_malloc.h>
 
-int gbl_phywrite_shared_handle = 0;
+int gbl_physwrite_shared_handle = 0;
 int gbl_physwrite_wait_commit = 1;
+int gbl_physwrite_long_write_threshold = 10;
+
 pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
 
 enum {
@@ -22,11 +24,12 @@ typedef session
 } session_t;
 
 static cdb2_hndl_tp *shared_hndl = NULL;
-__thread session_t *sess;
 
 static char *dbname;
 static char *dbtype;
 static char *dbhost;
+
+__thread session_t *sess;
 
 static session_t *retrieve_session(void)
 {
@@ -114,10 +117,42 @@ int physwrite_route_packet_tails(int usertype, void data, int datalen,
     return rc;
 }
 
+__thread physwrite_results_t *physwrite_results;
+
 int physwrite_exec(char *host, int usertype, void *data, int datalen,
         int *errval, char **errstr, int *inserts, int *updates, int *deletes,
         int *cupdates, int *cdeletes, DB_LSN *commit_lsn)
 {
-    int rc;
+    int rc, cnt=0;
+    physwrite_results_t results = {0};
+    Pthread_mutex_init(&results.lk, NULL);
+    Pthread_cond_init(&results.cd, NULL);
+    physwrite_results = &results;
     rc = net_route_packet_flags(usertype, data, datalen, PHYSWRITE);
+    if (results.dispatched) {
+        Pthread_mutex_lock(&results.lk);
+        while(!results.done) {
+            struct timespec now;
+            if (cnt++ > gbl_physwrite_long_write_threshold) {
+                logmsg(LOGMSG_WARN, "%s long write outstanding for %d seconds.\n",
+                        __func__, cnt);
+            }
+            rc = clock_gettime(CLOCK_REALTIME, &now);
+            now.tv_sec += 1;
+            Pthread_cond_timedwait(&results.cd, &results.lk, &now);
+        } 
+        Pthread_mutex_unlock(&results.lk);
+        *errval = results.errval;
+        *errstr = results.errstr;
+        *inserts = results.inserts;
+        *updates = results.updates;
+        *deletes = results.deletes;
+        *cupdates = results.cupdates;
+        *cdeletes = results.cdeletes;
+        *commit_lsn = results.commit_lsn;
+    }
+    physwrite_results = NULL;
+    Pthread_mutex_destroy(&results.lk);
+    Pthread_cond_destroy(&results.cd);
+    return results.dispatched;
 }
