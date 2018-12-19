@@ -2748,13 +2748,17 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
     struct dbtable *table;
     struct schema *key;
     int pos = 0;
+#ifndef NDEBUG
     int found = 0;
+#endif
 
     /* Child key columns and sort orders */
     for (int i = 0; i < pConstraint->lcltable->schema->nix; i++) {
         if (strcasecmp(pConstraint->lclkeyname,
                        pConstraint->lcltable->schema->ix[i]->csctag) == 0) {
+#ifndef NDEBUG
             found = 1;
+#endif
             key = pConstraint->lcltable->schema->ix[i];
 
             for (int j = 0; j < key->nmembers; j++) {
@@ -2768,7 +2772,9 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
             break;
         }
     }
-    ASSERT_PARAMETER(found);
+#ifndef NDEBUG
+    assert(found == 1);
+#endif
 
     /* Parent table name */
     SNPRINTF(buf, sizeof(buf), pos, "%s", pConstraint->table[parent_idx])
@@ -2780,11 +2786,15 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
     assert(table);
 
     /* Parent key columns and sort orders */
+#ifndef NDEBUG
     found = 0;
+#endif
     for (int i = 0; i < table->schema->nix; i++) {
         if (strcasecmp(pConstraint->keynm[parent_idx],
                        table->schema->ix[i]->csctag) == 0) {
+#ifndef NDEBUG
             found = 1;
+#endif
             key = table->schema->ix[i];
 
             for (int j = 0; j < key->nmembers; j++) {
@@ -2798,7 +2808,9 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
             break;
         }
     }
-    ASSERT_PARAMETER(found);
+#ifndef NDEBUG
+    assert(found == 1);
+#endif
 
 done:
     gen_constraint_name_int(buf, pos, out, out_size);
@@ -3524,8 +3536,8 @@ cleanup:
 */
 void comdb2AlterTableEnd(Parse *pParse)
 {
-    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     Vdbe *v;
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
 
     if (ctx == 0) {
         /* An error must have been set. */
@@ -3584,7 +3596,6 @@ void comdb2CreateTableStart(
     int noErr      /* Do nothing if table already exists */
 )
 {
-    struct comdb2_ddl_context *ctx;
     int table_exists = 0;
 
     if (isTemp || isView || isVirtual || pParse->db->init.busy ||
@@ -3595,7 +3606,7 @@ void comdb2CreateTableStart(
         return;
     }
 
-    ctx = create_ddl_context(pParse);
+    struct comdb2_ddl_context *ctx = create_ddl_context(pParse);
     if (ctx == 0)
         goto oom;
 
@@ -3633,8 +3644,8 @@ void comdb2CreateTableEnd(
     int comdb2Opts /* Comdb2 specific table options. */
 )
 {
-    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     struct schema_change_type *sc = 0;
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     Vdbe *v;
 
     if (use_sqlite_impl(pParse)) {
@@ -4419,12 +4430,12 @@ void comdb2CreateIndex(
 
     v = sqlite3GetVdbe(pParse);
 
-    ctx = create_ddl_context(pParse);
-    if (ctx == 0)
-        goto oom;
-
     sc = new_schemachange_type();
     if (sc == 0)
+        goto oom;
+
+    ctx = create_ddl_context(pParse);
+    if (ctx == 0)
         goto oom;
 
     ctx->schema->name = comdb2_strdup(ctx->mem, pTblName->a[0].zName);
@@ -4828,7 +4839,7 @@ cleanup:
 void comdb2DeferForeignKey(Parse *pParse, int isDeferred)
 {
     if (use_sqlite_impl(pParse)) {
-        ASSERT_PARAMETER(pParse->comdb2_ddl_ctx == 0);
+        assert(pParse->comdb2_ddl_ctx == 0);
         sqlite3DeferForeignKey(pParse, isDeferred);
         return;
     }
@@ -5047,7 +5058,7 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
 {
     Vdbe *v;
     struct dbtable *table = NULL;
-    struct schema_change_type *sc = 0;
+    struct schema_change_type *sc;
     struct comdb2_ddl_context *ctx;
     char *idx_name;
     char *tbl_name = 0;
@@ -5057,12 +5068,12 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
 
     v = sqlite3GetVdbe(pParse);
 
-    ctx = create_ddl_context(pParse);
-    if (ctx == 0)
-        goto oom;
-
     sc = new_schemachange_type();
     if (sc == 0)
+        goto oom;
+
+    ctx = create_ddl_context(pParse);
+    if (ctx == 0)
         goto oom;
 
     /* Index name */
