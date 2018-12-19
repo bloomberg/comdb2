@@ -617,7 +617,6 @@ void ast_print(ast_t *ast)
                ast_param_str(ast->stack[i].op, ast->stack[i].obj));
 }
 
-
 int comdb2_check_parallel(Parse *pParse)
 {
     ast_t *ast = pParse->ast;
