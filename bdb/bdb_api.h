@@ -592,6 +592,10 @@ int bdb_cmp_genids(unsigned long long a, unsigned long long b);
 int bdb_inplace_cmp_genids(bdb_state_type *bdb_state, unsigned long long g1,
                            unsigned long long g2);
 
+/* using the bdb_state object, return the updateid for this genid */
+int get_updateid_from_genid(bdb_state_type *bdb_state,
+                            unsigned long long genid);
+
 /* Retrieve the participant stripe id which is encoded in the genid.
  * Return codes:
  *    -1    there are no bits allocated for participant stripe id
@@ -1587,6 +1591,12 @@ int bdb_get_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_delete_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
                        const char *table, int *bdberr);
 
+int bdb_get_sc_start_lsn(tran_type *tran, const char *table, void *plsn,
+                         int *bdberr);
+int bdb_set_sc_start_lsn(tran_type *tran, const char *table, void *plsn,
+                         int *bdberr);
+int bdb_delete_sc_start_lsn(tran_type *tran, const char *table, int *bdberr);
+
 enum {
     ACCESS_INVALID = 0,
     ACCESS_READ = 1,
@@ -2106,5 +2116,8 @@ int bdb_rep_stats(bdb_state_type *bdb_state, int64_t *nrep_deadlocks);
 int bdb_run_logical_recovery(bdb_state_type *bdb_state, int locks_only);
 
 int truncate_asof_pglogs(bdb_state_type *bdb_state, int file, int offset);
+
+void bdb_set_logical_live_sc(bdb_state_type *bdb_state);
+void bdb_clear_logical_live_sc(bdb_state_type *bdb_state);
 
 #endif

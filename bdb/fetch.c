@@ -3358,6 +3358,35 @@ int bdb_fetch_next_nodta_genid(bdb_state_type *bdb_state, void *ix, int ixnum,
     return outrc;
 }
 
+int bdb_fetch_next_nodta_genid_tran(bdb_state_type *bdb_state, void *ix,
+                                    int ixnum, int ixlen, void *lastix,
+                                    int lastrrn, unsigned long long lastgenid,
+                                    void *ixfound, int *rrn,
+                                    unsigned long long *genid, void *tran,
+                                    bdb_fetch_args_t *args, int *bdberr)
+{
+    int outrc;
+
+    *bdberr = BDBERR_NOERROR;
+
+    BDB_READLOCK("bdb_fetch_next_nodta_genid");
+
+    outrc = bdb_fetch_int(0,              /* return no data */
+                          FETCH_INT_NEXT, /* next */
+                          1,              /* lookahead */
+                          bdb_state, ix, ixnum, ixlen, lastix, lastrrn,
+                          lastgenid, NULL, 0, NULL, /* dta, dtalen, reqdtalen */
+                          ixfound, rrn, NULL,       /* recnum */
+                          genid, 0, NULL, NULL, NULL, NULL, /* no blobs */
+                          0, tran,                          /* no txn */
+                          NULL,                             /* no cur_ser */
+                          args, bdberr);
+
+    BDB_RELLOCK();
+
+    return outrc;
+}
+
 int bdb_fetch_next_nodta_genid_nl_ser(bdb_state_type *bdb_state, void *ix,
                                       int ixnum, int ixlen, void *lastix,
                                       int lastrrn, unsigned long long lastgenid,

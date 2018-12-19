@@ -2442,9 +2442,9 @@ retry:
         iq->gluewhere = "bdb_fetch_next_nodta_genid_nl_ser done";
     } else {
         iq->gluewhere = req = "bdb_fetch_next_nodta_genid";
-        ixrc = bdb_fetch_next_nodta_genid(bdb_handle, key, ixnum, keylen,
-                                          curlast, lastrrn, lastgenid, fndkey,
-                                          fndrrn, genid, args, &bdberr);
+        ixrc = bdb_fetch_next_nodta_genid_tran(
+            bdb_handle, key, ixnum, keylen, curlast, lastrrn, lastgenid, fndkey,
+            fndrrn, genid, trans, args, &bdberr);
         iq->gluewhere = "bdb_fetch_next_nodta_genid done";
     }
     if (ixrc == -1) {
@@ -6032,6 +6032,47 @@ int ix_check_genid(struct ireq *iq, void *trans, unsigned long long genid,
         return 1;
     if (rc == IX_NOTFND)
         return 0;
+    *bdberr = rc;
+    return -1;
+}
+
+/*  Returns 0 if not found, 1 if found / found newer, -1 if error */
+int ix_check_update_genid(struct ireq *iq, void *trans,
+                          unsigned long long genid, int *bdberr)
+{
+    int rc = 0;
+    int reqdtalen = 0;
+    unsigned long long foundgenid = 0ULL;
+    unsigned long long lastgenid = genid;
+    int fndrrn = 0;
+    void *bdb_state = get_bdb_handle_ireq(iq, AUXDB_NONE);
+
+    *bdberr = 0;
+    rc = ix_find_by_rrn_and_genid_tran(iq, 2 /*rrn*/, genid, NULL, &reqdtalen,
+                                       0, trans);
+    if (rc == IX_FND) {
+        return 1;
+    }
+    if (rc == IX_NOTFND) {
+        rc = ix_next_trans(iq, trans, -1, &genid, sizeof(unsigned long long),
+                           &lastgenid, 2, genid, NULL, &fndrrn, &foundgenid,
+                           NULL, NULL, 0, 0);
+        if (rc == 1 || rc == 2) {
+            if (bdb_inplace_cmp_genids(bdb_state, genid, foundgenid) == 0 &&
+                (get_updateid_from_genid(bdb_state, genid) <=
+                 get_updateid_from_genid(bdb_state, foundgenid)))
+                rc = 1;
+            else
+                rc = 0;
+            return rc;
+        } else if (rc < 0) {
+            logmsg(LOGMSG_ERROR, "%s: failed to get next genid, rc = %d\n",
+                   __func__, rc);
+            return 0;
+        } else {
+            return 0;
+        }
+    }
     *bdberr = rc;
     return -1;
 }

@@ -22,6 +22,7 @@
 #include <datetime.h>
 void comdb2SetWriteFlag(int);
 
+#include "cdb2_constants.h"
 #include <logmsg.h>
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
@@ -440,7 +441,7 @@ int sqlite3Init(sqlite3 *db, char **pzErrMsg){
   int commit_internal = !(db->mDbFlags&DBFLAG_SchemaChange);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   char *tmp = 0;
-  char dbname[32];   /* ok, this needs to ship! */
+  char dbname[MAX_DBNAME_LENGTH];   /* ok, this needs to ship! */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   
   assert( sqlite3_mutex_held(db->mutex) );

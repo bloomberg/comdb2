@@ -436,6 +436,8 @@ function randomwrites
         # Delete a record from t1
         [[ "1" == "$del_t1" ]] && delete_rand_t1 $dbnm
 
+        sleep 0.3
+
     done
 
     return 0

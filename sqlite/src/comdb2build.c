@@ -725,6 +725,9 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
         sc->force_blob_rebuild = 1;
     }
 
+    if (!sc->force_rebuild)
+        sc->use_plan = 1;
+
     if (OPT_ON(opt, PAGE_ORDER))
         sc->scanmode = SCAN_PAGEORDER;
 
@@ -845,9 +848,9 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
     free(indexname);
 
     sc->nothrevent = 1;
-    sc->live = 1;
     sc->rebuild_index = 1;
     sc->index_to_rebuild = index_num;
+    sc->use_plan = 1;
     sc->scanmode = gbl_default_sc_scanmode;
 
     if (OPT_ON(opt, PAGE_ORDER))
@@ -857,6 +860,16 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
         sc->live = 0;
     else
         sc->live = 1;
+
+    if (OPT_ON(opt, READ_ONLY))
+        sc->live = 0;
+    else
+        sc->live = 1;
+
+    sc->commit_sleep = gbl_commit_sleep;
+    sc->convert_sleep = gbl_convert_sleep;
+
+    sc->same_schema = 1;
 
     comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
                     (vdbeFuncArgFree)&free_schema_change_type);

@@ -1579,6 +1579,7 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
     tbl->dbenv = env;
     tbl->dbnum = dbnum;
     tbl->lrl = dyns_get_db_table_size(); /* this gets adjusted later */
+    Pthread_rwlock_init(&tbl->sc_live_lk, NULL);
     if (dbnum == 0) {
         /* if no dbnumber then no default tag is required ergo lrl can be 0 */
         if (tbl->lrl < 0)
@@ -2457,7 +2458,7 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
     } 
     
     /* make sure the database directory exists! */
-    struct stat sb;
+    struct stat sb = {0};
     rc = stat(dbenv->basedir, &sb);
     if (rc || !S_ISDIR(sb.st_mode)) {
         logmsg(LOGMSG_FATAL, "DB directory '%s' does not exist\n",
@@ -5002,6 +5003,10 @@ static void register_all_int_switches()
     register_int_switch("return_long_column_names",
                         "Enables returning of long column names. (Default: ON)",
                         &gbl_return_long_column_names);
+    register_int_switch(
+        "logical_live_sc",
+        "Enables online schema change with logical redo. (Default: OFF)",
+        &gbl_logical_live_sc);
 }
 
 static void getmyid(void)

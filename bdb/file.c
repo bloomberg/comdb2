@@ -3423,6 +3423,14 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
         }
     }
 
+    extern int gbl_logical_live_sc;
+    if (gbl_logical_live_sc) {
+        unsigned int sc_get_logical_redo_lwm();
+        unsigned int sc_logical_lwm = sc_get_logical_redo_lwm();
+        if (sc_logical_lwm && sc_logical_lwm < lowfilenum)
+            lowfilenum = sc_logical_lwm;
+    }
+
     /* debug: print filenums from other nodes */
 
     /* if we have a maximum filenum defined in bdb attributes which is lower,

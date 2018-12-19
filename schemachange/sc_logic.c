@@ -471,6 +471,9 @@ int do_schema_change_tran(sc_arg_t *arg)
         rc = do_alter_stripes(s);
 
     if (rc == SC_MASTER_DOWNGRADE) {
+        while (s->logical_livesc) {
+            poll(NULL, 0, 100);
+        }
         if (s && s->newdb && s->newdb->handle) {
             int bdberr;
 
@@ -743,6 +746,10 @@ int resume_schema_change(void)
         int bdberr;
         void *packed_sc_data = NULL;
         size_t packed_sc_data_len;
+
+        // unset downgrading flag
+        thedb->dbs[i]->sc_downgrading = 0;
+
         if (bdb_get_in_schema_change(NULL /*tran*/, thedb->dbs[i]->tablename,
                                      &packed_sc_data, &packed_sc_data_len,
                                      &bdberr) ||
@@ -1281,8 +1288,12 @@ int backout_schema_changes(struct ireq *iq, tran_type *tran)
         wrlock_schema_lk();
         iq->sc_locked = 1;
     }
+    iq->sc_should_abort = 1;
     s = iq->sc = iq->sc_pending;
     while (s != NULL) {
+        while (s->logical_livesc) {
+            poll(NULL, 0, 100);
+        }
         if (s->addonly) {
             if (s->addonly == SC_DONE_ADD)
                 delete_db(s->tablename);

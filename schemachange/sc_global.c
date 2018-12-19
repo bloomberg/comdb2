@@ -74,14 +74,6 @@ int rep_sync_save;
 int log_sync_save;
 int log_sync_time_save;
 
-int gbl_sc_thd_failed = 0;
-
-/* All writer threads have to grab the lock in read/write mode.  If a live
- * schema change is in progress then they have to do extra stuff. */
-pthread_rwlock_t sc_live_rwlock = PTHREAD_RWLOCK_INITIALIZER;
-
-int schema_change = SC_NO_CHANGE; /*static int schema_change_doomed = 0;*/
-
 int stopsc = 0; /* stop schemachange, so it can resume */
 
 inline int is_dta_being_rebuilt(struct scplan *plan)
@@ -164,6 +156,7 @@ typedef struct {
     uint64_t seed;
     uint32_t host; /* crc32 of machine name */
     time_t time;
+    uint32_t logical_lwm;
     char mem[1];
 } sc_table_t;
 
@@ -314,7 +307,7 @@ void reset_sc_stat()
  * change (removing temp tables etc). */
 void live_sc_off(struct dbtable *db)
 {
-    Pthread_rwlock_wrlock(&sc_live_rwlock);
+    Pthread_rwlock_wrlock(&db->sc_live_lk);
     db->sc_to = NULL;
     db->sc_from = NULL;
     db->sc_abort = 0;
@@ -324,7 +317,11 @@ void live_sc_off(struct dbtable *db)
     db->sc_deletes = 0;
     db->sc_nrecs = 0;
     db->sc_prev_nrecs = 0;
-    Pthread_rwlock_unlock(&sc_live_rwlock);
+    if (db->sc_live_logical) {
+        bdb_clear_logical_live_sc(db->handle);
+        db->sc_live_logical = 0;
+    }
+    Pthread_rwlock_unlock(&db->sc_live_lk);
 }
 
 void sc_set_downgrading(struct schema_change_type *s)
@@ -342,13 +339,16 @@ void sc_set_downgrading(struct schema_change_type *s)
     /* make sure no one writes to the table */
     bdb_lock_table_write(s->db->handle, tran);
 
-    Pthread_rwlock_wrlock(&sc_live_rwlock);
+    Pthread_rwlock_wrlock(&s->db->sc_live_lk);
     /* live_sc_post* code will look at this and return errors properly */
     s->db->sc_downgrading = 1;
     s->db->sc_to = NULL;
     s->db->sc_from = NULL;
     s->db->sc_abort = 0;
-    Pthread_rwlock_unlock(&sc_live_rwlock);
+    Pthread_rwlock_unlock(&s->db->sc_live_lk);
+
+    if (s->db->sc_live_logical)
+        bdb_clear_logical_live_sc(s->db->handle);
 
     trans_abort(&iq, tran);
 }
@@ -397,4 +397,35 @@ int is_table_in_schema_change(const char *tbname, tran_type *tran)
         return rc;
     }
     return 0;
+}
+
+void sc_set_logical_redo_lwm(char *table, unsigned int file)
+{
+    sc_table_t *sctbl = NULL;
+    Pthread_mutex_lock(&schema_change_in_progress_mutex);
+    assert(sc_tables);
+    sctbl = hash_find_readonly(sc_tables, &table);
+    assert(sctbl);
+    sctbl->logical_lwm = file;
+    Pthread_mutex_unlock(&schema_change_in_progress_mutex);
+}
+
+unsigned int sc_get_logical_redo_lwm()
+{
+    unsigned int bkt;
+    void *ent;
+    sc_table_t *sctbl = NULL;
+    unsigned int lwm = 0;
+    if (!gbl_logical_live_sc)
+        return 0;
+    Pthread_mutex_lock(&schema_change_in_progress_mutex);
+    if (sc_tables)
+        sctbl = hash_first(sc_tables, &ent, &bkt);
+    while (gbl_schema_change_in_progress && sctbl) {
+        if (lwm == 0 || sctbl->logical_lwm < lwm)
+            lwm = sctbl->logical_lwm;
+        sctbl = hash_next(sc_tables, &ent, &bkt);
+    }
+    Pthread_mutex_unlock(&schema_change_in_progress_mutex);
+    return lwm;
 }
