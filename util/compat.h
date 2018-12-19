@@ -53,7 +53,7 @@ typedef struct ack_info_t {
         (ptr)->len = payloadsz;                                                \
         (ptr)->fromlen = __len;                                                \
         (ptr)->from = (ptr)->to = 0;                                           \
-        strcpy(ack_info_from_host(ptr), fromhost);                             \
+        strcpy((char *)((uint8_t *)(ptr) + sizeof(ack_info)), fromhost);       \
     } while (0)
 
 #define ack_info_data(info) (void *)((uint8_t *)(info) + (info)->hdrsz)
