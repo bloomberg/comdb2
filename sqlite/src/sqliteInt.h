@@ -1100,7 +1100,6 @@ struct BusyHandler {
 #  endif
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
-
 /*
 ** Forward references to structures
 */

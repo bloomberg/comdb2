@@ -23,7 +23,6 @@
 ** in the common case, they are usually small and no file I/O needs to
 ** occur.
 */
-
 #include "sqliteInt.h"
 
 /* Forward references to internal structures */
