@@ -142,9 +142,8 @@ typedef enum {
         33 /* reliable table version, updated by any schema change
             */
     ,
-    LLMETA_TABLE_PARAMETERS =
-        34 /* store various parameter values for tables stored
-        as a blob */
+    LLMETA_TABLE_PARAMETERS = 34 /* store various parameter values for tables
+                              stored as a blob */
     ,
     LLMETA_ROWLOCKS_STATE = 35
     /* for some reason we skip 36 */
@@ -161,7 +160,8 @@ typedef enum {
     LLMETA_TABLE_USER_SCHEMA = 44,
     LLMETA_USER_PASSWORD_HASH = 45,
     LLMETA_FVER_FILE_TYPE_QDB = 46, /* file version for a dbqueue */
-    LLMETA_TABLE_NUM_SC_DONE = 47
+    LLMETA_TABLE_NUM_SC_DONE = 47,
+    LLMETA_GLOBAL_STRIPE_INFO = 48
 } llmetakey_t;
 
 struct llmeta_file_type_key {
@@ -1259,8 +1259,8 @@ int bdb_llmeta_open(char name[], char dir[], bdb_state_type *parent_bdb_handle,
         llmeta_bdb_state = bdb_create_more_lite(name, dir, 0, LLMETA_IXLEN, 0,
                                                 parent_bdb_handle, bdberr);
     else
-        llmeta_bdb_state = bdb_open_more_lite(name, dir, 0, LLMETA_IXLEN, 0,
-                                              parent_bdb_handle, bdberr);
+        llmeta_bdb_state = bdb_open_more_lite(
+            name, dir, 0, LLMETA_IXLEN, 0, parent_bdb_handle, NULL, 0, bdberr);
 
     BDB_RELLOCK();
 
@@ -4414,6 +4414,157 @@ done:
     return rc;
 }
 
+struct llmeta_global_stripe_info {
+    int stripes;
+    int blobstripe;
+};
+
+enum { LLMETA_GLOBAL_STRIPE_INFO_LEN = 8 };
+
+BB_COMPILE_TIME_ASSERT(llmeta_global_stripe_info_len,
+                       sizeof(struct llmeta_global_stripe_info) ==
+                           LLMETA_GLOBAL_STRIPE_INFO_LEN);
+
+static const uint8_t *llmeta_global_stripe_info_get(
+    struct llmeta_global_stripe_info *p_global_stripe_info,
+    const uint8_t *p_buf, const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || LLMETA_FILE_TYPE_KEY_LEN > (p_buf_end - p_buf))
+        return NULL;
+    p_buf = buf_get(&(p_global_stripe_info->stripes),
+                    sizeof(p_global_stripe_info->stripes), p_buf, p_buf_end);
+    p_buf = buf_get(&(p_global_stripe_info->blobstripe),
+                    sizeof(p_global_stripe_info->blobstripe), p_buf, p_buf_end);
+    return p_buf;
+}
+
+static uint8_t *llmeta_global_stripe_info_put(
+    const struct llmeta_global_stripe_info *p_global_stripe_info,
+    uint8_t *p_buf, const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || LLMETA_FILE_TYPE_KEY_LEN > (p_buf_end - p_buf))
+        return NULL;
+    p_buf = buf_put(&(p_global_stripe_info->stripes),
+                    sizeof(p_global_stripe_info->stripes), p_buf, p_buf_end);
+    p_buf = buf_put(&(p_global_stripe_info->blobstripe),
+                    sizeof(p_global_stripe_info->blobstripe), p_buf, p_buf_end);
+    return p_buf;
+}
+
+int bdb_get_global_stripe_info(tran_type *tran, int *stripes, int *blobstripe,
+                               int *bdberr)
+{
+    int rc;
+    char buf[LLMETA_GLOBAL_STRIPE_INFO_LEN];
+    struct llmeta_global_stripe_info stripe_info;
+    char key[LLMETA_IXLEN] = {0};
+    struct llmeta_file_type_key file_type_key;
+    int fndlen;
+    uint8_t *p_buf = (uint8_t *)key, *p_buf_end = (p_buf + LLMETA_IXLEN);
+
+    *bdberr = BDBERR_NOERROR;
+
+    file_type_key.file_type = LLMETA_GLOBAL_STRIPE_INFO;
+
+    if (!(llmeta_file_type_key_put(&(file_type_key), p_buf, p_buf_end))) {
+        logmsg(LOGMSG_ERROR, "%s: llmeta_file_type_key_put returns NULL\n",
+               __func__);
+        *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+
+    rc = bdb_lite_exact_fetch_tran(llmeta_bdb_state, tran, key, buf,
+                                   LLMETA_GLOBAL_STRIPE_INFO_LEN, &fndlen,
+                                   bdberr);
+
+    p_buf = (uint8_t *)buf;
+    p_buf_end = (uint8_t *)buf + LLMETA_GLOBAL_STRIPE_INFO_LEN;
+
+    if (!(llmeta_global_stripe_info_get(&stripe_info, p_buf, p_buf_end))) {
+        logmsg(LOGMSG_ERROR, "%s: llmeta_global_stripe_info_get returns NULL\n",
+               __func__);
+        *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+
+    if (rc == 0) {
+        *stripes = stripe_info.stripes;
+        *blobstripe = stripe_info.blobstripe;
+    } else {
+        *stripes = -1;
+        *blobstripe = -1;
+    }
+
+    return 0;
+}
+
+int bdb_set_global_stripe_info(tran_type *tran, int stripes, int blobstripe,
+                               int *bdberr)
+{
+    int rc;
+    int started_our_own_transaction = 0;
+    uint8_t buf[LLMETA_GLOBAL_STRIPE_INFO_LEN];
+    struct llmeta_global_stripe_info stripe_info;
+    char key[LLMETA_IXLEN] = {0};
+    struct llmeta_file_type_key file_type_key;
+    uint8_t *p_buf = (uint8_t *)key, *p_buf_end = (p_buf + LLMETA_IXLEN);
+
+    *bdberr = BDBERR_NOERROR;
+
+    if (tran == NULL) {
+        started_our_own_transaction = 1;
+        tran = bdb_tran_begin(llmeta_bdb_state->parent, NULL, bdberr);
+        if (tran == NULL)
+            return -1;
+    }
+
+    file_type_key.file_type = LLMETA_GLOBAL_STRIPE_INFO;
+
+    if (!(llmeta_file_type_key_put(&(file_type_key), p_buf, p_buf_end))) {
+        logmsg(LOGMSG_ERROR, "%s: llmeta_file_type_key_put returns NULL\n",
+               __func__);
+        *bdberr = BDBERR_BADARGS;
+        rc = -1;
+        goto done;
+    }
+
+    stripe_info.stripes = stripes;
+    stripe_info.blobstripe = blobstripe;
+
+    p_buf = buf;
+    p_buf_end = buf + LLMETA_GLOBAL_STRIPE_INFO_LEN;
+    if (!(llmeta_global_stripe_info_put(&stripe_info, p_buf, p_buf_end))) {
+        logmsg(LOGMSG_ERROR, "%s: llmeta_global_stripe_info_put returns NULL\n",
+               __func__);
+        *bdberr = BDBERR_BADARGS;
+        rc = -1;
+        goto done;
+    }
+
+    rc = bdb_lite_exact_del(llmeta_bdb_state, tran, key, bdberr);
+    if (rc && *bdberr != BDBERR_DEL_DTA)
+        goto done;
+
+    stripes = htonl(stripes);
+
+    rc = bdb_lite_add(llmeta_bdb_state, tran, buf,
+                      LLMETA_GLOBAL_STRIPE_INFO_LEN, key, bdberr);
+
+done:
+    if (started_our_own_transaction) {
+        if (rc == 0)
+            rc = bdb_tran_commit(llmeta_bdb_state->parent, tran, bdberr);
+        else {
+            int arc;
+            arc = bdb_tran_abort(llmeta_bdb_state->parent, tran, bdberr);
+            if (arc)
+                rc = arc;
+        }
+    }
+
+    return rc;
+}
+
 int bdb_get_num_sc_done(bdb_state_type *bdb_state, tran_type *tran,
                         unsigned long long *num, int *bdberr)
 {
@@ -6334,7 +6485,7 @@ retry:
     return 0;
 }
 
-int bdb_get_rowlocks_state(int *rlstate, int *bdberr)
+int bdb_get_rowlocks_state(int *rlstate, tran_type *tran, int *bdberr)
 {
     int rc, fndlen, retries = 0;
     struct llmeta_rowlocks_state_key_type rowlocks_key;
@@ -6368,8 +6519,9 @@ int bdb_get_rowlocks_state(int *rlstate, int *bdberr)
     llmeta_rowlocks_state_key_type_put(&rowlocks_key, p_buf, p_buf_end);
 
 retry:
-    rc = bdb_lite_exact_fetch(llmeta_bdb_state, key, data,
-                              LLMETA_ROWLOCKS_STATE_DATA_LEN, &fndlen, bdberr);
+    rc = bdb_lite_exact_fetch_tran(llmeta_bdb_state, tran, key, data,
+                                   LLMETA_ROWLOCKS_STATE_DATA_LEN, &fndlen,
+                                   bdberr);
 
     if (rc || *bdberr != BDBERR_NOERROR) {
         if (*bdberr == BDBERR_DEADLOCK) {
@@ -7627,8 +7779,8 @@ int bdb_del_table_csonparameters(void *parent_tran, const char *table)
 /* return parameter for tbl into value
  * NB: caller needs to free that memory area
  */
-int bdb_get_table_parameter(const char *table, const char *parameter,
-                            char **value)
+int bdb_get_table_parameter_tran(const char *table, const char *parameter,
+                                 char **value, tran_type *tran)
 {
 #ifdef DEBUG_LLMETA
     fprintf(stderr, "%s()\n", __func__);
@@ -7638,7 +7790,7 @@ int bdb_get_table_parameter(const char *table, const char *parameter,
 
     char *blob = NULL;
     int len;
-    int rc = bdb_get_table_csonparameters(NULL, table, &blob, &len);
+    int rc = bdb_get_table_csonparameters(tran, table, &blob, &len);
     assert(rc == 0 || (rc == 1 && blob == NULL));
 
     if (blob == NULL)
@@ -7708,6 +7860,12 @@ out:
     cson_value_free(rootV);
     free(blob);
     return rc;
+}
+
+int bdb_get_table_parameter(const char *table, const char *parameter,
+                            char **value)
+{
+    return bdb_get_table_parameter_tran(table, parameter, value, NULL);
 }
 
 int bdb_set_table_parameter(void *parent_tran, const char *table,
@@ -8897,6 +9055,9 @@ int bdb_rename_csc2_version(tran_type *trans, const char *tblname,
     struct llmeta_file_type_dbname_csc2_vers_key vers_key;
     struct llmeta_file_type_dbname_csc2_vers_key new_vers_key;
 
+    logmsg(LOGMSG_DEBUG, "%s renaming from '%s' to '%s', version %d\n",
+           __func__, tblname, newtblname, ver);
+
     vers_key.file_type = LLMETA_CSC2;
     strncpy(vers_key.dbname, tblname, sizeof(vers_key.dbname));
     vers_key.dbname_len = strlen(vers_key.dbname) + 1;
@@ -8926,6 +9087,15 @@ int bdb_rename_csc2_version(tran_type *trans, const char *tblname,
                        ver);
                 return rc;
             }
+            logmsg(LOGMSG_DEBUG,
+                   "%s added table '%s' (old table '%s') version "
+                   "%d\n",
+                   __func__, newtblname, tblname, ver);
+        } else {
+            logmsg(LOGMSG_DEBUG,
+                   "%s didn't find old table '%s' version %d (so "
+                   "not adding new-table '%s'?)\n",
+                   __func__, tblname, ver, newtblname);
         }
 
         rc = bdb_lite_exact_del(llmeta_bdb_state, trans, &key, bdberr);

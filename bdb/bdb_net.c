@@ -150,10 +150,10 @@ int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t generation)
 
     cnt++;
     if (gbl_ack_trace && (now = time(NULL)) > lastpr) {
-        fprintf(stderr,
-                "Sending ack %d:%d, generation=%u cnt=%llu diff=%llu, udp=%d\n",
-                permlsn.file, permlsn.offset, generation, cnt, cnt - lpcnt,
-                gbl_udp);
+        logmsg(LOGMSG_ERROR,
+               "Sending ack %d:%d, generation=%u cnt=%llu diff=%llu, udp=%d\n",
+               permlsn.file, permlsn.offset, generation, cnt, cnt - lpcnt,
+               gbl_udp);
         lpcnt = cnt;
         lastpr = now;
     }
@@ -177,7 +177,7 @@ int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t generation)
     if (unlikely(bdb_state->rep_trace)) {
         char str[80];
         lsn_to_str(str, &seqnum.lsn);
-        fprintf(stderr, "sending NEWSEQ to %s <%s>\n", master, str);
+        logmsg(LOGMSG_ERROR, "sending NEWSEQ to %s <%s>\n", master, str);
     }
 
     if (gbl_udp) {
@@ -252,7 +252,7 @@ static int send_timestamp(bdb_state_type *bdb_state, const char *to, int type)
         ack_info_from_cpu(info);
         return net_send(bdb_state->repinfo->netinfo, to, type, info, size, 1);
     default:
-        fprintf(stderr, "unknown timestamp type: %d\n", type);
+        logmsg(LOGMSG_ERROR, "unknown timestamp type: %d\n", type);
         return 1;
     }
 }
@@ -306,7 +306,7 @@ void udp_ping_ip(bdb_state_type *bdb_state, char *ip)
         logmsgperror("upd_ping_ip:inet_pton");
         return;
     } else if (rc == 0) {
-        fprintf(stderr, "%s not a valid address\n", ip);
+        logmsg(LOGMSG_ERROR, "%s not a valid address\n", ip);
         return;
     }
     addr.sin_port = htons(port);
@@ -424,6 +424,8 @@ void udp_prefault_all(bdb_state_type *bdb_state, unsigned int fileid,
 static void print_ping_rtt(ack_info *info)
 {
     struct timeval now, *sent, diff;
+    if (info == NULL)
+        return;
     gettimeofday(&now, NULL);
     sent = ack_info_data(info);
     timeval_diff(sent, &now, &diff);
@@ -471,9 +473,13 @@ static void *udp_reader(void *arg)
     int type;
     int fd = repinfo->udp_fd;
     uint8_t *p_buf, *p_buf_end;
+    uint8_t *buff_end = buff + 1024;
     filepage_type fp;
 
-    while (!db_is_stopped()) {
+    static time_t lastpr = 0;
+    time_t now;
+
+    while (1) {
 #ifdef UDP_DEBUG
         struct sockaddr_in addr;
         struct sockaddr_in *paddr = &addr;
@@ -498,9 +504,12 @@ static void *udp_reader(void *arg)
         }
 
         if (ack_info_size(info) != nrecv) {
-            fprintf(stderr, "%s:invalid read of %zd (header suggests: %u)\n",
-                    __func__, nrecv, ack_info_size(info));
-            ++recl_udp;
+            if ((now = time(NULL)) > lastpr) {
+                logmsg(LOGMSG_ERROR,
+                       "%s:invalid read of %zd (header suggests: %u)\n",
+                       __func__, nrecv, ack_info_size(info));
+                lastpr = now;
+            }
             continue;
         }
 
@@ -508,21 +517,28 @@ static void *udp_reader(void *arg)
          * luxury - read them from
          * the packet past the data payload. */
         if (info->to != 0 && info->from != 0) {
-            logmsg(LOGMSG_ERROR,
-                   "unexpected to/from setting: from=%d to=%d type=%d\n",
-                   info->from, info->to, info->type);
-            ++recl_udp;
+            if ((now = time(NULL)) > lastpr) {
+                logmsg(LOGMSG_ERROR,
+                       "unexpected to/from setting: from=%d to=%d type=%d\n",
+                       info->from, info->to, info->type);
+                lastpr = now;
+            }
             continue;
         }
 
         from = ack_info_from_host(info);
         /* sanity check? */
-        if (info->hdrsz + info->fromlen > sizeof(buff) ||
+        if (from == NULL || from <= (char *)buff ||
+            from + info->fromlen - 1 >= (char *)buff_end ||
             from[info->fromlen - 1] != 0) {
-            fprintf(stderr, "invalid packet? %d %d\n",
-                    info->hdrsz + info->fromlen > sizeof(buff),
-                    from[info->fromlen] != 0);
-            fsnapf(stdout, info, 64);
+            if ((now = time(NULL)) > lastpr) {
+                logmsg(LOGMSG_ERROR,
+                       "invalid packet? hdrsz=%u fromlen=%d from=%p buff=%p "
+                       "buff_end=%p\n",
+                       info->hdrsz, info->fromlen, from, buff, buff_end);
+                fsnapf(stdout, info, 64);
+                lastpr = now;
+            }
             continue;
         }
         from = intern(from);
@@ -606,8 +622,12 @@ static void *udp_reader(void *arg)
 
 
         default:
-            printf("%s: recd unknown packet type:%d from:%s\n", __func__, type,
-                   from);
+            if ((now = time(NULL)) > lastpr) {
+                logmsg(LOGMSG_ERROR,
+                       "%s: recd unknown packet type:%d from:%s\n", __func__,
+                       type, from);
+                lastpr = now;
+            }
             break;
         }
 
@@ -722,9 +742,9 @@ int send_myseqnum_to_master_udp(bdb_state_type *bdb_state)
 
         count++;
         if ((now = time(NULL)) > lastpr) {
-            fprintf(stderr,
-                    "%s: get_myseqnum returned non-0, count=%" PRIu64 "\n",
-                    __func__, count);
+            logmsg(LOGMSG_ERROR,
+                   "%s: get_myseqnum returned non-0, count=%" PRIu64 "\n",
+                   __func__, count);
             lastpr = now;
         }
     }
@@ -945,6 +965,33 @@ int send_pg_compact_req(bdb_state_type *bdb_state, int32_t fileid,
         __FILE__, __LINE__, size, dbgbuf, fileid);
 #endif
 out:
+    return rc;
+}
+
+int send_truncate_to_master(bdb_state_type *bdb_state, int file, int offset)
+{
+    int timeout = 10 * 1000, rc;
+    uint8_t buf[sizeof(DB_LSN)];
+    DB_LSN trunc_lsn;
+    u_int8_t *p_buf, *p_buf_end;
+
+    if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
+        logmsg(LOGMSG_ERROR, "%s: I am the master\n", __func__);
+        return -1;
+    }
+
+    trunc_lsn.file = file;
+    trunc_lsn.offset = offset;
+
+    p_buf = buf;
+    p_buf_end = buf + sizeof(DB_LSN);
+
+    db_lsn_type_put(&trunc_lsn, p_buf, p_buf_end);
+
+    rc = net_send_message(
+        bdb_state->repinfo->netinfo, bdb_state->repinfo->master_host,
+        USER_TYPE_TRUNCATE_LOG, p_buf, sizeof(DB_LSN), 1, timeout);
+
     return rc;
 }
 

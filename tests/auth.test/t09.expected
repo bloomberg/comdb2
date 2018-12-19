@@ -181,6 +181,7 @@
 (candidate='TRIGGER')
 (candidate='TRUNCATE')
 (candidate='TUNABLE')
+(candidate='TYPE')
 (candidate='UNBOUNDED')
 (candidate='UNION')
 (candidate='UNIQUE')

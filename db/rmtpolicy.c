@@ -166,7 +166,7 @@ int allow_broadcast_to_remote(const char *host)
     if (rc == -1) {
         /* default logic: only broadcast to machines of the same or a lower
          * class.  we don't want alpha to broadcast to prod! */
-        if (get_mach_class(host) <= get_mach_class(host))
+        if (get_mach_class(host) <= get_my_mach_class())
             rc = 1;
         else
             rc = 0;

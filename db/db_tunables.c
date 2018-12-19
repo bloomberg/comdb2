@@ -168,6 +168,7 @@ extern int gbl_verbose_repdups;
 extern int gbl_apply_thread_pollms;
 extern int gbl_warn_queue_latency_threshold;
 extern int gbl_req_all_threshold;
+extern int gbl_req_all_time_threshold;
 extern int gbl_req_delay_count_threshold;
 extern int gbl_rep_verify_always_grab_writelock;
 extern int gbl_rep_verify_will_recover_trace;
@@ -200,6 +201,17 @@ extern int gbl_rep_wait_release_ms;
 extern int gbl_rep_wait_core_ms;
 extern int gbl_random_get_curtran_failures;
 extern int gbl_fail_client_write_lock;
+extern int gbl_instrument_dblist;
+extern int gbl_replicated_truncate_timeout;
+extern int gbl_match_on_ckp;
+extern int gbl_verbose_physrep;
+extern int gbl_blocking_physrep;
+extern int gbl_verbose_set_sc_in_progress;
+extern int gbl_send_failed_dispatch_message;
+extern int gbl_physrep_reconnect_penalty;
+extern int gbl_physrep_register_interval;
+extern int gbl_logdelete_lock_trace;
+extern int gbl_flush_log_at_checkpoint;
 
 extern long long sampling_threshold;
 
@@ -263,6 +275,7 @@ extern int gbl_timeseries_metrics;
 extern int gbl_metric_maxpoints;
 extern int gbl_metric_maxage;
 extern int gbl_osql_check_replicant_numops;
+extern int gbl_abort_irregular_set_durable_lsn;
 
 /*
   =========================================================
@@ -830,6 +843,7 @@ int init_gbl_tunables()
     gbl_tunables->hash =
         hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
                        offsetof(comdb2_tunable, name), 0);
+    hash_initsize(gbl_tunables->hash, 1024);
     logmsg(LOGMSG_DEBUG, "Global tunables hash initialized\n");
 
     Pthread_mutex_init(&gbl_tunables->mu, NULL);
@@ -848,16 +862,11 @@ static inline int free_tunable(comdb2_tunable *tunable)
 /* Reclaim memory acquired by global tunables. */
 int free_gbl_tunables()
 {
-    for (int i = 0; i < gbl_tunables->count; i++) {
-        free_tunable(gbl_tunables->array[i]);
-        free(gbl_tunables->array[i]);
-    }
     if (gbl_tunables->hash) {
         hash_clear(gbl_tunables->hash);
         hash_free(gbl_tunables->hash);
         gbl_tunables->hash = NULL;
     }
-    free(gbl_tunables->array);
     Pthread_mutex_destroy(&gbl_tunables->mu);
     free(gbl_tunables);
     gbl_tunables = NULL;
@@ -871,19 +880,23 @@ int free_gbl_tunables()
     0           Success
     1           Failure
 */
-int register_tunable(comdb2_tunable tunable)
+int register_tunable(comdb2_tunable *tunable)
 {
-    comdb2_tunable *t;
     int already_exists = 0;
-    int slot = -1;
+    comdb2_tunable *t;
 
     if ((!gbl_tunables) || (gbl_tunables->freeze == 1)) return 0;
+
+    if (!tunable->name) {
+        logmsg(LOGMSG_ERROR, "%s: Tunable must have a name.\n", __func__);
+        goto err;
+    }
 
     /*
       Check whether a tunable with the same name has already been
       registered.
     */
-    if ((t = hash_find_readonly(gbl_tunables->hash, &tunable.name))) {
+    if ((t = hash_find_readonly(gbl_tunables->hash, &tunable->name))) {
         /*
           Overwrite & reuse the existing slot.
 
@@ -898,73 +911,49 @@ int register_tunable(comdb2_tunable tunable)
 
           (See bdb_open_int() & berkdb/env/env_attr.c)
         */
-        for (int i = 0; i < gbl_tunables->count; i++) {
-            if (gbl_tunables->array[i] == t) {
-                slot = i;
-                break;
-            }
-        }
-        free_tunable(t);
-
         already_exists = 1;
-    } else if ((t = malloc(sizeof(comdb2_tunable))) == NULL)
+    } else if ((t = malloc(sizeof(comdb2_tunable))) == NULL ||
+               (t->name = strdup(tunable->name)) == NULL)
         goto oom_err;
 
-    if (!tunable.name) {
-        logmsg(LOGMSG_ERROR, "%s: Tunable must have a name.\n", __func__);
-        goto err;
-    }
-    if ((t->name = strdup(tunable.name)) == NULL)
-        goto oom_err;
     /* Keep tunable names in lower case (to be consistent). */
     tunable_tolower(t->name);
 
-    t->descr = tunable.descr;
+    t->descr = tunable->descr;
 
-    if (tunable.type >= TUNABLE_INVALID) {
+    if (tunable->type >= TUNABLE_INVALID) {
         logmsg(LOGMSG_ERROR, "%s: Tunable must have a valid type.\n", __func__);
         goto err;
     }
-    t->type = tunable.type;
-    if (!tunable.var && !tunable.value &&
-        !(tunable.type == TUNABLE_COMPOSITE) &&
-        ((tunable.flags & INTERNAL) == 0)) {
+    t->type = tunable->type;
+    if (!tunable->var && !tunable->value &&
+        !(tunable->type == TUNABLE_COMPOSITE) &&
+        ((tunable->flags & INTERNAL) == 0)) {
         logmsg(LOGMSG_ERROR,
                "%s: A non-composite/non-internal tunable with no var pointer "
                "set, must have its value function defined.\n",
                __func__);
         goto err;
     }
-    t->var = tunable.var;
+    t->var = tunable->var;
 
-    t->flags = tunable.flags;
-    t->value = tunable.value;
-    t->verify = tunable.verify;
-    t->update = tunable.update;
-    t->destroy = tunable.destroy;
+    t->flags = tunable->flags;
+    t->value = tunable->value;
+    t->verify = tunable->verify;
+    t->update = tunable->update;
+    t->destroy = tunable->destroy;
 
-    if (already_exists) {
-        assert(slot != -1);
-        gbl_tunables->array[slot] = t;
-    } else {
-        gbl_tunables->array =
-            realloc(gbl_tunables->array,
-                    sizeof(comdb2_tunable *) * (gbl_tunables->count + 1));
-        if (gbl_tunables->array == NULL) {
-            goto oom_err;
-        }
-        gbl_tunables->array[gbl_tunables->count] = t;
+    if (!already_exists) {
         gbl_tunables->count++;
+        /* Add the tunable to the hash. */
+        hash_add(gbl_tunables->hash, t);
     }
-
-    /* Add the tunable to the hash. */
-    hash_add(gbl_tunables->hash, t);
 
     return 0;
 
 err:
     logmsg(LOGMSG_ERROR, "%s: Failed to register tunable (%s).\n", __func__,
-           (tunable.name) ? tunable.name : "????");
+           (tunable->name) ? tunable->name : "????");
     return 1;
 
 oom_err:

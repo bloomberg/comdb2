@@ -1296,6 +1296,31 @@ slow:
 	return (ret);
 }
 
+/*
+ * __os_truncate --
+ *	Truncate a file
+ *
+ * PUBLIC: int __os_truncate __P((DB_ENV *, DB_FH *, off_t offset));
+ */
+int
+__os_truncate(dbenv, fhp, offset)
+	DB_ENV *dbenv;
+	DB_FH *fhp;
+    off_t offset;
+{
+    int rc;
+	DB_ASSERT(F_ISSET(fhp, DB_FH_OPENED) && fhp->fd != -1);
+	MUTEX_THREAD_LOCK(dbenv, fhp->mutexp);
+    rc = ftruncate(fhp->fd, offset);
+	MUTEX_THREAD_UNLOCK(dbenv, fhp->mutexp);
+    if (rc == -1) {
+        logmsg(LOGMSG_ERROR, "ftruncate(%u) %d %s\n",
+                (unsigned int)offset, errno, strerror(errno));
+        return -1;
+    }
+    return rc;
+}
+
 #ifdef HAVE_FILESYSTEM_NOTZERO
 /*
  * __os_zerofill --

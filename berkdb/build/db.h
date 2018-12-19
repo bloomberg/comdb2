@@ -173,6 +173,15 @@ struct __db_trigger_subscription;
 
 #include "db_dbt.h"
 
+/* Compiler hints for branch prediction */
+#if defined(__GNUC__) || defined(__IBMC__)
+#  define likely(x) __builtin_expect(!!(x), 1)
+#  define unlikely(x) __builtin_expect(!!(x), 0)
+#else
+#  define likely(X) (X)
+#  define unlikely(X) (X)
+#endif
+
 /*
  * Common flags --
  *	Interfaces which use any of these common flags should never have
@@ -245,6 +254,7 @@ struct __db_trigger_subscription;
 #define	DB_LOCKDOWN	      0x0080000	/* Lock memory into physical core. */
 #define	DB_PRIVATE	      0x0100000	/* DB_ENV is process local. */
 #define	DB_RECOVER_FATAL      0x0200000	/* Run catastrophic recovery. */
+#define	DB_RECOVER_NOCKP      0x0400000	/* Do not write a checkpoint. */
 #define	DB_SYSTEM_MEM	      0x0400000	/* Use system-backed memory. */
 
 /*
@@ -259,6 +269,8 @@ struct __db_trigger_subscription;
 /*
  * Flags private to DB_ENV->txn_begin.
  *	   Shared flags up to 0x0000800 */
+#define DB_TXN_INTERNAL       0x0000001
+#define DB_TXN_RECOVERY       0x0000002
 #define	DB_TXN_NOWAIT	      0x0001000	/* Do not wait for locks in this TXN. */
 #define	DB_TXN_SYNC	      0x0002000	/* Always sync log on commit. */
 #define DB_TXN_REP_ACK        0x0010000 /* Rep should send an ACK */
@@ -637,6 +649,7 @@ struct __db_log_cursor {
 	int (*close) __P((DB_LOGC *, u_int32_t));
 	int (*get) __P((DB_LOGC *, DB_LSN *, DBT *, u_int32_t));
     int (*stat) __P((DB_LOGC *, DB_LOGC_STAT **));
+    int (*setflags) __P((DB_LOGC*, u_int32_t));
 
     /* Instrumentation for log stats */
     int incursor_count;
@@ -1027,6 +1040,7 @@ struct __db_txn {
 #define	TXN_NOWAIT	0x040		/* Do not wait on locks. */
 #define	TXN_RESTORED	0x080		/* Transaction has been restored. */
 #define	TXN_SYNC	0x100		/* Sync on prepare and commit. */
+#define	TXN_RECOVER_LOCK	0x200 /* Transaction holds the recovery lock */
 	u_int32_t	flags;
 
 	void     *app_private;		/* pointer to bdb transaction object */
@@ -2027,6 +2041,12 @@ struct __db_env {
 	void *(*db_realloc) __P((void *, size_t));
 	void (*db_free) __P((void *));
 
+    /* expose logging rep_apply */
+    int (*apply_log) __P((DB_ENV *, unsigned int, unsigned int, int64_t,
+                void*, int));
+    size_t (*get_log_header_size) __P((DB_ENV*)); 
+    int (*rep_verify_match) __P((DB_ENV *, unsigned int, unsigned int, int));
+    int (*min_truncate_lsn_timestamp) __P((DB_ENV *, int file, DB_LSN *outlsn, int32_t *timestamp));
 
 	/*
 	 * Currently, the verbose list is a bit field with room for 32
@@ -2298,7 +2318,7 @@ struct __db_env {
 	int  (*rep_elect) __P((DB_ENV *, int, int, u_int32_t, u_int32_t *, char **));
 	int  (*rep_flush) __P((DB_ENV *));
 	int  (*rep_process_message) __P((DB_ENV *, DBT *, DBT *,
-	    char **, DB_LSN *, uint32_t *));
+	    char **, DB_LSN *, uint32_t *, int));
 	int  (*rep_verify_will_recover) __P((DB_ENV *, DBT *, DBT *));
 	int  (*rep_truncate_repdb) __P((DB_ENV *));
 	int  (*rep_start) __P((DB_ENV *, DBT *, u_int32_t, u_int32_t));
@@ -2388,7 +2408,6 @@ struct __db_env {
 	int bulk_stops_on_page;
 
 	void (*recovery_start_callback)(DB_ENV *env);
-	void (*recovery_done_callback)(DB_ENV *env);
 	void (*lsn_undone_callback)(DB_ENV *env, DB_LSN*);
 
 	int  (*txn_begin_set_retries)
@@ -2450,6 +2469,7 @@ struct __db_env {
 	struct fileid_track fileid_track;
 	db_recops recovery_pass;
 	pthread_rwlock_t dbreglk;
+	pthread_rwlock_t recoverlk;
 	DB_LSN recovery_start_lsn;
 	int (*get_recovery_lsn) __P((DB_ENV*, DB_LSN*));
 	int (*set_recovery_lsn) __P((DB_ENV*, DB_LSN*));
@@ -2486,7 +2506,15 @@ struct __db_env {
 
 	int (*set_check_standalone) __P((DB_ENV *, int (*)(DB_ENV *)));
 	int (*check_standalone)(DB_ENV *);
-
+	int (*set_truncate_sc_callback) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn)));
+	int (*truncate_sc_callback)(DB_ENV *, DB_LSN *lsn);
+	int (*set_rep_truncate_callback) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn, int is_master)));
+	int (*rep_truncate_callback)(DB_ENV *, DB_LSN *lsn, int is_master);
+    void (*rep_set_gen)(DB_ENV *, uint32_t gen);
+	int (*set_rep_recovery_cleanup) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn, int is_master)));
+    int (*rep_recovery_cleanup)(DB_ENV *, DB_LSN *lsn, int is_master);
+    int (*lock_recovery_lock)(DB_ENV *);
+    int (*unlock_recovery_lock)(DB_ENV *);
 	/* Trigger/consumer signalling support */
 	int(*trigger_subscribe) __P((DB_ENV *, const char *, pthread_cond_t **,
 				     pthread_mutex_t **, const uint8_t **active));

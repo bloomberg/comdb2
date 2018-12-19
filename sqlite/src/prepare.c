@@ -587,6 +587,7 @@ static void schemaIsValid(Parse *pParse){
     call it w/out a transaction and hopefully prevent messing
     up with the transactions
     */
+    UNUSED_PARAMETER2(rc, openedTransaction);
     sqlite3BtreeGetMeta(pBt, BTREE_SCHEMA_VERSION, (u32 *)&cookie);
     if( cookie!=db->aDb[iDb].pSchema->schema_cookie ){
       pParse->rc = SQLITE_SCHEMA;

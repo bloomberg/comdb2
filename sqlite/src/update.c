@@ -239,6 +239,8 @@ void sqlite3Update(
 #endif
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+  v = sqlite3GetVdbe(pParse);
+  if( v==0 ) goto update_cleanup;
   if( !pParse->ast ) pParse->ast = ast_init();
   ast_push(pParse->ast, AST_TYPE_UPDATE, v, NULL);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

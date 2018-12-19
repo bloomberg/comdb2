@@ -1682,3 +1682,34 @@ void dohsql_stats(void)
            gbl_dohsql_stats.max_queue_bytes,
            gbl_dohsql_stats_dirty.max_queue_bytes);
 }
+
+/* return explain distribution information */
+void explain_distribution(dohsql_node_t *node)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt;
+    char str[256];
+    char *cols[] = {"Plan"};
+    int i;
+
+    if (!thd || (!(clnt = thd->clnt)))
+        return;
+
+    if (write_response(clnt, RESPONSE_COLUMNS_STR, &cols, 1))
+        return;
+
+    if (node->type == AST_TYPE_UNION) {
+        snprintf(str, sizeof(str), "Threads %d", node->nnodes);
+        char *pstr = &str[0];
+
+        if (write_response(clnt, RESPONSE_ROW_STR, &pstr, 1))
+            return;
+
+        for (i = 0; i < node->nnodes; i++) {
+            if (write_response(clnt, RESPONSE_ROW_STR, &node->nodes[i]->sql, 1))
+                return;
+        }
+    }
+
+    write_response(clnt, RESPONSE_ROW_LAST, NULL, 0);
+}

@@ -2462,7 +2462,7 @@ void sqlite3VdbeAddTable(
   Table *pTab
 ){
   Table **pTbls;
-  int numTables, i;
+  int numTables;
   if( !p || !pTab || pTab->iDb==1 ) return;
   assert( sqlite3_mutex_held(p->db->mutex) );
   numTables = p->numTables;
@@ -2563,7 +2563,9 @@ static int vdbeCommit(sqlite3 *db, Vdbe *p){
       Pager *pPager;   /* Pager associated with pBt */
       needXcommit = 1;
       sqlite3BtreeEnter(pBt);
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      UNUSED_PARAMETER2(aMJNeeded, pPager);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       pPager = sqlite3BtreePager(pBt);
       if( db->aDb[i].safety_level!=PAGER_SYNCHRONOUS_OFF
        && aMJNeeded[sqlite3PagerGetJournalMode(pPager)]
@@ -2573,7 +2575,7 @@ static int vdbeCommit(sqlite3 *db, Vdbe *p){
         nTrans++;
       }
       rc = sqlite3PagerExclusiveLock(pPager);
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       sqlite3BtreeLeave(pBt);
     }
   }
@@ -2979,6 +2981,9 @@ int sqlite3VdbeHalt(Vdbe *p){
 
     /* Check for immediate foreign key violations. */
     if( p->rc==SQLITE_OK ){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      (void)
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       sqlite3VdbeCheckFk(p, 0);
     }
   

@@ -1092,6 +1092,14 @@ struct BusyHandler {
 #define UNUSED_PARAMETER(x) (void)(x)
 #define UNUSED_PARAMETER2(x,y) UNUSED_PARAMETER(x),UNUSED_PARAMETER(y)
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#  ifdef NDEBUG
+#    define ASSERT_PARAMETER(x) (void)(x)
+#  else
+#    define ASSERT_PARAMETER(x)
+#  endif
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 /*
 ** Forward references to structures
 */

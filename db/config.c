@@ -34,6 +34,7 @@
 #include "translistener.h"
 #include "rtcpu.h"
 #include "config.h"
+#include "phys_rep.h"
 
 extern int gbl_create_mode;
 extern int gbl_fullrecovery;
@@ -338,7 +339,8 @@ static char *legacy_options[] = {"disallow write from beta if prod",
                                  "allow_negative_column_size",
                                  "osql_check_replicant_numops off",
                                  "reorder_socksql_no_deadlock off",
-                                 "disable_tpsc_tblvers"};
+                                 "disable_tpsc_tblvers",
+                                 "on disable_etc_services_lookup"};
 int gbl_legacy_defaults = 0;
 int pre_read_legacy_defaults(void *_, void *__)
 {
@@ -1234,6 +1236,75 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         /* Process here because can't pass to handle_lrl_tunable (where it is
          * marked as READEARLY) */
         read_legacy_defaults(dbenv, options);
+
+        /* 'replicate_from <dbname>
+         * <prod|beta|alpha|dev|host|@hst1,hst2,hst3..>' */
+    } else if (tokcmp(tok, ltok, "replicate_from") == 0) {
+        cdb2_hndl_tp *hndl;
+        /* replicate_from <db_name> [dbs to query] */
+        if (gbl_is_physical_replicant) {
+            logmsg(LOGMSG_FATAL, "Ignoring multiple replicate_from directives:"
+                                 "can only replicate from a single source\n");
+            return -1;
+        }
+
+        /* dbname */
+        tok = segtok(line, len, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_FATAL, "Must specify a database to replicate from\n");
+            exit(1);
+        }
+        char *dbname = tokdup(tok, ltok);
+
+        tok = segtok(line, len, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_FATAL, "Must specify a type\n");
+            exit(1);
+        }
+        char *type = tokdup(tok, ltok);
+
+        if ((rc = cdb2_open(&hndl, dbname, type, 0)) != 0) {
+            logmsg(LOGMSG_FATAL, "Error opening handle to %s %s: %d\n", dbname,
+                   type, rc);
+            exit(1);
+        }
+
+        char *hosts[32];
+        int count;
+        cdb2_cluster_info(hndl, hosts, NULL, 32, &count);
+        count = (count < 32 ? count : 32);
+        for (ii = 0; ii < count; ii++) {
+            if (add_replicant_host(hosts[ii], dbname, 0) != 0) {
+                logmsg(LOGMSG_ERROR, "Failed to insert hostname %s\n",
+                       hosts[ii]);
+            }
+            gbl_is_physical_replicant = 1;
+            free(hosts[ii]);
+        }
+        cdb2_close(hndl);
+        logmsg(LOGMSG_INFO, "Physical replicant replicating from %s on %s\n",
+               dbname, type);
+        free(dbname);
+        free(type);
+        start_replication();
+
+    } else if (tokcmp(tok, ltok, "replicate_wait") == 0) {
+        tok = segtok(line, len, &st, &ltok);
+
+        /* need to replicate a database */
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR,
+                   "Must specify # of seconds to wait for timestamp\n");
+            return -1;
+        }
+        gbl_deferred_phys_flag = 1;
+
+        char *wait = tokdup(tok, ltok);
+        gbl_deferred_phys_update = atol(wait);
+        logmsg(LOGMSG_USER, "Waiting for %u seconds for replication\n",
+               gbl_deferred_phys_update);
+        free(wait);
+
     } else {
         // see if any plugins know how to handle this
         struct lrl_handler *h;
@@ -1445,6 +1516,13 @@ int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
 
     if (!gbl_create_mode) {
         read_cmd_line_tunables(dbenv);
+
+        /* usenames is not supported with physical replication */
+        if (gbl_is_physical_replicant && !gbl_nonames) {
+            logmsg(LOGMSG_ERROR,
+                   "Cannot start a physical replicant under usenames\n");
+            return 1;
+        }
     }
 
     return 0;

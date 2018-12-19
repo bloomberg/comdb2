@@ -2794,6 +2794,27 @@ void comdb2_bfree(comdb2bma ma, void *ptr) { comdb2_bfree_int(ma, ptr, 1); }
 void comdb2_bfree_nl(comdb2bma ma, void *ptr) { comdb2_bfree_int(ma, ptr, 0); }
 /* } free */
 /* } COMDB2 BLOCKING MEMORY ALLOCATOR */
+#else /* !defined(USE_SYS_ALLOC) && !defined(COMDB2MA_OMIT_BMEM) */
+int comdb2bma_pass_priority_back(comdb2bma ma)
+{
+    return 0;
+}
+int comdb2bma_transfer_priority(comdb2bma ma, pthread_t tid)
+{
+    return 0;
+}
+int comdb2bma_yield_all(void)
+{
+    return 0;
+}
+int comdb2bma_mark_locked(comdb2bma ma)
+{
+    return 0;
+}
+int comdb2bma_mark_unlocked(comdb2bma ma)
+{
+    return 0;
+}
 #endif /* !defined(USE_SYS_ALLOC) && !defined(COMDB2MA_OMIT_BMEM) */
 
 /* COMDB2 GLOBAL BLOB MEMORY ALLOCATOR { */

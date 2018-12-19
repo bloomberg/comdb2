@@ -1809,6 +1809,8 @@ static int do_query_on_master_check(struct dbenv *dbenv,
     return 0;
 }
 
+int gbl_send_failed_dispatch_message = 0;
+
 static CDB2QUERY *read_newsql_query(struct dbenv *dbenv,
                                     struct sqlclntstate *clnt, SBUF2 *sb)
 {
@@ -1821,7 +1823,7 @@ static CDB2QUERY *read_newsql_query(struct dbenv *dbenv,
 retry_read:
     rc = sbuf2fread_timeout((char *)&hdr, sizeof(hdr), 1, sb, &was_timeout);
     if (rc != 1) {
-        if (was_timeout) {
+        if (was_timeout && gbl_send_failed_dispatch_message) {
             handle_failed_dispatch(clnt, "Socket read timeout.");
         }
         return NULL;

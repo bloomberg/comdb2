@@ -427,7 +427,6 @@ extern int comdb2_sql_tick();
 */
 static void sleepFunc(sqlite3_context *context, int argc, sqlite3_value *argv[]) {
   int n;
-  int rc;
   if( argc != 1 ){
     sqlite3_result_int(context, -1);
     return;
@@ -845,9 +844,6 @@ static void comdb2StartTimeFunc(
   dttz_t dt = {gbl_starttime, 0};
   sqlite3_result_datetime(context, &dt, NULL);
 }
-
-/*
-
 
 /*
 ** Implementation of the last_insert_rowid() SQL function.  The return

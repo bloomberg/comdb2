@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+
+# I'll cover schema-change comprehensively in the truncate_sc test
+#env
+dbname=$1
+NRECS=10
+NRUNS=100
+sleeptime=10
+dgpid=0
+
+set -x
+
+export COPYCOMDB2_EXE=${BUILDDIR}/db/copycomdb2
+export comdb2ar=${COMDB2AR_EXE}
+destdb=${TESTCASE}dest${TESTID}
+DEST_DBDIR=${DBDIR}/$destdb
+
+if [[ -z "$TEST_TIMEOUT" ]] ; then 
+    export TEST_TIMEOUT=5m 
+fi
+
+mkdir -p $DEST_DBDIR
+if [[ -z "$CLUSTER" ]]; then
+    cl="-y @localhost"
+else
+    cl="-y @$(echo $CLUSTER | tr ' ' ',')"
+fi
+if [[ -n "$CLUSTER" ]]; then
+    if [[ "$CLUSTER" =~ .*$myhost.* ]]; then
+        rmt=""
+    else
+        clarray=($CLUSTER)
+        rmt="${clarray[0]}:"
+    fi
+fi
+
+# use copycomdb2 to create a physical replicant
+
+${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H $destdb $cl $rmt${DBDIR}/${DBNAME}.lrl $DEST_DBDIR $DEST_DBDIR
+
+if [ ! $? -eq 0 ]; then
+    echo "copycomdb2 failed"
+    exit 1
+fi
+
+df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> $DEST_DBDIR/${destdb}.lrl
+
+if [ -n "$PMUXPORT" ] ; then
+    echo "portmux_port $PMUXPORT" >> $DEST_DBDIR/${destdb}.lrl
+    echo "portmux_bind_path $pmux_socket" >> $DEST_DBDIR/${destdb}.lrl
+fi
+
+replog=$DEST_DBDIR/$destdb.log
+
+if [[ -n "$repalive" ]]; then
+    ( $COMDB2_EXE $destdb -lrl $DEST_DBDIR/${destdb}.lrl -pidfile $DEST_DBDIR/${destdb}.pid >$replog 2>&1) &
+else
+    ( timeout $TEST_TIMEOUT $COMDB2_EXE $destdb -lrl $DEST_DBDIR/${destdb}.lrl -pidfile $DEST_DBDIR/${destdb}.pid >$replog 2>&1) &
+fi
+
+out=
+retries=0
+while [[ "$out" != "1" ]]; do
+    out=$(${CDB2SQL_EXE} --tabs $destdb --host localhost 'select 1' 2>/dev/null)
+    sleep 1
+
+    let retries=retries+1
+
+    if [ $retries -eq 10 ]; then
+        exit 1
+    fi
+done
+
+./downgrade.sh $dbname > downgrade.log 2>&1 &
+dgpid=$!
+echo "Downgrade Thread PID $dgpid"
+
+
+# requires $1 and $2
+equal_queries() {
+    lhs="$1" 
+    rhs="$2"
+
+    [ "$lhs" = "$rhs" ]
+}
+
+cleanup_abort() {
+    kill -6 $(cat $DEST_DBDIR/${destdb}.pid)
+    [[ $dgpid != 0 ]] && kill -9 $dgpid
+}
+
+
+cleanup() {
+    kill -9 $(cat $DEST_DBDIR/${destdb}.pid)
+    [[ $dgpid != 0 ]] && kill -9 $dgpid
+}
+
+./generate_tests
+
+# iterate over each test
+for file in `ls *.src.sql *src.sh | sort -V`; do
+    # for each sql test execute it
+    if [ ${file: -3} == "sql" ]; then
+        $(${CDB2SQL_EXE} -s --tabs -f $file ${CDB2_OPTIONS} $dbname default 2>&1 > /dev/null) 
+        query_cmd=$(echo $file | sed 's/\.src\.sql//').query.sql
+
+    else
+        source ./"$file"
+
+        query_cmd=$(echo $file | sed 's/\.src\.sh//').query.sql
+    fi
+
+    sleep $sleeptime
+
+    src=$(${CDB2SQL_EXE} -s --tabs -f $query_cmd ${CDB2_OPTIONS} $dbname default 2>&1 | md5sum) 
+    dest=$(${CDB2SQL_EXE} -s --tabs -f $query_cmd $destdb --host localhost 2>&1 | md5sum)
+    failed=1
+    for i in `seq 1 5`;
+    do
+        if ! $(equal_queries "$src" "$dest"); then
+            echo 'Replicant not updated'
+            sleep 1
+            src=$(${CDB2SQL_EXE} -s --tabs -f $query_cmd ${CDB2_OPTIONS} $dbname default 2>&1 | md5sum) 
+            dest=$(${CDB2SQL_EXE} -s --tabs -f $query_cmd $destdb --host localhost 2>&1 | md5sum)
+            $(cleanup_abort)
+            exit 1
+        fi
+        
+        failed=0
+        break
+    done
+
+    if ! [ $failed -eq 0 ]; then
+        echo "Failed on $file test."
+        $(cleanup_abort)
+        exit 1
+    fi
+done
+
+
+$(cleanup)
+
+exit 0

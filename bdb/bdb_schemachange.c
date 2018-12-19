@@ -366,24 +366,17 @@ int bdb_llog_genid_format(bdb_state_type *bdb_state, scdone_t type, int *bdberr)
 
 int bdb_reload_rowlocks(bdb_state_type *bdb_state, scdone_t type, int *bdberr)
 {
-    char *str;
-
     assert(type == rowlocks_on || type == rowlocks_on_master_only ||
            type == rowlocks_off);
 
-    if (type == rowlocks_on) {
-        str = "enable_rowlocks";
-    } else {
+    if (type != rowlocks_on) {
         assert(gbl_rowlocks);
-        str = "disable_rowlocks";
     }
 
-    BDB_WRITELOCK(str);
     if (type == rowlocks_on)
         gbl_rowlocks = 1;
     else
         gbl_rowlocks = 0;
-    BDB_RELLOCK();
     return 0;
 }
 

@@ -1018,6 +1018,7 @@ int sqlite3VdbeSorterInit(
       pSorter->mnPmaSize = szPma * pgsz;
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+      UNUSED_PARAMETER(mxCache);
       pSorter->mxPmaSize = gbl_sqlite_sorter_mem;
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       mxCache = db->aDb[0].pSchema->cache_size;

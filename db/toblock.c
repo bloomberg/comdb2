@@ -778,9 +778,8 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                           int num_reqs, int check_long_trn, void *replay_data,
                           int replay_data_len, unsigned int line)
 {
-    struct block_rsp errrsp;
     int rc = 0;
-    int outrc, snapinfo_outrc = 0, snapinfo = 0;
+    int outrc = 0, snapinfo_outrc = 0, snapinfo = 0;
     uint8_t buf_fstblk[FSTBLK_HEADER_LEN + FSTBLK_PRE_RSPKL_LEN +
                        BLOCK_RSPKL_LEN + FSTBLK_RSPERR_LEN + FSTBLK_RSPOK_LEN +
                        (BLOCK_ERR_LEN * MAXBLOCKOPS)];
@@ -1109,18 +1108,21 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
     return outrc;
 
 replay_error:
-    logmsg(LOGMSG_FATAL, "%s in REPLAY ERROR\n", __func__);
+    logmsg(LOGMSG_FATAL, "%s:%d in REPLAY ERROR\n", __func__, blkseq_line);
     abort();
+#if 0 /* never reached */
     if (check_long_trn) {
         outrc = RC_TRAN_CLIENT_RETRY;
         return outrc;
     }
+    struct block_rsp errrsp;
     errrsp.num_completed = 0;
     iq->p_buf_out = block_rsp_put(&errrsp, iq->p_buf_out, iq->p_buf_out_end);
 
     outrc = ERR_BLOCK_FAILED;
     blkseq_replay_error_count++;
     return outrc;
+#endif
 }
 
 /**
@@ -5820,6 +5822,8 @@ add_blkseq:
     }
 
 cleanup:
+    logmsg(LOGMSG_DEBUG, "%s cleanup did_replay:%d fromline:%d\n", __func__,
+           did_replay, fromline);
     bdb_checklock(thedb->bdb_env);
 
     iq->timings.req_finished = osql_log_time();

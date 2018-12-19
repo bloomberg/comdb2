@@ -3341,7 +3341,9 @@ static void net_snap_uid_req(void *hndl, void *uptr, char *fromhost,
 void log_snap_info_key(snap_uid_t *snap_info)
 {
     if (snap_info)
-        logmsg(LOGMSG_USER, "%*s", snap_info->keylen, snap_info->key);
+        logmsg(LOGMSG_USER, "%*s", snap_info->keylen - 3, snap_info->key);
+    else
+        logmsg(LOGMSG_USER, "NO_CNONCE"); // ex. SC
 }
 
 static void net_snap_uid_rpl(void *hndl, void *uptr, char *fromhost,
@@ -4840,7 +4842,7 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
 
 #ifndef NDEBUG
         uuidstr_t us;
-        DEBUGMSG("uuid=%llu send %s rc = %d, nops = %d\n",
+        DEBUGMSG("uuid=%s send %s rc = %d, nops = %d\n",
                  comdb2uuidstr(uuid, us), osql_reqtype_str(rpl_xerr.hd.type),
                  rc, nops);
 #endif
@@ -6710,8 +6712,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     const uint8_t *p_buf;
     const uint8_t *p_buf_end;
     int rc = 0;
-    struct dbtable *db =
-        (iq->usedb) ? iq->usedb : thedb->dbs[0]; /*add to first if no usedb*/
+    struct dbtable *db = (iq->usedb) ? iq->usedb : &thedb->static_table;
     const unsigned char tag_name_ondisk[] = ".ONDISK";
     const size_t tag_name_ondisk_len = 8 /*includes NUL*/;
     int type;

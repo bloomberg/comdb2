@@ -34,6 +34,9 @@
 typedef struct {
     sqlite3_vtab_cursor base; /* Base class - must be first */
     sqlite3_int64 rowid;      /* Row ID */
+    comdb2_tunable *tunable;
+    void *ent;
+    unsigned int bkt;
 } systbl_tunables_cursor;
 
 /* Column numbers (always keep the below table definition in sync). */
@@ -86,6 +89,7 @@ static int systblTunablesOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor)
     }
     memset(cur, 0, sizeof(*cur));
     *ppCursor = &cur->base;
+    cur->tunable = hash_first(gbl_tunables->hash, &cur->ent, &cur->bkt);
     return SQLITE_OK;
 }
 
@@ -106,15 +110,14 @@ static int systblTunablesFilter(sqlite3_vtab_cursor *pVtabCursor, int idxNum,
 
 static int systblTunablesNext(sqlite3_vtab_cursor *cur)
 {
-    comdb2_tunable *tunable;
     systbl_tunables_cursor *pCur = (systbl_tunables_cursor *)cur;
 
     /* Skip all tunables marked 'INTERNAL'. */
     do {
         pCur->rowid++;
         if (pCur->rowid >= gbl_tunables->count) break;
-        tunable = gbl_tunables->array[((systbl_tunables_cursor *)cur)->rowid];
-    } while ((tunable->flags & INTERNAL) != 0);
+        pCur->tunable = hash_next(gbl_tunables->hash, &pCur->ent, &pCur->bkt);
+    } while ((pCur->tunable->flags & INTERNAL) != 0);
 
     return SQLITE_OK;
 }
@@ -128,8 +131,7 @@ static int systblTunablesEof(sqlite3_vtab_cursor *cur)
 static int systblTunablesColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,
                                 int pos)
 {
-    comdb2_tunable *tunable =
-        gbl_tunables->array[((systbl_tunables_cursor *)cur)->rowid];
+    comdb2_tunable *tunable = ((systbl_tunables_cursor *)cur)->tunable;
 
     Pthread_mutex_lock(&gbl_tunables->mu);
 

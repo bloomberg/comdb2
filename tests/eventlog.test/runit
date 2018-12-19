@@ -93,7 +93,7 @@ getmembers()
 }
 
 echo check all .*sql entries for fingerprint
-echo 'a39f4f2bcb22a50ccf6c9f4c7c0b0dcf' > exp.txt
+echo 'ad69399b065510fec51aa4e5f74a0e2f' > exp.txt
 IFS=$'\n'
 for line in `grep 'sql","sql": "select 1"' $logflunziped ` ; do
     getmembers $line > out.txt
@@ -105,7 +105,7 @@ done
 
 
 echo check all .*sql entries for fingerprint
-echo 'a39f4f2bcb22a50ccf6c9f4c7c0b0dcf' > exp.txt
+echo 'ad69399b065510fec51aa4e5f74a0e2f' > exp.txt
 IFS=$'\n'
 for line in `grep 'sql","sql": "select 2"' $logflunziped ` ; do
     getmembers $line > out.txt
@@ -138,7 +138,7 @@ if ! diff out.txt exp.txt ; then
 fi
 
 echo check all .*sql entries for fingerprint
-echo '33344e85e324ece0130e849406c7c87d' > exp.txt
+echo '736cb800271e4700a5902322b6926abb' > exp.txt
 grep 'sql","sql": "select \* from nonexistent"' $logflunziped | while read line ; 
 do
     getmembers $line > out.txt
@@ -151,7 +151,7 @@ done
 echo check the sql parameter now
 echo '1
 no such table: nonexistent
-33344e85e324ece0130e849406c7c87d' > exp.txt
+736cb800271e4700a5902322b6926abb' > exp.txt
 line=`grep '"sql","sql": "select \* from nonexistent"' $logflunziped`
 getmembers $line > out.txt
 #grep '"sql","sql": "select \* from nonexistent"' $logflunziped | python -c "import sys, json; txt=json.load(sys.stdin); print txt['error_code']; print txt['error']; print txt['fingerprint']" >> dbg.txt

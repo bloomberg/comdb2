@@ -1141,7 +1141,13 @@ void sqlite3Insert(
     sqlite3VdbeJumpHere(v, addrInsTop);
   }
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#ifndef SQLITE_OMIT_XFER_OPT
 insert_end:
+#endif /* SQLITE_OMIT_XFER_OPT */
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+insert_end:
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   /* Update the sqlite_sequence table by storing the content of the
   ** maximum rowid counter values recorded while inserting into
   ** autoincrement tables.

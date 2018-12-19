@@ -1742,14 +1742,10 @@ int partial_key_length(const char *dbname, const char *keyname,
     char *s;
     int plen;
     int is_last = 0;
-    int space_err = 0;
 
     struct schema *sc = find_tag_schema(dbname, keyname);
     if (sc == NULL)
         return -1;
-
-    if (len > 0 && strnchr(pstring, len, ' '))
-        space_err = 1;
 
     tok = segtokx((char *)pstring, len, &toff, &tlen, "+");
     while (tlen > 0) {
@@ -3081,6 +3077,7 @@ int vtag_to_ondisk_vermap(struct dbtable *db, uint8_t *rec, int *len, uint8_t ve
     if (db->versmap[ver] == NULL) { // not possible
         logmsg(LOGMSG_FATAL, "vtag_to_ondisk_vermap: db->versmap[%d] should NOT be null\n",
                ver);
+        bdb_flush(thedb->bdb_env, &rc);
         cheap_stack_trace();
         abort();
     }
@@ -6654,6 +6651,8 @@ void update_dbstore(struct dbtable *db)
     }
 
     bzero(db->dbstore, sizeof db->dbstore);
+    logmsg(LOGMSG_DEBUG, "%s table '%s' version %d\n", __func__, db->tablename,
+           db->schema_version);
 
     for (int v = 1; v <= db->schema_version; ++v) {
         char tag[MAXTAGLEN];
@@ -6669,6 +6668,8 @@ void update_dbstore(struct dbtable *db)
         }
 
         db->versmap[v] = (unsigned int *)get_tag_mapping(ver, ondisk);
+        logmsg(LOGMSG_DEBUG, "%s set table '%s' vers %d to %p\n", __func__,
+               db->tablename, v, db->versmap[v]);
         db->vers_compat_ondisk[v] = 1;
         if (SC_TAG_CHANGE ==
             compare_tag_int(ver, ondisk, NULL, 0 /*non-strict compliance*/))
@@ -7084,6 +7085,32 @@ int reload_after_bulkimport(struct dbtable *db, tran_type *tran)
     update_dbstore(db);
     create_sqlmaster_records(tran);
     create_sqlite_master();
+    return 0;
+}
+
+#include <bdb_int.h>
+
+int reload_all_db_tran(tran_type *tran)
+{
+    int table;
+    int rc;
+    for (rc = 0, table = 0; table < thedb->num_dbs && rc == 0; table++) {
+        struct dbtable *db = thedb->dbs[table];
+        backout_schemas(db->tablename);
+
+        if (load_new_ondisk(db, tran)) {
+            logmsg(LOGMSG_ERROR, "Failed to load new .ONDISK\n");
+            return 1;
+        }
+        if (load_new_versions(db, tran)) {
+            logmsg(LOGMSG_ERROR, "Failed to load .ONDISK.VER.nn\n");
+            return 1;
+        }
+
+        db->tableversion = table_version_select(db, tran);
+        update_dbstore(db);
+    }
+
     return 0;
 }
 

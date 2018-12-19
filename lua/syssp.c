@@ -13,6 +13,10 @@
 #include <sql.h>
 
 #include <logmsg.h>
+#include <parse_lsn.h>
+#include <truncate_log.h>
+#include <bdb_api.h>
+#include <phys_rep.h>
 
 
 /* Wishes for anyone who wants to clean this up one day:
@@ -220,7 +224,9 @@ static int db_comdb_verify(Lua L) {
         return luaL_error(L, "Verify failed.");
     }
 
+    rdlock_schema_lk();
     struct dbtable *db = get_dbtable_by_name(tblname);
+    unlock_schema_lk();
     if (db) {
         logmsg(LOGMSG_USER, "db_comdb_verify: verify table '%s'\n", tblname);
         rc = verify_table(tblname, NULL, 1, 0, db_verify_table_callback, L); //freq 1, fix 0
@@ -236,6 +242,152 @@ static int db_comdb_verify(Lua L) {
     }
     else
         db_verify_table_callback(L, "Verify succeeded.");
+
+    return 1;
+}
+
+int gbl_truncating_log = 0;
+
+static int db_comdb_truncate_log(Lua L) {
+    SP sp = getsp(L);
+    sp->max_num_instructions = 1000000; //allow large number of steps
+    char *lsnstr = NULL;
+    if (lua_isstring(L, 1)) {
+        lsnstr = (char *) lua_tostring(L, 1);
+    }
+    else {
+        return luaL_error(L, "Require a string for the lsn");
+    }
+
+    int rc;
+    unsigned int file, offset;
+    int min_file, min_offset;
+  
+    if ((rc = char_to_lsn(lsnstr, &file, &offset)) != 0) {
+        // db_verify_table_callback(L, "Usage: truncate_log(\"{<file>:<offset>}\")");
+        return luaL_error(L, 
+                "Usage: truncate_log(\"{<file>:<offset>}\"). Input not valid.");
+    }
+
+    logdelete_lock(__func__, __LINE__);
+    gbl_truncating_log = 1;
+    logdelete_unlock(__func__, __LINE__);
+
+    bdb_min_truncate(thedb->bdb_env, &min_file, &min_offset, NULL);
+
+    if (min_file == 0) {
+        gbl_truncating_log = 0;
+        return luaL_error(L, "Log is not truncatable");
+    }
+
+    if (file < min_file || (file == min_file && 
+                offset < min_offset)) {
+        return luaL_error(L, 
+                "Minimum truncate lsn is {%d:%d}", min_file, min_offset);
+    }
+    logmsg(LOGMSG_USER, "applying log from lsn {%u:%u}\n", file, offset);
+
+    rc = truncate_log(file, offset, 1);
+    gbl_truncating_log = 0;
+    if (rc != 0)
+    {
+        if (rc == -1)
+            return luaL_error(L, "Can only truncate from master node");
+        else
+            return luaL_error(L, "Couldn't truncate to lsn {%u:%u}", file, offset);
+    }
+
+    return 1;
+}
+
+static int db_comdb_truncate_time(Lua L) {
+    SP sp = getsp(L);
+    sp->max_num_instructions = 1000000; //allow large number of steps
+    time_t time;
+    int32_t min_time;
+    int rc;
+    if (lua_isnumber(L, 1))
+    {
+        time = (time_t) lua_tointeger(L, 1);
+    }
+    else
+    {
+        return luaL_error(L, "Usage: truncate_time(<time>), "
+                "where time is epoch time");
+    }
+
+    logdelete_lock(__func__, __LINE__);
+    gbl_truncating_log = 1;
+    logdelete_unlock(__func__, __LINE__);
+
+    bdb_min_truncate(thedb->bdb_env, NULL, NULL, &min_time);
+
+    if (time < min_time)
+    {
+        gbl_truncating_log = 0;
+        return luaL_error(L, "Minimum truncate timestamp is %d\n",
+                min_time);
+    }
+
+    logmsg(LOGMSG_USER, "Finding earliest log before stated time: %ld.\n", time);
+
+    rc = truncate_timestamp(time);
+    gbl_truncating_log = 0;
+
+    if (rc != 0)
+    {
+        if (rc == -1)
+            return luaL_error(L, "Can only truncate from master node");
+        else
+            return luaL_error(L, "Couldn't truncate to timestamp %ld", time);
+    }
+
+    return 1;
+}
+
+
+static int db_comdb_apply_log(Lua L) {
+    SP sp = getsp(L);
+    sp->max_num_instructions = 1000000; //allow large number of steps
+    char *lsnstr = NULL;
+    int rc, newfile;
+    blob_t blob; 
+
+    if (lua_isstring(L, 1)) {
+        lsnstr = (char *) lua_tostring(L, 1);
+    }
+    else {
+        return luaL_error(L, 
+                "Usage: apply_log(\"{<file>:<offset>}\", 'blob'). "
+                "1st param not string.");
+    }
+
+    luabb_toblob(L, 2, &blob);
+
+    if (lua_isnumber(L, 3))
+    {
+        newfile = (int) lua_tointeger(L, 1);
+    }
+    else {
+        return luaL_error(L, 
+                "Usage: apply_log(\"{<file>:<offset>}\", 'blob'). "
+                "3rd param not int flag.");
+    }
+
+    unsigned int file, offset; 
+  
+    if ((rc = char_to_lsn(lsnstr, &file, &offset)) != 0) {
+        return luaL_error(L, 
+                "Usage: apply_log(\"{<file>:<offset>}\", 'blob'). "
+                "LSN not valid.");
+    }
+    logmsg(LOGMSG_USER, "applying log lsn {%u:%u}\n", file, offset);
+
+    if ((rc = apply_log_procedure(file, offset, blob.data, 
+                    blob.length, newfile)) != 0)
+    {
+        return luaL_error(L, "Log apply failed.");
+    }
 
     return 1;
 }
@@ -295,6 +447,72 @@ static int db_send(Lua L) {
     return 1;
 }
 
+static int db_comdb_start_replication(Lua L)
+{
+    int rc;
+
+    if (!gbl_is_physical_replicant)
+    {
+        return luaL_error(L, "Database is not a physical replicant, cannot replicate");
+    }
+
+    if ((rc = start_replication()) != 0)
+    {
+        if (rc > 0)
+        {
+            return luaL_error(L, "DB is already replicating");
+        }
+        return luaL_error(L, "Couldn't start replicating");
+    }
+
+    return 1;
+}
+
+static int db_comdb_stop_replication(Lua L)
+{
+    if (!gbl_is_physical_replicant)
+    {
+        return luaL_error(L, "Database is not a physical replicant, cannot replicate");
+    }
+
+    if (stop_replication() != 0)
+    {
+        return luaL_error(L, "Something went horribly wrong. Replicating thread wouldn't stop");
+    }
+
+    return 1;
+}
+
+extern char gbl_dbname[MAX_DBNAME_LENGTH];
+
+static int db_comdb_register_replicant(Lua L)
+{
+    int nnodes;
+    struct host_node_info nodes[REPMAX];
+    nnodes = net_get_nodes_info(thedb->handle_sibling, REPMAX, nodes);
+
+    lua_createtable(L, nnodes, 0);
+    for (int i = 0; i < nnodes; i++) {
+        lua_createtable(L, 3, 0);
+
+        lua_pushstring(L, "tier");
+        lua_pushinteger(L, 0);
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "dbname");
+        lua_pushstring(L, gbl_dbname);
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "host");
+        lua_pushstring(L, nodes[i].host);
+        lua_settable(L, -3);
+
+        lua_rawseti(L, -2, i+1);
+    }
+
+    return 1;
+}
+
 static const luaL_Reg sys_funcs[] = {
     { "cluster", db_cluster },
     { "comdbg_tables", db_comdbg_tables },
@@ -302,12 +520,19 @@ static const luaL_Reg sys_funcs[] = {
     { "load", db_csvcopy},
     { "comdb_analyze", db_comdb_analyze },
     { "comdb_verify", db_comdb_verify },
+    { "truncate_log", db_comdb_truncate_log },
+    { "truncate_time", db_comdb_truncate_time },
+    { "apply_log", db_comdb_apply_log },
+    { "start_replication", db_comdb_start_replication },
+    { "stop_replication", db_comdb_stop_replication },
+    { "register_replicant", db_comdb_register_replicant },
     { NULL, NULL }
 }; 
 
 struct sp_source {
     char *name;
     char *source;
+    char *override;
 };
 
 static struct sp_source syssps[] = {
@@ -331,7 +556,8 @@ static struct sp_source syssps[] = {
         "    for i, v in ipairs(cluster_info) do\n"
         "        db:emit(v)\n"
         "    end\n"
-        "end\n"
+        "end\n",
+        NULL
     },
 
     {
@@ -356,7 +582,8 @@ static struct sp_source syssps[] = {
         "    for i, v in ipairs(table_info) do\n"
         "        db:emit(v)\n"
         "    end\n"
-        "end\n"
+        "end\n",
+        NULL
     },
 
     {
@@ -374,7 +601,8 @@ static struct sp_source syssps[] = {
         "    for i, v in ipairs(msg) do\n"
         "        db:emit(v)\n"
         "    end\n"
-        "end\n"
+        "end\n",
+        NULL
     },
 
     {
@@ -393,27 +621,91 @@ static struct sp_source syssps[] = {
         "    for i, v in ipairs(msg) do\n"
         "        db:emit(v)\n"
         "    end\n"
-        "end\n"
+        "end\n",
+        NULL
     }
     ,{
         // to call verify for a table: cdb2sql adidb local 'exec procedure sys.cmd.verify("t1")'
         "sys.cmd.verify",
         "local function main(tbl)\n"
         "sys.comdb_verify(tbl)\n"
-        "end\n"
+        "end\n",
+        NULL
     }
     ,{
         "sys.cmd.load",
         "local function main(csv,tbl,seperator, header)\n"
         "sys.load(db,csv,tbl,seperator,header)\n"
-        "end\n"
+        "end\n",
+        NULL
+    }
+    ,{
+        "sys.cmd.truncate_log",
+        "local function main(lsn)\n"
+        "sys.truncate_log(lsn)\n"
+        "end\n",
+        NULL
+    }
+    ,{
+        "sys.cmd.truncate_time",
+        "local function main(time)\n"
+        "sys.truncate_time(time)\n"
+        "end\n",
+        NULL
+    }
+    ,{
+        "sys.cmd.apply_log",
+        "local function main(lsn, blob, newfile)\n"
+        "sys.apply_log(lsn, blob, newfile)\n"
+        "end\n",
+        NULL
+    }
+    /* starts and stop replication*/
+    ,{
+        "sys.cmd.start_replication",
+        "local function main()\n"
+        "sys.start_replication()\n"
+        "end\n",
+        NULL
+    }
+    ,{
+        "sys.cmd.stop_replication",
+        "local function main()\n"
+        "sys.stop_replication()\n"
+        "end\n",
+        NULL
+    }
+
+    /* allow replication assignment */
+    ,{
+        "sys.cmd.register_replicant",
+        "local function main(dbname, machname, file, offset)\n"
+        "    local schema = {\n"
+        "        { 'int',    'tier' },\n"
+        "        { 'string', 'dbname' },\n"
+        "        { 'string', 'host' },\n"
+        "    }\n"
+        "    db:num_columns(table.getn(schema))\n"
+        "    for i, v in ipairs(schema) do\n"
+        "        db:column_name(v[2], i)\n"
+        "        db:column_type(v[1], i)\n"
+        "    end\n"
+        "    local rep_machs\n"
+        "    rep_machs = sys.register_replicant(dbname, machname, file, offset)\n"
+        "    for i, v in ipairs(rep_machs) do\n"
+        "        db:emit(v)\n"
+        "    end\n"
+        "end\n",
+        "register_replicant"
     }
 };
 
-char* find_syssp(const char *s) {
+char* find_syssp(const char *s, char **override) {
     for (int i = 0; i < sizeof(syssps)/sizeof(syssps[0]); i++) {
-        if (strcmp(syssps[i].name, s) == 0)
+        if (strcmp(syssps[i].name, s) == 0) {
+            (*override) = syssps[i].override;
             return syssps[i].source;
+        }
     }
     return NULL;
 }

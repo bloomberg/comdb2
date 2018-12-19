@@ -1629,10 +1629,10 @@ void comdb2getAlias(Parse* pParse, Token* t1)
 #endif
 
     if (comdb2AuthenticateUserOp(pParse))
-        return;       
+        return;
 
     setError(pParse, SQLITE_INTERNAL, "Not Implemented");
-    logmsg(LOGMSG_INFO, "Getting alias %.*s", t1->n, t1->z); 
+    logmsg(LOGMSG_INFO, "Getting alias %.*s", t1->n, t1->z);
 }
 
 /********************* GRANT AUTHORIZAZIONS ************************************/
@@ -2418,7 +2418,10 @@ struct comdb2_schema {
 };
 
 /* DDL context flags */
-enum { DDL_NOOP = 1 << 0, DDL_DRYRUN = 1 << 1 };
+enum {
+    DDL_NOOP = 1 << 0,
+    DDL_DRYRUN = 1 << 1,
+};
 
 /* DDL context for CREATE/ALTER command */
 struct comdb2_ddl_context {
@@ -2430,6 +2433,8 @@ struct comdb2_ddl_context {
     int flags;
     /* Memory allocator. */
     comdb2ma mem;
+    /* Only used during ALTER TABLE */
+    struct comdb2_column *alter_column;
 };
 
 /* Type properties */
@@ -3112,6 +3117,7 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
         }
     }
     assert(found);
+    ASSERT_PARAMETER(found);
 
 done:
     gen_constraint_name_int(buf, pos, out, out_size);
@@ -4071,9 +4077,11 @@ void comdb2AddColumn(Parse *pParse, /* Parser context */
 )
 {
     struct comdb2_column *column;
+    struct comdb2_column *current;
     char type[pType->n + 1];
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     int rc;
+    int column_exists;
 
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
@@ -4117,14 +4125,38 @@ void comdb2AddColumn(Parse *pParse, /* Parser context */
     }
     column->type = (uint8_t)rc;
 
-    struct comdb2_column *current;
+    column_exists = 0;
     LISTC_FOR_EACH(&ctx->schema->column_list, current, lnk)
     {
-        if (strcasecmp(column->name, current->name) == 0) {
-            pParse->rc = SQLITE_ERROR;
-            sqlite3ErrorMsg(pParse, "Duplicate column name '%s'.",
-                            current->name);
-            goto cleanup;
+        if ((strcasecmp(column->name, current->name) == 0) &&
+            ((current->flags & COLUMN_DELETED) == 0)) {
+            column_exists = 1;
+            break;
+        }
+    }
+
+    if (column_exists == 1) {
+        pParse->rc = SQLITE_ERROR;
+        sqlite3ErrorMsg(pParse, "Duplicate column name '%s'.", current->name);
+        goto cleanup;
+    } else {
+        /* We cannot allow dropping and adding the same column in the same
+         * ALTER TABLE command as that could potentially switch the position
+         * of the column in the resulting csc2 schema. Which, if allowed,
+         * would cause the csc2 system to simply "re-position the existing
+         * column along with all its data" - not something user actually
+         * asked for.
+         */
+        LISTC_FOR_EACH_REVERSE(&ctx->schema->column_list, current, lnk)
+        {
+            if ((strcasecmp(column->name, current->name) == 0) &&
+                ((current->flags & COLUMN_DELETED) != 0)) {
+                sqlite3ErrorMsg(
+                    pParse,
+                    "Cannot DROP and ADD same column in an ALTER command.");
+                pParse->rc = SQLITE_MISUSE;
+                goto cleanup;
+            }
         }
     }
 
@@ -4140,28 +4172,20 @@ cleanup:
     return;
 }
 
-void comdb2AddDefaultValue(
-  Parse *pParse,           /* Parsing context */
-  Expr *pExpr,             /* The parsed expression of the default value */
-  const char *zStart,      /* Start of the default value text */
-  const char *zEnd         /* First character past end of defaut value text */
-){
+static void comdb2ColumnSetDefault(
+    Parse *pParse,                /* Parsing context */
+    struct comdb2_column *column, /* Set the default value of this column */
+    Expr *pExpr,        /* The parsed expression of the default value */
+    const char *zStart, /* Start of the default value text */
+    const char *zEnd    /* First character past end of defaut value
+                           text */
+)
+{
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
-    struct comdb2_column *column;
     char *def;
     int def_len;
 
-    if (use_sqlite_impl(pParse)) {
-        assert(ctx == 0);
-        sqlite3AddDefaultValue(pParse, pExpr, zStart, zEnd);
-        return;
-    }
-
-    if ((ctx->flags & DDL_NOOP) != 0) {
-        return;
-    }
-
-    /* Add DEFAULT to the last add column. */
+    /* Add DEFAULT to the specified column. */
     def_len = zEnd - zStart;
     def = comdb2_strndup(ctx->mem, zStart, def_len);
     if (def == 0)
@@ -4169,7 +4193,6 @@ void comdb2AddDefaultValue(
     /* Remove the quotes around the default value (if any). */
     sqlite3Dequote(def);
 
-    column = (struct comdb2_column *)LISTC_BOT(&ctx->schema->column_list);
     column->def = def;
 
     return;
@@ -4178,6 +4201,45 @@ oom:
     setError(pParse, SQLITE_NOMEM, "System out of memory");
 
     free_ddl_context(pParse);
+    return;
+}
+
+void comdb2AddDefaultValue(
+    Parse *pParse,      /* Parsing context */
+    Expr *pExpr,        /* The parsed expression of the default value */
+    const char *zStart, /* Start of the default value text */
+    const char *zEnd    /* First character past end of defaut value text */
+)
+{
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+    struct comdb2_column *column;
+
+    if (use_sqlite_impl(pParse)) {
+        assert(ctx == 0);
+        sqlite3AddDefaultValue(pParse, pExpr, zStart, zEnd);
+        return;
+    }
+
+    if (ctx == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
+        return;
+    }
+
+    if ((ctx->flags & DDL_NOOP) != 0) {
+        return;
+    }
+
+    /* Add DEFAULT to the last added column. */
+    column = (struct comdb2_column *)LISTC_BOT(&ctx->schema->column_list);
+    comdb2ColumnSetDefault(pParse, column, pExpr, zStart, zEnd);
+    return;
+}
+
+static void comdb2ColumnSetNull(Parse *pParse, struct comdb2_column *column)
+{
+    /* Clear the COLUMN_NO_NULL bit. */
+    column->flags &= ~COLUMN_NO_NULL;
     return;
 }
 
@@ -4204,10 +4266,16 @@ void comdb2AddNull(Parse *pParse)
         return;
     }
 
-    /* Clear the COLUMN_NO_NULL bit. */
     column = (struct comdb2_column *)LISTC_BOT(&ctx->schema->column_list);
-    column->flags &= ~COLUMN_NO_NULL;
+    comdb2ColumnSetNull(pParse, column);
 
+    return;
+}
+
+static void comdb2ColumnSetNotNull(Parse *pParse, struct comdb2_column *column)
+{
+    /* Set the COLUMN_NO_NULL bit. */
+    column->flags |= COLUMN_NO_NULL;
     return;
 }
 
@@ -4234,9 +4302,8 @@ void comdb2AddNotNull(Parse *pParse, int onError)
         return;
     }
 
-    /* Set the COLUMN_NO_NULL bit. */
     column = (struct comdb2_column *)LISTC_BOT(&ctx->schema->column_list);
-    column->flags |= COLUMN_NO_NULL;
+    comdb2ColumnSetNotNull(pParse, column);
 
     return;
 }
@@ -4328,33 +4395,20 @@ static void comdb2AddIndexInt(
         return;
     }
 
+    key = comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_key));
+    if (key == 0)
+        goto oom;
+
     if (keyname) {
         if (idxType != SQLITE_IDXTYPE_PRIMARYKEY && is_pk(keyname)) {
             pParse->rc = SQLITE_ERROR;
             sqlite3ErrorMsg(pParse, "Invalid key name '%s'.", keyname);
             goto cleanup;
         }
-
-        /*
-          Also check if a key already exists with the same name. For indices
-          created via CREATE INDEX (SQLITE_IDXTYPE_APPDEF) this check has
-          already been done to address IF NOT EXISTS.
-        */
-        if (idxType != SQLITE_IDXTYPE_APPDEF &&
-            find_idx_by_name(ctx, keyname)) {
-            pParse->rc = SQLITE_ERROR;
-            sqlite3ErrorMsg(pParse, "Index '%s' already exists.", keyname);
-            goto cleanup;
-        }
+        key->name = keyname;
     } else {
         /* Key name not specified, will be generated later. */
     }
-
-    key = comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_key));
-    if (key == 0)
-        goto oom;
-
-    key->name = keyname;
 
     switch (idxType) {
     case SQLITE_IDXTYPE_APPDEF:
@@ -4527,20 +4581,23 @@ static void comdb2AddIndexInt(
     */
     if (key->name == 0) {
         char *keyname = comdb2_malloc(ctx->mem, MAXGENKEYLEN);
-
         if (keyname == 0) {
             goto oom;
         }
 
         gen_key_name(key, ctx->schema->name, keyname, MAXGENKEYLEN);
-
-        /* Check if a key already exists with the same name. */
-        if (find_idx_by_name(ctx, keyname)) {
-            pParse->rc = SQLITE_ERROR;
-            sqlite3ErrorMsg(pParse, "Index '%s' already exists.", keyname);
-            goto cleanup;
-        }
         key->name = keyname;
+    }
+
+    /*
+      Check if a key already exists with the same name. For indices
+      created via CREATE INDEX (SQLITE_IDXTYPE_APPDEF) this check has
+      already been done to address IF NOT EXISTS.
+    */
+    if (idxType != SQLITE_IDXTYPE_APPDEF && find_idx_by_name(ctx, key->name)) {
+        pParse->rc = SQLITE_ERROR;
+        sqlite3ErrorMsg(pParse, "Index '%s' already exists.", key->name);
+        goto cleanup;
     }
 
     /* Add the key to the list. */
@@ -5132,6 +5189,7 @@ void comdb2DeferForeignKey(Parse *pParse, int isDeferred)
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
+        ASSERT_PARAMETER(ctx);
         sqlite3DeferForeignKey(pParse, isDeferred);
         return;
     }
@@ -5608,4 +5666,181 @@ done:
         free(buf);
 
     return rc;
+}
+
+void comdb2AlterColumnStart(Parse *pParse /* Parser context */,
+                            Token *pName /* Column name */)
+{
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+    struct comdb2_column *current;
+    char *column_name;
+    int column_exists;
+
+    if (ctx == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
+        return;
+    }
+
+    if ((ctx->flags & DDL_NOOP) != 0) {
+        return;
+    }
+
+    column_name = comdb2_strndup(ctx->mem, pName->z, pName->n);
+    if (column_name == 0)
+        goto oom;
+    sqlite3Dequote(column_name);
+
+    column_exists = 0;
+    LISTC_FOR_EACH(&ctx->schema->column_list, current, lnk)
+    {
+        if ((strcasecmp(column_name, current->name) == 0) &&
+            ((current->flags & COLUMN_DELETED) == 0)) {
+            column_exists = 1;
+            break;
+        }
+    }
+
+    if (column_exists == 0) {
+        pParse->rc = SQLITE_ERROR;
+        sqlite3ErrorMsg(pParse, "Column '%s' not found.", column_name);
+        goto cleanup;
+    }
+
+    ctx->alter_column = current;
+
+    return;
+
+oom:
+    setError(pParse, SQLITE_NOMEM, "System out of memory");
+
+cleanup:
+    free_ddl_context(pParse);
+    return;
+}
+
+void comdb2AlterColumnEnd(Parse *pParse /* Parser context */)
+{
+    if (pParse->comdb2_ddl_ctx) {
+        assert(pParse->comdb2_ddl_ctx->alter_column);
+        pParse->comdb2_ddl_ctx->alter_column = 0;
+    }
+    return;
+}
+
+void comdb2AlterColumnType(Parse *pParse, /* Parser context */
+                           Token *pType /* New type of the column */)
+{
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+    char type[pType->n + 1];
+    int rc;
+
+    if (ctx == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
+        return;
+    }
+
+    if ((ctx->flags & DDL_NOOP) != 0) {
+        return;
+    }
+
+    /* Column type */
+    if (pType->n == 0) {
+        setError(pParse, SQLITE_MISUSE, "No type specified.");
+        goto cleanup;
+    }
+    strncpy0(type, pType->z, sizeof(type));
+    sqlite3Dequote(type);
+
+    if ((rc = comdb2_parse_sql_type(type, (int *)&ctx->alter_column->len)) ==
+        -1) {
+        setError(pParse, SQLITE_MISUSE, "Invalid type specified.");
+        goto cleanup;
+    }
+    ctx->alter_column->type = (uint8_t)rc;
+
+    return;
+
+cleanup:
+    free_ddl_context(pParse);
+    return;
+}
+
+void comdb2AlterColumnSetDefault(
+    Parse *pParse,      /* Parsing context */
+    Expr *pExpr,        /* The parsed expression of the default value */
+    const char *zStart, /* Start of the default value text */
+    const char *zEnd /* First character past end of defaut value text */)
+{
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+
+    if (ctx == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
+        return;
+    }
+
+    if ((ctx->flags & DDL_NOOP) != 0) {
+        return;
+    }
+
+    assert(ctx->alter_column);
+    comdb2ColumnSetDefault(pParse, ctx->alter_column, pExpr, zStart, zEnd);
+    return;
+}
+
+void comdb2AlterColumnDropDefault(Parse *pParse /* Parser context */)
+{
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+
+    if (ctx == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
+        return;
+    }
+
+    if ((ctx->flags & DDL_NOOP) != 0) {
+        return;
+    }
+
+    assert(ctx->alter_column);
+    ctx->alter_column->def = 0;
+    return;
+}
+
+void comdb2AlterColumnSetNotNull(Parse *pParse /* Parser context */)
+{
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+
+    if (ctx == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
+        return;
+    }
+
+    if ((ctx->flags & DDL_NOOP) != 0) {
+        return;
+    }
+
+    assert(ctx->alter_column);
+    comdb2ColumnSetNotNull(pParse, ctx->alter_column);
+}
+
+void comdb2AlterColumnDropNotNull(Parse *pParse /* Parser context */)
+{
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+
+    if (ctx == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
+        return;
+    }
+
+    if ((ctx->flags & DDL_NOOP) != 0) {
+        return;
+    }
+
+    assert(ctx->alter_column);
+    comdb2ColumnSetNull(pParse, ctx->alter_column);
 }

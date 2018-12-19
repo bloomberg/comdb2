@@ -38,7 +38,9 @@
 #include <logmsg.h>
 
 /* amount of thread-memory initialized for this thread */
+#ifndef PER_THREAD_MALLOC
 static int analyze_thread_memory = 1048576;
+#endif
 
 /* global is-running flag */
 volatile int analyze_running_flag = 0;
