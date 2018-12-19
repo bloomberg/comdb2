@@ -378,7 +378,7 @@ set all_graphs {
   }
   create-time-part {stack
     {line CREATE TIME PARTITION ON /table-name}
-    {line AS /partition-name PERIOD {or DAILY WEEKLY MONTHLY YEARLY}}
+    {line AS /partition-name PERIOD {or 'DAILY' 'WEEKLY' 'MONTHLY' 'YEARLY'}}
     {line RETENTION /numeric-literal START /datetime-literal}
   }
   drop {
@@ -409,27 +409,56 @@ set all_graphs {
             {line OP}
         } TO /user-name}
   }
-  rebuild {stack
-      {line REBUILD {or {} {line INDEX /index-name} DATA DATABLOB } /table-name}
-      {opt {line OPTIONS {loop {or 
-        {line PAGEORDER} 
-        {line READONLY}
-    } , }}}
-  }
+  rebuild {
+      stack
+          {line REBUILD
+              {or
+                  {line
+                      {opt
+                          {or
+                              {line DATA }
+                              {line DATABLOB }
+                          }
+                      }
+                      /table-name
+                  }
+                  {line INDEX /table-name /index-name }
+              }
+          }
+          {line
+              {opt
+                  {line OPTIONS
+                      {loop
+                          {or
+                              {line PAGEORDER}
+                              {line READONLY}
+                          }
+                          ,
+                      }
+                  }
+              }
+          }
+      }
   get {
     line GET {or
       {line ALIAS /table-name}
       {line ANALYZE {or COVERAGE THRESHOLD} /table-name}
+      {line {opt {line {opt NOT} RESERVED}} KW}
     }
   }
   put {
     line PUT {or
-      {line ANALYZE {or COVERAGE THRESHOLD} /table-name /numeric-literal}
-      {line DEFAULT PROCEDURE /procedure-name {or /string-literal /numeric-literal}}
       {line ALIAS /local-table-name /remote-table-name}
-      {line PASSWORD {or OFF /string-literal} FOR /user-name}
+      {line ANALYZE {or COVERAGE THRESHOLD} /table-name /numeric-literal}
       {line AUTHENTICATION {or ON OFF}}
+      {line DEFAULT PROCEDURE /procedure-name {or /string-literal /numeric-literal}}
+      {line GENID48 {or ENABLE DISABLE}}
+      {line PASSWORD {or OFF /string-literal} FOR /user-name}
+      {line ROWLOCKS {or ENABLE DISABLE}}
+      {line SCHEMACHANGE {or COMMITSLEEP CONVERTSLEEP} /numeric-literal}
+      {line SKIPSCAN {or ENABLE DISABLE}}
       {line TIME PARTITION /partition-name RETENTION /numeric-literal}
+      {line TUNABLE /string-literal {or /string-literal /numeric-literal}}
     }
   }
   set-stmt {
@@ -691,57 +720,33 @@ set all_graphs {
   alter-table-ddl {
       stack
       {line ALTER TABLE {opt db-name .} table-name }
-      {opt 
           {or
               {line RENAME TO new-table-name}
               {loop
                   {or
-                      {line ADD
-                          {or
-                              {line {opt COLUMN} column-name column-type
-                                  {opt {loop {line column-constraint } { , } } }
-                              }
-                              {line PRIMARY KEY ( index-column-list ) }
-                              {stack
-                                  {line {opt UNIQUE } INDEX index-name
-                                      ( index-column-list ) }
-                                  {line {opt WITH DATACOPY } {opt WHERE expr } }
-                              }
-                              {stack
-                                  {line {opt CONSTRAINT constraint-name } }
-                                  {line FOREIGN KEY ( index-column-list ) foreign-key-def }
-                              }
-                          }
+                      {line ADD column-name column-type
+                          {opt {loop {line column-constraint } { , } } }
                       }
-                      {line ALTER
-                          {line {opt COLUMN} column-name }
-                          {or
-                              {line {opt SET DATA} TYPE column-type }
-                              {line SET DEFAULT expr }
-                              {line DROP DEFAULT }
-                              {line
-                                  {or
-                                      {line SET }
-                                      {line DROP }
-                                  }
-                                  NOT NULL
-                              }
-                          }
+                      {line DROP {opt COLUMN} column-name }
+                      {stack
+                          {line ADD {opt UNIQUE } INDEX index-name
+                              ( index-column-list ) }
+                          {line {opt OPTION DATACOPY } {opt WHERE expr } }
                       }
-                      {line DROP
-                          {or
-                              {line {opt COLUMN} column-name }
-                                   {line DROP INDEX index-name }
-                              {line PRIMARY KEY }
-                              {line FOREIGN KEY constraint-name }
-                          }
+                      {line DROP INDEX index-name }
+                      {line ADD PRIMARY KEY ( index-column-list ) }
+                      {line DROP PRIMARY KEY }
+                      {stack
+                          {line ADD {opt CONSTRAINT constraint-name } }
+                          {line FOREIGN KEY ( index-column-list ) foreign-key-def }
                       }
+                      {line DROP FOREIGN KEY constraint-name }
                   }
                   { , }
               }
-           }
-       }
-  }
+              {line DO NOTHING }
+          }
+      }
 
   create-index {
       stack
