@@ -6613,6 +6613,15 @@ err:
 		lockid = DB_LOCK_INVALIDID;
 	}
 
+    Pthread_mutex_lock(&dbenv->mintruncate_lk);
+    struct mintruncate_entry *mt;
+    while ((mt = LISTC_TOP(&dbenv->mintruncate)) != NULL &&
+            log_compare(&mt->lsn, &trunclsnp) > 0) {
+        mt = listc_rtl(&dbenv->mintruncate);
+        free(mt);
+    }
+    Pthread_mutex_unlock(&dbenv->mintruncate_lk);
+
 	return (ret);
 }
 

@@ -1992,6 +1992,24 @@ struct fileid_track {
 	int numids;
 };
 
+enum {
+    MINTRUNCATE_START = 0,
+    MINTRUNCATE_SCAN = 1,
+    MINTURNCATE_READY = 2
+};
+
+enum {
+	MINTRUNCATE_DBREG_START = 1,
+	MINTRUNCATE_CHECKPOINT = 2
+};
+
+struct mintruncate_entry {
+	int type;
+	int32_t timestamp;
+	DB_LSN lsn;
+	LINKC_T(struct mintruncate_entry) lnk;
+};
+
 /* hoisted out of rep.h */
 struct __lsn_collection {
 	int nlsns;
@@ -2467,6 +2485,10 @@ struct __db_env {
 
 	/* These fields are for changes to recovery code. */ 
 	struct fileid_track fileid_track;
+	Pthread_mutex_t mintruncate_lk;
+    int mintruncate_state;
+	LISTC_T(struct mintruncate_entry) mintruncate;
+    DB_LSN last_dbreg_start;
 	db_recops recovery_pass;
 	pthread_rwlock_t dbreglk;
 	pthread_rwlock_t recoverlk;

@@ -2137,6 +2137,7 @@ __txn_checkpoint(dbenv, kbytes, minutes, flags)
 	DB_ENV *dbenv;
 	u_int32_t kbytes, minutes, flags;
 {
+    struct mintruncate_entry *mt, *newmt;
 	DB_LSN ckp_lsn, last_ckp, ltrans_ckp_lsn, ckp_lsn_sav;
 	DB_TXNMGR *mgr;
 	DB_TXNREGION *region;
@@ -2320,6 +2321,17 @@ do_ckp:
 			return ret;
 		}
 
+        Pthread_mutex_lock(&dbenv->mintruncate_lk);
+        if (dbenv->mintruncate_state == MINTRUNCATE_READY &&
+                dbenv->last_dbreg_start.file < debuglsn.file) {
+            newmt = malloc(sizeof(*newmt));
+            newmt->type = MINTRUNCATE_DBREG_START;
+            newmt->timestamp = 0;
+            dbenv->last_dbreg_start = debuglsn;
+            listc_atl(&dbenv->mintruncate, newmt);
+        }
+        Pthread_mutex_unlock(&dbenv->mintruncate_lk);
+
 		/*
 		 * Put out records for the open files before we log
 		 * the checkpoint.  The records are certain to be at
@@ -2348,6 +2360,19 @@ do_ckp:
 		}
 		Pthread_rwlock_unlock(&dbenv->dbreglk);
 		MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
+
+        Pthread_mutex_lock(&dbenv->mintruncate_lk);
+        mt = LISTC_TOP(&dbenv->mintruncate);
+        if (dbenv->mintruncate_state == MINTRUNCATE_READY &&
+                mt->type == MINTRUNCATE_DBREG_START &&
+                (log_compare(&ckp_lsn_sav, &dbenv->last_dbreg_start) > 0)) {
+            newmt = malloc(sizeof(*newmt));
+            newmt->type = MINTRUNCATE_CHECKPOINT;
+            newmt->timestamp = timestamp;
+            newmt->lsn = ckp_lsn;
+            listc_atl(&dbenv->mintruncate, newmt);
+        }
+        Pthread_mutex_unlock(&dbenv->mintruncate_lk);
 
 		ret = bdb_checkpoint_list_push(ckp_lsn, ckp_lsn_sav, timestamp);
 		if (ret) {
