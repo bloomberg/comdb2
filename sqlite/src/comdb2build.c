@@ -2974,7 +2974,8 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
     }
 
     /*
-      Find the first *appropriate* non-dropped child key for this constraint.
+      Choose/assign an appropriate (non-dropped) child key for each constraint
+      that does not have one.
     */
     LISTC_FOR_EACH(&ctx->schema->constraint_list, constraint, lnk)
     {
@@ -2991,11 +2992,13 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
 
         LISTC_FOR_EACH(&ctx->schema->key_list, key, lnk)
         {
+            if (key->flags & KEY_DELETED)
+                continue;
             if (listc_size(&constraint->child_idx_col_list) >
                 listc_size(&key->idx_col_list))
                 continue;
 
-            /* Lets start by assuming that we have found the matching key. */
+            /* Let's start by assuming that we have found the matching key. */
             key_found = 1;
 
             key_idx_column = LISTC_TOP(&key->idx_col_list);
@@ -3015,6 +3018,7 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
 
             if (key_found == 1) {
                 constraint->child = key;
+                break;
             }
         }
 
@@ -4590,7 +4594,7 @@ find_parent_key_in_client_context(Parse *pParse, struct comdb2_ddl_context *ctx,
         if (listc_size(&key->idx_col_list) <
             listc_size(&constraint->parent_idx_col_list))
             continue;
-        /* Lets start by assuming that we have found the matching key. */
+        /* Let's start by assuming that we have found the matching key. */
         key_found = 1;
         key_col = key->idx_col_list.top;
         LISTC_FOR_EACH(&constraint->parent_idx_col_list, idx_col, lnk)
@@ -4695,7 +4699,7 @@ void comdb2CreateForeignKey(
     } else {
         /*
           Though some RDBMSs allow this, the number of referenced columns in
-          FK must not be zero. PG, for instance picks the primary key from th
+          FK must not be zero. PG, for instance picks the primary key from the
           referenced table.
         */
         assert(pToCol->nExpr > 0);
@@ -4772,7 +4776,7 @@ void comdb2CreateForeignKey(
             listc_size(&constraint->parent_idx_col_list))
             continue;
 
-        /* Lets start by assuming that we have found the matching key. */
+        /* Let's start by assuming that we have found the matching key. */
         key_found = 1;
         int j = 0;
         LISTC_FOR_EACH(&constraint->parent_idx_col_list, idx_column, lnk)
