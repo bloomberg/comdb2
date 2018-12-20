@@ -217,8 +217,10 @@ spawn_instances $upd_f $dbnm 60 40
 sleep 60
 
 # use the correct logfile
-# TODO:NOENV
 log=${TESTDIR}/logs/${DBNAME}.db
+if [[ -n "$CLUSTER" ]] ; then
+    log=`grep -c nnewsql ${TESTDIR}/logs/${DBNAME}.*.db | sort --field-separator=':' --key='2' -n -r | head -1 | cut -f1 -d':'`
+fi
 
 # validate the log
 validate_scon $dbnm $log .80 20 30
