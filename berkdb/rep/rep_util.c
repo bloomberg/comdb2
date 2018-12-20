@@ -35,6 +35,7 @@ static const char revid[] = "$Id: rep_util.c,v 1.103 2003/11/14 05:32:32 ubell E
 #include <ctrace.h>
 
 #include "util.h"
+#include <locks_wrap.h>
 
 extern pthread_mutex_t rep_candidate_lock;
 extern int gbl_passed_repverify;
@@ -331,6 +332,21 @@ __rep_set_gen(dbenv, func, line, gen)
 }
 
 /*
+ * __rep_set_gen_pp --
+ *  Exposed as a utility function to help with distributed truncate.
+ *
+ * PUBLIC: void __rep_set_gen_pp __P((DB_ENV *, uint32_t gen));
+ */
+void
+__rep_set_gen_pp(dbenv, gen)
+	DB_ENV *dbenv;
+	uint32_t gen;
+{
+    __rep_set_gen(dbenv, __func__, __LINE__, gen);
+}
+
+
+/*
  * __rep_set_egen --
  *  Called as a utility function to see places where an instance's 
  * replication election generation can be changed.
@@ -388,7 +404,7 @@ __rep_new_master(dbenv, cntrl, eid)
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
 	ret = 0;
-	pthread_mutex_lock(&rep_candidate_lock);
+	Pthread_mutex_lock(&rep_candidate_lock);
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 
 		/* This should never happen: we are calling new-master against a
@@ -406,7 +422,7 @@ __rep_new_master(dbenv, cntrl, eid)
 			if (gbl_abort_on_incorrect_upgrade) abort();
 
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-			pthread_mutex_unlock(&rep_candidate_lock);
+			Pthread_mutex_unlock(&rep_candidate_lock);
 			rep->stat.st_msgs_badgen++;
 			return 0;
 		}
@@ -435,7 +451,7 @@ __rep_new_master(dbenv, cntrl, eid)
 		F_SET(rep, REP_F_NOARCHIVE | REP_F_RECOVER);
 	}
 	F_CLR(rep, REP_F_WAITSTART);
-	pthread_mutex_unlock(&rep_candidate_lock);
+	Pthread_mutex_unlock(&rep_candidate_lock);
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 
 	dblp = dbenv->lg_handle;
@@ -723,13 +739,13 @@ __rep_elect_done(dbenv, rep, egen, func, line)
 	rep->votes = 0;
 	logmsg(LOGMSG_DEBUG, "%s called from %s line %d\n", __func__, func, line);
 	if (inelect) {
-		pthread_mutex_lock(&gbl_rep_egen_lk);
+		Pthread_mutex_lock(&gbl_rep_egen_lk);
 		if (egen)
 			__rep_set_egen(dbenv, __func__, __LINE__, egen);
 		else
 			__rep_set_egen(dbenv, __func__, __LINE__, rep->egen+1);
-		pthread_cond_broadcast(&gbl_rep_egen_cd);
-		pthread_mutex_unlock(&gbl_rep_egen_lk);
+		Pthread_cond_broadcast(&gbl_rep_egen_cd);
+		Pthread_mutex_unlock(&gbl_rep_egen_lk);
 	}
 #ifdef DIAGNOSTIC
 	if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
@@ -953,11 +969,11 @@ __rep_set_last_locked(dbenv, last_locked_lsn)
 	DB_ENV *dbenv;
 	DB_LSN *last_locked_lsn;
 {
-	pthread_mutex_lock(&dbenv->locked_lsn_lk);
+	Pthread_mutex_lock(&dbenv->locked_lsn_lk);
 	if (last_locked_lsn->file <= 0) 
 		abort();
 	dbenv->last_locked_lsn = *last_locked_lsn;
-	pthread_mutex_unlock(&dbenv->locked_lsn_lk);
+	Pthread_mutex_unlock(&dbenv->locked_lsn_lk);
 	return 0;
 }
 
@@ -973,9 +989,9 @@ __rep_get_last_locked(dbenv, last_locked_lsn)
 	DB_ENV *dbenv;
 	DB_LSN *last_locked_lsn;
 {
-	pthread_mutex_lock(&dbenv->locked_lsn_lk);
+	Pthread_mutex_lock(&dbenv->locked_lsn_lk);
 	*last_locked_lsn = dbenv->last_locked_lsn;
-	pthread_mutex_unlock(&dbenv->locked_lsn_lk);
+	Pthread_mutex_unlock(&dbenv->locked_lsn_lk);
 	return 0;
 }
 

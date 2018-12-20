@@ -354,7 +354,7 @@ int bdb_osql_shadow_set_lastlog(bdb_cursor_ifn_t *pcur_ifn,
  *  If any shadow row is added/deleted, mark dirty
  */
 
-int release_locks(const char *trace);
+int release_locks_int(const char *trace, const char *func, int line);
 
 int bdb_osql_update_shadows(bdb_cursor_ifn_t *pcur_ifn, bdb_osql_trn_t *trn,
                             int *dirty, enum log_ops log_op, int *bdberr)
@@ -462,11 +462,12 @@ int bdb_osql_update_shadows(bdb_cursor_ifn_t *pcur_ifn, bdb_osql_trn_t *trn,
         if (gbl_sql_release_locks_in_update_shadows && !released_locks) {
             extern int gbl_sql_random_release_interval;
             if (bdb_curtran_has_waiters(cur->state, cur->curtran)) {
-                rc = release_locks("update shadows");
+                rc = release_locks_int("update shadows", __func__, __LINE__);
                 released_locks = 1;
             } else if (gbl_sql_random_release_interval &&
                        !(rand() % gbl_sql_random_release_interval)) {
-                rc = release_locks("random release update shadows");
+                rc = release_locks_int("random release update shadows",
+                        __func__, __LINE__);
                 released_locks = 1;
             }
             if (rc != 0) {
@@ -540,8 +541,6 @@ int bdb_tran_free_shadows(bdb_state_type *bdb_state, tran_type *tran)
 {
     int dbnum = 0;
     int have_errors = 0;
-    int bdberr;
-    int rc = 0;
 
     if (!tran)
         return 0;
@@ -617,9 +616,10 @@ struct temp_cursor *bdb_tran_deltbl_first(bdb_state_type *bdb_state,
     rc = bdb_temp_table_first(bdb_state, cur, bdberr);
     if (rc == IX_OK) {
         char *key = bdb_temp_table_key(cur);
+#ifndef NDEBUG
         int keylen = bdb_temp_table_keysize(cur);
-
         assert(keylen == sizeof(*genid));
+#endif
 
         memcpy(genid, key, sizeof(*genid));
 
@@ -654,9 +654,10 @@ int bdb_tran_deltbl_next(bdb_state_type *bdb_state, tran_type *shadow_tran,
     rc = bdb_temp_table_next(bdb_state, cur, bdberr);
     if (rc == IX_OK) {
         char *key = bdb_temp_table_key(cur);
+#ifndef NDEBUG
         int keylen = bdb_temp_table_keysize(cur);
-
         assert(keylen == sizeof(*genid));
+#endif
 
         memcpy(genid, key, sizeof(*genid));
 
@@ -818,7 +819,6 @@ int bdb_tran_deltbl_setdeleted(bdb_cursor_ifn_t *pcur_ifn,
                                int datalen, int *bdberr)
 {
     bdb_cursor_impl_t *cur = pcur_ifn->impl;
-    tmpcursor_t *skip = NULL;
     int rc = 0;
 
     if (!cur->shadow_tran) {

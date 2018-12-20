@@ -40,11 +40,11 @@ void *get_field_from_sqlite_stat_rec(struct ireq *iq, const void *rec,
     const struct field *f;
     void *rtn;
     uint8_t *in;
-    int rc;
+    int rc = 0;
     int fix;
     int flen;
     int outfsz;
-    int outtype;
+    int outtype = 0;
     int null = 0;
 
     s = iq->usedb->schema;
@@ -84,7 +84,6 @@ void *get_field_from_sqlite_stat_rec(struct ireq *iq, const void *rec,
         in = ((uint8_t *)rec) + f->offset + 1;
         memcpy(rtn, in, sizeof(int));
         outfsz = flen;
-        rc = 0;
     } else {
         rc = SERVER_to_CLIENT(field_get_buf(f, rec), flen, field_get_type(f),
                               field_get_conv_opts(f), NULL, 0, rtn, flen - 1,

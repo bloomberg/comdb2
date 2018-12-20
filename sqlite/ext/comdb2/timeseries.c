@@ -13,6 +13,7 @@
 #include "perf.h"
 #include "sqliteInt.h"
 #include "vdbeInt.h"
+#include "comdb2systbl.h"
 
 /* systbl_metrics_cursor is a subclass of sqlite3_vtab_cursor which
 ** serves as the underlying cursor to enumerate the rows in this
@@ -100,7 +101,7 @@ static int systblTimeseriesNext(sqlite3_vtab_cursor *cur){
       }
   }
 
-  return SQLITE_OK;
+  return rc;
 }
 
 enum {
@@ -131,7 +132,7 @@ static int systblTimeseriesColumn(
   }
 
   return SQLITE_OK;
-};
+}
 
 static int systblTimeseriesRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){
   systbl_metrics_cursor *pCur = (systbl_metrics_cursor*)cur;
@@ -193,26 +194,31 @@ static int systblTimeseriesBestIndex(
 }
 
 const sqlite3_module systblTimeseriesModule = {
-  0,                            /* iVersion */
-  0,                            /* xCreate */
-  systblTimeseriesConnect,       /* xConnect */
-  systblTimeseriesBestIndex,     /* xBestIndex */
-  systblTimeseriesDisconnect,    /* xDisconnect */
-  0,                            /* xDestroy */
-  systblTimeseriesOpen,          /* xOpen - open a cursor */
-  systblTimeseriesClose,         /* xClose - close a cursor */
-  systblTimeseriesFilter,        /* xFilter - configure scan constraints */
-  systblTimeseriesNext,          /* xNext - advance a cursor */
-  systblTimeseriesEof,           /* xEof - check for end of scan */
-  systblTimeseriesColumn,        /* xColumn - read data */
-  systblTimeseriesRowid,         /* xRowid - read data */
-  0,                            /* xUpdate */
-  0,                            /* xBegin */
-  0,                            /* xSync */
-  0,                            /* xCommit */
-  0,                            /* xRollback */
-  0,                            /* xFindMethod */
-  0,                            /* xRename */
+  0,                          /* iVersion */
+  0,                          /* xCreate */
+  systblTimeseriesConnect,    /* xConnect */
+  systblTimeseriesBestIndex,  /* xBestIndex */
+  systblTimeseriesDisconnect, /* xDisconnect */
+  0,                          /* xDestroy */
+  systblTimeseriesOpen,       /* xOpen - open a cursor */
+  systblTimeseriesClose,      /* xClose - close a cursor */
+  systblTimeseriesFilter,     /* xFilter - configure scan constraints */
+  systblTimeseriesNext,       /* xNext - advance a cursor */
+  systblTimeseriesEof,        /* xEof - check for end of scan */
+  systblTimeseriesColumn,     /* xColumn - read data */
+  systblTimeseriesRowid,      /* xRowid - read data */
+  0,                          /* xUpdate */
+  0,                          /* xBegin */
+  0,                          /* xSync */
+  0,                          /* xCommit */
+  0,                          /* xRollback */
+  0,                          /* xFindMethod */
+  0,                          /* xRename */
+  0,                          /* xSavepoint */
+  0,                          /* xRelease */
+  0,                          /* xRollbackTo */
+  0,                          /* xShadowName */
+  .access_flag = CDB2_ALLOW_USER,
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \

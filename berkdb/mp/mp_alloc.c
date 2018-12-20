@@ -32,6 +32,7 @@ static const char revid[] = "$Id: mp_alloc.c,v 11.40 2003/07/03 02:24:34 bostic 
 #include "util.h"
 #include <cdb2_constants.h>
 #include "logmsg.h"
+#include "locks_wrap.h"
 
 typedef struct {
 	DB_MPOOL_HASH *bucket;
@@ -51,7 +52,6 @@ __memp_dump_bufferpool_info(dbenv, f)
 	DB_MUTEX *mutexp;
 	REGINFO *memreg;
 	MPOOL *mp, *c_mp;
-	MPOOLFILE *bh_mfp;
 	DB_MPOOL *dbmp;
 	int count, n_cache;
 	u_int64_t bufcnt;
@@ -117,7 +117,6 @@ static void dump_page_stats(DB_ENV *dbenv) {
 	DB_TXN_STAT *txn_stats;
 	DB_TXN_ACTIVE *active;
 	int i;
-	char str[100];
 	FILE *out;
 	char *fname;
 	struct tm tm;
@@ -184,7 +183,7 @@ static void dump_page_stats(DB_ENV *dbenv) {
 	logmsgf(LOGMSG_USER, out, "st_page_trickle: %"PRId64"\n", mpool_stats->st_page_trickle);
 	logmsgf(LOGMSG_USER, out, "st_pages: %"PRId64"\n", mpool_stats->st_pages);
 	logmsgf(LOGMSG_USER, out, "st_page_clean: %"PRId64"\n", mpool_stats->st_page_clean);
-	logmsgf(LOGMSG_USER, out, "st_page_dirty: %"PRId64"\n", mpool_stats->st_page_dirty);
+	logmsgf(LOGMSG_USER, out, "st_page_dirty: %"PRId32"\n", mpool_stats->st_page_dirty);
 	logmsgf(LOGMSG_USER, out, "st_hash_buckets: %"PRId64"\n", mpool_stats->st_hash_buckets);
 	logmsgf(LOGMSG_USER, out, "st_hash_searches: %"PRId64"\n", mpool_stats->st_hash_searches);
 	logmsgf(LOGMSG_USER, out, "st_hash_longest: %"PRId64"\n", mpool_stats->st_hash_longest);
@@ -341,8 +340,8 @@ found:		if (offsetp != NULL)
 		return (0);
 	} else if (giveup || c_mp->stat.st_pages == 0) {
 		R_UNLOCK(dbenv, memreg);
-		logmsg(LOGMSG_FATAL, 
-                "unable to allocate space from the buffer cache");
+		logmsg(LOGMSG_FATAL,
+		       "unable to allocate space from the buffer cache\n");
 		abort();
 	}
 
@@ -401,7 +400,7 @@ found:		if (offsetp != NULL)
 		 * This test ignores pathological cases like no buffers in the
 		 * system -- that shouldn't be possible.
 		 */
-		if ((++buckets % c_mp->htab_buckets) == 0) {
+		if (buckets++ == c_mp->htab_buckets) {
 			if (freed_space > 0)
 				goto alloc;
 			R_UNLOCK(dbenv, memreg);
@@ -422,7 +421,7 @@ found:		if (offsetp != NULL)
 				sleeptime++;
 				if (__gbl_max_mpalloc_sleeptime &&
 				    sleeptime > __gbl_max_mpalloc_sleeptime) {
-					pthread_mutex_lock(&dump_once_lk);
+					Pthread_mutex_lock(&dump_once_lk);
 					alarm(10);
 					dump_page_stats(dbenv);
 					_exit(1);

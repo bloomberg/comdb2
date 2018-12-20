@@ -40,6 +40,7 @@
 #include "net.h"
 #include "bdb_int.h"
 #include "locks.h"
+#include "locks_wrap.h"
 #include "list.h"
 #include <endian_core.h>
 
@@ -68,6 +69,7 @@
 #include <trigger.h>
 #include "printformats.h"
 #include <llog_auto.h>
+#include "phys_rep_lsn.h"
 #include "logmsg.h"
 #include <compat.h>
 
@@ -100,6 +102,8 @@ char *lsn_to_str(char lsn_str[], DB_LSN *lsn);
 static int bdb_wait_for_seqnum_from_node_nowait_int(bdb_state_type *bdb_state,
                                                     seqnum_type *seqnum,
                                                     char *host);
+
+static void bdb_zap_lsn_waitlist(bdb_state_type *bdb_state, const char *host);
 
 static int last_slow_node_check_time = 0;
 static pthread_mutex_t slow_node_check_lk = PTHREAD_MUTEX_INITIALIZER;
@@ -309,15 +313,14 @@ const uint8_t *rep_udp_filepage_type_get(filepage_type *p_filepage_type,
     return p_buf;
 }
 
-enum { REP_DB_LSN_TYPE_SIZE = 4 + 4 };
+enum { DB_LSN_TYPE_SIZE = 4 + 4 };
 
-BB_COMPILE_TIME_ASSERT(rep_db_lsn_type, sizeof(DB_LSN) == REP_DB_LSN_TYPE_SIZE);
+BB_COMPILE_TIME_ASSERT(db_lsn_type, sizeof(DB_LSN) == DB_LSN_TYPE_SIZE);
 
-static const uint8_t *rep_db_lsn_type_get(DB_LSN *p_db_lsn,
-                                          const uint8_t *p_buf,
-                                          const uint8_t *p_buf_end)
+const uint8_t *db_lsn_type_get(DB_LSN *p_db_lsn, const uint8_t *p_buf,
+                               const uint8_t *p_buf_end)
 {
-    if (p_buf_end < p_buf || REP_DB_LSN_TYPE_SIZE > (p_buf_end - p_buf))
+    if (p_buf_end < p_buf || DB_LSN_TYPE_SIZE > (p_buf_end - p_buf))
         return NULL;
 
     p_buf =
@@ -328,11 +331,10 @@ static const uint8_t *rep_db_lsn_type_get(DB_LSN *p_db_lsn,
     return p_buf;
 }
 
-static const uint8_t *rep_db_lsn_type_put(const DB_LSN *p_db_lsn,
-                                          uint8_t *p_buf,
-                                          const uint8_t *p_buf_end)
+const uint8_t *db_lsn_type_put(const DB_LSN *p_db_lsn, uint8_t *p_buf,
+                               const uint8_t *p_buf_end)
 {
-    if (p_buf_end < p_buf || REP_DB_LSN_TYPE_SIZE > (p_buf_end - p_buf))
+    if (p_buf_end < p_buf || DB_LSN_TYPE_SIZE > (p_buf_end - p_buf))
         return NULL;
 
     p_buf =
@@ -636,9 +638,9 @@ static inline int is_incoherent_complete(bdb_state_type *bdb_state,
     if (incohwait)
         *incohwait = 0;
 
-    pthread_mutex_lock(&(bdb_state->coherent_state_lock));
+    Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
     state = bdb_state->coherent_state[nodeix(host)];
-    pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+    Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 
     /* STATE_COHERENT and STATE_INCOHERENT_LOCAL return COHERENT. */
     if (state == STATE_INCOHERENT || state == STATE_INCOHERENT_SLOW)
@@ -747,9 +749,7 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
     struct rep_type_berkdb_rep_buf_hdr p_rep_type_berkdb_rep_buf_hdr = {0};
     struct rep_type_berkdb_rep_seqnum p_rep_type_berkdb_rep_seqnum = {0};
     uint8_t *p_buf, *p_buf_end;
-    int rectype;
-    char *recbuf;
-    char *controlbuf;
+    int rectype = 0;
     int i;
     int *seqnum;
     const char *hostlist[REPMAX];
@@ -850,6 +850,8 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
     p_buf += sizeof(int);
 
     /*
+       char *controlbuf;
+       char *recbuf;
        ptr = buf;
 
        seqnum = (int *)ptr;
@@ -949,7 +951,7 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
 
                     p_buf = (uint8_t *)lsnp;
                     p_buf_end = (uint8_t *)lsnp + sizeof(DB_LSN);
-                    rep_db_lsn_type_get(&(tran->savelsn), p_buf, p_buf_end);
+                    db_lsn_type_get(&(tran->savelsn), p_buf, p_buf_end);
 
                     /*
                        char str[80];
@@ -1018,6 +1020,8 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
                     }
                 }
             }
+
+            dontsend = 0;
 
             if (dontsend && (flags & DB_REP_TRACE)) {
                 logmsg(LOGMSG_USER, "%s line %d logput to %s throttled\n",
@@ -1222,7 +1226,7 @@ static void *elect_thread(void *args)
 {
     int rc, count, i;
     bdb_state_type *bdb_state;
-    char *master_host, *old_master;
+    char *master_host;
     int num;
     int end, start;
     int num_connected;
@@ -1237,9 +1241,7 @@ static void *elect_thread(void *args)
     int elect_count;
 
     int op;
-    int restart = 0;
     int done = 0;
-    int called_rep_start = 0;
     int elect_again = 0;
 
     thread_started("bdb election");
@@ -1383,7 +1385,6 @@ elect_again:
     /* we're calling for election.  if we are doing this, we don't know who the
        master is.  ensure that master_eid isnt latched to the previous master
        here.  */
-    old_master = bdb_state->repinfo->master_host;
     set_repinfo_master_host(bdb_state, db_eid_invalid, __func__, __LINE__);
 
     /* Should be holding bdb readlock .. */
@@ -1593,21 +1594,21 @@ void *rep_catchup_add_thread(void *arg)
 {
     static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
     static int rep_catchup_add_running = 0;
-    pthread_mutex_lock(&lk);
+    Pthread_mutex_lock(&lk);
     if (rep_catchup_add_running) {
-        pthread_mutex_unlock(&lk);
+        Pthread_mutex_unlock(&lk);
         return NULL;
     }
     rep_catchup_add_running = 1;
-    pthread_mutex_unlock(&lk);
+    Pthread_mutex_unlock(&lk);
     bdb_state_type *bdb_state = arg;
     thread_started("rep_catchup_add");
     bdb_thread_event(bdb_state, 1);
     add_thread_int(bdb_state, 1);
     bdb_thread_event(bdb_state, 0);
-    pthread_mutex_lock(&lk);
+    Pthread_mutex_lock(&lk);
     rep_catchup_add_running = 0;
-    pthread_mutex_unlock(&lk);
+    Pthread_mutex_unlock(&lk);
     return NULL;
 }
 
@@ -1789,21 +1790,21 @@ void net_newnode_rtn(netinfo_type *netinfo_ptr, char *hostname, int portnum)
     /* get a pointer back to our bdb_state */
     bdb_state = net_get_usrptr(netinfo_ptr);
 
-    logmsg(LOGMSG_WARN, "NEW NODE CONNECTED: %s:%d\n", hostname, portnum);
-
     /* if we're the master, treat him as incoherent till proven wrong */
     if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
-        pthread_mutex_lock(&(bdb_state->coherent_state_lock));
+        Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
 
         set_coherent_state(bdb_state, hostname, STATE_INCOHERENT_WAIT, __func__,
                            __LINE__);
-        pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+        Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 
         /* Colease thread will do this */
         if (!bdb_state->attr->coherency_lease) {
             pthread_create(&tid, &(bdb_state->pthread_attr_detach),
                            dummy_add_thread, bdb_state);
         }
+
+        bdb_zap_lsn_waitlist(bdb_state, hostname);
     }
 }
 
@@ -1982,7 +1983,7 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host)
     if (master_host == bdb_state->repinfo->myhost) {
         /* clobber his state blindly.  we have no lsn here, just keep the last
            one in place.  */
-        pthread_mutex_lock(&(bdb_state->coherent_state_lock));
+        Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
 
         if (bdb_state->coherent_state[nodeix(host)] == STATE_COHERENT) {
             /*
@@ -2000,7 +2001,7 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host)
 
         /* hostdown can defer commits */
         bdb_state->last_downgrade_time[nodeix(host)] = gettimeofday_ms();
-        pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+        Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
         trigger_unregister_node(host);
     } 
     /*BDB_RELLOCK();*/
@@ -2020,15 +2021,19 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host)
     /* wake up anyone who might be waiting for a seqnum so that
      * they can stop waiting from this node - it ain't gonna happen! */
 
-    pthread_mutex_lock(&bdb_state->pending_broadcast_lock);
+    Pthread_mutex_lock(&bdb_state->pending_broadcast_lock);
     bdb_state->pending_seqnum_broadcast = 1;
-    pthread_mutex_unlock(&bdb_state->pending_broadcast_lock);
+    Pthread_mutex_unlock(&bdb_state->pending_broadcast_lock);
 
     hostdown_buf = malloc(sizeof(hostdown_type));
     hostdown_buf->bdb_state = bdb_state;
     hostdown_buf->host = host;
 
-    rc = pthread_create(&tid, NULL, hostdown_thread, hostdown_buf);
+    pthread_attr_t attr;
+    Pthread_attr_init(&attr);
+    Pthread_attr_setstacksize(&attr, 128 * 1024);
+
+    rc = pthread_create(&tid, &attr, hostdown_thread, hostdown_buf);
     if (rc != 0) {
         logmsg(LOGMSG_FATAL, "%s: pthread_create hostdown_thread: %d %s\n", __func__,
                 rc, strerror(rc));
@@ -2040,6 +2045,7 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host)
                 rc, strerror(rc));
         exit(1);
     }
+    Pthread_attr_destroy(&attr);
     return 0;
 }
 
@@ -2050,7 +2056,7 @@ void bdb_all_incoherent(bdb_state_type *bdb_state)
         logmsg(LOGMSG_USER, "%s line %d setting all nodes to INCOHERENT_WAIT\n",
                __func__, __LINE__);
     }
-    pthread_mutex_lock(&(bdb_state->coherent_state_lock));
+    Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
     for (i = 0; i < MAXNODES; i++) {
         bdb_state->coherent_state[i] = STATE_INCOHERENT_WAIT;
     }
@@ -2058,7 +2064,7 @@ void bdb_all_incoherent(bdb_state_type *bdb_state)
     set_coherent_state(bdb_state, bdb_state->repinfo->myhost, STATE_COHERENT,
                        __func__, __LINE__);
 
-    pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+    Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 }
 
 int bdb_get_num_notcoherent(bdb_state_type *bdb_state)
@@ -2186,6 +2192,12 @@ uint32_t bdb_get_rep_gen(bdb_state_type *bdb_state)
     return mygen;
 }
 
+void send_newmaster(bdb_state_type *bdb_state)
+{
+    bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, 0, DB_REP_MASTER);
+    bdb_add_dummy_llmeta();
+}
+
 /* Called by the master to periodically broadcast the durable lsn.  The
  * algorithm: sort lsns of all nodes (including master's).  The durable lsn will
  * be in the (n/2)th spot.  We can only make claims about durability for things
@@ -2223,7 +2235,7 @@ static void calculate_durable_lsn(bdb_state_type *bdb_state, DB_LSN *dlsn,
         return;
     }
 
-    pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
+    Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
     for (j = 0; j < nodecount; j++) {
         memcpy(&nodelsns[index],
                &bdb_state->seqnum_info->seqnums[nodeix(nodelist[j])].lsn,
@@ -2234,7 +2246,7 @@ static void calculate_durable_lsn(bdb_state_type *bdb_state, DB_LSN *dlsn,
             index++;
         }
     }
-    pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+    Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
 
     qsort(nodelsns, index, sizeof(DB_LSN), lsncmp);
 
@@ -2287,16 +2299,16 @@ int verify_master_leases_int(bdb_state_type *bdb_state, const char **comlist,
     int verify_trace = bdb_state->attr->verify_master_lease_trace;
     static time_t lastpr = 0;
     static int last_rc = 0;
-    time_t now;
+    time_t now = 0;
     uint64_t ctime = gettimeofday_ms();
     static uint64_t bad_count = 0;
 
-    pthread_mutex_lock(&(bdb_state->master_lease_lk));
+    Pthread_mutex_lock(&(bdb_state->master_lease_lk));
     for (i = 0; i < comcount; i++) {
         if (ctime < bdb_state->master_lease[nodeix(comlist[i])])
             current_leases++;
     }
-    pthread_mutex_unlock(&(bdb_state->master_lease_lk));
+    Pthread_mutex_unlock(&(bdb_state->master_lease_lk));
 
     if (current_leases >= ((total_nodes / 2) + 1)) {
         if (verify_trace && (last_rc == 0 || (now = time(NULL)) != lastpr)) {
@@ -2404,9 +2416,9 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                 lease_time = base_ts + seqnum->lease_ms;
             else
                 lease_time = issue_time + seqnum->lease_ms;
-            pthread_mutex_lock(&(bdb_state->master_lease_lk));
+            Pthread_mutex_lock(&(bdb_state->master_lease_lk));
             bdb_state->master_lease[nodeix(host)] = lease_time;
-            pthread_mutex_unlock(&(bdb_state->master_lease_lk));
+            Pthread_mutex_unlock(&(bdb_state->master_lease_lk));
 
             if (bdb_state->attr->master_lease_set_trace && (now = time(NULL)) > lastpr)
             {
@@ -2430,20 +2442,20 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
      * read spike, but there's nomore reads or writes). */
     if (change_coherency &&
         bdb_state->coherent_state[nodeix(host)] == STATE_INCOHERENT_SLOW) {
-        pthread_mutex_lock(&slow_node_check_lk);
+        Pthread_mutex_lock(&slow_node_check_lk);
         if ((comdb2_time_epochms() - last_slow_node_check_time) >
                 bdb_state->attr->slowrep_inactive_timeout &&
             bdb_state->coherent_state[nodeix(host)] == STATE_INCOHERENT_SLOW) {
-            pthread_mutex_lock(&bdb_state->coherent_state_lock);
+            Pthread_mutex_lock(&bdb_state->coherent_state_lock);
             if (bdb_state->coherent_state[nodeix(host)] ==
                 STATE_INCOHERENT_SLOW) {
                 set_coherent_state(bdb_state, host, STATE_INCOHERENT, __func__,
                                    __LINE__);
             }
-            pthread_mutex_unlock(&bdb_state->coherent_state_lock);
+            Pthread_mutex_unlock(&bdb_state->coherent_state_lock);
             last_slow_node_check_time = comdb2_time_epochms();
         }
-        pthread_mutex_unlock(&slow_node_check_lk);
+        Pthread_mutex_unlock(&slow_node_check_lk);
     }
 
     bzero(&zero_seq, sizeof(seqnum_type));
@@ -2548,10 +2560,10 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
         return;
 
     /* wake up anyone who might be waiting to see this seqnum */
-    pthread_cond_broadcast(&(bdb_state->seqnum_info->cond));
+    Pthread_cond_broadcast(&(bdb_state->seqnum_info->cond));
 
     /* new LSN from node: we may need to make the node coherent */
-    pthread_mutex_lock(&(bdb_state->coherent_state_lock));
+    Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
 
     if (change_coherency) {
         if (bdb_state->coherent_state[nodeix(host)] == STATE_INCOHERENT ||
@@ -2590,6 +2602,8 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                                     host, seqnum->lsn.file,
                                     seqnum->lsn.offset, seqnum->generation, gen,
                                     bdb_state->repinfo->master_host);
+
+                            bdb_zap_lsn_waitlist(bdb_state, host);
                         }
                     }
 
@@ -2615,7 +2629,7 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
         }
     }
 
-    pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+    Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 }
 
 /* returns -999 on timeout */
@@ -2647,6 +2661,30 @@ static int bdb_wait_for_seqnum_from_node_nowait_int(bdb_state_type *bdb_state,
     return -999;
 }
 
+static void bdb_zap_lsn_waitlist(bdb_state_type *bdb_state, const char *host) {
+    if (bdb_state == NULL)
+        return;
+
+    /* clear statistics */
+    Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
+    if (bdb_state->seqnum_info->time_minute[nodeix(host)])
+        averager_clear(bdb_state->seqnum_info->time_minute[nodeix(host)]);
+    if (bdb_state->seqnum_info->time_10seconds[nodeix(host)])
+        averager_clear(bdb_state->seqnum_info->time_10seconds[nodeix(host)]);
+
+    /* clear any lsns we were waiting for */
+    struct waiting_for_lsn *waitforlsn;
+    if (bdb_state->seqnum_info->waitlist[nodeix(host)]) {
+        waitforlsn = (struct waiting_for_lsn *) listc_rtl(bdb_state->seqnum_info->waitlist[nodeix(host)]);
+        while (waitforlsn) {
+            pool_relablk(bdb_state->seqnum_info->trackpool, waitforlsn);
+            waitforlsn = (struct waiting_for_lsn *) listc_rtl(bdb_state->seqnum_info->waitlist[nodeix(host)]);
+        }
+    }
+
+    Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+}
+
 static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
                                      seqnum_type *seqnum)
 {
@@ -2657,6 +2695,7 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
     int state;
     int print_message;
     const char *host;
+    int made_incoherent_slow = 0;
 
     /* this used to be allocated on stack, but that can overflow if called from
      * the appsock thread */
@@ -2668,43 +2707,48 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
 
     numnodes =
         net_get_all_commissioned_nodes(bdb_state->repinfo->netinfo, hosts);
-
-    if (numnodes) {
-        worst_node = hosts[0];
-        second_worst_node = hosts[0];
+ 
+    if (numnodes < 2) {
+        free(proctime);
+        return;
     }
 
+    Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
+    double worst_time = 0;
     /* find the slowest and second slowest nodes */
     for (int i = 0; i < numnodes; i++) {
         host = hosts[i];
 
-        Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
         if (bdb_state->seqnum_info->time_minute[nodeix(host)])
             proctime[nodeix(host)] =
                 averager_avg(bdb_state->seqnum_info->time_minute[nodeix(host)]);
         else
             proctime[nodeix(host)] = 0;
-        Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
 
         /* We're just checking, not checking & setting */
         state = bdb_state->coherent_state[nodeix(host)];
 
-        if (state != STATE_COHERENT && state != STATE_INCOHERENT_WAIT)
+        if (state != STATE_COHERENT)
             continue;
 
-        if (proctime[nodeix(host)] > proctime[nodeix(worst_node)])
+        if (proctime[nodeix(host)] > worst_time) {
+            worst_time = proctime[nodeix(host)];
             worst_node = host;
+        }
     }
+    double second_worst_time = 0;
     for (int i = 0; i < numnodes; i++) {
         host = hosts[i];
         state = bdb_state->coherent_state[nodeix(host)];
-        if (state != STATE_COHERENT && state != STATE_INCOHERENT_WAIT)
+        if (state != STATE_COHERENT)
             continue;
 
-        if (proctime[nodeix(host)] > proctime[nodeix(second_worst_node)] &&
-            proctime[nodeix(host)] < proctime[nodeix(worst_node)])
+        if (proctime[nodeix(host)] > second_worst_time && host != worst_node) {
             second_worst_node = host;
+            second_worst_time = proctime[nodeix(host)];
+        }
     }
+    Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
 
 #if 0
     printf("bdb_slow_replicant_check worst is %d at %.2fms, second worst is %d at %.2fms, going to start marking incoherent at %.2fs\n",
@@ -2712,73 +2756,75 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
             proctime[second_worst_node] * bdb_state->attr->slowrep_incoherent_factor + bdb_state->attr->slowrep_incoherent_mintime);
 #endif
     print_message = 0;
-    if (worst_node && second_worst_node) {
+    if (worst_node && second_worst_node && worst_node != second_worst_node) {
         /* weigh time, to account for inter-datacenter delays */
-        pthread_mutex_lock(&(bdb_state->coherent_state_lock));
+        Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
         state = bdb_state->coherent_state[nodeix(worst_node)];
-        if ((state == STATE_COHERENT || state == STATE_INCOHERENT_WAIT) &&
-            proctime[nodeix(worst_node)] >
-                proctime[nodeix(second_worst_node)] *
-                        bdb_state->attr->slowrep_incoherent_factor +
-                    bdb_state->attr->slowrep_incoherent_mintime) {
+
+        if (state == STATE_COHERENT &&
+                    worst_time >
+                    (second_worst_time *
+                    bdb_state->attr->slowrep_incoherent_factor +
+                    bdb_state->attr->slowrep_incoherent_mintime)) {
             /* if a node is worse then twice slower than other nodes, mark it
              * incoherent */
             if (bdb_state->attr->warn_slow_replicants ||
-                bdb_state->attr->make_slow_replicants_incoherent) {
+                    bdb_state->attr->make_slow_replicants_incoherent) {
                 print_message = 1;
                 if (bdb_state->attr->make_slow_replicants_incoherent) {
                     if (bdb_state->coherent_state[nodeix(worst_node)] ==
-                        STATE_COHERENT)
+                            STATE_COHERENT)
                         defer_commits(bdb_state, worst_node, __func__);
-                    set_coherent_state(bdb_state, host, STATE_INCOHERENT_SLOW,
-                                       __func__, __LINE__);
+                    set_coherent_state(bdb_state, worst_node, STATE_INCOHERENT_SLOW,
+                            __func__, __LINE__);
                     bdb_state->last_downgrade_time[nodeix(host)] =
                         gettimeofday_ms();
+                    made_incoherent_slow = 1;
                 }
             }
         }
-        pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+        Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
     }
 
     if (print_message) {
         logmsg(LOGMSG_USER, "replication time for %s (%.2fms) is much worse than "
                         "second-worst node %s (%.2fms)\n",
-                worst_node, proctime[nodeix(host)], second_worst_node,
-                proctime[nodeix(second_worst_node)]);
+                worst_node, worst_time, second_worst_node,
+                second_worst_time);
     }
 
     /* TODO: if we ever disable make_slow_replicants_incoherent and have
      * replicants in this state, make them incoherent immediately */
     print_message = 0;
-    if (worst_node) {
+    if (!made_incoherent_slow && worst_node) {
         /* If any nodes were incoherent_slow, and are now within normal bounds,
          * make them "classically" incoherent.  They get to
          * become coherent the same way as everyone else - by announcing that
          * they are up to the master's LSN. */
         for (int i = 0; i < numnodes; i++) {
             host = hosts[i];
-            if (worst_node == host || proctime[nodeix(host)] == 0)
+            if (proctime[nodeix(host)] == 0)
                 continue;
             if (bdb_state->coherent_state[nodeix(host)] !=
                 STATE_INCOHERENT_SLOW)
                 continue;
-            pthread_mutex_lock(&(bdb_state->coherent_state_lock));
+            Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
             if (bdb_state->coherent_state[nodeix(host)] ==
                     STATE_INCOHERENT_SLOW &&
                 (proctime[nodeix(host)] <
-                 (proctime[nodeix(host)] *
+                 (worst_time *
                       bdb_state->attr->slowrep_incoherent_factor +
                   bdb_state->attr->slowrep_incoherent_mintime))) {
                 print_message = 1;
                 set_coherent_state(bdb_state, host, STATE_INCOHERENT, __func__,
                                    __LINE__);
             }
-            pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+            Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
             if (print_message)
                 logmsg(LOGMSG_USER, "replication time for %s (%.2fms) is within "
                                 "bounds of second-worst node %s (%.2fms)\n",
                         host, proctime[nodeix(host)], worst_node,
-                        proctime[nodeix(worst_node)]);
+                        worst_time);
         }
     }
     free(proctime);
@@ -2834,9 +2880,9 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
             node_is_rtcpu = 1;
 
     /* dont wait if it's in a skipped state */
-    pthread_mutex_lock(&(bdb_state->coherent_state_lock));
+    Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
     if ((coherent_state = bdb_state->coherent_state[nodeix(host)]) == STATE_INCOHERENT) {
-        pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+        Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
         if (bdb_state->attr->wait_for_seqnum_trace) {
             logmsg(LOGMSG_USER, PR_LSN " %s is incoherent, not waiting\n",
                    PARM_LSN(seqnum->lsn), host);
@@ -2844,11 +2890,11 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
         return 1;
     }
 
-    pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+    Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 
     /* node is rtcpued off:  we may need to make the node incoherent */
     if (node_is_rtcpu) {
-        pthread_mutex_lock(&(bdb_state->coherent_state_lock));
+        Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
         if (bdb_state->coherent_state[nodeix(host)] == STATE_COHERENT ||
             bdb_state->coherent_state[nodeix(host)] == STATE_INCOHERENT_WAIT) {
                 if (bdb_state->coherent_state[nodeix(host)] == STATE_COHERENT)
@@ -2860,7 +2906,7 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
                 bdb_state->repinfo->skipsinceepoch = comdb2_time_epoch();
         }
 
-        pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+        Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 
         if (bdb_state->attr->wait_for_seqnum_trace) {
             logmsg(LOGMSG_USER, PR_LSN " %s became incoherent, not waiting\n",
@@ -2992,7 +3038,7 @@ again:
     }
 
     else if (rc != ETIMEDOUT && rc != 0) {
-        logmsg(LOGMSG_FATAL, "err from pthread_cond_wait\n");
+        logmsg(LOGMSG_FATAL, "err from pthread_cond_timedwait\n");
         exit(1);
     }
 
@@ -3023,8 +3069,7 @@ int bdb_wait_for_seqnum_from_room(bdb_state_type *bdb_state,
     int i;
     const char *nodelist[REPMAX];
     int numnodes;
-    int rc;
-    int our_room;
+    int our_room = 0;
 
     if (bdb_state->attr->repalwayswait)
         numnodes = net_get_all_nodes(bdb_state->repinfo->netinfo, nodelist);
@@ -3040,10 +3085,9 @@ int bdb_wait_for_seqnum_from_room(bdb_state_type *bdb_state,
         if (bdb_state->callback->getroom_rtn) {
             if ((bdb_state->callback->getroom_rtn(bdb_state, nodelist[i])) ==
                 our_room)
-                rc = bdb_wait_for_seqnum_from_node(bdb_state, seqnum,
-                                                   nodelist[i]);
+                bdb_wait_for_seqnum_from_node(bdb_state, seqnum, nodelist[i]);
         } else {
-            rc = bdb_wait_for_seqnum_from_node(bdb_state, seqnum, nodelist[i]);
+            bdb_wait_for_seqnum_from_node(bdb_state, seqnum, nodelist[i]);
         }
     }
 
@@ -3085,8 +3129,6 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
     const char *nodelist[REPMAX];
     const char *connlist[REPMAX];
     int durable_lsns = bdb_state->attr->durable_lsns;
-    const char *sanclist[REPMAX];
-    const char *skiplist[REPMAX];
     int catchup_window = bdb_state->attr->catchup_window;
     int do_slow_node_check = 0;
     DB_LSN *masterlsn;
@@ -3117,6 +3159,9 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
     /* short ciruit if we are waiting on lsn 0:0  */
     if ((seqnum->lsn.file == 0) && (seqnum->lsn.offset == 0))
         return 0;
+
+    logmsg(LOGMSG_DEBUG, "%s waiting for %s\n", __func__,
+           lsn_to_str(str, &(seqnum->lsn)));
 
     begin_time = comdb2_time_epochms();
 
@@ -3152,14 +3197,14 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
 
             /* once a second, see if we have any slow replicants */
             now = comdb2_time_epochms();
-            pthread_mutex_lock(&slow_node_check_lk);
+            Pthread_mutex_lock(&slow_node_check_lk);
             if (now - last_slow_node_check_time > 1000) {
                 if (bdb_state->attr->track_replication_times) {
                     last_slow_node_check_time = now;
                     do_slow_node_check = 1;
                 }
             }
-            pthread_mutex_unlock(&slow_node_check_lk);
+            Pthread_mutex_unlock(&slow_node_check_lk);
 
             /* do the slow replicant check - only if we need to ... */
             if (do_slow_node_check &&
@@ -3179,7 +3224,6 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
                 if (wait)
                     numwait++;
             } else {
-                skiplist[numskip] = connlist[i];
                 numskip++;
                 num_incoh++;
             }
@@ -3236,7 +3280,7 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
      * allow a waitms of ZERO for the remaining nodes - we've run out of
      * patience!  Note that I *do* want to go into the loop below so that we
      * mark the stragglers incoherent.  The do { } while loop above gaurantees
-     * that the nodelist and skiplist are correctly set up. */
+     * that nodelist is correctly set up. */
     end_time = comdb2_time_epochms();
     we_used = end_time - begin_time;
     waitms =
@@ -3370,8 +3414,6 @@ done_wait:
     }
 
     if (durable_lsns) {
-        static int lastpr = 0;
-        int now;
         uint32_t cur_gen;
         static uint32_t not_durable_count;
         static uint32_t durable_count;
@@ -3407,7 +3449,7 @@ done_wait:
                 not_durable_count++;
                 was_durable = 0;
             } else {
-                pthread_mutex_lock(&bdb_state->durable_lsn_lk);
+                Pthread_mutex_lock(&bdb_state->durable_lsn_lk);
                 bdb_state->dbenv->set_durable_lsn(bdb_state->dbenv,
                                                   &seqnum->lsn, cur_gen);
                 if (seqnum->lsn.file == 0) {
@@ -3415,7 +3457,7 @@ done_wait:
                             __func__, __LINE__);
                     abort();
                 }
-                pthread_mutex_unlock(&bdb_state->durable_lsn_lk);
+                Pthread_mutex_unlock(&bdb_state->durable_lsn_lk);
                 durable_count++;
                 was_durable = 1;
             }
@@ -3444,7 +3486,6 @@ done_wait:
                 num_successfully_acked, durable_count, not_durable_count,
                 seqnum->lsn.file, seqnum->lsn.offset, seqnum->generation,
                 calc_lsn.file, calc_lsn.offset, calc_gen);
-            lastpr = now;
         }
     }
 
@@ -3537,6 +3578,8 @@ void send_filenum_to_all(bdb_state_type *bdb_state, int filenum, int nodelay)
         rc = net_send(bdb_state->repinfo->netinfo, hostlist[i],
                       USER_TYPE_BERKDB_FILENUM, &filenum_net, sizeof(int),
                       nodelay);
+        if (rc)
+            logmsg(LOGMSG_WARN, "%s:%d rc = %d\n", __FILE__, __LINE__, rc);
     }
 }
 
@@ -3705,17 +3748,20 @@ void bdb_set_seqnum(void *in_bdb_state)
     }
 }
 
+int gbl_online_recovery = 1;
+
 static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
                           DBT *rec)
 {
     int rc;
     int r;
     char *master;
-    int gen, egen;
+    uint32_t gen, egen;
     DB_LSN permlsn;
     uint32_t generation, commit_generation;
     int outrc;
     int time1, time2;
+    int online = gbl_online_recovery;
     char *oldmaster = NULL;
     int force_election = 0;
     int rectype;
@@ -3724,16 +3770,17 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     int done = 0;
     int master_confused = 0;
 
+    /* don't give it to berkeley db if we havent started rep yet */
+    if (!bdb_state->rep_started || control == NULL) {
+        return 0;
+    }
+
     rep_control_type *rep_control;
     rep_control = control->data;
 
     rectype = ntohl(rep_control->rectype);
     generation = ntohl(rep_control->gen);
 
-    /* don't give it to berkeley db if we havent started rep yet */
-    if (!bdb_state->rep_started) {
-        return 0;
-    }
 
     outrc = 0;
 
@@ -3756,8 +3803,9 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
        locks.
        Grab the bdb_writelock here rather than inside of berkdb so that we avoid
        racing against a rep_start. */
-    if (rectype == REP_VERIFY && bdb_state->dbenv->rep_verify_will_recover(
-                                     bdb_state->dbenv, control, rec)) {
+    if (!online && rectype == REP_VERIFY &&
+        bdb_state->dbenv->rep_verify_will_recover(bdb_state->dbenv, control,
+                                                  rec)) {
         BDB_WRITELOCK_REP("bdb_rep_verify");
         got_writelock = 1;
     }
@@ -3766,7 +3814,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
 
     if (rectype == REP_VOTE2 || rectype == REP_GEN_VOTE2 ||
         rectype == REP_NEWMASTER) {
-        pthread_mutex_lock(&vote2_lock);
+        Pthread_mutex_lock(&vote2_lock);
         got_vote2lock = 1;
     }
 
@@ -3777,14 +3825,15 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     if (debug_switch_rep_delay())
         sleep(2);
 
-    r = bdb_state->dbenv->rep_process_message(
-        bdb_state->dbenv, control, rec, &host, &permlsn, &commit_generation);
+    r = bdb_state->dbenv->rep_process_message(bdb_state->dbenv, control, rec,
+                                              &host, &permlsn,
+                                              &commit_generation, online);
 
     if (got_vote2lock) {
         if (bdb_get_rep_master(bdb_state, &master, &gen, &egen) != 0) {
             abort();
         }
-        pthread_mutex_unlock(&vote2_lock);
+        Pthread_mutex_unlock(&vote2_lock);
     }
 
     /*
@@ -4363,6 +4412,12 @@ int enqueue_pg_compact_work(bdb_state_type *bdb_state, int32_t fileid,
     pgcomp_rcv_t *rcv;
     int rc;
 
+    if (size > PGCOMPMAXLEN) {
+        logmsg(LOGMSG_WARN, "%s %d: page compaction request too long.\n",
+               __FILE__, __LINE__);
+        return E2BIG;
+    }
+
     rcv = malloc(sizeof(pgcomp_rcv_t) + size);
     if (rcv == NULL)
         rc = ENOMEM;
@@ -4407,15 +4462,16 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
                         int usertype, void *dta, int dtalen, uint8_t is_tcp)
 {
     bdb_state_type *bdb_state;
-    int node;
-    int on_off;
+    int node = 0;
+    int on_off = 0;
     lsn_cmp_type lsn_cmp;
     int in_rep_process_message;
     DB_LSN cur_lsn;
+    DB_LSN trunc_lsn;
     uint8_t *p_buf;
     uint8_t *p_buf_end;
     pgcomp_snd_t pgsnd;
-    const void *pgsnd_pl_pos;
+    const uint8_t *pgsnd_pl_pos;
 
     /* get a pointer back to our bdb_state */
     bdb_state = usr_ptr;
@@ -4441,62 +4497,93 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         break;
 
     case USER_TYPE_ADD:
-        p_buf = (uint8_t *)dta;
-        p_buf_end = ((uint8_t *)dta + dtalen);
-        buf_get(&node, sizeof(int), p_buf, p_buf_end);
+        if (!dta || dtalen < sizeof(int)) {
+            logmsg(LOGMSG_ERROR, "%s add called with invalid args\n", __func__);
+        } else {
+            p_buf = (uint8_t *)dta;
+            p_buf_end = ((uint8_t *)dta + dtalen);
+            buf_get(&node, sizeof(int), p_buf, p_buf_end);
 
-        print(bdb_state, "adding node %d to sanctioned list\n", node);
-        net_add_to_sanctioned(bdb_state->repinfo->netinfo, hostname(node), 0);
+            print(bdb_state, "adding node %d to sanctioned list\n", node);
+            net_add_to_sanctioned(bdb_state->repinfo->netinfo, hostname(node),
+                                  0);
+        }
         net_ack_message(ack_handle, 0);
         break;
 
     case USER_TYPE_ADD_NAME:
-        print(bdb_state, "adding host %s to sanctioned list\n", (char *)dta);
-        net_add_to_sanctioned(bdb_state->repinfo->netinfo, intern((char *)dta),
-                              0);
+        if (!dta || ((char *)dta)[dtalen - 1] != '\0') {
+            logmsg(LOGMSG_ERROR, "%s add_name called with invalid args\n",
+                   __func__);
+        } else {
+            print(bdb_state, "adding host %s to sanctioned list\n",
+                  (char *)dta);
+            net_add_to_sanctioned(bdb_state->repinfo->netinfo,
+                                  intern((char *)dta), 0);
+        }
         net_ack_message(ack_handle, 0);
         break;
 
     case USER_TYPE_DEL:
-        p_buf = (uint8_t *)dta;
-        p_buf_end = ((uint8_t *)dta + dtalen);
-        buf_get(&node, sizeof(int), p_buf, p_buf_end);
+        if (!dta || dtalen < sizeof(int)) {
+            logmsg(LOGMSG_ERROR, "%s del called with invalid args\n", __func__);
+        } else {
+            p_buf = (uint8_t *)dta;
+            p_buf_end = ((uint8_t *)dta + dtalen);
+            buf_get(&node, sizeof(int), p_buf, p_buf_end);
 
-        print(bdb_state, "removing node %d from sanctioned list\n", node);
-        net_del_from_sanctioned(bdb_state->repinfo->netinfo, hostname(node));
+            print(bdb_state, "removing node %d from sanctioned list\n", node);
+            net_del_from_sanctioned(bdb_state->repinfo->netinfo,
+                                    hostname(node));
+        }
         net_ack_message(ack_handle, 0);
         break;
 
     case USER_TYPE_DEL_NAME:
-        print(bdb_state, "removing host %s from sanctioned list\n",
-              (char *)dta);
-        net_del_from_sanctioned(bdb_state->repinfo->netinfo,
-                                intern((char *)dta));
+        if (!dta || ((char *)dta)[dtalen - 1] != '\0') {
+            logmsg(LOGMSG_ERROR, "%s del_name called with invalid args\n",
+                   __func__);
+        } else {
+            print(bdb_state, "removing host %s from sanctioned list\n",
+                  (char *)dta);
+            net_del_from_sanctioned(bdb_state->repinfo->netinfo,
+                                    intern((char *)dta));
+        }
         net_ack_message(ack_handle, 0);
         break;
 
     case USER_TYPE_DECOM_DEPRECATED: {
         char *host;
-        p_buf = (uint8_t *)dta;
-        p_buf_end = ((uint8_t *)dta + dtalen);
-        buf_get(&node, sizeof(int), p_buf, p_buf_end);
-        logmsg(LOGMSG_DEBUG, "--- got decom for node %d\n", node);
-        logmsg(LOGMSG_DEBUG, "acking message\n");
-        net_ack_message(ack_handle, 0);
-        host = hostname(node);
-        osql_decom_node(host);
-        net_decom_node(bdb_state->repinfo->netinfo, host);
+        if (!dta || dtalen < sizeof(int)) {
+            logmsg(LOGMSG_ERROR, "%s decom_dep called with bad args\n",
+                   __func__);
+        } else {
+            p_buf = (uint8_t *)dta;
+            p_buf_end = ((uint8_t *)dta + dtalen);
+            buf_get(&node, sizeof(int), p_buf, p_buf_end);
+            logmsg(LOGMSG_DEBUG, "--- got decom for node %d\n", node);
+            logmsg(LOGMSG_DEBUG, "acking message\n");
+            net_ack_message(ack_handle, 0);
+            host = hostname(node);
+            osql_decom_node(host);
+            net_decom_node(bdb_state->repinfo->netinfo, host);
+        }
         break;
     }
 
     case USER_TYPE_DECOM_NAME_DEPRECATED: {
         char *host;
-        logmsg(LOGMSG_DEBUG, "--- got decom for node %s\n", (char *)dta);
-        logmsg(LOGMSG_DEBUG, "acking message\n");
-        net_ack_message(ack_handle, 0);
-        host = intern((char *)dta);
-        osql_decom_node(host);
-        net_decom_node(bdb_state->repinfo->netinfo, host);
+        if (!dta || ((char *)dta)[dtalen - 1] != '\0') {
+            logmsg(LOGMSG_ERROR, "%s decom_name_dep called with invalid args\n",
+                   __func__);
+        } else {
+            logmsg(LOGMSG_DEBUG, "--- got decom for node %s\n", (char *)dta);
+            logmsg(LOGMSG_DEBUG, "acking message\n");
+            net_ack_message(ack_handle, 0);
+            host = intern((char *)dta);
+            osql_decom_node(host);
+            net_decom_node(bdb_state->repinfo->netinfo, host);
+        }
         break;
     }
 
@@ -4510,14 +4597,10 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
     }
 
     case USER_TYPE_TRANSFERMASTER:
-        p_buf = (uint8_t *)dta;
-        p_buf_end = ((uint8_t *)dta + dtalen);
-        buf_get(&node, sizeof(int), p_buf, p_buf_end);
-
         /* Prevent race against watcher thread. */
         bdb_state->repinfo->dont_elect_untill_time = comdb2_time_epoch() + 5;
 
-        logmsg(LOGMSG_INFO, "transfer master recieved\n");
+        logmsg(LOGMSG_INFO, "transfer master received\n");
         /* Don't ack this - if we get this message we want an election. */
         break;
 
@@ -4526,8 +4609,6 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         logmsg(LOGMSG_INFO, "transfer master received\n");
         bdb_state->repinfo->dont_elect_untill_time = comdb2_time_epoch() + 5;
         bdb_state->need_to_upgrade = 1;
-
-        /* Don't ack this - if we get this message we want an election. */
         net_ack_message(ack_handle, 0);
         break;
 
@@ -4540,7 +4621,13 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
 
         get_my_lsn(bdb_state, &cur_lsn);
 
-        bdb_lsn_cmp_type_get(&lsn_cmp, p_buf, p_buf_end);
+        if (!dta ||
+            (bdb_lsn_cmp_type_get(&lsn_cmp, p_buf, p_buf_end) == NULL)) {
+            logmsg(LOGMSG_ERROR, "%s lsncmp called with invalid args\n",
+                   __func__);
+            net_ack_message(ack_handle, 1);
+            return;
+        }
 
         bdb_state->dbenv->rep_flush(bdb_state->dbenv);
 
@@ -4572,14 +4659,18 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
     }
 
     case USER_TYPE_REPTRC:
-        p_buf = (uint8_t *)dta;
-        p_buf_end = ((uint8_t *)dta + dtalen);
-        buf_get(&on_off, sizeof(int), p_buf, p_buf_end);
+        if (!dta || dtalen < sizeof(int)) {
+            logmsg(LOGMSG_ERROR, "%s reptrc called with bad args\n", __func__);
+        } else {
+            p_buf = (uint8_t *)dta;
+            p_buf_end = ((uint8_t *)dta + dtalen);
+            buf_get(&on_off, sizeof(int), p_buf, p_buf_end);
 
-        logmsg(LOGMSG_USER, "node %s told me to set rep trace to %d\n", from_host,
-                on_off);
+            logmsg(LOGMSG_USER, "node %s told me to set rep trace to %d\n",
+                   from_host, on_off);
 
-        bdb_state->rep_trace = on_off;
+            bdb_state->rep_trace = on_off;
+        }
 
         net_ack_message(ack_handle, 0);
         break;
@@ -4606,20 +4697,35 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
     } break;
 
     case USER_TYPE_TCP_TIMESTAMP:
+        if (!dta || dtalen < sizeof(ack_info)) {
+            logmsg(LOGMSG_ERROR, "%s tcp_timestamp called with bad args\n",
+                   __func__);
+            return;
+        }
         handle_tcp_timestamp(bdb_state, dta, from_host);
         break;
 
     case USER_TYPE_TCP_TIMESTAMP_ACK:
+        if (!dta || dtalen < sizeof(ack_info)) {
+            logmsg(LOGMSG_ERROR, "%s tcp_timestamp_ack called with bad args\n",
+                   __func__);
+            return;
+        }
         handle_tcp_timestamp_ack(bdb_state, dta);
         break;
 
     case USER_TYPE_PING_TIMESTAMP:
+        if (!dta || dtalen < sizeof(ack_info)) {
+            logmsg(LOGMSG_ERROR, "%s tcp_timestamp_ack called with bad args\n",
+                   __func__);
+            return;
+        }
         handle_ping_timestamp(bdb_state, dta, from_host);
         break;
 
     case USER_TYPE_ANALYZED_TBL: {
-        char tblname[256] = {0};
-        memcpy(tblname, dta, dtalen);
+        char tblname[MAXTABLELEN + 1] = {0};
+        memcpy(tblname, dta, MIN(dtalen, (sizeof(tblname) - 1)));
         ctrace("MASTER received notification, tbl %s was analyzed\n", tblname);
         void reset_aa_counter(char *tblname);
         reset_aa_counter(tblname);
@@ -4628,8 +4734,29 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
     case USER_TYPE_PAGE_COMPACT:
         p_buf = (uint8_t *)dta;
         p_buf_end = ((uint8_t *)dta + dtalen);
-        pgsnd_pl_pos = pgcomp_snd_type_get(&pgsnd, p_buf, p_buf_end);
+        if (!dta || ((pgsnd_pl_pos = pgcomp_snd_type_get(&pgsnd, p_buf,
+                                                         p_buf_end)) == NULL)) {
+            logmsg(LOGMSG_ERROR,
+                   "%s user_type_lsncmp called with invalid "
+                   "args\n",
+                   __func__);
+            return;
+        }
         enqueue_pg_compact_work(bdb_state, pgsnd.id, pgsnd.size, pgsnd_pl_pos);
+        break;
+
+    case USER_TYPE_TRUNCATE_LOG:
+        p_buf = (uint8_t *)dta;
+        p_buf_end = ((uint8_t *)dta + dtalen);
+        if ((db_lsn_type_get(&trunc_lsn, p_buf, p_buf_end)) == NULL) {
+            logmsg(LOGMSG_ERROR, "%s %d: failed to get trunc-lsn\n", __func__,
+                   __LINE__);
+        } else {
+            logmsg(LOGMSG_INFO, "Truncating log to %d:%d\n", trunc_lsn.file,
+                   trunc_lsn.offset);
+            truncate_log_lock(bdb_state, trunc_lsn.file, trunc_lsn.offset, 0);
+        }
+        net_ack_message(ack_handle, 0);
         break;
 
     default:
@@ -4792,9 +4919,9 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
     int controlbufsz;
     int recbufcrc;
     int controlbufcrc;
-    struct rep_type_berkdb_rep_ctrlbuf_hdr p_rep_type_berkdb_rep_ctrlbuf_hdr;
-    struct rep_type_berkdb_rep_buf_hdr p_rep_type_berkdb_rep_buf_hdr;
-    struct rep_type_berkdb_rep_seqnum p_rep_type_berkdb_rep_seqnum;
+    struct rep_type_berkdb_rep_ctrlbuf_hdr p_rep_type_berkdb_rep_ctrlbuf_hdr ={0};
+    struct rep_type_berkdb_rep_buf_hdr p_rep_type_berkdb_rep_buf_hdr = {0};
+    struct rep_type_berkdb_rep_seqnum p_rep_type_berkdb_rep_seqnum ={0};
     DBT rec;
     DBT control;
     bdb_state_type *bdb_state;
@@ -4802,9 +4929,7 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
     int seqnum;
     int outrc = 0;
     seqnum_type berkdb_seqnum;
-    void *controlptr;
-    void *recptr;
-    int filenum;
+    int filenum = 0;
     unsigned long long master_cmpcontext;
 
     outrc = 0;
@@ -4855,14 +4980,14 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
            came from the network */
 
         if (p_buf - ((uint8_t *)dta) > dtalen) {
-            logmsg(LOGMSG_FATAL, "buf-dta != dtalen\n");
-            logmsg(LOGMSG_FATAL, "%p %p %d\n", p_buf, dta, dtalen);
-            exit(1);
+            logmsg(LOGMSG_ERROR, "buf-dta != dtalen\n");
+            logmsg(LOGMSG_ERROR, "%p %p %d\n", p_buf, dta, dtalen);
+            return -1;
         }
 
         if ((controlbufsz + recbufsz) > dtalen) {
-            logmsg(LOGMSG_FATAL, "controlbufsz+recbufsz too big\n");
-            exit(1);
+            logmsg(LOGMSG_ERROR, "controlbufsz+recbufsz too big\n");
+            return -1;
         }
 
         if (bdb_state->rep_trace) {
@@ -4887,20 +5012,17 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
         control.size = controlbufsz;
         control.data = controlbuf;
 
-        controlptr = control.data;
-        recptr = rec.data;
-
         if (bdb_state->attr->repchecksum) {
             /*fprintf(stderr, "2) repchecksum\n");*/
 
             if (crc32c(rec.data, rec.size) != recbufcrc) {
-                logmsg(LOGMSG_FATAL, "CRC MISMATCH on rec\n");
-                exit(1);
+                logmsg(LOGMSG_ERROR, "CRC MISMATCH on rec\n");
+                return -1;
             }
 
             if (crc32c(control.data, control.size) != controlbufcrc) {
-                logmsg(LOGMSG_FATAL, "CRC MISMATCH on control\n");
-                exit(1);
+                logmsg(LOGMSG_ERROR, "CRC MISMATCH on control\n");
+                return -1;
             }
         }
 
@@ -4964,19 +5086,13 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
         break;
 
     case USER_TYPE_GBLCONTEXT:
-        memcpy(&master_cmpcontext, dta, sizeof(unsigned long long));
-
-        if (bdb_state->repinfo->master_host != bdb_state->repinfo->myhost) {
-            bdb_state->got_gblcontext = 1;
-
-            /*
-            fprintf(stderr, "D setting bdb_state->gblcontext to  0x%08llx\n",
-               bdb_state->gblcontext);
-            */
-
-            set_gblcontext(bdb_state, master_cmpcontext);
+        if (dtalen >= sizeof(unsigned long long)) {
+            memcpy(&master_cmpcontext, dta, sizeof(unsigned long long));
+            if (bdb_state->repinfo->master_host != bdb_state->repinfo->myhost) {
+                bdb_state->got_gblcontext = 1;
+                set_gblcontext(bdb_state, master_cmpcontext);
+            }
         }
-
         break;
 
     case USER_TYPE_MASTERCMPCONTEXTLIST:
@@ -5036,7 +5152,8 @@ void send_downgrade_and_lose(bdb_state_type *bdb_state)
 
 extern int gbl_dump_locks_on_repwait;
 extern int gbl_lock_get_list_start;
-int bdb_clean_pglogs_queues(bdb_state_type *bdb_state);
+int bdb_clean_pglogs_queues(bdb_state_type *bdb_state, DB_LSN lsn,
+                            int truncate);
 extern int db_is_stopped();
 extern int db_is_exiting();
 
@@ -5050,13 +5167,15 @@ int request_delaymore(void *bdb_state_in)
     return rc;
 }
 
+int gbl_rep_wait_core_ms = 0;
+
 void *watcher_thread(void *arg)
 {
     bdb_state_type *bdb_state;
+    extern int gbl_rep_lock_time_ms;
     char *master_host = db_eid_invalid;
+    int stopped_count = 0;
     int i;
-    DB_LSN last_lsn;
-    int last_time;
     int j;
     int time_now, time_then;
     int rc;
@@ -5067,7 +5186,6 @@ void *watcher_thread(void *arg)
     char *rep_master = 0;
     int list_start;
     int last_list_start = 0;
-    int is_durable;
 
     gbl_watcher_thread_ran = comdb2_time_epoch();
 
@@ -5078,10 +5196,6 @@ void *watcher_thread(void *arg)
 
     /* hold off om "watching" for a little bit during startup */
     sleep(5);
-
-    last_lsn.file = 0;
-    last_lsn.offset = 0;
-    last_time = 0;
 
     bdb_state = (bdb_state_type *)arg;
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
@@ -5100,7 +5214,7 @@ void *watcher_thread(void *arg)
 
     bdb_state->repinfo->disable_watcher = 0;
 
-    while (!db_is_exiting()) {
+    while (1) {
         time_now = comdb2_time_epoch();
         time_then = bdb_state->repinfo->disable_watcher;
 
@@ -5115,13 +5229,32 @@ void *watcher_thread(void *arg)
             sleep(diff);
         }
 
+        if (db_is_stopped()) {
+            stopped_count++;
+            if (stopped_count > 30) {
+                logmsg(LOGMSG_FATAL, "%s db stopped for %d seconds, aborting\n",
+                       __func__, stopped_count);
+                abort();
+            }
+            if (stopped_count > 3) {
+                logmsg(LOGMSG_WARN, "%s db stopped for %d seconds\n", __func__,
+                       stopped_count);
+            }
+            sleep(1);
+            gbl_watcher_thread_ran = comdb2_time_epoch();
+            continue;
+        }
+        stopped_count = 0;
+
         i++;
         j++;
 
         BDB_READLOCK("watcher_thread");
 
-        if (!gbl_new_snapisol_asof)
-            bdb_clean_pglogs_queues(bdb_state);
+        if (!gbl_new_snapisol_asof) {
+            DB_LSN lsn = {0};
+            bdb_clean_pglogs_queues(bdb_state, lsn, 0);
+        }
 
         if (bdb_state->attr->coherency_lease &&
             !bdb_state->coherency_lease_thread) {
@@ -5132,6 +5265,20 @@ void *watcher_thread(void *arg)
         if (bdb_state->attr->master_lease && !bdb_state->master_lease_thread) {
             void create_master_lease_thread(bdb_state_type * bdb_state);
             create_master_lease_thread(bdb_state);
+        }
+
+        int rep_lock_wait_time_ms = gbl_rep_lock_time_ms;
+        int rep_wait_core_ms = gbl_rep_wait_core_ms;
+        int elapsed;
+
+        if (rep_wait_core_ms && rep_lock_wait_time_ms &&
+            (elapsed = (comdb2_time_epochms() - rep_lock_wait_time_ms)) >
+                rep_wait_core_ms) {
+            logmsg(LOGMSG_FATAL,
+                   "%s: coring, rep thread blocked too long (%d ms)\n",
+                   __func__, elapsed);
+            lock_info_lockers(stdout, bdb_state);
+            abort();
         }
 
         /* are we incoherent?  see how we're doing, lets send commitdelay
@@ -5200,11 +5347,8 @@ void *watcher_thread(void *arg)
                     num_skipped++;
 
             if (num_skipped >= bdb_state->attr->toomanyskipped) {
-                int rc;
-
-                /* too many guys being skipped, lets take drastic measures! */
-
-                /* delay ourselves */
+                /* too many guys being skipped, lets take drastic measures!
+                 * delay ourselves */
                 if (bdb_state->attr->commitdelay <
                     bdb_state->attr->skipdelaybase) {
                     bdb_state->attr->commitdelay =
@@ -5496,7 +5640,7 @@ void *watcher_thread(void *arg)
         Pthread_mutex_lock(&bdb_state->pending_broadcast_lock);
         if (bdb_state->pending_seqnum_broadcast) {
             Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
-            pthread_cond_broadcast(&(bdb_state->seqnum_info->cond));
+            Pthread_cond_broadcast(&(bdb_state->seqnum_info->cond));
             Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
 
             bdb_state->pending_seqnum_broadcast = 0;
@@ -5526,8 +5670,6 @@ int bdb_wait_for_seqnum_from_n(bdb_state_type *bdb_state, seqnum_type *seqnum,
     const char *connlist[REPMAX];
     int numnodes;
     int i;
-    int rc;
-    DB_LSN *lsn = (DB_LSN *)&seqnum->lsn;
 
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
@@ -5543,14 +5685,10 @@ int bdb_wait_for_seqnum_from_n(bdb_state_type *bdb_state, seqnum_type *seqnum,
                     &bdb_state->seqnum_info->seqnums[nodeix(connlist[i])],
                     seqnum) >= 0) {
                 num_acks++;
-            } else {
-                DB_LSN *l;
-                l = (DB_LSN *)&bdb_state->seqnum_info
-                        ->seqnums[nodeix(connlist[i])];
             }
         }
         if (num_acks < n)
-            pthread_cond_wait(&bdb_state->seqnum_info->cond,
+            Pthread_cond_wait(&bdb_state->seqnum_info->cond,
                               &bdb_state->seqnum_info->lock);
         Pthread_mutex_unlock(&bdb_state->seqnum_info->lock);
     }
@@ -5565,7 +5703,6 @@ void bdb_set_rep_handle_dead(bdb_state_type *bdb_state)
 int bdb_master_should_reject(bdb_state_type *bdb_state)
 {
     int time_now;
-    int we_are_master;
     int should_reject;
 
     if (!bdb_state->attr->master_reject_requests)
@@ -5583,13 +5720,10 @@ int bdb_master_should_reject(bdb_state_type *bdb_state)
     if ((time_now - bdb_state->repinfo->should_reject_timestamp) > 10) {
         int count;
         const char *hostlist[REPMAX];
-        int num_skipped;
         int total;
         int i;
 
         bdb_state->repinfo->should_reject_timestamp = time_now;
-
-        num_skipped = 0;
 
         if (bdb_state->attr->master_reject_sql_ignore_sanc) {
             count = net_get_all_nodes_connected(bdb_state->repinfo->netinfo,
@@ -5666,7 +5800,6 @@ int request_durable_lsn_from_master(bdb_state_type *bdb_state,
         waitms = 1000;
 
     if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
-        const char *comlist[REPMAX];
         if (bdb_state->attr->master_lease && !verify_master_leases(bdb_state, 
                     __func__, __LINE__)) {
             logmsg(LOGMSG_ERROR, "%s line %d failed verifying master leases\n", 

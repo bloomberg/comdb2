@@ -1,5 +1,5 @@
 /*
-   Copyright 2015, 2017, Bloomberg Finance L.P.
+   Copyright 2015, 2018, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@
 #include <assert.h>
 #include "logmsg.h"
 #include "views.h"
+#include "osqlsqlthr.h"
 
 static void *get_constraint_table_cursor(void *table);
 
@@ -129,7 +130,6 @@ static int cache_delayed_indexes(struct ireq *iq, unsigned long long genid)
     void *cur = NULL;
     int err = 0;
     int *pixnum;
-    int i;
 
     if (iq->idxInsert || iq->idxDelete) {
         free_cached_idx(iq->idxInsert);
@@ -202,10 +202,11 @@ static inline void free_cached_delayed_indexes(struct ireq *iq)
     }
 }
 
-int insert_add_op(struct ireq *iq, block_state_t *blkstate, struct dbtable *usedb,
-                  const uint8_t *p_buf_req_start, const uint8_t *p_buf_req_end,
-                  int optype, int rrn, int ixnum, unsigned long long genid,
-                  unsigned long long ins_keys, int blkpos)
+int insert_add_op(struct ireq *iq, block_state_t *blkstate,
+                  struct dbtable *usedb, const uint8_t *p_buf_req_start,
+                  const uint8_t *p_buf_req_end, int optype, int rrn, int ixnum,
+                  unsigned long long genid, unsigned long long ins_keys,
+                  int blkpos, int flags)
 {
     void *cur = NULL;
     int type = CTE_ADD, rc = 0;
@@ -240,6 +241,7 @@ int insert_add_op(struct ireq *iq, block_state_t *blkstate, struct dbtable *used
     cte_record.ctop.fwdct.ixnum = ixnum;
     cte_record.ctop.fwdct.rrn = rrn;
     cte_record.ctop.fwdct.optype = optype;
+    cte_record.ctop.fwdct.flags = flags;
 
     rc = bdb_temp_table_insert(thedb->bdb_env, cur, key,
                                sizeof(int) + sizeof(long long), &cte_record,
@@ -566,13 +568,11 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                            struct ireq *iq, block_state_t *blkstate,
                            void *trans, blob_buffer_t *blobs, int *errout)
 {
-    int i = 0, rc = 0, fndlen = 0, fndrrn = 0, opcode = 0, err = 0;
+    int rc = 0, fndrrn = 0, err = 0;
     int cascade;
     int del_cascade;
     int keylen;
     int upd_cascade;
-    void *od_dta = NULL;
-    char ondisk_tag[MAXTAGLEN];
     char key[MAXKEYLEN];
     unsigned char nulls[MAXNULLBITS] = {0};
     void *cur = NULL;
@@ -618,7 +618,6 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
     while (rc == 0) {
         cte *ctrq = (cte *)bdb_temp_table_data(cur);
         struct backward_ct *bct = NULL;
-        int ondisk_size = 0;
         unsigned long long genid = 0LL, fndgenid = 0LL;
         struct dbtable *currdb = NULL;
         char *skey = NULL;
@@ -802,7 +801,7 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                     /* TODO verify we have proper schema change locks */
 
                     rc = del_record(iq, trans, NULL, rrn, genid, -1ULL, &err,
-                                    &idx, BLOCK2_DELKL, 0);
+                                    &idx, BLOCK2_DELKL, RECFLAGS_DONT_LOCK_TBL);
                     if (iq->debug)
                         reqpopprefixes(iq, 1);
                     iq->usedb = currdb;
@@ -867,7 +866,7 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                         0,    /*maxblobs*/
                         &newgenid, -1ULL, -1ULL, &err, &idx, BLOCK2_UPDKL,
                         0, /*blkpos*/
-                        UPDFLAGS_CASCADE);
+                        UPDFLAGS_CASCADE | RECFLAGS_DONT_LOCK_TBL);
                     if (iq->debug)
                         reqpopprefixes(iq, 1);
                     iq->usedb = currdb;
@@ -956,7 +955,7 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
 int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
                      int *blkpos, int *ixout, int *errout)
 {
-    int i = 0, rc = 0, fndlen = 0, fndrrn = 0, err = 0, limit = 0;
+    int rc = 0, fndlen = 0, err = 0, limit = 0;
     int idx = 0, ixkeylen = -1;
     void *od_dta = NULL;
     char ondisk_tag[MAXTAGLEN];
@@ -1007,6 +1006,7 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
     unsigned long long genid = 0LL;
     unsigned long long cached_index_genid = genid;
     unsigned long long ins_keys = 0ULL;
+    int flags = 0;
     rc = bdb_temp_table_first(thedb->bdb_env, cur, &err);
     if (rc != 0) {
         close_constraint_table_cursor(cur);
@@ -1059,6 +1059,17 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
         int ixnum = curop->ixnum;
         genid = curop->genid;
         ins_keys = curop->ins_keys;
+        flags = curop->flags;
+
+        /* Keys for records from INSERT .. ON CONFLICT DO NOTHING have
+         * already been added to the indexes in add_record() to ensure
+         * we don't add duplicates in the data files. We still push them
+         * to ct_add_table to be able to perform cascade updates to the
+         * child tables.
+         */
+        if ((flags & OSQL_IGNORE_FAILURE) != 0) {
+            goto next_record;
+        }
 
         if (addrrn == -1) {
             if (iq->debug)
@@ -1194,18 +1205,22 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
             }
 
             if (rc == IX_DUP) {
-                reqerrstr(iq, COMDB2_CSTRT_RC_DUP, "add key constraint "
-                                                   "duplicate key '%s' on "
-                                                   "table '%s' index %d",
-                          get_keynm_from_db_idx(iq->usedb, doidx),
-                          iq->usedb->tablename, doidx);
+                if ((flags & OSQL_FORCE_VERIFY) != 0) {
+                    *errout = OP_FAILED_VERIFY;
+                    rc = ERR_VERIFY;
+                } else {
+                    reqerrstr(iq, COMDB2_CSTRT_RC_DUP,
+                              "add key constraint duplicate key '%s' on table "
+                              "'%s' index %d",
+                              get_keynm_from_db_idx(iq->usedb, doidx),
+                              iq->usedb->tablename, doidx);
+                    *errout = OP_FAILED_UNIQ;
+                }
 
                 *blkpos = curop->blkpos;
-                *errout = OP_FAILED_UNIQ;
                 *ixout = doidx;
                 close_constraint_table_cursor(cur);
                 free_cached_delayed_indexes(iq);
-
                 return rc;
             } else if (rc != 0) {
                 reqerrstr(iq, COMDB2_CSTRT_RC_INTL_ERR,
@@ -1213,7 +1228,6 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
                           get_keynm_from_db_idx(iq->usedb, doidx), doidx);
 
                 *blkpos = curop->blkpos;
-
                 *errout = OP_FAILED_INTERNAL;
                 *ixout = doidx;
                 close_constraint_table_cursor(cur);
@@ -1231,12 +1245,13 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
             }
         } /* for each index */
 
+    next_record:
         /* get next record from table */
         rc = bdb_temp_table_next(thedb->bdb_env, cur, &err);
     } while (rc == 0);
 
     close_constraint_table_cursor(cur);
-    
+
     if (rc == IX_EMPTY || rc == IX_PASTEOF) {
         if (cached_index_genid != genid) {
             if (cache_delayed_indexes(iq, genid)) {
@@ -1265,7 +1280,7 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                            struct ireq *iq, block_state_t *blkstate,
                            void *trans, int *errout)
 {
-    int i = 0, rc = 0, fndlen = 0, fndrrn = 0, opcode = 0, err = 0;
+    int rc = 0, fndlen = 0, fndrrn = 0, opcode = 0, err = 0;
     void *od_dta = NULL;
     char ondisk_tag[MAXTAGLEN];
     char key[MAXKEYLEN];
@@ -1325,8 +1340,6 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
         struct forward_ct *curop = NULL;
         int addrrn = -1, ixnum = -1;
         int ondisk_size = 0;
-        const uint8_t *p_buf_req_start;
-        const uint8_t *p_buf_req_end;
         unsigned long long genid = 0LL;
         unsigned long long ins_keys = 0ULL;
         /* do something */
@@ -1348,8 +1361,6 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
         ixnum = curop->ixnum;
         genid = curop->genid;
         ins_keys = curop->ins_keys;
-        p_buf_req_start = curop->p_buf_req_start;
-        p_buf_req_end = curop->p_buf_req_end;
         opcode = curop->optype;
         /* if we are updating by key, check the constraints as if we're doing a
          * normal update */
@@ -1470,7 +1481,6 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
 
                 for (ridx = 0; ridx < ct->nrules; ridx++) {
                     struct dbtable *ftable = NULL, *currdb = NULL;
-                    int ftblsz = 0;
                     int fixnum = 0;
                     int fixlen = 0;
                     char fkey[MAXKEYLEN];
@@ -1489,7 +1499,6 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                         close_constraint_table_cursor(cur);
                         return ERR_BADREQ;
                     }
-                    ftblsz = getdatsize(ftable);
                     rc = getidxnumbyname(ftable->tablename, ct->keynm[ridx],
                                          &fixnum);
                     if (rc) {
@@ -1540,7 +1549,8 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                         }
                     }
 
-                    /*     fprintf(stderr, "%s;%d-%s;%d\n",ftable->tablename,
+                    /*     int ftblsz = getdatsize(ftable);
+                     *     fprintf(stderr, "%s;%d-%s;%d\n",ftable->tablename,
                            ftblsz, ct->keynm[ridx], fixlen);*/
 
                     /* we'll do the find on created index to make sure
@@ -2045,8 +2055,6 @@ int populate_reverse_constraints(struct dbtable *db)
         int jj = 0;
         constraint_t *cnstrt = &db->constraints[ii];
         struct schema *sc = NULL;
-        struct dbtable *ftable = NULL;
-        int keyszs = 0, keyszd = 0, keyix = 0;
 
         sc = find_tag_schema(db->tablename, cnstrt->lclkeyname);
         if (sc == NULL) {

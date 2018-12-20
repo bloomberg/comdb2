@@ -28,7 +28,7 @@ int do_rename_table(struct ireq *iq, struct schema_change_type *s,
                     tran_type *tran)
 {
     struct dbtable *db;
-    iq->usedb = db = s->db = get_dbtable_by_name(s->table);
+    iq->usedb = db = s->db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
         sc_errf(s, "Table doesn't exists\n");
         reqerrstr(iq, ERR_SC, "Table doesn't exists");
@@ -78,8 +78,8 @@ int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
     }
 
     /* update all associated metadata */
-    rc = bdb_rename_table_metadata(db->handle, tran, newname, db->version,
-                                   &bdberr);
+    rc = bdb_rename_table_metadata(db->handle, tran, newname, 
+                                   db->schema_version, &bdberr);
     if (rc) {
         sc_errf(s, "Failed to rename metadata structure for %s\n",
                 db->tablename);

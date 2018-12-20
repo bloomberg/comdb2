@@ -52,7 +52,7 @@ static void *pushlogs_thread(void *voidarg)
 {
     int rc;
     int lastreport = 0;
-    struct thr_handle *thr_self = thrman_register(THRTYPE_PUSHLOG);
+    thrman_register(THRTYPE_PUSHLOG);
     int nwrites = 0;
 
     thread_started("pushlog");
@@ -73,9 +73,9 @@ static void *pushlogs_thread(void *voidarg)
         rc = bdb_get_seqnum(thedb->bdb_env, (seqnum_type *)cur_seqnum);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "pushlogs_thread: error getting seqnum\n");
-            pthread_mutex_lock(&mutex);
+            Pthread_mutex_lock(&mutex);
             have_thread = 0;
-            pthread_mutex_unlock(&mutex);
+            Pthread_mutex_unlock(&mutex);
             break;
         }
 
@@ -93,56 +93,56 @@ static void *pushlogs_thread(void *voidarg)
 
         /* see if we're still needed */
         done = 0;
-        pthread_mutex_lock(&mutex);
+        Pthread_mutex_lock(&mutex);
         if (bdb_seqnum_compare(thedb->bdb_env, (seqnum_type *)target,
                                (seqnum_type *)cur_seqnum) <= 0) {
             logmsg(LOGMSG_USER, "Have reached target LSN\n");
             have_thread = 0;
             done = 1;
         }
-        pthread_mutex_unlock(&mutex);
+        Pthread_mutex_unlock(&mutex);
         if (done)
             break;
 
-        pthread_mutex_lock(&schema_change_in_progress_mutex);
+        Pthread_mutex_lock(&schema_change_in_progress_mutex);
 
         if (gbl_schema_change_in_progress) {
-            pthread_mutex_unlock(&schema_change_in_progress_mutex);
+            Pthread_mutex_unlock(&schema_change_in_progress_mutex);
             sleep(1);
             continue;
         }
 
         /* put some junk into meta table */
         init_fake_ireq(thedb, &iq);
-        db = thedb->dbs[0];
+        db = &thedb->static_table;
         iq.usedb = db;
         rc = trans_start(&iq, NULL, &trans);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "pushlogs_thread: cannot create transaction\n");
-            pthread_mutex_unlock(&schema_change_in_progress_mutex);
-            pthread_mutex_lock(&mutex);
+            Pthread_mutex_unlock(&schema_change_in_progress_mutex);
+            Pthread_mutex_lock(&mutex);
             have_thread = 0;
-            pthread_mutex_unlock(&mutex);
+            Pthread_mutex_unlock(&mutex);
             break;
         }
         rc = put_csc2_stuff(db, trans, junk, sizeof(junk));
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "pushlogs_thread: error %d adding to meta table\n",
                     rc);
-            pthread_mutex_unlock(&schema_change_in_progress_mutex);
+            Pthread_mutex_unlock(&schema_change_in_progress_mutex);
             trans_abort(&iq, trans);
-            pthread_mutex_lock(&mutex);
+            Pthread_mutex_lock(&mutex);
             have_thread = 0;
-            pthread_mutex_unlock(&mutex);
+            Pthread_mutex_unlock(&mutex);
             break;
         }
-        pthread_mutex_unlock(&schema_change_in_progress_mutex);
+        Pthread_mutex_unlock(&schema_change_in_progress_mutex);
         rc = trans_commit(&iq, trans, gbl_mynode);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "pushlogs_thread: cannot commit txn %d\n", rc);
-            pthread_mutex_lock(&mutex);
+            Pthread_mutex_lock(&mutex);
             have_thread = 0;
-            pthread_mutex_unlock(&mutex);
+            Pthread_mutex_unlock(&mutex);
             break;
         }
         nwrites++;
@@ -164,7 +164,7 @@ static void *pushlogs_thread(void *voidarg)
 
 void set_target_lsn(uint32_t logfile, uint32_t logbyte)
 {
-    pthread_mutex_lock(&mutex);
+    Pthread_mutex_lock(&mutex);
     bdb_make_seqnum((seqnum_type *)target, logfile, logbyte);
     if (!have_thread && logfile > 0) {
         int rc;
@@ -178,7 +178,7 @@ void set_target_lsn(uint32_t logfile, uint32_t logbyte)
             have_thread = 1;
         }
     }
-    pthread_mutex_unlock(&mutex);
+    Pthread_mutex_unlock(&mutex);
 }
 
 void push_next_log(void)

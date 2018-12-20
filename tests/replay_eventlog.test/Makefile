@@ -1,3 +1,4 @@
+export SECONDARY_DB_PREFIX=second
 ifeq ($(TESTSROOTDIR),)
   include ../testcase.mk
 else

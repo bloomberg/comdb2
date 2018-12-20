@@ -89,11 +89,9 @@ static int blob_compress(CompStruct *comp)
 {
     struct dbtable *db = comp->db;
     const int numblobs = db->numblobs;
-    int bdberr = 0;
     int rc;
     int i;
 
-    const int blob_offset = db->nix + 1;
     char *crledta;
     char *rledta;
     char *zlibdta;
@@ -243,7 +241,6 @@ blob:
 static void print_compr_stat(CompStruct *comp, const char *prefix, SizeEst *est)
 {
     char buf[1024];
-    char szbuf[64];
     double cmp_dta, cmp_blob;
     double sav_dta, sav_blob;
     struct dbtable *db = comp->db;
@@ -288,7 +285,6 @@ static void *handle_comptest_thd(void *_arg)
 {
     CompArg *arg = _arg;
     CompStruct comp = {0};
-    int compress;
     int rc;
     int i;
     int blob_pos[MAXBLOBS];
@@ -302,7 +298,6 @@ static void *handle_comptest_thd(void *_arg)
     int lastrrn, rrn;
     unsigned long long lastgenid;
     const int maxlen = sizeof(comp.fnddta);
-    int fndlen;
     unsigned long long context = 0;
 
     int total = 1;
@@ -409,6 +404,7 @@ static void *handle_comptest_thd(void *_arg)
     return NULL;
 }
 
+void set_schema_change_in_progress(const char *func, int line, int val);
 void handle_testcompr(SBUF2 *sb, const char *table)
 {
     CompArg arg;
@@ -421,7 +417,7 @@ void handle_testcompr(SBUF2 *sb, const char *table)
         return;
     }
 
-    gbl_schema_change_in_progress = 1;
+    set_schema_change_in_progress(__func__, __LINE__, 1);
     gbl_sc_abort = 0;
 
     arg.sb = sb;
@@ -429,7 +425,7 @@ void handle_testcompr(SBUF2 *sb, const char *table)
     arg.rc = 0;
     pthread_create(&t, NULL, handle_comptest_thd, &arg);
     pthread_join(t, &rc);
-    gbl_schema_change_in_progress = 0;
+    set_schema_change_in_progress(__func__, __LINE__, 0);
 
     if (arg.rc == 0) {
         sbuf2printf(sb, "SUCCESS\n");

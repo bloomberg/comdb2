@@ -1,6 +1,7 @@
 /*
    MACC - access routine generator
    */
+#include <assert.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <sys/types.h>
@@ -1652,7 +1653,7 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
         }
     }
 
-    /* check for pointlessly short strings */
+    /* Check for pointlessly short strings */
     if (T_CSTR == typ && tables[ntables].sym[tables[ntables].nsym].size < 2) {
         csc2_error( "Error at line %3d: CSTRINGS ARE \\0 TERMINATED SO "
                         "MUST BE AT LEAST 2 BYTES IN SIZE\n",
@@ -2947,7 +2948,9 @@ static int dyns_get_field_option_comn(char *tag, int fidx, int option,
         return -1;
     if (fidx < 0 || fidx >= tables[tidx].nsym)
         return -1;
-#if 1
+
+    assert((valuebuf != 0) && (vbsz > 0));
+
     *value_type = field_type(tables[tidx].sym[fidx].type, 0);
     for (i = 0; i < tables[tidx].sym[fidx].numfo; i++) {
         if (tables[tidx].sym[fidx].fopts[i].opttype == option) {
@@ -3066,7 +3069,6 @@ static int dyns_get_field_option_comn(char *tag, int fidx, int option,
         }
     }
 
-#endif
     *value_type = CLIENT_MINTYPE;
     *value_sz = 0;
     memset(valuebuf, 0, vbsz);

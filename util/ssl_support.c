@@ -91,7 +91,7 @@ static void ssl_lock(int mode, int type, const char *file, int line)
 int SBUF2_FUNC(ssl_init)(int init_openssl, int init_crypto,
                        int lock, char *err, size_t n)
 {
-    int ii, nlocks, rc;
+    int rc;
 
     if (init_openssl) {
 #ifndef OPENSSL_THREADS
@@ -112,7 +112,7 @@ int SBUF2_FUNC(ssl_init)(int init_openssl, int init_crypto,
         if (init_crypto) {
             /* Configure SSL locking.
                This is only required for OpenSSL < 1.1.0. */
-            nlocks = CRYPTO_num_locks();
+            int nlocks = CRYPTO_num_locks();
             ssl_locks = malloc(sizeof(pthread_mutex_t) * nlocks);
             if (ssl_locks == NULL) {
                 ssl_sfeprint(err, n, my_ssl_eprintln,
@@ -121,6 +121,7 @@ int SBUF2_FUNC(ssl_init)(int init_openssl, int init_crypto,
                 goto error;
             }
 
+            int ii;
             for (ii = 0; ii < nlocks; ++ii) {
                 if ((rc = pthread_mutex_init(&ssl_locks[ii], NULL)) != 0) {
                     /* Whoops - roll back all we have done. */

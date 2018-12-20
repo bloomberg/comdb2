@@ -66,7 +66,6 @@ public class Driver implements java.sql.Driver {
 
     protected static class BooleanOption extends Option {
         void set(Comdb2Connection conn, String val) throws Throwable {
-            int intval = Integer.parseInt(val);
             if ("true".equalsIgnoreCase(val)
                     || "1".equalsIgnoreCase(val)
                     || "T".equalsIgnoreCase(val)

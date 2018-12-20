@@ -159,8 +159,8 @@ static int remaining_timeoutms(int startms, int timeoutms)
     return (elapsedms < timeoutms) ? timeoutms - elapsedms : 0;
 }
 
-static int portmux_cmd(const char *cmd, const char *app, const char *service,
-                       const char *instance, char *post)
+int portmux_cmd(const char *cmd, const char *app, const char *service,
+                const char *instance, const char *post)
 {
     char name[strlen(app) + strlen(service) + strlen(instance) + 3 +
               MAX_DBNAME_LENGTH];
@@ -184,19 +184,18 @@ static int portmux_cmd(const char *cmd, const char *app, const char *service,
     sbuf2printf(ss, "%s %s%s\n", cmd, name, post);
     res[0] = 0;
     sbuf2gets(res, sizeof(res), ss);
-    if (res[0] == 0) {
-        sbuf2close(ss);
+    sbuf2close(ss);
+
+    if (res[0] == 0)
         return -1;
-    }
     port = atoi(res);
     if (port <= 0)
         port = -1;
-    sbuf2close(ss);
     return port;
 }
 
-int portmux_use(const char *app, const char *service, const char *instance,
-                int port)
+inline int portmux_use(const char *app, const char *service,
+                       const char *instance, int port)
 {
     char portstr[20];
     snprintf(portstr, sizeof(portstr), " %d", port);
@@ -204,7 +203,8 @@ int portmux_use(const char *app, const char *service, const char *instance,
 }
 
 /* returns port number, or -1 for error*/
-int portmux_register(const char *app, const char *service, const char *instance)
+inline int portmux_register(const char *app, const char *service,
+                            const char *instance)
 {
     return portmux_cmd("reg", app, service, instance, "");
 }
@@ -232,12 +232,11 @@ int portmux_deregister(const char *app, const char *service,
     sbuf2printf(ss, "del %s\n", name);
     res[0] = 0;
     sbuf2gets(res, sizeof(res), ss);
+    sbuf2close(ss);
     if (res[0] == 0) {
-        sbuf2close(ss);
         return -1;
     }
     rc = atoi(res);
-    sbuf2close(ss);
     return rc;
 }
 
@@ -365,14 +364,13 @@ int portmux_get(const char *remote_host, const char *app, const char *service,
     sbuf2printf(ss, "get %s\n", name);
     res[0] = 0;
     sbuf2gets(res, sizeof(res), ss);
+    sbuf2close(ss);
     if (res[0] == 0) {
-        sbuf2close(ss);
         return -1;
     }
     port = atoi(res);
     if (port <= 0)
         port = -1;
-    sbuf2close(ss);
     return port;
 }
 
@@ -404,14 +402,13 @@ int portmux_geti(struct in_addr in, const char *app, const char *service,
     sbuf2printf(ss, "get %s\n", name);
     res[0] = 0;
     sbuf2gets(res, sizeof(res), ss);
+    sbuf2close(ss);
     if (res[0] == 0) {
-        sbuf2close(ss);
         return -1;
     }
     port = atoi(res);
     if (port <= 0)
         port = -1;
-    sbuf2close(ss);
     return port;
 }
 
@@ -1917,7 +1914,7 @@ void server_accept_hndl(int fd, void *userdata)
 
 static void server(char *server_name, int pure_one_port_mode)
 {
-    pthread_attr_init(&attr);
+    Pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
     char *app = server_name;
@@ -1950,7 +1947,7 @@ static void server(char *server_name, int pure_one_port_mode)
 
 static void server_no_callback(char *server_name, int pure_one_port_mode)
 {
-    pthread_attr_init(&attr);
+    Pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
     char *app = server_name;
@@ -2136,7 +2133,7 @@ int server_accept_hndl_v(int which, int fd, void *userdata)
 
 static void server_v(char *server_name, int timeoutms, int pure_one_port_mode)
 {
-    pthread_attr_init(&attr);
+    Pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
     uint32_t options;
 

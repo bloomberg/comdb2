@@ -46,7 +46,7 @@ int do_drop_table(struct ireq *iq, struct schema_change_type *s,
                   tran_type *tran)
 {
     struct dbtable *db;
-    iq->usedb = db = s->db = get_dbtable_by_name(s->table);
+    iq->usedb = db = s->db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
         sc_errf(s, "Table doesn't exists\n");
         reqerrstr(iq, ERR_SC, "Table doesn't exists");
@@ -90,7 +90,7 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
 
     delete_table(db, tran);
     /*Now that we don't have any data, please clear unwanted schemas.*/
-    bdberr = bdb_reset_csc2_version(tran, db->tablename, db->version);
+    bdberr = bdb_reset_csc2_version(tran, db->tablename, db->schema_version);
     if (bdberr != BDBERR_NOERROR) return -1;
 
     if ((rc = bdb_del_file_versions(db->handle, tran, &bdberr))) {

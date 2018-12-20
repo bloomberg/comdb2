@@ -46,7 +46,7 @@ assertcnt()
 
 call_unsetup() {
     local successful=$1
-    $TESTSROOTDIR/unsetup $successful &> $TESTDIR/logs/$DBNAME.unsetup
+    COMDB2_UNITTEST=0 $TESTSROOTDIR/unsetup $successful &> $TESTDIR/logs/$DBNAME.unsetup
 }
 
 
@@ -70,9 +70,8 @@ DBDIR=$TESTDIR/$DBNAME
 CDB2_CONFIG=$DBDIR/comdb2db.cfg
 CDB2_OPTIONS="--cdb2cfg $CDB2_CONFIG"
 
-unset COMDB2_UNITTEST   # needed to run setup script
-echo round_robin_stripes > ${TESTSROOTDIR}/${TESTCASE}.test/lrl.options
-$TESTSROOTDIR/setup &> $TESTDIR/logs/$DBNAME.setup
+echo round_robin_stripes > lrl.options
+COMDB2_UNITTEST=0 $TESTSROOTDIR/setup &> $TESTDIR/logs/$DBNAME.setup
 
 # Trap to call_unsetup if the test exits
 trap "call_unsetup \"0\"" INT EXIT
@@ -95,7 +94,7 @@ cdb2sql --tabs ${CDB2_OPTIONS} -f ins.in $dbnm default
 #cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure addrecs('t1', $N)"
 
 assertcnt t1 8
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select printf("%llx",comdb2_rowid%16) as genid from t1' > stripes.out
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select printf("%llx",cast(substr(comdb2_rowid,3) as integer)%16) as genid from t1' > stripes.out
 for i in `seq 1 $N` ; do
     cnt=`grep $((i-1)) stripes.out | wc -l`
     assertres "$cnt" "1"
@@ -121,9 +120,8 @@ DBDIR=$TESTDIR/$DBNAME
 CDB2_CONFIG=$DBDIR/comdb2db.cfg
 CDB2_OPTIONS="--cdb2cfg $CDB2_CONFIG"
 
-unset COMDB2_UNITTEST
-rm ${TESTSROOTDIR}/${TESTCASE}.test/lrl.options
-$TESTSROOTDIR/setup &> $TESTDIR/logs/$DBNAME.setup
+rm lrl.options
+COMDB2_UNITTEST=0 $TESTSROOTDIR/setup &> $TESTDIR/logs/$DBNAME.setup
 
 # Trap to call_unsetup if the test exits
 trap "call_unsetup \"Cancelling test\"" INT EXIT
@@ -156,6 +154,26 @@ zeros=`grep "entries:0" entry_counts.out | wc -l`
 assertres "$zeros" "$((N-1))"
 other=`grep "entries:16" entry_counts.out | wc -l`
 assertres "$other" "1"
+
+
+for i in `seq 1 $N` ; do
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "insert into t2 values($i)"
+done
+
+assertcnt t2 16
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('bdb dblist')" > dblist2.out
+for i in `seq 1 $N` ; do
+    fileid=`cat dblist2.out | grep "XXX.t2_" | grep datas$((i-1)) | awk '{print $1}'`
+    [ "x$fileid" == "x" ] && failexit "dblist does not contain info about t2"
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('bdb pgdump $fileid 1')" | grep "entries:"
+done > entry_counts2.out
+
+
+zeros=`grep "entries:2" entry_counts2.out | wc -l`
+assertres "$zeros" "$((N-1))"
+other=`grep "entries:18" entry_counts2.out | wc -l`
+assertres "$other" "1"
+
 
 call_unsetup 1
 trap - INT EXIT

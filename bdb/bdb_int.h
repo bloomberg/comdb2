@@ -253,7 +253,6 @@ struct timestamp_lsn_key {
     unsigned long long context;
 };
 
-#ifdef NEWSI_ASOF_USE_TEMPTABLE
 typedef struct pglogs_tmptbl_key {
     db_pgno_t pgno;
     DB_LSN commit_lsn;
@@ -276,13 +275,6 @@ typedef struct relinks_tmptbl_key {
 } relinks_tmptbl_key;
 typedef logfile_pglog_hashkey logfile_relink_hashkey;
 #define LOGFILE_PAGE_KEY_SIZE (DB_FILE_ID_LEN * sizeof(unsigned char))
-#else
-typedef struct pglogs_logical_key logfile_pglog_hashkey;
-typedef struct pglogs_relink_key logfile_relink_hashkey;
-#define LOGFILE_PAGE_KEY_SIZE                                                  \
-    (DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t))
-#endif
-
 #define LOGFILE_PGLOG_OFFSET (offsetof(logfile_pglog_hashkey, fileid))
 #define LOGFILE_RELINK_OFFSET (offsetof(logfile_relink_hashkey, fileid))
 
@@ -447,6 +439,10 @@ struct tran_tag {
 
     /* Set to 1 if this is a schema change txn */
     int schema_change_txn;
+    struct tran_tag *sc_parent_tran;
+
+    /* Set to 1 if this txn touches a logical live sc table */
+    int force_logical_commit;
 
     /* cache the versions of dta files to catch schema changes and fastinits */
     int table_version_cache_sz;
@@ -469,6 +465,7 @@ struct tran_tag {
 
     /* Newsi pglogs queue hash */
     hash_t *pglogs_queue_hash;
+    u_int32_t flags;
 };
 
 struct seqnum_t {
@@ -1029,6 +1026,8 @@ struct bdb_state_tag {
     uint16_t *fld_hints;
 
     int hellofd;
+
+    int logical_live_sc;
 };
 
 /* define our net user types */
@@ -1074,7 +1073,8 @@ enum {
     USER_TYPE_ADD_NAME,
     USER_TYPE_DEL_NAME,
     USER_TYPE_TRANSFERMASTER_NAME,
-    USER_TYPE_REQ_START_LSN
+    USER_TYPE_REQ_START_LSN,
+    USER_TYPE_TRUNCATE_LOG
 };
 
 void print(bdb_state_type *bdb_state, char *format, ...);
@@ -1266,7 +1266,7 @@ int ip_updates_enabled(bdb_state_type *bdb_state);
 void delete_log_files(bdb_state_type *bdb_state);
 void delete_log_files_list(bdb_state_type *bdb_state, char **list);
 void delete_log_files_chkpt(bdb_state_type *bdb_state);
-int bdb_checkpoint_list_init();
+void bdb_checkpoint_list_init();
 int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp);
 void bdb_checkpoint_list_get_ckplsn_before_lsn(DB_LSN lsn, DB_LSN *lsnout);
 
@@ -1345,7 +1345,7 @@ int ll_dta_upgrade(bdb_state_type *bdb_state, int rrn, unsigned long long genid,
                    DB *dbp, tran_type *tran, int dtafile, int dtastripe,
                    DBT *dta);
 
-int add_snapisol_logging(bdb_state_type *bdb_state);
+int add_snapisol_logging(bdb_state_type *bdb_state, tran_type *tran);
 int phys_key_add(bdb_state_type *bdb_state, tran_type *tran,
                  unsigned long long genid, int ixnum, DBT *dbt_key,
                  DBT *dbt_data);
@@ -1414,8 +1414,6 @@ int ll_rowlocks_bench(bdb_state_type *bdb_state, tran_type *tran, int op,
 int ll_checkpoint(bdb_state_type *bdb_state, int force);
 
 int bdb_llog_start(bdb_state_type *bdb_state, tran_type *tran, DB_TXN *txn);
-
-int bdb_run_logical_recovery(bdb_state_type *bdb_state, int locks_only);
 
 tran_type *bdb_tran_continue_logical(bdb_state_type *bdb_state,
                                      unsigned long long tranid, int trak,
@@ -1781,10 +1779,20 @@ uint8_t *rep_berkdb_seqnum_type_put(const seqnum_type *p_seqnum_type,
                                     uint8_t *p_buf, const uint8_t *p_buf_end);
 uint8_t *rep_udp_filepage_type_put(const filepage_type *p_filepage_type,
                                    uint8_t *p_buf, const uint8_t *p_buf_end);
+const uint8_t *db_lsn_type_put(const DB_LSN *p_db_lsn, uint8_t *p_buf,
+                               const uint8_t *p_buf_end);
 void poke_updateid(void *buf, int updateid);
 
 void bdb_genid_sanity_check(bdb_state_type *bdb_state, unsigned long long genid,
                             int stripe);
+
+/* If the page is from a dta file, `data` is a genid and `size` is 8 bytes.
+   If the page is from an index file, `data` is (ixdata + genid) and
+   `size` is sizeof(genid) + max record size. */
+
+#include <cdb2_constants.h> /* for COMDB2_MAX_RECORD_SIZE */
+#include "genid.h"          /* for genid_t */
+#define PGCOMPMAXLEN (sizeof(genid_t) + COMDB2_MAX_RECORD_SIZE)
 
 /* Request on the wire */
 typedef struct pgcomp_snd {
@@ -1862,6 +1870,7 @@ char *bdb_coherent_state_string(const char *);
 /* ugly, but need to signal shutdown */
 int osql_process_message_decom(char *);
 void osql_net_exiting(void);
+void osql_cleanup_netinfo(void);
 
 int bdb_list_all_fileids_for_newsi(bdb_state_type *, hash_t *);
 

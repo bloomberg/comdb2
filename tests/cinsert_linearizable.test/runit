@@ -35,16 +35,17 @@ function checkforerrors
         exit 1
     fi
 
-    grep "^XXX " $outfile
-    if [[ $? == 0 ]]; then
-        # This is only allowed if we have exceeded retries
-        grep "Maximum number of retries done" $outfile >/dev/null 2>&1
-        if [[ $? != 0 ]]; then
-            echo "XXX Failure : see $outfile !!!"
-            exit 1
-        fi
-    fi
-
+    # This is allowed: we fail transactions on generation change
+#    grep "^XXX " $outfile
+#    if [[ $? == 0 ]]; then
+#        # This is only allowed if we have exceeded retries
+#        grep "Maximum number of retries done" $outfile >/dev/null 2>&1
+#        if [[ $? != 0 ]]; then
+#            echo "XXX Failure : see $outfile !!!"
+#            exit 1
+#        fi
+#    fi
+#
     grep "THIS SHOULD HAVE RETURNED DUP" $outfile
     if [[ $? == 0 ]]; then
         echo "DUP BLKSEQ FAILURE !!!"

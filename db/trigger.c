@@ -7,6 +7,7 @@
 #include <poll.h>
 #include <pthread.h>
 #include <netdb.h>
+#include <time.h>
 
 #include <flibc.h>
 #include <translistener.h>
@@ -32,38 +33,39 @@
 ** Every new master clears subscription info.
 */
 
+int gbl_queuedb_timeout_sec = 10;
+
 static pthread_mutex_t trighash_lk = PTHREAD_MUTEX_INITIALIZER;
 typedef struct {
     char *host;
     genid_t trigger_cookie;
-    char spname[0];
+    time_t hbeat;
+    char spname[0]; /* must be last in struct*/
 } trigger_info_t;
 static hash_t *trigger_hash;
 
 #define GET_BDB_STATE_CAST(x, cast)                                            \
     void *x = thedb->bdb_env;                                                  \
     if (x == NULL) {                                                           \
-        printf("%s thedb->bdb_env:%p\n", __func__, thedb->bdb_env);            \
         return (cast)CDB2_TRIG_NOT_MASTER;                                     \
     }
 
 #define GET_BDB_STATE(x) GET_BDB_STATE_CAST(x, int)
 
-static trigger_reg_t *trigger_send_hostname(uint8_t *b, trigger_reg_t *t, size_t *s)
+static trigger_receiver trigger_recv_hostname;
+static trigger_receiver *trigger_recv_impl = trigger_recv_hostname;
+
+static trigger_sender trigger_send_hostname;
+static trigger_sender *trigger_send_impl = trigger_send_hostname;
+
+void set_trigger_receiver(trigger_receiver *r)
 {
-    *s = trigger_reg_sz((t)->spname);
-    return memcpy(b, t, *s);
+    trigger_recv_impl = r;
 }
 
-static trigger_sender *trigger_send_impl = trigger_send_hostname;
 void set_trigger_sender(trigger_sender *s)
 {
     trigger_send_impl = s;
-}
-
-static trigger_reg_t *trigger_send(uint8_t *b, trigger_reg_t *t, size_t *s)
-{
-    return trigger_send_impl(b, t, s);
 }
 
 static trigger_reg_t *trigger_recv_hostname(trigger_reg_t *t, uint8_t *buf)
@@ -72,15 +74,29 @@ static trigger_reg_t *trigger_recv_hostname(trigger_reg_t *t, uint8_t *buf)
     return t;
 }
 
-static trigger_receiver *trigger_recv_impl = trigger_recv_hostname;
-void set_trigger_receiver(trigger_receiver *r)
+static trigger_reg_t *trigger_send_hostname(uint8_t *b, trigger_reg_t *t, size_t *s)
 {
-    trigger_recv_impl = r;
+    trigger_reg_t *a = (trigger_reg_t *)b;
+    *s = trigger_reg_sz((t)->spname);
+    memcpy(a, t, *s);
+    trigger_reg_to_net(a);
+    return a;
 }
 
 static trigger_reg_t *trigger_recv(trigger_reg_t *t, uint8_t *b)
 {
     return trigger_recv_impl(t, b);
+}
+
+static trigger_reg_t *trigger_send(uint8_t *b, trigger_reg_t *t, size_t *s)
+{
+    return trigger_send_impl(b, t, s);
+}
+
+static void trigger_hash_del(trigger_info_t *info)
+{
+    hash_del(trigger_hash, info);
+    free(info);
 }
 
 #define TRIGGER_REG_MAX (sizeof(trigger_reg_t) + MAX_SPNAME + NI_MAXHOST)
@@ -91,28 +107,32 @@ static inline int trigger_register_int(trigger_reg_t *t)
         return CDB2_TRIG_NOT_MASTER;
     }
     if (trigger_hash == NULL) {
-        printf("setting up trigger registry\n");
         trigger_hash = hash_init_str(offsetof(trigger_info_t, spname));
     }
     uint8_t buf[TRIGGER_REG_MAX];
     t = trigger_recv(t, buf);
     trigger_info_t *info;
-    if ((info = hash_find(trigger_hash, &t->spname)) == NULL) {
-        info = malloc(sizeof(trigger_info_t) + t->spname_len + 1);
+    time_t now = time(NULL);
+    if ((info = hash_find(trigger_hash, t->spname)) == NULL) {
+add:    info = malloc(sizeof(trigger_info_t) + t->spname_len + 1);
         info->host = intern(trigger_hostname(t));
-        strcpy(info->spname, t->spname);
         info->trigger_cookie = t->trigger_cookie;
+        info->hbeat = now;
+        strcpy(info->spname, t->spname);
         hash_add(trigger_hash, info);
-        printf("%s %s ASSIGNED host:%s trigger_cookie:0x%" PRIu64 "\n",
-               __func__, info->spname, info->host,
-               flibc_htonll(info->trigger_cookie));
-        return 1;
-    } else if (strcmp(info->host, trigger_hostname(t)) &&
+        return CDB2_TRIG_REQ_SUCCESS;
+    } else if (strcmp(info->host, trigger_hostname(t)) == 0 &&
                info->trigger_cookie == t->trigger_cookie) {
-        printf("%s %s ALREADY ASSIGNED host:%s trigger_cookie:0x%" PRIu64 "\n",
-               __func__, info->spname, info->host,
-               flibc_htonll(info->trigger_cookie));
-        return 1;
+        info->hbeat = now;
+        return CDB2_TRIG_REQ_SUCCESS;
+    }
+    double diff = difftime(now, info->hbeat);
+    if (diff >= gbl_queuedb_timeout_sec) {
+        logmsg(LOGMSG_USER,
+               "Heartbeat timeout:%.0fs sp:%s host:%s trigger_cookie:%016" PRIx64
+               "\n", diff, info->spname, info->host, info->trigger_cookie);
+        trigger_hash_del(info);
+        goto add;
     }
     return CDB2_TRIG_ASSIGNED_OTHER;
 }
@@ -121,19 +141,11 @@ int trigger_register(trigger_reg_t *t)
 {
     GET_BDB_STATE(bdb_state);
     BDB_READLOCK("register trigger");
-    pthread_mutex_lock(&trighash_lk);
+    Pthread_mutex_lock(&trighash_lk);
     int rc = trigger_register_int(t);
-    pthread_mutex_unlock(&trighash_lk);
+    Pthread_mutex_unlock(&trighash_lk);
     BDB_RELLOCK();
     return rc;
-}
-
-static void trigger_hash_del(trigger_info_t *info)
-{
-    printf("%s name:%s node:%s cookie:0x%" PRIu64 "\n", __func__, info->spname,
-           info->host, flibc_ntohll(info->trigger_cookie));
-    hash_del(trigger_hash, info);
-    free(info);
 }
 
 static int trigger_unregister_int(trigger_reg_t *t)
@@ -144,28 +156,20 @@ static int trigger_unregister_int(trigger_reg_t *t)
     uint8_t buf[TRIGGER_REG_MAX];
     t = trigger_recv(t, buf);
     trigger_info_t *info;
-    if ((info = hash_find(trigger_hash, &t->spname)) != NULL &&
+    if ((info = hash_find(trigger_hash, t->spname)) != NULL &&
         strcmp(info->host, trigger_hostname(t)) == 0 &&
         info->trigger_cookie == t->trigger_cookie) {
         trigger_hash_del(info);
         return CDB2_TRIG_REQ_SUCCESS;
-    }
-    printf("%s failed:%s node:%s trigger_cookie:0x%" PRIu64 "\n", __func__,
-           t->spname, trigger_hostname(t), flibc_htonll(t->trigger_cookie));
-    if (info) {
-        printf("%s %s registered to node:%s cookie:0x%" PRIu64 "\n", __func__,
-               info->spname, info->host, flibc_htonll(info->trigger_cookie));
-    } else {
-        printf("%s %s was not assigned to any node\n", __func__, t->spname);
     }
     return CDB2_TRIG_ASSIGNED_OTHER;
 }
 
 static int trigger_unregister_lk(trigger_reg_t *t)
 {
-    pthread_mutex_lock(&trighash_lk);
+    Pthread_mutex_lock(&trighash_lk);
     int rc = trigger_unregister_int(t);
-    pthread_mutex_unlock(&trighash_lk);
+    Pthread_mutex_unlock(&trighash_lk);
     return rc;
 }
 
@@ -186,8 +190,6 @@ static void *trigger_start_int(void *name_)
     free(name_);
     trigger_reg_t *reg;
     trigger_reg_init(reg, name);
-    printf("%s waiting for %s elect_cookie:%d trigger_cookie:0x%" PRIu64 "\n",
-           __func__, name, ntohl(reg->elect_cookie), reg->trigger_cookie);
     int rc, retry = 10;
     while (--retry > 0) {
         bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
@@ -200,24 +202,19 @@ static void *trigger_start_int(void *name_)
         case NET_SEND_FAIL_TIMEOUT:
         case NET_SEND_FAIL_INVALIDNODE:
         case NET_SEND_FAIL_INTERNAL:
-            printf("%s trigger_register_req retry rc:%d\n", __func__, rc);
             sleep(1);
             break;
         case CDB2_TRIG_ASSIGNED_OTHER:
         default:
-            printf("%s trigger_register_req fail rc:%d\n", __func__, rc);
             return NULL;
         }
         if (rc == CDB2_TRIG_REQ_SUCCESS)
             break;
     }
     if (rc != CDB2_TRIG_REQ_SUCCESS) {
-        printf("%s trigger_register_req fail rc:%d\n", __func__, rc);
         return NULL;
     }
-    printf("%s assigned - now running %s\n", __func__, name);
     exec_trigger(reg);
-    printf("%s done running %s\n", __func__, name);
     return NULL;
 }
 
@@ -225,7 +222,6 @@ static void *trigger_start_int(void *name_)
 void trigger_start(const char *name)
 {
     if (!gbl_ready) return;
-    printf("%s master selected me to run: %s\n", __func__, name);
     pthread_t t;
     pthread_create(&t, &gbl_pthread_attr_detached, trigger_start_int, strdup(name));
 }
@@ -255,19 +251,18 @@ static int trigger_unregister_node_int(const char *host)
 
 int trigger_unregister_node(const char *host)
 {
-    pthread_mutex_lock(&trighash_lk);
+    Pthread_mutex_lock(&trighash_lk);
     int rc = trigger_unregister_node_int(host);
-    pthread_mutex_unlock(&trighash_lk);
+    Pthread_mutex_unlock(&trighash_lk);
     return rc;
 }
 
 void trigger_clear_hash()
 {
-    logmsg(LOGMSG_INFO, "%s CLEARING ENTIRE HASH\n", __func__);
-    pthread_mutex_lock(&trighash_lk);
+    Pthread_mutex_lock(&trighash_lk);
     hash_t *old = trigger_hash;
     trigger_hash = NULL;
-    pthread_mutex_unlock(&trighash_lk);
+    Pthread_mutex_unlock(&trighash_lk);
 
     if (old == NULL)
         return;
@@ -292,64 +287,68 @@ void trigger_reg_to_cpu(trigger_reg_t *t)
     t->trigger_cookie = flibc_ntohll(t->trigger_cookie);
 }
 
-void trigger_stat()
+int trigger_stat()
 {
-#if 0
-	for (int i = 0; i < thedb->num_qdbs; ++i) {
-		struct dbtable *qdb = thedb->qdbs[i];
-		printf("name: %s type:%d\n", qdb->dbname, qdb->dbtype);
-		for (int j = 0; j < MAXCONSUMERS; ++j) {
-			struct consumer *consumer = qdb->consumers[i];
-			if (!consumer)
-				continue;
-			printf("  consumer:%d type:%d\n", consumer->consumern, consumer->type);
-		}
-	}
-#endif
-    trigger_info_t *info;
-    unsigned int bkt;
-    void *ent;
-    pthread_mutex_lock(&trighash_lk);
-    if (trigger_hash) {
-        info = hash_first(trigger_hash, &ent, &bkt);
-        while (info) {
-            printf("%s %s IS ASSIGNED TO node:%s cookie:0x%" PRIu64 "\n",
-                   __func__, info->spname, info->host, info->trigger_cookie);
-            info = hash_next(trigger_hash, &ent, &bkt);
+    GET_BDB_STATE(bdb_state);
+    if (!bdb_amimaster(bdb_state)) {
+        logmsg(LOGMSG_USER, "%s: cannot run on replicant\n", __func__);
+        return -1;
+    }
+    Pthread_mutex_lock(&trighash_lk);
+    time_t now = time(NULL);
+    for (int i = 0; i < thedb->num_qdbs; ++i) {
+        struct dbtable *qdb = thedb->qdbs[i];
+        int ctype = dbqueue_consumer_type(qdb->consumers[0]);
+        if (ctype != CONSUMER_TYPE_LUA && ctype != CONSUMER_TYPE_DYNLUA)
+            continue;
+        const char *type = ctype == CONSUMER_TYPE_LUA ? "trigger" : "consumer";
+        char *spname = SP4Q(qdb->tablename);
+        trigger_info_t *info =
+            trigger_hash ? hash_find(trigger_hash, spname) : NULL;
+        if (info) {
+            logmsg(LOGMSG_USER,
+                   "%s: %8s:%s ASSIGNED to node:%s cookie:%016" PRIx64
+                   " last heartbeat: %.0fs\n",
+                   __func__, type, info->spname, info->host,
+                   info->trigger_cookie, difftime(now, info->hbeat));
+        } else {
+            logmsg(LOGMSG_USER, "%s: %8s:%s UNASSIGNED\n", __func__, type,
+                   spname);
         }
     }
-    pthread_mutex_unlock(&trighash_lk);
+    Pthread_mutex_unlock(&trighash_lk);
+    return 0;
 }
 
-static int trigger_registered_int(const char *name)
+static int trigger_registered_int(const char *spname)
 {
-    if (!trigger_hash)
+    trigger_info_t *info;
+    if (!trigger_hash) {
         return 0;
-    void *ent;
-    unsigned int bkt;
-    trigger_info_t *info = hash_first(trigger_hash, &ent, &bkt);
-    while (info) {
-        if (strcmp(name, info->spname) == 0)
+    }
+    if ((info = hash_find(trigger_hash, spname)) != NULL) {
+        time_t diff = time(NULL) - info->hbeat;
+        if (diff < gbl_queuedb_timeout_sec) {
             return 1;
-        info = hash_next(trigger_hash, &ent, &bkt);
+        }
     }
     return 0;
 }
 
 int trigger_registered(const char *name)
 {
-    pthread_mutex_lock(&trighash_lk);
+    Pthread_mutex_lock(&trighash_lk);
     int rc = trigger_registered_int(name);
-    pthread_mutex_unlock(&trighash_lk);
+    Pthread_mutex_unlock(&trighash_lk);
     return rc;
 }
 
 int trigger_register_req(trigger_reg_t *reg)
 {
     GET_BDB_STATE(bdb_state);
-    reg->elect_cookie = htonl(gbl_master_changes);
     size_t sz;
     uint8_t buf[TRIGGER_REG_MAX];
+    reg->elect_cookie = gbl_master_changes;
     trigger_reg_t *t = trigger_send(buf, reg, &sz);
     if (bdb_amimaster(bdb_state)) {
         return trigger_register(t);
@@ -359,7 +358,7 @@ int trigger_register_req(trigger_reg_t *reg)
         return NET_SEND_FAIL_INTERNAL; // fake internal retry
     }
     return net_send_message(thedb->handle_sibling, master, NET_TRIGGER_REGISTER,
-                            t, sz, 1, 500);
+                            t, sz, 1, 1000);
 }
 
 int trigger_unregister_req(trigger_reg_t *reg)
@@ -376,5 +375,5 @@ int trigger_unregister_req(trigger_reg_t *reg)
         return NET_SEND_FAIL_INTERNAL; // fake internal retry
     }
     return net_send_message(thedb->handle_sibling, master,
-                            NET_TRIGGER_UNREGISTER, t, sz, 1, 500);
+                            NET_TRIGGER_UNREGISTER, t, sz, 1, 1000);
 }

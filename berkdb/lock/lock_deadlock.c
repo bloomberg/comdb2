@@ -32,6 +32,7 @@ static const char revid[] = "$Id: lock_deadlock.c,v 11.66 2003/11/19 19:59:02 ub
 
 #include "debug_switches.h"
 #include "logmsg.h"
+#include "locks_wrap.h"
 
 extern int verbose_deadlocks;
 extern int gbl_sparse_lockerid_map;
@@ -466,7 +467,7 @@ __lock_detect(dbenv, atype, abortp)
 	int skip;
 
 	/* Run detector if one is not waiting to be run already */
-	pthread_mutex_lock(&qlock);
+	Pthread_mutex_lock(&qlock);
 	if (q) {
 		skip = 1;
 		++detect_skip;
@@ -474,20 +475,20 @@ __lock_detect(dbenv, atype, abortp)
 		skip = 0;
 		q = 1;
 	}
-	pthread_mutex_unlock(&qlock);
+	Pthread_mutex_unlock(&qlock);
 	if (skip) return 0;
 
-	pthread_mutex_lock(&dlock);
+	Pthread_mutex_lock(&dlock);
 	{
-		pthread_mutex_lock(&qlock);
+		Pthread_mutex_lock(&qlock);
 		q = 0;
-		pthread_mutex_unlock(&qlock);
+		Pthread_mutex_unlock(&qlock);
 		int retry = 0;
 		ret = __lock_detect_int(dbenv, atype, abortp, &retry);
 		if (retry)
 			ret = __lock_detect_int(dbenv, atype, abortp, NULL);
 	}
-	pthread_mutex_unlock(&dlock);
+	Pthread_mutex_unlock(&dlock);
 	return ret;
 }
 
@@ -504,11 +505,11 @@ __lock_detect_int(dbenv, atype, abortp, can_retry)
 	DB_LOCKREGION *region;
 	DB_LOCKTAB *lt;
 	DB_TXNMGR *tmgr;
-	locker_info *idmap;
-	sparse_map_t *sparse_map, *sparse_copymap;
-	u_int32_t *bitmap, *copymap, **deadp, *deadwho, **free_me, *free_me_2,
+	locker_info *idmap = NULL;
+	sparse_map_t *sparse_map = NULL, *sparse_copymap;
+	u_int32_t *bitmap = NULL, *copymap, **deadp, *deadwho, **free_me, *free_me_2,
 	    *tmpmap;
-	u_int32_t i, keeper, killid, limit, nalloc, nlockers, dwhoix;
+	u_int32_t i, keeper, killid, limit = 0, nalloc = 0, nlockers = 0, dwhoix;
 	u_int32_t lock_max, txn_max;
 	extern int gbl_print_deadlock_cycles;
 	extern int gbl_deadlock_policy_override;
@@ -1428,8 +1429,7 @@ look_waiters:
 
 		if ((ret = __lock_getlocker(lt, dd_id_array[id].id,
 				ndx, 0, GETLOCKER_KEEP_PART, &lockerp))!=0) {
-			__db_err(dbenv,
-				"No locks for locker %lu",
+			__db_err(dbenv, "No locks for locker %lu",
 				(u_long)dd_id_array[id].id);
 			continue;
 		}
@@ -1464,48 +1464,47 @@ look_waiters:
 
 		if (child !=NULL) {
 			do {
-again1:			lp = SH_LIST_FIRST(&child->heldby,
-					__db_lock);
-				if (lp !=NULL) {
-					lpartition = lp->lpartition;
+				lp = SH_LIST_FIRST(&child->heldby, __db_lock);
+				if (lp ==NULL)
+					goto next_child;
 
-					if (lpartition >= gbl_lk_parts) {
-						if (SH_LIST_EMPTY(&lockerp->
-							child_locker)) {
-							goto next_child;
-						} else {
-							goto again1;
-						}
-					}
+				lpartition = lp->lpartition;
 
-					lock_obj_partition(region, lpartition);
-
-					if (SH_LIST_EMPTY(&lockerp-> child_locker)) {
-						unlock_obj_partition(region, lpartition);
+				if (lpartition >= gbl_lk_parts) {
+					if (SH_LIST_EMPTY(&lockerp->child_locker)) {
 						goto next_child;
+					} else {
+						continue;
 					}
-					if (lp !=SH_LIST_FIRST(&child->heldby, __db_lock)) {
-						unlock_obj_partition(region, lpartition);
-						goto again1;
-					}
-					if (lpartition != lp->lpartition) {
-						unlock_obj_partition(region, lpartition);
-						goto again1;
-					}
-					if (lp->status == DB_LSTAT_WAITING) {
-						dd_id_array[id].last_locker_id = child->id;
-						lo = lp->lockobj;
-
-						if (lo->partition !=lp->lpartition) {
-							unlock_obj_partition(region, lpartition);
-							//Fail fast for now - want to catch it doing this
-							abort();
-						}
-						goto get_lock;
-					}
-					unlock_obj_partition(region, lpartition);
 				}
-next_child:			child = SH_LIST_NEXT(child, child_link, __db_locker);
+
+				lock_obj_partition(region, lpartition);
+
+				if (SH_LIST_EMPTY(&lockerp-> child_locker)) {
+					unlock_obj_partition(region, lpartition);
+					goto next_child;
+				}
+				if (lp !=SH_LIST_FIRST(&child->heldby, __db_lock)) {
+					unlock_obj_partition(region, lpartition);
+					continue;
+				}
+				if (lpartition != lp->lpartition) {
+					unlock_obj_partition(region, lpartition);
+					continue;
+				}
+				if (lp->status == DB_LSTAT_WAITING) {
+					dd_id_array[id].last_locker_id = child->id;
+					lo = lp->lockobj;
+
+					if (lo->partition !=lp->lpartition) {
+						unlock_obj_partition(region, lpartition);
+						//Fail fast for now - want to catch it doing this
+						abort();
+					}
+					goto get_lock;
+				}
+				unlock_obj_partition(region, lpartition);
+next_child:		child = SH_LIST_NEXT(child, child_link, __db_locker);
 			} while (child !=NULL);
 		}
 
@@ -1516,8 +1515,7 @@ again2:	lp = SH_LIST_FIRST(&lockerp->heldby, __db_lock);
 
 			if (lpartition >= gbl_lk_parts) {
 				if (SH_LIST_EMPTY(&lockerp->heldby)) {
-					unlock_locker_partition(region,
-						lkr_partition);
+					unlock_locker_partition(region, lkr_partition);
 					continue;
 				} else {
 					puts("THIS IS STILL HAPPENING...");

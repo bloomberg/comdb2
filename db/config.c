@@ -34,6 +34,7 @@
 #include "translistener.h"
 #include "rtcpu.h"
 #include "config.h"
+#include "phys_rep.h"
 
 extern int gbl_create_mode;
 extern int gbl_fullrecovery;
@@ -293,49 +294,53 @@ void clear_deferred_options(void)
     }
 }
 
-static char *legacy_options[] = {
-    "disallow write from beta if prod",
-    "noblobstripe",
-    "nullsort high",
-    "dont_sort_nulls_with_header",
-    "nochecksums",
-    "off fix_cstr",
-    "no_null_blob_fix",
-    "no_static_tag_blob_fix",
-    "dont_forbid_ulonglong",
-    "dont_init_with_ondisk_header",
-    "dont_init_with_instant_schema_change",
-    "dont_init_with_inplace_updates",
-    "dont_prefix_foreign_keys",
-    "dont_superset_foreign_keys",
-    "disable_inplace_blobs",
-    "disable_inplace_blob_optimization",
-    "disable_osql_blob_optimization",
-    "nocrc32c",
-    "enable_tagged_api",
-    "nokeycompr",
-    "norcache",
-    "usenames",
-    "setattr DIRECTIO 0",
-    "berkattr elect_highest_committed_gen 0",
-    "unnatural_types 1",
-    "enable_sql_stmt_caching none",
-    "on accept_on_child_nets",
-    "env_messages",
-    "off return_long_column_names",
-    "ddl_cascade_drop 0",
-    "setattr NET_SEND_GBLCONTEXT 1",
-    "setattr ENABLE_SEQNUM_GENERATIONS 0",
-    "setattr MASTER_LEASE 0",
-    "setattr SC_DONE_SAME_TRAN 0",
-    "logmsg notimestamp",
-    "queuedb_genid_filename off",
-    "decoupled_logputs off",
-    "init_with_time_based_genids",
-    "logmsg level info",
-    "logput window 1",
-    "osql_send_startgen off",
-};
+static char *legacy_options[] = {"disallow write from beta if prod",
+                                 "noblobstripe",
+                                 "nullsort high",
+                                 "dont_sort_nulls_with_header",
+                                 "nochecksums",
+                                 "off fix_cstr",
+                                 "no_null_blob_fix",
+                                 "no_static_tag_blob_fix",
+                                 "dont_forbid_ulonglong",
+                                 "dont_init_with_ondisk_header",
+                                 "dont_init_with_instant_schema_change",
+                                 "dont_init_with_inplace_updates",
+                                 "dont_prefix_foreign_keys",
+                                 "dont_superset_foreign_keys",
+                                 "disable_inplace_blobs",
+                                 "disable_inplace_blob_optimization",
+                                 "disable_osql_blob_optimization",
+                                 "nocrc32c",
+                                 "enable_tagged_api",
+                                 "nokeycompr",
+                                 "norcache",
+                                 "usenames",
+                                 "setattr DIRECTIO 0",
+                                 "berkattr elect_highest_committed_gen 0",
+                                 "unnatural_types 1",
+                                 "enable_sql_stmt_caching none",
+                                 "on accept_on_child_nets",
+                                 "env_messages",
+                                 "off return_long_column_names",
+                                 "ddl_cascade_drop 0",
+                                 "setattr NET_SEND_GBLCONTEXT 1",
+                                 "setattr ENABLE_SEQNUM_GENERATIONS 0",
+                                 "setattr MASTER_LEASE 0",
+                                 "setattr SC_DONE_SAME_TRAN 0",
+                                 "logmsg notimestamp",
+                                 "queuedb_genid_filename off",
+                                 "decoupled_logputs off",
+                                 "init_with_time_based_genids",
+                                 "logmsg level info",
+                                 "logput window 1",
+                                 "osql_send_startgen off",
+                                 "create_default_user",
+                                 "allow_negative_column_size",
+                                 "osql_check_replicant_numops off",
+                                 "reorder_socksql_no_deadlock off",
+                                 "disable_tpsc_tblvers",
+                                 "on disable_etc_services_lookup"};
 int gbl_legacy_defaults = 0;
 int pre_read_legacy_defaults(void *_, void *__)
 {
@@ -439,7 +444,6 @@ struct dbenv *read_lrl_file_int(struct dbenv *dbenv, const char *lrlname,
 {
     FILE *ff;
     char line[512] = {0}; // valgrind doesn't like sse42 instructions
-    int rc;
     struct lrlfile *lrlfile;
     struct read_lrl_option_type options = {
         .lineno = 0, .lrlname = lrlname, .dbname = dbenv->envname,
@@ -556,7 +560,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
     int st = 0;
     int ltok;
     int ii, kk;
-    int num;
     int rc;
 
     tok = segtok(line, len, &st, &ltok);
@@ -1032,6 +1035,9 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
     } else if (tokcmp(tok, ltok, "use_llmeta") == 0) {
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_LLMETA, 1);
         logmsg(LOGMSG_INFO, "using low level meta table\n");
+    } else if (tokcmp(tok, ltok, "enable_logical_logging") == 0) {
+        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
+        logmsg(LOGMSG_INFO, "Enabled logical logging\n");
     } else if (tokcmp(tok, ltok, "enable_snapshot_isolation") == 0) {
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         gbl_snapisol = 1;
@@ -1054,6 +1060,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         gbl_new_snapisol_logging = 1;
         logmsg(LOGMSG_INFO, "Enabled new snapshot\n");
     } else if (tokcmp(tok, ltok, "enable_new_snapshot_logging") == 0) {
+        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         gbl_new_snapisol_logging = 1;
         logmsg(LOGMSG_INFO, "Enabled new snapshot logging\n");
     } else if (tokcmp(tok, ltok, "disable_new_snapshot") == 0) {
@@ -1090,7 +1097,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             logmsg(LOGMSG_INFO, "sql default mode is %s\n",
                    (gbl_sql_tranlevel_default == SQL_TDEF_SOCK) ? "socksql"
                                                                 : "blocksql");
-        } else if (ltok == 9 && !strncasecmp(tok, "blocksock", 9) ||
+        } else if ((ltok == 9 && !strncasecmp(tok, "blocksock", 9)) ||
                    tokcmp(tok, ltok, "default") == 0) {
             gbl_upgrade_blocksql_2_socksql = 1;
             if (gbl_sql_tranlevel_default == SQL_TDEF_BLOCK) {
@@ -1233,12 +1240,81 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         /* Process here because can't pass to handle_lrl_tunable (where it is
          * marked as READEARLY) */
         read_legacy_defaults(dbenv, options);
+
+        /* 'replicate_from <dbname>
+         * <prod|beta|alpha|dev|host|@hst1,hst2,hst3..>' */
+    } else if (tokcmp(tok, ltok, "replicate_from") == 0) {
+        cdb2_hndl_tp *hndl;
+        /* replicate_from <db_name> [dbs to query] */
+        if (gbl_is_physical_replicant) {
+            logmsg(LOGMSG_FATAL, "Ignoring multiple replicate_from directives:"
+                                 "can only replicate from a single source\n");
+            return -1;
+        }
+
+        /* dbname */
+        tok = segtok(line, len, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_FATAL, "Must specify a database to replicate from\n");
+            exit(1);
+        }
+        char *dbname = tokdup(tok, ltok);
+
+        tok = segtok(line, len, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_FATAL, "Must specify a type\n");
+            exit(1);
+        }
+        char *type = tokdup(tok, ltok);
+
+        if ((rc = cdb2_open(&hndl, dbname, type, 0)) != 0) {
+            logmsg(LOGMSG_FATAL, "Error opening handle to %s %s: %d\n", dbname,
+                   type, rc);
+            exit(1);
+        }
+
+        char *hosts[32];
+        int count;
+        cdb2_cluster_info(hndl, hosts, NULL, 32, &count);
+        count = (count < 32 ? count : 32);
+        for (ii = 0; ii < count; ii++) {
+            if (add_replicant_host(hosts[ii], dbname, 0) != 0) {
+                logmsg(LOGMSG_ERROR, "Failed to insert hostname %s\n",
+                       hosts[ii]);
+            }
+            gbl_is_physical_replicant = 1;
+            free(hosts[ii]);
+        }
+        cdb2_close(hndl);
+        logmsg(LOGMSG_INFO, "Physical replicant replicating from %s on %s\n",
+               dbname, type);
+        free(dbname);
+        free(type);
+        start_replication();
+
+    } else if (tokcmp(tok, ltok, "replicate_wait") == 0) {
+        tok = segtok(line, len, &st, &ltok);
+
+        /* need to replicate a database */
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR,
+                   "Must specify # of seconds to wait for timestamp\n");
+            return -1;
+        }
+        gbl_deferred_phys_flag = 1;
+
+        char *wait = tokdup(tok, ltok);
+        gbl_deferred_phys_update = atol(wait);
+        logmsg(LOGMSG_USER, "Waiting for %u seconds for replication\n",
+               gbl_deferred_phys_update);
+        free(wait);
+
     } else {
         // see if any plugins know how to handle this
         struct lrl_handler *h;
         rc = 1;
         LISTC_FOR_EACH(&dbenv->lrl_handlers, h, lnk) {
-            rc = h->handle(dbenv, line);
+            rc = h->handle(dbenv, tok);
             if (rc == 0)
                 break;
         }
@@ -1444,6 +1520,13 @@ int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
 
     if (!gbl_create_mode) {
         read_cmd_line_tunables(dbenv);
+
+        /* usenames is not supported with physical replication */
+        if (gbl_is_physical_replicant && !gbl_nonames) {
+            logmsg(LOGMSG_ERROR,
+                   "Cannot start a physical replicant under usenames\n");
+            return 1;
+        }
     }
 
     return 0;

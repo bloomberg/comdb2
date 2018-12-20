@@ -41,7 +41,7 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
     int foundix;
     struct scinfo scinfo;
 
-    iq->usedb = db = s->db = get_dbtable_by_name(s->table);
+    iq->usedb = db = s->db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
         sc_errf(s, "Table doesn't exists\n");
         reqerrstr(iq, ERR_SC, "Table doesn't exists");
@@ -65,9 +65,9 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
         gbl_broken_max_rec_sz = s->db->lrl - COMDB2_MAX_RECORD_SIZE;
     }
 
-    pthread_mutex_lock(&csc2_subsystem_mtx);
+    Pthread_mutex_lock(&csc2_subsystem_mtx);
     if ((rc = load_db_from_schema(s, thedb, &foundix, iq))) {
-        pthread_mutex_unlock(&csc2_subsystem_mtx);
+        Pthread_mutex_unlock(&csc2_subsystem_mtx);
         return rc;
     }
 
@@ -76,7 +76,7 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
     newdb = s->newdb = create_db_from_schema(thedb, s, db->dbnum, foundix, 1);
     if (newdb == NULL) {
         sc_errf(s, "Internal error\n");
-        pthread_mutex_unlock(&csc2_subsystem_mtx);
+        Pthread_mutex_unlock(&csc2_subsystem_mtx);
         return SC_INTERNAL_ERROR;
     }
 
@@ -86,10 +86,10 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
         backout_schemas(newdb->tablename);
         cleanup_newdb(newdb);
         sc_errf(s, "Failed to process schema!\n");
-        pthread_mutex_unlock(&csc2_subsystem_mtx);
+        Pthread_mutex_unlock(&csc2_subsystem_mtx);
         return -1;
     }
-    pthread_mutex_unlock(&csc2_subsystem_mtx);
+    Pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     /* create temporary tables.  to try to avoid strange issues always
      * use a unqiue prefix.  this avoids multiple histories for these
@@ -105,7 +105,7 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
     if (rc) {
         /* todo: clean up db */
         sc_errf(s, "failed opening new db\n");
-        change_schemas_recover(s->table);
+        change_schemas_recover(s->tablename);
         return -1;
     }
 
@@ -125,7 +125,7 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
        however the new db gets its meta table assigned further down,
        so we can't set meta options until we're there. */
     set_bdb_option_flags(newdb, s->headers, s->ip_updates,
-                         newdb->instant_schema_change, newdb->version,
+                         newdb->instant_schema_change, newdb->schema_version,
                          s->compress, s->compress_blobs, datacopy_odh);
 
     MEMORY_SYNC;
@@ -145,16 +145,16 @@ int finalize_fastinit_table(struct ireq *iq, struct schema_change_type *s,
             constraint_t *cnstrt = db->rev_constraints[i];
             sc_pending = iq->sc_pending;
             while (sc_pending != NULL) {
-                if (strcasecmp(sc_pending->table,
+                if (strcasecmp(sc_pending->tablename,
                                cnstrt->lcltable->tablename) == 0)
                     break;
                 sc_pending = sc_pending->sc_next;
             }
             if (sc_pending && sc_pending->fastinit)
                 logmsg(LOGMSG_INFO,
-                       "Fastinit '%s' and %s'%s' transactionally\n", s->table,
-                       sc_pending->drop_table ? "drop " : "",
-                       sc_pending->table);
+                       "Fastinit '%s' and %s'%s' transactionally\n",
+                       s->tablename, sc_pending->drop_table ? "drop " : "",
+                       sc_pending->tablename);
             else {
                 sc_errf(s, "Can't fastinit tables with foreign constraints\n");
                 reqerrstr(iq, ERR_SC,

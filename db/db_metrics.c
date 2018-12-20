@@ -21,6 +21,7 @@
 #include "comdb2_atomic.h"
 #include "metrics.h"
 #include "bdb_api.h"
+#include "net.h"
 
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -74,6 +75,13 @@ struct comdb2_metrics_store {
     int64_t sql_queue_timeouts;
     double handle_buf_queue_time;
     int64_t denied_appsock_connections;
+    int64_t locks;
+    int64_t temptable_spills;
+    int64_t net_drops;
+    int64_t net_queue_size;
+    int64_t rep_deadlocks;
+    int64_t rw_evicts;
+    int64_t standing_queue_time;
 };
 
 static struct comdb2_metrics_store stats;
@@ -187,8 +195,27 @@ comdb2_metric gbl_metrics[] = {
      STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST,
      &stats.handle_buf_queue_time, NULL},
     {"denied_appsocks", "Number of denied appsock connections",
-     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
      &stats.denied_appsock_connections, NULL},
+    {"locks", "Number of currently held locks", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.locks, NULL},
+    {"temptable_spills",
+     "Number of temptables that had to be spilled to disk-backed tables",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.temptable_spills, NULL},
+    {"net_drops",
+     "Number of packets that didn't fit on network queue and were dropped",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.net_drops,
+     NULL},
+    {"net_queue_size", "Size of largest outgoing net queue", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.net_queue_size, NULL},
+    {"rep_deadlocks", "Replication deadlocks", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.rep_deadlocks, NULL},
+    {"rw_evictions", "Dirty page evictions", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.rw_evicts, NULL},
+    {"standing_queue_time", "How long the database has had a standing queue",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.standing_queue_time, NULL}
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -209,7 +236,8 @@ extern int n_commits;
 extern long n_fstrap;
 
 
-static int64_t refresh_diskspace(struct dbenv *dbenv) {
+static int64_t refresh_diskspace(struct dbenv *dbenv)
+{
     int64_t total = 0;
     int ndb;
     struct dbtable *db;
@@ -230,15 +258,41 @@ static int64_t refresh_diskspace(struct dbenv *dbenv) {
 }
 
 /* TODO: this isn't threadsafe. */
-static time_t last_time;
-static int64_t last_counter;
+
+void refresh_queue_size(struct dbenv *dbenv) 
+{
+    const char *hostlist[REPMAX];
+    int num_nodes;
+    int max_queue_size = 0;
+    struct net_host_stats stat;
+
+    /* do this for both nets */
+    num_nodes = net_get_all_nodes_connected(dbenv->handle_sibling, hostlist);
+    for (int i = 0; i < num_nodes; i++) {
+        if (net_get_host_stats(dbenv->handle_sibling, hostlist[i], &stat) == 0) {
+            if (stat.queue_size > max_queue_size)
+                max_queue_size = stat.queue_size;
+        }
+    }
+    /* do this for both nets */
+    for (int i = 0; i < num_nodes; i++) {
+        if (net_get_host_stats(dbenv->handle_sibling_offload, hostlist[i], &stat) == 0) {
+            if (stat.queue_size > max_queue_size)
+                max_queue_size = stat.queue_size;
+        }
+    }
+    stats.net_queue_size = max_queue_size;
+}
+
+static time_t metrics_standing_queue_time(void);
 
 int refresh_metrics(void)
 {
     int rc;
     const struct bdb_thread_stats *pstats;
-    extern int active_appsock_conns;
-    int bdberr;
+    extern int active_appsock_conns; int bdberr;
+    int min_file, min_offset;
+    int32_t min_timestamp;
 
     /* Check whether the server is exiting. */
     if (thedb->exiting || thedb->stopped)
@@ -260,7 +314,7 @@ int refresh_metrics(void)
     }
 
     rc = bdb_get_bpool_counters(thedb->bdb_env, &stats.bpool_hits,
-                                &stats.bpool_misses);
+                                &stats.bpool_misses, &stats.rw_evicts);
     if (rc) {
         logmsg(LOGMSG_ERROR, "failed to refresh statistics (%s:%d)\n", __FILE__,
                __LINE__);
@@ -303,7 +357,10 @@ int refresh_metrics(void)
         fclose(f);
         long num_threads;
         unsigned long vmsize;
-        rc = sscanf(line, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*lu %*lu %*lu %*lu %*lu %*lu %*ld %*ld %*ld %*ld %ld %*ld %*llu %lu", &num_threads, &vmsize);
+        rc = sscanf(line,
+                    "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %*u "
+                    "%*u %*d %*d %*d %*d %ld %*d %*u %lu",
+                    &num_threads, &vmsize);
         if (rc == 2) {
             stats.threads = num_threads;
             stats.memory_usage = vmsize / (1024*1024);
@@ -347,6 +404,24 @@ int refresh_metrics(void)
                       &stats.maxactive_transactions, &stats.total_commits,
                       &stats.total_aborts);
     stats.denied_appsock_connections = gbl_denied_appsock_connection_count;
+    if (bdb_lock_stats(thedb->bdb_env, &stats.locks))
+        stats.locks = 0;
+    stats.temptable_spills = gbl_temptable_spills;
+
+    struct net_stats net_stats;
+    rc = net_get_stats(thedb->handle_sibling, &net_stats);
+    if (rc == 0) {
+        stats.net_drops = net_stats.num_drops;
+    }
+    else {
+        stats.net_drops = 0;
+    }
+
+    refresh_queue_size(thedb);
+
+    bdb_rep_stats(thedb->bdb_env, &stats.rep_deadlocks);
+
+    stats.standing_queue_time = metrics_standing_queue_time();
     return 0;
 }
 
@@ -374,7 +449,25 @@ const char *metric_type(comdb2_metric_type type)
     }
 }
 
-void update_cpu_percent(void) {
+static time_t queue_start_time = 0;
+
+static time_t metrics_standing_queue_time(void) {
+    if (queue_start_time == 0)
+        return 0;
+    else
+        return time(NULL) - queue_start_time;
+}
+
+static void update_standing_queue_time(void) {
+    double qdepth = time_metric_average(thedb->queue_depth) + time_metric_average(thedb->handle_buf_queue_time);
+    if (queue_start_time == 0 && qdepth > 1)
+        queue_start_time = time(NULL);
+    else if (qdepth < 1)
+        queue_start_time = 0;
+}
+
+static void update_cpu_percent(void) 
+{
 #if _LINUX_SOURCE
    static time_t last_time = 0;
    static int64_t last_counter = 0;
@@ -389,7 +482,9 @@ void update_cpu_percent(void) {
       fclose(f);
       unsigned long utime, stime;
       /* usertime=14 systemtime=15 */
-      int rc = sscanf(line, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*lu %*lu %*lu %*lu %lu %lu", &utime, &stime);
+      int rc = sscanf(
+          line, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %lu %lu",
+          &utime, &stime);
       if (rc == 2) {
          if (last_time == 0) {
             cpu_percent = 0;
@@ -413,4 +508,7 @@ void update_cpu_percent(void) {
 #endif
 }
 
-
+void update_metrics(void) {
+    update_cpu_percent();
+    update_standing_queue_time();
+}

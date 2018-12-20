@@ -2,7 +2,7 @@
 [CREATE UNIQUE INDEX idx1 ON t1(i)] failed with rc -3 Index 'idx1' already exists.
 [CREATE INDEX idx3 ON t2(i,j)] failed with rc -3 Index 'idx3' already exists.
 [CREATE INDEX idx3 ON t2(i)] failed with rc -3 Index 'idx3' already exists.
-[CREATE INDEX idx3 ON t3(i COLLATE DATACOPY)] failed with rc -3 Support for 'COLLATE DATACOPY' syntax has been removed; use WITH DATACOPY.
+[CREATE INDEX idx3 ON t3(i COLLATE DATACOPY)] failed with rc -3 Support for 'COLLATE DATACOPY' syntax has been removed; use OPTION DATACOPY.
 [DROP INDEX 'uniqueidxnameXXX'] failed with rc -3 Index 'uniqueidxnameXXX' not found.
 [DROP INDEX 'sameidxname'] failed with rc -3 Multiple indexes with same name 'sameidxname'.
 (tablename='t1')
@@ -24,11 +24,11 @@
 (tablename='t1', keyname='IDX5', keynumber=4, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
 (tablename='t1', keyname='IDX6', keynumber=5, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
 (tablename='t1', keyname='IDX7', keynumber=6, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
-(tablename='t2', keyname='IDX1', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition='where (j > 10) ', uniqnulls='N')
+(tablename='t2', keyname='IDX1', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition='WHERE (j > 10) ', uniqnulls='N')
 (tablename='t2', keyname='IDX3', keynumber=1, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
 (tablename='t2', keyname='IDX4', keynumber=2, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
 (tablename='t3', keyname='IDX1', keynumber=0, isunique='N', isdatacopy='Y', isrecnum='N', condition=NULL, uniqnulls='N')
-(tablename='t3', keyname='IDX2', keynumber=1, isunique='N', isdatacopy='Y', isrecnum='N', condition='where (j > 10) ', uniqnulls='N')
+(tablename='t3', keyname='IDX2', keynumber=1, isunique='N', isdatacopy='Y', isrecnum='N', condition='WHERE (j > 10) ', uniqnulls='N')
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='schema
 	{
 		int i null = yes 
@@ -58,7 +58,7 @@ keys
 	}
 keys
 	{
-		dup "IDX1" = i { where (j > 10) } 
+		dup "IDX1" = i { WHERE (j > 10) } 
 		dup "IDX3" = i + j 
 		dup "idx4" = i + j 
 	}
@@ -74,7 +74,7 @@ keys
 keys
 	{
 		dup datacopy "IDX1" = i 
-		dup datacopy "idx2" = i { where (j > 10) } 
+		dup datacopy "idx2" = i { WHERE (j > 10) } 
 	}
 ')
 (type='index', name='$IDX1_19767DE4', tbl_name='t3', rootpage=17, sql='create index "$IDX1_19767DE4" on "t3" ("i", "j" collate DATACOPY);', csc2=NULL)
@@ -111,7 +111,21 @@ keys
 	}
 keys
 	{
-		dup "IDX1" = i { where i > 1 } 
-		dup "idx2" = i { where (i > 1) } 
+		dup "IDX1" = i { WHERE i > 1 } 
+		dup "idx2" = i { WHERE (i > 1) } 
 	}
 ')
+[CREATE INDEX idx1 ON t1(i+i)] failed with rc -3 Invalid index column list
+[CREATE INDEX idx1 ON t1('i+i')] failed with rc -3 Unknown column 'i+i'.
+[CREATE INDEX idx1 ON t1(where i > 1)] failed with rc -3 near "where": syntax error
+[CREATE INDEX idx1 ON t1(wherei > 1)] failed with rc -3 Invalid index column list
+(csc2='schema
+	{
+		cstring v[10] null = yes 
+	}
+keys
+	{
+		dup "idx1" = (cstring[10])"( v || 'aaa' )" 
+	}
+')
+(csc2=NULL)

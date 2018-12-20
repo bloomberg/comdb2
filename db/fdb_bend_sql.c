@@ -43,16 +43,13 @@
 extern int gbl_fdb_track;
 extern int blockproc2sql_error(int rc, const char *func, int line);
 
-static void init_sqlclntstate(struct sqlclntstate *clnt, char *cid, int isuuid);
 
 int fdb_appsock_work(const char *cid, struct sqlclntstate *clnt, int version,
                      enum run_sql_flags flags, char *sql, int sqllen,
                      char *trim_key, int trim_keylen, SBUF2 *sb)
 {
     int rc = 0;
-    int node = -1;    /* TODO: add source node */
-    int queryid = -1; /* TODO */
-    char *tzname = NULL;
+    /* TODO:int node = -1;     add source node */
 
     clnt->sql = sql;
     clnt->fdb_state.remote_sql_sb = sb;
@@ -77,8 +74,6 @@ int fdb_svc_cursor_open_sql(char *tid, char *cid, int code_release, int version,
                             int flags, int isuuid, struct sqlclntstate **pclnt)
 {
     struct sqlclntstate *clnt = NULL;
-    int rc;
-
     /* we need to create a private clnt state */
     clnt = (struct sqlclntstate *)calloc(1, sizeof(struct sqlclntstate));
     if (!clnt) {
@@ -136,7 +131,7 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
     char *where;
     struct schema *ixschema;
     struct schema *tblschema;
-    int i, j;
+    int j;
     int first = 1;
     int len;
 
@@ -253,22 +248,32 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
         strbuf_append(new_sql, ");");
 
     len = strlen(strbuf_buf(new_sql));
-    if (pMem->zMalloc == pMem->z) {
-        pMem->zMalloc = pMem->z =
-            sqlite3DbRealloc(((Vdbe *)stmt)->db, pMem->z, len);
-        pMem->szMalloc = pMem->n = len;
-    } else {
-        pMem->z = sqlite3DbRealloc(((Vdbe *)stmt)->db, pMem->z, len);
-        pMem->n = len;
-    }
-    if (!pMem->z) {
-        logmsg(LOGMSG_ERROR, "%s: failed to malloc\n", __func__);
-    } else {
-        memcpy(pMem->z, strbuf_buf(new_sql), len);
+    sqlite3 *sqldb = stmt ? ((Vdbe *)stmt)->db : 0;
+    char *zNew = sqlite3DbMallocWithMutex(sqldb, len, 1);
+
+    if (zNew) {
+        memcpy(zNew, strbuf_buf(new_sql), len);
         /*
-        pMem->z[pMem->n-2] ='\0';
-        pMem->z[pMem->n-1] ='\0';
+        zNew[len-2] ='\0';
+        zNew[len-1] ='\0';
         */
+        if (pMem->zMalloc == pMem->z) {
+            sqlite3_mutex_enter(sqlite3_db_mutex(sqldb));
+            sqlite3DbFree(sqldb, pMem->zMalloc);
+            sqlite3_mutex_leave(sqlite3_db_mutex(sqldb));
+
+            pMem->zMalloc = pMem->z = zNew;
+            pMem->szMalloc = pMem->n = len;
+        } else {
+            sqlite3_mutex_enter(sqlite3_db_mutex(sqldb));
+            sqlite3DbFree(sqldb, pMem->z);
+            sqlite3_mutex_leave(sqlite3_db_mutex(sqldb));
+
+            pMem->z = zNew;
+            pMem->n = len;
+        }
+    } else {
+        logmsg(LOGMSG_ERROR, "%s: failed to malloc\n", __func__);
     }
 
     /*
@@ -280,7 +285,7 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
     return 0;
 }
 
-static void init_sqlclntstate(struct sqlclntstate *clnt, char *tid, int isuuid)
+void init_sqlclntstate(struct sqlclntstate *clnt, char *tid, int isuuid)
 {
     start_internal_sql_clnt(clnt);
     clnt->dbtran.mode = TRANLEVEL_SOSQL;
@@ -352,7 +357,7 @@ int fdb_svc_trans_commit(char *tid, enum transaction_level lvl,
     int bdberr = 0;
 
     /* we have to wait for any potential cursor to go away */
-    pthread_mutex_lock(&clnt->dtran_mtx);
+    Pthread_mutex_lock(&clnt->dtran_mtx);
 
     /* we need to wait for not yet arrived cursors, before we wait for them
        to finish!!!
@@ -360,10 +365,11 @@ int fdb_svc_trans_commit(char *tid, enum transaction_level lvl,
     fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
 
     while (clnt->dbtran.dtran->fdb_trans.top->cursors.top != NULL) {
-        pthread_mutex_unlock(&clnt->dtran_mtx);
+        Pthread_mutex_unlock(&clnt->dtran_mtx);
         poll(NULL, 0, 10);
+        Pthread_mutex_lock(&clnt->dtran_mtx);
     }
-    pthread_mutex_unlock(&clnt->dtran_mtx);
+    Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     if (clnt->dbtran.mode == TRANLEVEL_RECOM ||
         clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
@@ -452,8 +458,11 @@ int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
     int rc;
     int bdberr = 0;
 
+    if (unlikely(!clnt)) /* extra protection against malicious packets and bugs */
+        return -1;
+
     /* we have to wait for any potential cursor to go away */
-    pthread_mutex_lock(&clnt->dtran_mtx);
+    Pthread_mutex_lock(&clnt->dtran_mtx);
 
     /* we need to wait for not yet arrived cursors, before we wait for them
        to finish!!!
@@ -461,10 +470,11 @@ int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
     fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
 
     while (clnt->dbtran.dtran->fdb_trans.top->cursors.top != NULL) {
-        pthread_mutex_unlock(&clnt->dtran_mtx);
+        Pthread_mutex_unlock(&clnt->dtran_mtx);
         poll(NULL, 0, 10);
+        Pthread_mutex_lock(&clnt->dtran_mtx);
     }
-    pthread_mutex_unlock(&clnt->dtran_mtx);
+    Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     switch (clnt->dbtran.mode) {
     case TRANLEVEL_RECOM: {
@@ -494,7 +504,7 @@ int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
     }
     /* destroying curstran */
     if (clnt->dbtran.cursor_tran) {
-        rc = bdb_put_cursortran(thedb->bdb_env, clnt->dbtran.cursor_tran,
+        rc = bdb_put_cursortran(thedb->bdb_env, clnt->dbtran.cursor_tran, 0,
                                 &bdberr);
         if (rc || bdberr) {
             logmsg(LOGMSG_ERROR, 
@@ -620,7 +630,7 @@ _fdb_svc_cursor_start(BtCursor *pCur, struct sqlclntstate *clnt, char *tblname,
         if (pCur->bdbcur == NULL) {
             logmsg(LOGMSG_ERROR, "%s: bdb_cursor_open rc %d\n", __func__, bdberr);
 
-            rc = bdb_put_cursortran(thedb->bdb_env, clnt->dbtran.cursor_tran,
+            rc = bdb_put_cursortran(thedb->bdb_env, clnt->dbtran.cursor_tran, 0,
                                     &bdberr);
             if (rc || bdberr) {
                 logmsg(LOGMSG_ERROR, 
@@ -666,7 +676,7 @@ static int _fdb_svc_cursor_end(BtCursor *pCur, struct sqlclntstate *clnt,
                 logmsg(LOGMSG_ERROR, "XYXYXY: thread %lu releasing curtran\n",
                        pthread_self());
 
-            rc = bdb_put_cursortran(thedb->bdb_env, clnt->dbtran.cursor_tran,
+            rc = bdb_put_cursortran(thedb->bdb_env, clnt->dbtran.cursor_tran, 0,
                                     &bdberr);
             if (rc || bdberr) {
                 logmsg(LOGMSG_ERROR, 
@@ -795,13 +805,13 @@ int fdb_svc_cursor_insert(struct sqlclntstate *clnt, char *tblname,
        it will retrieve the disk row from ondisk_buf! */
     bCur.ondisk_buf = row;
 
-    pthread_mutex_lock(&clnt->dtran_mtx);
+    Pthread_mutex_lock(&clnt->dtran_mtx);
 
     fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
 
     rc = osql_insrec(&bCur, thd, row, rowlen, rowblobs, MAXBLOBS, 0);
 
-    pthread_mutex_unlock(&clnt->dtran_mtx);
+    Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     clnt->effects.num_inserted++;
 
@@ -843,17 +853,15 @@ int fdb_svc_cursor_delete(struct sqlclntstate *clnt, char *tblname,
         return -1;
     }
 
-    pthread_mutex_lock(&clnt->dtran_mtx);
+    Pthread_mutex_lock(&clnt->dtran_mtx);
 
     fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
 
     rc = osql_delrec(&bCur, thd);
 
-    pthread_mutex_unlock(&clnt->dtran_mtx);
+    Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     clnt->effects.num_deleted++;
-
-done:
 
     rc2 = _fdb_svc_cursor_end(&bCur, clnt, standalone);
     if (!rc) {
@@ -933,14 +941,14 @@ int fdb_svc_cursor_update(struct sqlclntstate *clnt, char *tblname,
        it will retrieve the disk row from ondisk_buf! */
     bCur.ondisk_buf = row;
 
-    pthread_mutex_lock(&clnt->dtran_mtx);
+    Pthread_mutex_lock(&clnt->dtran_mtx);
 
     fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
 
     rc = osql_updrec(&bCur, thd, row, rowlen, NULL /*TODO : review updCols*/,
                      rowblobs, MAXBLOBS, 0);
 
-    pthread_mutex_unlock(&clnt->dtran_mtx);
+    Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     clnt->effects.num_updated++;
 
@@ -963,6 +971,14 @@ struct sqlclntstate *fdb_svc_trans_get(char *tid, int isuuid)
     struct sqlclntstate *clnt;
     int rc = 0;
 
+    int                  deadline =  0;
+    int                  wait = bdb_attr_get(thedb->bdb_attr, 
+            BDB_ATTR_TIMEOUT_FDB_TRANS_SYNC);
+
+    if (wait > 0)
+        deadline = wait + comdb2_time_epochms();
+
+
     /* this returns a dtran_mtx locked structure */
     do {
         if (isuuid)
@@ -970,6 +986,13 @@ struct sqlclntstate *fdb_svc_trans_get(char *tid, int isuuid)
         else
             rc = osql_chkboard_get_clnt(*(unsigned long long *)tid, &clnt);
         if (rc && rc == -1) {
+            if (deadline && comdb2_time_epochms() > deadline) {
+                logmsg(LOGMSG_ERROR, "%s: timeout waiting for transaction %d waited %u\n",
+                        __func__, deadline, wait);
+
+                break;
+            }
+
             /* this is a missing transaction, we need to wait for it !*/
             poll(NULL, 0, 10);
             continue;

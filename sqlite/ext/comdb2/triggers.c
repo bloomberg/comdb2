@@ -22,6 +22,7 @@
 #include <comdb2.h>
 
 #include <translistener.h>
+#include "sql.h"
 
 typedef struct trigger trigger;
 struct trigger {
@@ -61,7 +62,7 @@ static int triggerConnect(
   if( rc == SQLITE_OK ){
     if( (*ppVtab = sqlite3_malloc(sizeof(sqlite3_vtab))) == 0)
       return SQLITE_NOMEM;
-    memset(*ppVtab, 0, sizeof(*ppVtab));
+    memset(*ppVtab, 0, sizeof(sqlite3_vtab));
   }
   return rc;
 }
@@ -91,16 +92,33 @@ again:
 }
 
 static int triggerOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
+  struct sql_thread *thd;
+
   trigger_cursor *cur = sqlite3_malloc(sizeof(trigger_cursor));
   if( cur == 0)
     return SQLITE_NOMEM;
   memset(cur, 0, sizeof(*cur));
   listc_init(&cur->trgs, offsetof(trigger, lnk));
   rdlock_schema_lk(); // protect thedb access
+
+  thd = pthread_getspecific(query_info_key);
+
   trigger *t;
   for(int i = 0; i < thedb->num_qdbs; ++i){
+    int bdberr;
+    int rc;
+
     if( thedb->qdbs[i] == NULL )
       continue;
+
+    /* Check user access. */
+    rc = bdb_check_user_tbl_access(thedb->bdb_env, thd->clnt->user,
+                                   thedb->qdbs[i]->tablename, ACCESS_READ,
+                                   &bdberr);
+    if (rc != 0) {
+        continue;
+    }
+
     t = sqlite3_malloc(sizeof(trigger));
     t->name = strdup(thedb->qdbs[i]->tablename);
     t->type = -1;
@@ -272,4 +290,8 @@ const sqlite3_module systblTriggersModule = {
   0,                 /* xRollback */
   0,                 /* xFindMethod */
   0,                 /* xRename */
+  0,                 /* xSavepoint */
+  0,                 /* xRelease */
+  0,                 /* xRollbackTo */
+  0,                 /* xShadowName */
 };

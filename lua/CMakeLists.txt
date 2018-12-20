@@ -38,6 +38,14 @@ set(module lua)
 set(MODULE LUA)
 configure_file(${PROJECT_SOURCE_DIR}/mem/mem.h.in mem_lua.h @ONLY)
 
+set(module berkdb)
+set(MODULE BERKDB)
+configure_file(${PROJECT_SOURCE_DIR}/mem/mem.h.in mem_berkdb.h @ONLY)
+
+set(module bdb)
+set(MODULE BDB)
+configure_file(${PROJECT_SOURCE_DIR}/mem/mem.h.in mem_bdb.h @ONLY)
+
 include(${PROJECT_SOURCE_DIR}/sqlite/definitions.cmake)
 add_definitions(
   -DLUASP
@@ -66,7 +74,7 @@ include_directories(
   ${PROJECT_BINARY_DIR}/mem
   ${PROJECT_SOURCE_DIR}/net
   ${PROJECT_BINARY_DIR}/protobuf
-  ${PROJECT_SOURCE_DIR}/sqlite
+  ${PROJECT_SOURCE_DIR}/sqlite/src
   ${PROJECT_BINARY_DIR}/sqlite
   ${PROJECT_SOURCE_DIR}/berkdb
   ${OPENSSL_INCLUDE_DIR}

@@ -40,7 +40,10 @@ typedef struct ack_info_t {
 ** inline. no need to free this storage.
 */
 #define ack_info_from_host(info)                                               \
-    (char *)((uint8_t *)(info) + ((info)->hdrsz - (info)->fromlen))
+    (char *)(((info)->fromlen <= 0 || (info)->hdrsz <= sizeof(ack_info) ||     \
+              (info)->fromlen > ((info)->hdrsz - sizeof(ack_info)))            \
+                 ? NULL                                                        \
+                 : (uint8_t *)(info) + ((info)->hdrsz - (info)->fromlen))
 
 #define new_ack_info(ptr, payloadsz, fromhost)                                 \
     do {                                                                       \
@@ -50,12 +53,15 @@ typedef struct ack_info_t {
         (ptr)->len = payloadsz;                                                \
         (ptr)->fromlen = __len;                                                \
         (ptr)->from = (ptr)->to = 0;                                           \
-        strcpy(ack_info_from_host(ptr), fromhost);                             \
+        strcpy((char *)((uint8_t *)(ptr) + sizeof(ack_info)), fromhost);       \
     } while (0)
 
 #define ack_info_data(info) (void *)((uint8_t *)(info) + (info)->hdrsz)
 
-#define ack_info_size(info) ((info)->hdrsz + (info)->len)
+#define ack_info_size(info)                                                    \
+    (((info)->hdrsz + (info)->len) < (info)->hdrsz                             \
+         ? 0                                                                   \
+         : (info)->hdrsz + (info)->len)
 
 /* Convert ack_info header into big endian */
 #define ack_info_from_cpu(info)                                                \

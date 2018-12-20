@@ -104,13 +104,13 @@ int osql_close_session(struct ireq *iq, osql_sess_t **psess, int is_linked, cons
        since we removed the hash entry, no new messages are added
      */
     if (!rc) {
-        pthread_mutex_lock(&sess->clients_mtx);
+        Pthread_mutex_lock(&sess->clients_mtx);
         while (sess->clients > 0) {
-            pthread_mutex_unlock(&sess->clients_mtx);
+            Pthread_mutex_unlock(&sess->clients_mtx);
             poll(NULL, 0, 10);
-            pthread_mutex_lock(&sess->clients_mtx);
+            Pthread_mutex_lock(&sess->clients_mtx);
         }
-        pthread_mutex_unlock(&sess->clients_mtx);
+        Pthread_mutex_unlock(&sess->clients_mtx);
 
         _destroy_session(psess, 0);
     }
@@ -120,7 +120,6 @@ int osql_close_session(struct ireq *iq, osql_sess_t **psess, int is_linked, cons
 
 static void _destroy_session(osql_sess_t **prq, int phase)
 {
-
     osql_sess_t *rq = *prq;
     uuidstr_t us;
 
@@ -144,13 +143,13 @@ static void _destroy_session(osql_sess_t **prq, int phase)
 
         queue_free(rq->que);
     case 1:
-        pthread_cond_destroy(&rq->cond);
+        Pthread_cond_destroy(&rq->cond);
     case 2:
-        pthread_mutex_destroy(&rq->mtx);
+        Pthread_mutex_destroy(&rq->mtx);
     case 3:
-        pthread_mutex_destroy(&rq->clients_mtx);
+        Pthread_mutex_destroy(&rq->clients_mtx);
     case 4:
-        pthread_mutex_destroy(&rq->completed_lock);
+        Pthread_mutex_destroy(&rq->completed_lock);
     case 5:
         free(rq);
     }
@@ -198,14 +197,7 @@ inline unsigned long long osql_sess_getrqid(osql_sess_t *sess)
  */
 int osql_sess_addclient(osql_sess_t *sess)
 {
-    int rc = 0;
-
-    if ((rc = pthread_mutex_lock(&sess->clients_mtx)) != 0) {
-        fprintf(stderr, "%s: pthread_mutex_lock failed rc = %d\n", __func__,
-                rc);
-        abort();
-        return -1;
-    }
+    Pthread_mutex_lock(&sess->clients_mtx);
 #if 0
    uuidstr_t us;
    comdb2uuidstr(sess->uuid, us);
@@ -215,11 +207,7 @@ int osql_sess_addclient(osql_sess_t *sess)
 
     sess->clients++;
 
-    if ((rc = pthread_mutex_unlock(&sess->clients_mtx)) != 0) {
-        fprintf(stderr, "%s: pthread_mutex_unlock failed rc = %d\n", __func__,
-                rc);
-        return -1;
-    }
+    Pthread_mutex_unlock(&sess->clients_mtx);
 
     return 0;
 }
@@ -231,16 +219,7 @@ int osql_sess_addclient(osql_sess_t *sess)
  */
 int osql_sess_remclient(osql_sess_t *sess)
 {
-
-    int rc = 0;
-
-    if ((rc = pthread_mutex_lock(&sess->clients_mtx)) != 0) {
-        fprintf(stderr, "%s: pthread_mutex_lock failed rc = %d\n", __func__,
-                rc);
-        // this is happening for me
-        abort();
-        return -1;
-    }
+    Pthread_mutex_lock(&sess->clients_mtx);
 
 #if 0
    uuidstr_t us;
@@ -258,11 +237,7 @@ int osql_sess_remclient(osql_sess_t *sess)
                 __func__, sess->rqid, comdb2uuidstr(sess->uuid, us));
     }
 
-    if ((rc = pthread_mutex_unlock(&sess->clients_mtx)) != 0) {
-        fprintf(stderr, "%s: pthread_mutex_unlock failed rc = %d\n", __func__,
-                rc);
-        return -1;
-    }
+    Pthread_mutex_unlock(&sess->clients_mtx);
 
     return 0;
 }
@@ -298,15 +273,15 @@ int osql_sess_set_complete(unsigned long long rqid, uuid_t uuid,
                            osql_sess_t *sess, struct errstat *xerr)
 {
 
-    pthread_mutex_lock(&sess->completed_lock);
+    Pthread_mutex_lock(&sess->completed_lock);
 
     if (sess->rqid != rqid || comdb2uuidcmp(uuid, sess->uuid)) {
-        pthread_mutex_unlock(&sess->completed_lock);
+        Pthread_mutex_unlock(&sess->completed_lock);
         return 0;
     }
 
     if (sess->completed != 0) {
-        pthread_mutex_unlock(&sess->completed_lock);
+        Pthread_mutex_unlock(&sess->completed_lock);
         return 0;
     }
 
@@ -325,7 +300,7 @@ int osql_sess_set_complete(unsigned long long rqid, uuid_t uuid,
     if (sess->terminate != OSQL_TERMINATE) {
         osql_bplog_session_is_done(sess->iq);
     }
-    pthread_mutex_unlock(&sess->completed_lock);
+    Pthread_mutex_unlock(&sess->completed_lock);
 
     return 0;
 }
@@ -335,7 +310,7 @@ int osql_sess_set_complete(unsigned long long rqid, uuid_t uuid,
  *   - SQLITE_DEADLOCK
  *   - SQLITE_TOOEARLY
  */
-static int is_session_repeatable(int code)
+static inline int is_session_repeatable(int code)
 {
     if (code ==
         SQLITE_DEADLOCK) /* sql thread deadlocked with replication thread */
@@ -372,7 +347,7 @@ int osql_sess_test_complete(osql_sess_t *sess, struct errstat **xerr)
 {
     int rc = SESS_PENDING;
 
-    pthread_mutex_lock(&sess->completed_lock);
+    Pthread_mutex_lock(&sess->completed_lock);
 
     if (sess->completed) {
 
@@ -403,7 +378,7 @@ int osql_sess_test_complete(osql_sess_t *sess, struct errstat **xerr)
             rc = SESS_DONE_ERROR_REPEATABLE;
     }
 
-    pthread_mutex_unlock(&sess->completed_lock);
+    Pthread_mutex_unlock(&sess->completed_lock);
 
     return rc;
 }
@@ -414,7 +389,7 @@ int osql_sess_test_complete(osql_sess_t *sess, struct errstat **xerr)
  * if this is still in progress
  *
  */
-int osql_sess_test_slow(blocksql_tran_t *tran, osql_sess_t *sess)
+int osql_sess_test_slow(osql_sess_t *sess)
 {
     int rc = 0;
     time_t crttime = time(NULL);
@@ -429,9 +404,6 @@ int osql_sess_test_slow(blocksql_tran_t *tran, osql_sess_t *sess)
                     __func__, (unsigned long long)sess->rqid,
                     comdb2uuidstr(sess->uuid, us), sess->offhost);
             sess->terminate = OSQL_TERMINATE;
-
-            /* wake up the block processor */
-            rc = osql_bplog_signal(tran);
 
             if (bdb_lock_desired(thedb->bdb_env))
                 return ERR_NOMASTER;
@@ -475,19 +447,24 @@ void *osql_sess_getbptran(osql_sess_t *sess)
 {
     void *bsql = NULL;
 
-    pthread_mutex_lock(&sess->mtx);
+    Pthread_mutex_lock(&sess->mtx);
     if (sess->iq && !sess->completed && !sess->terminate) {
         bsql = sess->iq->blocksql_tran;
     }
-    pthread_mutex_unlock(&sess->mtx);
+    Pthread_mutex_unlock(&sess->mtx);
     return bsql;
 }
 
-int osql_sess_lock(osql_sess_t *sess) { return pthread_mutex_lock(&sess->mtx); }
+int osql_sess_lock(osql_sess_t *sess)
+{
+    Pthread_mutex_lock(&sess->mtx);
+    return 0;
+}
 
 int osql_sess_unlock(osql_sess_t *sess)
 {
-    return pthread_mutex_unlock(&sess->mtx);
+    Pthread_mutex_unlock(&sess->mtx);
+    return 0;
 }
 
 int osql_sess_is_terminated(osql_sess_t *sess) { return sess->terminate; }
@@ -501,12 +478,14 @@ int osql_sess_dispatched(osql_sess_t *sess) { return sess->dispatched; }
 
 int osql_sess_lock_complete(osql_sess_t *sess)
 {
-    return pthread_mutex_lock(&sess->completed_lock);
+    Pthread_mutex_lock(&sess->completed_lock);
+    return 0;
 }
 
 int osql_sess_unlock_complete(osql_sess_t *sess)
 {
-    return pthread_mutex_unlock(&sess->completed_lock);
+    Pthread_mutex_unlock(&sess->completed_lock);
+    return 0;
 }
 
 /**
@@ -516,118 +495,100 @@ int osql_sess_unlock_complete(osql_sess_t *sess)
  * Set found if the session is found or not
  *
  */
-int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, void *data,
+int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
                     int datalen, int *found)
 {
-    osql_sess_t *sess = NULL;
     int rc = 0;
-    int rc_out = 0;
-    int is_sorese = 0;
     int is_msg_done = 0;
     struct errstat *perr;
 
     /* NOTE: before retrieving a session, we have to figure out if this is a
        sorese completion and lock the repository until the session is dispatched
        This prevents the race against signal_rtoff forcefully cleanup */
-    is_msg_done =
-        osql_comm_is_done(data, datalen, rqid == OSQL_RQID_USE_UUID, &perr, NULL);
+    is_msg_done = osql_comm_is_done(type, data, datalen,
+                                    rqid == OSQL_RQID_USE_UUID, &perr, NULL);
 
     /* get the session */
-    sess = osql_repository_get(rqid, uuid, is_msg_done);
-
-    if (sess) {
-        is_sorese = osql_session_is_sorese(sess);
-
-        if (is_msg_done && perr && htonl(perr->errval) == SQLITE_ABORT &&
-            !bdb_attr_get(thedb->bdb_attr,
-                          BDB_ATTR_DISABLE_SELECTVONLY_TRAN_NOP)) {
-            /* release the session */
-            if ((rc = osql_repository_put(sess, is_msg_done)) != 0) {
-                fprintf(stderr, "%s: rc =%d\n", __func__, rc);
-            }
-
-            /* sqlite aborted the transaction, skip all the work here
-               master not needed */
-            rc = sql_cancelled_transaction(sess->iq);
-            if (rc) {
-                fprintf(stderr, "%s: failed cancelling transaction! rc %d\n",
-                        __func__, rc);
-            }
-
-            /* done here */
-            return rc;
-        }
-
-        *found = 1;
-
-        pthread_mutex_lock(&sess->completed_lock);
-        /* ignore new coming osql packages */
-        if (sess->completed || sess->dispatched || sess->terminate) {
-            uuidstr_t us;
-            pthread_mutex_unlock(&sess->completed_lock);
-            if ((rc = osql_repository_put(sess, is_msg_done)) != 0) {
-                logmsg(LOGMSG_ERROR,
-                       "%s:%d osql_repository_put failed with rc %d\n",
-                       __func__, __LINE__, rc);
-            }
-            comdb2uuidstr(uuid, us);
-            logmsg(
-                LOGMSG_INFO,
-                "%s: rqid=%llx, uuid=%s is already done, ignoring packages\n",
-                __func__, rqid, us);
-            return 0;
-        }
-        pthread_mutex_unlock(&sess->completed_lock);
-
-        /* save op */
-        rc_out = osql_bplog_saveop(sess, data, datalen, rqid, uuid, sess->seq,
-                                   sess->offhost);
-
-        /* if rc_out, sess is FREED! */
-        if (!rc_out) {
-            /* Must increment seq under completed_lock */
-            pthread_mutex_lock(&sess->completed_lock);
-            uuidstr_t sessuuid, requuid;
-
-            if (sess->rqid == rqid || (rqid == OSQL_RQID_USE_UUID &&
-                                       comdb2uuidcmp(sess->uuid, uuid) == 0)) {
-                sess->seq++;
-                sess->last_row = time(NULL);
-            }
-
-            pthread_mutex_unlock(&sess->completed_lock);
-        }
-
-        /* release the session */
-        if ((rc = osql_repository_put(sess, is_msg_done)) != 0) {
-            fprintf(stderr, "%s: rc =%d\n", __func__, rc);
-        }
-
-        if (is_sorese && rc_out) {
-            /*exit here*/
-            return rc_out;
-        }
-
-    } else {
+    osql_sess_t *sess = osql_repository_get(rqid, uuid, is_msg_done);
+    if (!sess) {
+        /* in the current implementation we tolerate redundant ops from session
+         * that have been already terminated--discard the packet in that case */
         uuidstr_t us;
         comdb2uuidstr(uuid, us);
-        printf("discarding packet for %llx %s, session not found\n", rqid, us);
-
-        /* in the current implementation we tolerate
-           redundant ops from session that have been
-           terminated in the meantime;
-           we simply discard the packet in such a case
-         */
+        logmsg(LOGMSG_ERROR,
+               "discarding packet for %llx %s, session not found\n", rqid, us);
         *found = 0;
 
         /* we used to free data here, but some callers like net_osql_rpl_tail()
          * (and probably all others expect to manage it themselves */
-
-        rc = 0; /* redundant */
+        return 0;
     }
 
-    if (rc || rc_out) {
-        /* something is wrong with the session, terminate it*/
+    if (is_msg_done && perr && htonl(perr->errval) == SQLITE_ABORT &&
+        !bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DISABLE_SELECTVONLY_TRAN_NOP)) {
+        /* release the session */
+        if ((rc = osql_repository_put(sess, is_msg_done)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s: osql_repository_put rc =%d\n", __func__,
+                   rc);
+        }
+
+        /* sqlite aborted the transaction, skip all the work here
+           master not needed */
+        rc = sql_cancelled_transaction(sess->iq);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed cancelling transaction! rc %d\n",
+                   __func__, rc);
+        }
+
+        /* done here */
+        return rc;
+    }
+
+    *found = 1;
+
+    Pthread_mutex_lock(&sess->completed_lock);
+    /* ignore new coming osql packages */
+    if (sess->completed || sess->dispatched || sess->terminate) {
+        uuidstr_t us;
+        Pthread_mutex_unlock(&sess->completed_lock);
+        if ((rc = osql_repository_put(sess, is_msg_done)) != 0) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d osql_repository_put failed with rc %d\n", __func__,
+                   __LINE__, rc);
+        }
+        comdb2uuidstr(uuid, us);
+        logmsg(LOGMSG_INFO,
+               "%s: rqid=%llx, uuid=%s is already done, ignoring packages\n",
+               __func__, rqid, us);
+        return 0;
+    }
+    Pthread_mutex_unlock(&sess->completed_lock);
+
+    /* save op */
+    int rc_out = osql_bplog_saveop(sess, data, datalen, rqid, uuid, type);
+
+    /* if rc_out, sess is FREED! */
+    if (!rc_out) {
+        /* Must increment seq under completed_lock */
+        Pthread_mutex_lock(&sess->completed_lock);
+        if (sess->rqid == rqid || (rqid == OSQL_RQID_USE_UUID &&
+                                   comdb2uuidcmp(sess->uuid, uuid) == 0)) {
+            sess->seq++;
+            sess->last_row = time(NULL);
+        }
+
+        Pthread_mutex_unlock(&sess->completed_lock);
+    }
+
+    /* release the session */
+    if ((rc = osql_repository_put(sess, is_msg_done)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s: osql_repository_put rc =%d\n", __func__, rc);
+    }
+
+    if (rc_out && osql_session_is_sorese(sess))
+        return rc_out;
+
+    if (rc || rc_out) { /* something is wrong with the session, terminate it*/
         sess->terminate = OSQL_TERMINATE;
     }
 
@@ -651,12 +612,9 @@ int osql_session_testterminate(void *obj, void *arg)
 
     if (!node || sess->offhost == node) {
 
-        if ((rc = pthread_mutex_lock(&sess->mtx)) != 0) {
-            fprintf(stderr, "pthread_mutex_lock: error code %d\n", rc);
-            return rc;
-        }
+        Pthread_mutex_lock(&sess->mtx);
 
-        pthread_mutex_lock(&sess->completed_lock);
+        Pthread_mutex_lock(&sess->completed_lock);
         sess->terminate = OSQL_TERMINATE;
         if (!sess->completed) {
             if (sess->iq)
@@ -670,18 +628,11 @@ int osql_session_testterminate(void *obj, void *arg)
                the temp table*/
             need_clean = osql_session_is_sorese(sess);
         }
-        pthread_mutex_unlock(&sess->completed_lock);
-
-        /* this request might be waiting to be dispatched */
-        if (sess->iq)
-            osql_bplog_signal(sess->iq->blocksql_tran);
+        Pthread_mutex_unlock(&sess->completed_lock);
 
         /* wake up the block processor waiting for this request */
 
-        if ((rc = pthread_mutex_unlock(&sess->mtx)) != 0) {
-            fprintf(stderr, "pthread_mutex_unlock: error code %d\n", rc);
-            return rc;
-        }
+        Pthread_mutex_unlock(&sess->mtx);
     }
 
     if (need_clean) {
@@ -694,13 +645,13 @@ int osql_session_testterminate(void *obj, void *arg)
         }
 
         /* step 2) wait for current reader threads to go away */
-        pthread_mutex_lock(&sess->clients_mtx);
+        Pthread_mutex_lock(&sess->clients_mtx);
         while (sess->clients > 0) {
-            pthread_mutex_unlock(&sess->clients_mtx);
+            Pthread_mutex_unlock(&sess->clients_mtx);
             poll(NULL, 0, 10);
-            pthread_mutex_lock(&sess->clients_mtx);
+            Pthread_mutex_lock(&sess->clients_mtx);
         }
-        pthread_mutex_unlock(&sess->clients_mtx);
+        Pthread_mutex_unlock(&sess->clients_mtx);
         /* NOTE: at this point there will be no other bplog updates coming from
            this
            sorese session; the session might still be worked on; if that is the
@@ -712,9 +663,9 @@ int osql_session_testterminate(void *obj, void *arg)
         /* step 3) check if this is complete; if it is, it will/is being
            dispatched
                    if not complete, we need to clear it right now */
-        pthread_mutex_lock(&sess->completed_lock);
+        Pthread_mutex_lock(&sess->completed_lock);
         completed = sess->completed | sess->dispatched;
-        pthread_mutex_unlock(&sess->completed_lock);
+        Pthread_mutex_unlock(&sess->completed_lock);
 
         if (!completed) {
 #if 0
@@ -723,12 +674,7 @@ int osql_session_testterminate(void *obj, void *arg)
 #endif
 
             /* no one will work on this; need to clear it */
-            rc = osql_bplog_free(sess->iq, 0, __func__, NULL, 0);
-            /* NOTE: sess is clear here! */
-            if (rc) {
-                fprintf(stderr, "%s: error in bplog_free rc=%d\n", __func__,
-                        rc);
-            }
+            osql_bplog_free(sess->iq, 0, __func__, NULL, 0);
         }
     }
     return 0;
@@ -769,6 +715,7 @@ static int osql_poke_replicant(osql_sess_t *sess)
             rc = -1;
         }
 
+        /* TODO: clean this up -- this does nothing */
         /* Decrement throttle for retry */
         osql_bplog_session_is_done(sess->iq);
 
@@ -793,20 +740,20 @@ osql_req_t *osql_sess_getreq(osql_sess_t *sess) { return sess->req; }
 
 /**
  * Creates an sock osql session and add it to the repository
+ * Runs on master node when an initial sorese message is received
  * Returns created object if success, NULL otherwise
  *
  */
 osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
                                    int type, unsigned long long rqid,
                                    uuid_t uuid, char *fromhost, struct ireq *iq,
-                                   int *replaced)
+                                   int *replaced, bool is_reorder_on)
 {
-
     osql_sess_t *sess = NULL;
     int rc = 0;
-    uuidstr_t us;
 
 #ifdef TEST_QSQL_REQ
+    uuidstr_t us;
     fprintf(stdout, "%s: Opening request %llu %s\n", __func__, rqid,
             comdb2uuidstr(uuid, us));
 #endif
@@ -820,21 +767,10 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
     }
 
     /* init sync fields */
-    rc = pthread_mutex_init(&sess->clients_mtx, NULL);
-    if (rc) {
-        _destroy_session(&sess, 4);
-        return NULL;
-    }
-    rc = pthread_mutex_init(&sess->mtx, NULL);
-    if (rc) {
-        _destroy_session(&sess, 3);
-        return NULL;
-    }
-    rc = pthread_cond_init(&sess->cond, NULL);
-    if (rc) {
-        _destroy_session(&sess, 2);
-        return NULL;
-    }
+    Pthread_mutex_init(&sess->clients_mtx, NULL);
+    Pthread_mutex_init(&sess->completed_lock, NULL);
+    Pthread_mutex_init(&sess->mtx, NULL);
+    Pthread_cond_init(&sess->cond, NULL);
 
     /* init queue of messages */
     sess->que = queue_new();
@@ -851,11 +787,13 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
     sess->type = type;
     sess->offhost = fromhost;
     sess->start = sess->initstart = time(NULL);
+    sess->is_reorder_on = is_reorder_on;
 
     if (tzname)
         strncpy(sess->tzname, tzname, sizeof(sess->tzname));
 
     sess->iq = iq;
+    sess->iqcopy = iq;
     sess->clients = 1;
 
     /* how about we start the bplog before making this available to the world?
@@ -969,7 +907,6 @@ static int osql_sess_set_terminate(osql_sess_t *sess)
     sess->terminate = OSQL_TERMINATE;
     if (sess->iq) {
         osql_bplog_session_is_done(sess->iq);
-        osql_bplog_signal(sess->iq->blocksql_tran);
     }
     rc = osql_repository_rem(sess, 0, __func__, NULL,
                              __LINE__); /* already have exclusive lock */
@@ -982,12 +919,7 @@ static int osql_sess_set_terminate(osql_sess_t *sess)
 
     assert(!sess->completed && !sess->dispatched);
     /* no one will work on this; need to clear it */
-    rc = osql_bplog_free(sess->iq, 0, __func__, NULL, __LINE__);
-    /* NOTE: sess is clear here! */
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: error in bplog_free rc=%d\n", __func__, rc);
-    }
-
+    osql_bplog_free(sess->iq, 0, __func__, NULL, __LINE__);
     return rc;
 }
 
@@ -1001,25 +933,25 @@ int osql_sess_try_terminate(osql_sess_t *sess)
 {
     int rc;
     int completed = 0;
-    if (rc = osql_sess_lock(sess)) {
+    if ((rc = osql_sess_lock(sess))) {
         logmsg(LOGMSG_ERROR, "%s:%d osql_sess_lock rc %d\n", __func__, __LINE__,
                rc);
         return -1;
     }
-    if (rc = osql_sess_lock_complete(sess)) {
+    if ((rc = osql_sess_lock_complete(sess))) {
         logmsg(LOGMSG_ERROR, "%s:%d osql_sess_lock_complete rc %d\n", __func__,
                __LINE__, rc);
         osql_sess_unlock(sess);
         return -1;
     }
     completed = sess->completed | sess->dispatched;
-    if (rc = osql_sess_unlock_complete(sess)) {
+    if ((rc = osql_sess_unlock_complete(sess))) {
         logmsg(LOGMSG_ERROR, "%s:%d osql_sess_unlock_complete rc %d\n",
                __func__, __LINE__, rc);
         osql_sess_unlock(sess);
         return -1;
     }
-    if (rc = osql_sess_unlock(sess)) {
+    if ((rc = osql_sess_unlock(sess))) {
         logmsg(LOGMSG_ERROR, "%s:%d osql_sess_unlock rc %d\n", __func__,
                __LINE__, rc);
         return -1;

@@ -19,8 +19,8 @@
 #include <logmsg.h>
 #include <build/db_dbt.h>
 char *util_tohex(char *out, const char *in, size_t len);
-void hexdumpbuf(char *key, int keylen, char **buf);
-void hexdump(loglvl lvl, unsigned char *key, int keylen);
+void hexdumpbuf(const char *key, int keylen, char **buf);
+void hexdump(loglvl lvl, const char *key, int keylen);
 void hexdumpdbt(DBT *dbt);
-void hexdumpfp(FILE *fp, unsigned char *key, int keylen);
+void hexdumpfp(FILE *fp, const unsigned char *key, int keylen);
 #endif

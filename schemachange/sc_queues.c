@@ -63,17 +63,18 @@ int consumer_change(const char *queuename, int consumern, const char *method)
     return rc;
 }
 
-int do_alter_queues_int(struct schema_change_type *s)
+int do_alter_queues_int(struct schema_change_type *sc)
 {
     struct dbtable *db;
     int rc;
-    db = getqueuebyname(s->table);
+    db = getqueuebyname(sc->tablename);
     if (db == NULL) {
         /* create new queue */
-        rc = add_queue_to_environment(s->table, s->avgitemsz, s->pagesize);
+        rc = add_queue_to_environment(sc->tablename, sc->avgitemsz,
+                                      sc->pagesize);
         /* tell other nodes to follow suit */
         broadcast_add_new_queue(
-            s->table, s->avgitemsz); // TODO Check the return value ??????
+            sc->tablename, sc->avgitemsz); // TODO Check the return value ??????
     } else {
         /* TODO - change item size in existing queue */
         logmsg(LOGMSG_ERROR,
@@ -141,7 +142,7 @@ int add_queue_to_environment(char *table, int avgitemsz, int pagesize)
         /* I am NOT master: open replicated db */
         newdb->handle =
             bdb_open_more_queue(newdb->tablename, thedb->basedir, avgitemsz,
-                                pagesize, thedb->bdb_env, 0, &bdberr);
+                                pagesize, thedb->bdb_env, 0, NULL, &bdberr);
     }
     if (newdb->handle == NULL) {
         logmsg(LOGMSG_ERROR, "bdb_open:failed to open queue %s/%s, rcode %d\n",
@@ -200,8 +201,9 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
             rc = -1;
             goto done;
         }
-        db->handle = bdb_open_more_queue(queue_name, thedb->basedir, 65536,
-                                         65536, thedb->bdb_env, 1, &bdberr);
+        db->handle =
+            bdb_open_more_queue(queue_name, thedb->basedir, 65536, 65536,
+                                thedb->bdb_env, 1, NULL, &bdberr);
         if (db->handle == NULL) {
             logmsg(LOGMSG_ERROR,
                    "bdb_open:failed to open queue %s/%s, rcode %d\n",
@@ -319,30 +321,30 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
     scdone_t scdone_type = llmeta_queue_add;
     SBUF2 *sb = sc->sb;
 
-    db = get_dbtable_by_name(sc->table);
+    db = get_dbtable_by_name(sc->tablename);
     if (db) {
         sbuf2printf(sb, "!Trigger name %s clashes with existing table.\n",
-                    sc->table);
+                    sc->tablename);
         sbuf2printf(sb, "FAILED\n");
         goto done;
     }
-    db = getqueuebyname(sc->table);
+    db = getqueuebyname(sc->tablename);
 
     /* dropping/altering a queue that doesn't exist? */
     if ((sc->drop_table || sc->alteronly) && db == NULL) {
-        sbuf2printf(sb, "!Trigger %s doesn't exist.\n", sc->table);
+        sbuf2printf(sb, "!Trigger %s doesn't exist.\n", sc->tablename);
         sbuf2printf(sb, "FAILED\n");
         goto done;
     }
     /* adding a queue that already exists? */
     else if (sc->addonly && db != NULL) {
-        sbuf2printf(sb, "!Trigger %s already exists.\n", sc->table);
+        sbuf2printf(sb, "!Trigger %s already exists.\n", sc->tablename);
         sbuf2printf(sb, "FAILED\n");
         goto done;
     }
     if (sc->addonly) {
-        if (javasp_exists(sc->table)) {
-            sbuf2printf(sb, "!Procedure %s already exists.\n", sc->table);
+        if (javasp_exists(sc->tablename)) {
+            sbuf2printf(sb, "!Procedure %s already exists.\n", sc->tablename);
             sbuf2printf(sb, "FAILED\n");
             goto done;
         }
@@ -351,8 +353,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
     /* TODO: other checks: procedure with this name must not exist either */
 
     init_fake_ireq(thedb, &iq);
-    /* this really needs to go away... */
-    iq.usedb = thedb->dbs[0];
+    iq.usedb = &thedb->static_table;
 
     rc = trans_start(&iq, NULL, (void *)&tran);
     if (rc) {
@@ -392,7 +393,8 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
      * other methods, we need to manage the existing consumer first. */
     if (sc->addonly) {
         /* create a procedure (needs to go away, badly) */
-        rc = javasp_do_procedure_op(JAVASP_OP_LOAD, sc->table, NULL, config);
+        rc =
+            javasp_do_procedure_op(JAVASP_OP_LOAD, sc->tablename, NULL, config);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: javasp_do_procedure_op returned rc %d\n",
                    __func__, rc);
@@ -402,7 +404,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
             goto done;
         }
 
-        rc = bdb_llmeta_add_queue(thedb->bdb_env, tran, sc->table, config,
+        rc = bdb_llmeta_add_queue(thedb->bdb_env, tran, sc->tablename, config,
                                   sc->dests.count, dests, &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: bdb_llmeta_add_queue returned %d\n",
@@ -412,7 +414,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
 
         scdone_type = llmeta_queue_add;
 
-        db = newqdb(thedb, sc->table, 65536 /* TODO: pass from comdb2sc? */,
+        db = newqdb(thedb, sc->tablename, 65536 /* TODO: pass from comdb2sc? */,
                     65536, 1);
         if (db == NULL) {
             logmsg(LOGMSG_ERROR, "%s: newqdb returned NULL\n", __func__);
@@ -453,14 +455,8 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
                    __func__, rc, bdberr);
             goto done;
         }
-
-        /* ugh. */
-        /* TODO: thread_start_lock in consumer so we don't race with
-         * purge_old_blkseq_thread and
-         * launch 2 threads per consumer... */
-        dbqueuedb_admin(thedb);
     } else if (sc->alteronly) {
-        rc = bdb_llmeta_alter_queue(thedb->bdb_env, tran, sc->table, config,
+        rc = bdb_llmeta_alter_queue(thedb->bdb_env, tran, sc->tablename, config,
                                     sc->dests.count, dests, &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: bdb_llmeta_alter_queue returned %d\n",
@@ -490,7 +486,6 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
 
         /* start - see the ugh above. */
         dbqueuedb_restart_consumers(db);
-        dbqueuedb_admin(thedb);
     } else if (sc->drop_table) {
         scdone_type = llmeta_queue_drop;
         /* stop */
@@ -524,6 +519,10 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         goto done;
     }
     tran = NULL;
+
+    if (sc->addonly || sc->alteronly) {
+        dbqueuedb_admin(thedb);
+    }
 
     /* log for replicants to do the same */
     rc = bdb_llog_scdone(db->handle, scdone_type, 1, &bdberr);

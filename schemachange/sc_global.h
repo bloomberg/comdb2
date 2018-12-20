@@ -61,25 +61,22 @@ extern int rep_sync_save;
 extern int log_sync_save;
 extern int log_sync_time_save;
 
-extern int gbl_sc_thd_failed;
-
-/* All writer threads have to grab the lock in read/write mode.  If a live
- * schema change is in progress then they have to do extra stuff. */
-extern pthread_rwlock_t sc_live_rwlock;
-
-extern int schema_change; /*static int schema_change_doomed = 0;*/
 extern int stopsc;        /* stop schemachange, so it can resume */
 
 int is_dta_being_rebuilt(struct scplan *plan);
 const char *get_sc_to_name();
-void wait_for_sc_to_stop();
+void wait_for_sc_to_stop(const char *operation);
 void allow_sc_to_run();
 int sc_set_running(char *table, int running, uint64_t seed, const char *host,
                    time_t time);
 void sc_status(struct dbenv *dbenv);
 void live_sc_off(struct dbtable *db);
+void sc_set_downgrading(struct schema_change_type *s);
 void reset_sc_stat();
 int reload_lua();
 int replicant_reload_analyze_stats();
+
+void sc_set_logical_redo_lwm(char *table, unsigned int file);
+unsigned int sc_get_logical_redo_lwm();
 
 #endif

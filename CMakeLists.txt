@@ -83,12 +83,15 @@ else()
   add_definitions(-DUSE_SYS_ALLOC)
 endif()
 
-add_definitions(-DNEWSI_ASOF_USE_TEMPTABLE)
-add_definitions(-DNEWSI_MEMPOOL)
-
 if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL x86_64 OR ${CMAKE_SYSTEM_PROCESSOR} STREQUAL armv7l)
   # This is mostly misused as little-endian
   add_definitions(-D_LINUX_SOURCE)
+endif()
+
+if (${CMAKE_C_COMPILER_ID} STREQUAL GNU OR ${CMAKE_C_COMPILER_ID} STREQUAL Clang)
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-function")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-switch")
 endif()
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL Linux)
@@ -97,7 +100,6 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL Linux)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-strict-aliasing")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror=implicit-function-declaration")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror=return-type")
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pthread -lrt")
   if (${CMAKE_C_COMPILER_ID} STREQUAL Clang)

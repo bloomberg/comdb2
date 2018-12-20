@@ -24,6 +24,7 @@ set(src
   misc.c
   nodemap.c
   object_pool.c
+  parse_lsn.c
   perf.c
   plhash.c
   pool.c
@@ -35,6 +36,7 @@ set(src
   roll_file.c
   rtcpu.c
   safestrerror.c
+  schema_lk.c
   sbuf2.c
   segstring.c
   sltpck.c

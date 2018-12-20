@@ -215,13 +215,10 @@ static int bdb_prim_allocdta_int(bdb_state_type *bdb_state, tran_type *tran,
     DBT dbt_key, dbt_data;
     int rc;
     int rrn;
-    unsigned long long saved_genid = 0, *chkgenid = NULL;
     int dtafile;
     bdb_state_type *parent;
     int *genid_dta;
-    tran_type *parent_tran;
     DB *dbp;
-    int *mallocedtid;
 
     if (bdb_write_preamble(bdb_state, bdberr))
         return -1;
@@ -230,11 +227,6 @@ static int bdb_prim_allocdta_int(bdb_state_type *bdb_state, tran_type *tran,
         parent = bdb_state->parent;
     else
         parent = bdb_state;
-
-    if (tran->parent)
-        parent_tran = tran->parent;
-    else
-        parent_tran = tran;
 
 #ifdef FOO
     /* we DO NOT support variable length dta.  (for dta[0], blobs are above

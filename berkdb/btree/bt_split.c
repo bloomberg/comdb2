@@ -62,6 +62,7 @@ static const char revid[] = "$Id: bt_split.c,v 11.60 2003/06/30 17:19:35 bostic 
 #include <btree/bt_cache.h>
 
 #include <logmsg.h>
+#include <locks_wrap.h>
 
 void inspect_page(DB *, PAGE *);
 
@@ -332,7 +333,6 @@ __bam_page(dbc, pp, cp)
 
 	DBT split_key;
 	BKEYDATA *tmp_bk;
-	int mutex_rc = 0;
 	unsigned int hh;
 	genid_hash *hash = NULL;
 	__genid_pgno *hashtbl = NULL;
@@ -465,24 +465,13 @@ __bam_page(dbc, pp, cp)
 				if (genidcmp(hashtbl[hh].genid,
 					split_key.data) == 0) {
 					// This key (genid) exists in hash
-					mutex_rc =
-					    pthread_mutex_lock(&(hash->mutex));
-					if (mutex_rc != 0) {
-                        logmsg(LOGMSG_ERROR, 
-                                "__bam_page: Failed to lock (hash->mutex)\n");
-                    }
+                    Pthread_mutex_lock(&(hash->mutex));
 					// update new page
 					genidsetzero(hashtbl[hh].genid);
 					hashtbl[hh].pgno = PGNO(rp);
 					genidcpy(hashtbl[hh].genid,
 					    split_key.data);
-					mutex_rc =
-					    pthread_mutex_unlock(&(hash->
-						mutex));
-					if (mutex_rc != 0) {
-						logmsg(LOGMSG_ERROR, 
-                                "__bam_page: Failed to unlock (hash->mutex)\n");
-					}
+                    Pthread_mutex_unlock(&(hash->mutex));
 				}
 			}
 		}

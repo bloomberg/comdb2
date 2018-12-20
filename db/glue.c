@@ -82,7 +82,6 @@
 
 #include "rtcpu.h"
 
-#include <alloca.h>
 #include <intern_strings.h>
 #include "debug_switches.h"
 #include <trigger.h>
@@ -147,8 +146,6 @@ struct net_morestripe_msg {
 extern struct dbenv *thedb;
 extern int gbl_lost_master_time;
 extern int gbl_check_access_controls;
-
-static void fix_blobstripe_genids(void);
 
 static int meta_put(struct dbtable *db, void *input_tran, struct metahdr *hdr,
                     void *data, int dtalen);
@@ -281,7 +278,6 @@ static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
 {
     int bdberr;
     void *bdb_handle = bdb_handle_from_ireq(iq);
-    struct dbenv *dbenv = dbenv_from_ireq(iq);
     int rc = 0;
     tran_type *physical_tran = NULL;
     iq->gluewhere = "bdb_tran_begin";
@@ -320,6 +316,7 @@ static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
          * Once we're inside a transaction we hold the bdb read lock
          * until we've committed or aborted so no need to worry about this
          * later on. */
+        /* struct dbenv *dbenv = dbenv_from_ireq(iq); */
         if (bdberr == BDBERR_READONLY /*&& dbenv->master!=gbl_mynode*/) {
             /* return NOMASTER so client retries. */
             return ERR_NOMASTER;
@@ -732,7 +729,7 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
                             void *blkseq, int blklen, void *blkkey,
                             int blkkeylen)
 {
-    int rc, rc2;
+    int rc;
     db_seqnum_type ss;
     char *cnonce = NULL;
     int cn_len;
@@ -799,7 +796,7 @@ int trans_commit_adaptive(struct ireq *iq, void *trans, char *source_host)
 int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen,
                         void *seqkey, int seqkeylen)
 {
-    int bdberr, rc = 0, *file;
+    int bdberr, rc = 0;
     void *bdb_handle = bdb_handle_from_ireq(iq);
     struct dbenv *dbenv = dbenv_from_ireq(iq);
     db_seqnum_type ss;
@@ -819,7 +816,7 @@ int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen,
     }
 
     /* Single phy-txn logical aborts will set ss to 0: check before waiting */
-    file = (u_int32_t *)&ss;
+    u_int32_t *file = (u_int32_t *)&ss;
     if (*file != 0) {
         trans_wait_for_seqnum_int(bdb_handle, dbenv, iq, gbl_mynode,
                                   -1 /* timeoutms */, 1 /* adaptive */, &ss);
@@ -2445,9 +2442,9 @@ retry:
         iq->gluewhere = "bdb_fetch_next_nodta_genid_nl_ser done";
     } else {
         iq->gluewhere = req = "bdb_fetch_next_nodta_genid";
-        ixrc = bdb_fetch_next_nodta_genid(bdb_handle, key, ixnum, keylen,
-                                          curlast, lastrrn, lastgenid, fndkey,
-                                          fndrrn, genid, args, &bdberr);
+        ixrc = bdb_fetch_next_nodta_genid_tran(
+            bdb_handle, key, ixnum, keylen, curlast, lastrrn, lastgenid, fndkey,
+            fndrrn, genid, trans, args, &bdberr);
         iq->gluewhere = "bdb_fetch_next_nodta_genid done";
     }
     if (ixrc == -1) {
@@ -2956,6 +2953,7 @@ static int new_master_callback(void *bdb_handle, char *host)
     dbenv->gen = gen;
     /*this is only used when handle not established yet. */
     if (host == gbl_mynode) {
+        trigger_clear_hash();
         if (oldmaster != host) {
             logmsg(LOGMSG_WARN, "I AM NEW MASTER NODE %s\n", host);
             gbl_master_changes++;
@@ -2966,7 +2964,6 @@ static int new_master_callback(void *bdb_handle, char *host)
                         "one was in progress it will have to be restarted\n");
             }
             load_auto_analyze_counters();
-            trigger_clear_hash();
             trigger_timepart = 1;
 
             if (oldgen != gen) {
@@ -3081,42 +3078,13 @@ static int nodeup_callback(void *bdb_handle, const char *host)
     return is_node_up(host);
 }
 
-static char *tcmtest_routecpu_down_node = 0;
-
-void tcmtest_routecpu_set_down_node(char *n) { tcmtest_routecpu_down_node = n; }
-
 int is_node_up(const char *host)
 {
-    int rc;
-
-    if (gbl_rtcpu_debug && CLASS_TEST == get_mach_class(gbl_mynode)) {
-        /* For debugging rtcpu problems use an "alternative" rtcpu system.
-         * Basically look for a file in /bbsrc/db/comdb2/rtcpu - if a file
-         * for the node exists, then it is considered rt'd off. */
-        char path[64];
-        struct stat st;
-        int nodeup = 1;
-        snprintf0(path, sizeof(path), "/bbsrc/db/comdb2/rtcpu/%s", host);
-        errno = 0;
-        stat(path, &st);
-        if (errno == 0)
-            nodeup = 0;
-        else if (errno != ENOENT)
-            logmsg(LOGMSG_ERROR, "nodeup_callback: %s: %s\n", path, strerror(errno));
-        return nodeup;
-    }
-
-    if ((tcmtest_routecpu_down_node > 0) &&
-        (host == tcmtest_routecpu_down_node)) {
-        /* keep chatty if we're forcing a node down to debug something */
-        logmsg(LOGMSG_WARN, "%s returning bad-rcode for tcm-test node %s\n",
-                __func__, host);
+    extern char *tcmtest_routecpu_down_node;
+    if (host == tcmtest_routecpu_down_node) {
         return 0;
     }
-
-    rc = machine_is_up(host);
-    return (rc == 1);
-    /*rc could be -1 which means bad node, just return down in that case */
+    return machine_is_up(host);
 }
 
 /* callback to set dynamically configurable election settings */
@@ -3443,7 +3411,7 @@ static void net_morestripe_and_open_all_dbs(void *hndl, void *uptr,
     struct net_morestripe_msg *msg;
     msg = dtap;
 
-    if (dtalen < sizeof(struct net_morestripe_msg)) {
+    if (dtalen < sizeof(struct net_morestripe_msg) || dtap == NULL) {
         logmsg(LOGMSG_ERROR, "net_morestripe_and_open_all_dbs: bad msglen %d\n",
                 dtalen);
         net_ack_message(hndl, 1);
@@ -3458,7 +3426,7 @@ static void net_morestripe_and_open_all_dbs(void *hndl, void *uptr,
         return;
     }
 
-    fix_blobstripe_genids();
+    fix_blobstripe_genids(NULL);
     net_ack_message(hndl, 0);
 }
 
@@ -3484,12 +3452,11 @@ void net_javasp_op(void *hndl, void *uptr, char *fromnode, int usertype,
 {
     struct new_procedure_op_msg *msg = dtap;
     char *name;
-    char *jarfile;
     char *param;
     char *ptr;
     int rc;
 
-    if (dtalen < offsetof(struct new_procedure_op_msg, text)) {
+    if (dtap == NULL || dtalen < offsetof(struct new_procedure_op_msg, text)) {
         net_ack_message(hndl, 1);
         return;
     }
@@ -3721,16 +3688,6 @@ int broadcast_sc_ok(void)
     return send_to_all_nodes(NULL, 0, NET_CHECK_SC_OK, SCWAITTIME);
 }
 
-int broadcast_morestripe_and_open_all_dbs(int newdtastripe, int newblobstripe)
-{
-    struct net_morestripe_msg msg;
-    bzero(&msg, sizeof(msg));
-    msg.newdtastripe = newdtastripe;
-    msg.newblobstripe = newblobstripe;
-    return send_to_all_nodes(&msg, sizeof(msg), NET_MORESTRIPE_OPEN_DBS,
-                             MSGWAITTIME);
-}
-
 int broadcast_procedure_op(int op, const char *name, const char *param)
 {
     struct new_procedure_op_msg *msg;
@@ -3849,7 +3806,7 @@ int open_auxdbs(struct dbtable *db, int force_create)
         /* see if we have a lite meta table - if so use that.  otherwise
          * fallback on a heavy meta table. */
         db->meta = bdb_open_more_lite(litename, db->dbenv->basedir, 0, ixlen[0],
-                                      0, db->dbenv->bdb_env, &bdberr);
+                                      0, db->dbenv->bdb_env, NULL, 0, &bdberr);
         if (!db->meta) {
             if (gbl_meta_lite)
                 ctrace("bdb_open_more(meta) cannot open lite meta %d\n",
@@ -4025,10 +3982,6 @@ int open_bdb_env(struct dbenv *dbenv)
         if (net_register_handler(dbenv->handle_sibling, NET_CLOSE_ALL_DBS,
                                  "close_all_dbs", net_close_all_dbs))
             return -1;
-        if (net_register_handler(dbenv->handle_sibling, NET_MORESTRIPE_OPEN_DBS,
-                                 "morestripe_and_open_all_dbs",
-                                 net_morestripe_and_open_all_dbs))
-            return -1;
         if (net_register_handler(dbenv->handle_sibling, NET_CHECK_SC_OK,
                                  "check_sc_ok", net_check_sc_ok))
             return -1;
@@ -4118,9 +4071,9 @@ static int init_odh_lrl(struct dbtable *d, int *compr, int *compr_blobs,
 }
 
 static int init_odh_llmeta(struct dbtable *d, int *compr, int *compr_blobs,
-                           int *datacopy_odh)
+                           int *datacopy_odh, tran_type *tran)
 {
-    if (get_db_odh(d, &d->odh) != 0 || d->odh == 0) {
+    if (get_db_odh_tran(d, &d->odh, tran) != 0 || d->odh == 0) {
         // couldn't find odh in llmeta or odh off
         *compr = 0;
         *compr_blobs = 0;
@@ -4131,23 +4084,24 @@ static int init_odh_llmeta(struct dbtable *d, int *compr, int *compr_blobs,
         return 0;
     }
 
-    get_db_compress(d, compr);
-    get_db_compress_blobs(d, compr_blobs);
-    get_db_instant_schema_change(d, &d->instant_schema_change);
-    get_db_inplace_updates(d, &d->inplace_updates);
-    get_db_datacopy_odh(d, datacopy_odh);
+    get_db_compress_tran(d, compr, tran);
+    get_db_compress_blobs_tran(d, compr_blobs, tran);
+    get_db_instant_schema_change_tran(d, &d->instant_schema_change, tran);
+    get_db_inplace_updates_tran(d, &d->inplace_updates, tran);
+    get_db_datacopy_odh_tran(d, datacopy_odh, tran);
 
     return 0;
 }
 
-static void get_disable_skipscan(struct dbtable *tbl)
+static void get_disable_skipscan(struct dbtable *tbl, tran_type *tran)
 {
     if (tbl->dbtype != DBTYPE_UNTAGGED_TABLE &&
         tbl->dbtype != DBTYPE_TAGGED_TABLE)
         return;
 
     char *str = NULL;
-    int rc = bdb_get_table_parameter(tbl->tablename, "disableskipscan", &str);
+    int rc = bdb_get_table_parameter_tran(tbl->tablename, "disableskipscan",
+                                          &str, tran);
     if (rc != 0) {
         tbl->disableskipscan = 0;
         return;
@@ -4165,19 +4119,18 @@ void get_disable_skipscan_all()
 #endif
     for (int ii = 0; ii < thedb->num_dbs; ii++) {
         struct dbtable *d = thedb->dbs[ii];
-        get_disable_skipscan(d);
+        get_disable_skipscan(d, NULL);
     }
 }
  
 
 
 /* open the db files, etc */
-int backend_open(struct dbenv *dbenv)
+int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
 {
     int bdberr, ii;
-    struct dbtable *db;
+    struct dbtable *db = NULL;
     int rc;
-    struct deferred_berkdb_option *opt;
 
     /* open tables */
     for (ii = 0; ii < dbenv->num_dbs; ii++) {
@@ -4189,12 +4142,12 @@ int backend_open(struct dbenv *dbenv)
         else
             logmsg(LOGMSG_INFO, "open table '%s'\n", db->tablename);
 
-        db->handle =
-            bdb_open_more(db->tablename, dbenv->basedir, db->lrl, db->nix,
-                          (short *)db->ix_keylen, db->ix_dupes, db->ix_recnums,
-                          db->ix_datacopy, db->ix_collattr, db->ix_nullsallowed,
-                          db->numblobs + 1, /* main record + n blobs */
-                          dbenv->bdb_env, &bdberr);
+        db->handle = bdb_open_more_tran(
+            db->tablename, dbenv->basedir, db->lrl, db->nix,
+            (short *)db->ix_keylen, db->ix_dupes, db->ix_recnums,
+            db->ix_datacopy, db->ix_collattr, db->ix_nullsallowed,
+            db->numblobs + 1, /* main record + n blobs */
+            dbenv->bdb_env, tran, flags, &bdberr);
 
         if (db->handle == NULL) {
             if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_IGNORE_BAD_TABLE)) {
@@ -4240,7 +4193,8 @@ int backend_open(struct dbenv *dbenv)
 
         db->handle = bdb_open_more_queue(
             db->tablename, dbenv->basedir, db->avgitemsz, pagesize,
-            dbenv->bdb_env, db->dbtype == DBTYPE_QUEUEDB ? 1 : 0, &bdberr);
+            dbenv->bdb_env, db->dbtype == DBTYPE_QUEUEDB ? 1 : 0, tran,
+            &bdberr);
         if (db->handle == NULL) {
             logmsg(LOGMSG_ERROR,
                    "bdb_open_more_queue:failed to open queue %s/%s, rcode %d\n",
@@ -4268,7 +4222,7 @@ int backend_open(struct dbenv *dbenv)
 
         dbenv->meta = bdb_open_more_lite(metadbname, dbenv->basedir, 0,
                                          sizeof(struct metahdr2), 0,
-                                         dbenv->bdb_env, &bdberr);
+                                         dbenv->bdb_env, tran, flags, &bdberr);
     }
 
     if (!dbenv->meta) {
@@ -4285,7 +4239,7 @@ int backend_open(struct dbenv *dbenv)
 
     /* now that meta is open, get the blobstripe conversion genids for each
      * table so that we can find pre-blobstripe blobs */
-    fix_blobstripe_genids();
+    fix_blobstripe_genids(tran);
 
     for (ii = 0; ii < dbenv->num_dbs; ii++) {
         /* read ondisk header and compression information */
@@ -4305,17 +4259,17 @@ int backend_open(struct dbenv *dbenv)
             }
             bthashsz = gbl_init_with_bthash;
         } else {
-            if (init_odh_llmeta(d, &compress, &compress_blobs, &datacopy_odh) !=
-                0) {
+            if (init_odh_llmeta(d, &compress, &compress_blobs, &datacopy_odh,
+                                tran) != 0) {
                 logmsg(LOGMSG_ERROR, "fetch odh from llmeta failed\n");
                 return -1;
             }
 
-            if (get_db_bthash(d, &bthashsz) != 0) {
+            if (get_db_bthash_tran(d, &bthashsz, tran) != 0) {
                 bthashsz = 0;
             }
 
-            get_disable_skipscan(d);
+            get_disable_skipscan(d, tran);
         }
 
         if (bthashsz) {
@@ -4328,8 +4282,8 @@ int backend_open(struct dbenv *dbenv)
         /* now tell bdb what the flags are - CRUCIAL that this is done
          * before any records are read/written from/to these tables. */
         set_bdb_option_flags(d, d->odh, d->inplace_updates,
-                             d->instant_schema_change, d->version, compress,
-                             compress_blobs, datacopy_odh);
+                             d->instant_schema_change, d->schema_version,
+                             compress, compress_blobs, datacopy_odh);
 
         ctrace("Table %s  "
                "ver %d  "
@@ -4337,7 +4291,7 @@ int backend_open(struct dbenv *dbenv)
                "isc %s  "
                "odh_datacopy %s  "
                "ipu %s",
-               d->tablename, d->version, d->odh ? "yes" : "no",
+               d->tablename, d->schema_version, d->odh ? "yes" : "no",
                d->instant_schema_change ? "yes" : "no",
                datacopy_odh ? "yes" : "no", d->inplace_updates ? "yes" : "no");
     }
@@ -4360,7 +4314,7 @@ int backend_open(struct dbenv *dbenv)
         }
     } else {
         int rlstate;
-        if ((rc = bdb_get_rowlocks_state(&rlstate, &bdberr)) != 0) {
+        if ((rc = bdb_get_rowlocks_state(&rlstate, tran, &bdberr)) != 0) {
             logmsg(LOGMSG_ERROR, "Get rowlocks llmeta failed, rc=%d bdberr=%d\n", rc, bdberr);
             return -1;
         }
@@ -4397,9 +4351,12 @@ int backend_open(struct dbenv *dbenv)
     return 0; /*success */
 }
 
+int backend_open(struct dbenv *dbenv)
+{
+    return backend_open_tran(dbenv, NULL, 0);
+}
 
-
-static void fix_blobstripe_genids(void)
+void fix_blobstripe_genids(tran_type *tran)
 {
     int ii, rc;
     struct dbtable *db;
@@ -4407,7 +4364,7 @@ static void fix_blobstripe_genids(void)
     if (gbl_blobstripe) {
         for (ii = 0; ii < dbenv->num_dbs; ii++) {
             db = dbenv->dbs[ii];
-            rc = get_blobstripe_genid(db, &db->blobstripe_genid);
+            rc = get_blobstripe_genid_tran(db, &db->blobstripe_genid, tran);
             if (rc == 0) {
                 bdb_set_blobstripe_genid(db->handle, db->blobstripe_genid);
                 ctrace("blobstripe genid 0x%llx for table %s\n",
@@ -4741,14 +4698,20 @@ int put_blobstripe_genid(struct dbtable *db, void *tran, unsigned long long geni
     return rc;
 }
 
-int get_blobstripe_genid(struct dbtable *db, unsigned long long *genid)
+int get_blobstripe_genid_tran(struct dbtable *db, unsigned long long *genid,
+                              tran_type *tran)
 {
     struct metahdr hdr;
     int rc;
     hdr.rrn = META_BLOBSTRIPE_GENID_RRN;
     hdr.attr = 0;
-    rc = meta_get(db, &hdr, (void *)genid, sizeof(*genid));
+    rc = meta_get_tran(tran, db, &hdr, (void *)genid, sizeof(*genid));
     return rc;
+}
+
+int get_blobstripe_genid(struct dbtable *db, unsigned long long *genid)
+{
+    return get_blobstripe_genid_tran(db, genid, NULL);
 }
 
 #define get_put_db(x, y)                                                       \
@@ -5597,69 +5560,6 @@ retry:
     return rc;
 }
 
-int reinit_db(struct dbtable *db)
-{
-    int rc, bdberr;
-    void *bdb_handle;
-    int retries = 0;
-    tran_type *trans;
-    struct ireq iq = {0};
-
-    bdb_handle = get_bdb_handle(db, AUXDB_NONE);
-    if (!bdb_handle)
-        return ERR_NO_AUXDB;
-    iq.is_fake = 1;
-    iq.usedb = db;
-
-/*stop_threads(db->dbenv);*/
-
-retry:
-    rc = trans_start(&iq, NULL, &trans);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "tran_start failed, rc=%d\n", rc); /* shouldn't happen */
-        rc = ERR_INTERNAL;
-        goto done;
-    }
-    rc = bdb_reinit(bdb_handle, trans, &bdberr);
-    if (bdberr == RC_INTERNAL_RETRY) {
-        if (retries > 9999999) {
-            logmsg(LOGMSG_ERROR, "*ERROR*) bdb_reinit too much contention %d count %d\n",
-                   bdberr, retries);
-            rc = ERR_INTERNAL;
-            goto done;
-        }
-        retries++;
-        rc = trans_abort(&iq, trans);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "tran_abort failed, rc=%d\n", rc); /* shouldn't happen */
-            rc = ERR_INTERNAL;
-            goto done;
-        }
-        goto retry;
-    } else if (rc) {
-        int rc2;
-        logmsg(LOGMSG_ERROR, "reinit_db %s error %d\n", db->tablename, bdberr);
-        rc2 = trans_abort(&iq, trans);
-        if (rc2) {
-            logmsg(LOGMSG_ERROR, "tran_abort failed, rc=%d\n", rc2); /* shouldn't happen */
-            rc = ERR_INTERNAL;
-            goto done;
-        }
-        goto done;
-    }
-    /* wait for 5 minutes for this to complete... */
-    rc = trans_commit_timeout(&iq, trans, gbl_mynode, 5 * 60 * 1000);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "tran_commit failed, rc=%d\n", rc); /* shouldn't happen */
-        rc = ERR_INTERNAL;
-        goto done;
-    }
-
-done:
-    /*resume_threads(db->dbenv);*/
-    return rc;
-}
-
 int count_db(struct dbtable *db)
 {
     int bdberr;
@@ -5934,7 +5834,7 @@ int ix_fetch_last_key_tran(struct ireq *iq, void *tran, int write, int ixnum,
 extern int gbl_use_fastseed_for_comdb2_seqno;
 long long get_unique_longlong(struct dbenv *env)
 {
-    long long id;
+    long long id = 0;
 
     if (gbl_use_fastseed_for_comdb2_seqno) {
         uint64_t uid;
@@ -5945,7 +5845,7 @@ long long get_unique_longlong(struct dbenv *env)
     } else {
         struct ireq iq;
         init_fake_ireq(env, &iq);
-        iq.usedb = env->dbs[0];
+        iq.usedb = &env->static_table;
         get_context(&iq, (unsigned long long *)&id);
     }
 
@@ -6132,6 +6032,47 @@ int ix_check_genid(struct ireq *iq, void *trans, unsigned long long genid,
         return 1;
     if (rc == IX_NOTFND)
         return 0;
+    *bdberr = rc;
+    return -1;
+}
+
+/*  Returns 0 if not found, 1 if found / found newer, -1 if error */
+int ix_check_update_genid(struct ireq *iq, void *trans,
+                          unsigned long long genid, int *bdberr)
+{
+    int rc = 0;
+    int reqdtalen = 0;
+    unsigned long long foundgenid = 0ULL;
+    unsigned long long lastgenid = genid;
+    int fndrrn = 0;
+    void *bdb_state = get_bdb_handle_ireq(iq, AUXDB_NONE);
+
+    *bdberr = 0;
+    rc = ix_find_by_rrn_and_genid_tran(iq, 2 /*rrn*/, genid, NULL, &reqdtalen,
+                                       0, trans);
+    if (rc == IX_FND) {
+        return 1;
+    }
+    if (rc == IX_NOTFND) {
+        rc = ix_next_trans(iq, trans, -1, &genid, sizeof(unsigned long long),
+                           &lastgenid, 2, genid, NULL, &fndrrn, &foundgenid,
+                           NULL, NULL, 0, 0);
+        if (rc == 1 || rc == 2) {
+            if (bdb_inplace_cmp_genids(bdb_state, genid, foundgenid) == 0 &&
+                (get_updateid_from_genid(bdb_state, genid) <=
+                 get_updateid_from_genid(bdb_state, foundgenid)))
+                rc = 1;
+            else
+                rc = 0;
+            return rc;
+        } else if (rc < 0) {
+            logmsg(LOGMSG_ERROR, "%s: failed to get next genid, rc = %d\n",
+                   __func__, rc);
+            return 0;
+        } else {
+            return 0;
+        }
+    }
     *bdberr = rc;
     return -1;
 }
@@ -6323,7 +6264,6 @@ int table_version_set(tran_type *tran, const char *tablename,
                       unsigned long long version)
 {
     struct dbtable *db;
-    unsigned long long ret;
     int rc;
     int bdberr = 0;
 
@@ -6346,3 +6286,31 @@ int table_version_set(tran_type *tran, const char *tablename,
 }
 
 void *get_bdb_env(void) { return thedb->bdb_env; }
+
+/* This function can be used as an iterator to jump to the next
+ * base table, starting the table at the specified index in the
+ * global tables array, that the current user has READ access to.
+ *
+ * @param  tabId : index to the current table in the tables array
+ */
+int comdb2_next_allowed_table(sqlite3_int64 *tabId)
+{
+    struct dbtable *pDb;
+    struct sql_thread *thd;
+    char *tablename;
+    int bdberr;
+    int rc;
+
+    thd = pthread_getspecific(query_info_key);
+
+    while (*tabId < thedb->num_dbs) {
+        pDb = thedb->dbs[*tabId];
+        tablename = pDb->tablename;
+        rc = bdb_check_user_tbl_access(thedb->bdb_env, thd->clnt->user,
+                                       tablename, ACCESS_READ, &bdberr);
+        if (rc == 0)
+            return SQLITE_OK;
+        (*tabId)++;
+    }
+    return SQLITE_OK;
+}

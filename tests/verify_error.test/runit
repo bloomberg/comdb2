@@ -110,7 +110,7 @@ function runstepper
     echo "> $stp $db $tcs $log"
 
     # execute
-    $stp $db $tcs $log
+    DEBUG=1 $stp $db $tcs $log
 }
 
 

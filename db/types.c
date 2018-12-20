@@ -4025,7 +4025,7 @@ TYPES_INLINE int CLIENT_REAL_to_SERVER_BREAL(
         return 0;
     }
 
-    float from_4;
+    float from_4 = 0;
     double from_8;
 
     unsigned long to_4;
@@ -4176,7 +4176,7 @@ TYPES_INLINE int CLIENT_PSTR2_to_SERVER_BCSTR(
 
     uint8_t hdr = 0;
     bset(&hdr, data_bit);
-    if (inlen > outlen - 1) {
+    if ((unsigned int)inlen > (unsigned int)outlen - 1) {
         if (inopts && inopts->flags & FLD_CONV_TRUNCATE) {
             inlen = outlen - 1;
         } else {
@@ -4188,7 +4188,7 @@ TYPES_INLINE int CLIENT_PSTR2_to_SERVER_BCSTR(
     memset(out + inlen, 0, outlen - inlen);
     *outdtsz = inlen;
 
-    if (olen > outlen - 1) {
+    if ((unsigned int)olen > (unsigned int)outlen - 1) {
         // Can't just set truncate bit
         // 1. aaa
         // 2. zzz
@@ -4435,7 +4435,7 @@ TYPES_INLINE int SERVER_BREAL_to_CLIENT_REAL(
     blob_buffer_t *inblob, void *out, int outlen, int *outnull, int *outdtsz,
     const struct field_conv_opts *outopts, blob_buffer_t *outblob)
 {
-    float from_4;
+    float from_4 = 0;
     double from_8;
     ieee4b from_4b;
     ieee8b from_8b;
@@ -5907,7 +5907,6 @@ TYPES_INLINE int SERVER_BLOB2_to_CLIENT_BLOB(
     blob_buffer_t *inblob, void *out, int outlen, int *outnull, int *outdtsz,
     const struct field_conv_opts *outopts, blob_buffer_t *outblob)
 {
-    int tmp;
     const char *cin = in;
     client_blob_tp *blob = out;
 
@@ -5969,7 +5968,6 @@ TYPES_INLINE int SERVER_BLOB_to_CLIENT_BLOB(
     blob_buffer_t *inblob, void *out, int outlen, int *outnull, int *outdtsz,
     const struct field_conv_opts *outopts, blob_buffer_t *outblob)
 {
-    int tmp;
     const char *cin = in;
     client_blob_tp *blob = out;
 
@@ -6454,8 +6452,6 @@ static TYPES_INLINE int blob2_convert(int len, const void *in, int in_len,
                                       blob_buffer_t *inblob,
                                       blob_buffer_t *outblob, int *outdtsz)
 {
-    int valid_len;
-
     /* if the string was too large to be stored in the in buffer and won't fit
      * in the out buffer, then the string will just be transfered from one blob
      * to another */
@@ -6502,8 +6498,6 @@ static TYPES_INLINE int blob2_convert(int len, const void *in, int in_len,
      * fit in the out buffer, then the string needs to be copied from the in
      * buffer to a new out blob */
     else if (len <= in_len) {
-        int valid_len;
-
         if (outblob) {
             if (len > gbl_blob_sz_thresh_bytes)
                 outblob->data = comdb2_bmalloc(blobmem, len);
@@ -6528,8 +6522,6 @@ static TYPES_INLINE int blob2_convert(int len, const void *in, int in_len,
      * blob to the out buffer */
     else /* len <= out_len */
     {
-        int valid_len;
-
         if (inblob) {
             if (!inblob->exists || !inblob->data) {
                 logmsg(LOGMSG_ERROR, "blob2_convert: missing inblob\n");
@@ -6559,7 +6551,7 @@ static TYPES_INLINE int SERVER_BYTEARRAY_to_SERVER_BLOB(
 {
     const char *cin = (const char *)in + 1;
 
-    int len, tmp;
+    int tmp;
 
     if (outlen < BLOB_ON_DISK_LEN)
         return -1;
@@ -6874,7 +6866,6 @@ int SERVER_DATETIMEUS_to_CLIENT_REAL(S2C_FUNKY_ARGS)
 #define SERVER_DT_to_CLIENT_DT_func_body(from_dt, FROM_UDT, from_prec,         \
                                          from_frac, from_fracdt, to_dt, TO_DT, \
                                          to_prec, to_frac, to_fracdt)          \
-    db_time_t sec = 0;                                                         \
     SRV_TP(from_dt) sdt;                                                       \
     CLT_TP(to_dt) cdt;                                                         \
     struct field_conv_opts_tz *tzopts = (struct field_conv_opts_tz *)outopts;  \
@@ -7181,7 +7172,6 @@ static int _isISO8601(const char *str, int len)
 #define string2structtm_ISO_func_body(dt, UDT, minlen, prec, frac, fracdt)     \
     int offset = 0;                                                            \
     int ltoken = 0;                                                            \
-    char *token = NULL;                                                        \
     int year = 0, month = 0, day = 0, hh = 0, mm = 0, ss = 0, sss = 0;         \
     int skipped = 0;                                                           \
     int sign = 1;                                                              \
@@ -7585,18 +7575,15 @@ int datetime_check_range(long long secs, int fracs)
     CLT_TP(from_dt) cdt;                                                       \
     SRV_TP(to_dt) sdt;                                                         \
     struct tm tm = {0};                                                        \
-    struct field_conv_opts_tz *tzopts = (struct field_conv_opts_tz *)inopts;   \
     char *actualtzname = NULL;                                                 \
                                                                                \
     uint8_t *p_in = (uint8_t *)in;                                             \
-    const uint8_t *p_in_start = (const uint8_t *)in;                           \
     const uint8_t *p_in_end = (const uint8_t *)in + inlen;                     \
                                                                                \
     uint8_t *p_out = out;                                                      \
     const uint8_t *p_out_start = out;                                          \
     const uint8_t *p_out_end = (const uint8_t *)out + outlen;                  \
     int from_little = 0;                                                       \
-    int from_ext_tm = 0;                                                       \
                                                                                \
     /* paranoia testing */                                                     \
     if (!in || !out)                                                           \
@@ -7781,7 +7768,6 @@ static TYPES_INLINE int CLIENT_DATETIMEUS_to_SERVER_BREAL(C2S_FUNKY_ARGS)
         struct field_conv_opts_tz tzopts;                                      \
                                                                                \
         uint8_t *p_buf = cdt_buf;                                              \
-        uint8_t *p_cdt_buf_start = cdt_buf;                                    \
         const uint8_t *p_cdt_buf_end = cdt_buf + sizeof(cdt_buf);              \
                                                                                \
         bzero(&cdt, sizeof(cdt));                                              \
@@ -9362,7 +9348,6 @@ int make_order_decimal32(server_decimal32_t *pdec32)
 
     if (i < DECSINGLE_PACKED_COEF) {
         /* this is not zero */
-        int j;
         int tailzero = 0;
 
         /* use new format, correct sorting */
@@ -9495,7 +9480,7 @@ static int make_order_decimal64(server_decimal64_t *pdec64, int exponent)
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec64 make_order IN (exponent %d %x):\n", exponent,
                 exponent);
-        hexdump(LOGMSG_USER, (unsigned char *)pdec64, sizeof(*pdec64));
+        hexdump(LOGMSG_USER, (char *)pdec64, sizeof(*pdec64));
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -9504,7 +9489,6 @@ static int make_order_decimal64(server_decimal64_t *pdec64, int exponent)
         ;
 
     if (i < DECDOUBLE_PACKED_COEF) {
-        int j;
         int tailzero = 0;
 
         /* use new format, correct sorting */
@@ -9546,7 +9530,7 @@ static int make_order_decimal64(server_decimal64_t *pdec64, int exponent)
 
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec64 make_order OUT:\n");
-        hexdump(LOGMSG_USER, (unsigned char *)pdec64, sizeof(*pdec64));
+        hexdump(LOGMSG_USER, (const char *)pdec64, sizeof(*pdec64));
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -9593,7 +9577,7 @@ static int unmake_order_decimal64(server_decimal64_t *pdec64, char *decimals,
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec64 unmake_order IN (exponent %d %x):\n", *exponent,
                 *exponent);
-        hexdump(LOGMSG_USER, (unsigned char *)decimals, DECDOUBLE_PACKED_COEF);
+        hexdump(LOGMSG_USER, decimals, DECDOUBLE_PACKED_COEF);
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -9697,7 +9681,7 @@ static int unmake_order_decimal64(server_decimal64_t *pdec64, char *decimals,
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec64 unmake_order out (exponent %d %x):\n", *exponent,
                 *exponent);
-        hexdump(LOGMSG_USER, (unsigned char *)decimals, DECDOUBLE_PACKED_COEF);
+        hexdump(LOGMSG_USER, decimals, DECDOUBLE_PACKED_COEF);
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -9714,7 +9698,7 @@ static int make_order_decimal128(server_decimal128_t *pdec128, int exponent)
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec128 make_order IN (exponent %d %x):\n", exponent,
                 exponent);
-        hexdump(LOGMSG_USER, (unsigned char *)pdec128, sizeof(*pdec128));
+        hexdump(LOGMSG_USER, (char *)pdec128, sizeof(*pdec128));
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -9724,7 +9708,6 @@ static int make_order_decimal128(server_decimal128_t *pdec128, int exponent)
         ;
 
     if (i < DECQUAD_PACKED_COEF) {
-        int j;
         int tailzero = 0;
 
         /* use new format, correct sorting */
@@ -9767,7 +9750,7 @@ static int make_order_decimal128(server_decimal128_t *pdec128, int exponent)
 
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec128 make_order OUT:\n");
-        hexdump(LOGMSG_USER, (unsigned char *)pdec128, sizeof(*pdec128));
+        hexdump(LOGMSG_USER, (char *)pdec128, sizeof(*pdec128));
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -9785,7 +9768,7 @@ static int unmake_order_decimal128(server_decimal128_t *pdec128, char *decimals,
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec128 unmake_order IN (exponent %d %x):\n", *exponent,
                 *exponent);
-        hexdump(LOGMSG_USER, (unsigned char *)decimals, DECQUAD_PACKED_COEF);
+        hexdump(LOGMSG_USER, decimals, DECQUAD_PACKED_COEF);
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -9877,7 +9860,7 @@ static int unmake_order_decimal128(server_decimal128_t *pdec128, char *decimals,
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_REPORT_DECIMAL_CONVERSION)) {
         logmsg(LOGMSG_USER, "Dec128 unmake_order out (exponent %d %x):\n",
                 *exponent, *exponent);
-        hexdump(LOGMSG_USER, (unsigned char *)decimals, DECQUAD_PACKED_COEF);
+        hexdump(LOGMSG_USER, decimals, DECQUAD_PACKED_COEF);
         logmsg(LOGMSG_USER, "\n");
     }
 
@@ -9888,9 +9871,7 @@ static void decimal32_ondisk_to_single(server_decimal32_t *pdec32,
                                        decSingle *dn)
 {
     char decimals[DECSINGLE_PACKED_COEF];
-    int exponent;
-    int sign;
-    int rc = 0;
+    int exponent = 0;
     char mask;
 
     if (pdec32->coef[DECSINGLE_PACKED_COEF - 1] & 0x0F) {
@@ -9923,7 +9904,7 @@ static void decimal32_ondisk_to_single(server_decimal32_t *pdec32,
     if (exponent < DECSINGLE_Emin - 7 || exponent > DECSINGLE_Emax + 7) {
         logmsg(LOGMSG_ERROR, "%s; format issues with decimal32: exponent=%d\n",
                 __func__, exponent);
-        hexdump(LOGMSG_USER, (unsigned char *)pdec32, sizeof(*pdec32));
+        hexdump(LOGMSG_USER, (const char *)pdec32, sizeof(*pdec32));
         logmsg(LOGMSG_USER, "\n");
         exponent ^= 0x080;
     }
@@ -9935,9 +9916,7 @@ static void decimal64_ondisk_to_double(server_decimal64_t *pdec64,
                                        decDouble *dn)
 {
     char decimals[DECDOUBLE_PACKED_COEF];
-    int exponent;
-    int sign;
-    int rc = 0;
+    int exponent = 0;
 
     bzero(decimals, sizeof(decimals));
 
@@ -9963,7 +9942,7 @@ static void decimal64_ondisk_to_double(server_decimal64_t *pdec64,
             comdb2_int2 tmp;
             logmsg(LOGMSG_ERROR, "%s; format issues with decimal64: exponent=%d\n",
                     __func__, exponent);
-            hexdump(LOGMSG_ERROR, (unsigned char *)pdec64, sizeof(*pdec64));
+            hexdump(LOGMSG_ERROR, (const char *)pdec64, sizeof(*pdec64));
             logmsg(LOGMSG_ERROR, "\n");
             int2b_to_int2(exponent, &tmp);
             exponent = tmp;
@@ -9976,9 +9955,7 @@ static void decimal64_ondisk_to_double(server_decimal64_t *pdec64,
 static void decimal128_ondisk_to_quad(server_decimal128_t *pdec128, decQuad *dn)
 {
     char decimals[DECQUAD_PACKED_COEF];
-    int exponent;
-    int sign;
-    int rc = 0;
+    int exponent = 0;
 
     bzero(decimals, sizeof(decimals));
 
@@ -10005,7 +9982,7 @@ static void decimal128_ondisk_to_quad(server_decimal128_t *pdec128, decQuad *dn)
             comdb2_int2 tmp;
             logmsg(LOGMSG_USER, "%s; format issues with decimal128: exponent=%d\n",
                     __func__, exponent);
-            hexdump(LOGMSG_USER, (unsigned char *)pdec128, sizeof(*pdec128));
+            hexdump(LOGMSG_USER, (const char *)pdec128, sizeof(*pdec128));
             logmsg(LOGMSG_USER, "\n");
             int2b_to_int2(exponent, &tmp);
             exponent = tmp;
@@ -10072,7 +10049,6 @@ int SERVER_DECIMAL_to_CLIENT_CSTR(const void *in, int inlen,
     decSingle dfp_single;
     decDouble dfp_double;
     decQuad dfp_quad;
-    int rc;
 
     if (stype_is_null(in)) {
         *outnull = 1;
@@ -10759,7 +10735,6 @@ static int dfp_single_to_ondisk(decSingle *dn, server_decimal32_t *pdec32)
     /* Good one */
     {
         int32_t exponent;
-        int i;
 
         sign = decSingleToPacked(dn, &exponent, pdec32->coef);
 
@@ -10986,7 +10961,6 @@ static int dfp_quad_to_decimal32_ondisk(decQuad *quad, void *rec, int len)
         decContext sing_ctx;
         decDouble doub;
         decSingle sing;
-        int i;
 
         /* first, convert Quad to Single and check for range */
         dec_ctx_init(&doub_ctx, DEC_INIT_DECIMAL64, gbl_decimal_rounding);
@@ -13175,7 +13149,6 @@ TYPES_INLINE int NULL_to_SERVER(void *out, int outlen, int outtype)
 
 TYPES_INLINE int convertible_types(int intype, int outtype)
 {
-    int rc;
     if (intype < SERVER_MINTYPE || intype > SERVER_MAXTYPE)
         return -1;
 
@@ -14345,7 +14318,6 @@ double interval_to_double(const intv_t *i)
 /* datetime - datetime = intv_ds */
 void sub_dttz_dttz(const dttz_t *d1, const dttz_t *d2, intv_t *intv)
 {
-    long long tmp = 0;
     intv->sign = 1;
     intv_ds_t *ds = &intv->u.ds;
 
@@ -14569,7 +14541,7 @@ int get_type(struct param_data *param, void *p, int len, int type,
         return get_int_field(&param->u.i, p, len, flip);
     case CLIENT_UINT:
         param->len = sizeof(param->u.i);
-        return get_uint_field(&param->u.i, p, len, flip);
+        return get_uint_field((uint64_t *)&param->u.i, p, len, flip);
     case CLIENT_REAL:
         param->len = sizeof(param->u.r);
         return get_real_field(&param->u.r, p, len, flip);

@@ -65,7 +65,6 @@ static unsigned long long num_bad_toks = 0;
 static unsigned long long total_toks = 0;
 static unsigned long long total_appsock_rejections = 0;
 static pthread_mutex_t appsock_conn_lk = PTHREAD_MUTEX_INITIALIZER;
-static size_t num_commands = 0;
 
 static void appsock_thd_start(struct thdpool *pool, void *thddata);
 static void appsock_thd_end(struct thdpool *pool, void *thddata);
@@ -181,7 +180,13 @@ static void *thd_appsock_int(appsock_work_args_t *w, int *keepsocket,
 
     sbuf2settimeout(sb, IOTIMEOUTMS, IOTIMEOUTMS);
 
-    arg.tab = thedb->dbs[0];
+    if (!thedb->dbs) {
+        logmsg(LOGMSG_ERROR, "%s: halt appsock request on NULL thedb->dbs\n",
+               __func__);
+        return 0;
+    }
+
+    arg.tab = &thedb->static_table;
     arg.conv_flags = 0;
 
     while (1) {
@@ -253,7 +258,6 @@ static void appsock_thd_start(struct thdpool *pool, void *thddata)
 
 static void appsock_thd_end(struct thdpool *pool, void *thddata)
 {
-    struct appsock_thd_state *state = thddata;
     if (!gbl_use_appsock_as_sqlthread)
         backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
 }
@@ -308,8 +312,6 @@ void dump_appsock_threads(void)
 void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int admin)
 {
     /*START HANDLER THREAD*/
-    int rc;
-    pthread_t tid;
     static int last_thread_dump_time = 0;
     static int last_thread_dump_warn_time = 0;
     int nconns = 0;
@@ -368,8 +370,7 @@ void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int admin)
     work->admin = admin;
     work->sb = sb;
     if (thdpool_enqueue(gbl_appsock_thdpool, appsock_work_pp, work, 0, NULL,
-                        flags) != 0,
-        0) {
+                        flags) != 0) {
         total_appsock_rejections++;
         if ((now - last_thread_dump_time) > 10) {
             logmsg(LOGMSG_WARN, "Too many concurrent SQL connections:\n");
@@ -411,7 +412,7 @@ int set_rowlocks(void *trans, int enable)
         return -1;
     }
 
-    if (gbl_rowlocks) {
+    if (enable) {
         gbl_sql_tranlevel_preserved = gbl_sql_tranlevel_default;
         gbl_sql_tranlevel_default = SQL_TDEF_SNAPISOL;
     } else {

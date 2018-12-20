@@ -46,6 +46,7 @@ static const char revid[] =
 #endif
 
 #include "logmsg.h"
+#include "locks_wrap.h"
 
 static int __dbenv_init __P((DB_ENV *));
 static void __dbenv_err __P((const DB_ENV *, int, const char *, ...));
@@ -91,6 +92,11 @@ static int __dbenv_trigger_subscribe __P((DB_ENV *, const char *,
 static int __dbenv_trigger_unsubscribe __P((DB_ENV *, const char *));
 static int __dbenv_trigger_open __P((DB_ENV *, const char *));
 static int __dbenv_trigger_close __P((DB_ENV *, const char *));
+int __dbenv_apply_log __P((DB_ENV *, unsigned int, unsigned int, int64_t,
+            void*, int));
+size_t __dbenv_get_log_header_size __P((DB_ENV*)); 
+int __dbenv_rep_verify_match __P((DB_ENV*, unsigned int, unsigned int, int));
+int __dbenv_min_truncate_lsn_timestamp __P((DB_ENV*, int file, DB_LSN *lsn, int32_t *timestamp));
 
 /*
  * db_env_create --
@@ -141,7 +147,7 @@ static pthread_once_t berkdb_blobmem_once = PTHREAD_ONCE_INIT;
 static void
 __berkdb_blobmem_init_once(void)
 {
-    extern size_t gbl_blobmem_cap;
+	extern size_t gbl_blobmem_cap;
 	berkdb_blobmem = comdb2bma_create(0, gbl_blobmem_cap, "berkdb/blob", NULL);
 	if (berkdb_blobmem == NULL) {
 		__db_err(dbenv_being_initialized,
@@ -209,6 +215,7 @@ __dbenv_init(dbenv)
 		dbenv->set_verbose = __dbcl_set_verbose;
 	} else {
 #endif
+        dbenv->apply_log = __dbenv_apply_log;
 		dbenv->close = __dbenv_close_pp;
 		dbenv->dbremove = __dbenv_dbremove_pp;
 		dbenv->dbrename = __dbenv_dbrename_pp;
@@ -262,6 +269,10 @@ __dbenv_init(dbenv)
 		dbenv->get_rep_verify_lsn = __dbenv_get_rep_verify_lsn;
 		dbenv->set_durable_lsn = __dbenv_set_durable_lsn;
 		dbenv->get_durable_lsn = __dbenv_get_durable_lsn;
+
+        dbenv->get_log_header_size = __dbenv_get_log_header_size;
+        dbenv->rep_verify_match = __dbenv_rep_verify_match;
+        dbenv->min_truncate_lsn_timestamp = __dbenv_min_truncate_lsn_timestamp;
 #ifdef	HAVE_RPC
 	}
 #endif
@@ -1269,6 +1280,7 @@ __dbenv_set_comdb2_dirs(dbenv, data_dir, txn_dir, tmp_dir)
 
 pthread_mutex_t gbl_durable_lsn_lk = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t gbl_durable_lsn_cond = PTHREAD_COND_INITIALIZER;
+int gbl_abort_irregular_set_durable_lsn = 0;
 
 static void
 __dbenv_set_durable_lsn(dbenv, lsnp, generation)
@@ -1278,17 +1290,24 @@ __dbenv_set_durable_lsn(dbenv, lsnp, generation)
 {
 	extern int gbl_durable_set_trace;
 
-	if (lsnp->file == 2147483647) {
-		logmsg(LOGMSG_FATAL, "huh? setting file to 2147483647?\n");
-		abort();
+	if (lsnp->file == 2147483647 || lsnp->file == 0) {
+		logmsg(LOGMSG_ERROR, "%s: invalid LSN file=2147483647?\n",
+                __func__);
+        if (gbl_abort_irregular_set_durable_lsn)
+            abort();
+        return;
 	}
 
-	pthread_mutex_lock(&gbl_durable_lsn_lk);
+	Pthread_mutex_lock(&gbl_durable_lsn_lk);
 
 	if (generation > dbenv->durable_generation &&
 	    log_compare(lsnp, &dbenv->durable_lsn) < 0) {
-		logmsg(LOGMSG_FATAL, "Aborting on reversing durable lsn\n");
-		abort();
+		logmsg(LOGMSG_ERROR, "%s: lower LSN from later generation\n",
+                __func__);
+        if (gbl_abort_irregular_set_durable_lsn)
+            abort();
+        Pthread_mutex_unlock(&gbl_durable_lsn_lk);
+        return;
 	}
 
 	if (dbenv->durable_generation < generation ||
@@ -1304,12 +1323,6 @@ __dbenv_set_durable_lsn(dbenv, lsnp, generation)
 			       dbenv->durable_lsn.offset,
 			       dbenv->durable_generation);
 		}
-
-		if (lsnp->file == 0) {
-			logmsg(LOGMSG_FATAL, "Aborting on attempt to set "
-					     "durable lsn file to 0\n");
-			abort();
-		}
 	} else {
 		/* This can happen if two commit threads can race against each
 		 * other */
@@ -1324,8 +1337,8 @@ __dbenv_set_durable_lsn(dbenv, lsnp, generation)
 		}
 	}
 
-    pthread_cond_broadcast(&gbl_durable_lsn_cond);
-	pthread_mutex_unlock(&gbl_durable_lsn_lk);
+    Pthread_cond_broadcast(&gbl_durable_lsn_cond);
+	Pthread_mutex_unlock(&gbl_durable_lsn_lk);
 }
 
 static void
@@ -1334,10 +1347,10 @@ __dbenv_get_durable_lsn(dbenv, lsnp, generation)
 	DB_LSN *lsnp;
 	uint32_t *generation;
 {
-	pthread_mutex_lock(&gbl_durable_lsn_lk);
+	Pthread_mutex_lock(&gbl_durable_lsn_lk);
 	*lsnp = dbenv->durable_lsn;
 	*generation = dbenv->durable_generation;
-	pthread_mutex_unlock(&gbl_durable_lsn_lk);
+	Pthread_mutex_unlock(&gbl_durable_lsn_lk);
 }
 
 static int
@@ -1351,15 +1364,15 @@ __dbenv_trigger_subscribe(dbenv, fname, cond, lock, open)
 	int rc = 1;
 	struct __db_trigger_subscription *t;
 	t = __db_get_trigger_subscription(fname);
-	pthread_mutex_lock(&t->lock);
+	Pthread_mutex_lock(&t->lock);
 	if (t->open) {
-		t->active = 1;
+		++t->active;
 		*cond = &t->cond;
 		*lock = &t->lock;
 		*open = &t->open;
 		rc = 0;
 	}
-	pthread_mutex_unlock(&t->lock);
+	Pthread_mutex_unlock(&t->lock);
 	return rc;
 }
 
@@ -1371,7 +1384,7 @@ __dbenv_trigger_unsubscribe(dbenv, fname)
 	/* trigger_lock should be held by caller */
 	struct __db_trigger_subscription *t;
 	t = __db_get_trigger_subscription(fname);
-	t->active = 0;
+	--t->active;
 	return 0;
 }
 
@@ -1382,10 +1395,10 @@ __dbenv_trigger_open(dbenv, fname)
 {
 	struct __db_trigger_subscription *t;
 	t = __db_get_trigger_subscription(fname);
-	pthread_mutex_lock(&t->lock);
+	Pthread_mutex_lock(&t->lock);
 	t->open = 1;
-	pthread_cond_signal(&t->cond);
-	pthread_mutex_unlock(&t->lock);
+	Pthread_cond_signal(&t->cond);
+	Pthread_mutex_unlock(&t->lock);
 	return 0;
 }
 
@@ -1396,9 +1409,9 @@ __dbenv_trigger_close(dbenv, fname)
 {
 	struct __db_trigger_subscription *t;
 	t = __db_get_trigger_subscription(fname);
-	pthread_mutex_lock(&t->lock);
+	Pthread_mutex_lock(&t->lock);
 	t->open = 0;
-	pthread_cond_signal(&t->cond);
-	pthread_mutex_unlock(&t->lock);
+	Pthread_cond_signal(&t->cond);
+	Pthread_mutex_unlock(&t->lock);
 	return 0;
 }

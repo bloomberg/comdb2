@@ -33,7 +33,7 @@ int nodenum(char *host)
 
 static char *hostname_nop(int node)
 {
-    return "";
+    return NULL;
 }
 hostname_mapper *hostname_impl = hostname_nop;
 void set_hostname_mapper(hostname_mapper *impl)

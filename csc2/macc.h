@@ -325,7 +325,6 @@ int wholekeysize(struct key *wk);
 char *strcpyupper(char *c);
 char *typetxt(int t, int size);
 int numdim(int dm[6]);
-char *sqltypetxt(int t, int size);
 int calc_rng(int rng, int *ask);
 char *printf_type_txt(int t, int size);
 void strupper(char *c);

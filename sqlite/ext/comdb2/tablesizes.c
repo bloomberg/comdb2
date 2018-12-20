@@ -81,6 +81,9 @@ static int systblTblSizeOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   if( pCur==0 ) return SQLITE_NOMEM;
   memset(pCur, 0, sizeof(*pCur));
   *ppCursor = &pCur->base;
+
+  comdb2_next_allowed_table(&pCur->iRowid);
+
   return SQLITE_OK;
 }
 
@@ -97,8 +100,8 @@ static int systblTblSizeClose(sqlite3_vtab_cursor *cur){
 */
 static int systblTblSizeNext(sqlite3_vtab_cursor *cur){
   systbl_tblsize_cursor *pCur = (systbl_tblsize_cursor*)cur;
-
   pCur->iRowid++;
+  comdb2_next_allowed_table(&pCur->iRowid);
   return SQLITE_OK;
 }
 
@@ -125,7 +128,7 @@ static int systblTblSizeColumn(
     }
   }
   return SQLITE_OK;
-};
+}
 
 /*
 ** Return the rowid for the current row. The rowid is the just the
@@ -175,26 +178,30 @@ static int systblTblSizeBestIndex(
 }
 
 const sqlite3_module systblTblSizeModule = {
-  0,                            /* iVersion */
-  0,                            /* xCreate */
-  systblTblSizeConnect,       /* xConnect */
-  systblTblSizeBestIndex,     /* xBestIndex */
-  systblTblSizeDisconnect,    /* xDisconnect */
-  0,                            /* xDestroy */
-  systblTblSizeOpen,          /* xOpen - open a cursor */
-  systblTblSizeClose,         /* xClose - close a cursor */
-  systblTblSizeFilter,        /* xFilter - configure scan constraints */
-  systblTblSizeNext,          /* xNext - advance a cursor */
-  systblTblSizeEof,           /* xEof - check for end of scan */
-  systblTblSizeColumn,        /* xColumn - read data */
-  systblTblSizeRowid,         /* xRowid - read data */
-  0,                            /* xUpdate */
-  0,                            /* xBegin */
-  0,                            /* xSync */
-  0,                            /* xCommit */
-  0,                            /* xRollback */
-  0,                            /* xFindMethod */
-  0,                            /* xRename */
+  0,                       /* iVersion */
+  0,                       /* xCreate */
+  systblTblSizeConnect,    /* xConnect */
+  systblTblSizeBestIndex,  /* xBestIndex */
+  systblTblSizeDisconnect, /* xDisconnect */
+  0,                       /* xDestroy */
+  systblTblSizeOpen,       /* xOpen - open a cursor */
+  systblTblSizeClose,      /* xClose - close a cursor */
+  systblTblSizeFilter,     /* xFilter - configure scan constraints */
+  systblTblSizeNext,       /* xNext - advance a cursor */
+  systblTblSizeEof,        /* xEof - check for end of scan */
+  systblTblSizeColumn,     /* xColumn - read data */
+  systblTblSizeRowid,      /* xRowid - read data */
+  0,                       /* xUpdate */
+  0,                       /* xBegin */
+  0,                       /* xSync */
+  0,                       /* xCommit */
+  0,                       /* xRollback */
+  0,                       /* xFindMethod */
+  0,                       /* xRename */
+  0,                       /* xSavepoint */
+  0,                       /* xRelease */
+  0,                       /* xRollbackTo */
+  0,                       /* xShadowName */
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \

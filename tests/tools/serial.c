@@ -426,7 +426,7 @@ int update_records(config_t *c)
 int main(int argc,char *argv[])
 {
     config_t *c;
-    int err = 0, ret, opt;
+    int err = 0, opt;
     char *stage = "default";
 
     argv0 = argv[0];

@@ -64,7 +64,7 @@ static int prepare_changes(struct schema_change_type *s, struct dbtable *db,
                            struct dbtable *newdb, struct scplan *theplan,
                            struct scinfo *scinfo)
 {
-    int changed = ondisk_schema_changed(s->table, newdb, stderr, s);
+    int changed = ondisk_schema_changed(s->tablename, newdb, stderr, s);
 
     if (changed == SC_BAD_NEW_FIELD) {
         /* we want to capture cases when "alter" is used
@@ -128,12 +128,12 @@ static int prepare_changes(struct schema_change_type *s, struct dbtable *db,
     }
 
     /* rebuild if ran out of version numbers */
-    if (newdb->version >= MAXVER && newdb->instant_schema_change) {
+    if (newdb->schema_version >= MAXVER && newdb->instant_schema_change) {
         sc_printf(s, "exhausted versions. forcing rebuild at %d\n",
-                  newdb->version);
+                  newdb->schema_version);
         if (s->dryrun)
             sbuf2printf(s->sb, ">table version: %d. will have to rebuild.\n",
-                        newdb->version);
+                        newdb->schema_version);
         s->force_rebuild = 1;
         changed = SC_TAG_CHANGE;
     }
@@ -146,12 +146,12 @@ static void adjust_version(int changed, struct scinfo *scinfo,
 {
     /* if we don't want to merely bump the version, reset it to 0. */
     if (changed == SC_TAG_CHANGE && newdb->instant_schema_change) {
-        newdb->version = 0;
+        newdb->schema_version = 0;
     }
     /* if we're disabling instant sc, reset the version to 0. */
     else if (db->instant_schema_change && !newdb->instant_schema_change) {
         /* instant schema change is being removed */
-        newdb->version = 0;
+        newdb->schema_version = 0;
     }
     /* if we are enabling instant sc, set the version to 1. */
     else if (db->odh && !db->instant_schema_change &&
@@ -161,11 +161,11 @@ static void adjust_version(int changed, struct scinfo *scinfo,
          * will correspond to the latest csc2 version. start
          * instant version at 2 and treat physical version 0
          * as version 1 */
-        newdb->version = 1;
+        newdb->schema_version = 1;
     }
 
     /* if only index or constraints have changed don't bump version */
-    int ondisk_changed = compare_tag(s->table, ".ondisk", NULL);
+    int ondisk_changed = compare_tag(s->tablename, ".ondisk", NULL);
     if (ondisk_changed != SC_NO_CHANGE /* something changed in .ondisk */
         || s->fastinit                 /* fastinit */
         || !s->use_plan                /* full rebuild due to some prob */
@@ -173,12 +173,12 @@ static void adjust_version(int changed, struct scinfo *scinfo,
         || (!scinfo->olddb_instant_sc &&
             s->instant_sc) /* bump version if enabled instant sc */
         ) {
-        ++newdb->version;
+        ++newdb->schema_version;
     } else if (ondisk_changed == SC_NO_CHANGE /* nothing changed ondisk */
                && changed == SC_TAG_CHANGE    /* plan says it did change */
-               && newdb->version == 0 && newdb->plan &&
+               && newdb->schema_version == 0 && newdb->plan &&
                newdb->plan->dta_plan == -1 && newdb->plan->plan_convert == 1) {
-        ++newdb->version;
+        ++newdb->schema_version;
     }
 }
 
@@ -189,7 +189,7 @@ static int prepare_version_for_dbs_without_instant_sc(tran_type *tran,
     int rc;
 
     if (db->odh && !db->instant_schema_change && newdb->instant_schema_change &&
-        newdb->version == 2) {
+        newdb->schema_version == 2) {
         /* Old db had ODH but not instant schema change.
          * The physical records will have version 0 &
          * will correspond to the latest csc2 version. Start
@@ -383,9 +383,9 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     gbl_use_plan = 1;
     gbl_sc_last_writer_time = 0;
 
-    db = get_dbtable_by_name(s->table);
+    db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
-        sc_errf(s, "Table not found:%s\n", s->table);
+        sc_errf(s, "Table not found:%s\n", s->tablename);
         return SC_TABLE_DOESNOT_EXIST;
     }
 
@@ -395,9 +395,9 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     sc_printf(s, "starting schema update with seed %llx\n", iq->sc_seed);
 
-    pthread_mutex_lock(&csc2_subsystem_mtx);
+    Pthread_mutex_lock(&csc2_subsystem_mtx);
     if ((rc = load_db_from_schema(s, thedb, &foundix, iq))) {
-        pthread_mutex_unlock(&csc2_subsystem_mtx);
+        Pthread_mutex_unlock(&csc2_subsystem_mtx);
         return rc;
     }
 
@@ -405,10 +405,10 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     if (newdb == NULL) {
         sc_errf(s, "Internal error\n");
-        pthread_mutex_unlock(&csc2_subsystem_mtx);
+        Pthread_mutex_unlock(&csc2_subsystem_mtx);
         return SC_INTERNAL_ERROR;
     }
-    newdb->version = get_csc2_version(newdb->tablename);
+    newdb->schema_version = get_csc2_version(newdb->tablename);
 
     newdb->iq = iq;
 
@@ -416,7 +416,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         backout(newdb);
         cleanup_newdb(newdb);
         sc_errf(s, "Failed to process schema!\n");
-        pthread_mutex_unlock(&csc2_subsystem_mtx);
+        Pthread_mutex_unlock(&csc2_subsystem_mtx);
         return -1;
     }
 
@@ -427,7 +427,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         int ret = 0;
         ret = new_indexes_syntax_check(iq, newdb);
         if (ret) {
-            pthread_mutex_unlock(&csc2_subsystem_mtx);
+            Pthread_mutex_unlock(&csc2_subsystem_mtx);
             sc_errf(s, "New indexes syntax error\n");
             backout(newdb);
             cleanup_newdb(newdb);
@@ -437,7 +437,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         }
         newdb->ix_blob = newdb->schema->ix_blob;
     }
-    pthread_mutex_unlock(&csc2_subsystem_mtx);
+    Pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     if ((iq == NULL || iq->tranddl <= 1) &&
         verify_constraints_exist(NULL, newdb, newdb, s) != 0) {
@@ -447,7 +447,8 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         return -1;
     }
 
-    schema_change = changed = prepare_changes(s, db, newdb, &s->plan, &scinfo);
+    s->schema_change = changed =
+        prepare_changes(s, db, newdb, &s->plan, &scinfo);
     if (changed == SC_UNKNOWN_ERROR) {
         backout(newdb);
         cleanup_newdb(newdb);
@@ -456,7 +457,8 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     }
 
     adjust_version(changed, &scinfo, s, db, newdb);
-    schema_change = changed = prepare_sc_plan(s, changed, db, newdb, &s->plan);
+    s->schema_change = changed =
+        prepare_sc_plan(s, changed, db, newdb, &s->plan);
     print_schemachange_info(s, db, newdb);
 
     /*************** open  tables ********************************************/
@@ -475,7 +477,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     if (rc) {
         /* todo: clean up db */
         sc_errf(s, "failed opening new db\n");
-        change_schemas_recover(s->table);
+        change_schemas_recover(s->tablename);
         return -1;
     }
 
@@ -514,7 +516,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
        however the new db gets its meta table assigned further down,
        so we can't set meta options until we're there. */
     set_bdb_option_flags(newdb, s->headers, s->ip_updates,
-                         newdb->instant_schema_change, newdb->version,
+                         newdb->instant_schema_change, newdb->schema_version,
                          s->compress, s->compress_blobs, datacopy_odh);
 
     /* set sc_genids, 0 them if we are starting a new schema change, or
@@ -522,16 +524,16 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     if (init_sc_genids(newdb, s)) {
         sc_errf(s, "failed initilizing sc_genids\n");
         delete_temp_table(iq, newdb);
-        change_schemas_recover(s->table);
+        change_schemas_recover(s->tablename);
         return -1;
     }
 
-    pthread_rwlock_wrlock(&sc_live_rwlock);
+    Pthread_rwlock_wrlock(&db->sc_live_lk);
     db->sc_from = s->db = db;
     db->sc_to = s->newdb = newdb;
     db->sc_abort = 0;
     db->sc_downgrading = 0;
-    pthread_rwlock_unlock(&sc_live_rwlock);
+    Pthread_rwlock_unlock(&db->sc_live_lk);
     if (s->resume && s->alteronly && !s->finalize_only) {
         if (gbl_test_sc_resume_race && !stopsc) {
             logmsg(LOGMSG_INFO, "%s:%d sleeping 5s for sc_resume test\n",
@@ -595,13 +597,17 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         live_sc_off(db);
 
         for (i = 0; i < gbl_dtastripe; i++) {
-            sc_errf(s, "  > stripe %2d was at 0x%016llx\n", i,
-                    newdb->sc_genids[i]);
+            sc_errf(s, "  > [%s] stripe %2d was at 0x%016llx\n", s->tablename,
+                    i, newdb->sc_genids[i]);
+        }
+
+        while (s->logical_livesc) {
+            usleep(200);
         }
 
         backout_constraint_pointers(newdb, db);
         delete_temp_table(iq, newdb);
-        change_schemas_recover(s->table);
+        change_schemas_recover(s->tablename);
         return rc;
     }
     newdb->iq = NULL;
@@ -635,10 +641,20 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     bdb_lock_table_write(db->handle, transac);
 
+    s->got_tablelock = 1;
+
+    /* wait for logical redo thread to stop */
+    while (s->logical_livesc) {
+        usleep(200);
+    }
+
     db->sc_to = newdb;
 
+    if (db->sc_live_logical)
+        bdb_clear_logical_live_sc(db->handle);
+
     if (gbl_sc_abort || db->sc_abort || iq->sc_should_abort) {
-        sc_errf(s, "Aborting schema change %s\n", s->table);
+        sc_errf(s, "Aborting schema change %s\n", s->tablename);
         goto backout;
     }
 
@@ -668,9 +684,9 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     gbl_sc_commit_count++;
 
     /*begin updating things*/
-    if (newdb->version == 1) {
+    if (newdb->schema_version == 1) {
         /* newdb's version has been reset */
-        bdberr = bdb_reset_csc2_version(transac, db->tablename, db->version);
+        bdberr = bdb_reset_csc2_version(transac, db->tablename, db->schema_version);
         if (bdberr != BDBERR_NOERROR)
             goto backout;
     }
@@ -679,8 +695,8 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
         goto backout;
 
     /* load new csc2 data */
-    rc = load_new_table_schema_tran(thedb, transac, /*s->table*/ db->tablename,
-                                    s->newcsc2);
+    rc = load_new_table_schema_tran(thedb, transac,
+                                    /*s->tablename*/ db->tablename, s->newcsc2);
     if (rc != 0) {
         sc_errf(s, "Error loading new schema into meta tables, "
                    "trying again\n");
@@ -732,7 +748,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     fix_constraint_pointers(db, newdb);
 
     /* update tags in memory */
-    commit_schemas(/*s->table*/ db->tablename);
+    commit_schemas(/*s->tablename*/ db->tablename);
     update_dbstore(db); // update needs to occur after refresh of hashtbl
 
     MEMORY_SYNC;
@@ -763,7 +779,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     if (!gbl_create_mode) {
         logmsg(LOGMSG_INFO, "Table %s is at version: %d\n", newdb->tablename,
-               newdb->version);
+               newdb->schema_version);
     }
 
     llmeta_dump_mapping_table_tran(transac, thedb, db->tablename, 1);
@@ -783,13 +799,22 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
         (!s->fastinit &&
          BDB_ATTR_GET(thedb->bdb_attr, SC_DONE_SAME_TRAN) == 0)) {
         /* reliable per table versioning */
-        rc = table_version_upsert(db, transac, &bdberr);
+        if (gbl_disable_tpsc_tblvers && s->fix_tp_badvers) {
+            rc = table_version_set(transac, db->tablename,
+                                   s->usedbtablevers + 1);
+            db->tableversion = s->usedbtablevers + 1;
+        } else
+            rc = table_version_upsert(db, transac, &bdberr);
         if (rc) {
             sc_errf(s, "Failed updating table version bdberr %d\n", bdberr);
             goto failed;
         }
     } else {
-        db->tableversion = table_version_select(db, transac);
+        if (gbl_disable_tpsc_tblvers && s->fix_tp_badvers) {
+            rc = table_version_set(transac, db->tablename, s->usedbtablevers);
+            db->tableversion = s->usedbtablevers;
+        } else
+            db->tableversion = table_version_select(db, transac);
         sc_printf(s, "Reusing version %d for same schema\n", db->tableversion);
     }
 
@@ -827,11 +852,11 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 backout:
     live_sc_off(db);
     backout_constraint_pointers(newdb, db);
-    change_schemas_recover(/*s->table*/ db->tablename);
+    change_schemas_recover(/*s->tablename*/ db->tablename);
 
     logmsg(LOGMSG_WARN,
            "##### BACKOUT #####   %s v: %d sc:%d lrl: %d odh:%d bdb:%p\n",
-           db->tablename, db->version, db->instant_schema_change, db->lrl,
+           db->tablename, db->schema_version, db->instant_schema_change, db->lrl,
            db->odh, db->handle);
 
     return -1;
@@ -854,7 +879,7 @@ int do_upgrade_table_int(struct schema_change_type *s)
     struct dbtable *db;
     struct scinfo scinfo;
 
-    db = get_dbtable_by_name(s->table);
+    db = get_dbtable_by_name(s->tablename);
     if (db == NULL) return SC_TABLE_DOESNOT_EXIST;
 
     s->db = db;

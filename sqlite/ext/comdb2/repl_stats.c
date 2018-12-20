@@ -68,7 +68,7 @@ static int systblReplStatsConnect(sqlite3 *db, void *pAux, int argc,
         if ((*ppVtab = sqlite3_malloc(sizeof(sqlite3_vtab))) == 0) {
             return SQLITE_NOMEM;
         }
-        memset(*ppVtab, 0, sizeof(*ppVtab));
+        memset(*ppVtab, 0, sizeof(sqlite3_vtab));
     }
 
     return 0;
@@ -88,8 +88,6 @@ static int systblReplStatsDisconnect(sqlite3_vtab *pVtab)
 
 static int systblReplStatsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor)
 {
-    int cluster_size;
-
     systbl_repl_stats_cursor *cur =
         sqlite3_malloc(sizeof(systbl_repl_stats_cursor));
     if (cur == 0) {
@@ -210,6 +208,11 @@ const sqlite3_module systblReplStatsModule = {
     0,                         /* xRollback */
     0,                         /* xFindMethod */
     0,                         /* xRename */
+    0,                         /* xSavepoint */
+    0,                         /* xRelease */
+    0,                         /* xRollbackTo */
+    0,                         /* xShadowName */
+    .access_flag = CDB2_ALLOW_USER,
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2))       \

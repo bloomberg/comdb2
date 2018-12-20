@@ -78,8 +78,8 @@ int offload_comm_send_blockreply(char *host, unsigned long long rqid, void *buf,
  * or -1 otherwise
  *
  */
-int osql_comm_is_done(char *rpl, int rpllen, int hasuuid, struct errstat **xerr,
-                      struct ireq *);
+int osql_comm_is_done(int type, char *rpl, int rpllen, int hasuuid,
+                      struct errstat **xerr, struct ireq *);
 
 /**
  * Send a "POKE" message to "tonode" inquering about session "rqid"
@@ -414,5 +414,7 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
                        unsigned long long seq);
 
 int osql_close_connection(char *host);
+
+int osql_get_replicant_numops(const char *rpl, int has_uuid);
 
 #endif

@@ -55,6 +55,7 @@ enum {
     COLUMN_SQL_QUERIES,
     COLUMN_SQL_STEPS,
     COLUMN_SQL_ROWS,
+    COLUMN_SVC_TIME
 };
 
 static int systblClientStatsConnect(sqlite3 *db, void *pAux, int argc,
@@ -70,13 +71,13 @@ static int systblClientStatsConnect(sqlite3 *db, void *pAux, int argc,
             "\"upds\" INTEGER, \"dels\" INTEGER, \"bsql\" INTEGER, \"recom\" "
             "INTEGER, \"snapisol\" INTEGER, \"serial\" INTEGER, "
             "\"sql_queries\" INTEGER, \"sql_steps\" INTEGER, \"sql_rows\" "
-            "INTEGER)");
+            "INTEGER, \"svc_time\" DOUBLE)");
 
     if (rc == SQLITE_OK) {
         if ((*ppVtab = sqlite3_malloc(sizeof(sqlite3_vtab))) == 0) {
             return SQLITE_NOMEM;
         }
-        memset(*ppVtab, 0, sizeof(*ppVtab));
+        memset(*ppVtab, 0, sizeof(sqlite3_vtab));
     }
 
     return SQLITE_OK;
@@ -213,6 +214,9 @@ static int systblClientStatsColumn(sqlite3_vtab_cursor *cur,
     case COLUMN_SQL_ROWS:
         sqlite3_result_int64(ctx, summaries[ii].sql_rows);
         break;
+    case COLUMN_SVC_TIME:
+        sqlite3_result_double(ctx, summaries[ii].svc_time);
+        break;
     default: assert(0);
     };
 
@@ -249,6 +253,11 @@ const sqlite3_module systblClientStatsModule = {
     0,                           /* xRollback */
     0,                           /* xFindMethod */
     0,                           /* xRename */
+    0,                           /* xSavepoint */
+    0,                           /* xRelease */
+    0,                           /* xRollbackTo */
+    0,                           /* xShadowName */
+    .access_flag = CDB2_ALLOW_USER,
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2))       \

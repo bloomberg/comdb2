@@ -10,10 +10,8 @@ create table t3 {
         int x
         int y
     }
-    keys {
-        "KEY" = x
-    }
 }\$\$
+insert into t3 values (0, 0)
 insert into t3 values (0, 0)
 EOF
 

@@ -199,22 +199,27 @@ do_verify
 
 
 
-echo "Simple rebuild while update/deleting"
+echo "Alter into t1_4.csc2 while update/deleting"
 
 master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
-cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')"
-cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('scdelay 10')"
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE CONVERTSLEEP 30"
 
-(cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "rebuild t1 " &> rebuild.out || touch rebuild.failed) &
+(cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "alter table t1 { `cat t1_4.csc2 ` }" &> alter.out || touch alter.failed) &
 
 sleep 15
 cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from t1 where a % 2 = 1"
+if [ $? -ne 0 ] ; then
+    failexit "failed to delete while altering to t1_4"
+fi
 cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set a = a + 10000 where 1"
-
-
-if [ -f rebuild.failed ] ; then
-    failexit "Rebuild failed, but it should have succeeded"
+if [ $? -ne 0 ] ; then
+    failexit "failed to update while altering to t1_4"
 fi
 
+wait
+if [ -f alter.failed ] ; then
+    failexit "Alter to t1_4.csc2 failed, but it should have succeeded"
+fi
+do_verify
 
 echo "Success"

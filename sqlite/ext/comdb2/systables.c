@@ -51,7 +51,7 @@ static int systblSystabsConnect(sqlite3 *db, void *pAux, int argc,
                                 char **pErr)
 {
     int rc;
-    systbl_systabs_vtab *systabs;
+    systbl_systabs_vtab *systabs = NULL;
 
     rc = sqlite3_declare_vtab(db, "CREATE TABLE comdb2_systabs(\"name\")");
 
@@ -169,6 +169,10 @@ const sqlite3_module systblSystabsModule = {
     0,                       /* xRollback */
     0,                       /* xFindMethod */
     0,                       /* xRename */
+    0,                       /* xSavepoint */
+    0,                       /* xRelease */
+    0,                       /* xRollbackTo */
+    0,                       /* xShadowName */
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2))       \

@@ -80,7 +80,7 @@ static int systblQueuesDisconnect(sqlite3_vtab *pVtab){
 }
 
 static int get_stats(struct systbl_queues_cursor *pCur) {
-  struct consumer_stat stats[MAXCONSUMERS] = {0};
+  struct consumer_stat stats[MAXCONSUMERS] = {{0}};
   unsigned long long depth = 0;
   char *spname = NULL;
 
@@ -116,6 +116,7 @@ static int get_stats(struct systbl_queues_cursor *pCur) {
 */
 static int systblQueuesOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   systbl_queues_cursor *pCur;
+
   pCur = sqlite3_malloc( sizeof(*pCur) );
   if( pCur==0 ) return SQLITE_NOMEM;
   memset(pCur, 0, sizeof(*pCur));
@@ -184,7 +185,7 @@ static int systblQueuesColumn(
     }
   }
   return SQLITE_OK;
-};
+}
 
 /*
 ** Return the rowid for the current row. The rowid is the just the
@@ -233,12 +234,12 @@ static int systblQueuesBestIndex(
 }
 
 const sqlite3_module systblQueuesModule = {
-  0,                            /* iVersion */
-  0,                            /* xCreate */
+  0,                         /* iVersion */
+  0,                         /* xCreate */
   systblQueuesConnect,       /* xConnect */
   systblQueuesBestIndex,     /* xBestIndex */
   systblQueuesDisconnect,    /* xDisconnect */
-  0,                            /* xDestroy */
+  0,                         /* xDestroy */
   systblQueuesOpen,          /* xOpen - open a cursor */
   systblQueuesClose,         /* xClose - close a cursor */
   systblQueuesFilter,        /* xFilter - configure scan constraints */
@@ -246,13 +247,18 @@ const sqlite3_module systblQueuesModule = {
   systblQueuesEof,           /* xEof - check for end of scan */
   systblQueuesColumn,        /* xColumn - read data */
   systblQueuesRowid,         /* xRowid - read data */
-  0,                            /* xUpdate */
-  0,                            /* xBegin */
-  0,                            /* xSync */
-  0,                            /* xCommit */
-  0,                            /* xRollback */
-  0,                            /* xFindMethod */
-  0,                            /* xRename */
+  0,                         /* xUpdate */
+  0,                         /* xBegin */
+  0,                         /* xSync */
+  0,                         /* xCommit */
+  0,                         /* xRollback */
+  0,                         /* xFindMethod */
+  0,                         /* xRename */
+  0,                         /* xSavepoint */
+  0,                         /* xRelease */
+  0,                         /* xRollbackTo */
+  0,                         /* xShadowName */
+  .access_flag = CDB2_ALLOW_USER,
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \

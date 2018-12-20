@@ -1,5 +1,5 @@
 /*
-   Copyright 2017 Bloomberg Finance L.P.
+   Copyright 2017, 2018 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -55,6 +55,7 @@ int sbuf_is_local(SBUF2 *sb);
 
 static int newsql_clr_snapshot(struct sqlclntstate *);
 static int newsql_has_high_availability(struct sqlclntstate *);
+static int newsql_has_parallel_sql(struct sqlclntstate *);
 
 struct newsqlheader {
     int type;        /*  newsql request/response type */
@@ -368,14 +369,14 @@ static int newsql_send_hdr(struct sqlclntstate *clnt, int h)
     struct newsqlheader hdr = {0};
     hdr.type = ntohl(h);
     int rc;
-    pthread_mutex_lock(&clnt->write_lock);
+    lock_client_write_lock(clnt);
     if ((rc = sbuf2write((char *)&hdr, sizeof(hdr), clnt->sb)) != sizeof(hdr))
         goto done;
     if ((rc = sbuf2flush(clnt->sb)) < 0)
         goto done;
     rc = 0;
 done:
-    pthread_mutex_unlock(&clnt->write_lock);
+    unlock_client_write_lock(clnt);
     return rc;
 }
 
@@ -404,7 +405,7 @@ static int newsql_response_int(struct sqlclntstate *clnt,
     hdr.length = ntohl(len);
 
     int rc;
-    pthread_mutex_lock(&clnt->write_lock);
+    lock_client_write_lock(clnt);
     if ((rc = sbuf2write((char *)&hdr, sizeof(hdr), clnt->sb)) != sizeof(hdr))
         goto done;
     if ((rc = sbuf2write((char *)buf, len, clnt->sb)) != len)
@@ -413,7 +414,7 @@ static int newsql_response_int(struct sqlclntstate *clnt,
         goto done;
     rc = 0;
 done:
-    pthread_mutex_unlock(&clnt->write_lock);
+    unlock_client_write_lock(clnt);
     return rc;
 }
 
@@ -431,7 +432,7 @@ static int get_col_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
     if (sql_query->n_types) {
         type = sql_query->types[col];
     } else if (stmt) {
-        type = sqlite3_column_type(stmt, col);
+        type = column_type(clnt, stmt, col);
     }
     if (type == SQLITE_NULL) {
         type = typestr_to_type(sqlite3_column_decltype(stmt, col));
@@ -492,7 +493,7 @@ extern int gbl_return_long_column_names;
 
 static int newsql_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 {
-    int ncols = sqlite3_column_count(stmt);
+    int ncols = column_count(clnt, stmt);
     struct newsql_appdata *appdata = get_newsql_appdata(clnt, ncols);
     CDB2SQLRESPONSE__Column cols[ncols];
     CDB2SQLRESPONSE__Column *value[ncols];
@@ -523,7 +524,7 @@ static int newsql_columns_lua(struct sqlclntstate *clnt,
 {
     int ncols = arg->ncols;
     sqlite3_stmt *stmt = arg->stmt;
-    if (stmt && sqlite3_column_count(stmt) != ncols) {
+    if (stmt && column_count(clnt, stmt) != ncols) {
         return -1;
     }
     struct newsql_appdata *appdata = get_newsql_appdata(clnt, ncols);
@@ -596,9 +597,9 @@ static int newsql_error(struct sqlclntstate *c, char *r, int e)
 
 static int newsql_flush(struct sqlclntstate *clnt)
 {
-    pthread_mutex_lock(&clnt->write_lock);
+    lock_client_write_lock(clnt);
     int rc = sbuf2flush(clnt->sb);
-    pthread_mutex_unlock(&clnt->write_lock);
+    unlock_client_write_lock(clnt);
     return rc < 0;
 }
 
@@ -608,7 +609,7 @@ static int newsql_heartbeat(struct sqlclntstate *clnt)
         return 0;
     if (!clnt->ready_for_heartbeats)
         return 0;
-    return newsql_send_hdr(clnt, 0);
+    return newsql_send_hdr(clnt, RESPONSE_HEADER__SQL_RESPONSE_HEARTBEAT);
 }
 
 static int newsql_save_postponed_row(struct sqlclntstate *clnt,
@@ -635,14 +636,14 @@ static int newsql_send_postponed_row(struct sqlclntstate *clnt)
     char *row = (char *)appdata->postponed->row;
     size_t len = appdata->postponed->len;
     int rc;
-    pthread_mutex_lock(&clnt->write_lock);
+    lock_client_write_lock(clnt);
     if ((rc = sbuf2write(hdr, hdrsz, clnt->sb)) != hdrsz)
         goto done;
     if ((rc = sbuf2write(row, len, clnt->sb)) != len)
         goto done;
     rc = 0;
 done:
-    pthread_mutex_unlock(&clnt->write_lock);
+    unlock_client_write_lock(clnt);
     return rc;
 }
 
@@ -726,7 +727,7 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
     if (stmt == NULL) {
         return newsql_send_postponed_row(clnt);
     }
-    int ncols = sqlite3_column_count(stmt);
+    int ncols = column_count(clnt, stmt);
     struct newsql_appdata *appdata = get_newsql_appdata(clnt, ncols);
     assert(ncols == appdata->count);
     int flip = 0;
@@ -741,35 +742,35 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
     for (int i = 0; i < ncols; ++i) {
         value[i] = &cols[i];
         cdb2__sqlresponse__column__init(&cols[i]);
-        if (sqlite3_column_type(stmt, i) == SQLITE_NULL) {
+        if (column_type(clnt, stmt, i) == SQLITE_NULL) {
             newsql_null(cols, i);
             continue;
         }
         int type = appdata->type[i];
         switch (type) {
         case SQLITE_INTEGER: {
-            int64_t i64 = sqlite3_column_int64(stmt, i);
+            int64_t i64 = column_int64(clnt, stmt, i);
             newsql_integer(cols, i, i64, flip);
             break;
         }
         case SQLITE_FLOAT: {
-            double d = sqlite3_column_double(stmt, i);
+            double d = column_double(clnt, stmt, i);
             newsql_double(cols, i, d, flip);
             break;
         }
         case SQLITE_TEXT: {
-            cols[i].value.len = sqlite3_column_bytes(stmt, i) + 1;
-            cols[i].value.data = (uint8_t *)sqlite3_column_text(stmt, i);
+            cols[i].value.len = column_bytes(clnt, stmt, i) + 1;
+            cols[i].value.data = (uint8_t *)column_text(clnt, stmt, i);
             break;
         }
         case SQLITE_BLOB: {
-            cols[i].value.len = sqlite3_column_bytes(stmt, i);
-            cols[i].value.data = (uint8_t *)sqlite3_column_blob(stmt, i);
+            cols[i].value.len = column_bytes(clnt, stmt, i);
+            cols[i].value.data = (uint8_t *)column_blob(clnt, stmt, i);
             break;
         }
         case SQLITE_DATETIME:
         case SQLITE_DATETIMEUS: {
-            const dttz_t *d = sqlite3_column_datetime(stmt, i);
+            const dttz_t *d = column_datetime(clnt, stmt, i);
             cdb2_client_datetime_t *c = alloca(sizeof(*c));
             if (convDttz2ClientDatetime(d, stmt_tzname(stmt), c, type) != 0) {
                 char *e =
@@ -796,14 +797,14 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
         }
         case SQLITE_INTERVAL_YM: {
             const intv_t *val =
-                sqlite3_column_interval(stmt, i, SQLITE_AFF_INTV_MO);
+                column_interval(clnt, stmt, i, SQLITE_AFF_INTV_MO);
             newsql_ym(cols, i, val, flip);
             break;
         }
         case SQLITE_INTERVAL_DS:
         case SQLITE_INTERVAL_DSUS: {
             const intv_t *val =
-                sqlite3_column_interval(stmt, i, SQLITE_AFF_INTV_SE);
+                column_interval(clnt, stmt, i, SQLITE_AFF_INTV_SE);
             newsql_ds(cols, i, val, flip);
             break;
         }
@@ -1047,12 +1048,14 @@ static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
 static int newsql_ping_pong(struct sqlclntstate *clnt)
 {
     struct newsqlheader hdr;
-    if (sbuf2fread((void *)&hdr, sizeof(hdr), 1, clnt->sb) != 1) {
-        return -1;
-    }
-    if (ntohl(hdr.type) != RESPONSE_HEADER__SQL_RESPONSE_PONG) {
-        return -2;
-    }
+    int rc, r, w, timeout = 0;
+    sbuf2gettimeout(clnt->sb, &r, &w);
+    sbuf2settimeout(clnt->sb, 1000, w);
+    rc = sbuf2fread_timeout((void *)&hdr, sizeof(hdr), 1, clnt->sb, &timeout);
+    sbuf2settimeout(clnt->sb, r, w);
+    if (timeout) return -1;
+    if (rc != 1) return -2;
+    if (ntohl(hdr.type) != RESPONSE_HEADER__SQL_RESPONSE_PONG) return -3;
     return 0;
 }
 
@@ -1190,6 +1193,16 @@ static int newsql_override_count(struct sqlclntstate *clnt)
     return appdata->sqlquery->n_types;
 }
 
+static int newsql_override_type(struct sqlclntstate *clnt, int i)
+{
+    struct newsql_appdata *appdata = clnt->appdata;
+    int n = appdata->sqlquery->n_types;
+    if (n && i >= 0 && i < n) {
+        return appdata->sqlquery->types[i];
+    }
+    return 0;
+}
+
 static int newsql_clr_cnonce(struct sqlclntstate *clnt)
 {
     struct newsql_appdata *appdata = clnt->appdata;
@@ -1318,6 +1331,11 @@ static int newsql_get_high_availability(struct sqlclntstate *clnt)
         }
     }
     return is_snap_uid_retry(clnt);
+}
+
+static int newsql_has_parallel_sql(struct sqlclntstate *clnt)
+{
+    return !gbl_dohsql_disable;
 }
 
 static void newsql_add_steps(struct sqlclntstate *clnt, double steps)
@@ -1791,10 +1809,13 @@ static int do_query_on_master_check(struct dbenv *dbenv,
     return 0;
 }
 
+int gbl_send_failed_dispatch_message = 0;
+
 static CDB2QUERY *read_newsql_query(struct dbenv *dbenv,
                                     struct sqlclntstate *clnt, SBUF2 *sb)
 {
     struct newsqlheader hdr;
+    CDB2QUERY *query = NULL;
     int rc;
     int pre_enabled = 0;
     int was_timeout = 0;
@@ -1802,7 +1823,7 @@ static CDB2QUERY *read_newsql_query(struct dbenv *dbenv,
 retry_read:
     rc = sbuf2fread_timeout((char *)&hdr, sizeof(hdr), 1, sb, &was_timeout);
     if (rc != 1) {
-        if (was_timeout) {
+        if (was_timeout && gbl_send_failed_dispatch_message) {
             handle_failed_dispatch(clnt, "Socket read timeout.");
         }
         return NULL;
@@ -1885,18 +1906,18 @@ retry_read:
         return NULL;
     }
 
-    assert(errno == 0);
     char *p;
     if (bytes <= gbl_blob_sz_thresh_bytes)
         p = malloc(bytes);
     else
         while (1) { // big buffer. most certainly it is a huge blob.
+            errno = 0; /* precondition: well-defined before call that may set */
             p = comdb2_timedmalloc(blobmem, bytes, 1000);
 
             if (p != NULL || errno != ETIMEDOUT)
                 break;
 
-            pthread_mutex_lock(&clnt->wait_mutex);
+            Pthread_mutex_lock(&clnt->wait_mutex);
             clnt->heartbeat = 1;
             if (clnt->ready_for_heartbeats == 0) {
                 pre_enabled = 1;
@@ -1904,13 +1925,13 @@ retry_read:
             }
             newsql_heartbeat(clnt);
             fdb_heartbeats(clnt);
-            pthread_mutex_unlock(&clnt->wait_mutex);
+            Pthread_mutex_unlock(&clnt->wait_mutex);
         }
 
     if (pre_enabled) {
-        pthread_mutex_lock(&clnt->wait_mutex);
+        Pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
-        pthread_mutex_unlock(&clnt->wait_mutex);
+        Pthread_mutex_unlock(&clnt->wait_mutex);
         pre_enabled = 0;
     }
 
@@ -1926,9 +1947,8 @@ retry_read:
         return NULL;
     }
 
-    CDB2QUERY *query;
-    assert(errno == 0); // precondition for the while loop
     while (1) {
+        errno = 0; /* precondition: well-defined before call that may set */
         query = cdb2__query__unpack(&pb_alloc, bytes, (uint8_t *)p);
         // errno can be set by cdb2__query__unpack
         // we retry malloc on out of memory condition
@@ -1936,7 +1956,7 @@ retry_read:
         if (query || errno != ETIMEDOUT)
             break;
 
-        pthread_mutex_lock(&clnt->wait_mutex);
+        Pthread_mutex_lock(&clnt->wait_mutex);
         if (clnt->heartbeat == 0)
             clnt->heartbeat = 1;
         if (clnt->ready_for_heartbeats == 0) {
@@ -1945,23 +1965,26 @@ retry_read:
         }
         newsql_heartbeat(clnt);
         fdb_heartbeats(clnt);
-        pthread_mutex_unlock(&clnt->wait_mutex);
+        Pthread_mutex_unlock(&clnt->wait_mutex);
     }
     free(p);
 
     if (pre_enabled) {
-        pthread_mutex_lock(&clnt->wait_mutex);
+        Pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
-        pthread_mutex_unlock(&clnt->wait_mutex);
+        Pthread_mutex_unlock(&clnt->wait_mutex);
     }
 
-    if (!query || errno != 0) {
+    if (!query) return NULL;
+    if (errno != 0) {
+        cdb2__query__free_unpacked(query, &pb_alloc);
         return NULL;
     }
 
     // one of dbinfo or sqlquery must be non-NULL
     if (unlikely(!query->dbinfo && !query->sqlquery)) {
         cdb2__query__free_unpacked(query, &pb_alloc);
+        query = NULL;
         goto retry_read;
     }
 
@@ -1997,6 +2020,7 @@ retry_read:
             send_dbinforesponse(dbenv, sb);
         }
         cdb2__query__free_unpacked(query, &pb_alloc);
+        query = NULL;
         goto retry_read;
     }
 
@@ -2024,6 +2048,7 @@ retry_read:
         if (client_supports_ssl) {
             newsql_send_hdr(clnt, RESPONSE_HEADER__SQL_RESPONSE_SSL);
             cdb2__query__free_unpacked(query, &pb_alloc);
+            query = NULL;
             goto retry_read;
         } else {
             newsql_error(clnt, "The database requires SSL connections.",
@@ -2104,10 +2129,11 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     clnt.tzname[0] = '\0';
     clnt.admin = arg->admin;
 
-    pthread_mutex_init(&clnt.wait_mutex, NULL);
-    pthread_cond_init(&clnt.wait_cond, NULL);
-    pthread_mutex_init(&clnt.write_lock, NULL);
-    pthread_mutex_init(&clnt.dtran_mtx, NULL);
+    Pthread_mutex_init(&clnt.wait_mutex, NULL);
+    Pthread_cond_init(&clnt.wait_cond, NULL);
+    Pthread_mutex_init(&clnt.write_lock, NULL);
+    Pthread_cond_init(&clnt.write_cond, NULL);
+    Pthread_mutex_init(&clnt.dtran_mtx, NULL);
 
     if (!clnt.admin &&
         active_appsock_conns >
@@ -2179,6 +2205,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         bzero(&sqlthd->clnt->conn, sizeof(struct conninfo));
         sqlthd->clnt->origin[0] = 0;
     }
+
+    sbuf2setclnt(sb, &clnt);
 
     while (query) {
         sql_query = query->sqlquery;
@@ -2323,6 +2351,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     }
 
 done:
+    sbuf2setclnt(sb, NULL);
+
     if (clnt.ctrl_sqlengine == SQLENG_INTRANS_STATE) {
         handle_sql_intrans_unrecoverable_error(&clnt);
     }
@@ -2360,10 +2390,11 @@ done:
     close_appsock(sb);
     cleanup_clnt(&clnt);
 
-    pthread_mutex_destroy(&clnt.wait_mutex);
-    pthread_cond_destroy(&clnt.wait_cond);
-    pthread_mutex_destroy(&clnt.write_lock);
-    pthread_mutex_destroy(&clnt.dtran_mtx);
+    Pthread_mutex_destroy(&clnt.wait_mutex);
+    Pthread_cond_destroy(&clnt.wait_cond);
+    Pthread_mutex_destroy(&clnt.write_lock);
+    Pthread_cond_destroy(&clnt.write_cond);
+    Pthread_mutex_destroy(&clnt.dtran_mtx);
 
     return APPSOCK_RETURN_OK;
 }

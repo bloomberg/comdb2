@@ -25,6 +25,8 @@
 #include "sc_logic.h"
 #include "sc_csc2.h"
 
+extern int gbl_is_physical_replicant;
+
 static inline int adjust_master_tables(struct dbtable *newdb, const char *csc2,
                                        struct ireq *iq, void *trans)
 {
@@ -55,7 +57,7 @@ static inline int adjust_master_tables(struct dbtable *newdb, const char *csc2,
 static inline int get_db_handle(struct dbtable *newdb, void *trans)
 {
     int bdberr;
-    if (newdb->dbenv->master == gbl_mynode) {
+    if (newdb->dbenv->master == gbl_mynode && !gbl_is_physical_replicant) {
         /* I am master: create new db */
         newdb->handle = bdb_create_tran(
             newdb->tablename, thedb->basedir, newdb->lrl, newdb->nix,
@@ -69,7 +71,7 @@ static inline int get_db_handle(struct dbtable *newdb, void *trans)
             newdb->tablename, thedb->basedir, newdb->lrl, newdb->nix,
             (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
             newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
-            newdb->numblobs + 1, thedb->bdb_env, trans, &bdberr);
+            newdb->numblobs + 1, thedb->bdb_env, trans, 0, &bdberr);
         open_auxdbs(newdb, 0);
     }
 
@@ -164,7 +166,8 @@ int add_table_to_environment(char *table, const char *csc2,
 
     if ((rc = get_db_handle(newdb, trans))) goto err;
 
-    if (newdb->dbenv->master != gbl_mynode) {
+    /* must re add the dbs if you're a physical replicant */
+    if (newdb->dbenv->master != gbl_mynode || gbl_is_physical_replicant) {
         /* This is a replicant calling scdone_callback */
         add_db(newdb);
     }
@@ -217,29 +220,30 @@ int do_add_table(struct ireq *iq, struct schema_change_type *s,
 
     if ((rc = check_option_coherency(s, NULL, NULL))) return rc;
 
-    if ((db = get_dbtable_by_name(s->table))) {
-        sc_errf(s, "Table %s already exists\n", s->table);
-        logmsg(LOGMSG_ERROR, "Table %s already exists\n", s->table);
+    if ((db = get_dbtable_by_name(s->tablename))) {
+        sc_errf(s, "Table %s already exists\n", s->tablename);
+        logmsg(LOGMSG_ERROR, "Table %s already exists\n", s->tablename);
         return SC_TABLE_ALREADY_EXIST;
     }
 
-    pthread_mutex_lock(&csc2_subsystem_mtx);
-    rc = add_table_to_environment(s->table, s->newcsc2, s, iq, trans);
-    pthread_mutex_unlock(&csc2_subsystem_mtx);
+    Pthread_mutex_lock(&csc2_subsystem_mtx);
+    rc = add_table_to_environment(s->tablename, s->newcsc2, s, iq, trans);
+    Pthread_mutex_unlock(&csc2_subsystem_mtx);
     if (rc) {
         sc_errf(s, "error adding new table locally\n");
         return rc;
     }
 
-    iq->usedb = db->sc_to = s->db = db = s->newdb;
+    iq->usedb = s->db = db = s->newdb;
+    db->sc_to = db;
     db->odh = s->headers;
     db->inplace_updates = s->ip_updates;
-    db->version = 1;
+    db->schema_version = 1;
 
     /* compression algorithms set to 0 for new table - this
        will have to be changed manually by the operator */
     set_bdb_option_flags(db, s->headers, s->ip_updates, s->instant_sc,
-                         db->version, s->compress, s->compress_blobs, 1);
+                         db->schema_version, s->compress, s->compress_blobs, 1);
 
     return 0;
 }
@@ -261,7 +265,7 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
     }
 
     sc_printf(s, "Start add table transaction ok\n");
-    rc = load_new_table_schema_tran(thedb, tran, s->table, s->newcsc2);
+    rc = load_new_table_schema_tran(thedb, tran, s->tablename, s->newcsc2);
     if (rc != 0) {
         sc_errf(s, "error recording new table schema\n");
         return rc;
