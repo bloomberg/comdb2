@@ -58,7 +58,6 @@ sc_resume
 # 'make all'. These tests however can be run individually.
 
 DISABLED TESTS:
-deadlock_policy.test
 overflowblobs.test        -- timesout
 halt_processor_tds.test   -- requires a cluster
 rowlocks_blkseq.test

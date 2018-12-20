@@ -1,153 +1,228 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
-export TMPDIR=${TMPDIR:-/tmp}
+# deadlock policy tester for the cdb2tcm testsuite
 
-# args
-a_dbn=$1
+set -x
 
-# find input files
-files=$( find . -type f -name \*.req | sort )
+# arguments 
+dbnm=$1
 
-# counter 
-nfiles=0
 
-# last batch
-last_batch=
+upd_f=upd
 
-# post-process
-pproc=cat
+keys[0]="a"
+keys[1]="b"
+keys[2]="c"
 
-# testcase output
-testcase_output=
+function gen {
+    db=$1
+    count=$2
+    i=1
+    while [[ $i -le $count ]]; do
+        echo "insert into t1(a, b, c) values($i, $i, $i)"
+        i=$(($i+1))
+    done | cdb2sql -s ${CDB2_OPTIONS} $db default - >/dev/null
+}
 
-# expected output
-expected_output=
+function upd {
+    db=$1
+    count=$(cdb2sql --tabs ${CDB2_OPTIONS} $db default 'select max(a) from t1')
+    while [ ! -f eotest.fl ] ; do
+        val=$(($RANDOM % $count))
+        key=$(($RANDOM % 3))
+        echo "select * from t1 where "${keys[$key]}" = $val limit 1"
+        echo "update t1 set a=$val where "${keys[$key]}" = $val"
+        ls -al eotest.fl >> debug.txt
+        date >> debug.txt
+        sleep 0.01
+    done | cdb2sql -s ${CDB2_OPTIONS} $db default - &> run_${RANDOM}.txt
+}
 
-# fastinit
-function fastinit
+
+# fork & timeout an executable after a period of time
+function run_timeout
 {
-    # print debug trace
-    [[ "$debug" == "1" ]] && set -x
+    # local vars
+    typeset st
+    typeset et
+    typeset elapsed=0
+    typeset cpid=0
 
-    # args
-    typeset db=$1
-    typeset iter=$2
-    typeset tbl
+    # arguments
+    exe=$1
+    args=$2
+    tmout=$3
 
-    # flagged?
-    if [[ ! -f $iter.fastinit ]]; then
-        return 0
+    # SECONDS returns the number of seconds since the shell was invoked
+    st=$SECONDS
+    
+    # run command and grab pid
+    $exe $args > /dev/null 2>&1 &
+    cpid=$!
+
+    echo verify pid = $cpid >> pidverify.txt
+    # verify pid
+    ps -p $cpid >/dev/null 2>&1
+
+    while [[ $? == 0 && $elapsed -lt $tmout ]] ; do
+
+        sleep 1
+
+        # check to see if it's time to break out of the loop
+        et=$SECONDS
+        elapsed=$(( et - st ))
+
+        # verify pid
+        ps -p $cpid >/dev/null 2>&1
+
+    done
+
+    if [[ $elapsed -ge $tmout ]]; then
+
+        touch eotest.fl
+        sleep 2
+
+        #killing $exe because we timed out $elapsed -ge $tmout"
+        kill -9 $cpid >/dev/null 2>&1 
+        return 1
+
     fi
 
-    # fastinit
-    for tbl in $(cat $iter.fastinit) ; do
-        echo "cdb2sql ${CDB2_OPTIONS} $db default \"truncate $tbl\""
-        cdb2sql ${CDB2_OPTIONS} $db default "truncate $tbl"
+    # normal end
+    return 0
+}
+
+
+# run several instances of a program for a period of time
+function spawn_instances
+{
+    # local vars
+    typeset cnt=0
+
+    # arguments
+    exe=$1
+    args=$2
+    tmout=$3
+    inst=$4
+
+    # spawn several instances 
+    while [[ $cnt -lt $inst ]]; do
+
+        run_timeout $exe $args $tmout &
+        let cnt=cnt+1
+
     done
 
     return 0
 }
 
-# run tool
-function runtool
+
+# validate the logfile output of this test
+function validate_scon
 {
-    # print debug trace
-    [[ "$debug" == "1" ]] && set -x
+    # local vars
+    typeset maxr=0
+    typeset cmd
+    typeset failcnt=0
+    typeset ln
+    typeset kpln
+    typeset cntscn=0
 
-    # args
-    typeset tool=$1
-    typeset args=$2
-    typeset db=$3
-    typeset log=$4
+    # arguments
+    dbname=$1
+    log=$2
+    failpct=$3
+    failmx=$4
+    minscn=$5
 
-    # run
-    $tool "$args" $db $log
-}
+    # tail the logfile
+    while read ln ; do 
 
-# Iterate through input files
-for testcase in $files ; do
+        # check for an n_reqs line - verify the retries
+        if [[ "$ln" == *"nnewsql"* ]]; then
 
-    # increment counter
-    let nfiles=nfiles+1
+            xxx=${ln#*nnewsql}
+            reqs=$(set - $xxx ; echo $1)
 
-    # cleanup testcase
-    testcase=${testcase##*/}
-    
-    # see if the prefix has changed
-    new_batch=${testcase%%_*}
+            #echo nreqs $reqs
 
-    # set output
-    output=$testcase.res
-    
-    # fastinit if requested
-    if [[ $new_batch != $last_batch ]] ; then
+            xxx=${ln#*n_retries}
+            if [[ "$xxx" != "$ln" ]]; then
+                retries=$(set - $xxx ; echo $1)
+            else
+                retries=0
+            fi
 
-        fastinit $a_dbn $new_batch
-        last_batch=$new_batch
+            let cntscn=cntscn+1
+
+            # if retries is more than half requests fail the test
+            flmxx=$(echo "$reqs * $failpct" | bc)
+            flmx=${flmxx%%.*}
+
+            if [[ $retries -gt $flmx ]]; then
+                let failcnt=failcnt+1
+                kpln="$kpln$ln"
+            fi
+        fi
+
+        # check for long request trace if we're failing on that
+        if [[ "$ln" == *"LONG REQUEST"* ]] ; then
+
+            let failcnt=failcnt+1
+            kpln="$kpln$ln"
+        fi
+
+
+    done < $log 
+    # make sure that we have the minimal number of scon lines
+    if [[ $cntscn -lt $minscn ]] ; then
+
+        echo "TEST FAILED"
+        echo " "
+        echo "> I needed to parse at least $minscn 'scon' lines"
+        echo "> I only saw $cntscn 'scon' lines"
+        echo "> Am I reading the correct logfile?"
+        echo " "
+        return 1
 
     fi
 
-    # Check for run-stepper
-    if [[ -f $new_batch.runstepper ]] ; then
+    # chk tolerance threshold & fail the test
+    if [[ $failcnt -gt $failmx ]] ; then
 
-        runstepper $a_dbn $testcase $output
-
-    elif [[ -f $new_batch.tool ]] ; then
-
-        tool=$( cat $new_batch.tool )
-        args=$( cat $new_batch.args )
-        runtool $tool "$args" $a_dbn ${TESTDIR}/logs/${DBNAME}.db > $output 2>&1
-
-    else
-
-        # Be verbose
-        echo "> cdb2sql ${CDB2_OPTIONS} $a_dbn default - < $testcase"
-        cmd="cdb2sql ${CDB2_OPTIONS} $a_dbn default - < $testcase > $output 2>&1"
-        echo $cmd
-
-        # run command
-        eval $cmd
-
-    fi
-
-    # post-process
-    if [[ -f $new_batch.post ]]; then
-
-        # zap file
-        > $output.postprocess
-
-        # collect post-processing tool
-        pproc=$(cat $new_batch.post)
-
-        # post-process output
-        $pproc $output >> $output.postprocess
-
-        # copy post-processed output to original
-        mv $output.postprocess $output
-    fi
-
-    # get testcase output
-    testcase_output=$(cat $output)
-
-    # get expected output
-    expected_output=$(cat $testcase.out)
-
-    # verify 
-    if [[ "$testcase_output" != "$expected_output" ]]; then
-
-        echo "  ^^^^^^^^^^^^"
-        echo "The above testcase (${testcase}) has failed!!!"
-        echo " "
-        echo "Use 'diff <expected-output> <my-output>' to see why:"
-        echo "> diff ${PWD}/{$testcase.out,$output}"
-        echo " "
-        diff $testcase.out $output
-        echo " "
+        echo "TEST FAILED"
+        echo "$kpln"
         exit 1
 
     fi
 
+} 
+
+cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':'`
+
+for node in $cluster ; do
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('scon')" &> /dev/null
 done
+
+
+# generate 10000 records of input data
+gen $dbnm 10000
+
+
+# start 40 updaters - allow them to run for a minute
+spawn_instances $upd_f $dbnm 60 40
+
+# sleep for a bit
+sleep 60
+
+# use the correct logfile
+log=${TESTDIR}/logs/${DBNAME}.db
+if [[ -n "$CLUSTER" ]] ; then
+    log=`grep -c nnewsql ${TESTDIR}/logs/${DBNAME}.*.db | sort --field-separator=':' --key='2' -n -r | head -1 | cut -f1 -d':'`
+fi
+
+# validate the log
+validate_scon $dbnm $log .80 20 30
 
 echo "Testcase passed."
