@@ -3938,7 +3938,7 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
             &pBt->temp_tables, rootPageNumToTempHashKey(iTable));
 
         if (pEntry != NULL) {
-            rc = releaseTempTableRef(pEntry->value);
+            rc = releaseTempTableRef(pBt, iTable, pEntry->value);
         } else {
             rc = SQLITE_OK;
         }
@@ -6377,7 +6377,9 @@ skip:
                 pCur->rootpage));
 
             if (pEntry != NULL) {
-                rc = releaseTempTableRef(pEntry->value);
+                rc = releaseTempTableRef(
+                    pCur->bt, pCur->rootpage, pEntry->value
+                );
                 if (rc != SQLITE_OK) {
                     logmsg(LOGMSG_ERROR,
                            "%s: releaseTempTableRef bt %p, tab %d, rc %d\n",
