@@ -609,6 +609,7 @@ int apply(char *fromdb, char *todb) {
 int main(int argc, char *argv[]) {
     char *fromdb, *todb;
 
+    //setenv("CDB2_DEBUG", "1", 1);
     if (getenv("CDB2_CONFIG"))
         cdb2_set_comdb2db_config(getenv("CDB2_CONFIG"));
 
