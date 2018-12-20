@@ -3195,7 +3195,6 @@ static int releaseTempTableRef(
 int sqlite3BtreeClose(Btree *pBt)
 {
     int rc = SQLITE_OK;
-    int bdberr;
     BtCursor *pCur;
     struct sql_thread *thd = pthread_getspecific(query_info_key);
 
@@ -3923,7 +3922,6 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
 {
     int rc = UNIMPLEMENTED;
     *piMoved = 0;
-    int bdberr;
     reqlog_logf(pBt->reqlogger, REQL_TRACE,
                 " sqlite3BtreeDropTable(pBt %d, root %d)       = %s\n",
                 pBt->btreeid, iTable, sqlite3ErrStr(rc));
