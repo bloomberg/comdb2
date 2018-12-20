@@ -1995,7 +1995,7 @@ struct fileid_track {
 enum {
     MINTRUNCATE_START = 0,
     MINTRUNCATE_SCAN = 1,
-    MINTURNCATE_READY = 2
+    MINTRUNCATE_READY = 2
 };
 
 enum {
@@ -2485,7 +2485,7 @@ struct __db_env {
 
 	/* These fields are for changes to recovery code. */ 
 	struct fileid_track fileid_track;
-	Pthread_mutex_t mintruncate_lk;
+	pthread_mutex_t mintruncate_lk;
     int mintruncate_state;
 	LISTC_T(struct mintruncate_entry) mintruncate;
     DB_LSN last_dbreg_start;

@@ -44,6 +44,9 @@ static const char revid[] =
 #include "dbinc/db_am.h"
 #include "dbinc/db_swap.h"
 #include "dbinc_auto/db_auto.h"
+#include <locks_wrap.h>
+
+
 
 #include <printformats.h>
 
@@ -544,15 +547,15 @@ __dbenv_min_truncate_lsn_timestamp(dbenv, lowfile, outlsn, outtime)
 		goto err;
 
 	rec.flags = DB_DBT_REALLOC;
-	if ((ret = __log_c_get(logc, &lsn, &rec, DB_SET)) != 0 ||
+	if ((ret = __log_c_get(logc, outlsn, &rec, DB_SET)) != 0 ||
 			(ret = __txn_ckp_read(dbenv, rec.data, &ckp_args)) != 0) {
 		goto err;
 	}
 
-	*outtime = ckp_args.timestamp;
+	*outtime = ckp_args->timestamp;
 	free(ckp_args);
 
-	Pthread_mutex_lock(dbenv->mintruncate_lk);
+	Pthread_mutex_lock(&dbenv->mintruncate_lk);
 
 	/* Find first suitable dbreg-start */
     while ((mt = LISTC_BOT(&dbenv->mintruncate)) != NULL &&
@@ -576,7 +579,7 @@ __dbenv_min_truncate_lsn_timestamp(dbenv, lowfile, outlsn, outtime)
 		*outtime = mt->timestamp;
 	}
 
-	Pthread_mutex_unlock(dbenv->mintruncate_lk);
+	Pthread_mutex_unlock(&dbenv->mintruncate_lk);
 	
 err:
 	return ret;
@@ -595,11 +598,11 @@ int __build_min_truncate_map(dbenv)
 	DB_LOGC *logc = NULL;
 	int ret = 0;
 
-	Pthread_mutex_lock(dbenv->mintruncate_lk);
+	Pthread_mutex_lock(&dbenv->mintruncate_lk);
 	assert(dbenv->mintruncate_state == MINTRUNCATE_START);
 	assert(IS_ZERO_LSN(&dbenv->last_dbreg_start));
 	assert(listc_size(&dbenv->mintruncate) == 0);
-	Pthread_mutex_unlock(dbenv->mintruncate_lk);
+	Pthread_mutex_unlock(&dbenv->mintruncate_lk);
 	dbenv->mintruncate_state = MINTRUNCATE_SCAN;
 
 	if ((ret = __log_cursor(dbenv, &logc)) != 0)
@@ -609,7 +612,7 @@ int __build_min_truncate_map(dbenv)
 	for (ret = __log_c_get(logc, &lsn, &rec, DB_FIRST);
 			ret == 0 ; ret = __log_c_get(logc, &lsn, &rec, DB_NEXT)) {
 
-		LOGCOPY_32(&type, logrec.data);
+		LOGCOPY_32(&type, rec.data);
 		if (type ==  DB___db_debug) {
 			if ((ret = __db_debug_read(dbenv, rec.data, &debug_args))!=0)
 				abort();
@@ -623,16 +626,17 @@ int __build_min_truncate_map(dbenv)
 				dbenv->last_dbreg_start = newmt->lsn = lsn;
 				listc_atl(&dbenv->mintruncate, newmt);
 			}
-			Pthread_mutex_unlock(dbenv->mintruncate_lk);
+			Pthread_mutex_unlock(&dbenv->mintruncate_lk);
 		}
 
-		if (type == DB___txn_ckp && last_dbreg_lsn.file > 0) {
-			Pthread_mutex_lock(dbenv->mintruncate_lk);
+		if (type == DB___txn_ckp && dbenv->last_dbreg_start.file > 0) {
+			Pthread_mutex_lock(&dbenv->mintruncate_lk);
 			mt = LISTC_TOP(&dbenv->mintruncate);
 			if (mt->type == MINTRUNCATE_DBREG_START) {
 				if ((ret = __txn_ckp_read(dbenv, rec.data, &ckp_args)) != 0)
 					abort();
-				if (log_compare(ckp_args->ckp_lsn, &last_dbreg_lsn) >= 0) {
+				if (log_compare(&ckp_args->ckp_lsn,
+                            &dbenv->last_dbreg_start) >= 0) {
 					newmt = malloc(sizeof(*newmt));
 					newmt->type = MINTRUNCATE_CHECKPOINT;
 					newmt->timestamp = ckp_args->timestamp;
@@ -641,7 +645,7 @@ int __build_min_truncate_map(dbenv)
 				}
 				__os_free(dbenv, ckp_args);
 			}
-			Pthread_mutex_unlock(dbenv->mintruncate_lk);
+			Pthread_mutex_unlock(&dbenv->mintruncate_lk);
 		}
 	}
 
