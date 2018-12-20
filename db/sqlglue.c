@@ -3166,7 +3166,8 @@ static int releaseTempTableRef(
   struct temptable *pTbl,
   int *pbRemove
 ){
-    if (pTbl != NULL && --pTbl->nRef <= 0) {
+    assert( pTbl->nRef>0 );
+    if (pTbl != NULL && --pTbl->nRef == 0) {
         if (pTbl->tbl != NULL) {
             int rc;
             int bdberr = 0;
@@ -3260,7 +3261,7 @@ int sqlite3BtreeClose(Btree *pBt)
                     Pthread_mutex_unlock(thd->temp_table_mtx);
                     goto done;
                 }
-                free(pEntry);
+                removeTempTableEntry(&pBt->temp_tables, pEntry, pEntry->rootPg);
                 /* pEntry = NULL; */
             }
         }
@@ -3962,16 +3963,14 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
         struct temptable_entry *pEntry = sqlite3HashFind(
             &pBt->temp_tables, rootPageNumToTempHashKey(iTable));
 
-        int bRemove = 0;
-
         if (pEntry != NULL) {
-            rc = releaseTempTableRef(pBt, iTable, pEntry->value, &bRemove);
+            rc = releaseTempTableRef(pBt, iTable, pEntry->value, 0);
+            if (rc == SQLITE_OK) {
+                removeTempTableEntry(&pBt->temp_tables, pEntry, iTable);
+                /* pEntry = NULL; */
+            }
         } else {
             rc = SQLITE_OK;
-        }
-        if (rc == SQLITE_OK && bRemove) {
-            removeTempTableEntry(&pBt->temp_tables, pEntry, iTable);
-            /* pEntry = NULL; */
         }
 
         Pthread_mutex_unlock(thd->temp_table_mtx);
