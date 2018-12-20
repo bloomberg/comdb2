@@ -1610,5 +1610,8 @@ REGISTER_TUNABLE("send_failed_dispatch_message",
                  TUNABLE_BOOLEAN, &gbl_send_failed_dispatch_message,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("legacy_schema", "Only allow legacy compatible csc2 schema",
+                 TUNABLE_BOOLEAN, &gbl_legacy_schema,
+                 EXPERIMENTAL | INTERNAL | READEARLY, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */
