@@ -2105,6 +2105,7 @@ struct cluster_info {
 int bdb_fill_cluster_info(void **data, int *num_nodes);
 int bdb_min_truncate(bdb_state_type *bdb_state, int *file, int *offset,
                      int32_t *timestamp);
+int bdb_dump_mintruncate_list(bdb_state_type *bdb_state);
 
 void wait_for_sc_to_stop(const char *operation);
 void allow_sc_to_run(void);

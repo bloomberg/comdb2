@@ -4384,6 +4384,8 @@ clipper_usage:
             logmsg(LOGMSG_ERROR, "11    - DB_LOCK_YOUNGEST_EVER\n");
             logmsg(LOGMSG_ERROR, "12    - DB_LOCK_MINWRITE_EVER\n");
         }
+    } else if (tokcmp(tok, ltok, "dump_mintruncate") == 0) {
+        bdb_dump_mintruncate_list(thedb->bdb_env);
     } else if (tokcmp(tok, ltok, "detect") == 0) {
         bdb_detect(thedb->bdb_env);
     } else if (tokcmp(tok, ltok, "lsum") == 0) {

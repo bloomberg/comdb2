@@ -1,5 +1,5 @@
 /*
- * See the file LICENSE for redistribution information.
+after* See the file LICENSE for redistribution information.
  *
  * Copyright (c) 1996-2003
  *	Sleepycat Software.  All rights reserved.
@@ -2065,6 +2065,7 @@ struct __db_env {
     size_t (*get_log_header_size) __P((DB_ENV*)); 
     int (*rep_verify_match) __P((DB_ENV *, unsigned int, unsigned int, int));
     int (*min_truncate_lsn_timestamp) __P((DB_ENV *, int file, DB_LSN *outlsn, int32_t *timestamp));
+    int (*dump_mintruncate_list) __P((DB_ENV *));
 
 	/*
 	 * Currently, the verbose list is a bit field with room for 32
@@ -2487,6 +2488,7 @@ struct __db_env {
 	struct fileid_track fileid_track;
 	pthread_mutex_t mintruncate_lk;
     int mintruncate_state;
+    DB_LSN mintruncate_first;
 	LISTC_T(struct mintruncate_entry) mintruncate;
     DB_LSN last_dbreg_start;
 	db_recops recovery_pass;

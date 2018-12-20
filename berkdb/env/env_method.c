@@ -97,6 +97,7 @@ int __dbenv_apply_log __P((DB_ENV *, unsigned int, unsigned int, int64_t,
 size_t __dbenv_get_log_header_size __P((DB_ENV*)); 
 int __dbenv_rep_verify_match __P((DB_ENV*, unsigned int, unsigned int, int));
 int __dbenv_min_truncate_lsn_timestamp __P((DB_ENV*, int file, DB_LSN *lsn, int32_t *timestamp));
+int __dbenv_dump_mintruncate_list __P((DB_ENV*));
 
 /*
  * db_env_create --
@@ -273,6 +274,7 @@ __dbenv_init(dbenv)
         dbenv->get_log_header_size = __dbenv_get_log_header_size;
         dbenv->rep_verify_match = __dbenv_rep_verify_match;
         dbenv->min_truncate_lsn_timestamp = __dbenv_min_truncate_lsn_timestamp;
+        dbenv->dump_mintruncate_list = __dbenv_dump_mintruncate_list;
 #ifdef	HAVE_RPC
 	}
 #endif

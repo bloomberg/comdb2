@@ -219,6 +219,7 @@ comdb2_metric gbl_metrics[] = {
     {"standing_queue_time", "How long the database has had a standing queue",
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
      &stats.standing_queue_time, NULL},
+#if 0
     {"minimum_truncation_file", "Minimum truncation file", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.minimum_truncation_file, NULL},
     {"minimum_truncation_offset", "Minimum truncation offset",
@@ -226,7 +227,9 @@ comdb2_metric gbl_metrics[] = {
      &stats.minimum_truncation_offset, NULL},
     {"minimum_truncation_timestamp", "Minimum truncation timestamp",
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
-     &stats.minimum_truncation_timestamp, NULL}};
+     &stats.minimum_truncation_timestamp, NULL},
+#endif
+};
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
     switch (t) {
@@ -301,6 +304,10 @@ int refresh_metrics(void)
     int rc;
     const struct bdb_thread_stats *pstats;
     extern int active_appsock_conns; int bdberr;
+#if 0
+    int min_file, min_offset;
+    int32_t min_timestamp;
+#endif
 
     /* Check whether the server is exiting. */
     if (thedb->exiting || thedb->stopped)
@@ -431,10 +438,12 @@ int refresh_metrics(void)
 
     stats.standing_queue_time = metrics_standing_queue_time();
 
+#if 0
     bdb_min_truncate(thedb->bdb_env, &min_file, &min_offset, &min_timestamp);
     stats.minimum_truncation_file = min_file;
     stats.minimum_truncation_offset = min_offset;
     stats.minimum_truncation_timestamp = min_timestamp;
+#endif
     return 0;
 }
 

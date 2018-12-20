@@ -7497,6 +7497,7 @@ __rep_truncate_repdb(dbenv)
 	return (ret);
 }
 
+extern int __build_min_truncate_map(DB_ENV *dbenv);
 
 /*
  * __rep_verify_match --
@@ -7511,7 +7512,7 @@ int __dbenv_rep_verify_match(DB_ENV* dbenv, unsigned int file, unsigned int offs
 	DB_LSN lsnp;
     DB_REP* db_rep; 
     REP* rep; 
-    int ret;
+    int ret, rc;
 
     lsnp.file = file;
     lsnp.offset = offset;
@@ -7523,6 +7524,14 @@ int __dbenv_rep_verify_match(DB_ENV* dbenv, unsigned int file, unsigned int offs
     rep = db_rep->region;
     rp.gen = rep->gen; 
     rp.flags = 0;
+
+    /* Do a full scan if user wants to truncate to before the first
+     * checkpoint that we actually wrote */
+    if (dbenv->mintruncate_state != MINTRUNCATE_READY &&
+            log_compare(&lsnp, &dbenv->mintruncate_first) < 0) {
+        rc = __build_min_truncate_map(dbenv);
+        assert(rc || dbenv->mintruncate_state == MINTRUNCATE_READY);
+    }
     ret = __rep_verify_match(dbenv, &rp, rep->timestamp, online);
     return ret;
 }

@@ -530,6 +530,23 @@ __db_find_recovery_start(dbenv, outlsn)
 }
 
 int
+__dbenv_dump_mintruncate_list(dbenv)
+	DB_ENV *dbenv;
+{
+	struct mintruncate_entry *mt;
+	Pthread_mutex_lock(&dbenv->mintruncate_lk);
+	/* Find first suitable dbreg-start */
+    for (mt = LISTC_BOT(&dbenv->mintruncate); mt != NULL ;
+                mt = mt->lnk.prev) {
+        logmsg(LOGMSG_USER, "%s @ [%d:%d] timestamp %d\n",
+                mt->type == MINTRUNCATE_DBREG_START ? "dbreg" : "chkpt",
+                mt->lsn.file, mt->lsn.offset, mt->timestamp);
+    }
+	Pthread_mutex_unlock(&dbenv->mintruncate_lk);
+    return 0;
+}
+
+int
 __dbenv_min_truncate_lsn_timestamp(dbenv, lowfile, outlsn, outtime)
 	DB_ENV *dbenv;
 	int lowfile;
@@ -557,13 +574,20 @@ __dbenv_min_truncate_lsn_timestamp(dbenv, lowfile, outlsn, outtime)
 
 	Pthread_mutex_lock(&dbenv->mintruncate_lk);
 
-	/* Find first suitable dbreg-start */
-    while ((mt = LISTC_BOT(&dbenv->mintruncate)) != NULL &&
-            mt->lsn.file < lowfile) {
-        mt = listc_rbl(&dbenv->mintruncate);
-        free(mt);
+    if (!IS_ZERO_LSN(dbenv->mintruncate_first) && lowfile >
+            dbenv->mintruncate_first.file)
+        dbenv->mintruncate_state = MINTRUNCATE_READY;
+
+	/* Delete old entries if we've finished scanning */
+    if (dbenv->mintruncate_state == MINTRUNCATE_READY) {
+        while ((mt = LISTC_BOT(&dbenv->mintruncate)) != NULL &&
+                mt->lsn.file < lowfile) {
+            mt = listc_rbl(&dbenv->mintruncate);
+            free(mt);
+        }
     }
 
+    /* Find first DBREG >= lowfile */
 	for (mt = LISTC_BOT(&dbenv->mintruncate) ;
 			mt && (mt->type != MINTRUNCATE_DBREG_START || mt->lsn.file < lowfile) ;
 			mt = mt->lnk.prev)
@@ -588,21 +612,21 @@ err:
 int __build_min_truncate_map(dbenv)
 	DB_ENV *dbenv;
 {
-	struct mintruncate_entry *mt, *newmt;
+	struct mintruncate_entry *mt, *newmt, *prev_mt, *last_start = NULL;
 	u_int32_t type;
 	int optype = 0;
 	__txn_ckp_args *ckp_args;
 	__db_debug_args *debug_args;
 	DBT rec = {0};
-	DB_LSN lsn, last_ckp_lsn = {0};
+	DB_LSN lsn, last_ckp_lsn = {0}, last_dbreg_start = {0};
 	DB_LOGC *logc = NULL;
 	int ret = 0;
 
-	Pthread_mutex_lock(&dbenv->mintruncate_lk);
-	assert(dbenv->mintruncate_state == MINTRUNCATE_START);
-	assert(IS_ZERO_LSN(&dbenv->last_dbreg_start));
-	assert(listc_size(&dbenv->mintruncate) == 0);
-	Pthread_mutex_unlock(&dbenv->mintruncate_lk);
+    if (dbenv->mintruncate_state == MINTRUNCATE_READY) {
+        logmsg(LOGMSG_ERROR, "%s: already called\n", __func__);
+        return 0;
+    }
+
 	dbenv->mintruncate_state = MINTRUNCATE_SCAN;
 
 	if ((ret = __log_cursor(dbenv, &logc)) != 0)
@@ -619,29 +643,51 @@ int __build_min_truncate_map(dbenv)
 			LOGCOPY_32(&optype, debug_args->op.data);
 			__os_free(dbenv, debug_args);
 			Pthread_mutex_lock(&dbenv->mintruncate_lk);
-			if (optype == 2 && (dbenv->last_dbreg_start.file < lsn.file)) {
-				newmt = malloc(sizeof(*newmt));
-				newmt->type = MINTRUNCATE_DBREG_START;
-				newmt->timestamp = 0;
-				dbenv->last_dbreg_start = newmt->lsn = lsn;
-				listc_atl(&dbenv->mintruncate, newmt);
+
+            /* Only add if we've switched files */
+			if (optype == 2 && (last_dbreg_start.file < lsn.file)) {
+
+                /* Normal log traffic can be adding to the other end: find
+                 * correct place to insert */
+
+                for (prev_mt = NULL, mt = LISTC_TOP(&dbenv->mintruncate) ;
+                        mt && log_compare(&mt->lsn, &lsn) > 0;
+                        prev_mt = mt, mt = mt->lnk.next)
+                    ;
+                if (!mt || log_compare(&mt->lsn, &lsn) > 0) {
+                    last_start = newmt = malloc(sizeof(*newmt));
+                    newmt->type = MINTRUNCATE_DBREG_START;
+                    newmt->timestamp = 0;
+                    last_dbreg_start = newmt->lsn = lsn;
+                    if (!prev_mt)
+                        listc_atl(&dbenv->mintruncate, newmt);
+                    else
+                        listc_add_after(&dbenv->mintruncate, newmt, prev_mt);
+                } else if (mt) {
+                    assert(log_compare(&mt->lsn, &lsn) == 0);
+                    assert(mt->type == MINTRUNCATE_DBREG_START);
+                    break;
+                }
+
 			}
 			Pthread_mutex_unlock(&dbenv->mintruncate_lk);
 		}
 
-		if (type == DB___txn_ckp && dbenv->last_dbreg_start.file > 0) {
+		if (type == DB___txn_ckp && last_start) {
 			Pthread_mutex_lock(&dbenv->mintruncate_lk);
 			mt = LISTC_TOP(&dbenv->mintruncate);
 			if (mt->type == MINTRUNCATE_DBREG_START) {
 				if ((ret = __txn_ckp_read(dbenv, rec.data, &ckp_args)) != 0)
 					abort();
 				if (log_compare(&ckp_args->ckp_lsn,
-                            &dbenv->last_dbreg_start) >= 0) {
+                            &last_dbreg_start) >= 0) {
 					newmt = malloc(sizeof(*newmt));
 					newmt->type = MINTRUNCATE_CHECKPOINT;
 					newmt->timestamp = ckp_args->timestamp;
 					newmt->lsn = lsn;
-					listc_atl(&dbenv->mintruncate, newmt);
+					listc_add_after(&dbenv->mintruncate, newmt, last_start);
+                    /* Ignore checkpoints until I see another dbreg */
+                    last_start = NULL;
 				}
 				__os_free(dbenv, ckp_args);
 			}

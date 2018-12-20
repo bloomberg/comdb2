@@ -2371,6 +2371,8 @@ do_ckp:
             newmt->timestamp = timestamp;
             newmt->lsn = ckp_lsn;
             listc_atl(&dbenv->mintruncate, newmt);
+            if (dbenv->mintruncate_first.file == 0)
+                dbenv->mintruncate_first = ckp_lsn;
         }
         Pthread_mutex_unlock(&dbenv->mintruncate_lk);
 

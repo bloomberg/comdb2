@@ -3342,10 +3342,14 @@ static int bdb_calc_min_truncate(bdb_state_type *bdb_state)
     return rc;
 }
 
+int bdb_dump_mintruncate_list(bdb_state_type *bdb_state)
+{
+    return bdb_state->dbenv->dump_mintruncate_list(bdb_state->dbenv);
+}
+
 int bdb_min_truncate(bdb_state_type *bdb_state, int *file, int *offset,
                      int32_t *timestamp)
 {
-    return 0;
     if (gbl_min_truncate_file < 1)
         bdb_calc_min_truncate(bdb_state);
     Pthread_rwlock_rdlock(&min_trunc_lk);
