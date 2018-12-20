@@ -522,7 +522,7 @@ constraints
 (tablename='t5', columnname='b', type='blob', size=5, sqltype='blob', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (part='---------------------------------- PART #23 ----------------------------------')
 [CREATE TABLE t4(b blob(0))] failed with rc -3 Table already exists
-[CREATE TABLE t5(b blob(-100))] failed with rc -3 Invalid type specified.
+[CREATE TABLE t5(b blob(-100))] failed with rc -3 Table already exists
 (part='---------------------------------- PART #24 ----------------------------------')
 (tablename='t1', columnname='b', type='blob', size=5, sqltype='blob', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t3', columnname='b', type='blob', size=6, sqltype='blob', varinlinesize='1', defaultvalue=NULL, dbload=NULL, isnullable='Y')
