@@ -39,11 +39,11 @@ keys
 ("transactional alter (bad case 1)"='transactional alter (bad case 1)')
 [alter table m drop index "COMDB2_PK"] failed with rc 240 constraint error for table "d" key "$KEY_5A448109" -> <"m":"COMDB2_PK">: foreign key not found
 ("transactional alter (bad case 2)"='transactional alter (bad case 2)')
-[commit] failed with rc 203 constraint error for table "d" key "$KEY_5A448109" -> <"m":"COMDB2_PK">: foreign key not found
+[commit] failed with rc 240 constraint error for table "d" key "$KEY_5A448109" -> <"m":"COMDB2_PK">: foreign key not found
 ("transactional alter (bad case 3)"='transactional alter (bad case 3)')
-[commit] failed with rc 203 constraint error for table "d" key "$KEY_5A448109" -> <"m":"COMDB2_PK">: foreign key not found
+[commit] failed with rc 240 constraint error for table "d" key "$KEY_5A448109" -> <"m":"COMDB2_PK">: foreign key not found
 ("transactional alter (bad case 4)"='transactional alter (bad case 4)')
-[commit] failed with rc 203 constraint error for table "d" key "$KEY_5A448109" -> <"m":"COMDB2_PK">: foreign key not found
+[commit] failed with rc 240 constraint error for table "d" key "$KEY_5A448109" -> <"m":"COMDB2_PK">: foreign key not found
 (name='c', csc2='schema
 	{
 		int i null = yes 
@@ -179,7 +179,7 @@ keys
 	}
 ')
 ("transactional alter & drop (bad case)"='transactional alter & drop (bad case)')
-[commit] failed with rc 203 constraint error for table "e" key "$KEY_6724A8B9" -> <"m":"COMDB2_PK">: foreign key not found
+[commit] failed with rc 240 constraint error for table "e" key "$KEY_6724A8B9" -> <"m":"COMDB2_PK">: foreign key not found
 (name='c', csc2='schema
 	{
 		int i null = yes 

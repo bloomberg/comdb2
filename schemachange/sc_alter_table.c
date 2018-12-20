@@ -447,7 +447,8 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         return -1;
     }
 
-    schema_change = changed = prepare_changes(s, db, newdb, &s->plan, &scinfo);
+    s->schema_change = changed =
+        prepare_changes(s, db, newdb, &s->plan, &scinfo);
     if (changed == SC_UNKNOWN_ERROR) {
         backout(newdb);
         cleanup_newdb(newdb);
@@ -456,7 +457,8 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     }
 
     adjust_version(changed, &scinfo, s, db, newdb);
-    schema_change = changed = prepare_sc_plan(s, changed, db, newdb, &s->plan);
+    s->schema_change = changed =
+        prepare_sc_plan(s, changed, db, newdb, &s->plan);
     print_schemachange_info(s, db, newdb);
 
     /*************** open  tables ********************************************/
@@ -526,12 +528,12 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         return -1;
     }
 
-    Pthread_rwlock_wrlock(&sc_live_rwlock);
+    Pthread_rwlock_wrlock(&db->sc_live_lk);
     db->sc_from = s->db = db;
     db->sc_to = s->newdb = newdb;
     db->sc_abort = 0;
     db->sc_downgrading = 0;
-    Pthread_rwlock_unlock(&sc_live_rwlock);
+    Pthread_rwlock_unlock(&db->sc_live_lk);
     if (s->resume && s->alteronly && !s->finalize_only) {
         if (gbl_test_sc_resume_race && !stopsc) {
             logmsg(LOGMSG_INFO, "%s:%d sleeping 5s for sc_resume test\n",
@@ -595,8 +597,12 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         live_sc_off(db);
 
         for (i = 0; i < gbl_dtastripe; i++) {
-            sc_errf(s, "  > stripe %2d was at 0x%016llx\n", i,
-                    newdb->sc_genids[i]);
+            sc_errf(s, "  > [%s] stripe %2d was at 0x%016llx\n", s->tablename,
+                    i, newdb->sc_genids[i]);
+        }
+
+        while (s->logical_livesc) {
+            usleep(200);
         }
 
         backout_constraint_pointers(newdb, db);
@@ -635,7 +641,17 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     bdb_lock_table_write(db->handle, transac);
 
+    s->got_tablelock = 1;
+
+    /* wait for logical redo thread to stop */
+    while (s->logical_livesc) {
+        usleep(200);
+    }
+
     db->sc_to = newdb;
+
+    if (db->sc_live_logical)
+        bdb_clear_logical_live_sc(db->handle);
 
     if (gbl_sc_abort || db->sc_abort || iq->sc_should_abort) {
         sc_errf(s, "Aborting schema change %s\n", s->tablename);

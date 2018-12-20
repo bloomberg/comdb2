@@ -82,9 +82,6 @@ struct comdb2_metrics_store {
     int64_t rep_deadlocks;
     int64_t rw_evicts;
     int64_t standing_queue_time;
-    int64_t minimum_truncation_file;
-    int64_t minimum_truncation_offset;
-    int64_t minimum_truncation_timestamp;
 };
 
 static struct comdb2_metrics_store stats;
@@ -218,15 +215,8 @@ comdb2_metric gbl_metrics[] = {
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.rw_evicts, NULL},
     {"standing_queue_time", "How long the database has had a standing queue",
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
-     &stats.standing_queue_time, NULL},
-    {"minimum_truncation_file", "Minimum truncation file", STATISTIC_INTEGER,
-     STATISTIC_COLLECTION_TYPE_LATEST, &stats.minimum_truncation_file, NULL},
-    {"minimum_truncation_offset", "Minimum truncation offset",
-     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
-     &stats.minimum_truncation_offset, NULL},
-    {"minimum_truncation_timestamp", "Minimum truncation timestamp",
-     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
-     &stats.minimum_truncation_timestamp, NULL}};
+     &stats.standing_queue_time, NULL}
+};
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
     switch (t) {
@@ -432,11 +422,6 @@ int refresh_metrics(void)
     bdb_rep_stats(thedb->bdb_env, &stats.rep_deadlocks);
 
     stats.standing_queue_time = metrics_standing_queue_time();
-
-    bdb_min_truncate(thedb->bdb_env, &min_file, &min_offset, &min_timestamp);
-    stats.minimum_truncation_file = min_file;
-    stats.minimum_truncation_offset = min_offset;
-    stats.minimum_truncation_timestamp = min_timestamp;
     return 0;
 }
 

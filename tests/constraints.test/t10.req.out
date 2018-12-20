@@ -17,7 +17,7 @@
 [begin] rc 0
 [create table c {schema{int i} keys{dup "key" = i} constraints{"key" -> <"m" : "pk">}}] rc 0
 [create table m {schema{int i} keys{"pk" = i}}] rc 0
-[commit] failed with rc 203 constraint error for table "c" key "key" -> <"m":"pk">: foreign table not found
+[commit] failed with rc 240 constraint error for table "c" key "key" -> <"m":"pk">: foreign table not found
 ("transactional create"='transactional create')
 [select "transactional create"] rc 0
 [begin] rc 0
@@ -122,20 +122,20 @@
 [begin] rc 0
 [alter table m {schema{int i}}] rc 0
 [alter table c {schema{int i} keys{dup "key" = i}}] rc 0
-[commit] failed with rc 203 constraint error for table "d" key "key" -> <"m":"pk">: foreign key not found
+[commit] failed with rc 240 constraint error for table "d" key "key" -> <"m":"pk">: foreign key not found
 ("transactional alter (bad case 3)"='transactional alter (bad case 3)')
 [select "transactional alter (bad case 3)"] rc 0
 [begin] rc 0
 [alter table c {schema{int i} keys{dup "key" = i}}] rc 0
 [alter table m {schema{int i}}] rc 0
-[commit] failed with rc 203 constraint error for table "d" key "key" -> <"m":"pk">: foreign key not found
+[commit] failed with rc 240 constraint error for table "d" key "key" -> <"m":"pk">: foreign key not found
 ("transactional alter (bad case 4)"='transactional alter (bad case 4)')
 [select "transactional alter (bad case 4)"] rc 0
 [begin] rc 0
 [alter table c {schema{int i} keys{dup "key" = i}}] rc 0
 [alter table m {schema{int i}}] rc 0
 [alter table d {schema{int i} keys{dup "key" = i}}] rc 0
-[commit] failed with rc 203 constraint error for table "d" key "key" -> <"m":"pk">: foreign key not found
+[commit] failed with rc 240 constraint error for table "d" key "key" -> <"m":"pk">: foreign key not found
 ("transactional alter (good case)"='transactional alter (good case)')
 [select "transactional alter (good case)"] rc 0
 [begin] rc 0
@@ -158,7 +158,7 @@
 [drop table d] rc 0
 [alter table m {schema{int i}}] rc 0
 [drop table e] rc 0
-[commit] failed with rc 203 constraint error for table "e" key "key" -> <"m":"pk">: foreign key not found
+[commit] failed with rc 240 constraint error for table "e" key "key" -> <"m":"pk">: foreign key not found
 ("transactional alter & drop (good case)"='transactional alter & drop (good case)')
 [select "transactional alter & drop (good case)"] rc 0
 [begin] rc 0

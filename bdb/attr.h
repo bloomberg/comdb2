@@ -455,6 +455,8 @@ DEF_ATTR(SC_RESTART_SEC, sc_restart_sec, QUANTITY, 0,
          "startup/new master election.")
 DEF_ATTR(INDEXREBUILD_SAVE_EVERY_N, indexrebuild_save_every_n, QUANTITY, 1,
          "Save schema change state to every n-th row for index only rebuilds.")
+DEF_ATTR(SC_LOGICAL_SAVE_LSN_EVERY_N, sc_logical_save_lsn_every_n, QUANTITY, 10,
+         "Save schema change redo lsn to llmeta every n-th transactions.")
 DEF_ATTR(SC_DECREASE_THRDS_ON_DEADLOCK, sc_decrease_thrds_on_deadlock, BOOLEAN,
          1, "Decrease number of schema change threads on deadlock - way to "
             "have schema change backoff.")

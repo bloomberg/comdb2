@@ -771,7 +771,13 @@ struct dbtable {
 
     struct dbtable *sc_from; /* point to the source db, replace global sc_from */
     struct dbtable *sc_to; /* point to the new db, replace global sc_to */
+
+    int sc_live_logical;
     unsigned long long *sc_genids; /* schemachange stripe pointers */
+
+    /* All writer threads have to grab the lock in read/write mode.  If a live
+     * schema change is in progress then they have to do extra stuff. */
+    pthread_rwlock_t sc_live_lk;
 
     /* count the number of updates and deletes done by schemachange
      * when behind the cursor.  This helps us know how many
@@ -1796,6 +1802,8 @@ extern int gbl_dohast_verbose;
 extern int gbl_dohsql_max_queued_kb_highwm;
 extern int gbl_dohsql_full_queue_poll_msec;
 
+extern int gbl_logical_live_sc;
+
 /* init routines */
 int appsock_init(void);
 int thd_init(void);
@@ -2645,7 +2653,7 @@ enum {
      * provided then it should be NULLed out.  In this mode all blobs for
      * the record that are non-NULL will be given. */
     RECFLAGS_DONT_SKIP_BLOBS = 128,
-    RECFLAGS_ADD_FROM_SC = 256,
+    RECFLAGS_ADD_FROM_SC_LOGICAL = 256,
     /* used for upgrade record */
     RECFLAGS_UPGRADE_RECORD = RECFLAGS_DYNSCHEMA_NULLS_ONLY |
                               RECFLAGS_KEEP_GENID | RECFLAGS_NO_TRIGGERS |
@@ -2711,19 +2719,21 @@ int add_key(struct ireq *iq, void *trans,
 
 int del_new_record(struct ireq *iq, void *trans, unsigned long long genid,
                    unsigned long long del_keys, const void *old_dta,
-                   blob_buffer_t *idx_blobs);
+                   blob_buffer_t *idx_blobs, int verify_retry);
 
 int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
                    const void *old_dta, unsigned long long newgenid,
                    const void *new_dta, unsigned long long ins_keys,
                    unsigned long long del_keys, int nd_len, const int *updCols,
                    blob_buffer_t *blobs, int deferredAdd,
-                   blob_buffer_t *del_idx_blobs, blob_buffer_t *add_idx_blobs);
+                   blob_buffer_t *del_idx_blobs, blob_buffer_t *add_idx_blobs,
+                   int verify_retry);
 
 int upd_new_record_add2indices(struct ireq *iq, void *trans,
                                unsigned long long newgenid, const void *new_dta,
                                int nd_len, unsigned long long ins_keys,
-                               int use_new_tag, blob_buffer_t *blobs);
+                               int use_new_tag, blob_buffer_t *blobs,
+                               int verify);
 
 void blob_status_to_blob_buffer(blob_status_t *bs, blob_buffer_t *bf);
 int save_old_blobs(struct ireq *iq, void *trans, const char *tag, const void *record,
@@ -3296,6 +3306,8 @@ void osql_checkboard_check_down_nodes(char *host);
  */
 int ix_check_genid(struct ireq *iq, void *trans, unsigned long long genid,
                    int *bdberr);
+int ix_check_update_genid(struct ireq *iq, void *trans,
+                          unsigned long long genid, int *bdberr);
 
 int vtag_to_ondisk(struct dbtable *db, uint8_t *rec, int *len, uint8_t ver,
                    unsigned long long genid);

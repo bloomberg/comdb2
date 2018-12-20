@@ -164,6 +164,10 @@ int check_index(struct ireq *iq, void *trans, int ixnum,
     return 0;
 }
 
+/*
+ * For logical_livesc, function returns ERR_VERIFY if
+ * the record being added is already in the btree.
+ */
 int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                const uint8_t *p_buf_tag_name_end, uint8_t *p_buf_rec,
                const uint8_t *p_buf_rec_end, const unsigned char fldnullmap[32],
@@ -192,6 +196,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     size_t reclen = p_buf_rec_end - p_buf_rec;
     char *od_dta_tail = NULL;
     int od_len_tail;
+    unsigned long long vgenid = 0;
 
     *ixfailnum = -1;
 
@@ -519,10 +524,25 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         }
     }
 
+    if ((flags & RECFLAGS_NEW_SCHEMA) &&
+        (flags & RECFLAGS_ADD_FROM_SC_LOGICAL) && (flags & RECFLAGS_KEEP_GENID))
+        vgenid = *genid;
+
     /*
      * Add the data record
      */
     if (!gbl_use_plan || !iq->usedb->plan || iq->usedb->plan->dta_plan == -1) {
+        if (vgenid) {
+            int bdberr;
+            rc = ix_check_genid(iq, trans, vgenid, &bdberr);
+            if (rc && bdberr == IX_FND) {
+                retrc = ERR_VERIFY;
+                ERR;
+            }
+            /* The row is not in new btree, proceed with the add */
+            vgenid = 0; // no need to verify again
+        }
+
         if (flags & RECFLAGS_KEEP_GENID) {
             assert(genid != 0);
             rc = dat_set(iq, trans, od_dta, od_len, *rrn, *genid);
@@ -609,6 +629,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         if (iq->osql_step_ix)
             gbl_osqlpf_step[*(iq->osql_step_ix)].step += 1;
         for (ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
+            int isnullk = 0;
             int ixkeylen;
             char ixtag[MAXTAGLEN];
             char key[MAXKEYLEN];
@@ -665,9 +686,34 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             if (iq->osql_step_ix)
                 gbl_osqlpf_step[*(iq->osql_step_ix)].step += 2;
 
+            isnullk = ix_isnullk(iq->usedb, key, ixnum);
+
+            if (vgenid && iq->usedb->ix_dupes[ixnum] == 0 && !isnullk) {
+                int fndrrn = 0;
+                unsigned long long fndgenid = 0ULL;
+                rc =
+                    ix_find_by_key_tran(iq, key, ixkeylen, ixnum, NULL, &fndrrn,
+                                        &fndgenid, NULL, NULL, 0, trans);
+                if (rc == IX_FND && fndgenid == vgenid) {
+                    retrc = ERR_VERIFY;
+                    ERR;
+                }
+
+                /* The row is not in new btree, proceed with the add */
+                vgenid = 0; // no need to verify again
+            }
+
             /* add the key */
             rc = ix_addk(iq, trans, key, ixnum, *genid, *rrn, od_dta_tail,
-                         od_len_tail, ix_isnullk(iq->usedb, key, ixnum));
+                         od_len_tail, isnullk);
+
+            if (vgenid && rc == IX_DUP) {
+                if (iq->usedb->ix_dupes[ixnum] || isnullk) {
+                    retrc = ERR_VERIFY;
+                    ERR;
+                }
+            }
+
             if (iq->debug) {
                 reqprintf(iq, "ix_addk IX %d LEN %u KEY ", ixnum, ixkeylen);
                 reqdumphex(iq, key, ixkeylen);
@@ -1636,6 +1682,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         }
     }
 
+    int force_inplace_blob_off = live_sc_disable_inplace_blobs(iq);
     /*
      * Now we need to change the blobs for this tag.  For each blob
      * in the user tag, get the ondisk blob number and delete/update
@@ -1687,8 +1734,8 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 
         if (upgenid) {
             if (blobno < iq->usedb->numblobs) {
-                if (gbl_inplace_blobs && gbl_inplace_blob_optimization &&
-                    same_genid_with_upd) {
+                if (!force_inplace_blob_off && gbl_inplace_blobs &&
+                    gbl_inplace_blob_optimization && same_genid_with_upd) {
                     if (iq->debug)
                         reqprintf(iq, "blob_upd_genid SKIP BLOBNO %d BLOB "
                                       "OPTIMIZATION RC %d",
@@ -1712,7 +1759,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         }
 
         /* Attempt to update blobs in-place if that's enabled. */
-        if (gbl_inplace_blobs) {
+        if (!force_inplace_blob_off && gbl_inplace_blobs) {
             if (!blob->exists) {
                 rc = blob_del(iq, trans, rrn, vgenid, blobno);
                 if (iq->debug)
@@ -1769,8 +1816,8 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 
     /* Update the genids of any remaining blobs */
     for (; blobno < iq->usedb->numblobs; blobno++) {
-        if (gbl_inplace_blobs && gbl_inplace_blob_optimization &&
-            same_genid_with_upd) {
+        if (!force_inplace_blob_off && gbl_inplace_blobs &&
+            gbl_inplace_blob_optimization && same_genid_with_upd) {
             if (iq->debug)
                 reqprintf(
                     iq, "blob_upd_genid SKIP BLOBNO %d BLOB OPTIMIZATION RC %d",
@@ -2237,6 +2284,10 @@ err:
     return retrc;
 }
 
+int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
+                             const void *old_dta, unsigned long long ins_keys,
+                             blob_buffer_t *blobs, int maxblobs,
+                             const char *from, int rebuild, int convert);
 /*
  * Update a single record in the new table as part of a live schema
  * change.  This code is called to add to indices only, adding to
@@ -2245,7 +2296,8 @@ err:
 int upd_new_record_add2indices(struct ireq *iq, void *trans,
                                unsigned long long newgenid, const void *new_dta,
                                int nd_len, unsigned long long ins_keys,
-                               int use_new_tag, blob_buffer_t *blobs)
+                               int use_new_tag, blob_buffer_t *blobs,
+                               int verify)
 {
     int rc = 0;
 #ifdef DEBUG
@@ -2255,6 +2307,17 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
     if (!iq->usedb)
         return ERR_BADREQ;
 
+    int rebuild = iq->usedb->plan && iq->usedb->plan->dta_plan;
+    rc = verify_record_constraint(
+        iq, iq->usedb, trans, new_dta, ins_keys, blobs, MAXBLOBS,
+        use_new_tag ? ".NEW..ONDISK" : ".ONDISK", rebuild, 1);
+    if (rc)
+        return ERR_CONSTR;
+
+    unsigned long long vgenid = 0ULL;
+    if (verify)
+        vgenid = newgenid;
+
     /* Add all keys */
     for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
         char keytag[MAXTAGLEN];
@@ -2262,6 +2325,7 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
         char mangled_key[MAXKEYLEN];
         char *od_dta_tail = NULL;
         int od_tail_len = 0;
+        int isnullk = 0;
 
         /* are we supposed to convert this ix -- if no skip work */
         if (gbl_use_plan && iq->usedb->plan &&
@@ -2295,8 +2359,31 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
             break;
         }
 
+        isnullk = ix_isnullk(iq->usedb, key, ixnum);
+
+        if (vgenid && iq->usedb->ix_dupes[ixnum] == 0 && !isnullk) {
+            int fndrrn = 0;
+            unsigned long long fndgenid = 0ULL;
+            rc = ix_find_by_key_tran(iq, key, getkeysize(iq->usedb, ixnum),
+                                     ixnum, NULL, &fndrrn, &fndgenid, NULL,
+                                     NULL, 0, trans);
+            if (rc == IX_FND && fndgenid == vgenid) {
+                return ERR_VERIFY;
+            }
+
+            /* The row is not in new btree, proceed with the add */
+            vgenid = 0; // no need to verify again
+        }
+
         rc = ix_addk(iq, trans, key, ixnum, newgenid, 2, (void *)od_dta_tail,
                      od_tail_len, ix_isnullk(iq->usedb, key, ixnum));
+
+        if (vgenid && rc == IX_DUP) {
+            if (iq->usedb->ix_dupes[ixnum] || isnullk) {
+                return ERR_VERIFY;
+            }
+        }
+
         if (iq->debug) {
             reqprintf(iq, "ix_addk IX %d KEY ", ixnum);
             reqdumphex(iq, key, getkeysize(iq->usedb, ixnum));
@@ -2321,15 +2408,19 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
  * have been enabled.
  *
  * If deferredAdd is set, we want to defer adding new keys to indices
- * (which will be done from constraints.c:delayed_key_adds()) because 
- * adding the keys here can result in SC aborting when it shouldn't 
+ * (which will be done from constraints.c:delayed_key_adds()) because
+ * adding the keys here can result in SC aborting when it shouldn't
  * (in the case when update causes a conflict in one of the keys--transaction
- * should abort rather, and that will be caught by constraints.c). 
+ * should abort rather, and that will be caught by constraints.c).
  *
- * Note that we can't call upd_new_record() from delayed_key_adds() because 
+ * Note that we can't call upd_new_record() from delayed_key_adds() because
  * there we lack the old_dta record. So to update happens partially in this
  * function (delete old data and idxs, adding new data0), and the rest in
  * upd_new_record_add2indices() which will finally add to the indices.
+ *
+ * For logical_livesc, verify_retry == 0 and function returns ERR_VERIFY if
+ * the oldgenid is not found in the new table or the newgenid already exists
+ * in the new table.
  */
 
 int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
@@ -2337,7 +2428,8 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
                    const void *new_dta, unsigned long long ins_keys,
                    unsigned long long del_keys, int nd_len, const int *updCols,
                    blob_buffer_t *blobs, int deferredAdd,
-                   blob_buffer_t *del_idx_blobs, blob_buffer_t *add_idx_blobs)
+                   blob_buffer_t *del_idx_blobs, blob_buffer_t *add_idx_blobs,
+                   int verify_retry)
 {
     int retrc = 0;
     int prefixes = 0;
@@ -2416,6 +2508,15 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
     struct schema *fromsch = find_tag_schema(iq->usedb->tablename, ".ONDISK");
 
     if (!gbl_use_plan || !iq->usedb->plan || iq->usedb->plan->dta_plan == -1) {
+        if (!verify_retry) {
+            int bdberr;
+            rc = ix_check_update_genid(iq, trans, newgenid, &bdberr);
+            if (rc && bdberr == IX_FND) {
+                retrc = ERR_VERIFY;
+                goto err;
+            }
+        }
+
         newrec_len = getdatsize(iq->usedb);
         sc_new = malloc(newrec_len);
         if (!sc_new) {
@@ -2440,18 +2541,10 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
         }
 
         /* dat_upv_sc requests the bdb layer to use newgenid argument */
-        rc = dat_upv_sc(iq, trans,
-                        0, /*offset to verify from, only zero is supported*/
-                        NULL, 0, oldgenid, (void *)sc_new, newrec_len, 2,
-                        &newgenidcpy, 0, iq->blkstate->modnum); /* verifydta */
-
-        if (newgenid != newgenidcpy) {
-            logmsg(LOGMSG_ERROR, "upd_new_record: dat_upv_sc generated genid!! newgenid "
-                   "arg=%llx generated newgenid=%llx",
-                   newgenid, newgenidcpy);
-            retrc = -1;
-            goto err;
-        }
+        rc = dat_upv_sc(
+            iq, trans, 0, /*offset to verify from, only zero is supported*/
+            NULL, 0, oldgenid, (void *)sc_new, newrec_len, 2, &newgenidcpy, 0,
+            iq->blkstate ? iq->blkstate->modnum : 0); /* verifydta */
 
         if (iq->debug) {
             reqprintf(iq, "dat_upv - newgenid arg=%llx generated newgenid=%llx",
@@ -2461,18 +2554,29 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
 
         /* workaround a bug in current schema change; if we somehow
            fail to find the row in the new btree, try again */
-        if (rc == ERR_VERIFY)
+        if (rc == ERR_VERIFY && verify_retry)
             rc = RC_INTERNAL_RETRY;
 
         if (rc != 0) {
-            logmsg(LOGMSG_ERROR, 
-                    "upd_new_record oldgenid 0x%llx dat_upv_sc -> rc %d failed\n",
-                    oldgenid, rc);
+            if (rc != ERR_VERIFY)
+                logmsg(LOGMSG_ERROR,
+                       "upd_new_record oldgenid 0x%llx dat_upv_sc -> rc %d "
+                       "failed\n",
+                       oldgenid, rc);
             retrc = rc;
             goto err;
         }
         free(sc_new);
         sc_new = NULL;
+
+        if (newgenid != newgenidcpy) {
+            logmsg(LOGMSG_ERROR,
+                   "upd_new_record: dat_upv_sc generated genid!! newgenid "
+                   "arg=%llx generated newgenid=%llx, rc = %d\n",
+                   newgenid, newgenidcpy, rc);
+            retrc = -1;
+            goto err;
+        }
     }
 
     if (iq->usedb->has_datacopy_ix ||
@@ -2679,13 +2783,19 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
         }
 
         /* remap delete not found to retry */
-        if (rc == IX_NOTFND)
-            rc = RC_INTERNAL_RETRY;
+        if (rc == IX_NOTFND) {
+            if (verify_retry)
+                rc = RC_INTERNAL_RETRY;
+            else
+                rc = ERR_VERIFY;
+        }
 
         if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "upd_new_record oldgenid 0x%llx ix_delk -> "
-                            "ix%d, rc=%d failed\n",
-                    oldgenid, ixnum, rc);
+            if (rc != ERR_VERIFY)
+                logmsg(LOGMSG_ERROR,
+                       "upd_new_record oldgenid 0x%llx ix_delk -> "
+                       "ix%d, rc=%d failed\n",
+                       oldgenid, ixnum, rc);
             retrc = rc;
             goto err;
         }
@@ -2697,7 +2807,7 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
         retrc = upd_new_record_add2indices(
             iq, trans, newgenid, use_new_tag ? sc_new : new_dta,
             use_new_tag ? iq->usedb->lrl : nd_len, ins_keys, use_new_tag,
-            add_idx_blobs);
+            add_idx_blobs, !verify_retry);
     } else
         reqprintf(iq, "is deferredAdd so will add to indices at the end");
 
@@ -2719,10 +2829,13 @@ err:
  * The old data has to be passed in because we may not be rebuilding the
  * data file - in which case it's annoying and painful to have to get the
  * record from the other schema.
+ *
+ * For logical_livesc, verify_retry == 0 and function returns ERR_VERIFY if
+ * the genid is not found in the new table.
  */
 int del_new_record(struct ireq *iq, void *trans, unsigned long long genid,
                    unsigned long long del_keys, const void *old_dta,
-                   blob_buffer_t *del_idx_blobs)
+                   blob_buffer_t *del_idx_blobs, int verify_retry)
 {
     int retrc = 0;
     void *sc_old = NULL;
@@ -2828,7 +2941,7 @@ int del_new_record(struct ireq *iq, void *trans, unsigned long long genid,
 
         /* workaround a bug in current schema change; if we somehow
            fail to find the row in the new btree, try again */
-        if (rc == ERR_VERIFY)
+        if (rc == ERR_VERIFY && verify_retry)
             rc = RC_INTERNAL_RETRY;
 
         if (rc != 0) {
@@ -2919,8 +3032,12 @@ int del_new_record(struct ireq *iq, void *trans, unsigned long long genid,
         }
 
         /* remap delete not found to retry */
-        if (rc == IX_NOTFND)
-            rc = RC_INTERNAL_RETRY;
+        if (rc == IX_NOTFND) {
+            if (verify_retry)
+                rc = RC_INTERNAL_RETRY;
+            else
+                rc = ERR_VERIFY;
+        }
 
         if (rc != 0) {
             retrc = rc;

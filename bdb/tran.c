@@ -1546,7 +1546,9 @@ static int bdb_tran_commit_with_seqnum_int_int(
         bdb_osql_trn_repo_lock();
 
         /* only generate a log for PARENT transactions */
-        if (tran->parent == NULL && add_snapisol_logging(bdb_state) &&
+        if (tran->parent == NULL &&
+            (add_snapisol_logging(bdb_state, tran) ||
+             tran->force_logical_commit) &&
             !(tran->flags & BDB_TRAN_NOLOG)) {
             tran_type *parent = (tran->parent) ? tran->parent : tran; /*nop*/
             int iirc;
