@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=898)
+(TUNABLES_COUNT=899)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -363,6 +363,7 @@
 (name='lclpooledbufs', description='', type='INTEGER', value='32', read_only='Y')
 (name='lease_renew_interval', description='How often we renew leases.', type='INTEGER', value='200', read_only='N')
 (name='leasebase_trace', description='', type='BOOLEAN', value='OFF', read_only='N')
+(name='legacy_schema', description='Only allow legacy compatible csc2 schema', type='BOOLEAN', value='OFF', read_only='N')
 (name='little_endian_btrees', description='Enabling this sets byte ordering for pages to little endian.', type='BOOLEAN', value='ON', read_only='N')
 (name='lk_hash', description='', type='INTEGER', value='32', read_only='Y')
 (name='lk_part', description='', type='INTEGER', value='73', read_only='Y')
