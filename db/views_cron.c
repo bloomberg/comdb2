@@ -76,16 +76,12 @@ cron_sched_t *cron_add_event(cron_sched_t *sched, const char *name, int epoch,
     }
 
     Pthread_mutex_lock(&sched->mtx);
-
     rc = _queue_event(sched, epoch, func, arg1, arg2, arg3, source_id, err);
-    if (rc != VIEW_NOERR) {
-        Pthread_mutex_unlock(&sched->mtx);
-        goto error;
-    }
-
     Pthread_mutex_unlock(&sched->mtx);
 
-    return sched;
+    if (rc == VIEW_NOERR) {
+        return sched;
+    }
 
 error:
 
