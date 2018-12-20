@@ -3163,7 +3163,8 @@ static int free_hash_ent(void *obj, void *dum)
 static int releaseTempTableRef(
   Btree *pBt,
   int iTable,
-  struct temptable *pTbl
+  struct temptable *pTbl,
+  int *pbRemove
 ){
     if (pTbl != NULL && --pTbl->nRef <= 0) {
         if (pTbl->tbl != NULL) {
@@ -3185,8 +3186,34 @@ static int releaseTempTableRef(
         free(pTbl->name);
         /* pTbl->name = NULL; */
         free(pTbl);
+        /* SUCCESS: The hash table entry, if any, should be removed. */
+        if (pbRemove) *pbRemove = 1;
+    } else if (pbRemove) {
+        *pbRemove = 0;
     }
     return SQLITE_OK;
+}
+
+/*
+** WARNING: This function assumes (and requires) that the associated temp
+**          table lock pthread mutex is already held.
+*/
+void removeTempTableEntry(
+  Hash *pHash,
+  struct temptable_entry *pEntry,
+  int iTable
+){
+  /*
+  ** NOTE: Use of rootPageNumToTempHashKey() here is fine because
+  **       the hash entry is being deleted (not stored); therefore,
+  **       the passed string hash key will not be stored.
+  */
+#ifndef NDEBUG
+  struct temptable_entry *pOldEntry =
+#endif
+  sqlite3HashInsert(pHash, rootPageNumToTempHashKey(iTable), 0);
+  assert( pOldEntry==pEntry );
+  free(pEntry);
 }
 
 /*
@@ -3228,7 +3255,7 @@ int sqlite3BtreeClose(Btree *pBt)
             struct temptable_entry *pEntry = pElem->data;
 
             if (pEntry != NULL) {
-                rc = releaseTempTableRef(pBt, pEntry->rootPg, pEntry->value);
+                rc = releaseTempTableRef(pBt, pEntry->rootPg, pEntry->value, 0);
                 if (rc != SQLITE_OK) {
                     Pthread_mutex_unlock(thd->temp_table_mtx);
                     goto done;
@@ -3935,24 +3962,16 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
         struct temptable_entry *pEntry = sqlite3HashFind(
             &pBt->temp_tables, rootPageNumToTempHashKey(iTable));
 
+        int bRemove = 0;
+
         if (pEntry != NULL) {
-            rc = releaseTempTableRef(pBt, iTable, pEntry->value);
+            rc = releaseTempTableRef(pBt, iTable, pEntry->value, &bRemove);
         } else {
             rc = SQLITE_OK;
         }
-        if (rc == SQLITE_OK) {
-            /*
-            ** NOTE: Use of rootPageNumToTempHashKey() here is fine because
-            **       the hash entry is being deleted (not stored); therefore,
-            **       the passed string hash key will not be stored.
-            */
-#ifndef NDEBUG
-            struct temptable_entry *pOldEntry =
-#endif
-                sqlite3HashInsert(&pBt->temp_tables,
-                                  rootPageNumToTempHashKey(iTable), 0);
-            assert( pOldEntry==pEntry );
-            free(pEntry);
+        if (rc == SQLITE_OK && bRemove) {
+            removeTempTableEntry(&pBt->temp_tables, pEntry, iTable);
+            /* pEntry = NULL; */
         }
 
         Pthread_mutex_unlock(thd->temp_table_mtx);
@@ -6375,16 +6394,24 @@ skip:
                 pCur->rootpage));
 
             if (pEntry != NULL) {
+                int bRemove = 0;
+
                 rc = releaseTempTableRef(
-                    pCur->bt, pCur->rootpage, pEntry->value
+                    pCur->bt, pCur->rootpage, pEntry->value, &bRemove
                 );
                 if (rc != SQLITE_OK) {
                     logmsg(LOGMSG_ERROR,
-                           "%s: releaseTempTableRef bt %p, tab %d, rc %d\n",
+                           "%s: releaseTempTableRef bt %p tab %d rc %d\n",
                            __func__, pCur->bt, pCur->rootpage, rc);
 
                     rc = SQLITE_INTERNAL;
                     goto done;
+                }
+                if (bRemove) {
+                    removeTempTableEntry(
+                        &pCur->bt->temp_tables, pEntry, pCur->rootpage
+                    );
+                    /* pEntry = NULL; */
                 }
             } else {
                 logmsg(LOGMSG_ERROR, "%s: entry %d not found\n",
@@ -7362,6 +7389,8 @@ sqlite3BtreeCursor_temptable(Btree *pBt,      /* The btree */
     }
 
     cur->cursor_class = CURSORCLASS_TEMPTABLE;
+    assert( src->tbl );
+    assert( src->nRef>0 );
     cur->tmptable->tbl = src->tbl; src->nRef++;
     if (src->lk) {
         cur->tmptable->lk = src->lk;
