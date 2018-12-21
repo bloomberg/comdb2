@@ -4079,11 +4079,24 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     return outrc;
 }
 
+int gbl_force_incoherent = 0;
+
 static int bdb_am_i_coherent_int(bdb_state_type *bdb_state)
 {
     /*master can't be incoherent*/
     if (bdb_amimaster(bdb_state))
         return 1;
+
+    if (gbl_force_incoherent) {
+        static time_t lastpr = 0;
+        time_t now = time(NULL);
+        if (now - lastpr) {
+            logmsg(LOGMSG_WARN, "%s returning INCOHERENT on force_incoherent = "
+                    "true\n", __func__);
+            lastpr = now;
+        }
+        return 0;
+    }
 
     /* if we are a rtcpued off replicant, we cant be coherent */
     if (bdb_state->callback->nodeup_rtn) {

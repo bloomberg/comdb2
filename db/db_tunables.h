@@ -1614,4 +1614,9 @@ REGISTER_TUNABLE("legacy_schema", "Only allow legacy compatible csc2 schema",
                  TUNABLE_BOOLEAN, &gbl_legacy_schema,
                  EXPERIMENTAL | INTERNAL | READEARLY, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("force_incoherent", "Force this node to be incoherent.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_force_incoherent,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */
