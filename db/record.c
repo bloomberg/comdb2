@@ -164,6 +164,68 @@ int check_index(struct ireq *iq, void *trans, int ixnum,
     return 0;
 }
 
+/* If a specific index has been used in the ON CONFLICT clause (aka
+ * upsert target/index), then we must move the check for that particular
+ * index to the very end so that errors from other (non-ignorable)
+ * unique indexes have already been verified before we check and ignore
+ * the error (if any) from the upsert index.
+ */
+int check_for_upsert(struct ireq *iq, void *trans, struct schema *ondisktagsc,
+        blob_buffer_t *blobs, size_t maxblobs, int *opfailcode, int *ixfailnum,
+        int *retrc, const char *ondisktag, void *od_dta, size_t od_len,
+        unsigned long long ins_keys, int rec_flags)
+{
+    int rc = 0;
+    int upsert_idx = rec_flags >> 8;
+
+    for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
+        /* Skip check for upsert index, we'll do it after this loop. */
+        if (ixnum == upsert_idx) {
+            continue;
+        }
+
+        /* Ignore dup keys */
+        if (iq->usedb->ix_dupes[ixnum] != 0) {
+            continue;
+        }
+
+        /* Check for partial keys only when needed. */
+        if (gbl_partial_indexes && iq->usedb->ix_partial &&
+            !(ins_keys & (1ULL << ixnum))) {
+            continue;
+        }
+
+        rc = check_index(iq, trans, ixnum, ondisktagsc, blobs, maxblobs,
+                         opfailcode, ixfailnum, retrc, ondisktag, od_dta,
+                         od_len, ins_keys);
+        if (rc) {
+            return rc;
+        }
+    }
+
+    /* Perform the check for upsert index that we skipped above. */
+    if (upsert_idx != MAXINDEX + 1) {
+
+        /* It must be a unique key. */
+        assert(iq->usedb->ix_dupes[upsert_idx] == 0);
+
+        /* Check for partial keys only when needed. */
+        if (gbl_partial_indexes && iq->usedb->ix_partial &&
+            !(ins_keys & (1ULL << upsert_idx))) {
+            /* NOOP */
+        } else {
+            rc = check_index(iq, trans, upsert_idx, ondisktagsc, blobs,
+                             maxblobs, opfailcode, ixfailnum, retrc,
+                             ondisktag, od_dta, od_len, ins_keys);
+            if (rc) {
+                return rc;
+            }
+        }
+    }
+    return 0;
+}
+
+
 /*
  * For logical_livesc, function returns ERR_VERIFY if
  * the record being added is already in the btree.
@@ -470,59 +532,14 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     }
 
     if ((rec_flags & OSQL_IGNORE_FAILURE) != 0) {
-        int upsert_idx = rec_flags >> 8;
-
-        /* If a specific index has been used in the ON CONFLICT clause (aka
-         * upsert target/index), then we must move the check for that particular
-         * index to the very end so that errors from other (non-ignorable)
-         * unique indexes have already been verified before we check and ignore
-         * the error (if any) from the upsert index.
-         */
-        for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
-            /* Skip check for upsert index, we'll do it after this loop. */
-            if (ixnum == upsert_idx) {
-                continue;
-            }
-
-            /* Ignore dup keys */
-            if (iq->usedb->ix_dupes[ixnum] != 0) {
-                continue;
-            }
-
-            /* Check for partial keys only when needed. */
-            if (gbl_partial_indexes && iq->usedb->ix_partial &&
-                !(ins_keys & (1ULL << ixnum))) {
-                continue;
-            }
-
-            rc = check_index(iq, trans, ixnum, ondisktagsc, blobs, maxblobs,
-                             opfailcode, ixfailnum, &retrc, ondisktag, od_dta,
-                             od_len, ins_keys);
-            if (rc) {
-                ERR
-            }
-        }
-
-        /* Perform the check for upsert index that we skipped above. */
-        if (upsert_idx != MAXINDEX + 1) {
-
-            /* It must be a unique key. */
-            assert(iq->usedb->ix_dupes[upsert_idx] == 0);
-
-            /* Check for partial keys only when needed. */
-            if (gbl_partial_indexes && iq->usedb->ix_partial &&
-                !(ins_keys & (1ULL << upsert_idx))) {
-                /* NOOP */
-            } else {
-                rc = check_index(iq, trans, upsert_idx, ondisktagsc, blobs,
-                                 maxblobs, opfailcode, ixfailnum, &retrc,
-                                 ondisktag, od_dta, od_len, ins_keys);
-                if (rc) {
-                    ERR
-                }
-            }
+        rc = check_for_upsert(iq, trans, ondisktagsc, blobs,
+                              maxblobs, opfailcode, ixfailnum, &retrc,
+                              ondisktag, od_dta, od_len, ins_keys, rec_flags);
+        if (rc) {
+            ERR;
         }
     }
+   
 
     if ((flags & RECFLAGS_NEW_SCHEMA) &&
         (flags & RECFLAGS_ADD_FROM_SC_LOGICAL) && (flags & RECFLAGS_KEEP_GENID))
