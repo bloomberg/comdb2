@@ -291,8 +291,6 @@ int refresh_metrics(void)
     int rc;
     const struct bdb_thread_stats *pstats;
     extern int active_appsock_conns; int bdberr;
-    int min_file, min_offset;
-    int32_t min_timestamp;
 
     /* Check whether the server is exiting. */
     if (thedb->exiting || thedb->stopped)
