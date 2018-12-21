@@ -7082,13 +7082,7 @@ int reload_after_bulkimport(struct dbtable *db, tran_type *tran)
         logmsg(LOGMSG_ERROR, "Failed to load .ONDISK.VER.nn\n");
         return 1;
     }
-    int rc;
-    int bdberr;
-    if ((rc = table_version_upsert(db, tran, &bdberr)) != 0) {
-        logmsg(LOGMSG_ERROR, "Failed updating table version bdberr %d\n",
-               bdberr);
-        return rc;
-    }
+    db->tableversion = table_version_select(db, NULL);
     update_dbstore(db);
     return 0;
 }
