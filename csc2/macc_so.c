@@ -1502,7 +1502,10 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
                 break;
             case T_DATETIME:
             case T_DATETIMEUS:
-                if (gbl_legacy_schema) {
+                if (gbl_legacy_schema && (tables[ntables]
+                                              .sym[tables[ntables].nsym]
+                                              .fopts[i]
+                                              .opttype != FLDOPT_NULL)) {
                     csc2_syntax_error(
                         "ERROR: TABLE SCHEMA NOT SUPPORTED IN LEGACY MODE\n");
                     any_errors++;
