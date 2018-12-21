@@ -3324,6 +3324,7 @@ static int bdb_calc_min_truncate(bdb_state_type *bdb_state)
     int rc;
     int lowfilenum;
     int32_t timestamp;
+    return 0;
     Pthread_rwlock_wrlock(&min_trunc_lk);
     lowfilenum = get_lowfilenum_sanclist(bdb_state);
     rc = bdb_state->dbenv->min_truncate_lsn_timestamp(
@@ -3344,6 +3345,7 @@ static int bdb_calc_min_truncate(bdb_state_type *bdb_state)
 int bdb_min_truncate(bdb_state_type *bdb_state, int *file, int *offset,
                      int32_t *timestamp)
 {
+    return 0;
     if (gbl_min_truncate_file < 1)
         bdb_calc_min_truncate(bdb_state);
     Pthread_rwlock_rdlock(&min_trunc_lk);
