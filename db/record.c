@@ -226,6 +226,120 @@ int check_for_upsert(struct ireq *iq, void *trans, struct schema *ondisktagsc,
 }
 
 
+int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
+        size_t maxblobs, int *opfailcode, int *ixfailnum, int *rrn, unsigned
+        long long *genid, unsigned long long vgenid, unsigned long long
+        ins_keys, int opcode, int blkpos, void *od_dta, size_t od_len, const
+        char *ondisktag, struct schema *ondisktagsc)
+{
+    int ixnum;
+    char *od_dta_tail = NULL;
+    int od_len_tail;
+    if (iq->osql_step_ix)
+        gbl_osqlpf_step[*(iq->osql_step_ix)].step += 1;
+    for (ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
+        int isnullk = 0;
+        int ixkeylen;
+        char ixtag[MAXTAGLEN];
+        char key[MAXKEYLEN];
+        char mangled_key[MAXKEYLEN];
+
+        if (gbl_use_plan && iq->usedb->plan &&
+                iq->usedb->plan->ix_plan[ixnum] != -1)
+            continue;
+
+        /* only add keys when told */
+        if (gbl_partial_indexes && iq->usedb->ix_partial &&
+                !(ins_keys & (1ULL << ixnum)))
+            continue;
+
+        ixkeylen = getkeysize(iq->usedb, ixnum);
+        if (ixkeylen < 0) {
+            if (iq->debug)
+                reqprintf(iq, "BAD INDEX %d OR KEYLENGTH %d", ixnum,
+                        ixkeylen);
+            reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+            reqerrstr(iq, COMDB2_ADD_RC_INVL_KEY,
+                    "bad index %d or keylength %d", ixnum, ixkeylen);
+            *ixfailnum = ixnum;
+            *opfailcode = OP_FAILED_BAD_REQUEST;
+            return ERR_BADREQ;
+        }
+
+        snprintf(ixtag, sizeof(ixtag), "%s_IX_%d", ondisktag, ixnum);
+
+        int rc;
+        if (iq->idxInsert)
+            rc = create_key_from_ireq(iq, ixnum, 0, &od_dta_tail,
+                    &od_len_tail, mangled_key, od_dta,
+                    od_len, key);
+        else
+            rc = create_key_from_ondisk_sch_blobs(
+                    iq->usedb, ondisktagsc, ixnum, &od_dta_tail, &od_len_tail,
+                    mangled_key, ondisktag, od_dta, od_len, ixtag, key, NULL,
+                    blobs, maxblobs, iq->tzname);
+        if (rc == -1) {
+            if (iq->debug)
+                reqprintf(iq, "CAN'T FORM INDEX %d", ixnum);
+            reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+            reqerrstr(iq, COMDB2_ADD_RC_INVL_IDX, "cannot form index %d",
+                    ixnum);
+            *ixfailnum = ixnum;
+            *opfailcode = OP_FAILED_INTERNAL + ERR_FORM_KEY;
+            return rc;
+        }
+
+        /* light the prefault kill bit for this subop - newkeys */
+        prefault_kill_bits(iq, ixnum, PFRQ_NEWKEY);
+        if (iq->osql_step_ix)
+            gbl_osqlpf_step[*(iq->osql_step_ix)].step += 2;
+
+        isnullk = ix_isnullk(iq->usedb, key, ixnum);
+
+        if (vgenid && iq->usedb->ix_dupes[ixnum] == 0 && !isnullk) {
+            int fndrrn = 0;
+            unsigned long long fndgenid = 0ULL;
+            rc =
+                ix_find_by_key_tran(iq, key, ixkeylen, ixnum, NULL, &fndrrn,
+                        &fndgenid, NULL, NULL, 0, trans);
+            if (rc == IX_FND && fndgenid == vgenid) {
+                return ERR_VERIFY;
+            }
+
+            /* The row is not in new btree, proceed with the add */
+            vgenid = 0; // no need to verify again
+        }
+
+        /* add the key */
+        rc = ix_addk(iq, trans, key, ixnum, *genid, *rrn, od_dta_tail,
+                od_len_tail, isnullk);
+
+        if (vgenid && rc == IX_DUP) {
+            if (iq->usedb->ix_dupes[ixnum] || isnullk) {
+                return ERR_VERIFY;
+            }
+        }
+
+        if (iq->debug) {
+            reqprintf(iq, "ix_addk IX %d LEN %u KEY ", ixnum, ixkeylen);
+            reqdumphex(iq, key, ixkeylen);
+            reqmoref(iq, " RC %d", rc);
+        }
+
+        if (rc == RC_INTERNAL_RETRY) {
+            return rc;
+        } else if (rc != 0) {
+            *ixfailnum = ixnum;
+            /* If following changes, update OSQL_INSREC in osqlcomm.c */
+            *opfailcode = OP_FAILED_UNIQ; /* really? */
+
+            return rc;
+        }
+    }
+    return 0;
+}
+
+
 /*
  * For logical_livesc, function returns ERR_VERIFY if
  * the record being added is already in the btree.
@@ -256,8 +370,6 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     size_t taglen = p_buf_tag_name_end - p_buf_tag_name;
     void *record = p_buf_rec;
     size_t reclen = p_buf_rec_end - p_buf_rec;
-    char *od_dta_tail = NULL;
-    int od_len_tail;
     unsigned long long vgenid = 0;
 
     *ixfailnum = -1;
@@ -639,115 +751,14 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         }
     }
 
-    if ((flags & RECFLAGS_NO_CONSTRAINTS) /* if NOT no constraints */ ||
-        ((rec_flags & OSQL_IGNORE_FAILURE) != 0)) {
-        int ixnum;
-        od_dta_tail = NULL;
-        if (iq->osql_step_ix)
-            gbl_osqlpf_step[*(iq->osql_step_ix)].step += 1;
-        for (ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
-            int isnullk = 0;
-            int ixkeylen;
-            char ixtag[MAXTAGLEN];
-            char key[MAXKEYLEN];
-            char mangled_key[MAXKEYLEN];
-
-            if (gbl_use_plan && iq->usedb->plan &&
-                iq->usedb->plan->ix_plan[ixnum] != -1)
-                continue;
-
-            /* only add keys when told */
-            if (gbl_partial_indexes && iq->usedb->ix_partial &&
-                !(ins_keys & (1ULL << ixnum)))
-                continue;
-
-            ixkeylen = getkeysize(iq->usedb, ixnum);
-            if (ixkeylen < 0) {
-                if (iq->debug)
-                    reqprintf(iq, "BAD INDEX %d OR KEYLENGTH %d", ixnum,
-                              ixkeylen);
-                reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
-                reqerrstr(iq, COMDB2_ADD_RC_INVL_KEY,
-                          "bad index %d or keylength %d", ixnum, ixkeylen);
-                *ixfailnum = ixnum;
-                *opfailcode = OP_FAILED_BAD_REQUEST;
-                retrc = ERR_BADREQ;
-                ERR;
-            }
-
-            snprintf(ixtag, sizeof(ixtag), "%s_IX_%d", ondisktag, ixnum);
-
-            if (iq->idxInsert)
-                rc = create_key_from_ireq(iq, ixnum, 0, &od_dta_tail,
-                                          &od_len_tail, mangled_key, od_dta,
-                                          od_len, key);
-            else
-                rc = create_key_from_ondisk_sch_blobs(
-                    iq->usedb, ondisktagsc, ixnum, &od_dta_tail, &od_len_tail,
-                    mangled_key, ondisktag, od_dta, od_len, ixtag, key, NULL,
-                    blobs, maxblobs, iq->tzname);
-            if (rc == -1) {
-                if (iq->debug)
-                    reqprintf(iq, "CAN'T FORM INDEX %d", ixnum);
-                reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
-                reqerrstr(iq, COMDB2_ADD_RC_INVL_IDX, "cannot form index %d",
-                          ixnum);
-                *ixfailnum = ixnum;
-                *opfailcode = OP_FAILED_INTERNAL + ERR_FORM_KEY;
-                retrc = rc;
-                ERR;
-            }
-
-            /* light the prefault kill bit for this subop - newkeys */
-            prefault_kill_bits(iq, ixnum, PFRQ_NEWKEY);
-            if (iq->osql_step_ix)
-                gbl_osqlpf_step[*(iq->osql_step_ix)].step += 2;
-
-            isnullk = ix_isnullk(iq->usedb, key, ixnum);
-
-            if (vgenid && iq->usedb->ix_dupes[ixnum] == 0 && !isnullk) {
-                int fndrrn = 0;
-                unsigned long long fndgenid = 0ULL;
-                rc =
-                    ix_find_by_key_tran(iq, key, ixkeylen, ixnum, NULL, &fndrrn,
-                                        &fndgenid, NULL, NULL, 0, trans);
-                if (rc == IX_FND && fndgenid == vgenid) {
-                    retrc = ERR_VERIFY;
-                    ERR;
-                }
-
-                /* The row is not in new btree, proceed with the add */
-                vgenid = 0; // no need to verify again
-            }
-
-            /* add the key */
-            rc = ix_addk(iq, trans, key, ixnum, *genid, *rrn, od_dta_tail,
-                         od_len_tail, isnullk);
-
-            if (vgenid && rc == IX_DUP) {
-                if (iq->usedb->ix_dupes[ixnum] || isnullk) {
-                    retrc = ERR_VERIFY;
-                    ERR;
-                }
-            }
-
-            if (iq->debug) {
-                reqprintf(iq, "ix_addk IX %d LEN %u KEY ", ixnum, ixkeylen);
-                reqdumphex(iq, key, ixkeylen);
-                reqmoref(iq, " RC %d", rc);
-            }
-
-            if (rc == RC_INTERNAL_RETRY) {
-                retrc = rc;
-                ERR;
-            } else if (rc != 0) {
-                retrc = rc;
-                *ixfailnum = ixnum;
-                /* If following changes, update OSQL_INSREC in osqlcomm.c */
-                *opfailcode = OP_FAILED_UNIQ; /* really? */
-
-                ERR;
-            }
+    if ((flags & RECFLAGS_NO_CONSTRAINTS) /* if no constraints */
+        || (rec_flags & OSQL_IGNORE_FAILURE)) {
+        rc = add_record_indices(iq, trans, blobs, maxblobs, opfailcode, 
+                ixfailnum, rrn, genid, vgenid, ins_keys, opcode, blkpos,
+                od_dta, od_len, ondisktag, ondisktagsc);
+        if (rc != 0) {
+            retrc = rc;
+            ERR;
         }
     }
 
