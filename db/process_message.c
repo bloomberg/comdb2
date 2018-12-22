@@ -3546,8 +3546,9 @@ clipper_usage:
         char *dbname = tokdup(tok, ltok);
         struct dbtable *db = get_dbtable_by_name(dbname);
         if (db) {
-            logmsg(LOGMSG_USER, "table:%s  odh:%s  instant_schema_change:%s  "
-                                "inplace_updates:%s  version:%d\n",
+            logmsg(LOGMSG_USER,
+                   "table:%s  odh:%s  instant_schema_change:%s  "
+                   "inplace_updates:%s  version:%d\n",
                    db->tablename, YESNO(db->instant_schema_change),
                    YESNO(db->inplace_updates), YESNO(db->odh),
                    db->schema_version);
