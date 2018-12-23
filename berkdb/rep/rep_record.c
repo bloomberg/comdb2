@@ -6435,6 +6435,7 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online)
 	int recover_at_commit = 1;
 	int schema_lk_count = 0;
 	int i_am_master = 0;
+    static int truncate_count = 0;
 	int maxlocks = gbl_online_recovery_maxlocks;
 	u_int32_t rectype;
 	u_int32_t keycnt = 0;
@@ -6457,15 +6458,27 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online)
 		wait_for_sc_to_stop("log-truncate");
 	}
 
-	/* Figure out if we are backing out any commited transactions. */
-	if ((ret = __log_cursor(dbenv, &logc)) != 0)
-		return (ret);
-
-	if (dbenv->recovery_start_callback)
-		dbenv->recovery_start_callback(dbenv);
-
 	Pthread_rwlock_wrlock(&dbenv->recoverlk);
 	have_recover_lk = 1;
+    if (i_am_master) {
+        if (truncate_count > 0) {
+            logmsg(LOGMSG_ERROR, "%s forbidding concurrent truncates\n", __func__);
+            Pthread_rwlock_unlock(&dbenv->recoverlk);
+            return -1;
+        }
+        truncate_count++;
+    }
+
+	/* Figure out if we are backing out any commited transactions. */
+	if ((ret = __log_cursor(dbenv, &logc)) != 0) {
+        Pthread_rwlock_unlock(&dbenv->recoverlk);
+        logmsg(LOGMSG_ERROR, "%s error getting log cursor\n", __func__);
+        if (i_am_master) {
+            truncate_count--;
+            assert(truncate_count == 0);
+        }
+		return (ret);
+    }
 
 restart:
 	lockid = DB_LOCK_INVALIDID;
@@ -6600,10 +6613,13 @@ err:
 	if (i_am_master) {
 		void allow_sc_to_run(void);
 		allow_sc_to_run();
+        assert(truncate_count == 1);
+        truncate_count--;
 	}
 
-	if (have_recover_lk)
+	if (have_recover_lk) {
 		Pthread_rwlock_unlock(&dbenv->recoverlk);
+    }
 
 	if ((t_ret = __log_c_close(logc)) != 0 && ret == 0)
 		ret = t_ret;
@@ -6616,10 +6632,11 @@ err:
 	Pthread_mutex_lock(&dbenv->mintruncate_lk);
 	struct mintruncate_entry *mt;
 	while ((mt = LISTC_TOP(&dbenv->mintruncate)) != NULL &&
-			log_compare(&mt->lsn, &trunclsnp) > 0) {
+			log_compare(&mt->lsn, lsnp) > 0) {
 		mt = listc_rtl(&dbenv->mintruncate);
 		free(mt);
 	}
+    mt = LISTC_TOP(&dbenv->mintruncate);
 	Pthread_mutex_unlock(&dbenv->mintruncate_lk);
 
 	return (ret);

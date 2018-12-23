@@ -529,6 +529,20 @@ __db_find_recovery_start(dbenv, outlsn)
 	return __db_find_recovery_start_int(dbenv, outlsn, NULL);
 }
 
+static char *mt_string(int mt)
+{
+	switch(mt) {
+		case MINTRUNCATE_START:
+			return "START";
+		case MINTRUNCATE_SCAN:
+			return "SCAN";
+		case MINTRUNCATE_READY:
+			return "READY";
+		default:
+			return "??INVALID??";
+	}
+}
+
 int
 __dbenv_dump_mintruncate_list(dbenv)
 	DB_ENV *dbenv;
@@ -536,14 +550,16 @@ __dbenv_dump_mintruncate_list(dbenv)
 	struct mintruncate_entry *mt;
 	Pthread_mutex_lock(&dbenv->mintruncate_lk);
 	/* Find first suitable dbreg-start */
-    for (mt = LISTC_BOT(&dbenv->mintruncate); mt != NULL ;
-                mt = mt->lnk.prev) {
-        logmsg(LOGMSG_USER, "%s @ [%d:%d] timestamp %d\n",
-                mt->type == MINTRUNCATE_DBREG_START ? "dbreg" : "chkpt",
-                mt->lsn.file, mt->lsn.offset, mt->timestamp);
-    }
+	logmsg(LOGMSG_USER, "Mintruncate-state is %s\n", 
+			mt_string(dbenv->mintruncate_state));
+	for (mt = LISTC_BOT(&dbenv->mintruncate); mt != NULL ;
+				mt = mt->lnk.prev) {
+		logmsg(LOGMSG_USER, "%s @ [%d:%d] timestamp %d\n",
+				mt->type == MINTRUNCATE_DBREG_START ? "dbreg" : "chkpt",
+				mt->lsn.file, mt->lsn.offset, mt->timestamp);
+	}
 	Pthread_mutex_unlock(&dbenv->mintruncate_lk);
-    return 0;
+	return 0;
 }
 
 int
@@ -574,22 +590,20 @@ __dbenv_min_truncate_lsn_timestamp(dbenv, lowfile, outlsn, outtime)
 
 	Pthread_mutex_lock(&dbenv->mintruncate_lk);
 
-    if (!IS_ZERO_LSN(dbenv->mintruncate_first) && lowfile >
-            dbenv->mintruncate_first.file)
-        dbenv->mintruncate_state = MINTRUNCATE_READY;
+	if (!IS_ZERO_LSN(dbenv->mintruncate_first) && lowfile >
+			dbenv->mintruncate_first.file)
+		dbenv->mintruncate_state = MINTRUNCATE_READY;
 
-	/* Delete old entries if we've finished scanning */
-    if (dbenv->mintruncate_state == MINTRUNCATE_READY) {
-        while ((mt = LISTC_BOT(&dbenv->mintruncate)) != NULL &&
-                mt->lsn.file < lowfile) {
-            mt = listc_rbl(&dbenv->mintruncate);
-            free(mt);
-        }
-    }
+	/* Delete old entries */
+	while ((mt = LISTC_BOT(&dbenv->mintruncate)) != NULL &&
+			mt->lsn.file < lowfile) {
+		mt = listc_rbl(&dbenv->mintruncate);
+		free(mt);
+	}
 
-    /* Find first DBREG >= lowfile */
+	/* Find first DBREG >= lowfile */
 	for (mt = LISTC_BOT(&dbenv->mintruncate) ;
-			mt && (mt->type != MINTRUNCATE_DBREG_START || mt->lsn.file < lowfile) ;
+			mt && (mt->type != MINTRUNCATE_DBREG_START) ;
 			mt = mt->lnk.prev)
 		;
 
@@ -622,10 +636,10 @@ int __build_min_truncate_map(dbenv)
 	DB_LOGC *logc = NULL;
 	int ret = 0;
 
-    if (dbenv->mintruncate_state == MINTRUNCATE_READY) {
-        logmsg(LOGMSG_ERROR, "%s: already called\n", __func__);
-        return 0;
-    }
+	if (dbenv->mintruncate_state != MINTRUNCATE_START) {
+		logmsg(LOGMSG_INFO, "%s: \n", __func__);
+		return 0;
+	}
 
 	dbenv->mintruncate_state = MINTRUNCATE_SCAN;
 
@@ -644,33 +658,32 @@ int __build_min_truncate_map(dbenv)
 			__os_free(dbenv, debug_args);
 			Pthread_mutex_lock(&dbenv->mintruncate_lk);
 
-            /* Only add if we've switched files */
+			/* Only add if we've switched files */
 			if (optype == 2 && (last_dbreg_start.file < lsn.file)) {
 
-                /* Normal log traffic can be adding to the other end: find
-                 * correct place to insert */
+				/* Normal log traffic can be adding to the other end: find
+				 * correct place to insert */
 
-                for (prev_mt = NULL, mt = LISTC_TOP(&dbenv->mintruncate) ;
-                        mt && log_compare(&mt->lsn, &lsn) > 0;
-                        prev_mt = mt, mt = mt->lnk.next)
-                    ;
-                if (!mt || log_compare(&mt->lsn, &lsn) > 0) {
-                    last_start = newmt = malloc(sizeof(*newmt));
-                    newmt->type = MINTRUNCATE_DBREG_START;
-                    newmt->timestamp = 0;
-                    last_dbreg_start = newmt->lsn = lsn;
-                    if (!prev_mt)
-                        listc_atl(&dbenv->mintruncate, newmt);
-                    else
-                        listc_add_after(&dbenv->mintruncate, newmt, prev_mt);
-                } else if (mt) {
-                    assert(log_compare(&mt->lsn, &lsn) == 0);
-                    assert(mt->type == MINTRUNCATE_DBREG_START);
-                    break;
-                }
+				for (prev_mt = NULL, mt = LISTC_TOP(&dbenv->mintruncate) ;
+						mt && log_compare(&mt->lsn, &lsn) > 0;
+						prev_mt = mt, mt = mt->lnk.next)
+					;
+				if (!mt || log_compare(&mt->lsn, &lsn) > 0) {
+					last_start = newmt = malloc(sizeof(*newmt));
+					newmt->type = MINTRUNCATE_DBREG_START;
+					newmt->timestamp = 0;
+					last_dbreg_start = newmt->lsn = lsn;
+					if (!prev_mt)
+						listc_atl(&dbenv->mintruncate, newmt);
+					else
+						listc_add_after(&dbenv->mintruncate, newmt, prev_mt);
+				} else if (mt) {
+					assert(log_compare(&mt->lsn, &lsn) == 0);
+					assert(mt->type == MINTRUNCATE_DBREG_START);
+				}
+            }
 
-			}
-			Pthread_mutex_unlock(&dbenv->mintruncate_lk);
+            Pthread_mutex_unlock(&dbenv->mintruncate_lk);
 		}
 
 		if (type == DB___txn_ckp && last_start) {
@@ -680,14 +693,14 @@ int __build_min_truncate_map(dbenv)
 				if ((ret = __txn_ckp_read(dbenv, rec.data, &ckp_args)) != 0)
 					abort();
 				if (log_compare(&ckp_args->ckp_lsn,
-                            &last_dbreg_start) >= 0) {
+							&last_dbreg_start) >= 0) {
 					newmt = malloc(sizeof(*newmt));
 					newmt->type = MINTRUNCATE_CHECKPOINT;
 					newmt->timestamp = ckp_args->timestamp;
 					newmt->lsn = lsn;
 					listc_add_after(&dbenv->mintruncate, newmt, last_start);
-                    /* Ignore checkpoints until I see another dbreg */
-                    last_start = NULL;
+					/* Ignore checkpoints until I see another dbreg */
+					last_start = NULL;
 				}
 				__os_free(dbenv, ckp_args);
 			}
@@ -857,9 +870,6 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 	txninfo = NULL;
 
 	pass = "initial";
-
-	if (dbenv->recovery_start_callback)
-		dbenv->recovery_start_callback(dbenv);
 
 	/*
 	 * XXX

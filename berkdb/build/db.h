@@ -2066,6 +2066,7 @@ struct __db_env {
     int (*rep_verify_match) __P((DB_ENV *, unsigned int, unsigned int, int));
     int (*min_truncate_lsn_timestamp) __P((DB_ENV *, int file, DB_LSN *outlsn, int32_t *timestamp));
     int (*dump_mintruncate_list) __P((DB_ENV *));
+    int (*mintruncate_delete_log) __P((DB_ENV *, int lowfile));
 
 	/*
 	 * Currently, the verbose list is a bit field with room for 32
@@ -2426,7 +2427,6 @@ struct __db_env {
 	LISTC_T(HEAP) regions;
 	int bulk_stops_on_page;
 
-	void (*recovery_start_callback)(DB_ENV *env);
 	void (*lsn_undone_callback)(DB_ENV *env, DB_LSN*);
 
 	int  (*txn_begin_set_retries)
