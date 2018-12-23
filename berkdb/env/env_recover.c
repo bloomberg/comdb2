@@ -554,9 +554,10 @@ __dbenv_dump_mintruncate_list(dbenv)
 			mt_string(dbenv->mintruncate_state));
 	for (mt = LISTC_BOT(&dbenv->mintruncate); mt != NULL ;
 				mt = mt->lnk.prev) {
-		logmsg(LOGMSG_USER, "%s @ [%d:%d] timestamp %d\n",
+		logmsg(LOGMSG_USER, "%s @ [%d:%d] timestamp %d ckplsn [%d:%d]\n",
 				mt->type == MINTRUNCATE_DBREG_START ? "dbreg" : "chkpt",
-				mt->lsn.file, mt->lsn.offset, mt->timestamp);
+				mt->lsn.file, mt->lsn.offset, mt->timestamp, mt->ckplsn.file,
+                mt->ckplsn.offset);
 	}
 	Pthread_mutex_unlock(&dbenv->mintruncate_lk);
 	return 0;
@@ -673,6 +674,7 @@ int __build_min_truncate_map(dbenv)
 					newmt->type = MINTRUNCATE_DBREG_START;
 					newmt->timestamp = 0;
 					last_dbreg_start = newmt->lsn = lsn;
+                    ZERO_LSN(newmt->ckplsn);
 					if (!prev_mt)
 						listc_atl(&dbenv->mintruncate, newmt);
 					else
@@ -698,6 +700,7 @@ int __build_min_truncate_map(dbenv)
 					newmt->type = MINTRUNCATE_CHECKPOINT;
 					newmt->timestamp = ckp_args->timestamp;
 					newmt->lsn = lsn;
+                    newmt->ckplsn = ckp_args->ckp_lsn;
 					listc_add_after(&dbenv->mintruncate, newmt, last_start);
 					/* Ignore checkpoints until I see another dbreg */
 					last_start = NULL;

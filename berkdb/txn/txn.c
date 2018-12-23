@@ -2327,6 +2327,7 @@ do_ckp:
             newmt->type = MINTRUNCATE_DBREG_START;
             newmt->timestamp = 0;
             newmt->lsn = dbenv->last_dbreg_start = debuglsn;
+            ZERO_LSN(newmt->ckplsn);
             listc_atl(&dbenv->mintruncate, newmt);
         }
         Pthread_mutex_unlock(&dbenv->mintruncate_lk);
@@ -2368,6 +2369,7 @@ do_ckp:
             newmt->type = MINTRUNCATE_CHECKPOINT;
             newmt->timestamp = timestamp;
             newmt->lsn = ckp_lsn;
+            newmt->ckplsn = ckp_lsn_sav;
             listc_atl(&dbenv->mintruncate, newmt);
             if (dbenv->mintruncate_first.file == 0)
                 dbenv->mintruncate_first = ckp_lsn;

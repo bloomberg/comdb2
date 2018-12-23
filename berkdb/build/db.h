@@ -2007,6 +2007,7 @@ struct mintruncate_entry {
 	int type;
 	int32_t timestamp;
 	DB_LSN lsn;
+	DB_LSN ckplsn;
 	LINKC_T(struct mintruncate_entry) lnk;
 };
 
