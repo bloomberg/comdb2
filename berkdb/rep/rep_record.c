@@ -389,7 +389,7 @@ matchable_log_type(int rectype)
 		ret = (rectype == DB___txn_regop ||
 			rectype == DB___txn_regop_gen ||
 			rectype == DB___txn_regop_rowlocks ||
-            (gbl_match_on_ckp && rectype == DB___txn_ckp));
+			(gbl_match_on_ckp && rectype == DB___txn_ckp));
 	} else {
 		switch (rectype) {
 		case DB___txn_recycle:
@@ -459,7 +459,7 @@ static void *apply_thread(void *arg)
 	LOG *lp;
 	DB_LOG *dblp;
 	DB_LSN master_lsn, my_lsn, my_last_lsn, first_repdb_lsn;
-    int last_lsn_change_time = 0;
+	int last_lsn_change_time = 0;
 	DB_ENV *dbenv = (DB_ENV *)arg;
 	struct queued_log *q;
 	struct timespec ts;
@@ -544,8 +544,8 @@ static void *apply_thread(void *arg)
 				static unsigned long long count = 0;
 				int now;
 
-                logmsg(LOGMSG_DEBUG, "%s: applying [%d:%d]\n", __func__, q->rp->lsn.file,
-                        q->rp->lsn.offset);
+				logmsg(LOGMSG_DEBUG, "%s: applying [%d:%d]\n", __func__, q->rp->lsn.file,
+						q->rp->lsn.offset);
 				ret = __rep_apply(dbenv, q->rp, &rec, &ret_lsnp, &q->gen, 1);
 				Pthread_mutex_unlock(&rep_candidate_lock);
 				if (ret == 0 || ret == DB_REP_ISPERM) {
@@ -598,9 +598,9 @@ static void *apply_thread(void *arg)
 					}
 				}
 			} else {
-                logmsg(LOGMSG_DEBUG, "%s: dropping [%d:%d], rep->gen=%d "
-                        "rec-gen=%d\n", __func__, q->rp->lsn.file,
-                        q->rp->lsn.offset, rep->gen, q->gen);
+				logmsg(LOGMSG_DEBUG, "%s: dropping [%d:%d], rep->gen=%d "
+						"rec-gen=%d\n", __func__, q->rp->lsn.file,
+						q->rp->lsn.offset, rep->gen, q->gen);
 				Pthread_mutex_unlock(&rep_candidate_lock);
 				ret = 0;
 			}
@@ -641,10 +641,10 @@ static void *apply_thread(void *arg)
 		/* IMPORTANT: backup if beyond the end of the logfile */
 		my_lsn.offset -= lp->len;
 
-        if (log_compare(&my_lsn, &my_last_lsn)) {
-            my_last_lsn = my_lsn;
-            last_lsn_change_time = comdb2_time_epochms();
-        }
+		if (log_compare(&my_lsn, &my_last_lsn)) {
+			my_last_lsn = my_lsn;
+			last_lsn_change_time = comdb2_time_epochms();
+		}
 
 		/* Delay more if we are falling further behind */
 		bytes_behind = subtract_lsn(dbenv->app_private, &master_lsn, &my_lsn);
@@ -719,15 +719,15 @@ static void *apply_thread(void *arg)
 			continue;
 		}
 
-        int request_all_records = 0;
-        if (gbl_req_all_threshold && (bytes_behind > gbl_req_all_threshold ||
-                IS_ZERO_LSN(first_repdb_lsn)))
-            request_all_records = 1;
+		int request_all_records = 0;
+		if (gbl_req_all_threshold && (bytes_behind > gbl_req_all_threshold ||
+				IS_ZERO_LSN(first_repdb_lsn)))
+			request_all_records = 1;
 
-        if (gbl_req_all_time_threshold && (comdb2_time_epochms() - 
-                    last_lsn_change_time) > gbl_req_all_time_threshold) {
-            request_all_records = 1;
-        }
+		if (gbl_req_all_time_threshold && (comdb2_time_epochms() - 
+					last_lsn_change_time) > gbl_req_all_time_threshold) {
+			request_all_records = 1;
+		}
 
 		if (request_all_records) {
 			/* Request all records from the master */
@@ -6430,11 +6430,11 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online)
 	DB_LOGC *logc;
 	DBT *lock_dbt = NULL;
 	int ret, t_ret, undo, count=0;
-    int have_recover_lk = 0;
+	int have_recover_lk = 0;
 	int found_scdone = 0;
 	int recover_at_commit = 1;
-    int schema_lk_count = 0;
-    int i_am_master = 0;
+	int schema_lk_count = 0;
+	int i_am_master = 0;
 	int maxlocks = gbl_online_recovery_maxlocks;
 	u_int32_t rectype;
 	u_int32_t keycnt = 0;
@@ -6450,12 +6450,12 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online)
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
 
-    i_am_master = F_ISSET(rep, REP_F_MASTER);
+	i_am_master = F_ISSET(rep, REP_F_MASTER);
 
-    if (i_am_master) {
-        void wait_for_sc_to_stop(const char *operation);
-        wait_for_sc_to_stop("log-truncate");
-    }
+	if (i_am_master) {
+		void wait_for_sc_to_stop(const char *operation);
+		wait_for_sc_to_stop("log-truncate");
+	}
 
 	/* Figure out if we are backing out any commited transactions. */
 	if ((ret = __log_cursor(dbenv, &logc)) != 0)
@@ -6464,8 +6464,8 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online)
 	if (dbenv->recovery_start_callback)
 		dbenv->recovery_start_callback(dbenv);
 
-    Pthread_rwlock_wrlock(&dbenv->recoverlk);
-    have_recover_lk = 1;
+	Pthread_rwlock_wrlock(&dbenv->recoverlk);
+	have_recover_lk = 1;
 
 restart:
 	lockid = DB_LOCK_INVALIDID;
@@ -6484,7 +6484,7 @@ restart:
 		(ret = __log_c_get(logc, &lsn, &mylog, logflags)) == 0 &&
 		log_compare(&lsn, lsnp) > 0) {
 		logflags = DB_PREV;
-        lockcnt = 0;
+		lockcnt = 0;
 		LOGCOPY_32(&rectype, mylog.data);
 		if (rectype == DB___txn_regop_rowlocks) {
 			if ((ret =
@@ -6497,7 +6497,7 @@ restart:
 
 			if (online) {
 				if (txnrlrec->lflags & DB_TXN_SCHEMA_LOCK)
-                    schema_lk_count++;
+					schema_lk_count++;
 				ret = recovery_getlocks(dbenv, lockid, &txnrlrec->locks, lsn);
 			}
 
@@ -6506,7 +6506,7 @@ restart:
 			if (ret == DB_LOCK_DEADLOCK) {
 				gbl_rep_trans_deadlocked++;
 				recovery_release_locks(dbenv, lockid);
-                lockid = DB_LOCK_INVALIDID;
+				lockid = DB_LOCK_INVALIDID;
 				goto restart;
 			}
 
@@ -6530,7 +6530,7 @@ restart:
 			if (ret == DB_LOCK_DEADLOCK) {
 				gbl_rep_trans_deadlocked++;
 				recovery_release_locks(dbenv, lockid);
-                lockid = DB_LOCK_INVALIDID;
+				lockid = DB_LOCK_INVALIDID;
 				goto restart;
 			}
 
@@ -6554,7 +6554,7 @@ restart:
 			if (ret == DB_LOCK_DEADLOCK) {
 				gbl_rep_trans_deadlocked++;
 				recovery_release_locks(dbenv, lockid);
-                lockid = DB_LOCK_INVALIDID;
+				lockid = DB_LOCK_INVALIDID;
 				goto restart;
 			}
 
@@ -6563,47 +6563,47 @@ restart:
 		}
 	}
 
-    logmsg(LOGMSG_INFO, "%s calling truncate with lsn [%d:%d]\n", __func__,
-            lsnp->file, lsnp->offset);
-    ret = __db_apprec(dbenv, lsnp, trunclsnp, undo, DB_RECOVER_NOCKP);
+	logmsg(LOGMSG_INFO, "%s calling truncate with lsn [%d:%d]\n", __func__,
+			lsnp->file, lsnp->offset);
+	ret = __db_apprec(dbenv, lsnp, trunclsnp, undo, DB_RECOVER_NOCKP);
 
-    /* Increase generation before releasing recovery lock */
-    if (i_am_master && !gbl_is_physical_replicant) {
-        uint32_t newgen = rep->gen+(20+rand()%20);
-        __rep_set_gen(dbenv, __func__, __LINE__, newgen);
-    }
+	/* Increase generation before releasing recovery lock */
+	if (i_am_master && !gbl_is_physical_replicant) {
+		uint32_t newgen = rep->gen+(20+rand()%20);
+		__rep_set_gen(dbenv, __func__, __LINE__, newgen);
+	}
 
-    /* Recovery cleanup is called holding recoverlk */
-    if (dbenv->rep_recovery_cleanup)
-        dbenv->rep_recovery_cleanup(dbenv, trunclsnp, i_am_master);
+	/* Recovery cleanup is called holding recoverlk */
+	if (dbenv->rep_recovery_cleanup)
+		dbenv->rep_recovery_cleanup(dbenv, trunclsnp, i_am_master);
 
-    logmsg(LOGMSG_INFO, "%s finished truncate, trunclsnp is [%d:%d]\n", __func__,
-            trunclsnp->file, trunclsnp->offset);
+	logmsg(LOGMSG_INFO, "%s finished truncate, trunclsnp is [%d:%d]\n", __func__,
+			trunclsnp->file, trunclsnp->offset);
 
-    Pthread_rwlock_unlock(&dbenv->recoverlk);
-    have_recover_lk = 0;
+	Pthread_rwlock_unlock(&dbenv->recoverlk);
+	have_recover_lk = 0;
 
 	if (online) {
 		recovery_release_locks(dbenv, lockid);
 		lockid = DB_LOCK_INVALIDID;
 	}
 
-    /* comdb2_reload_schemas will get the schema lock */
-    if (schema_lk_count && dbenv->truncate_sc_callback)
-        dbenv->truncate_sc_callback(dbenv, trunclsnp);
+	/* comdb2_reload_schemas will get the schema lock */
+	if (schema_lk_count && dbenv->truncate_sc_callback)
+		dbenv->truncate_sc_callback(dbenv, trunclsnp);
 
-    /* Tell replicants to truncate */
-    if (dbenv->rep_truncate_callback)
-        dbenv->rep_truncate_callback(dbenv, trunclsnp, i_am_master);
+	/* Tell replicants to truncate */
+	if (dbenv->rep_truncate_callback)
+		dbenv->rep_truncate_callback(dbenv, trunclsnp, i_am_master);
 
 err:
-    if (i_am_master) {
-        void allow_sc_to_run(void);
-        allow_sc_to_run();
-    }
+	if (i_am_master) {
+		void allow_sc_to_run(void);
+		allow_sc_to_run();
+	}
 
-    if (have_recover_lk)
-        Pthread_rwlock_unlock(&dbenv->recoverlk);
+	if (have_recover_lk)
+		Pthread_rwlock_unlock(&dbenv->recoverlk);
 
 	if ((t_ret = __log_c_close(logc)) != 0 && ret == 0)
 		ret = t_ret;
@@ -6613,14 +6613,14 @@ err:
 		lockid = DB_LOCK_INVALIDID;
 	}
 
-    Pthread_mutex_lock(&dbenv->mintruncate_lk);
-    struct mintruncate_entry *mt;
-    while ((mt = LISTC_TOP(&dbenv->mintruncate)) != NULL &&
-            log_compare(&mt->lsn, &trunclsnp) > 0) {
-        mt = listc_rtl(&dbenv->mintruncate);
-        free(mt);
-    }
-    Pthread_mutex_unlock(&dbenv->mintruncate_lk);
+	Pthread_mutex_lock(&dbenv->mintruncate_lk);
+	struct mintruncate_entry *mt;
+	while ((mt = LISTC_TOP(&dbenv->mintruncate)) != NULL &&
+			log_compare(&mt->lsn, &trunclsnp) > 0) {
+		mt = listc_rtl(&dbenv->mintruncate);
+		free(mt);
+	}
+	Pthread_mutex_unlock(&dbenv->mintruncate_lk);
 
 	return (ret);
 }
@@ -7541,7 +7541,7 @@ __rep_verify_match(dbenv, rp, savetime, online)
 	DB_ENV *dbenv;
 	REP_CONTROL *rp;
 	time_t savetime;
-    int online;
+	int online;
 {
 	DB_LOG *dblp;
 	DB_LSN trunclsn, prevlsn, purge_lsn;
@@ -7564,14 +7564,14 @@ __rep_verify_match(dbenv, rp, savetime, online)
 	 * and we lost.  We must give up.
 	 */
 
-    Pthread_mutex_lock(&apply_lk);
+	Pthread_mutex_lock(&apply_lk);
 	MUTEX_LOCK(dbenv, db_rep->db_mutexp);
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 	done = savetime != rep->timestamp;
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	if (done) {
 		MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
-        Pthread_mutex_unlock(&apply_lk);
+		Pthread_mutex_unlock(&apply_lk);
 		return (0);
 	}
 
@@ -7609,8 +7609,7 @@ __rep_verify_match(dbenv, rp, savetime, online)
 
 	/* Parallel rep threads could still be working- wait for them to complete
 	 * before grabbing the rep_mutex. */
-    if (!online) {
-        wait_for_running_transactions(dbenv);
+	wait_for_running_transactions(dbenv);
 
         /*
          * Make sure the world hasn't changed while we tried to get
