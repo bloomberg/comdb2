@@ -7610,6 +7610,7 @@ __rep_verify_match(dbenv, rp, savetime, online)
 	/* Parallel rep threads could still be working- wait for them to complete
 	 * before grabbing the rep_mutex. */
 	wait_for_running_transactions(dbenv);
+	if (!online) {
 
         /*
          * Make sure the world hasn't changed while we tried to get
