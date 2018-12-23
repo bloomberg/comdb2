@@ -6631,12 +6631,20 @@ err:
 
 	Pthread_mutex_lock(&dbenv->mintruncate_lk);
 	struct mintruncate_entry *mt;
-	while ((mt = LISTC_TOP(&dbenv->mintruncate)) != NULL &&
+	while ((mt = LISTC_TOP(&dbenv->mintruncate)) &&
 			log_compare(&mt->lsn, lsnp) > 0) {
 		mt = listc_rtl(&dbenv->mintruncate);
 		free(mt);
 	}
-    mt = LISTC_TOP(&dbenv->mintruncate);
+    while ((mt = LISTC_TOP(&dbenv->mintruncate)) &&
+                mt->type != MINTRUNCATE_DBREG_START)
+            mt = mt->lnk.next;
+
+    if (mt) 
+        dbenv->last_dbreg_start = mt->lsn;
+    else
+        ZERO_LSN(dbenv->last_dbreg_start);
+
 	Pthread_mutex_unlock(&dbenv->mintruncate_lk);
 
 	return (ret);
