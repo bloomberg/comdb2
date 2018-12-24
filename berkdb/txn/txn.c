@@ -2322,11 +2322,14 @@ do_ckp:
 		}
 
         Pthread_mutex_lock(&dbenv->mintruncate_lk);
-        if (dbenv->last_dbreg_start.file < debuglsn.file) {
+        if (dbenv->last_mintruncate_dbreg_start.file < debuglsn.file) {
             newmt = malloc(sizeof(*newmt));
+#ifdef MINTRUNCATE_DEBUG
+            newmt->func = __func__;
+#endif
             newmt->type = MINTRUNCATE_DBREG_START;
             newmt->timestamp = 0;
-            newmt->lsn = dbenv->last_dbreg_start = debuglsn;
+            newmt->lsn = dbenv->last_mintruncate_dbreg_start = debuglsn;
             ZERO_LSN(newmt->ckplsn);
             listc_atl(&dbenv->mintruncate, newmt);
         }
@@ -2362,10 +2365,11 @@ do_ckp:
 		MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
 
         Pthread_mutex_lock(&dbenv->mintruncate_lk);
-        mt = LISTC_TOP(&dbenv->mintruncate);
-        if (mt->type == MINTRUNCATE_DBREG_START &&
-                (log_compare(&ckp_lsn_sav, &dbenv->last_dbreg_start) > 0)) {
+        if (ckp_lsn_sav.file > dbenv->last_mintruncate_ckplsn.file) {
             newmt = malloc(sizeof(*newmt));
+#ifdef MINTRUNCATE_DEBUG
+            newmt->func = __func__;
+#endif
             newmt->type = MINTRUNCATE_CHECKPOINT;
             newmt->timestamp = timestamp;
             newmt->lsn = ckp_lsn;
@@ -2373,6 +2377,7 @@ do_ckp:
             listc_atl(&dbenv->mintruncate, newmt);
             if (dbenv->mintruncate_first.file == 0)
                 dbenv->mintruncate_first = ckp_lsn;
+            dbenv->last_mintruncate_ckplsn = ckp_lsn_sav;
         }
         Pthread_mutex_unlock(&dbenv->mintruncate_lk);
 

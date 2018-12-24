@@ -2008,6 +2008,9 @@ struct mintruncate_entry {
 	int32_t timestamp;
 	DB_LSN lsn;
 	DB_LSN ckplsn;
+#ifdef MINTRUNCATE_DEBUG
+    char *func;
+#endif
 	LINKC_T(struct mintruncate_entry) lnk;
 };
 
@@ -2065,8 +2068,10 @@ struct __db_env {
                 void*, int));
     size_t (*get_log_header_size) __P((DB_ENV*)); 
     int (*rep_verify_match) __P((DB_ENV *, unsigned int, unsigned int, int));
-    int (*min_truncate_lsn_timestamp) __P((DB_ENV *, int file, DB_LSN *outlsn, int32_t *timestamp));
+    int (*mintruncate_lsn_timestamp) __P((DB_ENV *, int file, DB_LSN *outlsn, int32_t *timestamp));
     int (*dump_mintruncate_list) __P((DB_ENV *));
+    int (*clear_mintruncate_list) __P((DB_ENV *));
+    int (*build_mintruncate_list) __P((DB_ENV *));
     int (*mintruncate_delete_log) __P((DB_ENV *, int lowfile));
 
 	/*
@@ -2491,7 +2496,9 @@ struct __db_env {
     int mintruncate_state;
     DB_LSN mintruncate_first;
 	LISTC_T(struct mintruncate_entry) mintruncate;
-    DB_LSN last_dbreg_start;
+    DB_LSN last_mintruncate_dbreg_start;
+    DB_LSN last_mintruncate_ckp;
+    DB_LSN last_mintruncate_ckplsn;
 	db_recops recovery_pass;
 	pthread_rwlock_t dbreglk;
 	pthread_rwlock_t recoverlk;

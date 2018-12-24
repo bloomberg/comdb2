@@ -6419,6 +6419,8 @@ recovery_release_locks(dbenv, lockid)
 	}
 }
 
+void __dbenv_reset_mintruncate_vars(DB_ENV *dbenv);
+
 static int
 __rep_dorecovery(dbenv, lsnp, trunclsnp, online)
 	DB_ENV *dbenv;
@@ -6636,14 +6638,8 @@ err:
 		mt = listc_rtl(&dbenv->mintruncate);
 		free(mt);
 	}
-    while ((mt = LISTC_TOP(&dbenv->mintruncate)) &&
-                mt->type != MINTRUNCATE_DBREG_START)
-            mt = mt->lnk.next;
 
-    if (mt) 
-        dbenv->last_dbreg_start = mt->lsn;
-    else
-        ZERO_LSN(dbenv->last_dbreg_start);
+    __dbenv_reset_mintruncate_vars(dbenv);
 
 	Pthread_mutex_unlock(&dbenv->mintruncate_lk);
 
@@ -7522,7 +7518,7 @@ __rep_truncate_repdb(dbenv)
 	return (ret);
 }
 
-extern int __build_min_truncate_map(DB_ENV *dbenv);
+extern int __dbenv_build_mintruncate_list(DB_ENV *dbenv);
 
 /*
  * __rep_verify_match --
@@ -7554,7 +7550,7 @@ int __dbenv_rep_verify_match(DB_ENV* dbenv, unsigned int file, unsigned int offs
      * checkpoint that we actually wrote */
     if (dbenv->mintruncate_state != MINTRUNCATE_READY &&
             log_compare(&lsnp, &dbenv->mintruncate_first) < 0) {
-        rc = __build_min_truncate_map(dbenv);
+        rc = __dbenv_build_mintruncate_list(dbenv);
         assert(rc || dbenv->mintruncate_state == MINTRUNCATE_READY);
     }
     ret = __rep_verify_match(dbenv, &rp, rep->timestamp, online);

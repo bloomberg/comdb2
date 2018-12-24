@@ -4386,6 +4386,12 @@ clipper_usage:
         }
     } else if (tokcmp(tok, ltok, "dump_mintruncate") == 0) {
         bdb_dump_mintruncate_list(thedb->bdb_env);
+    } else if (tokcmp(tok, ltok, "clear_mintruncate") == 0) {
+        bdb_clear_mintruncate_list(thedb->bdb_env);
+    } else if (tokcmp(tok, ltok, "build_mintruncate") == 0) {
+        bdb_build_mintruncate_list(thedb->bdb_env);
+    } else if (tokcmp(tok, ltok, "print_mintruncate") == 0) {
+        bdb_print_mintruncate_min(thedb->bdb_env);
     } else if (tokcmp(tok, ltok, "detect") == 0) {
         bdb_detect(thedb->bdb_env);
     } else if (tokcmp(tok, ltok, "lsum") == 0) {
