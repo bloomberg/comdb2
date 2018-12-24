@@ -4091,8 +4091,9 @@ static int bdb_am_i_coherent_int(bdb_state_type *bdb_state)
         static time_t lastpr = 0;
         time_t now = time(NULL);
         if (now - lastpr) {
-            logmsg(LOGMSG_WARN, "%s returning INCOHERENT on force_incoherent = "
-                    "true\n", __func__);
+            logmsg(LOGMSG_WARN,
+                   "%s returning INCOHERENT on force_incoherent = true\n",
+                   __func__);
             lastpr = now;
         }
         return 0;
