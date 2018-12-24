@@ -86,9 +86,11 @@ void free_cached_idx(uint8_t * *cached_idx);
  */
 
 #define ERR                                                                    \
-    if (gbl_verbose_toblock_backouts)                                          \
-        logmsg(LOGMSG_USER, "err line %d rc %d retrc %d\n", __LINE__, rc, retrc);           \
-    goto err;
+    do { \
+        if (gbl_verbose_toblock_backouts)                                          \
+            logmsg(LOGMSG_USER, "err line %d rc %d retrc %d\n", __LINE__, rc, retrc);           \
+        goto err; \
+    } while(0);
 
 int gbl_max_wr_rows_per_txn = 0;
 
@@ -781,7 +783,7 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
     return rc;
 }
 
-int upd_new_record_indices( struct ireq *iq, void *trans,
+int upd_new_record_indices(struct ireq *iq, void *trans,
         unsigned long long newgenid,
         unsigned long long ins_keys,
         const void *new_dta, const void *old_dta, int use_new_tag,
@@ -865,6 +867,80 @@ int upd_new_record_indices( struct ireq *iq, void *trans,
         reqprintf(iq, "is deferredAdd so will add to indices at the end");
 
     return rc;
+}
+
+int del_new_record_indices(struct ireq *iq, void *trans,
+        unsigned long long ngenid,
+        const void *old_dta, int use_new_tag,
+        void *sc_old,
+        unsigned long long del_keys,
+        blob_buffer_t *del_idx_blobs,
+        int verify_retry)
+{
+    int rc = 0;
+    for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
+        char keytag[MAXTAGLEN];
+        char key[MAXKEYLEN];
+
+        if (gbl_use_plan && iq->usedb->plan &&
+            iq->usedb->plan->ix_plan[ixnum] != -1)
+            continue;
+
+        /* only delete keys when told */
+        if (gbl_partial_indexes && iq->usedb->ix_partial &&
+            !(del_keys & (1ULL << ixnum)))
+            continue;
+
+        snprintf(keytag, sizeof(keytag), ".NEW..ONDISK_IX_%d", ixnum);
+
+        /* Convert from OLD ondisk schema to NEW index schema - this
+         * must work by definition. */
+        /*
+        rc = stag_to_stag_buf(iq->usedb->tablename, ".ONDISK", (char*) old_dta,
+                keytag, key, NULL);
+         */
+        if (iq->idxDelete) {
+            memcpy(key, iq->idxDelete[ixnum], iq->usedb->ix_keylen[ixnum]);
+            rc = 0;
+        } else
+            rc = create_key_from_ondisk_blobs(
+                iq->usedb, ixnum, NULL, NULL, NULL,
+                use_new_tag ? ".NEW..ONDISK" : ".ONDISK",
+                use_new_tag ? (char *)sc_old : (char *)old_dta,
+                0 /*not needed */, keytag, key, NULL, del_idx_blobs,
+                del_idx_blobs ? MAXBLOBS : 0, NULL);
+        if (rc == -1) {
+            logmsg(LOGMSG_ERROR, 
+                    "del_new_record ngenid 0x%llx conversion -> ix%d failed\n",
+                    ngenid, ixnum);
+            if (iq->debug)
+                reqprintf(iq, "CAN'T FORM INDEX %d", ixnum);
+            reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+            reqerrstr(iq, COMDB2_DEL_RC_INVL_IDX, "cannot form index %d",
+                      ixnum);
+            return rc;
+        }
+
+        rc = ix_delk(iq, trans, key, ixnum, 2 /*rrn*/, ngenid, ix_isnullk(iq->usedb, key, ixnum));
+        if (iq->debug) {
+            reqprintf(iq, "ix_delk IX %d KEY ", ixnum);
+            reqdumphex(iq, key, getkeysize(iq->usedb, ixnum));
+            reqmoref(iq, " RC %d", rc);
+        }
+
+        /* remap delete not found to retry */
+        if (rc == IX_NOTFND) {
+            if (verify_retry)
+                rc = RC_INTERNAL_RETRY;
+            else
+                rc = ERR_VERIFY;
+        }
+
+        if (rc != 0) {
+            return rc;
+        }
+    }
+    return 0;
 }
 
 /*
@@ -1170,12 +1246,11 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     }
 
     if ((rec_flags & OSQL_IGNORE_FAILURE) != 0) {
-        rc = check_for_upsert(iq, trans, ondisktagsc, blobs,
+        retrc = check_for_upsert(iq, trans, ondisktagsc, blobs,
                               maxblobs, opfailcode, ixfailnum, &retrc,
                               ondisktag, od_dta, od_len, ins_keys, rec_flags);
-        if (rc) {
+        if (retrc)
             ERR;
-        }
     }
    
 
@@ -1282,9 +1357,8 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         retrc = add_record_indices(iq, trans, blobs, maxblobs, opfailcode, 
                 ixfailnum, rrn, genid, vgenid, ins_keys, opcode, blkpos,
                 od_dta, od_len, ondisktag, ondisktagsc);
-        if (retrc) {
+        if (retrc)
             ERR;
-        }
     }
 
     /*
@@ -1927,12 +2001,10 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
          strncasecmp(iq->usedb->tablename, "sqlite_stat", 11) != 0) &&
         !(flags & RECFLAGS_NEW_SCHEMA)) {
 
-        rc = local_replicant_log_delete_for_update(iq, trans, rrn, vgenid,
+        retrc = local_replicant_log_delete_for_update(iq, trans, rrn, vgenid,
                                                    opfailcode);
-        if (rc) {
-            retrc = rc;
+        if (retrc)
             ERR;
-        }
     }
 
     /*
@@ -1995,9 +2067,8 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                 del_keys, flags, add_idx_blobs, 
                 del_idx_blobs, same_genid_with_upd, vgenid, &deferredAdd);
 
-    if (retrc) {
+    if (retrc)
         ERR;
-    }
 
     int force_inplace_blob_off = live_sc_disable_inplace_blobs(iq);
     /*
@@ -2161,12 +2232,10 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
          (strcasecmp(iq->usedb->tablename, "comdb2_commit_log")) != 0 &&
          strncasecmp(iq->usedb->tablename, "sqlite_stat", 11) != 0) &&
         !(flags & RECFLAGS_NEW_SCHEMA)) {
-        rc = local_replicant_log_add_for_update(iq, trans, rrn, *genid,
+        retrc = local_replicant_log_add_for_update(iq, trans, rrn, *genid,
                                                 opfailcode);
-        if (rc) {
-            retrc = rc;
+        if (retrc)
             ERR;
-        }
     }
 
     /*
@@ -2446,11 +2515,9 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
          (strcasecmp(iq->usedb->tablename, "comdb2_commit_log")) != 0 &&
          strncasecmp(iq->usedb->tablename, "sqlite_stat", 11) != 0) &&
         !(flags & RECFLAGS_NEW_SCHEMA)) {
-        rc = local_replicant_log_delete(iq, trans, od_dta, opfailcode);
-        if (rc) {
-            retrc = rc;
+        retrc = local_replicant_log_delete(iq, trans, od_dta, opfailcode);
+        if (retrc)
             ERR;
-        }
     }
 
     /*
@@ -2493,9 +2560,8 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     retrc = del_record_indices(iq, trans, opfailcode,
             ixfailnum, rrn, genid, od_dta,
             del_keys, del_idx_blobs, ondisktag);
-    if (retrc) {
+    if (retrc)
         ERR;
-    }
 
     /*
      * Trigger JAVASP_TRANS_LISTEN_AFTER_DEL
@@ -2916,7 +2982,6 @@ int del_new_record(struct ireq *iq, void *trans, unsigned long long genid,
     unsigned long long ngenid;
     int prefixes = 0;
     int rc;
-    int ixnum;
 
     int use_new_tag = 0;
 
@@ -3051,73 +3116,14 @@ int del_new_record(struct ireq *iq, void *trans, unsigned long long genid,
         }
     }
 
-    /*
-     * Form and delete all keys.
-     */
-    for (ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
-        char keytag[MAXTAGLEN];
-        char key[MAXKEYLEN];
-
-        if (gbl_use_plan && iq->usedb->plan &&
-            iq->usedb->plan->ix_plan[ixnum] != -1)
-            continue;
-
-        /* only delete keys when told */
-        if (gbl_partial_indexes && iq->usedb->ix_partial &&
-            !(del_keys & (1ULL << ixnum)))
-            continue;
-
-        snprintf(keytag, sizeof(keytag), ".NEW..ONDISK_IX_%d", ixnum);
-
-        /* Convert from OLD ondisk schema to NEW index schema - this
-         * must work by definition. */
-        /*
-        rc = stag_to_stag_buf(iq->usedb->tablename, ".ONDISK", (char*) old_dta,
-                keytag, key, NULL);
-         */
-        if (iq->idxDelete) {
-            memcpy(key, iq->idxDelete[ixnum], iq->usedb->ix_keylen[ixnum]);
-            rc = 0;
-        } else
-            rc = create_key_from_ondisk_blobs(
-                iq->usedb, ixnum, NULL, NULL, NULL,
-                use_new_tag ? ".NEW..ONDISK" : ".ONDISK",
-                use_new_tag ? (char *)sc_old : (char *)old_dta,
-                0 /*not needed */, keytag, key, NULL, del_idx_blobs,
-                del_idx_blobs ? MAXBLOBS : 0, NULL);
-        if (rc == -1) {
-            logmsg(LOGMSG_ERROR, 
-                    "del_new_record genid 0x%llx conversion -> ix%d failed\n",
-                    genid, ixnum);
-            if (iq->debug)
-                reqprintf(iq, "CAN'T FORM INDEX %d", ixnum);
-            reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
-            reqerrstr(iq, COMDB2_DEL_RC_INVL_IDX, "cannot form index %d",
-                      ixnum);
-            retrc = rc;
-            goto err;
-        }
-
-        rc = ix_delk(iq, trans, key, ixnum, 2 /*rrn*/, ngenid, ix_isnullk(iq->usedb, key, ixnum));
-        if (iq->debug) {
-            reqprintf(iq, "ix_delk IX %d KEY ", ixnum);
-            reqdumphex(iq, key, getkeysize(iq->usedb, ixnum));
-            reqmoref(iq, " RC %d", rc);
-        }
-
-        /* remap delete not found to retry */
-        if (rc == IX_NOTFND) {
-            if (verify_retry)
-                rc = RC_INTERNAL_RETRY;
-            else
-                rc = ERR_VERIFY;
-        }
-
-        if (rc != 0) {
-            retrc = rc;
-            goto err;
-        }
-    }
+    /* Form and delete all keys.  */
+    retrc = del_new_record_indices(iq, trans, 
+        ngenid,
+        old_dta, use_new_tag,
+        sc_old,
+        del_keys,
+        del_idx_blobs,
+        verify_retry);
 
 err:
     if (sc_old)
