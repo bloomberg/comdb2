@@ -2090,7 +2090,7 @@ static int tclcdb2ObjCmd(
 	}
 	case OPT_COLTYPE: {
 	    int colIndex, colType;
-	    const char *colTypeName;
+	    const char *colTypeName = NULL;
 
 	    if (objc != 4) {
 		Tcl_WrongNumArgs(interp, 2, objv, "connection index");
