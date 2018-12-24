@@ -1,5 +1,5 @@
 /*
-after* See the file LICENSE for redistribution information.
+ * See the file LICENSE for redistribution information.
  *
  * Copyright (c) 1996-2003
  *	Sleepycat Software.  All rights reserved.
@@ -1993,9 +1993,9 @@ struct fileid_track {
 };
 
 enum {
-    MINTRUNCATE_START = 0,
-    MINTRUNCATE_SCAN = 1,
-    MINTRUNCATE_READY = 2
+	MINTRUNCATE_START = 0,
+	MINTRUNCATE_SCAN = 1,
+	MINTRUNCATE_READY = 2
 };
 
 enum {
@@ -2009,7 +2009,7 @@ struct mintruncate_entry {
 	DB_LSN lsn;
 	DB_LSN ckplsn;
 #ifdef MINTRUNCATE_DEBUG
-    char *func;
+	char *func;
 #endif
 	LINKC_T(struct mintruncate_entry) lnk;
 };
@@ -2043,8 +2043,8 @@ struct __lc_cache {
 };
 
 typedef int (*collect_locks_f)(void *args, int64_t threadid, int32_t lockerid,
-        const char *mode, const char *status, const char *table,
-        int64_t page, const char *rectype);
+		const char *mode, const char *status, const char *table,
+		int64_t page, const char *rectype);
 
 /* Database Environment handle. */
 struct __db_env {
@@ -2063,16 +2063,16 @@ struct __db_env {
 	void *(*db_realloc) __P((void *, size_t));
 	void (*db_free) __P((void *));
 
-    /* expose logging rep_apply */
-    int (*apply_log) __P((DB_ENV *, unsigned int, unsigned int, int64_t,
-                void*, int));
-    size_t (*get_log_header_size) __P((DB_ENV*)); 
-    int (*rep_verify_match) __P((DB_ENV *, unsigned int, unsigned int, int));
-    int (*mintruncate_lsn_timestamp) __P((DB_ENV *, int file, DB_LSN *outlsn, int32_t *timestamp));
-    int (*dump_mintruncate_list) __P((DB_ENV *));
-    int (*clear_mintruncate_list) __P((DB_ENV *));
-    int (*build_mintruncate_list) __P((DB_ENV *));
-    int (*mintruncate_delete_log) __P((DB_ENV *, int lowfile));
+	/* expose logging rep_apply */
+	int (*apply_log) __P((DB_ENV *, unsigned int, unsigned int, int64_t,
+				void*, int));
+	size_t (*get_log_header_size) __P((DB_ENV*)); 
+	int (*rep_verify_match) __P((DB_ENV *, unsigned int, unsigned int, int));
+	int (*mintruncate_lsn_timestamp) __P((DB_ENV *, int file, DB_LSN *outlsn, int32_t *timestamp));
+	int (*dump_mintruncate_list) __P((DB_ENV *));
+	int (*clear_mintruncate_list) __P((DB_ENV *));
+	int (*build_mintruncate_list) __P((DB_ENV *));
+	int (*mintruncate_delete_log) __P((DB_ENV *, int lowfile));
 
 	/*
 	 * Currently, the verbose list is a bit field with room for 32
@@ -2090,7 +2090,7 @@ struct __db_env {
 	void		*app_private;	/* Application-private handle. */
 
 	int (*app_dispatch)		/* User-specified recovery dispatch. */
-	    __P((DB_ENV *, DBT *, DB_LSN *, db_recops));
+		__P((DB_ENV *, DBT *, DB_LSN *, db_recops));
 
 	/* Locking. */
 	u_int8_t	*lk_conflicts;	/* Two dimensional conflict matrix. */
@@ -2126,14 +2126,14 @@ struct __db_env {
 	/* Replication */
 	char*		rep_eid;	/* environment id. */
 	int		(*rep_send)	/* Send function. */
-		    __P((DB_ENV *, const DBT *, const DBT *,
-                   const DB_LSN *, char*, int, void *));
-	int     (*txn_logical_start)
-		    __P((DB_ENV *, void *state, u_int64_t ltranid,
-		    DB_LSN *lsn));
-	int     (*txn_logical_commit)
-		    __P((DB_ENV *, void *state, u_int64_t ltranid,
-		    DB_LSN *lsn));
+			__P((DB_ENV *, const DBT *, const DBT *,
+				   const DB_LSN *, char*, int, void *));
+	int	 (*txn_logical_start)
+			__P((DB_ENV *, void *state, u_int64_t ltranid,
+			DB_LSN *lsn));
+	int	 (*txn_logical_commit)
+			__P((DB_ENV *, void *state, u_int64_t ltranid,
+			DB_LSN *lsn));
 	DB_LSN last_locked_lsn;
 	pthread_mutex_t locked_lsn_lk;
 
@@ -2151,7 +2151,7 @@ struct __db_env {
 	char		*db_log_dir;	/* Database log file directory. */
 	char		*db_tmp_dir;	/* Database tmp file directory. */
 
-	char	       **db_data_dir;	/* Database data file directories. */
+	char		   **db_data_dir;	/* Database data file directories. */
 	int		 data_cnt;	/* Database data file slots. */
 	int		 data_next;	/* Next Database data file slot. */
 
@@ -2161,8 +2161,8 @@ struct __db_env {
 	void		*reginfo;	/* REGINFO structure reference. */
 	DB_FH		*lockfhp;	/* fcntl(2) locking file handle. */
 
-	int	      (**recover_dtab)	/* Dispatch table for recover funcs. */
-			    __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
+	int		  (**recover_dtab)	/* Dispatch table for recover funcs. */
+				__P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
 	size_t		 recover_dtab_size;
 					/* Slots in the dispatch table. */
 
@@ -2344,7 +2344,7 @@ struct __db_env {
 	int  (*rep_elect) __P((DB_ENV *, int, int, u_int32_t, u_int32_t *, char **));
 	int  (*rep_flush) __P((DB_ENV *));
 	int  (*rep_process_message) __P((DB_ENV *, DBT *, DBT *,
-	    char **, DB_LSN *, uint32_t *, int));
+		char **, DB_LSN *, uint32_t *, int));
 	int  (*rep_verify_will_recover) __P((DB_ENV *, DBT *, DBT *));
 	int  (*rep_truncate_repdb) __P((DB_ENV *));
 	int  (*rep_start) __P((DB_ENV *, DBT *, u_int32_t, u_int32_t));
@@ -2493,12 +2493,12 @@ struct __db_env {
 	/* These fields are for changes to recovery code. */ 
 	struct fileid_track fileid_track;
 	pthread_mutex_t mintruncate_lk;
-    int mintruncate_state;
-    DB_LSN mintruncate_first;
+	int mintruncate_state;
+	DB_LSN mintruncate_first;
 	LISTC_T(struct mintruncate_entry) mintruncate;
-    DB_LSN last_mintruncate_dbreg_start;
-    DB_LSN last_mintruncate_ckp;
-    DB_LSN last_mintruncate_ckplsn;
+	DB_LSN last_mintruncate_dbreg_start;
+	DB_LSN last_mintruncate_ckp;
+	DB_LSN last_mintruncate_ckplsn;
 	db_recops recovery_pass;
 	pthread_rwlock_t dbreglk;
 	pthread_rwlock_t recoverlk;
@@ -2542,14 +2542,14 @@ struct __db_env {
 	int (*truncate_sc_callback)(DB_ENV *, DB_LSN *lsn);
 	int (*set_rep_truncate_callback) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn, int is_master)));
 	int (*rep_truncate_callback)(DB_ENV *, DB_LSN *lsn, int is_master);
-    void (*rep_set_gen)(DB_ENV *, uint32_t gen);
+	void (*rep_set_gen)(DB_ENV *, uint32_t gen);
 	int (*set_rep_recovery_cleanup) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn, int is_master)));
-    int (*rep_recovery_cleanup)(DB_ENV *, DB_LSN *lsn, int is_master);
-    int (*lock_recovery_lock)(DB_ENV *);
-    int (*unlock_recovery_lock)(DB_ENV *);
+	int (*rep_recovery_cleanup)(DB_ENV *, DB_LSN *lsn, int is_master);
+	int (*lock_recovery_lock)(DB_ENV *);
+	int (*unlock_recovery_lock)(DB_ENV *);
 	/* Trigger/consumer signalling support */
 	int(*trigger_subscribe) __P((DB_ENV *, const char *, pthread_cond_t **,
-				     pthread_mutex_t **, const uint8_t **active));
+					 pthread_mutex_t **, const uint8_t **active));
 	int(*trigger_unsubscribe) __P((DB_ENV *, const char *));
 	int(*trigger_open) __P((DB_ENV *, const char *));
 	int(*trigger_close) __P((DB_ENV *, const char *));
@@ -2766,19 +2766,19 @@ extern int gbl_bb_berkdb_enable_memp_pg_timing;
 extern int gbl_bb_berkdb_enable_shalloc_timing;
 
 struct berkdb_deadlock_info {
-    u_int32_t lid;
+	u_int32_t lid;
 };
 
 struct __heap {
-    void *mem;
-    char *description;
-    size_t size;
-    int used;
-    int blocks;
-    int blocksz[32];
-    DB_MUTEX *lock;
-    comdb2ma msp;
-    LINKC_T(HEAP) lnk;
+	void *mem;
+	char *description;
+	size_t size;
+	int used;
+	int blocks;
+	int blocksz[32];
+	DB_MUTEX *lock;
+	comdb2ma msp;
+	LINKC_T(HEAP) lnk;
 
 };
 
@@ -2791,28 +2791,28 @@ int berkdb_get_max_rep_retries();
 /* COMDB2 MODIFICATION */
 int berkdb_is_recovering(DB_ENV *dbenv);
 
-#define TIMEIT(x)               \
-do {                            \
-    int start, end, diff;       \
-    start = comdb2_time_epochms(); \
-    x                           \
-    end = comdb2_time_epochms();\
-    diff = end - start;         \
-    if (diff > 100)             \
-        printf(">> %d %dms\n", __LINE__, diff); \
+#define TIMEIT(x)			   \
+do {							\
+	int start, end, diff;	   \
+	start = comdb2_time_epochms(); \
+	x						   \
+	end = comdb2_time_epochms();\
+	diff = end - start;		 \
+	if (diff > 100)			 \
+		printf(">> %d %dms\n", __LINE__, diff); \
 } while(0)
 
-#define TIMEITX(x, y)           \
-do {                            \
-    int start, end, diff;       \
-    start = comdb2_time_epochms(); \
-    x                           \
-    end = comdb2_time_epochms();\
-    diff = end - start;         \
-    if (diff > 100) {           \
-        printf(">> %d %dms\n", __LINE__, diff); \
-        y                       \
-    }                           \
+#define TIMEITX(x, y)		   \
+do {							\
+	int start, end, diff;	   \
+	start = comdb2_time_epochms(); \
+	x						   \
+	end = comdb2_time_epochms();\
+	diff = end - start;		 \
+	if (diff > 100) {		   \
+		printf(">> %d %dms\n", __LINE__, diff); \
+		y					   \
+	}						   \
 } while(0)
 
 struct __db_checkpoint {
@@ -2938,7 +2938,7 @@ int __recover_logfile_pglogs(DB_ENV *, void *);
 //#################################### THREAD POOL FOR LOADING PAGES ASYNCHRNOUSLY (WELL NO CALLBACK YET.....) 
 
 int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn,
-    void *work, int queue_override, char *persistent_info, uint32_t flags);
+	void *work, int queue_override, char *persistent_info, uint32_t flags);
 
 
 typedef struct {

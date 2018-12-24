@@ -9,9 +9,9 @@
 
 #ifndef lint
 static const char copyright[] =
-    "Copyright (c) 1996-2003\nSleepycat Software Inc.  All rights reserved.\n";
+	"Copyright (c) 1996-2003\nSleepycat Software Inc.  All rights reserved.\n";
 static const char revid[] =
-    "$Id: env_recover.c,v 11.112 2003/09/13 18:46:20 bostic Exp $";
+	"$Id: env_recover.c,v 11.112 2003/09/13 18:46:20 bostic Exp $";
 #endif
 
 #include <arpa/inet.h>
@@ -64,8 +64,8 @@ int bdb_is_open(void *bdb_state);
 
 extern int gbl_is_physical_replicant;
 
-#define BDB_WRITELOCK(idstr)    bdb_get_writelock(bdb_state, (idstr), __func__, __LINE__)
-#define BDB_RELLOCK()           bdb_rellock(bdb_state, __func__, __LINE__)
+#define BDB_WRITELOCK(idstr)	bdb_get_writelock(bdb_state, (idstr), __func__, __LINE__)
+#define BDB_RELLOCK()		   bdb_rellock(bdb_state, __func__, __LINE__)
 
 #else
 
@@ -82,9 +82,9 @@ extern int gbl_is_physical_replicant;
 static int __log_earliest __P((DB_ENV *, DB_LOGC *, int32_t *, DB_LSN *));
 static double __lsn_diff __P((DB_LSN *, DB_LSN *, DB_LSN *, u_int32_t, int));
 static int __log_find_latest_checkpoint_before_lsn(DB_ENV *dbenv,
-    DB_LOGC *logc, DB_LSN *max_lsn, DB_LSN *start_lsn);
+	DB_LOGC *logc, DB_LSN *max_lsn, DB_LSN *start_lsn);
 static int __log_find_latest_checkpoint_before_lsn_try_harder(DB_ENV *dbenv,
-    DB_LOGC *logc, DB_LSN *max_lsn, DB_LSN *foundlsn);
+	DB_LOGC *logc, DB_LSN *max_lsn, DB_LSN *foundlsn);
 
 /* Get the recovery LSN. */
 int
@@ -161,7 +161,7 @@ __checkpoint_get(DB_ENV *dbenv, DB_LSN *lsnout)
 	rc = pread(dbenv->checkpoint->fd, &ckpt, 512, 0);
 	if (rc != 512) {
 		__db_err(dbenv, "can't read checkpoint record rc %d %s\n",
-		    errno, strerror(errno));
+			errno, strerror(errno));
 		return EINVAL;
 	}
 
@@ -235,7 +235,7 @@ __fileid_track_free(dbenv)
 
 				if (ret) {
 					logmsg(LOGMSG_ERROR, "__db_close %s rc %d\n",
-					    r->dbp->fname, ret);
+						r->dbp->fname, ret);
 					return ret;
 				}
 			}
@@ -269,8 +269,8 @@ __fileid_track_dump(dbenv)
 			r = ft->ranges[i].top;
 			while (r) {
 				logmsg(LOGMSG_USER, "  %u:%u -> %u:%u %s\n", r->start.file,
-				    r->start.offset, r->end.file, r->end.offset,
-				    r->fname);
+					r->start.offset, r->end.file, r->end.offset,
+					r->fname);
 				r = r->lnk.next;
 			}
 		}
@@ -298,10 +298,10 @@ static int
 __db_find_earliest_recover_point_after_file(dbenv, outlsn, file)
 	DB_ENV *dbenv;
 	DB_LSN *outlsn;
-    int file;
+	int file;
 {
 	int ret = 0;
-    int flags = DB_FIRST;
+	int flags = DB_FIRST;
 	DB_LOGC *logc = NULL;
 	u_int32_t type;
 	DB_LSN lsn, start_lsn = {0};
@@ -313,12 +313,12 @@ __db_find_earliest_recover_point_after_file(dbenv, outlsn, file)
 	if ((ret = __log_cursor(dbenv, &logc)) != 0)
 		goto err;
 
-    if (file > 0) {
-        lsn.file = file;
-        lsn.offset = 28;
-        if (0 == __log_c_get(logc, &lsn, &rec, DB_SET))
-            flags = DB_SET;
-    }
+	if (file > 0) {
+		lsn.file = file;
+		lsn.offset = 28;
+		if (0 == __log_c_get(logc, &lsn, &rec, DB_SET))
+			flags = DB_SET;
+	}
 
 	for (ret = __log_c_get(logc, &lsn, &rec, flags);
 			ret == 0; ret = __log_c_get(logc, &lsn, &rec, DB_NEXT)) {
@@ -380,7 +380,7 @@ __db_find_recovery_start_int(dbenv, outlsn, max_lsn)
 	/* Find a checkpoint - from the checkpoint file, if we can, or from
 	 * the log if we can't (eg: after a copy) */
 	if ((ret = __checkpoint_get(dbenv, &lsn)) != 0 &&
-	    (ret = __txn_getckp(dbenv, &lsn)) != 0) {
+		(ret = __txn_getckp(dbenv, &lsn)) != 0) {
 		ret = DB_NOTFOUND;
 		goto err;
 	}
@@ -396,23 +396,23 @@ __db_find_recovery_start_int(dbenv, outlsn, max_lsn)
 			ckp_args = NULL;
 		}
 		if ((ret = __log_c_get(logc, &lsn, &rec, DB_SET)) != 0 ||
-		    (ret = __txn_ckp_read(dbenv, rec.data, &ckp_args)) != 0) {
+			(ret = __txn_ckp_read(dbenv, rec.data, &ckp_args)) != 0) {
 			goto err;
 		}
 #if defined FIND_RECOVERY_START_TRACE
 		if (max_lsn) {
 			fprintf(stderr,
-			    "%s: max_lsn search: found [%d][%d] searching for the first "
-			    "checkpoint below [%d][%d]\n", __func__,
-			    ckp_args->last_ckp.file, ckp_args->last_ckp.offset,
-			    max_lsn->file, max_lsn->offset);
+				"%s: max_lsn search: found [%d][%d] searching for the first "
+				"checkpoint below [%d][%d]\n", __func__,
+				ckp_args->last_ckp.file, ckp_args->last_ckp.offset,
+				max_lsn->file, max_lsn->offset);
 		}
 		prev_lsn = lsn;
 #endif
 		lsn = ckp_args->last_ckp;
 	}
 	while (max_lsn != NULL &&
-	    log_compare(&ckp_args->ckp_lsn, max_lsn) >= 0);
+		log_compare(&ckp_args->ckp_lsn, max_lsn) >= 0);
 
 	ckp_lsn = ckp_args->ckp_lsn;
 	do {
@@ -421,14 +421,14 @@ __db_find_recovery_start_int(dbenv, outlsn, max_lsn)
 			ckp_args = NULL;
 		}
 		if ((ret = __log_c_get(logc, &lsn, &rec, DB_SET)) != 0 ||
-		    (ret = __txn_ckp_read(dbenv, rec.data, &ckp_args)) != 0)
+			(ret = __txn_ckp_read(dbenv, rec.data, &ckp_args)) != 0)
 			goto err;
 #if defined FIND_RECOVERY_START_TRACE
 		fprintf(stderr,
-		    "%s: ckp_lsn search: found [%d][%d] searching for the first "
-		    "checkpoint below [%d][%d]\n", __func__,
-		    ckp_args->last_ckp.file, ckp_args->last_ckp.offset,
-		    ckp_lsn.file, ckp_lsn.offset);
+			"%s: ckp_lsn search: found [%d][%d] searching for the first "
+			"checkpoint below [%d][%d]\n", __func__,
+			ckp_args->last_ckp.file, ckp_args->last_ckp.offset,
+			ckp_lsn.file, ckp_lsn.offset);
 		prev_lsn = lsn;
 #endif
 		lsn = ckp_args->last_ckp;
@@ -438,7 +438,7 @@ __db_find_recovery_start_int(dbenv, outlsn, max_lsn)
 	checkpoint_lsn = ckp_args->ckp_lsn;
 #if defined FIND_RECOVERY_START_TRACE
 	fprintf(stderr, "%s: using lsn [%d][%d]\n", __func__,
-	    checkpoint_lsn.file, checkpoint_lsn.offset);
+		checkpoint_lsn.file, checkpoint_lsn.offset);
 #endif
 
 	ret = __log_c_get(logc, &lsn, &rec, DB_SET);
@@ -454,12 +454,12 @@ __db_find_recovery_start_int(dbenv, outlsn, max_lsn)
 	}
 	while (rectype != DB___db_debug || optype != 2) {
 		if (log_compare(&lsn, &checkpoint_lsn) &&
-		    rectype != DB___dbreg_register &&
-		    dbenv->attr.warn_nondbreg_records) {
+			rectype != DB___dbreg_register &&
+			dbenv->attr.warn_nondbreg_records) {
 			__db_err(dbenv, "non-register record type %d at %u:%u "
-			    "before checkpoint at %u:%u",
-			    rectype, lsn.file, lsn.offset,
-			    checkpoint_lsn.file, checkpoint_lsn.offset);
+				"before checkpoint at %u:%u",
+				rectype, lsn.file, lsn.offset,
+				checkpoint_lsn.file, checkpoint_lsn.offset);
 		}
 #if defined FIND_RECOVERY_START_TRACE
 		prev_lsn = lsn;
@@ -484,7 +484,7 @@ __db_find_recovery_start_int(dbenv, outlsn, max_lsn)
 		 * if this ever happens. It shouldn't - if it does we
 		 * have problems. */
 		__db_err(dbenv,
-		    "no recovery start record found prior to checkpoint");
+			"no recovery start record found prior to checkpoint");
 		if (!dbenv->attr.dbreg_errors_fatal) {
 			/* go old way for now - use the LSN at the
 			 * last trusted checkpoint */
@@ -500,17 +500,17 @@ err:
 #if defined FIND_RECOVERY_START_TRACE
 	if (ret != 0) {
 		fprintf(stderr,
-		    "%s: ret=%d for lsn [%d][%d] prev-lsn [%d][%d]\n",
-		    __func__, ret, lsn.file, lsn.offset, prev_lsn.file,
-		    prev_lsn.offset);
+			"%s: ret=%d for lsn [%d][%d] prev-lsn [%d][%d]\n",
+			__func__, ret, lsn.file, lsn.offset, prev_lsn.file,
+			prev_lsn.offset);
 		if (max_lsn)
 			fprintf(stderr, "%s: max_lsn is [%d][%d]\n", __func__,
-			    max_lsn->file, max_lsn->offset);
+				max_lsn->file, max_lsn->offset);
 	}
 #endif
    if (rec.data) {
-      __os_free(dbenv, rec.data);
-      rec.data = NULL;
+	  __os_free(dbenv, rec.data);
+	  rec.data = NULL;
    }
 	if (logc)
 		__log_c_close(logc);
@@ -545,17 +545,17 @@ static char *mt_string(int mt)
 
 int
 __dbenv_clear_mintruncate_list(dbenv)
-    DB_ENV *dbenv;
+	DB_ENV *dbenv;
 {
 	struct mintruncate_entry *mt;
 	Pthread_mutex_lock(&dbenv->mintruncate_lk);
-    while ((mt = listc_rtl(&dbenv->mintruncate)) != NULL)
-        free(mt);
-    dbenv->mintruncate_state = MINTRUNCATE_START;
-    ZERO_LSN(dbenv->last_mintruncate_dbreg_start);
-    ZERO_LSN(dbenv->last_mintruncate_ckplsn);
+	while ((mt = listc_rtl(&dbenv->mintruncate)) != NULL)
+		free(mt);
+	dbenv->mintruncate_state = MINTRUNCATE_START;
+	ZERO_LSN(dbenv->last_mintruncate_dbreg_start);
+	ZERO_LSN(dbenv->last_mintruncate_ckplsn);
 	Pthread_mutex_unlock(&dbenv->mintruncate_lk);
-    return 0;
+	return 0;
 }
 
 int
@@ -571,16 +571,16 @@ __dbenv_dump_mintruncate_list(dbenv)
 				mt = mt->lnk.prev) {
 		logmsg(LOGMSG_USER, "%s @ [%d:%d] timestamp %d ckplsn [%d:%d] "
 #ifdef MINTRUNCATE_DEBUG
-                "added by %s"
+				"added by %s"
 #endif
-                "\n",
+				"\n",
 				mt->type == MINTRUNCATE_DBREG_START ? "dbreg" : "chkpt",
 				mt->lsn.file, mt->lsn.offset, mt->timestamp, mt->ckplsn.file,
-                mt->ckplsn.offset
+				mt->ckplsn.offset
 #ifdef MINTRUNCATE_DEBUG
-                ,mt->func
+				,mt->func
 #endif
-                );
+				);
 	}
 	Pthread_mutex_unlock(&dbenv->mintruncate_lk);
 	return 0;
@@ -597,7 +597,7 @@ __dbenv_mintruncate_lsn_timestamp(dbenv, lowfile, outlsn, outtime)
 	__txn_ckp_args *ckp_args = NULL;
 	DBT rec = { 0 };
 	DB_LOGC *logc = NULL;
-    DB_LSN lowlsn = {0};
+	DB_LSN lowlsn = {0};
 	int ret;
 
 	if ((ret = __txn_getckp(dbenv, outlsn)) != 0 ||
@@ -632,15 +632,15 @@ __dbenv_mintruncate_lsn_timestamp(dbenv, lowfile, outlsn, outtime)
 			mt = mt->lnk.prev)
 		;
 
-    if (mt)
-        lowlsn = mt->lsn;
+	if (mt)
+		lowlsn = mt->lsn;
 
 	/* Find first checkpoint with ckplsn > than that */
 	while (mt && (mt->type != MINTRUNCATE_CHECKPOINT || 
-             log_compare(&mt->ckplsn, &lowlsn) < 0))
+			 log_compare(&mt->ckplsn, &lowlsn) < 0))
 		mt = mt->lnk.prev;
 
-    /* If we found it, that's our minimum truncate point */
+	/* If we found it, that's our minimum truncate point */
 	if (mt) {
 		ret = 0;
 		*outlsn = mt->lsn;
@@ -655,26 +655,26 @@ err:
 
 /* Must be holding mintruncate_lk while calling this */
 void __dbenv_reset_mintruncate_vars(dbenv)
-    DB_ENV *dbenv;
+	DB_ENV *dbenv;
 {
-    int found_dbreg=0, found_ckp=0;
+	int found_dbreg=0, found_ckp=0;
 	struct mintruncate_entry *mt;
-    ZERO_LSN(dbenv->last_mintruncate_dbreg_start);
-    ZERO_LSN(dbenv->last_mintruncate_ckplsn);
-    for (mt = LISTC_TOP(&dbenv->mintruncate); mt; mt = mt->lnk.next) {
-        if (!found_dbreg && mt->type == MINTRUNCATE_DBREG_START) {
-            dbenv->last_mintruncate_dbreg_start = mt->lsn;
-            found_dbreg = 1;
-        }
+	ZERO_LSN(dbenv->last_mintruncate_dbreg_start);
+	ZERO_LSN(dbenv->last_mintruncate_ckplsn);
+	for (mt = LISTC_TOP(&dbenv->mintruncate); mt; mt = mt->lnk.next) {
+		if (!found_dbreg && mt->type == MINTRUNCATE_DBREG_START) {
+			dbenv->last_mintruncate_dbreg_start = mt->lsn;
+			found_dbreg = 1;
+		}
 
-        if (!found_ckp && mt->type == MINTRUNCATE_CHECKPOINT) {
-            dbenv->last_mintruncate_ckplsn = mt->ckplsn;
-            found_ckp = 1;
-        }
+		if (!found_ckp && mt->type == MINTRUNCATE_CHECKPOINT) {
+			dbenv->last_mintruncate_ckplsn = mt->ckplsn;
+			found_ckp = 1;
+		}
 
-        if (found_dbreg && found_ckp)
-            break;
-    }
+		if (found_dbreg && found_ckp)
+			break;
+	}
 }
 
 #ifdef MINTRUNCATE_DEBUG
