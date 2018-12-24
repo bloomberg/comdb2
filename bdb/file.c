@@ -3361,15 +3361,13 @@ int bdb_print_mintruncate_min(bdb_state_type *bdb_state)
     int32_t timestamp;
     int rc;
     DB_LSN lsn;
-    rc = bdb_state->dbenv->mintruncate_lsn_timestamp(
-            bdb_state->dbenv, 0, &lsn, &timestamp);
+    rc = bdb_state->dbenv->mintruncate_lsn_timestamp(bdb_state->dbenv, 0, &lsn,
+                                                     &timestamp);
     if (rc == 0) {
-        logmsg(LOGMSG_USER, "[%d:%d] %u\n",
-                lsn.file, lsn.offset, timestamp);
+        logmsg(LOGMSG_USER, "[%d:%d] %u\n", lsn.file, lsn.offset, timestamp);
     }
     return rc;
 }
-
 
 int bdb_min_truncate(bdb_state_type *bdb_state, int *file, int *offset,
                      int32_t *timestamp)
