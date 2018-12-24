@@ -2000,6 +2000,9 @@ enum {
     COLUMN_DELETED = 1 << 1,
 };
 
+typedef LISTC_T(struct comdb2_index_column) comdb2_index_column_lst;
+typedef LISTC_T(struct comdb2_key) comdb2_key_lst;
+
 struct comdb2_column {
     /* Name of the column */
     char *name;
@@ -2052,7 +2055,7 @@ struct comdb2_key {
     /* Key flags */
     uint8_t flags;
     /* List of columns */
-    LISTC_T(struct comdb2_index_column) idx_col_list;
+    comdb2_index_column_lst idx_col_list;
     /* Link */
     LINKC_T(struct comdb2_key) lnk;
 };
@@ -2075,9 +2078,9 @@ struct comdb2_constraint {
      */
 
     /* List of index columns in the child table. */
-    LISTC_T(struct comdb2_index_column) child_idx_col_list;
+    comdb2_index_column_lst child_idx_col_list;
     /* List of index columns in the parent table. */
-    LISTC_T(struct comdb2_index_column) parent_idx_col_list;
+    comdb2_index_column_lst parent_idx_col_list;
 
     /* A reference to the child key */
     struct comdb2_key *child;
@@ -2100,7 +2103,7 @@ struct comdb2_schema {
     /* Staging list of new/existing columns */
     LISTC_T(struct comdb2_column) column_list;
     /* Staging list of new/existing keys */
-    LISTC_T(struct comdb2_key) key_list;
+    comdb2_key_lst key_list;
     /* Staging list of new/existing constraints */
     LISTC_T(struct comdb2_constraint) constraint_list;
 
@@ -2911,15 +2914,52 @@ static struct comdb2_column *find_column_by_name(struct comdb2_ddl_context *ctx,
     return 0;
 }
 
+static struct comdb2_key *
+find_suitable_key(comdb2_index_column_lst *idx_col_list,
+                  comdb2_key_lst *key_list)
+{
+    struct comdb2_key *current_key;
+    struct comdb2_index_column *current_idx_column;
+    struct comdb2_index_column *idx_column;
+    int key_found = 0;
+
+    LISTC_FOR_EACH(key_list, current_key, lnk)
+    {
+        if ((current_key->flags & KEY_DELETED) ||
+            (listc_size(idx_col_list) > listc_size(&current_key->idx_col_list)))
+            continue;
+
+        /* Let's start by assuming that we have found the matching key. */
+        key_found = 1;
+
+        current_idx_column = LISTC_TOP(&current_key->idx_col_list);
+
+        LISTC_FOR_EACH(idx_col_list, idx_column, lnk)
+        {
+            if ((strcasecmp(idx_column->name, current_idx_column->name) != 0) ||
+                (idx_column->flags != current_idx_column->flags)) {
+                key_found = 0;
+                break;
+            }
+            /* Move to the next index column in the key. */
+            current_idx_column = LISTC_NEXT(current_idx_column, lnk);
+        }
+
+        if (key_found == 1) {
+            break;
+        }
+    }
+
+    return (key_found == 1) ? current_key : 0;
+}
+
 static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
 {
     char *csc2;
     struct comdb2_column *column;
     struct comdb2_index_column *child_idx_column;
-    struct comdb2_index_column *key_idx_column;
     struct comdb2_key *key;
     struct comdb2_constraint *constraint;
-    int key_found = 0;
 
     int ncolumns = 0;
     LISTC_FOR_EACH(&ctx->schema->column_list, column, lnk)
@@ -2978,7 +3018,8 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
     }
 
     /*
-      Find the first *appropriate* non-dropped child key for this constraint.
+      Choose/assign an appropriate (non-dropped) child key for each constraint
+      that does not have one.
     */
     LISTC_FOR_EACH(&ctx->schema->constraint_list, constraint, lnk)
     {
@@ -2993,39 +3034,13 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
         /* The parent table and key must have already been set by now. */
         assert(constraint->parent_table && constraint->parent_key);
 
-        LISTC_FOR_EACH(&ctx->schema->key_list, key, lnk)
-        {
-            if (listc_size(&constraint->child_idx_col_list) >
-                listc_size(&key->idx_col_list))
-                continue;
-
-            /* Lets start by assuming that we have found the matching key. */
-            key_found = 1;
-
-            key_idx_column = LISTC_TOP(&key->idx_col_list);
-
-            LISTC_FOR_EACH(&constraint->child_idx_col_list, child_idx_column,
-                           lnk)
-            {
-                if ((strcasecmp(child_idx_column->name, key_idx_column->name) !=
-                     0) ||
-                    (child_idx_column->flags != key_idx_column->flags)) {
-                    key_found = 0;
-                    break;
-                }
-                /* Move to the next index column in the key. */
-                key_idx_column = LISTC_NEXT(key_idx_column, lnk);
-            }
-
-            if (key_found == 1) {
-                constraint->child = key;
-            }
-        }
+        constraint->child = find_suitable_key(&constraint->child_idx_col_list,
+                                              &ctx->schema->key_list);
 
         /*
           Implicitly add a new DUP key if a matching local index was not found.
         */
-        if (key_found == 0) {
+        if (constraint->child == 0) {
             ExprList *pList = 0;
             int i = 0;
 
@@ -4554,7 +4569,7 @@ static int check_constraint_action(Parse *pParse, int *flags)
 }
 
 /* search matching key in parent table using saved client context:
- * return 1 if found 0 otherwise
+ * return 1 if found and no error, 0 otherwise
  */
 static int
 find_parent_key_in_client_context(Parse *pParse, struct comdb2_ddl_context *ctx,
@@ -4563,9 +4578,7 @@ find_parent_key_in_client_context(Parse *pParse, struct comdb2_ddl_context *ctx,
     void *comdb2_get_ddl_context(char *name);
     struct comdb2_ddl_context *clnt_ctx = NULL;
     struct comdb2_key *key;
-    struct comdb2_index_column *idx_col;
-    struct comdb2_index_column *key_col;
-    int key_found = 0;
+
     clnt_ctx = comdb2_get_ddl_context(constraint->parent_table);
     if (clnt_ctx == NULL &&
         strcasecmp(ctx->schema->name, constraint->parent_table) == 0)
@@ -4573,41 +4586,24 @@ find_parent_key_in_client_context(Parse *pParse, struct comdb2_ddl_context *ctx,
     if (clnt_ctx == NULL)
         return 0;
 
-    LISTC_FOR_EACH(&clnt_ctx->schema->key_list, key, lnk)
-    {
-        if (key->flags & KEY_DELETED)
-            continue;
-        if (listc_size(&key->idx_col_list) <
-            listc_size(&constraint->parent_idx_col_list))
-            continue;
-        /* Lets start by assuming that we have found the matching key. */
-        key_found = 1;
-        key_col = key->idx_col_list.top;
-        LISTC_FOR_EACH(&constraint->parent_idx_col_list, idx_col, lnk)
-        {
-            if ((strcasecmp(idx_col->name, key_col->name) != 0) ||
-                idx_col->flags != key_col->flags) {
-                key_found = 0;
-                break;
-            }
-            key_col = key_col->lnk.next;
-        }
-        if (key_found == 1) {
-            constraint->parent_key = comdb2_strdup(ctx->mem, key->name);
-            if (constraint->parent_key == 0)
-                setError(pParse, SQLITE_NOMEM, "System out of memory");
-            /* Matching key found */
-            break;
-        }
-    }
-    if (key_found == 0) {
+    key = find_suitable_key(&constraint->parent_idx_col_list,
+                            &clnt_ctx->schema->key_list);
+
+    if (key == 0) {
         pParse->rc = SQLITE_ERROR;
         sqlite3ErrorMsg(pParse,
                         "A matching key for the FOREIGN KEY was not "
                         "found in the parent (referenced) table '%s'.",
                         constraint->parent_table);
+        return 0;
+    } else {
+        constraint->parent_key = comdb2_strdup(ctx->mem, key->name);
+        if (constraint->parent_key == 0) {
+            setError(pParse, SQLITE_NOMEM, "System out of memory");
+            return 0;
+        }
     }
-    return key_found;
+    return 1;
 }
 
 void comdb2CreateForeignKey(
@@ -4685,7 +4681,7 @@ void comdb2CreateForeignKey(
     } else {
         /*
           Though some RDBMSs allow this, the number of referenced columns in
-          FK must not be zero. PG, for instance picks the primary key from th
+          FK must not be zero. PG, for instance picks the primary key from the
           referenced table.
         */
         assert(pToCol->nExpr > 0);
@@ -4762,7 +4758,7 @@ void comdb2CreateForeignKey(
             listc_size(&constraint->parent_idx_col_list))
             continue;
 
-        /* Lets start by assuming that we have found the matching key. */
+        /* Let's start by assuming that we have found the matching key. */
         key_found = 1;
         int j = 0;
         LISTC_FOR_EACH(&constraint->parent_idx_col_list, idx_column, lnk)
