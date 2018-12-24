@@ -73,11 +73,12 @@ void free_cached_idx(uint8_t * *cached_idx);
  */
 
 #define ERR                                                                    \
-    do { \
-        if (gbl_verbose_toblock_backouts)                                          \
-            logmsg(LOGMSG_USER, "err line %d rc %d retrc %d\n", __LINE__, rc, retrc);           \
-        goto err; \
-    } while(0);
+    do {                                                                       \
+        if (gbl_verbose_toblock_backouts)                                      \
+            logmsg(LOGMSG_USER, "err line %d rc %d retrc %d\n", __LINE__, rc,  \
+                   retrc);                                                     \
+        goto err;                                                              \
+    } while (0);
 
 int gbl_max_wr_rows_per_txn = 0;
 
@@ -384,13 +385,12 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     }
 
     if ((rec_flags & OSQL_IGNORE_FAILURE) != 0) {
-        rc = check_for_upsert(iq, trans, ondisktagsc, blobs,
-                              maxblobs, opfailcode, ixfailnum, &retrc,
-                              ondisktag, od_dta, od_len, ins_keys, rec_flags);
+        rc = check_for_upsert(iq, trans, ondisktagsc, blobs, maxblobs,
+                              opfailcode, ixfailnum, &retrc, ondisktag, od_dta,
+                              od_len, ins_keys, rec_flags);
         if (rc)
             ERR;
     }
-   
 
     if ((flags & RECFLAGS_NEW_SCHEMA) &&
         (flags & RECFLAGS_ADD_FROM_SC_LOGICAL) && (flags & RECFLAGS_KEEP_GENID))
@@ -492,9 +492,10 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
 
     if ((flags & RECFLAGS_NO_CONSTRAINTS) /* if no constraints */
         || (rec_flags & OSQL_IGNORE_FAILURE)) {
-        retrc = add_record_indices(iq, trans, blobs, maxblobs, opfailcode, 
-                ixfailnum, rrn, genid, vgenid, ins_keys, opcode, blkpos,
-                od_dta, od_len, ondisktag, ondisktagsc);
+        retrc =
+            add_record_indices(iq, trans, blobs, maxblobs, opfailcode,
+                               ixfailnum, rrn, genid, vgenid, ins_keys, opcode,
+                               blkpos, od_dta, od_len, ondisktag, ondisktagsc);
         if (retrc)
             ERR;
     }
@@ -1140,7 +1141,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         !(flags & RECFLAGS_NEW_SCHEMA)) {
 
         retrc = local_replicant_log_delete_for_update(iq, trans, rrn, vgenid,
-                                                   opfailcode);
+                                                      opfailcode);
         if (retrc)
             ERR;
     }
@@ -1198,12 +1199,10 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         bdb_inplace_cmp_genids(iq->usedb->handle, *genid, vgenid) == 0;
 
     /* update the indexes as required */
-    retrc = upd_record_indices(iq, trans, 
-                opfailcode, ixfailnum, rrn, genid,
-                ins_keys, opcode, blkpos, 
-                od_dta, od_len, old_dta,
-                del_keys, flags, add_idx_blobs, 
-                del_idx_blobs, same_genid_with_upd, vgenid, &deferredAdd);
+    retrc = upd_record_indices(
+        iq, trans, opfailcode, ixfailnum, rrn, genid, ins_keys, opcode, blkpos,
+        od_dta, od_len, old_dta, del_keys, flags, add_idx_blobs, del_idx_blobs,
+        same_genid_with_upd, vgenid, &deferredAdd);
 
     if (retrc)
         ERR;
@@ -1371,7 +1370,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
          strncasecmp(iq->usedb->tablename, "sqlite_stat", 11) != 0) &&
         !(flags & RECFLAGS_NEW_SCHEMA)) {
         retrc = local_replicant_log_add_for_update(iq, trans, rrn, *genid,
-                                                opfailcode);
+                                                   opfailcode);
         if (retrc)
             ERR;
     }
@@ -1695,9 +1694,8 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         ondisktag = ".ONDISK";
 
     /* Form and delete all keys. */
-    retrc = del_record_indices(iq, trans, opfailcode,
-            ixfailnum, rrn, genid, od_dta,
-            del_keys, del_idx_blobs, ondisktag);
+    retrc = del_record_indices(iq, trans, opfailcode, ixfailnum, rrn, genid,
+                               od_dta, del_keys, del_idx_blobs, ondisktag);
     if (retrc)
         ERR;
 
@@ -2080,14 +2078,10 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
         }
     }
 
-    retrc = upd_new_record_indices(iq, trans, 
-        newgenid,
-        ins_keys,
-        new_dta, old_dta, use_new_tag,
-        sc_old, sc_new, nd_len,
-        del_keys, add_idx_blobs, 
-        del_idx_blobs,
-        oldgenid, verify_retry, deferredAdd);
+    retrc = upd_new_record_indices(iq, trans, newgenid, ins_keys, new_dta,
+                                   old_dta, use_new_tag, sc_old, sc_new, nd_len,
+                                   del_keys, add_idx_blobs, del_idx_blobs,
+                                   oldgenid, verify_retry, deferredAdd);
 
 err:
     if (sc_old)
@@ -2255,13 +2249,9 @@ int del_new_record(struct ireq *iq, void *trans, unsigned long long genid,
     }
 
     /* Form and delete all keys.  */
-    retrc = del_new_record_indices(iq, trans, 
-        ngenid,
-        old_dta, use_new_tag,
-        sc_old,
-        del_keys,
-        del_idx_blobs,
-        verify_retry);
+    retrc =
+        del_new_record_indices(iq, trans, ngenid, old_dta, use_new_tag, sc_old,
+                               del_keys, del_idx_blobs, verify_retry);
 
 err:
     if (sc_old)

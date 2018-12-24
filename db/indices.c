@@ -14,7 +14,6 @@
    limitations under the License.
  */
 
-
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -26,7 +25,6 @@
 #include "logmsg.h"
 #include "indices.h"
 
-
 extern int gbl_partial_indexes;
 
 /* Check whether the key for the specified record is already present in
@@ -36,10 +34,10 @@ extern int gbl_partial_indexes;
  *         0 : no
  */
 static int check_index(struct ireq *iq, void *trans, int ixnum,
-                struct schema *ondisktagsc, blob_buffer_t *blobs,
-                size_t maxblobs, int *opfailcode, int *ixfailnum, int *retrc,
-                const char *ondisktag, void *od_dta, size_t od_len,
-                unsigned long long ins_keys)
+                       struct schema *ondisktagsc, blob_buffer_t *blobs,
+                       size_t maxblobs, int *opfailcode, int *ixfailnum,
+                       int *retrc, const char *ondisktag, void *od_dta,
+                       size_t od_len, unsigned long long ins_keys)
 {
     int ixkeylen;
     int rc;
@@ -108,9 +106,10 @@ static int check_index(struct ireq *iq, void *trans, int ixnum,
  * the error (if any) from the upsert index.
  */
 int check_for_upsert(struct ireq *iq, void *trans, struct schema *ondisktagsc,
-        blob_buffer_t *blobs, size_t maxblobs, int *opfailcode, int *ixfailnum,
-        int *retrc, const char *ondisktag, void *od_dta, size_t od_len,
-        unsigned long long ins_keys, int rec_flags)
+                     blob_buffer_t *blobs, size_t maxblobs, int *opfailcode,
+                     int *ixfailnum, int *retrc, const char *ondisktag,
+                     void *od_dta, size_t od_len, unsigned long long ins_keys,
+                     int rec_flags)
 {
     int rc = 0;
     int upsert_idx = rec_flags >> 8;
@@ -152,8 +151,8 @@ int check_for_upsert(struct ireq *iq, void *trans, struct schema *ondisktagsc,
             /* NOOP */
         } else {
             rc = check_index(iq, trans, upsert_idx, ondisktagsc, blobs,
-                             maxblobs, opfailcode, ixfailnum, retrc,
-                             ondisktag, od_dta, od_len, ins_keys);
+                             maxblobs, opfailcode, ixfailnum, retrc, ondisktag,
+                             od_dta, od_len, ins_keys);
             if (rc) {
                 return rc;
             }
@@ -162,12 +161,12 @@ int check_for_upsert(struct ireq *iq, void *trans, struct schema *ondisktagsc,
     return 0;
 }
 
-
 int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
-        size_t maxblobs, int *opfailcode, int *ixfailnum, int *rrn, 
-        unsigned long long *genid, unsigned long long vgenid, 
-        unsigned long long ins_keys, int opcode, int blkpos, void *od_dta,
-        size_t od_len, const char *ondisktag, struct schema *ondisktagsc)
+                       size_t maxblobs, int *opfailcode, int *ixfailnum,
+                       int *rrn, unsigned long long *genid,
+                       unsigned long long vgenid, unsigned long long ins_keys,
+                       int opcode, int blkpos, void *od_dta, size_t od_len,
+                       const char *ondisktag, struct schema *ondisktagsc)
 {
     int ixnum;
     char *od_dta_tail = NULL;
@@ -181,22 +180,21 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
         char mangled_key[MAXKEYLEN];
 
         if (gbl_use_plan && iq->usedb->plan &&
-                iq->usedb->plan->ix_plan[ixnum] != -1)
+            iq->usedb->plan->ix_plan[ixnum] != -1)
             continue;
 
         /* only add keys when told */
         if (gbl_partial_indexes && iq->usedb->ix_partial &&
-                !(ins_keys & (1ULL << ixnum)))
+            !(ins_keys & (1ULL << ixnum)))
             continue;
 
         int ixkeylen = getkeysize(iq->usedb, ixnum);
         if (ixkeylen < 0) {
             if (iq->debug)
-                reqprintf(iq, "BAD INDEX %d OR KEYLENGTH %d", ixnum,
-                        ixkeylen);
+                reqprintf(iq, "BAD INDEX %d OR KEYLENGTH %d", ixnum, ixkeylen);
             reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
             reqerrstr(iq, COMDB2_ADD_RC_INVL_KEY,
-                    "bad index %d or keylength %d", ixnum, ixkeylen);
+                      "bad index %d or keylength %d", ixnum, ixkeylen);
             *ixfailnum = ixnum;
             *opfailcode = OP_FAILED_BAD_REQUEST;
             return ERR_BADREQ;
@@ -206,20 +204,19 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
 
         int rc;
         if (iq->idxInsert)
-            rc = create_key_from_ireq(iq, ixnum, 0, &od_dta_tail,
-                    &od_len_tail, mangled_key, od_dta,
-                    od_len, key);
+            rc = create_key_from_ireq(iq, ixnum, 0, &od_dta_tail, &od_len_tail,
+                                      mangled_key, od_dta, od_len, key);
         else
             rc = create_key_from_ondisk_sch_blobs(
-                    iq->usedb, ondisktagsc, ixnum, &od_dta_tail, &od_len_tail,
-                    mangled_key, ondisktag, od_dta, od_len, ixtag, key, NULL,
-                    blobs, maxblobs, iq->tzname);
+                iq->usedb, ondisktagsc, ixnum, &od_dta_tail, &od_len_tail,
+                mangled_key, ondisktag, od_dta, od_len, ixtag, key, NULL, blobs,
+                maxblobs, iq->tzname);
         if (rc == -1) {
             if (iq->debug)
                 reqprintf(iq, "CAN'T FORM INDEX %d", ixnum);
             reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
             reqerrstr(iq, COMDB2_ADD_RC_INVL_IDX, "cannot form index %d",
-                    ixnum);
+                      ixnum);
             *ixfailnum = ixnum;
             *opfailcode = OP_FAILED_INTERNAL + ERR_FORM_KEY;
             return rc;
@@ -235,9 +232,8 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
         if (vgenid && iq->usedb->ix_dupes[ixnum] == 0 && !isnullk) {
             int fndrrn = 0;
             unsigned long long fndgenid = 0ULL;
-            rc =
-                ix_find_by_key_tran(iq, key, ixkeylen, ixnum, NULL, &fndrrn,
-                        &fndgenid, NULL, NULL, 0, trans);
+            rc = ix_find_by_key_tran(iq, key, ixkeylen, ixnum, NULL, &fndrrn,
+                                     &fndgenid, NULL, NULL, 0, trans);
             if (rc == IX_FND && fndgenid == vgenid) {
                 return ERR_VERIFY;
             }
@@ -248,7 +244,7 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
 
         /* add the key */
         rc = ix_addk(iq, trans, key, ixnum, *genid, *rrn, od_dta_tail,
-                od_len_tail, isnullk);
+                     od_len_tail, isnullk);
 
         if (vgenid && rc == IX_DUP) {
             if (iq->usedb->ix_dupes[ixnum] || isnullk) {
@@ -330,14 +326,14 @@ static int add_key(struct ireq *iq, void *trans, int ixnum,
     return rc;
 }
 
-
-int upd_record_indices(struct ireq *iq, void *trans, 
-        int *opfailcode, int *ixfailnum, int rrn, unsigned long long *newgenid,
-        unsigned long long ins_keys, int opcode, int blkpos, 
-        void *od_dta, size_t od_len,
-        void *old_dta, unsigned long long del_keys, int flags, 
-        blob_buffer_t *add_idx_blobs, blob_buffer_t *del_idx_blobs,
-        int same_genid_with_upd, unsigned long long vgenid, int *deferredAdd)
+int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
+                       int *ixfailnum, int rrn, unsigned long long *newgenid,
+                       unsigned long long ins_keys, int opcode, int blkpos,
+                       void *od_dta, size_t od_len, void *old_dta,
+                       unsigned long long del_keys, int flags,
+                       blob_buffer_t *add_idx_blobs,
+                       blob_buffer_t *del_idx_blobs, int same_genid_with_upd,
+                       unsigned long long vgenid, int *deferredAdd)
 {
     char *od_dta_tail = NULL;
     int od_tail_len;
@@ -443,14 +439,15 @@ int upd_record_indices(struct ireq *iq, void *trans,
 
         int key_unique = (iq->usedb->ix_dupes[ixnum] == 0);
         int same_key = (memcmp(newkey, oldkey, keysize) == 0);
-        if (gbl_key_updates && ((key_unique &&
-            !ix_isnullk(iq->usedb, newkey, ixnum)) || same_genid_with_upd) &&
+        if (gbl_key_updates &&
+            ((key_unique && !ix_isnullk(iq->usedb, newkey, ixnum)) ||
+             same_genid_with_upd) &&
             same_key &&
             (!gbl_partial_indexes || !iq->usedb->ix_partial ||
              ((ins_keys & (1ULL << ixnum)) &&
               (del_keys & (1ULL << ixnum))))) { /* in place key update */
 
-            /*fprintf(stderr, "IX %d didnt change, poking genid 0x%016llx\n",
+            /*logmsg(LOGMSG_DEBUG, "IX %d didnt change, poking genid 0x%016llx\n",
               ixnum, *genid);*/
 
             gbl_upd_key++;
@@ -476,7 +473,7 @@ int upd_record_indices(struct ireq *iq, void *trans,
         } else /* delete / add the key */
         {
             /*
-              fprintf(stderr, "IX %d changed, deleting key at genid 0x%016llx "
+              logmsg(LOGMSG_DEBUG, "IX %d changed, deleting key at genid 0x%016llx "
               "adding key at genid 0x%016llx\n",
               ixnum, vgenid, *newgenid);
             */
@@ -484,7 +481,8 @@ int upd_record_indices(struct ireq *iq, void *trans,
             /* only delete keys when told */
             if (!gbl_partial_indexes || !iq->usedb->ix_partial ||
                 (del_keys & (1ULL << ixnum))) {
-                rc = ix_delk(iq, trans, oldkey, ixnum, rrn, vgenid, ix_isnullk(iq->usedb, oldkey, ixnum));
+                rc = ix_delk(iq, trans, oldkey, ixnum, rrn, vgenid,
+                             ix_isnullk(iq->usedb, oldkey, ixnum));
 
                 if (iq->debug)
                     reqprintf(iq, "ix_delk IX %d RRN %d RC %d", ixnum, rrn, rc);
@@ -529,9 +527,9 @@ int upd_record_indices(struct ireq *iq, void *trans,
 
 /* Form and delete all keys. */
 int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
-        int *ixfailnum, int rrn, unsigned long long genid, void *od_dta,
-        unsigned long long del_keys, blob_buffer_t *del_idx_blobs,
-        const char *ondisktag)
+                       int *ixfailnum, int rrn, unsigned long long genid,
+                       void *od_dta, unsigned long long del_keys,
+                       blob_buffer_t *del_idx_blobs, const char *ondisktag)
 {
     int rc = 0;
     for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
@@ -547,9 +545,9 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
             memcpy(key, iq->idxDelete[ixnum], iq->usedb->ix_keylen[ixnum]);
         else {
             snprintf(keytag, sizeof(keytag), "%s_IX_%d", ondisktag, ixnum);
-            rc = stag_to_stag_buf_blobs(
-                iq->usedb->tablename, ondisktag, od_dta, keytag, key,
-                NULL, del_idx_blobs, del_idx_blobs ? MAXBLOBS : 0, 0);
+            rc = stag_to_stag_buf_blobs(iq->usedb->tablename, ondisktag, od_dta,
+                                        keytag, key, NULL, del_idx_blobs,
+                                        del_idx_blobs ? MAXBLOBS : 0, 0);
             if (rc == -1) {
                 if (iq->debug)
                     reqprintf(iq, "CAN'T FORM INDEX %d", ixnum);
@@ -579,7 +577,8 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
             gbl_osqlpf_step[*(iq->osql_step_ix)].step += 2;
 
         /* delete the key */
-        rc = ix_delk(iq, trans, key, ixnum, rrn, genid, ix_isnullk(iq->usedb, key, ixnum));
+        rc = ix_delk(iq, trans, key, ixnum, rrn, genid,
+                     ix_isnullk(iq->usedb, key, ixnum));
         if (iq->debug) {
             reqprintf(iq, "ix_delk IX %d KEY ", ixnum);
             reqdumphex(iq, key, getkeysize(iq->usedb, ixnum));
@@ -599,7 +598,6 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
     return 0;
 }
 
-
 // in sc_schema.h
 int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
                              const void *old_dta, unsigned long long ins_keys,
@@ -618,7 +616,7 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
 {
     int rc = 0;
 #ifdef DEBUG
-    fprintf(stderr, "upd_new_record_add2indices: genid %llx\n", newgenid);
+    logmsg(LOGMSG_DEBUG, "upd_new_record_add2indices: genid %llx\n", newgenid);
 #endif
 
     if (!iq->usedb)
@@ -707,8 +705,9 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
             reqmoref(iq, " RC %d", rc);
         }
         if (rc) {
-            logmsg(LOGMSG_ERROR, "upd_new_record_add2indices: ix_addk "
-                                 "newgenid 0x%llx ix_addk  ix%d rc=%d\n",
+            logmsg(LOGMSG_ERROR,
+                   "upd_new_record_add2indices: ix_addk "
+                   "newgenid 0x%llx ix_addk  ix%d rc=%d\n",
                    newgenid, ixnum, rc);
             fsnapf(stderr, key, getkeysize(iq->usedb, ixnum));
             break;
@@ -718,14 +717,13 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
     return rc;
 }
 
-int upd_new_record_indices(struct ireq *iq, void *trans,
-        unsigned long long newgenid,
-        unsigned long long ins_keys,
-        const void *new_dta, const void *old_dta, int use_new_tag,
-        void *sc_old, void *sc_new, int nd_len,
-        unsigned long long del_keys, blob_buffer_t *add_idx_blobs,
-        blob_buffer_t *del_idx_blobs,
-        unsigned long long oldgenid, int verify_retry, int deferredAdd)
+int upd_new_record_indices(
+    struct ireq *iq, void *trans, unsigned long long newgenid,
+    unsigned long long ins_keys, const void *new_dta, const void *old_dta,
+    int use_new_tag, void *sc_old, void *sc_new, int nd_len,
+    unsigned long long del_keys, blob_buffer_t *add_idx_blobs,
+    blob_buffer_t *del_idx_blobs, unsigned long long oldgenid, int verify_retry,
+    int deferredAdd)
 {
     int rc = 0;
     /* First delete all keys */
@@ -755,9 +753,10 @@ int upd_new_record_indices(struct ireq *iq, void *trans,
                 0 /*not needed*/, keytag, key, NULL, del_idx_blobs,
                 del_idx_blobs ? MAXBLOBS : 0, NULL);
         if (rc == -1) {
-            logmsg(LOGMSG_ERROR, "upd_new_record oldgenid 0x%llx conversions -> "
-                            "ix%d failed\n",
-                    oldgenid, ixnum);
+            logmsg(LOGMSG_ERROR,
+                   "upd_new_record oldgenid 0x%llx conversions -> "
+                   "ix%d failed\n",
+                   oldgenid, ixnum);
             if (iq->debug)
                 reqprintf(iq, "CAN'T FORM OLD INDEX %d", ixnum);
             reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
@@ -766,7 +765,8 @@ int upd_new_record_indices(struct ireq *iq, void *trans,
             return rc;
         }
 
-        rc = ix_delk(iq, trans, key, ixnum, 2 /*rrn*/, oldgenid, ix_isnullk(iq->usedb, key, ixnum));
+        rc = ix_delk(iq, trans, key, ixnum, 2 /*rrn*/, oldgenid,
+                     ix_isnullk(iq->usedb, key, ixnum));
         if (iq->debug) {
             reqprintf(iq, "ix_delk IX %d KEY ", ixnum);
             reqdumphex(iq, key, getkeysize(iq->usedb, ixnum));
@@ -805,12 +805,10 @@ int upd_new_record_indices(struct ireq *iq, void *trans,
 }
 
 int del_new_record_indices(struct ireq *iq, void *trans,
-        unsigned long long ngenid,
-        const void *old_dta, int use_new_tag,
-        void *sc_old,
-        unsigned long long del_keys,
-        blob_buffer_t *del_idx_blobs,
-        int verify_retry)
+                           unsigned long long ngenid, const void *old_dta,
+                           int use_new_tag, void *sc_old,
+                           unsigned long long del_keys,
+                           blob_buffer_t *del_idx_blobs, int verify_retry)
 {
     int rc = 0;
     for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
@@ -845,9 +843,9 @@ int del_new_record_indices(struct ireq *iq, void *trans,
                 0 /*not needed */, keytag, key, NULL, del_idx_blobs,
                 del_idx_blobs ? MAXBLOBS : 0, NULL);
         if (rc == -1) {
-            logmsg(LOGMSG_ERROR, 
-                    "del_new_record ngenid 0x%llx conversion -> ix%d failed\n",
-                    ngenid, ixnum);
+            logmsg(LOGMSG_ERROR,
+                   "del_new_record ngenid 0x%llx conversion -> ix%d failed\n",
+                   ngenid, ixnum);
             if (iq->debug)
                 reqprintf(iq, "CAN'T FORM INDEX %d", ixnum);
             reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
@@ -856,7 +854,8 @@ int del_new_record_indices(struct ireq *iq, void *trans,
             return rc;
         }
 
-        rc = ix_delk(iq, trans, key, ixnum, 2 /*rrn*/, ngenid, ix_isnullk(iq->usedb, key, ixnum));
+        rc = ix_delk(iq, trans, key, ixnum, 2 /*rrn*/, ngenid,
+                     ix_isnullk(iq->usedb, key, ixnum));
         if (iq->debug) {
             reqprintf(iq, "ix_delk IX %d KEY ", ixnum);
             reqdumphex(iq, key, getkeysize(iq->usedb, ixnum));
@@ -877,5 +876,3 @@ int del_new_record_indices(struct ireq *iq, void *trans,
     }
     return 0;
 }
-
-
