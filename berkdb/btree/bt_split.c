@@ -200,7 +200,7 @@ __bam_root(dbc, cp)
 	DB_LSN log_lsn;
     DB_LOCK lplock, rplock;
 	DB_MPOOLFILE *mpf;
-	PAGE *lp, *rp;
+	PAGE *lp = NULL, *rp = NULL;
 	db_indx_t split;
 	u_int32_t opflags;
 	int ret, got_lplock, got_rplock;

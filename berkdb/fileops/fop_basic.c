@@ -244,7 +244,7 @@ __fop_rename(dbenv, txn, oldname, newname, fid, appname, flags)
 	DB_LSN lsn;
 	DBT fiddbt, new, old;
 	int ret;
-	char *n, *o;
+	char *n = NULL, *o = NULL;
 
 	if ((ret = __db_appname(dbenv, appname, oldname, 0, NULL, &o)) != 0)
 		goto err;

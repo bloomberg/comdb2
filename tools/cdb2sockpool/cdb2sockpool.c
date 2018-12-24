@@ -113,11 +113,6 @@ static int max_clients;
 /* Global stats.  These are updated locklessly. */
 static struct stats gbl_stats;
 
-/* alarm if a high proportion of available fds are in use */
-static const int FD_CHECK_TIMER_FREQ =
-    10000; /* check frequency in milliseconds */
-static const double FD_PERCENTAGE_ALMN_THRESHOLD = 0.75;
-
 /* File descriptor limit, determined at run-time
  * in increase_file_descriptor_limit() */
 static long max_fd_limit;

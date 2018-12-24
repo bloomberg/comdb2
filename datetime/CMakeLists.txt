@@ -3,8 +3,10 @@ set(module datetime)
 set(MODULE DATETIME)
 configure_file(${PROJECT_SOURCE_DIR}/mem/mem.h.in mem_datetime.h @ONLY)
 add_definitions(-DSTD_INSPIRED)
-if (${CMAKE_C_COMPILER_ID} STREQUAL GNU OR ${CMAKE_C_COMPILER_ID} STREQUAL Clang)
+if (${CMAKE_C_COMPILER_ID} STREQUAL GNU)
   set_source_files_properties(localtimedb.c PROPERTIES COMPILE_FLAGS "-Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-label -Wno-strict-overflow")
+elseif(${CMAKE_C_COMPILER_ID} STREQUAL Clang)
+  set_source_files_properties(localtimedb.c PROPERTIES COMPILE_FLAGS "-Wno-unused-variable -Wno-unused-const-variable -Wno-unused-label -Wno-strict-overflow")
 endif()
 include_directories(
   ${CMAKE_CURRENT_BINARY_DIR}

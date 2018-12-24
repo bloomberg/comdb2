@@ -5427,7 +5427,7 @@ static void accept_handle_new_host(netinfo_type *netinfo_ptr,
         host_node_printf(LOGMSG_INFO, host_node_ptr,
                          "%s: Clipping connect from %s on disabled subnet %s\n",
                          __func__, host_node_ptr->host,
-                         (host_node_ptr->subnet) ? host_node_ptr->subnet
+                         (host_node_ptr->subnet[0] != '\0') ? host_node_ptr->subnet
                                                  : "UNKNOWN");
         Pthread_mutex_unlock(&(host_node_ptr->lock));
         Pthread_rwlock_unlock(&(netinfo_ptr->lock));
