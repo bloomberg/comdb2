@@ -4026,7 +4026,7 @@ TYPES_INLINE int CLIENT_REAL_to_SERVER_BREAL(
     }
 
     float from_4 = 0;
-    double from_8;
+    double from_8 = 0;
 
     unsigned long to_4;
     unsigned long long to_8;
