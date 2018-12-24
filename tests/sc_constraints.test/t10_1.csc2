@@ -1,0 +1,14 @@
+schema
+{
+    int a
+    int b
+}
+keys
+{
+    "B" = b
+    dup "A" = a
+}
+constraints
+{
+    "t10fk" = "A" -> <"t1":"A">
+}
