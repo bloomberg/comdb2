@@ -1080,7 +1080,7 @@ __db_r_detach(dbenv, infop, destroy)
         __db_heap_destroy(dbenv, infop->addr);
 
 	/* Detach from the underlying OS region. */
-	ret = __os_r_detach(dbenv, infop, destroy);
+    ret = __os_r_detach(dbenv, infop, destroy);
 
 	/* Release the REGION lock. */
 	MUTEX_UNLOCK(dbenv, &rp->mutex);

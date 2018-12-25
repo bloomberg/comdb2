@@ -2538,7 +2538,7 @@ __txn_reset(dbenv)
     if (gbl_is_physical_replicant)
         return 0;
 
-	region = ((DB_TXNMGR *)dbenv->tx_handle)->reginfo.primary;
+    region = ((DB_TXNMGR *)dbenv->tx_handle)->reginfo.primary;
 	region->last_txnid = TXN_MINIMUM;
 
 	DB_ASSERT(LOGGING_ON(dbenv));

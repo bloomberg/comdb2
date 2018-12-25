@@ -303,10 +303,10 @@ err:	if (lp != NULL)
 		(void)__memp_fput(mpf, rp, 0);
 	(void)__memp_fput(mpf, cp->page, 0);
 	(void)__TLPUT(dbc, cp->lock);
-    if (got_lplock)
-        (void)__TLPUT(dbc, lplock);
-    if (got_rplock)
-        (void)__TLPUT(dbc, rplock);
+	if (got_lplock)
+		(void)__TLPUT(dbc, lplock);
+	if (got_rplock)
+		(void)__TLPUT(dbc, rplock);
 	return (ret);
 }
 

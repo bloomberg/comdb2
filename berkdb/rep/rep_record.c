@@ -7622,7 +7622,7 @@ __rep_verify_match(dbenv, rp, savetime, online)
                         wait_cnt / 60);
 #endif
             MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-        }
+    }
 
 
 
@@ -7631,8 +7631,8 @@ __rep_verify_match(dbenv, rp, savetime, online)
 	 * to 0 and for the number of threads in __rep_process_message
 	 * to go to 1 (us).
 	 */
-    if (!online)
-        rep->in_recovery = 1;
+	if (!online)
+		rep->in_recovery = 1;
 
 	rep->in_recovery = 1;
 #ifdef DIAGNOSTIC

@@ -1638,8 +1638,8 @@ __rep_get_master(dbenv, master_out, gen, egen)
 
 	master = rep->master_id;
 
-    if (gen)
-        *gen = rep->gen;
+	if (gen)
+		*gen = rep->gen;
 
 	if (egen)
 		*egen = rep->egen;
