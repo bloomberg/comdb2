@@ -7396,10 +7396,8 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
     char table_prefix[80];
     unsigned long long file_version;
 
-    struct dirent *buf;
-    struct dirent *ent;
     DIR *dirp;
-    int error;
+    struct dirent *ent;
     int lognum = 0;
 
     assert(bdb_state->parent == NULL);
@@ -7417,22 +7415,11 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
         return -1;
     }
 
-    /* must be large enough to hold a dirent struct with the longest possible
-     * filename */
-    buf = malloc(4096);
-    if (!buf) {
-        logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
-        *bdberr = BDBERR_MALLOC;
-
-        return -1;
-    }
-
     /* open the db's directory */
     dirp = opendir(bdb_state->dir);
     if (!dirp) {
         logmsg(LOGMSG_ERROR, "%s: opendir failed\n", __func__);
         *bdberr = BDBERR_MISC;
-        free(buf);
         return -1;
     }
 
@@ -7441,13 +7428,12 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
     if (tp_len >= sizeof(table_prefix)) {
         logmsg(LOGMSG_ERROR, "%s: tablename too long\n", __func__);
         *bdberr = BDBERR_MISC;
-        free(buf);
         closedir(dirp);
         return -1;
     }
 
     /* for each file in the db's directory */
-    while ((error = readdir_r(dirp, buf, &ent)) == 0 && ent != NULL) {
+    while ((ent = readdir(dirp)) != 0) {
         /* if the file's name is longer then the prefix and it belongs to our
          * table */
         if (!(strlen(ent->d_name) > tp_len &&
@@ -7566,10 +7552,7 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
     }
 
 done:
-
     closedir(dirp);
-    free(buf);
-
     *bdberr = BDBERR_NOERROR;
     return 0;
 }
