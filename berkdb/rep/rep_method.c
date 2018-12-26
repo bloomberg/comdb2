@@ -290,9 +290,10 @@ __rep_start(dbenv, dbt, gen, flags)
 				logmsg(LOGMSG_FATAL, "%s:%d:%s: Exiting after waiting too long for replication message thread.\n",
 					__FILE__, __LINE__, __func__);
 				pid = getpid();
-				snprintf(cmd, sizeof(cmd), "pstack %d",
-					(int)pid);
-				system(cmd);
+				snprintf(cmd, sizeof(cmd), "pstack %d", (int)pid);
+				int rc = system(cmd);
+				if (rc == -1)
+					fprintf(stderr, "system() returns rc = %d\n", rc);
 				abort();
 			}
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);

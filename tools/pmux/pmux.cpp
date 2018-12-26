@@ -165,12 +165,14 @@ static int connect_instance(int servicefd, char *name)
     std::stringstream out;
     out << port;
     s = out.str();
-    write(servicefd, s.c_str(), strlen(s.c_str()));
+    int rc = write(servicefd, s.c_str(), strlen(s.c_str()));
+    if (rc == -1)
+        std::cerr << "write() returns rc = " << rc << std::endl;
     int oldfd = get_fd(name);
     if (oldfd > 0) {
         dealloc_fd(name);
     }
-    int rc = alloc_fd(name, servicefd);
+    rc = alloc_fd(name, servicefd);
 #ifdef VERBOSE
     std::cout << "connect " << name << " " << servicefd << std::endl;
 #endif
