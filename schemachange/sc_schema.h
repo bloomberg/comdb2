@@ -46,9 +46,8 @@ int verify_partial_rev_constraint(struct dbtable *to_db, struct dbtable *newdb,
                                   unsigned long long ins_keys,
                                   const char *from);
 
-void verify_schema_change_constraint(struct ireq *iq, struct dbtable *currdb,
-                                     void *trans, void *od_dta,
-                                     blob_buffer_t *blobs, int maxblobs,
+void verify_schema_change_constraint(struct ireq *iq, void *trans,
+                                     unsigned long long newgenid, void *od_dta,
                                      unsigned long long ins_keys);
 
 int ondisk_schema_changed(const char *table, struct dbtable *newdb, FILE *out,

@@ -355,4 +355,9 @@ int do_dryrun(struct schema_change_type *);
 
 extern int gbl_test_scindex_deadlock;
 
+unsigned long long revalidate_new_indexes(struct ireq *iq, struct dbtable *db,
+                                          uint8_t *new_dta,
+                                          unsigned long long ins_keys,
+                                          blob_buffer_t *blobs,
+                                          size_t maxblobs);
 #endif

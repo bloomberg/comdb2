@@ -212,19 +212,18 @@ int live_sc_post_del_record(struct ireq *iq, void *trans,
 }
 
 /* re-compute new partial/expressions indexes for new table */
-static unsigned long long revalidate_new_indexes(struct ireq *iq, struct dbtable *db,
-                                                 uint8_t *new_dta,
-                                                 blob_buffer_t *blobs,
-                                                 size_t maxblobs)
+unsigned long long revalidate_new_indexes(struct ireq *iq, struct dbtable *db,
+                                          uint8_t *new_dta,
+                                          unsigned long long ins_keys,
+                                          blob_buffer_t *blobs, size_t maxblobs)
 {
     extern int gbl_partial_indexes;
     extern int gbl_expressions_indexes;
     void free_cached_idx(uint8_t * *cached_idx);
-    unsigned long long ins_keys = -1ULL;
+    int rebuild_keys = 0;
     if ((gbl_partial_indexes && db->ix_partial) ||
         (gbl_expressions_indexes && db->ix_expr)) {
         int ixnum;
-        int rebuild_keys = 0;
         if (!gbl_use_plan || !db->plan)
             rebuild_keys = 1;
         else {
@@ -248,7 +247,7 @@ static unsigned long long revalidate_new_indexes(struct ireq *iq, struct dbtable
     }
 
     extern int gbl_partial_indexes;
-    if (gbl_partial_indexes && db->ix_partial)
+    if (gbl_partial_indexes && db->ix_partial && rebuild_keys)
         ins_keys = verify_indexes(db, new_dta, blobs, maxblobs, 0);
 
     return ins_keys;
@@ -337,8 +336,9 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
         return 0; // should just fail SC
     }
 
-    ins_keys = revalidate_new_indexes(iq, usedb->sc_to, new_dta, add_idx_blobs,
-                                      add_idx_blobs ? MAXBLOBS : 0);
+    ins_keys =
+        revalidate_new_indexes(iq, usedb->sc_to, new_dta, ins_keys,
+                               add_idx_blobs, add_idx_blobs ? MAXBLOBS : 0);
 
     /* point to the new table */
     iq->usedb = usedb->sc_to;
@@ -407,8 +407,8 @@ int live_sc_post_add_record(struct ireq *iq, void *trans,
         goto done; // should just fail SC
     }
 
-    ins_keys =
-        revalidate_new_indexes(iq, usedb->sc_to, new_dta, blobs, maxblobs);
+    ins_keys = revalidate_new_indexes(iq, usedb->sc_to, new_dta, ins_keys,
+                                      blobs, maxblobs);
 
     if ((origflags & RECFLAGS_NO_CONSTRAINTS) && usedb->sc_to->n_constraints) {
         int rebuild = usedb->sc_to->plan && usedb->sc_to->plan->dta_plan;

@@ -628,7 +628,7 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
         int rebuild = iq->usedb->plan && iq->usedb->plan->dta_plan;
         rc = verify_record_constraint(
             iq, iq->usedb, trans, new_dta, ins_keys, blobs, MAXBLOBS,
-            use_new_tag ? ".NEW..ONDISK" : ".ONDISK", rebuild, 1);
+            use_new_tag ? ".NEW..ONDISK" : ".ONDISK", rebuild, !use_new_tag);
         if (rc)
             return ERR_CONSTR;
     }
