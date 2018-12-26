@@ -6213,6 +6213,36 @@ static int get_blkout(time_t now, char *nodes[REPMAX], int *nds)
    must be parsed from the buffer.
  */
 
+int osql_extract_type(int usertype, void *dtap, int datalen)
+{
+    int type = -1;
+    if (osql_nettype_is_uuid(usertype)) {
+        if (!(p_buf = (uint8_t *)osqlcomm_uuid_rpl_type_get(
+                  &p_osql_uuid_rpl, p_buf, p_buf_end))) {
+            logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
+                    "osqlcomm_uuid_rpl_type_get");
+        } else {
+            comdb2uuidcpy(uuid, p_osql_uuid_rpl.uuid);
+            type = p_osql_uuid_rpl.type;
+        }
+    } else {
+        osql_rpl_t p_osql_rpl;
+        uint8_t *p_buf, *p_buf_end;
+
+        p_buf = (uint8_t *)dtap;
+        p_buf_end = (p_buf + dtalen);
+
+        if (!(p_buf = (uint8_t *)osqlcomm_rpl_type_get(&p_osql_rpl, p_buf,
+                                                       p_buf_end))) {
+            logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
+                    "osqlcomm_rpl_type_get");
+        } else {
+            type = p_osql_rpl.type;
+        }
+    }
+    return type;
+}
+
 static void net_osql_rpl(void *hndl, void *uptr, char *fromnode, int usertype,
                          void *dtap, int dtalen, uint8_t flags)
 {
@@ -7758,11 +7788,9 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     }
 
     if (flags & PHYSWRITE) {
-        iq->is_physwrite = 1;
         assert(physwrite_results);
         iq->physwrite_results = physwrite_results;
     } else {
-        iq->is_physwrite = 0;
         assert(!physwrite_results);
         iq->physwrite_results = NULL;
     }
