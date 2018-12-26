@@ -1973,7 +1973,8 @@ static void panic_func(DB_ENV *dbenv, int errval)
     pid = getpid();
     snprintf(buf, sizeof(buf), "pstack %d", pid);
     int lrc = system(buf);
-    if (lrc == -1) {} //silence compiler warnings
+    if (lrc == -1) {
+    } // silence compiler warnings
 
     /* this code sometimes deadlocks.  install a timer - if it
        fires, we

@@ -221,7 +221,8 @@ char *print_addr(struct sockaddr_in *addr, char *buf)
                          service, sizeof(service), 0);
     if (rc) {
         char *tmp = strerror_r(rc, errbuf, sizeof(errbuf));
-        if (tmp) { } //silence compiler warning
+        if (tmp) {
+        } // silence compiler warning
         sprintf(buf, "%s:getnameinfo errbuf=%s", __func__, errbuf);
         return buf;
     }
@@ -230,7 +231,8 @@ char *print_addr(struct sockaddr_in *addr, char *buf)
         sprintf(buf, "[%s %s:%s] ", name, ip, service);
     } else {
         char *tmp = strerror_r(errno, errbuf, sizeof(errbuf));
-        if (tmp) { } //silence compiler warning
+        if (tmp) {
+        } // silence compiler warning
         sprintf(buf, "%s:inet_ntop:%s", __func__, errbuf);
     }
     return buf;

@@ -352,7 +352,8 @@ int refresh_metrics(void)
     if (f) {
         char line[1024];
         char *tmp = fgets(line, sizeof(line), f);
-        if (tmp) {} //silence compiler warnings
+        if (tmp) {
+        } // silence compiler warnings
         fclose(f);
         long num_threads;
         unsigned long vmsize;
@@ -478,7 +479,8 @@ static void update_cpu_percent(void)
    if (f) {
       char line[1024];
       char *tmp = fgets(line, sizeof(line), f);
-      if (tmp) {} //silence compiler warnings
+      if (tmp) {
+      } // silence compiler warnings
       fclose(f);
       unsigned long utime, stime;
       /* usertime=14 systemtime=15 */
