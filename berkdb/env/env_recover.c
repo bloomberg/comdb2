@@ -621,7 +621,7 @@ __dbenv_mintruncate_lsn_timestamp(dbenv, lowfile, outlsn, outtime)
 
 	/* Delete old entries */
 	while ((mt = LISTC_BOT(&dbenv->mintruncate)) != NULL &&
-			mt->lsn.file < lowfile) {
+			mt->lsn.file <= lowfile) {
 		mt = listc_rbl(&dbenv->mintruncate);
 		free(mt);
 	}
