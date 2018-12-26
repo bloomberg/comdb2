@@ -721,7 +721,7 @@ int __dbenv_build_mintruncate_list(dbenv)
 			ret = __log_c_get(logc, &lsn, &rec, DB_NEXT)) {
 
 		LOGCOPY_32(&type, rec.data);
-		if (type ==  DB___db_debug) {
+		if (type == DB___db_debug) {
 			if ((ret = __db_debug_read(dbenv, rec.data, &debug_args))!=0)
 				abort();
 			LOGCOPY_32(&optype, debug_args->op.data);
