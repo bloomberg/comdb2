@@ -624,12 +624,14 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
     if (!iq->usedb)
         return ERR_BADREQ;
 
-    int rebuild = iq->usedb->plan && iq->usedb->plan->dta_plan;
-    rc = verify_record_constraint(
-        iq, iq->usedb, trans, new_dta, ins_keys, blobs, MAXBLOBS,
-        use_new_tag ? ".NEW..ONDISK" : ".ONDISK", rebuild, 1);
-    if (rc)
-        return ERR_CONSTR;
+    if (verify) {
+        int rebuild = iq->usedb->plan && iq->usedb->plan->dta_plan;
+        rc = verify_record_constraint(
+            iq, iq->usedb, trans, new_dta, ins_keys, blobs, MAXBLOBS,
+            use_new_tag ? ".NEW..ONDISK" : ".ONDISK", rebuild, 1);
+        if (rc)
+            return ERR_CONSTR;
+    }
 
     unsigned long long vgenid = 0ULL;
     if (verify)

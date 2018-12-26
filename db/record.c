@@ -1742,8 +1742,6 @@ err:
     return retrc;
 }
 
-
-
 /*
  * Update a single record in the new table as part of a live schema
  * change.  This code is called when you update a record in-place
