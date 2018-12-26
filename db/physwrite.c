@@ -65,20 +65,50 @@ static cdb2_hndl_tp *retrieve_handle(session_t *s)
     return *h;
 }
 
+static int retrieve_results(cdb2_hndl_tp *h)
+{
+    int64_t *rcode, *errval, *file, *offset;
+    char *errstr;
+
+    rcode = (int64_t *)cdb2_column_value(h, 0);
+    errval = (int64_t *)cdb2_column_value(h, 1);
+    errstr = cdb2_column_value(h, 2);
+    file = cdb2_column_value(h, 3);
+    offset = cdb2_column_value(h, 4);
+#if 0
+    int64_t *inserts, *updates, *deletes, *cupdates, *cdeletes;
+    inserts = (int64_t *)cdb2_column_value(h, 5);
+    updates = (int64_t *)cdb2_column_value(h, 6);
+    deletes = (int64_t *)cdb2_column_value(h, 7);
+    cupdates = (int64_t *)cdb2_column_value(h, 8);
+    cdeletes = (int64_t *)cdb2_column_value(h, 9);
+#endif
+}
+
 static int dosend(session_t *s, int usertype, void *data, int datalen)
 {
-    int rc;
+    int rc, type;
     cdb2_hndl_tp *h = retrieve_handle(s);
     if (s->last_master && strcmp(s->last_master, cdb2_master(h))) {
         free(s->last_master);
         s->last_master = NULL;
         return OSQL_SEND_ERROR_WRONGMASTER;
     }
+    type = osql_extract_type(usertype, data, datalen);
     cdb2_bind_param(h, "host", CDB2_CSTRING, dbhost, strlen(dbhost));
     cdb2_bind_param(h, "usertype", CDB2_INTEGER, &usertype, sizeof(usertype));
     cdb2_bind_param(h, "data", CDB2_BLOB, data, datalen);
     rc = cdb2_run_statement(h,
             "exec procedure sys.cmd.exec_socksql(@host, @usertype, @data)");
+
+    /* Read result */
+    if (rc == 0 && osql_comm_is_done(type, NULL, 0, 0, NULL, NULL)) {
+        if ((rc = cdb2_next_record(h)) == CDB2_OK)
+            retrieve_results(h);
+        else
+    }
+
+    /* Remember last master */
     if (rc == 0 && s->last_master == NULL)
         s->last_master = strdup(cdb2_master(h));
     return rc;
@@ -116,6 +146,7 @@ int physwrite_route_packet_tails(int usertype, void *data, int datalen,
     free(dup);
     return rc;
 }
+
 
 __thread physwrite_results_t *physwrite_results;
 

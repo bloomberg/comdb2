@@ -526,7 +526,7 @@ static int db_comdb_register_replicant(Lua L)
 static int db_comdb_exec_socksql(Lua L)
 {
     char *host, *errstr;
-    int usertype, errval, file, offset, rcode;
+    int usertype, errval, file, offset, rcode, dispatched;
     blob_t data;
     if (!lua_isstring(L, 1) || !lua_isnumber(L, 2) || !luabb_isblob(L, 3)) {
         logmsg(LOGMSG_ERROR, "%s invalid arguments\n", __func__);
@@ -535,8 +535,55 @@ static int db_comdb_exec_socksql(Lua L)
     host = (char *)lua_tostring(L, 1);
     usertype = lua_tonumber(L, 2);
     luabb_toblob(L, 3, &data);
-    physwrite_exec(host, usertype, data.data, data.length, &rcode, &errval,
-            &errstr, NULL, NULL, NULL, NULL, NULL, &file, &offset);
+    lua_createtable(L, 0, 0);
+    dispatched = physwrite_exec(host, usertype, data.data, data.length, &rcode,
+            &errval, &errstr, NULL, NULL, NULL, NULL, NULL, &file, &offset);
+
+    if (dispatched) {
+        lua_createtable(L, 10, 0);
+
+        lua_pushstring(L, "rcode");
+        lua_pushinteger(L, rcode);
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "errval");
+        lua_pushinteger(L, errval);
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "errstr");
+        lua_pushstring(L, errstr);
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "file");
+        lua_pushinteger(L, file);
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "offset");
+        lua_pushinteger(L, offset);
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "inserts");
+        lua_pushinteger(L, 0);
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "updates");
+        lua_pushinteger(L, 0);
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "deletes");
+        lua_pushinteger(L, 0);
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "cupdates");
+        lua_pushinteger(L, 0);
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "cdeletes");
+        lua_pushinteger(L, 0);
+        lua_settable(L, -3);
+
+        lua_rawseti(L, -2, 1);
+    }
     return 0;
 }
 
@@ -734,7 +781,8 @@ static struct sp_source syssps[] = {
         "        { 'int',    'rcode' },\n"
         "        { 'int',    'errval' },\n"
         "        { 'string', 'errstr' },\n"
-        "        { 'string', 'lsn' },\n"
+        "        { 'int',    'file' },\n"
+        "        { 'int',    'offset' },\n"
         "        { 'int',    'inserts' },\n"
         "        { 'int',    'updates' },\n"
         "        { 'int',    'deletes' },\n"

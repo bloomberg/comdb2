@@ -423,4 +423,6 @@ int osql_get_replicant_numops(const char *rpl, int has_uuid);
 int osql_set_usedb(struct ireq *iq, const char *tablename, int tableversion,
                    int step, struct block_err *err);
 
+int osql_extract_type(int usertype, void *dtap, int datalen);
+
 #endif
