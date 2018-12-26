@@ -9,8 +9,6 @@ int gbl_physwrite_shared_handle = 0;
 int gbl_physwrite_wait_commit = 1;
 int gbl_physwrite_long_write_threshold = 10;
 
-pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
-
 enum {
     SHARED = 1,
     DISTINCT = 2
@@ -41,6 +39,8 @@ static session_t *retrieve_session(void)
     }
     return sess;
 }
+
+pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
 
 static void physwrite_enter(session_t *s)
 {

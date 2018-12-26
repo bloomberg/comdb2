@@ -7835,8 +7835,23 @@ done:
                      sizeof(generr.errstr));
         }
 
-        rc2 = osql_comm_signal_sqlthr_rc(&sorese_info, &generr,
-                                         RC_INTERNAL_RETRY);
+        if (iq->physwrite_results) {
+            rc2 = 0;
+            Pthread_mutex_lock(&iq->physwrite_results->lk);
+            assert(iq->physwrite_results->done == 0);
+            if (generr.errstr) {
+                iq->physwrite_results->errstr = strdup(generr.errstr);
+            } else {
+                iq->physwrite_results->errstr = NULL;
+            }
+            iq->physwrite_results->errval = generr.errval;
+
+            Pthread_mutex_unlock(&iq->physwrite_results->lk);
+
+        } else {
+            rc2 = osql_comm_signal_sqlthr_rc(&sorese_info, &generr,
+                    RC_INTERNAL_RETRY);
+        }
         if (rc2) {
             uuidstr_t us;
             comdb2uuidstr(uuid, us);

@@ -1514,6 +1514,7 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
     int set_seqnum = 0;
     uint32_t generation = 0;
     tran_type *physical_tran = NULL;
+    extern __thread physwrite_results_t *physwrite_results;
     DB_LSN lsn;
     DB_LSN old_lsn;
 
