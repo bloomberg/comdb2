@@ -16,13 +16,16 @@
 
 #ifndef INCLUDED_PHYSWRITE_H
 #define INCLUDED_PHYSWRITE_H
+#include <pthread.h>
 
 typedef struct physwrite_results_s {
     pthread_mutex_t lk;
     pthread_mutex_t cd;
     int dispatched;
     int done;
-    DB_LSN commit_lsn;
+    int commit_file;
+    int commit_offset;
+    int rcode;
     int errval;
     char *errstr;
     int inserts;
@@ -35,12 +38,13 @@ typedef struct physwrite_results_s {
 int physwrite_route_packet(int usertype, void *data, int datalen);
 
 int physwrite_route_packet_tails(int usertype, void *data, int datalen,
-        int ntails, void **tails, int *tailens);
+        int ntails, void *tail, int tailen);
 
 void physwrite_init(char *name, char *type, char *host);
 
 int physwrite_exec(char *host, int usertype, void *data, int datalen,
-        int *rc, int *errval, char **errstr, int *inserts, int *updates,
-        int *deletes, int *cupdates, int *cdeletes, DB_LSN *commit_lsn);
+        int *rcode, int *errval, char **errstr, int *inserts, int *updates,
+        int *deletes, int *cupdates, int *cdeletes, int *commit_file,
+        int *commit_offset);
 
 #endif

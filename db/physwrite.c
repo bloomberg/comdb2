@@ -1,4 +1,4 @@
-#include <physwrites.h>
+#include <physwrite.h>
 #include <cdb2api.h>
 #include <pthread.h>
 #include <osqlcomm.h>
@@ -14,7 +14,7 @@ enum {
     DISTINCT = 2
 };
 
-typedef session 
+typedef struct session 
 {
     int session_type;
     cdb2_hndl_tp *hndl;
@@ -59,7 +59,7 @@ static cdb2_hndl_tp *retrieve_handle(session_t *s)
     cdb2_hndl_tp **h = (s->session_type == SHARED ?  &shared_hndl : &s->hndl);
     int rc;
     if (!*h && (rc = cdb2_open(h, dbname, dbtype, CDB2_CONNECT_MASTER)) != 0) {
-        logmsg(logmsg_error, "Physwrite unable to retrieve handle for %s:%s, "
+        logmsg(LOGMSG_ERROR, "Physwrite unable to retrieve handle for %s:%s, "
                "rc %d\n", dbname, dbtype, rc);
     }
     return *h;
@@ -74,9 +74,9 @@ static int dosend(session_t *s, int usertype, void *data, int datalen)
         s->last_master = NULL;
         return OSQL_SEND_ERROR_WRONGMASTER;
     }
-    cdb2_bind_param(h, "host", CDB2_CSTRING, strlen(dbhost));
-    cdb2_bind_param(h, "usertype", CDB2_INTEGER, sizeof(usertype));
-    cdb2_bind_param(h, "data", CDB2_BLOB, datalen);
+    cdb2_bind_param(h, "host", CDB2_CSTRING, dbhost, strlen(dbhost));
+    cdb2_bind_param(h, "usertype", CDB2_INTEGER, &usertype, sizeof(usertype));
+    cdb2_bind_param(h, "data", CDB2_BLOB, data, datalen);
     rc = cdb2_run_statement(h,
             "exec procedure sys.cmd.exec_socksql(@host, @usertype, @data)");
     if (rc == 0 && s->last_master == NULL)
@@ -101,7 +101,7 @@ int physwrite_route_packet(int usertype, void *data, int datalen)
     return rc;
 }
 
-int physwrite_route_packet_tails(int usertype, void data, int datalen,
+int physwrite_route_packet_tails(int usertype, void *data, int datalen,
         int ntails, void *tail, int tailen)
 {
     void *dup;
@@ -109,7 +109,7 @@ int physwrite_route_packet_tails(int usertype, void data, int datalen,
     if (datalen + tailen > gbl_blob_sz_thresh_bytes)
         dup = comdb2_bmalloc(blobmem, datalen + tailen);
     else
-        dup = malloc(datalen + taillen);
+        dup = malloc(datalen + tailen);
     memmove(dup, data, datalen);
     memmove(dup + datalen, tail, tailen);
     rc = physwrite_route_packet(usertype, dup, datalen + tailen);
@@ -119,9 +119,11 @@ int physwrite_route_packet_tails(int usertype, void data, int datalen,
 
 __thread physwrite_results_t *physwrite_results;
 
+int net_route_packet_flags(int usertype, void *data, int datalen, uint8_t flags);
+
 int physwrite_exec(char *host, int usertype, void *data, int datalen,
-        int *errval, char **errstr, int *inserts, int *updates, int *deletes,
-        int *cupdates, int *cdeletes, DB_LSN *commit_lsn)
+        int *rcode, int *errval, char **errstr, int *inserts, int *updates, int *deletes,
+        int *cupdates, int *cdeletes, int *commit_file, int *commit_offset)
 {
     int rc, cnt=0;
     physwrite_results_t results = {0};
@@ -139,17 +141,21 @@ int physwrite_exec(char *host, int usertype, void *data, int datalen,
             }
             rc = clock_gettime(CLOCK_REALTIME, &now);
             now.tv_sec += 1;
-            Pthread_cond_timedwait(&results.cd, &results.lk, &now);
+            pthread_cond_timedwait(&results.cd, &results.lk, &now);
         } 
         Pthread_mutex_unlock(&results.lk);
+        *rcode = results.rcode;
         *errval = results.errval;
         *errstr = results.errstr;
+#if 0
         *inserts = results.inserts;
         *updates = results.updates;
         *deletes = results.deletes;
         *cupdates = results.cupdates;
         *cdeletes = results.cdeletes;
-        *commit_lsn = results.commit_lsn;
+#endif
+        *commit_file = results.commit_file;
+        *commit_offset = results.commit_offset;
     }
     physwrite_results = NULL;
     Pthread_mutex_destroy(&results.lk);

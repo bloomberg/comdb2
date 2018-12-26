@@ -6104,11 +6104,11 @@ static int offload_net_send_tails(const char *host, int usertype, void *data,
                 if (gbl_physwrite) 
                     return physwrite_route_packet_tails(usertype, data, datalen,
                             ntails, tails[0], tailens[0]);
-                if ((now = time(NULL)) > last_write) {
+                if ((now = time(NULL)) > last_physrep_write) {
                     logmsg(LOGMSG_ERROR, "Preventing write on read-only "
                             "physical replicant (enable 'physrep_write' to "
                             "allow writes)\n");
-                    last_write = now;
+                    last_physrep_write = now;
                 }
             }
             rc = net_local_route_packet_tails(usertype, data, datalen, ntails,
@@ -7833,7 +7833,10 @@ done:
                 iq->physwrite_results->errstr = NULL;
             }
             iq->physwrite_results->errval = generr.errval;
+            iq->physwrite_results->rcode = RC_INTERNAL_RETRY;
+            iq->physwrite_results->done = 1;
 
+            Pthread_cond_signal(&iq->physwrite_results->cd);
             Pthread_mutex_unlock(&iq->physwrite_results->lk);
 
         } else {

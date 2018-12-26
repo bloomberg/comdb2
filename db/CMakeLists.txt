@@ -43,6 +43,7 @@ set(src
   osqlshadtbl.c
   osqlsqlthr.c
   phys_rep.c
+  physwrite.c
   plugin_handler.c
   prefault.c
   prefault_helper.c

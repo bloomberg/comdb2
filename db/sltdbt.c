@@ -338,7 +338,23 @@ int handle_ireq(struct ireq *iq)
 
             if (iq->sorese.rqid == 0)
                 abort();
-            osql_comm_signal_sqlthr_rc(&iq->sorese, &iq->errstat, sorese_rc);
+            if (iq->physwrite_results) {
+                Pthread_mutex_lock(&iq->physwrite_results->lk);
+                assert(iq->physwrite_results->done == 0);
+                if (iq->errstat.errstr) {
+                    iq->physwrite_results->errstr = strdup(iq->errstat.errstr);
+                } else {
+                    iq->physwrite_results->errstr = NULL;
+                }
+                iq->physwrite_results->errval = iq->errstat.errval;
+                iq->physwrite_results->rcode = sorese_rc;
+                iq->physwrite_results->done = 1;
+
+                Pthread_cond_signal(&iq->physwrite_results->cd);
+                Pthread_mutex_unlock(&iq->physwrite_results->lk);
+            } else {
+                osql_comm_signal_sqlthr_rc(&iq->sorese, &iq->errstat, sorese_rc);
+            }
 
             iq->timings.req_sentrc = osql_log_time();
 
