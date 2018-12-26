@@ -126,7 +126,8 @@ static int block_on_monitored_files(void)
                 blocked = waited = 1;
                 sleep (1);
                 rewind(monfps[i]);
-                fread(chk, sizeof(chk), 1, monfps[i]);
+                int lrc = fread(chk, sizeof(chk), 1, monfps[i]);
+                if (lrc == -1) {}  //silence compiler warnings
             }
             if (waited) {
                 fprintf(stderr, "Monfile '%s' updated\n", monfile[i]);

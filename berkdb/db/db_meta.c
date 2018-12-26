@@ -620,11 +620,10 @@ __db_new_original(dbc, type, pagepp)
 			if (gbl_core_on_sparse_file) {
 				char cmd[100];
 
-				snprintf(cmd, sizeof(cmd), "gcore %d",
-				    getpid());
+				snprintf(cmd, sizeof(cmd), "gcore %d", getpid());
 				printf("%s\n", cmd);
-				int rc = system(cmd);
-				if (rc) printf("%s: system() returned rc=%d\n", __func__, rc);
+				int lrc = system(cmd);
+				if (lrc) {} //silence warnings
 				gbl_core_on_sparse_file = 0;
 			}
 		}
