@@ -366,7 +366,7 @@ void *client_thd(void *voidarg)
     int rc, fd = (intptr_t)voidarg;
     struct sockpool_hello hello;
     ssize_t nbytes;
-    char prefix[80];
+    char prefix[128];
     char *typestrbuf = NULL;
     int maxtypestrlen = 0;
 

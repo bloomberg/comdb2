@@ -71,7 +71,8 @@ void remove_tempdir()
 {
 	if (orig_dir && chdir(orig_dir) == 0) {
 		free(orig_dir);
-		system("rm -rf " PRINTLOG_RANGE_DIR);
+		int lrc = system("rm -rf " PRINTLOG_RANGE_DIR);
+		if (lrc == -1) {} //silence compiler warnings
 	}
 }
 

@@ -393,7 +393,8 @@ void comdb2_die(int aborat)
         sizeof(pstack_cmd)) {
         logmsg(LOGMSG_WARN, "pstack cmd too long for buffer\n");
     } else {
-        system(pstack_cmd);
+        int lrc = system(pstack_cmd);
+        if (lrc == -1) {} //silence compiler warnings
     }
 
     if (aborat)

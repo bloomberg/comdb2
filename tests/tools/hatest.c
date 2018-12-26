@@ -368,7 +368,8 @@ void printCol(FILE *f, cdb2_hndl_tp *cdb2h, void *val, int col, int printmode)
             fputc('\'', stdout);
         } else {
             if (printmode == BINARY) {
-                write(1, val, cdb2_column_size(cdb2h, col));
+                int lrc = write(1, val, cdb2_column_size(cdb2h, col));
+                if (lrc == -1) {} //silence compiler warnings
                 exit(0);
             } else {
                 fprintf(f, "x'");
@@ -597,7 +598,8 @@ static int run_statement(const char *sql, int ntypes, int *types,
             int cmd;
             printf(">");
             fflush(stdout);
-            fgets(input, sizeof(input), stdin);
+            char *tmp = fgets(input, sizeof(input), stdin);
+            if (tmp) {} //silence compiler warnings
             cmd = atoi(input);
             if (cmd == -1)
                 pausemode = 0;

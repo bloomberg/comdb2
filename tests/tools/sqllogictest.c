@@ -418,7 +418,8 @@ int main(int argc, char **argv){
     exit(1);
   }
   fseek(in, 0L, SEEK_SET);
-  fread(zScript, 1, nScript, in);
+  int lrc = fread(zScript, 1, nScript, in);
+  if (lrc == -1) {} //silence compiler warnings
   fclose(in);
   zScript[nScript] = 0;
 

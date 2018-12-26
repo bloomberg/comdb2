@@ -85,7 +85,8 @@ static void read_blocked_files(void)
         if (monfps[i]) {
             char chk[1024] = {0};
             rewind(monfps[i]);
-            fread(chk, sizeof(chk), 1, monfps[i]);
+            int lrc = fread(chk, sizeof(chk), 1, monfps[i]);
+            if (lrc == -1) {} //silence compiler warnings
             if (montext[i]) 
                 free(montext[i]);
             montext[i] = strdup(chk);
@@ -112,7 +113,8 @@ static int block_on_monitored_files(void)
             char chk[1024] = {0};
             int waited = 0;
             rewind(monfps[i]);
-            fread(chk, sizeof(chk), 1, monfps[i]);
+            int lrc = fread(chk, sizeof(chk), 1, monfps[i]);
+            if (lrc == -1) {} //silence compiler warnings
             while (montext[i] && !strcmp(montext[i], chk)) {
                 if (colored_output) 
                     fprintf(stderr, ANSI_COLOR_RED);

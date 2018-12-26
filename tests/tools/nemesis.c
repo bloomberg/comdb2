@@ -80,7 +80,8 @@ void fixnet(struct nemesis *n)
             }
             strcat(cmd, "\" < /dev/null >/dev/null 2>&1");
             if (n->flags & NEMESIS_VERBOSE) printf("%s\n", cmd);
-            system(cmd);
+            int lrc = system(cmd);
+            if (lrc == -1) {} //silence compiler warnings
         }
     }
     printf("Fully connected\n");
@@ -161,7 +162,8 @@ void breaknet(struct nemesis *n)
             }
             strcat(cmd, "\" < /dev/null >/dev/null 2>&1");
             if (n->flags & NEMESIS_VERBOSE) printf("%s\n", cmd);
-            system(cmd);
+            int lrc = system(cmd);
+            if (lrc == -1) {} //silence compiler warnings
         }
     }
 }
@@ -212,7 +214,8 @@ void signaldb(struct nemesis *n, int signal, int all)
                     n->cluster[broken], signal, n->dbname);
             if (n->flags & NEMESIS_VERBOSE) printf("%s", cmd);
             fflush(stdout);
-            system(cmd);
+            int lrc = system(cmd);
+            if (lrc == -1) {} //silence compiler warnings
         }
     }
 }
@@ -228,7 +231,8 @@ void breakclocks(struct nemesis *n, int maxskew)
                 "sudo date \\\"+%%s\\\" -s \\@\\$newtime\" < /dev/null >/dev/null 2>&1\n",
                 n->cluster[x], maxskew);
         if (n->flags & NEMESIS_VERBOSE) printf("%s", cmd);
-        system(cmd);
+        int lrc = system(cmd);
+        if (lrc == -1) {} //silence compiler warnings
     }
 }
 
@@ -242,7 +246,8 @@ void fixclocks(struct nemesis *n)
                 n->cluster[x]);
         if (n->flags & NEMESIS_VERBOSE) printf("%s", cmd);
         fflush(stdout);
-        system(cmd);
+        int lrc = system(cmd);
+        if (lrc == -1) {} //silence compiler warnings
     }
 }
 

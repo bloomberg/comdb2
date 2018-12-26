@@ -1359,7 +1359,7 @@ static char *get_multi_line_statement(char *line)
     char *nl = (char *) ""; // new-line
     int n = 0;     // len of nl
 
-    char tmp_prompt[sizeof(main_prompt)];
+    char tmp_prompt[sizeof(main_prompt) + 4];
     int spaces = strlen(dbname) - 3, dots = 3;
     if (spaces < 0) {
         dots += spaces;
