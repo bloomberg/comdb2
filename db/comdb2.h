@@ -99,6 +99,7 @@ typedef long long tranid_t;
 #include <schema_lk.h>
 #include "perf.h"
 #include "constraints.h"
+#include "physwrite.h"
 
 /* buffer offset, given base ptr & right ptr */
 #define BUFOFF(base, right) ((int)(((char *)right) - ((char *)base)))

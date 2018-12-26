@@ -1502,6 +1502,7 @@ static int update_logical_redo_lsn(void *obj, void *arg)
     return 0;
 }
 
+#include <physwrite.h>
 int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
                                     seqnum_type *seqnum, int *bdberr,
                                     int getseqnum, uint64_t *out_txnsize,
@@ -1969,6 +1970,12 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
     /* Huh? */
     default:
         abort();
+    }
+
+    if (physwrite_results) {
+        assert(physwrite_results->done == 0);
+        physwrite_results->commit_file = lsn.file;
+        physwrite_results->commit_offset = lsn.offset;
     }
 
     /* we're done if we werent told to get the seqnum */

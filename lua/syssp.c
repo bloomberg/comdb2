@@ -561,21 +561,23 @@ static int db_comdb_register_replicant(Lua L)
     return 1;
 }
 
+#include <lua/ltypes.h>
+
 static int db_comdb_exec_socksql(Lua L)
 {
     char *host, *errstr;
-    int usertype, errval;
-    DB_LSN commit_lsn = {0};
+    int usertype, errval, file, offset, rcode;
     blob_t data;
     if (!lua_isstring(L, 1) || !lua_isnumber(L, 2) || !luabb_isblob(L, 3)) {
-        logmsg(LOGMSG_ERROR, "%s invalid arguments\n");
+        logmsg(LOGMSG_ERROR, "%s invalid arguments\n", __func__);
         return luaL_error(L, "Exec-socksql failed.");
     }
     host = (char *)lua_tostring(L, 1);
     usertype = lua_tonumber(L, 2);
     luabb_toblob(L, 3, &data);
-    physwrite_exec(host, usertype, data->data, data->length, &errval, &errstr,
-            &commit_lsn);
+    physwrite_exec(host, usertype, data.data, data.length, &rcode, &errval,
+            &errstr, NULL, NULL, NULL, NULL, NULL, &file, &offset);
+    return 0;
 }
 
 static const luaL_Reg sys_funcs[] = {
