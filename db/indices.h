@@ -17,20 +17,48 @@
 #ifndef INCLUDED_INDICES_H
 #define INCLUDED_INDICES_H
 
+typedef struct blob_buffer blob_buffer_t;
 
-#include <inttypes.h>
-#include "cdb2_constants.h"
+int check_for_upsert(struct ireq *iq, void *trans, struct schema *ondisktagsc,
+                     blob_buffer_t *blobs, size_t maxblobs, int *opfailcode,
+                     int *ixfailnum, int *retrc, const char *ondisktag,
+                     void *od_dta, size_t od_len, unsigned long long ins_keys,
+                     int rec_flags);
 
-//
-//del needs to sort before adds because dels used to happen online
-enum ctktype {CTK_DEL, CTK_UPD, CTK_ADD};
-typedef struct {
-    struct dbtable *usedb;
-    short ixnum;
-    char ixkey[MAXKEYLEN];
-    uint8_t type;
-    unsigned long long genid;
-    unsigned long long newgenid; // new genid used for update
-} ctkey;
+int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
+                       size_t maxblobs, int *opfailcode, int *ixfailnum,
+                       int *rrn, unsigned long long *genid,
+                       unsigned long long vgenid, unsigned long long ins_keys,
+                       int opcode, int blkpos, void *od_dta, size_t od_len,
+                       const char *ondisktag, struct schema *ondisktagsc,
+                       int flags);
+
+int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
+                       int *ixfailnum, int rrn, unsigned long long *newgenid,
+                       unsigned long long ins_keys, int opcode, int blkpos,
+                       void *od_dta, size_t od_len, void *old_dta,
+                       unsigned long long del_keys, int flags,
+                       blob_buffer_t *add_idx_blobs,
+                       blob_buffer_t *del_idx_blobs, int same_genid_with_upd,
+                       unsigned long long vgenid, int *deferredAdd);
+
+int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
+                       int *ixfailnum, int rrn, unsigned long long genid,
+                       void *od_dta, unsigned long long del_keys,
+                       blob_buffer_t *del_idx_blobs, const char *ondisktag);
+
+int upd_new_record_indices(
+    struct ireq *iq, void *trans, unsigned long long newgenid,
+    unsigned long long ins_keys, const void *new_dta, const void *old_dta,
+    int use_new_tag, void *sc_old, void *sc_new, int nd_len,
+    unsigned long long del_keys, blob_buffer_t *add_idx_blobs,
+    blob_buffer_t *del_idx_blobs, unsigned long long oldgenid, int verify_retry,
+    int deferredAdd);
+
+int del_new_record_indices(struct ireq *iq, void *trans,
+                           unsigned long long ngenid, const void *old_dta,
+                           int use_new_tag, void *sc_old,
+                           unsigned long long del_keys,
+                           blob_buffer_t *del_idx_blobs, int verify_retry);
 
 #endif
