@@ -83,8 +83,10 @@ function deleteall
     [[ "$debug" == 1 ]] && set -x
     [[ "$trace" == 1 ]] && echo "Running deleteall"
     xxx=$(cdb2sql ${CDB2_OPTIONS} $dbname $stage "delete from t1 limit 10000") ; xx=${xxx##*=} ; x=${xx%\)}
+    echo "Deleted $x records"
     while [[ -n "$x" && "$x" != 0 ]]; do
         xxx=$(cdb2sql ${CDB2_OPTIONS} $dbname $stage "delete from t1 limit 10000") ; xx=${xxx##*=} ; x=${xx%\)}
+        echo "Deleted $x records"
     done
 }
 

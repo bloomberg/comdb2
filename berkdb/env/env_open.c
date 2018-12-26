@@ -370,6 +370,12 @@ __dbenv_open(dbenv, db_home, flags, mode)
 		Pthread_mutex_init(&dbenv->ltrans_active_lk, NULL);
 		Pthread_mutex_init(&dbenv->locked_lsn_lk, NULL);
 	}
+	dbenv->mintruncate_state = MINTRUNCATE_START;
+	ZERO_LSN(dbenv->mintruncate_first);
+	ZERO_LSN(dbenv->last_mintruncate_dbreg_start);
+	Pthread_mutex_init(&dbenv->mintruncate_lk, NULL);
+	listc_init(&dbenv->mintruncate,
+			offsetof(struct mintruncate_entry, lnk));
 
 	if (LF_ISSET(DB_INIT_TXN)) {
 		if ((ret = __txn_open(dbenv)) != 0)
