@@ -610,7 +610,10 @@ __dbenv_mintruncate_lsn_timestamp(dbenv, lowfile, outlsn, outtime)
 		goto err;
 	}
 
+	logc->close(logc, 0);
+
 	*outtime = ckp_args->timestamp;
+	free(rec.data);
 	free(ckp_args);
 
 	Pthread_mutex_lock(&dbenv->mintruncate_lk);
@@ -812,6 +815,9 @@ int __dbenv_build_mintruncate_list(dbenv)
 err:
 	if (logc)
 		__log_c_close(logc);
+
+	if (rec.data)
+		free(rec.data);
 
 	return ret;
 }
