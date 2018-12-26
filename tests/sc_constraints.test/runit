@@ -60,7 +60,7 @@ function do_alter
 {
     locnewtbl=$1
     echo "do alter $tbl -> ${locnewtbl}"
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table $tbl { `cat ${locnewtbl}.csc2 ` }"
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "alter table $tbl { `cat ${locnewtbl}.csc2 ` }"
 
     if [[ $? -ne 0 ]]; then
         touch failedalter
@@ -678,7 +678,7 @@ function run_tenth_test
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('debg 600')"
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1 values (1)"
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t10 values (1, 1)"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t10 values (1, 1, x'aa')"
 
     do_alter t10_1 &
 
@@ -687,16 +687,51 @@ function run_tenth_test
 cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 begin
 update t1 set a = 2
-update t10 set a = 2
+update t10 set a = 2, blb = x'aaaa'
+commit
+EOF
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
+begin
+update t1 set a = 3
+update t10 set a = 3, blb = NULL
+commit
+EOF
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
+begin
+update t1 set a = 4
+update t10 set a = 4, blb = x'1122334455'
 commit
 EOF
 
     wait
     if [ -f failedalter ] ; then
-        failexit "SC should not fail"
+        failexit "SC should not fail for t10.1"
     fi
     rm failedalter
 
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "put schemachange convertsleep 0"
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "alter table t10 { `cat t10.csc2 ` }"
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "put schemachange convertsleep 20"
+
+    do_alter t10_1 &
+
+    sleep 2
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
+begin
+update t10 set blb = x''
+commit
+EOF
+
+    wait
+    if [ ! -f failedalter ] ; then
+        failexit "SC did not fail for 10.2 and thats an error in this case"
+    fi
+    rm failedalter
+
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "put schemachange convertsleep 0"
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('debg 0')"
 }
 
