@@ -280,6 +280,13 @@ int bdb_fetch_next_nodta_genid(bdb_state_type *bdb_handle, void *ix, int ixnum,
                                int *rrn, unsigned long long *genid,
                                bdb_fetch_args_t *arg, int *bdberr);
 
+int bdb_fetch_next_nodta_genid_tran(bdb_state_type *bdb_state, void *ix,
+                                    int ixnum, int ixlen, void *lastix,
+                                    int lastrrn, unsigned long long lastgenid,
+                                    void *ixfound, int *rrn,
+                                    unsigned long long *genid, void *tran,
+                                    bdb_fetch_args_t *args, int *bdberr);
+
 int bdb_fetch_next_nodta_genid_nl_ser(bdb_state_type *bdb_state, void *ix,
                                       int ixnum, int ixlen, void *lastix,
                                       int lastrrn, unsigned long long lastgenid,

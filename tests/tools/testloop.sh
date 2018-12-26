@@ -7,7 +7,7 @@ BRANCH=$(git rev-parse --abbrev-ref HEAD)
 export DUMPLOCK_ON_TIMEOUT=1
 export CORE_ON_TIMEOUT=1
 email="mhannum72@gmail.com"
-tests=${TESTLOOPTESTS:-jepsen_atomic_writes jepsen_a6_nemesis jepsen_a6 jepsen_bank_nemesis jepsen_bank jepsen_dirty_reads jepsen_g2 jepsen_register_nemesis jepsen_register jepsen_sets_nemesis jepsen_sets cinsert_linearizable register_linearizable}
+tests=${TESTLOOPTESTS:-jepsen_atomic_writes jepsen_a6_nemesis jepsen_a6 jepsen_bank_nemesis jepsen_bank jepsen_dirty_reads jepsen_g2 jepsen_register_nemesis jepsen_register jepsen_sets_nemesis jepsen_sets cinsert_linearizable register_linearizable socksql_master_swings}
 
 # mailperiod=86400
 mailperiod=3600
@@ -64,6 +64,7 @@ function mail_status
 function cleanup
 {
     [[ "$debug" == "1" ]] && set -x
+    ( cd ~/comdb2/tests && make clean )
     find ~/comdb2/tests/test_* -type d -mmin +$test_linger -exec rm -Rf {} \;
     find ~/comdb2/tests/tools/linearizable/jepsen/store -mtime 1 -exec rm -Rf {} \;
     find ~/comdb2/tests/test_* -mtime 1 -exec rm -Rf {} \;
@@ -92,7 +93,9 @@ function pull_and_recompile
 while :; do 
     let i=i+1 
     print_status
-    #pull_and_recompile
+    if [[ ! -z $TESTLOOPCOMPILE ]]; then
+        pull_and_recompile
+    fi 
     echo "$(date) ITERATION $i" 
     for x in $tests 
     do print_status

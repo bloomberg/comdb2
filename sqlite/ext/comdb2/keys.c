@@ -95,6 +95,8 @@ static int systblKeysOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   memset(pCur, 0, sizeof(*pCur));
   *ppCursor = &pCur->base;
 
+  comdb2_next_allowed_table(&pCur->iRowid);
+
   return SQLITE_OK;
 }
 
@@ -130,6 +132,8 @@ static int systblKeysNext(sqlite3_vtab_cursor *cur){
       }
     } while( pCur->iRowid < thedb->num_dbs );
   }
+
+  comdb2_next_allowed_table(&pCur->iRowid);
 
   return SQLITE_OK;
 }
@@ -185,7 +189,7 @@ static int systblKeysColumn(
     }
   }
   return SQLITE_OK; 
-};
+}
 
 /*
 ** Return the rowid for the current key. We arrive at this number by
@@ -272,6 +276,10 @@ const sqlite3_module systblKeysModule = {
   0,                       /* xRollback */
   0,                       /* xFindMethod */
   0,                       /* xRename */
+  0,                       /* xSavepoint */
+  0,                       /* xRelease */
+  0,                       /* xRollbackTo */
+  0,                       /* xShadowName */
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \

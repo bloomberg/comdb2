@@ -34,7 +34,8 @@ enum cdb2_hndl_alloc_flags {
     CDB2_DIRECT_CPU = 4,
     CDB2_RANDOM = 8,
     CDB2_RANDOMROOM = 16,
-    CDB2_ROOM = 32
+    CDB2_ROOM = 32,
+    CDB2_ADMIN = 64
 };
 
 enum cdb2_request_type {
@@ -66,7 +67,6 @@ enum cdb2_errors {
     CDB2ERR_DBCREATE_FAILED = -18,
 
     CDB2ERR_THREADPOOL_INTERNAL = -20, /* some error in threadpool code */
-    CDB2ERR_READONLY = -21,
 
     CDB2ERR_NOMASTER = -101,
     CDB2ERR_UNTAGGED_DATABASE = -102,
@@ -90,6 +90,7 @@ enum cdb2_errors {
     CDB2ERR_NOTSUPPORTED = 116,
 
     CDB2ERR_DUPLICATE = 299,
+    CDB2ERR_READONLY = 305,
     CDB2ERR_TZNAME_FAIL = 401,
     CDB2ERR_CHANGENODE = 402,
 
@@ -244,6 +245,54 @@ int cdb2_init_ssl(int init_libssl, int init_libcrypto);
 int cdb2_is_ssl_encrypted(cdb2_hndl_tp *hndl);
 
 int cdb2_clear_ack(cdb2_hndl_tp *hndl);
+
+typedef enum cdb2_event_ctrl {
+    CDB2_OVERWRITE_RETURN_VALUE = 1,
+    CDB2_AS_HANDLE_SPECIFIC_ARG = 1 << 1
+} cdb2_event_ctrl;
+
+typedef enum cdb2_event_type {
+    /* Network events */
+    CDB2_BEFORE_CONNECT = 1,
+    CDB2_AFTER_CONNECT = 1 << 1,
+    CDB2_BEFORE_PMUX = 1 << 2,
+    CDB2_AFTER_PMUX = 1 << 3,
+    CDB2_BEFORE_DBINFO = 1 << 4,
+    CDB2_AFTER_DBINFO = 1 << 5,
+    CDB2_BEFORE_SEND_QUERY = 1 << 6,
+    CDB2_AFTER_SEND_QUERY = 1 << 7,
+    CDB2_BEFORE_READ_RECORD = 1 << 8,
+    CDB2_AFTER_READ_RECORD = 1 << 9,
+
+    /* Logical operation events.
+       A logicial operation event typically
+       consists of multiple network events. */
+    CDB2_AT_ENTER_RUN_STATEMENT = 1 << 10,
+    CDB2_AT_EXIT_RUN_STATEMENT = 1 << 11,
+    CDB2_AT_ENTER_NEXT_RECORD = 1 << 12,
+    CDB2_AT_EXIT_NEXT_RECORD = 1 << 13,
+
+    /* Lifecycle events */
+    CDB2_AT_OPEN = 1 << 30,
+    CDB2_AT_CLOSE = 1 << 31,
+} cdb2_event_type;
+
+typedef enum cdb2_event_arg {
+    CDB2_HOSTNAME = 1,
+    CDB2_PORT,
+    CDB2_SQL,
+    CDB2_RETURN_VALUE
+} cdb2_event_arg;
+
+typedef struct cdb2_event cdb2_event;
+
+typedef void *(*cdb2_event_callback)(cdb2_hndl_tp *hndl, void *user_arg,
+                                     int argc, void **argv);
+
+cdb2_event *cdb2_register_event(cdb2_hndl_tp *hndl, cdb2_event_type types,
+                                cdb2_event_ctrl ctrls, cdb2_event_callback cb,
+                                void *user_arg, int argc, ...);
+int cdb2_unregister_event(cdb2_hndl_tp *hndl, cdb2_event *e);
 #if defined __cplusplus
 }
 #endif

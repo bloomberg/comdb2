@@ -80,8 +80,8 @@ struct dbtag {
     LISTC_T(struct schema) taglist;
 };
 
-int lock_taglock(void);
-int unlock_taglock(void);
+void lock_taglock(void);
+void unlock_taglock(void);
 
 /* sql_record.flags */
 enum {
@@ -440,7 +440,6 @@ int create_key_from_ireq(struct ireq *iq, int ixnum, int isDelete, char **tail,
                          int *taillen, char *mangled_key, const char *inbuf,
                          int inbuflen, char *outbuf);
 
-extern pthread_rwlock_t schema_lk;
 char* typestr(int type, int len);
 
 #endif

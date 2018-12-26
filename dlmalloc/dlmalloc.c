@@ -442,8 +442,6 @@ DEFAULT_MMAP_THRESHOLD       default: 256K
 
 */
 
-#include "dlmalloc_config.h"
-
 #ifndef WIN32
 #ifdef _WIN32
 #define WIN32 1
@@ -583,6 +581,8 @@ DEFAULT_MMAP_THRESHOLD       default: 256K
 #else
 #define DEFAULT_MMAP_THRESHOLD_MAX ((size_t)4U * (size_t)1024U * (size_t)1024U * sizeof(long))
 #endif
+
+#include "dlmalloc_config.h"
 
 /*
   mallopt tuning options.  SVID/XPG defines four standard parameter
@@ -3776,72 +3776,68 @@ static int sys_trim(mstate m, size_t pad, int force) {
                       SIZE_T_ONE) * unit;
       msegmentptr sp = segment_holding(m, (char*)m->top);
 
-      if (!force && IS_RECENT(m, sp->base)) {
-        /* Disable trim check on this top. */
-        m->trim_check = MAX_SIZE_T;
-        return 0;
-      }
+      if (force || !IS_RECENT(m, sp->base)) {
+        if (!is_extern_segment(sp)) {
+          if (is_allocfunc_segment(sp)) {
+            if (m->reallocfunc != NULL &&
+                sp->size >= extra &&
+                !has_segment_link(m, sp) && (m->topsize + TOP_FOOT_SIZE == sp->size)) {
+              /* 
+              ** Can't shrink if pinned or the segment is inuse.
+              ** Realloc may copy memory around even if size is smaller.
+              ** Thus shinking an in-use segment may cause addressing fault.
+              ** Memory may be wasted here if only a small portion of top segment
+              ** is inuse.
+              */
+              size_t ofs = (char *)m->top - sp->base;
+              size_t newsize = sp->size - extra;
+              char *rebase;
+              rebase = m->reallocfunc(sp->base, newsize);
+              if (rebase != NULL) {
+                if (rebase < m->least_addr)
+                  m->least_addr = rebase;
+                m->top = (mchunkptr)(rebase + ofs);
+                sp->base = rebase;
+                released = extra;
+              }
+            }
+          }
+          else if (is_mmapped_segment(sp)) {
+            if (HAVE_MMAP &&
+                sp->size >= extra &&
+                !has_segment_link(m, sp)) { /* can't shrink if pinned */
+              size_t newsize = sp->size - extra;
+              /* Prefer mremap, fall back to munmap */
+              if ((CALL_MREMAP(sp->base, sp->size, newsize, 0) != MFAIL) ||
+                  (CALL_MUNMAP(sp->base + newsize, extra) == 0)) {
+                released = extra;
+              }
+            }
+          }
+          else if (HAVE_MORECORE) {
+            if (extra >= HALF_MAX_SIZE_T) /* Avoid wrapping negative */
+              extra = (HALF_MAX_SIZE_T) + SIZE_T_ONE - unit;
+            ACQUIRE_MORECORE_LOCK();
+            {
+              /* Make sure end of memory is where we last set it. */
+              char* old_br = (char*)(CALL_MORECORE(0));
+              if (old_br == sp->base + sp->size) {
+                char* rel_br = (char*)(CALL_MORECORE(-extra));
+                char* new_br = (char*)(CALL_MORECORE(0));
+                if (rel_br != CMFAIL && new_br < old_br)
+                  released = old_br - new_br;
+              }
+            }
+            RELEASE_MORECORE_LOCK();
+          }
+        }
 
-      if (!is_extern_segment(sp)) {
-        if (is_allocfunc_segment(sp)) {
-          if (m->reallocfunc != NULL &&
-              sp->size >= extra &&
-              !has_segment_link(m, sp) && (m->topsize + TOP_FOOT_SIZE == sp->size)) {
-            /* 
-            ** Can't shrink if pinned or the segment is inuse.
-            ** Realloc may copy memory around even if size is smaller.
-            ** Thus shinking an in-use segment may cause addressing fault.
-            ** Memory may be wasted here if only a small portion of top segment
-            ** is inuse.
-            */
-            size_t ofs = (char *)m->top - sp->base;
-            size_t newsize = sp->size - extra;
-            char *rebase;
-            rebase = m->reallocfunc(sp->base, newsize);
-            if (rebase != NULL) {
-              if (rebase < m->least_addr)
-                m->least_addr = rebase;
-              m->top = (mchunkptr)(rebase + ofs);
-              sp->base = rebase;
-              released = extra;
-            }
-          }
+        if (released != 0) {
+          sp->size -= released;
+          m->footprint -= released;
+          init_top(m, m->top, m->topsize - released);
+          check_top_chunk(m, m->top);
         }
-        else if (is_mmapped_segment(sp)) {
-          if (HAVE_MMAP &&
-              sp->size >= extra &&
-              !has_segment_link(m, sp)) { /* can't shrink if pinned */
-            size_t newsize = sp->size - extra;
-            /* Prefer mremap, fall back to munmap */
-            if ((CALL_MREMAP(sp->base, sp->size, newsize, 0) != MFAIL) ||
-                (CALL_MUNMAP(sp->base + newsize, extra) == 0)) {
-              released = extra;
-            }
-          }
-        }
-        else if (HAVE_MORECORE) {
-          if (extra >= HALF_MAX_SIZE_T) /* Avoid wrapping negative */
-            extra = (HALF_MAX_SIZE_T) + SIZE_T_ONE - unit;
-          ACQUIRE_MORECORE_LOCK();
-          {
-            /* Make sure end of memory is where we last set it. */
-            char* old_br = (char*)(CALL_MORECORE(0));
-            if (old_br == sp->base + sp->size) {
-              char* rel_br = (char*)(CALL_MORECORE(-extra));
-              char* new_br = (char*)(CALL_MORECORE(0));
-              if (rel_br != CMFAIL && new_br < old_br)
-                released = old_br - new_br;
-            }
-          }
-          RELEASE_MORECORE_LOCK();
-        }
-      }
-
-      if (released != 0) {
-        sp->size -= released;
-        m->footprint -= released;
-        init_top(m, m->top, m->topsize - released);
-        check_top_chunk(m, m->top);
       }
     }
 
@@ -4739,7 +4735,6 @@ static mstate init_user_mstate(char* tbase, size_t tsize) {
 
 mspace create_mspace(size_t capacity, int locked) {
   mstate m = 0;
-  mspace msp;
   size_t msize = pad_request(sizeof(struct malloc_state));
   init_mparams(); /* Ensure pagesize etc initialized */
 
@@ -5189,6 +5184,27 @@ size_t mspace_max_footprint(mspace msp) {
   return result;
 }
 
+void mspace_for_each_chunk(mspace msp, void (*cb) (void*, void *), void *arg) {
+  mstate m = (mstate)msp;
+  if (!ok_magic(m)) {
+    USAGE_ERROR_ACTION(m,m);
+    return;
+  }
+  if (!PREACTION(m)) {
+    check_malloc_state(m);
+    msegmentptr s = &m->seg;
+    while (s != 0) {
+      mchunkptr q = align_as_chunk(s->base);
+      while (segment_holds(s, q) && q != m->top && q->head != FENCEPOST_HEAD) {
+        if (cinuse(q))
+          (*cb)(chunk2mem(q), arg);
+        q = next_chunk(q);
+      }
+      s = s->next;
+    }
+    POSTACTION(m);
+  }
+}
 
 #if !NO_MALLINFO
 struct mallinfo mspace_mallinfo(mspace msp) {

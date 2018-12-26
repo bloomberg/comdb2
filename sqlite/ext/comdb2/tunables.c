@@ -29,13 +29,14 @@
 
 /*
   comdb2_tunables: query various attributes of tunables.
-
-  TODO(Nirbhay): Check user permissions
 */
 
 typedef struct {
     sqlite3_vtab_cursor base; /* Base class - must be first */
     sqlite3_int64 rowid;      /* Row ID */
+    comdb2_tunable *tunable;
+    void *ent;
+    unsigned int bkt;
 } systbl_tunables_cursor;
 
 /* Column numbers (always keep the below table definition in sync). */
@@ -61,7 +62,7 @@ static int systblTunablesConnect(sqlite3 *db, void *pAux, int argc,
         if ((*ppVtab = sqlite3_malloc(sizeof(sqlite3_vtab))) == 0) {
             return SQLITE_NOMEM;
         }
-        memset(*ppVtab, 0, sizeof(*ppVtab));
+        memset(*ppVtab, 0, sizeof(sqlite3_vtab));
     }
 
     return 0;
@@ -88,6 +89,7 @@ static int systblTunablesOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor)
     }
     memset(cur, 0, sizeof(*cur));
     *ppCursor = &cur->base;
+    cur->tunable = hash_first(gbl_tunables->hash, &cur->ent, &cur->bkt);
     return SQLITE_OK;
 }
 
@@ -108,15 +110,14 @@ static int systblTunablesFilter(sqlite3_vtab_cursor *pVtabCursor, int idxNum,
 
 static int systblTunablesNext(sqlite3_vtab_cursor *cur)
 {
-    comdb2_tunable *tunable;
     systbl_tunables_cursor *pCur = (systbl_tunables_cursor *)cur;
 
     /* Skip all tunables marked 'INTERNAL'. */
     do {
         pCur->rowid++;
         if (pCur->rowid >= gbl_tunables->count) break;
-        tunable = gbl_tunables->array[((systbl_tunables_cursor *)cur)->rowid];
-    } while ((tunable->flags & INTERNAL) != 0);
+        pCur->tunable = hash_next(gbl_tunables->hash, &pCur->ent, &pCur->bkt);
+    } while ((pCur->tunable->flags & INTERNAL) != 0);
 
     return SQLITE_OK;
 }
@@ -130,10 +131,9 @@ static int systblTunablesEof(sqlite3_vtab_cursor *cur)
 static int systblTunablesColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,
                                 int pos)
 {
-    comdb2_tunable *tunable =
-        gbl_tunables->array[((systbl_tunables_cursor *)cur)->rowid];
+    comdb2_tunable *tunable = ((systbl_tunables_cursor *)cur)->tunable;
 
-    pthread_mutex_lock(&gbl_tunables->mu);
+    Pthread_mutex_lock(&gbl_tunables->mu);
 
     switch (pos) {
     case TUNABLES_COLUMN_NAME:
@@ -195,7 +195,7 @@ static int systblTunablesColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,
     default: assert(0);
     };
 
-    pthread_mutex_unlock(&gbl_tunables->mu);
+    Pthread_mutex_unlock(&gbl_tunables->mu);
 
     return SQLITE_OK;
 }
@@ -229,6 +229,11 @@ const sqlite3_module systblTunablesModule = {
     0,                        /* xRollback */
     0,                        /* xFindMethod */
     0,                        /* xRename */
+    0,                        /* xSavepoint */
+    0,                        /* xRelease */
+    0,                        /* xRollbackTo */
+    0,                        /* xShadowName */
+    .access_flag = CDB2_ALLOW_USER,
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2))       \

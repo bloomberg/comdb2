@@ -28,6 +28,7 @@ extern "C" {
 #endif
 
 #include <stdio.h>
+#include <inttypes.h>
 
 struct thdpool;
 
@@ -56,13 +57,29 @@ enum {
 
 typedef void (*thdpool_work_fn)(struct thdpool *pool, void *work, void *thddata,
                                 int op);
+struct workitem {
+    void *work;
+    thdpool_work_fn work_fn;
+    int queue_time_ms;
+    LINKC_T(struct workitem) linkv;
+    int available;
+    char *persistent_info;
+};
+
 typedef void (*thdpool_thdinit_fn)(struct thdpool *pool, void *thddata);
 typedef void (*thdpool_thddelt_fn)(struct thdpool *pool, void *thddata);
+typedef void (*thdpool_thddque_fn)(struct thdpool *pool, struct workitem *item,
+                                   int timeout);
+
+typedef void (*thdpool_foreach_fn)(struct thdpool *pool, struct workitem *item,
+                                   void *user);
+void thdpool_foreach(struct thdpool *pool, thdpool_foreach_fn, void *user);
 
 struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz);
 void thdpool_set_stack_size(struct thdpool *pool, size_t sz_bytes);
 void thdpool_set_init_fn(struct thdpool *pool, thdpool_thdinit_fn init_fn);
 void thdpool_set_delt_fn(struct thdpool *pool, thdpool_thddelt_fn delt_fn);
+void thdpool_set_dque_fn(struct thdpool *pool, thdpool_thddque_fn dque_fn);
 void thdpool_set_linger(struct thdpool *pool, unsigned lingersecs);
 void thdpool_set_minthds(struct thdpool *pool, unsigned minnthd);
 void thdpool_set_maxthds(struct thdpool *pool, unsigned minnthd);
@@ -73,11 +90,13 @@ void thdpool_set_maxqueueoverride(struct thdpool *pool,
                                   unsigned maxqueueoverride);
 void thdpool_set_mem_size(struct thdpool *pool, size_t sz_bytes);
 
+int thdpool_get_queue_depth(struct thdpool *pool);
+
 void thdpool_print_stats(FILE *fh, struct thdpool *pool);
 
+enum { THDPOOL_ENQUEUE_FRONT = 0x1, THDPOOL_FORCE_DISPATCH = 0x2 };
 int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
-                    int queue_override, char *persistent_info);
-
+                    int queue_override, char *persistent_info, uint32_t flags);
 void thdpool_stop(struct thdpool *pool);
 void thdpool_resume(struct thdpool *pool);
 void thdpool_set_exit(struct thdpool *pool);

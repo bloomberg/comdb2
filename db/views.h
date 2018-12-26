@@ -291,7 +291,7 @@ int views_validate_view(timepart_views_t *views, timepart_view_t *view, struct e
  * Check if a name is a shard 
  *
  */
-int timepart_is_shard(const char *name, int lock);
+int timepart_is_shard(const char *name, int lock, char **viewname);
 
 /** 
  * Check if a name is a timepart
@@ -358,6 +358,20 @@ void views_unlock(void);
 char *timepart_newest_shard(const char *view_name, unsigned long long *version);
 
 /**
+ * Dump the timepartition json configuration
+ * Used for schema copy only
+ * Returns: 0 - no tps; 1 - has tps
+ *
+ */
+int timepart_dump_timepartitions(FILE *dest);
+
+/**
+ * Create timepartition llmeta entries based on file configuration
+ *
+ */
+int timepart_apply_file(const char *filename);
+
+/**
  * Returned a malloced string for the "iRowid"-th timepartition, column iCol
  * NOTE: this is called with a read lock in views structure
  */
@@ -384,6 +398,12 @@ void timepart_systable_next_shard(int *piTimepartId, int *piRowid);
  *
  */
 int timepart_get_num_views(void);
+
+/**
+ * Get number of shards
+ *
+ */
+int timepart_get_num_shards(const char *view_name);
 
 /**
  * Open/close the event queue

@@ -1,5 +1,5 @@
 CREATE TABLE t1(i INT) $$
-ALTER TABLE t1 $$
+ALTER TABLE t1 DO NOTHING $$
 ALTER TABLE t1 ADD COLUMN j INT $$
 ALTER TABLE t1 ADD COLUMN k INT NOT NULL $$
 ALTER TABLE t1 ADD COLUMN l INT NULL $$
@@ -181,4 +181,117 @@ SELECT csc2 FROM sqlite_master WHERE name LIKE 't1';
 ALTER TABLE t1 DROP COLUMN j $$
 ALTER TABLE t1 DROP COLUMN l $$
 SELECT csc2 FROM sqlite_master WHERE name LIKE 't1';
+DROP TABLE t1;
+
+# https://github.com/bloomberg/comdb2/issues/1003
+CREATE TABLE t1 {
+    schema
+    {
+        short        alltypes_short
+        u_short      alltypes_ushort
+        int          alltypes_int
+        u_int        alltypes_uint
+        longlong     alltypes_longlong
+        float        alltypes_float
+        double       alltypes_double
+        byte         alltypes_byte_1
+        byte         alltypes_byte_2[16]
+        cstring      alltypes_cstring[16]
+        datetime     alltypes_datetime
+        datetimeus   alltypes_datetimeus
+        intervalym   alltypes_intervalym
+        intervalds   alltypes_intervalds
+        intervaldsus alltypes_intervaldsus
+        decimal32    alltypes_decimal32
+        decimal64    alltypes_decimal64
+        decimal128   alltypes_decimal128
+        blob         alltypes_blob_1
+        blob         alltypes_blob_2[16]
+        vutf8        alltypes_vutf8_1
+        vutf8        alltypes_vutf8_2[16]
+    }
+    tag "tag1"
+    {
+        short        alltypes_short
+        u_short      alltypes_ushort
+        int          alltypes_int
+        u_int        alltypes_uint
+        longlong     alltypes_longlong
+        float        alltypes_float
+        double       alltypes_double
+        byte         alltypes_byte_1
+        byte         alltypes_byte_2[16]
+        cstring      alltypes_cstring[16]
+        datetime     alltypes_datetime
+        datetimeus   alltypes_datetimeus
+        intervalym   alltypes_intervalym
+        intervalds   alltypes_intervalds
+        intervaldsus alltypes_intervaldsus
+        decimal32    alltypes_decimal32
+        decimal64    alltypes_decimal64
+        decimal128   alltypes_decimal128
+        blob         alltypes_blob_1
+        blob         alltypes_blob_2[16]
+        vutf8        alltypes_vutf8_1
+        vutf8        alltypes_vutf8_2[16]
+    }
+} $$
+SELECT csc2 FROM sqlite_master WHERE name LIKE 't1';
+ALTER TABLE t1 ADD COLUMN i int$$
+SELECT csc2 FROM sqlite_master WHERE name LIKE 't1';
+DROP TABLE t1;
+
+CREATE TABLE t1(i INT, j INT)$$
+SELECT csc2 FROM sqlite_master WHERE name LIKE 't1';
+ALTER TABLE t1 ALTER COLUMN j SET DATA TYPE SHORT $$
+SELECT csc2 FROM sqlite_master WHERE name LIKE 't1';
+ALTER TABLE t1 ALTER COLUMN j SET DEFAULT 0 $$
+SELECT csc2 FROM sqlite_master WHERE name LIKE 't1';
+ALTER TABLE t1 ALTER COLUMN j SET NOT NULL $$
+SELECT csc2 FROM sqlite_master WHERE name LIKE 't1';
+ALTER TABLE t1 DROP COLUMN j, ADD COLUMN j int $$
+DROP TABLE t1;
+
+CREATE TABLE t1(i INT)$$
+ALTER TABLE t1 ALTER COLUMN i TYPE SHORT $$
+ALTER TABLE t1 ALTER COLUMN i TYPE INT, DROP COLUMN i $$
+ALTER TABLE t1 ALTER COLUMN i $$
+ALTER TABLE t1 ALTER COLUMN ii $$
+ALTER TABLE t1 ALTER COLUMN ii INT $$
+ALTER TABLE t1 ALTER COLUMN ii TYPE INT $$
+ALTER TABLE t1 ALTER COLUMN i TYPE INT, DROP COLUMN i, ADD COLUMN i INT $$
+SELECT csc2 FROM sqlite_master WHERE name LIKE 't1';
+DROP TABLE t1;
+
+CREATE TABLE t1(i INT, j INT)$$
+ALTER TABLE t1 ALTER COLUMN j TYPE SHORT, DROP COLUMN j $$
+SELECT csc2 FROM sqlite_master WHERE name LIKE 't1';
+ALTER TABLE t1 ADD j INT, DROP COLUMN j $$
+SELECT csc2 FROM sqlite_master WHERE name LIKE 't1';
+ALTER TABLE t1 ALTER ADD j INT, ALTER COLUMN j TYPE SHORT $$
+ALTER TABLE t1 ADD j INT, ALTER COLUMN j TYPE SHORT $$
+SELECT csc2 FROM sqlite_master WHERE name LIKE 't1';
+DROP TABLE t1;
+
+CREATE TABLE t1(i INT, j INT)$$
+ALTER TABLE t1 ALTER COLUMN j SET DATA TYPE SHORT, ALTER COLUMN j SET DEFAULT 1000, ALTER COLUMN j SET NOT NULL $$
+SELECT csc2 FROM sqlite_master WHERE name LIKE 't1';
+ALTER TABLE t1 ALTER COLUMN i SET DATA TYPE SHORT, ALTER COLUMN i SET DEFAULT 1000, ALTER COLUMN i SET NOT NULL, ALTER COLUMN i SET DATA TYPE INT, ALTER COLUMN i DROP DEFAULT, ALTER COLUMN i DROP NOT NULL $$
+SELECT csc2 FROM sqlite_master WHERE name LIKE 't1';
+DROP TABLE t1
+
+CREATE TABLE t1(i INT INDEX)$$
+CREATE TABLE t2(i INT INDEX, j INT INDEX)$$
+ALTER TABLE t2 ADD FOREIGN KEY (i) REFERENCES t1(i)$$
+SELECT csc2 FROM sqlite_master WHERE name LIKE 't2';
+DROP TABLE t2;
+DROP TABLE t1;
+
+CREATE TABLE t1(i INT INDEX)$$
+CREATE TABLE t2(i INT INDEX)$$
+# Drop an index followed by adding a FK such that the same
+# dropped index gets created again automatically.
+ALTER TABLE t2 DROP INDEX '$KEY_A44A20B', ADD FOREIGN KEY (i) REFERENCES t1(i)$$
+SELECT csc2 FROM sqlite_master WHERE name LIKE 't2';
+DROP TABLE t2;
 DROP TABLE t1;

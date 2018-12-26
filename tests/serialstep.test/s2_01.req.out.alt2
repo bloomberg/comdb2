@@ -35,7 +35,7 @@ done
 (id=99, name='ytu', age=8, address=NULL, state='DB', zip=NULL)
 done
 done
-[commit] failed with rc 2 unable to update record rc = 4
+[commit] failed with rc 2 find old record failed unable to update record rc = 4
 done
 done
 done

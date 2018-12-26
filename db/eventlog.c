@@ -34,6 +34,7 @@
 #include "reqlog_int.h"
 #include "eventlog.h"
 #include "util.h"
+#include "tohex.h"
 #include "plhash.h"
 #include "logmsg.h"
 #include "dbinc/locker_info.h"
@@ -60,7 +61,6 @@ static void eventlog_roll(void);
 
 struct sqltrack {
     char fingerprint[FINGERPRINTSZ];
-    char *sql;
     LINKC_T(struct sqltrack) lnk;
 };
 
@@ -107,7 +107,6 @@ static void eventlog_close(void)
     struct sqltrack *t = listc_rtl(&sql_statements);
     while (t) {
         hash_del(seen_sql, t);
-        free(t->sql);
         free(t);
         t = listc_rtl(&sql_statements);
     }
@@ -375,6 +374,40 @@ static void eventlog_path(cson_object *obj, const struct reqlogger *logger)
     cson_object_set(obj, "path", components);
 }
 
+/* add never seen before "newsql" query, also print it to log */
+static void eventlog_add_newsql(cson_object *obj, const struct reqlogger *logger)
+{
+    struct sqltrack *st;
+    st = malloc(sizeof(struct sqltrack));
+    memcpy(st->fingerprint, logger->fingerprint,
+            sizeof(logger->fingerprint));
+    hash_add(seen_sql, st);
+    listc_abl(&sql_statements, st);
+
+    cson_value *newval;
+    cson_object *newobj;
+    newval = cson_value_new_object();
+    newobj = cson_value_get_object(newval);
+
+    cson_object_set(newobj, "time", cson_new_int(logger->startus));
+    cson_object_set(newobj, "type",
+            cson_value_new_string("newsql", sizeof("newsql")));
+    cson_object_set(newobj, "sql", cson_value_new_string(
+                logger->stmt, strlen(logger->stmt)));
+
+    char expanded_fp[2 * FINGERPRINTSZ + 1];
+    util_tohex(expanded_fp, logger->fingerprint, FINGERPRINTSZ);
+    cson_object_set(newobj, "fingerprint",
+            cson_value_new_string(expanded_fp, FINGERPRINTSZ * 2));
+
+    /* yes, this can spill the file to beyond the configured size - we need
+       this
+       event to be in the same file as the event its being logged for */
+    cson_output(newval, write_json, eventlog, &opt);
+    if (eventlog_verbose) cson_output(newval, write_logmsg, stdout, &opt);
+    cson_value_free(newval);
+}
+
 static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
 {
     if (eventlog == NULL || !eventlog_enabled)
@@ -383,41 +416,11 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
     bool isSql = logger->event_type && (strcmp(logger->event_type, "sql") == 0);
     bool isSqlErr = logger->error && logger->stmt;
 
-    pthread_mutex_lock(&eventlog_lk);
+    Pthread_mutex_lock(&eventlog_lk);
     if ((isSql || isSqlErr) && !hash_find(seen_sql, logger->fingerprint)) {
-        /* add never seen before "newsql" query, also print it to log */
-        struct sqltrack *st;
-        st = malloc(sizeof(struct sqltrack));
-        memcpy(st->fingerprint, logger->fingerprint,
-               sizeof(logger->fingerprint));
-        st->sql = strdup(logger->stmt);
-        hash_add(seen_sql, st);
-        listc_abl(&sql_statements, st);
-
-        cson_value *newval;
-        cson_object *newobj;
-        newval = cson_value_new_object();
-        newobj = cson_value_get_object(newval);
-
-        cson_object_set(newobj, "time", cson_new_int(logger->startus));
-        cson_object_set(newobj, "type",
-                        cson_value_new_string("newsql", sizeof("newsql")));
-        cson_object_set(newobj, "sql", cson_value_new_string(
-                                           logger->stmt, strlen(logger->stmt)));
-
-        char expanded_fp[2 * FINGERPRINTSZ + 1];
-        util_tohex(expanded_fp, logger->fingerprint, FINGERPRINTSZ);
-        cson_object_set(newobj, "fingerprint",
-                        cson_value_new_string(expanded_fp, FINGERPRINTSZ * 2));
-
-        /* yes, this can spill the file to beyond the configured size - we need
-           this
-           event to be in the same file as the event its being logged for */
-        cson_output(newval, write_json, eventlog, &opt);
-        if (eventlog_verbose) cson_output(newval, write_logmsg, stdout, &opt);
-        cson_value_free(newval);
+        eventlog_add_newsql(obj, logger);
     }
-    pthread_mutex_unlock(&eventlog_lk);
+    Pthread_mutex_unlock(&eventlog_lk);
 
     cson_object_set(obj, "time", cson_new_int(logger->startus));
     if (logger->event_type)
@@ -491,29 +494,27 @@ void eventlog_add(const struct reqlogger *logger)
     if (eventlog == NULL || !eventlog_enabled)
         return;
 
-    int sz = 0;
-    char *fname;
     cson_value *val;
     cson_object *obj;
 
-    pthread_mutex_lock(&eventlog_lk);
+    Pthread_mutex_lock(&eventlog_lk);
     eventlog_count++;
     if (eventlog_every_n > 1 && eventlog_count % eventlog_every_n != 0) {
-        pthread_mutex_unlock(&eventlog_lk);
+        Pthread_mutex_unlock(&eventlog_lk);
         return;
     }
     if (bytes_written > eventlog_rollat) {
         eventlog_roll();
     }
-    pthread_mutex_unlock(&eventlog_lk);
+    Pthread_mutex_unlock(&eventlog_lk);
 
     val = cson_value_new_object();
     obj = cson_value_get_object(val);
     eventlog_add_int(obj, logger);
 
-    pthread_mutex_lock(&eventlog_lk);
+    Pthread_mutex_lock(&eventlog_lk);
     cson_output(val, write_json, eventlog, &opt);
-    pthread_mutex_unlock(&eventlog_lk);
+    Pthread_mutex_unlock(&eventlog_lk);
 
     if (eventlog_verbose) cson_output(val, write_logmsg, stdout, &opt);
 
@@ -662,9 +663,9 @@ static void eventlog_process_message_locked(char *line, int lline, int *toff)
 
 void eventlog_process_message(char *line, int lline, int *toff)
 {
-    pthread_mutex_lock(&eventlog_lk);
+    Pthread_mutex_lock(&eventlog_lk);
     eventlog_process_message_locked(line, lline, toff);
-    pthread_mutex_unlock(&eventlog_lk);
+    Pthread_mutex_unlock(&eventlog_lk);
 }
 
 void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
@@ -708,7 +709,7 @@ void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
     }
     logmsg(LOGMSG_USER, "\n");
 
-    pthread_mutex_lock(&eventlog_lk);
+    Pthread_mutex_lock(&eventlog_lk);
     cson_output(dval, write_json, eventlog, &opt);
-    pthread_mutex_unlock(&eventlog_lk);
+    Pthread_mutex_unlock(&eventlog_lk);
 }

@@ -79,6 +79,7 @@ static const char revid[] = "$Id: txn.c,v 11.219 2003/12/03 14:33:06 bostic Exp 
 #include "printformats.h"
 #include "dbinc/db_swap.h"
 #include "logmsg.h"
+#include "locks_wrap.h"
 
 #ifndef TESTSUITE
 #include <thread_util.h>
@@ -90,6 +91,7 @@ int bdb_is_open(void *bdb_state);
 int comdb2_time_epoch(void);
 void ctrace(char *format, ...);
 
+extern int gbl_is_physical_replicant;
 
 #define BDB_WRITELOCK(idstr)    bdb_get_writelock(bdb_state, (idstr), __func__, __LINE__)
 #define BDB_RELLOCK()           bdb_rellock(bdb_state, __func__, __LINE__)
@@ -104,8 +106,8 @@ void ctrace(char *format, ...);
 
 static int
 
-__txn_begin_int_set_retries(DB_TXN *txn, int internal, u_int32_t retries,
-    DB_LSN *we_start_at_this_lsn);
+__txn_begin_int_set_retries(DB_TXN *txn, u_int32_t retries,
+    DB_LSN *we_start_at_this_lsn, u_int32_t flags);
 
 extern int __lock_locker_getpriority(DB_LOCKTAB *lt, u_int32_t locker,
     int *priority);
@@ -158,7 +160,7 @@ typedef enum {
 } txnop_t;
 
 static int __txn_abort_pp __P((DB_TXN *));
-static int __txn_begin_int __P((DB_TXN *, int));
+static int __txn_begin_int __P((DB_TXN *, u_int32_t));
 static int __txn_commit_pp __P((DB_TXN *, u_int32_t));
 static int __txn_commit_getlsn_pp __P((DB_TXN *, u_int32_t, DB_LSN *, void *));
 static int __txn_commit_rl_pp __P((DB_TXN *, u_int32_t, u_int64_t, u_int32_t,
@@ -191,10 +193,11 @@ __txn_begin_pp_int(dbenv, parent, txnpp, flags, retries)
 	if ((ret = __db_fchk(dbenv,
 	    "txn_begin", flags,
 	    DB_DIRTY_READ | DB_TXN_NOWAIT |
-	    DB_TXN_NOSYNC | DB_TXN_SYNC)) != 0)
+	    DB_TXN_NOSYNC | DB_TXN_SYNC | DB_TXN_RECOVERY |
+        DB_TXN_INTERNAL)) != 0)
 		return (ret);
 	if ((ret = __db_fcchk(dbenv,
-	    "txn_begin", flags, DB_TXN_NOSYNC, DB_TXN_SYNC)) != 0)
+		"txn_begin", flags, DB_TXN_NOSYNC, DB_TXN_SYNC)) != 0)
 		return (ret);
 
 	if (parent == NULL) {
@@ -291,8 +294,8 @@ __txn_begin_main(dbenv, parent, txnpp, flags, retries)
 		F_SET(txn, TXN_NOWAIT);
 
 	if ((ret =
-		__txn_begin_int_set_retries(txn, 0, retries,
-		    &we_start_at_this_lsn)) != 0)
+		__txn_begin_int_set_retries(txn, retries,
+		    &we_start_at_this_lsn, flags)) != 0)
 		goto err;
 
 	if (!parent) {
@@ -339,9 +342,8 @@ __txn_begin_main(dbenv, parent, txnpp, flags, retries)
 		   we can trace back to the parent DB_TXN to get its
 		   begin LSN. Do not rush to get the begin LSN as
 		   it may not be needed (eg, readonly txn's). */
-		if (pthread_getspecific(txn_key) == NULL &&
-		    pthread_setspecific(txn_key, (void *)txn) != 0)
-			goto err;
+		if (pthread_getspecific(txn_key) == NULL)
+		    Pthread_setspecific(txn_key, (void *)txn);
 	}
 	return (0);
 
@@ -430,7 +432,7 @@ __txn_compensate_begin(dbenv, txnpp)
 	txn->flags = TXN_COMPENSATE | TXN_MALLOC;
 
 	*txnpp = txn;
-	return (__txn_begin_int(txn, 1));
+	return (__txn_begin_int(txn, DB_TXN_INTERNAL));
 }
 
 /*
@@ -438,11 +440,11 @@ __txn_compensate_begin(dbenv, txnpp)
  *	Normal DB version of txn_begin.
  */
 static int
-__txn_begin_int_int(txn, internal, retries, we_start_at_this_lsn)
+__txn_begin_int_int(txn, retries, we_start_at_this_lsn, flags)
 	DB_TXN *txn;
-	int internal;
 	u_int32_t retries;
 	DB_LSN *we_start_at_this_lsn;
+	u_int32_t flags;
 {
 	DB_ENV *dbenv;
 	DB_LSN begin_lsn, null_lsn;
@@ -452,6 +454,8 @@ __txn_begin_int_int(txn, internal, retries, we_start_at_this_lsn)
 	size_t off;
 	u_int32_t id, *ids;
 	int nids, ret;
+    int internal = LF_ISSET(DB_TXN_INTERNAL);
+    int recovery = LF_ISSET(DB_TXN_RECOVERY);
 
 
 	/*
@@ -486,6 +490,9 @@ __txn_begin_int_int(txn, internal, retries, we_start_at_this_lsn)
 
 	if (we_start_at_this_lsn)
 		*we_start_at_this_lsn = begin_lsn;
+
+    if (!recovery)
+        Pthread_rwlock_rdlock(&dbenv->recoverlk);
 
 	R_LOCK(dbenv, &mgr->reginfo);
 	if (!F_ISSET(txn, TXN_COMPENSATE) && F_ISSET(region, TXN_IN_RECOVERY)) {
@@ -580,6 +587,9 @@ __txn_begin_int_int(txn, internal, retries, we_start_at_this_lsn)
 	txn->prepare = __txn_prepare;
 	txn->set_timeout = __txn_set_timeout;
 
+	if (!recovery)
+		F_SET(txn, TXN_RECOVER_LOCK);
+
 	/*
 	 * If this is a transaction family, we must link the child to the
 	 * maximal grandparent in the lock table for deadlock detection.
@@ -597,28 +607,31 @@ __txn_begin_int_int(txn, internal, retries, we_start_at_this_lsn)
 
 	return (0);
 
-err:	R_UNLOCK(dbenv, &mgr->reginfo);
+err:
+	R_UNLOCK(dbenv, &mgr->reginfo);
+	if (!recovery)
+		Pthread_rwlock_unlock(&dbenv->recoverlk);
 	return (ret);
 }
 
 
 static int
-__txn_begin_int(txn, internal)
+__txn_begin_int(txn, flags)
 	DB_TXN *txn;
-	int internal;
+	u_int32_t flags;
 {
-	return __txn_begin_int_int(txn, internal, 0, NULL);
+	return __txn_begin_int_int(txn, 0, NULL, flags);
 }
 
 static int
-__txn_begin_int_set_retries(txn, internal, retries, we_start_at_this_lsn)
+__txn_begin_int_set_retries(txn, retries, we_start_at_this_lsn, flags)
 	DB_TXN *txn;
-	int internal;
 	u_int32_t retries;
 	DB_LSN *we_start_at_this_lsn;
+	u_int32_t flags;
 {
-	return __txn_begin_int_int(txn, internal, retries,
-	    we_start_at_this_lsn);
+	return __txn_begin_int_int(txn, retries,
+	    we_start_at_this_lsn, flags);
 }
 
 int
@@ -695,9 +708,9 @@ __txn_count_ltrans(dbenv, count)
 	DB_ENV *dbenv;
 	u_int32_t *count;
 {
-	pthread_mutex_lock(&dbenv->ltrans_active_lk);
+	Pthread_mutex_lock(&dbenv->ltrans_active_lk);
 	*count = listc_size(&dbenv->active_ltrans);
-	pthread_mutex_unlock(&dbenv->ltrans_active_lk);
+	Pthread_mutex_unlock(&dbenv->ltrans_active_lk);
 	return 0;
 }
 
@@ -710,12 +723,12 @@ __txn_ltrans_find_lowest_lsn(dbenv, lsnp)
 	LTDESC *lt, *lttemp;
 
 	ZERO_LSN(*lsnp);
-	pthread_mutex_lock(&dbenv->ltrans_active_lk);
+	Pthread_mutex_lock(&dbenv->ltrans_active_lk);
 	LISTC_FOR_EACH_SAFE(&dbenv->active_ltrans, lt, lttemp, lnk) {
 		if (IS_ZERO_LSN(*lsnp) || log_compare(&lt->begin_lsn, lsnp) < 0)
 			(*lsnp) = lt->begin_lsn;
 	}
-	pthread_mutex_unlock(&dbenv->ltrans_active_lk);
+	Pthread_mutex_unlock(&dbenv->ltrans_active_lk);
 
 	return (0);
 }
@@ -727,18 +740,18 @@ __txn_allocate_ltrans(dbenv, ltranid, begin_lsn, rlt)
     DB_LSN *begin_lsn;
     LTDESC **rlt;
 {
-	LTDESC *lt = NULL, *hflt;
+	LTDESC *lt = NULL;
 	int ret = 0;
 
-	pthread_mutex_lock(&dbenv->ltrans_inactive_lk);
+	Pthread_mutex_lock(&dbenv->ltrans_inactive_lk);
 	lt = listc_rtl(&dbenv->inactive_ltrans);
-	pthread_mutex_unlock(&dbenv->ltrans_inactive_lk);
+	Pthread_mutex_unlock(&dbenv->ltrans_inactive_lk);
 
 	if (!lt) {
 		if ((ret = __os_calloc(dbenv, 1, sizeof(LTDESC), &lt)) != 0)
 			goto err;
-		pthread_mutex_init(&lt->lk, NULL);
-		pthread_cond_init(&lt->wait, NULL);
+		Pthread_mutex_init(&lt->lk, NULL);
+		Pthread_cond_init(&lt->wait, NULL);
 	}
 
 	lt->ltranid = ltranid;
@@ -746,16 +759,17 @@ __txn_allocate_ltrans(dbenv, ltranid, begin_lsn, rlt)
 	lt->flags = 0;
 	lt->begin_lsn = *begin_lsn;
 
-	pthread_mutex_lock(&dbenv->ltrans_hash_lk);
+	Pthread_mutex_lock(&dbenv->ltrans_hash_lk);
 #ifdef LTRANS_DEBUG
+	LTDESC *hflt;
 	assert(!(hflt = hash_find(dbenv->ltrans_hash, lt)));
 #endif
 	hash_add(dbenv->ltrans_hash, lt);
-	pthread_mutex_unlock(&dbenv->ltrans_hash_lk);
+	Pthread_mutex_unlock(&dbenv->ltrans_hash_lk);
 
-	pthread_mutex_lock(&dbenv->ltrans_active_lk);
+	Pthread_mutex_lock(&dbenv->ltrans_active_lk);
 	listc_abl(&dbenv->active_ltrans, lt);
-	pthread_mutex_unlock(&dbenv->ltrans_active_lk);
+	Pthread_mutex_unlock(&dbenv->ltrans_active_lk);
 
 #ifdef LTRANS_DEBUG
 	__txn_track_stack_info(&lt->allocate_info);
@@ -780,7 +794,7 @@ __txn_get_ltran_list(dbenv, rlist, rcount)
 	ret = idx = 0;
 	*rlist = NULL;
 
-	pthread_mutex_lock(&dbenv->ltrans_active_lk);
+	Pthread_mutex_lock(&dbenv->ltrans_active_lk);
 	count = listc_size(&dbenv->active_ltrans);
 	if ((ret = __os_malloc(dbenv, count * sizeof(DB_LTRAN), &list)) != 0)
 		goto err;
@@ -796,7 +810,7 @@ __txn_get_ltran_list(dbenv, rlist, rcount)
 	*rcount = count;
 
 err:
-	pthread_mutex_unlock(&dbenv->ltrans_active_lk);
+	Pthread_mutex_unlock(&dbenv->ltrans_active_lk);
 	return (ret);
 }
 
@@ -809,9 +823,9 @@ __txn_find_ltrans(dbenv, ltranid, rlt)
 {
 	LTDESC *lt = NULL;
 
-	pthread_mutex_lock(&dbenv->ltrans_hash_lk);
+	Pthread_mutex_lock(&dbenv->ltrans_hash_lk);
 	lt = hash_find(dbenv->ltrans_hash, &ltranid);
-	pthread_mutex_unlock(&dbenv->ltrans_hash_lk);
+	Pthread_mutex_unlock(&dbenv->ltrans_hash_lk);
 	(*rlt) = lt;
 	return (lt) ? 0 : -1;
 }
@@ -822,26 +836,24 @@ __txn_deallocate_ltrans(dbenv, lt)
 	DB_ENV *dbenv;
 	LTDESC *lt;
 {
-	RLLIST *rlist;
-	LTDESC *hflt;
-
 	assert(lt->active_txn_count == 0);
 	lt->flags = 0;
 
-	pthread_mutex_lock(&dbenv->ltrans_hash_lk);
+	Pthread_mutex_lock(&dbenv->ltrans_hash_lk);
 #ifdef LTRANS_DEBUG
+	LTDESC *hflt;
 	assert(hflt = hash_find(dbenv->ltrans_hash, lt));
 #endif
 	hash_del(dbenv->ltrans_hash, lt);
-	pthread_mutex_unlock(&dbenv->ltrans_hash_lk);
+	Pthread_mutex_unlock(&dbenv->ltrans_hash_lk);
 
-	pthread_mutex_lock(&dbenv->ltrans_active_lk);
+	Pthread_mutex_lock(&dbenv->ltrans_active_lk);
 	listc_rfl(&dbenv->active_ltrans, lt);
-	pthread_mutex_unlock(&dbenv->ltrans_active_lk);
+	Pthread_mutex_unlock(&dbenv->ltrans_active_lk);
 
-	pthread_mutex_lock(&dbenv->ltrans_inactive_lk);
+	Pthread_mutex_lock(&dbenv->ltrans_inactive_lk);
 	listc_abl(&dbenv->inactive_ltrans, lt);
-	pthread_mutex_unlock(&dbenv->ltrans_inactive_lk);
+	Pthread_mutex_unlock(&dbenv->ltrans_inactive_lk);
 }
 extern int gbl_new_snapisol;
 extern int gbl_new_snapisol_logging;
@@ -884,13 +896,12 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	DB_LOCKREQ request;
 	DB_TXN *kid;
 	LTDESC *lt = NULL;
-	DB_LOCK *lks = NULL;
 	TXN_DETAIL *td;
 	u_int32_t lflags, ltranflags = 0;
 	int32_t timestamp;
 	uint32_t gen;
 	u_int64_t context = 0;
-	int ret, t_ret, iszero = 0, elect_highest_committed_gen;
+	int ret, t_ret, elect_highest_committed_gen;
 
 	dbenv = txnp->mgrp->dbenv;
 
@@ -967,10 +978,13 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	 * abort (if its parent aborts), and otherwise its parent or ultimate
 	 * ancestor will write synchronously.
 	 */
+#ifndef NDEBUG
+    int iszero = 0;
 	if (IS_ZERO_LSN(txnp->last_lsn)) {
 		/* Put a breakpoint here */
 		iszero = 1;
 	}
+#endif
 
 	extern int dumptxn(DB_ENV *, DB_LSN *);
 	extern int gbl_dumptxn_at_commit;
@@ -998,7 +1012,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 			memset(&request, 0, sizeof(request));
 			memset(&list_dbt_rl, 0, sizeof(list_dbt_rl));
 
-			pthread_rwlock_rdlock(&gbl_dbreg_log_lock);
+			Pthread_rwlock_rdlock(&gbl_dbreg_log_lock);
 
 			if (LOCKING_ON(dbenv)) {
 				request.op = DB_LOCK_PUT_READ;
@@ -1041,7 +1055,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 							     ltranid,
 							     begin_lsn,
 							     &lt)) != 0) {
-							pthread_rwlock_unlock(&gbl_dbreg_log_lock);
+							Pthread_rwlock_unlock(&gbl_dbreg_log_lock);
 							goto err;
 						}
 					}
@@ -1051,7 +1065,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						    ltranid, &lt)) != 0) {
 						logmsg(LOGMSG_FATAL, "Couldn't find ltrans?");
 						abort();
-						pthread_rwlock_unlock(&gbl_dbreg_log_lock);
+						Pthread_rwlock_unlock(&gbl_dbreg_log_lock);
 						goto err;
 					}
 
@@ -1139,7 +1153,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						    txnp->last_lsn.offset;
 					}
 				}
-				pthread_rwlock_unlock(&gbl_dbreg_log_lock);
+				Pthread_rwlock_unlock(&gbl_dbreg_log_lock);
 
 				if (gbl_new_snapisol) {
 					if (!txnp->pglogs_hashtbl) {
@@ -1243,6 +1257,11 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 
 	if (ret != 0) {
 		goto err;
+	}
+
+	if (F_ISSET(txnp, TXN_RECOVER_LOCK)) {
+		Pthread_rwlock_unlock(&dbenv->recoverlk);
+		F_CLR(txnp, TXN_RECOVER_LOCK);
 	}
 
 	/* This is OK because __txn_end can only fail with a panic. */
@@ -1464,6 +1483,11 @@ __txn_abort(txnp)
 		    lflags, TXN_ABORT, (int32_t)comdb2_time_epoch(), NULL)) != 0)
 		 return (__db_panic(dbenv, ret));
 
+	if (F_ISSET(txnp, TXN_RECOVER_LOCK)) {
+		Pthread_rwlock_unlock(&dbenv->recoverlk);
+		F_CLR(txnp, TXN_RECOVER_LOCK);
+	}
+
 	/* __txn_end always panics if it errors, so pass the return along. */
 	return (__txn_end(txnp, 0));
 }
@@ -1533,8 +1557,8 @@ __txn_discard(txnp, flags)
 		__os_free(dbenv, freep);
 	}
 
-	if (dbenv->tx_perfect_ckp && (ret = pthread_setspecific(txn_key, NULL)) != 0)
-		return (ret);
+	if (dbenv->tx_perfect_ckp)
+        Pthread_setspecific(txn_key, NULL);
 
 	return (0);
 }
@@ -1786,11 +1810,9 @@ __txn_end(txnp, is_commit)
 	DB_TXNREGION *region;
 	TXN_DETAIL *tp;
 	int do_closefiles, ret;
-	void *bdb_state;
 
 	mgr = txnp->mgrp;
 	dbenv = mgr->dbenv;
-	bdb_state = dbenv->app_private;
 	region = mgr->reginfo.primary;
 	do_closefiles = 0;
 
@@ -1877,8 +1899,8 @@ __txn_end(txnp, is_commit)
 		(void)__txn_checkpoint(dbenv, 0, 0, DB_FORCE);
 	}
 
-	if (dbenv->tx_perfect_ckp && (ret = pthread_setspecific(txn_key, NULL)) != 0)
-		return (ret);
+	if (dbenv->tx_perfect_ckp)
+        Pthread_setspecific(txn_key, NULL);
 
 	return (0);
 }
@@ -2186,7 +2208,13 @@ __txn_checkpoint(dbenv, kbytes, minutes, flags)
 			return (0);
 	}
 
-do_ckp:	/*
+do_ckp:	
+    Pthread_rwlock_rdlock(&dbenv->recoverlk);
+
+    /* Retrieve lsn again after locking */
+	__log_txn_lsn(dbenv, &ckp_lsn, &mbytes, &bytes);
+
+    /*
 	 * Find the oldest active transaction and figure out its "begin" LSN.
 	 * This is the lowest LSN we can checkpoint, since any record written
 	 * after it may be involved in a transaction and may therefore need
@@ -2210,6 +2238,7 @@ do_ckp:	/*
 	if (unlikely(gbl_ckp_sleep_before_sync > 0))
 		usleep(gbl_ckp_sleep_before_sync * 1000LL);
 
+	ckp_lsn_sav = ckp_lsn;
 	/* If flag is DB_FORCE, don't run perfect checkpoints. */
 	if (MPOOL_ON(dbenv) &&
 			(ret = __memp_sync_restartable(dbenv,
@@ -2217,15 +2246,20 @@ do_ckp:	/*
 		__db_err(dbenv,
 		    "txn_checkpoint: failed to flush the buffer cache %s",
 		    db_strerror(ret));
+        Pthread_rwlock_unlock(&dbenv->recoverlk);
 		return (ret);
 	}
+
+	if (log_compare(&ckp_lsn_sav, &ckp_lsn)<0)
+		ckp_lsn = ckp_lsn_sav;
 
 	/*
 	 * Because we can't be a replication client here, and because
 	 * recovery (somewhat unusually) calls txn_checkpoint and expects
 	 * it to write a log message, LOGGING_ON is the correct macro here.
 	 */
-	if (LOGGING_ON(dbenv)) {
+	if (LOGGING_ON(dbenv) && !gbl_is_physical_replicant &&
+            !LF_ISSET(DB_RECOVER_NOCKP)) {
 		DB_LSN debuglsn;
 		DBT op = { 0 };
 		int debugtype;
@@ -2257,8 +2291,10 @@ do_ckp:	/*
 		 * However, it does break the assumption that every successful
 		 * __txn_checkpoint() writes a checkpoint in the log.
 		 */
-		if (dbenv->tx_perfect_ckp && log_compare(&ckp_lsn, &last_ckp) <= 0)
+		if (dbenv->tx_perfect_ckp && log_compare(&ckp_lsn, &last_ckp) <= 0) {
+            Pthread_rwlock_unlock(&dbenv->recoverlk);
 			return (0);
+        }
 
 		if (REP_ON(dbenv))
 			__rep_get_gen(dbenv, &gen);
@@ -2270,7 +2306,7 @@ do_ckp:	/*
 
 		/* Put out a special debug record.  Recovery will look for it
 		 * to know where to start. */
-		pthread_rwlock_wrlock(&dbenv->dbreglk);
+		Pthread_rwlock_wrlock(&dbenv->dbreglk);
 		op.data = &debugtype;
 		op.size = sizeof(int);
 		debugtype = htonl(2);
@@ -2278,8 +2314,9 @@ do_ckp:	/*
 		    __db_debug_log(dbenv, NULL, &debuglsn, DB_LOG_DONT_LOCK,
 		    &op, -1, NULL, NULL, 0);
 		if (ret) {
-			pthread_rwlock_unlock(&dbenv->dbreglk);
+			Pthread_rwlock_unlock(&dbenv->dbreglk);
 			MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
+            Pthread_rwlock_unlock(&dbenv->recoverlk);
 			return ret;
 		}
 
@@ -2304,11 +2341,12 @@ do_ckp:	/*
 			    "txn_checkpoint: log failed at LSN [%ld %ld] %s",
 			    (long)ckp_lsn.file, (long)ckp_lsn.offset,
 			    db_strerror(ret));
-			pthread_rwlock_unlock(&dbenv->dbreglk);
+			Pthread_rwlock_unlock(&dbenv->dbreglk);
 			MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
+            Pthread_rwlock_unlock(&dbenv->recoverlk);
 			return (ret);
 		}
-		pthread_rwlock_unlock(&dbenv->dbreglk);
+		Pthread_rwlock_unlock(&dbenv->dbreglk);
 		MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
 
 		ret = bdb_checkpoint_list_push(ckp_lsn, ckp_lsn_sav, timestamp);
@@ -2316,6 +2354,7 @@ do_ckp:	/*
 			logmsg(LOGMSG_ERROR, 
                 "%s: failed to push to checkpoint list, ret %d\n",
 			    __func__, ret);
+            Pthread_rwlock_unlock(&dbenv->recoverlk);
 			return ret;
 		}
 
@@ -2323,6 +2362,7 @@ do_ckp:	/*
 		if (ret == 0)
 			__txn_updateckp(dbenv, &ckp_lsn);	/* this is the output lsn from txn_ckp_log */
 	}
+    Pthread_rwlock_unlock(&dbenv->recoverlk);
 	return (ret);
 }
 
@@ -2455,7 +2495,6 @@ __txn_preclose(dbenv)
 	DB_TXNMGR *mgr;
 	DB_TXNREGION *region;
 	int do_closefiles, ret;
-	void *bdb_state = dbenv->app_private;
 
 	mgr = (DB_TXNMGR *)dbenv->tx_handle;
 	region = mgr->reginfo.primary;
@@ -2494,6 +2533,10 @@ __txn_reset(dbenv)
 {
 	DB_LSN scrap;
 	DB_TXNREGION *region;
+
+    /* physical replicants cannot log the reset */
+    if (gbl_is_physical_replicant)
+        return 0;
 
 	region = ((DB_TXNMGR *)dbenv->tx_handle)->reginfo.primary;
 	region->last_txnid = TXN_MINIMUM;
@@ -2588,7 +2631,6 @@ dumptxn(DB_ENV * dbenv, DB_LSN * lsnpp)
 
 	logmsg(LOGMSG_USER, "{ %d log records\n", lc.nlsns);
 	for (int i = lc.nlsns - 1; i >= 0; i--) {
-		DB *db;
 		u_int32_t type;
 
 		if (a) {
@@ -2607,7 +2649,7 @@ dumptxn(DB_ENV * dbenv, DB_LSN * lsnpp)
 			DB *db;
 			char *name;
 
-			ret = __db_addrem_read(dbenv, dbt.data, &a);
+			ret = __db_addrem_read_int(dbenv, dbt.data, 0, &a);
 			if (ret) {
 				__db_err(dbenv, "can't decode addrem record\n");
 				goto done;

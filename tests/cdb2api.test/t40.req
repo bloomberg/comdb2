@@ -1,0 +1,16 @@
+
+create procedure test_mk2 version'mk' {
+local function main()
+        local var = 'mk'
+        db:emit(var)
+end
+}$$
+put default procedure test_mk2 'mk'
+
+SET SPDEBUG ON
+exec procedure test_mk2()
+next
+next
+getvariable(1)
+setvariable(1,'km')
+cont

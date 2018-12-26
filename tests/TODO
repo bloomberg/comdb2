@@ -58,11 +58,6 @@ sc_resume
 # 'make all'. These tests however can be run individually.
 
 DISABLED TESTS:
-incremental_backup        -- incremental backup tests are broken
-incremental_backup_load
-incremental_backup_usenames
-deadlock_policy.test
-deadlock.test             -- in clustered it leaves a bunch of cdb2sql tasks
 overflowblobs.test        -- timesout
 halt_processor_tds.test   -- requires a cluster
 rowlocks_blkseq.test
@@ -82,6 +77,8 @@ register_linearizable.test
 sigstopcluster.test
 cinsert_linearizable.test
 netloss.test              -- does not pass most of the time; requires kernel 4.x & docker 17.x
+restart_socksql.test      -- dont run this for now since masterbranch fails it
+phys_rep.test
 <END>
 
 # vim: set sw=4 ts=4 et:

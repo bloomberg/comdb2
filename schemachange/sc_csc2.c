@@ -27,7 +27,7 @@ int load_db_from_schema(struct schema_change_type *s, struct dbenv *thedb,
                         int *foundix, struct ireq *iq)
 {
     /* load schema from string or file */
-    int rc = dyns_load_schema_string(s->newcsc2, thedb->envname, s->table);
+    int rc = dyns_load_schema_string(s->newcsc2, thedb->envname, s->tablename);
     if (rc != 0) {
         char *err;
         char *syntax_err;
@@ -40,8 +40,8 @@ int load_db_from_schema(struct schema_change_type *s, struct dbenv *thedb,
     }
 
     /* find which db has a matching name */
-    if ((*foundix = getdbidxbyname(s->table)) < 0) {
-        logmsg(LOGMSG_FATAL, "couldnt find table <%s>\n", s->table);
+    if ((*foundix = getdbidxbyname(s->tablename)) < 0) {
+        logmsg(LOGMSG_FATAL, "couldnt find table <%s>\n", s->tablename);
         exit(1);
     }
 
@@ -185,7 +185,7 @@ int load_new_table_schema_tran(struct dbenv *dbenv, tran_type *tran,
 
     if (debug_switch_skip_table_schema_check()) return 0;
     if (db && db->sc_to) {
-        version = db->sc_to->version;
+        version = db->sc_to->schema_version;
     } else {
         version = get_csc2_version_tran(table, tran);
         if (version < 0) {

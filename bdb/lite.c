@@ -48,13 +48,11 @@
 #include <net.h>
 #include "bdb_int.h"
 #include "locks.h"
-
-#include <plbitlib.h> /* for bset/btst */
 #include <logmsg.h>
 
-static int bdb_lite_exact_fetch_int(bdb_state_type *bdb_state, tran_type *tran,
-                                    void *key, void *fnddta, int maxlen,
-                                    int *fndlen, int *bdberr)
+int bdb_lite_exact_fetch_int(bdb_state_type *bdb_state, tran_type *tran,
+                             void *key, void *fnddta, int maxlen, int *fndlen,
+                             int *bdberr)
 {
     int rc, outrc = 0, ixlen;
     DBT dbt_key, dbt_data;

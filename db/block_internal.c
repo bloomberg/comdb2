@@ -1891,3 +1891,148 @@ client_endian_pragma_req_get(struct client_endian_pragma_req *req,
     p_buf = buf_get(&req->flags, sizeof(req->flags), p_buf, p_buf_end);
     return p_buf;
 }
+
+int blkseq_get_rcode(void *data, int datalen)
+{
+    int outrc = 0, snapinfo_outrc = 0, snapinfo = 0;
+    uint8_t buf_fstblk[FSTBLK_HEADER_LEN + FSTBLK_PRE_RSPKL_LEN +
+                       BLOCK_RSPKL_LEN + FSTBLK_RSPERR_LEN + FSTBLK_RSPOK_LEN +
+                       (BLOCK_ERR_LEN * MAXBLOCKOPS)];
+    uint8_t *p_fstblk_buf = buf_fstblk,
+            *p_fstblk_buf_end = buf_fstblk + sizeof(buf_fstblk);
+    int blkseq_line = 0;
+
+    struct fstblk_header fstblk_header;
+    p_fstblk_buf_end = buf_fstblk + datalen;
+
+    if (datalen - 4 < sizeof(struct fstblk_header)) {
+        blkseq_line = __LINE__;
+        goto error;
+    }
+
+    if (datalen > sizeof(buf_fstblk)) {
+        return IX_ACCESS;
+    } else {
+        memcpy(buf_fstblk, data, datalen - 4);
+        datalen = datalen - 4;
+    }
+    if (!(p_fstblk_buf = (uint8_t *)fstblk_header_get(
+              &fstblk_header, p_fstblk_buf, p_fstblk_buf_end))) {
+        blkseq_line = __LINE__;
+        goto error;
+    }
+    switch (fstblk_header.type) {
+    case FSTBLK_RSPOK: {
+        outrc = RC_OK;
+        break;
+    }
+
+    case FSTBLK_RSPERR: {
+        outrc = ERR_BLOCK_FAILED;
+        break;
+    }
+
+    case FSTBLK_SNAP_INFO:
+        snapinfo = 1; /* fallthrough */
+
+    case FSTBLK_RSPKL: {
+        errstat_t errstat;
+        struct fstblk_pre_rspkl fstblk_pre_rspkl;
+        struct fstblk_rspkl fstblk_rspkl;
+
+        /* fluff */
+        if (!(p_fstblk_buf = (uint8_t *)fstblk_pre_rspkl_get(
+                  &fstblk_pre_rspkl, p_fstblk_buf, p_fstblk_buf_end))) {
+            blkseq_line = __LINE__;
+            goto error;
+        }
+
+        if (snapinfo) {
+            if (!(p_fstblk_buf = (uint8_t *)buf_get(
+                      &(snapinfo_outrc), sizeof(snapinfo_outrc), p_fstblk_buf,
+                      p_fstblk_buf_end))) {
+                blkseq_line = __LINE__;
+                goto error;
+            }
+            const uint8_t *osqlcomm_errstat_type_get(errstat_t * p_errstat_type,
+                                                     const uint8_t *p_buf,
+                                                     const uint8_t *p_buf_end);
+            if (!(p_fstblk_buf = (uint8_t *)osqlcomm_errstat_type_get(
+                      &errstat, p_fstblk_buf, p_fstblk_buf_end))) {
+                blkseq_line = __LINE__;
+                goto error;
+            }
+        }
+
+        if (!(p_fstblk_buf = (uint8_t *)fstblk_rspkl_get(
+                  &fstblk_rspkl, p_fstblk_buf, p_fstblk_buf_end))) {
+            blkseq_line = __LINE__;
+            goto error;
+        }
+
+        if (fstblk_rspkl.numerrs > 0) {
+            struct block_err err;
+
+            if (!(p_fstblk_buf = (uint8_t *)block_err_get(&err, p_fstblk_buf,
+                                                          p_fstblk_buf_end))) {
+                blkseq_line = __LINE__;
+                goto error;
+            }
+
+            if (snapinfo) {
+                outrc = snapinfo_outrc;
+            } else {
+                switch (err.errcode) {
+                case ERR_NO_RECORDS_FOUND:
+                case ERR_CONVERT_DTA:
+                case ERR_NULL_CONSTRAINT:
+                case ERR_SQL_PREP:
+                case ERR_CONSTR:
+                case ERR_UNCOMMITABLE_TXN:
+                case ERR_NOMASTER:
+                case ERR_NOTSERIAL:
+                case ERR_SC:
+                case ERR_TRAN_TOO_BIG:
+                    outrc = err.errcode;
+                    break;
+                default:
+                    outrc = ERR_BLOCK_FAILED;
+                    break;
+                }
+            }
+            if (outrc) {
+                switch (outrc) {
+                case ERR_NO_RECORDS_FOUND:
+                case ERR_CONVERT_DTA:
+                case ERR_NULL_CONSTRAINT:
+                case ERR_SQL_PREP:
+                case ERR_CONSTR:
+                case ERR_UNCOMMITABLE_TXN:
+                case ERR_NOMASTER:
+                case ERR_NOTSERIAL:
+                case ERR_SC:
+                case ERR_TRAN_TOO_BIG:
+                    break;
+                default:
+                    outrc = outrc + err.errcode;
+                    break;
+                }
+            }
+        } else {
+            outrc = RC_OK;
+        }
+        break;
+    }
+
+    default:
+        logmsg(LOGMSG_ERROR, "%s: bad fstblk replay type %d\n", __func__,
+               fstblk_header.type);
+        blkseq_line = __LINE__;
+        goto error;
+    }
+    return outrc;
+error:
+    logmsg(LOGMSG_ERROR, "%s:%d failed to read rcode from blkseq\n", __func__,
+           blkseq_line);
+    return -999;
+}

@@ -13,7 +13,11 @@ struct bdb_queue_found {
     unsigned int data_offset;
 
     /* how many fragments in the item found */
-    unsigned int num_fragments;
+    union trans_t {
+        /* how many fragments in the item found */
+        unsigned int num_fragments;
+        unsigned int tid;
+    } trans;
 
     /* when this was enqueued */
     unsigned int epoch;

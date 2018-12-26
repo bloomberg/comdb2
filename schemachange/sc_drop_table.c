@@ -46,13 +46,15 @@ int do_drop_table(struct ireq *iq, struct schema_change_type *s,
                   tran_type *tran)
 {
     struct dbtable *db;
-    iq->usedb = db = s->db = get_dbtable_by_name(s->table);
+    iq->usedb = db = s->db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
         sc_errf(s, "Table doesn't exists\n");
         reqerrstr(iq, ERR_SC, "Table doesn't exists");
         return SC_TABLE_DOESNOT_EXIST;
     }
-    if (db->n_rev_constraints > 0) {
+
+    if ((!iq || iq->tranddl <= 1) && db->n_rev_constraints > 0 &&
+        !self_referenced_only(db)) {
         sc_errf(s, "Can't drop tables with foreign constraints\n");
         reqerrstr(iq, ERR_SC, "Can't drop tables with foreign constraints");
         return -1;
@@ -69,20 +71,26 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
     int rc = 0;
     int bdberr = 0;
 
+    if (db->n_rev_constraints > 0 && !self_referenced_only(db)) {
+        sc_errf(s, "Can't drop tables with foreign constraints\n");
+        reqerrstr(iq, ERR_SC, "Can't drop tables with foreign constraints");
+        return ERR_SC;
+    }
+
     /* Before this handle is closed, lets wait for all the db reads to finish*/
     bdb_lock_table_write(db->handle, tran);
 
     /* at this point if a backup is going on, it will be bad */
     gbl_sc_commit_count++;
 
-    if (rc = mark_schemachange_over_tran(db->tablename, tran))
+    if ((rc = mark_schemachange_over_tran(db->tablename, tran)))
         return rc;
 
     s->already_finalized = 1;
 
     delete_table(db, tran);
     /*Now that we don't have any data, please clear unwanted schemas.*/
-    bdberr = bdb_reset_csc2_version(tran, db->tablename, db->version);
+    bdberr = bdb_reset_csc2_version(tran, db->tablename, db->schema_version);
     if (bdberr != BDBERR_NOERROR) return -1;
 
     if ((rc = bdb_del_file_versions(db->handle, tran, &bdberr))) {
@@ -113,7 +121,7 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
     live_sc_off(db);
 
     if (!gbl_create_mode) {
-        logmsg(LOGMSG_INFO, "Table %s is at version: %d\n", db->tablename,
+        logmsg(LOGMSG_INFO, "Table %s is at version: %lld\n", db->tablename,
                db->tableversion);
     }
 

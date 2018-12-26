@@ -37,6 +37,11 @@ REGISTER_TUNABLE("allow_lua_dynamic_libs",
                  "libraries (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_allow_lua_dynamic_libs, READONLY | NOARG,
                  NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("allow_negative_column_size",
+                 "Allow negative column size in csc2 schema. Added mostly for "
+                 "backwards compatibility. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_allow_neg_column_size, READONLY | NOARG,
+                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("allow_portmux_route", NULL, TUNABLE_BOOLEAN,
                  &gbl_pmux_route_enabled, READONLY | NOARG | READEARLY, NULL,
                  NULL, NULL, NULL);
@@ -129,6 +134,11 @@ REGISTER_TUNABLE("crc32c",
                  "different checksums) for page checksums. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_crc32c, READONLY | NOARG, NULL, NULL,
                  NULL, NULL);
+REGISTER_TUNABLE("create_default_user",
+                 "Automatically create 'default' user when authentication is "
+                 "enabled. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_create_default_user, READONLY | NOARG,
+                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("crypto", NULL, TUNABLE_STRING, &gbl_crypto, READONLY, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("ctrace_dbdir",
@@ -892,11 +902,6 @@ REGISTER_TUNABLE("print_syntax_err",
                  "Trace all SQL with syntax errors. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_print_syntax_err, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
-REGISTER_TUNABLE("queuepoll", "Occasionally wake up and poll "
-                              "consumer queues even when no "
-                              "events require it. (Default: 5secs)",
-                 TUNABLE_INTEGER, &gbl_queue_sleeptime, READONLY, NULL, NULL,
-                 NULL, NULL);
 REGISTER_TUNABLE("random_lock_release_interval", NULL, TUNABLE_INTEGER,
                  &gbl_sql_random_release_interval, READONLY, NULL, NULL, NULL,
                  NULL);
@@ -999,7 +1004,10 @@ REGISTER_TUNABLE("sort_nulls_with_header",
                  TUNABLE_BOOLEAN, &gbl_sort_nulls_correctly, READONLY | NOARG,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("spfile", NULL, TUNABLE_STRING, &gbl_spfile_name, READONLY,
-                 NULL, NULL, spfile_update, NULL);
+                 NULL, NULL, file_update, NULL);
+REGISTER_TUNABLE("timepartitions", NULL, TUNABLE_STRING,
+                 &gbl_timepart_file_name, READONLY, NULL, NULL, file_update,
+                 NULL);
 REGISTER_TUNABLE("sqlflush", "Force flushing the current record "
                              "stream to client every specified "
                              "number of records. (Default: 0)",
@@ -1164,6 +1172,8 @@ REGISTER_TUNABLE("bdblock_debug", NULL, TUNABLE_BOOLEAN, &gbl_bdblock_debug,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.autoanalyze", "debug autoanalyze operations",
                  TUNABLE_BOOLEAN, &gbl_debug_aa, NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.osql_random_restart", "randomly restart osql operations",
+                 TUNABLE_BOOLEAN, &gbl_osql_random_restart, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("bdboslog", NULL, TUNABLE_INTEGER, &gbl_namemangle_loglevel,
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("deadlock_rep_retry_max", NULL, TUNABLE_INTEGER,
@@ -1229,6 +1239,15 @@ REGISTER_TUNABLE("verbose_send_cohlease",
 REGISTER_TUNABLE("reset_on_unelectable_cluster", "Reset master if unelectable.",
                  TUNABLE_BOOLEAN, &gbl_reset_on_unelectable_cluster,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("decoupled_logputs",
+                 "Perform logputs out-of-band. (Default: on)", TUNABLE_BOOLEAN,
+                 &gbl_decoupled_logputs, EXPERIMENTAL | INTERNAL, NULL, NULL,
+                 NULL, NULL);
+REGISTER_TUNABLE("apply_pollms",
+                 "Apply-thread poll time before checking queue. "
+                 "(Default: 100ms)",
+                 TUNABLE_INTEGER, &gbl_apply_thread_pollms,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("rep_verify_always_grab_writelock",
                  "Force every rep_verify to grab writelock.", TUNABLE_BOOLEAN,
                  &gbl_rep_verify_always_grab_writelock, EXPERIMENTAL | INTERNAL,
@@ -1240,7 +1259,6 @@ REGISTER_TUNABLE("rep_verify_will_recover_trace",
 REGISTER_TUNABLE("max_wr_rows_per_txn",
                  "Set the max written rows per transaction.", TUNABLE_INTEGER,
                  &gbl_max_wr_rows_per_txn, 0, NULL, NULL, NULL, NULL);
-
 REGISTER_TUNABLE("print_deadlock_cycles",
                  "Print all deadlock cycles. (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_print_deadlock_cycles, NOARG, NULL, NULL, NULL, NULL);
@@ -1261,19 +1279,345 @@ REGISTER_TUNABLE("time_rep_apply", "Display rep-apply times periodically. "
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("logput_window",
                  "Drop log-broadcasts for incoherent nodes "
-                 "more than this many bytes behind. (Default: 1000000)",
+                 "more than this many bytes behind.  (Default: 0)",
                  TUNABLE_INTEGER, &gbl_incoherent_logput_window,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("dump_full_netqueue", "Dump net-queue on full rcode. "
                                        "(Default: off)",
                  TUNABLE_BOOLEAN, &gbl_dump_full_net_queue,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-
 REGISTER_TUNABLE(
     "max_clientstats",
-    "Max number of client stats stored in comdb2_clientstats. (Default 10000)",
+    "Max number of client stats stored in comdb2_clientstats. (Default: 10000)",
     TUNABLE_INTEGER, &gbl_max_clientstats_cache, DYNAMIC, NULL, NULL, NULL,
     NULL);
+REGISTER_TUNABLE("max_logput_queue",
+                 "Maximum queued log-records.  (Default: 100000)",
+                 TUNABLE_INTEGER, &gbl_max_logput_queue,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("master_req_waitms",
+                 "Request master once per this interval.  (Default: 200ms)",
+                 TUNABLE_INTEGER, &gbl_master_req_waitms,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("req_all_threshold",
+                 "Use req_all if a replicant is behind by "
+                 "this amount or more.  (Default: 10000000)",
+                 TUNABLE_INTEGER, &gbl_req_all_threshold,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("req_all_time_threshold",
+                 "Use req_all if a replicant hasn't updated its "
+                 "lsn in more than this many ms.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_req_all_time_threshold,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("fill_throttle",
+                 "Throttle fill-reqs to once per fill-throttle ms.  "
+                 "(Default: 500ms)",
+                 TUNABLE_INTEGER, &gbl_fills_waitms, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("verbose_fills", "Print fill trace.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_verbose_fills, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("verbose_repdups",
+                 "Print trace on duplicate replication.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_verbose_repdups, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("warn_queue_latency",
+                 "Trace for log queues processed that are older than this.  "
+                 "(Default: 500ms)",
+                 TUNABLE_INTEGER, &gbl_warn_queue_latency_threshold,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("print_net_queue_size",
+                 "Trace for net queue size.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_print_net_queue_size, EXPERIMENTAL | INTERNAL, NULL, NULL,
+                 NULL, NULL);
+REGISTER_TUNABLE("verbose_repmore_trace",
+                 "Verbose trace for rep-more requests.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_trace_repmore_reqs,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("throttle_logput_trace",
+                 "Print trace when stopping logputs "
+                 "to incoherent nodes.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_throttle_logput_trace,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("catchup_window_trace",
+                 "Print master catchup window trace.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_catchup_window_trace,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("early_ack_trace",
+                 "Print trace when sending an early ack.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_early_ack_trace, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("commit_delay_trace", "Verbose commit-delays.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_commit_delay_trace,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("set_coherent_state_trace",
+                 "Verbose coherency trace.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_set_coherent_state_trace, EXPERIMENTAL | INTERNAL, NULL,
+                 NULL, NULL, NULL);
+REGISTER_TUNABLE("finish_fill_threshold",
+                 "Fill to end if end is less than this.  (Default: 60000000)",
+                 TUNABLE_INTEGER, &gbl_finish_fill_threshold,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("req_delay_count_threshold",
+                 "Request commit-delay if falling "
+                 "behind this many times.  (Default: 5)",
+                 TUNABLE_INTEGER, &gbl_req_delay_count_threshold,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("max_apply_dequeue",
+                 "Limit apply-processing to this many per "
+                 "loop.  this many times.  (Default: 100000)",
+                 TUNABLE_INTEGER, &gbl_max_apply_dequeue,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("last_locked_seqnum",
+                 "Broadcast last-locked variable as seqnum.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_last_locked_seqnum,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("rep_getlock_latency",
+                 "Sleep on replicant before getting locks.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_getlock_latencyms,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("net_writer_poll_ms",
+                 "Poll time for net writer thread.  (Default: 1000)",
+                 TUNABLE_INTEGER, &gbl_net_writer_thread_poll_ms,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("inmem_repdb_maxlog",
+                 "Maximum records for in-memory replist.  "
+                 "(Default: 10000)",
+                 TUNABLE_INTEGER, &gbl_inmem_repdb_maxlog,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("durable_set_trace",
+                 "Trace setting durable lsn.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_durable_set_trace, EXPERIMENTAL | INTERNAL, NULL, NULL,
+                 NULL, NULL);
+REGISTER_TUNABLE("set_seqnum_trace",
+                 "Trace setting setting seqnum.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_set_seqnum_trace,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("elect_priority_bias",
+                 "Bias this node's election priority by this amount.  "
+                 "(Default: 0)",
+                 TUNABLE_INTEGER, &gbl_elect_priority_bias, 0, NULL, NULL, NULL,
+                 NULL);
+REGISTER_TUNABLE("apply_queue_memory",
+                 "Current memory usage of apply-queue.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_apply_queue_memory, READONLY, NULL, NULL,
+                 NULL, NULL);
+REGISTER_TUNABLE("inmem_repdb_memory",
+                 "Current memory usage of in-memory repdb.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_inmem_repdb_memory, READONLY, NULL, NULL,
+                 NULL, NULL);
+REGISTER_TUNABLE("queuedb_genid_filename",
+                 "Use genid in queuedb filenames.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_queuedb_genid_filename, READONLY, NULL,
+                 NULL, NULL, NULL);
+REGISTER_TUNABLE("random_election_timeout",
+                 "Use a random timeout in election.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_rand_elect_timeout,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("random_elect_min_ms",
+                 "Minimum election timeout.  (Default: 1000)", TUNABLE_INTEGER,
+                 &gbl_rand_elect_min_ms, EXPERIMENTAL | INTERNAL, NULL, NULL,
+                 NULL, NULL);
+REGISTER_TUNABLE("random_elect_max_ms",
+                 "Maximum election timeout.  (Default: 7000)", TUNABLE_INTEGER,
+                 &gbl_rand_elect_max_ms, EXPERIMENTAL | INTERNAL, NULL, NULL,
+                 NULL, NULL);
+REGISTER_TUNABLE("legacy_defaults", "Configure server with legacy defaults",
+                 TUNABLE_BOOLEAN, NULL, NOARG | INTERNAL | READONLY | READEARLY,
+                 NULL, NULL, pre_read_legacy_defaults, NULL);
+REGISTER_TUNABLE("abort_on_reconstruct_failure",
+                 "Abort database if snapshot fails to reconstruct a record.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_abort_on_reconstruct_failure,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("netconndumptime",
+                 "Dump connection statistics to ctrace this often.",
+                 TUNABLE_INTEGER, NULL, 0, netconndumptime_value, NULL, 
+                 netconndumptime_update, NULL);
+
+REGISTER_TUNABLE("timeseries_metrics_maxpoints",
+                 "Maximum data points to keep in memory for various metrics",
+                 TUNABLE_INTEGER, &gbl_metric_maxpoints, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("timeseries_metrics_maxage",
+                 "Time to keep metrics in memory (seconds)",
+                 TUNABLE_INTEGER, &gbl_metric_maxage, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("timeseries_metrics",
+                 "Keep time series data for some metrics",
+                 TUNABLE_BOOLEAN, &gbl_timeseries_metrics, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("handle_buf_latency_ms",
+                 "Add up to this much artificial latency to handle-buf.  "
+                 "(Default: 0)",
+                 TUNABLE_INTEGER, &gbl_handle_buf_add_latency_ms,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("queuedb_timeout_sec",
+                 "Unassign Lua consumer/trigger if no heartbeat received for this time",
+                 TUNABLE_INTEGER, &gbl_queuedb_timeout_sec, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("osql_send_startgen",
+                 "Send start-generation in osql stream. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_osql_send_startgen,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("client_heartbeat_ms",
+                 "Number of milliseconds between client api heartbeats.  "
+                 "(Default: 100)",
+                 TUNABLE_INTEGER, &gbl_client_heartbeat_ms,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("rep_release_wait_ms",
+                 "Release sql-locks if rep-thd is blocked for this many ms."
+                 "  (Default: 60000)",
+                 TUNABLE_INTEGER, &gbl_rep_wait_release_ms,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("rep_wait_core_ms",
+                 "Abort if rep-thread waits longer than this threshold for "
+                 "locks.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_rep_wait_core_ms,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("random_get_curtran_failures",
+                 "Force a random get-curtran failure 1/this many times.  "
+                 "(Default: 0)",
+                 TUNABLE_INTEGER, &gbl_random_get_curtran_failures,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("dohsql_disable",
+                 "Disable running queries in distributed mode", TUNABLE_BOOLEAN,
+                 &gbl_dohsql_disable, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("dohsql_verbose",
+                 "Run distributed queries in verbose/debug mode",
+                 TUNABLE_BOOLEAN, &gbl_dohsql_verbose, 0, NULL, NULL, NULL,
+                 NULL);
+
+REGISTER_TUNABLE("dohast_disable",
+                 "Disable generating AST for queries. This disables "
+                 "distributed mode as well.",
+                 TUNABLE_BOOLEAN, &gbl_dohast_disable, 0, NULL, NULL, NULL,
+                 NULL);
+
+REGISTER_TUNABLE("dohast_verbose",
+                 "Print debug information when creating AST for statements",
+                 TUNABLE_BOOLEAN, &gbl_dohast_verbose, 0, NULL, NULL, NULL,
+                 NULL);
+
+REGISTER_TUNABLE("dohsql_max_queued_kb_highwm",
+                 "Maximum shard queue size, in KB; shard sqlite will pause "
+                 "once queued bytes limit is reached.",
+                 TUNABLE_INTEGER, &gbl_dohsql_max_queued_kb_highwm, 0, NULL,
+                 NULL, NULL, NULL);
+
+REGISTER_TUNABLE(
+    "dohsql_full_queue_poll_msec",
+    "Poll milliseconds while waiting for coordinator to consume from queue.",
+    TUNABLE_INTEGER, &gbl_dohsql_full_queue_poll_msec, 0, NULL, NULL, NULL,
+    NULL);
+
+REGISTER_TUNABLE("random_fail_client_write_lock",
+                 "Force a random client write-lock failure 1/this many times.  "
+                 "(Default: 0)",
+                 TUNABLE_INTEGER, &gbl_fail_client_write_lock,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("reorder_socksql_no_deadlock",
+                 "Reorder sock sql to have no deadlocks ", TUNABLE_BOOLEAN,
+                 &gbl_reorder_socksql_no_deadlock, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("osql_check_replicant_numops",
+                 "Check replicant nops sent in osql stream. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_osql_check_replicant_numops,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("disable_tpsc_tblvers",
+                 "Disable table version checks for time partition schema "
+                 "changes",
+                 TUNABLE_BOOLEAN, &gbl_disable_tpsc_tblvers, NOARG, NULL, NULL,
+                 NULL, NULL);
+
+REGISTER_TUNABLE("abort_irregular_set_durable_lsn",
+                 "Abort incorrect calls to set_durable_lsn. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_abort_irregular_set_durable_lsn,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("instrument_dblist",
+                 "Extended dblist-trace in berkley.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_instrument_dblist,
+                 READONLY | EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("match_on_ckp",
+                 "Allow rep_verify_match on ckp records.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_match_on_ckp, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("verbose_physrep",
+                 "Print extended physrep trace.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_verbose_physrep, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("physrep_reconnect_penalty",
+                 "Physrep wait seconds before retry to the same node.  "
+                 "(Default: 5)",
+                 TUNABLE_INTEGER, &gbl_physrep_reconnect_penalty, 0, NULL, NULL,
+                 NULL, NULL);
+
+REGISTER_TUNABLE("verbose_physrep",
+                 "Print extended physrep trace.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_verbose_physrep, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("physrep_register_interval",
+                 "Interval for physical replicant re-registration.  "
+                 "(Default: 3600)",
+                 TUNABLE_INTEGER, &gbl_physrep_register_interval, 0, NULL, NULL,
+                 NULL, NULL);
+
+REGISTER_TUNABLE("blocking_physrep",
+                 "Physical replicant blocks on select.  "
+                 "(Default: false)",
+                 TUNABLE_BOOLEAN, &gbl_blocking_physrep, 0, NULL, NULL, NULL,
+                 NULL);
+
+REGISTER_TUNABLE("logdelete_lock_trace",
+                 "Print trace getting and releasing the logdelete lock.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_logdelete_lock_trace,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("flush_log_at_checkpoint",
+                 "Replicants flush the log at checkpoint records.  "
+                 "(Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_flush_log_at_checkpoint,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("verbose_set_sc_in_progress",
+                 "Prints a line of trace when sc_in_progress is set.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_verbose_set_sc_in_progress,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("send_failed_dispatch_message",
+                 "Send explicit failed-dispatch message to the api.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_send_failed_dispatch_message,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("legacy_schema", "Only allow legacy compatible csc2 schema",
+                 TUNABLE_BOOLEAN, &gbl_legacy_schema,
+                 EXPERIMENTAL | INTERNAL | READEARLY, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("force_incoherent",
+                 "Force this node to be incoherent.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_force_incoherent,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE(
     "reorder_idx_writes",

@@ -141,12 +141,12 @@ keys
 (tablename='t2', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t2', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t2', columnname='k', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
-(tablename='t1', keyname='IDX1', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
-(tablename='t1', keyname='IDX2', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t1', keyname='IDX1', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t1', keyname='IDX2', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
 (tablename='t1', keyname='IDX3', keynumber=2, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
 (tablename='t1', keyname='IDX4', keynumber=3, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
-(tablename='t1', keyname='COMDB2_PK', keynumber=4, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
-(tablename='t2', keyname='IDX1', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t1', keyname='COMDB2_PK', keynumber=4, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t2', keyname='IDX1', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
 (name='$CONSTRAINT_95177019', tablename='t2', keyname='IDX1', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N')
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int, "j" int, "k" int);', csc2='schema
 	{
@@ -156,11 +156,11 @@ keys
 	}
 keys
 	{
-		"IDX1" = i + j 
-		"IDX2" = i 
+		uniqnulls "IDX1" = i + j 
+		uniqnulls "IDX2" = i 
 		dup "IDX3" = j + i 
 		dup "IDX4" = i 
-		"COMDB2_PK" = k 
+		uniqnulls "COMDB2_PK" = k 
 	}
 ')
 (type='index', name='$IDX1_F9E83FD8', tbl_name='t1', rootpage=5, sql='create index "$IDX1_F9E83FD8" on "t1" ("i", "j");', csc2=NULL)
@@ -176,7 +176,7 @@ keys
 	}
 keys
 	{
-		"IDX1" = i + j 
+		uniqnulls "IDX1" = i + j 
 	}
 constraints
 	{
@@ -196,7 +196,7 @@ constraints
 (tablename='t3', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
 (tablename='t1', keyname='IDX', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
 (tablename='t2', keyname='IDX', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
-(tablename='t3', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t3', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
 (name='$CONSTRAINT_95177019', tablename='t2', keyname='IDX', foreigntablename='t1', foreignkeyname='IDX', iscascadingdelete='N', iscascadingupdate='N')
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int, "j" int);', csc2='schema
 	{
@@ -231,11 +231,11 @@ constraints
 	}
 keys
 	{
-		"COMDB2_PK" = i + j 
+		uniqnulls "COMDB2_PK" = i + j 
 	}
 ')
 (type='index', name='$COMDB2_PK_FA6CEBB6', tbl_name='t3', rootpage=9, sql='create index "$COMDB2_PK_FA6CEBB6" on "t3" ("i", "j");', csc2=NULL)
-[ALTER TABLE t1 DROP INDEX 'idx'] failed with rc 240 
+[ALTER TABLE t1 DROP INDEX 'idx'] failed with rc 240 constraint error for table "t2" key "IDX" -> <"t1":"IDX">: foreign key not found
 (tablename='t1')
 (tablename='t2')
 (tablename='t3')
@@ -271,9 +271,9 @@ keys
 (tablename='t2', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t2', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
 (tablename='t2', columnname='k', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
-(tablename='t1', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
-(tablename='t2', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
-(tablename='t2', keyname='IDX', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t1', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t2', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t2', keyname='IDX', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
 (tablename='t2', keyname='$KEY_E8BDFAE1', keynumber=2, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
 (name='$CONSTRAINT_6C9CE8ED', tablename='t2', keyname='$KEY_E8BDFAE1', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int, "j" int, "k" int);', csc2='schema
@@ -284,7 +284,7 @@ keys
 	}
 keys
 	{
-		"COMDB2_PK" = i + j + k 
+		uniqnulls "COMDB2_PK" = i + j + k 
 	}
 ')
 (type='index', name='$COMDB2_PK_8093E584', tbl_name='t1', rootpage=5, sql='create index "$COMDB2_PK_8093E584" on "t1" ("i", "j", "k");', csc2=NULL)
@@ -296,8 +296,8 @@ keys
 	}
 keys
 	{
-		"COMDB2_PK" = j + k 
-		"IDX" = j 
+		uniqnulls "COMDB2_PK" = j + k 
+		uniqnulls "IDX" = j 
 		dup "$KEY_E8BDFAE1" = i + j 
 	}
 constraints
@@ -315,7 +315,7 @@ constraints
 (tablename='t1', columnname='k', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
 (tablename='t2', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t2', columnname='k', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
-(tablename='t1', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t1', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int, "j" int, "k" int);', csc2='schema
 	{
 		int i 
@@ -324,7 +324,7 @@ constraints
 	}
 keys
 	{
-		"COMDB2_PK" = i + j + k 
+		uniqnulls "COMDB2_PK" = i + j + k 
 	}
 ')
 (type='index', name='$COMDB2_PK_8093E584', tbl_name='t1', rootpage=5, sql='create index "$COMDB2_PK_8093E584" on "t1" ("i", "j", "k");', csc2=NULL)
@@ -344,8 +344,8 @@ keys
 	}
 keys
 	{
-		"idx1" = i + j + k 
-		"idx2" = <DESCEND> i + <DESCEND> j + <DESCEND> k 
+		uniqnulls "idx1" = i + j + k 
+		uniqnulls "idx2" = <DESCEND> i + <DESCEND> j + <DESCEND> k 
 	}
 ')
 (type='index', name='$IDX1_8093E584', tbl_name='t1', rootpage=5, sql='create index "$IDX1_8093E584" on "t1" ("i", "j", "k");', csc2=NULL)
@@ -379,8 +379,8 @@ constraints
 (tablename='t2', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t2', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t2', columnname='k', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
-(tablename='t1', keyname='IDX1', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
-(tablename='t1', keyname='IDX2', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
+(tablename='t1', keyname='IDX1', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
+(tablename='t1', keyname='IDX2', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y')
 (tablename='t2', keyname='$KEY_E8BDFAE1', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
 (tablename='t2', keyname='$KEY_2BFFFCF4', keynumber=1, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N')
 (name='$CONSTRAINT_6C9CE8ED', tablename='t2', keyname='$KEY_E8BDFAE1', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N')
@@ -392,8 +392,8 @@ constraints
 	}
 keys
 	{
-		"idx1" = i + j + k 
-		"idx2" = <DESCEND> i + <DESCEND> j + <DESCEND> k 
+		uniqnulls "idx1" = i + j + k 
+		uniqnulls "idx2" = <DESCEND> i + <DESCEND> j + <DESCEND> k 
 	}
 ')
 (type='index', name='$IDX1_8093E584', tbl_name='t1', rootpage=5, sql='create index "$IDX1_8093E584" on "t1" ("i", "j", "k");', csc2=NULL)
@@ -420,7 +420,7 @@ constraints
 (name='$CONSTRAINT_9C9BDEA4', tablename='t2', keyname='$KEY_2BFFFCF4', foreigntablename='t1', foreignkeyname='IDX2', iscascadingdelete='N', iscascadingupdate='N')
 (name='mycons1', tablename='t2', keyname='$KEY_E8BDFAE1', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N')
 (name='$CONSTRAINT_9C9BDEA4', tablename='t2', keyname='$KEY_2BFFFCF4', foreigntablename='t1', foreignkeyname='IDX2', iscascadingdelete='N', iscascadingupdate='N')
-(name='mycons2', tablename='t2', keyname='$KEY_A44A20B', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N')
+(name='mycons2', tablename='t2', keyname='$KEY_E8BDFAE1', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N')
 (name='$CONSTRAINT_9C9BDEA4', tablename='t2', keyname='$KEY_2BFFFCF4', foreigntablename='t1', foreignkeyname='IDX2', iscascadingdelete='N', iscascadingupdate='N')
 (csc2='
 	tag ondisk {
@@ -482,5 +482,202 @@ tag "tag1"
 tag "tag2"
 	{
 		u_longlong j 
+	}
+')
+(csc2='
+    schema
+    {
+        short        alltypes_short
+        u_short      alltypes_ushort
+        int          alltypes_int
+        u_int        alltypes_uint
+        longlong     alltypes_longlong
+        float        alltypes_float
+        double       alltypes_double
+        byte         alltypes_byte_1
+        byte         alltypes_byte_2[16]
+        cstring      alltypes_cstring[16]
+        datetime     alltypes_datetime
+        datetimeus   alltypes_datetimeus
+        intervalym   alltypes_intervalym
+        intervalds   alltypes_intervalds
+        intervaldsus alltypes_intervaldsus
+        decimal32    alltypes_decimal32
+        decimal64    alltypes_decimal64
+        decimal128   alltypes_decimal128
+        blob         alltypes_blob_1
+        blob         alltypes_blob_2[16]
+        vutf8        alltypes_vutf8_1
+        vutf8        alltypes_vutf8_2[16]
+    }
+    tag "tag1"
+    {
+        short        alltypes_short
+        u_short      alltypes_ushort
+        int          alltypes_int
+        u_int        alltypes_uint
+        longlong     alltypes_longlong
+        float        alltypes_float
+        double       alltypes_double
+        byte         alltypes_byte_1
+        byte         alltypes_byte_2[16]
+        cstring      alltypes_cstring[16]
+        datetime     alltypes_datetime
+        datetimeus   alltypes_datetimeus
+        intervalym   alltypes_intervalym
+        intervalds   alltypes_intervalds
+        intervaldsus alltypes_intervaldsus
+        decimal32    alltypes_decimal32
+        decimal64    alltypes_decimal64
+        decimal128   alltypes_decimal128
+        blob         alltypes_blob_1
+        blob         alltypes_blob_2[16]
+        vutf8        alltypes_vutf8_1
+        vutf8        alltypes_vutf8_2[16]
+    }
+')
+(csc2='schema
+	{
+		short alltypes_short 
+		u_short alltypes_ushort 
+		int alltypes_int 
+		u_int alltypes_uint 
+		longlong alltypes_longlong 
+		float alltypes_float 
+		double alltypes_double 
+		byte alltypes_byte_1[1] 
+		byte alltypes_byte_2[16] 
+		cstring alltypes_cstring[16] 
+		datetime alltypes_datetime 
+		datetimeus alltypes_datetimeus 
+		intervalym alltypes_intervalym 
+		intervalds alltypes_intervalds 
+		intervaldsus alltypes_intervaldsus 
+		decimal32 alltypes_decimal32 
+		decimal64 alltypes_decimal64 
+		decimal128 alltypes_decimal128 
+		blob alltypes_blob_1 
+		blob alltypes_blob_2[16] 
+		vutf8 alltypes_vutf8_1 
+		vutf8 alltypes_vutf8_2[16] 
+		int i null = yes 
+	}
+tag "tag1"
+	{
+		short alltypes_short 
+		u_short alltypes_ushort 
+		int alltypes_int 
+		u_int alltypes_uint 
+		longlong alltypes_longlong 
+		float alltypes_float 
+		double alltypes_double 
+		byte alltypes_byte_1[1] 
+		byte alltypes_byte_2[16] 
+		cstring alltypes_cstring[16] 
+		datetime alltypes_datetime 
+		datetimeus alltypes_datetimeus 
+		intervalym alltypes_intervalym 
+		intervalds alltypes_intervalds 
+		intervaldsus alltypes_intervaldsus 
+		cstring alltypes_decimal32[14] 
+		cstring alltypes_decimal64[24] 
+		cstring alltypes_decimal128[43] 
+		blob alltypes_blob_1 
+		blob alltypes_blob_2 
+		vutf8 alltypes_vutf8_1 
+		vutf8 alltypes_vutf8_2[16] 
+	}
+')
+(csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+')
+(csc2='schema
+	{
+		int i null = yes 
+		short j null = yes 
+	}
+')
+(csc2='schema
+	{
+		int i null = yes 
+		short j dbstore = 0 null = yes 
+	}
+')
+(csc2='schema
+	{
+		int i null = yes 
+		short j dbstore = 0 
+	}
+')
+[ALTER TABLE t1 DROP COLUMN j, ADD COLUMN j int] failed with rc -3 Cannot DROP and ADD same column in an ALTER command.
+[ALTER TABLE t1 ALTER COLUMN i TYPE INT, DROP COLUMN i] failed with rc -3 Table must have at least one column.
+[ALTER TABLE t1 ALTER COLUMN i] failed with rc -3 incomplete input
+[ALTER TABLE t1 ALTER COLUMN ii] failed with rc -3 incomplete input
+[ALTER TABLE t1 ALTER COLUMN ii INT] failed with rc -3 near "INT": syntax error
+[ALTER TABLE t1 ALTER COLUMN ii TYPE INT] failed with rc -3 Column 'ii' not found.
+[ALTER TABLE t1 ALTER COLUMN i TYPE INT, DROP COLUMN i, ADD COLUMN i INT] failed with rc -3 Cannot DROP and ADD same column in an ALTER command.
+(csc2='schema
+	{
+		short i null = yes 
+	}
+')
+(csc2='schema
+	{
+		int i null = yes 
+	}
+')
+(csc2='schema
+	{
+		int i null = yes 
+	}
+')
+[ALTER TABLE t1 ALTER ADD j INT, ALTER COLUMN j TYPE SHORT] failed with rc -3 near "j": syntax error
+(csc2='schema
+	{
+		int i null = yes 
+		short j null = yes 
+	}
+')
+(csc2='schema
+	{
+		int i null = yes 
+		short j dbstore = 1000 
+	}
+')
+(csc2='schema
+	{
+		int i null = yes 
+		short j dbstore = 1000 
+	}
+')
+(csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+keys
+	{
+		dup "$KEY_A44A20B" = i 
+		dup "$KEY_934DF3B1" = j 
+	}
+constraints
+	{
+		"$KEY_A44A20B" -> <"t1":"$KEY_4DE4D8DB"> 
+	}
+')
+(csc2='schema
+	{
+		int i null = yes 
+	}
+keys
+	{
+		dup "$KEY_A44A20B" = i 
+	}
+constraints
+	{
+		"$KEY_A44A20B" -> <"t1":"$KEY_4DE4D8DB"> 
 	}
 ')

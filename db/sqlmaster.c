@@ -192,7 +192,7 @@ static void *create_master_row(struct dbtable **dbs, int num_dbs, int rootpage,
 {
     /* text type, text name, text tbl_name, integer rootpage, text sql, text
      * csc2 */
-    Mem mems[6] = {0};
+    Mem mems[6] = {{{0}}};
     struct dbtable *tbl;
     char *etype;
     char name[128];
@@ -310,9 +310,9 @@ int get_copy_rootpages_nolock(struct sql_thread *thd)
 inline int get_copy_rootpages(struct sql_thread *thd)
 {
     int ret;
-    pthread_rwlock_rdlock(&schema_lk);
+    rdlock_schema_lk();
     ret = get_copy_rootpages_nolock(thd);
-    pthread_rwlock_unlock(&schema_lk);
+    unlock_schema_lk();
     return ret;
 }
 
@@ -324,7 +324,7 @@ int get_rootpage_numbers(int nums)
     static int crt_rootpage_number = RTPAGE_START;
     int tmp;
 
-    pthread_rwlock_wrlock(&sqlite_rootpages);
+    Pthread_rwlock_wrlock(&sqlite_rootpages);
 
     tmp = crt_rootpage_number + nums;
     if (tmp < crt_rootpage_number) {
@@ -333,7 +333,7 @@ int get_rootpage_numbers(int nums)
         tmp = crt_rootpage_number;
         crt_rootpage_number += nums;
     }
-    pthread_rwlock_unlock(&sqlite_rootpages);
+    Pthread_rwlock_unlock(&sqlite_rootpages);
 
     /*fprintf(stderr, "XXX allocated [%d:%d]\n", tmp, crt_rootpage_number-1);*/
 

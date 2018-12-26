@@ -9,9 +9,6 @@
 #include "macc.h"
 #include "logmsg.h"
 
-static char size_of_rec_words[64];
-static char size_of_rec_bytes[64];
-static int padsymbol = 0;
 static int maxrecsz = COMDB2_MAX_RECORD_SIZE;
 /* OUTPUT WITH VARIABLE EXPAND AND TABBING */
 
@@ -79,8 +76,8 @@ void strcpy_f(char *dst, char *src, int flag)
 
 int compute_all_data(int tidx)
 {
-    int i = 0, off = 0, padk = 0, pad = 0, afterpad = 0, lastix = 0;
-    int j = 0, maxsym = 0, maxaln = 0, ismaxsymchar = 1, padbytes = 0;
+    int i = 0, off = 0, padk = 0, pad = 0, afterpad = 0;
+    int j = 0, maxsym = 0, maxaln = 0, padbytes = 0;
 
     for (i = 0; i < tables[tidx].nsym; i++) {
         if (i == un_start[tables[tidx].sym[i].un_idx]) {
@@ -159,7 +156,6 @@ int compute_all_data(int tidx)
     /* find maximum non-char symbol size in the record. also find maximum
      * alignment required */
     maxsym = 0;
-    ismaxsymchar = 1;
     maxaln = 0;
     for (j = 0; j < tables[tidx].nsym; j++) {
         if ((!character(tidx, j) &&
@@ -334,9 +330,7 @@ int offsetpad(int off, int idx, int tbl)
         return (mostpad);
     }
     if (tables[tbl].sym[idx].caseno != -1) {
-        int i, mostpad = 0, cs = 0, un = 0, lrgsz = 0, largest = 0, first = -1;
-        int reloff = 0;
-
+        int i, mostpad = 0, largest = 0;
         largest = -1;
         largest = largest_idx(tbl, tables[tbl].sym[idx].un_idx);
         if (tables[tbl].sym[idx].padcs == -1) {

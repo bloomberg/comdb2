@@ -13,16 +13,17 @@
    limitations under the License. */
 package com.bloomberg.comdb2.jdbc;
 
+import java.nio.ByteBuffer;
 import java.io.*;
 import java.util.*;
 import java.util.logging.*;
 import javax.net.ssl.*;
+import java.text.MessageFormat;
 
 import com.google.protobuf.*;
 
 import com.bloomberg.comdb2.jdbc.SockIO;
-import com.bloomberg.comdb2.jdbc.Cdb2Query.Cdb2BindValue;
-import com.bloomberg.comdb2.jdbc.Cdb2Query.Cdb2SqlQuery;
+import com.bloomberg.comdb2.jdbc.Cdb2Query.*;
 import com.bloomberg.comdb2.jdbc.Constants.*;
 import com.bloomberg.comdb2.jdbc.Sqlquery.*;
 import com.bloomberg.comdb2.jdbc.Sqlresponse.*;
@@ -111,6 +112,7 @@ public class Comdb2Handle extends AbstractConnection {
     private int errorInTxn = 0;
     private boolean readIntransResults = true;
     private boolean firstRecordRead = false;
+    private long timestampus;
 
     /* The last Throwable. */
     private Throwable last_non_logical_err;
@@ -125,6 +127,11 @@ public class Comdb2Handle extends AbstractConnection {
     private String sslca, sslcapass, sslcatype;
     private String sslcrl;
     PEER_SSL_MODE peersslmode = PEER_SSL_MODE.PEER_SSL_ALLOW;
+
+    /* argv0 */
+    boolean sentClientInfo;
+    boolean hasSendStack;
+    boolean sendStack = true;
 
     static class QueryItem {
         byte[] buffer;
@@ -178,6 +185,11 @@ public class Comdb2Handle extends AbstractConnection {
         ret.sslcapass = sslcapass;
         ret.sslcatype = sslcatype;
         ret.peersslmode = peersslmode;
+
+        ret.sentClientInfo = sentClientInfo;
+        ret.hasSendStack = hasSendStack;
+        ret.sendStack = sendStack;
+
         return ret;
     }
 
@@ -232,7 +244,7 @@ public class Comdb2Handle extends AbstractConnection {
             sslmode = SSL_MODE.VERIFY_HOSTNAME;
         else if (mode.toUpperCase().startsWith("VERIFY_DBNAME")) {
             sslmode = SSL_MODE.VERIFY_DBNAME;
-            String[] splits = mode.split(",|;");
+            String[] splits = mode.split(",;\\s*");
             if (splits.length > 1)
                 sslNIDDbName = splits[1].toUpperCase();
         } else{
@@ -309,6 +321,10 @@ public class Comdb2Handle extends AbstractConnection {
         verifyretry = val;
     }
 
+    public void setSendStack(boolean val) {
+        sendStack = val;
+    }
+
     void addHosts(List<String> hosts) {
         myDbHosts.addAll(hosts);
     }
@@ -379,45 +395,31 @@ public class Comdb2Handle extends AbstractConnection {
     // Add td info to the beginning of the string
     private void tdlog(Level level, String str, Object... params) {
         /* Fast return if the level is not loggable. */
-        if (!logger.isLoggable(level))
+        if (!logger.isLoggable(level) && !debug)
             return;
 
+        Level curlevel = logger.getLevel();
         String mach = "(not-connected)";
         if (dbHostConnected >= 0) {
             mach = myDbHosts.get(dbHostConnected);
         }
 
-        if (debug) {
-            // Either getStackTrace or getMethodName is leaking memory: we blow up
-            // in the read-test .. don't call them for now
-            /*
-            String methodName = Thread.currentThread().getStackTrace()[2].getMethodName();
-            int methodLine = Thread.currentThread().getStackTrace()[2].getLineNumber();
-            String callingMethodName = Thread.currentThread().getStackTrace()[3].getMethodName();
-            int callingMethodLine = Thread.currentThread().getStackTrace()[3].getLineNumber();
-            System.out.println("td=" + Thread.currentThread().getId() + " " + callingMethodName + ":" +
-                    callingMethodLine + "->" + methodName + ":" + methodLine + " mach=" + mach +
-                    " snapshotFile=" + snapshotFile + " snapshotOffset=" + snapshotOffset + " cnonce="
-                    + stringCnonce + ": " + str);
-                    */
-            System.out.println("td=" + Thread.currentThread().getId() + " mach=" + mach + 
-                    " snapshotFile=" + snapshotFile + " snapshotOffset=" + snapshotOffset + 
-                    " cnonce=" + stringCnonce + ": " + str);
-
-
-        } else {
-            String message = String.format(str, params);
-            Object[] messageParams = new Object[] {
-                Thread.currentThread().getId(),
+        String message = String.format(str, params);
+        Object[] messageParams = new Object[] {
+            Thread.currentThread().getId(),
                 mach,
                 snapshotFile,
                 snapshotOffset,
                 stringCnonce,
                 message
-            };
-            logger.log(level,
-                       "td={0} mach={1} snapshotFile={2} snapshotOffset={3} cnonce={4}: {5}",
-                       messageParams);
+        };
+        logger.log(level,
+                "td={0} mach={1} snapshotFile={2} snapshotOffset={3} cnonce={4}: {5}",
+                messageParams);
+
+        if (debug) {
+            MessageFormat form = new MessageFormat("td={0} mach={1} snapshotFile={2} snapshotOffset={3} cnonce={4}: {5}");
+            System.err.println(form.format(messageParams));
         }
     }
 
@@ -634,6 +636,13 @@ public class Comdb2Handle extends AbstractConnection {
         Cdb2SqlQuery sqlQuery = new Cdb2SqlQuery();
         query.cdb2SqlQuery = sqlQuery;
 
+        if (!sentClientInfo) {
+            sqlQuery.cinfo = new Cdb2ClientInfo();
+            sqlQuery.cinfo.argv0 = Comdb2ClientInfo.getCallerClass();
+            sqlQuery.cinfo.stack = Comdb2ClientInfo.getCallStack(32);
+            sentClientInfo = true;
+        }
+
         sqlQuery.dbName = myDbName;
         sqlQuery.sqlQuery = sql;
 
@@ -666,10 +675,15 @@ public class Comdb2Handle extends AbstractConnection {
         if (nretry >= myDbHosts.size())
             sqlQuery.features.add(CDB2ClientFeatures.ALLOW_QUEUING_VALUE);
 
-        if (nretry > 0 && dbHostConnected == masterIndexInMyDbHosts)
+        if (nretry >= ((myDbHosts.size() * 2) - 1) && dbHostConnected ==
+                masterIndexInMyDbHosts)
             sqlQuery.features.add(CDB2ClientFeatures.ALLOW_MASTER_EXEC_VALUE);
 
         sqlQuery.cnonce = cnonce;
+        
+        sqlQuery.reqInfo = new Cdb2ReqInfo();
+        sqlQuery.reqInfo.timestampus = timestampus;
+        sqlQuery.reqInfo.numretries = nretry;
 
         if (snapshotFile > 0) { 
             tdlog(Level.FINEST, "Setting hasSnapshotInfo to true because snapshotFile is %d", snapshotFile);
@@ -922,8 +936,6 @@ public class Comdb2Handle extends AbstractConnection {
         while (next_int() == Errors.CDB2_OK)
             ;
 
-        clearResp();
-
         rowsRead = 0;
 
         tdlog(Level.FINE, "[running sql] %s", sql);
@@ -1060,7 +1072,9 @@ public class Comdb2Handle extends AbstractConnection {
                 }
             }
 
+            clearResp();
             lastSql = sql;
+            timestampus = System.currentTimeMillis() * 1000L;
 
             if (!inTxn || is_begin) {
                 sent = sendQuery(sql, types, is_begin, 0, retry, 
@@ -1148,11 +1162,24 @@ public class Comdb2Handle extends AbstractConnection {
                         tdlog(Level.FINER, "returning 0 for null readNsh / readRaw on rollback errVal=%d", errVal);
                         return 0;
                     }
-                    else if (is_retryable(errVal)) {
+                    else if (is_retryable(errVal) && (snapshotFile > 0 ||
+                                (!inTxn && !is_commit) || commitSnapshotFile > 0)) {
                         tdlog(Level.FINER, "continuing on retryable error %d for null readNsh", errVal);
                         errorInTxn = 0;
                         closeNoException();
                         retryAll = true;
+                        if (commitSnapshotFile > 0) {
+                            tdlog(Level.FINER,
+                                    "Resetting txn state info on commit, isHASql=%b lsn=[%d][%d]",
+                                    isHASql, commitSnapshotFile, commitSnapshotOffset);
+                            inTxn = true;
+                            snapshotFile = commitSnapshotFile;
+                            snapshotOffset = commitSnapshotOffset;
+                            isRetry = commitIsRetry;
+                            queryList = commitQueryList;
+                            commitQueryList = null;
+                            commitSnapshotFile = 0;
+                        }
                         continue;
                     }
                     else {
@@ -1274,10 +1301,23 @@ public class Comdb2Handle extends AbstractConnection {
                         tdlog(Level.FINER, "Returning 0 on rollback for errval %d for null firstResp", errVal);
                         return 0;
                     }
-                    else if (is_retryable(errVal)) {
+                    else if (is_retryable(errVal) && (snapshotFile > 0 ||
+                                (!inTxn && !is_commit) || commitSnapshotFile > 0)) {
                         errorInTxn = 0;
                         closeNoException();
                         retryAll = true;
+                        if (commitSnapshotFile > 0) {
+                            tdlog(Level.FINER,
+                                    "Resetting txn state info on commit, isHASql=%b lsn=[%d][%d]",
+                                    isHASql, commitSnapshotFile, commitSnapshotOffset);
+                            inTxn = true;
+                            snapshotFile = commitSnapshotFile;
+                            snapshotOffset = commitSnapshotOffset;
+                            isRetry = commitIsRetry;
+                            queryList = commitQueryList;
+                            commitQueryList = null;
+                            commitSnapshotFile = 0;
+                        }
                         tdlog(Level.FINER, "Retrying for failed protocol unpack errval=%d", errVal);
                         continue;
                     }
@@ -1312,9 +1352,9 @@ public class Comdb2Handle extends AbstractConnection {
 
             // no hints ..
 
-            if (firstResp.errCode == Sqlresponse.CDB2_ErrorCode.MASTER_TIMEOUT_VALUE ||
-                    firstResp.errCode == Errors.CDB2ERR_CHANGENODE) {
-
+            if ((firstResp.errCode == Sqlresponse.CDB2_ErrorCode.MASTER_TIMEOUT_VALUE ||
+                firstResp.errCode == Errors.CDB2ERR_CHANGENODE) && (snapshotFile > 0 ||
+                (!inTxn && !is_commit) || commitSnapshotFile > 0)) {
                 closeNoException();
                 retryAll = true;
                 if(commitSnapshotFile > 0) {
@@ -1351,7 +1391,8 @@ public class Comdb2Handle extends AbstractConnection {
             if (firstResp.respType == 1) {
                 /* Handle rejects from server. */
                 tdlog(Level.FINEST, "firstResp.respType==1");
-                if (is_retryable(firstResp.errCode)) {
+                if (is_retryable(firstResp.errCode) && (snapshotFile > 0 ||
+                            (!inTxn && !is_commit) || commitSnapshotFile > 0)) {
                     closeNoException();
                     retryAll = true;
                     if (commitSnapshotFile > 0) {
@@ -1749,6 +1790,8 @@ readloop:
             return true;
         } else {
             rc = reopen(true);
+            if (rc)
+                sentClientInfo = false;
             tdlog(Level.FINEST, "Connection reopened returned %b", rc);
             return rc;
         }
@@ -1790,6 +1833,7 @@ readloop:
                            sslcertpass, sslca,
                            sslcatype, sslcapass,
                            sslcrl);
+            sentClientInfo = false;
             return true;
         } catch (SSLHandshakeException she) {
             /* this is NOT retry-able. */

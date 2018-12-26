@@ -1,5 +1,6 @@
 FROM ubuntu:latest
 
+ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
   apt-get install -y \
     cmake \
@@ -26,7 +27,10 @@ RUN apt-get update && \
     libsqlite3-0 \
     libuuid1 \
     libz1 \
+    file \
     tzdata && \
+  ln -fs /usr/share/zoneinfo/America/New_York /etc/localtime && \
+  dpkg-reconfigure --frontend noninteractive tzdata && \
   rm -rf /var/lib/apt/lists/*
 
 EXPOSE 5105

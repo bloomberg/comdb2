@@ -169,6 +169,9 @@ int insert(cdb2_hndl_tp **indb, const char *readnode)
 
             if (exit_at_failure) myexit(__func__, __LINE__, 1);
 
+            snprintf(sql, sizeof(sql), "rollback");
+            cdb2_run_statement(db, sql);
+
             for (int jj = 0; jj < inserts_per_txn; jj++) {
                 if (rc == -109)
                     state[val + jj] = UNKNOWN;
@@ -241,6 +244,8 @@ int insert(cdb2_hndl_tp **indb, const char *readnode)
                 state[val + j] = FAILED;
         }
         if (exit_at_failure) myexit(__func__, __LINE__, 1);
+        snprintf(sql, sizeof(sql), "rollback");
+        cdb2_run_statement(db, sql);
         return rc;
     }
 
@@ -284,6 +289,9 @@ int insert(cdb2_hndl_tp **indb, const char *readnode)
             tdprintf(stderr, db, __func__, __LINE__,
                      "XXX insert: %d run rc %d %s read node %s\n", val, rc,
                      cdb2_errstr(db), readnode);
+            snprintf(sql, sizeof(sql), "rollback");
+            cdb2_run_statement(db, sql);
+            return 0;
         }
 
         rc = cdb2_run_statement(db, "commit");
@@ -331,8 +339,6 @@ void *thd(void *arg)
         }
     }
 
-    cdb2_set_max_retries(max_retries);
-
     if (debug_trace) {
         cdb2_set_debug_trace(db);
     }
@@ -368,7 +374,7 @@ reopen:
         cdb2_close(db);
         myexit(__func__, __LINE__, 1);
     }
-    cdb2_set_max_retries(max_retries);
+    cdb2_hndl_set_max_retries(db, max_retries);
     if (debug_trace) {
         cdb2_set_debug_trace(db);
     }
@@ -446,7 +452,7 @@ int prepare_select_bug(void)
 
     select_array = (uint8_t *)calloc(sizeof(uint8_t), select_records + 1);
     rc = cdb2_open(&db, dbname, cltype, 0);
-    cdb2_set_max_retries(max_retries);
+    cdb2_hndl_set_max_retries(db, max_retries);
     if (debug_trace) {
         cdb2_set_debug_trace(db);
     }
@@ -620,7 +626,7 @@ int prepare_select_test(void)
 
     select_array = (uint8_t *)calloc(sizeof(uint8_t), select_records + 1);
     rc = cdb2_open(&db, dbname, cltype, 0);
-    cdb2_set_max_retries(max_retries);
+    cdb2_hndl_set_max_retries(db, max_retries);
     if (debug_trace) {
         cdb2_set_debug_trace(db);
     }
@@ -796,7 +802,7 @@ int clear(void)
         cdb2_close(db);
         myexit(__func__, __LINE__, 1);
     }
-    cdb2_set_max_retries(max_retries);
+    cdb2_hndl_set_max_retries(db, max_retries);
     if (debug_trace) {
         cdb2_set_debug_trace(db);
     }
@@ -836,7 +842,7 @@ int clear(void)
         }
 
         rc = cdb2_run_statement(db, "commit");
-        if (rc == 230 || rc == 4) {
+        if (rc == 230 || rc == -105) {
             tdprintf(stderr, db, __func__, __LINE__,
                      "clear: commit rc %d %s - retrying\n", rc,
                      cdb2_errstr(db));
@@ -921,6 +927,8 @@ int main(int argc, char *argv[])
             break;
         }
     }
+
+    cdb2_set_max_retries(max_retries);
 
     if (debug_trace) {
         fprintf(stderr, "Staring %s pid %d\n", argv0, getpid());

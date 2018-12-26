@@ -44,6 +44,8 @@ static const char revid[] = "$Id: log_put.c,v 11.145 2003/09/13 19:20:39 bostic 
 #include <netinet/in.h>
 
 #include "logmsg.h"
+#include <locks_wrap.h>
+#include <poll.h>
 
 extern unsigned long long get_commit_context(const void *, uint32_t generation);
 extern int bdb_update_startlwm_berk(void *statearg, unsigned long long ltranid,
@@ -62,7 +64,6 @@ static int __log_put_next __P((DB_ENV *,
 	u_int8_t *key, u_int32_t));
 static int __log_putr __P((DB_LOG *, DB_LSN *, const DBT *, u_int32_t, HDR *));
 static int __log_write __P((DB_LOG *, void *, u_int32_t));
-void hexdump(unsigned char *key, int keylen);
 
 pthread_mutex_t log_write_lk = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t log_write_cond = PTHREAD_COND_INITIALIZER;
@@ -75,6 +76,11 @@ int __db_debug_log(DB_ENV *, DB_TXN *, DB_LSN *, u_int32_t, const DBT *,
     int32_t, const DBT *, const DBT *, u_int32_t);
 
 extern int gbl_inflate_log;
+pthread_cond_t gbl_logput_cond = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t gbl_logput_lk = PTHREAD_MUTEX_INITIALIZER;
+
+/* TODO: Delete once finished with testing on local reps */
+extern int gbl_is_physical_replicant;
 
 /*
  * __log_put_pp --
@@ -121,7 +127,22 @@ __log_put_pp(dbenv, lsnp, udbt, flags)
 	return (ret);
 }
 
+int gbl_commit_delay_trace = 0;
 
+static inline int is_commit_record(int rectype) {
+    switch(rectype) {
+        /* regop regop_gen regop_rowlocks */
+        case (DB___txn_regop): 
+        case (DB___txn_regop_gen):
+        case (DB___txn_regop_rowlocks):
+            return 1;
+            break;
+        default:
+            return 0;
+            break;
+    }
+}
+ 
 static int
 __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 	DB_ENV *dbenv;
@@ -133,7 +154,6 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 	void *usr_ptr;
 {
 	DB_CIPHER *db_cipher;
-    uint32_t generation = 0;
 	DBT *dbt, t;
 	DB_LOG *dblp;
 	DB_LSN lsn, old_lsn;
@@ -141,8 +161,8 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 	LOG *lp;
 	int lock_held, need_free, ret;
 	u_int8_t *key;
-	unsigned long long ctx;
 	int rectype = 0;
+	int delay;
 
 	dblp = dbenv->lg_handle;
 	lp = dblp->reginfo.primary;
@@ -158,6 +178,14 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 		pp = udbt->data;
 		LOGCOPY_32(&rectype, pp);
 	}
+
+    /* prevent local replicant from generating logs */
+    if (gbl_is_physical_replicant)
+    {
+        logmsg(LOGMSG_FATAL, "%s line %d invalid logput for physical "
+               "replicant\n", __func__, __LINE__);
+        abort();
+    }
 
 	if (!IS_REP_MASTER(dbenv) && !(dblp->flags & DBLOG_RECOVER)) {
 
@@ -190,7 +218,7 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 
 		memcpy(t.data, udbt->data, udbt->size);
 	}
-	unsigned long long ltranid;
+	unsigned long long ltranid = 0;
 	if (10006 == rectype) {
 		/* Find the logical tranid.  Offset should be (rectype + txn_num + last_lsn) */
 		ltranid = *(unsigned long long *)(&pp[4 + 4 + 8]);
@@ -220,19 +248,14 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 
 	ZERO_LSN(old_lsn);
 
-	/*
-	 * if (rectype == DB___txn_regop)
-	 * {
-	 * fprintf(stderr, "Master (size=%d) PRECONTEXT\n", dbt->size);
-	 * hexdump(dbt->data, dbt->size);
-	 * fprintf(stderr, "\n");
-	 * }
-	 */
-
+    Pthread_mutex_lock(&gbl_logput_lk);
 	if ((ret =
 		__log_put_next(dbenv, lsnp, contextp, dbt, udbt, &hdr, &old_lsn,
 		    off_context, key, flags)) != 0)
 		goto panic_check;
+
+    Pthread_cond_broadcast(&gbl_logput_cond);
+    Pthread_mutex_unlock(&gbl_logput_lk);
 
 	lsn = *lsnp;
 
@@ -352,6 +375,28 @@ err:
 		R_UNLOCK(dbenv, &dblp->reginfo);
 	if (need_free)
 		__os_free(dbenv, dbt->data);
+
+    int bdb_commitdelay(void *arg);
+
+	if (IS_REP_MASTER(dbenv) && is_commit_record(rectype) && 
+			(delay = bdb_commitdelay(dbenv->app_private))) {
+		static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
+		static unsigned long long count=0;
+		static int lastpr = 0;
+		int now;
+
+		/* Don't lock out anything else */
+		Pthread_mutex_lock(&lk);
+		poll(NULL, 0, delay);
+		Pthread_mutex_unlock(&lk);
+		count++;
+		if (gbl_commit_delay_trace && (now = time(NULL))-lastpr) {
+			logmsg(LOGMSG_USER, "%s line %d commit-delayed for %d ms, %llu "
+					"total-delays\n", __func__, __LINE__, delay, count);
+			lastpr = now;
+		}
+	}
+
 	/*
 	 * If auto-remove is set and we switched files, remove unnecessary
 	 * log files.
@@ -438,11 +483,11 @@ __log_put(dbenv, lsnp, udbt, flags)
 	int ret;
 
 	if (!(flags & DB_LOG_DONT_LOCK))
-		pthread_rwlock_rdlock(&dbenv->dbreglk);
+		Pthread_rwlock_rdlock(&dbenv->dbreglk);
 	ret = __log_put_int(dbenv, lsnp, NULL, udbt, flags, -1, NULL);
 
 	if (!(flags & DB_LOG_DONT_LOCK))
-		pthread_rwlock_unlock(&dbenv->dbreglk);
+		Pthread_rwlock_unlock(&dbenv->dbreglk);
 	return ret;
 }
 
@@ -466,12 +511,12 @@ __log_put_commit_context(dbenv, lsnp, contextp, udbt, flags, off_context,
 	int ret;
 
 	if (!(flags & DB_LOG_DONT_LOCK))
-		pthread_rwlock_rdlock(&dbenv->dbreglk);
+		Pthread_rwlock_rdlock(&dbenv->dbreglk);
 	ret =
 	    __log_put_int(dbenv, lsnp, contextp, udbt, flags, off_context,
 	    usr_ptr);
 	if (!(flags & DB_LOG_DONT_LOCK))
-		pthread_rwlock_unlock(&dbenv->dbreglk);
+		Pthread_rwlock_unlock(&dbenv->dbreglk);
 	return ret;
 }
 
@@ -847,10 +892,10 @@ __write_inmemory_buffer(dblp, write_all)
 	lp = dblp->reginfo.primary;
 
 	if (lp->num_segments > 1) {
-		pthread_mutex_lock(&log_write_lk);
+		Pthread_mutex_lock(&log_write_lk);
 		ret = __write_inmemory_buffer_lk(dblp, NULL, write_all);
 
-		pthread_mutex_unlock(&log_write_lk);
+		Pthread_mutex_unlock(&log_write_lk);
 		return ret;
 	} else {
 		return __log_write(dblp, dblp->bufp, (u_int32_t)lp->b_off);
@@ -1051,13 +1096,11 @@ __log_putr(dblp, lsn, dbt, prev, h)
 {
 	DB_CIPHER *db_cipher;
 	DB_ENV *dbenv;
-	DB_LSN f_lsn;
 	LOG *lp;
 	DB_LSN tmplsn;
 	HDR tmp, *hdr;
-	int ret, t_ret;
-	size_t b_off, nr;
-	u_int32_t w_off;
+	int ret;
+	size_t nr;
 
 	dbenv = dblp->dbenv;
 	lp = dblp->reginfo.primary;
@@ -1225,9 +1268,9 @@ __log_lwr_lsn(dblp)
 		 * without grabbing log_write_lk.
 		 */
 		if (curseg != lwrseg) {
-			pthread_mutex_lock(&log_write_lk);
+			Pthread_mutex_lock(&log_write_lk);
 			lwrseg = (lp->l_off / lp->segment_size);
-			pthread_mutex_unlock(&log_write_lk);
+			Pthread_mutex_unlock(&log_write_lk);
 		}
 
 		/* The seg_start_lsn_array is protected by the region lock. */
@@ -1259,7 +1302,6 @@ __log_flush_int(dblp, lsnp, release)
 	DB_LSN flush_lsn, f_lsn, s_lsn;
 	DB_MUTEX *flush_mutexp;
 	LOG *lp;
-	size_t b_off;
 	u_int32_t ncommit, w_off, listcnt;
 	int do_flush, first, ret, wrote_inmem;
 
@@ -1288,7 +1330,8 @@ __log_flush_int(dblp, lsnp, release)
 		    "Database environment corrupt; the wrong log files may",
 		    "have been removed or incompatible database files imported",
 		    "from another environment");
-		return (EINVAL);
+        /* Abort immediately */
+        abort();
 	} else {
 		/*
 		 * See if we need to wait.  s_lsn is not locked so some
@@ -1478,7 +1521,6 @@ flush:	MUTEX_LOCK(dbenv, flush_mutexp);
 	 * First get the current state of the buffer since
 	 * another write may come in, but we may not flush it.
 	 */
-	b_off = lp->b_off;
 	w_off = lp->w_off;
 	f_lsn = lp->f_lsn;
 
@@ -1616,16 +1658,15 @@ __log_write_td(arg)
 {
 	DB_LOG *dblp;
 	LOG *lp;
-	int ret;
 	uint32_t bytes_written;
 
 	dblp = (DB_LOG *)arg;
 	lp = dblp->reginfo.primary;
 
-	pthread_mutex_lock(&log_write_lk);
+	Pthread_mutex_lock(&log_write_lk);
 	do {
 		/* Block until there's more to write. */
-		pthread_cond_wait(&log_write_cond, &log_write_lk);
+		Pthread_cond_wait(&log_write_cond, &log_write_lk);
 
 		/* Write whatever segments I can. */
 		__write_inmemory_buffer_lk(dblp, &bytes_written, 0);
@@ -1645,7 +1686,7 @@ __log_write_td(arg)
 	}
 	while (!log_write_td_should_stop);
 
-	pthread_mutex_unlock(&log_write_lk);
+	Pthread_mutex_unlock(&log_write_lk);
 
 	return NULL;
 }
@@ -1678,7 +1719,7 @@ __log_fill_segments(dblp, startlsn, lsn, addr, len)
 {
 	LOG *lp;
 	DB_LSN *seg_lsn_array, *seg_start_lsn_array;
-	u_int32_t bsize, curseg, segoff, nbufs;
+	u_int32_t curseg, segoff, nbufs;
 	size_t copyamt, segspace, nxtseg;
 	int ret;
 
@@ -1686,8 +1727,6 @@ __log_fill_segments(dblp, startlsn, lsn, addr, len)
 	pthread_once(&log_write_once, __log_write_segments_init);
 
 	lp = dblp->reginfo.primary;
-
-	bsize = lp->buffer_size;
 
 	seg_lsn_array = R_ADDR(&dblp->reginfo, lp->segment_lsns_off);
 	seg_start_lsn_array =
@@ -1731,7 +1770,7 @@ __log_fill_segments(dblp, startlsn, lsn, addr, len)
 			 */
 			nbufs = len / lp->buffer_size;
 
-			pthread_mutex_lock(&log_write_lk);
+			Pthread_mutex_lock(&log_write_lk);
 
 			/* Flush the in-memory buffer. */
 			__write_inmemory_buffer_lk(dblp, NULL, 0);
@@ -1740,7 +1779,7 @@ __log_fill_segments(dblp, startlsn, lsn, addr, len)
 			if ((ret =
 				__log_write(dblp, addr,
 				    nbufs * lp->buffer_size)) != 0) {
-				pthread_mutex_unlock(&log_write_lk);
+				Pthread_mutex_unlock(&log_write_lk);
 				return (ret);
 			}
 
@@ -1758,7 +1797,7 @@ __log_fill_segments(dblp, startlsn, lsn, addr, len)
 			lp->b_off = 0;
 
 			/* I no longer neeed the write lock. */
-			pthread_mutex_unlock(&log_write_lk);
+			Pthread_mutex_unlock(&log_write_lk);
 
 			/* Zero out the last LSN. */
 			ZERO_LSN(seg_lsn_array[lp->num_segments - 1]);
@@ -1795,13 +1834,13 @@ __log_fill_segments(dblp, startlsn, lsn, addr, len)
 
 		/* Move to the next segment. */
 		if (segspace == copyamt) {
-			pthread_cond_signal(&log_write_cond);
+			Pthread_cond_signal(&log_write_cond);
 
 			nxtseg = (lp->b_off + copyamt) % lp->buffer_size;
 
 			/* Can't proceed until this is written to disk. */
 			if (lp->l_off == nxtseg) {
-				pthread_mutex_lock(&log_write_lk);
+				Pthread_mutex_lock(&log_write_lk);
 
 				/* Writer thread didn't flush: write inline. */
 				if (lp->l_off == nxtseg) {
@@ -1810,7 +1849,7 @@ __log_fill_segments(dblp, startlsn, lsn, addr, len)
 					++lp->stat.st_inline_writes;
 				}
 
-				pthread_mutex_unlock(&log_write_lk);
+				Pthread_mutex_unlock(&log_write_lk);
 			}
 
 			assert(lp->l_off != nxtseg);

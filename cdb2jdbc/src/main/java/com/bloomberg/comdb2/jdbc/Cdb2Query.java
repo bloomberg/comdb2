@@ -40,12 +40,26 @@ public class Cdb2Query implements Serializable {
         byte[] value;
     }
 
+    static class Cdb2ReqInfo {
+        long timestampus;
+        int numretries;
+    }
+
+    static class Cdb2ClientInfo {
+        int pid; /* Unsupported */
+        long tid; /* Unsupported */
+        int host_id; /* Unsupported */
+        String argv0;
+        String stack;
+    }
+
     static class Cdb2SqlQuery {
         String dbName;
         String sqlQuery;
         List<Cdb2Flag> flag;
         boolean littleEndian = false;
         List<Cdb2BindValue> bindVars;
+        Cdb2ClientInfo cinfo;
         String tzName;
         List<String> setFlags;
         List<Integer> types;
@@ -59,6 +73,7 @@ public class Cdb2Query implements Serializable {
         boolean hasRetry = false;
         int retry;
         List<Integer> features;
+        Cdb2ReqInfo reqInfo;
 
         public Cdb2SqlQuery(String dbName, String sql) {
             String tz = System.getenv("COMDB2TZ");

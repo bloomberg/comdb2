@@ -7,6 +7,8 @@ schema
         }
 }$$
 
+select sleep(1)
+
 exec procedure sys.cmd.load('/home/mk/data/mohitdb1/agg.csv', 't1')
 
 exec procedure sys.cmd.load('DBDIR/agg.csv', 't1')

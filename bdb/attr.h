@@ -130,7 +130,7 @@ DEF_ATTR(CHECKSUMS, checksums, BOOLEAN, 1,
          "Checksum data pages. Turning this off is highly discouraged.")
 DEF_ATTR(LITTLE_ENDIAN_BTREES, little_endian_btrees, BOOLEAN, 1,
          "Enabling this sets byte ordering for pages to little endian.")
-DEF_ATTR(COMMITDELAYMAX, commitdelaymax, QUANTITY, 8,
+DEF_ATTR(COMMITDELAYMAX, commitdelaymax, QUANTITY, 0,
          "Introduce a delay after each transaction before returning control to "
          "the application. Occasionally useful to allow replicants to catch up "
          "on startup with a very busy system.")
@@ -164,7 +164,7 @@ DEF_ATTR(LOGSEGMENTS, logsegments, QUANTITY, 1,
          "being flushed.")
 
 #ifdef BERKDB_4_2
-#define REPLIMIT_DEFAULT (256 * 1024)
+#define REPLIMIT_DEFAULT (100 * 1024 * 1024)
 #elif defined(BERKDB_4_3) || defined(BERKDB_4_5) || defined(BERKDB_46)
 #define REPLIMIT_DEFAULT (1024 * 1024)
 #else
@@ -296,9 +296,6 @@ DEF_ATTR(
 DEF_ATTR(MIN_KEEP_LOGS_AGE_HWM, min_keep_logs_age_hwm, QUANTITY, 0, NULL)
 DEF_ATTR(LOG_DEBUG_CTRACE_THRESHOLD, log_debug_ctrace_threshold, QUANTITY, 20,
          "Limit trace about log file deletion to this many events.")
-DEF_ATTR(GOOSE_REPLICATION_FOR_INCOHERENT_NODES,
-         goose_replication_for_incoherent_nodes, BOOLEAN, 0,
-         "Call for election for nodes affected by COMMITDELAYBEHINDTHRESH.")
 DEF_ATTR(DISABLE_UPDATE_STRIPE_CHANGE, disable_update_stripe_change, BOOLEAN, 1,
          "Enable to move records between stripes on an update.")
 DEF_ATTR(REP_SKIP_PHASE_3, rep_skip_phase_3, BOOLEAN, 0, NULL)
@@ -373,11 +370,13 @@ DEF_ATTR(SOSQL_MAX_COMMIT_WAIT_SEC, sosql_max_commit_wait_sec, SECS, 600,
 DEF_ATTR(SOSQL_DDL_MAX_COMMIT_WAIT_SEC, sosql_ddl_max_commit_wait_sec, SECS,
          24 * 3600 * 3,
          "Wait for the master to commit a DDL transaction for up to this long.")
-DEF_ATTR(SOSQL_POKE_TIMEOUT_SEC, sosql_poke_timeout_sec, QUANTITY, 12,
+DEF_ATTR(SOSQL_POKE_TIMEOUT_SEC, sosql_poke_timeout_sec, QUANTITY, 2,
          "On replicants, when checking on master for transaction status, retry "
          "the check after this many seconds.")
-DEF_ATTR(SOSQL_POKE_FREQ_SEC, sosql_poke_freq_sec, QUANTITY, 5,
+DEF_ATTR(SOSQL_POKE_FREQ_SEC, sosql_poke_freq_sec, QUANTITY, 1,
          "On replicants, check this often for transaction status.")
+DEF_ATTR(SOSQL_MAX_DEADLOCK_RECOVERED, sosql_max_deadlock_recovered, QUANTITY,
+         100, "On replicants, maximum deadlock recovered count allowed.")
 DEF_ATTR(SQL_QUEUEING_DISABLE_TRACE, sql_queueing_disable, BOOLEAN, 0,
          "Disable trace when SQL requests are starting to queue.")
 DEF_ATTR(SQL_QUEUEING_CRITICAL_TRACE, sql_queueing_critical_trace, QUANTITY,
@@ -456,6 +455,8 @@ DEF_ATTR(SC_RESTART_SEC, sc_restart_sec, QUANTITY, 0,
          "startup/new master election.")
 DEF_ATTR(INDEXREBUILD_SAVE_EVERY_N, indexrebuild_save_every_n, QUANTITY, 1,
          "Save schema change state to every n-th row for index only rebuilds.")
+DEF_ATTR(SC_LOGICAL_SAVE_LSN_EVERY_N, sc_logical_save_lsn_every_n, QUANTITY, 10,
+         "Save schema change redo lsn to llmeta every n-th transactions.")
 DEF_ATTR(SC_DECREASE_THRDS_ON_DEADLOCK, sc_decrease_thrds_on_deadlock, BOOLEAN,
          1, "Decrease number of schema change threads on deadlock - way to "
             "have schema change backoff.")
@@ -549,7 +550,7 @@ DEF_ATTR(
     REMOVE_COMMITDELAY_ON_COHERENT_CLUSTER,
     remove_commitdelay_on_coherent_cluster, BOOLEAN, 1,
     "Stop delaying commits when all the nodes in the cluster are coherent.")
-DEF_ATTR(DISABLE_SERVER_SOCKPOOL, disable_sockpool, BOOLEAN, 1,
+DEF_ATTR(DISABLE_SERVER_SOCKPOOL, disable_sockpool, BOOLEAN, 0,
          "Don't get connections to other databases from sockpool.")
 DEF_ATTR(TIMEOUT_SERVER_SOCKPOOL, timeout_sockpool, SECS, 10,
          "Timeout for getting a connection to another database from sockpool.")
@@ -564,10 +565,10 @@ DEF_ATTR(LEASE_RENEW_INTERVAL, lease_renew_interval, MSECS, 200,
          "How often we renew leases.")
 DEF_ATTR(DOWNGRADE_PENALTY, downgrade_penalty, MSECS, 10000,
          "Prevent upgrades for at least this many ms after a downgrade.")
-DEF_ATTR(CATCHUP_WINDOW, catchup_window, BYTES, 1000000,
+DEF_ATTR(CATCHUP_WINDOW, catchup_window, BYTES, 40000000,
          "Start waiting in waitforseqnum if replicant is within this many "
          "bytes of master.")
-DEF_ATTR(CATCHUP_ON_COMMIT, catchup_on_commit, BOOLEAN, 1,
+DEF_ATTR(CATCHUP_ON_COMMIT, catchup_on_commit, BOOLEAN, 0,
          "Replicant to INCOHERENT_WAIT rather than INCOHERENT on commit if "
          "within CATCHUP_WINDOW.")
 DEF_ATTR(
@@ -610,6 +611,9 @@ DEF_ATTR(TIMEPART_CHECK_SHARD_EXISTENCE, timepart_check_shard_existence,
 DEF_ATTR(
     IGNORE_BAD_TABLE, ignore_bad_table, BOOLEAN, 0,
     "Allow a database with a corrupt table to come up, without that table.")
+
+DEF_ATTR(TIMEOUT_FDB_TRANS_SYNC, timeout_fdb_trans_sync, MSECS, 4000, "Timeout for retrieving a foreign table transaction")
+
 DEF_ATTR(TIMEPART_NO_ROLLOUT, timepart_no_rollout, BOOLEAN, 0,
          "Prevent new rollouts for time partitions.")
 /* Keep enabled for the merge */
@@ -643,7 +647,7 @@ DEF_ATTR(STARTUP_SYNC_ATTEMPTS, startup_sync_attempts, QUANTITY, 5, NULL)
 DEF_ATTR(DEBUG_TIMEPART_CRON, dbg_timepart_cron, BOOLEAN, 0, NULL)
 DEF_ATTR(DEBUG_TIMEPART_SQLITE, dbg_timepart_SQLITE, BOOLEAN, 0, NULL)
 DEF_ATTR(DELAY_FILE_OPEN, delay_file_open, MSECS, 0, NULL)
-DEF_ATTR(DELAY_LOCK_TABLE_RECORD_C, delay_lock_table_record_c, MSECS, 0, NULL)
+DEF_ATTR(DELAY_WRITES_IN_RECORD_C, delay_writes_in_record_c, MSECS, 0, NULL)
 
 DEF_ATTR(NET_SEND_GBLCONTEXT, net_send_gblcontext, BOOLEAN, 0,
          "Enable net_send for USER_TYPE_GBLCONTEXT.")

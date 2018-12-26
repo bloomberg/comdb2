@@ -37,15 +37,12 @@
 #include "bdb_int.h"
 #include "locks.h"
 #include "list.h"
-#include <plbitlib.h> /* for bset/btst */
-
 #include <memory_sync.h>
 #include <logmsg.h>
 
 int bdb_keycontainsgenid(bdb_state_type *bdb_state, int ixnum)
 {
-    return ((bdb_state->ixdups[ixnum]) ||
-            ((!bdb_state->ixdups[ixnum] && bdb_state->ixnulls[ixnum])));
+    return (bdb_state->ixdups[ixnum] || bdb_state->ixnulls[ixnum]);
 }
 
 int bdb_maybe_use_genid_for_key(
@@ -95,6 +92,12 @@ int bdb_maybe_use_genid_for_key(
         p_dbt_key->size = bdb_state->ixlen[ixnum];
     }
 
+    assert(rc == 0 || *ppKeyMaxBuf != 0);
+#ifndef NDEBUG
+    unsigned long long test_genid = get_search_genid(bdb_state, genid);
+#endif
+    assert(rc == 0 || 0 == memcmp(*ppKeyMaxBuf + bdb_state->ixlen[ixnum],
+                                  &test_genid, sizeof(unsigned long long)));
     return rc;
 }
 
@@ -151,18 +154,6 @@ int setup_waittime(struct timespec *waittime, int waitms)
     return 0;
 }
 
-void hexdumpdbt(DBT *dbt)
-{
-    unsigned char *s = dbt->data;
-    int len = dbt->size;
-
-    while (len) {
-        printf("%02x", *s);
-        s++;
-        len--;
-    }
-}
-
 /* Given a berkeley db lockid (i.e. some bytes of data), try to get
  * a human readable name for it.  This is based on __lock_printlock
  * in lock/lock_stat.c */
@@ -202,21 +193,13 @@ void bdb_lock_name(bdb_state_type *bdb_state, char *s, size_t slen,
         }
 
     } else {
-        const unsigned char *cptr = lockid;
         snprintf(s, slen, "lockid_leen=%u", (unsigned)lockid_len);
     }
 }
 
 int bdb_write_preamble(bdb_state_type *bdb_state, int *bdberr)
 {
-    bdb_state_type *parent;
-
     *bdberr = BDBERR_NOERROR;
-
-    if (bdb_state->parent)
-        parent = bdb_state->parent;
-    else
-        parent = bdb_state;
 
     if (!bdb_state->read_write) {
         *bdberr = BDBERR_READONLY;

@@ -39,6 +39,7 @@ static const char revid[] = "$Id: env_open.c,v 11.144 2003/09/13 18:39:34 bostic
 #include "dbinc/txn.h"
 
 #include "logmsg.h"
+#include "locks_wrap.h"
 
 static int __db_tmp_open __P((DB_ENV *, u_int32_t, char *, DB_FH **));
 static int __dbenv_config __P((DB_ENV *, const char *, u_int32_t));
@@ -62,6 +63,33 @@ db_version(majverp, minverp, patchp)
 	if (patchp != NULL)
 		*patchp = DB_VERSION_PATCH;
 	return ((char *)DB_VERSION_STRING);
+}
+
+extern int gbl_instrument_dblist;
+
+static inline void 
+clear_adj_fileid(dbenv, func)
+	DB_ENV *dbenv;
+	const char *func;
+{
+	int i;
+	DB *db;
+
+	for (i = 1; i <= dbenv->maxdb; i++) {
+		db = listc_rtl(&dbenv->dbs[i]);
+		while (db) {
+			if (gbl_instrument_dblist)
+				logmsg(LOGMSG_DEBUG, "%s removing db %p adj_fileid %u from "
+						"dbenv %p list %p\n", func, db, db->adj_fileid, dbenv,
+						&dbenv->dbs[db->adj_fileid]);
+			db->inadjlist = 0;
+			if (!db->dblistlinks.le_prev)
+				abort();
+			LIST_REMOVE(db, dblistlinks);
+			db->dblistlinks.le_prev = NULL;
+			db = listc_rtl(&dbenv->dbs[i]);
+		}
+	}
 }
 
 /*
@@ -225,9 +253,6 @@ __dbenv_open(dbenv, db_home, flags, mode)
 	if (LF_ISSET(DB_ROWLOCKS))
 		F_SET(dbenv, DB_ENV_ROWLOCKS);
 
-    if ((ret = pthread_mutex_init(&dbenv->durable_lsn_lk, NULL)) != 0)
-        goto err;
-
 	/* Default permissions are read-write for both owner and group. */
 	dbenv->db_mode = mode == 0 ? __db_omode("rwrw--") : mode;
 #endif
@@ -285,11 +310,10 @@ __dbenv_open(dbenv, db_home, flags, mode)
 	/* Save the flags passed to DB_ENV->open. */
 	dbenv->open_flags = flags;
 
-    ret = pthread_rwlock_init(&dbenv->dbreglk, NULL);
-    if (ret) {
-        __db_err(dbenv, "Can't create dbreglk lock %d %s", ret, strerror(ret));
-        goto err;
-    }
+    Pthread_rwlock_init(&dbenv->dbreglk, NULL);
+    Pthread_rwlock_init(&dbenv->recoverlk, NULL);
+
+    Pthread_rwlock_init(&dbenv->recoverlk, NULL);
 
 	/*
 	 * Initialize the subsystems.
@@ -337,13 +361,14 @@ __dbenv_open(dbenv, db_home, flags, mode)
 	/* Init this part before txn's */
 	if (LF_ISSET(DB_INIT_REP)) {
 		dbenv->ltrans_hash = hash_init(sizeof(u_int64_t));
-		pthread_mutex_init(&dbenv->ltrans_hash_lk, NULL);
+		Pthread_mutex_init(&dbenv->ltrans_hash_lk, NULL);
 		listc_init(&dbenv->active_ltrans,
 		    offsetof(struct __ltrans_descriptor, lnk));
 		listc_init(&dbenv->inactive_ltrans,
 		    offsetof(struct __ltrans_descriptor, lnk));
-		pthread_mutex_init(&dbenv->ltrans_inactive_lk, NULL);
-		pthread_mutex_init(&dbenv->ltrans_active_lk, NULL);
+		Pthread_mutex_init(&dbenv->ltrans_inactive_lk, NULL);
+		Pthread_mutex_init(&dbenv->ltrans_active_lk, NULL);
+		Pthread_mutex_init(&dbenv->locked_lsn_lk, NULL);
 	}
 
 	if (LF_ISSET(DB_INIT_TXN)) {
@@ -520,18 +545,7 @@ foundlsn:
 	 * region for environments and db handles.  So, the mpool region must
 	 * already be initialized.
 	 */
-	{
-		int i;
-		DB *db;
-
-		for (i = 1; i < dbenv->maxdb; i++) {
-			db = listc_rtl(&dbenv->dbs[i]);
-			while (db) {
-				db->inadjlist = 0;
-				db = listc_rtl(&dbenv->dbs[i]);
-			}
-		}
-	}
+	clear_adj_fileid(dbenv, __func__);
 	LIST_INIT(&dbenv->dblist);
 	if (F_ISSET(dbenv, DB_ENV_THREAD) && LF_ISSET(DB_INIT_MPOOL)) {
 		dbmp = dbenv->mp_handle;
@@ -585,9 +599,9 @@ foundlsn:
 		    dbenv->num_recovery_worker_threads);
 		thdpool_set_linger(dbenv->recovery_workers, 30);
 		thdpool_set_maxqueue(dbenv->recovery_workers, 8000);
-		pthread_mutex_init(&dbenv->recover_lk, NULL);
-		pthread_cond_init(&dbenv->recover_cond, NULL);
-		pthread_rwlock_init(&dbenv->ser_lk, NULL);
+		Pthread_mutex_init(&dbenv->recover_lk, NULL);
+		Pthread_cond_init(&dbenv->recover_cond, NULL);
+		Pthread_rwlock_init(&dbenv->ser_lk, NULL);
 		listc_init(&dbenv->inflight_transactions,
 		    offsetof(struct __recovery_processor, lnk));
 		listc_init(&dbenv->inactive_transactions,
@@ -721,9 +735,7 @@ __dbenv_config(dbenv, db_home, flags)
 	const char *db_home;
 	u_int32_t flags;
 {
-	FILE *fp;
 	int ret;
-	char *p, buf[256];
 
 	/*
 	 * Set the database home.  Do this before calling __db_appname,
@@ -855,8 +867,6 @@ __dbenv_close(dbenv, rep_check)
 	if (dbenv->comdb2_dirs.tmp_dir != NULL)
 		__os_free(dbenv, dbenv->comdb2_dirs.tmp_dir);
 
-        pthread_mutex_destroy(&dbenv->durable_lsn_lk);
-
 	if (dbenv->ltrans_hash != NULL) {
         hash_clear(dbenv->ltrans_hash);
         hash_free(dbenv->ltrans_hash);
@@ -931,6 +941,7 @@ __dbenv_refresh(dbenv, orig_flags, rep_check)
 	 * we close databases and try to acquire the mutex when we close
 	 * log file handles.  Ick.
 	 */
+	clear_adj_fileid(dbenv, __func__);
 	LIST_INIT(&dbenv->dblist);
 	if (dbenv->dblist_mutexp != NULL) {
 		dbmp = dbenv->mp_handle;
@@ -962,7 +973,6 @@ __dbenv_refresh(dbenv, orig_flags, rep_check)
 		}
 	}
 
-skip:
 
 
 	/*
@@ -1105,8 +1115,8 @@ __db_appname(dbenv, appname, file, tmp_oflags, fhpp, namep)
 	/* Everything else is relative to the environment home. */
 	if (dbenv != NULL)
 		a = dbenv->db_home;
-
-retry:	/*
+	/*
+retry:
 	 * DB_APP_NONE:
 	 *      DB_HOME/file
 	 * DB_APP_DATA:
@@ -1238,10 +1248,7 @@ __db_tmp_open(dbenv, tmp_oflags, path, fhpp)
 	char *path;
 	DB_FH **fhpp;
 {
-	u_int32_t id;
-	int mode, isdir, ret;
-	const char *p;
-	char *trv;
+	int mode, ret;
 	static pthread_mutex_t mutex_copy_before;
 	static pthread_mutex_t mutex_copy_after;
 
@@ -1249,10 +1256,10 @@ __db_tmp_open(dbenv, tmp_oflags, path, fhpp)
 	static int num;
 
 	memcpy(&mutex_copy_before, &tmp_open_lock, sizeof(mutex_copy_before));
-	pthread_mutex_lock(&tmp_open_lock);
+	Pthread_mutex_lock(&tmp_open_lock);
 	num++;
 	x = num;
-	pthread_mutex_unlock(&tmp_open_lock);
+	Pthread_mutex_unlock(&tmp_open_lock);
 	memcpy(&mutex_copy_after, &tmp_open_lock, sizeof(mutex_copy_after));
 
 	/*   
@@ -1296,8 +1303,7 @@ __checkpoint_open(DB_ENV *dbenv, const char *db_home)
 	char buf[PATH_MAX];
 	char fname[PATH_MAX];
 	const char *pbuf;
-	struct __db_checkpoint ckpt = { 0 };
-	int niop = 0;
+	struct __db_checkpoint ckpt = {{0}};
 	DB_LSN lsn;
 	size_t sz;
 

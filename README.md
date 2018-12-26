@@ -30,19 +30,34 @@ On every machine in the cluster:
 
 2. Install prerequisites: 
    
-   ** Ubuntu 16.04, 16.10, 17.04, Windows Subsystem for Linux (WSL) **
+   **Ubuntu 16.04, 16.10, 17.04, Windows Subsystem for Linux (WSL)**
         
    ```
-   sudo apt-get install -y build-essential cmake bison flex libprotobuf-c-dev libreadline-dev libsqlite3-dev libssl-dev libunwind-dev libz1 libz-dev make gawk protobuf-c-compiler uuid-dev liblz4-tool liblz4-dev libprotobuf-c1 libsqlite3-0 libuuid1 libz1 tzdata ncurses-dev tcl bc
+   sudo apt-get install -y \
+       bison \
+       build-essential \
+       cmake \
+       flex \
+       protobuf-c-compiler \
+       liblz4-dev \
+       libncurses5-dev \
+       libprotobuf-c-dev \
+       libreadline-dev \
+       libssl-dev \
+       libsqlite3-dev \
+       libunwind-dev \
+       tcl \
+       uuid-dev \
+       zlib1g-dev
    ```
 
-   ** CentOS 7 **
+   **CentOS 7**
 
    ```
    sudo yum install -y gcc gcc-c++ cmake3 protobuf-c libunwind libunwind-devel protobuf-c-devel byacc flex openssl openssl-devel openssl-libs readline-devel sqlite sqlite-devel libuuid libuuid-devel zlib-devel zlib lz4-devel gawk tcl epel-release lz4 rpm-build which
    ```
 
-   ** macOS High Sierra (experimental) **
+   **macOS High Sierra (experimental)**
 
    Install Xcode and Homebrew. Then install required libraries:
 
@@ -149,15 +164,13 @@ On every machine in the cluster:
 
 | Directory | Description |
 | --- | --- |
-| bb/           | Useful generic modules |
 | bbinc/        | Header & Generic include files |
 | bdb/          | Table layer |
 | berkdb/       | Btrees layer |
 | cdb2api/      | Client code |
 | cdb2jdbc/     | JDBC driver |
+| cmake/        | cmake configuration files |
 | comdb2rle/    | Run length encoding |
-| comdb2tests/  | Contains all the tests that will be run for this version |
-| config/       | lrl config files |
 | contrib/      | Misc useful programs that aren't part of core Comdb2 |
 | crc32c/       | Checksum component |
 | csc2/         | csc2 processing |
@@ -165,15 +178,20 @@ On every machine in the cluster:
 | cson/         | JSON library |
 | datetime/     | Datetime component |
 | db/           | Types layer and overall glue |
-| deb/          | Sample debian package config |
 | dfp/          | Decimal number component |
 | dlmalloc/     | Local malloc version |
 | docs/         | Documentation |
 | lua/          | All things pertaining to lua VM used for stored procedures |
+| mem/          | Memory accounting subsystem |
 | net/          | Network component |
+| pkg/          | deb and rpm packaging rules |
+| plugin/       | Plugin subsystem |
 | protobuf/     | API to communicate with the server |
-| schemachange  | Code for table create/alter/truncate/etc |
+| schemachange/ | Code for table create/alter/truncate/etc |
+| sockpool/     | sockpool related files  |
 | sqlite/       | Sqlite VM SQL engine  |
 | tcl/          | Tcl language bindings |
 | tests/        | Comdb2 test suite |
 | tools/        | Tools that are part of Comdb2 core |
+| util/         | Useful generic modules |
+

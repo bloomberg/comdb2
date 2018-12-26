@@ -32,6 +32,7 @@ static const char revid[] = "$Id: mp_alloc.c,v 11.40 2003/07/03 02:24:34 bostic 
 #include "util.h"
 #include <cdb2_constants.h>
 #include "logmsg.h"
+#include "locks_wrap.h"
 
 typedef struct {
 	DB_MPOOL_HASH *bucket;
@@ -51,7 +52,6 @@ __memp_dump_bufferpool_info(dbenv, f)
 	DB_MUTEX *mutexp;
 	REGINFO *memreg;
 	MPOOL *mp, *c_mp;
-	MPOOLFILE *bh_mfp;
 	DB_MPOOL *dbmp;
 	int count, n_cache;
 	u_int64_t bufcnt;
@@ -117,7 +117,6 @@ static void dump_page_stats(DB_ENV *dbenv) {
 	DB_TXN_STAT *txn_stats;
 	DB_TXN_ACTIVE *active;
 	int i;
-	char str[100];
 	FILE *out;
 	char *fname;
 	struct tm tm;
@@ -164,57 +163,57 @@ static void dump_page_stats(DB_ENV *dbenv) {
 	dbenv->memp_dump_region(dbenv, "A", out);
 	dbenv->memp_stat(dbenv, &mpool_stats, &fsp, 0);
 
-	logmsgf(LOGMSG_USER, out, "st_gbytes: %d\n", mpool_stats->st_gbytes);
-	logmsgf(LOGMSG_USER, out, "st_bytes: %d\n", mpool_stats->st_bytes);
-	logmsgf(LOGMSG_USER, out, "st_ncache: %d\n", mpool_stats->st_ncache);
-	logmsgf(LOGMSG_USER, out, "st_regsize: %d\n", mpool_stats->st_regsize);
-	logmsgf(LOGMSG_USER, out, "st_map: %d\n", mpool_stats->st_map);
-	logmsgf(LOGMSG_USER, out, "st_cache_hit: %d\n", mpool_stats->st_cache_hit);
-	logmsgf(LOGMSG_USER, out, "st_cache_miss: %d\n", mpool_stats->st_cache_miss);
-	logmsgf(LOGMSG_USER, out, "st_page_in: %d\n", mpool_stats->st_page_in);
-	logmsgf(LOGMSG_USER, out, "st_page_out: %d\n", mpool_stats->st_page_out);
-	logmsgf(LOGMSG_USER, out, "st_ro_merges: %d\n", mpool_stats->st_ro_merges);
-	logmsgf(LOGMSG_USER, out, "st_rw_merges: %d\n", mpool_stats->st_rw_merges);
-	logmsgf(LOGMSG_USER, out, "st_ro_evict: %d\n", mpool_stats->st_ro_evict);
-	logmsgf(LOGMSG_USER, out, "st_rw_evict: %d\n", mpool_stats->st_rw_evict);
-	logmsgf(LOGMSG_USER, out, "st_ro_levict: %d\n", mpool_stats->st_ro_levict);
-	logmsgf(LOGMSG_USER, out, "st_rw_levict: %d\n", mpool_stats->st_rw_levict);
-	logmsgf(LOGMSG_USER, out, "st_pf_evict: %d\n", mpool_stats->st_pf_evict);
-	logmsgf(LOGMSG_USER, out, "st_rw_evict_skip: %d\n", mpool_stats->st_rw_evict_skip);
-	logmsgf(LOGMSG_USER, out, "st_page_trickle: %d\n", mpool_stats->st_page_trickle);
-	logmsgf(LOGMSG_USER, out, "st_pages: %d\n", mpool_stats->st_pages);
-	logmsgf(LOGMSG_USER, out, "st_page_clean: %d\n", mpool_stats->st_page_clean);
-	logmsgf(LOGMSG_USER, out, "st_page_dirty: %d\n", mpool_stats->st_page_dirty);
-	logmsgf(LOGMSG_USER, out, "st_hash_buckets: %d\n", mpool_stats->st_hash_buckets);
-	logmsgf(LOGMSG_USER, out, "st_hash_searches: %d\n", mpool_stats->st_hash_searches);
-	logmsgf(LOGMSG_USER, out, "st_hash_longest: %d\n", mpool_stats->st_hash_longest);
-	logmsgf(LOGMSG_USER, out, "st_hash_examined: %d\n", mpool_stats->st_hash_examined);
-	logmsgf(LOGMSG_USER, out, "st_hash_nowait: %d\n", mpool_stats->st_hash_nowait);
-	logmsgf(LOGMSG_USER, out, "st_hash_wait: %d\n", mpool_stats->st_hash_wait);
-	logmsgf(LOGMSG_USER, out, "st_hash_max_wait: %d\n", mpool_stats->st_hash_max_wait);
-	logmsgf(LOGMSG_USER, out, "st_hash_region_wait: %d\n", mpool_stats->st_region_wait);
-	logmsgf(LOGMSG_USER, out, "st_hash_region_nowait: %d\n",
+	logmsgf(LOGMSG_USER, out, "st_gbytes: %"PRId64"\n", mpool_stats->st_gbytes);
+	logmsgf(LOGMSG_USER, out, "st_bytes: %"PRId64"\n", mpool_stats->st_bytes);
+	logmsgf(LOGMSG_USER, out, "st_ncache: %"PRId64"\n", mpool_stats->st_ncache);
+	logmsgf(LOGMSG_USER, out, "st_regsize: %"PRId64"\n", mpool_stats->st_regsize);
+	logmsgf(LOGMSG_USER, out, "st_map: %"PRId64"\n", mpool_stats->st_map);
+	logmsgf(LOGMSG_USER, out, "st_cache_hit: %"PRId64"\n", mpool_stats->st_cache_hit);
+	logmsgf(LOGMSG_USER, out, "st_cache_miss: %"PRId64"\n", mpool_stats->st_cache_miss);
+	logmsgf(LOGMSG_USER, out, "st_page_in: %"PRId64"\n", mpool_stats->st_page_in);
+	logmsgf(LOGMSG_USER, out, "st_page_out: %"PRId64"\n", mpool_stats->st_page_out);
+	logmsgf(LOGMSG_USER, out, "st_ro_merges: %"PRId64"\n", mpool_stats->st_ro_merges);
+	logmsgf(LOGMSG_USER, out, "st_rw_merges: %"PRId64"\n", mpool_stats->st_rw_merges);
+	logmsgf(LOGMSG_USER, out, "st_ro_evict: %"PRId64"\n", mpool_stats->st_ro_evict);
+	logmsgf(LOGMSG_USER, out, "st_rw_evict: %"PRId64"\n", mpool_stats->st_rw_evict);
+	logmsgf(LOGMSG_USER, out, "st_ro_levict: %"PRId64"\n", mpool_stats->st_ro_levict);
+	logmsgf(LOGMSG_USER, out, "st_rw_levict: %"PRId64"\n", mpool_stats->st_rw_levict);
+	logmsgf(LOGMSG_USER, out, "st_pf_evict: %"PRId64"\n", mpool_stats->st_pf_evict);
+	logmsgf(LOGMSG_USER, out, "st_rw_evict_skip: %"PRId64"\n", mpool_stats->st_rw_evict_skip);
+	logmsgf(LOGMSG_USER, out, "st_page_trickle: %"PRId64"\n", mpool_stats->st_page_trickle);
+	logmsgf(LOGMSG_USER, out, "st_pages: %"PRId64"\n", mpool_stats->st_pages);
+	logmsgf(LOGMSG_USER, out, "st_page_clean: %"PRId64"\n", mpool_stats->st_page_clean);
+	logmsgf(LOGMSG_USER, out, "st_page_dirty: %"PRId32"\n", mpool_stats->st_page_dirty);
+	logmsgf(LOGMSG_USER, out, "st_hash_buckets: %"PRId64"\n", mpool_stats->st_hash_buckets);
+	logmsgf(LOGMSG_USER, out, "st_hash_searches: %"PRId64"\n", mpool_stats->st_hash_searches);
+	logmsgf(LOGMSG_USER, out, "st_hash_longest: %"PRId64"\n", mpool_stats->st_hash_longest);
+	logmsgf(LOGMSG_USER, out, "st_hash_examined: %"PRId64"\n", mpool_stats->st_hash_examined);
+	logmsgf(LOGMSG_USER, out, "st_hash_nowait: %"PRId64"\n", mpool_stats->st_hash_nowait);
+	logmsgf(LOGMSG_USER, out, "st_hash_wait: %"PRId64"\n", mpool_stats->st_hash_wait);
+	logmsgf(LOGMSG_USER, out, "st_hash_max_wait: %"PRId64"\n", mpool_stats->st_hash_max_wait);
+	logmsgf(LOGMSG_USER, out, "st_hash_region_wait: %"PRId64"\n", mpool_stats->st_region_wait);
+	logmsgf(LOGMSG_USER, out, "st_hash_region_nowait: %"PRId64"\n",
 		mpool_stats->st_region_nowait);
-	logmsgf(LOGMSG_USER, out, "st_alloc: %d\n", mpool_stats->st_alloc);
-	logmsgf(LOGMSG_USER, out, "st_alloc_buckets: %d\n", mpool_stats->st_alloc_buckets);
-	logmsgf(LOGMSG_USER, out, "st_alloc_max_buckets: %d\n", 
+	logmsgf(LOGMSG_USER, out, "st_alloc: %"PRId64"\n", mpool_stats->st_alloc);
+	logmsgf(LOGMSG_USER, out, "st_alloc_buckets: %"PRId64"\n", mpool_stats->st_alloc_buckets);
+	logmsgf(LOGMSG_USER, out, "st_alloc_max_buckets: %"PRId64"\n", 
 		mpool_stats->st_alloc_max_buckets);
-	logmsgf(LOGMSG_USER, out, "st_alloc_pages: %d\n", mpool_stats->st_alloc_pages);
-	logmsgf(LOGMSG_USER, out, "st_alloc_max_pages: %d\n",
+	logmsgf(LOGMSG_USER, out, "st_alloc_pages: %"PRId64"\n", mpool_stats->st_alloc_pages);
+	logmsgf(LOGMSG_USER, out, "st_alloc_max_pages: %"PRId64"\n",
 		mpool_stats->st_alloc_max_pages);
 
 	for(; fsp != NULL && *fsp != NULL; ++fsp)
 	{
 		logmsgf(LOGMSG_USER, out, "Pool file [%s]:-\n", (*fsp)->file_name);
-		logmsgf(LOGMSG_USER, out, "  st_pagesize   : %u\n", (unsigned)(*fsp)->st_pagesize);
-		logmsgf(LOGMSG_USER, out, "  st_map        : %u\n", (unsigned)(*fsp)->st_map);
-		logmsgf(LOGMSG_USER, out, "  st_cache_hit  : %u\n", (unsigned)(*fsp)->st_cache_hit);
-		logmsgf(LOGMSG_USER, out, "  st_cache_miss : %u\n", (unsigned)(*fsp)->st_cache_miss);
-		logmsgf(LOGMSG_USER, out, "  st_page_create: %u\n", (unsigned)(*fsp)->st_page_create);
-		logmsgf(LOGMSG_USER, out, "  st_page_in    : %u\n", (unsigned)(*fsp)->st_page_in);
-		logmsgf(LOGMSG_USER, out, "  st_page_out   : %u\n", (unsigned)(*fsp)->st_page_out);
-		logmsgf(LOGMSG_USER, out, "  st_ro_merges  : %u\n", (unsigned)(*fsp)->st_ro_merges);
-		logmsgf(LOGMSG_USER, out, "  st_rw_merges  : %u\n", (unsigned)(*fsp)->st_rw_merges);
+		logmsgf(LOGMSG_USER, out, "  st_pagesize   : %"PRId64"\n", (*fsp)->st_pagesize);
+		logmsgf(LOGMSG_USER, out, "  st_map        : %"PRId64"\n", (*fsp)->st_map);
+		logmsgf(LOGMSG_USER, out, "  st_cache_hit  : %"PRId64"\n", (*fsp)->st_cache_hit);
+		logmsgf(LOGMSG_USER, out, "  st_cache_miss : %"PRId64"\n", (*fsp)->st_cache_miss);
+		logmsgf(LOGMSG_USER, out, "  st_page_create: %"PRId64"\n", (*fsp)->st_page_create);
+		logmsgf(LOGMSG_USER, out, "  st_page_in    : %"PRId64"\n", (*fsp)->st_page_in);
+		logmsgf(LOGMSG_USER, out, "  st_page_out   : %"PRId64"\n", (*fsp)->st_page_out);
+		logmsgf(LOGMSG_USER, out, "  st_ro_merges  : %"PRId64"\n", (*fsp)->st_ro_merges);
+		logmsgf(LOGMSG_USER, out, "  st_rw_merges  : %"PRId64"\n", (*fsp)->st_rw_merges);
 	}
 
 	free(mpool_stats);
@@ -341,8 +340,8 @@ found:		if (offsetp != NULL)
 		return (0);
 	} else if (giveup || c_mp->stat.st_pages == 0) {
 		R_UNLOCK(dbenv, memreg);
-		logmsg(LOGMSG_FATAL, 
-                "unable to allocate space from the buffer cache");
+		logmsg(LOGMSG_FATAL,
+		       "unable to allocate space from the buffer cache\n");
 		abort();
 	}
 
@@ -401,7 +400,7 @@ found:		if (offsetp != NULL)
 		 * This test ignores pathological cases like no buffers in the
 		 * system -- that shouldn't be possible.
 		 */
-		if ((++buckets % c_mp->htab_buckets) == 0) {
+		if (buckets++ == c_mp->htab_buckets) {
 			if (freed_space > 0)
 				goto alloc;
 			R_UNLOCK(dbenv, memreg);
@@ -422,7 +421,7 @@ found:		if (offsetp != NULL)
 				sleeptime++;
 				if (__gbl_max_mpalloc_sleeptime &&
 				    sleeptime > __gbl_max_mpalloc_sleeptime) {
-					pthread_mutex_lock(&dump_once_lk);
+					Pthread_mutex_lock(&dump_once_lk);
 					alarm(10);
 					dump_page_stats(dbenv);
 					_exit(1);

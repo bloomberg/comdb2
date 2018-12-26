@@ -32,9 +32,10 @@
 #include "comdb2_initializer.h"
 #include "rtcpu.h"
 #include "all_static_plugins.h"
+#include "trigger.h"
 
 /* All registered plugins */
-comdb2_plugin_t **gbl_plugins;
+comdb2_plugin_t *gbl_plugins[MAXPLUGINS];
 
 /* If specified, the plugins will be loaded from this directory. */
 static char *plugindir;
@@ -42,11 +43,13 @@ static char *plugindir;
 extern hash_t *gbl_appsock_hash;
 extern hash_t *gbl_opcode_hash;
 
+/* Keep track of queue handlers, we'll need to transfer them to thedb
+ * once that's created */
+static comdb2_queue_consumer_t *queue_consumer_handlers[CONSUMER_TYPE_LAST];
+
 static int install_plugin_int(comdb2_plugin_t *new_plugin)
 {
-    comdb2_plugin_t *plugin = NULL;
     int i;
-
     assert(new_plugin);
 
     for (i = 0; gbl_plugins[i]; ++i) {
@@ -68,7 +71,6 @@ static int install_plugin_int(comdb2_plugin_t *new_plugin)
     }
 
     /* TODO: Check plugin version */
-
     if (new_plugin->type >= COMDB2_PLUGIN_LAST) {
         logmsg(LOGMSG_ERROR, "Invalid plugin type for %s.\n", new_plugin->name);
         return 1;
@@ -123,6 +125,16 @@ static int install_plugin_int(comdb2_plugin_t *new_plugin)
             machine_info->machine_num);
         break;
     }
+    case COMDB2_PLUGIN_QUEUE_CONSUMER: {
+        comdb2_queue_consumer_t *consumer_info;
+        consumer_info = (comdb2_queue_consumer_t*)new_plugin->data;
+        if (consumer_info->type > CONSUMER_TYPE_LAST) {
+            logmsg(LOGMSG_ERROR, "Out of range consumer type: %d\n", consumer_info->type);
+            return 1;
+        }
+        queue_consumer_handlers[consumer_info->type] = consumer_info;
+        break;
+    }
     case COMDB2_PLUGIN_INITIALIZER:
         break;
     default:
@@ -142,7 +154,6 @@ static int install_plugin(const char *file_name, const char *plugin_name)
     void *handle;
     comdb2_plugin_t *plugin;
     comdb2_plugin_t *tmp;
-    int i;
 
     handle = dlopen(file_name, RTLD_LAZY);
     if (!handle) {
@@ -181,7 +192,6 @@ static int install_all_plugins(const char *file_name)
 {
     void *handle;
     comdb2_plugin_t *plugin;
-    int i;
 
     handle = dlopen(file_name, RTLD_LAZY);
     if (!handle) {
@@ -280,25 +290,9 @@ void register_plugin_tunables(void)
         TUNABLE_STRING, &plugindir, READONLY, NULL, NULL, NULL, NULL);
 }
 
-/* Initialize the plugin sub-system. */
-int init_plugins(void)
-{
-    gbl_plugins =
-        (comdb2_plugin_t **)calloc(MAXPLUGINS + 1, sizeof(comdb2_plugin_t *));
-    if (!gbl_plugins) {
-        logmsg(LOGMSG_ERROR, "System out of memory.\n");
-        return 1;
-    }
-
-    return 0;
-}
-
 /* Destroy all plugins. */
 int destroy_plugins(void)
 {
-    /*
-      Initialize the plugin and add it to the global list of installed plugins.
-    */
     for (int i = 0; gbl_plugins[i]; ++i) {
         if (gbl_plugins[i]->destroy_cb && gbl_plugins[i]->destroy_cb()) {
             logmsg(LOGMSG_ERROR, "Plugin de-initialization failed (%s).\n",
@@ -306,8 +300,6 @@ int destroy_plugins(void)
             return 1;
         }
     }
-
-    free(gbl_plugins);
     return 0;
 }
 
@@ -322,6 +314,8 @@ const char *comdb2_plugin_type_to_str(int type)
         return "machine_info";
     case COMDB2_PLUGIN_INITIALIZER:
         return "initializer";
+    case COMDB2_PLUGIN_QUEUE_CONSUMER:
+        return "queueconsumer";
     default:
         break;
     }
@@ -342,4 +336,54 @@ int run_init_plugins()
         }
     }
     return 0;
+}
+
+static LISTC_T(struct lrl_handler) lrl_handlers;
+static LISTC_T(struct message_handler) message_handlers;
+
+void plugin_register_lrl_handler(struct dbenv *dbenv, int (*callback)(struct dbenv*, const char *line)) {
+    struct lrl_handler *l = malloc(sizeof(struct lrl_handler));
+    static int once = 1;
+    if (once) {
+        listc_init(&lrl_handlers, offsetof(struct lrl_handler, lnk));
+        once = 0;
+    }
+    l->handle = callback;
+    if (dbenv)
+        listc_abl(&dbenv->lrl_handlers, l);
+    else
+        listc_abl(&lrl_handlers, l);
+}
+
+void plugin_register_message_handler(struct dbenv *dbenv, int (*callback)(struct dbenv*, const char *line)) {
+    struct message_handler *msg = malloc(sizeof(struct message_handler));
+    static int once = 1;
+    if (once) {
+        listc_init(&message_handlers, offsetof(struct message_handler, lnk));
+        once = 0;
+    }
+    msg->handle = callback;
+    if (dbenv)
+        listc_abl(&dbenv->message_handlers, msg);
+    else
+        listc_abl(&message_handlers, msg);
+}
+
+void plugin_post_dbenv_hook(struct dbenv *dbenv) {
+    struct lrl_handler *l;
+    struct message_handler *m;
+
+    l = listc_rtl(&lrl_handlers);
+    while (l) {
+        listc_abl(&dbenv->lrl_handlers, l);
+        l = listc_rtl(&lrl_handlers);
+    }
+    m = listc_rtl(&message_handlers);
+    while (m) {
+        listc_abl(&dbenv->message_handlers, m);
+        m = listc_rtl(&message_handlers);
+    }
+
+    for (int i = 0; i < CONSUMER_TYPE_LAST; i++)
+        thedb->queue_consumer_handlers[i] = queue_consumer_handlers[i];
 }

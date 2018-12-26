@@ -21,6 +21,7 @@
 #endif
 
 #include "views.h"
+#include "comdb2systbl.h"
 
 typedef struct timepart_cursor timepart_cursor;
 struct timepart_cursor {
@@ -108,7 +109,7 @@ static int timepartColumn(
 
   timepart_systable_column(ctx, pCur->iRowid, i);
   return SQLITE_OK;
-};
+}
 
 /* cursor rowid */
 static int timepartRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){
@@ -165,6 +166,11 @@ const sqlite3_module systblTimepartModule = {
   0,                   /* xRollback */
   0,                   /* xFindMethod */
   0,                   /* xRename */
+  0,                   /* xSavepoint */
+  0,                   /* xRelease */
+  0,                   /* xRollbackTo */
+  0,                   /* xShadowName */
+  .access_flag = CDB2_ALLOW_USER,
 };
 
 static int timepartShardsConnect(
@@ -221,30 +227,35 @@ static int timepartShardsColumn(
 
   timepart_systable_shard_column(ctx, tpid, shardid, i);
   return SQLITE_OK;
-};
+}
 
 
 const sqlite3_module systblTimepartShardsModule = {
-  0,                    /* iVersion */
-  0,                    /* xCreate */
-  timepartShardsConnect,/* xConnect */
-  timepartBestIndex,    /* xBestIndex */
-  timepartDisconnect,   /* xDisconnect */
-  0,                    /* xDestroy */
-  timepartOpen,         /* xOpen - open a cursor */
-  timepartClose,        /* xClose - close a cursor */
-  timepartFilter,       /* xFilter - configure scan constraints */
-  timepartShardsNext,   /* xNext - advance a cursor */
-  timepartEof,          /* xEof - check for end of scan */
-  timepartShardsColumn, /* xColumn - read data */
-  timepartRowid,        /* xRowid - read data */
-  0,                    /* xUpdate */
-  0,                    /* xBegin */
-  0,                    /* xSync */
-  0,                    /* xCommit */
-  0,                    /* xRollback */
-  0,                    /* xFindMethod */
-  0,                    /* xRename */
+  0,                     /* iVersion */
+  0,                     /* xCreate */
+  timepartShardsConnect, /* xConnect */
+  timepartBestIndex,     /* xBestIndex */
+  timepartDisconnect,    /* xDisconnect */
+  0,                     /* xDestroy */
+  timepartOpen,          /* xOpen - open a cursor */
+  timepartClose,         /* xClose - close a cursor */
+  timepartFilter,        /* xFilter - configure scan constraints */
+  timepartShardsNext,    /* xNext - advance a cursor */
+  timepartEof,           /* xEof - check for end of scan */
+  timepartShardsColumn,  /* xColumn - read data */
+  timepartRowid,         /* xRowid - read data */
+  0,                     /* xUpdate */
+  0,                     /* xBegin */
+  0,                     /* xSync */
+  0,                     /* xCommit */
+  0,                     /* xRollback */
+  0,                     /* xFindMethod */
+  0,                     /* xRename */
+  0,                     /* xSavepoint */
+  0,                     /* xRelease */
+  0,                     /* xRollbackTo */
+  0,                     /* xShadowName */
+  .access_flag = CDB2_ALLOW_USER,
 };
 
 
@@ -342,30 +353,35 @@ static int timepartEventsColumn(
 
   timepart_events_column(ctx, pCur->iRowid, i);
   return SQLITE_OK;
-};
+}
 
 
 const sqlite3_module systblTimepartEventsModule = {
-  0,                    /* iVersion */
-  0,                    /* xCreate */
-  timepartEventsConnect,/* xConnect */
-  timepartBestIndex,    /* xBestIndex */
-  timepartDisconnect,   /* xDisconnect */
-  0,                    /* xDestroy */
-  timepartEventsOpen,   /* xOpen - open a cursor */
-  timepartEventsClose,  /* xClose - close a cursor */
-  timepartEventsFilter, /* xFilter - configure scan constraints */
-  timepartEventsNext,   /* xNext - advance a cursor */
-  timepartEof,          /* xEof - check for end of scan */
-  timepartEventsColumn, /* xColumn - read data */
-  timepartRowid,        /* xRowid - read data */
-  0,                    /* xUpdate */
-  0,                    /* xBegin */
-  0,                    /* xSync */
-  0,                    /* xCommit */
-  0,                    /* xRollback */
-  0,                    /* xFindMethod */
-  0,                    /* xRename */
+  0,                     /* iVersion */
+  0,                     /* xCreate */
+  timepartEventsConnect, /* xConnect */
+  timepartBestIndex,     /* xBestIndex */
+  timepartDisconnect,    /* xDisconnect */
+  0,                     /* xDestroy */
+  timepartEventsOpen,    /* xOpen - open a cursor */
+  timepartEventsClose,   /* xClose - close a cursor */
+  timepartEventsFilter,  /* xFilter - configure scan constraints */
+  timepartEventsNext,    /* xNext - advance a cursor */
+  timepartEof,           /* xEof - check for end of scan */
+  timepartEventsColumn,  /* xColumn - read data */
+  timepartRowid,         /* xRowid - read data */
+  0,                     /* xUpdate */
+  0,                     /* xBegin */
+  0,                     /* xSync */
+  0,                     /* xCommit */
+  0,                     /* xRollback */
+  0,                     /* xFindMethod */
+  0,                     /* xRename */
+  0,                     /* xSavepoint */
+  0,                     /* xRelease */
+  0,                     /* xRollbackTo */
+  0,                     /* xShadowName */
+  .access_flag = CDB2_ALLOW_USER,
 };
 
 #endif /* SQLITE_BUILDING_FOR_COMDB2 */

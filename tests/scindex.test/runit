@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
+set -x
 
 set -x
 # Grab my database name.
@@ -436,6 +437,8 @@ function randomwrites
         # Delete a record from t1
         [[ "1" == "$del_t1" ]] && delete_rand_t1 $dbnm
 
+        sleep 0.3
+
     done
 
     return 0
@@ -748,6 +751,10 @@ schema
 }
 }\$\$
 EOF
+if [[ $? != 0 ]]; then
+    errquit "Schemachange has failed for short tablename"
+fi
+
 
 # If bgdebugging is enabled, print the filename.
 if [[ "1" == "$bgdebug" ]]; then
@@ -861,5 +868,6 @@ if [[ "0" != "$wr_t1" && $? == 0 ]]; then
 fi
 
 echo "Testcase passed."
+rm $TMPDIR/cdb2tst_*$$*
 
 exit 0

@@ -225,7 +225,7 @@ ARG dtalen    int d
 END
 
 BEGIN blkseq 10019
-ARG time int64_t lld
+ARG time int64_t ld
 DBT key DBT s
 DBT data DBT s
 END

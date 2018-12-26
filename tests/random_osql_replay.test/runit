@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+
+bash -n "$0" | exit 1
+
+#set -x
+maxloop=5000
+
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "create table t1 ( a int primary key )"
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "truncate t1"
+
+# Enable random restarts
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "put tunable osql_random_restart 'on'"
+if [[ -n $CLUSTER ]]; then
+    for x in $CLUSTER ; do
+        cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $x default "put tunable osql_random_restart 'on'"
+    done
+fi
+
+for x in $(seq 1 $maxloop) ; do 
+    cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "insert into t1 values ($x)"
+    if [[ $? != 0 ]]; then
+        echo "Testcase failed"
+        exit 1
+    fi
+done
+
+for x in $(seq 1 $maxloop) ; do 
+    cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "update t1 set a = a + $maxloop where a = $x"
+    if [[ $? != 0 ]]; then
+        echo "Testcase failed"
+        exit 1
+    fi
+done
+
+for x in $(seq 1 $maxloop) ; do 
+    cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "delete from t1 where a = $x + $maxloop"
+    if [[ $? != 0 ]]; then
+        echo "Testcase failed"
+        exit 1
+    fi
+done
+
+
+echo "Success"
+exit 0

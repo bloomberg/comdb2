@@ -24,6 +24,7 @@
 #include <netinet/in.h>
 #include <sbuf2.h>
 #include <cdb2_constants.h>
+#include "perf.h"
 
 /*
   we have an int, but we only need a short for real ports.
@@ -59,6 +60,21 @@ typedef int GETLSNFP(struct netinfo_struct *netinfo, void *record, int len,
 typedef int NEWNODEFP(struct netinfo_struct *netinfo, char hostname[],
                       int portnum);
 
+typedef void *QSTATINITFP(struct netinfo_struct *netinfo, const char *nettype,
+                          const char hostname[]);
+typedef void QSTATREADERFP(struct netinfo_struct *netinfo, void *netstat);
+typedef void QSTATCLEARFP(struct netinfo_struct *netinfo, void *netstat);
+typedef void QSTATENQUEFP(struct netinfo_struct *netinfo, void *netstat,
+                          void *rec, int len);
+typedef void QSTATFREEFP(struct netinfo_struct *netinfo, void *netstat);
+
+typedef void QSTATITERFP(struct netinfo_struct *netinfo, void *arg,
+                         void *qstat);
+
+typedef void UFUNCITERFP(struct netinfo_struct *netinfo, void *arg,
+                         char *service, char *userfunc, int64_t count,
+                         int64_t totus);
+
 typedef int NETALLOWFP(struct netinfo_struct *netinfo, const char *hostname);
 
 void net_setbufsz(netinfo_type *info, int bufsz);
@@ -69,6 +85,13 @@ void net_register_stop_thread_callback(netinfo_type *info, void (*)(void *));
 
 int net_is_connected(netinfo_type *netinfo_ptr, const char *hostname);
 int net_close_connection(netinfo_type *net, const char *hostname);
+
+enum {
+    NET_SEND_NODELAY = 0x00000001,
+    NET_SEND_NODROP = 0x00000002,
+    NET_SEND_INORDER = 0x00000004,
+    NET_SEND_TRACE = 0x00000008
+};
 
 enum {
     NET_SEND_FAIL_INVALIDNODE = -1,
@@ -98,12 +121,19 @@ int net_send_message_payload_ack(netinfo_type *netinfo_ptr, const char *to_host,
                      int usertype, void *data, int datalen, uint8_t **payloadptr, 
                      int *payloadlen, int waitforack, int waitms);
 
+int net_send_flags(netinfo_type *netinfo,
+                   const char *to_host, /* send to this node number */
+                   int usertype, void *dta, int dtalen, uint32_t flags);
+
 int net_send(netinfo_type *netinfo,
              const char *to_host, /* send to this node number */
              int usertype, void *dta, int dtalen, int nodelay);
 
 int net_send_nodrop(netinfo_type *netinfo, const char *to_host, int usertype,
                     void *dta, int dtalen, int nodelay);
+
+int net_send_inorder_nodrop(netinfo_type *netinfo, const char *to_host,
+                            int usertype, void *dta, int dtalen, int nodelay);
 
 int net_send_inorder(netinfo_type *netinfo,
                      const char *to_host, /* send to this node number */
@@ -112,13 +142,18 @@ int net_send_inorder(netinfo_type *netinfo,
 
 /* register your callback routine that will be called when
    user messages of type "usertype" are recieved */
-int net_register_handler(netinfo_type *netinfo_ptr, int usertype, NETFP func);
+int net_register_handler(netinfo_type *netinfo_ptr, int usertype,
+                         char *name, NETFP func);
 
 /* register your callback routine that will be called when a
    disconnect happens for a node */
 int net_register_hostdown(netinfo_type *netinfo_ptr, HOSTDOWNFP func);
 
 int net_register_getlsn(netinfo_type *netinfo_ptr, GETLSNFP func);
+
+int net_register_queue_stat(netinfo_type *netinfo_ptr, QSTATINITFP *qinit,
+                            QSTATREADERFP *reader, QSTATENQUEFP *enque,
+                            QSTATCLEARFP *qclear, QSTATFREEFP *qfree);
 
 /* register a callback that you can compare the order of things
    already on the write queue. */
@@ -129,6 +164,7 @@ int net_register_netcmp(netinfo_type *netinfo_ptr, NETCMPFP func);
 int net_register_newnode(netinfo_type *netinfo_ptr, NEWNODEFP func);
 
 int net_register_appsock(netinfo_type *netinfo_ptr, APPSOCKFP func);
+int net_register_admin_appsock(netinfo_type *netinfo_ptr, APPSOCKFP func);
 
 /* register a callback routine that will be called to find out if net
  * connections should be allowed from a given node.  the callback
@@ -210,14 +246,9 @@ ssize_t net_udp_send(int udp_fd, netinfo_type *netinfo_ptr, const char *host,
 */
 
 /* send a decom message about node "decom_node" to all nodes */
-int net_send_decom_all(netinfo_type *netinfo_ptr, const char *decom_host);
+int net_send_decom_all(netinfo_type *netinfo_ptr, char *decom_host);
 
 int net_send_authcheck_all(netinfo_type *netinfo_ptr);
-
-/* tell all nodes to decom me */
-int net_send_decom_me_all(netinfo_type *netinfo_ptr);
-
-void destroy_netinfo(netinfo_type *netinfo_ptr);
 
 /* start the network */
 int net_init(netinfo_type *netinfo_ptr);
@@ -331,6 +362,16 @@ struct host_node_info {
 int net_get_nodes_info(netinfo_type *netinfo_ptr, int max_nodes,
                        struct host_node_info *out_nodes);
 
+struct net_host_stats {
+    int queue_size;
+};
+int net_get_host_stats(netinfo_type *netinfo_ptr, const char *host, struct net_host_stats *stat);
+
+struct net_stats {
+    int num_drops;
+};
+int net_get_stats(netinfo_type *netinfo_ptr, struct net_stats *stat);
+
 void net_cmd(netinfo_type *netinfo_ptr, char *line, int lline, int st, int op1);
 
 int net_set_max_queue(netinfo_type *netinfo_ptr, int x);
@@ -400,13 +441,20 @@ int net_listen(int port);
 void net_set_throttle_percent(netinfo_type *netinfo_ptr, int x);
 void net_set_portmux_register_interval(netinfo_type *netinfo_ptr, int x);
 
+void net_queue_stat_iterate(netinfo_type *netinfo_ptr, QSTATITERFP func,
+                            void *arg);
+void net_userfunc_iterate(netinfo_type *netinfo_ptr, UFUNCITERFP *uf_iter,
+                          void *arg);
+
 /* Blocks until the net-queue is X% full or less */
 int net_throttle_wait(netinfo_type *netinfo_ptr);
 
 void net_enable_explicit_flush_trace(void);
 void net_disable_explicit_flush_trace(void);
 
-void kill_subnet(char *subnet);
+void kill_subnet(const char *subnet);
+void net_clipper(const char *subnet, int onoff);
+void net_subnet_status();
 
 void net_register_child_net(netinfo_type *netinfo_ptr,
                             netinfo_type *netinfo_child, int netnum,
@@ -414,4 +462,11 @@ void net_register_child_net(netinfo_type *netinfo_ptr,
 
 void net_disable_getservbyname(netinfo_type *netinfo_ptr);
 int net_get_port_by_service(const char *dbname);
+
+int64_t net_get_num_accepts(netinfo_type *netinfo_ptr);
+int64_t net_get_num_current_non_appsock_accepts(netinfo_type *netinfo_ptr);
+int64_t net_get_num_accept_timeouts(netinfo_type *netinfo_ptr);
+void net_set_conntime_dump_period(netinfo_type *netinfo_ptr, int value);
+int net_get_conntime_dump_period(netinfo_type *netinfo_ptr);
+
 #endif

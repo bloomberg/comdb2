@@ -262,4 +262,25 @@ int bdb_osql_log_undo_required(tran_type *tran, bdb_osql_log_t *log);
 int bdb_osql_log_unregister(tran_type *tran, bdb_osql_log_t *firstlog,
                             bdb_osql_log_t *lastlog, int trak);
 
+/* Modeled after generate_series */
+typedef struct bdb_llog_cursor bdb_llog_cursor;
+struct bdb_llog_cursor {
+    DB_LSN curLsn; /* Current LSN */
+    DB_LSN minLsn; /* Minimum LSN */
+    DB_LSN maxLsn; /* Maximum LSN */
+    int hitLast;
+    int openCursor;
+    int subop;
+    DB_LOGC *logc; /* Log Cursor */
+    int getflags;
+    DBT data;
+    bdb_osql_log_t *log;
+};
+
+void bdb_llog_cursor_reset(bdb_llog_cursor *pCur);
+int bdb_llog_cursor_open(bdb_llog_cursor *pCur);
+void bdb_llog_cursor_close(bdb_llog_cursor *pCur);
+int bdb_llog_cursor_first(bdb_llog_cursor *pCur);
+int bdb_llog_cursor_next(bdb_llog_cursor *pCur);
+void bdb_llog_cursor_cleanup(bdb_llog_cursor *pCur);
 #endif

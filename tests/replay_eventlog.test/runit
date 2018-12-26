@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
-#PS4='$(date +%Y%m%d-%H:%M:%S): '
 set -x
 
 RESTART_DELAY=35
@@ -210,8 +209,7 @@ export CDB2_HOST="$node"
 echo "Test with insert, SC should not fail"
 
 cdb2sql --host $node $dbnm "exec procedure sys.cmd.send('debg 0')"
-#cdb2sql --host $node $dbnm "drop table t1"
-#cdb2sql --host $node $dbnm "create table t1  { `cat alltypes.csc2 ` }"
+cdb2sql --host $node $dbnm "create table t1  { `cat alltypes.csc2 ` }"
 
 cdb2sql --host $node $dbnm "select * from t2"
 
@@ -249,85 +247,53 @@ cdb2sql --tabs --host $node $dbnm 'exec procedure sys.cmd.send("reql events roll
 
 set +e
 
-cdb2sql --tabs --host $node $dbnm 'exec procedure sys.cmd.send("exit")'
+#cdb2sql --tabs --host $node $dbnm 'exec procedure sys.cmd.send("exit")'
 sleep 10
 
 if [ $node != `hostname` ] ; then
     ssh -o StrictHostKeyChecking=no $node "ls -ltr $TESTDIR/var/log/cdb2/ | grep events"
     logfl=`ssh -o StrictHostKeyChecking=no $node "ls -1Sr $TESTDIR/var/log/cdb2/ | grep events | grep $dbnm | tail -1"`
     logfl=`ssh -o StrictHostKeyChecking=no $node "find $TESTDIR/var/log/cdb2/ | grep $logfl"`
-    logflunziped=`pwd`/${node}.events.unzipped
+    logflunziped=${node}.events.unzipped
     ssh -o StrictHostKeyChecking=no $node wc $logfl
     ssh -o StrictHostKeyChecking=no $node "zcat $logfl" > $logflunziped
 else
     ls -ltr $TESTDIR/var/log/cdb2/ | grep events
     logfl=`ls -1Sr $TESTDIR/var/log/cdb2/ | grep events | grep $dbnm | tail -1`
     logfl=`find $TESTDIR/var/log/cdb2/ | grep $logfl`
-    logflunziped=${logfl}.unzipped
+    logflunziped=events.unzipped
     wc $logfl
     zcat $logfl > $logflunziped
 fi
 
-echo "main db vars"
-vars="TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR CDB2_OPTIONS CDB2_CONFIG"
-for required in $vars; do
-    q=${!required}
-    echo "$required=$q" 
-    if [[ -z "$q" ]]; then
-        echo "$required not set" >&2
-        exit 1
-    fi
-done
-
-alterdbname=alter$dbnm
-dbdir=$DBDIR
-testdir=$TESTDIR
-cdb2config=$CDB2_CONFIG
-
-DBNAME=$alterdbname
-DBDIR=$TESTDIR/$DBNAME
-#effectively alterDB config -- needed to setup alterDB
-CDB2_CONFIG=$DBDIR/comdb2db.cfg
-CDB2_OPTIONS="--cdb2cfg $CDB2_CONFIG"
-
-echo "remote db vars"
-vars="TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR CDB2_OPTIONS CDB2_CONFIG"
-for required in $vars; do
-    q=${!required}
-    echo "$required=$q" 
-    if [[ -z "$q" ]]; then
-        echo "$required not set" >&2
-        exit 1
-    fi
-done
+count=`wc -l $logflunziped | cut -f 1 -d' '`
+CSHOULDBE=8244 # number of lines that should be in the log when single node
+if [[ -z "$CLUSTER" ]] && [[ $count -ne $CSHOULDBE ]] ; then 
+    failexit "$logflunziped contains $count rather than $CSHOULDBE entries"
+elif [ $count -lt 4142 ] ; then
+    failexit "$logflunziped contains $count which is too few entries"
+fi
 
 set -e
 
-#setup remode db
-$TESTSROOTDIR/setup &> $TESTDIR/logs/$DBNAME.setup
-
-echo running $CDB2_SQLREPLAY_EXE $alterdbname $logflunziped
-$CDB2_SQLREPLAY_EXE $alterdbname $logflunziped > sqlreplay.out
-cdb2sql ${CDB2_OPTIONS} $alterdbname default "select * from t1 order by alltypes_u_short" > replayed.txt
+echo running "CDB2_CONFIG=\"${SECONDARY_CDB2_CONFIG}\" $CDB2_SQLREPLAY_EXE $SECONDARY_DBNAME $logflunziped > sqlreplay.out"
+CDB2_CONFIG="${SECONDARY_CDB2_CONFIG}" $CDB2_SQLREPLAY_EXE $SECONDARY_DBNAME $logflunziped > sqlreplay.out
+cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default "select * from t1 order by alltypes_u_short" > replayed.txt
 
 set +e
 success=1
 
 if ! diff orig.txt replayed.txt ; then
-        success=0
+    success=0
 fi
-
-set -e
-$TESTSROOTDIR/unsetup $success &> $TESTDIR/logs/$DBNAME.unsetup
-set +e
 
 if [ $success != 1 ] ; then
     failexit "replayed.txt content is not the same as original.txt"
 fi
 
-if [ "$CLEANUPDBDIR" == "1" ] ; then
+if [ "$CLEANUPDBDIR" != "0" ] ; then
     #delete files now that test is successful
-    rm orig.txt replayed.txt sqlreplay.out
+    rm orig.txt replayed.txt sqlreplay.out $logflunziped
 fi
 
 echo "Success"

@@ -46,6 +46,7 @@
 #include "comdb2uuid.h"
 
 char *tranlevel_tostr(int lvl);
+struct sqlthdstate;
 struct sqlclntstate;
 int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
                      sqlite3_stmt *stmt, const char **errstr);
@@ -74,5 +75,11 @@ void start_internal_sql_clnt(struct sqlclntstate *clnt);
 int run_internal_sql_clnt(struct sqlclntstate *clnt, char *sql);
 void end_internal_sql_clnt(struct sqlclntstate *clnt);
 void reset_clnt_flags(struct sqlclntstate *);
+void thr_set_user(const char *label, int id);
+void sql_reset_sqlthread(struct sql_thread *thd);
+void query_stats_setup(struct sqlthdstate *thd, struct sqlclntstate *clnt);
+int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt);
+int lock_client_write_lock(struct sqlclntstate *clnt);
+void unlock_client_write_lock(struct sqlclntstate *clnt);
 
 #endif

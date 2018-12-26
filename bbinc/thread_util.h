@@ -17,15 +17,6 @@
 #ifndef INCLUDED_THREAD_UTIL_H
 #define INCLUDED_THREAD_UTIL_H
 
-/* Compiler hints for branch prediction */
-#if defined(__GNUC__) || defined(__IBMC__)
-#define likely(x) __builtin_expect(!!(x), 1)
-#define unlikely(x) __builtin_expect(!!(x), 0)
-#else
-#define likely(X) (X)
-#define unlikely(X) (X)
-#endif
-
 enum { RESOURCE_BERKELEY_LOCK };
 
 void thread_started(char *name);

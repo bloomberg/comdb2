@@ -19,7 +19,7 @@ fi
 
 echo $CN
 if [ "$CN" = "" ]; then
-    CN=`hostname -f`
+    CN=*`hostname -f`
 fi
 
 # Setup ssl certificate

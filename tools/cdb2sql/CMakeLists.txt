@@ -1,10 +1,10 @@
 add_executable(cdb2sql
   cdb2sql.cpp
-  ${PROJECT_SOURCE_DIR}/bb/bb_getopt_long.c
+  ${PROJECT_SOURCE_DIR}/util/bb_getopt_long.c
 )
 add_dependencies(cdb2sql cdb2api)
 include_directories(
-  ${PROJECT_SOURCE_DIR}/bb
+  ${PROJECT_SOURCE_DIR}/util
   ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/cdb2api
   ${OPENSSL_INCLUDE_DIR}

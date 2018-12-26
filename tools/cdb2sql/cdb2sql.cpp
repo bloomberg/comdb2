@@ -80,6 +80,7 @@ static FILE *redirect = NULL;
 static int hold_stdout = -1;
 static char *history_file = NULL;
 static int istty = 0;
+static int isadmin = 0;
 static char *gensql_tbl = NULL;
 static char *prompt = main_prompt;
 
@@ -116,11 +117,12 @@ void dumpstring(FILE *f, char *s, int quotes, int quote_quotes)
         fprintf(f, "'");
 }
 
-#define verbose_print(...)                                                     \
-    {                                                                          \
+#define verbose_print(fmt, args...)                                            \
+    do {                                                                       \
         if (verbose)                                                           \
-            fprintf(stderr, __VA_ARGS__);                                      \
-    }
+            fprintf(stderr, "td 0x%p %s:%d " fmt, (void *)pthread_self(),      \
+                    __func__, __LINE__, ##args);                               \
+    } while (0);
 
 static const char *usage_text =
     "Usage: cdb2sql [options] dbname [sql [type1 [type2 ...]]]\n"
@@ -216,11 +218,18 @@ char *db_generator (int state, const char *sql)
 
         list_index = 0;
         int rc;
+        int flags = 0;
+        char *type = dbtype;
+
         if (dbhostname) {
-            rc = cdb2_open(&cdb2h_2, dbname, dbhostname, CDB2_DIRECT_CPU);
-        } else {
-            rc = cdb2_open(&cdb2h_2, dbname, dbtype, 0);
+            type = dbhostname;
+            flags |= CDB2_DIRECT_CPU;
         }
+
+        if (isadmin)
+            flags |= CDB2_ADMIN;
+
+        rc = cdb2_open(&cdb2h_2, dbname, type, flags);
         if (rc) {
             if (debug_trace)
                 fprintf(stderr, "cdb2_open rc %d %s\n", rc, cdb2_errstr(cdb2h));
@@ -539,8 +548,12 @@ static int process_escape(const char *cmdstr)
         tok = strtok_r(NULL, delims, &lasts);
         if (!tok || strcasecmp(tok, "tables") == 0) {
             int start_time_ms, run_time_ms;
-            const char *sql = "SELECT tablename FROM comdb2_tables";
-
+            const char *sql =
+                "SELECT tablename FROM comdb2_tables order by tablename";
+            run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+        } else if (strcasecmp(tok, "systables") == 0) {
+            int start_time_ms, run_time_ms;
+            const char *sql = "SELECT name FROM comdb2_systables order by name";
             run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
         } else {
             fprintf(stderr, "unknown @ls sub-command %s\n", tok);
@@ -990,11 +1003,18 @@ static int run_statement(const char *sql, int ntypes, int *types,
 
         verbose_print("calling cdb2_open\n");
 
+        int flags = 0;
+        char *type = dbtype;
+
         if (dbhostname) {
-            rc = cdb2_open(&cdb2h, dbname, dbhostname, CDB2_DIRECT_CPU);
-        } else {
-            rc = cdb2_open(&cdb2h, dbname, dbtype, 0);
+            flags |= CDB2_DIRECT_CPU;
+            type = dbhostname;
         }
+
+        if (isadmin)
+            flags |= CDB2_ADMIN;
+
+        rc = cdb2_open(&cdb2h, dbname, type, flags);
 
         cdb2_push_context(cdb2h, "cdb2sql");
         if (rc) {
@@ -1383,24 +1403,27 @@ void send_cancel_cnonce(const char *cnonce)
     if (!gbl_in_stmt) return;
     cdb2_hndl_tp *cdb2h_2 = NULL; // use a new db handle
     int rc;
+    int flags = 0;
+    char *type = dbtype;
+
     if (dbhostname) {
-        rc = cdb2_open(&cdb2h_2, dbname, dbhostname, CDB2_DIRECT_CPU);
-    } else {
-        rc = cdb2_open(&cdb2h_2, dbname, dbtype, 0);
+        flags |= CDB2_DIRECT_CPU;
+        type = dbhostname;
     }
+
+    if (isadmin)
+        flags |= CDB2_ADMIN;
+
+    rc = cdb2_open(&cdb2h_2, dbname, type, flags);
     if (rc) {
         if (debug_trace)
             fprintf(stderr, "cdb2_open rc %d %s\n", rc, cdb2_errstr(cdb2h));
         cdb2_close(cdb2h_2);
         return;
     }
-    char expanded[256];
-    for (int i = 0; i < 256 / 2 && cnonce[i] != '\0'; i++) {
-        sprintf(&expanded[i * 2], "%2x", cnonce[i]);
-    }
     char sql[256];
     snprintf(sql, 255, "exec procedure sys.cmd.send('sql cancelcnonce %s')",
-             expanded);
+             cnonce);
     if (debug_trace) printf("Cancel sql string '%s'\n", sql);
     rc = cdb2_run_statement(cdb2h_2, sql);
     if (!rc)
@@ -1441,35 +1464,37 @@ int main(int argc, char *argv[])
     int *types = NULL;
     int opt_indx = 0;
     int c;
+    int printtostderr = 0;
 
     sighold(SIGPIPE);
 
     static struct option long_options[] = {
-        {"pause",      no_argument,       &pausemode,         1},
-        {"binary",     no_argument,       &printmode,         DISP_BINARY},
-        {"tabs",       no_argument,       &printmode,         DISP_TABS},
-        {"tabular",    no_argument,       &printmode,         DISP_TABULAR},
-        {"verbose",    no_argument,       &verbose,           1},
-        {"strblobs",   no_argument,       &string_blobs,      1},
-        {"debugtrace", no_argument,       &debug_trace,       1},
-        {"showports",  no_argument,       &show_ports,        1},
-        {"showeffects",no_argument,       &show_effects,      1},
-        {"cost",       no_argument,       &docost,            1},
-        {"exponent",   no_argument,       &exponent,          1},
-        {"isatty",     no_argument,       &isttyarg,          1},
-        {"isnotatty",  no_argument,       &isttyarg,          2},
-        {"help",       no_argument,       NULL,               'h'},
-        {"script",     no_argument,       NULL,               's'},
-        {"maxretries", required_argument, NULL,               'r'},
-        {"precision",  required_argument, NULL,               'p'},
-        {"cdb2cfg",    required_argument, NULL,               'c'},
-        {"file",       required_argument, NULL,               'f'},
-        {"gensql",     required_argument, NULL,               'g'},
-        {"type",       required_argument, NULL,               't'},
-        {"host",       required_argument, NULL,               'n'},
-        {"minretries", required_argument, NULL,               'R'},
-        {0, 0, 0, 0}
-    };
+        {"pause", no_argument, &pausemode, 1},
+        {"binary", no_argument, &printmode, DISP_BINARY},
+        {"tabs", no_argument, &printmode, DISP_TABS},
+        {"tabular", no_argument, &printmode, DISP_TABULAR},
+        {"stderr", no_argument, &printtostderr, 1},
+        {"verbose", no_argument, &verbose, 1},
+        {"strblobs", no_argument, &string_blobs, 1},
+        {"debugtrace", no_argument, &debug_trace, 1},
+        {"showports", no_argument, &show_ports, 1},
+        {"showeffects", no_argument, &show_effects, 1},
+        {"cost", no_argument, &docost, 1},
+        {"exponent", no_argument, &exponent, 1},
+        {"isatty", no_argument, &isttyarg, 1},
+        {"isnotatty", no_argument, &isttyarg, 2},
+        {"admin", no_argument, &isadmin, 1},
+        {"help", no_argument, NULL, 'h'},
+        {"script", no_argument, NULL, 's'},
+        {"maxretries", required_argument, NULL, 'r'},
+        {"precision", required_argument, NULL, 'p'},
+        {"cdb2cfg", required_argument, NULL, 'c'},
+        {"file", required_argument, NULL, 'f'},
+        {"gensql", required_argument, NULL, 'g'},
+        {"type", required_argument, NULL, 't'},
+        {"host", required_argument, NULL, 'n'},
+        {"minretries", required_argument, NULL, 'R'},
+        {0, 0, 0, 0}};
 
     while ((c = bb_getopt_long(argc, argv, (char *) "hsvr:p:c:f:g:t:n:R:",
                                long_options, &opt_indx)) != -1) {
@@ -1517,6 +1542,9 @@ int main(int argc, char *argv[])
             break;
         }
     }
+
+    if (printtostderr)
+        printmode |= DISP_STDERR;
 
     if (getenv("COMDB2_IOLBF")) {
         setvbuf(stdout, 0, _IOLBF, 0);

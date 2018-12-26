@@ -180,3 +180,35 @@ Information about thread pools in the database.
 * `max_queue_age_ms` - Maximum queue age.
 * `exit_on_create_fail` - If 'Y', exit on failure to create thread.
 * `dump_on_full` - If 'Y', dump on queue full.
+
+## comdb2_active_osqls
+
+Information about OSQL requests in the database
+
+    comdb2_active_osqls(type, origin, argv0, where, cnonce, request_id, nops,
+                        start_time, commit_time, nretries)
+
+* `type` - "OSQL" for active osql streams and "BPLOG" for active block processors.
+* `origin` - Where the request is from
+* `argv0` - Program that generates this request
+* `where` - Stack trace of this request
+* `cnonce` - Cnonce of this request
+* `request_id` - UUID of this request
+* `nops` - Number of OSQL operations
+* `start_time` - Time when this request is created
+* `commit_time` - Commit time of this request
+* `nretries` - Number of retries
+
+## comdb2_blkseq
+
+Information about BLKSEQ stored in the database
+
+    comdb2_blkseq(stripe, index, id, size, rcode, time, age)
+
+* `stripe` - Stripe of a blkseq file
+* `index` - Index of a blkseq file
+* `id` - Identifier of the request
+* `size` - Size of the blkseq entry
+* `rcode` - Return code of this request
+* `time` - Epoch time when this blkseq was added
+* `age` - Time in seconds since the blkseq was added

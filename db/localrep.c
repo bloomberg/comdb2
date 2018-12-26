@@ -293,7 +293,6 @@ int local_replicant_log_delete_for_update(struct ireq *iq, void *trans, int rrn,
 {
     /* log the delete.  once the update succeeds we log the add
        - otherwise the whole thing gets aborted. */
-    long long id;
     struct dbtable *savedb;
     struct delop {
         char table[MAXTABLELEN];
@@ -391,10 +390,9 @@ int local_replicant_log_add_for_update(struct ireq *iq, void *trans, int rrn,
     struct dbtable *savedb;
     int fndlen;
     int odsz, clsz;
-    unsigned long long oldgenid;
     int rc;
     int using_newblobs = 0;
-    blob_status_t newblobs[MAXBLOBS] = {0};
+    blob_status_t newblobs[MAXBLOBS] = {{0}};
     uint8_t *lim;
 
     /* NOTE: 80% of this routine is a copy-and-paste job from
@@ -655,10 +653,9 @@ int add_oplog_entry(struct ireq *iq, void *trans, int type, void *logrec,
     uint8_t *p_buf_data;
     const uint8_t *p_buf_data_end;
     uint8_t buf[OPREC_SIZE] = {0};
-    unsigned long long genid;
+    unsigned long long genid = 0;
     struct oprec rec;
-    blob_buffer_t blobs[MAXBLOBS] = {0};
-    char *p;
+    blob_buffer_t blobs[MAXBLOBS] = {{0}};
     struct dbtable *db;
     struct ireq aiq;
 
@@ -707,7 +704,7 @@ int add_oplog_entry(struct ireq *iq, void *trans, int type, void *logrec,
     rc = add_record(&aiq, trans, p_buf_tag_name, p_buf_tag_name_end, p_buf_data,
                     p_buf_data_end, (unsigned char *)nulls, blobs, MAXBLOBS,
                     &err, &fix, &rrn, &genid, -1ULL, BLOCK2_ADDKL, 0,
-                    RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_NO_CONSTRAINTS);
+                    RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_NO_CONSTRAINTS, 0);
 
     iq->blkstate->pos++;
 
@@ -730,8 +727,8 @@ int add_local_commit_entry(struct ireq *iq, void *trans, long long seqno,
     uint8_t buf[COMMITREC_SIZE] = {0};
     int err, fix;
     int rrn;
-    unsigned long long genid;
-    blob_buffer_t blobs[MAXBLOBS] = {0};
+    unsigned long long genid = 0;
+    blob_buffer_t blobs[MAXBLOBS] = {{0}};
     struct commitrec rec;
 
     struct dbtable *db;
@@ -761,7 +758,7 @@ int add_local_commit_entry(struct ireq *iq, void *trans, long long seqno,
     rc = add_record(iq, trans, p_buf_tag_name, p_buf_tag_name_end, p_buf_data,
                     p_buf_data_end, nulls, blobs, MAXBLOBS, &err, &fix, &rrn,
                     &genid, -1ULL, BLOCK2_ADDKL, 0,
-                    RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_NO_CONSTRAINTS);
+                    RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_NO_CONSTRAINTS, 0);
 
     if (iq->debug)
         reqpopprefixes(iq, 1);

@@ -135,7 +135,7 @@ static int systblUsersColumn(
     }
   }
   return SQLITE_OK;
-};
+}
 
 /*
 ** Return the rowid for the current row. The rowid is the just the
@@ -183,26 +183,30 @@ static int systblUsersBestIndex(
 }
 
 const sqlite3_module systblUsersModule = {
-  0,                        /* iVersion */
-  0,                        /* xCreate */
-  systblUsersConnect,       /* xConnect */
-  systblUsersBestIndex,     /* xBestIndex */
-  systblUsersDisconnect,    /* xDisconnect */
-  0,                        /* xDestroy */
-  systblUsersOpen,          /* xOpen - open a cursor */
-  systblUsersClose,         /* xClose - close a cursor */
-  systblUsersFilter,        /* xFilter - configure scan constraints */
-  systblUsersNext,          /* xNext - advance a cursor */
-  systblUsersEof,           /* xEof - check for end of scan */
-  systblUsersColumn,        /* xColumn - read data */
-  systblUsersRowid,         /* xRowid - read data */
-  0,                        /* xUpdate */
-  0,                        /* xBegin */
-  0,                        /* xSync */
-  0,                        /* xCommit */
-  0,                        /* xRollback */
-  0,                        /* xFindMethod */
-  0,                        /* xRename */
+  0,                     /* iVersion */
+  0,                     /* xCreate */
+  systblUsersConnect,    /* xConnect */
+  systblUsersBestIndex,  /* xBestIndex */
+  systblUsersDisconnect, /* xDisconnect */
+  0,                     /* xDestroy */
+  systblUsersOpen,       /* xOpen - open a cursor */
+  systblUsersClose,      /* xClose - close a cursor */
+  systblUsersFilter,     /* xFilter - configure scan constraints */
+  systblUsersNext,       /* xNext - advance a cursor */
+  systblUsersEof,        /* xEof - check for end of scan */
+  systblUsersColumn,     /* xColumn - read data */
+  systblUsersRowid,      /* xRowid - read data */
+  0,                     /* xUpdate */
+  0,                     /* xBegin */
+  0,                     /* xSync */
+  0,                     /* xCommit */
+  0,                     /* xRollback */
+  0,                     /* xFindMethod */
+  0,                     /* xRename */
+  0,                     /* xSavepoint */
+  0,                     /* xRelease */
+  0,                     /* xRollbackTo */
+  0,                     /* xShadowName */
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \

@@ -49,13 +49,13 @@
 #include <build/db.h>
 #include <epochlib.h>
 #include <ctrace.h>
-#include <plbitlib.h>
 #include <plhash.h>
 #include <list.h>
 
 #include <net.h>
 #include "bdb_int.h"
 #include "locks.h"
+#include "locks_wrap.h"
 #include "flibc.h"
 
 #ifndef MAXSTACKDEPTH

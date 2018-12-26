@@ -204,8 +204,6 @@ char *osql_breq2a(int op)
         return "OSQL_DELREC";
     case OSQL_INSREC:
         return "OSQL_INSREC";
-    case OSQL_CLRTBL:
-        return "OSQL_CLRTBL";
     case OSQL_QBLOB:
         return "OSQL_QBLOB";
     case OSQL_UPDREC:
@@ -249,7 +247,7 @@ char *osql_breq2a(int op)
     }
 }
 
-int block2_sorese(struct ireq *iq, const char *sql, int sqlen, int block2_type)
+void block2_sorese(struct ireq *iq, const char *sql, int sqlen, int block2_type)
 {
 
     struct thr_handle *thr_self = thrman_self();
@@ -259,9 +257,10 @@ int block2_sorese(struct ireq *iq, const char *sql, int sqlen, int block2_type)
 
     thrman_wheref(thr_self, "%s [%s %s %llx]", req2a(iq->opcode),
                   breq2a(block2_type), iq->sorese.host, iq->sorese.rqid);
-
-    return 0;
 }
+
+extern int gbl_early_verify;
+extern int gbl_osql_send_startgen;
 
 /**
  *
@@ -277,8 +276,13 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     int sentops = 0;
     int bdberr = 0;
     int rc = 0;
-    int rc2 = 0;
     int usedb_only = 0;
+
+    if (gbl_early_verify && !clnt->early_retry && gbl_osql_send_startgen &&
+        clnt->start_gen) {
+        if (clnt->start_gen != bdb_get_rep_gen(thedb->bdb_env))
+            clnt->early_retry = EARLY_ERR_GENCHANGE;
+    }
 
     if (clnt->early_retry == EARLY_ERR_VERIFY) {
         clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
@@ -286,6 +290,9 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     } else if (clnt->early_retry == EARLY_ERR_SELECTV) {
         clnt->osql.xerr.errval = ERR_CONSTR;
         errstat_cat_str(&(clnt->osql.xerr), "constraints error, no genid");
+    } else if (clnt->early_retry == EARLY_ERR_GENCHANGE) {
+        clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
+        errstat_cat_str(&(clnt->osql.xerr), "verify error on master swing");
     }
     if (clnt->early_retry) {
         clnt->early_retry = 0;
@@ -295,20 +302,14 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
 
     /* optimization (will catch all transactions with no internal updates */
     if (osql_shadtbl_empty(clnt)) {
-        if (gbl_extended_sql_debug_trace) {
-            logmsg(LOGMSG_USER, "td=%lu %s line %d empty-shadtbl, returning\n",
-                   pthread_self(), __func__, __LINE__);
-        }
+        sql_debug_logf(clnt, __func__, __LINE__, "empty-shadtbl, returning\n");
         return 0;
     }
 
     usedb_only = osql_shadtbl_usedb_only(clnt);
 
     if (usedb_only && !clnt->selectv_arr && gbl_selectv_rangechk) {
-        if (gbl_extended_sql_debug_trace) {
-            logmsg(LOGMSG_USER, "td=%lu %s line %d empty-sv_arr, returning\n",
-                   pthread_self(), __func__, __LINE__);
-        }
+        sql_debug_logf(clnt, __func__, __LINE__, "empty-sv_arr, returning\n");
         return 0;
     }
 
@@ -319,10 +320,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
                               &(clnt->selectv_arr->file),
                               &(clnt->selectv_arr->offset), 0)) {
         rc = SQLITE_ABORT;
-        if (gbl_extended_sql_debug_trace) {
-            logmsg(LOGMSG_USER, "td=%lu %s line %d returning SQLITE_ABORT\n",
-                   pthread_self(), __func__, __LINE__);
-        }
+        sql_debug_logf(clnt, __func__, __LINE__, "returning SQLITE_ABORT\n");
         clnt->osql.xerr.errval = ERR_CONSTR;
         errstat_cat_str(&(clnt->osql.xerr), "selectv constraints");
         goto goback;
@@ -360,8 +358,8 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     /* start the block processor session */
     rc = osql_sock_start(clnt, osqlreq_type, is_distrib_tran);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: failed to start sorese transactin rc=%d\n",
-                __func__, rc);
+        logmsg(LOGMSG_ERROR, "%s: failed to start sorese transaction rc=%d\n",
+               __func__, rc);
         if (rc != SQLITE_ABORT) /* if abort, clnt->osql has the error */
             rc = SQLITE_CLIENT_CHANGENODE;
         goto goback;
@@ -372,27 +370,18 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
 
     if (sentops && clnt->arr) {
         rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
-        if (gbl_extended_sql_debug_trace && rc) {
-            logmsg(LOGMSG_ERROR, "td=%lu %s line %d returning rc=%d\n",
-                   pthread_self(), __func__, __LINE__, rc);
-        }
+        sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
     }
 
     if (clnt->selectv_arr) {
         rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL);
-        if (gbl_extended_sql_debug_trace && rc) {
-            logmsg(LOGMSG_ERROR, "td=%lu %s line %d returning rc=%d\n",
-                   pthread_self(), __func__, __LINE__, rc);
-        }
+        sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
     }
 
     if (rc && rc != -2) {
         int irc = 0;
 
-        if (gbl_extended_sql_debug_trace) {
-            logmsg(LOGMSG_USER, "td=%lu %s line %d aborting\n", pthread_self(),
-                   __func__, __LINE__);
-        }
+        sql_debug_logf(clnt, __func__, __LINE__, "aborting\n");
 
         irc = osql_sock_abort(clnt, osqlreq_type);
         if (irc) {
@@ -409,10 +398,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     } else {
 
         /* close the block processor session and retrieve the result */
-        if (gbl_extended_sql_debug_trace) {
-            logmsg(LOGMSG_USER, "td=%lu %s line %d committing\n",
-                   pthread_self(), __func__, __LINE__);
-        }
+        sql_debug_logf(clnt, __func__, __LINE__, "committing\n");
         rc = osql_sock_commit(clnt, osqlreq_type);
         if (rc && rc != SQLITE_ABORT && rc != SQLITE_DEADLOCK &&
             rc != SQLITE_BUSY && rc != SQLITE_CLIENT_CHANGENODE) {
@@ -422,10 +408,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
             rc = SQLITE_CLIENT_CHANGENODE;
             //rc = SQLITE_ERROR;
         }
-        if (gbl_extended_sql_debug_trace && rc) {
-            logmsg(LOGMSG_ERROR, "td=%lu %s line %d returning %d\n",
-                   pthread_self(), __func__, __LINE__, rc);
-        }
+        sql_debug_logf(clnt, __func__, __LINE__, "returning %d\n", rc);
     }
 
 goback:
@@ -484,10 +467,11 @@ int recom_abort(struct sqlclntstate *clnt)
     return sorese_abort(clnt, OSQL_RECOM_REQ);
 }
 
-int block2_serial(struct ireq *iq, const char *sql, int sqlen)
+inline int block2_serial(struct ireq *iq, const char *sql, int sqlen)
 {
 
-    return block2_sorese(iq, sql, sqlen, BLOCK2_SERIAL);
+    block2_sorese(iq, sql, sqlen, BLOCK2_SERIAL);
+    return 0;
 }
 
 int snapisol_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
@@ -701,7 +685,7 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
 static void osql_analyze_commit_callback(struct ireq *iq)
 {
     int bdberr;
-    if (btst(&iq->osql_flags, OSQL_FLAGS_ANALYZE)) {
+    if (iq->osql_flags & OSQL_FLAGS_ANALYZE) {
         bdb_llog_analyze(thedb->bdb_env, 1, &bdberr);
     }
 }
@@ -709,7 +693,7 @@ static void osql_analyze_commit_callback(struct ireq *iq)
 static void osql_rowlocks_commit_callback(struct ireq *iq)
 {
     int bdberr;
-    if (btst(&iq->osql_flags, OSQL_FLAGS_ROWLOCKS)) {
+    if (iq->osql_flags & OSQL_FLAGS_ROWLOCKS) {
         bdb_llog_rowlocks(thedb->bdb_env,
                           iq->osql_rowlocks_enable ? rowlocks_on : rowlocks_off,
                           &bdberr);
@@ -719,7 +703,7 @@ static void osql_rowlocks_commit_callback(struct ireq *iq)
 static void osql_genid48_commit_callback(struct ireq *iq)
 {
     int bdberr;
-    if (btst(&iq->osql_flags, OSQL_FLAGS_GENID48)) {
+    if (iq->osql_flags & OSQL_FLAGS_GENID48) {
         bdb_set_genid_format(iq->osql_genid48_enable ? LLMETA_GENID_48BIT
                                                      : LLMETA_GENID_ORIGINAL,
                              &bdberr);
@@ -732,21 +716,13 @@ static void osql_genid48_commit_callback(struct ireq *iq)
 
 extern int gbl_readonly_sc;
 
-void autoanalyze_after_fastinit(char *table)
-{
-    pthread_t analyze;
-    char *tblname = strdup(table); // will be freed in auto_analyze_table()
-    pthread_create(&analyze, &gbl_pthread_attr_detached, auto_analyze_table,
-                   tblname);
-}
-
 static void osql_scdone_commit_callback(struct ireq *iq)
 {
     int bdberr;
     int write_scdone =
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_DONE_SAME_TRAN) ? 0 : 1;
     gbl_readonly_sc = 0;
-    if (btst(&iq->osql_flags, OSQL_FLAGS_SCDONE)) {
+    if (iq->osql_flags & OSQL_FLAGS_SCDONE) {
         struct schema_change_type *sc_next;
         iq->sc = iq->sc_pending;
         while (iq->sc != NULL) {
@@ -770,7 +746,7 @@ static void osql_scdone_commit_callback(struct ireq *iq)
                     type = alter;
                 if (type < 0 || s->db == NULL) {
                     logmsg(LOGMSG_ERROR, "%s: Skipping scdone for table %s\n",
-                           __func__, s->table);
+                           __func__, s->tablename);
                 } else {
                     rc = bdb_llog_scdone(s->db->handle, type, 1, &bdberr);
                     if (rc || bdberr != BDBERR_NOERROR) {
@@ -784,15 +760,15 @@ static void osql_scdone_commit_callback(struct ireq *iq)
                          */
                         logmsg(LOGMSG_ERROR,
                                "%s: Failed to log scdone for table %s\n",
-                               __func__, s->table);
+                               __func__, s->tablename);
                     }
                 }
             }
-            broadcast_sc_end(iq->sc->table, iq->sc_seed);
+            broadcast_sc_end(iq->sc->tablename, iq->sc_seed);
             if (iq->sc->db)
                 sc_del_unused_files(iq->sc->db);
             if (iq->sc->fastinit && !iq->sc->drop_table)
-                autoanalyze_after_fastinit(iq->sc->table);
+                autoanalyze_after_fastinit(iq->sc->tablename);
             free_schema_change_type(iq->sc);
             iq->sc = sc_next;
         }
@@ -800,12 +776,13 @@ static void osql_scdone_commit_callback(struct ireq *iq)
         iq->sc_seed = 0;
         iq->sc_should_abort = 0;
     }
+    iq->tranddl = 0;
 }
 
 static void osql_scdone_abort_callback(struct ireq *iq)
 {
     gbl_readonly_sc = 0;
-    if (btst(&iq->osql_flags, OSQL_FLAGS_SCDONE)) {
+    if (iq->osql_flags & OSQL_FLAGS_SCDONE) {
         iq->sc = iq->sc_pending;
         while (iq->sc != NULL) {
             int scdone_abort_cleanup(struct ireq * iq);
@@ -819,38 +796,18 @@ static void osql_scdone_abort_callback(struct ireq *iq)
         iq->sc_seed = 0;
         iq->sc_should_abort = 0;
     }
+    iq->tranddl = 0;
 }
-
-typedef void (*osql_callback_t)(struct ireq *iq);
-/* must matches OSQL_FLAGS_* enums order */
-static osql_callback_t commit_callbacks[] = {
-    NULL,                          /* OSQL_FLAGS_RECORD_COST */
-    NULL,                          /* OSQL_FLAGS_AUTH */
-    osql_analyze_commit_callback,  /* OSQL_FLAGS_ANALYZE */
-    NULL,                          /* OSQL_FLAGS_CHECK_SELFLOCK */
-    osql_rowlocks_commit_callback, /* OSQL_FLAGS_ROWLOCKS */
-    osql_genid48_commit_callback,  /* OSQL_FLAGS_GENID48 */
-    osql_scdone_commit_callback    /* OSQL_FLAGS_SCDONE */
-};
-static osql_callback_t abort_callbacks[] = {
-    NULL,                      /* OSQL_FLAGS_RECORD_COST */
-    NULL,                      /* OSQL_FLAGS_AUTH */
-    NULL,                      /* OSQL_FLAGS_ANALYZE */
-    NULL,                      /* OSQL_FLAGS_CHECK_SELFLOCK */
-    NULL,                      /* OSQL_FLAGS_ROWLOCKS */
-    NULL,                      /* OSQL_FLAGS_GENID48 */
-    osql_scdone_abort_callback /* OSQL_FLAGS_SCDONE */
-};
 
 void osql_postcommit_handle(struct ireq *iq)
 {
-    commit_callbacks[OSQL_FLAGS_ANALYZE](iq);
-    commit_callbacks[OSQL_FLAGS_ROWLOCKS](iq);
-    commit_callbacks[OSQL_FLAGS_GENID48](iq);
-    commit_callbacks[OSQL_FLAGS_SCDONE](iq);
+    osql_analyze_commit_callback(iq);
+    osql_rowlocks_commit_callback(iq);
+    osql_genid48_commit_callback(iq);
+    osql_scdone_commit_callback(iq);
 }
 
 void osql_postabort_handle(struct ireq *iq)
 {
-    abort_callbacks[OSQL_FLAGS_SCDONE](iq);
+    osql_scdone_abort_callback(iq);
 }

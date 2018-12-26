@@ -1,5 +1,5 @@
 /*
-   Copyright 2017 Bloomberg Finance L.P.
+   Copyright 2017, 2018 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -25,44 +25,52 @@
 #include "comdb2systbl.h"
 #include "comdb2systblInt.h"
 #include "cdb2_constants.h"
-
-#define COMDB2_LIMIT(LIMIT, DESCR)                                             \
-    {                                                                          \
-        #LIMIT, DESCR, LIMIT                                                   \
-    }
+#include "csc2/dynschemaload.h" //MAXIDXNAMELEN
+#include "sqliteLimit.h"
 
 struct limit_t {
     const char *name;
     const char *descr;
     int value;
 } limits[] = {
-    COMDB2_LIMIT(COMDB2_MAX_RECORD_SIZE, "Maximum record size"),
-    COMDB2_LIMIT(MAXBLOBLENGTH, "Maximum blob length"),
-    COMDB2_LIMIT(MAXBLOBS, "Maximum number of blobs"),
-    COMDB2_LIMIT(MAXCOLNAME, "Maximum column name length"),
-    COMDB2_LIMIT(MAXCOLUMNS, "Maximum columns in a table"),
-    COMDB2_LIMIT(MAXCONSTRAINTS, "Maximum number of constraint in a table"),
-    COMDB2_LIMIT(MAXCONSUMERS, "Maximum queue consumers"),
-    COMDB2_LIMIT(MAXCUSTOPNAME, "Maximum length of a custom operation name"),
-    COMDB2_LIMIT(MAX_DBNAME_LENGTH, "Maximum length of database name"),
-    COMDB2_LIMIT(MAXDTASTRIPE, "Maximum number of data stripes"),
-    COMDB2_LIMIT(MAXDYNTAGCOLUMNS,
-                 "Maximum number of bounded parameters per prepared statement"),
-    COMDB2_LIMIT(MAXINDEX, "Maximum number of indices"),
-    COMDB2_LIMIT(MAXKEYLEN, "Maximum key length"),
-    COMDB2_LIMIT(MAXNETS, "Maximum number of networks"),
-    COMDB2_LIMIT(MAXNODES, "Maximum number of nodes"),
-    COMDB2_LIMIT(MAXPLUGINS, "Maximum number of plugins"),
-    COMDB2_LIMIT(MAX_QUEUE_HITS_PER_TRANS, "Maximum number of queues that "
-                                           "Comdb2 efficiently remember per "
-                                           "transaction"),
-    COMDB2_LIMIT(MAXSIBLINGS, "Maximum number of sibling nodes"),
-    COMDB2_LIMIT(MAX_SPNAME, "Maximum length of stored procedure"),
-    COMDB2_LIMIT(MAX_SPVERSION_LEN,
-                 "Maximum length of stored procedure version"),
-    COMDB2_LIMIT(MAXTABLELEN, "Maximum table name length"),
-    COMDB2_LIMIT(MAXTAGLEN, "Maximum tag name length"),
-    COMDB2_LIMIT(REPMAX, "Maximum number of replicants")};
+    {"max_blob_fields", "Maximum number of blob/vutf8 fields per table",
+     MAXBLOBS},
+    {"max_blob_length", "Maximum blob length", MAXBLOBLENGTH},
+    {"max_bounded_parameters",
+     "Maximum number of bounded parameters per prepared statement",
+     MAXDYNTAGCOLUMNS},
+    {"max_column_name_length", "Maximum column name length", MAXCOLNAME},
+    {"max_columns", "Maximum columns per table", MAXCOLUMNS},
+    {"max_constraints", "Maximum number of constraints per table",
+     MAXCONSTRAINTS},
+    {"max_consumers", "Maximum queue consumers per table", MAXCONSUMERS},
+    {"max_database_name_length", "Maximum length of database name",
+     MAX_DBNAME_LENGTH},
+    {"max_data_files", "Maximum number of data files per table", MAXDTAFILES},
+    {"max_data_stipes", "Maximum number of data stripes per table",
+     MAXDTASTRIPE},
+    {"max_expr_depth", "Maximum depth of an expression tree",
+     SQLITE_MAX_EXPR_DEPTH},
+    {"max_indexes", "Maximum number of indexes per table", MAXINDEX},
+    {"max_key_length", "Maximum key length", MAXKEYLEN},
+    {"max_key_name_length", "Maximum key name length", MAXIDXNAMELEN - 1},
+    {"max_networks", "Maximum number of networks", MAXNETS},
+    {"max_nodes", "Maximum number of nodes", REPMAX},
+    {"max_operation_name_length", "Maximum length of a custom operation name",
+     MAXCUSTOPNAME},
+    {"max_pattern_length",
+     "Maximum length of the pattern in a LIKE or GLOB operator",
+     SQLITE_MAX_LIKE_PATTERN_LENGTH},
+    {"max_plugins", "Maximum number of plugins", MAXPLUGINS},
+    {"max_record_size", "Maximum record size", COMDB2_MAX_RECORD_SIZE},
+    {"max_sp_name_length", "Maximum stored procedure name length", MAX_SPNAME},
+    {"max_sp_version_length", "Maximum length of stored procedure version",
+     MAX_SPVERSION_LEN},
+    {"max_sql_length", "Maximum query length", SQLITE_MAX_SQL_LENGTH},
+    {"max_table_name_length", "Maximum table name length", MAXTABLELEN - 1},
+    {"max_tables", "Maximum number of tables", MAXTABLES},
+    {"max_tag_name_length", "Maximum tag name length", MAXTAGLEN},
+};
 
 /*
   comdb2_limits: Comdb2 hard limits.
@@ -89,7 +97,7 @@ static int systblLimitsConnect(sqlite3 *db, void *pAux, int argc,
         if ((*ppVtab = sqlite3_malloc(sizeof(sqlite3_vtab))) == 0) {
             return SQLITE_NOMEM;
         }
-        memset(*ppVtab, 0, sizeof(*ppVtab));
+        memset(*ppVtab, 0, sizeof(ppVtab));
     }
 
     return 0;
@@ -198,6 +206,10 @@ const sqlite3_module systblLimitsModule = {
     0,                      /* xRollback */
     0,                      /* xFindMethod */
     0,                      /* xRename */
+    0,                      /* xSavepoint */
+    0,                      /* xRelease */
+    0,                      /* xRollbackTo */
+    0,                      /* xShadowName */
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2))       \

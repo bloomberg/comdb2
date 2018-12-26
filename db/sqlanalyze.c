@@ -38,7 +38,9 @@
 #include <logmsg.h>
 
 /* amount of thread-memory initialized for this thread */
+#ifndef PER_THREAD_MALLOC
 static int analyze_thread_memory = 1048576;
+#endif
 
 /* global is-running flag */
 volatile int analyze_running_flag = 0;
@@ -299,10 +301,10 @@ static void *sampling_thread(void *arg)
     }
 
     /* release the thread */
-    pthread_mutex_lock(&comp_thd_mutex);
+    Pthread_mutex_lock(&comp_thd_mutex);
     analyze_cur_comp_threads--;
-    pthread_cond_broadcast(&comp_thd_cond);
-    pthread_mutex_unlock(&comp_thd_mutex);
+    Pthread_cond_broadcast(&comp_thd_cond);
+    Pthread_mutex_unlock(&comp_thd_mutex);
 
     /* cleanup */
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
@@ -314,18 +316,18 @@ static void *sampling_thread(void *arg)
 static int dispatch_sample_index_thread(index_descriptor_t *ix_des)
 {
     /* grab lock */
-    pthread_mutex_lock(&comp_thd_mutex);
+    Pthread_mutex_lock(&comp_thd_mutex);
 
     /* wait for sampling thread availability */
     while (analyze_cur_comp_threads >= analyze_max_comp_threads) {
-        pthread_cond_wait(&comp_thd_cond, &comp_thd_mutex);
+        Pthread_cond_wait(&comp_thd_cond, &comp_thd_mutex);
     }
 
     /* grab sampling thread */
     analyze_cur_comp_threads++;
 
     /* release */
-    pthread_mutex_unlock(&comp_thd_mutex);
+    Pthread_mutex_unlock(&comp_thd_mutex);
 
     /* dispatch */
     int rc = pthread_create(&ix_des->thread_id, &gbl_pthread_attr_detached,
@@ -339,16 +341,16 @@ static int dispatch_sample_index_thread(index_descriptor_t *ix_des)
 static int wait_for_index(index_descriptor_t *ix_des)
 {
     /* lock index mutex */
-    pthread_mutex_lock(&comp_thd_mutex);
+    Pthread_mutex_lock(&comp_thd_mutex);
 
     /* wait for the state to change */
     while (ix_des->comp_state == SAMPLING_STARTUP ||
            ix_des->comp_state == SAMPLING_RUNNING) {
-        pthread_cond_wait(&comp_thd_cond, &comp_thd_mutex);
+        Pthread_cond_wait(&comp_thd_cond, &comp_thd_mutex);
     }
 
     /* release */
-    pthread_mutex_unlock(&comp_thd_mutex);
+    Pthread_mutex_unlock(&comp_thd_mutex);
 
     return 0;
 }
@@ -448,13 +450,14 @@ struct temp_table *analyze_get_sampled_temptable(struct sqlclntstate *client,
 }
 
 /* Called from sqlite.  Return the number of records for a sampled table */
-int analyze_get_nrecs(int iTable)
+int64_t analyze_get_nrecs(int iTable)
 {
     struct sql_thread *thd;
     struct sqlclntstate *client;
     struct dbtable *db;
     sampled_idx_t *s_ix;
     int ixnum;
+    unsigned long long n_recs;
 
     /* get client structures */
     thd = pthread_getspecific(query_info_key);
@@ -473,14 +476,15 @@ int analyze_get_nrecs(int iTable)
         return -1;
     }
 
+    /* grab actual number of records */
+    n_recs = s_ix->n_recs;
+
     /* boundry check return code */
-    if (s_ix->n_recs > INT_MAX) {
-        return INT_MAX;
-    }
+    assert( n_recs>=0 );
+    assert( n_recs<=LLONG_MAX );
+
     /* return actual number of records */
-    else {
-        return (int)s_ix->n_recs;
-    }
+    return (int64_t)n_recs;
 }
 
 /* Return the number of records sampled for an index */
@@ -488,6 +492,7 @@ int64_t analyze_get_sampled_nrecs(const char *dbname, int ixnum)
 {
     struct sql_thread *thd;
     struct sqlclntstate *client;
+    unsigned long long n_sampled_recs;
 
     /* get client structures */
     thd = pthread_getspecific(query_info_key);
@@ -499,7 +504,16 @@ int64_t analyze_get_sampled_nrecs(const char *dbname, int ixnum)
     }
 
     assert(0 <= ixnum && ixnum < client->n_cmp_idx);
-    return client->sampled_idx_tbl[ixnum].n_sampled_recs;
+
+    /* grab actual number of sampled records */
+    n_sampled_recs = client->sampled_idx_tbl[ixnum].n_sampled_recs;
+
+    /* boundry check return code */
+    assert( n_sampled_recs>=0 );
+    assert( n_sampled_recs<=LLONG_MAX );
+
+    /* return actual number of sampled records */
+    return (int64_t)n_sampled_recs;
 }
 
 /* Return 1 if we have this sampled index, 0 otherwise */
@@ -722,6 +736,7 @@ static int analyze_table_int(table_descriptor_t *td,
     clnt.osql_max_trans = 0; // allow large transactions
     clnt.sb = sb2;
     sbuf2settimeout(clnt.sb, 0, 0);
+    int sampled_table = 0;
 
     logmsg(LOGMSG_INFO, "Analyze thread starting, table %s (%d%%)\n", td->table, td->scale);
 
@@ -781,7 +796,6 @@ static int analyze_table_int(table_descriptor_t *td,
 
     /* grab the size of the table */
     int64_t totsiz = calc_table_size_analyze(tbl);
-    int sampled_table = 0;
 
     if (sampled_tables_enabled)
         get_sampling_threshold(td->table, &sampling_threshold);
@@ -874,10 +888,10 @@ static void *table_thread(void *arg)
     }
 
     /* release thread */
-    pthread_mutex_lock(&table_thd_mutex);
+    Pthread_mutex_lock(&table_thd_mutex);
     analyze_cur_table_threads--;
-    pthread_cond_broadcast(&table_thd_cond);
-    pthread_mutex_unlock(&table_thd_mutex);
+    Pthread_cond_broadcast(&table_thd_cond);
+    Pthread_mutex_unlock(&table_thd_mutex);
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
 
     thread_memdestroy();
@@ -891,18 +905,18 @@ static int dispatch_table_thread(table_descriptor_t *td)
 {
     int rc;
     /* grab lock */
-    pthread_mutex_lock(&table_thd_mutex);
+    Pthread_mutex_lock(&table_thd_mutex);
 
     /* wait for thread availability */
     while (analyze_cur_table_threads >= analyze_max_table_threads) {
-        pthread_cond_wait(&table_thd_cond, &table_thd_mutex);
+        Pthread_cond_wait(&table_thd_cond, &table_thd_mutex);
     }
 
     /* grab table thread */
     analyze_cur_table_threads++;
 
     /* release */
-    pthread_mutex_unlock(&table_thd_mutex);
+    Pthread_mutex_unlock(&table_thd_mutex);
 
     /* dispatch */
     rc = pthread_create(&td->thread_id, &gbl_pthread_attr_detached,
@@ -916,16 +930,16 @@ static int dispatch_table_thread(table_descriptor_t *td)
 static int wait_for_table(table_descriptor_t *td)
 {
     /* lock table mutex */
-    pthread_mutex_lock(&table_thd_mutex);
+    Pthread_mutex_lock(&table_thd_mutex);
 
     /* wait for the state to change */
     while (td->table_state == TABLE_STARTUP ||
            td->table_state == TABLE_RUNNING) {
-        pthread_cond_wait(&table_thd_cond, &table_thd_mutex);
+        Pthread_cond_wait(&table_thd_cond, &table_thd_mutex);
     }
 
     /* release */
-    pthread_mutex_unlock(&table_thd_mutex);
+    Pthread_mutex_unlock(&table_thd_mutex);
 
     int rc = 0;
     if (TABLE_COMPLETE == td->table_state) {

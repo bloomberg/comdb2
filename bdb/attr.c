@@ -43,7 +43,6 @@
 #include "bdb_int.h"
 #include "locks.h"
 
-#include <plbitlib.h> /* for bset/btst */
 #include <logmsg.h>
 
 static void bdb_attr_set_int(bdb_state_type *bdb_state, bdb_attr_type *bdb_attr,
@@ -60,12 +59,12 @@ static void bdb_attr_set_int(bdb_state_type *bdb_state, bdb_attr_type *bdb_attr,
 
     case BDB_ATTR_COMMITDELAY:
         /* set delay */
-        bdb_attr->commitdelay = value;
-
-        /* if max is set, cap at max */
-        if ((bdb_attr->commitdelaymax > 0) &&
-            (bdb_attr->commitdelay > bdb_attr->commitdelaymax))
+        if (value > bdb_attr->commitdelaymax) {
+            logmsg(LOGMSG_USER, "Capping delay to commitdelaymax of %d ms\n",
+                   bdb_attr->commitdelaymax);
             bdb_attr->commitdelay = bdb_attr->commitdelaymax;
+        } else
+            bdb_attr->commitdelay = value;
         return;
 
     case BDB_ATTR_REP_WORKERS:
@@ -120,7 +119,6 @@ static void bdb_attr_set_int(bdb_state_type *bdb_state, bdb_attr_type *bdb_attr,
         if (bdb_state) {
             if (bdb_state->dbenv) {
                 int rc;
-                const char *fname;
 #if defined(BERKDB_4_5) || defined(BERKDB_46)
                 rc = bdb_state->dbenv->rep_set_limit(bdb_state->dbenv, 0,
                                                      bdb_attr->replimit);

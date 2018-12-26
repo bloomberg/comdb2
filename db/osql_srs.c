@@ -15,7 +15,6 @@
  */
 
 #include <list.h>
-#include "pb_alloc.h"
 #include "comdb2.h"
 #include "sql.h"
 #include "osql_srs.h"
@@ -235,7 +234,6 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
     int rc = 0;
     int nq = 0;
     int tnq = 0;
-    int bdberr = 0;
 
     clnt->verify_retries = 0;
 
@@ -278,6 +276,7 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
             break;
         }
         nq = 0;
+        clnt->start_gen = bdb_get_rep_gen(thedb->bdb_env);
         LISTC_FOR_EACH(&osql->history->lst, item, lnk)
         {
             restore_stmt(clnt, item);
@@ -324,6 +323,8 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
                 "transaction %llx %s failed %d times with verify errors\n",
                 clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us),
                 clnt->verify_retries);
+        /* Set to NONE to suppress the error from srs_tran_destroy(). */
+        osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
     }
 
     /* replayed, free the session */

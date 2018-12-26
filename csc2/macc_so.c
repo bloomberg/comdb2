@@ -1,6 +1,7 @@
 /*
    MACC - access routine generator
    */
+#include <assert.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <sys/types.h>
@@ -77,6 +78,8 @@ static int dyns_get_field_option_comn(char *tag, int fidx, int option,
                                       int *value_type, int *value_sz,
                                       void *valuebuf, int vbsz);
 
+int gbl_legacy_schema = 0;
+
 void csc2_error(const char *fmt, ...);
 void csc2_syntax_error(const char *fmt, ...);
 
@@ -113,6 +116,11 @@ void set_constraint_mod(int start, int op, int type)
 
 void set_constraint_name(char *name)
 {
+    if (gbl_legacy_schema) {
+        csc2_syntax_error("ERROR: TABLE SCHEMA NOT SUPPORTED IN LEGACY MODE\n");
+        any_errors++;
+        return;
+    }
     constraints[nconstraints].consname = name;
 }
 
@@ -332,7 +340,7 @@ char *opertxt(int t)
 int check_options() /* CHECK VALIDITY OF OPTIONS      */
 {
     int ii, jj = 0;
-    int ondisktag = 0, defaulttag = 0, numnormtags = 0;
+    int ondisktag = 0, numnormtags = 0;
 
     /* current restriction on SQL is that it does not support arrays, nor any
      * unions, cases, etc */
@@ -341,10 +349,6 @@ int check_options() /* CHECK VALIDITY OF OPTIONS      */
         if (!strcmp(tables[jj].table_tag, ONDISKTAG)) {
             ondisktag = 1;
             lcldsktag = 1;
-        }
-
-        if (!strcmp(tables[jj].table_tag, DEFAULTTAG)) {
-            defaulttag = 1;
         }
 
         if (strcmp(tables[jj].table_tag, DEFAULTTAG) &&
@@ -801,7 +805,15 @@ void key_setprimary(void) { workkeyflag |= PRIMARY; }
 
 void key_setdatakey(void) { workkeyflag |= DATAKEY; }
 
-void key_setuniqnulls(void) { workkeyflag |= UNIQNULLS; }
+void key_setuniqnulls(void)
+{
+    if (gbl_legacy_schema) {
+        csc2_syntax_error("ERROR: TABLE SCHEMA NOT SUPPORTED IN LEGACY MODE\n");
+        any_errors++;
+        return;
+    }
+    workkeyflag |= UNIQNULLS;
+}
 
 void key_piece_clear() /* used by parser, clears work key */
 {
@@ -836,7 +848,7 @@ void key_add(int ix, char *exprname) /* used by parser, adds a completed key */
 static void key_add_comn(int ix, char *tag, char *exprname,
                          char *where) /* used by parser, adds a completed key */
 {
-    int exprnum, ii, maxidx = 0, loweridx = 0;
+    int exprnum, ii, loweridx = 0;
 
     if (!workkey) {
         csc2_error("ERROR: KEY FAILED\n");
@@ -844,7 +856,6 @@ static void key_add_comn(int ix, char *tag, char *exprname,
         return;
     }
 
-    maxidx = MAX_KEY_INDEX;
     for (ii = 0; ii < ntables; ii++) {
         if (strcasecmp(tag, tables[ii].table_tag) == 0) {
             csc2_error("ERROR: NAME CLASH BETWEEN TAG AND KEY NAME '%s'.\n",
@@ -973,7 +984,7 @@ static void key_add_comn(int ix, char *tag, char *exprname,
     keyexprnum[ii] = exprnum;  /* remember expr assoc with key */
     ixflags[ix] = workkeyflag; /* remember flags */
     if (tag != NULL) {
-        int idxfnd = 0, jj = 0;
+        int jj = 0;
         strupper(tag);
         for (jj = 0; jj < nkeys; jj++) {
             if (keyixnum[jj] != ix && !strcasecmp(tag, keys[jj]->keytag)) {
@@ -997,6 +1008,12 @@ static void key_add_comn(int ix, char *tag, char *exprname,
             current_line, tag, MAXIDXNAMELEN - 1);
     }
     if (where && strlen(where) != 0) {
+        if (gbl_legacy_schema) {
+            csc2_syntax_error(
+                "ERROR: TABLE SCHEMA NOT SUPPORTED IN LEGACY MODE\n");
+            any_errors++;
+            return;
+        }
         keys[ii]->where = csc2_strdup(where);
     } else {
         keys[ii]->where = NULL;
@@ -1037,10 +1054,16 @@ void key_exprtype_add(int type, int arraysz)
 void key_piece_add(char *buf,
                    int is_expr) /* used by parser, adds a piece of a key */
 {
-    int el[6], rg[2], i, ret, t, found = 0, pointer = -1, tidx = 0;
+    int el[6], rg[2], i, t, tidx = 0;
     char *cp, *tag;
 
     if (is_expr) {
+        if (gbl_legacy_schema) {
+            csc2_syntax_error(
+                "ERROR: TABLE SCHEMA NOT SUPPORTED IN LEGACY MODE\n");
+            any_errors++;
+            return;
+        }
         struct key *nk = (struct key *)csc2_malloc(sizeof(struct key));
         struct key *kp;
         int keyfields = 0;
@@ -1477,11 +1500,20 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
                     return;
                 }
                 break;
+            case T_DATETIME:
+            case T_DATETIMEUS:
+                if (gbl_legacy_schema && (tables[ntables]
+                                              .sym[tables[ntables].nsym]
+                                              .fopts[i]
+                                              .opttype != FLDOPT_NULL)) {
+                    csc2_syntax_error(
+                        "ERROR: TABLE SCHEMA NOT SUPPORTED IN LEGACY MODE\n");
+                    any_errors++;
+                    return;
+                }
             case T_PSTR:
             case T_CSTR:
             case T_VUTF8:
-            case T_DATETIME:
-            case T_DATETIMEUS:
                 if (tables[ntables].sym[tables[ntables].nsym].fopts
                             [i].valtype != CLIENT_CSTR &&
                     tables[ntables].sym[tables[ntables].nsym].fopts
@@ -1657,7 +1689,7 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
         }
     }
 
-    /* check for pointlessly short strings */
+    /* Check for pointlessly short strings */
     if (T_CSTR == typ && tables[ntables].sym[tables[ntables].nsym].size < 2) {
         csc2_error( "Error at line %3d: CSTRINGS ARE \\0 TERMINATED SO "
                         "MUST BE AT LEAST 2 BYTES IN SIZE\n",
@@ -2192,7 +2224,6 @@ void expr_add_pc(char *sym, int op, int num)
     if (sym)
         strlower(sym, strlen(sym));
 
-    sprintf(arrstr, "");
     for (i = 0; i < 6 && el[i] != -1; i++)
         sprintf(eos(arrstr), "[%d]", el[i]);
 
@@ -2350,9 +2381,6 @@ int macc_fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
 int macc_ferror(FILE *fh)
 {
     extern FILE *yyin; /* lexer's input file */
-    int ch;
-    int numread;
-    unsigned char byte;
 
     if (fh != yyin) {
         csc2_error( "Someone called macc_ferror but not with yyin!\n");
@@ -2365,17 +2393,10 @@ int macc_ferror(FILE *fh)
 static int dyns_load_schema_int(char *filename, char *schematxt, char *dbname,
                                 char *tablename)
 {
-    char buf[256], *ifn = NULL;
-    int i = 0, lastix = 0;
-    int flag_winout = 0; /* true? then parse for winmacc */
+    char *ifn = NULL;
     int fhopen = 0;
-    FILE *fil;         /* my output file               */
     extern FILE *yyin; /* lexer's input file           */
-    /*extern*/ int yy_flex_debug;
-    int only_source = 0;
-    void winmacc_output();
 
-    yy_flex_debug = 0;
     strcpy(VER, revision + 10); /* get my version               */
     ifn = strchr(VER, '$');     /* clean up version text        */
     if (ifn)
@@ -2954,7 +2975,7 @@ static int dyns_get_field_option_comn(char *tag, int fidx, int option,
                                       int *value_type, int *value_sz,
                                       void *valuebuf, int vbsz)
 {
-    int i = 0, length = 0;
+    int i = 0;
     /* int tidx=gettable(tag==NULL?DEFAULTTAG:tag);*/
     int tidx = gettable(ONDISKTAG);
     if (strcmp(tag, ONDISKTAG))
@@ -2963,7 +2984,9 @@ static int dyns_get_field_option_comn(char *tag, int fidx, int option,
         return -1;
     if (fidx < 0 || fidx >= tables[tidx].nsym)
         return -1;
-#if 1
+
+    assert((valuebuf != 0) && (vbsz > 0));
+
     *value_type = field_type(tables[tidx].sym[fidx].type, 0);
     for (i = 0; i < tables[tidx].sym[fidx].numfo; i++) {
         if (tables[tidx].sym[fidx].fopts[i].opttype == option) {
@@ -3082,7 +3105,6 @@ static int dyns_get_field_option_comn(char *tag, int fidx, int option,
         }
     }
 
-#endif
     *value_type = CLIENT_MINTYPE;
     *value_sz = 0;
     memset(valuebuf, 0, vbsz);

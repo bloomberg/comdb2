@@ -28,6 +28,26 @@
 #define COMDB2MA_MT_SAFE 1
 #define COMDB2MA_MT_UNSAFE 0
 
+#define COMDB2MA_SPACES                                                   \
+XMACRO_COMDB2MA(COMDB2MA_STATIC_INVALID,        "INVALID",          0, 0) \
+XMACRO_COMDB2MA(COMDB2MA_STATIC_UNCATEGORIZED,  "uncategorized",    0, 0) \
+XMACRO_COMDB2MA(COMDB2MA_STATIC_BDB,            "bdb",              0, 0) \
+XMACRO_COMDB2MA(COMDB2MA_STATIC_BERKDB,         "berkdb",           0, 0) \
+XMACRO_COMDB2MA(COMDB2MA_STATIC_NET,            "net",              0, 0) \
+XMACRO_COMDB2MA(COMDB2MA_STATIC_SQLITE,         "sqlite",           0, 0) \
+XMACRO_COMDB2MA(COMDB2MA_STATIC_UTIL,           "util",             0, 0) \
+XMACRO_COMDB2MA(COMDB2MA_STATIC_CSC2,           "csc2",             0, 0) \
+XMACRO_COMDB2MA(COMDB2MA_STATIC_DATETIME,       "datetime",         0, 0) \
+XMACRO_COMDB2MA(COMDB2MA_STATIC_DFP_DECNUMBER,  "dfp_decNumber",    0, 0) \
+XMACRO_COMDB2MA(COMDB2MA_STATIC_PROTOBUF,       "protobuf",         0, 0) \
+XMACRO_COMDB2MA(COMDB2MA_STATIC_SCHEMACHANGE,   "schemachange",     0, 0) \
+XMACRO_COMDB2MA(COMDB2MA_STATIC_LUA,            "lua",              0, 0) \
+XMACRO_COMDB2MA(COMDB2MA_COUNT,                 NULL,               0, 0)
+
+#define XMACRO_COMDB2MA(idx, name, size, cap) idx,
+enum { COMDB2MA_SPACES };
+#undef XMACRO_COMDB2MA
+
 /*
 ** Memory report sort.
 */
@@ -435,7 +455,7 @@ int comdb2_malloc_stats(comdb2ma ma, int verbose, int human_readable,
 */
 int comdb2_malloc_trim(comdb2ma ma, size_t pad);
 
-#endif
+#endif /* COMDB2MA_OMIT_DYNAMIC */
 
 #ifndef COMDB2MA_OMIT_STATIC
 
@@ -528,7 +548,7 @@ int comdb2_malloc_stats_static(int indx, int verbose, int human_readable,
 */
 int comdb2_malloc_trim_static(int indx, size_t pad);
 
-#endif
+#endif /* COMDB2MA_OMIT_STATIC */
 
 /****************************************
 **                                     **
@@ -551,6 +571,8 @@ char *os_strdup(const char *);
 */
 typedef struct comdb2bmspace *comdb2bma;
 
+#ifndef USE_SYS_ALLOC
+
 /* constructor/destructor */
 
 /*
@@ -572,32 +594,10 @@ int comdb2bma_destroy(comdb2bma ma);
 /* helpers { */
 /* functions for resolving deadlocks externally */
 
-/* tell the allocator that I will need to get priority back.
-   must be called before comdb2bma_transfer_priority() */
-int comdb2bma_pass_priority_back(comdb2bma ma);
-
-/* transfer priority to another thread. if there is currently no priority thread
-   or
-   the calling thread is not priority thread, this function is no-op */
-int comdb2bma_transfer_priority(comdb2bma ma, pthread_t tid);
-
 /* yield. if there is currently no priority thread or
    the calling thread is not priority thread, this function is no-op */
 int comdb2bma_yield(comdb2bma ma);
 
-/* yield all allocators. */
-int comdb2bma_yield_all(void);
-
-/* mark an external mutex locked. allocation and deallocation after will not
-   attempt to lock the external mutex. the calling thread must be holding the
-   external mutex.
-   if the allocator is created with an internal mutex, this function is no-op */
-int comdb2bma_mark_locked(comdb2bma ma);
-
-/* mark an external mutex unlocked. the calling thread must be holding the
-   external mutex.
-   if the allocator is created with an internal mutex, this function is no-op */
-int comdb2bma_mark_unlocked(comdb2bma ma);
 
 /* return the number of threads that are currently blocking on the allocator */
 int comdb2bma_nblocks(comdb2bma ma);
@@ -650,6 +650,78 @@ void *comdb2_timedrealloc_nl(comdb2bma ma, void *ptr, size_t n,
 void comdb2_bfree(comdb2bma ma, void *ptr);
 void comdb2_bfree_nl(comdb2bma ma, void *ptr);
 /* } free */
+#else
+#define comdb2bma_create(init, cap, name, plock) ((void *)1)
+#define comdb2bma_create_trace(init, cap, name, lock, file, func, line) ((void *)1)
+#define comdb2bma_destroy(ma) 0
+#define comdb2bma_yield(ma) 0
+#define comdb2bma_nblocks(ma) 0
+#define comdb2bma_priotid(ma) 0
+
+#define comdb2_bmalloc(ma, n) malloc(n)
+#define comdb2_trymalloc(ma, n) malloc(n)
+#define comdb2_timedmalloc(ma, n, ms) malloc(n)
+#define comdb2_bmalloc_nl(ma, n) malloc(n)
+#define comdb2_trymalloc_nl(ma, n) malloc(n)
+#define comdb2_timedmalloc_nl(ma, n, ms) malloc(n)
+
+#define comdb2_bcalloc(ma, n, size) calloc(n, size)
+#define comdb2_trycalloc(ma, n, size) calloc(n, size)
+#define comdb2_timedcalloc(ma, n, size, ms) calloc(n, size)
+#define comdb2_bcalloc_nl(ma, n, size) calloc(n, size)
+#define comdb2_trycalloc_nl(ma, n, size) calloc(n, size)
+#define comdb2_timedcalloc_nl(ma, n, size, ms) calloc(n, size)
+
+#define comdb2_brealloc(ma, ptr, n) realloc(ptr, n)
+#define comdb2_tryrealloc(ma, ptr, n) realloc(ptr, n)
+#define comdb2_timedrealloc(ma, ptr, n, ms) realloc(ptr, n)
+#define comdb2_brealloc_nl(ma, ptr, n) realloc(ptr, n)
+#define comdb2_tryrealloc_nl(ma, ptr, n) realloc(ptr, n)
+#define comdb2_timedrealloc_nl(ma, ptr, n, ms) realloc(ptr, n)
+
+#define comdb2_bfree(ma, ptr) free(ptr)
+#define comdb2_bfree_nl(ma, ptr) free(ptr)
+
+#endif /* USE_SYS_ALLOC */
+
+/* tell the allocator that I will need to get priority back.
+   must be called before comdb2bma_transfer_priority() */
+int comdb2bma_pass_priority_back(comdb2bma ma);
+
+/* transfer priority to another thread. if there is currently no priority thread
+   or the calling thread is not priority thread, this function is no-op */
+int comdb2bma_transfer_priority(comdb2bma ma, pthread_t tid);
+
+/* yield all allocators. */
+int comdb2bma_yield_all(void);
+
+/* mark an external mutex locked. allocation and deallocation after will not
+   attempt to lock the external mutex. the calling thread must be holding the
+   external mutex.  if the allocator is created with an internal mutex, this
+   function is no-op */
+int comdb2bma_mark_locked(comdb2bma ma);
+
+/* mark an external mutex unlocked. the calling thread must be holding the
+   external mutex.  if the allocator is created with an internal mutex, this
+   function is no-op */
+int comdb2bma_mark_unlocked(comdb2bma ma);
 
 #endif /* COMDB2_OMIT_BMEM */
+
+#ifndef COMDB2MA_OMIT_DEBUG
+/* Dump the specified allocators. When `unsafe' is set to true,
+   also dump those thread-unsafe allocators. */
+int comdb2ma_debug_dump(const char *, int unsafe);
+/* Start debugging. */
+void comdb2ma_debug_start(void);
+/* Manually stop debugging. */
+void comdb2ma_debug_stop(void);
+/* Turn on debugging on the specified allocators. */
+int comdb2ma_debug_on(const char *);
+/* Turn off debugging on the specified allocators. */
+int comdb2ma_debug_off(const char *);
+/* Print debug config. */
+void comdb2ma_debug_show_config(void);
+#endif /* COMDB2MA_OMIT_DEBUG */
+
 #endif /* INCLUDED_MEM_H */

@@ -18,14 +18,23 @@
 #include <stdbool.h>
 #include <poll.h>
 
-#include <bdb_fetch.h>
-
 #include "schemachange.h"
 #include "sc_records.h"
 #include "sc_global.h"
 #include "sc_schema.h"
+#include "sc_callbacks.h"
+
+#include <bdb_fetch.h>
+#include "dbinc/db_swap.h"
+#include "llog_auto.h"
+#include "llog_ext.h"
+#include "bdb_osqllog.h"
+#include "bdb_osql_log_rec.h"
+
 #include "comdb2_atomic.h"
 #include "logmsg.h"
+
+int gbl_logical_live_sc = 0;
 
 extern int gbl_partial_indexes;
 extern __thread void *defered_index_tbl;
@@ -71,6 +80,10 @@ static inline void release_rebuild_thr(int *thrcount)
     ATOMIC_ADD((*thrcount), -1);
 }
 
+/* Return true if there were writes to table undergoing SC (data->from)
+ * Note that data is local to this thread so this accounting happens
+ * for each thread performing SC.
+ */
 static inline int tbl_had_writes(struct convert_record_data *data)
 {
     unsigned oldcount = data->write_count;
@@ -80,14 +93,24 @@ static inline int tbl_had_writes(struct convert_record_data *data)
     return (data->write_count - oldcount) != 0;
 }
 
+static inline void print_final_sc_stat(struct convert_record_data *data)
+{
+    sc_printf(
+        data->s,
+        "[%s] TOTAL converted %lld sc_adds %d sc_updates %d sc_deletess %d\n",
+        data->from->tablename,
+        data->from->sc_nrecs - (data->from->sc_adds + data->from->sc_updates +
+                                data->from->sc_deletes),
+        data->from->sc_adds, data->from->sc_updates, data->from->sc_deletes);
+}
+
 /* prints global stats if not printed in the last sc_report_freq,
  * returns 1 if successful
  */
-static inline int print_global_sc_stat(struct convert_record_data *data,
-                                       int now, int sc_report_freq)
+static inline int print_aggregate_sc_stat(struct convert_record_data *data,
+                                          int now, int sc_report_freq)
 {
-    static int total_lasttime = 0; /* used for global stats */
-    int copy_total_lasttime = total_lasttime;
+    int copy_total_lasttime = data->cmembers->total_lasttime;
 
     /* Do work without locking */
     if (now < copy_total_lasttime + sc_report_freq) return 0;
@@ -97,7 +120,7 @@ static inline int print_global_sc_stat(struct convert_record_data *data,
      * to print. If it failed, another thread is doing that work.
      */
 
-    bool res = CAS(total_lasttime, copy_total_lasttime, now);
+    bool res = CAS(data->cmembers->total_lasttime, copy_total_lasttime, now);
     if (!res) return 0;
 
     /* number of adds after schema cursor (by definition, all adds)
@@ -106,20 +129,25 @@ static inline int print_global_sc_stat(struct convert_record_data *data,
      * number of genids added since sc began (adds + updates)
      */
     if (data->live)
-        sc_printf(data->s, ">> adds %u upds %d dels %u extra genids "
-                           "%u\n",
-                  gbl_sc_adds, gbl_sc_updates, gbl_sc_deletes,
-                  gbl_sc_adds + gbl_sc_updates);
+        sc_printf(data->s,
+                  "[%s] >> adds %u upds %d dels %u extra genids "
+                  "%u\n",
+                  data->from->tablename, data->from->sc_adds,
+                  data->from->sc_updates, data->from->sc_deletes,
+                  data->from->sc_adds + data->from->sc_updates);
 
     /* totals across all threads */
     if (data->scanmode != SCAN_PARALLEL) return 1;
 
-    long long total_nrecs_diff = gbl_sc_nrecs - gbl_sc_prev_nrecs;
-    gbl_sc_prev_nrecs = gbl_sc_nrecs;
-    sc_printf(data->s, "progress TOTAL %lld +%lld actual "
-                       "progress total %lld rate %lld r/s\n",
-              gbl_sc_nrecs, total_nrecs_diff,
-              gbl_sc_nrecs - (gbl_sc_adds + gbl_sc_updates),
+    long long total_nrecs_diff =
+        data->from->sc_nrecs - data->from->sc_prev_nrecs;
+    data->from->sc_prev_nrecs = data->from->sc_nrecs;
+    sc_printf(data->s,
+              "[%s] progress TOTAL %lld +%lld actual "
+              "progress total %lld rate %lld r/s\n",
+              data->from->tablename, data->from->sc_nrecs, total_nrecs_diff,
+              data->from->sc_nrecs -
+                  (data->from->sc_adds + data->from->sc_updates),
               total_nrecs_diff / sc_report_freq);
     return 1;
 }
@@ -147,7 +175,7 @@ static inline void lkcounter_check(struct convert_record_data *data, int now)
      */
 
     int64_t ndeadlocks = 0, nlockwaits = 0;
-    bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlockwaits);
+    bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlockwaits, NULL);
 
     int64_t diff_deadlocks = ndeadlocks - data->cmembers->ndeadlocks;
     int64_t diff_lockwaits = nlockwaits - data->cmembers->nlockwaits;
@@ -155,22 +183,13 @@ static inline void lkcounter_check(struct convert_record_data *data, int now)
     data->cmembers->ndeadlocks = ndeadlocks;
     data->cmembers->nlockwaits = nlockwaits;
     logmsg(
-        LOGMSG_INFO,
+        LOGMSG_DEBUG,
         "%s: diff_deadlocks=%ld, diff_lockwaits=%ld, maxthr=%d, currthr=%d\n",
         __func__, diff_deadlocks, diff_lockwaits, data->cmembers->maxthreads,
         data->cmembers->thrcount);
     increase_max_threads(
         &data->cmembers->maxthreads,
         bdb_attr_get(data->from->dbenv->bdb_attr, BDB_ATTR_SC_USE_NUM_THREADS));
-}
-
-void live_sc_enter_exclusive_all(bdb_state_type *bdb_state, tran_type *trans)
-{
-    unsigned stripe;
-    for (stripe = 0; stripe < gbl_dtastripe; ++stripe) {
-        bdb_lock_stripe_write(bdb_state, stripe, trans);
-    }
-    return;
 }
 
 /* If the schema is resuming it sets sc_genids to be the last genid for each
@@ -223,11 +242,13 @@ int init_sc_genids(struct dbtable *db, struct schema_change_type *s)
         /* get this stripe's newest genid and store it in sc_genids,
          * if we have been rebuilding the data files we can grab the genids
          * straight from there, otherwise we look in the llmeta table */
-        if (is_dta_being_rebuilt(db->plan))
+        if (is_dta_being_rebuilt(db->plan)) {
             rc = bdb_find_newest_genid(db->handle, NULL, stripe, rec, &dtalen,
                                        dtalen, &sc_genids[stripe], &ver,
                                        &bdberr);
-        else
+            if (rc == 1)
+                sc_genids[stripe] = 0ULL;
+        } else
             rc = bdb_get_high_genid(db->tablename, stripe, &sc_genids[stripe],
                                     &bdberr);
         if (rc < 0 || bdberr != BDBERR_NOERROR) {
@@ -237,8 +258,8 @@ int init_sc_genids(struct dbtable *db, struct schema_change_type *s)
             free(rec);
             return -1;
         }
-        sc_printf(s, "resuming stripe %2d from 0x%016llx\n", stripe,
-                  sc_genids[stripe]);
+        sc_printf(s, "[%s] resuming stripe %2d from 0x%016llx\n", db->tablename,
+                  stripe, sc_genids[stripe]);
     }
 
     free(rec);
@@ -302,30 +323,48 @@ void convert_record_data_cleanup(struct convert_record_data *data)
         trans_abort(&data->iq, data->trans);
         data->trans = NULL;
     }
-
     if (data->dmp) {
         bdb_dtadump_done(data->from->handle, data->dmp);
         data->dmp = NULL;
     }
-
     free_blob_status_data(&data->blb);
+    free_blob_status_data(&data->blbcopy);
     free_blob_buffers(data->freeblb,
                       sizeof(data->freeblb) / sizeof(data->freeblb[0]));
-
     if (data->dta_buf) {
         free(data->dta_buf);
         data->dta_buf = NULL;
     }
-
+    if (data->old_dta_buf) {
+        free(data->old_dta_buf);
+        data->old_dta_buf = NULL;
+    }
+    if (data->unpack_dta_buf) {
+        free(data->unpack_dta_buf);
+        data->unpack_dta_buf = NULL;
+    }
+    if (data->unpack_old_dta_buf) {
+        free(data->unpack_old_dta_buf);
+        data->unpack_old_dta_buf = NULL;
+    }
+    if (data->blb_buf) {
+        free(data->blb_buf);
+        data->blb_buf = NULL;
+    }
+    if (data->old_blb_buf) {
+        free(data->old_blb_buf);
+        data->old_blb_buf = NULL;
+    }
     if (data->rec) {
         free_db_record(data->rec);
         data->rec = NULL;
     }
 }
 
-static int convert_server_record(const void *inbufp, const char *from_tag,
-                                 struct dbrecord *db,
-                                 struct schema_change_type *s)
+static inline int convert_server_record(const void *inbufp,
+                                        const char *from_tag,
+                                        struct dbrecord *db,
+                                        struct schema_change_type *s)
 {
     return convert_server_record_blobs(inbufp, from_tag, db, s, NULL /*blobs*/,
                                        0 /*maxblobs*/);
@@ -389,13 +428,14 @@ static int report_sc_progress(struct convert_record_data *data, int now)
         data->prev_nrecs = data->nrecs;
 
         /* print thread specific stats */
-        sc_printf(data->s, "progress stripe %d changed genids %u progress %lld"
-                           " recs +%lld (%lld r/s)\n",
-                  data->stripe, data->n_genids_changed, data->nrecs, diff_nrecs,
-                  diff_nrecs / copy_sc_report_freq);
+        sc_printf(data->s,
+                  "[%s] progress stripe %d changed genids %u progress %lld"
+                  " recs +%lld (%lld r/s)\n",
+                  data->from->tablename, data->stripe, data->n_genids_changed,
+                  data->nrecs, diff_nrecs, diff_nrecs / copy_sc_report_freq);
 
         /* now do global sc data */
-        int res = print_global_sc_stat(data, now, copy_sc_report_freq);
+        int res = print_aggregate_sc_stat(data, now, copy_sc_report_freq);
         /* check headroom only if this thread printed the global stats */
         if (res && check_sc_headroom(data->s, data->from, data->to)) {
             if (data->s->force) {
@@ -405,6 +445,125 @@ static int report_sc_progress(struct convert_record_data *data, int now)
             }
         }
     }
+    return 0;
+}
+
+static int prepare_and_verify_newdb_record(struct convert_record_data *data,
+                                           void *dta, int dtalen,
+                                           unsigned long long *dirty_keys,
+                                           int leakcheck)
+{
+    int rc = 0;
+    int dta_needs_conversion = 1;
+    if ((!data->to->plan || !data->to->plan->dta_plan) &&
+        data->s->rebuild_index)
+        dta_needs_conversion = 0;
+
+    if (dta_needs_conversion) {
+        if (!data->s->force_rebuild &&
+            !data->s->use_old_blobs_on_rebuild) /* We have correct blob data in
+                                                   this. */
+            bzero(data->wrblb, sizeof(data->wrblb));
+
+        /* convert current.  this converts blob fields, but we need to make sure
+         * we add the right blobs separately. */
+        rc = convert_server_record_cachedmap(
+            data->to->tablename, data->tagmap, dta, data->rec->recbuf, data->s,
+            data->from->schema, data->to->schema, data->wrblb,
+            sizeof(data->wrblb) / sizeof(data->wrblb[0]));
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s:%d failed to convert record rc=%d\n",
+                   __func__, __LINE__, rc);
+            return -2;
+        }
+
+        /* TODO do the blobs returned by convert_server_record_blobs() need to
+         * be converted to client blobs? */
+
+        /* we are responsible for freeing any blob data that
+         * convert_server_record_blobs() returns to us with free_blob_buffers().
+         * if the plan calls for a full blob rebuild, data retrieved by
+         * bdb_fetch_blobs_by_rrn_and_genid() may be added into wrblb in the
+         * loop below, this blob data MUST be freed with free_blob_status_data()
+         * so we need to make a copy of what we have right now so we can free it
+         * seperately */
+        free_blob_buffers(data->freeblb,
+                          sizeof(data->freeblb) / sizeof(data->freeblb[0]));
+        memcpy(data->freeblb, data->wrblb, sizeof(data->freeblb));
+    }
+
+    /* map old blobs to new blobs */
+    if (!data->s->force_rebuild && !data->s->use_old_blobs_on_rebuild &&
+        ((gbl_partial_indexes && data->to->ix_partial) || data->to->ix_expr ||
+         !gbl_use_plan || !data->to->plan || !data->to->plan->plan_blobs)) {
+        if (!leakcheck)
+            bzero(data->wrblb, sizeof(data->wrblb));
+        for (int ii = 0; ii < data->to->numblobs; ii++) {
+            int fromblobix = data->toblobs2fromblobs[ii];
+            if (fromblobix >= 0 && data->blb.blobptrs[fromblobix] != NULL) {
+                if (data->wrblb[ii].data) {
+                    /* this shouldn't happen because only bcstr to vutf8
+                     * conversions should return any blob data from
+                     * convert_server_record_blobs() and if we're createing a
+                     * new vutf8 blob it should not have a fromblobix */
+                    sc_errf(data->s,
+                            "convert_record: attempted to "
+                            "overwrite blob data retrieved from "
+                            "convert_server_record_blobs() with data from "
+                            "bdb_fetch_blobs_by_rrn_and_genid().  This would "
+                            "leak memory and shouldn't ever happen. to blob %d "
+                            "from blob %d\n",
+                            ii, fromblobix);
+                    return -2;
+                }
+
+                data->wrblb[ii].exists = 1;
+                data->wrblb[ii].data =
+                    ((char *)data->blb.blobptrs[fromblobix]) +
+                    data->blb.bloboffs[fromblobix];
+                data->wrblb[ii].length = data->blb.bloblens[fromblobix];
+                data->wrblb[ii].collected = data->wrblb[ii].length;
+            }
+        }
+    }
+
+    /* Write record to destination table */
+    data->iq.usedb = data->to;
+
+    int rebuild = (data->to->plan && data->to->plan->dta_plan) ||
+                  data->s->schema_change == SC_CONSTRAINT_CHANGE;
+
+    uint8_t *p_buf_data = data->rec->recbuf;
+
+    if (!dta_needs_conversion) {
+        p_buf_data = dta;
+    }
+
+    *dirty_keys = -1ULL;
+    if (gbl_partial_indexes && data->to->ix_partial) {
+        *dirty_keys =
+            verify_indexes(data->to, p_buf_data, data->wrblb, MAXBLOBS, 1);
+        if (*dirty_keys == -1ULL) {
+            rc = ERR_VERIFY_PI;
+            return rc;
+        }
+    }
+
+    assert(data->trans != NULL);
+    rc = verify_record_constraint(&data->iq, data->to, data->trans, p_buf_data,
+                                  *dirty_keys, data->wrblb, MAXBLOBS,
+                                  ".NEW..ONDISK", rebuild, 0);
+    if (rc)
+        return rc;
+
+    if (gbl_partial_indexes && data->to->ix_partial) {
+        rc = verify_partial_rev_constraint(data->from, data->to, data->trans,
+                                           p_buf_data, *dirty_keys,
+                                           ".NEW..ONDISK");
+        if (rc)
+            return rc;
+    }
+
     return 0;
 }
 
@@ -422,11 +581,12 @@ static int convert_record(struct convert_record_data *data)
     void *dta = NULL;
     int no_wait_rowlock = 0;
 
-    if (gbl_sc_thd_failed) {
+    if (data->s->sc_thd_failed) {
         if (!data->s->retry_bad_genids)
-            sc_errf(data->s, "Stoping work on stripe %d because the thread for "
-                             "stripe %d failed\n",
-                    data->stripe, gbl_sc_thd_failed - 1);
+            sc_errf(data->s,
+                    "Stoping work on stripe %d because the thread for "
+                    "stripe %d failed\n",
+                    data->stripe, data->s->sc_thd_failed - 1);
         return -1;
     }
     if (gbl_sc_abort || data->from->sc_abort ||
@@ -435,8 +595,8 @@ static int convert_record(struct convert_record_data *data)
         return -1;
     }
     if (tbl_had_writes(data)) {
+        /* NB: if we return here, writes could block SC forever, so lets not */
         usleep(gbl_sc_usleep);
-        return 1;
     }
 
     if (data->trans == NULL) {
@@ -450,12 +610,12 @@ static int convert_record(struct convert_record_data *data)
     }
 
     data->iq.debug = debug_this_request(gbl_debug_until);
-    pthread_mutex_lock(&gbl_sc_lock);
+    Pthread_mutex_lock(&gbl_sc_lock);
     if (gbl_who > 0) {
         gbl_who--;
         data->iq.debug = 1;
     }
-    pthread_mutex_unlock(&gbl_sc_lock);
+    Pthread_mutex_unlock(&gbl_sc_lock);
     if (data->iq.debug) {
         reqlog_new_request(&data->iq); // TODO: cleanup (reset) logger
         reqpushprefixf(&data->iq, "0x%llx: CONVERT_REC ", pthread_self());
@@ -518,6 +678,16 @@ static int convert_record(struct convert_record_data *data)
              * a lock to the last page of the stripe.
              */
 
+            if (data->s->logical_livesc) {
+                data->s->sc_convert_done[data->stripe] = 1;
+                sc_printf(
+                    data->s,
+                    "[%s] finished converting stripe %d, last genid %llx\n",
+                    data->from->tablename, data->stripe,
+                    data->sc_genids[data->stripe]);
+                return 0;
+            }
+
             // AZ: determine what locks we hold at this time
             // bdb_dump_active_locks(data->to->handle, stdout);
             data->sc_genids[data->stripe] = -1ULL;
@@ -538,8 +708,9 @@ static int convert_record(struct convert_record_data *data)
                 if (rc != 0) rc = -1; // convert_record expects -1
             }
             sc_printf(data->s,
-                      "finished stripe %d, setting genid %llx, rc %d\n",
-                      data->stripe, data->sc_genids[data->stripe], rc);
+                      "[%s] finished stripe %d, setting genid %llx, rc %d\n",
+                      data->from->tablename, data->stripe,
+                      data->sc_genids[data->stripe], rc);
             return rc;
         } else if (rc == RC_INTERNAL_RETRY) {
             trans_abort(&data->iq, data->trans);
@@ -705,73 +876,13 @@ static int convert_record(struct convert_record_data *data)
     }
 
     int dta_needs_conversion = 1;
-    if (usellmeta && data->s->rebuild_index) dta_needs_conversion = 0;
+    if (usellmeta && data->s->rebuild_index)
+        dta_needs_conversion = 0;
 
-    if (dta_needs_conversion) {
-        if (!data->s->force_rebuild &&
-            !data->s->use_old_blobs_on_rebuild) /* We have correct blob data in
-                                                   this. */
-            bzero(data->wrblb, sizeof(data->wrblb));
+    /* Write record to destination table */
+    data->iq.usedb = data->to;
 
-        /* convert current.  this converts blob fields, but we need to make sure
-         * we add the right blobs separately. */
-        rc = convert_server_record_cachedmap(
-            data->to->tablename, data->tagmap, dta, data->rec->recbuf, data->s,
-            data->from->schema, data->to->schema, data->wrblb,
-            sizeof(data->wrblb) / sizeof(data->wrblb[0]));
-        if (rc) {
-            sc_errf(data->s, "Convert failed rrn %d genid 0x%llx rc %d\n", rrn,
-                    genid, rc);
-            return -2;
-        }
-
-        /* TODO do the blobs returned by convert_server_record_blobs() need to
-         * be converted to client blobs? */
-
-        /* we are responsible for freeing any blob data that
-         * convert_server_record_blobs() returns to us with free_blob_buffers().
-         * if the plan calls for a full blob rebuild, data retrieved by
-         * bdb_fetch_blobs_by_rrn_and_genid() may be added into wrblb in the
-         * loop below, this blob data MUST be freed with free_blob_status_data()
-         * so we need to make a copy of what we have right now so we can free it
-         * seperately */
-        free_blob_buffers(data->freeblb,
-                          sizeof(data->freeblb) / sizeof(data->freeblb[0]));
-        memcpy(data->freeblb, data->wrblb, sizeof(data->freeblb));
-    }
-
-    /* map old blobs to new blobs */
-    if (!data->s->force_rebuild && !data->s->use_old_blobs_on_rebuild &&
-        ((gbl_partial_indexes && data->to->ix_partial) || data->to->ix_expr ||
-         !gbl_use_plan || !data->to->plan || !data->to->plan->plan_blobs)) {
-        for (int ii = 0; ii < data->to->numblobs; ii++) {
-            int fromblobix = data->toblobs2fromblobs[ii];
-            if (fromblobix >= 0 && data->blb.blobptrs[fromblobix] != NULL) {
-                if (data->wrblb[ii].data) {
-                    /* this shouldn't happen because only bcstr to vutf8
-                     * conversions should return any blob data from
-                     * convert_server_record_blobs() and if we're createing a
-                     * new vutf8 blob it should not have a fromblobix */
-                    sc_errf(data->s,
-                            "convert_record: attempted to "
-                            "overwrite blob data retrieved from "
-                            "convert_server_record_blobs() with data from "
-                            "bdb_fetch_blobs_by_rrn_and_genid().  This would "
-                            "leak memory and shouldn't ever happen. to blob %d "
-                            "from blob %d\n",
-                            ii, fromblobix);
-                    return -2;
-                }
-
-                data->wrblb[ii].exists = 1;
-                data->wrblb[ii].data =
-                    ((char *)data->blb.blobptrs[fromblobix]) +
-                    data->blb.bloboffs[fromblobix];
-                data->wrblb[ii].length = data->blb.bloblens[fromblobix];
-                data->wrblb[ii].collected = data->wrblb[ii].length;
-            }
-        }
-    }
+    unsigned long long dirty_keys = -1ULL;
 
     if (data->s->use_new_genids) {
         assert(!gbl_use_plan);
@@ -779,19 +890,24 @@ static int convert_record(struct convert_record_data *data)
     } else {
         ngenid = check_genid;
     }
-    if (ngenid != genid) data->n_genids_changed++;
+    if (ngenid != genid)
+        data->n_genids_changed++;
 
-    /* Write record to destination table */
-    data->iq.usedb = data->to;
+    rc = prepare_and_verify_newdb_record(data, dta, dtalen, &dirty_keys, 1);
+    if (rc) {
+        sc_errf(data->s,
+                "failed to prepare and verify newdb record rc %d, rrn %d, "
+                "genid 0x%llx\n",
+                rc, rrn, genid);
+        if (rc == -2)
+            return -2; /* convertion failure */
+        goto err;
+    }
 
     int addflags = RECFLAGS_NO_TRIGGERS | RECFLAGS_NO_CONSTRAINTS |
-                   RECFLAGS_NEW_SCHEMA | RECFLAGS_ADD_FROM_SC |
-                   RECFLAGS_KEEP_GENID;
+                   RECFLAGS_NEW_SCHEMA | RECFLAGS_KEEP_GENID;
 
     if (data->to->plan && gbl_use_plan) addflags |= RECFLAGS_NO_BLOBS;
-
-    int rebuild = (data->to->plan && data->to->plan->dta_plan) ||
-                  schema_change == SC_CONSTRAINT_CHANGE;
 
     char *tagname = ".NEW..ONDISK";
     uint8_t *p_tagname_buf = (uint8_t *)tagname;
@@ -804,30 +920,9 @@ static int convert_record(struct convert_record_data *data)
         p_buf_data_end = p_buf_data + dtalen;
     }
 
-    unsigned long long dirty_keys = -1ULL;
-    if (gbl_partial_indexes && data->to->ix_partial) {
-        dirty_keys =
-            verify_indexes(data->to, p_buf_data, data->wrblb, MAXBLOBS, 1);
-        if (dirty_keys == -1ULL) {
-            rc = ERR_VERIFY_PI;
-            goto err;
-        }
-    }
-
     assert(data->trans != NULL);
-    rc = verify_record_constraint(&data->iq, data->to, data->trans, p_buf_data,
-                                  dirty_keys, data->wrblb, MAXBLOBS,
-                                  ".NEW..ONDISK", rebuild, 0);
-    if (rc) goto err;
 
-    if (gbl_partial_indexes && data->to->ix_partial) {
-        rc = verify_partial_rev_constraint(data->from, data->to, data->trans,
-                                           p_buf_data, dirty_keys,
-                                           ".NEW..ONDISK");
-        if (rc) goto err;
-    }
-
-    if (schema_change != SC_CONSTRAINT_CHANGE) {
+    if (data->s->schema_change != SC_CONSTRAINT_CHANGE) {
         int nrrn = rrn;
         rc = add_record(
             &data->iq, data->trans, p_tagname_buf, p_tagname_buf_end,
@@ -836,9 +931,10 @@ static int convert_record(struct convert_record_data *data)
             (gbl_partial_indexes && data->to->ix_partial) ? dirty_keys : -1ULL,
             BLOCK2_ADDKL, /* opcode */
             0,            /* blkpos */
-            addflags);
+            addflags, 0);
 
-        if (rc) goto err;
+        if (rc)
+            goto err;
     }
 
     /* if we have been rebuilding the data files we're gonna
@@ -857,13 +953,45 @@ static int convert_record(struct convert_record_data *data)
         }
     }
 
-err: /*if (is_schema_change_doomed())*/
+err:
+    if (data->s->logical_livesc && (rc == IX_DUP || rc == ERR_CONSTR)) {
+        /* handle constraints violations */
+        if (data->cv_genid != ngenid) {
+            /* get current lsn if this is a new constraint violation */
+            bdb_get_commit_genid(thedb->bdb_env, &data->cv_wait_lsn);
+            if (data->cv_wait_lsn.file <= 1 && data->cv_wait_lsn.offset == 0) {
+                logmsg(LOGMSG_ERROR, "%s:%d failed to get current lsn\n",
+                       __func__, __LINE__);
+                rc = ERR_INTERNAL;
+            }
+            /* remember genid of the record that last violated constraints */
+            data->cv_genid = ngenid;
+        }
+
+        Pthread_mutex_lock(&data->s->livesc_mtx);
+        /* wait for logical redo thread to catch up to the lsn at which the
+         * constraint violation was first detected */
+        if (data->s->curLsn &&
+            log_compare(data->s->curLsn, &data->cv_wait_lsn) < 0)
+            rc = RC_INTERNAL_RETRY;
+        Pthread_mutex_unlock(&data->s->livesc_mtx);
+        if (rc == RC_INTERNAL_RETRY) {
+            logmsg(LOGMSG_DEBUG,
+                   "%s: got constraints violations on genid %llx, stripe %d, "
+                   "waiting for logical redo to catch up at [%u:%u]\n",
+                   __func__, ngenid, data->stripe, data->cv_wait_lsn.file,
+                   data->cv_wait_lsn.offset);
+            trans_abort(&data->iq, data->trans);
+            data->trans = NULL;
+            poll(0, 0, 200);
+            return 1;
+        }
+    }
+
     if (gbl_sc_abort || data->from->sc_abort ||
         (data->s->iq && data->s->iq->sc_should_abort)) {
-        /*
-        rc = ERR_CONSTR;
-        break;
-        */
+        trans_abort(&data->iq, data->trans);
+        data->trans = NULL;
         return -1;
     }
 
@@ -927,9 +1055,10 @@ err: /*if (is_schema_change_doomed())*/
             reqerrstr(data->s->iq, ERR_SC,
                       "Error adding record rc %d rrn %d genid 0x%llx", rc, rrn,
                       genid);
-        sc_errf(data->s, "Error adding record rcode %d opfailcode %d "
-                         "ixfailnum %d rrn %d genid 0x%llx\n",
-                rc, opfailcode, ixfailnum, rrn, genid);
+        sc_errf(data->s,
+                "Error adding record rcode %d opfailcode %d "
+                "ixfailnum %d rrn %d genid 0x%llx, stripe %d\n",
+                rc, opfailcode, ixfailnum, rrn, genid, data->stripe);
         return -2;
     }
 
@@ -959,7 +1088,7 @@ err: /*if (is_schema_change_doomed())*/
 
     if (data->live) delay_sc_if_needed(data, &ss);
 
-    gbl_sc_nrecs++;
+    ATOMIC_ADD(data->from->sc_nrecs, 1);
 
     int now = comdb2_time_epoch();
     if ((rc = report_sc_progress(data, now))) return rc;
@@ -1025,7 +1154,7 @@ void *convert_records_thd(struct convert_record_data *data)
 
     if (gbl_pg_compact_thresh > 0) {
         /* Disable page compaction only if page compaction is enabled. */
-        (void)pthread_setspecific(no_pgcompact, (void *)1);
+        Pthread_setspecific(no_pgcompact, (void *)1);
     }
 
     /* convert each record */
@@ -1082,9 +1211,10 @@ void *convert_records_thd(struct convert_record_data *data)
 cleanup:
     if (data->outrc == 0) {
         sc_printf(data->s,
-                  "successfully converted %lld records with %d retries "
+                  "[%s] successfully converted %lld records with %d retries "
                   "stripe %d\n",
-                  data->nrecs, data->totnretries, data->stripe);
+                  data->from->tablename, data->nrecs, data->totnretries,
+                  data->stripe);
     } else {
         if (gbl_sc_abort || data->from->sc_abort ||
             (data->s->iq && data->s->iq->sc_should_abort)) {
@@ -1099,7 +1229,7 @@ cleanup:
                     data->nrecs, data->stripe, data->totnretries);
         }
 
-        gbl_sc_thd_failed = data->stripe + 1;
+        data->s->sc_thd_failed = data->stripe + 1;
     }
 
 cleanup_no_msg:
@@ -1121,7 +1251,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
 {
     struct convert_record_data data = {0};
     int ii;
-    gbl_sc_thd_failed = 0;
+    s->sc_thd_failed = 0;
 
     data.curkey = data.key1;
     data.lastkey = data.key2;
@@ -1206,6 +1336,106 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         data.to->schema /*tbl .NEW..ONDISK schema */); // free tagmap only once
     int outrc = 0;
 
+    if (gbl_logical_live_sc) {
+        tran_type *trans = NULL;
+        int rc = 0, bdberr = 0;
+        struct convert_record_data *thdData =
+            calloc(1, sizeof(struct convert_record_data));
+        if (!thdData) {
+            logmsg(LOGMSG_ERROR, "%s:%d out of memory\n", __func__, __LINE__);
+            return -1;
+        }
+        s->sc_convert_done = calloc(MAXDTASTRIPE, sizeof(int));
+        if (s->sc_convert_done == NULL) {
+            logmsg(LOGMSG_ERROR, "%s:%d out of memory\n", __func__, __LINE__);
+            return -1;
+        }
+        *thdData = data;
+        if (s->resume) {
+            /* get lsn where we left off */
+            rc = bdb_get_sc_start_lsn(NULL, s->tablename, &(thdData->start_lsn),
+                                      &bdberr);
+            if (rc) {
+                logmsg(
+                    LOGMSG_ERROR,
+                    "%s:%d failed to restore start lsn, rc = %d, bdberr = %d\n",
+                    __func__, __LINE__, rc, bdberr);
+                return -1;
+            }
+        } else {
+            /* start lsn of this schema change */
+            bdb_get_commit_genid(thedb->bdb_env, &(thdData->start_lsn));
+            if (thdData->start_lsn.file <= 1 &&
+                thdData->start_lsn.offset == 0) {
+                logmsg(LOGMSG_ERROR, "%s:%d failed to get start lsn\n",
+                       __func__, __LINE__);
+                return -1;
+            }
+            rc = bdb_set_sc_start_lsn(NULL, s->tablename, &(thdData->start_lsn),
+                                      &bdberr);
+            if (rc) {
+                logmsg(LOGMSG_ERROR,
+                       "%s:%d failed to write start lsn to llmeta, rc = %d, "
+                       "bdberr = %d\n",
+                       __func__, __LINE__, rc, bdberr);
+                return -1;
+            }
+        }
+        sc_set_logical_redo_lwm(s->tablename, thdData->start_lsn.file);
+        thdData->stripe = -1;
+        sc_printf(s, "[%s] starting thread for logical live schema change\n",
+                  s->tablename);
+        thdData->isThread = 1;
+
+        if (BDB_ATTR_GET(thedb->bdb_attr, SNAPISOL) == 0) {
+            /* enable logical logging for this table for the duration of the
+             * schema change */
+            rc = trans_start_sc(&(data.iq), NULL, &trans);
+            if (rc || trans == NULL) {
+                logmsg(LOGMSG_ERROR, "%s:%d failed to start tran rc = %d\n",
+                       __func__, __LINE__, rc);
+                free(s->sc_convert_done);
+                return -1;
+            }
+            bdb_lock_table_write(s->db->handle, trans);
+            // no one can write to this table at this point
+            bdb_set_logical_live_sc(s->db->handle);
+            trans_abort(&(data.iq), trans);
+        }
+
+        s->logical_livesc = 1;
+        Pthread_rwlock_wrlock(&s->db->sc_live_lk);
+        s->db->sc_live_logical = 1;
+        Pthread_rwlock_unlock(&s->db->sc_live_lk);
+        rc = pthread_create(&thdData->tid, &gbl_pthread_attr_detached,
+                            (void *(*)(void *))live_sc_logical_redo_thd,
+                            thdData);
+        if (rc) {
+            sc_errf(s, "[%s] starting thread failed for logical redo\n",
+                    s->tablename);
+            bdb_clear_logical_live_sc(s->db->handle);
+            s->logical_livesc = 0;
+            free(s->sc_convert_done);
+            return -1;
+        }
+    } else {
+        if (s->resume) {
+            /* if schema change was run in logical redo mode and logical redo sc
+             * is disabled in resume, abort the schema change */
+            int rc = 0, bdberr = 0;
+            rc = bdb_get_sc_start_lsn(NULL, s->tablename, &(data.start_lsn),
+                                      &bdberr);
+            if (rc == 0 || bdberr != BDBERR_FETCH_DTA) {
+                sc_errf(data.s,
+                        "rc = %d bdberr = %d trying to resume from "
+                        "[%u][%u] while logical live sc is turned off\n",
+                        rc, bdberr, data.start_lsn.file, data.start_lsn.offset);
+                return -1;
+            }
+        }
+        s->logical_livesc = 0;
+    }
+
     /* if were not in parallel, dont start any threads */
     if (data.scanmode != SCAN_PARALLEL && data.scanmode != SCAN_PAGEORDER) {
         convert_records_thd(&data);
@@ -1218,8 +1448,8 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
 
         data.isThread = 1;
 
-        pthread_attr_init(&attr);
-        pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
+        Pthread_attr_init(&attr);
+        Pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
         pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
         /* start one thread for each stripe */
@@ -1231,15 +1461,15 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
             threadData[ii].stripe = ii;
 
             if (sc_genids[ii] == -1ULL) {
-                sc_printf(threadData[ii].s, "stripe %d was done\n",
-                          threadData[ii].stripe);
+                sc_printf(threadData[ii].s, "[%s] stripe %d was done\n",
+                          from->tablename, threadData[ii].stripe);
                 threadSkipped[ii] = 1;
                 continue;
             } else
                 threadSkipped[ii] = 0;
 
-            sc_printf(threadData[ii].s, "starting thread for stripe: %d\n",
-                      threadData[ii].stripe);
+            sc_printf(threadData[ii].s, "[%s] starting thread for stripe: %d\n",
+                      from->tablename, threadData[ii].stripe);
 
             /* start thread */
             /* convert_records_thd( &threadData[ ii ]); |+ serialized calls +|*/
@@ -1249,16 +1479,17 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
 
             /* if thread creation failed */
             if (rc) {
-                sc_errf(threadData[ii].s, "starting thread failed for"
-                                          " stripe: %d with return code: %d\n",
-                        threadData[ii].stripe, rc);
+                sc_errf(threadData[ii].s,
+                        "[%s] starting thread failed for"
+                        " stripe: %d with return code: %d\n",
+                        from->tablename, threadData[ii].stripe, rc);
 
                 outrc = -1;
                 break;
             }
         }
 
-        /* wait for all threads to complete */
+        /* wait for all convert threads to complete */
         for (ii = 0; ii < gbl_dtastripe; ++ii) {
             void *ret;
 
@@ -1289,8 +1520,10 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         }
 
         /* destroy attr */
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
     }
+
+    print_final_sc_stat(&data);
 
     convert_record_data_cleanup(&data);
 
@@ -1303,6 +1536,11 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         free(data.tagmap);
         data.tagmap = NULL;
     }
+
+    /* wait for logical redo thread */
+    while (s->logical_livesc && !s->hitLastCnt)
+        poll(NULL, 0, 200);
+
     return outrc;
 }
 
@@ -1325,7 +1563,6 @@ static int upgrade_records(struct convert_record_data *data)
     int opfailcode = 0;
     int ixfailnum = 0;
     int dtalen = 0;
-    int bdberr;
     unsigned long long genid = 0;
     int recver;
     uint8_t *p_buf_data, *p_buf_data_end;
@@ -1352,13 +1589,13 @@ static int upgrade_records(struct convert_record_data *data)
 
     // set debug info
     if (gbl_who > 0 || data->iq.debug > 0) {
-        pthread_mutex_lock(&gbl_sc_lock);
+        Pthread_mutex_lock(&gbl_sc_lock);
         data->iq.debug = gbl_who;
         if (data->iq.debug > 0) {
             gbl_who = data->iq.debug - 1;
             data->iq.debug = 1;
         }
-        pthread_mutex_unlock(&gbl_sc_lock);
+        Pthread_mutex_unlock(&gbl_sc_lock);
     }
 
     data->iq.timeoutms = gbl_sc_timeoutms;
@@ -1413,7 +1650,7 @@ static int upgrade_records(struct convert_record_data *data)
         return -2;
     }
 
-    if (recver != data->to->version) {
+    if (recver != data->to->schema_version) {
         // rewrite the record if not ondisk version
         p_buf_data = (uint8_t *)data->dta_buf;
         p_buf_data_end = p_buf_data + data->from->lrl;
@@ -1497,7 +1734,8 @@ static int upgrade_records(struct convert_record_data *data)
         break;
     } // end of rc check
 
-    ++gbl_sc_nrecs;
+    ATOMIC_ADD(data->from->sc_nrecs, 1);
+
     data->sc_genids[data->stripe] = genid;
     now = comdb2_time_epoch();
 
@@ -1517,7 +1755,7 @@ static int upgrade_records(struct convert_record_data *data)
             diff_nrecs / copy_sc_report_freq);
 
         /* now do global sc data */
-        int res = print_global_sc_stat(data, now, copy_sc_report_freq);
+        int res = print_aggregate_sc_stat(data, now, copy_sc_report_freq);
         /* check headroom only if this thread printed the global stats */
         if (res && check_sc_headroom(data->s, data->from, data->to)) {
             if (data->s->force) {
@@ -1530,7 +1768,7 @@ static int upgrade_records(struct convert_record_data *data)
 
     if (data->s->fulluprecs)
         return 1;
-    else if (recver == data->to->version)
+    else if (recver == data->to->schema_version)
         return 0;
     else if (data->nrecs >= data->s->partialuprecs)
         return 0;
@@ -1601,7 +1839,7 @@ cleanup:
                              "while working on stripe %d\n",
                     data->nrecs, data->nrecskip, data->stripe);
         }
-        gbl_sc_thd_failed = data->stripe + 1;
+        data->s->sc_thd_failed = data->stripe + 1;
     }
 
     convert_record_data_cleanup(data);
@@ -1621,7 +1859,7 @@ int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
 
     struct convert_record_data data = {0};
 
-    gbl_sc_thd_failed = 0;
+    s->sc_thd_failed = 0;
 
     data.from = db;
     data.to = db;
@@ -1650,14 +1888,15 @@ int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
         data.isThread = 1;
 
         // init pthread attributes
-        pthread_attr_init(&attr);
-        pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
+        Pthread_attr_init(&attr);
+        Pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
         pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
         for (idx = 0; idx != gbl_dtastripe; ++idx) {
             thread_data[idx] = data;
             thread_data[idx].stripe = idx;
-            sc_printf(thread_data[idx].s, "starting thread for stripe: %d\n",
+            sc_printf(thread_data[idx].s,
+                      "[%s] starting thread for stripe: %d\n", db->tablename,
                       thread_data[idx].stripe);
 
             rc = pthread_create(&thread_data[idx].tid, &attr,
@@ -1695,10 +1934,1266 @@ int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
             }
         }
 
-        pthread_attr_destroy(&attr);
+        Pthread_attr_destroy(&attr);
     }
 
     convert_record_data_cleanup(&data);
 
     return outrc;
+}
+
+struct blob_recs {
+    unsigned long long genid;
+    LISTC_T(bdb_osql_log_rec_t) recs; /* list of undo records */
+};
+
+static void clear_recs_list(void *recs)
+{
+    listc_t *l = (listc_t *)recs;
+    bdb_osql_log_rec_t *rec = NULL, *tmp = NULL;
+    LISTC_FOR_EACH_SAFE(l, rec, tmp, lnk)
+    {
+        listc_rfl(l, rec);
+        if (rec->comprec) {
+            if (rec->comprec->table)
+                free(rec->comprec->table);
+            free(rec->comprec);
+        }
+        if (rec->table)
+            free(rec->table);
+        free(rec);
+    }
+}
+
+static int free_blob_recs(void *obj, void *arg)
+{
+    struct blob_recs *pbrecs = obj;
+    clear_recs_list(&pbrecs->recs);
+    free(pbrecs);
+    return 0;
+}
+
+static void clear_blob_hash(hash_t *h)
+{
+    if (!h)
+        return;
+    hash_for(h, free_blob_recs, NULL);
+    hash_clear(h);
+}
+
+static int unpack_blob_record(struct convert_record_data *data, void *blb_buf,
+                              int dtalen, blob_status_t *blb, int blbix)
+{
+    int rc = 0;
+    void *unpackbuf = NULL;
+    if ((rc = bdb_unpack(data->from->handle, blb_buf, dtalen, NULL, 0,
+                         &data->odh, &unpackbuf)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s:%d error unpacking buf rc=%d\n", __func__,
+               __LINE__, rc);
+        return rc;
+    }
+    blb->bloblens[blbix] = data->odh.length;
+    blb->bloboffs[blbix] = 0;
+    blb->blobptrs[blbix] = NULL;
+    if (blb->blobptrs[blbix]) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d attempted to overwrite blob data that is currently in "
+               "use, which would leak memory and shouldn't ever happen.\n",
+               __func__, __LINE__);
+        if (unpackbuf)
+            free(unpackbuf);
+        return -1;
+    }
+    if (unpackbuf) {
+        blb->blobptrs[blbix] = data->odh.recptr;
+    } else if (data->odh.length) {
+        blb->blobptrs[blbix] = malloc(data->odh.length);
+        if (!blb->blobptrs[blbix]) {
+            logmsg(LOGMSG_ERROR, "%s:%d failed to malloc blob buffer\n",
+                   __func__, __LINE__);
+            return -1;
+        }
+        memcpy(blb->blobptrs[blbix], data->odh.recptr, data->odh.length);
+    }
+
+#ifdef LOGICAL_LIVESC_DEBUG
+    logmsg(LOGMSG_DEBUG, "blob[%d], length %d\n", blbix, blb->bloblens[blbix]);
+    if (blb->blobptrs[blbix])
+        fsnapf(stdout, blb->blobptrs[blbix], blb->bloblens[blbix]);
+    else
+        logmsg(LOGMSG_DEBUG, "NULL BLOB\n");
+#endif
+
+    return 0;
+}
+
+static int reconstruct_blob_records(struct convert_record_data *data,
+                                    DB_LOGC *logc, struct blob_recs *pbrecs,
+                                    DBT *logdta)
+{
+    bdb_state_type *bdb_state = thedb->bdb_env;
+
+    u_int32_t rectype;
+    int rc, dtalen, page, index, ixlen;
+    unsigned long long genid, oldgenid;
+    int prevlen = 0, updlen = 0;
+    llog_undo_del_dta_args *del_dta = NULL;
+    llog_undo_del_dta_lk_args *del_dta_lk = NULL;
+    llog_undo_add_dta_args *add_dta = NULL;
+    llog_undo_add_dta_lk_args *add_dta_lk = NULL;
+    llog_undo_upd_dta_args *upd_dta = NULL;
+    llog_undo_upd_dta_lk_args *upd_dta_lk = NULL;
+    void *free_ptr = NULL;
+
+    bdb_osql_log_rec_t *rec = NULL;
+    int blbix = 0;
+
+    if (!data->blb_buf) {
+        data->blb_buf = malloc(MAXBLOBLENGTH + ODH_SIZE);
+        if (!data->blb_buf) {
+            logmsg(LOGMSG_ERROR, "%s:%d failed to malloc blob buffer\n",
+                   __func__, __LINE__);
+            return -1;
+        }
+    }
+
+    LISTC_FOR_EACH(&pbrecs->recs, rec, lnk)
+    {
+        if ((rc = logc->get(logc, &rec->lsn, logdta, DB_SET)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d rc %d retrieving lsn %d:%d\n", __func__,
+                   __LINE__, rc, rec->lsn.file, rec->lsn.offset);
+            goto error;
+        }
+        LOGCOPY_32(&rectype, logdta->data);
+        assert(rectype == rec->type);
+
+        assert(rec->dtafile >= 1);
+        blbix = rec->dtafile - 1;
+
+#ifdef LOGICAL_LIVESC_DEBUG
+        logmsg(LOGMSG_DEBUG,
+               "%s: [%s] redo lsn[%u:%u] type[%d] dtafile %d, "
+               "datastripe %d, genid %llx\n",
+               __func__, data->s->tablename, rec->lsn.file, rec->lsn.offset,
+               rec->type, rec->dtafile, rec->dtastripe, rec->genid);
+#endif
+
+        switch (rec->type) {
+        case DB_llog_undo_add_dta:
+        case DB_llog_undo_add_dta_lk:
+            if (rec->type == DB_llog_undo_add_dta_lk) {
+                if ((rc = llog_undo_add_dta_lk_read(
+                         bdb_state->dbenv, logdta->data, &add_dta_lk)) != 0) {
+                    logmsg(LOGMSG_ERROR, "%s:%d error unpacking rc=%d\n",
+                           __func__, __LINE__, rc);
+                    goto error;
+                }
+                genid = add_dta_lk->genid;
+                free_ptr = add_dta_lk;
+            } else {
+                if ((rc = llog_undo_add_dta_read(bdb_state->dbenv, logdta->data,
+                                                 &add_dta)) != 0) {
+                    logmsg(LOGMSG_ERROR, "%s:%d error unpacking rc=%d\n",
+                           __func__, __LINE__, rc);
+                    goto error;
+                }
+                genid = add_dta->genid;
+                free_ptr = add_dta;
+            }
+
+            /* Reconstruct the add. */
+            if ((rc = bdb_reconstruct_add(
+                     bdb_state, &rec->lsn, NULL, 0, data->blb_buf,
+                     MAXBLOBLENGTH + ODH_SIZE, &dtalen, &ixlen)) != 0) {
+                logmsg(LOGMSG_ERROR, "%s:%d failed to reconstruct add rc=%d\n",
+                       __func__, __LINE__, rc);
+                goto error;
+            }
+
+            if ((rc = unpack_blob_record(data, data->blb_buf, dtalen,
+                                         &data->blb, blbix)) != 0) {
+                logmsg(LOGMSG_ERROR, "%s:%d error unpacking buf rc=%d\n",
+                       __func__, __LINE__, rc);
+                goto error;
+            }
+            break;
+        case DB_llog_undo_del_dta:
+        case DB_llog_undo_del_dta_lk:
+            if (rec->type == DB_llog_undo_del_dta_lk) {
+                if ((rc = llog_undo_del_dta_lk_read(
+                         bdb_state->dbenv, logdta->data, &del_dta_lk)) != 0) {
+                    logmsg(LOGMSG_ERROR, "%s:%d error unpacking rc=%d\n",
+                           __func__, __LINE__, rc);
+                    goto error;
+                }
+                genid = del_dta_lk->genid;
+                dtalen = del_dta_lk->dtalen;
+                free_ptr = del_dta_lk;
+            } else {
+                if ((rc = llog_undo_del_dta_read(bdb_state->dbenv, logdta->data,
+                                                 &del_dta)) != 0) {
+                    logmsg(LOGMSG_ERROR, "%s:%d error unpacking rc=%d\n",
+                           __func__, __LINE__, rc);
+                    goto error;
+                }
+                genid = del_dta->genid;
+                dtalen = del_dta->dtalen;
+                free_ptr = del_dta;
+            }
+
+            /* Reconstruct the delete. */
+            if ((rc = bdb_reconstruct_delete(bdb_state, &rec->lsn, &page,
+                                             &index, NULL, 0, data->blb_buf,
+                                             dtalen, &dtalen)) != 0) {
+                logmsg(LOGMSG_ERROR,
+                       "%s:%d failed to reconstruct delete rc=%d\n", __func__,
+                       __LINE__, rc);
+                goto error;
+            }
+            if ((rc = unpack_blob_record(data, data->blb_buf, dtalen,
+                                         &data->blbcopy, blbix)) != 0) {
+                logmsg(LOGMSG_ERROR, "%s:%d error unpacking buf rc=%d\n",
+                       __func__, __LINE__, rc);
+                goto error;
+            }
+            break;
+        case DB_llog_undo_upd_dta:
+        case DB_llog_undo_upd_dta_lk:
+            if (!data->old_blb_buf) {
+                data->old_blb_buf = malloc(MAXBLOBLENGTH + ODH_SIZE);
+                if (!data->old_blb_buf) {
+                    logmsg(LOGMSG_ERROR, "%s:%d failed to malloc blob buffer\n",
+                           __func__, __LINE__);
+                    rc = -1;
+                    goto error;
+                }
+            }
+
+            if (rec->type == DB_llog_undo_upd_dta_lk) {
+                if ((rc = llog_undo_upd_dta_lk_read(
+                         bdb_state->dbenv, logdta->data, &upd_dta_lk)) != 0) {
+                    logmsg(LOGMSG_ERROR, "%s:%d error unpacking rc=%d\n",
+                           __func__, __LINE__, rc);
+                    goto error;
+                }
+                genid = upd_dta_lk->newgenid;
+                oldgenid = upd_dta_lk->oldgenid;
+                dtalen = upd_dta_lk->old_dta_len;
+            } else {
+                if ((rc = llog_undo_upd_dta_read(bdb_state->dbenv, logdta->data,
+                                                 &upd_dta)) != 0) {
+                    logmsg(LOGMSG_ERROR, "%s:%d error unpacking rc=%d\n",
+                           __func__, __LINE__, rc);
+                    goto error;
+                }
+                genid = upd_dta->newgenid;
+                oldgenid = upd_dta->oldgenid;
+                dtalen = upd_dta->old_dta_len;
+            }
+
+            if (0 ==
+                bdb_inplace_cmp_genids(data->from->handle, oldgenid, genid)) {
+                rc = bdb_reconstruct_inplace_update(
+                    bdb_state, &rec->lsn, data->old_blb_buf, &prevlen,
+                    data->blb_buf, &updlen, NULL, NULL, NULL);
+            } else {
+                prevlen = updlen = MAXBLOBLENGTH + ODH_SIZE;
+                rc = bdb_reconstruct_update(bdb_state, &rec->lsn, &page, &index,
+                                            NULL, NULL, data->old_blb_buf,
+                                            &prevlen, NULL, NULL, data->blb_buf,
+                                            &updlen);
+            }
+            if (rc != 0) {
+                logmsg(LOGMSG_ERROR,
+                       "%s:%d failed to reconstruct update rc=%d\n", __func__,
+                       __LINE__, rc);
+                goto error;
+            }
+            if (dtalen > 0) {
+                if ((rc = unpack_blob_record(data, data->old_blb_buf, prevlen,
+                                             &data->blbcopy, blbix)) != 0) {
+                    logmsg(LOGMSG_ERROR, "%s:%d error unpacking buf rc=%d\n",
+                           __func__, __LINE__, rc);
+                    goto error;
+                }
+                if ((rc = unpack_blob_record(data, data->blb_buf, updlen,
+                                             &data->blb, blbix)) != 0) {
+                    logmsg(LOGMSG_ERROR, "%s:%d error unpacking buf rc=%d\n",
+                           __func__, __LINE__, rc);
+                    goto error;
+                }
+            } else if (0 == bdb_inplace_cmp_genids(data->from->handle, oldgenid,
+                                                   genid)) {
+                if ((rc = unpack_blob_record(data, data->blb_buf, updlen,
+                                             &data->blb, blbix)) != 0) {
+                    logmsg(LOGMSG_ERROR, "%s:%d error unpacking buf rc=%d\n",
+                           __func__, __LINE__, rc);
+                    goto error;
+                }
+                /* no old blob since old_dta_len == 0 */
+            } else {
+                /* old_blb_buf has the new blob */
+                if ((rc = unpack_blob_record(data, data->old_blb_buf, prevlen,
+                                             &data->blb, blbix)) != 0) {
+                    logmsg(LOGMSG_ERROR, "%s:%d error unpacking buf rc=%d\n",
+                           __func__, __LINE__, rc);
+                    goto error;
+                }
+                /* no old blob since old_dta_len == 0 */
+            }
+            break;
+        default:
+            logmsg(LOGMSG_FATAL, "%s: unhandle logical record type %d\n",
+                   __func__, rec->type);
+            abort();
+        }
+
+        if (free_ptr) {
+            free(free_ptr);
+            free_ptr = NULL;
+        }
+    }
+    data->blb.numcblobs = data->from->numblobs;
+    data->blbcopy.numcblobs = data->from->numblobs;
+    return 0;
+
+error:
+    if (free_ptr)
+        free(free_ptr);
+    return rc;
+}
+
+static int unpack_and_upgrade_ondisk_record(struct convert_record_data *data,
+                                            void *dta, int *dtalen,
+                                            void *unpack, struct odh *odh)
+{
+    int rc = 0;
+    if ((rc = bdb_unpack(data->from->handle, dta, *dtalen, unpack,
+                         data->from->lrl + ODH_SIZE, odh, NULL)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s:%d error unpacking buf rc=%d\n", __func__,
+               __LINE__, rc);
+        return rc;
+    }
+
+    if ((rc = vtag_to_ondisk_vermap(data->from, odh->recptr, dtalen,
+                                    odh->csc2vers)) <= 0) {
+        logmsg(LOGMSG_ERROR, "%s:%d vtag-to-ondisk error rc=%d\n", __func__,
+               __LINE__, rc);
+        return rc;
+    }
+
+    return 0;
+}
+
+static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
+                            bdb_osql_log_rec_t *rec, DBT *logdta)
+{
+    bdb_state_type *bdb_state = thedb->bdb_env;
+    struct blob_recs brecs = {0};
+    struct blob_recs *pbrecs = NULL;
+
+    u_int32_t rectype;
+    int rc = 0, dtalen, ixlen, opfailcode = 0, ixfailnum = 0;
+    unsigned long long genid, ngenid, check_genid;
+    llog_undo_add_dta_args *add_dta = NULL;
+    llog_undo_add_dta_lk_args *add_dta_lk = NULL;
+
+    dtalen = data->from->lrl + ODH_SIZE;
+    brecs.genid = rec->genid;
+    pbrecs = hash_find(data->blob_hash, &brecs);
+    if (pbrecs) {
+        rc = reconstruct_blob_records(data, logc, pbrecs, logdta);
+        bzero(data->wrblb, sizeof(data->wrblb));
+        blob_status_to_blob_buffer(&data->blb, data->wrblb);
+    }
+
+    if ((rc = logc->get(logc, &rec->lsn, logdta, DB_SET)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s:%d rc %d retrieving lsn %d:%d\n", __func__,
+               __LINE__, rc, rec->lsn.file, rec->lsn.offset);
+        goto done;
+    }
+    LOGCOPY_32(&rectype, logdta->data);
+    assert(rectype == rec->type);
+
+    if (rec->type == DB_llog_undo_add_dta_lk) {
+        if ((rc = llog_undo_add_dta_lk_read(bdb_state->dbenv, logdta->data,
+                                            &add_dta_lk)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d error unpacking rc=%d\n", __func__,
+                   __LINE__, rc);
+            goto done;
+        }
+        genid = add_dta_lk->genid;
+    } else {
+        if ((rc = llog_undo_add_dta_read(bdb_state->dbenv, logdta->data,
+                                         &add_dta)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d error unpacking rc=%d\n", __func__,
+                   __LINE__, rc);
+            goto done;
+        }
+        genid = add_dta->genid;
+    }
+
+    /* Reconstruct the add. */
+    if ((rc = bdb_reconstruct_add(bdb_state, &rec->lsn, NULL, 0, data->dta_buf,
+                                  dtalen, &dtalen, &ixlen)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s:%d failed to reconstruct add rc=%d\n",
+               __func__, __LINE__, rc);
+        goto done;
+    }
+
+    if ((rc = unpack_and_upgrade_ondisk_record(data, data->dta_buf, &dtalen,
+                                               data->unpack_dta_buf,
+                                               &data->odh)) != 0) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d failed to unpack and upgrade ondisk record rc=%d\n",
+               __func__, __LINE__, rc);
+        goto done;
+    }
+
+#ifdef LOGICAL_LIVESC_DEBUG
+    logmsg(LOGMSG_DEBUG, "dtalen %d\n", dtalen);
+    fsnapf(stdout, data->odh.recptr, dtalen);
+#endif
+
+    data->iq.usedb = data->to;
+
+    int usellmeta = 0;
+    if (!data->to->plan) {
+        usellmeta = 1; /* new dta does not have old genids */
+    } else if (data->to->plan->dta_plan) {
+        usellmeta = 0; /* the genid is in new dta */
+    } else {
+        usellmeta = 1; /* dta is not being built */
+    }
+
+    int dta_needs_conversion = 1;
+    if (usellmeta && data->s->rebuild_index)
+        dta_needs_conversion = 0;
+
+    unsigned long long dirty_keys = -1ULL;
+
+    rc = prepare_and_verify_newdb_record(data, data->odh.recptr, dtalen,
+                                         &dirty_keys, 0);
+    if (rc) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d failed to prepare and verify new record rc=%d\n",
+               __func__, __LINE__, rc);
+        goto done;
+    }
+
+    check_genid = bdb_normalise_genid(data->to->handle, genid);
+    if (data->s->use_new_genids) {
+        assert(!gbl_use_plan);
+        ngenid = get_genid(thedb->bdb_env, get_dtafile_from_genid(check_genid));
+    } else {
+        ngenid = check_genid;
+    }
+    if (ngenid != genid)
+        data->n_genids_changed++;
+
+    int addflags = RECFLAGS_NO_TRIGGERS | RECFLAGS_NO_CONSTRAINTS |
+                   RECFLAGS_NEW_SCHEMA | RECFLAGS_ADD_FROM_SC_LOGICAL |
+                   RECFLAGS_KEEP_GENID;
+
+    if (data->to->plan && gbl_use_plan)
+        addflags |= RECFLAGS_NO_BLOBS;
+
+    char *tagname = ".NEW..ONDISK";
+    uint8_t *p_tagname_buf = (uint8_t *)tagname;
+    uint8_t *p_tagname_buf_end = p_tagname_buf + 12;
+    uint8_t *p_buf_data = data->rec->recbuf;
+    uint8_t *p_buf_data_end = p_buf_data + data->rec->bufsize;
+
+    if (!dta_needs_conversion) {
+        p_buf_data = data->odh.recptr;
+        p_buf_data_end = p_buf_data + dtalen;
+    }
+
+    assert(data->trans != NULL);
+    if (data->s->schema_change != SC_CONSTRAINT_CHANGE) {
+        int nrrn = 2;
+        rc = add_record(
+            &data->iq, data->trans, p_tagname_buf, p_tagname_buf_end,
+            p_buf_data, p_buf_data_end, NULL, data->wrblb, MAXBLOBS,
+            &opfailcode, &ixfailnum, &nrrn, &ngenid,
+            (gbl_partial_indexes && data->to->ix_partial) ? dirty_keys : -1ULL,
+            BLOCK2_ADDKL, /* opcode */
+            0,            /* blkpos */
+            addflags, 0);
+        if (rc == ERR_VERIFY) {
+            /* not an error if the row is already in the new btree */
+            rc = 0;
+            goto done;
+        }
+        if (rc) {
+            if (data->s->iq) {
+                if (rc == IX_DUP)
+                    reqerrstr(data->s->iq, ERR_SC,
+                              "add key constraint duplicate key '%s' on table "
+                              "'%s' index %d",
+                              get_keynm_from_db_idx(data->to, ixfailnum),
+                              data->to->tablename, ixfailnum);
+                else
+                    reqerrstr(data->s->iq, ERR_SC,
+                              "unable to add record rc = %d", rc);
+            }
+            logmsg(LOGMSG_ERROR, "%s:%d failed to add new record rc=%d %s\n",
+                   __func__, __LINE__, rc,
+                   errstat_get_str(&(data->iq.errstat)));
+            goto done;
+        }
+    }
+
+    if (!is_dta_being_rebuilt(data->to->plan)) {
+        int bdberr;
+        rc = bdb_set_high_genid(data->trans, data->to->tablename, genid,
+                                &bdberr);
+        if (rc != 0) {
+            if (bdberr == BDBERR_DEADLOCK)
+                rc = RC_INTERNAL_RETRY;
+            else {
+                logmsg(LOGMSG_ERROR, "%s:%d failed to set high genid rc=%d\n",
+                       __func__, __LINE__, rc);
+                rc = ERR_INTERNAL;
+            }
+        }
+    }
+
+done:
+#ifdef LOGICAL_LIVESC_DEBUG
+    logmsg(LOGMSG_DEBUG,
+           "%s: [%s] redo lsn[%u:%u] type[ADD_DTA] rec->dtafile %d, "
+           "rec->datastripe %d, rec->genid %llx\n",
+           __func__, data->s->tablename, rec->lsn.file, rec->lsn.offset,
+           rec->dtafile, rec->dtastripe, rec->genid);
+#endif
+
+    free_blob_status_data(&data->blbcopy);
+    bzero(data->freeblb, sizeof(data->freeblb));
+    free_blob_status_data(&data->blb);
+    bzero(data->wrblb, sizeof(data->wrblb));
+
+    if (add_dta)
+        free(add_dta);
+    if (add_dta_lk)
+        free(add_dta_lk);
+
+    return rc;
+}
+
+static int live_sc_redo_delete(struct convert_record_data *data, DB_LOGC *logc,
+                               bdb_osql_log_rec_t *rec, DBT *logdta)
+{
+    bdb_state_type *bdb_state = thedb->bdb_env;
+    struct blob_recs brecs = {0};
+    struct blob_recs *pbrecs = NULL;
+
+    u_int32_t rectype;
+    int rc, dtalen, page, index;
+    unsigned long long genid;
+    llog_undo_del_dta_args *del_dta = NULL;
+    llog_undo_del_dta_lk_args *del_dta_lk = NULL;
+
+    brecs.genid = rec->genid;
+    pbrecs = hash_find(data->blob_hash, &brecs);
+    if (pbrecs && data->to->ix_blob) {
+        rc = reconstruct_blob_records(data, logc, pbrecs, logdta);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d failed to reconstruct blob records rc %d\n", __func__,
+                   __LINE__, rc);
+            goto done;
+        }
+        bzero(data->freeblb, sizeof(data->freeblb));
+        blob_status_to_blob_buffer(&data->blbcopy, data->freeblb);
+    }
+
+    if ((rc = logc->get(logc, &rec->lsn, logdta, DB_SET)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s:%d rc %d retrieving lsn %d:%d\n", __func__,
+               __LINE__, rc, rec->lsn.file, rec->lsn.offset);
+        goto done;
+    }
+    LOGCOPY_32(&rectype, logdta->data);
+    assert(rectype == rec->type);
+    if (rec->type == DB_llog_undo_del_dta_lk) {
+        if ((rc = llog_undo_del_dta_lk_read(bdb_state->dbenv, logdta->data,
+                                            &del_dta_lk)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d error unpacking rc=%d\n", __func__,
+                   __LINE__, rc);
+            goto done;
+        }
+        genid = del_dta_lk->genid;
+        dtalen = del_dta_lk->dtalen;
+    } else {
+        if ((rc = llog_undo_del_dta_read(bdb_state->dbenv, logdta->data,
+                                         &del_dta)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d error unpacking rc=%d\n", __func__,
+                   __LINE__, rc);
+            goto done;
+        }
+        genid = del_dta->genid;
+        dtalen = del_dta->dtalen;
+    }
+
+    /* Reconstruct the delete. */
+    if ((rc = bdb_reconstruct_delete(bdb_state, &rec->lsn, &page, &index, NULL,
+                                     0, data->dta_buf, dtalen, &dtalen)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s:%d failed to reconstruct delete rc=%d\n",
+               __func__, __LINE__, rc);
+        goto done;
+    }
+
+    if ((rc = unpack_and_upgrade_ondisk_record(data, data->dta_buf, &dtalen,
+                                               data->unpack_dta_buf,
+                                               &data->odh)) != 0) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d failed to unpack and upgrade ondisk record rc=%d\n",
+               __func__, __LINE__, rc);
+        goto done;
+    }
+
+#ifdef LOGICAL_LIVESC_DEBUG
+    logmsg(LOGMSG_DEBUG, "dtalen %d\n", dtalen);
+    fsnapf(stdout, data->odh.recptr, dtalen);
+#endif
+
+    data->iq.usedb = data->to;
+    rc = del_new_record(&data->iq, data->trans, genid, -1ULL, data->odh.recptr,
+                        data->freeblb, 0);
+    if (rc == ERR_VERIFY) {
+        /* not an error if we dont find it */
+        rc = 0;
+    }
+done:
+#ifdef LOGICAL_LIVESC_DEBUG
+    logmsg(LOGMSG_DEBUG,
+           "%s: [%s] redo lsn[%u:%u] type[DEL_DTA] rec->dtafile %d, "
+           "rec->datastripe %d, rec->genid %llx\n",
+           __func__, data->s->tablename, rec->lsn.file, rec->lsn.offset,
+           rec->dtafile, rec->dtastripe, rec->genid);
+#endif
+
+    free_blob_status_data(&data->blbcopy);
+    bzero(data->freeblb, sizeof(data->freeblb));
+    free_blob_status_data(&data->blb);
+    bzero(data->wrblb, sizeof(data->wrblb));
+
+    if (del_dta)
+        free(del_dta);
+    if (del_dta_lk)
+        free(del_dta_lk);
+
+    return rc;
+}
+
+static int live_sc_redo_update(struct convert_record_data *data, DB_LOGC *logc,
+                               bdb_osql_log_rec_t *rec, DBT *logdta)
+{
+    bdb_state_type *bdb_state = thedb->bdb_env;
+
+    struct blob_recs brecs = {0};
+    struct blob_recs *pbrecs = NULL;
+
+    u_int32_t rectype;
+    int rc, page, index;
+    unsigned long long genid, oldgenid;
+    int prevlen = 0, updlen = 0;
+    llog_undo_upd_dta_args *upd_dta = NULL;
+    llog_undo_upd_dta_lk_args *upd_dta_lk = NULL;
+    int do_blob = 0;
+
+    brecs.genid = rec->genid;
+    pbrecs = hash_find(data->blob_hash, &brecs);
+    if (pbrecs) {
+        rc = reconstruct_blob_records(data, logc, pbrecs, logdta);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d failed to reconstruct blob records rc %d\n", __func__,
+                   __LINE__, rc);
+            goto done;
+        }
+        do_blob = 1;
+    }
+
+    if ((rc = logc->get(logc, &rec->lsn, logdta, DB_SET)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s:%d rc %d retrieving lsn %d:%d\n", __func__,
+               __LINE__, rc, rec->lsn.file, rec->lsn.offset);
+        goto done;
+    }
+    LOGCOPY_32(&rectype, logdta->data);
+    assert(rectype == rec->type);
+    if (rec->type == DB_llog_undo_upd_dta_lk) {
+        if ((rc = llog_undo_upd_dta_lk_read(bdb_state->dbenv, logdta->data,
+                                            &upd_dta_lk)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d error unpacking rc=%d\n", __func__,
+                   __LINE__, rc);
+            goto done;
+        }
+        genid = upd_dta_lk->newgenid;
+        oldgenid = upd_dta_lk->oldgenid;
+    } else {
+        if ((rc = llog_undo_upd_dta_read(bdb_state->dbenv, logdta->data,
+                                         &upd_dta)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d error unpacking rc=%d\n", __func__,
+                   __LINE__, rc);
+            goto done;
+        }
+        genid = upd_dta->newgenid;
+        oldgenid = upd_dta->oldgenid;
+    }
+
+    brecs.genid = genid;
+    pbrecs = hash_find(data->blob_hash, &brecs);
+    if (pbrecs) {
+        rc = reconstruct_blob_records(data, logc, pbrecs, logdta);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d failed to reconstruct blob records rc %d\n", __func__,
+                   __LINE__, rc);
+            goto done;
+        }
+        do_blob = 1;
+    }
+    if (do_blob) {
+        bzero(data->freeblb, sizeof(data->freeblb));
+        bzero(data->wrblb, sizeof(data->wrblb));
+        blob_status_to_blob_buffer(&data->blbcopy, data->freeblb);
+        blob_status_to_blob_buffer(&data->blb, data->wrblb);
+    }
+
+    if (0 == bdb_inplace_cmp_genids(data->from->handle, oldgenid, genid)) {
+        rc = bdb_reconstruct_inplace_update(
+            bdb_state, &rec->lsn, data->old_dta_buf, &prevlen, data->dta_buf,
+            &updlen, NULL, NULL, NULL);
+    } else {
+        unsigned long long prevgenid, newgenid;
+        int prevgenidlen, newgenidlen;
+        prevlen = updlen = data->from->lrl + ODH_SIZE;
+        prevgenidlen = newgenidlen = sizeof(unsigned long long);
+        rc = bdb_reconstruct_update(bdb_state, &rec->lsn, &page, &index,
+                                    &prevgenid, &prevgenidlen,
+                                    data->old_dta_buf, &prevlen, &newgenid,
+                                    &newgenidlen, data->dta_buf, &updlen);
+    }
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "%s:%d failed to reconstruct update rc=%d\n",
+               __func__, __LINE__, rc);
+        goto done;
+    }
+
+    /* Decompress and upgrade new record to current version */
+    if ((rc = unpack_and_upgrade_ondisk_record(data, data->dta_buf, &updlen,
+                                               data->unpack_dta_buf,
+                                               &data->odh)) != 0) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d failed to unpack and upgrade ondisk record rc=%d\n",
+               __func__, __LINE__, rc);
+        goto done;
+    }
+
+    /* Decompress and upgrade prev record to current version */
+    if ((rc = unpack_and_upgrade_ondisk_record(
+             data, data->old_dta_buf, &prevlen, data->unpack_old_dta_buf,
+             &data->oldodh)) != 0) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d failed to unpack and upgrade ondisk record rc=%d\n",
+               __func__, __LINE__, rc);
+        goto done;
+    }
+
+#ifdef LOGICAL_LIVESC_DEBUG
+    logmsg(LOGMSG_DEBUG, "%s:%d old dtalen %d\n", __func__, __LINE__, prevlen);
+    fsnapf(stdout, data->oldodh.recptr, prevlen);
+    logmsg(LOGMSG_DEBUG, "%s:%d new dtalen %d\n", __func__, __LINE__, updlen);
+    fsnapf(stdout, data->odh.recptr, updlen);
+#endif
+
+    int updCols[MAXCOLUMNS + 1] = {0};
+    updCols[0] = data->from->schema->nmembers;
+    for (int i = 0; i < data->from->schema->nmembers; i++) {
+        int blbix = data->from->schema->member[i].blob_index;
+        if (blbix != -1 && !data->freeblb[blbix].exists &&
+            !data->wrblb[blbix].exists)
+            updCols[i + 1] = -1;
+        else
+            updCols[i + 1] = i;
+    }
+
+    data->iq.usedb = data->to;
+
+    if (!data->s->sc_convert_done[rec->dtastripe] &&
+        is_genid_right_of_stripe_pointer(data->to->handle, genid,
+                                         data->sc_genids[rec->dtastripe])) {
+        /* if the newgenid is to the right of the sc cursor, we only need to
+         * delete the old record */
+        rc = del_new_record(&data->iq, data->trans, oldgenid, -1ULL,
+                            data->oldodh.recptr, data->freeblb, 0);
+    } else {
+        /* try to update the record in the new btree */
+        rc = upd_new_record(&data->iq, data->trans, oldgenid,
+                            data->oldodh.recptr, genid, data->odh.recptr, -1ULL,
+                            -1ULL, updlen, updCols, data->wrblb, 0,
+                            data->freeblb, data->wrblb, 0);
+        if (rc == ERR_VERIFY) {
+            /* either the oldgenid is not found or the newgenid already exists
+             * -- try delete the oldgenid again.
+             * TODO: differentiate the above two cases and no need to call
+             * delete again for the first case */
+            rc = del_new_record(&data->iq, data->trans, oldgenid, -1ULL,
+                                data->oldodh.recptr, data->freeblb, 0);
+        }
+    }
+    if (rc == ERR_VERIFY) {
+        /* not an error if we dont find it */
+        rc = 0;
+    }
+
+done:
+#ifdef LOGICAL_LIVESC_DEBUG
+    logmsg(LOGMSG_DEBUG,
+           "%s: [%s] redo lsn[%u:%u] type[UPD_DTA] rec->dtafile %d, "
+           "rec->datastripe %d, rec->genid %llx, newgenid %llx\n",
+           __func__, data->s->tablename, rec->lsn.file, rec->lsn.offset,
+           rec->dtafile, rec->dtastripe, rec->genid, genid);
+#endif
+
+    free_blob_status_data(&data->blbcopy);
+    bzero(data->freeblb, sizeof(data->freeblb));
+    free_blob_status_data(&data->blb);
+    bzero(data->wrblb, sizeof(data->wrblb));
+
+    if (upd_dta)
+        free(upd_dta);
+    if (upd_dta_lk)
+        free(upd_dta_lk);
+
+    return rc;
+}
+
+static inline int is_logical_data_op(bdb_osql_log_rec_t *rec)
+{
+    switch (rec->type) {
+    case DB_llog_undo_add_dta:
+    case DB_llog_undo_add_dta_lk:
+    case DB_llog_undo_del_dta:
+    case DB_llog_undo_del_dta_lk:
+    case DB_llog_undo_upd_dta:
+    case DB_llog_undo_upd_dta_lk:
+        return 1;
+    default:
+        return 0;
+    }
+    return 0;
+}
+
+static int live_sc_redo_logical_rec(struct convert_record_data *data,
+                                    DB_LOGC *logc, bdb_osql_log_rec_t *rec,
+                                    DBT *logdta)
+{
+    int rc = 0;
+
+    if (rec->dtastripe < 0 || rec->dtastripe >= gbl_dtastripe) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d rec->dtastripe %d out of range, type %d, lsn[%u:%u]\n",
+               __func__, __LINE__, rec->dtastripe, rec->type, rec->lsn.file,
+               rec->lsn.offset);
+        return -1;
+    }
+    if (!data->s->sc_convert_done[rec->dtastripe] &&
+        is_genid_right_of_stripe_pointer(data->to->handle, rec->genid,
+                                         data->sc_genids[rec->dtastripe])) {
+        /* skip those still to the right of sc cursor */
+        return 0;
+    }
+    switch (rec->type) {
+    case DB_llog_undo_add_dta:
+    case DB_llog_undo_add_dta_lk:
+        if (bdb_inplace_cmp_genids(data->to->handle, rec->genid,
+                                   data->sc_genids[rec->dtastripe]) == 0) {
+            /* small optimization to skip last record that was done by the
+             * convert thread */
+            return 0;
+        }
+        rc = live_sc_redo_add(data, logc, rec, logdta);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: [%s] failed to redo add lsn[%u:%u] rc=%d\n", __func__,
+                   data->s->tablename, rec->lsn.file, rec->lsn.offset, rc);
+            return rc;
+        }
+        break;
+    case DB_llog_undo_del_dta:
+    case DB_llog_undo_del_dta_lk:
+        rc = live_sc_redo_delete(data, logc, rec, logdta);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: [%s] failed to redo delete lsn[%u:%u] rc=%d\n",
+                   __func__, data->s->tablename, rec->lsn.file, rec->lsn.offset,
+                   rc);
+            return rc;
+        }
+        break;
+    case DB_llog_undo_upd_dta:
+    case DB_llog_undo_upd_dta_lk:
+        rc = live_sc_redo_update(data, logc, rec, logdta);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: [%s] failed to redo update lsn[%u:%u] rc=%d\n",
+                   __func__, data->s->tablename, rec->lsn.file, rec->lsn.offset,
+                   rc);
+            return rc;
+        }
+        break;
+    default:
+        break;
+    }
+
+    return 0;
+}
+
+static int live_sc_redo_logical_log(struct convert_record_data *data,
+                                    bdb_llog_cursor *pCur)
+{
+    int rc = 0;
+    bdb_state_type *bdb_state = thedb->bdb_env;
+    bdb_osql_log_rec_t *rec = NULL, *tmp = NULL;
+    DB_LOGC *logc = NULL;
+    int interested = 0;
+    DBT logdta = {0};
+    logdta.flags = DB_DBT_REALLOC;
+    LISTC_T(bdb_osql_log_rec_t) recs; /* list of relevant undo records */
+    listc_init(&recs, offsetof(bdb_osql_log_rec_t, lnk));
+
+    /* pre process recs */
+    LISTC_FOR_EACH_SAFE(&pCur->log->impl->recs, rec, tmp, lnk)
+    {
+        /* skip if it is not data operations */
+        if (!is_logical_data_op(rec))
+            continue;
+        /* skip logical ops that are not relevant to the table */
+        if (strcasecmp(data->s->tablename, rec->table) != 0)
+            continue;
+
+        /* get one op that needs to be redone - mark interested */
+        interested = 1;
+        listc_rfl(&pCur->log->impl->recs, rec);
+
+        if (rec->dtafile >= 1) {
+            /* put blob records into a list hash based on genid */
+            struct blob_recs brecs = {0};
+            struct blob_recs *pbrecs = NULL;
+            brecs.genid = rec->genid;
+            pbrecs = hash_find(data->blob_hash, &brecs);
+            if (pbrecs) {
+                listc_abl(&pbrecs->recs, rec);
+            } else {
+                pbrecs = calloc(1, sizeof(struct blob_recs));
+                if (pbrecs == NULL) {
+                    logmsg(LOGMSG_ERROR, "%s:%d failed to malloc blob rec\n",
+                           __func__, __LINE__);
+                    rc = -1;
+                    goto done;
+                }
+                pbrecs->genid = rec->genid;
+                listc_init(&pbrecs->recs, offsetof(bdb_osql_log_rec_t, lnk));
+                listc_abl(&pbrecs->recs, rec);
+                hash_add(data->blob_hash, pbrecs);
+            }
+        } else {
+            /* put relevant log records into a linked list so we don't need to
+             * loop on the transaction's logical operations list anymore */
+            listc_abl(&recs, rec);
+        }
+    }
+
+    if (!interested) {
+        /* nothing to do if none of the logical ops are relevant to the table */
+        rc = 0;
+        goto done;
+    }
+
+    if ((rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s:%d failed to get log-cursor %d\n", __func__,
+               __LINE__, rc);
+        rc = -1;
+        goto done;
+    }
+
+again:
+    assert(data->trans == NULL);
+    /* Schema-change writes are always page-lock, not rowlock */
+    rc = trans_start_sc(&data->iq, NULL, &data->trans);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s:%d error %d starting transaction\n", __func__,
+               __LINE__, rc);
+        rc = -2;
+        goto done;
+    }
+    set_tran_lowpri(&data->iq, data->trans);
+    data->iq.timeoutms = gbl_sc_timeoutms;
+    data->iq.debug = debug_this_request(gbl_debug_until);
+    if (data->iq.debug) {
+        reqlog_new_request(&data->iq); // TODO: cleanup (reset) logger
+        reqpushprefixf(&data->iq, "0x%llx: LOGICAL REDO ", pthread_self());
+    }
+
+    /* redo each of the log records revelant to this table */
+    LISTC_FOR_EACH(&recs, rec, lnk)
+    {
+        if (data->s->sc_thd_failed) {
+            if (!data->s->retry_bad_genids)
+                sc_errf(data->s,
+                        "Stoping work on logical redo because the thread for "
+                        "stripe %d failed\n",
+                        data->s->sc_thd_failed - 1);
+            rc = -1;
+            goto done;
+        }
+        if (gbl_sc_abort || data->from->sc_abort ||
+            (data->s->iq && data->s->iq->sc_should_abort)) {
+            sc_errf(data->s, "[%s] Logical redo aborted\n", data->s->tablename);
+            rc = -1;
+            goto done;
+        }
+        /* redo this logical op */
+        rc = live_sc_redo_logical_rec(data, logc, rec, &logdta);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "[%s] redo failed at record lsn[%u:%u] table[%s] type[%d] "
+                   "rc=%d\n",
+                   data->s->tablename, rec->lsn.file, rec->lsn.offset,
+                   rec->table, rec->type, rc);
+            goto done;
+        }
+    }
+
+    data->nrecs++;
+    if (data->nrecs %
+            BDB_ATTR_GET(thedb->bdb_attr, SC_LOGICAL_SAVE_LSN_EVERY_N) ==
+        0) {
+        int bdberr = 0;
+        rc = bdb_set_sc_start_lsn(data->trans, data->s->tablename,
+                                  &(pCur->curLsn), &bdberr);
+        if (rc != 0) {
+            if (bdberr == BDBERR_DEADLOCK)
+                rc = RC_INTERNAL_RETRY;
+            else {
+                logmsg(
+                    LOGMSG_ERROR,
+                    "%s:%d failed to update start lsn, rc = %d, bdberr = %d\n",
+                    __func__, __LINE__, rc, bdberr);
+                rc = ERR_INTERNAL;
+            }
+            data->nrecs--;
+        } else
+            sc_set_logical_redo_lwm(data->s->tablename, pCur->curLsn.file);
+    }
+
+done:
+    if (data->trans) {
+        db_seqnum_type ss;
+        if (rc) {
+            trans_abort(&data->iq, data->trans);
+            if (rc == RC_INTERNAL_RETRY) {
+                data->trans = NULL;
+                data->num_retry_errors++;
+                data->totnretries++;
+                poll(0, 0, (rand() % 500 + 10));
+                goto again;
+            }
+        } else if (data->live)
+            rc = trans_commit_seqnum(&data->iq, data->trans, &ss);
+        else
+            rc = trans_commit(&data->iq, data->trans, gbl_mynode);
+    }
+
+    reqlog_end_request(data->iq.reqlogger, 0, __func__, __LINE__);
+
+    /* free memory used in this function */
+    clear_recs_list(&recs);
+    clear_blob_hash(data->blob_hash);
+    data->trans = NULL;
+    if (rc && !data->s->sc_thd_failed)
+        data->s->sc_thd_failed = -1;
+    if (logc)
+        logc->close(logc, 0);
+    if (logdta.data)
+        free(logdta.data);
+    bdb_osql_log_destroy(pCur->log);
+    pCur->log = NULL;
+    return rc;
+}
+
+void *live_sc_logical_redo_thd(struct convert_record_data *data)
+{
+    struct thr_handle *thr_self = thrman_self();
+    enum thrtype oldtype = THRTYPE_UNKNOWN;
+    int rc = 0;
+    int finalizing = 0;
+    bdb_llog_cursor llog_cur;
+    bdb_llog_cursor *pCur = &llog_cur;
+    DB_LSN curLsn = {0};
+    DB_LSN finalizeLsn = {0};
+
+    bzero(pCur, sizeof(bdb_llog_cursor));
+
+    if (data->isThread)
+        thread_started("logical redo thread");
+
+    if (thr_self) {
+        oldtype = thrman_get_type(thr_self);
+        thrman_change_type(thr_self, THRTYPE_SCHEMACHANGE);
+    } else {
+        thr_self = thrman_register(THRTYPE_SCHEMACHANGE);
+    }
+
+    if (data->isThread) {
+        backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
+    }
+    data->iq.reqlogger = thrman_get_reqlogger(thr_self);
+
+    /* starting time and lsn of the schema change */
+    sc_printf(data->s, "[%s] logical redo %s at [%u:%u]\n", data->s->tablename,
+              data->s->resume ? "resumes" : "starts", data->start_lsn.file,
+              data->start_lsn.offset);
+    data->lasttime = comdb2_time_epoch();
+    pCur->minLsn = data->start_lsn;
+
+    /* init all buffer needed by this thread to do logical redo so we don't need
+     * to malloc & free every single time */
+    data->rec = allocate_db_record(data->to->tablename, ".NEW..ONDISK");
+    data->iq.usedb = data->to;
+    data->blob_hash = hash_init_o(offsetof(struct blob_recs, genid),
+                                  sizeof(unsigned long long));
+    if (!data->blob_hash) {
+        logmsg(LOGMSG_ERROR, "%s: failed to init blob hash\n", __func__);
+        data->s->iq->sc_should_abort = 1;
+        goto cleanup;
+    }
+    data->dta_buf = malloc(data->from->lrl + ODH_SIZE);
+    data->old_dta_buf = malloc(data->from->lrl + ODH_SIZE);
+    data->unpack_dta_buf = malloc(data->from->lrl + ODH_SIZE);
+    data->unpack_old_dta_buf = malloc(data->from->lrl + ODH_SIZE);
+    data->blb_buf = NULL;
+    data->old_blb_buf = NULL;
+    if (!data->dta_buf || !data->old_dta_buf || !data->unpack_dta_buf ||
+        !data->unpack_old_dta_buf) {
+        logmsg(LOGMSG_ERROR, "%s: failed to malloc buffer\n", __func__);
+        data->s->iq->sc_should_abort = 1;
+        goto cleanup;
+    }
+    bzero(data->freeblb, sizeof(data->freeblb));
+    bzero(data->wrblb, sizeof(data->wrblb));
+    bzero(&data->blb, sizeof(data->blb));
+    bzero(&data->blbcopy, sizeof(data->blbcopy));
+    data->tagmap = get_tag_mapping(
+        data->from->schema /*tbl .ONDISK tag schema*/,
+        data->to->schema /*tbl .NEW..ONDISK schema */); // free tagmap only once
+
+    data->s->hitLastCnt = 0;
+
+    /* s->curLsn is used to synchronize between logical redo thread and convert
+     * record threads in order to correctly detect unique key violations */
+    Pthread_mutex_lock(&data->s->livesc_mtx);
+    data->s->curLsn = &curLsn;
+    Pthread_mutex_unlock(&data->s->livesc_mtx);
+    while (1) {
+        /* abort schema change if we need to */
+        if (gbl_sc_abort || data->from->sc_abort || data->s->sc_thd_failed ||
+            (data->s->iq && data->s->iq->sc_should_abort)) {
+            sc_errf(data->s,
+                    "[%s] Stoping work on logical redo because we are told to "
+                    "abort\n",
+                    data->s->tablename);
+            goto cleanup;
+        }
+        if (stopsc) {
+            sc_errf(data->s, "[%s] %s stopping due to master swings\n",
+                    data->s->tablename, __func__);
+            goto cleanup;
+        }
+        /* get the next transaction's logical ops from the log files */
+        if (bdb_llog_cursor_next(pCur) != 0) {
+            sc_printf(data->s, "[%s] logical redo failed at [%u:%u]\n",
+                      data->s->tablename, pCur->curLsn.file,
+                      pCur->curLsn.offset);
+            data->s->iq->sc_should_abort = 1;
+            goto cleanup;
+        }
+        if (pCur->log && !pCur->hitLast) {
+            /* redo this transaction against the new btrees */
+            rc = live_sc_redo_logical_log(data, pCur);
+            if (rc) {
+                sc_printf(data->s, "[%s] logical redo failed at [%u:%u]\n",
+                          data->s->tablename, pCur->curLsn.file,
+                          pCur->curLsn.offset);
+                data->s->iq->sc_should_abort = 1;
+                goto cleanup;
+            }
+            assert(pCur->log == NULL /* i.e. consumed */);
+            data->s->hitLastCnt = 0;
+        }
+        Pthread_mutex_lock(&data->s->livesc_mtx);
+        curLsn = pCur->curLsn;
+        Pthread_mutex_unlock(&data->s->livesc_mtx);
+        if (finalizing && log_compare(&curLsn, &finalizeLsn) >= 0) {
+            break; // done
+        }
+        int now = comdb2_time_epoch();
+        int copy_sc_report_freq = gbl_sc_report_freq;
+        if (copy_sc_report_freq > 0 &&
+            now >= data->lasttime + copy_sc_report_freq) {
+            long long diff_nrecs = data->nrecs - data->prev_nrecs;
+            data->lasttime = now;
+            data->prev_nrecs = data->nrecs;
+            sc_printf(data->s,
+                      "[%s] logical redo transaction +%lld (%lld txn/s)\n",
+                      data->from->tablename, diff_nrecs,
+                      diff_nrecs / copy_sc_report_freq);
+        }
+        if (pCur->hitLast) {
+            if (data->s->got_tablelock) {
+                /* loop one more time after we get table lock */
+                if (finalizing)
+                    break;
+                finalizing = 1;
+                // get the lsn of current end of log
+                bdb_get_commit_genid(thedb->bdb_env, &finalizeLsn);
+            }
+            poll(NULL, 0, 100);
+            data->s->hitLastCnt++;
+            continue;
+        }
+    }
+
+cleanup:
+    convert_record_data_cleanup(data);
+
+    if (data->isThread)
+        backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+
+    /* restore our  thread type to what it was before */
+    if (oldtype != THRTYPE_UNKNOWN)
+        thrman_change_type(thr_self, oldtype);
+
+    if (data->blob_hash)
+        hash_free(data->blob_hash);
+
+    sc_printf(data->s,
+              "[%s] logical redo thread exiting, log cursor at [%u:%u], redid "
+              "%lld txns\n",
+              data->s->tablename, pCur->curLsn.file, pCur->curLsn.offset,
+              data->nrecs);
+
+    Pthread_mutex_lock(&data->s->livesc_mtx);
+    data->s->curLsn = NULL;
+    Pthread_mutex_unlock(&data->s->livesc_mtx);
+    bdb_llog_cursor_close(pCur);
+
+    free(data->s->sc_convert_done);
+    data->s->sc_convert_done = NULL;
+    data->s->logical_livesc = 0;
+
+    free(data);
+    return NULL;
 }

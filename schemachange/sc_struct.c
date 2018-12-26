@@ -44,10 +44,8 @@ struct schema_change_type *init_schemachange_type(struct schema_change_type *sc)
     sc->dbnum = -1; /* -1 = not changing, anything else = set value */
     sc->original_master_node[0] = 0;
     listc_init(&sc->dests, offsetof(struct dest, lnk));
-    if (pthread_mutex_init(&sc->mtx, NULL)) {
-        free_schema_change_type(sc);
-        return NULL;
-    }
+    Pthread_mutex_init(&sc->mtx, NULL);
+    Pthread_mutex_init(&sc->livesc_mtx, NULL);
     return sc;
 }
 
@@ -84,12 +82,12 @@ void free_schema_change_type(struct schema_change_type *s)
         }
 
         free_dests(s);
-        pthread_mutex_destroy(&s->mtx);
+        Pthread_mutex_destroy(&s->mtx);
+        Pthread_mutex_destroy(&s->livesc_mtx);
 
         if (s->sb && s->must_close_sb) close_appsock(s->sb);
         if (!s->onstack) {
             free(s);
-            s = NULL;
         }
     }
 }
@@ -109,7 +107,7 @@ static size_t dests_field_packed_size(struct schema_change_type *s)
 
 size_t schemachange_packed_size(struct schema_change_type *s)
 {
-    s->table_len = strlen(s->table) + 1;
+    s->tablename_len = strlen(s->tablename) + 1;
     s->fname_len = strlen(s->fname) + 1;
     s->aname_len = strlen(s->aname) + 1;
     s->spname_len = strlen(s->spname) + 1;
@@ -117,7 +115,7 @@ size_t schemachange_packed_size(struct schema_change_type *s)
 
     s->packed_len =
         sizeof(s->rqid) + sizeof(s->uuid) + sizeof(s->type) +
-        sizeof(s->table_len) + s->table_len + sizeof(s->fname_len) +
+        sizeof(s->tablename_len) + s->tablename_len + sizeof(s->fname_len) +
         s->fname_len + sizeof(s->aname_len) + s->aname_len +
         sizeof(s->avgitemsz) + sizeof(s->fastinit) + sizeof(s->newdtastripe) +
         sizeof(s->blobstripe) + sizeof(s->live) + sizeof(s->addonly) +
@@ -136,7 +134,7 @@ size_t schemachange_packed_size(struct schema_change_type *s)
         dests_field_packed_size(s) + sizeof(s->spname_len) + s->spname_len +
         sizeof(s->addsp) + sizeof(s->delsp) + sizeof(s->defaultsp) +
         sizeof(s->is_sfunc) + sizeof(s->is_afunc) + sizeof(s->rename) +
-        sizeof(s->newtable);
+        sizeof(s->newtable) + sizeof(s->usedbtablevers);
 
     return s->packed_len;
 }
@@ -173,9 +171,10 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
 
     p_buf = buf_put(&s->type, sizeof(s->type), p_buf, p_buf_end);
 
-    p_buf = buf_put(&s->table_len, sizeof(s->table_len), p_buf, p_buf_end);
+    p_buf =
+        buf_put(&s->tablename_len, sizeof(s->tablename_len), p_buf, p_buf_end);
 
-    p_buf = buf_no_net_put(s->table, s->table_len, p_buf, p_buf_end);
+    p_buf = buf_no_net_put(s->tablename, s->tablename_len, p_buf, p_buf_end);
 
     p_buf = buf_put(&s->fname_len, sizeof(s->fname_len), p_buf, p_buf_end);
 
@@ -282,6 +281,8 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
 
     p_buf = buf_put(&s->rename, sizeof(s->rename), p_buf, p_buf_end);
     p_buf = buf_no_net_put(s->newtable, sizeof(s->newtable), p_buf, p_buf_end);
+    p_buf = buf_put(&s->usedbtablevers, sizeof(s->usedbtablevers), p_buf,
+                    p_buf_end);
 
     return p_buf;
 }
@@ -291,11 +292,11 @@ static const void *buf_get_dests(struct schema_change_type *s,
 {
     listc_init(&s->dests, offsetof(struct dest, lnk));
 
-    int count;
+    int count = 0;
     p_buf = (uint8_t *)buf_get(&count, sizeof(count), p_buf, p_buf_end);
 
     for (int i = 0; i < count; i++) {
-        int w_len, len;
+        int w_len = 0, len;
         int no_pfx = 0;
         p_buf = (uint8_t *)buf_get(&w_len, sizeof(w_len), p_buf, p_buf_end);
         char pfx[] = "dest:"; // dest:method:xyz -- drop 'dest:' pfx
@@ -343,14 +344,15 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
 
     p_buf = (uint8_t *)buf_get(&s->type, sizeof(s->type), p_buf, p_buf_end);
 
-    p_buf = (uint8_t *)buf_get(&s->table_len, sizeof(s->table_len), p_buf,
-                               p_buf_end);
-    if (s->table_len != strlen((const char *)p_buf) + 1 ||
-        s->table_len > sizeof(s->table)) {
-        s->table_len = -1;
+    p_buf = (uint8_t *)buf_get(&s->tablename_len, sizeof(s->tablename_len),
+                               p_buf, p_buf_end);
+    if (s->tablename_len != strlen((const char *)p_buf) + 1 ||
+        s->tablename_len > sizeof(s->tablename)) {
+        s->tablename_len = -1;
         return NULL;
     }
-    p_buf = (uint8_t *)buf_no_net_get(s->table, s->table_len, p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_no_net_get(s->tablename, s->tablename_len, p_buf,
+                                      p_buf_end);
 
     p_buf = (uint8_t *)buf_get(&s->fname_len, sizeof(s->fname_len), p_buf,
                                p_buf_end);
@@ -501,6 +503,8 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
     p_buf = (uint8_t *)buf_get(&s->rename, sizeof(s->rename), p_buf, p_buf_end);
     p_buf = (uint8_t *)buf_no_net_get(s->newtable, sizeof(s->newtable), p_buf,
                                       p_buf_end);
+    p_buf = (uint8_t *)buf_get(&s->usedbtablevers, sizeof(s->usedbtablevers),
+                               p_buf, p_buf_end);
 
     return p_buf;
 }
@@ -569,7 +573,7 @@ int unpack_schema_change_type(struct schema_change_type *s, void *packed,
 
     if (p_buf == NULL) {
 
-        if (s->table_len < 0) {
+        if (s->tablename_len < 0) {
             logmsg(
                 LOGMSG_ERROR,
                 "unpack_schema_change_type: length of table in packed"
@@ -707,7 +711,8 @@ void print_schemachange_info(struct schema_change_type *s, struct dbtable *db,
     else
         sc_printf(s, info + 1);
 
-    if (s->fastinit) sc_printf(s, "fastinit starting on table %s\n", s->table);
+    if (s->fastinit)
+        sc_printf(s, "fastinit starting on table %s\n", s->tablename);
 
     switch (s->scanmode) {
     case SCAN_INDEX:
@@ -856,14 +861,14 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
             table, thedb->basedir, newdb->lrl, newdb->nix,
             (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
             newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
-            newdb->numblobs + 1, thedb->bdb_env, tran, &bdberr);
+            newdb->numblobs + 1, thedb->bdb_env, tran, 0, &bdberr);
         logmsg(LOGMSG_DEBUG, "reload_schema handle %p bdberr %d\n",
                newdb->handle, bdberr);
         if (bdberr != 0 || newdb->handle == NULL) return 1;
 
         new_bdb_handle = newdb->handle;
 
-        rc = bdb_get_csc2_highest(tran, table, &newdb->version, &bdberr);
+        rc = bdb_get_csc2_highest(tran, table, &newdb->schema_version, &bdberr);
         if (rc) {
             logmsg(LOGMSG_FATAL, "bdb_get_csc2_highest() failed! PANIC!!\n");
             /* FIXME */
@@ -914,7 +919,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
         new_bdb_handle = bdb_open_more_tran(
             table, thedb->basedir, db->lrl, db->nix, (short *)db->ix_keylen,
             db->ix_dupes, db->ix_recnums, db->ix_datacopy, db->ix_collattr,
-            db->ix_nullsallowed, db->numblobs + 1, thedb->bdb_env, tran,
+            db->ix_nullsallowed, db->numblobs + 1, thedb->bdb_env, tran, 0,
             &bdberr);
         logmsg(LOGMSG_DEBUG,
                "reload_schema (fastinit case) handle %p bdberr %d\n",

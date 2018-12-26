@@ -454,7 +454,7 @@ function randomwrites
         # Delete a record
         [[ "1" == "$del" ]] && delete_rand $dbnm $table
 
-        sleep 0.1
+        sleep 0.01
     done
 
     return 0
@@ -499,7 +499,7 @@ function do_verify
 function get_schemachange_status
 {
     master=$1
-    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('stat sc')" | grep "in progress with seed" > schemachange_status.out
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('stat sc')" | grep "with seed" > schemachange_status.out
     if [ $? -eq 0 ] ; then
         return 1 
     fi
@@ -508,7 +508,6 @@ function get_schemachange_status
 
 function wait_for_sc
 {
-    sleep 5
     while true ; do
         get_schemachange_status $master
         if [ $? -ne 1 ] ; then
@@ -525,7 +524,7 @@ function wait_for_sc
 
 function force_delay_master
 {
-    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')"
+    #cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')"
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('scdelay 100')"
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE COMMITSLEEP 3"
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE CONVERTSLEEP 3"
@@ -661,6 +660,7 @@ echo "Starting schemachange"
 (cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild t2" > rebuild_t2.log 2>&1 || touch rebuild_t2.failed) &
 (cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild t3" > rebuild_t3.log 2>&1 || touch rebuild_t3.failed) &
 
+sleep 10
 echo "wait for sc to finish"
 wait_for_sc
 

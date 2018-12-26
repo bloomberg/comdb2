@@ -1,3 +1,4 @@
+COMDB2_UNITTEST=1
 ifeq ($(TESTSROOTDIR),)
   include ../testcase.mk
 else
@@ -7,6 +8,3 @@ ifeq ($(TEST_TIMEOUT),)
 	export TEST_TIMEOUT=1m
 endif
 
-# this is a local test, don't need cluster
-unexport CLUSTER
-export COMDB2_UNITTEST=1

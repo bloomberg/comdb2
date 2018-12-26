@@ -27,6 +27,7 @@
 #include "views.h"
 #include "logmsg.h"
 #include "bdb_net.h"
+#include "comdb2_atomic.h"
 
 static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
                                const char *newtable)
@@ -65,6 +66,8 @@ static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
         return -1;
     }
 
+    set_odh_options_tran(db, tran);
+    update_dbstore(db);
     create_sqlmaster_records(tran);
     create_sqlite_master();
     ++gbl_dbopen_gen;
@@ -79,9 +82,51 @@ static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
     return rc;
 }
 
+static int reload_stripe_info(bdb_state_type *bdb_state)
+{
+    void *tran = NULL;
+    int rc;
+    int bdberr = 0;
+    int stripes, blobstripe;
+    uint32_t lid = 0;
+    extern uint32_t gbl_rep_lockid;
+
+    if (close_all_dbs() != 0)
+        exit(1);
+
+    tran = bdb_tran_begin(bdb_state, NULL, &bdberr);
+    if (tran == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: failed to start tran\n", __func__);
+        return -1;
+    }
+
+    bdb_get_tran_lockerid(tran, &lid);
+    bdb_set_tran_lockerid(tran, gbl_rep_lockid);
+
+    if (bdb_get_global_stripe_info(tran, &stripes, &blobstripe, &bdberr) != 0) {
+        logmsg(LOGMSG_ERROR, "%s: failed to retrieve global stripe info\n",
+               __func__);
+        return -1;
+    }
+
+    apply_new_stripe_settings(stripes, blobstripe);
+
+    if (open_all_dbs_tran(tran) != 0)
+        exit(1);
+
+    fix_blobstripe_genids(tran);
+
+    bdb_set_tran_lockerid(tran, lid);
+    rc = bdb_tran_commit(thedb->bdb_env, tran, &bdberr);
+    if (rc)
+        logmsg(LOGMSG_FATAL, "%s failed to commit transaction rc:%d\n",
+               __func__, rc);
+
+    return 0;
+}
+
 static int set_genid_format(bdb_state_type *bdb_state, scdone_t type)
 {
-    int bdberr, rc;
     switch (type) {
     case (genid48_enable):
         bdb_genid_set_format(bdb_state, LLMETA_GENID_48BIT);
@@ -143,7 +188,7 @@ int live_sc_post_del_record(struct ireq *iq, void *trans,
        " behind cursor - DELETE\n", genid, sc_genids[stripe]);
      */
 
-    int rc = del_new_record(iq, trans, genid, del_keys, old_dta, oldblobs);
+    int rc = del_new_record(iq, trans, genid, del_keys, old_dta, oldblobs, 1);
     iq->usedb = usedb;
     if (rc != 0 && rc != RC_INTERNAL_RETRY) {
         /* Leave this trace in.  We want to know if live schema change
@@ -157,9 +202,9 @@ int live_sc_post_del_record(struct ireq *iq, void *trans,
         usedb->sc_abort = 1;
         MEMORY_SYNC;
         rc = 0; // should just fail SC
-    } else if (rc == 0) {
-        (iq->sc_deletes)++;
     }
+
+    ATOMIC_ADD(usedb->sc_deletes, 1);
     if (iq->debug) {
         reqpopprefixes(iq, 1);
     }
@@ -224,9 +269,17 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
     blob_buffer_t *add_idx_blobs = NULL;
     int rc = 0;
 
+    if (usedb->sc_downgrading)
+        return ERR_NOMASTER;
+
     if (usedb->sc_from != iq->usedb) {
         return 0;
     }
+
+    if (usedb->sc_live_logical) {
+        return 0;
+    }
+
 #ifdef DEBUG_SC
     printf("live_sc_post_update_delayed_key_adds_int: looking at genid %llx\n",
            newgenid);
@@ -297,7 +350,7 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
 
     rc = upd_new_record_add2indices(iq, trans, newgenid, new_dta,
                                     usedb->sc_to->lrl, ins_keys, 1,
-                                    add_idx_blobs);
+                                    add_idx_blobs, 0);
     iq->usedb = usedb;
     if (rc != 0 && rc != RC_INTERNAL_RETRY) {
         logmsg(LOGMSG_ERROR,
@@ -399,7 +452,7 @@ int live_sc_post_add_record(struct ireq *iq, void *trans,
                     &opfailcode, &ixfailnum, rrn, &genid, ins_keys,
                     BLOCK2_ADDKL, // opcode
                     0,            // blkpos
-                    addflags);
+                    addflags, 0);
 
     iq->usedb = usedb;
 
@@ -418,7 +471,7 @@ done:
         reqpopprefixes(iq, 1);
     }
 
-    iq->sc_adds++;
+    ATOMIC_ADD(usedb->sc_adds, 1);
     free(new_dta);
     return rc;
 }
@@ -454,7 +507,7 @@ int live_sc_post_upd_record(struct ireq *iq, void *trans,
 
     rc = upd_new_record(iq, trans, oldgenid, old_dta, newgenid, new_dta,
                         ins_keys, del_keys, od_len, updCols, blobs, deferredAdd,
-                        oldblobs, newblobs);
+                        oldblobs, newblobs, 1);
     iq->usedb = usedb;
     if (rc != 0 && rc != RC_INTERNAL_RETRY) {
         logmsg(LOGMSG_ERROR, "%s: rcode %d for update genid 0x%llx to 0x%llx\n",
@@ -464,9 +517,9 @@ int live_sc_post_upd_record(struct ireq *iq, void *trans,
         iq->usedb->sc_abort = 1;
         MEMORY_SYNC;
         rc = 0; // should just fail SC
-    } else if (rc == 0) {
-        (iq->sc_updates)++;
     }
+
+    ATOMIC_ADD(usedb->sc_updates, 1);
     if (iq->debug) {
         reqpopprefixes(iq, 1);
     }
@@ -478,14 +531,14 @@ int live_sc_post_upd_record(struct ireq *iq, void *trans,
  */
 int schema_change_abort_callback(void)
 {
-    pthread_mutex_lock(&gbl_sc_lock);
+    Pthread_mutex_lock(&gbl_sc_lock);
     /* if a schema change is in progress */
     if (gbl_schema_change_in_progress) {
         /* we should safely stop the sc here, but until we find a good way to do
          * that, just kill us */
         exit(1);
     }
-    pthread_mutex_unlock(&gbl_sc_lock);
+    Pthread_mutex_unlock(&gbl_sc_lock);
 
     return 0;
 }
@@ -497,12 +550,12 @@ void sc_del_unused_files_tran(struct dbtable *db, tran_type *tran)
 {
     int bdberr;
 
-    if (db == NULL)
+    if (db == NULL || db->handle == NULL)
         return;
 
-    pthread_mutex_lock(&gbl_sc_lock);
+    Pthread_mutex_lock(&gbl_sc_lock);
     sc_del_unused_files_start_ms = comdb2_time_epochms();
-    pthread_mutex_unlock(&gbl_sc_lock);
+    Pthread_mutex_unlock(&gbl_sc_lock);
 
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DELAYED_OLDFILE_CLEANUP)) {
         if (bdb_list_unused_files_tran(db->handle, tran, &bdberr,
@@ -515,9 +568,9 @@ void sc_del_unused_files_tran(struct dbtable *db, tran_type *tran)
             logmsg(LOGMSG_WARN, "errors deleting files\n");
     }
 
-    pthread_mutex_lock(&gbl_sc_lock);
+    Pthread_mutex_lock(&gbl_sc_lock);
     sc_del_unused_files_start_ms = 0;
-    pthread_mutex_unlock(&gbl_sc_lock);
+    Pthread_mutex_unlock(&gbl_sc_lock);
 }
 
 void sc_del_unused_files(struct dbtable *db)
@@ -531,9 +584,9 @@ void sc_del_unused_files_check_progress(void)
 {
     int start_ms;
 
-    pthread_mutex_lock(&gbl_sc_lock);
+    Pthread_mutex_lock(&gbl_sc_lock);
     start_ms = sc_del_unused_files_start_ms;
-    pthread_mutex_unlock(&gbl_sc_lock);
+    Pthread_mutex_unlock(&gbl_sc_lock);
 
     /* if a schema change is in progress */
     if (start_ms) {
@@ -646,6 +699,8 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
     case lua_afunc: return reload_lua_afuncs();
     case rename_table:
         return reload_rename_table(bdb_state, table, (char *)arg);
+    case change_stripe:
+        return reload_stripe_info(bdb_state);
     default:
         break;
     }
@@ -654,7 +709,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
     int rc = 0;
     char *csc2text = NULL;
     char *table_copy = NULL;
-    struct dbtable *db;
+    struct dbtable *db = NULL;
     void *tran = NULL;
     int bdberr;
     int highest_ver;
@@ -694,8 +749,6 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
          */
         add_new_db = (db == NULL);
     }
-
-    assert(type != add || add_new_db == 1);
 
     if (type == setcompr) {
         logmsg(LOGMSG_INFO,
@@ -745,7 +798,8 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         }
     }
 
-    if (type == add || type == drop || type == alter || type == fastinit) {
+    if (type == add || type == drop || type == alter || type == fastinit ||
+        type == bulkimport) {
         if (create_sqlmaster_records(tran)) {
             logmsg(LOGMSG_FATAL,
                    "create_sqlmaster_records: error creating sqlite "

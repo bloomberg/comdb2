@@ -23,6 +23,7 @@ static const char revid[] = "$Id: dbreg.c,v 11.81 2003/10/27 15:54:31 sue Exp $"
 #include "dbinc/db_am.h"
 #include "cheapstack.h"
 #include "logmsg.h"
+#include "locks_wrap.h"
 
 /*
  * The dbreg subsystem, as its name implies, registers database handles so
@@ -91,6 +92,9 @@ static const char revid[] = "$Id: dbreg.c,v 11.81 2003/10/27 15:54:31 sue Exp $"
  *
  * PUBLIC: int __dbreg_setup __P((DB *, const char *, u_int32_t));
  */
+
+extern int gbl_is_physical_replicant;
+
 int
 __dbreg_setup(dbp, name, create_txnid)
 	DB *dbp;
@@ -257,6 +261,9 @@ __dbreg_get_id(dbp, txn, idp)
 	lp = dblp->reginfo.primary;
 	fnp = dbp->log_filename;
 
+    if (gbl_is_physical_replicant)
+        abort();
+
 	/*
 	 * It's possible that after deciding we needed to call this function,
 	 * someone else allocated an ID before we grabbed the lock.  Check
@@ -290,11 +297,11 @@ __dbreg_get_id(dbp, txn, idp)
 	fid_dbt.data = dbp->fileid;
 	fid_dbt.size = DB_FILE_ID_LEN;
 
-	if ((ret = __dbreg_register_log(dbenv, txn, &unused,
-		F_ISSET(dbp, DB_AM_NOT_DURABLE) ? DB_LOG_NOT_DURABLE : 0,
-		DBREG_OPEN, r_name.size == 0 ? NULL : &r_name, &fid_dbt, id,
-		fnp->s_type, fnp->meta_pgno, fnp->create_txnid)) != 0)
-		goto err;
+    if ((ret = __dbreg_register_log(dbenv, txn, &unused,
+                    F_ISSET(dbp, DB_AM_NOT_DURABLE) ? DB_LOG_NOT_DURABLE : 0,
+                    DBREG_OPEN, r_name.size == 0 ? NULL : &r_name, &fid_dbt, id,
+                    fnp->s_type, fnp->meta_pgno, fnp->create_txnid)) != 0)
+        goto err;
 	/*
 	 * Once we log the create_txnid, we need to make sure we never
 	 * log it again (as might happen if this is a replication client 
@@ -513,12 +520,12 @@ __dbreg_close_id(dbp, txn)
 	__ufid_sanity_check(dbenv, fnp);
 	fid_dbt.size = DB_FILE_ID_LEN;
 
-	pthread_rwlock_wrlock(&gbl_dbreg_log_lock);
+	Pthread_rwlock_wrlock(&gbl_dbreg_log_lock);
 	ret = __dbreg_register_log(dbenv, txn, &r_unused,
 		F_ISSET(dbp, DB_AM_NOT_DURABLE) ? DB_LOG_NOT_DURABLE : 0,
 		DBREG_CLOSE, dbtp, &fid_dbt, fnp->id,
 		fnp->s_type, fnp->meta_pgno, TXN_INVALID);
-	pthread_rwlock_unlock(&gbl_dbreg_log_lock);
+	Pthread_rwlock_unlock(&gbl_dbreg_log_lock);
     if (ret != 0)
 		goto err;
 

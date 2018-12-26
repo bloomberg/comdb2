@@ -41,11 +41,7 @@
 #include <net.h>
 #include "bdb_int.h"
 #include "locks.h"
-
-#include <plbitlib.h> /* for bset/btst */
-
 #include "genid.h"
-
 #include "bdb_api.h"
 
 static int bdb_fetch_next_genids_int(bdb_state_type *bdb_state, int ixnum,
@@ -118,7 +114,6 @@ static int bdb_fetch_next_genids_int(bdb_state_type *bdb_state, int ixnum,
     dbcp->c_close(dbcp);
     outrc = 0;
 
-end:
     if (outrc == 0) {
         *num_genids_gotten = num;
     }

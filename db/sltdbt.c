@@ -72,7 +72,6 @@ void req_stats(struct dbtable *db)
     int ii, jj;
     int hdr = 0;
     for (ii = 0; ii <= MAXTYPCNT; ii++) {
-        int flag = 0;
         if (db->typcnt[ii]) {
             if (hdr == 0) {
                 logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum,
@@ -116,7 +115,6 @@ static int handle_op_block(struct ireq *iq)
     int retries;
     int totpen;
     int penaltyinc;
-    int irc;
     double gbl_penaltyincpercent_d;
 
     if (gbl_readonly || gbl_readonly_sc) {
@@ -159,12 +157,7 @@ retry:
         if (++retries < gbl_maxretries) {
             if (!bdb_attr_get(thedb->bdb_attr,
                               BDB_ATTR_DISABLE_WRITER_PENALTY_DEADLOCK)) {
-                irc = pthread_mutex_lock(&delay_lock);
-                if (irc != 0) {
-                    logmsg(LOGMSG_FATAL, "pthread_mutex_lock(&delay_lock) %d\n",
-                           irc);
-                    exit(1);
-                }
+                Pthread_mutex_lock(&delay_lock);
 
                 penaltyinc = (double)(gbl_maxwthreads - gbl_maxwthreadpenalty) *
                              (gbl_penaltyincpercent_d / iq->retries);
@@ -180,12 +173,7 @@ retry:
                 gbl_maxwthreadpenalty += penaltyinc;
                 totpen += penaltyinc;
 
-                irc = pthread_mutex_unlock(&delay_lock);
-                if (irc != 0) {
-                    logmsg(LOGMSG_FATAL,
-                           "pthread_mutex_unlock(&delay_lock) %d\n", irc);
-                    exit(1);
-                }
+                Pthread_mutex_unlock(&delay_lock);
             }
 
             iq->usedb = iq->origdb;
@@ -207,19 +195,11 @@ retry:
        */
     osql_blkseq_unregister(iq);
 
-    irc = pthread_mutex_lock(&delay_lock);
-    if (irc != 0) {
-        logmsg(LOGMSG_FATAL, "pthread_mutex_lock(&delay_lock) %d\n", irc);
-        exit(1);
-    }
+    Pthread_mutex_lock(&delay_lock);
 
     gbl_maxwthreadpenalty -= totpen;
 
-    irc = pthread_mutex_unlock(&delay_lock);
-    if (irc != 0) {
-        logmsg(LOGMSG_FATAL, "pthread_mutex_unlock(&delay_lock) %d\n", irc);
-        exit(1);
-    }
+    Pthread_mutex_unlock(&delay_lock);
 
     /* return codes we think the proxy understands.  all other cases
        return proxy retry */
@@ -298,8 +278,6 @@ int handle_ireq(struct ireq *iq)
         iq->p_buf_in_end = iq->p_buf_in = NULL;
         rc = ERR_BADREQ;
     } else {
-        logmsg(LOGMSG_DEBUG, "request : %s\n", opcode->name);
-
         if (gbl_rowlocks && (opcode->opcode != OP_BLOCK) &&
             (opcode->opcode != OP_FWD_BLOCK)) {
             rc = ERR_BADREQ;
@@ -350,8 +328,9 @@ int handle_ireq(struct ireq *iq)
 
             if (iq->debug) {
                 uuidstr_t us;
-                reqprintf(iq, "sorese returning rqid=%llu %s node=%s type=%d "
-                              "nops=%d rcout=%d retried=%d RC=%d errval=%d\n",
+                reqprintf(iq,
+                          "sorese returning rqid=%llu uuid=%s node=%s type=%d "
+                          "nops=%d rcout=%d retried=%d RC=%d errval=%d\n",
                           iq->sorese.rqid, comdb2uuidstr(iq->sorese.uuid, us),
                           iq->sorese.host, iq->sorese.type, iq->sorese.nops,
                           iq->sorese.rcout, iq->sorese.osql_retry, rc,
@@ -397,9 +376,10 @@ int handle_ireq(struct ireq *iq)
                        We know for sure `request_data' is a `buf_lock_t'. */
                     struct buf_lock_t *p_slock =
                         (struct buf_lock_t *)iq->request_data;
-                    if (pthread_mutex_lock(&p_slock->req_lock) == 0) {
+                    {
+                        Pthread_mutex_lock(&p_slock->req_lock);
                         if (p_slock->reply_state == REPLY_STATE_DISCARD) {
-                            pthread_mutex_unlock(&p_slock->req_lock);
+                            Pthread_mutex_unlock(&p_slock->req_lock);
                             cleanup_lock_buffer(p_slock);
                             free_bigbuf_nosignal(iq->p_buf_out_start);
                         } else {
@@ -407,7 +387,7 @@ int handle_ireq(struct ireq *iq)
                                 iq->sb, iq->p_buf_out_start,
                                 iq->p_buf_out - iq->p_buf_out_start, rc);
                             free_bigbuf(iq->p_buf_out_start, iq->request_data);
-                            pthread_mutex_unlock(&p_slock->req_lock);
+                            Pthread_mutex_unlock(&p_slock->req_lock);
                         }
                     }
                 }
@@ -432,11 +412,11 @@ int handle_ireq(struct ireq *iq)
     if (rc == 0 && iq->num_queues_hit > 0) {
         if (iq->num_queues_hit > MAX_QUEUE_HITS_PER_TRANS) {
             /* good heavens.  wake up all consumers */
-            dbqueue_wake_all_consumers_all_queues(iq->dbenv, 0);
+            dbqueuedb_wake_all_consumers_all_queues(iq->dbenv, 0);
         } else {
             unsigned ii;
             for (ii = 0; ii < iq->num_queues_hit; ii++)
-                dbqueue_wake_all_consumers(iq->queues_hit[ii], 0);
+                dbqueuedb_wake_all_consumers(iq->queues_hit[ii], 0);
         }
     }
 

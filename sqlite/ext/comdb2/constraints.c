@@ -93,6 +93,8 @@ static int systblConstraintsOpen(
   memset(pCur, 0, sizeof(*pCur));
   *ppCursor = &pCur->base;
 
+  comdb2_next_allowed_table(&pCur->iRowid);
+
   return SQLITE_OK;
 }
 
@@ -128,6 +130,8 @@ static int systblConstraintsNext(sqlite3_vtab_cursor *cur){
       }
     }
   }
+
+  comdb2_next_allowed_table(&pCur->iRowid);
 
   return SQLITE_OK;
 }
@@ -195,7 +199,7 @@ static int systblConstraintsColumn(
     }
   }
   return SQLITE_OK; 
-};
+}
 
 /*
 ** Return the rowid for the current rule. We arrive at this number by
@@ -291,6 +295,10 @@ const sqlite3_module systblConstraintsModule = {
   0,                             /* xRollback */
   0,                             /* xFindMethod */
   0,                             /* xRename */
+  0,                             /* xSavepoint */
+  0,                             /* xRelease */
+  0,                             /* xRollbackTo */
+  0,                             /* xShadowName */
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \

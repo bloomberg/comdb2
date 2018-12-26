@@ -259,6 +259,8 @@ Similarly, here is a typical query that uses index "b":
 [explain query plan select json_extract(json, '$.b') as b from jdemo order by json_extract(json, '$.b')] rc 0
 ```
 
+The syntax to create indexes on expressions using standard DDL can be found in
+an example [here](sql.md#create-table).
 
 
 ### Duplicate Keys.

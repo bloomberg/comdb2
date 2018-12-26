@@ -61,7 +61,11 @@ char *strdup(char *str1)
 
 void initresourceman(const char *newlrlname)
 {
-    listc_init(&list, offsetof(struct resource, link));
+    static int once = 1;
+    if (once) {
+        listc_init(&list, offsetof(struct resource, link));
+        once = 0;
+    }
     if (!newlrlname)
         return;
 

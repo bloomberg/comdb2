@@ -32,12 +32,12 @@ static int should_skip_constraint_for_index(struct dbtable *db, int ixnum, int n
 }
 
 int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
-                             void *old_dta, unsigned long long ins_keys,
+                             const void *old_dta, unsigned long long ins_keys,
                              blob_buffer_t *blobs, int maxblobs,
                              const char *from, int rebuild, int convert)
 {
     int rc;
-    void *od_dta;
+    const void *od_dta;
     void *new_dta = NULL;
     struct convert_failure reason;
     struct ireq ruleiq;
@@ -59,6 +59,7 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
                               new_dta, &reason);
         if (rc) goto bad;
         od_dta = new_dta;
+        from = ".NEW..ONDISK";
     }
 
     init_fake_ireq(thedb, &ruleiq);
@@ -178,14 +179,11 @@ int verify_partial_rev_constraint(struct dbtable *to_db, struct dbtable *newdb,
         char rondisk_tag[MAXTAGLEN];
         for (j = 0; j < cnstrt->nrules; j++) {
             char ondisk_tag[MAXTAGLEN];
-            int ixnum = 0, ixlen = 0;
+            int ixnum = 0;
             struct dbtable *ldb;
             char lkey[MAXKEYLEN];
-            char nkey[MAXKEYLEN];
-            char rnkey[MAXKEYLEN];
             int fndrrn;
             unsigned long long genid;
-            int nornrefs = 0;
             if (strcasecmp(cnstrt->table[j], to_db->tablename)) {
                 continue;
             }
@@ -396,7 +394,13 @@ int mark_schemachange_over_tran(const char *table, tran_type *tran)
     /* mark the schema change over */
     int bdberr;
 
+    if (tran && bdb_increment_num_sc_done(thedb->bdb_env, tran, &bdberr)) {
+        logmsg(LOGMSG_WARN, "could not increment num_sc_done\n");
+        return SC_BDB_ERROR;
+    }
+
     bdb_delete_sc_seed(thedb->bdb_env, tran, table, &bdberr);
+    bdb_delete_sc_start_lsn(tran, table, &bdberr);
 
     if (bdb_set_in_schema_change(tran, table, NULL /*schema_change_data*/,
                                  0 /*schema_change_data_len*/, &bdberr) ||
@@ -438,7 +442,7 @@ int prepare_table_version_one(tran_type *tran, struct dbtable *db,
     }
 
     /* db's version has been reset */
-    bdberr = bdb_reset_csc2_version(tran, db->tablename, db->version);
+    bdberr = bdb_reset_csc2_version(tran, db->tablename, db->schema_version);
     if (bdberr != BDBERR_NOERROR) return SC_BDB_ERROR;
 
     /* Add latest csc2 as version 1 */
@@ -474,11 +478,11 @@ int prepare_table_version_one(tran_type *tran, struct dbtable *db,
 }
 
 struct dbtable *create_db_from_schema(struct dbenv *thedb,
-                                 struct schema_change_type *s, int dbnum,
-                                 int foundix, int version)
+                                      struct schema_change_type *s, int dbnum,
+                                      int foundix, int schema_version)
 {
     struct dbtable *newdb =
-        newdb_from_schema(thedb, s->table, NULL, dbnum, foundix, 0);
+        newdb_from_schema(thedb, s->tablename, NULL, dbnum, foundix, 0);
 
     if (newdb == NULL) return NULL;
 
@@ -487,7 +491,7 @@ struct dbtable *create_db_from_schema(struct dbenv *thedb,
     /* don't lose precious flags like this */
     newdb->instant_schema_change = s->headers && s->instant_sc;
     newdb->inplace_updates = s->headers && s->ip_updates;
-    newdb->version = version;
+    newdb->schema_version = schema_version;
 
     return newdb;
 }
@@ -497,8 +501,8 @@ int fetch_schema_change_seed(struct schema_change_type *s, struct dbenv *thedb,
                              unsigned int *stored_sc_host)
 {
     int bdberr;
-    int rc = bdb_get_sc_seed(thedb->bdb_env, NULL, s->table, stored_sc_genid,
-                             stored_sc_host, &bdberr);
+    int rc = bdb_get_sc_seed(thedb->bdb_env, NULL, s->tablename,
+                             stored_sc_genid, stored_sc_host, &bdberr);
     if (rc == -1 && bdberr == BDBERR_FETCH_DTA) {
         /* No seed exists, proceed. */
     } else if (rc) {
@@ -565,12 +569,11 @@ inline int check_option_coherency(struct schema_change_type *s, struct dbtable *
 
 int sc_request_disallowed(SBUF2 *sb)
 {
-    char *from;
-
-    from = intern(get_origin_mach_by_buf(sb));
+    char *from = intern(get_origin_mach_by_buf(sb));
     /* Allow if we can't figure out where it came from - don't want this
        to break in production. */
     if (from == NULL) return 0;
+    if (strcmp(from, "localhost") == 0) return 0;
     if (!allow_write_from_remote(from)) return 1;
     return 0;
 }
@@ -584,12 +587,21 @@ void verify_schema_change_constraint(struct ireq *iq, struct dbtable *currdb,
                                      void *trans, void *od_dta,
                                      unsigned long long ins_keys)
 {
+    if (!currdb)
+        return;
+
+    Pthread_rwlock_rdlock(&currdb->sc_live_lk);
+
     /* if there's no schema change in progress, nothing to verify */
-    if (!currdb || !currdb->sc_to) return;
+    if (!currdb->sc_to)
+        goto done;
+
+    if (currdb->sc_live_logical)
+        goto done;
 
     /* if (is_schema_change_doomed()) */
     if (gbl_sc_abort || currdb->sc_abort || iq->sc_should_abort)
-        return;
+        goto done;
 
     int rebuild = currdb->sc_to->plan && currdb->sc_to->plan->dta_plan;
     if (verify_record_constraint(iq, currdb->sc_to, trans, od_dta, ins_keys,
@@ -597,6 +609,9 @@ void verify_schema_change_constraint(struct ireq *iq, struct dbtable *currdb,
         currdb->sc_abort = 1;
         MEMORY_SYNC;
     }
+
+done:
+    Pthread_rwlock_unlock(&currdb->sc_live_lk);
 }
 
 /* After loading new schema file, should call this routine to see if ondisk
@@ -936,7 +951,7 @@ int create_schema_change_plan(struct schema_change_type *s, struct dbtable *oldd
     }
 
     char *str_constraints = "";
-    rc = ondisk_schema_changed(s->table, newdb, NULL, s);
+    rc = ondisk_schema_changed(s->tablename, newdb, NULL, s);
     if (rc == SC_CONSTRAINT_CHANGE && !plan->plan_convert &&
         newdb->n_constraints) {
         plan->plan_convert = 1;
@@ -963,8 +978,6 @@ void transfer_db_settings(struct dbtable *olddb, struct dbtable *newdb)
     if (gbl_blobstripe) {
         newdb->blobstripe_genid = olddb->blobstripe_genid;
         bdb_set_blobstripe_genid(newdb->handle, newdb->blobstripe_genid);
-        logmsg(LOGMSG_INFO, "transfered blobstripe genid 0x%llx to new table\n",
-               newdb->blobstripe_genid);
     }
     memcpy(newdb->typcnt, olddb->typcnt, sizeof(olddb->typcnt));
     memcpy(newdb->blocktypcnt, olddb->blocktypcnt, sizeof(olddb->blocktypcnt));
@@ -989,14 +1002,14 @@ void set_odh_options_tran(struct dbtable *db, tran_type *tran)
     get_db_inplace_updates_tran(db, &db->inplace_updates, tran);
     get_db_compress_tran(db, &compr, tran);
     get_db_compress_blobs_tran(db, &blob_compr, tran);
-    db->version = get_csc2_version_tran(db->tablename, tran);
+    db->schema_version = get_csc2_version_tran(db->tablename, tran);
 
     set_bdb_option_flags(db, db->odh, db->inplace_updates,
-                         db->instant_schema_change, db->version, compr,
+                         db->instant_schema_change, db->schema_version, compr,
                          blob_compr, datacopy_odh);
 
     /*
-    if (db->version < 0)
+    if (db->schema_version < 0)
         return -1;
 
     return 0;
@@ -1356,6 +1369,26 @@ void fix_constraint_pointers(struct dbtable *db, struct dbtable *newdb)
             }
         }
     }
+}
+
+/* return 1 if the table is only referenced by foreign key in the same table or
+ * it is not referenced at all, 0 otherwise
+ */
+int self_referenced_only(struct dbtable *db)
+{
+    int i, rc;
+    if (db->n_rev_constraints == 0)
+        return 1;
+
+    rc = 1;
+    for (i = 0; i < db->n_rev_constraints; i++) {
+        constraint_t *ct = db->rev_constraints[i];
+        if (strcasecmp(ct->lcltable->tablename, db->tablename)) {
+            rc = 0;
+            break;
+        }
+    }
+    return rc;
 }
 
 void change_schemas_recover(char *table)

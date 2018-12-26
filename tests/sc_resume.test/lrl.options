@@ -1,3 +1,5 @@
 setattr SC_RESTART_SEC 30
+setattr DURABLE_LSNS 1
+master_swing_osql_verbose
 test_sc_resume_race 1
 logmsg level info

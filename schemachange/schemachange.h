@@ -68,8 +68,8 @@ struct schema_change_type {
     uuid_t uuid;
     int type; /* DBTYPE_TAGGED_TABLE or DBTYPE_QUEUE or DBTYPE_QUEUEDB
                  or DBTYPE_MORESTRIPE */
-    size_t table_len;
-    char table[MAXTABLELEN]; /* name of table/queue */
+    size_t tablename_len;
+    char tablename[MAXTABLELEN]; /* name of table/queue */
     int rename;              /* new table name */
     char newtable[MAXTABLELEN]; /* rename table */
     size_t fname_len;
@@ -166,6 +166,7 @@ struct schema_change_type {
     struct schema_change_type *sc_next;
 
     int usedbtablevers;
+    int fix_tp_badvers;
 
     /*********************** temporary fields for in progress
      * schemachange************/
@@ -180,11 +181,22 @@ struct schema_change_type {
                            whole schema change (I will change this in the
                            future)*/
 
+    int sc_thd_failed;
+    int schema_change;
+
     /*********************** temporary fields for table upgrade
      * ************************/
     unsigned long long start_genid;
 
     int already_finalized;
+
+    int logical_livesc;
+    int *sc_convert_done;
+    unsigned int hitLastCnt;
+    int got_tablelock;
+
+    pthread_mutex_t livesc_mtx; /* mutex for logical redo */
+    void *curLsn;
 
     /*********************** temporary fields for sbuf packing
      * ************************/
@@ -320,6 +332,9 @@ int live_sc_post_add(struct ireq *iq, void *trans, unsigned long long genid,
 int live_sc_delayed_key_adds(struct ireq *iq, void *trans,
                              unsigned long long newgenid, const void *od_dta,
                              unsigned long long ins_keys, int od_len);
+
+int live_sc_disable_inplace_blobs(struct ireq *iq);
+
 int add_schema_change_tables();
 
 extern unsigned long long get_genid(bdb_state_type *, unsigned int dtastripe);

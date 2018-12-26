@@ -21,6 +21,8 @@
 #include <inttypes.h>
 #include <netinet/in.h>
 #include <stdarg.h>
+#include <logmsg.h>
+#include <build/db_dbt.h>
 
 #ifndef YESNO
 #define YESNO(x) ((x) ? "yes" : "no")
@@ -46,7 +48,8 @@ int rewrite_lrl_table(const char *lrlname, const char *tablename,
 int rewrite_lrl_un_llmeta(const char *p_lrl_fname_in,
                           const char *p_lrl_fname_out, char *p_table_names[],
                           char *p_csc2_paths[], int table_nums[],
-                          size_t num_tables, char *out_lrl_dir, int has_sp);
+                          size_t num_tables, char *out_lrl_dir, int has_sp,
+                          int has_timepartitions);
 /* Remove all table definitions from the lrl file and append use_llmeta */
 int rewrite_lrl_remove_tables(const char *lrlname);
 
@@ -68,8 +71,4 @@ char *comdb2_filev(char *fmt, va_list args);
 char *comdb2_file(char *fmt, ...);
 void init_file_locations(char *);
 void cleanup_file_locations();
-
-char *util_tohex(char *out, const char *in, size_t len);
-void hexdumpbuf(char *key, int keylen, char **buf);
-
 #endif

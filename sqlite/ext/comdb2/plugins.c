@@ -30,8 +30,6 @@
 #include "comdb2systblInt.h"
 #include "comdb2_plugin.h"
 
-extern comdb2_plugin_t **gbl_plugins;
-
 typedef struct {
     sqlite3_vtab_cursor base; /* Base class - must be first */
     sqlite3_int64 rowid;      /* Row ID */
@@ -60,7 +58,7 @@ static int systblPluginsConnect(sqlite3 *db, void *pAux, int argc,
         if ((*ppVtab = sqlite3_malloc(sizeof(sqlite3_vtab))) == 0) {
             return SQLITE_NOMEM;
         }
-        memset(*ppVtab, 0, sizeof(*ppVtab));
+        memset(*ppVtab, 0, sizeof(sqlite3_vtab));
     }
 
     return 0;
@@ -176,6 +174,11 @@ const sqlite3_module systblPluginsModule = {
     0,                       /* xRollback */
     0,                       /* xFindMethod */
     0,                       /* xRename */
+    0,                       /* xSavepoint */
+    0,                       /* xRelease */
+    0,                       /* xRollbackTo */
+    0,                       /* xShadowName */
+    .access_flag = CDB2_ALLOW_USER,
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2))       \

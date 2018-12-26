@@ -42,11 +42,7 @@
 #include <net.h>
 #include "bdb_int.h"
 #include "locks.h"
-
-#include <plbitlib.h> /* for bset/btst */
-
 #include "genid.h"
-
 #include "logmsg.h"
 
 int ll_dta_upd(bdb_state_type *bdb_state, int rrn, unsigned long long oldgenid,
@@ -60,7 +56,6 @@ static int bdb_change_dta_genid_dtastripe(bdb_state_type *bdb_state,
                                           unsigned long long newgenid,
                                           int has_blob_opt, int *bdberr)
 {
-    unsigned long long dtagenid = oldgenid;
     int rc;
     DB *dbp;
     int dtastripe;
@@ -122,7 +117,6 @@ static int bdb_prim_add_upd_int(bdb_state_type *bdb_state, tran_type *tran,
 
     int rc;
     int stripe;
-    int *iptr;
     DB *dbp;
     DBT dbt_newdta;
 
@@ -190,10 +184,8 @@ static int bdb_prim_updvrfy_int(bdb_state_type *bdb_state, tran_type *tran,
                                 int participantstripid, int use_new_genid,
                                 int keep_genid_intact, int *bdberr)
 {
-    DBT dbt_key, dbt_data;
     int rc;
     int stripe;
-    int *iptr;
     DB *dbp;
     DBT dbt_newdta;
     DBT dbt_olddta;
@@ -279,8 +271,6 @@ static int bdb_prim_updkey_genid_int(bdb_state_type *bdb_state, tran_type *tran,
                                      int dtalen, int isnull, int *bdberr)
 {
     int rc;
-    int stripe;
-    int *iptr;
     DBT dbt_key;
     void *pKeyMaxBuf = 0;
 
@@ -289,8 +279,6 @@ static int bdb_prim_updkey_genid_int(bdb_state_type *bdb_state, tran_type *tran,
 
     *bdberr = BDBERR_NOERROR;
 
-    stripe = 0;
-
     /* synthetic genids should not make it here */
     if (is_genid_synthetic(genid)) {
         *bdberr = BDBERR_BADARGS;
@@ -298,7 +286,9 @@ static int bdb_prim_updkey_genid_int(bdb_state_type *bdb_state, tran_type *tran,
     }
 
     bdb_maybe_use_genid_for_key(bdb_state, &dbt_key, key, ixnum, genid, isnull, &pKeyMaxBuf);
-    assert(!bdb_keycontainsgenid(bdb_state, ixnum) || 0 == bdb_inplace_cmp_genids(bdb_state, oldgenid, genid));
+
+    assert(!bdb_keycontainsgenid(bdb_state, ixnum) || !isnull ||
+           0 == bdb_inplace_cmp_genids(bdb_state, oldgenid, genid));
 
     rc = ll_key_upd(bdb_state, tran, bdb_state->name, oldgenid, genid, dbt_key.data, ixnum,
                     dbt_key.size, dta, dtalen);

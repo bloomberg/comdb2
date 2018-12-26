@@ -37,6 +37,7 @@
 #include <execinfo.h>
 #endif
 #include <logmsg.h>
+#include <tohex.h>
 #include "comdb2_atomic.h"
 
 /* One of the difference between using b-tree and hash is that in using hash, we
@@ -45,6 +46,7 @@
  * problems. */
 
 #include "locks.h"
+#include "locks_wrap.h"
 #include "bdb_int.h"
 
 #ifdef __GLIBC__
@@ -56,6 +58,7 @@ extern void backtrace_symbols_fd(void *const *, int, int);
 #endif
 
 extern char *gbl_crypto;
+extern int64_t gbl_temptable_spills;
 
 struct hashobj {
     int len;
@@ -122,7 +125,7 @@ struct temp_table {
     int tblid;
     unsigned long long rowid;
 
-    int num_mem_entries;
+    unsigned long long num_mem_entries;
     int max_mem_entries;
     LISTC_T(struct temp_cursor) cursors;
     void *next;
@@ -336,9 +339,7 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
     else
         parent = bdb_state;
 
-    tbl = malloc(sizeof(struct temp_table));
-    tbl->next = NULL;
-    tbl->tmpdb = NULL;
+    tbl = calloc(1, sizeof(struct temp_table));
     tbl->cmpfunc = key_memcmp;
 
     rc = db_env_create(&dbenv_temp, 0);
@@ -482,7 +483,6 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
                                                      int *bdberr)
 {
     struct temp_table *table = NULL;
-    int rc;
 
     /* needed by temptable pool */
     extern pthread_key_t query_info_key;
@@ -506,7 +506,6 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
                 return NULL;
         }
     } else {
-        rc = 0;
         action = TMPTBL_WAIT;
         sql_thread = pthread_getspecific(query_info_key);
 
@@ -524,35 +523,31 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
                          ? TMPTBL_PRIORITY
                          : TMPTBL_WAIT;
         } else if (!comdb2_objpool_available(bdb_state->temp_table_pool)) {
-            rc = pthread_mutex_lock(&bdb_state->temp_list_lock);
-            if (rc == 0) {
-                if (!bdb_state->haspriosqlthr) {
-                    bdb_state->haspriosqlthr = 1;
-                    bdb_state->priosqlthr = pthread_self();
-                    action = TMPTBL_PRIORITY;
-                }
-                rc = pthread_mutex_unlock(&bdb_state->temp_list_lock);
+            Pthread_mutex_lock(&bdb_state->temp_list_lock);
+            if (!bdb_state->haspriosqlthr) {
+                bdb_state->haspriosqlthr = 1;
+                bdb_state->priosqlthr = pthread_self();
+                action = TMPTBL_PRIORITY;
             }
+            Pthread_mutex_unlock(&bdb_state->temp_list_lock);
         }
-
-        if (rc != 0)
-            return NULL;
 
         switch (action) {
         case TMPTBL_PRIORITY:
-            rc = comdb2_objpool_forcedborrow(bdb_state->temp_table_pool,
-                                             (void **)&table);
+            comdb2_objpool_forcedborrow(bdb_state->temp_table_pool,
+                                        (void **)&table);
             break;
         case TMPTBL_WAIT:
-            rc = comdb2_objpool_borrow(bdb_state->temp_table_pool,
-                                       (void **)&table);
+            comdb2_objpool_borrow(bdb_state->temp_table_pool, (void **)&table);
             break;
         }
     }
 
-    table->num_mem_entries = 0;
-    table->cmpfunc = key_memcmp;
-    table->temp_table_type = temp_table_type;
+    if (table != NULL) {
+        table->num_mem_entries = 0;
+        table->cmpfunc = key_memcmp;
+        table->temp_table_type = temp_table_type;
+    }
 
     return table;
 }
@@ -588,7 +583,7 @@ struct temp_cursor *bdb_temp_table_cursor(bdb_state_type *bdb_state,
                                           int *bdberr)
 {
     struct temp_cursor *cur;
-    int rc;
+    int rc = 0;
 
     cur = calloc(1, sizeof(struct temp_cursor));
     /* set up compare routine and callback */
@@ -601,13 +596,11 @@ struct temp_cursor *bdb_temp_table_cursor(bdb_state_type *bdb_state,
 
     case TEMP_TABLE_TYPE_LIST:
         cur->list_cur = NULL;
-        rc = 0;
         break;
 
     case TEMP_TABLE_TYPE_HASH:
         cur->hash_cur = NULL;
         cur->hash_cur_buk = 0;
-        rc = 0;
         break;
 
     case TEMP_TABLE_TYPE_BTREE:
@@ -627,7 +620,7 @@ struct temp_cursor *bdb_temp_table_cursor(bdb_state_type *bdb_state,
 #endif
     cur->key = NULL;
     cur->data = NULL;
-/*pthread_setspecific(tbl->curkey, cur);*/
+/*Pthread_setspecific(tbl->curkey, cur);*/
 done:
     if (cur) {
         listc_abl(&tbl->cursors, cur);
@@ -650,7 +643,7 @@ int bdb_temp_table_insert(bdb_state_type *bdb_state, struct temp_cursor *cur,
     if (rc <= 0)
         goto done;
 
-    /*pthread_setspecific(cur->tbl->curkey, cur);*/
+    /*Pthread_setspecific(cur->tbl->curkey, cur);*/
     memset(&dkey, 0, sizeof(DBT));
     memset(&ddata, 0, sizeof(DBT));
     dkey.flags = ddata.flags = DB_DBT_USERMEM;
@@ -688,7 +681,7 @@ int bdb_temp_table_update(bdb_state_type *bdb_state, struct temp_cursor *cur,
         return -1;
     }
 
-    /*pthread_setspecific(cur->tbl->curkey, cur);*/
+    /*Pthread_setspecific(cur->tbl->curkey, cur);*/
 
     memset(&dkey, 0, sizeof(DBT));
     memset(&ddata, 0, sizeof(DBT));
@@ -807,7 +800,7 @@ static int bdb_temp_table_first_last(bdb_state_type *bdb_state,
         }
     }
 
-    /*pthread_setspecific(cur->tbl->curkey, cur);*/
+    /*Pthread_setspecific(cur->tbl->curkey, cur);*/
 
     memset(&dkey, 0, sizeof(DBT));
     memset(&ddata, 0, sizeof(DBT));
@@ -899,7 +892,7 @@ static int bdb_temp_table_next_prev_norewind(bdb_state_type *bdb_state,
         }
     }
 
-    /*pthread_setspecific(cur->tbl->curkey, cur);*/
+    /*Pthread_setspecific(cur->tbl->curkey, cur);*/
 
     memset(&dkey, 0, sizeof(DBT));
     memset(&ddata, 0, sizeof(DBT));
@@ -939,7 +932,7 @@ inline static int bdb_temp_table_next_prev(bdb_state_type *bdb_state,
                                     int how)
 {
 
-    /*pthread_setspecific(cur->tbl->curkey, cur);*/
+    /*Pthread_setspecific(cur->tbl->curkey, cur);*/
     if (!cur->valid) {
         if (how == DB_NEXT)
             return bdb_temp_table_first_last(bdb_state, cur, bdberr, DB_FIRST);
@@ -1083,7 +1076,6 @@ static int bdb_temp_table_truncate_temp_db(bdb_state_type *bdb_state,
     int rc, rc2;
     DBC *dbcur;
     DBT dbt_key, dbt_data;
-    DB *db;
 
     if (tbl->num_mem_entries == 0) {
         return 0;
@@ -1103,23 +1095,17 @@ static int bdb_temp_table_truncate_temp_db(bdb_state_type *bdb_state,
     }
 
     rc = dbcur->c_get(dbcur, &dbt_key, &dbt_data, DB_FIRST);
-    if (rc == 0) {
-        /*fprintf(stderr, "deleting\n");*/
-        rc2 = dbcur->c_del(dbcur, 0);
-    }
-
     while (rc == 0) {
-        rc = dbcur->c_get(dbcur, &dbt_key, &dbt_data, DB_NEXT);
         rc2 = dbcur->c_del(dbcur, 0);
+        if (rc2)
+            logmsg(LOGMSG_WARN, "%s:%d rc2=%d\n", __func__, __LINE__, rc2);
         /*fprintf(stderr, "deleting\n");*/
+        rc = dbcur->c_get(dbcur, &dbt_key, &dbt_data, DB_NEXT);
     }
+    // assert(rc == DB_KEYEMPTY || rc == DB_NOTFOUND);
 
     dbcur->c_close(dbcur);
-
-    rc = 0;
-
-done:
-    return rc;
+    return 0;
 }
 
 int bdb_temp_table_truncate(bdb_state_type *bdb_state, struct temp_table *tbl,
@@ -1127,9 +1113,7 @@ int bdb_temp_table_truncate(bdb_state_type *bdb_state, struct temp_table *tbl,
 {
     if (tbl == NULL)
         return 0;
-    DB *db = NULL;
     int rc = 0;
-    unsigned int discarded = 0;
 
     switch (tbl->temp_table_type) {
     case TEMP_TABLE_TYPE_LIST: {
@@ -1188,7 +1172,6 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
                          int *bdberr)
 {
     struct temp_cursor *cur, *temp;
-    DB *db;
     DB_MPOOL_STAT *tmp;
     int rc;
 
@@ -1278,7 +1261,6 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
         }
     }
 
-done:
     dbgtrace(3, "temp_table_close() = %d %s", rc, db_strerror(rc));
     return rc;
 }
@@ -1287,7 +1269,6 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
                                bdb_state_type *bdb_state, int *last,
                                int *bdberr)
 {
-    DB *db;
     DB_MPOOL_STAT *tmp;
     int rc;
 
@@ -1394,7 +1375,6 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
 
     free(tbl);
 
-done:
     dbgtrace(3, "temp_table_destroy_lru() = %d %s", rc, db_strerror(rc));
     return rc;
 }
@@ -1421,7 +1401,7 @@ int bdb_temp_table_delete(bdb_state_type *bdb_state, struct temp_cursor *cur,
         goto done;
     }
 
-    /*pthread_setspecific(cur->tbl->curkey, cur);*/
+    /*Pthread_setspecific(cur->tbl->curkey, cur);*/
     if (!cur->valid) {
         rc = -1;
         goto done;
@@ -1451,7 +1431,6 @@ void bdb_temp_table_set_cmp_func(struct temp_table *tbl, tmptbl_cmp cmpfunc)
 static int temp_table_compare(DB *db, const DBT *dbt1, const DBT *dbt2)
 {
     struct temp_table *tbl;
-    struct temp_cursor *cur;
     void *pKeyInfo = NULL;
 
     tbl = (struct temp_table *)db->app_private;
@@ -1460,6 +1439,7 @@ static int temp_table_compare(DB *db, const DBT *dbt1, const DBT *dbt2)
         return -tbl->cmpfunc(NULL, dbt2->size, dbt2->data, -1, dbt1->app_data);
 
     /*
+    struct temp_cursor *cur;
     cur = pthread_getspecific(tbl->curkey);
     if(cur) pKeyInfo = cur->usermem;
     */
@@ -1531,7 +1511,7 @@ int bdb_temp_table_find(bdb_state_type *bdb_state, struct temp_cursor *cur,
 
     assert(cur->cur != NULL);
 
-    /*pthread_setspecific(cur->tbl->curkey, cur);*/
+    /*Pthread_setspecific(cur->tbl->curkey, cur);*/
 
     memset(&dkey, 0, sizeof(DBT));
     memset(&ddata, 0, sizeof(DBT));
@@ -1622,7 +1602,9 @@ static int bdb_temp_table_find_exact_hash(struct temp_cursor *cur,
 
 }
 
-
+/* Caller needs to free the key if return is not IX_FND
+ * if IX_FND this function will free key [eventually not immediately]
+ */
 int bdb_temp_table_find_exact(bdb_state_type *bdb_state,
                               struct temp_cursor *cur, void *key, int keylen,
                               int *bdberr)
@@ -1640,7 +1622,7 @@ int bdb_temp_table_find_exact(bdb_state_type *bdb_state,
         return bdb_temp_table_find_exact_hash(cur, key, keylen);
     }
 
-    /*pthread_setspecific(cur->tbl->curkey, cur);*/
+    /*Pthread_setspecific(cur->tbl->curkey, cur);*/
 
     memset(&dkey, 0, sizeof(DBT));
     memset(&ddata, 0, sizeof(DBT));
@@ -1653,18 +1635,18 @@ int bdb_temp_table_find_exact(bdb_state_type *bdb_state,
     rc = cur->cur->c_get(cur->cur, &dkey, &ddata, DB_SET);
     /*
     printf("Got data %p %d key %p %d\n",
-          ddata.data, ddata.size, dkey.data, dkey.size);
-          */
-    if (!rc) {
-        exists = 1;
-    } else if (rc == DB_NOTFOUND) {
+           ddata.data, ddata.size, dkey.data, dkey.size); */
+
+    if (rc == DB_NOTFOUND) {
         exists = 0;
         goto done;
-    } else {
+    } else if (rc) {
         *bdberr = rc;
         rc = -1;
         goto done;
     }
+
+    exists = 1; /* rc is 0; key was found */
 
     if (cur->key && cur->key != dkey.data) {
 #if 0
@@ -1746,7 +1728,7 @@ int bdb_temp_table_close_cursor(bdb_state_type *bdb_state,
            Closing a cursor may invoke a search if we deleted items through that
            cursor.  The search (custom search routine)
            will need access to thread-specific data. */
-        /*pthread_setspecific(cur->tbl->curkey, NULL);*/
+        /*Pthread_setspecific(cur->tbl->curkey, NULL);*/
     }
 
     listc_rfl(&tbl->cursors, cur);
@@ -1784,22 +1766,6 @@ inline int bdb_temp_table_move(bdb_state_type *bdb_state, struct temp_cursor *cu
     return -1;
 }
 
-static char hex(unsigned char a)
-{
-    if (a < 10)
-        return '0' + a;
-    return 'a' + (a - 10);
-}
-static void hexdump(char *key, int keylen)
-{
-    int i = 0;
-
-    for (i = 0; i < keylen; i++) {
-        logmsg(LOGMSG_USER, "%c%c", hex(((unsigned char)key[i]) / 16),
-                hex(((unsigned char)key[i]) % 16));
-    }
-}
-
 void bdb_temp_table_debug_dump(bdb_state_type *bdb_state, tmpcursor_t *cur)
 {
     int rc = 0;
@@ -1820,9 +1786,9 @@ void bdb_temp_table_debug_dump(bdb_state_type *bdb_state, tmpcursor_t *cur)
         dtasize_sd = bdb_temp_table_datasize(cur);
 
         logmsg(LOGMSG_USER, " ROW %d:\n\tkeylen=%d\n\tkey=\"", rowid, keysize_sd);
-        hexdump(key_sd, keysize_sd);
+        hexdump(LOGMSG_USER, key_sd, keysize_sd);
         logmsg(LOGMSG_USER, "\"\n\tdatalen=%d\n\tdata=\"", dtasize_sd);
-        hexdump(dta_sd, dtasize_sd);
+        hexdump(LOGMSG_USER, dta_sd, dtasize_sd);
         logmsg(LOGMSG_USER, "\"\n");
 
         rowid++;
@@ -1873,6 +1839,7 @@ static int bdb_temp_table_insert_put(bdb_state_type *bdb_state,
         }
 
         if (tbl->num_mem_entries > tbl->max_mem_entries) {
+            gbl_temptable_spills++;
             rc = bdb_hash_table_copy_to_temp_db(bdb_state, tbl, bdberr);
             if (unlikely(rc)) {
                 return -1;
@@ -1904,9 +1871,7 @@ inline void bdb_temp_table_flush(struct temp_table *tbl)
 int bdb_temp_table_stat(bdb_state_type *bdb_state, DB_MPOOL_STAT **gspp)
 {
     bdb_state_type *parent;
-    struct temp_table *tbl;
     DB_MPOOL_STAT *sp;
-    DB_MPOOL_STAT *tmp;
 
     if (bdb_state->parent)
         parent = bdb_state->parent;

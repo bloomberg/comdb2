@@ -87,6 +87,10 @@ static inline void loc_print_date(const time_t *timep)
 void *auto_analyze_table(void *arg)
 {
     char *tblname = (char *)arg;
+    if (is_sqlite_stat(tblname)) {
+        free(tblname);
+        return NULL;
+    }
     int rc;
 
     for (int retries = 0; gbl_schema_change_in_progress && retries < 10;
@@ -188,9 +192,6 @@ static long long get_num_rows_from_stat1(struct dbtable *tbldb)
     /* Grab the tag schema, or punt. */
     if (!(s = find_tag_schema(tbldb->tablename, ".ONDISK_ix_0"))) {
         /* This is not an error. This just means the table has no indexes. */
-        logmsg(LOGMSG_INFO, "%s: Could not retrieve the row count from stat1 "
-                            "because table \"%s\" has no indexes.\n",
-               __func__, tbldb->tablename);
         goto abort;
     }
 
@@ -437,4 +438,14 @@ void *auto_analyze_main(void *unused)
 
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
     return NULL;
+}
+
+void autoanalyze_after_fastinit(char *table)
+{
+    if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AUTOANALYZE) == 0)
+        return;
+    pthread_t analyze;
+    char *tblname = strdup(table); // will be freed in auto_analyze_table()
+    pthread_create(&analyze, &gbl_pthread_attr_detached, auto_analyze_table,
+                   tblname);
 }
