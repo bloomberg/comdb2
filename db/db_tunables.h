@@ -1647,6 +1647,10 @@ REGISTER_TUNABLE("abort_on_missing_osql_session",
                  "Abort if we can't find an osql session in the repository.  "
                  "(Default: off)",
                  TUNABLE_BOOLEAN, &gbl_abort_on_missing_osql_session,
+
+REGISTER_TUNABLE("online_recovery",
+                 "Don't get the bdb-writelock for recovery.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_online_recovery,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE(
