@@ -6403,7 +6403,7 @@ void *exec_trigger(trigger_reg_t *reg)
     close_sp(&clnt);
     cleanup_clnt(&clnt);
     thd.sqlthd->clnt = NULL;
-    sqlengine_thd_end(NULL, &thd, 0);
+    sqlengine_thd_end(NULL, &thd);
     thread_memdestroy();
     return NULL;
 }
