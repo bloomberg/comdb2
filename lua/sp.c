@@ -2549,18 +2549,20 @@ static void *dispatch_lua_thread(void *arg)
     Pthread_cond_init(&clnt.write_cond, NULL);
     Pthread_mutex_init(&clnt.dtran_mtx, NULL);
     strcpy(clnt.tzname, parent_clnt->tzname);
+    pthread_mutex_t *saved_temp_table_mtx = thd->sqlthd->temp_table_mtx;
+    thd->sqlthd->temp_table_mtx = clnt.sp->parent_sqlthd->sqlthd->temp_table_mtx;
     if (dispatch_sql_query(&clnt) == 0) { // --> exec_thread()
         thd->status = THREAD_STATUS_FINISHED;
     } else {
         snprintf0(thd->error, sizeof(thd->error), "failed to dispatch thread");
         thd->status = THREAD_STATUS_DISPATCH_FAILED;
     }
+    thd->sqlthd->temp_table_mtx = saved_temp_table_mtx;
     /* Done running -- wake up anyone blocked on join */
     Pthread_mutex_lock(&thd->lua_thread_mutex);
     Pthread_cond_signal(&thd->lua_thread_cond);
     Pthread_mutex_unlock(&thd->lua_thread_mutex);
     cleanup_clnt(&clnt);
-    Pthread_mutex_destroy_and_free(clnt.sp->saved_temp_table_mtx);
     Pthread_mutex_destroy(&clnt.wait_mutex);
     Pthread_cond_destroy(&clnt.wait_cond);
     Pthread_mutex_destroy(&clnt.write_lock);
@@ -6408,9 +6410,6 @@ void exec_thread(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     Lua L = sp->lua;
     get_curtran(thedb->bdb_env, clnt);
     sp->parent_thd->status = THREAD_STATUS_RUNNING;
-    assert( sp->saved_temp_table_mtx==NULL );
-    sp->saved_temp_table_mtx = thd->sqlthd->temp_table_mtx;
-    thd->sqlthd->temp_table_mtx = sp->parent_sqlthd->sqlthd->temp_table_mtx;
     exec_thread_int(thd, clnt);
     lua_gc(L, LUA_GCCOLLECT, 0);
     drop_temp_tables(clnt->sp);

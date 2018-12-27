@@ -58,7 +58,6 @@ struct stored_proc {
     int *clnttype; //parent only
     dbthread_type *parent_thd; //child only
     struct sqlthdstate *parent_sqlthd; //child only
-    pthread_mutex_t *saved_temp_table_mtx; //child only
 
     LIST_HEAD(, dbstmt_t) dbstmts;
     LIST_HEAD(, tmptbl_info_t) tmptbls;
