@@ -3525,7 +3525,7 @@ int handle_remtran_request(comdb2_appsock_arg_t *arg)
     bzero(&msg, sizeof(msg));
 
     /* This does insert on behalf of an sql transaction */
-    svc_cb_arg.thd = start_sql_thread(0);
+    svc_cb_arg.thd = start_sql_thread();
 
     rc = fdb_msg_read_message(sb, &msg, 0);
     if (rc) {

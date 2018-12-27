@@ -4016,6 +4016,12 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
     if (!clnt->exec_lua_thread)
         abort();
 
+    if (clnt->temp_table_mtx != NULL) {
+        thd->temp_table_mtx = clnt->temp_table_mtx;
+    } else {
+        Pthread_mutex_alloc_and_init(thd->temp_table_mtx, NULL);
+    }
+
     thr_set_user("appsock", clnt->appsock_id);
 
     clnt->osql.timings.query_dispatched = osql_log_time();
@@ -4042,6 +4048,12 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
     clean_queries_not_cached_in_srs(clnt);
 
     debug_close_sb(clnt);
+
+    if (thd->temp_table_mtx != clnt->temp_table_mtx) {
+        Pthread_mutex_destroy_and_free(thd->temp_table_mtx);
+    } else {
+        thd->temp_table_mtx = NULL;
+    }
 
     thrman_setid(thrman_self(), "[done]");
 }
@@ -4403,7 +4415,7 @@ void sqlengine_thd_start(struct thdpool *pool, struct sqlthdstate *thd,
     thd->stmt_caching_table = NULL;
     thd->lastuser[0] = '\0';
 
-    start_sql_thread(0);
+    start_sql_thread();
 
     thd->sqlthd = pthread_getspecific(query_info_key);
     void rcache_init(size_t, size_t);
