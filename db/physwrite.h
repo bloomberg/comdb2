@@ -20,7 +20,7 @@
 
 typedef struct physwrite_results_s {
     pthread_mutex_t lk;
-    pthread_mutex_t cd;
+    pthread_cond_t cd;
     int dispatched;
     int done;
     int commit_file;

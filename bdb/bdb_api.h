@@ -968,6 +968,9 @@ int bdb_wait_for_seqnum_from_all_adaptive_newcoh(bdb_state_type *bdb_state,
 int bdb_wait_for_seqnum_from_n(bdb_state_type *bdb_state, seqnum_type *seqnum,
                                int n);
 
+int bdb_wait_for_lsn(bdb_state_type *bdb_state, int file, int offset,
+        int timeout);
+
 /* returns 1 if you are the master, 0 if you are not */
 int bdb_amimaster(bdb_state_type *bdb_handle);
 

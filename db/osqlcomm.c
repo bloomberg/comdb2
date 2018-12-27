@@ -6215,16 +6215,22 @@ static int get_blkout(time_t now, char *nodes[REPMAX], int *nds)
    must be parsed from the buffer.
  */
 
-int osql_extract_type(int usertype, void *dtap, int datalen)
+int osql_extract_type(int usertype, void *dtap, int dtalen, uuid_t *uuid,
+        unsigned long long *rqid)
 {
+    uint8_t *p_buf = (uint8_t *)dtap;
+    uint8_t *p_buf_end = (p_buf + dtalen);
     int type = -1;
+
     if (osql_nettype_is_uuid(usertype)) {
+        osql_uuid_rpl_t p_osql_uuid_rpl;
         if (!(p_buf = (uint8_t *)osqlcomm_uuid_rpl_type_get(
                   &p_osql_uuid_rpl, p_buf, p_buf_end))) {
             logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
                     "osqlcomm_uuid_rpl_type_get");
         } else {
-            comdb2uuidcpy(uuid, p_osql_uuid_rpl.uuid);
+            *rqid = OSQL_RQID_USE_UUID;
+            comdb2uuidcpy(*uuid, p_osql_uuid_rpl.uuid);
             type = p_osql_uuid_rpl.type;
         }
     } else {
@@ -6239,6 +6245,8 @@ int osql_extract_type(int usertype, void *dtap, int datalen)
             logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
                     "osqlcomm_rpl_type_get");
         } else {
+            *rqid = p_osql_rpl.sid;
+            comdb2uuid_clear(*uuid);
             type = p_osql_rpl.type;
         }
     }

@@ -1,12 +1,17 @@
-#include <physwrite.h>
 #include <cdb2api.h>
 #include <pthread.h>
+#include <locks_wrap.h>
+#include <physwrite.h>
 #include <osqlcomm.h>
 #include <osqlsession.h>
+#include <osqlcheckboard.h>
 #include <thread_malloc.h>
+#include <bdb_api.h>
+#include <errstat.h>
 
 int gbl_physwrite_shared_handle = 0;
 int gbl_physwrite_wait_commit = 1;
+int gbl_physwrite_commit_timeout = 0;
 int gbl_physwrite_long_write_threshold = 10;
 
 enum {
@@ -65,9 +70,11 @@ static cdb2_hndl_tp *retrieve_handle(session_t *s)
     return *h;
 }
 
-static int retrieve_results(cdb2_hndl_tp *h)
+static int signal_results(cdb2_hndl_tp *h, int type, uuid_t uuid,
+        unsigned long long rqid, int *timeout)
 {
     int64_t *rcode, *errval, *file, *offset;
+    struct errstat errstat = {0};
     char *errstr;
 
     rcode = (int64_t *)cdb2_column_value(h, 0);
@@ -75,6 +82,11 @@ static int retrieve_results(cdb2_hndl_tp *h)
     errstr = cdb2_column_value(h, 2);
     file = cdb2_column_value(h, 3);
     offset = cdb2_column_value(h, 4);
+
+    errstat.errval = *errval;
+    if (errstr)
+        strcpy(errstat.errstr, errstr);
+
 #if 0
     int64_t *inserts, *updates, *deletes, *cupdates, *cdeletes;
     inserts = (int64_t *)cdb2_column_value(h, 5);
@@ -83,29 +95,44 @@ static int retrieve_results(cdb2_hndl_tp *h)
     cupdates = (int64_t *)cdb2_column_value(h, 8);
     cdeletes = (int64_t *)cdb2_column_value(h, 9);
 #endif
+
+    if (gbl_physwrite_wait_commit && bdb_wait_for_lsn(thedb->bdb_env, *file,
+                *offset, gbl_physwrite_commit_timeout))
+        *timeout = 1;
+
+    return osql_chkboard_sqlsession_rc(rqid, uuid, 0, NULL, &errstat);
 }
 
 static int dosend(session_t *s, int usertype, void *data, int datalen)
 {
-    int rc, type;
+    int rc, type, timeout = 0;
+    unsigned long long rqid;
+    uuid_t uuid;
+
     cdb2_hndl_tp *h = retrieve_handle(s);
     if (s->last_master && strcmp(s->last_master, cdb2_master(h))) {
         free(s->last_master);
         s->last_master = NULL;
         return OSQL_SEND_ERROR_WRONGMASTER;
     }
-    type = osql_extract_type(usertype, data, datalen);
+
+    type = osql_extract_type(usertype, data, datalen, &uuid, &rqid);
     cdb2_bind_param(h, "host", CDB2_CSTRING, dbhost, strlen(dbhost));
     cdb2_bind_param(h, "usertype", CDB2_INTEGER, &usertype, sizeof(usertype));
     cdb2_bind_param(h, "data", CDB2_BLOB, data, datalen);
     rc = cdb2_run_statement(h,
             "exec procedure sys.cmd.exec_socksql(@host, @usertype, @data)");
 
-    /* Read result */
     if (rc == 0 && osql_comm_is_done(type, NULL, 0, 0, NULL, NULL)) {
         if ((rc = cdb2_next_record(h)) == CDB2_OK)
-            retrieve_results(h);
-        else
+            signal_results(h, type, uuid, rqid, &timeout);
+    }
+
+    if (rc) {
+        if (s->last_master)
+            free(s->last_master);
+        s->last_master = NULL;
+        return OSQL_SEND_ERROR_WRONGMASTER;
     }
 
     /* Remember last master */
@@ -147,21 +174,19 @@ int physwrite_route_packet_tails(int usertype, void *data, int datalen,
     return rc;
 }
 
-
-__thread physwrite_results_t *physwrite_results;
-
 int net_route_packet_flags(int usertype, void *data, int datalen, uint8_t flags);
+__thread physwrite_results_t *physwrite_results;
 
 int physwrite_exec(char *host, int usertype, void *data, int datalen,
         int *rcode, int *errval, char **errstr, int *inserts, int *updates, int *deletes,
         int *cupdates, int *cdeletes, int *commit_file, int *commit_offset)
 {
-    int rc, cnt=0;
+    int cnt=0;
     physwrite_results_t results = {0};
     Pthread_mutex_init(&results.lk, NULL);
     Pthread_cond_init(&results.cd, NULL);
     physwrite_results = &results;
-    rc = net_route_packet_flags(usertype, data, datalen, PHYSWRITE);
+    net_route_packet_flags(usertype, data, datalen, PHYSWRITE);
     if (results.dispatched) {
         Pthread_mutex_lock(&results.lk);
         while(!results.done) {
@@ -170,7 +195,7 @@ int physwrite_exec(char *host, int usertype, void *data, int datalen,
                 logmsg(LOGMSG_WARN, "%s long write outstanding for %d seconds.\n",
                         __func__, cnt);
             }
-            rc = clock_gettime(CLOCK_REALTIME, &now);
+            clock_gettime(CLOCK_REALTIME, &now);
             now.tv_sec += 1;
             pthread_cond_timedwait(&results.cd, &results.lk, &now);
         } 

@@ -1633,6 +1633,12 @@ REGISTER_TUNABLE("physrep_write_wait_commit",
                  TUNABLE_BOOLEAN, &gbl_physwrite_wait_commit, 0, NULL, NULL,
                  NULL, NULL);
 
+REGISTER_TUNABLE("physrep_commit_timeout",
+                 "Max time phyrep will wait for commit record.  "
+                 "(Default: 0)",
+                 TUNABLE_INTEGER, &gbl_physwrite_commit_timeout, 0, NULL, NULL,
+                 NULL, NULL);
+
 REGISTER_TUNABLE("physrep_long_write_threshold",
                  "Print warning trace after this many seconds.  "
                  "(Default: 10)",

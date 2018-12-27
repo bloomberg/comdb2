@@ -5716,6 +5716,49 @@ int bdb_wait_for_seqnum_from_n(bdb_state_type *bdb_state, seqnum_type *seqnum,
     return 0;
 }
 
+int bdb_wait_for_lsn(bdb_state_type *bdb_state, int file, int offset,
+        int timeout)
+{
+    extern pthread_mutex_t gbl_logput_lk;
+    extern pthread_cond_t gbl_logput_cond;
+    DB_LSN target_lsn = { .file = file, .offset = offset }, lsn;
+    DB_LOGC *logc = NULL;
+    DBT data = {0};
+    int rc, elapsed = 0, start;
+
+    if ((rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s error getting log cursor, rc=%d\n", __func__,
+                rc);
+        goto error;
+    }
+
+    data.flags = DB_DBT_USERMEM | DB_DBT_PARTIAL;
+    data.ulen = 0;
+
+    start = comdb2_time_epoch();
+    while((log_compare(&lsn, &target_lsn) < 0) && (!timeout ||
+                elapsed <= timeout)) {
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_sec += 1;
+        Pthread_mutex_lock(&gbl_logput_lk);
+        pthread_cond_timedwait(&gbl_logput_cond, &gbl_logput_lk, &ts);
+        Pthread_mutex_unlock(&gbl_logput_lk);
+        logc->get(logc, &lsn, &data, DB_LAST);
+        elapsed = (comdb2_time_epoch() - start);
+    }
+
+    rc = (log_compare(&lsn, &target_lsn) >= 0);
+
+    if (!timeout)
+        assert(rc);
+error:
+    if (logc)
+        logc->close(logc, 0);
+
+    return !rc;
+}
+
 void bdb_set_rep_handle_dead(bdb_state_type *bdb_state)
 {
     bdb_state->rep_handle_dead = 1;
