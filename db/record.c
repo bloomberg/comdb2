@@ -364,7 +364,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         ondisktagsc = find_tag_schema(iq->usedb->tablename, ondisktag);
     }
 
-    rc = validate_server_record(od_dta, od_len, ondisktagsc, &reason);
+    rc = validate_server_record(iq, od_dta, od_len, tag, ondisktag, ondisktagsc);
     if (rc == -1) {
         *opfailcode = ERR_NULL_CONSTRAINT;
         rc = retrc = ERR_NULL_CONSTRAINT;
@@ -459,7 +459,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     {
         if (!(flags & RECFLAGS_NEW_SCHEMA)) {
             /* enqueue the add of the key for constaint checking purposes */
-            rc = insert_add_op(iq, iq->blkstate, iq->usedb, NULL, NULL, opcode,
+            rc = insert_add_op(iq, NULL, NULL, opcode,
                                *rrn, -1, *genid, ins_keys, blkpos, rec_flags);
             if (rc != 0) {
                 if (iq->debug)
@@ -477,10 +477,10 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
 
     if ((flags & RECFLAGS_NO_CONSTRAINTS) /* if no constraints */
         || (rec_flags & OSQL_IGNORE_FAILURE)) {
-        retrc =
-            add_record_indices(iq, trans, blobs, maxblobs, opfailcode,
-                               ixfailnum, rrn, genid, vgenid, ins_keys, opcode,
-                               blkpos, od_dta, od_len, ondisktag, ondisktagsc);
+        retrc = add_record_indices(iq, trans, blobs, maxblobs, opfailcode,
+                                   ixfailnum, rrn, genid, vgenid, ins_keys,
+                                   opcode, blkpos, od_dta, od_len, ondisktag,
+                                   ondisktagsc, flags);
         if (retrc)
             ERR;
     }

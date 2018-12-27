@@ -533,7 +533,7 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
                     datalen = od_tail_len;
                 }
                 ctk.type = CTK_UPD;
-                ctk.genid = oldgenid;
+                ctk.genid = vgenid;
                 ctk.newgenid = *newgenid;
                 ctk.ixnum = ixnum;
                 int err = 0;
@@ -551,7 +551,7 @@ printf("AZ: %s inserttmptbl %s type %d, index %d, genid %llx\n", __func__, iq->u
                 rc = ix_upd_key(iq, trans, newkey, keysize,
                         ixnum, vgenid, *newgenid, od_dta_tail, od_tail_len,
                         ix_isnullk(iq->usedb, newkey, ixnum));
-printf("AZ: direct ix_upd_key genid=%llx newwgenid=%llx rc %d\n", bdb_genid_to_host_order(oldgenid), bdb_genid_to_host_order(*newgenid), rc);
+printf("AZ: direct ix_upd_key genid=%llx newwgenid=%llx rc %d\n", bdb_genid_to_host_order(vgenid), bdb_genid_to_host_order(*newgenid), rc);
                 if (iq->debug)
                     reqprintf(iq, "upd_key IX %d GENID 0x%016llx RC %d", ixnum,
                             *newgenid, rc);
@@ -582,7 +582,7 @@ printf("AZ: direct ix_upd_key genid=%llx newwgenid=%llx rc %d\n", bdb_genid_to_h
                     //if not datacopy, no need to save od_dta_tail
                     void *data = NULL;
                     int datalen = 0;
-                    delctk.genid = oldgenid;
+                    delctk.genid = vgenid;
                     delctk.ixnum = ixnum;
                     int err = 0;
 printf("AZ: %s inserttmptbl %s type %d, index %d, genid %llx\n", __func__, iq->usedb->tablename, delctk.type, delctk.ixnum, bdb_genid_to_host_order(delctk.genid));
@@ -599,7 +599,7 @@ printf("AZ: %s inserttmptbl %s type %d, index %d, genid %llx\n", __func__, iq->u
                     rc = ix_delk(iq, trans, oldkey, ixnum, rrn, vgenid,
                             ix_isnullk(iq->usedb, oldkey, ixnum));
 
-printf("AZ: direct upd ix_delk genid=%llx newwgenid=%llx rc %d\n", bdb_genid_to_host_order(oldgenid), bdb_genid_to_host_order(*newgenid), rc);
+printf("AZ: direct upd ix_delk genid=%llx newwgenid=%llx rc %d\n", bdb_genid_to_host_order(vgenid), bdb_genid_to_host_order(*newgenid), rc);
                     if (iq->debug)
                         reqprintf(iq, "ix_delk IX %d RRN %d RC %d", ixnum, rrn, rc);
 
@@ -651,7 +651,7 @@ printf("AZ: %s inserttmptbl %s type %d, index %d, genid %llx\n", __func__, iq->u
                             od_len, opcode, blkpos, opfailcode, newkey,
                             od_dta_tail, od_tail_len, do_inline, 0);
 
-printf("AZ: direct upd add_key genid=%llx newwgenid=%llx rc %d\n", bdb_genid_to_host_order(oldgenid), 
+printf("AZ: direct upd add_key genid=%llx newwgenid=%llx rc %d\n", bdb_genid_to_host_order(vgenid), 
         bdb_genid_to_host_order(*newgenid), rc);
                     if (iq->debug)
                         reqprintf(iq, "add_key IX %d RRN %d RC %d", ixnum, rrn, rc);
