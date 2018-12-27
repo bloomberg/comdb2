@@ -239,6 +239,18 @@ comdb2_metric gbl_metrics[] = {
     {"standing_queue_time", "How long the database has had a standing queue", 
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, 
      &stats.standing_queue_time, NULL},
+
+ #if 0
+     {"minimum_truncation_file", "Minimum truncation file", STATISTIC_INTEGER,
+      STATISTIC_COLLECTION_TYPE_LATEST, &stats.minimum_truncation_file, NULL},
+     {"minimum_truncation_offset", "Minimum truncation offset", 
+      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, 
+      &stats.minimum_truncation_offset, NULL}, 
+     {"minimum_truncation_timestamp", "Minimum truncation timestamp", 
+      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, 
+      &stats.minimum_truncation_timestamp, NULL}, 
+ #endif
+
     {"result_set_cache_hits", "SQL result set cache hits",
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, 
      &stats.result_set_cache_hits, NULL}

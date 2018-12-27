@@ -1637,7 +1637,6 @@ REGISTER_TUNABLE("force_incoherent",
                  TUNABLE_BOOLEAN, &gbl_force_incoherent,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
-<<<<<<< HEAD
 REGISTER_TUNABLE("ignore_coherency",
                  "Force this node to be coherent.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_ignore_coherency,
