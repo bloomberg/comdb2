@@ -29,6 +29,9 @@ test_get_comdb2db_hosts: unit_get_comdb2db_hosts.c
 	grep "define MAX_NODES " $(SRCHOME)/cdb2api/cdb2api.c >> test_get_comdb2db_hosts.c
 	grep "define MAX_CONTEXTS " $(SRCHOME)/cdb2api/cdb2api.c >> test_get_comdb2db_hosts.c
 	grep "define MAX_STACK " $(SRCHOME)/cdb2api/cdb2api.c >> test_get_comdb2db_hosts.c
+	grep "define DBNAME_LEN " $(SRCHOME)/cdb2api/cdb2api.c >> test_get_comdb2db_hosts.c
+	grep "define TYPE_LEN " $(SRCHOME)/cdb2api/cdb2api.c >> test_get_comdb2db_hosts.c
+	grep "define POLICY_LEN " $(SRCHOME)/cdb2api/cdb2api.c >> test_get_comdb2db_hosts.c
 	sed "/struct context_messages {/,/^}/!d" $(SRCHOME)/cdb2api/cdb2api.c >> test_get_comdb2db_hosts.c
 	sed "/struct cdb2_hndl {/,/^}/!d" $(SRCHOME)/cdb2api/cdb2api.c >> test_get_comdb2db_hosts.c
 	cat unit_get_comdb2db_hosts.c >> test_get_comdb2db_hosts.c
