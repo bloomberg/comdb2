@@ -3206,6 +3206,7 @@ void removeTempTableEntry(
   **       the hash entry is being deleted (not stored); therefore,
   **       the passed string hash key will not be stored.
   */
+  assert( sqlite3HashFind(pHash, rootPageNumToTempHashKey(iTable)) );
 #ifndef NDEBUG
   struct temptable_entry *pOldEntry =
 #endif
@@ -6394,25 +6395,25 @@ skip:
             Pthread_mutex_lock(thd->temp_table_mtx);
 
             struct temptable_entry *pEntry = sqlite3HashFind(
-                &pBt->temp_tables, rootPageNumToTempHashKey(
+                &pCur->bt->temp_tables, rootPageNumToTempHashKey(
                 pCur->rootpage));
 
             if (pEntry != NULL) {
                 int bRemove = 0;
 
                 rc = releaseTempTableRef(
-                    pBt, pCur->rootpage, pEntry->value, &bRemove
+                    pCur->bt, pCur->rootpage, pEntry->value, &bRemove
                 );
                 if (rc != SQLITE_OK) {
                     logmsg(LOGMSG_ERROR,
                            "%s: releaseTempTableRef bt %p tab %d rc %d\n",
-                           __func__, pBt, pCur->rootpage, rc);
+                           __func__, pCur->bt, pCur->rootpage, rc);
                     rc = SQLITE_INTERNAL;
                     goto done;
                 }
                 if (bRemove) {
                     removeTempTableEntry(
-                        &pBt->temp_tables, pEntry, pCur->rootpage
+                        &pCur->bt->temp_tables, pEntry, pCur->rootpage
                     );
                     /* pEntry = NULL; */
                 }
