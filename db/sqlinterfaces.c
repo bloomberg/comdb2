@@ -4403,7 +4403,7 @@ void sqlengine_thd_start(struct thdpool *pool, struct sqlthdstate *thd,
     thd->stmt_caching_table = NULL;
     thd->lastuser[0] = '\0';
 
-    start_sql_thread();
+    start_sql_thread(0);
 
     thd->sqlthd = pthread_getspecific(query_info_key);
     void rcache_init(size_t, size_t);

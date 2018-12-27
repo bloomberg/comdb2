@@ -911,7 +911,7 @@ static int _convert_time(char *sql)
     client.dbtran.mode = TRANLEVEL_SOSQL;
     client.sql = sql;
 
-    start_sql_thread();
+    start_sql_thread(&client);
 
     thd = pthread_getspecific(query_info_key);
     sql_get_query_id(thd);

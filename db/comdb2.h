@@ -2763,7 +2763,7 @@ enum {
                                  Used to pack things at end of buffer. */
 };
 
-struct sql_thread *start_sql_thread(void);
+struct sql_thread *start_sql_thread(struct sqlclntstate *clnt);
 struct sqlclntstate;
 int initialize_shadow_trans(struct sqlclntstate *, struct sql_thread *thd);
 void get_current_lsn(struct sqlclntstate *clnt);

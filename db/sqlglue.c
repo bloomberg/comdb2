@@ -729,7 +729,7 @@ static int query_path_component_cmp(const void *key1, const void *key2, int len)
     }
 }
 
-struct sql_thread *start_sql_thread(void)
+struct sql_thread *start_sql_thread(struct sqlclntstate *clnt)
 {
     struct sql_thread *thd = calloc(1, sizeof(struct sql_thread));
     if (!thd) {
@@ -740,7 +740,11 @@ struct sql_thread *start_sql_thread(void)
     thd->query_hash = hash_init_user(query_path_component_hash,
                                      query_path_component_cmp, 0, 0);
     Pthread_mutex_init(&thd->lk, NULL);
-    Pthread_mutex_alloc_and_init(thd->temp_table_mtx, NULL);
+    if (clnt != NULL && clnt->temp_table_mtx != NULL) {
+        thd->temp_table_mtx = clnt->temp_table_mtx;
+    } else {
+        Pthread_mutex_alloc_and_init(thd->temp_table_mtx, NULL);
+    }
     Pthread_setspecific(query_info_key, thd);
     Pthread_mutex_lock(&gbl_sql_lock);
     listc_abl(&thedb->sql_threads, thd);
@@ -764,11 +768,16 @@ void done_sql_thread(void)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     if (thd) {
+        struct sqlclntstate *clnt = thd->clnt;
+        if (clnt == NULL || thd->temp_table_mtx != clnt->temp_table_mtx) {
+            Pthread_mutex_destroy_and_free(thd->temp_table_mtx);
+        } else {
+            thd->temp_table_mtx = NULL;
+        }
         Pthread_mutex_lock(&gbl_sql_lock);
         listc_rfl(&thedb->sql_threads, thd);
         Pthread_mutex_unlock(&gbl_sql_lock);
         Pthread_mutex_destroy(&thd->lk);
-        Pthread_mutex_destroy_and_free(thd->temp_table_mtx);
         Pthread_setspecific(query_info_key, NULL);
         if (thd->buf) {
             free(thd->buf);
@@ -2065,7 +2074,7 @@ int new_indexes_syntax_check(struct ireq *iq, struct dbtable *db)
     client.verify_indexes = 1;
     client.schema_mems = &sm;
 
-    struct sql_thread *sqlthd = start_sql_thread();
+    struct sql_thread *sqlthd = start_sql_thread(&client);
     sql_get_query_id(sqlthd);
     client.debug_sqlclntstate = pthread_self();
     sqlthd->clnt = &client;
@@ -11272,7 +11281,7 @@ void stat4dump(int more, char *table, int istrace)
     reset_clnt(&clnt, NULL, 1);
     clnt.sql = "select * from sqlite_stat4"; //* from sqlite_master limit 1;";
 
-    struct sql_thread *thd = start_sql_thread();
+    struct sql_thread *thd = start_sql_thread(&clnt);
     get_copy_rootpages(thd);
     thd->clnt = &clnt;
     sql_get_query_id(thd);

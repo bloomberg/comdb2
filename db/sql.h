@@ -557,6 +557,7 @@ struct sqlclntstate {
     struct spversion_t spversion;
     int n_lua_stmt;
     int max_lua_stmt;
+    pthread_mutex_t *temp_table_mtx; /* for "sp.c" temp table subsystem */
 
     unsigned int bdb_osql_trak; /* 32 debug bits interpreted by bdb for your
                                    "set debug bdb"*/

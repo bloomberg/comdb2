@@ -2543,21 +2543,19 @@ static void *dispatch_lua_thread(void *arg)
     clnt.exec_lua_thread = 1;
     clnt.trans_has_sp = 1;
     clnt.queue_me = 1;
+    clnt.temp_table_mtx = thd->sp->parent_sqlthd->sqlthd->temp_table_mtx;
     Pthread_mutex_init(&clnt.wait_mutex, NULL);
     Pthread_cond_init(&clnt.wait_cond, NULL);
     Pthread_mutex_init(&clnt.write_lock, NULL);
     Pthread_cond_init(&clnt.write_cond, NULL);
     Pthread_mutex_init(&clnt.dtran_mtx, NULL);
     strcpy(clnt.tzname, parent_clnt->tzname);
-    pthread_mutex_t *saved_temp_table_mtx = thd->sp->thd->sqlthd->temp_table_mtx;
-    thd->sp->thd->sqlthd->temp_table_mtx = clnt.sp->parent_sqlthd->sqlthd->temp_table_mtx;
     if (dispatch_sql_query(&clnt) == 0) { // --> exec_thread()
         thd->status = THREAD_STATUS_FINISHED;
     } else {
         snprintf0(thd->error, sizeof(thd->error), "failed to dispatch thread");
         thd->status = THREAD_STATUS_DISPATCH_FAILED;
     }
-    thd->sp->thd->sqlthd->temp_table_mtx = saved_temp_table_mtx;
     /* Done running -- wake up anyone blocked on join */
     Pthread_mutex_lock(&thd->lua_thread_mutex);
     Pthread_cond_signal(&thd->lua_thread_cond);
