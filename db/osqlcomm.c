@@ -2870,9 +2870,6 @@ static osql_comm_t *get_thecomm(void)
 
 static void net_osql_rpl(void *hndl, void *uptr, char *fromnode, int usertype,
                          void *dtap, int dtalen, uint8_t flags);
-static int net_osql_rpl_tail(void *hndl, void *uptr, char *fromnode,
-                             int usertype, void *dtap, int dtalen, void *tail,
-                             int tailen);
 
 static void net_sosql_req(void *hndl, void *uptr, char *fromnode, int usertype,
                           void *dtap, int dtalen, uint8_t flags);
@@ -4986,6 +4983,9 @@ void *osql_create_request(const char *sql, int sqlen, int type,
     osql_req_t req = {0};
     osql_uuid_req_t req_uuid = {0};
     void *ret;
+    uuidstr_t us;
+    logmsg(LOGMSG_USER, "%s create [%lld:%s]\n", __func__, rqid,
+            comdb2uuidstr(uuid, us));
 
     if (rqid == OSQL_RQID_USE_UUID) {
         rqlen = sizeof(osql_uuid_req_t) + sqlen;
@@ -5861,6 +5861,7 @@ int net_route_packet_flags(int usertype, void *data, int datalen, uint8_t flags)
     default:
         logmsg(LOGMSG_ERROR, "%s: unknown packet type routed locally, %d\n",
                 __func__, usertype);
+        abort();
         return -1;
     }
     return 0;
@@ -5890,11 +5891,11 @@ static int net_local_route_packet_tails(int usertype, void *data, int datalen,
     case NET_OSQL_SNAPISOL_RPL_UUID:
     case NET_OSQL_SERIAL_RPL_UUID:
         return net_osql_rpl_tail(NULL, NULL, 0, usertype, data, datalen,
-                                 tails[0], taillens[0]);
+                                 tails[0], taillens[0], 0);
     default:
         logmsg(LOGMSG_ERROR, "%s: unknown packet type routed locally, %d\n",
                 __func__, usertype);
-        return -1;
+        abort();
     }
     return 0;
 }
@@ -5977,7 +5978,7 @@ static int offload_net_send(const char *host, int usertype, void *data,
         if (gbl_is_physical_replicant) {
             time_t now;
             if (gbl_physwrite) 
-                return physwrite_route_packet(usertype, data, datalen);
+                return physwrite_route_packet(usertype, data, datalen, 0);
             if ((now = time(NULL)) > last_physrep_write) {
                 logmsg(LOGMSG_ERROR, "Preventing write on read-only physical "
                        "replicant (enable 'physrep_write' to allow writes)\n");
@@ -6097,7 +6098,6 @@ static int offload_net_send_tails(const char *host, int usertype, void *data,
             rc = net_send_tails(netinfo_ptr, host, usertype, data, datalen,
                                 nodelay, ntails, tails, tailens);
         } else {
-            /* local save */
             if (gbl_is_physical_replicant) {
                 time_t now;
 
@@ -6332,11 +6332,22 @@ static int check_master(const char *tohost)
 /* since net_send already serializes the tail,
    this is needed only when routing local packets
    we need to "serialize" the tail as well, therefore the need for duplicate */
-static int net_osql_rpl_tail(void *hndl, void *uptr, char *fromhost,
+int net_osql_rpl_tail(void *hndl, void *uptr, char *fromhost,
                              int usertype, void *dtap, int dtalen, void *tail,
-                             int tailen)
+                             int tailen, uint32_t flags)
 {
     void *dup;
+
+    assert( usertype == NET_OSQL_BLOCK_RPL ||
+            usertype == NET_OSQL_SOCK_RPL ||
+            usertype == NET_OSQL_RECOM_RPL ||
+            usertype == NET_OSQL_SNAPISOL_RPL ||
+            usertype == NET_OSQL_SERIAL_RPL ||
+            usertype == NET_OSQL_BLOCK_RPL_UUID ||
+            usertype == NET_OSQL_SOCK_RPL_UUID ||
+            usertype == NET_OSQL_RECOM_RPL_UUID ||
+            usertype == NET_OSQL_SNAPISOL_RPL_UUID ||
+            usertype == NET_OSQL_SERIAL_RPL_UUID);
 
     if (dtalen + tailen > gbl_blob_sz_thresh_bytes)
         dup = comdb2_bmalloc(blobmem, dtalen + tailen);
@@ -6395,7 +6406,7 @@ static int net_osql_rpl_tail(void *hndl, void *uptr, char *fromhost,
     }
 
     if (!rc)
-        rc = osql_sess_rcvop(rqid, uuid, type, dup, dtalen + tailen, &found, 0);
+        rc = osql_sess_rcvop(rqid, uuid, type, dup, dtalen + tailen, &found, flags);
 
     free(dup);
 
@@ -7797,6 +7808,9 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
        to avoid racing against signal_rtoff code */
     sess = osql_sess_create_sock(sqlret, sqllenret, req.tzname, type, req.rqid,
                                  uuid, fromhost, iq, &replaced, is_reorder_on);
+    if (sess) {
+        logmsg(LOGMSG_DEBUG, "%s put a breakpoint here\n", __func__);
+    }
     if (replaced) {
         assert(sess == NULL);
         destroy_ireq(thedb, iq);

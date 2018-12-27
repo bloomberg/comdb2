@@ -415,7 +415,7 @@ static int register_self()
     return 1;
 }
 
-int gbl_physrep_reconnect_penalty = 5;
+int gbl_physrep_reconnect_penalty = 1;
 
 static int seedsort(const void *arg1, const void *arg2)
 {
@@ -492,9 +492,9 @@ static int find_new_repl_db(void)
                         if (gbl_verbose_physrep) {
                             logmsg(LOGMSG_USER,
                                    "%s setting mach %s "
-                                   "db %s tier %d idx %d last_fail\n",
+                                   "db %s tier %d idx %d last_fail rc=%d\n",
                                    __func__, cnct->hostname, cnct->dbname, i,
-                                   j);
+                                   j, rc);
                         }
                         cnct->last_failed = time(NULL);
                     }

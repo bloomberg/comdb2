@@ -426,4 +426,9 @@ int osql_set_usedb(struct ireq *iq, const char *tablename, int tableversion,
 int osql_extract_type(int usertype, void *dtap, int datalen, uuid_t *uuid,
         unsigned long long *rqid);
 
+int net_osql_rpl_tail(void *hndl, void *uptr, char *fromnode,
+                             int usertype, void *dtap, int dtalen, void *tail,
+                             int tailen, uint32_t flags);
+
+
 #endif

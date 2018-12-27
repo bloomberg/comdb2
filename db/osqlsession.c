@@ -507,6 +507,10 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
     int rc = 0;
     int is_msg_done = 0;
     struct errstat *perr;
+    uuidstr_t us;
+
+    logmsg(LOGMSG_INFO, "%s session [%llu:%s]\n", __func__, rqid,
+            comdb2uuidstr(uuid,us));
 
     /* NOTE: before retrieving a session, we have to figure out if this is a
        sorese completion and lock the repository until the session is dispatched
@@ -746,6 +750,7 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
                                    int *replaced, bool is_reorder_on)
 {
     osql_sess_t *sess = NULL;
+    uuidstr_t us;
     int rc = 0;
 
 #ifdef TEST_QSQL_REQ
@@ -754,13 +759,16 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
            comdb2uuidstr(uuid, us));
 #endif
 
+    logmsg(LOGMSG_INFO, "%s session [%llu:%s]\n", __func__, rqid,
+            comdb2uuidstr(uuid,us));
+
     /* alloc object */
     sess = (osql_sess_t *)calloc(sizeof(*sess), 1);
     if (!sess) {
         logmsg(LOGMSG_ERROR, "%s:unable to allocate %zu bytes\n", __func__,
                sizeof(*sess));
         return NULL;
-    }
+    /
 #if DEBUG_REORDER
     uuidstr_t us;
     comdb2uuidstr(uuid, us);
@@ -778,7 +786,7 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
     sess->que = queue_new();
     if (!sess->que) {
         _destroy_session(&sess, 1);
-        return NULL;
+        abort();
     }
 
     sess->rqid = rqid;
@@ -805,11 +813,14 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
      */
     rc = osql_bplog_start(iq, sess);
     if (rc)
-        goto late_error;
+        abort();
 
     rc = osql_repository_add(sess, replaced);
-    if (rc || *replaced)
+    if (rc || *replaced) {
+        logmsg(LOGMSG_ERROR, "%s session [%llu:%s] failed to add to repository\n", __func__, rqid,
+                comdb2uuidstr(uuid,us));
         goto late_error;
+    }
 
     sess->last_row = time(NULL);
 
