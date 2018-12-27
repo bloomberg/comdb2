@@ -317,7 +317,7 @@ function assert_stripe
     typeset stp=$(get_dtastripe)
     while [[ "$1" != "$stp" ]] ; do 
         let tries=tries-1
-        [[ "$tries" == 0 ]] &&  failexit $func "was expecting $1 stripes but have $stp"
+        [[ "$tries" == 0 ]] && failexit $func "was expecting $1 stripes but have $stp"
         sleep 1
         stp=$(get_dtastripe)
     done
