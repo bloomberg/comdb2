@@ -3245,41 +3245,6 @@ int sqlite3BtreeClose(Btree *pBt)
              goto done;
              */
         }
-
-        Pthread_mutex_lock(thd->temp_table_mtx);
-
-        struct temptable_entry *pEntry = sqlite3HashFind(
-            &pBt->temp_tables, rootPageNumToTempHashKey(
-            pCur->rootpage));
-
-        if (pEntry != NULL) {
-            int bRemove = 0;
-
-            int rc3 = releaseTempTableRef(
-                pBt, pCur->rootpage, pEntry->value, &bRemove
-            );
-            if (rc3 != SQLITE_OK) {
-                logmsg(LOGMSG_ERROR,
-                       "%s: releaseTempTableRef bt %p tab %d rc %d\n",
-                       __func__, pBt, pCur->rootpage, rc3);
-                /*
-                TODO: See comment above.
-                rc = SQLITE_INTERNAL;
-                goto done;
-                */
-            }
-            if (bRemove) {
-                removeTempTableEntry(
-                    &pBt->temp_tables, pEntry, pCur->rootpage
-                );
-                /* pEntry = NULL; */
-            }
-        } else {
-            logmsg(LOGMSG_ERROR, "%s: entry %d not found\n",
-                   __func__, pCur->rootpage);
-        }
-
-        Pthread_mutex_unlock(thd->temp_table_mtx);
     }
 
     if (pBt->is_temporary) {
@@ -3300,6 +3265,7 @@ int sqlite3BtreeClose(Btree *pBt)
                     rc = SQLITE_INTERNAL;
                     goto done;
                 }
+
                 removeTempTableEntry(&pBt->temp_tables, pEntry, pEntry->rootPg);
                 /* pEntry = NULL; */
             }
@@ -6424,6 +6390,38 @@ skip:
             }
             free(pCur->tmptable);
             pCur->tmptable = NULL;
+
+            Pthread_mutex_lock(thd->temp_table_mtx);
+
+            struct temptable_entry *pEntry = sqlite3HashFind(
+                &pBt->temp_tables, rootPageNumToTempHashKey(
+                pCur->rootpage));
+
+            if (pEntry != NULL) {
+                int bRemove = 0;
+
+                rc = releaseTempTableRef(
+                    pBt, pCur->rootpage, pEntry->value, &bRemove
+                );
+                if (rc != SQLITE_OK) {
+                    logmsg(LOGMSG_ERROR,
+                           "%s: releaseTempTableRef bt %p tab %d rc %d\n",
+                           __func__, pBt, pCur->rootpage, rc);
+                    rc = SQLITE_INTERNAL;
+                    goto done;
+                }
+                if (bRemove) {
+                    removeTempTableEntry(
+                        &pBt->temp_tables, pEntry, pCur->rootpage
+                    );
+                    /* pEntry = NULL; */
+                }
+            } else {
+                logmsg(LOGMSG_ERROR, "%s: entry %d not found\n",
+                       __func__, pCur->rootpage);
+            }
+
+            Pthread_mutex_unlock(thd->temp_table_mtx);
         }
 
         if (pCur->bdbcur) {
