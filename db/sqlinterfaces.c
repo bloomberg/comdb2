@@ -3909,8 +3909,7 @@ check_version:
                            __func__, pthread_self(), ctrc);
                     if (thd->sqldb) {
                         delete_prepared_stmts(thd);
-                        sqlite3_close(thd->sqldb);
-                        thd->sqldb = NULL;
+                        sqlite3_close_serial(&thd->sqldb);
                     }
                     rdlock_schema_lk();
                     return ctrc;
