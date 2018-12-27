@@ -566,18 +566,21 @@ static int db_comdb_register_replicant(Lua L)
 static int db_comdb_exec_socksql(Lua L)
 {
     char *host, *errstr;
-    int usertype, errval, file, offset, rcode, dispatched;
+    int usertype, errval, file, offset, rcode, dispatched, flags;
     blob_t data;
-    if (!lua_isstring(L, 1) || !lua_isnumber(L, 2) || !luabb_isblob(L, 3)) {
+    if (!lua_isstring(L, 1) || !lua_isnumber(L, 2) || !luabb_isblob(L, 3) ||
+            !lua_isnumber(L, 4)) {
         logmsg(LOGMSG_ERROR, "%s invalid arguments\n", __func__);
         return luaL_error(L, "Exec-socksql failed.");
     }
     host = (char *)lua_tostring(L, 1);
     usertype = lua_tonumber(L, 2);
     luabb_toblob(L, 3, &data);
+    flags = lua_tonumber(L, 4);
     lua_createtable(L, 0, 0);
     dispatched = physwrite_exec(host, usertype, data.data, data.length, &rcode,
-            &errval, &errstr, NULL, NULL, NULL, NULL, NULL, &file, &offset);
+            &errval, &errstr, NULL, NULL, NULL, NULL, NULL, &file, &offset,
+            flags);
 
     if (dispatched) {
         lua_createtable(L, 10, 0);
@@ -624,7 +627,7 @@ static int db_comdb_exec_socksql(Lua L)
 
         lua_rawseti(L, -2, 1);
     }
-    return 0;
+    return 1;
 }
 
 static const luaL_Reg sys_funcs[] = {
@@ -811,12 +814,12 @@ static struct sp_source syssps[] = {
         "        db:emit(v)\n"
         "    end\n"
         "end\n",
-        "register_replicant"
+        NULL
     }
 
     ,{
         "sys.cmd.exec_socksql",
-        "local function main(host, usertype, data)\n"
+        "local function main(host, usertype, data, flags)\n"
         "    local schema = {\n"
         "        { 'int',    'rcode' },\n"
         "        { 'int',    'errval' },\n"
@@ -834,13 +837,13 @@ static struct sp_source syssps[] = {
         "        db:column_name(v[2], i)\n"
         "        db:column_type(v[1], i)\n"
         "    end\n"
-        "    local rep_machs\n"
-        "    result = sys.exec_socksql(host, usertype, data)\n"
+        "    local result\n"
+        "    result = sys.exec_socksql(host, usertype, data, flags)\n"
         "    for i, v in ipairs(result) do\n"
         "        db:emit(v)\n"
         "    end\n"
         "end\n",
-        "exec_socksql"
+        NULL
     }
 };
 
