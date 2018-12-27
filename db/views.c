@@ -925,7 +925,7 @@ static int _convert_time(char *sql)
     got_curtran = 1;
 
     if ((rc = sqlite3_open_serial("db", &sqldb, NULL)) != 0) {
-        logmsg(LOGMSG_ERROR, "%s:sqlite3_open rc %d\n", __func__, rc);
+        logmsg(LOGMSG_ERROR, "%s:sqlite3_open_serial rc %d\n", __func__, rc);
         goto cleanup;
     }
 
