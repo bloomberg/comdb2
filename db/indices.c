@@ -953,7 +953,6 @@ int upd_new_record_indices(
     for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
         char keytag[MAXTAGLEN];
         char *oldkey = delctk.ixkey;
-        char key[MAXKEYLEN];
 
         if (gbl_use_plan && iq->usedb->plan &&
             iq->usedb->plan->ix_plan[ixnum] != -1)
@@ -1205,9 +1204,10 @@ printf("AZ: process_defered_table is empty\n");
         *errout = OP_FAILED_INTERNAL;
         goto done;
     }
+    int count = 0;
     while (rc == IX_OK) {
         ctkey *ctk = (ctkey *)bdb_temp_table_key(cur);
-printf("AZ: process_defered_table type %d, index %d, genid %llx\n", ctk->type, ctk->ixnum, bdb_genid_to_host_order(ctk->genid));
+printf("AZ: process_defered_table count %d, type %d, index %d, genid %llx\n", ++count, ctk->type, ctk->ixnum, bdb_genid_to_host_order(ctk->genid));
         void *od_dta_tail = bdb_temp_table_data(cur);
         int od_tail_len = bdb_temp_table_datasize(cur);
         int addrrn = 2;
