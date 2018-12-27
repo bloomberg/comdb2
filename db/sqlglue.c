@@ -3157,11 +3157,35 @@ static int free_hash_ent(void *obj, void *dum)
 ** WARNING: This function assumes (and requires) that the associated temp
 **          table lock pthread mutex is already held.
 */
+void removeTempTableEntry(
+  Hash *pHash,
+  struct temptable_entry *pEntry,
+  int iTable
+){
+  /*
+  ** NOTE: Use of rootPageNumToTempHashKey() here is fine because
+  **       the hash entry is being deleted (not stored); therefore,
+  **       the passed string hash key will not be stored.
+  */
+  assert( sqlite3HashFind(pHash, rootPageNumToTempHashKey(iTable)) );
+#ifndef NDEBUG
+  struct temptable_entry *pOldEntry =
+#endif
+  sqlite3HashInsert(pHash, rootPageNumToTempHashKey(iTable), 0);
+  assert( pOldEntry==pEntry );
+  free(pEntry);
+}
+
+/*
+** WARNING: This function assumes (and requires) that the associated temp
+**          table lock pthread mutex is already held.
+*/
 static int releaseTempTableRef(
   Btree *pBt,
   int iTable,
+  struct temptable_entry *pEntry,
   struct temptable *pTbl,
-  int *pbRemove
+  int bRemove
 ){
     assert( pTbl->nRef>0 );
     if (pTbl != NULL && --pTbl->nRef == 0) {
@@ -3184,35 +3208,14 @@ static int releaseTempTableRef(
         free(pTbl->name);
         /* pTbl->name = NULL; */
         free(pTbl);
-        /* SUCCESS: The hash table entry, if any, should be removed. */
-        if (pbRemove) *pbRemove = 1;
-    } else if (pbRemove) {
-        *pbRemove = 0;
+        /* Table has been freed, remove from hash table. */
+        bRemove = 1;
+    }
+    if (bRemove) {
+        removeTempTableEntry(&pBt->temp_tables, pEntry, iTable);
+        /* pEntry = NULL; */
     }
     return SQLITE_OK;
-}
-
-/*
-** WARNING: This function assumes (and requires) that the associated temp
-**          table lock pthread mutex is already held.
-*/
-void removeTempTableEntry(
-  Hash *pHash,
-  struct temptable_entry *pEntry,
-  int iTable
-){
-  /*
-  ** NOTE: Use of rootPageNumToTempHashKey() here is fine because
-  **       the hash entry is being deleted (not stored); therefore,
-  **       the passed string hash key will not be stored.
-  */
-  assert( sqlite3HashFind(pHash, rootPageNumToTempHashKey(iTable)) );
-#ifndef NDEBUG
-  struct temptable_entry *pOldEntry =
-#endif
-  sqlite3HashInsert(pHash, rootPageNumToTempHashKey(iTable), 0);
-  assert( pOldEntry==pEntry );
-  free(pEntry);
 }
 
 /*
@@ -3259,16 +3262,15 @@ int sqlite3BtreeClose(Btree *pBt)
             struct temptable_entry *pEntry = pElem->data;
 
             if (pEntry != NULL) {
-                rc = releaseTempTableRef(pBt, pEntry->rootPg, pEntry->value, 0);
+                rc = releaseTempTableRef(
+                    pBt, pEntry->rootPg, pEntry, pEntry->value, 1
+                );
 
                 if (rc != SQLITE_OK) {
                     Pthread_mutex_unlock(thd->temp_table_mtx);
                     rc = SQLITE_INTERNAL;
                     goto done;
                 }
-
-                removeTempTableEntry(&pBt->temp_tables, pEntry, pEntry->rootPg);
-                /* pEntry = NULL; */
             }
         }
         if (thd)
@@ -3970,11 +3972,7 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
             &pBt->temp_tables, rootPageNumToTempHashKey(iTable));
 
         if (pEntry != NULL) {
-            rc = releaseTempTableRef(pBt, iTable, pEntry->value, 0);
-            if (rc == SQLITE_OK) {
-                removeTempTableEntry(&pBt->temp_tables, pEntry, iTable);
-                /* pEntry = NULL; */
-            }
+            rc = releaseTempTableRef(pBt, iTable, pEntry, pEntry->value, 1);
         } else {
             rc = SQLITE_OK;
         }
@@ -6399,10 +6397,8 @@ skip:
                 pCur->rootpage));
 
             if (pEntry != NULL) {
-                int bRemove = 0;
-
                 rc = releaseTempTableRef(
-                    pCur->bt, pCur->rootpage, pEntry->value, &bRemove
+                    pCur->bt, pCur->rootpage, pEntry, pEntry->value, 0
                 );
                 if (rc != SQLITE_OK) {
                     logmsg(LOGMSG_ERROR,
@@ -6410,12 +6406,6 @@ skip:
                            __func__, pCur->bt, pCur->rootpage, rc);
                     rc = SQLITE_INTERNAL;
                     goto done;
-                }
-                if (bRemove) {
-                    removeTempTableEntry(
-                        &pCur->bt->temp_tables, pEntry, pCur->rootpage
-                    );
-                    /* pEntry = NULL; */
                 }
             } else {
                 logmsg(LOGMSG_ERROR, "%s: entry %d not found\n",
