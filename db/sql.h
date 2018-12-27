@@ -1060,7 +1060,7 @@ int get_prepared_stmt_try_lock(struct sqlthdstate *, struct sqlclntstate *,
 void put_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
                        struct sql_state *, int outrc);
 void sqlengine_thd_start(struct thdpool *, struct sqlthdstate *, enum thrtype);
-void sqlengine_thd_end(struct thdpool *, struct sqlthdstate *, int);
+void sqlengine_thd_end(struct thdpool *, struct sqlthdstate *);
 
 int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
              uint8_t flip_orig, const char *tzname);

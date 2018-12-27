@@ -3607,7 +3607,7 @@ int handle_remtran_request(comdb2_appsock_arg_t *arg)
 
     reset_clnt(svc_cb_arg.clnt, NULL, 0);
 
-    done_sql_thread(0);
+    done_sql_thread();
 
     Pthread_mutex_destroy(&svc_cb_arg.clnt->wait_mutex);
     Pthread_cond_destroy(&svc_cb_arg.clnt->wait_cond);

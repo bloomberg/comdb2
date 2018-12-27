@@ -947,7 +947,7 @@ cleanup:
     }
 
     thd->clnt = NULL;
-    done_sql_thread(0);
+    done_sql_thread();
     return ret;
 }
 

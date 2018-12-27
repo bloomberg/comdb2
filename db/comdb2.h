@@ -2757,7 +2757,7 @@ struct sql_thread *start_sql_thread(void);
 struct sqlclntstate;
 int initialize_shadow_trans(struct sqlclntstate *, struct sql_thread *thd);
 void get_current_lsn(struct sqlclntstate *clnt);
-void done_sql_thread(int shared);
+void done_sql_thread(void);
 int sql_debug_logf(struct sqlclntstate *clnt, const char *func, int line,
                    const char *fmt, ...);
 

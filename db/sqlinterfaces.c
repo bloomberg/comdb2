@@ -4494,7 +4494,7 @@ void sqlengine_thd_start(struct thdpool *pool, struct sqlthdstate *thd,
 
 int gbl_abort_invalid_query_info_key;
 
-void sqlengine_thd_end(struct thdpool *pool, struct sqlthdstate *thd, int shared)
+void sqlengine_thd_end(struct thdpool *pool, struct sqlthdstate *thd)
 {
     void rcache_destroy(void);
     rcache_destroy();
@@ -4519,7 +4519,7 @@ void sqlengine_thd_end(struct thdpool *pool, struct sqlthdstate *thd, int shared
     sqlite3_close_serial(&thd->sqldb);
 
     /* AZ moved after the close which uses thd for rollbackall */
-    done_sql_thread(shared);
+    done_sql_thread();
 
     sql_mem_shutdown(NULL);
 
@@ -4533,7 +4533,7 @@ static void thdpool_sqlengine_start(struct thdpool *pool, void *thd)
 
 static void thdpool_sqlengine_end(struct thdpool *pool, void *thd)
 {
-    sqlengine_thd_end(pool, (struct sqlthdstate *) thd, 1);
+    sqlengine_thd_end(pool, (struct sqlthdstate *) thd);
 }
 
 static void thdpool_sqlengine_dque(struct thdpool *pool, struct workitem *item,
