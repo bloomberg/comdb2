@@ -114,6 +114,9 @@ struct temptable {
     char *name;
     int nRef;
     pthread_mutex_t *lk;
+#ifndef NDEBUG
+    pthread_mutex_t *temp_table_mtx; /* WARNING: For assert() only, do NOT use. */
+#endif
 };
 struct temptable_entry {
     char keyBuf[50]; /* >= len("+18446744073709551615\0") */
@@ -3263,6 +3266,9 @@ int sqlite3BtreeClose(Btree *pBt)
             struct temptable_entry *pEntry = pElem->data;
 
             if (pEntry != NULL) {
+                assert( pEntry->value );
+                assert( pEntry->value->temp_table_mtx==thd->temp_table_mtx );
+
                 rc = releaseTempTableRef(
                     pBt, pEntry->rootPg, pEntry, pEntry->value, 1
                 );
@@ -3973,6 +3979,9 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
             &pBt->temp_tables, rootPageNumToTempHashKey(iTable));
 
         if (pEntry != NULL) {
+            assert( pEntry->value );
+            assert( pEntry->value->temp_table_mtx==thd->temp_table_mtx );
+
             rc = releaseTempTableRef(pBt, iTable, pEntry, pEntry->value, 1);
         } else {
             rc = SQLITE_OK;
@@ -5140,6 +5149,7 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
     struct temptable *pNewTbl;
 
     if (tmptbl_clone) {
+        assert( tmptbl_clone->temp_table_mtx==thd->temp_table_mtx );
         pNewTbl = pNewEntry->value = tmptbl_clone;
         pNewTbl->nRef++;
     } else {
@@ -5154,6 +5164,10 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
 
         pNewEntry->value = pNewTbl;
         pNewTbl->nRef = 1;
+
+#ifndef NDEBUG
+        pNewTbl->temp_table_mtx = thd->temp_table_mtx;
+#endif
     }
 
     /* creating a temporary table */
@@ -6398,6 +6412,9 @@ skip:
                 pCur->rootpage));
 
             if (pEntry != NULL) {
+                assert( pEntry->value );
+                assert( pEntry->value->temp_table_mtx==thd->temp_table_mtx );
+
                 rc = releaseTempTableRef(
                     pCur->bt, pCur->rootpage, pEntry, pEntry->value, 0
                 );
