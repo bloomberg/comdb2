@@ -3250,13 +3250,7 @@ int sqlite3BtreeClose(Btree *pBt)
              */
         }
     }
-#ifndef NDEBUG
-    Pthread_mutex_lock(&thd->lk);
-#endif
-    assert( listc_size(&thd->bt->cursors)==0 );
-#ifndef NDEBUG
-    Pthread_mutex_unlock(&thd->lk);
-#endif
+    assert( listc_size(&pBt->cursors)==0 );
 
     if (pBt->is_temporary) {
         HashElem *pElem;
