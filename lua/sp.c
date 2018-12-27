@@ -2560,6 +2560,7 @@ static void *dispatch_lua_thread(void *arg)
     Pthread_cond_signal(&thd->lua_thread_cond);
     Pthread_mutex_unlock(&thd->lua_thread_mutex);
     cleanup_clnt(&clnt);
+    Pthread_mutex_destroy_and_free(clnt.sp->saved_temp_table_mtx);
     Pthread_mutex_destroy(&clnt.wait_mutex);
     Pthread_cond_destroy(&clnt.wait_cond);
     Pthread_mutex_destroy(&clnt.write_lock);
@@ -6407,11 +6408,9 @@ void exec_thread(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     Lua L = sp->lua;
     get_curtran(thedb->bdb_env, clnt);
     sp->parent_thd->status = THREAD_STATUS_RUNNING;
-    pthread_mutex_t *saved_temp_table_mtx = thd->sqlthd->temp_table_mtx;
+    assert( sp->saved_temp_table_mtx==NULL );
+    sp->saved_temp_table_mtx = thd->sqlthd->temp_table_mtx;
     thd->sqlthd->temp_table_mtx = sp->parent_sqlthd->sqlthd->temp_table_mtx;
-    if (saved_temp_table_mtx != thd->sqlthd->temp_table_mtx) {
-        Pthread_mutex_destroy_and_free(saved_temp_table_mtx);
-    }
     exec_thread_int(thd, clnt);
     lua_gc(L, LUA_GCCOLLECT, 0);
     drop_temp_tables(clnt->sp);
