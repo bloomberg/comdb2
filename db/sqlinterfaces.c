@@ -4017,9 +4017,9 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
         abort();
 
     if (clnt->temp_table_mtx != NULL) {
-        thd->temp_table_mtx = clnt->temp_table_mtx;
+        thd->sqlthd->temp_table_mtx = clnt->temp_table_mtx;
     } else {
-        Pthread_mutex_alloc_and_init(thd->temp_table_mtx, NULL);
+        Pthread_mutex_alloc_and_init(thd->sqlthd->temp_table_mtx, NULL);
     }
 
     thr_set_user("appsock", clnt->appsock_id);
@@ -4049,10 +4049,10 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
 
     debug_close_sb(clnt);
 
-    if (thd->temp_table_mtx != clnt->temp_table_mtx) {
-        Pthread_mutex_destroy_and_free(thd->temp_table_mtx);
+    if (thd->sqlthd->temp_table_mtx != clnt->temp_table_mtx) {
+        Pthread_mutex_destroy_and_free(thd->sqlthd->temp_table_mtx);
     } else {
-        thd->temp_table_mtx = NULL;
+        thd->sqlthd->temp_table_mtx = NULL;
     }
 
     thrman_setid(thrman_self(), "[done]");
