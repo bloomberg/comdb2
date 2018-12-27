@@ -6409,11 +6409,13 @@ void exec_thread(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     sp->parent_thd->status = THREAD_STATUS_RUNNING;
     pthread_mutex_t *saved_temp_table_mtx = thd->sqlthd->temp_table_mtx;
     thd->sqlthd->temp_table_mtx = sp->parent_sqlthd->sqlthd->temp_table_mtx;
+    if (saved_temp_table_mtx != thd->sqlthd->temp_table_mtx) {
+        Pthread_mutex_destroy_and_free(saved_temp_table_mtx);
+    }
     exec_thread_int(thd, clnt);
     lua_gc(L, LUA_GCCOLLECT, 0);
     drop_temp_tables(clnt->sp);
     free_tmptbls(clnt->sp);
-    thd->sqlthd->temp_table_mtx = saved_temp_table_mtx;
     put_curtran(thedb->bdb_env, clnt);
 }
 
