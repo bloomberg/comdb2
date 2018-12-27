@@ -1508,8 +1508,8 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 
 
 	/* Close all the db files that are open. */
-    if ((ret = __dbreg_close_files(dbenv)) != 0)
-        goto err;
+	if ((ret = __dbreg_close_files(dbenv)) != 0)
+		goto err;
 
 done:
 	if (max_lsn != NULL || gbl_is_physical_replicant) {

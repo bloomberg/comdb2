@@ -2236,8 +2236,8 @@ do_malloc:
     if (lflags & DB_TXN_LOGICAL_COMMIT)
         flags |= DB_LOG_LOGICAL_COMMIT;
 
-    if (!is_durable && txnid != NULL) {
-        ret = 0;
+	if (!is_durable && txnid != NULL) {
+		ret = 0;
 		STAILQ_INSERT_HEAD(&txnid->logs, lr, links);
 #ifdef DIAGNOSTIC
 		goto do_put;

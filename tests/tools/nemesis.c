@@ -231,8 +231,7 @@ void breakclocks(struct nemesis *n, int maxskew)
                 "sudo date \\\"+%%s\\\" -s \\@\\$newtime\" < /dev/null >/dev/null 2>&1\n",
                 n->cluster[x], maxskew);
         if (n->flags & NEMESIS_VERBOSE) printf("%s", cmd);
-        int lrc = system(cmd);
-        if (lrc == -1) {} //silence compiler warnings
+        (void)system(cmd);
     }
 }
 
