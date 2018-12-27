@@ -3157,7 +3157,7 @@ static int free_hash_ent(void *obj, void *dum)
 ** WARNING: This function assumes (and requires) that the associated temp
 **          table lock pthread mutex is already held.
 */
-void removeTempTableEntry(
+static void removeTempTableEntry(
   Hash *pHash,
   struct temptable_entry *pEntry,
   int iTable
