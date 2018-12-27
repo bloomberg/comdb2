@@ -4109,6 +4109,12 @@ void sqlengine_work_appsock(void *thddata, void *work)
     sqlthd->clnt = clnt;
     clnt->thd = thd;
 
+    if (clnt->temp_table_mtx != NULL) {
+        sqlthd->temp_table_mtx = clnt->temp_table_mtx;
+    } else {
+        Pthread_mutex_alloc_and_init(sqlthd->temp_table_mtx, NULL);
+    }
+
     thr_set_user("appsock", clnt->appsock_id);
 
     clnt->added_to_hist = clnt->isselect = 0;
@@ -4138,6 +4144,11 @@ void sqlengine_work_appsock(void *thddata, void *work)
         Pthread_mutex_unlock(&clnt->wait_mutex);
         clnt->osql.timings.query_finished = osql_log_time();
         osql_log_time_done(clnt);
+        if (sqlthd->temp_table_mtx != clnt->temp_table_mtx) {
+            Pthread_mutex_destroy_and_free(sqlthd->temp_table_mtx);
+        } else {
+            sqlthd->temp_table_mtx = NULL;
+        }
         return;
     }
 
@@ -4193,6 +4204,13 @@ void sqlengine_work_appsock(void *thddata, void *work)
     osql_log_time_done(clnt);
     clean_queries_not_cached_in_srs(clnt);
     debug_close_sb(clnt);
+
+    if (sqlthd->temp_table_mtx != clnt->temp_table_mtx) {
+        Pthread_mutex_destroy_and_free(sqlthd->temp_table_mtx);
+    } else {
+        sqlthd->temp_table_mtx = NULL;
+    }
+
     thrman_setid(thrman_self(), "[done]");
 }
 
