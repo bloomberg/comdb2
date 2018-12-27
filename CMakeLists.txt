@@ -221,5 +221,5 @@ elseif(${COMDB2_PKG_TYPE} STREQUAL rpm)
 elseif(${COMDB2_PKG_TYPE} STREQUAL tgz)
   set(CPACK_GENERATOR "TGZ")
 endif()
-
+ 
 include(CPack)
