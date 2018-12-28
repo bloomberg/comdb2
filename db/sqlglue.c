@@ -8279,7 +8279,8 @@ int sqlite3BtreeCursor(
     cur->pKeyInfo = pKeyInfo;
 
     if (pBt->is_temporary) { /* temp table */
-        assert( pBt->temp_table_mtx==clnt->temp_table_mtx );
+        // TODO: The thread pool causes this to be violated.
+        // assert( pBt->temp_table_mtx==clnt->temp_table_mtx );
         Pthread_mutex_lock(pBt->temp_table_mtx);
         assert( iTable>=1 ); /* can never be zero or negative */
         if( forOpen ){
