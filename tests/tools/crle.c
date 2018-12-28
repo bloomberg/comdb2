@@ -173,7 +173,9 @@ static void test_encode_prev()
         uint8_t out[i + 10];
         uint8_t out_rev[i + 10];
         int lrc = fread(in, 1, i, f);
-        if (lrc == -1) {} //silence compiler warnings
+        if (lrc == 0) {
+            printf("ERROR: %s no data to read\n", __func__);
+        }
 
         Data input, output, output_rev;
         input.dt = in + sizeof(in); // need to be at end of buf

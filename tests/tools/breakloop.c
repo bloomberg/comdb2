@@ -86,7 +86,9 @@ static void read_blocked_files(void)
             char chk[1024] = {0};
             rewind(monfps[i]);
             int lrc = fread(chk, sizeof(chk), 1, monfps[i]);
-            if (lrc == -1) {} //silence compiler warnings
+            if (lrc == 0) {
+                printf("ERROR: %s no data to read\n", __func__);
+            }
             if (montext[i]) 
                 free(montext[i]);
             montext[i] = strdup(chk);
@@ -114,7 +116,9 @@ static int block_on_monitored_files(void)
             int waited = 0;
             rewind(monfps[i]);
             int lrc = fread(chk, sizeof(chk), 1, monfps[i]);
-            if (lrc == -1) {} //silence compiler warnings
+            if (lrc == 0) {
+                printf("ERROR: %s no data to read\n", __func__);
+            }
             while (montext[i] && !strcmp(montext[i], chk)) {
                 if (colored_output) 
                     fprintf(stderr, ANSI_COLOR_RED);
@@ -127,7 +131,9 @@ static int block_on_monitored_files(void)
                 sleep (1);
                 rewind(monfps[i]);
                 int lrc = fread(chk, sizeof(chk), 1, monfps[i]);
-                if (lrc == -1) {}  //silence compiler warnings
+                if (lrc == 0) {
+                    printf("ERROR: %s no data to read\n", __func__);
+                }
             }
             if (waited) {
                 fprintf(stderr, "Monfile '%s' updated\n", monfile[i]);

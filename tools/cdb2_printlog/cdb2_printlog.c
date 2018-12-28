@@ -72,7 +72,9 @@ void remove_tempdir()
 	if (orig_dir && chdir(orig_dir) == 0) {
 		free(orig_dir);
 		int lrc = system("rm -rf " PRINTLOG_RANGE_DIR);
-		if (lrc == -1) {} //silence compiler warnings
+        if (lrc == -1) {
+            printf("ERROR: can't execute system() to rm files\n");
+        }
 	}
 }
 

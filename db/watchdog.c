@@ -395,7 +395,8 @@ void comdb2_die(int aborat)
     } else {
         int lrc = system(pstack_cmd);
         if (lrc == -1) {
-        } // silence compiler warnings
+            logmsg(LOGMSG_ERROR, "ERROR: can't execute system() to get a pstack\n");
+        }
     }
 
     if (aborat)
