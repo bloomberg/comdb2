@@ -5855,6 +5855,7 @@ int bdb_wait_for_lsn(bdb_state_type *bdb_state, int file, int offset,
     data.ulen = 0;
 
     start = comdb2_time_epoch();
+    logc->get(logc, &lsn, &data, DB_LAST);
     while((log_compare(&lsn, &target_lsn) < 0) && (!timeout ||
                 elapsed <= timeout)) {
         struct timespec ts;

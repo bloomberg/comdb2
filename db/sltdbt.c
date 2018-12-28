@@ -352,6 +352,7 @@ int handle_ireq(struct ireq *iq)
 
                 Pthread_cond_signal(&iq->physwrite_results->cd);
                 Pthread_mutex_unlock(&iq->physwrite_results->lk);
+                iq->physwrite_results = NULL;
             } else {
                 osql_comm_signal_sqlthr_rc(&iq->sorese, &iq->errstat, sorese_rc);
             }

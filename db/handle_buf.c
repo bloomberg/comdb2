@@ -828,6 +828,7 @@ static int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
     iq->debug_buf[0] = '\0';
     iq->tzname[0] = '\0';
     iq->sqlhistory[0] = '\0';
+    iq->physwrite_results = NULL;
 
     iq->where = "setup";
     iq->frommach = frommach ? intern(frommach) : NULL;
