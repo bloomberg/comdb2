@@ -1645,6 +1645,12 @@ REGISTER_TUNABLE("physrep_long_write_threshold",
                  TUNABLE_INTEGER, &gbl_physwrite_long_write_threshold, 0,
                  NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("physrep_request_startlsn",
+                 "Request start.  "
+                 "(Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_physrep_request_startlsn, 0,
+                 NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("logdelete_lock_trace",
                  "Print trace getting and releasing the logdelete lock.  "
                  "(Default: off)",

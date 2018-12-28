@@ -10,10 +10,13 @@
 #include <tohex.h>
 #include <errstat.h>
 
+/* Tunables */
+int gbl_physwrite = 1;
 int gbl_physwrite_shared_handle = 0;
 int gbl_physwrite_wait_commit = 1;
 int gbl_physwrite_commit_timeout = 0;
 int gbl_physwrite_long_write_threshold = 10;
+int gbl_physwrite_verbose = 0;
 
 enum {
     SHARED = 1,
@@ -61,7 +64,7 @@ static void physwrite_exit(session_t *s)
         Pthread_mutex_unlock(&lk);
 }
 
-static cdb2_hndl_tp *retrieve_handle(session_t *s)
+static inline cdb2_hndl_tp *retrieve_handle(session_t *s)
 {
     cdb2_hndl_tp **h = (s->session_type == SHARED ?  &shared_hndl : &s->hndl);
     int rc;
@@ -72,18 +75,28 @@ static cdb2_hndl_tp *retrieve_handle(session_t *s)
     return *h;
 }
 
-static int signal_results(cdb2_hndl_tp *h, int type, uuid_t uuid,
-        unsigned long long rqid, int *timeout)
+static inline void close_handle(session_t *s)
 {
-    int64_t *rcode, *errval, *file, *offset;
+    cdb2_hndl_tp **h = (s->session_type == SHARED ?  &shared_hndl : &s->hndl);
+    if (*h) {
+        cdb2_close(*h);
+        (*h) = NULL;
+    }
+}
+
+static int signal_results(cdb2_hndl_tp *h, int type, uuid_t uuid,
+        unsigned long long rqid, int *rtn, int *timeout)
+{
+    int64_t *errval, *file, *offset;
     struct errstat errstat = {0};
     char *errstr;
 
-    rcode = (int64_t *)cdb2_column_value(h, 0);
     errval = (int64_t *)cdb2_column_value(h, 1);
     errstr = cdb2_column_value(h, 2);
     file = cdb2_column_value(h, 3);
     offset = cdb2_column_value(h, 4);
+
+    *rtn = *errval;
 
     errstat.errval = *errval;
     if (errstr)
@@ -105,27 +118,71 @@ static int signal_results(cdb2_hndl_tp *h, int type, uuid_t uuid,
     return osql_chkboard_sqlsession_rc(rqid, uuid, 0, NULL, &errstat);
 }
 
-static int dosend(session_t *s, int usertype, void *data, int datalen,
+static inline int findstart(session_t *s, uint32_t *file, uint32_t *offset,
+        uint32_t *generation)
+{
+    cdb2_hndl_tp *h = retrieve_handle(s);
+    int rc;
+
+    /* This is the beginning of the request, so ignore */
+    if (!h || (s->last_master && strcmp(s->last_master, cdb2_master(h)))) {
+        if (s->last_master)
+            free(s->last_master);
+        if (h)
+            s->last_master = strdup(cdb2_master(h));
+        else
+            return -1;
+    }
+    rc = cdb2_run_statement(h, "exec procedure sys.cmd.durable_lsn()");
+    if (rc == CDB2_OK && (rc = cdb2_next_record(h)) == CDB2_OK) {
+        rc = (int)*(int64_t *)cdb2_column_value(h, 0);
+        *file = (uint32_t)*(int64_t *)cdb2_column_value(h, 1);
+        *offset = (uint32_t)*(int64_t *)cdb2_column_value(h, 2);
+        *generation = (uint32_t)*(int64_t *)cdb2_column_value(h, 3);
+    }
+    if (rc != 0) {
+        close_handle(s);
+        if (s->last_master)
+            free(s->last_master);
+        s->last_master = NULL;
+    }
+    return rc;
+}
+
+int physrep_retrieve_startlsn(uint32_t *file, uint32_t *offset, uint32_t *generation)
+{
+    int rc;
+    session_t *s = retrieve_session();
+    physwrite_enter(s);
+    rc = findstart(s, file, offset, generation);
+    physwrite_exit(s);
+    return rc;
+}
+
+static inline int dosend(session_t *s, int usertype, void *data, int datalen,
         uint32_t flags)
 {
-    int rc, type, timeout = 0, len;
+    int rc, type, timeout = 0, len, errval = 0;
     unsigned long long rqid;
-    //char sql[128];
     char *sql = NULL, *blob = NULL;
     uuidstr_t us;
     uuid_t uuid;
 
     cdb2_hndl_tp *h = retrieve_handle(s);
-    if (s->last_master && strcmp(s->last_master, cdb2_master(h))) {
-        free(s->last_master);
+    if (!h || (s->last_master && strcmp(s->last_master, cdb2_master(h)))) {
+        if (s->last_master)
+            free(s->last_master);
         s->last_master = NULL;
+        close_handle(s);
         return OSQL_SEND_ERROR_WRONGMASTER;
     }
 
     type = osql_extract_type(usertype, data, datalen, &uuid, &rqid);
-    logmsg(LOGMSG_INFO, "%s [%llu:%s] type %d usertype %d starting\n",
-            __func__, rqid, comdb2uuidstr(uuid, us), type, usertype);
+    if (gbl_physwrite_verbose)
+        logmsg(LOGMSG_USER, "%s [%llu:%s] type %d usertype %d starting\n",
+                __func__, rqid, comdb2uuidstr(uuid, us), type, usertype);
 
+    /* Temporary: binding variables in 'exec procedure ..' doesn't work */
     blob = (char *)malloc((2 * datalen) + 1);
     util_tohex(blob, data, datalen);
     len = 100 + strlen(dbhost) + (2 * datalen);
@@ -135,23 +192,26 @@ static int dosend(session_t *s, int usertype, void *data, int datalen,
             "sys.cmd.exec_socksql('%s', %d, x'%s', %d)", dbhost, usertype,
             blob, flags);
 
-    logmsg(LOGMSG_INFO, "%s exec_socksql with usertype %d len %d\n",
-            __func__, usertype, datalen);
+    if (gbl_physwrite_verbose)
+        logmsg(LOGMSG_USER, "%s exec_socksql with usertype %d len %d\n",
+                __func__, usertype, datalen);
     rc = cdb2_run_statement(h, sql);
     free(blob);
     free(sql);
 
     if (osql_comm_is_done(type, NULL, 0, 0, NULL, NULL) && rc == CDB2_OK) {
         if ((rc = cdb2_next_record(h)) == CDB2_OK)
-            signal_results(h, type, uuid, rqid, &timeout);
+            signal_results(h, type, uuid, rqid, &errval, &timeout);
     }
 
-    if (rc != CDB2_OK && rc != CDB2_OK_DONE) {
+    if ((rc != CDB2_OK && rc != CDB2_OK_DONE) || errval == ERR_NOMASTER) {
         if (s->last_master)
             free(s->last_master);
         s->last_master = NULL;
-        logmsg(LOGMSG_ERROR, "%s [%llu:%s] returning WRONGMASTER\n",
-                __func__, rqid, comdb2uuidstr(uuid, us));
+        if (gbl_physwrite_verbose)
+            logmsg(LOGMSG_USER, "%s [%llu:%s] returning WRONGMASTER\n",
+                    __func__, rqid, comdb2uuidstr(uuid, us));
+        close_handle(s);
         return OSQL_SEND_ERROR_WRONGMASTER;
     }
 
@@ -159,8 +219,9 @@ static int dosend(session_t *s, int usertype, void *data, int datalen,
     if (rc == 0 && s->last_master == NULL)
         s->last_master = strdup(cdb2_master(h));
 
-    logmsg(LOGMSG_INFO, "%s [%llu:%s] type %d usertype %d OK\n",
-            __func__, rqid, comdb2uuidstr(uuid, us), type, usertype);
+    if (gbl_physwrite_verbose)
+        logmsg(LOGMSG_USER, "%s [%llu:%s] type %d usertype %d OK\n",
+                __func__, rqid, comdb2uuidstr(uuid, us), type, usertype);
 
     return (rc == CDB2_OK || rc == CDB2_OK_DONE) ? 0 : 1;
 }
@@ -188,7 +249,8 @@ int physwrite_route_packet_tails(int usertype, void *data, int datalen,
 {
     void *dup;
     int rc;
-    logmsg(LOGMSG_USER, "%s called with usertype %u\n", __func__, usertype);
+    if (gbl_physwrite_verbose)
+        logmsg(LOGMSG_USER, "%s called with usertype %u\n", __func__, usertype);
     if (datalen + tailen > gbl_blob_sz_thresh_bytes)
         dup = comdb2_bmalloc(blobmem, datalen + tailen);
     else
@@ -208,8 +270,7 @@ int physwrite_exec(char *host, int usertype, void *data, int datalen,
         int *cupdates, int *cdeletes, int *commit_file, int *commit_offset,
         uint32_t flags)
 {
-    int cnt=0, tlen=0, rc;
-    void *tails[1] = {0};
+    int cnt=0;
     physwrite_results_t results = {0};
     Pthread_mutex_init(&results.lk, NULL);
     Pthread_cond_init(&results.cd, NULL);
@@ -222,8 +283,8 @@ int physwrite_exec(char *host, int usertype, void *data, int datalen,
         net_route_packet_flags(usertype, data, datalen, PHYSWRITE);
 
     if (results.dispatched) {
-        logmsg(LOGMSG_USER, "%s dispatched request on master\n", __func__);
-        fflush(stdout); fflush(stderr);
+        if (gbl_physwrite_verbose)
+            logmsg(LOGMSG_USER, "%s dispatched request on master\n", __func__);
         Pthread_mutex_lock(&results.lk);
         while(!results.done) {
             struct timespec now;
@@ -239,9 +300,10 @@ int physwrite_exec(char *host, int usertype, void *data, int datalen,
         *rcode = results.rcode;
         *errval = results.errval;
         *errstr = results.errstr;
-        logmsg(LOGMSG_USER, "%s request returned %d, errval %d, errstr='%s'\n",
-                __func__, *rcode, *errval, *errstr ? *errstr : "");
-        fflush(stdout); fflush(stderr);
+        if (gbl_physwrite_verbose)
+            logmsg(LOGMSG_USER, "%s request returned %d, errval %d, "
+                    "errstr='%s'\n", __func__, *rcode, *errval,
+                    *errstr ? *errstr : "");
 #if 0
         *inserts = results.inserts;
         *updates = results.updates;

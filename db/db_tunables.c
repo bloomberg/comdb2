@@ -216,6 +216,7 @@ extern int gbl_verbose_set_sc_in_progress;
 extern int gbl_send_failed_dispatch_message;
 extern int gbl_physrep_reconnect_penalty;
 extern int gbl_physrep_register_interval;
+extern int gbl_physrep_request_startlsn;
 extern int gbl_physwrite;
 extern int gbl_physwrite_shared_handle;
 extern int gbl_physwrite_wait_commit;
