@@ -6209,6 +6209,23 @@ static int get_blkout(time_t now, char *nodes[REPMAX], int *nds)
     return 0;
 }
 
+static inline int isreq(int usertype) {
+    switch(usertype) {
+        case NET_OSQL_SOCK_REQ:
+        case NET_OSQL_SOCK_REQ_UUID:
+        case NET_OSQL_RECOM_REQ:
+        case NET_OSQL_RECOM_REQ_UUID:
+        case NET_OSQL_SNAPISOL_REQ:
+        case NET_OSQL_SNAPISOL_REQ_UUID:
+        case NET_OSQL_SERIAL_REQ:
+        case NET_OSQL_SERIAL_REQ_UUID:
+            return 1;
+
+        default:
+            return 0;
+    }
+}
+
 /* Replicant callback.  Note: this is a bit kludgy.
    If we get called remotely for a parametrized request
    the ntails/tails/taillens parameters are invalid and
@@ -6223,31 +6240,61 @@ int osql_extract_type(int usertype, void *dtap, int dtalen, uuid_t *uuid,
     int type = -1;
 
     if (osql_nettype_is_uuid(usertype)) {
-        osql_uuid_rpl_t p_osql_uuid_rpl;
-        if (!(p_buf = (uint8_t *)osqlcomm_uuid_rpl_type_get(
-                  &p_osql_uuid_rpl, p_buf, p_buf_end))) {
-            logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
-                    "osqlcomm_uuid_rpl_type_get");
+        if (isreq(usertype)) {
+            osql_uuid_req_t p_osql_uuid_req;
+            if (!(p_buf = (uint8_t *)osqlcomm_req_uuid_type_get(
+                            &p_osql_uuid_req, p_buf, p_buf_end))) {
+                logmsg(LOGMSG_ERROR, "%s:%s returns NULL for type %d\n",
+                        __func__, "osqlcomm_uuid_req_type_get", usertype);
+                abort();
+            } else {
+                *rqid = OSQL_RQID_USE_UUID;
+                comdb2uuidcpy(*uuid, p_osql_uuid_req.uuid);
+                type = p_osql_uuid_req.type;
+            }
         } else {
-            *rqid = OSQL_RQID_USE_UUID;
-            comdb2uuidcpy(*uuid, p_osql_uuid_rpl.uuid);
-            type = p_osql_uuid_rpl.type;
+            osql_uuid_rpl_t p_osql_uuid_rpl;
+            if (!(p_buf = (uint8_t *)osqlcomm_uuid_rpl_type_get(
+                            &p_osql_uuid_rpl, p_buf, p_buf_end))) {
+                logmsg(LOGMSG_ERROR, "%s:%s returns NULL for type %d\n",
+                        __func__, "osqlcomm_uuid_rpl_type_get", usertype);
+                abort();
+            } else {
+                *rqid = OSQL_RQID_USE_UUID;
+                comdb2uuidcpy(*uuid, p_osql_uuid_rpl.uuid);
+                type = p_osql_uuid_rpl.type;
+            }
         }
     } else {
-        osql_rpl_t p_osql_rpl;
-        uint8_t *p_buf, *p_buf_end;
-
-        p_buf = (uint8_t *)dtap;
-        p_buf_end = (p_buf + dtalen);
-
-        if (!(p_buf = (uint8_t *)osqlcomm_rpl_type_get(&p_osql_rpl, p_buf,
-                                                       p_buf_end))) {
-            logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
-                    "osqlcomm_rpl_type_get");
+        if (isreq(usertype)) {
+            osql_req_t p_osql_req;
+            if (!(p_buf = (uint8_t *)osqlcomm_req_type_get(
+                            &p_osql_req, p_buf, p_buf_end))) {
+                logmsg(LOGMSG_ERROR, "%s:%s returns NULL for type %d\n",
+                        __func__, "osqlcomm_req_type_get", usertype);
+                abort();
+            } else {
+                *rqid = p_osql_req.rqid;
+                comdb2uuid_clear(*uuid);
+                type = p_osql_req.type;
+            }
         } else {
-            *rqid = p_osql_rpl.sid;
-            comdb2uuid_clear(*uuid);
-            type = p_osql_rpl.type;
+            osql_rpl_t p_osql_rpl;
+            uint8_t *p_buf, *p_buf_end;
+
+            p_buf = (uint8_t *)dtap;
+            p_buf_end = (p_buf + dtalen);
+
+            if (!(p_buf = (uint8_t *)osqlcomm_rpl_type_get(&p_osql_rpl, p_buf,
+                            p_buf_end))) {
+                logmsg(LOGMSG_ERROR, "%s:%s returns NULL for type %d\n",
+                        __func__, "osqlcomm_rpl_type_get", usertype);
+                abort();
+            } else {
+                *rqid = p_osql_rpl.sid;
+                comdb2uuid_clear(*uuid);
+                type = p_osql_rpl.type;
+            }
         }
     }
     return type;
@@ -7794,14 +7841,6 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
         goto done;
     }
 
-    if (flags & PHYSWRITE) {
-        assert(physwrite_results);
-        iq->physwrite_results = physwrite_results;
-    } else {
-        assert(!physwrite_results);
-        iq->physwrite_results = NULL;
-    }
-
     /* create the request */
     /* NOTE: this adds the session to the repository; we make sure that freshly
        added session have sess->iq set
@@ -7873,21 +7912,22 @@ done:
                      sizeof(generr.errstr));
         }
 
-        if (iq->physwrite_results) {
+        if (physwrite_results) {
             rc2 = 0;
-            Pthread_mutex_lock(&iq->physwrite_results->lk);
-            assert(iq->physwrite_results->done == 0);
+            assert(!iq->physwrite_results);
+            Pthread_mutex_lock(&physwrite_results->lk);
+            assert(physwrite_results->done == 0);
             if (generr.errstr) {
-                iq->physwrite_results->errstr = strdup(generr.errstr);
+                physwrite_results->errstr = strdup(generr.errstr);
             } else {
-                iq->physwrite_results->errstr = NULL;
+                physwrite_results->errstr = NULL;
             }
-            iq->physwrite_results->errval = generr.errval;
-            iq->physwrite_results->rcode = RC_INTERNAL_RETRY;
-            iq->physwrite_results->done = 1;
+            physwrite_results->errval = generr.errval;
+            physwrite_results->rcode = RC_INTERNAL_RETRY;
+            physwrite_results->done = 1;
 
-            Pthread_cond_signal(&iq->physwrite_results->cd);
-            Pthread_mutex_unlock(&iq->physwrite_results->lk);
+            Pthread_cond_signal(&physwrite_results->cd);
+            Pthread_mutex_unlock(&physwrite_results->lk);
 
         } else {
             rc2 = osql_comm_signal_sqlthr_rc(&sorese_info, &generr,

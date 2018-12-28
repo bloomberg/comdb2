@@ -796,6 +796,9 @@ static void send_error_to_replicant(int rqid, const char *host, int errval,
  * Returns 0 if success
  *
  */
+
+extern __thread physwrite_results_t *physwrite_results;
+
 int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                       unsigned long long rqid, uuid_t uuid, int type)
 {
@@ -905,11 +908,13 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
         if (gbl_osql_check_replicant_numops && numops != sess->seq + 1) {
             /* This is inline, so don't bother locking */
-            if (iq->physwrite_results) {
-                iq->physwrite_results->dispatched = 1;
-                iq->physwrite_results->done = 1;
-                iq->physwrite_results->errstr = strdup("Master received inconsistent number of opcodes");
-                iq->physwrite_results->errval = RC_INTERNAL_RETRY;
+            if (physwrite_results) {
+                assert(!iq->physwrite_results);
+                physwrite_results->dispatched = 1;
+                physwrite_results->done = 1;
+                physwrite_results->errstr = strdup("Master received "
+                        "inconsistent number of opcodes");
+                physwrite_results->errval = RC_INTERNAL_RETRY;
             } else {
                 send_error_to_replicant(
                         rqid, sess->offhost, RC_INTERNAL_RETRY,
@@ -948,13 +953,20 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         if (!osql_sess_dispatched(sess) && !osql_sess_is_terminated(sess)) {
             osql_session_set_ireq(sess, NULL);
             osql_sess_set_dispatched(sess, 1);
-            rc = handle_buf_sorese(thedb, iq, debug);
-            if (iq->physwrite_results) {
+            assert(!iq->physwrite_results);
+            if (physwrite_results) {
+                iq->physwrite_results = physwrite_results;
                 iq->physwrite_results->dispatched = 1;
-                if (rc) {
-                    iq->physwrite_results->done = 1;
-                    iq->physwrite_results->errval = RC_INTERNAL_RETRY;
-                }
+            }
+            rc = handle_buf_sorese(thedb, iq, debug);
+            if (iq->physwrite_results && rc) {
+                logmsg(LOGMSG_ERROR, "%s setting done on handle_buf rc %d\n",
+                        __func__, rc);
+                iq->physwrite_results->done = 1;
+                iq->physwrite_results->errval = RC_INTERNAL_RETRY;
+                iq->physwrite_results->errstr = 
+                    strdup("Failed to dispatch");
+                iq->physwrite_results = NULL;
             }
         }
         osql_sess_unlock_complete(sess);

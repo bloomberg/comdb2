@@ -135,16 +135,14 @@ static int dosend(session_t *s, int usertype, void *data, int datalen,
             "sys.cmd.exec_socksql('%s', %d, x'%s', %d)", dbhost, usertype,
             blob, flags);
 
-//cdb2_bind_param(h, "data", CDB2_BLOB, data, datalen);
     logmsg(LOGMSG_INFO, "%s exec_socksql with usertype %d len %d\n",
             __func__, usertype, datalen);
     rc = cdb2_run_statement(h, sql);
     free(blob);
     free(sql);
 
-    if (osql_comm_is_done(type, NULL, 0, 0, NULL, NULL) &&
-            (rc == CDB2_OK || rc == CDB2_OK_DONE)) {
-        if ((rc = cdb2_next_record(h)) == CDB2_OK_DONE || rc == CDB2_OK)
+    if (osql_comm_is_done(type, NULL, 0, 0, NULL, NULL) && rc == CDB2_OK) {
+        if ((rc = cdb2_next_record(h)) == CDB2_OK)
             signal_results(h, type, uuid, rqid, &timeout);
     }
 
@@ -225,6 +223,7 @@ int physwrite_exec(char *host, int usertype, void *data, int datalen,
 
     if (results.dispatched) {
         logmsg(LOGMSG_USER, "%s dispatched request on master\n", __func__);
+        fflush(stdout); fflush(stderr);
         Pthread_mutex_lock(&results.lk);
         while(!results.done) {
             struct timespec now;
@@ -242,6 +241,7 @@ int physwrite_exec(char *host, int usertype, void *data, int datalen,
         *errstr = results.errstr;
         logmsg(LOGMSG_USER, "%s request returned %d, errval %d, errstr='%s'\n",
                 __func__, *rcode, *errval, *errstr ? *errstr : "");
+        fflush(stdout); fflush(stderr);
 #if 0
         *inserts = results.inserts;
         *updates = results.updates;

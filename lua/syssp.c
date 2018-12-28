@@ -556,6 +556,8 @@ static int db_comdb_exec_socksql(Lua L)
         lua_pushstring(L, "errstr");
         lua_pushstring(L, errstr);
         lua_settable(L, -3);
+        if (errstr)
+            free(errstr);
 
         lua_pushstring(L, "file");
         lua_pushinteger(L, file);
