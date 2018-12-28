@@ -3256,6 +3256,7 @@ int sqlite3BtreeClose(Btree *pBt)
     if (pBt->is_temporary) {
         HashElem *pElem;
 
+        assert( pBt->temp_table_mtx==thd->clnt->temp_table_mtx );
         Pthread_mutex_lock(pBt->temp_table_mtx);
 
         for(pElem=sqliteHashFirst(&pBt->temp_tables); pElem;
@@ -3972,6 +3973,10 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
                 pBt->btreeid, iTable, sqlite3ErrStr(rc));
 
     if (pBt->is_temporary) {
+#ifndef NDEBUG
+        struct sql_thread *thd = pthread_getspecific(query_info_key);
+#endif
+        assert( pBt->temp_table_mtx==thd->clnt->temp_table_mtx );
         Pthread_mutex_lock(pBt->temp_table_mtx);
 
         struct temptable_entry *pEntry = sqlite3HashFind(
@@ -5124,6 +5129,7 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
         return rc;
     }
 
+    assert( pBt->temp_table_mtx==thd->clnt->temp_table_mtx );
     Pthread_mutex_lock(pBt->temp_table_mtx);
 
     if (!pBt->is_temporary) { /* must go through comdb2 to do this */
@@ -6404,6 +6410,7 @@ skip:
             free(pCur->tmptable);
             pCur->tmptable = NULL;
 
+            assert( pCur->bt->temp_table_mtx==clnt->temp_table_mtx );
             Pthread_mutex_lock(pCur->bt->temp_table_mtx);
 
             struct temptable_entry *pEntry = sqlite3HashFind(
@@ -6493,6 +6500,7 @@ int sqlite3BtreeClearTable(Btree *pBt, int iTable, int *pnChange)
         *pnChange = 0;
 
     if (pBt->is_temporary) {
+        assert( pBt->temp_table_mtx==clnt->temp_table_mtx );
         Pthread_mutex_lock(pBt->temp_table_mtx);
 
         struct temptable_entry *pEntry = sqlite3HashFind(
@@ -8270,6 +8278,7 @@ int sqlite3BtreeCursor(
     cur->pKeyInfo = pKeyInfo;
 
     if (pBt->is_temporary) { /* temp table */
+        assert( pBt->temp_table_mtx==clnt->temp_table_mtx );
         Pthread_mutex_lock(pBt->temp_table_mtx);
         assert( iTable>=1 ); /* can never be zero or negative */
         if( forOpen ){
@@ -11390,6 +11399,7 @@ void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
 
     Btree *pSrcBt = &src->aDb[1].pBt[0];
 
+    assert( pSrcBt->temp_table_mtx==thd->clnt->temp_table_mtx );
     Pthread_mutex_lock(pSrcBt->temp_table_mtx);
 
     // aDb[0]: sqlite_master
@@ -11447,6 +11457,7 @@ void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
     if( pDestBt ){
         int maxRootPg = -1;
         HashElem *pElem;
+        assert( pDestBt->temp_table_mtx==thd->clnt->temp_table_mtx );
         Pthread_mutex_lock(pDestBt->temp_table_mtx);
         for(pElem=sqliteHashFirst(&pDestBt->temp_tables); pElem;
                 pElem=sqliteHashNext(pElem)){
