@@ -24,7 +24,6 @@ int debug_preserve_logs_on_panic(void);                  /* 1 - not debug */
 int debug_switch_verbose_deadlocks_log(void);            /* 0 - not debug */
 int debug_throttle_incoherent_nodes(void);               /* 1 - not debug */
 int debug_switch_rep_delay(void);                        /* 0 */
-int debug_switch_force_incoherent(void);                 /* 0 */
 int debug_switch_net_verbose(void);                      /* 0 */
 int debug_switch_use_blackout_list(void);                /* 1 - not debug */
 int debug_switch_osql_force_local(void);                 /* 0 */

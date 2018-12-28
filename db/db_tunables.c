@@ -160,6 +160,7 @@ extern int gbl_verbose_fills;
 extern int gbl_getlock_latencyms;
 extern int gbl_last_locked_seqnum;
 extern int gbl_set_coherent_state_trace;
+extern int gbl_force_incoherent;
 extern int gbl_durable_set_trace;
 extern int gbl_set_seqnum_trace;
 extern int gbl_enque_log_more;

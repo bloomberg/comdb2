@@ -420,7 +420,7 @@ constraints
 (name='$CONSTRAINT_9C9BDEA4', tablename='t2', keyname='$KEY_2BFFFCF4', foreigntablename='t1', foreignkeyname='IDX2', iscascadingdelete='N', iscascadingupdate='N')
 (name='mycons1', tablename='t2', keyname='$KEY_E8BDFAE1', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N')
 (name='$CONSTRAINT_9C9BDEA4', tablename='t2', keyname='$KEY_2BFFFCF4', foreigntablename='t1', foreignkeyname='IDX2', iscascadingdelete='N', iscascadingupdate='N')
-(name='mycons2', tablename='t2', keyname='$KEY_A44A20B', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N')
+(name='mycons2', tablename='t2', keyname='$KEY_E8BDFAE1', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N')
 (name='$CONSTRAINT_9C9BDEA4', tablename='t2', keyname='$KEY_2BFFFCF4', foreigntablename='t1', foreignkeyname='IDX2', iscascadingdelete='N', iscascadingupdate='N')
 (csc2='
 	tag ondisk {
@@ -651,5 +651,33 @@ tag "tag1"
 	{
 		int i null = yes 
 		short j dbstore = 1000 
+	}
+')
+(csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+keys
+	{
+		dup "$KEY_A44A20B" = i 
+		dup "$KEY_934DF3B1" = j 
+	}
+constraints
+	{
+		"$KEY_A44A20B" -> <"t1":"$KEY_4DE4D8DB"> 
+	}
+')
+(csc2='schema
+	{
+		int i null = yes 
+	}
+keys
+	{
+		dup "$KEY_A44A20B" = i 
+	}
+constraints
+	{
+		"$KEY_A44A20B" -> <"t1":"$KEY_4DE4D8DB"> 
 	}
 ')

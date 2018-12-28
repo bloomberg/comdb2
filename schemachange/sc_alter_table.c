@@ -686,7 +686,8 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     /*begin updating things*/
     if (newdb->schema_version == 1) {
         /* newdb's version has been reset */
-        bdberr = bdb_reset_csc2_version(transac, db->tablename, db->schema_version);
+        bdberr =
+            bdb_reset_csc2_version(transac, db->tablename, db->schema_version);
         if (bdberr != BDBERR_NOERROR)
             goto backout;
     }
@@ -856,8 +857,8 @@ backout:
 
     logmsg(LOGMSG_WARN,
            "##### BACKOUT #####   %s v: %d sc:%d lrl: %d odh:%d bdb:%p\n",
-           db->tablename, db->schema_version, db->instant_schema_change, db->lrl,
-           db->odh, db->handle);
+           db->tablename, db->schema_version, db->instant_schema_change,
+           db->lrl, db->odh, db->handle);
 
     return -1;
 

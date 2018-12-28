@@ -3546,8 +3546,9 @@ clipper_usage:
         char *dbname = tokdup(tok, ltok);
         struct dbtable *db = get_dbtable_by_name(dbname);
         if (db) {
-            logmsg(LOGMSG_USER, "table:%s  odh:%s  instant_schema_change:%s  "
-                                "inplace_updates:%s  version:%d\n",
+            logmsg(LOGMSG_USER,
+                   "table:%s  odh:%s  instant_schema_change:%s  "
+                   "inplace_updates:%s  version:%d\n",
                    db->tablename, YESNO(db->instant_schema_change),
                    YESNO(db->inplace_updates), YESNO(db->odh),
                    db->schema_version);
@@ -4383,6 +4384,14 @@ clipper_usage:
             logmsg(LOGMSG_ERROR, "11    - DB_LOCK_YOUNGEST_EVER\n");
             logmsg(LOGMSG_ERROR, "12    - DB_LOCK_MINWRITE_EVER\n");
         }
+    } else if (tokcmp(tok, ltok, "dump_mintruncate") == 0) {
+        bdb_dump_mintruncate_list(thedb->bdb_env);
+    } else if (tokcmp(tok, ltok, "clear_mintruncate") == 0) {
+        bdb_clear_mintruncate_list(thedb->bdb_env);
+    } else if (tokcmp(tok, ltok, "build_mintruncate") == 0) {
+        bdb_build_mintruncate_list(thedb->bdb_env);
+    } else if (tokcmp(tok, ltok, "print_mintruncate") == 0) {
+        bdb_print_mintruncate_min(thedb->bdb_env);
     } else if (tokcmp(tok, ltok, "detect") == 0) {
         bdb_detect(thedb->bdb_env);
     } else if (tokcmp(tok, ltok, "lsum") == 0) {

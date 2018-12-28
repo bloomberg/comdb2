@@ -2283,6 +2283,53 @@ int sqlite3IsLikeFunction(sqlite3 *db, Expr *pExpr, int *pIsNocase, char *aWc){
   return 1;
 }
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2) && defined(SQLITE_BUILDING_FOR_COMDB2_DBGLOG)
+static void dbglogCookieFunc(
+  sqlite3_context *context,
+  int NotUsed,
+  sqlite3_value **NotUsed2
+){
+  UNUSED_PARAMETER2(NotUsed, NotUsed2);
+  uint64_t comdb2fastseed(void);
+  sqlite3_result_int64(context, (i64)comdb2fastseed());
+}
+
+static void dbglogBeginFunc(
+  sqlite3_context *context,
+  int argc,
+  sqlite3_value **argv
+){
+  UNUSED_PARAMETER(argc);
+  int dbglog_begin(const char *);
+  sqlite3_result_int(context, dbglog_begin((const char *)sqlite3_value_text(argv[0])));
+}
+
+static void dbglogEndFunc(
+  sqlite3_context *context,
+  int argc,
+  sqlite3_value **argv
+){
+  unsigned long long cookie;
+  void *mmapped;
+  size_t size;
+  int fd;
+  int rc;
+  int dbglog_mmap_dbglog_file(unsigned long long, void **, size_t *, int *);
+  int dbglog_munmap_dbglog_file(unsigned long long, void *, size_t, int);
+
+  UNUSED_PARAMETER(argc);
+  cookie = (unsigned long long)sqlite3_value_int64(argv[0]);
+
+  rc = dbglog_mmap_dbglog_file(cookie, &mmapped, &size, &fd);
+  if (rc != 0)
+      sqlite3_result_null(context);
+  else {
+      sqlite3_result_blob(context, mmapped, size, SQLITE_TRANSIENT);
+      (void)dbglog_munmap_dbglog_file(cookie, mmapped, size, fd);
+  }
+}
+#endif
+
 /*
 ** All of the FuncDef structures in the aBuiltinFunc[] array above
 ** to the global function hash table.  This occurs at start-time (as
@@ -2415,6 +2462,11 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(comdb2_dbname,        0, 0, 0, comdb2DbnameFunc),
     FUNCTION(comdb2_prevquerycost, 0, 0, 0, comdb2PrevquerycostFunc),
     FUNCTION(comdb2_starttime,     0, 0, 0, comdb2StartTimeFunc),
+#if defined(SQLITE_BUILDING_FOR_COMDB2_DBGLOG)
+    FUNCTION(dbglog_cookie,     0, 0, 0, dbglogCookieFunc),
+    FUNCTION(dbglog_begin,      1, 0, 0, dbglogBeginFunc),
+    FUNCTION(dbglog_end,        1, 0, 0, dbglogEndFunc),
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2_DBGLOG) */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #ifdef SQLITE_ENABLE_UNKNOWN_SQL_FUNCTION
     FUNCTION(unknown,           -1, 0, 0, unknownFunc      ),
