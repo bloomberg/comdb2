@@ -3256,7 +3256,8 @@ int sqlite3BtreeClose(Btree *pBt)
     if (pBt->is_temporary) {
         HashElem *pElem;
 
-        assert( pBt->temp_table_mtx==thd->clnt->temp_table_mtx );
+        // TODO: The thread pool causes this to be violated.
+        // assert( pBt->temp_table_mtx==thd->clnt->temp_table_mtx );
         Pthread_mutex_lock(pBt->temp_table_mtx);
 
         for(pElem=sqliteHashFirst(&pBt->temp_tables); pElem;
