@@ -43,6 +43,9 @@ int physwrite_route_packet_tails(int usertype, void *data, int datalen,
 
 void physwrite_init(char *name, char *type, char *host);
 
+int physrep_retrieve_startlsn(uint32_t *file, uint32_t *offset,
+        uint32_t *generation);
+
 int physwrite_exec(char *host, int usertype, void *data, int datalen,
         int *rcode, int *errval, char **errstr, int *inserts, int *updates,
         int *deletes, int *cupdates, int *cdeletes, int *commit_file,

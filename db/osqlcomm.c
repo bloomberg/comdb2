@@ -5950,7 +5950,7 @@ out:
 }
 
 extern int gbl_is_physical_replicant;
-int gbl_physwrite = 1;
+extern int gbl_physwrite;
 
 /* this wrapper tries to provide a reliable net_send that will prevent loosing
    packets

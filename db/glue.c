@@ -736,6 +736,7 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
                             int blkkeylen)
 {
     int rc;
+    DB_LSN *lsn;
     db_seqnum_type ss;
     char *cnonce = NULL;
     int cn_len;
@@ -746,6 +747,14 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
 
     rc = trans_commit_seqnum_int(bdb_handle, dbenv, iq, trans, &ss, logical,
                                  blkseq, blklen, blkkey, blkkeylen);
+
+    lsn = (DB_LSN *)&ss;
+    if (iq->physwrite_results) {
+        assert(!iq->physwrite_results->done);
+        assert(iq->physwrite_results->dispatched);
+        iq->physwrite_results->commit_file = lsn->file;
+        iq->physwrite_results->commit_offset = lsn->offset;
+    }
 
     if (gbl_extended_sql_debug_trace && iq->have_snap_info) {
         cn_len = iq->snap_info.keylen;
@@ -764,7 +773,6 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
                                    timeoutms, adaptive, &ss);
 
     if (cnonce) {
-        DB_LSN *lsn = (DB_LSN *)&ss;
         logmsg(LOGMSG_USER,
                "%s %s line %d: wait_for_seqnum [%d][%d] returns %d\n", cnonce,
                __func__, __LINE__, lsn->file, lsn->offset, rc);

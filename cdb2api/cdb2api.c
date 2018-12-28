@@ -2543,7 +2543,6 @@ retry_connect:
                hndl->node_seq, hndl->flags, hndl->num_hosts,
                hndl->num_hosts_sameroom);
 
-
     if (hndl->flags & CDB2_CONNECT_MASTER) {
         hndl->node_seq = hndl->master;
     } else if ((hndl->node_seq == 0) &&
@@ -2925,7 +2924,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
 
     if (hndl) { 
         features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_DBINFO;
-        if ((hndl->flags & CDB2_DIRECT_CPU) ||
+        if ((hndl->flags & (CDB2_DIRECT_CPU|CDB2_CONNECT_MASTER)) ||
             (retries_done >= (hndl->num_hosts * 2 - 1) && hndl->master ==
              hndl->connected_host)) {
             features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_EXEC;

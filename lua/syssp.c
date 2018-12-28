@@ -561,6 +561,38 @@ static int db_comdb_register_replicant(Lua L)
     return 1;
 }
 
+int last_durable_lsn(bdb_state_type *bdb_state, uint32_t *file,
+        uint32_t *offset, uint32_t *generation);
+
+static int db_comdb_durable_lsn(Lua L)
+{
+    uint32_t file, offset, generation;
+    int rcode;
+    
+    rcode = last_durable_lsn(thedb->bdb_env, &file, &offset, &generation);
+    lua_createtable(L, 4, 0);
+
+    lua_pushstring(L, "rcode");
+    lua_pushinteger(L, rcode);
+    lua_settable(L, -3);
+
+    lua_pushstring(L, "file");
+    lua_pushinteger(L, file);
+    lua_settable(L, -3);
+
+    lua_pushstring(L, "offset");
+    lua_pushinteger(L, offset);
+    lua_settable(L, -3);
+
+    lua_pushstring(L, "generation");
+    lua_pushinteger(L, generation);
+    lua_settable(L, -3);
+
+    lua_rawseti(L, -2, 1);
+    return 1;
+
+}
+
 #include <lua/ltypes.h>
 
 static int db_comdb_exec_socksql(Lua L)
@@ -646,6 +678,7 @@ static const luaL_Reg sys_funcs[] = {
     { "stop_replication", db_comdb_stop_replication },
     { "register_replicant", db_comdb_register_replicant },
     { "exec_socksql", db_comdb_exec_socksql },
+    { "durable_lsn", db_comdb_durable_lsn },
     { NULL, NULL }
 }; 
 
@@ -841,6 +874,28 @@ static struct sp_source syssps[] = {
         "    end\n"
         "    local result\n"
         "    result = sys.exec_socksql(host, usertype, data, flags)\n"
+        "    for i, v in ipairs(result) do\n"
+        "        db:emit(v)\n"
+        "    end\n"
+        "end\n",
+        NULL
+    }
+    ,{
+        "sys.cmd.durable_lsn",
+        "local function main()\n"
+        "    local schema = {\n"
+        "        { 'int',    'rcode' },\n"
+        "        { 'int',    'file' },\n"
+        "        { 'int',    'offset' },\n"
+        "        { 'int',    'generation' },\n"
+        "    }\n"
+        "    db:num_columns(table.getn(schema))\n"
+        "    for i, v in ipairs(schema) do\n"
+        "        db:column_name(v[2], i)\n"
+        "        db:column_type(v[1], i)\n"
+        "    end\n"
+        "    local result\n"
+        "    result = sys.durable_lsn()\n"
         "    for i, v in ipairs(result) do\n"
         "        db:emit(v)\n"
         "    end\n"

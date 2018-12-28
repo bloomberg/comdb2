@@ -45,6 +45,7 @@
 #include <list.h>
 #include <ctrace.h>
 #include <logmsg.h>
+#include <physwrite.h>
 
 #ifdef NEWSI_STAT
 #include <time.h>
@@ -246,6 +247,8 @@ int request_durable_lsn_from_master(bdb_state_type *bdb_state,
  *  Called upon transaction begin/start
  *
  */
+int gbl_physrep_request_startlsn = 1;
+
 bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
                                       tran_type *shadow_tran, int trak,
                                       int *bdberr, int epoch, uint32_t file,
@@ -288,10 +291,19 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
             uint32_t my_gen;
 
             /* Request my startpoint */
-            if (!file && (rc = request_durable_lsn_from_master(
-                              bdb_state, &file, &offset, &durable_gen)) != 0) {
-                *bdberr = BDBERR_NOT_DURABLE;
-                return NULL;
+            if (!file) {
+                extern int gbl_is_physical_replicant;
+                if (gbl_is_physical_replicant && gbl_physrep_request_startlsn) {
+                    if ((rc = physrep_retrieve_startlsn(&file, &offset,
+                                    &durable_gen)) != 0) {
+                        *bdberr = BDBERR_NOT_DURABLE;
+                        return NULL;
+                    }
+                } else if ((rc = request_durable_lsn_from_master(bdb_state,
+                                &file, &offset, &durable_gen)) != 0) {
+                    *bdberr = BDBERR_NOT_DURABLE;
+                    return NULL;
+                }
             }
 
             /* Get our current lsn */
