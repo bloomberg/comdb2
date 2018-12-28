@@ -4058,6 +4058,7 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
     clean_queries_not_cached_in_srs(clnt);
 
     debug_close_sb(clnt);
+
     thrman_setid(thrman_self(), "[done]");
 }
 
@@ -4196,7 +4197,6 @@ void sqlengine_work_appsock(void *thddata, void *work)
     osql_log_time_done(clnt);
     clean_queries_not_cached_in_srs(clnt);
     debug_close_sb(clnt);
-
     thrman_setid(thrman_self(), "[done]");
 }
 
