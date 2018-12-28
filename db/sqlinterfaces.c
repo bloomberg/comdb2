@@ -4060,7 +4060,7 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
 
     debug_close_sb(clnt);
 
-    sqlengine_cleanup_temp_table_mtx(thd);
+    sqlengine_cleanup_temp_table_mtx(clnt);
     thrman_setid(thrman_self(), "[done]");
 }
 
@@ -4145,11 +4145,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
         Pthread_mutex_unlock(&clnt->wait_mutex);
         clnt->osql.timings.query_finished = osql_log_time();
         osql_log_time_done(clnt);
-        if (sqlthd->temp_table_mtx != clnt->temp_table_mtx) {
-            Pthread_mutex_destroy_and_free(sqlthd->temp_table_mtx);
-        } else {
-            sqlthd->temp_table_mtx = NULL;
-        }
+        sqlengine_cleanup_temp_table_mtx(clnt);
         return;
     }
 
