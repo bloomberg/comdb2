@@ -7452,7 +7452,6 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
         return -1;
     }
 
-
     /* open the db's directory */
     dirp = opendir(bdb_state->dir);
     if (!dirp) {
