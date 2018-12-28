@@ -2649,7 +2649,8 @@ static inline int dont_cache_this_sql(const char *sql)
  * needs to cleanup this rec->stmt */
 static int put_prepared_stmt_int(struct sqlthdstate *thd,
                                  struct sqlclntstate *clnt,
-                                 struct sql_state *rec, int outrc, int distributed)
+                                 struct sql_state *rec, int outrc,
+                                 int distributed)
 {
     if (gbl_enable_sql_stmt_caching == STMT_CACHE_NONE) {
         return 1;
@@ -2695,8 +2696,10 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
                           stmt);
 }
 
-void put_prepared_stmt_distributed(struct sqlthdstate *thd, struct sqlclntstate *clnt,
-                       struct sql_state *rec, int outrc, int distributed)
+void put_prepared_stmt_distributed(struct sqlthdstate *thd,
+                                   struct sqlclntstate *clnt,
+                                   struct sql_state *rec, int outrc,
+                                   int distributed)
 {
     int rc;
 
