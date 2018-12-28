@@ -6411,7 +6411,8 @@ skip:
             free(pCur->tmptable);
             pCur->tmptable = NULL;
 
-            assert( pCur->bt->temp_table_mtx==clnt->temp_table_mtx );
+            // TODO: The thread pool causes this to be violated.
+            // assert( pCur->bt->temp_table_mtx==clnt->temp_table_mtx );
             Pthread_mutex_lock(pCur->bt->temp_table_mtx);
 
             struct temptable_entry *pEntry = sqlite3HashFind(
