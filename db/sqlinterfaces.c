@@ -4060,7 +4060,6 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
 
     debug_close_sb(clnt);
 
-    sqlengine_cleanup_temp_table_mtx(clnt);
     thrman_setid(thrman_self(), "[done]");
 }
 
@@ -4145,7 +4144,6 @@ void sqlengine_work_appsock(void *thddata, void *work)
         Pthread_mutex_unlock(&clnt->wait_mutex);
         clnt->osql.timings.query_finished = osql_log_time();
         osql_log_time_done(clnt);
-        sqlengine_cleanup_temp_table_mtx(clnt);
         return;
     }
 
@@ -4202,7 +4200,6 @@ void sqlengine_work_appsock(void *thddata, void *work)
     clean_queries_not_cached_in_srs(clnt);
     debug_close_sb(clnt);
 
-    sqlengine_cleanup_temp_table_mtx(clnt);
     thrman_setid(thrman_self(), "[done]");
 }
 
@@ -4508,6 +4505,8 @@ int tdef_to_tranlevel(int tdef)
 
 void cleanup_clnt(struct sqlclntstate *clnt)
 {
+    sqlengine_cleanup_temp_table_mtx(clnt);
+
     if (clnt->argv0) {
         free(clnt->argv0);
         clnt->argv0 = NULL;
