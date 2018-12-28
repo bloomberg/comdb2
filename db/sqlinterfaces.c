@@ -4032,7 +4032,6 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
     if (!clnt->exec_lua_thread)
         abort();
 
-    sqlengine_setup_temp_table_mtx(clnt);
     thr_set_user("appsock", clnt->appsock_id);
 
     clnt->osql.timings.query_dispatched = osql_log_time();
@@ -4114,7 +4113,6 @@ void sqlengine_work_appsock(void *thddata, void *work)
     sqlthd->clnt = clnt;
     clnt->thd = thd;
 
-    sqlengine_setup_temp_table_mtx(clnt);
     thr_set_user("appsock", clnt->appsock_id);
 
     clnt->added_to_hist = clnt->isselect = 0;
@@ -4210,16 +4208,17 @@ static void sqlengine_work_appsock_pp(struct thdpool *pool, void *work,
 
     switch (op) {
     case THD_RUN:
+        sqlengine_setup_temp_table_mtx(clnt);
         if (clnt->exec_lua_thread)
             sqlengine_work_lua_thread(thddata, work);
         else
             sqlengine_work_appsock(thddata, work);
         break;
     case THD_FREE:
+        sqlengine_cleanup_temp_table_mtx(clnt);
         /* we just mark the client done here, with error */
-        ((struct sqlclntstate *)work)->query_rc = CDB2ERR_IO_ERROR;
-        ((struct sqlclntstate *)work)->done =
-            1; /* that's gonna revive appsock thread */
+        clnt->query_rc = CDB2ERR_IO_ERROR;
+        clnt->done = 1; /* that's gonna revive appsock thread */
         break;
     }
 }
@@ -4505,8 +4504,6 @@ int tdef_to_tranlevel(int tdef)
 
 void cleanup_clnt(struct sqlclntstate *clnt)
 {
-    sqlengine_cleanup_temp_table_mtx(clnt);
-
     if (clnt->argv0) {
         free(clnt->argv0);
         clnt->argv0 = NULL;

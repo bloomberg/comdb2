@@ -12519,11 +12519,12 @@ int comdb2_check_vtab_access(sqlite3 *db, sqlite3_module *module)
         return 0;
     }
 
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+
     for (current = sqliteHashFirst(&db->aModule); current;
          current = sqliteHashNext(current)) {
         struct Module *mod = sqliteHashData(current);
         if (module == mod->pModule) {
-            struct sql_thread *thd = pthread_getspecific(query_info_key);
             int bdberr;
             int rc;
 
