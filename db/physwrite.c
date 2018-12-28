@@ -142,8 +142,9 @@ static int dosend(session_t *s, int usertype, void *data, int datalen,
     free(blob);
     free(sql);
 
-    if (rc == CDB2_OK_DONE && osql_comm_is_done(type, NULL, 0, 0, NULL, NULL)) {
-        if ((rc = cdb2_next_record(h)) == CDB2_OK)
+    if (osql_comm_is_done(type, NULL, 0, 0, NULL, NULL) &&
+            (rc == CDB2_OK || rc == CDB2_OK_DONE)) {
+        if ((rc = cdb2_next_record(h)) == CDB2_OK_DONE || rc == CDB2_OK)
             signal_results(h, type, uuid, rqid, &timeout);
     }
 
@@ -223,6 +224,7 @@ int physwrite_exec(char *host, int usertype, void *data, int datalen,
         net_route_packet_flags(usertype, data, datalen, PHYSWRITE);
 
     if (results.dispatched) {
+        logmsg(LOGMSG_USER, "%s dispatched request on master\n", __func__);
         Pthread_mutex_lock(&results.lk);
         while(!results.done) {
             struct timespec now;
@@ -238,6 +240,8 @@ int physwrite_exec(char *host, int usertype, void *data, int datalen,
         *rcode = results.rcode;
         *errval = results.errval;
         *errstr = results.errstr;
+        logmsg(LOGMSG_USER, "%s request returned %d, errval %d, errstr='%s'\n",
+                __func__, *rcode, *errval, *errstr ? *errstr : "");
 #if 0
         *inserts = results.inserts;
         *updates = results.updates;
