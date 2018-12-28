@@ -5073,6 +5073,23 @@ static int record_query_cost(struct sql_thread *thd, struct sqlclntstate *clnt)
     }
     return 0;
 }
+
+int dbglog_begin(const char *pragma)
+{
+    struct sql_thread *thd;
+    struct sqlclntstate *clnt;
+
+    thd = pthread_getspecific(query_info_key);
+    if (thd == NULL)
+        return -1;
+
+    clnt = thd->clnt;
+    if (clnt == NULL)
+        return -1;
+
+    return dbglog_process_debug_pragma(clnt, pragma);
+}
+
 struct client_query_stats *get_query_stats_from_thd()
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
