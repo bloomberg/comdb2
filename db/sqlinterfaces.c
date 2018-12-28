@@ -4007,6 +4007,22 @@ static void debug_close_sb(struct sqlclntstate *clnt)
         once = 0;
 }
 
+static void sqlengine_setup_temp_table_mtx(struct sqlclntstate *clnt)
+{
+    if (clnt && clnt->temp_table_mtx == NULL) {
+        Pthread_mutex_alloc_and_init(clnt->temp_table_mtx, NULL);
+        clnt->own_temp_table_mtx = 1;
+    }
+}
+
+static void sqlengine_cleanup_temp_table_mtx(struct sqlclntstate *clnt)
+{
+    if (clnt && clnt->temp_table_mtx != NULL && clnt->own_temp_table_mtx) {
+        Pthread_mutex_destroy_and_free(clnt->temp_table_mtx);
+        clnt->own_temp_table_mtx = 0;
+    }
+}
+
 static void sqlengine_work_lua_thread(void *thddata, void *work)
 {
     struct sqlthdstate *thd = thddata;
@@ -4016,12 +4032,7 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
     if (!clnt->exec_lua_thread)
         abort();
 
-    if (clnt->temp_table_mtx != NULL) {
-        thd->sqlthd->temp_table_mtx = clnt->temp_table_mtx;
-    } else {
-        Pthread_mutex_alloc_and_init(thd->sqlthd->temp_table_mtx, NULL);
-    }
-
+    sqlengine_setup_temp_table_mtx(clnt);
     thr_set_user("appsock", clnt->appsock_id);
 
     clnt->osql.timings.query_dispatched = osql_log_time();
@@ -4049,12 +4060,7 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
 
     debug_close_sb(clnt);
 
-    if (thd->sqlthd->temp_table_mtx != clnt->temp_table_mtx) {
-        Pthread_mutex_destroy_and_free(thd->sqlthd->temp_table_mtx);
-    } else {
-        thd->sqlthd->temp_table_mtx = NULL;
-    }
-
+    sqlengine_cleanup_temp_table_mtx(thd);
     thrman_setid(thrman_self(), "[done]");
 }
 
@@ -4109,12 +4115,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
     sqlthd->clnt = clnt;
     clnt->thd = thd;
 
-    if (clnt->temp_table_mtx != NULL) {
-        sqlthd->temp_table_mtx = clnt->temp_table_mtx;
-    } else {
-        Pthread_mutex_alloc_and_init(sqlthd->temp_table_mtx, NULL);
-    }
-
+    sqlengine_setup_temp_table_mtx(clnt);
     thr_set_user("appsock", clnt->appsock_id);
 
     clnt->added_to_hist = clnt->isselect = 0;
@@ -4205,12 +4206,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
     clean_queries_not_cached_in_srs(clnt);
     debug_close_sb(clnt);
 
-    if (sqlthd->temp_table_mtx != clnt->temp_table_mtx) {
-        Pthread_mutex_destroy_and_free(sqlthd->temp_table_mtx);
-    } else {
-        sqlthd->temp_table_mtx = NULL;
-    }
-
+    sqlengine_cleanup_temp_table_mtx(clnt);
     thrman_setid(thrman_self(), "[done]");
 }
 
