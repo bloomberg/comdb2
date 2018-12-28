@@ -2649,12 +2649,12 @@ static inline int dont_cache_this_sql(const char *sql)
  * needs to cleanup this rec->stmt */
 static int put_prepared_stmt_int(struct sqlthdstate *thd,
                                  struct sqlclntstate *clnt,
-                                 struct sql_state *rec, int outrc)
+                                 struct sql_state *rec, int outrc, int distributed)
 {
     if (gbl_enable_sql_stmt_caching == STMT_CACHE_NONE) {
         return 1;
     }
-    if (clnt->conns) {
+    if (distributed || clnt->conns || clnt->plugin.state) {
         return 1;
     }
     sqlite3_stmt *stmt = rec->stmt;
@@ -2695,19 +2695,14 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
                           stmt);
 }
 
-/**
- * Cache a stmt if needed; struct sql_state is prepared by
- * get_prepared_stmt(), and it is cleaned here as well
- *
- */
-void put_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
-                       struct sql_state *rec, int outrc)
+void put_prepared_stmt_distributed(struct sqlthdstate *thd, struct sqlclntstate *clnt,
+                       struct sql_state *rec, int outrc, int distributed)
 {
     int rc;
 
     dohsql_wait_for_master((rec) ? rec->stmt : NULL, clnt);
 
-    rc = put_prepared_stmt_int(thd, clnt, rec, outrc);
+    rc = put_prepared_stmt_int(thd, clnt, rec, outrc, distributed);
     if (rc != 0 && rec->stmt) {
         sqlite3_finalize(rec->stmt);
         rec->stmt = NULL;
@@ -2720,6 +2715,17 @@ void put_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         }
         Pthread_mutex_unlock(&gbl_sql_lock);
     }
+}
+
+/**
+ * Cache a stmt if needed; struct sql_state is prepared by
+ * get_prepared_stmt(), and it is cleaned here as well
+ *
+ */
+void put_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
+                       struct sql_state *rec, int outrc)
+{
+    put_prepared_stmt_distributed(thd, clnt, rec, outrc, 0);
 }
 
 static void update_schema_remotes(struct sqlclntstate *clnt,
@@ -3483,9 +3489,12 @@ static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                         struct sql_state *rec, int outrc)
 {
     sqlite3_stmt *stmt = rec->stmt;
+    int distributed = 0;
 
-    if (clnt->conns)
+    if (clnt->conns) {
         dohsql_end_distribute(clnt, thd->logger);
+        distributed = 1;
+    }
 
     sql_statement_done(thd->sqlthd, thd->logger, clnt, outrc);
 
@@ -3495,7 +3504,7 @@ static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         compare_estimate_cost(stmt);
     }
 
-    put_prepared_stmt(thd, clnt, rec, outrc);
+    put_prepared_stmt_distributed(thd, clnt, rec, outrc, distributed);
 
     if (clnt->using_case_insensitive_like)
         toggle_case_sensitive_like(thd->sqldb, 0);
