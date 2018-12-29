@@ -9,7 +9,7 @@
 extern int gbl_verbose_physrep;
 extern struct dbenv *thedb;
 extern int gbl_match_on_ckp;
-void close_repl_connection(void);
+void close_repl_connection(const char *func, int line);
 
 LOG_INFO find_match_lsn(void *bdb_state, cdb2_hndl_tp *repl_db,
                         LOG_INFO start_info);

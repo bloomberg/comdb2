@@ -11,9 +11,9 @@
 #include <errstat.h>
 
 /* Tunables */
-int gbl_physwrite = 1;
+int gbl_physwrite = 0;
 int gbl_physwrite_shared_handle = 0;
-int gbl_physwrite_wait_commit = 1;
+int gbl_physwrite_wait_commit = 0;
 int gbl_physwrite_commit_timeout = 0;
 int gbl_physwrite_long_write_threshold = 10;
 int gbl_physwrite_verbose = 0;

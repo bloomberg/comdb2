@@ -5979,7 +5979,7 @@ static int offload_net_send(const char *host, int usertype, void *data,
                 return physwrite_route_packet(usertype, data, datalen, 0);
             if ((now = time(NULL)) > last_physrep_write) {
                 logmsg(LOGMSG_ERROR, "Preventing write on read-only physical "
-                       "replicant (enable 'physrep_write' to allow writes)\n");
+                       "replicant (set 'physrep_write on' to allow writes)\n");
                 last_physrep_write = now;
             }
             return -1;
@@ -6104,7 +6104,7 @@ static int offload_net_send_tails(const char *host, int usertype, void *data,
                             ntails, tails[0], tailens[0]);
                 if ((now = time(NULL)) > last_physrep_write) {
                     logmsg(LOGMSG_ERROR, "Preventing write on read-only "
-                            "physical replicant (enable 'physrep_write' to "
+                            "physical replicant (set 'physrep_write on' to "
                             "allow writes)\n");
                     last_physrep_write = now;
                 }

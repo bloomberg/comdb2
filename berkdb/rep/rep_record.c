@@ -3023,6 +3023,7 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 		logmsg(LOGMSG_INFO, "%s out-of-order lsn [%d][%d] instead of [%d][%d], "
 				"count %u\n", __func__, rp->lsn.file, rp->lsn.offset,
 				lp->ready_lsn.file, lp->ready_lsn.offset, count);
+        ret = DB_REP_OUTOFORDER;
 		goto done;
 	}
 	
@@ -3772,16 +3773,17 @@ __rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	return rc;
 }
 
+extern pthread_cond_t gbl_logput_cond;
+extern pthread_mutex_t gbl_logput_lk;
+
 int __dbenv_apply_log(DB_ENV* dbenv, unsigned int file, unsigned int offset, 
 		int64_t rectype, void* blob, int blob_len)
 {
 
 	REP_CONTROL rp;
-
 	DBT rec = {0};
 	DB_LSN ret_lsnp;
-	uint32_t *commit_gen;
-	int rc, decoupled;
+	int rc;
 	DB_REP* db_rep; 
 	REP* rep; 
 
@@ -3801,8 +3803,11 @@ int __dbenv_apply_log(DB_ENV* dbenv, unsigned int file, unsigned int offset,
 	rp.flags = 0;
 
 	/* call of 2 to differentiate from true master */
-	return __rep_apply(dbenv, &rp, &rec, &ret_lsnp, &rep->gen, 2);
-
+    Pthread_mutex_lock(&gbl_logput_lk);
+	rc = __rep_apply(dbenv, &rp, &rec, &ret_lsnp, &rep->gen, 2);
+    Pthread_cond_broadcast(&gbl_logput_cond);
+    Pthread_mutex_unlock(&gbl_logput_lk);
+    return rc;
 }
 
 size_t __dbenv_get_log_header_size(DB_ENV* dbenv)

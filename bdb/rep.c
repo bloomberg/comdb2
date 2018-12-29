@@ -5881,18 +5881,18 @@ int bdb_wait_for_lsn(bdb_state_type *bdb_state, int file, int offset,
     data.ulen = 0;
 
     start = comdb2_time_epoch();
+    Pthread_mutex_lock(&gbl_logput_lk);
     logc->get(logc, &lsn, &data, DB_LAST);
     while((log_compare(&lsn, &target_lsn) < 0) && (!timeout ||
                 elapsed <= timeout)) {
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
         ts.tv_sec += 1;
-        Pthread_mutex_lock(&gbl_logput_lk);
         pthread_cond_timedwait(&gbl_logput_cond, &gbl_logput_lk, &ts);
-        Pthread_mutex_unlock(&gbl_logput_lk);
         logc->get(logc, &lsn, &data, DB_LAST);
         elapsed = (comdb2_time_epoch() - start);
     }
+    Pthread_mutex_unlock(&gbl_logput_lk);
 
     cmp = (log_compare(&lsn, &target_lsn) >= 0);
     assert (timeout || cmp >= 0);

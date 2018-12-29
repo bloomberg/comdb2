@@ -23,6 +23,9 @@ LOG_INFO get_last_lsn(bdb_state_type *bdb_state)
     DB_LOGC *logc;
     DBT logrec;
     DB_LSN last_log_lsn;
+    static DB_LSN last_printed_lsn;
+    static int last_print = 0;
+    int now;
     LOG_INFO log_info = {0};
 
     rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &logc, 0);
@@ -40,9 +43,13 @@ LOG_INFO get_last_lsn(bdb_state_type *bdb_state)
         return log_info;
     }
 
-    if (gbl_verbose_physrep)
+    if (gbl_verbose_physrep && (((now = time(NULL)) - last_print) > 5) &&
+            log_compare(&last_log_lsn, &last_printed_lsn) != 0) {
         logmsg(LOGMSG_USER, "%s: LSN %u:%u\n", __func__, last_log_lsn.file,
                last_log_lsn.offset);
+        last_printed_lsn = last_log_lsn;
+        last_print = now;
+    }
 
     log_info.file = last_log_lsn.file;
     log_info.offset = last_log_lsn.offset;
