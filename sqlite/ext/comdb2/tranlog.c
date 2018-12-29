@@ -209,7 +209,7 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
           do {
               struct timespec ts;
               clock_gettime(CLOCK_REALTIME, &ts);
-              ts.tv_nsec += (200 * 1000000);
+              ts.tv_sec += 1;
               Pthread_mutex_lock(&gbl_logput_lk);
               pthread_cond_timedwait(&gbl_logput_cond, &gbl_logput_lk, &ts);
               Pthread_mutex_unlock(&gbl_logput_lk);

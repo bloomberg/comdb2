@@ -1618,7 +1618,7 @@ REGISTER_TUNABLE("blocking_physrep",
                  NULL);
 
 REGISTER_TUNABLE("physrep_write",
-                 "Allow physical replicant writes.  (Default: on)",
+                 "Allow physical replicant writes.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_physwrite, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("physrep_write_shared_handle",
@@ -1629,7 +1629,7 @@ REGISTER_TUNABLE("physrep_write_shared_handle",
 
 REGISTER_TUNABLE("physrep_write_wait_commit",
                  "Block until commit record reaches replicant.  "
-                 "(Default: on)",
+                 "(Default: off)",
                  TUNABLE_BOOLEAN, &gbl_physwrite_wait_commit, 0, NULL, NULL,
                  NULL, NULL);
 
@@ -1645,8 +1645,14 @@ REGISTER_TUNABLE("physrep_long_write_threshold",
                  TUNABLE_INTEGER, &gbl_physwrite_long_write_threshold, 0,
                  NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("physrep_poll_ms",
+                 "Poll this long before re-querying the cluster"
+                 "(Default: 1000)",
+                 TUNABLE_INTEGER, &gbl_physrep_poll_ms, 0,
+                 NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("physrep_request_startlsn",
-                 "Request start.  "
+                 "Request start LSN in physical replicant.  "
                  "(Default: on)",
                  TUNABLE_BOOLEAN, &gbl_physrep_request_startlsn, 0,
                  NULL, NULL, NULL, NULL);
