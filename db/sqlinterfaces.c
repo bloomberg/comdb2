@@ -4019,7 +4019,7 @@ static void debug_close_sb(struct sqlclntstate *clnt)
         once = 0;
 }
 
-static void sqlengine_setup_temp_table_mtx(struct sqlclntstate *clnt)
+void sqlengine_setup_temp_table_mtx(struct sqlclntstate *clnt)
 {
     if (clnt && clnt->temp_table_mtx == NULL) {
         Pthread_mutex_alloc_and_init(clnt->temp_table_mtx, NULL);
@@ -4027,7 +4027,7 @@ static void sqlengine_setup_temp_table_mtx(struct sqlclntstate *clnt)
     }
 }
 
-static void sqlengine_cleanup_temp_table_mtx(struct sqlclntstate *clnt)
+void sqlengine_cleanup_temp_table_mtx(struct sqlclntstate *clnt)
 {
     if (clnt && clnt->temp_table_mtx != NULL && clnt->own_temp_table_mtx) {
         Pthread_mutex_destroy_and_free(clnt->temp_table_mtx);
