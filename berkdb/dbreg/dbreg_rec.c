@@ -100,15 +100,15 @@ __dbreg_register_recover(dbenv, dbtp, lsnp, op, info)
 		int i;
 		ft = &dbenv->fileid_track;
 		if (argp->fileid >= ft->numids) {
+			int dblsize = argp->fileid * 2 + 1;
 			if ((ret = __os_realloc(dbenv,
-						(argp->fileid * 2 + 1) *
-						sizeof(lsn_range_list), &ft->ranges)) != 0)
+					dblsize * sizeof(lsn_range_list), &ft->ranges)) != 0)
 				goto out;
-			for (i = ft->numids; i < argp->fileid * 2 + 1; i++) {
+			for (i = ft->numids; i < dblsize; i++) {
 				listc_init(&ft->ranges[i], 
 					   offsetof(struct lsn_range, lnk));
 			}
-			ft->numids = argp->fileid * 2 + 1;
+			ft->numids = dblsize;
 		}
 
 		/* Do we already have a record for this range?  Same
