@@ -1649,7 +1649,7 @@ REGISTER_TUNABLE("abort_on_missing_osql_session",
                  TUNABLE_BOOLEAN, &gbl_abort_on_missing_osql_session,
 
 REGISTER_TUNABLE("online_recovery",
-                 "Don't get the bdb-writelock for recovery.  (Default: on)",
+                 "Don't get the bdb-writelock for recovery.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_online_recovery,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
