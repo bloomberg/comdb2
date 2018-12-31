@@ -222,7 +222,7 @@ char *print_addr(struct sockaddr_in *addr, char *buf)
     if (rc) {
         char *tmp = strerror_r(rc, errbuf, sizeof(errbuf));
         if (tmp) {
-            printf("Error with strerror_r\n");
+            logmsg(LOGMSG_ERROR, "Error with strerror_r\n");
         }
         sprintf(buf, "%s:getnameinfo errbuf=%s", __func__, errbuf);
         return buf;
@@ -233,7 +233,7 @@ char *print_addr(struct sockaddr_in *addr, char *buf)
     } else {
         char *tmp = strerror_r(errno, errbuf, sizeof(errbuf));
         if (tmp) {
-            printf("Error with strerror_r\n");
+            logmsg(LOGMSG_ERROR, "Error with strerror_r\n");
         }
         sprintf(buf, "%s:inet_ntop:%s", __func__, errbuf);
     }
