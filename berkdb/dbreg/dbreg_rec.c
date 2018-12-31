@@ -101,8 +101,8 @@ __dbreg_register_recover(dbenv, dbtp, lsnp, op, info)
 		ft = &dbenv->fileid_track;
 		if (argp->fileid >= ft->numids) {
 			if ((ret = __os_realloc(dbenv,
-							(argp->fileid * 2 + 1) *
-							sizeof(lsn_range_list), &ft->ranges)) != 0)
+						(argp->fileid * 2 + 1) *
+						sizeof(lsn_range_list), &ft->ranges)) != 0)
 				goto out;
 			for (i = ft->numids; i < argp->fileid * 2 + 1; i++) {
 				listc_init(&ft->ranges[i], 
