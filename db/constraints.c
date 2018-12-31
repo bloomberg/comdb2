@@ -2117,16 +2117,3 @@ int populate_reverse_constraints(struct dbtable *db)
 }
 
 
-inline void *create_defered_index_table(long long *ctid)
-{
-    int bdberr = 0;
-    struct temp_table *newtbl =
-        (struct temp_table *)bdb_temp_table_create(thedb->bdb_env, &bdberr);
-    if (newtbl == NULL || bdberr != 0) {
-        logmsg(LOGMSG_ERROR, "failed to create temp table err %d\n", bdberr);
-        return NULL;
-    }
-    //bdb_temp_table_set_cmp_func(newtbl, constraint_index_key_cmp);
-    return newtbl;
-}
-
