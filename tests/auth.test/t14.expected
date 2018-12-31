@@ -1,0 +1,26 @@
+[create table t1(i int)] failed with rc -106 access denied
+[create table t2(i int, i int)] failed with rc -106 access denied
+[create table t3{schema { int i }}] failed with rc -106 access denied
+[select * from comdb2_tables] failed with rc -106 access denied
+(username='lua', isOP='N')
+(username='other', isOP='N')
+(username='replicant', isOP='N')
+(username='sysmon', isOP='N')
+(username='tunable', isOP='N')
+(username='user1', isOP='Y')
+(username='user2', isOP='N')
+(username='user3', isOP='N')
+[create table t2(i int, i int)] failed with rc -3 Duplicate column name 'i'.
+(tablename='dummy')
+(tablename='t1@user2')
+(tablename='t3@user2')
+[drop table t2] failed with rc -3 no such table: t2@user2
+[create table t2(i int, i int)] failed with rc -3 Duplicate column name 'i'.
+(tablename='dummy')
+(tablename='sqlite_stat1')
+(tablename='sqlite_stat4')
+(tablename='foraudit@user1')
+(tablename='audit@user1')
+(tablename='t1@user1')
+(tablename='t3@user1')
+[drop table t2] failed with rc -3 no such table: t2@user1

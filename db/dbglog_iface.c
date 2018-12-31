@@ -68,6 +68,27 @@ void dump_client_query_stats_packed(struct sbuf2 *sb, const uint8_t *pakd)
         impl.dump_client_query_stats_packed(sb, pakd);
 }
 
+int dbglog_process_debug_pragma(struct sqlclntstate *clnt, const char *pragma)
+{
+    if (impl.process_debug_pragma)
+        return impl.process_debug_pragma(clnt, pragma);
+    return 0;
+}
+
+int dbglog_mmap_dbglog_file(unsigned long long c, void **a, size_t *s, int *f)
+{
+    if (impl.mmap_dbglog_file)
+        return impl.mmap_dbglog_file(c, a, s, f);
+    return -1;
+}
+
+int dbglog_munmap_dbglog_file(unsigned long long c, void *a, size_t s, int f)
+{
+    if (impl.munmap_dbglog_file)
+        return impl.munmap_dbglog_file(c, a, s, f);
+    return -1;
+}
+
 void set_dbglog_impl(struct dbglog_impl *i)
 {
     impl = *i;

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+bash -n "$0" | exit 1
 
 # deadlock policy tester for the cdb2tcm testsuite
 
@@ -7,9 +8,7 @@
 dbnm=$1
 
 
-# generator and updater tasks
-gen=gen
-upd=upd
+upd_f=upd
 
 keys[0]="a"
 keys[1]="b"
@@ -40,7 +39,6 @@ function upd {
 }
 
 
-
 # fork & timeout an executable after a period of time
 function run_timeout
 {
@@ -62,7 +60,7 @@ function run_timeout
     $exe $args > /dev/null 2>&1 &
     cpid=$!
 
-    echo verify pid = $cpid >> /dev/shm/pidverify.txt
+    echo verify pid = $cpid >> pidverify.txt
     # verify pid
     ps -p $cpid >/dev/null 2>&1
 
@@ -146,19 +144,20 @@ function test_select
 
     done
 
-    if [[ 0 == "$err" ]]; then
-        echo "SUCCESS!"
+    if [[ 0 != "$err" ]]; then
+        echo "$err is not 0"
+        exit 1
     fi
 
 }
 
 
 # generate 10000 records of input data
-$gen $dbnm 10000
+gen $dbnm 10000
 
 
 # start 40 updaters - allow them to run for a minute
-spawn_instances $upd $dbnm 60 40
+spawn_instances $upd_f $dbnm 60 40
 
 
 # sleep for a few seconds
@@ -166,14 +165,6 @@ sleep 10
 
 
 # spawn 40 selects against an index
-test_select $dbnm 10 > t1_01.req.out
-
-sleep 5
-
-if ! diff t1_01.req.out t1_01.req.exp ; then
-    echo "diff ${PWD}/t1_01.req.{out,exp}"
-    echo "^^^^^^ failed"
-    exit 1
-fi
+test_select $dbnm 10
 
 echo "Testcase passed."

@@ -168,7 +168,7 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
                                  (orderby) ? " oRDeR By " : "",
                                  (orderby) ? orderby : "");
     } else {
-        limit = sqlite3ExprDescribe(v, p->pLimit);
+        limit = sqlite3ExprDescribe(v, p->pLimit->pLeft);
         if (!limit) {
             sqlite3_free(orderby);
             sqlite3_free(where);
@@ -365,7 +365,7 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
     psub = node->nodes;
 
     pLimit = p->pLimit;
-    pOffset = p->pLimit ? p->pLimit->pRight : 0;
+    pOffset = p->pLimit ? p->pLimit->pRight : NULL;
 
     /* syntax errors */
     crt = p->pPrior;
@@ -396,7 +396,7 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
             crt->pLimit = pLimitNoOffset;
             crt = crt->pPrior;
         }
-        crt->pLimit = pLimitNoOffset;
+        crt->pLimit = pLimit; /* we need this in the head */
     }
 
     /* generate queries */
@@ -404,7 +404,7 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
         assert(crt == p || !crt->pOrderBy); /* can "restore" to NULL? */
         crt->pOrderBy = p->pOrderBy;
         *psub =
-            gen_oneselect(v, crt, NULL, &node->order_size, &node->order_dir);
+            gen_oneselect(v, crt, pOffset, &node->order_size, &node->order_dir);
         crt->pLimit = NULL;
         if (crt != p)
             crt->pOrderBy = NULL;
@@ -429,10 +429,17 @@ static dohsql_node_t *gen_union(Vdbe *v, Select *p, int span)
         psub++;
     }
 done:
+    crt = p;
     while (crt) {
         crt->pLimit = NULL;
         crt = crt->pNext;
     }
+    p->pLimit = pLimit;
+
+    if (pLimitNoOffset != NULL && pLimitNoOffset != pLimit) {
+        sqlite3ExprDelete(v->db, pLimitNoOffset);
+    }
+
 #ifdef SQLITE_DEBUG
     crt = p;
     while (crt->pPrior) {
@@ -444,12 +451,6 @@ done:
         crt = crt->pPrior;
     }
 #endif
-    if (pLimitNoOffset != NULL && pLimitNoOffset != pLimit) {
-        sqlite3ExprDelete(v->db, pLimitNoOffset);
-    }
-    p->pLimit = pLimit;
-    if (p->pLimit)
-        p->pLimit->pRight = pOffset;
 
     return node;
 }

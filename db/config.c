@@ -63,7 +63,7 @@ static struct option long_options[] = {
     {"repopnewlrl", required_argument, NULL, 0},
     {"recovertotime", required_argument, NULL, 0},
     {"recovertolsn", required_argument, NULL, 0},
-    {"recoverylsn", required_argument, NULL, 0},
+    {"recovery_lsn", required_argument, NULL, 0},
     {"pidfile", required_argument, NULL, 0},
     {"help", no_argument, NULL, 'h'},
     {"create", no_argument, &gbl_create_mode, 1},
@@ -340,7 +340,8 @@ static char *legacy_options[] = {"disallow write from beta if prod",
                                  "osql_check_replicant_numops off",
                                  "reorder_socksql_no_deadlock off",
                                  "disable_tpsc_tblvers",
-                                 "on disable_etc_services_lookup"};
+                                 "on disable_etc_services_lookup",
+                                 "legacy_schema on"};
 int gbl_legacy_defaults = 0;
 int pre_read_legacy_defaults(void *_, void *__)
 {

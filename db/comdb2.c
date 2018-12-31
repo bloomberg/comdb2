@@ -2514,11 +2514,6 @@ static int db_finalize_and_sanity_checks(struct dbenv *dbenv)
 {
     int have_bad_schema = 0, ii, jj;
 
-    if (!dbenv->num_dbs) {
-        have_bad_schema = 1;
-        logmsg(LOGMSG_FATAL, "No tables have been loaded.");
-    }
-
     for (ii = 0; ii < dbenv->num_dbs; ii++) {
         dbenv->dbs[ii]->dtastripe = 1;
 
