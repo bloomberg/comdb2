@@ -7412,7 +7412,8 @@ sqlite3BtreeCursor_temptable(Btree *pBt,      /* The btree */
     cur->cursor_class = CURSORCLASS_TEMPTABLE;
     assert( src->tbl );
     assert( src->nRef>0 );
-    cur->tmptable->tbl = src->tbl; src->nRef++;
+    cur->tmptable->tbl = src->tbl;
+    src->nRef++;
     if (src->lk) {
         cur->tmptable->lk = src->lk;
         cur->cursor_move = lk_tmptbl_cursor_move;
