@@ -3760,7 +3760,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     DB_LSN permlsn;
     uint32_t generation, commit_generation;
     int outrc;
-    int time1, time2, wltime1, wltime2, vtime1, vtime2;
+    int time1, time2;
     int online = gbl_online_recovery;
     char *oldmaster = NULL;
     int force_election = 0;
@@ -3806,9 +3806,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     if (!online && rectype == REP_VERIFY &&
         bdb_state->dbenv->rep_verify_will_recover(bdb_state->dbenv, control,
                                                   rec)) {
-        wltime1 = comdb2_time_epoch();
         BDB_WRITELOCK_REP("bdb_rep_verify");
-        wltime2 = comdb2_time_epoch();
         got_writelock = 1;
     }
 
@@ -3816,9 +3814,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
 
     if (rectype == REP_VOTE2 || rectype == REP_GEN_VOTE2 ||
         rectype == REP_NEWMASTER) {
-        vtime1 = comdb2_time_epoch();
         Pthread_mutex_lock(&vote2_lock);
-        vtime2 = comdb2_time_epoch();
         got_vote2lock = 1;
     }
 
@@ -3865,10 +3861,6 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
         const struct bdb_thread_stats *t = bdb_get_thread_stats();
         logmsg(LOGMSG_WARN, "LONG rep_process_message: %d seconds, type %d r %d\n",
                 time2 - time1, rep_control->rectype, r);
-        if (got_writelock)
-            logmsg(LOGMSG_WARN, "BDB-WRITELOCK time %d seconds\n", wltime2 - wltime1);
-        if (got_vote2lock)
-            logmsg(LOGMSG_WARN, "VOTE2-LOCK time %d seconds\n", vtime2 - vtime1);
         bdb_fprintf_stats(t, "  ", stderr);
     }
 
