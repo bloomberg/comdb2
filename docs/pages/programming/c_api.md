@@ -7,12 +7,12 @@ permalink: c_api.html
 
 ## Comdb2 SQL API
 
-The Comdb2 C API (lovingly nicknamed *cdb2api*) is part of the Comdb2 [main repository](https://github.com/mponomar/comdb2/tree/master/cdb2api).  
+The Comdb2 C API (lovingly nicknamed *cdb2api*) is part of the Comdb2 [main repository](https://github.com/bloomberg/comdb2/tree/master/cdb2api).
 See [Client setup](clients.html) for steps needed to set up client machines to talk to databases.  
 All functions and constants in this document are defined in ```cdb2api.h```.   
 This API implements the protocol detailed in the section on [Writing language bindings](client_protocol.html).  
 Unless otherwise noted in a 'Return Values' table, all routines return an [integer return code](#errors).   
-Applications can call [cdb2_errstr](#cdb2errstr) to obtain a human-readable string describing the error.  
+Applications can call [cdb2_errstr](#cdb2_errstr) to obtain a human-readable string describing the error.
 
 ## A word on thread safety
 
@@ -30,10 +30,10 @@ int cdb2_open(cdb2_hndl_tp **hndl, const char *dbname, const char *type, int fla
 
 Description:
 
-This routine allocates a cdb2 handle to be used by subsequent calls to [cdb2_run_statement](#cdb2runstatement).  
-Note that if this call fails you can use [cdb2_errstr](#cdb2errstr) on the returned handle to find the reason for the 
-failure before freeing the handle object with [cdb2_close](#cdb2close).  
-[cdb2_close](#cdb2close) should be called regardless of return code from [cdb2_open](#cdb2open).  
+This routine allocates a cdb2 handle to be used by subsequent calls to [cdb2_run_statement](#cdb2_run_statement).
+Note that if this call fails you can use [cdb2_errstr](#cdb2_errstr) on the returned handle to find the reason for the
+failure before freeing the handle object with [cdb2_close](#cdb2_close).
+[cdb2_close](#cdb2_close) should be called regardless of return code from [cdb2_open](#cdb2_open).
 
 Parameters:
 
@@ -79,17 +79,17 @@ int cdb2_run_statement(cdb2_hndl_tp *hndl, const char *sql);
 Description:
 
 Executes the sql query.  The query stops at the first semicolon if present - this call cannot be used to execute multiple statements.  Anything past the 
-first semicolon is ignored.  To run further statements using the same handle, user code MUST call [cdb2_next_record](#cdb2nextrecord) until it returns ```CDB2_OK_DONE```
+first semicolon is ignored.  To run further statements using the same handle, user code MUST call [cdb2_next_record](#cdb2_next_record) until it returns ```CDB2_OK_DONE```
 (or an error). Running another statement before all records are retrieved is not supported.  If the application doesn't need the entire result set, it's still recommended
-that it reads all the rows - see notes for [cdb2_close](#cdb2close) for rationale.  It is not necessary to call [cdb2_next_record](#cdb2nextrecord) for INSERT/UPDATE/DELETE statements.
+that it reads all the rows - see notes for [cdb2_close](#cdb2_close) for rationale.  It is not necessary to call [cdb2_next_record](#cdb2_next_record) for INSERT/UPDATE/DELETE statements.
 
-The type of the resulting columns is determined by the database.  For more control over return types, see [cdb2_run_statement_typed](#cdb2runstatementtyped)
+The type of the resulting columns is determined by the database.  For more control over return types, see [cdb2_run_statement_typed](#cdb2_run_statement_typed)
 
 Parameters:
 
 |Name|Type|Description|Notes
 |-|-|-|-|
-|*hndl*| input | CDB2 handle | A CDB2 handle previously allocated with [cdb2_open](#cdb2open)
+|*hndl*| input | CDB2 handle | A CDB2 handle previously allocated with [cdb2_open](#cdb2_open)
 |*sql*| input | sql statement | The SQL query to execute
 
 ### cdb2_run_statement_typed
@@ -100,7 +100,7 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql,int nparms, int
 Description:
 
 Executes the sql query. 
-This is identical to [cdb2_run_statement](#cdb2runstatement), and all the same notes apply, **except** that the database will coerce
+This is identical to [cdb2_run_statement](#cdb2_run_statement), and all the same notes apply, **except** that the database will coerce
 the types of the resulting columns to the types specified in the call. 
 If the types aren't compatible, the database will return ```CDB2ERR_CONV_FAIL```.  The type constants accepted are the same constants that cdb2_column_type() can return.
 
@@ -108,7 +108,7 @@ Parameters:
 
 |Name|Type|Description|Notes
 |-|-|-|-|
-|*hndl*| input | CDB2 handle | A CDB2 handle previously allocated with [cdb2_open](#cdb2open)
+|*hndl*| input | CDB2 handle | A CDB2 handle previously allocated with [cdb2_open](#cdb2_open)
 |*sql*| input | sql statement | The SQL query to execute
 |*nparams*| input | #params| Number of output columns
 |*parm*| input | output column types| Array of types of return columns
@@ -124,13 +124,13 @@ Description:
 
 This routine retrieves one record from the set referred to by hndl. 
 Each call to this routine retrieves the next record in the set. 
-The data that is returned from this call must be extracted with the [cdb2_column_value](#cdb2columnvalue) call.
+The data that is returned from this call must be extracted with the [cdb2_column_value](#cdb2_column_value) call.
 
 Parameters:
 
 |Name|Type|Description|Notes
 |---|---|---|---|
-|*hndl*| input | CDB2 handle | This is a CDB2 handle that was returned from a successful call to [cdb2_open](#cdb2open), and passed to a successfully returning [cdb2_run_statement](#cdb2runstatement) or [cdb2_run_statement_typed](#cdb2runstatementtyped) call.
+|*hndl*| input | CDB2 handle | This is a CDB2 handle that was returned from a successful call to [cdb2_open](#cdb2_open), and passed to a successfully returning [cdb2_run_statement](#cdb2_run_statement) or [cdb2_run_statement_typed](#cdb2_run_statement_typed) call.
 
 Return Values:
 
@@ -153,7 +153,7 @@ Parameters:
 
 |Name|Type|Description|Notes
 |-|-|-|-|
-|*hndl*| input | cdb2 handle | This is a cdb2 handle that has already successfully called [cdb2_next_record](#cdb2nextrecord)
+|*hndl*| input | cdb2 handle | This is a cdb2 handle that has already successfully called [cdb2_next_record](#cdb2_next_record)
 
 Return Values:
 
@@ -175,7 +175,7 @@ Parameters:
 
 |Name|Type|Description|Notes|
 |---|----|---|---|
-|*hndl*| input | cdb2 handle | This is a cdb2 handle that has already successfully called [cdb2_next_record](#cdb2nextrecord) |
+|*hndl*| input | cdb2 handle | This is a cdb2 handle that has already successfully called [cdb2_next_record](#cdb2_next_record) |
 |*col*| input | column number | This is the number of the column to be interrogated. The first column is number 0. |
 
 Return Values:
@@ -236,7 +236,7 @@ void * cdb2_column_value(cdb2_hndl_tp *hndl, int col);
 
 Description:
 
-This routine returns a pointer to the data of a column for a given row referred to by the hndl.  The pointer is valid only until the next call to [cdb2_next_record](#cdb2nextrecord). 
+This routine returns a pointer to the data of a column for a given row referred to by the hndl.  The pointer is valid only until the next call to [cdb2_next_record](#cdb2_next_record).
 This will return a NULL pointer if the column contains NULL.
 
 A non-NULL pointer can be dereferenced to fetch the data after being cast to the correct type. 
@@ -259,7 +259,7 @@ Parameters:
 
 |Name|Type|Description|Notes
 |-|-|-|-|
-|*hndl*| input | cdb2 handle | This is a cdb2 handle that has already successfully called [cdb2_next_record](#cdb2nextrecord)
+|*hndl*| input | cdb2 handle | This is a cdb2 handle that has already successfully called [cdb2_next_record](#cdb2_next_record)
 |*col*| input | column number | This is the number of the column to be interrogated. The first column is number 0.
 
 ### cdb2_column_type
@@ -275,14 +275,14 @@ Parameters:
 
 |Name|Type|Description|Notes|
 |---|---|---|---|
-|*hndl*| input | cdb2_handle | This is a cdb2 handle that has already called [cdb2_next_record](#cdb2nextrecord) |
+|*hndl*| input | cdb2_handle | This is a cdb2 handle that has already called [cdb2_next_record](#cdb2_next_record) |
 |*col*| input | column number | This is the number of the column to be interrogated. The first column is number 0. |
 
 Return Values:
 
 |Value|Description|Notes|
 |---|---|---|
-|`CDB2_INTEGER`, `CDB2_REAL`, `CDB2_CSTRING`, `CDB2_BLOB`, `CDB2_DATETIME`, `CDB2_DATETIMEUS`, `CDB2T_INTERVALYM`, `CDB2_INTERVALDS`, `CDB2_INTERVALDSUS`| The datatype of the numbered column | Numeric data is always promoted to its largest natural form, eg: a `short` field in the schema will come back from the db as an `int64_t`, see [cdb2_column_value](#cdb2columnvalue).|
+|`CDB2_INTEGER`, `CDB2_REAL`, `CDB2_CSTRING`, `CDB2_BLOB`, `CDB2_DATETIME`, `CDB2_DATETIMEUS`, `CDB2T_INTERVALYM`, `CDB2_INTERVALDS`, `CDB2_INTERVALDSUS`| The datatype of the numbered column | Numeric data is always promoted to its largest natural form, eg: a `short` field in the schema will come back from the db as an `int64_t`, see [cdb2_column_value](#cdb2_column_value).|
 
 
 ### cdb2_bind_param
@@ -309,8 +309,8 @@ cdb2_run_statement(db, sql);
 
 There are two very important things to remember about bound parameters:
 
-  1. We're passing addresses of variables.  The values are copied and sent to the database at [cdb2_run_statement](#cdb2runstatement) time - it's important that these values don't go out of scope between when the binding is established and when the values are fetched.
-  1. The bindings remain after the call is made.  You can populate the addresses with new values and call [cdb2_run_statement](#cdb2runstatement) again without redoing the bindings.  This is useful if you're running lots of identical statements with similar values in a loop.  Bindings should be cleared with [cdb2_clearbindings](#cdb2clearbindings) if you need to run a different statement.
+  1. We're passing addresses of variables.  The values are copied and sent to the database at [cdb2_run_statement](#cdb2_run_statement) time - it's important that these values don't go out of scope between when the binding is established and when the values are fetched.
+  1. The bindings remain after the call is made.  You can populate the addresses with new values and call [cdb2_run_statement](#cdb2_run_statement) again without redoing the bindings.  This is useful if you're running lots of identical statements with similar values in a loop.  Bindings should be cleared with [cdb2_clearbindings](#cdb2_clearbindings) if you need to run a different statement.
 
 It is good practice to have the names of bound parameters correspond to the columns they represent, but it is not required.
 
@@ -319,9 +319,9 @@ Parameters:
 |Name|Type|Description|Notes|
 |---|---|---|--|
 |*hndl*| input | cdb2 handle | A previously allocated CDB2 handle |
-|*name*| input | The name of replaceable param, max 31 characters | The value associated with this pointer should not change between bind and [cdb2_run_statement](#cdb2runstatement) |
+|*name*| input | The name of replaceable param, max 31 characters | The value associated with this pointer should not change between bind and [cdb2_run_statement](#cdb2_run_statement) |
 |*type*| input | The type of replaceable param | |
-|*valueaddr*| input | The value pointer of replaceable param | The value associated with this pointer should not change between bind and [cdb2_run_statement](#cdb2runstatement), and for numeric types must be signed. |
+|*valueaddr*| input | The value pointer of replaceable param | The value associated with this pointer should not change between bind and [cdb2_run_statement](#cdb2_run_statement), and for numeric types must be signed. |
 |*length*| input | The length of replaceable param | This should be the sizeof(valueaddr's original type), so 1 if it's a char, 4 for float... |
 
 ### cdb2_bind_index
@@ -351,9 +351,9 @@ Parameters:
 |Name|Type|Description|Notes|
 |---|---|---|--|
 |*hndl*| input | cdb2 handle | A previously allocated CDB2 handle |
-| index | input | The index of replaceable param | The value associated with this pointer (valueaddr  arg) should not change between bind and [cdb2_run_statement](#cdb2runstatement) |
+| index | input | The index of replaceable param | The value associated with this pointer (valueaddr  arg) should not change between bind and [cdb2_run_statement](#cdb2_run_statement) |
 |*type*| input | The type of replaceable param | |
-|*valueaddr*| input | The value pointer of replaceable param | The value associated with this pointer should not change between bind and [cdb2_run_statement](#cdb2runstatement), and for numeric types must be signed. |
+|*valueaddr*| input | The value pointer of replaceable param | The value associated with this pointer should not change between bind and [cdb2_run_statement](#cdb2_run_statement), and for numeric types must be signed. |
 |*length*| input | The length of replaceable param | This should be the sizeof(valueaddr's original type), so 1 if it's a char, 4 for float... |
 
 ### cdb2_get_effects
@@ -392,7 +392,7 @@ int cdb2_clearbindings(cdb2_hndl_tp *hndl);
 
 Description:
 
-This routine is to clear the bindings done to the handle.  See [cdb2_bind_param](#cdb2bindparam).
+This routine is to clear the bindings done to the handle.  See [cdb2_bind_param](#cdb2_bind_param).
 
 Parameters:
 
@@ -439,7 +439,7 @@ int cdb2_set_comdb2db_info(char *cfg_info);
 ```
 Description:
 
-This functions is like [cdb2_set_comdb2db_config](#cdb2setcomdb2dbconfig), but passes the contents of the configuration instead of its location. 
+This functions is like [cdb2_set_comdb2db_config](#cdb2_set_comdb2db_config), but passes the contents of the configuration instead of its location.
 This may be useful for programs that fetch database location information from other systems start databases dynamically.
 
 Parameters:
