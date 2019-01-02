@@ -1316,6 +1316,8 @@ create table no_ddl_t3(x INT);$$
 
 create index no_ddl_t1_i1 on no_ddl_t1(x);$$
 
+-- No support for user-defined views...
+-- This will cause DROP VIEW to have an rc of 1 instead of 23 (below)
 -- create view no_ddl_v1 as select 1;$$
 
 create temp table no_ddl_tmp1(x INT);$$
