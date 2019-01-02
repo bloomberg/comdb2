@@ -313,7 +313,7 @@ int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags,
 
     assert(seq == 0);
 
-    *pclnt = clnt = malloc(sizeof(struct sqlclntstate));
+    *pclnt = clnt = calloc(1, sizeof(struct sqlclntstate));
     if (!clnt) {
         return -1;
     }
