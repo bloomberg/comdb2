@@ -25,6 +25,7 @@
 #include <assert.h>
 #include <alloca.h>
 #include <poll.h>
+#include <time.h>
 
 #include <rtcpu.h>
 #include <list.h>
@@ -3315,14 +3316,13 @@ static int fdb_cursor_find_last_sql(BtCursor *pCur, Mem *key, int nfields,
 fdb_sqlstat_cache_t *fdb_sqlstats_get(fdb_t *fdb)
 {
     int rc = 0;
-    struct timespec ts = {0, 0};
+    struct timespec ts;
     struct sql_thread *thd;
     struct sqlclntstate *clnt;
-
-    ts.tv_nsec = bdb_attr_get(thedb->bdb_attr,
-                              BDB_ATTR_FDB_SQLSTATS_CACHE_LOCK_WAITTIME_NSEC);
-    if (!ts.tv_nsec)
-        ts.tv_nsec = 100;
+    int interval = bdb_attr_get(thedb->bdb_attr,
+                                BDB_ATTR_FDB_SQLSTATS_CACHE_LOCK_WAITTIME_NSEC);
+    if (!interval)
+        interval = 100;
 
     /* this should be an sql thread */
     thd = pthread_getspecific(query_info_key);
@@ -3342,6 +3342,12 @@ fdb_sqlstat_cache_t *fdb_sqlstats_get(fdb_t *fdb)
             rc = ETIMEDOUT;
         }
 #       else
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_nsec += interval;
+        if (ts.tv_nsec >= 1000000000) {
+            ++ts.tv_sec;
+            ts.tv_nsec -= 1000000000;
+        }
         rc = pthread_mutex_timedlock(&fdb->sqlstats_mtx, &ts);
 #       endif
         if (rc) {

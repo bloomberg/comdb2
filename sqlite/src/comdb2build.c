@@ -597,7 +597,6 @@ void comdb2CreateTableCSC2(
     }
 #endif
 
-    char table[MAXTABLELEN];
     int table_exists = 0;
 
     if (temp) {
@@ -2040,8 +2039,6 @@ void comdb2getAnalyzeCoverage(Parse* pParse, Token *nm, Token *lnm)
 void comdb2CreateRangePartition(Parse *pParse, Token *nm, Token *col,
         ExprList* limits)
 {
-    Vdbe *v  = sqlite3GetVdbe(pParse);
-
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
         if( sqlite3AuthCheck(pParse, SQLITE_CREATE_PART, 0, 0, 0) ){
