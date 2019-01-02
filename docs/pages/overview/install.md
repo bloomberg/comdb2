@@ -41,7 +41,7 @@ Just run ```make```.
 To make testing out Comdb2 easier, ```make install``` will use the value of ```$USER``` to set ownership of log/configuration directories.  For a personal/development install ```sudo USER=$(whoami) make install``` is a good option. For database deployments, create a dedicated user.
 
 Comdb2 installs by default rely on a small program called ```pmux``` to deal out port numbers to databases. Port assignments are dynamic.  This is very useful if you run large numbers of databases and don't want to manage port assignment yourself.  You'll need to start this program on system startup.  For systemd-based systems, we provide
-a pmux.service file. If you're going to be running databases as the current user, you're all set.  To user a dedicated user, change the ```User=``` line in ```tools/pmux/pmux.service``` To use it:
+a pmux.service file. If you're going to be running databases as the current user, you're all set.  To use a dedicated user, change the ```User=``` line in ```tools/pmux/pmux.service``` To use it:
 
 ```
 sudo cp tools/pmux/pmux.service /etc/systemd/system
