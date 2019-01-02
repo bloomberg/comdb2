@@ -16,7 +16,7 @@ if [ -z "$CLUSTER" ]; then
     $COMDB2AR_EXE c $DBDIR/${DBNAME}.lrl | $COMDB2AR_EXE x -x $COMDB2_EXE $(pwd) $(pwd)
 else
     host=`echo $CLUSTER | cut -d" " -f1`
-    ssh -o StrictHostKeyChecking=no $host "$COMDB2AR_EXE c $DBDIR/${DBNAME}.lrl" | $COMDB2AR_EXE x -x $COMDB2_EXE $(PWD) $(PWD)
+    ssh -o StrictHostKeyChecking=no $host "$COMDB2AR_EXE c $DBDIR/${DBNAME}.lrl" | $COMDB2AR_EXE x -x $COMDB2_EXE $(pwd) $(pwd)
 fi
 
 find . -name 'root.crt' | grep 'root.crt'
