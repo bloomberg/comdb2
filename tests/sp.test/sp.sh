@@ -1328,8 +1328,6 @@ create temp view no_ddl_tv1 as select 1;$$
 create procedure no_ddl_proc1 version 'sp_no_ddl_proc1' {};$$
 create procedure no_ddl_proc2 version 'sp_no_ddl_proc2' {};$$
 
-create time partition on no_ddl_t3 as no_ddl_t3_p1 period 'daily' retention 30 start '2018-04-30';$$
-
 put password 'password' for 'auth_test_user';
 
 create lua scalar function no_ddl_proc1;
@@ -1573,6 +1571,13 @@ local function main()
     db:emit("DROP LUA CONSUMER PASS "..rc38)
   end
 end}$$
+
+-- WARNING: Creating a time partition is fundamnetally an asynchronous operation that may
+--          cause subsequent 'database schema has changed' style errors in the subsequent
+--          stored procedure execution.  The sleep below is designed to work around this
+--          issue; however, the timing may need to be adjusted in the future.
+create time partition on no_ddl_t3 as no_ddl_t3_p1 period 'daily' retention 30 start '2018-04-30';$$
+select sleep(20);
 EOF
 
 cdb2sql $SP_OPTIONS - <<'EOF'
