@@ -3747,7 +3747,7 @@ static int db_column_name(Lua L)
     }
     struct sqlclntstate *parent_clnt = parent->clnt;
     int count = override_count(parent_clnt);
-    if (count && count <= index) {
+    if (count && count < index) {
         free(name);
         return luaL_error(L,
                           "bad arguments to 'column_name' for typed-statement");
