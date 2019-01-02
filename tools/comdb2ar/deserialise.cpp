@@ -292,6 +292,10 @@ static void process_lrl(
 
                 if (tok == "queue" || tok == "procedure" || tok == "consumer")
                     line.insert(0, "# ");
+
+                /* Also strip ssl config from the LRL for QA mode. */
+                if(strncasecmp(tok.c_str(), "ssl", 3) == 0)
+                    line.insert(0, "# ");
             }
         }
 

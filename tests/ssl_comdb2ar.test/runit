@@ -1,0 +1,24 @@
+#!/bin/sh
+
+#########################################################################
+# Verify that comdb2ar archives and restores SSL certificates correctly #
+#########################################################################
+
+bash -n "$0" | exit 1
+dbnm=$1
+
+set -e
+
+mkdir backup && cd backup
+
+# standalone
+if [ -z "$CLUSTER" ]; then
+    $COMDB2AR_EXE c $DBDIR/${DBNAME}.lrl | tar -x
+else
+    host=`echo $CLUSTER | cut -d" " -f1`
+    ssh -o StrictHostKeyChecking=no $host "$COMDB2AR_EXE c $DBDIR/${DBNAME}.lrl" | tar -x
+fi
+
+find . -name 'root.crt' | grep 'root.crt'
+find . -name 'server.crt' | grep 'server.crt'
+find . -name 'server.key' | grep 'server.key'
