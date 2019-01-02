@@ -257,7 +257,10 @@ int verify_partial_rev_constraint(struct dbtable *to_db, struct dbtable *newdb,
             rc = ix_find_by_key_tran(&ruleiq, rkey, rixlen, rixnum, NULL,
                                      &fndrrn, &genid, NULL, NULL, 0, trans);
             /* a foreign table key is relying on this */
-            if (rc == IX_FND || rc == IX_FNDMORE) return ERR_CONSTR;
+            if (rc == IX_FND || rc == IX_FNDMORE)
+                return ERR_CONSTR;
+            if (rc == RC_INTERNAL_RETRY)
+                return rc;
         }
     }
     return 0;

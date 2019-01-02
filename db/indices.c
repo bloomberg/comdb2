@@ -95,6 +95,9 @@ static int check_index(struct ireq *iq, void *trans, int ixnum,
         *opfailcode = OP_FAILED_UNIQ; /* really? */
         *retrc = IX_DUP;
         return 1;
+    } else if (rc == RC_INTERNAL_RETRY) {
+        *retrc = RC_INTERNAL_RETRY;
+        return 1;
     }
     return 0;
 }
@@ -236,7 +239,8 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
                                      &fndgenid, NULL, NULL, 0, trans);
             if (rc == IX_FND && fndgenid == vgenid) {
                 return ERR_VERIFY;
-            }
+            } else if (rc == RC_INTERNAL_RETRY)
+                return RC_INTERNAL_RETRY;
 
             /* The row is not in new btree, proceed with the add */
             vgenid = 0; // no need to verify again
@@ -684,7 +688,8 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
                                      NULL, 0, trans);
             if (rc == IX_FND && fndgenid == vgenid) {
                 return ERR_VERIFY;
-            }
+            } else if (rc == RC_INTERNAL_RETRY)
+                return RC_INTERNAL_RETRY;
 
             /* The row is not in new btree, proceed with the add */
             vgenid = 0; // no need to verify again
