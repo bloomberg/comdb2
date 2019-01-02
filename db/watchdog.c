@@ -394,9 +394,9 @@ void comdb2_die(int aborat)
         logmsg(LOGMSG_WARN, "pstack cmd too long for buffer\n");
     } else {
         int lrc = system(pstack_cmd);
-        if (lrc == -1) {
-            logmsg(LOGMSG_ERROR,
-                   "ERROR: can't execute system() to get a pstack\n");
+        if (lrc) {
+            logmsg(LOGMSG_ERROR, "ERROR: %s:%d system() returns rc = %d\n",
+                   __FILE__,__LINE__, lrc);
         }
     }
 

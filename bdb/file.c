@@ -1973,8 +1973,9 @@ static void panic_func(DB_ENV *dbenv, int errval)
     pid = getpid();
     snprintf(buf, sizeof(buf), "pstack %d", pid);
     int lrc = system(buf);
-    if (lrc == -1) {
-        logmsg(LOGMSG_ERROR, "ERROR: can't execute system() to get a pstack\n");
+    if (lrc) {
+        logmsg(LOGMSG_ERROR, "ERROR: %s:%d system() returns rc = %d\n",
+               __FILE__,__LINE__, lrc);
     }
 
     /* this code sometimes deadlocks.  install a timer - if it

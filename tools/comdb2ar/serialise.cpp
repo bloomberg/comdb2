@@ -770,7 +770,7 @@ void serialise_database(
         if(!(stat(incr_path.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode))){
             std::string cmd("mkdir -p " + incr_path);
             int rc = system(cmd.c_str());
-            if (rc == -1)
+            if (rc)
                 std::cerr << "system() returns rc = " << rc << std::endl;
         }
     }

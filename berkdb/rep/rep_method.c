@@ -293,7 +293,9 @@ __rep_start(dbenv, dbt, gen, flags)
 				snprintf(cmd, sizeof(cmd), "pstack %d", (int)pid);
 				int rc = system(cmd);
 				if (rc == -1)
-					logmsg(LOGMSG_ERROR, "system() returns rc = %d\n", rc);
+                    logmsg(LOGMSG_ERROR,
+                           "ERROR: %s:%d system() returns rc = %d\n",
+                           __FILE__,__LINE__, rc);
 				abort();
 			}
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);

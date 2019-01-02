@@ -623,7 +623,9 @@ __db_new_original(dbc, type, pagepp)
 				snprintf(cmd, sizeof(cmd), "gcore %d", getpid());
 				printf("%s\n", cmd);
 				int lrc = system(cmd);
-				if (lrc) {} //silence warnings
+                if (lrc) {
+                    printf("ERROR: %s:%d system() returns rc = %d\n",__FILE__,__LINE__, lrc);
+				} //silence warnings
 				gbl_core_on_sparse_file = 0;
 			}
 		}

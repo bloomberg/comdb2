@@ -141,7 +141,7 @@ bool compare_checksum(
         std::ostringstream ss;
         ss << "ls -l " << file.get_filepath() << " >&2";
         int rc = system(ss.str().c_str());
-        if (rc == -1)
+        if (rc)
             std::cerr << "system() returns rc = " << rc << std::endl;
         std::cerr << "stat says size " << new_st.st_size << std::endl;
     }

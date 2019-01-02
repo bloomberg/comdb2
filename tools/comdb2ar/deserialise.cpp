@@ -940,7 +940,7 @@ void deserialise_database(
 
         errno = 0;
         int rc = std::system(cmdss.str().c_str());
-        if(rc != 0) {
+        if(rc) {
             std::ostringstream ss;
             ss << "Full recovery command '" << cmdss.str() << "' failed rc "
                 << rc << " errno " << errno << std::endl;

@@ -81,8 +81,8 @@ void fixnet(struct nemesis *n)
             strcat(cmd, "\" < /dev/null >/dev/null 2>&1");
             if (n->flags & NEMESIS_VERBOSE) printf("%s\n", cmd);
             int lrc = system(cmd);
-            if (lrc == -1) {
-                printf("ERROR: %s:%d system() returns rc=-1\n",__FILE__,__LINE__);
+            if (lrc) {
+                printf("ERROR: %s:%d system() returns rc = %d\n",__FILE__,__LINE__, lrc);
             }
         }
     }
@@ -165,8 +165,8 @@ void breaknet(struct nemesis *n)
             strcat(cmd, "\" < /dev/null >/dev/null 2>&1");
             if (n->flags & NEMESIS_VERBOSE) printf("%s\n", cmd);
             int lrc = system(cmd);
-            if (lrc == -1) {
-                printf("ERROR: %s:%d system() returns rc=-1\n",__FILE__,__LINE__);
+            if (lrc) {
+                printf("ERROR: %s:%d system() returns rc = %d\n",__FILE__,__LINE__, lrc);
             }
         }
     }
@@ -219,8 +219,8 @@ void signaldb(struct nemesis *n, int signal, int all)
             if (n->flags & NEMESIS_VERBOSE) printf("%s", cmd);
             fflush(stdout);
             int lrc = system(cmd);
-            if (lrc == -1) {
-                printf("ERROR: %s:%d system() returns rc=-1\n",__FILE__,__LINE__);
+            if (lrc) {
+                printf("ERROR: %s:%d system() returns rc = %d\n",__FILE__,__LINE__, lrc);
             }
         }
     }
@@ -238,8 +238,8 @@ void breakclocks(struct nemesis *n, int maxskew)
                 n->cluster[x], maxskew);
         if (n->flags & NEMESIS_VERBOSE) printf("%s", cmd);
         int lrc = system(cmd);
-        if (lrc == -1) {
-            printf("ERROR: %s:%d system() returns rc=-1\n",__FILE__,__LINE__);
+        if (lrc) {
+            printf("ERROR: %s:%d system() returns rc = %d\n",__FILE__,__LINE__, lrc);
         }
     }
 }
@@ -255,8 +255,8 @@ void fixclocks(struct nemesis *n)
         if (n->flags & NEMESIS_VERBOSE) printf("%s", cmd);
         fflush(stdout);
         int lrc = system(cmd);
-        if (lrc == -1) {
-            printf("ERROR: %s:%d system() returns rc=-1\n",__FILE__,__LINE__);
+        if (lrc) {
+            printf("ERROR: %s:%d system() returns rc = %d\n",__FILE__,__LINE__, lrc);
         }
     }
 }
