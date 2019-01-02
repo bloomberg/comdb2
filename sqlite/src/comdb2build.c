@@ -97,17 +97,24 @@ static inline int isRemote(Parse *pParse, Token **t1, Token **t2)
                     "DDL commands operate on local schema only.");
 }
 
+enum {
+    ERROR_ON_TBL_FOUND = 0,
+    ERROR_ON_TBL_NOT_FOUND = 1,
+    ERROR_IGNORE = 2,
+};
+
+static int authenticateSC(const char *table, Parse *pParse);
 /* chkAndCopyTable expects the dst (OUT) buffer to be of MAXTABLELEN size. */
-static inline
-int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
-                    size_t name_len, int mustexist, int check_shard)
+static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
+                                  size_t name_len, int error_flag,
+                                  int check_shard, int *table_exists)
 {
     int rc = 0;
     char *table_name;
-    struct sql_thread *thd =pthread_getspecific(query_info_key);
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
 
     table_name = strndup(name, name_len);
-    if (table_name ==  NULL) {
+    if (table_name == NULL) {
         return setError(pParse, SQLITE_NOMEM, "System out of memory");
     }
 
@@ -159,16 +166,24 @@ int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
        strncpy(dst, table_name, MAXTABLELEN);
     }
 
+    // Check whether the user is allowed perform this schema change.
+    if (authenticateSC(dst, pParse))
+        goto cleanup;
+
     if(!timepart_is_timepart(dst, 1))
     {
         struct dbtable *db = get_dbtable_by_name(dst);
 
-        if (db == NULL && mustexist) {
+        if (table_exists) {
+            *table_exists = (db) ? 1 : 0;
+        }
+
+        if (db == NULL && (error_flag == ERROR_ON_TBL_NOT_FOUND)) {
             rc = setError(pParse, SQLITE_ERROR, "Table not found");
             goto cleanup;
         }
 
-        if (db != NULL && !mustexist) {
+        if (db != NULL && (error_flag == ERROR_ON_TBL_FOUND)) {
             rc = setError(pParse, SQLITE_ERROR, "Table already exists");
             goto cleanup;
         }
@@ -201,7 +216,7 @@ static inline
 int create_string_from_token(Vdbe* v, Parse* pParse, char** dst, Token* t)
 {
     *dst = (char*) malloc (t->n + 1);
-    
+
     if (*dst == NULL)
     {
         setError(pParse, SQLITE_NOMEM, "System out of memory");
@@ -242,9 +257,9 @@ static inline int copyNoSqlToken(
   return SQLITE_OK;
 }
 
-static inline int chkAndCopyTableTokens(Vdbe *v, Parse *pParse, char *dst,
-                                        Token *t1, Token *t2, int mustexist,
-                                        int check_shard)
+static inline int chkAndCopyTableTokens(Parse *pParse, char *dst, Token *t1,
+                                        Token *t2, int error_flag,
+                                        int check_shard, int *table_exists)
 {
     int rc;
 
@@ -258,7 +273,8 @@ static inline int chkAndCopyTableTokens(Vdbe *v, Parse *pParse, char *dst,
         return rc;
     }
 
-    if ((rc = chkAndCopyTable(pParse, dst, t1->z, t1->n, mustexist, check_shard))) {
+    if ((rc = chkAndCopyTable(pParse, dst, t1->z, t1->n, error_flag, check_shard,
+                              table_exists))) {
         return rc;
     }
 
@@ -582,6 +598,7 @@ void comdb2CreateTableCSC2(
 #endif
 
     char table[MAXTABLELEN];
+    int table_exists = 0;
 
     if (temp) {
         setError(pParse, SQLITE_MISUSE, "Can't create temporary csc2 table");
@@ -593,23 +610,15 @@ void comdb2CreateTableCSC2(
         return;
     }
 
-    if ((isRemote(pParse, &pName1, &pName2))) {
+    if (chkAndCopyTableTokens(pParse, sc->tablename, pName1, pName2,
+                              (noErr) ? ERROR_IGNORE : ERROR_ON_TBL_FOUND, 1,
+                              &table_exists))
+        goto out;
+
+    if (noErr && table_exists) {
+        logmsg(LOGMSG_DEBUG, "Table '%s' already exists.", sc->tablename);
         goto out;
     }
-
-    if (comdb2TokenToStr(pName1, table, sizeof(table))) {
-        setError(pParse, SQLITE_MISUSE, "Table name is too long");
-        goto out;
-    }
-
-    if (noErr && get_dbtable_by_name(table))
-        goto out;
-
-    if (chkAndCopyTableTokens(v, pParse, sc->tablename, pName1, pName2, 0, 1))
-        goto out;
-
-    if (authenticateSC(sc->tablename, pParse))
-        goto out;
 
     sc->addonly = 1;
     sc->nothrevent = 1;
@@ -634,7 +643,7 @@ void comdb2AlterTableCSC2(
   int dryrun
 )
 {
-    Vdbe *v  = sqlite3GetVdbe(pParse);
+    Vdbe *v = sqlite3GetVdbe(pParse);
 
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
@@ -651,10 +660,7 @@ void comdb2AlterTableCSC2(
         return;
     }
 
-    if (chkAndCopyTableTokens(v, pParse,sc->tablename, pName1, pName2, 1, 1))
-        goto out;
-
-    if (authenticateSC(sc->tablename, pParse))
+    if (chkAndCopyTableTokens(pParse, sc->tablename, pName1, pName2, 1, 1, 0))
         goto out;
 
     sc->alteronly = 1;
@@ -680,7 +686,7 @@ out:
 void comdb2DropTable(Parse *pParse, SrcList *pName)
 {
 
-    Vdbe *v  = sqlite3GetVdbe(pParse);
+    Vdbe *v = sqlite3GetVdbe(pParse);
 
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
@@ -691,24 +697,21 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
     }
 #endif
 
-    struct schema_change_type* sc = new_schemachange_type();
+    struct schema_change_type *sc = new_schemachange_type();
     if (sc == NULL) {
         setError(pParse, SQLITE_NOMEM, "System out of memory");
         return;
     }
 
-    if (chkAndCopyTable(pParse, sc->tablename, pName->a[0].zName,
-                        strlen(pName->a[0].zName), 1, 1))
-        goto out;
-
-    if (authenticateSC(sc->tablename, pParse))
+    Token table = {pName->a[0].zName, strlen(pName->a[0].zName)};
+    if (chkAndCopyTableTokens(pParse, sc->tablename, &table, 0, 1, 1, 0))
         goto out;
 
     sc->same_schema = 1;
     sc->drop_table = 1;
     sc->fastinit = 1;
     sc->nothrevent = 1;
-    
+
     if(get_csc2_file(sc->tablename, -1 , &sc->newcsc2, NULL )) {
         logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
                sc->tablename);
@@ -734,10 +737,7 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
         return;
     }
 
-    if (chkAndCopyTableTokens(v, pParse,sc->tablename, nm, lnm, 1, 1))
-        goto out;
-
-    if (authenticateSC(sc->tablename, pParse))
+    if (chkAndCopyTableTokens(pParse, sc->tablename, nm, lnm, 1, 1, 0))
         goto out;
 
     sc->nothrevent = 1;
@@ -754,6 +754,9 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
         sc->force_dta_rebuild = 1;
         sc->force_blob_rebuild = 1;
     }
+
+    if (!sc->force_rebuild)
+        sc->use_plan = 1;
 
     if (OPT_ON(opt, PAGE_ORDER))
         sc->scanmode = SCAN_PAGEORDER;
@@ -846,10 +849,7 @@ void comdb2Truncate(Parse* pParse, Token* nm, Token* lnm)
         return;
     }
 
-    if (chkAndCopyTableTokens(v, pParse,sc->tablename, nm, lnm, 1, 1))
-        goto out;
-
-    if (authenticateSC(sc->tablename, pParse))
+    if (chkAndCopyTableTokens(pParse, sc->tablename, nm, lnm, 1, 1, 0))
         goto out;
 
     sc->fastinit = 1;
@@ -894,10 +894,7 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
         return;
     }
 
-    if (chkAndCopyTableTokens(v,pParse,sc->tablename, nm, lnm, 1, 1))
-        goto out;
-
-    if (authenticateSC(sc->tablename, pParse))
+    if (chkAndCopyTableTokens(pParse, sc->tablename, nm, lnm, 1, 1, 0))
         goto out;
 
     sc->same_schema = 1;
@@ -921,9 +918,9 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
     free(indexname);
 
     sc->nothrevent = 1;
-    sc->live = 1;
     sc->rebuild_index = 1;
     sc->index_to_rebuild = index_num;
+    sc->use_plan = 1;
     sc->scanmode = gbl_default_sc_scanmode;
 
     if (OPT_ON(opt, PAGE_ORDER))
@@ -933,6 +930,16 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
         sc->live = 0;
     else
         sc->live = 1;
+
+    if (OPT_ON(opt, READ_ONLY))
+        sc->live = 0;
+    else
+        sc->live = 1;
+
+    sc->commit_sleep = gbl_commit_sleep;
+    sc->convert_sleep = gbl_convert_sleep;
+
+    sc->same_schema = 1;
 
     comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
                     (vdbeFuncArgFree)&free_schema_change_type);
@@ -1133,7 +1140,8 @@ void comdb2CreateTimePartition(Parse* pParse, Token* table,
         goto clean_arg;
     }
     memset(tp->tablename, '\0', MAXTABLELEN);
-    if (table && chkAndCopyTableTokens(v, pParse, tp->tablename, table, NULL, 1, 1))
+    if (table &&
+        chkAndCopyTableTokens(pParse, tp->tablename, table, NULL, 1, 1, 0))
         goto err;
 
     tp->partition_name = (char*) malloc(MAXTABLELEN);
@@ -1289,10 +1297,10 @@ void comdb2analyze(Parse* pParse, int opt, Token* nm, Token* lnm, int pc)
 
     int threads = GET_ANALYZE_THREAD(opt);
     int sum_threads = GET_ANALYZE_SUMTHREAD(opt);
-  
+
     if (comdb2AuthenticateUserOp(pParse))
-        return;       
-  
+        return;
+
     if (threads > 0)
         analyze_set_max_table_threads(NULL, &threads);
     if (sum_threads)
@@ -1306,7 +1314,7 @@ void comdb2analyze(Parse* pParse, int opt, Token* nm, Token* lnm, int pc)
         if (!tablename)
             goto err;
 
-        if (chkAndCopyTableTokens(v, pParse, tablename, nm, lnm, 1, 1)) {
+        if (chkAndCopyTableTokens(pParse, tablename, nm, lnm, 1, 1, 0)) {
             free(tablename);
             goto err;
         }
@@ -1354,10 +1362,10 @@ void comdb2analyzeCoverage(Parse* pParse, Token* nm, Token* lnm, int newscale)
     arg->type = BPFUNC_ANALYZE_COVERAGE;
     ancov_f->tablename = (char*) malloc(MAXTABLELEN);
     if (!ancov_f->tablename) goto err;
-        
-    if (chkAndCopyTableTokens(v, pParse, ancov_f->tablename, nm, lnm, 1, 1)) 
-        goto clean_arg;  
-    
+
+    if (chkAndCopyTableTokens(pParse, ancov_f->tablename, nm, lnm, 1, 1, 0))
+        goto clean_arg;
+
     ancov_f->newvalue = newscale;
     comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
                         (vdbeFuncArgFree) &free_bpfunc_arg);
@@ -1403,10 +1411,10 @@ void comdb2setSkipscan(Parse* pParse, Token* nm, Token* lnm, int enable)
     arg->type = BPFUNC_SET_SKIPSCAN;
     ancov_f->tablename = (char*) malloc(MAXTABLELEN);
     if (!ancov_f->tablename) goto err;
-        
-    if (chkAndCopyTableTokens(v, pParse, ancov_f->tablename, nm, lnm, 1, 1)) 
-        goto clean_arg;  
-    
+
+    if (chkAndCopyTableTokens(pParse, ancov_f->tablename, nm, lnm, 1, 1, 0))
+        goto clean_arg;
+
     ancov_f->newvalue = enable;
     comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
                         (vdbeFuncArgFree) &free_bpfunc_arg);
@@ -1538,10 +1546,10 @@ void comdb2analyzeThreshold(Parse* pParse, Token* nm, Token* lnm, int newthresho
 
     if (!anthr_f->tablename)
         goto err;
-        
-    if (chkAndCopyTableTokens(v, pParse, anthr_f->tablename, nm, lnm, 1, 1)) 
-        return;  
-    
+
+    if (chkAndCopyTableTokens(pParse, anthr_f->tablename, nm, lnm, 1, 1, 0))
+        return;
+
     anthr_f->newvalue = newthreshold;
     comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
                         (vdbeFuncArgFree) &free_bpfunc_arg);
@@ -1569,10 +1577,10 @@ void comdb2setAlias(Parse* pParse, Token* name, Token* url)
 #endif
 
     if (comdb2AuthenticateUserOp(pParse))
-        return;       
+        return;
 
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
-    
+
     if (arg)
     {
         bpfunc_arg__init(arg);
@@ -1582,9 +1590,8 @@ void comdb2setAlias(Parse* pParse, Token* name, Token* url)
         return;
     }
 
-
     BpfuncAlias *alias_f = (BpfuncAlias*) malloc(sizeof(BpfuncAlias));
-    
+
     if (alias_f)
     {
         bpfunc_alias__init(alias_f);
@@ -1598,7 +1605,7 @@ void comdb2setAlias(Parse* pParse, Token* name, Token* url)
     arg->type = BPFUNC_ALIAS;
     alias_f->name = (char*) malloc(MAXTABLELEN);
 
-    if (chkAndCopyTableTokens(v, pParse, alias_f->name, name, NULL, 0, 1))
+    if (chkAndCopyTableTokens(pParse, alias_f->name, name, NULL, 0, 1, 0))
         goto clean_arg;
 
     assert (*url->z == '\'' || *url->z == '\"');
@@ -1690,7 +1697,6 @@ void comdb2grant(Parse *pParse, int revoke, int permission, Token *nm,
         return;
     }
 
-
     BpfuncGrant *grant = (BpfuncGrant*) malloc(sizeof(BpfuncGrant));
 
     if (grant)
@@ -1725,7 +1731,8 @@ void comdb2grant(Parse *pParse, int revoke, int permission, Token *nm,
                     "Can't GRANT/REVOKE non-READ permissions on system table");
                 goto clean_arg;
             }
-        } else if (chkAndCopyTableTokens(v, pParse, grant->table, nm, lnm, 1, 1)) {
+        } else if (chkAndCopyTableTokens(pParse, grant->table, nm, lnm, 1, 1,
+                                         0)) {
             goto clean_arg;
         }
     }
@@ -2023,10 +2030,10 @@ void comdb2getAnalyzeCoverage(Parse* pParse, Token *nm, Token *lnm)
     OpFuncSetup stp = {1, colname, &coltype, 256};
     char *tablename = (char*) malloc (MAXTABLELEN);
 
-    if (chkAndCopyTableTokens(v, pParse, tablename, nm, lnm, 1, 1)) 
+    if (chkAndCopyTableTokens(pParse, tablename, nm, lnm, 1, 1, 0))
         free(tablename);
     else
-        comdb2prepareOpFunc(v, pParse, 0, tablename, &produceAnalyzeCoverage, 
+        comdb2prepareOpFunc(v, pParse, 0, tablename, &produceAnalyzeCoverage,
                             (vdbeFuncArgFree)  &free, &stp);
 }
 
@@ -2046,7 +2053,7 @@ void comdb2CreateRangePartition(Parse *pParse, Token *nm, Token *col,
 
     char tblname[MAXTABLELEN];
 
-    if(chkAndCopyTableTokens(v, pParse, tblname, nm, NULL, 1, 0))
+    if (chkAndCopyTableTokens(pParse, tblname, nm, NULL, 1, 0, 0))
         return;
 
     shard_range_create(pParse, tblname, col, limits);
@@ -2057,9 +2064,9 @@ static int produceAnalyzeThreshold(OpFunc *f)
 
     char  *tablename = (char*) f->arg;
     long long int rst;
-    int bdberr; 
+    int bdberr;
     int rc = bdb_get_analyzethreshold_table(NULL, tablename, &rst, &bdberr);
-    
+
     if (!rc)
     {
         opFuncWriteInteger(f, (int) rst );
@@ -2091,7 +2098,7 @@ void comdb2getAnalyzeThreshold(Parse* pParse, Token *nm, Token *lnm)
     OpFuncSetup stp = {1, colname, &coltype, 256};
     char *tablename = (char*) malloc (MAXTABLELEN);
 
-    if (chkAndCopyTableTokens(v, pParse, tablename, nm, lnm, 1, 1)) 
+    if (chkAndCopyTableTokens(pParse, tablename, nm, lnm, 1, 1, 0))
         free(tablename);
     else
         comdb2prepareOpFunc(v, pParse, 0, tablename, &produceAnalyzeThreshold,
@@ -2183,13 +2190,14 @@ void comdb2timepartRetention(Parse *pParse, Token *nm, Token *lnm, int retention
     arg->tp_ret = tp_retention;
     arg->type = BPFUNC_TIMEPART_RETENTION;
     tp_retention->timepartname = (char*) malloc(MAXTABLELEN);
-    
+
     if (!tp_retention->timepartname)
         goto err;
-        
-    if (chkAndCopyTableTokens(v, pParse, tp_retention->timepartname, nm, lnm, 1, 1)) 
+
+    if (chkAndCopyTableTokens(pParse, tp_retention->timepartname, nm, lnm, 1, 1,
+                              0))
         goto clean_arg;
-    
+
     tp_retention->newvalue = retention;
 
     comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
@@ -2243,12 +2251,8 @@ void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName,
         return;
     }
 
-    if (chkAndCopyTableTokens(v, pParse, sc->tablename, pSrcName, NULL, 1, 1))
+    if (chkAndCopyTableTokens(pParse, sc->tablename, pSrcName, NULL, 1, 1, 0))
         goto out;
-
-    if (authenticateSC(sc->tablename, pParse))
-        goto out;
-
 
     comdb2WriteTransaction(pParse);
     sc->nothrevent = 1;
@@ -2309,6 +2313,9 @@ enum {
     COLUMN_DELETED = 1 << 1,
 };
 
+typedef LISTC_T(struct comdb2_index_column) comdb2_index_column_lst;
+typedef LISTC_T(struct comdb2_key) comdb2_key_lst;
+
 struct comdb2_column {
     /* Name of the column */
     char *name;
@@ -2361,7 +2368,7 @@ struct comdb2_key {
     /* Key flags */
     uint8_t flags;
     /* List of columns */
-    LISTC_T(struct comdb2_index_column) idx_col_list;
+    comdb2_index_column_lst idx_col_list;
     /* Link */
     LINKC_T(struct comdb2_key) lnk;
 };
@@ -2384,9 +2391,9 @@ struct comdb2_constraint {
      */
 
     /* List of index columns in the child table. */
-    LISTC_T(struct comdb2_index_column) child_idx_col_list;
+    comdb2_index_column_lst child_idx_col_list;
     /* List of index columns in the parent table. */
-    LISTC_T(struct comdb2_index_column) parent_idx_col_list;
+    comdb2_index_column_lst parent_idx_col_list;
 
     /* A reference to the child key */
     struct comdb2_key *child;
@@ -2409,7 +2416,7 @@ struct comdb2_schema {
     /* Staging list of new/existing columns */
     LISTC_T(struct comdb2_column) column_list;
     /* Staging list of new/existing keys */
-    LISTC_T(struct comdb2_key) key_list;
+    comdb2_key_lst key_list;
     /* Staging list of new/existing constraints */
     LISTC_T(struct comdb2_constraint) constraint_list;
 
@@ -2431,10 +2438,12 @@ struct comdb2_ddl_context {
     LISTC_T(struct comdb2_schema) tag_list;
     /* Flags */
     int flags;
-    /* Memory allocator. */
+    /* Memory allocator */
     comdb2ma mem;
     /* Only used during ALTER TABLE */
     struct comdb2_column *alter_column;
+    /* Table name */
+    char tablename[MAXTABLELEN];
 };
 
 /* Type properties */
@@ -2535,7 +2544,7 @@ static struct comdb2_ddl_context *create_ddl_context(Parse *pParse)
     ctx->schema = comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_schema));
     if (ctx->schema == NULL) {
         logmsg(LOGMSG_ERROR, "%s:%d out of memory\n", __FILE__, __LINE__);
-        return NULL;
+        goto err;
     }
 
     /* Initialize various lists */
@@ -2549,6 +2558,9 @@ static struct comdb2_ddl_context *create_ddl_context(Parse *pParse)
     return ctx;
 
 err:
+    if (ctx->mem) {
+        comdb2ma_destroy(ctx->mem);
+    }
     free(ctx);
     return NULL;
 }
@@ -2565,7 +2577,6 @@ static void free_ddl_context(Parse *pParse)
         return;
 
     comdb2ma_destroy(ctx->mem);
-
     free(ctx);
 
     pParse->comdb2_ddl_ctx = 0;
@@ -3066,13 +3077,17 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
     struct dbtable *table;
     struct schema *key;
     int pos = 0;
+#ifndef NDEBUG
     int found = 0;
+#endif
 
     /* Child key columns and sort orders */
     for (int i = 0; i < pConstraint->lcltable->schema->nix; i++) {
         if (strcasecmp(pConstraint->lclkeyname,
                        pConstraint->lcltable->schema->ix[i]->csctag) == 0) {
+#ifndef NDEBUG
             found = 1;
+#endif
             key = pConstraint->lcltable->schema->ix[i];
 
             for (int j = 0; j < key->nmembers; j++) {
@@ -3086,7 +3101,9 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
             break;
         }
     }
-    assert(found);
+#ifndef NDEBUG
+    assert(found == 1);
+#endif
 
     /* Parent table name */
     SNPRINTF(buf, sizeof(buf), pos, "%s", pConstraint->table[parent_idx])
@@ -3098,11 +3115,15 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
     assert(table);
 
     /* Parent key columns and sort orders */
+#ifndef NDEBUG
     found = 0;
+#endif
     for (int i = 0; i < table->schema->nix; i++) {
         if (strcasecmp(pConstraint->keynm[parent_idx],
                        table->schema->ix[i]->csctag) == 0) {
+#ifndef NDEBUG
             found = 1;
+#endif
             key = table->schema->ix[i];
 
             for (int j = 0; j < key->nmembers; j++) {
@@ -3116,8 +3137,9 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
             break;
         }
     }
-    assert(found);
-    ASSERT_PARAMETER(found);
+#ifndef NDEBUG
+    assert(found == 1);
+#endif
 
 done:
     gen_constraint_name_int(buf, pos, out, out_size);
@@ -3205,15 +3227,52 @@ static struct comdb2_column *find_column_by_name(struct comdb2_ddl_context *ctx,
     return 0;
 }
 
+static struct comdb2_key *
+find_suitable_key(comdb2_index_column_lst *idx_col_list,
+                  comdb2_key_lst *key_list)
+{
+    struct comdb2_key *current_key;
+    struct comdb2_index_column *current_idx_column;
+    struct comdb2_index_column *idx_column;
+    int key_found = 0;
+
+    LISTC_FOR_EACH(key_list, current_key, lnk)
+    {
+        if ((current_key->flags & KEY_DELETED) ||
+            (listc_size(idx_col_list) > listc_size(&current_key->idx_col_list)))
+            continue;
+
+        /* Let's start by assuming that we have found the matching key. */
+        key_found = 1;
+
+        current_idx_column = LISTC_TOP(&current_key->idx_col_list);
+
+        LISTC_FOR_EACH(idx_col_list, idx_column, lnk)
+        {
+            if ((strcasecmp(idx_column->name, current_idx_column->name) != 0) ||
+                (idx_column->flags != current_idx_column->flags)) {
+                key_found = 0;
+                break;
+            }
+            /* Move to the next index column in the key. */
+            current_idx_column = LISTC_NEXT(current_idx_column, lnk);
+        }
+
+        if (key_found == 1) {
+            break;
+        }
+    }
+
+    return (key_found == 1) ? current_key : 0;
+}
+
 static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
 {
     char *csc2;
     struct comdb2_column *column;
     struct comdb2_index_column *child_idx_column;
-    struct comdb2_index_column *key_idx_column;
     struct comdb2_key *key;
     struct comdb2_constraint *constraint;
-    int key_found = 0;
 
     int ncolumns = 0;
     LISTC_FOR_EACH(&ctx->schema->column_list, column, lnk)
@@ -3272,7 +3331,8 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
     }
 
     /*
-      Find the first *appropriate* non-dropped child key for this constraint.
+      Choose/assign an appropriate (non-dropped) child key for each constraint
+      that does not have one.
     */
     LISTC_FOR_EACH(&ctx->schema->constraint_list, constraint, lnk)
     {
@@ -3287,39 +3347,13 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
         /* The parent table and key must have already been set by now. */
         assert(constraint->parent_table && constraint->parent_key);
 
-        LISTC_FOR_EACH(&ctx->schema->key_list, key, lnk)
-        {
-            if (listc_size(&constraint->child_idx_col_list) >
-                listc_size(&key->idx_col_list))
-                continue;
-
-            /* Lets start by assuming that we have found the matching key. */
-            key_found = 1;
-
-            key_idx_column = LISTC_TOP(&key->idx_col_list);
-
-            LISTC_FOR_EACH(&constraint->child_idx_col_list, child_idx_column,
-                           lnk)
-            {
-                if ((strcasecmp(child_idx_column->name, key_idx_column->name) !=
-                     0) ||
-                    (child_idx_column->flags != key_idx_column->flags)) {
-                    key_found = 0;
-                    break;
-                }
-                /* Move to the next index column in the key. */
-                key_idx_column = LISTC_NEXT(key_idx_column, lnk);
-            }
-
-            if (key_found == 1) {
-                constraint->child = key;
-            }
-        }
+        constraint->child = find_suitable_key(&constraint->child_idx_col_list,
+                                              &ctx->schema->key_list);
 
         /*
           Implicitly add a new DUP key if a matching local index was not found.
         */
-        if (key_found == 0) {
+        if (constraint->child == 0) {
             ExprList *pList = 0;
             int i = 0;
 
@@ -3814,17 +3848,15 @@ void comdb2AlterTableStart(
 
     assert(pParse->comdb2_ddl_ctx == 0);
 
-    if (isRemote(pParse, &pName1, &pName2)) {
-        return;
-    }
-
     ctx = create_ddl_context(pParse);
-    if (ctx == 0) {
-        setError(pParse, SQLITE_NOMEM, "System out of memory");
-        return;
-    }
+    if (ctx == 0)
+        goto oom;
 
-    ctx->schema->name = comdb2_strndup(ctx->mem, pName1->z, pName1->n);
+    if ((chkAndCopyTableTokens(pParse, ctx->tablename, pName1, pName2, 1, 0,
+                               0)))
+        goto cleanup;
+
+    ctx->schema->name = comdb2_strdup(ctx->mem, ctx->tablename);
     if (ctx->schema->name == 0)
         goto oom;
 
@@ -3869,12 +3901,7 @@ void comdb2AlterTableEnd(Parse *pParse)
     if (sc == 0)
         goto oom;
 
-    if ((chkAndCopyTable(pParse, sc->tablename, ctx->schema->name,
-                         strlen(ctx->schema->name), 1, 0)))
-        goto cleanup;
-
-    if (authenticateSC(sc->tablename, pParse))
-        goto cleanup;
+    memcpy(sc->tablename, ctx->tablename, MAXTABLELEN);
 
     sc->alteronly = 1;
     sc->nothrevent = 1;
@@ -3928,6 +3955,8 @@ void comdb2CreateTableStart(
     }
 #endif
 
+    int table_exists = 0;
+
     if (isTemp || isView || isVirtual || pParse->db->init.busy ||
         pParse->db->isExpert || IN_SPECIAL_PARSE) {
         pParse->comdb2_ddl_ctx = 0;
@@ -3936,31 +3965,33 @@ void comdb2CreateTableStart(
         return;
     }
 
-    if (isRemote(pParse, &pName1, &pName2)) {
-        return;
-    }
-
     struct comdb2_ddl_context *ctx = create_ddl_context(pParse);
     if (ctx == 0)
         goto oom;
 
-    ctx->schema->name = comdb2_strndup(ctx->mem, pName1->z, pName1->n);
+    if (chkAndCopyTableTokens(pParse, ctx->tablename, pName1, pName2,
+                              (noErr) ? ERROR_IGNORE : ERROR_ON_TBL_FOUND, 1,
+                              &table_exists))
+        goto cleanup;
+
+    ctx->schema->name = comdb2_strdup(ctx->mem, ctx->tablename);
     if (ctx->schema->name == 0)
         goto oom;
-    sqlite3Dequote(ctx->schema->name);
 
-    if (noErr && get_dbtable_by_name(ctx->schema->name)) {
+    if (noErr && table_exists) {
         ctx->flags |= DDL_NOOP;
-        logmsg(LOGMSG_DEBUG, "Table '%s' already exists.", ctx->schema->name);
+        logmsg(LOGMSG_DEBUG, "Table '%s' already exists.", ctx->tablename);
         /* We'll not free the context here, as the flag's needed later. */
+        goto out;
     }
 
     return;
 
 oom:
     setError(pParse, SQLITE_NOMEM, "System out of memory");
-
+cleanup:
     free_ddl_context(pParse);
+out:
     return;
 }
 
@@ -3998,12 +4029,8 @@ void comdb2CreateTableEnd(
     if (sc == 0)
         goto oom;
 
-    if ((chkAndCopyTable(pParse, sc->tablename, ctx->schema->name,
-                         strlen(ctx->schema->name), 0, 0)))
-        goto cleanup;
+    memcpy(sc->tablename, ctx->tablename, MAXTABLELEN);
 
-    if (authenticateSC(sc->tablename, pParse))
-        goto cleanup;
     sc->addonly = 1;
     sc->nothrevent = 1;
     sc->live = 1;
@@ -4023,7 +4050,6 @@ void comdb2CreateTableEnd(
 
 oom:
     setError(pParse, SQLITE_NOMEM, "System out of memory");
-
 cleanup:
     free_schema_change_type(sc);
     free_ddl_context(pParse);
@@ -4768,21 +4794,14 @@ void comdb2CreateIndex(
     assert(pTblName->nSrc == 1);
     assert(pName1->n != 0);
     assert(pList != 0);
-
-    if (isRemote(pParse, &pName1, &pName2)) {
-        return;
-    }
+    assert(idxType == SQLITE_IDXTYPE_APPDEF);
 
     v = sqlite3GetVdbe(pParse);
 
     sc = new_schemachange_type();
-    if (sc == 0) {
-        setError(pParse, SQLITE_NOMEM, "System out of memory");
-        return;
-    }
-    assert(idxType == SQLITE_IDXTYPE_APPDEF);
+    if (sc == 0)
+        goto oom;
 
-    /* Its a CREATE INDEX command. */
     ctx = create_ddl_context(pParse);
     if (ctx == 0)
         goto oom;
@@ -4790,6 +4809,14 @@ void comdb2CreateIndex(
     ctx->schema->name = comdb2_strdup(ctx->mem, pTblName->a[0].zName);
     if (ctx->schema->name == 0)
         goto oom;
+
+    if (isRemote(pParse, &pName1, &pName2)) {
+        return;
+    }
+
+    if ((chkAndCopyTable(pParse, sc->tablename, ctx->schema->name,
+                         strlen(ctx->schema->name), 1, 1, 0)))
+        goto cleanup;
 
     /*
        Add all the columns, indexes and constraints in the table to the
@@ -4819,13 +4846,6 @@ void comdb2CreateIndex(
     comdb2AddIndexInt(pParse, keyname, pList, onError, pPIWhere, zStart,
                       zEnd, sortOrder, idxType, withOpts);
     if (pParse->rc)
-        goto cleanup;
-
-    if ((chkAndCopyTable(pParse, sc->tablename, ctx->schema->name,
-                         strlen(ctx->schema->name), 1, 1)))
-        goto cleanup;
-
-    if (authenticateSC(sc->tablename, pParse))
         goto cleanup;
 
     sc->alteronly = 1;
@@ -4889,7 +4909,7 @@ static int check_constraint_action(Parse *pParse, int *flags)
 }
 
 /* search matching key in parent table using saved client context:
- * return 1 if found 0 otherwise
+ * return 1 if found and no error, 0 otherwise
  */
 static int
 find_parent_key_in_client_context(Parse *pParse, struct comdb2_ddl_context *ctx,
@@ -4898,9 +4918,7 @@ find_parent_key_in_client_context(Parse *pParse, struct comdb2_ddl_context *ctx,
     void *comdb2_get_ddl_context(char *name);
     struct comdb2_ddl_context *clnt_ctx = NULL;
     struct comdb2_key *key;
-    struct comdb2_index_column *idx_col;
-    struct comdb2_index_column *key_col;
-    int key_found = 0;
+
     clnt_ctx = comdb2_get_ddl_context(constraint->parent_table);
     if (clnt_ctx == NULL &&
         strcasecmp(ctx->schema->name, constraint->parent_table) == 0)
@@ -4908,41 +4926,24 @@ find_parent_key_in_client_context(Parse *pParse, struct comdb2_ddl_context *ctx,
     if (clnt_ctx == NULL)
         return 0;
 
-    LISTC_FOR_EACH(&clnt_ctx->schema->key_list, key, lnk)
-    {
-        if (key->flags & KEY_DELETED)
-            continue;
-        if (listc_size(&key->idx_col_list) <
-            listc_size(&constraint->parent_idx_col_list))
-            continue;
-        /* Lets start by assuming that we have found the matching key. */
-        key_found = 1;
-        key_col = key->idx_col_list.top;
-        LISTC_FOR_EACH(&constraint->parent_idx_col_list, idx_col, lnk)
-        {
-            if ((strcasecmp(idx_col->name, key_col->name) != 0) ||
-                idx_col->flags != key_col->flags) {
-                key_found = 0;
-                break;
-            }
-            key_col = key_col->lnk.next;
-        }
-        if (key_found == 1) {
-            constraint->parent_key = comdb2_strdup(ctx->mem, key->name);
-            if (constraint->parent_key == 0)
-                setError(pParse, SQLITE_NOMEM, "System out of memory");
-            /* Matching key found */
-            break;
-        }
-    }
-    if (key_found == 0) {
+    key = find_suitable_key(&constraint->parent_idx_col_list,
+                            &clnt_ctx->schema->key_list);
+
+    if (key == 0) {
         pParse->rc = SQLITE_ERROR;
         sqlite3ErrorMsg(pParse,
                         "A matching key for the FOREIGN KEY was not "
                         "found in the parent (referenced) table '%s'.",
                         constraint->parent_table);
+        return 0;
+    } else {
+        constraint->parent_key = comdb2_strdup(ctx->mem, key->name);
+        if (constraint->parent_key == 0) {
+            setError(pParse, SQLITE_NOMEM, "System out of memory");
+            return 0;
+        }
     }
-    return key_found;
+    return 1;
 }
 
 void comdb2CreateForeignKey(
@@ -5020,7 +5021,7 @@ void comdb2CreateForeignKey(
     } else {
         /*
           Though some RDBMSs allow this, the number of referenced columns in
-          FK must not be zero. PG, for instance picks the primary key from th
+          FK must not be zero. PG, for instance picks the primary key from the
           referenced table.
         */
         assert(pToCol->nExpr > 0);
@@ -5097,7 +5098,7 @@ void comdb2CreateForeignKey(
             listc_size(&constraint->parent_idx_col_list))
             continue;
 
-        /* Lets start by assuming that we have found the matching key. */
+        /* Let's start by assuming that we have found the matching key. */
         key_found = 1;
         int j = 0;
         LISTC_FOR_EACH(&constraint->parent_idx_col_list, idx_column, lnk)
@@ -5186,10 +5187,8 @@ cleanup:
 
 void comdb2DeferForeignKey(Parse *pParse, int isDeferred)
 {
-    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (use_sqlite_impl(pParse)) {
-        assert(ctx == 0);
-        ASSERT_PARAMETER(ctx);
+        assert(pParse->comdb2_ddl_ctx == 0);
         sqlite3DeferForeignKey(pParse, isDeferred);
         return;
     }
@@ -5428,10 +5427,8 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
     v = sqlite3GetVdbe(pParse);
 
     sc = new_schemachange_type();
-    if (sc == 0) {
-        setError(pParse, SQLITE_NOMEM, "System out of memory");
-        return;
-    }
+    if (sc == 0)
+        goto oom;
 
     ctx = create_ddl_context(pParse);
     if (ctx == 0)
@@ -5451,12 +5448,16 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
             goto oom;
         sqlite3Dequote(tbl_name);
 
-        table = get_dbtable_by_name(tbl_name);
-        if (table == 0) {
-            pParse->rc = SQLITE_ERROR;
-            sqlite3ErrorMsg(pParse, "Table '%s' not found.", tbl_name);
+        if ((chkAndCopyTable(pParse, sc->tablename, tbl_name, strlen(tbl_name),
+                             1, 1, 0)))
             goto cleanup;
-        }
+
+        if (authenticateSC(sc->tablename, pParse))
+            goto cleanup;
+
+        table = get_dbtable_by_name(tbl_name);
+        /* Already checked in chkAndCopyTable(). */
+        assert(table);
 
         /* Check whether an index exist with the specified name. */
         for (int i = 0; i < table->schema->nix; i++) {
@@ -5506,6 +5507,13 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
                             idx_name);
             goto cleanup;
         }
+
+        if ((chkAndCopyTable(pParse, sc->tablename, table->tablename,
+                             strlen(table->tablename), 1, 1, 0)))
+            goto cleanup;
+
+        if (authenticateSC(sc->tablename, pParse))
+            goto cleanup;
     }
 
     ctx->schema->name = table->tablename;
@@ -5521,13 +5529,6 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
     /* Mark the index for removal. */
     comdb2DropIndexInt(pParse, idx_name);
     if (pParse->rc)
-        goto cleanup;
-
-    if ((chkAndCopyTable(pParse, sc->tablename, ctx->schema->name,
-                         strlen(ctx->schema->name), 1, 1)))
-        goto cleanup;
-
-    if (authenticateSC(sc->tablename, pParse))
         goto cleanup;
 
     sc->alteronly = 1;

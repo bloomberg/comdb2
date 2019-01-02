@@ -32,12 +32,12 @@ static int should_skip_constraint_for_index(struct dbtable *db, int ixnum, int n
 }
 
 int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
-                             void *old_dta, unsigned long long ins_keys,
+                             const void *old_dta, unsigned long long ins_keys,
                              blob_buffer_t *blobs, int maxblobs,
                              const char *from, int rebuild, int convert)
 {
     int rc;
-    void *od_dta;
+    const void *od_dta;
     void *new_dta = NULL;
     struct convert_failure reason;
     struct ireq ruleiq;
@@ -400,6 +400,7 @@ int mark_schemachange_over_tran(const char *table, tran_type *tran)
     }
 
     bdb_delete_sc_seed(thedb->bdb_env, tran, table, &bdberr);
+    bdb_delete_sc_start_lsn(tran, table, &bdberr);
 
     if (bdb_set_in_schema_change(tran, table, NULL /*schema_change_data*/,
                                  0 /*schema_change_data_len*/, &bdberr) ||
@@ -477,8 +478,8 @@ int prepare_table_version_one(tran_type *tran, struct dbtable *db,
 }
 
 struct dbtable *create_db_from_schema(struct dbenv *thedb,
-                                 struct schema_change_type *s, int dbnum,
-                                 int foundix, int schema_version)
+                                      struct schema_change_type *s, int dbnum,
+                                      int foundix, int schema_version)
 {
     struct dbtable *newdb =
         newdb_from_schema(thedb, s->tablename, NULL, dbnum, foundix, 0);
@@ -586,12 +587,21 @@ void verify_schema_change_constraint(struct ireq *iq, struct dbtable *currdb,
                                      void *trans, void *od_dta,
                                      unsigned long long ins_keys)
 {
+    if (!currdb)
+        return;
+
+    Pthread_rwlock_rdlock(&currdb->sc_live_lk);
+
     /* if there's no schema change in progress, nothing to verify */
-    if (!currdb || !currdb->sc_to) return;
+    if (!currdb->sc_to)
+        goto done;
+
+    if (currdb->sc_live_logical)
+        goto done;
 
     /* if (is_schema_change_doomed()) */
     if (gbl_sc_abort || currdb->sc_abort || iq->sc_should_abort)
-        return;
+        goto done;
 
     int rebuild = currdb->sc_to->plan && currdb->sc_to->plan->dta_plan;
     if (verify_record_constraint(iq, currdb->sc_to, trans, od_dta, ins_keys,
@@ -599,6 +609,9 @@ void verify_schema_change_constraint(struct ireq *iq, struct dbtable *currdb,
         currdb->sc_abort = 1;
         MEMORY_SYNC;
     }
+
+done:
+    Pthread_rwlock_unlock(&currdb->sc_live_lk);
 }
 
 /* After loading new schema file, should call this routine to see if ondisk

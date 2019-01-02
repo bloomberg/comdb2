@@ -97,6 +97,8 @@ select name, csc2 from sqlite_master where name = "d"
 select name, csc2 from sqlite_master where name = "e"
 select name, csc2 from sqlite_master where name = "m"
 
+drop table m;
+
 select "add self-referenced bad 1"
 create table s (i int unique, j int, constraint sfk foreign key (k) references s(i)) $$
 select "add self-referenced bad 2"

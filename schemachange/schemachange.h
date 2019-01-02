@@ -181,11 +181,22 @@ struct schema_change_type {
                            whole schema change (I will change this in the
                            future)*/
 
+    int sc_thd_failed;
+    int schema_change;
+
     /*********************** temporary fields for table upgrade
      * ************************/
     unsigned long long start_genid;
 
     int already_finalized;
+
+    int logical_livesc;
+    int *sc_convert_done;
+    unsigned int hitLastCnt;
+    int got_tablelock;
+
+    pthread_mutex_t livesc_mtx; /* mutex for logical redo */
+    void *curLsn;
 
     /*********************** temporary fields for sbuf packing
      * ************************/
@@ -321,6 +332,9 @@ int live_sc_post_add(struct ireq *iq, void *trans, unsigned long long genid,
 int live_sc_delayed_key_adds(struct ireq *iq, void *trans,
                              unsigned long long newgenid, const void *od_dta,
                              unsigned long long ins_keys, int od_len);
+
+int live_sc_disable_inplace_blobs(struct ireq *iq);
+
 int add_schema_change_tables();
 
 extern unsigned long long get_genid(bdb_state_type *, unsigned int dtastripe);

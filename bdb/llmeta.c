@@ -161,7 +161,8 @@ typedef enum {
     LLMETA_USER_PASSWORD_HASH = 45,
     LLMETA_FVER_FILE_TYPE_QDB = 46, /* file version for a dbqueue */
     LLMETA_TABLE_NUM_SC_DONE = 47,
-    LLMETA_GLOBAL_STRIPE_INFO = 48
+    LLMETA_GLOBAL_STRIPE_INFO = 48,
+    LLMETA_SC_START_LSN = 49
 } llmetakey_t;
 
 struct llmeta_file_type_key {
@@ -6046,6 +6047,26 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
     case LLMETA_SC_SEEDS:
         logmsg(LOGMSG_USER, "LLMETA_SC_SEEDS\n");
         break;
+    case LLMETA_SC_START_LSN: {
+        struct llmeta_schema_change_type akey;
+        struct llmeta_db_lsn_data_type adata;
+
+        if (keylen < sizeof(akey) || datalen < sizeof(adata)) {
+            logmsg(LOGMSG_USER, "%s:%d: wrong LLMETA_SC_START_LSN entry\n",
+                   __FILE__, __LINE__);
+            *bdberr = BDBERR_MISC;
+            return -1;
+        }
+
+        p_buf_key =
+            llmeta_schema_change_type_get(&akey, p_buf_key, p_buf_end_key);
+
+        p_buf_data =
+            llmeta_db_lsn_data_type_get(&adata, p_buf_data, p_buf_end_data);
+
+        logmsg(LOGMSG_USER, "LLMETA_SC_START_LSN: table=\"%s\" [%u:%u]\n",
+               akey.dbname, adata.lsn.file, adata.lsn.offset);
+    } break;
     case LLMETA_TABLE_USER_READ:
     case LLMETA_TABLE_USER_WRITE: {
         struct llmeta_tbl_access akey;
@@ -9181,5 +9202,202 @@ int bdb_rename_table_metadata(bdb_state_type *bdb_state, tran_type *tran,
     if (rc)
         return rc;
 
+    return rc;
+}
+
+int bdb_get_sc_start_lsn(tran_type *tran, const char *table, void *plsn,
+                         int *bdberr)
+{
+    int rc;
+    char key[LLMETA_IXLEN] = {0};
+    struct llmeta_schema_change_type schema_change;
+    int fndlen;
+    uint8_t *p_buf = (uint8_t *)key, *p_buf_end = (p_buf + LLMETA_IXLEN);
+    DB_LSN *lsn = (DB_LSN *)plsn;
+
+    DB_LSN tmplsn;
+    struct llmeta_db_lsn_data_type lsn_data;
+
+    *bdberr = BDBERR_NOERROR;
+
+    schema_change.file_type = LLMETA_SC_START_LSN;
+    /*copy the table name and check its length so that we have a clean key*/
+    strncpy(schema_change.dbname, table, sizeof(schema_change.dbname));
+    schema_change.dbname_len = strlen(schema_change.dbname) + 1;
+
+    if (!(llmeta_schema_change_type_put(&(schema_change), p_buf, p_buf_end))) {
+        logmsg(LOGMSG_ERROR, "%s: llmeta_schema_change_type_put returns NULL\n",
+               __func__);
+        logmsg(LOGMSG_ERROR, "%s: check the length of table: %s\n", __func__,
+               table);
+        *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+
+    rc = bdb_lite_exact_fetch_tran(llmeta_bdb_state, tran, key, &tmplsn,
+                                   sizeof(tmplsn), &fndlen, bdberr);
+    if (rc == 0) {
+        p_buf = (uint8_t *)&tmplsn;
+        p_buf_end = p_buf + sizeof(*lsn);
+        if (!(llmeta_db_lsn_data_type_get(&lsn_data, p_buf, p_buf_end))) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: llmeta_db_lsn_data_type_get returns NULL\n", __func__);
+            *bdberr = BDBERR_BADARGS;
+            return -1;
+        }
+        lsn->file = lsn_data.lsn.file;
+        lsn->offset = lsn_data.lsn.offset;
+    }
+    return rc;
+}
+
+int bdb_set_sc_start_lsn(tran_type *tran, const char *table, void *plsn,
+                         int *bdberr)
+{
+    int rc;
+    int started_our_own_transaction = 0;
+    char key[LLMETA_IXLEN] = {0};
+    struct llmeta_schema_change_type schema_change;
+    uint8_t *p_buf = (uint8_t *)key, *p_buf_end = (p_buf + LLMETA_IXLEN);
+
+    DB_LSN *lsn = (DB_LSN *)plsn;
+    struct llmeta_db_lsn_data_type lsn_data_type;
+    DB_LSN oldlsn;
+    DB_LSN tmplsn;
+    uint8_t *p_data_buf, *p_data_buf_end;
+
+    *bdberr = BDBERR_NOERROR;
+
+    if (tran == NULL) {
+        started_our_own_transaction = 1;
+        tran = bdb_tran_begin(llmeta_bdb_state->parent, NULL, bdberr);
+        if (tran == NULL) {
+            logmsg(LOGMSG_ERROR, "%s: bdb_tran_begin returns NULL\n", __func__);
+            return -1;
+        }
+    }
+
+    schema_change.file_type = LLMETA_SC_START_LSN;
+    /*copy the table name and check its length so that we have a clean key*/
+    strncpy(schema_change.dbname, table, sizeof(schema_change.dbname));
+    schema_change.dbname_len = strlen(schema_change.dbname) + 1;
+
+    if (!(llmeta_schema_change_type_put(&(schema_change), p_buf, p_buf_end))) {
+        logmsg(LOGMSG_ERROR, "%s: llmeta_schema_change_type_put returns NULL\n",
+               __func__);
+        logmsg(LOGMSG_ERROR, "%s: check the length of table: %s\n", __func__,
+               table);
+        *bdberr = BDBERR_BADARGS;
+        rc = -1;
+        goto done;
+    }
+
+    lsn_data_type.lsn.file = lsn->file;
+    lsn_data_type.lsn.offset = lsn->offset;
+
+    p_data_buf = (uint8_t *)&tmplsn;
+    p_data_buf_end = p_data_buf + sizeof(tmplsn);
+    if (!(llmeta_db_lsn_data_type_put(&lsn_data_type, p_data_buf,
+                                      p_data_buf_end))) {
+        logmsg(LOGMSG_ERROR, "%s: llmeta_db_lsn_data_type_put returns NULL\n",
+               __func__);
+        *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+
+    rc = bdb_get_sc_start_lsn(tran, table, &oldlsn, bdberr);
+    if (rc) { // not found, just add -- should refactor
+        if (*bdberr == BDBERR_FETCH_DTA) {
+            rc = bdb_lite_add(llmeta_bdb_state, tran, &tmplsn, sizeof(tmplsn),
+                              key, bdberr);
+            if (rc || *bdberr) {
+                logmsg(LOGMSG_ERROR, "%s:%d failed with rc %d bdberr %d\n",
+                       __func__, __LINE__, rc, *bdberr);
+            }
+        }
+        goto done;
+    }
+
+    rc = bdb_lite_exact_del(llmeta_bdb_state, tran, key, bdberr);
+    if (rc && *bdberr != BDBERR_DEL_DTA) {
+        logmsg(LOGMSG_ERROR, "bdb_lite_exact_del rc %d bdberr %d\n", rc,
+               *bdberr);
+        goto done;
+    }
+
+    rc = bdb_lite_add(llmeta_bdb_state, tran, &tmplsn, sizeof(tmplsn), key,
+                      bdberr);
+    if (rc || *bdberr) {
+        logmsg(LOGMSG_ERROR, "%s:%d failed with rc %d bdberr %d\n", __func__,
+               __LINE__, rc, *bdberr);
+    }
+
+done:
+    if (started_our_own_transaction) {
+        if (rc == 0) {
+            rc = bdb_tran_commit(llmeta_bdb_state->parent, tran, bdberr);
+            if (rc || *bdberr) {
+                logmsg(LOGMSG_ERROR, "%s:%d failed with rc %d bdberr %d\n",
+                       __func__, __LINE__, rc, *bdberr);
+            }
+        } else {
+            int arc;
+            arc = bdb_tran_abort(llmeta_bdb_state->parent, tran, bdberr);
+            if (arc)
+                rc = arc;
+        }
+    }
+    return rc;
+}
+
+int bdb_delete_sc_start_lsn(tran_type *tran, const char *table, int *bdberr)
+{
+    int rc;
+    int started_our_own_transaction = 0;
+    char key[LLMETA_IXLEN] = {0};
+    struct llmeta_schema_change_type schema_change;
+    uint8_t *p_buf = (uint8_t *)key, *p_buf_end = (p_buf + LLMETA_IXLEN);
+
+    *bdberr = BDBERR_NOERROR;
+
+    if (tran == NULL) {
+        started_our_own_transaction = 1;
+        tran = bdb_tran_begin(llmeta_bdb_state->parent, NULL, bdberr);
+        if (tran == NULL)
+            return -1;
+    }
+
+    schema_change.file_type = LLMETA_SC_START_LSN;
+    /*copy the table name and check its length so that we have a clean key*/
+    strncpy(schema_change.dbname, table, sizeof(schema_change.dbname));
+    schema_change.dbname_len = strlen(schema_change.dbname) + 1;
+
+    if (!(llmeta_schema_change_type_put(&(schema_change), p_buf, p_buf_end))) {
+        logmsg(LOGMSG_ERROR, "%s: llmeta_schema_change_type_put returns NULL\n",
+               __func__);
+        logmsg(LOGMSG_ERROR, "%s: check the length of table: %s\n", __func__,
+               table);
+        *bdberr = BDBERR_BADARGS;
+        rc = -1;
+        goto done;
+    }
+
+    rc = bdb_lite_exact_del(llmeta_bdb_state, tran, key, bdberr);
+    if (*bdberr == BDBERR_DEL_DTA) {
+        rc = 0;
+        *bdberr = BDBERR_NOERROR;
+    }
+
+done:
+    if (started_our_own_transaction) {
+        if (rc == 0)
+            rc = bdb_tran_commit(llmeta_bdb_state->parent, tran, bdberr);
+        else {
+            int arc;
+            arc = bdb_tran_abort(llmeta_bdb_state->parent, tran, bdberr);
+            if (arc)
+                rc = arc;
+        }
+    }
     return rc;
 }

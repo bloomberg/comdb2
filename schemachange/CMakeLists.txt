@@ -41,8 +41,12 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/net
   ${PROJECT_BINARY_DIR}/protobuf
   ${PROJECT_SOURCE_DIR}/sqlite/src
+  ${PROJECT_BINARY_DIR}/berkdb
+  ${PROJECT_BINARY_DIR}/bdb
+  ${PROJECT_SOURCE_DIR}/build/berkdb
+  ${PROJECT_SOURCE_DIR}/build/bdb
   ${PROJECT_SOURCE_DIR}/berkdb
   ${OPENSSL_INCLUDE_DIR}
   ${PROTOBUF_C_INCLUDE_DIR}
 )
-add_dependencies(schemachange mem protobuf)
+add_dependencies(schemachange mem protobuf bdb)

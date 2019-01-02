@@ -63,7 +63,7 @@ static struct option long_options[] = {
     {"repopnewlrl", required_argument, NULL, 0},
     {"recovertotime", required_argument, NULL, 0},
     {"recovertolsn", required_argument, NULL, 0},
-    {"recoverylsn", required_argument, NULL, 0},
+    {"recovery_lsn", required_argument, NULL, 0},
     {"pidfile", required_argument, NULL, 0},
     {"help", no_argument, NULL, 'h'},
     {"create", no_argument, &gbl_create_mode, 1},
@@ -340,7 +340,8 @@ static char *legacy_options[] = {"disallow write from beta if prod",
                                  "osql_check_replicant_numops off",
                                  "reorder_socksql_no_deadlock off",
                                  "disable_tpsc_tblvers",
-                                 "on disable_etc_services_lookup"};
+                                 "on disable_etc_services_lookup",
+                                 "legacy_schema on"};
 int gbl_legacy_defaults = 0;
 int pre_read_legacy_defaults(void *_, void *__)
 {
@@ -1035,6 +1036,9 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
     } else if (tokcmp(tok, ltok, "use_llmeta") == 0) {
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_LLMETA, 1);
         logmsg(LOGMSG_INFO, "using low level meta table\n");
+    } else if (tokcmp(tok, ltok, "enable_logical_logging") == 0) {
+        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
+        logmsg(LOGMSG_INFO, "Enabled logical logging\n");
     } else if (tokcmp(tok, ltok, "enable_snapshot_isolation") == 0) {
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         gbl_snapisol = 1;
@@ -1057,6 +1061,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         gbl_new_snapisol_logging = 1;
         logmsg(LOGMSG_INFO, "Enabled new snapshot\n");
     } else if (tokcmp(tok, ltok, "enable_new_snapshot_logging") == 0) {
+        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         gbl_new_snapisol_logging = 1;
         logmsg(LOGMSG_INFO, "Enabled new snapshot logging\n");
     } else if (tokcmp(tok, ltok, "disable_new_snapshot") == 0) {

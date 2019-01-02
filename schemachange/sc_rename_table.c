@@ -78,7 +78,7 @@ int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
     }
 
     /* update all associated metadata */
-    rc = bdb_rename_table_metadata(db->handle, tran, newname, 
+    rc = bdb_rename_table_metadata(db->handle, tran, newname,
                                    db->schema_version, &bdberr);
     if (rc) {
         sc_errf(s, "Failed to rename metadata structure for %s\n",

@@ -3326,7 +3326,7 @@ static int bdb_calc_min_truncate(bdb_state_type *bdb_state)
     int32_t timestamp;
     Pthread_rwlock_wrlock(&min_trunc_lk);
     lowfilenum = get_lowfilenum_sanclist(bdb_state);
-    rc = bdb_state->dbenv->min_truncate_lsn_timestamp(
+    rc = bdb_state->dbenv->mintruncate_lsn_timestamp(
         bdb_state->dbenv, lowfilenum, &lsn, &timestamp);
     if (rc == 0) {
         gbl_min_truncate_file = lsn.file;
@@ -3338,6 +3338,34 @@ static int bdb_calc_min_truncate(bdb_state_type *bdb_state)
         gbl_min_truncate_timestamp = 0;
     }
     Pthread_rwlock_unlock(&min_trunc_lk);
+    return rc;
+}
+
+int bdb_dump_mintruncate_list(bdb_state_type *bdb_state)
+{
+    return bdb_state->dbenv->dump_mintruncate_list(bdb_state->dbenv);
+}
+
+int bdb_clear_mintruncate_list(bdb_state_type *bdb_state)
+{
+    return bdb_state->dbenv->clear_mintruncate_list(bdb_state->dbenv);
+}
+
+int bdb_build_mintruncate_list(bdb_state_type *bdb_state)
+{
+    return bdb_state->dbenv->build_mintruncate_list(bdb_state->dbenv);
+}
+
+int bdb_print_mintruncate_min(bdb_state_type *bdb_state)
+{
+    int32_t timestamp;
+    int rc;
+    DB_LSN lsn;
+    rc = bdb_state->dbenv->mintruncate_lsn_timestamp(bdb_state->dbenv, 0, &lsn,
+                                                     &timestamp);
+    if (rc == 0) {
+        logmsg(LOGMSG_USER, "[%d:%d] %u\n", lsn.file, lsn.offset, timestamp);
+    }
     return rc;
 }
 
@@ -3421,6 +3449,14 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
             snprintf(nodestr, sizeof(nodestr), "%s:%d ", hosts[i], filenum);
             strcat(filenums_str, nodestr);
         }
+    }
+
+    extern int gbl_logical_live_sc;
+    if (gbl_logical_live_sc) {
+        unsigned int sc_get_logical_redo_lwm();
+        unsigned int sc_logical_lwm = sc_get_logical_redo_lwm();
+        if (sc_logical_lwm && sc_logical_lwm < lowfilenum)
+            lowfilenum = sc_logical_lwm;
     }
 
     /* debug: print filenums from other nodes */

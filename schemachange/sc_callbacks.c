@@ -188,7 +188,7 @@ int live_sc_post_del_record(struct ireq *iq, void *trans,
        " behind cursor - DELETE\n", genid, sc_genids[stripe]);
      */
 
-    int rc = del_new_record(iq, trans, genid, del_keys, old_dta, oldblobs);
+    int rc = del_new_record(iq, trans, genid, del_keys, old_dta, oldblobs, 1);
     iq->usedb = usedb;
     if (rc != 0 && rc != RC_INTERNAL_RETRY) {
         /* Leave this trace in.  We want to know if live schema change
@@ -276,6 +276,10 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
         return 0;
     }
 
+    if (usedb->sc_live_logical) {
+        return 0;
+    }
+
 #ifdef DEBUG_SC
     printf("live_sc_post_update_delayed_key_adds_int: looking at genid %llx\n",
            newgenid);
@@ -346,7 +350,7 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
 
     rc = upd_new_record_add2indices(iq, trans, newgenid, new_dta,
                                     usedb->sc_to->lrl, ins_keys, 1,
-                                    add_idx_blobs);
+                                    add_idx_blobs, 0);
     iq->usedb = usedb;
     if (rc != 0 && rc != RC_INTERNAL_RETRY) {
         logmsg(LOGMSG_ERROR,
@@ -503,7 +507,7 @@ int live_sc_post_upd_record(struct ireq *iq, void *trans,
 
     rc = upd_new_record(iq, trans, oldgenid, old_dta, newgenid, new_dta,
                         ins_keys, del_keys, od_len, updCols, blobs, deferredAdd,
-                        oldblobs, newblobs);
+                        oldblobs, newblobs, 1);
     iq->usedb = usedb;
     if (rc != 0 && rc != RC_INTERNAL_RETRY) {
         logmsg(LOGMSG_ERROR, "%s: rcode %d for update genid 0x%llx to 0x%llx\n",
@@ -546,7 +550,7 @@ void sc_del_unused_files_tran(struct dbtable *db, tran_type *tran)
 {
     int bdberr;
 
-    if (db == NULL)
+    if (db == NULL || db->handle == NULL)
         return;
 
     Pthread_mutex_lock(&gbl_sc_lock);
@@ -794,7 +798,8 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         }
     }
 
-    if (type == add || type == drop || type == alter || type == fastinit) {
+    if (type == add || type == drop || type == alter || type == fastinit ||
+        type == bulkimport) {
         if (create_sqlmaster_records(tran)) {
             logmsg(LOGMSG_FATAL,
                    "create_sqlmaster_records: error creating sqlite "

@@ -557,6 +557,8 @@ struct sqlclntstate {
     struct spversion_t spversion;
     int n_lua_stmt;
     int max_lua_stmt;
+    pthread_mutex_t *temp_table_mtx; /* for "sp.c" temp table subsystem */
+    int own_temp_table_mtx; /* this client should free temp_table_mtx */
 
     unsigned int bdb_osql_trak; /* 32 debug bits interpreted by bdb for your
                                    "set debug bdb"*/
@@ -740,6 +742,7 @@ struct Btree {
     int is_temporary;
 
     /* hash table of temp tables, keyed on root page number and its mutex */
+    pthread_mutex_t *temp_table_mtx; /* for "sqlglue.c" temp table subsystem */
     Hash temp_tables;
     int next_temp_root_pg;
 
@@ -937,7 +940,6 @@ struct sql_thread {
     int rootpage_nentries;
     unsigned char had_temptables;
     unsigned char had_tablescans;
-    pthread_mutex_t *temp_table_mtx; /* for "sqlglue.c" temp table subsystem */
 
     /* current shard; cut 0 we support only one partition */
     int crtshard;
@@ -1023,6 +1025,8 @@ void clearClientSideRow(struct sqlclntstate *clnt);
 void comdb2_set_tmptbl_lk(pthread_mutex_t *);
 void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
                       int rootpg);
+void sqlengine_setup_temp_table_mtx(struct sqlclntstate *);
+void sqlengine_cleanup_temp_table_mtx(struct sqlclntstate *);
 int sqlengine_prepare_engine(struct sqlthdstate *, struct sqlclntstate *,
                              int recreate);
 int sqlserver2sqlclient_error(int rc);

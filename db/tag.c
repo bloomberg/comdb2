@@ -6316,7 +6316,8 @@ void commit_schemas(const char *tblname)
                                 "commit_schemas: out of memory on malloc\n");
                         exit(1);
                     }
-                    sprintf(newname, "%s%d", gbl_ondisk_ver, db->schema_version);
+                    sprintf(newname, "%s%d", gbl_ondisk_ver,
+                            db->schema_version);
                     ver_schema = clone_schema(sc);
                     free(ver_schema->tag);
                     ver_schema->tag = newname;
@@ -7083,8 +7084,6 @@ int reload_after_bulkimport(struct dbtable *db, tran_type *tran)
     }
     db->tableversion = table_version_select(db, NULL);
     update_dbstore(db);
-    create_sqlmaster_records(tran);
-    create_sqlite_master();
     return 0;
 }
 
