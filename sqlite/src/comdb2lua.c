@@ -152,6 +152,7 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, Token *proc,
         if( sqlite3AuthCheck(parse, dynamic ? SQLITE_CREATE_LUA_CONSUMER :
                              SQLITE_CREATE_LUA_TRIGGER, 0, 0, 0) ){
             sqlite3ErrorMsg(parse, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            parse->rc = SQLITE_AUTH;
             return;
         }
     }
@@ -236,6 +237,7 @@ void comdb2DropTrigger(Parse *parse, int dynamic, Token *proc)
         if( sqlite3AuthCheck(parse, dynamic ? SQLITE_DROP_LUA_CONSUMER :
                              SQLITE_DROP_LUA_TRIGGER, 0, 0, 0) ){
             sqlite3ErrorMsg(parse, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            parse->rc = SQLITE_AUTH;
             return;
         }
     }
@@ -294,12 +296,13 @@ void comdb2DropTrigger(Parse *parse, int dynamic, Token *proc)
 void comdb2CreateScalarFunc(Parse *parse, Token *proc)
 {
 #ifndef SQLITE_OMIT_AUTHORIZATION
-    {                                                                      
+    {
         if( sqlite3AuthCheck(parse, SQLITE_CREATE_LUA_FUNCTION, 0, 0, 0) ){
-            sqlite3ErrorMsg(parse, COMDB2_NOT_AUTHORIZED_ERRMSG);          
-            return;                                                        
-        }                                                                  
-    }                                                                      
+            sqlite3ErrorMsg(parse, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            parse->rc = SQLITE_AUTH;
+            return;
+        }
+    }
 #endif
 
     comdb2CreateFunc(parse, proc, s, scalar);
@@ -308,12 +311,13 @@ void comdb2CreateScalarFunc(Parse *parse, Token *proc)
 void comdb2CreateAggFunc(Parse *parse, Token *proc)
 {
 #ifndef SQLITE_OMIT_AUTHORIZATION
-    {                                                                      
+    {
         if( sqlite3AuthCheck(parse, SQLITE_CREATE_LUA_FUNCTION, 0, 0, 0) ){
-            sqlite3ErrorMsg(parse, COMDB2_NOT_AUTHORIZED_ERRMSG);          
-            return;                                                        
-        }                                                                  
-    }                                                                      
+            sqlite3ErrorMsg(parse, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            parse->rc = SQLITE_AUTH;
+            return;
+        }
+    }
 #endif
 
     comdb2CreateFunc(parse, proc, a, aggregate);
@@ -344,12 +348,13 @@ void comdb2CreateAggFunc(Parse *parse, Token *proc)
 void comdb2DropScalarFunc(Parse *parse, Token *proc)
 {
 #ifndef SQLITE_OMIT_AUTHORIZATION
-    {                                                                      
+    {
         if( sqlite3AuthCheck(parse, SQLITE_DROP_LUA_FUNCTION, 0, 0, 0) ){
-            sqlite3ErrorMsg(parse, COMDB2_NOT_AUTHORIZED_ERRMSG);          
-            return;                                                        
-        }                                                                  
-    }                                                                      
+            sqlite3ErrorMsg(parse, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            parse->rc = SQLITE_AUTH;
+            return;
+        }
+    }
 #endif
 
     comdb2DropFunc(parse, proc, s, scalar);
@@ -358,12 +363,13 @@ void comdb2DropScalarFunc(Parse *parse, Token *proc)
 void comdb2DropAggFunc(Parse *parse, Token *proc)
 {
 #ifndef SQLITE_OMIT_AUTHORIZATION
-    {                                                                      
+    {
         if( sqlite3AuthCheck(parse, SQLITE_DROP_LUA_FUNCTION, 0, 0, 0) ){
-            sqlite3ErrorMsg(parse, COMDB2_NOT_AUTHORIZED_ERRMSG);          
-            return;                                                        
-        }                                                                  
-    }                                                                      
+            sqlite3ErrorMsg(parse, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            parse->rc = SQLITE_AUTH;
+            return;
+        }
+    }
 #endif
 
     comdb2DropFunc(parse, proc, a, aggregate);
