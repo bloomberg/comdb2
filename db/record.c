@@ -407,6 +407,10 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                 retrc = ERR_VERIFY;
                 ERR;
             }
+            if (bdberr == RC_INTERNAL_RETRY) {
+                rc = retrc = RC_INTERNAL_RETRY;
+                ERR;
+            }
             /* The row is not in new btree, proceed with the add */
             vgenid = 0; // no need to verify again
         }
@@ -1851,8 +1855,12 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
         if (!verify_retry) {
             int bdberr;
             rc = ix_check_update_genid(iq, trans, newgenid, &bdberr);
-            if (rc && bdberr == IX_FND) {
+            if (rc == 1) {
                 retrc = ERR_VERIFY;
+                goto err;
+            }
+            if (bdberr == RC_INTERNAL_RETRY) {
+                rc = retrc = RC_INTERNAL_RETRY;
                 goto err;
             }
         }

@@ -629,8 +629,21 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
         rc = verify_record_constraint(
             iq, iq->usedb, trans, new_dta, ins_keys, blobs, MAXBLOBS,
             use_new_tag ? ".NEW..ONDISK" : ".ONDISK", rebuild, !use_new_tag);
-        if (rc)
-            return ERR_CONSTR;
+        if (rc) {
+            int bdberr = 0;
+            struct dbtable *to = iq->usedb;
+            struct dbtable *from = to->sc_from;
+            assert(from != NULL);
+            iq->usedb = from;
+            rc = ix_check_update_genid(iq, trans, newgenid, &bdberr);
+            iq->usedb = to;
+            if (rc == 1 && bdberr == IX_FND)
+                return ERR_CONSTR;
+            if (bdberr == RC_INTERNAL_RETRY)
+                return RC_INTERNAL_RETRY;
+            logmsg(LOGMSG_DEBUG, "%s: ignores constraints for genid %llx\n",
+                   __func__, newgenid);
+        }
     }
 
     unsigned long long vgenid = 0ULL;
