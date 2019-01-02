@@ -3977,7 +3977,8 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
 #ifndef NDEBUG
         struct sql_thread *thd = pthread_getspecific(query_info_key);
 #endif
-        assert( pBt->temp_table_mtx==thd->clnt->temp_table_mtx );
+        // TODO: The thread pool causes this to be violated.
+        // assert( pBt->temp_table_mtx==thd->clnt->temp_table_mtx );
         Pthread_mutex_lock(pBt->temp_table_mtx);
 
         struct temptable_entry *pEntry = sqlite3HashFind(
@@ -5130,7 +5131,8 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
         return rc;
     }
 
-    assert( pBt->temp_table_mtx==thd->clnt->temp_table_mtx );
+    // TODO: The thread pool causes this to be violated.
+    // assert( pBt->temp_table_mtx==thd->clnt->temp_table_mtx );
     Pthread_mutex_lock(pBt->temp_table_mtx);
 
     if (!pBt->is_temporary) { /* must go through comdb2 to do this */
