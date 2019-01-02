@@ -64,6 +64,7 @@ static const char revid[] = "$Id: db_meta.c,v 11.77 2003/09/09 16:42:06 ubell Ex
 
 #include <unistd.h>
 #include <stdlib.h>
+#include <logmsg.h>
 
 
 /* definition in malloc.h clashes with dlmalloc */
@@ -624,8 +625,8 @@ __db_new_original(dbc, type, pagepp)
 				printf("%s\n", cmd);
 				int lrc = system(cmd);
                 if (lrc) {
-                    printf("ERROR: %s:%d system() returns rc = %d\n",__FILE__,__LINE__, lrc);
-				} //silence warnings
+                    logmsg(LOGMSG_ERROR, "%s:%d system() returns rc = %d\n",__FILE__,__LINE__, lrc);
+				}
 				gbl_core_on_sparse_file = 0;
 			}
 		}
