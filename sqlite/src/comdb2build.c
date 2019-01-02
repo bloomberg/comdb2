@@ -38,8 +38,8 @@ extern int gbl_ddl_cascade_drop;
 
 static inline int setError(Parse *pParse, int rc, const char *msg)
 {
-    pParse->rc = rc;
     sqlite3ErrorMsg(pParse, "%s", msg);
+    pParse->rc = rc;
     return rc;
 }
 
