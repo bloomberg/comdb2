@@ -3271,8 +3271,9 @@ extern unsigned long long gbl_addupd_blob_cnt;
 void bind_verify_indexes_query(sqlite3_stmt *stmt, void *sm);
 int verify_indexes_column_value(sqlite3_stmt *stmt, void *sm);
 
-void verify_schema_change_constraint(struct ireq *iq, struct dbtable *, void *trans,
-                                     void *od_dta, unsigned long long ins_keys);
+void verify_schema_change_constraint(struct ireq *iq, void *trans,
+                                     unsigned long long newgenid, void *od_dta,
+                                     unsigned long long ins_keys);
 
 enum dirtype { DIR_DB = 1, DIR_TMP = 2, DIR_TRANSACTION = 3 };
 

@@ -95,6 +95,15 @@ static int check_index(struct ireq *iq, void *trans, int ixnum,
         *opfailcode = OP_FAILED_UNIQ; /* really? */
         *retrc = IX_DUP;
         return 1;
+    } else if (rc == RC_INTERNAL_RETRY) {
+        *retrc = RC_INTERNAL_RETRY;
+        return 1;
+    } else if (rc != IX_FNDMORE && rc != IX_NOTFND && rc != IX_PASTEOF &&
+               rc != IX_EMPTY) {
+        *retrc = ERR_INTERNAL;
+        logmsg(LOGMSG_ERROR, "%s:%d got unexpected error rc = %d\n", __func__,
+               __LINE__, rc);
+        return 1;
     }
     return 0;
 }
@@ -236,6 +245,13 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
                                      &fndgenid, NULL, NULL, 0, trans);
             if (rc == IX_FND && fndgenid == vgenid) {
                 return ERR_VERIFY;
+            } else if (rc == RC_INTERNAL_RETRY) {
+                return RC_INTERNAL_RETRY;
+            } else if (rc != IX_FNDMORE && rc != IX_NOTFND &&
+                       rc != IX_PASTEOF && rc != IX_EMPTY) {
+                logmsg(LOGMSG_ERROR, "%s:%d got unexpected error rc = %d\n",
+                       __func__, __LINE__, rc);
+                return ERR_INTERNAL;
             }
 
             /* The row is not in new btree, proceed with the add */
@@ -340,6 +356,12 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
     char *od_olddta_tail = NULL;
     int od_oldtail_len;
 
+    /* Delay key add if schema change has constraints so we can * verify them.
+     * FIXME: What if the table does not have index to begin with?
+     * (Redo based live sc works for this case)
+     */
+    int live_sc_delay = live_sc_delay_key_add(iq);
+
     int rc = 0;
     for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
         if (flags == RECFLAGS_UPGRADE_RECORD &&
@@ -439,7 +461,7 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
 
         int key_unique = (iq->usedb->ix_dupes[ixnum] == 0);
         int same_key = (memcmp(newkey, oldkey, keysize) == 0);
-        if (gbl_key_updates &&
+        if (!live_sc_delay && gbl_key_updates &&
             ((key_unique && !ix_isnullk(iq->usedb, newkey, ixnum)) ||
              same_genid_with_upd) &&
             same_key &&
@@ -464,12 +486,6 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
                 *ixfailnum = ixnum;
                 return rc;
             }
-
-            /* need to do this here as we're not adding the new key so we
-               dont have the luxury of letting the constraint engine catch it
-               later */
-            verify_schema_change_constraint(iq, iq->usedb, trans, od_dta,
-                                            ins_keys);
         } else /* delete / add the key */
         {
             /*
@@ -504,6 +520,8 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
             } else {
                 do_inline = 1;
             }
+            if (live_sc_delay)
+                do_inline = 0;
             *deferredAdd |= (!do_inline);
 
             if (!gbl_partial_indexes || !iq->usedb->ix_partial ||
@@ -622,12 +640,27 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
     if (!iq->usedb)
         return ERR_BADREQ;
 
-    int rebuild = iq->usedb->plan && iq->usedb->plan->dta_plan;
-    rc = verify_record_constraint(
-        iq, iq->usedb, trans, new_dta, ins_keys, blobs, MAXBLOBS,
-        use_new_tag ? ".NEW..ONDISK" : ".ONDISK", rebuild, 1);
-    if (rc)
-        return ERR_CONSTR;
+    if (verify) {
+        int rebuild = iq->usedb->plan && iq->usedb->plan->dta_plan;
+        rc = verify_record_constraint(
+            iq, iq->usedb, trans, new_dta, ins_keys, blobs, MAXBLOBS,
+            use_new_tag ? ".NEW..ONDISK" : ".ONDISK", rebuild, !use_new_tag);
+        if (rc) {
+            int bdberr = 0;
+            struct dbtable *to = iq->usedb;
+            struct dbtable *from = to->sc_from;
+            assert(from != NULL);
+            iq->usedb = from;
+            rc = ix_check_update_genid(iq, trans, newgenid, &bdberr);
+            iq->usedb = to;
+            if (rc == 1 && bdberr == IX_FND)
+                return ERR_CONSTR;
+            if (bdberr == RC_INTERNAL_RETRY)
+                return RC_INTERNAL_RETRY;
+            logmsg(LOGMSG_DEBUG, "%s: ignores constraints for genid %llx\n",
+                   __func__, newgenid);
+        }
+    }
 
     unsigned long long vgenid = 0ULL;
     if (verify)
@@ -684,6 +717,13 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
                                      NULL, 0, trans);
             if (rc == IX_FND && fndgenid == vgenid) {
                 return ERR_VERIFY;
+            } else if (rc == RC_INTERNAL_RETRY) {
+                return RC_INTERNAL_RETRY;
+            } else if (rc != IX_FNDMORE && rc != IX_NOTFND &&
+                       rc != IX_PASTEOF && rc != IX_EMPTY) {
+                logmsg(LOGMSG_ERROR, "%s:%d got unexpected error rc = %d\n",
+                       __func__, __LINE__, rc);
+                return ERR_INTERNAL;
             }
 
             /* The row is not in new btree, proceed with the add */

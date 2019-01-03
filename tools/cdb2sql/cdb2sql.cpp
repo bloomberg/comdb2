@@ -719,7 +719,9 @@ static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
             fputc('\'', stdout);
         } else {
             if (printmode & DISP_BINARY) {
-                write(1, val, cdb2_column_size(cdb2h, col));
+                int rc = write(1, val, cdb2_column_size(cdb2h, col));
+                if (rc == -1)
+                    std::cerr << "write() returns rc = " << rc << std::endl;
                 exit(0);
             } else {
                 fprintf(f, "x'");
@@ -1381,7 +1383,7 @@ static char *get_multi_line_statement(char *line)
     char *nl = (char *) ""; // new-line
     int n = 0;     // len of nl
 
-    char tmp_prompt[sizeof(main_prompt)];
+    char tmp_prompt[sizeof(main_prompt) + 4];
     int spaces = strlen(dbname) - 3, dots = 3;
     if (spaces < 0) {
         dots += spaces;

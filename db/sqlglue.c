@@ -11397,12 +11397,16 @@ void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
     int rc;
     char *err = NULL;
 
+#ifndef NDEBUG
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     assert(thd);
+#endif
 
     Btree *pSrcBt = &src->aDb[1].pBt[0];
 
+#ifndef NDEBUG
     assert( pSrcBt->temp_table_mtx==thd->clnt->temp_table_mtx );
+#endif
     Pthread_mutex_lock(pSrcBt->temp_table_mtx);
 
     // aDb[0]: sqlite_master
@@ -11460,7 +11464,9 @@ void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
     if( pDestBt ){
         int maxRootPg = -1;
         HashElem *pElem;
+#ifndef NDEBUG
         assert( pDestBt->temp_table_mtx==thd->clnt->temp_table_mtx );
+#endif
         Pthread_mutex_lock(pDestBt->temp_table_mtx);
         for(pElem=sqliteHashFirst(&pDestBt->temp_tables); pElem;
                 pElem=sqliteHashNext(pElem)){
