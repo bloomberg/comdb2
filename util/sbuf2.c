@@ -767,7 +767,7 @@ SBUF2 *SBUF2_FUNC(sbuf2open)(int fd, int flags)
 
 #if SBUF2_UNGETC
     sb->ungetc_buf_len = 0;
-    memset(sb->ungetc_buf, EOF, SBUF2UNGETC_BUF_MAX);
+    memset(sb->ungetc_buf, EOF, sizeof(sb->ungetc_buf));
 #endif
     /* default writer/reader */
     sb->write = swrite;
