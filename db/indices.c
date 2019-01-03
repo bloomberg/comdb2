@@ -95,6 +95,15 @@ static int check_index(struct ireq *iq, void *trans, int ixnum,
         *opfailcode = OP_FAILED_UNIQ; /* really? */
         *retrc = IX_DUP;
         return 1;
+    } else if (rc == RC_INTERNAL_RETRY) {
+        *retrc = RC_INTERNAL_RETRY;
+        return 1;
+    } else if (rc != IX_FNDMORE && rc != IX_NOTFND && rc != IX_PASTEOF &&
+               rc != IX_EMPTY) {
+        *retrc = ERR_INTERNAL;
+        logmsg(LOGMSG_ERROR, "%s:%d got unexpected error rc = %d\n", __func__,
+               __LINE__, rc);
+        return 1;
     }
     return 0;
 }
@@ -236,6 +245,13 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
                                      &fndgenid, NULL, NULL, 0, trans);
             if (rc == IX_FND && fndgenid == vgenid) {
                 return ERR_VERIFY;
+            } else if (rc == RC_INTERNAL_RETRY) {
+                return RC_INTERNAL_RETRY;
+            } else if (rc != IX_FNDMORE && rc != IX_NOTFND &&
+                       rc != IX_PASTEOF && rc != IX_EMPTY) {
+                logmsg(LOGMSG_ERROR, "%s:%d got unexpected error rc = %d\n",
+                       __func__, __LINE__, rc);
+                return ERR_INTERNAL;
             }
 
             /* The row is not in new btree, proceed with the add */
@@ -701,6 +717,13 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
                                      NULL, 0, trans);
             if (rc == IX_FND && fndgenid == vgenid) {
                 return ERR_VERIFY;
+            } else if (rc == RC_INTERNAL_RETRY) {
+                return RC_INTERNAL_RETRY;
+            } else if (rc != IX_FNDMORE && rc != IX_NOTFND &&
+                       rc != IX_PASTEOF && rc != IX_EMPTY) {
+                logmsg(LOGMSG_ERROR, "%s:%d got unexpected error rc = %d\n",
+                       __func__, __LINE__, rc);
+                return ERR_INTERNAL;
             }
 
             /* The row is not in new btree, proceed with the add */
