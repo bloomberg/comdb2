@@ -52,6 +52,7 @@
 
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
+extern int gbl_reorder_idx_writes;
 
 static int check_blob_buffers(struct ireq *iq, blob_buffer_t *blobs,
                               size_t maxblobs, const char *tblname,
@@ -455,8 +456,15 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
      * data. The keys, however, are also added to the deferred
      * temporary table to enable cascading updates, if needed.
      */
-    if (!(flags & RECFLAGS_NO_CONSTRAINTS)) /* if NOT no constraints */
-    {
+    if (gbl_reorder_idx_writes || (flags & RECFLAGS_NO_CONSTRAINTS) /* if no constraints */
+        || (rec_flags & OSQL_IGNORE_FAILURE)) {
+        retrc = add_record_indices(iq, trans, blobs, maxblobs, opfailcode,
+                                   ixfailnum, rrn, genid, vgenid, ins_keys,
+                                   opcode, blkpos, od_dta, od_len, ondisktag,
+                                   ondisktagsc, flags);
+        if (retrc)
+            ERR;
+    } else {
         if (!(flags & RECFLAGS_NEW_SCHEMA)) {
             /* enqueue the add of the key for constaint checking purposes */
             rc = insert_add_op(iq, NULL, NULL, opcode,
@@ -473,16 +481,6 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
              * handle idx in live_sc_*
              */
         }
-    }
-
-    if ((flags & RECFLAGS_NO_CONSTRAINTS) /* if no constraints */
-        || (rec_flags & OSQL_IGNORE_FAILURE)) {
-        retrc = add_record_indices(iq, trans, blobs, maxblobs, opfailcode,
-                                   ixfailnum, rrn, genid, vgenid, ins_keys,
-                                   opcode, blkpos, od_dta, od_len, ondisktag,
-                                   ondisktagsc, flags);
-        if (retrc)
-            ERR;
     }
 
     /*

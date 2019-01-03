@@ -4682,8 +4682,16 @@ printf("AZ: 2loop opnum = %d opcode = %d\n", opnum, hdr.opcode);
     errout = 0;
 
     if (delayed || gbl_goslow || gbl_reorder_idx_writes) {
+
+        if (iq->debug) {
+            reqpushprefixf(iq, "%p:", trans);
+            reqpushprefixf(iq, "delayed_key_adds:");
+        }
         int verror = 0;
         rc = delayed_key_adds(iq, p_blkstate, trans, &blkpos, &ixout, &errout);
+
+        if (iq->debug)
+            reqpopprefixes(iq, 1);
 
         if (rc != 0) {
             constraint_violation = 1;
@@ -4695,8 +4703,13 @@ printf("AZ: 2loop opnum = %d opcode = %d\n", opnum, hdr.opcode);
             BACKOUT;
         }
 
-        if (gbl_reorder_idx_writes)
+        if (gbl_reorder_idx_writes) {
+            if (iq->debug)
+                reqpushprefixf(iq, "process_defered_table:");
             rc = process_defered_table(iq, p_blkstate, trans, &blkpos, &ixout, &errout);
+            if (iq->debug)
+                reqpopprefixes(iq, 1);
+        }
 
         if (rc != 0) {
             constraint_violation = 1;
@@ -4712,8 +4725,6 @@ printf("AZ: 2loop opnum = %d opcode = %d\n", opnum, hdr.opcode);
 
         /* check foreign key constraints */
         verror = 0;
-        if (iq->debug)
-            reqpushprefixf(iq, "%p:", trans);
 
         rc = verify_del_constraints(javasp_trans_handle, iq, p_blkstate, trans,
                                     blobs, &verror);

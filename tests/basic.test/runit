@@ -226,31 +226,67 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t2  { `cat alltypes.csc2 ` }"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t2 "
 
 set +e
-cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t2 " &> baddrop.txt
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t2 " &> baddrop.out
 echo "[drop table t2] failed with rc -3 no such table: t2" > baddrop.exp
-if ! diff baddrop.txt baddrop.exp ; then
+if ! diff baddrop.out baddrop.exp ; then
     failexit "unexpected $nosuchtbl"
 fi
 
-cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t2 " &> badsel.txt
+cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t2 " &> badsel.out
 echo "[select * from t2] failed with rc -3 no such table: t2" > badsel.exp
-if ! diff badsel.txt badsel.exp ; then
+if ! diff badsel.out badsel.exp ; then
     failexit "Expected failure when selecting nonexistent table"
 fi
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t2 (i int primary key)"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t2 values(1)"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t2 values(1)" &> dupins.txt
-echo "[insert into t2 values(1)] failed with rc 299 add key constraint duplicate key 'COMDB2_PK' on table 't2' index 0" > dupins.exp
-if ! diff  dupins.txt dupins.exp; then
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t2 values(1)" &> dupins1.out
+echo "[insert into t2 values(1)] failed with rc 299 add key constraint duplicate key 'COMDB2_PK' on table 't2' index 0" > dupins1.exp
+if ! diff  dupins1.out dupins1.exp; then
     failexit "Expected failure when inserting duplicate record"
 fi
-cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t2 values(2)" &> dupins.txt
-cdb2sql ${CDB2_OPTIONS} $dbnm default "update t2 set i=1 where i=2" &> dupupd.txt
-echo "[update t2 set i=1 where i=2] failed with rc 299 add key constraint duplicate key 'COMDB2_PK' on table 't2' index 0" > dupupd.exp
-if ! diff  dupupd.txt dupupd.exp; then
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t2 values(2)" &> dupins2.out
+cdb2sql ${CDB2_OPTIONS} $dbnm default "update t2 set i=1 where i=2" &> dupupd2.out
+echo "[update t2 set i=1 where i=2] failed with rc 299 add key constraint duplicate key 'COMDB2_PK' on table 't2' index 0" > dupupd2.exp
+if ! diff  dupupd2.out dupupd2.exp; then
     failexit "Expected failure when updating with duplicate record"
 fi
+
+echo "
+set transaction read committed
+begin
+insert into t2 values(100)
+delete from t2 where i = 100
+insert into t2 values(100)
+delete from t2 where i = 100
+commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> dupins3.out
+echo this one will be an empty transaction -- no ins/del ops are sent to master
+echo "[set transaction read committed] rc 0
+[begin] rc 0
+[insert into t2 values(100)] rc 0
+[delete from t2 where i = 100] rc 0
+[insert into t2 values(100)] rc 0
+[delete from t2 where i = 100] rc 0
+[commit] rc 0" > dupins3.exp
+if ! diff  dupins3.out dupins3.exp; then
+    failexit "Expected no failure when inserting duplicate record"
+fi
+
+
+echo 'value 1 is already in, but we reorder so we first del then ins, so no dup'
+echo "begin
+insert into t2 values(1)
+delete from t2 where i = 1
+commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> dupins4.out
+echo "[begin] rc 0
+[insert into t2 values(1)] rc 0
+[delete from t2 where i = 1] rc 0
+[commit] rc 0" > dupins4.exp
+if ! diff  dupins4.out dupins4.exp; then
+    failexit "Expected no failure when inserting duplicate record"
+fi
+
+
 
 assertcnt t2 2
 
