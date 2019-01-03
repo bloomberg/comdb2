@@ -849,6 +849,17 @@ int live_sc_disable_inplace_blobs(struct ireq *iq)
     return rc;
 }
 
+int live_sc_delay_key_add(struct ireq *iq)
+{
+    int rc = 0;
+    Pthread_rwlock_rdlock(&iq->usedb->sc_live_lk);
+    if (iq->usedb->sc_from == iq->usedb && !iq->usedb->sc_live_logical &&
+        iq->usedb->sc_to->n_constraints)
+        rc = 1;
+    Pthread_rwlock_unlock(&iq->usedb->sc_live_lk);
+    return rc;
+}
+
 /**********************************************************************/
 /* I ORIGINALLY REMOVED THIS, THEN MERGING I SAW IT BACK IN COMDB2.C
     I AM LEAVING IT IN HERE FOR NOW (GOTTA ASK MARK)               */
