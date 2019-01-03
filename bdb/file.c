@@ -3459,8 +3459,15 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
     if (gbl_logical_live_sc) {
         unsigned int sc_get_logical_redo_lwm();
         unsigned int sc_logical_lwm = sc_get_logical_redo_lwm();
-        if (sc_logical_lwm && sc_logical_lwm < lowfilenum)
+        if (sc_logical_lwm && sc_logical_lwm < lowfilenum) {
             lowfilenum = sc_logical_lwm;
+            if (bdb_state->attr->debug_log_deletion) {
+                logmsg(
+                    LOGMSG_USER,
+                    "Setting lowfilenum to %d for schema change logical redo\n",
+                    lowfilenum);
+            }
+        }
     }
 
     /* debug: print filenums from other nodes */

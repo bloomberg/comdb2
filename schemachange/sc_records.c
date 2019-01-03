@@ -3110,6 +3110,11 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
                     data->s->tablename, __func__);
             goto cleanup;
         }
+
+        /* traverse upto 1 log file */
+        pCur->maxLsn = curLsn;
+        pCur->maxLsn.file += 1;
+
         /* get the next transaction's logical ops from the log files */
         if (bdb_llog_cursor_next(pCur) != 0) {
             sc_printf(data->s, "[%s] logical redo failed at [%u:%u]\n",
@@ -3137,6 +3142,20 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
         if (finalizing && log_compare(&curLsn, &finalizeLsn) >= 0) {
             break; // done
         }
+        unsigned int lwm = sc_get_logical_redo_lwm_table(data->s->tablename);
+        if (lwm != curLsn.file) {
+            int bdberr = 0;
+            rc = bdb_set_sc_start_lsn(NULL, data->s->tablename, &curLsn,
+                                      &bdberr);
+            if (rc || bdberr) {
+                logmsg(LOGMSG_ERROR,
+                       "%s: failed to update current LSN [%u][%u], rc = %d, "
+                       "bdberr = %d\n",
+                       __func__, curLsn.file, curLsn.offset, rc, bdberr);
+            } else {
+                sc_set_logical_redo_lwm(data->s->tablename, curLsn.file);
+            }
+        }
         int now = comdb2_time_epoch();
         int copy_sc_report_freq = gbl_sc_report_freq;
         if (copy_sc_report_freq > 0 &&
@@ -3145,9 +3164,10 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
             data->lasttime = now;
             data->prev_nrecs = data->nrecs;
             sc_printf(data->s,
-                      "[%s] logical redo transaction +%lld (%lld txn/s)\n",
-                      data->from->tablename, diff_nrecs,
-                      diff_nrecs / copy_sc_report_freq);
+                      "[%s] logical redo at LSN [%u][%u] transactions done "
+                      "+%lld (%lld txn/s)\n",
+                      data->from->tablename, curLsn.file, curLsn.offset,
+                      diff_nrecs, diff_nrecs / copy_sc_report_freq);
         }
         if (pCur->hitLast) {
             if (data->s->got_tablelock) {

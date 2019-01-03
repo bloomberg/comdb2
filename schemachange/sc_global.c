@@ -429,3 +429,18 @@ unsigned int sc_get_logical_redo_lwm()
     Pthread_mutex_unlock(&schema_change_in_progress_mutex);
     return lwm;
 }
+
+unsigned int sc_get_logical_redo_lwm_table(char *table)
+{
+    sc_table_t *sctbl = NULL;
+    unsigned int lwm = 0;
+    if (!gbl_logical_live_sc)
+        return 0;
+    Pthread_mutex_lock(&schema_change_in_progress_mutex);
+    assert(sc_tables);
+    sctbl = hash_find_readonly(sc_tables, &table);
+    if (sctbl)
+        lwm = sctbl->logical_lwm;
+    Pthread_mutex_unlock(&schema_change_in_progress_mutex);
+    return lwm;
+}
