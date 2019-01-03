@@ -194,7 +194,7 @@ static int get_next_matchable(DB_LOGC *logc, LOG_INFO *info, int check_current,
 
 /* generator code */
 
-u_int32_t get_next_offset(DB_ENV *dbenv, LOG_INFO log_info)
+uint32_t get_next_offset(DB_ENV *dbenv, LOG_INFO log_info)
 {
     return log_info.offset + log_info.size + dbenv->get_log_header_size(dbenv);
 }
