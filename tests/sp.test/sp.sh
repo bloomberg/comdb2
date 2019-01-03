@@ -1330,25 +1330,25 @@ create lua aggregate function no_ddl_proc1;
 
 create procedure no_ddl_test1 version 'sp_no_ddl_test1' {
 local function main()
-  local ddl_row1, ddl_rc1 = db:exec("CREATE TEMP TABLE no_ddl_tmp1(x INT);")
+  local ddl_row1, ddl_rc1 = db:exec_with_ddl("CREATE TEMP TABLE no_ddl_tmp1(x INT);")
   if ddl_rc1 == 0 then
     db:emit("CREATE TEMP TABLE WITH DDL PASS")
   else
     db:emit("CREATE TEMP TABLE WITH DDL FAIL "..ddl_rc1)
   end
-  local ddl_row2, ddl_rc2 = db:exec("CREATE TEMP INDEX no_ddl_tmp1_i1 ON no_ddl_tmp1(x);")
+  local ddl_row2, ddl_rc2 = db:exec_with_ddl("CREATE TEMP INDEX no_ddl_tmp1_i1 ON no_ddl_tmp1(x);")
   if ddl_rc2 == 0 then
     db:emit("CREATE TEMP INDEX WITH DDL PASS")
   else
     db:emit("CREATE TEMP INDEX WITH DDL FAIL "..ddl_rc2)
   end
-  local ddl_row3, ddl_rc3 = db:exec("CREATE TEMP TRIGGER no_ddl_tmp1_tr1 UPDATE OF x ON no_ddl_tmp1 BEGIN SELECT 1; END;")
+  local ddl_row3, ddl_rc3 = db:exec_with_ddl("CREATE TEMP TRIGGER no_ddl_tmp1_tr1 UPDATE OF x ON no_ddl_tmp1 BEGIN SELECT 1; END;")
   if ddl_rc3 == 0 then
     db:emit("CREATE TEMP TRIGGER WITH DDL PASS")
   else
     db:emit("CREATE TEMP TRIGGER WITH DDL FAIL "..ddl_rc3)
   end
-  local ddl_row4, ddl_rc4 = db:exec("CREATE TEMP VIEW no_ddl_tv1 AS SELECT 1;")
+  local ddl_row4, ddl_rc4 = db:exec_with_ddl("CREATE TEMP VIEW no_ddl_tv1 AS SELECT 1;")
   if ddl_rc4 == 0 then
     db:emit("CREATE TEMP VIEW WITH DDL PASS")
   else
