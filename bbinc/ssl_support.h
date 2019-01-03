@@ -64,12 +64,16 @@
 #define SSL_MODE_OPTIONAL       "OPTIONAL"
 
 /* Default file names */
+#define DEFAULT_SERVER_KEY "server.key"
+#define DEFAULT_SERVER_CERT "server.crt"
+#define DEFAULT_CLIENT_KEY "client.key"
+#define DEFAULT_CLIENT_CERT "client.crt"
 #if SBUF2_SERVER
-#  define DEFAULT_KEY           "server.key"
-#  define DEFAULT_CERT          "server.crt"
+#define DEFAULT_KEY DEFAULT_SERVER_KEY
+#define DEFAULT_CERT DEFAULT_SERVER_CERT
 #else
-#  define DEFAULT_KEY           "client.key"
-#  define DEFAULT_CERT          "client.crt"
+#define DEFAULT_KEY DEFAULT_CLIENT_KEY
+#define DEFAULT_CERT DEFAULT_CLIENT_CERT
 #endif
 #define DEFAULT_CA "root.crt"
 #if HAVE_CRL

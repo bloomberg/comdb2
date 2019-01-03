@@ -3344,8 +3344,8 @@ static int init(int argc, char **argv)
 
 #if WITH_SSL
     /* Initialize SSL backend before creating any net.
-       If we're in creat mode, don't bother. */
-    if (!gbl_create_mode && ssl_bend_init(thedb->basedir) != 0) {
+       If we're exiting, don't bother. */
+    if (!gbl_exit && ssl_bend_init(thedb->basedir) != 0) {
         logmsg(LOGMSG_FATAL, "Failed to initialize SSL backend.\n");
         return -1;
     }
