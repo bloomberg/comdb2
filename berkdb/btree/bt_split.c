@@ -200,7 +200,7 @@ __bam_root(dbc, cp)
 	DB_LSN log_lsn;
     DB_LOCK lplock, rplock;
 	DB_MPOOLFILE *mpf;
-	PAGE *lp, *rp;
+	PAGE *lp = NULL, *rp = NULL;
 	db_indx_t split;
 	u_int32_t opflags;
 	int ret, got_lplock, got_rplock;
@@ -303,10 +303,10 @@ err:	if (lp != NULL)
 		(void)__memp_fput(mpf, rp, 0);
 	(void)__memp_fput(mpf, cp->page, 0);
 	(void)__TLPUT(dbc, cp->lock);
-    if (got_lplock)
-        (void)__TLPUT(dbc, lplock);
-    if (got_rplock)
-        (void)__TLPUT(dbc, rplock);
+	if (got_lplock)
+		(void)__TLPUT(dbc, lplock);
+	if (got_rplock)
+		(void)__TLPUT(dbc, rplock);
 	return (ret);
 }
 

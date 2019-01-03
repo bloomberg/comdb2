@@ -292,6 +292,10 @@ static void process_lrl(
 
                 if (tok == "queue" || tok == "procedure" || tok == "consumer")
                     line.insert(0, "# ");
+
+                /* Also strip ssl config from the LRL for QA mode. */
+                if(strncasecmp(tok.c_str(), "ssl", 3) == 0)
+                    line.insert(0, "# ");
             }
         }
 
@@ -401,6 +405,7 @@ void deserialise_database(
 
     std::string datadestdir;
 
+    std::string fullpath;
 
     empty_page = malloc(65536);
     memset(empty_page, 0, 65536);
@@ -635,6 +640,7 @@ void deserialise_database(
                 direct = 1;
 
             std::string outfilename(datadestdir + "/" + filename);
+            fullpath = outfilename;
             of_ptr = output_file(outfilename, false, direct);
             extracted_files.insert(outfilename);
         }
@@ -863,6 +869,13 @@ void deserialise_database(
             throw Error(ss);
         }
 
+        /* Restore the permissions. */
+        uid_t uid = (uid_t)strtol(head.h.uid, NULL, 8);
+        gid_t gid = (gid_t)strtol(head.h.gid, NULL, 8);
+        mode_t modes = (mode_t)strtol(head.h.mode, NULL, 8);
+        chown(fullpath.c_str(), uid, gid);
+        chmod(fullpath.c_str(), modes);
+
         if(is_manifest) {
             process_manifest(text, manifest_map, run_full_recovery, origlrlname, options);
 
@@ -940,7 +953,7 @@ void deserialise_database(
 
         errno = 0;
         int rc = std::system(cmdss.str().c_str());
-        if(rc != 0) {
+        if(rc) {
             std::ostringstream ss;
             ss << "Full recovery command '" << cmdss.str() << "' failed rc "
                 << rc << " errno " << errno << std::endl;

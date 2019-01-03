@@ -1128,7 +1128,7 @@ __bam_pgcompact_redo_target(dbc, h, argp)
 {
 	int ret;
 	DB *dbp;
-	u_int8_t *sp, *pfxbuf, *nhbuf, *unlz4dta;
+	u_int8_t *sp, *pfxbuf, *nhbuf, *unlz4dta = NULL;
 	PAGE *c, *nh;
 	db_indx_t *ninp, *pinp, ii, nent, len;
 	pfx_t *pfx;
@@ -1267,7 +1267,7 @@ __bam_pgcompact_undo_target(dbc, h, argp)
 	PAGE *c;
 	BKEYDATA *bk;
 	__bam_prefix_args *pfxargp;
-	u_int8_t *unlz4dta;
+	u_int8_t *unlz4dta = NULL;
 	void *dtadbtdata, *hdrdbtdata;
 	u_int32_t dtadbtsize, hdrdbtsize;
 
@@ -1357,7 +1357,7 @@ __bam_pgcompact_undo_victim(dbc, h, argp)
 	PAGE *h;
 	__bam_pgcompact_args *argp;
 {
-	u_int8_t *sp, *unlz4dta;
+	u_int8_t *sp, *unlz4dta = NULL;
 	DB *dbp;
 	void *dtadbtdata, *hdrdbtdata;
 	u_int32_t dtadbtsize, hdrdbtsize;

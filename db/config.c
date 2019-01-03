@@ -63,7 +63,7 @@ static struct option long_options[] = {
     {"repopnewlrl", required_argument, NULL, 0},
     {"recovertotime", required_argument, NULL, 0},
     {"recovertolsn", required_argument, NULL, 0},
-    {"recoverylsn", required_argument, NULL, 0},
+    {"recovery_lsn", required_argument, NULL, 0},
     {"pidfile", required_argument, NULL, 0},
     {"help", no_argument, NULL, 'h'},
     {"create", no_argument, &gbl_create_mode, 1},

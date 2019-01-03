@@ -214,7 +214,7 @@ static uint32_t crc32c_sse_pcl(const uint8_t *buf, uint32_t sz, uint32_t crc)
 	const uint64_t *b1, *b2, *b3;
 	uint64_t c1, c2, c3;
 	uint64_t out = crc;
-	v2di x1, x2;
+	v2di x1 = {0}, x2 = {0};
 	const v2di K = {0x1a0f717c4, 0x0170076fa};
 
 	while (sz >= _3K) {

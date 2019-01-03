@@ -475,6 +475,31 @@ void *get_val(const char **sqlstr, int type, int *vallen)
 static int run_statement(const char *sql, int ntypes, int *types,
                          int *start_time, int *run_time);
 
+#ifndef ENABLE_COSTS
+#define ENABLE_COSTS NULL
+#else
+#if defined __cplusplus
+extern "C" {
+#endif
+extern void ENABLE_COSTS(void);
+#if defined __cplusplus
+}
+#endif
+#endif
+#ifndef REPORT_COSTS
+#define REPORT_COSTS NULL
+#else
+#if defined __cplusplus
+extern "C" {
+#endif
+extern void REPORT_COSTS(void);
+#if defined __cplusplus
+}
+#endif
+#endif
+static void (*enable_costs)(void) = ENABLE_COSTS;
+static void (*report_costs)(void) = REPORT_COSTS;
+
 static int process_escape(const char *cmdstr)
 {
     char copy[256];
@@ -694,7 +719,9 @@ static void print_column(FILE *f, cdb2_hndl_tp *cdb2h, int col)
             fputc('\'', stdout);
         } else {
             if (printmode & DISP_BINARY) {
-                write(1, val, cdb2_column_size(cdb2h, col));
+                int rc = write(1, val, cdb2_column_size(cdb2h, col));
+                if (rc == -1)
+                    std::cerr << "write() returns rc = " << rc << std::endl;
                 exit(0);
             } else {
                 fprintf(f, "x'");
@@ -981,7 +1008,6 @@ static int run_statement(const char *sql, int ntypes, int *types,
     int rc;
     int ncols;
     int col;
-    int cost;
     FILE *out = stdout;
     char cmd[60];
     int startms = now_ms();
@@ -1267,7 +1293,7 @@ static void process_line(char *sql, int ntypes, int *types)
         }
     }
 
-    if (docost && !rc) {
+    if (docost && !rc && report_costs == NULL) {
         int saved_printmode = printmode;
         printmode = DISP_TABS | DISP_STDERR;
         const char *costSql = "SELECT comdb2_prevquerycost() as Cost";
@@ -1357,7 +1383,7 @@ static char *get_multi_line_statement(char *line)
     char *nl = (char *) ""; // new-line
     int n = 0;     // len of nl
 
-    char tmp_prompt[sizeof(main_prompt)];
+    char tmp_prompt[sizeof(main_prompt) + 4];
     int spaces = strlen(dbname) - 3, dots = 3;
     if (spaces < 0) {
         dots += spaces;
@@ -1554,6 +1580,8 @@ int main(int argc, char *argv[])
     if (getenv("COMDB2_SQL_COST"))
         docost = 1;
 
+    if (docost && enable_costs != NULL)
+        (*enable_costs)();
     if (exponent) {
         if (precision > 0) {
             snprintf(doublefmt, sizeof(doublefmt), "%%.%dg", precision);
@@ -1600,6 +1628,10 @@ int main(int argc, char *argv[])
             cdb2_close(cdb2h);
         }
         verbose_print("process_line error=%d\n", error);
+
+        if (report_costs != NULL)
+            (*report_costs)();
+
         return (error == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
     }
 
@@ -1643,6 +1675,9 @@ int main(int argc, char *argv[])
         cdb2_close(cdb2h);
         cdb2h = NULL;
     }
+
+    if (report_costs != NULL)
+        (*report_costs)();
 
     return (error == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
 }

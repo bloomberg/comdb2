@@ -2543,6 +2543,8 @@ static void *dispatch_lua_thread(void *arg)
     clnt.exec_lua_thread = 1;
     clnt.trans_has_sp = 1;
     clnt.queue_me = 1;
+    assert( clnt.temp_table_mtx==NULL || !clnt.own_temp_table_mtx );
+    clnt.temp_table_mtx = parent_clnt->temp_table_mtx;
     Pthread_mutex_init(&clnt.wait_mutex, NULL);
     Pthread_cond_init(&clnt.wait_cond, NULL);
     Pthread_mutex_init(&clnt.write_lock, NULL);
@@ -3745,7 +3747,7 @@ static int db_column_name(Lua L)
     }
     struct sqlclntstate *parent_clnt = parent->clnt;
     int count = override_count(parent_clnt);
-    if (count && count <= index) {
+    if (count && count < index) {
         free(name);
         return luaL_error(L,
                           "bad arguments to 'column_name' for typed-statement");
@@ -6407,10 +6409,7 @@ void exec_thread(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     Lua L = sp->lua;
     get_curtran(thedb->bdb_env, clnt);
     sp->parent_thd->status = THREAD_STATUS_RUNNING;
-    pthread_mutex_t *saved_temp_table_mtx = thd->sqlthd->temp_table_mtx;
-    thd->sqlthd->temp_table_mtx = sp->parent_sqlthd->sqlthd->temp_table_mtx;
     exec_thread_int(thd, clnt);
-    thd->sqlthd->temp_table_mtx = saved_temp_table_mtx;
     lua_gc(L, LUA_GCCOLLECT, 0);
     drop_temp_tables(clnt->sp);
     free_tmptbls(clnt->sp);

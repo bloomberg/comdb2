@@ -1972,7 +1972,11 @@ static void panic_func(DB_ENV *dbenv, int errval)
 
     pid = getpid();
     snprintf(buf, sizeof(buf), "pstack %d", pid);
-    system(buf);
+    int lrc = system(buf);
+    if (lrc) {
+        logmsg(LOGMSG_ERROR, "ERROR: %s:%d system() returns rc = %d\n",
+               __FILE__,__LINE__, lrc);
+    }
 
     /* this code sometimes deadlocks.  install a timer - if it
        fires, we
@@ -3324,10 +3328,9 @@ static int bdb_calc_min_truncate(bdb_state_type *bdb_state)
     int rc;
     int lowfilenum;
     int32_t timestamp;
-    return 0;
     Pthread_rwlock_wrlock(&min_trunc_lk);
     lowfilenum = get_lowfilenum_sanclist(bdb_state);
-    rc = bdb_state->dbenv->min_truncate_lsn_timestamp(
+    rc = bdb_state->dbenv->mintruncate_lsn_timestamp(
         bdb_state->dbenv, lowfilenum, &lsn, &timestamp);
     if (rc == 0) {
         gbl_min_truncate_file = lsn.file;
@@ -3342,10 +3345,37 @@ static int bdb_calc_min_truncate(bdb_state_type *bdb_state)
     return rc;
 }
 
+int bdb_dump_mintruncate_list(bdb_state_type *bdb_state)
+{
+    return bdb_state->dbenv->dump_mintruncate_list(bdb_state->dbenv);
+}
+
+int bdb_clear_mintruncate_list(bdb_state_type *bdb_state)
+{
+    return bdb_state->dbenv->clear_mintruncate_list(bdb_state->dbenv);
+}
+
+int bdb_build_mintruncate_list(bdb_state_type *bdb_state)
+{
+    return bdb_state->dbenv->build_mintruncate_list(bdb_state->dbenv);
+}
+
+int bdb_print_mintruncate_min(bdb_state_type *bdb_state)
+{
+    int32_t timestamp;
+    int rc;
+    DB_LSN lsn;
+    rc = bdb_state->dbenv->mintruncate_lsn_timestamp(bdb_state->dbenv, 0, &lsn,
+                                                     &timestamp);
+    if (rc == 0) {
+        logmsg(LOGMSG_USER, "[%d:%d] %u\n", lsn.file, lsn.offset, timestamp);
+    }
+    return rc;
+}
+
 int bdb_min_truncate(bdb_state_type *bdb_state, int *file, int *offset,
                      int32_t *timestamp)
 {
-    return 0;
     if (gbl_min_truncate_file < 1)
         bdb_calc_min_truncate(bdb_state);
     Pthread_rwlock_rdlock(&min_trunc_lk);
@@ -6959,10 +6989,6 @@ uint64_t bdb_data_size(bdb_state_type *bdb_state, int dtanum)
     return total;
 }
 
-/*
- * http://womble.decadentplace.org.uk/readdir_r-advisory.html
- * It seems that there are many obstacles to using readdir_r()
- */
 static size_t dirent_buf_size(const char *dir)
 {
     long name_max;
@@ -7447,7 +7473,7 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
     }
 
     /* for each file in the db's directory */
-    while ((error = readdir_r(dirp, buf, &ent)) == 0 && ent != NULL) {
+    while ((error = bb_readdir(dirp, buf, &ent)) == 0 && ent != NULL) {
         /* if the file's name is longer then the prefix and it belongs to our
          * table */
         if (!(strlen(ent->d_name) > tp_len &&
@@ -7566,10 +7592,8 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
     }
 
 done:
-
     closedir(dirp);
     free(buf);
-
     *bdberr = BDBERR_NOERROR;
     return 0;
 }
