@@ -1,0 +1,13 @@
+#!/bin/sh
+
+bash -n "$0" | exit 1
+dbnm=$1
+
+cat << EOF | cdb2sql -s ${CDB2_OPTIONS} $dbnm default - >actual 2>&1
+SET REMOTE READ
+SELECT 1
+SET REMOTE READ DUMMY
+SELECT 1
+EOF
+
+diff expected actual
