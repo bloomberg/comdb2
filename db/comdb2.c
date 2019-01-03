@@ -235,7 +235,7 @@ int gbl_nice = 0;
 int gbl_notimeouts = 0; /* set this if you don't need the server timeouts
                            (use this for new code testing) */
 
-int gbl_reorder_idx_writes = 1;
+int gbl_reorder_idx_writes = 0;
 
 int gbl_nullfkey = 0;
 
