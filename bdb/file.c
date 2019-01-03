@@ -1972,7 +1972,11 @@ static void panic_func(DB_ENV *dbenv, int errval)
 
     pid = getpid();
     snprintf(buf, sizeof(buf), "pstack %d", pid);
-    system(buf);
+    int lrc = system(buf);
+    if (lrc) {
+        logmsg(LOGMSG_ERROR, "ERROR: %s:%d system() returns rc = %d\n",
+               __FILE__,__LINE__, lrc);
+    }
 
     /* this code sometimes deadlocks.  install a timer - if it
        fires, we
@@ -6985,10 +6989,6 @@ uint64_t bdb_data_size(bdb_state_type *bdb_state, int dtanum)
     return total;
 }
 
-/*
- * http://womble.decadentplace.org.uk/readdir_r-advisory.html
- * It seems that there are many obstacles to using readdir_r()
- */
 static size_t dirent_buf_size(const char *dir)
 {
     long name_max;
@@ -7473,7 +7473,7 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
     }
 
     /* for each file in the db's directory */
-    while ((error = readdir_r(dirp, buf, &ent)) == 0 && ent != NULL) {
+    while ((error = bb_readdir(dirp, buf, &ent)) == 0 && ent != NULL) {
         /* if the file's name is longer then the prefix and it belongs to our
          * table */
         if (!(strlen(ent->d_name) > tp_len &&
@@ -7592,10 +7592,8 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
     }
 
 done:
-
     closedir(dirp);
     free(buf);
-
     *bdberr = BDBERR_NOERROR;
     return 0;
 }

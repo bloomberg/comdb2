@@ -159,7 +159,9 @@ int SBUF2_FUNC(ssl_init)(int init_openssl, int init_crypto,
         is_ssl_initialized = 1;
     }
 
+#ifndef CRYPTO_num_locks
 error:
+#endif /* CRYPTO_num_locks */
     if (lock) {
         if (rc == 0)
             rc = pthread_mutex_unlock(&ssl_init_lock);

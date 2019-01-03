@@ -898,10 +898,14 @@ typedef struct cnonce {
     char str[CNONCE_STR_SZ];
 } cnonce_t;
 
+#define DBNAME_LEN 64
+#define TYPE_LEN 64
+#define POLICY_LEN 24
+
 struct cdb2_hndl {
-    char dbname[64];
+    char dbname[DBNAME_LEN];
     char cluster[64];
-    char type[64];
+    char type[TYPE_LEN];
     char hosts[MAX_NODES][64];
     uint64_t timestampus; // client query timestamp of first try
     int ports[MAX_NODES];
@@ -914,8 +918,8 @@ struct cdb2_hndl {
     int in_trans;
     int temp_trans;
     int is_retry;
-    char newsql_typestr[128];
-    char policy[24];
+    char newsql_typestr[DBNAME_LEN + TYPE_LEN + POLICY_LEN + 16];
+    char policy[POLICY_LEN];
     int master;
     int connected_host;
     char *query;
@@ -1995,11 +1999,14 @@ static int newsql_connect(cdb2_hndl_tp *hndl, char *host, int port, int myport,
     int rc = snprintf(hndl->newsql_typestr, sizeof(hndl->newsql_typestr),
                       "comdb2/%s/%s/newsql/%s", hndl->dbname, hndl->type,
                       hndl->policy);
-    if (rc < 1 || rc >= sizeof(hndl->newsql_typestr))
+    if (rc < 0) {
+        debugprint("ERROR: %s:%d error in snprintf", __func__, __LINE__);
+    } else if (rc >= sizeof(hndl->newsql_typestr)) {
         debugprint("ERROR: can not fit entire string into "
                    "'comdb2/%s/%s/newsql/%s' only %s\n",
                    hndl->dbname, hndl->type, hndl->policy,
                    hndl->newsql_typestr);
+    }
 
     while (!hndl->is_admin &&
            (fd = cdb2_socket_pool_get(hndl->newsql_typestr, hndl->dbnum,

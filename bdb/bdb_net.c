@@ -220,7 +220,10 @@ char *print_addr(struct sockaddr_in *addr, char *buf)
     int rc = getnameinfo((struct sockaddr *)addr, len, name, sizeof(name),
                          service, sizeof(service), 0);
     if (rc) {
-        strerror_r(rc, errbuf, sizeof(errbuf));
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
+        strerror_r(errno, errbuf, sizeof(errbuf));
+#pragma GCC diagnostic pop
         sprintf(buf, "%s:getnameinfo errbuf=%s", __func__, errbuf);
         return buf;
     }
@@ -228,7 +231,10 @@ char *print_addr(struct sockaddr_in *addr, char *buf)
     if (inet_ntop(addr->sin_family, &addr->sin_addr.s_addr, ip, sizeof(ip))) {
         sprintf(buf, "[%s %s:%s] ", name, ip, service);
     } else {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
         strerror_r(errno, errbuf, sizeof(errbuf));
+#pragma GCC diagnostic pop
         sprintf(buf, "%s:inet_ntop:%s", __func__, errbuf);
     }
     return buf;

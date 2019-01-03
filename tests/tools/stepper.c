@@ -23,7 +23,10 @@ static int parse_line( char *line, char **query);
 void timed_out(int sig, siginfo_t *info, void *uap)
 {
     char buf[32] = "Timed out\n";
-    write(STDERR_FILENO, buf, 10);
+    int lrc = write(STDERR_FILENO, buf, 10);
+    if (lrc == -1) {
+        printf("ERROR: %s write returns -1\n", __func__);
+    }
     exit(1);
 }
 

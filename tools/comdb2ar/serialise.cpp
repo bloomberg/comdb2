@@ -810,7 +810,9 @@ void serialise_database(
 
         if(!(stat(incr_path.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode))){
             std::string cmd("mkdir -p " + incr_path);
-            system(cmd.c_str());
+            int rc = system(cmd.c_str());
+            if (rc)
+                std::cerr << "system() returns rc = " << rc << std::endl;
         }
     }
 
@@ -1596,9 +1598,26 @@ void write_incremental_file (
                 pagep->lsn.offset = myflip(pagep->lsn.offset);
             }
 
-            write(1, &(LSN(pagep).file), 4);
-            write(1, &(LSN(pagep).offset), 4);
-            write(1, &verify_cksum, 4);
+            rc = write(1, &(LSN(pagep).file), 4);
+            if (rc == -1) {
+                std::ostringstream ss;
+                ss << "Write error " << rc << " error " << strerror(errno) << std::endl;
+                throw Error(ss.str());
+            }
+
+            rc = write(1, &(LSN(pagep).offset), 4);
+            if (rc == -1) {
+                std::ostringstream ss;
+                ss << "Write error " << rc << " error " << strerror(errno) << std::endl;
+                throw Error(ss.str());
+            }
+
+            rc = write(1, &verify_cksum, 4);
+            if (rc == -1) {
+                std::ostringstream ss;
+                ss << "Write error " << rc << " error " << strerror(errno) << std::endl;
+                throw Error(ss.str());
+            }
 
             offset += pagesize;
         }

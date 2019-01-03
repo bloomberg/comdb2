@@ -55,8 +55,6 @@
 int gbl_testcompr_percent = 10;
 int gbl_testcompr_max = 300000;
 
-static const size_t genidsz = sizeof(unsigned long long);
-
 typedef struct {
     SBUF2 *sb;
     const char *table;

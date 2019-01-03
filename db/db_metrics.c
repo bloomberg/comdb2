@@ -368,7 +368,10 @@ int refresh_metrics(void)
     FILE *f = fopen("/proc/self/stat", "r");
     if (f) {
         char line[1024];
-        fgets(line, sizeof(line), f);
+        char *tmp = fgets(line, sizeof(line), f);
+        if (!tmp) {
+            logmsg(LOGMSG_ERROR, "failed to read from /proc/self/stat\n");
+        }
         fclose(f);
         long num_threads;
         unsigned long vmsize;
@@ -500,7 +503,10 @@ static void update_cpu_percent(void)
    FILE *f = fopen("/proc/self/stat", "r");
    if (f) {
       char line[1024];
-      fgets(line, sizeof(line), f);
+      char *tmp = fgets(line, sizeof(line), f);
+      if (!tmp) {
+          logmsg(LOGMSG_ERROR, "failed to read from /proc/self/stat\n");
+      }
       fclose(f);
       unsigned long utime, stime;
       /* usertime=14 systemtime=15 */
