@@ -1850,6 +1850,10 @@ SP: exec procedure bound(@i, @u, @ll, @ull, @s, @us, @f, @d, @dt, @cstr, @ba, @b
 [--          stored procedure execution.  The sleep below is designed to work around this] failed with rc -3 no statement
 [--          issue; however, the timing may need to be adjusted in the future.] failed with rc -3 no statement
 (sleep(20)=20)
+($0='CREATE TEMP TABLE WITH DDL PASS')
+($0='CREATE TEMP INDEX WITH DDL PASS')
+($0='CREATE TEMP TRIGGER WITH DDL PASS')
+($0='CREATE TEMP VIEW WITH DDL PASS')
 ($0='CREATE INDEX PASS 23')
 ($0='CREATE TABLE PASS 23')
 ($0='DB:TABLE PASS')

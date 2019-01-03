@@ -196,6 +196,7 @@ static int db_settimezone(lua_State *lua);
 static int db_gettimezone(Lua L);
 static int db_bind(Lua L);
 static int db_exec(Lua);
+static int db_exec_with_ddl(Lua);
 static int dbstmt_emit(Lua);
 static int db_prepare(Lua lua);
 static int db_create_thread(Lua L);
@@ -2843,6 +2844,13 @@ static void remove_tran_funcs(Lua L)
     lua_pop(L, 1);
 }
 
+static void remove_exec_with_ddl(Lua L)
+{
+    luaL_getmetatable(L, dbtypes.db);
+    lua_pushnil(L);
+    lua_setfield(L, -2, "exec_with_ddl");
+}
+
 static void remove_create_thread(Lua L)
 {
     luaL_getmetatable(L, dbtypes.db);
@@ -3395,6 +3403,59 @@ static int db_exec(Lua lua)
 
     sqlite3_stmt *stmt = NULL;
     if ((rc = lua_prepare_sql(lua, sp, sql, &stmt)) != 0) {
+        lua_pushnil(lua);
+        lua_pushinteger(lua, rc);
+        return 2;
+    }
+    dbstmt_t *dbstmt = new_dbstmt(lua, sp, stmt);
+    if (sqlite3_stmt_readonly(stmt)) {
+        // dbstmt:fetch() will run it
+        lua_pushinteger(lua, 0);
+        return 2;
+    }
+
+    // a write stmt - run it now
+    setup_first_sqlite_step(sp, dbstmt);
+    sqlite3 *sqldb = getdb(sp);
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+        ;
+    if (rc == SQLITE_DONE) {
+        dbstmt->rows_changed = sqlite3_changes(sqldb);
+        sp->rc = 0;
+    } else {
+        const char *err;
+        sp->rc = lua_check_errors(sp->clnt, sqldb, stmt, &err);
+        sp->error = strdup(err);
+    }
+
+    if (sp->rc) {
+        lua_pushnil(lua);
+        lua_pushinteger(lua, sp->rc);
+    } else {
+        lua_pushinteger(lua, 0); /* Success return code */
+    }
+    return 2;
+}
+
+static int db_exec_with_ddl(Lua lua)
+{
+    luaL_checkudata(lua, 1, dbtypes.db);
+    lua_remove(lua, 1);
+
+    SP sp = getsp(lua);
+
+    int rc;
+    const char *sql = lua_tostring(lua, -1);
+    if (sql == NULL) {
+        luabb_error(lua, sp, "expected sql string");
+        return 2;
+    }
+
+    while (isspace(*sql))
+        ++sql;
+
+    sqlite3_stmt *stmt = NULL;
+    if ((rc = lua_prepare_sql_no_auth(lua, sp, sql, &stmt)) != 0) {
         lua_pushnil(lua);
         lua_pushinteger(lua, rc);
         return 2;
@@ -4289,6 +4350,7 @@ static int db_bootstrap(Lua L)
 
 static const luaL_Reg db_funcs[] = {
     {"exec", db_exec},
+    {"exec_with_ddl", db_exec_with_ddl},
     {"prepare", db_prepare},
     {"table", db_table},
     {"cast", db_cast},
@@ -4479,6 +4541,10 @@ static int create_sp_int(SP sp, char **err)
             return -1;
         }
     }
+
+    extern int gbl_allow_lua_exec_with_ddl;
+    if(!gbl_allow_lua_exec_with_ddl)
+        remove_exec_with_ddl(lua);
 
     extern int gbl_allow_lua_dynamic_libs;
     if(!gbl_allow_lua_dynamic_libs)

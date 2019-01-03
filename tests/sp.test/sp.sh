@@ -1320,11 +1320,6 @@ create index no_ddl_t1_i1 on no_ddl_t1(x);$$
 -- This will cause DROP VIEW to have an rc of 1 instead of 23 (below)
 -- create view no_ddl_v1 as select 1;$$
 
-create temp table no_ddl_tmp1(x INT);$$
-create temp index no_ddl_tmp1_i1 on no_ddl_tmp1(x);$$
-create temp trigger no_ddl_tmp1_tr1 update of x on no_ddl_tmp1 begin select 1; end;$$
-create temp view no_ddl_tv1 as select 1;$$
-
 create procedure no_ddl_proc1 version 'sp_no_ddl_proc1' {};$$
 create procedure no_ddl_proc2 version 'sp_no_ddl_proc2' {};$$
 
@@ -1335,6 +1330,30 @@ create lua aggregate function no_ddl_proc1;
 
 create procedure no_ddl_test1 version 'sp_no_ddl_test1' {
 local function main()
+  local ddl_row1, ddl_rc1 = db:exec("CREATE TEMP TABLE no_ddl_tmp1(x INT);")
+  if ddl_rc1 == 0 then
+    db:emit("CREATE TEMP TABLE WITH DDL PASS")
+  else
+    db:emit("CREATE TEMP TABLE WITH DDL FAIL "..ddl_rc1)
+  end
+  local ddl_row2, ddl_rc2 = db:exec("CREATE TEMP INDEX no_ddl_tmp1_i1 ON no_ddl_tmp1(x);")
+  if ddl_rc2 == 0 then
+    db:emit("CREATE TEMP INDEX WITH DDL PASS")
+  else
+    db:emit("CREATE TEMP INDEX WITH DDL FAIL "..ddl_rc2)
+  end
+  local ddl_row3, ddl_rc3 = db:exec("CREATE TEMP TRIGGER no_ddl_tmp1_tr1 UPDATE OF x ON no_ddl_tmp1 BEGIN SELECT 1; END;")
+  if ddl_rc3 == 0 then
+    db:emit("CREATE TEMP TRIGGER WITH DDL PASS")
+  else
+    db:emit("CREATE TEMP TRIGGER WITH DDL FAIL "..ddl_rc3)
+  end
+  local ddl_row4, ddl_rc4 = db:exec("CREATE TEMP VIEW no_ddl_tv1 AS SELECT 1;")
+  if ddl_rc4 == 0 then
+    db:emit("CREATE TEMP VIEW WITH DDL PASS")
+  else
+    db:emit("CREATE TEMP VIEW WITH DDL FAIL "..ddl_rc4)
+  end
   local row1, rc1 = db:exec("CREATE INDEX no_ddl_t1_i2 ON no_ddl_t1(x);")
   if rc1 == 0 then
     db:emit("CREATE INDEX FAIL")
@@ -1395,7 +1414,7 @@ local function main()
   else
     db:emit("DROP INDEX PASS "..rc9)
   end
-  local row10, rc10 = db:exec("DROP TABLE no_ddl_t1;")
+  local row10, rc10 = db:exec("DROP TABLE no_ddl_tmp2;")
   if rc10 == 0 then
     db:emit("DROP TABLE FAIL")
   else
@@ -1571,12 +1590,17 @@ local function main()
     db:emit("DROP LUA CONSUMER PASS "..rc38)
   end
 end}$$
+EOF
 
+cdb2sql $SP_OPTIONS - <<'EOF'
 -- WARNING: Creating a time partition is fundamnetally an asynchronous operation that may
 --          cause subsequent 'database schema has changed' style errors in the subsequent
 --          stored procedure execution.  The sleep below is designed to work around this
 --          issue; however, the timing may need to be adjusted in the future.
 create time partition on no_ddl_t3 as no_ddl_t3_p1 period 'daily' retention 30 start '2018-04-30';$$
+EOF
+
+cdb2sql $SP_OPTIONS - <<'EOF'
 select sleep(20);
 EOF
 
