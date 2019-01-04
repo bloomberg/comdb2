@@ -4917,7 +4917,10 @@ retry:
             return -1;
         }
         if (rc == 0) {
-            if ((gbl_sql_release_locks_on_slow_reader && !released_locks) ||
+            if ((gbl_sql_release_locks_on_slow_reader &&
+                 (!released_locks ||
+                  bdb_curtran_has_waiters(thedb->bdb_env,
+                                          clnt->dbtran.cursor_tran))) ||
                 bdb_lock_desired(thedb->bdb_env)) {
                 rc = sql_writer_recover_deadlock(clnt);
                 if (rc == 0)
