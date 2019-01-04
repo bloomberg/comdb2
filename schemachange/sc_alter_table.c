@@ -640,6 +640,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
         olddb_bthashsz = 0;
 
     bdb_lock_table_write(db->handle, transac);
+    sc_printf(s, "[%s] Got table write lock OK\n", s->tablename);
 
     s->got_tablelock = 1;
 
@@ -662,7 +663,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
      * not, the db is readonly at this point so we can reset the live
      * schema change flag. */
 
-    sc_printf(s, "---- All records copied --- \n");
+    sc_printf(s, "[%s] --- All records copied --- \n", s->tablename);
 
     /* Before this handle is closed, lets wait for all the db reads to
      * finish*/

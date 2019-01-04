@@ -437,6 +437,8 @@ struct tran_tag {
 
     /* Set to 1 if this txn touches a logical live sc table */
     int force_logical_commit;
+    /* Tables that this tran touches (for logical redo sc) */
+    hash_t *dirty_table_hash;
 
     /* cache the versions of dta files to catch schema changes and fastinits */
     int table_version_cache_sz;
@@ -785,6 +787,11 @@ struct seen_blkseq {
 
 struct temp_table;
 
+struct sc_redo_lsn {
+    DB_LSN lsn;
+    LINKC_T(struct sc_redo_lsn) lnk;
+};
+
 struct bdb_state_tag {
     pthread_attr_t pthread_attr_detach;
     seqnum_info_type *seqnum_info;
@@ -1022,6 +1029,9 @@ struct bdb_state_tag {
     int hellofd;
 
     int logical_live_sc;
+    pthread_mutex_t sc_redo_lk;
+    pthread_cond_t sc_redo_wait;
+    LISTC_T(struct sc_redo_lsn) sc_redo_list;
 };
 
 /* define our net user types */

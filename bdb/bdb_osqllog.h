@@ -282,5 +282,6 @@ int bdb_llog_cursor_open(bdb_llog_cursor *pCur);
 void bdb_llog_cursor_close(bdb_llog_cursor *pCur);
 int bdb_llog_cursor_first(bdb_llog_cursor *pCur);
 int bdb_llog_cursor_next(bdb_llog_cursor *pCur);
+int bdb_llog_cursor_find(bdb_llog_cursor *pCur, DB_LSN *lsn);
 void bdb_llog_cursor_cleanup(bdb_llog_cursor *pCur);
 #endif

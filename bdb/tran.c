@@ -1464,6 +1464,39 @@ void abort_at_exit(void)
     abort();
 }
 
+static int update_logical_redo_lsn(void *obj, void *arg)
+{
+    bdb_state_type *bdb_state = (bdb_state_type *)obj;
+    if (bdb_state->logical_live_sc == 0)
+        return 0;
+    struct sc_redo_lsn *last = NULL;
+    struct sc_redo_lsn *redo = malloc(sizeof(struct sc_redo_lsn));
+    if (redo == NULL) {
+        logmsg(LOGMSG_FATAL, "%s: failed to malloc sc redo\n", __func__);
+        abort();
+    }
+    redo->lsn = *((DB_LSN *)arg);
+    Pthread_mutex_lock(&bdb_state->sc_redo_lk);
+    last = LISTC_BOT(&bdb_state->sc_redo_list);
+    /* Add in order */
+    if (!last || log_compare(&last->lsn, &redo->lsn) <= 0)
+        listc_abl(&bdb_state->sc_redo_list, redo);
+    else {
+        for (last = last->lnk.prev;
+             last && log_compare(&last->lsn, &redo->lsn) > 0;
+             last = last->lnk.prev)
+            ;
+        if (!last) {
+            listc_atl(&bdb_state->sc_redo_list, redo);
+        } else {
+            listc_add_after(&bdb_state->sc_redo_list, redo, last);
+        }
+    }
+    Pthread_cond_signal(&bdb_state->sc_redo_wait);
+    Pthread_mutex_unlock(&bdb_state->sc_redo_lk);
+    return 0;
+}
+
 static int bdb_tran_commit_with_seqnum_int_int(
     bdb_state_type *bdb_state, tran_type *tran, seqnum_type *seqnum,
     int *bdberr, int getseqnum, uint64_t *out_txnsize, void *blkseq, int blklen,
@@ -1581,6 +1614,14 @@ static int bdb_tran_commit_with_seqnum_int_int(
                 /* hookup locals one too */
                 iirc = update_shadows_beforecommit(
                     bdb_state, &tran->last_logical_lsn, NULL, 1);
+
+                if (tran->force_logical_commit && tran->dirty_table_hash) {
+                    hash_for(tran->dirty_table_hash, update_logical_redo_lsn,
+                             &tran->last_logical_lsn);
+                    hash_clear(tran->dirty_table_hash);
+                    hash_free(tran->dirty_table_hash);
+                    tran->dirty_table_hash = NULL;
+                }
             }
 
             if (iirc) {

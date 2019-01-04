@@ -4549,6 +4549,25 @@ int bdb_llog_cursor_next(bdb_llog_cursor *pCur)
     return bdb_llog_cursor_move(pCur);
 }
 
+int bdb_llog_cursor_find(bdb_llog_cursor *pCur, DB_LSN *lsn)
+{
+    int rc = 0;
+    if (!pCur->openCursor) {
+        rc = bdb_llog_cursor_open(pCur);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s:%d failed to open llog cursor rc=%d\n",
+                   __func__, __LINE__, rc);
+            return rc;
+        }
+    }
+
+    pCur->minLsn = *lsn;
+    pCur->curLsn = pCur->minLsn;
+    pCur->getflags = DB_SET;
+
+    return bdb_llog_cursor_move(pCur);
+}
+
 void bdb_llog_cursor_reset(bdb_llog_cursor *pCur)
 {
     bdb_llog_cursor_close(pCur);
