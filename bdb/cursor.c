@@ -4950,17 +4950,9 @@ step1:
 
     /* Check the virtual stripe */
     if (cur->addcur && cur->type == BDBC_DT && 0 == got_rl && cur->pageorder) {
-        /* Temptable find-exact semantics require that I malloc the key. */
-        void *fndkey = malloc(keylen);
-
-        /* Copy key. */
-        memcpy(fndkey, key, keylen);
-
         /* Find my record. */
-        rc = bdb_temp_table_find_exact(cur->state, cur->addcur, fndkey, keylen,
+        rc = bdb_temp_table_find_exact(cur->state, cur->addcur, key, keylen,
                                        bdberr);
-        if (rc != IX_FND)
-            free(fndkey);
         if (rc < 0)
             return rc;
 
@@ -4998,7 +4990,6 @@ step1:
                 if (dtalen > 0 && bdb_osql_log_is_optim_data(addptr)) {
                     bdb_osql_log_addc_ptr_t *newptr;
                     int rowlen;
-                    unsigned long long *pgenid;
 
                     /* Rebuild the row from the logfiles. */
                     rc = bdb_osql_log_get_optim_data_addcur(
@@ -5020,21 +5011,15 @@ step1:
                     if (rc < 0)
                         return rc;
 
-                    /* Malloc pgenid for find_exact. */
-                    pgenid = (unsigned long long *)malloc(sizeof(*pgenid));
-
-                    /* Copy it. */
-                    *pgenid = *genid_ck;
-
                     /* Re-find the newly inserted position */
                     rc = bdb_temp_table_find_exact(cur->state, cur->addcur,
-                                                   (char *)pgenid, 8, bdberr);
+                                                   genid_ck, sizeof(*genid_ck),
+                                                   bdberr);
                     if (rc != IX_FND) {
                         logmsg(LOGMSG_ERROR, "%s: fail to retrieve back the "
                                         "updated row rc=%d bdberr=%d\n",
                                 __func__, rc, *bdberr);
                         rc = -1; /* we have to find this row back */
-                        free(pgenid);
                     }
 
                     /* Retrieve the header. */
@@ -5540,14 +5525,10 @@ step1:
          * something was added, reposition the cursor. */
         if ((crt_how == DB_NEXT || crt_how == DB_PREV) && cur->repo_addcur &&
             cur->agenid != 0) {
-            unsigned long long *agenid = malloc(sizeof(*agenid));
-
-            /* Set the reposition genid. */
-            *agenid = cur->agenid;
-
             /* Reposition the cursor. */
-            rc = bdb_temp_table_find_exact(cur->state, cur->addcur,
-                                           (char *)agenid, 8, bdberr);
+            rc =
+                bdb_temp_table_find_exact(cur->state, cur->addcur, &cur->agenid,
+                                          sizeof(cur->agenid), bdberr);
 
             /* Things shouldn't be disappearing from addcur. */
             assert(rc == IX_FND);
@@ -5617,21 +5598,11 @@ step1:
                                 cur, *genid_ck);
                     }
 
-                    /* Temp_table semantics require that I malloc the key. */
-                    srec = (unsigned long long *)malloc(sizeof(*srec));
-
-                    /* Copy the current key. */
-                    memcpy(srec, genid_ck, sizeof(*srec));
-
                     /* Find this record. */
                     int find_rc =
-                        bdb_temp_table_find(cur->state, cur->vs_skip,
-                                            (char *)srec, 8, NULL, bdberr);
+                        bdb_temp_table_find(cur->state, cur->vs_skip, &genid_ck,
+                                            sizeof(genid_ck), NULL, bdberr);
 
-                    /* Temp_table semantics also require that we free key if not
-                     * found */
-                    if (find_rc != IX_FND)
-                        free(srec);
                     if (find_rc) {
                         if (cur->trak) {
                             logmsg(LOGMSG_USER, 
@@ -5721,7 +5692,6 @@ step1:
             if (dtalen > 0 && bdb_osql_log_is_optim_data(addptr)) {
                 bdb_osql_log_addc_ptr_t *newptr;
                 int rowlen;
-                unsigned long long *pgenid;
 
                 /* Rebuild the row from the logfiles. */
                 rc = bdb_osql_log_get_optim_data_addcur(
@@ -5742,21 +5712,15 @@ step1:
                 if (rc < 0)
                     return rc;
 
-                /* Malloc pgenid for find_exact. */
-                pgenid = (unsigned long long *)malloc(sizeof(*pgenid));
-
-                /* Copy it. */
-                *pgenid = *genid_ck;
-
                 /* Re-find the newly inserted position */
-                rc = bdb_temp_table_find_exact(cur->state, cur->addcur,
-                                               (char *)pgenid, 8, bdberr);
+                rc =
+                    bdb_temp_table_find_exact(cur->state, cur->addcur, genid_ck,
+                                              sizeof(*genid_ck), bdberr);
                 if (rc != IX_FND) {
                     logmsg(LOGMSG_ERROR, "%s: fail to retrieve back the updated row "
                                     "rc=%d bdberr=%d\n",
                             __func__, rc, *bdberr);
                     rc = -1; /* we have to find this row back */
-                    free(pgenid);
                 }
 
                 /* Retrieve the header. */
