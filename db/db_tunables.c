@@ -214,6 +214,7 @@ extern int gbl_physrep_reconnect_penalty;
 extern int gbl_physrep_register_interval;
 extern int gbl_logdelete_lock_trace;
 extern int gbl_flush_log_at_checkpoint;
+extern int gbl_disjoint_pgallocs;
 
 extern long long sampling_threshold;
 
