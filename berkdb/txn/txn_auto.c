@@ -2233,8 +2233,8 @@ do_malloc:
 	}
 #endif
 
-    if (lflags & DB_TXN_LOGICAL_COMMIT)
-        flags |= DB_LOG_LOGICAL_COMMIT;
+	if (lflags & DB_TXN_LOGICAL_COMMIT)
+		flags |= DB_LOG_LOGICAL_COMMIT;
 
 	if (!is_durable && txnid != NULL) {
 		ret = 0;
