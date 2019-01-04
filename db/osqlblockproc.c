@@ -757,7 +757,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     key.seq = sess->seq;
 #if DEBUG_REORDER
     uuidstr_t us;
-    DEBUGMSG("uuid=%s type=%d (%s) seq=%lld\n", comdb2uuidstr(uuid, us), type,
+    comdb2uuidstr(uuid, us);
+    DEBUGMSG("uuid=%s type=%d (%s) seq=%lld\n", us, type,
              osql_reqtype_str(type), sess->seq);
 #endif
 
@@ -814,8 +815,9 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         int numops = osql_get_replicant_numops(rpl, rqid == OSQL_RQID_USE_UUID);
 #ifndef NDEBUG
         uuidstr_t us;
+        comdb2uuidstr(uuid, us);
         DEBUGMSG("uuid=%s type %s numops=%d, seq=%lld %s\n",
-                 comdb2uuidstr(uuid, us), osql_reqtype_str(type), numops,
+                 us, osql_reqtype_str(type), numops,
                  sess->seq, (numops != sess->seq + 1 ? "NO match" : ""));
 #endif
 
