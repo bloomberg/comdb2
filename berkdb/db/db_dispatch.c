@@ -298,6 +298,7 @@ file_id_for_recovery_record(DB_ENV *env, DB_LSN *lsn, int rectype, DBT *dbt)
 	case DB___db_ovref:
 	case DB___db_pg_free:
 	case DB___db_pg_freedata:
+	case DB___db_pg_freerec:
 	case DB___db_pg_prepare:
 	case DB___db_pg_new:
 	case DB___ham_splitdata:

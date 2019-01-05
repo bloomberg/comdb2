@@ -893,11 +893,20 @@ __db_free(dbc, h)
 	DB_TXN *txnp;
 	DB *dbp;
 	DBC *sysdbc;
+	DB_LSN lsn;
 	int ret, t_ret;
 	dbp = dbc->dbp;
 
 	if (!gbl_disjoint_pgallocs || !dbc->txn)
 		return __db_dofree(dbc, h);
+
+	if (DBC_LOGGING(dbc)) {
+		if ((ret = __db_pg_freerec_log(dbp, dbc->txn, &lsn, 0, h->pgno)) != 0) {
+			logmsg(LOGMSG_FATAL, "%s failed log ret=%d\n",
+					__func__, ret);
+			abort();
+		}
+	}
 
 	if ((ret = __txn_track_freed_page(dbp->dbenv, dbc->txn, dbc->dbp,
 					h->pgno)) != 0) {

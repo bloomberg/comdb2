@@ -1090,6 +1090,26 @@ out:
 }
 
 /*
+ * __db_pg_freerec_recover --
+ *	Recovery function for pg_freerec.
+ *
+ * PUBLIC: int __db_pg_freerec_recover
+ * PUBLIC:   __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
+ */
+
+int
+__db_pg_freerec_recover(dbenv, dbtp, lsnp, op, info)
+	DB_ENV *dbenv;
+	DBT *dbtp;
+	DB_LSN *lsnp;
+	db_recops op;
+	void *info;
+{
+	COMPQUIET(info, NULL);
+	return 0;
+}
+
+/*
  * __db_pg_freedata_recover --
  *	Recovery function for pg_freedata.
  *

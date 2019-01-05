@@ -260,3 +260,14 @@ ARG	pgno		db_pgno_t	lu
 ARG	vec_len		u_int32_t	lu
 ARG	ptype		u_int32_t	lu
 END
+
+/*
+ * pg_freerec: placeholder record for snapshot isolation
+ *
+ * pgno:	the page being freed.
+ */
+
+BEGIN pg_freerec		68
+DB	fileid		int32_t		ld
+ARG	pgno		db_pgno_t	lu
+END
