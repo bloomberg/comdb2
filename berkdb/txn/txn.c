@@ -282,6 +282,8 @@ __txn_begin_main(dbenv, parent, txnpp, flags, retries)
 	txn->parent = parent;
 	TAILQ_INIT(&txn->kids);
 	TAILQ_INIT(&txn->events);
+	TAILQ_INIT(&txn->alloced_pages);
+	TAILQ_INIT(&txn->freed_pages);
 	STAILQ_INIT(&txn->logs);
 	txn->flags = TXN_MALLOC;
 	if (LF_ISSET(DB_DIRTY_READ))
@@ -392,6 +394,8 @@ __txn_xa_begin(dbenv, txn)
 	txn->mgrp = dbenv->tx_handle;
 	TAILQ_INIT(&txn->kids);
 	TAILQ_INIT(&txn->events);
+	TAILQ_INIT(&txn->alloced_pages);
+	TAILQ_INIT(&txn->freed_pages);
 	STAILQ_INIT(&txn->logs);
 	txn->parent = NULL;
 	ZERO_LSN(txn->last_lsn);
@@ -428,6 +432,8 @@ __txn_compensate_begin(dbenv, txnpp)
 	txn->mgrp = dbenv->tx_handle;
 	TAILQ_INIT(&txn->kids);
 	TAILQ_INIT(&txn->events);
+	TAILQ_INIT(&txn->alloced_pages);
+	TAILQ_INIT(&txn->freed_pages);
 	STAILQ_INIT(&txn->logs);
 	txn->flags = TXN_COMPENSATE | TXN_MALLOC;
 
@@ -1837,6 +1843,17 @@ __txn_end(txnp, is_commit)
 		if ((ret = __lock_vec(dbenv,
 			txnp->txnid, 0, &request, 1, NULL)) != 0)
 			return (__db_panic(dbenv, ret));
+	}
+
+	/* Release freed pages */
+	if (is_commit && txnp->parent) 
+		__txn_concat_page_lists(dbenv, txnp);
+	else if (is_commit) {
+		__txn_freepages(dbenv, txnp);
+		__txn_clear_alloced_page_list(dbenv, txnp);
+	} else {
+		__txn_reclaim_alloced_pages(dbenv, txnp);
+		__txn_clear_free_page_list(dbenv, txnp);
 	}
 
 	/* End the transaction. */

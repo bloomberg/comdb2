@@ -308,12 +308,6 @@ int __os_physwrite(DB_ENV *dbenv, DB_FH * fhp, void *addr, size_t len,
 
 int __db_new_original(DBC *dbc, u_int32_t type, PAGE **pagepp);
 
-/*
- * __db_new --
- *	Get a new page, preferably from the freelist.
- *
- * PUBLIC: int __db_new __P((DBC *, u_int32_t, PAGE **));
- */
 static int
 __db_new_int(dbc, type, pagepp)
 	DBC *dbc;
@@ -533,7 +527,6 @@ err:
 	return (ret);
 }
 
-
 int
 __db_new_original(dbc, type, pagepp)
 	DBC *dbc;
@@ -707,63 +700,76 @@ err:	if (h != NULL)
 
 int gbl_disjoint_pgallocs = 1;
 
+/*
+ * __db_new --
+ *	Get a new page, preferably from the freelist.
+ *
+ * PUBLIC: int __db_new __P((DBC *, u_int32_t, PAGE **));
+ */
 int
 __db_new(dbc, type, pagepp)
 	DBC *dbc;
 	u_int32_t type;
 	PAGE **pagepp;
 {
-    DB_TXN *txnp;
-    DB *dbp;
-    DBC *sysdbc;
-    int ret, t_ret;
+	DB_TXN *txnp;
+	DB *dbp;
+	DBC *sysdbc;
+	int ret, t_ret;
 	dbp = dbc->dbp;
 
-    if (!gbl_disjoint_pgallocs || !dbp->dbenv->tx_handle)
-        return __db_new_int(dbc, type, pagepp);
+	if (!gbl_disjoint_pgallocs || !dbc->txn)
+		return __db_new_int(dbc, type, pagepp);
 
-    if ((ret = dbp->dbenv->txn_begin(dbp->dbenv, NULL, &txnp, 0)) != 0) {
-        logmsg(LOGMSG_FATAL, "%s cannot begin a transaction, ret=%d\n",
-                __func__, ret);
-        abort();
-    }
+	if ((ret = dbp->dbenv->txn_begin(dbp->dbenv, NULL, &txnp, 0)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s cannot begin a transaction, ret=%d\n",
+				__func__, ret);
+		abort();
+	}
 
-    if ((ret = __db_cursor(dbp, txnp, &sysdbc, 0)) != 0) {
-        logmsg(LOGMSG_FATAL, "%s failed to aquire cursor, ret=%d\n",
-                __func__, ret);
-        abort();
-    }
-    
-    if ((ret = __db_new_int(sysdbc, type, pagepp)) != 0) {
-        logmsg(LOGMSG_FATAL, "%s failed to aquire page, ret=%d\n",
-                __func__, ret);
-        abort();
-    }
+	if ((ret = __db_cursor(dbp, txnp, &sysdbc, 0)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s failed to aquire cursor, ret=%d\n",
+				__func__, ret);
+		abort();
+	}
+	
+	if ((ret = __db_new_int(sysdbc, type, pagepp)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s failed to aquire page, ret=%d\n",
+				__func__, ret);
+		abort();
+	}
 
-    if ((ret = __db_c_close(sysdbc)) != 0) {
-        logmsg(LOGMSG_FATAL, "%s failed to close cursor, ret=%d\n",
-                __func__, ret);
-        abort();
-    }
+	if ((ret = __db_c_close(sysdbc)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s failed to close cursor, ret=%d\n",
+				__func__, ret);
+		abort();
+	}
 
-    if ((ret = txnp->commit(txnp, 0)) != 0) {
-        logmsg(LOGMSG_FATAL, "%s failed to commit txn, ret=%d\n",
-                __func__, ret);
-        abort();
-    }
-    return 0;
+	if ((ret = txnp->commit(txnp, 0)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s failed to commit txn, ret=%d\n",
+				__func__, ret);
+		abort();
+	}
+
+	if ((ret = __txn_track_alloced_page(dbp->dbenv, dbc->txn, dbc->dbp,
+					(*pagepp)->pgno)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s failed to save page ret=%d\n",
+				__func__, ret);
+		abort();
+	}
+
+	return 0;
 }
 
 
-
 /*
- * __db_free --
- *	Add a page to the head of the freelist.
+ * __db_dofree --
+ *	Actually free a page
  *
- * PUBLIC: int __db_free __P((DBC *, PAGE *));
+ * PUBLIC: int __db_dofree __P((DBC *, PAGE *));
  */
 int
-__db_free(dbc, h)
+__db_dofree(dbc, h)
 	DBC *dbc;
 	PAGE *h;
 {
@@ -871,6 +877,36 @@ err:	if ((t_ret = __memp_fput(mpf, h, dirty_flag)) != 0 && ret == 0)
 	 * We have to unlock the caller's page in the caller!
 	 */
 	return (ret);
+}
+
+/*
+ * __db_free --
+ *	Add a page to the head of the freelist.
+ *
+ * PUBLIC: int __db_free __P((DBC *, PAGE *));
+ */
+int
+__db_free(dbc, h)
+	DBC *dbc;
+	PAGE *h;
+{
+	DB_TXN *txnp;
+	DB *dbp;
+	DBC *sysdbc;
+	int ret, t_ret;
+	dbp = dbc->dbp;
+
+	if (!gbl_disjoint_pgallocs || !dbc->txn)
+		return __db_dofree(dbc, h);
+
+	if ((ret = __txn_track_freed_page(dbp->dbenv, dbc->txn, dbc->dbp,
+					h->pgno)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s failed to save page ret=%d\n",
+				__func__, ret);
+		abort();
+	}
+
+	return 0;
 }
 
 #ifdef DEBUG

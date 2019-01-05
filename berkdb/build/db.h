@@ -984,6 +984,16 @@ struct __db_txn {
 		struct __txn_event **tqh_last;
 	} events;
 
+	struct {
+		struct __txn_freedpage *tqh_first;
+		struct __txn_freedpage **tqh_last;
+	} freed_pages;
+
+	struct {
+		struct __txn_allocedpage *tqh_first;
+		struct __txn_allocedpage **tqh_last;
+	} alloced_pages;
+
 	/*
 	 * !!!
 	 * Explicit representations of structures from queue.h.
