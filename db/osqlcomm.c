@@ -3925,7 +3925,7 @@ int osql_send_qblob(char *tohost, unsigned long long rqid, uuid_t uuid,
 #if DEBUG_REORDER
     logmsg(
         LOGMSG_DEBUG,
-        "REORDER: putting blob id=%d, seq=%d, bloblen(datalen)=%d, sent=%d\n",
+        "REORDER: putting blob id=%d, seq=%lld, bloblen(datalen)=%d, sent=%d\n",
         blobid, seq, datalen, sent);
     if (datalen > 0) {
         char *tmpstr;

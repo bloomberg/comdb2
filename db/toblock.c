@@ -4677,8 +4677,17 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     errout = 0;
 
     if (delayed || gbl_goslow) {
+
+        if (iq->debug) {
+            reqpushprefixf(iq, "%p:", trans);
+            reqpushprefixf(iq, "delayed_key_adds:");
+        }
         int verror = 0;
         rc = delayed_key_adds(iq, p_blkstate, trans, &blkpos, &ixout, &errout);
+
+        if (iq->debug)
+            reqpopprefixes(iq, 1);
+
         if (rc != 0) {
             constraint_violation = 1;
             opnum = blkpos; /* so we report the failed blockop accurately */
@@ -4692,8 +4701,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
         /* check foreign key constraints */
         verror = 0;
-        if (iq->debug)
-            reqpushprefixf(iq, "%p:", trans);
 
         rc = verify_del_constraints(javasp_trans_handle, iq, p_blkstate, trans,
                                     blobs, &verror);

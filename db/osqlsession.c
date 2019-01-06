@@ -837,6 +837,7 @@ int osql_sess_type(osql_sess_t *sess) { return sess->type; }
 
 int osql_sess_queryid(osql_sess_t *sess) { return sess->queryid; }
 
+// get sess->uuid into uuid as destination
 void osql_sess_getuuid(osql_sess_t *sess, uuid_t uuid)
 {
     comdb2uuidcpy(uuid, sess->uuid);

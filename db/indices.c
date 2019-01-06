@@ -45,7 +45,7 @@ static int check_index(struct ireq *iq, void *trans, int ixnum,
     char key[MAXKEYLEN];
     char mangled_key[MAXKEYLEN];
     char *od_dta_tail = NULL;
-    int od_len_tail;
+    int od_tail_len;
     int fndrrn = 0;
     unsigned long long fndgenid = 0LL;
 
@@ -65,11 +65,11 @@ static int check_index(struct ireq *iq, void *trans, int ixnum,
     snprintf(ixtag, sizeof(ixtag), "%s_IX_%d", ondisktag, ixnum);
 
     if (iq->idxInsert)
-        rc = create_key_from_ireq(iq, ixnum, 0, &od_dta_tail, &od_len_tail,
+        rc = create_key_from_ireq(iq, ixnum, 0, &od_dta_tail, &od_tail_len,
                                   mangled_key, od_dta, od_len, key);
     else
         rc = create_key_from_ondisk_sch_blobs(
-            iq->usedb, ondisktagsc, ixnum, &od_dta_tail, &od_len_tail,
+            iq->usedb, ondisktagsc, ixnum, &od_dta_tail, &od_tail_len,
             mangled_key, ondisktag, od_dta, od_len, ixtag, key, NULL, blobs,
             maxblobs, iq->tzname);
     if (rc == -1) {
@@ -177,14 +177,11 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
                        int opcode, int blkpos, void *od_dta, size_t od_len,
                        const char *ondisktag, struct schema *ondisktagsc)
 {
-    int ixnum;
     char *od_dta_tail = NULL;
-    int od_len_tail;
+    int od_tail_len;
     if (iq->osql_step_ix)
         gbl_osqlpf_step[*(iq->osql_step_ix)].step += 1;
-    for (ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
-        int isnullk = 0;
-        char ixtag[MAXTAGLEN];
+    for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
         char key[MAXKEYLEN];
         char mangled_key[MAXKEYLEN];
 
@@ -209,17 +206,18 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
             return ERR_BADREQ;
         }
 
-        snprintf(ixtag, sizeof(ixtag), "%s_IX_%d", ondisktag, ixnum);
-
         int rc;
         if (iq->idxInsert)
-            rc = create_key_from_ireq(iq, ixnum, 0, &od_dta_tail, &od_len_tail,
+            rc = create_key_from_ireq(iq, ixnum, 0, &od_dta_tail, &od_tail_len,
                                       mangled_key, od_dta, od_len, key);
-        else
+        else {
+            char ixtag[MAXTAGLEN];
+            snprintf(ixtag, sizeof(ixtag), "%s_IX_%d", ondisktag, ixnum);
             rc = create_key_from_ondisk_sch_blobs(
-                iq->usedb, ondisktagsc, ixnum, &od_dta_tail, &od_len_tail,
+                iq->usedb, ondisktagsc, ixnum, &od_dta_tail, &od_tail_len,
                 mangled_key, ondisktag, od_dta, od_len, ixtag, key, NULL, blobs,
                 maxblobs, iq->tzname);
+        }
         if (rc == -1) {
             if (iq->debug)
                 reqprintf(iq, "CAN'T FORM INDEX %d", ixnum);
@@ -236,7 +234,7 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
         if (iq->osql_step_ix)
             gbl_osqlpf_step[*(iq->osql_step_ix)].step += 2;
 
-        isnullk = ix_isnullk(iq->usedb, key, ixnum);
+        int isnullk = ix_isnullk(iq->usedb, key, ixnum);
 
         if (vgenid && iq->usedb->ix_dupes[ixnum] == 0 && !isnullk) {
             int fndrrn = 0;
@@ -260,7 +258,7 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
 
         /* add the key */
         rc = ix_addk(iq, trans, key, ixnum, *genid, *rrn, od_dta_tail,
-                     od_len_tail, isnullk);
+                     od_tail_len, isnullk);
 
         if (vgenid && rc == IX_DUP) {
             if (iq->usedb->ix_dupes[ixnum] || isnullk) {
@@ -310,9 +308,8 @@ static int add_key(struct ireq *iq, void *trans, int ixnum,
         }
         const uint8_t *p_buf_req_start = NULL;
         const uint8_t *p_buf_req_end = NULL;
-        rc = insert_add_op(iq, iq->blkstate, iq->usedb, p_buf_req_start,
-                           p_buf_req_end, opcode, rrn, ixnum, genid, ins_keys,
-                           blkpos, 0);
+        rc = insert_add_op(iq, p_buf_req_start, p_buf_req_end, opcode, rrn,
+                           ixnum, genid, ins_keys, blkpos, 0);
         if (iq->debug)
             reqprintf(iq, "insert_add_op IX %d RRN %d RC %d", ixnum, rrn, rc);
         if (rc != 0) {
@@ -374,14 +371,13 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
         char newkey[MAXKEYLEN];
         char mangled_oldkey[MAXKEYLEN];
         char mangled_newkey[MAXKEYLEN];
-        int keysize;
 
         /* index doesnt change */
         if (gbl_partial_indexes && iq->usedb->ix_partial &&
             !(ins_keys & (1ULL << ixnum)) && !(del_keys & (1ULL << ixnum)))
             continue;
 
-        keysize = getkeysize(iq->usedb, ixnum);
+        int keysize = getkeysize(iq->usedb, ixnum);
 
         /* light the prefault kill bit for this subop - oldkeys */
         prefault_kill_bits(iq, ixnum, PFRQ_OLDKEY);
@@ -474,8 +470,8 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
 
             gbl_upd_key++;
 
-            rc = ix_upd_key(iq, trans, newkey, iq->usedb->ix_keylen[ixnum],
-                            ixnum, vgenid, *newgenid, od_dta_tail, od_tail_len,
+            rc = ix_upd_key(iq, trans, newkey, keysize, ixnum, vgenid,
+                            *newgenid, od_dta_tail, od_tail_len,
                             ix_isnullk(iq->usedb, newkey, ixnum));
             if (iq->debug)
                 reqprintf(iq, "upd_key IX %d GENID 0x%016llx RC %d", ixnum,
@@ -559,8 +555,10 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
             !(del_keys & (1ULL << ixnum)))
             continue;
 
+        int keysize = getkeysize(iq->usedb, ixnum);
+
         if (iq->idxDelete)
-            memcpy(key, iq->idxDelete[ixnum], iq->usedb->ix_keylen[ixnum]);
+            memcpy(key, iq->idxDelete[ixnum], keysize);
         else {
             snprintf(keytag, sizeof(keytag), "%s_IX_%d", ondisktag, ixnum);
             rc = stag_to_stag_buf_blobs(iq->usedb->tablename, ondisktag, od_dta,
@@ -673,7 +671,6 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
         char mangled_key[MAXKEYLEN];
         char *od_dta_tail = NULL;
         int od_tail_len = 0;
-        int isnullk = 0;
 
         /* are we supposed to convert this ix -- if no skip work */
         if (gbl_use_plan && iq->usedb->plan &&
@@ -707,7 +704,7 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
             break;
         }
 
-        isnullk = ix_isnullk(iq->usedb, key, ixnum);
+        int isnullk = ix_isnullk(iq->usedb, key, ixnum);
 
         if (vgenid && iq->usedb->ix_dupes[ixnum] == 0 && !isnullk) {
             int fndrrn = 0;
@@ -782,8 +779,9 @@ int upd_new_record_indices(
 
         snprintf(keytag, sizeof(keytag), ".NEW..ONDISK_IX_%d", ixnum);
 
+        int keysize = iq->usedb->ix_keylen[ixnum];
         if (iq->idxDelete) {
-            memcpy(key, iq->idxDelete[ixnum], iq->usedb->ix_keylen[ixnum]);
+            memcpy(key, iq->idxDelete[ixnum], keysize);
             rc = 0;
         } else
             rc = create_key_from_ondisk_blobs(
