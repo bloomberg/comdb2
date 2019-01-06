@@ -306,13 +306,14 @@ int __os_physwrite(DB_ENV *dbenv, DB_FH * fhp, void *addr, size_t len,
 
 #include <arpa/inet.h>
 
-int __db_new_original(DBC *dbc, u_int32_t type, PAGE **pagepp);
+int __db_new_original(DBC *dbc, u_int32_t type, PAGE **pagepp, DB_TXN *ptxn);
 
 static int
-__db_new_int(dbc, type, pagepp)
+__db_new_int(dbc, type, pagepp, ptxn)
 	DBC *dbc;
 	u_int32_t type;
 	PAGE **pagepp;
+    DB_TXN *ptxn;
 {
 	DB *dbp;
 	DB_LSN lsn;
@@ -339,7 +340,7 @@ __db_new_int(dbc, type, pagepp)
 	page_extent_size = dbc->dbp->dbenv->page_extent_size;
 	if (page_extent_size == 0 ||
 	    dbc->dbp == ((DB_REP *)dbc->dbp->dbenv->rep_handle)->rep_db)
-		return __db_new_original(dbc, type, pagepp);
+		return __db_new_original(dbc, type, pagepp, ptxn);
 
 	*pagepp = NULL;
 
@@ -528,10 +529,11 @@ err:
 }
 
 int
-__db_new_original(dbc, type, pagepp)
+__db_new_original(dbc, type, pagepp, ptxn)
 	DBC *dbc;
 	u_int32_t type;
 	PAGE **pagepp;
+    DB_TXN *ptxn;
 {
 	DBMETA *meta;
 	DB *dbp;
@@ -632,10 +634,17 @@ __db_new_original(dbc, type, pagepp)
 	 * mpool to extend the file.
 	 */
 	if (DBC_LOGGING(dbc)) {
-		if ((ret = __db_pg_alloc_log(dbp, dbc->txn, &LSN(meta), 0,
-			    &LSN(meta), PGNO_BASE_MD, &lsn, pgno,
-			    (u_int32_t)type, newnext)) != 0)
-			goto err;
+        if (ptxn) {
+            if ((ret = __db_pg_alloc_ptran_log(dbp, dbc->txn, &LSN(meta), 0,
+                            &LSN(meta), PGNO_BASE_MD, &lsn, ptxn->txnid, pgno,
+                            (u_int32_t)type, newnext)) != 0)
+                goto err;
+        } else {
+            if ((ret = __db_pg_alloc_log(dbp, dbc->txn, &LSN(meta), 0,
+                            &LSN(meta), PGNO_BASE_MD, &lsn, pgno,
+                            (u_int32_t)type, newnext)) != 0)
+                goto err;
+        }
 	} else
 		LSN_NOT_LOGGED(LSN(meta));
 
@@ -719,7 +728,7 @@ __db_new(dbc, type, pagepp)
 	dbp = dbc->dbp;
 
 	if (!gbl_disjoint_pgallocs || !dbc->txn)
-		return __db_new_int(dbc, type, pagepp);
+		return __db_new_int(dbc, type, pagepp, NULL);
 
 	if ((ret = dbp->dbenv->txn_begin(dbp->dbenv, NULL, &txnp, 0)) != 0) {
 		logmsg(LOGMSG_FATAL, "%s cannot begin a transaction, ret=%d\n",
@@ -733,7 +742,7 @@ __db_new(dbc, type, pagepp)
 		abort();
 	}
 	
-	if ((ret = __db_new_int(sysdbc, type, pagepp)) != 0) {
+	if ((ret = __db_new_int(sysdbc, type, pagepp, dbc->txn)) != 0) {
 		logmsg(LOGMSG_FATAL, "%s failed to aquire page, ret=%d\n",
 				__func__, ret);
 		abort();

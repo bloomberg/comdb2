@@ -271,3 +271,20 @@ BEGIN pg_freerec		68
 DB	fileid		int32_t		ld
 ARG	pgno		db_pgno_t	lu
 END
+
+/*
+ * Page alloc which tells recovery which 'parent' transaction asked for this.
+ *
+ */
+
+BEGIN pg_alloc_ptran	69
+DB	fileid		int32_t		ld
+POINTER	meta_lsn	DB_LSN *	lu
+ARG	meta_pgno	db_pgno_t	lu
+POINTER	page_lsn	DB_LSN *	lu
+ARG ptxnid      uint32_t    lu
+ARG	pgno		db_pgno_t	lu
+ARG	ptype		u_int32_t	lu
+ARG	next		db_pgno_t	lu
+END
+

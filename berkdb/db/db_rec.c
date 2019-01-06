@@ -903,6 +903,195 @@ out:	if (pagep != NULL)
 	REC_CLOSE;
 }
 
+/*
+ * __db_pg_alloc_ptran_recover --
+ *	Recovery function for pg_alloc_ptran (the parent transaction is listed).
+ *
+ * PUBLIC: int __db_pg_alloc_ptran_recover
+ * PUBLIC:   __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
+ */
+int
+__db_pg_alloc_ptran_recover(dbenv, dbtp, lsnp, op, info)
+	DB_ENV *dbenv;
+	DBT *dbtp;
+	DB_LSN *lsnp;
+	db_recops op;
+	void *info;
+{
+	__db_pg_alloc_ptran_args *argp;
+	DB *file_dbp;
+	DBC *dbc;
+	DBMETA *meta;
+	DB_MPOOLFILE *mpf;
+	PAGE *pagep;
+	db_pgno_t pgno;
+	int cmp_n, cmp_p, created, level, modified, ret;
+
+	meta = NULL;
+	pagep = NULL;
+	REC_PRINT(__db_pg_alloc_ptran_print);
+	REC_INTRO(__db_pg_alloc_ptran_read, 0);
+
+	/*
+	 * Fix up the allocated page.  If we're redoing the operation, we have
+	 * to get the page (creating it if it doesn't exist), and update its
+	 * LSN.  If we're undoing the operation, we have to reset the page's
+	 * LSN and put it on the free list.
+	 *
+	 * Fix up the metadata page.  If we're redoing the operation, we have
+	 * to get the metadata page and update its LSN and its free pointer.
+	 * If we're undoing the operation and the page was ever created, we put
+	 * it on the freelist.
+	 */
+	pgno = PGNO_BASE_MD;
+	if ((ret = __memp_fget(mpf, &pgno, 0, &meta)) != 0) {
+		/* The metadata page must always exist on redo. */
+		if (DB_REDO(op)) {
+			ret = __db_pgerr(file_dbp, pgno, ret);
+			goto out;
+		} else
+			goto done;
+	}
+	created = modified = 0;
+	if ((ret = __memp_fget(mpf, &argp->pgno, 0, &pagep)) != 0) {
+		/*
+		 * We have to be able to identify if a page was newly
+		 * created so we can recover it properly.  We cannot simply
+		 * look for an empty header, because hash uses a pgin
+		 * function that will set the header.  Instead, we explicitly
+		 * try for the page without CREATE and if that fails, then
+		 * create it.
+		 */
+		if ((ret = __memp_fget(
+		    mpf, &argp->pgno, DB_MPOOL_CREATE, &pagep)) != 0) {
+			if (ret == ENOSPC)
+				goto do_meta;
+			ret = __db_pgerr(file_dbp, argp->pgno, ret);
+			goto out;
+		}
+		created = modified = 1;
+	}
+
+	/* Fix up the allocated page. */
+	cmp_n = log_compare(lsnp, &LSN(pagep));
+	cmp_p = log_compare(&LSN(pagep), &argp->page_lsn);
+
+	/*
+	 * If an inital allocation is aborted and then reallocated
+	 * during an archival restore the log record will have
+	 * an LSN for the page but the page will be empty.
+	 */
+	if (IS_ZERO_LSN(LSN(pagep)))
+		cmp_p = 0;
+	CHECK_LSN(op, cmp_p, &LSN(pagep), &argp->page_lsn, lsnp, argp->fileid,
+	    argp->pgno);
+	/*
+	 * If we we rolled back this allocation previously during an
+	 * archive restore, the page may have INIT_LSN from the limbo list.
+	 * Another special case we have to handle is if we ended up with a
+	 * page of all 0's which can happen if we abort between allocating a
+	 * page in mpool and initializing it.  In that case, even if we're
+	 * undoing, we need to re-initialize the page.
+	 */
+	if (DB_REDO(op) &&
+	    (cmp_p == 0 ||
+	    (IS_ZERO_LSN(argp->page_lsn) && IS_INIT_LSN(LSN(pagep))))) {
+		/* Need to redo update described. */
+		switch (argp->ptype) {
+		case P_LBTREE:
+		case P_LRECNO:
+		case P_LDUP:
+			level = LEAFLEVEL;
+			break;
+		default:
+			level = 0;
+			break;
+		}
+		P_INIT(pagep, file_dbp->pgsize,
+		    argp->pgno, PGNO_INVALID, PGNO_INVALID, level, argp->ptype);
+
+		pagep->lsn = *lsnp;
+		modified = 1;
+	} else if (DB_UNDO(op) && (cmp_n == 0 || created)) {
+		/*
+		 * This is where we handle the case of a 0'd page (pagep->pgno
+		 * is equal to PGNO_INVALID).
+		 * Undo the allocation, reinitialize the page and
+		 * link its next pointer to the free list.
+		 */
+		P_INIT(pagep, file_dbp->pgsize,
+		    argp->pgno, PGNO_INVALID, argp->next, 0, P_INVALID);
+
+		pagep->lsn = argp->page_lsn;
+		modified = 1;
+	}
+
+	/*
+	 * If the page was newly created, put it on the limbo list.
+	 */
+	if (IS_ZERO_LSN(LSN(pagep)) &&
+	    IS_ZERO_LSN(argp->page_lsn) && DB_UNDO(op)) {
+		/* Put the page in limbo.*/
+		if ((ret = __db_add_limbo(dbenv,
+		    info, argp->fileid, argp->pgno, 1)) != 0)
+			goto out;
+	}
+
+	if ((ret = __memp_fput(mpf, pagep, modified ? DB_MPOOL_DIRTY : 0)) != 0)
+		goto out;
+	pagep = NULL;
+
+do_meta:
+	/* Fix up the metadata page. */
+	modified = 0;
+	cmp_n = log_compare(lsnp, &LSN(meta));
+	cmp_p = log_compare(&LSN(meta), &argp->meta_lsn);
+	/*CHECK_LSN(op, cmp_p, &LSN(meta), &argp->meta_lsn); */
+	if (cmp_p == 0 && DB_REDO(op)) {
+		/* Need to redo update described. */
+		LSN(meta) = *lsnp;
+		meta->free = argp->next;
+		modified = 1;
+	} else if (cmp_n == 0 && DB_UNDO(op)) {
+		/* Need to undo update described. */
+		LSN(meta) = argp->meta_lsn;
+
+		/*
+		 * If the page has a zero LSN then its newly created
+		 * and will go into limbo rather than directly on the
+		 * free list.
+		 */
+		if (!IS_ZERO_LSN(argp->page_lsn))
+			meta->free = argp->pgno;
+		modified = 1;
+	}
+
+	/*
+	 * Make sure that meta->last_pgno always reflects the largest page
+	 * that we've ever allocated.
+	 */
+	if (argp->pgno > meta->last_pgno) {
+		meta->last_pgno = argp->pgno;
+		modified = 1;
+	}
+
+	if ((ret = __memp_fput(mpf, meta, modified ? DB_MPOOL_DIRTY : 0)) != 0)
+		goto out;
+	meta = NULL;
+
+done:	*lsnp = argp->prev_lsn;
+	ret = 0;
+
+out:	if (pagep != NULL)
+		(void)__memp_fput(mpf, pagep, 0);
+	if (meta != NULL)
+		(void)__memp_fput(mpf, meta, 0);
+	if (ret == ENOENT && op == DB_TXN_BACKWARD_ALLOC)
+		ret = 0;
+	REC_CLOSE;
+}
+
+
 #include <poll.h>
 int gbl_poll_in_pg_free_recover;
 
