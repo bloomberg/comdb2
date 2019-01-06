@@ -4700,6 +4700,7 @@ printf("AZ: 2loop opnum = %d opcode = %d\n", opnum, hdr.opcode);
             err.errcode = errout;
             err.ixnum = ixout;
             numerrs = 1;
+            reqlog_set_error(iq->reqlogger, "Delayed Key Adds", rc);
             BACKOUT;
         }
 
@@ -4709,17 +4710,17 @@ printf("AZ: 2loop opnum = %d opcode = %d\n", opnum, hdr.opcode);
             rc = process_defered_table(iq, p_blkstate, trans, &blkpos, &ixout, &errout);
             if (iq->debug)
                 reqpopprefixes(iq, 1);
-        }
 
-        if (rc != 0) {
-            constraint_violation = 1;
-            opnum = blkpos; /* so we report the failed blockop accurately */
-            err.blockop_num = blkpos;
-            err.errcode = errout;
-            err.ixnum = ixout;
-            numerrs = 1;
-            reqlog_set_error(iq->reqlogger, "Delayed Key Adds", rc);
-            BACKOUT;
+            if (rc != 0) {
+                constraint_violation = 1;
+                opnum = blkpos; /* so we report the failed blockop accurately */
+                err.blockop_num = blkpos;
+                err.errcode = errout;
+                err.ixnum = ixout;
+                numerrs = 1;
+                reqlog_set_error(iq->reqlogger, "Process Defered Table", rc);
+                BACKOUT;
+            }
         }
 
 

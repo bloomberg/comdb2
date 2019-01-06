@@ -365,7 +365,8 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         ondisktagsc = find_tag_schema(iq->usedb->tablename, ondisktag);
     }
 
-    rc = validate_server_record(iq, od_dta, od_len, tag, ondisktag, ondisktagsc);
+    rc =
+        validate_server_record(iq, od_dta, od_len, tag, ondisktag, ondisktagsc);
     if (rc == -1) {
         *opfailcode = ERR_NULL_CONSTRAINT;
         rc = retrc = ERR_NULL_CONSTRAINT;
@@ -393,6 +394,10 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             rc = ix_check_genid(iq, trans, vgenid, &bdberr);
             if (rc && bdberr == IX_FND) {
                 retrc = ERR_VERIFY;
+                ERR;
+            }
+            if (bdberr == RC_INTERNAL_RETRY) {
+                rc = retrc = RC_INTERNAL_RETRY;
                 ERR;
             }
             /* The row is not in new btree, proceed with the add */
@@ -425,9 +430,10 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         if (blob->exists && (!gbl_use_plan || !iq->usedb->plan ||
                              iq->usedb->plan->blob_plan[blobno] == -1)) {
             retrc = blob_add(iq, trans, blobno, blob->data, blob->length, *rrn,
-                          *genid);
+                             *genid);
             if (iq->debug) {
-                reqprintf(iq, "blob_add LEN %u RC %d DATA ", blob->length, retrc);
+                reqprintf(iq, "blob_add LEN %u RC %d DATA ", blob->length,
+                          retrc);
                 reqdumphex(iq, blob->data, blob->length);
             }
             if (retrc) {
@@ -467,8 +473,8 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     } else {
         if (!(flags & RECFLAGS_NEW_SCHEMA)) {
             /* enqueue the add of the key for constaint checking purposes */
-            rc = insert_add_op(iq, NULL, NULL, opcode,
-                               *rrn, -1, *genid, ins_keys, blkpos, rec_flags);
+            rc = insert_add_op(iq, NULL, NULL, opcode, *rrn, -1, *genid,
+                               ins_keys, blkpos, rec_flags);
             if (rc != 0) {
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO PUSH KEYOP");
@@ -533,8 +539,8 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         gbl_sc_last_writer_time = comdb2_time_epoch();
 
         /* For live schema change */
-        retrc = live_sc_post_add(iq, trans, *genid, od_dta, ins_keys, 
-                blobs, maxblobs, flags, rrn);
+        retrc = live_sc_post_add(iq, trans, *genid, od_dta, ins_keys, blobs,
+                                 maxblobs, flags, rrn);
 
         if (retrc) {
             ERR;
@@ -1723,8 +1729,6 @@ err:
     return retrc;
 }
 
-
-
 /*
  * Update a single record in the new table as part of a live schema
  * change.  This code is called when you update a record in-place
@@ -1833,8 +1837,12 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
         if (!verify_retry) {
             int bdberr;
             rc = ix_check_update_genid(iq, trans, newgenid, &bdberr);
-            if (rc && bdberr == IX_FND) {
+            if (rc == 1) {
                 retrc = ERR_VERIFY;
+                goto err;
+            }
+            if (bdberr == RC_INTERNAL_RETRY) {
+                rc = retrc = RC_INTERNAL_RETRY;
                 goto err;
             }
         }

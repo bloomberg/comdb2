@@ -789,7 +789,7 @@ struct lockset_req {
 
 int has_cascading_reverse_constraints(struct dbtable *tbl);
 
-int insert_add_op(struct ireq *iq, const uint8_t *p_buf_req_start, 
+int insert_add_op(struct ireq *iq, const uint8_t *p_buf_req_start,
                   const uint8_t *p_buf_req_end, int optype, int rrn, int ixnum,
                   unsigned long long genid, unsigned long long ins_keys,
                   int blkpos, int flags);
@@ -802,8 +802,8 @@ int process_defered_table(struct ireq *iq, block_state_t *blkstate, void *trans,
                      int *blkpos, int *ixout, int *errout);
 int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
                      int *blkpos, int *ixout, int *errout);
-void *create_constraint_table(long long *ctid);
-void *create_constraint_index_table(long long *ctid);
+void *create_constraint_table();
+void *create_constraint_index_table();
 int delete_constraint_table(void *table);
 int clear_constraints_tables(void);
 int truncate_constraint_table(void *table);

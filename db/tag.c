@@ -3511,38 +3511,40 @@ void *create_blank_record(struct dbtable *db, size_t *length)
  * null constraints.
  */
 int validate_server_record(struct ireq *iq, const void *record, size_t reclen,
-                           const char *tag, const char *ondisktag, 
+                           const char *tag, const char *ondisktag,
                            struct schema *schema)
 {
     const char *crec = record;
-    int rc = 0;
-    struct convert_failure reason = {0};
-    for (int nfield = 0; nfield < schema->nmembers && 0 == rc; nfield++) {
-        const struct field *fld = &schema->member[nfield];
-        if (fld->flags & NO_NULL && stype_is_null(crec + fld->offset)) {
-            reason.reason = CONVERT_FAILED_NULL_CONSTRAINT_VIOLATION;
-            reason.source_schema = schema;
-            reason.target_schema = schema;
-            reason.source_field_idx = nfield;
-            reason.target_field_idx = nfield;
-            rc = -1;
+    for (int nfield = 0; nfield < schema->nmembers; nfield++) {
+        const struct field *field = &schema->member[nfield];
+        if ((field->flags & NO_NULL) && (stype_is_null(crec + field->offset))) {
+            /* field can't be NULL */
+            struct convert_failure reason = {
+                .reason = CONVERT_FAILED_NULL_CONSTRAINT_VIOLATION,
+                .source_schema = schema,
+                .source_field_idx = nfield,
+                .target_schema = schema,
+                .target_field_idx = nfield,
+                .source_sql_field_flags = 0,
+                .source_sql_field_info = {0}};
+
+            char str[128];
+            convert_failure_reason_str(&reason, iq->usedb->tablename, tag,
+                                       ondisktag, str, sizeof(str));
+            if (iq->debug) {
+                reqprintf(iq, "ERR VERIFY DTA %s->.ONDISK '%s'", tag, str);
+            }
+            reqerrstrhdr(
+                iq, "Null constraint violation for column '%s' on table '%s'. ",
+                reason.target_schema->member[reason.target_field_idx].name,
+                iq->usedb->tablename);
+            reqerrstr(iq, COMDB2_ADD_RC_CNVT_DTA,
+                      "null constraint error data %s->.ONDISK '%s'", tag, str);
+
+            return -1;
         }
     }
-    if (rc) {
-        char str[128];
-        convert_failure_reason_str(&reason, iq->usedb->tablename, tag,
-                                   ondisktag, str, sizeof(str));
-        if (iq->debug) {
-            reqprintf(iq, "ERR VERIFY DTA %s->.ONDISK '%s'", tag, str);
-        }
-        reqerrstrhdr(
-            iq, "Null constraint violation for column '%s' on table '%s'. ",
-            reason.target_schema->member[reason.target_field_idx].name,
-            iq->usedb->tablename);
-        reqerrstr(iq, COMDB2_ADD_RC_CNVT_DTA,
-                  "null constraint error data %s->.ONDISK '%s'", tag, str);
-    }
-    return rc;
+    return 0;
 }
 
 int stag_to_ctag_buf(const char *table, const char *stag, const char *inbuf,

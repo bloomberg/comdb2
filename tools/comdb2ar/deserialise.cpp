@@ -873,8 +873,10 @@ void deserialise_database(
         uid_t uid = (uid_t)strtol(head.h.uid, NULL, 8);
         gid_t gid = (gid_t)strtol(head.h.gid, NULL, 8);
         mode_t modes = (mode_t)strtol(head.h.mode, NULL, 8);
-        chown(fullpath.c_str(), uid, gid);
-        chmod(fullpath.c_str(), modes);
+        if (chown(fullpath.c_str(), uid, gid)==-1)
+		perror(fullpath.c_str());
+        if (chmod(fullpath.c_str(), modes)==-1)
+		perror(fullpath.c_str());
 
         if(is_manifest) {
             process_manifest(text, manifest_map, run_full_recovery, origlrlname, options);

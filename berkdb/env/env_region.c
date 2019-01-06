@@ -1076,8 +1076,8 @@ __db_r_detach(dbenv, infop, destroy)
 		__db_region_destroy(dbenv, infop);
 
 	/* Destroy heap structure. */
-    if (infop->addr)
-        __db_heap_destroy(dbenv, infop->addr);
+        if (infop->addr)
+                __db_heap_destroy(dbenv, infop->addr);
 
 	/* Detach from the underlying OS region. */
 	ret = __os_r_detach(dbenv, infop, destroy);

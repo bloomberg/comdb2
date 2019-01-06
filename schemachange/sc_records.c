@@ -3092,6 +3092,8 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
 
     data->s->hitLastCnt = 0;
 
+    data->to->sc_from = data->from;
+
     /* s->curLsn is used to synchronize between logical redo thread and convert
      * record threads in order to correctly detect unique key violations */
     Pthread_mutex_lock(&data->s->livesc_mtx);
@@ -3193,6 +3195,8 @@ cleanup:
     free(data->s->sc_convert_done);
     data->s->sc_convert_done = NULL;
     data->s->logical_livesc = 0;
+
+    data->to->sc_from = NULL;
 
     free(data);
     return NULL;

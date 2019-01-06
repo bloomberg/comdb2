@@ -123,7 +123,7 @@ static int check_index(struct ireq *iq, void *trans, int ixnum,
     char key[MAXKEYLEN];
     char mangled_key[MAXKEYLEN];
     char *od_dta_tail = NULL;
-    int od_len_tail;
+    int od_tail_len;
     int fndrrn = 0;
     unsigned long long fndgenid = 0LL;
 
@@ -143,11 +143,11 @@ static int check_index(struct ireq *iq, void *trans, int ixnum,
     snprintf(ixtag, sizeof(ixtag), "%s_IX_%d", ondisktag, ixnum);
 
     if (iq->idxInsert)
-        rc = create_key_from_ireq(iq, ixnum, 0, &od_dta_tail, &od_len_tail,
+        rc = create_key_from_ireq(iq, ixnum, 0, &od_dta_tail, &od_tail_len,
                                   mangled_key, od_dta, od_len, key);
     else
         rc = create_key_from_ondisk_sch_blobs(
-            iq->usedb, ondisktagsc, ixnum, &od_dta_tail, &od_len_tail,
+            iq->usedb, ondisktagsc, ixnum, &od_dta_tail, &od_tail_len,
             mangled_key, ondisktag, od_dta, od_len, ixtag, key, NULL, blobs,
             maxblobs, iq->tzname);
     if (rc == -1) {
@@ -172,6 +172,15 @@ static int check_index(struct ireq *iq, void *trans, int ixnum,
         /* If following changes, update OSQL_INSREC in osqlcomm.c */
         *opfailcode = OP_FAILED_UNIQ; /* really? */
         *retrc = IX_DUP;
+        return 1;
+    } else if (rc == RC_INTERNAL_RETRY) {
+        *retrc = RC_INTERNAL_RETRY;
+        return 1;
+    } else if (rc != IX_FNDMORE && rc != IX_NOTFND && rc != IX_PASTEOF &&
+               rc != IX_EMPTY) {
+        *retrc = ERR_INTERNAL;
+        logmsg(LOGMSG_ERROR, "%s:%d got unexpected error rc = %d\n", __func__,
+               __LINE__, rc);
         return 1;
     }
     return 0;
@@ -351,18 +360,25 @@ printf("AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", __func__, iq->u
                 int fndrrn = 0;
                 unsigned long long fndgenid = 0ULL;
                 rc = ix_find_by_key_tran(iq, key, ixkeylen, ixnum, NULL, &fndrrn,
-                        &fndgenid, NULL, NULL, 0, trans);
+                                         &fndgenid, NULL, NULL, 0, trans);
                 if (rc == IX_FND && fndgenid == vgenid) {
                     return ERR_VERIFY;
+                } else if (rc == RC_INTERNAL_RETRY) {
+                    return RC_INTERNAL_RETRY;
+                } else if (rc != IX_FNDMORE && rc != IX_NOTFND &&
+                           rc != IX_PASTEOF && rc != IX_EMPTY) {
+                    logmsg(LOGMSG_ERROR, "%s:%d got unexpected error rc = %d\n",
+                           __func__, __LINE__, rc);
+                    return ERR_INTERNAL;
                 }
 
-                /* The row is not in new btree, proceed with the add */
-                vgenid = 0; // no need to verify again
+            /* The row is not in new btree, proceed with the add */
+            vgenid = 0; // no need to verify again
             }
 
             /* add the key */
             rc = ix_addk(iq, trans, key, ixnum, *genid, *rrn, od_dta_tail,
-                    od_tail_len, isnullk);
+                         od_tail_len, isnullk);
 
 printf("AZ: direct ix_addk genid=%llx rc %d\n", bdb_genid_to_host_order(*genid), rc);
             if (vgenid && rc == IX_DUP) {
@@ -414,9 +430,8 @@ static int add_key(struct ireq *iq, void *trans, int ixnum,
         }
         const uint8_t *p_buf_req_start = NULL;
         const uint8_t *p_buf_req_end = NULL;
-        rc = insert_add_op(iq, p_buf_req_start,
-                           p_buf_req_end, opcode, rrn, ixnum, genid, ins_keys,
-                           blkpos, 0);
+        rc = insert_add_op(iq, p_buf_req_start, p_buf_req_end, opcode, rrn,
+                           ixnum, genid, ins_keys, blkpos, 0);
         if (iq->debug)
             reqprintf(iq, "insert_add_op IX %d RRN %d RC %d", ixnum, rrn, rc);
         if (rc != 0) {
@@ -474,6 +489,12 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
         delditk.usedb = iq->usedb;
         ditk.usedb = iq->usedb;
     }
+
+    /* Delay key add if schema change has constraints so we can * verify them.
+     * FIXME: What if the table does not have index to begin with?
+     * (Redo based live sc works for this case)
+     */
+    int live_sc_delay = live_sc_delay_key_add(iq);
 
     int rc = 0;
     for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
@@ -573,7 +594,7 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
 
         int key_unique = (iq->usedb->ix_dupes[ixnum] == 0);
         int same_key = (memcmp(newkey, oldkey, keysize) == 0);
-        if (gbl_key_updates &&
+        if (!live_sc_delay && gbl_key_updates &&
             ((key_unique && !ix_isnullk(iq->usedb, newkey, ixnum)) ||
              same_genid_with_upd) &&
             same_key &&
@@ -609,13 +630,13 @@ printf("AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", __func__, iq->u
                 memset(ditk.ixkey, 0, keysize);
             }
             else {
-                rc = ix_upd_key(iq, trans, newkey, keysize,
-                        ixnum, vgenid, *newgenid, od_dta_tail, od_tail_len,
-                        ix_isnullk(iq->usedb, newkey, ixnum));
-printf("AZ: direct ix_upd_key genid=%llx newwgenid=%llx rc %d\n", bdb_genid_to_host_order(vgenid), bdb_genid_to_host_order(*newgenid), rc);
+                rc = ix_upd_key(iq, trans, newkey, keysize, ixnum, vgenid,
+                                *newgenid, od_dta_tail, od_tail_len,
+                                ix_isnullk(iq->usedb, newkey, ixnum));
+    printf("AZ: direct ix_upd_key genid=%llx newwgenid=%llx rc %d\n", bdb_genid_to_host_order(vgenid), bdb_genid_to_host_order(*newgenid), rc);
                 if (iq->debug)
                     reqprintf(iq, "upd_key IX %d GENID 0x%016llx RC %d", ixnum,
-                            *newgenid, rc);
+                              *newgenid, rc);
 
                 if (rc != 0) {
                     *opfailcode = OP_FAILED_INTERNAL + ERR_DEL_KEY;
@@ -623,13 +644,8 @@ printf("AZ: direct ix_upd_key genid=%llx newwgenid=%llx rc %d\n", bdb_genid_to_h
                     return rc;
                 }
             }
-
-            /* need to do this here as we're not adding the new key so we
-               dont have the luxury of letting the constraint engine catch it
-               later */
-            verify_schema_change_constraint(iq, iq->usedb, trans, od_dta,
-                                            ins_keys);
-        } else { /* delete / add the key */
+        } else /* delete / add the key */
+        {
             /*
               logmsg(LOGMSG_DEBUG, "IX %d changed, deleting key at genid 0x%016llx "
               "adding key at genid 0x%016llx\n",
@@ -682,6 +698,8 @@ printf("AZ: direct upd ix_delk genid=%llx newwgenid=%llx rc %d\n", bdb_genid_to_
             } else {
                 do_inline = 1;
             }
+            if (live_sc_delay)
+                do_inline = 0;
             *deferredAdd |= (!do_inline);
 
             if (!gbl_partial_indexes || !iq->usedb->ix_partial ||
@@ -859,12 +877,27 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
     if (!iq->usedb)
         return ERR_BADREQ;
 
-    int rebuild = iq->usedb->plan && iq->usedb->plan->dta_plan;
-    rc = verify_record_constraint(
-        iq, iq->usedb, trans, new_dta, ins_keys, blobs, MAXBLOBS,
-        use_new_tag ? ".NEW..ONDISK" : ".ONDISK", rebuild, 1);
-    if (rc)
-        return ERR_CONSTR;
+    if (verify) {
+        int rebuild = iq->usedb->plan && iq->usedb->plan->dta_plan;
+        rc = verify_record_constraint(
+            iq, iq->usedb, trans, new_dta, ins_keys, blobs, MAXBLOBS,
+            use_new_tag ? ".NEW..ONDISK" : ".ONDISK", rebuild, !use_new_tag);
+        if (rc) {
+            int bdberr = 0;
+            struct dbtable *to = iq->usedb;
+            struct dbtable *from = to->sc_from;
+            assert(from != NULL);
+            iq->usedb = from;
+            rc = ix_check_update_genid(iq, trans, newgenid, &bdberr);
+            iq->usedb = to;
+            if (rc == 1 && bdberr == IX_FND)
+                return ERR_CONSTR;
+            if (bdberr == RC_INTERNAL_RETRY)
+                return RC_INTERNAL_RETRY;
+            logmsg(LOGMSG_DEBUG, "%s: ignores constraints for genid %llx\n",
+                   __func__, newgenid);
+        }
+    }
 
     unsigned long long vgenid = 0ULL;
     if (verify)
@@ -933,6 +966,13 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
                                      NULL, 0, trans);
             if (rc == IX_FND && fndgenid == vgenid) {
                 return ERR_VERIFY;
+            } else if (rc == RC_INTERNAL_RETRY) {
+                return RC_INTERNAL_RETRY;
+            } else if (rc != IX_FNDMORE && rc != IX_NOTFND &&
+                       rc != IX_PASTEOF && rc != IX_EMPTY) {
+                logmsg(LOGMSG_ERROR, "%s:%d got unexpected error rc = %d\n",
+                       __func__, __LINE__, rc);
+                return ERR_INTERNAL;
             }
 
             /* The row is not in new btree, proceed with the add */
