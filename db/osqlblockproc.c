@@ -816,9 +816,9 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 #ifndef NDEBUG
         uuidstr_t us;
         comdb2uuidstr(uuid, us);
-        DEBUGMSG("uuid=%s type %s numops=%d, seq=%lld %s\n",
-                 us, osql_reqtype_str(type), numops,
-                 sess->seq, (numops != sess->seq + 1 ? "NO match" : ""));
+        DEBUGMSG("uuid=%s type %s numops=%d, seq=%lld %s\n", us,
+                 osql_reqtype_str(type), numops, sess->seq,
+                 (numops != sess->seq + 1 ? "NO match" : ""));
 #endif
 
         if (gbl_osql_check_replicant_numops && numops != sess->seq + 1) {

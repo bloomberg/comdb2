@@ -3511,14 +3511,13 @@ void *create_blank_record(struct dbtable *db, size_t *length)
  * null constraints.
  */
 int validate_server_record(struct ireq *iq, const void *record, size_t reclen,
-                           const char *tag, const char *ondisktag, 
+                           const char *tag, const char *ondisktag,
                            struct schema *schema)
 {
     const char *crec = record;
     for (int nfield = 0; nfield < schema->nmembers; nfield++) {
         const struct field *field = &schema->member[nfield];
-        if ((field->flags & NO_NULL) &&
-            (stype_is_null(crec + field->offset)) ){
+        if ((field->flags & NO_NULL) && (stype_is_null(crec + field->offset))) {
             /* field can't be NULL */
             struct convert_failure reason = {
                 .reason = CONVERT_FAILED_NULL_CONSTRAINT_VIOLATION,
@@ -3527,8 +3526,7 @@ int validate_server_record(struct ireq *iq, const void *record, size_t reclen,
                 .target_schema = schema,
                 .target_field_idx = nfield,
                 .source_sql_field_flags = 0,
-                .source_sql_field_info = {0}
-            };
+                .source_sql_field_info = {0}};
 
             char str[128];
             convert_failure_reason_str(&reason, iq->usedb->tablename, tag,
@@ -3542,7 +3540,7 @@ int validate_server_record(struct ireq *iq, const void *record, size_t reclen,
                 iq->usedb->tablename);
             reqerrstr(iq, COMDB2_ADD_RC_CNVT_DTA,
                       "null constraint error data %s->.ONDISK '%s'", tag, str);
-     
+
             return -1;
         }
     }

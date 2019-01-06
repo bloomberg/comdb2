@@ -470,8 +470,8 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
 
             gbl_upd_key++;
 
-            rc = ix_upd_key(iq, trans, newkey, keysize,
-                            ixnum, vgenid, *newgenid, od_dta_tail, od_tail_len,
+            rc = ix_upd_key(iq, trans, newkey, keysize, ixnum, vgenid,
+                            *newgenid, od_dta_tail, od_tail_len,
                             ix_isnullk(iq->usedb, newkey, ixnum));
             if (iq->debug)
                 reqprintf(iq, "upd_key IX %d GENID 0x%016llx RC %d", ixnum,

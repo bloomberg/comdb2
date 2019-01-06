@@ -1925,7 +1925,8 @@ static inline int constraint_key_check(struct schema *fky, struct schema *bky)
     return 0;
 }
 
-static inline struct dbtable *get_newer_db(struct dbtable *db, struct dbtable *new_db)
+static inline struct dbtable *get_newer_db(struct dbtable *db,
+                                           struct dbtable *new_db)
 {
     if (new_db && strcasecmp(db->tablename, new_db->tablename) == 0) {
         return new_db;
