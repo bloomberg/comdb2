@@ -1854,6 +1854,7 @@ SP: exec procedure bound(@i, @u, @ll, @ull, @s, @us, @f, @d, @dt, @cstr, @ba, @b
 ($0='CREATE TEMP INDEX WITH DDL PASS')
 ($0='CREATE TEMP TRIGGER WITH DDL PASS')
 ($0='CREATE TEMP VIEW WITH DDL PASS')
+($0='PUT TUNABLE allow_lua_exec_with_ddl OFF WITH DDL PASS')
 ($0='CREATE INDEX PASS 23')
 ($0='CREATE TABLE PASS 23')
 ($0='DB:TABLE PASS')

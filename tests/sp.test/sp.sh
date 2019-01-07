@@ -1354,6 +1354,12 @@ local function main()
   else
     db:emit("CREATE TEMP VIEW WITH DDL FAIL "..ddl_rc4)
   end
+  local ddl_row5, ddl_rc5 = db:exec_with_ddl("PUT TUNABLE allow_lua_exec_with_ddl OFF;")
+  if ddl_row5 == 0 then
+    db:emit("PUT TUNABLE allow_lua_exec_with_ddl OFF WITH DDL PASS")
+  else
+    db:emit("PUT TUNABLE allow_lua_exec_with_ddl OFF WITH DDL FAIL "..ddl_rc5)
+  end
   local row1, rc1 = db:exec("CREATE INDEX no_ddl_t1_i2 ON no_ddl_t1(x);")
   if rc1 == 0 then
     db:emit("CREATE INDEX FAIL")
