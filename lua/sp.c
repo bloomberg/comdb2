@@ -3461,7 +3461,7 @@ static int db_exec_with_ddl(Lua lua)
         ++sql;
 
     sqlite3_stmt *stmt = NULL;
-    if ((rc = lua_prepare_sql_no_ddl(lua, sp, sql, &stmt)) != 0) {
+    if ((rc = lua_prepare_sql_with_ddl(lua, sp, sql, &stmt)) != 0) {
         lua_pushnil(lua);
         lua_pushinteger(lua, rc);
         return 2;
