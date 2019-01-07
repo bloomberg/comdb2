@@ -3502,7 +3502,7 @@ static int db_prepare(Lua L)
     }
     sqlite3_stmt *stmt = NULL;
     struct sql_state *rec = calloc(1, sizeof(*rec));
-    if (lua_prepare_sql_int(L, sp, sql, &stmt, rec, PREPARE_AUTHORIZER) != 0) {
+    if (lua_prepare_sql_int(L, sp, sql, &stmt, rec, PREPARE_DENY_DDL) != 0) {
         free(rec);
         return 2;
     }
