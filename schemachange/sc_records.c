@@ -1386,6 +1386,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
                        "%s:%d failed to set logical live sc, rc = %d\n",
                        __func__, __LINE__, rc);
                 free(s->sc_convert_done);
+                s->sc_convert_done = NULL;
                 return -1;
             }
         }
@@ -1403,6 +1404,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
             bdb_clear_logical_live_sc(s->db->handle, 1 /* lock table */);
             s->logical_livesc = 0;
             free(s->sc_convert_done);
+            s->sc_convert_done = NULL;
             return -1;
         }
     } else {
@@ -1524,7 +1526,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         data.tagmap = NULL;
     }
 
-    if (outrc == 0) {
+    if (outrc == 0 && s->logical_livesc) {
         s->sc_convert_done[MAXDTASTRIPE] = 1;
         sc_printf(s, "[%s] All convert threads finished\n", from->tablename);
     }
@@ -3272,8 +3274,6 @@ cleanup:
     Pthread_mutex_unlock(&data->s->livesc_mtx);
     bdb_llog_cursor_close(pCur);
 
-    free(data->s->sc_convert_done);
-    data->s->sc_convert_done = NULL;
     data->s->logical_livesc = 0;
 
     data->to->sc_from = NULL;
