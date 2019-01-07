@@ -273,7 +273,7 @@ if ! diff  dupins3.out dupins3.exp; then
 fi
 
 
-echo 'value 1 is already in, but we reorder so we first del then ins, so no dup'
+echo 'value 1 is already in, but the insert happens defered, the delete happens inline, so no dup'
 echo "begin
 insert into t2 values(1)
 delete from t2 where i = 1
