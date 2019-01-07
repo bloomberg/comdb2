@@ -713,6 +713,7 @@ __db_new(dbc, type, pagepp)
 	PAGE **pagepp;
 {
 	DB_TXN *txnp;
+	DB_LOCK pglock;
 	DB *dbp;
 	DBC *sysdbc;
 	int ret, t_ret;
@@ -738,6 +739,13 @@ __db_new(dbc, type, pagepp)
 				__func__, ret);
 		abort();
 	}
+
+    if ((ret = __db_lget(sysdbc, LCK_ALWAYS, (*pagepp)->pgno, DB_LOCK_WRITE, 0,
+                    &pglock)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s failed to aquire page lock, ret=%d\n",
+				__func__, ret);
+		abort();
+    }
 
 	if ((ret = __db_c_close(sysdbc)) != 0) {
 		logmsg(LOGMSG_FATAL, "%s failed to close cursor, ret=%d\n",

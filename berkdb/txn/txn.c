@@ -1019,6 +1019,11 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 				goto err;
 			}
 
+            /* Process deferred pgfrees */
+            if ((ret = __txn_freepages(dbenv, txnp)) != 0) {
+                goto err;
+            }
+
 			memset(&request, 0, sizeof(request));
 			memset(&list_dbt_rl, 0, sizeof(list_dbt_rl));
 
@@ -1886,7 +1891,6 @@ __txn_end(txnp, is_commit)
 	if (is_commit && txnp->parent) 
 		__txn_concat_page_lists(dbenv, txnp);
 	else if (is_commit) {
-		__txn_freepages(dbenv, txnp);
 		__txn_clear_alloced_page_list(dbenv, txnp);
 	} else {
 		__txn_reclaim_alloced_pages(dbenv, txnp);

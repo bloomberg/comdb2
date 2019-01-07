@@ -154,7 +154,7 @@ END
  * should be rolled back anytime the parent is rolled back.  This is required 
  * for disjoint page allocation.
  */
-BEGIN regop_detached_child  17
+BEGIN regop_detached_child  69
 ARG	opcode		u_int32_t	lu
 ARG generation  u_int32_t   u
 ARG context   genid_t llx

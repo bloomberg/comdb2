@@ -303,9 +303,9 @@ __txn_clear_free_page_list(dbenv, txn)
  * PUBLIC:	   DB_TXN *));
  */
 int
-__txn_freepages(dbenv, txn)
+__txn_freepages(dbenv, txnp)
 	DB_ENV *dbenv;
-	DB_TXN *txn;
+	DB_TXN *txnp;
 {
 	TXN_FREEDPAGE *p, *next_p;
 	int ret;
@@ -313,16 +313,10 @@ __txn_freepages(dbenv, txn)
 	db_pgno_t pgno;
 	DB *dbp, *last_dbp = NULL;
 	DBC *dbc = NULL;
-	DB_TXN *txnp = NULL;
 
-	for ((p = TAILQ_FIRST(&txn->freed_pages)); p != NULL; p = next_p) {
+	for ((p = TAILQ_FIRST(&txnp->freed_pages)); p != NULL; p = next_p) {
 		next_p = TAILQ_NEXT(p, links);
-		TAILQ_REMOVE(&txn->freed_pages, p, links);
-		if (!txnp && (ret = dbenv->txn_begin(dbenv, NULL, &txnp, 0)) != 0) {
-			logmsg(LOGMSG_FATAL, "%s cannot begin a transaction, ret=%d\n",
-					__func__, ret);
-			abort();
-		}
+		TAILQ_REMOVE(&txnp->freed_pages, p, links);
 		dbp = p->dbp;
 		pgno = p->pgno;
 		__os_free(dbenv, p);
@@ -369,13 +363,7 @@ __txn_freepages(dbenv, txn)
 		abort();
 	}
 
-	if (txnp && (ret = txnp->commit(txnp, 0)) != 0) {
-		logmsg(LOGMSG_FATAL, "%s failed to commit freed pages, ret=%d\n",
-				__func__, ret);
-		abort();
-	}
-
-	TAILQ_INIT(&txn->freed_pages);
+	TAILQ_INIT(&txnp->freed_pages);
 	return 0;
 }
 
