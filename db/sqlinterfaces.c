@@ -1028,8 +1028,8 @@ void sql_set_sqlengine_state(struct sqlclntstate *clnt, char *file, int line,
                file, line, clnt->ctrl_sqlengine, newstate);
 
     if (newstate == SQLENG_WRONG_STATE) {
-        logmsg(LOGMSG_ERROR, "sqlengine entering wrong state from %s line %d.\n",
-                file, line);
+        logmsg(LOGMSG_ERROR, "sqlengine entering wrong state from state %d file %s line %d.\n",
+               clnt->ctrl_sqlengine, file, line);
     }
 
     clnt->ctrl_sqlengine = newstate;
