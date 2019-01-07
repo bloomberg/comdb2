@@ -1032,6 +1032,7 @@ struct __db_txn {
 					/* Methods. */
 	int	  (*abort) __P((DB_TXN *));
 	int	  (*commit) __P((DB_TXN *, u_int32_t));
+	int	  (*commit_detached) __P((DB_TXN *, u_int32_t, u_int32_t));
 	int	  (*commit_getlsn) __P((DB_TXN *, u_int32_t, DB_LSN *, void *));
 	int	  (*commit_rowlocks) __P((DB_TXN *, u_int32_t, u_int64_t,
 		      u_int32_t, DB_LSN *,DBT *, DB_LOCK *,

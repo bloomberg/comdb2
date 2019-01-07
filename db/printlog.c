@@ -366,7 +366,6 @@ int printlog(bdb_state_type *bdb_state, int startfile, int startoff,
         DB___qam_add, DB___qam_delext, DB___bam_split, DB___bam_rsplit,
         DB___bam_adj, DB___bam_cadjust, DB___bam_cdel, DB___bam_repl,
         DB___bam_root, DB___bam_curadj, DB___bam_rcuradj, DB___bam_prefix,
-        DB___db_pg_alloc_ptran,
 
         DB_llog_savegenid, DB_llog_scdone, DB_llog_undo_add_dta,
         DB_llog_undo_add_ix, DB_llog_ltran_commit, DB_llog_ltran_start,

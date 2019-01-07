@@ -85,4 +85,19 @@ typedef struct ___txn_regop_gen_args {
 	DBT	locks;
 } __txn_regop_gen_args;
 
+#define	DB___txn_regop_detached_child	69
+typedef struct ___txn_regop_detached_child_args {
+	u_int32_t type;
+	DB_TXN *txnid;
+	DB_LSN prev_lsn;
+	u_int32_t	opcode;
+	u_int32_t	generation;
+	u_int64_t	context;
+	u_int32_t	ptxnid;
+	u_int64_t	timestamp;
+	DBT	locks;
+} __txn_regop_detached_child_args;
+
+
+
 #endif

@@ -149,3 +149,16 @@ TIME	timestamp	u_int64_t		llx
 DBT	locks		DBT		s
 END
 
+/*
+ * Detached transactions commit independently of their parent transaction, but
+ * should be rolled back anytime the parent is rolled back.  This is required 
+ * for disjoint page allocation.
+ */
+BEGIN regop_detached_child  17
+ARG	opcode		u_int32_t	lu
+ARG generation  u_int32_t   u
+ARG context   genid_t llx
+ARG	parent	u_int32_t	lx
+TIME	timestamp	u_int64_t		llx
+DBT	locks		DBT		s
+END

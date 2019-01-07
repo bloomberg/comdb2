@@ -162,6 +162,7 @@ typedef enum {
 static int __txn_abort_pp __P((DB_TXN *));
 static int __txn_begin_int __P((DB_TXN *, u_int32_t));
 static int __txn_commit_pp __P((DB_TXN *, u_int32_t));
+static int __txn_commit_detached_pp __P((DB_TXN *, u_int32_t, u_int32_t));
 static int __txn_commit_getlsn_pp __P((DB_TXN *, u_int32_t, DB_LSN *, void *));
 static int __txn_commit_rl_pp __P((DB_TXN *, u_int32_t, u_int64_t, u_int32_t,
 	DB_LSN *, DBT *, DB_LOCK *, u_int32_t, DB_LSN *, DB_LSN *, void *));
@@ -588,6 +589,7 @@ __txn_begin_int_int(txn, retries, we_start_at_this_lsn, flags)
 	txn->commit = __txn_commit_pp;
 	txn->commit_getlsn = __txn_commit_getlsn_pp;
 	txn->commit_rowlocks = __txn_commit_rl_pp;
+	txn->commit_detached = __txn_commit_detached_pp;
 	txn->discard = __txn_discard_pp;
 	txn->id = __txn_id;
 	txn->prepare = __txn_prepare;
@@ -881,7 +883,7 @@ extern pthread_rwlock_t gbl_dbreg_log_lock;
  */
 static int
 __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
-	nrlocks, begin_lsn, lsn_out, usr_ptr)
+	nrlocks, begin_lsn, lsn_out, ptxnid, usr_ptr)
 	DB_TXN *txnp;
 	u_int32_t flags;
 	u_int64_t ltranid;
@@ -892,6 +894,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	u_int32_t nrlocks;
 	DB_LSN *begin_lsn;
 	DB_LSN *lsn_out;
+	u_int32_t ptxnid;
 	void *usr_ptr;
 {
 	DBT list_dbt;
@@ -941,6 +944,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 		F_CLR(txnp, TXN_NOSYNC);
 		F_SET(txnp, TXN_SYNC);
 	}
+	assert(!ptxnid || !ltranid);
 	if (dbenv->attr.sync_standalone && dbenv->check_standalone &&
 			dbenv->check_standalone(dbenv)) {
 		LF_CLR(DB_TXN_NOSYNC);
@@ -1129,12 +1133,20 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						MUTEX_UNLOCK(dbenv,
 							db_rep->rep_mutexp);
 
-						ret =
-							__txn_regop_gen_log(dbenv,
-							txnp, &txnp->last_lsn,
-							&context, lflags,
-							TXN_COMMIT, gen, timestamp,
-							request.obj, usr_ptr);
+						if (ptxnid) {
+							__txn_regop_detached_child_log(dbenv,
+									txnp, &txnp->last_lsn,
+									&context, lflags,
+									TXN_COMMIT, gen, ptxnid, timestamp,
+									request.obj, usr_ptr);
+						} else {
+							ret =
+								__txn_regop_gen_log(dbenv,
+										txnp, &txnp->last_lsn,
+										&context, lflags,
+										TXN_COMMIT, gen, timestamp,
+										request.obj, usr_ptr);
+						}
 
 						MUTEX_LOCK(dbenv,
 							db_rep->rep_mutexp);
@@ -1297,8 +1309,33 @@ __txn_commit(txnp, flags)
 	u_int32_t flags;
 {
 	return __txn_commit_int(txnp, flags, 0, 0, NULL, NULL, NULL, 0, NULL,
-		NULL, NULL);
+		NULL, 0, NULL);
 }
+
+/*
+ * __txn_commit_detached_pp --
+ *	Interface routine to TXN->commit.
+ */
+static int
+__txn_commit_detached_pp(txnp, ptxnid, flags)
+	DB_TXN *txnp;
+	u_int32_t ptxnid;
+	u_int32_t flags;
+{
+	DB_ENV *dbenv;
+	int not_child, ret;
+
+	dbenv = txnp->mgrp->dbenv;
+	not_child = txnp->parent == NULL;
+	ret =
+		__txn_commit_int(txnp, flags, 0, 0, NULL, NULL, NULL, 0, NULL, NULL,
+				ptxnid, NULL);
+	if (not_child && IS_ENV_REPLICATED(dbenv))
+		__op_rep_exit(dbenv);
+	return (ret);
+}
+
+
 
 
 /*
@@ -1316,7 +1353,7 @@ __txn_commit_pp(txnp, flags)
 	dbenv = txnp->mgrp->dbenv;
 	not_child = txnp->parent == NULL;
 	ret =
-		__txn_commit_int(txnp, flags, 0, 0, NULL, NULL, NULL, 0, NULL, NULL,
+		__txn_commit_int(txnp, flags, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, 0,
 		NULL);
 	if (not_child && IS_ENV_REPLICATED(dbenv))
 		__op_rep_exit(dbenv);
@@ -1344,7 +1381,7 @@ __txn_commit_getlsn_pp(txnp, flags, lsn_out, usr_ptr)
 	not_child = txnp->parent == NULL;
 	ret =
 		__txn_commit_int(txnp, flags, ltranid, 0, NULL, NULL, NULL, 0, NULL,
-		lsn_out, usr_ptr);
+		lsn_out, 0, usr_ptr);
 	if (not_child && IS_ENV_REPLICATED(dbenv))
 		__op_rep_exit(dbenv);
 
@@ -1373,7 +1410,7 @@ __txn_commit_rl_pp(txnp, flags, ltranid, llid, last_commit_lsn, rlocks,
 	not_child = txnp->parent == NULL;
 
 	ret = __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn,
-		rlocks, lks, nrlocks, begin_lsn, lsn_out, usr_ptr);
+		rlocks, lks, nrlocks, begin_lsn, lsn_out, 0, usr_ptr);
 	if (not_child && IS_ENV_REPLICATED(dbenv))
 		__op_rep_exit(dbenv);
 
