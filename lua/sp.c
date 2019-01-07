@@ -1057,7 +1057,7 @@ static int enable_global_variables(lua_State *lua)
 }
 
 static int lua_prepare_sql(Lua, SP, const char *sql, sqlite3_stmt **);
-static int lua_prepare_sql_no_auth(Lua, SP, const char *sql, sqlite3_stmt **);
+static int lua_prepare_sql_no_ddl(Lua, SP, const char *sql, sqlite3_stmt **);
 
 /*
 ** Lua stack:
@@ -1112,7 +1112,7 @@ static int create_temp_table(Lua lua, pthread_mutex_t **lk, const char **name)
     strbuf_free(sql);
     sql = NULL;
     sqlite3_stmt *stmt;
-    if ((rc = lua_prepare_sql_no_auth(lua, sp, ddl, &stmt)) != 0) {
+    if ((rc = lua_prepare_sql_no_ddl(lua, sp, ddl, &stmt)) != 0) {
         goto out;
     }
 
@@ -2087,10 +2087,10 @@ static int lua_prepare_sql_int(Lua L, SP sp, const char *sql,
 
 static int lua_prepare_sql(Lua L, SP sp, const char *sql, sqlite3_stmt **stmt)
 {
-    return lua_prepare_sql_int(L, sp, sql, stmt, NULL, PREPARE_AUTHORIZER);
+    return lua_prepare_sql_int(L, sp, sql, stmt, NULL, PREPARE_DENY_DDL);
 }
 
-static int lua_prepare_sql_no_auth(Lua L, SP sp, const char *sql, sqlite3_stmt **stmt)
+static int lua_prepare_sql_no_ddl(Lua L, SP sp, const char *sql, sqlite3_stmt **stmt)
 {
     return lua_prepare_sql_int(L, sp, sql, stmt, NULL, PREPARE_NONE);
 }
@@ -3455,7 +3455,7 @@ static int db_exec_with_ddl(Lua lua)
         ++sql;
 
     sqlite3_stmt *stmt = NULL;
-    if ((rc = lua_prepare_sql_no_auth(lua, sp, sql, &stmt)) != 0) {
+    if ((rc = lua_prepare_sql_no_ddl(lua, sp, sql, &stmt)) != 0) {
         lua_pushnil(lua);
         lua_pushinteger(lua, rc);
         return 2;

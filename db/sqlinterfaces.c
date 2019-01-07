@@ -746,6 +746,7 @@ static int comdb2_authorizer_for_sqlite(
   ,const char *zArg5 /* IN: NOT USED */
 #endif
 ){
+  struct sql_authorizer_state *pAuthState = pArg;
   switch( code ){
     case SQLITE_CREATE_INDEX:
     case SQLITE_CREATE_TABLE:
@@ -788,16 +789,25 @@ static int comdb2_authorizer_for_sqlite(
     case SQLITE_DROP_LUA_TRIGGER:    /* COMDB2 ONLY */
     case SQLITE_CREATE_LUA_CONSUMER: /* COMDB2 ONLY */
     case SQLITE_DROP_LUA_CONSUMER:   /* COMDB2 ONLY */
-      return SQLITE_DENY;
+      if (pAuthState != NULL) {
+        pAuthState->numDdls++;
+        return pAuthState->denyDdl ? SQLITE_DENY : SQLITE_OK;
+      } else {
+        return SQLITE_DENY;
+      }
     default:
       return SQLITE_OK;
   }
 }
 
-static void comdb2_setup_authorizer_for_sqlite(sqlite3 *db, int bEnable){
+static void comdb2_setup_authorizer_for_sqlite(
+  sqlite3 *db,
+  struct sql_authorizer_state *pAuthState,
+  int bEnable
+){
   if( !db ) return;
   if( bEnable ){
-    sqlite3_set_authorizer(db, comdb2_authorizer_for_sqlite, NULL);
+    sqlite3_set_authorizer(db, comdb2_authorizer_for_sqlite, pAuthState);
   }else{
     sqlite3_set_authorizer(db, NULL, NULL);
   }
@@ -2662,12 +2672,9 @@ int override_type(struct sqlclntstate *clnt, int i)
 }
 
 static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
-                            struct sql_state *rec, int flags)
+                            struct sql_state *rec)
 {
-    rec->prepFlags = flags;
     rec->status = CACHE_DISABLED;
-    if (flags & PREPARE_AUTHORIZER)
-        return;
     if (gbl_enable_sql_stmt_caching == STMT_CACHE_NONE)
         return;
     if (gbl_enable_sql_stmt_caching == STMT_CACHE_PARAM &&
@@ -2707,13 +2714,14 @@ static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
  * rebuild commands, truncate commands, explain commands.
  * Ddl stmts and explain commands should not get to
  * put_prepared_stmt_int() so are not handled in this function.
+ * However, most of these cases are now handled via the custom
+ * authorizer callback.  This function only needs to handle the
+ * ANALYZE and EXPLAIN cases.
  */
 #define sql_equal(keyword) (strncasecmp(sql, keyword, sizeof(keyword) - 1) == 0)
 static inline int dont_cache_this_sql(const char *sql)
 {
-    return (sql_equal("create") || sql_equal("alter") || sql_equal("rebuild") ||
-            sql_equal("drop") || sql_equal("analyze") ||
-            sql_equal("truncate") || sql_equal("put") || sql_equal("explain"));
+    return (sql_equal("analyze") || sql_equal("explain"));
 }
 
 /* return code of 1 means we encountered an error and the caller
@@ -2723,13 +2731,13 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
                                  struct sql_state *rec, int outrc,
                                  int distributed)
 {
-    if (rec->prepFlags & PREPARE_AUTHORIZER) {
-        return 1;
-    }
     if (gbl_enable_sql_stmt_caching == STMT_CACHE_NONE) {
         return 1;
     }
     if (distributed || clnt->conns || clnt->plugin.state) {
+        return 1;
+    }
+    if (rec->authState.numDdls > 0) { /* NOTE: Never cache DDL. */
         return 1;
     }
     sqlite3_stmt *stmt = rec->stmt;
@@ -2939,7 +2947,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
                                  int flags)
 {
     int recreate = (flags & PREPARE_RECREATE);
-    int authorizer = (flags & PREPARE_AUTHORIZER);
+    int denyDdl = (flags & PREPARE_DENY_DDL);
     int rc = sqlengine_prepare_engine(thd, clnt, recreate);
     if (thd->sqldb == NULL) {
         return handle_bad_engine(clnt);
@@ -2950,15 +2958,17 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         return handle_bad_transaction_mode(thd, clnt);
     }
     query_stats_setup(thd, clnt);
-    get_cached_stmt(thd, clnt, rec, flags);
+    get_cached_stmt(thd, clnt, rec);
     const char *tail = NULL;
 
     /* if we did not get a cached stmt, need to prepare it in sql engine */
     while (rec->stmt == NULL) {
         clnt->no_transaction = 1;
-        if (authorizer) comdb2_setup_authorizer_for_sqlite(thd->sqldb, 1);
+        rec->authState.denyDdl = denyDdl;
+        rec->authState.numDdls = 0;
+        comdb2_setup_authorizer_for_sqlite(thd->sqldb, &rec->authState, 1);
         rc = sqlite3_prepare_v2(thd->sqldb, rec->sql, -1, &rec->stmt, &tail);
-        if (authorizer) comdb2_setup_authorizer_for_sqlite(thd->sqldb, 0);
+        comdb2_setup_authorizer_for_sqlite(thd->sqldb, NULL, 0);
         clnt->no_transaction = 0;
         if (rc == SQLITE_OK) {
             rc = sqlite3LockStmtTables(rec->stmt);

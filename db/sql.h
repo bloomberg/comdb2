@@ -1047,15 +1047,19 @@ enum cache_status {
 enum prepare_flags {
     PREPARE_NONE = 0,
     PREPARE_RECREATE = 1,
-    PREPARE_AUTHORIZER = 2
+    PREPARE_DENY_DDL = 2
+};
+struct sql_authorizer_state {
+    int denyDdl;                       /* non-zero if DDL is forbidden */
+    int numDdls;                       /* number of DDL statements found */
 };
 struct sql_state {
     enum cache_status status;          /* populated by get_prepared_stmt */
-    int prepFlags;                     /* flags to get_prepared_stmt */
     sqlite3_stmt *stmt;                /* cached engine, if any */
     char cache_hint[HINT_LEN];         /* hint copy, if any */
     const char *sql;                   /* the actual string used */
     stmt_hash_entry_type *stmt_entry;  /* fast pointer to hashed record */
+    struct sql_authorizer_state authState; /* SQL authorizer state info */
 };
 int get_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
                       struct sql_state *, struct errstat *, int);
