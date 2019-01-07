@@ -1476,7 +1476,9 @@ static int update_logical_redo_lsn(void *obj, void *arg)
         abort();
     }
     redo->lsn = *((DB_LSN *)arg);
+    /* We must have table lock here and so the list will not go away */
     Pthread_mutex_lock(&bdb_state->sc_redo_lk);
+
     last = LISTC_BOT(&bdb_state->sc_redo_list);
     /* Add in order */
     if (!last || log_compare(&last->lsn, &redo->lsn) <= 0)
@@ -1492,6 +1494,7 @@ static int update_logical_redo_lsn(void *obj, void *arg)
             listc_add_after(&bdb_state->sc_redo_list, redo, last);
         }
     }
+
     Pthread_cond_signal(&bdb_state->sc_redo_wait);
     Pthread_mutex_unlock(&bdb_state->sc_redo_lk);
     return 0;
@@ -1614,14 +1617,6 @@ static int bdb_tran_commit_with_seqnum_int_int(
                 /* hookup locals one too */
                 iirc = update_shadows_beforecommit(
                     bdb_state, &tran->last_logical_lsn, NULL, 1);
-
-                if (tran->force_logical_commit && tran->dirty_table_hash) {
-                    hash_for(tran->dirty_table_hash, update_logical_redo_lsn,
-                             &tran->last_logical_lsn);
-                    hash_clear(tran->dirty_table_hash);
-                    hash_free(tran->dirty_table_hash);
-                    tran->dirty_table_hash = NULL;
-                }
             }
 
             if (iirc) {
@@ -1670,6 +1665,14 @@ static int bdb_tran_commit_with_seqnum_int_int(
                     .generation = generation;
             }
             Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+
+            if (tran->committed_child && tran->force_logical_commit &&
+                tran->dirty_table_hash) {
+                hash_for(tran->dirty_table_hash, update_logical_redo_lsn, &lsn);
+                hash_clear(tran->dirty_table_hash);
+                hash_free(tran->dirty_table_hash);
+                tran->dirty_table_hash = NULL;
+            }
         }
 
         /* Set the 'committed-child' flag if this is not the parent. */

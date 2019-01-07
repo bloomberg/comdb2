@@ -2121,8 +2121,8 @@ int bdb_run_logical_recovery(bdb_state_type *bdb_state, int locks_only);
 
 int truncate_asof_pglogs(bdb_state_type *bdb_state, int file, int offset);
 
-void bdb_set_logical_live_sc(bdb_state_type *bdb_state);
-void bdb_clear_logical_live_sc(bdb_state_type *bdb_state);
+int bdb_set_logical_live_sc(bdb_state_type *bdb_state, int lock);
+int bdb_clear_logical_live_sc(bdb_state_type *bdb_state, int lock);
 void bdb_signal_sc_redo_wait(bdb_state_type *bdb_state);
 
 #endif

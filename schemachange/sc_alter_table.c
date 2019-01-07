@@ -605,6 +605,11 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
             usleep(200);
         }
 
+        if (db->sc_live_logical) {
+            bdb_clear_logical_live_sc(db->handle, 1 /* lock table */);
+            db->sc_live_logical = 0;
+        }
+
         backout_constraint_pointers(newdb, db);
         delete_temp_table(iq, newdb);
         change_schemas_recover(s->tablename);
@@ -652,7 +657,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     db->sc_to = newdb;
 
     if (db->sc_live_logical)
-        bdb_clear_logical_live_sc(db->handle);
+        bdb_clear_logical_live_sc(db->handle, 0 /* already locked */);
 
     if (gbl_sc_abort || db->sc_abort || iq->sc_should_abort) {
         sc_errf(s, "Aborting schema change %s\n", s->tablename);

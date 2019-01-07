@@ -1378,35 +1378,6 @@ inline void bdb_cleanup_fld_hints(bdb_state_type *bdb_state)
     }
 }
 
-void bdb_set_logical_live_sc(bdb_state_type *bdb_state)
-{
-    if (bdb_state == NULL) {
-        logmsg(LOGMSG_ERROR, "%s(NULL)!!\n", __func__);
-        return;
-    }
-    bdb_state->logical_live_sc = 1;
-    Pthread_mutex_init(&(bdb_state->sc_redo_lk), NULL);
-    Pthread_cond_init(&(bdb_state->sc_redo_wait), NULL);
-    listc_init(&bdb_state->sc_redo_list, offsetof(struct sc_redo_lsn, lnk));
-}
-
-void bdb_clear_logical_live_sc(bdb_state_type *bdb_state)
-{
-    struct sc_redo_lsn *redo;
-    if (bdb_state == NULL) {
-        logmsg(LOGMSG_ERROR, "%s(NULL)!!\n", __func__);
-        return;
-    }
-    if (bdb_state->logical_live_sc) {
-        Pthread_mutex_destroy(&(bdb_state->sc_redo_lk));
-        Pthread_cond_destroy(&(bdb_state->sc_redo_wait));
-        while ((redo = listc_rtl(&bdb_state->sc_redo_list)) != NULL) {
-            free(redo);
-        }
-    }
-    bdb_state->logical_live_sc = 0;
-}
-
 void bdb_signal_sc_redo_wait(bdb_state_type *bdb_state)
 {
     Pthread_mutex_lock(&bdb_state->sc_redo_lk);

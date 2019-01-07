@@ -1327,7 +1327,6 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
     int outrc = 0;
 
     if (gbl_logical_live_sc) {
-        tran_type *trans = NULL;
         int rc = 0, bdberr = 0;
         struct convert_record_data *thdData =
             calloc(1, sizeof(struct convert_record_data));
@@ -1381,17 +1380,14 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         if (BDB_ATTR_GET(thedb->bdb_attr, SNAPISOL) == 0) {
             /* enable logical logging for this table for the duration of the
              * schema change */
-            rc = trans_start_sc(&(data.iq), NULL, &trans);
-            if (rc || trans == NULL) {
-                logmsg(LOGMSG_ERROR, "%s:%d failed to start tran rc = %d\n",
+            rc = bdb_set_logical_live_sc(s->db->handle, 1 /* lock table */);
+            if (rc) {
+                logmsg(LOGMSG_ERROR,
+                       "%s:%d failed to set logical live sc, rc = %d\n",
                        __func__, __LINE__, rc);
                 free(s->sc_convert_done);
                 return -1;
             }
-            bdb_lock_table_write(s->db->handle, trans);
-            // no one can write to this table at this point
-            bdb_set_logical_live_sc(s->db->handle);
-            trans_abort(&(data.iq), trans);
         }
 
         s->logical_livesc = 1;
@@ -1404,7 +1400,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         if (rc) {
             sc_errf(s, "[%s] starting thread failed for logical redo\n",
                     s->tablename);
-            bdb_clear_logical_live_sc(s->db->handle);
+            bdb_clear_logical_live_sc(s->db->handle, 1 /* lock table */);
             s->logical_livesc = 0;
             free(s->sc_convert_done);
             return -1;
