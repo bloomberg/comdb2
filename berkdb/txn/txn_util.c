@@ -230,22 +230,16 @@ __txn_reclaim_alloced_pages(dbenv, txn)
 					__func__, ret);
 			abort();
 		}
-
-		if ((ret = __memp_fput(dbp->mpf, h, 0)) != 0) {
-			logmsg(LOGMSG_FATAL, "%s failed to release page, ret=%d\n",
-					__func__, ret);
-			abort();
-		}
-	}
-
-	if (txnp && (ret = txnp->commit(txnp,0)) != 0) {
-		logmsg(LOGMSG_FATAL, "%s failed to commit freed pages, ret=%d\n",
-				__func__, ret);
-		abort();
 	}
 
 	if (dbc && (ret = __db_c_close(dbc)) != 0) {
 		logmsg(LOGMSG_FATAL, "%s failed to close last cursor, ret=%d\n",
+				__func__, ret);
+		abort();
+	}
+
+	if (txnp && (ret = txnp->commit(txnp,0)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s failed to commit freed pages, ret=%d\n",
 				__func__, ret);
 		abort();
 	}

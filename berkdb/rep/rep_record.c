@@ -2592,7 +2592,7 @@ __rep_classify_type(u_int32_t type, int *had_serializable_records)
 		type == DB___fop_rename ||
 		type == DB___fop_file_remove ||
 		(!gbl_allow_parallel_rep_on_pagesplit &&
-			(type == DB___db_pg_alloc ||
+			(type == DB___db_pg_alloc || type == DB___db_pg_alloc_ptran ||
 			type == DB___db_pg_free || type == DB___db_pg_freedata)
 		) ||
 		type == DB___qam_incfirst ||
@@ -2704,6 +2704,7 @@ __rep_check_applied_lsns(dbenv, lc, in_recovery_verify)
 			/* Page alloc and free have a next page logged, but the next page isn't modified
 			 * as part of recovery . */
 			else if ((type == DB___db_pg_alloc ||
+				type == DB___db_pg_alloc_ptran ||
 				type == DB___db_pg_free ||
 				type == DB___db_pg_freedata) &&
 				strcmp(t.array[i].comment, "next") == 0) {
