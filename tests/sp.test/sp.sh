@@ -1354,11 +1354,11 @@ local function main()
   else
     db:emit("CREATE TEMP VIEW WITH DDL FAIL "..ddl_rc4)
   end
-  local ddl_row5, ddl_rc5 = db:exec_with_ddl("PUT TUNABLE allow_lua_exec_with_ddl OFF;")
+  local ddl_row5, ddl_rc5 = db:exec_with_ddl("PUT TUNABLE allow_lua_exec_with_ddl \'OFF\';")
   if ddl_row5 == 0 then
-    db:emit("PUT TUNABLE allow_lua_exec_with_ddl OFF WITH DDL PASS")
+    db:emit("PUT TUNABLE allow_lua_exec_with_ddl \'OFF\' WITH DDL PASS")
   else
-    db:emit("PUT TUNABLE allow_lua_exec_with_ddl OFF WITH DDL FAIL "..ddl_rc5)
+    db:emit("PUT TUNABLE allow_lua_exec_with_ddl \'OFF\' WITH DDL FAIL "..ddl_rc5)
   end
   local row1, rc1 = db:exec("CREATE INDEX no_ddl_t1_i2 ON no_ddl_t1(x);")
   if rc1 == 0 then
@@ -1535,13 +1535,13 @@ local function main()
   else
     db:emit("PUT TUNABLE PASS "..rc28)
   end
-  local row29, rc29 = db:exec("GRANT OP TO 'auth_test_user';")
+  local row29, rc29 = db:exec("GRANT OP TO \'auth_test_user\';")
   if rc29 == 0 then
     db:emit("GRANT FAIL")
   else
     db:emit("GRANT PASS "..rc29)
   end
-  local row30, rc30 = db:exec("REVOKE OP TO 'auth_test_user';")
+  local row30, rc30 = db:exec("REVOKE OP TO \'auth_test_user\';")
   if rc30 == 0 then
     db:emit("REVOKE FAIL")
   else

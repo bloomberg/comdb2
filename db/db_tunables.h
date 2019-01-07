@@ -35,8 +35,8 @@ REGISTER_TUNABLE("allow_lua_print", "Enable to allow stored "
 REGISTER_TUNABLE("allow_lua_exec_with_ddl",
                  "Enable to allow use of 'exec_with_ddl' function "
                  "(Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_allow_lua_exec_with_ddl,
-                 READONLY | NOARG, NULL, NULL, NULL, NULL);
+                 TUNABLE_BOOLEAN, &gbl_allow_lua_exec_with_ddl, NOARG, NULL,
+                 NULL, NULL, NULL);
 REGISTER_TUNABLE("allow_lua_dynamic_libs",
                  "Enable to allow use of dynamic "
                  "libraries (Default: off)",
