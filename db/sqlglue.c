@@ -7943,22 +7943,21 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
     if (gbl_fdb_track) {
         if (cur->fdbc->isuuid(cur)) {
             uuidstr_t cus, tus;
-            unsigned char *pStr = (unsigned char*)cur->fdbc->id(cur);
-            logmsg(LOGMSG_USER, "%s Created cursor cid=%s with tid=%s rootp=%d "
-                                "db:tbl=\"%s:%s\"\n",
-                   __func__,
-                   (pStr)?comdb2uuidstr(pStr, cus):"UNK",
+            unsigned char *pStr = (unsigned char *)cur->fdbc->id(cur);
+            logmsg(LOGMSG_USER,
+                   "%s Created cursor cid=%s with tid=%s rootp=%d "
+                   "db:tbl=\"%s:%s\"\n",
+                   __func__, (pStr) ? comdb2uuidstr(pStr, cus) : "UNK",
                    comdb2uuidstr(tid, tus), iTable, pBt->zFilename,
                    cur->fdbc->name(cur));
         } else {
             uuidstr_t tus;
-            unsigned long long *pLng = (unsigned long long*)cur->fdbc->id(cur);
+            unsigned long long *pLng = (unsigned long long *)cur->fdbc->id(cur);
             logmsg(LOGMSG_USER,
                    "%s Created cursor cid=%llx with tid=%s rootp=%d "
                    "db:tbl=\"%s:%s\"\n",
-                   __func__, (pLng)?*pLng:-1LL,
-                   comdb2uuidstr(tid, tus), iTable, pBt->zFilename,
-                   cur->fdbc->name(cur));
+                   __func__, (pLng) ? *pLng : -1LL, comdb2uuidstr(tid, tus),
+                   iTable, pBt->zFilename, cur->fdbc->name(cur));
         }
     }
 

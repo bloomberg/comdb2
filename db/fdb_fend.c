@@ -779,14 +779,14 @@ static int _add_table_and_stats_fdb(fdb_t *fdb, const char *table_name,
 
         /* remove the stale table here */
         /* ok, stale; we need to garbage this one out */
-        fdb_tbl_t *remtbl =
-            hash_find_readonly(fdb->h_tbls_name, &table_name);
+        fdb_tbl_t *remtbl = hash_find_readonly(fdb->h_tbls_name, &table_name);
         /* anything is possible with the table while waiting for exclusive
          * fdb
          * lock */
         if (remtbl) {
             /* table is still around */
-            if (!remtbl->need_version || ((remtbl->need_version - 1) == remtbl->version)) {
+            if (!remtbl->need_version ||
+                ((remtbl->need_version - 1) == remtbl->version)) {
                 /* table was fixed in the meantime!, drop exclusive lock */
                 rc = FDB_NOERR;
                 *version = remtbl->version;
@@ -795,15 +795,16 @@ static int _add_table_and_stats_fdb(fdb_t *fdb, const char *table_name,
                 /* table is still stale, remove */
                 if (gbl_fdb_track)
                     logmsg(LOGMSG_USER,
-                            "Detected stale table \"%s.%s\" "
-                            "version %llu required %d\n",
-                            remtbl->fdb->dbname, remtbl->name,
-                            remtbl->version, remtbl->need_version - 1);
+                           "Detected stale table \"%s.%s\" "
+                           "version %llu required %d\n",
+                           remtbl->fdb->dbname, remtbl->name, remtbl->version,
+                           remtbl->need_version - 1);
 
                 if (__free_fdb_tbl(remtbl, fdb)) {
-                    logmsg(LOGMSG_ERROR, "Error clearing schema for table "
-                            "\"%s\" in db \"%s\"\n",
-                            table_name, fdb->dbname);
+                    logmsg(LOGMSG_ERROR,
+                           "Error clearing schema for table "
+                           "\"%s\" in db \"%s\"\n",
+                           table_name, fdb->dbname);
                 }
             }
         }
@@ -1470,8 +1471,9 @@ static int __lock_wrlock_exclusive(char *dbname)
                         thedb->bdb_env, thd, NULL,
                         100 * thd->clnt->deadlock_recovered++);
                     if (rc) {
-                        logmsg(LOGMSG_ERROR, "%s:%d recover_deadlock returned %d\n",
-                                __func__, __LINE__, rc);
+                        logmsg(LOGMSG_ERROR,
+                               "%s:%d recover_deadlock returned %d\n", __func__,
+                               __LINE__, rc);
                         return FDB_ERR_GENERIC;
                     }
                 }
