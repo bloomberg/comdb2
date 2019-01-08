@@ -1470,7 +1470,7 @@ static int __lock_wrlock_exclusive(char *dbname)
                         thedb->bdb_env, thd, NULL,
                         100 * thd->clnt->deadlock_recovered++);
                     if (rc) {
-                        fprintf(stderr, "%s:%d recover_deadlock returned %d\n",
+                        logmsg(LOGMSG_ERROR, "%s:%d recover_deadlock returned %d\n",
                                 __func__, __LINE__, rc);
                         return FDB_ERR_GENERIC;
                     }
