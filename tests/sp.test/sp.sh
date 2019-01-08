@@ -1356,9 +1356,9 @@ local function main()
   end
   local ddl_row5, ddl_rc5 = db:exec_with_ddl("PUT TUNABLE allow_lua_exec_with_ddl \'OFF\';")
   if ddl_row5 == 0 then
-    db:emit("PUT TUNABLE allow_lua_exec_with_ddl \'OFF\' WITH DDL PASS")
+    db:emit("PUT TUNABLE allow_lua_exec_with_ddl OFF WITH DDL PASS")
   else
-    db:emit("PUT TUNABLE allow_lua_exec_with_ddl \'OFF\' WITH DDL FAIL "..ddl_rc5)
+    db:emit("PUT TUNABLE allow_lua_exec_with_ddl OFF WITH DDL FAIL "..ddl_rc5)
   end
   local row1, rc1 = db:exec("CREATE INDEX no_ddl_t1_i2 ON no_ddl_t1(x);")
   if rc1 == 0 then
@@ -1505,7 +1505,7 @@ local function main()
   else
     db:emit("CREATE PROCEDURE PASS "..rc23)
   end
-  local row24, rc24 = db:exec("DROP PROCEDURE no_ddl_proc1 \'sp_no_ddl_proc1\';")
+  local row24, rc24 = db:exec("DROP PROCEDURE no_ddl_proc1;")
   if rc24 == 0 then
     db:emit("DROP PROCEDURE FAIL")
   else
@@ -1611,10 +1611,10 @@ select sleep(20);
 EOF
 
 cdb2sql $SP_OPTIONS - <<'EOF'
-put default procedure no_ddl_test1 'sp_no_ddl_test1';$$
+put default procedure no_ddl_test1 'sp_no_ddl_test1';
 EOF
 
 cdb2sql $SP_OPTIONS - <<'EOF'
-put tunable allow_lua_exec_with_ddl 'on';$$
+put tunable allow_lua_exec_with_ddl 'on';
 exec procedure no_ddl_test1();
 EOF
