@@ -2948,6 +2948,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 {
     int recreate = (flags & PREPARE_RECREATE);
     int denyDdl = (flags & PREPARE_DENY_DDL);
+    int ignoreErr = (flags & PREPARE_IGNORE_ERR);
     int rc = sqlengine_prepare_engine(thd, clnt, recreate);
     if (thd->sqldb == NULL) {
         return handle_bad_engine(clnt);
@@ -2990,7 +2991,11 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         rc = ERR_SQL_PREPARE;
     }
     if (rc) {
-        _prepare_error(thd, clnt, rec, rc, err);
+        if (ignoreErr) {
+            clnt->verify_remote_schemas = 0;
+        } else {
+            _prepare_error(thd, clnt, rec, rc, err);
+        }
     } else {
         clnt->verify_remote_schemas = 0;
     }

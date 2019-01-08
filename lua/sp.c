@@ -2089,7 +2089,7 @@ static int lua_prepare_sql_int(Lua L, SP sp, const char *sql,
 
 static int lua_prepare_sql(Lua L, SP sp, const char *sql, sqlite3_stmt **stmt)
 {
-    int prepFlags = PREPARE_DENY_DDL;
+    int prepFlags = PREPARE_DENY_DDL | PREPARE_IGNORE_ERR;
 
     extern int gbl_allow_lua_exec_with_ddl;
     if (gbl_allow_lua_exec_with_ddl)
@@ -2100,7 +2100,7 @@ static int lua_prepare_sql(Lua L, SP sp, const char *sql, sqlite3_stmt **stmt)
 
 static int lua_prepare_sql_with_ddl(Lua L, SP sp, const char *sql, sqlite3_stmt **stmt)
 {
-    return lua_prepare_sql_int(L, sp, sql, stmt, NULL, PREPARE_NONE);
+    return lua_prepare_sql_int(L, sp, sql, stmt, NULL, PREPARE_IGNORE_ERR);
 }
 
 static void push_clnt_cols(Lua L, SP sp)

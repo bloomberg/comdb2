@@ -1047,7 +1047,8 @@ enum cache_status {
 enum prepare_flags {
     PREPARE_NONE = 0,
     PREPARE_RECREATE = 1,
-    PREPARE_DENY_DDL = 2
+    PREPARE_DENY_DDL = 2,
+    PREPARE_IGNORE_ERR = 4
 };
 struct sql_authorizer_state {
     int denyDdl;                       /* non-zero if DDL is forbidden */
