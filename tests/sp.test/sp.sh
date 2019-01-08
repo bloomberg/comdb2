@@ -1355,7 +1355,7 @@ local function main()
     db:emit("CREATE TEMP VIEW WITH DDL FAIL "..ddl_rc4)
   end
   local ddl_row5, ddl_rc5 = db:exec_with_ddl("PUT TUNABLE allow_lua_exec_with_ddl \'OFF\';")
-  if ddl_row5 == 0 then
+  if ddl_rc5 == 0 then
     db:emit("PUT TUNABLE allow_lua_exec_with_ddl OFF WITH DDL PASS")
   else
     db:emit("PUT TUNABLE allow_lua_exec_with_ddl OFF WITH DDL FAIL "..ddl_rc5)
