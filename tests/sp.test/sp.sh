@@ -1323,10 +1323,10 @@ create index no_ddl_t1_i1 on no_ddl_t1(x);$$
 create procedure no_ddl_proc1 version 'sp_no_ddl_proc1' {};$$
 create procedure no_ddl_proc2 version 'sp_no_ddl_proc2' {};$$
 
-put password 'password' for 'auth_test_user';
+put password 'password' for 'auth_test_user';$$
 
-create lua scalar function no_ddl_proc1;
-create lua aggregate function no_ddl_proc1;
+create lua scalar function no_ddl_proc1;$$
+create lua aggregate function no_ddl_proc1;$$
 
 create procedure no_ddl_test1 version 'sp_no_ddl_test1' {
 local function main()
@@ -1505,7 +1505,7 @@ local function main()
   else
     db:emit("CREATE PROCEDURE PASS "..rc23)
   end
-  local row24, rc24 = db:exec("DROP PROCEDURE no_ddl_proc1;")
+  local row24, rc24 = db:exec("DROP PROCEDURE no_ddl_proc1 \'sp_no_ddl_proc1\';")
   if rc24 == 0 then
     db:emit("DROP PROCEDURE FAIL")
   else
@@ -1595,7 +1595,7 @@ local function main()
   else
     db:emit("DROP LUA CONSUMER PASS "..rc38)
   end
-end}$$
+end};$$
 EOF
 
 cdb2sql $SP_OPTIONS - <<'EOF'
@@ -1611,9 +1611,10 @@ select sleep(20);
 EOF
 
 cdb2sql $SP_OPTIONS - <<'EOF'
-put default procedure no_ddl_test1 'sp_no_ddl_test1'
+put default procedure no_ddl_test1 'sp_no_ddl_test1';$$
 EOF
 
 cdb2sql $SP_OPTIONS - <<'EOF'
-exec procedure no_ddl_test1()
+put tunable allow_lua_exec_with_ddl 'on';$$
+exec procedure no_ddl_test1();
 EOF

@@ -811,7 +811,8 @@ static int lua_trigger_impl(Lua L, dbconsumer_t *q)
         }
         clnt->intrans = 1;
     }
-    clnt->ctrl_sqlengine = SQLENG_INTRANS_STATE;
+    sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
+                            SQLENG_INTRANS_STATE);
     return osql_dbq_consume_logic(clnt, q->info.spname, q->genid);
 }
 
@@ -847,7 +848,8 @@ static int lua_consumer_impl(Lua L, dbconsumer_t *q)
             luaL_error(L, "%s osql_sock_commit rc:%d\n", __func__, rc);
         }
     } else {
-        clnt->ctrl_sqlengine = SQLENG_INTRANS_STATE;
+        sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
+                                SQLENG_INTRANS_STATE);
     }
     return rc;
 }
