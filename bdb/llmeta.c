@@ -2787,7 +2787,6 @@ int bdb_add_dummy_llmeta(void)
     return bdb_add_dummy_llmeta_flags(1);
 }
 
-
 /* store a new csc2 schema in the llmeta table
  * returns <0 if something fails or 0 on success */
 int bdb_new_csc2(tran_type *input_trans, /* if this is !NULL it will be used as
