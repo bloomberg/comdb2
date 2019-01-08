@@ -4566,6 +4566,9 @@ static int create_sp_int(SP sp, char **err)
     if(!gbl_allow_lua_dynamic_libs)
         disable_global_variables(lua);
 
+    clnt->had_allow_lua_exec_with_ddl = gbl_allow_lua_exec_with_ddl;
+    clnt->had_allow_lua_dynamic_libs = gbl_allow_lua_dynamic_libs;
+
     /* To be given as lrl value. */
     lua_sethook(lua, InstructionCountHook, LUA_MASKCOUNT, 1);
     return 0;
@@ -5456,7 +5459,9 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
 {
     SP sp = clnt->sp;
     if (sp) {
-        if (clnt->want_stored_procedure_trace ||
+        if (clnt->had_allow_lua_exec_with_ddl != gbl_allow_lua_exec_with_ddl ||
+            clnt->had_allow_lua_dynamic_libs != gbl_allow_lua_dynamic_libs ||
+            clnt->want_stored_procedure_trace ||
             clnt->want_stored_procedure_debug) {
             close_sp(clnt);
             sp = NULL;

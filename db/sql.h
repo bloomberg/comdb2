@@ -553,6 +553,8 @@ struct sqlclntstate {
     int exec_lua_thread;
     int want_stored_procedure_trace;
     int want_stored_procedure_debug;
+    int had_allow_lua_exec_with_ddl;
+    int had_allow_lua_dynamic_libs;
     char spname[MAX_SPNAME + 1];
     struct spversion_t spversion;
     int n_lua_stmt;
