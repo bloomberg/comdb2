@@ -1110,7 +1110,13 @@ __db_txnlist_find_internal(dbenv, listp, type, txnid, uid, txnlistp, delete)
 			if (p->u.t.txnid != txnid ||
 			    generation != p->u.t.generation)
 				continue;
-			ret = p->u.t.status;
+			if (p->u.t.status == TXN_REFERENCE) {
+				assert(p->u.t.rtxnid != 0);
+				ret = __db_txnlist_find_internal(dbenv, listp, type,
+						p->u.t.rtxnid, uid, txnlistp, delete);
+			} else {
+				ret = p->u.t.status;
+			}
 			break;
 
 		case TXNLIST_PGNO:
