@@ -109,7 +109,6 @@ __txn_regop_detached_child_recover(dbenv, dbtp, lsnp, op, info)
 		 * might already have been removed from the list, and
 		 * that's OK.  Ignore the return code from remove.
 		 */
-		(void)__db_txnlist_remove(dbenv, info, argp->txnid->txnid);
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		rep->committed_gen = argp->generation;
         rep->committed_lsn = *lsnp;
@@ -124,31 +123,29 @@ __txn_regop_detached_child_recover(dbenv, dbtp, lsnp, op, info)
 		 * We failed either the timestamp check or the trunc_lsn check,
 		 * so we treat this as an abort even if it was a commit record.
 		 */
-		ret = __db_txnlist_update(dbenv,
-		    info, argp->txnid->txnid, TXN_ABORT, NULL);
+		ret = __db_txnlist_find(dbenv,
+		    info, argp->txnid->txnid);
 
 		if (ret == TXN_IGNORE)
 			ret = TXN_OK;
 		else if (ret == TXN_NOTFOUND)
-			ret = __db_txnlist_add(dbenv,
-			    info, argp->txnid->txnid, TXN_IGNORE, NULL);
-		else if (ret != TXN_OK)
+            ret = __db_txnlist_add_ref(dbenv, info, argp->txnid->txnid,
+                    argp->ptxnid, TXN_REFERENCE, lsnp);
+		else if (ret != TXN_OK && ret != TXN_REFERENCE)
 			goto err;
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
 	} else {
 		/* This is a normal commit; mark it appropriately. */
 		assert(op == DB_TXN_BACKWARD_ROLL);
-		ret = __db_txnlist_update(dbenv,
-		    info, argp->txnid->txnid, argp->opcode, lsnp);
+		ret = __db_txnlist_find(dbenv,
+		    info, argp->txnid->txnid);
 
 		if (ret == TXN_IGNORE)
 			ret = TXN_OK;
 		else if (ret == TXN_NOTFOUND)
-			ret = __db_txnlist_add(dbenv,
-			    info, argp->txnid->txnid,
-			    argp->opcode == TXN_ABORT ?
-			    TXN_IGNORE : argp->opcode, lsnp);
-		else if (ret != TXN_OK)
+            ret = __db_txnlist_add_ref(dbenv, info, argp->txnid->txnid,
+                    argp->ptxnid, TXN_REFERENCE, lsnp);
+		else if (ret != TXN_OK && ret != TXN_REFERENCE)
 			goto err;
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
 	}
@@ -170,9 +167,6 @@ err:		__db_err(dbenv,
 
 	return (ret);
 }
-
-
-
 
 
 /*

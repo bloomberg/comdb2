@@ -794,18 +794,21 @@ __db_txnlist_init(dbenv, low_txn, hi_txn, trunc_lsn, retp)
 	return (0);
 }
 
+
 /*
- * __db_txnlist_add --
+ * __db_txnlist_add_ref --
  *	Add an element to our transaction linked list.
  *
- * PUBLIC: int __db_txnlist_add __P((DB_ENV *,
- * PUBLIC:     void *, u_int32_t, int32_t, DB_LSN *));
+ * PUBLIC: int __db_txnlist_add_ref __P((DB_ENV *,
+ * PUBLIC:     void *, u_int32_t, u_int32_t, int32_t, DB_LSN *));
  */
+
 int
-__db_txnlist_add(dbenv, listp, txnid, status, lsn)
+__db_txnlist_add_ref(dbenv, listp, txnid, rtxnid, status, lsn)
 	DB_ENV *dbenv;
 	void *listp;
 	u_int32_t txnid;
+	u_int32_t rtxnid;
 	int32_t status;
 	DB_LSN *lsn;
 {
@@ -821,6 +824,7 @@ __db_txnlist_add(dbenv, listp, txnid, status, lsn)
 
 	elp->type = TXNLIST_TXNID;
 	elp->u.t.txnid = txnid;
+	elp->u.t.rtxnid = rtxnid;
 	elp->u.t.status = status;
 	elp->u.t.generation = hp->generation;
 	if (txnid > hp->maxid)
@@ -832,6 +836,24 @@ __db_txnlist_add(dbenv, listp, txnid, status, lsn)
 	    status != TXN_COMMIT || log_compare(&hp->maxlsn, lsn) >= 0);
 
 	return (0);
+}
+
+/*
+ * __db_txnlist_add --
+ *	Add an element to our transaction linked list.
+ *
+ * PUBLIC: int __db_txnlist_add __P((DB_ENV *,
+ * PUBLIC:     void *, u_int32_t, int32_t, DB_LSN *));
+ */
+int
+__db_txnlist_add(dbenv, listp, txnid, status, lsn)
+	DB_ENV *dbenv;
+	void *listp;
+	u_int32_t txnid;
+	int32_t status;
+	DB_LSN *lsn;
+{
+    return __db_txnlist_add_ref(dbenv, listp, txnid, 0, status, lsn);
 }
 
 /*

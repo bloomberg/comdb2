@@ -74,6 +74,7 @@ struct __db_txnlist {
 	union {
 		struct {
 			u_int32_t txnid;
+			u_int32_t rtxnid;
 			u_int32_t generation;
 			int32_t status;
 		} t;
