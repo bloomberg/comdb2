@@ -5023,7 +5023,10 @@ static int l_send_back_row(Lua lua, sqlite3_stmt *stmt, int nargs)
         if (rc) return rc;
     }
     int type = stmt ? RESPONSE_ROW : RESPONSE_ROW_LUA;
-    return write_response(clnt, type, &arg, 0);
+    Pthread_mutex_lock(parent->emit_mutex);
+    rc = write_response(clnt, type, &arg, 0);
+    Pthread_mutex_unlock(parent->emit_mutex);
+    return rc;
 }
 
 static int push_null(Lua L, int param_type)

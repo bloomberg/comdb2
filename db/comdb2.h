@@ -661,7 +661,7 @@ struct dbtable {
     char *tablename;
     struct ireq *iq; /* iq used at sc time */
 
-    int dbnum;
+    int dbnum; /* zero unless setup as comdbg table */
     int lrl; /*dat len in bytes*/
     /*index*/
     unsigned short nix; /*number of indices*/

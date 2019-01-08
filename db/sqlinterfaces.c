@@ -4428,7 +4428,10 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
 
     /* successful dispatch or queueing, enable heartbeats */
     Pthread_mutex_lock(&clnt->wait_mutex);
-    clnt->ready_for_heartbeats = 1;
+    if (clnt->exec_lua_thread)
+        clnt->ready_for_heartbeats = 0;
+    else
+        clnt->ready_for_heartbeats = 1;
     Pthread_mutex_unlock(&clnt->wait_mutex);
 
     /* SQL thread will unlock mutex when it is done, allowing us to lock it
