@@ -63,6 +63,9 @@
 #include <logmsg.h>
 #include <tohex.h>
 
+extern int gbl_allow_lua_print;
+extern int gbl_allow_lua_exec_with_ddl;
+extern int gbl_allow_lua_dynamic_libs;
 extern int gbl_dump_sql_dispatched; /* dump all sql strings dispatched */
 extern int gbl_return_long_column_names;
 extern int gbl_max_sqlcache;
@@ -70,6 +73,8 @@ extern int gbl_lua_new_trans_model;
 extern int gbl_max_lua_instructions;
 extern int gbl_lua_version;
 extern int gbl_break_lua;
+extern int gbl_notimeouts;
+extern int gbl_epoch_time;
 
 char *gbl_break_spname;
 void *debug_clnt;
@@ -1967,8 +1972,6 @@ static void InstructionCountHook(lua_State *lua, lua_Debug *debug)
                 load_debugging_information(sp, &err);
             }
         }
-        extern int gbl_notimeouts;
-        extern int gbl_epoch_time;
 
         if (gbl_epoch_time) {
             if ((gbl_epoch_time - sp->clnt->last_check_time) > 5) {
@@ -2092,7 +2095,6 @@ static int lua_get_prepare_flags()
 {
     int prepFlags = PREPARE_DENY_DDL | PREPARE_IGNORE_ERR;
 
-    extern int gbl_allow_lua_exec_with_ddl;
     if (gbl_allow_lua_exec_with_ddl)
         prepFlags &= ~PREPARE_DENY_DDL;
 
@@ -4549,7 +4551,6 @@ static int create_sp_int(SP sp, char **err)
     lua_newtable(lua);
     lua_setglobal(lua, "_SP");
 
-    extern int gbl_allow_lua_print;
     if (!gbl_allow_lua_print) {
         if (luaL_dostring(lua, "function print(...) end") != 0) {
             *err = strdup(lua_tostring(lua, -1));
@@ -4558,11 +4559,9 @@ static int create_sp_int(SP sp, char **err)
         }
     }
 
-    extern int gbl_allow_lua_exec_with_ddl;
     if(!gbl_allow_lua_exec_with_ddl)
         remove_exec_with_ddl(lua);
 
-    extern int gbl_allow_lua_dynamic_libs;
     if(!gbl_allow_lua_dynamic_libs)
         disable_global_variables(lua);
 
