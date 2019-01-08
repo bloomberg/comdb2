@@ -1058,6 +1058,7 @@ static int enable_global_variables(lua_State *lua)
     return 0;
 }
 
+static int lua_get_prepare_flags();
 static int lua_prepare_sql(Lua, SP, const char *sql, sqlite3_stmt **);
 static int lua_prepare_sql_with_ddl(Lua, SP, const char *sql, sqlite3_stmt **);
 
@@ -2087,7 +2088,7 @@ static int lua_prepare_sql_int(Lua L, SP sp, const char *sql,
     return sp->rc;
 }
 
-static int lua_prepare_sql(Lua L, SP sp, const char *sql, sqlite3_stmt **stmt)
+static int lua_get_prepare_flags()
 {
     int prepFlags = PREPARE_DENY_DDL | PREPARE_IGNORE_ERR;
 
@@ -2095,12 +2096,19 @@ static int lua_prepare_sql(Lua L, SP sp, const char *sql, sqlite3_stmt **stmt)
     if (gbl_allow_lua_exec_with_ddl)
         prepFlags &= ~PREPARE_DENY_DDL;
 
-    return lua_prepare_sql_int(L, sp, sql, stmt, NULL, prepFlags);
+    return prepFlags;
+}
+
+static int lua_prepare_sql(Lua L, SP sp, const char *sql, sqlite3_stmt **stmt)
+{
+    return lua_prepare_sql_int(L, sp, sql, stmt, NULL, lua_get_prepare_flags());
 }
 
 static int lua_prepare_sql_with_ddl(Lua L, SP sp, const char *sql, sqlite3_stmt **stmt)
 {
-    return lua_prepare_sql_int(L, sp, sql, stmt, NULL, PREPARE_IGNORE_ERR);
+    int prepFlags = lua_get_prepare_flags() & ~PREPARE_DENY_DDL;
+
+    return lua_prepare_sql_int(L, sp, sql, stmt, NULL, prepFlags);
 }
 
 static void push_clnt_cols(Lua L, SP sp)
@@ -3510,7 +3518,7 @@ static int db_prepare(Lua L)
     }
     sqlite3_stmt *stmt = NULL;
     struct sql_state *rec = calloc(1, sizeof(*rec));
-    if (lua_prepare_sql_int(L, sp, sql, &stmt, rec, PREPARE_DENY_DDL) != 0) {
+    if (lua_prepare_sql_int(L, sp, sql, &stmt, rec, lua_get_prepare_flags()) != 0) {
         free(rec);
         return 2;
     }
