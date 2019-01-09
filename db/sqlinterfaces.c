@@ -2873,7 +2873,9 @@ static void _prepare_error(struct sqlthdstate *thd,
                 errstr);
     }
 
-    if (clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS) {
+    int ignoreErr = rec->prepFlags & PREPARE_IGNORE_ERR;
+
+    if (!ignoreErr && clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS) {
         /* multiple query transaction
            keep sending back error */
         handle_sql_intrans_unrecoverable_error(clnt);
@@ -2948,7 +2950,6 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 {
     int recreate = (flags & PREPARE_RECREATE);
     int denyDdl = (flags & PREPARE_DENY_DDL);
-    int ignoreErr = (flags & PREPARE_IGNORE_ERR);
     int rc = sqlengine_prepare_engine(thd, clnt, recreate);
     if (thd->sqldb == NULL) {
         return handle_bad_engine(clnt);
@@ -2967,6 +2968,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         clnt->no_transaction = 1;
         rec->authState.denyDdl = denyDdl;
         rec->authState.numDdls = 0;
+        rec->prepFlags = flags;
         comdb2_setup_authorizer_for_sqlite(thd->sqldb, &rec->authState, 1);
         rc = sqlite3_prepare_v2(thd->sqldb, rec->sql, -1, &rec->stmt, &tail);
         comdb2_setup_authorizer_for_sqlite(thd->sqldb, NULL, 0);
@@ -2991,11 +2993,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         rc = ERR_SQL_PREPARE;
     }
     if (rc) {
-        if (ignoreErr) {
-            clnt->verify_remote_schemas = 0;
-        } else {
-            _prepare_error(thd, clnt, rec, rc, err);
-        }
+        _prepare_error(thd, clnt, rec, rc, err);
     } else {
         clnt->verify_remote_schemas = 0;
     }
