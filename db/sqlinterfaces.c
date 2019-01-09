@@ -2884,7 +2884,7 @@ static void _prepare_error(struct sqlthdstate *thd,
     /* make sure this was not a delayed parsing error; sqlite finishes a
     statement even though there is trailing garbage, and report error
     afterwards. Clean any parallel distribution if any */
-    if (unlikely(clnt->conns))
+    if (!ignoreErr && unlikely(clnt->conns))
         dohsql_handle_delayed_syntax_error(clnt);
 }
 
