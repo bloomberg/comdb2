@@ -7,7 +7,7 @@
 
 #include "build/db_config.h"
 
-#ifndef lint
+#if 0
 static const char copyright[] =
     "Copyright (c) 1996-2003\nSleepycat Software Inc.  All rights reserved.\n";
 static const char revid[] =
@@ -71,7 +71,10 @@ void remove_tempdir()
 {
 	if (orig_dir && chdir(orig_dir) == 0) {
 		free(orig_dir);
-		system("rm -rf " PRINTLOG_RANGE_DIR);
+		int lrc = system("rm -rf " PRINTLOG_RANGE_DIR);
+        if (lrc) {
+            printf("ERROR: %s:%d system() returns rc = %d\n",__FILE__,__LINE__, lrc);
+        }
 	}
 }
 

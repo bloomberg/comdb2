@@ -364,21 +364,9 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         ondisktagsc = find_tag_schema(iq->usedb->tablename, ondisktag);
     }
 
-    struct convert_failure reason;
-    rc = validate_server_record(od_dta, od_len, ondisktagsc, &reason);
+    rc =
+        validate_server_record(iq, od_dta, od_len, tag, ondisktag, ondisktagsc);
     if (rc == -1) {
-        char str[128];
-        convert_failure_reason_str(&reason, iq->usedb->tablename, tag,
-                                   ondisktag, str, sizeof(str));
-        if (iq->debug) {
-            reqprintf(iq, "ERR VERIFY DTA %s->.ONDISK '%s'", tag, str);
-        }
-        reqerrstrhdr(
-            iq, "Null constraint violation for column '%s' on table '%s'. ",
-            reason.target_schema->member[reason.target_field_idx].name,
-            iq->usedb->tablename);
-        reqerrstr(iq, COMDB2_ADD_RC_CNVT_DTA,
-                  "null constraint error data %s->.ONDISK '%s'", tag, str);
         *opfailcode = ERR_NULL_CONSTRAINT;
         rc = retrc = ERR_NULL_CONSTRAINT;
         ERR;
@@ -407,24 +395,27 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                 retrc = ERR_VERIFY;
                 ERR;
             }
+            if (bdberr == RC_INTERNAL_RETRY) {
+                rc = retrc = RC_INTERNAL_RETRY;
+                ERR;
+            }
             /* The row is not in new btree, proceed with the add */
             vgenid = 0; // no need to verify again
         }
 
         if (flags & RECFLAGS_KEEP_GENID) {
             assert(genid != 0);
-            rc = dat_set(iq, trans, od_dta, od_len, *rrn, *genid);
+            retrc = dat_set(iq, trans, od_dta, od_len, *rrn, *genid);
         } else
-            rc = dat_add(iq, trans, od_dta, od_len, genid, rrn);
+            retrc = dat_add(iq, trans, od_dta, od_len, genid, rrn);
 
         if (iq->debug) {
             reqprintf(iq, "dat_add RRN %d GENID 0x%llx DTALEN %u RC %d DATA ",
-                      *rrn, *genid, od_len, rc);
+                      *rrn, *genid, od_len, retrc);
             reqdumphex(iq, od_dta, od_len);
         }
-        if (rc != 0) {
+        if (retrc) {
             *opfailcode = OP_FAILED_INTERNAL + ERR_ADD_RRN;
-            retrc = rc;
             ERR;
         }
     }
@@ -437,14 +428,14 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         blob_buffer_t *blob = &blobs[blobno];
         if (blob->exists && (!gbl_use_plan || !iq->usedb->plan ||
                              iq->usedb->plan->blob_plan[blobno] == -1)) {
-            rc = blob_add(iq, trans, blobno, blob->data, blob->length, *rrn,
-                          *genid);
+            retrc = blob_add(iq, trans, blobno, blob->data, blob->length, *rrn,
+                             *genid);
             if (iq->debug) {
-                reqprintf(iq, "blob_add LEN %u RC %d DATA ", blob->length, rc);
+                reqprintf(iq, "blob_add LEN %u RC %d DATA ", blob->length,
+                          retrc);
                 reqdumphex(iq, blob->data, blob->length);
             }
-            if (rc != 0) {
-                retrc = rc;
+            if (retrc) {
                 *opfailcode = OP_FAILED_INTERNAL + ERR_ADD_BLOB;
                 ERR;
             }
@@ -474,8 +465,8 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     {
         if (!(flags & RECFLAGS_NEW_SCHEMA)) {
             /* enqueue the add of the key for constaint checking purposes */
-            rc = insert_add_op(iq, iq->blkstate, iq->usedb, NULL, NULL, opcode,
-                               *rrn, -1, *genid, ins_keys, blkpos, rec_flags);
+            rc = insert_add_op(iq, NULL, NULL, opcode, *rrn, -1, *genid,
+                               ins_keys, blkpos, rec_flags);
             if (rc != 0) {
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO PUSH KEYOP");
@@ -522,14 +513,13 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                 javasp_rec_have_blob(jrec, blobno, blob->data, 0, blob->length);
             }
         }
-        rc =
+        retrc =
             javasp_trans_tagged_trigger(iq->jsph, JAVASP_TRANS_LISTEN_AFTER_ADD,
                                         NULL, jrec, iq->usedb->tablename);
         javasp_dealloc_rec(jrec);
         if (iq->debug)
-            reqprintf(iq, "JAVASP_TRANS_LISTEN_AFTER_ADD RC %d", rc);
-        if (rc != 0) {
-            retrc = rc;
+            reqprintf(iq, "JAVASP_TRANS_LISTEN_AFTER_ADD RC %d", retrc);
+        if (retrc) {
             *opfailcode = ERR_JAVASP_ABORT_OP;
             ERR;
         }
@@ -551,11 +541,10 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         gbl_sc_last_writer_time = comdb2_time_epoch();
 
         /* For live schema change */
-        rc = live_sc_post_add(iq, trans, *genid, od_dta, ins_keys, 
-                blobs, maxblobs, flags, rrn);
+        retrc = live_sc_post_add(iq, trans, *genid, od_dta, ins_keys, blobs,
+                                 maxblobs, flags, rrn);
 
-        if (rc != 0) {
-            retrc = rc;
+        if (retrc) {
             ERR;
         }
     }
@@ -1742,8 +1731,6 @@ err:
     return retrc;
 }
 
-
-
 /*
  * Update a single record in the new table as part of a live schema
  * change.  This code is called when you update a record in-place
@@ -1806,12 +1793,11 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
 
     if ((gbl_partial_indexes && iq->usedb->ix_partial) ||
          (gbl_expressions_indexes && iq->usedb->ix_expr)) {
-        int ixnum;
         int rebuild_keys = 0;
         if (!gbl_use_plan || !iq->usedb->plan)
             rebuild_keys = 1;
         else {
-            for (ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
+            for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
                 if (iq->usedb->plan->ix_plan[ixnum] == -1) {
                     rebuild_keys = 1;
                     break;
@@ -1853,8 +1839,12 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
         if (!verify_retry) {
             int bdberr;
             rc = ix_check_update_genid(iq, trans, newgenid, &bdberr);
-            if (rc && bdberr == IX_FND) {
+            if (rc == 1) {
                 retrc = ERR_VERIFY;
+                goto err;
+            }
+            if (bdberr == RC_INTERNAL_RETRY) {
+                rc = retrc = RC_INTERNAL_RETRY;
                 goto err;
             }
         }

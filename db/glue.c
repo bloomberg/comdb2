@@ -6051,6 +6051,7 @@ int ix_check_update_genid(struct ireq *iq, void *trans,
     rc = ix_find_by_rrn_and_genid_tran(iq, 2 /*rrn*/, genid, NULL, &reqdtalen,
                                        0, trans);
     if (rc == IX_FND) {
+        *bdberr = IX_FND;
         return 1;
     }
     if (rc == IX_NOTFND) {
@@ -6060,9 +6061,10 @@ int ix_check_update_genid(struct ireq *iq, void *trans,
         if (rc == 1 || rc == 2) {
             if (bdb_inplace_cmp_genids(bdb_state, genid, foundgenid) == 0 &&
                 (get_updateid_from_genid(bdb_state, genid) <=
-                 get_updateid_from_genid(bdb_state, foundgenid)))
+                 get_updateid_from_genid(bdb_state, foundgenid))) {
                 rc = 1;
-            else
+                *bdberr = IX_FNDMORE;
+            } else
                 rc = 0;
             return rc;
         } else if (rc < 0) {

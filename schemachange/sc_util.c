@@ -141,7 +141,7 @@ int sc_via_ddl_only()
     return bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_VIA_DDL_ONLY);
 }
 
-inline static int validate_ixname(const char *keynm)
+static inline int validate_ixname(const char *keynm)
 {
     logmsg(LOGMSG_DEBUG, "Checking keynm '%s' \n", keynm);
     if (keynm == NULL) {

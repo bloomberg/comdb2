@@ -4060,7 +4060,7 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 	int polltm;
 	DB_LOGC *logc = NULL;
 	DB_ENV *dbenv;
-	int ret, t_ret, last_fileid = -1;
+	int ret, t_ret = 0, last_fileid = -1;
 	DB_LSN *lsnp;
 	int j;
 	LISTC_T(struct __recovery_queue) queues;

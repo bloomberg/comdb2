@@ -220,10 +220,13 @@ function cldeadlock
     typeset iter=$1
     typeset snapshot=$2
     typeset snapshot_flag=""
+    typeset truncate=$3
+    typeset truncate_flag=""
     typeset pidfile=$pidroot.$iter
     write_prompt $func "executing $func-$iter"
     [[ "$snapshot" == "1" ]] && snapshot_flag=" -s "
-    ${TESTSBUILDDIR}/cldeadlock -d $DBNAME -f $pidfile $snapshot_flag -c $CDB2_CONFIG -t default 2>&1 | gawk "{print \"[$func-$iter]\", \$0; fflush(); }"
+    [[ "$truncate" == "1" ]] && truncate_flag=" -T "
+    ${TESTSBUILDDIR}/cldeadlock -d $DBNAME -f $pidfile $snapshot_flag $truncate_flag -c $CDB2_CONFIG -t default 2>&1 | gawk "{print \"[$func-$iter]\", \$0; fflush(); }"
 }
 
 function cldeadlock_threads
@@ -233,9 +236,10 @@ function cldeadlock_threads
     write_prompt $func "executing $func"
     typeset iters=${1:-5}
     typeset snapshot=${2:-0}
+    typeset truncate=${3:-0}
     typeset j=0
     while [[ $j -lt $iters ]]; do
-        cldeadlock $j $snapshot &
+        cldeadlock $j $snapshot $truncate &
         cl_pids[$j]=$!
         let j=j+1
     done
@@ -288,6 +292,16 @@ function normal_test
     cleanup
 }
 
+function truncate_test
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="truncate_test"
+    write_prompt $func "executing $func"
+    start_coherent_loop 10
+    cldeadlock_threads $cl_iters 0 1
+    cleanup
+}
+
 function downgrade_test
 {
     [[ $debug == "1" ]] && set -x
@@ -329,8 +343,9 @@ function run_test
     write_prompt $func "executing $func"
     setup_test
     normal_test
-    #snapshot_test
+    snapshot_test
     downgrade_test
+    truncate_test
     [[ -f $incoherent_fail ]] && failexit "Cluster went incoherent"
     drop_table
 }

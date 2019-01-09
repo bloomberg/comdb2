@@ -2626,8 +2626,8 @@ __txn_updateckp(dbenv, lsnp)
 int
 cmp_by_lsn(const void *pp1, const void *pp2)
 {
-	const struct logrecord *p1 = (struct logrecord *)p1;
-	const struct logrecord *p2 = (struct logrecord *)p2;
+	const struct logrecord *p1 = (struct logrecord *)pp1;
+	const struct logrecord *p2 = (struct logrecord *)pp2;
 
 	return log_compare(&p1->lsn, &p2->lsn);
 }

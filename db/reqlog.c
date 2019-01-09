@@ -224,7 +224,11 @@ static void flushdump(struct reqlogger *logger, struct output *out)
                 logmsg(LOGMSG_USER, "%.*s", (int)iov[i].iov_len,
                        (char *)iov[i].iov_base);
         } else {
-            writev(out->fd, iov, niov);
+            ssize_t rc = writev(out->fd, iov, niov);
+            if (rc == -1) {
+                logmsg(LOGMSG_USER, "%s:%d writev returns rc=%zd\n", __FILE__,
+                       __LINE__, rc);
+            }
         }
         logger->dumplinepos = 0;
     }

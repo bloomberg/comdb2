@@ -2283,7 +2283,8 @@ int sqlite3IsLikeFunction(sqlite3 *db, Expr *pExpr, int *pIsNocase, char *aWc){
   return 1;
 }
 
-#if defined(SQLITE_BUILDING_FOR_COMDB2) && defined(SQLITE_BUILDING_FOR_COMDB2_DBGLOG)
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#if defined(SQLITE_BUILDING_FOR_COMDB2_DBGLOG)
 static void dbglogCookieFunc(
   sqlite3_context *context,
   int NotUsed,
@@ -2328,7 +2329,8 @@ static void dbglogEndFunc(
       (void)dbglog_munmap_dbglog_file(cookie, mmapped, size, fd);
   }
 }
-#endif
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2_DBGLOG) */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** All of the FuncDef structures in the aBuiltinFunc[] array above
@@ -2463,9 +2465,9 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(comdb2_prevquerycost, 0, 0, 0, comdb2PrevquerycostFunc),
     FUNCTION(comdb2_starttime,     0, 0, 0, comdb2StartTimeFunc),
 #if defined(SQLITE_BUILDING_FOR_COMDB2_DBGLOG)
-    FUNCTION(dbglog_cookie,     0, 0, 0, dbglogCookieFunc),
-    FUNCTION(dbglog_begin,      1, 0, 0, dbglogBeginFunc),
-    FUNCTION(dbglog_end,        1, 0, 0, dbglogEndFunc),
+    FUNCTION(dbglog_cookie,        0, 0, 0, dbglogCookieFunc),
+    FUNCTION(dbglog_begin,         1, 0, 0, dbglogBeginFunc),
+    FUNCTION(dbglog_end,           1, 0, 0, dbglogEndFunc),
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2_DBGLOG) */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #ifdef SQLITE_ENABLE_UNKNOWN_SQL_FUNCTION

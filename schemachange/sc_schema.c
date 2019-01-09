@@ -87,7 +87,7 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
         snprintf(lcl_tag, sizeof lcl_tag, ".NEW..ONDISK_IX_%d", lcl_idx);
 
         /* Data -> Key : ONDISK -> .ONDISK_IX_nn */
-        if (iq->idxInsert)
+        if (iq->idxInsert && !convert)
             memcpy(lcl_key, iq->idxInsert[lcl_idx], db->ix_keylen[lcl_idx]);
         else
             rc = stag_to_stag_buf_blobs(db->tablename, from, od_dta, lcl_tag,
@@ -257,7 +257,15 @@ int verify_partial_rev_constraint(struct dbtable *to_db, struct dbtable *newdb,
             rc = ix_find_by_key_tran(&ruleiq, rkey, rixlen, rixnum, NULL,
                                      &fndrrn, &genid, NULL, NULL, 0, trans);
             /* a foreign table key is relying on this */
-            if (rc == IX_FND || rc == IX_FNDMORE) return ERR_CONSTR;
+            if (rc == IX_FND || rc == IX_FNDMORE)
+                return ERR_CONSTR;
+            else if (rc == RC_INTERNAL_RETRY)
+                return rc;
+            else {
+                logmsg(LOGMSG_ERROR, "%s:%d got unexpected error rc = %d\n",
+                       __func__, __LINE__, rc);
+                return rc;
+            }
         }
     }
     return 0;
@@ -583,35 +591,90 @@ int sc_cmp_fileids(unsigned long long a, unsigned long long b)
     return bdb_cmp_genids(a, b);
 }
 
-void verify_schema_change_constraint(struct ireq *iq, struct dbtable *currdb,
-                                     void *trans, void *od_dta,
+void verify_schema_change_constraint(struct ireq *iq, void *trans,
+                                     unsigned long long newgenid, void *od_dta,
                                      unsigned long long ins_keys)
 {
-    if (!currdb)
+    struct dbtable *usedb = iq->usedb;
+    blob_status_t oldblobs[MAXBLOBS];
+    blob_buffer_t add_blobs_buf[MAXBLOBS];
+    blob_buffer_t *add_idx_blobs = NULL;
+    void *new_dta = NULL;
+    int rc = 0;
+
+    if (!usedb)
         return;
 
-    Pthread_rwlock_rdlock(&currdb->sc_live_lk);
+    bzero(oldblobs, sizeof(oldblobs));
+    bzero(add_blobs_buf, sizeof(add_blobs_buf));
+
+    Pthread_rwlock_rdlock(&usedb->sc_live_lk);
 
     /* if there's no schema change in progress, nothing to verify */
-    if (!currdb->sc_to)
+    if (!usedb->sc_to)
         goto done;
 
-    if (currdb->sc_live_logical)
+    if (usedb->sc_live_logical)
         goto done;
 
     /* if (is_schema_change_doomed()) */
-    if (gbl_sc_abort || currdb->sc_abort || iq->sc_should_abort)
+    if (gbl_sc_abort || usedb->sc_abort || iq->sc_should_abort)
         goto done;
 
-    int rebuild = currdb->sc_to->plan && currdb->sc_to->plan->dta_plan;
-    if (verify_record_constraint(iq, currdb->sc_to, trans, od_dta, ins_keys,
-                                 NULL, 0, ".ONDISK", rebuild, 1) != 0) {
-        currdb->sc_abort = 1;
+    if (iq->usedb->sc_to->ix_blob) {
+        rc =
+            save_old_blobs(iq, trans, ".ONDISK", od_dta, 2, newgenid, oldblobs);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s() save old blobs failed rc %d\n", __func__,
+                   rc);
+            goto done;
+        }
+        blob_status_to_blob_buffer(oldblobs, add_blobs_buf);
+        add_idx_blobs = add_blobs_buf;
+    }
+
+    new_dta = malloc(usedb->sc_to->lrl);
+    if (new_dta == NULL) {
+        logmsg(LOGMSG_ERROR, "%s() malloc failed\n", __func__);
+        goto done;
+    }
+
+    struct convert_failure reason;
+    rc = stag_to_stag_buf_blobs(usedb->sc_to->tablename, ".ONDISK", od_dta,
+                                ".NEW..ONDISK", new_dta, &reason, add_idx_blobs,
+                                add_idx_blobs ? MAXBLOBS : 0, 1);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s() convert record failed\n", __func__);
+        goto done;
+    }
+
+    ins_keys =
+        revalidate_new_indexes(iq, usedb->sc_to, new_dta, ins_keys,
+                               add_idx_blobs, add_idx_blobs ? MAXBLOBS : 0);
+
+    if (iq->debug) {
+        reqpushprefixf(iq, "%s: ", __func__);
+        reqprintf(iq, "verify constraints for genid 0x%llx in new table",
+                  newgenid);
+    }
+
+    int rebuild = usedb->sc_to->plan && usedb->sc_to->plan->dta_plan;
+    if (verify_record_constraint(iq, usedb->sc_to, trans, new_dta, ins_keys,
+                                 add_idx_blobs, add_idx_blobs ? MAXBLOBS : 0,
+                                 ".NEW..ONDISK", rebuild, 0) != 0) {
+        usedb->sc_abort = 1;
         MEMORY_SYNC;
     }
 
 done:
-    Pthread_rwlock_unlock(&currdb->sc_live_lk);
+    if (rc) {
+        usedb->sc_abort = 1;
+        MEMORY_SYNC;
+    }
+    if (new_dta)
+        free(new_dta);
+    free_blob_status_data(oldblobs);
+    Pthread_rwlock_unlock(&usedb->sc_live_lk);
 }
 
 /* After loading new schema file, should call this routine to see if ondisk

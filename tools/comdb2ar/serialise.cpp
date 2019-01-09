@@ -11,6 +11,7 @@
 #include "tar_header.h"
 #include "increment.h"
 #include "util.h"
+#include "ssl_support.h"
 
 #include <cassert>
 #include <cstring>
@@ -522,6 +523,13 @@ void parse_lrl_file(const std::string& lrlpath,
         bool* p_nonames,
         bool* has_cluster_info)
 {
+    /* SSL certificates */
+    std::string certdir, cert, key, ca;
+
+#if HAVE_CRL
+    std::string crl;
+#endif
+
     // First, load the lrl file into memory.
     std::ifstream lrlstream(lrlpath.c_str());
     if(!lrlstream.is_open()) {
@@ -597,9 +605,41 @@ void parse_lrl_file(const std::string& lrlpath,
                 *p_nonames = false;
             } else if(tok == "cluster") {
                 *has_cluster_info = true;
+            } else if(tok == SSL_CERT_PATH_OPT) {
+                if(!(liness >> tok))
+                    throw LRLError(lrlpath, lineno, "missing SSL certificate path");
+                certdir = tok;
+            } else if(tok == SSL_CERT_OPT) {
+                if(!(liness >> tok))
+                    throw LRLError(lrlpath, lineno, "missing SSL certificate");
+                cert = tok;
+            } else if(tok == SSL_KEY_OPT) {
+                if(!(liness >> tok))
+                    throw LRLError(lrlpath, lineno, "missing SSL key");
+                key = tok;
+            } else if(tok == SSL_CA_OPT) {
+                if(!(liness >> tok))
+                    throw LRLError(lrlpath, lineno, "missing SSL CA certificate");
+                ca = tok;
+#if HAVE_CRL
+            } else if(tok == SSL_CRL_OPT) {
+                if(!(liness >> tok))
+                    throw LRLError(lrlpath, lineno, "missing SSL certificate revocation list");
+                crl = tok;
+#endif
             }
         }
     }
+
+    if (!certdir.empty())
+        certdir += "/";
+
+    p_support_files->push_back(cert.empty() ? (certdir + DEFAULT_SERVER_CERT) : cert);
+    p_support_files->push_back(cert.empty() ? (certdir + DEFAULT_SERVER_KEY) : key);
+    p_support_files->push_back(cert.empty() ? (certdir + DEFAULT_CA) : ca);
+#if HAVE_CRL
+    p_support_files->push_back(cert.empty() ? (certdir + DEFAULT_CRL) : crl);
+#endif
 }
 
 void create_lrl_file(std::string& lrlpath,
@@ -718,7 +758,8 @@ void serialise_database(
     std::string strippedpath("");
     std::string templrlpath("");
 
-    // All support files - csc2s, extra lrls, resources for stored procedures
+    // All support files - csc2s, extra lrls, resources for stored procedures,
+    // SSL certificates
     // etc.
     std::list<std::string> support_files;
 
@@ -769,7 +810,9 @@ void serialise_database(
 
         if(!(stat(incr_path.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode))){
             std::string cmd("mkdir -p " + incr_path);
-            system(cmd.c_str());
+            int rc = system(cmd.c_str());
+            if (rc)
+                std::cerr << "system() returns rc = " << rc << std::endl;
         }
     }
 
@@ -1555,9 +1598,26 @@ void write_incremental_file (
                 pagep->lsn.offset = myflip(pagep->lsn.offset);
             }
 
-            write(1, &(LSN(pagep).file), 4);
-            write(1, &(LSN(pagep).offset), 4);
-            write(1, &verify_cksum, 4);
+            rc = write(1, &(LSN(pagep).file), 4);
+            if (rc == -1) {
+                std::ostringstream ss;
+                ss << "Write error " << rc << " error " << strerror(errno) << std::endl;
+                throw Error(ss.str());
+            }
+
+            rc = write(1, &(LSN(pagep).offset), 4);
+            if (rc == -1) {
+                std::ostringstream ss;
+                ss << "Write error " << rc << " error " << strerror(errno) << std::endl;
+                throw Error(ss.str());
+            }
+
+            rc = write(1, &verify_cksum, 4);
+            if (rc == -1) {
+                std::ostringstream ss;
+                ss << "Write error " << rc << " error " << strerror(errno) << std::endl;
+                throw Error(ss.str());
+            }
 
             offset += pagesize;
         }

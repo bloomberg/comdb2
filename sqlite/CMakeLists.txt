@@ -117,6 +117,17 @@ include(${PROJECT_SOURCE_DIR}/sqlite/definitions.cmake)
 add_definitions(${SQLITE_FLAGS})
 target_compile_definitions(sqlite PRIVATE ${SQLITE_FLAGS})
 
+if (${CMAKE_C_COMPILER_ID} STREQUAL GNU OR ${CMAKE_C_COMPILER_ID} STREQUAL Clang)
+  set_source_files_properties(src/hash.c PROPERTIES COMPILE_FLAGS "-Wno-char-subscripts")
+  set_source_files_properties(src/select.c PROPERTIES COMPILE_FLAGS "-Wno-unused-value")
+endif()
+if (${CMAKE_C_COMPILER_ID} STREQUAL GNU)
+  set_source_files_properties(src/trigger.c src/status.c PROPERTIES COMPILE_FLAGS "-Wno-unused-but-set-variable -Wno-unused-const-variable")
+elseif(${CMAKE_C_COMPILER_ID} STREQUAL Clang)
+  set_source_files_properties(src/trigger.c src/status.c PROPERTIES COMPILE_FLAGS "-Wno-unused-const-variable")
+endif()
+
+
 set(module sqlite)
 set(MODULE SQLITE)
 configure_file(${PROJECT_SOURCE_DIR}/mem/mem.h.in mem_sqlite.h @ONLY)
@@ -190,3 +201,4 @@ include_directories(
   ${PROTOBUF_C_INCLUDE_DIR}
 )
 add_dependencies(sqlite mem protobuf bdb)
+

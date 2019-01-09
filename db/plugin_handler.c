@@ -250,7 +250,7 @@ int install_static_plugins(void)
 */
 static int plugin_update(void *context, void *value)
 {
-    char *ptr, *saveptr;
+    char *ptr, *saveptr = NULL;
     char path[COMDB2_MAX_PATH_NAME_LEN];
     int rc = 0;
     /* Assume only path has been provided. */

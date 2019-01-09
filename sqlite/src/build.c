@@ -477,8 +477,8 @@ retry_after_fdb_creation:
     }
 
     if( gbl_fdb_track ){
-      logmsg(LOGMSG_USER, "Found new foreign table \"%s:%s\"\n", 
-          fqDbname, zName);
+      logmsg(LOGMSG_USER, "Found new foreign table \"%s:%s\" version %d\n", 
+          fqDbname, zName, version);
     }
 
     snprintf(uri, sizeof(uri), "%s.%s", dbName, zName);
