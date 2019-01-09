@@ -1625,5 +1625,4 @@ REGISTER_TUNABLE("abort_on_missing_osql_session",
                  TUNABLE_BOOLEAN, &gbl_abort_on_missing_osql_session,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
-
 #endif /* _DB_TUNABLES_H */
