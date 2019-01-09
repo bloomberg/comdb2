@@ -973,6 +973,7 @@ const char *tunable_type(comdb2_tunable_type type)
     case TUNABLE_STRING: return "STRING";
     case TUNABLE_ENUM: return "ENUM";
     case TUNABLE_COMPOSITE: return "COMPOSITE";
+    case TUNABLE_RAW: return "RAW";
     default: assert(0);
     }
     return "???";
