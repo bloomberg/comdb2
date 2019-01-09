@@ -743,6 +743,22 @@ int sqlite3_open_serial(const char *filename, sqlite3 **ppDb,
     if (serial)
         Pthread_mutex_lock(&open_serial_lock);
     int rc = sqlite3_open(filename, ppDb, thd);
+    if (rc == SQLITE_OK) {
+        char *zSql = gbl_sql_new_db_rc;
+        if (zSql) {
+            int rc2;
+            char *zErr = 0;
+            rc2 = sqlite3_exec(*ppDb, zSql, NULL, NULL, &zErr);
+            if (rc2 != SQLITE_OK) {
+                logmsg(LOGMSG_ERROR,
+                       "%s:%d, %s: failed SQL {%s}, rc2 %d, msg {%s}\n",
+                       __FILE__, __LINE__, __func__, zSql, rc2, zErr);
+                if (zErr) sqlite3_free(zErr);
+                sqlite3_close(*ppDb); *ppDb = NULL;
+                rc = rc2;
+            }
+        }
+    }
     if (serial)
         Pthread_mutex_unlock(&open_serial_lock);
     return rc;

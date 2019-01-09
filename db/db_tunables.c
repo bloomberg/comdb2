@@ -226,6 +226,7 @@ extern uint8_t _non_dedicated_subnet;
 extern char *gbl_crypto;
 extern char *gbl_spfile_name;
 extern char *gbl_timepart_file_name;
+extern char *gbl_sql_new_db_rc;
 extern char *gbl_portmux_unix_socket;
 
 /* util/ctrace.c */

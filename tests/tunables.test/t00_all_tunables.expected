@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=898)
+(TUNABLES_COUNT=899)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -764,6 +764,7 @@
 (name='sosql_poke_timeout_sec', description='On replicants, when checking on master for transaction status, retry the check after this many seconds.', type='INTEGER', value='2', read_only='N')
 (name='spfile', description='', type='STRING', value=NULL, read_only='Y')
 (name='sql_close_sbuf', description='sql_close_sbuf', type='BOOLEAN', value='OFF', read_only='N')
+(name='sql_new_db_rc', description='SQL command(s) to run for each new connection.', type='STRING', value=NULL, read_only='N')
 (name='sql_optimize_shadows', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='sql_queueing_critical_trace', description='Produce trace when SQL request queue is this deep.', type='INTEGER', value='100', read_only='N')
 (name='sql_queueing_disable_trace', description='Disable trace when SQL requests are starting to queue.', type='BOOLEAN', value='OFF', read_only='N')
