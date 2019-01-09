@@ -7943,20 +7943,21 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
     if (gbl_fdb_track) {
         if (cur->fdbc->isuuid(cur)) {
             uuidstr_t cus, tus;
-            logmsg(LOGMSG_USER, "%s Created cursor cid=%s with tid=%s rootp=%d "
-                                "db:tbl=\"%s:%s\"\n",
-                   __func__,
-                   comdb2uuidstr((unsigned char *)cur->fdbc->id(cur), cus),
+            unsigned char *pStr = (unsigned char *)cur->fdbc->id(cur);
+            logmsg(LOGMSG_USER,
+                   "%s Created cursor cid=%s with tid=%s rootp=%d "
+                   "db:tbl=\"%s:%s\"\n",
+                   __func__, (pStr) ? comdb2uuidstr(pStr, cus) : "UNK",
                    comdb2uuidstr(tid, tus), iTable, pBt->zFilename,
                    cur->fdbc->name(cur));
         } else {
             uuidstr_t tus;
+            unsigned long long *pLng = (unsigned long long *)cur->fdbc->id(cur);
             logmsg(LOGMSG_USER,
                    "%s Created cursor cid=%llx with tid=%s rootp=%d "
                    "db:tbl=\"%s:%s\"\n",
-                   __func__, *(unsigned long long *)cur->fdbc->id(cur),
-                   comdb2uuidstr(tid, tus), iTable, pBt->zFilename,
-                   cur->fdbc->name(cur));
+                   __func__, (pLng) ? *pLng : -1LL, comdb2uuidstr(tid, tus),
+                   iTable, pBt->zFilename, cur->fdbc->name(cur));
         }
     }
 
@@ -11398,12 +11399,16 @@ void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
     int rc;
     char *err = NULL;
 
+#ifndef NDEBUG
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     assert(thd);
+#endif
 
     Btree *pSrcBt = &src->aDb[1].pBt[0];
 
+#ifndef NDEBUG
     assert( pSrcBt->temp_table_mtx==thd->clnt->temp_table_mtx );
+#endif
     Pthread_mutex_lock(pSrcBt->temp_table_mtx);
 
     // aDb[0]: sqlite_master
@@ -11461,7 +11466,9 @@ void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
     if( pDestBt ){
         int maxRootPg = -1;
         HashElem *pElem;
+#ifndef NDEBUG
         assert( pDestBt->temp_table_mtx==thd->clnt->temp_table_mtx );
+#endif
         Pthread_mutex_lock(pDestBt->temp_table_mtx);
         for(pElem=sqliteHashFirst(&pDestBt->temp_tables); pElem;
                 pElem=sqliteHashNext(pElem)){

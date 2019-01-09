@@ -1675,8 +1675,8 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                         LOGMSG_ERROR,
                         "%s: failed to process remote access settings \"%s\"\n",
                         __func__, sqlstr);
+                    rc = ii + 1;
                 }
-                rc = ii + 1;
             } else if (strncasecmp(sqlstr, "getcost", 7) == 0) {
                 sqlstr += 7;
                 sqlstr = skipws(sqlstr);

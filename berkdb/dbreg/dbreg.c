@@ -261,8 +261,8 @@ __dbreg_get_id(dbp, txn, idp)
 	lp = dblp->reginfo.primary;
 	fnp = dbp->log_filename;
 
-    if (gbl_is_physical_replicant)
-        abort();
+	if (gbl_is_physical_replicant)
+		abort();
 
 	/*
 	 * It's possible that after deciding we needed to call this function,
@@ -297,8 +297,8 @@ __dbreg_get_id(dbp, txn, idp)
 	fid_dbt.data = dbp->fileid;
 	fid_dbt.size = DB_FILE_ID_LEN;
 
-    if ((ret = __dbreg_register_log(dbenv, txn, &unused,
-                    F_ISSET(dbp, DB_AM_NOT_DURABLE) ? DB_LOG_NOT_DURABLE : 0,
+	if ((ret = __dbreg_register_log(dbenv, txn, &unused,
+					F_ISSET(dbp, DB_AM_NOT_DURABLE) ? DB_LOG_NOT_DURABLE : 0,
                     DBREG_OPEN, r_name.size == 0 ? NULL : &r_name, &fid_dbt, id,
                     fnp->s_type, fnp->meta_pgno, fnp->create_txnid)) != 0)
         goto err;

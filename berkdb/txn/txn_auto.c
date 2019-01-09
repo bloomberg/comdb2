@@ -721,8 +721,8 @@ __txn_ckp_getallpgnos(dbenv, rec, lsnp, notused1, summary)
 	t = (TXN_RECS *)summary;
 
 
-err:    if (argp != NULL)
-    __os_free(dbenv, argp);
+err:if (argp != NULL)
+        __os_free(dbenv, argp);
 
     return (ret);
 }
@@ -1087,8 +1087,8 @@ __txn_child_getallpgnos(dbenv, rec, lsnp, notused1, summary)
 	t = (TXN_RECS *)summary;
 
 
-err:    if (argp != NULL)
-    __os_free(dbenv, argp);
+err:if (argp != NULL)
+        __os_free(dbenv, argp);
 
     return (ret);
 }
@@ -2233,8 +2233,8 @@ do_malloc:
 	}
 #endif
 
-    if (lflags & DB_TXN_LOGICAL_COMMIT)
-        flags |= DB_LOG_LOGICAL_COMMIT;
+	if (lflags & DB_TXN_LOGICAL_COMMIT)
+		flags |= DB_LOG_LOGICAL_COMMIT;
 
 	if (!is_durable && txnid != NULL) {
 		ret = 0;

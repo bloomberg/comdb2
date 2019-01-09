@@ -15,13 +15,16 @@ cdb2_hndl_tp **sel_orphans;
 void usage(FILE *f)
 {
     fprintf(f, "Usage: %s <cmd-line>\n", argv0);
-    fprintf(f, " -d <dbname>\n");
-    fprintf(f, " -c <config>\n");
-    fprintf(f, " -t <type-string>\n");
-    fprintf(f, " -r <update-range>\n");
-    fprintf(f, " -p <print-interval>\n");
-    fprintf(f, " -o <orphan-count>\n");
-    fprintf(f, " -h <help-menu>\n");
+    fprintf(f, " -d <dbname>            - dbname\n");
+    fprintf(f, " -c <config>            - db config\n");
+    fprintf(f, " -t <type-string>       - db type\n");
+    fprintf(f, " -r <update-range>      - update range\n");
+    fprintf(f, " -p <print-interval>    - print interval\n");
+    fprintf(f, " -o <orphan-count>      - orphan count\n");
+    fprintf(f, " -f <pidfile>           - pid file\n");
+    fprintf(f, " -s                     - snapshot\n");
+    fprintf(f, " -T                     - truncate\n");
+    fprintf(f, " -h                     - help-menu\n");
     exit(1);
 }
 
@@ -192,13 +195,28 @@ upd_again:
 }
 
 int select_and_update(const char *dbname, const char *type, int snapshot,
-        int64_t count, int orphans, int range, int pint)
+        int64_t count, int orphans, int range, int pint, int truncate)
 {
     int i, rc;
     upd_orphans = calloc(orphans, sizeof(cdb2_hndl_tp *));
     sel_orphans = calloc(orphans, sizeof(cdb2_hndl_tp *));
     for (i = 0; i < orphans; i++)
         select_and_update_orphan(dbname, type, i, snapshot, count, range, pint);
+    if (truncate) {
+        printf("Truncating t1\n");
+        cdb2_hndl_tp *hndl;
+        if ((rc = cdb2_open(&hndl, dbname, type, 0)) != 0) {
+            fprintf(stderr, "Failed to allocate truncate-handle for %s\n",
+                    dbname);
+            failexit(__func__, __LINE__, rc);
+        }
+        if ((rc = cdb2_run_statement(hndl, "truncate t1")) != 0) {
+            fprintf(stderr, "Failed to truncate t1, rc=%d, %s\n", rc,
+                    cdb2_errstr(hndl));
+            failexit(__func__, __LINE__, rc);
+        }
+        cdb2_close(hndl);
+    }
     printf("Closing orphans\n");
     for (i = 0; i < orphans; i++) {
         cdb2_close(upd_orphans[i]);
@@ -216,7 +234,7 @@ int select_and_update(const char *dbname, const char *type, int snapshot,
 
 int main(int argc,char *argv[])
 {
-    int c, err = 0, range = 100000, pint = 10000, orphans = 10, snapshot = 0;
+    int c, err=0, range=100000, pint=10000, orphans=10, snapshot=0, truncate=0;
     char *dbname = NULL, *type = NULL, *pidfile = NULL;
     FILE *pfile;
     int64_t count;
@@ -226,7 +244,7 @@ int main(int argc,char *argv[])
     setvbuf(stderr, NULL, _IOLBF, 0);
     srand(time(NULL) ^ getpid());
 
-    while ((c = getopt(argc,argv,"hd:r:p:t:c:f:s"))!=EOF) {
+    while ((c = getopt(argc,argv,"hd:r:p:t:c:f:sT"))!=EOF) {
         switch(c) {
             case 'd':
                 dbname = optarg;
@@ -236,6 +254,9 @@ int main(int argc,char *argv[])
                 break;
             case 't':
                 type = optarg;
+                break;
+            case 'T':
+                truncate = 1;
                 break;
             case 'r':
                 range = atoi(optarg);
@@ -280,7 +301,8 @@ int main(int argc,char *argv[])
     }
 
     count = record_count(dbname, type);
-    select_and_update(dbname, type, snapshot, count, orphans, range, pint);
+    select_and_update(dbname, type, snapshot, count, orphans, range, pint,
+            truncate);
     printf("Complete\n");
     return 0;
 }

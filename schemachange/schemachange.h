@@ -335,6 +335,8 @@ int live_sc_delayed_key_adds(struct ireq *iq, void *trans,
 
 int live_sc_disable_inplace_blobs(struct ireq *iq);
 
+int live_sc_delay_key_add(struct ireq *iq);
+
 int add_schema_change_tables();
 
 extern unsigned long long get_genid(bdb_state_type *, unsigned int dtastripe);
@@ -353,4 +355,9 @@ int do_dryrun(struct schema_change_type *);
 
 extern int gbl_test_scindex_deadlock;
 
+unsigned long long revalidate_new_indexes(struct ireq *iq, struct dbtable *db,
+                                          uint8_t *new_dta,
+                                          unsigned long long ins_keys,
+                                          blob_buffer_t *blobs,
+                                          size_t maxblobs);
 #endif

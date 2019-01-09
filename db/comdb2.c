@@ -3344,8 +3344,8 @@ static int init(int argc, char **argv)
 
 #if WITH_SSL
     /* Initialize SSL backend before creating any net.
-       If we're in creat mode, don't bother. */
-    if (!gbl_create_mode && ssl_bend_init(thedb->basedir) != 0) {
+       If we're exiting, don't bother. */
+    if (!gbl_exit && ssl_bend_init(thedb->basedir) != 0) {
         logmsg(LOGMSG_FATAL, "Failed to initialize SSL backend.\n");
         return -1;
     }
@@ -3579,7 +3579,7 @@ static int init(int argc, char **argv)
     if (gbl_berkdb_iomap) 
         bdb_berkdb_iomap_set(thedb->bdb_env, 1);
 
-    if (gbl_new_snapisol && gbl_snapisol) {
+    if (!gbl_exit && gbl_new_snapisol && gbl_snapisol) {
         bdb_attr_set(thedb->bdb_attr, BDB_ATTR_PAGE_ORDER_TABLESCAN, 0);
 
         if (bdb_gbl_pglogs_mem_init(thedb->bdb_env) != 0)

@@ -80,7 +80,10 @@ void fixnet(struct nemesis *n)
             }
             strcat(cmd, "\" < /dev/null >/dev/null 2>&1");
             if (n->flags & NEMESIS_VERBOSE) printf("%s\n", cmd);
-            system(cmd);
+            int lrc = system(cmd);
+            if (lrc) {
+                printf("ERROR: %s:%d system() returns rc = %d\n",__FILE__,__LINE__, lrc);
+            }
         }
     }
     printf("Fully connected\n");
@@ -161,7 +164,10 @@ void breaknet(struct nemesis *n)
             }
             strcat(cmd, "\" < /dev/null >/dev/null 2>&1");
             if (n->flags & NEMESIS_VERBOSE) printf("%s\n", cmd);
-            system(cmd);
+            int lrc = system(cmd);
+            if (lrc) {
+                printf("ERROR: %s:%d system() returns rc = %d\n",__FILE__,__LINE__, lrc);
+            }
         }
     }
 }
@@ -212,7 +218,10 @@ void signaldb(struct nemesis *n, int signal, int all)
                     n->cluster[broken], signal, n->dbname);
             if (n->flags & NEMESIS_VERBOSE) printf("%s", cmd);
             fflush(stdout);
-            system(cmd);
+            int lrc = system(cmd);
+            if (lrc) {
+                printf("ERROR: %s:%d system() returns rc = %d\n",__FILE__,__LINE__, lrc);
+            }
         }
     }
 }
@@ -228,7 +237,10 @@ void breakclocks(struct nemesis *n, int maxskew)
                 "sudo date \\\"+%%s\\\" -s \\@\\$newtime\" < /dev/null >/dev/null 2>&1\n",
                 n->cluster[x], maxskew);
         if (n->flags & NEMESIS_VERBOSE) printf("%s", cmd);
-        system(cmd);
+        int lrc = system(cmd);
+        if (lrc) {
+            printf("ERROR: %s:%d system() returns rc = %d\n",__FILE__,__LINE__, lrc);
+        }
     }
 }
 
@@ -242,7 +254,10 @@ void fixclocks(struct nemesis *n)
                 n->cluster[x]);
         if (n->flags & NEMESIS_VERBOSE) printf("%s", cmd);
         fflush(stdout);
-        system(cmd);
+        int lrc = system(cmd);
+        if (lrc) {
+            printf("ERROR: %s:%d system() returns rc = %d\n",__FILE__,__LINE__, lrc);
+        }
     }
 }
 

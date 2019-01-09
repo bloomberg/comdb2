@@ -202,12 +202,12 @@ static inline void free_cached_delayed_indexes(struct ireq *iq)
     }
 }
 
-int insert_add_op(struct ireq *iq, block_state_t *blkstate,
-                  struct dbtable *usedb, const uint8_t *p_buf_req_start,
+int insert_add_op(struct ireq *iq, const uint8_t *p_buf_req_start,
                   const uint8_t *p_buf_req_end, int optype, int rrn, int ixnum,
                   unsigned long long genid, unsigned long long ins_keys,
                   int blkpos, int flags)
 {
+    block_state_t *blkstate = iq->blkstate;
     void *cur = NULL;
     int type = CTE_ADD, rc = 0;
     char key[MAXKEYLEN];
@@ -236,7 +236,7 @@ int insert_add_op(struct ireq *iq, block_state_t *blkstate,
     cte_record.ctop.fwdct.ins_keys = ins_keys;
     cte_record.ctop.fwdct.p_buf_req_start = p_buf_req_start;
     cte_record.ctop.fwdct.p_buf_req_end = p_buf_req_end;
-    cte_record.ctop.fwdct.usedb = usedb;
+    cte_record.ctop.fwdct.usedb = iq->usedb;
     cte_record.ctop.fwdct.blkpos = blkpos;
     cte_record.ctop.fwdct.ixnum = ixnum;
     cte_record.ctop.fwdct.rrn = rrn;
@@ -1028,7 +1028,6 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
     assert(iq->idxInsert == NULL);
     do {
         cte *ctrq = (cte *)bdb_temp_table_data(cur);
-
         /* do something */
         if (ctrq == NULL) {
             if (iq->debug)
@@ -1335,6 +1334,8 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
         *errout = OP_FAILED_INTERNAL;
         return ERR_INTERNAL;
     }
+    unsigned long long sc_genid = 0ULL;
+    unsigned long long cached_index_genid = 0ULL;
     while (rc == 0) {
         cte *ctrq = (cte *)bdb_temp_table_data(cur);
         struct forward_ct *curop = NULL;
@@ -1394,6 +1395,17 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                 return rc;
             }
 
+            if (cached_index_genid != curop->genid) {
+                if (cache_delayed_indexes(iq, curop->genid)) {
+                    logmsg(LOGMSG_ERROR, "%s failed to cache delayed indexes\n",
+                           __func__);
+                    *errout = OP_FAILED_INTERNAL;
+                    close_constraint_table_cursor(cur);
+                    return ERR_INTERNAL;
+                }
+                cached_index_genid = curop->genid;
+            }
+
             rc = ix_find_by_rrn_and_genid_tran(iq, addrrn, genid, od_dta,
                                                &fndlen, ondisk_size, trans);
 
@@ -1417,12 +1429,10 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                 return ERR_INTERNAL;
             }
 
-            if (cache_delayed_indexes(iq, genid)) {
-                logmsg(LOGMSG_ERROR, "%s failed to cache delayed indexes\n",
-                        __func__);
-                *errout = OP_FAILED_INTERNAL;
-                close_constraint_table_cursor(cur);
-                return ERR_INTERNAL;
+            if (sc_genid != genid) {
+                verify_schema_change_constraint(iq, trans, genid, od_dta,
+                                                ins_keys);
+                sc_genid = genid;
             }
 
             for (cidx = 0; cidx < nct; cidx++) {
@@ -1600,8 +1610,6 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                     }
                 }
             }
-            verify_schema_change_constraint(iq, iq->usedb, trans, od_dta,
-                                            ins_keys);
         } break;
         case BLOCK2_DELKL:
             logmsg(LOGMSG_USER, "keyless del\n");
@@ -1790,7 +1798,7 @@ static int constraint_index_key_cmp(void *usermem, int key1len,
     return 0;
 }
 
-void *create_constraint_table(long long *ctid)
+void *create_constraint_table()
 {
     struct temp_table *newtbl = NULL;
     int bdberr = 0;
@@ -1803,7 +1811,7 @@ void *create_constraint_table(long long *ctid)
     return newtbl;
 }
 
-void *create_constraint_index_table(long long *ctid)
+void *create_constraint_index_table()
 {
     struct temp_table *newtbl = NULL;
     int bdberr = 0;
@@ -1817,18 +1825,16 @@ void *create_constraint_index_table(long long *ctid)
     return newtbl;
 }
 
-static void *get_constraint_table_cursor(void *table)
+static inline void *get_constraint_table_cursor(void *table)
 {
     struct temp_cursor *cur = NULL;
     int err = 0;
     cur = (struct temp_cursor *)bdb_temp_table_cursor(thedb->bdb_env, table,
                                                       NULL, &err);
-    if (cur == NULL)
-        return NULL;
-    return (void *)cur;
+    return cur;
 }
 
-static int close_constraint_table_cursor(void *cursor)
+static inline int close_constraint_table_cursor(void *cursor)
 {
     int err = 0, rc = 0;
     rc = bdb_temp_table_close_cursor(thedb->bdb_env, cursor, &err);
@@ -1848,14 +1854,14 @@ static char *get_temp_ct_dbname(long long *ctid)
     return s;
 }
 
-static int is_delete_op(int op)
+static inline int is_delete_op(int op)
 {
     if (op == BLOCK2_DELKL || op == BLOCK2_DELDTA || op == BLOCK_DELSC)
         return 1;
     return 0;
 }
 
-static int is_update_op(int op)
+static inline int is_update_op(int op)
 {
     if (op == BLOCK2_UPDKL || op == BLOCK2_UPDKL_POS || op == BLOCK2_UPDATE ||
         op == BLOCK_UPVRRN)
@@ -1919,7 +1925,8 @@ static inline int constraint_key_check(struct schema *fky, struct schema *bky)
     return 0;
 }
 
-static struct dbtable *get_newer_db(struct dbtable *db, struct dbtable *new_db)
+static inline struct dbtable *get_newer_db(struct dbtable *db,
+                                           struct dbtable *new_db)
 {
     if (new_db && strcasecmp(db->tablename, new_db->tablename) == 0) {
         return new_db;

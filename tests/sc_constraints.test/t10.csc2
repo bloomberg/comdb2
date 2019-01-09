@@ -1,0 +1,10 @@
+schema
+{
+    int a
+    int b
+    blob blb null=yes
+}
+keys
+{
+    "B" = b
+}
