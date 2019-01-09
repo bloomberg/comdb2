@@ -215,6 +215,7 @@ int osql_repository_add(osql_sess_t *sess, int *replaced)
     return rc;
 }
 
+int gbl_abort_on_missing_osql_session = 0;
 
 /**
  * Remove an osql session from the repository
@@ -283,7 +284,9 @@ int osql_repository_rem(osql_sess_t *sess, int lock, const char *func, const cha
             Pthread_rwlock_unlock(&theosql->hshlck);
         }
 
-        abort();
+        /* This can happen legitimately on master swing */
+        if (gbl_abort_on_missing_osql_session)
+            abort();
     }
 #ifdef TRACK_OSQL_SESSIONS
     else {
