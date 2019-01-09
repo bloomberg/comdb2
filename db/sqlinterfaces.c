@@ -115,6 +115,7 @@
 #define SQLHERR_MASTER_QUEUE_FULL -108
 #define SQLHERR_MASTER_TIMEOUT -109
 
+extern char *gbl_sql_new_db_rc;
 extern unsigned long long gbl_sql_deadlock_failures;
 extern unsigned int gbl_new_row_data;
 extern int gbl_use_appsock_as_sqlthread;
