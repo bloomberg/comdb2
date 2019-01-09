@@ -518,11 +518,15 @@ int sqlite3GetToken(const unsigned char *z, int *tokenType){
         ** but z[i] is a character not allowed within keywords, so this must
         ** be an identifier instead */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+        /* Special cases for COMDB2 */
         if( i==5 && sqlite3StrNICmp((char*)z,"genid",5)==0 && z[i]=='4'
             && z[i+1]=='8' && !IdChar(z[i+2]) ){
-          /* Special case for COMDB2 */
           *tokenType = TK_GENID48;
           return 7;
+        } else if( i==2 && sqlite3StrNICmp((char*)z,"lz",2)==0 && z[i]=='4'
+            && !IdChar(z[i+1]) ){
+          *tokenType = TK_LZ4;
+          return 3;
         }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         i++;
