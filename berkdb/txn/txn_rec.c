@@ -109,43 +109,48 @@ __txn_regop_detached_child_recover(dbenv, dbtp, lsnp, op, info)
 		 * might already have been removed from the list, and
 		 * that's OK.  Ignore the return code from remove.
 		 */
+		(void)__db_txnlist_remove(dbenv, info, argp->txnid->txnid);
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		rep->committed_gen = argp->generation;
-        rep->committed_lsn = *lsnp;
-        if (argp->generation > rep->gen)
-            __rep_set_gen(dbenv, __func__, __LINE__, argp->generation);
+		rep->committed_lsn = *lsnp;
+		if (argp->generation > rep->gen)
+			__rep_set_gen(dbenv, __func__, __LINE__, argp->generation);
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	} else if ((dbenv->tx_timestamp != 0 &&
 		argp->timestamp > (int32_t) dbenv->tx_timestamp) ||
-	    (!IS_ZERO_LSN(headp->trunc_lsn) &&
+		(!IS_ZERO_LSN(headp->trunc_lsn) &&
 		log_compare(&headp->trunc_lsn, lsnp) < 0)) {
 		/*
 		 * We failed either the timestamp check or the trunc_lsn check,
 		 * so we treat this as an abort even if it was a commit record.
 		 */
-		ret = __db_txnlist_find(dbenv,
-		    info, argp->txnid->txnid);
+		ret = __db_txnlist_update(dbenv,
+			info, argp->txnid->txnid, TXN_ABORT, NULL);
 
 		if (ret == TXN_IGNORE)
 			ret = TXN_OK;
 		else if (ret == TXN_NOTFOUND)
-            ret = __db_txnlist_add_ref(dbenv, info, argp->txnid->txnid,
-                    argp->ptxnid, TXN_REFERENCE, lsnp);
-		else if (ret != TXN_OK && ret != TXN_REFERENCE)
+			ret = __db_txnlist_add_ref(dbenv,
+				info, argp->txnid->txnid, argp->ptxnid, TXN_IGNORE, NULL);
+		else if (ret != TXN_OK)
 			goto err;
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
 	} else {
 		/* This is a normal commit; mark it appropriately. */
 		assert(op == DB_TXN_BACKWARD_ROLL);
-		ret = __db_txnlist_find(dbenv,
-		    info, argp->txnid->txnid);
+
+		ret = __db_txnlist_update_ref(dbenv, info, argp->txnid->txnid,
+				argp->ptxnid, argp->opcode, lsnp);
 
 		if (ret == TXN_IGNORE)
 			ret = TXN_OK;
 		else if (ret == TXN_NOTFOUND)
-            ret = __db_txnlist_add_ref(dbenv, info, argp->txnid->txnid,
-                    argp->ptxnid, TXN_REFERENCE, lsnp);
-		else if (ret != TXN_OK && ret != TXN_REFERENCE)
+			ret = __db_txnlist_add_ref(dbenv,
+				info, argp->txnid->txnid,
+				argp->ptxnid, argp->opcode == TXN_ABORT ?
+				TXN_IGNORE : argp->opcode, lsnp);
+
+		else if (ret != TXN_OK)
 			goto err;
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
 	}
@@ -159,8 +164,8 @@ __txn_regop_detached_child_recover(dbenv, dbtp, lsnp, op, info)
 
 	if (0) {
 err:		__db_err(dbenv,
-		    "txnid %lx commit record found, already on commit list",
-		    (u_long) argp->txnid->txnid);
+			"txnid %lx commit record found, already on commit list",
+			(u_long) argp->txnid->txnid);
 		ret = EINVAL;
 	}
 	__os_free(dbenv, argp);
@@ -171,7 +176,7 @@ err:		__db_err(dbenv,
 
 /*
  * PUBLIC: int __txn_regop_gen_recover
- * PUBLIC:    __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
+ * PUBLIC:	__P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
  *
  * These records are only ever written for commits.  Normally, we redo any
  * committed transaction, however if we are doing recovery to a timestamp, then

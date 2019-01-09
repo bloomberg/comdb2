@@ -1008,7 +1008,47 @@ __db_txnlist_find(dbenv, listp, txnid)
 	if (txnid == 0)
 		return (TXN_NOTFOUND);
 	return (__db_txnlist_find_internal(dbenv, listp,
-	    TXNLIST_TXNID, txnid, NULL, &entry, 0));
+		TXNLIST_TXNID, txnid, NULL, &entry, 0));
+}
+
+/*
+ * __db_txnlist_update_ref --
+ *	Change the status of an existing transaction entry.
+ *	Returns TXN_NOTFOUND if no such entry exists.
+ *
+ * PUBLIC: int __db_txnlist_update_ref __P((DB_ENV *,
+ * PUBLIC:	 void *, u_int32_t, u_int32_t, int32_t, DB_LSN *));
+ */
+int
+__db_txnlist_update_ref(dbenv, listp, txnid, rtxnid, status, lsn)
+	DB_ENV *dbenv;
+	void *listp;
+	u_int32_t txnid;
+	u_int32_t rtxnid;
+	int32_t status;
+	DB_LSN *lsn;
+{
+	DB_TXNHEAD *hp;
+	DB_TXNLIST *elp;
+	int ret;
+
+	if (txnid == 0)
+		return (TXN_NOTFOUND);
+	hp = (DB_TXNHEAD *)listp;
+	ret = __db_txnlist_find_internal(dbenv,
+		listp, TXNLIST_TXNID, txnid, NULL, &elp, 0);
+
+	if (ret == TXN_NOTFOUND || ret == TXN_IGNORE)
+		return (ret);
+	elp->u.t.status = status;
+
+	if (rtxnid)
+		elp->u.t.rtxnid = rtxnid;
+
+	if (lsn != NULL && IS_ZERO_LSN(hp->maxlsn) && status == TXN_COMMIT)
+		hp->maxlsn = *lsn;
+
+	return (ret);
 }
 
 /*
@@ -1027,25 +1067,9 @@ __db_txnlist_update(dbenv, listp, txnid, status, lsn)
 	int32_t status;
 	DB_LSN *lsn;
 {
-	DB_TXNHEAD *hp;
-	DB_TXNLIST *elp;
-	int ret;
-
-	if (txnid == 0)
-		return (TXN_NOTFOUND);
-	hp = (DB_TXNHEAD *)listp;
-	ret = __db_txnlist_find_internal(dbenv,
-	    listp, TXNLIST_TXNID, txnid, NULL, &elp, 0);
-
-	if (ret == TXN_NOTFOUND || ret == TXN_IGNORE)
-		return (ret);
-	elp->u.t.status = status;
-
-	if (lsn != NULL && IS_ZERO_LSN(hp->maxlsn) && status == TXN_COMMIT)
-		hp->maxlsn = *lsn;
-
-	return (ret);
+    return __db_txnlist_update_ref(dbenv, listp, txnid, 0, status, lsn);
 }
+
 
 /*
  * __db_txnlist_find_internal --
