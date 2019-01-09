@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=899)
+(TUNABLES_COUNT=898)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -25,7 +25,6 @@
 (name='allow_parallel_rep_on_pagesplit', description='allow parallel rep on pgsplit', type='BOOLEAN', value='ON', read_only='N')
 (name='allow_parallel_rep_on_prefix', description='allow parallel rep on bam_prefix', type='BOOLEAN', value='ON', read_only='N')
 (name='allow_portmux_route', description='', type='BOOLEAN', value='ON', read_only='Y')
-(name='allow_pragma', description='Enable to allow use of the PRAGMA command (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='allow_user_schema', description='Enable to allow per-user schemas. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='already_aborted_trace', description='Print trace when dd_abort skips an 'already-aborted' locker', type='BOOLEAN', value='OFF', read_only='N')
 (name='alternate_verify_fail', description='alternate_verify_fail', type='BOOLEAN', value='OFF', read_only='N')
