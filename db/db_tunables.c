@@ -1090,6 +1090,11 @@ static int parse_bool(const char *value, int *num)
     tok = segtok((char *)value, value_len, &st, &ltok);                        \
     tokcpy0(tok, ltok, buf, MAX_TUNABLE_VALUE_SIZE);
 
+/* Grab the next token and store it into a buffer. */
+#define PARSE_RAW                                                              \
+    tok = segtok2((char *)value, value_len, &st, &ltok);                       \
+    tokcpy0(tok, ltok, buf, MAX_TUNABLE_VALUE_SIZE);
+
 /* Use the custom verify function if one's provided. */
 #define DO_VERIFY(t, value)                                                    \
     if (t->verify && t->verify(t, (void *)value)) {                            \
@@ -1239,6 +1244,20 @@ static comdb2_tunable_err update_tunable(comdb2_tunable *t, const char *value)
     }
     case TUNABLE_STRING: {
         PARSE_TOKEN;
+        DO_VERIFY(t, buf);
+
+        if (t->update) {
+            DO_UPDATE(t, buf);
+        } else {
+            free(*(char **)t->var);
+            *((char **)t->var) = strdup(buf);
+        }
+
+        logmsg(LOGMSG_DEBUG, "Tunable '%s' set to %s\n", t->name, value);
+        break;
+    }
+    case TUNABLE_RAW: {
+        PARSE_RAW;
         DO_VERIFY(t, buf);
 
         if (t->update) {
