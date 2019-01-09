@@ -1,2 +1,3 @@
 table t1 t1.csc2
 round_robin_stripes
+reorder_socksql_no_deadlock off

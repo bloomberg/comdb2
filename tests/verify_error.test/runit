@@ -113,6 +113,8 @@ function runstepper
     DEBUG=1 $stp $db $tcs $log
 }
 
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("debg 100")'
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("ndebg 100")'
 
 # Iterate through input files
 for testcase in $files ; do

@@ -80,8 +80,7 @@ static int defered_index_key_cmp(void *usermem, int key1len,
     //CMP_KEY_MEMBER(k1, k2, counter);
     CMP_KEY_MEMBER(k1, k2, type);
     CMP_KEY_MEMBER(k1, k2, genid);
-    abort(); // at least counter has to differ when inserting
-             // and we are not doing finds for these keys
+    return 0;
 }
 
 
@@ -479,6 +478,11 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
     dtikey_t delditk= {0};
     dtikey_t ditk= {0};
     bool reorder = gbl_reorder_idx_writes && iq->usedb->sc_from != iq->usedb;
+
+#if DEBUG_REORDER
+    logmsg(LOGMSG_DEBUG, "%s(): entering, reorder = %d\n", __func__, reorder);
+#endif
+
     if (reorder) {
         cur = get_constraint_table_cursor(defered_index_tbl);
         if (cur == NULL) {
@@ -756,6 +760,11 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
     void *cur = NULL;
     dtikey_t delditk= {0};
     bool reorder = gbl_reorder_idx_writes && iq->usedb->sc_from != iq->usedb;
+
+#if DEBUG_REORDER
+    logmsg(LOGMSG_DEBUG, "%s(): entering, reorder = %d\n", __func__, reorder);
+#endif
+
     if (reorder) {
         cur = get_constraint_table_cursor(defered_index_tbl);
         if (cur == NULL) {
@@ -820,6 +829,7 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
             delditk.ixnum = ixnum;
             int err = 0;
 printf("AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", __func__, iq->usedb->tablename, delditk.type, delditk.ixnum, bdb_genid_to_host_order(delditk.genid));
+
             rc = bdb_temp_table_insert(thedb->bdb_env, cur, &delditk, sizeof(delditk),
                     data, datalen, &err);
             if (rc != 0) {
@@ -827,7 +837,7 @@ printf("AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", __func__, iq->u
                         rc);
                 return rc;
             }
-            memset(delditk.ixkey, 0, keysize);
+            memset(delditk.ixkey, 0, keysize); // clear it for next round
         }
         else {
             /* delete the key */
@@ -850,6 +860,8 @@ printf("AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", __func__, iq->u
             }
         }
     }
+
+
     return 0;
 }
 
@@ -905,6 +917,9 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
     void *cur = NULL;
     dtikey_t ditk= {0};
     bool reorder = gbl_reorder_idx_writes && iq->usedb->sc_to != iq->usedb;
+#if DEBUG_REORDER
+    logmsg(LOGMSG_DEBUG, "%s(): entering, reorder = %d\n", __func__, reorder);
+#endif
     if (reorder) {
         cur = get_constraint_table_cursor(defered_index_tbl);
         if (cur == NULL) {
@@ -1039,6 +1054,9 @@ int upd_new_record_indices(
     void *cur = NULL;
     dtikey_t delditk= {0};
     bool reorder = gbl_reorder_idx_writes && iq->usedb->sc_from != iq->usedb;
+#if DEBUG_REORDER
+    logmsg(LOGMSG_DEBUG, "%s(): entering, reorder = %d\n", __func__, reorder);
+#endif
     if (reorder) {
         cur = get_constraint_table_cursor(defered_index_tbl);
         if (cur == NULL) {
@@ -1290,6 +1308,15 @@ int process_defered_table(struct ireq *iq, block_state_t *blkstate, void *trans,
         *errout = OP_FAILED_INTERNAL;
         return ERR_INTERNAL;
     }
+
+
+#if DEBUG_REORDER
+    logmsg(LOGMSG_DEBUG, "%s(): defered table content:\n", __func__);
+    // if needed to check content of socksql temp table, dump with:
+    void bdb_temp_table_debug_dump(bdb_state_type * bdb_state, void * cur);
+    bdb_temp_table_debug_dump(thedb->bdb_env, cur);
+#endif
+
 
     int err;
     int rc = bdb_temp_table_first(thedb->bdb_env, cur, &err);

@@ -33,6 +33,7 @@
 #include "indices.h"
 #include "osqlsqlthr.h"
 
+#define DEBUG_REORDER 1
 __thread void *defered_index_tbl = NULL;
 
 
