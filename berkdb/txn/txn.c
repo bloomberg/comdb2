@@ -1019,10 +1019,10 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 				goto err;
 			}
 
-            /* Process deferred pgfrees */
-            if ((ret = __txn_freepages(dbenv, txnp)) != 0) {
-                goto err;
-            }
+			/* Process deferred pgfrees */
+			if ((ret = __txn_freepages(dbenv, txnp)) != 0) {
+				goto err;
+			}
 
 			memset(&request, 0, sizeof(request));
 			memset(&list_dbt_rl, 0, sizeof(list_dbt_rl));

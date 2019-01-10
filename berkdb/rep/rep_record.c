@@ -132,7 +132,7 @@ static inline int wait_for_running_transactions(DB_ENV *dbenv);
 #define	IS_SIMPLE(R)	((R) != DB___txn_regop && (R) != DB___txn_xa_regop && \
 	(R) != DB___txn_regop_rowlocks && (R) != DB___txn_regop_gen && (R) != \
 	DB___txn_ckp && (R) != DB___dbreg_register && (R) != \
-    DB___txn_regop_detached_child)
+	DB___txn_regop_detached_child)
 
 int gbl_rep_process_msg_print_rc;
 
