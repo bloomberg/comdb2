@@ -429,7 +429,7 @@ unsigned int sc_get_logical_redo_lwm()
         sctbl = hash_next(sc_tables, &ent, &bkt);
     }
     Pthread_mutex_unlock(&schema_change_in_progress_mutex);
-    return lwm;
+    return lwm - 1;
 }
 
 unsigned int sc_get_logical_redo_lwm_table(char *table)

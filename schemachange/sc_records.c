@@ -3058,6 +3058,17 @@ static struct sc_redo_lsn *get_next_redo_lsn(bdb_state_type *bdb_state,
     return redo;
 }
 
+static int sc_redo_size(bdb_state_type *bdb_state)
+{
+    int sz = 0;
+
+    Pthread_mutex_lock(&bdb_state->sc_redo_lk);
+    sz = listc_size(&bdb_state->sc_redo_list);
+    Pthread_mutex_unlock(&bdb_state->sc_redo_lk);
+
+    return sz;
+}
+
 void *live_sc_logical_redo_thd(struct convert_record_data *data)
 {
     struct schema_change_type *s = data->s;
@@ -3267,9 +3278,10 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
             data->prev_nrecs = data->nrecs;
             sc_printf(s,
                       "[%s] logical redo at LSN [%u][%u] transactions done "
-                      "+%lld (%lld txn/s)\n",
+                      "+%lld (%lld txn/s). Redo List Size: %d\n",
                       data->from->tablename, curLsn.file, curLsn.offset,
-                      diff_nrecs, diff_nrecs / copy_sc_report_freq);
+                      diff_nrecs, diff_nrecs / copy_sc_report_freq,
+                      sc_redo_size(bdb_state));
         }
         if (pCur->hitLast) {
             if (s->got_tablelock) {
