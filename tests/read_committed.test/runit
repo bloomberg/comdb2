@@ -31,8 +31,8 @@ function run_test
         cmd="cdb2sql -f ${i} ${CDB2_OPTIONS} $dbname default > ${i}.res"
         echo $cmd
         eval $cmd
-        if ! `diff ${i}.out ${i}.res > /dev/null`; then
-            echo "${i}.out ${i}.res differ..."
+        if ! `diff ${i}.exp ${i}.res > /dev/null`; then
+            echo "${i}.exp ${i}.res differ..."
             echo "Test FAILED"
             exit 1
         fi

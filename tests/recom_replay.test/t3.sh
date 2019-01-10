@@ -20,9 +20,9 @@ function writer
     typeset out=$1
     while true; do
         cdb2sql --showeffects ${CDB2_OPTIONS} -f t3.sql $dbname default > $out 2>&1
-        diff $out t3.out > /dev/null 2>&1
+        diff $out t3.exp > /dev/null 2>&1
         if [ $? != 0 ]; then
-            diff $out t3.out
+            diff $out t3.exp
             break
         fi
     done
