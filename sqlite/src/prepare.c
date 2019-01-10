@@ -102,7 +102,7 @@ int sqlite3InitCallback(void *pInit, int argc, char **argv, char **NotUsed){
     db->init.orphanTrigger = 0;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     extern int gbl_fdb_track;
-    if (gbl_fdb_track)
+    if (gbl_fdb_track && iDb)
        logmsg(LOGMSG_USER, "Prep iDb=%d \"%s\"\n", iDb, argv[2]);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     TESTONLY(rcp = ) sqlite3_prepare(db, argv[2], -1, &pStmt, 0);

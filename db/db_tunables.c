@@ -40,6 +40,7 @@
 extern int gbl_allow_lua_print;
 extern int gbl_allow_lua_exec_with_ddl;
 extern int gbl_allow_lua_dynamic_libs;
+extern int gbl_allow_pragma;
 extern int gbl_berkdb_epochms_repts;
 extern int gbl_pmux_route_enabled;
 extern int gbl_allow_user_schema;
@@ -277,6 +278,7 @@ extern int gbl_timeseries_metrics;
 extern int gbl_metric_maxpoints;
 extern int gbl_metric_maxage;
 extern int gbl_osql_check_replicant_numops;
+extern int gbl_abort_on_missing_osql_session;
 extern int gbl_abort_irregular_set_durable_lsn;
 extern int gbl_legacy_schema;
 

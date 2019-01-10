@@ -117,6 +117,7 @@
 
 extern unsigned long long gbl_sql_deadlock_failures;
 extern unsigned int gbl_new_row_data;
+extern int gbl_allow_pragma;
 extern int gbl_use_appsock_as_sqlthread;
 extern int g_osql_max_trans;
 extern int gbl_fdb_track;
@@ -3255,13 +3256,9 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
 
     /* additional non-sqlite requests */
     int stored_proc = 0;
+    int is_pragma = (gbl_allow_pragma != 0);
 
-#if defined(SQLITE_DEBUG) || defined(COMDB2_ALLOW_SQLITE_PRAGMA)
-    int is_pragma = 1; /* allowed for debug builds, etc */
     if ((rc = check_sql(clnt, &stored_proc, &is_pragma)) != 0)
-#else
-    if ((rc = check_sql(clnt, &stored_proc, 0)) != 0)
-#endif
     {
         // TODO: set this: outrc = rc;
         return rc;
@@ -3271,14 +3268,12 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
         handle_stored_proc(thd, clnt);
         *outrc = 0;
         return 1;
-#if defined(SQLITE_DEBUG) || defined(COMDB2_ALLOW_SQLITE_PRAGMA)
     } else if (is_pragma) {
         /* currently, all PRAGMA requests, when allowed, are handled
         ** by SQLite */
         logmsg(LOGMSG_WARN, "%s:%d %s ALLOWING PRAGMA [%s]\n", __FILE__,
                __LINE__, __func__, clnt->sql);
         return 0;
-#endif
     } else if (clnt->is_explain) { // only via newsql--cdb2api
         rdlock_schema_lk();
         rc = sqlengine_prepare_engine(thd, clnt, 1);

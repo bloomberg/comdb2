@@ -222,4 +222,25 @@ if [ -f alter.failed ] ; then
 fi
 do_verify
 
+echo "Add default null field"
+
+master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
+
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE CONVERTSLEEP 0"
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "CREATE TABLE t2 { schema {int a} }"
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "INSERT INTO t2(a) VALUES (1)"
+if [ $? -ne 0 ] ; then
+    failexit "failed to insert to t2"
+fi
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm 'ALTER table t2 { schema {int a int b null=yes} keys {dup "IX_A" = a + b} }'
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t2')" &> verify.out
+if ! grep succeeded verify.out > /dev/null ; then
+    failexit "Verify t2"
+fi
+cdb2sql ${CDB2_OPTIONS} $dbnm default "update t2 set b = 1 where a = 1"
+if [ $? -ne 0 ] ; then
+    failexit "failed to update after adding null field"
+fi
+
 echo "Success"
