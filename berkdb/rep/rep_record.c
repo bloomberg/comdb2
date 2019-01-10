@@ -5410,7 +5410,7 @@ bad_resize:	;
 		lock_dbt = &txn_dchild_args->locks;
 
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-		(*commit_gen) = rep->committed_gen = txn_gen_args->generation;
+		(*commit_gen) = rep->committed_gen = txn_dchild_args->generation;
 		rep->committed_lsn = rctl->lsn;
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	} else if (rectype == DB___txn_regop_gen) {

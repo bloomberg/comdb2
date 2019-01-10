@@ -11,3 +11,4 @@ verbose_physrep on
 #setattr REP_PROCESSORS 0
 #setattr REP_WORKERS 0
 ack_trace
+disjoint_pgallocs on
