@@ -435,7 +435,7 @@ HashType luabb_hashinfo(void *udata, double *d, const char **c, size_t *l)
 
 static int numeq(lua_dbtypes_t *b1, TValue *t2, int *eq)
 {
-    double d1, d2;
+    double d1 = 0, d2;
     lua_dbtypes_t *b2;
     luabb_hashinfo(b1, &d1, NULL, NULL);
     switch(ttype(t2)) {
