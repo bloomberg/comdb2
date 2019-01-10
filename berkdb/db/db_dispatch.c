@@ -947,48 +947,6 @@ __db_txnlist_end(dbenv, listp)
 	__os_free(dbenv, listp);
 }
 
-
-/*
- * __db_txnlist_first--
- *	Returns the first transaction in the list.
- *
- * PUBLIC: void __db_txnlist_end __P((DB_ENV *, void *));
-int
-__db_txnlist_first(dbenv, listp, txnlistp, delete)
-	DB_ENV *dbenv;
-	void *listp;
-	DB_TXNLIST **txnlistp;
-	int delete;
-{
-	DB_TXNHEAD *hp;
-	DB_TXNLIST *p;
-	u_int32_t i;
-
-	if ((hp = (DB_TXNHEAD *)listp) == NULL)
-		return (TXN_NOTFOUND);
-
-	for (i = 0; i < hp->nslots; i++)
-   {
-	  for(p = LIST_FIRST(&hp->head[i]);!p; p = LIST_NEXT(&hp->head[i], p))
-	  {
-	  {
-		 if (p->type != TXNLIST_TXNID)
-			continue;
-
-
-		 if (delete)
-			LIST_REMOVE(p, links);
-		 
-		 if (txnlistp) 
-			*txnlistp = p;
-		 return (TXN_OK);
-		}
-   }
-
-   return (TXN_NOTFOUND);
-}
- */
-
 /*
  * __db_txnlist_find --
  *	Checks to see if a txnid with the current generation is in the
