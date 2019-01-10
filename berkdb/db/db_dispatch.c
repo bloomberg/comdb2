@@ -75,7 +75,7 @@ static int __db_limbo_prepare __P((DB *, DB_TXN *, DB_TXNLIST *));
 static int __db_lock_move __P((DB_ENV *,
 	u_int8_t *, db_pgno_t, db_lockmode_t, DB_TXN *, DB_TXN *));
 static int __db_txnlist_find_internal __P((DB_ENV *, void *, db_txnlist_type,
-	u_int32_t, u_int8_t[DB_FILE_ID_LEN], DB_TXNLIST **, int));
+	u_int32_t, u_int32_t *, u_int8_t[DB_FILE_ID_LEN], DB_TXNLIST **, int));
 static int __db_txnlist_pgnoadd __P((DB_ENV *, DB_TXNHEAD *,
 	int32_t, u_int8_t[DB_FILE_ID_LEN], char *, db_pgno_t));
 
@@ -430,7 +430,7 @@ __db_dispatch(dbenv, dtab, dtabsize, db, lsnp, redo, info)
 	void *info;
 {
 	DB_LSN prev_lsn;
-	u_int32_t rectype, txnid;
+	u_int32_t rectype, txnid, ptxnid;
 	int make_call, ret;
 
 	LOGCOPY_32(&rectype, db->data);
@@ -578,13 +578,15 @@ __db_dispatch(dbenv, dtab, dtabsize, db, lsnp, redo, info)
 			break;
 
 		default:
-			if (txnid != 0 && (ret = __db_txnlist_find(dbenv,
-			    info, txnid)) == TXN_COMMIT)
+			if (txnid != 0 && (ret = __db_txnlist_find_ref(dbenv,
+				info, txnid, &ptxnid)) == TXN_COMMIT &&
+				(!ptxnid || (ret = __db_txnlist_find(dbenv, info,
+				 ptxnid)) == TXN_COMMIT)) {
 				make_call = 1;
-			else if (ret != TXN_IGNORE &&
-			    (rectype == DB___ham_metagroup ||
-			    rectype == DB___ham_groupalloc ||
-			    rectype == DB___db_pg_alloc)) {
+			} else if (ret != TXN_IGNORE &&
+				(rectype == DB___ham_metagroup ||
+				rectype == DB___ham_groupalloc ||
+				rectype == DB___db_pg_alloc)) {
 				/*
 				 * Because we cannot undo file extensions
 				 * all allocation records must be reprocessed
@@ -853,7 +855,7 @@ __db_txnlist_add(dbenv, listp, txnid, status, lsn)
 	int32_t status;
 	DB_LSN *lsn;
 {
-    return __db_txnlist_add_ref(dbenv, listp, txnid, 0, status, lsn);
+	return __db_txnlist_add_ref(dbenv, listp, txnid, 0, status, lsn);
 }
 
 /*
@@ -871,8 +873,8 @@ __db_txnlist_remove(dbenv, listp, txnid)
 	DB_TXNLIST *entry;
 
 	return (__db_txnlist_find_internal(dbenv,
-	    listp, TXNLIST_TXNID, txnid,
-	    NULL, &entry, 1) == TXN_NOTFOUND ? TXN_NOTFOUND : TXN_OK);
+		listp, TXNLIST_TXNID, txnid,
+		NULL, NULL, &entry, 1) == TXN_NOTFOUND ? TXN_NOTFOUND : TXN_OK);
 }
 
 /*
@@ -898,7 +900,7 @@ __db_txnlist_ckp(dbenv, listp, ckp_lsn)
 	hp = (DB_TXNHEAD *)listp;
 
 	if (IS_ZERO_LSN(hp->ckplsn) && !IS_ZERO_LSN(hp->maxlsn) &&
-	    log_compare(&hp->maxlsn, ckp_lsn) >= 0)
+		log_compare(&hp->maxlsn, ckp_lsn) >= 0)
 		hp->ckplsn = *ckp_lsn;
 }
 
@@ -967,19 +969,19 @@ __db_txnlist_first(dbenv, listp, txnlistp, delete)
 
 	for (i = 0; i < hp->nslots; i++)
    {
-      for(p = LIST_FIRST(&hp->head[i]);!p; p = LIST_NEXT(&hp->head[i], p))
-      {
-      {
-         if (p->type != TXNLIST_TXNID)
-            continue;
+	  for(p = LIST_FIRST(&hp->head[i]);!p; p = LIST_NEXT(&hp->head[i], p))
+	  {
+	  {
+		 if (p->type != TXNLIST_TXNID)
+			continue;
 
 
-         if (delete)
-            LIST_REMOVE(p, links);
-         
-         if (txnlistp) 
-            *txnlistp = p;
-         return (TXN_OK);
+		 if (delete)
+			LIST_REMOVE(p, links);
+		 
+		 if (txnlistp) 
+			*txnlistp = p;
+		 return (TXN_OK);
 		}
    }
 
@@ -1008,11 +1010,34 @@ __db_txnlist_find(dbenv, listp, txnid)
 	if (txnid == 0)
 		return (TXN_NOTFOUND);
 	return (__db_txnlist_find_internal(dbenv, listp,
-		TXNLIST_TXNID, txnid, NULL, &entry, 0));
+		TXNLIST_TXNID, txnid, NULL, NULL, &entry, 0));
 }
 
 /*
- * __db_txnlist_update_ref --
+ * __db_txnlist_find_ref --
+ * Version of __db_txnlist_find which includes the parent txn of a detached
+ * child
+ *
+ * PUBLIC: int __db_txnlist_find_ref __P((DB_ENV *, void *, u_int32_t, u_int32_t *));
+ */
+int
+__db_txnlist_find_ref(dbenv, listp, txnid, ptxnid)
+	DB_ENV *dbenv;
+	void *listp;
+	u_int32_t txnid;
+	u_int32_t *ptxnid;
+{
+	DB_TXNLIST *entry;
+
+	if (txnid == 0)
+		return (TXN_NOTFOUND);
+	return (__db_txnlist_find_internal(dbenv, listp,
+		TXNLIST_TXNID, txnid, ptxnid, NULL, &entry, 0));
+}
+
+
+/*
+ * __db_txnlist_update --
  *	Change the status of an existing transaction entry.
  *	Returns TXN_NOTFOUND if no such entry exists.
  *
@@ -1030,20 +1055,23 @@ __db_txnlist_update_ref(dbenv, listp, txnid, rtxnid, status, lsn)
 {
 	DB_TXNHEAD *hp;
 	DB_TXNLIST *elp;
+	u_int32_t cktxn;
 	int ret;
 
 	if (txnid == 0)
 		return (TXN_NOTFOUND);
 	hp = (DB_TXNHEAD *)listp;
 	ret = __db_txnlist_find_internal(dbenv,
-		listp, TXNLIST_TXNID, txnid, NULL, &elp, 0);
+		listp, TXNLIST_TXNID, txnid, &cktxn, NULL, &elp, 0);
 
 	if (ret == TXN_NOTFOUND || ret == TXN_IGNORE)
 		return (ret);
 	elp->u.t.status = status;
 
-	if (rtxnid)
+	if (rtxnid) {
+		assert(!cktxn || cktxn == rtxnid);
 		elp->u.t.rtxnid = rtxnid;
+	}
 
 	if (lsn != NULL && IS_ZERO_LSN(hp->maxlsn) && status == TXN_COMMIT)
 		hp->maxlsn = *lsn;
@@ -1057,7 +1085,7 @@ __db_txnlist_update_ref(dbenv, listp, txnid, rtxnid, status, lsn)
  *	Returns TXN_NOTFOUND if no such entry exists.
  *
  * PUBLIC: int __db_txnlist_update __P((DB_ENV *,
- * PUBLIC:     void *, u_int32_t, int32_t, DB_LSN *));
+ * PUBLIC:	 void *, u_int32_t, int32_t, DB_LSN *));
  */
 int
 __db_txnlist_update(dbenv, listp, txnid, status, lsn)
@@ -1067,7 +1095,7 @@ __db_txnlist_update(dbenv, listp, txnid, status, lsn)
 	int32_t status;
 	DB_LSN *lsn;
 {
-    return __db_txnlist_update_ref(dbenv, listp, txnid, 0, status, lsn);
+	return __db_txnlist_update_ref(dbenv, listp, txnid, 0, status, lsn);
 }
 
 
@@ -1079,11 +1107,12 @@ __db_txnlist_update(dbenv, listp, txnid, status, lsn)
  *	with an initialized list pointer but checking for NULL keeps it general.
  */
 static int
-__db_txnlist_find_internal(dbenv, listp, type, txnid, uid, txnlistp, delete)
+__db_txnlist_find_internal(dbenv, listp, type, txnid, ptxnid, uid, txnlistp, delete)
 	DB_ENV *dbenv;
 	void *listp;
 	db_txnlist_type type;
 	u_int32_t  txnid;
+	u_int32_t  *ptxnid;
 	u_int8_t uid[DB_FILE_ID_LEN];
 	DB_TXNLIST **txnlistp;
 	int delete;
@@ -1093,6 +1122,9 @@ __db_txnlist_find_internal(dbenv, listp, type, txnid, uid, txnlistp, delete)
 	DB_TXNLIST *p;
 	u_int32_t generation, hash, i;
 	int ret;
+
+	if (ptxnid)
+		*ptxnid = 0;
 
 	if ((hp = (DB_TXNHEAD *)listp) == NULL)
 		return (TXN_NOTFOUND);
@@ -1104,11 +1136,11 @@ __db_txnlist_find_internal(dbenv, listp, type, txnid, uid, txnlistp, delete)
 		for (i = 0; i <= hp->generation; i++)
 			/* The range may wrap around the end. */
 			if (hp->gen_array[i].txn_min <
-			    hp->gen_array[i].txn_max ?
-			    (txnid >= hp->gen_array[i].txn_min &&
-			    txnid <= hp->gen_array[i].txn_max) :
-			    (txnid >= hp->gen_array[i].txn_min ||
-			    txnid <= hp->gen_array[i].txn_max))
+				hp->gen_array[i].txn_max ?
+				(txnid >= hp->gen_array[i].txn_min &&
+				txnid <= hp->gen_array[i].txn_max) :
+				(txnid >= hp->gen_array[i].txn_min ||
+				txnid <= hp->gen_array[i].txn_max))
 				break;
 		DB_ASSERT(i <= hp->generation);
 		generation = hp->gen_array[i].generation;
@@ -1132,15 +1164,11 @@ __db_txnlist_find_internal(dbenv, listp, type, txnid, uid, txnlistp, delete)
 		switch (type) {
 		case TXNLIST_TXNID:
 			if (p->u.t.txnid != txnid ||
-			    generation != p->u.t.generation)
+				generation != p->u.t.generation)
 				continue;
-			if (p->u.t.status == TXN_REFERENCE) {
-				assert(p->u.t.rtxnid != 0);
-				ret = __db_txnlist_find_internal(dbenv, listp, type,
-						p->u.t.rtxnid, uid, txnlistp, delete);
-			} else {
-				ret = p->u.t.status;
-			}
+			if (ptxnid)
+				*ptxnid = p->u.t.rtxnid;
+			ret = p->u.t.status;
 			break;
 
 		case TXNLIST_PGNO:
@@ -1955,7 +1983,7 @@ __db_txnlist_pgnoadd(dbenv, hp, fileid, uid, fname, pgno)
 	elp = NULL;
 
 	if (__db_txnlist_find_internal(dbenv, hp,
-	    TXNLIST_PGNO, 0, uid, &elp, 0) != 0) {
+	    TXNLIST_PGNO, 0, NULL, uid, &elp, 0) != 0) {
 		if ((ret =
 		    __os_malloc(dbenv, sizeof(DB_TXNLIST), &elp)) != 0)
 			goto err;
