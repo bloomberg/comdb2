@@ -2839,6 +2839,8 @@ static void _prepare_error(struct sqlthdstate *thd,
     if (rc == SQLITE_SCHEMA_DOHSQL)
         return;
 
+    int ignoreErr = rec->prepFlags & PREPARE_IGNORE_ERR;
+
     if (clnt->in_client_trans && (rec->status & CACHE_HAS_HINT ||
                                   has_sqlcache_hint(clnt->sql, NULL, NULL)) &&
         !(rec->status & CACHE_FOUND_STR) &&
@@ -2849,7 +2851,7 @@ static void _prepare_error(struct sqlthdstate *thd,
                     rc, errstr);
         errstat_set_rcstrf(err, ERR_PREPARE_RETRY, "%s", errstr);
 
-        srs_tran_del_last_query(clnt);
+        if (!ignoreErr) srs_tran_del_last_query(clnt);
         return;
     }
 
@@ -2867,13 +2869,11 @@ static void _prepare_error(struct sqlthdstate *thd,
         free(clnt->saved_errstr);
     }
     clnt->saved_errstr = strdup(errstr);
-    clnt->had_errors = 1;
+    if (!ignoreErr) clnt->had_errors = 1;
     if (gbl_print_syntax_err) {
         logmsg(LOGMSG_WARN, "sqlite3_prepare() failed for: %s [%s]\n", clnt->sql,
                 errstr);
     }
-
-    int ignoreErr = rec->prepFlags & PREPARE_IGNORE_ERR;
 
     if (!ignoreErr && clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS) {
         /* multiple query transaction
