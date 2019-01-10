@@ -759,6 +759,13 @@ __db_new(dbc, type, pagepp)
 		abort();
 	}
 
+    if ((ret = __db_lget(dbc, LCK_ALWAYS, (*pagepp)->pgno, DB_LOCK_WRITE, 0,
+                    &pglock)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s parent failed to aquire page lock, ret=%d\n",
+				__func__, ret);
+		abort();
+    }
+
 	if ((ret = __txn_track_alloced_page(dbp->dbenv, dbc->txn, dbc->dbp,
 					(*pagepp)->pgno)) != 0) {
 		logmsg(LOGMSG_FATAL, "%s failed to save page ret=%d\n",
