@@ -37,6 +37,10 @@ REGISTER_TUNABLE("allow_lua_dynamic_libs",
                  "libraries (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_allow_lua_dynamic_libs, READONLY | NOARG,
                  NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("allow_pragma",
+                 "Enable to allow use of the PRAGMA command (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_allow_pragma,
+                 NOARG | EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("allow_negative_column_size",
                  "Allow negative column size in csc2 schema. Added mostly for "
                  "backwards compatibility. (Default: off)",
@@ -1619,11 +1623,15 @@ REGISTER_TUNABLE("force_incoherent",
                  TUNABLE_BOOLEAN, &gbl_force_incoherent,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE(
-    "reorder_idx_writes",
-    "reorder_idx_writes (Default off)",
-    TUNABLE_BOOLEAN, &gbl_reorder_idx_writes, DYNAMIC, NULL, NULL, NULL,
-    NULL);
+REGISTER_TUNABLE("reorder_idx_writes",
+                 "reorder_idx_writes (Default on)",
+                 TUNABLE_BOOLEAN, &gbl_reorder_idx_writes, DYNAMIC, NULL, NULL,
+                 NULL, NULL);
 
+REGISTER_TUNABLE("abort_on_missing_osql_session",
+                 "Abort if we can't find an osql session in the repository.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_abort_on_missing_osql_session,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

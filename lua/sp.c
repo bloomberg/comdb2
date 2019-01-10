@@ -4944,7 +4944,10 @@ static int l_send_back_row(Lua lua, sqlite3_stmt *stmt, int nargs)
         if (rc) return rc;
     }
     int type = stmt ? RESPONSE_ROW : RESPONSE_ROW_LUA;
-    return write_response(clnt, type, &arg, 0);
+    Pthread_mutex_lock(parent->emit_mutex);
+    rc = write_response(clnt, type, &arg, 0);
+    Pthread_mutex_unlock(parent->emit_mutex);
+    return rc;
 }
 
 static int push_null(Lua L, int param_type)
@@ -5470,7 +5473,7 @@ static int push_args(const char **argstr, struct sqlclntstate *clnt, char **err,
         if ((rc = !lua_checkstack(lua, 1)) != 0) break;
         switch (arg.type) {
         case arg_null: luabb_pushnull(lua, DBTYPES_CSTRING); break;
-        case arg_int: lua_pushinteger(lua, arg.u.i); break;
+        case arg_int: lua_pushnumber(lua, arg.u.i); break;
         case arg_real: lua_pushnumber(lua, arg.u.d); break;
         case arg_str: lua_pushstring(lua, arg.u.c); break;
         case arg_blob: luabb_pushblob(lua, &arg.u.b); break;

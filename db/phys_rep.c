@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <time.h>
 
+#include <bdb_int.h>
 #include "phys_rep_lsn.h"
 #include "dbinc/rep_types.h"
 
