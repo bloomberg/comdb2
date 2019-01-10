@@ -740,12 +740,12 @@ __db_new(dbc, type, pagepp)
 		abort();
 	}
 
-    if ((ret = __db_lget(sysdbc, LCK_ALWAYS, (*pagepp)->pgno, DB_LOCK_WRITE, 0,
-                    &pglock)) != 0) {
+	if ((ret = __db_lget(sysdbc, LCK_ALWAYS, (*pagepp)->pgno, DB_LOCK_WRITE, 0,
+					&pglock)) != 0) {
 		logmsg(LOGMSG_FATAL, "%s failed to aquire page lock, ret=%d\n",
 				__func__, ret);
 		abort();
-    }
+	}
 
 	if ((ret = __db_c_close(sysdbc)) != 0) {
 		logmsg(LOGMSG_FATAL, "%s failed to close cursor, ret=%d\n",
@@ -759,12 +759,12 @@ __db_new(dbc, type, pagepp)
 		abort();
 	}
 
-    if ((ret = __db_lget(dbc, LCK_ALWAYS, (*pagepp)->pgno, DB_LOCK_WRITE, 0,
-                    &pglock)) != 0) {
+	if ((ret = __db_lget(dbc, LCK_ALWAYS, (*pagepp)->pgno, DB_LOCK_WRITE, 0,
+					&pglock)) != 0) {
 		logmsg(LOGMSG_FATAL, "%s parent failed to aquire page lock, ret=%d\n",
 				__func__, ret);
 		abort();
-    }
+	}
 
 	if ((ret = __txn_track_alloced_page(dbp->dbenv, dbc->txn, dbc->dbp,
 					(*pagepp)->pgno)) != 0) {
