@@ -144,8 +144,7 @@ struct __txn_logrec {
 #define	TXN_NOTFOUND	4
 #define	TXN_IGNORE	5
 #define	TXN_EXPECTED	6
-#define	TXN_REFERENCE	7
-#define	TXN_UNEXPECTED	8
+#define	TXN_UNEXPECTED	7
 
 #include "dbinc_auto/txn_auto.h"
 #include "dbinc_auto/txn_ext.h"
