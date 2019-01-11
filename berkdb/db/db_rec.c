@@ -824,8 +824,9 @@ __db_pg_alloc_recover(dbenv, dbtp, lsnp, op, info)
 
 		pagep->lsn = *lsnp;
 		modified = 1;
-		if ((ret = __db_txnlist_committed_page(dbenv, info, argp->txnid->txnid,
-						argp->fileid, argp->pgno)) != 0) {
+		if (op == DB_TXN_FORWARD_ROLL && (ret = __db_txnlist_committed_page(
+						dbenv, info, argp->txnid->txnid, argp->fileid,
+						argp->pgno)) != 0) {
 			goto out;
 		}
 	} else if (DB_UNDO(op) && (cmp_n == 0 || created)) {

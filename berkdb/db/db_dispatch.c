@@ -543,21 +543,21 @@ __db_dispatch(dbenv, dtab, dtabsize, db, lsnp, redo, info)
 			/* FALLTHROUGH */
 		default:
 			if (txnid != 0 && (ret =
-			    __db_txnlist_find(dbenv,
-			    info, txnid)) != TXN_COMMIT && ret != TXN_IGNORE) {
+				__db_txnlist_find(dbenv,
+				info, txnid)) != TXN_COMMIT && ret != TXN_IGNORE) {
 				/*
 				 * If not found then, this is an incomplete
 				 * abort.
 				 */
 				if (ret == TXN_NOTFOUND)
 					return (__db_txnlist_add(dbenv,
-					    info, txnid, TXN_IGNORE, lsnp));
+						info, txnid, TXN_IGNORE, lsnp));
 				make_call = 1;
 				if (ret == TXN_OK &&
-				    (ret = __db_txnlist_update(dbenv,
-				    info, txnid,
-				    rectype == DB___txn_xa_regop ?
-				    TXN_PREPARE : TXN_ABORT, NULL)) != 0)
+					(ret = __db_txnlist_update(dbenv,
+					info, txnid,
+					rectype == DB___txn_xa_regop ?
+					TXN_PREPARE : TXN_ABORT, NULL)) != 0)
 					return (ret);
 			}
 		}
