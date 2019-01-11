@@ -70,7 +70,8 @@ static timepart_view_t *_get_view(timepart_views_t *views, const char *name);
 static int _generate_new_shard_name(const char *oldname, char *newname,
                                     int newnamelen, int nextnum, int maxshards,
                                     int testing, struct errstat *err);
-static int _extract_shardname_index(const char *tblName, const char *originalName, int *span);
+static int _extract_shardname_index(const char *tblName,
+                                    const char *originalName, int *span);
 static int _convert_time(char *sql);
 static int _views_do_op(timepart_views_t *views, const char *name,
                         int (*op)(timepart_views_t *, timepart_view_t *,
@@ -700,7 +701,8 @@ static int _shard_suffix_str_len(int maxshards)
         abort(); /* infinite */
 }
 
-static int _extract_shardname_index(const char *tblName, const char *originalName, int *span)
+static int _extract_shardname_index(const char *tblName,
+                                    const char *originalName, int *span)
 {
    int nextNum;
 
@@ -711,12 +713,11 @@ static int _extract_shardname_index(const char *tblName, const char *originalNam
 
    nextNum = atoi(tblName+1); /* skip $ */
 
-   if(span)
-   {
-      char *_ = strchr(tblName, '_');
-      if (_) {
-         *span = _-tblName-1;
-      }
+   if (span) {
+       char *_ = strchr(tblName, '_');
+       if (_) {
+           *span = _ - tblName - 1;
+       }
    }
 
    return nextNum;
@@ -1647,69 +1648,75 @@ static int _views_rollout_phase3(const char *oldestShardName,
     return err->errval = VIEW_NOERR;
 }
 
-static int _schedule_drop_shard(timepart_view_t *view, const char *evicted_shard,
-      int evict_time, struct errstat *err)
+static int _schedule_drop_shard(timepart_view_t *view,
+                                const char *evicted_shard, int evict_time,
+                                struct errstat *err)
 {
-   char        *tmp_str1;
-   int rc;
+    char *tmp_str1;
+    int rc;
 
-   print_dbg_verbose(view->name, &view->source_id, "RRR",
-           "Adding phase 3 at %d for %s\n", evict_time, evicted_shard);
+    print_dbg_verbose(view->name, &view->source_id, "RRR",
+                      "Adding phase 3 at %d for %s\n", evict_time,
+                      evicted_shard);
 
-   /* we missed phase 3, queue it */
-   rc = (cron_add_event(timepart_sched, NULL, 
-            evict_time,_view_cron_phase3, 
-            tmp_str1=strdup(evicted_shard), NULL, NULL, NULL, 
-            err) == NULL)?err->errval:VIEW_NOERR;
+    /* we missed phase 3, queue it */
+    rc = (cron_add_event(timepart_sched, NULL, evict_time, _view_cron_phase3,
+                         tmp_str1 = strdup(evicted_shard), NULL, NULL, NULL,
+                         err) == NULL)
+             ? err->errval
+             : VIEW_NOERR;
 
-   if(rc != VIEW_NOERR)
-   {
-      logmsg(LOGMSG_ERROR, "%s: failed rc=%d errstr=%s\n", __func__, err->errval, err->errstr); 
-      free(tmp_str1);
-      return rc;
-   }
+    if (rc != VIEW_NOERR) {
+        logmsg(LOGMSG_ERROR, "%s: failed rc=%d errstr=%s\n", __func__,
+               err->errval, err->errstr);
+        free(tmp_str1);
+        return rc;
+    }
 
-   return 0;
-
+    return 0;
 }
 
-static int  _get_biggest_shard_number(timepart_view_t *view, int *oldest, int *newest)
+static int _get_biggest_shard_number(timepart_view_t *view, int *oldest,
+                                     int *newest)
 {
-   int max = 0;
-   int crt;
-   int i;
-   int span = 0;
+    int max = 0;
+    int crt;
+    int i;
+    int span = 0;
 
-   for(i=0;i<view->nshards;i++)
-   {
-      crt = _extract_shardname_index(view->shards[i].tblname, view->shard0name, &span);
-      if (i==0 && newest) 
-         *newest = crt;
-      else if (i==view->nshards-1 && oldest)
-         *oldest = crt;
-         
-      if (span != 0) {
-         /* mild optimization to recover large initial retentions reduced to much smaller
-            retentions */
-         int larger = 1;
-         while(--span) larger *= 10;
-         if (crt<9)
-         { 
-            if (larger == 100) crt = 99;
-            else if (larger == 1000) crt = 999;
-            else if (larger >= 10000) crt = VIEWS_MAX_RETENTION;
-         } 
-         else if (crt<99)
-         {
-            if (larger == 1000) crt = 999;
-            else if (larger >= 10000) crt = VIEWS_MAX_RETENTION;
-         }
-      }
-      if (crt > max)
-         max = crt;
-   }
+    for (i = 0; i < view->nshards; i++) {
+        crt = _extract_shardname_index(view->shards[i].tblname,
+                                       view->shard0name, &span);
+        if (i == 0 && newest)
+            *newest = crt;
+        else if (i == view->nshards - 1 && oldest)
+            *oldest = crt;
 
-   return max;
+        if (span != 0) {
+            /* mild optimization to recover large initial retentions reduced to
+               much smaller retentions */
+            int larger = 1;
+            while (--span)
+                larger *= 10;
+            if (crt < 9) {
+                if (larger == 100)
+                    crt = 99;
+                else if (larger == 1000)
+                    crt = 999;
+                else if (larger >= 10000)
+                    crt = VIEWS_MAX_RETENTION;
+            } else if (crt < 99) {
+                if (larger == 1000)
+                    crt = 999;
+                else if (larger >= 10000)
+                    crt = VIEWS_MAX_RETENTION;
+            }
+        }
+        if (crt > max)
+            max = crt;
+    }
+
+    return max;
 }
 
 /* done under mutex */
@@ -1727,7 +1734,6 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
     int evicted_shard0;
     int i;
 
-
     if (unlikely(view->period == VIEW_TIMEPART_TEST2MIN)) {
         preemptive_rolltime = 30; /* 30 seconds in advance we add a new table */
     }
@@ -1738,32 +1744,35 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
          /* if the oldest shard is the initial table, nothing to do ! */
          (strcasecmp(view->shard0name, view->shards[view->retention-1].tblname
          ))) {
-       /* get the maximum index from the existing rows; use that number to assert the presumptive
-          previous shard range; check from the newest to the oldest, modulo presumptive range */
+       /* get the maximum index from the existing rows; use that number to
+          assert the presumptive previous shard range; check from the newest to
+          the oldest, modulo presumptive range */
 
        int oldest = 0, newest = 0, crt;
        int pres_range = _get_biggest_shard_number(view, &oldest, &newest) + 1;
 
-       i=1;
-       while ((crt = (newest+i)%(pres_range+1)) != oldest) 
-       {
+       i = 1;
+       while ((crt = (newest + i) % (pres_range + 1)) != oldest) {
            /* check if the previously evicted shard still exists */
-           rc = _generate_evicted_shard_name(view, crt, evicted_shard, sizeof(evicted_shard),
-                   &evicted_time, view->nshards);
+           rc = _generate_evicted_shard_name(view, crt, evicted_shard,
+                                             sizeof(evicted_shard),
+                                             &evicted_time, view->nshards);
            if (rc != VIEW_NOERR) {
                errstat_set_strf(err, "Failed to generate evicted shard name");
                return err->errval = VIEW_ERR_BUG;
            }
 
            evicted_db = get_dbtable_by_name(evicted_shard);
-           if(!evicted_db) {
-               /* there is one exception here; during the initial reach of "retention"
-                  shards, the phase 3 that can be lost is for shard0name, not "$0_..."
-                  If "$0_..." is missing, check also the initial shard, so we don't leak it */
-               if(strncasecmp(evicted_shard, "$0_", 3) == 0) {
+           if (!evicted_db) {
+               /* there is one exception here; during the initial reach of
+                  "retention" shards, the phase 3 that can be lost is for
+                  shard0name, not "$0_..." If "$0_..." is missing, check also
+                  the initial shard, so we don't leak it */
+               if (strncasecmp(evicted_shard, "$0_", 3) == 0) {
                    evicted_db = get_dbtable_by_name(view->shard0name);
-                   if(evicted_db) {
-                       strncpy(evicted_shard, view->shard0name, sizeof(evicted_shard));
+                   if (evicted_db) {
+                       strncpy(evicted_shard, view->shard0name,
+                               sizeof(evicted_shard));
                        evicted_shard0 = 1;
                    }
                }
@@ -1775,7 +1784,9 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
                   might acquire */
                Pthread_rwlock_unlock(&views_lk);
 
-               rc = _schedule_drop_shard(view, evicted_shard, evicted_time-preemptive_rolltime, err);
+               rc = _schedule_drop_shard(view, evicted_shard,
+                                         evicted_time - preemptive_rolltime,
+                                         err);
 
                /* get back views global lock */
                Pthread_rwlock_wrlock(&views_lk);
@@ -1787,10 +1798,10 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
 
    /* recover phase 2 */
    tm = _view_get_next_rollout(view->period, view->starttime,
-           view->shards[0].low, view->nshards, 0);
+                               view->shards[0].low, view->nshards, 0);
    if (tm == INT_MAX) {
        errstat_set_strf(err, "Failed to compute next rollout time");
-        return err->errval = VIEW_ERR_BUG;
+       return err->errval = VIEW_ERR_BUG;
     }
 
    /**
@@ -1938,8 +1949,7 @@ done:
 
 static int _generate_new_shard_name_wrapper(timepart_view_t *view,
                                             char *newShardName,
-                                            int newShardNameLen,
-                                            int retention)
+                                            int newShardNameLen, int retention)
 {
     int nextNum;
     struct errstat xerr = {0};
@@ -1947,12 +1957,12 @@ static int _generate_new_shard_name_wrapper(timepart_view_t *view,
 
     /* extract the next id to be used */
     if (view->nshards == retention) {
-        nextNum = _extract_shardname_index(view->shards[0].tblname, 
-                view->shard0name, NULL);
+        nextNum = _extract_shardname_index(view->shards[0].tblname,
+                                           view->shard0name, NULL);
         if (nextNum > retention) {
             nextNum = 0; /* go back to 0, the partition was shrinked */
         } else {
-            nextNum = (nextNum+1) % (retention+1);
+            nextNum = (nextNum + 1) % (retention + 1);
         }
     } else {
         nextNum = view->nshards;
@@ -1960,8 +1970,8 @@ static int _generate_new_shard_name_wrapper(timepart_view_t *view,
 
     /* generate new filename */
     rc = _generate_new_shard_name(
-        view->shard0name, newShardName, newShardNameLen, nextNum,
-        retention, view->period == VIEW_TIMEPART_TEST2MIN, &xerr);
+        view->shard0name, newShardName, newShardNameLen, nextNum, retention,
+        view->period == VIEW_TIMEPART_TEST2MIN, &xerr);
     if (rc != VIEW_NOERR) {
         return xerr.errval;
     }
@@ -1973,8 +1983,7 @@ static int _generate_evicted_shard_name(timepart_view_t *view,
                                         int checked_number,
                                         char *evictedShardName,
                                         int evictedShardNameLen,
-                                        int *rolloutTime,
-                                        int retention)
+                                        int *rolloutTime, int retention)
 {
     struct errstat xerr = {0};
     int rc;
@@ -2372,82 +2381,79 @@ int timepart_update_retention(void *tran, const char *name, int retention, struc
 
    if(view->retention < retention) 
    {
-      /* increasing the retention only works if the shard configuration is in a special ordering
-         so that recovering still works */
-      if (view->nshards == view->retention && 
-            strcasecmp(view->shard0name, view->shards[view->nshards-1].tblname) != 0 &&
-            view->shards[0].tblname[0] == '$' && view->shards[0].tblname[1] != '0' &&
-            view->shards[0].tblname[1] != '1')
-      {
-         errstat_set_strf(err, "Partition %s retention cannot be increased at this time!", name);
-         errstat_set_rc(err, rc = VIEW_ERR_EXIST);
-         goto done;
-      }
+       /* increasing the retention only works if the shard configuration is in a
+          special ordering so that recovering still works */
+       if (view->nshards == view->retention &&
+           strcasecmp(view->shard0name,
+                      view->shards[view->nshards - 1].tblname) != 0 &&
+           view->shards[0].tblname[0] == '$' &&
+           view->shards[0].tblname[1] != '0' &&
+           view->shards[0].tblname[1] != '1') {
+           errstat_set_strf(
+               err, "Partition %s retention cannot be increased at this time!",
+               name);
+           errstat_set_rc(err, rc = VIEW_ERR_EXIST);
+           goto done;
+       }
 
-      view->retention = retention;
+       view->retention = retention;
 
-      rc = _view_rollout_publish(tran, view, err);
-      if(rc!=VIEW_NOERR)
-      {
-         goto done;
-      }
-   }
-   else if(view->retention > retention)  
-   {
-      int i;
-      char **extra_shards = NULL;
-      int n_extra_shards = view->nshards - retention;
-      int old_retention = view->retention;
-      int old_low = view->shards[view->nshards-1].low;
+       rc = _view_rollout_publish(tran, view, err);
+       if (rc != VIEW_NOERR) {
+           goto done;
+       }
+   } else if (view->retention > retention) {
+       int i;
+       char **extra_shards = NULL;
+       int n_extra_shards = view->nshards - retention;
+       int old_retention = view->retention;
+       int old_low = view->shards[view->nshards - 1].low;
 
-      if (n_extra_shards > 0)
-      {
-         extra_shards = alloca(n_extra_shards*sizeof(char*));
+       if (n_extra_shards > 0) {
+           extra_shards = alloca(n_extra_shards * sizeof(char *));
 
-         /* check if the new retention is less than existing shards,
-            and if so, free the oldest max(0, view->nshards-view->retention) shards */
-         for(i=0;i<n_extra_shards;i++) {
-            extra_shards[i] = view->shards[i+retention].tblname;
-         }
+           /* check if the new retention is less than existing shards,
+              and if so, free the oldest max(0, view->nshards-view->retention)
+              shards */
+           for (i = 0; i < n_extra_shards; i++) {
+               extra_shards[i] = view->shards[i + retention].tblname;
+           }
 
-         view->nshards = retention;
-         /* we need to update the LOW of the new oldest shard */
-         old_low = view->shards[view->nshards-1].low;
-         view->shards[view->nshards-1].low = INT_MIN;
-      }
-      view->retention = retention;
+           view->nshards = retention;
+           /* we need to update the LOW of the new oldest shard */
+           old_low = view->shards[view->nshards - 1].low;
+           view->shards[view->nshards - 1].low = INT_MIN;
+       }
+       view->retention = retention;
 
-      rc = _view_rollout_publish(tran, view, err);
-      if(rc!=VIEW_NOERR)
-      {
-         view->shards[view->nshards-1].low = old_low;
-         view->retention = old_retention;
-         view->nshards += n_extra_shards;
-         goto done;
-      }  
-      else 
-      {
-         /* safe now to remove in-memory structure */
-         view->shards = realloc(view->shards, sizeof(timepart_shard_t)*view->retention);
-      }
-   
-      if (extra_shards)
-      {
-         int irc = 0;
+       rc = _view_rollout_publish(tran, view, err);
+       if (rc != VIEW_NOERR) {
+           view->shards[view->nshards - 1].low = old_low;
+           view->retention = old_retention;
+           view->nshards += n_extra_shards;
+           goto done;
+       } else {
+           /* safe now to remove in-memory structure */
+           view->shards = realloc(view->shards,
+                                  sizeof(timepart_shard_t) * view->retention);
+       }
 
-         for (i=0;i<n_extra_shards; i++)
-         {
-            irc = (cron_add_event(timepart_sched, NULL, 
-                     0,_view_cron_phase3, 
-                     extra_shards[i], NULL, NULL, NULL, 
-                     err) == NULL)?err->errval:VIEW_NOERR;
-            if (irc != VIEW_NOERR)
-            {
-               logmsg(LOGMSG_ERROR, "%s: failed rc=%d errstr=%s\n", __func__, err->errval, err->errstr); 
-               free(extra_shards[i]);
-            }
-         }
-      }
+       if (extra_shards) {
+           int irc = 0;
+
+           for (i = 0; i < n_extra_shards; i++) {
+               irc = (cron_add_event(timepart_sched, NULL, 0, _view_cron_phase3,
+                                     extra_shards[i], NULL, NULL, NULL,
+                                     err) == NULL)
+                         ? err->errval
+                         : VIEW_NOERR;
+               if (irc != VIEW_NOERR) {
+                   logmsg(LOGMSG_ERROR, "%s: failed rc=%d errstr=%s\n",
+                          __func__, err->errval, err->errstr);
+                   free(extra_shards[i]);
+               }
+           }
+       }
    }
 
 done:

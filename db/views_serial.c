@@ -378,8 +378,10 @@ timepart_views_t *views_create_all_views(void)
     if (!views_str) {
         ret = (timepart_views_t *)calloc(1, sizeof(timepart_views_t));
         if (ret) {
-         ret->preemptive_rolltime = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_VIEWS_DFT_PREEMPT_ROLL_SECS);
-         ret->rollout_delete_lag = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_VIEWS_DFT_ROLL_DELETE_LAG_SECS);
+            ret->preemptive_rolltime = bdb_attr_get(
+                thedb->bdb_attr, BDB_ATTR_VIEWS_DFT_PREEMPT_ROLL_SECS);
+            ret->rollout_delete_lag = bdb_attr_get(
+                thedb->bdb_attr, BDB_ATTR_VIEWS_DFT_ROLL_DELETE_LAG_SECS);
         }
         return ret;
     }
@@ -1302,8 +1304,10 @@ static timepart_views_t *_create_all_views(const char *views_str)
         goto done;
     }
 
-  views->preemptive_rolltime = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_VIEWS_DFT_PREEMPT_ROLL_SECS);
-   views->rollout_delete_lag = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_VIEWS_DFT_ROLL_DELETE_LAG_SECS);
+    views->preemptive_rolltime =
+        bdb_attr_get(thedb->bdb_attr, BDB_ATTR_VIEWS_DFT_PREEMPT_ROLL_SECS);
+    views->rollout_delete_lag =
+        bdb_attr_get(thedb->bdb_attr, BDB_ATTR_VIEWS_DFT_ROLL_DELETE_LAG_SECS);
     logmsg(LOGMSG_INFO, "Partition rollout preemption=%dsecs lag=%dsecs\n",
            views->preemptive_rolltime, views->rollout_delete_lag);
 
