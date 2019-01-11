@@ -23,6 +23,7 @@
 #include <str0.h>
 #include <zlib.h>
 #include <shard_range.h>
+#include <sql.h>
 #include "cdb2_constants.h"
 
 #define COMDB2_NOT_AUTHORIZED_ERRMSG "comdb2: not authorized"
@@ -352,9 +353,30 @@ int comdb2PrepareSC(Vdbe *v, Parse *pParse, int int_arg,
 static int comdb2AuthenticateUserDDL(const char *tablename)
 {
      struct sql_thread *thd = pthread_getspecific(query_info_key);
+     void *tran = NULL;
+     unsigned int savelid;
      bdb_state_type *bdb_state = thedb->bdb_env;
      int bdberr; 
-     int authOn = bdb_authentication_get(bdb_state, NULL, &bdberr); 
+     int authOn;
+     
+     if (thd && thd->clnt && (tran = bdb_tran_begin(bdb_state, NULL, &bdberr))
+             == NULL) {
+         logmsg(LOGMSG_FATAL, "%s failed allocating tran\n", __func__);
+         abort();
+     }
+
+     if (tran) {
+         int lid = bdb_get_lid_from_cursortran(thd->clnt->dbtran.cursor_tran);
+         bdb_get_tran_lockerid(tran, &savelid);
+         bdb_set_tran_lockerid(tran, lid);
+     }
+
+     authOn = bdb_authentication_get(bdb_state, tran, &bdberr); 
+
+     if (tran) {
+         bdb_set_tran_lockerid(tran, savelid);
+         bdb_tran_abort(bdb_state, tran, &bdberr);
+     }
     
      if (authOn != 0)
         return SQLITE_OK;
