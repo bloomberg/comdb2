@@ -578,12 +578,10 @@ __db_dispatch(dbenv, dtab, dtabsize, db, lsnp, redo, info)
 			break;
 
 		default:
-			if (txnid != 0 && (ret = __db_txnlist_find_ref(dbenv,
-				info, txnid, &ptxnid)) == TXN_COMMIT &&
-				(!ptxnid || (ret = __db_txnlist_find(dbenv, info,
-				 ptxnid)) == TXN_COMMIT)) {
+			if (txnid != 0 && (ret = __db_txnlist_find(dbenv,
+			    info, txnid)) == TXN_COMMIT)
 				make_call = 1;
-			} else if (ret != TXN_IGNORE &&
+			else if (ret != TXN_IGNORE &&
 				(rectype == DB___ham_metagroup ||
 				rectype == DB___ham_groupalloc ||
 				rectype == DB___db_pg_alloc)) {
@@ -802,7 +800,7 @@ __db_txnlist_init(dbenv, low_txn, hi_txn, trunc_lsn, retp)
  *	Add an element to our transaction linked list.
  *
  * PUBLIC: int __db_txnlist_add_ref __P((DB_ENV *,
- * PUBLIC:     void *, u_int32_t, u_int32_t, int32_t, DB_LSN *));
+ * PUBLIC:	   void *, u_int32_t, u_int32_t, int32_t, DB_LSN *));
  */
 
 int
@@ -1914,6 +1912,41 @@ __db_limbo_prepare(dbp, txn, elp)
 			return (ret);
 	}
 
+	return (0);
+}
+
+/*
+ * __db_txnlist_committed_page --
+ * If we are master, this was committed, and the parent wasn't committed,
+ * add the page to our list of pages to free.
+ * PUBLIC: int __db_txnlist_committed_page __P((DB_ENV *, void *, u_int32_t,
+ * PUBLIC:	 int32_t, db_pgno_t));
+ */
+int __db_txnlist_committed_page(dbenv, info, txnid, fileid, pgno)
+	DB_ENV *dbenv;
+	void *info;
+	u_int32_t txnid;
+	int32_t fileid;
+	db_pgno_t pgno;
+{
+	int ret;
+	u_int32_t ptxnid;
+
+	if ((ret = __db_txnlist_find_ref(dbenv, info, txnid, &ptxnid)) !=
+			TXN_COMMIT) {
+		logmsg(LOGMSG_FATAL, "%s unable to local txn, ret %d\n", __func__,
+				txnid);
+		abort();
+	}
+
+	if (ptxnid && (ret = __db_txnlist_find(dbenv, info, ptxnid)) !=
+			TXN_COMMIT) {
+		if ((ret = __db_add_limbo(dbenv, info, fileid, pgno, 1)) != 0) {
+			logmsg(LOGMSG_FATAL, "%s unable to add to limbo, ret %d\n",
+					__func__, ret);
+			abort();
+		}
+	}
 	return (0);
 }
 

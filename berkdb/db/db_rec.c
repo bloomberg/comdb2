@@ -775,7 +775,7 @@ __db_pg_alloc_recover(dbenv, dbtp, lsnp, op, info)
 		 * create it.
 		 */
 		if ((ret = __memp_fget(
-		    mpf, &argp->pgno, DB_MPOOL_CREATE, &pagep)) != 0) {
+			mpf, &argp->pgno, DB_MPOOL_CREATE, &pagep)) != 0) {
 			if (ret == ENOSPC)
 				goto do_meta;
 			ret = __db_pgerr(file_dbp, argp->pgno, ret);
@@ -796,7 +796,7 @@ __db_pg_alloc_recover(dbenv, dbtp, lsnp, op, info)
 	if (IS_ZERO_LSN(LSN(pagep)))
 		cmp_p = 0;
 	CHECK_LSN(op, cmp_p, &LSN(pagep), &argp->page_lsn, lsnp, argp->fileid,
-	    argp->pgno);
+		argp->pgno);
 	/*
 	 * If we we rolled back this allocation previously during an
 	 * archive restore, the page may have INIT_LSN from the limbo list.
@@ -806,8 +806,8 @@ __db_pg_alloc_recover(dbenv, dbtp, lsnp, op, info)
 	 * undoing, we need to re-initialize the page.
 	 */
 	if (DB_REDO(op) &&
-	    (cmp_p == 0 ||
-	    (IS_ZERO_LSN(argp->page_lsn) && IS_INIT_LSN(LSN(pagep))))) {
+		(cmp_p == 0 ||
+		(IS_ZERO_LSN(argp->page_lsn) && IS_INIT_LSN(LSN(pagep))))) {
 		/* Need to redo update described. */
 		switch (argp->ptype) {
 		case P_LBTREE:
@@ -820,10 +820,14 @@ __db_pg_alloc_recover(dbenv, dbtp, lsnp, op, info)
 			break;
 		}
 		P_INIT(pagep, file_dbp->pgsize,
-		    argp->pgno, PGNO_INVALID, PGNO_INVALID, level, argp->ptype);
+			argp->pgno, PGNO_INVALID, PGNO_INVALID, level, argp->ptype);
 
 		pagep->lsn = *lsnp;
 		modified = 1;
+		if ((ret = __db_txnlist_committed_page(dbenv, info, argp->txnid->txnid,
+						argp->fileid, argp->pgno)) != 0) {
+			goto out;
+		}
 	} else if (DB_UNDO(op) && (cmp_n == 0 || created)) {
 		/*
 		 * This is where we handle the case of a 0'd page (pagep->pgno
@@ -832,7 +836,7 @@ __db_pg_alloc_recover(dbenv, dbtp, lsnp, op, info)
 		 * link its next pointer to the free list.
 		 */
 		P_INIT(pagep, file_dbp->pgsize,
-		    argp->pgno, PGNO_INVALID, argp->next, 0, P_INVALID);
+			argp->pgno, PGNO_INVALID, argp->next, 0, P_INVALID);
 
 		pagep->lsn = argp->page_lsn;
 		modified = 1;
