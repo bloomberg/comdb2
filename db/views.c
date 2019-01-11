@@ -1532,6 +1532,8 @@ static int _views_rollout_phase1(timepart_view_t *view, char **pShardName,
         errstat_set_rc(err, rc);
         if (rc == VIEW_ERR_EXIST) {
             errstat_set_strf(err, "Cannot rollout, next shard exists");
+            logmsg(LOGMSG_ERR, "%s Cannot rollout, next shard %s exists",
+                   view->name, newShardName);
         } else {
             errstat_set_strf(err, "Cannot rollout, failed to get next name");
         }
@@ -1823,7 +1825,8 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
     rc = _next_shard_exists(view, next_existing_shard,
                             sizeof(next_existing_shard));
     if (rc == VIEW_ERR_EXIST) {
-        if (evicted_shard0 || (view->nshards < view->retention)) {
+        if (evicted_shard0 || (view->nshards < view->retention) ||
+           (strcasecmp(view->shard0name, view->shards[view->retention-1].tblname) == 0)) {
             /* In this unique case, the evicted shard and the next shard have different names!
                Recovering the existing next shard is ok */
             logmsg(LOGMSG_WARN, "Found existing next shard %s for view %s, recovering\n", 
