@@ -77,7 +77,7 @@ static int __db_lock_move __P((DB_ENV *,
 static int __db_txnlist_find_internal __P((DB_ENV *, void *, db_txnlist_type,
 	u_int32_t, u_int32_t *, u_int8_t[DB_FILE_ID_LEN], DB_TXNLIST **, int));
 static int __db_txnlist_pgnoadd __P((DB_ENV *, DB_TXNHEAD *,
-	int32_t, u_int8_t[DB_FILE_ID_LEN], char *, db_pgno_t));
+	int32_t, u_int8_t[DB_FILE_ID_LEN], char *, db_pgno_t, u_int8_t));
 
 
 /* TODO: dispatch table for these? */
@@ -1187,17 +1187,17 @@ __db_txnlist_gen(dbenv, listp, incr, min, max)
 	if (incr < 0) {
 		--hp->generation;
 		memmove(hp->gen_array, &hp->gen_array[1],
-		    (hp->generation + 1) * sizeof(hp->gen_array[0]));
+			(hp->generation + 1) * sizeof(hp->gen_array[0]));
 	} else {
 		++hp->generation;
 		if (hp->generation >= hp->gen_alloc) {
 			hp->gen_alloc *= 2;
 			if ((ret = __os_realloc(dbenv, hp->gen_alloc *
-			    sizeof(hp->gen_array[0]), &hp->gen_array)) != 0)
+				sizeof(hp->gen_array[0]), &hp->gen_array)) != 0)
 				return (ret);
 		}
 		memmove(&hp->gen_array[1], &hp->gen_array[0],
-		    hp->generation * sizeof(hp->gen_array[0]));
+			hp->generation * sizeof(hp->gen_array[0]));
 		hp->gen_array[0].generation = hp->generation;
 		hp->gen_array[0].txn_min = min;
 		hp->gen_array[0].txn_max = max;
@@ -1241,7 +1241,7 @@ __db_txnlist_lsnadd(dbenv, listp, lsnp, flags)
 	hp = (DB_TXNHEAD *)listp;
 
 	for (elp = LIST_FIRST(&hp->head[0]);
-	    elp != NULL; elp = LIST_NEXT(elp, links))
+		elp != NULL; elp = LIST_NEXT(elp, links))
 		if (elp->type == TXNLIST_LSN)
 			break;
 
@@ -1251,8 +1251,8 @@ __db_txnlist_lsnadd(dbenv, listp, lsnp, flags)
 	if (LF_ISSET(TXNLIST_NEW)) {
 		if (elp->u.l.ntxns >= elp->u.l.maxn) {
 			if ((ret = __os_realloc(dbenv,
-			    2 * elp->u.l.maxn * sizeof(DB_LSN),
-			    &elp->u.l.lsn_array)) != 0)
+				2 * elp->u.l.maxn * sizeof(DB_LSN),
+				&elp->u.l.lsn_array)) != 0)
 				return (ret);
 			elp->u.l.maxn *= 2;
 		}
@@ -1296,7 +1296,7 @@ __db_txnlist_lsninit(dbenv, hp, lsnp)
 	LIST_INSERT_HEAD(&hp->head[0], elp, links);
 
 	if ((ret = __os_malloc(dbenv,
-	    12 * sizeof(DB_LSN), &elp->u.l.lsn_array)) != 0)
+		12 * sizeof(DB_LSN), &elp->u.l.lsn_array)) != 0)
 		goto err;
 	elp->type = TXNLIST_LSN;
 	elp->u.l.maxn = 12;
@@ -1314,14 +1314,15 @@ err:	__db_txnlist_end(dbenv, hp);
  *	Get the file information and call pgnoadd for each page.
  *
  * PUBLIC: int __db_add_limbo __P((DB_ENV *,
- * PUBLIC:      void *, int32_t, db_pgno_t, int32_t));
+ * PUBLIC:	  void *, int32_t, db_pgno_t, u_int8_t, int32_t));
  */
 int
-__db_add_limbo(dbenv, info, fileid, pgno, count)
+__db_add_limbo(dbenv, info, fileid, pgno, always_free, count)
 	DB_ENV *dbenv;
 	void *info;
 	int32_t fileid;
 	db_pgno_t pgno;
+	u_int8_t always_free;
 	int32_t count;
 {
 	DB_LOG *dblp;
@@ -1336,8 +1337,8 @@ __db_add_limbo(dbenv, info, fileid, pgno, count)
 
 	do {
 		if ((ret =
-		    __db_txnlist_pgnoadd(dbenv, info, fileid, fnp->ufid,
-		    R_ADDR(&dblp->reginfo, fnp->name_off), pgno)) != 0)
+			__db_txnlist_pgnoadd(dbenv, info, fileid, fnp->ufid,
+			R_ADDR(&dblp->reginfo, fnp->name_off), pgno, always_free)) != 0)
 			return (ret);
 		pgno++;
 	} while (--count != 0);
@@ -1378,7 +1379,7 @@ __db_add_limbo(dbenv, info, fileid, pgno, count)
  * an abort and doing the "use compensating transaction" algorithm.
  *
  * PUBLIC: int __db_do_the_limbo __P((DB_ENV *,
- * PUBLIC:     DB_TXN *, DB_TXN *, DB_TXNHEAD *, db_limbo_state));
+ * PUBLIC:	 DB_TXN *, DB_TXN *, DB_TXNHEAD *, db_limbo_state));
  */
 int
 __db_do_the_limbo(dbenv, ptxn, txn, hp, state)
@@ -1697,16 +1698,17 @@ next:
 		 * or the db file has been deleted or could not be opened.
 		 */
 		if (ctxn != NULL &&
-		    (t_ret = __txn_abort(ctxn)) != 0 && ret == 0)
+			(t_ret = __txn_abort(ctxn)) != 0 && ret == 0)
 			ret = t_ret;
 
 		if (dbp_created &&
-		    (t_ret = __db_close(dbp, txn, DB_NOSYNC)) != 0 && ret == 0)
+			(t_ret = __db_close(dbp, txn, DB_NOSYNC)) != 0 && ret == 0)
 			ret = t_ret;
 		dbp = NULL;
 		if (state != LIMBO_PREPARE && state != LIMBO_TIMESTAMP) {
 			__os_free(dbenv, elp->u.p.fname);
 			__os_free(dbenv, elp->u.p.pgno_array);
+			__os_free(dbenv, elp->u.p.flags_array);
 		}
 		if (ret == ENOENT)
 			ret = 0;
@@ -1740,6 +1742,7 @@ __db_limbo_fix(dbp, txn, ctxn, elp, lastp, meta, state)
 	DB_ENV *dbenv;
 	PAGE *freep, *pagep;
 	db_pgno_t next, pgno;
+	u_int8_t always_free;
 	u_int32_t i;
 	extern int gbl_cmptxn_inherit_locks;
 	int put_page, ret, t_ret, inherit;
@@ -1762,6 +1765,7 @@ __db_limbo_fix(dbp, txn, ctxn, elp, lastp, meta, state)
 
 	for (i = 0; i < elp->u.p.nentries; i++) {
 		pgno = elp->u.p.pgno_array[i];
+		always_free = elp->u.p.flags_array[i];
 
 		if (pgno == PGNO_INVALID)
 			continue;
@@ -1774,7 +1778,8 @@ __db_limbo_fix(dbp, txn, ctxn, elp, lastp, meta, state)
 		}
 		put_page = 1;
 
-		if (state == LIMBO_COMPENSATE || IS_ZERO_LSN(LSN(pagep))) {
+		if (state == LIMBO_COMPENSATE || IS_ZERO_LSN(LSN(pagep)) ||
+					always_free) {
 			if (ctxn == NULL) {
 				/*
 				 * If this is a fatal recovery which
@@ -1785,17 +1790,17 @@ __db_limbo_fix(dbp, txn, ctxn, elp, lastp, meta, state)
 					if (next == pgno)
 						break;
 					if ((ret = __memp_fget(mpf,
-					    &next, 0, &freep)) != 0)
+						&next, 0, &freep)) != 0)
 						goto err;
 					next = NEXT_PGNO(freep);
 					if ((ret =
-					    __memp_fput(mpf, freep, 0)) != 0)
+						__memp_fput(mpf, freep, 0)) != 0)
 						goto err;
 				}
 
 				if (next != pgno) {
 					P_INIT(pagep, dbp->pgsize, pgno,
-					    PGNO_INVALID, *lastp, 0, P_INVALID);
+						PGNO_INVALID, *lastp, 0, P_INVALID);
 					/* Make the lsn non-zero but generic. */
 					INIT_LSN(LSN(pagep));
 					*lastp = pgno;
@@ -1811,9 +1816,9 @@ __db_limbo_fix(dbp, txn, ctxn, elp, lastp, meta, state)
 				ldbt.data = pagep;
 				ldbt.size = P_OVERHEAD(dbp);
 				if ((ret = __db_pg_new_log(dbp, ctxn,
-				     &LSN(meta), 0, pagep->pgno,
-				     &LSN(meta), PGNO_BASE_MD,
-				     &ldbt, pagep->next_pgno)) != 0)
+					 &LSN(meta), 0, pagep->pgno,
+					 &LSN(meta), PGNO_BASE_MD,
+					 &ldbt, pagep->next_pgno)) != 0)
 					goto err;
 			} else {
 
@@ -1824,7 +1829,7 @@ __db_limbo_fix(dbp, txn, ctxn, elp, lastp, meta, state)
 				}
 
 				if (dbc == NULL && (ret =
-				    __db_cursor(dbp, ctxn, &dbc, 0)) != 0)
+					__db_cursor(dbp, ctxn, &dbc, 0)) != 0)
 						goto err;
 				/*
 				 * If the dbp is compensating (because we
@@ -1941,7 +1946,7 @@ int __db_txnlist_committed_page(dbenv, info, txnid, fileid, pgno)
 
 	if (ptxnid && (ret = __db_txnlist_find(dbenv, info, ptxnid)) !=
 			TXN_COMMIT) {
-		if ((ret = __db_add_limbo(dbenv, info, fileid, pgno, 1)) != 0) {
+		if ((ret = __db_add_limbo(dbenv, info, fileid, pgno, 1, 1)) != 0) {
 			logmsg(LOGMSG_FATAL, "%s unable to add to limbo, ret %d\n",
 					__func__, ret);
 			abort();
@@ -1958,13 +1963,14 @@ int __db_txnlist_committed_page(dbenv, info, txnid, fileid, pgno)
  *	entry for the file and then add the pgno.
  */
 static int
-__db_txnlist_pgnoadd(dbenv, hp, fileid, uid, fname, pgno)
+__db_txnlist_pgnoadd(dbenv, hp, fileid, uid, fname, pgno, always_free)
 	DB_ENV *dbenv;
 	DB_TXNHEAD *hp;
 	int32_t fileid;
 	u_int8_t uid[DB_FILE_ID_LEN];
 	char *fname;
 	db_pgno_t pgno;
+	u_int8_t always_free;
 {
 	DB_TXNLIST *elp;
 	size_t len;
@@ -1974,13 +1980,13 @@ __db_txnlist_pgnoadd(dbenv, hp, fileid, uid, fname, pgno)
 	elp = NULL;
 
 	if (__db_txnlist_find_internal(dbenv, hp,
-	    TXNLIST_PGNO, 0, NULL, uid, &elp, 0) != 0) {
+		TXNLIST_PGNO, 0, NULL, uid, &elp, 0) != 0) {
 		if ((ret =
-		    __os_malloc(dbenv, sizeof(DB_TXNLIST), &elp)) != 0)
+			__os_malloc(dbenv, sizeof(DB_TXNLIST), &elp)) != 0)
 			goto err;
 		memcpy(&hash, uid, sizeof(hash));
 		LIST_INSERT_HEAD(
-		    &hp->head[DB_TXNLIST_MASK(hp, hash)], elp, links);
+			&hp->head[DB_TXNLIST_MASK(hp, hash)], elp, links);
 		elp->u.p.fileid = fileid;
 		memcpy(elp->u.p.uid, uid, DB_FILE_ID_LEN);
 
@@ -1988,22 +1994,29 @@ __db_txnlist_pgnoadd(dbenv, hp, fileid, uid, fname, pgno)
 		if ((ret = __os_malloc(dbenv, len, &elp->u.p.fname)) != 0)
 			goto err;
 		memcpy(elp->u.p.fname, fname, len);
+		elp->u.p.fname[len - 1] = '\0';
 
 		elp->u.p.maxentry = 0;
 		elp->u.p.locked = 0;
 		elp->type = TXNLIST_PGNO;
 		if ((ret = __os_malloc(dbenv,
-		    8 * sizeof(db_pgno_t), &elp->u.p.pgno_array)) != 0)
+			8 * sizeof(db_pgno_t), &elp->u.p.pgno_array)) != 0)
 			goto err;
+		if ((ret = __os_malloc(dbenv,
+			8 * sizeof(u_int8_t), &elp->u.p.flags_array)) != 0)
 		elp->u.p.maxentry = DB_TXNLIST_MAX_PGNO;
 		elp->u.p.nentries = 0;
 	} else if (elp->u.p.nentries == elp->u.p.maxentry) {
 		elp->u.p.maxentry <<= 1;
 		if ((ret = __os_realloc(dbenv, elp->u.p.maxentry *
-		    sizeof(db_pgno_t), &elp->u.p.pgno_array)) != 0)
+			sizeof(db_pgno_t), &elp->u.p.pgno_array)) != 0)
+			goto err;
+		if ((ret = __os_realloc(dbenv, elp->u.p.maxentry *
+			sizeof(u_int8_t), &elp->u.p.flags_array)) != 0)
 			goto err;
 	}
 
+	elp->u.p.flags_array[elp->u.p.nentries] = always_free;
 	elp->u.p.pgno_array[elp->u.p.nentries++] = pgno;
 
 	return (0);
@@ -2038,7 +2051,7 @@ __db_default_getpgnos(dbenv, lsnp, summary)
 	t->array[t->npages].lsn = *lsnp;
 	t->array[t->npages].fid = DB_LOGFILEID_INVALID;
 	memset(&t->array[t->npages].pgdesc, 0,
-	    sizeof(t->array[t->npages].pgdesc));
+		sizeof(t->array[t->npages].pgdesc));
 
 	t->npages++;
 

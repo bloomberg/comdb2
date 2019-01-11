@@ -90,6 +90,7 @@ struct __db_txnlist {
 			char *fname;
 			int32_t fileid;
 			db_pgno_t *pgno_array;
+            u_int8_t *flags_array;
 			u_int8_t uid[DB_FILE_ID_LEN];
 		} p;
 	} u;

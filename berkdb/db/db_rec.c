@@ -850,7 +850,7 @@ __db_pg_alloc_recover(dbenv, dbtp, lsnp, op, info)
 	    IS_ZERO_LSN(argp->page_lsn) && DB_UNDO(op)) {
 		/* Put the page in limbo.*/
 		if ((ret = __db_add_limbo(dbenv,
-		    info, argp->fileid, argp->pgno, 1)) != 0)
+		    info, argp->fileid, argp->pgno, 0, 1)) != 0)
 			goto out;
 	}
 
@@ -1085,7 +1085,7 @@ __db_pg_new_recover(dbenv, dbtp, lsnp, op, info)
 	COMPQUIET(op, 0);
 
 	if ((ret =
-	    __db_add_limbo(dbenv, info, argp->fileid, argp->pgno, 1)) == 0)
+	    __db_add_limbo(dbenv, info, argp->fileid, argp->pgno, 0, 1)) == 0)
 		*lsnp = argp->prev_lsn;
 
 done:
@@ -1240,7 +1240,7 @@ __db_pg_prepare_recover(dbenv, dbtp, lsnp, op, info)
 		P_INIT(pagep, file_dbp->pgsize,
 		    argp->pgno, PGNO_INVALID, PGNO_INVALID, 0, P_INVALID);
 		ZERO_LSN(pagep->lsn);
-		ret = __db_add_limbo(dbenv, info, argp->fileid, argp->pgno, 1);
+		ret = __db_add_limbo(dbenv, info, argp->fileid, argp->pgno, 0, 1);
 		if ((t_ret =
 		    __memp_fput(mpf, pagep, DB_MPOOL_DIRTY)) != 0 && ret == 0)
 			ret = t_ret;
