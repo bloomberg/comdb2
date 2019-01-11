@@ -236,8 +236,6 @@ int gbl_nice = 0;
 int gbl_notimeouts = 0; /* set this if you don't need the server timeouts
                            (use this for new code testing) */
 
-int gbl_reorder_idx_writes = 1;
-
 int gbl_nullfkey = 0;
 
 /* Default fast sql timeouts */
@@ -633,6 +631,7 @@ int gbl_broken_max_rec_sz = 0;
 int gbl_private_blkseq = 1;
 int gbl_use_blkseq = 1;
 int gbl_reorder_socksql_no_deadlock = 1;
+int gbl_reorder_idx_writes = 1;
 
 char *gbl_recovery_options = NULL;
 

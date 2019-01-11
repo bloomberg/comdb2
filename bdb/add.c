@@ -139,7 +139,7 @@ static int bdb_prim_addkey_int(bdb_state_type *bdb_state, tran_type *tran,
             assert(rec == (iptr + 2));
             keydata_len = sizeof(unsigned long long) + recsize;
         } else {
-            /* collattr or non-odh datacopy */
+            /* for decimal, collattr or non-odh datacopy */
             memcpy(iptr + 2, dta, dtalen);
         }
     }
@@ -166,6 +166,17 @@ static int bdb_prim_addkey_int(bdb_state_type *bdb_state, tran_type *tran,
     memset(&dbt_data, 0, sizeof(dbt_data));
     dbt_data.data = keydata;
     dbt_data.size = keydata_len;
+
+
+#if 1
+logmsg(LOGMSG_USER, "AZ ix_addk_auxdb: ix=%d, len=%d, genid=%lld, content=", ixnum, dbt_key.size, genid);
+void hexdump(loglvl lvl, const char *key, int keylen);
+hexdump(LOGMSG_USER, dbt_key.data, dbt_key.size);
+logmsg(LOGMSG_USER, "AZ ix_addk_auxdb: data len=%d content=", dbt_data.size);
+hexdump(LOGMSG_USER, dbt_data.data, dbt_data.size);
+logmsg(LOGMSG_USER, "'\n");
+#endif
+
 
     /* write to the index */
     rc = ll_key_add(bdb_state, genid, tran, ixnum, &dbt_key, &dbt_data);

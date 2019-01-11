@@ -337,7 +337,8 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
             //if not datacopy, no need to save od_dta_tail
             void *data = NULL;
             int datalen = 0;
-            if (iq->usedb->ix_datacopy[ixnum] != 0) { //is datacopy
+            if (od_dta_tail) {
+                //have a tail when index is datacopy or for decimal quantum
                 data = od_dta_tail;
                 datalen = od_tail_len;
             }
@@ -614,7 +615,8 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
                 //if not datacopy, no need to save od_dta_tail
                 void *data = NULL;
                 int datalen = 0;
-                if (iq->usedb->ix_datacopy[ixnum] != 0) { //is datacopy
+                if (od_dta_tail) {
+                    //have a tail when index is datacopy or for decimal quantum
                     data = od_dta_tail;
                     datalen = od_tail_len;
                 }
