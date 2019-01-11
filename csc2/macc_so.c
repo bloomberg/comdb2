@@ -116,11 +116,6 @@ void set_constraint_mod(int start, int op, int type)
 
 void set_constraint_name(char *name)
 {
-    if (gbl_legacy_schema) {
-        csc2_syntax_error("ERROR: TABLE SCHEMA NOT SUPPORTED IN LEGACY MODE\n");
-        any_errors++;
-        return;
-    }
     constraints[nconstraints].consname = name;
 }
 

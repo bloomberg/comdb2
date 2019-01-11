@@ -120,17 +120,16 @@ static inline void init_taglock(void)
 #endif
 }
 
-/* set dbstore (or null) value for a column
- * returns 0 if there was no valid dbstore */
-static inline int set_dbstore(struct dbtable *db, int col, void *field)
+/* set dbstore (or null) value for a column */
+static inline void set_dbstore(struct dbtable *db, int col, void *field,
+                               int flen)
 {
     struct dbstore *dbstore = db->dbstore;
     if (dbstore[col].len) {
         memcpy(field, dbstore[col].data, dbstore[col].len);
     } else {
-        set_null(field, 0);
+        set_null(field, flen);
     }
-    return dbstore[col].len;
 }
 
 static int ctag_to_stag_int(const char *table, const char *ctag,
@@ -3122,7 +3121,7 @@ int vtag_to_ondisk_vermap(struct dbtable *db, uint8_t *rec, int *len, uint8_t ve
         for (int i = 0; i < to_schema->nmembers; ++i) {
             if (db->dbstore[i].ver > ver) {
                 unsigned int offset = to_schema->member[i].offset;
-                set_dbstore(db, i, &rec[offset]);
+                set_dbstore(db, i, &rec[offset], 0 /* only set null bit */);
             }
         }
     } else {
@@ -3131,7 +3130,9 @@ int vtag_to_ondisk_vermap(struct dbtable *db, uint8_t *rec, int *len, uint8_t ve
         int i = to_schema->nmembers - 1;
         while (i > 0 && db->dbstore[i].ver > ver) {
             unsigned int offset = to_schema->member[i].offset;
-            set_dbstore(db, i, &rec[offset]);
+            unsigned int flen = to_schema->member[i].len;
+            set_dbstore(db, i, &rec[offset],
+                        flen /* set null bit and memset field 0 */);
             i--;
         }
     }
@@ -3232,7 +3233,7 @@ int vtag_to_ondisk(struct dbtable *db, uint8_t *rec, int *len, uint8_t ver,
         field = &to_schema->member[i];
         offset = field->offset;
         if (db->dbstore[i].ver > ver) {
-            set_dbstore(db, i, &rec[offset]);
+            set_dbstore(db, i, &rec[offset], 0 /* only set null bit */);
         }
     }
 
