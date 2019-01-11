@@ -6049,7 +6049,7 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
         break;
     case LLMETA_SC_START_LSN: {
         struct llmeta_schema_change_type akey;
-        struct llmeta_db_lsn_data_type adata;
+        struct llmeta_db_lsn_data_type adata = {{0}};
 
         if (keylen < sizeof(akey) || datalen < sizeof(adata)) {
             logmsg(LOGMSG_USER, "%s:%d: wrong LLMETA_SC_START_LSN entry\n",
