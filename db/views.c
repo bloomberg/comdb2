@@ -1532,7 +1532,7 @@ static int _views_rollout_phase1(timepart_view_t *view, char **pShardName,
         errstat_set_rc(err, rc);
         if (rc == VIEW_ERR_EXIST) {
             errstat_set_strf(err, "Cannot rollout, next shard exists");
-            logmsg(LOGMSG_ERR, "%s Cannot rollout, next shard %s exists",
+            logmsg(LOGMSG_ERROR, "%s Cannot rollout, next shard %s exists",
                    view->name, newShardName);
         } else {
             errstat_set_strf(err, "Cannot rollout, failed to get next name");
