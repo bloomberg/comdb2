@@ -1826,7 +1826,8 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
                             sizeof(next_existing_shard));
     if (rc == VIEW_ERR_EXIST) {
         if (evicted_shard0 || (view->nshards < view->retention) ||
-           (strcasecmp(view->shard0name, view->shards[view->retention-1].tblname) == 0)) {
+            (strcasecmp(view->shard0name,
+                        view->shards[view->retention - 1].tblname) == 0)) {
             /* In this unique case, the evicted shard and the next shard have different names!
                Recovering the existing next shard is ok */
             logmsg(LOGMSG_WARN, "Found existing next shard %s for view %s, recovering\n", 
