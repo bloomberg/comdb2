@@ -698,7 +698,7 @@ err:	if (h != NULL)
 	return (ret);
 }
 
-int gbl_disjoint_pgallocs = 0;
+int gbl_disjoint_pgallocs = 1;
 
 /*
  * __db_new --

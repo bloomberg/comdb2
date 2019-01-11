@@ -1630,7 +1630,7 @@ REGISTER_TUNABLE("abort_on_missing_osql_session",
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("disjoint_pgallocs",
-                 "Allocate pages in standalone transactions (Default: off)",
+                 "Allocate pages in standalone transactions (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_disjoint_pgallocs,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
