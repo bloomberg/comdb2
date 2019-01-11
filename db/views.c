@@ -1061,9 +1061,9 @@ void *_view_cron_phase2(uuid_t source_id, void *arg1, void *arg2, void *arg3,
     char *name = (char *)arg1;
     char *pShardName = (char *)arg2;
     int run = 0;
-    int timeNextRollout;
+    int timeNextRollout = 0;
     int timeCrtRollout = 0;
-    char *removeShardName;
+    char *removeShardName = NULL;
     int rc = 0;
     int bdberr;
 
@@ -1102,7 +1102,7 @@ void *_view_cron_phase2(uuid_t source_id, void *arg1, void *arg2, void *arg3,
         /* this is a safeguard! we take effort to schedule cleanup of 
         a dropped partition ahead of everything, but jic ! */
         if(unlikely(_validate_view_id(view, source_id, "phase 2", err))) {
-            /*TODO*/
+            rc = VIEW_ERR_BUG;
             goto done;
         }
 
@@ -1653,11 +1653,8 @@ static int _schedule_drop_shard(timepart_view_t *view, const char *evicted_shard
    char        *tmp_str1;
    int rc;
 
-
    print_dbg_verbose(view->name, &view->source_id, "RRR",
-           "Adding phase 3 at %d for %s\n",
-           evicted_time - preemptive_rolltime,
-           evicted_shard);
+           "Adding phase 3 at %d for %s\n", evict_time, evicted_shard);
 
    /* we missed phase 3, queue it */
    rc = (cron_add_event(timepart_sched, NULL, 
@@ -1665,10 +1662,9 @@ static int _schedule_drop_shard(timepart_view_t *view, const char *evicted_shard
             tmp_str1=strdup(evicted_shard), NULL, NULL, NULL, 
             err) == NULL)?err->errval:VIEW_NOERR;
 
-
    if(rc != VIEW_NOERR)
    {
-      fprintf(stderr, "%s: failed rc=%d errstr=%s\n", __func__, err->errval, err->errstr); 
+      logmsg(LOGMSG_ERROR, "%s: failed rc=%d errstr=%s\n", __func__, err->errval, err->errstr); 
       free(tmp_str1);
       return rc;
    }
@@ -1745,7 +1741,7 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
        /* get the maximum index from the existing rows; use that number to assert the presumptive
           previous shard range; check from the newest to the oldest, modulo presumptive range */
 
-       int oldest, newest, crt;
+       int oldest = 0, newest = 0, crt;
        int pres_range = _get_biggest_shard_number(view, &oldest, &newest) + 1;
 
        i=1;
@@ -1754,9 +1750,6 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
            /* check if the previously evicted shard still exists */
            rc = _generate_evicted_shard_name(view, crt, evicted_shard, sizeof(evicted_shard),
                    &evicted_time, view->nshards);
-           /* check if the previously evicted stage still exists */
-           rc = _generate_evicted_shard_name(view, evicted_shard,
-                   sizeof(evicted_shard), &evicted_time);
            if (rc != VIEW_NOERR) {
                errstat_set_strf(err, "Failed to generate evicted shard name");
                return err->errval = VIEW_ERR_BUG;
@@ -1983,7 +1976,6 @@ static int _generate_evicted_shard_name(timepart_view_t *view,
                                         int *rolloutTime,
                                         int retention)
 {
-    int nextNum;
     struct errstat xerr = {0};
     int rc;
 
@@ -1991,19 +1983,6 @@ static int _generate_evicted_shard_name(timepart_view_t *view,
         /* no eviction yet */
         return VIEW_ERR_EXIST;
     }
-
-    nextNum = _extract_shardname_index(view->shards[0].tblname, 
-                                       view->shard0name, NULL);
-    /*
-     * whena adding t0, evicting t1
-     * +t1 => -t2
-     * ...
-     * +t(N-1) => -tN
-     * +tN => t0
-     */
-    /*
-    nextNum = (nextNum+1) % (view->retention+1);
-    */
 
     /* generate new filename */
     rc = _generate_new_shard_name(
@@ -2419,7 +2398,7 @@ int timepart_update_retention(void *tran, const char *name, int retention, struc
       char **extra_shards = NULL;
       int n_extra_shards = view->nshards - retention;
       int old_retention = view->retention;
-      int old_low;
+      int old_low = view->shards[view->nshards-1].low;
 
       if (n_extra_shards > 0)
       {
@@ -2464,7 +2443,7 @@ int timepart_update_retention(void *tran, const char *name, int retention, struc
                      err) == NULL)?err->errval:VIEW_NOERR;
             if (irc != VIEW_NOERR)
             {
-               fprintf(stderr, "%s: failed rc=%d errstr=%s\n", __func__, err->errval, err->errstr); 
+               logmsg(LOGMSG_ERROR, "%s: failed rc=%d errstr=%s\n", __func__, err->errval, err->errstr); 
                free(extra_shards[i]);
             }
          }
