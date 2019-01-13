@@ -523,7 +523,7 @@ int sqlite3GetToken(const unsigned char *z, int *tokenType){
             && z[i+1]=='8' && !IdChar(z[i+2]) ){
           *tokenType = TK_GENID48;
           return 7;
-        } else if( i==2 && sqlite3StrNICmp((char*)z,"lz",2)==0 && z[i]=='4'
+        }else if( i==2 && sqlite3StrNICmp((char*)z,"lz",2)==0 && z[i]=='4'
             && !IdChar(z[i+1]) ){
           *tokenType = TK_LZ4;
           return 3;
