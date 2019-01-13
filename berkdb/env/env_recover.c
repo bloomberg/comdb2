@@ -948,6 +948,8 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 	u_int32_t update, flags;
 {
 	DBT data;
+	extern int gbl_disjoint_pgallocs;
+	int disjoint = gbl_disjoint_pgallocs;
 	DB_LOGC *logc;
 	DB_LSN ckp_lsn, first_lsn, last_lsn, lowlsn, lsn, stop_lsn;
 	DB_REP *db_rep;
@@ -1463,9 +1465,9 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 	 * Process any pages that were on the limbo list and move them to
 	 * the free list.  Do this before checkpointing the database.
 	 */
+	db_limbo_state st = disjoint ? LIMBO_RECOVER_DISJOINT : LIMBO_RECOVER;
 	if ((ret = __db_do_the_limbo(dbenv, NULL, NULL, txninfo,
-			dbenv->tx_timestamp !=
-			0 ? LIMBO_TIMESTAMP : LIMBO_RECOVER)) != 0)
+			dbenv->tx_timestamp != 0 ? LIMBO_TIMESTAMP : st)) != 0)
 		 goto err;
 
 	if (max_lsn == NULL)
@@ -1494,7 +1496,9 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 		 if ((ret = __db_do_the_limbo(dbenv,
 			 NULL, NULL, txninfo, LIMBO_COMPENSATE)) != 0)
 			goto err;
-	}
+	} else if (disjoint && (ret = __db_do_the_limbo(dbenv,
+					NULL, NULL, txninfo, LIMBO_COMPENSATE)) != 0)
+		goto err;
 
 	/* Take a checkpoint here to force any dirty data pages to disk. */
 	if (gbl_is_physical_replicant || LF_ISSET(DB_RECOVER_NOCKP)) {

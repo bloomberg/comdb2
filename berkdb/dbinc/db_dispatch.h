@@ -110,6 +110,7 @@ typedef enum {
 	LIMBO_NORMAL,		/* Normal processing. */
 	LIMBO_PREPARE,		/* We are preparing a transaction. */
 	LIMBO_RECOVER,		/* We are in recovery. */
+	LIMBO_RECOVER_DISJOINT,	/* We may have to recover disjoint pages. */
 	LIMBO_TIMESTAMP,	/* We are recovering to a timestamp. */
 	LIMBO_COMPENSATE	/* After recover to ts, generate log records. */
 } db_limbo_state;

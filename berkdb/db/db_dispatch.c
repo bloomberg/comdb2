@@ -1547,9 +1547,10 @@ retry:		dbp_created = 0;
 		 */
 		if (state == LIMBO_PREPARE)
 			ctxn = txn;
-		else if (!in_retry && state != LIMBO_RECOVER &&
-		    state != LIMBO_TIMESTAMP && !T_RESTORED(txn) &&
-		    (ret = __txn_compensate_begin(dbenv, &ctxn)) != 0)
+		else if (!in_retry &&
+			state != LIMBO_RECOVER && state != LIMBO_TIMESTAMP &&
+			state != LIMBO_RECOVER_DISJOINT && !T_RESTORED(txn) &&
+			(ret = __txn_compensate_begin(dbenv,&ctxn)) != 0)
 			return (ret);
 
 		/*
@@ -1705,7 +1706,8 @@ next:
 			(t_ret = __db_close(dbp, txn, DB_NOSYNC)) != 0 && ret == 0)
 			ret = t_ret;
 		dbp = NULL;
-		if (state != LIMBO_PREPARE && state != LIMBO_TIMESTAMP) {
+		if (state != LIMBO_PREPARE && state != LIMBO_TIMESTAMP &&
+				state != LIMBO_RECOVER_DISJOINT) {
 			__os_free(dbenv, elp->u.p.fname);
 			__os_free(dbenv, elp->u.p.pgno_array);
 			__os_free(dbenv, elp->u.p.flags_array);
@@ -1771,7 +1773,7 @@ __db_limbo_fix(dbp, txn, ctxn, elp, lastp, meta, state)
 			continue;
 
 		if ((ret =
-		    __memp_fget(mpf, &pgno, DB_MPOOL_CREATE, &pagep)) != 0) {
+			__memp_fget(mpf, &pgno, DB_MPOOL_CREATE, &pagep)) != 0) {
 			if (ret != ENOSPC)
 				goto err;
 			continue;
@@ -1779,31 +1781,31 @@ __db_limbo_fix(dbp, txn, ctxn, elp, lastp, meta, state)
 		put_page = 1;
 
 		if (state == LIMBO_COMPENSATE || IS_ZERO_LSN(LSN(pagep)) ||
-					always_free) {
+			(state == LIMBO_RECOVER_DISJOINT && always_free)) {
 			if (ctxn == NULL) {
 				/*
 				 * If this is a fatal recovery which
 				 * spans a previous crash this page may
 				 * be on the free list already.
 				 */
-				for (next = *lastp; next != 0; ) {
-					if (next == pgno)
-						break;
-					if ((ret = __memp_fget(mpf,
-						&next, 0, &freep)) != 0)
-						goto err;
-					next = NEXT_PGNO(freep);
-					if ((ret =
-						__memp_fput(mpf, freep, 0)) != 0)
-						goto err;
-				}
+				if (!always_free) {
+					for (next = *lastp; next != 0; ) {
+						if (next == pgno)
+							break;
+						if ((ret = __memp_fget(mpf, &next, 0, &freep)) != 0)
+							goto err;
+						next = NEXT_PGNO(freep);
+						if ((ret = __memp_fput(mpf, freep, 0)) != 0)
+							goto err;
+					}
 
-				if (next != pgno) {
-					P_INIT(pagep, dbp->pgsize, pgno,
-						PGNO_INVALID, *lastp, 0, P_INVALID);
-					/* Make the lsn non-zero but generic. */
-					INIT_LSN(LSN(pagep));
-					*lastp = pgno;
+					if (next != pgno) {
+						P_INIT(pagep, dbp->pgsize, pgno, PGNO_INVALID, *lastp,
+								0, P_INVALID);
+						/* Make the lsn non-zero but generic. */
+						INIT_LSN(LSN(pagep));
+						*lastp = pgno;
+					}
 				}
 			} else if (state == LIMBO_COMPENSATE) {
 				/*
@@ -1811,15 +1813,24 @@ __db_limbo_fix(dbp, txn, ctxn, elp, lastp, meta, state)
 				 * on the LIMBO_TIMESTAMP pass.  All pages
 				 * here are free so P_OVERHEAD is sufficent.
 				 */
-				ZERO_LSN(pagep->lsn);
-				memset(&ldbt, 0, sizeof(ldbt));
-				ldbt.data = pagep;
-				ldbt.size = P_OVERHEAD(dbp);
-				if ((ret = __db_pg_new_log(dbp, ctxn,
-					 &LSN(meta), 0, pagep->pgno,
-					 &LSN(meta), PGNO_BASE_MD,
-					 &ldbt, pagep->next_pgno)) != 0)
-					goto err;
+				if (always_free) {
+					assert(!IS_ZERO_LSN(pagep->lsn));
+					if (dbc == NULL &&
+							(ret = __db_cursor(dbp, ctxn, &dbc, 0))!= 0)
+						goto err;
+					if ((ret = __db_dofree(dbc, pagep)) != 0)
+						goto err;
+				} else {
+					ZERO_LSN(pagep->lsn);
+					memset(&ldbt, 0, sizeof(ldbt));
+					ldbt.data = pagep;
+					ldbt.size = P_OVERHEAD(dbp);
+					if ((ret = __db_pg_new_log(dbp, ctxn,
+									&LSN(meta), 0, pagep->pgno,
+									&LSN(meta), PGNO_BASE_MD,
+									&ldbt, pagep->next_pgno)) != 0)
+						goto err;
+				}
 			} else {
 
 				if (inherit && (ret = __db_lock_move(dbenv, 
@@ -1869,7 +1880,7 @@ __db_limbo_fix(dbp, txn, ctxn, elp, lastp, meta, state)
 	}
 
 err:	if (put_page &&
-	    (t_ret = __memp_fput(mpf, pagep, DB_MPOOL_DIRTY)) != 0 && ret == 0)
+		(t_ret = __memp_fput(mpf, pagep, DB_MPOOL_DIRTY)) != 0 && ret == 0)
 		ret = t_ret;
 	if (dbc != NULL && (t_ret = __db_c_close(dbc)) != 0 && ret == 0)
 		ret = t_ret;
