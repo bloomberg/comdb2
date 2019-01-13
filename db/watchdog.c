@@ -388,7 +388,7 @@ void comdb2_die(int aborat)
 
     thd_dump();
 
-    abort();
+    pid = getpid();
     if (snprintf(pstack_cmd, sizeof(pstack_cmd), "pstack %d", (int)pid) >=
         sizeof(pstack_cmd)) {
         logmsg(LOGMSG_WARN, "pstack cmd too long for buffer\n");
