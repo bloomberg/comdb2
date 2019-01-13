@@ -859,6 +859,20 @@ void sqlite3Update(
   }
   sqlite3VdbeResolveLabel(v, labelBreak);
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  /* Close all tables */
+  if( has_comdb2_index_for_sqlite(pTab) ){
+    for(i=0, pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext, i++){
+      assert( aRegIdx );
+      if( aToOpen[i+1] ){
+        sqlite3VdbeAddOp2(v, OP_Close, iIdxCur+i, 0);
+      }
+    }
+  }
+
+  if( iDataCur<iIdxCur ) sqlite3VdbeAddOp2(v, OP_Close, iDataCur, 0);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
   /* Update the sqlite_sequence table by storing the content of the
   ** maximum rowid counter values recorded while inserting into
   ** autoincrement tables.

@@ -628,7 +628,17 @@ void sqlite3DeleteFrom(
     }else{
       sqlite3VdbeGoto(v, addrLoop);
       sqlite3VdbeJumpHere(v, addrLoop);
-    }     
+    }
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    /* Close the cursors open on the table and its indexes. */
+    if( !isView && !IsVirtual(pTab) ){
+      if( !pPk ) sqlite3VdbeAddOp1(v, OP_Close, iDataCur);
+      for(i=0, pIdx=pTab->pIndex; pIdx; i++, pIdx=pIdx->pNext){
+        sqlite3VdbeAddOp1(v, OP_Close, iIdxCur + i);
+      }
+    }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   } /* End non-truncate path */
 
   /* Update the sqlite_sequence table by storing the content of the
