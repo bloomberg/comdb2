@@ -192,13 +192,20 @@ static int refresh_gbl_events_on_hndl(cdb2_hndl_tp *);
 
 typedef void (*cdb2_init_t)(void);
 
-/* Undocumented compile-time initialization routine. */
-#ifndef CDB2_INIT
-#define CDB2_INIT NULL
+/* Undocumented compile-time library installation/uninstallation routine. */
+#ifndef CDB2_INSTALL_LIBS
+#define CDB2_INSTALL_LIBS NULL
 #else
-extern void CDB2_INIT(void);
+extern void CDB2_INSTALL_LIBS(void);
 #endif
-cdb2_init_t cdb2_init = CDB2_INIT;
+void (*cdb2_install)(void) = CDB2_INSTALL_LIBS;
+
+#ifndef CDB2_UNINSTALL_LIBS
+#define CDB2_UNINSTALL_LIBS NULL
+#else
+extern void CDB2_UNINSTALL_LIBS(void);
+#endif
+void (*cdb2_uninstall)(void) = CDB2_UNINSTALL_LIBS;
 
 #ifndef WITH_DL_LIBS
 #define WITH_DL_LIBS 0
@@ -353,7 +360,7 @@ static inline const char *cdb2_skipws(const char *str)
     return str;
 }
 
-static char *getargv0(void)
+char *cdb2_getargv0(void)
 {
 #if defined(__APPLE__)
     return apple_getargv0();
@@ -379,10 +386,10 @@ static void do_init_once(void)
     }
     _PID = getpid();
     _MACHINE_ID = gethostid();
-    _ARGV0 = getargv0();
+    _ARGV0 = cdb2_getargv0();
 
-    if (cdb2_init != NULL)
-        (*cdb2_init)();
+    if (cdb2_install != NULL)
+        (*cdb2_install)();
 }
 
 /* if sqlstr is a read stmt will return 1 otherwise return 0
@@ -1310,6 +1317,11 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp,
                         cdb2_allow_pmux_route = 0;
                     }
                 }
+            } else if (strcasecmp("uninstall_static_libs", tok) == 0) {
+                /* Provide a way to disable statically installed (via
+                 * CDB2_INSTALL_LIBS) libraries. */
+                if (cdb2_uninstall != NULL)
+                    (*cdb2_uninstall)();
 #if WITH_DL_LIBS
             } else if (strcasecmp("lib", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
@@ -5982,6 +5994,9 @@ cdb2_event *cdb2_register_event(cdb2_hndl_tp *hndl, cdb2_event_type types,
 int cdb2_unregister_event(cdb2_hndl_tp *hndl, cdb2_event *event)
 {
     cdb2_event *curr, *prev;
+
+    if (event == NULL)
+        return 0;
 
     if (hndl == NULL) {
         pthread_mutex_lock(&cdb2_event_mutex);
