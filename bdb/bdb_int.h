@@ -254,35 +254,29 @@ struct timestamp_lsn_key {
 };
 
 typedef struct pglogs_tmptbl_key {
+    unsigned char fileid[DB_FILE_ID_LEN];
     db_pgno_t pgno;
     DB_LSN commit_lsn;
     DB_LSN lsn;
 } pglogs_tmptbl_key;
-typedef struct {
-    unsigned char fileid[DB_FILE_ID_LEN];
-    struct temp_table *tmptbl;
-    struct temp_cursor *tmpcur;
-    pthread_mutex_t mtx;
-#ifdef NEWSI_DEBUG_POOL
-    void *pool;
-#endif
-} logfile_pglog_hashkey;
 
 typedef struct relinks_tmptbl_key {
+    unsigned char fileid[DB_FILE_ID_LEN];
     db_pgno_t pgno;
     DB_LSN lsn;
     db_pgno_t inh;
 } relinks_tmptbl_key;
-typedef logfile_pglog_hashkey logfile_relink_hashkey;
-#define LOGFILE_PAGE_KEY_SIZE (DB_FILE_ID_LEN * sizeof(unsigned char))
-#define LOGFILE_PGLOG_OFFSET (offsetof(logfile_pglog_hashkey, fileid))
-#define LOGFILE_RELINK_OFFSET (offsetof(logfile_relink_hashkey, fileid))
 
 struct logfile_pglogs_entry {
     u_int32_t filenum;
-    pthread_mutex_t pglogs_mutex;
-    hash_t *pglogs_hashtbl;
-    hash_t *relinks_hashtbl;
+
+    pthread_mutex_t pglogs_lk;
+    struct temp_table *pglogs_tbl;
+    struct temp_cursor *pglogs_cur;
+
+    pthread_mutex_t relinks_lk;
+    struct temp_table *relinks_tbl;
+    struct temp_cursor *relinks_cur;
 };
 
 struct checkpoint_list {
