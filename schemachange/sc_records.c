@@ -1526,11 +1526,14 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         data.tagmap = NULL;
     }
 
-    if (outrc == 0 && s->logical_livesc) {
-        s->sc_convert_done[MAXDTASTRIPE] = 1;
-        sc_printf(s, "[%s] All convert threads finished\n", from->tablename);
+    if (s->logical_livesc) {
+        if (outrc == 0) {
+            s->sc_convert_done[MAXDTASTRIPE] = 1;
+            sc_printf(s, "[%s] All convert threads finished\n",
+                      from->tablename);
+        }
+        bdb_signal_sc_redo_wait(from->handle);
     }
-    bdb_signal_sc_redo_wait(from->handle);
     /* wait for logical redo thread */
     while (s->logical_livesc && !s->hitLastCnt) {
         poll(NULL, 0, 200);
