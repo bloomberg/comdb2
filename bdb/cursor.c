@@ -3558,6 +3558,9 @@ int bdb_push_pglogs_commit(void *in_bdb_state, DB_LSN commit_lsn, uint32_t gen,
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
+    if (!bdb_state->isopen)
+        return 0;
+
     if (gbl_new_snapisol_asof && push) {
         lcommit = allocate_pglogs_commit_list();
         lcommit->commit_lsn = commit_lsn;

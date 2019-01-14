@@ -1317,12 +1317,12 @@ err:	__db_txnlist_end(dbenv, hp);
  * PUBLIC:	  void *, int32_t, db_pgno_t, u_int8_t, int32_t));
  */
 int
-__db_add_limbo(dbenv, info, fileid, pgno, always_free, count)
+__db_add_limbo(dbenv, info, fileid, pgno, logged_free, count)
 	DB_ENV *dbenv;
 	void *info;
 	int32_t fileid;
 	db_pgno_t pgno;
-	u_int8_t always_free;
+	u_int8_t logged_free;
 	int32_t count;
 {
 	DB_LOG *dblp;
@@ -1338,7 +1338,7 @@ __db_add_limbo(dbenv, info, fileid, pgno, always_free, count)
 	do {
 		if ((ret =
 			__db_txnlist_pgnoadd(dbenv, info, fileid, fnp->ufid,
-			R_ADDR(&dblp->reginfo, fnp->name_off), pgno, always_free)) != 0)
+			R_ADDR(&dblp->reginfo, fnp->name_off), pgno, logged_free)) != 0)
 			return (ret);
 		pgno++;
 	} while (--count != 0);
@@ -1403,10 +1403,10 @@ __db_do_the_limbo(dbenv, ptxn, txn, hp, state)
 			continue;
 		if (ptxn != NULL) {
 			if ((ret =
-			    __db_limbo_move(dbenv, ptxn, txn, elp)) != 0)
+				__db_limbo_move(dbenv, ptxn, txn, elp)) != 0)
 				goto err;
 		} else if ((ret =
-		    __db_limbo_bucket(dbenv, txn, elp, state)) != 0)
+			__db_limbo_bucket(dbenv, txn, elp, state)) != 0)
 			goto err;
 	}
 
@@ -1550,7 +1550,7 @@ retry:		dbp_created = 0;
 		else if (!in_retry &&
 			state != LIMBO_RECOVER && state != LIMBO_TIMESTAMP &&
 			state != LIMBO_RECOVER_DISJOINT && !T_RESTORED(txn) &&
-			(ret = __txn_compensate_begin(dbenv,&ctxn)) != 0)
+			(ret = __txn_compensate_begin(dbenv,&ctxn,state)) != 0)
 			return (ret);
 
 		/*
@@ -1610,7 +1610,8 @@ retry:		dbp_created = 0;
 		mpf = dbp->mpf;
 		last_pgno = PGNO_INVALID;
 
-		if (ctxn == NULL || state == LIMBO_COMPENSATE) {
+		if (ctxn == NULL || state == LIMBO_COMPENSATE ||
+                state == LIMBO_COMPENSATE_DISJOINT) {
 			pgno = PGNO_BASE_MD;
 			if ((ret = __memp_fget(mpf, &pgno, 0, &meta)) != 0)
 				goto err;
@@ -1646,14 +1647,8 @@ retry:		dbp_created = 0;
 			 * We want the txn_commit to be logged so turn
 			 * off the recovery flag briefly.
 			 */
-			if (state == LIMBO_COMPENSATE)
-				F_CLR(
-				    (DB_LOG *)dbenv->lg_handle, DBLOG_RECOVER);
 			ret = __txn_commit(ctxn, DB_TXN_NOSYNC);
 			ctxn = NULL;
-			if (state == LIMBO_COMPENSATE)
-				F_SET(
-				    (DB_LOG *)dbenv->lg_handle, DBLOG_RECOVER);
 			if (ret != 0)
 				goto retry;
 		}
@@ -1701,7 +1696,10 @@ next:
 		if (ctxn != NULL &&
 			(t_ret = __txn_abort(ctxn)) != 0 && ret == 0)
 			ret = t_ret;
-
+		if (meta != NULL) {
+			(void)__memp_fput(mpf, meta, 0);
+			meta = NULL;
+		}
 		if (dbp_created &&
 			(t_ret = __db_close(dbp, txn, DB_NOSYNC)) != 0 && ret == 0)
 			ret = t_ret;
@@ -1744,7 +1742,7 @@ __db_limbo_fix(dbp, txn, ctxn, elp, lastp, meta, state)
 	DB_ENV *dbenv;
 	PAGE *freep, *pagep;
 	db_pgno_t next, pgno;
-	u_int8_t always_free;
+	u_int8_t logged_free;
 	u_int32_t i;
 	extern int gbl_cmptxn_inherit_locks;
 	int put_page, ret, t_ret, inherit;
@@ -1767,7 +1765,7 @@ __db_limbo_fix(dbp, txn, ctxn, elp, lastp, meta, state)
 
 	for (i = 0; i < elp->u.p.nentries; i++) {
 		pgno = elp->u.p.pgno_array[i];
-		always_free = elp->u.p.flags_array[i];
+		logged_free = elp->u.p.flags_array[i];
 
 		if (pgno == PGNO_INVALID)
 			continue;
@@ -1780,46 +1778,51 @@ __db_limbo_fix(dbp, txn, ctxn, elp, lastp, meta, state)
 		}
 		put_page = 1;
 
-		if (state == LIMBO_COMPENSATE || IS_ZERO_LSN(LSN(pagep)) ||
-			(state == LIMBO_RECOVER_DISJOINT && always_free)) {
+		if (state == LIMBO_COMPENSATE || state == LIMBO_COMPENSATE_DISJOINT ||
+			IS_ZERO_LSN(LSN(pagep)) || (state == LIMBO_RECOVER_DISJOINT &&
+				logged_free)) {
 			if (ctxn == NULL) {
 				/*
 				 * If this is a fatal recovery which
 				 * spans a previous crash this page may
 				 * be on the free list already.
 				 */
-				if (!always_free) {
-					for (next = *lastp; next != 0; ) {
-						if (next == pgno)
-							break;
-						if ((ret = __memp_fget(mpf, &next, 0, &freep)) != 0)
-							goto err;
-						next = NEXT_PGNO(freep);
-						if ((ret = __memp_fput(mpf, freep, 0)) != 0)
-							goto err;
-					}
-
-					if (next != pgno) {
-						P_INIT(pagep, dbp->pgsize, pgno, PGNO_INVALID, *lastp,
-								0, P_INVALID);
-						/* Make the lsn non-zero but generic. */
-						INIT_LSN(LSN(pagep));
-						*lastp = pgno;
-					}
+				for (next = *lastp; next != 0; ) {
+					if (next == pgno)
+						break;
+					if ((ret = __memp_fget(mpf, &next, 0, &freep)) != 0)
+						goto err;
+					next = NEXT_PGNO(freep);
+					if ((ret = __memp_fput(mpf, freep, 0)) != 0)
+						goto err;
 				}
-			} else if (state == LIMBO_COMPENSATE) {
+
+				/* Already on the free list */
+				if (logged_free && next == pgno)
+					logged_free = elp->u.p.flags_array[i] = 0;
+
+				if (!logged_free && next != pgno) {
+					P_INIT(pagep, dbp->pgsize, pgno, PGNO_INVALID, *lastp,
+							0, P_INVALID);
+					/* Make the lsn non-zero but generic. */
+					INIT_LSN(LSN(pagep), pagep->pgno, pagep->lsn);
+					*lastp = pgno;
+				}
+			} else if (state == LIMBO_COMPENSATE ||
+					state == LIMBO_COMPENSATE_DISJOINT) {
 				/*
 				 * Generate a log record for what we did
 				 * on the LIMBO_TIMESTAMP pass.  All pages
 				 * here are free so P_OVERHEAD is sufficent.
 				 */
-				if (always_free) {
+				if (logged_free && state == LIMBO_COMPENSATE_DISJOINT) {
 					assert(!IS_ZERO_LSN(pagep->lsn));
 					if (dbc == NULL &&
 							(ret = __db_cursor(dbp, ctxn, &dbc, 0))!= 0)
 						goto err;
 					if ((ret = __db_dofree(dbc, pagep)) != 0)
 						goto err;
+					put_page = 0;
 				} else {
 					ZERO_LSN(pagep->lsn);
 					memset(&ldbt, 0, sizeof(ldbt));
@@ -1974,14 +1977,14 @@ int __db_txnlist_committed_page(dbenv, info, txnid, fileid, pgno)
  *	entry for the file and then add the pgno.
  */
 static int
-__db_txnlist_pgnoadd(dbenv, hp, fileid, uid, fname, pgno, always_free)
+__db_txnlist_pgnoadd(dbenv, hp, fileid, uid, fname, pgno, logged_free)
 	DB_ENV *dbenv;
 	DB_TXNHEAD *hp;
 	int32_t fileid;
 	u_int8_t uid[DB_FILE_ID_LEN];
 	char *fname;
 	db_pgno_t pgno;
-	u_int8_t always_free;
+	u_int8_t logged_free;
 {
 	DB_TXNLIST *elp;
 	size_t len;
@@ -2015,6 +2018,7 @@ __db_txnlist_pgnoadd(dbenv, hp, fileid, uid, fname, pgno, always_free)
 			goto err;
 		if ((ret = __os_malloc(dbenv,
 			8 * sizeof(u_int8_t), &elp->u.p.flags_array)) != 0)
+			goto err;
 		elp->u.p.maxentry = DB_TXNLIST_MAX_PGNO;
 		elp->u.p.nentries = 0;
 	} else if (elp->u.p.nentries == elp->u.p.maxentry) {
@@ -2022,13 +2026,15 @@ __db_txnlist_pgnoadd(dbenv, hp, fileid, uid, fname, pgno, always_free)
 		if ((ret = __os_realloc(dbenv, elp->u.p.maxentry *
 			sizeof(db_pgno_t), &elp->u.p.pgno_array)) != 0)
 			goto err;
+
 		if ((ret = __os_realloc(dbenv, elp->u.p.maxentry *
 			sizeof(u_int8_t), &elp->u.p.flags_array)) != 0)
 			goto err;
 	}
 
-	elp->u.p.flags_array[elp->u.p.nentries] = always_free;
-	elp->u.p.pgno_array[elp->u.p.nentries++] = pgno;
+	elp->u.p.pgno_array[elp->u.p.nentries] = pgno;
+	elp->u.p.flags_array[elp->u.p.nentries] = logged_free;
+	elp->u.p.nentries++;
 
 	return (0);
 

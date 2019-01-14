@@ -1052,6 +1052,7 @@ struct __db_txn {
 #define	TXN_RESTORED	0x080		/* Transaction has been restored. */
 #define	TXN_SYNC	0x100		/* Sync on prepare and commit. */
 #define	TXN_RECOVER_LOCK	0x200 /* Transaction holds the recovery lock */
+#define	TXN_COMPENSATE_DISJOINT	0x400 /* Normal txn during recovery */
 	u_int32_t	flags;
 
 	void     *app_private;		/* pointer to bdb transaction object */

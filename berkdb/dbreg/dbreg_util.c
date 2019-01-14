@@ -895,7 +895,7 @@ __dbreg_lazy_id(dbp)
 		return (0);
 	}
 	id = DB_LOGFILEID_INVALID;
-	if ((ret = __txn_begin(dbenv, NULL, &txn, 0)) != 0)
+	if ((ret = __txn_compensate_begin(dbenv, &txn, 0)) != 0)
 		goto err;
 
 	if ((ret = __dbreg_get_id(dbp, txn, &id)) != 0) {

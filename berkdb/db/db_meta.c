@@ -809,8 +809,9 @@ __db_dofree(dbc, h)
 	dirty_flag = 0;
 	pgno = PGNO_BASE_MD;
 	if ((ret = __db_lget(dbc,
-	    LCK_ALWAYS, pgno, DB_LOCK_WRITE, 0, &metalock)) != 0)
+		LCK_ALWAYS, pgno, DB_LOCK_WRITE, 0, &metalock)) != 0) {
 		goto err;
+	}
 	if ((ret = __memp_fget(mpf, &pgno, 0, &meta)) != 0) {
 		(void)__TLPUT(dbc, metalock);
 		goto err;

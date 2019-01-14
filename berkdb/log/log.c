@@ -174,6 +174,7 @@ __log_init(dbenv, dblp)
 {
 	DB_MUTEX *flush_mutexp;
 	LOG *region;
+    DB_LSN lsn = {0};
 	int ret;
 	void *p;
 #ifdef  HAVE_MUTEX_SYSTEM_RESOURCES
@@ -194,8 +195,8 @@ __log_init(dbenv, dblp)
 	region->free_fids = region->free_fids_alloced = 0;
 
 	/* Initialize LOG LSNs. */
-	INIT_LSN(region->lsn);
-	INIT_LSN(region->t_lsn);
+	INIT_LSN(region->lsn, 0, lsn);
+	INIT_LSN(region->t_lsn, 0, lsn);
 
 	/*
 	 * It's possible to be waiting for an LSN of [1][0], if a replication

@@ -180,6 +180,8 @@ __memp_fput_internal(dbmfp, pgaddr, flags, pgorder)
 	if (bhp->ref == 0) {
 		__db_err(dbenv, "%s: page %lu: unpinned page returned",
 		    __memp_fn(dbmfp), (u_long)bhp->pgno);
+        /* XXX remove after debugging */
+        abort();
 		MUTEX_UNLOCK(dbenv, &hp->hash_mutex);
 		return (EINVAL);
 	}

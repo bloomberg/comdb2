@@ -415,12 +415,13 @@ __txn_xa_begin(dbenv, txn)
  * that is used only for transactions that must be started to compensate
  * for actions during an abort.  Currently only used for allocations.
  *
- * PUBLIC: int __txn_compensate_begin __P((DB_ENV *, DB_TXN **txnp));
+ * PUBLIC: int __txn_compensate_begin __P((DB_ENV *, DB_TXN **txnp, int state));
  */
 int
-__txn_compensate_begin(dbenv, txnpp)
+__txn_compensate_begin(dbenv, txnpp, state)
 	DB_ENV *dbenv;
 	DB_TXN **txnpp;
+    int state;
 {
 	DB_TXN *txn;
 	int ret;
@@ -436,7 +437,9 @@ __txn_compensate_begin(dbenv, txnpp)
 	TAILQ_INIT(&txn->alloced_pages);
 	TAILQ_INIT(&txn->freed_pages);
 	STAILQ_INIT(&txn->logs);
-	txn->flags = TXN_COMPENSATE | TXN_MALLOC;
+    txn->flags = TXN_COMPENSATE | TXN_MALLOC;
+	if (state == LIMBO_COMPENSATE_DISJOINT)
+		txn->flags |= TXN_COMPENSATE_DISJOINT;
 
 	*txnpp = txn;
 	return (__txn_begin_int(txn, DB_TXN_INTERNAL));
@@ -504,6 +507,8 @@ __txn_begin_int_int(txn, retries, we_start_at_this_lsn, flags)
 	R_LOCK(dbenv, &mgr->reginfo);
 	if (!F_ISSET(txn, TXN_COMPENSATE) && F_ISSET(region, TXN_IN_RECOVERY)) {
 		__db_err(dbenv, "operation not permitted during recovery");
+        /* XXX remove after debugging */
+		abort();
 		ret = EINVAL;
 		goto err;
 	}
@@ -966,7 +971,8 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 			return __db_panic(dbenv, c_ret);
 	}
 
-	elect_highest_committed_gen = dbenv->attr.elect_highest_committed_gen;
+	elect_highest_committed_gen = (dbenv->attr.elect_highest_committed_gen &&
+			!F_ISSET(txnp, TXN_COMPENSATE));
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
 
@@ -1002,7 +1008,8 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	if (gbl_dumptxn_at_commit)
 		dumptxn(dbenv, &txnp->last_lsn);
 
-	if (DBENV_LOGGING(dbenv) && (!IS_ZERO_LSN(txnp->last_lsn) ||
+	if (LOGGING_ON(dbenv) &&
+            (!IS_ZERO_LSN(txnp->last_lsn) ||
 		STAILQ_FIRST(&txnp->logs) != NULL)) {
 		if (txnp->parent == NULL) {
 			/*

@@ -13,7 +13,7 @@ int __txn_begin __P((DB_ENV *, DB_TXN *, DB_TXN **, u_int32_t));
 int __txn_begin_main __P((DB_ENV *, DB_TXN *, DB_TXN **, u_int32_t, u_int32_t));
 int __txn_begin_set_retries __P((DB_ENV *, DB_TXN *, DB_TXN **, u_int32_t, u_int32_t));
 int __txn_xa_begin __P((DB_ENV *, DB_TXN *));
-int __txn_compensate_begin __P((DB_ENV *, DB_TXN **txnp));
+int __txn_compensate_begin __P((DB_ENV *, DB_TXN **txnp, int state));
 int __txn_commit __P((DB_TXN *, u_int32_t));
 int __txn_abort __P((DB_TXN *));
 int __txn_discard __P((DB_TXN *, u_int32_t flags));

@@ -112,7 +112,8 @@ typedef enum {
 	LIMBO_RECOVER,		/* We are in recovery. */
 	LIMBO_RECOVER_DISJOINT,	/* We may have to recover disjoint pages. */
 	LIMBO_TIMESTAMP,	/* We are recovering to a timestamp. */
-	LIMBO_COMPENSATE	/* After recover to ts, generate log records. */
+	LIMBO_COMPENSATE,	/* After recover to ts, generate log records. */
+	LIMBO_COMPENSATE_DISJOINT
 } db_limbo_state;
 
 #endif /* !_DB_DISPATCH_H_ */
