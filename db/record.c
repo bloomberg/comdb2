@@ -83,6 +83,11 @@ void free_cached_idx(uint8_t * *cached_idx);
 
 int gbl_max_wr_rows_per_txn = 0;
 
+inline bool is_event_from_sc(int flags)                                                                                                           
+{
+    return flags & RECFLAGS_NEW_SCHEMA;
+}
+
 /*
  * For logical_livesc, function returns ERR_VERIFY if
  * the record being added is already in the btree.
@@ -462,16 +467,9 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
      * data. The keys, however, are also added to the deferred
      * temporary table to enable cascading updates, if needed.
      */
-    if (gbl_reorder_idx_writes || (flags & RECFLAGS_NO_CONSTRAINTS) /* if no constraints */
-        || (rec_flags & OSQL_IGNORE_FAILURE)) {
-        retrc = add_record_indices(iq, trans, blobs, maxblobs, opfailcode,
-                                   ixfailnum, rrn, genid, vgenid, ins_keys,
-                                   opcode, blkpos, od_dta, od_len, ondisktag,
-                                   ondisktagsc, flags);
-        if (retrc)
-            ERR;
-    } else {
-        if (!(flags & RECFLAGS_NEW_SCHEMA)) {
+    if (!(flags & RECFLAGS_NO_CONSTRAINTS)) /* if no constraints */
+    {
+        if (!is_event_from_sc(flags)) {
             /* enqueue the add of the key for constaint checking purposes */
             rc = insert_add_op(iq, NULL, NULL, opcode, *rrn, -1, *genid,
                                ins_keys, blkpos, rec_flags);
@@ -488,6 +486,17 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
              */
         }
     }
+
+    if ((flags & RECFLAGS_NO_CONSTRAINTS) /* if no constraints */
+        || (rec_flags & OSQL_IGNORE_FAILURE)) {
+        retrc = add_record_indices(iq, trans, blobs, maxblobs, opfailcode,
+                                   ixfailnum, rrn, genid, vgenid, ins_keys,
+                                   opcode, blkpos, od_dta, od_len, ondisktag,
+                                   ondisktagsc, flags);
+        if (retrc)
+            ERR;
+    }
+
 
     /*
      * Trigger stored procedures (JAVASP_TRANS_LISTEN_AFTER_ADD)

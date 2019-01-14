@@ -249,7 +249,7 @@ int insert_add_op(struct ireq *iq, const uint8_t *p_buf_req_start,
     rc = bdb_temp_table_insert(thedb->bdb_env, cur, key,
                                sizeof(int) + sizeof(long long), &cte_record,
                                sizeof(cte), &err);
-printf("AZ: insert_add_op here genid=%llx, rc=%d\n", bdb_genid_to_host_order(genid), rc);
+logmsg(LOGMSG_ERROR, "AZ: insert_add_op here genid=%llx, rc=%d\n", bdb_genid_to_host_order(genid), rc);
     close_constraint_table_cursor(cur);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "insert_add_op: bdb_temp_table_insert rc = %d\n", rc);
@@ -971,6 +971,10 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
     int od_tail_len = 0;
     char mangled_key[MAXKEYLEN];
 
+#if DEBUG_REORDER
+    logmsg(LOGMSG_DEBUG, "%s(): entering\n", __func__);
+#endif
+
     od_dta = alloca(20 * 1024 + 8);
     if (od_dta == NULL) {
         if (iq->debug)
@@ -1057,6 +1061,7 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
             LIVE_SC_DELAYED_KEY_ADDS(0 /* not last */);
         }
 
+logmsg(LOGMSG_DEBUG, "%s(): procesing genid=%lld\n", __func__, curop->genid);
         iq->usedb = curop->usedb;
         int addrrn = curop->rrn;
         int ixnum = curop->ixnum;
