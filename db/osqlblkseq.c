@@ -45,9 +45,8 @@ int osql_blkseq_init(void)
 
     hiqs = hash_init_o(offsetof(struct ireq, seq), sizeof(fstblkseq_t));
     if (!hiqs) {
-        logmsg(LOGMSG_ERROR, 
-                "UNABLE TO init a hash? ignoring blocksql blockseq optimization\n");
-        rc = -1;
+        logmsg(LOGMSG_FATAL, "UNABLE TO init hash\n");
+        abort();
     }
 
     Pthread_rwlock_unlock(&hlock);
@@ -67,42 +66,32 @@ int osql_blkseq_register(struct ireq *iq)
     struct ireq *iq_src = NULL;
     int rc = 0;
 
+    assert(hiqs != NULL);
+
     Pthread_rwlock_wrlock(&hlock);
-
-    if (!hiqs) {
-        rc = OSQL_BLOCKSEQ_INV;
-        goto done;
-    }
-
     iq_src = hash_find(hiqs, (const void *)&iq->seq);
-
-    if (!iq_src) {
-        /* first time */
+    if (!iq_src) { /* not there, we add it */
         hash_add(hiqs, iq);
         rc = OSQL_BLOCKSEQ_FIRST;
-        goto done;
-    } else {
-        /* wait for */
-        while (1) {
-            /* losing the write lock first run */
-            Pthread_rwlock_unlock(&hlock);
-            poll(NULL, 0, gbl_block_blkseq_poll);
+    }
+    Pthread_rwlock_unlock(&hlock);
+   
+    /* rc == 0 means we need to wait for it to go away */
+    while (rc == 0) {
+        poll(NULL, 0, gbl_block_blkseq_poll);
 
-            /* rdlock will suffice */
-            Pthread_rwlock_rdlock(&hlock);
+        /* rdlock will suffice */
+        Pthread_rwlock_rdlock(&hlock);
+        iq_src = hash_find_readonly(hiqs, (const void *)&iq->seq);
+        Pthread_rwlock_unlock(&hlock);
 
-            iq_src = hash_find_readonly(hiqs, (const void *)&iq->seq);
-            if (!iq_src) {
-                /* done waiting */
-                rc = OSQL_BLOCKSEQ_REPLAY;
-                goto done;
-            }
-            /* keep searching */
+        if (!iq_src) {
+            /* done waiting */
+            rc = OSQL_BLOCKSEQ_REPLAY;
         }
+        /* keep searching */
     }
 
-done:
-    Pthread_rwlock_unlock(&hlock);
     return rc;
 }
 
@@ -113,11 +102,10 @@ done:
  */
 int osql_blkseq_unregister(struct ireq *iq)
 {
+    assert(hiqs != NULL);
+
     Pthread_rwlock_wrlock(&hlock);
-
-    if (hiqs) /* Fix a deadlock */
-        hash_del(hiqs, iq);
-
+    hash_del(hiqs, iq);
     Pthread_rwlock_unlock(&hlock);
     return 0;
 }
