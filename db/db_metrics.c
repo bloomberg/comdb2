@@ -27,8 +27,8 @@
 #include <sys/resource.h>
 
 struct comdb2_metrics_store {
-    int64_t bpool_hits;
-    int64_t bpool_misses;
+    int64_t cache_hits;
+    int64_t cache_misses;
     double  cache_hit_rate;
     int64_t commits;
     int64_t connections;
@@ -94,10 +94,10 @@ static struct comdb2_metrics_store stats;
   Please keep'em sorted.
 */
 comdb2_metric gbl_metrics[] = {
-    {"bpool_hits", "Buffer pool hits", STATISTIC_INTEGER,
-     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.bpool_hits, NULL},
-    {"bpool_misses", "Buffer pool misses", STATISTIC_COLLECTION_TYPE_CUMULATIVE,
-     STATISTIC_INTEGER, &stats.bpool_misses, NULL},
+    {"cache_hits", "Buffer pool hits", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.cache_hits, NULL},
+    {"cache_misses", "Buffer pool misses", STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     STATISTIC_INTEGER, &stats.cache_misses, NULL},
     {"cache_hit_rate", "Buffer pool request hit rate", STATISTIC_DOUBLE,
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.cache_hit_rate, NULL},
     {"commits", "Number of commits", STATISTIC_INTEGER,
@@ -328,8 +328,8 @@ int refresh_metrics(void)
         return 1;
     }
 
-    rc = bdb_get_bpool_counters(thedb->bdb_env, &stats.bpool_hits,
-                                &stats.bpool_misses, &stats.rw_evicts);
+    rc = bdb_get_bpool_counters(thedb->bdb_env, &stats.cache_hits,
+                                &stats.cache_misses, &stats.rw_evicts);
     if (rc) {
         logmsg(LOGMSG_ERROR, "failed to refresh statistics (%s:%d)\n", __FILE__,
                __LINE__);
