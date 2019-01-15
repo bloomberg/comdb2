@@ -1757,8 +1757,6 @@ extern int gbl_max_columns_soft_limit;
 
 extern int gbl_use_plan;
 
-extern int gbl_instant_schema_change;
-
 extern int gbl_num_record_converts;
 extern int gbl_num_record_upgrades;
 
