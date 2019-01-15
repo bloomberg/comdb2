@@ -590,23 +590,8 @@ int live_sc_post_delete_int(struct ireq *iq, void *trans,
         return 0;
     }
 
-    int stripe = get_dtafile_from_genid(genid);
-    if (stripe < 0 || stripe >= gbl_dtastripe) {
-        logmsg(LOGMSG_ERROR, "%s: genid 0x%llx stripe %d out of range!\n",
-               __func__, genid, stripe);
-        return 0;
-    }
-    unsigned long long *sc_genids = iq->usedb->sc_to->sc_genids;
-    if (!sc_genids[stripe]) {
-        /* A genid of zero is invalid.  So, if the schema change cursor is at
-         * genid zero it means pretty conclusively that it hasn't done anything
-         * yet so we cannot possibly be behind the cursor. */
-        return 0;
-    }
-
-    int is_gen_gt_scptr = is_genid_right_of_stripe_pointer(
-        iq->usedb->handle, genid, sc_genids[stripe]);
-    if (is_gen_gt_scptr) {
+    if (is_genid_right_of_stripe_pointer(iq->usedb->handle, genid,
+                                         iq->usedb->sc_to->sc_genids)) {
         return 0;
     }
 
@@ -646,24 +631,11 @@ int live_sc_post_add_int(struct ireq *iq, void *trans, unsigned long long genid,
         return 0;
     }
 
-    int stripe = get_dtafile_from_genid(genid);
-    if (stripe < 0 || stripe >= gbl_dtastripe) {
-        logmsg(LOGMSG_ERROR,
-               "live_sc_post_add: genid 0x%llx stripe %d out of range!\n",
-               genid, stripe);
-        return 0;
-    }
-    unsigned long long *sc_genids = iq->usedb->sc_to->sc_genids;
-    if (!sc_genids[stripe]) {
-        /* A genid of zero is invalid.  So, if the schema change cursor is at
-         * genid zero it means pretty conclusively that it hasn't done anything
-         * yet so we cannot possibly be behind the cursor. */
-        return 0;
-    }
     if (is_genid_right_of_stripe_pointer(iq->usedb->handle, genid,
-                                         sc_genids[stripe])) {
+                                         iq->usedb->sc_to->sc_genids)) {
         return 0;
     }
+
     return live_sc_post_add_record(iq, trans, genid, od_dta, ins_keys, blobs,
                                    maxblobs, origflags, rrn);
 }
@@ -745,33 +717,15 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
         return 0;
     }
 
-    int stripe = get_dtafile_from_genid(oldgenid);
-    if (stripe < 0 || stripe >= gbl_dtastripe) {
-        logmsg(LOGMSG_ERROR,
-               "live_sc_post_update: oldgenid 0x%llx stripe %d out of range!\n",
-               oldgenid, stripe);
-        return 0;
-    }
     unsigned long long *sc_genids = iq->usedb->sc_to->sc_genids;
-    if (!sc_genids[stripe]) {
-        /* A genid of zero is invalid.  So, if the schema change cursor is at
-         * genid zero it means pretty conclusively that it hasn't done anything
-         * yet so we cannot possibly be behind the cursor. */
-        return 0;
-    }
-    /*
-    if(get_dtafile_from_genid(newgenid) != stripe)
-        printf("WARNING: New genid in stripe %d, newgenid %llx, oldgenid
-    %llx\n", newstripe, newgenid, oldgenid);
-    */
     if (iq->debug) {
         reqpushprefixf(iq, "live_sc_post_update: ");
     }
 
     int is_oldgen_gt_scptr = is_genid_right_of_stripe_pointer(
-        iq->usedb->handle, oldgenid, sc_genids[stripe]);
+        iq->usedb->handle, oldgenid, sc_genids);
     int is_newgen_gt_scptr = is_genid_right_of_stripe_pointer(
-        iq->usedb->handle, newgenid, sc_genids[stripe]);
+        iq->usedb->handle, newgenid, sc_genids);
     int rc = 0;
 
     // spelling this out for legibility, various situations:
@@ -781,14 +735,16 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
         if (iq->debug)
             reqprintf(iq,
                       "C1: scptr 0x%llx ... oldgenid 0x%llx newgenid 0x%llx ",
-                      sc_genids[stripe], oldgenid, newgenid);
+                      get_genid_stripe_pointer(oldgenid, sc_genids), oldgenid,
+                      newgenid);
     } else if (is_newgen_gt_scptr &&
                !is_oldgen_gt_scptr) // case 2) oldgenid  .^....  newgenid
     {
         if (iq->debug)
             reqprintf(
                 iq, "C2: oldgenid 0x%llx ... scptr 0x%llx ... newgenid 0x%llx ",
-                oldgenid, sc_genids[stripe], newgenid);
+                oldgenid, get_genid_stripe_pointer(oldgenid, sc_genids),
+                newgenid);
         rc = live_sc_post_del_record(iq, trans, oldgenid, old_dta, del_keys,
                                      oldblobs);
     } else if (!is_newgen_gt_scptr &&
@@ -797,7 +753,8 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
         if (iq->debug)
             reqprintf(
                 iq, "C3: newgenid 0x%llx ...scptr 0x%llx ... oldgenid 0x%llx ",
-                newgenid, sc_genids[stripe], oldgenid);
+                newgenid, get_genid_stripe_pointer(oldgenid, sc_genids),
+                oldgenid);
         rc = live_sc_post_add_record(iq, trans, newgenid, new_dta, ins_keys,
                                      blobs, maxblobs, origflags, &rrn);
     } else if (!is_newgen_gt_scptr &&
@@ -806,7 +763,8 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
         if (iq->debug)
             reqprintf(iq,
                       "C4: oldgenid 0x%llx newgenid 0x%llx ... scptr 0x%llx",
-                      oldgenid, newgenid, sc_genids[stripe]);
+                      oldgenid, newgenid,
+                      get_genid_stripe_pointer(oldgenid, sc_genids));
         rc = live_sc_post_upd_record(
             iq, trans, oldgenid, old_dta, newgenid, new_dta, ins_keys, del_keys,
             od_len, updCols, blobs, deferredAdd, oldblobs, newblobs);
