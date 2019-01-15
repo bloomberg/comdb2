@@ -43,7 +43,7 @@
 
 static char *gbl_eventlog_fname = NULL;
 static char *eventlog_fname(const char *dbname);
-static int eventlog_nkeep = 10;
+static int eventlog_nkeep = 0;
 static int eventlog_rollat = 100 * 1024 * 1024; // 100MB to begin
 static int eventlog_enabled = 1;
 static int eventlog_detailed = 0;
@@ -84,8 +84,11 @@ static inline void free_gbl_eventlog_fname()
     gbl_eventlog_fname = NULL;
 }
 
-static void eventlog_roll()
+static void eventlog_roll_cleanup()
 {
+    if (eventlog_nkeep == 0)
+        return;
+
     char cmd[512] = {0};
     char *fname = comdb2_location("logs", "%s.events", thedb->envname);
     snprintf(cmd, sizeof(cmd) - 1, 
@@ -102,7 +105,7 @@ static void eventlog_roll()
 
 static gzFile eventlog_open()
 {
-    eventlog_roll();
+    eventlog_roll_cleanup();
     char *fname = eventlog_fname(thedb->envname);
     gbl_eventlog_fname = fname;
     gzFile f = gzopen(fname, "2w");
