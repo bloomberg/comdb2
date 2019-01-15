@@ -18,6 +18,7 @@
 #include <stdarg.h>
 #include <errno.h>
 #include "db.h"
+#include <logmsg.h>
 
 #include "dbinc/queue.h"
 #include "dbinc/shqueue.h"
@@ -407,8 +408,8 @@ typedef struct __dbpginfo {
 
 #if DEBUG_INIT_LSN
 #define	INIT_LSN(LSN, INPGNO, INLSN)		do {					\
-    fprintf(stderr, "%s line %d initing page %d prevlsn [%d:%d]\n", \
-            __func__, __LINE__, INPGNO, INLSN.file, INLSN.offset); \
+	logmsg(LOGMSG_USER, "%s line %d initing page %d prevlsn [%d:%d]\n", \
+			__func__, __LINE__, INPGNO, INLSN.file, INLSN.offset); \
 	(LSN).file = 1;							\
 	(LSN).offset = 0;						\
 } while (0)
