@@ -20,6 +20,7 @@
 #include "sc_util.h"
 #include "sc_global.h"
 #include "sc_schema.h"
+#include "sc_callbacks.h"
 #include "intern_strings.h"
 #include "views.h"
 #include "logmsg.h"
@@ -622,6 +623,11 @@ void verify_schema_change_constraint(struct ireq *iq, void *trans,
 
     if (usedb->sc_to->n_constraints == 0)
         goto done;
+
+    if (is_genid_right_of_stripe_pointer(usedb->handle, newgenid,
+                                         usedb->sc_to->sc_genids)) {
+        goto done;
+    }
 
     if (usedb->sc_to->ix_blob) {
         rc =
