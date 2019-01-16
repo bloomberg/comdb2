@@ -80,7 +80,7 @@ extern void listc_free(listc_t *l);
 extern void listc_init(void *list, int offset);
 
 /* find in list. returns item found*/
-extern int listc_is_present(listc_t *l, void *inobj);
+extern int listc_is_present(void *list, void *inobj);
 
 /* remove from list. returns item removed*/
 extern void *listc_rfl(void *list, void *obj);
