@@ -383,6 +383,7 @@ if [[ $debug -eq 1 ]]; then
         echo "export SECONDARY_DBDIR=\"${SECONDARY_DBDIR}\"" >> $SETENV
         echo "export SECONDARY_CDB2_OPTIONS=\"${SECONDARY_CDB2_OPTIONS}\"" >> $SETENV
     fi
+    echo "export SP_OPTIONS=\"-s --cdb2cfg ${CDB2_CONFIG} ${DBNAME} default\"" >> $SETENV
     echo "export PATH=${paths}"':${PATH}' >> $SETENV
     [[ -n "$CLUSTER" ]] && echo 'export CLUSTER="'$CLUSTER'"' >> $SETENV
     [[ -n "$SKIPSSL" ]] && echo 'export SKIPSSL="'$SKIPSSL'"' >> $SETENV
