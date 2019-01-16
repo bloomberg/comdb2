@@ -44,7 +44,7 @@ inline int schema_read_held_int(const char *file, const char *func, int line)
 {
   int rc = 0;
   Pthread_mutex_lock(&schema_rd_thds_lk);
-  struct pthread_t_link current, temp
+  struct pthread_t_link current, temp;
   pthread_t self = pthread_self();
   LISTC_FOR_EACH_SAFE(&schema_rd_thds, current, temp, lnk)
   {
