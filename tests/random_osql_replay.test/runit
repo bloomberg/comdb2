@@ -5,15 +5,23 @@ bash -n "$0" | exit 1
 #set -x
 maxloop=5000
 
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "drop table t1"
 cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "create table t1 ( a int primary key )"
-cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "truncate t1"
+
+
+# send random osql from replicant to master, master should not crash
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "put tunable osql_random_test 'on'"
+
+
+
 
 # Enable random restarts
-cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "put tunable osql_random_restart 'on'"
 if [[ -n $CLUSTER ]]; then
     for x in $CLUSTER ; do
-        cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $x default "put tunable osql_random_restart 'on'"
+        cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $x "put tunable osql_random_restart 'on'"
     done
+else
+    cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "put tunable osql_random_restart 'on'"
 fi
 
 for x in $(seq 1 $maxloop) ; do 
