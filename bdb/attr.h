@@ -651,6 +651,14 @@ DEF_ATTR(DELAY_WRITES_IN_RECORD_C, delay_writes_in_record_c, MSECS, 0, NULL)
 
 DEF_ATTR(NET_SEND_GBLCONTEXT, net_send_gblcontext, BOOLEAN, 0,
          "Enable net_send for USER_TYPE_GBLCONTEXT.")
+
+DEF_ATTR(
+    VIEWS_DFT_PREEMPT_ROLL_SECS, views_dft_preempt_roll_secs, SECS, 1800,
+    "Amount of seconds to run phase 1 of time partition rollout before phase 2")
+DEF_ATTR(
+    VIEWS_DFT_ROLL_DELETE_LAG_SECS, views_dft_roll_delete_lag_secs, SECS, 5,
+    "Amount of seconds to run phase 3 of time partition rollout after phase 2")
+
 /*
   BDB_ATTR_REPTIMEOUT
      amount of time to wait for acks.  when the time is exceeded,

@@ -517,7 +517,7 @@ int toblobask(struct ireq *iq)
     char cachetag[MAXTAGLEN + 1]; /* as used in the cache */
 
     struct blobask_req req;
-    struct blobask_rsp rsp;
+    struct blobask_rsp rsp = {0};
 
     uint8_t *p_buf_out;
     uint8_t *p_buf_out_rsp_start = NULL;

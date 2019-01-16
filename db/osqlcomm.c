@@ -7262,7 +7262,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         (*receivedrows)++;
     } break;
     case OSQL_UPDCOLS: {
-        osql_updcols_t dt;
+        osql_updcols_t dt = {0};
         const uint8_t *p_buf_end = p_buf + sizeof(osql_updcols_t);
         int i;
 
@@ -7781,7 +7781,7 @@ static void net_sorese_signal(void *hndl, void *uptr, char *fromhost,
                               int usertype, void *dtap, int dtalen,
                               uint8_t is_tcp)
 {
-    osql_done_t done;
+    osql_done_t done = {0};
     struct errstat *xerr;
     uint8_t *p_buf = (uint8_t *)dtap;
     uint8_t *p_buf_end = p_buf + dtalen;
@@ -8177,7 +8177,7 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     } break;
 
     case OSQL_UPDCOLS: {
-        osql_updcols_t dt;
+        osql_updcols_t dt = {0};
         // uint8_t         *p_buf= (uint8_t *)&((osql_updcols_rpl_t*)msg)->dt;
         uint8_t *p_buf_end = p_buf + sizeof(osql_updcols_t);
         int jj;

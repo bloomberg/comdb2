@@ -693,7 +693,7 @@ int pfx_compress_pages(DB *dbp, PAGE *newpage, PAGE *head, pfx_t *pfx, int np, .
 		}
 
 		for (i = NUM_ENT(newpage), ih = 0; i < n; ++i, ++ih) {
-			DBT from;
+			DBT from = {0};
 			void *to = NULL;
 			int need;
 			BKEYDATA *key;
