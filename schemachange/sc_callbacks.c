@@ -167,9 +167,9 @@ int is_genid_right_of_stripe_pointer(bdb_state_type *bdb_state,
 {
     int stripe = get_dtafile_from_genid(genid);
     if (stripe < 0 || stripe >= gbl_dtastripe) {
-        logmsg(LOGMSG_ERROR, "%s: genid 0x%llx stripe %d out of range!\n",
+        logmsg(LOGMSG_FATAL, "%s: genid 0x%llx stripe %d out of range!\n",
                __func__, genid, stripe);
-        return -1;
+        abort();
     }
     if (!sc_genids[stripe]) {
         /* A genid of zero is invalid.  So, if the schema change cursor is at
@@ -185,9 +185,9 @@ unsigned long long get_genid_stripe_pointer(unsigned long long genid,
 {
     int stripe = get_dtafile_from_genid(genid);
     if (stripe < 0 || stripe >= gbl_dtastripe) {
-        logmsg(LOGMSG_ERROR, "%s: genid 0x%llx stripe %d out of range!\n",
+        logmsg(LOGMSG_FATAL, "%s: genid 0x%llx stripe %d out of range!\n",
                __func__, genid, stripe);
-        return -1ULL;
+        abort();
     }
     return sc_genids[stripe];
 }
