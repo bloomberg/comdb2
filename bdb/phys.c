@@ -111,6 +111,7 @@ Add the key                             ll_key_add (same call)
 #include "flibc.h"
 #include "net.h"
 #include "bdb_int.h"
+#include "sql_bdb.h"
 #include "locks.h"
 #include <dbinc/db_swap.h>
 #include "logmsg.h"

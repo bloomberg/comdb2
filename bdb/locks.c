@@ -63,6 +63,7 @@
 
 #include <net.h>
 #include "bdb_int.h"
+#include "sql_bdb.h"
 #include "locks.h"
 #include "dbinc/hmac.h"
 #include "genid.h"

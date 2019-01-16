@@ -21,6 +21,7 @@
 #include <compile_time_assert.h>
 #include <flibc.h>
 #include "bdb_int.h"
+#include "sql_bdb.h"
 #include "endian_core.h"
 #include "locks.h"
 #include "genid.h"
