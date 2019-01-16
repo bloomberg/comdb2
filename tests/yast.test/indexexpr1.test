@@ -130,7 +130,7 @@ do_execsql_test indexexpr1-210eqp {
   SELECT b, c, '|' FROM t1 WHERE substr(a,1,12)=='and_the_Word' ORDER BY b, c;
 } {
     6 0 0 {SEARCH TABLE t1 USING INDEX $T1A1_FDB7EC21 (<expr>=?) (~10 rows)}
-    17 0 0 {USE TEMP B-TREE FOR ORDER BY}
+    19 0 0 {USE TEMP B-TREE FOR ORDER BY}
 }
 #{/USING INDEX t1a1/}
 do_execsql_test indexexpr1-220 {
@@ -141,7 +141,7 @@ do_execsql_test indexexpr1-220eqp {
   SELECT b, c, '|' FROM t1 WHERE 'and_the_Word'==substr(a,1,12) ORDER BY b, c;
 } {
     6 0 0 {SEARCH TABLE t1 USING INDEX $T1A1_FDB7EC21 (<expr>=?) (~10 rows)}
-    17 0 0 {USE TEMP B-TREE FOR ORDER BY}
+    19 0 0 {USE TEMP B-TREE FOR ORDER BY}
 }
 #{/USING INDEX t1a1/}
 
@@ -169,7 +169,7 @@ do_execsql_test indexexpr1-241eqp {
   SELECT id FROM t1 WHERE substr(a,b,3)<='and' ORDER BY +id;
 } {
     6 0 0 {SEARCH TABLE t1 USING INDEX $T1ABX_BB942037 (<expr><?) (~262144 rows)}
-    17 0 0 {USE TEMP B-TREE FOR ORDER BY}
+    19 0 0 {USE TEMP B-TREE FOR ORDER BY}
 }
 #{/USING INDEX t1abx/}
 do_execsql_test indexexpr1-242 {
@@ -184,7 +184,7 @@ do_execsql_test indexexpr1-250eqp {
   SELECT id FROM t1 WHERE substr(a,b,3) IN ('and','l_t','xyz')
    ORDER BY +id;
 } {6 0 0 {SEARCH TABLE t1 USING INDEX $T1ABX_BB942037 (<expr>=?) (~30 rows)}
-   30 0 0 {USE TEMP B-TREE FOR ORDER BY}
+   32 0 0 {USE TEMP B-TREE FOR ORDER BY}
 }
 #{/USING INDEX t1abx/}
 
