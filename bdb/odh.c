@@ -1377,10 +1377,3 @@ inline void bdb_cleanup_fld_hints(bdb_state_type *bdb_state)
         bdb_state->fld_hints = NULL;
     }
 }
-
-void bdb_signal_sc_redo_wait(bdb_state_type *bdb_state)
-{
-    Pthread_mutex_lock(&bdb_state->sc_redo_lk);
-    Pthread_cond_signal(&bdb_state->sc_redo_wait);
-    Pthread_mutex_unlock(&bdb_state->sc_redo_lk);
-}

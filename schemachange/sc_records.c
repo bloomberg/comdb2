@@ -1235,6 +1235,15 @@ cleanup_no_msg:
     return NULL;
 }
 
+static void stop_sc_redo_wait(bdb_state_type *bdb_state,
+                              struct schema_change_type *s)
+{
+    Pthread_mutex_lock(&bdb_state->sc_redo_lk);
+    s->sc_convert_done[MAXDTASTRIPE] = 1;
+    Pthread_cond_signal(&bdb_state->sc_redo_wait);
+    Pthread_mutex_unlock(&bdb_state->sc_redo_lk);
+}
+
 int convert_all_records(struct dbtable *from, struct dbtable *to,
                         unsigned long long *sc_genids,
                         struct schema_change_type *s)
@@ -1528,11 +1537,10 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
 
     if (s->logical_livesc) {
         if (outrc == 0) {
-            s->sc_convert_done[MAXDTASTRIPE] = 1;
             sc_printf(s, "[%s] All convert threads finished\n",
                       from->tablename);
         }
-        bdb_signal_sc_redo_wait(from->handle);
+        stop_sc_redo_wait(from->handle, s);
     }
     /* wait for logical redo thread */
     while (s->logical_livesc && !s->hitLastCnt) {
@@ -3035,13 +3043,19 @@ done:
 }
 
 static struct sc_redo_lsn *get_next_redo_lsn(bdb_state_type *bdb_state,
-                                             int wait)
+                                             struct schema_change_type *s)
 {
     struct sc_redo_lsn *redo = NULL;
     pthread_mutex_t *mtx = &bdb_state->sc_redo_lk;
     pthread_cond_t *cond = &bdb_state->sc_redo_wait;
+    int wait = 1;
 
     Pthread_mutex_lock(mtx);
+
+    if (s->sc_convert_done[MAXDTASTRIPE]) {
+        /* all converter threads have finished */
+        wait = 0;
+    }
 
     redo = listc_rtl(&bdb_state->sc_redo_list);
     if (redo == NULL && wait) {
@@ -3182,8 +3196,7 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
         if (!serial) {
             /* Get the next lsn to redo, wait upto 10s unless all convert
              * threads have finished */
-            redo =
-                get_next_redo_lsn(bdb_state, !s->sc_convert_done[MAXDTASTRIPE]);
+            redo = get_next_redo_lsn(bdb_state, s);
         }
         if (!serial && redo == NULL) {
 #ifdef LOGICAL_LIVESC_DEBUG
