@@ -21,8 +21,11 @@
 
 #ifndef NDEBUG
 #include "comdb2_atomic.h"
+#include "list.h"
 
-static pthread_t schema_rd_thd = NULL;
+static pthread_mutex_t schema_rd_thds_lk = PTHREAD_MUTEX_INITIALIZER;
+static LISTC_T(pthread_t) schema_rd_thds = LISTC_T_INITIALIZER;
+
 static pthread_t schema_wr_thd = NULL;
 #endif
 
@@ -31,8 +34,11 @@ static pthread_rwlock_t schema_lk = PTHREAD_RWLOCK_INITIALIZER;
 #ifndef NDEBUG
 inline int schema_read_held_int(const char *file, const char *func, int line)
 {
-  pthread_t self = pthread_self();
-  return CAS64(schema_rd_thd, self, self);
+  int rc;
+  Pthread_mutex_lock(&schema_rd_thds_lk);
+  rc = listc_is_present(&schema_rd_thds, pthread_self());
+  Pthread_mutex_unlock(&schema_rd_thds_lk);
+  return rc;
 }
 
 inline int schema_write_held_int(const char *file, const char *func, int line)
@@ -46,7 +52,9 @@ inline void rdlock_schema_int(const char *file, const char *func, int line)
 {
     Pthread_rwlock_rdlock(&schema_lk);
 #ifndef NDEBUG
-    XCHANGE64(schema_rd_thd, pthread_self());
+    Pthread_mutex_lock(&schema_rd_thds_lk);
+    listc_abl(&schema_rd_thds, pthread_self());
+    Pthread_mutex_unlock(&schema_rd_thds_lk);
 #endif
 #ifdef VERBOSE_SCHEMA_LK
     logmsg(LOGMSG_USER, "%p:RDLOCK %s:%d\n", (void *)pthread_self(), func,
@@ -58,7 +66,11 @@ inline int tryrdlock_schema_int(const char *file, const char *func, int line)
 {
     int rc = pthread_rwlock_tryrdlock(&schema_lk);
 #ifndef NDEBUG
-    if (rc == 0) { XCHANGE64(schema_rd_thd, pthread_self()); }
+    if (rc == 0) {
+        Pthread_mutex_lock(&schema_rd_thds_lk);
+        listc_abl(&schema_rd_thds, pthread_self());
+        Pthread_mutex_unlock(&schema_rd_thds_lk);
+    }
 #endif
 #ifdef VERBOSE_SCHEMA_LK
     logmsg(LOGMSG_USER, "%p:TRYRDLOCK RC:%d %s:%d\n", (void *)pthread_self(),
@@ -76,8 +88,10 @@ inline void unlock_schema_int(const char *file, const char *func, int line)
 #ifndef NDEBUG
     pthread_t self = pthread_self();
     void *pNull = NULL;
-    CAS64(schema_rd_thd, self, pNull);
     CAS64(schema_wr_thd, self, pNull);
+    Pthread_mutex_lock(&schema_rd_thds_lk);
+    listc_rfl(&schema_rd_thds, self);
+    Pthread_mutex_unlock(&schema_rd_thds_lk);
 #endif
     Pthread_rwlock_unlock(&schema_lk);
 }

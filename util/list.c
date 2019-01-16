@@ -40,6 +40,7 @@ typedef struct {
 
 void listc_init(listc_t *l, size_t diff);
 listc_t *listc_new(size_t diff);
+int listc_is_present(listc_t *l, void *inobj);
 void *listc_atl(listc_t *l, void *obj);
 void *listc_abl(listc_t *l, void *obj);
 void *listc_rfl(listc_t *l, void *obj);
@@ -47,9 +48,8 @@ void *listc_rtl(listc_t *l);
 void *listc_rbl(listc_t *l);
 int listc_size(listc_t *l);
 
-#ifdef DEBUG_LISTS
 /* Return 1 if the element is present, 0 if not */
-static inline int listc_is_present(listc_t *l, void *inobj)
+int listc_is_present(listc_t *l, void *inobj)
 {
     char *obj;
 
@@ -63,6 +63,7 @@ static inline int listc_is_present(listc_t *l, void *inobj)
     return 0;
 }
 
+#ifdef DEBUG_LISTS
 static inline void listc_verify_there(listc_t *l, void *obj)
 {
     if (!listc_is_present(l, obj)) {
