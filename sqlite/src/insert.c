@@ -567,6 +567,10 @@ void sqlite3Insert(
   int tmask;                  /* Mask of trigger times */
 #endif
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  int closeIndices = 0;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
   db = pParse->db;
   if( pParse->nErr || db->mallocFailed ){
     goto insert_cleanup;
@@ -847,6 +851,7 @@ void sqlite3Insert(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     nIdx = sqlite3OpenTableAndIndices(pParse, pTab, OP_OpenWrite, 0, -1, 0,
                                       &iDataCur, &iIdxCur, onError, pUpsert);
+    closeIndices = nIdx;
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     nIdx = sqlite3OpenTableAndIndices(pParse, pTab, OP_OpenWrite, 0, -1, 0,
                                       &iDataCur, &iIdxCur);
@@ -1140,6 +1145,25 @@ void sqlite3Insert(
     sqlite3VdbeGoto(v, addrCont);
     sqlite3VdbeJumpHere(v, addrInsTop);
   }
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( !IsVirtual(pTab) && !isView ){
+    int idx;
+    /* Close all tables and indexes. */
+    if( iDataCur<iIdxCur ) sqlite3VdbeAddOp1(v, OP_Close, iDataCur);
+
+    /* In Comdb2, closeIndices will be non-zero only for specific cases.
+    ** (see sqlite3OpenTableAndIndices() and need_index_checks_for_upsert()).
+    ** Also, need_index_checks_for_upsert() cannot be used here as it relies
+    ** on pUpsert->pUpsertSet which should have been freed (reset) by now.
+    */
+    if ( closeIndices ) {
+      for(idx=0, pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext, idx++){
+        sqlite3VdbeAddOp1(v, OP_Close, idx+iIdxCur);
+      }
+    }
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #ifndef SQLITE_OMIT_XFER_OPT
@@ -2125,6 +2149,7 @@ int sqlite3OpenTableAndIndices(
   }else{
     sqlite3TableLock(pParse, iDb, pTab->tnum, op==OP_OpenWrite, pTab->zName);
   }
+  /* TODO (NC): Should assign pIdxCur here? */
   if( piIdxCur ) *piIdxCur = iBase;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( need_index_checks_for_upsert(pTab, pUpsert, onError, 0) ){
