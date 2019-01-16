@@ -166,6 +166,8 @@ void free_cached_idx(uint8_t **cached_idx)
 }
 
 #ifndef NDEBUG
+extern void lock_info_lockers(FILE *out, bdb_state_type *bdb_state);
+
 void bdb_verify_tran_invariants(
   bdb_state_type *bdb_state,
   tran_type *tran,
@@ -202,6 +204,7 @@ void bdb_verify_tran_invariants(
          "from %s at %s:%d\n", __func__, nlocks, lid, curtran, zFunc, zFile,
          iLine);
 
+  lock_info_lockers(stderr, bdb_state);
   abort();
 }
 #endif
