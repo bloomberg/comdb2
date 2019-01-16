@@ -26,7 +26,7 @@
 static pthread_mutex_t schema_rd_thds_lk = PTHREAD_MUTEX_INITIALIZER;
 
 struct pthread_t_link {
-    pthread_t *thread;
+    pthread_t thread;
     LINKC_T(struct pthread_t_link) lnk;
 };
 
