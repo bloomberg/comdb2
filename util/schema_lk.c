@@ -32,13 +32,13 @@ static pthread_rwlock_t schema_lk = PTHREAD_RWLOCK_INITIALIZER;
 inline int schema_read_held_int(const char *file, const char *func, int line)
 {
   pthread_t self = pthread_self();
-  return (CAS(schema_rd_thd, self, self) == self);
+  return CAS64(schema_rd_thd, self, self);
 }
 
 inline int schema_write_held_int(const char *file, const char *func, int line)
 {
   pthread_t self = pthread_self();
-  return (CAS(schema_wr_thd, self, self) == self);
+  return CAS64(schema_wr_thd, self, self);
 }
 #endif
 
@@ -46,7 +46,7 @@ inline void rdlock_schema_int(const char *file, const char *func, int line)
 {
     Pthread_rwlock_rdlock(&schema_lk);
 #ifndef NDEBUG
-    XCHANGE(schema_rd_thd, pthread_self());
+    XCHANGE64(schema_rd_thd, pthread_self());
 #endif
 #ifdef VERBOSE_SCHEMA_LK
     logmsg(LOGMSG_USER, "%p:RDLOCK %s:%d\n", (void *)pthread_self(), func,
@@ -58,7 +58,7 @@ inline int tryrdlock_schema_int(const char *file, const char *func, int line)
 {
     int rc = pthread_rwlock_tryrdlock(&schema_lk);
 #ifndef NDEBUG
-    if (rc == 0) { XCHANGE(schema_rd_thd, pthread_self()); }
+    if (rc == 0) { XCHANGE64(schema_rd_thd, pthread_self()); }
 #endif
 #ifdef VERBOSE_SCHEMA_LK
     logmsg(LOGMSG_USER, "%p:TRYRDLOCK RC:%d %s:%d\n", (void *)pthread_self(),
@@ -76,8 +76,8 @@ inline void unlock_schema_int(const char *file, const char *func, int line)
 #ifndef NDEBUG
     pthread_t self = pthread_self();
     void *pNull = NULL;
-    CAS(schema_rd_thd, self, pNull);
-    CAS(schema_wr_thd, self, pNull);
+    CAS64(schema_rd_thd, self, pNull);
+    CAS64(schema_wr_thd, self, pNull);
 #endif
     Pthread_rwlock_unlock(&schema_lk);
 }
@@ -86,7 +86,7 @@ inline void wrlock_schema_int(const char *file, const char *func, int line)
 {
     Pthread_rwlock_wrlock(&schema_lk);
 #ifndef NDEBUG
-    XCHANGE(schema_wr_thd, pthread_self());
+    XCHANGE64(schema_wr_thd, pthread_self());
 #endif
 #ifdef VERBOSE_SCHEMA_LK
     logmsg(LOGMSG_USER, "%p:WRLOCK %s:%d\n", (void *)pthread_self(), func,
