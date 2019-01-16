@@ -54,6 +54,8 @@ int bdb_lite_exact_fetch_int(bdb_state_type *bdb_state, tran_type *tran,
                              void *key, void *fnddta, int maxlen, int *fndlen,
                              int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc, outrc = 0, ixlen;
     DBT dbt_key, dbt_data;
     DB_TXN *tid = NULL;
@@ -103,6 +105,8 @@ int bdb_lite_exact_fetch_tran(bdb_state_type *bdb_state, tran_type *tran,
                               void *key, void *fnddta, int maxlen, int *fndlen,
                               int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     BDB_READLOCK("bdb_lite_exact_fetch_tran");
@@ -130,6 +134,8 @@ int bdb_lite_exact_fetch_alloc_int(bdb_state_type *bdb_state, tran_type *tran,
                                    void *key, void **fnddta, int *fndlen,
                                    int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     DBT dbt_key = {0}, dbt_data = {0};
     int ixlen = bdb_state->ixlen[0];
@@ -175,6 +181,8 @@ static int bdb_lite_exact_var_fetch_int(bdb_state_type *bdb_state,
                                         tran_type *tran, void *key,
                                         void **fnddta, int *fndlen, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc, outrc = 0, ixlen;
     DBT dbt_key, dbt_data;
     DB_TXN *tid = NULL;
@@ -239,6 +247,8 @@ int bdb_lite_exact_var_fetch_tran(bdb_state_type *bdb_state, tran_type *tran,
                                   void *key, void **fnddta, int *fndlen,
                                   int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     BDB_READLOCK("bdb_lite_exact_var_fetch");
@@ -254,6 +264,8 @@ int bdb_lite_fetch_partial_tran(bdb_state_type *bdb_state, tran_type *tran,
                                 int *fnd, int *bdberr)
 
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     DBT dbt_key = {0}, dbt_data = {0};
     DB *db;
     DBC *dbcp = NULL;
@@ -331,6 +343,8 @@ static int bdb_lite_fetch_keys_int(bdb_state_type *bdb_state, tran_type *tran,
                                    void *firstkey, int direction, void *fndkeys,
                                    int maxfnd, int *numfnd, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     DB *db;
     DBT dbt_key, dbt_data;
     DBC *dbcp;
@@ -459,6 +473,8 @@ int bdb_lite_fetch_keys_fwd_tran(bdb_state_type *bdb_state, tran_type *tran,
                                  void *firstkey, void *fndkeys, int maxfnd,
                                  int *numfnd, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     BDB_READLOCK("bdb_lite_fetch_keys_fwd");
@@ -487,6 +503,8 @@ int bdb_lite_fetch_keys_bwd_tran(bdb_state_type *bdb_state, tran_type *tran,
                                  void *firstkey, void *fndkeys, int maxfnd,
                                  int *numfnd, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     BDB_READLOCK("bdb_lite_fetch_keys_bwd");
@@ -514,6 +532,8 @@ int bdb_lite_fetch_keys_bwd(bdb_state_type *bdb_state, void *firstkey,
 static int bdb_lite_add_int(bdb_state_type *bdb_state, tran_type *tran,
                             void *dtaptr, int dtalen, void *key, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     u_int32_t flags = 0;
     DBT dbt_key, dbt_data;
@@ -573,6 +593,8 @@ static int bdb_lite_add_int(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_lite_add(bdb_state_type *bdb_state, tran_type *tran, void *dtaptr,
                  int dtalen, void *key, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     BDB_READLOCK("bdb_lite_add");
@@ -585,6 +607,8 @@ int bdb_lite_add(bdb_state_type *bdb_state, tran_type *tran, void *dtaptr,
 static int bdb_lite_exact_del_int(bdb_state_type *bdb_state, tran_type *tran,
                                   void *key, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     DBT dbt_key;
     u_int32_t flags = 0;
@@ -641,6 +665,8 @@ static int bdb_lite_exact_del_int(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_lite_exact_del(bdb_state_type *bdb_state, tran_type *tran, void *key,
                        int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     BDB_READLOCK("bdb_lite_exact_del");

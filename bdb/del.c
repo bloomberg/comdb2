@@ -40,6 +40,7 @@
 
 #include <net.h>
 #include "bdb_int.h"
+#include "sql_bdb.h"
 #include "locks.h"
 #include "genid.h"
 #include "logmsg.h"
@@ -48,6 +49,8 @@ static int bdb_prim_delkey_int(bdb_state_type *bdb_state, tran_type *tran,
                                void *ixdta, int ixnum, int rrn, long long genid,
                                int isnull, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     DBT dbt_key;
     void *pKeyMaxBuf = 0;
@@ -94,6 +97,8 @@ static int bdb_prim_delkey_int(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_prim_delkey(bdb_state_type *bdb_state, tran_type *tran, void *ixdta,
                     int ixnum, int rrn, int isnull, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     rc = bdb_prim_delkey_int(bdb_state, tran, ixdta, ixnum, rrn, 0, /* genid */
@@ -106,6 +111,8 @@ int bdb_prim_delkey_genid(bdb_state_type *bdb_state, tran_type *tran,
                           void *ixdta, int ixnum, int rrn,
                           unsigned long long genid, int isnull, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     rc = bdb_prim_delkey_int(bdb_state, tran, ixdta, ixnum, rrn, genid, isnull, bdberr);
@@ -117,6 +124,8 @@ static int bdb_prim_deallocdta_stripe_int(bdb_state_type *bdb_state,
                                           tran_type *tran,
                                           unsigned long long genid, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     int dtafile;
     DB *db;
@@ -157,6 +166,8 @@ static int bdb_prim_deallocdta_n_int(bdb_state_type *bdb_state, tran_type *tran,
                                      int rrn, unsigned long long genid,
                                      int dtanum, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc, dtafile;
     DB *dbp;
 
@@ -202,6 +213,8 @@ static int bdb_prim_deallocdta_int(bdb_state_type *bdb_state, tran_type *tran,
                                    int rrn, unsigned long long genid,
                                    int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     int dtanum;
 
@@ -240,6 +253,8 @@ static int bdb_prim_deallocdta_int(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_prim_deallocdta(bdb_state_type *bdb_state, tran_type *tran, int rrn,
                         int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     rc = bdb_prim_deallocdta_int(bdb_state, tran, rrn, 0, /* genid */
@@ -251,6 +266,8 @@ int bdb_prim_deallocdta(bdb_state_type *bdb_state, tran_type *tran, int rrn,
 int bdb_prim_deallocdta_genid(bdb_state_type *bdb_state, tran_type *tran,
                               int rrn, unsigned long long genid, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     rc = bdb_prim_deallocdta_int(bdb_state, tran, rrn, genid, bdberr);
@@ -262,6 +279,8 @@ int bdb_prim_deallocdta_n_genid(bdb_state_type *bdb_state, tran_type *tran,
                                 int rrn, unsigned long long genid, int dtanum,
                                 int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     rc = bdb_prim_deallocdta_n_int(bdb_state, tran, rrn, genid, dtanum, bdberr);

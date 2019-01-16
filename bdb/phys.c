@@ -127,6 +127,8 @@ static int start_physical_transaction(bdb_state_type *bdb_state,
                                       tran_type *logical_tran,
                                       tran_type **outtran)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, logical_tran);
+
     tran_type *physical_tran;
     int rc;
 
@@ -161,6 +163,8 @@ extern int gbl_locks_check_waiters;
 int get_physical_transaction(bdb_state_type *bdb_state, tran_type *logical_tran,
                              tran_type **outtran, int force_commit)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, logical_tran);
+
     extern unsigned long long check_waiters_skip_count;
     extern unsigned long long check_waiters_commit_count;
     int rc = 0;
@@ -225,6 +229,8 @@ int get_physical_transaction(bdb_state_type *bdb_state, tran_type *logical_tran,
 
 static inline int micro_retry_check(bdb_state_type *bdb_state, tran_type *tran)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     extern int gbl_micro_retry_on_deadlock;
 
     if (gbl_rowlocks && gbl_micro_retry_on_deadlock && tran->micro_commit &&
@@ -264,6 +270,8 @@ int phys_dta_add(bdb_state_type *bdb_state, tran_type *logical_tran,
                  unsigned long long genid, DB *dbp, int dtafile, int dtastripe,
                  DBT *dbt_key, DBT *dbt_data)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, logical_tran);
+
     int rc, micro_retry, retry = 0;
     int retry_count = bdb_state->attr->pagedeadlock_retries;
     int max_poll = bdb_state->attr->pagedeadlock_maxpoll;
@@ -376,6 +384,8 @@ done:
 int phys_dta_del(bdb_state_type *bdb_state, tran_type *logical_tran, int rrn,
                  unsigned long long genid, DB *dbp, int dtafile, int dtastripe)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, logical_tran);
+
     int rc, micro_retry, retry = 0;
     int retry_count = bdb_state->attr->pagedeadlock_retries;
     int max_poll = bdb_state->attr->pagedeadlock_maxpoll;
@@ -490,6 +500,8 @@ int phys_dta_upd(bdb_state_type *bdb_state, int rrn,
                  DB *dbp, tran_type *logical_tran, int dtafile, int dtastripe,
                  DBT *verify_dta, DBT *dta)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, logical_tran);
+
     int rc, micro_retry, retry = 0;
     int retry_count = bdb_state->attr->pagedeadlock_retries;
     int max_poll = bdb_state->attr->pagedeadlock_maxpoll;
@@ -619,6 +631,8 @@ int phys_key_add(bdb_state_type *bdb_state, tran_type *logical_tran,
                  unsigned long long genid, int ixnum, DBT *dbt_key,
                  DBT *dbt_data)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, logical_tran);
+
     int rc, micro_retry, retry = 0;
     int retry_count = bdb_state->attr->pagedeadlock_retries;
     int max_poll = bdb_state->attr->pagedeadlock_maxpoll;
@@ -736,6 +750,8 @@ done:
 int phys_key_del(bdb_state_type *bdb_state, tran_type *logical_tran,
                  unsigned long long genid, int ixnum, DBT *key)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, logical_tran);
+
     int rc, micro_retry, retry = 0;
     int retry_count = bdb_state->attr->pagedeadlock_retries;
     int max_poll = bdb_state->attr->pagedeadlock_maxpoll;
@@ -852,6 +868,7 @@ int phys_key_upd(bdb_state_type *bdb_state, tran_type *logical_tran,
                  unsigned long long newgenid, void *key, int ix, int keylen,
                  void *dta, int dtalen, int llog_payload_len)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, logical_tran);
 
     int rc, micro_retry, retry = 0;
     int retry_count = bdb_state->attr->pagedeadlock_retries;
@@ -928,6 +945,8 @@ int ll_undo_add_ix_lk(bdb_state_type *bdb_state, tran_type *tran,
                       char *table_name, int ixnum, void *key, int keylen,
                       DB_LSN *undolsn)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     DB *dbp;
     DBT dbt_key = {0};
@@ -968,6 +987,8 @@ int ll_undo_add_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
                        char *table_name, unsigned long long genid,
                        DB_LSN *undolsn, int dtafile, int dtastripe)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     unsigned long long search_genid;
     DB *dbp;
@@ -1015,6 +1036,8 @@ int ll_undo_del_ix_lk(bdb_state_type *bdb_state, tran_type *tran,
                       DB_LSN *undolsn, void *key, int keylen, void *dta,
                       int dtalen)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     DBT dbt_key = {0};
     DBT dbt_data = {0};
@@ -1063,6 +1086,8 @@ int ll_undo_del_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
                        DB_LSN *undolsn, int dtafile, int dtastripe, void *dta,
                        int dtalen)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     DB *dbp;
     DBT dbt_genid = {0};
@@ -1109,6 +1134,8 @@ int ll_undo_inplace_upd_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
                                int olddta_len, int dtafile, int dtastripe,
                                DB_LSN *undolsn)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     DBT dbt_key = {0};
     DBT dbt_data = {0};
     DB *dbp;
@@ -1193,6 +1220,8 @@ int ll_undo_upd_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
                        int olddta_len, int dtafile, int dtastripe,
                        DB_LSN *undolsn)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     DBT dbt_key = {0};
     DBT dbt_data = {0};
     DB *dbp;
@@ -1263,6 +1292,8 @@ int ll_undo_upd_ix_lk(bdb_state_type *bdb_state, tran_type *tran,
                       void *dta, int dtalen, DB_LSN *undolsn, void *diff,
                       int offset, int difflen)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     DBT dbt_key = {0};
     DBT dbt_data = {0};
     DB *dbp;
@@ -1363,6 +1394,8 @@ int phys_rowlocks_log_bench_lk(bdb_state_type *bdb_state,
                                tran_type *logical_tran, int op, int arg1,
                                int arg2, void *payload, int paylen)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, logical_tran);
+
     bdb_state_type *llmeta_bdb_state = bdb_llmeta_bdb_state();
     tran_type *physical_tran = NULL;
     unsigned long long genid1, genid2, ullarg1, ullarg2;

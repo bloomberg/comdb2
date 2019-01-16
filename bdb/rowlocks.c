@@ -1024,6 +1024,8 @@ int undo_add_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
                     char *table_name, llog_undo_add_dta_lk_args *add_dta_lk,
                     DB_LSN *undolsn, DB_LSN *prev, int just_load_lsn)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     unsigned long long tranid;
     unsigned long long genid;
     int rc;
@@ -1061,6 +1063,8 @@ int undo_add_ix_lk(bdb_state_type *bdb_state, tran_type *tran, char *table_name,
                    llog_undo_add_ix_lk_args *add_ix_lk, DB_LSN *undolsn,
                    DB_LSN *prev, int just_load_lsn)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     DBT *key;
 
@@ -1100,6 +1104,8 @@ int undo_del_ix_lk(bdb_state_type *bdb_state, tran_type *tran,
                    llog_undo_del_ix_lk_args *del_ix_lk, DB_LSN *undolsn,
                    DB_LSN *prev, int just_load_lsn)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int ix;
     unsigned long long genid;
     char *table;
@@ -1158,6 +1164,8 @@ int undo_del_ix(bdb_state_type *bdb_state, tran_type *tran,
                 llog_undo_del_ix_args *del_ix, DB_LSN *undolsn, DB_LSN *prev,
                 int just_load_lsn)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int ix;
     unsigned long long genid;
     char *table;
@@ -1209,6 +1217,8 @@ int undo_del_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
                     llog_undo_del_dta_lk_args *del_dta_lk, DB_LSN *undolsn,
                     DB_LSN *prev, int just_load_lsn)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     unsigned long long genid;
     char *table;
     int rc;
@@ -1263,6 +1273,8 @@ done:
 int undo_commit(bdb_state_type *bdb_state, tran_type *tran,
                 llog_ltran_commit_args *commit, DB_LSN *prev, int just_load_lsn)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     unsigned long long tranid;
 
     *prev = commit->prevllsn;
@@ -1331,6 +1343,8 @@ static int undo_physical_transaction(bdb_state_type *bdb_state, tran_type *tran,
                                      DBT *logdta, int *did_something,
                                      DB_LSN *lsn, DB_LSN *prev_lsn_out)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc = 0;
     void *logp = NULL;
     u_int32_t rectype;
@@ -1873,6 +1887,8 @@ extern unsigned long long num_comprec;
 int abort_logical_transaction(bdb_state_type *bdb_state, tran_type *tran,
                               DB_LSN *outlsn, int about_to_commit)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     DB_LOGC *cur;
     int rc = 0, deadlkcnt = 0;
     int did_something = 0;
@@ -2162,6 +2178,8 @@ int logical_commit_replicant(bdb_state_type *bdb_state,
 int release_locks_for_logical_transaction_object(bdb_state_type *bdb_state,
                                                  tran_type *tran, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     seqnum_type seqnum;
     uint64_t sz;
@@ -2836,6 +2854,8 @@ extern int gbl_disable_rowlocks_logging;
 int bdb_llog_add_ix_lk(bdb_state_type *bdb_state, tran_type *tran, int ix,
                        unsigned long long genid, DBT *key, int dtalen)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     DBT dbt_tbl = {0};
     int rc;
     bdb_state_type *parent;
@@ -2866,6 +2886,8 @@ int bdb_llog_del_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
                         unsigned long long genid, DBT *dbt_data, int dtafile,
                         int dtastripe)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     bdb_state_type *parent = bdb_state->parent;
 
@@ -2886,6 +2908,8 @@ int bdb_llog_del_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_llog_del_ix_lk(bdb_state_type *bdb_state, tran_type *tran, int ixnum,
                        unsigned long long genid, DBT *dbt_key, int payloadsz)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     DBT dbt_table = {0};
     DB_LSN lsn;
@@ -2913,6 +2937,8 @@ int bdb_llog_del_ix_lk(bdb_state_type *bdb_state, tran_type *tran, int ixnum,
 int bdb_llog_add_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
                         unsigned long long genid, int dtafile, int dtastripe)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     DBT dbt_tbl = {0};
     int rc;
     DB_LSN lsn;
@@ -2942,6 +2968,8 @@ int bdb_llog_add_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
 
 int bdb_llog_start(bdb_state_type *bdb_state, tran_type *tran, DB_TXN *txn)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     /* Keep start and commit for last logical lsn */
@@ -2958,6 +2986,8 @@ int bdb_llog_start(bdb_state_type *bdb_state, tran_type *tran, DB_TXN *txn)
 
 int bdb_llog_comprec(bdb_state_type *bdb_state, tran_type *tran, DB_LSN *lsn)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     if (gbl_disable_rowlocks_logging)
         return 0;
@@ -2984,6 +3014,8 @@ int llog_ltran_commit_log_wrap(DB_ENV *dbenv, DB_TXN *txnid, DB_LSN *ret_lsnp,
 
 int bdb_llog_commit(bdb_state_type *bdb_state, tran_type *tran, int isabort)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     DB_LSN lsn;
     int rc;
 
@@ -3020,6 +3052,8 @@ int bdb_llog_upd_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
                         unsigned long long newgenid, int dtafile, int dtastripe,
                         DBT *dbt_olddta)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     DB_LSN lsn;
     DBT dbt_table = {0};
@@ -3374,6 +3408,8 @@ static int undo_upd_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
                            llog_undo_upd_dta_lk_args *upd_dta_lk,
                            DB_LSN *undolsn, DB_LSN *prev, int just_load_lsn)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     char *tablename;
     bdb_state_type *table;
     unsigned long long oldgenid;
@@ -3460,6 +3496,8 @@ static int undo_upd_ix_lk(bdb_state_type *bdb_state, tran_type *tran,
                           llog_undo_upd_ix_lk_args *upd_ix_lk, DB_LSN *undolsn,
                           DB_LSN *prev, int just_load_lsn)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     char *data = NULL;
     int rc;
     void *diff;
@@ -3629,6 +3667,8 @@ int bdb_llog_upd_ix_lk(bdb_state_type *bdb_state, tran_type *tran,
                        int dtalen, unsigned long long oldgenid,
                        unsigned long long newgenid)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     DBT dbt_table = {0};
     DBT dbt_key = {0};
@@ -3661,6 +3701,8 @@ int bdb_llog_rowlocks_bench(bdb_state_type *bdb_state, tran_type *tran, int op,
                             int arg1, int arg2, DBT *lock1, DBT *lock2,
                             void *payload, int paylen)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     uint64_t ltranid = 0;
     DBT pload = {0};

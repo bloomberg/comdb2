@@ -72,6 +72,7 @@
 #include <net.h>
 #include <cheapstack.h>
 #include "bdb_int.h"
+#include "sql_bdb.h"
 #include "locks.h"
 #include "locks_wrap.h"
 #include <time.h>
@@ -630,6 +631,8 @@ int gbl_queuedb_genid_filename = 1;
 static int form_queuedb_name(bdb_state_type *bdb_state, tran_type *tran,
                              int create, char *name, size_t len)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     unsigned long long ver;
     int rc, bdberr;
     if (create && gbl_queuedb_genid_filename) {
@@ -820,6 +823,8 @@ int bdb_rename_file_versioning_table(bdb_state_type *bdb_state,
                                      tran_type *input_trans, char *newtblname,
                                      int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, input_trans);
+
     int dtanum, ixnum, retries = 0;
     unsigned long long version_num;
     unsigned long long new_version_num;
@@ -1003,6 +1008,8 @@ backout:
 int bdb_rename_table(bdb_state_type *bdb_state, tran_type *tran, char *newname,
                      int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     DB_TXN *tid = tran ? tran->tid : NULL;
     char *orig_name;
     int rc;
@@ -1060,6 +1067,8 @@ static int bdb_del_list_add(bdb_state_type *bdb_state, tran_type *tran,
                             void *list, int is_data_file, int file_num,
                             int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     unsigned long long version_num;
     struct del_list_item *item;
     int rc;
@@ -1112,6 +1121,8 @@ static int bdb_del_list_add(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_del_list_add_data(bdb_state_type *bdb_state, tran_type *tran,
                           void *list, int dtanum, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     if (!bdb_state || !list || !bdberr) {
         logmsg(LOGMSG_ERROR, "bdb_del_list_add_data: null or invalid argument\n");
         if (bdberr)
@@ -1127,6 +1138,8 @@ int bdb_del_list_add_data(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_del_list_add_index(bdb_state_type *bdb_state, tran_type *tran,
                            void *list, int ixnum, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     if (!bdb_state || !list || !bdberr) {
         logmsg(LOGMSG_ERROR, "bdb_del_list_add_index: null or invalid argument\n");
         if (bdberr)
@@ -1142,6 +1155,8 @@ int bdb_del_list_add_index(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_del_list_add_all(bdb_state_type *bdb_state, tran_type *tran, void *list,
                          int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int dtanum, ixnum;
 
     if (!bdb_state || !list || !bdberr) {
@@ -1564,6 +1579,8 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
 
 int bdb_handle_reset_tran(bdb_state_type *bdb_state, tran_type *trans)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, trans);
+
     DB_TXN *tid = trans ? trans->tid : NULL;
     int rc = close_dbs(bdb_state, tid);
     if (rc != 0) {
@@ -4531,6 +4548,8 @@ static int bdb_create_stripes_int(bdb_state_type *bdb_state, tran_type *tran,
                                   int newdtastripe, int newblobstripe,
                                   int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int dtanum, strnum;
     int numdtafiles;
     int db_mode = 0666;
@@ -4660,6 +4679,8 @@ static int bdb_create_stripes_int(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_create_stripes_tran(bdb_state_type *bdb_state, tran_type *tran,
                             int newdtastripe, int newblobstripe, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     BDB_READLOCK("bdb_create_stripes");
     rc = bdb_create_stripes_int(bdb_state, tran, newdtastripe, newblobstripe,
@@ -5922,6 +5943,8 @@ bdb_create_tran(const char name[], const char dir[], int lrl, short numix,
                 int numdtafiles, bdb_state_type *parent_bdb_handle, int temp,
                 int *bdberr, tran_type *trans)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(parent_bdb_handle, trans);
+
     DB_TXN *tid = trans ? trans->tid : NULL;
     bdb_state_type *bdb_state, *ret;
 
@@ -6047,6 +6070,8 @@ bdb_open_more_tran(const char name[], const char dir[], int lrl, short numix,
                    int numdtafiles, bdb_state_type *parent_bdb_handle,
                    tran_type *tran, uint32_t flags, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(parent_bdb_handle, tran);
+
     bdb_state_type *bdb_state, *ret;
 
     *bdberr = BDBERR_NOERROR;
@@ -6090,6 +6115,8 @@ bdb_state_type *bdb_open_more_lite(const char name[], const char dir[], int lrl,
                                    bdb_state_type *parent_bdb_handle,
                                    tran_type *tran, uint32_t flags, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(parent_bdb_handle, tran);
+
     int numdtafiles = 1;
     short numix = 1;
     signed char ixdups[1] = {0};
@@ -6128,6 +6155,8 @@ bdb_state_type *bdb_open_more_queue(const char name[], const char dir[],
                                     bdb_state_type *parent_bdb_state,
                                     int isqueuedb, tran_type *tran, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(parent_bdb_state, tran);
+
     bdb_state_type *bdb_state, *ret = NULL;
 
     *bdberr = BDBERR_NOERROR;
@@ -6167,6 +6196,8 @@ bdb_state_type *bdb_create_queue_tran(tran_type *tran, const char name[],
                                       bdb_state_type *parent_bdb_state,
                                       int isqueuedb, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(parent_bdb_state, tran);
+
     DB_TXN *tid = tran ? tran->tid : NULL;
     bdb_state_type *bdb_state, *ret = NULL;
 
@@ -6337,6 +6368,8 @@ static int bdb_del_ix_int(bdb_state_type *bdb_state, DB_TXN *tid, int ixnum,
 
 static int bdb_del_int(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc = 0;
     int i;
     int dtanum;
@@ -6368,6 +6401,8 @@ static int bdb_del_int(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
 
 int bdb_del(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     BDB_READLOCK("bdb_del");
@@ -6379,6 +6414,8 @@ int bdb_del(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
 int bdb_del_data(bdb_state_type *bdb_state, tran_type *tran, int dtanum,
                  int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     BDB_READLOCK("bdb_del_data");
@@ -6390,6 +6427,8 @@ int bdb_del_data(bdb_state_type *bdb_state, tran_type *tran, int dtanum,
 int bdb_del_ix(bdb_state_type *bdb_state, tran_type *tran, int ixnum,
                int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     BDB_READLOCK("bdb_del_ix");
@@ -6422,6 +6461,8 @@ int bdb_rename_data_int(bdb_state_type *bdb_state, tran_type *tran,
                         char newtablename[], int fromdtanum, int todtanum,
                         int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int strnum;
     char newname[80];
     char oldname[80];
@@ -6457,6 +6498,8 @@ int bdb_rename_ix_int(bdb_state_type *bdb_state, tran_type *tran,
                       char newtablename[], int fromixnum, int toixnum,
                       int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     char newname[80];
     char oldname[80];
     char *orig_name = bdb_state->name;
@@ -6485,6 +6528,8 @@ int bdb_rename_ix_int(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_rename_int(bdb_state_type *bdb_state, tran_type *tran,
                    char newtablename[], int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int i;
     int dtanum;
 
@@ -6511,6 +6556,8 @@ int bdb_rename_int(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_rename(bdb_state_type *bdb_state, tran_type *tran, char newtablename[],
                int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     BDB_READLOCK("bdb_rename");
@@ -6523,6 +6570,8 @@ int bdb_rename_data(bdb_state_type *bdb_state, tran_type *tran,
                     char newtablename[], int fromdtanum, int todtanum,
                     int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     BDB_READLOCK("bdb_rename_data");
@@ -6535,6 +6584,8 @@ int bdb_rename_data(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_rename_ix(bdb_state_type *bdb_state, tran_type *tran,
                   char newtablename[], int fromixnum, int toixnum, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     BDB_READLOCK("bdb_rename_ix");
@@ -6554,6 +6605,8 @@ void bdb_state_rename(bdb_state_type *bdb_state, char *newname)
 static int bdb_rename_blob1_int(bdb_state_type *bdb_state, tran_type *tran,
                                 unsigned long long *genid, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int dtanum;
     for (dtanum = 1; dtanum < bdb_state->numdtafiles; dtanum++) {
         char oldname[100];
@@ -6596,6 +6649,8 @@ static int bdb_rename_blob1_int(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_rename_blob1(bdb_state_type *bdb_state, tran_type *tran,
                      unsigned long long *genid, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc = 0;
     BDB_READLOCK("bdb_rename_blob1");
     rc = bdb_rename_blob1_int(bdb_state, tran, genid, bdberr);
@@ -6704,6 +6759,8 @@ static int bdb_close_only_int(bdb_state_type *bdb_state, DB_TXN *tid,
 
 int bdb_close_only_sc(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     if (bdb_state->envonly)
@@ -6923,6 +6980,8 @@ int bdb_open_again(bdb_state_type *bdb_state, int *bdberr)
 
 int bdb_open_again_tran(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     return bdb_open_again_tran_int(bdb_state, tran ? tran->tid : NULL, bdberr);
 }
 
@@ -7380,6 +7439,8 @@ static inline int bdb_is_new_sc_file(bdb_state_type *bdb_state, tran_type *tran,
                                      const char *tblname,
                                      unsigned long long version, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc = 0;
     char newname[32] = {0}; // LLMETA_TBLLEN = 32
     snprintf(newname, 32, "%s%s", NEW_PREFIX, tblname);
@@ -7609,6 +7670,8 @@ done:
 static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
                                     int *bdberr, char *powner, int delay)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     static char *owner = NULL;
     static pthread_mutex_t owner_mtx = PTHREAD_MUTEX_INITIALIZER;
     const char blob_ext[] = ".blob";
@@ -7861,6 +7924,8 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_del_unused_files_tran(bdb_state_type *bdb_state, tran_type *tran,
                               int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     return bdb_process_unused_files(bdb_state, tran, bdberr, "del_unused", 0);
 }
 
@@ -7872,6 +7937,8 @@ int bdb_del_unused_files(bdb_state_type *bdb_state, int *bdberr)
 int bdb_list_unused_files_tran(bdb_state_type *bdb_state, tran_type *tran,
                                int *bdberr, char *powner)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     return bdb_process_unused_files(bdb_state, tran, bdberr, powner, 1);
 }
 
@@ -7885,6 +7952,8 @@ int bdb_have_unused_files(void) { return oldfile_list_empty() != 1; }
 int bdb_purge_unused_files(bdb_state_type *bdb_state, tran_type *tran,
                            int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     char *munged_name = NULL;
     int rc;
     unsigned lognum = 0, lowfilenum = 0;
@@ -7959,6 +8028,8 @@ int bdb_purge_unused_files(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_osql_cache_table_versions(bdb_state_type *bdb_state, tran_type *tran,
                                   int trak, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int i = 0;
     int rc = 0;
 
@@ -8029,6 +8100,8 @@ done:
 int bdb_osql_check_table_version(bdb_state_type *bdb_state, tran_type *tran,
                                  int trak, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int i = 0;
     bdb_state_type *parent;
 

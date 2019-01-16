@@ -50,6 +50,8 @@ static int bdb_fetch_last_key_tran_int(bdb_state_type *bdb_state,
                                        int keylen, void *fndkey, int *fndlen,
                                        int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     DBC *dbc;
     DB_TXN *tid;
     DBT key, data;
@@ -145,6 +147,8 @@ int bdb_fetch_last_key_tran(bdb_state_type *bdb_state, tran_type *tran,
                             int write, int idx, int keylen, void *fndkey,
                             int *fndlen, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     BDB_READLOCK("bdb_fetch_last");
     rc = bdb_fetch_last_key_tran_int(bdb_state, tran, write, idx, keylen,

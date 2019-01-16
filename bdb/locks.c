@@ -443,6 +443,8 @@ int form_minmaxlock_keyname(bdb_state_type *bdb_state, int ixnum, int stripe,
 static int bdb_lock_stripe_int(bdb_state_type *bdb_state, tran_type *tran,
                                int stripe, int how)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     DB_LOCK dblk;
     DBT lk;
     int rc;
@@ -660,6 +662,8 @@ static int bdb_lock_row_int(bdb_state_type *bdb_state, tran_type *tran, int idx,
                             unsigned long long genid, int how, DB_LOCK *dblk,
                             DBT *lkname, int trylock)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     if (tran->tranclass != TRANCLASS_LOGICAL)
         return BDBERR_BADARGS;
 
@@ -670,12 +674,16 @@ static int bdb_lock_row_int(bdb_state_type *bdb_state, tran_type *tran, int idx,
 
 int bdb_lock_stripe_read(bdb_state_type *bdb_state, int stripe, tran_type *tran)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     return bdb_lock_stripe_int(bdb_state, tran, stripe, BDB_LOCK_READ);
 }
 
 int bdb_lock_stripe_write(bdb_state_type *bdb_state, int stripe,
                           tran_type *tran)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     return bdb_lock_stripe_int(bdb_state, tran, stripe, BDB_LOCK_WRITE);
 }
 
@@ -687,6 +695,8 @@ int bdb_lock_table_read_fromlid(bdb_state_type *bdb_state, int lid)
 
 int bdb_lock_table_read(bdb_state_type *bdb_state, tran_type *tran)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     /* Readlocks on tables & stripes must be owned by the parent, 
@@ -703,6 +713,8 @@ int bdb_lock_table_read(bdb_state_type *bdb_state, tran_type *tran)
 int bdb_lock_tablename_read(bdb_state_type *bdb_state, const char *name,
                             tran_type *tran)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     if (tran->parent)
         tran = tran->parent;
 
@@ -712,6 +724,8 @@ int bdb_lock_tablename_read(bdb_state_type *bdb_state, const char *name,
 
 int bdb_lock_table_write(bdb_state_type *bdb_state, tran_type *tran)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     if (tran->parent)
@@ -726,6 +740,8 @@ int bdb_lock_table_write(bdb_state_type *bdb_state, tran_type *tran)
 int bdb_lock_tablename_write(bdb_state_type *bdb_state, const char *name,
                              tran_type *tran)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     if (tran->parent) tran = tran->parent;
@@ -738,6 +754,8 @@ int bdb_lock_tablename_write(bdb_state_type *bdb_state, const char *name,
 int bdb_lock_ix_value_write(bdb_state_type *bdb_state, tran_type *tran, int idx,
                             DBT *key, DB_LOCK *dblk, DBT *lkname, int trylock)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     if (tran->tranclass != TRANCLASS_LOGICAL)
         return BDBERR_BADARGS;
 
@@ -749,6 +767,8 @@ int bdb_lock_ix_value_write(bdb_state_type *bdb_state, tran_type *tran, int idx,
 int bdb_lock_row_write(bdb_state_type *bdb_state, tran_type *tran,
                        unsigned long long genid)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     DB_LOCK dblk;
 
     return bdb_lock_row_fromlid_int(bdb_state, resolve_locker_id(tran), -1,
@@ -758,6 +778,8 @@ int bdb_lock_row_write(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_trylock_row_write(bdb_state_type *bdb_state, tran_type *tran,
                           unsigned long long genid)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     DB_LOCK dblk;
 
     return bdb_lock_row_fromlid_int(bdb_state, resolve_locker_id(tran), -1,
@@ -768,6 +790,8 @@ int bdb_lock_row_write_getlock(bdb_state_type *bdb_state, tran_type *tran,
                                int idx, unsigned long long genid, DB_LOCK *dblk,
                                DBT *lkname, int trylock)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     rc = bdb_lock_row_int(bdb_state, tran, idx, genid, BDB_LOCK_WRITE, dblk,

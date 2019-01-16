@@ -56,6 +56,8 @@ static int bdb_change_dta_genid_dtastripe(bdb_state_type *bdb_state,
                                           unsigned long long newgenid,
                                           int has_blob_opt, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     DB *dbp;
     int dtastripe;
@@ -114,6 +116,7 @@ static int bdb_prim_add_upd_int(bdb_state_type *bdb_state, tran_type *tran,
                                 unsigned long long newgenid,
                                 int participantstripid, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
 
     int rc;
     int stripe;
@@ -184,6 +187,8 @@ static int bdb_prim_updvrfy_int(bdb_state_type *bdb_state, tran_type *tran,
                                 int participantstripid, int use_new_genid,
                                 int keep_genid_intact, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     int stripe;
     DB *dbp;
@@ -270,6 +275,8 @@ static int bdb_prim_updkey_genid_int(bdb_state_type *bdb_state, tran_type *tran,
                                      unsigned long long genid, void *dta,
                                      int dtalen, int isnull, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     DBT dbt_key;
     void *pKeyMaxBuf = 0;
@@ -319,6 +326,8 @@ int bdb_prim_add_upd_genid(bdb_state_type *bdb_state, tran_type *tran,
                            unsigned long long newgenid, int participantstripeid,
                            int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     rc = bdb_prim_add_upd_int(bdb_state, tran, dtanum, newdta, newdtaln, rrn,
@@ -335,6 +344,8 @@ int bdb_prim_updvrfy_genid(bdb_state_type *bdb_state, tran_type *tran,
                                   int participantstripeid, int use_new_genid,
                                   int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     rc = bdb_prim_updvrfy_int(bdb_state, tran, olddta, /* olddta */
@@ -351,6 +362,8 @@ int bdb_upd_genid(bdb_state_type *bdb_state, tran_type *tran, int dtanum,
                   int rrn, unsigned long long oldgenid,
                   unsigned long long newgenid, int has_blob_opt, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc = 0;
     *bdberr = BDBERR_NOERROR;
 
@@ -365,6 +378,8 @@ int bdb_prim_updkey_genid(bdb_state_type *bdb_state, tran_type *tran, void *key,
                           unsigned long long genid, void *dta, int dtalen,
                           int isnull, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc = 0;
     *bdberr = BDBERR_NOERROR;
 
@@ -377,6 +392,8 @@ int bdb_prim_updkey_genid(bdb_state_type *bdb_state, tran_type *tran, void *key,
 int bdb_prim_upgrade(bdb_state_type *bdb_state, tran_type *tran, void *newdta,
                      int newdtaln, unsigned long long oldgenid, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     rc =
