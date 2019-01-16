@@ -21,10 +21,10 @@
 
 #ifndef NDEBUG
 #define schema_read_held_lk() schema_read_held_int(__FILE__, __func__, __LINE__)
-bool schema_read_held_int(const char *file, const char *func, int line);
+int schema_read_held_int(const char *file, const char *func, int line);
 
 #define schema_write_held_lk() schema_write_held_int(__FILE__, __func__, __LINE__)
-bool schema_write_held_int(const char *file, const char *func, int line);
+int schema_write_held_int(const char *file, const char *func, int line);
 #else
 #endif
 

@@ -29,13 +29,13 @@ static pthread_t schema_wr_thd = NULL;
 static pthread_rwlock_t schema_lk = PTHREAD_RWLOCK_INITIALIZER;
 
 #ifndef NDEBUG
-inline bool schema_read_held_int(const char *file, const char *func, int line)
+inline int schema_read_held_int(const char *file, const char *func, int line)
 {
   pthread_t self = pthread_self();
   return CAS(schema_rd_thd, self, self) == self;
 }
 
-inline bool schema_write_held_int(const char *file, const char *func, int line)
+inline int schema_write_held_int(const char *file, const char *func, int line)
 {
   pthread_t self = pthread_self();
   return CAS(schema_wr_thd, self, self) == self;
