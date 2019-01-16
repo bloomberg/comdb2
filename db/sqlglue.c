@@ -171,7 +171,7 @@ void bdb_verify_tran_invariants(
   tran_type *tran,
   char *zFile,
   int iLine,
-  char *zFunc
+  const char *zFunc
 ){
   if( bdb_state==NULL || tran!=NULL ) return;
   cursor_tran_t *curtran = NULL;
