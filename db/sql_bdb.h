@@ -18,7 +18,7 @@
 #define _SQL_BDB_H_
 
 #ifndef NDEBUG
-void BDB_VERIFY_TRAN_INVARIANTS(bdb_state_type *bdb_state, tran_type *tran, char *filename, int line, char *func);
+void bdb_verify_tran_invariants(bdb_state_type *bdb_state, tran_type *tran, char *filename, int line, char *func);
 #define BDB_VERIFY_TRAN_INVARIANTS(a,b) bdb_verify_tran_invariants((a), (tran_type *)(b), __FILE__, __LINE__, __func__)
 #else
 #define BDB_VERIFY_TRAN_INVARIANTS(a,b)
