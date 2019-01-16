@@ -19,11 +19,35 @@
 #include <locks_wrap.h>
 #include <schema_lk.h>
 
+#ifndef NDEBUG
+#include "comdb2_atomic.h"
+
+static pthread_t schema_rd_thd = NULL;
+static pthread_t schema_wr_thd = NULL;
+#endif
+
 static pthread_rwlock_t schema_lk = PTHREAD_RWLOCK_INITIALIZER;
+
+#ifndef NDEBUG
+inline bool schema_read_held_int(const char *file, const char *func, int line)
+{
+  pthread_t self = pthread_self();
+  return CAS(schema_rd_thd, self, self) == self;
+}
+
+inline bool schema_write_held_int(const char *file, const char *func, int line)
+{
+  pthread_t self = pthread_self();
+  return CAS(schema_wr_thd, self, self) == self;
+}
+#endif
 
 inline void rdlock_schema_int(const char *file, const char *func, int line)
 {
     Pthread_rwlock_rdlock(&schema_lk);
+#ifndef NDEBUG
+    XCHANGE(schema_rd_thd, pthread_self());
+#endif
 #ifdef VERBOSE_SCHEMA_LK
     logmsg(LOGMSG_USER, "%p:RDLOCK %s:%d\n", (void *)pthread_self(), func,
            line);
@@ -33,6 +57,9 @@ inline void rdlock_schema_int(const char *file, const char *func, int line)
 inline int tryrdlock_schema_int(const char *file, const char *func, int line)
 {
     int rc = pthread_rwlock_tryrdlock(&schema_lk);
+#ifndef NDEBUG
+    if (rc == 0) { XCHANGE(schema_rd_thd, pthread_self()); }
+#endif
 #ifdef VERBOSE_SCHEMA_LK
     logmsg(LOGMSG_USER, "%p:TRYRDLOCK RC:%d %s:%d\n", (void *)pthread_self(),
            rc, func, line);
@@ -46,12 +73,19 @@ inline void unlock_schema_int(const char *file, const char *func, int line)
     logmsg(LOGMSG_USER, "%p:UNLOCK %s:%d\n", (void *)pthread_self(), func,
            line);
 #endif
+#ifndef NDEBUG
+    CAS(schema_rd_thd, pthread_self(), NULL);
+    CAS(schema_wr_thd, pthread_self(), NULL);
+#endif
     Pthread_rwlock_unlock(&schema_lk);
 }
 
 inline void wrlock_schema_int(const char *file, const char *func, int line)
 {
     Pthread_rwlock_wrlock(&schema_lk);
+#ifndef NDEBUG
+    XCHANGE(schema_wr_thd, pthread_self());
+#endif
 #ifdef VERBOSE_SCHEMA_LK
     logmsg(LOGMSG_USER, "%p:WRLOCK %s:%d\n", (void *)pthread_self(), func,
            line);

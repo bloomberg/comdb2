@@ -195,7 +195,10 @@ void bdb_verify_tran_invariants(
   }
 
   if( curtran==NULL ) return;
+  if( schema_read_held_lk() || schema_write_held_lk() ) return;
+
   int lid = bdb_get_lid_from_cursortran(curtran);
+
   int nlocks = bdb_nlocks_for_locker(bdb_state, lid);
   if( nlocks==0 ) return;
 
