@@ -36,7 +36,7 @@ inline int schema_read_held_int(const char *file, const char *func, int line)
 {
   int rc;
   Pthread_mutex_lock(&schema_rd_thds_lk);
-  rc = listc_is_present(&schema_rd_thds, pthread_self());
+  rc = listc_is_present(&schema_rd_thds, (void *)pthread_self());
   Pthread_mutex_unlock(&schema_rd_thds_lk);
   return rc;
 }
@@ -53,7 +53,7 @@ inline void rdlock_schema_int(const char *file, const char *func, int line)
     Pthread_rwlock_rdlock(&schema_lk);
 #ifndef NDEBUG
     Pthread_mutex_lock(&schema_rd_thds_lk);
-    listc_abl(&schema_rd_thds, pthread_self());
+    listc_abl(&schema_rd_thds, (void *)pthread_self());
     Pthread_mutex_unlock(&schema_rd_thds_lk);
 #endif
 #ifdef VERBOSE_SCHEMA_LK
@@ -68,7 +68,7 @@ inline int tryrdlock_schema_int(const char *file, const char *func, int line)
 #ifndef NDEBUG
     if (rc == 0) {
         Pthread_mutex_lock(&schema_rd_thds_lk);
-        listc_abl(&schema_rd_thds, pthread_self());
+        listc_abl(&schema_rd_thds, (void *)pthread_self());
         Pthread_mutex_unlock(&schema_rd_thds_lk);
     }
 #endif
@@ -90,8 +90,8 @@ inline void unlock_schema_int(const char *file, const char *func, int line)
     void *pNull = NULL;
     CAS64(schema_wr_thd, self, pNull);
     Pthread_mutex_lock(&schema_rd_thds_lk);
-    if (listc_is_present(&schema_rd_thds, self)) {
-        listc_rfl(&schema_rd_thds, self);
+    if (listc_is_present(&schema_rd_thds, (void *)self)) {
+        listc_rfl(&schema_rd_thds, (void *)self);
     }
     Pthread_mutex_unlock(&schema_rd_thds_lk);
 #endif
