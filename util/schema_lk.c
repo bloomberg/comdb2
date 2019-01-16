@@ -20,6 +20,7 @@
 #include <schema_lk.h>
 
 #ifndef NDEBUG
+#include <stdlib.h>
 #include "comdb2_atomic.h"
 #include "list.h"
 
@@ -41,9 +42,17 @@ static pthread_rwlock_t schema_lk = PTHREAD_RWLOCK_INITIALIZER;
 #ifndef NDEBUG
 inline int schema_read_held_int(const char *file, const char *func, int line)
 {
-  int rc;
+  int rc = 0;
   Pthread_mutex_lock(&schema_rd_thds_lk);
-  rc = listc_is_present(&schema_rd_thds, (void *)pthread_self());
+  pthread_t_link current, temp
+  pthread_t self = pthread_self();
+  LISTC_FOR_EACH_SAFE(&schema_rd_thds, current, temp, lnk)
+  {
+      if (current->thread == self) {
+          rc = 1;
+          break;
+      }
+  }
   Pthread_mutex_unlock(&schema_rd_thds_lk);
   return rc;
 }
@@ -59,8 +68,11 @@ inline void rdlock_schema_int(const char *file, const char *func, int line)
 {
     Pthread_rwlock_rdlock(&schema_lk);
 #ifndef NDEBUG
+    pthread_t_link newt = calloc(1, sizeof(pthread_t_link));
+    if (newt == NULL) abort();
+    newt->thread = pthread_self();
     Pthread_mutex_lock(&schema_rd_thds_lk);
-    listc_abl(&schema_rd_thds, (void *)pthread_self());
+    listc_abl(&schema_rd_thds, newt);
     Pthread_mutex_unlock(&schema_rd_thds_lk);
 #endif
 #ifdef VERBOSE_SCHEMA_LK
@@ -74,8 +86,11 @@ inline int tryrdlock_schema_int(const char *file, const char *func, int line)
     int rc = pthread_rwlock_tryrdlock(&schema_lk);
 #ifndef NDEBUG
     if (rc == 0) {
+        pthread_t_link newt = calloc(1, sizeof(pthread_t_link));
+        if (newt == NULL) abort();
+        newt->thread = pthread_self();
         Pthread_mutex_lock(&schema_rd_thds_lk);
-        listc_abl(&schema_rd_thds, (void *)pthread_self());
+        listc_abl(&schema_rd_thds, newt);
         Pthread_mutex_unlock(&schema_rd_thds_lk);
     }
 #endif
@@ -97,8 +112,13 @@ inline void unlock_schema_int(const char *file, const char *func, int line)
     void *pNull = NULL;
     CAS64(schema_wr_thd, self, pNull);
     Pthread_mutex_lock(&schema_rd_thds_lk);
-    if (listc_is_present(&schema_rd_thds, (void *)self)) {
-        listc_rfl(&schema_rd_thds, (void *)self);
+    pthread_t_link current, temp;
+    LISTC_FOR_EACH_SAFE(&schema_rd_thds, current, temp, lnk)
+    {
+        if (current->thread == self) {
+            listc_rfl(&schema_rd_thds, current);
+            break;
+        }
     }
     Pthread_mutex_unlock(&schema_rd_thds_lk);
 #endif
