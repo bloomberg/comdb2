@@ -3196,6 +3196,10 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
             Pthread_mutex_unlock(&s->livesc_mtx);
             /* No write against the table, mark it as hitLast */
             pCur->hitLast = 1;
+            if (finalizing) {
+                /* done */
+                break;
+            }
             /* Update eofLsn to current end of log file */
             bdb_get_commit_genid(thedb->bdb_env, &eofLsn);
         } else {
