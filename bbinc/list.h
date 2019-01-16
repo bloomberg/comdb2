@@ -39,7 +39,7 @@ typedef struct {
     int count;
 } listc_t;
 
-#define LISTC_T_INITIALIZER {0,0,sizeof(void *),0}
+#define LISTC_T_INITIALIZER(a) {0,0,(a),0}
 
 #define LISTC_T(type)                                                          \
     struct {                                                                   \
