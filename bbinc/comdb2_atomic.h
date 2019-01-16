@@ -4,7 +4,9 @@
 #ifdef _SUN_SOURCE
 #include <atomic.h>
 #define CAS(mem, oldv, newv) (atomic_cas_32(&mem, oldv, newv) == newv)
+#define CAS64(mem, oldv, newv) (atomic_cas_64(&mem, oldv, newv) == newv)
 #define XCHANGE(mem, newv) atomic_swap_32(&mem, newv)
+#define XCHANGE64(mem, newv) atomic_swap_64(&mem, newv)
 #define ATOMIC_LOAD(mem) (atomic_add_int_nv((int *)&mem, 0))
 #define ATOMIC_ADD(mem, val) (atomic_add_int_nv((int *)&mem, val))
 #endif
@@ -13,9 +15,13 @@
 #define CAS(mem, oldv, newv)                                                   \
     __atomic_compare_exchange(&mem, &oldv, &newv, 0, __ATOMIC_SEQ_CST,         \
                               __ATOMIC_SEQ_CST)
-
+#define CAS64(mem, oldv, newv)                                                 \
+    __atomic_compare_exchange(&mem, &oldv, &newv, 0, __ATOMIC_SEQ_CST,         \
+                              __ATOMIC_SEQ_CST)
 #define XCHANGE(mem, newv)                                                     \
     __atomic_exchange_n((volatile int *)&mem, newv, __ATOMIC_SEQ_CST)
+#define XCHANGE64(mem, newv)                                                   \
+    __atomic_exchange_n((volatile long long int *)&mem, newv, __ATOMIC_SEQ_CST)
 #define ATOMIC_LOAD(mem)                                                       \
     (__atomic_load_n((long long int *)&mem, __ATOMIC_SEQ_CST))
 #define ATOMIC_ADD(mem, val) __atomic_add_fetch(&mem, val, __ATOMIC_SEQ_CST)
@@ -24,7 +30,10 @@
 #ifdef _IBM_SOURCE
 #define CAS(mem, oldv, newv)                                                   \
     __compare_and_swap((int *)&mem, (int *)&oldv, (*(int *)&newv))
+#define CAS64(mem, oldv, newv)                                                 \
+    __compare_and_swaplp((long *)&mem, (long *)&oldv, (*(long *)&newv))
 #define XCHANGE(mem, newv) __fetch_and_swap(&mem, newv)
+#define XCHANGE64(mem, newv) __fetch_and_swaplp(&mem, newv)
 
 /* cant use    (__lwarx ((int*)&mem)); because needs POWER8 */
 #define ATOMIC_LOAD(mem)                                                       \

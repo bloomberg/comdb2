@@ -55,6 +55,7 @@
 #include <net.h>
 #include "bdb_int.h"
 #include "bdb_cursor.h"
+#include "sql_bdb.h"
 #include "locks.h"
 #include "genid.h"
 #include "bdb_fetch.h"
@@ -69,6 +70,8 @@ extern int gbl_test_blob_race;
 
 static DB_TXN *resolve_db_txn(bdb_state_type *bdb_state, tran_type *tran)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     DB_TXN *rtn = NULL;
     int rc;
     if (tran) {
@@ -99,6 +102,8 @@ static int bdb_fetch_blobs_by_rrn_and_genid_int_int(
     size_t *blobsizes, size_t *bloboffs, void **blobptrs,
     bdb_cursor_ifn_t *pparent, bdb_fetch_args_t *args, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     bdb_cursor_impl_t *parent = (pparent) ? pparent->impl : NULL;
     unsigned long long genid = ingenid;
     unsigned long long genid_t;
@@ -529,6 +534,8 @@ int bdb_fetch_blobs_by_rrn_and_genid_tran(
     unsigned long long genid, int numblobs, int *dtafilenums, size_t *blobsizes,
     size_t *bloboffs, void **blobptrs, bdb_fetch_args_t *args, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     BDB_READLOCK("bdb_fetch_blobs_by_rrn_and_genid_tran");
@@ -593,6 +600,8 @@ static int bdb_fetch_int_ll(
     void **blobptrs, int dirty, tran_type *tran, bdb_cursor_ser_int_t *cur_ser,
     bdb_fetch_args_t *args, u_int32_t lockerid, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     DBT dbt_key, dbt_data;
     int rc;
     DBC *dbcp = NULL;
@@ -2239,6 +2248,8 @@ static int bdb_fetch_int(int return_dta, int direction, int lookahead,
                          bdb_cursor_ser_int_t *cur_ser, bdb_fetch_args_t *args,
                          int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int created_temp_tran;
     int rc;
     int llrc;
@@ -3910,6 +3921,8 @@ int bdb_fetch_by_key_tran(bdb_state_type *bdb_state, tran_type *tran, void *ix,
                           unsigned long long *genid, bdb_fetch_args_t *args,
                           int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int outrc;
 
     *bdberr = BDBERR_NOERROR;
@@ -3936,6 +3949,8 @@ int bdb_fetch_by_primkey_tran(bdb_state_type *bdb_state, tran_type *tran,
                               int *rrn, unsigned long long *genid,
                               bdb_fetch_args_t *args, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int outrc;
     int ixnum;
     int ixlen;
@@ -3967,6 +3982,8 @@ static int bdb_fetch_by_genid_int(bdb_state_type *bdb_state, tran_type *tran,
                                   int dtalen, int *dtalenout, int dirty,
                                   bdb_fetch_args_t *args, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int outrc;
     unsigned long long ixfound;
     int rrnout;
@@ -4071,6 +4088,8 @@ int bdb_fetch_by_rrn_and_genid_tran(bdb_state_type *bdb_state, tran_type *tran,
                                     void *dta, int dtalen, int *reqdtalen,
                                     bdb_fetch_args_t *args, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     BDB_READLOCK("bdb_fetch_by_rrn_and_genid_tran");
 

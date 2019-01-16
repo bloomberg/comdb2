@@ -19,6 +19,15 @@
 
 #include <locks_wrap.h>
 
+#ifndef NDEBUG
+#define schema_read_held_lk() schema_read_held_int(__FILE__, __func__, __LINE__)
+int schema_read_held_int(const char *file, const char *func, int line);
+
+#define schema_write_held_lk() schema_write_held_int(__FILE__, __func__, __LINE__)
+int schema_write_held_int(const char *file, const char *func, int line);
+#else
+#endif
+
 #define rdlock_schema_lk() rdlock_schema_int(__FILE__, __func__, __LINE__)
 void rdlock_schema_int(const char *file, const char *func, int line);
 

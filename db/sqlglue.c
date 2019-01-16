@@ -165,6 +165,53 @@ void free_cached_idx(uint8_t **cached_idx)
     }
 }
 
+#ifndef NDEBUG
+extern void lock_info_lockers(FILE *out, bdb_state_type *bdb_state);
+
+void bdb_verify_tran_invariants(
+  bdb_state_type *bdb_state,
+  tran_type *tran,
+  char *zFile,
+  int iLine,
+  const char *zFunc
+){
+  if( bdb_state==NULL || tran!=NULL ) return;
+  cursor_tran_t *curtran = NULL;
+
+  if( 1 ){
+    /*
+    ** WARNING: This code currently assumes that a cursor transaction
+    **          for a given operation can only be associated with SQL
+    **          client threads.  In the future, if that assumption is
+    **          no longer valid, this code will need to be updated.
+    */
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    if( thd!=NULL ){
+      struct sqlclntstate *clnt = thd->clnt;
+      if( clnt!=NULL ){
+        curtran = clnt->dbtran.cursor_tran;
+      }
+    }
+  }
+
+  if( curtran==NULL ) return;
+  if( schema_read_held_lk() || schema_write_held_lk() ) return;
+
+  int lid = bdb_get_lid_from_cursortran(curtran);
+
+  int nlocks = bdb_nlocks_for_locker(bdb_state, lid);
+  if( nlocks==0 ) return;
+
+  logmsg(LOGMSG_FATAL,
+         "%s: have %d locks for locker %d (curtran %p) without tran_type, "
+         "from %s at %s:%d\n", __func__, nlocks, lid, curtran, zFunc, zFile,
+         iLine);
+
+  lock_info_lockers(stderr, bdb_state);
+  abort();
+}
+#endif
+
 extern int sqldbgflag;
 extern int gbl_notimeouts;
 extern int gbl_move_deadlk_max_attempt;

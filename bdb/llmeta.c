@@ -21,6 +21,7 @@
 #include <compile_time_assert.h>
 #include <flibc.h>
 #include "bdb_int.h"
+#include "sql_bdb.h"
 #include "endian_core.h"
 #include "locks.h"
 #include "genid.h"
@@ -1284,6 +1285,8 @@ int bdb_llmeta_set_tables(
     int numdbs,             /* number of tables passed in */
     int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, input_trans);
+
     int buflen = numdbs * (LLMETA_TBLLEN + sizeof(int)), offset = 0, i,
         retries = 0, rc, prev_bdberr, tmpkey;
     char key[LLMETA_IXLEN] = {0};
@@ -1454,6 +1457,8 @@ int bdb_llmeta_get_tables(
                         * were returned */
     int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, input_trans);
+
     int rc, fndlen, retries = 0, offset = 0, tmpkey;
     char key[LLMETA_IXLEN] = {0};
     uint8_t *p_outbuf, *p_outbuf_start, *p_outbuf_end;
@@ -1575,6 +1580,8 @@ static int bdb_new_file_version(
     int file_num,                       /* ixnum or dtanum */
     unsigned long long inversion_num, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, input_trans);
+
     int retries = 0, rc;
     char key[LLMETA_IXLEN] = {0};
     struct llmeta_version_number_type version_num;
@@ -1734,6 +1741,8 @@ bdb_chg_file_versions_int(tran_type *trans, /* must be !NULL */
                           int file_type, /* see FILE_VERSIONS_FILE_TYPE_* */
                           int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, trans);
+
     int numfnd = 0, rc;
     char key[LLMETA_IXLEN] = {0};
     char new_key[LLMETA_IXLEN] = {0};
@@ -1853,6 +1862,8 @@ int bdb_chg_file_versions(
     tran_type *input_trans, /* if null, an internal tran is used */
     const char *new_tbl_name, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, input_trans);
+
     int retries = 0, rc;
     tran_type *trans;
 
@@ -1957,6 +1968,8 @@ int bdb_del_file_versions(
                              * created internally */
     int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, input_trans);
+
     return bdb_chg_file_versions(bdb_state, input_trans, NULL, bdberr);
 }
 
@@ -1969,6 +1982,8 @@ bdb_set_pagesize(tran_type *input_trans, /* if this is !NULL it will be used as
                  int file_type, /* see FILE_VERSIONS_FILE_TYPE_* */
                  int pagesize, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, input_trans);
+
     int retries = 0, rc;
     char key[LLMETA_IXLEN] = {0};
     size_t key_offset = 0;
@@ -2141,6 +2156,8 @@ int bdb_new_file_version_data(bdb_state_type *bdb_state, tran_type *tran,
                               int dtanum, unsigned long long version_num,
                               int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     return bdb_new_file_version(tran, bdb_state->name,
                                 LLMETA_FVER_FILE_TYPE_DTA, dtanum, version_num,
                                 bdberr);
@@ -2151,6 +2168,8 @@ int bdb_new_file_version_index(bdb_state_type *bdb_state, tran_type *tran,
                                int ixnum, unsigned long long version_num,
                                int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     return bdb_new_file_version(tran, bdb_state->name, LLMETA_FVER_FILE_TYPE_IX,
                                 ixnum, version_num, bdberr);
 }
@@ -2158,34 +2177,46 @@ int bdb_new_file_version_index(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_set_pagesize_data(bdb_state_type *bdb_state, tran_type *tran,
                           int pagesize, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     return bdb_set_pagesize(tran, bdb_state->name,
                             LLMETA_PAGESIZE_FILE_TYPE_DTA, pagesize, bdberr);
 }
 int bdb_set_pagesize_blob(bdb_state_type *bdb_state, tran_type *tran,
                           int pagesize, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     return bdb_set_pagesize(tran, bdb_state->name,
                             LLMETA_PAGESIZE_FILE_TYPE_BLOB, pagesize, bdberr);
 }
 int bdb_set_pagesize_index(bdb_state_type *bdb_state, tran_type *tran,
                            int pagesize, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     return bdb_set_pagesize(tran, bdb_state->name, LLMETA_PAGESIZE_FILE_TYPE_IX,
                             pagesize, bdberr);
 }
 
 int bdb_set_pagesize_alldata(tran_type *tran, int pagesize, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     return bdb_set_pagesize(tran, NULL, LLMETA_PAGESIZE_FILE_TYPE_ALLDTA,
                             pagesize, bdberr);
 }
 int bdb_set_pagesize_allblob(tran_type *tran, int pagesize, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     return bdb_set_pagesize(tran, NULL, LLMETA_PAGESIZE_FILE_TYPE_ALLBLOB,
                             pagesize, bdberr);
 }
 int bdb_set_pagesize_allindex(tran_type *tran, int pagesize, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     return bdb_set_pagesize(tran, NULL, LLMETA_PAGESIZE_FILE_TYPE_ALLIX,
                             pagesize, bdberr);
 }
@@ -2196,6 +2227,8 @@ int bdb_set_pagesize_allindex(tran_type *tran, int pagesize, int *bdberr)
 int bdb_new_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
                                unsigned long long version_num, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     return bdb_new_file_version(tran, bdb_state->name,
                                 LLMETA_FVER_FILE_TYPE_TBL, 0 /*file_num*/,
                                 version_num, bdberr);
@@ -2204,6 +2237,8 @@ int bdb_new_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_new_file_version_qdb(bdb_state_type *bdb_state, tran_type *tran,
                              unsigned long long version_num, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     return bdb_new_file_version(tran, bdb_state->name,
                                 LLMETA_FVER_FILE_TYPE_QDB, 0, version_num,
                                 bdberr);
@@ -2214,6 +2249,8 @@ int bdb_new_file_version_qdb(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_new_file_version_all(bdb_state_type *bdb_state, tran_type *input_tran,
                              int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, input_tran);
+
     int dtanum, ixnum, retries = 0;
     unsigned long long version_num;
     tran_type *tran;
@@ -2334,6 +2371,8 @@ static int bdb_get_file_version(
     unsigned long long *p_version_num,  /* output: the version number */
     int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     bdb_state_type *parent; /* the low level meta table */
     int rc, fndlen, retries = 0;
     char key[LLMETA_IXLEN] = {0};
@@ -2460,6 +2499,8 @@ int bdb_get_file_version_data(bdb_state_type *bdb_state, tran_type *tran,
                               int dtanum, unsigned long long *version_num,
                               int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     return bdb_get_file_version(tran, bdb_state->name,
                                 LLMETA_FVER_FILE_TYPE_DTA, dtanum, version_num,
                                 bdberr);
@@ -2469,6 +2510,8 @@ int bdb_get_file_version_index(bdb_state_type *bdb_state, tran_type *tran,
                                int ixnum, unsigned long long *version_num,
                                int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     return bdb_get_file_version(tran, (bdb_state)->name,
                                 LLMETA_FVER_FILE_TYPE_IX, ixnum, version_num,
                                 bdberr);
@@ -2477,6 +2520,8 @@ int bdb_get_file_version_index(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_get_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
                                unsigned long long *version_num, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     return bdb_get_file_version(tran, (bdb_state)->name,
                                 LLMETA_FVER_FILE_TYPE_TBL, 0, version_num,
                                 bdberr);
@@ -2485,6 +2530,8 @@ int bdb_get_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_get_file_version_qdb(bdb_state_type *bdb_state, tran_type *tran,
                              unsigned long long *version_num, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     return bdb_get_file_version(tran, bdb_state->name,
                                 LLMETA_FVER_FILE_TYPE_QDB, 0, version_num,
                                 bdberr);
@@ -2495,6 +2542,8 @@ int bdb_get_file_version_data_by_name(tran_type *tran, const char *name,
                                       unsigned long long *version_num,
                                       int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     return bdb_get_file_version(tran, name, LLMETA_FVER_FILE_TYPE_DTA, file_num,
                                 version_num, bdberr);
 }
@@ -2504,6 +2553,8 @@ int bdb_get_file_version_index_by_name(tran_type *tran, const char *name,
                                        unsigned long long *version_num,
                                        int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     return bdb_get_file_version(tran, name, LLMETA_FVER_FILE_TYPE_IX, file_num,
                                 version_num, bdberr);
 }
@@ -2513,6 +2564,8 @@ static int bdb_get_pagesize(tran_type *tran, /* transaction to use */
                             int file_type, /* see FILE_VERSIONS_FILE_TYPE_* */
                             int *pagesize, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     int rc, fndlen, retries = 0;
     char key[LLMETA_IXLEN] = {0};
     size_t key_offset = 0;
@@ -2673,34 +2726,46 @@ retry:
 int bdb_get_pagesize_data(bdb_state_type *bdb_state, tran_type *tran,
                           int *pagesize, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     return bdb_get_pagesize(tran, bdb_state->name,
                             LLMETA_PAGESIZE_FILE_TYPE_DTA, pagesize, bdberr);
 }
 int bdb_get_pagesize_blob(bdb_state_type *bdb_state, tran_type *tran,
                           int *pagesize, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     return bdb_get_pagesize(tran, bdb_state->name,
                             LLMETA_PAGESIZE_FILE_TYPE_BLOB, pagesize, bdberr);
 }
 int bdb_get_pagesize_index(bdb_state_type *bdb_state, tran_type *tran,
                            int *pagesize, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     return bdb_get_pagesize(tran, bdb_state->name, LLMETA_PAGESIZE_FILE_TYPE_IX,
                             pagesize, bdberr);
 }
 
 int bdb_get_pagesize_alldata(tran_type *tran, int *pagesize, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     return bdb_get_pagesize(tran, NULL, LLMETA_PAGESIZE_FILE_TYPE_ALLDTA,
                             pagesize, bdberr);
 }
 int bdb_get_pagesize_allblob(tran_type *tran, int *pagesize, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     return bdb_get_pagesize(tran, NULL, LLMETA_PAGESIZE_FILE_TYPE_ALLBLOB,
                             pagesize, bdberr);
 }
 int bdb_get_pagesize_allindex(tran_type *tran, int *pagesize, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     return bdb_get_pagesize(tran, NULL, LLMETA_PAGESIZE_FILE_TYPE_ALLIX,
                             pagesize, bdberr);
 }
@@ -2795,6 +2860,8 @@ int bdb_new_csc2(tran_type *input_trans, /* if this is !NULL it will be used as
                  char *schema,  /* text of the schema */
                  int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, input_trans);
+
     int retries = 0, rc;
     char key[LLMETA_IXLEN] = {0};
     size_t key_offset = 0;
@@ -2960,6 +3027,8 @@ int bdb_get_csc2_highest(tran_type *trans, /* transaction to use, may be NULL */
                          int *csc2_vers, /* will be set to the highest version*/
                          int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, trans);
+
     int rc, retries = 0, numfnd, max_csc2_vers = INT_MAX; /* TODO 255? */
     char key[LLMETA_IXLEN] = {0}, fndkey[LLMETA_IXLEN] = {0};
     size_t key_offset = 0;
@@ -3071,6 +3140,8 @@ retry:
 /* delete all csc2 versions from "ver" to 1 for table "dbname" */
 int bdb_reset_csc2_version(tran_type *trans, const char *dbname, int ver)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, trans);
+
     int rc;
     int bdberr;
     char key[LLMETA_IXLEN] = {0};
@@ -3110,6 +3181,8 @@ int bdb_get_csc2(tran_type *tran, /* transaction to use, may be NULL */
                                  * freed by caller if successfull */
                  int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     int rc, retries = 0, schema_len;
     char key[LLMETA_IXLEN] = {0};
     size_t key_offset = 0;
@@ -3248,6 +3321,8 @@ static int bdb_file_version_change_filenum(bdb_state_type *bdb_state,
                                            int from_file_num, int to_file_num,
                                            int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     unsigned long long version_num;
 
     /*look up the version*/
@@ -3277,6 +3352,8 @@ static int bdb_file_version_change_filenum(bdb_state_type *bdb_state,
 int bdb_file_version_change_dtanum(bdb_state_type *bdb_state, tran_type *tran,
                                    int fromdtanum, int todtanum, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     return bdb_file_version_change_filenum(bdb_state, tran,
                                            LLMETA_FVER_FILE_TYPE_DTA,
                                            fromdtanum, todtanum, bdberr);
@@ -3286,6 +3363,8 @@ int bdb_file_version_change_dtanum(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_file_version_change_ixnum(bdb_state_type *bdb_state, tran_type *tran,
                                   int fromixnum, int toixnum, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     return bdb_file_version_change_filenum(
         bdb_state, tran, LLMETA_FVER_FILE_TYPE_IX, fromixnum, toixnum, bdberr);
 }
@@ -3299,6 +3378,8 @@ bdb_commit_temp_file_version(bdb_state_type *bdb_state, tran_type *tran,
                              int file_num,  /* ixnum or dtanum */
                              int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     unsigned long long version_num;
 
     *bdberr = BDBERR_NOERROR;
@@ -3353,6 +3434,8 @@ bdb_commit_temp_file_version(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_commit_temp_file_version_data(bdb_state_type *bdb_state,
                                       tran_type *tran, int dtanum, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     return bdb_commit_temp_file_version(
         bdb_state, tran, LLMETA_FVER_FILE_TYPE_DTA, dtanum, bdberr);
 }
@@ -3361,6 +3444,8 @@ int bdb_commit_temp_file_version_data(bdb_state_type *bdb_state,
 int bdb_commit_temp_file_version_index(bdb_state_type *bdb_state,
                                        tran_type *tran, int ixnum, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     return bdb_commit_temp_file_version(
         bdb_state, tran, LLMETA_FVER_FILE_TYPE_IX, ixnum, bdberr);
 }
@@ -3372,6 +3457,8 @@ int bdb_commit_temp_file_version_index(bdb_state_type *bdb_state,
 int bdb_commit_temp_file_version_all(bdb_state_type *bdb_state, tran_type *tran,
                                      int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int dtanum, ixnum;
 
     /* update data files */
@@ -3408,6 +3495,8 @@ int bdb_set_in_schema_change(
                                     * buffer, or 0 if it is NULL */
     int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, input_trans);
+
     int retries = 0, rc;
     char key[LLMETA_IXLEN] = {0};
     tran_type *trans;
@@ -3546,6 +3635,8 @@ int bdb_get_in_schema_change(
                                      * is NULL */
     int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, input_trans);
+
     int rc, retries = 0, datalen;
     char key[LLMETA_IXLEN] = {0};
     struct llmeta_schema_change_type schema_change;
@@ -3640,6 +3731,8 @@ static int bdb_set_high_genid_int(
                                       * stripe */
     int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, input_trans);
+
     int retries = 0, rc;
     char key[LLMETA_IXLEN] = {0};
     tran_type *trans;
@@ -3774,6 +3867,8 @@ int bdb_clear_high_genid(
     const char *db_name, int num_stripes, /* number of stripes to clear */
     int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, input_trans);
+
     int stripe;
 
     /* clear out the highest genid saved for each stripe */
@@ -3793,6 +3888,8 @@ int bdb_clear_high_genid(
 int bdb_set_high_genid(tran_type *input_trans, const char *db_name,
                        unsigned long long genid, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, input_trans);
+
     return bdb_set_high_genid_int(input_trans, db_name,
                                   get_dtafile_from_genid(genid), genid, bdberr);
 }
@@ -3800,6 +3897,8 @@ int bdb_set_high_genid(tran_type *input_trans, const char *db_name,
 int bdb_set_high_genid_stripe(tran_type *input_trans, const char *db_name,
                               int stripe, unsigned long long genid, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, input_trans);
+
     return bdb_set_high_genid_int(input_trans, db_name, stripe, genid, bdberr);
 }
 
@@ -3908,6 +4007,8 @@ retry:
 
 int bdb_delete_file_lwm(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     char key[LLMETA_IXLEN] = {0};
     int rc;
     struct llmeta_file_type_key file_type_key;
@@ -3936,6 +4037,8 @@ int bdb_delete_file_lwm(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
 int bdb_get_file_lwm(bdb_state_type *bdb_state, tran_type *tran, DB_LSN *lsn,
                      int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     char key[LLMETA_IXLEN] = {0};
     int fndlen;
     int rc;
@@ -4001,6 +4104,8 @@ int bdb_get_sp_name(tran_type *trans, /* transaction to use, may be NULL */
                     char *new_sp_name, /* will be set to the highest version*/
                     int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, trans);
+
     int rc, retries = 0, numfnd;
     uint8_t key[LLMETA_IXLEN] = {0}, fndkey[LLMETA_IXLEN] = {0};
 
@@ -4084,6 +4189,8 @@ int bdb_get_lua_highest(tran_type *trans, /* transaction to use, may be NULL */
                         int *lua_vers, /* will be set to the highest version*/
                         int max_lua_vers, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, trans);
+
     int rc, retries = 0, numfnd;
     uint8_t key[LLMETA_IXLEN] = {0}, fndkey[LLMETA_IXLEN] = {0};
 
@@ -4160,6 +4267,8 @@ int bdb_get_sp_lua_source(bdb_state_type *bdb_state, tran_type *tran,
                           const char *sp_name, char **lua_file, int lua_ver,
                           int *size, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     if (lua_ver == 0) {
         if ((lua_ver = bdb_get_sp_get_default_version(sp_name, bdberr)) <= 0) {
             *bdberr = BDBERR_BADARGS;
@@ -4209,6 +4318,8 @@ int bdb_set_sp_lua_source(bdb_state_type *bdb_state, tran_type *tran,
                           const char *sp_name, char *lua_file, int size,
                           int version, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     int started_our_own_transaction = 0;
     char key[LLMETA_IXLEN] = {0};
@@ -4318,6 +4429,8 @@ done:
 
 static int bdb_del_default_sp(tran_type *tran, char *name, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     uint8_t key[LLMETA_IXLEN] = {0};
     if (make_sp_key(key, name, 0) != 0) {
         *bdberr = BDBERR_BADARGS;
@@ -4332,6 +4445,8 @@ static int bdb_del_default_sp(tran_type *tran, char *name, int *bdberr)
 int bdb_set_sp_lua_default(bdb_state_type *bdb_state, tran_type *tran,
                            char *sp_name, int lua_ver, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int started_our_own_transaction = 0;
     uint8_t key[LLMETA_IXLEN] = {0};
     *bdberr = BDBERR_NOERROR;
@@ -4376,6 +4491,8 @@ done:
 int bdb_delete_sp_lua_source(bdb_state_type *bdb_state, tran_type *tran,
                              const char *sp_name, int lua_ver, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     int started_our_own_transaction = 0;
     uint8_t key[LLMETA_IXLEN] = {0};
@@ -4455,6 +4572,8 @@ static uint8_t *llmeta_global_stripe_info_put(
 int bdb_get_global_stripe_info(tran_type *tran, int *stripes, int *blobstripe,
                                int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     int rc;
     char buf[LLMETA_GLOBAL_STRIPE_INFO_LEN];
     struct llmeta_global_stripe_info stripe_info;
@@ -4502,6 +4621,8 @@ int bdb_get_global_stripe_info(tran_type *tran, int *stripes, int *blobstripe,
 int bdb_set_global_stripe_info(tran_type *tran, int stripes, int blobstripe,
                                int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     int rc;
     int started_our_own_transaction = 0;
     uint8_t buf[LLMETA_GLOBAL_STRIPE_INFO_LEN];
@@ -4569,6 +4690,8 @@ done:
 int bdb_get_num_sc_done(bdb_state_type *bdb_state, tran_type *tran,
                         unsigned long long *num, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     char key[LLMETA_IXLEN] = {0};
     struct llmeta_file_type_key file_type_key;
@@ -4603,6 +4726,8 @@ int bdb_get_num_sc_done(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_increment_num_sc_done(bdb_state_type *bdb_state, tran_type *tran,
                               int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     char key[LLMETA_IXLEN] = {0};
     unsigned long long num = 0;
@@ -4658,6 +4783,8 @@ int bdb_get_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
                     const char *table, unsigned long long *genid,
                     unsigned int *host, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     char key[LLMETA_IXLEN] = {0};
     struct llmeta_schema_change_type schema_change;
@@ -4695,6 +4822,8 @@ int bdb_set_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
                     const char *table, unsigned long long genid,
                     unsigned int host, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     int started_our_own_transaction = 0;
     char key[LLMETA_IXLEN] = {0};
@@ -4764,6 +4893,8 @@ done:
 int bdb_delete_sc_seed(bdb_state_type *bdb_state, tran_type *tran,
                        const char *table, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     int started_our_own_transaction = 0;
     char key[LLMETA_IXLEN] = {0};
@@ -4817,6 +4948,8 @@ done:
 int bdb_set_file_lwm(bdb_state_type *bdb_state, tran_type *tran, DB_LSN *lsn,
                      int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     char key[LLMETA_IXLEN] = {0};
     int started_our_own_transaction = 0;
@@ -4899,6 +5032,8 @@ static int bdb_tbl_access_set(bdb_state_type *bdb_state, tran_type *input_trans,
                               const char *tblname, const char *username, int access_mode,
                               int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, input_trans);
+
     uint8_t key[LLMETA_IXLEN] = {0};
     int rc;
     struct llmeta_tbl_access tbl_access_data = {0};
@@ -5001,6 +5136,8 @@ backout:
 int bdb_tbl_access_write_set(bdb_state_type *bdb_state, tran_type *input_trans,
                              char *tblname, char *username, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, input_trans);
+
     return bdb_tbl_access_set(bdb_state, input_trans, tblname, username,
                               ACCESS_WRITE, bdberr);
 }
@@ -5008,6 +5145,8 @@ int bdb_tbl_access_write_set(bdb_state_type *bdb_state, tran_type *input_trans,
 int bdb_tbl_access_read_set(bdb_state_type *bdb_state, tran_type *input_trans,
                             char *tblname, char *username, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, input_trans);
+
     return bdb_tbl_access_set(bdb_state, input_trans, tblname, username,
                               ACCESS_READ, bdberr);
 }
@@ -5016,6 +5155,8 @@ int bdb_tbl_access_userschema_set(bdb_state_type *bdb_state,
                                   tran_type *input_trans, const char *schema,
                                   const char *username, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, input_trans);
+
     /* Adding username infront to make it search for partial key. */
     return bdb_tbl_access_set(bdb_state, input_trans, username, schema,
                               ACCESS_USERSCHEMA, bdberr);
@@ -5028,6 +5169,8 @@ int bdb_tbl_op_access_set(bdb_state_type *bdb_state, tran_type *input_trans,
                           int command_type, const char *tblname, const char *username,
                           int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, input_trans);
+
     uint8_t key[LLMETA_IXLEN] = {0};
     int rc;
     struct llmeta_tbl_op_access tbl_access_data = {0};
@@ -5124,6 +5267,8 @@ int bdb_tbl_op_access_get(bdb_state_type *bdb_state, tran_type *input_trans,
                           int command_type, const char *tblname, const char *username,
                           int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, input_trans);
+
     uint8_t key[LLMETA_IXLEN] = {0};
     int fndlen, rc;
     struct llmeta_tbl_op_access tbl_access_data = {0};
@@ -5159,6 +5304,8 @@ int bdb_tbl_op_access_delete(bdb_state_type *bdb_state, tran_type *input_trans,
                              int command_type, const char *tblname, const char *username,
                              int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, input_trans);
+
     uint8_t key[LLMETA_IXLEN] = {0};
     struct llmeta_tbl_op_access tbl_access_data = {0};
     tran_type *trans;
@@ -5256,6 +5403,8 @@ backout:
 int bdb_feature_set_int(bdb_state_type *bdb_state, tran_type *input_trans,
                         int *bdberr, int add, int file_type)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, input_trans);
+
     uint8_t key[LLMETA_IXLEN] = {0};
     int rc;
     struct llmeta_authentication authentication_data = {0};
@@ -5347,12 +5496,16 @@ backout:
 int bdb_authentication_set(bdb_state_type *bdb_state, tran_type *input_trans, int enabled,
                            int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, input_trans);
+
     return bdb_feature_set_int(bdb_state, input_trans, bdberr, enabled,
                                LLMETA_AUTHENTICATION);
 }
 int bdb_accesscontrol_tableXnode_set(bdb_state_type *bdb_state,
                                      tran_type *input_trans, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, input_trans);
+
     return bdb_feature_set_int(bdb_state, input_trans, bdberr, 1,
                                LLMETA_ACCESSCONTROL_TABLExNODE);
 }
@@ -5361,6 +5514,8 @@ int bdb_accesscontrol_tableXnode_set(bdb_state_type *bdb_state,
 static int bdb_feature_get_int(bdb_state_type *bdb_state, tran_type *tran,
                                int *bdberr, int file_type)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
     uint8_t key[LLMETA_IXLEN] = {0};
     struct llmeta_authentication authentication_data = {0};
@@ -5391,12 +5546,16 @@ static int bdb_feature_get_int(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_authentication_get(bdb_state_type *bdb_state, tran_type *tran,
                            int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     return bdb_feature_get_int(bdb_state, tran, bdberr, LLMETA_AUTHENTICATION);
 }
 
 int bdb_accesscontrol_tableXnode_get(bdb_state_type *bdb_state, tran_type *tran,
                                      int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     return bdb_feature_get_int(bdb_state, tran, bdberr,
                                LLMETA_ACCESSCONTROL_TABLExNODE);
 }
@@ -5405,6 +5564,8 @@ static int bdb_tbl_access_get(bdb_state_type *bdb_state, tran_type *input_trans,
                               char *tblname, char *username, int access_mode,
                               int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, input_trans);
+
     uint8_t key[LLMETA_IXLEN] = {0};
     int fndlen, rc;
     struct llmeta_tbl_access tbl_access_data = {0};
@@ -5445,6 +5606,8 @@ static int bdb_tbl_access_get(bdb_state_type *bdb_state, tran_type *input_trans,
 int bdb_tbl_access_write_get(bdb_state_type *bdb_state, tran_type *input_trans,
                              char *tblname, char *username, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, input_trans);
+
     return bdb_tbl_access_get(bdb_state, input_trans, tblname, username,
                               ACCESS_WRITE, bdberr);
 }
@@ -5452,6 +5615,8 @@ int bdb_tbl_access_write_get(bdb_state_type *bdb_state, tran_type *input_trans,
 int bdb_tbl_access_read_get(bdb_state_type *bdb_state, tran_type *input_trans,
                             char *tblname, char *username, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, input_trans);
+
     return bdb_tbl_access_get(bdb_state, input_trans, tblname, username,
                               ACCESS_READ, bdberr);
 }
@@ -5460,6 +5625,8 @@ int bdb_tbl_access_userschema_get(bdb_state_type *bdb_state,
                                   tran_type *input_trans, const char *username,
                                   char *userschema, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, input_trans);
+
     uint8_t key[LLMETA_IXLEN] = {0};
     uint8_t fndkey[LLMETA_IXLEN] = {0};
     int fndlen, rc;
@@ -5514,6 +5681,8 @@ static int bdb_tbl_access_delete(bdb_state_type *bdb_state,
                                  tran_type *input_trans, const char *tblname,
                                  const char *username, int access_mode, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, input_trans);
+
     uint8_t key[LLMETA_IXLEN] = {0};
     struct llmeta_tbl_access tbl_access_data = {0};
     tran_type *trans;
@@ -5619,6 +5788,8 @@ int bdb_tbl_access_write_delete(bdb_state_type *bdb_state,
                                 tran_type *input_trans, const char *tblname,
                                 const char *username, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, input_trans);
+
     return bdb_tbl_access_delete(bdb_state, input_trans, tblname, username,
                                  ACCESS_WRITE, bdberr);
 }
@@ -5627,6 +5798,8 @@ int bdb_tbl_access_read_delete(bdb_state_type *bdb_state,
                                tran_type *input_trans, const char *tblname,
                                const char *username, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, input_trans);
+
     return bdb_tbl_access_delete(bdb_state, input_trans, tblname, username,
                                  ACCESS_READ, bdberr);
 }
@@ -5635,6 +5808,8 @@ int bdb_tbl_access_userschema_delete(bdb_state_type *bdb_state,
                                      tran_type *input_trans, const char *schema,
                                      const char *username, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, input_trans);
+
     return bdb_tbl_access_delete(bdb_state, input_trans, username, schema,
                                  ACCESS_USERSCHEMA, bdberr);
 }
@@ -5650,6 +5825,8 @@ static int bdb_sqlite_stat1_read_int(bdb_state_type *bdb_state,
                                      char *idx, char **stat, int *bdberr,
                                      int file_type)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, input_trans);
+
     uint8_t key[LLMETA_IXLEN] = {0};
     struct llmeta_sqlstat1_key sqlstats = {0};
     int rc;
@@ -5736,6 +5913,8 @@ static int bdb_sqlite_stat1_delete_stale_int(bdb_state_type *bdb_state,
                                              char *idx, int *bdberr,
                                              int file_type)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, trans);
+
     uint8_t key[LLMETA_IXLEN] = {0};
     struct llmeta_sqlstat1_stale_key sqlstats = {0};
     uint8_t *p_buf, *p_buf_end;
@@ -5799,6 +5978,8 @@ static int bdb_sqlite_stat1_write_int(bdb_state_type *bdb_state,
                                       tran_type *trans, char *tbl, char *idx,
                                       char *stat, int *bdberr, int file_type)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, trans);
+
     uint8_t key[LLMETA_IXLEN] = {0};
     struct llmeta_sqlstat1_key sqlstats = {0};
     uint8_t *p_buf, *p_buf_end;
@@ -5884,6 +6065,8 @@ int bdb_sqlite_stat1_write_prev(bdb_state_type *bdb_state,
                                 tran_type *input_trans, char *tbl, char *idx,
                                 char *stat, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, input_trans);
+
     return bdb_sqlite_stat1_write_int(bdb_state, input_trans, tbl, idx, stat,
                                       bdberr, LLMETA_SQLITE_STAT1_PREV);
 }
@@ -5894,6 +6077,8 @@ int bdb_sqlite_stat1_read_prev(bdb_state_type *bdb_state,
                                tran_type *input_trans, char *tbl, char *idx,
                                char **stat, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, input_trans);
+
     return bdb_sqlite_stat1_read_int(bdb_state, input_trans, tbl, idx, stat,
                                      bdberr, LLMETA_SQLITE_STAT1_PREV);
 }
@@ -5903,6 +6088,8 @@ int bdb_sqlite_stat1_delete_stale(bdb_state_type *bdb_state,
                                   tran_type *input_trans, char *tbl, char *idx,
                                   int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, input_trans);
+
     return bdb_sqlite_stat1_delete_stale_int(bdb_state, input_trans, tbl, idx,
                                              bdberr,
                                              LLMETA_SQLITE_STAT1_PREV_DONT_USE);
@@ -6192,6 +6379,8 @@ static uint8_t *llmeta_analyzecoverage_key_type_put(
 int bdb_get_analyzecoverage_table(tran_type *input_trans, const char *tbl_name,
                                   int *coveragevalue, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, input_trans);
+
     int rc, fndlen, retries = 0;
     char key[LLMETA_IXLEN] = {0};
     struct llmeta_analyzecoverage_key_type analyzecoverage_key;
@@ -6275,6 +6464,8 @@ retry:
 int bdb_set_analyzecoverage_table(tran_type *input_trans, const char *tbl_name,
                                   int coveragevalue, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, input_trans);
+
     int retries = 0;
     struct llmeta_analyzecoverage_key_type analyzecoverage_key;
     char key[LLMETA_IXLEN] = {0};
@@ -6397,6 +6588,8 @@ backout:
 int bdb_clear_analyzecoverage_table(tran_type *input_trans,
                                     const char *tbl_name, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, input_trans);
+
     return bdb_set_analyzecoverage_table(input_trans, tbl_name, -1, bdberr);
 }
 
@@ -6431,6 +6624,8 @@ static uint8_t *llmeta_analyzethreshold_key_type_put(
 int bdb_get_analyzethreshold_table(tran_type *input_trans, const char *tbl_name,
                                    long long *threshold, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, input_trans);
+
     int rc, fndlen, retries = 0;
     char key[LLMETA_IXLEN] = {0};
     struct llmeta_analyzethreshold_key_type analyzethreshold_key;
@@ -6508,6 +6703,8 @@ retry:
 
 int bdb_get_rowlocks_state(int *rlstate, tran_type *tran, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     int rc, fndlen, retries = 0;
     struct llmeta_rowlocks_state_key_type rowlocks_key;
     struct llmeta_rowlocks_state_data_type rowlocks_data;
@@ -6575,6 +6772,8 @@ retry:
 
 int bdb_set_rowlocks_state(tran_type *input_trans, int rlstate, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, input_trans);
+
     int retries = 0, rc;
     struct llmeta_rowlocks_state_key_type rowlocks_key;
     struct llmeta_rowlocks_state_data_type rowlocks_data;
@@ -6680,6 +6879,8 @@ backout:
 int bdb_set_analyzethreshold_table(tran_type *input_trans, const char *tbl_name,
                                    long long threshold, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, input_trans);
+
     int retries = 0;
     struct llmeta_analyzethreshold_key_type analyzethreshold_key;
     char key[LLMETA_IXLEN] = {0};
@@ -6802,6 +7003,8 @@ backout:
 int bdb_clear_analyzethreshold_table(tran_type *input_trans,
                                      const char *tbl_name, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, input_trans);
+
     return bdb_set_analyzethreshold_table(input_trans, tbl_name, -1, bdberr);
 }
 
@@ -7316,6 +7519,8 @@ static int bdb_table_version_upsert_int(bdb_state_type *bdb_state,
                                         tran_type *tran,
                                         unsigned long long *val, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     struct llmeta_sane_table_version schema_version;
     char *tblname = bdb_state->name;
     unsigned long long version;
@@ -7415,6 +7620,8 @@ static int bdb_table_version_upsert_int(bdb_state_type *bdb_state,
 int bdb_table_version_upsert(bdb_state_type *bdb_state, tran_type *tran,
                              int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     return bdb_table_version_upsert_int(bdb_state, tran, NULL, bdberr);
 }
 
@@ -7426,6 +7633,8 @@ int bdb_table_version_upsert(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_table_version_update(bdb_state_type *bdb_state, tran_type *tran,
                              unsigned long long val, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     return bdb_table_version_upsert_int(bdb_state, tran, &val, bdberr);
 }
 
@@ -7436,6 +7645,8 @@ int bdb_table_version_update(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_table_version_delete(bdb_state_type *bdb_state, tran_type *tran,
                              int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     struct llmeta_sane_table_version schema_version;
     char *tblname = bdb_state->name;
     unsigned long long version;
@@ -7517,6 +7728,8 @@ int bdb_table_version_delete(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_table_version_select(const char *tblname, tran_type *tran,
                              unsigned long long *version, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     struct llmeta_sane_table_version schema_version;
     char key[LLMETA_IXLEN] = {0};
     char fnddata[sizeof(*version)];
@@ -7621,6 +7834,8 @@ retry:
 static int llmeta_get_blob(llmetakey_t key, tran_type *tran, const char *table,
                            char **value, int *len)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
 #ifdef DEBUG_LLMETA
     fprintf(stderr, "%s\n", __func__);
 #endif
@@ -7780,6 +7995,8 @@ static inline int llmeta_set_blob(void *parent_tran, llmetakey_t key,
 int bdb_get_table_csonparameters(tran_type *tran, const char *table,
                                  char **value, int *len)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     return llmeta_get_blob(LLMETA_TABLE_PARAMETERS, tran, table, value, len);
 }
 
@@ -7803,6 +8020,8 @@ int bdb_del_table_csonparameters(void *parent_tran, const char *table)
 int bdb_get_table_parameter_tran(const char *table, const char *parameter,
                                  char **value, tran_type *tran)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
 #ifdef DEBUG_LLMETA
     fprintf(stderr, "%s()\n", __func__);
 #endif
@@ -8129,6 +8348,8 @@ int bdb_llmeta_add_queue(bdb_state_type *bdb_state, tran_type *tran,
                          char *queue, char *config, int ndests, char **dests,
                          int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     char key[LLMETA_IXLEN] = {0};
     int dtalen;
     uint8_t *p_buf, *p_buf_end;
@@ -8179,6 +8400,8 @@ int bdb_llmeta_alter_queue(bdb_state_type *bdb_state, tran_type *tran,
                            char *queue, char *config, int ndests, char **dests,
                            int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     /* delete and add */
@@ -8197,6 +8420,8 @@ done:
 int bdb_llmeta_drop_queue(bdb_state_type *bdb_state, tran_type *tran,
                           char *queue, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     char key[LLMETA_IXLEN] = {0};
     uint8_t *p_buf, *p_buf_end;
     struct queue_key qk = {0};
@@ -8394,6 +8619,8 @@ static int kv_get_keys(void *k, size_t klen, void ***ret, int *num, int *bdberr)
 
 static int kv_del(tran_type *tran, void *k, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     return bdb_lite_exact_del(llmeta_bdb_state, tran, k, bdberr);
 }
 
@@ -8405,6 +8632,8 @@ static int kv_del(tran_type *tran, void *k, int *bdberr)
 static int kv_del_by_value(tran_type *tran, void *k, size_t klen, void *v,
                            size_t vlen, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     int rc, fnd;
     uint8_t fndk[LLMETA_IXLEN];
     rc = bdb_lite_fetch_partial(llmeta_bdb_state, k, klen, fndk, &fnd, bdberr);
@@ -8435,6 +8664,8 @@ static int kv_del_by_value(tran_type *tran, void *k, size_t klen, void *v,
 static int kv_put_int(tran_type *tran, void *k, void *v, size_t vlen,
                       int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     int rc = kv_del(tran, k, bdberr);
     if (rc != 0 && *bdberr != BDBERR_DEL_DTA) {
         // key exists and failed to delete
@@ -8445,6 +8676,8 @@ static int kv_put_int(tran_type *tran, void *k, void *v, size_t vlen,
 
 static int kv_put(tran_type *tran, void *k, void *v, size_t vlen, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     tran_type *t = tran ? tran : bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
     int rc = kv_put_int(t, k, v, vlen, bdberr);
     if (tran == NULL) {
@@ -8479,6 +8712,8 @@ static int bdb_kv_get(llmetakey_t llkey, char ***ret, int *num, int *bdberr)
 static int bdb_kv_put(tran_type *tran, llmetakey_t llkey, void *dta, int dsz,
                       int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     uint8_t buf[LLMETA_IXLEN] = {0};
     llmeta_kv_key *key = (llmeta_kv_key *)buf;
     key->llkey = htonl(llkey);
@@ -8489,6 +8724,8 @@ static int bdb_kv_put(tran_type *tran, llmetakey_t llkey, void *dta, int dsz,
 static int bdb_kv_del_by_value(tran_type *tran, llmetakey_t k, void *v,
                                size_t vlen, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     k = htonl(k);
     return kv_del_by_value(tran, &k, sizeof(k), v, vlen, bdberr);
 }
@@ -8536,6 +8773,8 @@ struct versioned_sp {
 };
 int bdb_add_versioned_sp(tran_type *t, char *name, char *version, char *src)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, t);
+
     union {
         struct versioned_sp sp;
         uint8_t buf[LLMETA_IXLEN];
@@ -8577,6 +8816,8 @@ int bdb_get_versioned_sp(char *name, char *version, char **src)
 }
 static int bdb_del_versioned_sp_int(tran_type *t, char *name, char *version)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, t);
+
     union {
         struct versioned_sp sp;
         uint8_t buf[LLMETA_IXLEN];
@@ -8626,6 +8867,8 @@ struct default_versioned_sp {
 static int bdb_set_default_versioned_sp_int(tran_type *tran, char *name,
                                             char *version)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     union {
         struct default_versioned_sp sp;
         uint8_t buf[LLMETA_IXLEN];
@@ -8639,6 +8882,8 @@ static int bdb_set_default_versioned_sp_int(tran_type *tran, char *name,
 }
 int bdb_set_default_versioned_sp(tran_type *t, char *name, char *version)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, t);
+
     int rc;
     if ((rc = bdb_set_default_versioned_sp_int(t, name, version)) != 0)
         return rc;
@@ -8673,6 +8918,8 @@ int bdb_get_default_versioned_sp(char *name, char **version)
 }
 int bdb_del_default_versioned_sp(tran_type *tran, char *name)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     union {
         struct default_versioned_sp sp;
         uint8_t buf[LLMETA_IXLEN];
@@ -8740,6 +8987,8 @@ static int bdb_process_each_entry(bdb_state_type *bdb_state, tran_type *tran,
                                               void *arg, void *rec),
                                   void *arg, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int fnd;
     uint8_t out[LLMETA_IXLEN];
     uint8_t nxt[LLMETA_IXLEN];
@@ -8824,6 +9073,8 @@ static int bdb_process_each_table_entry(bdb_state_type *bdb_state,
                                         const char *tblname,
                                         unsigned long long version, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     struct llmeta_file_type_dbname_key key_struct = {0};
     char key[LLMETA_IXLEN] = {0};
     uint8_t *p_buf, *p_buf_start, *p_buf_end;
@@ -8866,6 +9117,8 @@ int bdb_process_each_table_dta_entry(bdb_state_type *bdb_state, tran_type *tran,
                                      const char *tblname,
                                      unsigned long long version, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     return bdb_process_each_table_entry(
         bdb_state, tran, LLMETA_FVER_FILE_TYPE_DTA, tblname, version, bdberr);
 }
@@ -8874,6 +9127,8 @@ int bdb_process_each_table_idx_entry(bdb_state_type *bdb_state, tran_type *tran,
                                      const char *tblname,
                                      unsigned long long version, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     return bdb_process_each_table_entry(
         bdb_state, tran, LLMETA_FVER_FILE_TYPE_IX, tblname, version, bdberr);
 }
@@ -8966,6 +9221,8 @@ out:
 }
 int bdb_user_password_set(tran_type *tran, char *user, char *passwd)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     passwd_key key = {{0}};
     size_t ulen = strlen(user) + 1;
     if (ulen > sizeof(key.passwd.user))
@@ -8987,6 +9244,8 @@ int bdb_user_password_set(tran_type *tran, char *user, char *passwd)
 }
 int bdb_user_password_delete(tran_type *tran, char *user)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     passwd_key key = {{0}};
     size_t ulen = strlen(user) + 1;
     if (ulen > sizeof(key.passwd.user))
@@ -9033,6 +9292,8 @@ int bdb_user_get_all(char ***users, int *num)
 int bdb_rename_table_pagesizes(bdb_state_type *bdb_state, tran_type *tran,
                                const char *newname, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
 #define NFUNCS 3
     int (*rfuncs[NFUNCS])(bdb_state_type *, tran_type *, int *, int *) = {
         bdb_get_pagesize_data, bdb_get_pagesize_blob, bdb_get_pagesize_index};
@@ -9070,6 +9331,8 @@ int bdb_rename_table_pagesizes(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_rename_csc2_version(tran_type *trans, const char *tblname,
                             const char *newtblname, int ver, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, trans);
+
     int rc;
     char key[LLMETA_IXLEN] = {0};
     char new_key[LLMETA_IXLEN] = {0};
@@ -9134,6 +9397,8 @@ int bdb_rename_csc2_version(tran_type *trans, const char *tblname,
 int bdb_rename_files(bdb_state_type *bdb_state, tran_type *tran,
                      const char *newname, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     /* generate new version and rename files per newname */
@@ -9179,6 +9444,8 @@ done:
 int bdb_rename_table_metadata(bdb_state_type *bdb_state, tran_type *tran,
                               const char *newname, int version, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
+
     int rc;
 
     /* create custom page sizes, if any */
@@ -9208,6 +9475,8 @@ int bdb_rename_table_metadata(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_get_sc_start_lsn(tran_type *tran, const char *table, void *plsn,
                          int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     int rc;
     char key[LLMETA_IXLEN] = {0};
     struct llmeta_schema_change_type schema_change;
@@ -9254,6 +9523,8 @@ int bdb_get_sc_start_lsn(tran_type *tran, const char *table, void *plsn,
 int bdb_set_sc_start_lsn(tran_type *tran, const char *table, void *plsn,
                          int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     int rc;
     int started_our_own_transaction = 0;
     char key[LLMETA_IXLEN] = {0};
@@ -9352,6 +9623,8 @@ done:
 
 int bdb_delete_sc_start_lsn(tran_type *tran, const char *table, int *bdberr)
 {
+    BDB_VERIFY_TRAN_INVARIANTS(llmeta_bdb_state, tran);
+
     int rc;
     int started_our_own_transaction = 0;
     char key[LLMETA_IXLEN] = {0};
