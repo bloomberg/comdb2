@@ -32,13 +32,13 @@ static pthread_rwlock_t schema_lk = PTHREAD_RWLOCK_INITIALIZER;
 inline int schema_read_held_int(const char *file, const char *func, int line)
 {
   pthread_t self = pthread_self();
-  return CAS(schema_rd_thd, self, self) == self;
+  return CAS(schema_rd_thd, &self, &self) == self;
 }
 
 inline int schema_write_held_int(const char *file, const char *func, int line)
 {
   pthread_t self = pthread_self();
-  return CAS(schema_wr_thd, self, self) == self;
+  return CAS(schema_wr_thd, &self, &self) == self;
 }
 #endif
 
@@ -74,8 +74,9 @@ inline void unlock_schema_int(const char *file, const char *func, int line)
            line);
 #endif
 #ifndef NDEBUG
-    CAS(schema_rd_thd, pthread_self(), NULL);
-    CAS(schema_wr_thd, pthread_self(), NULL);
+    pthread_t self = pthread_self();
+    CAS(schema_rd_thd, &self, NULL);
+    CAS(schema_wr_thd, &self, NULL);
 #endif
     Pthread_rwlock_unlock(&schema_lk);
 }
