@@ -117,6 +117,7 @@ inline void unlock_schema_int(const char *file, const char *func, int line)
     {
         if (current->thread == self) {
             listc_rfl(&schema_rd_thds, current);
+            free(current);
             break;
         }
     }
