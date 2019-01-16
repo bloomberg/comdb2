@@ -44,7 +44,7 @@ inline int schema_read_held_int(const char *file, const char *func, int line)
 {
   int rc = 0;
   Pthread_mutex_lock(&schema_rd_thds_lk);
-  struct pthread_t_link current, temp;
+  struct pthread_t_link *current, *temp;
   pthread_t self = pthread_self();
   LISTC_FOR_EACH_SAFE(&schema_rd_thds, current, temp, lnk)
   {
@@ -68,7 +68,7 @@ inline void rdlock_schema_int(const char *file, const char *func, int line)
 {
     Pthread_rwlock_rdlock(&schema_lk);
 #ifndef NDEBUG
-    struct pthread_t_link newt = calloc(1, sizeof(struct pthread_t_link));
+    struct pthread_t_link *newt = calloc(1, sizeof(struct pthread_t_link));
     if (newt == NULL) abort();
     newt->thread = pthread_self();
     Pthread_mutex_lock(&schema_rd_thds_lk);
@@ -86,7 +86,7 @@ inline int tryrdlock_schema_int(const char *file, const char *func, int line)
     int rc = pthread_rwlock_tryrdlock(&schema_lk);
 #ifndef NDEBUG
     if (rc == 0) {
-        struct pthread_t_link newt = calloc(1, sizeof(struct pthread_t_link));
+        struct pthread_t_link *newt = calloc(1, sizeof(struct pthread_t_link));
         if (newt == NULL) abort();
         newt->thread = pthread_self();
         Pthread_mutex_lock(&schema_rd_thds_lk);
@@ -112,7 +112,7 @@ inline void unlock_schema_int(const char *file, const char *func, int line)
     void *pNull = NULL;
     CAS64(schema_wr_thd, self, pNull);
     Pthread_mutex_lock(&schema_rd_thds_lk);
-    struct pthread_t_link current, temp;
+    struct pthread_t_link *current, *temp;
     LISTC_FOR_EACH_SAFE(&schema_rd_thds, current, temp, lnk)
     {
         if (current->thread == self) {
