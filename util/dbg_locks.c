@@ -155,7 +155,7 @@ static void dbg_pthread_add_self(
     if( objlocks==NULL ) abort();
   }
   pthread_t self = pthread_self();
-  struct dbg_lock_pthread_key_t key = { self, type };
+  struct dbg_lock_pthread_key_t key = { obj, self, type };
   struct dbg_lock_pthread_pair_t *pair = hash_find(objlocks, &key);
   if( pair==NULL ){
     pair = calloc(1, sizeof(struct dbg_lock_pthread_pair_t));
@@ -187,7 +187,7 @@ static void dbg_pthread_remove_self(
   hash_t *objlocks = hash_find(dbg_locks, obj);
   if( objlocks==NULL ) goto done;
   pthread_t self = pthread_self();
-  struct dbg_lock_pthread_key_t key = { self, type };
+  struct dbg_lock_pthread_key_t key = { obj, self, type };
   struct dbg_lock_pthread_pair_t *pair = hash_find(objlocks, &key);
   if( pair!=NULL && --pair->nRef==0 ){
     if( hash_del(objlocks, &pair->key)!=0 ) abort();
