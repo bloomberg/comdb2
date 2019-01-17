@@ -70,13 +70,13 @@ void dump_schema_lk(FILE *out)
     pthread_t nullt = NULL;
     pthread_t writer = CAS64(schema_wr_thd, nullt, nullt);
     fprintf(out, "[SCHEMA_LK] %p @ %s: writer is %p\n",
-            self, __func__, writer);
+            (void *)self, __func__, (void *)writer);
     Pthread_mutex_lock(&schema_rd_thds_lk);
     struct pthread_t_link *current, *temp;
     LISTC_FOR_EACH_SAFE(&schema_rd_thds, current, temp, lnk)
     {
         fprintf(out, "[SCHEMA_LK] %p @ %s: have reader %p\n",
-                self, __func__, current->thread);
+                (void *)self, __func__, (void *)current->thread);
     }
     Pthread_mutex_unlock(&schema_rd_thds_lk);
     fflush(out);
