@@ -16,6 +16,7 @@
 
 #if defined(DBG_PTHREAD_LOCKS)
 
+#include <stdio.h>
 #include <assert.h>
 #include <stdlib.h>
 #include <time.h>
@@ -46,6 +47,42 @@ static hash_t *dbg_locks = NULL;
 
 /*****************************************************************************/
 
+static void dbg_pthread_type_name(
+  char *zBuf,
+  size_t nBuf,
+  int type
+){
+  switch( type ){
+    case DBG_LOCK_PTHREAD_NONE:{ snprintf(zBuf,nBuf,"%s","none"); return; }
+    case DBG_LOCK_PTHREAD_MUTEX:{ snprintf(zBuf,nBuf,"%s","mutex"); return; }
+    case DBG_LOCK_PTHREAD_RDLOCK:{ snprintf(zBuf,nBuf,"%s","rdlock"); return; }
+    case DBG_LOCK_PTHREAD_WRLOCK:{ snprintf(zBuf,nBuf,"%s","wrlock"); return; }
+    case DBG_LOCK_PTHREAD_RWLOCK:{ snprintf(zBuf,nBuf,"%s","rwlock"); return; }
+    default:{ snprintf(zBuf,nBuf,"unknown:%d",type);  return; }
+  }
+}
+
+/*****************************************************************************/
+
+static int dbg_pthread_dump_pair(
+  void *obj,
+  void *arg
+){
+  struct dbg_lock_pthread_pair_t *pair = (struct dbg_lock_pthread_pair_t *)obj;
+  if( pair!=NULL ){
+    FILE *out = (FILE *)arg;
+    char zBuf[64];
+
+    dbg_pthread_type_name(zBuf, sizeof(zBuf), pair->key.type);
+
+    fprintf(out, "%s: [%s %p] [%d] (%p)\n",
+            __func__, zBuf, pair->nRef, (void *)pair);
+  }
+  return 0;
+}
+
+/*****************************************************************************/
+
 static int dbg_pthread_free_obj(
   void *obj,
   void *arg
@@ -71,6 +108,16 @@ static int dbg_pthread_free_hash(
 
 /*****************************************************************************/
 
+void dbg_pthread_dump(FILE *out){
+  pthread_mutex_lock(&dbg_locks_lk);
+  if( dbg_locks==NULL ) goto done;
+  hash_for(dbg_locks, dbg_pthread_dump_pair, out);
+done:
+  pthread_mutex_unlock(&dbg_locks_lk);
+}
+
+/*****************************************************************************/
+
 static void dbg_pthread_check_init(void){
   pthread_mutex_lock(&dbg_locks_lk);
   if( dbg_locks==NULL ){
@@ -84,12 +131,12 @@ static void dbg_pthread_check_init(void){
 
 void dbg_pthread_term(void){
   pthread_mutex_lock(&dbg_locks_lk);
-  if( dbg_locks!=NULL ){
-    hash_for(dbg_locks, dbg_pthread_free_hash, NULL);
-    hash_clear(dbg_locks);
-    hash_free(dbg_locks);
-    dbg_locks = NULL;
-  }
+  if( dbg_locks==NULL ) goto done;
+  hash_for(dbg_locks, dbg_pthread_free_hash, NULL);
+  hash_clear(dbg_locks);
+  hash_free(dbg_locks);
+  dbg_locks = NULL;
+done:
   pthread_mutex_unlock(&dbg_locks_lk);
 }
 

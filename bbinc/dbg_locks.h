@@ -18,11 +18,13 @@
 #ifndef DBG_LOCKS_H
 #define DBG_LOCKS_H
 
+#include <stdio.h>
 #include <time.h>
 #include <pthread.h>
 
 /*****************************************************************************/
 
+void dbg_pthread_dump(FILE *out);
 void dbg_pthread_term(void);
 
 /*****************************************************************************/
