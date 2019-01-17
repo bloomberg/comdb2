@@ -76,6 +76,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "timers.h"
 
 #include "comdb2.h"
+#include "dbg_locks.h"
 #include "sql.h"
 
 #include "comdb2_trn_intrl.h"
@@ -1465,6 +1466,10 @@ void clean_exit(void)
     clear_portmux_bind_path();
     // TODO: would be nice but other threads need to exit first:
     // comdb2ma_exit();
+
+#if defined(DBG_PTHREAD_LOCKS)
+    dbg_pthread_term();
+#endif
 
     logmsg(LOGMSG_USER, "goodbye\n");
     exit(0);

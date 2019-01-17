@@ -13,6 +13,7 @@ set(src
   comdb2file.c
   compat.c
   ctrace.c
+  dbg_locks.c
   debug_switches.c
   flibc.c
   fsnapf.c
