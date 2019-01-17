@@ -33,6 +33,7 @@ enum dbg_lock_pthread_type_t {
 };
 
 struct dbg_lock_pthread_key_t {
+  void *obj;
   pthread_t thread;
   int type;
 };
@@ -75,8 +76,8 @@ static int dbg_pthread_dump_pair(
 
     dbg_pthread_type_name(zBuf, sizeof(zBuf), pair->key.type);
 
-    fprintf(out, "%s: [%s %p] [%d] (%p)\n",
-            __func__, zBuf, pair->nRef, (void *)pair);
+    fprintf(out, "%s: [%s %p] [refs:%d] (pair:%p)\n",
+            __func__, zBuf, pair->key.obj, pair->nRef, (void *)pair);
   }
   return 0;
 }
@@ -159,11 +160,13 @@ static void dbg_pthread_add_self(
   if( pair==NULL ){
     pair = calloc(1, sizeof(struct dbg_lock_pthread_pair_t));
     if( pair==NULL ) abort();
+    pair->key.obj = obj;
     pair->key.thread = self;
     pair->key.type = type;
     pair->nRef = 1;
     if( hash_add(objlocks, &pair->key)!=0 ) abort();
   }else{
+    assert( pair->key.obj==obj );
     assert( pair->key.thread==self );
     assert( pair->key.type==type );
     assert( pair->nRef>0 );
@@ -189,7 +192,11 @@ static void dbg_pthread_remove_self(
   if( pair!=NULL && --pair->nRef==0 ){
     if( hash_del(objlocks, &pair->key)!=0 ) abort();
     free(pair);
+    if( hash_get_num_entries(objlocks)==0 ){
+      if( hash_del(dbg_locks, obj)!=0 ) abort();
+    }
   }else{
+    assert( pair->key.obj==obj );
     assert( pair->key.thread==self );
     assert( pair->key.type==type );
     assert( pair->nRef>0 );
