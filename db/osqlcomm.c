@@ -50,6 +50,7 @@
 #include "sc_struct.h"
 #include <compat.h>
 
+#define DEBUG_REORDER 1
 #define BLKOUT_DEFAULT_DELTA 5
 #define MAX_CLUSTER 16
 

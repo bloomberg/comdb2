@@ -85,7 +85,7 @@ test_update_delay_done() {
     assertcnt t3 100
 
     master=`getmaster`
-    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $master "exec procedure sys.cmd.send('bdb setattr DELAY_AFTER_SAVEOP_DONE 10000')"
+    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $master "exec procedure sys.cmd.send('bdb setattr DELAY_AFTER_SAVEOP_DONE 3000')"
     cdb2sql ${CDB2_OPTIONS} $DBNAME default "update t3 set i=i+1 where 1" &> upd2.out &
     upd2=$!
     sleep 1
@@ -137,7 +137,7 @@ cdb2sql ${CDB2_OPTIONS} $DBNAME default "create table t1 (i int)"
 insert_into_t1 &
 ins1=$!
 
-max_iter=10
+max_iter=1
 t=0
 while [ $t -lt ${max_iter} ] ; do
     cdb2sql ${CDB2_OPTIONS} $DBNAME default "create table t2 (i int)"
