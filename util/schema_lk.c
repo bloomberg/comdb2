@@ -67,8 +67,7 @@ inline int schema_write_held_int(const char *file, const char *func, int line)
 void dump_schema_lk(FILE *out)
 {
     pthread_t self = pthread_self();
-    pthread_t nullt = NULL;
-    pthread_t writer = CAS64(schema_wr_thd, nullt, nullt);
+    pthread_t writer = schema_wr_thd;
     fprintf(out, "[SCHEMA_LK] %p @ %s: writer is %p\n",
             (void *)self, __func__, (void *)writer);
     Pthread_mutex_lock(&schema_rd_thds_lk);
