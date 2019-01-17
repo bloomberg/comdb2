@@ -19,6 +19,7 @@
 #include <util.h>
 #include <ctrace.h>
 #include <netinet/in.h>
+#include <unistd.h>
 #include "osqlsession.h"
 #include "osqlcomm.h"
 #include "osqlblockproc.h"
@@ -508,6 +509,15 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
     is_msg_done = osql_comm_is_done(type, data, datalen,
                                     rqid == OSQL_RQID_USE_UUID, &perr, NULL);
 
+    if (is_msg_done) {
+        int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_AFTER_SAVEOP_DONE);
+        if (d_ms) {
+            logmsg(LOGMSG_DEBUG, "Sleeping for DELAY_AFTER_SAVEOP_DONE (%dms)\n",
+                    d_ms);
+            usleep(1000 * d_ms);
+        }
+    }
+
     /* get the session */
     osql_sess_t *sess = osql_repository_get(rqid, uuid, is_msg_done);
     if (!sess) {
@@ -584,6 +594,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
     if ((rc = osql_repository_put(sess, is_msg_done)) != 0) {
         logmsg(LOGMSG_ERROR, "%s: osql_repository_put rc =%d\n", __func__, rc);
     }
+
 
     if (rc_out && osql_session_is_sorese(sess))
         return rc_out;

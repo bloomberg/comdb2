@@ -819,13 +819,6 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     // only OSQL_DONE_SNAP, OSQL_DONE, OSQL_DONE_STATS, and OSQL_XERR
     // are processed beyond this point
 
-    int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_AFTER_SAVEOP_DONE);
-    if (d_ms) {
-        logmsg(LOGMSG_DEBUG, "Sleeping for DELAY_AFTER_SAVEOP_DONE (%dms)",
-               d_ms);
-        usleep(1000 * d_ms);
-    }
-
     if (type != OSQL_XERR) { // if tran not aborted
         int numops = osql_get_replicant_numops(rpl, rqid == OSQL_RQID_USE_UUID);
 #ifndef NDEBUG

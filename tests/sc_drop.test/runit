@@ -55,13 +55,15 @@ function getmaster {
 
 test_update_delay_writes() {
     echo test_update_delay_writes make sure that drop table is stuck on writes waiting for table lock
-    cdb2sql ${CDB2_OPTIONS} $DBNAME default "create table t3 (i int primary key)"
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default "create table t3 (i int primary key)" &> create1.out
+
     cdb2sql ${CDB2_OPTIONS} $DBNAME default "insert into t3 select * from generate_series(1,100)"
     assertcnt t3 100
 
     master=`getmaster`
     cdb2sql ${CDB2_OPTIONS} $DBNAME --host $master "exec procedure sys.cmd.send('bdb setattr DELAY_WRITES_IN_RECORD_C 40')"
 
+    echo 'update will take 100 * 40ms = 4s'
     cdb2sql ${CDB2_OPTIONS} $DBNAME default "update t3 set i=i+1 where 1" &> upd1.out &
     upd1=$!
     echo update will get tablelock and so will lock out 'drop tbl' until update is completed
@@ -87,9 +89,11 @@ test_update_delay_done() {
     cdb2sql ${CDB2_OPTIONS} $DBNAME default "update t3 set i=i+1 where 1" &> upd2.out &
     upd2=$!
     sleep 1
-    echo the saveop OSQL_DONE will be sleeping 10s for the update meanwhile we will perform the drop tbl
+    echo reset to 0 so drop tbl can go through without sleeping
     cdb2sql ${CDB2_OPTIONS} $DBNAME --host $master "exec procedure sys.cmd.send('bdb setattr DELAY_AFTER_SAVEOP_DONE 0')"
     cdb2sql ${CDB2_OPTIONS} $DBNAME default "drop table t3"
+
+    echo saveop OSQL_DONE will be sleeping 10s for the update meanwhile we will drop tbl
     wait
 
     echo '[update t3 set i=i+1 where 1] failed with rc 304 no such table "t3"' > upd2.exp
@@ -112,16 +116,17 @@ test_update_delay_usedb() {
     cdb2sql ${CDB2_OPTIONS} $DBNAME default "update t3 set i=i+1 where 1" &> upd3.out &
     upd3=$!
     sleep 1
-
+    echo reset to 0 so drop tbl can go through without sleeping
+    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $master "exec procedure sys.cmd.send('bdb setattr DELAY_AFTER_SAVEOP_USEDB 0')"
     cdb2sql ${CDB2_OPTIONS} $DBNAME default "drop table t3"
-    sleep 1
+
+    echo saveop OSQL_USEDB will be sleeping 10s for the update meanwhile we will drop tbl
     wait
 
     echo '[update t3 set i=i+1 where 1] failed with rc -3 no such table: t3' > upd3.exp
     if ! diff upd3.out upd3.exp ; then if ! diff upd3.out upd2.exp ; then
         failexit "upd3.out and [upd3.exp , upd2.exp] differ"
     fi; fi
-    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $master "exec procedure sys.cmd.send('bdb setattr DELAY_AFTER_SAVEOP_USEDB 0')"
 }
 
 
