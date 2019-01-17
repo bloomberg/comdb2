@@ -1576,6 +1576,10 @@ int main(int argc, char *argv[])
         setvbuf(stdout, 0, _IOLBF, 0);
         setvbuf(stderr, 0, _IOLBF, 0);
     }
+    
+    if (getenv("CDB2_DISABLE_SOCKPOOL")) {
+        cdb2_disable_sockpool();
+    }
 
     if (getenv("COMDB2_SQL_COST"))
         docost = 1;
