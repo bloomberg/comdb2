@@ -9608,7 +9608,7 @@ int osql_send_test(SBUF2 *sb)
 {
     struct errstat xerr = {0};
     int nettype = NET_OSQL_SOCK_RPL_UUID;
-    snap_uid_t snap_info = {0};
+    snap_uid_t snap_info = {{0}};
     //get_cnonce(clnt, &snap_info);
     snap_info.replicant_can_retry = 0;
     snap_info.uuid[0] = 1;
