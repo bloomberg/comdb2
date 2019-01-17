@@ -46,6 +46,8 @@ int dbg_pthread_rwlock_unlock(pthread_rwlock_t *);
 
 /*****************************************************************************/
 
+#include "locks_wrap.h"
+
 #undef Pthread_mutex_lock
 #undef Pthread_mutex_trylock
 #undef Pthread_mutex_timedlock
