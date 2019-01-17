@@ -16,6 +16,8 @@
 
 #if defined(DBG_PTHREAD_LOCKS)
 
+#include <assert.h>
+#include <stdlib.h>
 #include <time.h>
 #include <pthread.h>
 #include "comdb2_atomic.h"
@@ -49,6 +51,7 @@ static int dbg_pthread_free_obj(
   void *arg
 ){
   if( obj!=NULL ) free(obj);
+  return 0;
 }
 
 /*****************************************************************************/
@@ -63,6 +66,7 @@ static int dbg_pthread_free_hash(
     hash_clear(hash);
     hash_free(hash);
   }
+  return 0;
 }
 
 /*****************************************************************************/
@@ -81,9 +85,9 @@ static void dbg_pthread_check_init(void){
 void dbg_pthread_term(void){
   pthread_mutex_lock(&dbg_locks_lk);
   if( dbg_locks!=NULL ){
-    hash_for(&dbg_locks, dbg_pthread_free_hash, NULL);
-    hash_clear(&dbg_locks);
-    hash_free(&dbg_locks);
+    hash_for(dbg_locks, dbg_pthread_free_hash, NULL);
+    hash_clear(dbg_locks);
+    hash_free(dbg_locks);
     dbg_locks = NULL;
   }
   pthread_mutex_unlock(&dbg_locks_lk);
@@ -96,7 +100,7 @@ static void dbg_pthread_add_self(
   int type
 ){
   pthread_mutex_lock(&dbg_locks_lk);
-  if( dbg_locks_lk==NULL ) goto done;
+  if( dbg_locks==NULL ) goto done;
   hash_t *objlocks = hash_find(dbg_locks, obj);
   if( objlocks==NULL ){
     objlocks = hash_init(sizeof(void *));
@@ -129,7 +133,7 @@ static void dbg_pthread_remove_self(
   int type
 ){
   pthread_mutex_lock(&dbg_locks_lk);
-  if( dbg_locks_lk==NULL ) goto done;
+  if( dbg_locks==NULL ) goto done;
   hash_t *objlocks = hash_find(dbg_locks, obj);
   if( objlocks==NULL ) return;
   pthread_t self = pthread_self();
