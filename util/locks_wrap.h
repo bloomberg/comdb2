@@ -47,6 +47,7 @@
 #define Pthread_mutex_init(a, b)    WRAP_PTHREAD(pthread_mutex_init, a, b)
 #define Pthread_mutex_destroy(a)    WRAP_PTHREAD(pthread_mutex_destroy, a)
 #define Pthread_mutex_lock(a)       WRAP_PTHREAD(pthread_mutex_lock, a)
+#define Pthread_mutex_trylock(a)    WRAP_PTHREAD(pthread_mutex_trylock, a)
 #define Pthread_mutex_unlock(a)     WRAP_PTHREAD(pthread_mutex_unlock, a)
 #define Pthread_rwlock_init(a, b)   WRAP_PTHREAD(pthread_rwlock_init, a, b)
 #define Pthread_rwlock_destroy(a)   WRAP_PTHREAD(pthread_rwlock_destroy, a)
@@ -63,8 +64,25 @@
 #define Pthread_key_create(a, b)    WRAP_PTHREAD(pthread_key_create, a, b)
 #define Pthread_key_delete(a)       WRAP_PTHREAD(pthread_key_delete, a)
 #define Pthread_setspecific(a, b)   WRAP_PTHREAD(pthread_setspecific, a, b)
+
+#define Pthread_mutex_timedlock(a, b)                                          \
+    WRAP_PTHREAD(pthread_mutex_timedlock, a, b)
+
+#define Pthread_rwlock_tryrdlock(a)                                            \
+    WRAP_PTHREAD(pthread_rwlock_tryrdlock, a)
+
+#define Pthread_rwlock_trywrlock(a)                                            \
+    WRAP_PTHREAD(pthread_rwlock_trywrlock, a)
+
+#define Pthread_rwlock_timedrdlock(a, b)                                       \
+    WRAP_PTHREAD(pthread_rwlock_timedrdlock, a, b)
+
+#define Pthread_rwlock_timedwrlock(a, b)                                       \
+    WRAP_PTHREAD(pthread_rwlock_timedwrlock, a, b)
+
 #define Pthread_attr_setstacksize(a, b)                                        \
     WRAP_PTHREAD(pthread_attr_setstacksize, a, b)
+
 #define Pthread_attr_setdetachstate(a, b)                                      \
     WRAP_PTHREAD(pthread_attr_setdetachstate, a, b)
 
@@ -95,4 +113,5 @@
         (a) = NULL;                                                            \
     } while (0)
 
+#include "dbg_locks.h"
 #endif

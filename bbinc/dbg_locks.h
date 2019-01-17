@@ -42,5 +42,41 @@ int dbg_pthread_rwlock_timedrdlock(pthread_rwlock_t *, const struct timespec *);
 int dbg_pthread_rwlock_timedwrlock(pthread_rwlock_t *, const struct timespec *);
 int dbg_pthread_rwlock_unlock(pthread_rwlock_t *);
 
+/*****************************************************************************/
+
+#undef Pthread_mutex_lock
+#undef Pthread_mutex_trylock
+#undef Pthread_mutex_timedlock
+#undef Pthread_mutex_unlock
+#undef Pthread_rwlock_rdlock
+#undef Pthread_rwlock_wrlock
+#undef Pthread_rwlock_tryrdlock
+#undef Pthread_rwlock_trywrlock
+#undef Pthread_rwlock_timedrdlock
+#undef Pthread_rwlock_timedwrlock
+#undef Pthread_rwlock_unlock
+
+#define Pthread_mutex_lock(a)       WRAP_PTHREAD(dbg_pthread_mutex_lock, a)
+#define Pthread_mutex_trylock(a)    WRAP_PTHREAD(dbg_pthread_mutex_trylock, a)
+#define Pthread_mutex_unlock(a)     WRAP_PTHREAD(dbg_pthread_mutex_unlock, a)
+#define Pthread_rwlock_rdlock(a)    WRAP_PTHREAD(dbg_pthread_rwlock_rdlock, a)
+#define Pthread_rwlock_wrlock(a)    WRAP_PTHREAD(dbg_pthread_rwlock_wrlock, a)
+#define Pthread_rwlock_unlock(a)    WRAP_PTHREAD(dbg_pthread_rwlock_unlock, a)
+
+#define Pthread_mutex_timedlock(a, b) \
+    WRAP_PTHREAD(dbg_pthread_mutex_timedlock, a, b)
+
+#define Pthread_rwlock_tryrdlock(a) \
+    WRAP_PTHREAD(dbg_pthread_rwlock_tryrdlock, a)
+
+#define Pthread_rwlock_trywrlock(a) \
+    WRAP_PTHREAD(dbg_pthread_rwlock_trywrlock, a)
+
+#define Pthread_rwlock_timedrdlock(a, b) \
+    WRAP_PTHREAD(dbg_pthread_rwlock_timedrdlock, a, b)
+
+#define Pthread_rwlock_timedwrlock(a, b) \
+    WRAP_PTHREAD(dbg_pthread_rwlock_timedwrlock, a, b)
+
 #endif /* DBG_LOCKS_H */
 #endif /* defined(DBG_PTHREAD_LOCKS) */
