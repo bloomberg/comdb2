@@ -163,8 +163,8 @@ static void dbg_pthread_remove_self2(
     type1 = DBG_LOCK_PTHREAD_RDLOCK;
     type2 = DBG_LOCK_PTHREAD_WRLOCK;
   }
-  if( type1!=DBG_LOCK_PTHREAD_NONE ) dbg_pthread_remove_self2(obj, type1);
-  if( type2!=DBG_LOCK_PTHREAD_NONE ) dbg_pthread_remove_self2(obj, type2);
+  if( type1!=DBG_LOCK_PTHREAD_NONE ) dbg_pthread_remove_self(obj, type1);
+  if( type2!=DBG_LOCK_PTHREAD_NONE ) dbg_pthread_remove_self(obj, type2);
 }
 
 /*****************************************************************************/
