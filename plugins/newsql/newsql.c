@@ -2176,9 +2176,9 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         logmsg(LOGMSG_DEBUG, "Query is NULL.\n");
         goto done;
     }
+#if 0
     else
         logmsg(LOGMSG_DEBUG, "New Query: %s\n", query->sqlquery->sql_query);
-#if 0
 #endif
     assert(query->sqlquery);
 
