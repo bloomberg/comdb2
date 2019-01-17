@@ -135,6 +135,7 @@ void commit_bench(void *, int, int);
 void bdb_detect(void *);
 void enable_ack_trace(void);
 void disable_ack_trace(void);
+void osql_send_test(SBUF2 *sb);
 extern unsigned long long get_genid(bdb_state_type *bdb_state,
                                     unsigned int dtafile);
 int bdb_dump_logical_tranlist(void *state, FILE *f);
@@ -4748,6 +4749,17 @@ clipper_usage:
         }
     } else if (tokcmp(tok, ltok, "logmsg") == 0) {
         logmsg_process_message(line, lline);
+    } else if (tokcmp(tok, ltok, "test") == 0) {
+        //@send test <keyword>
+        tok = segtok(line, lline, &st, &ltok);
+        if (tokcmp(tok, ltok, "locktest") == 0) {
+            Pthread_mutex_lock(&testguard);
+            bdb_locktest(thedb->bdb_env);
+            Pthread_mutex_unlock(&testguard);
+        } else if (tokcmp(tok, ltok, "osql_send_test") == 0) {
+            SBUF2 *sb = sbuf2open(fileno(stdout), 0);
+            osql_send_test(sb);
+        }
     } else {
         // see if any plugins know how to handle this
         struct message_handler *h;
