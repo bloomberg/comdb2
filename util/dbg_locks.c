@@ -135,7 +135,7 @@ static void dbg_pthread_remove_self(
   pthread_mutex_lock(&dbg_locks_lk);
   if( dbg_locks==NULL ) goto done;
   hash_t *objlocks = hash_find(dbg_locks, obj);
-  if( objlocks==NULL ) return;
+  if( objlocks==NULL ) goto done;
   pthread_t self = pthread_self();
   struct dbg_lock_pthread_key_t key = { self, type };
   struct dbg_lock_pthread_pair_t *pair = hash_find(objlocks, &key);
