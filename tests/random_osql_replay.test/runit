@@ -5,14 +5,22 @@ bash -n "$0" | exit 1
 #set -x
 maxloop=5000
 
-cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "drop table t1"
 cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "create table t1 ( a int primary key )"
 
-
+getmaster()
+{
+    cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+}
+master=`getmaster`
 # send random osql from replicant to master, master should not crash
-cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "put tunable osql_random_test 'on'"
-
-
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $master "exec procedure sys.cmd.send('test osql_send_test')" &> test1.out
+echo "(out='[ERROR] discarding packet for 1 01000000-0000-0000-0000-000000000000, session not found')" > test1.exp
+if ! diff test1.exp test1.out ; then
+    echo "Testcase failed: diff `pwd`/{test1.exp,test1.out}"
+    exit 1
+fi
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "insert into t1 values (1)"
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "delete from t1 where a = 1"
 
 
 # Enable random restarts
