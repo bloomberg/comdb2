@@ -5411,6 +5411,13 @@ void *watcher_thread(void *arg)
                 bdb_state->repinfo->rep_process_message_start_time = 0;
                 if (bdb_state->callback->threaddump_rtn)
                     (bdb_state->callback->threaddump_rtn)();
+
+                lock_info_lockers(stdout, bdb_state);
+
+#ifndef NDEBUG
+                dump_schema_lk(stdout);
+                abort();
+#endif
             }
         }
 
