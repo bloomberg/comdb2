@@ -181,4 +181,7 @@ while [ $t -lt ${max_iter} ] ; do
     let t=t+1
 done
 
+#remove trap
+trap - INT TERM EXIT
+
 echo "Success"
