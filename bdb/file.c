@@ -72,7 +72,6 @@
 #include <net.h>
 #include <cheapstack.h>
 #include "bdb_int.h"
-#include "sql_bdb.h"
 #include "locks.h"
 #include "pthread_wrap.h"
 #include <time.h>
