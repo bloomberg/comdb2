@@ -16,7 +16,7 @@
 
 #include <pthread.h>
 #include <logmsg.h>
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 #include <schema_lk.h>
 
 static pthread_rwlock_t schema_lk = PTHREAD_RWLOCK_INITIALIZER;
