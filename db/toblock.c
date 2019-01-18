@@ -2425,9 +2425,9 @@ static void backout_and_abort_tranddl(struct ireq *iq, tran_type *parent,
     iq->sc_logical_tran = NULL;
 }
 
-
 static int pack_up_response(struct ireq *iq, int have_keyless_requests,
-        int num_reqs, int numerrs, struct block_err *err, int rc, int opnum)
+                            int num_reqs, int numerrs, struct block_err *err,
+                            int rc, int opnum)
 {
     if (!have_keyless_requests) {
         struct block_rsp rsp;
@@ -2486,8 +2486,8 @@ static int pack_up_response(struct ireq *iq, int have_keyless_requests,
                 return ERR_INTERNAL;
 
             if (numerrs) {
-                if (!(iq->p_buf_out = block_err_put(err, iq->p_buf_out,
-                                                    iq->p_buf_out_end)))
+                if (!(iq->p_buf_out =
+                          block_err_put(err, iq->p_buf_out, iq->p_buf_out_end)))
                     return ERR_INTERNAL;
             }
 
@@ -2504,8 +2504,8 @@ static int pack_up_response(struct ireq *iq, int have_keyless_requests,
                 return ERR_INTERNAL;
 
             if (numerrs) {
-                if (!(iq->p_buf_out = block_err_put(err, iq->p_buf_out,
-                                                    iq->p_buf_out_end)))
+                if (!(iq->p_buf_out =
+                          block_err_put(err, iq->p_buf_out, iq->p_buf_out_end)))
                     return ERR_INTERNAL;
             }
         }
@@ -2525,7 +2525,7 @@ static inline int check_for_node_up(struct ireq *iq, block_state_t *p_blkstate)
             reqprintf(iq, "Master is swinging, repeat the request");
             /* The client code doesn't retry correctly if the request
                is (1) a non-long transaction or, (2) a long transaction of a
-               single packet.  So if the block request was a single packet, 
+               single packet.  So if the block request was a single packet,
                send back a return code telling the proxy to retry.  Otherwise,
                the client code needs to retry (and handles it correctly).  The
                reason the client doesn't handle single-buffer retries correctly
@@ -5233,8 +5233,8 @@ backout:
         reqprintf(iq, "%p:TRANSACTION ABORTED, RC %d ERRCODE %d", trans, rc,
                   err.errcode);
 
-    lrc = pack_up_response(iq, have_keyless_requests, num_reqs,
-                               numerrs, &err, rc, opnum);
+    lrc = pack_up_response(iq, have_keyless_requests, num_reqs, numerrs, &err,
+                           rc, opnum);
     if (lrc) /* TODO can I just return here? should prob go to cleanup ? */
         return lrc;
 
