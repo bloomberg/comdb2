@@ -72,7 +72,7 @@ static const char revid[] = "$Id: bt_search.c,v 11.47 2003/06/30 17:19:35 bostic
 #include <util.h>
 
 #include <logmsg.h>
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 /*
  * __bam_cmp --

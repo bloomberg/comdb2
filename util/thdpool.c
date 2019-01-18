@@ -45,7 +45,7 @@
 #include "thdpool.h"
 #include "thread_util.h"
 #include "thread_malloc.h"
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 #include "debug_switches.h"
 

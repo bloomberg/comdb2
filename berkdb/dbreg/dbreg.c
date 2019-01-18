@@ -23,7 +23,7 @@ static const char revid[] = "$Id: dbreg.c,v 11.81 2003/10/27 15:54:31 sue Exp $"
 #include "dbinc/db_am.h"
 #include "cheapstack.h"
 #include "logmsg.h"
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 
 /*
  * The dbreg subsystem, as its name implies, registers database handles so

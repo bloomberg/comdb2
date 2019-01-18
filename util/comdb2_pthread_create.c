@@ -33,7 +33,7 @@
 #include "mem_util.h"
 #include "list.h"
 #include "logmsg.h"
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 
 #define RW (PROT_READ | PROT_WRITE)
 #define STACK_FREE_DELAY 5

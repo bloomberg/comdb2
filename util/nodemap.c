@@ -35,7 +35,7 @@
 #include "intern_strings.h"
 
 #include <logmsg.h>
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 struct node_index {
     const char *node;

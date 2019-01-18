@@ -74,7 +74,7 @@
 #include "bdb_int.h"
 #include "sql_bdb.h"
 #include "locks.h"
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 #include <time.h>
 #include <ctrace.h>
 #include <list.h>

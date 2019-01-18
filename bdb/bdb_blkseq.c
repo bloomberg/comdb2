@@ -34,7 +34,7 @@
 
 #include <logmsg.h>
 #include "util.h"
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 #include "tohex.h"
 
 static int bdb_blkseq_update_lsn_locked(bdb_state_type *bdb_state,

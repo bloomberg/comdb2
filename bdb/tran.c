@@ -47,7 +47,7 @@
 #include "bdb_cursor.h"
 #include "bdb_int.h"
 #include "locks.h"
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 #include "bdb_osqltrn.h"
 #include "bdb_osqlcur.h"
 

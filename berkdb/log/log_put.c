@@ -44,7 +44,7 @@ static const char revid[] = "$Id: log_put.c,v 11.145 2003/09/13 19:20:39 bostic 
 #include <netinet/in.h>
 
 #include "logmsg.h"
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 #include <poll.h>
 
 extern unsigned long long get_commit_context(const void *, uint32_t generation);

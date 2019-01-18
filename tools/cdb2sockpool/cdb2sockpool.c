@@ -49,7 +49,7 @@
 #include <bb_daemon.h>
 
 #include "cdb2sockpool.h"
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 #define MAX_TYPESTR_LEN 2048
 

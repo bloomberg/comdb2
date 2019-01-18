@@ -29,7 +29,7 @@
 #include "mem_datetime.h"
 #include "mem_override.h"
 #include "logmsg.h"
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 
 #ifndef TZ_ABBR_MAX_LEN
 #define TZ_ABBR_MAX_LEN 16

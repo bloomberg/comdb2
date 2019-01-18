@@ -46,7 +46,7 @@
 #include <segstring.h>
 #include "nodemap.h"
 #include <logmsg.h>
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 pthread_key_t bdb_key;
 pthread_key_t lock_key;

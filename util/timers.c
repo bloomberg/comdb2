@@ -27,7 +27,7 @@
 #include <timers.h>
 
 #include <logmsg.h>
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 /* timer traps */
 static pthread_mutex_t timerlk = PTHREAD_MUTEX_INITIALIZER;

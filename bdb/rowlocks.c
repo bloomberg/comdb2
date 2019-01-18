@@ -23,7 +23,7 @@
 #include <net.h>
 #include <bdb_int.h>
 #include <locks.h>
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 #include <ctrace.h>
 #include <string.h>
 #include <strings.h>

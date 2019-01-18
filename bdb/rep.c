@@ -41,7 +41,7 @@
 #include "bdb_int.h"
 #include "schema_lk.h"
 #include "locks.h"
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 #include "list.h"
 #include <endian_core.h>
 

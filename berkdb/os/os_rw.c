@@ -54,7 +54,7 @@ static const char revid[] = "$Id: os_rw.c,v 11.30 2003/05/23 21:19:05 bostic Exp
 
 #include <poll.h>
 #include "logmsg.h"
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 
 uint64_t bb_berkdb_fasttime(void);
 

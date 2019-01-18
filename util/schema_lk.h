@@ -17,7 +17,7 @@
 #ifndef INCLUDED_SCHEMA_LK_H
 #define INCLUDED_SCHEMA_LK_H
 
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 #ifndef NDEBUG
 #include <stdio.h>

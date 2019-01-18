@@ -42,7 +42,7 @@ static const char revid[] = "$Id: lock.c,v 11.134 2003/11/18 21:30:38 ubell Exp 
 #endif
 #include "logmsg.h"
 #include "util.h"
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 #include "tohex.h"
 
 

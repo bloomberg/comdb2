@@ -59,7 +59,7 @@ void set_hostbyname(hostbyname *impl)
 
 #ifdef _IBM_SOURCE
 #include <pthread.h>
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 static pthread_mutex_t servbyname_lk = PTHREAD_MUTEX_INITIALIZER;
 #endif
 

@@ -37,7 +37,7 @@ static const char revid[] = "$Id: mp_fget.c,v 11.81 2003/09/25 02:15:16 sue Exp 
 #include "dbinc/txn.h"
 
 #include "logmsg.h"
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 #include "comdb2_atomic.h"
 
 

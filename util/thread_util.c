@@ -33,7 +33,7 @@
 #include "thdpool.h"
 #include "cheapstack.h"
 #include <inttypes.h>
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 
 #define MAX_RESOURCE_TYPE 255
 #define MAXSTACKDEPTH 64

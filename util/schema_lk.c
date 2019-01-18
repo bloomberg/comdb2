@@ -16,7 +16,7 @@
 
 #include <pthread.h>
 #include <logmsg.h>
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 #include <schema_lk.h>
 
 #ifndef NDEBUG

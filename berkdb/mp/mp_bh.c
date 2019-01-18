@@ -35,7 +35,7 @@ static const char revid[] = "$Id: mp_bh.c,v 11.86 2003/07/02 20:02:37 mjc Exp $"
 #include <dirent.h>
 
 #include <logmsg.h>
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 #include "comdb2_atomic.h"
 
 char *bdb_trans(const char infile[], char outfile[]);

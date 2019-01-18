@@ -39,7 +39,7 @@ static const char revid[] = "$Id: env_open.c,v 11.144 2003/09/13 18:39:34 bostic
 #include "dbinc/txn.h"
 
 #include "logmsg.h"
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 
 static int __db_tmp_open __P((DB_ENV *, u_int32_t, char *, DB_FH **));
 static int __dbenv_config __P((DB_ENV *, const char *, u_int32_t));

@@ -32,7 +32,7 @@ static const char revid[] = "$Id: lock_deadlock.c,v 11.66 2003/11/19 19:59:02 ub
 
 #include "debug_switches.h"
 #include "logmsg.h"
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 
 extern int verbose_deadlocks;
 extern int gbl_sparse_lockerid_map;

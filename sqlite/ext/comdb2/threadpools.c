@@ -27,7 +27,7 @@
 #include "comdb2systblInt.h"
 #include "list.h"
 #include "thdpool.h"
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 extern pthread_mutex_t pool_list_lk;
 extern LISTC_T(struct thdpool) threadpools;

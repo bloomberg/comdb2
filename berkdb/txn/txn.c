@@ -79,7 +79,7 @@ static const char revid[] = "$Id: txn.c,v 11.219 2003/12/03 14:33:06 bostic Exp 
 #include "printformats.h"
 #include "dbinc/db_swap.h"
 #include "logmsg.h"
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 
 #ifndef TESTSUITE
 #include <thread_util.h>

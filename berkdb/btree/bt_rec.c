@@ -28,7 +28,7 @@ static const char revid[] = "$Id: bt_rec.c,v 11.64 2003/09/13 18:48:58 bostic Ex
 
 #include <stdlib.h>
 #include <logmsg.h>
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 #define	IS_BTREE_PAGE(pagep)						\
 	(TYPE(pagep) == P_IBTREE ||					\

@@ -45,7 +45,7 @@
 #include <net.h>
 #include "bdb_int.h"
 #include "locks.h"
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 #include <memory_sync.h>
 #include <autoanalyze.h>

@@ -70,7 +70,7 @@
 #include <plhash.h>
 #include <assert.h>
 
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 #include "net.h"
 #include "net_int.h"
 

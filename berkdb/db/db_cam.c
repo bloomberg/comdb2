@@ -30,7 +30,7 @@ static const char revid[] = "$Id: db_cam.c,v 11.140 2003/11/18 18:20:48 mjc Exp 
 #include <pthread.h>
 
 #include <logmsg.h>
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 #ifndef TESTSUITE
 extern pthread_key_t comdb2_open_key;

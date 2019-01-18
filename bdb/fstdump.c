@@ -45,7 +45,7 @@
 #include "debug_switches.h"
 
 #include <ctrace.h>
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 #include <net.h>
 #include "bdb_int.h"

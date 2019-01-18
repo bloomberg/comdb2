@@ -25,7 +25,7 @@ static const char revid[] = "$Id: log_get.c,v 11.98 2003/09/13 19:20:38 bostic E
 #include "dbinc/db_swap.h"
 #include "dbinc/hash.h"
 #include <epochlib.h>
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 typedef enum { L_ALREADY, L_ACQUIRED, L_NONE } RLOCK;
 

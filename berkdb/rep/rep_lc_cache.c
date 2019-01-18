@@ -23,7 +23,7 @@
 #include "dbinc_auto/btree_auto.h"
 #include <assert.h>
 #include "logmsg.h"
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 
 
 /* TODO:

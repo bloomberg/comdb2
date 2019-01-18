@@ -29,7 +29,7 @@ static const char revid[] = "$Id: mp_sync.c,v 11.80 2003/09/13 19:20:41 bostic E
 #include <ctrace.h>
 #include <pool.h>
 #include <logmsg.h>
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 typedef struct {
 	DB_MPOOL_HASH *track_hp;	/* Hash bucket. */

@@ -28,7 +28,7 @@ static const char revid[] =
 #include "build/db.h"
 #include "build/db_int.h"
 #include "dbinc/db_page.h"
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 
 #if (! _SUN_SOURCE )
 #include "dbinc/btree.h"

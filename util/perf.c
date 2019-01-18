@@ -11,7 +11,7 @@
 #include "perf.h"
 #include "averager.h"
 #include "list.h"
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 #include "mem_util.h"
 #include "mem_override.h"

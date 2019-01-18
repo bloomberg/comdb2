@@ -49,7 +49,7 @@
 #include <pool_c.h>
 #include <passfd.h>
 #include <syslog.h>
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 #ifdef SOCKET_POOL_DEBUG
 #define DBG(x) printf x

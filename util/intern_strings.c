@@ -24,7 +24,7 @@
 #include "mem_util.h"
 #include "mem_override.h"
 #include "logmsg.h"
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 
 static pthread_once_t once = PTHREAD_ONCE_INIT;
 static pthread_mutex_t intern_lk = PTHREAD_MUTEX_INITIALIZER;

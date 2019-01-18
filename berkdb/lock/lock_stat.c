@@ -41,7 +41,7 @@ static const char revid[] = "$Id: lock_stat.c,v 11.44 2003/09/13 19:20:36 bostic
 #include <execinfo.h>
 #endif
 #include "logmsg.h"
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 static void __lock_dump_locker __P((DB_LOCKTAB *, DB_LOCKER *, FILE *));
 static void __lock_dump_object __P((DB_LOCKTAB *, DB_LOCKOBJ *, FILE *, int));

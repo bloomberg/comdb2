@@ -26,7 +26,7 @@
 #include <segstr.h>
 #include <str0.h>
 
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 #include "net.h"
 #include "net_int.h"
 #include "util.h"

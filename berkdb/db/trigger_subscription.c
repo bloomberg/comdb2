@@ -2,7 +2,7 @@
 #include <string.h>
 #include <plhash.h>
 #include "dbinc/trigger_subscription.h"
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 #include <mem_berkdb.h>
 #include <mem_override.h>

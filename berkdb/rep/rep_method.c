@@ -36,7 +36,7 @@ static const char revid[] = "$Id: rep_method.c,v 1.134 2003/11/13 15:41:51 sue E
 
 #include <epochlib.h>
 #include "logmsg.h"
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 int gbl_rep_method_max_sleep_cnt = 0;
 

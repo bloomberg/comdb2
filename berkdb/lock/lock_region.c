@@ -24,7 +24,7 @@ static const char revid[] = "$Id: lock_region.c,v 11.73 2003/07/23 13:13:12 mjc 
 #include "dbinc/lock.h"
 
 #include <logmsg.h>
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 
 static int  __lock_init __P((DB_ENV *, DB_LOCKTAB *));
 static size_t

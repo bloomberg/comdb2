@@ -4,7 +4,7 @@
 #include <dbinc/rep_types.h>
 #include "bdb_int.h"
 #include <rep_qstat.h>
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 
 int net_get_lsn_rectype(bdb_state_type *bdb_state, const void *buf, int buflen,
                         DB_LSN *lsn, int *myrectype);

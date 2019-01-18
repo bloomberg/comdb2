@@ -32,7 +32,7 @@ static const char revid[] = "$Id: mp_alloc.c,v 11.40 2003/07/03 02:24:34 bostic 
 #include "util.h"
 #include <cdb2_constants.h>
 #include "logmsg.h"
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 
 typedef struct {
 	DB_MPOOL_HASH *bucket;

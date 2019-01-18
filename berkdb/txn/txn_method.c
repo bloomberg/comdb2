@@ -32,7 +32,7 @@ static const char revid[] = "$Id: txn_method.c,v 11.66 2003/06/30 17:20:30 bosti
 #endif
 
 #include "logmsg.h"
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 static int __txn_get_tx_max __P((DB_ENV *, u_int32_t *));
 static int __txn_get_tx_timestamp __P((DB_ENV *, time_t *));

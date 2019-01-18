@@ -62,7 +62,7 @@ static const char revid[] = "$Id: bt_split.c,v 11.60 2003/06/30 17:19:35 bostic 
 #include <btree/bt_cache.h>
 
 #include <logmsg.h>
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 void inspect_page(DB *, PAGE *);
 

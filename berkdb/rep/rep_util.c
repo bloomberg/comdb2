@@ -35,7 +35,7 @@ static const char revid[] = "$Id: rep_util.c,v 1.103 2003/11/14 05:32:32 ubell E
 #include <ctrace.h>
 
 #include "util.h"
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 extern pthread_mutex_t rep_candidate_lock;
 extern int gbl_passed_repverify;

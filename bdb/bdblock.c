@@ -30,7 +30,7 @@
 
 #include "bdb_int.h"
 #include "locks.h"
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 #include "logmsg.h"
 
 /* XXX stupid chicken/egg.  this variable cannot live in the bdb_state

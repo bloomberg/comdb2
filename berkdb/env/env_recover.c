@@ -44,7 +44,7 @@ static const char revid[] =
 #include "dbinc/db_am.h"
 #include "dbinc/db_swap.h"
 #include "dbinc_auto/db_auto.h"
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 
 

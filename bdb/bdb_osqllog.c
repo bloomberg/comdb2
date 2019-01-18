@@ -32,7 +32,7 @@
 #include <bdb_osqlcur.h>
 #include <flibc.h>
 #include <locks.h>
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 #include <logmsg.h>
 #include <tohex.h>

@@ -61,7 +61,7 @@ static const char revid[] = "$Id: bt_delete.c,v 11.46 2003/06/30 17:19:29 bostic
 
 #include <btree/bt_prefix.h>
 #include <logmsg.h>
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 int genidcmp(const void *hash_genid, const void *genid);
 void genidcpy(void *dest, const void *src);

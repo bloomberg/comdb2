@@ -31,7 +31,7 @@
 #include "repl_wait.h"
 #include "switches.h"
 #include "logmsg.h"
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 #include <mem_uncategorized.h>
 #include <mem_override.h>

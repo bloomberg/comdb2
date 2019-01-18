@@ -40,7 +40,7 @@
 #include "bdb_osqlbkfill.h"
 #include "bdb_osqlcur.h"
 #include "locks.h"
-#include "locks_wrap.h"
+#include "pthread_wrap.h"
 
 #include <list.h>
 #include <ctrace.h>

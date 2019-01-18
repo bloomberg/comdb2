@@ -44,7 +44,7 @@ typedef unsigned int u_int;
 #include <gettimeofday_ms.h>
 #include <errno.h>
 #include <logmsg.h>
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 static pthread_attr_t locktest_attr;
 static DB_ENV *dbenv = NULL;
