@@ -1986,6 +1986,24 @@ static int cdb2portmux_route(cdb2_hndl_tp *hndl, const char *remote_host,
     return fd;
 }
 
+
+static void get_host_from_fd(cdb2_hndl_tp *hndl, int fd)
+{
+    struct sockaddr_in addr;
+    socklen_t addr_size = sizeof(struct sockaddr_in);
+    int res = getpeername(fd, (struct sockaddr *)&addr, &addr_size);
+    if (res) {
+        debugprint("getpeername res %d %s\n", errno, strerror(errno));
+    }
+    char ip[20];
+    strcpy(ip, inet_ntoa(addr.sin_addr));
+    debugprint("sockpool gave us ip '%s'\n", ip);
+
+    struct hostent *hp = gethostbyaddr((char *)&addr.sin_addr, sizeof(addr.sin_addr), AF_INET);
+    if (hp!=NULL)
+        debugprint("sockpool gave us host '%s'\n", hp->h_name);
+}
+
 /* Tries to connect to specified node using sockpool.
  * If there is none, then makes a new socket connection.
  */
@@ -2016,8 +2034,10 @@ static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx, int myport,
             close(fd);
             return -1;
         }
-        if (send_reset(sb) == 0)
+        if (send_reset(sb) == 0) {
+            get_host_from_fd(hndl, fd);
             break;      // connection is ready
+        }
         sbuf2close(sb); // retry newsql connect;
     }
 
