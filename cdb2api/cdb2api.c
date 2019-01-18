@@ -2059,10 +2059,10 @@ static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx, int myport,
     return 0;
 }
 
-static int newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
+static void newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
 {
     if (sb == NULL)
-        return 0;
+        return;
 
     debugprint("disconnecting from %s\n", hndl->hosts[hndl->connected_host]);
     int fd = sbuf2fileno(sb);
@@ -2081,7 +2081,7 @@ static int newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
     }
     hndl->use_hint = 0;
     hndl->sb = NULL;
-    return 0;
+    return;
 }
 
 /* returns port number, or -1 for error*/
@@ -3653,7 +3653,6 @@ static int process_ssl_set_command(cdb2_hndl_tp *hndl, const char *cmd)
         /* Refresh connection if SSL config has changed. */
         if (hndl->sb != NULL) {
             newsql_disconnect(hndl, hndl->sb, __LINE__);
-            hndl->sb = NULL;
         }
     }
 
