@@ -59,12 +59,12 @@ static void dbg_pthread_type_name(
   int type
 ){
   switch( type ){
-    case DBG_LOCK_PTHREAD_NONE:{ snprintf(zBuf,nBuf,"%s","none"); return; }
-    case DBG_LOCK_PTHREAD_MUTEX:{ snprintf(zBuf,nBuf,"%s","mutex"); return; }
+    case DBG_LOCK_PTHREAD_NONE:  { snprintf(zBuf,nBuf,"%s","none");   return; }
+    case DBG_LOCK_PTHREAD_MUTEX: { snprintf(zBuf,nBuf,"%s","mutex");  return; }
     case DBG_LOCK_PTHREAD_RDLOCK:{ snprintf(zBuf,nBuf,"%s","rdlock"); return; }
     case DBG_LOCK_PTHREAD_WRLOCK:{ snprintf(zBuf,nBuf,"%s","wrlock"); return; }
     case DBG_LOCK_PTHREAD_RWLOCK:{ snprintf(zBuf,nBuf,"%s","rwlock"); return; }
-    default:{ snprintf(zBuf,nBuf,"unknown:%d",type);  return; }
+    default:                     { snprintf(zBuf,nBuf,"unk:%d",type); return; }
   }
 }
 
@@ -81,8 +81,9 @@ static int dbg_pthread_dump_pair(
 
     dbg_pthread_type_name(zBuf, sizeof(zBuf), pair->key.type);
 
-    fprintf(out, "%s: [lock:%s @ %p] [refs:%d] (pair:%p)\n",
+    fprintf(out, "%s: [lock:%s @ %016p] [refs:%04d] (pair:%016p)\n",
             __func__, zBuf, pair->key.obj, pair->nRef, (void *)pair);
+
     fflush(out);
   }
   return 0;
@@ -175,7 +176,7 @@ static void dbg_pthread_add_self(
     pair->key.thread = self;
     pair->key.type = type;
     pair->nRef = 1;
-    if( hash_add(objlocks, &pair->key)!=0 ) abort();
+    if( hash_add(objlocks, pair)!=0 ) abort();
   }else{
     assert( pair->key.obj==obj );
     assert( pair->key.thread==self );
@@ -201,7 +202,7 @@ static void dbg_pthread_remove_self(
   struct dbg_lock_pthread_inner_key_t key = { obj, self, type };
   struct dbg_lock_pthread_inner_pair_t *pair = hash_find(objlocks, &key);
   if( pair!=NULL && --pair->nRef==0 ){
-    if( hash_del(objlocks, &pair->key)!=0 ) abort();
+    if( hash_del(objlocks, pair)!=0 ) abort();
     free(pair);
     if( hash_get_num_entries(objlocks)==0 ){
       if( hash_del(dbg_locks, obj)!=0 ) abort();
