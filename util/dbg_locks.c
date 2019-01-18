@@ -76,7 +76,7 @@ static int dbg_pthread_dump_pair(
 
     dbg_pthread_type_name(zBuf, sizeof(zBuf), pair->key.type);
 
-    fprintf(out, "%s: [%s %p] [refs:%d] (pair:%p)\n",
+    fprintf(out, "%s: [lock:%s @ %p] [refs:%d] (pair:%p)\n",
             __func__, zBuf, pair->key.obj, pair->nRef, (void *)pair);
   }
   return 0;
