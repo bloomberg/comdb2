@@ -4351,9 +4351,9 @@ i64 sqlite3BtreeIntegerKey(BtCursor *pCur)
             struct sql_thread *thd = pCur->thd;
             if (pCur->tblpos == thd->rootpage_nentries) {
                 assert(pCur->keyDdl);
-                size = pCur->nDataDdl;
-            }
-            size = get_sqlite_entry_size(thd, pCur->tblpos);
+                size = pCur->keyDdl;
+            } else
+                size = get_sqlite_entry_size(thd, pCur->tblpos);
         }
     } else if (pCur->ixnum == -1) {
         if (pCur->bt->is_remote || pCur->db->dtastripe)
