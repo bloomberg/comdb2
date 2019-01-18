@@ -32,7 +32,7 @@ enum dbg_lock_pthread_type_t {
   DBG_LOCK_PTHREAD_RWLOCK = 0x8
 };
 
-struct dbg_lock_pthread_outer_key_t {
+struct dbg_lock_pthread_outer_pair_t {
   void *obj;
   hash_t *locks;
 };
@@ -70,7 +70,7 @@ static void dbg_pthread_type_name(
 
 /*****************************************************************************/
 
-static int dbg_pthread_dump_pair(
+static int dbg_pthread_dump_inner_pair(
   void *obj,
   void *arg
 ){
@@ -81,10 +81,23 @@ static int dbg_pthread_dump_pair(
 
     dbg_pthread_type_name(zBuf, sizeof(zBuf), pair->key.type);
 
-    fprintf(out, "%s: [lock:%s @ %016p] [refs:%04d] (pair:%016p)\n",
+    fprintf(out, "%s: [refs:%04d] [type:%s @ %18p] (pair:%18p)\n",
             __func__, zBuf, pair->key.obj, pair->nRef, (void *)pair);
 
     fflush(out);
+  }
+  return 0;
+}
+
+/*****************************************************************************/
+
+static int dbg_pthread_dump_outer_pair(
+  void *obj,
+  void *arg
+){
+  struct dbg_lock_pthread_outer_pair_t *pair = (struct dbg_lock_pthread_outer_pair_t *)obj;
+  if( pair!=NULL && pair->locks!=NULL ){
+    hash_for(pair->locks, dbg_pthread_dump_inner_pair, arg);
   }
   return 0;
 }
@@ -119,7 +132,7 @@ static int dbg_pthread_free_hash(
 void dbg_pthread_dump(FILE *out){
   pthread_mutex_lock(&dbg_locks_lk);
   if( dbg_locks==NULL ) goto done;
-  hash_for(dbg_locks, dbg_pthread_dump_pair, out);
+  hash_for(dbg_locks, dbg_pthread_dump_outer_pair, out);
 done:
   pthread_mutex_unlock(&dbg_locks_lk);
 }
@@ -156,19 +169,18 @@ static void dbg_pthread_add_self(
 ){
   pthread_mutex_lock(&dbg_locks_lk);
   if( dbg_locks==NULL ) goto done;
-  hash_t *objlocks = hash_find(dbg_locks, obj);
-  if( objlocks==NULL ){
-    objlocks = hash_init(sizeof(void *));
-    if( objlocks==NULL ) abort();
-    struct dbg_lock_pthread_outer_key_t *objkey = calloc(1, sizeof(struct dbg_lock_pthread_outer_key_t));
-    if( objkey==NULL ) abort();
-    objkey->obj = obj;
-    objkey->locks = objlocks;
-    if( hash_add(dbg_locks, objkey)!=0 ) abort();
+  struct dbg_lock_pthread_outer_pair_t *okey = hash_find(dbg_locks, obj);
+  if( okey==NULL ){
+    okey = calloc(1, sizeof(struct dbg_lock_pthread_outer_pair_t));
+    if( okey==NULL ) abort();
+    okey->locks = hash_init(sizeof(void *));
+    if( okey->locks==NULL ) abort();
+    okey->obj = obj;
+    if( hash_add(dbg_locks, okey)!=0 ) abort();
   }
   pthread_t self = pthread_self();
-  struct dbg_lock_pthread_inner_key_t key = { obj, self, type };
-  struct dbg_lock_pthread_inner_pair_t *pair = hash_find(objlocks, &key);
+  struct dbg_lock_pthread_inner_key_t ikey = { obj, self, type };
+  struct dbg_lock_pthread_inner_pair_t *pair = hash_find(okey->locks, &ikey);
   if( pair==NULL ){
     pair = calloc(1, sizeof(struct dbg_lock_pthread_inner_pair_t));
     if( pair==NULL ) abort();
@@ -176,7 +188,7 @@ static void dbg_pthread_add_self(
     pair->key.thread = self;
     pair->key.type = type;
     pair->nRef = 1;
-    if( hash_add(objlocks, pair)!=0 ) abort();
+    if( hash_add(okey->locks, pair)!=0 ) abort();
   }else{
     assert( pair->key.obj==obj );
     assert( pair->key.thread==self );
@@ -196,16 +208,19 @@ static void dbg_pthread_remove_self(
 ){
   pthread_mutex_lock(&dbg_locks_lk);
   if( dbg_locks==NULL ) goto done;
-  hash_t *objlocks = hash_find(dbg_locks, obj);
-  if( objlocks==NULL ) goto done;
+  struct dbg_lock_pthread_outer_pair_t *okey = hash_find(dbg_locks, obj);
+  if( okey==NULL ) goto done;
   pthread_t self = pthread_self();
-  struct dbg_lock_pthread_inner_key_t key = { obj, self, type };
-  struct dbg_lock_pthread_inner_pair_t *pair = hash_find(objlocks, &key);
+  struct dbg_lock_pthread_inner_key_t ikey = { obj, self, type };
+  struct dbg_lock_pthread_inner_pair_t *pair = hash_find(okey->locks, &ikey);
   if( pair!=NULL && --pair->nRef==0 ){
-    if( hash_del(objlocks, pair)!=0 ) abort();
+    if( hash_del(okey->locks, pair)!=0 ) abort();
     free(pair);
-    if( hash_get_num_entries(objlocks)==0 ){
+    if( hash_get_num_entries(okey->locks)==0 ){
       if( hash_del(dbg_locks, obj)!=0 ) abort();
+      hash_clear(okey->locks);
+      hash_free(okey->locks);
+      free(okey);
     }
   }else{
     assert( pair->key.obj==obj );
