@@ -19,7 +19,6 @@
 #include <assert.h>
 #include "bdb_int.h"
 #include "bdb_access.h"
-#include "sql_bdb.h"
 
 #include <logmsg.h>
 
@@ -172,6 +171,7 @@ static int bdb_access_table_by_mach_put_disk(bdb_state_type *bdb_state,
                                              int hostnum, int allow,
                                              int *bdberr)
 {
+
     char machname[MACHNAMELEN];
     int rc = 0;
 

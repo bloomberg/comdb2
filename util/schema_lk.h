@@ -17,19 +17,7 @@
 #ifndef INCLUDED_SCHEMA_LK_H
 #define INCLUDED_SCHEMA_LK_H
 
-#include <pthread_wrap.h>
-
-#ifndef NDEBUG
-#include <stdio.h>
-
-#define schema_read_held_lk() schema_read_held_int(__FILE__, __func__, __LINE__)
-int schema_read_held_int(const char *file, const char *func, int line);
-
-#define schema_write_held_lk() schema_write_held_int(__FILE__, __func__, __LINE__)
-int schema_write_held_int(const char *file, const char *func, int line);
-
-void dump_schema_lk(FILE *out);
-#endif
+#include <locks_wrap.h>
 
 #define rdlock_schema_lk() rdlock_schema_int(__FILE__, __func__, __LINE__)
 void rdlock_schema_int(const char *file, const char *func, int line);

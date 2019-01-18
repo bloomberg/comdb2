@@ -40,7 +40,6 @@
 
 #include <net.h>
 #include "bdb_int.h"
-#include "sql_bdb.h"
 #include "locks.h"
 #include "genid.h"
 #include "bdb_api.h"

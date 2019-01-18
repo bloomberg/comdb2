@@ -51,7 +51,6 @@
 
 #include <bdb_api.h>
 #include <bdb_osqllog.h>
-#include "sql_bdb.h"
 
 #include <endian_core.h>
 #include <printformats.h>

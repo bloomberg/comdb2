@@ -111,7 +111,6 @@ Add the key                             ll_key_add (same call)
 #include "flibc.h"
 #include "net.h"
 #include "bdb_int.h"
-#include "sql_bdb.h"
 #include "locks.h"
 #include <dbinc/db_swap.h>
 #include "logmsg.h"
@@ -853,6 +852,7 @@ int phys_key_upd(bdb_state_type *bdb_state, tran_type *logical_tran,
                  unsigned long long newgenid, void *key, int ix, int keylen,
                  void *dta, int dtalen, int llog_payload_len)
 {
+
     int rc, micro_retry, retry = 0;
     int retry_count = bdb_state->attr->pagedeadlock_retries;
     int max_poll = bdb_state->attr->pagedeadlock_maxpoll;

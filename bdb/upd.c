@@ -41,7 +41,6 @@
 
 #include <net.h>
 #include "bdb_int.h"
-#include "sql_bdb.h"
 #include "locks.h"
 #include "genid.h"
 #include "logmsg.h"
@@ -115,6 +114,7 @@ static int bdb_prim_add_upd_int(bdb_state_type *bdb_state, tran_type *tran,
                                 unsigned long long newgenid,
                                 int participantstripid, int *bdberr)
 {
+
     int rc;
     int stripe;
     DB *dbp;

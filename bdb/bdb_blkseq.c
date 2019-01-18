@@ -16,7 +16,6 @@
 
 #include "bdb_api.h"
 #include "bdb_int.h"
-#include "sql_bdb.h"
 
 #include <build/db_int.h>
 #include "llog_auto.h"

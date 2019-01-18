@@ -22,7 +22,6 @@
 
 #include "bdb_api.h"
 #include "bdb_int.h"
-#include "sql_bdb.h"
 
 #include <fsnapf.h>
 #include "util.h"
