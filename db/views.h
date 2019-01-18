@@ -59,35 +59,6 @@ typedef struct timepart_sc_arg {
     void *tran; /*remove?*/
 } timepart_sc_arg_t;
 
-enum systable_columns {
-    VIEWS_NAME,
-    VIEWS_PERIOD,
-    VIEWS_RETENTION,
-    VIEWS_NSHARDS,
-    VIEWS_VERSION,
-    VIEWS_SHARD0NAME,
-    VIEWS_STARTTIME,
-    VIEWS_SOURCEID,
-    VIEWS_MAXCOLUMN
-};
-
-enum systable_shard_columns {
-    VIEWS_SHARD_VIEWNAME,
-    VIEWS_SHARD_NAME,
-    VIEWS_SHARD_START,
-    VIEWS_SHARD_END,
-    VIEWS_SHARD_MAXCOLUMN
-};
-
-enum systable_events_columns {
-    VIEWS_EVENT_NAME,
-    VIEWS_EVENT_WHEN,
-    VIEWS_EVENT_SOURCEID,
-    VIEWS_EVENT_ARG1,
-    VIEWS_EVENT_ARG2,
-    VIEWS_EVENT_ARG3,
-    VIEWS_EVENT_MAXCOLUMN
-};
 
 /**
  * Initialize the views
@@ -372,49 +343,15 @@ int timepart_dump_timepartitions(FILE *dest);
 int timepart_apply_file(const char *filename);
 
 /**
- * Returned a malloced string for the "iRowid"-th timepartition, column iCol
- * NOTE: this is called with a read lock in views structure
- */
-void timepart_systable_column(sqlite3_context *ctx, int iRowid,
-                              enum systable_columns iCol);
-
-/**
- * Returned a malloced string for the "iRowid"-th shard, column iCol of
- * timepart iTimepartId
- * NOTE: this is called with a read lock in views structure
- */
-void timepart_systable_shard_column(sqlite3_context *ctx, int iTimepartId,
-                                    int iRowid,
-                                    enum systable_shard_columns iCol);
-
-/**
- *  Move iRowid to point to the next shard, switching shards in the process
- *  NOTE: this is called with a read lock in views structure
- */
-void timepart_systable_next_shard(int *piTimepartId, int *piRowid);
-
-/**
- * Get number of views
- *
- */
-int timepart_get_num_views(void);
-
-/**
  * Get number of shards
  *
  */
 int timepart_get_num_shards(const char *view_name);
 
-/**
- * Open/close the event queue
- */
-int timepart_events_open(int *num);
-int timepart_events_close(void);
 
-/**
- * Get event data
+/** 
+ * Describe a timepart event
+ *
  */
-void timepart_events_column(sqlite3_context *ctx, int iRowid, int iCol);
-
 #endif
 

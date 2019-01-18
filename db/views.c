@@ -15,6 +15,9 @@
 #include "bdb_schemachange.h"
 #include "str0.h"
 #include "logmsg.h"
+#include "views_systable.h"
+#include "cron.h"
+#include "cron_systable.h"
 
 #define VIEWS_MAX_RETENTION 1000
 
@@ -65,7 +68,6 @@ pthread_rwlock_t views_lk;
  */
 cron_sched_t *timepart_sched;
 
-static int _start_views_cron(void);
 static timepart_view_t *_get_view(timepart_views_t *views, const char *name);
 static int _generate_new_shard_name(const char *oldname, char *newname,
                                     int newnamelen, int nextnum, int maxshards,
@@ -135,7 +137,7 @@ timepart_views_t *timepart_views_init(struct dbenv *dbenv)
     Pthread_rwlock_init(&views_lk, NULL);
 
     /* hack for now to force natural types */
-    if (_start_views_cron())
+    if ((timepart_sched = timepart_cron_start(timepart_sched)) == NULL)
         return NULL;
 
     /* read the llmeta views, if any */
@@ -280,7 +282,7 @@ int timepart_add_view(void *tran, timepart_views_t *views,
         rc = (cron_add_event(timepart_sched, NULL,
                              view->roll_time - preemptive_rolltime,
                              _view_cron_phase1, tmp_str = strdup(view->name),
-                             NULL, NULL, &view->source_id, err) == NULL)
+                             NULL, NULL, &view->source_id, err, NULL) == NULL)
                  ? err->errval
                  : VIEW_NOERR;
         if (rc != VIEW_NOERR) {
@@ -981,7 +983,7 @@ done:
 
             if (cron_add_event(timepart_sched, NULL, shardChangeTime,
                                _view_cron_phase2, tmp_str = strdup(name),
-                               pShardName, NULL, &view->source_id, err) == NULL) {
+                               pShardName, NULL, &view->source_id, err, NULL) == NULL) {
                 logmsg(LOGMSG_ERROR, "%s: failed rc=%d errstr=%s\n", __func__,
                         err->errval, err->errstr);
                 if (tmp_str)
@@ -1024,7 +1026,7 @@ _view_cron_schedule_next_rollout(timepart_view_t *view, int timeCrtRollout,
 
         if (cron_add_event(timepart_sched, NULL, tm, _view_cron_phase3,
                            removeShardName, NULL, NULL, &view->source_id, 
-                           err) == NULL) {
+                           err, NULL) == NULL) {
             logmsg(LOGMSG_ERROR, "%s: failed rc=%d errstr=%s\n", __func__,
                     err->errval, err->errstr);
             free(removeShardName);
@@ -1040,7 +1042,7 @@ _view_cron_schedule_next_rollout(timepart_view_t *view, int timeCrtRollout,
 
     if (cron_add_event(timepart_sched, NULL, tm, _view_cron_phase1,
                        tmp_str = strdup(name), NULL, NULL, &view->source_id,
-                       err) == NULL) {
+                       err, NULL) == NULL) {
         if (tmp_str) {
             free(tmp_str);
         }
@@ -1211,24 +1213,6 @@ void *_view_cron_phase3(uuid_t source_id, void *arg1, void *arg2, void *arg3,
 done:
     return NULL;
 }
-
-/**
- * Start a views cron thread
- *
- */
-static int _start_views_cron(void)
-{
-    struct errstat xerr = {0};
-
-    if (!timepart_sched) {
-        timepart_sched = cron_add_event(NULL, "timepart_cron", INT_MIN,
-                                        timepart_cron_kickoff, NULL, NULL, NULL,
-                                        NULL, &xerr);
-    }
-
-    return (!timepart_sched) ? xerr.errval : VIEW_NOERR;
-}
-
 
 static char* comdb2_partition_info_locked(const char *partition_name, 
                                           const char *option)
@@ -1853,7 +1837,7 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
         rc = (cron_add_event(timepart_sched, NULL,
                              view->roll_time - preemptive_rolltime,
                              _view_cron_phase1, tmp_str1 = strdup(view->name),
-                             NULL, NULL, &view->source_id, err) == NULL)
+                             NULL, NULL, &view->source_id, err, NULL) == NULL)
                  ? err->errval
                  : VIEW_NOERR;
         tmp_str2 = NULL;
@@ -1866,7 +1850,7 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
         rc = (cron_add_event(timepart_sched, NULL, view->roll_time,
                              _view_cron_phase2, tmp_str1 = strdup(view->name),
                              tmp_str2 = strdup(next_existing_shard), NULL,
-                             &view->source_id, err) == NULL)
+                             &view->source_id, err, NULL) == NULL)
                  ? err->errval
                  : VIEW_NOERR;
     }
@@ -2583,105 +2567,6 @@ static int _view_update_table_version(timepart_view_t *view, tran_type *tran)
     return rc;
 }
 
-/**
- * Returned a malloced string for the "iRowid"-th timepartition, column iCol
- * NOTE: this is called with a read lock in views structure
- */
-void timepart_systable_column(sqlite3_context *ctx, int iRowid,
-                              enum systable_columns iCol)
-{
-    timepart_views_t *views = thedb->timepart_views;
-    timepart_view_t *view;
-    uuidstr_t us;
-
-    if (iRowid < 0 || iRowid >= views->nviews || iCol >= VIEWS_MAXCOLUMN) {
-        sqlite3_result_null(ctx);
-    }
-
-    view = views->views[iRowid];
-
-    switch (iCol) {
-    case VIEWS_NAME:
-        sqlite3_result_text(ctx, view->name, -1, NULL);
-        break;
-    case VIEWS_PERIOD:
-        sqlite3_result_text(ctx, period_to_name(view->period), -1, NULL);
-        break;
-    case VIEWS_RETENTION:
-        sqlite3_result_int(ctx, view->retention);
-        break;
-    case VIEWS_NSHARDS:
-        sqlite3_result_int(ctx, view->nshards);
-        break;
-    case VIEWS_VERSION: {
-        struct dbtable *table = get_dbtable_by_name(view->shards[0].tblname);
-        assert(table);
-
-        sqlite3_result_int(ctx, table->tableversion);
-    } break;
-    case VIEWS_SHARD0NAME:
-        sqlite3_result_text(ctx, view->shard0name, -1, NULL);
-        break;
-    case VIEWS_STARTTIME:
-        sqlite3_result_int(ctx, view->starttime);
-        break;
-    case VIEWS_SOURCEID:
-        sqlite3_result_text(ctx, comdb2uuidstr(view->source_id, us), -1, NULL);
-        break;
-    }
-}
-
-/**
- * Returned a malloced string for the "iRowid"-th shard, column iCol of
- * timepart iTimepartId
- * NOTE: this is called with a read lock in views structure
- */
-void timepart_systable_shard_column(sqlite3_context *ctx, int iTimepartId,
-                                    int iRowid,
-                                    enum systable_shard_columns iCol)
-{
-    timepart_views_t *views = thedb->timepart_views;
-    timepart_view_t *view;
-    timepart_shard_t *shard;
-
-    if (iTimepartId < 0 || iTimepartId >= views->nviews ||
-        iCol >= VIEWS_SHARD_MAXCOLUMN) {
-        sqlite3_result_null(ctx);
-        return;
-    }
-
-    view = views->views[iTimepartId];
-
-    if (iRowid >= view->nshards) {
-        sqlite3_result_null(ctx);
-        return;
-    }
-    shard = &view->shards[iRowid];
-
-    switch (iCol) {
-    case VIEWS_SHARD_VIEWNAME:
-        sqlite3_result_text(ctx, view->name, -1, NULL);
-        break;
-    case VIEWS_SHARD_NAME:
-        sqlite3_result_text(ctx, shard->tblname, -1, NULL);
-        break;
-    case VIEWS_SHARD_START:
-        sqlite3_result_int(ctx, shard->low);
-        break;
-    case VIEWS_SHARD_END:
-        sqlite3_result_int(ctx, shard->high);
-        break;
-    }
-}
-
-/**
- * Get number of views
- *
- */
-int timepart_get_num_views(void)
-{
-    return thedb->timepart_views->nviews;
-}
 
 /**
  * Get number of shards
@@ -2708,43 +2593,6 @@ int timepart_get_num_shards(const char *view_name)
     return nshards;
 }
 
-/**
- *  Move iRowid to point to the next shard, switching shards in the process
- *  NOTE: this is called with a read lock in views structure
- */
-void timepart_systable_next_shard(int *piTimepartId, int *piRowid)
-{
-    timepart_views_t *views = thedb->timepart_views;
-    timepart_view_t *view;
-
-    if (*piTimepartId >= views->nviews)
-        return;
-    view = views->views[*piTimepartId];
-    (*piRowid)++;
-    if (*piRowid >= view->nshards) {
-        *piRowid = 0;
-        (*piTimepartId)++;
-    }
-}
-
-/**
- * Open/close the event queue
- */
-int timepart_events_open(int *num)
-{
-    cron_lock(timepart_sched);
-
-    *num = cron_num_events(timepart_sched);
-
-    return VIEW_NOERR;
-}
-
-int timepart_events_close(void)
-{
-    cron_unlock(timepart_sched);
-
-    return VIEW_NOERR;
-}
 
 static const char *_events_name(FCRON func)
 {
@@ -2759,57 +2607,6 @@ static const char *_events_name(FCRON func)
         name = "Unknown";
 
     return name;
-}
-
-/**
- * Get event data
- */
-void timepart_events_column(sqlite3_context *ctx, int iRowid, int iCol)
-{
-    const char *name;
-    FCRON func;
-    int epoch;
-    uuid_t *sid = NULL;
-    void *arg1;
-    void *arg2;
-    void *arg3;
-    uuidstr_t us;
-
-    if (iRowid < 0 || iCol >= VIEWS_SHARD_MAXCOLUMN) {
-        sqlite3_result_null(ctx);
-        return;
-    }
-
-    if (cron_event_details(timepart_sched, iRowid, &func, &epoch, &arg1, &arg2,
-                           &arg3, sid) != 1) {
-        sqlite3_result_null(ctx);
-        return;
-    }
-
-    switch (iCol) {
-    case VIEWS_EVENT_NAME:
-        name = _events_name(func);
-        sqlite3_result_text(ctx, name, -1, NULL);
-        break;
-    case VIEWS_EVENT_WHEN:
-        sqlite3_result_int(ctx, epoch);
-        break;
-    case VIEWS_EVENT_SOURCEID:
-        sqlite3_result_text(ctx, comdb2uuidstr(*sid, us), -1, NULL);
-        break;
-    case VIEWS_EVENT_ARG1:
-        sqlite3_result_text(ctx, (char *)arg1, -1, NULL);
-        break;
-    case VIEWS_EVENT_ARG2:
-        if (arg2)
-            sqlite3_result_text(ctx, (char *)arg2, -1, NULL);
-        else
-            sqlite3_result_null(ctx);
-        break;
-    case VIEWS_EVENT_ARG3:
-        sqlite3_result_null(ctx);
-        break;
-    }
 }
 
 void check_columns_null_and_dbstore(const char *name, struct dbtable *tbl)
@@ -2829,6 +2626,130 @@ void check_columns_null_and_dbstore(const char *name, struct dbtable *tbl)
                    name, sc->member[i].name);
         }
     }
+}
+
+/********* SYSTABLE INTERFACE IMPLEMENTATION HERE *******************/
+
+int timepart_systable_timepartitions_collect(void **data, int *nrecords)
+{
+    systable_timepartitions_t *arr = NULL, *temparr;
+    int narr = 0;
+    int nsize = 0;
+    int rc;
+    uuidstr_t us;
+   
+    Pthread_rwlock_rdlock(&views_lk);
+    for(narr=0;narr<views->nviews;narr++) {
+        if (narr>=nsize) {
+            nsize += 10;
+            temparr = realloc(arr, sizeof(systable_timepartitions_t)*nsize);
+            if (!temparr) {
+                logmsg(LOGMSG_ERR, "%s OOM %d!\n", __func__,
+                        sizeof(systable_timepartitions_t)*nsize);
+                timepart_systable_timepartitions_free(arr, narr);
+                narr = 0;
+                rc = -1;
+                goto done;
+            }
+            arr = temparr;
+        }
+        arr[narr].name = strdup(views[narr].name);
+        arr[narr].period = strdup(period_to_name(views[narr].period));
+        arr[narr].retention = views[narr].retention;
+        arr[narr].nshards = views[narr].nshards;
+        arr[narr].version = views[narr].version;
+        arr[narr].shard0name = strdup(views[narr].shard0name);
+        arr[narr].source_id = strdup(comdb2uuidstr(views[narr].source_id));
+    }
+done:
+    Pthread_rwlock_unlock(&views_lk);
+    *data = arr;
+    *nrecords = narr;
+    return rc;
+}
+
+void timepart_systable_timepartitions_free(void *arr, int nrecords)
+{
+    systable_timepartitions_t *parr = (systable_timepartitions_t*)arr;
+    int i;
+
+    for(i=0;i<nrecords;i++) {
+        if (parr[i].name)
+            free(parr[i].name);
+        if (parr[i].period)
+            free(parr[i].period);
+        if (parr[i].shard0name)
+            free(parr[i].shard0name);
+        if (parr[i].sourceid)
+            free(parr[i].sourceid);
+    }
+    free(arr);
+}
+
+int timepart_systable_timepartshards_collect(void **data, int *nrecords)
+{
+    systable_timepartshard_t *arr = NULL;
+    int narr= 0;
+    int nsize = 0;
+    int nview;
+    int rc;
+    uuidstr_t us;
+   
+    Pthread_rwlock_rdlock(&views_lk);
+    for(nview=0;nview<views->nviews;nview++) {
+        for(nshard=0;nshard<views[nview].nshards;nshard++){
+            if (narr>=nsize) {
+                nsize += 10;
+                temparr = realloc(arr, sizeof(systable_timepartshard_t)*nsize);
+                if (!tempar) {
+                    logmsg(LOGMSG_ERR, "%s OOM %d!\n", __func__,
+                            sizeof(systable_timepartshard_t)*nsize);
+                    timepart_systable_timepartshards_free(arr, narr);
+                    narr = 0;
+                    rc = -1;
+                    goto done;
+                }
+                arr = temparr;
+            }
+            arr[narr].name = strdup(views[nview].name);
+            arr[narr].shardname = strdup(views[nview].shards[nshard].tblname);
+            arr[narr].low = views[nview].shards[nshard].low;
+            arr[narr].high = views[nview].shards[nshard].high;
+            narr++;
+        }
+    }
+done:
+    Pthread_rwlock_unlock(&views_lk);
+    *data = arr;
+    *nrecords = narr;
+    return rc;
+
+}
+
+void timepart_systable_timepartshards_free(void *data, int nrecords)
+{
+    systable_timepartitions_t *parr = (systable_timepartshard_t*)arr;
+    int i;
+
+    for(i=0;i<nrecords;i++) {
+        if (parr[i].name)
+            free(parr[i].name);
+        if (parr[i].shardname)
+            free(parr[i].shardname);
+    }
+    free(arr);
+}
+
+int timepart_systable_timepartevents_collect(void **data, int *nrecords)
+{
+    int allocsize = 0;
+    return cron_systable_sched_events_collect(timepart_sched,
+            (systable_cron_events_t*)data, nrecords, &allocsize);
+}
+
+void timepart_systable_timepartevents_free(void *data, int nrecords)
+{
+    cron_systable_events_free(data, nrecods);
 }
 
 #include "views_serial.c"
