@@ -2713,7 +2713,7 @@ static int live_sc_redo_update(struct convert_record_data *data, DB_LOGC *logc,
 
     if (!data->s->sc_convert_done[rec->dtastripe] &&
         is_genid_right_of_stripe_pointer(data->to->handle, genid,
-                                         data->sc_genids[rec->dtastripe])) {
+                                         data->sc_genids)) {
         /* if the newgenid is to the right of the sc cursor, we only need to
          * delete the old record */
         rc = del_new_record(&data->iq, data->trans, oldgenid, -1ULL,
@@ -2791,7 +2791,7 @@ static int live_sc_redo_logical_rec(struct convert_record_data *data,
     }
     if (!data->s->sc_convert_done[rec->dtastripe] &&
         is_genid_right_of_stripe_pointer(data->to->handle, rec->genid,
-                                         data->sc_genids[rec->dtastripe])) {
+                                         data->sc_genids)) {
         /* skip those still to the right of sc cursor */
         return 0;
     }
