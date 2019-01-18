@@ -33,8 +33,6 @@ int bdb_llop_add(bdb_state_type *bdb_state, void *trans, int raw, int stripe,
                  int dtafile, int ix, void *key, int keylen, void *data,
                  int datalen, void *dtacopy, int dtacopylen, char **errstr)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, trans);
-
     DBC *dbc = NULL;
     DBT dkey = {0}, ddata = {0};
     int rc;
@@ -202,8 +200,6 @@ done:
 int bdb_llop_del(bdb_state_type *bdb_state, void *trans, int stripe,
                  int dtafile, int ix, void *key, int keylen, char **errstr)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, trans);
-
     DBC *dbc = NULL;
     DBT dkey = {0}, ddata = {0};
     int rc = 0;
@@ -316,8 +312,6 @@ void *bdb_llop_find(bdb_state_type *bdb_state, void *trans, int raw, int stripe,
                     int dtafile, int ix, void *key, int keylen, int *fndlen,
                     uint8_t *ver, char **errstr)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, trans);
-
     DBC *dbc = NULL;
     DBT dkey = {0}, ddata = {0};
     int rc;

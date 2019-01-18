@@ -314,8 +314,6 @@ static int bdb_blkseq_update_lsn_locked(bdb_state_type *bdb_state,
 int bdb_blkseq_find(bdb_state_type *bdb_state, tran_type *tran, void *key,
                     int klen, void **dtaout, int *lenout)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     DBT dkey = {0}, ddata = {0};
     int rc;
     uint8_t stripe;
@@ -349,8 +347,6 @@ int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key,
                       int klen, void *data, int datalen, void **dtaout,
                       int *lenout)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     DBT dkey = {0}, ddata = {0};
     DB_LSN lsn;
     int now;

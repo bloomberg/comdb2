@@ -97,8 +97,6 @@ int bdb_queuedb_best_pagesize(int avg_item_sz)
 int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
                     size_t dtalen, int *bdberr, unsigned long long *out_genid)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     DB *db;
     struct queuedb_key k;
     int rc;
@@ -517,8 +515,6 @@ done:
 int bdb_queuedb_consume(bdb_state_type *bdb_state, tran_type *tran,
                         int consumer, const void *prevfnd, int *bdberr)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     struct bdb_queue_found qfnd;
     uint8_t *p_buf, *p_buf_end;
     struct queuedb_key k;

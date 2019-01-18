@@ -97,8 +97,6 @@ static int get_row_lock_ix(bdb_state_type *bdb_state, DBC *dbcp,
                            tran_type *tran, int ixnum, unsigned long long genid,
                            DB_LOCK *rlk, DBT *lkname)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     /* Acquire rowlocks using this lid */
     int locker_lid = tran->logical_tran->logical_lid;
 
@@ -115,8 +113,6 @@ static int get_row_lock_ix_minmaxlk(bdb_state_type *bdb_state, DBC *dbcp,
                                     int ixnum, tran_type *tran, int minmax,
                                     DB_LOCK *rlk, DBT *lkname)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     /* Acquire rowlocks using this lid */
     int locker_lid = tran->logical_tran->logical_lid;
 
@@ -133,8 +129,6 @@ static int get_row_lock_dta(bdb_state_type *bdb_state, DBC *dbcp,
                             tran_type *tran, unsigned long long genid,
                             DB_LOCK *rlk, DBT *lkname)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     /* Locker id */
     int locker_lid = tran->logical_tran->logical_lid;
 
@@ -153,8 +147,6 @@ static int get_row_lock_dta_minlk(bdb_state_type *bdb_state, DBC *dbcp,
                                   unsigned long long genid, DB_LOCK *rlk,
                                   DBT *lkname)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     /* Locker id */
     int locker_lid = tran->logical_tran->logical_lid;
 
@@ -180,8 +172,6 @@ int bdb_logical_logging_enabled()
 extern int gbl_is_physical_replicant;
 int add_snapisol_logging(bdb_state_type *bdb_state, tran_type *tran)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     /* physical_replicants:
      * handle_truncation->vrfy_match->do_rcvry->reload_schemas->commit
      * reload_schemas opens btrees transactionally.  We call commit, but this
@@ -207,8 +197,6 @@ int ll_dta_add(bdb_state_type *bdb_state, unsigned long long genid, DB *dbp,
                tran_type *tran, int dtafile, int dtastripe, DBT *dbt_key,
                DBT *dbt_data, int flags)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     int outrc = 0, rc;
     int tran_flags;
 
@@ -285,8 +273,6 @@ int ll_dta_del(bdb_state_type *bdb_state, tran_type *tran, int rrn,
                unsigned long long genid, DB *dbp, int dtafile, int dtastripe,
                DBT *dta_out)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     int rc;
     DBT dbt_key = {0};
     DBT dta_out_si = {0};
@@ -497,8 +483,6 @@ done:
 int ll_key_del(bdb_state_type *bdb_state, tran_type *tran, int ixnum, void *key,
                int keylen, int rrn, unsigned long long genid, int *payloadsz)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     int rc = 0;
     DB *dbp;
     DBC *dbcp;
@@ -657,8 +641,6 @@ int ll_key_upd(bdb_state_type *bdb_state, tran_type *tran, char *table_name,
                unsigned long long oldgenid, unsigned long long genid, void *key,
                int ixnum, int keylen, void *dta, int dtalen)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     int rc = 0;
     DB *dbp;
     DBC *dbcp;
@@ -846,8 +828,6 @@ done:
 int ll_key_add(bdb_state_type *bdb_state, unsigned long long ingenid,
                tran_type *tran, int ixnum, DBT *dbt_key, DBT *dbt_data)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     int rc;
 
     switch (tran->tranclass) {
@@ -924,8 +904,6 @@ static int ll_dta_upd_int(bdb_state_type *bdb_state, int rrn,
                           int is_blob, int has_blob_update_optimization,
                           int keep_genid_intact)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     int rc = 0;
     int inplace = 0;
     int updateid = 0;
@@ -1426,8 +1404,6 @@ int ll_dta_upd_blob_w_opt(bdb_state_type *bdb_state, int rrn,
                           int participantstripid, int use_new_genid,
                           DBT *verify_dta, DBT *dta, DBT *old_dta_out)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     return ll_dta_upd_int(bdb_state, rrn, oldgenid, newgenid, dbp, tran,
                           dtafile, dtastripe, participantstripid, use_new_genid,
                           verify_dta, dta, old_dta_out, 1, 1, 0);
@@ -1438,8 +1414,6 @@ int ll_dta_upd(bdb_state_type *bdb_state, int rrn, unsigned long long oldgenid,
                int dtafile, int dtastripe, int participantstripid,
                int use_new_genid, DBT *verify_dta, DBT *dta, DBT *old_dta_out)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     return ll_dta_upd_int(bdb_state, rrn, oldgenid, newgenid, dbp, tran,
                           dtafile, dtastripe, participantstripid, use_new_genid,
                           verify_dta, dta, old_dta_out, (dtafile != 0), 0, 0);
@@ -1450,8 +1424,6 @@ int ll_dta_upd_blob(bdb_state_type *bdb_state, int rrn,
                     DB *dbp, tran_type *tran, int dtafile, int dtastripe,
                     int participantstripid, DBT *dta)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     unsigned long long ngenid = newgenid;
     return ll_dta_upd_int(bdb_state, rrn, oldgenid, &ngenid, dbp, tran, dtafile,
                           dtastripe, participantstripid, 1, NULL, dta, NULL, 1,
@@ -1462,8 +1434,6 @@ int ll_dta_upgrade(bdb_state_type *bdb_state, int rrn, unsigned long long genid,
                    DB *dbp, tran_type *tran, int dtafile, int dtastripe,
                    DBT *dta)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     unsigned long long newgenid = 0ULL;
     return ll_dta_upd_int(bdb_state, rrn, genid, &newgenid, dbp, tran, dtafile,
                           dtastripe, 0, 0, NULL, dta, NULL, 0, 0, 1);
@@ -1472,8 +1442,6 @@ int ll_dta_upgrade(bdb_state_type *bdb_state, int rrn, unsigned long long genid,
 int ll_commit_bench(bdb_state_type *bdb_state, tran_type *tran, int op,
                     int arg1, int arg2, void *payload, int paylen)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     int rc;
     DBT lock1 = {0}, lock2 = {0};
     assert(op == 0);
@@ -1485,8 +1453,6 @@ int ll_commit_bench(bdb_state_type *bdb_state, tran_type *tran, int op,
 int ll_rowlocks_bench(bdb_state_type *bdb_state, tran_type *tran, int op,
                       int arg1, int arg2, void *payload, int paylen)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     int rc = 0;
     assert(op > 0);
     switch (tran->tranclass) {

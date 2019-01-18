@@ -378,8 +378,6 @@ static int bdb_queue_add_int(bdb_state_type *bdb_state, tran_type *intran,
                              const void *dta, size_t dtalen, int *bdberr,
                              unsigned long long *out_genid)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, intran);
-
     size_t numfragments;
     char *fragment;
     size_t lrl;
@@ -525,8 +523,6 @@ unsigned long long bdb_queue_item_genid(const void *dta)
 int bdb_queue_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
                   size_t dtalen, int *bdberr, unsigned long long *out_genid)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     int rc = 0;
 
     BDB_READLOCK("bdb_queue_add");
@@ -543,8 +539,6 @@ int bdb_queue_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
 static int bdb_queue_add_goose_int(bdb_state_type *bdb_state, tran_type *tran,
                                    int *bdberr)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     int rc;
     DBT dbt_key, dbt_data;
     struct bdb_queue_header hdr;
@@ -594,8 +588,6 @@ static int bdb_queue_add_goose_int(bdb_state_type *bdb_state, tran_type *tran,
 
 int bdb_queue_add_goose(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     int rc = 0;
 
     BDB_READLOCK("bdb_queue_add_goose");
@@ -610,8 +602,6 @@ int bdb_queue_add_goose(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
 static int bdb_queue_check_goose_int(bdb_state_type *bdb_state, tran_type *tran,
                                      int *bdberr)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     DB_TXN *tid;
     int tmptid;
     uint8_t hdrbuf[QUEUE_HDR_LEN];
@@ -730,8 +720,6 @@ static int bdb_queue_check_goose_int(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_queue_check_goose(bdb_state_type *bdb_state, tran_type *tran,
                           int *bdberr)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     int rc = 0;
 
     BDB_READLOCK("bdb_queue_check_goose");
@@ -747,8 +735,6 @@ int bdb_queue_check_goose(bdb_state_type *bdb_state, tran_type *tran,
 static int bdb_queue_consume_goose_int(bdb_state_type *bdb_state,
                                        tran_type *tran, int *bdberr)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     DBT dbt_key, dbt_data;
     db_recno_t recno;
     uint8_t hdrbuf[QUEUE_HDR_LEN];
@@ -825,8 +811,6 @@ static int bdb_queue_consume_goose_int(bdb_state_type *bdb_state,
 int bdb_queue_consume_goose(bdb_state_type *bdb_state, tran_type *tran,
                             int *bdberr)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     int rc = 0;
 
     BDB_READLOCK("bdb_queue_consume_goose");
@@ -1707,8 +1691,6 @@ int bdb_queue_get(bdb_state_type *bdb_state, int consumer,
 static int bdb_queue_consume_int(bdb_state_type *bdb_state, tran_type *intran,
                                  int consumer, const void *prevfnd, int *bdberr)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, intran);
-
     struct bdb_queue_found item;
     uint8_t hdrbuf[QUEUE_HDR_LEN];
     uint8_t *p_buf = hdrbuf, *p_buf_end = (p_buf + QUEUE_HDR_LEN);
@@ -2060,8 +2042,6 @@ static int bdb_queue_consume_int(bdb_state_type *bdb_state, tran_type *intran,
 int bdb_queue_consume(bdb_state_type *bdb_state, tran_type *tran, int consumer,
                       const void *prevfnd, int *bdberr)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     int rc;
     *bdberr = BDBERR_NOERROR;
 

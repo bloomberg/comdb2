@@ -91,8 +91,6 @@ static int bdb_access_tbl_by_mach_get_int(bdb_state_type *bdb_state,
                                           tran_type *tran, char *table,
                                           int hostnum, int *bdberr)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     bdb_access_t *access = bdb_state->access;
     int bits;
     int rc;
@@ -127,8 +125,6 @@ static int bdb_access_tbl_by_mach_get_int(bdb_state_type *bdb_state,
 int bdb_access_tbl_read_by_mach_get(bdb_state_type *bdb_state, tran_type *tran,
                                     char *table, int hostnum, int *bdberr)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     int bits =
         bdb_access_tbl_by_mach_get_int(bdb_state, tran, table, hostnum, bdberr);
 
@@ -141,8 +137,6 @@ int bdb_access_tbl_read_by_mach_get(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_access_tbl_write_by_mach_get(bdb_state_type *bdb_state, tran_type *tran,
                                      char *table, int hostnum, int *bdberr)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     int bits =
         bdb_access_tbl_by_mach_get_int(bdb_state, tran, table, hostnum, bdberr);
 
@@ -156,8 +150,6 @@ static int bdb_access_table_by_mach_get_disk(bdb_state_type *bdb_state,
                                              tran_type *tran, char *table,
                                              int hostnum, int *bdberr)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     char machname[MACHNAMELEN];
     int bits = 0;
     int rc = 0;
@@ -180,8 +172,6 @@ static int bdb_access_table_by_mach_put_disk(bdb_state_type *bdb_state,
                                              int hostnum, int allow,
                                              int *bdberr)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     char machname[MACHNAMELEN];
     int rc = 0;
 
@@ -213,8 +203,6 @@ static int bdb_access_table_by_mach_put_disk(bdb_state_type *bdb_state,
 int bdb_access_tbl_write_by_mach_set(bdb_state_type *bdb_state, tran_type *tran,
                                      char *table, int hostnum, int *bdberr)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     return bdb_access_table_by_mach_put_disk(bdb_state, tran, table, hostnum,
                                              ACCESS_WRITE, bdberr);
 }
@@ -226,8 +214,6 @@ int bdb_access_tbl_write_by_mach_set(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_access_tbl_read_by_mach_set(bdb_state_type *bdb_state, tran_type *tran,
                                     char *table, int hostnum, int *bdberr)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     return bdb_access_table_by_mach_put_disk(bdb_state, tran, table, hostnum,
                                              ACCESS_READ, bdberr);
 }

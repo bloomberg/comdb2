@@ -53,8 +53,6 @@ static int bdb_prim_addkey_int(bdb_state_type *bdb_state, tran_type *tran,
                                unsigned long long genid, void *dta, int dtalen,
                                int isnull, int *bdberr)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     DBT dbt_key, dbt_data;
     int rc;
     unsigned int *keydata;
@@ -202,8 +200,6 @@ int bdb_prim_addkey_genid(bdb_state_type *bdb_state, tran_type *tran,
                           unsigned long long genid, void *dta, int dtalen,
                           int isnull, int *bdberr)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     int rc;
 
     rc = bdb_prim_addkey_int(bdb_state, tran, ixdta, ixnum, rrn, genid, dta,
@@ -217,8 +213,6 @@ static int bdb_prim_allocdta_int(bdb_state_type *bdb_state, tran_type *tran,
                                  unsigned long long *genid,
                                  int participantstripid, int *bdberr)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     DBT dbt_key, dbt_data;
     int rc;
     int rrn;
@@ -306,8 +300,6 @@ static int bdb_prim_allocdta_int(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_prim_allocdta(bdb_state_type *bdb_state, tran_type *tran, void *dta,
                       int dtalen, int *bdberr)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     int rc;
 
     rc = bdb_prim_allocdta_int(bdb_state, tran, dta, dtalen, NULL, /* genid */
@@ -320,8 +312,6 @@ int bdb_prim_allocdta_genid(bdb_state_type *bdb_state, tran_type *tran,
                             void *dta, int dtalen, unsigned long long *genid,
                             int participantstripid, int *bdberr)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     int rc;
 
     rc = bdb_prim_allocdta_int(bdb_state, tran, dta, dtalen, genid,
@@ -335,8 +325,6 @@ static int bdb_prim_adddta_n_genid_int(bdb_state_type *bdb_state,
                                        void *dtaptr, size_t dtalen, int rrn,
                                        unsigned long long genid, int *bdberr)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     DBT dbt_key, dbt_data;
     unsigned long long *genid_dta = NULL;
     int rc;
@@ -427,8 +415,6 @@ int bdb_prim_adddta_n_genid(bdb_state_type *bdb_state, tran_type *tran,
                             int dtanum, void *dtaptr, size_t dtalen, int rrn,
                             unsigned long long genid, int *bdberr)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     int rc;
 
     rc = bdb_prim_adddta_n_genid_int(bdb_state, tran, dtanum, dtaptr, dtalen,

@@ -146,8 +146,6 @@ static int bdb_find_edge_genid_int(bdb_state_type *bdb_state, tran_type *tran,
                                    unsigned long long *genid, uint8_t *ver,
                                    int *bdberr)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     DBT dbt_key = {0}, dbt_data = {0};
     DBC *cur;
     int rc, ixrc;
@@ -203,8 +201,6 @@ int bdb_find_oldest_genid(bdb_state_type *bdb_state, tran_type *tran,
                           int stripe, void *rec, int *reclen, int maxlen,
                           unsigned long long *genid, uint8_t *ver, int *bdberr)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     int rc;
 
     BDB_READLOCK("bdb_find_oldest_genid");
@@ -219,8 +215,6 @@ int bdb_find_newest_genid(bdb_state_type *bdb_state, tran_type *tran,
                           int stripe, void *rec, int *reclen, int maxlen,
                           unsigned long long *genid, uint8_t *ver, int *bdberr)
 {
-    BDB_VERIFY_TRAN_INVARIANTS(bdb_state, tran);
-
     int rc;
 
     BDB_READLOCK("bdb_find_newest_genid");
