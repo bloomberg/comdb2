@@ -41,6 +41,7 @@
 #include "bdb_int.h"
 #include "schema_lk.h"
 #include "locks.h"
+#include "dbg_locks_core.h"
 #include "pthread_wrap.h"
 #include "list.h"
 #include <endian_core.h>
@@ -5415,8 +5416,11 @@ void *watcher_thread(void *arg)
 
                 lock_info_lockers(stdout, bdb_state);
 
+#if defined(DBG_PTHREAD_LOCKS)
+                dbg_pthread_dump(stdout);
+#endif
+
 #ifndef NDEBUG
-                dump_schema_lk(stdout);
                 abort();
 #endif
             }

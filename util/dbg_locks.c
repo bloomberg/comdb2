@@ -23,6 +23,8 @@
 #include <pthread.h>
 #include "plhash.h"
 #include "pthread_wrap_core.h"
+#include <mem_util.h>
+#include <mem_override.h>
 
 enum dbg_lock_pthread_type_t {
   DBG_LOCK_PTHREAD_NONE = 0x0,

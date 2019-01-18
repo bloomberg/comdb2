@@ -18,34 +18,7 @@
 #ifndef DBG_LOCKS_H
 #define DBG_LOCKS_H
 
-#include <stdio.h>
-#include <time.h>
-#include <pthread.h>
-
-/*****************************************************************************/
-
-void dbg_pthread_dump(FILE *out);
-void dbg_pthread_term(void);
-
-/*****************************************************************************/
-
-int dbg_pthread_mutex_lock(pthread_mutex_t *, const char *, const char *, int);
-int dbg_pthread_mutex_trylock(pthread_mutex_t *, const char *, const char *, int);
-int dbg_pthread_mutex_timedlock(pthread_mutex_t *, const struct timespec *, const char *, const char *, int);
-int dbg_pthread_mutex_unlock(pthread_mutex_t *mutex, const char *, const char *, int);
-
-/*****************************************************************************/
-
-int dbg_pthread_rwlock_rdlock(pthread_rwlock_t *, const char *, const char *, int);
-int dbg_pthread_rwlock_wrlock(pthread_rwlock_t *, const char *, const char *, int);
-int dbg_pthread_rwlock_tryrdlock(pthread_rwlock_t *, const char *, const char *, int);
-int dbg_pthread_rwlock_trywrlock(pthread_rwlock_t *, const char *, const char *, int);
-int dbg_pthread_rwlock_timedrdlock(pthread_rwlock_t *, const struct timespec *, const char *, const char *, int);
-int dbg_pthread_rwlock_timedwrlock(pthread_rwlock_t *, const struct timespec *, const char *, const char *, int);
-int dbg_pthread_rwlock_unlock(pthread_rwlock_t *, const char *, const char *, int);
-
-/*****************************************************************************/
-
+#include "dbg_locks_core.h"
 #include "pthread_wrap.h"
 
 #undef Pthread_mutex_lock

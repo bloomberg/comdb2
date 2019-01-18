@@ -76,7 +76,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "timers.h"
 
 #include "comdb2.h"
-#include "dbg_locks.h"
+#include "dbg_locks_core.h"
 #include "sql.h"
 
 #include "comdb2_trn_intrl.h"
