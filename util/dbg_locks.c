@@ -32,14 +32,19 @@ enum dbg_lock_pthread_type_t {
   DBG_LOCK_PTHREAD_RWLOCK = 0x8
 };
 
-struct dbg_lock_pthread_key_t {
+struct dbg_lock_pthread_outer_key_t {
+  void *obj;
+  hash_t *locks;
+};
+
+struct dbg_lock_pthread_inner_key_t {
   void *obj;
   pthread_t thread;
   int type;
 };
 
-struct dbg_lock_pthread_pair_t {
-  struct dbg_lock_pthread_key_t key;
+struct dbg_lock_pthread_inner_pair_t {
+  struct dbg_lock_pthread_inner_key_t key;
   int nRef;
 };
 
@@ -69,7 +74,7 @@ static int dbg_pthread_dump_pair(
   void *obj,
   void *arg
 ){
-  struct dbg_lock_pthread_pair_t *pair = (struct dbg_lock_pthread_pair_t *)obj;
+  struct dbg_lock_pthread_inner_pair_t *pair = (struct dbg_lock_pthread_inner_pair_t *)obj;
   if( pair!=NULL ){
     FILE *out = (FILE *)arg;
     char zBuf[64];
@@ -78,6 +83,7 @@ static int dbg_pthread_dump_pair(
 
     fprintf(out, "%s: [lock:%s @ %p] [refs:%d] (pair:%p)\n",
             __func__, zBuf, pair->key.obj, pair->nRef, (void *)pair);
+    fflush(out);
   }
   return 0;
 }
@@ -153,12 +159,17 @@ static void dbg_pthread_add_self(
   if( objlocks==NULL ){
     objlocks = hash_init(sizeof(void *));
     if( objlocks==NULL ) abort();
+    struct dbg_lock_pthread_outer_key_t *objkey = calloc(1, sizeof(struct dbg_lock_pthread_outer_key_t));
+    if( objkey==NULL ) abort();
+    objkey->obj = obj;
+    objkey->locks = objlocks;
+    if( hash_add(dbg_locks, objkey)!=0 ) abort();
   }
   pthread_t self = pthread_self();
-  struct dbg_lock_pthread_key_t key = { obj, self, type };
-  struct dbg_lock_pthread_pair_t *pair = hash_find(objlocks, &key);
+  struct dbg_lock_pthread_inner_key_t key = { obj, self, type };
+  struct dbg_lock_pthread_inner_pair_t *pair = hash_find(objlocks, &key);
   if( pair==NULL ){
-    pair = calloc(1, sizeof(struct dbg_lock_pthread_pair_t));
+    pair = calloc(1, sizeof(struct dbg_lock_pthread_inner_pair_t));
     if( pair==NULL ) abort();
     pair->key.obj = obj;
     pair->key.thread = self;
@@ -187,8 +198,8 @@ static void dbg_pthread_remove_self(
   hash_t *objlocks = hash_find(dbg_locks, obj);
   if( objlocks==NULL ) goto done;
   pthread_t self = pthread_self();
-  struct dbg_lock_pthread_key_t key = { obj, self, type };
-  struct dbg_lock_pthread_pair_t *pair = hash_find(objlocks, &key);
+  struct dbg_lock_pthread_inner_key_t key = { obj, self, type };
+  struct dbg_lock_pthread_inner_pair_t *pair = hash_find(objlocks, &key);
   if( pair!=NULL && --pair->nRef==0 ){
     if( hash_del(objlocks, &pair->key)!=0 ) abort();
     free(pair);
