@@ -17,7 +17,7 @@
 #ifndef INCLUDED_SCHEMA_LK_H
 #define INCLUDED_SCHEMA_LK_H
 
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 #define rdlock_schema_lk() rdlock_schema_int(__FILE__, __func__, __LINE__)
 void rdlock_schema_int(const char *file, const char *func, int line);
