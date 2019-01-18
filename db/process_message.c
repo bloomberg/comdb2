@@ -3623,23 +3623,6 @@ clipper_usage:
     out:
         free(dbname);
         return 0;
-    } else if (tokcmp(tok, ltok, "testrep") == 0) {
-        int nitems;
-        int size;
-        tok = segtok(line, lline, &st, &ltok);
-        if (ltok == 0)
-            goto testrep_usage;
-        nitems = toknum(tok, ltok);
-        tok = segtok(line, lline, &st, &ltok);
-        if (ltok == 0)
-            goto testrep_usage;
-        size = toknum(tok, ltok);
-
-        testrep(nitems, size);
-        return 0;
-
-    testrep_usage:
-        logmsg(LOGMSG_ERROR, "Usage: testrep num_items item_size\n");
     } else if (tokcmp(tok, ltok, "random_lock_release_interval") == 0) {
         int tmp;
         tok = segtok(line, lline, &st, &ltok);
@@ -4175,10 +4158,6 @@ clipper_usage:
         } else {
             logmsg(LOGMSG_USER, "DDLK generator turned off\n");
         }
-    } else if (tokcmp(tok, ltok, "locktest") == 0) {
-        Pthread_mutex_lock(&testguard);
-        bdb_locktest(thedb->bdb_env);
-        Pthread_mutex_unlock(&testguard);
     } else if (tokcmp(tok, ltok, "berkdelay") == 0) {
         uint32_t commit_delay_ms = 0;
         tok = segtok(line, lline, &st, &ltok);
@@ -4749,8 +4728,7 @@ clipper_usage:
         }
     } else if (tokcmp(tok, ltok, "logmsg") == 0) {
         logmsg_process_message(line, lline);
-    } else if (tokcmp(tok, ltok, "test") == 0) {
-        //@send test <keyword>
+    } else if (tokcmp(tok, ltok, "test") == 0) { //@send test <keyword>
         tok = segtok(line, lline, &st, &ltok);
         if (tokcmp(tok, ltok, "locktest") == 0) {
             Pthread_mutex_lock(&testguard);
@@ -4759,6 +4737,23 @@ clipper_usage:
         } else if (tokcmp(tok, ltok, "osql_send_test") == 0) {
             SBUF2 *sb = sbuf2open(fileno(stdout), 0);
             osql_send_test(sb);
+        } else if (tokcmp(tok, ltok, "testrep") == 0) {
+            int nitems;
+            int size;
+            tok = segtok(line, lline, &st, &ltok);
+            if (ltok == 0)
+                goto testrep_usage;
+            nitems = toknum(tok, ltok);
+            tok = segtok(line, lline, &st, &ltok);
+            if (ltok == 0)
+                goto testrep_usage;
+            size = toknum(tok, ltok);
+
+            testrep(nitems, size);
+            return 0;
+
+        testrep_usage:
+            logmsg(LOGMSG_ERROR, "Usage: testrep num_items item_size\n");
         }
     } else {
         // see if any plugins know how to handle this

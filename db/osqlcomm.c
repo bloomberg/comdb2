@@ -9601,21 +9601,18 @@ freemem:
     return rc;
 }
 
-
-
 /* test osql stream sending a dummy uuid OSQL_DONE request */
 int osql_send_test(SBUF2 *sb)
 {
     struct errstat xerr = {0};
     int nettype = NET_OSQL_SOCK_RPL_UUID;
     snap_uid_t snap_info = {{0}};
-    //get_cnonce(clnt, &snap_info);
     snap_info.replicant_can_retry = 0;
-    snap_info.uuid[0] = 1;
+    snap_info.uuid[0] = 1; // just assign dummy cnonce here
     int rc;
 
-    rc = osql_send_commit_by_uuid(
-                    thedb->master, snap_info.uuid, 1 /*numops*/, &xerr,
-                    nettype, sb /*logsb*/, NULL /*clnt->query_stats*/, &snap_info);
+    rc = osql_send_commit_by_uuid(thedb->master, snap_info.uuid, 1 /*numops*/,
+                                  &xerr, nettype, sb /*logsb*/,
+                                  NULL /*clnt->query_stats*/, &snap_info);
     return rc;
 }
