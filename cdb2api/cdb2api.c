@@ -1997,11 +1997,11 @@ static void get_host_from_fd(cdb2_hndl_tp *hndl, int fd)
     }
     char ip[20];
     strcpy(ip, inet_ntoa(addr.sin_addr));
-    debugprint("sockpool gave us ip '%s'\n", ip);
 
     struct hostent *hp = gethostbyaddr((char *)&addr.sin_addr, sizeof(addr.sin_addr), AF_INET);
-    if (hp!=NULL)
-        debugprint("sockpool gave us host '%s'\n", hp->h_name);
+    debugprint("sockpool gave us ip '%s', host '%s'\n", ip, (hp != NULL) ? hp->h_name : "");
+    // TODO: consider changing the node_indx in newsql_connect if the host which
+    // sockpool had us connect to is not the same as what we intended to connect
 }
 
 /* Tries to connect to specified node using sockpool.
@@ -2206,7 +2206,7 @@ static inline int cdb2_try_on_same_room(cdb2_hndl_tp *hndl)
         if (try_node == hndl->master || hndl->ports[try_node] <= 0 ||
             try_node == hndl->connected_host || hndl->hosts_connected[i] == 1)
             continue;
-        if(newsql_connect(hndl, try_node, 0, 100) == 0)
+        if (newsql_connect(hndl, try_node, 0, 100) == 0)
             return 0;
     }
     return -1;
@@ -2220,7 +2220,7 @@ static inline int cdb2_try_connect_range(cdb2_hndl_tp *hndl, int begin, int end)
         if (i == hndl->master || hndl->ports[i] <= 0 ||
             i == hndl->connected_host || hndl->hosts_connected[i] == 1)
             continue;
-        if(newsql_connect(hndl, i, 0, 100) == 0)
+        if (newsql_connect(hndl, i, 0, 100) == 0)
             return 0;
     }
     return -1;
@@ -2323,7 +2323,7 @@ retry_connect:
         /* After this retry on other nodes. */
         bzero(hndl->hosts_connected, sizeof(hndl->hosts_connected));
         if (hndl->ports[hndl->master] > 0) {
-            if(newsql_connect(hndl, hndl->master, 0, 100) == 0)
+            if (newsql_connect(hndl, hndl->master, 0, 100) == 0)
                 return 0;
         }
     }
