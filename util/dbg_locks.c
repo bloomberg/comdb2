@@ -117,7 +117,7 @@ static int dbg_pthread_dump_outer_pair(
 
 /*****************************************************************************/
 
-static int dbg_pthread_free_obj(
+static int dbg_pthread_free_inner_pair(
   void *obj,
   void *arg
 ){
@@ -127,15 +127,18 @@ static int dbg_pthread_free_obj(
 
 /*****************************************************************************/
 
-static int dbg_pthread_free_hash(
+static int dbg_pthread_free_outer_pair(
   void *obj,
   void *arg
 ){
-  if( obj!=NULL ){
-    hash_t *hash = (hash_t *)obj;
-    hash_for(hash, dbg_pthread_free_obj, NULL);
-    hash_clear(hash);
-    hash_free(hash);
+  outer_pair_t *pair = (outer_pair_t *)obj;
+  if( pair!=NULL ){
+    hash_t *locks = pair->locks;
+    if( locks!=NULL ){
+      hash_for(locks, dbg_pthread_free_inner_pair, NULL);
+      hash_clear(locks);
+      hash_free(locks);
+    }
   }
   return 0;
 }
@@ -166,7 +169,7 @@ static void dbg_pthread_check_init(void){
 void dbg_pthread_term(void){
   pthread_mutex_lock(&dbg_locks_lk);
   if( dbg_locks==NULL ) goto done;
-  hash_for(dbg_locks, dbg_pthread_free_hash, NULL);
+  hash_for(dbg_locks, dbg_pthread_free_outer_pair, NULL);
   hash_clear(dbg_locks);
   hash_free(dbg_locks);
   dbg_locks = NULL;
