@@ -2919,6 +2919,8 @@ retry_next_record:
         hndl->lastresponse->snapshot_info->file) {
         hndl->snapshot_file = hndl->lastresponse->snapshot_info->file;
         hndl->snapshot_offset = hndl->lastresponse->snapshot_info->offset;
+        debugprint("set snapshotinfo to [%d][%d]\n", hndl->snapshot_file,
+                hndl->snapshot_offset);
     }
 
     if (hndl->lastresponse->response_type == RESPONSE_TYPE__COLUMN_VALUES) {
@@ -2969,7 +2971,7 @@ retry_next_record:
     PRINT_RETURN_OK(-1);
 }
 
-int cdb2_next_record(cdb2_hndl_tp *hndl)
+static int cdb2_next_record_multi(cdb2_hndl_tp *hndl)
 {
     int rc = 0;
 
@@ -3002,7 +3004,7 @@ int cdb2_next_record(cdb2_hndl_tp *hndl)
             rc = -1;
         }
     } else {
-        rc = cdb2_next_record_int(hndl, 1);
+        rc = cdb2_next_record_int(hndl, hndl->last_active);
     }
 
     if (log_calls)
@@ -3019,7 +3021,67 @@ after_callback:
     return rc;
 }
 
-int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects)
+static inline void set_last_active(cdb2_hndl_tp *hndl)
+{
+    int count = 0, i;
+    assert(hndl->total_active == 1);
+
+    /* For sanity while I'm coding this, make sure that there is really only
+     * one active handle left */
+
+    if (hndl->active) {
+        hndl->last_active = 1;
+        count++;
+    }
+
+    for (i = 0; i < hndl->num_children; i++) {
+        if (hndl->children[i]->active) {
+            hndl->children[i]->last_active = 1;
+            count++;
+        }
+    }
+
+    if (count != 1)
+        abort();
+}
+
+int cdb2_next_record(cdb2_hndl_tp *hndl)
+{
+    int rc = 0, have_rc = 0, crc, i;
+
+    if (!hndl->is_hasql || hndl->active) {
+        rc = cdb2_next_record_multi(hndl);
+        if (is_retryable(hndl, rc)) {
+            debugprint("inactivating hndl %p\n", hndl);
+            hndl->active = 0;
+            hndl->total_active--;
+            if ((hndl->total_active) == 1)
+                set_last_active(hndl);
+        } else
+            have_rc = 1;
+    }
+
+    for (i = 0; i < hndl->num_children; i++) {
+        cdb2_hndl_tp *c_hndl = hndl->children[i];
+        if (c_hndl->active) {
+            crc = cdb2_next_record_multi(c_hndl);
+            if (is_retryable(c_hndl, crc)) {
+                debugprint("inactivating child hndl %p\n", c_hndl);
+                c_hndl->active = 0;
+                hndl->total_active--;
+                if ((hndl->total_active) == 1)
+                    set_last_active(hndl);
+
+            } else if (!have_rc) {
+                rc = crc;
+                have_rc = 1;
+            }
+        }
+    }
+    return rc;
+}
+
+static int cdb2_get_effects_multi(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects)
 {
     int rc = 0;
 
@@ -3064,6 +3126,35 @@ int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects)
                     effects->num_affected, effects->num_selected,
                     effects->num_updated, effects->num_deleted,
                     effects->num_inserted);
+    }
+
+    return rc;
+}
+
+int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects)
+{
+    int rc = 0, i, got_rcode = 0;
+    cdb2_hndl_tp *last = NULL;
+
+    if (!hndl->is_hasql || hndl->active) {
+        rc = cdb2_get_effects_multi(hndl, effects);
+        got_rcode = 1;
+    } else {
+        for(i = 0; i < hndl->num_children; i++) {
+            cdb2_hndl_tp *c_hndl = hndl->children[i];
+            if (c_hndl->active) {
+                rc = cdb2_get_effects_multi(c_hndl, effects);
+                got_rcode = 1;
+                break;
+            }
+            if (c_hndl->last_active)
+                last = c_hndl;
+        }
+    }
+
+    if (!got_rcode) {
+        assert(last);
+        rc = cdb2_get_effects_multi(last, effects);
     }
 
     return rc;
@@ -3864,7 +3955,7 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
     int is_rollback = 0;
     int retries_done = 0;
 
-    debugprint("running '%s' from line %d\n", sql, line);
+    debugprint("running '%s' from line %d hndl %p\n", sql, line, hndl);
 
     consume_previous_query(hndl);
     if (!sql)
@@ -4412,7 +4503,7 @@ read_record:
                 cleanup_query_list(hndl, commit_query_list, __LINE__);
             PRINT_RETURN(return_value);
         }
-        int rc = cdb2_next_record_int(hndl, 1);
+        int rc = cdb2_next_record_int(hndl, hndl->last_active);
         if (rc == CDB2_OK_DONE || rc == CDB2_OK) {
             return_value = 
                 cdb2_convert_error_code(hndl->firstresponse->error_code);
@@ -4490,31 +4581,18 @@ static char *cdb2_type_str(int type)
     }
 }
 
-static inline void set_last_active(cdb2_hndl_tp *hndl)
+
+static inline void disable_children(cdb2_hndl_tp *hndl)
 {
-    int count = 0, i;
+    for (int i = 0; i < hndl->num_children; i++) {
+        cdb2_hndl_tp *c_hndl = hndl->children[i];
+        debugprint("inactivating child hndl %p\n", c_hndl);
+        c_hndl->active = 0;
+        hndl->total_active--;
+    }
     assert(hndl->total_active == 1);
-
-    /* For sanity while I'm coding this, make sure that there is really only
-     * one active handle left */
-
-    if (hndl->active) {
-        hndl->last_active = 1;
-        count++;
-    }
-
-    for (i = 0; i < hndl->num_children; i++) {
-        if (hndl->children[i]->active) {
-            hndl->children[i]->last_active = 1;
-            count++;
-        }
-    }
-
-    if (count != 1)
-        abort();
+    hndl->last_active = 1;
 }
-
-
 
 static inline int begin_children(cdb2_hndl_tp *hndl)
 {
@@ -4526,12 +4604,15 @@ static inline int begin_children(cdb2_hndl_tp *hndl)
         c_hndl->snapshot_file = hndl->snapshot_file;
         c_hndl->snapshot_offset = hndl->snapshot_offset;
         c_hndl->cnonce = hndl->cnonce;
-        if ((rc = cdb2_run_statement_typed_int(c_hndl, "begin", 0, NULL,
-                        __LINE__)) != 0) {
+        rc = cdb2_run_statement_typed_int(c_hndl, "begin", 0, NULL, __LINE__);
+        if (is_retryable(c_hndl, rc)) {
+            debugprint("inactivating child hndl %p rc %d\n", c_hndl, rc);
             c_hndl->active = 0;
             hndl->total_active--;
-            if ((hndl->total_active) == 1)
+            if ((hndl->total_active) == 1) {
                 set_last_active(hndl);
+                assert(hndl->active);
+            }
         } else {
             good_rc = 1;
         }
@@ -4588,13 +4669,17 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
          strncasecmp(sql, "commit", 6) != 0 &&
          strncasecmp(sql, "rollback", 8) != 0)) {
         rc = cdb2_run_statement_typed_int(hndl, "begin", 0, NULL, __LINE__);
+
+        if (rc == 0 && hndl->snapshot_file > 0)
+            begin_children(hndl);
+        else
+            disable_children(hndl);
+
         if (rc) {
             debugprint("cdb2_run_statement_typed_int rc = %d\n", rc);
             goto after_callback;
         }
         hndl->temp_trans = 1;
-        assert(hndl->snapshot_file > 0);
-        begin_children(hndl);
     }
 
     sql = cdb2_skipws(sql);
@@ -4603,16 +4688,22 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
         if (rc)
             debugprint("rc = %d\n", rc);
         if (is_retryable(hndl, rc)) {
+            debugprint("inactivating hndl %p\n", hndl);
             hndl->active = 0;
             hndl->total_active--;
             if ((hndl->total_active) == 1)
                 set_last_active(hndl);
+            if ((hndl->total_active) == 0)
+                have_rc = 1;
         } else
             have_rc = 1;
     }
 
-    if (hndl->is_hasql && strncasecmp(sql, "begin", 5) == 0 && rc == 0) {
-        begin_children(hndl);
+    if (hndl->is_hasql && strncasecmp(sql, "begin", 5) == 0) {
+        if (hndl->snapshot_file > 0 && rc == 0)
+            begin_children(hndl);
+        else
+            disable_children(hndl);
     } else {
         for (i = 0; i < hndl->num_children; i++) {
             cdb2_hndl_tp *c_hndl = hndl->children[i];
@@ -4620,10 +4711,15 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
                 crc = cdb2_run_statement_typed_int(c_hndl, sql, ntypes, types,
                         __LINE__);
                 if (is_retryable(c_hndl, crc)) {
+                    debugprint("inactivating child hndl %p\n", c_hndl);
                     c_hndl->active = 0;
                     hndl->total_active--;
-                    if ((hndl->total_active) == 1)
+                    if (hndl->total_active == 1)
                         set_last_active(hndl);
+                    if (hndl->total_active == 0 && !have_rc) {
+                        rc = crc;
+                        have_rc = 1;
+                    }
                 } else if (!have_rc) {
                     rc = crc;
                     have_rc = 1;
@@ -4642,10 +4738,15 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
                         NULL, __LINE__);
                 debugprint("rc = %d\n", commit_rc);
                 if (is_retryable(hndl, commit_rc)) {
+                    debugprint("inactivating hndl %p\n", hndl);
                     hndl->active = 0;
                     hndl->total_active--;
-                    if ((hndl->total_active) == 1)
+                    if (hndl->total_active == 1)
                         set_last_active(hndl);
+                    if (hndl->total_active == 0 && !have_rc) {
+                        rc = commit_rc;
+                        have_rc = 1;
+                    }
                 } else {
                     rc = commit_rc;
                     have_rc = 1;
@@ -4657,10 +4758,15 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
                     commit_rc = cdb2_run_statement_typed_int(c_hndl, "commit", 0, NULL,
                             __LINE__);
                     if (is_retryable(c_hndl, rc)) {
+                        debugprint("inactivating child hndl %p\n", c_hndl);
                         c_hndl->active = 0;
                         hndl->total_active--;
                         if ((hndl->total_active) == 1)
                             set_last_active(hndl);
+                        if (hndl->total_active == 0 && !have_rc) {
+                            rc = commit_rc;
+                            have_rc = 1;
+                        }
                     } else {
                         rc = commit_rc;
                         have_rc = 1;
@@ -5548,6 +5654,7 @@ static int cdb2_clone_child(cdb2_hndl_tp *c_hndl)
     hndl->ports[0] = c_hndl->ports[ix];
     hndl->master = 0;
     hndl->parent = c_hndl;
+    hndl->max_retries = c_hndl->max_retries;
     c_hndl->children[c_hndl->num_children++] = hndl;
     if (log_calls)
         fprintf(stderr, "%p> cdb2_clone_child(%p) => %p\n",
@@ -5939,6 +6046,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     hndl->connected_host = -1;
     hndl->send_stack = 1;
     hndl->read_intrans_results = 1;
+    hndl->active = 1;
 #if WITH_SSL
     /* We don't do dbinfo if DIRECT_CPU. So we'd default peer SSL mode to
        ALLOW. We will find it out later when we send SSL negotitaion packet

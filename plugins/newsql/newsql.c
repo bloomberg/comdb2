@@ -1733,13 +1733,17 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                     appdata->send_intrans_response = -1;
                 }
             } else if (strncasecmp(sqlstr, "admin", 5) == 0) {
-                sqlstr += 7;
+                sqlstr += 5;
                 sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "off", 3) == 0) {
                     clnt->admin = 0;
                 } else {
                     clnt->admin = 1;
                 }
+            } else if (strncasecmp(sqlstr, "concurrent", 10) == 0) {
+                sqlstr += 10;
+                sqlstr = skipws(sqlstr);
+                /* client-side only directive */
             } else {
                 rc = ii + 1;
             }
