@@ -982,6 +982,7 @@ struct cdb2_hndl {
     int gbl_event_version; /* Cached global event version */
     cdb2_event events;
     struct cdb2_hndl *children[MAX_NODES];
+    int num_child_hosts;
     struct cdb2_hndl *parent;
     int active;
     int total_active;
@@ -3037,6 +3038,8 @@ static inline void set_last_active(cdb2_hndl_tp *hndl)
     for (i = 0; i < hndl->num_children; i++) {
         if (hndl->children[i]->active) {
             hndl->children[i]->last_active = 1;
+            hndl->children[i]->flags &= ~CDB2_DIRECT_CPU;
+            hndl->children[i]->num_hosts = hndl->children[i]->num_child_hosts;
             count++;
         }
     }
@@ -4630,6 +4633,16 @@ static inline int begin_children(cdb2_hndl_tp *hndl)
     return (good_rc ? 0 : 1);
 }
 
+static void copy_hosts_into_child(cdb2_hndl_tp *hndl, cdb2_hndl_tp *c_hndl, int ix)
+{
+    for (int i = 0 ; i < hndl->num_hosts ; i++) {
+        strncpy(c_hndl->hosts[i], hndl->hosts[(ix + i) % hndl->num_hosts],
+                sizeof(hndl->hosts[0]) - 1);
+        c_hndl->ports[i] = hndl->ports[(ix + i) % hndl->num_hosts];
+    }
+    c_hndl->num_child_hosts = hndl->num_hosts;
+}
+
 int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
                              int *types)
 {
@@ -4662,8 +4675,11 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
         hndl->active = 1;
         hndl->last_active = 0;
         for (i = 0; i < hndl->num_children; i++) {
+            copy_hosts_into_child(hndl, hndl->children[i], i);
             hndl->children[i]->active = 1;
             hndl->children[i]->last_active = 0;
+            hndl->children[i]->flags |= CDB2_DIRECT_CPU;
+            hndl->children[i]->num_hosts = 1;
         }
         hndl->total_active = (hndl->num_children + 1);
         if (hndl->total_active == 1)
@@ -5679,8 +5695,7 @@ static int cdb2_clone_child(cdb2_hndl_tp *c_hndl)
     hndl->num_hosts = 1;
     hndl->dbnum = c_hndl->dbnum;
     hndl->flags = CDB2_DIRECT_CPU;
-    strncpy(hndl->hosts[0], c_hndl->hosts[ix], sizeof(hndl->hosts[0]) - 1);
-    hndl->ports[0] = c_hndl->ports[ix];
+    copy_hosts_into_child(c_hndl, hndl, ix);
     hndl->master = 0;
     hndl->parent = c_hndl;
     hndl->max_retries = c_hndl->max_retries;
