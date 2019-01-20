@@ -19,7 +19,6 @@
 #include <util.h>
 #include <ctrace.h>
 #include <netinet/in.h>
-#include <unistd.h>
 #include "osqlsession.h"
 #include "osqlcomm.h"
 #include "osqlblockproc.h"
@@ -509,15 +508,6 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
     is_msg_done = osql_comm_is_done(type, data, datalen,
                                     rqid == OSQL_RQID_USE_UUID, &perr, NULL);
 
-    if (is_msg_done) {
-        int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_AFTER_SAVEOP_DONE);
-        if (d_ms) {
-            logmsg(LOGMSG_DEBUG, "Sleeping for DELAY_AFTER_SAVEOP_DONE (%dms)\n",
-                    d_ms);
-            usleep(1000 * d_ms);
-        }
-    }
-
     /* get the session */
     osql_sess_t *sess = osql_repository_get(rqid, uuid, is_msg_done);
     if (!sess) {
@@ -765,17 +755,23 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
 
 #ifdef TEST_QSQL_REQ
     uuidstr_t us;
-    fprintf(stdout, "%s: Opening request %llu %s\n", __func__, rqid,
+    logmsg(LOGMSG_INFO, "%s: Opening request %llu %s\n", __func__, rqid,
             comdb2uuidstr(uuid, us));
 #endif
 
     /* alloc object */
     sess = (osql_sess_t *)calloc(sizeof(*sess), 1);
     if (!sess) {
-        fprintf(stderr, "%s:unable to allocate %zu bytes\n", __func__,
-                sizeof(*sess));
+        logmsg(LOGMSG_ERROR, "%s:unable to allocate %zu bytes\n", __func__,
+               sizeof(*sess));
         return NULL;
     }
+#if DEBUG_REORDER
+    uuidstr_t us;
+    comdb2uuidstr(uuid, us);
+    logmsg(LOGMSG_DEBUG, "%s:processing sql=%s sess=%p, uuid=%s\n", __func__,
+           sql, sess, us);
+#endif
 
     /* init sync fields */
     Pthread_mutex_init(&sess->clients_mtx, NULL);

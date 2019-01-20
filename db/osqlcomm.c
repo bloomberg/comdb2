@@ -49,8 +49,8 @@
 #include "str0.h"
 #include "sc_struct.h"
 #include <compat.h>
+#include <unistd.h>
 
-#define DEBUG_REORDER 1
 #define BLKOUT_DEFAULT_DELTA 5
 #define MAX_CLUSTER 16
 
@@ -3664,6 +3664,13 @@ int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
         logmsg(LOGMSG_ERROR, "%s offload_net_send returns rc=%d\n", __func__,
                rc);
 
+    int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_AFTER_SAVEOP_USEDB);
+    if (d_ms) {
+        logmsg(LOGMSG_DEBUG, "Sleeping for DELAY_AFTER_SAVEOP_USEDB (%dms)\n",
+               d_ms);
+        usleep(1000 * d_ms);
+    }
+
     return rc;
 }
 
@@ -6210,7 +6217,7 @@ static void net_osql_rpl(void *hndl, void *uptr, char *fromnode, int usertype,
 
 #ifdef TEST_OSQL
     fprintf(stdout, "%s: calling sorese_rcvrpl type=%d sid=%llu\n", __func__,
-            netrpl2req(type), ((osql_rpl_t *)dtap)->sid);
+            netrpl2req(usertype), ((osql_rpl_t *)dtap)->sid);
 #endif
 #if 0
     printf("NET RPL rqid=%llu tmp=%llu\n", ((osql_rpl_t*)dtap)->sid, osql_log_time());
@@ -6888,8 +6895,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                 iq->usedb = iq->origdb;
                 logmsg(LOGMSG_INFO, "%s: unable to get usedb for table %.*s\n",
                        __func__, dt.tablenamelen, tablename);
-                return conv_rc_sql2blkop(iq, step, -1, ERR_NO_SUCH_TABLE, err,
-                                         tablename, 0);
+                err->errcode = OP_FAILED_VERIFY;
+                return ERR_VERIFY;
             }
         }
 

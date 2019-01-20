@@ -51,7 +51,6 @@
 #include <poll.h>
 #include <str0.h>
 #include <epochlib.h>
-#include <unistd.h>
 #include <plhash.h>
 #include <assert.h>
 
@@ -754,14 +753,6 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     if (type == OSQL_SCHEMACHANGE)
         iq->tranddl++;
-    else if (type == OSQL_USEDB) {
-        int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_AFTER_SAVEOP_USEDB);
-        if (d_ms) {
-            logmsg(LOGMSG_DEBUG, "Sleeping for DELAY_AFTER_SAVEOP_USEDB (%dms)",
-                    d_ms);
-            usleep(1000 * d_ms);
-        }
-    }
 
     assert(sess->rqid == rqid);
     key.seq = sess->seq;

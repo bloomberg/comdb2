@@ -13,7 +13,7 @@ nrecs=100
 max_nusc=100
 function failexit
 {
-    echo "Failed $1"
+    echo "Failed $@"
     exit -1
 }
 
@@ -52,6 +52,12 @@ function getmaster {
     cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
 }
 
+send_to_all_nodes() {
+    for node in $cluster ; do 
+        cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('$@')"
+    done
+}
+
 
 test_update_delay_writes() {
     echo test_update_delay_writes make sure that drop table is stuck on writes waiting for table lock
@@ -69,6 +75,9 @@ test_update_delay_writes() {
     echo update will get tablelock and so will lock out 'drop tbl' until update is completed
     sleep 1
     cdb2sql ${CDB2_OPTIONS} $DBNAME default "drop table t3"
+    if [ $? -ne 0 ] ; then
+        failexit 'drop failed'
+    fi
 
     wait
     echo '(rows updated=100)' > upd1.exp
@@ -85,18 +94,22 @@ test_update_delay_done() {
     assertcnt t3 100
 
     master=`getmaster`
-    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $master "exec procedure sys.cmd.send('bdb setattr DELAY_AFTER_SAVEOP_DONE 3000')"
+    send_to_all_nodes "bdb setattr DELAY_AFTER_SAVEOP_DONE 9000"
     cdb2sql ${CDB2_OPTIONS} $DBNAME default "update t3 set i=i+1 where 1" &> upd2.out &
     upd2=$!
     sleep 1
     echo reset to 0 so drop tbl can go through without sleeping
-    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $master "exec procedure sys.cmd.send('bdb setattr DELAY_AFTER_SAVEOP_DONE 0')"
+    send_to_all_nodes "bdb setattr DELAY_AFTER_SAVEOP_DONE 0"
     cdb2sql ${CDB2_OPTIONS} $DBNAME default "drop table t3"
+    if [ $? -ne 0 ] ; then
+        failexit 'drop failed'
+    fi
 
-    echo saveop OSQL_DONE will be sleeping 10s for the update meanwhile we will drop tbl
+    echo saveop OSQL_DONE will be sleeping few for the update meanwhile we will drop tbl
     wait
 
-    echo '[update t3 set i=i+1 where 1] failed with rc 304 no such table "t3"' > upd2.exp
+    #echo '[update t3 set i=i+1 where 1] failed with rc 304 no such table "t3"' > upd2.exp
+    echo '[update t3 set i=i+1 where 1] failed with rc -3 no such table: t3' > upd2.exp
     if ! diff upd2.out upd2.exp ; then
         failexit "upd2.out upd2.exp differ"
     fi
@@ -111,22 +124,31 @@ test_update_delay_usedb() {
 
     master=`getmaster`
     echo delay after usedb on master
-    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $master "exec procedure sys.cmd.send('bdb setattr DELAY_AFTER_SAVEOP_USEDB 3000')"
+    send_to_all_nodes "bdb setattr DELAY_AFTER_SAVEOP_USEDB 3000"
 
     cdb2sql ${CDB2_OPTIONS} $DBNAME default "update t3 set i=i+1 where 1" &> upd3.out &
     upd3=$!
     sleep 1
     echo reset to 0 so drop tbl can go through without sleeping
-    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $master "exec procedure sys.cmd.send('bdb setattr DELAY_AFTER_SAVEOP_USEDB 0')"
+    send_to_all_nodes "bdb setattr DELAY_AFTER_SAVEOP_USEDB 0"
     cdb2sql ${CDB2_OPTIONS} $DBNAME default "drop table t3"
+    if [ $? -ne 0 ] ; then
+        failexit 'drop failed'
+    fi
 
-    echo saveop OSQL_USEDB will be sleeping 10s for the update meanwhile we will drop tbl
+    echo saveop OSQL_USEDB will be sleeping 3s for the update meanwhile we will drop tbl
     wait
 
     echo '[update t3 set i=i+1 where 1] failed with rc -3 no such table: t3' > upd3.exp
-    if ! diff upd3.out upd3.exp ; then if ! diff upd3.out upd2.exp ; then
-        failexit "upd3.out and [upd3.exp , upd2.exp] differ"
-    fi; fi
+    if ! diff upd3.out upd3.exp ; then
+        failexit "upd3.out and upd3.exp differ"
+    fi
+
+#   it was printing something different from upd3.exp
+#   if ! diff upd3.out upd3.exp ; then if ! diff upd3.out upd2.exp ; then
+#        failexit "upd3.out and [upd3.exp , upd2.exp] differ"
+#    fi; fi
+
 }
 
 
@@ -159,9 +181,12 @@ if ! diff upd0.out upd0.exp ; then
     failexit "upd0.out upd0.exp differ"
 fi
 
-master=`getmaster`
-cdb2sql ${CDB2_OPTIONS} $DBNAME --host $master "exec procedure sys.cmd.send('debg 600')"
-cdb2sql ${CDB2_OPTIONS} $DBNAME --host $master "exec procedure sys.cmd.send('ndebg 600')"
+cluster=`$CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
+if [ "x$cluster" == "x" ] ; then
+    failexit "cluster variable is empty"
+fi
+send_to_all_nodes "debg 600"
+send_to_all_nodes "ndebg 600"
 
 t=0
 while [ $t -lt ${max_iter} ] ; do
