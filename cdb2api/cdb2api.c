@@ -4602,7 +4602,10 @@ static inline int begin_children(cdb2_hndl_tp *hndl)
     int good_rc = 0, rc = 0;
     for (int i = 0; i < hndl->num_children; i++) {
         cdb2_hndl_tp *c_hndl = hndl->children[i];
-        assert(c_hndl->active);
+        if (!c_hndl->active) {
+            debugprint("begin issues for inactive hndl %p\n", c_hndl);
+            continue;
+        }
         c_hndl->is_retry = 1;
         c_hndl->snapshot_file = hndl->snapshot_file;
         c_hndl->snapshot_offset = hndl->snapshot_offset;
