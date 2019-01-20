@@ -1975,6 +1975,7 @@ static int unpack_blob_record(struct convert_record_data *data, void *blb_buf,
                               int dtalen, blob_status_t *blb, int blbix)
 {
     int rc = 0;
+    size_t sz;
     void *unpackbuf = NULL;
     if ((rc = bdb_unpack(data->from->handle, blb_buf, dtalen, NULL, 0,
                          &data->odh, &unpackbuf)) != 0) {
@@ -1996,8 +1997,11 @@ static int unpack_blob_record(struct convert_record_data *data, void *blb_buf,
     }
     if (unpackbuf) {
         blb->blobptrs[blbix] = data->odh.recptr;
-    } else if (data->odh.length) {
-        blb->blobptrs[blbix] = malloc(data->odh.length);
+    } else {
+        sz = data->odh.length;
+        if (sz == 0)
+            sz = 1;
+        blb->blobptrs[blbix] = malloc(sz);
         if (!blb->blobptrs[blbix]) {
             logmsg(LOGMSG_ERROR, "%s:%d failed to malloc blob buffer\n",
                    __func__, __LINE__);
