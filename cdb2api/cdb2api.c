@@ -3051,7 +3051,7 @@ int cdb2_next_record(cdb2_hndl_tp *hndl)
 
     if (!hndl->is_hasql || hndl->active) {
         rc = cdb2_next_record_multi(hndl);
-        if (is_retryable(hndl, rc)) {
+        if (is_retryable(hndl, rc) || rc == -1) {
             debugprint("inactivating hndl %p\n", hndl);
             hndl->active = 0;
             hndl->total_active--;
@@ -3065,8 +3065,8 @@ int cdb2_next_record(cdb2_hndl_tp *hndl)
         cdb2_hndl_tp *c_hndl = hndl->children[i];
         if (c_hndl->active) {
             crc = cdb2_next_record_multi(c_hndl);
-            if (is_retryable(c_hndl, crc)) {
-                debugprint("inactivating child hndl %p\n", c_hndl);
+            if (is_retryable(c_hndl, crc) || crc == -1) {
+                debugprint("inactivating child hndl %p on \n", c_hndl);
                 c_hndl->active = 0;
                 hndl->total_active--;
                 if ((hndl->total_active) == 1)
@@ -3465,10 +3465,13 @@ static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response,
 
 static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
 {
+    int total_active = hndl->parent ? hndl->parent->total_active : hndl->total_active;
     debugprint("retry_all %d, intran %d\n", hndl->retry_all, hndl->in_trans);
 
     if (!hndl->retry_all || !hndl->in_trans)
         return 0;
+
+    assert(total_active == 1);
 
     int rc = 0;
     if (!(hndl->snapshot_file || hndl->query_no <= 1)) {
@@ -4654,6 +4657,7 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
 
     if (hndl->is_hasql && !hndl->in_trans) {
         hndl->active = 1;
+        hndl->last_active = 0;
         for (i = 0; i < hndl->num_children; i++) {
             hndl->children[i]->active = 1;
             hndl->children[i]->last_active = 0;
@@ -4941,7 +4945,7 @@ int cdb2_column_size(cdb2_hndl_tp *hndl, int col)
     return hndl->lastresponse->value[col]->value.len;
 }
 
-void *cdb2_column_value(cdb2_hndl_tp *hndl, int col)
+static void *cdb2_column_value_multi(cdb2_hndl_tp *hndl, int col)
 {
     if ((hndl->lastresponse == NULL) || (hndl->lastresponse->value == NULL))
         return NULL;
@@ -4951,6 +4955,28 @@ void *cdb2_column_value(cdb2_hndl_tp *hndl, int col)
         return (void *)"";
     }
     return hndl->lastresponse->value[col]->value.data;
+}
+
+void *cdb2_column_value(cdb2_hndl_tp *hndl, int col)
+{
+    void *rtn = NULL;
+    int got_rcode = 0;
+
+    if (!hndl->is_hasql || hndl->active) {
+        rtn = cdb2_column_value_multi(hndl, col);
+        got_rcode = 1;
+    } else {
+        for(int i = 0; i < hndl->num_children; i++) {
+            cdb2_hndl_tp *c_hndl = hndl->children[i];
+            if (c_hndl->active) {
+                rtn = cdb2_column_value_multi(c_hndl, col);
+                got_rcode = 1;
+                break;
+            }
+        }
+    }
+
+    return (got_rcode ? rtn : cdb2_column_value_multi(hndl, col));
 }
 
 int cdb2_bind_param(cdb2_hndl_tp *hndl, const char *varname, int type,
