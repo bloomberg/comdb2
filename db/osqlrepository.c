@@ -406,8 +406,7 @@ int osql_repository_printcrtsessions(void)
     if ((rc = hash_for(stat->rqs, osql_sess_getcrtinfo, NULL))) {
         logmsg(LOGMSG_USER, "hash_for failed with rc = %d\n", rc);
         rc = -1;
-    }
-    else 
+    } else
         logmsg(LOGMSG_USER, "Done osql info.\n");
 
     Pthread_rwlock_unlock(&stat->hshlck);

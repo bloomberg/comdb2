@@ -63,10 +63,7 @@
 #include "osqlrepository.h"
 #include "comdb2uuid.h"
 #include "bpfunc.h"
-
 #include "logmsg.h"
-
-#define DEBUG_REORDER 1
 
 int g_osql_blocksql_parallel_max = 5;
 int gbl_osql_check_replicant_numops = 1;

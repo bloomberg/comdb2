@@ -585,7 +585,6 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
         logmsg(LOGMSG_ERROR, "%s: osql_repository_put rc =%d\n", __func__, rc);
     }
 
-
     if (rc_out && osql_session_is_sorese(sess))
         return rc_out;
 
@@ -756,7 +755,7 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
 #ifdef TEST_QSQL_REQ
     uuidstr_t us;
     logmsg(LOGMSG_INFO, "%s: Opening request %llu %s\n", __func__, rqid,
-            comdb2uuidstr(uuid, us));
+           comdb2uuidstr(uuid, us));
 #endif
 
     /* alloc object */
