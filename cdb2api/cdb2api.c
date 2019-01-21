@@ -3469,7 +3469,8 @@ static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response,
 static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
 {
     int total_active = hndl->parent ? hndl->parent->total_active : hndl->total_active;
-    debugprint("retry_all %d, intran %d\n", hndl->retry_all, hndl->in_trans);
+    debugprint("retry_all %d, intran %d, total_active %d\n", hndl->retry_all,
+            hndl->in_trans, total_active);
 
     if (!hndl->retry_all || !hndl->in_trans)
         return 0;
