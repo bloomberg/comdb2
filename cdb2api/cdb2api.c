@@ -2435,7 +2435,7 @@ retry:
     *len = hdr.length;
     if (b_read != *len) {
         debugprint("bad read or numbytes, b_read(%d) != *len(%d) type(%d)\n",
-                   b_read, *len, *type);
+                   b_read, *len, type ? *type : 0);
         rc = -1;
         goto after_callback;
     }
@@ -4600,6 +4600,40 @@ static inline void disable_children(cdb2_hndl_tp *hndl)
     hndl->last_active = 1;
 }
 
+static inline int rollback_all(cdb2_hndl_tp *hndl)
+{
+    int rc = cdb2_run_statement_typed_int(hndl, "rollback", 0, NULL, __LINE__);
+    for (int i = 0; i < hndl->num_children; i++) {
+        cdb2_hndl_tp *c_hndl = hndl->children[i];
+        cdb2_run_statement_typed_int(c_hndl, "rollback", 0, NULL, __LINE__);
+    }
+    return rc;
+}
+
+static inline int commit_children(cdb2_hndl_tp *hndl)
+{
+    int rc = 0, have_rc = 0;
+
+    if (!hndl->active) {
+        cdb2_run_statement_typed_int(hndl, "rollback", 0, NULL, __LINE__);
+    } else 
+        have_rc = 1;
+
+    for (int i = 0; i < hndl->num_children; i++) {
+        cdb2_hndl_tp *c_hndl = hndl->children[i];
+        if (!c_hndl->active || have_rc) {
+            cdb2_run_statement_typed_int(c_hndl, "rollback", 0, NULL, __LINE__);
+        } else {
+            rc = cdb2_run_statement_typed_int(c_hndl, "commit", 0, NULL,
+                    __LINE__);
+            if (!is_retryable(c_hndl, rc)) {
+                have_rc = 1;
+            }
+        }
+    }
+    return rc;
+}
+
 static inline int begin_children(cdb2_hndl_tp *hndl)
 {
     int good_rc = 0, rc = 0;
@@ -4722,7 +4756,13 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
             have_rc = 1;
     }
 
-    if (hndl->is_hasql && strncasecmp(sql, "begin", 5) == 0) {
+    if (hndl->is_hasql && strncasecmp(sql, "commit", 5) == 0) {
+        crc = commit_children(hndl);
+        if (!have_rc)
+            rc = crc;
+    } else if (hndl->is_hasql && strncasecmp(sql, "rollback", 8) == 0) {
+        rc = rollback_all(hndl);
+    } else if (hndl->is_hasql && strncasecmp(sql, "begin", 5) == 0) {
         if (hndl->snapshot_file > 0 && rc == 0)
             begin_children(hndl);
         else
