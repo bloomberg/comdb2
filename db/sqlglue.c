@@ -9251,7 +9251,7 @@ retry:
         bdb_put_cursortran(bdb_state, curtran_out, curtran_flags, &bdberr);
         curtran_out = NULL;
         clnt->gen_changed = 1;
-        logmsg(LOGMSG_DEBUG,
+        logmsg(LOGMSG_ERROR,
                "td %u %s: failing because generation has changed: "
                "orig-gen=%u, cur-gen=%u\n",
                (uint32_t)pthread_self(), __func__, clnt->init_gen, curgen);

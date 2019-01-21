@@ -4744,7 +4744,7 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
         rc = cdb2_run_statement_typed_int(hndl, sql, ntypes, types, __LINE__);
         if (rc)
             debugprint("rc = %d\n", rc);
-        if (is_retryable(hndl, rc)) {
+        if (hndl->is_hasql && is_retryable(hndl, rc)) {
             debugprint("inactivating hndl %p\n", hndl);
             hndl->active = 0;
             hndl->total_active--;
@@ -4758,10 +4758,16 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
 
     if (hndl->is_hasql && strncasecmp(sql, "commit", 5) == 0) {
         crc = commit_children(hndl);
-        if (!have_rc)
+        if (!have_rc) {
+            have_rc = 1;
             rc = crc;
+        }
     } else if (hndl->is_hasql && strncasecmp(sql, "rollback", 8) == 0) {
-        rc = rollback_all(hndl);
+        crc = rollback_all(hndl);
+        if (!have_rc) {
+            have_rc = 1;
+            rc = crc;
+        }
     } else if (hndl->is_hasql && strncasecmp(sql, "begin", 5) == 0) {
         if (hndl->snapshot_file > 0 && rc == 0)
             begin_children(hndl);
@@ -5027,7 +5033,7 @@ void *cdb2_column_value(cdb2_hndl_tp *hndl, int col)
     } else {
         for(int i = 0; i < hndl->num_children; i++) {
             cdb2_hndl_tp *c_hndl = hndl->children[i];
-            if (c_hndl->active) {
+            if (c_hndl->active && (i != hndl->master || c_hndl->last_active)) {
                 rtn = cdb2_column_value_multi(c_hndl, col);
                 got_rcode = 1;
                 break;
