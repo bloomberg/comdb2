@@ -3231,8 +3231,26 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
             /* get the next transaction's logical ops from the log files */
             if (serial)
                 rc = bdb_llog_cursor_next(pCur);
-            else
-                rc = bdb_llog_cursor_find(pCur, &(redo->lsn));
+            else {
+                int nretries = 0;
+                while (nretries < 500) {
+                    rc = bdb_llog_cursor_find(pCur, &(redo->lsn));
+                    if (rc || (pCur->log && !pCur->hitLast)) {
+                        /* found the committed transaction */
+                        break;
+                    }
+                    /* retry again and wait for the transaction to commit */
+                    nretries++;
+                    poll(NULL, 0, 100);
+                }
+                if (nretries >= 500) {
+                    /* Error out if we cannot find the committed transaction */
+                    sc_errf(s, "[%s] logical redo failed to find [%u:%u]\n",
+                            s->tablename, redo->lsn.file, redo->lsn.offset);
+                    s->iq->sc_should_abort = 1;
+                    goto cleanup;
+                }
+            }
             if (rc) {
                 sc_errf(s, "[%s] logical redo failed at [%u:%u]\n",
                         s->tablename, pCur->curLsn.file, pCur->curLsn.offset);

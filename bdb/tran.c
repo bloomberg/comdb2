@@ -1628,6 +1628,15 @@ static int bdb_tran_commit_with_seqnum_int_int(
                 bdb_osql_trn_repo_unlock();
                 return -1;
             }
+
+            if (!isabort && tran->committed_child &&
+                tran->force_logical_commit && tran->dirty_table_hash) {
+                hash_for(tran->dirty_table_hash, update_logical_redo_lsn,
+                         &tran->last_logical_lsn);
+                hash_clear(tran->dirty_table_hash);
+                hash_free(tran->dirty_table_hash);
+                tran->dirty_table_hash = NULL;
+            }
         }
 
         /* "normal" case for physical transactions. just commit */
@@ -1665,14 +1674,6 @@ static int bdb_tran_commit_with_seqnum_int_int(
                     .generation = generation;
             }
             Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
-
-            if (tran->committed_child && tran->force_logical_commit &&
-                tran->dirty_table_hash) {
-                hash_for(tran->dirty_table_hash, update_logical_redo_lsn, &lsn);
-                hash_clear(tran->dirty_table_hash);
-                hash_free(tran->dirty_table_hash);
-                tran->dirty_table_hash = NULL;
-            }
         }
 
         /* Set the 'committed-child' flag if this is not the parent. */
