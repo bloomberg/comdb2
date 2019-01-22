@@ -6895,8 +6895,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                 iq->usedb = iq->origdb;
                 logmsg(LOGMSG_INFO, "%s: unable to get usedb for table %.*s\n",
                        __func__, dt.tablenamelen, tablename);
-                err->errcode = OP_FAILED_VERIFY;
-                return ERR_VERIFY;
+                return conv_rc_sql2blkop(iq, step, -1, ERR_NO_SUCH_TABLE, err,
+                                         tablename, 0);
             }
         }
 

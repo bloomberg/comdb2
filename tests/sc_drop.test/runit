@@ -108,8 +108,7 @@ test_update_delay_done() {
     echo saveop OSQL_DONE will be sleeping few for the update meanwhile we will drop tbl
     wait
 
-    #echo '[update t3 set i=i+1 where 1] failed with rc 304 no such table "t3"' > upd2.exp
-    echo '[update t3 set i=i+1 where 1] failed with rc -3 no such table: t3' > upd2.exp
+    echo '[update t3 set i=i+1 where 1] failed with rc 304 no such table "t3"' > upd2.exp
     if ! diff upd2.out upd2.exp ; then
         failexit "upd2.out upd2.exp differ"
     fi
@@ -140,14 +139,9 @@ test_update_delay_usedb() {
     wait
 
     echo '[update t3 set i=i+1 where 1] failed with rc -3 no such table: t3' > upd3.exp
-    if ! diff upd3.out upd3.exp ; then
-        failexit "upd3.out and upd3.exp differ"
-    fi
-
-#   it was printing something different from upd3.exp
-#   if ! diff upd3.out upd3.exp ; then if ! diff upd3.out upd2.exp ; then
-#        failexit "upd3.out and [upd3.exp , upd2.exp] differ"
-#    fi; fi
+    if ! diff upd3.out upd3.exp ; then if ! diff upd3.out upd2.exp ; then
+        failexit "upd3.out and [upd3.exp , upd2.exp] differ"
+    fi; fi
 
 }
 
@@ -159,7 +153,7 @@ cdb2sql ${CDB2_OPTIONS} $DBNAME default "create table t1 (i int)"
 insert_into_t1 &
 ins1=$!
 
-max_iter=1
+max_iter=10
 t=0
 while [ $t -lt ${max_iter} ] ; do
     cdb2sql ${CDB2_OPTIONS} $DBNAME default "create table t2 (i int)"
