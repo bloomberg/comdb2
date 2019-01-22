@@ -4114,8 +4114,9 @@ static int bdb_osql_log_get_optim_data_int(bdb_state_type *bdb_state,
             ptr = dtabuf;
         }
 
-        rc = bdb_reconstruct_delete(bdb_state, lsn, NULL, NULL, NULL, sizeof(genid_t), ptr,
-                                    del_dta->dtalen, NULL);
+        rc =
+            bdb_reconstruct_delete(bdb_state, lsn, NULL, NULL, NULL,
+                                   sizeof(genid_t), ptr, del_dta->dtalen, NULL);
         if (rc) {
             if (gbl_abort_on_reconstruct_failure)
                 abort();
@@ -4167,8 +4168,9 @@ static int bdb_osql_log_get_optim_data_int(bdb_state_type *bdb_state,
                 bdb_state, lsn, ptr, &updlen, NULL, NULL, &offset, NULL, NULL);
 
         } else {
-            rc = bdb_reconstruct_delete(bdb_state, lsn, NULL, NULL, NULL, sizeof(genid_t),
-                                        ptr, upd_dta->old_dta_len, NULL);
+            rc = bdb_reconstruct_delete(bdb_state, lsn, NULL, NULL, NULL,
+                                        sizeof(genid_t), ptr,
+                                        upd_dta->old_dta_len, NULL);
         }
         if (rc) {
             if (gbl_abort_on_reconstruct_failure)
