@@ -1308,3 +1308,14 @@ end}$$
 EOF
 
 cdb2sql $SP_OPTIONS "exec procedure tmp_tbl_and_thread()" | sort
+
+cdb2sql $SP_OPTIONS - > /dev/null <<'EOF'
+create procedure json_emoji version 'sptest' {
+local function main(emoji)
+    local tbl = {}
+    tbl.emoji = emoji
+    local json = db:table_to_json(tbl)
+    db:emit(json)
+end}$$
+EOF
+cdb2sql $SP_OPTIONS "exec procedure json_emoji('hello world 😁')"
