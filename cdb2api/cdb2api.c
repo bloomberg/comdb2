@@ -5765,34 +5765,38 @@ int cdb2_clone(cdb2_hndl_tp **handle, cdb2_hndl_tp *c_hndl)
     return 0;
 }
 
-static int cdb2_clone_child(cdb2_hndl_tp *c_hndl)
+static int cdb2_clone_child(cdb2_hndl_tp *p_hndl)
 {
     cdb2_hndl_tp *hndl;
 
-    if (c_hndl->num_children >= c_hndl->num_hosts)
+    if (p_hndl->num_children >= p_hndl->num_hosts)
         return -1;
 
     hndl = calloc(1, sizeof(cdb2_hndl_tp));
     if (!hndl)
         return -1;
 
-    int ix = c_hndl->num_children;
-    strncpy(hndl->dbname, c_hndl->dbname, sizeof(hndl->dbname) - 1);
-    strncpy(hndl->cluster, c_hndl->hosts[ix], sizeof(hndl->cluster) - 1);
-    strncpy(hndl->type, c_hndl->hosts[ix], sizeof(hndl->type) - 1);
+    int ix = p_hndl->num_children;
+    strncpy(hndl->dbname, p_hndl->dbname, sizeof(hndl->dbname) - 1);
+    strncpy(hndl->cluster, p_hndl->hosts[ix], sizeof(hndl->cluster) - 1);
+    strncpy(hndl->type, p_hndl->hosts[ix], sizeof(hndl->type) - 1);
     hndl->num_hosts = 1;
-    hndl->dbnum = c_hndl->dbnum;
-    hndl->debug_trace = c_hndl->debug_trace;
+    hndl->dbnum = p_hndl->dbnum;
+    hndl->debug_trace = p_hndl->debug_trace;
     hndl->flags = CDB2_DIRECT_CPU;
-    copy_hosts_into_child(c_hndl, hndl, ix);
+    copy_hosts_into_child(p_hndl, hndl, ix);
+    hndl->is_hasql = p_hndl->is_hasql;
     hndl->master = 0;
-    hndl->parent = c_hndl;
-    hndl->min_retries = c_hndl->min_retries;
-    hndl->max_retries = c_hndl->max_retries;
-    c_hndl->children[c_hndl->num_children++] = hndl;
+    hndl->parent = p_hndl;
+    hndl->min_retries = p_hndl->min_retries;
+    hndl->max_retries = p_hndl->max_retries;
+    p_hndl->children[p_hndl->num_children++] = hndl;
+    for (int i = 0; i < p_hndl->num_set_commands; i++)
+        process_set_command(hndl, p_hndl->commands[i]);
+
     if (log_calls)
         fprintf(stderr, "%p> cdb2_clone_child(%p) => %p machine %s\n",
-                (void *)pthread_self(), c_hndl, hndl, hndl->hosts[0]);
+                (void *)pthread_self(), p_hndl, hndl, hndl->hosts[0]);
     return 0;
 }
 
