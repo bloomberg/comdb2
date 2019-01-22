@@ -115,7 +115,7 @@
 #define SQLHERR_MASTER_QUEUE_FULL -108
 #define SQLHERR_MASTER_TIMEOUT -109
 
-extern char *gbl_sql_new_db_rc;
+extern char *gbl_exec_sql_on_new_connect;
 extern unsigned long long gbl_sql_deadlock_failures;
 extern unsigned int gbl_new_row_data;
 extern int gbl_use_appsock_as_sqlthread;
@@ -746,7 +746,7 @@ int sqlite3_open_serial(const char *filename, sqlite3 **ppDb,
         Pthread_mutex_lock(&open_serial_lock);
     int rc = sqlite3_open(filename, ppDb, thd);
     if (rc == SQLITE_OK) {
-        char *zSql = gbl_sql_new_db_rc;
+        char *zSql = gbl_exec_sql_on_new_connect;
         if (zSql) {
             int rc2;
             char *zErr = 0;

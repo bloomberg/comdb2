@@ -226,7 +226,7 @@ extern uint8_t _non_dedicated_subnet;
 extern char *gbl_crypto;
 extern char *gbl_spfile_name;
 extern char *gbl_timepart_file_name;
-extern char *gbl_sql_new_db_rc;
+extern char *gbl_exec_sql_on_new_connect;
 extern char *gbl_portmux_unix_socket;
 
 /* util/ctrace.c */
@@ -1243,22 +1243,14 @@ static comdb2_tunable_err update_tunable(comdb2_tunable *t, const char *value)
                (num) ? "ON" : "OFF");
         break;
     }
-    case TUNABLE_STRING: {
-        PARSE_TOKEN;
-        DO_VERIFY(t, buf);
-
-        if (t->update) {
-            DO_UPDATE(t, buf);
+    case TUNABLE_STRING: /* fall through */
+    case TUNABLE_RAW: {
+        if (t->type == TUNABLE_RAW) {
+            PARSE_RAW;
         } else {
-            free(*(char **)t->var);
-            *((char **)t->var) = strdup(buf);
+            PARSE_TOKEN;
         }
 
-        logmsg(LOGMSG_DEBUG, "Tunable '%s' set to %s\n", t->name, value);
-        break;
-    }
-    case TUNABLE_RAW: {
-        PARSE_RAW;
         DO_VERIFY(t, buf);
 
         if (t->update) {
