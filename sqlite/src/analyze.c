@@ -1164,7 +1164,7 @@ static void statGet(
     if( IsStat3 ){
       sqlite3_result_int64(context, (i64)aCnt[0]);
     }else{
-      char *zRet = sqlite3MallocZero( p->nCol*25 );
+      char *zRet = sqlite3MallocZero(p->nCol * 25);
       if( zRet==0 ){
         sqlite3_result_error_nomem(context);
       }else{
