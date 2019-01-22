@@ -3241,7 +3241,7 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
                     }
                     /* retry again and wait for the transaction to commit */
                     nretries++;
-                    poll(NULL, 0, 100);
+                    poll(NULL, 0, 10);
                 }
                 if (nretries >= 500) {
                     /* Error out if we cannot find the committed transaction */
