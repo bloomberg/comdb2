@@ -21,7 +21,10 @@
 
 int is_genid_right_of_stripe_pointer(bdb_state_type *bdb_state,
                                      unsigned long long genid,
-                                     unsigned long long stripe_ptr);
+                                     unsigned long long *sc_genids);
+
+unsigned long long get_genid_stripe_pointer(unsigned long long genid,
+                                            unsigned long long *sc_genids);
 
 int live_sc_post_del_record(struct ireq *iq, void *trans,
                             unsigned long long genid, const void *old_dta,
