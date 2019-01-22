@@ -1986,7 +1986,6 @@ static int cdb2portmux_route(cdb2_hndl_tp *hndl, const char *remote_host,
     return fd;
 }
 
-
 static void get_host_from_fd(cdb2_hndl_tp *hndl, int fd)
 {
     struct sockaddr_in addr;
@@ -1998,8 +1997,10 @@ static void get_host_from_fd(cdb2_hndl_tp *hndl, int fd)
     char ip[20];
     strcpy(ip, inet_ntoa(addr.sin_addr));
 
-    struct hostent *hp = gethostbyaddr((char *)&addr.sin_addr, sizeof(addr.sin_addr), AF_INET);
-    debugprint("sockpool gave us ip '%s', host '%s'\n", ip, (hp != NULL) ? hp->h_name : "");
+    struct hostent *hp =
+        gethostbyaddr((char *)&addr.sin_addr, sizeof(addr.sin_addr), AF_INET);
+    debugprint("sockpool gave us ip '%s', host '%s'\n", ip,
+               (hp != NULL) ? hp->h_name : "");
     // TODO: consider changing the node_indx in newsql_connect if the host which
     // sockpool had us connect to is not the same as what we intended to connect
 }
