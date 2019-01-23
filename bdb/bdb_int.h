@@ -789,6 +789,7 @@ struct temp_table;
 
 struct sc_redo_lsn {
     DB_LSN lsn;
+    u_int32_t txnid;
     LINKC_T(struct sc_redo_lsn) lnk;
 };
 

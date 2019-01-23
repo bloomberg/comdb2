@@ -1615,6 +1615,7 @@ bdb_osql_log_t *parse_log_for_shadows_int(bdb_state_type *bdb_state,
     DBT logdta;
     DB_LSN lsn;
     u_int32_t rectype;
+    u_int32_t txnid = 0;
     bdb_osql_log_t *undolog = NULL;
     llog_undo_del_dta_args *del_dta = NULL;
     llog_undo_del_dta_lk_args *del_dta_lk = NULL;
@@ -1681,6 +1682,7 @@ bdb_osql_log_t *parse_log_for_shadows_int(bdb_state_type *bdb_state,
             free(commit);
             return NULL;
         }
+        txnid = commit->txnid->txnid;
         free(commit);
         commit = NULL;
         goto next;
@@ -2120,6 +2122,8 @@ done:
         return NULL;
     }
 
+    if (undolog)
+        undolog->txnid = txnid;
     return undolog;
 }
 

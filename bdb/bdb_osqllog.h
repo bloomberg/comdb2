@@ -37,6 +37,7 @@ struct bdb_osql_trn;
 struct bdb_osql_log_impl;
 
 typedef struct bdb_osql_log {
+    u_int32_t txnid;
     struct bdb_osql_log_impl *impl;
     LINKC_T(struct bdb_osql_log) lnk;
 } bdb_osql_log_t;

@@ -3250,6 +3250,15 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
                     s->iq->sc_should_abort = 1;
                     goto cleanup;
                 }
+                if (redo->txnid != pCur->log->txnid) {
+                    sc_errf(s,
+                            "[%s] logical redo failed to find [%u:%u], expect "
+                            "txnid %x, got %x\n",
+                            s->tablename, redo->lsn.file, redo->lsn.offset,
+                            redo->txnid, pCur->log->txnid);
+                    s->iq->sc_should_abort = 1;
+                    goto cleanup;
+                }
             }
             if (rc) {
                 sc_errf(s, "[%s] logical redo failed at [%u:%u]\n",

@@ -1467,6 +1467,7 @@ void abort_at_exit(void)
 static int update_logical_redo_lsn(void *obj, void *arg)
 {
     bdb_state_type *bdb_state = (bdb_state_type *)obj;
+    tran_type *tran = (tran_type *)arg;
     if (bdb_state->logical_live_sc == 0)
         return 0;
     struct sc_redo_lsn *last = NULL;
@@ -1475,7 +1476,8 @@ static int update_logical_redo_lsn(void *obj, void *arg)
         logmsg(LOGMSG_FATAL, "%s: failed to malloc sc redo\n", __func__);
         abort();
     }
-    redo->lsn = *((DB_LSN *)arg);
+    redo->lsn = tran->last_logical_lsn;
+    redo->txnid = tran->tid->txnid;
     /* We must have table lock here and so the list will not go away */
     Pthread_mutex_lock(&bdb_state->sc_redo_lk);
 
@@ -1484,15 +1486,9 @@ static int update_logical_redo_lsn(void *obj, void *arg)
     if (!last || log_compare(&last->lsn, &redo->lsn) <= 0)
         listc_abl(&bdb_state->sc_redo_list, redo);
     else {
-        for (last = last->lnk.prev;
-             last && log_compare(&last->lsn, &redo->lsn) > 0;
-             last = last->lnk.prev)
-            ;
-        if (!last) {
-            listc_atl(&bdb_state->sc_redo_list, redo);
-        } else {
-            listc_add_after(&bdb_state->sc_redo_list, redo, last);
-        }
+        logmsg(LOGMSG_FATAL, "%s: logical commit lsn should be in order\n",
+               __func__);
+        abort();
     }
 
     Pthread_cond_signal(&bdb_state->sc_redo_wait);
@@ -1631,8 +1627,7 @@ static int bdb_tran_commit_with_seqnum_int_int(
 
             if (!isabort && tran->committed_child &&
                 tran->force_logical_commit && tran->dirty_table_hash) {
-                hash_for(tran->dirty_table_hash, update_logical_redo_lsn,
-                         &tran->last_logical_lsn);
+                hash_for(tran->dirty_table_hash, update_logical_redo_lsn, tran);
                 hash_clear(tran->dirty_table_hash);
                 hash_free(tran->dirty_table_hash);
                 tran->dirty_table_hash = NULL;
