@@ -80,23 +80,23 @@ cron_sched_t *cron_add_event(cron_sched_t *sched, const char *name, int epoch,
         Pthread_mutex_init(&sched->mtx, NULL);
         Pthread_cond_init(&sched->cond, NULL);
         listc_init(&sched->events, offsetof(struct cron_event, lnk));
-        if (name) {
+        if (!impl) {
+            /* default to a time based cron */
+            time_cron_create(&sched->impl, NULL, NULL);
+        } else {
+            sched->impl = *impl;
+        }
+        if (name && !sched->impl.name) {
             sched->impl.name = strdup(name);
             if (!sched->impl.name) {
                 goto oom;
             }
         }
-        if (!impl) {
-            /* default to a time based cron */
-            time_cron_create(&sched->impl, NULL, NULL);
-            
-        } else {
-            sched->impl = *impl;
-        }
+
         sched->impl.sched = sched;
 
-        Pthread_rwlock_rdlock(&crons.rwlock);
-        listc_atl(&crons.scheds, sched);
+        Pthread_rwlock_wrlock(&crons.rwlock);
+        listc_abl(&crons.scheds, sched);
         Pthread_rwlock_unlock(&crons.rwlock);
 
 
@@ -183,7 +183,7 @@ static void _insert_ordered_event(cron_sched_t * sched, cron_event_t *event)
     if (sched->events.top == event) {
         /* new event at the top of the list,
            notify cron to pick up the event */
-        Pthread_cond_signal(&sched->cond);
+        /*Pthread_cond_signal(&sched->cond);*/
     }
 }
 
@@ -401,7 +401,7 @@ const char* cron_type_to_name(enum cron_type type)
 {
     switch(type) {
     case CRON_TIMEPART:
-        return "TIMEPARTITION";
+        return "WALLTIME";
     case CRON_LOGICAL:
         return "LOGICAL";
     default:

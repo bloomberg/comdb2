@@ -93,6 +93,11 @@ cron_sched_t *cron_add_event(cron_sched_t *sched, const char *name, int epoch,
                              FCRON func, void *arg1, void *arg2, void *arg3,
                              uuid_t *source_id, struct errstat *err, sched_if_t *intf);
 
+
+/**
+ * Initialize crons system
+ */
+void init_cron(void);
 /**
  * Signal looping worker, maybe db is exiting
  *

@@ -20,8 +20,8 @@
 typedef struct systable_cron_scheds {
     char *name;
     char *type;
-    int running;
-    int nevents;
+    uint64_t running;
+    uint64_t nevents;
     char *description;
 } systable_cron_scheds_t;
 
