@@ -99,7 +99,7 @@ inline void *create_defered_index_table(long long *ctid)
 }
 
 
-inline bool is_event_from_sc(int flags)                                                                                                           
+static inline bool is_event_from_sc(int flags)
 {
     return flags & RECFLAGS_NEW_SCHEMA;
 }
@@ -372,8 +372,8 @@ logmsg(LOGMSG_ERROR, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", _
                     return ERR_INTERNAL;
                 }
 
-            /* The row is not in new btree, proceed with the add */
-            vgenid = 0; // no need to verify again
+                /* The row is not in new btree, proceed with the add */
+                vgenid = 0; // no need to verify again
             }
 
             /* add the key */

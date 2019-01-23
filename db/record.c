@@ -83,7 +83,7 @@ void free_cached_idx(uint8_t * *cached_idx);
 
 int gbl_max_wr_rows_per_txn = 0;
 
-inline bool is_event_from_sc(int flags)                                                                                                           
+static inline bool is_event_from_sc(int flags)                                                                                                           
 {
     return flags & RECFLAGS_NEW_SCHEMA;
 }

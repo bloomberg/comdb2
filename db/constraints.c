@@ -71,6 +71,7 @@ int has_cascading_reverse_constraints(struct dbtable *db)
 }
 
 
+/* this is for index on expressions */
 static int insert_add_index(struct ireq *iq, unsigned long long genid)
 {
     struct thread_info *thdinfo = NULL;
@@ -218,6 +219,13 @@ int insert_add_op(struct ireq *iq, const uint8_t *p_buf_req_start,
     int err = 0;
     struct thread_info *thdinfo = NULL;
     void *cttbl = NULL;
+    rc = insert_add_index(iq, genid);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "insert_add_op: insert_add_index rc = %d\n", rc);
+        return -1;
+    }
+    if (gbl_reorder_idx_writes)
+        return 0;
 
     thdinfo = pthread_getspecific(unique_tag_key);
     if (thdinfo == NULL) {
@@ -255,11 +263,7 @@ logmsg(LOGMSG_ERROR, "AZ: insert_add_op here genid=%llx, rc=%d\n", bdb_genid_to_
         logmsg(LOGMSG_ERROR, "insert_add_op: bdb_temp_table_insert rc = %d\n", rc);
         return -1;
     }
-    rc = insert_add_index(iq, genid);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "insert_add_op: insert_add_index rc = %d\n", rc);
-        return -1;
-    }
+
     blkstate->ct_id_key++;
     return 0;
 }
@@ -275,6 +279,9 @@ int insert_del_op(block_state_t *blkstate, struct dbtable *srcdb, struct dbtable
     int err = 0;
     struct thread_info *thdinfo = NULL;
     void *cttbl = NULL;
+
+    if (gbl_reorder_idx_writes)
+        return 0;
 
     thdinfo = pthread_getspecific(unique_tag_key);
     if (thdinfo == NULL)

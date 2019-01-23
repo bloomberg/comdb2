@@ -794,10 +794,6 @@ int insert_add_op(struct ireq *iq, const uint8_t *p_buf_req_start,
                   unsigned long long genid, unsigned long long ins_keys,
                   int blkpos, int flags);
 
-int insert_del_op(block_state_t *blkstate, struct dbtable *srcdb, struct dbtable *dstdb,
-                  int optype, int blkpos, void *inkey, void *innewkey,
-                  int keylen, int sixnum, int dixnum, int nonewrefs, int flags);
-
 int process_defered_table(struct ireq *iq, block_state_t *blkstate, void *trans,
                      int *blkpos, int *ixout, int *errout);
 int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
