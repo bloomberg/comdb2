@@ -66,7 +66,7 @@ cron_sched_t *cron_add_event(cron_sched_t *sched, const char *name, int epoch,
     int created;
     int rc;
 
-    fprintf(stderr, "%s %s\n", (sched)?"ADD_EVENT":"ADD_SCHEDULER", 
+    logmsg(LOGMSG_DEBUG, "%s %s\n", (sched)?"ADD_EVENT":"ADD_SCHEDULER", 
         (sched)?sched->impl.name:name);
     
     created = 0;
@@ -504,6 +504,7 @@ int cron_systable_sched_events_collect(cron_sched_t *sched,
         }
         arr[narr].name = strdup(sched->impl.name);
         arr[narr].type = sched->impl.event_describe?sched->impl.event_describe(&sched->impl, event):strdup("");
+        arr[narr].epoch = event->epoch;
         arr[narr].arg1 = strdup(event->arg1?event->arg1:"");
         arr[narr].arg2 = strdup(event->arg2?event->arg2:"");
         arr[narr].arg3 = strdup(event->arg3?event->arg3:"");

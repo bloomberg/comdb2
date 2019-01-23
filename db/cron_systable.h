@@ -28,6 +28,7 @@ typedef struct systable_cron_scheds {
 typedef struct systable_cron_events {
     char *name;
     char *type;
+    uint64_t epoch;
     char *arg1;
     char *arg2;
     char *arg3;
