@@ -17,7 +17,6 @@
 #ifndef __VIEWS_SYSTABLE_H_
 #define __VIEWS_SYSTABLE_H_
 
-
 typedef struct systable_timepartition {
     char *name;
     char *period;

@@ -32,7 +32,7 @@ void logical_cron_incr(sched_if_t *impl);
 void logical_cron_set(sched_if_t *impl, unsigned long long val);
 
 /**
- * Create a testing logical unit 
+ * Create a testing logical unit
  *
  */
 int logical_cron_unit_test(FILE *out, const char *name);

@@ -28,36 +28,32 @@
  *
  */
 
-
 enum {
-    CRON_NOERR
-    ,CRON_ERR_CREATE = -1
-    ,CRON_ERR_MALLOC = -2
-    ,CRON_ERR_BUG = -3
-    ,CRON_ERR_EXIST = -4
+    CRON_NOERR,
+    CRON_ERR_CREATE = -1,
+    CRON_ERR_MALLOC = -2,
+    CRON_ERR_BUG = -3,
+    CRON_ERR_EXIST = -4
 };
 
 /* opaque schedule */
 typedef struct cron_sched cron_sched_t;
 
-
 /**
- * Define the multiple types of schedulers 
+ * Define the multiple types of schedulers
  *
  */
-enum cron_type {
-    CRON_TIMEPART = 0
-    ,CRON_LOGICAL = 1
-};
+enum cron_type { CRON_TIMEPART = 0, CRON_LOGICAL = 1 };
 
 /* this is the callback prototype for each event */
-typedef void *(*FCRON)(uuid_t source_id, void *arg1, void *arg2, void *arg3, 
+typedef void *(*FCRON)(uuid_t source_id, void *arg1, void *arg2, void *arg3,
                        struct errstat *err);
 
 struct cron_event {
-    int epoch; /* when this event should run */
+    int epoch;  /* when this event should run */
     FCRON func; /* what function should run */
-    void *arg1; /* arguments 1-3 for "func"; note: 2-3 are just for convenience */
+    void *
+        arg1; /* arguments 1-3 for "func"; note: 2-3 are just for convenience */
     void *arg2;
     void *arg3;
     uuid_t source_id; /* source id, if any, used to map events to sources */
@@ -75,13 +71,12 @@ struct sched_if {
     /* sleep until a signal or next event is due */
     int (*wait_next_event)(struct sched_if *impl, cron_event_t *event);
     /* describe the scheduler */
-    char* (*describe)(struct sched_if *impl);
+    char *(*describe)(struct sched_if *impl);
     /* describe the event function */
-    char* (*event_describe)(struct sched_if *impl, cron_event_t *event);
+    char *(*event_describe)(struct sched_if *impl, cron_event_t *event);
     void *state;
 };
 typedef struct sched_if sched_if_t;
-
 
 /**
  * Add a new event to a scheduler, and create a scheduler if needed.
@@ -91,8 +86,8 @@ typedef struct sched_if sched_if_t;
  */
 cron_sched_t *cron_add_event(cron_sched_t *sched, const char *name, int epoch,
                              FCRON func, void *arg1, void *arg2, void *arg3,
-                             uuid_t *source_id, struct errstat *err, sched_if_t *intf);
-
+                             uuid_t *source_id, struct errstat *err,
+                             sched_if_t *intf);
 
 /**
  * Initialize crons system
@@ -121,21 +116,21 @@ void cron_unlock(cron_sched_t *sched);
 int cron_timedwait(cron_sched_t *sched, struct timespec *ts);
 
 /**
- * Creates a snapshot of the events of a single scheduler, used 
+ * Creates a snapshot of the events of a single scheduler, used
  * to create individual comdb2_.. systables displaying events
  * for specific schedulers
- * 
+ *
  */
 int cron_systable_sched_events_collect(cron_sched_t *sched,
-        systable_cron_events_t **parr, int *nrecords, int *pnsize);
+                                       systable_cron_events_t **parr,
+                                       int *nrecords, int *pnsize);
 
 /**
  * Create a time scheduler implementation
  *
  */
-void time_cron_create(sched_if_t *impl,
-        char* (*describe)(sched_if_t*),
-        char* (*event_describe)(sched_if_t*, cron_event_t*));
+void time_cron_create(sched_if_t *impl, char *(*describe)(sched_if_t *),
+                      char *(*event_describe)(sched_if_t *, cron_event_t *));
 
 /**
  * Return specific scheduler implementation
@@ -143,4 +138,3 @@ void time_cron_create(sched_if_t *impl,
  */
 sched_if_t *cron_impl(cron_sched_t *sched);
 #endif
-

@@ -352,14 +352,13 @@ int timepart_get_num_shards(const char *view_name);
  * Return a description of the timepart scheduler
  *
  */
-char* timepart_describe(sched_if_t *impl);
+char *timepart_describe(sched_if_t *impl);
 
 /**
  * Timepart event description
  *
  */
-char* timepart_event_describe(sched_if_t *impl, cron_event_t *event);
+char *timepart_event_describe(sched_if_t *impl, cron_event_t *event);
 
- 
 #endif
 

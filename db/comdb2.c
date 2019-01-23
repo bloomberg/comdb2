@@ -4625,7 +4625,6 @@ static void *memstat_cron_kickoff(void *arg1, void *arg2, void *arg3,
                     "Will print memory usage every %d seconds.\n",
             gbl_memstat_freq);
 
-
     tm = comdb2_time_epoch() + gbl_memstat_freq;
     rc = cron_add_event(gbl_cron, NULL, tm, (FCRON)memstat_cron_event, NULL,
                         NULL, NULL, NULL, err, NULL);
@@ -4637,12 +4636,12 @@ static void *memstat_cron_kickoff(void *arg1, void *arg2, void *arg3,
     return NULL;
 }
 
-static char* gbl_cron_describe(sched_if_t *impl)
+static char *gbl_cron_describe(sched_if_t *impl)
 {
     return strdup("Default cron scheduler");
 }
 
-static char* gbl_cron_event_describe(sched_if_t *impl, cron_event_t *event)
+static char *gbl_cron_event_describe(sched_if_t *impl, cron_event_t *event)
 {
     const char *name;
     if (event->func == (FCRON)memstat_cron_event)
@@ -4663,14 +4662,14 @@ static int comdb2ma_stats_cron(void)
         if (!gbl_cron) {
             sched_if_t impl = {0};
             time_cron_create(&impl, gbl_cron_describe, gbl_cron_event_describe);
-            gbl_cron = cron_add_event(
-                    NULL, "Global Job Scheduler", INT_MIN,
-                    (FCRON)memstat_cron_kickoff, NULL, NULL, NULL, NULL, &xerr, &impl);
+            gbl_cron = cron_add_event(NULL, "Global Job Scheduler", INT_MIN,
+                                      (FCRON)memstat_cron_kickoff, NULL, NULL,
+                                      NULL, NULL, &xerr, &impl);
 
         } else {
-            gbl_cron = cron_add_event(
-                    gbl_cron, NULL, INT_MIN,
-                    (FCRON)memstat_cron_kickoff, NULL, NULL, NULL, NULL, &xerr, NULL);
+            gbl_cron = cron_add_event(gbl_cron, NULL, INT_MIN,
+                                      (FCRON)memstat_cron_kickoff, NULL, NULL,
+                                      NULL, NULL, &xerr, NULL);
         }
         if (gbl_cron == NULL)
             logmsg(LOGMSG_ERROR, "Failed to schedule memstat cron job. "

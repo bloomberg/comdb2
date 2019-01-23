@@ -144,14 +144,12 @@ enum _check_flags {
 static timepart_view_t* _check_shard_collision(timepart_views_t *views, const char *tblname, 
       int *indx, enum _check_flags flag);
 
-
-
-char* timepart_describe(sched_if_t *_)
+char *timepart_describe(sched_if_t *_)
 {
     return strdup("Time partition scheduler");
 }
 
-char* timepart_event_describe(sched_if_t *_, cron_event_t *event)
+char *timepart_event_describe(sched_if_t *_, cron_event_t *event)
 {
     const char *name;
     if (event->func == _view_cron_phase1)
@@ -172,7 +170,7 @@ char* timepart_event_describe(sched_if_t *_, cron_event_t *event)
  */
 timepart_views_t *timepart_views_init(struct dbenv *dbenv)
 {
-    sched_if_t  tpt_cron= {0};
+    sched_if_t tpt_cron = {0};
     struct errstat xerr = {0};
     const char *name = "timepart_cron";
 
@@ -181,9 +179,8 @@ timepart_views_t *timepart_views_init(struct dbenv *dbenv)
     Pthread_rwlock_init(&views_lk, NULL);
 
     /* create the timepart scheduler */
-    timepart_sched = cron_add_event(NULL, name, INT_MIN,
-            timepart_cron_kickoff, NULL, NULL, NULL,
-            NULL, &xerr, &tpt_cron);
+    timepart_sched = cron_add_event(NULL, name, INT_MIN, timepart_cron_kickoff,
+                                    NULL, NULL, NULL, NULL, &xerr, &tpt_cron);
 
     if (timepart_sched == NULL)
         return NULL;
@@ -1031,7 +1028,8 @@ done:
 
             if (cron_add_event(timepart_sched, NULL, shardChangeTime,
                                _view_cron_phase2, tmp_str = strdup(name),
-                               pShardName, NULL, &view->source_id, err, NULL) == NULL) {
+                               pShardName, NULL, &view->source_id, err,
+                               NULL) == NULL) {
                 logmsg(LOGMSG_ERROR, "%s: failed rc=%d errstr=%s\n", __func__,
                         err->errval, err->errstr);
                 if (tmp_str)
@@ -1073,8 +1071,8 @@ _view_cron_schedule_next_rollout(timepart_view_t *view, int timeCrtRollout,
                           tm, removeShardName);
 
         if (cron_add_event(timepart_sched, NULL, tm, _view_cron_phase3,
-                           removeShardName, NULL, NULL, &view->source_id, 
-                           err, NULL) == NULL) {
+                           removeShardName, NULL, NULL, &view->source_id, err,
+                           NULL) == NULL) {
             logmsg(LOGMSG_ERROR, "%s: failed rc=%d errstr=%s\n", __func__,
                     err->errval, err->errstr);
             free(removeShardName);
@@ -2479,8 +2477,8 @@ int timepart_update_retention(void *tran, const char *name, int retention, struc
 
            for (i = 0; i < n_extra_shards; i++) {
                irc = (cron_add_event(timepart_sched, NULL, 0, _view_cron_phase3,
-                                     extra_shards[i], NULL, NULL, NULL,
-                                     err, NULL) == NULL)
+                                     extra_shards[i], NULL, NULL, NULL, err,
+                                     NULL) == NULL)
                          ? err->errval
                          : VIEW_NOERR;
                if (irc != VIEW_NOERR) {

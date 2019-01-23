@@ -59,5 +59,4 @@ int cron_systable_events_collect(void **data, int *nrecords);
  */
 void cron_systable_events_free(void *data, int nrecords);
 
-
 #endif
