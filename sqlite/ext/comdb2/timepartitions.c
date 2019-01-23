@@ -21,7 +21,8 @@
 #endif
 
 #include "comdb2systbl.h"
-#include "views_systable.h"
+#include "ezsystables.h"
+#include "timepart_systable.h"
 #include "cron_systable.h"
 
 static int systblTimepartitionsInit(sqlite3 *db);
@@ -80,7 +81,6 @@ static int systblTimepartitionsEventsInit(sqlite3 *db)
         CDB2_CSTRING, "arg2", -1, offsetof(systable_cron_events_t, arg2),
         CDB2_CSTRING, "arg3", -1, offsetof(systable_cron_events_t, arg3),
         CDB2_CSTRING, "sourceid", -1, offsetof(systable_cron_events_t, sourceid),
-        CDB2_CSTRING, "description", -1, offsetof(systable_cron_events_t, description),
         SYSTABLE_END_OF_FIELDS);
 }
 

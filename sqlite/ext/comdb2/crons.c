@@ -20,6 +20,9 @@
 # define SQLITE_CORE 1
 #endif
 
+#include <stddef.h>
+#include "sqlite3.h"
+#include "ezsystables.h"
 #include "cron_systable.h"
 
 static int systblCronSchedulersInit(sqlite3 *db);
@@ -52,14 +55,13 @@ static int systblCronEventsInit(sqlite3 *db)
 {
     return create_system_table(
         db, "comdb2_cron_events", cron_systable_events_collect,
-        cron_systable_events_collect,  sizeof(systable_cron_events_t),
+        cron_systable_events_free,  sizeof(systable_cron_events_t),
         CDB2_CSTRING, "name", -1, offsetof(systable_cron_events_t, name),
         CDB2_CSTRING, "type", -1, offsetof(systable_cron_events_t, type),
         CDB2_CSTRING, "arg1", -1, offsetof(systable_cron_events_t, arg1),
         CDB2_CSTRING, "arg2", -1, offsetof(systable_cron_events_t, arg2),
         CDB2_CSTRING, "arg3", -1, offsetof(systable_cron_events_t, arg3),
         CDB2_CSTRING, "sourceid", -1, offsetof(systable_cron_events_t, sourceid),
-        CDB2_CSTRING, "description", -1, offsetof(systable_cron_events_t, description),
         SYSTABLE_END_OF_FIELDS);
 }
 

@@ -14,14 +14,27 @@
    limitations under the License.
  */
 
-#ifndef _VIEWS_CRON_H_
-#define _VIEWS_CRON_H_
+#ifndef __LOGICAL_CRON_H_
+#define __LOGICAL_CRON_H_
+
+#include "cron.h"
 
 /**
- * Resume the timepart scheduler, creating one if
- * needed
+ * Move logical clock one step forward
  *
  */
-cron_sched_t* timepart_cron_start(cron_sched_t *sched)
+void logical_cron_incr(sched_if_t *impl);
+
+/**
+ * Set the logical clock to step "val"
+ *
+ */
+void logical_cron_set(sched_if_t *impl, unsigned long long val);
+
+/**
+ * Create a testing logical unit 
+ *
+ */
+int logical_cron_unit_test(FILE *out, const char *name);
 
 #endif

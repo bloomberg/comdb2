@@ -1,3 +1,19 @@
+/*
+   Copyright 2019 Bloomberg Finance L.P.
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+ */
+
 #include <stdlib.h>
 #include <pthread.h>
 #include <string.h>
@@ -15,9 +31,9 @@
 #include "bdb_schemachange.h"
 #include "str0.h"
 #include "logmsg.h"
-#include "views_systable.h"
 #include "cron.h"
 #include "cron_systable.h"
+#include "timepart_systable.h"
 
 #define VIEWS_MAX_RETENTION 1000
 
@@ -128,16 +144,48 @@ enum _check_flags {
 static timepart_view_t* _check_shard_collision(timepart_views_t *views, const char *tblname, 
       int *indx, enum _check_flags flag);
 
+
+
+char* timepart_describe(sched_if_t *_)
+{
+    return strdup("Time partition scheduler");
+}
+
+char* timepart_event_describe(sched_if_t *_, cron_event_t *event)
+{
+    const char *name;
+    if (event->func == _view_cron_phase1)
+        name = "AddShard";
+    else if (event->func == _view_cron_phase2)
+        name = "RollShards";
+    else if (event->func == _view_cron_phase3)
+        name = "DropShard";
+    else
+        name = "Unknown";
+
+    return strdup(name);
+}
+
 /**
  * Initialize the views
  *
  */
 timepart_views_t *timepart_views_init(struct dbenv *dbenv)
 {
+    sched_if_t  tpt_cron= {0};
+    struct errstat xerr = {0};
+    const char *name = "timepart_cron";
+
+    time_cron_create(&tpt_cron, timepart_describe, timepart_event_describe);
+
     Pthread_rwlock_init(&views_lk, NULL);
 
-    /* hack for now to force natural types */
-    if ((timepart_sched = timepart_cron_start(timepart_sched)) == NULL)
+    /* create the timepart scheduler */
+    timepart_sched = cron_add_event(NULL, name, INT_MIN,
+            timepart_cron_kickoff, NULL, NULL, NULL,
+            NULL, &xerr, &tpt_cron);
+
+    if (timepart_sched == NULL)
         return NULL;
 
     /* read the llmeta views, if any */
@@ -1648,7 +1696,7 @@ static int _schedule_drop_shard(timepart_view_t *view,
     /* we missed phase 3, queue it */
     rc = (cron_add_event(timepart_sched, NULL, evict_time, _view_cron_phase3,
                          tmp_str1 = strdup(evicted_shard), NULL, NULL, NULL,
-                         err) == NULL)
+                         err, NULL) == NULL)
              ? err->errval
              : VIEW_NOERR;
 
@@ -2432,7 +2480,7 @@ int timepart_update_retention(void *tran, const char *name, int retention, struc
            for (i = 0; i < n_extra_shards; i++) {
                irc = (cron_add_event(timepart_sched, NULL, 0, _view_cron_phase3,
                                      extra_shards[i], NULL, NULL, NULL,
-                                     err) == NULL)
+                                     err, NULL) == NULL)
                          ? err->errval
                          : VIEW_NOERR;
                if (irc != VIEW_NOERR) {
@@ -2594,21 +2642,6 @@ int timepart_get_num_shards(const char *view_name)
 }
 
 
-static const char *_events_name(FCRON func)
-{
-    const char *name;
-    if (func == _view_cron_phase1)
-        name = "AddShard";
-    else if (func == _view_cron_phase2)
-        name = "RollShards";
-    else if (func == _view_cron_phase3)
-        name = "DropShard";
-    else
-        name = "Unknown";
-
-    return name;
-}
-
 void check_columns_null_and_dbstore(const char *name, struct dbtable *tbl)
 {
     /* if a column has both a default and a null value, NULL cannot be
@@ -2628,129 +2661,7 @@ void check_columns_null_and_dbstore(const char *name, struct dbtable *tbl)
     }
 }
 
-/********* SYSTABLE INTERFACE IMPLEMENTATION HERE *******************/
-
-int timepart_systable_timepartitions_collect(void **data, int *nrecords)
-{
-    systable_timepartitions_t *arr = NULL, *temparr;
-    int narr = 0;
-    int nsize = 0;
-    int rc;
-    uuidstr_t us;
-   
-    Pthread_rwlock_rdlock(&views_lk);
-    for(narr=0;narr<views->nviews;narr++) {
-        if (narr>=nsize) {
-            nsize += 10;
-            temparr = realloc(arr, sizeof(systable_timepartitions_t)*nsize);
-            if (!temparr) {
-                logmsg(LOGMSG_ERR, "%s OOM %d!\n", __func__,
-                        sizeof(systable_timepartitions_t)*nsize);
-                timepart_systable_timepartitions_free(arr, narr);
-                narr = 0;
-                rc = -1;
-                goto done;
-            }
-            arr = temparr;
-        }
-        arr[narr].name = strdup(views[narr].name);
-        arr[narr].period = strdup(period_to_name(views[narr].period));
-        arr[narr].retention = views[narr].retention;
-        arr[narr].nshards = views[narr].nshards;
-        arr[narr].version = views[narr].version;
-        arr[narr].shard0name = strdup(views[narr].shard0name);
-        arr[narr].source_id = strdup(comdb2uuidstr(views[narr].source_id));
-    }
-done:
-    Pthread_rwlock_unlock(&views_lk);
-    *data = arr;
-    *nrecords = narr;
-    return rc;
-}
-
-void timepart_systable_timepartitions_free(void *arr, int nrecords)
-{
-    systable_timepartitions_t *parr = (systable_timepartitions_t*)arr;
-    int i;
-
-    for(i=0;i<nrecords;i++) {
-        if (parr[i].name)
-            free(parr[i].name);
-        if (parr[i].period)
-            free(parr[i].period);
-        if (parr[i].shard0name)
-            free(parr[i].shard0name);
-        if (parr[i].sourceid)
-            free(parr[i].sourceid);
-    }
-    free(arr);
-}
-
-int timepart_systable_timepartshards_collect(void **data, int *nrecords)
-{
-    systable_timepartshard_t *arr = NULL;
-    int narr= 0;
-    int nsize = 0;
-    int nview;
-    int rc;
-    uuidstr_t us;
-   
-    Pthread_rwlock_rdlock(&views_lk);
-    for(nview=0;nview<views->nviews;nview++) {
-        for(nshard=0;nshard<views[nview].nshards;nshard++){
-            if (narr>=nsize) {
-                nsize += 10;
-                temparr = realloc(arr, sizeof(systable_timepartshard_t)*nsize);
-                if (!tempar) {
-                    logmsg(LOGMSG_ERR, "%s OOM %d!\n", __func__,
-                            sizeof(systable_timepartshard_t)*nsize);
-                    timepart_systable_timepartshards_free(arr, narr);
-                    narr = 0;
-                    rc = -1;
-                    goto done;
-                }
-                arr = temparr;
-            }
-            arr[narr].name = strdup(views[nview].name);
-            arr[narr].shardname = strdup(views[nview].shards[nshard].tblname);
-            arr[narr].low = views[nview].shards[nshard].low;
-            arr[narr].high = views[nview].shards[nshard].high;
-            narr++;
-        }
-    }
-done:
-    Pthread_rwlock_unlock(&views_lk);
-    *data = arr;
-    *nrecords = narr;
-    return rc;
-
-}
-
-void timepart_systable_timepartshards_free(void *data, int nrecords)
-{
-    systable_timepartitions_t *parr = (systable_timepartshard_t*)arr;
-    int i;
-
-    for(i=0;i<nrecords;i++) {
-        if (parr[i].name)
-            free(parr[i].name);
-        if (parr[i].shardname)
-            free(parr[i].shardname);
-    }
-    free(arr);
-}
-
-int timepart_systable_timepartevents_collect(void **data, int *nrecords)
-{
-    int allocsize = 0;
-    return cron_systable_sched_events_collect(timepart_sched,
-            (systable_cron_events_t*)data, nrecords, &allocsize);
-}
-
-void timepart_systable_timepartevents_free(void *data, int nrecords)
-{
-    cron_systable_events_free(data, nrecods);
-}
+#include "views_systable.c"
 
 #include "views_serial.c"
 

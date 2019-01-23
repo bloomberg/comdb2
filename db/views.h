@@ -11,7 +11,7 @@
 #include "comdb2.h"
 #include <sqlite3.h>
 #include "errstat.h"
-#include "views_cron.h"
+#include "cron.h"
 
 enum view_type { VIEW_TIME_PARTITION };
 
@@ -348,10 +348,18 @@ int timepart_apply_file(const char *filename);
  */
 int timepart_get_num_shards(const char *view_name);
 
-
-/** 
- * Describe a timepart event
+/**
+ * Return a description of the timepart scheduler
  *
  */
+char* timepart_describe(sched_if_t *impl);
+
+/**
+ * Timepart event description
+ *
+ */
+char* timepart_event_describe(sched_if_t *impl, cron_event_t *event);
+
+ 
 #endif
 
