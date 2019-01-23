@@ -2205,7 +2205,7 @@ static inline int cdb2_try_on_same_room(cdb2_hndl_tp *hndl)
     for (int i = 0; i < hndl->num_hosts_sameroom; i++) {
         int try_node = (hndl->node_seq + i) % hndl->num_hosts_sameroom;
         if (try_node == hndl->master || hndl->ports[try_node] <= 0 ||
-            try_node == hndl->connected_host || 
+            try_node == hndl->connected_host ||
             hndl->hosts_connected[try_node] == 1)
             continue;
         if (newsql_connect(hndl, try_node, 0, 100) == 0)
