@@ -740,7 +740,7 @@ static pthread_mutex_t open_serial_lock = PTHREAD_MUTEX_INITIALIZER;
 int sqlite3_open_serial(const char *filename, sqlite3 **ppDb,
                         struct sqlthdstate *thd)
 {
-    static int exec_warn = 0;
+    static int exec_warn_ms = 0;
     int serial = gbl_serialise_sqlite3_open;
     if (serial)
         Pthread_mutex_lock(&open_serial_lock);
@@ -752,8 +752,10 @@ int sqlite3_open_serial(const char *filename, sqlite3 **ppDb,
             char *zErr = 0;
             rc2 = sqlite3_exec(*ppDb, zSql, NULL, NULL, &zErr);
             if (rc2 != SQLITE_OK) {
-                if (!exec_warn) {
-                    exec_warn = 1;
+                int current_time_ms = comdb2_time_epochms();
+                if ((exec_warn_ms == 0) ||
+                        (current_time_ms - exec_warn_ms) > 60000) { /* 1 min */
+                    exec_warn_ms = current_time_ms;
                     logmsg(LOGMSG_WARN,
                            "%s:%d, %s: failed SQL {%s}, rc2 %d, msg {%s}\n",
                            __FILE__, __LINE__, __func__, zSql, rc2, zErr);
