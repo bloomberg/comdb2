@@ -49,13 +49,14 @@
     do {                                                                       \
         LKDBG_TRACE(TRY, FUNC, LKWRAP_FIRST(__VA_ARGS__));                     \
         if ((var = FUNC(__VA_ARGS__)) != 0) {                                  \
-            logmsg(LOGMSG_FATAL,                                               \
+            logmsg(LOGMSG_DEBUG,                                               \
                    "%s:%d " #FUNC "(0x%" PRIxPTR ") rc:%d (%s) thd:%p\n",      \
                    __func__, __LINE__, (uintptr_t)LKWRAP_FIRST(__VA_ARGS__),   \
                    var, strerror(var), (void *)pthread_self());                \
-            abort();                                                           \
+            LKDBG_TRACE(NOT, FUNC, LKWRAP_FIRST(__VA_ARGS__));                 \
+        } else {                                                               \
+            LKDBG_TRACE(GOT, FUNC, LKWRAP_FIRST(__VA_ARGS__));                 \
         }                                                                      \
-        LKDBG_TRACE(GOT, FUNC, LKWRAP_FIRST(__VA_ARGS__));                     \
     } while (0)
 
 #endif /* _INCLUDED_PTHREAD_WRAP_CORE_H */
