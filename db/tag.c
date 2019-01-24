@@ -5989,9 +5989,13 @@ int get_schema_blob_count(const char *table, const char *ctag)
 void free_blob_buffers(blob_buffer_t *blobs, int nblobs)
 {
     int ii;
+    blob_buffer_t *blob;
     for (ii = 0; ii < nblobs; ii++) {
-        if (blobs[ii].exists && blobs[ii].data)
-            free(blobs[ii].data);
+        blob = blobs + ii;
+        if (blob->exists) {
+            free(blob->qblob);
+            free(blob->freeptr);
+        }
     }
     bzero(blobs, sizeof(blob_buffer_t) * nblobs);
 }
@@ -7445,6 +7449,12 @@ int create_key_from_ondisk_sch_blobs(
     blob_buffer_t *inblobs, int maxblobs, const char *tzname)
 {
     int rc = 0;
+
+    for (int i = 0; i != maxblobs; ++i) {
+        rc = unodhfy_blob_buffer(db, inblobs + i, i);
+        if (rc != 0)
+            return rc;
+    }
 
     rc = _stag_to_stag_buf_flags_blobs(
         fromsch, fromtag, inbuf, db->tablename, totag, outbuf, 0 /*flags*/,

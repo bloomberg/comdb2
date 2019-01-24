@@ -146,7 +146,7 @@ DEF_ATTR(SQLBULKSZ, sqlbulksz, BYTES, 2 * 1024 * 1024,
 DEF_ATTR(
     ZLIBLEVEL, zlib_level, QUANTITY, 6,
     "If zlib compression is enabled, this determines the compression level.")
-DEF_ATTR(ZTRACE, ztrace, QUANTITY, 0, NULL)
+DEF_ATTR(ZTRACE, ztrace, BOOLEAN, 0, NULL)
 DEF_ATTR(PANICLOGSNAP, paniclogsnap, BOOLEAN, 1, NULL)
 DEF_ATTR(UPDATEGENIDS, updategenids, BOOLEAN, 0, NULL)
 DEF_ATTR(ROUND_ROBIN_STRIPES, round_robin_stripes, BOOLEAN, 0,

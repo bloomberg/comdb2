@@ -1114,7 +1114,8 @@ int dat_upv_auxdb(int auxdb, struct ireq *iq, void *trans, int vptr, void *vdta,
 
 int blob_upv_auxdb(int auxdb, struct ireq *iq, void *trans, int vptr,
                    unsigned long long oldgenid, void *newdta, int newlen,
-                   int blobno, int rrn, unsigned long long newgenid)
+                   int blobno, int rrn, unsigned long long newgenid,
+                   int odhready)
 {
     struct dbtable *db = iq->usedb;
     int rc, bdberr;
@@ -1126,7 +1127,7 @@ int blob_upv_auxdb(int auxdb, struct ireq *iq, void *trans, int vptr,
         return -2; /*only support offset 0 for now */
     iq->gluewhere = "bdb_prim_add_upd_genid";
     rc = bdb_prim_add_upd_genid(bdb_handle, trans, blobno + 1, newdta, newlen,
-                                rrn, oldgenid, newgenid, 0, &bdberr);
+                                rrn, oldgenid, newgenid, 0, &bdberr, odhready);
     iq->gluewhere = "bdb_prim_add_upd_genid done";
     if (rc == 0)
         return 0;
@@ -1148,10 +1149,10 @@ int blob_upv_auxdb(int auxdb, struct ireq *iq, void *trans, int vptr,
 
 int blob_upv(struct ireq *iq, void *trans, int vptr,
              unsigned long long oldgenid, void *newdta, int newlen, int blobno,
-             int rrn, unsigned long long newgenid)
+             int rrn, unsigned long long newgenid, int odhready)
 {
     return blob_upv_auxdb(AUXDB_NONE, iq, trans, vptr, oldgenid, newdta, newlen,
-                          blobno, rrn, newgenid);
+                          blobno, rrn, newgenid, odhready);
 }
 
 int blob_upd_genid(struct ireq *iq, void *trans, int blobno, int rrn,
@@ -1247,7 +1248,7 @@ int dat_set(struct ireq *iq, void *trans, void *data, size_t length, int rrn,
         return ERR_NO_AUXDB;
     iq->gluewhere = "bdb_prim_adddta_n_genid";
     bdb_prim_adddta_n_genid(bdb_handle, trans, 0 /*blobno*/, data, length, rrn,
-                            genid, &bdberr);
+                            genid, &bdberr, 0);
     iq->gluewhere = "bdb_prim_adddta_n_genid done";
 
     if (bdberr == 0)
@@ -1263,14 +1264,15 @@ int dat_set(struct ireq *iq, void *trans, void *data, size_t length, int rrn,
 }
 
 int blob_add(struct ireq *iq, void *trans, int blobno, void *data,
-             size_t length, int rrn, unsigned long long genid)
+             size_t length, int rrn, unsigned long long genid, int odhready)
 {
     return blob_add_auxdb(AUXDB_NONE, iq, trans, blobno, data, length, rrn,
-                          genid);
+                          genid, odhready);
 }
 
 int blob_add_auxdb(int auxdb, struct ireq *iq, void *trans, int blobno,
-                   void *data, size_t length, int rrn, unsigned long long genid)
+                   void *data, size_t length, int rrn, unsigned long long genid,
+                   int odhready)
 {
     struct dbtable *db = iq->usedb;
     int bdberr;
@@ -1280,7 +1282,7 @@ int blob_add_auxdb(int auxdb, struct ireq *iq, void *trans, int blobno,
         return ERR_NO_AUXDB;
     iq->gluewhere = "bdb_prim_adddta_n_genid";
     bdb_prim_adddta_n_genid(bdb_handle, trans, blobno + 1, data, length, rrn,
-                            genid, &bdberr);
+                            genid, &bdberr, odhready);
     iq->gluewhere = "bdb_prim_adddta_n_genid done";
 
     if (bdberr == 0)

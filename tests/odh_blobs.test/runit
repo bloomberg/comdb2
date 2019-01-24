@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+
+bash -n "$0" | exit 1
+dbnm=$1
+
+set -e
+
+fixednode=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select comdb2_host()'`
+
+cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode 'exec procedure sys.cmd.send("on osql_odh_blob")'
+
+master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $fixednode 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | awk '{print $1}' | cut -d':' -f1`
+
+cat << EOF | cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $master - >actual 2>&1
+exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 0')
+drop table if exists t
+create table t {`cat t1.csc2`}\$\$
+insert into t values("aaaabbbbccccddddeeeeffffgggg")
+insert into t values("hhhhiiiijjjjkkkkllllmmmmnnnn")
+select * from t order by txt
+select '--------------'
+alter table t {`cat t2.csc2`}\$\$
+select * from t order by txt
+EOF
+
+echo '--------------' >>actual
+
+cat << EOF | cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $master -
+exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')
+exec procedure sys.cmd.send('scdelay 2000')
+EOF
+
+cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode "alter table t options rebuild, blobfield rle {`cat t2.csc2`}" &
+
+sleep 1;
+cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode 'insert into t values("AAAABBBBCCCCDDDDEEEEFFFFGGGG")'
+cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode 'update t set txt = "HHHHIIIIJJJJKKKKLLLLMMMMNNNN" where txt = "hhhhiiiijjjjkkkkllllmmmmnnnn"'
+cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode 'select * from t order by txt' >>actual 2>&1
+echo '--------------' >>actual
+wait;
+
+cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode 'select * from t order by txt' >>actual 2>&1
+echo '--------------' >>actual
+
+cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode "alter table t options rebuild, blobfield rle {`cat t3.csc2`}" &
+
+sleep 1;
+cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode 'insert into t values("1111111122222222")'
+cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode 'update t set txt = "ABCDEFG" where txt = "AAAABBBBCCCCDDDDEEEEFFFFGGGG"'
+
+cat << EOF |
+select * from t where length(txt) = 28
+select * from t where length(txt) = 16
+select * from t where length(txt) = 7
+EOF
+cdb2sql ${CDB2_OPTIONS} -s --tabs --cost $dbnm --host $fixednode - 2>&1 | grep 'TABLE SCAN' >>actual 2>&1
+
+wait
+
+cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode 'select * from t order by txt' >>actual 2>&1
+
+cat << EOF |
+select * from t where length(txt) = 28
+select * from t where length(txt) = 16
+select * from t where length(txt) = 7
+EOF
+cdb2sql ${CDB2_OPTIONS} -s --tabs --cost $dbnm --host $fixednode - 2>&1 | grep 'finds' >>actual 2>&1
+
+diff actual expected

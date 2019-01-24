@@ -747,6 +747,7 @@ int gbl_bbenv;
 extern int gbl_legacy_defaults;
 
 int64_t gbl_temptable_spills = 0;
+int gbl_osql_odh_blob = 1;
 
 comdb2_tunables *gbl_tunables; /* All registered tunables */
 int init_gbl_tunables();
@@ -5004,6 +5005,9 @@ static void register_all_int_switches()
         "logical_live_sc",
         "Enables online schema change with logical redo. (Default: OFF)",
         &gbl_logical_live_sc);
+    register_int_switch("osql_odh_blob",
+                        "Send ODH'd blobs to master. (Default: ON)",
+                        &gbl_osql_odh_blob);
 }
 
 static void getmyid(void)

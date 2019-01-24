@@ -2258,13 +2258,14 @@ int dat_upv_noblobs(struct ireq *iq, void *trans, int vptr, void *vdta,
 
 int blob_upv_auxdb(int auxdb, struct ireq *iq, void *trans, int vptr,
                    unsigned long long oldgenid, void *newdta, int newlen,
-                   int blobno, int rrn, unsigned long long newgenid);
+                   int blobno, int rrn, unsigned long long newgenid,
+                   int odhready);
 int blob_no_upd_auxdb(int auxdb, struct ireq *iq, void *trans, int rrn,
                       unsigned long long oldgenid, unsigned long long newgenid,
                       int blobmap);
 int blob_upv(struct ireq *iq, void *trans, int vptr,
              unsigned long long oldgenid, void *newdta, int newlen, int blobno,
-             int rrn, unsigned long long newgenid);
+             int rrn, unsigned long long newgenid, int odhready);
 int blob_no_upd(struct ireq *iq, void *trans, int rrn,
                 unsigned long long oldgenid, unsigned long long newgenid,
                 int blobmap);
@@ -2284,10 +2285,10 @@ int dat_numrrns(struct ireq *iq, int *out_numrrns);
 int dat_highrrn(struct ireq *iq, int *out_highrrn);
 
 int blob_add(struct ireq *iq, void *trans, int blobno, void *data,
-             size_t length, int rrn, unsigned long long genid);
+             size_t length, int rrn, unsigned long long genid, int odhready);
 int blob_add_auxdb(int auxdb, struct ireq *iq, void *trans, int blobno,
-                   void *data, size_t length, int rrn,
-                   unsigned long long genid);
+                   void *data, size_t length, int rrn, unsigned long long genid,
+                   int odhready);
 
 int blob_del(struct ireq *iq, void *trans, int rrn, unsigned long long genid,
              int blobno);
@@ -3602,8 +3603,9 @@ const char *thrman_get_where(struct thr_handle *thr);
 int repopulate_lrl(const char *p_lrl_fname_out);
 void plugin_post_dbenv_hook(struct dbenv *dbenv);
 
-int64_t gbl_temptable_spills;
+extern int64_t gbl_temptable_spills;
 
 extern int gbl_disable_tpsc_tblvers;
 
+extern int gbl_osql_odh_blob;
 #endif /* !INCLUDED_COMDB2_H */
