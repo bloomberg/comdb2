@@ -3146,7 +3146,6 @@ static int cdb2_get_effects_multi(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects)
 int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects)
 {
     int rc = 0, i, got_rcode = 0;
-    cdb2_hndl_tp *last = NULL;
 
     if (!hndl->is_hasql || hndl->active) {
         rc = cdb2_get_effects_multi(hndl, effects);
@@ -3159,15 +3158,10 @@ int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects)
                 got_rcode = 1;
                 break;
             }
-            if (c_hndl->last_active)
-                last = c_hndl;
         }
     }
 
-    if (!got_rcode) {
-        assert(last);
-        rc = cdb2_get_effects_multi(last, effects);
-    }
+    assert(got_rcode == 1);
 
     return rc;
 }
@@ -3267,8 +3261,12 @@ int cdb2_close(cdb2_hndl_tp *hndl)
         free(preve);
     }
 
+
     for (int i=0; i < hndl->num_children; i++)
         cdb2_close(hndl->children[i]);
+
+    if (hndl->parent)
+        hndl->parent->num_children--;
 
     free(hndl);
     return rc;
@@ -3737,7 +3735,6 @@ static void process_set_local(cdb2_hndl_tp *hndl, const char *set_command)
                 cdb2_clone_child(hndl);
             }
         }
-        hndl->num_children = children;
         return;
     }
 }
@@ -4125,6 +4122,10 @@ retry_queries:
             goto retry_queries;
         }
         if (!is_begin) {
+            if (!hndl->last_active) {
+                debugprint("switching active handle\n");
+                PRINT_RETURN(rc);
+            }
             hndl->retry_all = 1;
             rc = retry_query_list(hndl, (retries_done - 1), run_last);
             if (rc > 0) {
