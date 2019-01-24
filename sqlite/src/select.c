@@ -2172,7 +2172,7 @@ static void generateColumnNames(
             for(j=1; j<nZ-1; j++) if( !sqlite3IsIdChar(z[j]) ) goto col_name_def;
           }
         }
-        if( z0=='"' || z0=='\'' || z0=='(' || z0=='[' ){
+        if( z0=='"' || z0=='(' || z0=='[' ){
           if( nZ==-1 ) nZ = sqlite3Strlen30(z);
           if( z0=='(' ) z0 = ')';
           if( z0=='[' ) z0 = ']';
