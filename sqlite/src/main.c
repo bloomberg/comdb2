@@ -3121,7 +3121,11 @@ static int openDatabase(
   db->szMmap = sqlite3GlobalConfig.szMmap;
   db->nextPagesize = 0;
   db->nMaxSorterMmap = 0x7FFFFFFF;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  db->flags |= SQLITE_EnableTrigger | SQLITE_CacheSpill
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   db->flags |= SQLITE_ShortColNames | SQLITE_EnableTrigger | SQLITE_CacheSpill
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #if !defined(SQLITE_DEFAULT_AUTOMATIC_INDEX) || SQLITE_DEFAULT_AUTOMATIC_INDEX
                  | SQLITE_AutoIndex
 #endif
