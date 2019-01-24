@@ -2161,8 +2161,38 @@ static void generateColumnNames(
       }
     }else{
       const char *z = pEList->a[i].zSpan;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      if( z ){
+        char z0 = z[0];
+        int nZ = -1;
+        if( z0=='"' ){
+          int j;
+          if( nZ==-1 ) nZ = sqlite3Strlen30(z);
+          if( nZ>2 ){
+            for(j=1; j<nZ-1; j++) if( !sqlite3IsIdChar(z[j]) ) goto col_name_def;
+          }
+        }
+        if( z0=='"' || z0=='\'' || z0=='(' || z0=='[' ){
+          if( nZ==-1 ) nZ = sqlite3Strlen30(z);
+          if( z0=='(' ) z0 = ')';
+          if( z0=='[' ) z0 = ']';
+          if( nZ>1 && z[nZ-1]==z0 ){
+            z = sqlite3MPrintf(db, "%.*s", nZ-2, z+1);
+            sqlite3VdbeSetColName(v, i, COLNAME_NAME, z, SQLITE_DYNAMIC);
+            goto col_name_done;
+          }
+        }
+      }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+col_name_def:
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       z = z==0 ? sqlite3MPrintf(db, "column%d", i+1) : sqlite3DbStrDup(db, z);
       sqlite3VdbeSetColName(v, i, COLNAME_NAME, z, SQLITE_DYNAMIC);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+col_name_done:
+      ; /* NOTE: Do nothing, silence compiler error/warning. */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
   }
   generateColumnTypes(pParse, pTabList, pEList);
@@ -2350,8 +2380,10 @@ Table *sqlite3ResultSetOfSelect(Parse *pParse, Select *pSelect){
   int savedFlags;
 
   savedFlags = db->flags;
-  db->flags &= ~SQLITE_FullColNames;
-  db->flags |= SQLITE_ShortColNames;
+  if( (db->flags & SQLITE_FullColNames)!=0 ){
+    db->flags &= ~SQLITE_FullColNames;
+    db->flags |= SQLITE_ShortColNames;
+  }
   sqlite3SelectPrep(pParse, pSelect, 0);
   if( pParse->nErr ) return 0;
   while( pSelect->pPrior ) pSelect = pSelect->pPrior;
