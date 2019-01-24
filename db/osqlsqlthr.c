@@ -1367,6 +1367,14 @@ static int osql_send_insidx_logic(struct BtCursor *pCur,
     return rc;
 }
 
+/* Durable clients can only see durable data */
+int is_durable(struct sqlclntstate *clnt)
+{
+    return ((clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
+                clnt->dbtran.mode == TRANLEVEL_SERIAL) &&
+            bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS));
+}
+
 /**
  * Process a sqlite index delete request
  * Index is provided by thd->clnt->idxDelete
@@ -1481,7 +1489,8 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
     do {
         rc = 0;
 
-        if (gbl_osql_send_startgen && clnt->start_gen > 0) {
+        if (gbl_osql_send_startgen && clnt->start_gen > 0 &&
+                !is_durable(clnt)) {
             osql->replicant_numops++;
             rc = osql_send_startgen(osql->host, osql->rqid, osql->uuid,
                                     clnt->start_gen, nettype, osql->logsb);

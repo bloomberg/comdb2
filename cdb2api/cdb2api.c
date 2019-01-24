@@ -2820,7 +2820,7 @@ static int retry_queries_and_skip(cdb2_hndl_tp *hndl, int num_retry,
 #define PRINT_RETURN(rcode)                                                    \
     do {                                                                       \
         debugprint("%s: cnonce '%s' [%d][%d] "                                 \
-                   "hndl %p returning %d\n",                                           \
+                   "hndl %p returning %d\n",                                   \
                    rcode == 0 ? "" : "XXX ", hndl->cnonce.str,                 \
                    hndl->snapshot_file, hndl->snapshot_offset, hndl, rcode);   \
         return (rcode);                                                        \
@@ -3046,8 +3046,7 @@ static inline void set_last_active(cdb2_hndl_tp *hndl)
         }
     }
 
-    if (count != 1)
-        abort();
+    assert(count == 1);
 }
 
 int cdb2_next_record(cdb2_hndl_tp *hndl)
@@ -4807,6 +4806,7 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
             }
         }
     }
+    assert(have_rc == 1);
 
     if (hndl->temp_trans && !is_sql_read(sql)) {
         /* The rcode is from the commit */
@@ -4890,7 +4890,7 @@ after_callback:
     return rc;
 }
 
-static cdb2_hndl_tp *retrieve_handle(cdb2_hndl_tp *hndl)
+static inline cdb2_hndl_tp *retrieve_handle(cdb2_hndl_tp *hndl)
 {
     if (!hndl->is_hasql || hndl->active) {
         return hndl;
@@ -4951,8 +4951,6 @@ int cdb2_snapshot_file(cdb2_hndl_tp *hndl, int *snapshot_file,
 void cdb2_getinfo(cdb2_hndl_tp *hndl, int *intrans, int *hasql)
 {
     (*intrans) = hndl->in_trans;
-
-
     (*hasql) = hndl->is_hasql;
 }
 
