@@ -3862,9 +3862,16 @@ static inline void clear_snapshot_info(cdb2_hndl_tp *hndl, int line)
     hndl->is_retry = 0;
 }
 
+static int local_only(cdb2_hndl_tp *hndl, const char *set_tok)
+{
+    if (strcasecmp(set_tok, "concurrent") == 0)
+        return 1;
+    return 0;
+}
+
 static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
 {
-    int i, j, k;
+    int i, j, k, local = 0;
 
     if (hndl->in_trans) {
         sprintf(hndl->errstr, "Can't run set query inside transaction.");
@@ -3880,27 +3887,29 @@ static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
 #endif
 
     i = hndl->num_set_commands;
-    if (i > 0) {
-        int skip_len = 4;
-        char *dup_sql = strdup(sql + skip_len);
-        char *rest = NULL;
-        char *set_tok = strtok_r(dup_sql, " ", &rest);
-        /* special case for spversion */
-        if (set_tok && strcasecmp(set_tok, "spversion") == 0) {
-            skip_len += 10;
-            set_tok = strtok_r(rest, " ", &rest);
-        }
-        if (!set_tok) {
-            free(dup_sql);
-            return 0;
-        }
-        int len = strlen(set_tok);
 
+    int skip_len = 4;
+    char *dup_sql = strdup(sql + skip_len);
+    char *rest = NULL;
+    char *set_tok = strtok_r(dup_sql, " ", &rest);
+    /* special case for spversion */
+    if (set_tok && strcasecmp(set_tok, "spversion") == 0) { skip_len += 10;
+        set_tok = strtok_r(rest, " ", &rest);
+    }
+    if (!set_tok) {
+        free(dup_sql);
+        return 0;
+    }
+    int len = strlen(set_tok);
+
+    if (local_only(hndl, set_tok))
+        local = 1;
+    else {
         for (j = 0; j < i; j++) {
             /* If this matches any of the previous commands. */
             if ((strncasecmp(&hndl->commands[j][skip_len], set_tok, len) ==
-                 0) &&
-                (hndl->commands[j][len + skip_len] == ' ')) {
+                        0) &&
+                    (hndl->commands[j][len + skip_len] == ' ')) {
                 free(dup_sql);
                 if (j == (i - 1)) {
                     if (strcmp(hndl->commands[j], sql) == 0) {
@@ -3928,13 +3937,16 @@ static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
                 return 0;
             }
         }
-        free(dup_sql);
     }
-    hndl->num_set_commands++;
-    hndl->commands =
-        realloc(hndl->commands, sizeof(char *) * hndl->num_set_commands);
-    hndl->commands[i] = malloc(strlen(sql) + 1);
-    strcpy(hndl->commands[i], sql);
+    free(dup_sql);
+
+    if (!local) {
+        hndl->num_set_commands++;
+        hndl->commands =
+            realloc(hndl->commands, sizeof(char *) * hndl->num_set_commands);
+        hndl->commands[i] = malloc(strlen(sql) + 1);
+        strcpy(hndl->commands[i], sql);
+    }
 
     process_set_local(hndl, sql);
     return 0;
