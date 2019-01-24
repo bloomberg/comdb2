@@ -4315,7 +4315,7 @@ void receive_coherency_lease(void *ack_handle, void *usr_ptr, char *from_host,
     char *master_host;
     int receive_trace;
     bdb_state_type *bdb_state;
-    colease_t colease;
+    colease_t colease = {0};
 
     assert(usertype == USER_TYPE_COHERENCY_LEASE);
     p_buf = (uint8_t *)dta;

@@ -318,7 +318,7 @@ do_execsql_test where3-5.0 {
       AND LENGTH(bbb.title) > 0
       AND bbb.parent = 4
     ORDER BY bbb.title COLLATE NOCASE ASC;
-} {10 0 0 {SEARCH TABLE aaa USING INDEX $AAA_333_48C951EC (fk=?) (~10 rows)} 16 0 0 {SEARCH TABLE bbb USING INDEX $PRIMARY_14C8659 (id=?) (~1 row)} 34 0 0 {USE TEMP B-TREE FOR ORDER BY}}
+} {10 0 0 {SEARCH TABLE aaa USING INDEX $AAA_333_48C951EC (fk=?) (~10 rows)} 16 0 0 {SEARCH TABLE bbb USING INDEX $PRIMARY_14C8659 (id=?) (~1 row)} 38 0 0 {USE TEMP B-TREE FOR ORDER BY}}
 do_execsql_test where3-5.1 {
   EXPLAIN QUERY PLAN
    SELECT bbb.title AS tag_title 
@@ -327,7 +327,7 @@ do_execsql_test where3-5.1 {
       AND LENGTH(bbb.title) > 0
       AND bbb.parent = 4
     ORDER BY bbb.title COLLATE NOCASE ASC;
-} {10 0 0 {SEARCH TABLE aaa USING INDEX $AAA_333_48C951EC (fk=?) (~10 rows)} 16 0 0 {SEARCH TABLE aaa AS bbb USING INDEX $PRIMARY_561FED3E (id=?) (~1 row)} 34 0 0 {USE TEMP B-TREE FOR ORDER BY}}
+} {10 0 0 {SEARCH TABLE aaa USING INDEX $AAA_333_48C951EC (fk=?) (~10 rows)} 16 0 0 {SEARCH TABLE aaa AS bbb USING INDEX $PRIMARY_561FED3E (id=?) (~1 row)} 38 0 0 {USE TEMP B-TREE FOR ORDER BY}}
 do_execsql_test where3-5.2 {
   EXPLAIN QUERY PLAN
    SELECT bbb.title AS tag_title 
@@ -336,7 +336,7 @@ do_execsql_test where3-5.2 {
       AND LENGTH(bbb.title) > 0
       AND bbb.parent = 4
     ORDER BY bbb.title COLLATE NOCASE ASC;
-} {10 0 0 {SEARCH TABLE aaa USING INDEX $AAA_333_48C951EC (fk=?) (~10 rows)} 16 0 0 {SEARCH TABLE bbb USING INDEX $PRIMARY_14C8659 (id=?) (~1 row)} 34 0 0 {USE TEMP B-TREE FOR ORDER BY}}
+} {10 0 0 {SEARCH TABLE aaa USING INDEX $AAA_333_48C951EC (fk=?) (~10 rows)} 16 0 0 {SEARCH TABLE bbb USING INDEX $PRIMARY_14C8659 (id=?) (~1 row)} 38 0 0 {USE TEMP B-TREE FOR ORDER BY}}
 do_execsql_test where3-5.3 {
   EXPLAIN QUERY PLAN
    SELECT bbb.title AS tag_title 
@@ -345,7 +345,7 @@ do_execsql_test where3-5.3 {
       AND LENGTH(bbb.title) > 0
       AND bbb.parent = 4
     ORDER BY bbb.title COLLATE NOCASE ASC;
-} {10 0 0 {SEARCH TABLE aaa USING INDEX $AAA_333_48C951EC (fk=?) (~10 rows)} 16 0 0 {SEARCH TABLE aaa AS bbb USING INDEX $PRIMARY_561FED3E (id=?) (~1 row)} 34 0 0 {USE TEMP B-TREE FOR ORDER BY}}
+} {10 0 0 {SEARCH TABLE aaa USING INDEX $AAA_333_48C951EC (fk=?) (~10 rows)} 16 0 0 {SEARCH TABLE aaa AS bbb USING INDEX $PRIMARY_561FED3E (id=?) (~1 row)} 38 0 0 {USE TEMP B-TREE FOR ORDER BY}}
 do_test where3-6.setup {
   db eval {
     CREATE TABLE t6w(a, w TEXT);

@@ -1839,3 +1839,4 @@ SP: exec procedure bound(@i, @u, @ll, @ull, @s, @us, @f, @d, @dt, @cstr, @ba, @b
 (thd='tmp499', i=49900)
 (thd='tmp500', i=1)
 (thd='tmp500', i=50000)
+($0='{"emoji":"hello world 😁"}')

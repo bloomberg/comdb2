@@ -1985,6 +1985,7 @@ static int unpack_blob_record(struct convert_record_data *data, void *blb_buf,
                               int dtalen, blob_status_t *blb, int blbix)
 {
     int rc = 0;
+    size_t sz;
     void *unpackbuf = NULL;
     if ((rc = bdb_unpack(data->from->handle, blb_buf, dtalen, NULL, 0,
                          &data->odh, &unpackbuf)) != 0) {
@@ -2006,8 +2007,11 @@ static int unpack_blob_record(struct convert_record_data *data, void *blb_buf,
     }
     if (unpackbuf) {
         blb->blobptrs[blbix] = data->odh.recptr;
-    } else if (data->odh.length) {
-        blb->blobptrs[blbix] = malloc(data->odh.length);
+    } else {
+        sz = data->odh.length;
+        if (sz == 0)
+            sz = 1;
+        blb->blobptrs[blbix] = malloc(sz);
         if (!blb->blobptrs[blbix]) {
             logmsg(LOGMSG_ERROR, "%s:%d failed to malloc blob buffer\n",
                    __func__, __LINE__);
@@ -2103,7 +2107,7 @@ static int reconstruct_blob_records(struct convert_record_data *data,
 
             /* Reconstruct the add. */
             if ((rc = bdb_reconstruct_add(
-                     bdb_state, &rec->lsn, NULL, 0, data->blb_buf,
+                     bdb_state, &rec->lsn, NULL, sizeof(genid_t), data->blb_buf,
                      MAXBLOBLENGTH + ODH_SIZE, &dtalen, &ixlen)) != 0) {
                 logmsg(LOGMSG_ERROR, "%s:%d failed to reconstruct add rc=%d\n",
                        __func__, __LINE__, rc);
@@ -2142,9 +2146,9 @@ static int reconstruct_blob_records(struct convert_record_data *data,
             }
 
             /* Reconstruct the delete. */
-            if ((rc = bdb_reconstruct_delete(bdb_state, &rec->lsn, &page,
-                                             &index, NULL, 0, data->blb_buf,
-                                             dtalen, &dtalen)) != 0) {
+            if ((rc = bdb_reconstruct_delete(
+                     bdb_state, &rec->lsn, &page, &index, NULL, sizeof(genid_t),
+                     data->blb_buf, dtalen, &dtalen)) != 0) {
                 logmsg(LOGMSG_ERROR,
                        "%s:%d failed to reconstruct delete rc=%d\n", __func__,
                        __LINE__, rc);
@@ -2334,8 +2338,9 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
     }
 
     /* Reconstruct the add. */
-    if ((rc = bdb_reconstruct_add(bdb_state, &rec->lsn, NULL, 0, data->dta_buf,
-                                  dtalen, &dtalen, &ixlen)) != 0) {
+    if ((rc = bdb_reconstruct_add(bdb_state, &rec->lsn, NULL, sizeof(genid_t),
+                                  data->dta_buf, dtalen, &dtalen, &ixlen)) !=
+        0) {
         logmsg(LOGMSG_ERROR, "%s:%d failed to reconstruct add rc=%d\n",
                __func__, __LINE__, rc);
         goto done;
@@ -2537,7 +2542,8 @@ static int live_sc_redo_delete(struct convert_record_data *data, DB_LOGC *logc,
 
     /* Reconstruct the delete. */
     if ((rc = bdb_reconstruct_delete(bdb_state, &rec->lsn, &page, &index, NULL,
-                                     0, data->dta_buf, dtalen, &dtalen)) != 0) {
+                                     sizeof(genid_t), data->dta_buf, dtalen,
+                                     &dtalen)) != 0) {
         logmsg(LOGMSG_ERROR, "%s:%d failed to reconstruct delete rc=%d\n",
                __func__, __LINE__, rc);
         goto done;
@@ -2723,7 +2729,7 @@ static int live_sc_redo_update(struct convert_record_data *data, DB_LOGC *logc,
 
     if (!data->s->sc_convert_done[rec->dtastripe] &&
         is_genid_right_of_stripe_pointer(data->to->handle, genid,
-                                         data->sc_genids[rec->dtastripe])) {
+                                         data->sc_genids)) {
         /* if the newgenid is to the right of the sc cursor, we only need to
          * delete the old record */
         rc = del_new_record(&data->iq, data->trans, oldgenid, -1ULL,
@@ -2801,7 +2807,7 @@ static int live_sc_redo_logical_rec(struct convert_record_data *data,
     }
     if (!data->s->sc_convert_done[rec->dtastripe] &&
         is_genid_right_of_stripe_pointer(data->to->handle, rec->genid,
-                                         data->sc_genids[rec->dtastripe])) {
+                                         data->sc_genids)) {
         /* skip those still to the right of sc cursor */
         return 0;
     }

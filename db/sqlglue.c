@@ -111,7 +111,6 @@ struct temptable {
     struct temp_cursor *cursor;
     struct temp_table *tbl;
     int flags;
-    char *name;
     int nRef;
     pthread_mutex_t *lk;
 #ifndef NDEBUG
@@ -3206,8 +3205,6 @@ static int releaseTempTableRef(
             }
         }
         /* pTbl->tbl = NULL; */
-        free(pTbl->name);
-        /* pTbl->name = NULL; */
         free(pTbl);
         /* Table has been freed, remove from hash table. */
         bRemove = 1;
@@ -4351,9 +4348,9 @@ i64 sqlite3BtreeIntegerKey(BtCursor *pCur)
             struct sql_thread *thd = pCur->thd;
             if (pCur->tblpos == thd->rootpage_nentries) {
                 assert(pCur->keyDdl);
-                size = pCur->nDataDdl;
-            }
-            size = get_sqlite_entry_size(thd, pCur->tblpos);
+                size = pCur->keyDdl;
+            } else
+                size = get_sqlite_entry_size(thd, pCur->tblpos);
         }
     } else if (pCur->ixnum == -1) {
         if (pCur->bt->is_remote || pCur->db->dtastripe)
@@ -5084,22 +5081,6 @@ int sqlite3BtreeGetAutoVacuum(Btree *pBt)
     return rc;
 }
 
-static char *get_temp_dbname(Btree *pBt)
-{
-    char *s;
-    unsigned long long genid;
-    size_t s_sz = strlen(thedb->basedir) + 80;
-    genid = get_id(thedb->bdb_env);
-    s = malloc(s_sz);
-    if (!s) {
-        logmsg(LOGMSG_ERROR, "get_temp_dbname: out of memory\n");
-        return NULL;
-    }
-    snprintf(s, s_sz, "%s/%s.tmpdbs/_temp_%lld.db", thedb->basedir,
-             thedb->envname, genid);
-    return s;
-}
-
 /*
 ** Temp tables were not designed to be shareable.
 ** Use this lock for synchoronizing access to shared
@@ -5190,7 +5171,6 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
             goto done;
         }
         pNewTbl->tbl = tbl;
-        pNewTbl->name = get_temp_dbname(pBt);
         pNewTbl->lk = NULL;
         pNewTbl->flags = flags;
     } else if (!tmptbl_clone) {
@@ -5206,7 +5186,6 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
             goto done;
         }
         pNewTbl->tbl = tbl;
-        pNewTbl->name = get_temp_dbname(pBt);
         pNewTbl->lk = tmptbl_lk;
         pNewTbl->flags = flags;
     }
@@ -6393,7 +6372,6 @@ skip:
                 rc = SQLITE_INTERNAL;
                 goto done;
             }
-            free(pCur->sampled_idx->name);
             free(pCur->sampled_idx);
         } else if (pCur->bt && pCur->bt->is_temporary) {
             if( pCur->cursor_close ){
@@ -6403,10 +6381,6 @@ skip:
                     rc = SQLITE_INTERNAL;
                     goto done;
                 }
-            }
-            if( pCur->tmptable ){
-                free(pCur->tmptable->name);
-                pCur->tmptable->name = NULL;
             }
             free(pCur->tmptable);
             pCur->tmptable = NULL;

@@ -1351,15 +1351,14 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
         *errout = OP_FAILED_INTERNAL;
         return ERR_INTERNAL;
     }
-    unsigned long long sc_genid = 0ULL;
+    unsigned long long genid = 0ULL;
     unsigned long long cached_index_genid = 0ULL;
+    unsigned long long ins_keys = 0ULL;
     while (rc == 0) {
         cte *ctrq = (cte *)bdb_temp_table_data(cur);
         struct forward_ct *curop = NULL;
         int addrrn = -1, ixnum = -1;
         int ondisk_size = 0;
-        unsigned long long genid = 0LL;
-        unsigned long long ins_keys = 0ULL;
         /* do something */
         if (ctrq == NULL) {
             if (iq->debug)
@@ -1373,6 +1372,12 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
         /*    fprintf(stderr, "%d %d %s\n", ctrq->ct_type,
          * ctrq->ctop.fwdct.optype,ctrq->ctop.fwdct.usedb->tablename);*/
         curop = &ctrq->ctop.fwdct;
+
+        /* Only do once per genid --
+         * (Same as LIVE_SC_DELAYED_KEY_ADDS in delayed_key_adds) */
+        if (genid && genid != curop->genid) {
+            verify_schema_change_constraint(iq, trans, genid, od_dta, ins_keys);
+        }
 
         iq->usedb = curop->usedb;
         addrrn = curop->rrn;
@@ -1444,12 +1449,6 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                 *errout = OP_FAILED_INTERNAL;
                 close_constraint_table_cursor(cur);
                 return ERR_INTERNAL;
-            }
-
-            if (sc_genid != genid) {
-                verify_schema_change_constraint(iq, trans, genid, od_dta,
-                                                ins_keys);
-                sc_genid = genid;
             }
 
             for (cidx = 0; cidx < nct; cidx++) {
@@ -1641,11 +1640,15 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
         /* get next record from table */
         rc = bdb_temp_table_next(thedb->bdb_env, cur, &err);
     }
-    free_cached_delayed_indexes(iq);
     close_constraint_table_cursor(cur);
+
     if (rc == IX_EMPTY || rc == IX_PASTEOF) {
+        verify_schema_change_constraint(iq, trans, genid, od_dta, ins_keys);
+        free_cached_delayed_indexes(iq);
         return 0;
     }
+
+    free_cached_delayed_indexes(iq);
     if (iq->debug)
         reqprintf(iq, "VERKYCNSTRT ERROR READING ADD TABLE");
     reqerrstr(iq, COMDB2_CSTRT_RC_INVL_TBL,

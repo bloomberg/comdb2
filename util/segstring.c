@@ -120,6 +120,37 @@ char *segtok(char *data, int ldata, int *offp, int *len)
     return &data[start];
 }
 
+/*EXTRACT TOKENS FROM LINE. PRESERVES WHITE SPACE*/
+/*TERMINATES AT NEWLINE*/
+char *segtok2(char *data, int ldata, int *offp, int *len)
+{
+    int start, off = *offp;
+    if (off >= ldata || data[off] == 0) {
+        *len = 0;
+        return data;
+    }
+    start = off;
+    while (off < ldata) {
+        switch (data[off]) {
+        case 0:
+        case '\n':
+        case '\r': {
+            *offp = off;
+            *len = off - start;
+            if (*len == 0)
+                return data;
+            return &data[start];
+        }
+        }
+        off++;
+    }
+    *offp = ldata;
+    *len = ldata - start;
+    if (*len == 0)
+        return data;
+    return &data[start];
+}
+
 /*SAME AS ABOVE EXCEPT TERMINATES ON ADDITIONAL TOKENS.*/
 char *segtokx(char *data, int ldata, int *offp, int *len, char *moresep)
 {

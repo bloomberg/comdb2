@@ -401,7 +401,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         return rc;
     }
 
-    db->sc_to = newdb = create_db_from_schema(thedb, s, db->dbnum, foundix, -1);
+    newdb = create_db_from_schema(thedb, s, db->dbnum, foundix, -1);
 printf("AZ: create_db_from_schema old dbnum=%d newdbnum=%d\n", db->dbnum, newdb->dbnum);
 
     if (newdb == NULL) {

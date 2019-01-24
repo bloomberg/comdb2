@@ -51,7 +51,6 @@
 #include <poll.h>
 #include <str0.h>
 #include <epochlib.h>
-#include <unistd.h>
 #include <plhash.h>
 #include <assert.h>
 
@@ -64,7 +63,6 @@
 #include "osqlrepository.h"
 #include "comdb2uuid.h"
 #include "bpfunc.h"
-
 #include "logmsg.h"
 
 #define DEBUG_REORDER 0
