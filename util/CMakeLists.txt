@@ -31,6 +31,7 @@ set(src
   pool.c
   pooltest.c
   portmuxusr.c
+  pthread_wrap.c
   quantize.c
   queue.c
   queuetest.c

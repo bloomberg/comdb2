@@ -33,27 +33,38 @@
 #undef Pthread_rwlock_timedwrlock
 #undef Pthread_rwlock_unlock
 
-#define Pthread_mutex_lock(a)       WRAP_PTHREAD(dbg_pthread_mutex_lock, a, __FILE__, __func__, __LINE__)
-#define Pthread_mutex_trylock(a)    WRAP_PTHREAD(dbg_pthread_mutex_trylock, a, __FILE__, __func__, __LINE__)
-#define Pthread_mutex_unlock(a)     WRAP_PTHREAD(dbg_pthread_mutex_unlock, a, __FILE__, __func__, __LINE__)
-#define Pthread_rwlock_rdlock(a)    WRAP_PTHREAD(dbg_pthread_rwlock_rdlock, a, __FILE__, __func__, __LINE__)
-#define Pthread_rwlock_wrlock(a)    WRAP_PTHREAD(dbg_pthread_rwlock_wrlock, a, __FILE__, __func__, __LINE__)
-#define Pthread_rwlock_unlock(a)    WRAP_PTHREAD(dbg_pthread_rwlock_unlock, a, __FILE__, __func__, __LINE__)
+#define Pthread_mutex_lock(a)                                                  \
+    WRAP_PTHREAD(dbg_pthread_mutex_lock, a, __FILE__, __func__, __LINE__)
 
-#define Pthread_mutex_timedlock(a, b) \
-    WRAP_PTHREAD(dbg_pthread_mutex_timedlock, a, b, __FILE__, __func__, __LINE__)
+#define Pthread_mutex_unlock(a)                                                \
+    WRAP_PTHREAD(dbg_pthread_mutex_unlock, a, __FILE__, __func__, __LINE__)
 
-#define Pthread_rwlock_tryrdlock(a) \
-    WRAP_PTHREAD(dbg_pthread_rwlock_tryrdlock, a, __FILE__, __func__, __LINE__)
+#define Pthread_rwlock_rdlock(a)                                               \
+    WRAP_PTHREAD(dbg_pthread_rwlock_rdlock, a, __FILE__, __func__, __LINE__)
 
-#define Pthread_rwlock_trywrlock(a) \
-    WRAP_PTHREAD(dbg_pthread_rwlock_trywrlock, a, __FILE__, __func__, __LINE__)
+#define Pthread_rwlock_wrlock(a)                                               \
+    WRAP_PTHREAD(dbg_pthread_rwlock_wrlock, a, __FILE__, __func__, __LINE__)
 
-#define Pthread_rwlock_timedrdlock(a, b) \
-    WRAP_PTHREAD(dbg_pthread_rwlock_timedrdlock, a, b, __FILE__, __func__, __LINE__)
+#define Pthread_rwlock_unlock(a)                                               \
+    WRAP_PTHREAD(dbg_pthread_rwlock_unlock, a, __FILE__, __func__, __LINE__)
 
-#define Pthread_rwlock_timedwrlock(a, b) \
-    WRAP_PTHREAD(dbg_pthread_rwlock_timedwrlock, a, b, __FILE__, __func__, __LINE__)
+#define Pthread_mutex_trylock(a)                                               \
+    dbg_pthread_mutex_trylock(a, __FILE__, __func__, __LINE__)
+
+#define Pthread_mutex_timedlock(a, b)                                          \
+    dbg_pthread_mutex_timedlock(a, b, __FILE__, __func__, __LINE__)
+
+#define Pthread_rwlock_tryrdlock(a)                                            \
+    dbg_pthread_rwlock_tryrdlock(a, __FILE__, __func__, __LINE__)
+
+#define Pthread_rwlock_trywrlock(a)                                            \
+    dbg_pthread_rwlock_trywrlock(a, __FILE__, __func__, __LINE__)
+
+#define Pthread_rwlock_timedrdlock(a, b)                                       \
+    dbg_pthread_rwlock_timedrdlock(a, b, __FILE__, __func__, __LINE__)
+
+#define Pthread_rwlock_timedwrlock(a, b)                                       \
+    dbg_pthread_rwlock_timedwrlock(a, b, __FILE__, __func__, __LINE__)
 
 #endif /* DBG_LOCKS_H */
 #endif /* defined(DBG_PTHREAD_LOCKS) */

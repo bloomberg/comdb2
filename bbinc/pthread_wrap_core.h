@@ -59,4 +59,11 @@
         }                                                                      \
     } while (0)
 
+int wrap_pthread_mutex_trylock(pthread_mutex_t *, const char *, const char *, int);
+int wrap_pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *, const char *, const char *, int);
+int wrap_pthread_rwlock_tryrdlock(pthread_rwlock_t *, const char *, const char *, int);
+int wrap_pthread_rwlock_trywrlock(pthread_rwlock_t *, const char *, const char *, int);
+int wrap_pthread_rwlock_timedrdlock(pthread_rwlock_t *, const struct timespec *, const char *, const char *, int);
+int wrap_pthread_rwlock_timedwrlock(pthread_rwlock_t *, const struct timespec *, const char *, const char *, int);
+
 #endif /* _INCLUDED_PTHREAD_WRAP_CORE_H */
