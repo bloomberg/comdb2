@@ -190,7 +190,8 @@ static int verify_blobsizes_callback(void *parm, void *dta, int blobsizes[16],
     for (i = 0; i < db->schema->nmembers; i++) {
         s = db->schema;
         if (s->member[i].type == SERVER_BLOB ||
-            s->member[i].type == SERVER_VUTF8) {
+            s->member[i].type == SERVER_VUTF8 ||
+            s->member[i].type == SERVER_BLOB2) {
             char *p = ((char *)dta) + s->member[i].offset;
             if (stype_is_null(p)) {
                 blobsizes[blobix] = -1;
@@ -204,7 +205,8 @@ static int verify_blobsizes_callback(void *parm, void *dta, int blobsizes[16],
                  * it should
                  * verify that the blob DOESN'T exist */
                 blobsizes[blobix] = ntohl(sz);
-                if (s->member[i].type == SERVER_VUTF8) {
+                if (s->member[i].type == SERVER_VUTF8 ||
+                    s->member[i].type == SERVER_BLOB2) {
                     if (blobsizes[blobix] <= s->member[i].len - 5)
                         blobsizes[blobix] = -2;
                 }

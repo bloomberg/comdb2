@@ -2217,6 +2217,9 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
     while (query) {
         sql_query = query->sqlquery;
+#if 0
+        logmsg(LOGMSG_DEBUG, "Query is %s\n", sql_query->sql_query);
+#endif
         APPDATA->query = query;
         APPDATA->sqlquery = sql_query;
         clnt.sql = sql_query->sql_query;

@@ -145,7 +145,7 @@ File | Description
 `$TESTDIR/logs/$DBNAME.db      `         | If running on local machine (`$CLUSTER` isn't set), the output from the database
 `$TESTDIR/logs/$DBNAME.testcase   `      | Output from the runit script
 `$TESTDIR/logs/$DBNAME.$MACHINE.copy   ` | Output from copying database to `$MACHINE` (when $CLUSTER is set) This is usually empty unless something went wrong.
-`$TESTDIR/logs/$DBNAME.deb1.db   `       | If running clustered (`$CLUSTER` is set), the output from the database on `$MACHINE`
+`$TESTDIR/logs/$DBNAME.$MACHINE.db   `       | If running clustered (`$CLUSTER` is set), the output from the database on `$MACHINE`
 
 Running `make clean` in the 'tests' directory will remove all logs, all
 databases, and all files produced by the running tests. It will NOT remove
@@ -343,7 +343,7 @@ of comdb2 servers in those containers.
     hostname node1
     ```
 
-4.  At this time you might want to make copies of this container:
+4.  At this time you will want to make copies of this container:
     ```sh
       lxc-copy -n node1 -N node2
       lxc-copy -n node1 -N node3
@@ -361,17 +361,24 @@ of comdb2 servers in those containers.
     (so `node2` and `node3` respectively)
 
     Add `node1`, `node2` and `node3` to `/etc/hosts` all nodes as well as to containers' host.
-    lxc-start all the containers, and make sure you can ssh from any one to the 
-    others.
 
-5.  To run tests in clusters residing in the above containers, launch the tests from the host machine: 
+5.  lxc-start all the containers, and make sure you can ssh into each of them from your host,
+    as well all other containers, ex: 
+    ```sh
+      for n in node1 node2 node3 ; do 
+          lxc-start -n $n
+          ssh $n 'echo $HOSTNAME'
+      done
+    ```
+
+6.  To run tests in clusters residing in the above containers, launch the tests from the host machine: 
     ```sh
       export CLUSTER="node1 node2 node"
       make test1
     ```
     or
     ```sh
-      make -k -j 16
+      make -k -j 16 CLUSTER="node1 node2 node"
     ```
 
 ## Running tests on AWS EC2 clusters
