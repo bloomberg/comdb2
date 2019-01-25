@@ -162,6 +162,7 @@ extern int gbl_disable_sql_dlmalloc;
 
 extern int active_appsock_conns;
 int gbl_check_access_controls;
+int gbl_sql_prepare_only;
 
 struct thdpool *gbl_sqlengine_thdpool = NULL;
 
@@ -417,6 +418,9 @@ const intv_t *column_interval(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
 
 int next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 {
+    if (gbl_sql_prepare_only)
+        return SQLITE_DONE;
+
     if (clnt && clnt->plugin.next_row)
         return clnt->plugin.next_row(clnt, stmt);
 

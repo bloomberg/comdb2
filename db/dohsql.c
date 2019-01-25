@@ -34,6 +34,8 @@ static int gbl_dohsql_que_free_highwm = 10;
 static int gbl_dohsql_que_free_lowwm = 5;
 static int gbl_dohsql_max_queued_kb_lowwm = 1000; /* 1 GB */
 
+extern int gbl_sql_prepare_only;
+
 struct col {
     int type;
     char *name;
@@ -561,7 +563,7 @@ static int init_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     dohsql_t *conns = clnt->conns;
     int rc;
 
-    rc = sqlite3_step(stmt);
+    rc = gbl_sql_prepare_only ? SQLITE_DONE : sqlite3_step(stmt);
 
     if (gbl_dohsql_verbose) {
         logmsg(LOGMSG_DEBUG, "%lx %s: sqlite3_step rc %d\n", pthread_self(),
@@ -678,7 +680,7 @@ wait_for_others:
 
     /* no row in others (yet) */
     if (conns->conns[0].rc != SQLITE_DONE) {
-        rc = sqlite3_step(stmt);
+        rc = gbl_sql_prepare_only ? SQLITE_DONE : sqlite3_step(stmt);
 
         if (gbl_dohsql_verbose)
             logmsg(LOGMSG_DEBUG, "%s: rc =%d\n", __func__, rc);
