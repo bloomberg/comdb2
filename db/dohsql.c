@@ -224,8 +224,9 @@ static void sqlengine_work_shard(struct thdpool *pool, void *work,
 
 static int inner_type(sqlite3_stmt *stmt, int col)
 {
+    int type;
     if (sqlite3_hasNColumns(stmt, col)) {
-        int type = sqlite3_column_type(stmt, col);
+        type = sqlite3_column_type(stmt, col);
         if (type == SQLITE_NULL) {
             type = typestr_to_type(sqlite3_column_decltype(stmt, col));
         }
