@@ -179,9 +179,21 @@ int add_snapisol_logging(bdb_state_type *bdb_state, tran_type *tran)
         !gbl_rowlocks && !gbl_is_physical_replicant) {
         if (bdb_state->logical_live_sc) {
             if (tran->parent)
-                tran->parent->force_logical_commit = 1;
-            else
-                tran->force_logical_commit = 1;
+                tran = tran->parent;
+            tran->force_logical_commit = 1;
+            if (tran->dirty_table_hash == NULL) {
+                tran->dirty_table_hash =
+                    hash_init_strptr(offsetof(bdb_state_type, name));
+                if (tran->dirty_table_hash == NULL) {
+                    logmsg(LOGMSG_FATAL,
+                           "%s: failed to init dirty table hash\n", __func__);
+                    abort();
+                }
+                if (hash_find_readonly(tran->dirty_table_hash,
+                                       &(bdb_state->name)) == NULL) {
+                    hash_add(tran->dirty_table_hash, bdb_state);
+                }
+            }
         }
         return 1;
     } else {

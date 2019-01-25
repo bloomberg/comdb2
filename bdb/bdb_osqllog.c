@@ -1615,6 +1615,7 @@ bdb_osql_log_t *parse_log_for_shadows_int(bdb_state_type *bdb_state,
     DBT logdta;
     DB_LSN lsn;
     u_int32_t rectype;
+    u_int32_t txnid = 0;
     bdb_osql_log_t *undolog = NULL;
     llog_undo_del_dta_args *del_dta = NULL;
     llog_undo_del_dta_lk_args *del_dta_lk = NULL;
@@ -1681,6 +1682,7 @@ bdb_osql_log_t *parse_log_for_shadows_int(bdb_state_type *bdb_state,
             free(commit);
             return NULL;
         }
+        txnid = commit->txnid->txnid;
         free(commit);
         commit = NULL;
         goto next;
@@ -2120,6 +2122,8 @@ done:
         return NULL;
     }
 
+    if (undolog)
+        undolog->txnid = txnid;
     return undolog;
 }
 
@@ -4473,6 +4477,11 @@ again:
             LOGCOPY_32(&rectype, pCur->data.data);
         else
             rectype = 0;
+        if (pCur->maxLsn.file > 0 &&
+            log_compare(&pCur->curLsn, &pCur->maxLsn) > 0) {
+            /* traverse upto maxLsn */
+            return 0;
+        }
     } while (!pCur->hitLast && !is_commit(rectype));
 
     if (!pCur->hitLast) {
@@ -4540,6 +4549,25 @@ int bdb_llog_cursor_next(bdb_llog_cursor *pCur)
     } else {
         pCur->getflags = DB_NEXT;
     }
+
+    return bdb_llog_cursor_move(pCur);
+}
+
+int bdb_llog_cursor_find(bdb_llog_cursor *pCur, DB_LSN *lsn)
+{
+    int rc = 0;
+    if (!pCur->openCursor) {
+        rc = bdb_llog_cursor_open(pCur);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s:%d failed to open llog cursor rc=%d\n",
+                   __func__, __LINE__, rc);
+            return rc;
+        }
+    }
+
+    pCur->minLsn = *lsn;
+    pCur->curLsn = pCur->minLsn;
+    pCur->getflags = DB_SET;
 
     return bdb_llog_cursor_move(pCur);
 }
