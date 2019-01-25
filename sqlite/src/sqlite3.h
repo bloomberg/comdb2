@@ -4694,6 +4694,7 @@ SQLITE_API int sqlite3_column_type(sqlite3_stmt*, int iCol);
 SQLITE_API const dttz_t *sqlite3_column_datetime(sqlite3_stmt *pStmt, int i);
 SQLITE_API const intv_t *sqlite3_column_interval(sqlite3_stmt *pStmt, int i, int type);
 
+SQLITE_API int sqlite3_hasResultSet(sqlite3_stmt*);
 SQLITE_API int sqlite3_hasNColumns(sqlite3_stmt*, int iCol);
 SQLITE_API int sqlite3_isColumnNullType(sqlite3_stmt*, int iCol);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
