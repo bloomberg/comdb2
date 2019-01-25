@@ -3638,10 +3638,6 @@ static int init(int argc, char **argv)
 
     set_datetime_dir();
 
-    if(!gbl_exit) {
-        Pthread_key_create(&query_info_key, NULL);
-    }
-
     /* get/set the table names from llmeta */
     if (gbl_create_mode) {
         if (!gbl_legacy_defaults)
