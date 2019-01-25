@@ -1527,7 +1527,7 @@ int main(int argc, char *argv[])
         {"minretries", required_argument, NULL, 'R'},
         {0, 0, 0, 0}};
 
-    while ((c = bb_getopt_long(argc, argv, (char *) "hsvr:p:c:f:g:t:n:R:P:",
+    while ((c = bb_getopt_long(argc, argv, (char *)"hsvr:p:c:f:g:t:n:R:P:",
                                long_options, &opt_indx)) != -1) {
         switch (c) {
         case 0:
