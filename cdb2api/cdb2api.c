@@ -4741,7 +4741,10 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
 
     hndl->temp_trans = 0;
 
-    if (hndl->is_hasql && !hndl->in_trans) {
+    if (!hndl->is_hasql)
+        hndl->last_active = 1;
+
+    else if (!hndl->in_trans) {
         hndl->active = 1;
         hndl->last_active = 0;
         for (i = 0; i < hndl->num_children; i++) {
