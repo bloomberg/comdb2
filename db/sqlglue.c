@@ -9565,8 +9565,11 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
         if (rc == SQLITE_SCHEMA || rc == SQLITE_COMDB2SCHEMA) {
             logmsg(LOGMSG_ERROR, "%s: failing with SQLITE_COMDB2SCHEMA\n",
                    __func__);
-            if (vdbe)
+            if (vdbe) {
+                sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db));
                 sqlite3VdbeError(vdbe, "Database was schema changed");
+                sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
+            }
             return SQLITE_COMDB2SCHEMA;
         }
 
@@ -9574,14 +9577,20 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
             logmsg(LOGMSG_ERROR, 
                    "%s: fail to open a new curtran, rc=%d, return "
                    "changenode\n", __func__, rc);
-            if (vdbe)
+            if (vdbe) {
+                sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db));
                 sqlite3VdbeError(vdbe, "New master under snapshot");
+                sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
+            }
             return SQLITE_CLIENT_CHANGENODE;
         } else {
             logmsg(LOGMSG_ERROR, "%s: fail to open a new curtran, rc=%d\n",
                    __func__, rc);
-            if (vdbe)
+            if (vdbe) {
+                sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db));
                 sqlite3VdbeError(vdbe, "Failed to reaquire locks on deadlock");
+                sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
+            }
             return ERR_RECOVER_DEADLOCK;
         }
     }
