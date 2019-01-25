@@ -3258,6 +3258,7 @@ static int init(int argc, char **argv)
     init_metrics();
 
     Pthread_key_create(&comdb2_open_key, NULL);
+    Pthread_key_create(&query_info_key, NULL);
 
 #ifndef BERKDB_46
     Pthread_key_create(&DBG_FREE_CURSOR, free);
@@ -3733,8 +3734,6 @@ static int init(int argc, char **argv)
 
         fix_lrl_ixlen(); /* set lrl, ix lengths: ignore lrl file, use info from
                             schema */
-
-        Pthread_key_create(&query_info_key, NULL);
     }
 
     /* historical requests */
