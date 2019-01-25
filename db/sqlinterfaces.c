@@ -4728,6 +4728,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->has_sqliterow = 0;
     clnt->verify_indexes = 0;
     clnt->schema_mems = NULL;
+    clnt->nsteps = 0;
     clnt->init_gen = 0;
     for (int i = 0; i < clnt->ncontext; i++) {
         free(clnt->context[i]);
