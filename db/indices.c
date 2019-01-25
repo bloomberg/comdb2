@@ -1397,6 +1397,9 @@ logmsg(LOGMSG_ERROR, "AZ: pdt ix_addk genid=%llx rc %d\n", bdb_genid_to_host_ord
         }
         else if (ditk->type == CTK_DEL) {
             int delrrn = 0;
+            char *tblname = iq->usedb->tablename;
+            struct dbtable *tbl = get_dbtable_by_name(tblname);
+            if (tbl != iq->usedb) abort();
             rc = ix_delk(iq, trans, ditk->ixkey, ditk->ixnum, delrrn, ditk->genid, ix_isnullk(iq->usedb, ditk->ixkey, ditk->ixnum));
 logmsg(LOGMSG_ERROR, "AZ: pdt ix_delk ixnum=%d, rrn=%d, genid=%llx rc %d\n", ditk->ixnum, delrrn, bdb_genid_to_host_order(ditk->genid), rc);
             if (iq->debug) {

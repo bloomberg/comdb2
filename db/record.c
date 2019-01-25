@@ -467,7 +467,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
      * data. The keys, however, are also added to the deferred
      * temporary table to enable cascading updates, if needed.
      */
-    if (!(flags & RECFLAGS_NO_CONSTRAINTS)) /* if no constraints */
+    if (!(flags & RECFLAGS_NO_CONSTRAINTS) && !gbl_reorder_idx_writes) /* if NOT no constraints */
     {
         if (!is_event_from_sc(flags)) {
             /* enqueue the add of the key for constaint checking purposes */
@@ -486,8 +486,8 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
              */
         }
     }
-
-    if ((flags & RECFLAGS_NO_CONSTRAINTS) /* if no constraints */
+    else if ((flags & RECFLAGS_NO_CONSTRAINTS) /* if no constraints */
+        || gbl_reorder_idx_writes
         || (rec_flags & OSQL_IGNORE_FAILURE)) {
         retrc = add_record_indices(iq, trans, blobs, maxblobs, opfailcode,
                                    ixfailnum, rrn, genid, vgenid, ins_keys,

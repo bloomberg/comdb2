@@ -75,10 +75,11 @@ assert_schema()
 
 do_verify()
 {
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
+    tbl=$1
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('$tbl')" &> verify.out
 
     if ! grep succeeded verify.out > /dev/null ; then
-        failexit "Verify"
+        failexit "verify $tbl failed"
     fi
 }
 
@@ -240,18 +241,26 @@ fi
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t2 (i int primary key)"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t2 values(1)"
+do_verify t2
+
+echo insert 1 will fail because dup
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t2 values(1)" &> dupins1.out
 echo "[insert into t2 values(1)] failed with rc 299 add key constraint duplicate key 'COMDB2_PK' on table 't2' index 0" > dupins1.exp
 if ! diff  dupins1.out dupins1.exp; then
     failexit "Expected failure when inserting duplicate record"
 fi
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t2 values(2)" &> dupins2.out
+
+echo update 2 to 1 will fail
 cdb2sql ${CDB2_OPTIONS} $dbnm default "update t2 set i=1 where i=2" &> dupupd2.out
 echo "[update t2 set i=1 where i=2] failed with rc 299 add key constraint duplicate key 'COMDB2_PK' on table 't2' index 0" > dupupd2.exp
 if ! diff  dupupd2.out dupupd2.exp; then
     failexit "Expected failure when updating with duplicate record"
 fi
+do_verify t2
 
+
+echo this one will be an empty transaction -- no ins/del ops are sent to master
 echo "
 set transaction read committed
 begin
@@ -260,7 +269,6 @@ delete from t2 where i = 100
 insert into t2 values(100)
 delete from t2 where i = 100
 commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> dupins3.out
-echo this one will be an empty transaction -- no ins/del ops are sent to master
 echo "[set transaction read committed] rc 0
 [begin] rc 0
 [insert into t2 values(100)] rc 0
@@ -271,6 +279,7 @@ echo "[set transaction read committed] rc 0
 if ! diff  dupins3.out dupins3.exp; then
     failexit "Expected no failure when inserting duplicate record"
 fi
+do_verify t2
 
 
 echo 'value 1 is already in, but the insert happens defered, the delete happens inline, so no dup'
@@ -287,8 +296,8 @@ if ! diff  dupins4.out dupins4.exp; then
 fi
 
 
-
 assertcnt t2 2
+do_verify t2
 
 echo "begin
 select count(*) from t1
@@ -419,20 +428,20 @@ test_t1() {
 	let NEWNUMREC=$((2*INITNUMREC))
 	insert_records 1 $NEWNUMREC
 	assertcnt t1 $NEWNUMREC
-    do_verify
+    do_verify t1
 
 	update_records 1 $NEWNUMREC
 	assertcnt t1 $NEWNUMREC
-    do_verify
+    do_verify t1
 
 	delete_records $((INITNUMREC+1)) $NEWNUMREC
 	assertcnt t1 $INITNUMREC
-    do_verify
+    do_verify t1
 
 
 	echo "Now call task that uses cdb2api to ins/upd/del"
 	${TESTSBUILDDIR}/cdb2api_caller $dbnm > cdb2api_caller.out
-    do_verify
+    do_verify t1
 
 	cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select * from t1" > select_all.out
 }

@@ -2,6 +2,8 @@
 bash -n "$0" | exit 1
 
 DB="$1"
+cdb2sql -s ${CDB2_OPTIONS} $DB default "exec procedure sys.cmd.send('ndebg 500')"
+cdb2sql -s ${CDB2_OPTIONS} $DB default "exec procedure sys.cmd.send('debg 500')"
 cdb2sql -s ${CDB2_OPTIONS} $DB default "drop table t" &> /dev/null
 cdb2sql ${CDB2_OPTIONS} $DB default 'create table t {
 schema
