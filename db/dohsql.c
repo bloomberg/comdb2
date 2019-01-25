@@ -568,10 +568,10 @@ static int init_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     dohsql_t *conns = clnt->conns;
     int rc;
 
-    rc = gbl_sql_prepare_only ? SQLITE_DONE : sqlite3_step(stmt);
+    rc = sqlite3_maybe_step(stmt);
 
     if (gbl_dohsql_verbose) {
-        logmsg(LOGMSG_DEBUG, "%lx %s: sqlite3_step rc %d\n", pthread_self(),
+        logmsg(LOGMSG_DEBUG, "%lx %s: sqlite3_maybe_step rc %d\n", pthread_self(),
                __func__, rc);
         if (conns->limitRegs[ILIMIT_SAVED_MEM_IDX] > 0)
             logmsg(LOGMSG_DEBUG,
@@ -685,7 +685,7 @@ wait_for_others:
 
     /* no row in others (yet) */
     if (conns->conns[0].rc != SQLITE_DONE) {
-        rc = gbl_sql_prepare_only ? SQLITE_DONE : sqlite3_step(stmt);
+        rc = sqlite3_maybe_step(clnt, stmt);
 
         if (gbl_dohsql_verbose)
             logmsg(LOGMSG_DEBUG, "%s: rc =%d\n", __func__, rc);

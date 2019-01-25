@@ -655,6 +655,7 @@ struct sqlclntstate {
     int has_sqliterow;
     int verify_indexes;
     void *schema_mems;
+    int64_t nsteps;
 
     /* indexes on expressions */
     uint8_t **idxInsert;
@@ -1073,6 +1074,7 @@ int column_count(struct sqlclntstate *, sqlite3_stmt *);
 int sqlite_error(struct sqlclntstate *, sqlite3_stmt *, const char **errstr);
 int next_row(struct sqlclntstate *, sqlite3_stmt *);
 int sqlite_stmt_error(sqlite3_stmt *stmt, const char **errstr);
+int sqlite3_maybe_step(struct sqlclntstate *, sqlite3_stmt *);
 
 #define SQLITE_PROTO_API(ret, type)                                            \
     ret column_##type(struct sqlclntstate *, sqlite3_stmt *, int)

@@ -418,13 +418,10 @@ const intv_t *column_interval(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
 
 int next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 {
-    if (gbl_sql_prepare_only)
-        return SQLITE_DONE;
-
     if (clnt && clnt->plugin.next_row)
         return clnt->plugin.next_row(clnt, stmt);
 
-    return sqlite3_step(stmt);
+    return sqlite3_maybe_step(clnt, stmt);
 }
 
 int has_cnonce(struct sqlclntstate *clnt)
@@ -739,6 +736,19 @@ void sql_dlmalloc_init(void)
     m.xShutdown = sql_mem_shutdown;
     m.pAppData = NULL;
     sqlite3_config(SQLITE_CONFIG_MALLOC, &m);
+}
+
+int sqlite3_maybe_step(
+  struct sqlclntstate *clnt,
+  sqlite3_stmt *stmt
+){
+  assert( clnt );
+  assert( stmt );
+  int steps = clnt->nsteps++;
+  if( gbl_sql_prepare_only ){
+    return steps==0 ? SQLITE_ROW : SQLITE_DONE;
+  }
+  return sqlite3_step(stmt);
 }
 
 static pthread_mutex_t open_serial_lock = PTHREAD_MUTEX_INITIALIZER;
