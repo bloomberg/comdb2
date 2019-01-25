@@ -15,28 +15,29 @@
 
 enum view_type { VIEW_TIME_PARTITION };
 
-enum view_timepart_period {
-    VIEW_TIMEPART_INVALID = 0,
-    VIEW_TIMEPART_DAILY,
-    VIEW_TIMEPART_WEEKLY,
-    VIEW_TIMEPART_MONTHLY,
-    VIEW_TIMEPART_YEARLY,
-    VIEW_TIMEPART_TEST2MIN
+enum view_partition_period {
+    VIEW_PARTITION_INVALID = 0
+    ,VIEW_PARTITION_DAILY
+    ,VIEW_PARTITION_WEEKLY
+    ,VIEW_PARTITION_MONTHLY
+    ,VIEW_PARTITION_YEARLY
+    ,VIEW_PARTITION_TEST2MIN
+    ,VIEW_PARTITION_MANUAL
 };
 
-enum view_timepart_errors {
-    VIEW_NOERR = 0,        /* no error */
-    VIEW_ERR_GENERIC = -1, /* generic error, please avoid */
-    VIEW_ERR_MALLOC = -2,  /* malloc error */
-    VIEW_ERR_EXIST = -3,   /* exist when insert new, not exist when update */
-    VIEW_ERR_UNIMPLEMENTED = -4, /* functionality not implemented */
-    VIEW_ERR_PARAM = -5,         /* setting wrong parameter */
-    VIEW_ERR_BUG = -6,           /* bug in code */
-    VIEW_ERR_LLMETA = -7,        /* error in I/O with llmeta backend */
-    VIEW_ERR_SQLITE = -8,  /* error in sqlite module while processing views */
-    VIEW_ERR_PURGE = -9,   /* error with removing oldest shards */
-    VIEW_ERR_SC = -10,     /* error with schema change */
-    VIEW_ERR_CREATE = -11, /* error with pthread create */
+enum view_partition_errors {
+    VIEW_NOERR = 0         /* no error */
+    ,VIEW_ERR_GENERIC = -1 /* generic error, please avoid */
+    ,VIEW_ERR_MALLOC = -2  /* malloc error */
+    ,VIEW_ERR_EXIST = -3   /* exist when insert new, not exist when update */
+    ,VIEW_ERR_UNIMPLEMENTED = -4 /* functionality not implemented */
+    ,VIEW_ERR_PARAM = -5         /* setting wrong parameter */
+    ,VIEW_ERR_BUG = -6           /* bug in code */
+    ,VIEW_ERR_LLMETA = -7        /* error in I/O with llmeta backend */
+    ,VIEW_ERR_SQLITE = -8  /* error in sqlite module while processing views */
+    ,VIEW_ERR_PURGE = -9   /* error with removing oldest shards */
+    ,VIEW_ERR_SC = -10     /* error with schema change */
+    ,VIEW_ERR_CREATE = -11 /* error with pthread create */
 };
 
 typedef struct timepart_view timepart_view_t;
@@ -225,13 +226,14 @@ void views_signal(timepart_views_t *views);
  */
 char *comdb2_partition_info(const char *partition_name, const char *option);
 
-enum view_timepart_period name_to_period(const char *str);
+enum view_partition_period name_to_period(const char *str);
 
-const char *period_to_name(enum view_timepart_period period);
+const char *period_to_name(enum view_partition_period period);
 
-int convert_time_string_to_epoch(const char *time_str);
+int convert_from_start_string(enum view_partition_period period, const char *str);
 
-char *convert_epoch_to_time_string(int epoch, char *buf, int buflen);
+char *convert_to_start_string(enum view_partition_period period, int value,
+                              char *buf, int buflen);
 
 char *build_createcmd_json(char **out, int *len, const char *name,
                            const char *tablename, uint32_t period,

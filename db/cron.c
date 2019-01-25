@@ -508,14 +508,14 @@ int cron_systable_sched_events_collect(cron_sched_t *sched,
             }
             arr = temparr;
         }
-        arr[narr].name = strdup(sched->impl.name);
-        arr[narr].type = sched->impl.event_describe
+        arr[narr].name = sched->impl.event_describe
                              ? sched->impl.event_describe(&sched->impl, event)
                              : strdup("");
+        arr[narr].type = strdup(sched->impl.name);
         arr[narr].epoch = event->epoch;
-        arr[narr].arg1 = strdup(event->arg1 ? event->arg1 : "");
-        arr[narr].arg2 = strdup(event->arg2 ? event->arg2 : "");
-        arr[narr].arg3 = strdup(event->arg3 ? event->arg3 : "");
+        arr[narr].arg1 = event->arg1 ? strdup(event->arg1):NULL;
+        arr[narr].arg2 = event->arg2 ? strdup(event->arg2):NULL;
+        arr[narr].arg3 = event->arg3 ? strdup(event->arg3):NULL;
         arr[narr].sourceid = strdup(comdb2uuidstr(event->source_id, us));
         narr++;
     }

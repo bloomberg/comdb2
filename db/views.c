@@ -49,7 +49,7 @@ typedef struct timepart_shard timepart_shard_t;
 
 struct timepart_view {
     char *name;                       /* name of the view, visible in sql */
-    enum view_timepart_period period; /* when do we rotate to a new shard */
+    enum view_partition_period period; /* when do we rotate to a new shard */
     int retention;                    /* how many shard are preserves */
     int nshards;                      /* how many shards */
     timepart_shard_t *shards;         /* array of shard pointers */
@@ -121,7 +121,7 @@ int views_cron_restart(timepart_views_t *views);
 
 static int _view_rollout_publish(void *tran, timepart_view_t *view,
                                  struct errstat *err);
-static int _view_get_next_rollout(enum view_timepart_period period,
+static int _view_get_next_rollout(enum view_partition_period period,
                                   int startTime, int crtTime, int nshards,
                                   int back_in_time);
 static int _generate_evicted_shard_name(timepart_view_t *view,
@@ -274,7 +274,7 @@ int timepart_add_view(void *tran, timepart_views_t *views,
     int rc;
     int tm;
 
-    if (unlikely(view->period == VIEW_TIMEPART_TEST2MIN)) {
+    if (unlikely(view->period == VIEW_PARTITION_TEST2MIN)) {
         preemptive_rolltime = 30; /* 30 seconds in advance we add a new table */
     }
 
@@ -412,7 +412,7 @@ done:
  *
  */
 int timepart_view_set_period(timepart_views_t *views, const char *name,
-                             enum view_timepart_period period)
+                             enum view_partition_period period)
 {
     timepart_view_t *view;
     int rc;
@@ -1057,7 +1057,7 @@ _view_cron_schedule_next_rollout(timepart_view_t *view, int timeCrtRollout,
     char *tmp_str;
     int tm;
 
-    if (unlikely(view->period == VIEW_TIMEPART_TEST2MIN)) {
+    if (unlikely(view->period == VIEW_PARTITION_TEST2MIN)) {
         preemptive_rolltime = 30; /* 30 seconds in advance we add a new table */
         delete_lag = 5;
     }
@@ -1766,7 +1766,7 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
     int evicted_shard0;
     int i;
 
-    if (unlikely(view->period == VIEW_TIMEPART_TEST2MIN)) {
+    if (unlikely(view->period == VIEW_PARTITION_TEST2MIN)) {
         preemptive_rolltime = 30; /* 30 seconds in advance we add a new table */
     }
 
@@ -2005,7 +2005,7 @@ static int _generate_new_shard_name_wrapper(timepart_view_t *view,
     /* generate new filename */
     rc = _generate_new_shard_name(
         view->shard0name, newShardName, newShardNameLen, nextNum, retention,
-        view->period == VIEW_TIMEPART_TEST2MIN, &xerr);
+        view->period == VIEW_PARTITION_TEST2MIN, &xerr);
     if (rc != VIEW_NOERR) {
         return xerr.errval;
     }
@@ -2030,7 +2030,7 @@ static int _generate_evicted_shard_name(timepart_view_t *view,
     /* generate new filename */
     rc = _generate_new_shard_name(
         view->shard0name, evictedShardName, evictedShardNameLen, checked_number,
-        retention, view->period == VIEW_TIMEPART_TEST2MIN, &xerr);
+        retention, view->period == VIEW_PARTITION_TEST2MIN, &xerr);
     if (rc != VIEW_NOERR) {
         return xerr.errval;
     }
@@ -2104,7 +2104,7 @@ done:
  * to establish the next rollout time
  *
  */
-static int _view_get_next_rollout(enum view_timepart_period period,
+static int _view_get_next_rollout(enum view_partition_period period,
                                   int startTime, int crtTime, int nshards,
                                   int back_in_time)
 {
@@ -2133,32 +2133,32 @@ static int _view_get_next_rollout(enum view_timepart_period period,
     /* if there are at least 2 hards, low was the original split, and now we
        generate a new split based on newest split + period */
     switch (period) {
-    case VIEW_TIMEPART_DAILY:
+    case VIEW_PARTITION_DAILY:
         /* 24 hours */
         cast_str = "hours";
         cast_val = 24;
         break;
-    case VIEW_TIMEPART_WEEKLY:
+    case VIEW_PARTITION_WEEKLY:
         /* 7 days */
         cast_str = "days";
         cast_val = 7;
         break;
-    case VIEW_TIMEPART_MONTHLY:
+    case VIEW_PARTITION_MONTHLY:
         /* 1 month */
         cast_str = "months";
         cast_val = 1;
         break;
-    case VIEW_TIMEPART_YEARLY:
+    case VIEW_PARTITION_YEARLY:
         /* 1 year */
         cast_str = "years";
         cast_val = 1;
         break;
-    case VIEW_TIMEPART_TEST2MIN:
+    case VIEW_PARTITION_TEST2MIN:
         /* test 2 mins */
         cast_str = "minutes";
         cast_val = 2;
         break;
-    case VIEW_TIMEPART_INVALID:
+    case VIEW_PARTITION_INVALID:
         logmsg(LOGMSG_ERROR, "%s bug!\n", __func__);
         return INT_MAX;
     }
