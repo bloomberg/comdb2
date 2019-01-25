@@ -3026,27 +3026,24 @@ after_callback:
 
 static inline void set_last_active(cdb2_hndl_tp *hndl)
 {
-    int count = 0, i;
     assert(hndl->total_active == 1);
-
-    /* For sanity while I'm coding this, make sure that there is really only
-     * one active handle left */
 
     if (hndl->active) {
         hndl->last_active = 1;
-        count++;
+        return;
     }
 
-    for (i = 0; i < hndl->num_children; i++) {
+    for (int i = 0; i < hndl->num_children; i++) {
         if (hndl->children[i]->active) {
             hndl->children[i]->last_active = 1;
             hndl->children[i]->flags &= ~CDB2_DIRECT_CPU;
             hndl->children[i]->num_hosts = hndl->children[i]->num_child_hosts;
-            count++;
+            return;
         }
     }
 
-    assert(count == 1);
+    debugprint("No active handles\n");
+    abort();
 }
 
 int cdb2_next_record(cdb2_hndl_tp *hndl)
@@ -3068,6 +3065,9 @@ int cdb2_next_record(cdb2_hndl_tp *hndl)
             have_rc = 1;
         }
     }
+
+    if (!hndl->is_hasql)
+        return rc;
 
     for (i = 0; i < hndl->num_children; i++) {
         cdb2_hndl_tp *c_hndl = hndl->children[i];
@@ -3093,9 +3093,25 @@ int cdb2_next_record(cdb2_hndl_tp *hndl)
     return rc;
 }
 
-static int cdb2_get_effects_multi(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects)
+static inline cdb2_hndl_tp *retrieve_handle(cdb2_hndl_tp *hndl)
+{
+    if (!hndl->is_hasql || !hndl->num_children || hndl->active) {
+        return hndl;
+    }
+
+    for(int i = 0; i < hndl->num_children; i++) {
+        cdb2_hndl_tp *c_hndl = hndl->children[i];
+        if (c_hndl->active && (i != hndl->master || c_hndl->last_active)) {
+            return hndl->children[i];
+        }
+    }
+    abort();
+}
+
+int cdb2_get_effects(cdb2_hndl_tp *inhndl, cdb2_effects_tp *effects)
 {
     int rc = 0;
+    cdb2_hndl_tp *hndl = retrieve_handle(inhndl);
 
     while (cdb2_next_record_int(hndl, 0) == CDB2_OK)
         ;
@@ -3139,29 +3155,6 @@ static int cdb2_get_effects_multi(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects)
                     effects->num_updated, effects->num_deleted,
                     effects->num_inserted);
     }
-
-    return rc;
-}
-
-int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects)
-{
-    int rc = 0, i, got_rcode = 0;
-
-    if (!hndl->is_hasql || hndl->active) {
-        rc = cdb2_get_effects_multi(hndl, effects);
-        got_rcode = 1;
-    } else {
-        for(i = 0; i < hndl->num_children; i++) {
-            cdb2_hndl_tp *c_hndl = hndl->children[i];
-            if (c_hndl->active) {
-                rc = cdb2_get_effects_multi(c_hndl, effects);
-                got_rcode = 1;
-                break;
-            }
-        }
-    }
-
-    assert(got_rcode == 1);
 
     return rc;
 }
@@ -3260,7 +3253,6 @@ int cdb2_close(cdb2_hndl_tp *hndl)
         curre = curre->next;
         free(preve);
     }
-
 
     for (int i=0; i < hndl->num_children; i++)
         cdb2_close(hndl->children[i]);
@@ -4610,7 +4602,6 @@ static char *cdb2_type_str(int type)
     }
 }
 
-
 static inline void disable_children(cdb2_hndl_tp *hndl)
 {
     for (int i = 0; i < hndl->num_children; i++) {
@@ -4694,11 +4685,31 @@ static inline int begin_children(cdb2_hndl_tp *hndl)
 
 static void copy_hosts_into_child(cdb2_hndl_tp *hndl, cdb2_hndl_tp *c_hndl, int ix)
 {
-    for (int i = 0 ; i < hndl->num_hosts ; i++) {
-        strncpy(c_hndl->hosts[i], hndl->hosts[(ix + i) % hndl->num_hosts],
+    int wr = 0, rd;
+
+    if (ix == (hndl->num_hosts - 1) && hndl->master >= 0) {
+        strncpy(c_hndl->hosts[wr], hndl->hosts[hndl->master],
                 sizeof(hndl->hosts[0]) - 1);
-        c_hndl->ports[i] = hndl->ports[(ix + i) % hndl->num_hosts];
+        c_hndl->ports[wr] = hndl->ports[hndl->master];
+        wr++;
     }
+
+    for (int i = 0 ; i < hndl->num_hosts ; i++) {
+        rd = ((ix + i) % hndl->num_hosts);
+        if (rd != hndl->master) {
+            strncpy(c_hndl->hosts[wr], hndl->hosts[rd],
+                    sizeof(hndl->hosts[0]) - 1);
+            c_hndl->ports[wr] = hndl->ports[rd];
+            wr++;
+        }
+    }
+
+    if (hndl->master >= 0 && wr < hndl->num_hosts) {
+        strncpy(c_hndl->hosts[wr], hndl->hosts[hndl->master],
+                sizeof(hndl->hosts[0]) - 1);
+        c_hndl->ports[wr] = hndl->ports[hndl->master];
+    }
+
     c_hndl->num_child_hosts = hndl->num_hosts;
 }
 
@@ -4735,7 +4746,11 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
         hndl->last_active = 0;
         for (i = 0; i < hndl->num_children; i++) {
             copy_hosts_into_child(hndl, hndl->children[i], i);
-            hndl->children[i]->active = 1;
+            if (hndl->connected_host >= 0 && strcmp(hndl->children[i]->hosts[0],
+                        hndl->hosts[hndl->connected_host]) == 0)
+                hndl->children[i]->active = 0;
+            else
+                hndl->children[i]->active = 1;
             hndl->children[i]->last_active = 0;
             hndl->children[i]->flags |= CDB2_DIRECT_CPU;
             hndl->children[i]->num_hosts = 1;
@@ -4798,7 +4813,7 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
             begin_children(hndl);
         else
             disable_children(hndl);
-    } else {
+    } else if (hndl->is_hasql) {
         for (i = 0; i < hndl->num_children; i++) {
             cdb2_hndl_tp *c_hndl = hndl->children[i];
             if (c_hndl->active) {
@@ -4901,21 +4916,6 @@ after_callback:
     }
 
     return rc;
-}
-
-static inline cdb2_hndl_tp *retrieve_handle(cdb2_hndl_tp *hndl)
-{
-    if (!hndl->is_hasql || hndl->active) {
-        return hndl;
-    }
-
-    for(int i = 0; i < hndl->num_children; i++) {
-        cdb2_hndl_tp *c_hndl = hndl->children[i];
-        if (c_hndl->active && (i != hndl->master || c_hndl->last_active)) {
-            return hndl->children[i];
-        }
-    }
-    abort();
 }
 
 int cdb2_numcolumns(cdb2_hndl_tp *inhndl)

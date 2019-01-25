@@ -36,6 +36,7 @@
 #include <assert.h>
 #include <sys/time.h>
 #include "cdb2_constants.h"
+#include <poll.h>
 #include <inttypes.h>
 
 #include <iostream>
@@ -81,6 +82,7 @@ static int hold_stdout = -1;
 static char *history_file = NULL;
 static int istty = 0;
 static int isadmin = 0;
+static int pollms = 0;
 static char *gensql_tbl = NULL;
 static char *prompt = main_prompt;
 
@@ -1165,6 +1167,8 @@ static int run_statement(const char *sql, int ntypes, int *types,
 
     /* Print rows */
     while ((rc = cdb2_next_record(cdb2h)) == CDB2_OK) {
+        if (pollms)
+            poll(NULL, 0, pollms);
         if (printmode & DISP_CLASSIC) {
             fprintf(out, "(");
         } else if (printmode & DISP_GENSQL) {
@@ -1519,13 +1523,17 @@ int main(int argc, char *argv[])
         {"gensql", required_argument, NULL, 'g'},
         {"type", required_argument, NULL, 't'},
         {"host", required_argument, NULL, 'n'},
+        {"pollms", required_argument, NULL, 'P'},
         {"minretries", required_argument, NULL, 'R'},
         {0, 0, 0, 0}};
 
-    while ((c = bb_getopt_long(argc, argv, (char *) "hsvr:p:c:f:g:t:n:R:",
+    while ((c = bb_getopt_long(argc, argv, (char *) "hsvr:p:c:f:g:t:n:R:P:",
                                long_options, &opt_indx)) != -1) {
         switch (c) {
         case 0:
+            break;
+        case 'P':
+            pollms = atoi(optarg);
             break;
         case 'h':
             cdb2sql_usage(EXIT_SUCCESS);
