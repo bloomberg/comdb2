@@ -746,7 +746,11 @@ int sqlite3_maybe_step(
   assert( stmt );
   int steps = clnt->nsteps++;
   if( gbl_sql_prepare_only ){
-    return steps==0 ? SQLITE_ROW : SQLITE_DONE;
+    if( sqlite3_column_count(stmt)>0 ){
+      return steps==0 ? SQLITE_ROW : SQLITE_DONE;
+    }else{
+      return SQLITE_DONE;
+    }
   }
   return sqlite3_step(stmt);
 }
@@ -1300,7 +1304,6 @@ void reset_query_effects(struct sqlclntstate *clnt)
 {
     bzero(&clnt->effects, sizeof(clnt->effects));
     bzero(&clnt->log_effects, sizeof(clnt->effects));
-    clnt->nsteps = 0;
 }
 
 static char *sqlenginestate_tostr(int state)
@@ -3294,6 +3297,7 @@ void run_stmt_setup(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     Vdbe *v = (Vdbe *)stmt;
     clnt->isselect = sqlite3_stmt_readonly(stmt);
     clnt->has_recording |= v->recording;
+    clnt->nsteps = 0;
     comdb2_set_sqlite_vdbe_tzname_int(v, clnt);
     comdb2_set_sqlite_vdbe_dtprec_int(v, clnt);
 
