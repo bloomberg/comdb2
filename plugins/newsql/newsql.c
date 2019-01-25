@@ -34,6 +34,7 @@ typedef struct VdbeSorter VdbeSorter;
 struct thr_handle;
 struct sbuf2;
 
+extern int gbl_sql_prepare_only;
 extern char gbl_dbname[MAX_DBNAME_LENGTH];
 extern int gbl_sqlwrtimeoutms;
 extern int active_appsock_conns;
@@ -432,7 +433,7 @@ static int get_col_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
     if (sql_query->n_types) {
         type = sql_query->types[col];
     } else if (stmt) {
-        if (sqlite3_hasResultSet(stmt)) {
+        if (!gbl_sql_prepare_only || sqlite3_hasResultSet(stmt)) {
             type = column_type(clnt, stmt, col);
             if (type == SQLITE_NULL) {
                 type = typestr_to_type(sqlite3_column_decltype(stmt, col));
@@ -746,7 +747,7 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
     for (int i = 0; i < ncols; ++i) {
         value[i] = &cols[i];
         cdb2__sqlresponse__column__init(&cols[i]);
-        if (!sqlite3_hasResultSet(stmt) ||
+        if ((gbl_sql_prepare_only && !sqlite3_hasResultSet(stmt)) ||
                 column_type(clnt, stmt, i) == SQLITE_NULL) {
             newsql_null(cols, i);
             continue;
