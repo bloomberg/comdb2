@@ -432,10 +432,14 @@ static int get_col_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
     if (sql_query->n_types) {
         type = sql_query->types[col];
     } else if (stmt) {
-        type = column_type(clnt, stmt, col);
-    }
-    if (type == SQLITE_NULL) {
-        type = typestr_to_type(sqlite3_column_decltype(stmt, col));
+        if (sqlite3_hasNColumns(stmt, col)) {
+            type = column_type(clnt, stmt, col);
+            if (type == SQLITE_NULL) {
+                type = typestr_to_type(sqlite3_column_decltype(stmt, col));
+            }
+        } else {
+            type = SQLITE_NULL;
+        }
     }
     if (type == SQLITE_DECIMAL) {
         type = SQLITE_TEXT;
@@ -742,7 +746,8 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
     for (int i = 0; i < ncols; ++i) {
         value[i] = &cols[i];
         cdb2__sqlresponse__column__init(&cols[i]);
-        if (column_type(clnt, stmt, i) == SQLITE_NULL) {
+        if (!sqlite3_hasNColumns(stmt, i) ||
+                column_type(clnt, stmt, i) == SQLITE_NULL) {
             newsql_null(cols, i);
             continue;
         }
