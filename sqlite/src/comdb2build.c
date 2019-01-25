@@ -1652,6 +1652,7 @@ void comdb2setPassword(Parse* pParse, Token* pwd, Token* nm)
         }
     }
 
+    gbl_check_access_controls = 1;
     comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc,
         (vdbeFuncArgFree) &free_bpfunc_arg);
 

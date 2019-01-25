@@ -875,6 +875,7 @@ These options are toggle-able at runtime.
 |blob_mem_mb | not set | Blob allocator - sets the max memory limit to allow for blob values (in MB).
 |blobmem_sz_thresh_kb | not set | Sets the threshold (in kb) above which blobs are allocated by the blob allocator.
 |logmsg   |  | Controls the database logging level - accepts [logging commands](op.html#logging-commands).
+| pbkdf2_iterations | 16384 | Number of PBKDF2 iterations. PBKDF2 is used for password hashing. The higher the value, the more secure and the more computationally expensive. The mininum number of iterations is 1000.
 
 <!-- TODO
 |enable_datetime_truncation | |

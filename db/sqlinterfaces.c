@@ -3668,7 +3668,13 @@ static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     if (gbl_check_access_controls) {
         check_access_controls(thedb);
         gbl_check_access_controls = 0;
+        /* Force all clients to  reauthenticate if passwords have changed. */
+        clnt->authenticated = 0;
     }
+
+    /* Free pass if it's been authenticated. */
+    if (clnt->authenticated)
+        return 0;
 
 #   if WITH_SSL
     /* If 1) this is an SSL connection, 2) and client sends a certificate,
@@ -3684,6 +3690,8 @@ static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
             delete_prepared_stmts(thd);
         strcpy(thd->lastuser, clnt->user);
     }
+
+    clnt->authenticated = !rc;
     return rc;
 }
 
@@ -4639,6 +4647,9 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     /* reset the password */
     clnt->have_password = 0;
     bzero(clnt->password, sizeof(clnt->password));
+
+    /* reset authentication status */
+    clnt->authenticated = 0;
 
     /* reset extended_tm */
     clnt->have_extended_tm = 0;

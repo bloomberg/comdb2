@@ -583,6 +583,9 @@ struct sqlclntstate {
     int have_password;
     char password[MAX_PASSWORD_LEN];
 
+    /* 1 if the client has been authenticated. */
+    int authenticated;
+
     int no_transaction;
 
     int have_extended_tm;

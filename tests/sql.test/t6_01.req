@@ -1,0 +1,13 @@
+1 put password 'charlie' for 'brown'
+1 grant op to brown
+1 set user brown
+1 set password charlie
+1 put authentication on
+1 SELECT "CHARLIE"
+2 set user brown
+2 set password charlie
+2 put password 'sally' for 'brown'
+2 set user brown
+2 set password sally
+1 SELECT "CHARLIE"
+2 put authentication off

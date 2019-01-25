@@ -324,9 +324,17 @@ static int exec_grant(void *tran, bpfunc_t *func, char *err)
 
 static int exec_password(void *tran, bpfunc_t *func, char *err)
 {
+    int rc;
     BpfuncPassword *pwd = func->arg->pwd;
-    return pwd->disable ? bdb_user_password_delete(tran, pwd->user)
-                        : bdb_user_password_set(tran, pwd->user, pwd->password);
+    rc = pwd->disable ? bdb_user_password_delete(tran, pwd->user)
+                      : bdb_user_password_set(tran, pwd->user, pwd->password);
+
+    if (rc == 0)
+        rc = net_send_authcheck_all(thedb->handle_sibling);
+
+    gbl_check_access_controls = 1;
+
+    return rc;
 }
 
 /************************ AUTHENTICATION *********************/
