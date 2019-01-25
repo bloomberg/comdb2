@@ -127,10 +127,8 @@ static malloc_zone_t* _sqliteZone_;
 */
 static void *sqlite3MemMalloc(int nByte){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-#ifndef SQLITE_MALLOCSIZE
-  extern comdb2bma blobmem;
-#endif
   extern unsigned gbl_blob_sz_thresh_bytes;
+  extern comdb2bma blobmem;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #ifdef SQLITE_MALLOCSIZE
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
