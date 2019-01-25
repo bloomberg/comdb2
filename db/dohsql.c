@@ -568,7 +568,7 @@ static int init_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     dohsql_t *conns = clnt->conns;
     int rc;
 
-    rc = sqlite3_maybe_step(stmt);
+    rc = sqlite3_maybe_step(clnt, stmt);
 
     if (gbl_dohsql_verbose) {
         logmsg(LOGMSG_DEBUG, "%lx %s: sqlite3_maybe_step rc %d\n", pthread_self(),
