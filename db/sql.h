@@ -574,6 +574,7 @@ struct sqlclntstate {
 
     struct query_effects effects;
     struct query_effects log_effects;
+    int64_t nsteps;
 
     int have_user;
     char user[MAX_USERNAME_LEN];
@@ -655,7 +656,6 @@ struct sqlclntstate {
     int has_sqliterow;
     int verify_indexes;
     void *schema_mems;
-    int64_t nsteps;
 
     /* indexes on expressions */
     uint8_t **idxInsert;
