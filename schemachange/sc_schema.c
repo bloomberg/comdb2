@@ -624,8 +624,8 @@ void verify_schema_change_constraint(struct ireq *iq, void *trans,
         goto unlock;
     }
 
-    blob_status_t oldblobs[MAXBLOBS] = {0};
-    blob_buffer_t add_blobs_buf[MAXBLOBS] = {0};
+    blob_status_t oldblobs[MAXBLOBS] = {{0}};
+    blob_buffer_t add_blobs_buf[MAXBLOBS] = {{0}};
 
     if (usedb->sc_to->ix_blob) {
         rc =
