@@ -2018,10 +2018,6 @@ int get_context(struct ireq *iq, unsigned long long *context);
 int cmp_context(struct ireq *iq, unsigned long long genid,
                 unsigned long long context);
 
-/* for fast load.. */
-int load_record(struct dbtable *db, void *buf);
-void load_data_done(struct dbtable *db);
-
 /*index routines*/
 int ix_isnullk(void *db_table, void *key, int ixnum);
 int ix_addk(struct ireq *iq, void *trans, void *key, int ixnum,
