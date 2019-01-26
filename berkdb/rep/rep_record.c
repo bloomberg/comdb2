@@ -540,12 +540,17 @@ static void *apply_thread(void *arg)
 			rec.size = q->size;
 
 			if (rep->gen == q->gen) {
-				static int last_print = 0;
+				static int last_print = 0, last_applying_print = 0;
 				static unsigned long long count = 0;
 				int now;
 
-				logmsg(LOGMSG_DEBUG, "%s: applying [%d:%d]\n", __func__, q->rp->lsn.file,
-						q->rp->lsn.offset);
+				if (gbl_verbose_fills && ((now = time(NULL)) -
+                            last_applying_print)) {
+                    logmsg(LOGMSG_DEBUG, "%s: applying [%d:%d]\n", __func__,
+                            q->rp->lsn.file, q->rp->lsn.offset);
+                    last_applying_print = now;
+                }
+
 				ret = __rep_apply(dbenv, q->rp, &rec, &ret_lsnp, &q->gen, 1);
 				Pthread_mutex_unlock(&rep_candidate_lock);
 				if (ret == 0 || ret == DB_REP_ISPERM) {
