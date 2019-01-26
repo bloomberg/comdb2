@@ -545,11 +545,11 @@ static void *apply_thread(void *arg)
 				int now;
 
 				if (gbl_verbose_fills && ((now = time(NULL)) -
-                            last_applying_print)) {
-                    logmsg(LOGMSG_DEBUG, "%s: applying [%d:%d]\n", __func__,
-                            q->rp->lsn.file, q->rp->lsn.offset);
-                    last_applying_print = now;
-                }
+							last_applying_print)) {
+					logmsg(LOGMSG_DEBUG, "%s: applying [%d:%d]\n", __func__,
+							q->rp->lsn.file, q->rp->lsn.offset);
+					last_applying_print = now;
+				}
 
 				ret = __rep_apply(dbenv, q->rp, &rec, &ret_lsnp, &q->gen, 1);
 				Pthread_mutex_unlock(&rep_candidate_lock);
