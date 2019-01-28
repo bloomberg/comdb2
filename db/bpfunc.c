@@ -332,7 +332,7 @@ static int exec_password(void *tran, bpfunc_t *func, char *err)
     if (rc == 0)
         rc = net_send_authcheck_all(thedb->handle_sibling);
 
-    gbl_check_access_controls = 1;
+    ++gbl_bpfunc_auth_gen;
 
     return rc;
 }
@@ -358,6 +358,7 @@ static int exec_authentication(void *tran, bpfunc_t *func, char *err)
       rc = net_send_authcheck_all(thedb->handle_sibling);
 
     gbl_check_access_controls = 1;
+    ++gbl_bpfunc_auth_gen;
 
     return rc;
 }

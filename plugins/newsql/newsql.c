@@ -1537,9 +1537,9 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                     } else {
                         clnt->have_user = 1;
                         /* Re-authenticate the new user. */
-                        if (clnt->authenticated &&
+                        if (clnt->authgen &&
                             strcmp(clnt->user, sqlstr) != 0)
-                            clnt->authenticated = 0;
+                            clnt->authgen = 0;
                         clnt->is_x509_user = 0;
                         strcpy(clnt->user, sqlstr);
                     }
@@ -1562,9 +1562,9 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                     } else {
                         clnt->have_password = 1;
                         /* Re-authenticate the new password. */
-                        if (clnt->authenticated &&
+                        if (clnt->authgen &&
                             strcmp(clnt->password, sqlstr) != 0)
-                            clnt->authenticated = 0;
+                            clnt->authgen = 0;
                         strcpy(clnt->password, sqlstr);
                     }
                 }

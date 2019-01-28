@@ -6,8 +6,12 @@
 1 SELECT "CHARLIE"
 2 set user brown
 2 set password charlie
-2 put password 'sally' for 'brown'
-2 set user brown
-2 set password sally
+2 SELECT "CHARLIE"
+3 set user brown
+3 set password charlie
+3 put password 'sally' for 'brown'
+3 set user brown
+3 set password sally
 1 SELECT "CHARLIE"
-2 put authentication off
+2 SELECT "CHARLIE"
+3 put authentication off
