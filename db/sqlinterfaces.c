@@ -738,7 +738,7 @@ void sql_dlmalloc_init(void)
     sqlite3_config(SQLITE_CONFIG_MALLOC, &m);
 }
 
-int sqlite3_is_prepare_only_mode(
+int sqlite3_is_prepare_only(
   struct sqlclntstate *clnt
 ){
   if( gbl_sql_prepare_only ){
@@ -757,7 +757,7 @@ int sqlite3_maybe_step(
   assert( clnt );
   assert( stmt );
   int steps = clnt->nsteps++;
-  if( sqlite3_is_prepare_only_mode(clnt) ){
+  if( sqlite3_is_prepare_only(clnt) ){
     if( sqlite3_column_count(stmt)>0 ){
       return steps==0 ? SQLITE_ROW : SQLITE_DONE;
     }else{

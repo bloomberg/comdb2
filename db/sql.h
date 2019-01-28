@@ -1075,7 +1075,7 @@ int column_count(struct sqlclntstate *, sqlite3_stmt *);
 int sqlite_error(struct sqlclntstate *, sqlite3_stmt *, const char **errstr);
 int next_row(struct sqlclntstate *, sqlite3_stmt *);
 int sqlite_stmt_error(sqlite3_stmt *stmt, const char **errstr);
-int sqlite3_is_prepare_only_mode(struct sqlclntstate *);
+int sqlite3_is_prepare_only(struct sqlclntstate *);
 int sqlite3_maybe_step(struct sqlclntstate *, sqlite3_stmt *);
 
 #define SQLITE_PROTO_API(ret, type)                                            \
