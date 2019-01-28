@@ -405,26 +405,11 @@ static int newsql_response_int(struct sqlclntstate *clnt,
     hdr.length = ntohl(len);
 
     int rc;
-    int i;
     lock_client_write_lock(clnt);
-    fprintf(stderr, "%s: sbuf2write %lu\n", __func__, sizeof(hdr));
-    for(i=0;i<sizeof(hdr); i++) {
-        fprintf(stderr, "%x", buf[i]);
-    }
-    fprintf(stderr,"\n");
-
     if ((rc = sbuf2write((char *)&hdr, sizeof(hdr), clnt->sb)) != sizeof(hdr))
         goto done;
-    fprintf(stderr, "%s: sbuf2write %lu\n",__func__,  len);
-    for(i=0;i<len; i++) {
-        fprintf(stderr, "%x", buf[i]);
-    }
-    fprintf(stderr,"\n");
     if ((rc = sbuf2write((char *)buf, len, clnt->sb)) != len)
         goto done;
-    if (flush)
-        fprintf(stderr, "%s: sbuf2flush %lu\n", __func__, sizeof(hdr)+len);
-
     if (flush && (rc = sbuf2flush(clnt->sb)) < 0)
         goto done;
     rc = 0;
@@ -754,8 +739,6 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
         flip = 1;
     CDB2SQLRESPONSE__Column cols[ncols];
     CDB2SQLRESPONSE__Column *value[ncols];
-    bzero(cols, sizeof(ncols*sizeof(cols[0])));
-    bzero(value, sizeof(ncols*sizeof(value[0])));
     for (int i = 0; i < ncols; ++i) {
         value[i] = &cols[i];
         cdb2__sqlresponse__column__init(&cols[i]);
@@ -1788,10 +1771,6 @@ static void send_dbinforesponse(struct dbenv *dbenv, SBUF2 *sb)
     struct newsqlheader hdr = {0};
     hdr.type = htonl(RESPONSE_HEADER__DBINFO_RESPONSE);
     hdr.length = htonl(len);
-    for(int i=0;i<sizeof(hdr); i++) {
-        fprintf(stderr, "%x", ((char*)&hdr)[i]);
-    }
-    fprintf(stderr, "\n");
     sbuf2write((char *)&hdr, sizeof(hdr), sb);
     sbuf2write((char *)buf, len, sb);
     sbuf2flush(sb);
