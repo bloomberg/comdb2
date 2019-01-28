@@ -3104,7 +3104,8 @@ static inline cdb2_hndl_tp *retrieve_handle(cdb2_hndl_tp *hndl)
 
     for (int i = 0; i < hndl->num_children; i++) {
         cdb2_hndl_tp *c_hndl = hndl->children[i];
-        if (c_hndl->active && (i != hndl->master || c_hndl->last_active)) {
+        if (c_hndl->active && (c_hndl->parent_ix != hndl->master ||
+                    c_hndl->last_active)) {
             return hndl->children[i];
         }
     }
@@ -4776,6 +4777,8 @@ static void copy_hosts_into_child(cdb2_hndl_tp *hndl, cdb2_hndl_tp *c_hndl,
         strncpy(c_hndl->hosts[wr], hndl->hosts[rd],
                 sizeof(hndl->hosts[0]) - 1);
         c_hndl->ports[wr] = hndl->ports[rd];
+        if (wr == 0)
+            c_hndl->parent_ix = i;
         if (rd == hndl->master && wr > 0)
             c_hndl->master = wr;
     }
