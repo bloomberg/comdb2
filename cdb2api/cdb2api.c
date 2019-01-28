@@ -4748,7 +4748,7 @@ static void copy_hosts_into_child(cdb2_hndl_tp *hndl, cdb2_hndl_tp *c_hndl,
         ix = c_hndl->parent_ix;
 
     for (int i = 0; ix == -1 && i < hndl->num_hosts; i++) {
-        if (!have_connected[i]) {
+        if (!assigned[i]) {
             if (i == hndl->master) {
                 if (!(*have_master) && hndl->num_children >=
                         hndl->num_hosts - 1) {
@@ -4769,7 +4769,7 @@ static void copy_hosts_into_child(cdb2_hndl_tp *hndl, cdb2_hndl_tp *c_hndl,
     }
 
     assert(ix >= 0);
-    have_connected[ix] = 1;
+    assigned[ix] = 1;
 
     for (int i = 0; i < hndl->num_hosts ; i++) {
         rd = ((ix + i) % hndl->num_hosts);
