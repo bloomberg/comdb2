@@ -24,15 +24,15 @@ typedef struct systable_timepartition {
     int64_t nshards;
     int64_t version;
     char *shard0name;
-    int starttime;
+    int64_t starttime;
     char *sourceid;
 } systable_timepartition_t;
 
 typedef struct systable_timepartshard {
     char *name;
     char *shardname;
-    int low;
-    int high;
+    int64_t low;
+    int64_t high;
 } systable_timepartshard_t;
 
 /**

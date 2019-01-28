@@ -6018,10 +6018,6 @@ static int net_writes(SBUF2 *sb, const char *buf, int nbytes)
     if (!watchlist_node)
         return -1;
     watchlist_node->write_age = comdb2_time_epoch();
-    for(int i=0;i<nbytes; i++) {
-        fprintf(stderr, "%x", buf[i]);
-    }
-    fprintf(stderr, "\n");
     outrc = watchlist_node->writefn(sb, buf, nbytes);
     watchlist_node->write_age = 0;
     return outrc;

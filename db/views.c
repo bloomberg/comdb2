@@ -89,7 +89,8 @@ static int _generate_new_shard_name(const char *oldname, char *newname,
                                     int newnamelen, int nextnum, int maxshards,
                                     int testing, struct errstat *err);
 static int _extract_shardname_index(const char *tblName,
-                                    const char *originalName, int *span);
+                                    const char *originalName, int *span,
+                                    int testing);
 static int _convert_time(char *sql);
 static int _views_do_op(timepart_views_t *views, const char *name,
                         int (*op)(timepart_views_t *, timepart_view_t *,
@@ -749,31 +750,40 @@ static int _shard_suffix_str_len(int maxshards)
 }
 
 static int _extract_shardname_index(const char *tblName,
-                                    const char *originalName, int *span)
+                                    const char *originalName, int *span,
+                                    int testing)
 {
-   int nextNum;
+    int nextNum;
 
-   if(!strcasecmp(tblName, originalName))
-   {
-      return 0;   /* initial shard */
-   }
+    if(!strcasecmp(tblName, originalName))
+    {
+        return 0;   /* initial shard */
+    }
 
-   nextNum = atoi(tblName+1); /* skip $ */
 
-   if (span) {
-       char *_ = strchr(tblName, '_');
-       if (_) {
-           *span = _ - tblName - 1;
-       }
-   }
+    if (likely(!testing)) {
+        nextNum = atoi(tblName+1); /* skip $ */
+        
+        if (span) {
+            char *_ = strchr(tblName, '_');
+            if (_) {
+                *span = _ - tblName - 1;
+            }
+        }
+    } else {
+        nextNum = atoi(&tblName[strlen(originalName)]);
+        if (span) {
+            *span = strlen(tblName) - strlen(originalName);
+        }
+    }
 
-   return nextNum;
+    return nextNum;
 }
 
 /** dummy version for now */
 static int _generate_new_shard_name(const char *oldname, char *newname,
-                                    int newnamelen, int nextnum, int maxshards,
-                                    int testing, struct errstat *err)
+        int newnamelen, int nextnum, int maxshards,
+        int testing, struct errstat *err)
 {
     int suffix_len = 0;
     int len = 0;
@@ -1718,7 +1728,8 @@ static int _get_biggest_shard_number(timepart_view_t *view, int *oldest,
 
     for (i = 0; i < view->nshards; i++) {
         crt = _extract_shardname_index(view->shards[i].tblname,
-                                       view->shard0name, &span);
+                                       view->shard0name, &span,
+                                       view->period == VIEW_PARTITION_TEST2MIN);
         if (i == 0 && newest)
             *newest = crt;
         else if (i == view->nshards - 1 && oldest)
@@ -1992,7 +2003,8 @@ static int _generate_new_shard_name_wrapper(timepart_view_t *view,
     /* extract the next id to be used */
     if (view->nshards == retention) {
         nextNum = _extract_shardname_index(view->shards[0].tblname,
-                                           view->shard0name, NULL);
+                                           view->shard0name, NULL,
+                                           view->period == VIEW_PARTITION_TEST2MIN);
         if (nextNum > retention) {
             nextNum = 0; /* go back to 0, the partition was shrinked */
         } else {
