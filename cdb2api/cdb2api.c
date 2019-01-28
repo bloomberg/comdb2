@@ -987,6 +987,7 @@ struct cdb2_hndl {
     int active;
     int total_active;
     int last_active;
+    int copyhosts;
     int num_children;
 };
 
@@ -4751,17 +4752,23 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
         hndl->active = 1;
         hndl->last_active = 0;
         for (i = 0; i < hndl->num_children; i++) {
-            copy_hosts_into_child(hndl, hndl->children[i], i);
+            if (hndl->copyhosts)
+                copy_hosts_into_child(hndl, hndl->children[i], i);
+#if FORBID_REDUNDANT_CHILD_CONNECTIONS
             if (hndl->connected_host >= 0 &&
                 strcmp(hndl->children[i]->hosts[0],
                        hndl->hosts[hndl->connected_host]) == 0)
                 hndl->children[i]->active = 0;
             else
                 hndl->children[i]->active = 1;
+#else
+            hndl->children[i]->active = 1;
+#endif
             hndl->children[i]->last_active = 0;
             hndl->children[i]->flags |= CDB2_DIRECT_CPU;
             hndl->children[i]->num_hosts = 1;
         }
+        hndl->copyhosts = 0;
         hndl->total_active = (hndl->num_children + 1);
         if (hndl->total_active == 1)
             hndl->last_active = 1;
@@ -5595,6 +5602,7 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
     int comdb2db_num = COMDB2DB_NUM;
     char comdb2db_name[32] = COMDB2DB;
 
+    hndl->copyhosts = 1;
     if (!cdb2cfg_override) {
         /* Try dbinfo query without any host info. */
         if (cdb2_dbinfo_query(hndl, hndl->type, hndl->dbname, hndl->dbnum, NULL,
