@@ -1598,6 +1598,14 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                 } else {
                     rc = ii + 1;
                 }
+            } else if (strncasecmp(sqlstr, "prepare_only", 12) == 0) {
+                sqlstr += 12;
+                sqlstr = skipws(sqlstr);
+                if (strncasecmp(sqlstr, "off", 3) == 0) {
+                    clnt->prepare_only = 0;
+                } else {
+                    clnt->prepare_only = 1;
+                }
             } else if (strncasecmp(sqlstr, "readonly", 8) == 0) {
                 sqlstr += 8;
                 sqlstr = skipws(sqlstr);
