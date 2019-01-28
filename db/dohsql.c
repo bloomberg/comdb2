@@ -34,8 +34,6 @@ static int gbl_dohsql_que_free_highwm = 10;
 static int gbl_dohsql_que_free_lowwm = 5;
 static int gbl_dohsql_max_queued_kb_lowwm = 1000; /* 1 GB */
 
-extern int gbl_sql_prepare_only;
-
 struct col {
     int type;
     char *name;
@@ -222,10 +220,10 @@ static void sqlengine_work_shard(struct thdpool *pool, void *work,
     ((dohsql_connector_t *)clnt->plugin.state)->status = DOH_CLIENT_DONE;
 }
 
-static int inner_type(sqlite3_stmt *stmt, int col)
+static int inner_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
 {
     int type;
-    if (!gbl_sql_prepare_only || sqlite3_hasResultSet(stmt)) {
+    if (!sqlite3_is_prepare_only(clnt) || sqlite3_hasResultSet(stmt)) {
         type = sqlite3_column_type(stmt, col);
         if (type == SQLITE_NULL) {
             type = typestr_to_type(sqlite3_column_decltype(stmt, col));
@@ -254,7 +252,7 @@ static int inner_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     conn->ncols = ncols;
 
     for (i = 0; i < ncols; i++) {
-        conn->cols[i].type = inner_type(stmt, i);
+        conn->cols[i].type = inner_type(clnt, stmt, i);
     }
     return 0;
 }

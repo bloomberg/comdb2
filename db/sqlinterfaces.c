@@ -738,6 +738,18 @@ void sql_dlmalloc_init(void)
     sqlite3_config(SQLITE_CONFIG_MALLOC, &m);
 }
 
+int sqlite3_is_prepare_only_mode(
+  struct sqlclntstate *clnt
+){
+  if( gbl_sql_prepare_only ){
+    return 1;
+  }
+  if( clnt!=NULL && clnt->prepare_only ){
+    return 1;
+  }
+  return 0;
+}
+
 int sqlite3_maybe_step(
   struct sqlclntstate *clnt,
   sqlite3_stmt *stmt
@@ -745,7 +757,7 @@ int sqlite3_maybe_step(
   assert( clnt );
   assert( stmt );
   int steps = clnt->nsteps++;
-  if( gbl_sql_prepare_only ){
+  if( sqlite3_is_prepare_only_mode(clnt) ){
     if( sqlite3_column_count(stmt)>0 ){
       return steps==0 ? SQLITE_ROW : SQLITE_DONE;
     }else{
