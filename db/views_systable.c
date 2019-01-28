@@ -42,11 +42,13 @@ int timepart_systable_timepartitions_collect(void **data, int *nrecords)
             arr = temparr;
         }
         view = views->views[narr];
+        bzero((char*)&arr[narr], sizeof(arr[narr]));
         arr[narr].name = strdup(view->name);
         arr[narr].period = strdup(period_to_name(view->period));
         arr[narr].retention = view->retention;
         arr[narr].nshards = view->nshards;
         arr[narr].version = view->version;
+        fprintf(stderr, "%s: version is %d %ld\n", __func__, view->version, arr[narr].version);
         arr[narr].shard0name = strdup(view->shard0name);
         arr[narr].sourceid = strdup(comdb2uuidstr(view->source_id, us));
     }
@@ -54,6 +56,14 @@ done:
     Pthread_rwlock_unlock(&views_lk);
     *data = arr;
     *nrecords = narr;
+
+    char *dbg = (char*)&arr[0];
+    fprintf(stderr, "%s:\n", __func__);
+    for (int i=0;i<narr*sizeof(arr[0]);i++)
+        fprintf(stderr, "%x", dbg[i]);
+    fprintf(stderr,"\n");
+        
+
     return rc;
 }
 
