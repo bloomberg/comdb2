@@ -8964,7 +8964,7 @@ int bdb_user_password_check(char *user, char *passwd, int *valid_user)
     case 0: iterations = ITERATIONS_V0; break;
     case 1: iterations = ITERATIONS_V1; break;
     case 2:
-        iterations = stored->niterations;
+        iterations = ntohl(stored->niterations);
         break;
     default: logmsg(LOGMSG_ERROR, "bad passwd ver:%u", stored->ver); goto out;
     }
@@ -8986,6 +8986,7 @@ out:
 }
 int bdb_user_password_set(tran_type *tran, char *user, char *passwd)
 {
+    int pbkdf2_niters = gbl_pbkdf2_iterations;
     passwd_key key = {{0}};
     size_t ulen = strlen(user) + 1;
     if (ulen > sizeof(key.passwd.user))
@@ -8999,10 +9000,10 @@ int bdb_user_password_set(tran_type *tran, char *user, char *passwd)
     key.passwd.file_type = htonl(LLMETA_USER_PASSWORD_HASH);
     passwd_hash data;
     data.ver = 2;
-    data.niterations = gbl_pbkdf2_iterations;
+    data.niterations = htonl(pbkdf2_niters);
     RAND_bytes(data.u.p0.salt, sizeof(data.u.p0.salt));
     PKCS5_PBKDF2_HMAC_SHA1(passwd, strlen(passwd), data.u.p0.salt,
-                           sizeof(data.u.p0.salt), data.niterations,
+                           sizeof(data.u.p0.salt), pbkdf2_niters,
                            sizeof(data.u.p0.hash), data.u.p0.hash);
     return kv_put(tran, &key, &data, sizeof(data), &bdberr);
 }
