@@ -46,7 +46,7 @@ int timepart_systable_timepartitions_collect(void **data, int *nrecords)
         arr[narr].period = strdup(period_to_name(view->period));
         arr[narr].retention = view->retention;
         arr[narr].nshards = view->nshards;
-        arr[narr].version = view->version;
+        arr[narr].version = get_dbtable_by_name(view->shards[0].tblname)->tableversion;
         arr[narr].shard0name = strdup(view->shard0name);
         arr[narr].starttime = view->starttime;
         arr[narr].sourceid = strdup(comdb2uuidstr(view->source_id, us));
