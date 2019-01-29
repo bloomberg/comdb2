@@ -2799,15 +2799,15 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
 /* do not proceed untill we find a master */
 waitformaster:
     while (bdb_state->repinfo->master_host == db_eid_invalid &&
-            !gbl_ignore_coherency) {
+           !gbl_ignore_coherency) {
         logmsg(LOGMSG_WARN, "^^^^^^^^^^^^ waiting for a master...\n");
         sleep(3);
     }
 
     master_host = bdb_state->repinfo->master_host;
 
-    if (!gbl_ignore_coherency && ((master_host == db_eid_invalid) ||
-                (master_host == bdb_master_dupe)))
+    if (!gbl_ignore_coherency &&
+        ((master_host == db_eid_invalid) || (master_host == bdb_master_dupe)))
         goto waitformaster;
 
     {
@@ -3156,8 +3156,8 @@ again:
     /* SUCCESS.  we are LIVE and CACHE COHERENT */
 
     /* If I'm not the master and I haven't passed rep verify, wait here. */
-    while (!gbl_ignore_coherency && bdb_state->repinfo->master_host != myhost
-            && !gbl_passed_repverify) {
+    while (!gbl_ignore_coherency && bdb_state->repinfo->master_host != myhost &&
+           !gbl_passed_repverify) {
         sleep(1);
         logmsg(LOGMSG_DEBUG, "waiting for rep_verify to complete\n");
     }

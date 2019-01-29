@@ -4106,8 +4106,8 @@ static int bdb_am_i_coherent_int(bdb_state_type *bdb_state)
         time_t now = time(NULL);
         if (now - lastpr) {
             logmsg(LOGMSG_WARN,
-                    "%s ignoring coherency on 'ignore_coherency' = true\n",
-                    __func__);
+                   "%s ignoring coherency on 'ignore_coherency' = true\n",
+                   __func__);
             lastpr = now;
         }
         return 1;
