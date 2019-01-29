@@ -755,15 +755,13 @@ static int _extract_shardname_index(const char *tblName,
 {
     int nextNum;
 
-    if(!strcasecmp(tblName, originalName))
-    {
-        return 0;   /* initial shard */
+    if (!strcasecmp(tblName, originalName)) {
+        return 0; /* initial shard */
     }
 
-
     if (likely(!testing)) {
-        nextNum = atoi(tblName+1); /* skip $ */
-        
+        nextNum = atoi(tblName + 1); /* skip $ */
+
         if (span) {
             char *_ = strchr(tblName, '_');
             if (_) {
@@ -782,8 +780,8 @@ static int _extract_shardname_index(const char *tblName,
 
 /** dummy version for now */
 static int _generate_new_shard_name(const char *oldname, char *newname,
-        int newnamelen, int nextnum, int maxshards,
-        int testing, struct errstat *err)
+                                    int newnamelen, int nextnum, int maxshards,
+                                    int testing, struct errstat *err)
 {
     int suffix_len = 0;
     int len = 0;
@@ -2002,9 +2000,9 @@ static int _generate_new_shard_name_wrapper(timepart_view_t *view,
 
     /* extract the next id to be used */
     if (view->nshards == retention) {
-        nextNum = _extract_shardname_index(view->shards[0].tblname,
-                                           view->shard0name, NULL,
-                                           view->period == VIEW_PARTITION_TEST2MIN);
+        nextNum = _extract_shardname_index(
+            view->shards[0].tblname, view->shard0name, NULL,
+            view->period == VIEW_PARTITION_TEST2MIN);
         if (nextNum > retention) {
             nextNum = 0; /* go back to 0, the partition was shrinked */
         } else {

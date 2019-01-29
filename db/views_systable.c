@@ -18,22 +18,22 @@
 
 int timepart_systable_timepartitions_collect(void **data, int *nrecords)
 {
-    timepart_views_t  *views = thedb->timepart_views;
+    timepart_views_t *views = thedb->timepart_views;
     timepart_view_t *view;
     systable_timepartition_t *arr = NULL, *temparr;
     int narr = 0;
     int nsize = 0;
     int rc = 0;
     uuidstr_t us;
-   
+
     Pthread_rwlock_rdlock(&views_lk);
-    for(narr=0;narr<views->nviews;narr++) {
-        if (narr>=nsize) {
+    for (narr = 0; narr < views->nviews; narr++) {
+        if (narr >= nsize) {
             nsize += 10;
-            temparr = realloc(arr, sizeof(systable_timepartition_t)*nsize);
+            temparr = realloc(arr, sizeof(systable_timepartition_t) * nsize);
             if (!temparr) {
                 logmsg(LOGMSG_ERROR, "%s OOM %lu!\n", __func__,
-                        sizeof(systable_timepartition_t)*nsize);
+                       sizeof(systable_timepartition_t) * nsize);
                 timepart_systable_timepartitions_free(arr, narr);
                 narr = 0;
                 rc = -1;
@@ -46,7 +46,8 @@ int timepart_systable_timepartitions_collect(void **data, int *nrecords)
         arr[narr].period = strdup(period_to_name(view->period));
         arr[narr].retention = view->retention;
         arr[narr].nshards = view->nshards;
-        arr[narr].version = get_dbtable_by_name(view->shards[0].tblname)->tableversion;
+        arr[narr].version =
+            get_dbtable_by_name(view->shards[0].tblname)->tableversion;
         arr[narr].shard0name = strdup(view->shard0name);
         arr[narr].starttime = view->starttime;
         arr[narr].sourceid = strdup(comdb2uuidstr(view->source_id, us));
@@ -60,10 +61,10 @@ done:
 
 void timepart_systable_timepartitions_free(void *arr, int nrecords)
 {
-    systable_timepartition_t *parr = (systable_timepartition_t*)arr;
+    systable_timepartition_t *parr = (systable_timepartition_t *)arr;
     int i;
 
-    for(i=0;i<nrecords;i++) {
+    for (i = 0; i < nrecords; i++) {
         if (parr[i].name)
             free(parr[i].name);
         if (parr[i].period)
@@ -78,25 +79,26 @@ void timepart_systable_timepartitions_free(void *arr, int nrecords)
 
 int timepart_systable_timepartshards_collect(void **data, int *nrecords)
 {
-    timepart_views_t  *views = thedb->timepart_views;
+    timepart_views_t *views = thedb->timepart_views;
     timepart_view_t *view;
     systable_timepartshard_t *arr = NULL, *temparr;
     int nshard;
-    int narr= 0;
+    int narr = 0;
     int nsize = 0;
     int nview;
     int rc = 0;
-   
+
     Pthread_rwlock_rdlock(&views_lk);
-    for(nview=0;nview<views->nviews;nview++) {
+    for (nview = 0; nview < views->nviews; nview++) {
         view = views->views[nview];
-        for(nshard=0;nshard<view->nshards;nshard++){
-            if (narr>=nsize) {
+        for (nshard = 0; nshard < view->nshards; nshard++) {
+            if (narr >= nsize) {
                 nsize += 10;
-                temparr = realloc(arr, sizeof(systable_timepartshard_t)*nsize);
+                temparr =
+                    realloc(arr, sizeof(systable_timepartshard_t) * nsize);
                 if (!temparr) {
                     logmsg(LOGMSG_ERROR, "%s OOM %lu!\n", __func__,
-                            sizeof(systable_timepartshard_t)*nsize);
+                           sizeof(systable_timepartshard_t) * nsize);
                     timepart_systable_timepartshards_free(arr, narr);
                     narr = 0;
                     rc = -1;
@@ -116,15 +118,14 @@ done:
     *data = arr;
     *nrecords = narr;
     return rc;
-
 }
 
 void timepart_systable_timepartshards_free(void *arr, int nrecords)
 {
-    systable_timepartshard_t *parr = (systable_timepartshard_t*)arr;
+    systable_timepartshard_t *parr = (systable_timepartshard_t *)arr;
     int i;
 
-    for(i=0;i<nrecords;i++) {
+    for (i = 0; i < nrecords; i++) {
         if (parr[i].name)
             free(parr[i].name);
         if (parr[i].shardname)
@@ -136,12 +137,11 @@ void timepart_systable_timepartshards_free(void *arr, int nrecords)
 int timepart_systable_timepartevents_collect(void **arr, int *nrecords)
 {
     int allocsize = 0;
-    return cron_systable_sched_events_collect(timepart_sched,
-            (systable_cron_events_t**)arr, nrecords, &allocsize);
+    return cron_systable_sched_events_collect(
+        timepart_sched, (systable_cron_events_t **)arr, nrecords, &allocsize);
 }
 
 void timepart_systable_timepartevents_free(void *arr, int nrecords)
 {
     cron_systable_events_free(arr, nrecords);
 }
-
