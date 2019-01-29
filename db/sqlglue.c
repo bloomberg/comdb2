@@ -9319,7 +9319,7 @@ int put_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
 
     if (!clnt->dbtran.cursor_tran) {
         logmsg(LOGMSG_DEBUG, "%s called without curtran\n", __func__);
-        return -1;
+        return 0;
     }
 
     rc = bdb_put_cursortran(bdb_state, clnt->dbtran.cursor_tran, curtran_flags,
