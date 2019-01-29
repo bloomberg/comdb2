@@ -2797,17 +2797,17 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
 /*sleep(2); this is not needed anymore */
 
 /* do not proceed untill we find a master */
+    if (gbl_ignore_coherency)
+        goto ignore_coherency;
 waitformaster:
-    while (bdb_state->repinfo->master_host == db_eid_invalid &&
-           !gbl_ignore_coherency) {
+    while (bdb_state->repinfo->master_host == db_eid_invalid) {
         logmsg(LOGMSG_WARN, "^^^^^^^^^^^^ waiting for a master...\n");
         sleep(3);
     }
 
     master_host = bdb_state->repinfo->master_host;
 
-    if (!gbl_ignore_coherency &&
-        ((master_host == db_eid_invalid) || (master_host == bdb_master_dupe)))
+    if ((master_host == db_eid_invalid) || (master_host == bdb_master_dupe))
         goto waitformaster;
 
     {
@@ -2832,8 +2832,6 @@ waitformaster:
    PHASE 1:
    wait until berkdb claims we are "caught up"
    */
-    if (gbl_ignore_coherency)
-        goto ignore_coherency;
 
 /* berkdb 4.2 doesnt support startup done message, so skip this phase */
 #if defined(BERKDB_4_3) || defined(BERKDB_4_5) || defined(BERKDB_46)
