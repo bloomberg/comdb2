@@ -65,7 +65,7 @@
 #include "bpfunc.h"
 #include "logmsg.h"
 
-#define DEBUG_REORDER 0
+#define DEBUG_REORDER 1
 
 int g_osql_blocksql_parallel_max = 5;
 int gbl_osql_check_replicant_numops = 1;
@@ -1294,12 +1294,15 @@ static int process_this_session(
     reqlog_set_event(iq->reqlogger, "txn");
 
 #if DEBUG_REORDER
+    logmsg(LOGMSG_USER, "OSQL ");
     // if needed to check content of socksql temp table, dump with:
     void bdb_temp_table_debug_dump(bdb_state_type * bdb_state,
                                    tmpcursor_t * cur);
     bdb_temp_table_debug_dump(thedb->bdb_env, dbc);
-    if (dbc_ins)
+    if (dbc_ins) {
+        logmsg(LOGMSG_USER, "INS ");
         bdb_temp_table_debug_dump(thedb->bdb_env, dbc_ins);
+    }
 #endif
 
     /* go through each record */

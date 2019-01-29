@@ -18,11 +18,12 @@
 #include <string.h>
 #include <stdlib.h>
 #include <inttypes.h>
-#include "comdb2.h"
-#include <schemachange.h>
-#include "block_internal.h"
 #include <assert.h>
+#include "comdb2.h"
+#include "schemachange.h"
+#include "block_internal.h"
 #include "logmsg.h"
+#include "osqlsqlthr.h"
 #include "indices.h"
 
 #define DEBUG_REORDER 1
@@ -253,7 +254,7 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
                        unsigned long long vgenid, unsigned long long ins_keys,
                        int opcode, int blkpos, void *od_dta, size_t od_len,
                        const char *ondisktag, struct schema *ondisktagsc,
-                       int flags)
+                       int flags, int rec_flags)
 {
     char *od_dta_tail = NULL;
     int od_tail_len;
@@ -262,13 +263,13 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
 
     void *cur = NULL;
     dtikey_t ditk= {0};
-    bool reorder = gbl_reorder_idx_writes && !is_event_from_sc(flags)
+    bool reorder = gbl_reorder_idx_writes && !is_event_from_sc(flags) 
+        && (rec_flags & OSQL_IGNORE_FAILURE) == 0
         && iq->usedb->sc_from != iq->usedb;
 
 #if DEBUG_REORDER
     logmsg(LOGMSG_DEBUG, "%s(): entering, reorder = %d\n", __func__, reorder);
 #endif
-    logmsg(LOGMSG_DEBUG, "process_defered_table(): entering\n");
     if (reorder) {
         cur = get_constraint_table_cursor(defered_index_tbl);
         if (cur == NULL) {
@@ -1326,7 +1327,7 @@ int process_defered_table(struct ireq *iq, block_state_t *blkstate, void *trans,
     if (rc != IX_OK) {
         //free_cached_delayed_indexes(iq);
         if (rc == IX_EMPTY) {
-logmsg(LOGMSG_ERROR, "AZ: process_defered_table is empty\n");
+logmsg(LOGMSG_ERROR, "AZ: defered table is empty\n");
             if (iq->debug)
                 reqprintf(iq, "%p:VERKYCNSTRT FOUND NO KEYS TO ADD", trans);
             rc = 0;
@@ -1342,7 +1343,7 @@ logmsg(LOGMSG_ERROR, "AZ: process_defered_table is empty\n");
     int count = 0;
     while (rc == IX_OK) {
         dtikey_t *ditk= (dtikey_t *)bdb_temp_table_key(cur);
-logmsg(LOGMSG_ERROR, "AZ: process_defered_table count %d, table %s, type %d, index %d, genid %llx\n", ++count, ditk->usedb->tablename, ditk->type, ditk->ixnum, bdb_genid_to_host_order(ditk->genid));
+logmsg(LOGMSG_ERROR, "AZ: %s() count %d, table %s, type %d, index %d, genid %llx\n", __func__, ++count, ditk->usedb->tablename, ditk->type, ditk->ixnum, bdb_genid_to_host_order(ditk->genid));
         void *od_dta_tail = bdb_temp_table_data(cur);
         int od_tail_len = bdb_temp_table_datasize(cur);
 

@@ -78,6 +78,8 @@ void free_cached_idx(uint8_t * *cached_idx);
         if (gbl_verbose_toblock_backouts)                                      \
             logmsg(LOGMSG_USER, "err line %d rc %d retrc %d\n", __LINE__, rc,  \
                    retrc);                                                     \
+        if (iq->debug)                                                         \
+            reqprintf(iq, "err line %d rc %d retrc %d\n", __LINE__, rc, retrc);\
         goto err;                                                              \
     } while (0);
 
@@ -467,7 +469,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
      * data. The keys, however, are also added to the deferred
      * temporary table to enable cascading updates, if needed.
      */
-    if (!(flags & RECFLAGS_NO_CONSTRAINTS) && !gbl_reorder_idx_writes) /* if NOT no constraints */
+    if (!(flags & RECFLAGS_NO_CONSTRAINTS)) /* if NOT no constraints */
     {
         if (!is_event_from_sc(flags)) {
             /* enqueue the add of the key for constaint checking purposes */
@@ -486,13 +488,14 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
              */
         }
     }
-    else if ((flags & RECFLAGS_NO_CONSTRAINTS) /* if no constraints */
+
+    if ((flags & RECFLAGS_NO_CONSTRAINTS) /* if no constraints */
         || gbl_reorder_idx_writes
         || (rec_flags & OSQL_IGNORE_FAILURE)) {
         retrc = add_record_indices(iq, trans, blobs, maxblobs, opfailcode,
                                    ixfailnum, rrn, genid, vgenid, ins_keys,
                                    opcode, blkpos, od_dta, od_len, ondisktag,
-                                   ondisktagsc, flags);
+                                   ondisktagsc, flags, rec_flags);
         if (retrc)
             ERR;
     }

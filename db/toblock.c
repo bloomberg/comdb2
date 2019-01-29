@@ -5843,6 +5843,7 @@ add_blkseq:
         }
     }
 
+    fromline = __LINE__;
 cleanup:
     logmsg(LOGMSG_DEBUG, "%s cleanup did_replay:%d fromline:%d\n", __func__,
            did_replay, fromline);

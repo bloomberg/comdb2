@@ -51,7 +51,7 @@
 #include <compat.h>
 #include <unistd.h>
 
-#define DEBUG_REORDER 0
+#define DEBUG_REORDER 1
 #define BLKOUT_DEFAULT_DELTA 5
 #define MAX_CLUSTER 16
 
