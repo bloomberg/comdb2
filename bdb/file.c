@@ -2115,6 +2115,7 @@ int bdb_is_standalone(void *dbenv, void *in_bdb_state)
 }
 
 extern int gbl_commit_delay_trace;
+extern int gbl_ignore_coherency;
 
 static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
 {
@@ -2797,14 +2798,16 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
 
 /* do not proceed untill we find a master */
 waitformaster:
-    while (bdb_state->repinfo->master_host == db_eid_invalid) {
+    while (bdb_state->repinfo->master_host == db_eid_invalid &&
+            !gbl_ignore_coherency) {
         logmsg(LOGMSG_WARN, "^^^^^^^^^^^^ waiting for a master...\n");
         sleep(3);
     }
 
     master_host = bdb_state->repinfo->master_host;
 
-    if ((master_host == db_eid_invalid) || (master_host == bdb_master_dupe))
+    if (!gbl_ignore_coherency && ((master_host == db_eid_invalid) ||
+                (master_host == bdb_master_dupe)))
         goto waitformaster;
 
     {
@@ -2829,6 +2832,8 @@ waitformaster:
    PHASE 1:
    wait until berkdb claims we are "caught up"
    */
+    if (gbl_ignore_coherency)
+        goto ignore_coherency;
 
 /* berkdb 4.2 doesnt support startup done message, so skip this phase */
 #if defined(BERKDB_4_3) || defined(BERKDB_4_5) || defined(BERKDB_46)
@@ -3076,6 +3081,7 @@ done2:
     done3:
         logmsg(LOGMSG_DEBUG, "phase 3 replication catchup passed\n");
     }
+ignore_coherency:
 
     /* latch state of early ack.  we need to temporarily disable it in a bit.
        thats because phase 4 relies on us sending an "ack" to a checkpoint.
@@ -3119,7 +3125,7 @@ done2:
 again:
     buf_put(&(bdb_state->repinfo->master_host), sizeof(int), p_buf, p_buf_end);
 
-    if (bdb_state->repinfo->master_host != myhost) {
+    if (!gbl_ignore_coherency && bdb_state->repinfo->master_host != myhost) {
 
         /* now we have the master checkpoint and WAIT for us to ack the seqnum,
            thus making sure we are actually LIVE */
@@ -3150,7 +3156,8 @@ again:
     /* SUCCESS.  we are LIVE and CACHE COHERENT */
 
     /* If I'm not the master and I haven't passed rep verify, wait here. */
-    while (bdb_state->repinfo->master_host != myhost && !gbl_passed_repverify) {
+    while (!gbl_ignore_coherency && bdb_state->repinfo->master_host != myhost
+            && !gbl_passed_repverify) {
         sleep(1);
         logmsg(LOGMSG_DEBUG, "waiting for rep_verify to complete\n");
     }
