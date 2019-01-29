@@ -2085,6 +2085,7 @@ static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx, int myport,
     hndl->num_set_commands_sent = 0;
     hndl->sent_client_info = 0;
     hndl->connected_host = node_indx;
+    hndl->copyhosts = 1;
     hndl->hosts_connected[hndl->connected_host] = 1;
     debugprint("connected_host=%s\n", hndl->hosts[hndl->connected_host]);
     return 0;
@@ -2354,6 +2355,7 @@ retry_connect:
     }
 
     hndl->connected_host = -1;
+    assert(hndl->sb == NULL);
     return -1;
 }
 
@@ -2678,8 +2680,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
     if (hndl) { 
         features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_DBINFO;
         if ((hndl->flags & CDB2_DIRECT_CPU) ||
-            (retries_done >= (hndl->num_hosts * 2 - 1) && hndl->master ==
-             hndl->connected_host)) {
+            (retries_done >= (hndl->num_hosts * 2 - 1) && hndl->master >= 0 &&
+             hndl->master == hndl->connected_host)) {
             features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_EXEC;
         }
         if (retries_done >= hndl->num_hosts) {
@@ -3106,6 +3108,7 @@ static inline cdb2_hndl_tp *retrieve_handle(cdb2_hndl_tp *hndl)
         cdb2_hndl_tp *c_hndl = hndl->children[i];
         if (c_hndl->active && (c_hndl->parent_ix != hndl->master ||
                     c_hndl->last_active)) {
+            assert(c_hndl->last_active || hndl->master < 0 || strcmp(c_hndl->hosts[0], hndl->hosts[hndl->master]));
             return hndl->children[i];
         }
     }
@@ -3496,8 +3499,10 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
 
     /* Replay all the queries. */
     char *host = "NOT-CONNECTED";
-    if (hndl->connected_host >= 0)
+    if (hndl->connected_host >= 0) {
         host = hndl->hosts[hndl->connected_host];
+        assert(hndl->sb);
+    }
 
     /*Send Begin. */
     hndl->is_retry = num_retry;
@@ -3717,6 +3722,11 @@ static void process_set_local(cdb2_hndl_tp *hndl, const char *set_command)
         return;
     }
 
+    if (strncasecmp(p, "getdbhosts", 10) == 0 && !hndl->parent) {
+        cdb2_get_dbhosts(hndl);
+        return;
+    }
+
     if (strncasecmp(p, "concurrent", 10) == 0 && !hndl->parent) {
         int children, i;
         p += sizeof("CONCURRENT");
@@ -3860,6 +3870,8 @@ static inline void clear_snapshot_info(cdb2_hndl_tp *hndl, int line)
 static int local_only(cdb2_hndl_tp *hndl, const char *set_tok)
 {
     if (strcasecmp(set_tok, "concurrent") == 0)
+        return 1;
+    if (strcasecmp(set_tok, "getdbhosts") == 0)
         return 1;
     return 0;
 }
@@ -4283,6 +4295,7 @@ read_record:
         newsql_disconnect(hndl, hndl->sb, __LINE__);
         hndl->connected_host = -1;
         hndl->retry_all = 1;
+        assert(hndl->sb == NULL);
 
 #if WITH_SSL
         /* Clear cached SSL sessions - Hosts may have changed. */
@@ -4782,6 +4795,33 @@ static void copy_hosts_into_child(cdb2_hndl_tp *hndl, cdb2_hndl_tp *c_hndl,
     }
 
     c_hndl->num_child_hosts = hndl->num_hosts;
+}
+
+static void dump_hndl(cdb2_hndl_tp *hndl, FILE *f)
+{
+    int child = hndl->parent ? 1 : 0;
+    fprintf(f, "%s handle %d hosts\n", child ? "child" : "parent",
+            hndl->num_hosts);
+    fprintf(f, "master -> %s, connnected -> %s", 
+            hndl->master == -1 ? "unset" : hndl->hosts[hndl->master],
+            hndl->connected_host == -1 ? "unset" :
+            hndl->hosts[hndl->connected_host]);
+    for (int i = 0; i < hndl->num_hosts; i++)
+        fprintf(f, "%s%s", hndl->hosts[i], (i != hndl->num_hosts - 1) ?
+                ":" : "\n");
+    if (child) {
+        
+    }
+}
+
+static void dump_hndl_and_children(cdb2_hndl_tp *hndl, FILE *f)
+{
+    dump_hndl(hndl, f);
+    fprintf(f, "-\n");
+    for (int i = 0; i < hndl->num_children ; i++) {
+        dump_hndl(hndl->children[i], f);
+        fprintf(f, "-\n");
+    }
 }
 
 int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
