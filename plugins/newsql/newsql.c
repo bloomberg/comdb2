@@ -1537,8 +1537,7 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                     } else {
                         clnt->have_user = 1;
                         /* Re-authenticate the new user. */
-                        if (clnt->authgen &&
-                            strcmp(clnt->user, sqlstr) != 0)
+                        if (clnt->authgen && strcmp(clnt->user, sqlstr) != 0)
                             clnt->authgen = 0;
                         clnt->is_x509_user = 0;
                         strcpy(clnt->user, sqlstr);
