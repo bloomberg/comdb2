@@ -1627,6 +1627,12 @@ REGISTER_TUNABLE("force_incoherent",
                  TUNABLE_BOOLEAN, &gbl_force_incoherent,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("ignore_coherency",
+                 "Force this node to be coherent.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_ignore_coherency,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+
 REGISTER_TUNABLE("abort_on_missing_osql_session",
                  "Abort if we can't find an osql session in the repository.  "
                  "(Default: off)",
