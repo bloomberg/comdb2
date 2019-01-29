@@ -318,10 +318,6 @@ void live_sc_off(struct dbtable *db)
     db->sc_deletes = 0;
     db->sc_nrecs = 0;
     db->sc_prev_nrecs = 0;
-    if (db->sc_live_logical) {
-        bdb_clear_logical_live_sc(db->handle);
-        db->sc_live_logical = 0;
-    }
     Pthread_rwlock_unlock(&db->sc_live_lk);
 }
 
@@ -348,8 +344,14 @@ void sc_set_downgrading(struct schema_change_type *s)
     s->db->sc_abort = 0;
     Pthread_rwlock_unlock(&s->db->sc_live_lk);
 
-    if (s->db->sc_live_logical)
-        bdb_clear_logical_live_sc(s->db->handle);
+    if (s->db->sc_live_logical) {
+        int rc =
+            bdb_clear_logical_live_sc(s->db->handle, 0 /* already locked */);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed to clear logical live sc\n",
+                   __func__);
+        }
+    }
 
     trans_abort(&iq, tran);
 }
@@ -427,6 +429,21 @@ unsigned int sc_get_logical_redo_lwm()
             lwm = sctbl->logical_lwm;
         sctbl = hash_next(sc_tables, &ent, &bkt);
     }
+    Pthread_mutex_unlock(&schema_change_in_progress_mutex);
+    return lwm - 1;
+}
+
+unsigned int sc_get_logical_redo_lwm_table(char *table)
+{
+    sc_table_t *sctbl = NULL;
+    unsigned int lwm = 0;
+    if (!gbl_logical_live_sc)
+        return 0;
+    Pthread_mutex_lock(&schema_change_in_progress_mutex);
+    assert(sc_tables);
+    sctbl = hash_find_readonly(sc_tables, &table);
+    if (sctbl)
+        lwm = sctbl->logical_lwm;
     Pthread_mutex_unlock(&schema_change_in_progress_mutex);
     return lwm;
 }

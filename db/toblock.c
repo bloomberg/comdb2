@@ -1513,17 +1513,7 @@ int tolongblock(struct ireq *iq)
                 break;
             }
 
-            case BLOCK2_ADDKL:
-            case BLOCK2_ADDKL_POS:
-            case BLOCK2_DELKL:
-            case BLOCK2_UPDKL:
-            case BLOCK2_UPDKL_POS:
-            case BLOCK2_RNGDELKL:
-            case BLOCK2_QADD:
-            case BLOCK2_SOCK_SQL:
-            case BLOCK2_RECOM:
-            case BLOCK2_SNAPISOL:
-            case BLOCK2_SERIAL:
+            default:
                 break;
             }
             if (blklong_trans != NULL)

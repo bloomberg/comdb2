@@ -27,10 +27,11 @@ export CLEANUPDBDIR=${CLEANUPDBDIR:-1}
 source $TESTSROOTDIR/setup.common
 export PATH="${paths}/:${PATH}"
 export pmux_port=${PMUXPORT:-5105}  # assign to 5105 if it was not set as a make parameter
+TEST_LOG=${TESTDIR}/test.log
 successful=0
 
 DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
-echo Starting $TESTCASE with id $TESTID at $DATETIME >> $TESTDIR/test.log
+echo Starting $TESTCASE with id $TESTID at $DATETIME >> ${TEST_LOG}
 mkdir -p ${TESTDIR}/logs/
 
 call_unsetup() {
@@ -188,13 +189,12 @@ call_setup() {
 
 
     if [[ -n "$cr" ]] ; then
-        echo "!$TESTCASE: setup failed with core dumped ($cr)"
-        echo "!$TESTCASE: setup failed with core dumped ($cr)" >> ${TESTDIR}/test.log
+        echo "!$TESTCASE: setup failed with core dumped ($cr)" | tee -a ${TEST_LOG}
         call_unsetup
         sleep 0.1
         exit 1
     elif [[ $ret != "setup successful" ]] ; then
-        echo "!$TESTCASE: setup failed (rc=$ret)" >> ${TESTDIR}/test.log
+        echo "!$TESTCASE: setup failed (rc=$ret)" >> ${TEST_LOG}
         echo "!$TESTCASE: setup failed (rc=$ret) see ${TESTDIR}/logs/${DBNAME}.setup"
         call_unsetup
         sleep 0.1
@@ -227,6 +227,20 @@ check_db_at_finish() {
     done
 }
 
+verify_db_at_finish() {
+    local LCLDBNM="$1"
+    local LCLCONFIG="$2"
+    local LCLOPTIONS="--cdb2cfg ${LCLCONFIG}"
+
+    tables=$(timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM default 'select * from comdb2_tables')
+    for t in $tables ; do 
+        timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM default "exec procedure sys.cmd.verify('$t')" &> verify.out
+        if ! grep "Verify succeeded." verify.out > /dev/null ; then
+            echo "Table $t"
+            return
+        fi
+    done
+}
 
 
 # start the testing: setup, runit, check cores, unsetup
@@ -248,7 +262,9 @@ if [[ -z "$cr" ]] && [[ -n "${SECONDARY_DBNAME}" ]] ; then
     cr=`find_cores ${SECONDARY_DBNAME} ${SECONDARY_DBDIR}`
 fi
 
-if [[ -z "${CHECK_DB_AT_FINISH}" ]] ; then
+if [[ -n "$cr" ]] ; then
+    CHECK_DB_AT_FINISH=0
+elif [[ -z "${CHECK_DB_AT_FINISH}" ]] ; then
    if [[ "$COMDB2_UNITTEST" != 1 ]] ; then
        CHECK_DB_AT_FINISH=1
    else
@@ -264,27 +280,34 @@ if [ $CHECK_DB_AT_FINISH -eq 1 ] ; then
     if [[ -z "$dbdown" ]] && [[ -n "${SECONDARY_DBNAME}" ]]; then
         dbdown=`check_db_at_finish ${SECONDARY_DBNAME} $SECONDARY_CDB2_CONFIG`
     fi
+
+    if [[ -z "$dbdown" ]] ; then
+        verify_ret=`verify_db_at_finish ${DBNAME} $CDB2_CONFIG`
+        if [[ -z "$verify_ret" ]] && [[ -n "${SECONDARY_DBNAME}" ]]; then
+            verify_ret=`verify_db_at_finish ${SECONDARY_DBNAME} $SECONDARY_CDB2_CONFIG`
+        fi
+    fi
 fi
 
 
 
 if [[ -n "$cr" ]] ; then
-    echo "!$TESTCASE: failed with core dumped ($cr)"
-    echo "!$TESTCASE: failed with core dumped ($cr)" >> ${TESTDIR}/test.log
+    echo "!$TESTCASE: failed with core dumped ($cr)" | tee -a ${TEST_LOG}
 elif [[ -n "$dbdown" ]] ; then
-    echo "!$TESTCASE: db was unavailable at finish ($dbdown)"
-    echo "!$TESTCASE: db was unavailable at finish ($dbdown)" >> ${TESTDIR}/test.log
+    echo "!$TESTCASE: db was unavailable at finish ($dbdown)" | tee -a ${TEST_LOG}
 elif [[ $rc -eq 124 ]] ; then
     echo "!$TESTCASE: timeout (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
-    echo "!$TESTCASE: timeout" >> ${TESTDIR}/test.log
+    echo "!$TESTCASE: timeout" >> ${TEST_LOG}
     successful=-1
+elif [[ -n "$verify_ret" ]] ; then
+    echo "!$TESTCASE: failed verify ($verify_ret)" | tee -a ${TEST_LOG}
 elif [[ $rc -eq 0 ]] ; then
     echo "!$TESTCASE: success (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
-    echo "!$TESTCASE: success" >> ${TESTDIR}/test.log
+    echo "!$TESTCASE: success" >> ${TEST_LOG}
     successful=1
 else
     echo "!$TESTCASE: failed rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
-    echo "!$TESTCASE: failed" >> ${TESTDIR}/test.log
+    echo "!$TESTCASE: failed" >> ${TEST_LOG}
 fi
 
 trap - INT EXIT
@@ -292,7 +315,7 @@ trap - INT EXIT
 call_unsetup
 
 DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
-echo Done $TESTCASE with id $TESTID at $DATETIME >> $TESTDIR/test.log
+echo Done $TESTCASE with id $TESTID at $DATETIME >> ${TEST_LOG}
 echo "Duration $SECONDS seconds" >> ${TESTDIR}/logs/${DBNAME}.testcase
 
 exit $rc

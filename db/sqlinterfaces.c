@@ -4607,6 +4607,10 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
         release_node_stats(clnt->argv0, clnt->stack, clnt->origin);
         clnt->rawnodestats = NULL;
     }
+    if (clnt->argv0) {
+        free(clnt->argv0);
+        clnt->argv0 = NULL;
+    }
     clnt->sb = sb;
     clnt->must_close_sb = 1;
     clnt->recno = 1;
