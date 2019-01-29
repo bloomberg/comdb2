@@ -183,7 +183,7 @@ static void _insert_ordered_event(cron_sched_t *sched, cron_event_t *event)
     if (sched->events.top == event) {
         /* new event at the top of the list,
            notify cron to pick up the event */
-        /*Pthread_cond_signal(&sched->cond);*/
+        Pthread_cond_signal(&sched->cond);
     }
 }
 
