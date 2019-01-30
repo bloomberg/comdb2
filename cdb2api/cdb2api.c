@@ -4758,8 +4758,10 @@ static void copy_hosts_into_child(cdb2_hndl_tp *hndl, cdb2_hndl_tp *c_hndl,
 {
     int rd, ix = -1;
 
-    if (c_hndl->parent_ix >= 0)
+    if (c_hndl->parent_ix >= 0) {
         ix = c_hndl->parent_ix;
+        assert(assigned[ix]);
+    }
 
     for (int i = 0; ix == -1 && i < hndl->num_hosts; i++) {
         if (!assigned[i]) {
@@ -4784,14 +4786,13 @@ static void copy_hosts_into_child(cdb2_hndl_tp *hndl, cdb2_hndl_tp *c_hndl,
 
     assert(ix >= 0);
     assigned[ix] = 1;
+    c_hndl->parent_ix = ix;
 
     for (int i = 0; i < hndl->num_hosts ; i++) {
         rd = ((ix + i) % hndl->num_hosts);
         strncpy(c_hndl->hosts[i], hndl->hosts[rd],
                 sizeof(hndl->hosts[0]) - 1);
         c_hndl->ports[i] = hndl->ports[rd];
-        if (i == 0)
-            c_hndl->parent_ix = rd;
     }
 
     c_hndl->num_child_hosts = hndl->num_hosts;
@@ -4799,18 +4800,25 @@ static void copy_hosts_into_child(cdb2_hndl_tp *hndl, cdb2_hndl_tp *c_hndl,
 
 static void dump_hndl(cdb2_hndl_tp *hndl, FILE *f)
 {
-    int child = hndl->parent ? 1 : 0;
+    int child = hndl->parent ? 1 : 0, target;
     fprintf(f, "%s handle %d hosts\n", child ? "child" : "parent",
             hndl->num_hosts);
-    fprintf(f, "master -> %s, connnected -> %s", 
+    fprintf(f, "master -> %s, connnected -> %s\n", 
             hndl->master == -1 ? "unset" : hndl->hosts[hndl->master],
             hndl->connected_host == -1 ? "unset" :
             hndl->hosts[hndl->connected_host]);
-    for (int i = 0; i < hndl->num_hosts; i++)
-        fprintf(f, "%s%s", hndl->hosts[i], (i != hndl->num_hosts - 1) ?
-                ":" : "\n");
+    target = (child ? hndl->num_child_hosts : hndl->num_hosts);
+    for (int i = 0; i < target; i++) {
+        char *spacer = "";
+        if (i == hndl->connected_host)
+            spacer = "*";
+        fprintf(f, "%s%s%s%s", spacer, hndl->hosts[i], spacer,
+                (i != target - 1) ?  ":" : "\n");
+    }
     if (child) {
-        
+        assert(hndl->parent_ix >= 0);
+        assert(strcmp(hndl->hosts[0],
+                    hndl->parent->hosts[hndl->parent_ix]) == 0);
     }
 }
 
@@ -4860,6 +4868,7 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
         int have_master = 0, have_connected = 0;
         hndl->active = 1;
         hndl->last_active = 0;
+
         for (i = 0; hndl->copyhosts && i < hndl->num_hosts; i++)
             assigned[i] = 0;
 
@@ -4884,6 +4893,8 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
             assert(strcmp(hndl->children[i]->hosts[0], hndl->hosts[pix]) == 0);
         }
 
+        if (hndl->debug_trace)
+            dump_hndl_and_children(hndl, stderr);
         hndl->copyhosts = 0;
         hndl->total_active = (hndl->num_children + 1);
         if (hndl->total_active == 1)
