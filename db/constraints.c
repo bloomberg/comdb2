@@ -1822,6 +1822,8 @@ void *create_constraint_index_table()
 
 inline void *get_constraint_table_cursor(void *table)
 {
+    if (table == NULL)
+        abort();
     struct temp_cursor *cur = NULL;
     int err = 0;
     cur = (struct temp_cursor *)bdb_temp_table_cursor(thedb->bdb_env, table,

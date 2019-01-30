@@ -919,7 +919,7 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
         vgenid = newgenid;
     void *cur = NULL;
     dtikey_t ditk= {0};
-    bool reorder = gbl_reorder_idx_writes && iq->usedb->sc_to != iq->usedb;
+    bool reorder = 0; //gbl_reorder_idx_writes && iq->usedb->sc_to != iq->usedb;
 #if DEBUG_REORDER
     logmsg(LOGMSG_DEBUG, "%s(): entering, reorder = %d\n", __func__, reorder);
 #endif
@@ -1056,7 +1056,7 @@ int upd_new_record_indices(
 {
     void *cur = NULL;
     dtikey_t delditk= {0};
-    bool reorder = gbl_reorder_idx_writes && iq->usedb->sc_from != iq->usedb;
+    bool reorder = 0; //gbl_reorder_idx_writes && iq->usedb->sc_from != iq->usedb;
 #if DEBUG_REORDER
     logmsg(LOGMSG_DEBUG, "%s(): entering, reorder = %d\n", __func__, reorder);
 #endif
