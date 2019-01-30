@@ -394,7 +394,7 @@ int fdb_send_open(fdb_msg_t *msg, char *cid, fdb_tran_t *trans, int rootp,
     msg->co.seq = (trans) ? trans->seq : 0;
     msg->co.srcpid = gbl_mypid;
     msg->co.srcnamelen = strlen(gbl_myhostname) + 1;
-    msg->co.srcname = gbl_myhostname;
+    msg->co.srcname = strdup(gbl_myhostname);
     msg->co.ssl = 0; /*TODO: do I need this? */
 
     sbuf2printf(sb, "remsql\n");
@@ -688,6 +688,9 @@ void fdb_msg_clean_message(fdb_msg_t *msg)
         break;
 
     case FDB_MSG_CURSOR_OPEN:
+        free(msg->co.srcname);
+        msg->co.srcname = NULL;
+        msg->co.srcnamelen = 0;
         break;
 
     case FDB_MSG_CURSOR_CLOSE:
