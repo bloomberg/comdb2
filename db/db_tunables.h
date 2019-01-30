@@ -1037,10 +1037,6 @@ REGISTER_TUNABLE("sql_time_threshold",
                  "reported as running a long time. (Default: 5000 ms)",
                  TUNABLE_INTEGER, &gbl_sql_time_threshold, READONLY, NULL, NULL,
                  NULL, NULL);
-REGISTER_TUNABLE("sql_prepare_only",
-                 "Disable all execution of SQL queries, only prepare them. "
-                 "(Default: off)", TUNABLE_BOOLEAN, &gbl_sql_prepare_only,
-                 NOARG | EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sql_tranlevel_default",
                  "Sets the default SQL transaction level for the database.",
                  TUNABLE_ENUM, &gbl_sql_tranlevel_default, READONLY,

@@ -162,7 +162,6 @@ extern int gbl_disable_sql_dlmalloc;
 
 extern int active_appsock_conns;
 int gbl_check_access_controls;
-int gbl_sql_prepare_only;
 
 struct thdpool *gbl_sqlengine_thdpool = NULL;
 
@@ -741,9 +740,6 @@ void sql_dlmalloc_init(void)
 int sqlite3_is_prepare_only(
   struct sqlclntstate *clnt
 ){
-  if( gbl_sql_prepare_only ){
-    return 1;
-  }
   if( clnt!=NULL && clnt->prepare_only ){
     return 1;
   }
