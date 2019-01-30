@@ -1353,40 +1353,39 @@ extern int gbl_forbid_incoherent_writes;
 void abort_dbtran(struct sqlclntstate *clnt)
 {
     switch (clnt->dbtran.mode) {
-        case TRANLEVEL_SOSQL:
-            osql_sock_abort(clnt, OSQL_SOCK_REQ);
-            if (clnt->selectv_arr) {
-                currangearr_free(clnt->selectv_arr);
-                clnt->selectv_arr = NULL;
-            }
-            break;
+    case TRANLEVEL_SOSQL:
+        osql_sock_abort(clnt, OSQL_SOCK_REQ);
+        if (clnt->selectv_arr) {
+            currangearr_free(clnt->selectv_arr);
+            clnt->selectv_arr = NULL;
+        }
+        break;
 
-        case TRANLEVEL_RECOM:
-            recom_abort(clnt);
-            break;
+    case TRANLEVEL_RECOM:
+        recom_abort(clnt);
+        break;
 
-        case TRANLEVEL_SNAPISOL:
-        case TRANLEVEL_SERIAL:
-            serial_abort(clnt);
-            if (clnt->arr) {
-                currangearr_free(clnt->arr);
-                clnt->arr = NULL;
-            }
-            if (clnt->selectv_arr) {
-                currangearr_free(clnt->selectv_arr);
-                clnt->selectv_arr = NULL;
-            }
+    case TRANLEVEL_SNAPISOL:
+    case TRANLEVEL_SERIAL:
+        serial_abort(clnt);
+        if (clnt->arr) {
+            currangearr_free(clnt->arr);
+            clnt->arr = NULL;
+        }
+        if (clnt->selectv_arr) {
+            currangearr_free(clnt->selectv_arr);
+            clnt->selectv_arr = NULL;
+        }
 
-            break;
+        break;
 
-        default:
-            /* I don't expect this */
-            abort();
+    default:
+        /* I don't expect this */
+        abort();
     }
 
     clnt->intrans = 0;
-    sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
-            SQLENG_NORMAL_PROCESS);
+    sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
     reset_query_effects(clnt);
 }
 
@@ -1416,17 +1415,16 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
     if (rows > 0 && gbl_forbid_incoherent_writes && !clnt->had_lease_at_begin) {
         abort_dbtran(clnt);
-        errstat_cat_str(&clnt->osql.xerr,
-                        "failed write from incoherent node");
+        errstat_cat_str(&clnt->osql.xerr, "failed write from incoherent node");
         clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
-        sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
+        sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
+                                SQLENG_NORMAL_PROCESS);
         outrc = CDB2ERR_VERIFY_ERROR;
         Pthread_mutex_lock(&clnt->wait_mutex);
         clnt->ready_for_heartbeats = 0;
         Pthread_mutex_unlock(&clnt->wait_mutex);
         if (sendresponse)
-            write_response(clnt, RESPONSE_ERROR, clnt->osql.xerr.errstr,
-                    outrc);
+            write_response(clnt, RESPONSE_ERROR, clnt->osql.xerr.errstr, outrc);
         goto done;
     }
 
@@ -4248,11 +4246,10 @@ void sqlengine_work_appsock(void *thddata, void *work)
     }
 
     if (clnt->ctrl_sqlengine == SQLENG_STRT_STATE ||
-            clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
-        clnt->had_lease_at_begin = (thedb->master == gbl_mynode) ? 1 :
-            bdb_valid_lease(thedb->bdb_env);
+        clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
+        clnt->had_lease_at_begin =
+            (thedb->master == gbl_mynode) ? 1 : bdb_valid_lease(thedb->bdb_env);
     }
-
 
     /* assign this query a unique id */
     sql_get_query_id(sqlthd);

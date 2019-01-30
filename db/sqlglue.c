@@ -4792,8 +4792,7 @@ int sqlite3BtreeCommit(Btree *pBt)
         sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db));
         sqlite3VdbeError(vdbe, "failed write from incoherent node");
         sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
-        errstat_cat_str(&clnt->osql.xerr,
-                        "failed write from incoherent node");
+        errstat_cat_str(&clnt->osql.xerr, "failed write from incoherent node");
         clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
         return SQLITE_ABORT;
     }
@@ -4831,7 +4830,7 @@ int sqlite3BtreeCommit(Btree *pBt)
                 clnt->dbtran.shadow_tran = NULL;
             } else {
                 irc = trans_abort_shadow((void **)&clnt->dbtran.shadow_tran,
-                        &bdberr);
+                                         &bdberr);
             }
             if (irc) {
                 logmsg(LOGMSG_ERROR, "%s: commit failed rc=%d bdberr=%d\n", __func__,

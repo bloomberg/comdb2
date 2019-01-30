@@ -1639,9 +1639,9 @@ REGISTER_TUNABLE("forbid_incoherent_writes",
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("skip_catchup_logic",
-                 "Skip initial catchup logic.  (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_skip_catchup_logic,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+                 "Skip initial catchup logic.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_skip_catchup_logic, EXPERIMENTAL | INTERNAL, NULL, NULL,
+                 NULL, NULL);
 
 REGISTER_TUNABLE("abort_on_missing_osql_session",
                  "Abort if we can't find an osql session in the repository.  "

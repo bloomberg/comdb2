@@ -3846,8 +3846,8 @@ static int process_user_message(netinfo_type *netinfo_ptr,
         count++;
         if ((now = comdb2_time_epoch()) - lastpr) {
             host_node_printf(LOGMSG_INFO, host_node_ptr,
-                    "%s: unexpected usertype:%d, count=%d\n", __func__,
-                    usertype, count);
+                             "%s: unexpected usertype:%d, count=%d\n", __func__,
+                             usertype, count);
             lastpr = now;
         }
     }

@@ -2927,7 +2927,7 @@ done1:
 
 again2:
     if (!gbl_skip_catchup_logic && bdb_state->repinfo->master_host != myhost) {
-    /* now loop till we are close */
+        /* now loop till we are close */
         master_host = bdb_state->repinfo->master_host;
         if (master_host == myhost)
             goto done2;
@@ -3120,8 +3120,7 @@ done2:
 again:
     buf_put(&(bdb_state->repinfo->master_host), sizeof(int), p_buf, p_buf_end);
 
-    if (!gbl_skip_catchup_logic &&
-            bdb_state->repinfo->master_host != myhost) {
+    if (!gbl_skip_catchup_logic && bdb_state->repinfo->master_host != myhost) {
 
         /* now we have the master checkpoint and WAIT for us to ack the seqnum,
            thus making sure we are actually LIVE */
