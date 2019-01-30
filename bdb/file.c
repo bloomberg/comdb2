@@ -2115,7 +2115,6 @@ int bdb_is_standalone(void *dbenv, void *in_bdb_state)
 }
 
 extern int gbl_commit_delay_trace;
-extern int gbl_ignore_coherency;
 
 static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
 {
@@ -2797,8 +2796,6 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
 /*sleep(2); this is not needed anymore */
 
 /* do not proceed untill we find a master */
-    if (gbl_ignore_coherency)
-        goto ignore_coherency;
 waitformaster:
     while (bdb_state->repinfo->master_host == db_eid_invalid) {
         logmsg(LOGMSG_WARN, "^^^^^^^^^^^^ waiting for a master...\n");
@@ -3079,7 +3076,6 @@ done2:
     done3:
         logmsg(LOGMSG_DEBUG, "phase 3 replication catchup passed\n");
     }
-ignore_coherency:
 
     /* latch state of early ack.  we need to temporarily disable it in a bit.
        thats because phase 4 relies on us sending an "ack" to a checkpoint.
@@ -3123,7 +3119,7 @@ ignore_coherency:
 again:
     buf_put(&(bdb_state->repinfo->master_host), sizeof(int), p_buf, p_buf_end);
 
-    if (!gbl_ignore_coherency && bdb_state->repinfo->master_host != myhost) {
+    if (bdb_state->repinfo->master_host != myhost) {
 
         /* now we have the master checkpoint and WAIT for us to ack the seqnum,
            thus making sure we are actually LIVE */
@@ -3154,8 +3150,7 @@ again:
     /* SUCCESS.  we are LIVE and CACHE COHERENT */
 
     /* If I'm not the master and I haven't passed rep verify, wait here. */
-    while (!gbl_ignore_coherency && bdb_state->repinfo->master_host != myhost &&
-           !gbl_passed_repverify) {
+    while (bdb_state->repinfo->master_host != myhost && !gbl_passed_repverify) {
         sleep(1);
         logmsg(LOGMSG_DEBUG, "waiting for rep_verify to complete\n");
     }

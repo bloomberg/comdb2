@@ -1348,6 +1348,52 @@ static inline void destroy_hash(hash_t *h, int (*free_func)(void *, void *))
 
 extern int gbl_early_verify;
 extern int gbl_osql_send_startgen;
+extern int gbl_ignore_coherency;
+
+void abort_dbtran(struct sqlclntstate *clnt)
+{
+    switch (clnt->dbtran.mode) {
+        case TRANLEVEL_SOSQL:
+            osql_sock_abort(clnt, OSQL_SOCK_REQ);
+            if (clnt->selectv_arr) {
+                currangearr_free(clnt->selectv_arr);
+                clnt->selectv_arr = NULL;
+            }
+            break;
+
+        case TRANLEVEL_RECOM:
+            recom_abort(clnt);
+            break;
+
+        case TRANLEVEL_SNAPISOL:
+        case TRANLEVEL_SERIAL:
+            serial_abort(clnt);
+            if (clnt->arr) {
+                currangearr_free(clnt->arr);
+                clnt->arr = NULL;
+            }
+            if (clnt->selectv_arr) {
+                currangearr_free(clnt->selectv_arr);
+                clnt->selectv_arr = NULL;
+            }
+
+            break;
+
+        default:
+            /* I don't expect this */
+            abort();
+    }
+
+    clnt->intrans = 0;
+    sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
+            SQLENG_NORMAL_PROCESS);
+}
+
+void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt)
+{
+    if (clnt && clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE)
+        abort_dbtran(clnt);
+}
 
 int handle_sql_commitrollback(struct sqlthdstate *thd,
                               struct sqlclntstate *clnt, int sendresponse)
@@ -1367,6 +1413,21 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
     reqlog_set_cost(thd->logger, 0);
     reqlog_set_rows(thd->logger, rows);
 
+    if (gbl_ignore_coherency && !clnt->had_lease_at_begin) {
+        abort_dbtran(clnt);
+        errstat_cat_str(&clnt->osql.xerr,
+                        "Verify error on invalid lease");
+        clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
+        sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
+        outrc = CDB2ERR_VERIFY_ERROR;
+        Pthread_mutex_lock(&clnt->wait_mutex);
+        clnt->ready_for_heartbeats = 0;
+        Pthread_mutex_unlock(&clnt->wait_mutex);
+        if (sendresponse)
+            write_response(clnt, RESPONSE_ERROR, clnt->osql.xerr.errstr,
+                    outrc);
+        goto done;
+    }
 
     if (!clnt->intrans) {
         reqlog_logf(thd->logger, REQL_QUERY, "\"%s\" ignore (no transaction)\n",
@@ -4185,6 +4246,13 @@ void sqlengine_work_appsock(void *thddata, void *work)
         clnt->osql.host = (thedb->master == gbl_mynode) ? 0 : thedb->master;
     }
 
+    if (clnt->ctrl_sqlengine == SQLENG_STRT_STATE ||
+            clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
+        clnt->had_lease_at_begin = (thedb->master == gbl_mynode) ? 1 :
+            bdb_valid_lease(thedb->bdb_env);
+    }
+
+
     /* assign this query a unique id */
     sql_get_query_id(sqlthd);
 
@@ -4725,47 +4793,6 @@ void reset_clnt_flags(struct sqlclntstate *clnt)
 {
     clnt->writeTransaction = 0;
     clnt->has_recording = 0;
-}
-
-void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt)
-{
-    if (clnt && clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
-        switch (clnt->dbtran.mode) {
-        case TRANLEVEL_SOSQL:
-            osql_sock_abort(clnt, OSQL_SOCK_REQ);
-            if (clnt->selectv_arr) {
-                currangearr_free(clnt->selectv_arr);
-                clnt->selectv_arr = NULL;
-            }
-            break;
-
-        case TRANLEVEL_RECOM:
-            recom_abort(clnt);
-            break;
-
-        case TRANLEVEL_SNAPISOL:
-        case TRANLEVEL_SERIAL:
-            serial_abort(clnt);
-            if (clnt->arr) {
-                currangearr_free(clnt->arr);
-                clnt->arr = NULL;
-            }
-            if (clnt->selectv_arr) {
-                currangearr_free(clnt->selectv_arr);
-                clnt->selectv_arr = NULL;
-            }
-
-            break;
-
-        default:
-            /* I don't expect this */
-            abort();
-        }
-
-        clnt->intrans = 0;
-        sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
-                                SQLENG_NORMAL_PROCESS);
-    }
 }
 
 int sbuf_is_local(SBUF2 *sb)

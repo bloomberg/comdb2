@@ -3843,6 +3843,7 @@ static int process_user_message(netinfo_type *netinfo_ptr,
     } else {
         host_node_printf(LOGMSG_INFO, host_node_ptr,
                          "%s: unexpected usertype:%d\n", __func__, usertype);
+        abort();
     }
 
     if (ack_state)

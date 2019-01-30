@@ -560,7 +560,9 @@ static void handle_failed_recover_deadlock(struct sqlclntstate *clnt,
     switch (recover_deadlock_rcode) {
     case SQLITE_COMDB2SCHEMA:
         clnt->osql.xerr.errval = CDB2ERR_SCHEMA;
+        sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db));
         sqlite3VdbeError(vdbe, "Database schema was changed");
+        sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
         errstat_cat_str(&clnt->osql.xerr,
                         "Database schema was changed during request");
         logmsg(LOGMSG_DEBUG, "%s sending CDB2ERR_SCHEMA\n", __func__);
@@ -569,14 +571,18 @@ static void handle_failed_recover_deadlock(struct sqlclntstate *clnt,
         clnt->osql.xerr.errval = CDB2ERR_CHANGENODE;
         errstat_cat_str(&clnt->osql.xerr,
                         "Client api should retry request");
+        sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db));
         sqlite3VdbeError(vdbe, "New master under snapshot");
+        sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
         logmsg(LOGMSG_DEBUG, "%s sending CDB2ERR_CHANGENODE\n", __func__);
         break;
     default:
         clnt->osql.xerr.errval = CDB2ERR_DEADLOCK;
         errstat_cat_str(&clnt->osql.xerr,
                         "Failed to reaquire locks on deadlock");
+        sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db));
         sqlite3VdbeError(vdbe, "Failed to reaquire locks on deadlock");
+        sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
         logmsg(LOGMSG_DEBUG, "%s sending CDB2ERR_DEADLOCK on %d\n", __func__,
                recover_deadlock_rcode);
         break;
@@ -4731,6 +4737,7 @@ done:
 
 extern int gbl_early_verify;
 extern int gbl_osql_send_startgen;
+extern int gbl_ignore_coherency;
 
 /*
  ** Commit the transaction currently in progress.
@@ -4738,6 +4745,9 @@ extern int gbl_osql_send_startgen;
  ** This will release the write lock on the database file.  If there
  ** are no active cursors, it also releases the read lock.
  */
+
+void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt);
+
 int sqlite3BtreeCommit(Btree *pBt)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
@@ -4776,6 +4786,17 @@ int sqlite3BtreeCommit(Btree *pBt)
         sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                                 SQLENG_NORMAL_PROCESS);
 
+    if (gbl_ignore_coherency && !clnt->had_lease_at_begin) {
+        Vdbe *vdbe = (Vdbe *)clnt->dbtran.pStmt;
+        handle_sql_intrans_unrecoverable_error(clnt);
+        sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db));
+        sqlite3VdbeError(vdbe, "Verify error on invalid lease");
+        sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
+        errstat_cat_str(&clnt->osql.xerr,
+                        "Verify error on invalid lease");
+        clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
+        return CDB2ERR_VERIFY_ERROR;
+    }
     clnt->intrans = 0;
 
 #ifdef DEBUG_TRAN
@@ -4810,7 +4831,7 @@ int sqlite3BtreeCommit(Btree *pBt)
                 clnt->dbtran.shadow_tran = NULL;
             } else {
                 irc = trans_abort_shadow((void **)&clnt->dbtran.shadow_tran,
-                                         &bdberr);
+                        &bdberr);
             }
             if (irc) {
                 logmsg(LOGMSG_ERROR, "%s: commit failed rc=%d bdberr=%d\n", __func__,
