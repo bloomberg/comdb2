@@ -77,10 +77,17 @@ void free_cached_idx(uint8_t * *cached_idx);
         if (gbl_verbose_toblock_backouts)                                      \
             logmsg(LOGMSG_USER, "err line %d rc %d retrc %d\n", __LINE__, rc,  \
                    retrc);                                                     \
+        if (iq->debug)                                                         \
+            reqprintf(iq, "err line %d rc %d retrc %d\n", __LINE__, rc, retrc);\
         goto err;                                                              \
     } while (0);
 
 int gbl_max_wr_rows_per_txn = 0;
+
+static inline bool is_event_from_sc(int flags)
+{
+    return flags & RECFLAGS_NEW_SCHEMA;
+}
 
 /*
  * For logical_livesc, function returns ERR_VERIFY if
@@ -122,7 +129,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         using_myblobs = 1;
     }
 
-    if (flags & RECFLAGS_NEW_SCHEMA)
+    if (is_event_from_sc(flags))
         ondisktag = ".NEW..ONDISK";
     else
         ondisktag = ".ONDISK";
@@ -154,7 +161,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         }
     }
 
-    if ((flags & RECFLAGS_NEW_SCHEMA) &&
+    if (is_event_from_sc(flags) &&
         ((gbl_partial_indexes && iq->usedb->ix_partial) ||
          (gbl_expressions_indexes && iq->usedb->ix_expr))) {
         int ixnum;
@@ -181,7 +188,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         }
     }
 
-    if (!(flags & RECFLAGS_NEW_SCHEMA)) { // dont sleep if adding from SC
+    if (!is_event_from_sc(flags)) { // dont sleep if adding from SC
 
         int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_WRITES_IN_RECORD_C);
         if (d_ms) {
@@ -194,7 +201,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         }
     }
 
-    if (!(flags & RECFLAGS_NEW_SCHEMA) && !(flags & RECFLAGS_DONT_LOCK_TBL)) {
+    if (!is_event_from_sc(flags) && !(flags & RECFLAGS_DONT_LOCK_TBL)) {
         // dont lock table if adding from SC or if RECFLAGS_DONT_LOCK_TBL
         assert(!iq->is_sorese); // sorese codepaths will have locked it already
 
@@ -380,7 +387,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             ERR;
     }
 
-    if ((flags & RECFLAGS_NEW_SCHEMA) &&
+    if (is_event_from_sc(flags) &&
         (flags & RECFLAGS_ADD_FROM_SC_LOGICAL) && (flags & RECFLAGS_KEEP_GENID))
         vgenid = *genid;
 
@@ -463,7 +470,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
      */
     if (!(flags & RECFLAGS_NO_CONSTRAINTS)) /* if NOT no constraints */
     {
-        if (!(flags & RECFLAGS_NEW_SCHEMA)) {
+        if (!is_event_from_sc(flags)) {
             /* enqueue the add of the key for constaint checking purposes */
             rc = insert_add_op(iq, NULL, NULL, opcode, *rrn, -1, *genid,
                                ins_keys, blkpos, rec_flags);
@@ -530,13 +537,13 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         (strcasecmp(iq->usedb->tablename, "comdb2_oplog") != 0 &&
          (strcasecmp(iq->usedb->tablename, "comdb2_commit_log")) != 0 &&
          strncasecmp(iq->usedb->tablename, "sqlite_stat", 11) != 0) &&
-        !(flags & RECFLAGS_NEW_SCHEMA)) {
+        !is_event_from_sc(flags)) {
         retrc = local_replicant_log_add(iq, trans, od_dta, blobs, opfailcode);
         if (retrc)
             ERR;
     }
 
-    if (!(flags & RECFLAGS_NEW_SCHEMA)) {
+    if (!is_event_from_sc(flags)) {
         iq->usedb->write_count[RECORD_WRITE_INS]++;
         gbl_sc_last_writer_time = comdb2_time_epoch();
 
@@ -677,7 +684,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 
     *ixfailnum = -1;
 
-    if (!(flags & RECFLAGS_NEW_SCHEMA)) {
+    if (!is_event_from_sc(flags)) {
         if (gbl_max_wr_rows_per_txn &&
             ((++iq->written_row_count) > gbl_max_wr_rows_per_txn)) {
             reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
@@ -1127,7 +1134,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         (strcasecmp(iq->usedb->tablename, "comdb2_oplog") != 0 &&
          (strcasecmp(iq->usedb->tablename, "comdb2_commit_log")) != 0 &&
          strncasecmp(iq->usedb->tablename, "sqlite_stat", 11) != 0) &&
-        !(flags & RECFLAGS_NEW_SCHEMA)) {
+        !is_event_from_sc(flags)) {
 
         retrc = local_replicant_log_delete_for_update(iq, trans, rrn, vgenid,
                                                       opfailcode);
@@ -1357,7 +1364,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         (strcasecmp(iq->usedb->tablename, "comdb2_oplog") != 0 &&
          (strcasecmp(iq->usedb->tablename, "comdb2_commit_log")) != 0 &&
          strncasecmp(iq->usedb->tablename, "sqlite_stat", 11) != 0) &&
-        !(flags & RECFLAGS_NEW_SCHEMA)) {
+        !is_event_from_sc(flags)) {
         retrc = local_replicant_log_add_for_update(iq, trans, rrn, *genid,
                                                    opfailcode);
         if (retrc)
@@ -1487,14 +1494,12 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         goto err;
     }
 
-    if (!(flags & RECFLAGS_NEW_SCHEMA)) {
-        if (gbl_max_wr_rows_per_txn &&
-            ((++iq->written_row_count) > gbl_max_wr_rows_per_txn)) {
-            reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
-                      "Transaction exceeds max rows");
-            retrc = ERR_TRAN_TOO_BIG;
-            goto err;
-        }
+    if (!is_event_from_sc(flags) && gbl_max_wr_rows_per_txn &&
+        ((++iq->written_row_count) > gbl_max_wr_rows_per_txn)) {
+        reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
+                  "Transaction exceeds max rows");
+        retrc = ERR_TRAN_TOO_BIG;
+        goto err;
     }
 
     if (iq->debug) {
@@ -1515,7 +1520,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     od_len = (size_t)od_len_int;
     allocced_memory = alloca(od_len);
     if (!allocced_memory) {
-        logmsg(LOGMSG_ERROR, "del_record: malloc %u failed\n", (unsigned)od_len);
+        logmsg(LOGMSG_ERROR, "del_record: alloc %u failed\n", (unsigned)od_len);
         *opfailcode = OP_FAILED_INTERNAL;
         retrc = ERR_INTERNAL;
         goto err;
@@ -1640,7 +1645,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         (strcasecmp(iq->usedb->tablename, "comdb2_oplog") != 0 &&
          (strcasecmp(iq->usedb->tablename, "comdb2_commit_log")) != 0 &&
          strncasecmp(iq->usedb->tablename, "sqlite_stat", 11) != 0) &&
-        !(flags & RECFLAGS_NEW_SCHEMA)) {
+        !is_event_from_sc(flags)) {
         retrc = local_replicant_log_delete(iq, trans, od_dta, opfailcode);
         if (retrc)
             ERR;
@@ -1666,25 +1671,19 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 
     /* Delete data record.
        Bdblib automatically deletes associated blobs too. */
-    rc = dat_del(iq, trans, rrn, genid);
+    retrc = dat_del(iq, trans, rrn, genid);
     if (iq->debug)
-        reqprintf(iq, "DEL RRN %d GENID 0x%llx RC %d", rrn, genid, rc);
-    if (rc != 0) {
+        reqprintf(iq, "DEL RRN %d GENID 0x%llx RC %d", rrn, genid, retrc);
+    if (retrc != 0) {
         *opfailcode = (rc == ERR_VERIFY) ? OP_FAILED_VERIFY
                                          : OP_FAILED_INTERNAL + ERR_DEL_DTA;
-        retrc = rc;
         goto err;
     }
 
-    const char *ondisktag;
-    if (flags & RECFLAGS_NEW_SCHEMA)
-        ondisktag = ".NEW..ONDISK";
-    else
-        ondisktag = ".ONDISK";
-
+    const char *tag = is_event_from_sc(flags) ? ".NEW..ONDISK" : ".ONDISK";
     /* Form and delete all keys. */
     retrc = del_record_indices(iq, trans, opfailcode, ixfailnum, rrn, genid,
-                               od_dta, del_keys, del_idx_blobs, ondisktag);
+                               od_dta, del_keys, del_idx_blobs, tag);
     if (retrc)
         ERR;
 
@@ -1722,7 +1721,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 
 err:
     dbglog_record_db_write(iq, "delete");
-    if (iq->__limits.maxcost && iq->cost > iq->__limits.maxcost)
+    if (!retrc && iq->__limits.maxcost && iq->cost > iq->__limits.maxcost)
         retrc = ERR_LIMIT;
 
     free_blob_status_data(oldblobs);
@@ -2453,7 +2452,7 @@ int updbykey_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         using_myblobs = 1;
     }
 
-    if (flags & RECFLAGS_NEW_SCHEMA)
+    if (is_event_from_sc(flags))
         ondisktag = ".NEW..ONDISK";
     else
         ondisktag = ".ONDISK";
