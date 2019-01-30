@@ -1414,6 +1414,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
     reqlog_set_rows(thd->logger, rows);
 
     if (gbl_ignore_coherency && !clnt->had_lease_at_begin) {
+        reset_query_effects(clnt);
         abort_dbtran(clnt);
         errstat_cat_str(&clnt->osql.xerr,
                         "Verify error on invalid lease");
