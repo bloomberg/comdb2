@@ -691,8 +691,9 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
         } 
 
         /* Key was found, check the dependee (parent table) of the constraint.
-         * If we find another key there with the same value, then we're ok 
-         * (assuming key length and key are exactly the same. */
+         * If we find another key there with the same value, then we dont need
+         * to do anything (if also key length and key are exactly the same). 
+         * If we dont find key, we need to cascade the delete. */
         char ondisk_tag[MAXTAGLEN], dondisk_tag[MAXTAGLEN];
         char dkey[MAXKEYLEN];
         if (bct->nonewrefs) {
@@ -788,7 +789,11 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
             *errout = OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT;
             close_constraint_table_cursor(cur);
             return ERR_BADREQ;
-        } else if (rc == IX_FND || rc == IX_FNDMORE) {
+        } 
+        //TODO: what about other rc?
+        
+        /* key was found in parent tbl, no need to delete */
+        if (rc == IX_FND || rc == IX_FNDMORE) {
             if (iq->debug) {
                 reqprintf(iq, "VERBKYCNSTRT VERIFIED TBL %s IX %d AGAINST "
                               "TBL %s IX %d ",
@@ -799,7 +804,10 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
             }
             rc = bdb_temp_table_next(thedb->bdb_env, cur, &err);
             continue;
-        } else if (del_cascade) {
+        } 
+        
+        /* key was not found in parent tbl, will need to delete from this tbl */
+        if (del_cascade) {
             /* do cascade logic here */
             int err = 0, idx = 0;
             if (iq->debug) {
@@ -909,6 +917,7 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
             /* here, we need to retry to verify the constraint */
             continue;
         }
+
         /* get next record from table */
         rc = bdb_temp_table_next(thedb->bdb_env, cur, &err);
     }
