@@ -163,6 +163,8 @@ extern int gbl_last_locked_seqnum;
 extern int gbl_set_coherent_state_trace;
 extern int gbl_force_incoherent;
 extern int gbl_ignore_coherency;
+extern int gbl_skip_catchup_logic;
+extern int gbl_forbid_incoherent_writes;
 extern int gbl_durable_set_trace;
 extern int gbl_set_seqnum_trace;
 extern int gbl_enque_log_more;

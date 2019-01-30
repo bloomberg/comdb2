@@ -2115,7 +2115,7 @@ int bdb_is_standalone(void *dbenv, void *in_bdb_state)
 }
 
 extern int gbl_commit_delay_trace;
-extern int gbl_ignore_coherency;
+int gbl_skip_catchup_logic = 0;
 
 static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
 {
@@ -2832,6 +2832,93 @@ waitformaster:
    */
 
 /* berkdb 4.2 doesnt support startup done message, so skip this phase */
+#if defined(BERKDB_4_3) || defined(BERKDB_4_5) || defined(BERKDB_46)
+
+again1:
+    if (!gbl_skip_catchup_logic && bdb_state->repinfo->master_host != myhost) {
+        master_host = bdb_state->repinfo->master_host;
+        if (master_host == myhost)
+            goto done1;
+        if ((master_host == db_eid_invalid) || (master_host == bdb_master_dupe))
+            goto waitformaster;
+
+        if ((master_host < 0) || (master_host > (MAXNODES - 1))) {
+            logmsg(LOGMSG_FATAL, "master_host == %s\n", master_sid);
+            exit(1);
+        }
+
+        bzero(&(bdb_state->seqnum_info->seqnums[nodeix(myhost)]),
+              sizeof(seqnum_type));
+
+        memcpy(&master_seqnum,
+               &(bdb_state->seqnum_info->seqnums[nodeix(master_sid)]),
+               sizeof(seqnum_type));
+        memcpy(&master_lsn, &master_seqnum.lsn, sizeof(DB_LSN));
+
+        /*
+        fprintf(stder, "%s:%d master_seqnum=%d:%d\n", __FILE__, __LINE__,
+              master_lsn.file, master_lsn.offset);
+         */
+
+        rc = bdb_state->dbenv->log_stat(bdb_state->dbenv, &log_stats,
+                                        DB_STAT_VERIFY);
+        if (rc != 0) {
+            logmsg(LOGMSG_INFO, "err %d from log_stat\n", rc);
+            goto again1;
+        }
+
+        make_lsn(&our_lsn, log_stats->st_cur_file, log_stats->st_cur_offset);
+        free(log_stats);
+
+        if (count > 10) {
+            /*
+               if we're in the middle of processing a message, back off
+               from whining and try again the next second.  goal is not to
+               commitdelaymore the master when we're actually in a long
+               rep_process_message. yes, we can race, but better than
+               nothing.
+            */
+            if (bdb_state->repinfo->in_rep_process_message) {
+                count--;
+                sleep(1);
+                goto again1;
+            }
+
+/* i dont think we need to do this anymore. */
+#if 0         
+         rc = net_send_message(bdb_state->repinfo->netinfo, 
+            master_eid,
+            USER_TYPE_ADD_DUMMY,
+            &master_eid, sizeof(int), 0, 0);
+         if (rc != 0)
+         {
+            fprintf(stderr, "net_send to %d failed rc %d\n", 
+               master_eid, rc);
+            exit(1);
+         }
+#endif
+
+            rc = print_catchup_message(bdb_state, 1, &our_lsn, &master_lsn,
+                                       &gap, &prev_gap, &catchup_state,
+                                       starting_time, &starting_lsn);
+            if (rc != 0) {
+                goto again1;
+            }
+
+            count = 0;
+        }
+        count++;
+
+        if (!bdb_state->berkdb_rep_startupdone) {
+            sleep(1);
+            goto again1;
+        }
+    }
+done1:
+    logmsg(LOGMSG_DEBUG, "phase 1 replication catchup passed\n");
+
+#endif
+
     /*
        PHASE 2:
        wait until _IN REALITY_ the lsn we have is pretty darn close to
@@ -2839,10 +2926,10 @@ waitformaster:
        */
 
 again2:
-    if (bdb_state->repinfo->master_host != myhost) {
+    if (!gbl_skip_catchup_logic && bdb_state->repinfo->master_host != myhost) {
     /* now loop till we are close */
         master_host = bdb_state->repinfo->master_host;
-        if (gbl_ignore_coherency || master_host == myhost)
+        if (master_host == myhost)
             goto done2;
         if ((master_host == db_eid_invalid) || (master_host == bdb_master_dupe))
             goto waitformaster;
@@ -2928,7 +3015,7 @@ done2:
        and go into syncronous mode.
     */
 
-    if (!bdb_state->attr->rep_skip_phase_3) {
+    if (!gbl_skip_catchup_logic && !bdb_state->attr->rep_skip_phase_3) {
         DB_LSN last_lsn;
         int no_change = 0;
         bzero(&last_lsn, sizeof(last_lsn));
@@ -3033,7 +3120,8 @@ done2:
 again:
     buf_put(&(bdb_state->repinfo->master_host), sizeof(int), p_buf, p_buf_end);
 
-    if (bdb_state->repinfo->master_host != myhost) {
+    if (!gbl_skip_catchup_logic &&
+            bdb_state->repinfo->master_host != myhost) {
 
         /* now we have the master checkpoint and WAIT for us to ack the seqnum,
            thus making sure we are actually LIVE */
@@ -3052,7 +3140,7 @@ again:
         }
 
 
-        if (rc != 0 && !gbl_ignore_coherency) {
+        if (rc != 0) {
             logmsg(LOGMSG_FATAL,
                    "net_send to %s failed rc %d- failed to sync, exiting\n",
                    bdb_state->repinfo->master_host, rc);
@@ -3064,8 +3152,7 @@ again:
     /* SUCCESS.  we are LIVE and CACHE COHERENT */
 
     /* If I'm not the master and I haven't passed rep verify, wait here. */
-    while (bdb_state->repinfo->master_host != myhost &&
-           !gbl_passed_repverify) {
+    while (bdb_state->repinfo->master_host != myhost && !gbl_passed_repverify) {
         sleep(1);
         logmsg(LOGMSG_DEBUG, "waiting for rep_verify to complete\n");
     }

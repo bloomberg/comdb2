@@ -4101,6 +4101,14 @@ static int bdb_am_i_coherent_int(bdb_state_type *bdb_state)
         return 0;
     }
 
+    /* if we are a rtcpued off replicant, we cant be coherent */
+    if (bdb_state->callback->nodeup_rtn) {
+        if (!(bdb_state->callback->nodeup_rtn(bdb_state,
+                                              bdb_state->repinfo->myhost))) {
+            return 0;
+        }
+    }
+
     if (gbl_ignore_coherency) {
         static time_t lastpr = 0;
         time_t now = time(NULL);
@@ -4111,14 +4119,6 @@ static int bdb_am_i_coherent_int(bdb_state_type *bdb_state)
             lastpr = now;
         }
         return 1;
-    }
-
-    /* if we are a rtcpued off replicant, we cant be coherent */
-    if (bdb_state->callback->nodeup_rtn) {
-        if (!(bdb_state->callback->nodeup_rtn(bdb_state,
-                                              bdb_state->repinfo->myhost))) {
-            return 0;
-        }
     }
 
     return (gettimeofday_ms() <= get_coherency_timestamp());

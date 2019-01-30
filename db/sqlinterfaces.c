@@ -1348,7 +1348,7 @@ static inline void destroy_hash(hash_t *h, int (*free_func)(void *, void *))
 
 extern int gbl_early_verify;
 extern int gbl_osql_send_startgen;
-extern int gbl_ignore_coherency;
+extern int gbl_forbid_incoherent_writes;
 
 void abort_dbtran(struct sqlclntstate *clnt)
 {
@@ -1387,6 +1387,7 @@ void abort_dbtran(struct sqlclntstate *clnt)
     clnt->intrans = 0;
     sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
             SQLENG_NORMAL_PROCESS);
+    reset_query_effects(clnt);
 }
 
 void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt)
@@ -1413,11 +1414,10 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
     reqlog_set_cost(thd->logger, 0);
     reqlog_set_rows(thd->logger, rows);
 
-    if (gbl_ignore_coherency && !clnt->had_lease_at_begin) {
-        reset_query_effects(clnt);
+    if (rows > 0 && gbl_forbid_incoherent_writes && !clnt->had_lease_at_begin) {
         abort_dbtran(clnt);
         errstat_cat_str(&clnt->osql.xerr,
-                        "Verify error on invalid lease");
+                        "failed write from incoherent node");
         clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
         sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
         outrc = CDB2ERR_VERIFY_ERROR;

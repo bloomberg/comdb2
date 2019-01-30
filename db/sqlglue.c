@@ -4737,7 +4737,7 @@ done:
 
 extern int gbl_early_verify;
 extern int gbl_osql_send_startgen;
-extern int gbl_ignore_coherency;
+int gbl_forbid_incoherent_writes;
 
 /*
  ** Commit the transaction currently in progress.
@@ -4746,7 +4746,7 @@ extern int gbl_ignore_coherency;
  ** are no active cursors, it also releases the read lock.
  */
 
-void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt);
+void abort_dbtran(struct sqlclntstate *clnt);
 
 int sqlite3BtreeCommit(Btree *pBt)
 {
@@ -4786,16 +4786,16 @@ int sqlite3BtreeCommit(Btree *pBt)
         sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                                 SQLENG_NORMAL_PROCESS);
 
-    if (gbl_ignore_coherency && !clnt->had_lease_at_begin) {
+    if (gbl_forbid_incoherent_writes && !clnt->had_lease_at_begin) {
         Vdbe *vdbe = (Vdbe *)clnt->dbtran.pStmt;
-        handle_sql_intrans_unrecoverable_error(clnt);
+        abort_dbtran(clnt);
         sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db));
-        sqlite3VdbeError(vdbe, "Verify error on invalid lease");
+        sqlite3VdbeError(vdbe, "failed write from incoherent node");
         sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
         errstat_cat_str(&clnt->osql.xerr,
-                        "Verify error on invalid lease");
+                        "failed write from incoherent node");
         clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
-        return CDB2ERR_VERIFY_ERROR;
+        return SQLITE_ABORT;
     }
     clnt->intrans = 0;
 
