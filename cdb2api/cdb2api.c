@@ -3073,16 +3073,22 @@ static void free_events(cdb2_hndl_tp *hndl)
     }
 }
 
-static void free_query_list(cdb2_hndl_tp *hndl)
+static void free_query_list(cdb2_query_list *head)
 {
-    cdb2_query_list *item = hndl->query_list;
-    while (item != NULL) {
-        cdb2_query_list *ditem = item;
-        item = item->next;
+    cdb2_query_list *ditem;
+    while (head != NULL) {
+        ditem = head;
+        head = head->next;
         free(ditem->sql);
         free(ditem->buf);
         free(ditem);
     }
+}
+
+/* Free query list and reset the pointer. */
+static inline void free_query_list_on_handle(cdb2_hndl_tp *hndl)
+{
+    free_query_list(hndl->query_list);
     hndl->query_list = NULL;
 }
 
@@ -3175,7 +3181,7 @@ int cdb2_close(cdb2_hndl_tp *hndl)
     }
 
     free_events(hndl);
-    free_query_list(hndl);
+    free_query_list(hndl->query_list);
 
     free(hndl);
     return rc;
@@ -3715,16 +3721,8 @@ static inline void cleanup_query_list(cdb2_hndl_tp *hndl,
     hndl->in_trans = 0;
     debugprint("setting in_trans to 0\n");
 
-    free_query_list(hndl);
-
-    cdb2_query_list *item = commit_query_list;
-    while (item != NULL) {
-        cdb2_query_list *ditem = item;
-        item = item->next;
-        free(ditem->sql);
-        free(ditem->buf);
-        free(ditem);
-    }
+    free_query_list_on_handle(hndl);
+    free_query_list(commit_query_list);
 }
 
 static inline void clear_snapshot_info(cdb2_hndl_tp *hndl, int line)
@@ -4057,7 +4055,7 @@ retry_queries:
 
         hndl->in_trans = 0;
 
-        free_query_list(hndl);
+        free_query_list_on_handle(hndl);
 
         if (!read_intrans_results && !hndl->client_side_error) {
             if (err_val) {
