@@ -3858,6 +3858,10 @@ int sqlite3CantopenError(int);
 #endif
 int sqlite3IsIdChar(u8);
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+# define sqlite3Isquote2(x)  ((x)=='('||sqlite3Isquote((x)))
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 /*
 ** Internal function prototypes
 */
