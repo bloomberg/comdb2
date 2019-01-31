@@ -9241,12 +9241,15 @@ retry:
      * master (which means that our shadow-tables will be incorrect).  */
 
     extern int gbl_test_curtran_change_code;
+    extern int gbl_max_undo_generation;
     curgen = bdb_get_rep_gen(bdb_state);
+    /* This logic is a pain in the neck .. but IT TURNS OUT, that we 
+     * only need to fail if a commit was unwound */
     if ((clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
          clnt->dbtran.mode == TRANLEVEL_SERIAL) &&
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS) &&
         clnt->init_gen &&
-        ((clnt->init_gen != curgen) ||
+        ((clnt->init_gen != curgen && clnt->init_gen <= gbl_max_undo_generation) ||
          (gbl_test_curtran_change_code && (0 == (rand() % 1000))))) {
         bdb_put_cursortran(bdb_state, curtran_out, curtran_flags, &bdberr);
         curtran_out = NULL;

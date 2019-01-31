@@ -120,6 +120,14 @@ public class Comdb2Handle extends AbstractConnection {
     /* no attempt to retry if the flag is on */
     private boolean sslerr = false;
 
+    private ArrayList<Comdb2Handle> children = new ArrayList<Comdb2Handle>();
+    private Comdb2Handle *parent;
+    boolean active;
+    int parent_ix;
+    int total_active;
+    boolean last_active;
+    private boolean copyhosts;
+
     /* SSL support */
     private SSL_MODE sslmode = SSL_MODE.ALLOW;
     private String sslNIDDbName = "OU";
@@ -145,6 +153,13 @@ public class Comdb2Handle extends AbstractConnection {
     }
 
     private List<QueryItem> queryList;
+
+    private Comdb2Handle clone_child() {
+        if (children.size() >= myDbHosts.size()) {
+            return;
+        }
+        Comdb2Handle ret = new Comdb2Handle(myDbName, myDbCluster);
+    }
 
     public Comdb2Handle duplicate() {
         /* new an object. */
@@ -675,8 +690,8 @@ public class Comdb2Handle extends AbstractConnection {
         if (nretry >= myDbHosts.size())
             sqlQuery.features.add(CDB2ClientFeatures.ALLOW_QUEUING_VALUE);
 
-        if (nretry >= ((myDbHosts.size() * 2) - 1) && dbHostConnected ==
-                masterIndexInMyDbHosts)
+        if (nretry >= ((myDbHosts.size() * 2) - 1) && masterIndexInMyDbHosts >= 0 &&
+                dbHostConnected == masterIndexInMyDbHosts)
             sqlQuery.features.add(CDB2ClientFeatures.ALLOW_MASTER_EXEC_VALUE);
 
         sqlQuery.cnonce = cnonce;
@@ -909,6 +924,21 @@ public class Comdb2Handle extends AbstractConnection {
                 return false;
             setSSLCRL(tokens[2]);
             sslChanged = true;
+        } else if (tokens[1].equals("concurrent")) {
+            int count_children;
+            if (tokens.length < 3)
+                return false;
+            count_children = Integer.parseInt(tokens[2]);
+            if (count_children < children.size()) {
+                for (int i = children.size(); i > count_children; i--) {
+                    list.remove(children[i]);
+                }
+            }
+            if (count_children > children.size()) {
+                for (i = children.size(); i < count_children; i++) {
+                    clone_child();
+                }
+            }
         }
 
         /* Refresh connection if SSL config has changed. */
@@ -1575,8 +1605,7 @@ public class Comdb2Handle extends AbstractConnection {
         return rc == 1 ? Errors.CDB2ERR_DUPLICATE : rc;
     }
 
-    @Override
-    public synchronized int next() {
+    private int next_int_multi() {
         if (inTxn && !readIntransResults && !isRead) {
             return Errors.CDB2_OK_DONE;
         }
@@ -1597,6 +1626,68 @@ public class Comdb2Handle extends AbstractConnection {
 
         return next_int();
     }
+
+    @Override
+    public synchronized int next() {
+        int rc = 0, crc, i;
+        boolean have_rc = false;
+
+        if (!isHasql || active) {
+            crc = next_int_multi();
+            if (isHasql && (is_retryable(crc) || crc == -1) &&
+                    !last_active) {
+                tdlog(Level.FINEST, "inactivating parent handle");
+                active = false;
+                total_active--;
+                if (total_active == 1)
+                    set_last_active();
+            } else {
+                rc = crc;
+                have_rc = true;
+            }
+        }
+
+        if (!isHasql)
+            return rc;
+
+        for (i = 0; i < children.size(); i++) {
+            Comdb2Handle *child = children[i];
+            if (child.active == true) {
+                crc = child.next();
+                if ((is_retryable(crc) || crc == -1) && !child.last_active) {
+                    tdlog(Level.FINEST, "inactivating child handle " + i);
+                    child.active = false;
+                    total_active--;
+                    if (total_active == 1)
+                        set_last_active();
+                } else if (!have_rc) {
+                    rc = crc;
+                    have_rc = true;
+                } else if (crc != rc) {
+                    tdlog(Level.FINEST, "active child " + i + "returns " + crc +
+                            " rather than " + rc);
+                }
+            }
+        }
+
+        return rc;
+    }
+
+    private Comdb2Handle * retrieve_handle() {
+        if (!isHasql || children.size() == 0 || active) {
+            return this;
+        }
+
+        for (int i = 0; i < children.size(); i++) {
+            Comdb2Handle *child = children[i];
+            if (child.active && (child.parent_ix != masterIndexInMyDbHosts ||
+                        child.last_active))
+                return child;
+        }
+        driverErrStr = "No active handles.";
+        throw new Cdb2SqlRuntimeException(errorString(), ret);
+    }
+
 
     private int next_int() {
         boolean skip_to_open = false;
@@ -1850,6 +1941,7 @@ readloop:
 
     private boolean reopen(boolean refresh_dbinfo_if_failed) {
         /* get the index of the preferred machine */
+        copyhosts = true;
         if (prefIdx == -1 && prefmach != null) {
             prefIdx = myDbHosts.indexOf(prefmach);
 
@@ -2106,6 +2198,10 @@ readloop:
 
     @Override
     public int rowsAffected() {
+        Comdb2Handle *hndl = retrieve_handle();
+        if (hndl != this) {
+            return hndl.rowsAffected();
+        }
         while (next_int() == Errors.CDB2_OK)
             ;
         if (lastResp == null || lastResp.effects == null)
@@ -2116,6 +2212,10 @@ readloop:
 
     @Override
     public int rowsInserted() {
+        Comdb2Handle *hndl = retrieve_handle();
+        if (hndl != this) {
+            return hndl.rowsInserted();
+        }
         while (next_int() == Errors.CDB2_OK)
             ;
         if (lastResp == null || lastResp.effects == null)
@@ -2126,6 +2226,11 @@ readloop:
 
     @Override
     public int rowsUpdated() {
+        Comdb2Handle *hndl = retrieve_handle();
+        if (hndl != this) {
+            return hndl.rowsUpdated();
+        }
+
         while (next_int() == Errors.CDB2_OK)
             ;
         if (lastResp == null || lastResp.effects == null)
@@ -2136,6 +2241,10 @@ readloop:
 
     @Override
     public int rowsDeleted() {
+        Comdb2Handle *hndl = retrieve_handle();
+        if (hndl != this) {
+            return hndl.rowsDeleted();
+        }
         while (next_int() == Errors.CDB2_OK)
             ;
         if (lastResp == null || lastResp.effects == null)
@@ -2146,6 +2255,11 @@ readloop:
 
     @Override
     public int rowsSelected() {
+        Comdb2Handle *hndl = retrieve_handle();
+        if (hndl != this) {
+            return hndl.rowsSelected();
+        }
+
         while (next_int() == Errors.CDB2_OK)
             ;
         if (lastResp == null || lastResp.effects == null)
