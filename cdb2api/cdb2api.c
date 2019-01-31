@@ -2021,6 +2021,7 @@ static void get_host_from_fd(cdb2_hndl_tp *hndl, int fd)
 static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx, int myport,
                           int timeoutms)
 {
+    assert(node_indx >= 0);
     const char *host = hndl->hosts[node_indx];
     const int port = hndl->ports[node_indx];
     debugprint("entering, host '%s:%d'\n", host, port);
@@ -2113,6 +2114,7 @@ static void newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
     }
     hndl->use_hint = 0;
     hndl->sb = NULL;
+    hndl->connected_host = -1;
     return;
 }
 
@@ -2330,7 +2332,7 @@ retry_connect:
     if (0 == cdb2_try_connect_range(hndl, 0, start_seq))
         return 0;
 
-    if (hndl->sb == NULL) {
+    if (hndl->sb == NULL && hndl->master >= 0) {
         /* Can't connect to any of the non-master nodes, try connecting to
          * master.*/
         /* After this retry on other nodes. */
