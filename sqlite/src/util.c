@@ -276,8 +276,8 @@ int sqlite3MaybeDequote(char *z){
   if( quote=='[' ) quote = ']';
   for(i=1, j=0;; i++){
     assert( z[i] );
-    if( quote==0 || z[i]==quote ){
-      if( quote!=0 && z[i+1]==quote ){
+    if( quote!=0 && z[i]==quote ){
+      if( z[i+1]==quote ){
         z[j++] = quote;
         i++;
       }else{
@@ -286,6 +286,8 @@ int sqlite3MaybeDequote(char *z){
     }else if( quote=='"' && !sqlite3IsIdChar(z[i]) ){
       /* WARNING: String may be partially mutated. */
       return 0;
+    }else if( !z[i] ){
+      break;
     }else{
       z[j++] = z[i];
     }
