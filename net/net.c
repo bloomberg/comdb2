@@ -2666,8 +2666,6 @@ static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
     /* ptr->addr will be set by connect_thread() */
     ptr->port = portnum;
     ptr->timestamp = time(NULL);
-    ptr->wait_list = NULL;
-    ptr->distress = 0;
 
     Pthread_mutex_init(&(ptr->lock), NULL);
     Pthread_mutex_init(&(ptr->pool_lock), NULL);
@@ -2698,14 +2696,8 @@ static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
 
     Pthread_mutex_init(&(ptr->write_lock), NULL);
     Pthread_mutex_init(&(ptr->enquelk), NULL);
-
-    ptr->enque_count = 0;
-    ptr->enque_bytes = 0;
-
     Pthread_mutex_init(&(ptr->wait_mutex), NULL);
-
     Pthread_mutex_init(&(ptr->throttle_lock), NULL);
-
     Pthread_cond_init(&(ptr->ack_wakeup), NULL);
     Pthread_cond_init(&(ptr->write_wakeup), NULL);
     Pthread_cond_init(&(ptr->throttle_wakeup), NULL);
@@ -2718,8 +2710,6 @@ static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
     }
 
     netinfo_ptr->head = ptr;
-    ptr->stats.bytes_written = ptr->stats.bytes_read = 0;
-    ptr->stats.throttle_waits = ptr->stats.reorders = 0;
 
     char *metric_name = comdb2_asprintf("queue_size_%s", hostname);
     ptr->metric_queue_size = time_metric_new(metric_name);
