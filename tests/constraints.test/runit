@@ -4,6 +4,7 @@ bash -n "$0" | exit 1
 ################################################################################
 
 TMPDIR=${TMPDIR:-/tmp}
+cdb2sql --stderr ${CDB2_OPTIONS} $db default 'exec procedure sys.cmd.send("ndebg 100")'
 
 # debug=1
 
