@@ -2355,7 +2355,6 @@ retry_connect:
     }
 
     hndl->connected_host = -1;
-    assert(hndl->sb == NULL);
     return -1;
 }
 
@@ -3064,7 +3063,6 @@ int cdb2_next_record(cdb2_hndl_tp *hndl)
             hndl->total_active--;
             if (hndl->total_active == 1)
                 set_last_active(hndl);
-            assert(hndl->total_active > 0);
         } else {
             rc = crc;
             have_rc = 1;
@@ -3108,7 +3106,6 @@ static inline cdb2_hndl_tp *retrieve_handle(cdb2_hndl_tp *hndl)
         cdb2_hndl_tp *c_hndl = hndl->children[i];
         if (c_hndl->active && (c_hndl->parent_ix != hndl->master ||
                     c_hndl->last_active)) {
-            assert(c_hndl->last_active || hndl->master < 0 || strcmp(c_hndl->hosts[0], hndl->hosts[hndl->master]));
             return hndl->children[i];
         }
     }
@@ -3484,8 +3481,6 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
     if (!hndl->retry_all || !hndl->in_trans)
         return 0;
 
-    assert(total_active == 1);
-
     int rc = 0;
     if (!(hndl->snapshot_file || hndl->query_no <= 1)) {
         debugprint("in_trans=%d snapshot_file=%d query_no=%d\n", hndl->in_trans,
@@ -3499,10 +3494,8 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
 
     /* Replay all the queries. */
     char *host = "NOT-CONNECTED";
-    if (hndl->connected_host >= 0) {
+    if (hndl->connected_host >= 0)
         host = hndl->hosts[hndl->connected_host];
-        assert(hndl->sb);
-    }
 
     /*Send Begin. */
     hndl->is_retry = num_retry;
@@ -3722,11 +3715,6 @@ static void process_set_local(cdb2_hndl_tp *hndl, const char *set_command)
         return;
     }
 
-    if (strncasecmp(p, "getdbhosts", 10) == 0 && !hndl->parent) {
-        cdb2_get_dbhosts(hndl);
-        return;
-    }
-
     if (strncasecmp(p, "concurrent", 10) == 0 && !hndl->parent) {
         int children, i;
         p += sizeof("CONCURRENT");
@@ -3870,8 +3858,6 @@ static inline void clear_snapshot_info(cdb2_hndl_tp *hndl, int line)
 static int local_only(cdb2_hndl_tp *hndl, const char *set_tok)
 {
     if (strcasecmp(set_tok, "concurrent") == 0)
-        return 1;
-    if (strcasecmp(set_tok, "getdbhosts") == 0)
         return 1;
     return 0;
 }
@@ -4295,7 +4281,6 @@ read_record:
         newsql_disconnect(hndl, hndl->sb, __LINE__);
         hndl->connected_host = -1;
         hndl->retry_all = 1;
-        assert(hndl->sb == NULL);
 
 #if WITH_SSL
         /* Clear cached SSL sessions - Hosts may have changed. */
