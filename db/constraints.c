@@ -211,13 +211,6 @@ int insert_add_op(struct ireq *iq, const uint8_t *p_buf_req_start,
     char key[MAXKEYLEN];
     cte cte_record;
     int err = 0;
-    rc = insert_add_index(iq, genid);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "insert_add_op: insert_add_index rc = %d\n", rc);
-        return -1;
-    }
-    if (gbl_reorder_idx_writes)
-        return 0;
 
     struct thread_info *thdinfo = pthread_getspecific(unique_tag_key);
     if (thdinfo == NULL) {
@@ -254,6 +247,11 @@ logmsg(LOGMSG_ERROR, "AZ: insert_add_op here genid=%llx, rc=%d\n", bdb_genid_to_
         logmsg(LOGMSG_ERROR, "insert_add_op: bdb_temp_table_insert rc = %d\n", rc);
         return -1;
     }
+    rc = insert_add_index(iq, genid);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "insert_add_op: insert_add_index rc = %d\n", rc);
+        return -1;
+    }
 
     blkstate->ct_id_key++;
     return 0;
@@ -268,9 +266,6 @@ int insert_del_op(block_state_t *blkstate, struct dbtable *srcdb, struct dbtable
     char key[MAXKEYLEN];
     cte cte_record;
     int err = 0;
-
-    if (gbl_reorder_idx_writes)
-        return 0;
 
     struct thread_info *thdinfo = pthread_getspecific(unique_tag_key);
     if (thdinfo == NULL)
@@ -796,7 +791,7 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                     /* TODO verify we have proper schema change locks */
 
                     rc = del_record(iq, trans, NULL, rrn, genid, -1ULL, &err,
-                                    &idx, BLOCK2_DELKL, RECFLAGS_DONT_LOCK_TBL);
+                                    &idx, BLOCK2_DELKL, RECFLAGS_DONT_LOCK_TBL | RECFLAGS_NO_REORDER_IDX);
                     if (iq->debug)
                         reqpopprefixes(iq, 1);
                     iq->usedb = currdb;
@@ -861,7 +856,7 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                         0,    /*maxblobs*/
                         &newgenid, -1ULL, -1ULL, &err, &idx, BLOCK2_UPDKL,
                         0, /*blkpos*/
-                        UPDFLAGS_CASCADE | RECFLAGS_DONT_LOCK_TBL);
+                        UPDFLAGS_CASCADE | RECFLAGS_DONT_LOCK_TBL | RECFLAGS_NO_REORDER_IDX);
                     if (iq->debug)
                         reqpopprefixes(iq, 1);
                     iq->usedb = currdb;
@@ -1066,7 +1061,11 @@ logmsg(LOGMSG_DEBUG, "%s(): procesing genid=%lld\n", __func__, curop->genid);
             goto next_record;
         }
 
-//printf("AZ: usedb=%d, ixnum=%d, genid=%llx\n",curop->usedb, curop->ixnum, curop->genid);
+        if (gbl_reorder_idx_writes && iq->usedb->sc_from != iq->usedb) {
+            goto next_record;
+        }
+
+printf("AZ: usedb=%p, ixnum=%d, genid=%llx\n", iq->usedb, curop->ixnum, curop->genid);
         if (addrrn == -1) {
             if (iq->debug)
                 reqprintf(iq, "%p:ADDKYCNSTRT (AFPRI) FAILED, NO RRN\n", trans);
@@ -1272,7 +1271,8 @@ logmsg(LOGMSG_DEBUG, "%s(): procesing genid=%lld\n", __func__, curop->genid);
     return ERR_INTERNAL;
 }
 
-/* go through all entries in ct_add_table and */
+/* go through all entries in ct_add_table and verify that 
+ * the key exists in the paret table if there are constraints */
 int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                            struct ireq *iq, block_state_t *blkstate,
                            void *trans, int *errout)

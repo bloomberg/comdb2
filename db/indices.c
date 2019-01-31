@@ -38,8 +38,13 @@ extern __thread void *defered_index_tbl;
 //NO--this is wrong--if we sort that way then we will allow insert a; begin insert a; delete a; commit; to go through
 //but we should not allow that -- we should simply order operations with a counter
 //
+
+// defered inde table types
+// the _CC types signify that we need to check constraints
+// for that key on the parent table
+enum dit_type {DIT_DEL, DIT_UPD, DIT_ADD, DIT_ADD_CC, DIT_DEL_CC, DIT_UPD_CC};
+
 //defered index table
-enum ctktype {CTK_DEL, CTK_UPD, CTK_ADD};
 typedef struct {
     struct dbtable *usedb;
     short ixnum;
@@ -276,7 +281,7 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
             logmsg(LOGMSG_ERROR, "%s : no cursor???\n", __func__);
             return -1;
         }
-        ditk.type = CTK_ADD;
+        ditk.type = DIT_ADD;
         ditk.genid = *genid;
         ditk.usedb = iq->usedb;
     }
@@ -479,7 +484,8 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
     void *cur = NULL;
     dtikey_t delditk= {0}; // will serve as the delete key obj
     dtikey_t ditk= {0};    // will serve as the add or upd key obj
-    bool reorder = gbl_reorder_idx_writes && iq->usedb->sc_from != iq->usedb;
+    bool reorder = gbl_reorder_idx_writes && iq->usedb->sc_from != iq->usedb &&
+        !(flags & RECFLAGS_NO_REORDER_IDX);
 
 #if DEBUG_REORDER
     logmsg(LOGMSG_DEBUG, "%s(): entering, reorder = %d\n", __func__, reorder);
@@ -491,7 +497,7 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
             logmsg(LOGMSG_ERROR, "%s : no cursor???\n", __func__);
             return -1;
         }
-        delditk.type = CTK_DEL;
+        delditk.type = DIT_DEL;
         delditk.usedb = iq->usedb;
         ditk.usedb = iq->usedb;
     }
@@ -621,7 +627,7 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
                     data = od_dta_tail;
                     datalen = od_tail_len;
                 }
-                ditk.type = CTK_UPD;
+                ditk.type = DIT_UPD;
                 ditk.genid = vgenid;
                 ditk.newgenid = *newgenid;
                 ditk.ixnum = ixnum;
@@ -719,7 +725,7 @@ logmsg(LOGMSG_ERROR, "AZ: direct upd ix_delk genid=%llx newwgenid=%llx rc %d\n",
                         data = od_dta_tail;
                         datalen = od_tail_len;
                     }
-                    ditk.type = CTK_ADD;
+                    ditk.type = DIT_ADD;
                     ditk.genid = *newgenid;
                     ditk.ixnum = ixnum;
                     int err = 0;
@@ -732,7 +738,9 @@ logmsg(LOGMSG_ERROR, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", _
                         return rc;
                     }
                     memset(ditk.ixkey, 0, keysize);
-                } else {
+                } 
+                
+                { //also add here
                     rc = add_key(iq, trans, ixnum, ins_keys, rrn, *newgenid, od_dta,
                             od_len, opcode, blkpos, opfailcode, newkey,
                             od_dta_tail, od_tail_len, do_inline, 0);
@@ -756,13 +764,14 @@ logmsg(LOGMSG_ERROR, "AZ: direct upd add_key genid=%llx newwgenid=%llx rc %d\n",
 /* Form and delete all keys. */
 int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
                        int *ixfailnum, int rrn, unsigned long long genid,
-                       void *od_dta, unsigned long long del_keys,
+                       void *od_dta, unsigned long long del_keys, int flags,
                        blob_buffer_t *del_idx_blobs, const char *ondisktag)
 {
     int rc = 0;
     void *cur = NULL;
     dtikey_t delditk= {0};
-    bool reorder = gbl_reorder_idx_writes && iq->usedb->sc_from != iq->usedb;
+    bool reorder = gbl_reorder_idx_writes && iq->usedb->sc_from != iq->usedb && 
+        !(flags & RECFLAGS_NO_REORDER_IDX);
 
 #if DEBUG_REORDER
     logmsg(LOGMSG_DEBUG, "%s(): entering, reorder = %d\n", __func__, reorder);
@@ -774,7 +783,7 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
             logmsg(LOGMSG_ERROR, "%s : no cursor???\n", __func__);
             return -1;
         }
-        delditk.type = CTK_DEL;
+        delditk.type = DIT_DEL;
         delditk.genid = genid;
         delditk.usedb = iq->usedb;
     }
@@ -931,7 +940,7 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
             return -1;
         }
         ditk.usedb = iq->usedb;
-        ditk.type = CTK_ADD;
+        ditk.type = DIT_ADD;
         ditk.genid = newgenid;
     }
 
@@ -1067,7 +1076,7 @@ int upd_new_record_indices(
             logmsg(LOGMSG_ERROR, "%s : no cursor???\n", __func__);
             return -1;
         }
-        delditk.type = CTK_DEL;
+        delditk.type = DIT_DEL;
         delditk.usedb = iq->usedb;
     }
 
@@ -1349,7 +1358,7 @@ logmsg(LOGMSG_ERROR, "AZ: %s() count %d, table %s, type %d, index %d, genid %llx
 
         iq->usedb = ditk->usedb;
 
-        if (ditk->type == CTK_ADD) {
+        if (ditk->type == DIT_ADD) {
             int addrrn = 2;
             /* add the key */
             rc = ix_addk(iq, trans, ditk->ixkey, ditk->ixnum, ditk->genid, addrrn, od_dta_tail,
@@ -1396,7 +1405,7 @@ logmsg(LOGMSG_ERROR, "AZ: pdt ix_addk genid=%llx rc %d\n", bdb_genid_to_host_ord
                 goto done;
             }
         }
-        else if (ditk->type == CTK_DEL) {
+        else if (ditk->type == DIT_DEL) {
             int delrrn = 0;
             char *tblname = iq->usedb->tablename;
             struct dbtable *tbl = get_dbtable_by_name(tblname);
@@ -1420,7 +1429,7 @@ logmsg(LOGMSG_ERROR, "AZ: pdt ix_delk ixnum=%d, rrn=%d, genid=%llx rc %d\n", dit
             }
 
         }
-        else if(ditk->type == CTK_UPD) {
+        else if(ditk->type == DIT_UPD) {
             rc = ix_upd_key(iq, trans, ditk->ixkey, ditk->usedb->ix_keylen[ditk->ixnum],
                             ditk->ixnum, ditk->genid, ditk->newgenid, od_dta_tail, od_tail_len,
                             ix_isnullk(ditk->usedb, ditk->ixkey, ditk->ixnum));

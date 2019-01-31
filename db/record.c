@@ -490,7 +490,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     }
 
     if ((flags & RECFLAGS_NO_CONSTRAINTS) /* if no constraints */
-        || gbl_reorder_idx_writes
+        || (gbl_reorder_idx_writes && iq->usedb->sc_from != iq->usedb)
         || (rec_flags & OSQL_IGNORE_FAILURE)) {
         retrc = add_record_indices(iq, trans, blobs, maxblobs, opfailcode,
                                    ixfailnum, rrn, genid, vgenid, ins_keys,
@@ -1694,7 +1694,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 
     /* Form and delete all keys. */
     retrc = del_record_indices(iq, trans, opfailcode, ixfailnum, rrn, genid,
-                               od_dta, del_keys, del_idx_blobs, ondisktag);
+                               od_dta, del_keys, flags, del_idx_blobs, ondisktag);
     if (retrc)
         ERR;
 

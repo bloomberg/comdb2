@@ -44,7 +44,7 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
 
 int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
                        int *ixfailnum, int rrn, unsigned long long genid,
-                       void *od_dta, unsigned long long del_keys,
+                       void *od_dta, unsigned long long del_keys, int flags,
                        blob_buffer_t *del_idx_blobs, const char *ondisktag);
 
 int upd_new_record_indices(
