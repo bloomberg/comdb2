@@ -278,7 +278,11 @@ int sqlite3MaybeDequote(char *z){
     assert( z[i] );
     if( z[i]==quote ){
       if( quote==')' ){
-        z[j++] = quote;
+        if( z[i+1] ){
+          z[j++] = quote;
+        } else {
+          break;
+        }
       }else if( z[i+1]==quote ){
         z[j++] = quote;
         i++;
