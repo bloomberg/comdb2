@@ -510,6 +510,11 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         for (size_t blobno = 0; blobno < maxblobs; blobno++) {
             if (blobs[blobno].exists) {
                 blob_buffer_t *blob = &blobs[blobno];
+                if (unodhfy_blob_buffer(iq->usedb, blob, blobno) != 0) {
+                    *opfailcode = OP_FAILED_INTERNAL;
+                    retrc = ERR_INTERNAL;
+                    ERR;
+                }
                 javasp_rec_have_blob(jrec, blobno, blob->data, 0, blob->length);
             }
         }

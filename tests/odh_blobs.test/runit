@@ -67,3 +67,29 @@ EOF
 cdb2sql ${CDB2_OPTIONS} -s --tabs --cost $dbnm --host $fixednode - 2>&1 | grep 'finds' >>actual 2>&1
 
 diff actual expected
+
+
+### Test trigger
+
+
+cat << EOF |
+CREATE TABLE self (b BLOB)\$\$
+CREATE TABLE mirror (b BLOB)\$\$
+CREATE PROCEDURE reflection {
+local function main(e)
+    local mirror = db:table("mirror")
+    return mirror:insert({b=e.new.b})
+end
+}\$\$
+CREATE LUA TRIGGER reflection ON (TABLE self FOR INSERT)
+INSERT INTO self VALUES(x'')
+INSERT INTO self VALUES(x'CDB2')
+INSERT INTO self VALUES(x'DEADBEEF')
+INSERT INTO self VALUES(randomblob(1024))
+INSERT INTO self VALUES(x'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF')
+EOF
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default - 2>&1
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'SELECT * FROM self ORDER BY b' >self
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'SELECT * FROM mirror ORDER BY b' >mirror
+diff self mirror
