@@ -6319,7 +6319,7 @@ int net_sanctioned_list_ok(netinfo_type *netinfo_ptr)
 
     Pthread_mutex_lock(&(netinfo_ptr->sanclk));
 
-    for (sanc_node_ptr = netinfo_ptr->sanctioned_list; 
+    for (sanc_node_ptr = netinfo_ptr->sanctioned_list;
          ok && sanc_node_ptr != NULL; sanc_node_ptr = sanc_node_ptr->next) {
         ok = is_ok(netinfo_ptr, sanc_node_ptr->host);
     }
