@@ -4786,12 +4786,10 @@ int sqlite3BtreeCommit(Btree *pBt)
         sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                                 SQLENG_NORMAL_PROCESS);
 
-    if (gbl_forbid_incoherent_writes && !clnt->had_lease_at_begin) {
-        Vdbe *vdbe = (Vdbe *)clnt->dbtran.pStmt;
+    int64_t rows = clnt->log_effects.num_updated + clnt->log_effects.num_deleted +
+            clnt->log_effects.num_inserted;
+    if (rows && gbl_forbid_incoherent_writes && !clnt->had_lease_at_begin) {
         abort_dbtran(clnt);
-        sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db));
-        sqlite3VdbeError(vdbe, "failed write from incoherent node");
-        sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
         errstat_cat_str(&clnt->osql.xerr, "failed write from incoherent node");
         clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
         return SQLITE_ABORT;
