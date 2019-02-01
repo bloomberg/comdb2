@@ -9241,7 +9241,7 @@ retry:
      * master (which means that our shadow-tables will be incorrect).  */
 
     extern int gbl_test_curtran_change_code;
-    extern int gbl_max_undo_generation;
+    extern uint32_t gbl_max_undo_generation;
     curgen = bdb_get_rep_gen(bdb_state);
     /* This logic is a pain in the neck .. but IT TURNS OUT, that we 
      * only need to fail if a commit was unwound */
