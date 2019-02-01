@@ -753,7 +753,7 @@ int sqlite3_maybe_step(
   assert( clnt );
   assert( stmt );
   int steps = clnt->nsteps++;
-  if( sqlite3_is_prepare_only(clnt) ){
+  if( unlikely(sqlite3_is_prepare_only(clnt)) ){
     if( sqlite3_column_count(stmt)>0 ){
       return steps==0 ? SQLITE_ROW : SQLITE_DONE;
     }else{
