@@ -342,7 +342,7 @@ static char *legacy_options[] = {"disallow write from beta if prod",
                                  "disable_tpsc_tblvers",
                                  "on disable_etc_services_lookup",
                                  "legacy_schema on",
-                                 "pbkdf2_iterations 1024"};
+                                 "pbkdf2_iterations 4096"};
 int gbl_legacy_defaults = 0;
 int pre_read_legacy_defaults(void *_, void *__)
 {
