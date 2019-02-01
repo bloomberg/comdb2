@@ -707,12 +707,15 @@ static void comdb2DoubleToBlobFunc(
 ){
   u8 aByte[8];
   assert( argc==1 );
-  if( sqlite3_value_type(argv[0])!=SQLITE_FLOAT ){
+  if( sqlite3_value_type(argv[0])==SQLITE_INTEGER ){
+    sqlite3Put8byte(aByte, (u64)sqlite3_value_int64(argv[0]));
+  }else if( sqlite3_value_type(argv[0])==SQLITE_FLOAT ){
+    sqlite3Put8byte(aByte, (u64)sqlite3DoubleToInt64(
+                    sqlite3_value_double(argv[0])));
+  }else{
     sqlite3_result_null(context);
     return;
   }
-  sqlite3Put8byte(aByte, (u64)sqlite3DoubleToInt64(
-                  sqlite3_value_double(argv[0])));
   sqlite3_result_blob(context, (char*)aByte, sizeof(aByte), SQLITE_TRANSIENT);
 }
 

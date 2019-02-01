@@ -6070,7 +6070,9 @@ static char* sqlite3ExprDescribe_inner(
       }
       break;
     }
-    case TK_FLOAT: break;
+    case TK_FLOAT: {
+      return sqlite3_mprintf("%s", pExpr->u.zToken);
+    }
     case TK_BLOB: {
       return sqlite3_mprintf("%s", pExpr->u.zToken);
     }
