@@ -2165,7 +2165,8 @@ static void generateColumnNames(
       if( z ){
         char *zDup = sqlite3DbStrDup(db, z); /* Maybe need to mutate this. */
         if( zDup ){
-          if( sqlite3MaybeDequote(zDup) ){ /* MUTATOR */
+          int nDup = sqlite3Strlen30(zDup);
+          if( sqlite3MaybeDequote(zDup, nDup) ){ /* MUTATOR */
             sqlite3VdbeSetColName(v, i, COLNAME_NAME, zDup, SQLITE_DYNAMIC);
             goto col_name_done; /* Skip default col name handling. */
           }

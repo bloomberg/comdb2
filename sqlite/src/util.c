@@ -266,7 +266,7 @@ void sqlite3Dequote(char *z){
 }
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-int sqlite3MaybeDequote(char *z){
+int sqlite3MaybeDequote(char *z, int n){
   char quote;
   int i, j;
   if( z==0 ) return 0;
@@ -274,6 +274,7 @@ int sqlite3MaybeDequote(char *z){
   if( !sqlite3Isquote3(quote) ) return 0;
   if( quote=='(' ) quote = ')';
   if( quote=='[' ) quote = ']';
+  if( z[n-1]!=quote ) return 0;
   for(i=1, j=0;; i++){
     assert( z[i] );
     if( z[i]==quote ){
