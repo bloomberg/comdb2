@@ -359,6 +359,7 @@ int gbl_check_client_tags = 1;
 char *gbl_lrl_fname = NULL;
 char *gbl_spfile_name = NULL;
 char *gbl_timepart_file_name = NULL;
+char *gbl_exec_sql_on_new_connect = NULL;
 int gbl_max_lua_instructions = 10000;
 int gbl_check_wrong_cmd = 1;
 int gbl_updategenids = 0;
@@ -3257,6 +3258,7 @@ static int init(int argc, char **argv)
     init_metrics();
 
     Pthread_key_create(&comdb2_open_key, NULL);
+    Pthread_key_create(&query_info_key, NULL);
 
 #ifndef BERKDB_46
     Pthread_key_create(&DBG_FREE_CURSOR, free);
@@ -3732,8 +3734,6 @@ static int init(int argc, char **argv)
 
         fix_lrl_ixlen(); /* set lrl, ix lengths: ignore lrl file, use info from
                             schema */
-
-        Pthread_key_create(&query_info_key, NULL);
     }
 
     /* historical requests */

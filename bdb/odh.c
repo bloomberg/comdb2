@@ -39,6 +39,7 @@
 
 #include "bdb_int.h"
 #include <locks.h>
+#include "locks_wrap.h"
 
 #include "compress.h"
 #include <zlib.h>
@@ -331,7 +332,7 @@ int bdb_pack(bdb_state_type *bdb_state, const struct odh *odh, void *to,
             to = mallocmem;
         }
 
-        alg = flags & ODH_FLAG_COMPR_MASK;
+        alg = (odh->length) ? flags & ODH_FLAG_COMPR_MASK : BDB_COMPRESS_NONE;
 
         switch (alg) {
         case BDB_COMPRESS_ZLIB: {
@@ -1375,22 +1376,4 @@ inline void bdb_cleanup_fld_hints(bdb_state_type *bdb_state)
         free(bdb_state->fld_hints);
         bdb_state->fld_hints = NULL;
     }
-}
-
-inline void bdb_set_logical_live_sc(bdb_state_type *bdb_state)
-{
-    if (bdb_state == NULL) {
-        logmsg(LOGMSG_ERROR, "%s(NULL)!!\n", __func__);
-        return;
-    }
-    bdb_state->logical_live_sc = 1;
-}
-
-inline void bdb_clear_logical_live_sc(bdb_state_type *bdb_state)
-{
-    if (bdb_state == NULL) {
-        logmsg(LOGMSG_ERROR, "%s(NULL)!!\n", __func__);
-        return;
-    }
-    bdb_state->logical_live_sc = 0;
 }

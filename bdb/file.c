@@ -2731,7 +2731,7 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
     start_udp_reader(bdb_state);
 
     if (startasmaster) {
-        logmsg(LOGMSG_USER,
+        logmsg(LOGMSG_INFO,
                "%s line %d calling rep_start as master with egen 0\n", __func__,
                __LINE__);
         rc = dbenv->rep_start(dbenv, NULL, 0, DB_REP_MASTER);
@@ -3459,8 +3459,15 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
     if (gbl_logical_live_sc) {
         unsigned int sc_get_logical_redo_lwm();
         unsigned int sc_logical_lwm = sc_get_logical_redo_lwm();
-        if (sc_logical_lwm && sc_logical_lwm < lowfilenum)
+        if (sc_logical_lwm && sc_logical_lwm < lowfilenum) {
             lowfilenum = sc_logical_lwm;
+            if (bdb_state->attr->debug_log_deletion) {
+                logmsg(
+                    LOGMSG_USER,
+                    "Setting lowfilenum to %d for schema change logical redo\n",
+                    lowfilenum);
+            }
+        }
     }
 
     /* debug: print filenums from other nodes */

@@ -3898,6 +3898,12 @@ static int cson_str_to_json( char const * str, unsigned int len,
                 continue;
             }
             else
+            {
+                rc = f(state, (char const *)pos, clen);
+                continue;
+            }
+#if 0
+            else
             { /* UTF: transform it to \uXXXX */
 #if defined(CSON_FOSSIL_MODE)
                 assume_latin1:
@@ -3912,6 +3918,7 @@ static int cson_str_to_json( char const * str, unsigned int len,
                 rc = f( state, ubuf, 6 );
                 continue;
             }
+#endif
         }
         if( 0 == rc )
         {
