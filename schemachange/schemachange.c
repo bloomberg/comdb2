@@ -615,12 +615,35 @@ int live_sc_post_delete(struct ireq *iq, void *trans, unsigned long long genid,
     return rc;
 }
 
+static int unodhfy_if_necessary(struct ireq *iq, blob_buffer_t *blobs, int maxblobs)
+{
+    int i, rc, oldodh, newodh, reccompr, oldcompr, newcompr;
+
+    for (i = 0, rc = 0; i != maxblobs; ++i) {
+        bdb_get_compr_flags(iq->usedb->sc_from->handle, &oldodh, &reccompr,
+                            &oldcompr);
+        bdb_get_compr_flags(iq->usedb->sc_to->handle, &newodh, &reccompr,
+                            &newcompr);
+        (void)reccompr;
+
+        /* If we're removing the ODH, or changing the compression algorithm,
+           unpack the blobs. */
+        if ((oldodh && !newodh) || oldcompr != newcompr) {
+            rc = unodhfy_blob_buffer(iq->usedb, blobs + i, i);
+            if (rc != 0)
+                break;
+        }
+    }
+
+    return rc;
+}
+
 int live_sc_post_add_int(struct ireq *iq, void *trans, unsigned long long genid,
                          uint8_t *od_dta, unsigned long long ins_keys,
                          blob_buffer_t *blobs, size_t maxblobs, int origflags,
                          int *rrn)
 {
-    int i, rc, oldodh, newodh, reccompr, oldcompr, newcompr;
+    int rc;
 
     if (iq->usedb->sc_downgrading)
         return ERR_NOMASTER;
@@ -633,26 +656,13 @@ int live_sc_post_add_int(struct ireq *iq, void *trans, unsigned long long genid,
         return 0;
     }
 
-    for (i = 0; i != maxblobs; ++i) {
-        bdb_get_compr_flags(iq->usedb->sc_from->handle, &oldodh, &reccompr,
-                            &oldcompr);
-        bdb_get_compr_flags(iq->usedb->sc_to->handle, &newodh, &reccompr,
-                            &newcompr);
-        (void)reccompr;
-
-        /* If we're removing the ODH, or changing the compression algorithm,
-           unpack the blobs. */
-        if ((oldodh && !newodh) || oldcompr != newcompr) {
-            rc = unodhfy_blob_buffer(iq->usedb, blobs + i, i);
-            if (rc != 0)
-                return rc;
-        }
-    }
-
     if (is_genid_right_of_stripe_pointer(iq->usedb->handle, genid,
                                          iq->usedb->sc_to->sc_genids)) {
         return 0;
     }
+
+    if ((rc = unodhfy_if_necessary(iq, blobs, maxblobs)) != 0)
+        return rc;
 
     return live_sc_post_add_record(iq, trans, genid, od_dta, ins_keys, blobs,
                                    maxblobs, origflags, rrn);
@@ -724,8 +734,6 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
                             int origflags, int rrn, int deferredAdd,
                             blob_buffer_t *oldblobs, blob_buffer_t *newblobs)
 {
-    int i, rc, oldodh, newodh, reccompr, oldcompr, newcompr;
-
     if (iq->usedb->sc_downgrading)
         return ERR_NOMASTER;
 
@@ -737,22 +745,6 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
         return 0;
     }
 
-    for (i = 0; i != maxblobs; ++i) {
-        bdb_get_compr_flags(iq->usedb->sc_from->handle, &oldodh, &reccompr,
-                            &oldcompr);
-        bdb_get_compr_flags(iq->usedb->sc_to->handle, &newodh, &reccompr,
-                            &newcompr);
-        (void)reccompr;
-
-        /* If we're removing the ODH, or changing the compression algorithm,
-           unpack the blobs. */
-        if ((oldodh && !newodh) || oldcompr != newcompr) {
-            rc = unodhfy_blob_buffer(iq->usedb, blobs + i, i);
-            if (rc != 0)
-                return rc;
-        }
-    }
-
     unsigned long long *sc_genids = iq->usedb->sc_to->sc_genids;
     if (iq->debug) {
         reqpushprefixf(iq, "live_sc_post_update: ");
@@ -762,7 +754,7 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
         iq->usedb->handle, oldgenid, sc_genids);
     int is_newgen_gt_scptr = is_genid_right_of_stripe_pointer(
         iq->usedb->handle, newgenid, sc_genids);
-    rc = 0;
+    int rc = 0;
 
     // spelling this out for legibility, various situations:
     if (is_newgen_gt_scptr &&
@@ -791,8 +783,10 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
                 iq, "C3: newgenid 0x%llx ...scptr 0x%llx ... oldgenid 0x%llx ",
                 newgenid, get_genid_stripe_pointer(oldgenid, sc_genids),
                 oldgenid);
-        rc = live_sc_post_add_record(iq, trans, newgenid, new_dta, ins_keys,
-                                     blobs, maxblobs, origflags, &rrn);
+        rc = unodhfy_if_necessary(iq, blobs, maxblobs);
+        if (rc == 0)
+            rc = live_sc_post_add_record(iq, trans, newgenid, new_dta, ins_keys,
+                                         blobs, maxblobs, origflags, &rrn);
     } else if (!is_newgen_gt_scptr &&
                !is_oldgen_gt_scptr) // case 4) newgenid and oldgenid  ...^..
     {
@@ -801,9 +795,11 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
                       "C4: oldgenid 0x%llx newgenid 0x%llx ... scptr 0x%llx",
                       oldgenid, newgenid,
                       get_genid_stripe_pointer(oldgenid, sc_genids));
-        rc = live_sc_post_upd_record(
-            iq, trans, oldgenid, old_dta, newgenid, new_dta, ins_keys, del_keys,
-            od_len, updCols, blobs, deferredAdd, oldblobs, newblobs);
+        rc = unodhfy_if_necessary(iq, blobs, maxblobs);
+        if (rc == 0)
+            rc = live_sc_post_upd_record(
+                iq, trans, oldgenid, old_dta, newgenid, new_dta, ins_keys, del_keys,
+                od_len, updCols, blobs, deferredAdd, oldblobs, newblobs);
     }
 
     if (iq->debug) reqpopprefixes(iq, 1);
