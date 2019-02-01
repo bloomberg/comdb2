@@ -271,7 +271,7 @@ int sqlite3MaybeDequote(char *z){
   int i, j;
   if( z==0 ) return 0;
   quote = z[0];
-  if( !sqlite3Isquote2(quote) ) return 0;
+  if( !sqlite3Isquote3(quote) ) return 0;
   if( quote=='(' ) quote = ')';
   if( quote=='[' ) quote = ']';
   for(i=1, j=0;; i++){

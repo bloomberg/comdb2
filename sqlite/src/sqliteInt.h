@@ -3860,6 +3860,7 @@ int sqlite3IsIdChar(u8);
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 # define sqlite3Isquote2(x)  ((x)=='('||sqlite3Isquote((x)))
+# define sqlite3Isquote3(x)  ((x)!='\''&&sqlite3Isquote2((x)))
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
