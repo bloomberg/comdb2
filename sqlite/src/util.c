@@ -1246,6 +1246,7 @@ void sqlite3Put4byte(unsigned char *p, u32 v){
 #endif
 }
 
+
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 /*
 ** Convert an eight-byte integer value to a double and vice versa.
