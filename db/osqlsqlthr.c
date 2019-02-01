@@ -173,7 +173,7 @@ static inline int osql_should_restart(struct sqlclntstate *clnt, int rc)
     }                                                                          \
     if (rc) {                                                                  \
         logmsg(LOGMSG_ERROR,                                                   \
-               "%s: error writting record to master in offload mode rc=%d!\n", \
+               "%s: error writing record to master in offload mode rc=%d!\n", \
                __func__, rc);                                                  \
         if (rc != SQLITE_TOOBIG && rc != ERR_SC)                               \
             rc = SQLITE_INTERNAL;                                              \
@@ -666,6 +666,7 @@ int osql_sock_start(struct sqlclntstate *clnt, int type, int keep_rqid)
     }
 
     osql->is_reorder_on = gbl_reorder_socksql_no_deadlock;
+    osql->single_stmt_retry = 0;
 
     /* lets reset error, this could be a retry */
     osql->xerr.errval = 0;
@@ -806,6 +807,12 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
     if (!thd) {
         logmsg(LOGMSG_ERROR, "%s:%d Bug, not sql thread !\n", __func__, __LINE__);
         cheap_stack_trace();
+    }
+
+    if (clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
+        osql->single_stmt_retry = 1;
+        osql->xerr.errval = (ERR_BLOCK_FAILED + ERR_VERIFY);
+        return 0;
     }
 
     do {
@@ -1000,7 +1007,7 @@ retry:
     }
 
     rc = osql_send_commit_logic(clnt, retries, req2netrpl(type));
-    if (rc) {
+    if (rc && !osql->single_stmt_retry) {
         logmsg(LOGMSG_ERROR, "%s:%d: failed to send commit to master rc was %d\n", __FILE__,
                 __LINE__, rc);
         rcout = SQLITE_CLIENT_CHANGENODE;
@@ -1140,7 +1147,7 @@ retry:
         if (clnt->client_understands_query_stats && clnt->dbglog)
             append_debug_logs_from_master(clnt->dbglog,
                                           clnt->master_dbglog_cookie);
-    } else {
+    } else if (!osql->single_stmt_retry) {
         rcout = SQLITE_ERROR;
         logmsg(LOGMSG_ERROR, "%s line %d set rcout to %d\n", __func__, __LINE__, rcout);
     }
@@ -1180,8 +1187,7 @@ err:
    if (clnt->osql.xerr.errval == (ERR_BLOCK_FAILED + ERR_VERIFY) &&
            clnt->dbtran.mode == TRANLEVEL_SOSQL && !clnt->dbtran.dtran) {
        int bdberr = 0;
-       int iirc = 0;
-       iirc = osql_shadtbl_has_selectv(clnt, &bdberr);
+       int iirc = osql_shadtbl_has_selectv(clnt, &bdberr);
        if (iirc != 0) /* if error or has selectv rows */
        {
            if (iirc < 0) {
@@ -1626,8 +1632,6 @@ int osql_record_genid(struct BtCursor *pCur, struct sql_thread *thd,
         }
         osql->replicant_numops++;
         DEBUG_PRINT_NUMOPS();
-        if (thd->clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS)
-            return 0;
     }
     return osql_save_recordgenid(pCur, thd, genid);
 }

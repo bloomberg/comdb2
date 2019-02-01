@@ -175,6 +175,7 @@ typedef struct osqlstate {
     int dirty; /* optimization to nop selectv only transactions */
     int running_ddl; /* ddl transaction */
     bool is_reorder_on : 1;
+    bool single_stmt_retry : 1; /* 1 if this is a faked verify-retry */
 } osqlstate_t;
 
 enum ctrl_sqleng {
