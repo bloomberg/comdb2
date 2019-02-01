@@ -268,6 +268,8 @@ int osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
                    __LINE__, __func__, rc);
             return rc;
         }
+        if (clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS)
+            return 0;
     }
 
     if (gbl_expressions_indexes && pCur->db->ix_expr) {
@@ -389,6 +391,9 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
                    __LINE__, __func__, rc);
             return rc;
         }
+
+        if (clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS)
+            return 0;
     }
 
     if (gbl_expressions_indexes && pCur->db->ix_expr) {
@@ -531,6 +536,9 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
                    __LINE__, __func__, rc);
             return rc;
         }
+
+        if (clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS)
+            return 0;
     }
 
     if (gbl_expressions_indexes && pCur->db->ix_expr) {
@@ -1618,6 +1626,8 @@ int osql_record_genid(struct BtCursor *pCur, struct sql_thread *thd,
         }
         osql->replicant_numops++;
         DEBUG_PRINT_NUMOPS();
+        if (thd->clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS)
+            return 0;
     }
     return osql_save_recordgenid(pCur, thd, genid);
 }
@@ -1833,6 +1843,8 @@ int osql_schemachange_logic(struct schema_change_type *sc,
         }
         osql->replicant_numops++;
         DEBUG_PRINT_NUMOPS();
+        if (clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS)
+            return 0;
     }
 
     rc = osql_save_schemachange(thd, sc, usedb);
@@ -1874,6 +1886,8 @@ int osql_bpfunc_logic(struct sql_thread *thd, BpfuncArg *arg)
         }
         osql->replicant_numops++;
         DEBUG_PRINT_NUMOPS();
+        if (clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS)
+            return 0;
     }
 
     rc = osql_save_bpfunc(thd, arg);
