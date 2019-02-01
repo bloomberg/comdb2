@@ -3838,8 +3838,15 @@ static int process_user_message(netinfo_type *netinfo_ptr,
         host_node_ptr->running_user_func = 0;
         Pthread_mutex_unlock(&(host_node_ptr->timestamp_lock));
     } else {
-        host_node_printf(LOGMSG_INFO, host_node_ptr,
-                         "%s: unexpected usertype:%d\n", __func__, usertype);
+        static int lastpr = 0, count = 0;
+        int now;
+        count++;
+        if ((now = comdb2_time_epoch()) - lastpr) {
+            host_node_printf(LOGMSG_INFO, host_node_ptr,
+                             "%s: unexpected usertype:%d, count=%d\n", __func__,
+                             usertype, count);
+            lastpr = now;
+        }
     }
 
     if (ack_state)
