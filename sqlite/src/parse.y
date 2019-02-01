@@ -2202,10 +2202,13 @@ cmd ::= createkw RANGE PARTITION ON nm(A) WHERE columnname(B) IN LP exprlist(C) 
     comdb2CreateRangePartition(pParse, &A, &B, C);
 }
 
-cmd ::= createkw TIME PARTITION ON nm(A) AS nm(P) PERIOD STRING(D) RETENTION INTEGER(R) START STRING(S). {
+cmd ::= createkw partition_type PARTITION ON nm(A) AS nm(P) PERIOD STRING(D) RETENTION INTEGER(R) START STRING(S). {
     comdb2WriteTransaction(pParse);
     comdb2CreatePartition(pParse, &A, &P, &D, &R, &S);
 }
+
+partition_type ::= .
+partition_type ::= TIME.
 
 /////////////////////////////// DROP PARTITION ////////////////////////////////
 

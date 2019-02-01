@@ -34,6 +34,7 @@
 #include "cron.h"
 #include "cron_systable.h"
 #include "timepart_systable.h"
+#include "logical_cron.h"
 
 #define VIEWS_MAX_RETENTION 1000
 
@@ -137,6 +138,7 @@ static void _handle_view_event_error(timepart_view_t *view, uuid_t source_id,
 static void print_dbg_verbose(const char *name, uuid_t *source_id, const char *prefix, 
                               const char *fmt, ...);
 static int _view_update_table_version(timepart_view_t *view, tran_type *tran);
+static cron_sched_t* _get_sched_byname(enum view_partition_period period, const char *sched_name);
 
 enum _check_flags {
    _CHECK_ONLY_INITIAL_SHARD, _CHECK_ALL_SHARDS, _CHECK_ONLY_CURRENT_SHARDS
@@ -275,6 +277,15 @@ int timepart_add_view(void *tran, timepart_views_t *views,
     int rc;
     int tm;
 
+    if (view->period == VIEW_PARTITION_MANUAL) {
+        if ((rc = logical_partition_init(view->name, err))!=0) {
+            errstat_set_strf(err, "Failed to create logical scheduler for %s", view->name);
+            errstat_set_rc(err, rc = VIEW_ERR_GENERIC);
+            goto done;
+        }
+    }
+
+
     if (unlikely(view->period == VIEW_PARTITION_TEST2MIN)) {
         preemptive_rolltime = 30; /* 30 seconds in advance we add a new table */
     }
@@ -325,7 +336,7 @@ int timepart_add_view(void *tran, timepart_views_t *views,
                           "Adding phase 1 at %d\n",
                           view->roll_time - preemptive_rolltime);
 
-        rc = (cron_add_event(timepart_sched, NULL,
+        rc = (cron_add_event(_get_sched_byname(view->period, view->name), NULL,
                              view->roll_time - preemptive_rolltime,
                              _view_cron_phase1, tmp_str = strdup(view->name),
                              NULL, NULL, &view->source_id, err, NULL) == NULL)
@@ -1034,7 +1045,7 @@ done:
                               "Adding phase 2 at %d for %s\n",
                               shardChangeTime, pShardName);
 
-            if (cron_add_event(timepart_sched, NULL, shardChangeTime,
+            if (cron_add_event(_get_sched_byname(view->period, view->name), NULL, shardChangeTime,
                                _view_cron_phase2, tmp_str = strdup(name),
                                pShardName, NULL, &view->source_id, err,
                                NULL) == NULL) {
@@ -1078,7 +1089,7 @@ _view_cron_schedule_next_rollout(timepart_view_t *view, int timeCrtRollout,
                           "Adding phase 3 at %d for %s\n", 
                           tm, removeShardName);
 
-        if (cron_add_event(timepart_sched, NULL, tm, _view_cron_phase3,
+        if (cron_add_event(_get_sched_byname(view->period, view->name), NULL, tm, _view_cron_phase3,
                            removeShardName, NULL, NULL, &view->source_id, err,
                            NULL) == NULL) {
             logmsg(LOGMSG_ERROR, "%s: failed rc=%d errstr=%s\n", __func__,
@@ -1094,7 +1105,7 @@ _view_cron_schedule_next_rollout(timepart_view_t *view, int timeCrtRollout,
                       "Adding phase 1 at %d\n", 
                       tm);
 
-    if (cron_add_event(timepart_sched, NULL, tm, _view_cron_phase1,
+    if (cron_add_event(_get_sched_byname(view->period, view->name), NULL, tm, _view_cron_phase1,
                        tmp_str = strdup(name), NULL, NULL, &view->source_id,
                        err, NULL) == NULL) {
         if (tmp_str) {
@@ -1700,7 +1711,7 @@ static int _schedule_drop_shard(timepart_view_t *view,
                       evicted_shard);
 
     /* we missed phase 3, queue it */
-    rc = (cron_add_event(timepart_sched, NULL, evict_time, _view_cron_phase3,
+    rc = (cron_add_event(_get_sched_byname(view->period, view->name), NULL, evict_time, _view_cron_phase3,
                          tmp_str1 = strdup(evicted_shard), NULL, NULL, NULL,
                          err, NULL) == NULL)
              ? err->errval
@@ -1774,6 +1785,10 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
     char *tmp_str2;
     int evicted_shard0;
     int i;
+
+    if (view->period == VIEW_PARTITION_MANUAL) {
+        logical_partition_init(view->name, err);
+    }
 
     if (unlikely(view->period == VIEW_PARTITION_TEST2MIN)) {
         preemptive_rolltime = 30; /* 30 seconds in advance we add a new table */
@@ -1889,7 +1904,7 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
                           view->roll_time - preemptive_rolltime, 
                           next_existing_shard);
 
-        rc = (cron_add_event(timepart_sched, NULL,
+        rc = (cron_add_event(_get_sched_byname(view->period, view->name), NULL,
                              view->roll_time - preemptive_rolltime,
                              _view_cron_phase1, tmp_str1 = strdup(view->name),
                              NULL, NULL, &view->source_id, err, NULL) == NULL)
@@ -1902,7 +1917,7 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
                           "Adding phase 2 at %d for %s\n",
                           view->roll_time, next_existing_shard);
 
-        rc = (cron_add_event(timepart_sched, NULL, view->roll_time,
+        rc = (cron_add_event(_get_sched_byname(view->period, view->name), NULL, view->roll_time,
                              _view_cron_phase2, tmp_str1 = strdup(view->name),
                              tmp_str2 = strdup(next_existing_shard), NULL,
                              &view->source_id, err, NULL) == NULL)
@@ -1938,7 +1953,7 @@ int views_cron_restart(timepart_views_t *views)
 
     /* in case of regular master swing, clear pre-existing views event,
        we will requeue them */
-    cron_clear_queue(timepart_sched);
+    cron_clear_queue_all();
 
     /* corner case: master started and schema change for time partition
        submitted before watchdog thread has time to restart it, will deadlock
@@ -2114,7 +2129,7 @@ done:
  * to establish the next rollout time
  *
  */
-static int _view_get_next_rollout(enum view_partition_period period,
+static int _view_get_next_rollout_epoch(enum view_partition_period period,
                                   int startTime, int crtTime, int nshards,
                                   int back_in_time)
 {
@@ -2182,6 +2197,20 @@ static int _view_get_next_rollout(enum view_partition_period period,
     return timeNextRollout;
 }
 
+static int _view_get_next_rollout(enum view_partition_period period,
+                                  int startTime, int crtTime, int nshards,
+                                  int back_in_time)
+{
+    if (IS_TIMEPARTITION(period))
+        return _view_get_next_rollout_epoch(period, startTime, crtTime, nshards, back_in_time);
+
+    if (period == VIEW_PARTITION_MANUAL)
+        return (crtTime == INT_MIN)?startTime:(crtTime+1);
+
+    abort();
+}
+
+
 /**
  * Signal looping workers of views of db event like exiting
  *
@@ -2190,8 +2219,8 @@ void views_signal(timepart_views_t *views)
 {
     Pthread_rwlock_rdlock(&views_lk);
 
-    if (views && timepart_sched) {
-        cron_signal_worker(timepart_sched);
+    if (views) {
+        cron_signal_all();
     }
 
     Pthread_rwlock_unlock(&views_lk);
@@ -2486,7 +2515,7 @@ int timepart_update_retention(void *tran, const char *name, int retention, struc
            int irc = 0;
 
            for (i = 0; i < n_extra_shards; i++) {
-               irc = (cron_add_event(timepart_sched, NULL, 0, _view_cron_phase3,
+               irc = (cron_add_event(_get_sched_byname(view->period, view->name), NULL, 0, _view_cron_phase3,
                                      extra_shards[i], NULL, NULL, NULL, err,
                                      NULL) == NULL)
                          ? err->errval
@@ -2667,6 +2696,15 @@ void check_columns_null_and_dbstore(const char *name, struct dbtable *tbl)
                    name, sc->member[i].name);
         }
     }
+}
+
+static cron_sched_t* _get_sched_byname(enum view_partition_period period, const char *sched_name)
+{
+    if (IS_TIMEPARTITION(period))
+        return timepart_sched;
+    if (period == VIEW_PARTITION_MANUAL)
+        return cron_sched_byname(sched_name);
+    abort();
 }
 
 #include "views_systable.c"

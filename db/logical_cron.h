@@ -31,10 +31,10 @@ void logical_cron_incr(sched_if_t *impl);
  */
 void logical_cron_set(sched_if_t *impl, unsigned long long val);
 
-/**
- * Create a testing logical unit
+/** 
+ * Restart a logical scheduler 
  *
  */
-int logical_cron_unit_test(FILE *out, const char *name);
+int logical_partition_init(const char *name, struct errstat *err);
 
 #endif

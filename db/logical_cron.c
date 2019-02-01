@@ -21,17 +21,15 @@ typedef struct logical_state {
     unsigned long long clock;
 } logical_state_t;
 
+/* this should be called under sched->mtx */
 static int logical_is_exec_time(sched_if_t *impl, cron_event_t *event)
 {
-    cron_sched_t *sched = impl->sched;
     logical_state_t *state = (logical_state_t *)impl->state;
     int rc = 0;
     assert(event);
     assert(state);
 
-    cron_lock(sched);
     rc = event->epoch <= state->clock;
-    cron_unlock(sched);
 
     return rc;
 }
@@ -46,7 +44,6 @@ static int logical_wait_next_event(sched_if_t *impl, cron_event_t *event)
     ts.tv_nsec = 0;
 
     return cron_timedwait(sched, &ts);
-    /*return pthread_cond_timedwait(&sched->cond, &sched->mtx, &ts);*/
 }
 
 /* assert: read lock on crons.rwlock */
@@ -85,62 +82,55 @@ logical_cron_create(sched_if_t *intf, char *(*describe)(sched_if_t *),
     return (!intf->state) ? -1 : 0;
 }
 
-static void *_logical_cron_test_callback(uuid_t source_id, void *arg1,
-                                         void *arg2, void *arg3,
-                                         struct errstat *err)
+static char* logical_partition_describe(sched_if_t *impl)
 {
-    cron_sched_t *sched = *(cron_sched_t **)arg3;
-    sched_if_t *impl = cron_impl(sched);
-    uuidstr_t us;
-    int rc;
-    int *nrolls = (int *)arg2;
+    char msg[256];
+    snprintf(msg, sizeof(msg), "Logical partition %s", impl->name);
+    return strdup(msg);
+}
 
-    logmsg(LOGMSG_USER, "Test callback %s %s %s %d\n", impl->name,
-           comdb2uuidstr(source_id, us), (char *)arg1, *(int *)arg2);
-
-    (*nrolls)++;
-    rc =
-        (cron_add_event(sched, NULL, *nrolls, _logical_cron_test_callback, arg1,
-                        arg2, arg3, (uuid_t *)&source_id, err, NULL) == NULL)
-            ? err->errval
-            : VIEW_NOERR;
-    if (rc) {
-        logmsg(LOGMSG_USER, "Logical test unit failed iteration %d rc %d\n",
-               *nrolls, rc);
-    }
-
+static void *logical_partition_cron_kickoff(uuid_t source_id, void *arg1, void *arg2, 
+                                   void *arg3, struct errstat *err)
+{
+    logmsg(LOGMSG_INFO, "Starting logical partition %s\n", (char*)arg1);
     return NULL;
 }
 
-int logical_cron_unit_test(FILE *out, const char *name)
+/** 
+ * Restart a logical scheduler 
+ *
+ */
+int logical_partition_init(const char *sched_name, struct errstat *err)
 {
     cron_sched_t *sched;
-    sched_if_t *impl;
-    uuid_t source_id;
-    struct errstat err = {0};
-    int nrolls = 1;
+    char *name;
     sched_if_t intf = {0};
+    uuid_t source_id;
 
-    if (logical_cron_create(&intf, NULL /*logical_describe*/,
-                            NULL /*logical_event_describe*/)) {
-        logmsg(LOGMSG_ERROR, "%s Malloc error!\n", __func__);
-        return -1;
+    sched = cron_sched_byname(sched_name);
+    if (sched) {
+        return VIEW_NOERR;
     }
+
+    if (logical_cron_create(&intf, logical_partition_describe,
+                timepart_event_describe /*reusing old event sequence */)) {
+        logmsg(LOGMSG_ERROR, "%s Malloc error!\n", __func__);
+        return VIEW_ERR_GENERIC;
+    }
+    intf.name = strdup(sched_name);
 
     comdb2uuid(source_id);
 
     /* create a logical schedule */
-    sched = cron_add_event(NULL, name, 1, _logical_cron_test_callback,
-                           "testing", &nrolls, &sched, &source_id, &err, &intf);
+    name = strdup(sched_name);
+    sched = cron_add_event(NULL, sched_name, 0, logical_partition_cron_kickoff, 
+                name, NULL,  NULL, &source_id, err, &intf);
     if (!sched) {
-        logmsg(LOGMSG_USER, "failed to create logical scheduler!\n");
-        return -1;
+        logmsg(LOGMSG_USER, "failed to create logical scheduler %s!\n", sched_name);
+        free(intf.name);
+        free(name);
+        return VIEW_ERR_GENERIC;
     }
 
-    impl = cron_impl(sched);
-
-    /* push output and rollout, a few times */
-    logical_cron_incr(impl);
-
-    return 0;
+    return VIEW_NOERR;
 }

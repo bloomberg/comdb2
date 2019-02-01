@@ -612,3 +612,54 @@ void time_cron_create(sched_if_t *intf, char *(*describe)(sched_if_t *),
     intf->event_describe = event_describe;
     intf->state = NULL;
 }
+
+/**
+ * Returns a scheduler with name "name", if any
+ * NOTE: scheduler is not locked
+ *
+ */
+cron_sched_t* cron_sched_byname(const char *name)
+{
+    cron_sched_t *sched = NULL;
+
+    Pthread_rwlock_rdlock(&crons.rwlock);
+    LISTC_FOR_EACH(&crons.scheds, sched, lnk) {
+        if (!strncasecmp(sched->impl.name, name, strlen(name)+1)) {
+            break;
+        }
+    }
+    Pthread_rwlock_unlock(&crons.rwlock);
+
+    return sched;
+}
+
+
+/**
+ * Signal all linked schedulers
+ */
+void cron_signal_all(void)
+{
+    cron_sched_t *sched = NULL;
+
+    Pthread_rwlock_rdlock(&crons.rwlock);
+    LISTC_FOR_EACH(&crons.scheds, sched, lnk) {
+        cron_signal_worker(sched);
+    }
+    Pthread_rwlock_unlock(&crons.rwlock);
+}
+
+/**
+ * Clear all the queues events 
+ *
+ */
+void cron_clear_queue_all(void)
+{
+    cron_sched_t *sched = NULL;
+
+    Pthread_rwlock_rdlock(&crons.rwlock);
+    LISTC_FOR_EACH(&crons.scheds, sched, lnk) {
+        cron_clear_queue(sched);
+    }
+    Pthread_rwlock_unlock(&crons.rwlock);
+}
+

@@ -137,4 +137,23 @@ void time_cron_create(sched_if_t *impl, char *(*describe)(sched_if_t *),
  *
  */
 sched_if_t *cron_impl(cron_sched_t *sched);
+
+ /**
+ * Signal all linked schedulers
+ */
+void cron_signal_all(void);
+
+/**
+ * Clear all the queues events 
+ *
+ */
+void cron_clear_queue_all(void);
+
+/**
+ * Returns a scheduler with name "name", if any
+ * NOTE: scheduler is not locked
+ *
+ */
+cron_sched_t* cron_sched_byname(const char *name);
+
 #endif
