@@ -597,8 +597,6 @@ void verify_schema_change_constraint(struct ireq *iq, void *trans,
                                      unsigned long long ins_keys)
 {
     struct dbtable *usedb = iq->usedb;
-    blob_status_t oldblobs[MAXBLOBS];
-    blob_buffer_t add_blobs_buf[MAXBLOBS];
     blob_buffer_t *add_idx_blobs = NULL;
     void *new_dta = NULL;
     int rc = 0;
@@ -606,28 +604,28 @@ void verify_schema_change_constraint(struct ireq *iq, void *trans,
     if (!usedb)
         return;
 
-    bzero(oldblobs, sizeof(oldblobs));
-    bzero(add_blobs_buf, sizeof(add_blobs_buf));
-
     Pthread_rwlock_rdlock(&usedb->sc_live_lk);
 
     /* if there's no schema change in progress, nothing to verify */
     if (!usedb->sc_to)
-        goto done;
+        goto unlock;
 
     if (usedb->sc_live_logical)
-        goto done;
+        goto unlock;
 
     if (gbl_sc_abort || usedb->sc_abort || iq->sc_should_abort)
-        goto done;
+        goto unlock;
 
     if (usedb->sc_to->n_constraints == 0)
-        goto done;
+        goto unlock;
 
     if (is_genid_right_of_stripe_pointer(usedb->handle, newgenid,
                                          usedb->sc_to->sc_genids)) {
-        goto done;
+        goto unlock;
     }
+
+    blob_status_t oldblobs[MAXBLOBS] = {{0}};
+    blob_buffer_t add_blobs_buf[MAXBLOBS] = {{0}};
 
     if (usedb->sc_to->ix_blob) {
         rc =
@@ -687,6 +685,7 @@ done:
     if (new_dta)
         free(new_dta);
     free_blob_status_data(oldblobs);
+unlock:
     Pthread_rwlock_unlock(&usedb->sc_live_lk);
 }
 

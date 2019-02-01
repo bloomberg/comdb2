@@ -70,10 +70,8 @@ int has_cascading_reverse_constraints(struct dbtable *db)
 
 static int insert_add_index(struct ireq *iq, unsigned long long genid)
 {
-    struct thread_info *thdinfo = NULL;
     char key[MAXKEYLEN];
     void *foundkey = NULL;
-    void *cttbl = NULL;
     void *cur = NULL;
     int err = 0;
     int *pixnum;
@@ -81,13 +79,13 @@ static int insert_add_index(struct ireq *iq, unsigned long long genid)
     int rc = 0;
     if (iq->idxInsert == NULL)
         return 0;
-    thdinfo = pthread_getspecific(unique_tag_key);
+
+    struct thread_info *thdinfo = pthread_getspecific(unique_tag_key);
     if (thdinfo == NULL) {
         logmsg(LOGMSG_ERROR, "%s: no thdinfo\n", __func__);
         return -1;
     }
-    cttbl = thdinfo->ct_add_index;
-    cur = get_constraint_table_cursor(cttbl);
+    cur = get_constraint_table_cursor(thdinfo->ct_add_index);
     if (cur == NULL) {
         logmsg(LOGMSG_ERROR, "%s : no cursor???\n", __func__);
         return -1;
@@ -123,10 +121,8 @@ out:
 void free_cached_idx(uint8_t **cached_idx);
 static int cache_delayed_indexes(struct ireq *iq, unsigned long long genid)
 {
-    struct thread_info *thdinfo = NULL;
     char key[MAXKEYLEN];
     void *foundkey = NULL;
-    void *cttbl = NULL;
     void *cur = NULL;
     int err = 0;
     int *pixnum;
@@ -139,13 +135,12 @@ static int cache_delayed_indexes(struct ireq *iq, unsigned long long genid)
         iq->idxInsert = iq->idxDelete = NULL;
     }
 
-    thdinfo = pthread_getspecific(unique_tag_key);
+    struct thread_info *thdinfo = pthread_getspecific(unique_tag_key);
     if (thdinfo == NULL) {
         logmsg(LOGMSG_ERROR, "%s: no thdinfo\n", __func__);
         return -1;
     }
-    cttbl = thdinfo->ct_add_index;
-    cur = get_constraint_table_cursor(cttbl);
+    cur = get_constraint_table_cursor(thdinfo->ct_add_index);
     if (cur == NULL) {
         logmsg(LOGMSG_ERROR, "%s : no cursor???\n", __func__);
         return -1;
@@ -208,22 +203,18 @@ int insert_add_op(struct ireq *iq, const uint8_t *p_buf_req_start,
                   int blkpos, int flags)
 {
     block_state_t *blkstate = iq->blkstate;
-    void *cur = NULL;
     int type = CTE_ADD, rc = 0;
     char key[MAXKEYLEN];
     cte cte_record;
     int err = 0;
-    struct thread_info *thdinfo = NULL;
-    void *cttbl = NULL;
 
-    thdinfo = pthread_getspecific(unique_tag_key);
+    struct thread_info *thdinfo = pthread_getspecific(unique_tag_key);
     if (thdinfo == NULL) {
         logmsg(LOGMSG_ERROR, "insert_add_op: no thdinfo\n");
         return -1;
     }
-    cttbl = thdinfo->ct_add_table;
 
-    cur = get_constraint_table_cursor(cttbl);
+    void *cur = get_constraint_table_cursor(thdinfo->ct_add_table);
     if (cur == NULL) {
         logmsg(LOGMSG_ERROR, "insert_add_op: no cursor???\n");
         return -1;
@@ -269,16 +260,12 @@ int insert_del_op(block_state_t *blkstate, struct dbtable *srcdb, struct dbtable
     char key[MAXKEYLEN];
     cte cte_record;
     int err = 0;
-    struct thread_info *thdinfo = NULL;
-    void *cttbl = NULL;
 
-    thdinfo = pthread_getspecific(unique_tag_key);
+    struct thread_info *thdinfo = pthread_getspecific(unique_tag_key);
     if (thdinfo == NULL)
         return -1;
 
-    cttbl = thdinfo->ct_del_table;
-
-    cur = get_constraint_table_cursor(cttbl);
+    cur = get_constraint_table_cursor(thdinfo->ct_del_table);
     if (cur == NULL)
         return -1;
 
@@ -576,10 +563,8 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
     char key[MAXKEYLEN];
     unsigned char nulls[MAXNULLBITS] = {0};
     void *cur = NULL;
-    struct thread_info *thdinfo = NULL;
-    void *cttbl = NULL;
 
-    thdinfo = pthread_getspecific(unique_tag_key);
+    struct thread_info *thdinfo = pthread_getspecific(unique_tag_key);
     if (thdinfo == NULL) {
         if (iq->debug)
             reqprintf(iq, "VERKYCNSTRT CANNOT GET DEL LIST CURSOR");
@@ -588,8 +573,7 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
         *errout = OP_FAILED_INTERNAL;
         return ERR_INTERNAL;
     }
-    cttbl = thdinfo->ct_del_table;
-    cur = get_constraint_table_cursor(cttbl);
+    cur = get_constraint_table_cursor(thdinfo->ct_del_table);
     if (cur == NULL) {
         if (iq->debug)
             reqprintf(iq, "VERKYCNSTRT CANNOT GET DEL LIST CURSOR");
@@ -960,9 +944,6 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
     void *od_dta = NULL;
     char ondisk_tag[MAXTAGLEN];
     char key[MAXKEYLEN];
-    void *cur = NULL;
-    struct thread_info *thdinfo = NULL;
-    void *cttbl = NULL;
     char *od_dta_tail = NULL;
     int od_tail_len = 0;
     char mangled_key[MAXKEYLEN];
@@ -978,7 +959,7 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
         return ERR_INTERNAL;
     }
 
-    thdinfo = pthread_getspecific(unique_tag_key);
+    struct thread_info *thdinfo = pthread_getspecific(unique_tag_key);
     if (thdinfo == NULL) {
         if (iq->debug)
             reqprintf(iq, "%p:VERKYCNSTRT CANNOT GET ADD LIST CURSOR", trans);
@@ -987,9 +968,8 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
         *errout = OP_FAILED_INTERNAL;
         return ERR_INTERNAL;
     }
-    cttbl = thdinfo->ct_add_table;
 
-    cur = get_constraint_table_cursor(cttbl);
+    void *cur = get_constraint_table_cursor(thdinfo->ct_add_table);
     if (cur == NULL) {
         if (iq->debug)
             reqprintf(iq, "%p:VERKYCNSTRT CANNOT GET ADD LIST CURSOR", trans);
@@ -1275,6 +1255,7 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
     return ERR_INTERNAL;
 }
 
+/* go through all entries in ct_add_table and */
 int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                            struct ireq *iq, block_state_t *blkstate,
                            void *trans, int *errout)
@@ -1283,9 +1264,6 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
     void *od_dta = NULL;
     char ondisk_tag[MAXTAGLEN];
     char key[MAXKEYLEN];
-    void *cur = NULL;
-    struct thread_info *thdinfo = NULL;
-    void *cttbl = NULL;
     int nulls;
 
     od_dta = (void *)alloca(20 * 1024 + 8);
@@ -1298,7 +1276,7 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
         return ERR_INTERNAL;
     }
 
-    thdinfo = pthread_getspecific(unique_tag_key);
+    struct thread_info *thdinfo = pthread_getspecific(unique_tag_key);
     if (thdinfo == NULL) {
         if (iq->debug)
             reqprintf(iq, "VERKYCNSTRT CANNOT GET ADD LIST CURSOR");
@@ -1307,9 +1285,8 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
         *errout = OP_FAILED_INTERNAL;
         return ERR_INTERNAL;
     }
-    cttbl = thdinfo->ct_add_table;
 
-    cur = get_constraint_table_cursor(cttbl);
+    void *cur = get_constraint_table_cursor(thdinfo->ct_add_table);
     if (cur == NULL) {
         if (iq->debug)
             reqprintf(iq, "VERKYCNSTRT CANNOT GET ADD LIST CURSOR");
@@ -1717,10 +1694,7 @@ int truncate_constraint_table(void *table)
 
 int clear_constraints_tables(void)
 {
-    struct thread_info *thdinfo = NULL;
-
-    thdinfo = pthread_getspecific(unique_tag_key);
-
+    struct thread_info *thdinfo = pthread_getspecific(unique_tag_key);
     if (thdinfo == NULL)
         return -1;
 

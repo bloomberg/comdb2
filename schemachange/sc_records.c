@@ -1235,6 +1235,15 @@ cleanup_no_msg:
     return NULL;
 }
 
+static void stop_sc_redo_wait(bdb_state_type *bdb_state,
+                              struct schema_change_type *s)
+{
+    Pthread_mutex_lock(&bdb_state->sc_redo_lk);
+    s->sc_convert_done[MAXDTASTRIPE] = 1;
+    Pthread_cond_signal(&bdb_state->sc_redo_wait);
+    Pthread_mutex_unlock(&bdb_state->sc_redo_lk);
+}
+
 int convert_all_records(struct dbtable *from, struct dbtable *to,
                         unsigned long long *sc_genids,
                         struct schema_change_type *s)
@@ -1327,7 +1336,6 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
     int outrc = 0;
 
     if (gbl_logical_live_sc) {
-        tran_type *trans = NULL;
         int rc = 0, bdberr = 0;
         struct convert_record_data *thdData =
             calloc(1, sizeof(struct convert_record_data));
@@ -1335,7 +1343,8 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
             logmsg(LOGMSG_ERROR, "%s:%d out of memory\n", __func__, __LINE__);
             return -1;
         }
-        s->sc_convert_done = calloc(MAXDTASTRIPE, sizeof(int));
+        /* set s->sc_convert_done[MAXDTASTRIPE] = 1 if all stripes are done */
+        s->sc_convert_done = calloc(MAXDTASTRIPE + 1, sizeof(int));
         if (s->sc_convert_done == NULL) {
             logmsg(LOGMSG_ERROR, "%s:%d out of memory\n", __func__, __LINE__);
             return -1;
@@ -1380,17 +1389,15 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         if (BDB_ATTR_GET(thedb->bdb_attr, SNAPISOL) == 0) {
             /* enable logical logging for this table for the duration of the
              * schema change */
-            rc = trans_start_sc(&(data.iq), NULL, &trans);
-            if (rc || trans == NULL) {
-                logmsg(LOGMSG_ERROR, "%s:%d failed to start tran rc = %d\n",
+            rc = bdb_set_logical_live_sc(s->db->handle, 1 /* lock table */);
+            if (rc) {
+                logmsg(LOGMSG_ERROR,
+                       "%s:%d failed to set logical live sc, rc = %d\n",
                        __func__, __LINE__, rc);
                 free(s->sc_convert_done);
+                s->sc_convert_done = NULL;
                 return -1;
             }
-            bdb_lock_table_write(s->db->handle, trans);
-            // no one can write to this table at this point
-            bdb_set_logical_live_sc(s->db->handle);
-            trans_abort(&(data.iq), trans);
         }
 
         s->logical_livesc = 1;
@@ -1403,9 +1410,10 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         if (rc) {
             sc_errf(s, "[%s] starting thread failed for logical redo\n",
                     s->tablename);
-            bdb_clear_logical_live_sc(s->db->handle);
+            bdb_clear_logical_live_sc(s->db->handle, 1 /* lock table */);
             s->logical_livesc = 0;
             free(s->sc_convert_done);
+            s->sc_convert_done = NULL;
             return -1;
         }
     } else {
@@ -1527,9 +1535,17 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         data.tagmap = NULL;
     }
 
+    if (s->logical_livesc) {
+        if (outrc == 0) {
+            sc_printf(s, "[%s] All convert threads finished\n",
+                      from->tablename);
+        }
+        stop_sc_redo_wait(from->handle, s);
+    }
     /* wait for logical redo thread */
-    while (s->logical_livesc && !s->hitLastCnt)
+    while (s->logical_livesc && !s->hitLastCnt) {
         poll(NULL, 0, 200);
+    }
 
     return outrc;
 }
@@ -1975,6 +1991,7 @@ static int unpack_blob_record(struct convert_record_data *data, void *blb_buf,
                               int dtalen, blob_status_t *blb, int blbix)
 {
     int rc = 0;
+    size_t sz;
     void *unpackbuf = NULL;
     if ((rc = bdb_unpack(data->from->handle, blb_buf, dtalen, NULL, 0,
                          &data->odh, &unpackbuf)) != 0) {
@@ -1996,8 +2013,11 @@ static int unpack_blob_record(struct convert_record_data *data, void *blb_buf,
     }
     if (unpackbuf) {
         blb->blobptrs[blbix] = data->odh.recptr;
-    } else if (data->odh.length) {
-        blb->blobptrs[blbix] = malloc(data->odh.length);
+    } else {
+        sz = data->odh.length;
+        if (sz == 0)
+            sz = 1;
+        blb->blobptrs[blbix] = malloc(sz);
         if (!blb->blobptrs[blbix]) {
             logmsg(LOGMSG_ERROR, "%s:%d failed to malloc blob buffer\n",
                    __func__, __LINE__);
@@ -2007,7 +2027,7 @@ static int unpack_blob_record(struct convert_record_data *data, void *blb_buf,
     }
 
 #ifdef LOGICAL_LIVESC_DEBUG
-    logmsg(LOGMSG_DEBUG, "blob[%d], length %d\n", blbix, blb->bloblens[blbix]);
+    logmsg(LOGMSG_DEBUG, "blob[%d], length %zu\n", blbix, blb->bloblens[blbix]);
     if (blb->blobptrs[blbix])
         fsnapf(stdout, blb->blobptrs[blbix], blb->bloblens[blbix]);
     else
@@ -2588,7 +2608,7 @@ static int live_sc_redo_update(struct convert_record_data *data, DB_LOGC *logc,
 
     u_int32_t rectype;
     int rc, page, index;
-    unsigned long long genid, oldgenid;
+    unsigned long long genid = 0, oldgenid = 0;
     int prevlen = 0, updlen = 0;
     llog_undo_upd_dta_args *upd_dta = NULL;
     llog_undo_upd_dta_lk_args *upd_dta_lk = NULL;
@@ -2977,8 +2997,14 @@ again:
                 rc = ERR_INTERNAL;
             }
             data->nrecs--;
-        } else
+        } else {
             sc_set_logical_redo_lwm(data->s->tablename, pCur->curLsn.file);
+#ifdef LOGICAL_LIVESC_DEBUG
+            logmsg(LOGMSG_DEBUG, "[%s] %s:%d sets sc start lsn to [%u][%u]\n",
+                   data->s->tablename, __func__, __LINE__, pCur->curLsn.file,
+                   pCur->curLsn.offset);
+#endif
+        }
     }
 
 done:
@@ -3016,8 +3042,53 @@ done:
     return rc;
 }
 
+static struct sc_redo_lsn *get_next_redo_lsn(bdb_state_type *bdb_state,
+                                             struct schema_change_type *s)
+{
+    struct sc_redo_lsn *redo = NULL;
+    pthread_mutex_t *mtx = &bdb_state->sc_redo_lk;
+    pthread_cond_t *cond = &bdb_state->sc_redo_wait;
+    int wait = 1;
+
+    Pthread_mutex_lock(mtx);
+
+    if (s->sc_convert_done[MAXDTASTRIPE]) {
+        /* all converter threads have finished */
+        wait = 0;
+    }
+
+    redo = listc_rtl(&bdb_state->sc_redo_list);
+    if (redo == NULL && wait) {
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_sec += 10;
+        int rc = pthread_cond_timedwait(cond, mtx, &ts);
+        if (rc != 0 && rc != ETIMEDOUT)
+            logmsg(LOGMSG_ERROR, "%s:pthread_cond_timedwait: %d %s\n", __func__,
+                   rc, strerror(rc));
+        if (rc == 0) {
+            redo = listc_rtl(&bdb_state->sc_redo_list);
+        }
+    }
+
+    Pthread_mutex_unlock(mtx);
+    return redo;
+}
+
+static int sc_redo_size(bdb_state_type *bdb_state)
+{
+    int sz = 0;
+
+    Pthread_mutex_lock(&bdb_state->sc_redo_lk);
+    sz = listc_size(&bdb_state->sc_redo_list);
+    Pthread_mutex_unlock(&bdb_state->sc_redo_lk);
+
+    return sz;
+}
+
 void *live_sc_logical_redo_thd(struct convert_record_data *data)
 {
+    struct schema_change_type *s = data->s;
     struct thr_handle *thr_self = thrman_self();
     enum thrtype oldtype = THRTYPE_UNKNOWN;
     int rc = 0;
@@ -3026,6 +3097,11 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
     bdb_llog_cursor *pCur = &llog_cur;
     DB_LSN curLsn = {0};
     DB_LSN finalizeLsn = {0};
+    bdb_state_type *bdb_state = data->from->handle;
+    struct sc_redo_lsn *redo = NULL;
+    DB_LSN eofLsn = {0};
+    int serial = 0;
+    DB_LSN serialLsn = {0}; /* scan serial upto this LSN for resume */
 
     bzero(pCur, sizeof(bdb_llog_cursor));
 
@@ -3045,11 +3121,19 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
     data->iq.reqlogger = thrman_get_reqlogger(thr_self);
 
     /* starting time and lsn of the schema change */
-    sc_printf(data->s, "[%s] logical redo %s at [%u:%u]\n", data->s->tablename,
-              data->s->resume ? "resumes" : "starts", data->start_lsn.file,
+    sc_printf(s, "[%s] logical redo %s at [%u:%u]\n", s->tablename,
+              s->resume ? "resumes" : "starts", data->start_lsn.file,
               data->start_lsn.offset);
     data->lasttime = comdb2_time_epoch();
-    pCur->minLsn = data->start_lsn;
+    pCur->minLsn = pCur->curLsn = data->start_lsn;
+    eofLsn = data->start_lsn;
+    if (s->resume) {
+        serial = 1;
+        bdb_get_commit_genid(thedb->bdb_env, &serialLsn);
+        sc_printf(s, "[%s] logical redo run serial from [%u][%u] to [%u][%u]\n",
+                  s->tablename, data->start_lsn.file, data->start_lsn.offset,
+                  serialLsn.file, serialLsn.offset);
+    }
 
     /* init all buffer needed by this thread to do logical redo so we don't need
      * to malloc & free every single time */
@@ -3059,7 +3143,7 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
                                   sizeof(unsigned long long));
     if (!data->blob_hash) {
         logmsg(LOGMSG_ERROR, "%s: failed to init blob hash\n", __func__);
-        data->s->iq->sc_should_abort = 1;
+        s->iq->sc_should_abort = 1;
         goto cleanup;
     }
     data->dta_buf = malloc(data->from->lrl + ODH_SIZE);
@@ -3071,7 +3155,7 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
     if (!data->dta_buf || !data->old_dta_buf || !data->unpack_dta_buf ||
         !data->unpack_old_dta_buf) {
         logmsg(LOGMSG_ERROR, "%s: failed to malloc buffer\n", __func__);
-        data->s->iq->sc_should_abort = 1;
+        s->iq->sc_should_abort = 1;
         goto cleanup;
     }
     bzero(data->freeblb, sizeof(data->freeblb));
@@ -3082,56 +3166,155 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
         data->from->schema /*tbl .ONDISK tag schema*/,
         data->to->schema /*tbl .NEW..ONDISK schema */); // free tagmap only once
 
-    data->s->hitLastCnt = 0;
+    s->hitLastCnt = 0;
 
     data->to->sc_from = data->from;
 
     /* s->curLsn is used to synchronize between logical redo thread and convert
      * record threads in order to correctly detect unique key violations */
-    Pthread_mutex_lock(&data->s->livesc_mtx);
-    data->s->curLsn = &curLsn;
-    Pthread_mutex_unlock(&data->s->livesc_mtx);
+    Pthread_mutex_lock(&s->livesc_mtx);
+    s->curLsn = &curLsn;
+    Pthread_mutex_unlock(&s->livesc_mtx);
+
     while (1) {
         /* abort schema change if we need to */
-        if (gbl_sc_abort || data->from->sc_abort || data->s->sc_thd_failed ||
-            (data->s->iq && data->s->iq->sc_should_abort)) {
-            sc_errf(data->s,
+        if (gbl_sc_abort || data->from->sc_abort || s->sc_thd_failed ||
+            (s->iq && s->iq->sc_should_abort)) {
+            sc_errf(s,
                     "[%s] Stoping work on logical redo because we are told to "
                     "abort\n",
-                    data->s->tablename);
+                    s->tablename);
             goto cleanup;
         }
         if (stopsc) {
-            sc_errf(data->s, "[%s] %s stopping due to master swings\n",
-                    data->s->tablename, __func__);
+            sc_errf(s, "[%s] %s stopping due to master swings\n", s->tablename,
+                    __func__);
             goto cleanup;
         }
-        /* get the next transaction's logical ops from the log files */
-        if (bdb_llog_cursor_next(pCur) != 0) {
-            sc_printf(data->s, "[%s] logical redo failed at [%u:%u]\n",
-                      data->s->tablename, pCur->curLsn.file,
-                      pCur->curLsn.offset);
-            data->s->iq->sc_should_abort = 1;
-            goto cleanup;
+
+        /* scan serially */
+        if (!serial) {
+            /* Get the next lsn to redo, wait upto 10s unless all convert
+             * threads have finished */
+            redo = get_next_redo_lsn(bdb_state, s);
         }
-        if (pCur->log && !pCur->hitLast) {
-            /* redo this transaction against the new btrees */
-            rc = live_sc_redo_logical_log(data, pCur);
+        if (!serial && redo == NULL) {
+#ifdef LOGICAL_LIVESC_DEBUG
+            logmsg(LOGMSG_DEBUG, "[%s] no write since [%u][%u]\n", s->tablename,
+                   eofLsn.file, eofLsn.offset);
+#endif
+            /* Table has not been touch since last eofLsn */
+            Pthread_mutex_lock(&s->livesc_mtx);
+            curLsn = eofLsn;
+            Pthread_mutex_unlock(&s->livesc_mtx);
+            /* No write against the table, mark it as hitLast */
+            pCur->hitLast = 1;
+            if (finalizing) {
+                /* done */
+                break;
+            }
+            /* Update eofLsn to current end of log file */
+            bdb_get_commit_genid(thedb->bdb_env, &eofLsn);
+        } else {
+#ifdef LOGICAL_LIVESC_DEBUG
+            if (serial)
+                logmsg(LOGMSG_DEBUG, "[%s] serial log scan at lsn [%u][%u]\n",
+                       s->tablename, pCur->curLsn.file, pCur->curLsn.offset);
+            else
+                logmsg(LOGMSG_DEBUG, "[%s] redo logical commit lsn [%u][%u]\n",
+                       s->tablename, redo->lsn.file, redo->lsn.offset);
+#endif
+            /* traverse upto 1 log file */
+            pCur->maxLsn = serial ? pCur->curLsn : redo->lsn;
+            pCur->maxLsn.file += 1;
+
+            /* get the next transaction's logical ops from the log files */
+            if (serial)
+                rc = bdb_llog_cursor_next(pCur);
+            else {
+                int nretries = 0;
+                while (nretries < 500) {
+                    rc = bdb_llog_cursor_find(pCur, &(redo->lsn));
+                    if (rc || (pCur->log && !pCur->hitLast)) {
+                        /* found the committed transaction */
+                        break;
+                    }
+                    /* retry again and wait for the transaction to commit */
+                    nretries++;
+                    poll(NULL, 0, 10);
+                }
+                if (nretries >= 500) {
+                    /* Error out if we cannot find the committed transaction */
+                    sc_errf(s, "[%s] logical redo failed to find [%u:%u]\n",
+                            s->tablename, redo->lsn.file, redo->lsn.offset);
+                    s->iq->sc_should_abort = 1;
+                    goto cleanup;
+                }
+                if (redo->txnid != pCur->log->txnid) {
+                    sc_errf(s,
+                            "[%s] logical redo failed to find [%u:%u], expect "
+                            "txnid %x, got %x\n",
+                            s->tablename, redo->lsn.file, redo->lsn.offset,
+                            redo->txnid, pCur->log->txnid);
+                    s->iq->sc_should_abort = 1;
+                    goto cleanup;
+                }
+            }
             if (rc) {
-                sc_printf(data->s, "[%s] logical redo failed at [%u:%u]\n",
-                          data->s->tablename, pCur->curLsn.file,
-                          pCur->curLsn.offset);
-                data->s->iq->sc_should_abort = 1;
+                sc_errf(s, "[%s] logical redo failed at [%u:%u]\n",
+                        s->tablename, pCur->curLsn.file, pCur->curLsn.offset);
+                s->iq->sc_should_abort = 1;
                 goto cleanup;
             }
-            assert(pCur->log == NULL /* i.e. consumed */);
-            data->s->hitLastCnt = 0;
+            if (pCur->log && !pCur->hitLast) {
+                /* redo this transaction against the new btrees */
+                rc = live_sc_redo_logical_log(data, pCur);
+                if (rc) {
+                    sc_errf(s, "[%s] logical redo failed at [%u:%u]\n",
+                            s->tablename, pCur->curLsn.file,
+                            pCur->curLsn.offset);
+                    s->iq->sc_should_abort = 1;
+                    goto cleanup;
+                }
+                assert(pCur->log == NULL /* i.e. consumed */);
+                s->hitLastCnt = 0;
+            }
+            Pthread_mutex_lock(&s->livesc_mtx);
+            curLsn = pCur->curLsn;
+            Pthread_mutex_unlock(&s->livesc_mtx);
+
+            eofLsn = curLsn;
+
+            if (!serial)
+                free(redo);
+            else if (log_compare(&curLsn, &serialLsn) > 0) {
+                sc_printf(s, "[%s] logical redo exits serial mode\n",
+                          s->tablename);
+                serial = 0;
+            }
         }
-        Pthread_mutex_lock(&data->s->livesc_mtx);
-        curLsn = pCur->curLsn;
-        Pthread_mutex_unlock(&data->s->livesc_mtx);
+
         if (finalizing && log_compare(&curLsn, &finalizeLsn) >= 0) {
             break; // done
+        }
+        unsigned int lwm = sc_get_logical_redo_lwm_table(s->tablename);
+        if (lwm != curLsn.file) {
+            int bdberr = 0;
+            rc = bdb_set_sc_start_lsn(NULL, s->tablename, &curLsn, &bdberr);
+            if (rc || bdberr) {
+                logmsg(LOGMSG_ERROR,
+                       "%s: failed to update current LSN [%u][%u], rc = %d, "
+                       "bdberr = %d\n",
+                       __func__, curLsn.file, curLsn.offset, rc, bdberr);
+            } else {
+#ifdef LOGICAL_LIVESC_DEBUG
+                logmsg(LOGMSG_DEBUG,
+                       "[%s] %s:%d sets sc start lsn to [%u][%u]\n",
+                       data->s->tablename, __func__, __LINE__, curLsn.file,
+                       curLsn.offset);
+#endif
+                sc_set_logical_redo_lwm(s->tablename, curLsn.file);
+            }
         }
         int now = comdb2_time_epoch();
         int copy_sc_report_freq = gbl_sc_report_freq;
@@ -3140,13 +3323,15 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
             long long diff_nrecs = data->nrecs - data->prev_nrecs;
             data->lasttime = now;
             data->prev_nrecs = data->nrecs;
-            sc_printf(data->s,
-                      "[%s] logical redo transaction +%lld (%lld txn/s)\n",
-                      data->from->tablename, diff_nrecs,
-                      diff_nrecs / copy_sc_report_freq);
+            sc_printf(s,
+                      "[%s] logical redo at LSN [%u][%u] transactions done "
+                      "+%lld (%lld txn/s). Redo List Size: %d\n",
+                      data->from->tablename, curLsn.file, curLsn.offset,
+                      diff_nrecs, diff_nrecs / copy_sc_report_freq,
+                      sc_redo_size(bdb_state));
         }
         if (pCur->hitLast) {
-            if (data->s->got_tablelock) {
+            if (s->got_tablelock) {
                 /* loop one more time after we get table lock */
                 if (finalizing)
                     break;
@@ -3155,7 +3340,7 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
                 bdb_get_commit_genid(thedb->bdb_env, &finalizeLsn);
             }
             poll(NULL, 0, 100);
-            data->s->hitLastCnt++;
+            s->hitLastCnt++;
             continue;
         }
     }
@@ -3173,20 +3358,18 @@ cleanup:
     if (data->blob_hash)
         hash_free(data->blob_hash);
 
-    sc_printf(data->s,
+    sc_printf(s,
               "[%s] logical redo thread exiting, log cursor at [%u:%u], redid "
               "%lld txns\n",
-              data->s->tablename, pCur->curLsn.file, pCur->curLsn.offset,
+              s->tablename, pCur->curLsn.file, pCur->curLsn.offset,
               data->nrecs);
 
-    Pthread_mutex_lock(&data->s->livesc_mtx);
-    data->s->curLsn = NULL;
-    Pthread_mutex_unlock(&data->s->livesc_mtx);
+    Pthread_mutex_lock(&s->livesc_mtx);
+    s->curLsn = NULL;
+    Pthread_mutex_unlock(&s->livesc_mtx);
     bdb_llog_cursor_close(pCur);
 
-    free(data->s->sc_convert_done);
-    data->s->sc_convert_done = NULL;
-    data->s->logical_livesc = 0;
+    s->logical_livesc = 0;
 
     data->to->sc_from = NULL;
 

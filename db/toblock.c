@@ -46,6 +46,7 @@
 #include <lockmacro.h>
 #include <memory_sync.h>
 #include <rtcpu.h>
+#include <unistd.h>
 
 #include "comdb2.h"
 #include "tag.h"
@@ -1511,17 +1512,7 @@ int tolongblock(struct ireq *iq)
                 break;
             }
 
-            case BLOCK2_ADDKL:
-            case BLOCK2_ADDKL_POS:
-            case BLOCK2_DELKL:
-            case BLOCK2_UPDKL:
-            case BLOCK2_UPDKL_POS:
-            case BLOCK2_RNGDELKL:
-            case BLOCK2_QADD:
-            case BLOCK2_SOCK_SQL:
-            case BLOCK2_RECOM:
-            case BLOCK2_SNAPISOL:
-            case BLOCK2_SERIAL:
+            default:
                 break;
             }
             if (blklong_trans != NULL)
@@ -4397,6 +4388,13 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             ++delayed;
             is_block2sqlmode = 1;
             have_keyless_requests = 1;
+
+            int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_AFTER_SAVEOP_DONE);
+            if (d_ms) {
+                logmsg(LOGMSG_DEBUG,
+                       "Sleeping for DELAY_AFTER_SAVEOP_DONE (%dms)\n", d_ms);
+                usleep(1000 * d_ms);
+            }
 
             if (!(iq->p_buf_in = packedreq_sql_get(
                       &sql, iq->p_buf_in, p_blkstate->p_buf_next_start))) {

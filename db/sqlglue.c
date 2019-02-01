@@ -111,7 +111,6 @@ struct temptable {
     struct temp_cursor *cursor;
     struct temp_table *tbl;
     int flags;
-    char *name;
     int nRef;
     pthread_mutex_t *lk;
 #ifndef NDEBUG
@@ -561,7 +560,9 @@ static void handle_failed_recover_deadlock(struct sqlclntstate *clnt,
     switch (recover_deadlock_rcode) {
     case SQLITE_COMDB2SCHEMA:
         clnt->osql.xerr.errval = CDB2ERR_SCHEMA;
+        sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db));
         sqlite3VdbeError(vdbe, "Database schema was changed");
+        sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
         errstat_cat_str(&clnt->osql.xerr,
                         "Database schema was changed during request");
         logmsg(LOGMSG_DEBUG, "%s sending CDB2ERR_SCHEMA\n", __func__);
@@ -570,14 +571,18 @@ static void handle_failed_recover_deadlock(struct sqlclntstate *clnt,
         clnt->osql.xerr.errval = CDB2ERR_CHANGENODE;
         errstat_cat_str(&clnt->osql.xerr,
                         "Client api should retry request");
+        sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db));
         sqlite3VdbeError(vdbe, "New master under snapshot");
+        sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
         logmsg(LOGMSG_DEBUG, "%s sending CDB2ERR_CHANGENODE\n", __func__);
         break;
     default:
         clnt->osql.xerr.errval = CDB2ERR_DEADLOCK;
         errstat_cat_str(&clnt->osql.xerr,
                         "Failed to reaquire locks on deadlock");
+        sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db));
         sqlite3VdbeError(vdbe, "Failed to reaquire locks on deadlock");
+        sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
         logmsg(LOGMSG_DEBUG, "%s sending CDB2ERR_DEADLOCK on %d\n", __func__,
                recover_deadlock_rcode);
         break;
@@ -3206,8 +3211,6 @@ static int releaseTempTableRef(
             }
         }
         /* pTbl->tbl = NULL; */
-        free(pTbl->name);
-        /* pTbl->name = NULL; */
         free(pTbl);
         /* Table has been freed, remove from hash table. */
         bRemove = 1;
@@ -4734,6 +4737,7 @@ done:
 
 extern int gbl_early_verify;
 extern int gbl_osql_send_startgen;
+int gbl_forbid_incoherent_writes;
 
 /*
  ** Commit the transaction currently in progress.
@@ -4741,6 +4745,9 @@ extern int gbl_osql_send_startgen;
  ** This will release the write lock on the database file.  If there
  ** are no active cursors, it also releases the read lock.
  */
+
+void abort_dbtran(struct sqlclntstate *clnt);
+
 int sqlite3BtreeCommit(Btree *pBt)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
@@ -4779,6 +4786,15 @@ int sqlite3BtreeCommit(Btree *pBt)
         sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                                 SQLENG_NORMAL_PROCESS);
 
+    int64_t rows = clnt->log_effects.num_updated +
+                   clnt->log_effects.num_deleted +
+                   clnt->log_effects.num_inserted;
+    if (rows && gbl_forbid_incoherent_writes && !clnt->had_lease_at_begin) {
+        abort_dbtran(clnt);
+        errstat_cat_str(&clnt->osql.xerr, "failed write from incoherent node");
+        clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
+        return SQLITE_ABORT;
+    }
     clnt->intrans = 0;
 
 #ifdef DEBUG_TRAN
@@ -5084,22 +5100,6 @@ int sqlite3BtreeGetAutoVacuum(Btree *pBt)
     return rc;
 }
 
-static char *get_temp_dbname(Btree *pBt)
-{
-    char *s;
-    unsigned long long genid;
-    size_t s_sz = strlen(thedb->basedir) + 80;
-    genid = get_id(thedb->bdb_env);
-    s = malloc(s_sz);
-    if (!s) {
-        logmsg(LOGMSG_ERROR, "get_temp_dbname: out of memory\n");
-        return NULL;
-    }
-    snprintf(s, s_sz, "%s/%s.tmpdbs/_temp_%lld.db", thedb->basedir,
-             thedb->envname, genid);
-    return s;
-}
-
 /*
 ** Temp tables were not designed to be shareable.
 ** Use this lock for synchoronizing access to shared
@@ -5190,7 +5190,6 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
             goto done;
         }
         pNewTbl->tbl = tbl;
-        pNewTbl->name = get_temp_dbname(pBt);
         pNewTbl->lk = NULL;
         pNewTbl->flags = flags;
     } else if (!tmptbl_clone) {
@@ -5206,7 +5205,6 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
             goto done;
         }
         pNewTbl->tbl = tbl;
-        pNewTbl->name = get_temp_dbname(pBt);
         pNewTbl->lk = tmptbl_lk;
         pNewTbl->flags = flags;
     }
@@ -6393,7 +6391,6 @@ skip:
                 rc = SQLITE_INTERNAL;
                 goto done;
             }
-            free(pCur->sampled_idx->name);
             free(pCur->sampled_idx);
         } else if (pCur->bt && pCur->bt->is_temporary) {
             if( pCur->cursor_close ){
@@ -6403,10 +6400,6 @@ skip:
                     rc = SQLITE_INTERNAL;
                     goto done;
                 }
-            }
-            if( pCur->tmptable ){
-                free(pCur->tmptable->name);
-                pCur->tmptable->name = NULL;
             }
             free(pCur->tmptable);
             pCur->tmptable = NULL;
@@ -9345,7 +9338,7 @@ int put_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
 
     if (!clnt->dbtran.cursor_tran) {
         logmsg(LOGMSG_DEBUG, "%s called without curtran\n", __func__);
-        return -1;
+        return 0;
     }
 
     rc = bdb_put_cursortran(bdb_state, clnt->dbtran.cursor_tran, curtran_flags,
@@ -9591,8 +9584,11 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
         if (rc == SQLITE_SCHEMA || rc == SQLITE_COMDB2SCHEMA) {
             logmsg(LOGMSG_ERROR, "%s: failing with SQLITE_COMDB2SCHEMA\n",
                    __func__);
-            if (vdbe)
+            if (vdbe) {
+                sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db));
                 sqlite3VdbeError(vdbe, "Database was schema changed");
+                sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
+            }
             return SQLITE_COMDB2SCHEMA;
         }
 
@@ -9600,14 +9596,20 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
             logmsg(LOGMSG_ERROR, 
                    "%s: fail to open a new curtran, rc=%d, return "
                    "changenode\n", __func__, rc);
-            if (vdbe)
+            if (vdbe) {
+                sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db));
                 sqlite3VdbeError(vdbe, "New master under snapshot");
+                sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
+            }
             return SQLITE_CLIENT_CHANGENODE;
         } else {
             logmsg(LOGMSG_ERROR, "%s: fail to open a new curtran, rc=%d\n",
                    __func__, rc);
-            if (vdbe)
+            if (vdbe) {
+                sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db));
                 sqlite3VdbeError(vdbe, "Failed to reaquire locks on deadlock");
+                sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
+            }
             return ERR_RECOVER_DEADLOCK;
         }
     }

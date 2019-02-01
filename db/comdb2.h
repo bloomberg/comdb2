@@ -544,6 +544,7 @@ struct rawnodestats {
     (offsetof(struct rawnodestats, svc_time) / sizeof(unsigned))
 
 struct summary_nodestats {
+    int node;
     char *host;
     struct in_addr addr;
     char *task;
@@ -2017,10 +2018,6 @@ int trans_wait_for_last_seqnum(struct ireq *iq, char *source_host);
 int get_context(struct ireq *iq, unsigned long long *context);
 int cmp_context(struct ireq *iq, unsigned long long genid,
                 unsigned long long context);
-
-/* for fast load.. */
-int load_record(struct dbtable *db, void *buf);
-void load_data_done(struct dbtable *db);
 
 /*index routines*/
 int ix_isnullk(void *db_table, void *key, int ixnum);

@@ -1012,6 +1012,10 @@ REGISTER_TUNABLE("spfile", NULL, TUNABLE_STRING, &gbl_spfile_name, READONLY,
 REGISTER_TUNABLE("timepartitions", NULL, TUNABLE_STRING,
                  &gbl_timepart_file_name, READONLY, NULL, NULL, file_update,
                  NULL);
+REGISTER_TUNABLE("exec_sql_on_new_connect",
+                 "SQL command(s) to run for each new connection.",
+                 TUNABLE_RAW, &gbl_exec_sql_on_new_connect,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sqlflush", "Force flushing the current record "
                              "stream to client every specified "
                              "number of records. (Default: 0)",
@@ -1622,6 +1626,22 @@ REGISTER_TUNABLE("force_incoherent",
                  "Force this node to be incoherent.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_force_incoherent,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("ignore_coherency",
+                 "Force this node to be coherent.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_ignore_coherency,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("forbid_incoherent_writes",
+                 "Prevent writes against a node which was incoherent at "
+                 "transaction start.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_forbid_incoherent_writes,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("skip_catchup_logic",
+                 "Skip initial catchup logic.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_skip_catchup_logic, EXPERIMENTAL | INTERNAL, NULL, NULL,
+                 NULL, NULL);
 
 REGISTER_TUNABLE("abort_on_missing_osql_session",
                  "Abort if we can't find an osql session in the repository.  "

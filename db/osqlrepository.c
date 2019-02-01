@@ -282,6 +282,7 @@ int osql_repository_rem(osql_sess_t *sess, int lock, const char *func, const cha
 
         if (lock) {
             Pthread_rwlock_unlock(&theosql->hshlck);
+            lock = 0;
         }
 
         /* This can happen legitimately on master swing */
@@ -404,14 +405,13 @@ int osql_repository_printcrtsessions(void)
     logmsg(LOGMSG_USER, "Begin osql session info:\n");
     if ((rc = hash_for(stat->rqs, osql_sess_getcrtinfo, NULL))) {
         logmsg(LOGMSG_USER, "hash_for failed with rc = %d\n", rc);
-        Pthread_rwlock_unlock(&stat->hshlck);
-        return -1;
-    }
-    logmsg(LOGMSG_USER, "Done osql info.\n");
+        rc = -1;
+    } else
+        logmsg(LOGMSG_USER, "Done osql info.\n");
 
     Pthread_rwlock_unlock(&stat->hshlck);
 
-    return 0;
+    return rc;
 }
 
 /**

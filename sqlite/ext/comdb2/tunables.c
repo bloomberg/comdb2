@@ -172,7 +172,8 @@ static int systblTunablesColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,
             sqlite3_result_text(ctx, (val) ? "ON" : "OFF", -1, NULL);
             break;
         }
-        case TUNABLE_STRING: {
+        case TUNABLE_STRING:
+        case TUNABLE_RAW: {
             const char *val;
             val = (tunable->value) ? (const char *)tunable->value(tunable)
                                    : *(char **)tunable->var;

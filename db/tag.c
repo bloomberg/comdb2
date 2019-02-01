@@ -4685,6 +4685,7 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                                  "too large forcing rebuild)\n",
                             old->tag, nidx, fnew->name);
                 }
+                break;
             } else if (fnew->in_default || allow_null) {
                 rc = SC_COLUMN_ADDED;
                 if (out) {
@@ -4698,6 +4699,7 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                             old->tag, nidx, fnew->name);
                 }
                 rc = SC_BAD_NEW_FIELD;
+                break;
             }
         }
     }

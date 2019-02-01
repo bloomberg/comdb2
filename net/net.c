@@ -2649,11 +2649,11 @@ static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
         return ptr;
     }
 
-    ptr = malloc(sizeof(host_node_type));
-    if (!ptr)
+    ptr = calloc(1, sizeof(host_node_type));
+    if (!ptr) {
+        logmsg(LOGMSG_FATAL, "Can't allocate memory for netinfo\n");
         abort();
-
-    memset(ptr, 0, sizeof(host_node_type));
+    }
 
     ptr->netinfo_ptr = netinfo_ptr;
     ptr->closed = 1;
@@ -2666,8 +2666,6 @@ static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
     /* ptr->addr will be set by connect_thread() */
     ptr->port = portnum;
     ptr->timestamp = time(NULL);
-    ptr->wait_list = NULL;
-    ptr->distress = 0;
 
     Pthread_mutex_init(&(ptr->lock), NULL);
     Pthread_mutex_init(&(ptr->pool_lock), NULL);
@@ -2698,14 +2696,8 @@ static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
 
     Pthread_mutex_init(&(ptr->write_lock), NULL);
     Pthread_mutex_init(&(ptr->enquelk), NULL);
-
-    ptr->enque_count = 0;
-    ptr->enque_bytes = 0;
-
     Pthread_mutex_init(&(ptr->wait_mutex), NULL);
-
     Pthread_mutex_init(&(ptr->throttle_lock), NULL);
-
     Pthread_cond_init(&(ptr->ack_wakeup), NULL);
     Pthread_cond_init(&(ptr->write_wakeup), NULL);
     Pthread_cond_init(&(ptr->throttle_wakeup), NULL);
@@ -2718,11 +2710,8 @@ static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
     }
 
     netinfo_ptr->head = ptr;
-    ptr->stats.bytes_written = ptr->stats.bytes_read = 0;
-    ptr->stats.throttle_waits = ptr->stats.reorders = 0;
 
-    char *metric_name;
-    metric_name = comdb2_asprintf("queue_size_%s", hostname);
+    char *metric_name = comdb2_asprintf("queue_size_%s", hostname);
     ptr->metric_queue_size = time_metric_new(metric_name);
     free(metric_name);
 
@@ -2842,6 +2831,9 @@ static void rem_from_netinfo_ll(netinfo_type *netinfo_ptr,
     free(host_node_ptr->user_data_buf);
     sbuf2free(host_node_ptr->sb);
 
+#ifndef NDEBUG
+    memset(host_node_ptr, 0, sizeof(host_node_type));
+#endif
     free(host_node_ptr);
 }
 
@@ -2865,7 +2857,7 @@ static void rem_from_netinfo(netinfo_type *netinfo_ptr,
 void net_cleanup_netinfo(netinfo_type *netinfo_ptr)
 {
     host_node_type *ptr;
-    Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
+    Pthread_rwlock_wrlock(&(netinfo_ptr->lock));
     while ((ptr = netinfo_ptr->head) != NULL) {
         rem_from_netinfo_ll(netinfo_ptr, ptr);
     }
@@ -3130,6 +3122,7 @@ void print_net_memstat(int human_readable)
                seq_netinfo, netinfo_ptr, netinfo_ptr->app, netinfo_ptr->service,
                netinfo_ptr->instance);
 
+        Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
         for (host_node_ptr = netinfo_ptr->head; host_node_ptr != NULL;
              host_node_ptr = host_node_ptr->next) {
             if (strlen(host_node_ptr->host) > hostlen)
@@ -3186,6 +3179,7 @@ void print_net_memstat(int human_readable)
                        to_human_readable(mspinfo.fordblks, hrn, sizeof(hrn)));
             }
         }
+        Pthread_rwlock_unlock(&(netinfo_ptr->lock));
 
         ++seq_netinfo;
 
@@ -3222,8 +3216,11 @@ netinfo_type *create_netinfo_int(char myhostname[], int myportnum, int myfd,
     netinfo_node_t *netinfo_node;
     int rc;
 
-    netinfo_ptr = malloc(sizeof(netinfo_type));
-    memset(netinfo_ptr, 0, sizeof(netinfo_type));
+    netinfo_ptr = calloc(1, sizeof(netinfo_type));
+    if (!netinfo_ptr) {
+        logmsg(LOGMSG_FATAL, "Can't allocate memory for netinfo entry\n");
+        abort();
+    }
 
     listc_init(&(netinfo_ptr->watchlist), offsetof(watchlist_node_type, lnk));
 
@@ -3802,7 +3799,10 @@ static int process_user_message(netinfo_type *netinfo_ptr,
     int rc = read_user_data(host_node_ptr, &usertype, &seqnum, &needack,
                             &datalen, &data, &malloced);
 
-    /* fprintf(stderr, "process_user_message from %s, ut=%d\n", host_node_ptr->host, usertype); */
+#if 0
+    logmsg(LOGMSG_DEBUG, "process_user_message from %s, ut=%d\n",
+           host_node_ptr->host, usertype);
+#endif
 
     if (rc != 0)
         return -1; /* not sure ... exit the reader thread??? */
@@ -3838,8 +3838,15 @@ static int process_user_message(netinfo_type *netinfo_ptr,
         host_node_ptr->running_user_func = 0;
         Pthread_mutex_unlock(&(host_node_ptr->timestamp_lock));
     } else {
-        host_node_printf(LOGMSG_INFO, host_node_ptr,
-                         "%s: unexpected usertype:%d\n", __func__, usertype);
+        static int lastpr = 0, count = 0;
+        int now;
+        count++;
+        if ((now = comdb2_time_epoch()) - lastpr) {
+            host_node_printf(LOGMSG_INFO, host_node_ptr,
+                             "%s: unexpected usertype:%d, count=%d\n", __func__,
+                             usertype, count);
+            lastpr = now;
+        }
     }
 
     if (ack_state)
@@ -6315,18 +6322,14 @@ int net_set_max_bytes(netinfo_type *netinfo_ptr, uint64_t x)
 int net_sanctioned_list_ok(netinfo_type *netinfo_ptr)
 {
     sanc_node_type *sanc_node_ptr;
-    int ok;
-
-    ok = 1;
+    int ok = 1;
 
     Pthread_mutex_lock(&(netinfo_ptr->sanclk));
 
-    for (sanc_node_ptr = netinfo_ptr->sanctioned_list; sanc_node_ptr != NULL;
-         sanc_node_ptr = sanc_node_ptr->next)
-        if (!is_ok(netinfo_ptr, sanc_node_ptr->host)) {
-            ok = 0;
-            break;
-        }
+    for (sanc_node_ptr = netinfo_ptr->sanctioned_list;
+         ok && sanc_node_ptr != NULL; sanc_node_ptr = sanc_node_ptr->next) {
+        ok = is_ok(netinfo_ptr, sanc_node_ptr->host);
+    }
 
     Pthread_mutex_unlock(&(netinfo_ptr->sanclk));
 
@@ -6337,10 +6340,8 @@ static sanc_node_type *add_to_sanctioned_nolock(netinfo_type *netinfo_ptr,
                                                 const char hostname[],
                                                 int portnum)
 {
-    sanc_node_type *ptr;
-
     /* scan to see if it's already there */
-    ptr = netinfo_ptr->sanctioned_list;
+    sanc_node_type *ptr = netinfo_ptr->sanctioned_list;
 
     while (ptr != NULL && ptr->host != hostname)
         ptr = ptr->next;
@@ -6362,7 +6363,7 @@ static sanc_node_type *add_to_sanctioned_nolock(netinfo_type *netinfo_ptr,
     return ptr;
 }
 
-int connect_to_all(netinfo_type *netinfo_ptr)
+void connect_to_all(netinfo_type *netinfo_ptr)
 {
     host_node_type *host_node_ptr;
 
@@ -6376,8 +6377,6 @@ int connect_to_all(netinfo_type *netinfo_ptr)
     }
 
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-
-    return 0;
 }
 
 /*
@@ -6453,11 +6452,7 @@ int net_init(netinfo_type *netinfo_ptr)
        netinfo_ptr->accept_thread_created);*/
 
     /* create threads to connect to each host we know about */
-    rc = connect_to_all(netinfo_ptr);
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "init_network: connect_to_all failed - exiting\n");
-        exit(1);
-    }
+    connect_to_all(netinfo_ptr);
 
     /* XXX just give things a chance to settle down before we return */
     usleep(10000);
@@ -6486,23 +6481,19 @@ int net_register_admin_appsock(netinfo_type *netinfo_ptr, APPSOCKFP func)
 
 int net_register_appsock(netinfo_type *netinfo_ptr, APPSOCKFP func)
 {
-
     netinfo_ptr->appsock_rtn = func;
-
     return 0;
 }
 
 int net_register_allow(netinfo_type *netinfo_ptr, NETALLOWFP func)
 {
     netinfo_ptr->allow_rtn = func;
-
     return 0;
 }
 
 int net_register_newnode(netinfo_type *netinfo_ptr, NEWNODEFP func)
 {
     netinfo_ptr->new_node_rtn = func;
-
     return 0;
 }
 
