@@ -4786,8 +4786,9 @@ int sqlite3BtreeCommit(Btree *pBt)
         sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                                 SQLENG_NORMAL_PROCESS);
 
-    int64_t rows = clnt->log_effects.num_updated + clnt->log_effects.num_deleted +
-            clnt->log_effects.num_inserted;
+    int64_t rows = clnt->log_effects.num_updated +
+                   clnt->log_effects.num_deleted +
+                   clnt->log_effects.num_inserted;
     if (rows && gbl_forbid_incoherent_writes && !clnt->had_lease_at_begin) {
         abort_dbtran(clnt);
         errstat_cat_str(&clnt->osql.xerr, "failed write from incoherent node");
