@@ -660,6 +660,9 @@ DEF_ATTR(
 DEF_ATTR(
     VIEWS_DFT_ROLL_DELETE_LAG_SECS, views_dft_roll_delete_lag_secs, SECS, 5,
     "Amount of seconds to run phase 3 of time partition rollout after phase 2")
+DEF_ATTR(
+    AA_REQUEST_MODE, aa_request_mode, BOOLEAN, 0,
+    "Print a message to stdout instead of performing auto-analyze ourselves")
 
 /*
   BDB_ATTR_REPTIMEOUT

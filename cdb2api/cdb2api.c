@@ -1986,13 +1986,33 @@ static int cdb2portmux_route(cdb2_hndl_tp *hndl, const char *remote_host,
     return fd;
 }
 
+static void get_host_from_fd(cdb2_hndl_tp *hndl, int fd)
+{
+    struct sockaddr_in addr;
+    socklen_t addr_size = sizeof(struct sockaddr_in);
+    int res = getpeername(fd, (struct sockaddr *)&addr, &addr_size);
+    if (res) {
+        debugprint("getpeername res %d %s\n", errno, strerror(errno));
+    }
+    char ip[20];
+    strcpy(ip, inet_ntoa(addr.sin_addr));
+
+    struct hostent *hp =
+        gethostbyaddr((char *)&addr.sin_addr, sizeof(addr.sin_addr), AF_INET);
+    debugprint("sockpool gave us ip '%s', host '%s'\n", ip,
+               (hp != NULL) ? hp->h_name : "");
+    // TODO: consider changing the node_indx in newsql_connect if the host which
+    // sockpool had us connect to is not the same as what we intended to connect
+}
+
 /* Tries to connect to specified node using sockpool.
  * If there is none, then makes a new socket connection.
  */
-static int newsql_connect(cdb2_hndl_tp *hndl, char *host, int port, int myport,
-                          int timeoutms, int indx)
+static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx, int myport,
+                          int timeoutms)
 {
-
+    const char *host = hndl->hosts[node_indx];
+    const int port = hndl->ports[node_indx];
     debugprint("entering, host '%s:%d'\n", host, port);
     int fd = -1;
     SBUF2 *sb = NULL;
@@ -2015,8 +2035,10 @@ static int newsql_connect(cdb2_hndl_tp *hndl, char *host, int port, int myport,
             close(fd);
             return -1;
         }
-        if (send_reset(sb) == 0)
+        if (send_reset(sb) == 0) {
+            get_host_from_fd(hndl, fd);
             break;      // connection is ready
+        }
         sbuf2close(sb); // retry newsql connect;
     }
 
@@ -2043,7 +2065,7 @@ static int newsql_connect(cdb2_hndl_tp *hndl, char *host, int port, int myport,
     sbuf2settimeout(sb, 5000, 5000);
 
 #if WITH_SSL
-    if (try_ssl(hndl, sb, indx) != 0) {
+    if (try_ssl(hndl, sb, node_indx) != 0) {
         sbuf2close(sb);
         return -1;
     }
@@ -2052,13 +2074,16 @@ static int newsql_connect(cdb2_hndl_tp *hndl, char *host, int port, int myport,
     hndl->sb = sb;
     hndl->num_set_commands_sent = 0;
     hndl->sent_client_info = 0;
+    hndl->connected_host = node_indx;
+    hndl->hosts_connected[hndl->connected_host] = 1;
+    debugprint("connected_host=%s\n", hndl->hosts[hndl->connected_host]);
     return 0;
 }
 
-static int newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
+static void newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
 {
     if (sb == NULL)
-        return 0;
+        return;
 
     debugprint("disconnecting from %s\n", hndl->hosts[hndl->connected_host]);
     int fd = sbuf2fileno(sb);
@@ -2077,7 +2102,7 @@ static int newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
     }
     hndl->use_hint = 0;
     hndl->sb = NULL;
-    return 0;
+    return;
 }
 
 /* returns port number, or -1 for error*/
@@ -2180,16 +2205,11 @@ static inline int cdb2_try_on_same_room(cdb2_hndl_tp *hndl)
     for (int i = 0; i < hndl->num_hosts_sameroom; i++) {
         int try_node = (hndl->node_seq + i) % hndl->num_hosts_sameroom;
         if (try_node == hndl->master || hndl->ports[try_node] <= 0 ||
-            try_node == hndl->connected_host || hndl->hosts_connected[i] == 1)
+            try_node == hndl->connected_host ||
+            hndl->hosts_connected[try_node] == 1)
             continue;
-        int ret = newsql_connect(hndl, hndl->hosts[try_node],
-                                 hndl->ports[try_node], 0, 100, i);
-        if (ret != 0)
-            continue;
-        hndl->hosts_connected[try_node] = 1;
-        hndl->connected_host = try_node;
-        debugprint("connected_host=%s\n", hndl->hosts[try_node]);
-        return 0;
+        if (newsql_connect(hndl, try_node, 0, 100) == 0)
+            return 0;
     }
     return -1;
 }
@@ -2202,13 +2222,8 @@ static inline int cdb2_try_connect_range(cdb2_hndl_tp *hndl, int begin, int end)
         if (i == hndl->master || hndl->ports[i] <= 0 ||
             i == hndl->connected_host || hndl->hosts_connected[i] == 1)
             continue;
-        int ret =
-            newsql_connect(hndl, hndl->hosts[i], hndl->ports[i], 0, 100, i);
-        if (ret != 0)
-            continue;
-        hndl->connected_host = i;
-        hndl->hosts_connected[i] = 1;
-        return 0;
+        if (newsql_connect(hndl, i, 0, 100) == 0)
+            return 0;
     }
     return -1;
 }
@@ -2310,13 +2325,8 @@ retry_connect:
         /* After this retry on other nodes. */
         bzero(hndl->hosts_connected, sizeof(hndl->hosts_connected));
         if (hndl->ports[hndl->master] > 0) {
-            int ret = newsql_connect(hndl, hndl->hosts[hndl->master],
-                                     hndl->ports[hndl->master], 0, 100,
-                                     hndl->master);
-            if (ret == 0) {
-                hndl->connected_host = hndl->master;
+            if (newsql_connect(hndl, hndl->master, 0, 100) == 0)
                 return 0;
-            }
         }
     }
 
@@ -3665,7 +3675,6 @@ static int process_ssl_set_command(cdb2_hndl_tp *hndl, const char *cmd)
         /* Refresh connection if SSL config has changed. */
         if (hndl->sb != NULL) {
             newsql_disconnect(hndl, hndl->sb, __LINE__);
-            hndl->sb = NULL;
         }
     }
 
@@ -4179,7 +4188,6 @@ read_record:
 
         if (!is_commit || hndl->snapshot_file) {
             newsql_disconnect(hndl, hndl->sb, __LINE__);
-            hndl->sb = NULL;
             hndl->retry_all = 1;
             debugprint("goto retry_queries read-record rc=%d err_val=%d\n", rc,
                        err_val);
@@ -4267,7 +4275,6 @@ read_record:
         if (!is_commit || hndl->snapshot_file) {
             debugprint("disconnect & retry on null first_buf\n");
             newsql_disconnect(hndl, hndl->sb, __LINE__);
-            hndl->sb = NULL;
             hndl->retry_all = 1;
             debugprint("goto retry_queries err_val=%d\n", err_val);
             goto retry_queries;
@@ -4294,7 +4301,6 @@ read_record:
         }
     } else if (hndl->firstresponse->error_code == CDB2__ERROR_CODE__WRONG_DB && !hndl->in_trans) {
         newsql_disconnect(hndl, hndl->sb, __LINE__);
-        hndl->sb = NULL;
         hndl->retry_all = 1;
         for (int i = 0; i < hndl->num_hosts; i++) {
             hndl->ports[i] = -1;
@@ -4309,7 +4315,6 @@ read_record:
         (hndl->snapshot_file || (!hndl->in_trans && !is_commit) ||
          commit_file)) {
         newsql_disconnect(hndl, hndl->sb, __LINE__);
-        hndl->sb = NULL;
         hndl->retry_all = 1;
         if (commit_file) {
             debugprint("setting in_trans to 1\n");
@@ -4346,7 +4351,6 @@ read_record:
             (hndl->snapshot_file || (!hndl->in_trans && !is_commit) ||
              commit_file)) {
             newsql_disconnect(hndl, hndl->sb, __LINE__);
-            hndl->sb = NULL;
             hndl->retry_all = 1;
 
             if (commit_file) {
