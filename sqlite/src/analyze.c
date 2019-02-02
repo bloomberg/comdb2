@@ -140,7 +140,6 @@
 ** integer in the equivalent columns in sqlite_stat4.
 */
 #ifndef SQLITE_OMIT_ANALYZE
-
 #include "sqliteInt.h"
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -1112,7 +1111,7 @@ static void statGet(
       scale = (int)((p->nActualRow / (double)p->nRow) + 0.5);
     }
     if( eCall!=STAT_GET_ROW ){
-      char *zRet = sqlite3MallocZero(p->nCol * 25);
+      char *zRet = sqlite3MallocZero( p->nCol*25 );
       if( zRet==0 ){
         sqlite3_result_error_nomem(context);
       }else{
@@ -1435,7 +1434,7 @@ static void analyzeOneTable(
     addrNextRow = sqlite3VdbeCurrentAddr(v);
 
     if( nColTest>0 ){
-      int endDistinctTest = sqlite3VdbeMakeLabel(v);
+      int endDistinctTest = sqlite3VdbeMakeLabel(pParse);
       int *aGotoChng;               /* Array of jump instruction addresses */
       aGotoChng = sqlite3DbMallocRawNN(db, sizeof(int)*nColTest);
       if( aGotoChng==0 ) continue;

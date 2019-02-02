@@ -262,7 +262,7 @@ void sqlite3UpsertDoUpdate(
   pSrc = sqlite3SrcListDup(db, pUpsert->pUpsertSrc, 0);
   sqlite3Update(pParse, pSrc, pUpsert->pUpsertSet,
       pUpsert->pUpsertWhere, OE_Abort, 0, 0, pUpsert);
-  pUpsert->pUpsertSet = 0;    /* Will have been deleted by sqlite3Update() */
+  pUpsert->pUpsertSet = 0;  /* Will have been deleted by sqlite3Update() */
   pUpsert->pUpsertWhere = 0;  /* Will have been deleted by sqlite3Update() */
   VdbeNoopComment((v, "End DO UPDATE of UPSERT"));
 }

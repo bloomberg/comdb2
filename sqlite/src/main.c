@@ -673,6 +673,13 @@ int sqlite3_config(int op, ...){
     }
 #endif /* SQLITE_ENABLE_SORTER_REFERENCES */
 
+#ifdef SQLITE_ENABLE_DESERIALIZE
+    case SQLITE_CONFIG_MEMDB_MAXSIZE: {
+      sqlite3GlobalConfig.mxMemdbSize = va_arg(ap, sqlite3_int64);
+      break;
+    }
+#endif /* SQLITE_ENABLE_DESERIALIZE */
+
     default: {
       rc = SQLITE_ERROR;
       break;
@@ -863,11 +870,11 @@ int sqlite3_db_config(sqlite3 *db, int op, ...){
         if( aFlagOp[i].op==op ){
           int onoff = va_arg(ap, int);
           int *pRes = va_arg(ap, int*);
-          u32 oldFlags = db->flags;
+          u64 oldFlags = db->flags;
           if( onoff>0 ){
             db->flags |= aFlagOp[i].mask;
           }else if( onoff==0 ){
-            db->flags &= ~aFlagOp[i].mask;
+            db->flags &= ~(u64)aFlagOp[i].mask;
           }
           if( oldFlags!=db->flags ){
             sqlite3ExpirePreparedStatements(db, 0);
@@ -1356,7 +1363,7 @@ void sqlite3RollbackAll(sqlite3 *db, int tripCode){
   /* Any deferred constraint violations have now been resolved. */
   db->nDeferredCons = 0;
   db->nDeferredImmCons = 0;
-  db->flags &= ~SQLITE_DeferFKs;
+  db->flags &= ~(u64)SQLITE_DeferFKs;
 
   /* If one has been configured, invoke the rollback-hook callback */
   if( db->xRollbackCallback && (inTrans || !db->autoCommit) ){
@@ -2105,6 +2112,8 @@ void *sqlite3_profile(
   pOld = db->pProfileArg;
   db->xProfile = xProfile;
   db->pProfileArg = pArg;
+  db->mTrace &= SQLITE_TRACE_NONLEGACY_MASK;
+  if( db->xProfile ) db->mTrace |= SQLITE_TRACE_XPROFILE;
   sqlite3_mutex_leave(db->mutex);
   return pOld;
 }
@@ -2456,7 +2465,7 @@ const char *sqlite3_errmsg(sqlite3 *db){
     z = sqlite3ErrStr(SQLITE_NOMEM_BKPT);
   }else{
     testcase( db->pErr==0 );
-    z = (char*)sqlite3_value_text(db->pErr);
+    z = db->errCode ? (char*)sqlite3_value_text(db->pErr) : 0;
     assert( !db->mallocFailed );
     if( z==0 ){
       z = sqlite3ErrStr(db->errCode);
