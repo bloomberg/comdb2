@@ -481,7 +481,9 @@ Expr *sqlite3ExprForVectorField(
   }else{
     if( pVector->op==TK_VECTOR ) pVector = pVector->x.pList->a[iField].pExpr;
     pRet = sqlite3ExprDup(pParse->db, pVector, 0);
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
     sqlite3RenameTokenRemap(pParse, pRet, pVector);
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   }
   return pRet;
 }
@@ -1692,9 +1694,11 @@ ExprList *sqlite3ExprListAppendVector(
   }
 
 vector_append_error:
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   if( IN_RENAME_OBJECT ){
     sqlite3RenameExprUnmap(pParse, pExpr);
   }
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3ExprDelete(db, pExpr);
   sqlite3IdListDelete(db, pColumns);
   return pList;
