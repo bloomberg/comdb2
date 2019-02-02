@@ -538,7 +538,13 @@ static inline void setCookCol(VdbeCursor *pC, int nCol){
 static u16 SQLITE_NOINLINE computeNumericType(Mem *pMem){
   assert( (pMem->flags & (MEM_Int|MEM_Real))==0 );
   assert( (pMem->flags & (MEM_Str|MEM_Blob))!=0 );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#ifndef SQLITE_OMIT_INCRBLOB
   ExpandBlob(pMem);
+#endif
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  ExpandBlob(pMem);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( sqlite3AtoF(pMem->z, &pMem->u.r, pMem->n, pMem->enc)==0 ){
     return 0;
   }
