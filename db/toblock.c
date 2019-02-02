@@ -4769,27 +4769,6 @@ printf("AZ: 2loop opnum = %d opcode = %d\n", opnum, hdr.opcode);
 
     if (delayed || gbl_goslow || gbl_reorder_idx_writes) {
 
-        if (iq->debug) {
-            reqpushprefixf(iq, "%p:", trans);
-            reqpushprefixf(iq, "delayed_key_adds:");
-        }
-        int verror = 0;
-        rc = delayed_key_adds(iq, p_blkstate, trans, &blkpos, &ixout, &errout);
-
-        if (iq->debug)
-            reqpopprefixes(iq, 1);
-
-        if (rc != 0) {
-            constraint_violation = 1;
-            opnum = blkpos; /* so we report the failed blockop accurately */
-            err.blockop_num = blkpos;
-            err.errcode = errout;
-            err.ixnum = ixout;
-            numerrs = 1;
-            reqlog_set_error(iq->reqlogger, "Delayed Key Adds", rc);
-            BACKOUT;
-        }
-
         if (gbl_reorder_idx_writes) {
             if (iq->debug)
                 reqpushprefixf(iq, "process_defered_table:");
@@ -4810,8 +4789,30 @@ printf("AZ: 2loop opnum = %d opcode = %d\n", opnum, hdr.opcode);
         }
 
 
+        if (iq->debug) {
+            reqpushprefixf(iq, "%p:", trans);
+            reqpushprefixf(iq, "delayed_key_adds:");
+        }
+
+        rc = delayed_key_adds(iq, p_blkstate, trans, &blkpos, &ixout, &errout);
+
+        if (iq->debug)
+            reqpopprefixes(iq, 1);
+
+        if (rc != 0) {
+            constraint_violation = 1;
+            opnum = blkpos; /* so we report the failed blockop accurately */
+            err.blockop_num = blkpos;
+            err.errcode = errout;
+            err.ixnum = ixout;
+            numerrs = 1;
+            reqlog_set_error(iq->reqlogger, "Delayed Key Adds", rc);
+            BACKOUT;
+        }
+
+
         /* check foreign key constraints */
-        verror = 0;
+        int verror = 0;
 
         rc = verify_del_constraints(javasp_trans_handle, iq, p_blkstate, trans,
                                     blobs, &verror);

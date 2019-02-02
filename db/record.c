@@ -85,9 +85,14 @@ void free_cached_idx(uint8_t * *cached_idx);
 
 int gbl_max_wr_rows_per_txn = 0;
 
-static inline bool is_event_from_sc(int flags)                                                                                                           
+static inline bool is_event_from_sc(int flags)
 {
     return flags & RECFLAGS_NEW_SCHEMA;
+}
+
+static inline bool has_constraints(int flags)
+{
+    return !(flags & RECFLAGS_NO_CONSTRAINTS);
 }
 
 /*
@@ -469,7 +474,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
      * data. The keys, however, are also added to the deferred
      * temporary table to enable cascading updates, if needed.
      */
-    if (!(flags & RECFLAGS_NO_CONSTRAINTS)) /* if NOT no constraints */
+    if (has_constraints(flags))
     {
         if (!is_event_from_sc(flags)) {
             /* enqueue the add of the key for constaint checking purposes */
@@ -489,9 +494,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         }
     }
 
-    if ((flags & RECFLAGS_NO_CONSTRAINTS) /* if no constraints */
-        || (gbl_reorder_idx_writes && iq->usedb->sc_from != iq->usedb)
-        || (rec_flags & OSQL_IGNORE_FAILURE)) {
+    if (!has_constraints(flags) || (rec_flags & OSQL_IGNORE_FAILURE)) {
         retrc = add_record_indices(iq, trans, blobs, maxblobs, opfailcode,
                                    ixfailnum, rrn, genid, vgenid, ins_keys,
                                    opcode, blkpos, od_dta, od_len, ondisktag,
@@ -1122,7 +1125,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         add_idx_blobs = add_blobs_buf;
     }
 
-    if (!(flags & RECFLAGS_NO_CONSTRAINTS)) {
+    if (has_constraints(flags)) {
         rc = check_update_constraints(iq, trans, iq->blkstate, opcode, old_dta,
                                       od_dta, del_keys, opfailcode);
         if (rc != 0) {
@@ -1632,7 +1635,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         del_idx_blobs = blobs_buf;
     }
 
-    if (!(flags & RECFLAGS_NO_CONSTRAINTS)) {
+    if (has_constraints(flags)) {
         rc = check_delete_constraints(iq, trans, iq->blkstate, opcode, od_dta,
                                       del_keys, opfailcode);
         if (rc != 0) {

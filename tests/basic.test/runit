@@ -344,6 +344,31 @@ rollback" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans5.txt
 
 assertcnt t2 8
 
+echo update 2 to 1 will fail
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t2 values(11)" &> ins3.out
+assertcnt t2 9
+do_verify t2
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "update t2 set i=12 where i=11" &> upd3.out
+if [ "`cat upd3.out`" != "(rows updated=1)" ] ; then
+    failexit "upd3 does not match"
+fi
+do_verify t2
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "select i from t2 where i=12" &> sel3.out 
+if [ "`cat sel3.out`" != "(i=12)" ] ; then
+    failexit "sel3 does not match"
+fi
+
+do_verify t2
+cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from t2 where i=12" &> del3.out
+if [ "`cat del3.out`" != "(rows deleted=1)" ] ; then
+    failexit "del3 does not match"
+fi
+assertcnt t2 8
+do_verify t2
+
+
 
 #insert in a transaction into two tables
 j=1

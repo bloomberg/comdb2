@@ -268,9 +268,10 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
 
     void *cur = NULL;
     dtikey_t ditk= {0};
-    bool reorder = gbl_reorder_idx_writes && !is_event_from_sc(flags) 
-        && (rec_flags & OSQL_IGNORE_FAILURE) == 0
-        && iq->usedb->sc_from != iq->usedb;
+    bool reorder = gbl_reorder_idx_writes && !is_event_from_sc(flags) &&
+        (flags & RECFLAGS_NO_CONSTRAINTS) &&
+        (rec_flags & OSQL_IGNORE_FAILURE) == 0 &&
+        iq->usedb->sc_from != iq->usedb;
 
 #if DEBUG_REORDER
     logmsg(LOGMSG_DEBUG, "%s(): entering, reorder = %d\n", __func__, reorder);
@@ -485,7 +486,8 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
     dtikey_t delditk= {0}; // will serve as the delete key obj
     dtikey_t ditk= {0};    // will serve as the add or upd key obj
     bool reorder = gbl_reorder_idx_writes && iq->usedb->sc_from != iq->usedb &&
-        !(flags & RECFLAGS_NO_REORDER_IDX);
+        (flags & RECFLAGS_NO_CONSTRAINTS) &&
+        (flags & RECFLAGS_NO_REORDER_IDX) == 0;
 
 #if DEBUG_REORDER
     logmsg(LOGMSG_DEBUG, "%s(): entering, reorder = %d\n", __func__, reorder);
@@ -738,9 +740,7 @@ logmsg(LOGMSG_ERROR, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", _
                         return rc;
                     }
                     memset(ditk.ixkey, 0, keysize);
-                } 
-                
-                { //also add here
+                } else { //TODO: will also need add here for constraint checking purpose
                     rc = add_key(iq, trans, ixnum, ins_keys, rrn, *newgenid, od_dta,
                             od_len, opcode, blkpos, opfailcode, newkey,
                             od_dta_tail, od_tail_len, do_inline, 0);
@@ -771,7 +771,7 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
     void *cur = NULL;
     dtikey_t delditk= {0};
     bool reorder = gbl_reorder_idx_writes && iq->usedb->sc_from != iq->usedb && 
-        !(flags & RECFLAGS_NO_REORDER_IDX);
+        (flags & RECFLAGS_NO_REORDER_IDX) == 0;
 
 #if DEBUG_REORDER
     logmsg(LOGMSG_DEBUG, "%s(): entering, reorder = %d\n", __func__, reorder);

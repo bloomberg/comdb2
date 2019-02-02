@@ -1061,11 +1061,7 @@ logmsg(LOGMSG_DEBUG, "%s(): procesing genid=%lld\n", __func__, curop->genid);
             goto next_record;
         }
 
-        if (gbl_reorder_idx_writes && iq->usedb->sc_from != iq->usedb) {
-            goto next_record;
-        }
-
-printf("AZ: usedb=%p, ixnum=%d, genid=%llx\n", iq->usedb, curop->ixnum, curop->genid);
+//printf("AZ: usedb=%p, ixnum=%d, genid=%llx\n", iq->usedb, curop->ixnum, curop->genid);
         if (addrrn == -1) {
             if (iq->debug)
                 reqprintf(iq, "%p:ADDKYCNSTRT (AFPRI) FAILED, NO RRN\n", trans);
