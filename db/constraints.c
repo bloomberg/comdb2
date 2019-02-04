@@ -785,30 +785,7 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
             rc = bdb_temp_table_next(thedb->bdb_env, cur, &err);
             continue;
         }
-
-        /* key was not found in parent tbl and we are not cascading */
-        if (!upd_cascade && !del_cascade) {
-            if (iq->debug) {
-                reqprintf(iq,
-                          "VERBKYCNSTRT CANT RESOLVE CONSTRAINT TBL %s "
-                          "IDX '%d' KEY -> TBL %s IDX '%d' ",
-                          bct->dstdb->tablename, bct->dixnum,
-                          bct->srcdb->tablename, bct->sixnum);
-                reqdumphex(iq, bct->key, bct->sixlen);
-                reqmoref(iq, " RC %d", rc);
-            }
-            reqerrstr(iq, COMDB2_CSTRT_RC_INVL_KEY,
-                      "verify key constraint cannot resolve constraint "
-                      "table '%s' index '%d' key '%s' -> table '%s' index "
-                      "'%d' ",
-                      bct->dstdb->tablename, bct->dixnum,
-                      get_keynm_from_db_idx(bct->dstdb, bct->dixnum),
-                      bct->srcdb->tablename, bct->sixnum);
-            *errout = OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT;
-            close_constraint_table_cursor(cur);
-            return ERR_BADREQ;
-        }
-        
+       
         /* key was not found in parent tbl, will need to delete from this tbl */
         if (del_cascade) {
             /* do cascade logic here */
@@ -916,8 +893,28 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
             }
             /* here, we need to retry to verify the constraint */
             continue;
+        } else { /* key was not found in parent tbl and we are not cascading */
+            if (iq->debug) {
+                reqprintf(iq,
+                          "VERBKYCNSTRT CANT RESOLVE CONSTRAINT TBL %s "
+                          "IDX '%d' KEY -> TBL %s IDX '%d' ",
+                          bct->dstdb->tablename, bct->dixnum,
+                          bct->srcdb->tablename, bct->sixnum);
+                reqdumphex(iq, bct->key, bct->sixlen);
+                reqmoref(iq, " RC %d", rc);
+            }
+            reqerrstr(iq, COMDB2_CSTRT_RC_INVL_KEY,
+                      "verify key constraint cannot resolve constraint "
+                      "table '%s' index '%d' key '%s' -> table '%s' index "
+                      "'%d' ",
+                      bct->dstdb->tablename, bct->dixnum,
+                      get_keynm_from_db_idx(bct->dstdb, bct->dixnum),
+                      bct->srcdb->tablename, bct->sixnum);
+            *errout = OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT;
+            close_constraint_table_cursor(cur);
+            return ERR_BADREQ;
         }
-
+ 
         /* get next record from table */
         rc = bdb_temp_table_next(thedb->bdb_env, cur, &err);
     }
