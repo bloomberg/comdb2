@@ -260,16 +260,17 @@ int insert_add_op(struct ireq *iq, const uint8_t *p_buf_req_start,
     memcpy(key + sizeof(type), &blkstate->ct_id_key,
            sizeof(blkstate->ct_id_key));
     cte_record.ct_type = CTE_ADD;
-    cte_record.ctop.fwdct.genid = genid;
-    cte_record.ctop.fwdct.ins_keys = ins_keys;
-    cte_record.ctop.fwdct.p_buf_req_start = p_buf_req_start;
-    cte_record.ctop.fwdct.p_buf_req_end = p_buf_req_end;
-    cte_record.ctop.fwdct.usedb = iq->usedb;
-    cte_record.ctop.fwdct.blkpos = blkpos;
-    cte_record.ctop.fwdct.ixnum = ixnum;
-    cte_record.ctop.fwdct.rrn = rrn;
-    cte_record.ctop.fwdct.optype = optype;
-    cte_record.ctop.fwdct.flags = flags;
+    struct forward_ct *fwdct = &cte_record.ctop.fwdct;
+    fwdct->genid = genid;
+    fwdct->ins_keys = ins_keys;
+    fwdct->p_buf_req_start = p_buf_req_start;
+    fwdct->p_buf_req_end = p_buf_req_end;
+    fwdct->usedb = iq->usedb;
+    fwdct->blkpos = blkpos;
+    fwdct->ixnum = ixnum;
+    fwdct->rrn = rrn;
+    fwdct->optype = optype;
+    fwdct->flags = flags;
 
     rc = bdb_temp_table_insert(thedb->bdb_env, cur, key,
                                sizeof(int) + sizeof(long long), &cte_record,
@@ -311,22 +312,22 @@ static int insert_del_op(block_state_t *blkstate, struct dbtable *srcdb,
     memcpy(key + sizeof(type), &blkstate->ct_id_key,
            sizeof(blkstate->ct_id_key));
     cte_record.ct_type = CTE_DEL;
-    cte_record.ctop.bwdct.srcdb = srcdb;
-    cte_record.ctop.bwdct.dstdb = dstdb;
-    cte_record.ctop.bwdct.blkpos = blkpos;
-    cte_record.ctop.bwdct.sixlen = keylen;
-    cte_record.ctop.bwdct.sixnum = sixnum;
-    cte_record.ctop.bwdct.dixnum = dixnum;
-    cte_record.ctop.bwdct.optype = optype;
-    cte_record.ctop.bwdct.nonewrefs = nonewrefs;
-    cte_record.ctop.bwdct.flags = flags;
-    memcpy(cte_record.ctop.bwdct.key, inkey, keylen);
+    struct backward_ct *bwdct = &cte_record.ctop.bwdct;
+    bwdct->srcdb = srcdb;
+    bwdct->dstdb = dstdb;
+    bwdct->blkpos = blkpos;
+    bwdct->sixlen = keylen;
+    bwdct->sixnum = sixnum;
+    bwdct->dixnum = dixnum;
+    bwdct->optype = optype;
+    bwdct->nonewrefs = nonewrefs;
+    bwdct->flags = flags;
+    memcpy(bwdct->key, inkey, keylen);
     if (innewkey == NULL) {
-        memset(cte_record.ctop.bwdct.newkey, 0,
-               sizeof(cte_record.ctop.bwdct.newkey));
+        memset(bwdct->newkey, 0, sizeof(bwdct->newkey));
     } else {
         /* always non-null in case of updates */
-        memcpy(cte_record.ctop.bwdct.newkey, innewkey, keylen);
+        memcpy(bwdct->newkey, innewkey, keylen);
     }
 
     rc = bdb_temp_table_insert(thedb->bdb_env, cur, key,
