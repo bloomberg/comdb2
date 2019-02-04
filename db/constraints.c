@@ -785,7 +785,7 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
             rc = bdb_temp_table_next(thedb->bdb_env, cur, &err);
             continue;
         }
-       
+
         /* key was not found in parent tbl, will need to delete from this tbl */
         if (del_cascade) {
             /* do cascade logic here */

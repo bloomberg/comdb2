@@ -495,7 +495,8 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     }
 
     if (!has_constraint(flags) || (rec_flags & OSQL_IGNORE_FAILURE)) {
-        retrc = add_record_indices(iq, trans, blobs, maxblobs, opfailcode,
+        retrc =
+            add_record_indices(iq, trans, blobs, maxblobs, opfailcode,
                                ixfailnum, rrn, genid, vgenid, ins_keys, opcode,
                                blkpos, od_dta, od_len, ondisktag, ondisktagsc);
         if (retrc)
