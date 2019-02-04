@@ -8921,8 +8921,8 @@ static int llmeta_get_user_passwd(char *user, llmetakey_t type, void ***out)
 }
 #define ITERATIONS_V0 1000
 #define ITERATIONS_V1 16 * 1024
-#define ITERATIONS_MIN ITERATIONS_V0
-int gbl_pbkdf2_iterations = ITERATIONS_V1;
+#define ITERATIONS_MIN 4096
+int gbl_pbkdf2_iterations = ITERATIONS_MIN;
 
 int set_pbkdf2_iterations(int val)
 {
