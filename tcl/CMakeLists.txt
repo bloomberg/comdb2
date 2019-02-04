@@ -16,11 +16,18 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/cdb2api
   ${TCL_INCLUDE_DIR}
 )
-add_dependencies(tclcdb2 mem cdb2api)
-target_link_libraries(tclcdb2
-  cdb2api
-  ${TCL_LIBRARY_FILE}
-  ${OPENSSL_LIBRARIES}
-  ${PROTOBUF_C_LIBRARY}
-  ${UNWIND_LIBRARY}
-)
+add_dependencies(tclcdb2 cdb2api)
+if (NOT COMDB2_BUILD_STATIC)
+  target_link_libraries(tclcdb2
+    cdb2api
+    ${TCL_LIBRARY_FILE}
+    ${OPENSSL_LIBRARIES}
+    ${PROTOBUF_C_LIBRARY}
+    ${UNWIND_LIBRARY}
+  )
+else()
+  target_link_libraries(tclcdb2
+    cdb2api
+    ${TCL_LIBRARY_FILE}
+  )
+endif()
