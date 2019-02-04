@@ -202,8 +202,6 @@ enum ct_etype { CTE_ADD = 1, CTE_DEL, CTE_UPD };
 struct forward_ct {
     unsigned long long genid;
     unsigned long long ins_keys;
-    const uint8_t *p_buf_req_start;
-    const uint8_t *p_buf_req_end;
     struct dbtable *usedb;
     int blkpos;
     int ixnum;
@@ -234,8 +232,7 @@ typedef struct cttbl_entry {
     } ctop;
 } cte;
 
-int insert_add_op(struct ireq *iq, const uint8_t *p_buf_req_start,
-                  const uint8_t *p_buf_req_end, int optype, int rrn, int ixnum,
+int insert_add_op(struct ireq *iq, int optype, int rrn, int ixnum,
                   unsigned long long genid, unsigned long long ins_keys,
                   int blkpos, int flags)
 {
@@ -263,8 +260,6 @@ int insert_add_op(struct ireq *iq, const uint8_t *p_buf_req_start,
     struct forward_ct *fwdct = &cte_record.ctop.fwdct;
     fwdct->genid = genid;
     fwdct->ins_keys = ins_keys;
-    fwdct->p_buf_req_start = p_buf_req_start;
-    fwdct->p_buf_req_end = p_buf_req_end;
     fwdct->usedb = iq->usedb;
     fwdct->blkpos = blkpos;
     fwdct->ixnum = ixnum;
@@ -1279,7 +1274,7 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                            struct ireq *iq, block_state_t *blkstate,
                            void *trans, int *errout)
 {
-    int rc = 0, fndlen = 0, fndrrn = 0, opcode = 0, err = 0;
+    int rc = 0, fndrrn = 0, opcode = 0, err = 0;
     void *od_dta = NULL;
     char ondisk_tag[MAXTAGLEN];
     char key[MAXKEYLEN];
@@ -1336,7 +1331,7 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
     while (rc == 0) {
         cte *ctrq = (cte *)bdb_temp_table_data(cur);
         struct forward_ct *curop = NULL;
-        int addrrn = -1, ixnum = -1;
+        int ixnum = -1;
         int ondisk_size = 0;
         /* do something */
         if (ctrq == NULL) {
@@ -1359,7 +1354,6 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
         }
 
         iq->usedb = curop->usedb;
-        addrrn = curop->rrn;
         ixnum = curop->ixnum;
         genid = curop->genid;
         ins_keys = curop->ins_keys;
@@ -1407,6 +1401,9 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                 cached_index_genid = curop->genid;
             }
 
+            /* load original row in od_dta, needed to form the indices */
+            int fndlen = 0;
+            int addrrn = curop->rrn;
             rc = ix_find_by_rrn_and_genid_tran(iq, addrrn, genid, od_dta,
                                                &fndlen, ondisk_size, trans);
 

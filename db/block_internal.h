@@ -748,8 +748,7 @@ struct lockset_req {
 
 int has_cascading_reverse_constraints(struct dbtable *tbl);
 
-int insert_add_op(struct ireq *iq, const uint8_t *p_buf_req_start,
-                  const uint8_t *p_buf_req_end, int optype, int rrn, int ixnum,
+int insert_add_op(struct ireq *iq, int optype, int rrn, int ixnum,
                   unsigned long long genid, unsigned long long ins_keys,
                   int blkpos, int flags);
 
