@@ -717,6 +717,7 @@ struct sqlclntstate {
     char recover_deadlock_stack[RECOVER_DEADLOCK_MAX_STACK];
 #endif
     struct sqlthdstate *thd;
+    int had_lease_at_begin;
 };
 
 /* Query stats. */

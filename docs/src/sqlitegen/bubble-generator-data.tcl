@@ -152,7 +152,7 @@ set all_graphs {
 
   upsert-clause {
       stack
-      {line ON CONFLICT {opt (index-column-list) WHERE expr }
+      {line ON CONFLICT {opt ( index-column-list ) WHERE expr }
       }
       {line DO
           {or

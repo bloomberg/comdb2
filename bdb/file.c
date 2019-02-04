@@ -2115,6 +2115,7 @@ int bdb_is_standalone(void *dbenv, void *in_bdb_state)
 }
 
 extern int gbl_commit_delay_trace;
+int gbl_skip_catchup_logic = 0;
 
 static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
 {
@@ -2834,7 +2835,7 @@ waitformaster:
 #if defined(BERKDB_4_3) || defined(BERKDB_4_5) || defined(BERKDB_46)
 
 again1:
-    if (bdb_state->repinfo->master_host != myhost) {
+    if (!gbl_skip_catchup_logic && bdb_state->repinfo->master_host != myhost) {
         master_host = bdb_state->repinfo->master_host;
         if (master_host == myhost)
             goto done1;
@@ -2925,8 +2926,8 @@ done1:
        */
 
 again2:
-    if (bdb_state->repinfo->master_host != myhost) {
-    /* now loop till we are close */
+    if (!gbl_skip_catchup_logic && bdb_state->repinfo->master_host != myhost) {
+        /* now loop till we are close */
         master_host = bdb_state->repinfo->master_host;
         if (master_host == myhost)
             goto done2;
@@ -3014,7 +3015,7 @@ done2:
        and go into syncronous mode.
     */
 
-    if (!bdb_state->attr->rep_skip_phase_3) {
+    if (!gbl_skip_catchup_logic && !bdb_state->attr->rep_skip_phase_3) {
         DB_LSN last_lsn;
         int no_change = 0;
         bzero(&last_lsn, sizeof(last_lsn));
@@ -3119,7 +3120,7 @@ done2:
 again:
     buf_put(&(bdb_state->repinfo->master_host), sizeof(int), p_buf, p_buf_end);
 
-    if (bdb_state->repinfo->master_host != myhost) {
+    if (!gbl_skip_catchup_logic && bdb_state->repinfo->master_host != myhost) {
 
         /* now we have the master checkpoint and WAIT for us to ack the seqnum,
            thus making sure we are actually LIVE */

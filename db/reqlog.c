@@ -2411,6 +2411,7 @@ struct summary_nodestats *get_nodestats_summary(unsigned *nodes_cnt,
 
         snap_nodestats_ll(nodestats, &snap, disp_rates);
 
+        summaries[ii].node = machine_num(nodestats->host);
         summaries[ii].host = nodestats->host;
         memcpy(&summaries[ii].addr, &(nodestats->addr), sizeof(struct in_addr));
         summaries[ii].task = strcmp(nodestats->task, UNKNOWN_NAME)
@@ -2624,14 +2625,13 @@ void nodestats_report(FILE *fh, const char *prefix, int disp_rates)
         logmsgf(LOGMSG_USER, fh, "%sTOTAL REQUESTS SUMMARY\n", prefix);
     }
     logmsgf(LOGMSG_USER, fh,
-            "%snode | regular fstsnds                 |  blockops          "
-            "                                     | sql\n",
-            prefix);
+            "%s%5s | regular fstsnds                 |  blockops               "
+            "                                | sql\n",
+            prefix, "node");
     logmsgf(LOGMSG_USER, fh,
-            "%s     |   finds rngexts  writes   other |    adds    upds    "
-            "dels blk/sql   recom snapisl  serial | queries   steps    "
-            "rows\n",
-            prefix);
+            "%s%5s |   finds rngexts  writes   other |    adds    upds    dels "
+            "blk/sql   recom snapisl  serial | queries   steps    rows\n",
+            prefix, "");
 
     summaries = get_nodestats_summary(&max_clients, disp_rates);
     if (summaries == NULL)
@@ -2643,12 +2643,13 @@ void nodestats_report(FILE *fh, const char *prefix, int disp_rates)
                 summaries[ii].task, summaries[ii].stack, summaries[ii].host,
                 inet_ntoa(summaries[ii].addr), summaries[ii].ref);
         logmsgf(LOGMSG_USER, fh,
-                "%s | %7u %7u %7u %7u | %7u %7u %7u %7u %7u %7u %7u | %7u "
+                "%s%5d | %7u %7u %7u %7u | %7u %7u %7u %7u %7u %7u %7u | %7u "
                 "%7u %7u\n",
-                prefix, summaries[ii].finds, summaries[ii].rngexts,
-                summaries[ii].writes, summaries[ii].other_fstsnds,
-                summaries[ii].adds, summaries[ii].upds, summaries[ii].dels,
-                summaries[ii].bsql, summaries[ii].recom, summaries[ii].snapisol,
+                prefix, summaries[ii].node, summaries[ii].finds,
+                summaries[ii].rngexts, summaries[ii].writes,
+                summaries[ii].other_fstsnds, summaries[ii].adds,
+                summaries[ii].upds, summaries[ii].dels, summaries[ii].bsql,
+                summaries[ii].recom, summaries[ii].snapisol,
                 summaries[ii].serial, summaries[ii].sql_queries,
                 summaries[ii].sql_steps, summaries[ii].sql_rows);
     }

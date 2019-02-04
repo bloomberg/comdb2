@@ -544,6 +544,7 @@ struct rawnodestats {
     (offsetof(struct rawnodestats, svc_time) / sizeof(unsigned))
 
 struct summary_nodestats {
+    int node;
     char *host;
     struct in_addr addr;
     char *task;
