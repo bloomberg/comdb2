@@ -20,27 +20,20 @@ int timepart_systable_timepartitions_collect(void **data, int *nrecords)
 {
     timepart_views_t *views = thedb->timepart_views;
     timepart_view_t *view;
-    systable_timepartition_t *arr = NULL, *temparr;
+    systable_timepartition_t *arr = NULL;
     int narr = 0;
-    int nsize = 0;
     int rc = 0;
     uuidstr_t us;
 
     Pthread_rwlock_rdlock(&views_lk);
+    arr = calloc(views->nviews, sizeof(systable_timepartition_t));
+    if (!arr) {
+        logmsg(LOGMSG_ERROR, "%s OOM %lu!\n", __func__,
+                sizeof(systable_timepartition_t) * views->nviews);
+        rc = -1;
+        goto done;
+    }
     for (narr = 0; narr < views->nviews; narr++) {
-        if (narr >= nsize) {
-            nsize += 10;
-            temparr = realloc(arr, sizeof(systable_timepartition_t) * nsize);
-            if (!temparr) {
-                logmsg(LOGMSG_ERROR, "%s OOM %lu!\n", __func__,
-                       sizeof(systable_timepartition_t) * nsize);
-                timepart_systable_timepartitions_free(arr, narr);
-                narr = 0;
-                rc = -1;
-                goto done;
-            }
-            arr = temparr;
-        }
         view = views->views[narr];
         arr[narr].name = strdup(view->name);
         arr[narr].period = strdup(period_to_name(view->period));
@@ -51,6 +44,14 @@ int timepart_systable_timepartitions_collect(void **data, int *nrecords)
         arr[narr].shard0name = strdup(view->shard0name);
         arr[narr].starttime = view->starttime;
         arr[narr].sourceid = strdup(comdb2uuidstr(view->source_id, us));
+        if (!arr[narr].name || !arr[narr].period || !arr[narr].shard0name || !arr[narr].sourceid) {
+            logmsg(LOGMSG_ERROR, "%s OOM!\n", __func__);
+            timepart_systable_timepartitions_free(arr, narr);
+            narr = 0;
+            arr = NULL;
+            rc = -1;
+            goto done;
+        }
     }
 done:
     Pthread_rwlock_unlock(&views_lk);
@@ -81,35 +82,42 @@ int timepart_systable_timepartshards_collect(void **data, int *nrecords)
 {
     timepart_views_t *views = thedb->timepart_views;
     timepart_view_t *view;
-    systable_timepartshard_t *arr = NULL, *temparr;
+    systable_timepartshard_t *arr = NULL;
     int nshard;
     int narr = 0;
-    int nsize = 0;
     int nview;
     int rc = 0;
 
     Pthread_rwlock_rdlock(&views_lk);
+    narr = 0;
+    for (nview = 0; nview < views->nviews; nview++) {
+        narr += views->views[nview]->nshards;
+    }
+    arr = calloc(narr, sizeof(systable_timepartshard_t));
+    if (!arr) {
+        logmsg(LOGMSG_ERROR, "%s OOM %lu!\n", __func__,
+                sizeof(systable_timepartshard_t) * narr);
+        timepart_systable_timepartshards_free(arr, narr);
+        narr = 0;
+        rc = -1;
+        goto done;
+    }
+    narr = 0;
     for (nview = 0; nview < views->nviews; nview++) {
         view = views->views[nview];
+
         for (nshard = 0; nshard < view->nshards; nshard++) {
-            if (narr >= nsize) {
-                nsize += 10;
-                temparr =
-                    realloc(arr, sizeof(systable_timepartshard_t) * nsize);
-                if (!temparr) {
-                    logmsg(LOGMSG_ERROR, "%s OOM %lu!\n", __func__,
-                           sizeof(systable_timepartshard_t) * nsize);
-                    timepart_systable_timepartshards_free(arr, narr);
-                    narr = 0;
-                    rc = -1;
-                    goto done;
-                }
-                arr = temparr;
-            }
             arr[narr].name = strdup(view->name);
             arr[narr].shardname = strdup(view->shards[nshard].tblname);
             arr[narr].low = view->shards[nshard].low;
             arr[narr].high = view->shards[nshard].high;
+            if (!arr[narr].name || !arr[narr].shardname) {
+                logmsg(LOGMSG_ERROR, "%s OOM\n", __func__);
+                timepart_systable_timepartshards_free(arr, narr);
+                narr = 0;
+                arr = NULL;
+                rc = -1;
+            }
             narr++;
         }
     }

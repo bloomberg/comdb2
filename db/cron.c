@@ -194,7 +194,7 @@ static int _queue_event(cron_sched_t *sched, int epoch, FCRON func, void *arg1,
     cron_event_t *event;
 
     if (!sched) {
-        errstat_set_strf(err, "Folloup called instead of regular event add");
+        errstat_set_strf(err, "Scheduler not initialized!");
         return err->errval = CRON_ERR_BUG;
     }
 
@@ -494,8 +494,8 @@ int cron_systable_sched_events_collect(cron_sched_t *sched,
     cron_lock(sched);
     LISTC_FOR_EACH(&sched->events, event, lnk)
     {
-        if (narr >= nsize) {
-            nsize += 10;
+        if ((narr + sched->events.count) >= nsize) {
+            nsize += sched->events.count;
             temparr = realloc(arr, sizeof(systable_cron_events_t) * nsize);
             if (!temparr) {
                 logmsg(LOGMSG_ERROR, "%s OOM %lu!\n", __func__,
