@@ -662,7 +662,7 @@
 (name='reject_writes_on_rtcpu', description='reject_writes_on_rtcpu', type='BOOLEAN', value='ON', read_only='N')
 (name='release_locks_trace', description='Print trace if we release locks', type='BOOLEAN', value='OFF', read_only='N')
 (name='remove_commitdelay_on_coherent_cluster', description='Stop delaying commits when all the nodes in the cluster are coherent.', type='BOOLEAN', value='ON', read_only='N')
-(name='reorder_idx_writes', description='reorder_idx_writes (Default off)', type='BOOLEAN', value='OFF', read_only='N')
+(name='reorder_idx_writes', description='reorder_idx_writes (Default on)', type='BOOLEAN', value='ON', read_only='N')
 (name='rep_db_pagesize', description='Page size for BerkeleyDB's replication cache db.', type='INTEGER', value='0', read_only='N')
 (name='rep_debug_delay', description='Set an artificial replication delay (used for debugging).', type='INTEGER', value='0', read_only='N')
 (name='rep_delay', description='rep_delay', type='BOOLEAN', value='OFF', read_only='N')
