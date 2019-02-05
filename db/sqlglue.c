@@ -164,6 +164,11 @@ void free_cached_idx(uint8_t **cached_idx)
     }
 }
 
+static void sqlite3MakeSureDbHasErr(sqlite3 *db, int rc){
+    if ((db == NULL) || (db->errCode != SQLITE_OK)) return;
+    db->errCode = (rc != SQLITE_OK) ? rc : SQLITE_ERROR;
+}
+
 extern int sqldbgflag;
 extern int gbl_notimeouts;
 extern int gbl_move_deadlk_max_attempt;
@@ -7614,6 +7619,8 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
                 sqlite3_mutex_enter(sqlite3_db_mutex(p->db));
                 sqlite3VdbeError(p, "table \"%s\" was schema changed",
                                  tab->zName);
+                sqlite3VdbeTransferError(p);
+                sqlite3MakeSureDbHasErr(p->db, SQLITE_OK);
                 sqlite3_mutex_leave(sqlite3_db_mutex(p->db));
                 return SQLITE_SCHEMA;
             }
@@ -7678,6 +7685,7 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
                 sqlite3VdbeError(p, "table \"%s\" was schema changed",
                                  db->tablename);
                 sqlite3VdbeTransferError(p);
+                sqlite3MakeSureDbHasErr(p->db, SQLITE_OK);
                 sqlite3_mutex_leave(sqlite3_db_mutex(p->db));
 
                 return SQLITE_SCHEMA;
@@ -9651,6 +9659,8 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
                 sqlite3_mutex_enter(sqlite3_db_mutex(cur->vdbe->db));
                 sqlite3VdbeError(cur->vdbe, "table \"%s\" was schema changed",
                                  cur->db->tablename);
+                sqlite3VdbeTransferError(cur->vdbe);
+                sqlite3MakeSureDbHasErr(cur->vdbe->db, SQLITE_OK);
                 sqlite3_mutex_leave(sqlite3_db_mutex(cur->vdbe->db));
                 return SQLITE_COMDB2SCHEMA;
             } else if (!cur->bt->is_remote && cur->db) {
