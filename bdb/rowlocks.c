@@ -229,7 +229,6 @@ static int get_next_addrem_buffer(bdb_state_type *bdb_state, DB_LSN *lsn,
     }
 
     bzero(&logent, sizeof(DBT));
-    rc = 0;
     while (rc == 0 && lsn->file != 0) {
         if (p) {
             __os_free(bdb_state->dbenv, p);
@@ -267,7 +266,8 @@ static int get_next_addrem_buffer(bdb_state_type *bdb_state, DB_LSN *lsn,
                       (u_int8_t *)logent.data + 2 * sizeof(u_int32_t));
         *nextlsn = prevlsn;
 
-        if (rectype == DB___db_pg_free || rectype == DB___db_pg_freedata)
+        if (rectype == DB___db_pg_free || rectype == DB___db_pg_freedata ||
+                rectype == DB___db_pg_freerec)
             /* pg_free is generating an extra addrem that I don't understand.
              * skip it */
             last_was_pgfree = 1;

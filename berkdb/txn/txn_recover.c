@@ -141,6 +141,8 @@ __txn_recover_pp(dbenv, preplist, count, retp, flags)
 	    ((DB_TXNMGR *)dbenv->tx_handle)->reginfo.primary,
 	    TXN_IN_RECOVERY)) {
 		__db_err(dbenv, "operation not permitted while in recovery");
+        /* XXX */
+        abort();
 		return (EINVAL);
 	}
 

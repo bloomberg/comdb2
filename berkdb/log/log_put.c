@@ -696,7 +696,8 @@ __log_put_next(dbenv, lsn, context, dbt, udbt, hdr, old_lsnp, off_context, key, 
 		int pushlog = 1;
 
 		assert(rectype == DB___txn_regop || rectype == DB___txn_regop_gen ||
-				rectype == DB___txn_regop_rowlocks);
+				rectype == DB___txn_regop_rowlocks ||
+                rectype == DB___txn_regop_detached_child);
 
 		if (rectype == DB___txn_regop_rowlocks)
 		{
@@ -706,7 +707,7 @@ __log_put_next(dbenv, lsn, context, dbt, udbt, hdr, old_lsnp, off_context, key, 
 			pushlog = (flags & DB_LOG_LOGICAL_COMMIT);
 		}
 
-		if (rectype == DB___txn_regop_gen)
+		if (rectype == DB___txn_regop_gen || rectype == DB___txn_regop_detached_child)
 		{
 			/* rectype(4)+txn_num(4)+db_lsn(8)+opcode(4)+GENERATION(4) */
 			LOGCOPY_32( &generation, &pp[ 4 + 4 + 8 + 4] );

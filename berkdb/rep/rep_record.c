@@ -131,7 +131,8 @@ static inline int wait_for_running_transactions(DB_ENV *dbenv);
 
 #define	IS_SIMPLE(R)	((R) != DB___txn_regop && (R) != DB___txn_xa_regop && \
 	(R) != DB___txn_regop_rowlocks && (R) != DB___txn_regop_gen && (R) != \
-	DB___txn_ckp && (R) != DB___dbreg_register)
+	DB___txn_ckp && (R) != DB___dbreg_register && (R) != \
+	DB___txn_regop_detached_child)
 
 int gbl_rep_process_msg_print_rc;
 
@@ -2597,8 +2598,8 @@ __rep_classify_type(u_int32_t type, int *had_serializable_records)
 		type == DB___fop_rename ||
 		type == DB___fop_file_remove ||
 		(!gbl_allow_parallel_rep_on_pagesplit &&
-			(type == DB___db_pg_alloc ||
-			type == DB___db_pg_free || type == DB___db_pg_freedata)
+			(type == DB___db_pg_alloc || type == DB___db_pg_free ||
+			 type == DB___db_pg_freedata)
 		) ||
 		type == DB___qam_incfirst ||
 		type == DB___qam_mvptr ||
@@ -2849,6 +2850,7 @@ err:
 
 int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp);
 
+/* Detached child txns are not 'commits' here */
 static inline int is_commit(int rectype)
 {
 	switch(rectype) {
@@ -3634,6 +3636,7 @@ gap_check:		max_lsn_dbtp = NULL;
 	case DB___txn_regop_rowlocks:
 	case DB___txn_regop:
 	case DB___txn_regop_gen:
+	case DB___txn_regop_detached_child:
 		;
 		extern int dumptxn(DB_ENV * dbenv, DB_LSN * lsnpp);
 		extern int gbl_dumptxn_at_commit;
@@ -3669,12 +3672,14 @@ gap_check:		max_lsn_dbtp = NULL;
 				 * eventually succeed.
 				 */
 
-				if (gbl_reallyearly &&
-					/* don't ack 0:0, which happens for out-of-sequence commits */
-					!(max_lsn.file == 0 && max_lsn.offset == 0)
-					) {
-					comdb2_early_ack(dbenv, max_lsn,
-						rep->committed_gen);
+				if (rectype != DB___txn_regop_detached_child) {
+					if (gbl_reallyearly &&
+							/* don't ack 0:0, which happens for out-of-sequence commits */
+							!(max_lsn.file == 0 && max_lsn.offset == 0)
+					   ) {
+						comdb2_early_ack(dbenv, max_lsn,
+								rep->committed_gen);
+					}
 				}
 
 				if (dbenv->num_recovery_processor_threads &&
@@ -4490,6 +4495,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	REP *rep;
 	__txn_regop_args *txn_args = NULL;
 	__txn_regop_gen_args *txn_gen_args = NULL;
+	__txn_regop_detached_child_args *txn_dchild_args = NULL;
 	__txn_regop_rowlocks_args *txn_rl_args = NULL;
 	void *args = NULL;
 	int32_t timestamp = 0;
@@ -4624,6 +4630,27 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 		prev_lsn = txn_args->prev_lsn;
 		lock_dbt = &txn_args->locks;
 		(*commit_gen) = 0;
+	} else if (rectype == DB___txn_regop_detached_child) {
+		if ((ret =
+			__txn_regop_detached_child_read(dbenv, rec->data,
+				&txn_dchild_args)) != 0) {
+			logmsg(LOGMSG_DEBUG, "%s failed at line %d\n", __func__, __LINE__);
+			return (ret);
+		}
+		if (txn_dchild_args->opcode != TXN_COMMIT) {
+			__os_free(dbenv, txn_dchild_args);
+			return (0);
+		}
+		args = txn_dchild_args;
+		context = txn_dchild_args->context;
+		txnid = txn_dchild_args->txnid->txnid;
+		prev_lsn = txn_dchild_args->prev_lsn;
+		lock_dbt = &txn_dchild_args->locks;
+		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+		(*commit_gen) = rep->committed_gen = txn_dchild_args->generation;
+		assert(*commit_gen);
+		rep->committed_lsn = rctl->lsn;
+		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	} else if (rectype == DB___txn_regop_gen) {
 		/*
 		 * We're the end of a transaction.  Make sure this is
@@ -4772,6 +4799,8 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 
 		if (txn_rl_args)
 			timestamp = txn_rl_args->timestamp;
+		else if (txn_dchild_args)
+			timestamp = txn_dchild_args->timestamp;
 		else if (txn_gen_args)
 			timestamp = txn_gen_args->timestamp;
 		else if (txn_args)
@@ -4948,6 +4977,8 @@ err1:
 		__os_free(dbenv, txn_args);
 	else if (rectype == DB___txn_regop_gen)
 		__os_free(dbenv, txn_gen_args);
+	else if (rectype == DB___txn_regop_detached_child)
+		__os_free(dbenv, txn_dchild_args);
 	else if (rectype == DB___txn_regop_rowlocks)
 		__os_free(dbenv, txn_rl_args);
 	else
@@ -5167,6 +5198,7 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 	LTDESC *lt = NULL;
 	__txn_regop_args *txn_args = NULL;
 	__txn_regop_gen_args *txn_gen_args = NULL;
+	__txn_regop_detached_child_args *txn_dchild_args = NULL;
 	__txn_regop_rowlocks_args *txn_rl_args = NULL;
 	void *args = NULL;
 	__txn_xa_regop_args *prep_args = NULL;
@@ -5359,6 +5391,33 @@ bad_resize:	;
 
 		prev_lsn = txn_args->prev_lsn;
 		lock_dbt = &txn_args->locks;
+	} else if (rectype == DB___txn_regop_detached_child) {
+		/*
+		 * We're the end of a transaction.  Make sure this is
+		 * really a commit and not an abort!
+		 */
+		if ((ret =
+			__txn_regop_detached_child_read(dbenv, rec->data,
+				&txn_dchild_args)) != 0)
+			return (ret);
+		if (txn_dchild_args->opcode != TXN_COMMIT) {
+			__os_free(dbenv, txn_dchild_args);
+			return (0);
+		}
+
+		args = txn_dchild_args;
+		rp->context = txn_dchild_args->context;
+
+		txnid = txn_dchild_args->txnid->txnid;
+		rp->ltrans = NULL;
+
+		prev_lsn = txn_dchild_args->prev_lsn;
+		lock_dbt = &txn_dchild_args->locks;
+
+		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+		(*commit_gen) = rep->committed_gen = txn_dchild_args->generation;
+		rep->committed_lsn = rctl->lsn;
+		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	} else if (rectype == DB___txn_regop_gen) {
 		/*
 		 * We're the end of a transaction.  Make sure this is
@@ -5493,6 +5552,8 @@ bad_resize:	;
 		timestamp = txn_rl_args->timestamp;
 	else if (txn_gen_args)
 		timestamp = txn_gen_args->timestamp;
+	else if (txn_dchild_args)
+		timestamp = txn_dchild_args->timestamp;
 	else if (txn_args)
 		timestamp = txn_args->timestamp;
 
@@ -5560,6 +5621,8 @@ bad_resize:	;
 			__os_free(dbenv, txn_args);
 		if (txn_gen_args)
 			__os_free(dbenv, txn_gen_args);
+		if (txn_dchild_args)
+			__os_free(dbenv, txn_dchild_args);
 		if (txn_rl_args)
 			__os_free(dbenv, txn_rl_args);
 
@@ -5659,11 +5722,14 @@ bad_resize:	;
 		__os_free(dbenv, txn_args);
 	if (txn_gen_args)
 		__os_free(dbenv, txn_gen_args);
+	if (txn_dchild_args)
+		__os_free(dbenv, txn_dchild_args);
 	if (txn_rl_args)
 		__os_free(dbenv, txn_rl_args);
 
 	txn_args = NULL;
 	txn_gen_args = NULL;
+	txn_dchild_args = NULL;
 	txn_rl_args = NULL;
 
 	/* If we got this far, we let the processor do cleanup */
@@ -5676,6 +5742,8 @@ err:
 		__os_free(dbenv, txn_args);
 	if (rectype == DB___txn_regop_gen && txn_gen_args)
 		__os_free(dbenv, txn_gen_args);
+	if (rectype == DB___txn_regop_detached_child && txn_dchild_args)
+		__os_free(dbenv, txn_dchild_args);
 	else if (rectype == DB___txn_regop_rowlocks && txn_rl_args)
 		__os_free(dbenv, txn_rl_args);
 	else
@@ -6654,6 +6722,7 @@ err:
 
 extern int gbl_extended_sql_debug_trace;
 
+/* No need to track detached children */
 int
 get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 	DB_ENV *dbenv;
@@ -6958,6 +7027,7 @@ err:
 void bdb_checkpoint_list_get_ckp_before_timestamp(int32_t timestamp,
 	DB_LSN *lsnout);
 
+/* Only match on non-detached children */
 int
 get_lsn_context_from_timestamp(dbenv, timestamp, ret_lsn, ret_context)
 	DB_ENV *dbenv;

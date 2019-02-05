@@ -18,6 +18,7 @@
 #include <stdarg.h>
 #include <errno.h>
 #include "db.h"
+#include <logmsg.h>
 
 #include "dbinc/queue.h"
 #include "dbinc/shqueue.h"
@@ -404,10 +405,20 @@ typedef struct __dbpginfo {
 #define	IS_ZERO_LSN(LSN)	((LSN).file == 0 && (LSN).offset == 0)
 
 #define	IS_INIT_LSN(LSN)	((LSN).file == 1 && (LSN).offset == 0)
-#define	INIT_LSN(LSN)		do {					\
+
+#if DEBUG_INIT_LSN
+#define	INIT_LSN(LSN, INPGNO, INLSN)		do {					\
+	logmsg(LOGMSG_USER, "%s line %d initing page %d prevlsn [%d:%d]\n", \
+			__func__, __LINE__, INPGNO, INLSN.file, INLSN.offset); \
 	(LSN).file = 1;							\
 	(LSN).offset = 0;						\
 } while (0)
+#else
+#define	INIT_LSN(LSN, INPGNO, INLSN)		do {					\
+	(LSN).file = 1;							\
+	(LSN).offset = 0;						\
+} while (0)
+#endif
 
 #define	MAX_LSN(LSN) do {						\
 	(LSN).file = UINT32_T_MAX;					\
@@ -510,9 +521,10 @@ extern int gbl_is_physical_replicant;
 #else
 #define	DBC_LOGGING(dbc)						\
     ((dbc)->txn != NULL && LOGGING_ON((dbc)->dbp->dbenv) &&		\
-     !F_ISSET((dbc), DBC_RECOVER) &&  \
+     (!F_ISSET((dbc), DBC_RECOVER) || \
+      F_ISSET((dbc)->txn, TXN_COMPENSATE_DISJOINT)) && \
      !IS_REP_CLIENT((dbc)->dbp->dbenv) && \
-     ! gbl_is_physical_replicant)
+     !gbl_is_physical_replicant)
 #endif
 
 /* This is here to sniff out a crash seen in a SET_RANGE call where the dbc's 

@@ -1047,6 +1047,8 @@ __db_mi_open(dbenv, name, after)
 {
 	__db_err(dbenv, "%s: method not permitted %s handle's open method",
 	    name, after ? "after" : "before");
+    /* XXX remove after debugging */
+	abort();
 	return (EINVAL);
 }
 

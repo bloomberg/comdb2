@@ -984,6 +984,16 @@ struct __db_txn {
 		struct __txn_event **tqh_last;
 	} events;
 
+	struct {
+		struct __txn_freedpage *tqh_first;
+		struct __txn_freedpage **tqh_last;
+	} freed_pages;
+
+	struct {
+		struct __txn_allocedpage *tqh_first;
+		struct __txn_allocedpage **tqh_last;
+	} alloced_pages;
+
 	/*
 	 * !!!
 	 * Explicit representations of structures from queue.h.
@@ -1022,6 +1032,7 @@ struct __db_txn {
 					/* Methods. */
 	int	  (*abort) __P((DB_TXN *));
 	int	  (*commit) __P((DB_TXN *, u_int32_t));
+	int	  (*commit_detached) __P((DB_TXN *, u_int32_t, u_int32_t));
 	int	  (*commit_getlsn) __P((DB_TXN *, u_int32_t, DB_LSN *, void *));
 	int	  (*commit_rowlocks) __P((DB_TXN *, u_int32_t, u_int64_t,
 		      u_int32_t, DB_LSN *,DBT *, DB_LOCK *,
@@ -1041,6 +1052,7 @@ struct __db_txn {
 #define	TXN_RESTORED	0x080		/* Transaction has been restored. */
 #define	TXN_SYNC	0x100		/* Sync on prepare and commit. */
 #define	TXN_RECOVER_LOCK	0x200 /* Transaction holds the recovery lock */
+#define	TXN_COMPENSATE_DISJOINT	0x400 /* Normal txn during recovery */
 	u_int32_t	flags;
 
 	void     *app_private;		/* pointer to bdb transaction object */

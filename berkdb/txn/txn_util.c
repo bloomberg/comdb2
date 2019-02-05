@@ -23,6 +23,21 @@ static const char revid[] = "$Id: txn_util.c,v 11.25 2003/12/03 14:33:07 bostic 
 #include "dbinc/mp.h"
 #include "dbinc/txn.h"
 #include "dbinc/db_am.h"
+#include <logmsg.h>
+
+typedef struct __txn_allocedpage TXN_ALLOCEDPAGE;
+struct __txn_allocedpage {
+	TAILQ_ENTRY(__txn_allocedpage) links;
+	DB *dbp;
+	db_pgno_t pgno;
+};
+
+typedef struct __txn_freedpage TXN_FREEDPAGE;
+struct __txn_freedpage {
+	TAILQ_ENTRY(__txn_freedpage) links;
+	DB *dbp;
+	db_pgno_t pgno;
+};
 
 typedef struct __txn_event TXN_EVENT;
 struct __txn_event {
@@ -73,6 +88,283 @@ __txn_closeevent(dbenv, txn, dbp)
 	TAILQ_INSERT_TAIL(&txn->events, e, links);
 
 	return (0);
+}
+
+/*
+ * __txn_track_alloced_page --
+ * Adds page to list of allocated pages for a transaction.  Will be returned
+ * to the freelist in a separate transaction on abort.
+ *
+ * PUBLIC: int __txn_track_alloced_page __P((DB_ENV *, DB_TXN *, DB *, db_pgno_t));
+ */
+
+int
+__txn_track_alloced_page(dbenv, txn, dbp, pgno)
+	DB_ENV *dbenv;
+	DB_TXN *txn;
+	DB *dbp;
+	db_pgno_t pgno;
+{
+	int ret;
+	TXN_ALLOCEDPAGE *p;
+	if ((ret = __os_calloc(dbenv, 1, sizeof(*p), &p)) != 0)
+		return ret;
+
+	p->dbp = dbp;
+	p->pgno = pgno;
+	TAILQ_INSERT_TAIL(&txn->alloced_pages, p, links);
+	return (0);
+}
+
+/*
+ * __txn_track_freed_page --
+ * Adds page to list of freed pages for a transaction.  Actual freeing
+ * is deferred until the transaction commits.
+ *
+ * PUBLIC: int __txn_track_freed_page __P((DB_ENV *, DB_TXN *, DB *, db_pgno_t));
+ */
+
+int
+__txn_track_freed_page(dbenv, txn, dbp, pgno)
+	DB_ENV *dbenv;
+	DB_TXN *txn;
+	DB *dbp;
+	db_pgno_t pgno;
+{
+	int ret;
+	TXN_FREEDPAGE *p;
+	if ((ret = __os_calloc(dbenv, 1, sizeof(TXN_FREEDPAGE), &p)) != 0)
+		return ret;
+
+	p->dbp = dbp;
+	p->pgno = pgno;
+	TAILQ_INSERT_TAIL(&txn->freed_pages, p, links);
+	return (0);
+}
+
+/*
+ * __txn_concat_page_lists --
+ * Concatenate a child transaction's pagelists into the parent
+ *
+ * PUBLIC: int __txn_concat_page_lists __P((DB_ENV *,
+ * PUBLIC:	   DB_TXN *));
+ */
+int
+__txn_concat_page_lists(dbenv, txn)
+	DB_ENV *dbenv;
+	DB_TXN *txn;
+{
+	assert(txn->parent);
+	if (TAILQ_FIRST(&txn->alloced_pages)) {
+		TAILQ_CONCAT(&txn->alloced_pages,
+				&txn->parent->alloced_pages, links);
+		txn->parent->alloced_pages = txn->alloced_pages;
+	}
+	TAILQ_INIT(&txn->alloced_pages);
+
+	if (TAILQ_FIRST(&txn->freed_pages)) {
+		TAILQ_CONCAT(&txn->freed_pages,
+				&txn->parent->freed_pages, links);
+		txn->parent->freed_pages = txn->freed_pages;
+	}
+	TAILQ_INIT(&txn->freed_pages);
+	return 0;
+}
+
+/*
+ * __txn_reclaim_alloced_pages --
+ * Reclaim pages that were allocated during this aborted transaction.
+ *
+ * PUBLIC: int __txn_reclaim_alloced_pages __P((DB_ENV *,
+ * PUBLIC:	   DB_TXN *));
+ */
+int
+__txn_reclaim_alloced_pages(dbenv, txn)
+	DB_ENV *dbenv;
+	DB_TXN *txn;
+{
+	TXN_ALLOCEDPAGE *p;
+	DB_TXN *txnp = NULL;
+	DBC *dbc = NULL;
+	int ret;
+	DB *dbp, *last_dbp = NULL;
+	PAGE *h;
+	db_pgno_t pgno;
+
+	while ((p = TAILQ_FIRST(&txn->alloced_pages)) != NULL) {
+		TAILQ_REMOVE(&txn->alloced_pages, p, links);
+		if (!txnp && (ret = dbenv->txn_begin(dbenv, NULL, &txnp, 0)) != 0) {
+			logmsg(LOGMSG_FATAL, "%s cannot begin a transaction, ret=%d\n",
+					__func__, ret);
+			abort();
+		}
+		dbp = p->dbp;
+		pgno = p->pgno;
+		__os_free(dbenv, p);
+
+		if (dbc && last_dbp != dbp) {
+			if ((ret = __db_c_close(dbc)) != 0) {
+				logmsg(LOGMSG_FATAL, "%s failed to close cursor, ret=%d\n",
+						__func__, ret);
+				abort();
+			}
+			dbc = NULL;
+		}
+
+		last_dbp = dbp;
+
+		if (dbc == NULL && (ret = __db_cursor(dbp, txnp, &dbc, 0)) != 0) {
+			logmsg(LOGMSG_FATAL, "%s failed to aquire cursor, ret=%d\n",
+					__func__, ret);
+			abort();
+		}
+
+		if ((ret = __memp_fget(dbp->mpf, &pgno, 0, &h)) != 0) {
+			logmsg(LOGMSG_FATAL, "%s failed to aquire page, ret=%d\n",
+					__func__, ret);
+			abort();
+		}
+
+		if ((ret = __db_dofree(dbc, h)) != 0) {
+			logmsg(LOGMSG_FATAL, "%s failed to free page, ret=%d\n",
+					__func__, ret);
+			abort();
+		}
+	}
+
+	if (dbc && (ret = __db_c_close(dbc)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s failed to close last cursor, ret=%d\n",
+				__func__, ret);
+		abort();
+	}
+
+	if (txnp && (ret = txnp->commit(txnp,0)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s failed to commit freed pages, ret=%d\n",
+				__func__, ret);
+		abort();
+	}
+
+	TAILQ_INIT(&txn->alloced_pages);
+	return 0;
+}
+
+/*
+ * __txn_clear_alloced_page_list --
+ *
+ * Free memory for allocated pages
+ *
+ * PUBLIC: int __txn_clear_alloced_page_list __P((DB_ENV *,
+ * PUBLIC:	   DB_TXN *));
+ */
+int
+__txn_clear_alloced_page_list(dbenv, txn)
+	DB_ENV *dbenv;
+	DB_TXN *txn;
+{
+	TXN_ALLOCEDPAGE *ap, *next_ap;
+	for ((ap = TAILQ_FIRST(&txn->alloced_pages)); ap != NULL; ap = next_ap) {
+		next_ap = TAILQ_NEXT(ap, links);
+		TAILQ_REMOVE(&txn->alloced_pages, ap, links);
+		__os_free(dbenv, ap);
+	}
+	TAILQ_INIT(&txn->alloced_pages);
+	return 0;
+}
+
+/*
+ * __txn_clear_free_page_list --
+ *
+ * Free memory for allocated pages
+ *
+ * PUBLIC: int __txn_clear_free_page_list __P((DB_ENV *,
+ * PUBLIC:	   DB_TXN *));
+ */
+int
+__txn_clear_free_page_list(dbenv, txn)
+	DB_ENV *dbenv;
+	DB_TXN *txn;
+{
+	TXN_FREEDPAGE *fp, *next_fp;
+	for ((fp  = TAILQ_FIRST(&txn->freed_pages)); fp != NULL; fp = next_fp) {
+		next_fp = TAILQ_NEXT(fp, links);
+		TAILQ_REMOVE(&txn->freed_pages, fp, links);
+		__os_free(dbenv, fp);
+	}
+	TAILQ_INIT(&txn->freed_pages);
+	return 0;
+}
+
+/*
+ * __txn_freepages --
+ *
+ * Free pages that were released during this committed transaction.
+ *
+ * PUBLIC: int __txn_freepages __P((DB_ENV *,
+ * PUBLIC:	   DB_TXN *));
+ */
+int
+__txn_freepages(dbenv, txnp)
+	DB_ENV *dbenv;
+	DB_TXN *txnp;
+{
+	TXN_FREEDPAGE *p, *next_p;
+	int ret;
+	PAGE *h;
+	db_pgno_t pgno;
+	DB *dbp, *last_dbp = NULL;
+	DBC *dbc = NULL;
+
+	for ((p = TAILQ_FIRST(&txnp->freed_pages)); p != NULL; p = next_p) {
+		next_p = TAILQ_NEXT(p, links);
+		TAILQ_REMOVE(&txnp->freed_pages, p, links);
+		dbp = p->dbp;
+		pgno = p->pgno;
+		__os_free(dbenv, p);
+
+		if (dbc && last_dbp != dbp) {
+			if ((ret = __db_c_close(dbc)) != 0) {
+				logmsg(LOGMSG_FATAL, "%s failed to close cursor, ret=%d\n",
+						__func__, ret);
+				abort();
+			}
+			dbc = NULL;
+		}
+
+		last_dbp = dbp;
+
+		if (dbc == NULL && (ret = __db_cursor(dbp, txnp, &dbc, 0)) != 0) {
+			logmsg(LOGMSG_FATAL, "%s failed to aquire cursor, ret=%d\n",
+					__func__, ret);
+			abort();
+		}
+
+		if ((ret = __memp_fget(dbp->mpf, &pgno, 0, &h)) != 0) {
+			logmsg(LOGMSG_FATAL, "%s failed to aquire page, ret=%d\n",
+					__func__, ret);
+			abort();
+		}
+
+		if ((ret = __db_dofree(dbc, h)) != 0) {
+			logmsg(LOGMSG_FATAL, "%s failed to free page, ret=%d\n",
+					__func__, ret);
+			abort();
+		}
+
+		if ((ret = __memp_fput(dbp->mpf, h, 0)) != 0) {
+			logmsg(LOGMSG_FATAL, "%s failed to release page, ret=%d\n",
+					__func__, ret);
+			abort();
+		}
+	}
+
+	if (dbc && (ret = __db_c_close(dbc)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s failed to close last cursor, ret=%d\n",
+				__func__, ret);
+		abort();
+	}
+
+	TAILQ_INIT(&txnp->freed_pages);
+	return 0;
 }
 
 /*

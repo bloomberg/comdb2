@@ -121,6 +121,12 @@ while :; do
             looktest=0
         fi
 
+        egrep "failed with core dumped" $out
+        if [[ $? == 0 ]] ; then 
+            echo "TEST CORE DUMPED" 
+            r=1
+        fi
+
         # Kyle's tests sometime crash & leave the network partitioned.  This 
         # looks like a timeout.  Detect and continue
         if [[ "$x" == "jepsen"* ]] ; then

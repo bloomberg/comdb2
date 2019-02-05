@@ -162,6 +162,7 @@ typedef enum {
 static int __txn_abort_pp __P((DB_TXN *));
 static int __txn_begin_int __P((DB_TXN *, u_int32_t));
 static int __txn_commit_pp __P((DB_TXN *, u_int32_t));
+static int __txn_commit_detached_pp __P((DB_TXN *, u_int32_t, u_int32_t));
 static int __txn_commit_getlsn_pp __P((DB_TXN *, u_int32_t, DB_LSN *, void *));
 static int __txn_commit_rl_pp __P((DB_TXN *, u_int32_t, u_int64_t, u_int32_t,
 	DB_LSN *, DBT *, DB_LOCK *, u_int32_t, DB_LSN *, DB_LSN *, void *));
@@ -282,6 +283,8 @@ __txn_begin_main(dbenv, parent, txnpp, flags, retries)
 	txn->parent = parent;
 	TAILQ_INIT(&txn->kids);
 	TAILQ_INIT(&txn->events);
+	TAILQ_INIT(&txn->alloced_pages);
+	TAILQ_INIT(&txn->freed_pages);
 	STAILQ_INIT(&txn->logs);
 	txn->flags = TXN_MALLOC;
 	if (LF_ISSET(DB_DIRTY_READ))
@@ -392,6 +395,8 @@ __txn_xa_begin(dbenv, txn)
 	txn->mgrp = dbenv->tx_handle;
 	TAILQ_INIT(&txn->kids);
 	TAILQ_INIT(&txn->events);
+	TAILQ_INIT(&txn->alloced_pages);
+	TAILQ_INIT(&txn->freed_pages);
 	STAILQ_INIT(&txn->logs);
 	txn->parent = NULL;
 	ZERO_LSN(txn->last_lsn);
@@ -410,12 +415,13 @@ __txn_xa_begin(dbenv, txn)
  * that is used only for transactions that must be started to compensate
  * for actions during an abort.  Currently only used for allocations.
  *
- * PUBLIC: int __txn_compensate_begin __P((DB_ENV *, DB_TXN **txnp));
+ * PUBLIC: int __txn_compensate_begin __P((DB_ENV *, DB_TXN **txnp, int state));
  */
 int
-__txn_compensate_begin(dbenv, txnpp)
+__txn_compensate_begin(dbenv, txnpp, state)
 	DB_ENV *dbenv;
 	DB_TXN **txnpp;
+    int state;
 {
 	DB_TXN *txn;
 	int ret;
@@ -428,8 +434,12 @@ __txn_compensate_begin(dbenv, txnpp)
 	txn->mgrp = dbenv->tx_handle;
 	TAILQ_INIT(&txn->kids);
 	TAILQ_INIT(&txn->events);
+	TAILQ_INIT(&txn->alloced_pages);
+	TAILQ_INIT(&txn->freed_pages);
 	STAILQ_INIT(&txn->logs);
-	txn->flags = TXN_COMPENSATE | TXN_MALLOC;
+    txn->flags = TXN_COMPENSATE | TXN_MALLOC;
+	if (state == LIMBO_COMPENSATE_DISJOINT)
+		txn->flags |= TXN_COMPENSATE_DISJOINT;
 
 	*txnpp = txn;
 	return (__txn_begin_int(txn, DB_TXN_INTERNAL));
@@ -497,6 +507,8 @@ __txn_begin_int_int(txn, retries, we_start_at_this_lsn, flags)
 	R_LOCK(dbenv, &mgr->reginfo);
 	if (!F_ISSET(txn, TXN_COMPENSATE) && F_ISSET(region, TXN_IN_RECOVERY)) {
 		__db_err(dbenv, "operation not permitted during recovery");
+        /* XXX remove after debugging */
+		abort();
 		ret = EINVAL;
 		goto err;
 	}
@@ -582,6 +594,7 @@ __txn_begin_int_int(txn, retries, we_start_at_this_lsn, flags)
 	txn->commit = __txn_commit_pp;
 	txn->commit_getlsn = __txn_commit_getlsn_pp;
 	txn->commit_rowlocks = __txn_commit_rl_pp;
+	txn->commit_detached = __txn_commit_detached_pp;
 	txn->discard = __txn_discard_pp;
 	txn->id = __txn_id;
 	txn->prepare = __txn_prepare;
@@ -875,7 +888,7 @@ extern pthread_rwlock_t gbl_dbreg_log_lock;
  */
 static int
 __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
-	nrlocks, begin_lsn, lsn_out, usr_ptr)
+	nrlocks, begin_lsn, lsn_out, ptxnid, usr_ptr)
 	DB_TXN *txnp;
 	u_int32_t flags;
 	u_int64_t ltranid;
@@ -886,6 +899,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	u_int32_t nrlocks;
 	DB_LSN *begin_lsn;
 	DB_LSN *lsn_out;
+	u_int32_t ptxnid;
 	void *usr_ptr;
 {
 	DBT list_dbt;
@@ -935,6 +949,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 		F_CLR(txnp, TXN_NOSYNC);
 		F_SET(txnp, TXN_SYNC);
 	}
+	assert(!ptxnid || !ltranid);
 	if (dbenv->attr.sync_standalone && dbenv->check_standalone &&
 			dbenv->check_standalone(dbenv)) {
 		LF_CLR(DB_TXN_NOSYNC);
@@ -956,7 +971,8 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 			return __db_panic(dbenv, c_ret);
 	}
 
-	elect_highest_committed_gen = dbenv->attr.elect_highest_committed_gen;
+	elect_highest_committed_gen = (dbenv->attr.elect_highest_committed_gen &&
+			!F_ISSET(txnp, TXN_COMPENSATE));
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
 
@@ -992,7 +1008,8 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	if (gbl_dumptxn_at_commit)
 		dumptxn(dbenv, &txnp->last_lsn);
 
-	if (DBENV_LOGGING(dbenv) && (!IS_ZERO_LSN(txnp->last_lsn) ||
+	if (LOGGING_ON(dbenv) &&
+            (!IS_ZERO_LSN(txnp->last_lsn) ||
 		STAILQ_FIRST(&txnp->logs) != NULL)) {
 		if (txnp->parent == NULL) {
 			/*
@@ -1006,6 +1023,11 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 			if ((ret =
 				__txn_doevents(dbenv, txnp, TXN_PREPARE,
 					1)) != 0) {
+				goto err;
+			}
+
+			/* Process deferred pgfrees */
+			if ((ret = __txn_freepages(dbenv, txnp)) != 0) {
 				goto err;
 			}
 
@@ -1123,12 +1145,20 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						MUTEX_UNLOCK(dbenv,
 							db_rep->rep_mutexp);
 
-						ret =
-							__txn_regop_gen_log(dbenv,
-							txnp, &txnp->last_lsn,
-							&context, lflags,
-							TXN_COMMIT, gen, timestamp,
-							request.obj, usr_ptr);
+						if (ptxnid) {
+							__txn_regop_detached_child_log(dbenv,
+									txnp, &txnp->last_lsn,
+									&context, lflags,
+									TXN_COMMIT, gen, ptxnid, timestamp,
+									request.obj, usr_ptr);
+						} else {
+							ret =
+								__txn_regop_gen_log(dbenv,
+										txnp, &txnp->last_lsn,
+										&context, lflags,
+										TXN_COMMIT, gen, timestamp,
+										request.obj, usr_ptr);
+						}
 
 						MUTEX_LOCK(dbenv,
 							db_rep->rep_mutexp);
@@ -1291,8 +1321,33 @@ __txn_commit(txnp, flags)
 	u_int32_t flags;
 {
 	return __txn_commit_int(txnp, flags, 0, 0, NULL, NULL, NULL, 0, NULL,
-		NULL, NULL);
+		NULL, 0, NULL);
 }
+
+/*
+ * __txn_commit_detached_pp --
+ *	Interface routine to TXN->commit.
+ */
+static int
+__txn_commit_detached_pp(txnp, ptxnid, flags)
+	DB_TXN *txnp;
+	u_int32_t ptxnid;
+	u_int32_t flags;
+{
+	DB_ENV *dbenv;
+	int not_child, ret;
+
+	dbenv = txnp->mgrp->dbenv;
+	not_child = txnp->parent == NULL;
+	ret =
+		__txn_commit_int(txnp, flags, 0, 0, NULL, NULL, NULL, 0, NULL, NULL,
+				ptxnid, NULL);
+	if (not_child && IS_ENV_REPLICATED(dbenv))
+		__op_rep_exit(dbenv);
+	return (ret);
+}
+
+
 
 
 /*
@@ -1310,7 +1365,7 @@ __txn_commit_pp(txnp, flags)
 	dbenv = txnp->mgrp->dbenv;
 	not_child = txnp->parent == NULL;
 	ret =
-		__txn_commit_int(txnp, flags, 0, 0, NULL, NULL, NULL, 0, NULL, NULL,
+		__txn_commit_int(txnp, flags, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, 0,
 		NULL);
 	if (not_child && IS_ENV_REPLICATED(dbenv))
 		__op_rep_exit(dbenv);
@@ -1338,7 +1393,7 @@ __txn_commit_getlsn_pp(txnp, flags, lsn_out, usr_ptr)
 	not_child = txnp->parent == NULL;
 	ret =
 		__txn_commit_int(txnp, flags, ltranid, 0, NULL, NULL, NULL, 0, NULL,
-		lsn_out, usr_ptr);
+		lsn_out, 0, usr_ptr);
 	if (not_child && IS_ENV_REPLICATED(dbenv))
 		__op_rep_exit(dbenv);
 
@@ -1367,7 +1422,7 @@ __txn_commit_rl_pp(txnp, flags, ltranid, llid, last_commit_lsn, rlocks,
 	not_child = txnp->parent == NULL;
 
 	ret = __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn,
-		rlocks, lks, nrlocks, begin_lsn, lsn_out, usr_ptr);
+		rlocks, lks, nrlocks, begin_lsn, lsn_out, 0, usr_ptr);
 	if (not_child && IS_ENV_REPLICATED(dbenv))
 		__op_rep_exit(dbenv);
 
@@ -1837,6 +1892,16 @@ __txn_end(txnp, is_commit)
 		if ((ret = __lock_vec(dbenv,
 			txnp->txnid, 0, &request, 1, NULL)) != 0)
 			return (__db_panic(dbenv, ret));
+	}
+
+	/* Release freed pages */
+	if (is_commit && txnp->parent) 
+		__txn_concat_page_lists(dbenv, txnp);
+	else if (is_commit) {
+		__txn_clear_alloced_page_list(dbenv, txnp);
+	} else {
+		__txn_reclaim_alloced_pages(dbenv, txnp);
+		__txn_clear_free_page_list(dbenv, txnp);
 	}
 
 	/* End the transaction. */

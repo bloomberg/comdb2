@@ -308,14 +308,8 @@ int __os_physwrite(DB_ENV *dbenv, DB_FH * fhp, void *addr, size_t len,
 
 int __db_new_original(DBC *dbc, u_int32_t type, PAGE **pagepp);
 
-/*
- * __db_new --
- *	Get a new page, preferably from the freelist.
- *
- * PUBLIC: int __db_new __P((DBC *, u_int32_t, PAGE **));
- */
-int
-__db_new(dbc, type, pagepp)
+static int
+__db_new_int(dbc, type, pagepp)
 	DBC *dbc;
 	u_int32_t type;
 	PAGE **pagepp;
@@ -638,11 +632,11 @@ __db_new_original(dbc, type, pagepp)
 	 * mpool to extend the file.
 	 */
 	if (DBC_LOGGING(dbc)) {
-		if ((ret = __db_pg_alloc_log(dbp, dbc->txn, &LSN(meta), 0,
-			    &LSN(meta), PGNO_BASE_MD, &lsn, pgno,
-			    (u_int32_t)type, newnext)) != 0)
-			goto err;
-	} else
+        if ((ret = __db_pg_alloc_log(dbp, dbc->txn, &LSN(meta), 0,
+                        &LSN(meta), PGNO_BASE_MD, &lsn, pgno,
+                        (u_int32_t)type, newnext)) != 0)
+            goto err;
+    } else
 		LSN_NOT_LOGGED(LSN(meta));
 
 	meta_flags = DB_MPOOL_DIRTY;
@@ -703,14 +697,94 @@ err:	if (h != NULL)
 	(void)__TLPUT(dbc, metalock);
 	return (ret);
 }
+
+int gbl_disjoint_pgallocs = 1;
+
 /*
- * __db_free --
- *	Add a page to the head of the freelist.
+ * __db_new --
+ *	Get a new page, preferably from the freelist.
  *
- * PUBLIC: int __db_free __P((DBC *, PAGE *));
+ * PUBLIC: int __db_new __P((DBC *, u_int32_t, PAGE **));
  */
 int
-__db_free(dbc, h)
+__db_new(dbc, type, pagepp)
+	DBC *dbc;
+	u_int32_t type;
+	PAGE **pagepp;
+{
+	DB_TXN *txnp;
+	DB_LOCK pglock;
+	DB *dbp;
+	DBC *sysdbc;
+	int ret, t_ret;
+	dbp = dbc->dbp;
+
+	if (!gbl_disjoint_pgallocs || !dbc->txn)
+		return __db_new_int(dbc, type, pagepp);
+
+	if ((ret = dbp->dbenv->txn_begin(dbp->dbenv, NULL, &txnp, 0)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s cannot begin a transaction, ret=%d\n",
+				__func__, ret);
+		abort();
+	}
+
+	if ((ret = __db_cursor(dbp, txnp, &sysdbc, 0)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s failed to aquire cursor, ret=%d\n",
+				__func__, ret);
+		abort();
+	}
+	
+	if ((ret = __db_new_int(sysdbc, type, pagepp)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s failed to aquire page, ret=%d\n",
+				__func__, ret);
+		abort();
+	}
+
+	if ((ret = __db_lget(sysdbc, LCK_ALWAYS, (*pagepp)->pgno, DB_LOCK_WRITE, 0,
+					&pglock)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s failed to aquire page lock, ret=%d\n",
+				__func__, ret);
+		abort();
+	}
+
+	if ((ret = __db_c_close(sysdbc)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s failed to close cursor, ret=%d\n",
+				__func__, ret);
+		abort();
+	}
+
+	if ((ret = txnp->commit_detached(txnp, dbc->txn->txnid, 0)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s failed to commit txn, ret=%d\n",
+				__func__, ret);
+		abort();
+	}
+
+	if ((ret = __db_lget(dbc, LCK_ALWAYS, (*pagepp)->pgno, DB_LOCK_WRITE, 0,
+					&pglock)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s parent failed to aquire page lock, ret=%d\n",
+				__func__, ret);
+		abort();
+	}
+
+	if ((ret = __txn_track_alloced_page(dbp->dbenv, dbc->txn, dbc->dbp,
+					(*pagepp)->pgno)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s failed to save page ret=%d\n",
+				__func__, ret);
+		abort();
+	}
+
+	return 0;
+}
+
+
+/*
+ * __db_dofree --
+ *	Actually free a page
+ *
+ * PUBLIC: int __db_dofree __P((DBC *, PAGE *));
+ */
+int
+__db_dofree(dbc, h)
 	DBC *dbc;
 	PAGE *h;
 {
@@ -735,8 +809,9 @@ __db_free(dbc, h)
 	dirty_flag = 0;
 	pgno = PGNO_BASE_MD;
 	if ((ret = __db_lget(dbc,
-	    LCK_ALWAYS, pgno, DB_LOCK_WRITE, 0, &metalock)) != 0)
+		LCK_ALWAYS, pgno, DB_LOCK_WRITE, 0, &metalock)) != 0) {
 		goto err;
+	}
 	if ((ret = __memp_fget(mpf, &pgno, 0, &meta)) != 0) {
 		(void)__TLPUT(dbc, metalock);
 		goto err;
@@ -818,6 +893,45 @@ err:	if ((t_ret = __memp_fput(mpf, h, dirty_flag)) != 0 && ret == 0)
 	 * We have to unlock the caller's page in the caller!
 	 */
 	return (ret);
+}
+
+/*
+ * __db_free --
+ *	Add a page to the head of the freelist.
+ *
+ * PUBLIC: int __db_free __P((DBC *, PAGE *));
+ */
+int
+__db_free(dbc, h)
+	DBC *dbc;
+	PAGE *h;
+{
+	DB_TXN *txnp;
+	DB *dbp;
+	DBC *sysdbc;
+	DB_LSN lsn;
+	int ret, t_ret;
+	dbp = dbc->dbp;
+
+	if (!gbl_disjoint_pgallocs || !dbc->txn)
+		return __db_dofree(dbc, h);
+
+	if (DBC_LOGGING(dbc)) {
+		if ((ret = __db_pg_freerec_log(dbp, dbc->txn, &lsn, 0, h->pgno)) != 0) {
+			logmsg(LOGMSG_FATAL, "%s failed log ret=%d\n",
+					__func__, ret);
+			abort();
+		}
+	}
+
+	if ((ret = __txn_track_freed_page(dbp->dbenv, dbc->txn, dbc->dbp,
+					h->pgno)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s failed to save page ret=%d\n",
+				__func__, ret);
+		abort();
+	}
+
+	return 0;
 }
 
 #ifdef DEBUG

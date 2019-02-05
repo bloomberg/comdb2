@@ -2310,6 +2310,7 @@ void bdb_update_ltran_lsns(bdb_state_type *bdb_state, DB_LSN regop_lsn,
     if (!gbl_new_snapisol)
         return;
 
+    /* No logical record for detached-children */
     if (rectype != DB___txn_regop && rectype != DB___txn_regop_rowlocks &&
         rectype != DB___txn_regop_gen)
         return;

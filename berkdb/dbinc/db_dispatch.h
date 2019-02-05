@@ -74,6 +74,7 @@ struct __db_txnlist {
 	union {
 		struct {
 			u_int32_t txnid;
+			u_int32_t rtxnid;
 			u_int32_t generation;
 			int32_t status;
 		} t;
@@ -89,6 +90,7 @@ struct __db_txnlist {
 			char *fname;
 			int32_t fileid;
 			db_pgno_t *pgno_array;
+            u_int8_t *flags_array;
 			u_int8_t uid[DB_FILE_ID_LEN];
 		} p;
 	} u;
@@ -108,8 +110,10 @@ typedef enum {
 	LIMBO_NORMAL,		/* Normal processing. */
 	LIMBO_PREPARE,		/* We are preparing a transaction. */
 	LIMBO_RECOVER,		/* We are in recovery. */
+	LIMBO_RECOVER_DISJOINT,	/* We may have to recover disjoint pages. */
 	LIMBO_TIMESTAMP,	/* We are recovering to a timestamp. */
-	LIMBO_COMPENSATE	/* After recover to ts, generate log records. */
+	LIMBO_COMPENSATE,	/* After recover to ts, generate log records. */
+	LIMBO_COMPENSATE_DISJOINT
 } db_limbo_state;
 
 #endif /* !_DB_DISPATCH_H_ */
