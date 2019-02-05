@@ -41,7 +41,7 @@
 #include <flibc.h>
 #include <net_types.h>
 #include <errstat.h>
-#include <views_cron.h>
+#include "cron.h"
 #include <bpfunc.h>
 #include <strbuf.h>
 #include <logmsg.h>
@@ -9451,7 +9451,7 @@ static void uprec_sender_array_init(void)
     // kick off upgradetable cron
     uprec_sched =
         cron_add_event(NULL, "uprec_cron", INT_MIN, uprec_cron_kickoff, NULL,
-                       NULL, NULL, NULL, &xerr);
+                       NULL, NULL, NULL, &xerr, NULL);
 
     if (uprec_sched == NULL) {
         logmsg(LOGMSG_FATAL, "%s: failed to create uprec cron scheduler.\n",
@@ -9494,7 +9494,7 @@ int offload_comm_send_upgrade_records(struct dbtable *db, unsigned long long gen
                 uprec->touch = uprec->owner;
                 uprec_sched = cron_add_event(
                     uprec_sched, NULL, comdb2_time_epoch() + uprec->intv,
-                    uprec_cron_event, NULL, NULL, NULL, NULL, &xerr);
+                    uprec_cron_event, NULL, NULL, NULL, NULL, &xerr, NULL);
 
                 if (uprec_sched == NULL)
                     logmsg(LOGMSG_ERROR, "%s: failed to schedule uprec cron job.\n",

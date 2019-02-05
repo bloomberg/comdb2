@@ -212,3 +212,69 @@ Information about BLKSEQ stored in the database
 * `rcode` - Return code of this request
 * `time` - Epoch time when this blkseq was added
 * `age` - Time in seconds since the blkseq was added
+
+## comdb2_timepartitions
+
+Information about time partitions 
+
+    comdb2_timepartitions(name, period, retention, nshards, version, shard0name, starttime, sourceid)
+
+* `name` - Name of the time partition
+* `period` - How often this partition rollouts as "DAILY|WEEKLY|MONTHTLY|YEARLY"
+* `retention` - How many shards are preserved; older gets removed when retention is reached
+* `nshards` - How many shards are already present, which is retention for fully grown time partitions
+* `version` - Schema change version, matching the version of underlying tables
+* `shard0name` - Name of the initial table used to seed the time partition
+* `start` - "epoch" seconds when the first rollout happens/happened
+* `sourceid` - uuid identifying the partition
+
+## comdb2_timepartshards
+
+Information about time partition shards
+
+    comdb2_timepartshards(name, shardname, low, high)
+
+* `name` - Name of the time partition
+* `shardname` - Name of the underlying shard table
+* `low` - minimum "epoch" seconds for the shard; all rows in it were inserted after this time
+* `high` - maximum "epoch" seconds for the shard; all rows in it were inserted before this time
+
+## comdb2_timepartevents
+
+Information about time partition events in the dedicated cron scheduler (alias for filtered comdb2_cron_events systable)
+
+    comdb2_timepartevents(name, type, arg1, arg2, arg3, sourceid)
+
+* `name` - Name of the event as "AddShard"|"RollShard"|"DropShard"
+* `type` - Type of the scheduler, here defaults to "timepart_sched"
+* `arg1` - First argument for the event, usually the shard table name involved
+* `arg2` - Generic second argument for the event
+* `arg3` - Generic third argument for the event
+* `sourceid` - uuid identifying the partition generating the event, if any
+
+## comdb2_cron_schedulers
+
+Information about schedulers running
+
+    comdb2_cron_schedulers(name, type, running, nevents, description)
+
+* `name` - Name of the scheduler
+* `type` - Type of the scheduler, as "WALLTIME" for a time cron
+* `running` - Set to 1 if the scheduler is running an event at this time, 0 otherwise
+* `nevents` - How many events are queued in this scheduler
+* `description` - Details the purpose of the scheduler; for example, there is a time partition scheduler, or a memory modules stat scheduler
+
+## comdb2_cron_events
+
+Information about events queued in all the schedulers running
+
+    comdb2_cron_events(name, type, epoch, arg1, arg2, arg3, sourceid)
+
+* `name` - Name of the event
+* `type` - Type of the scheduler
+* `epoch` - "epoch" seconds when the event is intended to run
+* `arg1` - First argument for the event, usually the shard table name involved
+* `arg2` - Generic second argument for the event
+* `arg3` - Generic third argument for the event
+* `sourceid` - uuid identifying the client generating the event, if any
+
