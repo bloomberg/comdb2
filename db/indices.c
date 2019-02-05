@@ -26,7 +26,7 @@
 #include "osqlsqlthr.h"
 #include "indices.h"
 
-#define DEBUG_REORDER 1
+#define DEBUG_REORDER 0
 
 extern int gbl_partial_indexes;
 extern int gbl_reorder_idx_writes;
