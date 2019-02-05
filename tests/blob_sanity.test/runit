@@ -63,8 +63,6 @@ done
 #turn ipu on now: cdb2sql ${CDB2_OPTIONS} $dbnm default "@send setipu t1 on"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1 options rebuild { `cat t1.csc2` }"
 
-exit 1
-
 # Test 1 update 4096 times
 for i in $(seq 0 4095) ; do
     echo "update t1 set a=1 where a = 1" 
