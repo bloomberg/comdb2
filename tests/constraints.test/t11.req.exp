@@ -32,20 +32,20 @@
 [select "the following transacions should succeed because c has non dup key" as comment] rc 0
 [create table p {schema{int i} keys{"pki" = i}}] rc 0
 [create table c {schema{int i} keys{dup "cki" = i} constraints{"cki" -> <"p" : "pki"> on update cascade on delete cascade }}] rc 0
-[-- doing this without rows in table is currently broken] failed with rc -3 no statement
-[-- insert into p values (1)] failed with rc -3 no statement
-[-- insert into c values (1)] failed with rc -3 no statement
-[-- select "the following transacion should delete content on both tables" as comment] failed with rc -3 no statement
-[-- begin] failed with rc -3 no statement
-[-- insert into c values (1)] failed with rc -3 no statement
-[-- delete from p where i = 1] failed with rc -3 no statement
-[-- commit] failed with rc -3 no statement
-[-- select * from c] failed with rc -3 no statement
-[-- select * from p] failed with rc -3 no statement
 (rows inserted=1)
 [insert into p values (1)] rc 0
 (rows inserted=1)
 [insert into c values (1)] rc 0
+(comment='the following transacion will fail because the cascade will delete the newly inserted row, and verify add constraits cant load it to check constraints')
+[select "the following transacion will fail because the cascade will delete the newly inserted row, and verify add constraits cant load it to check constraints" as comment] rc 0
+[begin] rc 0
+[insert into c values (1)] rc 0
+[delete from p where i = 1] rc 0
+[commit] failed with rc 304 verify key constraint: record not found in table c
+(i=1)
+[select * from c] rc 0
+(i=1)
+[select * from p] rc 0
 (comment='the following transacion should result in all rows including the inserted to c within the transaction being updated to 2')
 [select "the following transacion should result in all rows including the inserted to c within the transaction being updated to 2" as comment] rc 0
 [begin] rc 0

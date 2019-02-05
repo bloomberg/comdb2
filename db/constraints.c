@@ -1102,8 +1102,8 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
                 reqprintf(iq, "%p:ADDKYCNSTRT FNDLEN %d != DTALEN %d RC %d",
                           trans, fndlen, ondisk_size, rc);
             reqerrstr(iq, COMDB2_CSTRT_RC_INVL_DTA,
-                      "add key constraint: FNDLEN %d != DTALEN %d rc %d",
-                      fndlen, ondisk_size, rc);
+                      "add key constraint: record not found in table %s",
+                      iq->usedb->tablename);
             *errout = OP_FAILED_INTERNAL;
             *blkpos = curop->blkpos;
             close_constraint_table_cursor(cur);
@@ -1415,11 +1415,11 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                since rc can be an error code! */
             if (fndlen != ondisk_size) {
                 if (iq->debug)
-                    reqprintf(iq, "VERKYCNSTRT FNDLEN %d != DTALEN %d RC %d",
-                              fndlen, ondisk_size, rc);
+                    reqprintf(iq, "VERKYCNSTRT GENID 0x%llx FNDLEN %d != DTALEN %d RC %d",
+                              genid, fndlen, ondisk_size, rc);
                 reqerrstr(iq, COMDB2_CSTRT_RC_INVL_DTA,
-                          "verify key constraint FNDLEN %d != DTALEN %d RC %d",
-                          fndlen, ondisk_size, rc);
+                          "verify key constraint: record not found in table %s",
+                          iq->usedb->tablename);
                 *errout = OP_FAILED_INTERNAL;
                 close_constraint_table_cursor(cur);
                 return ERR_INTERNAL;
