@@ -62,7 +62,6 @@ begin
 insert into c values (1)
 delete from p where i = 1
 commit
-select * from c
-select * from p
-
+select * from c order by i
+select * from p order by i
 
