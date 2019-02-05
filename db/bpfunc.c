@@ -104,6 +104,10 @@ static int prepare_methods(bpfunc_t *func, bpfunc_info *info)
         func->exec = exec_genid48_enable;
         break;
 
+    case BPFUNC_COUNTER_SET:
+        func->exec = exec_genid48_enable;
+        break;
+
     case BPFUNC_SET_SKIPSCAN:
         func->exec = exec_set_skipscan;
         break;

@@ -116,6 +116,8 @@ void comdb2grant(Parse* pParse, int revoke, int permission, Token* nm,
         Token* lnm, Token* u);
 
 void comdb2timepartRetention(Parse*, Token*, Token*, int val);
+void comdb2CounterIncr(Parse*, Token*, Token*);
+void comdb2CounterSet(Parse*, Token*, Token*, int val);
 
 void comdb2enableAuth(Parse* pParse, int on);
 void comdb2setPassword(Parse* pParse, Token* password, Token* nm);

@@ -65,6 +65,12 @@ message bpfunc_genid48_enable
     required int32 enable = 1;
 }
 
+message bpfunc_counter_set
+{
+    required string name= 1;
+    optional int32 newvalue = 2;
+}
+
 message bpfunc_arg {
     required  int32 type = 1;
     optional  bpfunc_create_timepart crt_tp = 2;
@@ -78,5 +84,6 @@ message bpfunc_arg {
     optional  bpfunc_timepart_retention tp_ret = 10;
     optional  bpfunc_rowlocks_enable rl_enable = 11;
     optional  bpfunc_genid48_enable gn_enable = 12;
+    optional  bpfunc_counter_set cntr_set= 13;
 }
 

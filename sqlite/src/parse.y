@@ -2079,11 +2079,26 @@ putcmd ::= AUTHENTICATION OFF. {
 }
 
 putcmd ::= TIME PARTITION nm(Y) dbnm(Z) RETENTION  INTEGER(R). {
+    comdb2WriteTransaction(pParse);
     int tmp;
     if (!readIntFromToken(&R, &tmp))
         tmp = 0;
     comdb2timepartRetention(pParse, &Y, &Z, tmp);
 }
+
+putcmd ::= COUNTER nm(Y) dbnm(Z) INCREMENT. {
+    comdb2WriteTransaction(pParse);
+    comdb2CounterIncr(pParse, &Y, &Z);
+}
+
+putcmd ::= COUNTER nm(Y) dbnm(Z) SET INTEGER(R). {
+    comdb2WriteTransaction(pParse);
+    int tmp;
+    if (!readIntFromToken(&R, &tmp))
+        tmp = INT_MAX;
+    comdb2CounterSet(pParse, &Y, &Z, tmp);
+}
+
 
 putcmd ::= SCHEMACHANGE COMMITSLEEP INTEGER(F). {
     int tmp;

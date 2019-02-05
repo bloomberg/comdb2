@@ -22,6 +22,7 @@ enum {
     BPFUNC_ROWLOCKS_ENABLE = 10,
     BPFUNC_GENID48_ENABLE = 11,
     BPFUNC_SET_SKIPSCAN = 12,
+    BPFUNC_COUNTER_SET = 13,
 };
 
 typedef int (*bpfunc_prot)(void *tran, bpfunc_t *arg, char *err);
