@@ -1415,11 +1415,11 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                since rc can be an error code! */
             if (fndlen != ondisk_size) {
                 if (iq->debug)
-                    reqprintf(iq, "VERKYCNSTRT FNDLEN %d != DTALEN %d", fndlen,
-                              ondisk_size);
+                    reqprintf(iq, "VERKYCNSTRT FNDLEN %d != DTALEN %d RC %d",
+                              fndlen, ondisk_size, rc);
                 reqerrstr(iq, COMDB2_CSTRT_RC_INVL_DTA,
-                          "verify key constraint FNDLEN %d != DTALEN %d",
-                          fndlen, ondisk_size);
+                          "verify key constraint FNDLEN %d != DTALEN %d RC %d",
+                          fndlen, ondisk_size, rc);
                 *errout = OP_FAILED_INTERNAL;
                 close_constraint_table_cursor(cur);
                 return ERR_INTERNAL;
