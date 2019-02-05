@@ -102,13 +102,10 @@ void comdb2CreateProcedure(Parse*, Token*, Token*, Token*);
 void comdb2DefaultProcedure(Parse*, Token*, Token*, int);
 void comdb2DropProcedure(Parse*, Token*, Token*, int);
 
-void comdb2CreateTimePartition(Parse* p, Token* table, Token* name, 
-                           Token* period,Token* retention, Token* start);
 
-void comdb2DropTimePartition(Parse* p, Token* name);
-
-void comdb2CreateTimePartition(Parse* p, Token* table, Token* name, 
+void comdb2CreatePartition(Parse* p, Token* table, Token* name, 
                                Token* period, Token* retention, Token* start);
+void comdb2DropPartition(Parse* p, Token* name);
 
 void comdb2analyze(Parse*, int opt, Token*, Token*, int);
 

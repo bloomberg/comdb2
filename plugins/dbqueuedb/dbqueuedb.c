@@ -64,7 +64,6 @@
 #include <trigger.h>
 #include <intern_strings.h>
 #include "logmsg.h"
-#include "views_cron.h"
 
 static void coalesce(struct dbenv *dbenv);
 static int wake_all_consumers_all_queues(struct dbenv *dbenv, int force);
