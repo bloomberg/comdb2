@@ -939,6 +939,10 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         reqlog_logf(logger, REQL_INFO, "rqid=%llx", rqid);
     }
 
+    if (gbl_fingerprint_queries) {
+        add_fingerprint(clnt->thd->sqldb, h->cost, h->time, clnt->nrows, h->sql);
+    }
+
     if (clnt->query_stats == NULL) {
         record_query_cost(thd, clnt);
         reqlog_set_path(logger, clnt->query_stats);

@@ -60,6 +60,15 @@ enum transaction_level {
 /* Static rootpages numbers. */
 enum { RTPAGE_SQLITE_MASTER = 1, RTPAGE_START = 2 };
 
+struct fingerprint_track {
+    char fingerprint[FINGERPRINTSZ]; /* md5 digest hex string */
+    int64_t count; /* Cumulative number of times executed */
+    int64_t cost;  /* Cumulative cost */
+    int64_t time;  /* Cumulative execution time */
+    int64_t rows;  /* Cumulative number of rows selected */
+    char *normalized_query;
+};
+
 typedef struct stmt_hash_entry {
     char sql[MAX_HASH_SQL_LENGTH];
     sqlite3_stmt *stmt;
@@ -1104,5 +1113,6 @@ struct query_stats {
     int64_t npwrites;
 };
 int get_query_stats(struct query_stats *stats);
+void add_fingerprint(sqlite3 *, int64_t, int64_t, int64_t, char *);
 
 #endif
