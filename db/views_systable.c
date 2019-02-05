@@ -29,7 +29,7 @@ int timepart_systable_timepartitions_collect(void **data, int *nrecords)
     arr = calloc(views->nviews, sizeof(systable_timepartition_t));
     if (!arr) {
         logmsg(LOGMSG_ERROR, "%s OOM %lu!\n", __func__,
-                sizeof(systable_timepartition_t) * views->nviews);
+               sizeof(systable_timepartition_t) * views->nviews);
         rc = -1;
         goto done;
     }
@@ -44,7 +44,8 @@ int timepart_systable_timepartitions_collect(void **data, int *nrecords)
         arr[narr].shard0name = strdup(view->shard0name);
         arr[narr].starttime = view->starttime;
         arr[narr].sourceid = strdup(comdb2uuidstr(view->source_id, us));
-        if (!arr[narr].name || !arr[narr].period || !arr[narr].shard0name || !arr[narr].sourceid) {
+        if (!arr[narr].name || !arr[narr].period || !arr[narr].shard0name ||
+            !arr[narr].sourceid) {
             logmsg(LOGMSG_ERROR, "%s OOM!\n", __func__);
             timepart_systable_timepartitions_free(arr, narr);
             narr = 0;
@@ -96,7 +97,7 @@ int timepart_systable_timepartshards_collect(void **data, int *nrecords)
     arr = calloc(narr, sizeof(systable_timepartshard_t));
     if (!arr) {
         logmsg(LOGMSG_ERROR, "%s OOM %lu!\n", __func__,
-                sizeof(systable_timepartshard_t) * narr);
+               sizeof(systable_timepartshard_t) * narr);
         timepart_systable_timepartshards_free(arr, narr);
         narr = 0;
         rc = -1;
