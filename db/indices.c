@@ -39,10 +39,10 @@ extern __thread void *defered_index_tbl;
 //but we should not allow that -- we should simply order operations with a counter
 //
 
-// defered inde table types
+// defered index table types
 // the _CC types signify that we need to check constraints
 // for that key on the parent table
-enum dit_type {DIT_DEL, DIT_UPD, DIT_ADD, DIT_ADD_CC, DIT_DEL_CC, DIT_UPD_CC};
+typedef enum { DIT_DEL, DIT_UPD, DIT_ADD, DIT_ADD_CC, DIT_DEL_CC, DIT_UPD_CC} dit_t;
 
 //defered index table
 typedef struct {
@@ -50,7 +50,7 @@ typedef struct {
     short ixnum;
     char ixkey[MAXKEYLEN];
     //uint64_t counter;
-    uint8_t type;
+    dit_t type;
     unsigned long long genid;
     unsigned long long newgenid; // new genid used for update
 } dtikey_t;
@@ -267,7 +267,7 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
         gbl_osqlpf_step[*(iq->osql_step_ix)].step += 1;
 
     void *cur = NULL;
-    dtikey_t ditk= {0};
+    dtikey_t ditk = {0};
     bool reorder = gbl_reorder_idx_writes && !is_event_from_sc(flags) &&
         (flags & RECFLAGS_NO_CONSTRAINTS) &&
         (rec_flags & OSQL_IGNORE_FAILURE) == 0 &&
@@ -355,8 +355,8 @@ logmsg(LOGMSG_ERROR, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", _
             rc = bdb_temp_table_insert(thedb->bdb_env, cur, &ditk, sizeof(ditk),
                     data, datalen, &err);
             if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_insert rc = %d\n", __func__,
-                        rc);
+                logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_insert rc = %d\n",
+                       __func__, rc);
                 return rc;
             }
             memset(ditk.ixkey, 0, ixkeylen);
@@ -483,8 +483,8 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
     int od_oldtail_len;
 
     void *cur = NULL;
-    dtikey_t delditk= {0}; // will serve as the delete key obj
-    dtikey_t ditk= {0};    // will serve as the add or upd key obj
+    dtikey_t delditk = {0}; // will serve as the delete key obj
+    dtikey_t ditk = {0};    // will serve as the add or upd key obj
     bool reorder = gbl_reorder_idx_writes && iq->usedb->sc_from != iq->usedb &&
         (flags & RECFLAGS_NO_CONSTRAINTS) &&
         (flags & RECFLAGS_NO_REORDER_IDX) == 0;
@@ -1065,7 +1065,7 @@ int upd_new_record_indices(
     int deferredAdd)
 {
     void *cur = NULL;
-    dtikey_t delditk= {0};
+    dtikey_t delditk = {0};
     bool reorder = 0; //gbl_reorder_idx_writes && iq->usedb->sc_from != iq->usedb;
 #if DEBUG_REORDER
     logmsg(LOGMSG_DEBUG, "%s(): entering, reorder = %d\n", __func__, reorder);
