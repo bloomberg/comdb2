@@ -377,7 +377,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     struct scinfo scinfo;
 
 #ifdef DEBUG_SC
-    printf("do_alter_table() %s\n", s->resume ? "resuming" : "");
+    logmsg(LOGMSG_INFO, "do_alter_table() %s\n", s->resume ? "resuming" : "");
 #endif
 
     gbl_use_plan = 1;
@@ -402,7 +402,10 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     }
 
     newdb = create_db_from_schema(thedb, s, db->dbnum, foundix, -1);
-printf("AZ: create_db_from_schema old dbnum=%d newdbnum=%d\n", db->dbnum, newdb->dbnum);
+
+#ifdef DEBUG_SC
+logmsg(LOGMSG_INFO, "AZ: create_db_from_schema old dbnum=%d newdbnum=%d\n", db->dbnum, newdb->dbnum);
+#endif
 
     if (newdb == NULL) {
         sc_errf(s, "Internal error\n");

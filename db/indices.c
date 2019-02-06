@@ -351,7 +351,9 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
             }
             ditk.ixnum = ixnum;
             int err = 0;
+#if DEBUG_REORDER
 logmsg(LOGMSG_ERROR, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", __func__, iq->usedb->tablename, ditk.type, ditk.ixnum, bdb_genid_to_host_order(ditk.genid));
+#endif
             rc = bdb_temp_table_insert(thedb->bdb_env, cur, &ditk, sizeof(ditk),
                     data, datalen, &err);
             if (rc != 0) {
@@ -387,7 +389,9 @@ logmsg(LOGMSG_ERROR, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", _
             rc = ix_addk(iq, trans, key, ixnum, *genid, *rrn, od_dta_tail,
                          od_tail_len, isnullk);
 
+#if DEBUG_REORDER
 logmsg(LOGMSG_ERROR, "AZ: direct ix_addk genid=%llx rc %d\n", bdb_genid_to_host_order(*genid), rc);
+#endif
             if (vgenid && rc == IX_DUP) {
                 if (iq->usedb->ix_dupes[ixnum] || isnullk) {
                     return ERR_VERIFY;
@@ -634,7 +638,9 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
                 ditk.newgenid = *newgenid;
                 ditk.ixnum = ixnum;
                 int err = 0;
+#if DEBUG_REORDER
 logmsg(LOGMSG_ERROR, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", __func__, iq->usedb->tablename, ditk.type, ditk.ixnum, bdb_genid_to_host_order(ditk.genid));
+#endif
                 rc = bdb_temp_table_insert(thedb->bdb_env, cur, &ditk, sizeof(ditk),
                         data, datalen, &err);
                 if (rc != 0) {
@@ -648,7 +654,9 @@ logmsg(LOGMSG_ERROR, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", _
                 rc = ix_upd_key(iq, trans, newkey, keysize, ixnum, vgenid,
                                 *newgenid, od_dta_tail, od_tail_len,
                                 ix_isnullk(iq->usedb, newkey, ixnum));
+#if DEBUG_REORDER
 logmsg(LOGMSG_ERROR, "AZ: direct ix_upd_key genid=%llx newwgenid=%llx rc %d\n", bdb_genid_to_host_order(vgenid), bdb_genid_to_host_order(*newgenid), rc);
+#endif
                 if (iq->debug)
                     reqprintf(iq, "upd_key IX %d GENID 0x%016llx RC %d", ixnum,
                               *newgenid, rc);
@@ -677,7 +685,9 @@ logmsg(LOGMSG_ERROR, "AZ: direct ix_upd_key genid=%llx newwgenid=%llx rc %d\n", 
                     delditk.genid = vgenid;
                     delditk.ixnum = ixnum;
                     int err = 0;
+#if DEBUG_REORDER
 logmsg(LOGMSG_ERROR, "AZ: %s insert delditk: %s type %d, index %d, genid %llx\n", __func__, iq->usedb->tablename, delditk.type, delditk.ixnum, bdb_genid_to_host_order(delditk.genid));
+#endif
                     rc = bdb_temp_table_insert(thedb->bdb_env, cur, &delditk, sizeof(delditk),
                             data, datalen, &err);
                     if (rc != 0) {
@@ -691,7 +701,9 @@ logmsg(LOGMSG_ERROR, "AZ: %s insert delditk: %s type %d, index %d, genid %llx\n"
                     rc = ix_delk(iq, trans, oldkey, ixnum, rrn, vgenid,
                             ix_isnullk(iq->usedb, oldkey, ixnum));
 
+#if DEBUG_REORDER
 logmsg(LOGMSG_ERROR, "AZ: direct upd ix_delk genid=%llx newwgenid=%llx rc %d\n", bdb_genid_to_host_order(vgenid), bdb_genid_to_host_order(*newgenid), rc);
+#endif
                     if (iq->debug)
                         reqprintf(iq, "ix_delk IX %d RRN %d RC %d", ixnum, rrn, rc);
 
@@ -731,7 +743,9 @@ logmsg(LOGMSG_ERROR, "AZ: direct upd ix_delk genid=%llx newwgenid=%llx rc %d\n",
                     ditk.genid = *newgenid;
                     ditk.ixnum = ixnum;
                     int err = 0;
+#if DEBUG_REORDER
 logmsg(LOGMSG_ERROR, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", __func__, iq->usedb->tablename, ditk.type, ditk.ixnum, bdb_genid_to_host_order(ditk.genid));
+#endif
                     rc = bdb_temp_table_insert(thedb->bdb_env, cur, &ditk, sizeof(ditk),
                             data, datalen, &err);
                     if (rc != 0) {
@@ -745,8 +759,10 @@ logmsg(LOGMSG_ERROR, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", _
                             od_len, opcode, blkpos, opfailcode, newkey,
                             od_dta_tail, od_tail_len, do_inline, 0);
 
+#if DEBUG_REORDER
 logmsg(LOGMSG_ERROR, "AZ: direct upd add_key genid=%llx newwgenid=%llx rc %d\n", bdb_genid_to_host_order(vgenid), 
         bdb_genid_to_host_order(*newgenid), rc);
+#endif
                     if (iq->debug)
                         reqprintf(iq, "add_key IX %d RRN %d RC %d", ixnum, rrn, rc);
 
@@ -840,7 +856,9 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
             int datalen = 0;
             delditk.ixnum = ixnum;
             int err = 0;
+#if DEBUG_REORDER
 logmsg(LOGMSG_ERROR, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", __func__, iq->usedb->tablename, delditk.type, delditk.ixnum, bdb_genid_to_host_order(delditk.genid));
+#endif
 
             rc = bdb_temp_table_insert(thedb->bdb_env, cur, &delditk, sizeof(delditk),
                     data, datalen, &err);
@@ -855,7 +873,9 @@ logmsg(LOGMSG_ERROR, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", _
             /* delete the key */
             rc = ix_delk(iq, trans, key, ixnum, rrn, genid,
                     ix_isnullk(iq->usedb, key, ixnum));
+#if DEBUG_REORDER
 logmsg(LOGMSG_ERROR, "AZ: orig ix_delk ixnum=%d, rrn=%d, genid=%llx rc %d\n", ixnum, rrn, bdb_genid_to_host_order(genid), rc);
+#endif
             if (iq->debug) {
                 reqprintf(iq, "ix_delk IX %d KEY ", ixnum);
                 reqdumphex(iq, key, getkeysize(iq->usedb, ixnum));
@@ -1017,7 +1037,9 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
             }
             ditk.ixnum = ixnum;
             int err = 0;
+#if DEBUG_REORDER
 logmsg(LOGMSG_ERROR, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", __func__, iq->usedb->tablename, ditk.type, ditk.ixnum, bdb_genid_to_host_order(ditk.genid));
+#endif
             rc = bdb_temp_table_insert(thedb->bdb_env, cur, &ditk, sizeof(ditk),
                     data, datalen, &err);
             if (rc != 0) {
@@ -1128,7 +1150,9 @@ int upd_new_record_indices(
             delditk.genid = oldgenid;
             delditk.ixnum = ixnum;
             int err = 0;
+#if DEBUG_REORDER
 logmsg(LOGMSG_ERROR, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", __func__, iq->usedb->tablename, delditk.type, delditk.ixnum, bdb_genid_to_host_order(delditk.genid));
+#endif
             rc = bdb_temp_table_insert(thedb->bdb_env, cur, &delditk, sizeof(delditk),
                     data, datalen, &err);
             if (rc != 0) {
@@ -1270,7 +1294,9 @@ int insert_defered_tbl(struct ireq *iq, void *od_dta, size_t od_len,
     ditk.genid = genid;
     
     for(int i = 0; i < iq->usedb->nix; i++) {
+#if DEBUG_REORDER
 logmsg(LOGMSG_ERROR, "AZ: inserting for tbl %s index %d\n", iq->usedb->tablename, i);
+#endif
         ditk.ixnum = i;
         char *key = ditk.ixkey;
         char *od_dta_tail = NULL;
@@ -1336,7 +1362,9 @@ int process_defered_table(struct ireq *iq, block_state_t *blkstate, void *trans,
     if (rc != IX_OK) {
         //free_cached_delayed_indexes(iq);
         if (rc == IX_EMPTY) {
+#if DEBUG_REORDER
 logmsg(LOGMSG_ERROR, "AZ: defered table is empty\n");
+#endif
             if (iq->debug)
                 reqprintf(iq, "%p:VERKYCNSTRT FOUND NO KEYS TO ADD", trans);
             rc = 0;
@@ -1349,10 +1377,14 @@ logmsg(LOGMSG_ERROR, "AZ: defered table is empty\n");
         *errout = OP_FAILED_INTERNAL;
         goto done;
     }
+#if DEBUG_REORDER
     int count = 0;
+#endif
     while (rc == IX_OK) {
         dtikey_t *ditk= (dtikey_t *)bdb_temp_table_key(cur);
+#if DEBUG_REORDER
 logmsg(LOGMSG_ERROR, "AZ: %s() count %d, table %s, type %d, index %d, genid %llx\n", __func__, ++count, ditk->usedb->tablename, ditk->type, ditk->ixnum, bdb_genid_to_host_order(ditk->genid));
+#endif
         void *od_dta_tail = bdb_temp_table_data(cur);
         int od_tail_len = bdb_temp_table_datasize(cur);
 
@@ -1363,7 +1395,9 @@ logmsg(LOGMSG_ERROR, "AZ: %s() count %d, table %s, type %d, index %d, genid %llx
             /* add the key */
             rc = ix_addk(iq, trans, ditk->ixkey, ditk->ixnum, ditk->genid, addrrn, od_dta_tail,
                     od_tail_len, ix_isnullk(iq->usedb, ditk->ixkey, ditk->ixnum));
+#if DEBUG_REORDER
 logmsg(LOGMSG_ERROR, "AZ: pdt ix_addk genid=%llx rc %d\n", bdb_genid_to_host_order(ditk->genid), rc);
+#endif
 
             if (iq->debug) {
                 reqprintf(iq, "%p:ADDKYCNSTRT  TBL %s IX %d RRN %d KEY ", trans,
@@ -1411,7 +1445,9 @@ logmsg(LOGMSG_ERROR, "AZ: pdt ix_addk genid=%llx rc %d\n", bdb_genid_to_host_ord
             struct dbtable *tbl = get_dbtable_by_name(tblname);
             if (tbl != iq->usedb) abort();
             rc = ix_delk(iq, trans, ditk->ixkey, ditk->ixnum, delrrn, ditk->genid, ix_isnullk(iq->usedb, ditk->ixkey, ditk->ixnum));
+#if DEBUG_REORDER
 logmsg(LOGMSG_ERROR, "AZ: pdt ix_delk ixnum=%d, rrn=%d, genid=%llx rc %d\n", ditk->ixnum, delrrn, bdb_genid_to_host_order(ditk->genid), rc);
+#endif
             if (iq->debug) {
                 reqprintf(iq, "ix_delk IX %d KEY ", ditk->ixnum);
                 reqdumphex(iq, ditk->ixkey, getkeysize(ditk->usedb, ditk->ixnum));
@@ -1433,7 +1469,9 @@ logmsg(LOGMSG_ERROR, "AZ: pdt ix_delk ixnum=%d, rrn=%d, genid=%llx rc %d\n", dit
             rc = ix_upd_key(iq, trans, ditk->ixkey, ditk->usedb->ix_keylen[ditk->ixnum],
                             ditk->ixnum, ditk->genid, ditk->newgenid, od_dta_tail, od_tail_len,
                             ix_isnullk(ditk->usedb, ditk->ixkey, ditk->ixnum));
+#if DEBUG_REORDER
 logmsg(LOGMSG_ERROR, "AZ: pdt ix_upd_key genid=%llx rc %d\n", bdb_genid_to_host_order(ditk->genid), rc);
+#endif
             if (iq->debug)
                 reqprintf(iq, "upd_key IX %d GENID 0x%016llx RC %d", ditk->ixnum,
                           ditk->newgenid, rc);

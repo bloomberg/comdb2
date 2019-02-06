@@ -241,7 +241,10 @@ int insert_add_op(struct ireq *iq, const uint8_t *p_buf_req_start,
     rc = bdb_temp_table_insert(thedb->bdb_env, cur, key,
                                sizeof(int) + sizeof(long long), &cte_record,
                                sizeof(cte), &err);
+
+#if DEBUG_REORDER
 logmsg(LOGMSG_ERROR, "AZ: insert_add_op here genid=%llx, rc=%d\n", bdb_genid_to_host_order(genid), rc);
+#endif
     close_constraint_table_cursor(cur);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "insert_add_op: bdb_temp_table_insert rc = %d\n", rc);
@@ -1043,7 +1046,9 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
             LIVE_SC_DELAYED_KEY_ADDS(0 /* not last */);
         }
 
+#if DEBUG_REORDER
 logmsg(LOGMSG_DEBUG, "%s(): procesing genid=%lld\n", __func__, curop->genid);
+#endif
         iq->usedb = curop->usedb;
         int addrrn = curop->rrn;
         int ixnum = curop->ixnum;
@@ -1061,7 +1066,6 @@ logmsg(LOGMSG_DEBUG, "%s(): procesing genid=%lld\n", __func__, curop->genid);
             goto next_record;
         }
 
-//printf("AZ: usedb=%p, ixnum=%d, genid=%llx\n", iq->usedb, curop->ixnum, curop->genid);
         if (addrrn == -1) {
             if (iq->debug)
                 reqprintf(iq, "%p:ADDKYCNSTRT (AFPRI) FAILED, NO RRN\n", trans);

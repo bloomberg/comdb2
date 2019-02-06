@@ -2599,8 +2599,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     /* same for oplog counter */
     iq->oplog_numops = 0;
 
-printf("AZ: blk numreq = %d\n", p_blkstate->numreq);
-
     num_reqs = p_blkstate->numreq;
 
     /* reset queue hits stats so we don't accumulate them over several
@@ -2664,7 +2662,6 @@ printf("AZ: blk numreq = %d\n", p_blkstate->numreq);
              ++opnum, block_state_next(iq, p_blkstate)) {
             struct packedreq_hdr hdr;
 
-printf("AZ: 1loop opnum = %d\n", opnum);
             iq->p_buf_in = packedreq_hdr_get(&hdr, iq->p_buf_in,
                                              p_blkstate->p_buf_req_end);
             if (iq->p_buf_in == NULL)
@@ -2962,7 +2959,6 @@ printf("AZ: 1loop opnum = %d\n", opnum);
             is_mixed_sqldyn = 1;
         }
 
-printf("AZ: 2loop opnum = %d opcode = %d\n", opnum, hdr.opcode);
         switch (hdr.opcode) {
         case BLOCK2_UPDBYKEY: {
             struct packedreq_updbykey updbykey;
