@@ -553,7 +553,10 @@ static void destroy_fdb(fdb_t *fdb)
     fdb->users--;
     if (fdb->users == 0) {
         __cache_unlink_fdb(fdb);
+        Pthread_mutex_unlock(&fdb->users_mtx);
+        Pthread_rwlock_unlock(&fdbs.arr_lock);
         __free_fdb(fdb);
+        return;
     } else {
         Pthread_mutex_unlock(&fdb->users_mtx);
     }
