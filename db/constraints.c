@@ -591,7 +591,6 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
     int rc = 0, fndrrn = 0, err = 0;
     int keylen;
     char key[MAXKEYLEN];
-    unsigned char nulls[MAXNULLBITS] = {0};
 
     struct thread_info *thdinfo = pthread_getspecific(unique_tag_key);
     if (thdinfo == NULL) {
@@ -831,7 +830,6 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
             unsigned long long newgenid;
             int newkeylen;
 
-            memset(nulls, 0, sizeof(nulls));
             iq->usedb = bct->srcdb;
             newkeylen = getkeysize(iq->usedb, bct->sixnum);
 
