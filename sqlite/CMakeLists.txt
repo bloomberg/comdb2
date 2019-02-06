@@ -21,6 +21,7 @@ add_library(sqlite
   ext/comdb2/tablepermissions.c
   ext/comdb2/tables.c
   ext/comdb2/timepartitions.c
+  ext/comdb2/crons.c
   ext/comdb2/tablesizes.c
   ext/comdb2/threadpools.c
   ext/comdb2/triggers.c
