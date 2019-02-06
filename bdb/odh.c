@@ -1402,5 +1402,7 @@ int bdb_pack_heap(bdb_state_type *bdb_state, void *in, size_t inlen, void **out,
     rc = bdb_pack(bdb_state, &odh, NULL, 0, out, &recsz, freeptr);
     if (rc == 0)
         *outlen = recsz;
+    else
+        free(*freeptr);
     return rc;
 }

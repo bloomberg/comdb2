@@ -1444,7 +1444,7 @@ int osql_save_qblobs(struct BtCursor *pCur, struct sql_thread *thd,
                if it is an insert, we index blobs using temptable seq number
              */
             key.seq = tmp;
-            key.odh = IS_ODH_READY(blobs[i].odhind);
+            key.odh = IS_ODH_READY(blobs + i);
 
             rc = bdb_temp_table_put(tbl->env->bdb_env, tbl->blb_tbl->table,
                                     &key, sizeof(key), blobs[i].data,

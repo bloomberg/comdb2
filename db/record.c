@@ -429,7 +429,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         if (blob->exists && (!gbl_use_plan || !iq->usedb->plan ||
                              iq->usedb->plan->blob_plan[blobno] == -1)) {
             retrc = blob_add(iq, trans, blobno, blob->data, blob->length, *rrn,
-                             *genid, IS_ODH_READY(blob->odhind));
+                             *genid, IS_ODH_READY(blob));
             if (iq->debug) {
                 reqprintf(iq, "blob_add LEN %u RC %d DATA ", blob->length,
                           retrc);
@@ -1294,7 +1294,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             } else {
                 /* Add/Update case. */
                 rc = blob_upv(iq, trans, 0, vgenid, blob->data, blob->length,
-                              blobno, rrn, *genid, IS_ODH_READY(blob->odhind));
+                              blobno, rrn, *genid, IS_ODH_READY(blob));
                 if (iq->debug)
                     reqprintf(iq, "blob_upv BLOBNO %d RC %d", blobno, rc);
                 if (rc != 0) {
@@ -1320,7 +1320,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             /* add the new blob data if it's not NULL. */
             if (blob->exists) {
                 rc = blob_add(iq, trans, blobno, blob->data, blob->length, rrn,
-                              *genid, IS_ODH_READY(blob->odhind));
+                              *genid, IS_ODH_READY(blob));
                 if (iq->debug)
                     reqprintf(iq, "blob_add BLOBNO %d RC %d", blobno, rc);
                 if (rc != 0) {
@@ -2058,7 +2058,7 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
             blob = &blobs[oldblobidx];
             if (blob->exists) {
                 rc = blob_add(iq, trans, blobn, blob->data, blob->length, 2,
-                              newgenid, IS_ODH_READY(blob->odhind));
+                              newgenid, IS_ODH_READY(blob));
                 if (iq->debug) {
                     reqprintf(iq, "blob_add blobno %d rc %d\n", blobn, rc);
                 }
@@ -2344,7 +2344,7 @@ static int check_blob_buffers(struct ireq *iq, blob_buffer_t *blobs,
             else if (blob->notnull)
                 inconsistent = !blobs[cblob].exists ||
                                (blobs[cblob].length != ntohl(blob->length) &&
-                                !IS_ODH_READY(blobs[cblob].odhind));
+                                !IS_ODH_READY(blobs + cblob));
             else
                 inconsistent = blobs[cblob].exists;
             if (inconsistent) {
@@ -2743,7 +2743,7 @@ int odhfy_blob_buffer(struct dbtable *db, blob_buffer_t *blob, int blobind)
     size_t len;
     int rc;
 
-    if (IS_ODH_READY(blob->odhind))
+    if (IS_ODH_READY(blob))
         return 0;
 
     if (!gbl_osql_odh_blob) {
@@ -2760,10 +2760,11 @@ int odhfy_blob_buffer(struct dbtable *db, blob_buffer_t *blob, int blobind)
                        &blob->freeptr);
     if (rc != 0) {
         blob->odhind = blobind;
-        if (blob->freeptr != blob->data)
-            free(blob->freeptr);
         return rc;
     }
+
+    assert(blob->qblob == NULL);
+    free(blob->data);
 
     blob->data = out;
     blob->length = len;
@@ -2780,19 +2781,25 @@ int unodhfy_blob_buffer(struct dbtable *db, blob_buffer_t *blob, int blobind)
     if (!blob->exists)
         return 0;
 
-    if (!IS_ODH_READY(blob->odhind))
+    if (!IS_ODH_READY(blob))
         return 0;
 
     rc = bdb_unpack_heap(db->handle, blob->data, blob->length, &out, &len,
                          &blob->freeptr);
-    if (rc != 0) {
-        if (blob->freeptr != blob->data)
-            free(blob->freeptr);
+    if (rc != 0)
         return rc;
-    }
+
 
     /* We can't free blob->qblob yet
        as add_idx_blobs might still reference it.  */
+
+    /* Not a blob from an OSQL_QBLOB packet */
+    if (blob->qblob == NULL) {
+        if (blob->freeptr == NULL)
+            blob->freeptr = blob->data;
+        else
+            free(blob->data);
+    }
 
     blob->data = out;
     blob->length = len;
