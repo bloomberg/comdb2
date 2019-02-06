@@ -790,6 +790,13 @@ static int sql_tranlevel_default_update(void *context, void *value)
     return 0;
 }
 
+static int pbkdf2_iterations_update(void *context, void *value)
+{
+    extern int set_pbkdf2_iterations(int val);
+    (void)context;
+    return set_pbkdf2_iterations(*(int *)value);
+}
+
 /* Routines for the tunable system itself - tunable-specific
  * routines belong above */
 

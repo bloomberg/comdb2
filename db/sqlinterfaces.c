@@ -162,6 +162,8 @@ extern int gbl_disable_sql_dlmalloc;
 
 extern int active_appsock_conns;
 int gbl_check_access_controls;
+/* gets incremented each time a user's password is changed. */
+int gbl_bpfunc_auth_gen = 1;
 
 struct thdpool *gbl_sqlengine_thdpool = NULL;
 
@@ -3715,12 +3717,16 @@ int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
 static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
-    int rc;
+    int rc, bpfunc_auth_gen = gbl_bpfunc_auth_gen;
 
     if (gbl_check_access_controls) {
         check_access_controls(thedb);
         gbl_check_access_controls = 0;
     }
+
+    /* Free pass if our authentication gen is up-to-date. */
+    if (clnt->authgen == bpfunc_auth_gen)
+        return 0;
 
 #   if WITH_SSL
     /* If 1) this is an SSL connection, 2) and client sends a certificate,
@@ -3735,7 +3741,11 @@ static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         if (thd->lastuser[0] != '\0' && strcmp(thd->lastuser, clnt->user) != 0)
             delete_prepared_stmts(thd);
         strcpy(thd->lastuser, clnt->user);
+        clnt->authgen = bpfunc_auth_gen;
+    } else {
+        clnt->authgen = 0;
     }
+
     return rc;
 }
 
@@ -4701,6 +4711,9 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     /* reset the password */
     clnt->have_password = 0;
     bzero(clnt->password, sizeof(clnt->password));
+
+    /* reset authentication status */
+    clnt->authgen = 0;
 
     /* reset extended_tm */
     clnt->have_extended_tm = 0;
