@@ -4,4 +4,3 @@ dtastripe 16
 enable_inplace_blobs
 enable_inplace_blob_optimization
 enable_osql_blob_optimization
-reorder_idx_writes off
