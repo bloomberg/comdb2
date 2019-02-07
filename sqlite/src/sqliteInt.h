@@ -4382,6 +4382,8 @@ u64 sqlite3LogEstToInt(LogEst);
 VList *sqlite3VListAdd(sqlite3*,VList*,const char*,int,int);
 const char *sqlite3VListNumToName(VList*,int);
 int sqlite3VListNameToNum(VList*,const char*,int);
+VList *sqlite3VListClone(const VList*);
+void sqlite3VListPrint(loglvl lvl, const VList *pIn);
 
 /*
 ** Routines to read and write variable-length integers.  These used to
@@ -4906,6 +4908,7 @@ int sqlite3InitTable(sqlite3 *db, char **pzErrMsg, const char *zName);
 extern int sqlite3UpdateMemCollAttr(BtCursor *pCur, int idx, Mem *mem);
 char* sqlite3ExprDescribe(Vdbe *v, const Expr *pExpr);
 char* sqlite3ExprDescribeAtRuntime(Vdbe *v, const Expr *pExpr);
+char* sqlite3ExprDescribeParams(Vdbe *v, const Expr *pExpr, VList **pVListOut);
 char *sqlite3DescribeIndexOrder(sqlite3 *db, 
       const char *zName, const char *zDb, 
       Mem *m, int nfields, int *hasCondition,

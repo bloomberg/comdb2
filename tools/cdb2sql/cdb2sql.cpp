@@ -1125,8 +1125,15 @@ static int run_statement(const char *sql, int ntypes, int *types,
             int length;
             void *value = get_val(&sql, type, &length);
 
-            rc = cdb2_bind_param(cdb2h, parameter, type, value, length);
-            /* we have to leak parameter here -- freeing breaks the bind */
+            if (isdigit(parameter[0])) {
+                int index = atoi(parameter);
+                if (index<=0)
+                    return -1;
+                rc = cdb2_bind_index(cdb2h, index, type, value, length);
+            } else {
+                rc = cdb2_bind_param(cdb2h, parameter, type, value, length);
+                /* we have to leak parameter here -- freeing breaks the bind */
+            }
         } else
             rc = process_escape(sql);
         return rc;
