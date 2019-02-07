@@ -281,7 +281,6 @@ static void attachFunc(
   if( rc==SQLITE_OK && pNew->zDbSName==0 ){
     rc = SQLITE_NOMEM_BKPT;
   }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 
 #ifdef SQLITE_HAS_CODEC
