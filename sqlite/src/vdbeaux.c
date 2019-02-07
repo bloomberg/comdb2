@@ -2304,6 +2304,7 @@ void sqlite3VdbeMakeReady(
 
   p->pVList = pParse->pVList;
   pParse->pVList =  0;
+  fprintf(stderr, "%lx SET p->pVList %p\n", pthread_self(), p->pVList);
   p->explain = pParse->explain;
   if( db->mallocFailed ){
     p->nVar = 0;

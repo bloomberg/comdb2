@@ -1716,3 +1716,9 @@ void explain_distribution(dohsql_node_t *node)
 
     write_response(clnt, RESPONSE_ROW_LAST, NULL, 0);
 }
+
+
+void dohsql_signal_done(struct sqlclntstate *clnt)
+{
+    _signal_children_master_is_done(clnt->conns);
+}

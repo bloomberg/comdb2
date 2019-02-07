@@ -3550,6 +3550,10 @@ static void handle_sqlite_error(struct sqlthdstate *thd,
 {
     reqlog_set_error(thd->logger, sqlite3_errmsg(thd->sqldb), rc);
 
+    if (clnt->conns) {
+        dohsql_signal_done(clnt);
+    }
+
     if (thd->sqlthd)
         thd->sqlthd->nmove = thd->sqlthd->nfind = thd->sqlthd->nwrite =
             thd->sqlthd->ntmpread = thd->sqlthd->ntmpwrite = 0;

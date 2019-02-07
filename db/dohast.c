@@ -669,6 +669,8 @@ int comdb2_check_parallel(Parse *pParse)
         if (gbl_dohast_verbose) {
             logmsg(LOGMSG_DEBUG, "%lx Parallelizable union %d threads:\n",
                    pthread_self(), node->nnodes);
+            if (node->params_cache)
+                sqlite3VListPrint(LOGMSG_ERROR, (VList*)node->params_cache);
             for (i = 0; i < node->nnodes; i++) {
                 logmsg(LOGMSG_DEBUG, "\t Thread %d: \"%s\"\n", i + 1,
                        node->nodes[i]->sql);
@@ -730,8 +732,8 @@ static void _save_params(Parse *pParse, dohsql_node_t *node)
     if (!v)
         return;
 
-    logmsg(LOGMSG_DEBUG, "%lx Caching bound parameters length\n",
-            pthread_self());
+    logmsg(LOGMSG_DEBUG, "%lx Caching bound parameters length %p\n",
+            pthread_self(), v->pVList);
     sqlite3VListPrint(LOGMSG_DEBUG, v->pVList);
 
     node->params_cache = (char*)sqlite3VListClone(v->pVList);

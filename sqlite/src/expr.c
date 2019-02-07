@@ -1055,7 +1055,10 @@ void sqlite3ExprAssignVarNumber(Parse *pParse, Expr *pExpr, u32 n){
       }
     }
     if( doAdd ){
+      void *in = pParse->pVList;
       pParse->pVList = sqlite3VListAdd(db, pParse->pVList, z, n, x);
+      fprintf(stderr, "%lx %s store in parser %p from %p to %p [%s %d]\n",
+        pthread_self(), __func__, pParse, in, pParse->pVList, z, x);
     }
   }
   pExpr->iColumn = x;

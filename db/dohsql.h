@@ -89,4 +89,10 @@ void dohsql_stats(void);
  */
 void explain_distribution(dohsql_node_t *node);
 
+/**
+ * Notify worker threads master is done
+ *
+ */
+void dohsql_signal_done(struct sqlclntstate *clnt);
+
 #endif
