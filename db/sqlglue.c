@@ -3099,6 +3099,10 @@ void xdump(void *b, int len)
 
 const char *sqlite3ErrStr(int);
 
+sqlite3_int64 sqlite3BtreeMaxRecordSize(BtCursor *pCur){
+    return 2147483647; /* see vdbeMemFromBtreeResize in vdbemem.c */
+}
+
 /*
  ** Return the currently defined page size
  */

@@ -245,8 +245,12 @@ static void attachFunc(
     assert( pVfs );
     flags |= SQLITE_OPEN_MAIN_DB;
     rc = sqlite3BtreeOpen(pVfs, zPath, db, &pNew->pBt, 0, flags);
-    sqlite3_free( zPath );
     db->nDb++;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    pNew->zDbSName = dbName;
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+    pNew->zDbSName = sqlite3DbStrDup(db, zName);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }
   db->noSharedCache = 0;
   if( rc==SQLITE_CONSTRAINT ){
@@ -274,10 +278,6 @@ static void attachFunc(
     sqlite3BtreeLeave(pNew->pBt);
   }
   pNew->safety_level = SQLITE_DEFAULT_SYNCHRONOUS+1;
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( !REOPEN_AS_MEMDB(db) ) pNew->zDbSName = dbName;
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-  if( !REOPEN_AS_MEMDB(db) ) pNew->zDbSName = sqlite3DbStrDup(db, zName);
   if( rc==SQLITE_OK && pNew->zDbSName==0 ){
     rc = SQLITE_NOMEM_BKPT;
   }
@@ -306,10 +306,13 @@ static void attachFunc(
         break;
 
       case SQLITE_NULL:
-        /* No key specified.  Use the key from the main database */
-        sqlite3CodecGetKey(db, 0, (void**)&zKey, &nKey);
-        if( nKey || sqlite3BtreeGetOptimalReserve(db->aDb[0].pBt)>0 ){
-          rc = sqlite3CodecAttach(db, db->nDb-1, zKey, nKey);
+        /* No key specified.  Use the key from URI filename, or if none,
+        ** use the key from the main database. */
+        if( sqlite3CodecQueryParameters(db, zName, zPath)==0 ){
+          sqlite3CodecGetKey(db, 0, (void**)&zKey, &nKey);
+          if( nKey || sqlite3BtreeGetOptimalReserve(db->aDb[0].pBt)>0 ){
+            rc = sqlite3CodecAttach(db, db->nDb-1, zKey, nKey);
+          }
         }
         break;
     }
@@ -318,6 +321,7 @@ static void attachFunc(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 done_with_open:
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  sqlite3_free( zPath );
 
   /* If the file was opened successfully, read the schema for the new database.
   ** If this fails, or if opening the file failed, then close the file and 

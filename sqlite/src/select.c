@@ -6075,6 +6075,7 @@ int sqlite3Select(
     }
 
     if( flattenSubquery(pParse, p, i, isAgg) ){
+      if( pParse->nErr ) goto select_end;
       /* This subquery can be absorbed into its parent. */
       i = -1;
     }
