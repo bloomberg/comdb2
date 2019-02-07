@@ -45,7 +45,7 @@ static char *gbl_eventlog_fname = NULL;
 static char *eventlog_fname(const char *dbname);
 static int eventlog_nkeep = 10;
 static int eventlog_rollat = 1024 * 1024 * 1024;
-static int eventlog_enabled = 1;
+static int eventlog_enabled = 0;
 static int eventlog_detailed = 0;
 static int64_t bytes_written = 0;
 static int eventlog_verbose = 0;
