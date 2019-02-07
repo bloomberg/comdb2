@@ -401,7 +401,7 @@ typedef struct __dbpginfo {
 	(LSN).file = 0;							\
 	(LSN).offset = 0;						\
 } while (0)
-#define	IS_ZERO_LSN(LSN)	((LSN).file == 0)
+#define	IS_ZERO_LSN(LSN)	((LSN).file == 0 && (LSN).offset == 0)
 
 #define	IS_INIT_LSN(LSN)	((LSN).file == 1 && (LSN).offset == 0)
 #define	INIT_LSN(LSN)		do {					\

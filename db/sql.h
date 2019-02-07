@@ -583,6 +583,8 @@ struct sqlclntstate {
     int have_password;
     char password[MAX_PASSWORD_LEN];
 
+    int authgen;
+
     int no_transaction;
 
     int have_extended_tm;
@@ -715,6 +717,7 @@ struct sqlclntstate {
     char recover_deadlock_stack[RECOVER_DEADLOCK_MAX_STACK];
 #endif
     struct sqlthdstate *thd;
+    int had_lease_at_begin;
 };
 
 /* Query stats. */

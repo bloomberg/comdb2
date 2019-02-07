@@ -1536,6 +1536,9 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                         rc = ii + 1;
                     } else {
                         clnt->have_user = 1;
+                        /* Re-authenticate the new user. */
+                        if (clnt->authgen && strcmp(clnt->user, sqlstr) != 0)
+                            clnt->authgen = 0;
                         clnt->is_x509_user = 0;
                         strcpy(clnt->user, sqlstr);
                     }
@@ -1557,6 +1560,10 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                         rc = ii + 1;
                     } else {
                         clnt->have_password = 1;
+                        /* Re-authenticate the new password. */
+                        if (clnt->authgen &&
+                            strcmp(clnt->password, sqlstr) != 0)
+                            clnt->authgen = 0;
                         strcpy(clnt->password, sqlstr);
                     }
                 }
@@ -2176,6 +2183,10 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         logmsg(LOGMSG_DEBUG, "Query is NULL.\n");
         goto done;
     }
+#if 0
+    else
+        logmsg(LOGMSG_DEBUG, "New Query: %s\n", query->sqlquery->sql_query);
+#endif
     assert(query->sqlquery);
 
     CDB2SQLQUERY *sql_query = query->sqlquery;

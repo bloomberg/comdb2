@@ -234,7 +234,7 @@ verify_db_at_finish() {
 
     tables=$(timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM default 'select * from comdb2_tables')
     for t in $tables ; do 
-        timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM default "exec procedure sys.cmd.verify('$t')" &> verify.out
+        timeout 3m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM default "exec procedure sys.cmd.verify('$t')" &> verify.out
         if ! grep "Verify succeeded." verify.out > /dev/null ; then
             echo "Table $t"
             return

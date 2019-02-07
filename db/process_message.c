@@ -1150,7 +1150,7 @@ clipper_usage:
         SBUF2 *sb = sbuf2open(fileno(stdout), 0);
         cleanup_stats(sb);
     } else if (tokcmp(tok, ltok, "mallocstats") == 0) {
-#ifdef _LINUX_SOURCE
+#if defined(_LINUX_SOURCE) && !defined(__APPLE__)
         /* This is defined in malloc.h, as is struct mallinfo.  Including
          * malloc.h
          * causes a clash between mallinfo there and in dlmalloc.h. */

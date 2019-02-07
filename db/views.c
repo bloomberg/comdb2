@@ -1,3 +1,19 @@
+/*
+   Copyright 2019 Bloomberg Finance L.P.
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+ */
+
 #include <stdlib.h>
 #include <pthread.h>
 #include <string.h>
@@ -15,6 +31,9 @@
 #include "bdb_schemachange.h"
 #include "str0.h"
 #include "logmsg.h"
+#include "cron.h"
+#include "cron_systable.h"
+#include "timepart_systable.h"
 
 #define VIEWS_MAX_RETENTION 1000
 
@@ -30,7 +49,7 @@ typedef struct timepart_shard timepart_shard_t;
 
 struct timepart_view {
     char *name;                       /* name of the view, visible in sql */
-    enum view_timepart_period period; /* when do we rotate to a new shard */
+    enum view_partition_period period; /* when do we rotate to a new shard */
     int retention;                    /* how many shard are preserves */
     int nshards;                      /* how many shards */
     timepart_shard_t *shards;         /* array of shard pointers */
@@ -65,13 +84,13 @@ pthread_rwlock_t views_lk;
  */
 cron_sched_t *timepart_sched;
 
-static int _start_views_cron(void);
 static timepart_view_t *_get_view(timepart_views_t *views, const char *name);
 static int _generate_new_shard_name(const char *oldname, char *newname,
                                     int newnamelen, int nextnum, int maxshards,
                                     int testing, struct errstat *err);
 static int _extract_shardname_index(const char *tblName,
-                                    const char *originalName, int *span);
+                                    const char *originalName, int *span,
+                                    int testing);
 static int _convert_time(char *sql);
 static int _views_do_op(timepart_views_t *views, const char *name,
                         int (*op)(timepart_views_t *, timepart_view_t *,
@@ -103,7 +122,7 @@ int views_cron_restart(timepart_views_t *views);
 
 static int _view_rollout_publish(void *tran, timepart_view_t *view,
                                  struct errstat *err);
-static int _view_get_next_rollout(enum view_timepart_period period,
+static int _view_get_next_rollout(enum view_partition_period period,
                                   int startTime, int crtTime, int nshards,
                                   int back_in_time);
 static int _generate_evicted_shard_name(timepart_view_t *view,
@@ -126,16 +145,45 @@ enum _check_flags {
 static timepart_view_t* _check_shard_collision(timepart_views_t *views, const char *tblname, 
       int *indx, enum _check_flags flag);
 
+char *timepart_describe(sched_if_t *_)
+{
+    return strdup("Time partition scheduler");
+}
+
+char *timepart_event_describe(sched_if_t *_, cron_event_t *event)
+{
+    const char *name;
+    if (event->func == _view_cron_phase1)
+        name = "AddShard";
+    else if (event->func == _view_cron_phase2)
+        name = "RollShards";
+    else if (event->func == _view_cron_phase3)
+        name = "DropShard";
+    else
+        name = "Unknown";
+
+    return strdup(name);
+}
+
 /**
  * Initialize the views
  *
  */
 timepart_views_t *timepart_views_init(struct dbenv *dbenv)
 {
+    sched_if_t tpt_cron = {0};
+    struct errstat xerr = {0};
+    const char *name = "timepart_cron";
+
+    time_cron_create(&tpt_cron, timepart_describe, timepart_event_describe);
+
     Pthread_rwlock_init(&views_lk, NULL);
 
-    /* hack for now to force natural types */
-    if (_start_views_cron())
+    /* create the timepart scheduler */
+    timepart_sched = cron_add_event(NULL, name, INT_MIN, timepart_cron_kickoff,
+                                    NULL, NULL, NULL, NULL, &xerr, &tpt_cron);
+
+    if (timepart_sched == NULL)
         return NULL;
 
     /* read the llmeta views, if any */
@@ -227,7 +275,7 @@ int timepart_add_view(void *tran, timepart_views_t *views,
     int rc;
     int tm;
 
-    if (unlikely(view->period == VIEW_TIMEPART_TEST2MIN)) {
+    if (unlikely(view->period == VIEW_PARTITION_TEST2MIN)) {
         preemptive_rolltime = 30; /* 30 seconds in advance we add a new table */
     }
 
@@ -280,7 +328,7 @@ int timepart_add_view(void *tran, timepart_views_t *views,
         rc = (cron_add_event(timepart_sched, NULL,
                              view->roll_time - preemptive_rolltime,
                              _view_cron_phase1, tmp_str = strdup(view->name),
-                             NULL, NULL, &view->source_id, err) == NULL)
+                             NULL, NULL, &view->source_id, err, NULL) == NULL)
                  ? err->errval
                  : VIEW_NOERR;
         if (rc != VIEW_NOERR) {
@@ -365,7 +413,7 @@ done:
  *
  */
 int timepart_view_set_period(timepart_views_t *views, const char *name,
-                             enum view_timepart_period period)
+                             enum view_partition_period period)
 {
     timepart_view_t *view;
     int rc;
@@ -702,25 +750,32 @@ static int _shard_suffix_str_len(int maxshards)
 }
 
 static int _extract_shardname_index(const char *tblName,
-                                    const char *originalName, int *span)
+                                    const char *originalName, int *span,
+                                    int testing)
 {
-   int nextNum;
+    int nextNum;
 
-   if(!strcasecmp(tblName, originalName))
-   {
-      return 0;   /* initial shard */
-   }
+    if (!strcasecmp(tblName, originalName)) {
+        return 0; /* initial shard */
+    }
 
-   nextNum = atoi(tblName+1); /* skip $ */
+    if (likely(!testing)) {
+        nextNum = atoi(tblName + 1); /* skip $ */
 
-   if (span) {
-       char *_ = strchr(tblName, '_');
-       if (_) {
-           *span = _ - tblName - 1;
-       }
-   }
+        if (span) {
+            char *_ = strchr(tblName, '_');
+            if (_) {
+                *span = _ - tblName - 1;
+            }
+        }
+    } else {
+        nextNum = atoi(&tblName[strlen(originalName)]);
+        if (span) {
+            *span = strlen(tblName) - strlen(originalName);
+        }
+    }
 
-   return nextNum;
+    return nextNum;
 }
 
 /** dummy version for now */
@@ -981,7 +1036,8 @@ done:
 
             if (cron_add_event(timepart_sched, NULL, shardChangeTime,
                                _view_cron_phase2, tmp_str = strdup(name),
-                               pShardName, NULL, &view->source_id, err) == NULL) {
+                               pShardName, NULL, &view->source_id, err,
+                               NULL) == NULL) {
                 logmsg(LOGMSG_ERROR, "%s: failed rc=%d errstr=%s\n", __func__,
                         err->errval, err->errstr);
                 if (tmp_str)
@@ -1009,7 +1065,7 @@ _view_cron_schedule_next_rollout(timepart_view_t *view, int timeCrtRollout,
     char *tmp_str;
     int tm;
 
-    if (unlikely(view->period == VIEW_TIMEPART_TEST2MIN)) {
+    if (unlikely(view->period == VIEW_PARTITION_TEST2MIN)) {
         preemptive_rolltime = 30; /* 30 seconds in advance we add a new table */
         delete_lag = 5;
     }
@@ -1023,8 +1079,8 @@ _view_cron_schedule_next_rollout(timepart_view_t *view, int timeCrtRollout,
                           tm, removeShardName);
 
         if (cron_add_event(timepart_sched, NULL, tm, _view_cron_phase3,
-                           removeShardName, NULL, NULL, &view->source_id, 
-                           err) == NULL) {
+                           removeShardName, NULL, NULL, &view->source_id, err,
+                           NULL) == NULL) {
             logmsg(LOGMSG_ERROR, "%s: failed rc=%d errstr=%s\n", __func__,
                     err->errval, err->errstr);
             free(removeShardName);
@@ -1040,7 +1096,7 @@ _view_cron_schedule_next_rollout(timepart_view_t *view, int timeCrtRollout,
 
     if (cron_add_event(timepart_sched, NULL, tm, _view_cron_phase1,
                        tmp_str = strdup(name), NULL, NULL, &view->source_id,
-                       err) == NULL) {
+                       err, NULL) == NULL) {
         if (tmp_str) {
             free(tmp_str);
         }
@@ -1211,24 +1267,6 @@ void *_view_cron_phase3(uuid_t source_id, void *arg1, void *arg2, void *arg3,
 done:
     return NULL;
 }
-
-/**
- * Start a views cron thread
- *
- */
-static int _start_views_cron(void)
-{
-    struct errstat xerr = {0};
-
-    if (!timepart_sched) {
-        timepart_sched = cron_add_event(NULL, "timepart_cron", INT_MIN,
-                                        timepart_cron_kickoff, NULL, NULL, NULL,
-                                        NULL, &xerr);
-    }
-
-    return (!timepart_sched) ? xerr.errval : VIEW_NOERR;
-}
-
 
 static char* comdb2_partition_info_locked(const char *partition_name, 
                                           const char *option)
@@ -1664,7 +1702,7 @@ static int _schedule_drop_shard(timepart_view_t *view,
     /* we missed phase 3, queue it */
     rc = (cron_add_event(timepart_sched, NULL, evict_time, _view_cron_phase3,
                          tmp_str1 = strdup(evicted_shard), NULL, NULL, NULL,
-                         err) == NULL)
+                         err, NULL) == NULL)
              ? err->errval
              : VIEW_NOERR;
 
@@ -1688,7 +1726,8 @@ static int _get_biggest_shard_number(timepart_view_t *view, int *oldest,
 
     for (i = 0; i < view->nshards; i++) {
         crt = _extract_shardname_index(view->shards[i].tblname,
-                                       view->shard0name, &span);
+                                       view->shard0name, &span,
+                                       view->period == VIEW_PARTITION_TEST2MIN);
         if (i == 0 && newest)
             *newest = crt;
         else if (i == view->nshards - 1 && oldest)
@@ -1736,7 +1775,7 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
     int evicted_shard0;
     int i;
 
-    if (unlikely(view->period == VIEW_TIMEPART_TEST2MIN)) {
+    if (unlikely(view->period == VIEW_PARTITION_TEST2MIN)) {
         preemptive_rolltime = 30; /* 30 seconds in advance we add a new table */
     }
 
@@ -1853,7 +1892,7 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
         rc = (cron_add_event(timepart_sched, NULL,
                              view->roll_time - preemptive_rolltime,
                              _view_cron_phase1, tmp_str1 = strdup(view->name),
-                             NULL, NULL, &view->source_id, err) == NULL)
+                             NULL, NULL, &view->source_id, err, NULL) == NULL)
                  ? err->errval
                  : VIEW_NOERR;
         tmp_str2 = NULL;
@@ -1866,7 +1905,7 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
         rc = (cron_add_event(timepart_sched, NULL, view->roll_time,
                              _view_cron_phase2, tmp_str1 = strdup(view->name),
                              tmp_str2 = strdup(next_existing_shard), NULL,
-                             &view->source_id, err) == NULL)
+                             &view->source_id, err, NULL) == NULL)
                  ? err->errval
                  : VIEW_NOERR;
     }
@@ -1961,8 +2000,9 @@ static int _generate_new_shard_name_wrapper(timepart_view_t *view,
 
     /* extract the next id to be used */
     if (view->nshards == retention) {
-        nextNum = _extract_shardname_index(view->shards[0].tblname,
-                                           view->shard0name, NULL);
+        nextNum = _extract_shardname_index(
+            view->shards[0].tblname, view->shard0name, NULL,
+            view->period == VIEW_PARTITION_TEST2MIN);
         if (nextNum > retention) {
             nextNum = 0; /* go back to 0, the partition was shrinked */
         } else {
@@ -1975,7 +2015,7 @@ static int _generate_new_shard_name_wrapper(timepart_view_t *view,
     /* generate new filename */
     rc = _generate_new_shard_name(
         view->shard0name, newShardName, newShardNameLen, nextNum, retention,
-        view->period == VIEW_TIMEPART_TEST2MIN, &xerr);
+        view->period == VIEW_PARTITION_TEST2MIN, &xerr);
     if (rc != VIEW_NOERR) {
         return xerr.errval;
     }
@@ -2000,7 +2040,7 @@ static int _generate_evicted_shard_name(timepart_view_t *view,
     /* generate new filename */
     rc = _generate_new_shard_name(
         view->shard0name, evictedShardName, evictedShardNameLen, checked_number,
-        retention, view->period == VIEW_TIMEPART_TEST2MIN, &xerr);
+        retention, view->period == VIEW_PARTITION_TEST2MIN, &xerr);
     if (rc != VIEW_NOERR) {
         return xerr.errval;
     }
@@ -2074,7 +2114,7 @@ done:
  * to establish the next rollout time
  *
  */
-static int _view_get_next_rollout(enum view_timepart_period period,
+static int _view_get_next_rollout(enum view_partition_period period,
                                   int startTime, int crtTime, int nshards,
                                   int back_in_time)
 {
@@ -2103,32 +2143,32 @@ static int _view_get_next_rollout(enum view_timepart_period period,
     /* if there are at least 2 hards, low was the original split, and now we
        generate a new split based on newest split + period */
     switch (period) {
-    case VIEW_TIMEPART_DAILY:
+    case VIEW_PARTITION_DAILY:
         /* 24 hours */
         cast_str = "hours";
         cast_val = 24;
         break;
-    case VIEW_TIMEPART_WEEKLY:
+    case VIEW_PARTITION_WEEKLY:
         /* 7 days */
         cast_str = "days";
         cast_val = 7;
         break;
-    case VIEW_TIMEPART_MONTHLY:
+    case VIEW_PARTITION_MONTHLY:
         /* 1 month */
         cast_str = "months";
         cast_val = 1;
         break;
-    case VIEW_TIMEPART_YEARLY:
+    case VIEW_PARTITION_YEARLY:
         /* 1 year */
         cast_str = "years";
         cast_val = 1;
         break;
-    case VIEW_TIMEPART_TEST2MIN:
+    case VIEW_PARTITION_TEST2MIN:
         /* test 2 mins */
         cast_str = "minutes";
         cast_val = 2;
         break;
-    case VIEW_TIMEPART_INVALID:
+    case VIEW_PARTITION_INVALID:
         logmsg(LOGMSG_ERROR, "%s bug!\n", __func__);
         return INT_MAX;
     }
@@ -2447,8 +2487,8 @@ int timepart_update_retention(void *tran, const char *name, int retention, struc
 
            for (i = 0; i < n_extra_shards; i++) {
                irc = (cron_add_event(timepart_sched, NULL, 0, _view_cron_phase3,
-                                     extra_shards[i], NULL, NULL, NULL,
-                                     err) == NULL)
+                                     extra_shards[i], NULL, NULL, NULL, err,
+                                     NULL) == NULL)
                          ? err->errval
                          : VIEW_NOERR;
                if (irc != VIEW_NOERR) {
@@ -2583,105 +2623,6 @@ static int _view_update_table_version(timepart_view_t *view, tran_type *tran)
     return rc;
 }
 
-/**
- * Returned a malloced string for the "iRowid"-th timepartition, column iCol
- * NOTE: this is called with a read lock in views structure
- */
-void timepart_systable_column(sqlite3_context *ctx, int iRowid,
-                              enum systable_columns iCol)
-{
-    timepart_views_t *views = thedb->timepart_views;
-    timepart_view_t *view;
-    uuidstr_t us;
-
-    if (iRowid < 0 || iRowid >= views->nviews || iCol >= VIEWS_MAXCOLUMN) {
-        sqlite3_result_null(ctx);
-    }
-
-    view = views->views[iRowid];
-
-    switch (iCol) {
-    case VIEWS_NAME:
-        sqlite3_result_text(ctx, view->name, -1, NULL);
-        break;
-    case VIEWS_PERIOD:
-        sqlite3_result_text(ctx, period_to_name(view->period), -1, NULL);
-        break;
-    case VIEWS_RETENTION:
-        sqlite3_result_int(ctx, view->retention);
-        break;
-    case VIEWS_NSHARDS:
-        sqlite3_result_int(ctx, view->nshards);
-        break;
-    case VIEWS_VERSION: {
-        struct dbtable *table = get_dbtable_by_name(view->shards[0].tblname);
-        assert(table);
-
-        sqlite3_result_int(ctx, table->tableversion);
-    } break;
-    case VIEWS_SHARD0NAME:
-        sqlite3_result_text(ctx, view->shard0name, -1, NULL);
-        break;
-    case VIEWS_STARTTIME:
-        sqlite3_result_int(ctx, view->starttime);
-        break;
-    case VIEWS_SOURCEID:
-        sqlite3_result_text(ctx, comdb2uuidstr(view->source_id, us), -1, NULL);
-        break;
-    }
-}
-
-/**
- * Returned a malloced string for the "iRowid"-th shard, column iCol of
- * timepart iTimepartId
- * NOTE: this is called with a read lock in views structure
- */
-void timepart_systable_shard_column(sqlite3_context *ctx, int iTimepartId,
-                                    int iRowid,
-                                    enum systable_shard_columns iCol)
-{
-    timepart_views_t *views = thedb->timepart_views;
-    timepart_view_t *view;
-    timepart_shard_t *shard;
-
-    if (iTimepartId < 0 || iTimepartId >= views->nviews ||
-        iCol >= VIEWS_SHARD_MAXCOLUMN) {
-        sqlite3_result_null(ctx);
-        return;
-    }
-
-    view = views->views[iTimepartId];
-
-    if (iRowid >= view->nshards) {
-        sqlite3_result_null(ctx);
-        return;
-    }
-    shard = &view->shards[iRowid];
-
-    switch (iCol) {
-    case VIEWS_SHARD_VIEWNAME:
-        sqlite3_result_text(ctx, view->name, -1, NULL);
-        break;
-    case VIEWS_SHARD_NAME:
-        sqlite3_result_text(ctx, shard->tblname, -1, NULL);
-        break;
-    case VIEWS_SHARD_START:
-        sqlite3_result_int(ctx, shard->low);
-        break;
-    case VIEWS_SHARD_END:
-        sqlite3_result_int(ctx, shard->high);
-        break;
-    }
-}
-
-/**
- * Get number of views
- *
- */
-int timepart_get_num_views(void)
-{
-    return thedb->timepart_views->nviews;
-}
 
 /**
  * Get number of shards
@@ -2708,109 +2649,6 @@ int timepart_get_num_shards(const char *view_name)
     return nshards;
 }
 
-/**
- *  Move iRowid to point to the next shard, switching shards in the process
- *  NOTE: this is called with a read lock in views structure
- */
-void timepart_systable_next_shard(int *piTimepartId, int *piRowid)
-{
-    timepart_views_t *views = thedb->timepart_views;
-    timepart_view_t *view;
-
-    if (*piTimepartId >= views->nviews)
-        return;
-    view = views->views[*piTimepartId];
-    (*piRowid)++;
-    if (*piRowid >= view->nshards) {
-        *piRowid = 0;
-        (*piTimepartId)++;
-    }
-}
-
-/**
- * Open/close the event queue
- */
-int timepart_events_open(int *num)
-{
-    cron_lock(timepart_sched);
-
-    *num = cron_num_events(timepart_sched);
-
-    return VIEW_NOERR;
-}
-
-int timepart_events_close(void)
-{
-    cron_unlock(timepart_sched);
-
-    return VIEW_NOERR;
-}
-
-static const char *_events_name(FCRON func)
-{
-    const char *name;
-    if (func == _view_cron_phase1)
-        name = "AddShard";
-    else if (func == _view_cron_phase2)
-        name = "RollShards";
-    else if (func == _view_cron_phase3)
-        name = "DropShard";
-    else
-        name = "Unknown";
-
-    return name;
-}
-
-/**
- * Get event data
- */
-void timepart_events_column(sqlite3_context *ctx, int iRowid, int iCol)
-{
-    const char *name;
-    FCRON func;
-    int epoch;
-    uuid_t *sid = NULL;
-    void *arg1;
-    void *arg2;
-    void *arg3;
-    uuidstr_t us;
-
-    if (iRowid < 0 || iCol >= VIEWS_SHARD_MAXCOLUMN) {
-        sqlite3_result_null(ctx);
-        return;
-    }
-
-    if (cron_event_details(timepart_sched, iRowid, &func, &epoch, &arg1, &arg2,
-                           &arg3, sid) != 1) {
-        sqlite3_result_null(ctx);
-        return;
-    }
-
-    switch (iCol) {
-    case VIEWS_EVENT_NAME:
-        name = _events_name(func);
-        sqlite3_result_text(ctx, name, -1, NULL);
-        break;
-    case VIEWS_EVENT_WHEN:
-        sqlite3_result_int(ctx, epoch);
-        break;
-    case VIEWS_EVENT_SOURCEID:
-        sqlite3_result_text(ctx, comdb2uuidstr(*sid, us), -1, NULL);
-        break;
-    case VIEWS_EVENT_ARG1:
-        sqlite3_result_text(ctx, (char *)arg1, -1, NULL);
-        break;
-    case VIEWS_EVENT_ARG2:
-        if (arg2)
-            sqlite3_result_text(ctx, (char *)arg2, -1, NULL);
-        else
-            sqlite3_result_null(ctx);
-        break;
-    case VIEWS_EVENT_ARG3:
-        sqlite3_result_null(ctx);
-        break;
-    }
-}
 
 void check_columns_null_and_dbstore(const char *name, struct dbtable *tbl)
 {
@@ -2830,6 +2668,8 @@ void check_columns_null_and_dbstore(const char *name, struct dbtable *tbl)
         }
     }
 }
+
+#include "views_systable.c"
 
 #include "views_serial.c"
 
