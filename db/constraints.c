@@ -1331,6 +1331,7 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
         struct forward_ct *curop = NULL;
         int ixnum = -1;
         int ondisk_size = 0;
+        int fndlen = 0;
         /* do something */
         if (ctrq == NULL) {
             if (iq->debug)
@@ -1405,23 +1406,20 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
             rc = ix_find_by_rrn_and_genid_tran(iq, addrrn, genid, od_dta,
                                                &fndlen, ondisk_size, trans);
 
-            if (rc == RC_INTERNAL_RETRY) {
+            if (rc) {
                 *errout = OP_FAILED_INTERNAL;
                 close_constraint_table_cursor(cur);
-                return rc;
-            }
 
-            /* make sure fndlen is not overwritten in the meantime,
-               since rc can be an error code! */
-            if (fndlen != ondisk_size) {
+                if (rc == RC_INTERNAL_RETRY)
+                    return rc;
+
                 if (iq->debug)
-                    reqprintf(iq, "VERKYCNSTRT GENID 0x%llx FNDLEN %d != DTALEN %d RC %d",
+                    reqprintf(iq, "VERKYCNSTRT CASCADE DELETED GENID 0x%llx "
+                                  "FNDLEN %d DTALEN %d RC %d",
                               genid, fndlen, ondisk_size, rc);
                 reqerrstr(iq, COMDB2_CSTRT_RC_INVL_DTA,
-                          "verify key constraint: record not found in table %s",
+                          "verify key constraint: record not found in table %s (cascaded)",
                           iq->usedb->tablename);
-                *errout = OP_FAILED_INTERNAL;
-                close_constraint_table_cursor(cur);
                 return ERR_INTERNAL;
             }
 
