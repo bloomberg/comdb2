@@ -93,11 +93,15 @@ static void eventlog_roll_cleanup()
     const char *postfix = ".events";
     char *fname = comdb2_location("logs", "%s%s", thedb->envname, postfix);
 
+    if (fname == NULL)
+        abort();
+
     // fname should look like '/dir/<dbname>.events' : see eventlog_fname()
     int len = strlen(fname);
 
     // SANITY CHECK; last part of fname should match postfix
-    if (strcmp(&(fname[len - sizeof(postfix) + 1]), postfix) != 0)
+    if (len < sizeof(postfix) || 
+        strcmp(&(fname[len - sizeof(postfix) + 1]), postfix) != 0)
         abort();
 
     // Delete all except the most recent files
