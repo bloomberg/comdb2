@@ -108,8 +108,8 @@ static void eventlog_roll_cleanup()
     // WARNING: MAKE SURE NO SPACE BETWEEN THE TWO CHARACTERS '%s*'
     // IN THE CALL TO ls IN NEXT LINE
     snprintf(cmd, sizeof(cmd) - 1, 
-             "ls -1tr %s* | head -n -%d | xargs -d '\n' rm -f --",
-             fname, eventlog_nkeep);
+             "ls -1t %s* | grep '%s' | grep '.events.' | sed '1,%dd' | xargs rm -f",
+             fname, thedb->envname, eventlog_nkeep);
     free(fname);
 
     int rc = system(cmd);
