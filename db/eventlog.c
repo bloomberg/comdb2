@@ -90,13 +90,13 @@ static void eventlog_roll_cleanup()
         return;
 
     char cmd[512] = {0};
-    const char *postfix = ".events";
+    const char postfix[] = ".events.";
     char *fname = comdb2_location("logs", "%s%s", thedb->envname, postfix);
 
     if (fname == NULL)
         abort();
 
-    // fname should look like '/dir/<dbname>.events' : see eventlog_fname()
+    // fname should look like '/dir/<dbname>.events.' : see eventlog_fname()
     int len = strlen(fname);
 
     // SANITY CHECK; last part of fname should match postfix
