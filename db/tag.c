@@ -5993,6 +5993,8 @@ void free_blob_buffers(blob_buffer_t *blobs, int nblobs)
     for (ii = 0; ii < nblobs; ii++) {
         blob = blobs + ii;
         if (blob->exists) {
+            /* If both `qblob' and `freeptr' are NULL, `data' is allocated by
+               the types system and hence must be freed. */
             if (blob->qblob == NULL && blob->freeptr == NULL)
                 free(blob->data);
             free(blob->qblob);

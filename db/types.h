@@ -121,7 +121,6 @@ typedef struct {
 typedef struct blob_buffer {
     int exists; /* to differentiate 0 length from null */
 
-    /* Where the blob lives within either `qblob' or `freeptr'. */
     char *data;
     size_t length;
 
@@ -140,7 +139,8 @@ typedef struct blob_buffer {
        An ODH'd blob has OSQL_BLOB_ODH_BIT set,
        which can be tested using IS_ODH_READY(). */
     int odhind;
-    /* The QBLOB msg from bplog. */
+    /* The QBLOB msg from bplog. This is not null
+       IFF the blob is received from the OSQL layer on the master */
     char *qblob;
     /* The heap memory used by bdb_unpack(). This is not null
        IFF a schema change is modifying the blob compression algorithm,

@@ -2793,8 +2793,16 @@ int unodhfy_blob_buffer(struct dbtable *db, blob_buffer_t *blob, int blobind)
     /* We can't free blob->qblob yet
        as add_idx_blobs might still reference it.  */
 
-    /* Not a blob from an OSQL_QBLOB packet */
+    /* Not an OSQL_QBLOB blob */
     if (blob->qblob == NULL) {
+        /* If `freeptr' is NULL, the record is uncompressed
+           (no gain after compression) and `out' points to
+           where the record begins inside `blob->data'. We then
+           assign `blob->data' to `freeptr' so that the memory
+           can be freed correctly in free_blob_buffers().
+
+           Otherwise the record is compressed. `blob->data' is no longer useful
+           and must be freed. */
         if (blob->freeptr == NULL)
             blob->freeptr = blob->data;
         else
