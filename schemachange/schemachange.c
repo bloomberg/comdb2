@@ -615,7 +615,8 @@ int live_sc_post_delete(struct ireq *iq, void *trans, unsigned long long genid,
     return rc;
 }
 
-static int unodhfy_if_necessary(struct ireq *iq, blob_buffer_t *blobs, int maxblobs)
+static int unodhfy_if_necessary(struct ireq *iq, blob_buffer_t *blobs,
+                                int maxblobs)
 {
     int i, rc, oldodh, newodh, reccompr, oldcompr, newcompr;
 
@@ -797,9 +798,10 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
                       get_genid_stripe_pointer(oldgenid, sc_genids));
         rc = unodhfy_if_necessary(iq, blobs, maxblobs);
         if (rc == 0)
-            rc = live_sc_post_upd_record(
-                iq, trans, oldgenid, old_dta, newgenid, new_dta, ins_keys, del_keys,
-                od_len, updCols, blobs, deferredAdd, oldblobs, newblobs);
+            rc = live_sc_post_upd_record(iq, trans, oldgenid, old_dta, newgenid,
+                                         new_dta, ins_keys, del_keys, od_len,
+                                         updCols, blobs, deferredAdd, oldblobs,
+                                         newblobs);
     }
 
     if (iq->debug) reqpopprefixes(iq, 1);

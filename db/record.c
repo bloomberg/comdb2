@@ -2789,7 +2789,6 @@ int unodhfy_blob_buffer(struct dbtable *db, blob_buffer_t *blob, int blobind)
     if (rc != 0)
         return rc;
 
-
     /* We can't free blob->qblob yet
        as add_idx_blobs might still reference it.  */
 
