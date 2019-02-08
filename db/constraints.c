@@ -1414,11 +1414,13 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                     return rc;
 
                 if (iq->debug)
-                    reqprintf(iq, "VERKYCNSTRT CASCADE DELETED GENID 0x%llx "
-                                  "FNDLEN %d DTALEN %d RC %d",
+                    reqprintf(iq,
+                              "VERKYCNSTRT CASCADE DELETED GENID 0x%llx "
+                              "FNDLEN %d DTALEN %d RC %d",
                               genid, fndlen, ondisk_size, rc);
                 reqerrstr(iq, COMDB2_CSTRT_RC_INVL_DTA,
-                          "verify key constraint: record not found in table %s (cascaded)",
+                          "verify key constraint: record not found in table %s "
+                          "(cascaded)",
                           iq->usedb->tablename);
                 return ERR_INTERNAL;
             }
