@@ -5627,6 +5627,7 @@ void net_register_child_net(netinfo_type *netinfo_ptr,
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
 }
 
+int gbl_forbid_remote_admin = 1;
 
 static void *accept_thread(void *arg)
 {
@@ -5878,8 +5879,15 @@ static void *accept_thread(void *arg)
 
             if (firstbyte == '@') {
                 findpeer(new_fd, paddr, sizeof(paddr));
-                logmsg(LOGMSG_INFO, "Accepting admin user from %s\n", paddr);
-                admin = 1;
+                if (!gbl_forbid_remote_admin ||
+                        (cliaddr.sin_addr.s_addr == htonl(INADDR_LOOPBACK))) {
+                    logmsg(LOGMSG_INFO, "Accepting admin user from %s\n", paddr);
+                    admin = 1;
+                } else {
+                    logmsg(LOGMSG_INFO, "Rejecting non-local admin user from %s\n", paddr);
+                    sbuf2close(sb);
+                    continue;
+                }
             } else if (firstbyte != sbuf2ungetc(firstbyte, sb)) {
                 logmsg(LOGMSG_ERROR, "sbuf2ungetc failed %s:%d\n", __FILE__,
                         __LINE__);
