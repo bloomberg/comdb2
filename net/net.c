@@ -1081,7 +1081,7 @@ static int write_connect_message(netinfo_type *netinfo_ptr,
                                  host_node_type *host_node_ptr, SBUF2 *sb)
 {
     connect_message_type connect_message;
-    uint8_t conndata[NET_CONNECT_MESSAGE_TYPE_LEN], *p_buf, *p_buf_end;
+    uint8_t conndata[NET_CONNECT_MESSAGE_TYPE_LEN] = {0}, *p_buf, *p_buf_end;
     int rc;
     char type;
     int append_to = 0, append_from = 0;
@@ -1344,9 +1344,8 @@ static int write_hello(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
 
     datasz = sizeof(int) + sizeof(int) + /* int numhosts */
              (HOSTNAME_LEN * numhosts) + /* char host[16]... ( 1 per host ) */
-             (sizeof(int) * numhosts) +  /* int port...      ( 1 per host ) */
-             (sizeof(int) * numhosts) +  /* int node...      ( 1 per host ) */
-             (8 * numhosts);             /* some fluff space */
+             (sizeof(int) * numhosts)  + /* int port...      ( 1 per host ) */
+             (sizeof(int) * numhosts);   /* int node...      ( 1 per host ) */
 
     /* write long hostnames */
     for (tmp_host_ptr = netinfo_ptr->head; tmp_host_ptr != NULL;
@@ -1374,10 +1373,11 @@ static int write_hello(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
             lenstr[HOSTNAME_LEN - 1] = 0;
             p_buf = buf_no_net_put(lenstr, HOSTNAME_LEN - 1, p_buf, p_buf_end);
         } else {
-            p_buf = buf_no_net_put(tmp_host_ptr->host, HOSTNAME_LEN - 1, p_buf,
-                                   p_buf_end);
+            char lenstr[HOSTNAME_LEN] = {0};
+            memcpy(lenstr, tmp_host_ptr->host, tmp_host_ptr->hostname_len);
+            lenstr[HOSTNAME_LEN - 1] = 0;
+            p_buf = buf_no_net_put(lenstr, HOSTNAME_LEN - 1, p_buf, p_buf_end);
         }
-
         /* null terminate */
         p_buf = buf_zero_put(sizeof(char), p_buf, p_buf_end);
     }
@@ -1395,10 +1395,11 @@ static int write_hello(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
     /* write long hostnames */
     for (tmp_host_ptr = netinfo_ptr->head; tmp_host_ptr != NULL;
          tmp_host_ptr = tmp_host_ptr->next) {
-        if (tmp_host_ptr->hostname_len > HOSTNAME_LEN)
+        if (tmp_host_ptr->hostname_len > HOSTNAME_LEN) {
             p_buf =
                 buf_no_net_put(tmp_host_ptr->host, tmp_host_ptr->hostname_len,
                                p_buf, p_buf_end);
+        }
     }
 
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
@@ -1428,12 +1429,10 @@ static int write_hello_reply(netinfo_type *netinfo_ptr,
          tmp_host_ptr = tmp_host_ptr->next)
         numhosts++;
 
-
     datasz = sizeof(int) + sizeof(int) + /* int numhosts */
              (HOSTNAME_LEN * numhosts) + /* char host[16]... ( 1 per host ) */
              (sizeof(int) * numhosts) +  /* int port...      ( 1 per host ) */
-             (sizeof(int) * numhosts) +  /* int node...      ( 1 per host ) */
-             (8 * numhosts);             /* some fluff space */
+             (sizeof(int) * numhosts);   /* int node...      ( 1 per host ) */
 
     /* write long hostnames */
     for (tmp_host_ptr = netinfo_ptr->head; tmp_host_ptr != NULL;
@@ -1461,9 +1460,12 @@ static int write_hello_reply(netinfo_type *netinfo_ptr,
             snprintf(lenstr, sizeof(lenstr), ".%d", tmp_host_ptr->hostname_len);
             lenstr[HOSTNAME_LEN - 1] = 0;
             p_buf = buf_no_net_put(lenstr, HOSTNAME_LEN - 1, p_buf, p_buf_end);
-        } else
-            p_buf = buf_no_net_put(tmp_host_ptr->host, HOSTNAME_LEN - 1, p_buf,
-                                   p_buf_end);
+        } else {
+            char lenstr[HOSTNAME_LEN] = {0};
+            memcpy(lenstr, tmp_host_ptr->host, tmp_host_ptr->hostname_len - 1);
+            lenstr[HOSTNAME_LEN - 1] = 0;
+            p_buf = buf_no_net_put(lenstr, HOSTNAME_LEN - 1, p_buf, p_buf_end);
+        }
 
         /* null terminate */
         p_buf = buf_zero_put(sizeof(char), p_buf, p_buf_end);
@@ -1522,12 +1524,8 @@ static seq_data *add_seqnum_to_waitlist(host_node_type *host_node_ptr,
 {
     seq_data *new_seq_node, *seq_list_ptr;
     new_seq_node = HOST_MALLOC(host_node_ptr, sizeof(seq_data));
+    memset(new_seq_node, 0, sizeof(seq_data));
     new_seq_node->seqnum = seqnum;
-    new_seq_node->ack = 0;
-    new_seq_node->outrc = 0;
-    new_seq_node->next = NULL;
-    new_seq_node->payload = NULL;
-    new_seq_node->payloadlen = 0;
     new_seq_node->timestamp = time(NULL);
     /* always add to the end of the list. */
     /* only remove from the beginning, and then,
