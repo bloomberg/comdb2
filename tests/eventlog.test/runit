@@ -187,4 +187,9 @@ COMDB2_UNITTEST=0 CLEANUPDBDIR=0 $TESTSROOTDIR/unsetup 1 > $TESTDIR/logs/${DBNAM
 
 assertres $logflcnt $((NKEEP+1))
 
+logfl=`ls -1r $TESTDIR/var/log/cdb2/ | grep events | grep $DBNAME | head -1`
+logfl=`find $TESTDIR/var/log/cdb2/ | grep $logfl`
+res=$(zcat $logfl | grep 'insert into t1 values(2000)' | wc -l)
+assertres $res 1
+
 exit 0
