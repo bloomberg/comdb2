@@ -43,7 +43,7 @@
 
 static char *gbl_eventlog_fname = NULL;
 static char *eventlog_fname(const char *dbname);
-static int eventlog_nkeep = 0;
+static int eventlog_nkeep = 10;  // keep last 10 event log files
 static int eventlog_rollat = 100 * 1024 * 1024; // 100MB to begin
 static int eventlog_enabled = 1;
 static int eventlog_detailed = 0;
@@ -90,7 +90,19 @@ static void eventlog_roll_cleanup()
         return;
 
     char cmd[512] = {0};
-    char *fname = comdb2_location("logs", "%s.events", thedb->envname);
+    const char *postfix = ".events";
+    char *fname = comdb2_location("logs", "%s%s", thedb->envname, postfix);
+
+    // fname should look like '/dir/<dbname>.events' : see eventlog_fname()
+    int len = strlen(fname);
+
+    // SANITY CHECK; last part of fname should match postfix
+    if (strcmp(&(fname[len - sizeof(postfix) + 1]), postfix) != 0)
+        abort();
+
+    // Delete all except the most recent files
+    // WARNING: MAKE SURE NO SPACE BETWEEN THE TWO CHARACTERS '%s*'
+    // IN THE CALL TO ls IN NEXT LINE
     snprintf(cmd, sizeof(cmd) - 1, 
              "ls -1tr %s* | head -n -%d | xargs -d '\n' rm -f --",
              fname, eventlog_nkeep);
