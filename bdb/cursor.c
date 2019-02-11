@@ -854,8 +854,6 @@ static pthread_mutex_t pglogs_lsn_list_pool_lk;
 static pthread_mutex_t pglogs_lsn_commit_list_pool_lk;
 static pthread_mutex_t pglogs_relink_key_pool_lk;
 static pthread_mutex_t pglogs_relink_list_pool_lk;
-static pool_t *logfile_tmptbl_hashkey_pool = NULL;
-static pthread_mutex_t logfile_tmptbl_hashkey_pool_lk;
 
 void bdb_newsi_mempool_stat()
 {
@@ -906,10 +904,6 @@ void bdb_newsi_mempool_stat()
     Pthread_mutex_lock(&pglogs_relink_list_pool_lk);
     pool_dumpx(pglogs_relink_list_pool, "pglogs_relink_list_pool");
     Pthread_mutex_unlock(&pglogs_relink_list_pool_lk);
-
-    Pthread_mutex_lock(&logfile_tmptbl_hashkey_pool_lk);
-    pool_dumpx(logfile_tmptbl_hashkey_pool, "logfile_tmptbl_hashkey_pool");
-    Pthread_mutex_unlock(&logfile_tmptbl_hashkey_pool_lk);
 }
 
 static pthread_mutex_t del_queue_lk = PTHREAD_MUTEX_INITIALIZER;
@@ -1236,140 +1230,6 @@ void bdb_return_pglogs_hashtbl(hash_t *hashtbl)
     hash_free(hashtbl);
 }
 
-static logfile_pglog_hashkey *allocate_logfile_pglog_hashkey(void)
-{
-    logfile_pglog_hashkey *r;
-    Pthread_mutex_lock(&logfile_tmptbl_hashkey_pool_lk);
-    r = pool_getablk(logfile_tmptbl_hashkey_pool);
-    Pthread_mutex_unlock(&logfile_tmptbl_hashkey_pool_lk);
-#ifdef NEWSI_DEBUG_POOL
-    r->pool = logfile_tmptbl_hashkey_pool;
-#endif
-    return r;
-}
-
-struct statelsn {
-    bdb_state_type *bdb_state;
-    DB_LSN lsn;
-};
-
-static int truncate_pglogs(void *obj, void *arg)
-{
-    int rc, bdberr;
-    struct statelsn *slsn = (struct statelsn *)arg;
-    bdb_state_type *bdb_state = slsn->bdb_state;
-    logfile_pglog_hashkey *ent = (logfile_pglog_hashkey *)obj;
-    assert(ent->tmpcur != NULL);
-    rc = bdb_temp_table_first(bdb_state, ent->tmpcur, &bdberr);
-    while (!rc) {
-        pglogs_tmptbl_key *rec = bdb_temp_table_key(ent->tmpcur);
-        if (log_compare(&rec->commit_lsn, &slsn->lsn) >= 0) {
-            rc = bdb_temp_table_delete(bdb_state, ent->tmpcur, &bdberr);
-            if (rc) {
-                logmsg(LOGMSG_ERROR,
-                       "%s:%d failed to delete pglogs-key in "
-                       "temp table. rc %d bdberr %d\n",
-                       __func__, __LINE__, rc, bdberr);
-                abort();
-            }
-        }
-        rc = bdb_temp_table_next(bdb_state, ent->tmpcur, &bdberr);
-    }
-    return 0;
-}
-
-static int return_logfile_pglog_hashkey(void *obj, void *arg)
-{
-    int rc, bdberr;
-    logfile_pglog_hashkey *ent;
-    bdb_state_type *bdb_state = (bdb_state_type *)arg;
-    ent = (logfile_pglog_hashkey *)obj;
-    rc = bdberr = 0;
-    if (ent->tmpcur)
-        rc = bdb_temp_table_close_cursor(bdb_state, ent->tmpcur, &bdberr);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: error closing temp cursor %d %d\n", __func__,
-               rc, bdberr);
-        rc = 0;
-    }
-
-    if (ent->tmptbl)
-        rc = bdb_temp_table_close(bdb_state, ent->tmptbl, &bdberr);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: error closing temp table %d %d\n", __func__,
-               rc, bdberr);
-        rc = 0;
-    }
-    Pthread_mutex_destroy(&ent->mtx);
-    Pthread_mutex_lock(&logfile_tmptbl_hashkey_pool_lk);
-#ifdef NEWSI_DEBUG_POOL
-    assert(ent->pool == logfile_tmptbl_hashkey_pool);
-#endif
-    pool_relablk(logfile_tmptbl_hashkey_pool, obj);
-    Pthread_mutex_unlock(&logfile_tmptbl_hashkey_pool_lk);
-    return 0;
-}
-
-static void bdb_return_logfile_pglogs_hashtbl(hash_t *hashtbl,
-                                              bdb_state_type *bdb_state)
-{
-    hash_for(hashtbl, return_logfile_pglog_hashkey, bdb_state);
-    hash_clear(hashtbl);
-    hash_free(hashtbl);
-}
-
-static logfile_relink_hashkey *allocate_logfile_relink_hashkey(void)
-{
-    logfile_relink_hashkey *r;
-    Pthread_mutex_lock(&logfile_tmptbl_hashkey_pool_lk);
-    r = pool_getablk(logfile_tmptbl_hashkey_pool);
-    Pthread_mutex_unlock(&logfile_tmptbl_hashkey_pool_lk);
-#ifdef NEWSI_DEBUG_POOL
-    r->pool = logfile_tmptbl_hashkey_pool;
-#endif
-    return r;
-}
-
-static int return_logfile_relink_hashkey(void *obj, void *arg)
-{
-    int rc, bdberr;
-    logfile_relink_hashkey *ent;
-    bdb_state_type *bdb_state = (bdb_state_type *)arg;
-    ent = (logfile_relink_hashkey *)obj;
-    rc = bdberr = 0;
-    if (ent->tmpcur)
-        rc = bdb_temp_table_close_cursor(bdb_state, ent->tmpcur, &bdberr);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: error closing temp cursor %d %d\n", __func__,
-               rc, bdberr);
-        rc = 0;
-    }
-
-    if (ent->tmptbl)
-        rc = bdb_temp_table_close(bdb_state, ent->tmptbl, &bdberr);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: error closing temp table %d %d\n", __func__,
-               rc, bdberr);
-        rc = 0;
-    }
-    Pthread_mutex_destroy(&ent->mtx);
-    Pthread_mutex_lock(&logfile_tmptbl_hashkey_pool_lk);
-#ifdef NEWSI_DEBUG_POOL
-    assert(ent->pool == logfile_tmptbl_hashkey_pool);
-#endif
-    pool_relablk(logfile_tmptbl_hashkey_pool, obj);
-    Pthread_mutex_unlock(&logfile_tmptbl_hashkey_pool_lk);
-    return 0;
-}
-
-static void bdb_return_logfile_relinks_hashtbl(hash_t *hashtbl,
-                                               bdb_state_type *bdb_state)
-{
-    hash_for(hashtbl, return_logfile_relink_hashkey, bdb_state);
-    hash_clear(hashtbl);
-    hash_free(hashtbl);
-}
-
 int bdb_gbl_pglogs_mem_init(bdb_state_type *bdb_state)
 {
     //   int stepup = 4096;
@@ -1414,10 +1274,6 @@ int bdb_gbl_pglogs_mem_init(bdb_state_type *bdb_state)
     Pthread_mutex_init(&pglogs_lsn_commit_list_pool_lk, NULL);
     Pthread_mutex_init(&pglogs_relink_key_pool_lk, NULL);
     Pthread_mutex_init(&pglogs_relink_list_pool_lk, NULL);
-    assert(sizeof(logfile_pglog_hashkey) == sizeof(logfile_relink_hashkey));
-    logfile_tmptbl_hashkey_pool =
-        pool_setalloc_init(sizeof(logfile_pglog_hashkey), stepup, malloc, free);
-    Pthread_mutex_init(&logfile_tmptbl_hashkey_pool_lk, NULL);
 
     return 0;
 }
@@ -1426,8 +1282,7 @@ int bdb_insert_pglogs_logical_int(hash_t *pglogs_hashtbl, unsigned char *fileid,
                                   db_pgno_t pgno, DB_LSN lsn,
                                   DB_LSN commit_lsn);
 static int bdb_insert_logfile_pglog_int(bdb_state_type *bdb_state,
-                                        hash_t *pglogs_hashtbl,
-                                        logfile_pglog_hashkey *pglogs_ent,
+                                        struct logfile_pglogs_entry *l_entry,
                                         unsigned char *fileid, db_pgno_t pgno,
                                         DB_LSN lsn, DB_LSN commit_lsn);
 
@@ -1777,41 +1632,6 @@ int bdb_clean_pglogs_queues(bdb_state_type *bdb_state, DB_LSN lsn, int truncate)
     return 0;
 }
 
-// Must be called holding the logfile_pglogs_repo_mutex
-static struct logfile_pglogs_entry *
-retrieve_logfile_pglogs(unsigned int filenum, int create)
-{
-    struct logfile_pglogs_entry *e;
-
-    if (logfile_pglogs_repo == NULL)
-        return NULL;
-
-    if ((e = hash_find(logfile_pglogs_repo, &filenum)) == NULL && create) {
-        e = malloc(sizeof(struct logfile_pglogs_entry));
-        e->filenum = filenum;
-        e->pglogs_hashtbl =
-            hash_init_o(LOGFILE_PGLOG_OFFSET, LOGFILE_PAGE_KEY_SIZE);
-        e->relinks_hashtbl =
-            hash_init_o(LOGFILE_RELINK_OFFSET, LOGFILE_PAGE_KEY_SIZE);
-        Pthread_mutex_init(&e->pglogs_mutex, NULL);
-        hash_add(logfile_pglogs_repo, e);
-
-#ifdef NEWSI_DEBUG
-        logmsg(LOGMSG_DEBUG,
-               "%s filenum %d created ent %p, pglogs_hashtbl %p, "
-               "relinks_hashtbl %p\n",
-               __func__, filenum, e, e->pglogs_hashtbl, e->relinks_hashtbl);
-#endif
-
-        if (!first_logfile)
-            first_logfile = filenum;
-
-        if (last_logfile < filenum)
-            last_logfile = filenum;
-    }
-    return e;
-}
-
 static int logfile_pglog_tmptbl_cmp(void *_, int key1len, const void *key1,
                                     int key2len, const void *key2)
 {
@@ -1821,6 +1641,9 @@ static int logfile_pglog_tmptbl_cmp(void *_, int key1len, const void *key1,
     assert(key1len == key2len);
     pkey1 = (pglogs_tmptbl_key *)key1;
     pkey2 = (pglogs_tmptbl_key *)key2;
+    rc = memcmp(pkey1->fileid, pkey2->fileid, DB_FILE_ID_LEN);
+    if (rc != 0)
+        return rc;
     if (pkey1->pgno != pkey2->pgno) {
         if (pkey1->pgno < pkey2->pgno)
             return -1;
@@ -1841,6 +1664,9 @@ static int logfile_relink_tmptbl_cmp(void *_, int key1len, const void *key1,
     assert(key1len == key2len);
     pkey1 = (relinks_tmptbl_key *)key1;
     pkey2 = (relinks_tmptbl_key *)key2;
+    rc = memcmp(pkey1->fileid, pkey2->fileid, DB_FILE_ID_LEN);
+    if (rc != 0)
+        return rc;
     if (pkey1->pgno != pkey2->pgno) {
         if (pkey1->pgno < pkey2->pgno)
             return -1;
@@ -1857,90 +1683,76 @@ static int logfile_relink_tmptbl_cmp(void *_, int key1len, const void *key1,
     return 0;
 }
 
-static logfile_pglog_hashkey *
-retrieve_logfile_pglog_hashkey(bdb_state_type *bdb_state,
-                               hash_t *pglogs_hashtbl, unsigned char *fileid,
-                               db_pgno_t pgno, int create)
+// Must be called holding the logfile_pglogs_repo_mutex
+static struct logfile_pglogs_entry *
+retrieve_logfile_pglogs(bdb_state_type *bdb_state, unsigned int filenum,
+                        int create)
 {
     int bdberr = 0;
-    logfile_pglog_hashkey *ent = NULL;
-    logfile_pglog_hashkey key;
-    memcpy(key.fileid, fileid, DB_FILE_ID_LEN);
+    struct logfile_pglogs_entry *e;
 
-    if (((ent = hash_find(pglogs_hashtbl, &key)) == NULL) && create) {
-        ent = allocate_logfile_pglog_hashkey();
-        if (!ent) {
-            logmsg(LOGMSG_ERROR, "%s: failed to init hash key\n", __func__);
-            return NULL;
+    if (logfile_pglogs_repo == NULL)
+        return NULL;
+
+    if ((e = hash_find(logfile_pglogs_repo, &filenum)) == NULL && create) {
+        e = malloc(sizeof(struct logfile_pglogs_entry));
+        e->filenum = filenum;
+        Pthread_mutex_init(&e->pglogs_lk, NULL);
+        e->pglogs_tbl = bdb_temp_table_create(bdb_state, &bdberr);
+        if (e->pglogs_tbl == NULL) {
+            logmsg(LOGMSG_FATAL,
+                   "%s:%d failed to create temp table, bdberr=%d\n", __func__,
+                   __LINE__, bdberr);
+            abort();
         }
-        memcpy(ent->fileid, fileid, DB_FILE_ID_LEN);
-        Pthread_mutex_init(&ent->mtx, NULL);
-        ent->tmptbl = bdb_temp_table_create(bdb_state, &bdberr);
-        if (ent->tmptbl == NULL) {
-            logmsg(LOGMSG_ERROR, "%s: failed to init temp table\n", __func__);
-            return_logfile_pglog_hashkey(ent, bdb_state);
-            return NULL;
+        e->pglogs_cur =
+            bdb_temp_table_cursor(bdb_state, e->pglogs_tbl, NULL, &bdberr);
+        if (e->pglogs_cur == NULL) {
+            logmsg(LOGMSG_FATAL,
+                   "%s:%d failed to create temp cursor, bdberr=%d\n", __func__,
+                   __LINE__, bdberr);
+            abort();
         }
-        ent->tmpcur =
-            bdb_temp_table_cursor(bdb_state, ent->tmptbl, NULL, &bdberr);
-        if (ent->tmpcur == NULL) {
-            logmsg(LOGMSG_ERROR, "%s: failed to init temp cursor\n", __func__);
-            return_logfile_pglog_hashkey(ent, bdb_state);
-            return NULL;
+        bdb_temp_table_set_cmp_func(e->pglogs_tbl, logfile_pglog_tmptbl_cmp);
+
+        Pthread_mutex_init(&e->relinks_lk, NULL);
+        e->relinks_tbl = bdb_temp_table_create(bdb_state, &bdberr);
+        if (e->relinks_tbl == NULL) {
+            logmsg(LOGMSG_FATAL,
+                   "%s:%d failed to create temp table, bdberr=%d\n", __func__,
+                   __LINE__, bdberr);
+            abort();
         }
-        bdb_temp_table_set_cmp_func(ent->tmptbl, logfile_pglog_tmptbl_cmp);
+        e->relinks_cur =
+            bdb_temp_table_cursor(bdb_state, e->relinks_tbl, NULL, &bdberr);
+        if (e->relinks_cur == NULL) {
+            logmsg(LOGMSG_FATAL,
+                   "%s:%d failed to create temp cursor, bdberr=%d\n", __func__,
+                   __LINE__, bdberr);
+            abort();
+        }
+        bdb_temp_table_set_cmp_func(e->relinks_tbl, logfile_relink_tmptbl_cmp);
+
+        hash_add(logfile_pglogs_repo, e);
+
 #ifdef NEWSI_DEBUG
-        char *buf;
-        hexdumpbuf(fileid, DB_FILE_ID_LEN, &buf);
         logmsg(LOGMSG_DEBUG,
-               "%s: hash %p created ent %p for fileid[%s] pgno[%d]\n", __func__,
-               pglogs_hashtbl, ent, buf, pgno);
-        free(buf);
+               "%s filenum %d created ent %p, pglogs_tbl %p, relinks_tbl %p\n",
+               __func__, filenum, e, e->pglogs_tbl, e->relinks_tbl);
 #endif
-        hash_add(pglogs_hashtbl, ent);
-    }
-    return ent;
-}
 
-static logfile_relink_hashkey *
-retrieve_logfile_relink_hashkey(bdb_state_type *bdb_state,
-                                hash_t *relinks_hashtbl, unsigned char *fileid,
-                                db_pgno_t pgno, int create)
-{
-    int bdberr = 0;
-    logfile_relink_hashkey *ent = NULL;
-    logfile_relink_hashkey key;
-    memcpy(key.fileid, fileid, DB_FILE_ID_LEN);
-    if (((ent = hash_find(relinks_hashtbl, &key)) == NULL) && create) {
-        ent = allocate_logfile_relink_hashkey();
-        if (!ent) {
-            logmsg(LOGMSG_ERROR, "%s: failed to init hash key\n", __func__);
-            return NULL;
-        }
-        memcpy(ent->fileid, fileid, DB_FILE_ID_LEN);
-        Pthread_mutex_init(&ent->mtx, NULL);
-        ent->tmptbl = bdb_temp_table_create(bdb_state, &bdberr);
-        if (ent->tmptbl == NULL) {
-            logmsg(LOGMSG_ERROR, "%s: failed to init temp table\n", __func__);
-            return_logfile_relink_hashkey(ent, bdb_state);
-            return NULL;
-        }
-        ent->tmpcur =
-            bdb_temp_table_cursor(bdb_state, ent->tmptbl, NULL, &bdberr);
-        if (ent->tmpcur == NULL) {
-            logmsg(LOGMSG_ERROR, "%s: failed to init temp cursor\n", __func__);
-            return_logfile_relink_hashkey(ent, bdb_state);
-            return NULL;
-        }
-        bdb_temp_table_set_cmp_func(ent->tmptbl, logfile_relink_tmptbl_cmp);
-        hash_add(relinks_hashtbl, ent);
+        if (!first_logfile)
+            first_logfile = filenum;
+
+        if (last_logfile < filenum)
+            last_logfile = filenum;
     }
-    return ent;
+    return e;
 }
 
 int bdb_delete_logfile_pglogs(bdb_state_type *bdb_state, int filenum, int flags)
 {
-    int i, rtn = -1;
+    int rc = 0, bdberr = 0, i, rtn = -1;
     Pthread_mutex_lock(&logfile_pglogs_repo_mutex);
     if (logfile_pglogs_repo == NULL) {
         Pthread_mutex_unlock(&logfile_pglogs_repo_mutex);
@@ -1949,13 +1761,42 @@ int bdb_delete_logfile_pglogs(bdb_state_type *bdb_state, int filenum, int flags)
     for (i = (flags ? filenum : first_logfile); i <= filenum; i++) {
         struct logfile_pglogs_entry *e;
         if ((e = hash_find(logfile_pglogs_repo, &i)) != NULL) {
+            Pthread_mutex_lock(&e->pglogs_lk);
+            rc = bdb_temp_table_close_cursor(bdb_state, e->pglogs_cur, &bdberr);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s:%d error closing temp cursor %d %d\n",
+                       __func__, __LINE__, rc, bdberr);
+            }
+            e->pglogs_cur = NULL;
+            rc = bdb_temp_table_close(bdb_state, e->pglogs_tbl, &bdberr);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s:%d error closing temp table %d %d\n",
+                       __func__, __LINE__, rc, bdberr);
+            }
+            e->pglogs_tbl = NULL;
+            Pthread_mutex_unlock(&e->pglogs_lk);
+            Pthread_mutex_destroy(&e->pglogs_lk);
+
+            Pthread_mutex_lock(&e->relinks_lk);
+            rc =
+                bdb_temp_table_close_cursor(bdb_state, e->relinks_cur, &bdberr);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s:%d error closing temp cursor %d %d\n",
+                       __func__, __LINE__, rc, bdberr);
+            }
+            e->relinks_cur = NULL;
+            rc = bdb_temp_table_close(bdb_state, e->relinks_tbl, &bdberr);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s:%d error closing temp table %d %d\n",
+                       __func__, __LINE__, rc, bdberr);
+            }
+            e->relinks_tbl = NULL;
+            Pthread_mutex_unlock(&e->relinks_lk);
+            Pthread_mutex_destroy(&e->relinks_lk);
+
             hash_del(logfile_pglogs_repo, e);
-            Pthread_mutex_lock(&e->pglogs_mutex);
-            bdb_return_logfile_pglogs_hashtbl(e->pglogs_hashtbl, bdb_state);
-            bdb_return_logfile_relinks_hashtbl(e->relinks_hashtbl, bdb_state);
-            Pthread_mutex_unlock(&e->pglogs_mutex);
-            Pthread_mutex_destroy(&e->pglogs_mutex);
             free(e);
+
             logmsg(LOGMSG_INFO, "%s: deleted filenum %d\n", __func__, filenum);
             rtn = 0;
         }
@@ -2008,8 +1849,8 @@ int transfer_ltran_pglogs_to_gbl(bdb_state_type *bdb_state,
     /* get the logfile we are going to transfer to */
     if (logfile_pglogs_repo_ready) {
         Pthread_mutex_lock(&logfile_pglogs_repo_mutex);
-        l_entry = retrieve_logfile_pglogs(filenum, 1);
-        Pthread_mutex_lock(&l_entry->pglogs_mutex);
+        l_entry = retrieve_logfile_pglogs(bdb_state, filenum, 1);
+        Pthread_mutex_lock(&l_entry->pglogs_lk);
         Pthread_mutex_unlock(&logfile_pglogs_repo_mutex);
 
         Pthread_mutex_lock(&ltran_ent->pglogs_mutex);
@@ -2018,25 +1859,11 @@ int transfer_ltran_pglogs_to_gbl(bdb_state_type *bdb_state,
         pglog_key =
             hash_first(ltran_ent->pglogs_hashtbl, &hash_cur, &hash_cur_buk);
         while (pglog_key) {
-
-            logfile_pglog_hashkey *pglog_ent = NULL;
-            /* find the page in the hash */
-            pglog_ent = retrieve_logfile_pglog_hashkey(
-                bdb_state, l_entry->pglogs_hashtbl, pglog_key->fileid,
-                pglog_key->pgno, 1);
-            if (!pglog_ent)
-                return ENOMEM;
-
-
             /* for each recorded lsn */
             while ((lsn_ent = listc_rtl(&pglog_key->lsns)) != NULL) {
-                Pthread_mutex_lock(&pglog_ent->mtx);
                 rc = bdb_insert_logfile_pglog_int(
-                    bdb_state, l_entry->pglogs_hashtbl,
-                    pglog_ent,
-                    pglog_key->fileid, pglog_key->pgno, lsn_ent->lsn,
-                    logical_commit_lsn);
-                Pthread_mutex_unlock(&pglog_ent->mtx);
+                    bdb_state, l_entry, pglog_key->fileid, pglog_key->pgno,
+                    lsn_ent->lsn, logical_commit_lsn);
                 deallocate_lsn_commit_list(lsn_ent);
                 if (rc) {
                     logmsg(LOGMSG_ERROR,
@@ -2051,7 +1878,7 @@ int transfer_ltran_pglogs_to_gbl(bdb_state_type *bdb_state,
 
     unlock:
         Pthread_mutex_unlock(&ltran_ent->pglogs_mutex);
-        Pthread_mutex_unlock(&l_entry->pglogs_mutex);
+        Pthread_mutex_unlock(&l_entry->pglogs_lk);
     }
 
     Pthread_mutex_destroy(&ltran_ent->pglogs_mutex);
@@ -2099,14 +1926,47 @@ int truncate_asof_pglogs(bdb_state_type *bdb_state, int file, int offset)
     while (bdb_delete_logfile_pglogs(bdb_state, del_log, 1) == 0)
         del_log++;
     Pthread_mutex_lock(&logfile_pglogs_repo_mutex);
-    if ((l_entry = retrieve_logfile_pglogs(file, 0)) != NULL) {
-        struct statelsn slsn;
-        Pthread_mutex_lock(&l_entry->pglogs_mutex);
+    if ((l_entry = retrieve_logfile_pglogs(bdb_state, file, 0)) != NULL) {
+        int rc = 0, bdberr = 0;
+        Pthread_mutex_lock(&l_entry->pglogs_lk);
+        Pthread_mutex_lock(&l_entry->relinks_lk);
         Pthread_mutex_unlock(&logfile_pglogs_repo_mutex);
-        slsn.bdb_state = bdb_state;
-        slsn.lsn = lsn;
-        hash_for(l_entry->pglogs_hashtbl, truncate_pglogs, &slsn);
-        Pthread_mutex_unlock(&l_entry->pglogs_mutex);
+
+        rc = bdb_temp_table_first(bdb_state, l_entry->pglogs_cur, &bdberr);
+        while (!rc) {
+            pglogs_tmptbl_key *rec = bdb_temp_table_key(l_entry->pglogs_cur);
+            if (log_compare(&rec->commit_lsn, &lsn) >= 0) {
+                rc = bdb_temp_table_delete(bdb_state, l_entry->pglogs_cur,
+                                           &bdberr);
+                if (rc) {
+                    logmsg(LOGMSG_FATAL,
+                           "%s:%d failed to delete pglogs-key in temp table. "
+                           "rc %d bdberr %d\n",
+                           __func__, __LINE__, rc, bdberr);
+                    abort();
+                }
+            }
+            rc = bdb_temp_table_next(bdb_state, l_entry->pglogs_cur, &bdberr);
+        }
+        Pthread_mutex_unlock(&l_entry->pglogs_lk);
+
+        rc = bdb_temp_table_first(bdb_state, l_entry->relinks_cur, &bdberr);
+        while (!rc) {
+            relinks_tmptbl_key *rec = bdb_temp_table_key(l_entry->relinks_cur);
+            if (log_compare(&rec->lsn, &lsn) >= 0) {
+                rc = bdb_temp_table_delete(bdb_state, l_entry->relinks_cur,
+                                           &bdberr);
+                if (rc) {
+                    logmsg(LOGMSG_FATAL,
+                           "%s:%d failed to delete relinks-key in temp table. "
+                           "rc %d bdberr %d\n",
+                           __func__, __LINE__, rc, bdberr);
+                    abort();
+                }
+            }
+            rc = bdb_temp_table_next(bdb_state, l_entry->relinks_cur, &bdberr);
+        }
+        Pthread_mutex_unlock(&l_entry->relinks_lk);
     } else
         Pthread_mutex_unlock(&logfile_pglogs_repo_mutex);
 
@@ -2359,7 +2219,7 @@ int bdb_gbl_pglogs_init(bdb_state_type *bdb_state)
         Pthread_mutex_init(&bdb_gbl_recoverable_lsn_mutex, NULL);
 
         logfile_pglogs_repo = hash_init_o(
-            offsetof(struct logfile_pglogs_entry, filenum), sizeof(int));
+            offsetof(struct logfile_pglogs_entry, filenum), sizeof(u_int32_t));
 
         if (!logfile_pglogs_repo) {
             logmsg(LOGMSG_ERROR, "%s: failed to init logfile_pglogs_repo\n",
@@ -2590,16 +2450,17 @@ int bdb_insert_pglogs_logical_int(hash_t *pglogs_hashtbl, unsigned char *fileid,
 }
 
 static int bdb_insert_logfile_pglog_int(bdb_state_type *bdb_state,
-                                        hash_t *pglogs_hashtbl,
-                                        logfile_pglog_hashkey *pglogs_ent,
+                                        struct logfile_pglogs_entry *l_entry,
                                         unsigned char *fileid, db_pgno_t pgno,
                                         DB_LSN lsn, DB_LSN commit_lsn)
 {
 #ifdef NEWSI_DEBUG
     char *buf;
     hexdumpbuf(fileid, DB_FILE_ID_LEN, &buf);
-    logmsg(LOGMSG_DEBUG, "%s: adding lsn [%u][%u] to hash %p, ent %p", __func__,
-           lsn.file, lsn.offset, pglogs_hashtbl, pglogs_ent);
+    logmsg(LOGMSG_DEBUG,
+           "%s: adding lsn [%u][%u] to logfile[%d] %p, pglogs_tbl %p", __func__,
+           lsn.file, lsn.offset, l_entry->filenum, l_entry,
+           l_entry->pglogs_tbl);
     logmsg(LOGMSG_DEBUG, " FILEID[%s] ", buf);
     logmsg(LOGMSG_DEBUG, " PGNO[%d] ", pgno);
     logmsg(LOGMSG_DEBUG, " LSN[%d:%d] ", lsn.file, lsn.offset);
@@ -2608,21 +2469,25 @@ static int bdb_insert_logfile_pglog_int(bdb_state_type *bdb_state,
     logmsg(LOGMSG_DEBUG, "\n");
     free(buf);
 #endif
-    pglogs_tmptbl_key rec = {0};
-    int bdberr;
+    pglogs_tmptbl_key rec;
+    int rc, bdberr = 0;
 
     if (pgno == 0)
         return 0;
 
-    if (!pglogs_ent)
-        return -1;
-
+    memcpy(rec.fileid, fileid, DB_FILE_ID_LEN);
     rec.pgno = pgno;
     rec.lsn = lsn;
     rec.commit_lsn = commit_lsn;
 
-    return bdb_temp_table_insert(bdb_state, pglogs_ent->tmpcur, &rec,
-                                 sizeof(pglogs_tmptbl_key), NULL, 0, &bdberr);
+    rc = bdb_temp_table_insert(bdb_state, l_entry->pglogs_cur, &rec,
+                               sizeof(pglogs_tmptbl_key), NULL, 0, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s:%d failed with rc=%d, bdberr=%d\n", __func__,
+               __LINE__, rc, bdberr);
+    }
+
+    return rc;
 }
 
 int bdb_insert_relinks_int(hash_t *relinks_hashtbl, unsigned char *fileid,
@@ -2704,40 +2569,41 @@ int bdb_insert_relinks_int(hash_t *relinks_hashtbl, unsigned char *fileid,
 }
 
 static int bdb_insert_logfile_relink_int(bdb_state_type *bdb_state,
-                                         hash_t *relinks_hashtbl,
+                                         struct logfile_pglogs_entry *l_entry,
                                          unsigned char *fileid, db_pgno_t pgno,
                                          db_pgno_t prev_pgno,
                                          db_pgno_t next_pgno, DB_LSN lsn)
 {
-    logfile_relink_hashkey *relinks_ent = NULL;
-    relinks_tmptbl_key rec = {0};
+    relinks_tmptbl_key rec;
     int rc, bdberr;
 
     if (pgno == 0)
         return 0;
 
-    relinks_ent = retrieve_logfile_relink_hashkey(bdb_state, relinks_hashtbl,
-                                                  fileid, pgno, 1);
-    if (!relinks_ent)
-        return ENOMEM;
-
+    memcpy(rec.fileid, fileid, DB_FILE_ID_LEN);
     rec.inh = pgno;
     rec.lsn = lsn;
     if (prev_pgno) {
         rec.pgno = prev_pgno;
         rc =
-            bdb_temp_table_insert(bdb_state, relinks_ent->tmpcur, &rec,
+            bdb_temp_table_insert(bdb_state, l_entry->relinks_cur, &rec,
                                   sizeof(relinks_tmptbl_key), NULL, 0, &bdberr);
-        if (rc)
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s:%d failed with rc=%d, bdberr=%d\n",
+                   __func__, __LINE__, rc, bdberr);
             return rc;
+        }
     }
     if (next_pgno) {
         rec.pgno = next_pgno;
         rc =
-            bdb_temp_table_insert(bdb_state, relinks_ent->tmpcur, &rec,
+            bdb_temp_table_insert(bdb_state, l_entry->relinks_cur, &rec,
                                   sizeof(relinks_tmptbl_key), NULL, 0, &bdberr);
-        if (rc)
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s:%d failed with rc=%d, bdberr=%d\n",
+                   __func__, __LINE__, rc, bdberr);
             return rc;
+        }
     }
     return 0;
 }
@@ -2951,29 +2817,16 @@ int bdb_update_logfile_pglogs_from_queue(void *bdb_state, unsigned char *fid,
     filenum = queuekey->lsn.file;
 
     Pthread_mutex_lock(&logfile_pglogs_repo_mutex);
-    l_entry = retrieve_logfile_pglogs(filenum, 1);
-    Pthread_mutex_lock(&l_entry->pglogs_mutex);
+    l_entry = retrieve_logfile_pglogs(bdb_state, filenum, 1);
+    Pthread_mutex_lock(&l_entry->pglogs_lk);
     Pthread_mutex_unlock(&logfile_pglogs_repo_mutex);
 
-    logfile_pglog_hashkey *pglog_ent = NULL;
-    /* find the page in the hash */
-    pglog_ent = retrieve_logfile_pglog_hashkey(
-        bdb_state, l_entry->pglogs_hashtbl, fid, queuekey->pgno, 1);
-    if (!pglog_ent)
-        return ENOMEM;
+    rc = bdb_insert_logfile_pglog_int(bdb_state, l_entry, fid, queuekey->pgno,
+                                      queuekey->lsn, logical_commit_lsn);
 
-    Pthread_mutex_lock(&pglog_ent->mtx);
-    Pthread_mutex_unlock(&l_entry->pglogs_mutex);
-
-    rc = bdb_insert_logfile_pglog_int(bdb_state, l_entry->pglogs_hashtbl,
-                                      pglog_ent,
-                                      fid, queuekey->pgno, queuekey->lsn,
-                                      logical_commit_lsn);
-
+    Pthread_mutex_unlock(&l_entry->pglogs_lk);
     if (rc)
         abort();
-
-    Pthread_mutex_unlock(&pglog_ent->mtx);
 
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
@@ -3005,30 +2858,18 @@ int bdb_update_logfile_pglogs(void *bdb_state, void *pglogs, unsigned int nkeys,
     filenum = logical_commit_lsn.file;
 
     Pthread_mutex_lock(&logfile_pglogs_repo_mutex);
-    l_entry = retrieve_logfile_pglogs(filenum, 1);
-    Pthread_mutex_lock(&l_entry->pglogs_mutex);
+    l_entry = retrieve_logfile_pglogs(bdb_state, filenum, 1);
+    Pthread_mutex_lock(&l_entry->pglogs_lk);
     Pthread_mutex_unlock(&logfile_pglogs_repo_mutex);
 
     /* for each recorded page-lsn pair */
     /* keylist was generated by master in reverse lsn order, so process it in
      * reverse order*/
     for (i = nkeys - 1; i >= 0; i--) {
-        logfile_pglog_hashkey *pglog_ent = NULL;
-        /* find the page in the hash */
-        pglog_ent = retrieve_logfile_pglog_hashkey(
-            bdb_state, l_entry->pglogs_hashtbl, keylist[i].fileid,
-            keylist[i].pgno, 1);
-        if (!pglog_ent)
-            return ENOMEM;
-
-        Pthread_mutex_lock(&pglog_ent->mtx);
-
         if (!fileid_tbl || hash_find(fileid_tbl, keylist[i].fileid) != NULL) {
             rc = bdb_insert_logfile_pglog_int(
-                bdb_state, l_entry->pglogs_hashtbl,
-                pglog_ent,
-                keylist[i].fileid, keylist[i].pgno, keylist[i].lsn,
-                logical_commit_lsn);
+                bdb_state, l_entry, keylist[i].fileid, keylist[i].pgno,
+                keylist[i].lsn, logical_commit_lsn);
         }
 #ifdef NEWSI_DEBUG
         else {
@@ -3038,11 +2879,10 @@ int bdb_update_logfile_pglogs(void *bdb_state, void *pglogs, unsigned int nkeys,
             free(txt);
         }
 #endif
-        Pthread_mutex_unlock(&pglog_ent->mtx);
         if (rc)
             abort();
     }
-    Pthread_mutex_unlock(&l_entry->pglogs_mutex);
+    Pthread_mutex_unlock(&l_entry->pglogs_lk);
 
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
@@ -3250,62 +3090,12 @@ static int bdb_remove_fileid_pglogs_queue(bdb_state_type *bdb_state,
     return 0;
 }
 
-/* Called when the file itself is deleted. */
-static int bdb_remove_logfile_fileid_pglogs(bdb_state_type *bdb_state,
-                                            unsigned char *fileid)
-{
-    unsigned filenum, first_filenum;
-    logfile_pglog_hashkey *pglog_ent = NULL;
-    logfile_relink_hashkey *relink_ent = NULL;
-
-    Pthread_mutex_lock(&logfile_pglogs_repo_mutex);
-    first_filenum = first_logfile;
-    filenum = last_logfile;
-    Pthread_mutex_unlock(&logfile_pglogs_repo_mutex);
-
-    for (; filenum && filenum >= first_filenum; --filenum) {
-        struct logfile_pglogs_entry *l_entry;
-        Pthread_mutex_lock(&logfile_pglogs_repo_mutex);
-        l_entry = retrieve_logfile_pglogs(filenum, 0);
-
-        // No writes ..
-        if (!l_entry) {
-            Pthread_mutex_unlock(&logfile_pglogs_repo_mutex);
-            continue;
-        }
-
-        Pthread_mutex_lock(&l_entry->pglogs_mutex);
-        Pthread_mutex_unlock(&logfile_pglogs_repo_mutex);
-
-        pglog_ent = retrieve_logfile_pglog_hashkey(
-            bdb_state, l_entry->pglogs_hashtbl, fileid, 0, 0);
-        if (pglog_ent) {
-            hash_del(l_entry->pglogs_hashtbl, pglog_ent);
-            return_logfile_pglog_hashkey(pglog_ent, bdb_state);
-        }
-        relink_ent = retrieve_logfile_relink_hashkey(
-            bdb_state, l_entry->relinks_hashtbl, fileid, 0, 0);
-        if (relink_ent) {
-            hash_del(l_entry->relinks_hashtbl, relink_ent);
-            return_logfile_relink_hashkey(relink_ent, bdb_state);
-        }
-
-        Pthread_mutex_unlock(&l_entry->pglogs_mutex);
-    }
-
-    return 0;
-}
-
 void bdb_remove_fileid_pglogs(bdb_state_type *bdb_state, unsigned char *fileid)
 {
     if (!gbl_new_snapisol)
         return;
 
     bdb_remove_fileid_pglogs_queue(bdb_state, fileid);
-
-    if (!gbl_new_snapisol_asof)
-        return;
-    bdb_remove_logfile_fileid_pglogs(bdb_state, fileid);
 }
 
 struct pglog_queue_heads {
@@ -3463,12 +3253,12 @@ int bdb_relink_logfile_pglogs(void *bdb_state, unsigned char *fileid,
 
     filenum = lsn.file;
     Pthread_mutex_lock(&logfile_pglogs_repo_mutex);
-    l_entry = retrieve_logfile_pglogs(filenum, 1);
-    Pthread_mutex_lock(&l_entry->pglogs_mutex);
+    l_entry = retrieve_logfile_pglogs(bdb_state, filenum, 1);
+    Pthread_mutex_lock(&l_entry->relinks_lk);
     Pthread_mutex_unlock(&logfile_pglogs_repo_mutex);
 
     if (fileid_tbl && hash_find(fileid_tbl, fileid) == NULL) {
-        Pthread_mutex_unlock(&l_entry->pglogs_mutex);
+        Pthread_mutex_unlock(&l_entry->relinks_lk);
 #ifdef NEWSI_DEBUG
         char *txt;
         hexdumpbuf(fileid, DB_FILE_ID_LEN, &txt);
@@ -3478,12 +3268,12 @@ int bdb_relink_logfile_pglogs(void *bdb_state, unsigned char *fileid,
         return 0;
     }
 
-    rc = bdb_insert_logfile_relink_int(bdb_state, l_entry->relinks_hashtbl,
-                                       fileid, pgno, prev_pgno, next_pgno, lsn);
+    rc = bdb_insert_logfile_relink_int(bdb_state, l_entry, fileid, pgno,
+                                       prev_pgno, next_pgno, lsn);
     if (rc)
         abort();
 
-    Pthread_mutex_unlock(&l_entry->pglogs_mutex);
+    Pthread_mutex_unlock(&l_entry->relinks_lk);
 
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
@@ -7387,13 +7177,11 @@ static int bdb_copy_logfile_pglogs_to_shadow_tran(bdb_state_type *bdb_state,
 {
     int rc = 0;
 
-    logfile_pglog_hashkey *pglog_ent = NULL;
     struct pglogs_key client_pglog_key;
     struct pglogs_key *client_pglog_ent = NULL;
     struct lsn_list *add_lsnent = NULL;
     struct lsn_list *add_before_lsnent = NULL;
 
-    logfile_relink_hashkey *relink_ent = NULL;
     struct pglogs_relink_key client_relink_key;
     struct pglogs_relink_key *client_relink_ent = NULL;
     struct relink_list *add_rlent = NULL;
@@ -7436,7 +7224,7 @@ static int bdb_copy_logfile_pglogs_to_shadow_tran(bdb_state_type *bdb_state,
     for (; filenum && filenum >= first_filenum; --filenum) {
         struct logfile_pglogs_entry *l_entry;
         Pthread_mutex_lock(&logfile_pglogs_repo_mutex);
-        l_entry = retrieve_logfile_pglogs(filenum, 0);
+        l_entry = retrieve_logfile_pglogs(bdb_state, filenum, 0);
 
         // No writes ..
         if (!l_entry) {
@@ -7444,43 +7232,25 @@ static int bdb_copy_logfile_pglogs_to_shadow_tran(bdb_state_type *bdb_state,
             continue;
         }
 
-        Pthread_mutex_lock(&l_entry->pglogs_mutex);
+        Pthread_mutex_lock(&l_entry->pglogs_lk);
+        Pthread_mutex_lock(&l_entry->relinks_lk);
         Pthread_mutex_unlock(&logfile_pglogs_repo_mutex);
 
-        pglog_ent = retrieve_logfile_pglog_hashkey(
-            bdb_state, l_entry->pglogs_hashtbl, fileid, pgno, 0);
-        relink_ent = retrieve_logfile_relink_hashkey(
-            bdb_state, l_entry->relinks_hashtbl, fileid, pgno, 0);
-        if (!pglog_ent && !relink_ent) {
-            Pthread_mutex_unlock(&l_entry->pglogs_mutex);
-            continue;
-        }
-        if (pglog_ent) {
-            Pthread_mutex_lock(&pglog_ent->mtx);
-        }
-        if (relink_ent) {
-            Pthread_mutex_lock(&relink_ent->mtx);
-        }
-        Pthread_mutex_unlock(&l_entry->pglogs_mutex);
-
-        pglogs_tmptbl_key pgrec = {0};
+        pglogs_tmptbl_key pgrec;
         pglogs_tmptbl_key *pgfndkey = NULL;
-        if (pglog_ent) {
-            pgrec.pgno = pgno;
-            pgrec.lsn = (DB_LSN){.file = 0, .offset = 0};
-            pgrec.commit_lsn = shadow_tran->asof_lsn;
-            pgrec.commit_lsn.offset++;
-            bdb_temp_table_find(bdb_state, pglog_ent->tmpcur, &pgrec,
-                                sizeof(pglogs_tmptbl_key), NULL, bdberr);
-            pgfndkey = bdb_temp_table_key(pglog_ent->tmpcur);
-            /* nothing to copy */
-            if (!pgfndkey) {
-                Pthread_mutex_unlock(&pglog_ent->mtx);
-                pglog_ent = NULL;
-            }
-        }
-        /* copy pglogs */
-        if (pglog_ent) {
+
+        memcpy(pgrec.fileid, fileid, DB_FILE_ID_LEN);
+        pgrec.pgno = pgno;
+        pgrec.lsn = (DB_LSN){.file = 0, .offset = 0};
+        pgrec.commit_lsn = shadow_tran->asof_lsn;
+        pgrec.commit_lsn.offset++;
+        bdb_temp_table_find(bdb_state, l_entry->pglogs_cur, &pgrec,
+                            sizeof(pglogs_tmptbl_key), NULL, bdberr);
+        pgfndkey = bdb_temp_table_key(l_entry->pglogs_cur);
+        /* nothing to copy if notfound or found something different */
+        if (pgfndkey != NULL &&
+            !memcmp(pgfndkey->fileid, fileid, DB_FILE_ID_LEN) &&
+            pgfndkey->pgno == pgno) {
             /* get the same page in the global structure */
             if ((client_pglog_ent = hash_find(shadow_tran->pglogs_hashtbl,
                                               &client_pglog_key)) == NULL) {
@@ -7500,19 +7270,24 @@ static int bdb_copy_logfile_pglogs_to_shadow_tran(bdb_state_type *bdb_state,
             /* for each recorded lsn */
             pgrec.commit_lsn = shadow_tran->birth_lsn;
             pgrec.commit_lsn.offset++;
-            bdb_temp_table_find(bdb_state, pglog_ent->tmpcur, &pgrec,
+            bdb_temp_table_find(bdb_state, l_entry->pglogs_cur, &pgrec,
                                 sizeof(pglogs_tmptbl_key), NULL, bdberr);
-            pgfndkey = bdb_temp_table_key(pglog_ent->tmpcur);
-            if (pgfndkey && pgfndkey->pgno != pgno) {
-                bdb_temp_table_move(bdb_state, pglog_ent->tmpcur, DB_PREV,
+            pgfndkey = bdb_temp_table_key(l_entry->pglogs_cur);
+            if (pgfndkey && (memcmp(pgfndkey->fileid, fileid, DB_FILE_ID_LEN) ||
+                             pgfndkey->pgno != pgno)) {
+                /* got something different */
+                bdb_temp_table_move(bdb_state, l_entry->pglogs_cur, DB_PREV,
                                     bdberr);
-                pgfndkey = bdb_temp_table_key(pglog_ent->tmpcur);
+                pgfndkey = bdb_temp_table_key(l_entry->pglogs_cur);
             } else if (!pgfndkey) {
-                bdb_temp_table_move(bdb_state, pglog_ent->tmpcur, DB_LAST,
+                /* got nothing */
+                bdb_temp_table_move(bdb_state, l_entry->pglogs_cur, DB_LAST,
                                     bdberr);
-                pgfndkey = bdb_temp_table_key(pglog_ent->tmpcur);
+                pgfndkey = bdb_temp_table_key(l_entry->pglogs_cur);
             }
-            while (pgfndkey != NULL && pgfndkey->pgno == pgno &&
+            while (pgfndkey != NULL &&
+                   !memcmp(pgfndkey->fileid, fileid, DB_FILE_ID_LEN) &&
+                   pgfndkey->pgno == pgno &&
                    log_compare(&pgfndkey->commit_lsn, &shadow_tran->asof_lsn) >
                        0) {
                 if (log_compare(&pgfndkey->commit_lsn,
@@ -7546,30 +7321,28 @@ static int bdb_copy_logfile_pglogs_to_shadow_tran(bdb_state_type *bdb_state,
 #endif
                 }
 
-                bdb_temp_table_move(bdb_state, pglog_ent->tmpcur, DB_PREV,
+                bdb_temp_table_move(bdb_state, l_entry->pglogs_cur, DB_PREV,
                                     bdberr);
-                pgfndkey = bdb_temp_table_key(pglog_ent->tmpcur);
+                pgfndkey = bdb_temp_table_key(l_entry->pglogs_cur);
             }
-            Pthread_mutex_unlock(&pglog_ent->mtx);
         }
+        Pthread_mutex_unlock(&l_entry->pglogs_lk);
 
-        relinks_tmptbl_key rlrec = {0};
+        relinks_tmptbl_key rlrec;
         relinks_tmptbl_key *rlfndkey = NULL;
-        if (relink_ent) {
-            rlrec.pgno = pgno;
-            rlrec.lsn = shadow_tran->asof_ref_lsn;
-            rlrec.lsn.offset++;
-            bdb_temp_table_find(bdb_state, relink_ent->tmpcur, &rlrec,
-                                sizeof(relinks_tmptbl_key), NULL, bdberr);
-            rlfndkey = bdb_temp_table_key(relink_ent->tmpcur);
-            /* nothing to copy */
-            if (!rlfndkey) {
-                Pthread_mutex_unlock(&relink_ent->mtx);
-                relink_ent = NULL;
-            }
-        }
-        /* copy relinks */
-        if (relink_ent) {
+
+        memcpy(rlrec.fileid, fileid, DB_FILE_ID_LEN);
+        rlrec.pgno = pgno;
+        rlrec.lsn = shadow_tran->asof_ref_lsn;
+        rlrec.lsn.offset++;
+        rlrec.inh = 0;
+        bdb_temp_table_find(bdb_state, l_entry->relinks_cur, &rlrec,
+                            sizeof(relinks_tmptbl_key), NULL, bdberr);
+        rlfndkey = bdb_temp_table_key(l_entry->relinks_cur);
+        /* nothing to copy if notfound or found something different */
+        if (rlfndkey != NULL &&
+            !memcmp(rlfndkey->fileid, fileid, DB_FILE_ID_LEN) &&
+            rlfndkey->pgno == pgno) {
             /* get the same page in the global structure */
             if ((client_relink_ent = hash_find(shadow_tran->relinks_hashtbl,
                                                &client_relink_key)) == NULL) {
@@ -7589,17 +7362,20 @@ static int bdb_copy_logfile_pglogs_to_shadow_tran(bdb_state_type *bdb_state,
             /* for each recorded lsn */
             rlrec.lsn = shadow_tran->birth_lsn;
             rlrec.lsn.offset++;
-            bdb_temp_table_find(bdb_state, relink_ent->tmpcur, &rlrec,
+            bdb_temp_table_find(bdb_state, l_entry->relinks_cur, &rlrec,
                                 sizeof(relinks_tmptbl_key), NULL, bdberr);
-            rlfndkey = bdb_temp_table_key(relink_ent->tmpcur);
-            if (rlfndkey && rlfndkey->pgno != pgno) {
-                bdb_temp_table_move(bdb_state, relink_ent->tmpcur, DB_PREV,
+            rlfndkey = bdb_temp_table_key(l_entry->relinks_cur);
+            if (rlfndkey && (memcmp(rlfndkey->fileid, fileid, DB_FILE_ID_LEN) ||
+                             rlfndkey->pgno != pgno)) {
+                /* got something different */
+                bdb_temp_table_move(bdb_state, l_entry->relinks_cur, DB_PREV,
                                     bdberr);
-                rlfndkey = bdb_temp_table_key(relink_ent->tmpcur);
+                rlfndkey = bdb_temp_table_key(l_entry->relinks_cur);
             } else if (!rlfndkey) {
-                bdb_temp_table_move(bdb_state, relink_ent->tmpcur, DB_LAST,
+                /* got nothing */
+                bdb_temp_table_move(bdb_state, l_entry->relinks_cur, DB_LAST,
                                     bdberr);
-                rlfndkey = bdb_temp_table_key(relink_ent->tmpcur);
+                rlfndkey = bdb_temp_table_key(l_entry->relinks_cur);
             }
             while (rlfndkey != NULL && rlfndkey->pgno == pgno &&
                    log_compare(&rlfndkey->lsn, &shadow_tran->asof_ref_lsn) >
@@ -7626,12 +7402,12 @@ static int bdb_copy_logfile_pglogs_to_shadow_tran(bdb_state_type *bdb_state,
                     }
                 }
 
-                bdb_temp_table_move(bdb_state, relink_ent->tmpcur, DB_PREV,
+                bdb_temp_table_move(bdb_state, l_entry->relinks_cur, DB_PREV,
                                     bdberr);
-                rlfndkey = bdb_temp_table_key(relink_ent->tmpcur);
+                rlfndkey = bdb_temp_table_key(l_entry->relinks_cur);
             }
-            Pthread_mutex_unlock(&relink_ent->mtx);
         }
+        Pthread_mutex_unlock(&l_entry->relinks_lk);
     }
 
 #ifdef NEWSI_STAT

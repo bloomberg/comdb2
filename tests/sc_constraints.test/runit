@@ -711,6 +711,16 @@ EOF
     fi
     rm failedalter
 
+    echo "rebuild t10 and make sure we dont mistakenly fail schemachange"
+    do_alter t10_1 &
+    sleep 10
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "update t10 set a = 2, blb = x'aaaa'"
+    wait
+    if [ -f failedalter ] ; then
+        failexit "SC should not fail for rebuild t10.1"
+    fi
+    rm failedalter
+
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "put schemachange convertsleep 0"
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "alter table t10 { `cat t10.csc2 ` }"
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "put schemachange convertsleep 20"

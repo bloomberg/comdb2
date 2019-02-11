@@ -46,6 +46,7 @@
 #include <lockmacro.h>
 #include <memory_sync.h>
 #include <rtcpu.h>
+#include <unistd.h>
 
 #include "comdb2.h"
 #include "tag.h"
@@ -134,10 +135,6 @@ static int block_state_offset_from_ptr(block_state_t *p_blkstate,
 
 int gbl_blockop_count_xrefs[BLOCK_MAXOPCODE];
 const char *gbl_blockop_name_xrefs[NUM_BLOCKOP_OPCODES];
-
-static int findblkseq(struct ireq *iq, block_state_t *blkstate,
-                      fstblkseq_t *seq, int *have_keyless_requests);
-
 
 static int block2_qadd(struct ireq *iq, block_state_t *p_blkstate, void *trans,
                        struct packedreq_qadd *buf, blob_buffer_t *blobs)
@@ -1515,17 +1512,7 @@ int tolongblock(struct ireq *iq)
                 break;
             }
 
-            case BLOCK2_ADDKL:
-            case BLOCK2_ADDKL_POS:
-            case BLOCK2_DELKL:
-            case BLOCK2_UPDKL:
-            case BLOCK2_UPDKL_POS:
-            case BLOCK2_RNGDELKL:
-            case BLOCK2_QADD:
-            case BLOCK2_SOCK_SQL:
-            case BLOCK2_RECOM:
-            case BLOCK2_SNAPISOL:
-            case BLOCK2_SERIAL:
+            default:
                 break;
             }
             if (blklong_trans != NULL)
@@ -2429,6 +2416,129 @@ static void backout_and_abort_tranddl(struct ireq *iq, tran_type *parent,
     iq->sc_logical_tran = NULL;
 }
 
+static int pack_up_response(struct ireq *iq, int have_keyless_requests,
+                            int num_reqs, int numerrs, struct block_err *err,
+                            int rc, int opnum)
+{
+    if (!have_keyless_requests) {
+        struct block_rsp rsp;
+
+        rsp.num_completed = opnum;
+
+        if (!(iq->p_buf_out =
+                  block_rsp_put(&rsp, iq->p_buf_out, iq->p_buf_out_end)))
+            return ERR_INTERNAL;
+
+        /* rcodes */
+        for (int jj = 0; jj < num_reqs; jj++) {
+            int rcode;
+
+            rcode = (jj == opnum) ? rc : 0;
+            if (!(iq->p_buf_out = buf_put(&rcode, sizeof(rcode), iq->p_buf_out,
+                                          iq->p_buf_out_end)))
+                return ERR_INTERNAL;
+        }
+
+        /* rrns */
+        for (int jj = 0; jj < num_reqs; jj++) {
+            int rrn;
+
+            rrn = (jj < opnum) ? 2 : 0;
+            if (!(iq->p_buf_out = buf_put(&rrn, sizeof(rrn), iq->p_buf_out,
+                                          iq->p_buf_out_end)))
+                return ERR_INTERNAL;
+
+#if 0
+            reqmoref(iq, " a%d:%d", jj, p_blkstate->rsp.packed_rc_rrn_brc[jj]);
+            reqmoref(iq, " b%d:%d", jj,
+                    p_blkstate->rsp.packed_rc_rrn_brc[jj+num_reqs]);
+            reqmoref(iq, " c%d:%d", jj,
+                    p_blkstate->rsp.packed_rc_rrn_brc[jj + num_reqs * 2]);
+#endif
+        }
+
+        /* borcodes */
+        if (!(iq->p_buf_out = buf_zero_put(sizeof(int) * num_reqs,
+                                           iq->p_buf_out, iq->p_buf_out_end)))
+            return ERR_INTERNAL;
+    } else {
+        if (iq->is_block2positionmode) {
+            struct block_rspkl_pos rspkl_pos;
+
+            rspkl_pos.num_completed = opnum;
+
+            rspkl_pos.position = iq->last_genid;
+
+            if (numerrs)
+                rspkl_pos.numerrs = 1;
+
+            if (!(iq->p_buf_out = block_rspkl_pos_put(&rspkl_pos, iq->p_buf_out,
+                                                      iq->p_buf_out_end)))
+                return ERR_INTERNAL;
+
+            if (numerrs) {
+                if (!(iq->p_buf_out =
+                          block_err_put(err, iq->p_buf_out, iq->p_buf_out_end)))
+                    return ERR_INTERNAL;
+            }
+
+        } else {
+            struct block_rspkl rspkl;
+
+            rspkl.num_completed = opnum;
+
+            if (numerrs)
+                rspkl.numerrs = 1;
+
+            if (!(iq->p_buf_out = block_rspkl_put(&rspkl, iq->p_buf_out,
+                                                  iq->p_buf_out_end)))
+                return ERR_INTERNAL;
+
+            if (numerrs) {
+                if (!(iq->p_buf_out =
+                          block_err_put(err, iq->p_buf_out, iq->p_buf_out_end)))
+                    return ERR_INTERNAL;
+            }
+        }
+    }
+    return 0;
+}
+
+static inline int check_for_node_up(struct ireq *iq, block_state_t *p_blkstate)
+{
+    /* If we get here and we are rtcpu-ed AND this is a cluster,
+     * return RC_TRAN_CLIENT_RETRY. */
+    if (debug_switch_reject_writes_on_rtcpu() && is_node_up(gbl_mynode) != 1) {
+        const char *nodes[REPMAX];
+        int nsiblings;
+        nsiblings = net_get_all_nodes_connected(thedb->handle_sibling, nodes);
+        if (nsiblings >= 1) {
+            reqprintf(iq, "Master is swinging, repeat the request");
+            /* The client code doesn't retry correctly if the request
+               is (1) a non-long transaction or, (2) a long transaction of a
+               single packet.  So if the block request was a single packet,
+               send back a return code telling the proxy to retry.  Otherwise,
+               the client code needs to retry (and handles it correctly).  The
+               reason the client doesn't handle single-buffer retries correctly
+               is that it doesn't make copies of these requests since the proxy
+               already has it.  Thus the proxy, not the client should retry. */
+            if (iq->is_socketrequest) {
+                /* We don't have proxy in this case so the client which has to
+                 * retry. */
+                return RC_TRAN_CLIENT_RETRY;
+            }
+            if (iq->opcode == OP_BLOCK || p_blkstate->numreq == 1) {
+                return 999; /* no dedicated code for proxy retry... */
+            } else if (p_blkstate->longblock_single == 1) {
+                return 999; /* no dedicated code for proxy retry... */
+            } else {
+                return RC_TRAN_CLIENT_RETRY;
+            }
+        }
+    }
+    return 0;
+}
+
 static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             struct ireq *iq, block_state_t *p_blkstate)
 {
@@ -2439,7 +2549,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     int rc = 0, ixkeylen, rrn;
     int irc = 0;
     char *source_host;
-    char key[MAXKEYLEN];
     tran_type *trans = NULL; /*transaction handle */
     tran_type *parent_trans = NULL;
     /* for updates */
@@ -2447,15 +2556,13 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     int saved_rrn = 0;
     int addrrn;
     int outrc=-1;
-    char ondisk_tag[MAXTAGLEN], client_tag[MAXTAGLEN];
     unsigned char nulls[MAXNULLBITS] = {0};
     unsigned long long genid = 0;
     int have_blkseq = 0;
-    int have_keyless_requests = 0;
+    bool have_keyless_requests = 0;
     int numerrs = 0;
     int constraint_violation = 0;
     struct block_err err;
-    long long seqno;
     int opcode_counts[NUM_BLOCKOP_OPCODES];
     int nops = 0;
     int is_block2sqlmode = 0; /* set this for all osql modes */
@@ -2477,9 +2584,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
      * After each keyless write op we clear this buffer ready for the next one.
      */
     blob_buffer_t blobs[MAXBLOBS];
-
     int delayed = 0;
-
     int hascommitlock = 0;
 
     /* zero this out very high up or we can crash if we get to backout: without
@@ -2535,39 +2640,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     if (iq->is_sorese)
         osql_needtransaction = OSQL_BPLOG_RECREATEDTRANS;
 
-    /* If we get here and we are rtcpu-ed AND this is a cluster,
-     * return RC_TRAN_CLIENT_RETRY. */
-    if (debug_switch_reject_writes_on_rtcpu() && is_node_up(gbl_mynode) != 1) {
-        const char *nodes[REPMAX];
-        int nsiblings;
-        nsiblings = net_get_all_nodes_connected(thedb->handle_sibling, nodes);
-        if (nsiblings >= 1) {
-            reqprintf(iq, "Master is swinging, repeat the request");
-            /* The client code doesn't retry correctly if the request
-               is (1) a non-long transaction or, (2) a long transaction of a
-               single
-               packet .  So if the block request was a single packet, send back
-               a return code telling the proxy to retry.  Otherwise, the client
-               code needs to retry (and handles it correctly).  The reason the
-               client
-               doesn't handle single-buffer retries correctly is that it doesn't
-               make copies of these requests since the proxy already has it.
-               Thus
-               the proxy, not the client should retry. */
-            if (iq->is_socketrequest) {
-                /* We don't have proxy in this case so the client which has to
-                 * retry. */
-                return RC_TRAN_CLIENT_RETRY;
-            }
-            if (iq->opcode == OP_BLOCK || p_blkstate->numreq == 1) {
-                return 999; /* no dedicated code for proxy retry... */
-            } else if (p_blkstate->longblock_single == 1) {
-                return 999; /* no dedicated code for proxy retry... */
-            } else {
-                return RC_TRAN_CLIENT_RETRY;
-            }
-        }
-    }
+    int lrc = check_for_node_up(iq, p_blkstate);
+    if (lrc)
+        return lrc;
 
     /* adding this back temporarily so I can get blockop counts again. this
        really just belongs in the main loop (should get its own logger event
@@ -2798,6 +2873,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             useqno = bdb_get_timestamp(thedb->bdb_env);
             memcpy(&p_blkstate->seqno, &useqno, sizeof(unsigned long long));
         } else {
+            long long seqno;
             rc = get_next_seqno(trans, &seqno);
 
             /* This can fail if we deadlock with another transaction.
@@ -3353,6 +3429,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 BACKOUT;
             }
 
+            char ondisk_tag[MAXTAGLEN], client_tag[MAXTAGLEN];
+            char key[MAXKEYLEN];
             /* ix 0 is unique: use it to find record,
                use record to form and delete other keys */
             snprintf(client_tag, MAXTAGLEN, ".DEFAULT_IX_0");
@@ -4311,6 +4389,13 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             is_block2sqlmode = 1;
             have_keyless_requests = 1;
 
+            int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_AFTER_SAVEOP_DONE);
+            if (d_ms) {
+                logmsg(LOGMSG_DEBUG,
+                       "Sleeping for DELAY_AFTER_SAVEOP_DONE (%dms)\n", d_ms);
+                usleep(1000 * d_ms);
+            }
+
             if (!(iq->p_buf_in = packedreq_sql_get(
                       &sql, iq->p_buf_in, p_blkstate->p_buf_next_start))) {
                 if (iq->debug)
@@ -4611,6 +4696,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         if (iq->tranddl) {
             if (gbl_replicate_local && get_dbtable_by_name("comdb2_oplog") &&
                 !gbl_replicate_local_concurrent) {
+                long long seqno;
                 rc = get_next_seqno(trans, &seqno);
                 if (rc) {
                     if (rc != RC_INTERNAL_RETRY)
@@ -5145,100 +5231,10 @@ backout:
         reqprintf(iq, "%p:TRANSACTION ABORTED, RC %d ERRCODE %d", trans, rc,
                   err.errcode);
 
-    /* pack up response. */
-    if (!have_keyless_requests) {
-        struct block_rsp rsp;
-
-        /* pack up response. */
-
-        rsp.num_completed = opnum;
-
-        if (!(iq->p_buf_out =
-                  block_rsp_put(&rsp, iq->p_buf_out, iq->p_buf_out_end)))
-            /* TODO can I just return here? should prob go to cleanup ? */
-            return ERR_INTERNAL;
-
-        /* rcodes */
-        for (jj = 0; jj < num_reqs; jj++) {
-            int rcode;
-
-            rcode = (jj == opnum) ? rc : 0;
-            if (!(iq->p_buf_out = buf_put(&rcode, sizeof(rcode), iq->p_buf_out,
-                                          iq->p_buf_out_end)))
-                /* TODO can I just return here? should prob go to cleanup ? */
-                return ERR_INTERNAL;
-        }
-
-        /* rrns */
-        for (jj = 0; jj < num_reqs; jj++) {
-            int rrn;
-
-            rrn = (jj < opnum) ? 2 : 0;
-            if (!(iq->p_buf_out = buf_put(&rrn, sizeof(rrn), iq->p_buf_out,
-                                          iq->p_buf_out_end)))
-                /* TODO can I just return here? should prob go to cleanup ? */
-                return ERR_INTERNAL;
-
-#if 0
-            reqmoref(iq, " a%d:%d", jj, p_blkstate->rsp.packed_rc_rrn_brc[jj]);
-            reqmoref(iq, " b%d:%d", jj,
-                    p_blkstate->rsp.packed_rc_rrn_brc[jj+num_reqs]);
-            reqmoref(iq, " c%d:%d", jj,
-                    p_blkstate->rsp.packed_rc_rrn_brc[jj + num_reqs * 2]);
-#endif
-        }
-
-        /* borcodes */
-        if (!(iq->p_buf_out = buf_zero_put(sizeof(int) * num_reqs,
-                                           iq->p_buf_out, iq->p_buf_out_end)))
-            /* TODO can I just return here? should prob go to cleanup ? */
-            return ERR_INTERNAL;
-    } else {
-        if (iq->is_block2positionmode) {
-            struct block_rspkl_pos rspkl_pos;
-
-            rspkl_pos.num_completed = opnum;
-
-            rspkl_pos.position = iq->last_genid;
-
-            if (numerrs)
-                rspkl_pos.numerrs = 1;
-
-            if (!(iq->p_buf_out = block_rspkl_pos_put(&rspkl_pos, iq->p_buf_out,
-                                                      iq->p_buf_out_end)))
-                /* TODO can I just return here? should prob go to cleanup ? */
-                return ERR_INTERNAL;
-
-            if (numerrs) {
-                if (!(iq->p_buf_out = block_err_put(&err, iq->p_buf_out,
-                                                    iq->p_buf_out_end)))
-                    /* TODO can I just return here? should prob go to cleanup ?
-                     */
-                    return ERR_INTERNAL;
-            }
-
-        } else {
-            struct block_rspkl rspkl;
-
-            rspkl.num_completed = opnum;
-
-            if (numerrs)
-                rspkl.numerrs = 1;
-
-            if (!(iq->p_buf_out = block_rspkl_put(&rspkl, iq->p_buf_out,
-                                                  iq->p_buf_out_end)))
-                /* TODO can I just return here? should prob go to cleanup ? */
-                return ERR_INTERNAL;
-
-            if (numerrs) {
-                if (!(iq->p_buf_out = block_err_put(&err, iq->p_buf_out,
-                                                    iq->p_buf_out_end)))
-                    /* TODO can I just return here? should prob go to cleanup ?
-                     */
-                    return ERR_INTERNAL;
-            }
-        }
-    }
+    lrc = pack_up_response(iq, have_keyless_requests, num_reqs, numerrs, &err,
+                           rc, opnum);
+    if (lrc) /* TODO can I just return here? should prob go to cleanup ? */
+        return lrc;
 
 #if 0
     printf("**toblock error reply_len %d rc %d\n", iq->reply_len,
@@ -5325,25 +5321,19 @@ add_blkseq:
                            BLOCK_RSPKL_LEN + FSTBLK_RSPERR_LEN +
                            FSTBLK_RSPOK_LEN + (BLOCK_ERR_LEN * MAXBLOCKOPS) +
                            sizeof(int) + ERRSTAT_LEN + sizeof(int) + sizeof(int)];
-        uint8_t *p_buf_fstblk;
-        const uint8_t *p_buf_fstblk_end;
 
-        p_buf_fstblk = buf_fstblk;
-        p_buf_fstblk_end = buf_fstblk + sizeof(buf_fstblk);
+        uint8_t *p_buf_fstblk = buf_fstblk;
+        const uint8_t *p_buf_fstblk_end = buf_fstblk + sizeof(buf_fstblk);
 
         /* add the response array as a dta record */
         if (!have_keyless_requests) {
             struct block_rsp rsp;
-
-            const uint8_t *p_buf_rsp_unpack;
-
             size_t num_rrns;
-
             struct fstblk_header fstblk_header;
+            const uint8_t *p_buf_rsp_unpack = p_buf_rsp_start;
 
             /* unpack the rsp that we just packed above (there is almost
              * certainly a more efficient way to do this) */
-            p_buf_rsp_unpack = p_buf_rsp_start;
             if (!(p_buf_rsp_unpack =
                       block_rsp_get(&rsp, p_buf_rsp_unpack, iq->p_buf_out))) {
                 /* TODO can I just return here? should prob go to cleanup ? */

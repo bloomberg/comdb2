@@ -41,7 +41,7 @@
 #include <flibc.h>
 #include <net_types.h>
 #include <errstat.h>
-#include <views_cron.h>
+#include "cron.h"
 #include <bpfunc.h>
 #include <strbuf.h>
 #include <logmsg.h>
@@ -49,6 +49,7 @@
 #include "str0.h"
 #include "sc_struct.h"
 #include <compat.h>
+#include <unistd.h>
 
 #define BLKOUT_DEFAULT_DELTA 5
 #define MAX_CLUSTER 16
@@ -3663,6 +3664,13 @@ int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
         logmsg(LOGMSG_ERROR, "%s offload_net_send returns rc=%d\n", __func__,
                rc);
 
+    int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_AFTER_SAVEOP_USEDB);
+    if (d_ms) {
+        logmsg(LOGMSG_DEBUG, "Sleeping for DELAY_AFTER_SAVEOP_USEDB (%dms)\n",
+               d_ms);
+        usleep(1000 * d_ms);
+    }
+
     return rc;
 }
 
@@ -6209,7 +6217,7 @@ static void net_osql_rpl(void *hndl, void *uptr, char *fromnode, int usertype,
 
 #ifdef TEST_OSQL
     fprintf(stdout, "%s: calling sorese_rcvrpl type=%d sid=%llu\n", __func__,
-            netrpl2req(type), ((osql_rpl_t *)dtap)->sid);
+            netrpl2req(usertype), ((osql_rpl_t *)dtap)->sid);
 #endif
 #if 0
     printf("NET RPL rqid=%llu tmp=%llu\n", ((osql_rpl_t*)dtap)->sid, osql_log_time());
@@ -7262,7 +7270,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         (*receivedrows)++;
     } break;
     case OSQL_UPDCOLS: {
-        osql_updcols_t dt;
+        osql_updcols_t dt = {0};
         const uint8_t *p_buf_end = p_buf + sizeof(osql_updcols_t);
         int i;
 
@@ -7781,7 +7789,7 @@ static void net_sorese_signal(void *hndl, void *uptr, char *fromhost,
                               int usertype, void *dtap, int dtalen,
                               uint8_t is_tcp)
 {
-    osql_done_t done;
+    osql_done_t done = {0};
     struct errstat *xerr;
     uint8_t *p_buf = (uint8_t *)dtap;
     uint8_t *p_buf_end = p_buf + dtalen;
@@ -8177,7 +8185,7 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     } break;
 
     case OSQL_UPDCOLS: {
-        osql_updcols_t dt;
+        osql_updcols_t dt = {0};
         // uint8_t         *p_buf= (uint8_t *)&((osql_updcols_rpl_t*)msg)->dt;
         uint8_t *p_buf_end = p_buf + sizeof(osql_updcols_t);
         int jj;
@@ -9443,7 +9451,7 @@ static void uprec_sender_array_init(void)
     // kick off upgradetable cron
     uprec_sched =
         cron_add_event(NULL, "uprec_cron", INT_MIN, uprec_cron_kickoff, NULL,
-                       NULL, NULL, NULL, &xerr);
+                       NULL, NULL, NULL, &xerr, NULL);
 
     if (uprec_sched == NULL) {
         logmsg(LOGMSG_FATAL, "%s: failed to create uprec cron scheduler.\n",
@@ -9486,7 +9494,7 @@ int offload_comm_send_upgrade_records(struct dbtable *db, unsigned long long gen
                 uprec->touch = uprec->owner;
                 uprec_sched = cron_add_event(
                     uprec_sched, NULL, comdb2_time_epoch() + uprec->intv,
-                    uprec_cron_event, NULL, NULL, NULL, NULL, &xerr);
+                    uprec_cron_event, NULL, NULL, NULL, NULL, &xerr, NULL);
 
                 if (uprec_sched == NULL)
                     logmsg(LOGMSG_ERROR, "%s: failed to schedule uprec cron job.\n",

@@ -4211,6 +4211,7 @@ static int unixDeviceCharacteristics(sqlite3_file *id){
 ** Instead, it should be called via macro osGetpagesize().
 */
 static int unixGetpagesize(void){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
 #if OS_VXWORKS
   return 1024;
 #elif defined(_BSD_SOURCE)
@@ -4220,6 +4221,15 @@ static int unixGetpagesize(void){
 #else
   return (int)sysconf(_SC_PAGESIZE);
 #endif
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+#if OS_VXWORKS
+  return 1024;
+#elif defined(_BSD_SOURCE)
+  return getpagesize();
+#else
+  return (int)sysconf(_SC_PAGESIZE);
+#endif
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
 
 #endif /* !defined(SQLITE_OMIT_WAL) || SQLITE_MAX_MMAP_SIZE>0 */

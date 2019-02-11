@@ -648,9 +648,29 @@ DEF_ATTR(DEBUG_TIMEPART_CRON, dbg_timepart_cron, BOOLEAN, 0, NULL)
 DEF_ATTR(DEBUG_TIMEPART_SQLITE, dbg_timepart_SQLITE, BOOLEAN, 0, NULL)
 DEF_ATTR(DELAY_FILE_OPEN, delay_file_open, MSECS, 0, NULL)
 DEF_ATTR(DELAY_WRITES_IN_RECORD_C, delay_writes_in_record_c, MSECS, 0, NULL)
+DEF_ATTR(DELAY_AFTER_SAVEOP_DONE, delay_after_saveop_done, MSECS, 0, NULL)
+DEF_ATTR(DELAY_AFTER_SAVEOP_USEDB, delay_after_saveop_usedb, MSECS, 0, NULL)
 
+DEF_ATTR(CRON_IDLE_SECS, cron_idle_secs, SECS, 30,
+         "Set the default sleep time"
+         " before the cron scheduler checks again the queue for events")
+DEF_ATTR(CRON_LOGICAL_IDLE_SECS, cron_logical_idle_secs, SECS, 1,
+         "Set the"
+         " default sleep time before the logical cron scheduler checks again"
+         " the queue for events")
 DEF_ATTR(NET_SEND_GBLCONTEXT, net_send_gblcontext, BOOLEAN, 0,
          "Enable net_send for USER_TYPE_GBLCONTEXT.")
+
+DEF_ATTR(
+    VIEWS_DFT_PREEMPT_ROLL_SECS, views_dft_preempt_roll_secs, SECS, 1800,
+    "Amount of seconds to run phase 1 of time partition rollout before phase 2")
+DEF_ATTR(
+    VIEWS_DFT_ROLL_DELETE_LAG_SECS, views_dft_roll_delete_lag_secs, SECS, 5,
+    "Amount of seconds to run phase 3 of time partition rollout after phase 2")
+DEF_ATTR(
+    AA_REQUEST_MODE, aa_request_mode, BOOLEAN, 0,
+    "Print a message to stdout instead of performing auto-analyze ourselves")
+
 /*
   BDB_ATTR_REPTIMEOUT
      amount of time to wait for acks.  when the time is exceeded,

@@ -125,6 +125,7 @@ SELECT '---------------------------------- PART #13 ----------------------------
 # Table options
 CREATE TABLE t1(i INT) OPTIONS REC ZLIB, BLOBFIELD ZLIB $$
 CREATE TABLE t2(i INT) OPTIONS REC ZLIB, REBUILD $$
+CREATE TABLE t3(i INT) OPTIONS REC LZ4, BLOBFIELD LZ4 $$
 
 SELECT '---------------------------------- PART #14 ----------------------------------' AS part;
 SELECT * FROM comdb2_tables WHERE tablename NOT LIKE 'sqlite_stat%';
@@ -136,6 +137,7 @@ SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
 SELECT '---------------------------------- PART #15 ----------------------------------' AS part;
 DROP TABLE t1;
 DROP TABLE t2;
+DROP TABLE t3;
 
 SELECT '---------------------------------- PART #16 ----------------------------------' AS part;
 # Types

@@ -80,6 +80,10 @@ void free_schema_change_type(struct schema_change_type *s)
             free(s->newcsc2);
             s->newcsc2 = NULL;
         }
+        if (s->sc_convert_done) {
+            free(s->sc_convert_done);
+            s->sc_convert_done = NULL;
+        }
 
         free_dests(s);
         Pthread_mutex_destroy(&s->mtx);

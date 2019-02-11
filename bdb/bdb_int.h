@@ -254,35 +254,29 @@ struct timestamp_lsn_key {
 };
 
 typedef struct pglogs_tmptbl_key {
+    unsigned char fileid[DB_FILE_ID_LEN];
     db_pgno_t pgno;
     DB_LSN commit_lsn;
     DB_LSN lsn;
 } pglogs_tmptbl_key;
-typedef struct {
-    unsigned char fileid[DB_FILE_ID_LEN];
-    struct temp_table *tmptbl;
-    struct temp_cursor *tmpcur;
-    pthread_mutex_t mtx;
-#ifdef NEWSI_DEBUG_POOL
-    void *pool;
-#endif
-} logfile_pglog_hashkey;
 
 typedef struct relinks_tmptbl_key {
+    unsigned char fileid[DB_FILE_ID_LEN];
     db_pgno_t pgno;
     DB_LSN lsn;
     db_pgno_t inh;
 } relinks_tmptbl_key;
-typedef logfile_pglog_hashkey logfile_relink_hashkey;
-#define LOGFILE_PAGE_KEY_SIZE (DB_FILE_ID_LEN * sizeof(unsigned char))
-#define LOGFILE_PGLOG_OFFSET (offsetof(logfile_pglog_hashkey, fileid))
-#define LOGFILE_RELINK_OFFSET (offsetof(logfile_relink_hashkey, fileid))
 
 struct logfile_pglogs_entry {
     u_int32_t filenum;
-    pthread_mutex_t pglogs_mutex;
-    hash_t *pglogs_hashtbl;
-    hash_t *relinks_hashtbl;
+
+    pthread_mutex_t pglogs_lk;
+    struct temp_table *pglogs_tbl;
+    struct temp_cursor *pglogs_cur;
+
+    pthread_mutex_t relinks_lk;
+    struct temp_table *relinks_tbl;
+    struct temp_cursor *relinks_cur;
 };
 
 struct checkpoint_list {
@@ -443,6 +437,8 @@ struct tran_tag {
 
     /* Set to 1 if this txn touches a logical live sc table */
     int force_logical_commit;
+    /* Tables that this tran touches (for logical redo sc) */
+    hash_t *dirty_table_hash;
 
     /* cache the versions of dta files to catch schema changes and fastinits */
     int table_version_cache_sz;
@@ -791,6 +787,12 @@ struct seen_blkseq {
 
 struct temp_table;
 
+struct sc_redo_lsn {
+    DB_LSN lsn;
+    u_int32_t txnid;
+    LINKC_T(struct sc_redo_lsn) lnk;
+};
+
 struct bdb_state_tag {
     pthread_attr_t pthread_attr_detach;
     seqnum_info_type *seqnum_info;
@@ -1028,6 +1030,9 @@ struct bdb_state_tag {
     int hellofd;
 
     int logical_live_sc;
+    pthread_mutex_t sc_redo_lk;
+    pthread_cond_t sc_redo_wait;
+    LISTC_T(struct sc_redo_lsn) sc_redo_list;
 };
 
 /* define our net user types */

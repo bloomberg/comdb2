@@ -1124,7 +1124,7 @@ cleanup:
 
 /********************* PARTITIONS  **********************************************/
 
-void comdb2CreateTimePartition(Parse* pParse, Token* table,
+void comdb2CreatePartition(Parse* pParse, Token* table,
                                Token* partition_name, Token* period,
                                Token* retention, Token* start)
 {
@@ -1189,7 +1189,7 @@ void comdb2CreateTimePartition(Parse* pParse, Token* table,
     strncpy0(period_str, period->z, period->n + 1);
     tp->period = name_to_period(period_str);
 
-    if (tp->period == VIEW_TIMEPART_INVALID) {
+    if (tp->period == VIEW_PARTITION_INVALID) {
         setError(pParse, SQLITE_ERROR, "Invalid period name");
         goto clean_arg;
     }
@@ -1213,7 +1213,7 @@ void comdb2CreateTimePartition(Parse* pParse, Token* table,
         goto clean_arg;
     }
     strncpy0(start_str, start->z, start->n + 1);
-    tp->start = convert_time_string_to_epoch(start_str);
+    tp->start = convert_from_start_string(tp->period, start_str);
 
     if (tp->start == -1 ) {
         setError(pParse, SQLITE_ERROR, "Invalid start date");
@@ -1232,7 +1232,7 @@ clean_arg:
 }
 
 
-void comdb2DropTimePartition(Parse* pParse, Token* partition_name)
+void comdb2DropPartition(Parse* pParse, Token* partition_name)
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
 

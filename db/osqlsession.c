@@ -754,17 +754,23 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
 
 #ifdef TEST_QSQL_REQ
     uuidstr_t us;
-    fprintf(stdout, "%s: Opening request %llu %s\n", __func__, rqid,
-            comdb2uuidstr(uuid, us));
+    logmsg(LOGMSG_INFO, "%s: Opening request %llu %s\n", __func__, rqid,
+           comdb2uuidstr(uuid, us));
 #endif
 
     /* alloc object */
     sess = (osql_sess_t *)calloc(sizeof(*sess), 1);
     if (!sess) {
-        fprintf(stderr, "%s:unable to allocate %zu bytes\n", __func__,
-                sizeof(*sess));
+        logmsg(LOGMSG_ERROR, "%s:unable to allocate %zu bytes\n", __func__,
+               sizeof(*sess));
         return NULL;
     }
+#if DEBUG_REORDER
+    uuidstr_t us;
+    comdb2uuidstr(uuid, us);
+    logmsg(LOGMSG_DEBUG, "%s:processing sql=%s sess=%p, uuid=%s\n", __func__,
+           sql, sess, us);
+#endif
 
     /* init sync fields */
     Pthread_mutex_init(&sess->clients_mtx, NULL);

@@ -1893,3 +1893,4 @@ SP: exec procedure bound(@i, @u, @ll, @ull, @s, @us, @f, @d, @dt, @cstr, @ba, @b
 ($0='DROP LUA TRIGGER PASS 23')
 ($0='CREATE LUA CONSUMER PASS 23')
 ($0='DROP LUA CONSUMER PASS 23')
+($0='{"emoji":"hello world 😁"}')

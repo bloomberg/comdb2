@@ -83,7 +83,8 @@ set(src
   utf8.c
   verify.c
   views.c
-  views_cron.c
+  cron.c
+  logical_cron.c
   views_persist.c
   watchdog.c
   shard_range.c

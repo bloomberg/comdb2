@@ -243,4 +243,12 @@ if [ $? -ne 0 ] ; then
     failexit "failed to update after adding null field"
 fi
 
+echo "Add new field without dbstore or null=yes"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "DROP TABLE IF EXISTS t3"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "CREATE TABLE t3 { schema {int a} }"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "ALTER TABLE t3 { schema {int a int b int c null=yes} }"
+if [ $? -eq 0 ] ; then
+    failexit "failed to detect bad schema"
+fi
+
 echo "Success"

@@ -896,7 +896,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	DB_LOCKREQ request;
 	DB_TXN *kid;
 	LTDESC *lt = NULL;
-	TXN_DETAIL *td;
+	TXN_DETAIL *td = NULL;
 	u_int32_t lflags, ltranflags = 0;
 	int32_t timestamp;
 	uint32_t gen;
@@ -1409,7 +1409,7 @@ __txn_abort(txnp)
 	DB_ENV *dbenv;
 	DB_LOCKREQ request;
 	DB_TXN *kid;
-	TXN_DETAIL *td;
+	TXN_DETAIL *td = NULL;
 	u_int32_t lflags;
 	int flags = 0;
 	int ret;
@@ -1578,7 +1578,7 @@ __txn_prepare(txnp, gid)
 	DB_ENV *dbenv;
 	DB_LOCKREQ request;
 	DB_TXN *kid;
-	TXN_DETAIL *td;
+	TXN_DETAIL *td = NULL;
 	u_int32_t lflags;
 	int ret;
 

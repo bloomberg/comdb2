@@ -163,6 +163,9 @@ extern int gbl_getlock_latencyms;
 extern int gbl_last_locked_seqnum;
 extern int gbl_set_coherent_state_trace;
 extern int gbl_force_incoherent;
+extern int gbl_ignore_coherency;
+extern int gbl_skip_catchup_logic;
+extern int gbl_forbid_incoherent_writes;
 extern int gbl_durable_set_trace;
 extern int gbl_set_seqnum_trace;
 extern int gbl_enque_log_more;
@@ -228,6 +231,7 @@ extern uint8_t _non_dedicated_subnet;
 extern char *gbl_crypto;
 extern char *gbl_spfile_name;
 extern char *gbl_timepart_file_name;
+extern char *gbl_exec_sql_on_new_connect;
 extern char *gbl_portmux_unix_socket;
 
 /* util/ctrace.c */
@@ -787,6 +791,13 @@ static int sql_tranlevel_default_update(void *context, void *value)
     return 0;
 }
 
+static int pbkdf2_iterations_update(void *context, void *value)
+{
+    extern int set_pbkdf2_iterations(int val);
+    (void)context;
+    return set_pbkdf2_iterations(*(int *)value);
+}
+
 /* Routines for the tunable system itself - tunable-specific
  * routines belong above */
 
@@ -975,6 +986,7 @@ const char *tunable_type(comdb2_tunable_type type)
     case TUNABLE_STRING: return "STRING";
     case TUNABLE_ENUM: return "ENUM";
     case TUNABLE_COMPOSITE: return "COMPOSITE";
+    case TUNABLE_RAW: return "RAW";
     default: assert(0);
     }
     return "???";
@@ -1090,6 +1102,11 @@ static int parse_bool(const char *value, int *num)
 /* Parse the next token and store it into a buffer. */
 #define PARSE_TOKEN                                                            \
     tok = segtok((char *)value, value_len, &st, &ltok);                        \
+    tokcpy0(tok, ltok, buf, MAX_TUNABLE_VALUE_SIZE);
+
+/* Grab the next token and store it into a buffer. */
+#define PARSE_RAW                                                              \
+    tok = segtok2((char *)value, value_len, &st, &ltok);                       \
     tokcpy0(tok, ltok, buf, MAX_TUNABLE_VALUE_SIZE);
 
 /* Use the custom verify function if one's provided. */
@@ -1239,8 +1256,14 @@ static comdb2_tunable_err update_tunable(comdb2_tunable *t, const char *value)
                (num) ? "ON" : "OFF");
         break;
     }
-    case TUNABLE_STRING: {
-        PARSE_TOKEN;
+    case TUNABLE_STRING: /* fall through */
+    case TUNABLE_RAW: {
+        if (t->type == TUNABLE_RAW) {
+            PARSE_RAW;
+        } else {
+            PARSE_TOKEN;
+        }
+
         DO_VERIFY(t, buf);
 
         if (t->update) {

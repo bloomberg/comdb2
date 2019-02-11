@@ -1618,3 +1618,14 @@ cdb2sql $SP_OPTIONS - <<'EOF'
 put tunable allow_lua_exec_with_ddl 'on';
 exec procedure no_ddl_test1();
 EOF
+
+cdb2sql $SP_OPTIONS - > /dev/null <<'EOF'
+create procedure json_emoji version 'sptest' {
+local function main(emoji)
+    local tbl = {}
+    tbl.emoji = emoji
+    local json = db:table_to_json(tbl)
+    db:emit(json)
+end}$$
+EOF
+cdb2sql $SP_OPTIONS "exec procedure json_emoji('hello world 😁')"

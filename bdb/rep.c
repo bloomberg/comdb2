@@ -4080,6 +4080,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
 }
 
 int gbl_force_incoherent = 0;
+int gbl_ignore_coherency = 0;
 
 static int bdb_am_i_coherent_int(bdb_state_type *bdb_state)
 {
@@ -4087,6 +4088,7 @@ static int bdb_am_i_coherent_int(bdb_state_type *bdb_state)
     if (bdb_amimaster(bdb_state))
         return 1;
 
+    /* force_incoherent overrides ignore_coherency */
     if (gbl_force_incoherent) {
         static time_t lastpr = 0;
         time_t now = time(NULL);
@@ -4105,6 +4107,18 @@ static int bdb_am_i_coherent_int(bdb_state_type *bdb_state)
                                               bdb_state->repinfo->myhost))) {
             return 0;
         }
+    }
+
+    if (gbl_ignore_coherency) {
+        static time_t lastpr = 0;
+        time_t now = time(NULL);
+        if (now - lastpr) {
+            logmsg(LOGMSG_WARN,
+                   "%s ignoring coherency on 'ignore_coherency' = true\n",
+                   __func__);
+            lastpr = now;
+        }
+        return 1;
     }
 
     return (gettimeofday_ms() <= get_coherency_timestamp());
@@ -4315,7 +4329,7 @@ void receive_coherency_lease(void *ack_handle, void *usr_ptr, char *from_host,
     char *master_host;
     int receive_trace;
     bdb_state_type *bdb_state;
-    colease_t colease;
+    colease_t colease = {0};
 
     assert(usertype == USER_TYPE_COHERENCY_LEASE);
     p_buf = (uint8_t *)dta;

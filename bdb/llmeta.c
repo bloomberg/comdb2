@@ -6049,7 +6049,7 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
         break;
     case LLMETA_SC_START_LSN: {
         struct llmeta_schema_change_type akey;
-        struct llmeta_db_lsn_data_type adata;
+        struct llmeta_db_lsn_data_type adata = {{0}};
 
         if (keylen < sizeof(akey) || datalen < sizeof(adata)) {
             logmsg(LOGMSG_USER, "%s:%d: wrong LLMETA_SC_START_LSN entry\n",
@@ -8897,6 +8897,7 @@ typedef struct {
     union {
         passwd_v0 p0;
     } u;
+    int niterations;
 } passwd_hash;
 static int llmeta_get_user_passwd(char *user, llmetakey_t type, void ***out)
 {
@@ -8920,6 +8921,21 @@ static int llmeta_get_user_passwd(char *user, llmetakey_t type, void ***out)
 }
 #define ITERATIONS_V0 1000
 #define ITERATIONS_V1 16 * 1024
+#define ITERATIONS_MIN 4096
+int gbl_pbkdf2_iterations = ITERATIONS_MIN;
+
+int set_pbkdf2_iterations(int val)
+{
+    if (val < ITERATIONS_MIN) {
+        logmsg(LOGMSG_ERROR,
+               "Number of iterations of PBKDF2 too low. Minimum is %d.\n",
+               ITERATIONS_MIN);
+        return 1;
+    }
+    gbl_pbkdf2_iterations = val;
+    return 0;
+}
+
 int bdb_user_password_check(char *user, char *passwd, int *valid_user)
 {
     int passwd_rc = 1;
@@ -8947,8 +8963,12 @@ int bdb_user_password_check(char *user, char *passwd, int *valid_user)
     switch (stored->ver) {
     case 0: iterations = ITERATIONS_V0; break;
     case 1: iterations = ITERATIONS_V1; break;
+    case 2:
+        iterations = ntohl(stored->niterations);
+        break;
     default: logmsg(LOGMSG_ERROR, "bad passwd ver:%u", stored->ver); goto out;
     }
+
     if (valid_user) {
         *valid_user = 1;
     }
@@ -8956,7 +8976,7 @@ int bdb_user_password_check(char *user, char *passwd, int *valid_user)
                            sizeof(stored->u.p0.salt), iterations,
                            sizeof(computed.u.p0.hash), computed.u.p0.hash);
     passwd_rc = CRYPTO_memcmp(computed.u.p0.hash, stored->u.p0.hash,
-                sizeof(stored->u.p0.hash));
+                              sizeof(stored->u.p0.hash));
 out:
     if (data) {
         free(*data);
@@ -8966,6 +8986,7 @@ out:
 }
 int bdb_user_password_set(tran_type *tran, char *user, char *passwd)
 {
+    int pbkdf2_niters = gbl_pbkdf2_iterations;
     passwd_key key = {{0}};
     size_t ulen = strlen(user) + 1;
     if (ulen > sizeof(key.passwd.user))
@@ -8978,10 +8999,11 @@ int bdb_user_password_set(tran_type *tran, char *user, char *passwd)
         return rc;
     key.passwd.file_type = htonl(LLMETA_USER_PASSWORD_HASH);
     passwd_hash data;
-    data.ver = 1;
+    data.ver = 2;
+    data.niterations = htonl(pbkdf2_niters);
     RAND_bytes(data.u.p0.salt, sizeof(data.u.p0.salt));
     PKCS5_PBKDF2_HMAC_SHA1(passwd, strlen(passwd), data.u.p0.salt,
-                           sizeof(data.u.p0.salt), ITERATIONS_V1,
+                           sizeof(data.u.p0.salt), pbkdf2_niters,
                            sizeof(data.u.p0.hash), data.u.p0.hash);
     return kv_put(tran, &key, &data, sizeof(data), &bdberr);
 }

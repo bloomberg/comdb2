@@ -2295,7 +2295,7 @@ static int dbtable_name(Lua L)
 // dbtable_emit = db_exec + dbstmt_emit
 static int dbtable_emit_int(Lua L, dbtable_t *table)
 {
-    char n1[MAXTABLELEN], separator[2], n2[MAXTABLELEN];
+    char n1[MAXTABLELEN] = {0}, separator[2], n2[MAXTABLELEN];
     query_tbl_name(table->table_name, n1, separator, n2);
 
     char sql[128];

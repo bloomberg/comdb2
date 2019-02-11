@@ -1615,6 +1615,7 @@ bdb_osql_log_t *parse_log_for_shadows_int(bdb_state_type *bdb_state,
     DBT logdta;
     DB_LSN lsn;
     u_int32_t rectype;
+    u_int32_t txnid = 0;
     bdb_osql_log_t *undolog = NULL;
     llog_undo_del_dta_args *del_dta = NULL;
     llog_undo_del_dta_lk_args *del_dta_lk = NULL;
@@ -1681,6 +1682,7 @@ bdb_osql_log_t *parse_log_for_shadows_int(bdb_state_type *bdb_state,
             free(commit);
             return NULL;
         }
+        txnid = commit->txnid->txnid;
         free(commit);
         commit = NULL;
         goto next;
@@ -2120,6 +2122,8 @@ done:
         return NULL;
     }
 
+    if (undolog)
+        undolog->txnid = txnid;
     return undolog;
 }
 
@@ -3531,7 +3535,7 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
 
         /* Reconstruct the delete. */
         rc = bdb_reconstruct_delete(bdb_state, &rec->lsn, &page, &index, NULL,
-                                    0, dtabuf, dtalen, NULL);
+                                    sizeof(genid_t), dtabuf, dtalen, NULL);
         if (rc) {
             if (gbl_abort_on_reconstruct_failure)
                 abort();
@@ -4114,8 +4118,9 @@ static int bdb_osql_log_get_optim_data_int(bdb_state_type *bdb_state,
             ptr = dtabuf;
         }
 
-        rc = bdb_reconstruct_delete(bdb_state, lsn, NULL, NULL, NULL, 0, ptr,
-                                    del_dta->dtalen, NULL);
+        rc =
+            bdb_reconstruct_delete(bdb_state, lsn, NULL, NULL, NULL,
+                                   sizeof(genid_t), ptr, del_dta->dtalen, NULL);
         if (rc) {
             if (gbl_abort_on_reconstruct_failure)
                 abort();
@@ -4167,8 +4172,9 @@ static int bdb_osql_log_get_optim_data_int(bdb_state_type *bdb_state,
                 bdb_state, lsn, ptr, &updlen, NULL, NULL, &offset, NULL, NULL);
 
         } else {
-            rc = bdb_reconstruct_delete(bdb_state, lsn, NULL, NULL, NULL, 0,
-                                        ptr, upd_dta->old_dta_len, NULL);
+            rc = bdb_reconstruct_delete(bdb_state, lsn, NULL, NULL, NULL,
+                                        sizeof(genid_t), ptr,
+                                        upd_dta->old_dta_len, NULL);
         }
         if (rc) {
             if (gbl_abort_on_reconstruct_failure)
@@ -4471,6 +4477,11 @@ again:
             LOGCOPY_32(&rectype, pCur->data.data);
         else
             rectype = 0;
+        if (pCur->maxLsn.file > 0 &&
+            log_compare(&pCur->curLsn, &pCur->maxLsn) > 0) {
+            /* traverse upto maxLsn */
+            return 0;
+        }
     } while (!pCur->hitLast && !is_commit(rectype));
 
     if (!pCur->hitLast) {
@@ -4538,6 +4549,25 @@ int bdb_llog_cursor_next(bdb_llog_cursor *pCur)
     } else {
         pCur->getflags = DB_NEXT;
     }
+
+    return bdb_llog_cursor_move(pCur);
+}
+
+int bdb_llog_cursor_find(bdb_llog_cursor *pCur, DB_LSN *lsn)
+{
+    int rc = 0;
+    if (!pCur->openCursor) {
+        rc = bdb_llog_cursor_open(pCur);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s:%d failed to open llog cursor rc=%d\n",
+                   __func__, __LINE__, rc);
+            return rc;
+        }
+    }
+
+    pCur->minLsn = *lsn;
+    pCur->curLsn = pCur->minLsn;
+    pCur->getflags = DB_SET;
 
     return bdb_llog_cursor_move(pCur);
 }

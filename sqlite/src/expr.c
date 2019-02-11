@@ -1349,6 +1349,35 @@ static With *withDup(sqlite3 *db, With *p){
 # define withDup(x,y) 0
 #endif
 
+#ifndef SQLITE_OMIT_WINDOWFUNC
+/*
+** The gatherSelectWindows() procedure and its helper routine
+** gatherSelectWindowsCallback() are used to scan all the expressions
+** an a newly duplicated SELECT statement and gather all of the Window
+** objects found there, assembling them onto the linked list at Select->pWin.
+*/
+static int gatherSelectWindowsCallback(Walker *pWalker, Expr *pExpr){
+  if( pExpr->op==TK_FUNCTION && pExpr->y.pWin!=0 ){
+    assert( ExprHasProperty(pExpr, EP_WinFunc) );
+    pExpr->y.pWin->pNextWin = pWalker->u.pSelect->pWin;
+    pWalker->u.pSelect->pWin = pExpr->y.pWin;
+  }
+  return WRC_Continue;
+}
+static int gatherSelectWindowsSelectCallback(Walker *pWalker, Select *p){
+  return p==pWalker->u.pSelect ? WRC_Continue : WRC_Prune;
+}
+static void gatherSelectWindows(Select *p){
+  Walker w;
+  w.xExprCallback = gatherSelectWindowsCallback;
+  w.xSelectCallback = gatherSelectWindowsSelectCallback;
+  w.xSelectCallback2 = 0;
+  w.u.pSelect = p;
+  sqlite3WalkSelect(&w, p);
+}
+#endif
+
+
 /*
 ** The following group of routines make deep copies of expressions,
 ** expression lists, ID lists, and select statements.  The copies can
@@ -1519,6 +1548,7 @@ Select *sqlite3SelectDup(sqlite3 *db, Select *pDup, int flags){
 #ifndef SQLITE_OMIT_WINDOWFUNC
     pNew->pWin = 0;
     pNew->pWinDefn = sqlite3WindowListDup(db, p->pWinDefn);
+    if( p->pWin ) gatherSelectWindows(pNew);
 #endif
     pNew->selId = p->selId;
     *pp = pNew;
@@ -2464,6 +2494,7 @@ int sqlite3FindInIndex(
           Bitmask colUsed;      /* Columns of the index used */
           Bitmask mCol;         /* Mask for the current column */
           if( pIdx->nColumn<nExpr ) continue;
+          if( pIdx->pPartIdxWhere!=0 ) continue;
           /* Maximum nColumn is BMS-2, not BMS-1, so that we can compute
           ** BITMASK(nExpr) without overflowing */
           testcase( pIdx->nColumn==BMS-2 );
@@ -4879,8 +4910,10 @@ int sqlite3ExprCompare(Parse *pParse, Expr *pA, Expr *pB, int iTab){
      && sqlite3ExprCompare(pParse, pA->pLeft, pB->pLeft, iTab) ) return 2;
     if( sqlite3ExprCompare(pParse, pA->pRight, pB->pRight, iTab) ) return 2;
     if( sqlite3ExprListCompare(pA->x.pList, pB->x.pList, iTab) ) return 2;
-    assert( (combinedFlags & EP_Reduced)==0 );
-    if( pA->op!=TK_STRING && pA->op!=TK_TRUEFALSE ){
+    if( pA->op!=TK_STRING
+     && pA->op!=TK_TRUEFALSE
+     && (combinedFlags & EP_Reduced)==0
+    ){
       if( pA->iColumn!=pB->iColumn ) return 2;
       if( pA->iTable!=pB->iTable 
        && (pA->iTable!=iTab || NEVER(pB->iTable>=0)) ) return 2;
