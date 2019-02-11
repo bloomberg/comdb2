@@ -156,6 +156,7 @@ setup_db() {
     fi
 
     echo -e "name    ${DBNAME}\ndir     ${DBDIR}\n\nsetattr MASTER_REJECT_REQUESTS 0" >> ${LRL}
+    echo -e "forbid_remote_admin false" >> ${LRL}
 
     if [[ -n "$CUSTOMLRLPATH" ]]; then
         cat $CUSTOMLRLPATH >> ${LRL}
