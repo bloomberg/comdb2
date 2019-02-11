@@ -5880,11 +5880,13 @@ static void *accept_thread(void *arg)
             if (firstbyte == '@') {
                 findpeer(new_fd, paddr, sizeof(paddr));
                 if (!gbl_forbid_remote_admin ||
-                        (cliaddr.sin_addr.s_addr == htonl(INADDR_LOOPBACK))) {
-                    logmsg(LOGMSG_INFO, "Accepting admin user from %s\n", paddr);
+                    (cliaddr.sin_addr.s_addr == htonl(INADDR_LOOPBACK))) {
+                    logmsg(LOGMSG_INFO, "Accepting admin user from %s\n",
+                           paddr);
                     admin = 1;
                 } else {
-                    logmsg(LOGMSG_INFO, "Rejecting non-local admin user from %s\n", paddr);
+                    logmsg(LOGMSG_INFO,
+                           "Rejecting non-local admin user from %s\n", paddr);
                     sbuf2close(sb);
                     continue;
                 }

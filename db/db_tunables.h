@@ -1656,8 +1656,8 @@ REGISTER_TUNABLE("online_recovery",
 
 REGISTER_TUNABLE("forbid_remote_admin",
                  "Forbid non-local admin requests.  (Default: on)",
-                 TUNABLE_BOOLEAN, &gbl_forbid_remote_admin,
-                 0, NULL, NULL, NULL, NULL);
+                 TUNABLE_BOOLEAN, &gbl_forbid_remote_admin, 0, NULL, NULL, NULL,
+                 NULL);
 
 REGISTER_TUNABLE(
     "pbkdf2_iterations",

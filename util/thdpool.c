@@ -732,9 +732,10 @@ static void *thdpool_thd(void *voidarg)
         /* might this is set at a certain point by work_fn */
         thread_util_donework();
         if (check_exit) {
-            LOCK(&pool->mutex) {
-                if (pool->maxnthd > 0 && listc_size(&pool->thdlist) >
-                        pool->maxnthd) {
+            LOCK(&pool->mutex)
+            {
+                if (pool->maxnthd > 0 &&
+                    listc_size(&pool->thdlist) > pool->maxnthd) {
                     listc_rfl(&pool->thdlist, thd);
                     if (thd->on_freelist)
                         abort();
@@ -742,7 +743,8 @@ static void *thdpool_thd(void *voidarg)
                     errUNLOCK(&pool->mutex);
                     goto thread_exit;
                 }
-            } UNLOCK(&pool->mutex);
+            }
+            UNLOCK(&pool->mutex);
         }
 
         // before acquiring next request, yield
