@@ -223,7 +223,7 @@ static void sqlengine_work_shard(struct thdpool *pool, void *work,
 static int inner_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
 {
     int type;
-    if (!sqlite3_is_prepare_only(clnt) || sqlite3_hasResultSet(stmt)) {
+    if (sqlite3_can_get_column_type_and_data(clnt, stmt)) {
         type = sqlite3_column_type(stmt, col);
         if (type == SQLITE_NULL) {
             type = typestr_to_type(sqlite3_column_decltype(stmt, col));

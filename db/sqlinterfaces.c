@@ -763,6 +763,34 @@ int sqlite3_maybe_step(
   return sqlite3_step(stmt);
 }
 
+int sqlite3_can_get_column_type_and_data(
+  struct sqlclntstate *clnt,
+  sqlite3_stmt *stmt
+){
+  if( !sqlite3_is_prepare_only(clnt) ){
+    /*
+    ** When the client is not in 'prepare only' mode, the result set
+    ** should always be available (i.e. anytime after sqlite3_step()
+    ** is called).  The column type / data should be available.  An
+    ** assert is used here to verify this invariant.
+    */
+    assert( sqlite3_hasResultSet(stmt) );
+    return 1;
+  }
+  if( sqlite3_hasResultSet(stmt) ){
+    /*
+    ** If the result set is available for the prepared statement, e.g.
+    ** due to sqlite3_step() having been called, it can always be used
+    ** to query the column type and data.  It shouldn't be possible to
+    ** reach this point in 'prepare only' mode; therefore, assert this
+    ** invariant here.
+    */
+    assert( !sqlite3_is_prepare_only(clnt) );
+    return 1;
+  }
+  return 0;
+}
+
 static pthread_mutex_t open_serial_lock = PTHREAD_MUTEX_INITIALIZER;
 int sqlite3_open_serial(const char *filename, sqlite3 **ppDb,
                         struct sqlthdstate *thd)
