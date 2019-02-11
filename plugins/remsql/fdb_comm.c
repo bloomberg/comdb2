@@ -688,6 +688,11 @@ void fdb_msg_clean_message(fdb_msg_t *msg)
         break;
 
     case FDB_MSG_CURSOR_OPEN:
+        if (msg->co.srcname != gbl_myhostname) {
+            free(msg->co.srcname);
+            msg->co.srcname = NULL;
+            msg->co.srcnamelen = 0;
+        }
         break;
 
     case FDB_MSG_CURSOR_CLOSE:

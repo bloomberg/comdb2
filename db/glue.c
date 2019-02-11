@@ -3577,6 +3577,7 @@ static void net_authentication_check(void *hndl, void *uptr, char *fromhost,
                              uint8_t is_tcp)
 {
     gbl_check_access_controls = 1;
+    ++gbl_bpfunc_auth_gen;
 }
 
 
