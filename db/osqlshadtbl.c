@@ -630,10 +630,8 @@ int osql_fetch_shadblobs_by_genid(BtCursor *pCur, int *blobnum,
             rc = bdb_unpack_heap(pCur->db->handle, tmptblblb, tmptblblblen,
                                  (void **)blobs->blobptrs, blobs->bloblens,
                                  &freeptr);
-            if (rc != 0) {
-                free(freeptr);
+            if (rc != 0)
                 return rc;
-            }
 
             if (freeptr == NULL) {
                 /* Always Make a copy here. blobptrs[0] will become Mem.z
