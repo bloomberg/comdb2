@@ -5895,6 +5895,7 @@ bdb_state_type *bdb_open_env(const char name[], const char dir[],
     *bdberr = BDBERR_NOERROR;
 
     if (netinfo == NULL) {
+        assert( 0 && "creating fake netinfo" );
         netinfo = create_netinfo_fake();
     }
 
