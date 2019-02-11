@@ -6190,6 +6190,7 @@ static void *heartbeat_check_thread(void *arg)
             ((now = comdb2_time_epoch()) - netinfo_ptr->portmux_register_time) >
                 netinfo_ptr->portmux_register_interval) {
             int pport;
+            assert( netinfo_ptr->fake==0 );
             if (netinfo_ptr->port_from_lrl)
                 pport = portmux_use(netinfo_ptr->app, netinfo_ptr->service,
                                     netinfo_ptr->instance, netinfo_ptr->myport);
