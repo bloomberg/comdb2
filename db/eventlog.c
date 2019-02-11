@@ -43,7 +43,7 @@
 
 static char *gbl_eventlog_fname = NULL;
 static char *eventlog_fname(const char *dbname);
-static int eventlog_nkeep = 10;  // keep last 10 event log files
+static int eventlog_nkeep = 10;                 // keep last 10 event log files
 static int eventlog_rollat = 100 * 1024 * 1024; // 100MB to begin
 static int eventlog_enabled = 1;
 static int eventlog_detailed = 0;
@@ -100,16 +100,17 @@ static void eventlog_roll_cleanup()
     int len = strlen(fname);
 
     // SANITY CHECK; last part of fname should match postfix
-    if (len < sizeof(postfix) || 
+    if (len < sizeof(postfix) ||
         strcmp(&(fname[len - sizeof(postfix) + 1]), postfix) != 0)
         abort();
 
     // Delete all except the most recent files
     // WARNING: MAKE SURE NO SPACE BETWEEN THE TWO CHARACTERS '%s*'
     // IN THE CALL TO ls IN NEXT LINE
-    snprintf(cmd, sizeof(cmd) - 1, 
-             "ls -1t %s* | grep '%s' | grep '.events.' | sed '1,%dd' | xargs rm -f",
-             fname, thedb->envname, eventlog_nkeep);
+    snprintf(
+        cmd, sizeof(cmd) - 1,
+        "ls -1t %s* | grep '%s' | grep '.events.' | sed '1,%dd' | xargs rm -f",
+        fname, thedb->envname, eventlog_nkeep);
     free(fname);
 
     int rc = system(cmd);
