@@ -51,13 +51,16 @@ Information about BLKSEQ stored in the database. (TODO: Explain BLKSEQ)
 
 Lists statistics about clients.
 
-    comdb2_clientstats(task, stack, host, ip, finds, rngexts, writes, other_fstsnds, adds, upds, dels, bsql, recom, snapisol, serial, sql_queries, sql_steps, sql_rows, svc_time)
+    comdb2_clientstats(task, stack, host, ip, finds, rngexts, writes,
+                       other_fstsnds, adds, upds, dels, bsql, recom,
+                       snapisol, serial, sql_queries, sql_steps, sql_rows,
+                       svc_time)
 
 * `task` - Name of the client program
 * `stack` - Stack of the client program
 * `host` - Client host name
 * `ip` - Client IP address
-* `finds` - Number of find operations
+* `finds` - `obsolete`
 * `rngexts` -  `obsolete`
 * `writes` - `obsolete`
 * `other_fstsnds` - `obsolete`
@@ -97,7 +100,7 @@ Describes all the columns for all of the tables in the database.
 * `sqltype` - The type as recognized by SQL
 * `varinlinesize` - The size of the data stored in the column when inlined
 * `defaultvalue` - The default value for this column
-* `dbload` - The default value for this column loaded by the server
+* `dbload` - `obsolete`
 * `isnullable` - `Y` if this column can hold nulls
 
 ## comdb2_completion
@@ -131,7 +134,7 @@ Information about events queued in all the schedulers running.
 
 * `name` - Name of the event
 * `type` - Type of the scheduler
-* `epoch` - "epoch" seconds when the event is intended to run
+* `epoch` - Unix time when the event is intended to run
 * `arg1` - First argument for the event, usually the shard table name involved
 * `arg2` - Generic second argument for the event
 * `arg3` - Generic third argument for the event
@@ -145,9 +148,11 @@ Information about schedulers running.
 
 * `name` - Name of the scheduler
 * `type` - Type of the scheduler, as "WALLTIME" for a time cron
-* `running` - Set to `1` if the scheduler is running an event at this time, `0` otherwise
+* `running` - Set to `1` if the scheduler is running an event at this time,
+              `0` otherwise
 * `nevents` - How many events are queued in this scheduler?
-* `description` - Details the purpose of the scheduler; for example, there is a time partition scheduler, or a memory modules stat scheduler
+* `description` - Details the purpose of the scheduler; for example, there is
+                  a time partition scheduler, or a memory modules stat scheduler
 
 ## comdb2_keycomponents
 
@@ -218,7 +223,8 @@ Lists all active comdb2 locks.
 
 Lists all logical operations
 
-    comdb2_logical_operations(commitlsn, opnum, operation, tablename, oldgenid, oldrecord, genid, record)
+    comdb2_logical_operations(commitlsn, opnum, operation, tablename, oldgenid,
+                              oldrecord, genid, record)
 
 * `commitlsn` - Log sequence number
 * `opnum` - Index of operation within a transaction
@@ -239,7 +245,9 @@ Shows various operational and performance metrics.
 * `description` - Description
 * `type` - Type of the metrics
 * `value` - Value
-* `collection_type` - Is value `cumulative` or `latest`?
+* `collection_type` - Is value `cumulative` or `latest`? A cumulative metric is
+                      a cumulative sum over the time; A latest metric is a
+                      instantaneous measurement.
 
 ## comdb2_net_userfuncs
 
@@ -300,7 +308,9 @@ List all queues in the database.
 
 Replication statistics.
 
-    comdb2_repl_stats(host, bytes_written, bytes_read, throttle_waits, reorders, avg_wait_over_10secs, max_wait_over_10secs, avg_wait_over_1min,  max_wait_over_1min)
+    comdb2_repl_stats(host, bytes_written, bytes_read, throttle_waits, reorders,
+                      avg_wait_over_10secs, max_wait_over_10secs,
+                      avg_wait_over_1min,  max_wait_over_1min)
 
 * `host` - Host name
 * `bytes_written` - Number of bytes written
@@ -317,7 +327,14 @@ Replication statistics.
 
 This table lists the current state of the replication network queue per node.
 
-    comdb2_replication_netqueue(machine, total, min_lsn, max_lsn, alive, alive_req, all_req, dupmaster, file, file_req, log, log_more, log_req, master_req, newclient, newfile, newmaster, newsite, page, page_req, plist, plist_req, verify, verify_fail, verify_req, vote1, vote2, log_logput, pgdump_req, gen_vote1, gen_vote2, log_fill, uncategorized, unknown)
+    comdb2_replication_netqueue(machine, total, min_lsn, max_lsn, alive,
+                                alive_req, all_req, dupmaster, file, file_req,
+                                log, log_more, log_req, master_req, newclient,
+                                newfile, newmaster, newsite, page, page_req,
+                                plist, plist_req, verify, verify_fail,
+                                verify_req, vote1, vote2, log_logput,
+                                pgdump_req, gen_vote1, gen_vote2, log_fill,
+                                uncategorized, unknown)
 
 * `machine` - Host name of the node
 * `total` - Number of total messages
@@ -526,7 +543,8 @@ Describes all the knobs in the database.
 
 Describes the sample values of all the data types supported by Comdb2.
 
-    comdb2_type_samples(integer, real, cstring, blob, datetime, intervalym, intervalds, datetimeus, intervaldsus)
+    comdb2_type_samples(integer, real, cstring, blob, datetime, intervalym,
+                        intervalds, datetimeus, intervaldsus)
 
 * `integer` - Sample value of 'integer' type
 * `real` - Sample value of 'real' type
