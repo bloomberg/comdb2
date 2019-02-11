@@ -270,6 +270,7 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
     dtikey_t ditk = {0};
     bool reorder = gbl_reorder_idx_writes && !is_event_from_sc(flags) &&
         (flags & RECFLAGS_NO_CONSTRAINTS) &&
+        (flags & RECFLAGS_NO_REORDER_IDX) == 0 &&
         (rec_flags & OSQL_IGNORE_FAILURE) == 0 &&
         iq->usedb->sc_from != iq->usedb;
 
