@@ -3588,7 +3588,7 @@ void send_filenum_to_all(bdb_state_type *bdb_state, int filenum, int nodelay)
                       USER_TYPE_BERKDB_FILENUM, &filenum_net, sizeof(int),
                       nodelay);
         if (rc)
-            logmsg(LOGMSG_DEBUG, "%s:net_send returned rc=%d\n", __func__, rc);
+            logmsg(LOGMSG_WARN, "%s:net_send returned rc=%d\n", __func__, rc);
     }
 }
 
