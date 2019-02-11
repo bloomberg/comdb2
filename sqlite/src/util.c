@@ -1665,13 +1665,14 @@ int sqlite3VListNameToNum(VList *pIn, const char *zName, int nName){
 ** Create a copy of the VList 
 */
 VList *sqlite3VListClone(
-  const VList *pIn       /* The input VList.  Might be NULL */
+  const VList *pIn,      /* The input VList.  Might be NULL */
+  void *(*alloc)(size_t size)
 ){
   VList *pOut;
   if (!pIn) 
     return NULL;
 
-  pOut = sqlite3Malloc(pIn[0]);
+  pOut = alloc(pIn[0]);
   if (!pOut)
     return NULL;
 
@@ -1690,12 +1691,15 @@ void sqlite3VListPrint(loglvl lvl, const VList *pIn)
   mx = pIn[1];
   i = 2;
   logmsg(lvl, "%lx VList info start:\n", pthread_self());
+  fprintf(stderr, "%lx VList info start:\n", pthread_self());
   do{
     const char *z = (const char*)&pIn[i+2];
     logmsg(lvl, "%lx %s %d\n", pthread_self(), z, pIn[i]);
+    fprintf(stderr, "%lx %s %d\n", pthread_self(), z, pIn[i]);
     i += pIn[i+1];
   }while( i<mx );
   logmsg(lvl, "%lx VList info done.\n", pthread_self());
+  fprintf(stderr, "%lx VList info done.\n", pthread_self());
 }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 

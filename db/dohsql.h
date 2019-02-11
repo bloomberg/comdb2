@@ -19,6 +19,12 @@ limitations under the License.
 
 #include "ast.h"
 
+struct params_info{
+    struct sqlclntstate *clnt;
+    int nparams;
+    struct param_data *params;
+};
+
 struct dohsql_node {
     enum ast_type type;
     char *sql;
@@ -27,7 +33,8 @@ struct dohsql_node {
     int nnodes;
     int order_size;
     int *order_dir;
-    char *params_cache;
+    int nparams;
+    struct params_info *params;
 };
 typedef struct dohsql_node dohsql_node_t;
 
