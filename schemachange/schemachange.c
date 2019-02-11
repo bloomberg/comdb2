@@ -630,7 +630,7 @@ static int unodhfy_if_necessary(struct ireq *iq, blob_buffer_t *blobs,
         /* If we're removing the ODH, or changing the compression algorithm,
            unpack the blobs. */
         if ((oldodh && !newodh) || oldcompr != newcompr) {
-            rc = unodhfy_blob_buffer(iq->usedb, blobs + i, i);
+            rc = unodhfy_blob_buffer(iq->usedb->sc_to, blobs + i, i);
             if (rc != 0)
                 break;
         }

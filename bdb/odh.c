@@ -476,7 +476,7 @@ int bdb_pack(bdb_state_type *bdb_state, const struct odh *odh, void *to,
 static int bdb_unpack_updateid(bdb_state_type *bdb_state, const void *from,
                                size_t fromlen, void *to, size_t tolen,
                                struct odh *odh, int updateid, void **freeptr,
-                               int verify_updateid)
+                               int verify_updateid, int force_odh)
 {
     void *mallocmem = NULL;
     const int ver_bytes = 2;
@@ -639,7 +639,15 @@ int bdb_unpack(bdb_state_type *bdb_state, const void *from, size_t fromlen,
                void *to, size_t tolen, struct odh *odh, void **freeptr)
 {
     return bdb_unpack_updateid(bdb_state, from, fromlen, to, tolen, odh, -1,
-                               freeptr, 1);
+                               freeptr, 1, 0);
+}
+
+int bdb_unpack_force_odh(bdb_state_type *bdb_state, const void *from,
+                         size_t fromlen, void *to, size_t tolen,
+                         struct odh *odh, void **freeptr)
+{
+    return bdb_unpack_updateid(bdb_state, from, fromlen, to, tolen, odh, -1,
+                               freeptr, 1, 1);
 }
 
 static int bdb_write_updateid(bdb_state_type *bdb_state, void *buf,
@@ -749,7 +757,7 @@ static int bdb_unpack_dbt_verify_updateid(bdb_state_type *bdb_state, DBT *data,
     fsnapf(stdout, data->data, data->size);
     */
     rc = bdb_unpack_updateid(bdb_state, data->data, data->size, NULL, 0, &odh,
-                             *updateid, &buf, verify_updateid);
+                             *updateid, &buf, verify_updateid, 0);
 
     if (rc == 0) {
         /*
@@ -1370,13 +1378,10 @@ int bdb_unpack_heap(bdb_state_type *bdb_state, void *in, size_t inlen,
 {
     struct odh odh;
     int rc;
-    char odhd = bdb_state->ondisk_header;
 
     /* Force ODH in case that a schema change
        is removing the ODH from the table. */
-    bdb_state->ondisk_header = 1;
-    rc = bdb_unpack(bdb_state, in, inlen, NULL, 0, &odh, freeptr);
-    bdb_state->ondisk_header = odhd;
+    rc = bdb_unpack_force_odh(bdb_state, in, inlen, NULL, 0, &odh, freeptr);
 
     if (rc != 0) {
         *out = NULL;
