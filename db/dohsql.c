@@ -1060,11 +1060,11 @@ static int _shard_connect(struct sqlclntstate *clnt, dohsql_connector_t *conn,
     conn->nparams = nparams;
     conn->params = params;
     logmsg(LOGMSG_DEBUG, "%lx %p saved nparams %d\n", pthread_self(), __func__,
-            conn->nparams);
+           conn->nparams);
     for (int i = 0; i < conn->nparams; i++) {
         logmsg(LOGMSG_DEBUG, "%lx %p saved params %d name \"%s\" pos %d\n",
-                pthread_self(), __func__, i, conn->params[i].name,
-                conn->params[i].pos);
+               pthread_self(), __func__, i, conn->params[i].name,
+               conn->params[i].pos);
     }
 
     conn->rc = SQLITE_ROW;
