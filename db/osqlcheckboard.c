@@ -117,8 +117,8 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
 
 #ifdef DEBUG
     if (gbl_debug_sql_opcodes) {
-        logmsg(LOGMSG_USER, "Registered %llx %s %d %d\n", entry->rqid,
-                comdb2uuidstr(entry->uuid, us), entry->master, entry->type);
+        logmsg(LOGMSG_USER, "Registered %llx %s %s %d\n", entry->rqid,
+               comdb2uuidstr(entry->uuid, us), entry->master, entry->type);
     }
 #endif
 
@@ -260,9 +260,9 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
 #ifdef DEBUG
         if (gbl_debug_sql_opcodes) {
             uuidstr_t us;
-            logmsg(LOGMSG_USER, "UNRegistered %llx %s %d %d\n", entry->rqid,
-                    comdb2uuidstr(clnt->osql.uuid, us), entry->master,
-                    entry->type);
+            logmsg(LOGMSG_USER, "UNRegistered %llx %s %s %d\n", entry->rqid,
+                   comdb2uuidstr(clnt->osql.uuid, us), entry->master,
+                   entry->type);
         }
 #endif
 
