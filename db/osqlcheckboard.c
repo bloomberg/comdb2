@@ -52,9 +52,30 @@ typedef struct osql_checkboard {
 
 static osql_checkboard_t *checkboard = NULL;
 
+
+/* will get rdlock on checkboard->rwlock if parameter lock is set
+ * if caller already has rwlock, call this func with lock = false
+ */
+static inline osql_sqlthr_t *osql_chkboard_fetch_entry(unsigned long long rqid,
+       uuid_t uuid, bool lock)
+{
+    osql_sqlthr_t *entry = NULL;
+
+    if (lock)
+        Pthread_rwlock_rdlock(&checkboard->rwlock);
+
+    if (rqid == OSQL_RQID_USE_UUID)
+        entry = hash_find_readonly(checkboard->rqsuuid, uuid);
+    else
+        entry = hash_find_readonly(checkboard->rqs, &rqid);
+
+    if (lock)
+        Pthread_rwlock_unlock(&checkboard->rwlock);
+    return entry;
+}
+
 int osql_checkboard_init(void)
 {
-
     osql_checkboard_t *tmp = NULL;
 
     /* create repository if none */
@@ -94,7 +115,6 @@ void osql_checkboard_destroy(void) { /* TODO*/ }
  */
 int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
 {
-
     osql_sqlthr_t *entry = (osql_sqlthr_t *)calloc(sizeof(osql_sqlthr_t), 1);
     int rc = 0;
     int retry = 0;
@@ -214,7 +234,6 @@ int osql_register_remtran(struct sqlclntstate *clnt, int type, char *tid)
  */
 int osql_unregister_sqlthr(struct sqlclntstate *clnt)
 {
-    osql_sqlthr_t *entry = NULL;
     int rc = 0;
 
     if (clnt->osql.rqid == 0)
@@ -222,12 +241,8 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
 
     Pthread_rwlock_wrlock(&checkboard->rwlock);
 
-    /* non-thread-safe hash_find() ok because we have the write (exclusive)
-     * lock */
-    if (clnt->osql.rqid == OSQL_RQID_USE_UUID)
-        entry = hash_find(checkboard->rqsuuid, clnt->osql.uuid);
-    else
-        entry = hash_find(checkboard->rqs, &clnt->osql.rqid);
+    osql_sqlthr_t *entry = osql_chkboard_fetch_entry(clnt->osql.rqid,
+                                                     clnt->osql.uuid, 0);
     if (!(entry)) {
         uuidstr_t us;
         logmsg(LOGMSG_ERROR, "%s: error unable to find record %llx %s\n", __func__,
@@ -280,43 +295,23 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
     return rc;
 }
 
-/**
+/*
  * Checks the checkboard for sql session "rqid"
- * Returns:
- * - 1 is the session exists
- * - 0 if no session
- * - <0 if error
- *
+ * Returns true or false depending on whether sesssion exists
  */
-int osql_chkboard_sqlsession_exists(unsigned long long rqid, uuid_t uuid,
-                                    int lock)
+bool osql_chkboard_sqlsession_exists(unsigned long long rqid, uuid_t uuid,
+                                    bool lock)
 {
-
-    osql_sqlthr_t *entry = NULL;
-    int rc = 0;
-
     if (!checkboard)
         return 0;
 
-    if (lock)
-        Pthread_rwlock_rdlock(&checkboard->rwlock);
-
-    if (rqid == OSQL_RQID_USE_UUID)
-        rc = (entry = hash_find_readonly(checkboard->rqsuuid, uuid)) != 0;
-    else
-        rc = (entry = hash_find_readonly(checkboard->rqs, &rqid)) != 0;
-
-    if (lock)
-        Pthread_rwlock_unlock(&checkboard->rwlock);
-
-    return rc;
+    osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, lock);
+    return entry != NULL;
 }
 
 int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
                                 void *data, struct errstat *errstat)
 {
-
-    osql_sqlthr_t *entry = NULL;
     int rc = 0;
 
     if (!checkboard)
@@ -324,10 +319,7 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
 
     Pthread_rwlock_rdlock(&checkboard->rwlock);
 
-    if (rqid == OSQL_RQID_USE_UUID)
-        entry = hash_find_readonly(checkboard->rqsuuid, uuid);
-    else
-        entry = hash_find_readonly(checkboard->rqs, &rqid);
+    osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, 0);
     if (!entry) {
         /* This happens naturally for example
            if the client drops the connection while block processor
@@ -426,22 +418,6 @@ void osql_checkboard_check_down_nodes(char *host)
     osql_checkboard_for_each(host, osql_checkboard_check_request_down_node);
 }
 
-
-static osql_sqlthr_t *osql_chkboard_fetch_entry(unsigned long long rqid, uuid_t uuid)
-{
-    osql_sqlthr_t *entry = NULL;
-
-    Pthread_rwlock_rdlock(&checkboard->rwlock);
-
-    if (rqid == OSQL_RQID_USE_UUID)
-        entry = hash_find_readonly(checkboard->rqsuuid, uuid);
-    else
-        entry = hash_find_readonly(checkboard->rqs, &rqid);
-
-    Pthread_rwlock_unlock(&checkboard->rwlock);
-    return entry;
-}
-
 /**
  * Wait for the session to complete
  * Upon return, sqlclntstate's errstat is set
@@ -461,7 +437,7 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
         return 0;
 
     while (!done) {
-        osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid);
+        osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, true);
 
         if (!entry) {
             logmsg(LOGMSG_ERROR, "%s: received result for missing session %llu\n",
@@ -631,7 +607,6 @@ done:
 int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
                                   int status, int timestamp)
 {
-    osql_sqlthr_t *entry = NULL;
     int rc = 0;
     uuidstr_t us;
 
@@ -640,10 +615,7 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
 
     Pthread_rwlock_rdlock(&checkboard->rwlock);
 
-    if (rqid == OSQL_RQID_USE_UUID)
-        entry = hash_find_readonly(checkboard->rqsuuid, uuid);
-    else
-        entry = hash_find_readonly(checkboard->rqs, &rqid);
+    osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, 0);
     if (!entry) {
         ctrace("%s: SORESE received exists for missing session %llu %s\n",
                __func__, rqid, comdb2uuidstr(uuid, us));
@@ -672,7 +644,6 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
  */
 int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
 {
-    osql_sqlthr_t *entry = NULL;
     int rc = 0;
 
     if (clnt->osql.rqid == 0)
@@ -680,12 +651,8 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
 
     Pthread_rwlock_wrlock(&checkboard->rwlock);
 
-    if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
-        entry = hash_find_readonly(checkboard->rqsuuid, clnt->osql.uuid);
-    } else {
-        entry = hash_find_readonly(checkboard->rqs, &clnt->osql.rqid);
-    }
-
+    osql_sqlthr_t *entry = osql_chkboard_fetch_entry(clnt->osql.rqid,
+                                                     clnt->osql.uuid, 0);
     if (!entry) {
         uuidstr_t us;
         logmsg(LOGMSG_ERROR, "%s: error unable to find record %llx %s\n", __func__,
