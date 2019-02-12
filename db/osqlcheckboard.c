@@ -461,7 +461,7 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
         return 0;
 
     while (!done) {
-        osql_sqlthr_t *entry = osql_checkboard_fetch_entry(rqid, uuid);
+        osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid);
 
         if (!entry) {
             logmsg(LOGMSG_ERROR, "%s: received result for missing session %llu\n",
