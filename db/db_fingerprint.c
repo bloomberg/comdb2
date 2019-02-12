@@ -69,8 +69,8 @@ int debug_fingerprints() {
             char fp[FINGERPRINTSZ*2+1]; /* 16 ==> 33 */
             util_tohex(fp, pEntry->fingerprint, FINGERPRINTSZ);
             fprintf(stdout,
-                    "[%s] {%s} count:" PRIx64 " cost:" PRIx64 " time:" 
-                    PRIx64 " rows:" PRIx64 "\n", fp, pEntry->normalized_query,
+                    "[%s] {%s} count:%" PRIx64 " cost:%" PRIx64 " time:%"
+                    PRIx64 " rows:%" PRIx64 "\n", fp, pEntry->normalized_query,
                     pEntry->count, pEntry->cost, pEntry->time, pEntry->rows);
             result++;
             pEntry = hash_next(gbl_fingerprint_hash, &hash_cur, &hash_cur_buk);
