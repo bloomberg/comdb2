@@ -428,15 +428,6 @@ static int seedsort(const void *arg1, const void *arg2)
     return 0;
 }
 
-static inline void reset_last_fail(void)
-{
-    for (int i = curr_tier; i >= 0; i--)
-        for (int j = 0; j < cnct_idx[i]; j++) {
-            DB_Connection *cnct = local_rep_dbs[i][j];
-            cnct->last_failed = 0;
-        }
-}
-
 static int find_new_repl_db(void)
 {
     int rc;
@@ -531,7 +522,6 @@ static int find_new_repl_db(void)
                    "%s: couldn't connect to any machine, sleeping for 1\n",
                    __func__);
         }
-        reset_last_fail();
 
         sleep(1);
     }
