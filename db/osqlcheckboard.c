@@ -418,6 +418,132 @@ void osql_checkboard_check_down_nodes(char *host)
     osql_checkboard_for_each(host, osql_checkboard_check_request_down_node);
 }
 
+
+/* NB: this is a helper function and waits for response from master
+ * until max_wait count is reached.
+ * This function is ment to be called with mutex entry->mtx in locked state
+ * and returns with that same mutex locked if rc is 0
+ * but unlocked if rc is nonzero
+ */
+static int wait_till_max_wait_or_timeout(osql_sqlthr_t *entry, int max_wait,
+                                         struct errstat *xerr, int *cnt)
+{
+    int rc = 0;
+    uuidstr_t us;
+    /* several conditions cause us to break out */
+    while (entry->done != 1 && !entry->master_changed &&
+           ((max_wait > 0 && (*cnt) < max_wait) || max_wait < 0)) {
+
+        /* prepare to wait for a second */
+        struct timespec tm_s;
+        clock_gettime(CLOCK_REALTIME, &tm_s);
+        tm_s.tv_sec++;
+
+        Pthread_mutex_unlock(&entry->mtx);
+
+        int tm_recov_deadlk = comdb2_time_epochms();
+        /* this call could wait for a bdb read lock; in the meantime,
+           someone might try to signal us */
+        if (osql_comm_check_bdb_lock(__func__, __LINE__)) {
+            logmsg(LOGMSG_ERROR, "sosql: timed-out on bdb_lock_desired\n");
+            rc = ERR_READONLY;
+            break;
+        }
+        tm_recov_deadlk = comdb2_time_epochms() - tm_recov_deadlk;
+
+        Pthread_mutex_lock(&entry->mtx);
+
+        if (entry->done == 1 || entry->master_changed)
+            break;
+
+        int lrc = 0;
+        if ((lrc = pthread_cond_timedwait(&entry->cond, &entry->mtx,
+                                         &tm_s))) {
+            if (ETIMEDOUT == lrc) {
+                /* normal timeout .. */
+            } else {
+                logmsg(LOGMSG_ERROR,
+                       "pthread_cond_timedwait: error code %d\n", lrc);
+                rc = -7;
+                break;
+            }
+        }
+
+        (*cnt)++;
+
+        /* we got back the mutex, are we there yet ? */
+        if (entry->done == 1 || entry->master_changed ||
+            (max_wait > 0 && (*cnt) >= max_wait))
+            break;
+
+        int poke_timeout = bdb_attr_get(
+                thedb->bdb_attr, BDB_ATTR_SOSQL_POKE_TIMEOUT_SEC) * 1000;
+        int poke_freq = bdb_attr_get(
+                thedb->bdb_attr, BDB_ATTR_SOSQL_POKE_FREQ_SEC) * 1000;
+
+        /* is it the time to check the master? have we already done so? */
+        int now = comdb2_time_epochms();
+
+        if ((poke_timeout > 0) &&
+            (entry->last_updated + poke_timeout + tm_recov_deadlk < now)) {
+            /* timeout the request */
+            logmsg(LOGMSG_ERROR,
+                   "Master %s failed to acknowledge session %llu %s\n",
+                   entry->master, entry->rqid,
+                   comdb2uuidstr(entry->uuid, us));
+            entry->done = 1;
+            xerr->errval = entry->err.errval = SQLHERR_MASTER_TIMEOUT;
+            snprintf(entry->err.errstr, sizeof(entry->err.errstr),
+                     "master %s lost transaction %llu", entry->master,
+                     entry->rqid);
+            break;
+        }
+
+        if ((poke_freq > 0) && (entry->last_checked + poke_freq <= now)) {
+            entry->last_checked = now;
+
+            /* try poke again */
+            if (entry->master == 0 || entry->master == gbl_mynode) {
+                /* local checkup */
+                bool found = osql_repository_session_exists(entry->rqid,
+                                                            entry->uuid);
+                if (!found) {
+                    logmsg(LOGMSG_ERROR, "Local SORESE failed to find local "
+                                    "transaction %llu %s\n",
+                            entry->rqid, comdb2uuidstr(entry->uuid, us));
+                    entry->done = 1;
+                    xerr->errval = entry->err.errval =
+                        SQLHERR_MASTER_TIMEOUT;
+                    snprintf(entry->err.errstr, sizeof(entry->err.errstr),
+                             "Local transaction failed, unable to locate "
+                             "entry id=%llu",
+                             entry->rqid);
+                    break;
+                }
+                entry->last_updated = now;
+                continue;
+            }
+
+            int lrc = osql_comm_send_poke(
+                    entry->master, entry->rqid, entry->uuid,
+                    NET_OSQL_MASTER_CHECK);
+            if (lrc) {
+                logmsg(LOGMSG_ERROR, "Failed to send master check lrc=%d\n",
+                        lrc);
+                entry->done = 1;
+                xerr->errval = entry->err.errval = SQLHERR_MASTER_TIMEOUT;
+                snprintf(entry->err.errstr, sizeof(entry->err.errstr),
+                         "failed comm with master %s entry id=%llu %s",
+                         entry->master, entry->rqid,
+                         comdb2uuidstr(entry->uuid, us));
+                break;
+            }
+        }
+    }
+    return rc;
+}
+
+
 /**
  * Wait for the session to complete
  * Upon return, sqlclntstate's errstat is set
@@ -428,7 +554,6 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
 {
     int done = 0;
     int cnt = 0;
-    int now;
     uuidstr_t us;
 
     if (!checkboard)
@@ -456,114 +581,10 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
         /* reset these time parameters */
         entry->last_checked = entry->last_updated = comdb2_time_epochms();
 
-        /* several conditions cause us to break out */
-        while (entry->done != 1 && !entry->master_changed &&
-               ((max_wait > 0 && cnt < max_wait) || max_wait < 0)) {
-
-            /* prepare to wait for a second */
-            struct timespec tm_s;
-            clock_gettime(CLOCK_REALTIME, &tm_s);
-            tm_s.tv_sec++;
-
-            Pthread_mutex_unlock(&entry->mtx);
-
-            int tm_recov_deadlk = comdb2_time_epochms();
-            /* this call could wait for a bdb read lock; in the meantime,
-               someone might try to signal us */
-            if (osql_comm_check_bdb_lock(__func__, __LINE__)) {
-                logmsg(LOGMSG_ERROR, "sosql: timed-out on bdb_lock_desired\n");
-                return ERR_READONLY;
-            }
-            tm_recov_deadlk = comdb2_time_epochms() - tm_recov_deadlk;
-
-            Pthread_mutex_lock(&entry->mtx);
-
-            if (entry->done == 1 || entry->master_changed)
-                break;
-
-            int lrc = 0;
-            if ((lrc = pthread_cond_timedwait(&entry->cond, &entry->mtx,
-                                             &tm_s))) {
-                if (ETIMEDOUT == lrc) {
-                    /* normal timeout .. */
-                } else {
-                    logmsg(LOGMSG_ERROR,
-                           "pthread_cond_timedwait: error code %d\n", lrc);
-                    return -7;
-                }
-            }
-
-            cnt++;
-
-            /* we got back the mutex, are we there yet ? */
-            if (entry->done == 1 || entry->master_changed ||
-                (max_wait > 0 && cnt >= max_wait))
-                break;
-
-            int poke_timeout = bdb_attr_get(
-                    thedb->bdb_attr, BDB_ATTR_SOSQL_POKE_TIMEOUT_SEC) * 1000;
-            int poke_freq = bdb_attr_get(
-                    thedb->bdb_attr, BDB_ATTR_SOSQL_POKE_FREQ_SEC) * 1000;
-
-            /* is it the time to check the master? have we already done so? */
-            now = comdb2_time_epochms();
-
-            if ((poke_timeout > 0) &&
-                (entry->last_updated + poke_timeout + tm_recov_deadlk < now)) {
-                /* timeout the request */
-                logmsg(LOGMSG_ERROR,
-                       "Master %s failed to acknowledge session %llu %s\n",
-                       entry->master, entry->rqid,
-                       comdb2uuidstr(entry->uuid, us));
-                entry->done = 1;
-                xerr->errval = entry->err.errval = SQLHERR_MASTER_TIMEOUT;
-                snprintf(entry->err.errstr, sizeof(entry->err.errstr),
-                         "master %s lost transaction %llu", entry->master,
-                         entry->rqid);
-                break;
-            }
-
-            if ((poke_freq > 0) && (entry->last_checked + poke_freq <= now)) {
-                entry->last_checked = now;
-
-                /* try poke again */
-                if (entry->master == 0 || entry->master == gbl_mynode) {
-                    /* local checkup */
-                    bool found = osql_repository_session_exists(entry->rqid,
-                                                                entry->uuid);
-                    if (!found) {
-                        logmsg(LOGMSG_ERROR, "Local SORESE failed to find local "
-                                        "transaction %llu %s\n",
-                                entry->rqid, comdb2uuidstr(entry->uuid, us));
-                        entry->done = 1;
-                        xerr->errval = entry->err.errval =
-                            SQLHERR_MASTER_TIMEOUT;
-                        snprintf(entry->err.errstr, sizeof(entry->err.errstr),
-                                 "Local transaction failed, unable to locate "
-                                 "entry id=%llu",
-                                 entry->rqid);
-                        break;
-                    }
-                    entry->last_updated = now;
-                    continue;
-                }
-
-                int lrc = osql_comm_send_poke(
-                        entry->master, entry->rqid, entry->uuid,
-                        NET_OSQL_MASTER_CHECK);
-                if (lrc) {
-                    logmsg(LOGMSG_ERROR, "Failed to send master check lrc=%d\n",
-                            lrc);
-                    entry->done = 1;
-                    xerr->errval = entry->err.errval = SQLHERR_MASTER_TIMEOUT;
-                    snprintf(entry->err.errstr, sizeof(entry->err.errstr),
-                             "failed comm with master %s entry id=%llu %s",
-                             entry->master, entry->rqid,
-                             comdb2uuidstr(entry->uuid, us));
-                    break;
-                }
-            }
-        }
+        // wait_till_max_wait_or_timeout() expects to be called with mtx locked
+        int rc = wait_till_max_wait_or_timeout(entry, max_wait, xerr, &cnt);
+        if (rc) // dont unlock entry->mtx, on nonzero rc it was already unlocked
+            return rc;
 
         int master_changed = entry->master_changed; /* fetch value under lock */
 
@@ -589,7 +610,6 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
     } /* done */
 
 done:
-
     if (xerr->errval)
         logmsg(LOGMSG_DEBUG, "%s: done xerr->errval=%d\n", __func__,
                xerr->errval);
