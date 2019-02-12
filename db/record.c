@@ -429,7 +429,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         if (blob->exists && (!gbl_use_plan || !iq->usedb->plan ||
                              iq->usedb->plan->blob_plan[blobno] == -1)) {
             retrc = blob_add(iq, trans, blobno, blob->data, blob->length, *rrn,
-                             *genid);
+                             *genid, IS_ODH_READY(blob));
             if (iq->debug) {
                 reqprintf(iq, "blob_add LEN %u RC %d DATA ", blob->length,
                           retrc);
@@ -510,6 +510,11 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         for (size_t blobno = 0; blobno < maxblobs; blobno++) {
             if (blobs[blobno].exists) {
                 blob_buffer_t *blob = &blobs[blobno];
+                if (unodhfy_blob_buffer(iq->usedb, blob, blobno) != 0) {
+                    *opfailcode = OP_FAILED_INTERNAL;
+                    retrc = ERR_INTERNAL;
+                    ERR;
+                }
                 javasp_rec_have_blob(jrec, blobno, blob->data, 0, blob->length);
             }
         }
@@ -1289,7 +1294,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             } else {
                 /* Add/Update case. */
                 rc = blob_upv(iq, trans, 0, vgenid, blob->data, blob->length,
-                              blobno, rrn, *genid);
+                              blobno, rrn, *genid, IS_ODH_READY(blob));
                 if (iq->debug)
                     reqprintf(iq, "blob_upv BLOBNO %d RC %d", blobno, rc);
                 if (rc != 0) {
@@ -1315,7 +1320,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             /* add the new blob data if it's not NULL. */
             if (blob->exists) {
                 rc = blob_add(iq, trans, blobno, blob->data, blob->length, rrn,
-                              *genid);
+                              *genid, IS_ODH_READY(blob));
                 if (iq->debug)
                     reqprintf(iq, "blob_add BLOBNO %d RC %d", blobno, rc);
                 if (rc != 0) {
@@ -2053,7 +2058,7 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
             blob = &blobs[oldblobidx];
             if (blob->exists) {
                 rc = blob_add(iq, trans, blobn, blob->data, blob->length, 2,
-                              newgenid);
+                              newgenid, IS_ODH_READY(blob));
                 if (iq->debug) {
                     reqprintf(iq, "blob_add blobno %d rc %d\n", blobn, rc);
                 }
@@ -2338,7 +2343,8 @@ static int check_blob_buffers(struct ireq *iq, blob_buffer_t *blobs,
             /* otherwise, fall back to regular blob checks */
             else if (blob->notnull)
                 inconsistent = !blobs[cblob].exists ||
-                               blobs[cblob].length != ntohl(blob->length);
+                               (blobs[cblob].length != ntohl(blob->length) &&
+                                !IS_ODH_READY(blobs + cblob));
             else
                 inconsistent = blobs[cblob].exists;
             if (inconsistent) {
@@ -2729,4 +2735,81 @@ void testrep(int niter, int recsz)
     }
 done:
     free(stuff);
+}
+
+int odhfy_blob_buffer(struct dbtable *db, blob_buffer_t *blob, int blobind)
+{
+    void *out;
+    size_t len;
+    int rc;
+
+    if (IS_ODH_READY(blob))
+        return 0;
+
+    if (!gbl_osql_odh_blob) {
+        blob->odhind = blobind;
+        return -1;
+    }
+
+    if (blob->length <= 0) {
+        blob->odhind = blobind;
+        return -1;
+    }
+
+    rc = bdb_pack_heap(db->handle, blob->data, blob->length, &out, &len,
+                       &blob->freeptr);
+    if (rc != 0) {
+        blob->odhind = blobind;
+        return rc;
+    }
+
+    assert(blob->qblob == NULL);
+    free(blob->data);
+
+    blob->data = out;
+    blob->length = len;
+    blob->odhind = (blobind | OSQL_BLOB_ODH_BIT);
+    return 0;
+}
+
+int unodhfy_blob_buffer(struct dbtable *db, blob_buffer_t *blob, int blobind)
+{
+    int rc;
+    void *out;
+    size_t len;
+
+    if (!blob->exists)
+        return 0;
+
+    if (!IS_ODH_READY(blob))
+        return 0;
+
+    rc = bdb_unpack_heap(db->handle, blob->data, blob->length, &out, &len,
+                         &blob->freeptr);
+    if (rc != 0)
+        return rc;
+
+    /* We can't free blob->qblob yet
+       as add_idx_blobs might still reference it.  */
+
+    /* Not an OSQL_QBLOB blob */
+    if (blob->qblob == NULL) {
+        /* If `freeptr' is NULL, the record is uncompressed
+           (no gain after compression) and `out' points to
+           where the record begins inside `blob->data'. We then
+           assign `blob->data' to `freeptr' so that the memory
+           can be freed correctly in free_blob_buffers().
+
+           Otherwise the record is compressed. `blob->data' is no longer useful
+           and must be freed. */
+        if (blob->freeptr == NULL)
+            blob->freeptr = blob->data;
+        else
+            free(blob->data);
+    }
+
+    blob->data = out;
+    blob->length = len;
+    blob->odhind = blobind;
+    return 0;
 }
