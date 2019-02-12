@@ -2042,6 +2042,19 @@ static void generateColumnTypes(
 #endif /* !defined(SQLITE_OMIT_DECLTYPE) */
 }
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+/*
+** Return the Table objecct in the SrcList that has cursor iCursor.
+** Or return NULL if no such Table object exists in the SrcList.
+*/
+static Table *tableWithCursor(SrcList *pList, int iCursor){
+  int j;
+  for(j=0; j<pList->nSrc; j++){
+    if( pList->a[j].iCursor==iCursor ) return pList->a[j].pTab;
+  }
+  return 0;
+}
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** Compute the column names for a SELECT statement.
@@ -2099,8 +2112,11 @@ static void generateColumnNames(
   if( pParse->colNamesSet ) return;
   /* Column names are determined by the left-most term of a compound select */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  /* COMPAT: column types of compound SELECTs are assumed to be 'text'. */
-  while( pSelect->pPrior ){ isCompound++; pSelect = pSelect->pPrior; }
+  {
+    Select *pSelCount = pSelect;
+    /* COMPAT: column types of compound SELECTs are assumed to be 'text'. */
+    while( pSelCount->pPrior ){ isCompound++; pSelCount = pSelCount->pPrior; }
+  }
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   while( pSelect->pPrior ) pSelect = pSelect->pPrior;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -2129,10 +2145,19 @@ static void generateColumnNames(
       /* An AS clause always takes first priority */
       char *zName = pEList->a[i].zName;
       sqlite3VdbeSetColName(v, i, COLNAME_NAME, zName, SQLITE_TRANSIENT);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    }else if( srcName
+           && (p->op==TK_COLUMN || p->op==TK_AGG_COLUMN)
+           && (pTab = tableWithCursor(pTabList, p->iTable))!=0
+    ){
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }else if( srcName && p->op==TK_COLUMN ){
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       char *zCol;
       int iCol = p->iColumn;
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
       pTab = p->y.pTab;
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
       assert( pTab!=0 );
       if( iCol<0 ) iCol = pTab->iPKey;
       assert( iCol==-1 || (iCol>=0 && iCol<pTab->nCol) );
@@ -3010,6 +3035,13 @@ static int multiSelect(
         if( dest.eDest!=priorOp ){
           int iCont, iBreak, iStart;
           assert( p->pEList );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+          if( dest.eDest==SRT_Output ){
+            Select *pFirst = p;
+            while( pFirst->pPrior ) pFirst = pFirst->pPrior;
+            generateColumnNames(pParse, pFirst->pSrc, pFirst->pEList);
+          }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           iBreak = sqlite3VdbeMakeLabel(v);
           iCont = sqlite3VdbeMakeLabel(v);
           computeLimitRegisters(pParse, p, iBreak);
@@ -3082,6 +3114,13 @@ static int multiSelect(
         ** tables.
         */
         assert( p->pEList );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+        if( dest.eDest==SRT_Output ){
+          Select *pFirst = p;
+          while( pFirst->pPrior ) pFirst = pFirst->pPrior;
+          generateColumnNames(pParse, pFirst->pSrc, pFirst->pEList);
+        }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         iBreak = sqlite3VdbeMakeLabel(v);
         iCont = sqlite3VdbeMakeLabel(v);
         computeLimitRegisters(pParse, p, iBreak);
@@ -3689,6 +3728,16 @@ static int multiSelectOrderBy(
   */
   sqlite3VdbeResolveLabel(v, labelEnd);
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  /* Set the number of output columns
+  */
+  if( pDest->eDest==SRT_Output ){
+    Select *pFirst = pPrior;
+    while( pFirst->pPrior ) pFirst = pFirst->pPrior;
+    generateColumnNames(pParse, pFirst->pSrc, pFirst->pEList);
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
   /* Reassembly the compound query so that it will be freed correctly
   ** by the calling function */
   if( p->pPrior ){
@@ -3997,6 +4046,9 @@ static int flattenSubquery(
   Select *pSub1;      /* Pointer to the rightmost select in sub-query */
   SrcList *pSrc;      /* The FROM clause of the outer query */
   SrcList *pSubSrc;   /* The FROM clause of the subquery */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  ExprList *pList;    /* The result set of the outer query */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   int iParent;        /* VDBE cursor number of the pSub result set temp table */
   int iNewParent = -1;/* Replacement table for iParent */
   int isLeftJoin = 0; /* True if pSub is the right side of a LEFT JOIN */    
@@ -4320,6 +4372,16 @@ static int flattenSubquery(
     ** We look at every expression in the outer query and every place we see
     ** "a" we substitute "x*3" and every place we see "b" we substitute "y+10".
     */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    pList = pParent->pEList;
+    for(i=0; i<pList->nExpr; i++){
+      if( pList->a[i].zName==0 ){
+        char *zName = sqlite3DbStrDup(db, pList->a[i].zSpan);
+        sqlite3Dequote(zName);
+        pList->a[i].zName = zName;
+      }
+    }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( pSub->pOrderBy ){
       /* At this point, any non-zero iOrderByCol values indicate that the
       ** ORDER BY column expression is identical to the iOrderByCol'th
@@ -5995,9 +6057,11 @@ int sqlite3Select(
   }
 #endif
 
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   if( pDest->eDest==SRT_Output ){
     generateColumnNames(pParse, p);
   }
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 #ifndef SQLITE_OMIT_WINDOWFUNC
   if( sqlite3WindowRewrite(pParse, p) ){
@@ -6999,6 +7063,15 @@ int sqlite3Select(
   */
 select_end:
   sqlite3ExprListDelete(db, pMinMaxOrderBy);
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  /* Identify column names if results of the SELECT are to be output.
+  */
+  if( rc==SQLITE_OK && pDest->eDest==SRT_Output ){
+    generateColumnNames(pParse, pTabList, pEList);
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
   sqlite3DbFree(db, sAggInfo.aCol);
   sqlite3DbFree(db, sAggInfo.aFunc);
 #if SELECTTRACE_ENABLED
