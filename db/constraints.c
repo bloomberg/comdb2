@@ -1331,7 +1331,6 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
         struct forward_ct *curop = NULL;
         int ixnum = -1;
         int ondisk_size = 0;
-        int fndlen = 0;
         /* do something */
         if (ctrq == NULL) {
             if (iq->debug)
