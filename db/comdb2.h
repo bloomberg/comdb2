@@ -2657,7 +2657,8 @@ enum {
     /* used for upgrade record */
     RECFLAGS_UPGRADE_RECORD = RECFLAGS_DYNSCHEMA_NULLS_ONLY |
                               RECFLAGS_KEEP_GENID | RECFLAGS_NO_TRIGGERS |
-                              RECFLAGS_NO_CONSTRAINTS | RECFLAGS_NO_BLOBS | 1 << 9,
+                              RECFLAGS_NO_CONSTRAINTS | RECFLAGS_NO_BLOBS |
+                              1 << 9,
     RECFLAGS_DONT_LOCK_TBL = 1 << 10,
     RECFLAGS_MAX = 1 << 11
 };

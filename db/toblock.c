@@ -97,14 +97,14 @@ extern int gbl_prefault_udp;
 extern int gbl_reorder_socksql_no_deadlock;
 
 #if 0
-#define GOTOBACKOUT                                                                \
+#define GOTOBACKOUT                                                            \
     do {                                                                       \
         printf("***BACKOUT*** from %d rc %d\n", __LINE__, rc);                 \
         if (1)                                                                 \
             goto backout;                                                      \
     } while (0)
 #else
-#define GOTOBACKOUT                                                             \
+#define GOTOBACKOUT                                                            \
     do {                                                                       \
         fromline = __LINE__;                                                   \
         goto backout;                                                          \

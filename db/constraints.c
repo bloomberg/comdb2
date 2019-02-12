@@ -907,7 +907,7 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
             close_constraint_table_cursor(cur);
             return ERR_BADREQ;
         }
- 
+
         /* get next record from table */
         rc = bdb_temp_table_next(thedb->bdb_env, cur, &err);
     }
