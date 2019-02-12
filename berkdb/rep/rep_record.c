@@ -6614,13 +6614,13 @@ restart:
 
 	/* Tell replicants to truncate */
 	if (dbenv->rep_truncate_callback) {
-        uint32_t rep_truncate_flags = 0;
-        if (i_am_master)
-            rep_truncate_flags |= DB_REP_TRUNCATE_MASTER;
-        if (online)
-            rep_truncate_flags |= DB_REP_TRUNCATE_ONLINE;
+		uint32_t rep_truncate_flags = 0;
+		if (i_am_master)
+			rep_truncate_flags |= DB_REP_TRUNCATE_MASTER;
+		if (online)
+			rep_truncate_flags |= DB_REP_TRUNCATE_ONLINE;
 		dbenv->rep_truncate_callback(dbenv, trunclsnp, rep_truncate_flags);
-    }
+	}
 
 err:
 	if (i_am_master) {

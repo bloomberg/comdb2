@@ -2705,7 +2705,7 @@ int bdb_get_pagesize_allindex(tran_type *tran, int *pagesize, int *bdberr)
                             pagesize, bdberr);
 }
 
-int bdb_add_dummy_llmeta_flags(uint32_t flags)
+int bdb_add_dummy_llmeta_wait(int wait_for_seqnum)
 {
     tran_type *tran;
     int rc;
@@ -2749,7 +2749,7 @@ retry:
     rc = bdb_tran_commit_with_seqnum_size(llmeta_bdb_state, tran, &ss, NULL,
                                           &bdberr);
 
-    if (rc == 0 && flags) {
+    if (rc == 0 && wait_for_seqnum) {
         int timeoutms;
         rc = bdb_wait_for_seqnum_from_all_adaptive_newcoh(llmeta_bdb_state, &ss,
                                                           0, &timeoutms);
@@ -2784,7 +2784,7 @@ fail:
 
 int bdb_add_dummy_llmeta(void)
 {
-    return bdb_add_dummy_llmeta_flags(1);
+    return bdb_add_dummy_llmeta_wait(1);
 }
 
 /* store a new csc2 schema in the llmeta table

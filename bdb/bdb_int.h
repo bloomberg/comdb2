@@ -1836,7 +1836,7 @@ int enqueue_pg_compact_work(bdb_state_type *bdb_state, int32_t fileid,
 
 void add_dummy(bdb_state_type *);
 int bdb_add_dummy_llmeta(void);
-int bdb_add_dummy_llmeta_flags(uint32_t flags);
+int bdb_add_dummy_llmeta_wait(int wait_for_seqnum);
 int bdb_have_ipu(bdb_state_type *bdb_state);
 
 struct ack_info_t;
