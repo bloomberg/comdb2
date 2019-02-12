@@ -631,11 +631,6 @@ int comdb2_check_parallel(Parse *pParse)
     dohsql_node_t *node;
     int i;
 
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
-    struct sqlclntstate *clnt = thd->clnt;
-    fprintf(stderr, "%lx %s entry %p \"%s\"\n", pthread_self(), __func__,
-            pParse, clnt->sql);
-
     if (gbl_dohsql_disable)
         return 0;
 
@@ -662,7 +657,6 @@ int comdb2_check_parallel(Parse *pParse)
         if (gbl_dohast_verbose)
             logmsg(LOGMSG_DEBUG, "%lx Single query \"%s\"\n", pthread_self(),
                    node->sql);
-        fprintf(stderr, "%lx Single query \"%s\"\n", pthread_self(), node->sql);
         return 0;
     }
 
@@ -672,28 +666,16 @@ int comdb2_check_parallel(Parse *pParse)
         if (gbl_dohast_verbose) {
             logmsg(LOGMSG_DEBUG, "%lx Parallelizable union %d threads:\n",
                    pthread_self(), node->nnodes);
-            fprintf(stderr,
-                    "%lx Parallelizable union %d threads, nparams %d params %p "
-                    "parse %p vdbe %p:\n",
-                    pthread_self(), node->nnodes, node->nparams, node->params,
-                    pParse->pVList, pParse->db->pVdbe->pVList);
             for (i = 0; i < node->nnodes; i++) {
                 logmsg(LOGMSG_DEBUG, "\t Thread %d: \"%s\"\n", i + 1,
                        node->nodes[i]->sql);
-                fprintf(stderr, "\t Thread %d: \"%s\"\n", i + 1,
-                        node->nodes[i]->sql);
                 if (node->nodes[i]->params) {
                     logmsg(LOGMSG_DEBUG, "\t\t Params %d:\n",
                            node->nodes[i]->params->nparams);
-                    fprintf(stderr, "\t\t Params %d:\n",
-                            node->nodes[i]->params->nparams);
                     for (int j = 0; j < node->nodes[i]->params->nparams; j++) {
                         logmsg(LOGMSG_DEBUG, "\t\t\t %d \"%s\" %d\n", j + 1,
                                node->nodes[i]->params->params[j].name,
                                node->nodes[i]->params->params[j].pos);
-                        fprintf(stderr, "\t\t\t %d \"%s\" %d\n", j + 1,
-                                node->nodes[i]->params->params[j].name,
-                                node->nodes[i]->params->params[j].pos);
                     }
                 }
             }

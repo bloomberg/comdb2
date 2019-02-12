@@ -874,8 +874,6 @@ static int _param_value(dohsql_connector_t *conn, struct param_data *b, int c,
         their identity, matching the sql query generated */
         b->pos = c + 1;
     }
-    fprintf(stderr, "%lx %s lookup %d found %s %d\n", pthread_self(), src, c,
-            b->name, b->pos);
     return 0;
 }
 
@@ -1061,10 +1059,10 @@ static int _shard_connect(struct sqlclntstate *clnt, dohsql_connector_t *conn,
     conn->thr_where = strdup(where ? where : "");
     conn->nparams = nparams;
     conn->params = params;
-    fprintf(stderr, "%lx %p saved nparams %d\n", pthread_self(), __func__,
+    logmsg(LOGMSG_DEBUG, "%lx %p saved nparams %d\n", pthread_self(), __func__,
             conn->nparams);
     for (int i = 0; i < conn->nparams; i++) {
-        fprintf(stderr, "%lx %p saved params %d name \"%s\" pos %d\n",
+        logmsg(LOGMSG_DEBUG, "%lx %p saved params %d name \"%s\" pos %d\n",
                 pthread_self(), __func__, i, conn->params[i].name,
                 conn->params[i].pos);
     }
@@ -1891,9 +1889,5 @@ struct params_info *dohsql_params_append(struct params_info **pparams,
     }
     params->params = temparr;
     params->params[params->nparams++] = *newparam;
-    fprintf(stderr, "%lx %s saved param name \"%s\" at %d indx %d type %d\n",
-            pthread_self(), __func__, params->params[params->nparams - 1].name,
-            params->nparams - 1, params->params[params->nparams - 1].pos,
-            params->params[params->nparams - 1].type);
     return *pparams = params;
 }

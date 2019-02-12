@@ -1004,8 +1004,6 @@ void sqlite3ExprAssignVarNumber(Parse *pParse, Expr *pExpr, u32 n){
   const char *z;
   ynVar x;
 
-  fprintf(stderr, "%lx %s entry %p\n", pthread_self(), __func__, pParse);
-
   if( pExpr==0 ) return;
   assert( !ExprHasProperty(pExpr, EP_IntValue|EP_Reduced|EP_TokenOnly) );
   z = pExpr->u.zToken;
@@ -1057,14 +1055,9 @@ void sqlite3ExprAssignVarNumber(Parse *pParse, Expr *pExpr, u32 n){
       }
     }
     if( doAdd ){
-      void *in = pParse->pVList;
       pParse->pVList = sqlite3VListAdd(db, pParse->pVList, z, n, x);
-      fprintf(stderr, "%lx %s store in parser %p from %p to %p [%s %d]\n",
-        pthread_self(), __func__, pParse, in, pParse->pVList, z, x);
     }
   }
-  fprintf(stderr, "%lx %s for pExpr %p assign Expr->iColumn %p to %d\n",
-          pthread_self(), __func__, pParse, pExpr, x);
   pExpr->iColumn = x;
   if( x>db->aLimit[SQLITE_LIMIT_VARIABLE_NUMBER] ){
     sqlite3ErrorMsg(pParse, "too many SQL variables");

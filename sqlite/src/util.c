@@ -1610,7 +1610,6 @@ VList *sqlite3VListAdd(
   assert( pIn[1]<=pIn[0] );
   memcpy(z, zName, nName);
   z[nName] = 0;
-  fprintf(stderr, "%lx add param %s %d to %p\n", pthread_self(), z, iVal, pIn);
   return pIn;
 }
 
@@ -1691,15 +1690,12 @@ void sqlite3VListPrint(loglvl lvl, const VList *pIn)
   mx = pIn[1];
   i = 2;
   logmsg(lvl, "%lx VList info start:\n", pthread_self());
-  fprintf(stderr, "%lx VList info start:\n", pthread_self());
   do{
     const char *z = (const char*)&pIn[i+2];
     logmsg(lvl, "%lx %s %d\n", pthread_self(), z, pIn[i]);
-    fprintf(stderr, "%lx %s %d\n", pthread_self(), z, pIn[i]);
     i += pIn[i+1];
   }while( i<mx );
   logmsg(lvl, "%lx VList info done.\n", pthread_self());
-  fprintf(stderr, "%lx VList info done.\n", pthread_self());
 }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
