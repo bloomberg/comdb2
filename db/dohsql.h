@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "ast.h"
 
-struct params_info{
+struct params_info {
     struct sqlclntstate *clnt;
     int nparams;
     struct param_data *params;
@@ -103,12 +103,12 @@ void explain_distribution(dohsql_node_t *node);
 void dohsql_signal_done(struct sqlclntstate *clnt);
 
 /**
- * Bound parameters support 
+ * Bound parameters support
  * Callback function that registers a parameters with the proper
  * sqlite worker engine
  *
  */
- struct params_info* dohsql_params_append(struct params_info **pparams,
-        const char *name, int index);
+struct params_info *dohsql_params_append(struct params_info **pparams,
+                                         const char *name, int index);
 
 #endif

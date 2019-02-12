@@ -123,7 +123,6 @@ struct dohsql_stats {
 };
 typedef struct dohsql_stats dohsql_stats_t;
 
-
 pthread_mutex_t dohsql_stats_mtx = PTHREAD_MUTEX_INITIALIZER;
 dohsql_stats_t gbl_dohsql_stats;       /* updated only on request completion */
 dohsql_stats_t gbl_dohsql_stats_dirty; /* updated dynamically, unlocked */
@@ -138,7 +137,8 @@ static int order_init(dohsql_t *conns, dohsql_node_t *node);
 static int dohsql_dist_next_row_ordered(struct sqlclntstate *clnt,
                                         sqlite3_stmt *stmt);
 static int _param_index(dohsql_connector_t *conn, const char *b, int64_t *c);
-static int _param_value(dohsql_connector_t *conn, struct param_data *b, int c, const char *src);
+static int _param_value(dohsql_connector_t *conn, struct param_data *b, int c,
+                        const char *src);
 
 static void sqlengine_work_shard_pp(struct thdpool *pool, void *work,
                                     void *thddata, int op)
@@ -405,8 +405,7 @@ static int inner_row_last(struct sqlclntstate *clnt)
 }
 
 /* override sqlite engine */
-static int dohsql_dist_column_count(struct sqlclntstate *clnt,
-                                    sqlite3_stmt *_)
+static int dohsql_dist_column_count(struct sqlclntstate *clnt, sqlite3_stmt *_)
 {
     return clnt->conns->ncols;
 }
@@ -483,14 +482,14 @@ static int dohsql_dist_param_count(struct sqlclntstate *clnt)
 }
 
 static int dohsql_dist_param_index(struct sqlclntstate *clnt, const char *name,
-        int64_t *index)
+                                   int64_t *index)
 {
     /* coordinator param subset */
     return _param_index(&clnt->conns->conns[0], name, index);
 }
 
 static int dohsql_dist_param_value(struct sqlclntstate *clnt,
-        struct param_data *param, int n)
+                                   struct param_data *param, int n)
 {
     /* coordinator param subset */
     return _param_value(&clnt->conns->conns[0], param, n, __func__);
@@ -834,7 +833,7 @@ static void *dohsql_print_stmt(struct sqlclntstate *clnt, void *arg)
 
 static int dohsql_param_count(struct sqlclntstate *c)
 {
-    dohsql_connector_t *conn = (dohsql_connector_t*)c->plugin.state;
+    dohsql_connector_t *conn = (dohsql_connector_t *)c->plugin.state;
 
     if (gbl_plugin_api_debug)
         logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
@@ -845,18 +844,18 @@ static int dohsql_param_count(struct sqlclntstate *c)
 static int _param_index(dohsql_connector_t *conn, const char *b, int64_t *c)
 {
     int i;
-    for(i=0;i<conn->nparams;i++) {
-        if (!strcasecmp(b,conn->params[i].name)) {
+    for (i = 0; i < conn->nparams; i++) {
+        if (!strcasecmp(b, conn->params[i].name)) {
             *c = conn->params[i].pos;
             return 0;
         }
     }
-    return -1; 
+    return -1;
 }
 
 static int dohsql_param_index(struct sqlclntstate *a, const char *b, int64_t *c)
 {
-    dohsql_connector_t *conn = (dohsql_connector_t*)a->plugin.state;
+    dohsql_connector_t *conn = (dohsql_connector_t *)a->plugin.state;
 
     if (gbl_plugin_api_debug)
         logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
@@ -864,17 +863,19 @@ static int dohsql_param_index(struct sqlclntstate *a, const char *b, int64_t *c)
     return _param_index(conn, b, c);
 }
 
-static int _param_value(dohsql_connector_t *conn, struct param_data *b, int c, const char *src)
+static int _param_value(dohsql_connector_t *conn, struct param_data *b, int c,
+                        const char *src)
 {
-    if (c<0 || c>=conn->nparams)
+    if (c < 0 || c >= conn->nparams)
         return -1;
     *b = conn->params[c];
     if (b->name[0] == '\0') {
         /* these are index based that are renamed; use their index position as
         their identity, matching the sql query generated */
-        b->pos = c+1;
+        b->pos = c + 1;
     }
-    fprintf(stderr, "%lx %s lookup %d found %s %d\n", pthread_self(), src, c, b->name, b->pos);
+    fprintf(stderr, "%lx %s lookup %d found %s %d\n", pthread_self(), src, c,
+            b->name, b->pos);
     return 0;
 }
 
@@ -884,7 +885,7 @@ static int dohsql_param_value(struct sqlclntstate *a, struct param_data *b,
     if (gbl_plugin_api_debug)
         logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
 
-    return _param_value((dohsql_connector_t*)a->plugin.state, b, c, __func__);
+    return _param_value((dohsql_connector_t *)a->plugin.state, b, c, __func__);
 }
 
 static int dohsql_override_count(struct sqlclntstate *a)
@@ -1024,7 +1025,8 @@ static int dohsql_send_intrans_response(struct sqlclntstate *a)
 }
 
 static int _shard_connect(struct sqlclntstate *clnt, dohsql_connector_t *conn,
-                          const char *sql, int nparams, struct param_data *params)
+                          const char *sql, int nparams,
+                          struct param_data *params)
 {
     const char *where = NULL;
 
@@ -1059,12 +1061,14 @@ static int _shard_connect(struct sqlclntstate *clnt, dohsql_connector_t *conn,
     conn->thr_where = strdup(where ? where : "");
     conn->nparams = nparams;
     conn->params = params;
-    fprintf(stderr, "%lx %p saved nparams %d\n", pthread_self(), __func__, conn->nparams);
-    for(int i=0;i<conn->nparams;i++) {
+    fprintf(stderr, "%lx %p saved nparams %d\n", pthread_self(), __func__,
+            conn->nparams);
+    for (int i = 0; i < conn->nparams; i++) {
         fprintf(stderr, "%lx %p saved params %d name \"%s\" pos %d\n",
-                pthread_self(), __func__, i, conn->params[i].name, conn->params[i].pos);
+                pthread_self(), __func__, i, conn->params[i].name,
+                conn->params[i].pos);
     }
-    
+
     conn->rc = SQLITE_ROW;
 
     return SHARD_NOERR;
@@ -1134,8 +1138,7 @@ static void _master_clnt_reset(struct sqlclntstate *clnt)
     clnt->plugin.param_index = backup->param_index;
 }
 
-static void _save_params(dohsql_node_t *node,
-        struct param_data **p, int *np)
+static void _save_params(dohsql_node_t *node, struct param_data **p, int *np)
 {
     *p = NULL;
     *np = 0;
@@ -1146,7 +1149,6 @@ static void _save_params(dohsql_node_t *node,
         node->params = NULL;
     }
 }
-
 
 int dohsql_distribute(dohsql_node_t *node)
 {
@@ -1160,7 +1162,7 @@ int dohsql_distribute(dohsql_node_t *node)
     if (clnt_nparams != node->nparams) {
         return SHARD_ERR_PARAMS;
     }
-    
+
     /* setup communication queue */
     conns = (dohsql_t *)calloc(
         1, sizeof(dohsql_t) + node->nnodes * sizeof(dohsql_connector_t));
@@ -1186,8 +1188,8 @@ int dohsql_distribute(dohsql_node_t *node)
         struct param_data *params;
         int nparams;
         _save_params(node->nodes[i], &params, &nparams);
-        if ((rc = _shard_connect(clnt, &conns->conns[i],
-                                 node->nodes[i]->sql, nparams, params)) != 0)
+        if ((rc = _shard_connect(clnt, &conns->conns[i], node->nodes[i]->sql,
+                                 nparams, params)) != 0)
             return rc;
 
         if (i > 0) {
@@ -1830,12 +1832,10 @@ void explain_distribution(dohsql_node_t *node)
     write_response(clnt, RESPONSE_ROW_LAST, NULL, 0);
 }
 
-
 void dohsql_signal_done(struct sqlclntstate *clnt)
 {
     _signal_children_master_is_done(clnt->conns);
 }
-
 
 /**
  * Note: this is called during prepare of the coordinator; the load
@@ -1843,12 +1843,12 @@ void dohsql_signal_done(struct sqlclntstate *clnt)
  * Calling param_count/param_value will use the original plugin callbacks
  *
  */
-struct params_info* dohsql_params_append(struct params_info **pparams,
-        const char *name, int index)
+struct params_info *dohsql_params_append(struct params_info **pparams,
+                                         const char *name, int index)
 {
     struct params_info *params;
     struct param_data *newparam, *temparr;
-    int i=0;
+    int i = 0;
 
     /* alloc params, if not ready yet */
     if (!(params = *pparams)) {
@@ -1861,7 +1861,7 @@ struct params_info* dohsql_params_append(struct params_info **pparams,
         params->clnt = thd->clnt;
     } else {
         /* if already allocated, check to see if name is already in */
-        for(i=0;i<params->nparams;i++) {
+        for (i = 0; i < params->nparams; i++) {
             if (!strcasecmp(name, params->params[i].name)) {
                 /* done here */
                 return params;
@@ -1871,26 +1871,29 @@ struct params_info* dohsql_params_append(struct params_info **pparams,
 
     /* if name is not already in, retrieve value from client plugin
        NOTE: it is important here that the clnt plugin callbacks are not
-       changed yet 
+       changed yet
     */
-    newparam = clnt_find_param(params->clnt, name+1, index);
+    newparam = clnt_find_param(params->clnt, name + 1, index);
     if (!newparam) {
         /* clnt parameters are incorrect, fallback to single thread to err */
         free(params->params);
         free(params);
         return NULL;
     }
-    /* found, add it to the node->params array */ 
-    temparr = realloc(params->params, sizeof(struct param_data)*(params->nparams+1));
+    /* found, add it to the node->params array */
+    temparr = realloc(params->params,
+                      sizeof(struct param_data) * (params->nparams + 1));
     if (!temparr) {
-        if(params->params)
+        if (params->params)
             free(params->params);
         free(params);
         return NULL;
-    } 
+    }
     params->params = temparr;
     params->params[params->nparams++] = *newparam;
-    fprintf(stderr, "%lx %s saved param name \"%s\" at %d indx %d type %d\n", pthread_self(), __func__, params->params[params->nparams-1].name,
-        params->nparams-1, params->params[params->nparams-1].pos, params->params[params->nparams-1].type);
+    fprintf(stderr, "%lx %s saved param name \"%s\" at %d indx %d type %d\n",
+            pthread_self(), __func__, params->params[params->nparams - 1].name,
+            params->nparams - 1, params->params[params->nparams - 1].pos,
+            params->params[params->nparams - 1].type);
     return *pparams = params;
 }

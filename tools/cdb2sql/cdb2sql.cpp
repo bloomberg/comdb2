@@ -1127,7 +1127,7 @@ static int run_statement(const char *sql, int ntypes, int *types,
 
             if (isdigit(parameter[0])) {
                 int index = atoi(parameter);
-                if (index<=0)
+                if (index <= 0)
                     return -1;
                 rc = cdb2_bind_index(cdb2h, index, type, value, length);
             } else {

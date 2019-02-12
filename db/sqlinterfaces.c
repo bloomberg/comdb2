@@ -3116,8 +3116,8 @@ static int bind_params(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     return rc;
 }
 
-struct param_data * clnt_find_param(struct sqlclntstate *clnt,
-        const char *name, int index)
+struct param_data *clnt_find_param(struct sqlclntstate *clnt, const char *name,
+                                   int index)
 {
     int params = param_count(clnt);
     int rc = 0;
@@ -3126,20 +3126,19 @@ struct param_data * clnt_find_param(struct sqlclntstate *clnt,
         return NULL;
 
     for (int i = 0; i < params; ++i) {
-        if ((rc = param_value(clnt, p, i)) != 0) 
+        if ((rc = param_value(clnt, p, i)) != 0)
             goto done;
 
         if (p->pos > 0 && p->pos == index)
             return p;
-        
-        if (name[0] && !strncasecmp(name, p->name, strlen(name)+1))
+
+        if (name[0] && !strncasecmp(name, p->name, strlen(name) + 1))
             return p;
     }
 done:
     free(p);
     return NULL;
 }
-
 
 /**
  * Get a sqlite engine with bound parameters set, if any

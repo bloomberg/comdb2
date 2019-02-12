@@ -28,10 +28,10 @@ static void node_free(dohsql_node_t **pnode, sqlite3 *db);
 static void _save_params(Parse *pParse, dohsql_node_t *node);
 
 static char *_gen_col_expr(Vdbe *v, Expr *expr, const char **tblname,
-        struct params_info **pParamsOut);
+                           struct params_info **pParamsOut);
 
 static char *generate_columns(Vdbe *v, ExprList *c, const char **tbl,
-        struct params_info **pParamsOut)
+                              struct params_info **pParamsOut)
 {
     char *cols = NULL;
     char *accum = NULL;
@@ -147,8 +147,8 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
     }
 
     if (p->pOrderBy) {
-        orderby = describeExprList(v, p->pOrderBy, order_size, order_dir,
-                pParamsOut);
+        orderby =
+            describeExprList(v, p->pOrderBy, order_size, order_dir, pParamsOut);
         if (!orderby) {
             sqlite3_free(where);
             return NULL;
@@ -181,7 +181,8 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
             return NULL;
         }
         if (/* p->pLimit && */ p->pLimit->pRight) {
-            offset = sqlite3ExprDescribeParams(v, p->pLimit->pRight, pParamsOut);
+            offset =
+                sqlite3ExprDescribeParams(v, p->pLimit->pRight, pParamsOut);
             if (!offset) {
                 sqlite3_free(limit);
                 sqlite3_free(orderby);
@@ -311,8 +312,8 @@ static dohsql_node_t *gen_oneselect(Vdbe *v, Select *p, Expr *extraRows,
 
     node->type = AST_TYPE_SELECT;
     p->pPrior = p->pNext = NULL;
-    node->sql = sqlite_struct_to_string(v, p, extraRows, order_size,
-            order_dir, &node->params);
+    node->sql = sqlite_struct_to_string(v, p, extraRows, order_size, order_dir,
+                                        &node->params);
     p->pPrior = prior;
     p->pNext = next;
 
@@ -631,8 +632,9 @@ int comdb2_check_parallel(Parse *pParse)
     int i;
 
     struct sql_thread *thd = pthread_getspecific(query_info_key);
-    struct sqlclntstate *clnt =  thd->clnt;
-    fprintf(stderr, "%lx %s entry %p \"%s\"\n", pthread_self(), __func__, pParse, clnt->sql);
+    struct sqlclntstate *clnt = thd->clnt;
+    fprintf(stderr, "%lx %s entry %p \"%s\"\n", pthread_self(), __func__,
+            pParse, clnt->sql);
 
     if (gbl_dohsql_disable)
         return 0;
@@ -660,8 +662,7 @@ int comdb2_check_parallel(Parse *pParse)
         if (gbl_dohast_verbose)
             logmsg(LOGMSG_DEBUG, "%lx Single query \"%s\"\n", pthread_self(),
                    node->sql);
-            fprintf(stderr, "%lx Single query \"%s\"\n", pthread_self(),
-                   node->sql);
+        fprintf(stderr, "%lx Single query \"%s\"\n", pthread_self(), node->sql);
         return 0;
     }
 
@@ -671,24 +672,28 @@ int comdb2_check_parallel(Parse *pParse)
         if (gbl_dohast_verbose) {
             logmsg(LOGMSG_DEBUG, "%lx Parallelizable union %d threads:\n",
                    pthread_self(), node->nnodes);
-            fprintf(stderr, "%lx Parallelizable union %d threads, nparams %d params %p parse %p vdbe %p:\n",
-                   pthread_self(), node->nnodes, node->nparams, node->params, pParse->pVList,
-                   pParse->db->pVdbe->pVList);
+            fprintf(stderr,
+                    "%lx Parallelizable union %d threads, nparams %d params %p "
+                    "parse %p vdbe %p:\n",
+                    pthread_self(), node->nnodes, node->nparams, node->params,
+                    pParse->pVList, pParse->db->pVdbe->pVList);
             for (i = 0; i < node->nnodes; i++) {
                 logmsg(LOGMSG_DEBUG, "\t Thread %d: \"%s\"\n", i + 1,
                        node->nodes[i]->sql);
                 fprintf(stderr, "\t Thread %d: \"%s\"\n", i + 1,
-                       node->nodes[i]->sql);
+                        node->nodes[i]->sql);
                 if (node->nodes[i]->params) {
-                    logmsg(LOGMSG_DEBUG, "\t\t Params %d:\n", 
+                    logmsg(LOGMSG_DEBUG, "\t\t Params %d:\n",
+                           node->nodes[i]->params->nparams);
+                    fprintf(stderr, "\t\t Params %d:\n",
                             node->nodes[i]->params->nparams);
-                    fprintf(stderr, "\t\t Params %d:\n", 
-                            node->nodes[i]->params->nparams);
-                    for(int j=0;j<node->nodes[i]->params->nparams;j++) {
-                        logmsg(LOGMSG_DEBUG, "\t\t\t %d \"%s\" %d\n", 
-                                j+1, node->nodes[i]->params->params[j].name, node->nodes[i]->params->params[j].pos);
-                        fprintf(stderr, "\t\t\t %d \"%s\" %d\n", 
-                                j+1, node->nodes[i]->params->params[j].name, node->nodes[i]->params->params[j].pos);
+                    for (int j = 0; j < node->nodes[i]->params->nparams; j++) {
+                        logmsg(LOGMSG_DEBUG, "\t\t\t %d \"%s\" %d\n", j + 1,
+                               node->nodes[i]->params->params[j].name,
+                               node->nodes[i]->params->params[j].pos);
+                        fprintf(stderr, "\t\t\t %d \"%s\" %d\n", j + 1,
+                                node->nodes[i]->params->params[j].name,
+                                node->nodes[i]->params->params[j].pos);
                     }
                 }
             }
@@ -727,7 +732,7 @@ static int _selectCallback(Walker *pWalker, Select *pSelect)
 }
 
 static char *_gen_col_expr(Vdbe *v, Expr *expr, const char **tblname,
-        struct params_info **pParamsOut)
+                           struct params_info **pParamsOut)
 {
     Walker w = {0};
 
@@ -750,9 +755,9 @@ static void _save_params(Parse *pParse, dohsql_node_t *node)
         return;
 
     logmsg(LOGMSG_DEBUG, "%lx Caching bound parameters length %p\n",
-            pthread_self(), v->pVList);
+           pthread_self(), v->pVList);
     sqlite3VListPrint(LOGMSG_DEBUG, v->pVList);
 
-    node->nparams = sqlite3_bind_parameter_count((sqlite3_stmt*)v);
+    node->nparams = sqlite3_bind_parameter_count((sqlite3_stmt *)v);
     /* we don't really need node->params for parent union at this point */
 }
