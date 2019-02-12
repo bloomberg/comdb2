@@ -68,7 +68,8 @@ int debug_fingerprints() {
         while (pEntry != NULL) {
             char fp[FINGERPRINTSZ*2+1]; /* 16 ==> 33 */
             util_tohex(fp, pEntry->fingerprint, FINGERPRINTSZ);
-            fprintf(stdout, "[%s] {%s} count:%d cost:%d time:%d rows:%d\n",
+            fprintf(stdout,
+                    "[%s] {%s} count:%lld cost:%lld time:%lld rows:%lld\n",
                     fp, pEntry->normalized_query, pEntry->count, pEntry->cost,
                     pEntry->time, pEntry->rows);
             result++;
