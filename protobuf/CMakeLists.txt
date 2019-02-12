@@ -1,4 +1,7 @@
 find_program(protoc-c NAMES protoc-c)
+if(NOT protoc-c)
+  message(FATAL_ERROR "protoc-c not found!")
+endif()
 list(APPEND proto bpfunc.proto  sqlquery.proto  sqlresponse.proto) 
 foreach(p ${proto})
   string(REPLACE ".proto" ".pb-c.h" h ${p})
