@@ -429,8 +429,6 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
     int done = 0;
     int cnt = 0;
     int now;
-    int poke_timeout;
-    int poke_freq;
     uuidstr_t us;
 
     if (!checkboard)
@@ -502,12 +500,10 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
                 (max_wait > 0 && cnt >= max_wait))
                 break;
 
-            poke_timeout =
-                bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SOSQL_POKE_TIMEOUT_SEC) *
-                1000;
-            poke_freq =
-                bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SOSQL_POKE_FREQ_SEC) *
-                1000;
+            int poke_timeout = bdb_attr_get(
+                    thedb->bdb_attr, BDB_ATTR_SOSQL_POKE_TIMEOUT_SEC) * 1000;
+            int poke_freq = bdb_attr_get(
+                    thedb->bdb_attr, BDB_ATTR_SOSQL_POKE_FREQ_SEC) * 1000;
 
             /* is it the time to check the master? have we already done so? */
             now = comdb2_time_epochms();
@@ -620,9 +616,7 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
         ctrace("%s: SORESE received exists for missing session %llu %s\n",
                __func__, rqid, comdb2uuidstr(uuid, us));
         rc = -1;
-
     } else {
-
         Pthread_mutex_lock(&entry->mtx);
 
         entry->status = status;
@@ -709,11 +703,8 @@ int osql_chkboard_get_clnt_int(hash_t *h, void *k, struct sqlclntstate **clnt)
          */
 
         *clnt = NULL;
-
         rc = -1;
-
     } else {
-
         *clnt = entry->clnt;
 
         /* Need to lock this guy out
