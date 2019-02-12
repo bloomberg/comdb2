@@ -552,6 +552,8 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
             }
 
             if ((poke_freq > 0) && (entry->last_checked + poke_freq <= now)) {
+                entry->last_checked = now;
+
                 /* try poke again */
                 if (entry->master == 0 || entry->master == gbl_mynode) {
                     /* local checkup */
@@ -569,28 +571,25 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
                                  "entry id=%llu",
                                  entry->rqid);
                         break;
-                    } else {
-                        entry->last_updated = now;
                     }
-                } else {
-                    int lrc = osql_comm_send_poke(
-                            entry->master, entry->rqid, entry->uuid,
-                            NET_OSQL_MASTER_CHECK);
-                    if (lrc) {
-                        logmsg(LOGMSG_ERROR, "Failed to send master check lrc=%d\n",
-                                lrc);
-                        entry->done = 1;
-                        xerr->errval = entry->err.errval =
-                            SQLHERR_MASTER_TIMEOUT;
-                        snprintf(entry->err.errstr, sizeof(entry->err.errstr),
-                                 "failed comm with master %s entry id=%llu %s",
-                                 entry->master, entry->rqid,
-                                 comdb2uuidstr(entry->uuid, us));
-                        break;
-                    }
+                    entry->last_updated = now;
+                    continue;
                 }
 
-                entry->last_checked = now;
+                int lrc = osql_comm_send_poke(
+                        entry->master, entry->rqid, entry->uuid,
+                        NET_OSQL_MASTER_CHECK);
+                if (lrc) {
+                    logmsg(LOGMSG_ERROR, "Failed to send master check lrc=%d\n",
+                            lrc);
+                    entry->done = 1;
+                    xerr->errval = entry->err.errval = SQLHERR_MASTER_TIMEOUT;
+                    snprintf(entry->err.errstr, sizeof(entry->err.errstr),
+                             "failed comm with master %s entry id=%llu %s",
+                             entry->master, entry->rqid,
+                             comdb2uuidstr(entry->uuid, us));
+                    break;
+                }
             }
         }
 
@@ -599,8 +598,10 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
         Pthread_mutex_unlock(&entry->mtx);
 
         if (max_wait > 0 && cnt >= max_wait) {
-            logmsg(LOGMSG_ERROR, "%s: timed-out waiting for master to commit\n",
-                   __func__);
+            logmsg(LOGMSG_ERROR, "%s: timed-out waiting for master %s "
+                                 "to commit id=%llu %s\n",
+                   __func__, entry->master, entry->rqid,
+                     comdb2uuidstr(entry->uuid, us));
             return -6;
         }
 
