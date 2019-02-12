@@ -2090,16 +2090,17 @@ static void generateColumnNames(
   Parse *pParse,      /* Parser context */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   SrcList *pTabList,  /* The FROM clause of the SELECT */
-  ExprList *pEList    /* Expressions defining the result set */
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-  Select *pSelect     /* Generate column names for this SELECT statement */
+  ExprList *pEList,   /* Expressions defining the result set */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  Select *pSelect     /* Generate column names for this SELECT statement */
 ){
   Vdbe *v = pParse->pVdbe;
   int i;
   Table *pTab;
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   SrcList *pTabList;
   ExprList *pEList;
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3 *db = pParse->db;
   int fullName;    /* TABLE.COLUMN if no AS clause and is a direct table ref */
   int srcName;     /* COLUMN or TABLE.COLUMN if no AS clause and is direct */
@@ -3044,7 +3045,7 @@ static int multiSelect(
           if( dest.eDest==SRT_Output ){
             Select *pFirst = p;
             while( pFirst->pPrior ) pFirst = pFirst->pPrior;
-            generateColumnNames(pParse, pFirst->pSrc, pFirst->pEList);
+            generateColumnNames(pParse, pFirst->pSrc, pFirst->pEList, pFirst);
           }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           iBreak = sqlite3VdbeMakeLabel(v);
@@ -3123,7 +3124,7 @@ static int multiSelect(
         if( dest.eDest==SRT_Output ){
           Select *pFirst = p;
           while( pFirst->pPrior ) pFirst = pFirst->pPrior;
-          generateColumnNames(pParse, pFirst->pSrc, pFirst->pEList);
+          generateColumnNames(pParse, pFirst->pSrc, pFirst->pEList, pFirst);
         }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         iBreak = sqlite3VdbeMakeLabel(v);
@@ -3739,7 +3740,7 @@ static int multiSelectOrderBy(
   if( pDest->eDest==SRT_Output ){
     Select *pFirst = pPrior;
     while( pFirst->pPrior ) pFirst = pFirst->pPrior;
-    generateColumnNames(pParse, pFirst->pSrc, pFirst->pEList);
+    generateColumnNames(pParse, pFirst->pSrc, pFirst->pEList, pFirst);
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
@@ -7073,7 +7074,7 @@ select_end:
   /* Identify column names if results of the SELECT are to be output.
   */
   if( rc==SQLITE_OK && pDest->eDest==SRT_Output ){
-    generateColumnNames(pParse, pTabList, pEList);
+    generateColumnNames(pParse, pTabList, pEList, p);
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
