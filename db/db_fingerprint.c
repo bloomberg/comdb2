@@ -57,6 +57,28 @@ static void normalize_query(sqlite3 *db, char *zSql, char **pzNormSql) {
     sqlite3_finalize(p);
 }
 
+int debug_fingerprints() {
+    int result = 0;
+    Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
+    if (gbl_fingerprint_hash != NULL) {
+        struct fingerprint_track *pEntry;
+        void *hash_cur;
+        unsigned int hash_cur_buk;
+        pEntry = hash_first(gbl_fingerprint_hash, &hash_cur, &hash_cur_buk);
+        while (pEntry != NULL) {
+            char fp[FINGERPRINTSZ*2+1]; /* 16 ==> 33 */
+            util_tohex(fp, pEntry->fingerprint, FINGERPRINTSZ);
+            fprintf(stdout, "[%s] {%s} count:%d cost:%d time:%d rows:%d\n",
+                    fp, pEntry->normalized_query, pEntry->count, pEntry->cost,
+                    pEntry->time, pEntry->rows);
+            result++;
+            pEntry = hash_next(gbl_fingerprint_hash, &hash_cur, &hash_cur_buk);
+        }
+    }
+    Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
+    return result;
+}
+
 void add_fingerprint(sqlite3 *sqldb, int64_t cost, int64_t time, int64_t nrows, char *sql) {
     char *zNormSql = NULL;
 
