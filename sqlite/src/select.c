@@ -2088,7 +2088,12 @@ static Table *tableWithCursor(SrcList *pList, int iCursor){
 */
 static void generateColumnNames(
   Parse *pParse,      /* Parser context */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  SrcList *pTabList,  /* The FROM clause of the SELECT */
+  ExprList *pEList    /* Expressions defining the result set */
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   Select *pSelect     /* Generate column names for this SELECT statement */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 ){
   Vdbe *v = pParse->pVdbe;
   int i;
