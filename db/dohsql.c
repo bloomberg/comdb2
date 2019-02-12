@@ -61,7 +61,7 @@ struct dohsql_connector {
     int nrows;              /* current total queued rows */
     enum doh_status status; /* caller is done */
     long long queue_size;   /* size of queue in bytes */
-    int nparams;            /* parameters, if any */
+    int nparams;            /* parameters for the child */
     struct param_data *params;
     dohsql_connector_stats_t stats;
 };
@@ -108,7 +108,6 @@ struct dohsql {
     int order_size;
     int *order_dir;
     int nparams;
-    struct param_data *params;
     /* stats */
     dohsql_req_stats_t stats;
     struct plugin_callbacks backup;
@@ -870,6 +869,11 @@ static int _param_value(dohsql_connector_t *conn, struct param_data *b, int c, c
     if (c<0 || c>=conn->nparams)
         return -1;
     *b = conn->params[c];
+    if (b->name[0] == '\0') {
+        /* these are index based that are renamed; use their index position as
+        their identity, matching the sql query generated */
+        b->pos = c+1;
+    }
     fprintf(stderr, "%lx %s lookup %d found %s %d\n", pthread_self(), src, c, b->name, b->pos);
     return 0;
 }
@@ -1287,8 +1291,6 @@ int dohsql_end_distribute(struct sqlclntstate *clnt, struct reqlogger *logger)
         free(conns->order);
         free(conns->order_dir);
     }
-    if (conns->params)
-        free(conns->params);
     _master_clnt_reset(clnt);
     clnt->conns = NULL;
     free(conns);

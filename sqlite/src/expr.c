@@ -5722,7 +5722,9 @@ char * binary_op(int op){
 }
 
 extern const char* comdb2_get_sql(void);
-extern struct params_info* dohsql_params_append(struct params_info**, const char*, int);
+#include "comdb2.h"
+#include "dohsql.h"
+//extern struct params_info* dohsql_params_append(struct params_info**, const char*, int);
 
 static char* sqlite3ExprDescribe_inner(
   Vdbe *v,
@@ -6127,7 +6129,7 @@ static char* sqlite3ExprDescribe_inner(
 
             if (pExpr->u.zToken[0] == '?') {
                 /* Wildcard of the form "?".  Convert to ?nnn and save */
-                return sqlite3_mprintf("?%d", pExpr->iColumn);
+                return sqlite3_mprintf("?%d", (*pParamsOut)->nparams/*pExpr->iColumn*/);
             } 
             /* fall-through, need to save @ parameters as such */
         }
