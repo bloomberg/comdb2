@@ -127,6 +127,7 @@ void berk_memp_sync_alarm_ms(int);
 #include <bb_oscompat.h>
 #include <schemachange.h>
 #include "comdb2_atomic.h"
+#include "cron.h"
 #include "metrics.h"
 
 #define QUOTE_(x) #x
@@ -748,6 +749,7 @@ int gbl_bbenv;
 extern int gbl_legacy_defaults;
 
 int64_t gbl_temptable_spills = 0;
+int gbl_osql_odh_blob = 1;
 
 comdb2_tunables *gbl_tunables; /* All registered tunables */
 int init_gbl_tunables();
@@ -3259,6 +3261,7 @@ static int init(int argc, char **argv)
     init_metrics();
 
     Pthread_key_create(&comdb2_open_key, NULL);
+    Pthread_key_create(&query_info_key, NULL);
 
 #ifndef BERKDB_46
     Pthread_key_create(&DBG_FREE_CURSOR, free);
@@ -3734,8 +3737,6 @@ static int init(int argc, char **argv)
 
         fix_lrl_ixlen(); /* set lrl, ix lengths: ignore lrl file, use info from
                             schema */
-
-        Pthread_key_create(&query_info_key, NULL);
     }
 
     /* historical requests */
@@ -4605,7 +4606,7 @@ static void *memstat_cron_event(void *arg1, void *arg2, void *arg3, void *arg4,
     if (gbl_memstat_freq > 0) {
         tm = comdb2_time_epoch() + gbl_memstat_freq;
         rc = cron_add_event(gbl_cron, NULL, tm, (FCRON)memstat_cron_event, NULL,
-                            NULL, NULL, NULL, err);
+                            NULL, NULL, NULL, err, NULL);
 
         if (rc == NULL)
             logmsg(LOGMSG_ERROR, "Failed to schedule next memstat event. "
@@ -4618,6 +4619,7 @@ static void *memstat_cron_event(void *arg1, void *arg2, void *arg3, void *arg4,
 static void *memstat_cron_kickoff(void *arg1, void *arg2, void *arg3,
                                   void *arg4, struct errstat *err)
 {
+
     int tm;
     void *rc;
 
@@ -4627,7 +4629,7 @@ static void *memstat_cron_kickoff(void *arg1, void *arg2, void *arg3,
 
     tm = comdb2_time_epoch() + gbl_memstat_freq;
     rc = cron_add_event(gbl_cron, NULL, tm, (FCRON)memstat_cron_event, NULL,
-                        NULL, NULL, NULL, err);
+                        NULL, NULL, NULL, err, NULL);
     if (rc == NULL)
         logmsg(LOGMSG_ERROR, "Failed to schedule next memstat event. "
                         "rc = %d, errstr = %s\n",
@@ -4636,15 +4638,41 @@ static void *memstat_cron_kickoff(void *arg1, void *arg2, void *arg3,
     return NULL;
 }
 
+static char *gbl_cron_describe(sched_if_t *impl)
+{
+    return strdup("Default cron scheduler");
+}
+
+static char *gbl_cron_event_describe(sched_if_t *impl, cron_event_t *event)
+{
+    const char *name;
+    if (event->func == (FCRON)memstat_cron_event)
+        name = "Module memory stats update";
+    else if (event->func == (FCRON)memstat_cron_kickoff)
+        name = "Module memory stats kickoff";
+    else
+        name = "Unknown";
+
+    return strdup(name);
+}
+
 static int comdb2ma_stats_cron(void)
 {
     struct errstat xerr = {0};
 
     if (gbl_memstat_freq > 0) {
-        gbl_cron = cron_add_event(
-            gbl_cron, gbl_cron == NULL ? "Global Job Scheduler" : NULL, INT_MIN,
-            (FCRON)memstat_cron_kickoff, NULL, NULL, NULL, NULL, &xerr);
+        if (!gbl_cron) {
+            sched_if_t impl = {0};
+            time_cron_create(&impl, gbl_cron_describe, gbl_cron_event_describe);
+            gbl_cron = cron_add_event(NULL, "Global Job Scheduler", INT_MIN,
+                                      (FCRON)memstat_cron_kickoff, NULL, NULL,
+                                      NULL, NULL, &xerr, &impl);
 
+        } else {
+            gbl_cron = cron_add_event(gbl_cron, NULL, INT_MIN,
+                                      (FCRON)memstat_cron_kickoff, NULL, NULL,
+                                      NULL, NULL, &xerr, NULL);
+        }
         if (gbl_cron == NULL)
             logmsg(LOGMSG_ERROR, "Failed to schedule memstat cron job. "
                             "rc = %d, errstr = %s\n",
@@ -5008,6 +5036,9 @@ static void register_all_int_switches()
         "logical_live_sc",
         "Enables online schema change with logical redo. (Default: OFF)",
         &gbl_logical_live_sc);
+    register_int_switch("osql_odh_blob",
+                        "Send ODH'd blobs to master. (Default: ON)",
+                        &gbl_osql_odh_blob);
 }
 
 static void getmyid(void)
@@ -5199,6 +5230,8 @@ int main(int argc, char **argv)
 
     gbl_argc = argc;
     gbl_argv = argv;
+
+    init_cron();
 
     if (init(argc, argv) == -1) {
         logmsg(LOGMSG_FATAL, "failed to start\n");

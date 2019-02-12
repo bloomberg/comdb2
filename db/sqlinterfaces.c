@@ -162,6 +162,8 @@ extern int gbl_disable_sql_dlmalloc;
 
 extern int active_appsock_conns;
 int gbl_check_access_controls;
+/* gets incremented each time a user's password is changed. */
+int gbl_bpfunc_auth_gen = 1;
 
 struct thdpool *gbl_sqlengine_thdpool = NULL;
 
@@ -1406,6 +1408,52 @@ static inline void destroy_hash(hash_t *h, int (*free_func)(void *, void *))
 
 extern int gbl_early_verify;
 extern int gbl_osql_send_startgen;
+extern int gbl_forbid_incoherent_writes;
+
+void abort_dbtran(struct sqlclntstate *clnt)
+{
+    switch (clnt->dbtran.mode) {
+    case TRANLEVEL_SOSQL:
+        osql_sock_abort(clnt, OSQL_SOCK_REQ);
+        if (clnt->selectv_arr) {
+            currangearr_free(clnt->selectv_arr);
+            clnt->selectv_arr = NULL;
+        }
+        break;
+
+    case TRANLEVEL_RECOM:
+        recom_abort(clnt);
+        break;
+
+    case TRANLEVEL_SNAPISOL:
+    case TRANLEVEL_SERIAL:
+        serial_abort(clnt);
+        if (clnt->arr) {
+            currangearr_free(clnt->arr);
+            clnt->arr = NULL;
+        }
+        if (clnt->selectv_arr) {
+            currangearr_free(clnt->selectv_arr);
+            clnt->selectv_arr = NULL;
+        }
+
+        break;
+
+    default:
+        /* I don't expect this */
+        abort();
+    }
+
+    clnt->intrans = 0;
+    sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
+    reset_query_effects(clnt);
+}
+
+void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt)
+{
+    if (clnt && clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE)
+        abort_dbtran(clnt);
+}
 
 int handle_sql_commitrollback(struct sqlthdstate *thd,
                               struct sqlclntstate *clnt, int sendresponse)
@@ -1425,6 +1473,20 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
     reqlog_set_cost(thd->logger, 0);
     reqlog_set_rows(thd->logger, rows);
 
+    if (rows > 0 && gbl_forbid_incoherent_writes && !clnt->had_lease_at_begin) {
+        abort_dbtran(clnt);
+        errstat_cat_str(&clnt->osql.xerr, "failed write from incoherent node");
+        clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
+        sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
+                                SQLENG_NORMAL_PROCESS);
+        outrc = CDB2ERR_VERIFY_ERROR;
+        Pthread_mutex_lock(&clnt->wait_mutex);
+        clnt->ready_for_heartbeats = 0;
+        Pthread_mutex_unlock(&clnt->wait_mutex);
+        if (sendresponse)
+            write_response(clnt, RESPONSE_ERROR, clnt->osql.xerr.errstr, outrc);
+        goto done;
+    }
 
     if (!clnt->intrans) {
         reqlog_logf(thd->logger, REQL_QUERY, "\"%s\" ignore (no transaction)\n",
@@ -2901,10 +2963,6 @@ static int handle_bad_engine(struct sqlclntstate *clnt)
     logmsg(LOGMSG_ERROR, "unable to obtain sql engine\n");
     send_run_error(clnt, "Client api should change nodes", CDB2ERR_CHANGENODE);
     clnt->query_rc = -1;
-    Pthread_mutex_lock(&clnt->wait_mutex);
-    clnt->done = 1;
-    Pthread_cond_signal(&clnt->wait_cond);
-    Pthread_mutex_unlock(&clnt->wait_mutex);
     return -1;
 }
 
@@ -2919,10 +2977,6 @@ static int handle_bad_transaction_mode(struct sqlthdstate *thd,
                __func__);
     }
     clnt->query_rc = 0;
-    Pthread_mutex_lock(&clnt->wait_mutex);
-    clnt->done = 1;
-    Pthread_cond_signal(&clnt->wait_cond);
-    Pthread_mutex_unlock(&clnt->wait_mutex);
     clnt->osql.timings.query_finished = osql_log_time();
     osql_log_time_done(clnt);
     return -2;
@@ -3722,12 +3776,16 @@ int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
 static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
-    int rc;
+    int rc, bpfunc_auth_gen = gbl_bpfunc_auth_gen;
 
     if (gbl_check_access_controls) {
         check_access_controls(thedb);
         gbl_check_access_controls = 0;
     }
+
+    /* Free pass if our authentication gen is up-to-date. */
+    if (clnt->authgen == bpfunc_auth_gen)
+        return 0;
 
 #   if WITH_SSL
     /* If 1) this is an SSL connection, 2) and client sends a certificate,
@@ -3742,7 +3800,11 @@ static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         if (thd->lastuser[0] != '\0' && strcmp(thd->lastuser, clnt->user) != 0)
             delete_prepared_stmts(thd);
         strcpy(thd->lastuser, clnt->user);
+        clnt->authgen = bpfunc_auth_gen;
+    } else {
+        clnt->authgen = 0;
     }
+
     return rc;
 }
 
@@ -4252,6 +4314,12 @@ void sqlengine_work_appsock(void *thddata, void *work)
         clnt->osql.host = (thedb->master == gbl_mynode) ? 0 : thedb->master;
     }
 
+    if (clnt->ctrl_sqlengine == SQLENG_STRT_STATE ||
+        clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
+        clnt->had_lease_at_begin =
+            (thedb->master == gbl_mynode) ? 1 : bdb_valid_lease(thedb->bdb_env);
+    }
+
     /* assign this query a unique id */
     sql_get_query_id(sqlthd);
 
@@ -4666,6 +4734,10 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
         release_node_stats(clnt->argv0, clnt->stack, clnt->origin);
         clnt->rawnodestats = NULL;
     }
+    if (clnt->argv0) {
+        free(clnt->argv0);
+        clnt->argv0 = NULL;
+    }
     clnt->sb = sb;
     clnt->must_close_sb = 1;
     clnt->recno = 1;
@@ -4698,6 +4770,9 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     /* reset the password */
     clnt->have_password = 0;
     bzero(clnt->password, sizeof(clnt->password));
+
+    /* reset authentication status */
+    clnt->authgen = 0;
 
     /* reset extended_tm */
     clnt->have_extended_tm = 0;
@@ -4789,47 +4864,6 @@ void reset_clnt_flags(struct sqlclntstate *clnt)
 {
     clnt->writeTransaction = 0;
     clnt->has_recording = 0;
-}
-
-void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt)
-{
-    if (clnt && clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
-        switch (clnt->dbtran.mode) {
-        case TRANLEVEL_SOSQL:
-            osql_sock_abort(clnt, OSQL_SOCK_REQ);
-            if (clnt->selectv_arr) {
-                currangearr_free(clnt->selectv_arr);
-                clnt->selectv_arr = NULL;
-            }
-            break;
-
-        case TRANLEVEL_RECOM:
-            recom_abort(clnt);
-            break;
-
-        case TRANLEVEL_SNAPISOL:
-        case TRANLEVEL_SERIAL:
-            serial_abort(clnt);
-            if (clnt->arr) {
-                currangearr_free(clnt->arr);
-                clnt->arr = NULL;
-            }
-            if (clnt->selectv_arr) {
-                currangearr_free(clnt->selectv_arr);
-                clnt->selectv_arr = NULL;
-            }
-
-            break;
-
-        default:
-            /* I don't expect this */
-            abort();
-        }
-
-        clnt->intrans = 0;
-        sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
-                                SQLENG_NORMAL_PROCESS);
-    }
 }
 
 int sbuf_is_local(SBUF2 *sb)

@@ -1,5 +1,21 @@
-(rows inserted=1)
-(rows inserted=1)
-(rows inserted=1)
-(rows inserted=1)
-(ta1.c33='1', ta1.c34='1', ta2.c32='1', ta2.c36='1', ta2.c37='1', ta3.c47='1')
+done
+done
+done
+done
+done
+("CHARLIE"='CHARLIE')
+done
+done
+done
+("CHARLIE"='CHARLIE')
+done
+done
+done
+done
+done
+done
+[SELECT "CHARLIE"] failed with rc -106 access denied
+done
+[SELECT "CHARLIE"] failed with rc -106 access denied
+done
+done

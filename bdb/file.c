@@ -2115,6 +2115,7 @@ int bdb_is_standalone(void *dbenv, void *in_bdb_state)
 }
 
 extern int gbl_commit_delay_trace;
+int gbl_skip_catchup_logic = 0;
 
 static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
 {
@@ -2731,7 +2732,7 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
     start_udp_reader(bdb_state);
 
     if (startasmaster) {
-        logmsg(LOGMSG_USER,
+        logmsg(LOGMSG_INFO,
                "%s line %d calling rep_start as master with egen 0\n", __func__,
                __LINE__);
         rc = dbenv->rep_start(dbenv, NULL, 0, DB_REP_MASTER);
@@ -2834,7 +2835,7 @@ waitformaster:
 #if defined(BERKDB_4_3) || defined(BERKDB_4_5) || defined(BERKDB_46)
 
 again1:
-    if (bdb_state->repinfo->master_host != myhost) {
+    if (!gbl_skip_catchup_logic && bdb_state->repinfo->master_host != myhost) {
         master_host = bdb_state->repinfo->master_host;
         if (master_host == myhost)
             goto done1;
@@ -2925,8 +2926,8 @@ done1:
        */
 
 again2:
-    if (bdb_state->repinfo->master_host != myhost) {
-    /* now loop till we are close */
+    if (!gbl_skip_catchup_logic && bdb_state->repinfo->master_host != myhost) {
+        /* now loop till we are close */
         master_host = bdb_state->repinfo->master_host;
         if (master_host == myhost)
             goto done2;
@@ -3014,7 +3015,7 @@ done2:
        and go into syncronous mode.
     */
 
-    if (!bdb_state->attr->rep_skip_phase_3) {
+    if (!gbl_skip_catchup_logic && !bdb_state->attr->rep_skip_phase_3) {
         DB_LSN last_lsn;
         int no_change = 0;
         bzero(&last_lsn, sizeof(last_lsn));
@@ -3119,7 +3120,7 @@ done2:
 again:
     buf_put(&(bdb_state->repinfo->master_host), sizeof(int), p_buf, p_buf_end);
 
-    if (bdb_state->repinfo->master_host != myhost) {
+    if (!gbl_skip_catchup_logic && bdb_state->repinfo->master_host != myhost) {
 
         /* now we have the master checkpoint and WAIT for us to ack the seqnum,
            thus making sure we are actually LIVE */
@@ -3459,8 +3460,15 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
     if (gbl_logical_live_sc) {
         unsigned int sc_get_logical_redo_lwm();
         unsigned int sc_logical_lwm = sc_get_logical_redo_lwm();
-        if (sc_logical_lwm && sc_logical_lwm < lowfilenum)
+        if (sc_logical_lwm && sc_logical_lwm < lowfilenum) {
             lowfilenum = sc_logical_lwm;
+            if (bdb_state->attr->debug_log_deletion) {
+                logmsg(
+                    LOGMSG_USER,
+                    "Setting lowfilenum to %d for schema change logical redo\n",
+                    lowfilenum);
+            }
+        }
     }
 
     /* debug: print filenums from other nodes */

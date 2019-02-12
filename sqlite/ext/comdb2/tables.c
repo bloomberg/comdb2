@@ -247,12 +247,6 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_clientstats", &systblClientStatsModule, 0);
   if (rc == SQLITE_OK)
-    rc = sqlite3_create_module(db, "comdb2_timepartitions", &systblTimepartModule, 0);
-  if (rc == SQLITE_OK)
-    rc = sqlite3_create_module(db, "comdb2_timepartshards", &systblTimepartShardsModule, 0);
-  if (rc == SQLITE_OK)
-    rc = sqlite3_create_module(db, "comdb2_timepartevents", &systblTimepartEventsModule, 0);
-  if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_transaction_logs", &systblTransactionLogsModule, 0);
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_metrics", &systblMetricsModule, 0);
@@ -264,6 +258,10 @@ int comdb2SystblInit(
     rc = sqlite3_create_module(db, "comdb2_logical_operations", &systblLogicalOpsModule, 0);
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_systables", &systblSystabsModule, 0);
+  if (rc == SQLITE_OK)
+    rc = systblTimepartInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblCronInit(db);
   if (rc == SQLITE_OK)
     rc = systblTypeSamplesInit(db);
   if (rc == SQLITE_OK)

@@ -41,7 +41,7 @@
 #include <flibc.h>
 #include <net_types.h>
 #include <errstat.h>
-#include <views_cron.h>
+#include "cron.h"
 #include <bpfunc.h>
 #include <strbuf.h>
 #include <logmsg.h>
@@ -6572,7 +6572,7 @@ int start_schema_change_tran_wrapper(const char *tblname,
  *
  */
 int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
-                              uuid_t uuid, void *trans, char *msg, int msglen,
+                              uuid_t uuid, void *trans, char **pmsg, int msglen,
                               int *flags, int **updCols,
                               blob_buffer_t blobs[MAXBLOBS], int step,
                               struct block_err *err, int *receivedrows,
@@ -6583,6 +6583,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
     int rc = 0;
     int type;
     uuidstr_t us;
+    char *msg = *pmsg;
 
     if (rqid == OSQL_RQID_USE_UUID) {
         osql_uuid_rpl_t rpl;
@@ -6713,7 +6714,7 @@ int osql_get_replicant_numops(const char *rpl, int has_uuid)
  *
  */
 int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
-                        void *trans, char *msg, int msglen, int *flags,
+                        void *trans, char **pmsg, int msglen, int *flags,
                         int **updCols, blob_buffer_t blobs[MAXBLOBS], int step,
                         struct block_err *err, int *receivedrows, SBUF2 *logsb)
 {
@@ -6725,6 +6726,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     const size_t tag_name_ondisk_len = 8 /*includes NUL*/;
     int type;
     unsigned long long id;
+    char *msg = *pmsg;
 
     if (rqid == OSQL_RQID_USE_UUID) {
         osql_uuid_rpl_t rpl;
@@ -7395,10 +7397,11 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     } break;
     case OSQL_QBLOB: {
         osql_qblob_t dt;
-        unsigned char *blob = NULL;
-        const uint8_t *p_buf_end = p_buf + sizeof(osql_qblob_t);
+        const uint8_t *p_buf_end = p_buf + sizeof(osql_qblob_t),
+                      *blob = osqlcomm_qblob_type_get(&dt, p_buf, p_buf_end);
+        int odhready = (dt.id & OSQL_BLOB_ODH_BIT);
 
-        blob = (uint8_t *)osqlcomm_qblob_type_get(&dt, p_buf, p_buf_end);
+        dt.id &= ~OSQL_BLOB_ODH_BIT;
 
         if (logsb) {
             int jj = 0;
@@ -7426,30 +7429,20 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             blobs[dt.id].collected = 1;
             blobs[dt.id].javasp_bytearray = NULL;
         } else {
+            if (odhready)
+                blobs[dt.id].odhind = (dt.id | OSQL_BLOB_ODH_BIT);
             blobs[dt.id].length = dt.bloblen;
 
             if (dt.bloblen >= 0) {
                 blobs[dt.id].exists = 1;
                 if (dt.bloblen > 0) {
-                    if (dt.bloblen > gbl_blob_sz_thresh_bytes)
-                        blobs[dt.id].data = comdb2_bmalloc(blobmem, dt.bloblen);
-                    else
-                        blobs[dt.id].data = malloc(dt.bloblen);
-                    if (!blobs[dt.id].data) {
-                        logmsg(LOGMSG_ERROR,
-                               "%s failed to allocated a new blob, size %zu\n",
-                               __func__, blobs[dt.id].length);
-                        return conv_rc_sql2blkop(iq, step, -1, ERR_INTERNAL,
-                                                 err, NULL, 0);
-                    }
-
-                    /* finally copy the blob */
-                    memcpy(blobs[dt.id].data, blob, dt.bloblen);
-
+                    blobs[dt.id].qblob = msg;
+                    blobs[dt.id].data = (char *)blob;
                     blobs[dt.id].collected = dt.bloblen;
-
+                    /* Take ownership.
+                       It will be freed in free_blob_buffers(). */
+                    *pmsg = NULL;
                 } else {
-
                     blobs[dt.id].collected = 1;
                 }
 
@@ -9451,7 +9444,7 @@ static void uprec_sender_array_init(void)
     // kick off upgradetable cron
     uprec_sched =
         cron_add_event(NULL, "uprec_cron", INT_MIN, uprec_cron_kickoff, NULL,
-                       NULL, NULL, NULL, &xerr);
+                       NULL, NULL, NULL, &xerr, NULL);
 
     if (uprec_sched == NULL) {
         logmsg(LOGMSG_FATAL, "%s: failed to create uprec cron scheduler.\n",
@@ -9494,7 +9487,7 @@ int offload_comm_send_upgrade_records(struct dbtable *db, unsigned long long gen
                 uprec->touch = uprec->owner;
                 uprec_sched = cron_add_event(
                     uprec_sched, NULL, comdb2_time_epoch() + uprec->intv,
-                    uprec_cron_event, NULL, NULL, NULL, NULL, &xerr);
+                    uprec_cron_event, NULL, NULL, NULL, NULL, &xerr, NULL);
 
                 if (uprec_sched == NULL)
                     logmsg(LOGMSG_ERROR, "%s: failed to schedule uprec cron job.\n",

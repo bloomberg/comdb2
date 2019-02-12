@@ -544,6 +544,7 @@ struct rawnodestats {
     (offsetof(struct rawnodestats, svc_time) / sizeof(unsigned))
 
 struct summary_nodestats {
+    int node;
     char *host;
     struct in_addr addr;
     char *task;
@@ -1756,8 +1757,6 @@ extern int gbl_max_columns_soft_limit;
 
 extern int gbl_use_plan;
 
-extern int gbl_instant_schema_change;
-
 extern int gbl_num_record_converts;
 extern int gbl_num_record_upgrades;
 
@@ -2018,10 +2017,6 @@ int get_context(struct ireq *iq, unsigned long long *context);
 int cmp_context(struct ireq *iq, unsigned long long genid,
                 unsigned long long context);
 
-/* for fast load.. */
-int load_record(struct dbtable *db, void *buf);
-void load_data_done(struct dbtable *db);
-
 /*index routines*/
 int ix_isnullk(void *db_table, void *key, int ixnum);
 int ix_addk(struct ireq *iq, void *trans, void *key, int ixnum,
@@ -2258,13 +2253,14 @@ int dat_upv_noblobs(struct ireq *iq, void *trans, int vptr, void *vdta,
 
 int blob_upv_auxdb(int auxdb, struct ireq *iq, void *trans, int vptr,
                    unsigned long long oldgenid, void *newdta, int newlen,
-                   int blobno, int rrn, unsigned long long newgenid);
+                   int blobno, int rrn, unsigned long long newgenid,
+                   int odhready);
 int blob_no_upd_auxdb(int auxdb, struct ireq *iq, void *trans, int rrn,
                       unsigned long long oldgenid, unsigned long long newgenid,
                       int blobmap);
 int blob_upv(struct ireq *iq, void *trans, int vptr,
              unsigned long long oldgenid, void *newdta, int newlen, int blobno,
-             int rrn, unsigned long long newgenid);
+             int rrn, unsigned long long newgenid, int odhready);
 int blob_no_upd(struct ireq *iq, void *trans, int rrn,
                 unsigned long long oldgenid, unsigned long long newgenid,
                 int blobmap);
@@ -2284,10 +2280,10 @@ int dat_numrrns(struct ireq *iq, int *out_numrrns);
 int dat_highrrn(struct ireq *iq, int *out_highrrn);
 
 int blob_add(struct ireq *iq, void *trans, int blobno, void *data,
-             size_t length, int rrn, unsigned long long genid);
+             size_t length, int rrn, unsigned long long genid, int odhready);
 int blob_add_auxdb(int auxdb, struct ireq *iq, void *trans, int blobno,
-                   void *data, size_t length, int rrn,
-                   unsigned long long genid);
+                   void *data, size_t length, int rrn, unsigned long long genid,
+                   int odhready);
 
 int blob_del(struct ireq *iq, void *trans, int rrn, unsigned long long genid,
              int blobno);
@@ -3602,8 +3598,11 @@ const char *thrman_get_where(struct thr_handle *thr);
 int repopulate_lrl(const char *p_lrl_fname_out);
 void plugin_post_dbenv_hook(struct dbenv *dbenv);
 
-int64_t gbl_temptable_spills;
+extern int64_t gbl_temptable_spills;
 
 extern int gbl_disable_tpsc_tblvers;
 
+extern int gbl_osql_odh_blob;
+extern int gbl_pbkdf2_iterations;
+extern int gbl_bpfunc_auth_gen;
 #endif /* !INCLUDED_COMDB2_H */

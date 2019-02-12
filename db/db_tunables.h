@@ -1627,10 +1627,31 @@ REGISTER_TUNABLE("force_incoherent",
                  TUNABLE_BOOLEAN, &gbl_force_incoherent,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("ignore_coherency",
+                 "Force this node to be coherent.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_ignore_coherency,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("forbid_incoherent_writes",
+                 "Prevent writes against a node which was incoherent at "
+                 "transaction start.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_forbid_incoherent_writes,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("skip_catchup_logic",
+                 "Skip initial catchup logic.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_skip_catchup_logic, EXPERIMENTAL | INTERNAL, NULL, NULL,
+                 NULL, NULL);
+
 REGISTER_TUNABLE("abort_on_missing_osql_session",
                  "Abort if we can't find an osql session in the repository.  "
                  "(Default: off)",
                  TUNABLE_BOOLEAN, &gbl_abort_on_missing_osql_session,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE(
+    "pbkdf2_iterations",
+    "Number of iterations of PBKDF2 algorithm for password hashing.",
+    TUNABLE_INTEGER, &gbl_pbkdf2_iterations, NOZERO | SIGNED, NULL, NULL,
+    pbkdf2_iterations_update, NULL);
 #endif /* _DB_TUNABLES_H */
