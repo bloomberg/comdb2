@@ -28,6 +28,17 @@
 #include "util.h"
 #include "tohex.h"
 
+#define PRINT_FINGERPRINT_ENTRY(a, b, c)                                       \
+    do {                                                                       \
+        char pfpe[FINGERPRINTSZ*2+1]; /* 16 ==> 33 */                          \
+        util_tohex(pfpe, (a)->fingerprint, FINGERPRINTSZ);                     \
+        if ((b) != NULL) fprintf(stdout, "%s **** %d ", (b), (c));             \
+        fprintf(stdout, "[%s] {%s} count:%" BBSCNd64 " cost:%" BBSCNd64        \
+                        " time:%" BBSCNd64 " rows:%" BBSCNd64 "\n", pfpe,      \
+                (a)->normalized_query, (a)->count, (a)->cost, (a)->time,       \
+                (a)->rows);                                                    \
+    } while (0)
+
 hash_t *gbl_fingerprint_hash = NULL;
 pthread_mutex_t gbl_fingerprint_hash_mu = PTHREAD_MUTEX_INITIALIZER;
 
@@ -65,13 +76,7 @@ int debug_fingerprints() {
         struct fingerprint_track *pEntry = hash_first(gbl_fingerprint_hash,
                                                       &hash_cur, &hash_cur_buk);
         while (pEntry != NULL) {
-            char fp[FINGERPRINTSZ*2+1]; /* 16 ==> 33 */
-            util_tohex(fp, pEntry->fingerprint, FINGERPRINTSZ);
-            fprintf(stdout,
-                    "[%s] {%s} count:%" PRIx64 " cost:%" PRIx64 " time:%"
-                    PRIx64 " rows:%" PRIx64 "\n", fp, pEntry->normalized_query,
-                    pEntry->count, pEntry->cost, pEntry->time, pEntry->rows);
-            result++;
+            PRINT_FINGERPRINT_ENTRY(pEntry, NULL, result); result++;
             pEntry = hash_next(gbl_fingerprint_hash, &hash_cur, &hash_cur_buk);
         }
     }
@@ -97,7 +102,7 @@ static int verify_fingerprints() { /* NOTE: Assumes lock is held. */
             memset(fingerprint, 0, sizeof(fingerprint));
             MD5Final(fingerprint, &ctx);
             if (memcmp(pEntry->fingerprint, fingerprint, FINGERPRINTSZ) != 0) {
-                result++;
+                PRINT_FINGERPRINT_ENTRY(pEntry, "VERIFY", result); result++;
             }
             pEntry = hash_next(gbl_fingerprint_hash, &hash_cur, &hash_cur_buk);
         }
