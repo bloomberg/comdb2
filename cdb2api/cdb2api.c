@@ -1017,7 +1017,7 @@ after_callback:
     while ((e = cdb2_next_callback(hndl, CDB2_AFTER_CONNECT, e)) != NULL) {
         callbackrc =
             cdb2_invoke_callback(hndl, e, 3, CDB2_HOSTNAME, host, CDB2_PORT,
-                                 port, CDB2_RETURN_VALUE, rc);
+                                 port, CDB2_RETURN_VALUE, (intptr_t)rc);
         PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
     }
     return rc;
@@ -2197,7 +2197,7 @@ after_callback:
     while ((e = cdb2_next_callback(hndl, CDB2_AFTER_PMUX, e)) != NULL) {
         callbackrc = cdb2_invoke_callback(
             hndl, e, 3, CDB2_HOSTNAME, remote_host, CDB2_PORT, CDB2_PORTMUXPORT,
-            CDB2_RETURN_VALUE, port);
+            CDB2_RETURN_VALUE, (intptr_t)port);
         PROCESS_EVENT_CTRL_AFTER(hndl, e, port, callbackrc);
     }
     return port;
@@ -2487,7 +2487,7 @@ retry:
     rc = 0;
 after_callback:
     while ((e = cdb2_next_callback(hndl, CDB2_AFTER_READ_RECORD, e)) != NULL) {
-        callbackrc = cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE, rc);
+        callbackrc = cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE, (intptr_t)rc);
         PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
     }
     return rc;
@@ -2796,7 +2796,7 @@ after_callback:
     while ((e = cdb2_next_callback(event_hndl, CDB2_AFTER_SEND_QUERY, e)) !=
            NULL) {
         callbackrc = cdb2_invoke_callback(event_hndl, e, 2, CDB2_SQL, sql,
-                                          CDB2_RETURN_VALUE, rc);
+                                          CDB2_RETURN_VALUE, (intptr_t)rc);
         PROCESS_EVENT_CTRL_AFTER(event_hndl, e, rc, callbackrc);
     }
     return rc;
@@ -3017,7 +3017,7 @@ int cdb2_next_record(cdb2_hndl_tp *hndl)
 after_callback:
     while ((e = cdb2_next_callback(hndl, CDB2_AT_EXIT_NEXT_RECORD, e)) !=
            NULL) {
-        callbackrc = cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE, rc);
+        callbackrc = cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE, (intptr_t)rc);
         PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
     }
 
@@ -3158,7 +3158,7 @@ int cdb2_close(cdb2_hndl_tp *hndl)
     curre = NULL;
     while ((curre = cdb2_next_callback(hndl, CDB2_AT_CLOSE, curre)) != NULL) {
         callbackrc =
-            cdb2_invoke_callback(hndl, curre, 1, CDB2_RETURN_VALUE, rc);
+            cdb2_invoke_callback(hndl, curre, 1, CDB2_RETURN_VALUE, (intptr_t)rc);
         PROCESS_EVENT_CTRL_AFTER(hndl, curre, rc, callbackrc);
     }
 
@@ -4545,7 +4545,7 @@ after_callback:
     while ((e = cdb2_next_callback(hndl, CDB2_AT_EXIT_RUN_STATEMENT, e)) !=
            NULL) {
         callbackrc = cdb2_invoke_callback(hndl, e, 2, CDB2_SQL, sql,
-                                          CDB2_RETURN_VALUE, rc);
+                                          CDB2_RETURN_VALUE, (intptr_t)rc);
         PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
     }
 
@@ -4999,7 +4999,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
 
     while ((e = cdb2_next_callback(hndl, CDB2_BEFORE_DBINFO, e)) != NULL) {
         callbackrc = cdb2_invoke_callback(hndl, e, 2, CDB2_HOSTNAME, host,
-                                          CDB2_PORT, -1);
+                                          CDB2_PORT, port);
         PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, callbackrc, overwrite_rc);
     }
 
@@ -5161,7 +5161,7 @@ after_callback:
     while ((e = cdb2_next_callback(hndl, CDB2_AFTER_DBINFO, e)) != NULL) {
         callbackrc =
             cdb2_invoke_callback(hndl, e, 3, CDB2_HOSTNAME, host, CDB2_PORT,
-                                 port, CDB2_RETURN_VALUE, rc);
+                                 port, CDB2_RETURN_VALUE, (intptr_t)rc);
         PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
     }
     return rc;
@@ -5798,7 +5798,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
 
     while ((e = cdb2_next_callback(hndl, CDB2_AT_OPEN, e)) != NULL) {
         callbackrc =
-            cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE, rc);
+            cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE, (intptr_t)rc);
         PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, callbackrc, overwrite_rc);
     }
 
@@ -6100,7 +6100,7 @@ static void *cdb2_invoke_callback(cdb2_hndl_tp *hndl, cdb2_event *e, int argc,
             argv[i] = (void *)sql;
             break;
         case CDB2_RETURN_VALUE:
-            argv[i] = (void *)rc;
+            argv[i] = (void *)(intptr_t)rc;
             break;
         default:
             break;
