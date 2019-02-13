@@ -63,7 +63,14 @@ static char *CDB2DBCONFIG_BUF = NULL;
 
 static char cdb2_default_cluster[64] = "";
 static char cdb2_comdb2dbname[32] = "";
-static char cdb2_dnssuffix[255] = "";
+
+#define QUOTE_(x) #x
+#define QUOTE(x) QUOTE_(x)
+
+#ifndef CDB2_DNS_SUFFIX
+#define CDB2_DNS_SUFFIX
+#endif
+static char cdb2_dnssuffix[255] = QUOTE(CDB2_DNS_SUFFIX);
 static char cdb2_machine_room[16] = "";
 
 #define CDB2_PORTMUXPORT_DEFAULT 5105
@@ -1346,8 +1353,6 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
                              char valid_hosts[][64], int *valid_ports,
                              int *master_node, int *num_valid_hosts,
                              int *num_valid_sameroom_hosts);
-#define QUOTE_(x) #x
-#define QUOTE(x) QUOTE_(x)
 static int get_config_file(const char *dbname, char *f, size_t s)
 {
     char *root = getenv("COMDB2_ROOT");

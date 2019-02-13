@@ -70,6 +70,10 @@ if(NOT DEFINED COMDB2_ROOT)
 endif()
 set(COMDB2_ROOT ${COMDB2_ROOT} CACHE PATH "Directory for runtime files" FORCE)
 
+if(DEFINED CDB2_DNS_SUFFIX)
+  add_definitions(-DCDB2_DNS_SUFFIX=${CDB2_DNS_SUFFIX})
+endif()
+
 add_definitions(
   -DCOMDB2_ROOT=${COMDB2_ROOT}
   -DCOMDB2_VERSION="2"
