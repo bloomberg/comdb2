@@ -45,7 +45,6 @@ static void normalize_query(sqlite3 *db, char *zSql, char **pzNormSql) {
     sqlite3_stmt *p = NULL;
 
     rc = sqlite3_prepare_v3(db, zSql, -1, SQLITE_PREPARE_NORMALIZE, &p, 0);
-
     if (rc == SQLITE_OK) {
         *pzNormSql = sqlite3_mprintf("%s", sqlite3_normalized_sql(p));
     } else if (gbl_verbose_normalized_queries) {
@@ -53,18 +52,18 @@ static void normalize_query(sqlite3 *db, char *zSql, char **pzNormSql) {
                "FAILED sqlite3_prepare_v2(%p, {%s}) for normalization, rc=%d, msg=%s\n",
                db, zSql, rc, sqlite3_errmsg(db));
     }
-
-    sqlite3_finalize(p);
+    sqlite3_finalize(p); /* p may be NULL and that is OK */
 }
 
 int debug_fingerprints() {
     int result = 0;
+
     Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
     if (gbl_fingerprint_hash != NULL) {
-        struct fingerprint_track *pEntry;
         void *hash_cur;
         unsigned int hash_cur_buk;
-        pEntry = hash_first(gbl_fingerprint_hash, &hash_cur, &hash_cur_buk);
+        struct fingerprint_track *pEntry = hash_first(gbl_fingerprint_hash,
+                                                      &hash_cur, &hash_cur_buk);
         while (pEntry != NULL) {
             char fp[FINGERPRINTSZ*2+1]; /* 16 ==> 33 */
             util_tohex(fp, pEntry->fingerprint, FINGERPRINTSZ);
@@ -80,7 +79,35 @@ int debug_fingerprints() {
     return result;
 }
 
-void add_fingerprint(sqlite3 *sqldb, int64_t cost, int64_t time, int64_t nrows, char *sql) {
+#ifndef NDEBUG
+static int verify_fingerprints() { /* NOTE: Assumes lock is held. */
+    int result = 0;
+
+    if (gbl_fingerprint_hash != NULL) {
+        void *hash_cur;
+        unsigned int hash_cur_buk;
+        struct fingerprint_track *pEntry = hash_first(gbl_fingerprint_hash,
+                                                      &hash_cur, &hash_cur_buk);
+        while (pEntry != NULL) {
+            char *zNormSql = pEntry->normalized_query;
+            unsigned char fingerprint[FINGERPRINTSZ];
+            MD5Context ctx;
+            MD5Init(&ctx);
+            MD5Update(&ctx, (unsigned char *)zNormSql, strlen(zNormSql));
+            memset(fingerprint, 0, sizeof(fingerprint));
+            MD5Final(fingerprint, &ctx);
+            if (memcmp(pEntry->fingerprint, fingerprint, FINGERPRINTSZ) != 0) {
+                result++;
+            }
+            pEntry = hash_next(gbl_fingerprint_hash, &hash_cur, &hash_cur_buk);
+        }
+    }
+    return result;
+}
+#endif
+
+void add_fingerprint(sqlite3 *sqldb, int64_t cost, int64_t time, int64_t nrows,
+                     char *sql) {
     char *zNormSql = NULL;
 
     normalize_query(sqldb, sql, &zNormSql);
@@ -92,6 +119,7 @@ void add_fingerprint(sqlite3 *sqldb, int64_t cost, int64_t time, int64_t nrows, 
         memset(fingerprint, 0, sizeof(fingerprint));
         MD5Final(fingerprint, &ctx);
         Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
+        assert( verify_fingerprints()==0 );
         if (gbl_fingerprint_hash == NULL) gbl_fingerprint_hash = hash_init(FINGERPRINTSZ);
         struct fingerprint_track *t = hash_find(gbl_fingerprint_hash, fingerprint);
         if (t == NULL) {
@@ -118,6 +146,7 @@ void add_fingerprint(sqlite3 *sqldb, int64_t cost, int64_t time, int64_t nrows, 
             t->rows = nrows;
             t->normalized_query = zNormSql;
             hash_add(gbl_fingerprint_hash, t);
+            assert( verify_fingerprints()==0 );
             if (gbl_verbose_normalized_queries) {
                 char fp[FINGERPRINTSZ*2+1]; /* 16 ==> 33 */
                 util_tohex(fp, t->fingerprint, FINGERPRINTSZ);
@@ -128,7 +157,9 @@ void add_fingerprint(sqlite3 *sqldb, int64_t cost, int64_t time, int64_t nrows, 
             t->cost += cost;
             t->time += time;
             t->rows += nrows;
+            assert( verify_fingerprints()==0 );
             assert( memcmp(t->fingerprint,fingerprint,FINGERPRINTSZ)==0 );
+            assert( t->normalized_query!=zNormSql );
             assert( strcmp(t->normalized_query,zNormSql)==0 );
             sqlite3_free(zNormSql);
         }
