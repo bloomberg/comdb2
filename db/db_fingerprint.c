@@ -33,10 +33,11 @@
         char pfpe[FINGERPRINTSZ*2+1]; /* 16 ==> 33 */                          \
         util_tohex(pfpe, (a)->fingerprint, FINGERPRINTSZ);                     \
         if ((b) != NULL) fprintf(stdout, "%s **** %d ", (b), (c));             \
-        fprintf(stdout, "[%s] {%s} count:%" BBSCNd64 " cost:%" BBSCNd64        \
-                        " time:%" BBSCNd64 " rows:%" BBSCNd64 "\n", pfpe,      \
-                (a)->normalized_query, (a)->count, (a)->cost, (a)->time,       \
-                (a)->rows);                                                    \
+        fprintf(stdout, "[%s] {%s} length:%" BBSCNd64 " count:%" BBSCNd64      \
+                        " cost:%" BBSCNd64 " time:%" BBSCNd64                  \
+                        " rows:%" BBSCNd64 "\n", pfpe, (a)->zNormSql,          \
+                        (int64_t)((a)->nNormSql), (a)->count, (a)->cost,       \
+                        (a)->time, (a)->rows);                                 \
     } while (0)
 
 hash_t *gbl_fingerprint_hash = NULL;
@@ -76,7 +77,7 @@ int debug_fingerprints() {
         struct fingerprint_track *pEntry = hash_first(gbl_fingerprint_hash,
                                                       &hash_cur, &hash_cur_buk);
         while (pEntry != NULL) {
-            PRINT_FINGERPRINT_ENTRY(pEntry, NULL, result); result++;
+            PRINT_FINGERPRINT_ENTRY(pEntry, "DEBUG", result); result++;
             pEntry = hash_next(gbl_fingerprint_hash, &hash_cur, &hash_cur_buk);
         }
     }
@@ -94,11 +95,10 @@ static int verify_fingerprints() { /* NOTE: Assumes lock is held. */
         struct fingerprint_track *pEntry = hash_first(gbl_fingerprint_hash,
                                                       &hash_cur, &hash_cur_buk);
         while (pEntry != NULL) {
-            char *zNormSql = pEntry->normalized_query;
             unsigned char fingerprint[FINGERPRINTSZ];
             MD5Context ctx;
             MD5Init(&ctx);
-            MD5Update(&ctx, (unsigned char *)zNormSql, strlen(zNormSql));
+            MD5Update(&ctx, (unsigned char *)pEntry->zNormSql, pEntry->nNormSql);
             memset(fingerprint, 0, sizeof(fingerprint));
             MD5Final(fingerprint, &ctx);
             if (memcmp(pEntry->fingerprint, fingerprint, FINGERPRINTSZ) != 0) {
@@ -117,10 +117,11 @@ void add_fingerprint(sqlite3 *sqldb, int64_t cost, int64_t time, int64_t nrows,
 
     normalize_query(sqldb, sql, &zNormSql);
     if (zNormSql != NULL) {
+        size_t nNormSql = strlen(zNormSql);
         unsigned char fingerprint[FINGERPRINTSZ];
         MD5Context ctx;
         MD5Init(&ctx);
-        MD5Update(&ctx, (unsigned char *)zNormSql, strlen(zNormSql));
+        MD5Update(&ctx, (unsigned char *)zNormSql, nNormSql);
         memset(fingerprint, 0, sizeof(fingerprint));
         MD5Final(fingerprint, &ctx);
         Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
@@ -149,13 +150,15 @@ void add_fingerprint(sqlite3 *sqldb, int64_t cost, int64_t time, int64_t nrows,
             t->cost = cost;
             t->time = time;
             t->rows = nrows;
-            t->normalized_query = zNormSql;
+            t->zNormSql = zNormSql;
+            t->nNormSql = nNormSql;
             hash_add(gbl_fingerprint_hash, t);
             assert( verify_fingerprints()==0 );
             if (gbl_verbose_normalized_queries) {
                 char fp[FINGERPRINTSZ*2+1]; /* 16 ==> 33 */
                 util_tohex(fp, t->fingerprint, FINGERPRINTSZ);
-                logmsg(LOGMSG_USER, "[%s] %s -> %s\n", fp, sql, t->normalized_query);
+                logmsg(LOGMSG_USER, "NORMALIZED [%s] %s -> %s\n",
+                       fp, sql, t->zNormSql);
             }
         } else {
             t->count++;
@@ -164,8 +167,8 @@ void add_fingerprint(sqlite3 *sqldb, int64_t cost, int64_t time, int64_t nrows,
             t->rows += nrows;
             assert( verify_fingerprints()==0 );
             assert( memcmp(t->fingerprint,fingerprint,FINGERPRINTSZ)==0 );
-            assert( t->normalized_query!=zNormSql );
-            assert( strcmp(t->normalized_query,zNormSql)==0 );
+            assert( t->zNormSql!=zNormSql );
+            assert( strcmp(t->zNormSql,zNormSql)==0 );
             sqlite3_free(zNormSql);
         }
         Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);

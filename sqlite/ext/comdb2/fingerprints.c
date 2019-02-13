@@ -24,11 +24,12 @@
 
 struct fingerprint_track_systbl {
     systable_blobtype fp_blob;
-    int64_t count; /* Cumulative number of times executed */
-    int64_t cost;  /* Cumulative cost */
-    int64_t time;  /* Cumulative execution time */
-    int64_t rows;  /* Cumulative number of rows selected */
-    char *normalized_query;
+    int64_t count;   /* Cumulative number of times executed */
+    int64_t cost;    /* Cumulative cost */
+    int64_t time;    /* Cumulative execution time */
+    int64_t rows;    /* Cumulative number of rows selected */
+    char *zNormSql;  /* The normalized SQL query */
+    size_t nNormSql; /* Length of normalized SQL query */
 };
 
 extern hash_t *gbl_fingerprint_hash;
@@ -40,7 +41,7 @@ static void release_callback(void *data, int npoints)
     if (pFp != NULL) {
         for (int index = 0; index < npoints; index++) {
             free(pFp[index].fp_blob.value);
-            free(pFp[index].normalized_query);
+            free(pFp[index].zNormSql);
         }
         free(pFp);
     }
@@ -79,8 +80,10 @@ static int fingerprints_callback(void **data, int *npoints)
                     pFp[copied].cost = pEntry->cost;
                     pFp[copied].time = pEntry->time;
                     pFp[copied].rows = pEntry->rows;
-                    if (pEntry->normalized_query != NULL) {
-                        pFp[copied].normalized_query = strdup(pEntry->normalized_query);
+                    if (pEntry->zNormSql != NULL) {
+                        pFp[copied].zNormSql = strdup(pEntry->zNormSql);
+                        pFp[copied].nNormSql = strlen(pEntry->zNormSql);
+                        assert( pFp[copied].nNormSql==pEntry->nNormSql );
                     }
                     copied++;
                     pEntry = hash_next(gbl_fingerprint_hash, &hash_cur, &hash_cur_buk);
@@ -117,6 +120,6 @@ int systblFingerprintsInit(sqlite3 *db)
         CDB2_INTEGER, "total_rows", -1,
         offsetof(struct fingerprint_track, rows),
         CDB2_CSTRING, "normalized_sql", -1,
-        offsetof(struct fingerprint_track, normalized_query),
+        offsetof(struct fingerprint_track, zNormSql),
         SYSTABLE_END_OF_FIELDS);
 }
