@@ -2487,7 +2487,8 @@ retry:
     rc = 0;
 after_callback:
     while ((e = cdb2_next_callback(hndl, CDB2_AFTER_READ_RECORD, e)) != NULL) {
-        callbackrc = cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE, (intptr_t)rc);
+        callbackrc =
+            cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE, (intptr_t)rc);
         PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
     }
     return rc;
@@ -3017,7 +3018,8 @@ int cdb2_next_record(cdb2_hndl_tp *hndl)
 after_callback:
     while ((e = cdb2_next_callback(hndl, CDB2_AT_EXIT_NEXT_RECORD, e)) !=
            NULL) {
-        callbackrc = cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE, (intptr_t)rc);
+        callbackrc =
+            cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE, (intptr_t)rc);
         PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
     }
 
@@ -3157,8 +3159,8 @@ int cdb2_close(cdb2_hndl_tp *hndl)
 
     curre = NULL;
     while ((curre = cdb2_next_callback(hndl, CDB2_AT_CLOSE, curre)) != NULL) {
-        callbackrc =
-            cdb2_invoke_callback(hndl, curre, 1, CDB2_RETURN_VALUE, (intptr_t)rc);
+        callbackrc = cdb2_invoke_callback(hndl, curre, 1, CDB2_RETURN_VALUE,
+                                          (intptr_t)rc);
         PROCESS_EVENT_CTRL_AFTER(hndl, curre, rc, callbackrc);
     }
 
