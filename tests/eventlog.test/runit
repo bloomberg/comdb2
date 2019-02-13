@@ -6,7 +6,7 @@ set -x
 assertres ()
 {
     if [ $# != 2 ] ; then 
-        failexit "res is $res, target is $target, one or more is blank"
+        failexit "number of parameters passed is $# but expecting 2"
     fi
     res=$1
     target=$2
@@ -182,18 +182,25 @@ for i in `seq 1 2000` ; do
     cdb2sql ${CDB2_OPTIONS} $DBNAME default "insert into t1 values($i)"
 done
 
-logflcnt=`ls -1Sr $TESTDIR/var/log/cdb2/ | grep events | grep $DBNAME | wc -l`
+sleep 3
 
 COMDB2_UNITTEST=0 CLEANUPDBDIR=0 $TESTSROOTDIR/unsetup 1 > $TESTDIR/logs/${DBNAME}.unsetup
+
+find $TESTDIR/var/log/cdb2/ | grep $DBNAME | grep '.events.' > logfls.txt
+echo logfls
+cat logfls.txt
+
+logflcnt=$(wc -l logfls.txt | cut -f1 -d' ')
 
 echo make sure we have $((NKEEP+1)) as per the lrl option
 assertres $logflcnt $((NKEEP+1))
 
 echo "make sure string 'insert into t1 values(2000)' is in the last 2 eventlog files:"
-cmd="ls -1 $TESTDIR/var/log/cdb2/* | grep events | grep $DBNAME | head -2"
-eval $cmd
+cat logfls.txt | xargs ls -1t | head -2 > lastfls.txt
+echo lastfls 
+cat lastfls.txt
 
-res=$(ls -1r $TESTDIR/var/log/cdb2/* | grep events | grep $DBNAME | head -2 | xargs zcat | grep 'insert into t1 values(2000)' | wc -l)
+res=$(cat lastfls.txt | xargs zgrep 'insert into t1 values(2000)' | grep '"type": "sql"'| wc -l)
 assertres $res 1
 
 exit 0
