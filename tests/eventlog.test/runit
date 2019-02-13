@@ -164,13 +164,14 @@ fi
 
 mv $TESTDIR/logs/${DBNAME}.db $TESTDIR/logs/${DBNAME}.db.2
 
-echo "start db again, make sure that we keep only 3 event log files of size ~2000 bytes"
+NKEEP=4
+IFS=$SAVIFS
+
+echo "start db again, make sure that we keep only $((NKEEP+1)) event log files of size ~2000 bytes"
 $DEBUGGER ${COMDB2_EXE} $DBNAME --no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.pid &> $TESTDIR/logs/${DBNAME}.db &
 
-IFS=$SAVIFS
 waitfordb $DBNAME
 
-NKEEP=4
 cdb2sql ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('reql events detailed on')"
 cdb2sql ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('reql events keep $NKEEP')"
 cdb2sql ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('reql events rollat 4000')"
@@ -185,11 +186,14 @@ logflcnt=`ls -1Sr $TESTDIR/var/log/cdb2/ | grep events | grep $DBNAME | wc -l`
 
 COMDB2_UNITTEST=0 CLEANUPDBDIR=0 $TESTSROOTDIR/unsetup 1 > $TESTDIR/logs/${DBNAME}.unsetup
 
+echo make sure we have $((NKEEP+1)) as per the lrl option
 assertres $logflcnt $((NKEEP+1))
 
-logfl=`ls -1r $TESTDIR/var/log/cdb2/ | grep events | grep $DBNAME | head -1`
-logfl=`find $TESTDIR/var/log/cdb2/ | grep $logfl`
-res=$(zcat $logfl | grep 'insert into t1 values(2000)' | wc -l)
+echo "make sure string 'insert into t1 values(2000)' is in the last 2 eventlog files:"
+cmd="ls -1 $TESTDIR/var/log/cdb2/* | grep events | grep $DBNAME | head -2"
+eval $cmd
+
+res=$(ls -1r $TESTDIR/var/log/cdb2/* | grep events | grep $DBNAME | head -2 | xargs zcat | grep 'insert into t1 values(2000)' | wc -l)
 assertres $res 1
 
 exit 0
