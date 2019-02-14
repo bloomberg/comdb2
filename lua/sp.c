@@ -751,11 +751,10 @@ static void dbconsumer_getargs(Lua L, int *push_tid, int *register_timeoutms)
                     *push_tid = lua_toboolean(L, -1);
                 }
             } else if (strcasecmp(key, "register_timeout") == 0) {
-                if (lua_isnumber(L, -1)) {
-                    int timeoutms = lua_tonumber(L, -1);
-                    if (timeoutms > 0) {
-                        *register_timeoutms = timeoutms;
-                    }
+                long long timeoutms = 0;
+                luabb_tointeger(L, -1, &timeoutms);
+                if (timeoutms > 0) {
+                    *register_timeoutms = timeoutms;
                 }
             }
             lua_pop(L, 1);
