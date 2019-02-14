@@ -1685,8 +1685,8 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     if (iq->debug)
         reqprintf(iq, "DEL RRN %d GENID 0x%llx RC %d", rrn, genid, retrc);
     if (retrc != 0) {
-        *opfailcode = (rc == ERR_VERIFY) ? OP_FAILED_VERIFY
-                                         : OP_FAILED_INTERNAL + ERR_DEL_DTA;
+        *opfailcode = (retrc == ERR_VERIFY) ? OP_FAILED_VERIFY
+                                            : OP_FAILED_INTERNAL + ERR_DEL_DTA;
         goto err;
     }
 
