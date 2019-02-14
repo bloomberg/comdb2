@@ -32,6 +32,14 @@ testcase_output=
 # expected output
 expected_output=
 
+
+cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $a_dbn default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
+for node in $cluster ; do
+cdb2sql --tabs ${CDB2_OPTIONS} $a_dbn --host $node 'exec procedure sys.cmd.send("debg 100")'
+cdb2sql --tabs ${CDB2_OPTIONS} $a_dbn --host $node 'exec procedure sys.cmd.send("ndebg 100")'
+done
+
+
 # fastinit
 function fastinit
 {
@@ -208,7 +216,7 @@ function assertbadexitcode
 function assertres
 {
     if [ $# != 2 ] ; then
-        failexit "res is $res, target is $target, one or more is blank"
+        failexit "number of parameters passed is $# but expecting 2"
     fi
     res=$1
     target=$2

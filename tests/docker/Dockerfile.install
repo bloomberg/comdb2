@@ -36,7 +36,8 @@ RUN apt-get update && \
     time \
     strace \
     gdb \
-    openssh-server
+    openssh-server \
+    psmisc
 
 COPY . /comdb2
 

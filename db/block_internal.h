@@ -691,47 +691,6 @@ typedef struct {
     struct javasp_trans_state *javasp_trans_handle;
 } rngdel_info_t;
 
-enum ct_etype { CTE_ADD = 1, CTE_DEL, CTE_UPD };
-
-enum ct_constants {
-    CTC_TEMP_TABLE_CACHE_SIZE = 256 /*kilobytes*/
-};
-
-struct forward_ct {
-    unsigned long long genid;
-    unsigned long long ins_keys;
-    const uint8_t *p_buf_req_start;
-    const uint8_t *p_buf_req_end;
-    struct dbtable *usedb;
-    int blkpos;
-    int ixnum;
-    int rrn;
-    int optype;
-    int flags;
-};
-
-struct backward_ct {
-    struct dbtable *srcdb;
-    struct dbtable *dstdb;
-    int blkpos;
-    int optype;
-    char key[MAXKEYLEN];
-    char newkey[MAXKEYLEN];
-    int sixlen;
-    int sixnum;
-    int dixnum;
-    int nonewrefs;
-    int flags;
-};
-
-typedef struct cttbl_entry {
-    int ct_type;
-    union {
-        struct forward_ct fwdct;
-        struct backward_ct bwdct;
-    } ctop;
-} cte;
-
 struct tran_req {
     tranid_t id;
 };
@@ -789,13 +748,12 @@ struct lockset_req {
 
 int has_cascading_reverse_constraints(struct dbtable *tbl);
 
-int insert_add_op(struct ireq *iq, const uint8_t *p_buf_req_start,
-                  const uint8_t *p_buf_req_end, int optype, int rrn, int ixnum,
+int insert_add_op(struct ireq *iq, int optype, int rrn, int ixnum,
                   unsigned long long genid, unsigned long long ins_keys,
                   int blkpos, int flags);
 
 int process_defered_table(struct ireq *iq, block_state_t *blkstate, void *trans,
-                     int *blkpos, int *ixout, int *errout);
+                          int *blkpos, int *ixout, int *errout);
 int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
                      int *blkpos, int *ixout, int *errout);
 void *create_constraint_table();

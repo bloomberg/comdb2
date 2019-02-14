@@ -56,7 +56,7 @@ static int __rep_set_rep_transport __P((DB_ENV *, char *,
 		char *, int, void *)));
 static int __rep_set_check_standalone __P((DB_ENV *, int (*)(DB_ENV *)));
 static int __rep_set_truncate_sc_callback __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *)));
-static int __rep_set_rep_truncate_callback __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *, int is_master)));
+static int __rep_set_rep_truncate_callback __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *, uint32_t is_master)));
 static int __rep_set_rep_recovery_cleanup __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *, int is_master)));
 static int __rep_lock_recovery_lock __P((DB_ENV *));
 static int __rep_unlock_recovery_lock __P((DB_ENV *));
@@ -902,7 +902,7 @@ __rep_set_rep_recovery_cleanup(dbenv, rep_recovery_cleanup)
 static int
 __rep_set_rep_truncate_callback(dbenv, rep_truncate_callback)
 	DB_ENV *dbenv;
-	int (*rep_truncate_callback) __P((DB_ENV *, DB_LSN *lsn, int is_master));
+	int (*rep_truncate_callback) __P((DB_ENV *, DB_LSN *lsn, uint32_t flags));
 {
 	PANIC_CHECK(dbenv);
 	if (rep_truncate_callback == NULL) {

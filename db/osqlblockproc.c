@@ -101,7 +101,7 @@ typedef struct oplog_key {
 static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
                          int *nops, struct block_err *err, SBUF2 *logsb,
                          int (*func)(struct ireq *, unsigned long long, uuid_t,
-                                     void *, char *, int, int *, int **,
+                                     void *, char **, int, int *, int **,
                                      blob_buffer_t blobs[MAXBLOBS], int,
                                      struct block_err *, int *, SBUF2 *));
 static int req2blockop(int reqtype);
@@ -1266,7 +1266,7 @@ static int process_this_session(
     struct ireq *iq, void *iq_tran, osql_sess_t *sess, int *bdberr, int *nops,
     struct block_err *err, SBUF2 *logsb, struct temp_cursor *dbc,
     struct temp_cursor *dbc_ins,
-    int (*func)(struct ireq *, unsigned long long, uuid_t, void *, char *, int,
+    int (*func)(struct ireq *, unsigned long long, uuid_t, void *, char **, int,
                 int *, int **, blob_buffer_t blobs[MAXBLOBS], int,
                 struct block_err *, int *, SBUF2 *))
 {
@@ -1334,6 +1334,8 @@ static int process_this_session(
         int datalen = 0;
         // fetch the data from the appropriate temp table -- based on drain_adds
         get_tmptbl_data_and_len(dbc, dbc_ins, drain_adds, &data, &datalen);
+        /* Reset temp cursor data - it will be freed after the callback. */
+        bdb_temp_table_reset_datapointers(drain_adds ? dbc_ins : dbc);
         DEBUG_PRINT_TMPBL_READ();
 
         if (bdb_lock_desired(thedb->bdb_env)) {
@@ -1349,8 +1351,9 @@ static int process_this_session(
         lastrcv = receivedrows;
 
         /* this locks pages */
-        rc_out = func(iq, rqid, uuid, iq_tran, data, datalen, &flags, &updCols,
+        rc_out = func(iq, rqid, uuid, iq_tran, &data, datalen, &flags, &updCols,
                       blobs, step, err, &receivedrows, logsb);
+        free(data);
 
         if (rc_out != 0 && rc_out != OSQL_RC_DONE) {
             reqlog_set_error(iq->reqlogger, "Error processing", rc_out);
@@ -1411,7 +1414,7 @@ int osql_bplog_reqlog_queries(struct ireq *iq)
 static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
                          int *nops, struct block_err *err, SBUF2 *logsb,
                          int (*func)(struct ireq *, unsigned long long, uuid_t,
-                                     void *, char *, int, int *, int **,
+                                     void *, char **, int, int *, int **,
                                      blob_buffer_t blobs[MAXBLOBS], int,
                                      struct block_err *, int *, SBUF2 *))
 {

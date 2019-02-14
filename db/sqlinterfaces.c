@@ -3118,6 +3118,30 @@ static int bind_params(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     return rc;
 }
 
+struct param_data *clnt_find_param(struct sqlclntstate *clnt, const char *name,
+                                   int index)
+{
+    int params = param_count(clnt);
+    int rc = 0;
+    struct param_data *p = calloc(1, sizeof(struct param_data));
+    if (!p)
+        return NULL;
+
+    for (int i = 0; i < params; ++i) {
+        if ((rc = param_value(clnt, p, i)) != 0)
+            goto done;
+
+        if (p->pos > 0 && p->pos == index)
+            return p;
+
+        if (name[0] && !strncasecmp(name, p->name, strlen(name) + 1))
+            return p;
+    }
+done:
+    free(p);
+    return NULL;
+}
+
 /**
  * Get a sqlite engine with bound parameters set, if any
  *
@@ -3152,6 +3176,7 @@ static int get_prepared_bound_stmt(struct sqlthdstate *thd,
     reqlog_logf(thd->logger, REQL_INFO, "ncols=%d", cols);
     if (bind_cnt == 0)
         return 0;
+
     return bind_params(thd, clnt, rec, err);
 }
 
@@ -3551,6 +3576,10 @@ static void handle_sqlite_error(struct sqlthdstate *thd,
                                 struct sql_state *rec, int rc)
 {
     reqlog_set_error(thd->logger, sqlite3_errmsg(thd->sqldb), rc);
+
+    if (clnt->conns) {
+        dohsql_signal_done(clnt);
+    }
 
     if (thd->sqlthd)
         thd->sqlthd->nmove = thd->sqlthd->nfind = thd->sqlthd->nwrite =
@@ -6076,7 +6105,7 @@ void start_internal_sql_clnt(struct sqlclntstate *clnt)
     Pthread_mutex_init(&clnt->write_lock, NULL);
     Pthread_cond_init(&clnt->write_cond, NULL);
     Pthread_mutex_init(&clnt->dtran_mtx, NULL);
-    clnt->dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
+    clnt->dbtran.mode = TRANLEVEL_SOSQL;
     clr_high_availability(clnt);
 }
 
