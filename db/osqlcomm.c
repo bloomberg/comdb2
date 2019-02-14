@@ -4205,8 +4205,9 @@ int osql_send_updstat(char *tohost, unsigned long long rqid, uuid_t uuid,
     }
 
     if (logsb) {
-        sbuf2printf(logsb, "[%llu] send OSQL_UPDSTATREC %llx (%lld)\n", rqid,
-                    seq, seq);
+        uuidstr_t us;
+        sbuf2printf(logsb, "[%llu %s] send OSQL_UPDSTATREC %llx (%lld)\n", rqid,
+                    comdb2uuidstr(uuid, us), seq, seq);
         sbuf2flush(logsb);
     }
 

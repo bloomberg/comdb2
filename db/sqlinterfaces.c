@@ -6105,7 +6105,7 @@ void start_internal_sql_clnt(struct sqlclntstate *clnt)
     Pthread_mutex_init(&clnt->write_lock, NULL);
     Pthread_cond_init(&clnt->write_cond, NULL);
     Pthread_mutex_init(&clnt->dtran_mtx, NULL);
-    clnt->dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
+    clnt->dbtran.mode = TRANLEVEL_SOSQL;
     clr_high_availability(clnt);
 }
 
