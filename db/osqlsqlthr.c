@@ -160,50 +160,55 @@ static inline int osql_should_restart(struct sqlclntstate *clnt, int rc)
 }
 
 #define RESTART_SOCKSQL_KEEP_RQID(keep_rqid)                                   \
-    restarted = 0;                                                             \
-    if (osql_should_restart(clnt, rc)) {                                       \
-        rc = osql_sock_restart(clnt, gbl_survive_n_master_swings, keep_rqid);  \
+    do {                                                                       \
+        restarted = 0;                                                         \
+        if (osql_should_restart(clnt, rc)) {                                   \
+            rc = osql_sock_restart(clnt, gbl_survive_n_master_swings,          \
+                                   keep_rqid);                                 \
+            if (rc) {                                                          \
+                logmsg(LOGMSG_ERROR,                                           \
+                       "%s: failed to restart socksql session rc=%d\n",        \
+                       __func__, rc);                                          \
+            } else {                                                           \
+                restarted = 1;                                                 \
+            }                                                                  \
+        }                                                                      \
         if (rc) {                                                              \
             logmsg(LOGMSG_ERROR,                                               \
-                   "%s: failed to restart socksql session rc=%d\n", __func__,  \
-                   rc);                                                        \
+                   "%s: error writting record to master in offload mode "      \
+                   "rc=%d!\n",                                                 \
+                   __func__, rc);                                              \
+            if (rc != SQLITE_TOOBIG && rc != ERR_SC)                           \
+                rc = SQLITE_INTERNAL;                                          \
         } else {                                                               \
-            restarted = 1;                                                     \
+            rc = SQLITE_OK;                                                    \
         }                                                                      \
-    }                                                                          \
-    if (rc) {                                                                  \
-        logmsg(LOGMSG_ERROR,                                                   \
-               "%s: error writting record to master in offload mode rc=%d!\n", \
-               __func__, rc);                                                  \
-        if (rc != SQLITE_TOOBIG && rc != ERR_SC)                               \
-            rc = SQLITE_INTERNAL;                                              \
-    } else {                                                                   \
-        rc = SQLITE_OK;                                                        \
-    }
+    } while (0)
 
 #define RESTART_SOCKSQL RESTART_SOCKSQL_KEEP_RQID(0)
 
 #define START_SOCKSQL                                                          \
-    if (!clnt->osql.sock_started) {                                            \
-        rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0);                          \
-        if (rc) {                                                              \
-            logmsg(LOGMSG_ERROR,                                               \
-                   "%s: failed to start socksql transaction rc=%d\n",          \
-                   __func__, rc);                                              \
-            if (rc != SQLITE_ABORT)                                            \
-                rc = SQLITE_CLIENT_CHANGENODE;                                 \
-            return rc;                                                         \
+    do {                                                                       \
+        if (!clnt->osql.sock_started) {                                        \
+            rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0);                      \
+            if (rc) {                                                          \
+                logmsg(LOGMSG_ERROR,                                           \
+                       "%s: failed to start socksql transaction rc=%d\n",      \
+                       __func__, rc);                                          \
+                if (rc != SQLITE_ABORT)                                        \
+                    rc = SQLITE_CLIENT_CHANGENODE;                             \
+                return rc;                                                     \
+            }                                                                  \
+            sql_debug_logf(clnt, __func__, __LINE__,                           \
+                           "osql_sock_start returns %d\n", rc);                \
         }                                                                      \
-        sql_debug_logf(clnt, __func__, __LINE__,                               \
-                       "osql_sock_start returns %d\n", rc);                    \
-    }
+    } while (0)
 
 int osql_sock_start_deferred(struct sqlclntstate *clnt)
 {
     int rc;
-    if (clnt->dbtran.mode == TRANLEVEL_SOSQL) {
+    if (clnt->dbtran.mode == TRANLEVEL_SOSQL)
         START_SOCKSQL;
-    }
     return 0;
 }
 
@@ -799,12 +804,12 @@ retry:
         rc = SQLITE_BUSY;
     }
 
-    if (!keep_rqid && rc != 0) {
-        osql_unregister_sqlthr(clnt);
-    } else {
+    if (rc == 0) {
         if (clnt->client_understands_query_stats)
             osql_query_dbglog(thd, clnt->queryid);
         osql->sock_started = 1;
+    } else if (!keep_rqid) {
+        osql_unregister_sqlthr(clnt);
     }
 
     return rc;
