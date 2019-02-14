@@ -1654,6 +1654,11 @@ REGISTER_TUNABLE("online_recovery",
                  TUNABLE_BOOLEAN, &gbl_online_recovery, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("forbid_remote_admin",
+                 "Forbid non-local admin requests.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_forbid_remote_admin, 0, NULL, NULL, NULL,
+                 NULL);
+
 REGISTER_TUNABLE(
     "pbkdf2_iterations",
     "Number of iterations of PBKDF2 algorithm for password hashing.",
