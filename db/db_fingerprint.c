@@ -82,13 +82,13 @@ static char *strdup_readonly(
 }
 
 static void strdup_free(
-  const char *zStr,
+  char *zStr,
   size_t nStr
 ){
   size_t nSize = strdup_sizeof(nStr);
-  if( zStr==0 ) return 0;
+  if( zStr==0 ) return;
   memset(zStr, 0, nSize);
-  munmap(zStr, nSize);
+  munmap((void *)zStr, nSize);
 }
 #endif /* !defined(NDEBUG) && defined(_LINUX_SOURCE) */
 
@@ -104,7 +104,7 @@ static void normalize_query(sqlite3 *db, char *zSql, char **pzNormSql) {
     rc = sqlite3_prepare_v3(db, zSql, -1, SQLITE_PREPARE_NORMALIZE, &p, 0);
     if (rc == SQLITE_OK) {
 #if !defined(NDEBUG) && defined(_LINUX_SOURCE)
-        char *zNormSql = sqlite3_normalized_sql(p);
+        const char *zNormSql = sqlite3_normalized_sql(p);
         size_t nNormSql = strlen(zNormSql) + 1;
         *pzNormSql = strdup_readonly(zNormSql, nNormSql);
 #else
