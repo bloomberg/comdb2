@@ -105,13 +105,15 @@ static void normalize_query(sqlite3 *db, char *zSql, char **pzNormSql) {
 
     rc = sqlite3_prepare_v3(db, zSql, -1, SQLITE_PREPARE_NORMALIZE, &p, 0);
     if (rc == SQLITE_OK) {
-#if !defined(NDEBUG) && defined(_LINUX_SOURCE)
         const char *zNormSql = sqlite3_normalized_sql(p);
-        size_t nNormSql = strlen(zNormSql) + 1;
-        *pzNormSql = strdup_readonly(zNormSql, nNormSql);
+        if (zNormSql != NULL) {
+#if !defined(NDEBUG) && defined(_LINUX_SOURCE)
+            size_t nNormSql = strlen(zNormSql) + 1;
+            *pzNormSql = strdup_readonly(zNormSql, nNormSql);
 #else
-        *pzNormSql = sqlite3_mprintf("%s", sqlite3_normalized_sql(p));
+            *pzNormSql = sqlite3_mprintf("%s", zNormSql);
 #endif
+        }
     } else if (gbl_verbose_normalized_queries) {
         logmsg(LOGMSG_ERROR,
                "FAILED sqlite3_prepare_v2(%p, {%s}) for normalization, rc=%d, msg=%s\n",
