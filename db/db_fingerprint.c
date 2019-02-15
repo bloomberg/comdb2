@@ -54,7 +54,7 @@ int gbl_fingerprint_max_queries = 1000; /* TODO: Tunable? */
 #if !defined(NDEBUG) && defined(_LINUX_SOURCE)
 #define STRDUP_PAGE_SIZE 4096
 
-static size_t strdup_sizeof(
+static size_t memdup_sizeof(
   size_t nStr
 ){
   size_t nPage = nStr / STRDUP_PAGE_SIZE;
@@ -62,12 +62,12 @@ static size_t strdup_sizeof(
   return nPage * STRDUP_PAGE_SIZE;
 }
 
-static char *strdup_readonly(
+static char *memdup_readonly(
   const char *zStr,
   size_t nStr
 ){
   void *p;
-  size_t nSize = strdup_sizeof(nStr);
+  size_t nSize = memdup_sizeof(nStr);
   if( zStr==0 ) return 0;
   p = mmap(0, nSize, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
   if( p==MAP_FAILED ) return 0;
@@ -81,12 +81,12 @@ static char *strdup_readonly(
   return p;
 }
 
-static void strdup_free(
+static void memdup_free(
   char *zStr,
   size_t nStr
 ){
   void *p = zStr;
-  size_t nSize = strdup_sizeof(nStr);
+  size_t nSize = memdup_sizeof(nStr);
   if( p==0 ) return;
   if( mprotect(p, nSize, PROT_READ|PROT_WRITE)!=0 ) return;
   memset(p, 0, nSize);
@@ -109,7 +109,7 @@ static void normalize_query(sqlite3 *db, char *zSql, char **pzNormSql) {
         if (zNormSql != NULL) {
 #if !defined(NDEBUG) && defined(_LINUX_SOURCE)
             size_t nNormSql = strlen(zNormSql) + 1;
-            *pzNormSql = strdup_readonly(zNormSql, nNormSql);
+            *pzNormSql = memdup_readonly(zNormSql, nNormSql);
 #else
             *pzNormSql = sqlite3_mprintf("%s", zNormSql);
 #endif
@@ -197,7 +197,7 @@ void add_fingerprint(sqlite3 *sqldb, int64_t cost, int64_t time, int64_t nrows,
                 }
                 Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
 #if !defined(NDEBUG) && defined(_LINUX_SOURCE)
-                strdup_free(zNormSql, nNormSql);
+                memdup_free(zNormSql, nNormSql);
 #else
                 sqlite3_free(zNormSql);
 #endif
@@ -229,7 +229,7 @@ void add_fingerprint(sqlite3 *sqldb, int64_t cost, int64_t time, int64_t nrows,
             assert( t->zNormSql!=zNormSql );
             assert( strcmp(t->zNormSql,zNormSql)==0 );
 #if !defined(NDEBUG) && defined(_LINUX_SOURCE)
-            strdup_free(zNormSql, nNormSql);
+            memdup_free(zNormSql, nNormSql);
 #else
             sqlite3_free(zNormSql);
 #endif
