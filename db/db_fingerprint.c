@@ -85,10 +85,12 @@ static void strdup_free(
   char *zStr,
   size_t nStr
 ){
+  void *p = zStr;
   size_t nSize = strdup_sizeof(nStr);
-  if( zStr==0 ) return;
-  memset(zStr, 0, nSize);
-  munmap((void *)zStr, nSize);
+  if( p==0 ) return;
+  if( mprotect(p, nSize, PROT_READ|PROT_WRITE)!=0 ) return;
+  memset(p, 0, nSize);
+  munmap(p, nSize);
 }
 #endif /* !defined(NDEBUG) && defined(_LINUX_SOURCE) */
 
