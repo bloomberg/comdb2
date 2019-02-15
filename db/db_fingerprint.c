@@ -20,6 +20,10 @@
 #include <errno.h>
 #include <string.h>
 #include <stddef.h>
+#if !defined(NDEBUG) && defined(_LINUX_SOURCE)
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
 
 #include "logmsg.h"
 #include "md5.h"
