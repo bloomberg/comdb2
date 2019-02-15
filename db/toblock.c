@@ -95,7 +95,7 @@ extern pthread_mutex_t osqlpf_mutex;
 extern int gbl_prefault_udp;
 extern int gbl_reorder_socksql_no_deadlock;
 
-int gdb_enable_snap_info_hashcheck = 1;
+int gbl_osql_snap_info_hashcheck = 1;
 
 
 #if 0
@@ -2721,7 +2721,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         }
 
         if (got_osql && iq->have_snap_info) {
-            if (gdb_enable_snap_info_hashcheck) {
+            if (gbl_osql_snap_info_hashcheck) {
                 // the goal here is to stall until the original transaction
                 // has finished that way we can retrieve the outcome from blkseq
                 osql_blkseq_register_cnonce(iq);

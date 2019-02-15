@@ -97,7 +97,7 @@ int osql_blkseq_register_cnonce(struct ireq *iq)
 }
 
 /* call with hlock acquired */
-static inline void osql_blkseq_unregister_cnonce(struct ireq *iq)
+static inline int osql_blkseq_unregister_cnonce(struct ireq *iq)
 {
     assert(hiqs_cnonce != NULL);
     return hash_del(hiqs_cnonce, &iq->snap_info);
