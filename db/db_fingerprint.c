@@ -104,7 +104,9 @@ static void normalize_query(sqlite3 *db, char *zSql, char **pzNormSql) {
     rc = sqlite3_prepare_v3(db, zSql, -1, SQLITE_PREPARE_NORMALIZE, &p, 0);
     if (rc == SQLITE_OK) {
 #if !defined(NDEBUG) && defined(_LINUX_SOURCE)
-        *pzNormSql = strdup_readonly(sqlite3_normalized_sql(p));
+        char *zNormSql = sqlite3_normalized_sql(p);
+        size_t nNormSql = strlen(zNormSql) + 1;
+        *pzNormSql = strdup_readonly(zNormSql, nNormSql);
 #else
         *pzNormSql = sqlite3_mprintf("%s", sqlite3_normalized_sql(p));
 #endif
@@ -191,7 +193,7 @@ void add_fingerprint(sqlite3 *sqldb, int64_t cost, int64_t time, int64_t nrows,
                 }
                 Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
 #if !defined(NDEBUG) && defined(_LINUX_SOURCE)
-                strdup_free(zNormSql);
+                strdup_free(zNormSql, nNormSql);
 #else
                 sqlite3_free(zNormSql);
 #endif
@@ -223,7 +225,7 @@ void add_fingerprint(sqlite3 *sqldb, int64_t cost, int64_t time, int64_t nrows,
             assert( t->zNormSql!=zNormSql );
             assert( strcmp(t->zNormSql,zNormSql)==0 );
 #if !defined(NDEBUG) && defined(_LINUX_SOURCE)
-            strdup_free(zNormSql);
+            strdup_free(zNormSql, nNormSql);
 #else
             sqlite3_free(zNormSql);
 #endif
