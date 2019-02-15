@@ -108,8 +108,8 @@ static void normalize_query(sqlite3 *db, char *zSql, char **pzNormSql) {
         const char *zNormSql = sqlite3_normalized_sql(p);
         if (zNormSql != NULL) {
 #if !defined(NDEBUG) && defined(_LINUX_SOURCE)
-            size_t nNormSql = strlen(zNormSql) + 1;
-            *pzNormSql = memdup_readonly(zNormSql, nNormSql);
+            size_t nNormSql = strlen(zNormSql);
+            *pzNormSql = memdup_readonly(zNormSql, nNormSql + 1);
 #else
             *pzNormSql = sqlite3_mprintf("%s", zNormSql);
 #endif
@@ -197,7 +197,7 @@ void add_fingerprint(sqlite3 *sqldb, int64_t cost, int64_t time, int64_t nrows,
                 }
                 Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
 #if !defined(NDEBUG) && defined(_LINUX_SOURCE)
-                memdup_free(zNormSql, nNormSql);
+                memdup_free(zNormSql, nNormSql + 1);
 #else
                 sqlite3_free(zNormSql);
 #endif
@@ -229,7 +229,7 @@ void add_fingerprint(sqlite3 *sqldb, int64_t cost, int64_t time, int64_t nrows,
             assert( t->zNormSql!=zNormSql );
             assert( strcmp(t->zNormSql,zNormSql)==0 );
 #if !defined(NDEBUG) && defined(_LINUX_SOURCE)
-            memdup_free(zNormSql, nNormSql);
+            memdup_free(zNormSql, nNormSql + 1);
 #else
             sqlite3_free(zNormSql);
 #endif
