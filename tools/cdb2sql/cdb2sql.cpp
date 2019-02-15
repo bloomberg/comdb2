@@ -1267,10 +1267,12 @@ static void process_line(char *sql, int ntypes, int *types)
     int len;
 
     verbose_print("processing line sql '%.30s...'\n", sql);
-    /* Trim whitespace and then ignore comments */
+    /* Trim whitespace and then ignore comments and empty lines. */
     while (isspace(*sqlstr))
         sqlstr++;
-    if (sqlstr[0] == '#' || sqlstr[0] == '\0')
+
+    if (sqlstr[0] == '#' || sqlstr[0] == '\0' ||
+        (sqlstr[0] == '-' && sqlstr[1] == '-'))
         return;
 
     /* Lame hack - strip trailing ; so that we can understand the
