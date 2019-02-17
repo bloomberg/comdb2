@@ -1840,6 +1840,7 @@ retry_read:
         if (was_timeout && gbl_send_failed_dispatch_message) {
             handle_failed_dispatch(clnt, "Socket read timeout.");
         }
+        logmsg(LOGMSG_ERROR, "socket read timeout");
         return NULL;
     }
 
@@ -1866,8 +1867,10 @@ retry_read:
            2) Doing SSL_accept() immediately would cause too many
               unnecessary EAGAIN/EWOULDBLOCK's for non-blocking BIO. */
         char ssl_able = (gbl_client_ssl_mode >= SSL_ALLOW) ? 'Y' : 'N';
-        if ((rc = sbuf2putc(sb, ssl_able)) < 0 || (rc = sbuf2flush(sb)) < 0)
+        if ((rc = sbuf2putc(sb, ssl_able)) < 0 || (rc = sbuf2flush(sb)) < 0) {
+            logmsg(LOGMSG_ERROR, "failed to write to the network\n");
             return NULL;
+        }
 
         /* Don't close the connection if SSL verify fails so that we can
            send back an error to the client. */
@@ -1876,6 +1879,7 @@ retry_read:
                          gbl_nid_dbname, NULL, 0, 0) != 1) {
             newsql_error(clnt, "Client certificate authentication failed.",
                          CDB2ERR_CONNECT_ERROR);
+            logmsg(LOGMSG_ERROR, "client certificate authentication failed\n");
             return NULL;
         }
 
@@ -1883,8 +1887,10 @@ retry_read:
         ssl_set_clnt_user(clnt);
 #else
         /* Not compiled with SSL. Send back `N' to client and retry read. */
-        if ((rc = sbuf2putc(sb, 'N')) < 0 || (rc = sbuf2flush(sb)) < 0)
+        if ((rc = sbuf2putc(sb, 'N')) < 0 || (rc = sbuf2flush(sb)) < 0) {
+            logmsg(LOGMSG_ERROR, "failed to write 'N' to the network\n");
             return NULL;
+        }
 #endif
         goto retry_read;
     } else if (hdr.type == CDB2_REQUEST_TYPE__RESET) { /* Reset from sockpool.*/
@@ -1989,9 +1995,14 @@ retry_read:
         Pthread_mutex_unlock(&clnt->wait_mutex);
     }
 
-    if (!query) return NULL;
+    if (!query) {
+        logmsg(LOGMSG_ERROR, "query missing\n");
+        return NULL;
+    }
+
     if (errno != 0) {
         cdb2__query__free_unpacked(query, &pb_alloc);
+        logmsg(LOGMSG_ERROR, "errno: %d\n", errno);
         return NULL;
     }
 
@@ -2064,10 +2075,10 @@ retry_read:
             cdb2__query__free_unpacked(query, &pb_alloc);
             query = NULL;
             goto retry_read;
-        } else {
-            newsql_error(clnt, "The database requires SSL connections.",
-                         CDB2ERR_CONNECT_ERROR);
         }
+        newsql_error(clnt, "The database requires SSL connections.",
+                     CDB2ERR_CONNECT_ERROR);
+        logmsg(LOGMSG_ERROR, "the database requires SSL connections\n");
         cdb2__query__free_unpacked(query, &pb_alloc);
         return NULL;
     }
@@ -2166,6 +2177,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         }
         newsql_error(&clnt, "Exhausted appsock connections.",
                      CDB2__ERROR_CODE__APPSOCK_LIMIT);
+        logmsg(LOGMSG_ERROR, "exhaused appsock connections\n");
         goto done;
     }
 
@@ -2191,8 +2203,10 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
     CDB2SQLQUERY *sql_query = query->sqlquery;
 
-    if (!clnt.admin && do_query_on_master_check(dbenv, &clnt, sql_query))
+    if (!clnt.admin && do_query_on_master_check(dbenv, &clnt, sql_query)) {
+        logmsg(LOGMSG_ERROR, "query on master, will be rejected\n");
         goto done;
+    }
 
     clnt.osql.count_changes = 1;
     clnt.dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
@@ -2295,8 +2309,10 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
                 clnt.argv0, clnt.stack, clnt.origin, sbuf2fileno(clnt.sb));
         }
 
-        if (process_set_commands(dbenv, &clnt, sql_query))
+        if (process_set_commands(dbenv, &clnt, sql_query)) {
+            logmsg(LOGMSG_ERROR, "process_set_commands() failed");
             goto done;
+        }
 
         if (gbl_rowlocks && clnt.dbtran.mode != TRANLEVEL_SERIAL)
             clnt.dbtran.mode = TRANLEVEL_SNAPISOL;
@@ -2359,8 +2375,10 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
                 srs_tran_destroy(&clnt);
         }
 
-        if (rc && !clnt.in_client_trans)
+        if (rc && !clnt.in_client_trans) {
+            logmsg(LOGMSG_ERROR, "rc = %d\n", rc);
             goto done;
+        }
 
         if (clnt.added_to_hist) {
             clnt.added_to_hist = 0;
