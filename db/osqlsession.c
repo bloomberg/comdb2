@@ -690,7 +690,7 @@ static int osql_poke_replicant(osql_sess_t *sess)
     if (sess->offhost) {
 
         int rc = osql_comm_send_poke(sess->offhost, sess->rqid, sess->uuid,
-                                 NET_OSQL_POKE);
+                                     NET_OSQL_POKE);
         return rc;
     }
 

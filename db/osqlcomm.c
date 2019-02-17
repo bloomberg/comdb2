@@ -5497,12 +5497,12 @@ static void net_osql_poked(void *hndl, void *uptr, char *fromhost, int usertype,
 
     /* TODO: we could send something back... but in tough times this will
      * not make it nevertheless */
-    if (found) 
+    if (found)
         return;
 
     /* not found so send a done with an error, lost request */
     uint8_t buf[OSQLCOMM_DONE_XERR_RPL_LEN];
-    p_buf = buf; 
+    p_buf = buf;
     p_buf_end = buf + OSQLCOMM_DONE_XERR_RPL_LEN;
     osql_done_xerr_t rpl;
 
@@ -5517,11 +5517,11 @@ static void net_osql_poked(void *hndl, void *uptr, char *fromhost, int usertype,
 
     osqlcomm_done_xerr_type_put(&rpl, p_buf, p_buf_end);
 
-    if ((rc = offload_net_send(fromhost, NET_OSQL_BLOCK_RPL, buf,
-                               sizeof(buf), 1))) {
-        logmsg(LOGMSG_ERROR, 
-                "%s: error writting record to master in offload mode rc=%d!\n",
-                __func__, rc);
+    if ((rc = offload_net_send(fromhost, NET_OSQL_BLOCK_RPL, buf, sizeof(buf),
+                               1))) {
+        logmsg(LOGMSG_ERROR,
+               "%s: error writting record to master in offload mode rc=%d!\n",
+               __func__, rc);
     }
 }
 
@@ -5546,12 +5546,11 @@ static void net_osql_poked_uuid(void *hndl, void *uptr, char *fromhost,
     }
 
     found = osql_chkboard_sqlsession_exists(OSQL_RQID_USE_UUID, poke.uuid, 1);
-    
+
     /* TODO: we could send something back... but in tough times this will
      * not make it nevertheless */
     if (found)
         return;
-
 
     /* not found so send a done with an error, lost request */
     uint8_t buf[OSQLCOMM_DONE_XERR_UUID_RPL_LEN];
@@ -5572,7 +5571,7 @@ static void net_osql_poked_uuid(void *hndl, void *uptr, char *fromhost,
 
     if ((rc = offload_net_send(fromhost, NET_OSQL_BLOCK_RPL_UUID, buf,
                                sizeof(buf), 1))) {
-        logmsg(LOGMSG_ERROR, 
+        logmsg(LOGMSG_ERROR,
                "%s: error writting record to master in offload mode rc=%d!\n",
                __func__, rc);
     }

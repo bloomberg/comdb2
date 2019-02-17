@@ -52,12 +52,11 @@ typedef struct osql_checkboard {
 
 static osql_checkboard_t *checkboard = NULL;
 
-
 /* will get rdlock on checkboard->rwlock if parameter lock is set
  * if caller already has rwlock, call this func with lock = false
  */
 static inline osql_sqlthr_t *osql_chkboard_fetch_entry(unsigned long long rqid,
-       uuid_t uuid, bool lock)
+                                                       uuid_t uuid, bool lock)
 {
     osql_sqlthr_t *entry = NULL;
 
@@ -241,8 +240,8 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
 
     Pthread_rwlock_wrlock(&checkboard->rwlock);
 
-    osql_sqlthr_t *entry = osql_chkboard_fetch_entry(clnt->osql.rqid,
-                                                     clnt->osql.uuid, 0);
+    osql_sqlthr_t *entry =
+        osql_chkboard_fetch_entry(clnt->osql.rqid, clnt->osql.uuid, 0);
     if (!(entry)) {
         uuidstr_t us;
         logmsg(LOGMSG_ERROR, "%s: error unable to find record %llx %s\n", __func__,
@@ -300,7 +299,7 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
  * Returns true or false depending on whether sesssion exists
  */
 bool osql_chkboard_sqlsession_exists(unsigned long long rqid, uuid_t uuid,
-                                    bool lock)
+                                     bool lock)
 {
     if (!checkboard)
         return 0;
@@ -418,7 +417,6 @@ void osql_checkboard_check_down_nodes(char *host)
     osql_checkboard_for_each(host, osql_checkboard_check_request_down_node);
 }
 
-
 /* NB: this is a helper function and waits for response from master
  * until max_wait count is reached.
  * This function is ment to be called with mutex entry->mtx in locked state
@@ -457,13 +455,12 @@ static int wait_till_max_wait_or_timeout(osql_sqlthr_t *entry, int max_wait,
             break;
 
         int lrc = 0;
-        if ((lrc = pthread_cond_timedwait(&entry->cond, &entry->mtx,
-                                         &tm_s))) {
+        if ((lrc = pthread_cond_timedwait(&entry->cond, &entry->mtx, &tm_s))) {
             if (ETIMEDOUT == lrc) {
                 /* normal timeout .. */
             } else {
-                logmsg(LOGMSG_ERROR,
-                       "pthread_cond_timedwait: error code %d\n", lrc);
+                logmsg(LOGMSG_ERROR, "pthread_cond_timedwait: error code %d\n",
+                       lrc);
                 rc = -7;
                 break;
             }
@@ -476,10 +473,11 @@ static int wait_till_max_wait_or_timeout(osql_sqlthr_t *entry, int max_wait,
             (max_wait > 0 && (*cnt) >= max_wait))
             break;
 
-        int poke_timeout = bdb_attr_get(
-                thedb->bdb_attr, BDB_ATTR_SOSQL_POKE_TIMEOUT_SEC) * 1000;
-        int poke_freq = bdb_attr_get(
-                thedb->bdb_attr, BDB_ATTR_SOSQL_POKE_FREQ_SEC) * 1000;
+        int poke_timeout =
+            bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SOSQL_POKE_TIMEOUT_SEC) *
+            1000;
+        int poke_freq =
+            bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SOSQL_POKE_FREQ_SEC) * 1000;
 
         /* is it the time to check the master? have we already done so? */
         int now = comdb2_time_epochms();
@@ -489,8 +487,7 @@ static int wait_till_max_wait_or_timeout(osql_sqlthr_t *entry, int max_wait,
             /* timeout the request */
             logmsg(LOGMSG_ERROR,
                    "Master %s failed to acknowledge session %llu %s\n",
-                   entry->master, entry->rqid,
-                   comdb2uuidstr(entry->uuid, us));
+                   entry->master, entry->rqid, comdb2uuidstr(entry->uuid, us));
             entry->done = 1;
             xerr->errval = entry->err.errval = SQLHERR_MASTER_TIMEOUT;
             snprintf(entry->err.errstr, sizeof(entry->err.errstr),
@@ -505,15 +502,15 @@ static int wait_till_max_wait_or_timeout(osql_sqlthr_t *entry, int max_wait,
             /* try poke again */
             if (entry->master == 0 || entry->master == gbl_mynode) {
                 /* local checkup */
-                bool found = osql_repository_session_exists(entry->rqid,
-                                                            entry->uuid);
+                bool found =
+                    osql_repository_session_exists(entry->rqid, entry->uuid);
                 if (!found) {
-                    logmsg(LOGMSG_ERROR, "Local SORESE failed to find local "
-                                    "transaction %llu %s\n",
-                            entry->rqid, comdb2uuidstr(entry->uuid, us));
+                    logmsg(LOGMSG_ERROR,
+                           "Local SORESE failed to find local "
+                           "transaction %llu %s\n",
+                           entry->rqid, comdb2uuidstr(entry->uuid, us));
                     entry->done = 1;
-                    xerr->errval = entry->err.errval =
-                        SQLHERR_MASTER_TIMEOUT;
+                    xerr->errval = entry->err.errval = SQLHERR_MASTER_TIMEOUT;
                     snprintf(entry->err.errstr, sizeof(entry->err.errstr),
                              "Local transaction failed, unable to locate "
                              "entry id=%llu",
@@ -524,12 +521,11 @@ static int wait_till_max_wait_or_timeout(osql_sqlthr_t *entry, int max_wait,
                 continue;
             }
 
-            int lrc = osql_comm_send_poke(
-                    entry->master, entry->rqid, entry->uuid,
-                    NET_OSQL_MASTER_CHECK);
+            int lrc = osql_comm_send_poke(entry->master, entry->rqid,
+                                          entry->uuid, NET_OSQL_MASTER_CHECK);
             if (lrc) {
                 logmsg(LOGMSG_ERROR, "Failed to send master check lrc=%d\n",
-                        lrc);
+                       lrc);
                 entry->done = 1;
                 xerr->errval = entry->err.errval = SQLHERR_MASTER_TIMEOUT;
                 snprintf(entry->err.errstr, sizeof(entry->err.errstr),
@@ -542,7 +538,6 @@ static int wait_till_max_wait_or_timeout(osql_sqlthr_t *entry, int max_wait,
     }
     return rc;
 }
-
 
 /**
  * Wait for the session to complete
@@ -563,15 +558,16 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
         osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, true);
 
         if (!entry) {
-            logmsg(LOGMSG_ERROR, "%s: received result for missing session %llu\n",
-                    __func__, rqid);
+            logmsg(LOGMSG_ERROR,
+                   "%s: received result for missing session %llu\n", __func__,
+                   rqid);
             return -2;
-        } 
+        }
 
-        /* accessing entry is valid at this point despite releasing rwlock 
+        /* accessing entry is valid at this point despite releasing rwlock
          * because delete from hash happens after this function has returned */
-        
-        if (entry->done == 1) {  /* we are done */
+
+        if (entry->done == 1) { /* we are done */
             *xerr = entry->err;
             done = 1;
             break;
@@ -591,10 +587,11 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
         Pthread_mutex_unlock(&entry->mtx);
 
         if (max_wait > 0 && cnt >= max_wait) {
-            logmsg(LOGMSG_ERROR, "%s: timed-out waiting for master %s "
-                                 "to commit id=%llu %s\n",
+            logmsg(LOGMSG_ERROR,
+                   "%s: timed-out waiting for master %s "
+                   "to commit id=%llu %s\n",
                    __func__, entry->master, entry->rqid,
-                     comdb2uuidstr(entry->uuid, us));
+                   comdb2uuidstr(entry->uuid, us));
             return -6;
         }
 
@@ -665,8 +662,8 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
 
     Pthread_rwlock_wrlock(&checkboard->rwlock);
 
-    osql_sqlthr_t *entry = osql_chkboard_fetch_entry(clnt->osql.rqid,
-                                                     clnt->osql.uuid, 0);
+    osql_sqlthr_t *entry =
+        osql_chkboard_fetch_entry(clnt->osql.rqid, clnt->osql.uuid, 0);
     if (!entry) {
         uuidstr_t us;
         logmsg(LOGMSG_ERROR, "%s: error unable to find record %llx %s\n", __func__,
