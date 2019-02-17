@@ -148,6 +148,9 @@ add_custom_command(
 )
 
 find_program(tclsh NAMES tclsh8.6 tclsh8.5 tclsh)
+if(NOT tclsh)
+  message(FATAL_ERROR "tclsh not found!")
+endif()
 add_executable(lemon tool/lemon.c)
 add_custom_command(
   OUTPUT parse.c parse.h
