@@ -2084,7 +2084,6 @@ cleanup:
 
     if (tran->pglogs_queue_hash) {
         hash_for(tran->pglogs_queue_hash, free_pglogs_queue_cursors, NULL);
-        hash_clear(tran->pglogs_queue_hash);
         hash_free(tran->pglogs_queue_hash);
         tran->pglogs_queue_hash = NULL;
     }
@@ -2404,7 +2403,6 @@ cleanup:
 
     if (tran->pglogs_queue_hash) {
         hash_for(tran->pglogs_queue_hash, free_pglogs_queue_cursors, NULL);
-        hash_clear(tran->pglogs_queue_hash);
         hash_free(tran->pglogs_queue_hash);
         tran->pglogs_queue_hash = NULL;
     }
