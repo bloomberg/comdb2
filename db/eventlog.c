@@ -43,8 +43,8 @@
 
 static char *gbl_eventlog_fname = NULL;
 static char *eventlog_fname(const char *dbname);
-static int eventlog_nkeep = 10;
-static int eventlog_rollat = 1024 * 1024 * 1024;
+static int eventlog_nkeep = 10;                 // keep last 10 event log files
+static int eventlog_rollat = 100 * 1024 * 1024; // 100MB to begin
 static int eventlog_enabled = 1;
 static int eventlog_detailed = 0;
 static int64_t bytes_written = 0;
@@ -84,8 +84,45 @@ static inline void free_gbl_eventlog_fname()
     gbl_eventlog_fname = NULL;
 }
 
+static void eventlog_roll_cleanup()
+{
+    if (eventlog_nkeep == 0)
+        return;
+
+    char cmd[512] = {0};
+    const char postfix[] = ".events.";
+    char *fname = comdb2_location("logs", "%s%s", thedb->envname, postfix);
+
+    if (fname == NULL)
+        abort();
+
+    // fname should look like '/dir/<dbname>.events.' : see eventlog_fname()
+    int len = strlen(fname);
+
+    // SANITY CHECK; last part of fname should match postfix
+    if (len < sizeof(postfix) ||
+        strcmp(&(fname[len - sizeof(postfix) + 1]), postfix) != 0)
+        abort();
+
+    // Delete all except the most recent files
+    // WARNING: MAKE SURE NO SPACE BETWEEN THE TWO CHARACTERS '%s*'
+    // IN THE CALL TO ls IN NEXT LINE
+    snprintf(
+        cmd, sizeof(cmd) - 1,
+        "ls -1t %s* | grep '%s' | grep '.events.' | sed '1,%dd' | xargs rm -f",
+        fname, thedb->envname, eventlog_nkeep);
+    free(fname);
+
+    int rc = system(cmd);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "Failed to rotate log rc = %d\n", rc);
+        exit(1);
+    }
+}
+
 static gzFile eventlog_open()
 {
+    eventlog_roll_cleanup();
     char *fname = eventlog_fname(thedb->envname);
     gbl_eventlog_fname = fname;
     gzFile f = gzopen(fname, "2w");
@@ -539,6 +576,7 @@ void eventlog_status(void)
 static void eventlog_roll(void)
 {
     eventlog_close();
+
     eventlog = eventlog_open();
 }
 
@@ -622,7 +660,7 @@ static void eventlog_process_message_locked(char *line, int lline, int *toff)
         else {
             logmsg(LOGMSG_USER, "Rolling logs after %zd bytes\n", rollat);
         }
-        eventlog_nkeep = rollat;
+        eventlog_rollat = rollat;
     } else if (tokcmp(tok, ltok, "every") == 0) {
         int every;
         tok = segtok(line, lline, toff, &ltok);

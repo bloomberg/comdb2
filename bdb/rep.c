@@ -2192,10 +2192,11 @@ uint32_t bdb_get_rep_gen(bdb_state_type *bdb_state)
     return mygen;
 }
 
-void send_newmaster(bdb_state_type *bdb_state)
+void send_newmaster(bdb_state_type *bdb_state, int online)
 {
     bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, 0, DB_REP_MASTER);
-    bdb_add_dummy_llmeta();
+    /* Online recovery can wait-for-seqnum */
+    bdb_add_dummy_llmeta_wait(online);
 }
 
 /* Called by the master to periodically broadcast the durable lsn.  The

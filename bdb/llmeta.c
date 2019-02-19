@@ -2705,7 +2705,7 @@ int bdb_get_pagesize_allindex(tran_type *tran, int *pagesize, int *bdberr)
                             pagesize, bdberr);
 }
 
-int bdb_add_dummy_llmeta(void)
+int bdb_add_dummy_llmeta_wait(int wait_for_seqnum)
 {
     tran_type *tran;
     int rc;
@@ -2749,7 +2749,7 @@ retry:
     rc = bdb_tran_commit_with_seqnum_size(llmeta_bdb_state, tran, &ss, NULL,
                                           &bdberr);
 
-    if (rc == 0) {
+    if (rc == 0 && wait_for_seqnum) {
         int timeoutms;
         rc = bdb_wait_for_seqnum_from_all_adaptive_newcoh(llmeta_bdb_state, &ss,
                                                           0, &timeoutms);
@@ -2780,6 +2780,11 @@ fail:
     if (retries)
         goto retry;
     return -1;
+}
+
+int bdb_add_dummy_llmeta(void)
+{
+    return bdb_add_dummy_llmeta_wait(1);
 }
 
 /* store a new csc2 schema in the llmeta table
@@ -8897,6 +8902,7 @@ typedef struct {
     union {
         passwd_v0 p0;
     } u;
+    int niterations;
 } passwd_hash;
 static int llmeta_get_user_passwd(char *user, llmetakey_t type, void ***out)
 {
@@ -8920,6 +8926,21 @@ static int llmeta_get_user_passwd(char *user, llmetakey_t type, void ***out)
 }
 #define ITERATIONS_V0 1000
 #define ITERATIONS_V1 16 * 1024
+#define ITERATIONS_MIN 4096
+int gbl_pbkdf2_iterations = ITERATIONS_MIN;
+
+int set_pbkdf2_iterations(int val)
+{
+    if (val < ITERATIONS_MIN) {
+        logmsg(LOGMSG_ERROR,
+               "Number of iterations of PBKDF2 too low. Minimum is %d.\n",
+               ITERATIONS_MIN);
+        return 1;
+    }
+    gbl_pbkdf2_iterations = val;
+    return 0;
+}
+
 int bdb_user_password_check(char *user, char *passwd, int *valid_user)
 {
     int passwd_rc = 1;
@@ -8947,8 +8968,12 @@ int bdb_user_password_check(char *user, char *passwd, int *valid_user)
     switch (stored->ver) {
     case 0: iterations = ITERATIONS_V0; break;
     case 1: iterations = ITERATIONS_V1; break;
+    case 2:
+        iterations = ntohl(stored->niterations);
+        break;
     default: logmsg(LOGMSG_ERROR, "bad passwd ver:%u", stored->ver); goto out;
     }
+
     if (valid_user) {
         *valid_user = 1;
     }
@@ -8956,7 +8981,7 @@ int bdb_user_password_check(char *user, char *passwd, int *valid_user)
                            sizeof(stored->u.p0.salt), iterations,
                            sizeof(computed.u.p0.hash), computed.u.p0.hash);
     passwd_rc = CRYPTO_memcmp(computed.u.p0.hash, stored->u.p0.hash,
-                sizeof(stored->u.p0.hash));
+                              sizeof(stored->u.p0.hash));
 out:
     if (data) {
         free(*data);
@@ -8966,6 +8991,7 @@ out:
 }
 int bdb_user_password_set(tran_type *tran, char *user, char *passwd)
 {
+    int pbkdf2_niters = gbl_pbkdf2_iterations;
     passwd_key key = {{0}};
     size_t ulen = strlen(user) + 1;
     if (ulen > sizeof(key.passwd.user))
@@ -8978,10 +9004,11 @@ int bdb_user_password_set(tran_type *tran, char *user, char *passwd)
         return rc;
     key.passwd.file_type = htonl(LLMETA_USER_PASSWORD_HASH);
     passwd_hash data;
-    data.ver = 1;
+    data.ver = 2;
+    data.niterations = htonl(pbkdf2_niters);
     RAND_bytes(data.u.p0.salt, sizeof(data.u.p0.salt));
     PKCS5_PBKDF2_HMAC_SHA1(passwd, strlen(passwd), data.u.p0.salt,
-                           sizeof(data.u.p0.salt), ITERATIONS_V1,
+                           sizeof(data.u.p0.salt), pbkdf2_niters,
                            sizeof(data.u.p0.hash), data.u.p0.hash);
     return kv_put(tran, &key, &data, sizeof(data), &bdberr);
 }

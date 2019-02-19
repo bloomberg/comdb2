@@ -175,6 +175,9 @@ typedef struct osqlstate {
     int dirty; /* optimization to nop selectv only transactions */
     int running_ddl; /* ddl transaction */
     bool is_reorder_on : 1;
+
+    /* set to 1 if we have already called osql_sock_start in socksql mode */
+    bool sock_started : 1;
 } osqlstate_t;
 
 enum ctrl_sqleng {
@@ -582,6 +585,8 @@ struct sqlclntstate {
 
     int have_password;
     char password[MAX_PASSWORD_LEN];
+
+    int authgen;
 
     int no_transaction;
 

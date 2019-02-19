@@ -162,6 +162,8 @@ extern int gbl_disable_sql_dlmalloc;
 
 extern int active_appsock_conns;
 int gbl_check_access_controls;
+/* gets incremented each time a user's password is changed. */
+int gbl_bpfunc_auth_gen = 1;
 
 struct thdpool *gbl_sqlengine_thdpool = NULL;
 
@@ -3116,6 +3118,30 @@ static int bind_params(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     return rc;
 }
 
+struct param_data *clnt_find_param(struct sqlclntstate *clnt, const char *name,
+                                   int index)
+{
+    int params = param_count(clnt);
+    int rc = 0;
+    struct param_data *p = calloc(1, sizeof(struct param_data));
+    if (!p)
+        return NULL;
+
+    for (int i = 0; i < params; ++i) {
+        if ((rc = param_value(clnt, p, i)) != 0)
+            goto done;
+
+        if (p->pos > 0 && p->pos == index)
+            return p;
+
+        if (name[0] && !strncasecmp(name, p->name, strlen(name) + 1))
+            return p;
+    }
+done:
+    free(p);
+    return NULL;
+}
+
 /**
  * Get a sqlite engine with bound parameters set, if any
  *
@@ -3150,6 +3176,7 @@ static int get_prepared_bound_stmt(struct sqlthdstate *thd,
     reqlog_logf(thd->logger, REQL_INFO, "ncols=%d", cols);
     if (bind_cnt == 0)
         return 0;
+
     return bind_params(thd, clnt, rec, err);
 }
 
@@ -3550,6 +3577,10 @@ static void handle_sqlite_error(struct sqlthdstate *thd,
 {
     reqlog_set_error(thd->logger, sqlite3_errmsg(thd->sqldb), rc);
 
+    if (clnt->conns) {
+        dohsql_signal_done(clnt);
+    }
+
     if (thd->sqlthd)
         thd->sqlthd->nmove = thd->sqlthd->nfind = thd->sqlthd->nwrite =
             thd->sqlthd->ntmpread = thd->sqlthd->ntmpwrite = 0;
@@ -3715,12 +3746,16 @@ int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
 static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
-    int rc;
+    int rc, bpfunc_auth_gen = gbl_bpfunc_auth_gen;
 
     if (gbl_check_access_controls) {
         check_access_controls(thedb);
         gbl_check_access_controls = 0;
     }
+
+    /* Free pass if our authentication gen is up-to-date. */
+    if (clnt->authgen == bpfunc_auth_gen)
+        return 0;
 
 #   if WITH_SSL
     /* If 1) this is an SSL connection, 2) and client sends a certificate,
@@ -3735,7 +3770,11 @@ static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         if (thd->lastuser[0] != '\0' && strcmp(thd->lastuser, clnt->user) != 0)
             delete_prepared_stmts(thd);
         strcpy(thd->lastuser, clnt->user);
+        clnt->authgen = bpfunc_auth_gen;
+    } else {
+        clnt->authgen = 0;
     }
+
     return rc;
 }
 
@@ -4701,6 +4740,9 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     /* reset the password */
     clnt->have_password = 0;
     bzero(clnt->password, sizeof(clnt->password));
+
+    /* reset authentication status */
+    clnt->authgen = 0;
 
     /* reset extended_tm */
     clnt->have_extended_tm = 0;
@@ -6063,7 +6105,7 @@ void start_internal_sql_clnt(struct sqlclntstate *clnt)
     Pthread_mutex_init(&clnt->write_lock, NULL);
     Pthread_cond_init(&clnt->write_cond, NULL);
     Pthread_mutex_init(&clnt->dtran_mtx, NULL);
-    clnt->dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
+    clnt->dbtran.mode = TRANLEVEL_SOSQL;
     clr_high_availability(clnt);
 }
 

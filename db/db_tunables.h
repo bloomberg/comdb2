@@ -1649,4 +1649,19 @@ REGISTER_TUNABLE("abort_on_missing_osql_session",
                  TUNABLE_BOOLEAN, &gbl_abort_on_missing_osql_session,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("online_recovery",
+                 "Don't get the bdb-writelock for recovery.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_online_recovery, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("forbid_remote_admin",
+                 "Forbid non-local admin requests.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_forbid_remote_admin, 0, NULL, NULL, NULL,
+                 NULL);
+
+REGISTER_TUNABLE(
+    "pbkdf2_iterations",
+    "Number of iterations of PBKDF2 algorithm for password hashing.",
+    TUNABLE_INTEGER, &gbl_pbkdf2_iterations, NOZERO | SIGNED, NULL, NULL,
+    pbkdf2_iterations_update, NULL);
 #endif /* _DB_TUNABLES_H */
