@@ -136,7 +136,8 @@ ifcapable subquery {
                          AND x>0 AND x<10
         ORDER BY w
       }
-    } {99 6 10000 10006 100 6 10201 10207 sort t1 i1zyx (id=9, parent=0, notused=0, detail='LIST SUBQUERY') (id=10, parent=9, notused=0, detail='COMPOUND QUERY') (id=11, parent=10, notused=0, detail='LEFT-MOST SUBQUERY') (id=13, parent=11, notused=0, detail='SCAN CONSTANT ROW') (id=17, parent=10, notused=0, detail='UNION USING TEMP B-TREE') (id=18, parent=17, notused=0, detail='SCAN CONSTANT ROW')}
+    } {99 6 10000 10006 100 6 10201 10207 sort t1 i1zyx (id=10, parent=0, notused=0, detail='LIST SUBQUERY 2') (id=11, parent=10, notused=0, detail='COMPOUND QUERY') (id=12, parent=11, notused=0, detail='LEFT-MOST SUBQUERY') (id=14, parent=12, notused=0, detail='SCAN CONSTANT ROW') (id=18, parent=11, notused=0, detail='UNION USING TEMP B-TREE') (id=19, parent=18, notused=0, detail='SCAN CONSTANT ROW')}
+
     do_test where2-4.5 {
       queryplan {
         SELECT * FROM t1 WHERE z IN (SELECT 10207 UNION SELECT 10006)
@@ -144,7 +145,7 @@ ifcapable subquery {
                          AND x>0 AND x<10
         ORDER BY w
       }
-    } {99 6 10000 10006 100 6 10201 10207 sort t1 i1zyx (id=9, parent=0, notused=0, detail='LIST SUBQUERY') (id=10, parent=9, notused=0, detail='COMPOUND QUERY') (id=11, parent=10, notused=0, detail='LEFT-MOST SUBQUERY') (id=13, parent=11, notused=0, detail='SCAN CONSTANT ROW') (id=17, parent=10, notused=0, detail='UNION USING TEMP B-TREE') (id=18, parent=17, notused=0, detail='SCAN CONSTANT ROW') (id=33, parent=0, notused=0, detail='LIST SUBQUERY') (id=34, parent=33, notused=0, detail='COMPOUND QUERY') (id=35, parent=34, notused=0, detail='LEFT-MOST SUBQUERY') (id=37, parent=35, notused=0, detail='SCAN CONSTANT ROW') (id=41, parent=34, notused=0, detail='UNION USING TEMP B-TREE') (id=42, parent=41, notused=0, detail='SCAN CONSTANT ROW')}
+    } {99 6 10000 10006 100 6 10201 10207 sort t1 i1zyx (id=10, parent=0, notused=0, detail='LIST SUBQUERY 2') (id=11, parent=10, notused=0, detail='COMPOUND QUERY') (id=12, parent=11, notused=0, detail='LEFT-MOST SUBQUERY') (id=14, parent=12, notused=0, detail='SCAN CONSTANT ROW') (id=18, parent=11, notused=0, detail='UNION USING TEMP B-TREE') (id=19, parent=18, notused=0, detail='SCAN CONSTANT ROW') (id=36, parent=0, notused=0, detail='LIST SUBQUERY 4') (id=37, parent=36, notused=0, detail='COMPOUND QUERY') (id=38, parent=37, notused=0, detail='LEFT-MOST SUBQUERY') (id=40, parent=38, notused=0, detail='SCAN CONSTANT ROW') (id=44, parent=37, notused=0, detail='UNION USING TEMP B-TREE') (id=45, parent=44, notused=0, detail='SCAN CONSTANT ROW')}
   }
   do_test where2-4.6a {
     queryplan {
@@ -202,7 +203,7 @@ ifcapable subquery {
            UNION ALL SELECT 10006 UNION ALL SELECT 10207)
         ORDER BY w
       }
-    } {99 6 10000 10006 100 6 10201 10207 sort t1 i1zyx (id=9, parent=0, notused=0, detail='LIST SUBQUERY') (id=10, parent=9, notused=0, detail='COMPOUND QUERY') (id=11, parent=10, notused=0, detail='LEFT-MOST SUBQUERY') (id=12, parent=11, notused=0, detail='SCAN CONSTANT ROW') (id=16, parent=10, notused=0, detail='UNION ALL') (id=17, parent=16, notused=0, detail='SCAN CONSTANT ROW') (id=21, parent=10, notused=0, detail='UNION ALL') (id=22, parent=21, notused=0, detail='SCAN CONSTANT ROW') (id=26, parent=10, notused=0, detail='UNION ALL') (id=27, parent=26, notused=0, detail='SCAN CONSTANT ROW')}
+    } {99 6 10000 10006 100 6 10201 10207 sort t1 i1zyx (id=10, parent=0, notused=0, detail='LIST SUBQUERY 4') (id=11, parent=10, notused=0, detail='COMPOUND QUERY') (id=12, parent=11, notused=0, detail='LEFT-MOST SUBQUERY') (id=13, parent=12, notused=0, detail='SCAN CONSTANT ROW') (id=17, parent=11, notused=0, detail='UNION ALL') (id=18, parent=17, notused=0, detail='SCAN CONSTANT ROW') (id=22, parent=11, notused=0, detail='UNION ALL') (id=23, parent=22, notused=0, detail='SCAN CONSTANT ROW') (id=27, parent=11, notused=0, detail='UNION ALL') (id=28, parent=27, notused=0, detail='SCAN CONSTANT ROW')}
   }
 
 } ;# ifcapable subquery
