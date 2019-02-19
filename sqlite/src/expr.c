@@ -5491,7 +5491,7 @@ static char *print_mem(Mem *m){
     case MEM_Null:
       return sqlite3_mprintf("null");
     case MEM_Str: 
-      return sqlite3_mprintf("'%.*s'", m->n, m->z);
+      return sqlite3_mprintf("'%.*q'", m->n, m->z);
     case MEM_Int:
       return  sqlite3_mprintf("%lld", m->u.i);
     case MEM_Real:

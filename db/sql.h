@@ -234,7 +234,6 @@ typedef struct sqlclntstate_fdb {
     int trim_keylen; /* lenght of the trim key */
     fdb_access_t *access; /* access control */
     int version;          /* version of the remote-cached object */
-    errstat_t err;        /* remote execution specific error */
     char *dbname;  /* if err is set, this indicate which fdb is responsible, if
                       any */
     char *tblname; /* if err is set, this indicate which tablename is
