@@ -2002,7 +2002,7 @@ retry_read:
 
     if (errno != 0) {
         cdb2__query__free_unpacked(query, &pb_alloc);
-        logmsg(LOGMSG_ERROR, "errno: %d\n", errno);
+        logmsg(LOGMSG_ERROR, "%s:%d: errno: %d\n", __func__, __LINE__, errno);
         return NULL;
     }
 
@@ -2177,7 +2177,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         }
         newsql_error(&clnt, "Exhausted appsock connections.",
                      CDB2__ERROR_CODE__APPSOCK_LIMIT);
-        logmsg(LOGMSG_ERROR, "exhaused appsock connections\n");
+        logmsg(LOGMSG_ERROR, "exhausted appsock connections\n");
         goto done;
     }
 
@@ -2376,7 +2376,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         }
 
         if (rc && !clnt.in_client_trans) {
-            logmsg(LOGMSG_ERROR, "rc = %d\n", rc);
+            logmsg(LOGMSG_ERROR, "%s:%d rc = %d\n", __func__, __LINE__, rc);
             goto done;
         }
 
