@@ -890,7 +890,10 @@ static int codeCursorHintFixExpr(Walker *pWalker, Expr *pExpr){
       pExpr->iTable = reg;
     }else if( pHint->pIdx!=0 ){
       pExpr->iTable = pHint->iIdxCur;
-      pExpr->iColumn = sqlite3ColumnOfIndex(pHint->pIdx, pExpr->iColumn);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      /* NOTE: this breaks remote sql; discussion in progress to push this upstream */
+      /*pExpr->iColumn = sqlite3ColumnOfIndex(pHint->pIdx, pExpr->iColumn);*/
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       assert( pExpr->iColumn>=0 );
     }
   }else if( pExpr->op==TK_AGG_FUNCTION ){
@@ -1438,6 +1441,7 @@ Bitmask sqlite3WhereCodeOneLoopStart(
       pStart = pEnd;
       pEnd = pTerm;
     }
+
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     codeCursorHint(pTabItem, pWInfo, pLevel, pEnd, iLevel);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -1676,9 +1680,7 @@ Bitmask sqlite3WhereCodeOneLoopStart(
     ** and store the values of those terms in an array of registers
     ** starting at regBase.
     */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    codeCursorHint(pTabItem, pWInfo, pLevel, pRangeEnd, iLevel);
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
     codeCursorHint(pTabItem, pWInfo, pLevel, pRangeEnd);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     regBase = codeAllEqualityTerms(pParse,pLevel,bRev,nExtraReg,&zStartAff);

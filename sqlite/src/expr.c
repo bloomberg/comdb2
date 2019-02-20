@@ -6282,9 +6282,10 @@ default_prec:
     }
     case TK_COLUMN: {
       if( atRuntime ){
-        return sqlite3_mprintf("\"%s\"",  pExpr->u.zToken);
+        assert(pExpr->y.pTab && pExpr->y.pTab->nCol > pExpr->iColumn);
+        return sqlite3_mprintf("\"%s\"",  pExpr->y.pTab->aCol[pExpr->iColumn].zName);
       }else{
-        return sqlite3_mprintf("%s",  pExpr->u.zToken);
+        return sqlite3_mprintf("%s",  pExpr->y.pTab->aCol[pExpr->iColumn].zName);
       }
     }
     case TK_AGG_FUNCTION:
