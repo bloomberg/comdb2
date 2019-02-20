@@ -5496,19 +5496,20 @@ done:
                     "%s: sqloff_block_send_done failed to write reply\n",
                     __func__);
     } else {
-      if (ret) {
-         const char *tmp = errstat_get_str(&clnt->osql.xerr);
-         tmp = tmp?tmp:"error string not set";
-         rc = fdb_svc_sql_row(clnt->fdb_state.remote_sql_sb, cid,
-               (char*)tmp, strlen(tmp)+1, errstat_get_rc(&clnt->osql.xerr),
-               clnt->osql.rqid == OSQL_RQID_USE_UUID);
-         if (rc) {
-            logmsg(LOGMSG_ERROR, "%s failed to send back error rc=%d errstr=%s\n",
-               __func__, errstat_get_rc(&clnt->osql.xerr), tmp); 
-         }
-      }
-   }
-
+        if (ret) {
+            const char *tmp = errstat_get_str(&clnt->osql.xerr);
+            tmp = tmp ? tmp : "error string not set";
+            rc = fdb_svc_sql_row(clnt->fdb_state.remote_sql_sb, cid,
+                                 (char *)tmp, strlen(tmp) + 1,
+                                 errstat_get_rc(&clnt->osql.xerr),
+                                 clnt->osql.rqid == OSQL_RQID_USE_UUID);
+            if (rc) {
+                logmsg(LOGMSG_ERROR,
+                       "%s failed to send back error rc=%d errstr=%s\n",
+                       __func__, errstat_get_rc(&clnt->osql.xerr), tmp);
+            }
+        }
+    }
 
     sqlite_done(poolthd, clnt, &rec, ret);
 
@@ -5557,8 +5558,8 @@ int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
 
     rc = sqlite3_reset(stmt);
 
-    if (clnt->fdb_state.preserve_err && 
-            (fdb_rc =errstat_get_rc(&clnt->fdb_state.xerr))) {
+    if (clnt->fdb_state.preserve_err &&
+        (fdb_rc = errstat_get_rc(&clnt->fdb_state.xerr))) {
         rc = fdb_rc;
         *errstr = errstat_get_str(&clnt->fdb_state.xerr);
         goto done;
