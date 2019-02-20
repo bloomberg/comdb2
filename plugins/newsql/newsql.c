@@ -2229,7 +2229,12 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     while (query) {
         sql_query = query->sqlquery;
 #ifndef NDEBUG
-        logmsg(LOGMSG_DEBUG, "Query is %s\n", sql_query->sql_query);
+#define MAXTOPRINT 200
+        logmsg(LOGMSG_DEBUG, "Query is '%.*s", MAXTOPRINT, sql_query->sql_query);
+        if (strlen(sql_query->sql_query) > MAXTOPRINT)
+            logmsg(LOGMSG_DEBUG, "...'\n");
+        else
+            logmsg(LOGMSG_DEBUG, "'\n");
 #endif
         APPDATA->query = query;
         APPDATA->sqlquery = sql_query;
