@@ -57,8 +57,11 @@ static int sslio_pollin(SBUF2 *sb)
         rc = poll(&pol, 1, sb->readtimeout == 0 ? -1 : sb->readtimeout);
     } while (rc == -1 && errno == EINTR);
 
-    if (rc <= 0) /* timedout or error. */
+    if (rc <= 0) { /* timedout or error. */
+        loge("%s:%d poll failed (rc=%d)\n", __func__, __LINE__, rc);
         return rc;
+    }
+
     if ((pol.revents & POLLIN) == 0)
         return -100000 + pol.revents;
 
@@ -579,6 +582,8 @@ reread:
     n = SSL_read(sb->ssl, cc, len);
     if (n <= 0) {
         ioerr = SSL_get_error(sb->ssl, n);
+        loge("%s:%d SSL_read() failed (rc=%d, err=%d)\n", __func__, __LINE__,
+             n, ioerr);
         switch (ioerr) {
         case SSL_ERROR_WANT_READ:
             errno = EAGAIN;
