@@ -414,6 +414,7 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
 {
     int rc;
     SP sp = getsp(L);
+    sp->num_instructions = 0;
     int retry = round(register_timeoutms / 1000.0);
     if (retry == 0) {
         retry = 1;
