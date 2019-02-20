@@ -1833,14 +1833,21 @@ static CDB2QUERY *read_newsql_query(struct dbenv *dbenv,
     int rc;
     int pre_enabled = 0;
     int was_timeout = 0;
+    time_t start_time, end_time;
 
 retry_read:
+    start_time = time(0);
     rc = sbuf2fread_timeout((char *)&hdr, sizeof(hdr), 1, sb, &was_timeout);
     if (rc != 1) {
+        end_time = time(0);
         if (was_timeout && gbl_send_failed_dispatch_message) {
             handle_failed_dispatch(clnt, "Socket read timeout.");
         }
-        logmsg(LOGMSG_ERROR, "socket read timeout");
+        if (was_timeout) {
+            logmsg(LOGMSG_ERROR, "socket read timeout (wait_time=%ld)\n",
+                   end_time - start_time);
+        }
+        logmsg(LOGMSG_ERROR, "read failed (rc=%d)\n", rc);
         return NULL;
     }
 
