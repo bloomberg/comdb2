@@ -4167,6 +4167,15 @@ static int db_error(lua_State *lua)
     return 1;
 }
 
+static void force_unregister(Lua L, trigger_reg_t *reg)
+{
+    // setup fake dbconsumer_t to send unregister
+    dbconsumer_t *q = alloca(dbconsumer_sz(reg->spname));
+    q->lock = NULL;
+    memcpy(&q->info, reg, trigger_reg_sz(reg->spname));
+    luabb_trigger_unregister(L, q);
+}
+
 static int db_consumer(Lua L)
 {
     luaL_checkudata(L, 1, dbtypes.db);
@@ -4201,13 +4210,14 @@ static int db_consumer(Lua L)
     trigger_reg_t *t;
     if (type == CONSUMER_TYPE_DYNLUA) {
         trigger_reg_init(t, spname);
-        switch (luabb_trigger_register(L, t, register_timeoutms)) {
-        case CDB2_TRIG_REQ_SUCCESS:
-            break;
-        case -2:
-            lua_pushnil(L);
-            return 1;
-        default:
+        int rc = luabb_trigger_register(L, t, register_timeoutms);
+        if (rc != CDB2_TRIG_REQ_SUCCESS) {
+            force_unregister(L, t);
+            if (rc == -2) {
+                /* timeout */
+                lua_pushnil(L);
+                return 1;
+            }
             return luaL_error(L, sp->error);
         }
     } else {
@@ -6391,11 +6401,7 @@ void *exec_trigger(trigger_reg_t *reg)
         logmsg(LOGMSG_DEBUG, "trigger:%s %016" PRIx64 " finished\n", reg->spname, q->info.trigger_cookie);
         free(q);
     } else {
-        //setup fake dbconsumer_t to send unregister
-        q = alloca(dbconsumer_sz(reg->spname));
-        q->lock = NULL;
-        memcpy(&q->info, reg, trigger_reg_sz(reg->spname));
-        luabb_trigger_unregister(L, q);
+        force_unregister(L, reg);
     }
     close_sp(&clnt);
     cleanup_clnt(&clnt);
