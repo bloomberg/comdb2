@@ -261,6 +261,7 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
                        const char *ondisktag, struct schema *ondisktagsc,
                        int flags, int rec_flags)
 {
+    int rc = 0;
     char *od_dta_tail = NULL;
     int od_tail_len;
     if (iq->osql_step_ix)
@@ -310,10 +311,10 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
                       "bad index %d or keylength %d", ixnum, ixkeylen);
             *ixfailnum = ixnum;
             *opfailcode = OP_FAILED_BAD_REQUEST;
-            return ERR_BADREQ;
+            rc = ERR_BADREQ;
+            goto done;
         }
 
-        int rc;
         if (iq->idxInsert)
             rc = create_key_from_ireq(iq, ixnum, 0, &od_dta_tail, &od_tail_len,
                                       mangled_key, od_dta, od_len, key);
@@ -333,7 +334,7 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
                       ixnum);
             *ixfailnum = ixnum;
             *opfailcode = OP_FAILED_INTERNAL + ERR_FORM_KEY;
-            return rc;
+            goto done;
         }
 
         /* light the prefault kill bit for this subop - newkeys */
@@ -360,7 +361,7 @@ logmsg(LOGMSG_ERROR, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", _
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_insert rc = %d\n",
                        __func__, rc);
-                return rc;
+                goto done;
             }
             memset(ditk.ixkey, 0, ixkeylen);
         } else {
@@ -372,14 +373,17 @@ logmsg(LOGMSG_ERROR, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", _
                 rc = ix_find_by_key_tran(iq, key, ixkeylen, ixnum, NULL, &fndrrn,
                                          &fndgenid, NULL, NULL, 0, trans);
                 if (rc == IX_FND && fndgenid == vgenid) {
-                    return ERR_VERIFY;
+                    rc = ERR_VERIFY;
+                    goto done;
                 } else if (rc == RC_INTERNAL_RETRY) {
-                    return RC_INTERNAL_RETRY;
+                    rc = RC_INTERNAL_RETRY;
+                    goto done;
                 } else if (rc != IX_FNDMORE && rc != IX_NOTFND &&
                            rc != IX_PASTEOF && rc != IX_EMPTY) {
                     logmsg(LOGMSG_ERROR, "%s:%d got unexpected error rc = %d\n",
                            __func__, __LINE__, rc);
-                    return ERR_INTERNAL;
+                    rc = ERR_INTERNAL;
+                    goto done;
                 }
 
                 /* The row is not in new btree, proceed with the add */
@@ -395,7 +399,8 @@ logmsg(LOGMSG_ERROR, "AZ: direct ix_addk genid=%llx rc %d\n", bdb_genid_to_host_
 #endif
             if (vgenid && rc == IX_DUP) {
                 if (iq->usedb->ix_dupes[ixnum] || isnullk) {
-                    return ERR_VERIFY;
+                    rc = ERR_VERIFY;
+                    goto done;
                 }
             }
 
@@ -406,17 +411,20 @@ logmsg(LOGMSG_ERROR, "AZ: direct ix_addk genid=%llx rc %d\n", bdb_genid_to_host_
             }
 
             if (rc == RC_INTERNAL_RETRY) {
-                return rc;
+                goto done;
             } else if (rc != 0) {
                 *ixfailnum = ixnum;
                 /* If following changes, update OSQL_INSREC in osqlcomm.c */
                 *opfailcode = OP_FAILED_UNIQ; /* really? */
 
-                return rc;
+                goto done;
             }
         }
     }
-    return 0;
+done:
+    if (reorder)
+        close_constraint_table_cursor(cur);
+    return rc;
 }
 
 /*
@@ -479,6 +487,7 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
                        blob_buffer_t *del_idx_blobs, int same_genid_with_upd,
                        unsigned long long vgenid, int *deferredAdd)
 {
+    int rc = 0;
     char *od_dta_tail = NULL;
     int od_tail_len;
     char *od_olddta_tail = NULL;
@@ -512,7 +521,6 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
      */
     int live_sc_delay = live_sc_delay_key_add(iq);
 
-    int rc = 0;
     for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
         if (flags == RECFLAGS_UPGRADE_RECORD &&
             iq->usedb->ix_datacopy[ixnum] == 0)
@@ -563,7 +571,8 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
                       "cannot form old key index %d", ixnum);
             *ixfailnum = ixnum;
             *opfailcode = OP_FAILED_CONVERSION;
-            return ERR_CONVERT_IX;
+            rc = ERR_CONVERT_IX;
+            goto done;
         }
 
         if (iq->idxInsert) {
@@ -589,7 +598,8 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
                       "cannot form new key index %d", ixnum);
             *ixfailnum = ixnum;
             *opfailcode = OP_FAILED_CONVERSION;
-            return ERR_CONVERT_IX;
+            rc = ERR_CONVERT_IX;
+            goto done;
         }
 
         /*
@@ -644,7 +654,7 @@ logmsg(LOGMSG_ERROR, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", _
                 if (rc != 0) {
                     logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_insert rc = %d\n", __func__,
                             rc);
-                    return rc;
+                    goto done;
                 }
                 memset(ditk.ixkey, 0, keysize);
             }
@@ -662,7 +672,7 @@ logmsg(LOGMSG_ERROR, "AZ: direct ix_upd_key genid=%llx newwgenid=%llx rc %d\n", 
                 if (rc != 0) {
                     *opfailcode = OP_FAILED_INTERNAL + ERR_DEL_KEY;
                     *ixfailnum = ixnum;
-                    return rc;
+                    goto done;
                 }
             }
         } else /* delete / add the key */
@@ -691,7 +701,7 @@ logmsg(LOGMSG_ERROR, "AZ: %s insert delditk: %s type %d, index %d, genid %llx\n"
                     if (rc != 0) {
                         logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_insert rc = %d\n", __func__,
                                 rc);
-                        return rc;
+                        goto done;
                     }
                     memset(delditk.ixkey, 0, keysize);
                 }
@@ -708,7 +718,7 @@ logmsg(LOGMSG_ERROR, "AZ: direct upd ix_delk genid=%llx newwgenid=%llx rc %d\n",
                     if (rc != 0) {
                         *opfailcode = OP_FAILED_INTERNAL + ERR_DEL_KEY;
                         *ixfailnum = ixnum;
-                        return rc;
+                        goto done;
                     }
                 }
             }
@@ -749,7 +759,7 @@ logmsg(LOGMSG_ERROR, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", _
                     if (rc != 0) {
                         logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_insert rc = %d\n", __func__,
                                 rc);
-                        return rc;
+                        goto done;
                     }
                     memset(ditk.ixkey, 0, keysize);
                 } else { //TODO: will also need add here for constraint checking purpose
@@ -766,13 +776,17 @@ logmsg(LOGMSG_ERROR, "AZ: direct upd add_key genid=%llx newwgenid=%llx rc %d\n",
 
                     if (rc != 0) {
                         *ixfailnum = ixnum;
-                        return rc;
+                        goto done;
                     }
                 }
             }
         }
     }
-    return 0;
+
+done:
+    if (reorder)
+        close_constraint_table_cursor(cur);
+    return rc;
 }
 
 /* Form and delete all keys. */
@@ -828,7 +842,7 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
                           ixnum);
                 *ixfailnum = ixnum;
                 *opfailcode = OP_FAILED_INTERNAL + ERR_FORM_KEY;
-                return rc;
+                goto done;
             }
         }
 
@@ -839,7 +853,7 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
             if (rc) {
                 *ixfailnum = ixnum;
                 *opfailcode = OP_FAILED_INTERNAL + ERR_FORM_KEY;
-                return rc;
+                goto done;
             }
         }
 
@@ -863,7 +877,7 @@ logmsg(LOGMSG_ERROR, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", _
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_insert rc = %d\n", __func__,
                         rc);
-                return rc;
+                goto done;
             }
             memset(delditk.ixkey, 0, keysize); // clear it for next round
         }
@@ -887,13 +901,16 @@ logmsg(LOGMSG_ERROR, "AZ: orig ix_delk ixnum=%d, rrn=%d, genid=%llx rc %d\n", ix
                 }
                 *ixfailnum = ixnum;
                 *opfailcode = OP_FAILED_INTERNAL + ERR_DEL_KEY;
-                return rc;
+                goto done;
             }
         }
     }
 
 
-    return 0;
+done:
+    if (reorder)
+        close_constraint_table_cursor(cur);
+    return rc;
 }
 
 // in sc_schema.h
