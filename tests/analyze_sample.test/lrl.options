@@ -1,1 +1,2 @@
 analyze_comp_threshold 1
+berkattr trickle_min 1024

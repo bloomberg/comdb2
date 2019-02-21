@@ -125,8 +125,7 @@ DEF_ATTR(DIRECTIO, directio, BOOLEAN, 1,
 DEF_ATTR(MEMPTRICKLEPERCENT, memptricklepercent, PERCENT, 99,
          "Try to keep at least this percentage of the buffer pool clean. Write "
          "pages periodically until that's achieved.")
-DEF_ATTR(MEMPTRICKLEMSECS, memptricklemsecs, MSECS, 1000,
-         "Pause for this many ms between runs of the cache flusher.")
+DEF_ATTR(MEMPTRICKLEMSECS, memptricklemsecs, MSECS, 250, "Pause for this many ms between runs of the cache flusher.")
 DEF_ATTR(CHECKSUMS, checksums, BOOLEAN, 1,
          "Checksum data pages. Turning this off is highly discouraged.")
 DEF_ATTR(LITTLE_ENDIAN_BTREES, little_endian_btrees, BOOLEAN, 1,
@@ -536,7 +535,9 @@ DEF_ATTR(FDB_SQLSTATS_CACHE_LOCK_WAITTIME_NSEC,
          fdb_sqlstats_cache_waittime_nsec, QUANTITY, 1000, NULL)
 DEF_ATTR(PRIVATE_BLKSEQ_CACHESZ, private_blkseq_cachesz, BYTES, 4194304,
          "Cache size of the blkseq table.")
-DEF_ATTR(PRIVATE_BLKSEQ_MAXAGE, private_blkseq_maxage, SECS, 600,
+/* We roll over between 2 blkseq files hence each of the files
+   only needs to live half SOSQL_MAX_COMMIT_WAIT_SEC. */
+DEF_ATTR(PRIVATE_BLKSEQ_MAXAGE, private_blkseq_maxage, SECS, 300,
          "Maximum time in seconds to let 'old' transactions live.")
 DEF_ATTR(PRIVATE_BLKSEQ_MAXTRAVERSE, private_blkseq_maxtraverse, QUANTITY, 4,
          NULL)

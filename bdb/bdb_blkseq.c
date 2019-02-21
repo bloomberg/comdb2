@@ -42,7 +42,7 @@ static int bdb_blkseq_update_lsn_locked(bdb_state_type *bdb_state,
 
 extern int gbl_is_physical_replicant;
 
-static DB *create_blkseq(bdb_state_type *bdb_state, int stripe, int num)
+static DB *create_blkseq(bdb_state_type *bdb_state, int stripe)
 {
     char fname[1024];
     DB *db;
@@ -57,8 +57,7 @@ static DB *create_blkseq(bdb_state_type *bdb_state, int stripe, int num)
         logmsg(LOGMSG_ERROR, "blkseq create rc %d\n", rc);
         return NULL;
     }
-    snprintf(fname, sizeof(fname), "%s/_blkseq.%d.%d.XXXXXX", bdb_state->tmpdir,
-             stripe, num);
+    snprintf(fname, sizeof(fname), "%s/_blkseq.%d.XXXXXX", bdb_state->tmpdir, stripe);
     fd = mkstemp(fname);
     if (fd == -1) {
         logmsg(LOGMSG_ERROR, "mkstemp rc %d %s\n", errno, strerror(errno));
@@ -70,7 +69,7 @@ static DB *create_blkseq(bdb_state_type *bdb_state, int stripe, int num)
         logmsg(LOGMSG_ERROR, "fchmod rc %d %s\n", errno, strerror(errno));
         return NULL;
     }
-    ctrace("blkseq stripe %d file %d %s\n", stripe, num, fname);
+    ctrace("blkseq stripe %d file %s\n", stripe, fname);
     rc = db->open(db, NULL, fname, NULL, DB_BTREE, DB_CREATE | DB_TRUNCATE,
                   0666);
     /* we don't need the descriptor mkstemp creates, just need a unique name */
@@ -100,31 +99,29 @@ void bdb_cleanup_private_blkseq(bdb_state_type *bdb_state)
         }
     }
 
-    if (bdb_state->blkseq_env) {
-        free(bdb_state->blkseq_env);
-        bdb_state->blkseq_env = NULL;
-    }
+    free(bdb_state->blkseq_env);
+    bdb_state->blkseq_env = NULL;
 
-    if (bdb_state->blkseq_lk) {
-        free(bdb_state->blkseq_lk);
-        bdb_state->blkseq_lk = NULL;
-    }
-    if (bdb_state->blkseq[0]) {
-        free(bdb_state->blkseq[0]);
-        bdb_state->blkseq[0] = NULL;
-    }
-    if (bdb_state->blkseq[1]) {
-        free(bdb_state->blkseq[1]);
-        bdb_state->blkseq[1] = NULL;
-    }
-    if (bdb_state->blkseq_last_lsn[0]) {
-        free(bdb_state->blkseq_last_lsn[0]);
-        bdb_state->blkseq_last_lsn[0] = NULL;
-    }
-    if (bdb_state->blkseq_last_lsn[1]) {
-        free(bdb_state->blkseq_last_lsn[1]);
-        bdb_state->blkseq_last_lsn[1] = NULL;
-    }
+    free(bdb_state->blkseq_lk);
+    bdb_state->blkseq_lk = NULL;
+
+    free(bdb_state->blkseq[0]);
+    bdb_state->blkseq[0] = NULL;
+
+    free(bdb_state->blkseq[1]);
+    bdb_state->blkseq[1] = NULL;
+
+    free(bdb_state->blkseq_last_lsn[0]);
+    bdb_state->blkseq_last_lsn[0] = NULL;
+
+    free(bdb_state->blkseq_last_lsn[1]);
+    bdb_state->blkseq_last_lsn[1] = NULL;
+
+    free(bdb_state->blkseq_log_list);
+    bdb_state->blkseq_log_list = NULL;
+
+    free(bdb_state->blkseq_last_roll_time);
+    bdb_state->blkseq_last_roll_time = NULL;
 }
 
 int bdb_create_private_blkseq(bdb_state_type *bdb_state)
@@ -143,6 +140,7 @@ int bdb_create_private_blkseq(bdb_state_type *bdb_state)
     bdb_state->blkseq_last_lsn[1] = malloc(nstripes * sizeof(DB_LSN));
 
     bdb_state->blkseq_log_list = malloc(nstripes * sizeof(listc_t));
+    bdb_state->blkseq_last_roll_time = malloc(nstripes * sizeof(time_t));
 
     for (int stripe = 0; stripe < nstripes; stripe++) {
         rc = db_env_create(&env, 0);
@@ -160,9 +158,10 @@ int bdb_create_private_blkseq(bdb_state_type *bdb_state)
             logmsg(LOGMSG_ERROR, "blkseq->set_cachesize rc %d\n", rc);
             return rc;
         }
-        /* no locking around blkseq - we'll lock around them ourselves */
-        rc = env->open(env, bdb_state->tmpdir,
-                       DB_PRIVATE | DB_INIT_MPOOL | DB_CREATE, 0666);
+        /* no locking around blkseq - we'll lock around them ourselves.
+           We still need the DB_THREAD flag for we trickle a blkseq mpool
+           in a multithreaded fashion (using thdpool). */
+        rc = env->open(env, bdb_state->tmpdir, DB_PRIVATE | DB_THREAD | DB_INIT_MPOOL | DB_CREATE, 0666);
         if (rc) {
             logmsg(LOGMSG_ERROR, "blkseq->open rc %d\n", rc);
             return rc;
@@ -170,15 +169,15 @@ int bdb_create_private_blkseq(bdb_state_type *bdb_state)
         Pthread_mutex_init(&bdb_state->blkseq_lk[stripe], NULL);
 
         for (int i = 0; i < 2; i++) {
-            bdb_state->blkseq[i][stripe] = create_blkseq(bdb_state, stripe, i);
+            bdb_state->blkseq[i][stripe] = create_blkseq(bdb_state, stripe);
             if (bdb_state->blkseq[i][stripe] == NULL)
                 return -1;
             bzero(&bdb_state->blkseq_last_lsn[i][stripe], sizeof(DB_LSN));
         }
         listc_init(&bdb_state->blkseq_log_list[stripe],
                    offsetof(struct seen_blkseq, lnk));
+        bdb_state->blkseq_last_roll_time[stripe] = comdb2_time_epoch();
     }
-    bdb_state->blkseq_last_roll_time = comdb2_time_epoch();
 
     return 0;
 }
@@ -431,7 +430,7 @@ int bdb_blkseq_clean(bdb_state_type *bdb_state, uint8_t stripe)
 
     Pthread_mutex_lock(&bdb_state->blkseq_lk[stripe]);
 
-    last = bdb_state->blkseq_last_roll_time;
+    last = bdb_state->blkseq_last_roll_time[stripe];
 
     /* Not yet time?  Do nothing. */
     if ((now - last) < bdb_state->attr->private_blkseq_maxage)
@@ -469,7 +468,7 @@ int bdb_blkseq_clean(bdb_state_type *bdb_state, uint8_t stripe)
     }
 
     /* create a new db first */
-    newdb = create_blkseq(bdb_state, stripe, 0);
+    newdb = create_blkseq(bdb_state, stripe);
     if (newdb == NULL) {
         rc = BDBERR_MISC;
         goto done;
@@ -481,7 +480,7 @@ int bdb_blkseq_clean(bdb_state_type *bdb_state, uint8_t stripe)
     bdb_state->blkseq[0][stripe] = newdb;
     bdb_state->blkseq_last_lsn[1][stripe] = bdb_state->blkseq_last_lsn[0][stripe];
 
-    bdb_state->blkseq_last_roll_time = now;
+    bdb_state->blkseq_last_roll_time[stripe] = now;
 
     /* Clean up the old blkseq file. Get its name, close it, delete it. */
     rc =
@@ -496,19 +495,10 @@ int bdb_blkseq_clean(bdb_state_type *bdb_state, uint8_t stripe)
     to_be_deleted->close(to_be_deleted, DB_NOSYNC);
 
     if (oldname) {
-        DB *db;
         env = bdb_state->blkseq_env[stripe];
-
-        rc = db_create(&db, env, 0);
+        rc = env->dbremove(env, NULL, oldname, NULL, 0);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "blkseq create rc %d\n", rc);
-            rc = BDBERR_MISC;
-            goto done;
-        }
-
-        rc = db->remove(db, oldname, NULL, 0);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "db->remove %s rc %d\n", oldname, rc);
+            logmsg(LOGMSG_ERROR, "DBENV->dbremove %s rc %d\n", oldname, rc);
             rc = BDBERR_MISC;
             goto done;
         }

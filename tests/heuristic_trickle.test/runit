@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+dbnm=$1
+
+set -e
+
+# Make sure that all queries go to the same node.
+mach=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select comdb2_host()'`
+echo "Target machine is $mach"
+
+cdb2sql --host $mach $dbnm "create table t (i int)" >/dev/null
+yes 'insert into t values(1)' | head -25000 | cdb2sql --host $mach $dbnm - >/dev/null
+sleep 10
+dirty=`cdb2sql --tabs --host $mach $dbnm 'exec procedure sys.cmd.send("bdb blkseqcachestat")' | grep st_page_dirty | awk 'BEGIN{sum=0}{sum+=$2}END{print sum}'`
+miss=`cdb2sql --tabs --host $mach $dbnm 'exec procedure sys.cmd.send("bdb blkseqcachestat")' | grep st_cache_miss | awk 'BEGIN{sum=0}{sum+=$2}END{print sum}'`
+
+echo $dirty $miss
+if [ $dirty -ne 0 ]; then
+    echo 'No dirty pages should exist.' >&2
+    exit 1
+fi
+
+if [ $miss -gt 100 ]; then
+    echo 'Too many cache misses.' >&2
+    exit 1
+fi
+
+echo "Passed."

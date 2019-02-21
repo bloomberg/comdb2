@@ -938,7 +938,7 @@ static cdb2_ssl_sess_list cdb2_ssl_sess_cache;
    4096 txn/us (~4 billion transactions per second) till September 17, 2112.
 
    See next_cnonce() for details. */
-#define CNONCE_STR_FMT "%lx-%x-%llx-"
+#define CNONCE_STR_FMT "-%lx-%x-%llx"
 #define CNONCE_STR_SZ 52 /* 8 + 1 + 8 + 1 + 16 + 1 + 16 + 1 (NUL) */
 
 #define CNT_BITS 12
@@ -950,7 +950,6 @@ typedef struct cnonce {
     int pid;
     struct cdb2_hndl *hndl;
     uint64_t seq;
-    int ofs;
     char str[CNONCE_STR_SZ];
 } cnonce_t;
 
@@ -3481,9 +3480,7 @@ static int next_cnonce(cdb2_hndl_tp *hndl)
     struct timeval tv;
     uint64_t cnt, seq, tm, now;
     cnonce_t *c;
-
-    static char hex[] = "0123456789abcdef";
-    char *in, *out, *end;
+    char hex[17];
 
     rc = gettimeofday(&tv, NULL);
     if (rc != 0)
@@ -3506,8 +3503,7 @@ static int next_cnonce(cdb2_hndl_tp *hndl)
             c->hostid = _MACHINE_ID;
             c->pid = _PID;
             c->hndl = hndl;
-            c->ofs = sprintf(c->str, CNONCE_STR_FMT, c->hostid, c->pid,
-                             (unsigned long long)c->hndl);
+            sprintf(c->str + (sizeof(c->seq) << 1), CNONCE_STR_FMT, c->hostid, c->pid, (unsigned long long)c->hndl);
         }
         c->seq = (now << CNT_BITS);
     } else {
@@ -3515,16 +3511,8 @@ static int next_cnonce(cdb2_hndl_tp *hndl)
     }
 
     if (rc == 0) {
-        in = (char *)&c->seq;
-        end = in + sizeof(c->seq);
-        out = c->str + c->ofs;
-
-        while (in != end) {
-            char i = *(in++);
-            *(out++) = hex[(i & 0xf0) >> 4];
-            *(out++) = hex[i & 0x0f];
-        }
-        *out = 0;
+        snprintf(hex, sizeof(hex), "%016" PRIx64, c->seq);
+        memcpy(c->str, hex, sizeof(hex) - 1);
     }
     return rc;
 }

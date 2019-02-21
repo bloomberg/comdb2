@@ -1377,13 +1377,6 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 		ar_cnt = trickle_max;
 
 	/*
-	 * Write the LRU pages in file/page order, only sorting as many
-	 * as ar_cnt.
-	 */
-	if (op == DB_SYNC_LRU)
-		qsort(bharray, ar_cnt, sizeof(BH_TRACK), __bhcmp);
-
-	/*
 	 * Flush the log.  We have to ensure the log records reflecting the
 	 * changes on the database pages we're writing have already made it
 	 * to disk.  We still have to check the log each time we write a page
