@@ -416,7 +416,6 @@ static int sbuf2fread_int(char *ptr, int size, int nitems,
         /* lazily establish read buffer */
         sb->rbuf = malloc(sb->lbuf);
         if (sb->rbuf == NULL)
-            loge("%s:%d malloc failed\n", __func__, __LINE__);
             return -1;
     }
 
@@ -466,8 +465,6 @@ ssl_downgrade:
                     if (was_timeout)
                         *was_timeout = 1;
                 }
-                loge("%s:%d sb->read() failed (rc=%d, done=%d, size=%d)\n",
-                     __func__, __LINE__, rc, done, size);
                 return (done / size);
             }
             sb->rhd = rc;
