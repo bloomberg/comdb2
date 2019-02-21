@@ -495,8 +495,8 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         }
     }
 
-    if ( (strcasecmp(iq->usedb->tablename, "comdb2_oplog") == 0 &&
-         (strcasecmp(iq->usedb->tablename, "comdb2_commit_log")) == 0 &&
+    if ( (strcasecmp(iq->usedb->tablename, "comdb2_oplog") == 0 ||
+         (strcasecmp(iq->usedb->tablename, "comdb2_commit_log")) == 0 ||
          strncasecmp(iq->usedb->tablename, "sqlite_stat", 11) == 0) )
         flags |= RECFLAGS_NO_REORDER_IDX;
 
