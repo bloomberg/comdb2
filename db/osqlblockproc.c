@@ -210,7 +210,7 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
     iq->blocksql_tran = tran; /* now blockproc knows about it */
 
     /* init temporary table and cursor */
-    tran->db = bdb_temp_table_create(thedb->bdb_env, &bdberr);
+    tran->db = bdb_temp_hashtable_create(thedb->bdb_env, &bdberr);
     if (!tran->db || bdberr) {
         logmsg(LOGMSG_ERROR, "%s: failed to create temp table bdberr=%d\n",
                __func__, bdberr);

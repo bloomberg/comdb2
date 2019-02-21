@@ -730,7 +730,7 @@ static int create_tablecursor(bdb_state_type *bdb_env, struct tmp_table **ptbl,
         return -1;
     }
 
-    tbl->table = bdb_temp_table_create(bdb_env, bdberr);
+    tbl->table = bdb_temp_hashtable_create(bdb_env, bdberr);
 
     if (!tbl->table) {
         logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_create failed, bderr=%d\n",
@@ -3208,7 +3208,7 @@ static int osql_create_temptbl(bdb_state_type *bdb_state,
     struct temp_table *table;
     struct temp_cursor *cursor;
 
-    table = bdb_temp_table_create(bdb_state, bdberr);
+    table = bdb_temp_hashtable_create(bdb_state, bdberr);
     if (!table) {
         logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_create failed, bderr=%d\n",
                 __func__, *bdberr);

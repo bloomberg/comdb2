@@ -783,8 +783,9 @@ static int bdb_temp_table_first_last(bdb_state_type *bdb_state,
             cur->keylen = *(int *)data;
             cur->key = data + sizeof(int);
             cur->datalen = *(int *)(data + cur->keylen + sizeof(int));
-            ;
-            cur->data = data + cur->keylen + 2 * sizeof(int);
+            free(cur->data);
+            cur->data = malloc(cur->datalen);
+            memcpy(cur->data, data + cur->keylen + 2 * sizeof(int), cur->datalen);
             cur->valid = 1;
         } else {
             return IX_EMPTY;
@@ -875,8 +876,9 @@ static int bdb_temp_table_next_prev_norewind(bdb_state_type *bdb_state,
             cur->keylen = *(int *)data;
             cur->key = data + sizeof(int);
             cur->datalen = *(int *)(data + cur->keylen + sizeof(int));
-            ;
-            cur->data = data + cur->keylen + 2 * sizeof(int);
+            free(cur->data);
+            cur->data = malloc(cur->datalen);
+            memcpy(cur->data, data + cur->keylen + 2 * sizeof(int), cur->datalen);
             cur->valid = 1;
         } else {
             return IX_PASTEOF;
@@ -1483,8 +1485,9 @@ static int bdb_temp_table_find_hash(struct temp_cursor *cur, const void *key, in
             cur->keylen = *(int *)data;
             cur->key = data + sizeof(int);
             cur->datalen = *(int *)(data + cur->keylen + sizeof(int));
-            ;
-            cur->data = data + cur->keylen + 2 * sizeof(int);
+            free(cur->data);
+            cur->data = malloc(cur->datalen);
+            memcpy(cur->data, data + cur->keylen + 2 * sizeof(int), cur->datalen);
             cur->valid = 1;
         } else {
             return IX_EMPTY;
@@ -1591,8 +1594,9 @@ static int bdb_temp_table_find_exact_hash(struct temp_cursor *cur,
         cur->keylen = *(int *)data;
         cur->key = data + sizeof(int);
         cur->datalen = *(int *)(data + cur->keylen + sizeof(int));
-        ;
-        cur->data = data + cur->keylen + 2 * sizeof(int);
+        free(cur->data);
+        cur->data = malloc(cur->datalen);
+        memcpy(cur->data, data + cur->keylen + 2 * sizeof(int), cur->datalen);
         cur->valid = 1;
     } else {
         return IX_NOTFND;
