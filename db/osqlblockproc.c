@@ -118,8 +118,8 @@ static int req2blockop(int reqtype);
  *
  * key will compare by rqid, uuid, table, stripe, genid, is_rec, then sequence
  */
-static int osql_bplog_key_cmp(void *usermem, int key1len, const void *key1,
-                              int key2len, const void *key2)
+int osql_bplog_key_cmp(void *usermem, int key1len, const void *key1,
+                       int key2len, const void *key2)
 {
     assert(sizeof(oplog_key_t) == key1len);
     assert(sizeof(oplog_key_t) == key2len);
@@ -210,7 +210,7 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
     iq->blocksql_tran = tran; /* now blockproc knows about it */
 
     /* init temporary table and cursor */
-    tran->db = bdb_temp_table_create(thedb->bdb_env, &bdberr);
+    tran->db = bdb_temp_array_create(thedb->bdb_env, &bdberr);
     if (!tran->db || bdberr) {
         logmsg(LOGMSG_ERROR, "%s: failed to create temp table bdberr=%d\n",
                __func__, bdberr);
@@ -221,7 +221,7 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
     bdb_temp_table_set_cmp_func(tran->db, osql_bplog_key_cmp);
 
     if (sess->is_reorder_on) {
-        tran->db_ins = bdb_temp_table_create(thedb->bdb_env, &bdberr);
+        tran->db_ins = bdb_temp_array_create(thedb->bdb_env, &bdberr);
         if (!tran->db_ins) {
             // We can stll work without a INS table
             logmsg(LOGMSG_ERROR,
