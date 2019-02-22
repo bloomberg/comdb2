@@ -1950,7 +1950,7 @@ int bdb_temp_table_insert_test(bdb_state_type *bdb_state, int recsz, int maxins)
     if (recsz < 8) recsz = 8; //force it to be min 8 bytes
     if (maxins > 10000000 || recsz * maxins > 100000000) {
         logmsg(LOGMSG_USER, "Too much data to write %d records\n", maxins);
-        return -1; //limit the temptbl size
+        return -1; // limit the temptbl size
     }
 
     //read one random string into key, note that reading from urandom is
@@ -1975,7 +1975,7 @@ int bdb_temp_table_insert_test(bdb_state_type *bdb_state, int recsz, int maxins)
     //insert: replace first 4 bytes with a new random value, payload is same val
     for (int cnt = 0; cnt < maxins; cnt++) {
         int x = rand();
-        ((int*)rkey)[0] = x;
+        ((int *)rkey)[0] = x;
         rc = bdb_temp_table_put(parent, db, &rkey, sizeof(rkey),
                               &x, sizeof(x), NULL, &bdberr);
         if (rc) {
@@ -1991,8 +1991,8 @@ int bdb_temp_table_insert_test(bdb_state_type *bdb_state, int recsz, int maxins)
 
     int sec = (t2.tv_sec - t1.tv_sec) * 1000000;
     int msec = (t2.tv_usec - t1.tv_usec);
-    logmsg(LOGMSG_USER, "Wrote %d records in %f sec\n",
-           maxins, (float)(sec + msec) / 1000000);
+    logmsg(LOGMSG_USER, "Wrote %d records in %f sec\n", maxins,
+           (float)(sec + msec) / 1000000);
 
     //cleanup
     rc = bdb_temp_table_close(parent, db, &bdberr);
