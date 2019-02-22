@@ -17,7 +17,7 @@
 #ifndef _FDB_BEND_SQL_H_
 #define _FDB_BEND_SQL_H_
 
-#include "fdb_comm.h"
+#include <fdb_comm.h>
 
 /**
  * Handle a remote sql request

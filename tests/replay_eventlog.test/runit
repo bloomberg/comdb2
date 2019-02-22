@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
-#PS4='$(date +%Y%m%d-%H:%M:%S): '
 set -x
 
 RESTART_DELAY=35
@@ -35,7 +34,7 @@ failexit()
 assertcnt()
 {
     target=$1
-    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
+    cnt=$(cdb2sql --tabs --host $node $dbnm "select count(*) from t1")
     if [ $? -ne 0 ] ; then
         echo "assertcnt: select error"
     fi
@@ -51,7 +50,7 @@ assert_vers()
 {
     tbl=$1
     target=$2
-    newver=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select table_version('$tbl')")
+    newver=$(cdb2sql --tabs --host $node $dbnm "select table_version('$tbl')")
     if [[ $newver != $target ]] ; then
         failexit "newver is now $newver but should be $target"
     fi
@@ -65,68 +64,13 @@ assert_schema()
     schema=$2
 
     echo "make sure that the current schema is $schema"
-    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select csc2 from sqlite_master where name='$tbl'" | sed 's/ \(schema\)/\1/;s/} /}/' > schema.out
+    cdb2sql --tabs --host $node $dbnm "select csc2 from sqlite_master where name='$tbl'" | sed 's/ \(schema\)/\1/;s/} /}/' > schema.out
 
     if ! diff -Bw schema.out $schema ; then 
-        cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select * from sqlite_master' > sqlite_master.out
+        cdb2sql --tabs --host $node $dbnm 'select * from sqlite_master' > sqlite_master.out
         failexit "final schema is not same as $schema: diff schema.out $schema"
     fi
 }
-
-
-assert_sc_status()
-{
-    target=$1
-    cdb2sql --tabs --host $master ${CDB2_OPTIONS} $dbnm 'exec procedure sys.cmd.send("stat")' > stat1.out
-    if [ $? -ne 0 ] ; then
-        failexit "sending stat to new master $master"
-    fi
-
-    scrunning=`grep "schema change running" stat1.out | awk '{print $4}' `
-    echo "scrunning is $scrunning"
-    if [ "$scrunning" == "NO" ] ; then 
-        if [ $target != 0 ] ; then
-            failexit "scrunning is $scrunning, but target is $target"
-        fi
-    else 
-        if [ $target != 1 ] ; then
-            failexit "scrunning is $scrunning, but target is $target"
-        fi
-    fi
-}
-
-
-get_sc_seed()
-{
-    cdb2sql --tabs --host $master ${CDB2_OPTIONS} $dbnm 'exec procedure sys.cmd.send("stat")' > stat1.out
-    if [ $? -ne 0 ] ; then
-        failexit "sending stat to new master $master"
-    fi
-
-    grep "Schema change in progress with seed" stat1.out | awk '{print $7}'
-}
-
-
-assert_sc_seed()
-{
-    target=$1
-    scseed=`get_sc_seed`
-    echo "scseed is $scseed"
-    if [ "$scseed" != "$target" ] ; then 
-        failexit "scseed $scseed, but target is $target"
-    fi
-}
-
-
-do_verify()
-{
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
-
-    if ! grep succeeded verify.out > /dev/null ; then
-        failexit "Verify"
-    fi
-}
-
 
 insert_records()
 {
@@ -138,7 +82,7 @@ insert_records()
     echo "" > $insfl
 
     while [[ $j -le $nstop ]]; do 
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_intervaldsus, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( $((1-2*(j%2)))$j ,$j ,$((1-2*(j%2)))0000$j ,10000$j ,$((1-2*(j%2)))000000000$j ,$((1-2*(j%2)))00.00$j ,$((1-2*(j%2)))0000$j.0000$j ,x'aabbccddeeffaabb$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))' ,'mycstring$j' ,'mypstring$j' ,x'$((j%2))$((j%3))$((j%4))$((j%5))' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'myvutf8$j' ,$((1-2*(j%2)))$j ,$((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))00000000$j , $((1-2*(j%2)))000000000000000$j )"  &>> $insfl
+        cdb2sql --host $node $dbnm "insert into t1(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_intervaldsus, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( $((1-2*(j%2)))$j ,$j ,$((1-2*(j%2)))0000$j ,10000$j ,$((1-2*(j%2)))000000000$j ,$((1-2*(j%2)))00.00$j ,$((1-2*(j%2)))0000$j.0000$j ,x'aabbccddeeffaabb$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))' ,'mycstring$j' ,'mypstring$j' ,x'$((j%2))$((j%3))$((j%4))$((j%5))' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'myvutf8$j' ,$((1-2*(j%2)))$j ,$((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))00000000$j , $((1-2*(j%2)))000000000000000$j )"  &>> $insfl
         if [ $? -ne 0 ]; then 
             sleep 1
             continue
@@ -179,7 +123,7 @@ insert_records_with_bind()
 @bind CDB2_CSTRING v_alltypes_decimal32 $((1-2*(j%2)))0000$j
 @bind CDB2_CSTRING v_alltypes_decimal64 $((1-2*(j%2)))0000000$j
 @bind CDB2_CSTRING v_alltypes_decimal128 $((1-2*(j%2)))000000000000000$j
-insert into t1(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_cstring, alltypes_pstring, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values (@v_alltypes_short, @v_alltypes_u_short, @v_alltypes_int, @v_alltypes_u_int, @v_alltypes_longlong, @v_alltypes_float, @v_alltypes_double, @v_alltypes_cstring, @v_alltypes_pstring, @v_alltypes_datetime, @v_alltypes_datetimeus, @v_alltypes_vutf8, @v_alltypes_intervalym, @v_alltypes_intervalds, @v_alltypes_decimal32, @v_alltypes_decimal64, @v_alltypes_decimal128)" | cdb2sql ${CDB2_OPTIONS} $dbnm default - &>> $insfl
+insert into t1(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_cstring, alltypes_pstring, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values (@v_alltypes_short, @v_alltypes_u_short, @v_alltypes_int, @v_alltypes_u_int, @v_alltypes_longlong, @v_alltypes_float, @v_alltypes_double, @v_alltypes_cstring, @v_alltypes_pstring, @v_alltypes_datetime, @v_alltypes_datetimeus, @v_alltypes_vutf8, @v_alltypes_intervalym, @v_alltypes_intervalds, @v_alltypes_decimal32, @v_alltypes_decimal64, @v_alltypes_decimal128)" | cdb2sql --host $node $dbnm - &>> $insfl
         if [ $? -ne 0 ]; then 
             sleep 1
             continue
@@ -200,7 +144,7 @@ update_records()
     echo "" > $updfl
 
     while [[ $j -le $nstop ]]; do 
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set alltypes_short=alltypes_short+1, alltypes_int=alltypes_int+1,alltypes_u_int=alltypes_u_int+1,alltypes_longlong=alltypes_longlong+1,alltypes_float=alltypes_float=1,alltypes_double=alltypes_double+1,alltypes_decimal32=alltypes_decimal32+1,alltypes_decimal64=alltypes_decimal64+1,alltypes_decimal128=alltypes_decimal128+1 where alltypes_u_short=$j"  &>> $updfl
+        cdb2sql --host $node $dbnm "update t1 set alltypes_short=alltypes_short+1, alltypes_int=alltypes_int+1,alltypes_u_int=alltypes_u_int+1,alltypes_longlong=alltypes_longlong+1,alltypes_float=alltypes_float=1,alltypes_double=alltypes_double+1,alltypes_decimal32=alltypes_decimal32+1,alltypes_decimal64=alltypes_decimal64+1,alltypes_decimal128=alltypes_decimal128+1 where alltypes_u_short=$j"  &>> $updfl
         if [ $? -ne 0 ]; then 
             sleep 1
             continue
@@ -225,7 +169,7 @@ update_records_with_bind()
         echo "
 @bind CDB2_INTEGER v_alltypes_u_short $j
 @bind CDB2_INTEGER v_alltypes_int $jpone
-update t1 set alltypes_u_int=1+@v_alltypes_u_int where alltypes_u_short=@v_alltypes_u_short" | cdb2sql ${CDB2_OPTIONS} $dbnm default - &>> $updfl
+update t1 set alltypes_u_int=1+@v_alltypes_u_int where alltypes_u_short=@v_alltypes_u_short" | cdb2sql --host $node $dbnm - &>> $updfl
         if [ $? -ne 0 ]; then 
             sleep 1
             continue
@@ -247,7 +191,7 @@ delete_records()
     echo "" > $delfl
 
     while [[ $j -le $nstop ]]; do 
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from t1 where alltypes_u_short=$j"  &>> $delfl
+        cdb2sql --host $node $dbnm "delete from t1 where alltypes_u_short=$j"  &>> $delfl
         if [ $? -ne 0 ]; then 
             sleep 1
             continue
@@ -258,128 +202,16 @@ delete_records()
     echo "done updating round $nout"
 }
 
-
-insert_records_oneshot()
-{
-    j=$1
-    nstop=$2
-    let nout=nout+1
-    insfl=insert${nout}.out
-    echo "Inserting $((nstop-j+1)) records ($j to $nstop)."
-    echo "" > $insfl
-
-    while [[ $j -le $nstop ]]; do 
-        # use for compare? echo "a=$j, b='test1$j', c='$j'" >> rows.out
-        echo "insert into t1(a,b,c) values ($j,'test1$j',$j)" 
-        let j=j+1
-    done | cdb2sql ${CDB2_OPTIONS} $dbnm default -  &>> $insfl
-    echo "done inserting round $nout"
-}
-
-
-kill_by_pidfile() 
-{
-    pidfile=$1
-    if [[ -f $pidfile ]]; then
-        local pid=$(cat $pidfile)
-        ps -p $pid -o args | grep -q "comdb2 ${DBNAME}"
-        if [[ $? -eq 0 ]]; then
-            echo "kill -9 $pid"
-            kill -9 $pid
-        fi
-        rm -f $pidfile
-    else
-        failexit "kill_by_pidfile: pidfile $pidfile does not exist"
-    fi
-}
-
-kill_restart_cluster()
-{
-    delay=$1
-    for node in $cluster ; do
-        echo "killrestart nodes $node"
-        kill_restart_node $node $delay &
-    done
-    sleep $delay
-    # select 1 all nodes
-    for node in $cluster ; do
-        out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'select 1' 2>/dev/null)
-        # wait until we can query it
-        echo "$DBNAME: waiting until ready"
-        while [[ "$out" != "1" ]]; do
-            sleep 2
-            out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'select 1' 2>/dev/null)
-        done
-    done
-}
-
-kill_restart_node()
-{
-    node=$1
-    delay=$2
-    pushd $DBDIR
-    cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'exec procedure sys.cmd.send("flush")'
-
-    if [ -n "$CLUSTER" ] ; then
-        kill_by_pidfile ${TMPDIR}/${DBNAME}.${node}.pid
-        mv --backup=numbered $TESTDIR/logs/${DBNAME}.${node}.db $TESTDIR/logs/${DBNAME}.${node}.db.1
-        sleep $delay
-        if [ $node != `hostname` ] ; then
-            ssh -o StrictHostKeyChecking=no -tt $node COMDB2_ROOT=$COMDB2_ROOT $COMDB2_EXE ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1 </dev/null &
-            echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
-        else
-            $COMDB2_EXE ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl &> $TESTDIR/logs/${DBNAME}.${node}.db -pidfile ${TMPDIR}/${DBNAME}.${node}.pid &
-        fi
-    else
-        kill_by_pidfile ${TMPDIR}/${DBNAME}.pid
-        mv --backup=numbered $TESTDIR/logs/${DBNAME}.db $TESTDIR/logs/${DBNAME}.db.1
-        sleep $delay
-        echo "$DBNAME: starting single node"
-        echo "$COMDB2_EXE $DBNAME $TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid"
-        $COMDB2_EXE $DBNAME >$TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 &
-    fi
-
-    popd
-
-    out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'select 1' 2>/dev/null)
-    # wait until we can query it
-    echo "$DBNAME: waiting until ready"
-    while [[ "$out" != "1" ]]; do
-        sleep 2
-        out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'select 1' 2>/dev/null)
-    done
-}
-
-
-get_schemachange_status()
-{
-    master=$1
-    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('stat')" | grep "Schema change in progress" > schemachange_status.out
-    if [ $? -eq 0 ] ; then
-        return 1 
-    fi
-    return 0
-}
-
-
-getmaster()
-{
-    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
-}
-
-force_delay_master()
-{
-    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')"
-    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('scdelay 300')"
-}
+# Make sure we talk to the same host
+node=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT comdb2_host()"`
+export CDB2_HOST="$node"
 
 echo "Test with insert, SC should not fail"
 
-cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('debg 0')"
-#cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
-#cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat alltypes.csc2 ` }"
+cdb2sql --host $node $dbnm "exec procedure sys.cmd.send('debg 0')"
+cdb2sql --host $node $dbnm "create table t1  { `cat alltypes.csc2 ` }"
 
-cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t2"
+cdb2sql --host $node $dbnm "select * from t2"
 
 assert_vers t1 0
 assert_schema t1 alltypes.csc2
@@ -403,80 +235,65 @@ assertcnt $NEWNUMREC
 
 set -e
 #echo "Now call task that uses cdb2api to ins/upd/del"
-${TESTSROOTDIR}/tools/cdb2api_caller $dbnm t1 > cdb2api_caller.out
+${TESTSBUILDDIR}/cdb2api_caller $dbnm t1 > cdb2api_caller.out
 
-cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t1 order by alltypes_u_short" > orig.txt
-
-
-#make sure lsn is equal in all nodes
-#cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master 'exec procedure sys.cmd.send("bdb cluster")'
+cdb2sql --host $node $dbnm "select * from t1 order by alltypes_u_short" > orig.txt
 
 
-master=`getmaster`
-cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
+cluster=`cdb2sql --tabs --host $node $dbnm 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
 
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("flush")'
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("reql events roll")'
+cdb2sql --tabs --host $node $dbnm 'exec procedure sys.cmd.send("flush")'
+cdb2sql --tabs --host $node $dbnm 'exec procedure sys.cmd.send("reql events roll")'
 
 set +e
 
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("exit")'
+#cdb2sql --tabs --host $node $dbnm 'exec procedure sys.cmd.send("exit")'
 sleep 10
 
-ls -ltr $TESTDIR/var/log/cdb2/ | grep events
-logfl=`ls -1Sr $TESTDIR/var/log/cdb2/ | grep events | grep $dbnm | tail -1`
-logfl=`find $TESTDIR/var/log/cdb2/ | grep $logfl`
-logflunziped=${logfl}.unzipped 
-wc $logfl
-zcat $logfl > $logflunziped
+if [ $node != `hostname` ] ; then
+    ssh -o StrictHostKeyChecking=no $node "ls -ltr $TESTDIR/var/log/cdb2/ | grep events"
+    logfl=`ssh -o StrictHostKeyChecking=no $node "ls -1Sr $TESTDIR/var/log/cdb2/ | grep events | grep $dbnm | tail -1"`
+    logfl=`ssh -o StrictHostKeyChecking=no $node "find $TESTDIR/var/log/cdb2/ | grep $logfl"`
+    logflunziped=${node}.events.unzipped
+    ssh -o StrictHostKeyChecking=no $node wc $logfl
+    ssh -o StrictHostKeyChecking=no $node "zcat $logfl" > $logflunziped
+else
+    ls -ltr $TESTDIR/var/log/cdb2/ | grep events
+    logfl=`ls -1Sr $TESTDIR/var/log/cdb2/ | grep events | grep $dbnm | tail -1`
+    logfl=`find $TESTDIR/var/log/cdb2/ | grep $logfl`
+    logflunziped=events.unzipped
+    wc $logfl
+    zcat $logfl > $logflunziped
+fi
 
-echo "main db vars"
-vars="TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR CDB2_OPTIONS CDB2_CONFIG"
-for required in $vars; do
-    q=${!required}
-    echo "$required=$q" 
-    if [[ -z "$q" ]]; then
-        echo "$required not set" >&2
-        exit 1
-    fi
-done
-
-alterdbname=alter$dbnm
-dbdir=$DBDIR
-testdir=$TESTDIR
-cdb2config=$CDB2_CONFIG
-
-DBNAME=$alterdbname
-DBDIR=$TESTDIR/$DBNAME
-#effectively alterDB config -- needed to setup alterDB
-CDB2_CONFIG=$DBDIR/comdb2db.cfg
-CDB2_OPTIONS="--cdb2cfg $CDB2_CONFIG"
-
-echo "remote db vars"
-vars="TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR CDB2_OPTIONS CDB2_CONFIG"
-for required in $vars; do
-    q=${!required}
-    echo "$required=$q" 
-    if [[ -z "$q" ]]; then
-        echo "$required not set" >&2
-        exit 1
-    fi
-done
+count=`wc -l $logflunziped | cut -f 1 -d' '`
+CSHOULDBE=8244 # number of lines that should be in the log when single node
+if [[ -z "$CLUSTER" ]] && [[ $count -ne $CSHOULDBE ]] ; then 
+    failexit "$logflunziped contains $count rather than $CSHOULDBE entries"
+elif [ $count -lt 4142 ] ; then
+    failexit "$logflunziped contains $count which is too few entries"
+fi
 
 set -e
 
-#setup remode db
-$TESTSROOTDIR/setup
+echo running "CDB2_CONFIG=\"${SECONDARY_CDB2_CONFIG}\" $CDB2_SQLREPLAY_EXE $SECONDARY_DBNAME $logflunziped > sqlreplay.out"
+CDB2_CONFIG="${SECONDARY_CDB2_CONFIG}" $CDB2_SQLREPLAY_EXE $SECONDARY_DBNAME $logflunziped > sqlreplay.out
+cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default "select * from t1 order by alltypes_u_short" > replayed.txt
 
-echo running $CDB2_SQLREPLAY_EXE $alterdbname $logflunziped
-$CDB2_SQLREPLAY_EXE $alterdbname $logflunziped > sqlreplay.out
-cdb2sql ${CDB2_OPTIONS} $alterdbname default "select * from t1 order by alltypes_u_short" > replayed.txt
-
-
-$TESTSROOTDIR/unsetup
 set +e
+success=1
 
 if ! diff orig.txt replayed.txt ; then
-        failexit "replayed.txt content is not the same as original.txt"
+    success=0
 fi
+
+if [ $success != 1 ] ; then
+    failexit "replayed.txt content is not the same as original.txt"
+fi
+
+if [ "$CLEANUPDBDIR" != "0" ] ; then
+    #delete files now that test is successful
+    rm orig.txt replayed.txt sqlreplay.out $logflunziped
+fi
+
 echo "Success"

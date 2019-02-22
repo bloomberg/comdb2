@@ -86,7 +86,7 @@ function runstepper
     typeset log=$3
 
     # teststepper
-    typeset stp=${TESTSROOTDIR}/tools/stepper
+    typeset stp=${TESTSBUILDDIR}/stepper
 
     # echo
     echo "> $stp $db $tcs $log"
@@ -154,22 +154,22 @@ for testcase in $files ; do
     testcase_output=$(cat $output)
 
     # get expected output
-    expected_output=$(cat $testcase.out)
+    expected_output=$(cat $testcase.exp)
 
     found_match=0
     if [[ "$testcase_output" == "$expected_output" ]]; then
         found_match=1
     fi
 
-    if [[ "$found_match" == "0" && -f $testcase.out.alt ]]; then # && "$testcase_output" == "$(cat $testcase.out.alt)" ]]; then
-        expected_output=$(cat $testcase.out.alt)
+    if [[ "$found_match" == "0" && -f $testcase.exp.alt ]]; then # && "$testcase_output" == "$(cat $testcase.exp.alt)" ]]; then
+        expected_output=$(cat $testcase.exp.alt)
         if [[ "$testcase_output" == "$expected_output" ]]; then
             found_match=1
         fi
     fi
 
-    if [[ "$found_match" == "0" && -f $testcase.out.alt2 ]]; then # && "$testcase_output" == "$(cat $testcase.out.alt2)" ]]; then
-        expected_output=$(cat $testcase.out.alt2)
+    if [[ "$found_match" == "0" && -f $testcase.exp.alt2 ]]; then # && "$testcase_output" == "$(cat $testcase.exp.alt2)" ]]; then
+        expected_output=$(cat $testcase.exp.alt2)
         if [[ "$testcase_output" == "$expected_output" ]]; then
             found_match=1
         fi
@@ -182,9 +182,9 @@ for testcase in $files ; do
         echo "The above testcase (${testcase}) has failed!!!"
         echo " "
         echo "Use 'diff <expected-output> <my-output>' to see why:"
-        echo "> diff ${PWD}/{$testcase.out,$output}"
+        echo "> diff ${PWD}/{$testcase.exp,$output}"
         echo " "
-        diff $testcase.out $output
+        diff $testcase.exp $output
         echo " "
         exit 1
 

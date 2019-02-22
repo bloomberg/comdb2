@@ -3,7 +3,6 @@
 # Test rootpages when db array changes during sql processing
 ##############################################################################
 
-DBNAME=$1
 SQL="cdb2sql ${CDB2_OPTIONS} $DBNAME default"
 
 # $SQL "select comdb2_version(), comdb2_hosts()" > 

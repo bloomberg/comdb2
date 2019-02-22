@@ -29,8 +29,8 @@ There are many advantages by doing this, like:
 * Time decomposition support - one can extract the hour(s), the minutes, seconds, year, month value, and so on. For 
   example, can easily retrieve all the events happening in March, 2008; or all the events happening at 3am New York 
   time. 
-* Millisecond support: the smallest time increment is one millisecond for the ```datetimeus``` type or microseconds 
-  for the ```datetime``` type.
+* Fraction support: the smallest time increment is one millisecond for the ```datetime``` type or one microsecond
+  for the ```datetimeus``` type.
 
 The application communicates with the database using local time values.  The locale is determine by the timezone name.  
 If the application needs to use absolute time values, it can set its timezone name to ```GMT```.  A list of valid 

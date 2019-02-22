@@ -31,6 +31,14 @@ testcase_output=
 # expected output
 expected_output=
 
+
+cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $a_dbn default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
+for node in $cluster ; do
+cdb2sql --tabs ${CDB2_OPTIONS} $a_dbn --host $node 'exec procedure sys.cmd.send("debg 100")'
+cdb2sql --tabs ${CDB2_OPTIONS} $a_dbn --host $node 'exec procedure sys.cmd.send("ndebg 100")'
+done
+
+
 # fastinit
 function fastinit
 {
@@ -50,7 +58,7 @@ function fastinit
     # fastinit for constraints requires an sql delete
     for tbl in $(cat $iter.fastinit) ; do
         
-        cmd="cdb2sql ${CDB2_OPTIONS} $db default \"delete from $tbl where 1=1\""
+        cmd="cdb2sql --stderr ${CDB2_OPTIONS} $db default \"delete from $tbl where 1=1\""
         echo $cmd
         eval $cmd
     done
@@ -90,7 +98,7 @@ function runstepper
     typeset log=$3
 
     # teststepper
-    typeset stp=${TESTSROOTDIR}/tools/stepper
+    typeset stp=${TESTSBUILDDIR}/stepper
 
     # echo
     echo "> $stp $db $tcs $log"
@@ -137,7 +145,7 @@ for testcase in $files ; do
     else
 
         # Be verbose
-        cmd="cdb2sql ${CDB2_OPTIONS} $a_dbn default - < $testcase &> $output"
+        cmd="cdb2sql --stderr ${CDB2_OPTIONS} $a_dbn default - < $testcase &> $output"
         echo "$cmd"
 
         # run command
@@ -166,11 +174,11 @@ for testcase in $files ; do
     testcase_output=$(cat $output)
 
     # get expected output
-    expected_output=$(cat $testcase.out)
+    expected_output=$(cat $testcase.exp)
 
-    expected_output2=$(cat $testcase.out2)
+    expected_output2=$(cat $testcase.exp2)
 
-    expected_output3=$(cat $testcase.out3)
+    expected_output3=$(cat $testcase.exp3)
 
     # verify 
     if [[ "$testcase_output" != "$expected_output" ]] && [[ "$testcase_output" != "$expected_output2" ]] && [[ "$testcase_output" != "$expected_output3" ]] ; then
@@ -178,14 +186,73 @@ for testcase in $files ; do
         echo "The above testcase (${testcase}) has failed!!!"
         echo " "
         echo "Use 'diff <expected-output> <my-output>' to see why:"
-        echo "> diff ${PWD}/{$testcase.out,$output}"
+        echo "> diff ${PWD}/{$testcase.exp,$output}"
         echo " "
-        diff $testcase.out $output
+        diff $testcase.exp $output
         echo " "
         exit 1
 
     fi
 
 done
+
+### Tests for CREATE UNIQUE INDEX with multiple NULL values
+
+function failexit
+{
+    echo "Failed $1"
+    exit -1
+}
+
+function assertbadexitcode
+{
+    rc=$1
+    if [ $rc -eq 0 ] ; then
+        failexit "exit code is now $rc but should not be 0"
+    fi
+}
+
+function assertres
+{
+    if [ $# != 2 ] ; then
+        failexit "number of parameters passed is $# but expecting 2"
+    fi
+    res=$1
+    target=$2
+    if [ "$res" != "$target" ] ; then
+        failexit "res is $res but should be $target"
+    fi
+}
+
+set -- +o errexit
+echo "create and use 'uniqnulls' enabled tables with foreign keys"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "create table j5(x INTEGER)"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "create unique index j5_x on j5(x)"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into j5 values(NULL)"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into j5 values(NULL)"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into j5 values(1)"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into j5 values(2)"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into j5 values(3)"
+res=`cdb2sql --tabs ${CDB2_OPTIONS} $a_dbn default "select x from j5 order by x"`
+assertres "${res}" $'NULL\nNULL\n1\n2\n3'
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.verify('j5')"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "create table j6(y INTEGER, x INTEGER, FOREIGN KEY(x) REFERENCES j5(x))"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "create unique index j6_y on j6(y)"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into j6 values(-1, NULL)"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into j6 values(0, NULL)"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into j6 values(1, 1)"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into j6 values(2, 2)"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "insert into j6 values(3, 3)"
+res=`cdb2sql --tabs ${CDB2_OPTIONS} $a_dbn default "select y from j6 order by y"`
+assertres "${res}" $'-1\n0\n1\n2\n3'
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.verify('j6')"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "delete from j5 where x is null"
+res=`cdb2sql --tabs ${CDB2_OPTIONS} $a_dbn default "select x from j5 order by x"`
+assertres "${res}" $'1\n2\n3'
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.verify('j5')"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "delete from j6 where x is null"
+res=`cdb2sql --tabs ${CDB2_OPTIONS} $a_dbn default "select y from j6 order by y"`
+assertres "${res}" $'1\n2\n3'
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.verify('j6')"
 
 echo "Testcase passed."

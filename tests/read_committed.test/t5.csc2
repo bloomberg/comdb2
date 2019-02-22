@@ -1,0 +1,10 @@
+schema
+{
+    int         a
+    int         b
+}
+
+keys
+{
+    dup "KEY" = (int)"a + b" {where a + b > 5}
+}

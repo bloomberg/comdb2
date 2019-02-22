@@ -5,27 +5,32 @@
 
 
 ifeq ($(TESTSROOTDIR),)
-  # TESTSROOTDIR is not set so we assume ths was called from within 
-  # a specific test directory (will check assumption few lines later)
+  # TESTSROOTDIR is not set when make is issued from within a test directory 
+  # (will check assumption few lines later)
   # needs to expand to a full path, otherwise it propagates as '../'
   export TESTSROOTDIR=$(shell readlink -f $(PWD)/..)
-  export SKIPSSL=1
+#  export SKIPSSL=1   #force SKIPSSL for local test -- easier to debug
+  export INSETUP=yes
+else
+  export INSETUP=
 endif
 
+# check that we indeed have the correct dir in TESTSROOTDIR
 ifeq ($(wildcard ${TESTSROOTDIR}/setup),)
-  # check that we indeed have the correct dir in TESTSROOTDIR
   $(error TESTSROOTDIR is set incorrectly to ${TESTSROOTDIR} )
 endif
 
+export SRCHOME?=$(shell readlink -f $(TESTSROOTDIR)/../)
 ifeq ($(TESTID),)
-  # will need a testid, unless one is provided
-  export TESTID:=$(shell $(TESTSROOTDIR)/tools/get_random.sh)
+export TESTID:=$(shell $(TESTSROOTDIR)/tools/get_random.sh)
 endif
+include $(TESTSROOTDIR)/Makefile.common
+
+
+$(shell [ ! -f ${TESTDIR} ] &&  mkdir -p ${TESTDIR}/ )
 
 export CURRDIR?=$(shell pwd)
 export TESTCASE=$(patsubst %.test,%,$(shell basename $(CURRDIR)))
-export SRCHOME?=$(shell readlink -f $(TESTSROOTDIR)/../)
-export TESTDIR?=$(TESTSROOTDIR)/test_$(TESTID)
 #comdb2 does not allow db names with '_' underscore in them
 export DBNAME=$(subst _,,$(TESTCASE))$(TESTID)
 export DBDIR=$(TESTDIR)/$(DBNAME)
@@ -35,23 +40,24 @@ export CDB2_OPTIONS=--cdb2cfg $(CDB2_CONFIG)
 export COMDB2_ROOT=$(TESTDIR)
 export COMDB2_UNITTEST?=0
 
-export COMDB2_EXE?=$(SRCHOME)/comdb2
-export COMDB2AR_EXE?=$(SRCHOME)/comdb2ar
-export CDB2SQL_EXE?=$(SRCHOME)/cdb2sql
-export COPYCOMDB2_EXE?=$(SRCHOME)/db/copycomdb2
-export CDB2_SQLREPLAY_EXE?=$(SRCHOME)/cdb2_sqlreplay
-export PMUX_EXE?=$(SRCHOME)/pmux
 
-ifeq ($(COMDB2MD5SUM),)
-  # record md5sum so we can verify from setup of each individual test
-  export COMDB2MD5SUM:=$(shell md5sum ${COMDB2_EXE} | cut -d ' ' -f1)
+ifneq ($(SECONDARY_DB_PREFIX),)
+export SECONDARY_DBNAME=$(SECONDARY_DB_PREFIX)$(DBNAME)
+export SECONDARY_DBDIR=$(TESTDIR)/$(SECONDARY_DBNAME)
+export SECONDARY_CDB2_CONFIG=$(abspath $(SECONDARY_DBDIR)/comdb2db.cfg)
+export SECONDARY_CDB2_OPTIONS=--cdb2cfg $(SECONDARY_CDB2_CONFIG)
 endif
 
+ifneq ($(INSETUP),)
+  # we are in setup or running make from within a testdir
+  $(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" SKIPSSL="${SKIPSSL}" ${TESTSROOTDIR}/tools/keygen.sh )
+  $(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" TESTSROOTDIR="${TESTSROOTDIR}" COMDB2_EXE=${COMDB2_EXE} CDB2SQL_EXE=${CDB2SQL_EXE} COMDB2AR_EXE=${COMDB2AR_EXE} PMUX_EXE=${PMUX_EXE} PMUXPORT=${PMUXPORT} SKIP_COPY_EXE="${SKIP_COPY_EXE}" ${TESTSROOTDIR}/tools/copy_files_to_cluster.sh > ${TESTDIR}/copy_files_to_cluster.log 2>&1 )
+endif
 
 test:: tool unit
-	@mkdir -p ${TESTDIR}/
 	echo "Working from dir `pwd`" >> $(TESTDIR)/test.log
 	$(TESTSROOTDIR)/runtestcase
+	$(MAKE) stop
 
 clean::
 	rm -f *.res
@@ -62,8 +68,6 @@ setup: tool
 	@echo Ready to run
 
 stop:
-	@$(TESTSROOTDIR)/unsetup
-
 
 tool:
 

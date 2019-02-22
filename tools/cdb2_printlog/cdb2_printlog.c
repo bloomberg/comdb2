@@ -7,7 +7,7 @@
 
 #include "build/db_config.h"
 
-#ifndef lint
+#if 0
 static const char copyright[] =
     "Copyright (c) 1996-2003\nSleepycat Software Inc.  All rights reserved.\n";
 static const char revid[] =
@@ -28,6 +28,7 @@ static const char revid[] =
 #include "build/db.h"
 #include "build/db_int.h"
 #include "dbinc/db_page.h"
+#include "locks_wrap.h"
 
 #if (! _SUN_SOURCE )
 #include "dbinc/btree.h"
@@ -70,7 +71,10 @@ void remove_tempdir()
 {
 	if (orig_dir && chdir(orig_dir) == 0) {
 		free(orig_dir);
-		int dum = system("rm -rf " PRINTLOG_RANGE_DIR);
+		int lrc = system("rm -rf " PRINTLOG_RANGE_DIR);
+        if (lrc) {
+            printf("ERROR: %s:%d system() returns rc = %d\n",__FILE__,__LINE__, lrc);
+        }
 	}
 }
 
@@ -95,14 +99,14 @@ int tool_cdb2_printlog_main(argc, argv)
 	DBT data, keydbt;
 	DB_LSN key;
 	int ch, exitval, nflag, rflag, ret, repflag;
-	char *home, passwd[1024], cmd[128];
+	char *home, passwd[1024];
 	bdb_state_type st;
 	FILE *crypto;
 
 	comdb2ma_init(0, 0);
 
-	pthread_key_create(&comdb2_open_key, NULL);
-	pthread_key_create(&DBG_FREE_CURSOR, NULL);
+	Pthread_key_create(&comdb2_open_key, NULL);
+	Pthread_key_create(&DBG_FREE_CURSOR, NULL);
 
 	if ((ret = cdb2_print_version_check(progname)) != 0)
 		return (ret);
@@ -256,7 +260,7 @@ int tool_cdb2_printlog_main(argc, argv)
 
 	/* Default to 1. */
 	st.ondisk_header = 1;
-	pthread_mutex_init(&st.gblcontext_lock, NULL);
+	Pthread_mutex_init(&st.gblcontext_lock, NULL);
 
 	gbl_bdb_state = &st;
 	dbenv->app_private = &st;
@@ -363,7 +367,7 @@ shutdown:	exitval = 1;
 	if (dbc != NULL && (ret = dbc->c_close(dbc)) != 0)
 		exitval = 1;
 
-	if (dbp != NULL && (ret = dbp->close(dbp, NULL, 0)) != 0)
+	if (dbp != NULL && (ret = dbp->close(dbp, 0)) != 0)
 		exitval = 1;
 
 	/*
@@ -495,6 +499,6 @@ open_rep_db(dbenv, dbpp, dbcp)
 	return (0);
 
 err:	if (*dbpp != NULL)
-		(void)(*dbpp)->close(*dbpp, NULL, 0);
+		(void)(*dbpp)->close(*dbpp, 0);
 	return (ret);
 }

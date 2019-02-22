@@ -39,6 +39,7 @@
 
 #include "bdb_int.h"
 #include <locks.h>
+#include "locks_wrap.h"
 
 #include "compress.h"
 #include <zlib.h>
@@ -119,7 +120,7 @@ static void write_odh(void *buf, const struct odh *odh, uint8_t flags);
  */
 
 /* Return 1 if ip-updates are enabled.  Does not care about schema-change */
-int ip_updates_enabled(bdb_state_type *bdb_state)
+inline int ip_updates_enabled(bdb_state_type *bdb_state)
 {
     if ((bdb_state->attr
              ->dtastripe) && /* non-dtastripe already update in-place */
@@ -132,7 +133,7 @@ int ip_updates_enabled(bdb_state_type *bdb_state)
     }
 }
 
-int bdb_have_ipu(bdb_state_type *bdb_state)
+inline int bdb_have_ipu(bdb_state_type *bdb_state)
 {
     return ip_updates_enabled(bdb_state);
 }
@@ -168,13 +169,12 @@ int bdb_compr2algo(const char *a)
     return BDB_COMPRESS_NONE;
 }
 
-static char *snodhf(char *buf, size_t buflen, const struct odh *odh)
+static inline char *snodhf(char *buf, size_t buflen, const struct odh *odh)
 {
-    int pos;
-    pos = snprintf(
-        buf, buflen, "length:%u updid:%u csc2vers:%u flags:%x (compr %s)",
-        (unsigned)odh->length, (unsigned)odh->updateid, (unsigned)odh->csc2vers,
-        (unsigned)odh->flags, bdb_algo2compr(odh->flags & ODH_FLAG_COMPR_MASK));
+    snprintf(buf, buflen, "length:%u updid:%u csc2vers:%u flags:%x (compr %s)",
+             (unsigned)odh->length, (unsigned)odh->updateid,
+             (unsigned)odh->csc2vers, (unsigned)odh->flags,
+             bdb_algo2compr(odh->flags & ODH_FLAG_COMPR_MASK));
     return buf;
 }
 
@@ -200,7 +200,6 @@ static void write_odh(void *buf, const struct odh *odh, uint8_t flags)
 {
     uint32_t len = odh->length;
     uint16_t updid = odh->updateid;
-    const uint8_t *in;
     uint8_t *out = buf;
 
     /* byte 1: flags */
@@ -226,7 +225,6 @@ static void write_odh(void *buf, const struct odh *odh, uint8_t flags)
 static void read_odh(const void *buf, struct odh *odh)
 {
     const uint8_t *in = buf;
-    uint8_t *out;
     uint32_t len;
     uint16_t updid;
 
@@ -334,7 +332,7 @@ int bdb_pack(bdb_state_type *bdb_state, const struct odh *odh, void *to,
             to = mallocmem;
         }
 
-        alg = flags & ODH_FLAG_COMPR_MASK;
+        alg = (odh->length) ? flags & ODH_FLAG_COMPR_MASK : BDB_COMPRESS_NONE;
 
         switch (alg) {
         case BDB_COMPRESS_ZLIB: {
@@ -478,7 +476,7 @@ int bdb_pack(bdb_state_type *bdb_state, const struct odh *odh, void *to,
 static int bdb_unpack_updateid(bdb_state_type *bdb_state, const void *from,
                                size_t fromlen, void *to, size_t tolen,
                                struct odh *odh, int updateid, void **freeptr,
-                               int verify_updateid)
+                               int verify_updateid, int force_odh)
 {
     void *mallocmem = NULL;
     const int ver_bytes = 2;
@@ -641,13 +639,20 @@ int bdb_unpack(bdb_state_type *bdb_state, const void *from, size_t fromlen,
                void *to, size_t tolen, struct odh *odh, void **freeptr)
 {
     return bdb_unpack_updateid(bdb_state, from, fromlen, to, tolen, odh, -1,
-                               freeptr, 1);
+                               freeptr, 1, 0);
+}
+
+int bdb_unpack_force_odh(bdb_state_type *bdb_state, const void *from,
+                         size_t fromlen, void *to, size_t tolen,
+                         struct odh *odh, void **freeptr)
+{
+    return bdb_unpack_updateid(bdb_state, from, fromlen, to, tolen, odh, -1,
+                               freeptr, 1, 1);
 }
 
 static int bdb_write_updateid(bdb_state_type *bdb_state, void *buf,
                               size_t buflen, int updateid)
 {
-    int rc;
     struct odh odh;
 
     if (!bdb_state->ondisk_header) {
@@ -671,10 +676,9 @@ static int bdb_write_updateid(bdb_state_type *bdb_state, void *buf,
     return 0;
 }
 
-static int bdb_retrieve_updateid(bdb_state_type *bdb_state, const void *from,
-                                 size_t fromlen)
+int bdb_retrieve_updateid(bdb_state_type *bdb_state, const void *from,
+                          size_t fromlen)
 {
-    int rc;
     struct odh odh_in;
 
     if (!bdb_state->ondisk_header) {
@@ -753,7 +757,7 @@ static int bdb_unpack_dbt_verify_updateid(bdb_state_type *bdb_state, DBT *data,
     fsnapf(stdout, data->data, data->size);
     */
     rc = bdb_unpack_updateid(bdb_state, data->data, data->size, NULL, 0, &odh,
-                             *updateid, &buf, verify_updateid);
+                             *updateid, &buf, verify_updateid, 0);
 
     if (rc == 0) {
         /*
@@ -801,7 +805,6 @@ int bdb_update_updateid(bdb_state_type *bdb_state, DBC *dbcp,
     DBT key, data;
     struct odh myodh;
     int rc, oldupdateid, newupdateid;
-    unsigned long long *genptr = NULL;
     char ondiskh[ODH_SIZE];
 
     /* fail if there are no ondisk headers */
@@ -1084,8 +1087,8 @@ static int bdb_get_unpack_int(bdb_state_type *bdb_state, DB *db, DB_TXN *tid,
     return rc;
 }
 
-int bdb_get_unpack(bdb_state_type *bdb_state, DB *db, DB_TXN *tid, DBT *key,
-                   DBT *data, uint8_t *ver, u_int32_t flags)
+int bdb_get_unpack(bdb_state_type *bdb_state, DB *db, DB_TXN *tid,
+                   DBT *key, DBT *data, uint8_t *ver, u_int32_t flags)
 {
     return bdb_get_unpack_int(bdb_state, db, tid, key, data, ver, flags, 1);
 }
@@ -1096,9 +1099,9 @@ int bdb_get_unpack_blob(bdb_state_type *bdb_state, DB *db, DB_TXN *tid,
     return bdb_get_unpack_int(bdb_state, db, tid, key, data, ver, flags, 0);
 }
 
-static int bdb_prepare_put_pack_updateid(bdb_state_type *bdb_state, int is_blob,
-                                         DBT *data, DBT *data2, int updateid,
-                                         void **freeptr, void *stackbuf)
+int bdb_prepare_put_pack_updateid(bdb_state_type *bdb_state, int is_blob,
+                                  DBT *data, DBT *data2, int updateid,
+                                  void **freeptr, void *stackbuf, int odhready)
 {
     struct odh odh;
 
@@ -1106,29 +1109,24 @@ static int bdb_prepare_put_pack_updateid(bdb_state_type *bdb_state, int is_blob,
 
     memcpy(data2, data, sizeof(DBT));
 
-    init_odh(bdb_state, &odh, data->data, data->size, is_blob);
+    if (odhready) {
+        /* If the record is preprocessed on a replicant, use it as is. */
+        assert(is_blob);
+        *freeptr = NULL;
+        rc = 0;
+    } else {
+        init_odh(bdb_state, &odh, data->data, data->size, is_blob);
 
-    if (updateid > 0) {
-        odh.updateid = updateid;
+        if (updateid > 0) {
+            odh.updateid = updateid;
+        }
+
+        rc = bdb_pack(bdb_state, &odh, stackbuf, odh.length + ODH_SIZE_RESERVE,
+                      &data2->data, &data2->size, freeptr);
     }
 
-    /*
-    char s[128];
-    printf("Prepare to pack %u bytes with ODH [%s] is_blob=%d compress=%d:\n",
-    data->size,
-          snodhf(s, sizeof(s), &odh), is_blob, bdb_state->compress);
-    fsnapf(stdout, data->data, data->size);
-    */
-    rc = bdb_pack(bdb_state, &odh, stackbuf, odh.length + ODH_SIZE_RESERVE,
-                  &data2->data, &data2->size, freeptr);
-
-    if (rc == 0) {
-        /*
-        printf("Packed into %u bytes:\n", data2->size);
-        fsnapf(stdout, data2->data, data2->size);
-        */
+    if (rc == 0)
         data2->ulen = data2->size;
-    }
     return rc;
 }
 
@@ -1141,7 +1139,6 @@ int bdb_put(bdb_state_type *bdb_state, DB *db, DB_TXN *tid, DBT *key, DBT *data,
             u_int32_t flags)
 {
     int rc, updateid = -1, ipu = ip_updates_enabled(bdb_state);
-    struct odh odh_in;
     unsigned long long *genptr = NULL;
 
     if (ipu && key->size >= 8) {
@@ -1181,18 +1178,12 @@ int bdb_put(bdb_state_type *bdb_state, DB *db, DB_TXN *tid, DBT *key, DBT *data,
 }
 
 int bdb_put_pack(bdb_state_type *bdb_state, int is_blob, DB *db, DB_TXN *tid,
-                 DBT *key, DBT *data, u_int32_t flags)
+                 DBT *key, DBT *data, u_int32_t flags, int odhready)
 {
     DBT data2;
     void *mallocmem;
     int rc, updateid = -1, ipu = ip_updates_enabled(bdb_state);
     unsigned long long *genptr = NULL;
-
-#if 0
-   printf("bdb_put_pack\n");
-   fsnapf(stdout, key->data, key->size);
-   sleep(1);
-#endif
 
     if (ipu && key->size >= 8) {
         genptr = (unsigned long long *)key->data;
@@ -1214,13 +1205,11 @@ int bdb_put_pack(bdb_state_type *bdb_state, int is_blob, DB *db, DB_TXN *tid,
 
     rc = bdb_prepare_put_pack_updateid(
         bdb_state, is_blob, data, &data2, updateid, &mallocmem,
-        ALLOC_STACKBUF(data->size + ODH_SIZE_RESERVE));
+        ALLOC_STACKBUF(data->size + ODH_SIZE_RESERVE), odhready);
 
     if (rc == 0) {
         rc = db->put(db, tid, key, &data2, flags);
-        if (mallocmem) {
-            free(mallocmem);
-        }
+        free(mallocmem);
     }
 
     if (ipu && updateid >= 0 && key->size >= 8) {
@@ -1267,7 +1256,7 @@ int bdb_cput_pack(bdb_state_type *bdb_state, int is_blob, DBC *dbcp, DBT *key,
 
     rc = bdb_prepare_put_pack_updateid(
         bdb_state, is_blob, data, &data2, updateid, &mallocmem,
-        ALLOC_STACKBUF(data->size + ODH_SIZE_RESERVE));
+        ALLOC_STACKBUF(data->size + ODH_SIZE_RESERVE), 0);
 
     if (rc == 0) {
         rc = dbcp->c_put(dbcp, key, &data2, flags);
@@ -1304,12 +1293,12 @@ void bdb_set_odh_options(bdb_state_type *bdb_state, int odh, int compression,
     bdb_state->compress_blobs = blob_compression;
 }
 
-int bdb_get_csc2_version(bdb_state_type *bdb_state)
+inline int bdb_get_csc2_version(bdb_state_type *bdb_state)
 {
     return bdb_state->version;
 }
 
-void bdb_set_csc2_version(bdb_state_type *bdb_state, uint8_t version)
+inline void bdb_set_csc2_version(bdb_state_type *bdb_state, uint8_t version)
 {
     if (bdb_state == NULL) {
         logmsg(LOGMSG_ERROR, "%s(NULL)!!\n", __func__);
@@ -1318,7 +1307,7 @@ void bdb_set_csc2_version(bdb_state_type *bdb_state, uint8_t version)
     bdb_state->version = version;
 }
 
-void bdb_set_instant_schema_change(bdb_state_type *bdb_state, int isc)
+inline void bdb_set_instant_schema_change(bdb_state_type *bdb_state, int isc)
 {
     if (bdb_state == NULL) {
         logmsg(LOGMSG_ERROR, "%s(NULL)!!\n", __func__);
@@ -1327,7 +1316,7 @@ void bdb_set_instant_schema_change(bdb_state_type *bdb_state, int isc)
     bdb_state->instant_schema_change = isc;
 }
 
-void bdb_set_inplace_updates(bdb_state_type *bdb_state, int ipu)
+inline void bdb_set_inplace_updates(bdb_state_type *bdb_state, int ipu)
 {
     if (bdb_state == NULL) {
         logmsg(LOGMSG_ERROR, "%s(NULL)!!\n", __func__);
@@ -1338,7 +1327,7 @@ void bdb_set_inplace_updates(bdb_state_type *bdb_state, int ipu)
     }
 }
 
-void bdb_set_datacopy_odh(bdb_state_type *bdb_state, int cdc)
+inline void bdb_set_datacopy_odh(bdb_state_type *bdb_state, int cdc)
 {
     if (bdb_state == NULL) {
         logmsg(LOGMSG_ERROR, "%s(NULL)!!\n", __func__);
@@ -1361,17 +1350,64 @@ int bdb_validate_compression_alg(int alg)
     return -1;
 }
 
-void bdb_get_compr_flags(bdb_state_type *bdb_state, int *odh, int *compr,
-                         int *blob_compr)
+inline void bdb_get_compr_flags(bdb_state_type *bdb_state, int *odh, int *compr,
+                                int *blob_compr)
 {
     *odh = bdb_state->ondisk_header;
     *compr = bdb_state->compress;
     *blob_compr = bdb_state->compress_blobs;
 }
 
-void bdb_set_fld_hints(bdb_state_type *bdb_state, uint16_t *hints)
+inline void bdb_set_fld_hints(bdb_state_type *bdb_state, uint16_t *hints)
 {
     if (bdb_state->fld_hints)
         free(bdb_state->fld_hints);
     bdb_state->fld_hints = hints;
+}
+
+inline void bdb_cleanup_fld_hints(bdb_state_type *bdb_state)
+{
+    if (bdb_state && bdb_state->fld_hints) {
+        free(bdb_state->fld_hints);
+        bdb_state->fld_hints = NULL;
+    }
+}
+
+int bdb_unpack_heap(bdb_state_type *bdb_state, void *in, size_t inlen,
+                    void **out, size_t *outlen, void **freeptr)
+{
+    struct odh odh;
+    int rc;
+
+    /* Force ODH in case that a schema change
+       is removing the ODH from the table. */
+    rc = bdb_unpack_force_odh(bdb_state, in, inlen, NULL, 0, &odh, freeptr);
+
+    if (rc != 0) {
+        *out = NULL;
+        free(*freeptr);
+    } else {
+        *outlen = odh.length;
+        *out = odh.recptr;
+    }
+
+    return rc;
+}
+
+int bdb_pack_heap(bdb_state_type *bdb_state, void *in, size_t inlen, void **out,
+                  size_t *outlen, void **freeptr)
+{
+    uint32_t recsz;
+    int rc;
+
+    if (!bdb_state->ondisk_header)
+        return -1;
+    struct odh odh;
+    init_odh(bdb_state, &odh, in, inlen, 1);
+    rc = bdb_pack(bdb_state, &odh, NULL, 0, out, &recsz, freeptr);
+    if (rc == 0)
+        *outlen = recsz;
+    else
+        free(*freeptr);
+    return rc;
 }

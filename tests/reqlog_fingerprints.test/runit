@@ -1,0 +1,42 @@
+#!/bin/sh
+bash -n "$0" | exit 1
+
+set -e
+dbnm=$1
+
+# Make sure we talk to the same host
+mach=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT comdb2_host()"`
+
+if [ "$mach" = "" ]; then
+   echo could not retrieve hostname >&2
+   exit 1
+fi
+
+# Setting long request threshold to 0 so we can easily get queries in longreqs.
+cdb2sql --host $mach $dbnm "EXEC PROCEDURE sys.cmd.send('reql longreqfile <stdout>')"
+cdb2sql --host $mach $dbnm "EXEC PROCEDURE sys.cmd.send('reql longrequest 0')"
+cdb2sql --host $mach $dbnm "EXEC PROCEDURE sys.cmd.send('reql longsqlrequest 0')"
+
+# Run queries
+cdb2sql --host $mach $dbnm "SELECT 1" &> sel1.out
+cdb2sql --host $mach $dbnm "SELECT 1+1" &> sel11.out
+
+logfile=
+if [ -n "$CLUSTER" ] ; then
+    logfile="$TESTDIR/logs/$dbnm.$mach.db"
+else
+    logfile="$TESTDIR/logs/$dbnm.db"
+fi
+
+sleep 1 # give time for .db file to flush
+
+# These change every time sqlite changes: just regenerate
+echo including $logfile
+cat $logfile
+
+grep 'ad69399b065510fec51aa4e5f74a0e2f' $logfile # SELECT 1
+grep 'b878c30d70b41ad83244a8831d066e55' $logfile # SELECT 1+1
+
+# Compare results with pre-calculated hashes
+echo "Passed."
+exit 0 

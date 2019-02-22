@@ -150,11 +150,11 @@ static unsigned dyntag_next_extra = 1;
 static void blobmem_init(void);
 
 #define LOCK_BLOB_MUTEX()                                                      \
-    pthread_mutex_lock(&blobmutex);                                            \
+    Pthread_mutex_lock(&blobmutex);                                            \
     comdb2bma_mark_locked(blobmem);
 #define UNLOCK_BLOB_MUTEX()                                                    \
     comdb2bma_mark_unlocked(blobmem);                                          \
-    pthread_mutex_unlock(&blobmutex);
+    Pthread_mutex_unlock(&blobmutex);
 
 void blob_print_stats(void)
 {
@@ -182,11 +182,7 @@ void blob_print_stats(void)
 
 int init_blob_cache(void)
 {
-    if (pthread_mutex_init(&blobmutex, NULL) != 0) {
-        logmsg(LOGMSG_ERROR, "init_blob_cache: cannot init mutex: %s\n",
-                strerror(errno));
-        return -1;
-    }
+    Pthread_mutex_init(&blobmutex, NULL);
 
     blobhash = hash_init(sizeof(cached_blob_key_t));
     if (!blobhash) {
@@ -220,7 +216,7 @@ static void free_cached_blob(cached_blob_t *blob)
  * Must call this under lock. */
 static void refresh_cached_blob(cached_blob_t *blob)
 {
-    blob->cache_time = time_epoch();
+    blob->cache_time = comdb2_time_epoch();
     if (bloblist.bot != blob) {
         listc_rfl(&bloblist, blob);
         listc_abl(&bloblist, blob);
@@ -319,7 +315,7 @@ void *cache_blob_data_int(struct ireq *iq, int rrn, unsigned long long genid,
         return blob_existing;
     }
 
-    blob->cache_time = time_epoch();
+    blob->cache_time = comdb2_time_epoch();
     blob->numblobs = numblobs;
     memcpy(blob->bloblens, bloblens, sizeof(size_t) * numblobs);
     memcpy(blob->bloboffs, bloboffs, sizeof(size_t) * numblobs);
@@ -362,7 +358,7 @@ err:
 void purge_old_cached_blobs(void)
 {
     if (gbl_blob_maxage > 0) {
-        int now = time_epoch();
+        int now = comdb2_time_epoch();
 
         LOCK_BLOB_MUTEX();
         // can't safely purge old blobs if there're threads blocking on malloc()
@@ -515,17 +511,17 @@ int toblobask(struct ireq *iq)
     cached_blob_key_t key;
     cached_blob_t *blob;
     char *schemaname;
-    int rc;
+    int rc = 0;
     int is_dynt = 0;
     char table[MAXTABLELEN + 1];
     char cachetag[MAXTAGLEN + 1]; /* as used in the cache */
 
     struct blobask_req req;
-    struct blobask_rsp rsp;
+    struct blobask_rsp rsp = {0};
 
     uint8_t *p_buf_out;
-    uint8_t *p_buf_out_rsp_start;
-    uint8_t *p_buf_out_rsp_blob_start;
+    uint8_t *p_buf_out_rsp_start = NULL;
+    uint8_t *p_buf_out_rsp_blob_start = NULL;
 
     /* get our own p_buf_out so that if we fail we don't touch iq's copy */
     p_buf_out = iq->p_buf_out;
@@ -577,7 +573,6 @@ int toblobask(struct ireq *iq)
 
     /* have read up to data */
     if (!strncasecmp((const char *)iq->p_buf_in, ".DYNT.", 6)) {
-        char tmp[6];
         is_dynt = 1;
         strncpy0(cachetag, ".DYNT.", sizeof(cachetag));
     } else {
@@ -1041,7 +1036,6 @@ int check_one_blob_consistency(struct ireq *iq, const char *table,
                                const char *tag, blob_status_t *b, void *record,
                                int blob_index, int cblob)
 {
-    int outrc = 0;
     struct schema *schema = find_tag_schema(table, tag);
     int isondisk = is_tag_ondisk_sc(schema);
 

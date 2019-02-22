@@ -34,7 +34,7 @@ fi
 cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate book"
 
 # Driver 
-driver=sirace
+driver=${TESTSBUILDDIR}/sirace
 
 i=0
 

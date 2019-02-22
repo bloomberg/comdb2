@@ -1,0 +1,12 @@
+(sleep(1)=1)
+[exec procedure sys.cmd.load('/home/mk/data/mohitdb1/agg.csv', 't1')] failed with rc -3 [sys.load(db,csv,tbl,seperator,h...]:2: No such file or directory
+(name='ab21cd', value='ef23sdss', time='k223')
+(name='absdcd', value='ee1fsdss', time='kss')
+(name='dfgjhk', value='efsdss', time='k23')
+(name='dh42bcd', value='efsfsdss', time='k42')
+(rows deleted=4)
+(name='k223', value='ab21cd', time='ef23sdss')
+(name='k23', value='dfgjhk', time='efsdss')
+(name='k42', value='dh42bcd', time='efsfsdss')
+(name='kss', value='absdcd', time='ee1fsdss')
+(name='time', value='name', time='value')

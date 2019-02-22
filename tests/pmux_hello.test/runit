@@ -1,0 +1,600 @@
+#!/usr/bin/env bash
+
+debug=1
+[[ "$debug" == 1 ]] && set -x
+
+export COMDB2_PMUX_PORT=19900
+export pmux_pid=0
+export start_iters=10
+export start_sleep=5
+export CDB2_CONFIG=./cdb2config.cfg
+export dbpidfile=./database.pid
+
+PMUXPORTSTART=22000
+PMUXPORTEND=22089
+
+if [[ -z "$stage" ]]; then
+    echo "Setting stage to 'default' (set 'stage' var to override)."
+    stage="default"
+fi
+
+
+failexit()
+{
+    echo "$1"
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "stat" ${COMDB2_PMUX_PORT} &> stat_failexit.out
+    kill -9 $pmux_pid
+    rm /tmp/pmux.${COMDB2_PMUX_PORT}
+    exit 1
+}
+
+test_rte()
+{
+    echo -e "rte\ngarbage\n" | nc -w 1 localhost ${COMDB2_PMUX_PORT}
+    echo -e "rte something\ngarbage\n" | nc -w 1 localhost ${COMDB2_PMUX_PORT}
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "rte" ${COMDB2_PMUX_PORT} &> rte.out
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "garbage" ${COMDB2_PMUX_PORT} &>> rte.out
+    cat <<EOF > rte.expected
+-1
+-1 unknown command, type 'help' for a brief usage description
+EOF
+
+    if ! diff rte.expected rte.out ; then
+        failexit "differing rte.expected rte.out"
+    fi
+}
+
+empty_used_list_crash()
+{
+    [[ "$debug" == 1 ]] && echo "STARTING ${FUNCNAME[0]}" && set -x
+    echo "del pmux" | nc -w 1 localhost ${COMDB2_PMUX_PORT}
+    echo "used" | nc -w 1 localhost ${COMDB2_PMUX_PORT}
+    sleep 1
+    kill -0 $pmux_pid
+    if [[ $? != 0 ]]; then
+        failexit "${FUNCNAME[0]} test failed: empty used list killed pmux"
+    fi
+}
+
+start_database()
+{
+    DBLRL=$1
+
+    jj=0
+
+    while [[ $jj -lt $start_iters ]]; do
+        ${COMDB2_EXE} ${DBNAME} --lrl $DBLRL &
+        dbpid=$!
+        echo $dbpid > $dbpidfile
+        sleep $start_sleep
+        kill -0 $dbpid
+        if [[ $? == 0 ]]; then
+            echo "Database started"
+            return 0
+        fi
+        let jj=jj+1
+    done
+    failexit "Couldn't start the database"
+}
+
+verify_hello_reuse()
+{
+    [[ "$debug" == 1 ]] && echo "STARTING ${FUNCNAME[0]}" && set -x
+    iters=20
+    start_timeout=30
+
+    # Create a db
+    DBDIR=$TESTDIR/$DBNAME
+    mkdir $DBDIR
+    mkdir -p $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2
+
+    # Create config file
+    echo "$DBNAME 0 localhost" > $CDB2_CONFIG
+    echo "comdb2_config:default_type=testsuite" >> $CDB2_CONFIG
+    echo "comdb2_config:portmuxport=$COMDB2_PMUX_PORT" >> $CDB2_CONFIG
+    echo "comdb2_config:allow_pmux_route:true" >> $CDB2_CONFIG
+
+    # Tweak lrl
+    DBLRL=$DBDIR/${DBNAME}.lrl
+    echo "portmux_port ${COMDB2_PMUX_PORT}" > $DBLRL
+    echo "portmux_bind_path /tmp/pmux.${COMDB2_PMUX_PORT} " >> $DBLRL
+    echo "dir $DBDIR " >> $DBLRL
+    df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> ${DBLRL}
+    ${COMDB2_EXE} $DBNAME --create --lrl $DBLRL
+
+    # Start the test
+    i=0
+    while [[ $i -lt $iters ]]; do
+        start_database $DBLRL
+        dbpid=$(cat $dbpidfile)
+
+        t=0
+        started=0
+        while [[ $t -lt $start_timeout ]] && [[ $started -eq 0 ]]; do
+            $CDB2SQL_EXE --cdb2cfg $CDB2_CONFIG $DBNAME default "select 1" >/dev/null 2>&1
+            if [[ $? == 0 ]]; then
+                started=1
+            else
+                started=0
+                sleep 1
+            fi
+            let t=t+1
+        done
+
+        # send rte and then garbage to verify pmux does not crash
+        echo -e "rte comdb2/replication/$DBNAME\ngarbage\n" | nc -w 1 localhost ${COMDB2_PMUX_PORT}
+
+        kill -0 $pmux_pid
+        if [[ $? != 0 ]]; then
+            failexit "${FUNCNAME[0]} rte test failed: empty used list killed pmux"
+        fi
+
+        kill -9 $dbpid
+
+        if [[ $started == 0 ]]; then
+            failexit "${FUNCNAME[0]} pmux hello-test failed on iteration $i"
+        fi
+        sleep 1
+
+        let i=i+1
+    done
+}
+
+test_basic_actions()
+{
+    cat <<EOF > help.expected
+active                  : list active connections
+del service             : forget port assignment for service
+exit                    : shutdown pmux (may be restarted by system)
+get [/echo] service     : discover port for service
+hello service           : keep active connection
+help                    : this help message
+range                   : print port range which this pmux can assign
+reg service             : obtain/discover port for new service
+rte                     : get route to instance service/port
+stat                    : dump some stats
+use service port        : set specific port registration for service
+used (or list)          : dump active port assignments
+EOF
+
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "help" ${COMDB2_PMUX_PORT} &> help.out
+    if ! diff help.expected help.out ; then
+        failexit "differing help.expected help.out"
+    fi
+
+    #----------
+    echo stat should show empty list
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "stat" ${COMDB2_PMUX_PORT} &> stat.out
+    cat <<EOF > stat.expected
+free ports: 90
+EOF
+
+    if ! diff stat.expected stat.out ; then
+        failexit "differing stat.expected stat.out: stat should be empty"
+    fi
+
+    name="comdb2/replication/dummynameforadatabase12345678901234567890"
+
+    #----------
+    echo getting a non existent entry
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT} &> get.out
+    echo "-1" > get.expected
+    if ! diff get.expected get.out ; then
+        failexit "differing get.expected get.out"
+    fi
+
+
+    #----------
+    echo register name first time
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "reg $name" ${COMDB2_PMUX_PORT} &> reg.out
+    echo $PMUXPORTSTART > reg.expected
+    if ! diff reg.expected reg.out ; then
+        failexit "differing reg.expected reg.out"
+    fi
+
+    #----------
+    echo make sure name has port $PMUXPORTSTART
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT} &> get.out
+    echo $PMUXPORTSTART > get.expected
+    if ! diff get.expected get.out ; then
+        failexit "differing get.expected get.out"
+    fi
+
+    #----------
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "stat" ${COMDB2_PMUX_PORT} &> stat2.out
+    cat <<EOF > stat2.expected
+free ports: 89
+$name -> $PMUXPORTSTART
+EOF
+    if ! diff stat2.expected stat2.out ; then
+        failexit "differing stat2.expected stat2.out"
+    fi
+
+    #----------
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "del $name" ${COMDB2_PMUX_PORT} &> del.out
+    cat <<EOF > del.expected
+0
+EOF
+    if ! diff del.expected del.out ; then
+        failexit "differing del.expected del.out"
+    fi
+
+    #----------
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "stat" ${COMDB2_PMUX_PORT} &> stat.out
+    if ! diff stat.expected stat.out ; then
+        failexit "differing stat.expected stat.out: stat should be empty"
+    fi
+
+    #---------- 
+    echo register name again
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "reg $name" ${COMDB2_PMUX_PORT} &> reg.out
+    echo $PMUXPORTSTART > reg.expected
+    if ! diff reg.expected reg.out ; then
+        failexit "differing reg.expected reg.out"
+    fi
+
+
+    #----------
+    echo use a port outside of range of pmux, should not fail and clear previous entry
+    echo NOTE: port $((PMUXPORTSTART-1)) is OUT OF THE RANGE this pmux is allowed to assign
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "use $name $((PMUXPORTSTART-1))" ${COMDB2_PMUX_PORT} &> use.out
+    echo "0" > use.expected
+    if ! diff use.expected use.out ; then
+        failexit "differing use.expected use.out"
+    fi
+
+    #----------
+    echo out of range port should not change the num of free ports
+    cat <<EOF > stat5.expected
+free ports: 90
+$name -> $((PMUXPORTSTART-1))
+EOF
+
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "stat" ${COMDB2_PMUX_PORT} &> stat.out
+    if ! diff stat5.expected stat.out ; then
+        failexit "differing stat5.expected stat.out: stat should contain port"
+    fi
+
+    #----------
+    echo make sure name has port $((PMUXPORTSTART-1))
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT} &> get.out
+    echo $((PMUXPORTSTART-1)) > get.expected
+    if ! diff get.expected get.out ; then
+        failexit "differing get.expected get.out"
+    fi
+
+    #---------- 
+    echo register name should return the same out of range port
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "reg $name" ${COMDB2_PMUX_PORT} &> reg.out
+    echo $((PMUXPORTSTART-1)) > reg.expected
+    if ! diff reg.expected reg.out ; then
+        failexit "differing reg.expected reg.out"
+    fi
+
+    #----------
+    echo deleting the out of range port
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "del $name" ${COMDB2_PMUX_PORT} &> del.out
+    if ! diff del.expected del.out ; then
+        failexit "differing del.expected del.out"
+    fi
+
+    #----------
+    echo stat should show that list is empty, and all ports are avail
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "stat" ${COMDB2_PMUX_PORT} &> stat.out
+    if ! diff stat.expected stat.out ; then
+        failexit "differing stat.expected stat.out: stat should be empty"
+    fi
+
+    #----------
+    echo deleting a service which has no entry should fail with -1
+    echo "-1" > del2.expected
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "del $name" ${COMDB2_PMUX_PORT} &> del.out
+    if ! diff del2.expected del.out ; then
+        failexit "differing del2.expected del.out"
+    fi
+
+
+    #---------- 
+    echo register name again -- should get $PMUXPORTSTART
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "reg $name" ${COMDB2_PMUX_PORT} &> reg.out
+    echo $PMUXPORTSTART > reg.expected
+    if ! diff reg.expected reg.out ; then
+        failexit "differing reg.expected reg.out"
+    fi
+
+    #---------- 
+    echo make sure $name has port $PMUXPORTSTART
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT} &> get.out
+    echo $PMUXPORTSTART > get.expected
+    if ! diff get.expected get.out ; then
+        failexit "differing get.expected get.out"
+    fi
+
+
+    #---------- 
+    echo this is in use by $name so use of this port will override that
+    name2="comdb2/replication/another_dummy_name"
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "use $name2 $PMUXPORTSTART" ${COMDB2_PMUX_PORT} &> use.out
+    echo "0" > use.expected
+    if ! diff use.expected use.out ; then
+        failexit "differing use.expected use.out"
+    fi
+
+
+    #---------- 
+    echo make sure $name2 has port $PMUXPORTSTART
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name2" ${COMDB2_PMUX_PORT} &> get.out
+    echo $PMUXPORTSTART > get.expected
+    if ! diff get.expected get.out ; then
+        failexit "differing get.expected get.out"
+    fi
+
+    #---------- 
+    echo make sure $name does not have a port assigned
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT} &> get.out
+    echo "-1" > get.expected
+    if ! diff get.expected get.out ; then
+        failexit "differing get.expected get.out"
+    fi
+
+
+
+    #----------
+    echo $name should now get next port: start+1
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "reg $name" ${COMDB2_PMUX_PORT} &> use.out
+    echo $((PMUXPORTSTART+1)) > use.expected
+    if ! diff use.expected use.out ; then
+        failexit "differing use.expected use.out"
+    fi
+
+    #----------
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT} &> get.out
+    echo $((PMUXPORTSTART+1)) > get.expected
+    if ! diff get.expected get.out ; then
+        failexit "differing get.expected get.out"
+    fi
+
+
+    #---------- 
+    echo last port in range $PMUXPORTEND is valid to use
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "use $name $PMUXPORTEND" ${COMDB2_PMUX_PORT} &> use.out
+    echo 0 > use.expected
+    if ! diff use.expected use.out ; then
+        failexit "differing use.expected use.out"
+    fi
+
+    #----------
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT} &> get.out
+    echo $PMUXPORTEND > get.expected
+    if ! diff get.expected get.out ; then
+        failexit "differing get.expected get.out"
+    fi
+
+
+    #----------
+    echo deleting name2 at $PMUXPORTSTART
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "del $name2" ${COMDB2_PMUX_PORT} &> del.out
+    if ! diff del.expected del.out ; then
+        failexit "differing del.expected del.out"
+    fi
+
+
+    #----------
+    echo only one port now registered
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "stat" ${COMDB2_PMUX_PORT} &> stat3.out
+    cat <<EOF > stat3.expected
+free ports: 89
+$name -> $PMUXPORTEND
+EOF
+    if ! diff stat3.expected stat3.out ; then
+        failexit "differing stat3.expected stat3.out"
+    fi
+
+
+    #----------
+    echo what will be next port? next available is $PMUXPORTSTART
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "reg $name2" ${COMDB2_PMUX_PORT} &> use.out
+    echo $PMUXPORTSTART > use.expected
+    if ! diff use.expected use.out ; then
+        failexit "differing use.expected use.out"
+    fi
+
+    #----------
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name2" ${COMDB2_PMUX_PORT} &> get.out
+    echo $PMUXPORTSTART > get.expected
+    if ! diff get.expected get.out ; then
+        failexit "differing get.expected get.out"
+    fi
+
+    #----------
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "stat" ${COMDB2_PMUX_PORT} &> stat4.out
+    cat <<EOF > stat4.expected
+free ports: 88
+$name2 -> $PMUXPORTSTART
+$name -> $PMUXPORTEND
+EOF
+    if ! diff stat4.expected stat4.out ; then
+        failexit "differing stat4.expected stat4.out"
+    fi
+
+}
+
+test_comdb2_without_pmux()
+{
+    echo start comdb2 without pmux running on designated port
+    [[ "$debug" == 1 ]] && echo "STARTING ${FUNCNAME[0]}" && set -x
+    start_timeout=30
+
+    # Create a db
+    DBDIR=$TESTDIR/$DBNAME
+    mkdir $DBDIR
+    mkdir -p $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2
+
+    NONEXISTENTPMUXPORT=49999
+    # Create config file
+    echo "$DBNAME 0 localhost" > $CDB2_CONFIG
+    echo "comdb2_config:default_type=testsuite" >> $CDB2_CONFIG
+    echo "comdb2_config:portmuxport=$NONEXISTENTPMUXPORT" >> $CDB2_CONFIG
+    #echo "comdb2_config:allow_pmux_route:true" >> $CDB2_CONFIG #this makes cdb2sql unable to connect if pmux is down
+
+    # Tweak lrl
+    DBLRL=$DBDIR/${DBNAME}.lrl
+    echo "portmux_port ${NONEXISTENTPMUXPORT}" > $DBLRL
+    echo "portmux_bind_path /tmp/pmux.${NONEXISTENTPMUXPORT} " >> $DBLRL
+    echo "port localhost $((PMUXPORTSTART-1))" >> $DBLRL
+    #this also stops checking on pmux returned port: echo "net_portmux_register_interval 0" >> $DBLRL
+    echo "dir $DBDIR " >> $DBLRL
+    df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> ${DBLRL}
+    ${COMDB2_EXE} $DBNAME --create --lrl $DBLRL
+
+    # Start the test
+
+    ${COMDB2_EXE} ${DBNAME} --lrl $DBLRL &
+    dbpid=$!
+    sleep $start_sleep
+
+    t=0
+    started=0
+    while [[ $t -lt $start_timeout ]] && [[ $started -eq 0 ]] ; do
+        $CDB2SQL_EXE -v --cdb2cfg $CDB2_CONFIG $DBNAME --host localhost:$((PMUXPORTSTART-1)) "select 1" > sel.out 2>&1
+        if [[ $? == 0 ]]; then
+            started=1
+        else
+            started=0
+            sleep 1
+        fi
+        let t=t+1
+    done
+
+    kill -9 $dbpid
+
+    if [ $started -eq 0 ] ; then
+        failexit 'db failed to start without pmux, look at sel.out'
+    fi
+    echo done with test_comdb2_without_pmux
+}
+
+
+test_comdb2_with_port()
+{
+    echo start comdb2 with_port
+    [[ "$debug" == 1 ]] && echo "STARTING ${FUNCNAME[0]}" && set -x
+    start_timeout=30
+
+    # Create a db
+    DBDIR=$TESTDIR/$DBNAME
+    mkdir $DBDIR
+    mkdir -p $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2
+
+    # Create config file
+    echo "$DBNAME 0 localhost" > $CDB2_CONFIG
+    echo "comdb2_config:default_type=testsuite" >> $CDB2_CONFIG
+    echo "comdb2_config:portmuxport=$COMDB2_PMUX_PORT" >> $CDB2_CONFIG
+    #echo "comdb2_config:allow_pmux_route:true" >> $CDB2_CONFIG #this makes cdb2sql unable to connect if pmux is down
+
+    # Tweak lrl
+    DBLRL=$DBDIR/${DBNAME}.lrl
+    MYPORT=$1
+    echo "portmux_port ${COMDB2_PMUX_PORT}" > $DBLRL
+    echo "portmux_bind_path /tmp/pmux.${COMDB2_PMUX_PORT} " >> $DBLRL
+    echo "port localhost $MYPORT" >> $DBLRL
+    echo "net_portmux_register_interval 1" >> $DBLRL
+    echo "dir $DBDIR " >> $DBLRL
+
+    df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> ${DBLRL}
+    ${COMDB2_EXE} $DBNAME --create --lrl $DBLRL
+
+    # Start the test
+
+    ${COMDB2_EXE} ${DBNAME} --lrl $DBLRL &
+    dbpid=$!
+    sleep $start_sleep
+
+    t=0
+    started=0
+    while [[ $t -lt $start_timeout ]] && [[ $started -eq 0 ]] ; do
+        $CDB2SQL_EXE -v --cdb2cfg $CDB2_CONFIG $DBNAME --host localhost:$MYPORT "select 1" > sel.out 2>&1
+        if [[ $? == 0 ]]; then
+            started=1
+        else
+            started=0
+            sleep 1
+        fi
+        let t=t+1
+    done
+    sleep 2
+    $CDB2SQL_EXE -v --cdb2cfg $CDB2_CONFIG $DBNAME default "select 1" > sel.out 2>&1
+
+    sleep 2
+    kill -0 $dbpid
+    if [[ $? != 0 ]]; then
+        failexit "${FUNCNAME[0]} test failed: db not up"
+    fi
+
+    kill -9 $dbpid
+
+    if [ $started -eq 0 ] ; then
+        failexit 'db failed to start without pmux, look at sel.out'
+    fi
+    echo done with test_comdb2_with_port
+}
+
+
+runtest()
+{
+    [[ "$debug" == 1 ]] && echo "STARTING ${FUNCNAME[0]}" && set -x
+
+    echo Send exit in case previous pmux still running
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "exit" ${COMDB2_PMUX_PORT}
+
+    test_comdb2_without_pmux
+
+    echo Start pmux
+    ${PMUX_EXE} -n -r $PMUXPORTSTART:$PMUXPORTEND -f -p ${COMDB2_PMUX_PORT} -b /tmp/pmux.${COMDB2_PMUX_PORT} &
+    pmux_pid=$!
+
+    sleep 2
+
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "stat" ${COMDB2_PMUX_PORT}
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "range" ${COMDB2_PMUX_PORT}
+
+    echo start comdb2 and request a port that is in pmux range
+    test_comdb2_with_port $((PMUXPORTEND-1))
+    local name="comdb2/replication/$DBNAME"
+    local locport=`${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT}`
+    if [ $((PMUXPORTEND-1)) != $locport ] ; then
+        failexit "expected $((PMUXPORTEND-1)) but got $locport"
+    fi
+
+    echo start comdb2 and request a port that is not on pmux range
+    test_comdb2_with_port $((PMUXPORTSTART-1))
+    locport=`${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT}`
+    if [ $((PMUXPORTSTART-1)) != $locport ] ; then
+        failexit "expected $((PMUXPORTSTART-1)) but got $locport"
+    fi
+
+    echo delete svc $name
+    ${TESTSROOTDIR}/tools/send_msg_port.sh "del $name" ${COMDB2_PMUX_PORT} &> get.out
+
+    sleep 2
+    test_rte
+    test_basic_actions
+
+    empty_used_list_crash
+    verify_hello_reuse
+
+    kill -9 $pmux_pid
+    rm /tmp/pmux.${COMDB2_PMUX_PORT}
+}
+
+runtest
+
+
+#test is successful so we can cleanup
+if [ "$CLEANUPDBDIR" != "0" ] ; then
+    rm -rf $DBDIR
+    rm -f ${DBDIR} ${TESTDIR}/var/log/cdb2/${DBNAME}.* ${TESTDIR}/tmp/${DBNAME}.* ${TMPDIR}/cdb2/${DBNAME}.*
+fi
+
+echo "Success"
+exit 0

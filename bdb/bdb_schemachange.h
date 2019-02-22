@@ -26,7 +26,7 @@ extern volatile int gbl_views_gen;
 typedef enum scdone {
     alter,
     fastinit,
-    add = fastinit, /* but, get_dbtable_by_name == NULL */
+    add = fastinit,
     drop,
     bulkimport,
     setcompr,
@@ -45,6 +45,7 @@ typedef enum scdone {
     lua_sfunc,
     lua_afunc,
     rename_table,
+    change_stripe
 } scdone_t;
 
 int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,

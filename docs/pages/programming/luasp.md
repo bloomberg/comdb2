@@ -993,7 +993,7 @@ rc = db:commit()
 
 Description:
 
-This method commits a transaction that was started inside the same stored procedure with the db:begin method.  It is an error to attempt to commit any transaction not begun in that manner. db:sqlerror() should give the failure message on commit.
+This method commits a transaction that was started inside the same stored procedure with the db:begin method.  It is an error to attempt to commit any transaction not begun in that manner. db:error() should give the failure message on commit.
 
 Return Values:
 
@@ -1223,9 +1223,9 @@ This stored procedure will output:
 
 ## Error information
 
-### db:sqlerror()
+### db:error()
 ```
-errstr = db:sqlerror()
+errstr = db:error()
 ```
 
 Obtain error string if any. Error may have been produced by running SQL or by other SP operations.
@@ -1478,7 +1478,14 @@ sp2
 
 ## SQL Lua Functions
 
-Custom SQL functions can be implemented as stored procedures. Two categories of functions can be defined:
+Custom SQL functions can be implemented as stored procedures.
+
+Couple of limitations when using stored procedures as lua functions:
+
+1. Lua functions cannot start threads.
+2. Lua functions cannot explicitly control transactions (by calling `db:begin`, `db:commit` and `db:rollback`).
+
+Two categories of functions can be defined:
 
 ### Scalar function
 

@@ -3,7 +3,7 @@
 #include <cdb2api.h>
 #include <time.h>
 #include <errno.h>
-#include <getopt.h>
+#include <unistd.h>
 
 static char *argv0=NULL;
 static char *dbname=NULL;
@@ -26,23 +26,18 @@ void usage(FILE *f)
 
 int main(int argc, char *argv[])
 {
-    int err=0, opt, rc, ret, seq, type, doinsert=1, maxseq=100000, stime, etime;
-    long long updcnt, *llupd;
-    char *chupd;
+    int err=0, opt, rc, ret, seq, maxseq=100000, stime, etime;
+    long long updcnt;
     char sql[1000];
     cdb2_hndl_tp *hndl = NULL;
     argv0=argv[0];
 
-    while ((opt = getopt(argc,argv,"d:i:p:m:Ieh"))!=EOF)
+    while ((opt = getopt(argc,argv,"d:i:p:m:eh"))!=EOF)
     {
         switch(opt)
         {
             case 'd':
                 dbname=optarg;
-                break;
-
-            case 'I':
-                doinsert=0;
                 break;
 
             case 'p':
@@ -183,7 +178,7 @@ int main(int argc, char *argv[])
 
         while( (ret = cdb2_next_record(hndl)) == CDB2_OK) {
             void *xx = cdb2_column_value(hndl, 0);
-            printf("COUNT IS %ld.\n", *(int*) xx);
+            printf("COUNT IS %d.\n", *(int*) xx);
         } 
 
 
@@ -208,6 +203,7 @@ int main(int argc, char *argv[])
             exit(1);
         }
         while((ret = cdb2_next_record(hndl)) == CDB2_OK);
+        */
 
         /* UPDATE */
         //const char * updstmt="UPDATE book SET high_water_sequence = @new_seq WHERE id = @book_id AND high_water_sequence = @old_seq";

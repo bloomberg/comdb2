@@ -22,6 +22,7 @@ static const char revid[] = "$Id: mp_region.c,v 11.55 2003/06/30 17:20:19 bostic
 #include "dbinc/db_shash.h"
 #include "dbinc/mp.h"
 
+
 static int __mpool_init __P((DB_ENV *, DB_MPOOL *, int, int));
 #ifdef HAVE_MUTEX_SYSTEM_RESOURCES
 static size_t __mpool_region_maint __P((REGINFO *));
@@ -270,7 +271,7 @@ __mpool_init(dbenv, dbmp, reginfo_off, htab_buckets)
 			return (ret);
 		SH_TAILQ_INIT(&htab[i].hash_bucket);
 		htab[i].hash_priority = 0;
-		atomic_init(&htab[i].hash_page_dirty, 0);
+		htab[i].hash_page_dirty = 0;
 	}
 	mp->htab_buckets = mp->stat.st_hash_buckets = htab_buckets;
 

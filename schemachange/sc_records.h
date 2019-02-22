@@ -17,6 +17,11 @@
 #ifndef INCLUDE_SC_RECORDS_H
 #define INCLUDE_SC_RECORDS_H
 
+#include <build/db.h>
+#include <bdb/bdb_int.h>
+
+extern int gbl_logical_live_sc;
+
 struct common_members {
     int64_t ndeadlocks;
     int64_t nlockwaits;
@@ -24,6 +29,7 @@ struct common_members {
     int thrcount;                // number of threads currently available
     int maxthreads;              // maximum number of SC threads allowed
     int is_decrease_thrds; // is feature on to backoff and decrease threads
+    int total_lasttime;    // last time we computed total stats
 };
 
 /* for passing state data to schema change threads/functions */
@@ -32,6 +38,11 @@ struct convert_record_data {
     int isThread;
     struct schema_change_type *s;
     void *dta_buf;
+    void *old_dta_buf;
+    void *unpack_dta_buf;
+    void *unpack_old_dta_buf;
+    void *blb_buf;
+    void *old_blb_buf;
     tran_type *trans;
     enum convert_scan_mode scanmode;
     int live, lastrrn, lasttime, outrc;
@@ -54,8 +65,18 @@ struct convert_record_data {
     int num_records_per_trans;
     int num_retry_errors;
     int *tagmap; // mapping of fields from -> to
+    /* all the data objects point to the same single cmembers object */
     struct common_members *cmembers;
     unsigned int write_count; // saved write counter to this tbl
+    DB_LSN start_lsn;
+    hash_t *blob_hash;
+    struct odh odh;
+    struct odh oldodh;
+    DB_LSN cv_wait_lsn; /* for logical_livesc, wait for redo thread to catup at
+                           this LSN if we get constraint violations when
+                           converting the records */
+    unsigned long long cv_genid; /* the genid of the record that we get
+                                    constraint violation on */
 };
 
 int convert_all_records(struct dbtable *from, struct dbtable *to,
@@ -72,4 +93,6 @@ void convert_record_data_cleanup(struct convert_record_data *data);
 int init_sc_genids(struct dbtable *db, struct schema_change_type *s);
 
 void live_sc_enter_exclusive_all(bdb_state_type *, tran_type *);
+
+void *live_sc_logical_redo_thd(struct convert_record_data *data);
 #endif

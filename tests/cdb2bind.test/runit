@@ -16,7 +16,7 @@ if [[ -z "$dbnm" ]]; then
 fi
 
 # Driver 
-driver=cdb2bind
+driver=${TESTSBUILDDIR}/cdb2bind
 
 # Run tasks
 $driver $dbnm

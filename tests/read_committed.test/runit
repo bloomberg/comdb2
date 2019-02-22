@@ -31,8 +31,8 @@ function run_test
         cmd="cdb2sql -f ${i} ${CDB2_OPTIONS} $dbname default > ${i}.res"
         echo $cmd
         eval $cmd
-        if ! `diff ${i}.out ${i}.res > /dev/null`; then
-            echo "${i}.out ${i}.res differ..."
+        if ! `diff ${i}.exp ${i}.res > /dev/null`; then
+            echo "${i}.exp ${i}.res differ..."
             echo "Test FAILED"
             exit 1
         fi
@@ -60,6 +60,12 @@ cdb2sql ${CDB2_OPTIONS} $dbname default "create table t3  { `cat t1.csc2 ` }"
 
 cdb2sql ${CDB2_OPTIONS} $dbname default "drop table t2"
 cdb2sql ${CDB2_OPTIONS} $dbname default "create table t2  { `cat t2.csc2 ` }"
+
+cdb2sql ${CDB2_OPTIONS} $dbname default "drop table t4"
+cdb2sql ${CDB2_OPTIONS} $dbname default "create table t4  { `cat t4.csc2 ` }"
+
+cdb2sql ${CDB2_OPTIONS} $dbname default "drop table t5"
+cdb2sql ${CDB2_OPTIONS} $dbname default "create table t5  { `cat t5.csc2 ` }"
 
 run_test
 

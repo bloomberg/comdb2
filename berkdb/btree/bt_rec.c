@@ -28,6 +28,7 @@ static const char revid[] = "$Id: bt_rec.c,v 11.64 2003/09/13 18:48:58 bostic Ex
 
 #include <stdlib.h>
 #include <logmsg.h>
+#include <locks_wrap.h>
 
 #define	IS_BTREE_PAGE(pagep)						\
 	(TYPE(pagep) == P_IBTREE ||					\
@@ -59,18 +60,17 @@ __bam_split_recover(dbenv, dbtp, lsnp, op, info)
 {
 	__bam_split_args *argp;
 	DB *file_dbp;
-	DB *dbp;
+	DB *dbp = NULL;
 	DBC *dbc;
 	DB_MPOOLFILE *mpf;
 	PAGE *_lp, *lp, *np, *pp, *_rp, *rp, *sp;
 	db_pgno_t pgno, root_pgno;
 	u_int32_t ptype;
-	int cmp, l_update, p_update, r_update, rc, ret, ret_l, rootsplit, t_ret;
+	int cmp, l_update, p_update, r_update, rc, ret, ret_l, rootsplit = 0, t_ret;
 
 	DBT split_key;
 	PAGE *argp_lp = NULL;
 	BKEYDATA *tmp_bk;
-	int mutex_rc = 0;
 	unsigned int hh;
 	genid_hash *hash = NULL;
 	__genid_pgno *hashtbl = NULL;
@@ -88,10 +88,19 @@ __bam_split_recover(dbenv, dbtp, lsnp, op, info)
 	dbp = file_dbp->peer;
 
 
-	if (mpf && bdb_relink_pglogs(dbenv->app_private, mpf->fileid,
-            argp->left, PGNO_INVALID, argp->right, *lsnp) != 0) {
-		logmsg(LOGMSG_FATAL, "%s: failed relink pglogs\n", __func__);
-		abort();
+	if (mpf) {
+		if (argp->root_pgno != PGNO_INVALID) {
+			/* root split */
+			ret = bdb_relink_pglogs(dbenv->app_private, mpf->fileid,
+				argp->root_pgno, argp->left, argp->right, *lsnp);
+		} else {
+			ret = bdb_relink_pglogs(dbenv->app_private, mpf->fileid,
+				argp->left, argp->root_pgno, argp->right, *lsnp);
+		}
+		if (ret) {
+			logmsg(LOGMSG_FATAL, "%s: failed relink pglogs\n", __func__);
+			abort();
+		}
 	}
 
 
@@ -383,22 +392,13 @@ done:	*lsnp = argp->prev_lsn;
 				    genidcmp(hashtbl[hh].genid,
 					split_key.data) == 0) {
 					// This key (genid) exists in hash
-					mutex_rc =
-					    pthread_mutex_lock(&(hash->mutex));
-					if (mutex_rc != 0) {
-						logmsg(LOGMSG_ERROR, "__bam_page: Failed to lock (hash->mutex)\n");
-					}
+                    Pthread_mutex_lock(&(hash->mutex));
 					// update new page
 					genidsetzero(hashtbl[hh].genid);
 					hashtbl[hh].pgno = argp->right;
 					genidcpy(hashtbl[hh].genid,
 					    split_key.data);
-					mutex_rc =
-					    pthread_mutex_unlock(&(hash->
-						mutex));
-					if (mutex_rc != 0) {
-						logmsg(LOGMSG_ERROR, "__bam_page: Failed to unlock (hash->mutex)\n");
-					}
+                    Pthread_mutex_unlock(&(hash->mutex));
 				}
 			}
 		}
@@ -442,7 +442,7 @@ __bam_rsplit_recover(dbenv, dbtp, lsnp, op, info)
 {
 	__bam_rsplit_args *argp;
 	DB *file_dbp;
-	DB *dbp;
+	DB *dbp = NULL;
 	DBC *dbc;
 	DB_LSN copy_lsn;
 	DB_MPOOLFILE *mpf;
@@ -453,7 +453,6 @@ __bam_rsplit_recover(dbenv, dbtp, lsnp, op, info)
 
 	DBT split_key;
 	BKEYDATA *tmp_bk;
-	int mutex_rc = 0;
 	int add_to_hash = 0;
 	unsigned int hh;
 	genid_hash *hash = NULL;
@@ -468,7 +467,7 @@ __bam_rsplit_recover(dbenv, dbtp, lsnp, op, info)
 	dbp = file_dbp->peer;
 
 	if (mpf && bdb_relink_pglogs(dbenv->app_private, mpf->fileid,
-	    argp->pgno, argp->root_pgno, PGNO_INVALID, *lsnp) != 0) {
+		argp->pgno, argp->root_pgno, PGNO_INVALID, *lsnp) != 0) {
 		logmsg(LOGMSG_FATAL, "%s: failed relink pglogs\n", __func__);
 		abort();
 	}
@@ -566,11 +565,7 @@ done:	*lsnp = argp->prev_lsn;
 				    genidcmp(hashtbl[hh].genid,
 					split_key.data) == 0) {
 					// This key (genid) exists in hash
-					mutex_rc =
-					    pthread_mutex_lock(&(hash->mutex));
-					if (mutex_rc != 0) {
-						logmsg(LOGMSG_ERROR, "__bam_root: Failed to lock (hash->mutex)\n");
-					}
+                    Pthread_mutex_lock(&(hash->mutex));
 					if (add_to_hash) {
 						// update new page
 						genidsetzero(hashtbl[hh].genid);
@@ -583,12 +578,7 @@ done:	*lsnp = argp->prev_lsn;
 						genidsetzero(hashtbl[hh].genid);
 						hashtbl[hh].pgno = 0;
 					}
-					mutex_rc =
-					    pthread_mutex_unlock(&(hash->
-						mutex));
-					if (mutex_rc != 0) {
-						logmsg(LOGMSG_ERROR, "__bam_root: Failed to unlock (hash->mutex)\n");
-					}
+                    Pthread_mutex_unlock(&(hash->mutex));
 				}
 			}
 		}

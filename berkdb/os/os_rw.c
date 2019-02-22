@@ -54,6 +54,7 @@ static const char revid[] = "$Id: os_rw.c,v 11.30 2003/05/23 21:19:05 bostic Exp
 
 #include <poll.h>
 #include "logmsg.h"
+#include "locks_wrap.h"
 
 uint64_t bb_berkdb_fasttime(void);
 
@@ -89,24 +90,16 @@ free_iobuf(void *p)
 	free(b);
 }
 
-static void
+static inline void
 init_iobuf(void)
 {
-	int rc;
-
-	rc = pthread_key_create(&iobufkey, free_iobuf);
-	if (rc) {
-		logmsg(LOGMSG_FATAL, "can't create iobuf key %d %s\n", rc,
-		    strerror(errno));
-		abort();
-	}
+	Pthread_key_create(&iobufkey, free_iobuf);
 }
 
 static void *
 get_aligned_buffer(void *buf, size_t bufsz, int copy)
 {
 	struct iobuf *b;
-	uintptr_t addr = (uintptr_t) buf;
 
 	b = pthread_getspecific(iobufkey);
 	if (b == NULL) {
@@ -120,7 +113,7 @@ get_aligned_buffer(void *buf, size_t bufsz, int copy)
 		if (b->buf == NULL)
 			return NULL;
 #endif
-		pthread_setspecific(iobufkey, b);
+		Pthread_setspecific(iobufkey, b);
 	} else if (b->sz < bufsz) {
 		free(b->buf);
 		b->buf = NULL;
@@ -951,7 +944,7 @@ __os_physwrite(dbenv, fhp, addr, len, nwp)
 	size_t *nwp;
 {
 	size_t offset;
-	ssize_t nw;
+	ssize_t nw = 0;
 	int ret, retries;
 	u_int8_t *taddr;
 
@@ -965,23 +958,57 @@ __os_physwrite(dbenv, fhp, addr, len, nwp)
 		    cur_off <= sb.st_size);
 	}
 #endif
-
 	retries = 0;
-	for (taddr = addr, offset = 0; offset < len; taddr += nw, offset += nw)
-retry:		if ((nw = DB_GLOBAL(j_write) != NULL ?
+
+	int debug_enospc = dbenv->attr.debug_enospc_chance;
+	off_t off = 0;
+
+	for (taddr = addr, offset = 0; offset < len; taddr += nw, offset += nw) {
+		if (debug_enospc)
+			off = lseek(fhp->fd, (off_t) 0, SEEK_CUR);
+
+retry:
+		nw = DB_GLOBAL(j_write) != NULL ?
 			DB_GLOBAL(j_write)(fhp->fd, taddr, len - offset) :
-			F_ISSET(fhp,
-			    DB_FH_DIRECT) ? __berkdb_direct_write(fhp->fd,
-			    taddr, len - offset) : write(fhp->fd, taddr,
-			    len - offset))<0) {
+			F_ISSET(fhp, DB_FH_DIRECT) ? 
+			__berkdb_direct_write(fhp->fd, taddr, len - offset) : write(fhp->fd, taddr,
+					len - offset);
+		if (debug_enospc && off >= 0) {
+			int p = rand() % 100;
+
+			if (p < dbenv->attr.debug_enospc_chance && nw > 0) {
+				off_t rc = lseek(fhp->fd, off, SEEK_SET);
+				if (rc == off) {
+					nw = -1;
+					errno = ENOSPC;
+				}
+				else {
+					/* We got positioned into the limbo somewhere (how?)
+					 * so it's not safe to proceed. */
+					__db_err(dbenv, "lseek: fd %d off %lu, wanted %lu\n", fhp->fd,
+							rc, off);
+					return errno;
+				}
+			}
+		}
+		if (nw < 0) {
 			ret = __os_get_errno();
+			if (ret == ENOSPC) {
+				logmsg(LOGMSG_WARN, "%s write fd %d sz %d retry %d\n",
+						__func__, fhp->fd, (int) (len - offset), retries);
+				if (++retries < dbenv->attr.num_write_retries) {
+					poll(NULL, 0, 10);
+					goto retry;
+				}
+			}
 			if ((ret == EINTR || ret == EBUSY) &&
-			    ++retries < DB_RETRY)
+					++retries < dbenv->attr.num_write_retries)
 				goto retry;
 			__db_err(dbenv, "write: %p, %lu: %s",
-			    taddr, (u_long) len - offset, strerror(ret));
+					taddr, (u_long) len - offset, strerror(ret));
 			return (ret);
 		}
+	}
 	*nwp = len;
 	return (0);
 }
@@ -1041,7 +1068,7 @@ __berkdb_direct_pwritev(DB_ENV *dbenv,
 			}
 		}
 		if (nretries > 0) {
-			logmsg(LOGMSG_ERROR, "pwrite fd %d sz %d off %ld retry %d\n",
+			logmsg(LOGMSG_WARN, "pwrite fd %d sz %d off %ld retry %d\n",
 			    fd, (int)(nobufs * pagesize), offset, nretries);
 			poll(NULL, 0, 10);
 		}
@@ -1067,9 +1094,9 @@ __os_iov(dbenv, op, fhp, pgno, pagesize, bufs, nobufs, niop)
 	size_t pagesize, nobufs, *niop;
 	u_int8_t **bufs;
 {
-	int ret, i;
+	int ret = 0, i;
 	db_pgno_t c_pgno;
-	size_t single_niop, max_niop, max_bufs;
+	size_t single_niop, max_bufs;
 	struct timespec s, rem;
 	int rc;
 
@@ -1130,7 +1157,7 @@ __os_iov(dbenv, op, fhp, pgno, pagesize, bufs, nobufs, niop)
 	DB_ASSERT(F_ISSET(fhp, DB_FH_OPENED) &&
 	    fhp->fd != -1 && DB_GLOBAL(j_read) != NULL);
 
-	uint64_t x1, x2;
+	uint64_t x1 = 0, x2;
 
 	max_bufs = nobufs;
 	*niop = 0;
@@ -1267,6 +1294,31 @@ slow:
 	}
 
 	return (ret);
+}
+
+/*
+ * __os_truncate --
+ *	Truncate a file
+ *
+ * PUBLIC: int __os_truncate __P((DB_ENV *, DB_FH *, off_t offset));
+ */
+int
+__os_truncate(dbenv, fhp, offset)
+	DB_ENV *dbenv;
+	DB_FH *fhp;
+    off_t offset;
+{
+    int rc;
+	DB_ASSERT(F_ISSET(fhp, DB_FH_OPENED) && fhp->fd != -1);
+	MUTEX_THREAD_LOCK(dbenv, fhp->mutexp);
+    rc = ftruncate(fhp->fd, offset);
+	MUTEX_THREAD_UNLOCK(dbenv, fhp->mutexp);
+    if (rc == -1) {
+        logmsg(LOGMSG_ERROR, "ftruncate(%u) %d %s\n",
+                (unsigned int)offset, errno, strerror(errno));
+        return -1;
+    }
+    return rc;
 }
 
 #ifdef HAVE_FILESYSTEM_NOTZERO
@@ -1457,7 +1509,7 @@ static pthread_key_t berkdb_thread_stats_key;
 void
 bb_berkdb_thread_stats_init(void)
 {
-	pthread_key_create(&berkdb_thread_stats_key, free);
+	Pthread_key_create(&berkdb_thread_stats_key, free);
 	inited = 1;
 }
 
@@ -1472,7 +1524,7 @@ bb_berkdb_get_thread_stats(void)
 		p = pthread_getspecific(berkdb_thread_stats_key);
 		if (!p) {
 			p = calloc(1, sizeof(struct bb_berkdb_thread_stats));
-			pthread_setspecific(berkdb_thread_stats_key, p);
+			Pthread_setspecific(berkdb_thread_stats_key, p);
 		}
 		if (!p)
 			p = &junk;

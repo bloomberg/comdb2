@@ -18,6 +18,16 @@ fi
 nins=0
 
 
+if echo $DBNAME | grep "snapshotgenerated" ; then
+    lvl=$(cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select value from comdb2_tunables where name='sql_tranlevel_default'")
+    if [ "$lvl" != "SNAPSHOT ISOLATION" ] ; then
+       echo "FAILURE: DB is not running in snapshot isolation mode"
+       exit 1
+    fi
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default "@send get_newsi_status" 
+fi
+
+
 failexit()
 {
     echo "Failed $1"
@@ -26,27 +36,27 @@ failexit()
 
 assertcnt ()
 {
-    target=$1
-    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
+    local tbl=$1
+    local target=$2
+    local cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from $tbl")
     if [ $? -ne 0 ] ; then
         echo "assertcnt: select error"
     fi
 
     #echo "count is now $cnt"
     if [[ $cnt != $target ]] ; then
-        failexit "count is now $cnt but should be $target"
+        failexit "tbl $tbl count is now $cnt but should be $target"
     fi
 }
 
 assert_vers()
 {
-    tbl=$1
-    target=$2
-    newver=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select table_version('$tbl')")
+    local loc_tbl=$1
+    local target=$2
+    local newver=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select table_version('$loc_tbl')")
     if [[ $newver != $target ]] ; then
         failexit "newver is now $newver but should be $target"
     fi
-    tblver=$newver
 }
 
 assert_schema()
@@ -198,7 +208,7 @@ delete_records()
 assertres ()
 {
     if [ $# != 2 ] ; then 
-        failexit "res is $res, target is $target, one or more is blank"
+        failexit "number of parameters passed is $# but expecting 2"
     fi
     res=$1
     target=$2
@@ -219,6 +229,18 @@ res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select comdb2_dbname()"`
 assertres $res $dbnm
 cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
 
+# this tests connecting to 'local'
+for node in $cluster; do
+    if [ "$node" = "$HOSTNAME" ]; then
+        # if localhost is part of cluster, try local as cluster parameter
+        res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm local "select comdb2_host()"`
+        assertres $res $HOSTNAME
+        res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm @localhost "select comdb2_host()"`
+        assertres $res $HOSTNAME
+        break
+    fi
+done
+
 for node in $cluster ; do
     res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node "select comdb2_host()"`
     assertres $res $node
@@ -226,12 +248,25 @@ for node in $cluster ; do
 
     port=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node "select comdb2_port()"`
     echo "connect to db with direct port info"
-    res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm @$node:port=$port "select comdb2_dbname()"`
+    res=`cdb2sql --tabs $dbnm @$node:port=$port "select comdb2_dbname()"`
     assertres $res $dbnm
+
+    if [ ! -n $PMUXPORT ] ; then
+        # this should also work, if pmux is in standard port
+        res=`cdb2sql -v --tabs $dbnm @$node "select comdb2_dbname()"`
+        assertres $res $dbnm
+    fi
+
+    # as should this
+    res=`cdb2sql --tabs $dbnm --host $node:$port "select comdb2_dbname()"`
+    assertres $res $dbnm
+
+    #check for empty sql stmt
+    echo -e "newsql\n\x0\x0\x0\x1\x0\x0\x0\x0\x0\x0\x0\x0\x0\x0\x0\n\x0\x0\x0\x1\x0\x0\x0\x0\x0" | nc -w 1 $node $port
 
     echo "connect with wrong db name"
     set +e
-    cdb2sql --tabs ${CDB2_OPTIONS} badname @$node:port=$port "select comdb2_dbname()" &> out.txt
+    cdb2sql --tabs badname @$node:port=$port "select comdb2_dbname()" &> out.txt
     echo "[select comdb2_dbname()] failed with rc -1 DB name mismatch query:badname actual:$dbnm" > out.exp
     rc=$?
     set -e
@@ -244,7 +279,11 @@ for node in $cluster ; do
     fi
 done
 
+echo "core location:" 
+cat  /proc/sys/kernel/core_pattern
 
+#cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("debg 100")'
+#cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("ndebg 100")'
 
 echo "create, alter, drop table t2"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t2  { `cat alltypes.csc2 ` }"
@@ -252,9 +291,15 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t2  { `cat alltypes.csc2 ` }"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t2 "
 
 set +e
-cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t2 " &> badsel.txt
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t2 " &> baddrop.out
+echo "[drop table t2] failed with rc -3 no such table: t2" > baddrop.exp
+if ! diff baddrop.out baddrop.exp ; then
+    failexit "unexpected $nosuchtbl"
+fi
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t2 " &> badsel.out
 echo "[select * from t2] failed with rc -3 no such table: t2" > badsel.exp
-if ! diff badsel.txt badsel.exp ; then
+if ! diff badsel.out badsel.exp ; then
     failexit "Expected failure when selecting nonexistent table"
 fi
 
@@ -272,11 +317,52 @@ if ! diff  dupupd.txt dupupd.exp; then
     failexit "Expected failure when executing bad procedure"
 fi
 
+assertcnt t2 2
+
 echo "begin
 select count(*) from t1
 select count(*) from t2
 select count(*) from t2 where i = 1
-commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans.txt
+commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans1.txt
+
+# test transaction of diff sizes
+echo "begin
+commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans0.txt
+
+echo "begin
+insert into t2 values(3)
+commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans2.txt
+
+assertcnt t2 3
+
+echo "begin
+insert into t2 values(4)
+insert into t2 values(5)
+commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans3.txt
+
+assertcnt t2 5
+
+echo "begin
+insert into t2 values(6)
+insert into t2 values(7)
+insert into t2 values(8)
+commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans4.txt
+
+assertcnt t2 8
+
+# test rollback
+echo "begin
+insert into t2 values(9)
+rollback" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans5.txt
+
+assertcnt t2 8
+
+echo "begin
+insert into t2 values(9)
+insert into t2 values(10)
+rollback" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans5.txt
+
+assertcnt t2 8
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure nonexistent(4)" &> badproc.txt
 echo "[exec procedure nonexistent(4)] failed with rc -3 no such procedure: nonexistent ver:0" > badproc.exp
@@ -285,26 +371,83 @@ if ! diff badproc.txt badproc.exp ; then
 fi
 set -e
 
-INITNUMREC=100
 
-assert_vers t1 0
-assert_schema t1 alltypes.csc2
+# https://github.com/bloomberg/comdb2/issues/1080
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table if exists t3"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t3 (i int unique, j int)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t3 values(1, 1)"
+assertres "`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select * from t3 order by i'`" "1	1"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "update t3 set j = j+1 where i = 1"
+assertres "`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select * from t3 order by i'`" "1	2"
+echo "begin 
+insert into t3 values(2, 1)
+insert into t3 values(3, 1)
+commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default -
+assertres "`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select * from t3 order by i' | xargs echo `" "1 2 2 1 3 1"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t3"
 
-let NEWNUMREC=$((2*INITNUMREC))
-insert_records 1 $NEWNUMREC
-assertcnt $NEWNUMREC
 
-update_records 1 $NEWNUMREC
-assertcnt $NEWNUMREC
+#make sure insert with blob works
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table if exists t4"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t4 (i int unique, j blob(2))"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t4 values(1, x'aabbccdd')"
+assertres "`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select * from t4 order by i'`" "1	x'aabbccdd'"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "update t4 set j = x'aabbccee' where i = 1"
+assertres "`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select * from t4 order by i'`" "1	x'aabbccee'"
+echo "begin
+insert into t4 values(2, x'aaaaaaaa')
+insert into t4 values(3, x'bbbbbbbb')
+commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default -
+assertres "`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select * from t4 order by i' | xargs echo `" "1 xaabbccee 2 xaaaaaaaa 3 xbbbbbbbb"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t4"
 
-delete_records $((INITNUMREC+1)) $NEWNUMREC
-assertcnt $INITNUMREC
+
+# make sure inplace update works
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table if exists t5"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t5 (i int unique)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t5 values(1)"
+out=$(cdb2sql ${CDB2_OPTIONS} --tabs $dbnm default "select cast(rowid / 4294967296 as int) & 4043243520 from t5")
+if [[ "$out" != "0" ]]; then
+    failexit "Insert should have update id 0"
+fi
+cdb2sql ${CDB2_OPTIONS} $dbnm default "update t5 set i = 1"
+out=$(cdb2sql ${CDB2_OPTIONS} --tabs $dbnm default "select cast(rowid / 4294967296 as int) & 4043243520 from t5")
+if [[ "$out" == "0" ]]; then
+    failexit "Inplace update should update updateid to nonzero"
+fi
 
 
-echo "Now call task that uses cdb2api to ins/upd/del"
-${TESTSROOTDIR}/tools/cdb2api_caller $dbnm > cdb2api_caller.out
 
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select * from t1" > select_all.out
+
+test_t1() {
+	INITNUMREC=100
+
+#table t1 was added upon init of the DB from lrl.options
+	assert_vers t1 0
+	assert_schema t1 alltypes.csc2
+
+	let NEWNUMREC=$((2*INITNUMREC))
+	insert_records 1 $NEWNUMREC
+	assertcnt t1 $NEWNUMREC
+    do_verify
+
+	update_records 1 $NEWNUMREC
+	assertcnt t1 $NEWNUMREC
+    do_verify
+
+	delete_records $((INITNUMREC+1)) $NEWNUMREC
+	assertcnt t1 $INITNUMREC
+    do_verify
+
+
+	echo "Now call task that uses cdb2api to ins/upd/del"
+	${TESTSBUILDDIR}/cdb2api_caller $dbnm > cdb2api_caller.out
+    do_verify
+
+	cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select * from t1" > select_all.out
+}
+
+test_t1
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("sql hist")'
 

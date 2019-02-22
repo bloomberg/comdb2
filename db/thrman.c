@@ -105,33 +105,16 @@ static void thrman_destructor(void *param);
 
 void thrman_init(void)
 {
-    int rc;
-
-    rc = pthread_mutex_init(&mutex, NULL);
-    if (rc != 0) {
-        perror_errnum("thrman_init:pthread_mutex_init", rc);
-        exit(1);
-    }
-
-    rc = pthread_key_create(&thrman_key, thrman_destructor);
-    if (rc != 0) {
-        perror_errnum("thrman_init:pthread_key_create", rc);
-        exit(1);
-    }
-
-    rc = pthread_cond_init(&cond, NULL);
-    if (rc != 0) {
-        perror_errnum("thrman_init:pthread_cond_init", rc);
-        exit(1);
-    }
-
-    pthread_attr_init(&gbl_pthread_attr_detached);
+    Pthread_mutex_init(&mutex, NULL);
+    Pthread_key_create(&thrman_key, thrman_destructor);
+    Pthread_cond_init(&cond, NULL);
+    Pthread_attr_init(&gbl_pthread_attr_detached);
     pthread_attr_setdetachstate(&gbl_pthread_attr_detached,
                                 PTHREAD_CREATE_DETACHED);
     /* 4 meg stack - there should be a better solution for this..
        some huge sql queries (it's happened) blow out stack during the parsing
        phase. */
-    rc = pthread_attr_setstacksize(&gbl_pthread_attr_detached, 4 * 1024 * 1024);
+    Pthread_attr_setstacksize(&gbl_pthread_attr_detached, 4 * 1024 * 1024);
 
     listc_init(&thr_list, offsetof(struct thr_handle, linkv));
 }
@@ -142,8 +125,6 @@ void thrman_init(void)
 struct thr_handle *thrman_register(enum thrtype type)
 {
     struct thr_handle *thr;
-    int rc;
-
     if (type < 0 || type >= THRTYPE_MAX) {
         logmsg(LOGMSG_ERROR, "thrman_register: type=%d out of range\n", type);
         return NULL;
@@ -168,23 +149,16 @@ struct thr_handle *thrman_register(enum thrtype type)
     thr->type = type;
     thr->fd = -1;
 
-    rc = pthread_setspecific(thrman_key, thr);
-    if (rc != 0) {
-        char buf[1024];
-        logmsg(LOGMSG_FATAL, "thrman_register(%s): pthread_setspecific: %d %s\n",
-                thrman_type2a(type), rc, strerror(rc));
-        abort();
-    }
-
-    pthread_mutex_lock(&mutex);
+    Pthread_setspecific(thrman_key, thr);
+    Pthread_mutex_lock(&mutex);
     listc_abl(&thr_list, thr);
     thr_type_counts[type]++;
     if (gbl_thrman_trace) {
         char buf[1024];
        logmsg(LOGMSG_ERROR, "thrman_register: %s\n", thrman_describe(thr, buf, sizeof(buf)));
     }
-    pthread_cond_broadcast(&cond);
-    pthread_mutex_unlock(&mutex);
+    Pthread_cond_broadcast(&cond);
+    Pthread_mutex_unlock(&mutex);
 
     return thr;
 }
@@ -212,7 +186,7 @@ void thrman_change_type(struct thr_handle *thr, enum thrtype newtype)
 
     oldtype = thr->type;
 
-    pthread_mutex_lock(&mutex);
+    Pthread_mutex_lock(&mutex);
     thr_type_counts[thr->type]--;
     thr->type = newtype;
     thr_type_counts[thr->type]++;
@@ -221,8 +195,8 @@ void thrman_change_type(struct thr_handle *thr, enum thrtype newtype)
        logmsg(LOGMSG_USER, "thrman_change_type: from %s -> %s\n", thrman_type2a(oldtype),
                thrman_describe(thr, buf, sizeof(buf)));
     }
-    pthread_cond_broadcast(&cond);
-    pthread_mutex_unlock(&mutex);
+    Pthread_cond_broadcast(&cond);
+    Pthread_mutex_unlock(&mutex);
 }
 
 /* Called from the thrman_key destructor when the thread exits, or manually
@@ -230,14 +204,13 @@ void thrman_change_type(struct thr_handle *thr, enum thrtype newtype)
 static void thrman_destructor(void *param)
 {
     struct thr_handle *thr = param;
-    int rc;
 
     if (!thr) {
         logmsg(LOGMSG_ERROR, "thrman_destructor: thr==NULL\n");
         return;
     }
 
-    pthread_mutex_lock(&mutex);
+    Pthread_mutex_lock(&mutex);
     listc_rfl(&thr_list, thr);
     thr_type_counts[thr->type]--;
     if (gbl_thrman_trace) {
@@ -245,8 +218,8 @@ static void thrman_destructor(void *param)
         logmsg(LOGMSG_USER, "thrman_destructor: %s\n",
                thrman_describe(thr, buf, sizeof(buf)));
     }
-    pthread_cond_broadcast(&cond);
-    pthread_mutex_unlock(&mutex);
+    Pthread_cond_broadcast(&cond);
+    Pthread_mutex_unlock(&mutex);
 
     if (thr->reqlogger) {
         reqlog_free(thr->reqlogger);
@@ -269,7 +242,7 @@ void thrman_unregister(void)
     struct thr_handle *thr;
     thr = thrman_self();
     if (thr) {
-        pthread_setspecific(thrman_key, NULL);
+        Pthread_setspecific(thrman_key, NULL);
         thrman_destructor(thr);
     }
 }
@@ -392,10 +365,10 @@ char *thrman_describe(struct thr_handle *thr, char *buf, size_t szbuf)
     else {
         const char *where = thr->where;
         int fd = thr->fd;
-        int pos;
+        int pos = 0;
 
-        pos = snprintf(buf, szbuf, "tid %u:%s", thr->archtid,
-                       thrman_type2a(thr->type));
+        SNPRINTF(buf, szbuf, pos, "tid %u:%s", thr->archtid,
+                 thrman_type2a(thr->type));
 
         if (fd >= 0) {
             /* Get the IP address of this socket connection.  We assume that
@@ -406,25 +379,26 @@ char *thrman_describe(struct thr_handle *thr, char *buf, size_t szbuf)
             struct sockaddr_in peeraddr;
             int len = sizeof(peeraddr);
             char addrstr[64];
-            if (getpeername(fd, (struct sockaddr *)&peeraddr, &len) < 0)
-                pos +=
-                    snprintf(buf + pos, szbuf - pos, ", fd %d (getpeername:%s)",
-                             fd, strerror(errno));
+            if (getpeername(fd, (struct sockaddr *)&peeraddr,
+                            (socklen_t *)&len) < 0)
+                SNPRINTF(buf, szbuf, pos, ", fd %d (getpeername:%s)", fd,
+                         strerror(errno))
             else if (inet_ntop(peeraddr.sin_family, &peeraddr.sin_addr, addrstr,
                                sizeof(addrstr)) == NULL)
-                pos += snprintf(buf + pos, szbuf - pos,
-                                ", fd %d (inet_ntop:%s)", fd, strerror(errno));
+                SNPRINTF(buf, szbuf, pos, ", fd %d (inet_ntop:%s)", fd,
+                         strerror(errno))
             else
-                pos += snprintf(buf + pos, szbuf - pos, ", fd %d (%s)", fd,
-                                addrstr);
+                SNPRINTF(buf, szbuf, pos, ", fd %d (%s)", fd, addrstr)
         }
         if (thr->corigin[0])
-            pos += snprintf(buf + pos, szbuf - pos, ", %s", thr->corigin);
+            SNPRINTF(buf, szbuf, pos, ", %s", thr->corigin)
         if (thr->id[0])
-            pos += snprintf(buf + pos, szbuf - pos, ", %s", thr->id);
+            SNPRINTF(buf, szbuf, pos, ", %s", thr->id)
         if (where != NULL)
-            pos += snprintf(buf + pos, szbuf - pos, ": %s", where);
+            SNPRINTF(buf, szbuf, pos, ": %s", where)
     }
+
+done:
     return buf;
 }
 
@@ -450,9 +424,9 @@ static void thrman_dump_ll(void)
 /* Dump all active threads */
 void thrman_dump(void)
 {
-    pthread_mutex_lock(&mutex);
+    Pthread_mutex_lock(&mutex);
     thrman_dump_ll();
-    pthread_mutex_unlock(&mutex);
+    Pthread_mutex_unlock(&mutex);
 }
 
 /* stop sql connections.  this is needed to stop blocked
@@ -462,7 +436,7 @@ void thrman_stop_sql_connections(void)
     struct thr_handle *thr;
     struct thr_handle *temp;
 
-    pthread_mutex_lock(&mutex);
+    Pthread_mutex_lock(&mutex);
     LISTC_FOR_EACH_SAFE(&thr_list, thr, temp, linkv)
     {
         if (thr->type == THRTYPE_SQLPOOL || thr->type == THRTYPE_SQL ||
@@ -470,7 +444,7 @@ void thrman_stop_sql_connections(void)
             thr->type == THRTYPE_APPSOCK_SQL)
             shutdown(thr->fd, 0);
     }
-    pthread_mutex_unlock(&mutex);
+    Pthread_mutex_unlock(&mutex);
 }
 
 /* See if all threads are gone (or all but myself) */
@@ -525,7 +499,7 @@ static int thrman_check_threads_gone_ll(void *context)
 static void thrman_wait(const char *descr, int (*check_fn_ll)(void *),
                         void *context)
 {
-    pthread_mutex_lock(&mutex);
+    Pthread_mutex_lock(&mutex);
     while (1) {
         struct timespec ts;
         struct timeval tp;
@@ -549,7 +523,7 @@ static void thrman_wait(const char *descr, int (*check_fn_ll)(void *),
             perror_errnum("thrman_coalesce:pthread_cond_timedwait", rc);
         }
     }
-    pthread_mutex_unlock(&mutex);
+    Pthread_mutex_unlock(&mutex);
 }
 
 /* Stop all database threads.  Different thread types get stopped in different
@@ -557,7 +531,10 @@ static void thrman_wait(const char *descr, int (*check_fn_ll)(void *),
 void stop_threads(struct dbenv *dbenv)
 {
     /* watchdog makes sure we don't get stuck trying to stop threads */
-    LOCK(&stop_thds_time_lk) { gbl_stop_thds_time = time_epoch(); }
+    LOCK(&stop_thds_time_lk)
+    {
+        gbl_stop_thds_time = comdb2_time_epoch();
+    }
     UNLOCK(&stop_thds_time_lk);
 
     dbenv->stopped = 1;
@@ -578,7 +555,7 @@ void stop_threads(struct dbenv *dbenv)
     thrman_stop_sql_connections();
 
     /* Wake up the queue consumer threads */
-    dbqueue_coalesce(dbenv);
+    dbqueuedb_coalesce(dbenv);
 
     /* Wait until the regular request threads are idle with no queue.  Note
      * that they still continue regardless. */
@@ -627,9 +604,9 @@ int thrman_count_type(enum thrtype type)
 {
     int count = 0;
     if (type >= 0 && type < THRTYPE_MAX) {
-        pthread_mutex_lock(&mutex);
+        Pthread_mutex_lock(&mutex);
         count = thr_type_counts[type];
-        pthread_mutex_unlock(&mutex);
+        Pthread_mutex_unlock(&mutex);
     }
     return count;
 }
@@ -645,4 +622,9 @@ struct reqlogger *thrman_get_reqlogger(struct thr_handle *thr)
     } else {
         return NULL;
     }
+}
+
+const char *thrman_get_where(struct thr_handle *thr)
+{
+    return thr->where;
 }

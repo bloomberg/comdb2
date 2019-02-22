@@ -1,1 +1,1 @@
-(tablename='dummy')
+[select * from COMDB2_tables] failed with rc -106 access denied

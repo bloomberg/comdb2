@@ -41,7 +41,8 @@ struct osql_sess {
     pthread_mutex_t mtx; /* mutex and cond for thread sync */
     pthread_cond_t cond;
 
-    struct ireq *iq; /* iq owning this session */
+    struct ireq *iq; /* iq owning this session -- set to NULL once dispatched */
+    struct ireq *iqcopy; /* iq owning this session */
     char *offhost;   /* where is the sql peer of this session, 0 for local */
 
     char tzname[DB_MAX_TZNAMEDB]; /* tzname used for this request */
@@ -91,6 +92,13 @@ struct osql_sess {
     int retries;      /* how many times this session was retried */
 
     int queryid;
+    char tablename[MAXTABLELEN]; // remember tablename in saveop for reordering
+    unsigned long long last_genid; // remember updrec/insrec genid for qblobs
+    unsigned long long
+        ins_seq; // remember key seq for inserts into ins tmp table
+    uint16_t tbl_idx;
+    bool last_is_ins : 1; // 1 if processing INSERT, 0 for any other oql type
+    bool is_reorder_on : 1;
 };
 
 enum {
@@ -157,7 +165,7 @@ int osql_sess_set_complete(unsigned long long rqid, uuid_t uuid,
  * if this is still in progress
  *
  */
-int osql_sess_test_slow(blocksql_tran_t *tran, osql_sess_t *sess);
+int osql_sess_test_slow(osql_sess_t *sess);
 
 /**
  * Returns
@@ -229,7 +237,7 @@ int osql_sess_unlock_complete(osql_sess_t *sess);
  * Set found if the session is found or not
  *
  */
-int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, void *data,
+int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
                     int datalen, int *found);
 
 /**
@@ -249,8 +257,8 @@ int osql_session_testterminate(void *obj, void *arg);
  */
 osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
                                    int type, unsigned long long rqid,
-                                   uuid_t uuid, char *fromhost,
-                                   struct ireq *iq);
+                                   uuid_t uuid, char *fromhost, struct ireq *iq,
+                                   int *replaced, bool is_reorder_on);
 
 char *osql_sess_tag(osql_sess_t *sess);
 void *osql_sess_tagbuf(osql_sess_t *sess);
@@ -287,4 +295,11 @@ int osql_session_is_sorese(osql_sess_t *sess);
 int osql_session_set_ireq(osql_sess_t *sess, struct ireq *iq);
 struct ireq *osql_session_get_ireq(osql_sess_t *sess);
 
+/**
+ * Terminate a session if the session is not yet completed/dispatched
+ * Return 0 if session is successfully terminated,
+ *        -1 for errors,
+ *        1 otherwise (if session was already processed)
+ */
+int osql_sess_try_terminate(osql_sess_t *sess);
 #endif

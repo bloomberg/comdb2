@@ -1,1 +1,0 @@
-./deadlock_check.sh

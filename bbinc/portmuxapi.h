@@ -91,7 +91,7 @@ typedef enum {
  * int main(int argc, char *argv[])
  * {
  *     // initialize attribute for client threads
- *     pthread_attr_init(&attr);
+ *     Pthread_attr_init(&attr);
  *     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
  *
  *     // alright wait for client
@@ -265,6 +265,7 @@ const char *portmux_fds_get_instance(portmux_fd_t *fds);
 void set_portmux_port(int port);
 int set_portmux_bind_path(const char *path);
 char *get_portmux_bind_path(void);
+void clear_portmux_bind_path();
 
 /**
  * @brief  Connects to remote_host using portmux registered

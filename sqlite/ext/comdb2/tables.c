@@ -66,20 +66,6 @@ static int systblTablesDisconnect(sqlite3_vtab *pVtab){
   return SQLITE_OK;
 }
 
-static int checkRowidAccess(systbl_tables_cursor *pCur) {
-  while (pCur->iRowid < thedb->num_dbs) {
-    struct dbtable *pDb = thedb->dbs[pCur->iRowid];
-    char *x = pDb->tablename;
-    int bdberr;
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
-    int rc = bdb_check_user_tbl_access(thedb->bdb_env, thd->sqlclntstate->user, x, ACCESS_READ, &bdberr);
-    if (rc == 0)
-       return SQLITE_OK;
-    pCur->iRowid++;
-  }
-  return SQLITE_OK;
-}
-
 /*
 ** Constructor for systbl_tables_cursor objects.
 */
@@ -90,7 +76,9 @@ static int systblTablesOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   if( pCur==0 ) return SQLITE_NOMEM;
   memset(pCur, 0, sizeof(*pCur));
   *ppCursor = &pCur->base;
-  checkRowidAccess(pCur);
+
+  comdb2_next_allowed_table(&pCur->iRowid);
+
   return SQLITE_OK;
 }
 
@@ -108,7 +96,7 @@ static int systblTablesClose(sqlite3_vtab_cursor *cur){
 static int systblTablesNext(sqlite3_vtab_cursor *cur){
   systbl_tables_cursor *pCur = (systbl_tables_cursor*)cur;
   pCur->iRowid++;
-  checkRowidAccess(pCur);
+  comdb2_next_allowed_table(&pCur->iRowid);
   return SQLITE_OK;
 }
 
@@ -126,7 +114,7 @@ static int systblTablesColumn(
 
   sqlite3_result_text(ctx, x, -1, NULL);
   return SQLITE_OK;
-};
+}
 
 /*
 ** Return the rowid for the current row. The rowid is the just the
@@ -197,6 +185,10 @@ const sqlite3_module systblTablesModule = {
   0,                         /* xRollback */
   0,                         /* xFindMethod */
   0,                         /* xRename */
+  0,                         /* xSavepoint */
+  0,                         /* xRelease */
+  0,                         /* xRollbackTo */
+  0,                         /* xShadowName */
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \
@@ -205,6 +197,8 @@ const sqlite3_module systblTablesModule = {
 /* This initializes this table but also a bunch of other schema tables
 ** that fall under the similar use. */
 #ifdef SQLITE_BUILDING_FOR_COMDB2
+extern int sqlite3CompletionVtabInit(sqlite3 *);
+
 int comdb2SystblInit(
   sqlite3 *db
 ){
@@ -226,6 +220,8 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_users", &systblUsersModule, 0);
   if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_queues", &systblQueuesModule, 0);
+  if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_tablepermissions", &systblTablePermissionsModule, 0);
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_triggers", &systblTriggersModule, 0);
@@ -238,7 +234,52 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_threadpools", &systblThreadPoolsModule, 0);
   if (rc == SQLITE_OK)
-    rc = sqlite3_create_module(db, "comdb2_completion", &completionModule, 0);
+    rc = sqlite3_create_module(db, "comdb2_plugins", &systblPluginsModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_appsock_handlers",
+                               &systblAppsockHandlersModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_opcode_handlers",
+                               &systblOpcodeHandlersModule, 0);
+  if (rc == SQLITE_OK){
+    rc = sqlite3CompletionVtabInit(db);
+  }
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_clientstats", &systblClientStatsModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_transaction_logs", &systblTransactionLogsModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_metrics", &systblMetricsModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_timeseries", &systblTimeseriesModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_repl_stats", &systblReplStatsModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_logical_operations", &systblLogicalOpsModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_systables", &systblSystabsModule, 0);
+  if (rc == SQLITE_OK)
+    rc = systblTimepartInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblCronInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblTypeSamplesInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblRepNetQueueStatInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblActivelocksInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblSqlpoolQueueInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblNetUserfuncsInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblClusterInit(db);
+  if (rc == SQLITE_OK)
+      rc = systblActiveOsqlsInit(db);
+  if (rc == SQLITE_OK)
+      rc = systblBlkseqInit(db);
+  if (rc == SQLITE_OK)
+      rc = systblFingerprintsInit(db);
 #endif
   return rc;
 }

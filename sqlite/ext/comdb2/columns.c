@@ -36,8 +36,8 @@
 typedef struct systbl_columns_cursor systbl_columns_cursor;
 struct systbl_columns_cursor {
   sqlite3_vtab_cursor base;  /* Base class - must be first */
-  sqlite3_int64 iRowid;      /* The rowid */
-  sqlite3_int64 iColid;      /* The column we're on */
+  sqlite3_int64 iTabId;      /* Current table */
+  sqlite3_int64 iColId;      /* Current column */
 };
 
 static int systblColumnsConnect(
@@ -87,20 +87,6 @@ static int systblColumnsDisconnect(sqlite3_vtab *pVtab){
   return SQLITE_OK;
 }
 
-static int checkRowidAccess(systbl_columns_cursor *pCur) {
-  while (pCur->iRowid < thedb->num_dbs) {
-    struct dbtable *pDb = thedb->dbs[pCur->iRowid];
-    char *x = pDb->tablename;
-    int bdberr;
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
-    int rc = bdb_check_user_tbl_access(thedb->bdb_env, thd->sqlclntstate->user, x, ACCESS_READ, &bdberr);
-    if (rc == 0)
-       return SQLITE_OK;
-    pCur->iRowid++;
-  }
-  return SQLITE_OK;
-}
-
 /*
 ** Constructor for systbl_columns_cursor objects.
 */
@@ -111,7 +97,9 @@ static int systblColumnsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   if( pCur==0 ) return SQLITE_NOMEM;
   memset(pCur, 0, sizeof(*pCur));
   *ppCursor = &pCur->base;
-  checkRowidAccess(pCur);
+
+  comdb2_next_allowed_table(&pCur->iTabId);
+
   return SQLITE_OK;
 }
 
@@ -129,10 +117,10 @@ static int systblColumnsClose(sqlite3_vtab_cursor *cur){
 static int systblColumnsNext(sqlite3_vtab_cursor *cur){
   systbl_columns_cursor *pCur = (systbl_columns_cursor*)cur;
 
-  if( ++pCur->iColid == thedb->dbs[pCur->iRowid]->schema->nmembers ){
-    pCur->iColid = 0;
-    pCur->iRowid++;
-    checkRowidAccess(pCur);
+  if( ++pCur->iColId == thedb->dbs[pCur->iTabId]->schema->nmembers ){
+    pCur->iColId = 0;
+    pCur->iTabId++;
+    comdb2_next_allowed_table(&pCur->iTabId);
   }
   return SQLITE_OK;
 }
@@ -146,8 +134,8 @@ static int systblColumnsColumn(
   int i
 ){
   systbl_columns_cursor *pCur = (systbl_columns_cursor*)cur;
-  struct dbtable *pDb = thedb->dbs[pCur->iRowid];
-  struct field *pField = &pDb->schema->member[pCur->iColid];
+  struct dbtable *pDb = thedb->dbs[pCur->iTabId];
+  struct field *pField = &pDb->schema->member[pCur->iColId];
 
   switch( i ){
     case STCOL_TABLE: {
@@ -208,7 +196,7 @@ static int systblColumnsColumn(
     }
   }
   return SQLITE_OK;
-};
+}
 
 /*
 ** Return the rowid for the current row. The rowid is the just the
@@ -219,10 +207,10 @@ static int systblColumnsRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){
   systbl_columns_cursor *pCur = (systbl_columns_cursor*)cur;
 
   *pRowid = 0;
-  for( int i = 0; i < pCur->iRowid - 1; i++ ){
+  for( int i = 0; i < pCur->iTabId - 1; i++ ){
     *pRowid += thedb->dbs[i]->schema->nmembers;
   }
-  *pRowid += pCur->iColid;
+  *pRowid += pCur->iColId;
   return SQLITE_OK;
 }
 
@@ -232,7 +220,7 @@ static int systblColumnsRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){
 static int systblColumnsEof(sqlite3_vtab_cursor *cur){
   systbl_columns_cursor *pCur = (systbl_columns_cursor*)cur;
 
-  return pCur->iRowid >= thedb->num_dbs;
+  return pCur->iTabId >= thedb->num_dbs;
 }
 
 /*
@@ -248,8 +236,8 @@ static int systblColumnsFilter(
 ){
   systbl_columns_cursor *pCur = (systbl_columns_cursor*)pVtabCursor;
 
-  pCur->iRowid = 0;
-  pCur->iColid = 0;
+  pCur->iTabId = 0;
+  pCur->iColId = 0;
   return SQLITE_OK;
 }
 
@@ -285,6 +273,10 @@ const sqlite3_module systblColumnsModule = {
   0,                          /* xRollback */
   0,                          /* xFindMethod */
   0,                          /* xRename */
+  0,                          /* xSavepoint */
+  0,                          /* xRelease */
+  0,                          /* xRollbackTo */
+  0,                          /* xShadowName */
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \

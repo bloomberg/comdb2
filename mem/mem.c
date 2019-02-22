@@ -41,8 +41,8 @@
 #include <list.h>
 #include <ctrace.h>
 #include "mem.h"
-#include <mem_int.h>
 #include <logmsg.h>
+#include <locks_wrap.h>
 
 //^macros
 #define COMDB2MA_SUCCESS 0
@@ -59,14 +59,35 @@
     (((M)->cap != COMDB2MA_UNLIMITED) && (mspace_footprint((M)->m) > (M)->cap))
 #define COMDB2MA_SENTINEL_OFS (-2)
 #define COMDB2MA_ALLOC_OFS (-1)
-#define COMDB2MA_OVERHEAD (sizeof(void *) << 1)
+
+#ifndef COMDB2_OMIT_DEBUG
+#define COMDB2MA_ISDEBUG(p) ((int)((uintptr_t)(p)[-1] & 1))
+#define COMDB2MA_SETDEBUG(p) do {                                              \
+    (p)[-1] = (void *)((uintptr_t)(p)[-1] | 1);                                \
+    (p)[-2] = (void *)((uintptr_t)(p)[-2] | 1);                                \
+} while (0)
+/* 1 word for the address of the allocator. 1 word for the sentinel.
+   1 word for the alignment. 1 word for the number of stack frames.
+   32 words for the stack frames. */
+#define COMDB2MA_NFRAMES 32
+#define COMDB2MA_OVERHEAD(d)                                                   \
+    ((d) ? (sizeof(void *) * 36) : (sizeof(void *) << 1))
+#define COMDB2MA_ALLOCATOR(p)                                                  \
+    ((comdb2ma)((uintptr_t)(p)[COMDB2MA_ALLOC_OFS] & (uintptr_t)~1))
+#else
+#define COMDB2MA_ISDEBUG(p) 0
+#define COMDB2MA_SETDEBUG(p)
+#define COMDB2MA_OVERHEAD(d) (sizeof(void *) << 1)
+#define COMDB2MA_ALLOCATOR(p) ((comdb2ma)((p)[COMDB2MA_ALLOC_OFS]))
+#endif /* COMDB2_OMIT_DEBUG */
+
 #define COMDB2MA_MIN_NAME_SZ 8
 #define COMDB2MA_MIN_SCOPE_SZ 8
-#define COMDB2MA_MAX_MEM ((~(size_t)0) - COMDB2MA_OVERHEAD)
+#define COMDB2MA_MAX_MEM ((~(size_t)0) - COMDB2MA_OVERHEAD(0))
 #define COMDB2MA_THR_UNKNOWN "unspec."
 
 #define COMDB2MA_SENTINEL(p, m)                                                \
-    (void *)(((uintptr_t)(p) + (uintptr_t)(m)) ^ 0xCDB2C00l)
+    (void *)(((uintptr_t)(p) + (uintptr_t)(m)) ^ 0xCDB2C00L)
 #define COMDB2MA_OK_SENTINEL(p)                                                \
     ((p)[COMDB2MA_SENTINEL_OFS] ==                                             \
      COMDB2MA_SENTINEL((p) + COMDB2MA_SENTINEL_OFS, (p)[COMDB2MA_ALLOC_OFS]))
@@ -78,7 +99,7 @@
 #define COMDB2MA_MEMCHK(m, sz)                                                 \
     do {                                                                       \
         if (m == NULL) {                                                       \
-            logmsg(LOGMSG_FATAL, "Out of memory: %zu", sz);                    \
+            logmsg(LOGMSG_FATAL, "%s: %zu bytes", strerror(ENOMEM), sz);       \
             abort();                                                           \
         }                                                                      \
     } while (0)
@@ -87,6 +108,16 @@
 #endif
 
 // macros$
+
+static comdb2ma COMDB2_STATIC_MAS[COMDB2MA_COUNT];
+
+#define XMACRO_COMDB2MA(idx, name, size, cap) { name, size, cap },
+static struct {
+    char *name;
+    size_t size;
+    size_t cap;
+} COMDB2_STATIC_MA_METAS[] = { COMDB2MA_SPACES };
+#undef XMACRO_COMDB2MA
 
 //^type definitions
 typedef LINKC_T(struct comdb2mspace) mspacelink;
@@ -128,6 +159,7 @@ struct comdb2mspace {
     const char *thr_type; /* thread type.
                              we do not write it to name because an allocator
                              may be reused by another type of thread later on */
+    unsigned int debug : 1; /* Debugging flag. */
 
     size_t len;   /* length of name */
     char name[1]; /* name of the mspace */
@@ -157,10 +189,13 @@ struct comdb2bmspace {
     int nblocks; /* number of blocking threads */
 };
 
+#if !defined(USE_SYS_ALLOC) && !defined(COMDB2MA_OMIT_BMEM)
 /* the pthread key is shared amongst all blocking allocators */
 static pthread_once_t privileged_once = PTHREAD_ONCE_INIT;
 /* 0 - undetermined; 1 - yes; -1 - no */
 static pthread_key_t privileged;
+#endif
+
 #define PRIO_UNKNOWN NULL
 #define PRIO_YES ((void *)1)
 #define PRIO_NO ((void *)-1)
@@ -209,7 +244,7 @@ static struct {
     comdb2ma pos[COMDB2MA_COUNT];
 #endif
 
-} root = {.list = 0,
+} root = {.list = {0},
           .m = 0,
           .use_lock = COMDB2MA_MT_SAFE,
           .lock = PTHREAD_MUTEX_INITIALIZER,
@@ -318,8 +353,10 @@ static int cmpr_number_asc(const void *a, const void *b);
 /* order by number desc */
 static int cmpr_number_desc(const void *a, const void *b);
 
+#if !defined(USE_SYS_ALLOC) && !defined(COMDB2MA_OMIT_BMEM)
 /* initialize the shared 'privileged' pthread key once */
 static void privileged_init(void);
+#endif
 
 /* malloc/calloc helpers which will abort upon ENOMEM */
 static void *abortable_malloc(size_t);
@@ -328,13 +365,19 @@ static void *abortable_calloc(size_t, size_t);
 
 /* ctrace with prefix */
 static void pfx_ctrace(const char *format, ...);
+
+/* Mem debug config */
+static int find_switch_index(const char *name);
+static int debug_started = 0;
+static unsigned char debug_master_switch = 0;
+static unsigned char debug_switches[COMDB2MA_COUNT] = {0};
 // static variables and function prototypes$
 
 //^root
 int comdb2ma_init(size_t init_sz, size_t max_cap)
 {
-    int i, rc;
-    char *env_mspace_max, *env_mmap_thresh;
+    int rc;
+    char *env_mmap_thresh;
 
     rc = COMDB2MA_LOCK(&root);
     if (rc != 0)
@@ -347,37 +390,27 @@ int comdb2ma_init(size_t init_sz, size_t max_cap)
         if (root.m == NULL)
             rc = ENOMEM;
         else {
-
-#if !defined(USE_SYS_ALLOC) && defined(PER_THREAD_MALLOC)
-#  undef M_MMAP_THRESHOLD
-#  undef M_TRIM_THRESHOLD
-#  undef M_GRANULARITY
-#  ifndef __APPLE__
-#    include <malloc.h>
-#  endif
+#ifdef PER_THREAD_MALLOC
             /* 
-             * We treat M_ARENA_MAX differently from glibc:
+             * MALLOC_ARENA_MAX:
              * 1. Each subsytem has at most MALLOC_ARENA_MAX mspaces.
              * 2. A thread is allowed to create one if there's no mspace on
              *    the freelist and # of mspaces is less than MALLOC_ARENA_MAX.
              * 3. If a thread is not allowed to create a mspace, it will
              *    be uniformly assigned one (to minimize contention).
-             * 4. glibc has only 1 arena regardless.
              */
+            char *env_mspace_max;
             if ((env_mspace_max = getenv("MALLOC_ARENA_MAX")) != NULL)
                 root.mspace_max = atoi(env_mspace_max);
             /* In case MALLOC_ARENA_MAX isn't a valid numeric. */
-            if (root.mspace_max == 0)
+            if (root.mspace_max <= 0)
                 root.mspace_max = INT_MAX;
-#  ifdef M_ARENA_MAX
-            mallopt(M_ARENA_MAX, 1);
-#  endif /* M_ARENA_MAX */
+#endif
             /* Remember MALLOC_MMAP_THRESHOLD. */
             if ((env_mmap_thresh = getenv("MALLOC_MMAP_THRESHOLD_")) != NULL)
                 root.mmap_thresh = atoi(env_mmap_thresh);
             /* Be nice (finger wagging). */
             comdb2ma_nice(NICE_MODERATE);
-#endif /* !USE_SYS_ALLOC && PER_THREAD_MALLOC */
 
             mspace_setmorecore(root.m, abortable_malloc);
             mspace_setmorecore0(root.m, abortable_calloc);
@@ -389,7 +422,7 @@ int comdb2ma_init(size_t init_sz, size_t max_cap)
 
 #ifdef PER_THREAD_MALLOC
             /* create freelists for threaded allocators */
-            for (i = 0; i != COMDB2MA_COUNT; ++i) {
+            for (int i = 0; i != COMDB2MA_COUNT; ++i) {
                 listc_init(&root.freelist[i],
                            offsetof(struct comdb2mspace, freelnk));
                 listc_init(&root.busylist[i],
@@ -397,18 +430,12 @@ int comdb2ma_init(size_t init_sz, size_t max_cap)
             }
 
             root.main_thr_id = pthread_self();
-            rc = pthread_key_create(&root.zone, destroy_zone);
-            if (rc != 0) {
-                COMDB2MA_UNLOCK(&root);
-                destroy_mspace(root.m);
-                root.m = NULL;
-                return rc;
-            }
+            Pthread_key_create(&root.zone, destroy_zone);
 #endif /* PER_THREAD_MALLOC */
 
 #ifndef USE_SYS_ALLOC
             /* create static mspaces for subsystems */
-            for (i = 1; i != COMDB2MA_COUNT; ++i) {
+            for (int i = 1; i != COMDB2MA_COUNT; ++i) {
                 COMDB2_STATIC_MAS[i] = comdb2ma_create_int(
                     NULL, init_sz, max_cap, COMDB2_STATIC_MA_METAS[i].name,
                     NULL, COMDB2MA_MT_SAFE, NULL, NULL, __FILE__, __func__,
@@ -460,7 +487,7 @@ int comdb2ma_exit(void)
                 COMDB2MA_UNLOCK(curpos);
             }
             if (curpos->use_lock)
-                pthread_mutex_destroy(&curpos->lock);
+                Pthread_mutex_destroy(&curpos->lock);
             mspace_free(root.m, curpos);
             curpos = NULL;
         }
@@ -485,39 +512,10 @@ int comdb2ma_exit(void)
     return rc;
 }
 
-int comdb2ma_release(void)
-{
-    int i, rc;
-    comdb2ma curpos;
-
-    rc = COMDB2MA_LOCK(&root);
-    if (rc != 0)
-        return rc;
-
-    if (root.m == NULL)
-        rc = EPERM;
-    else {
-        /* release all lock-protected mspaces */
-        LISTC_FOR_EACH(&(root.list), curpos, lnk)
-        {
-            if (curpos->use_lock)
-                comdb2_malloc_trim(curpos, 0);
-        }
-    }
-
-    if (rc != 0)
-        COMDB2MA_UNLOCK(&root);
-    else
-        rc = COMDB2MA_UNLOCK(&root);
-
-    return rc;
-}
-
 int comdb2ma_stats(char *pattern, int verbose, int hr, comdb2ma_order_by ord,
                    comdb2ma_group_by grp, int toctrc)
 {
-    size_t idx, np, sz = 0;
-    comdb2ma curpos, temp;
+    size_t sz = 0;
     struct mallinfo total = {0};
     int rc;
 
@@ -559,6 +557,8 @@ int comdb2ma_stats(char *pattern, int verbose, int hr, comdb2ma_order_by ord,
     return rc;
 }
 
+/* dlmalloc.h and malloc.h both define struct mallinfo.
+   We include malloc.h in the function to avoid the conflict. */
 int comdb2ma_nice(int niceness)
 {
     int rc;
@@ -566,6 +566,27 @@ int comdb2ma_nice(int niceness)
     if (rc == 1) { /* 1 is success */
         root.nice = niceness;
         gbl_mem_nice = niceness;
+
+#if !defined(USE_SYS_ALLOC) && defined(PER_THREAD_MALLOC)
+#  undef M_MMAP_THRESHOLD
+#  undef M_TRIM_THRESHOLD
+#  undef M_GRANULARITY
+#  ifndef __APPLE__
+#    include <malloc.h> /* for M_ARENA_MAX */
+#  endif
+#  ifdef M_ARENA_MAX
+        int narena;
+        /* Override glibc M_ARENA_MAX if we're told to be nicer. */
+        if (niceness >= NICE_MODERATE) {
+            if (root.mspace_max == INT_MAX)
+                mallopt(M_ARENA_MAX, 1);
+            else {
+                narena = root.mspace_max >> (niceness - NICE_MODERATE);
+                mallopt(M_ARENA_MAX, narena == 0 ? 1 : narena);
+            }
+        }
+#  endif /* M_ARENA_MAX */
+#endif /* !USE_SYS_ALLOC && PER_THREAD_MALLOC */
     }
     return !rc;
 }
@@ -587,7 +608,44 @@ size_t comdb2_malloc_usable_size(void *ptr)
     return (ptr == NULL)
                ? 0
                : (dlmalloc_usable_size((void **)ptr + COMDB2MA_SENTINEL_OFS) -
-                  COMDB2MA_OVERHEAD);
+                  COMDB2MA_OVERHEAD(COMDB2MA_ISDEBUG((void **)ptr)));
+}
+
+int comdb2ma_release(void)
+{
+    int rc;
+    comdb2ma curpos;
+
+    rc = COMDB2MA_LOCK(&root);
+    if (rc != 0)
+        return rc;
+
+    if (root.m == NULL)
+        rc = EPERM;
+    else {
+        /* release all lock-protected mspaces */
+        LISTC_FOR_EACH(&(root.list), curpos, lnk)
+        {
+            if (curpos->use_lock)
+                comdb2_malloc_trim(curpos, 0);
+        }
+    }
+
+    if (rc != 0)
+        COMDB2MA_UNLOCK(&root);
+    else
+        rc = COMDB2MA_UNLOCK(&root);
+
+#if !defined(USE_SYS_ALLOC) && defined(PER_THREAD_MALLOC)
+#if defined(M_GRANULARITY)
+#error "The function must be defined after comdb2ma_nice."
+#elif defined(M_TRIM_THRESHOLD)
+    extern int malloc_trim (size_t pad);
+    malloc_trim(0);
+#endif
+#endif
+
+    return rc;
 }
 // root$
 
@@ -644,22 +702,59 @@ int comdb2ma_attach(comdb2ma parent, comdb2ma child)
     return rc;
 }
 
+#ifndef COMDB2MA_OMIT_DEBUG
+#include <walkback.h>
+static void get_stack_frames(void **fp, mspace m)
+{
+    unsigned int n = 0;
+    stack_pc_getlist(NULL, fp + 1, COMDB2MA_NFRAMES, &n);
+    *fp = (void *)(uintptr_t)n;
+}
+#else
+#define get_stack_frames(fp, m)
+#endif
+
 /*
- * |<---- (2 * wordsize)-bit overhead ----->|<-------------- payload -------------->|
- * +--------------------------------------------------------------------------------+
- * |      sentinel      |     allocator     |          `size'-byte payload...       |
- * +--------------------------------------------------------------------------------+
+ * Memory block layout
+ * +----------------+
+ * |    sentinel    |
+ * +----------------+
+ * |    allocator   |
+ * +----------------+
+ * |                |
+ * ~    payload     ~
+ * |                |
+ * +----------------+---
+ * |    # frames    | |
+ * +----------------+ |
+ * |    Frame 1     | |
+ * +----------------+ |
+ * |    Frame 2     | |
+ * +----------------+
+ * |                | Debug mode only
+ * ~    ......      ~
+ * |                | |
+ * +----------------+ |
+ * |    Frame N-1   | |
+ * +----------------+ |
+ * |    Frame N     | |
+ * +----------------+---
  */
 void *comdb2_malloc(comdb2ma cm, size_t size)
 {
     void **out = NULL;
+
+    /* Make a copy on stack in case that debugging is toggled
+       in the middle of this malloc() call. */
+    int d = debug_started;
+    char *fp;
 
     if (size > COMDB2MA_MAX_MEM) {
         // force failure if integer overflow
         errno = ENOMEM;
     } else if (COMDB2MA_LOCK(cm) == 0) {
         if (!COMDB2MA_FULL(cm))
-            out = mspace_malloc(cm->m, size + COMDB2MA_OVERHEAD);
+            out = mspace_malloc(cm->m, size + COMDB2MA_OVERHEAD(d));
 
         if (out != NULL) {
 #ifdef PER_THREAD_MALLOC
@@ -668,6 +763,12 @@ void *comdb2_malloc(comdb2ma cm, size_t size)
             out[0] = COMDB2MA_SENTINEL(out, cm);
             out[1] = (void *)cm;
             out -= COMDB2MA_SENTINEL_OFS;
+            if (d && cm->debug) {
+                COMDB2MA_SETDEBUG(out);
+                fp = (char*)out;
+                fp += COMDB2MA_ROUND8(comdb2_malloc_usable_size(out) + (sizeof(void *)));
+                get_stack_frames((void **)fp, cm->m);
+            }
         }
 
         COMDB2MA_UNLOCK(cm);
@@ -690,13 +791,16 @@ void *comdb2_calloc(comdb2ma cm, size_t n, size_t size)
     void **out = NULL;
     size_t nb;
 
+    int d = debug_started;
+    char *fp;
+
     if (n && size && COMDB2MA_MAX_MEM / n < size) {
         // force failure if integer overflow
         errno = ENOMEM;
     } else if (COMDB2MA_LOCK(cm) == 0) {
         nb = n * size;
         if (!COMDB2MA_FULL(cm))
-            out = mspace_calloc(cm->m, 1, nb + COMDB2MA_OVERHEAD);
+            out = mspace_calloc(cm->m, 1, nb + COMDB2MA_OVERHEAD(d));
 
         if (out != NULL) {
 #ifdef PER_THREAD_MALLOC
@@ -705,6 +809,12 @@ void *comdb2_calloc(comdb2ma cm, size_t n, size_t size)
             out[0] = COMDB2MA_SENTINEL(out, cm);
             out[1] = (void *)cm;
             out -= COMDB2MA_SENTINEL_OFS;
+            if (d && cm->debug) {
+                COMDB2MA_SETDEBUG(out);
+                fp = (char*)out;
+                fp += COMDB2MA_ROUND8(comdb2_malloc_usable_size(out) + (sizeof(void *)));
+                get_stack_frames((void **)fp, cm->m);
+            }
         }
         COMDB2MA_UNLOCK(cm);
     }
@@ -715,6 +825,8 @@ void *comdb2_calloc(comdb2ma cm, size_t n, size_t size)
 static void *comdb2_realloc_int(comdb2ma cm, void *ptr, size_t n)
 {
     void **out = (void **)ptr;
+    int d;
+    char *fp;
 
     if (COMDB2MA_LOCK(cm) != 0)
         out = NULL;
@@ -726,12 +838,19 @@ static void *comdb2_realloc_int(comdb2ma cm, void *ptr, size_t n)
             errno = ENOMEM;
             out = NULL;
         } else {
+            d = COMDB2MA_ISDEBUG(out);
             out = mspace_realloc(cm->m, (void *)(out + COMDB2MA_SENTINEL_OFS),
-                                 n + COMDB2MA_OVERHEAD);
+                                 n + COMDB2MA_OVERHEAD(d));
             if (out != NULL) {
                 /* Recompute sentinel for realloc() b/c addr may be changed. */
                 out[0] = COMDB2MA_SENTINEL(out, cm);
                 out -= COMDB2MA_SENTINEL_OFS;
+                if (d && cm->debug) {
+                    COMDB2MA_SETDEBUG(out);
+                    fp = (char*)out;
+                    fp += COMDB2MA_ROUND8(comdb2_malloc_usable_size(out) + (sizeof(void *)));
+                    get_stack_frames((void **)fp, cm->m);
+                }
             }
         }
         COMDB2MA_UNLOCK(cm);
@@ -755,12 +874,61 @@ void *comdb2_realloc(comdb2ma cm, void *ptr, size_t n)
                hand it over to system realloc. */
             out = realloc(ptr, n);
         } else {
-            cm = (comdb2ma)out[COMDB2MA_ALLOC_OFS];
+            cm = COMDB2MA_ALLOCATOR(out);
 
             if (cm->bm == NULL)
                 out = comdb2_realloc_int(cm, ptr, n);
             else
                 out = comdb2_brealloc(cm->bm, ptr, n);
+        }
+    }
+    return (void *)out;
+}
+
+/* This function is a clone of comdb2_realloc except it invokes mspace_resize(). */
+void *comdb2_resize(comdb2ma cm, void *ptr, size_t n)
+{
+    void **out = NULL;
+    int d;
+    char *fp;
+
+    if (ptr == NULL) {
+        out = comdb2_malloc(cm, n);
+    } else if (n == 0) {
+        comdb2_free(ptr);
+    } else {
+        out = (void **)ptr;
+        if (!COMDB2MA_OK_SENTINEL(out)) {
+            /* sentinel does not match. ptr could be allocated by system call.
+               hand it over to system realloc. */
+            out = realloc(ptr, n);
+        } else {
+            cm = COMDB2MA_ALLOCATOR(out);
+            if (COMDB2MA_LOCK(cm) != 0)
+                out = NULL;
+            else {
+                if (COMDB2MA_HAS_CAP(cm) && (n > comdb2_malloc_usable_size(out)) &&
+                    COMDB2MA_CAP(cm)) {
+                    errno = ENOMEM;
+                    out = NULL;
+                } else {
+                    d = COMDB2MA_ISDEBUG(out);
+                    out = mspace_resize(cm->m, (void *)(out + COMDB2MA_SENTINEL_OFS),
+                                        n + COMDB2MA_OVERHEAD(d));
+                    if (out != NULL) {
+                        out[0] = COMDB2MA_SENTINEL(out, cm);
+                        out[1] = (void *)cm;
+                        out -= COMDB2MA_SENTINEL_OFS;
+                        if (d && cm->debug) {
+                            COMDB2MA_SETDEBUG(out);
+                            fp = (char*)out;
+                            fp += COMDB2MA_ROUND8(comdb2_malloc_usable_size(out) + (sizeof(void *)));
+                            get_stack_frames((void **)fp, cm->m);
+                        }
+                    }
+                }
+                COMDB2MA_UNLOCK(cm);
+            }
         }
     }
     return (void *)out;
@@ -831,7 +999,7 @@ void comdb2_free(void *ptr)
                2) ptr was not malloc'd by me. hand it over to system free. */
             free(ptr);
         } else {
-            cm = (comdb2ma)p[COMDB2MA_ALLOC_OFS];
+            cm = COMDB2MA_ALLOCATOR(p);
 
             if (cm->bm == NULL)
                 comdb2_free_int(cm, ptr);
@@ -941,6 +1109,12 @@ void *comdb2_realloc_static(int indx, void *ptr, size_t n)
     return comdb2_realloc(get_area(indx), ptr, n);
 }
 
+void *comdb2_resize_static(int indx, void *ptr, size_t n)
+{
+    STATIC_RANGE_CHECK(indx, NULL);
+    return comdb2_resize(get_area(indx), ptr, n);
+}
+
 char *comdb2_strdup_static(int indx, const char *s)
 {
     STATIC_RANGE_CHECK(indx, NULL);
@@ -955,8 +1129,7 @@ char *comdb2_strndup_static(int indx, const char *s, size_t n)
 
 struct mallinfo comdb2_mallinfo_static(int indx)
 {
-    struct mallinfo empty = {0};
-    STATIC_RANGE_CHECK(indx, empty);
+    STATIC_RANGE_CHECK(indx, (struct mallinfo){0});
     return comdb2_mallinfo(get_area(indx));
 }
 
@@ -1021,10 +1194,8 @@ static comdb2ma comdb2ma_create_int(void *base, size_t init_sz, size_t max_cap,
         return NULL;
     }
 
-    if (lock == COMDB2MA_MT_SAFE && pthread_mutex_init(&out->lock, NULL) != 0) {
-        destroy_mspace(out->m);
-        mspace_free(root.m, out);
-        return NULL;
+    if (lock == COMDB2MA_MT_SAFE) {
+        Pthread_mutex_init(&out->lock, NULL);
     }
 
     if (max_cap == COMDB2MA_UNLIMITED || max_cap > init_sz) {
@@ -1044,6 +1215,7 @@ static comdb2ma comdb2ma_create_int(void *base, size_t init_sz, size_t max_cap,
     out->file = file;
     out->func = func;
     out->line = line;
+    out->debug = 0;
 
 #ifdef PER_THREAD_MALLOC
     out->refs = 0;
@@ -1099,7 +1271,7 @@ static int comdb2ma_destroy_int(comdb2ma cm)
     cm->m = NULL;
     rc = COMDB2MA_UNLOCK(cm);
     if (cm->use_lock)
-        pthread_mutex_destroy(&cm->lock);
+        Pthread_mutex_destroy(&cm->lock);
     mspace_free(root.m, cm);
 
     return rc;
@@ -1124,7 +1296,7 @@ static comdb2ma get_area(int indx)
             zone = mspace_calloc(root.m, COMDB2MA_COUNT, sizeof(comdb2ma));
             COMDB2MA_UNLOCK(&root);
         }
-        pthread_setspecific(root.zone, (void *)zone);
+        Pthread_setspecific(root.zone, (void *)zone);
     }
 
     if (zone[indx] == NULL) {
@@ -1140,6 +1312,7 @@ static comdb2ma get_area(int indx)
                         COMDB2_STATIC_MA_METAS[indx].name, NULL, 1, NULL, NULL,
                         __FILE__, __func__, __LINE__);
                     zone[indx]->onfreelist = indx;
+                    zone[indx]->debug = (debug_master_switch | debug_switches[indx]);
                     listc_abl(&root.busylist[indx], zone[indx]);
                 } else {
                     /* Reached the limit. Grab one from busylist. */
@@ -1478,7 +1651,6 @@ static struct mallinfo ma_mallinfo(const comdb2ma cm)
 {
     comdb2ma curpos;
     struct mallinfo info, ret = COMDB2MA_MALLINFO_SAFE(cm);
-    size_t freemem = ret.fordblks, usedmem = ret.uordblks;
 
     LISTC_FOR_EACH(&(cm->children), curpos, sibling)
     {
@@ -1921,13 +2093,11 @@ static void pfx_ctrace(const char *format, ...)
 
 // static functions$
 
+#if !defined(USE_SYS_ALLOC) && !defined(COMDB2MA_OMIT_BMEM)
 /* COMDB2 BLOCKING MEMORY ALLOCATOR { */
 static void privileged_init(void)
 {
-    if (pthread_key_create(&privileged, NULL) != 0) {
-        fprintf(stderr, "failed creating privileged pthread key\n");
-        abort();
-    }
+    Pthread_key_create(&privileged, NULL);
 }
 
 static void comdb2bma_thr_dest(void *bmakey)
@@ -1940,7 +2110,7 @@ static void comdb2bma_thr_dest(void *bmakey)
                 ma->prio = 0;
 
             if (ma->nblocks != 0)
-                pthread_cond_signal(&ma->cond);
+                Pthread_cond_signal(&ma->cond);
             pthread_mutex_unlock(&ma->alloc->lock);
         }
     }
@@ -1975,19 +2145,10 @@ comdb2bma comdb2bma_create_trace(size_t init, size_t cap, const char *name,
             if (ret->alloc == NULL) {
                 mspace_free(root.m, ret);
                 ret = NULL;
-            } else if (pthread_cond_init(&ret->cond, NULL) != 0) {
-                comdb2ma_destroy_int(ret->alloc);
-                mspace_free(root.m, ret);
-                ret = NULL;
-            } else if (pthread_key_create(&ret->bmakey, comdb2bma_thr_dest) !=
-                       0) {
-                pthread_cond_destroy(&ret->cond);
-                comdb2ma_destroy_int(ret->alloc);
-                mspace_free(root.m, ret);
-                ret = NULL;
-            }
-
-            if (ret != NULL) {
+            } 
+            else {
+                Pthread_key_create(&ret->bmakey, comdb2bma_thr_dest);
+                Pthread_cond_init(&ret->cond, NULL);
                 // initialize fields
                 ret->prio = 0;
                 ret->lock = lock ? lock : (&ret->alloc->lock);
@@ -2022,8 +2183,8 @@ int comdb2bma_destroy(comdb2bma ma)
     if (rc != 0)
         return rc;
 
-    rc = pthread_cond_destroy(&ma->cond);
-    rc = pthread_key_delete(ma->bmakey);
+    Pthread_cond_destroy(&ma->cond);
+    Pthread_key_delete(ma->bmakey);
     rc = comdb2ma_destroy_int(ma->alloc);
 
     mspace_free(root.m, ma);
@@ -2110,14 +2271,14 @@ int comdb2bma_transfer_priority(comdb2bma ma, pthread_t tid)
             ma->prio_tid = tid;
 
             if (!ma->giveback)
-                pthread_setspecific(privileged, PRIO_NO);
+                Pthread_setspecific(privileged, PRIO_NO);
         }
 
         if (rc != 0)
             COMDB2BMA_UNLOCK(ma);
         else {
             if (ma->nblocks != 0)
-                pthread_cond_broadcast(&ma->cond);
+                Pthread_cond_broadcast(&ma->cond);
             rc = COMDB2BMA_UNLOCK(ma);
         }
     }
@@ -2142,14 +2303,14 @@ int comdb2bma_yield(comdb2bma ma)
                and the ancestor wants it back, pass it over
                and then broadcast */
             ma->prio_tid = ma->inherit_tid;
-            pthread_setspecific(privileged, PRIO_NO);
+            Pthread_setspecific(privileged, PRIO_NO);
             if (ma->nblocks != 0)
-                pthread_cond_broadcast(&ma->cond);
+                Pthread_cond_broadcast(&ma->cond);
         } else {
             ma->prio = 0;
-            pthread_setspecific(privileged, PRIO_NO);
+            Pthread_setspecific(privileged, PRIO_NO);
             if (ma->nblocks != 0)
-                pthread_cond_signal(&ma->cond);
+                Pthread_cond_signal(&ma->cond);
         }
 
         if (rc == 0) {
@@ -2175,13 +2336,13 @@ static void comdb2bma_check_prio_all(void)
 
     if (COMDB2MA_LOCK(&root) == 0) {
         if (root.m != NULL) {
-            pthread_setspecific(privileged, PRIO_NO);
+            Pthread_setspecific(privileged, PRIO_NO);
             LISTC_FOR_EACH(&(root.blist), curpos, lnk)
             {
                 // no need to lock. we're fine with dirty reads here.
                 if (curpos->prio &&
                     pthread_equal(pthread_self(), curpos->prio_tid)) {
-                    pthread_setspecific(privileged, PRIO_YES);
+                    Pthread_setspecific(privileged, PRIO_YES);
                     break;
                 }
             }
@@ -2340,14 +2501,14 @@ static void *comdb2_bmalloc_int(comdb2bma ma, size_t n, int block, int lk,
     if (ret != NULL && !ma->prio && mspace_footprint(ma->alloc->m) > ma->cap) {
         ma->prio_tid = pthread_self();
         ma->prio = 1;
-        pthread_setspecific(privileged, PRIO_YES);
+        Pthread_setspecific(privileged, PRIO_YES);
     }
 
     if (lk)
         COMDB2BMA_UNLOCK(ma);
 
     if (ret != NULL)
-        pthread_setspecific(ma->bmakey, ma);
+        Pthread_setspecific(ma->bmakey, ma);
 
     return ret;
 }
@@ -2447,14 +2608,14 @@ static void *comdb2_bcalloc_int(comdb2bma ma, size_t n, size_t size, int block,
     if (ret != NULL && !ma->prio && mspace_footprint(ma->alloc->m) > ma->cap) {
         ma->prio_tid = pthread_self();
         ma->prio = 1;
-        pthread_setspecific(privileged, PRIO_YES);
+        Pthread_setspecific(privileged, PRIO_YES);
     }
 
     if (lk)
         COMDB2BMA_UNLOCK(ma);
 
     if (ret != NULL)
-        pthread_setspecific(ma->bmakey, ma);
+        Pthread_setspecific(ma->bmakey, ma);
 
     return ret;
 }
@@ -2567,14 +2728,14 @@ static void *comdb2_brealloc_int(comdb2bma ma, void *ptr, size_t n, int block,
     if (ret != NULL && !ma->prio && mspace_footprint(ma->alloc->m) > ma->cap) {
         ma->prio_tid = pthread_self();
         ma->prio = 1;
-        pthread_setspecific(privileged, PRIO_YES);
+        Pthread_setspecific(privileged, PRIO_YES);
     }
 
     if (lk)
         COMDB2BMA_UNLOCK(ma);
 
     if (ret != NULL)
-        pthread_setspecific(ma->bmakey, ma);
+        Pthread_setspecific(ma->bmakey, ma);
 
     return ret;
 }
@@ -2622,7 +2783,7 @@ static void comdb2_bfree_int(comdb2bma ma, void *ptr, int lk)
         comdb2_malloc_trim(ma->alloc, 0);
 
     if (ma->nblocks != 0 && mspace_footprint(ma->alloc->m) <= ma->cap)
-        pthread_cond_signal(&ma->cond);
+        Pthread_cond_signal(&ma->cond);
 
     if (lk)
         COMDB2BMA_UNLOCK(ma->lock);
@@ -2633,6 +2794,28 @@ void comdb2_bfree(comdb2bma ma, void *ptr) { comdb2_bfree_int(ma, ptr, 1); }
 void comdb2_bfree_nl(comdb2bma ma, void *ptr) { comdb2_bfree_int(ma, ptr, 0); }
 /* } free */
 /* } COMDB2 BLOCKING MEMORY ALLOCATOR */
+#else /* !defined(USE_SYS_ALLOC) && !defined(COMDB2MA_OMIT_BMEM) */
+int comdb2bma_pass_priority_back(comdb2bma ma)
+{
+    return 0;
+}
+int comdb2bma_transfer_priority(comdb2bma ma, pthread_t tid)
+{
+    return 0;
+}
+int comdb2bma_yield_all(void)
+{
+    return 0;
+}
+int comdb2bma_mark_locked(comdb2bma ma)
+{
+    return 0;
+}
+int comdb2bma_mark_unlocked(comdb2bma ma)
+{
+    return 0;
+}
+#endif /* !defined(USE_SYS_ALLOC) && !defined(COMDB2MA_OMIT_BMEM) */
 
 /* COMDB2 GLOBAL BLOB MEMORY ALLOCATOR { */
 /* blob allocator limit */
@@ -2643,3 +2826,139 @@ unsigned gbl_blob_sz_thresh_bytes = -1;
 /* blob allocator */
 comdb2bma blobmem;
 /* } COMDB2 GLOBAL BLOB MEMORY ALLOCATOR */
+
+#ifndef COMDB2MA_OMIT_DEBUG
+static int find_switch_index(const char *name)
+{
+    int i;
+    for (i = 0; i != COMDB2MA_COUNT; ++i) {
+        if (strcasecmp(name, COMDB2_STATIC_MA_METAS[i].name) == 0)
+            return i;
+    }
+    return -1;
+}
+
+static void print_stack_of_a_chunk(void *p, void *_)
+{
+
+    void **out, **frames;
+    char *fp;
+    unsigned int nf, i;
+
+    out = (void **)p - COMDB2MA_SENTINEL_OFS;
+    if (COMDB2MA_OK_SENTINEL(out) && COMDB2MA_ISDEBUG(out)) {
+        fp = (char*)out;
+        fp += COMDB2MA_ROUND8(comdb2_malloc_usable_size(out) + (sizeof(void *)));
+        frames = (void **)fp;
+        nf = (unsigned int)(uintptr_t)frames[0];
+        /* Skip the first 3 frames + counter */
+        for (i = 4; i < nf; ++i) {
+            /* Skip empty frames caused by optimization. */
+            if (frames[i] != NULL) {
+                logmsg(LOGMSG_USER, "%p ", frames[i]);
+            }
+        }
+        logmsg(LOGMSG_USER, "\n");
+    }
+}
+
+static void dump_chunks(comdb2ma cm, int unsafe)
+{
+    if (!unsafe && !cm->use_lock) /* can't safely read if lockless */
+        return;
+
+    if (COMDB2MA_LOCK(cm) == 0) {
+        mspace_for_each_chunk(cm->m, print_stack_of_a_chunk, NULL);
+        COMDB2MA_UNLOCK(cm);
+    }
+}
+
+int comdb2ma_debug_dump(const char *name, int unsafe)
+{
+    int rc;
+    comdb2ma curpos;
+    if ((rc = COMDB2MA_LOCK(&root)) == 0) {
+        LISTC_FOR_EACH(&(root.list), curpos, lnk) {
+            if (strcasecmp(curpos->name, name) == 0 || strcmp(name, "*") == 0)
+                dump_chunks(curpos, unsafe);
+        }
+        COMDB2MA_UNLOCK(&root);
+    }
+    return rc;
+}
+
+static int debug_on_off(const char *name, unsigned char on)
+{
+    int rc, indx;
+    comdb2ma curpos;
+
+    if (strcmp(name, "*") == 0) {
+        debug_master_switch = on;
+        for (indx = 0; indx != COMDB2MA_COUNT; ++indx)
+            debug_switches[indx] = on;
+    } else {
+        indx = find_switch_index(name);
+        if (indx >= 0)
+            debug_switches[indx] = on;
+    }
+
+    rc = COMDB2MA_LOCK(&root);
+    if (rc != 0)
+        return rc;
+
+    if (root.m == NULL)
+        rc = EPERM;
+    else {
+        LISTC_FOR_EACH(&(root.list), curpos, lnk) {
+            if (strcasecmp(curpos->name, name) == 0 || strcmp(name, "*") == 0)
+                curpos->debug = on;
+        }
+    }
+
+    if (rc != 0)
+        COMDB2MA_UNLOCK(&root);
+    else
+        rc = COMDB2MA_UNLOCK(&root);
+
+    return rc;
+}
+
+int comdb2ma_debug_on(const char *name)
+{
+    return debug_on_off(name, 1);
+}
+
+int comdb2ma_debug_off(const char *name)
+{
+    return debug_on_off(name, 0);
+}
+
+void comdb2ma_debug_start(void)
+{
+    debug_started = 1;
+}
+
+void comdb2ma_debug_stop(void)
+{
+    debug_started = 0;
+}
+
+void comdb2ma_debug_show_config(void)
+{
+    int i, none;
+    logmsg(LOGMSG_USER, "Debug: %s\n", debug_started ? "STARTED" : "stopped");
+    logmsg(LOGMSG_USER, "Debug is enabled for:");
+    if (debug_master_switch)
+        logmsg(LOGMSG_USER, " ALL");
+    else {
+        for (i = 0, none = 1; i != COMDB2MA_COUNT; ++i)
+            if (debug_switches[i]) {
+                logmsg(LOGMSG_USER, " %s", COMDB2_STATIC_MA_METAS[i].name);
+                none = 0;
+            }
+        if (none)
+            logmsg(LOGMSG_USER, " none");
+    }
+    logmsg(LOGMSG_USER, "\n");
+}
+#endif /* COMDB2MA_OMIT_DEBUG */

@@ -18,7 +18,8 @@
 #define INCLUDE_SC_RENAME_H
 
 struct ireq;
-int do_rename_table(struct ireq *, tran_type *);
-int finalize_rename_table(struct ireq *, tran_type *);
+int do_rename_table(struct ireq *, struct schema_change_type *, tran_type *);
+int finalize_rename_table(struct ireq *, struct schema_change_type *,
+                          tran_type *);
 
 #endif

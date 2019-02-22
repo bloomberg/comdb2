@@ -52,7 +52,7 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1 { `cat t1_1.csc2 ` }"
 do_verify
 
 
-#t1_3 should force rebuild
+#t1_3 should be instant sc
 cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1 { `cat t1_3.csc2 ` }"
 do_verify
 

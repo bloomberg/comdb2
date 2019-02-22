@@ -1,7 +1,6 @@
 #ifndef INCLUDED_REQLOG_INT_H
 #define INCLUDED_REQLOG_INT_H
 
-#include "sqlquery.pb-c.h"
 #include "list.h"
 #include "comdb2.h"
 #include "cdb2_constants.h"
@@ -61,8 +60,6 @@ struct tablelist {
     char name[1];
 };
 
-#define FINGERPRINTSZ 16
-
 struct reqlogger {
     char origin[128];
 
@@ -118,8 +115,6 @@ struct reqlogger {
     int have_id;
     const char *event_type;
 
-    CDB2SQLQUERY *request;
-
     int ntables;
     int alloctables;
     char **sqltables;
@@ -129,6 +124,7 @@ struct reqlogger {
     struct client_query_stats *path;
     int ncontext;
     char **context;
+    struct sqlclntstate *clnt;
 };
 
 /* a rage of values to look for */
@@ -210,9 +206,16 @@ struct logrule {
  * each second. */
 enum { NUM_BUCKETS = 10 };
 struct nodestats {
-    struct nodestats *next;
-
+    unsigned checksum;
+    int node;
     char *host;
+    struct in_addr addr;
+    char *task;
+    char *stack;
+
+    int ref;
+    pthread_mutex_t mtx;
+    LINKC_T(struct nodestats) linkv;
 
     /* raw counters, totals (updated locklessly by multiple threads) */
     struct rawnodestats rawtotals;
@@ -220,37 +223,17 @@ struct nodestats {
     /* previous totals for last time quanta */
     struct rawnodestats prevtotals;
 
-    /* keep a diff of reqs/second for th last few seconds so we can
-     * caculate a smoothis reqs/second.  this may not get updated regularaly
+    /* keep a diff of reqs/second for the last few seconds so we can
+     * caculate a smooth reqs/second.  this may not get updated regularly
      * so we record epochms times. */
     unsigned cur_bucket;
     struct rawnodestats raw_buckets[NUM_BUCKETS];
     int bucket_spanms[NUM_BUCKETS];
+
+    char mem[1];
 };
-
-struct summary_nodestats {
-    char *host;
-
-    unsigned finds;
-    unsigned rngexts;
-    unsigned writes;
-    unsigned other_fstsnds;
-
-    unsigned adds;
-    unsigned upds;
-    unsigned dels;
-    unsigned bsql;     /* block sql */
-    unsigned recom;    /* recom sql */
-    unsigned snapisol; /* snapisol sql */
-    unsigned serial;   /* serial sql */
-
-    unsigned sql_queries;
-    unsigned sql_steps;
-    unsigned sql_rows;
-};
+typedef struct nodestats nodestats_t;
 
 extern int gbl_time_fdb;
-
-
 
 #endif

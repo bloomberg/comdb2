@@ -368,7 +368,10 @@ void printCol(FILE *f, cdb2_hndl_tp *cdb2h, void *val, int col, int printmode)
             fputc('\'', stdout);
         } else {
             if (printmode == BINARY) {
-                write(1, val, cdb2_column_size(cdb2h, col));
+                int lrc = write(1, val, cdb2_column_size(cdb2h, col));
+                if (lrc == -1) {
+                    printf("ERROR: %s write returns -1\n", __func__);
+                }
                 exit(0);
             } else {
                 fprintf(f, "x'");
@@ -425,7 +428,7 @@ void printCol(FILE *f, cdb2_hndl_tp *cdb2h, void *val, int col, int printmode)
 }
 
 #include <sys/socket.h>
-#define MAX_NODES 16
+#define MAX_NODES 128
 
 struct dummy_cdb2buf {
     int fd;
@@ -447,7 +450,8 @@ struct dummy_cdb2_hndl {
 void disconnect_cdb2h(cdb2_hndl_tp * cdb2h) {
     struct dummy_cdb2_hndl *dummy_hndl;
     dummy_hndl = (struct dummy_cdb2_hndl *)cdb2h;
-    shutdown(dummy_hndl->sb->fd, 2);
+    if (dummy_hndl->sb)
+        shutdown(dummy_hndl->sb->fd, 2);
 }
 
 static int run_statement(const char *sql, int ntypes, int *types,
@@ -456,10 +460,9 @@ static int run_statement(const char *sql, int ntypes, int *types,
     int rc;
     int ncols;
     int col;
-    int cost;
     FILE *out = stdout;
 
-    int startms, rowms, endms;
+    int startms = 0, rowms = 0, endms = 0;
 
     if (printmode & STDERR)
         out = stderr;
@@ -597,7 +600,10 @@ static int run_statement(const char *sql, int ntypes, int *types,
             int cmd;
             printf(">");
             fflush(stdout);
-            fgets(input, sizeof(input), stdin);
+            char *tmp = fgets(input, sizeof(input), stdin);
+            if (!tmp) {
+                printf("%s failed to read\n", __func__);
+            }
             cmd = atoi(input);
             if (cmd == -1)
                 pausemode = 0;

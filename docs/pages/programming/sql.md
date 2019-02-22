@@ -65,9 +65,20 @@ undone.
 
 ## Changing data
 
-### INSERT
+### INSERT/REPLACE
 
-![INSERT](images/insert-stmt.gif)
+#### insert
+
+![insert](images/insert-stmt.gif)
+
+#### replace
+
+![replace](images/replace-stmt.gif)
+
+#### upsert-clause
+
+![upsert-clause](images/upsert-clause.gif)
+
 
 The ```INSERT``` statement comes in two basic forms. The first form (with the "VALUES" keyword) creates a single new 
 row in an existing table. If no column-list is specified then the number of values must be the same as the number 
@@ -87,7 +98,13 @@ See also:
 
 [expr](#expr)
 
+[index-column-list](#index-column-list)
+
+[qualified-table-name](#qualified-table-name)
+
 [select-stmt](#select-statement)
+
+[with-clause](#with-clause)
 
 ### UPDATE
 
@@ -100,11 +117,11 @@ made. A ```WHERE``` clause can be used to restrict which rows are updated.
 
 See also:
 
-[with-clause](#with-clause)
+[expr](#expr)
 
 [qualified-table-name](#qualified-table-name)
 
-[expr](#expr)
+[with-clause](#with-clause)
 
 ### DELETE
 
@@ -119,11 +136,11 @@ statement, but has the advantage that it will work on tables with foreign key co
 
 See also:
 
-[with-clause](#with-clause)
+[expr](#expr)
 
 [qualified-table-name](#qualified-table-name)
 
-[expr](#expr)
+[with-clause](#with-clause)
 
 ## Querying data
 
@@ -229,19 +246,19 @@ See also:
 
 [common-table-expression](#common-table-expression)
 
-[result-column](#result-column)
+[compound-operator](#compound-operator)
 
-[table-or-subquery](#table-or-subquery)
-    
+[expr](#expr)
+
 [join-clause](#join-clause)
 
 [join-operator](#join-operator)
 
-[expr](#expr)
-
-[compound-operator](#compound-operator)
-
 [ordering-term](#ordering-term)
+
+[result-column](#result-column)
+
+[table-or-subquery](#table-or-subquery)
 
 ## Stored procedures
 
@@ -274,33 +291,33 @@ Stored procedure calls are [immediate](transaction_model.html#immediate-and-defe
 
 ### CREATE TABLE
 
-CREATE TABLE (I):
+#### create-table-csc2
 
-![CREATE TABLE](images/create-table.gif)
+![create-table-csc2](images/create-table.gif)
 
-CREATE TABLE (II):
+#### create-table-ddl
 
-![CREATE TABLE](images/create-table-ddl.gif)
+![create-table-ddl](images/create-table-ddl.gif)
 
-Column list:
+#### index-column-list
 
-![COLUMN LIST](images/column-list.gif)
+![index-column-list](images/index-column-list.gif)
 
-Column constraint:
+#### column-constraint
 
-![COLUMN CONSTRAINT](images/column-constraint.gif)
+![column-constraint](images/column-constraint.gif)
 
-Table constraint:
+#### table-constraint
 
-![TABLE CONSTRAINT](images/table-constraint.gif)
+![table-constraint](images/table-constraint.gif)
 
-Foreign key definition:
+#### foreign-key-def
 
-![FOREIGN KEY DEFINITION](images/foreign-key-def.gif)
+![foreign-key-def](images/foreign-key-def.gif)
 
-Table options:
+#### table-options
 
-![TABLE OPTIONS](images/table-options.gif)
+![table-options](images/table-options.gif)
 
 The ```CREATE TABLE``` statement creates a new table. If the table already
 exists, the statement returns an error unless the ```IF NOT EXISTS``` clause
@@ -310,15 +327,28 @@ Comdb2 supports two variants of ```CREATE TABLE``` syntax. In the first approach
 the schema definition defines all keys and constraints (more information can be
 found on the [table schema](table_schema.html) page).
 
-The second approach, added in version 7.0, follows the usual standard data
+The second approach, added in **version R7**, follows the usual standard data
 definition language syntax supported by other relational database systems.
-A primary key created using ```CREATE TABLE (II)``` implicitly creates a
-```UNIQUE``` index named ```COMDB2_PK``` with all key columns marked
-```NOT NULL```.
+A primary key created using this syntax implicitly creates a ```UNIQUE``` index
+named ```COMDB2_PK``` with all key columns marked ```NOT NULL```.
+
+Comdb2 allows creation of indexes only on fields with fixed-sized types. For
+instance, an attempt to create index on a blob or vutf8 field would result in
+error. In termns of syntax, ```indexes on expressions``` need a little extra
+care in Comdb2. The expression *must* be casted to a fixed-sized type.
+
+```
+CREATE TABLE t1(`json` VUTF8(128),
+                UNIQUE (CAST(JSON_EXTRACT(`json`, '$.a') AS INT)),
+                UNIQUE (CAST(JSON_EXTRACT(`json`, '$.b') AS CSTRING(10))))$$
+```
+
+The list of allowed types that the expression in an index be casted to as well
+as the syntax required to define an index on expression using CSC2 schema, can
+be found [here](table_schema.html#indexes-on-expressions).
 
 See also:
-
-[table-schema](table_schema.html)
+[Schema definition language (CSC2)](table_schema.html)
 
 ### CREATE LUA TRIGGER
 
@@ -368,15 +398,15 @@ will no longer be callable from SQL.
 
 ### ALTER TABLE
 
-ALTER TABLE (I):
+#### alter-table-csc2
 
-![ALTER](images/alter-table.gif)
+![alter-table-csc2](images/alter-table.gif)
 
-ALTER TABLE (II):
+#### alter-table-ddl
 
-![ALTER](images/alter-table-ddl.gif)
+![alter-table-ddl](images/alter-table-ddl.gif)
 
-_**Schema changes in Comdb2 are always live**. The database will not acquire
+_**Schema changes in Comdb2 are live by default**. The database will not acquire
 long duration table locks during the change and may be freely read from and
 written to.  If the schema change adds a new field, or grows the size of an
 existing field, and doesn't modify the table keys, the change is "*instant*"
@@ -401,7 +431,7 @@ be added or removed. See the [Schema definition](table_schema.html) section for
 details on the table schema definition syntax. See the [table options](#table-options)
 section a list of options that may be set for a table.
 
-The second approach, added in version 7.0, supports the usual standard data
+The second approach, added in **version R7**, supports the usual standard data
 definition language, like other relational database systems. This syntax can
 be used to ```ADD``` a new column or ```DROP``` an existing column from the
 table. Multiple ADD/DROP operations can be used in the same command. In case of
@@ -412,7 +442,15 @@ options.
 
 See also:
 
+[column-constraint](#column-constraint)
+
+[foreign-key-def](#foreign-key-def)
+
+[index-column-list](#index-column-list)
+
 [table-options](#table-options)
+
+[table-schema](table_schema.html)
 
 ### CREATE TIME PARTITION
 
@@ -437,7 +475,8 @@ statement instead.
 ![CREATE INDEX](images/create-index.gif)
 
 The ```CREATE INDEX``` statement can be used to create an index on an existing
-table. The support for ```CREATE INDEX``` was added in version 7.0.
+table. The support for ```CREATE INDEX``` was added in version 7.0. Indexes on
+expression cannot be currently created via this command.
 
 ### DROP INDEX
 
@@ -533,6 +572,10 @@ ever run ```REBUILD```:
     reclaim disk space.
   * A table option (like compression) has been set, and we'd like to apply it to existing records immediately. 
   * A table/index/blob is found to be corrupt.
+
+The ```READONLY``` and ```PAGEORDER``` options are intended for the rare cases that a table is found to be corrupt.
+Setting the ```READONLY``` option will cause the cluster to drop to ```READONLY``` mode for the duration of the
+rebuild.  Traversing a B-Tree in ```PAGEORDER``` requires that the ```READONLY``` flag is set.
 
 ## Built-in functions
 
@@ -678,6 +721,30 @@ that pass the limit are rejected.
 Sets a tunable that determines how hard the query planner will work to estimate the cost of possible query plans.  The
 setting is a number from 1 (least effort, quickly formed plans) to 10 (most effort, possibly better plans).  The 
 default setting is 1.
+
+### SET SSL_MODE
+
+Sets client-side SSL mode. See [SSL Mode Summary](ssl.html#ssl-mode-summary) for details.
+
+### SET SSL_CERT_PATH
+
+Sets SSL certificate path. See [Client SSL Configuration Summary](ssl.html#client-ssl-configuration-summary) for details.
+
+### SET SSL_CERT
+
+Sets path to the SSL certificate. See [Client SSL Configuration Summary](ssl.html#client-ssl-configuration-summary) for details.
+
+### SET SSL_KEY
+
+Sets path to the SSL key. See [Client SSL Configuration Summary](ssl.html#client-ssl-configuration-summary) for details.
+
+### SET SSL_CA
+
+Sets path to the trusted CA. See [Client SSL Configuration Summary](ssl.html#client-ssl-configuration-summary) for details.
+
+### SET SSL_CRL
+
+Sets path to the CRL. See [Client SSL Configuration Summary](ssl.html#client-ssl-configuration-summary) for details.
 
 ## Common syntax rules
 

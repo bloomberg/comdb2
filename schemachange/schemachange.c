@@ -31,9 +31,12 @@
 #include "sc_add_table.h"
 #include "sc_callbacks.h"
 #include "sc_schema.h"
+#include "crc32c.h"
+#include "comdb2_atomic.h"
 
 const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
                                     unsigned int hash);
+extern int gbl_test_sc_resume_race;
 int start_schema_change_tran(struct ireq *iq, tran_type *trans)
 {
     struct schema_change_type *s = iq->sc;
@@ -53,16 +56,16 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         struct schema_change_type *last_sc = NULL;
         struct schema_change_type *stored_sc = NULL;
 
-        pthread_mutex_lock(&sc_resuming_mtx);
+        Pthread_mutex_lock(&sc_resuming_mtx);
         stored_sc = sc_resuming;
         while (stored_sc) {
-            if (strcasecmp(stored_sc->table, s->table) == 0) {
+            if (strcasecmp(stored_sc->tablename, s->tablename) == 0) {
                 uuidstr_t us;
                 comdb2uuidstr(stored_sc->uuid, us);
                 logmsg(LOGMSG_INFO,
                        "Found ongoing schema change: rqid [%llx %s] "
                        "table %s, add %d, drop %d, fastinit %d, alter %d\n",
-                       stored_sc->rqid, us, stored_sc->table,
+                       stored_sc->rqid, us, stored_sc->tablename,
                        stored_sc->addonly, stored_sc->drop_table,
                        stored_sc->fastinit, stored_sc->alteronly);
                 if (stored_sc->rqid == iq->sorese.rqid &&
@@ -80,7 +83,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                      */
                     sc_errf(s, "schema change already in progress\n");
                     free_schema_change_type(s);
-                    pthread_mutex_unlock(&sc_resuming_mtx);
+                    Pthread_mutex_unlock(&sc_resuming_mtx);
                     return SC_CANT_SET_RUNNING;
                 }
                 break;
@@ -89,36 +92,38 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             last_sc = stored_sc;
             stored_sc = stored_sc->sc_next;
         }
-        pthread_mutex_unlock(&sc_resuming_mtx);
+        Pthread_mutex_unlock(&sc_resuming_mtx);
         if (stored_sc) {
             stored_sc->tran = trans;
             stored_sc->iq = iq;
             free_schema_change_type(s);
             s = stored_sc;
             iq->sc = s;
-            pthread_mutex_lock(&s->mtx);
+            Pthread_mutex_lock(&s->mtx);
             s->finalize_only = 1;
             s->nothrevent = 1;
             s->resume = SC_RESUME;
-            pthread_mutex_unlock(&s->mtx);
+            Pthread_mutex_unlock(&s->mtx);
             uuidstr_t us;
             comdb2uuidstr(s->uuid, us);
-            logmsg(LOGMSG_INFO, "Resuming schema change: rqid [%llx %s] "
-                                "table %s, add %d, drop %d, fastinit %d, alter "
-                                "%d, finalize_only %d\n",
-                   s->rqid, us, s->table, s->addonly, s->drop_table,
+            logmsg(LOGMSG_INFO,
+                   "Resuming schema change: rqid [%llx %s] "
+                   "table %s, add %d, drop %d, fastinit %d, alter "
+                   "%d, finalize_only %d\n",
+                   s->rqid, us, s->tablename, s->addonly, s->drop_table,
                    s->fastinit, s->alteronly, s->finalize_only);
 
         } else {
             int bdberr;
             void *packed_sc_data = NULL;
             size_t packed_sc_data_len;
-            if (bdb_get_in_schema_change(s->table, &packed_sc_data,
+            if (bdb_get_in_schema_change(trans, s->tablename, &packed_sc_data,
                                          &packed_sc_data_len, &bdberr) ||
                 bdberr != BDBERR_NOERROR) {
-                logmsg(LOGMSG_WARN, "%s: failed to discover whether table: "
-                                    "%s is in the middle of a schema change\n",
-                       __func__, s->table);
+                logmsg(LOGMSG_WARN,
+                       "%s: failed to discover whether table: "
+                       "%s is in the middle of a schema change\n",
+                       __func__, s->tablename);
             }
             if (packed_sc_data) {
                 stored_sc = new_schemachange_type();
@@ -152,20 +157,18 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                     logmsg(LOGMSG_INFO,
                            "Resuming schema change: rqid [%llx %s] "
                            "table %s, add %d, drop %d, fastinit %d, alter %d\n",
-                           s->rqid, us, s->table, s->addonly, s->drop_table,
+                           s->rqid, us, s->tablename, s->addonly, s->drop_table,
                            s->fastinit, s->alteronly);
                 }
                 free_schema_change_type(stored_sc);
-            } else
-                logmsg(LOGMSG_INFO, "No ongoing schema change of table %s\n",
-                       s->table);
+            }
         }
     }
 
     strcpy(s->original_master_node, gbl_mynode);
     unsigned long long seed;
     const char *node = gbl_mynode;
-    if (trans && s->tran == trans && iq->sc_seed) {
+    if (s->tran == trans && iq->sc_seed) {
         seed = iq->sc_seed;
         logmsg(LOGMSG_INFO, "Starting schema change: "
                             "transactionally reuse seed 0x%llx\n",
@@ -190,13 +193,17 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             return SC_MASTER_DOWNGRADE;
         }
     } else {
-        seed = get_next_sc_seed(thedb->bdb_env);
+        seed = bdb_get_a_genid(thedb->bdb_env);
         logmsg(LOGMSG_INFO, "Starting schema change: new seed 0x%llx\n", seed);
     }
-
-    rc = sc_set_running(1, seed, node, time(NULL));
+    uuidstr_t us;
+    comdb2uuidstr(s->uuid, us);
+    rc = sc_set_running(s->tablename, 1, seed, node, time(NULL));
     if (rc != 0) {
-        if (!doing_upgrade || s->fulluprecs || s->partialuprecs) {
+        logmsg(LOGMSG_INFO, "Failed sc_set_running [%llx %s] rc %d\n", s->rqid,
+               us, rc);
+        if (s->fulluprecs || s->partialuprecs || !s->db ||
+            !s->db->doing_upgrade) {
             errstat_set_strf(&iq->errstat, "Schema change already in progress");
             free_schema_change_type(s);
             return SC_CANT_SET_RUNNING;
@@ -211,14 +218,16 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             // give time to let upgrade threads exit
             while (maxcancelretry-- > 0) {
                 sleep(1);
-                if (!doing_upgrade) break;
+                if (s->db && !s->db->doing_upgrade)
+                    break;
             }
 
-            if (doing_upgrade) {
+            if (s->db && s->db->doing_upgrade) {
                 sc_errf(s, "failed to cancel table upgrade threads\n");
                 free_schema_change_type(s);
                 return SC_CANT_SET_RUNNING;
-            } else if (sc_set_running(1, get_next_sc_seed(thedb->bdb_env),
+            } else if (sc_set_running(s->tablename, 1,
+                                      bdb_get_a_genid(thedb->bdb_env),
                                       gbl_mynode, time(NULL)) != 0) {
                 free_schema_change_type(s);
                 return SC_CANT_SET_RUNNING;
@@ -226,49 +235,73 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         }
     }
 
-    if (thedb->master == gbl_mynode && !s->resume && iq->sc_seed != sc_seed) {
-        logmsg(LOGMSG_INFO, "Calling bdb_set_disable_plan_genid 0x%lx\n",
-               sc_seed);
+    logmsg(LOGMSG_INFO, "sc_set_running schemachange [%llx %s]\n", s->rqid, us);
+
+    iq->sc_host = node ? crc32c((uint8_t *)node, strlen(node)) : 0;
+    if (thedb->master == gbl_mynode && !s->resume && iq->sc_seed != seed) {
+        logmsg(LOGMSG_INFO, "Calling bdb_set_disable_plan_genid 0x%llx\n", seed);
         int bdberr;
-        int rc = bdb_set_disable_plan_genid(thedb->bdb_env, NULL, sc_seed,
-                                            sc_host, &bdberr);
+        int rc = bdb_set_sc_seed(thedb->bdb_env, NULL, s->tablename, seed,
+                                 iq->sc_host, &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "Couldn't save schema change seed\n");
         }
     }
-    iq->sc_seed = sc_seed;
+    iq->sc_seed = seed;
 
     sc_arg_t *arg = malloc(sizeof(sc_arg_t));
     arg->trans = trans;
     arg->iq = iq;
+    arg->sc = iq->sc;
 
     if (s->resume && s->alteronly && !s->finalize_only) {
-        gbl_sc_resume_start = time_epochms();
+        if (gbl_test_sc_resume_race) {
+            logmsg(LOGMSG_INFO, "%s:%d sleeping 5s for sc_resume test\n",
+                   __func__, __LINE__);
+            sleep(5);
+        }
+        ATOMIC_ADD(gbl_sc_resume_start, 1);
     }
     /*
     ** if s->partialuprecs, we're going radio silent from this point forward
     ** in order to produce minimal spew
     */
     if (s->nothrevent) {
-        if (!s->partialuprecs) logmsg(LOGMSG_INFO, "Executing SYNCHRONOUSLY\n");
+        if (!s->partialuprecs)
+            logmsg(LOGMSG_INFO, "Executing SYNCHRONOUSLY\n");
+        Pthread_mutex_lock(&s->mtx);
         rc = do_schema_change_tran(arg);
     } else {
+        int max_threads =
+            bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_ASYNC_MAXTHREADS);
+        Pthread_mutex_lock(&sc_async_mtx);
+        while (!s->resume && max_threads > 0 &&
+               sc_async_threads >= max_threads) {
+            logmsg(LOGMSG_INFO, "Waiting for avaiable schema change threads\n");
+            Pthread_cond_wait(&sc_async_cond, &sc_async_mtx);
+        }
+        sc_async_threads++;
+        Pthread_mutex_unlock(&sc_async_mtx);
+
         if (!s->partialuprecs)
             logmsg(LOGMSG_INFO, "Executing ASYNCHRONOUSLY\n");
         pthread_t tid;
-        if (trans)
-            rc = pthread_create(&tid, &gbl_pthread_attr_detached,
-                                (void *(*)(void *))do_schema_change_tran, arg);
-        else
-            rc = pthread_create(&tid, &gbl_pthread_attr_detached,
-                                (void *(*)(void *))do_schema_change, s);
+        Pthread_mutex_lock(&s->mtx);
+        rc = pthread_create(&tid, &gbl_pthread_attr_detached,
+                            (void *(*)(void *))do_schema_change_tran, arg);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "start_schema_change:pthread_create rc %d %s\n", rc,
                    strerror(errno));
+
+            Pthread_mutex_lock(&sc_async_mtx);
+            sc_async_threads--;
+            Pthread_mutex_unlock(&sc_async_mtx);
+
             free(arg);
+            sc_set_running(s->tablename, 0, iq->sc_seed, gbl_mynode,
+                           time(NULL));
             free_schema_change_type(s);
-            sc_set_running(0, sc_seed, gbl_mynode, time(NULL));
             rc = SC_ASYNC_FAILED;
         } else {
             rc = SC_ASYNC;
@@ -280,24 +313,33 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
 
 int start_schema_change(struct schema_change_type *s)
 {
-    struct ireq iq;
-    init_fake_ireq(thedb, &iq);
-    iq.sc = s;
-    if (s->db == NULL) {
-        s->db = get_dbtable_by_name(s->table);
+    struct ireq *iq = NULL;
+    iq = (struct ireq *)calloc(1, sizeof(*iq));
+    if (iq == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: failed to malloc ireq\n", __func__);
+        return -1;
     }
-    iq.usedb = s->db;
-    return start_schema_change_tran(&iq, NULL);
+    init_fake_ireq(thedb, iq);
+    iq->sc = s;
+    s->iq = iq;
+    if (s->db == NULL) {
+        s->db = get_dbtable_by_name(s->tablename);
+    }
+    iq->usedb = s->db;
+    s->usedbtablevers = s->db ? s->db->tableversion : 0;
+    return start_schema_change_tran(iq, NULL);
 }
 
 void delay_if_sc_resuming(struct ireq *iq)
 {
-    if (gbl_sc_resume_start == 0) return;
+    if (gbl_sc_resume_start <= 0)
+        return;
 
     int diff;
     int printerr = 0;
-    while (gbl_sc_resume_start) {
-        if ((diff = time_epochms() - gbl_sc_resume_start) > 300 && !printerr) {
+    int start_time = comdb2_time_epochms();
+    while (gbl_sc_resume_start > 0) {
+        if ((diff = comdb2_time_epochms() - start_time) > 300 && !printerr) {
             logmsg(LOGMSG_WARN, "Delaying since gbl_sc_resume_start has not "
                                 "been reset to 0 for %dms\n",
                    diff);
@@ -342,8 +384,9 @@ int finalize_schema_change(struct ireq *iq, tran_type *trans)
             logmsg(LOGMSG_ERROR,
                    "start_schema_change:pthread_create rc %d %s\n", rc,
                    strerror(errno));
+            sc_set_running(s->tablename, 0, iq->sc_seed, gbl_mynode,
+                           time(NULL));
             free_schema_change_type(s);
-            sc_set_running(0, sc_seed, gbl_mynode, time(NULL));
             rc = SC_ASYNC_FAILED;
         } else {
             rc = SC_ASYNC;
@@ -366,7 +409,7 @@ int change_schema(char *table, char *fname, int odh, int compress,
     }
     bzero(s, sizeof(struct schema_change_type));
     s->type = DBTYPE_TAGGED_TABLE;
-    strncpy0(s->table, table, sizeof(s->table));
+    strncpy0(s->tablename, table, sizeof(s->tablename));
     strncpy0(s->fname, fname, sizeof(s->fname));
 
     s->headers = odh;
@@ -405,9 +448,10 @@ int create_queue(struct dbenv *dbenvin, char *queuename, int avgitem,
     }
     bzero(s, sizeof(struct schema_change_type));
     s->type = isqueuedb ? DBTYPE_QUEUEDB : DBTYPE_QUEUE;
-    strncpy0(s->table, queuename, sizeof(s->table));
+    strncpy0(s->tablename, queuename, sizeof(s->tablename));
     s->avgitemsz = avgitem;
     s->pagesize = pagesize;
+    s->nothrevent = 1;
 
     return start_schema_change(s);
 }
@@ -428,9 +472,7 @@ int fastinit_table(struct dbenv *dbenvin, char *table)
         logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
         return -1;
     }
-    bzero(s, sizeof(struct schema_change_type));
-    s->type = DBTYPE_TAGGED_TABLE;
-    strncpy0(s->table, db->tablename, sizeof(s->table));
+    strncpy0(s->tablename, db->tablename, sizeof(s->tablename));
 
     if (get_csc2_file(db->tablename, -1 /*highest csc2_version*/, &s->newcsc2,
                       NULL /*csc2len*/)) {
@@ -440,16 +482,18 @@ int fastinit_table(struct dbenv *dbenvin, char *table)
     }
 
     s->nothrevent = 1;
+    s->finalize = 1;
     s->fastinit = 1;
     s->same_schema = 1;
-    s->nothrevent = 1;
     s->headers = -1;
     s->compress = -1;
     s->compress_blobs = -1;
     s->ip_updates = -1;
     s->instant_sc = -1;
 
-    return start_schema_change(s);
+    if (start_schema_change(s) != 0)
+        return -1;
+    return local_replicant_write_clear(NULL, NULL, get_dbtable_by_name(table));
 }
 
 int do_dryrun(struct schema_change_type *s)
@@ -459,26 +503,26 @@ int do_dryrun(struct schema_change_type *s)
     struct dbtable *newdb = NULL;
     struct scinfo scinfo = {0};
 
-    db = get_dbtable_by_name(s->table);
+    db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
         if (s->alteronly) {
-            sbuf2printf(s->sb, ">Table %s does not exists\n", s->table);
+            sbuf2printf(s->sb, ">Table %s does not exists\n", s->tablename);
             goto fail;
         } else if (s->fastinit) {
-            sbuf2printf(s->sb, ">Table %s does not exists\n", s->table);
+            sbuf2printf(s->sb, ">Table %s does not exists\n", s->tablename);
             goto fail;
         }
     } else {
         if (s->addonly) {
-            sbuf2printf(s->sb, ">Table %s already exists\n", s->table);
+            sbuf2printf(s->sb, ">Table %s already exists\n", s->tablename);
             goto fail;
         } else if (s->fastinit) {
-            sbuf2printf(s->sb, ">Table %s will be truncated\n", s->table);
+            sbuf2printf(s->sb, ">Table %s will be truncated\n", s->tablename);
             goto succeed;
         }
     }
 
-    if (dyns_load_schema_string(s->newcsc2, thedb->envname, s->table)) {
+    if (dyns_load_schema_string(s->newcsc2, thedb->envname, s->tablename)) {
         char *err;
         err = csc2_get_errors();
         sc_errf(s, "%s", err);
@@ -486,11 +530,11 @@ int do_dryrun(struct schema_change_type *s)
     }
 
     if (db == NULL) {
-        sbuf2printf(s->sb, ">Table %s will be added.\n", s->table);
+        sbuf2printf(s->sb, ">Table %s will be added.\n", s->tablename);
         goto succeed;
     }
 
-    newdb = newdb_from_schema(thedb, s->table, NULL, 0, 0, 1);
+    newdb = newdb_from_schema(thedb, s->tablename, NULL, 0, 0, 1);
     if (!newdb) {
         goto fail;
     }
@@ -535,27 +579,19 @@ int live_sc_post_delete_int(struct ireq *iq, void *trans,
                             unsigned long long del_keys,
                             blob_buffer_t *oldblobs)
 {
-    if (!(sc_live && iq->usedb->sc_from == iq->usedb)) {
+    if (iq->usedb->sc_downgrading)
+        return ERR_NOMASTER;
+
+    if (iq->usedb->sc_from != iq->usedb) {
         return 0;
     }
 
-    int stripe = get_dtafile_from_genid(genid);
-    if (stripe < 0 || stripe >= gbl_dtastripe) {
-        logmsg(LOGMSG_ERROR, "%s: genid 0x%llx stripe %d out of range!\n",
-               __func__, genid, stripe);
-        return 0;
-    }
-    unsigned long long *sc_genids = iq->usedb->sc_to->sc_genids;
-    if (!sc_genids[stripe]) {
-        /* A genid of zero is invalid.  So, if the schema change cursor is at
-         * genid zero it means pretty conclusively that it hasn't done anything
-         * yet so we cannot possibly be behind the cursor. */
+    if (iq->usedb->sc_live_logical) {
         return 0;
     }
 
-    int is_gen_gt_scptr = is_genid_right_of_stripe_pointer(
-        iq->usedb->handle, genid, sc_genids[stripe]);
-    if (is_gen_gt_scptr) {
+    if (is_genid_right_of_stripe_pointer(iq->usedb->handle, genid,
+                                         iq->usedb->sc_to->sc_genids)) {
         return 0;
     }
 
@@ -571,11 +607,35 @@ int live_sc_post_delete(struct ireq *iq, void *trans, unsigned long long genid,
                         blob_buffer_t *oldblobs)
 {
     int rc = 0;
-    pthread_rwlock_rdlock(&sc_live_rwlock);
+    Pthread_rwlock_rdlock(&iq->usedb->sc_live_lk);
 
     rc = live_sc_post_delete_int(iq, trans, genid, old_dta, del_keys, oldblobs);
 
-    pthread_rwlock_unlock(&sc_live_rwlock);
+    Pthread_rwlock_unlock(&iq->usedb->sc_live_lk);
+    return rc;
+}
+
+static int unodhfy_if_necessary(struct ireq *iq, blob_buffer_t *blobs,
+                                int maxblobs)
+{
+    int i, rc, oldodh, newodh, reccompr, oldcompr, newcompr;
+
+    for (i = 0, rc = 0; i != maxblobs; ++i) {
+        bdb_get_compr_flags(iq->usedb->sc_from->handle, &oldodh, &reccompr,
+                            &oldcompr);
+        bdb_get_compr_flags(iq->usedb->sc_to->handle, &newodh, &reccompr,
+                            &newcompr);
+        (void)reccompr;
+
+        /* If we're removing the ODH, or changing the compression algorithm,
+           unpack the blobs. */
+        if ((oldodh && !newodh) || oldcompr != newcompr) {
+            rc = unodhfy_blob_buffer(iq->usedb->sc_to, blobs + i, i);
+            if (rc != 0)
+                break;
+        }
+    }
+
     return rc;
 }
 
@@ -584,28 +644,27 @@ int live_sc_post_add_int(struct ireq *iq, void *trans, unsigned long long genid,
                          blob_buffer_t *blobs, size_t maxblobs, int origflags,
                          int *rrn)
 {
-    if (!sc_live || iq->usedb->sc_from != iq->usedb) {
+    int rc;
+
+    if (iq->usedb->sc_downgrading)
+        return ERR_NOMASTER;
+
+    if (iq->usedb->sc_from != iq->usedb) {
         return 0;
     }
 
-    int stripe = get_dtafile_from_genid(genid);
-    if (stripe < 0 || stripe >= gbl_dtastripe) {
-        logmsg(LOGMSG_ERROR,
-               "live_sc_post_add: genid 0x%llx stripe %d out of range!\n",
-               genid, stripe);
+    if (iq->usedb->sc_live_logical) {
         return 0;
     }
-    unsigned long long *sc_genids = iq->usedb->sc_to->sc_genids;
-    if (!sc_genids[stripe]) {
-        /* A genid of zero is invalid.  So, if the schema change cursor is at
-         * genid zero it means pretty conclusively that it hasn't done anything
-         * yet so we cannot possibly be behind the cursor. */
-        return 0;
-    }
+
     if (is_genid_right_of_stripe_pointer(iq->usedb->handle, genid,
-                                         sc_genids[stripe])) {
+                                         iq->usedb->sc_to->sc_genids)) {
         return 0;
     }
+
+    if ((rc = unodhfy_if_necessary(iq, blobs, maxblobs)) != 0)
+        return rc;
+
     return live_sc_post_add_record(iq, trans, genid, od_dta, ins_keys, blobs,
                                    maxblobs, origflags, rrn);
 }
@@ -615,7 +674,7 @@ int live_sc_post_add(struct ireq *iq, void *trans, unsigned long long genid,
                      blob_buffer_t *blobs, size_t maxblobs, int origflags,
                      int *rrn)
 {
-    int rc = 0;
+    int rc;
 
     if (gbl_test_scindex_deadlock) {
         logmsg(LOGMSG_INFO, "%s: sleeping for 30s\n", __func__);
@@ -623,12 +682,12 @@ int live_sc_post_add(struct ireq *iq, void *trans, unsigned long long genid,
         logmsg(LOGMSG_INFO, "%s: slept 30s\n", __func__);
     }
 
-    pthread_rwlock_rdlock(&sc_live_rwlock);
+    Pthread_rwlock_rdlock(&iq->usedb->sc_live_lk);
 
     rc = live_sc_post_add_int(iq, trans, genid, od_dta, ins_keys, blobs,
                               maxblobs, origflags, rrn);
 
-    pthread_rwlock_unlock(&sc_live_rwlock);
+    Pthread_rwlock_unlock(&iq->usedb->sc_live_lk);
     return rc;
 }
 
@@ -638,12 +697,12 @@ int live_sc_delayed_key_adds(struct ireq *iq, void *trans,
                              unsigned long long ins_keys, int od_len)
 {
     int rc = 0;
-    pthread_rwlock_rdlock(&sc_live_rwlock);
+    Pthread_rwlock_rdlock(&iq->usedb->sc_live_lk);
 
     rc = live_sc_post_update_delayed_key_adds_int(iq, trans, newgenid, od_dta,
                                                   ins_keys, od_len);
 
-    pthread_rwlock_unlock(&sc_live_rwlock);
+    Pthread_rwlock_unlock(&iq->usedb->sc_live_lk);
     return rc;
 }
 
@@ -676,37 +735,26 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
                             int origflags, int rrn, int deferredAdd,
                             blob_buffer_t *oldblobs, blob_buffer_t *newblobs)
 {
-    if (!(sc_live && iq->usedb->sc_from == iq->usedb)) {
+    if (iq->usedb->sc_downgrading)
+        return ERR_NOMASTER;
+
+    if (iq->usedb->sc_from != iq->usedb) {
         return 0;
     }
 
-    int stripe = get_dtafile_from_genid(oldgenid);
-    if (stripe < 0 || stripe >= gbl_dtastripe) {
-        logmsg(LOGMSG_ERROR,
-               "live_sc_post_update: oldgenid 0x%llx stripe %d out of range!\n",
-               oldgenid, stripe);
+    if (iq->usedb->sc_live_logical) {
         return 0;
     }
+
     unsigned long long *sc_genids = iq->usedb->sc_to->sc_genids;
-    if (!sc_genids[stripe]) {
-        /* A genid of zero is invalid.  So, if the schema change cursor is at
-         * genid zero it means pretty conclusively that it hasn't done anything
-         * yet so we cannot possibly be behind the cursor. */
-        return 0;
-    }
-    /*
-    if(get_dtafile_from_genid(newgenid) != stripe)
-        printf("WARNING: New genid in stripe %d, newgenid %llx, oldgenid
-    %llx\n", newstripe, newgenid, oldgenid);
-    */
     if (iq->debug) {
         reqpushprefixf(iq, "live_sc_post_update: ");
     }
 
     int is_oldgen_gt_scptr = is_genid_right_of_stripe_pointer(
-        iq->usedb->handle, oldgenid, sc_genids[stripe]);
+        iq->usedb->handle, oldgenid, sc_genids);
     int is_newgen_gt_scptr = is_genid_right_of_stripe_pointer(
-        iq->usedb->handle, newgenid, sc_genids[stripe]);
+        iq->usedb->handle, newgenid, sc_genids);
     int rc = 0;
 
     // spelling this out for legibility, various situations:
@@ -716,14 +764,16 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
         if (iq->debug)
             reqprintf(iq,
                       "C1: scptr 0x%llx ... oldgenid 0x%llx newgenid 0x%llx ",
-                      sc_genids[stripe], oldgenid, newgenid);
+                      get_genid_stripe_pointer(oldgenid, sc_genids), oldgenid,
+                      newgenid);
     } else if (is_newgen_gt_scptr &&
                !is_oldgen_gt_scptr) // case 2) oldgenid  .^....  newgenid
     {
         if (iq->debug)
             reqprintf(
                 iq, "C2: oldgenid 0x%llx ... scptr 0x%llx ... newgenid 0x%llx ",
-                oldgenid, sc_genids[stripe], newgenid);
+                oldgenid, get_genid_stripe_pointer(oldgenid, sc_genids),
+                newgenid);
         rc = live_sc_post_del_record(iq, trans, oldgenid, old_dta, del_keys,
                                      oldblobs);
     } else if (!is_newgen_gt_scptr &&
@@ -732,19 +782,26 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
         if (iq->debug)
             reqprintf(
                 iq, "C3: newgenid 0x%llx ...scptr 0x%llx ... oldgenid 0x%llx ",
-                newgenid, sc_genids[stripe], oldgenid);
-        rc = live_sc_post_add_record(iq, trans, newgenid, new_dta, ins_keys,
-                                     blobs, maxblobs, origflags, &rrn);
+                newgenid, get_genid_stripe_pointer(oldgenid, sc_genids),
+                oldgenid);
+        rc = unodhfy_if_necessary(iq, blobs, maxblobs);
+        if (rc == 0)
+            rc = live_sc_post_add_record(iq, trans, newgenid, new_dta, ins_keys,
+                                         blobs, maxblobs, origflags, &rrn);
     } else if (!is_newgen_gt_scptr &&
                !is_oldgen_gt_scptr) // case 4) newgenid and oldgenid  ...^..
     {
         if (iq->debug)
             reqprintf(iq,
                       "C4: oldgenid 0x%llx newgenid 0x%llx ... scptr 0x%llx",
-                      oldgenid, newgenid, sc_genids[stripe]);
-        rc = live_sc_post_upd_record(
-            iq, trans, oldgenid, old_dta, newgenid, new_dta, ins_keys, del_keys,
-            od_len, updCols, blobs, deferredAdd, oldblobs, newblobs);
+                      oldgenid, newgenid,
+                      get_genid_stripe_pointer(oldgenid, sc_genids));
+        rc = unodhfy_if_necessary(iq, blobs, maxblobs);
+        if (rc == 0)
+            rc = live_sc_post_upd_record(iq, trans, oldgenid, old_dta, newgenid,
+                                         new_dta, ins_keys, del_keys, od_len,
+                                         updCols, blobs, deferredAdd, oldblobs,
+                                         newblobs);
     }
 
     if (iq->debug) reqpopprefixes(iq, 1);
@@ -761,15 +818,38 @@ int live_sc_post_update(struct ireq *iq, void *trans,
                         int rrn, int deferredAdd, blob_buffer_t *oldblobs,
                         blob_buffer_t *newblobs)
 {
-    int rc = 0;
-    pthread_rwlock_rdlock(&sc_live_rwlock);
+    int rc;
+
+    Pthread_rwlock_rdlock(&iq->usedb->sc_live_lk);
 
     rc = live_sc_post_update_int(iq, trans, oldgenid, old_dta, newgenid,
                                  new_dta, ins_keys, del_keys, od_len, updCols,
                                  blobs, maxblobs, origflags, rrn, deferredAdd,
                                  oldblobs, newblobs);
 
-    pthread_rwlock_unlock(&sc_live_rwlock);
+    Pthread_rwlock_unlock(&iq->usedb->sc_live_lk);
+    return rc;
+}
+
+int live_sc_disable_inplace_blobs(struct ireq *iq)
+{
+    int rc = 0;
+    Pthread_rwlock_rdlock(&iq->usedb->sc_live_lk);
+    if (iq->usedb->sc_from == iq->usedb && iq->usedb->sc_live_logical &&
+        iq->usedb->sc_to->ix_blob)
+        rc = 1;
+    Pthread_rwlock_unlock(&iq->usedb->sc_live_lk);
+    return rc;
+}
+
+int live_sc_delay_key_add(struct ireq *iq)
+{
+    int rc = 0;
+    Pthread_rwlock_rdlock(&iq->usedb->sc_live_lk);
+    if (iq->usedb->sc_from == iq->usedb && !iq->usedb->sc_live_logical &&
+        iq->usedb->sc_to->n_constraints)
+        rc = 1;
+    Pthread_rwlock_unlock(&iq->usedb->sc_live_lk);
     return rc;
 }
 
@@ -777,43 +857,36 @@ int live_sc_post_update(struct ireq *iq, void *trans,
 /* I ORIGINALLY REMOVED THIS, THEN MERGING I SAW IT BACK IN COMDB2.C
     I AM LEAVING IT IN HERE FOR NOW (GOTTA ASK MARK)               */
 
-static int add_table_for_recovery(struct ireq *iq)
+static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
 {
-    struct schema_change_type *s = iq->sc;
     struct dbtable *db;
     struct dbtable *newdb;
     int bdberr;
     int rc;
 
-    db = get_dbtable_by_name(s->table);
+    db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
         wrlock_schema_lk();
-        rc = do_add_table(iq, NULL);
+        rc = do_add_table(iq, s, NULL);
         unlock_schema_lk();
         return rc;
     }
 
     /* Shouldn't get here */
     if (s->addonly) {
-        logmsg(LOGMSG_FATAL, "table '%s' already exists\n", s->table);
+        logmsg(LOGMSG_FATAL, "table '%s' already exists\n", s->tablename);
         abort();
         return -1;
     }
 
-    int retries = 0;
-    int changed;
-    int i;
-    int olddb_compress, olddb_compress_blobs, olddb_inplace_updates;
-    int olddb_instant_sc;
     char new_prefix[32];
-    struct scplan theplan;
     int foundix;
 
     if (s->headers != db->odh) {
         s->header_change = s->force_dta_rebuild = s->force_blob_rebuild = 1;
     }
 
-    rc = dyns_load_schema_string(s->newcsc2, thedb->envname, s->table);
+    rc = dyns_load_schema_string(s->newcsc2, thedb->envname, s->tablename);
     if (rc != 0) {
         char *err;
         err = csc2_get_errors();
@@ -822,15 +895,15 @@ static int add_table_for_recovery(struct ireq *iq)
         abort();
     }
 
-    if ((foundix = getdbidxbyname(s->table)) < 0) {
-        logmsg(LOGMSG_FATAL, "couldnt find table <%s>\n", s->table);
+    if ((foundix = getdbidxbyname(s->tablename)) < 0) {
+        logmsg(LOGMSG_FATAL, "couldnt find table <%s>\n", s->tablename);
         abort();
     }
 
     if (s->dbnum != -1) db->dbnum = s->dbnum;
 
     db->sc_to = newdb =
-        newdb_from_schema(thedb, s->table, NULL, db->dbnum, foundix, 0);
+        newdb_from_schema(thedb, s->tablename, NULL, db->dbnum, foundix, 0);
 
     if (newdb == NULL) return -1;
 
@@ -839,7 +912,7 @@ static int add_table_for_recovery(struct ireq *iq)
     /* Don't lose precious flags like this */
     newdb->inplace_updates = s->headers && s->ip_updates;
     newdb->instant_schema_change = s->headers && s->instant_sc;
-    newdb->version = get_csc2_version(newdb->tablename);
+    newdb->schema_version = get_csc2_version(newdb->tablename);
 
     if (add_cmacc_stmt(newdb, 1) != 0) {
         backout_schemas(newdb->tablename);
@@ -868,12 +941,12 @@ int add_schema_change_tables()
     int scabort = 0;
 
     /* if a schema change is currently running don't try to resume one */
-    pthread_mutex_lock(&schema_change_in_progress_mutex);
+    Pthread_mutex_lock(&schema_change_in_progress_mutex);
     if (gbl_schema_change_in_progress) {
-        pthread_mutex_unlock(&schema_change_in_progress_mutex);
+        Pthread_mutex_unlock(&schema_change_in_progress_mutex);
         return 0;
     }
-    pthread_mutex_unlock(&schema_change_in_progress_mutex);
+    Pthread_mutex_unlock(&schema_change_in_progress_mutex);
     struct ireq iq;
     init_fake_ireq(thedb, &iq);
 
@@ -881,8 +954,9 @@ int add_schema_change_tables()
         int bdberr;
         void *packed_sc_data = NULL;
         size_t packed_sc_data_len = 0;
-        if (bdb_get_in_schema_change(thedb->dbs[i]->tablename, &packed_sc_data,
-                                     &packed_sc_data_len, &bdberr) ||
+        if (bdb_get_in_schema_change(NULL /*tran*/, thedb->dbs[i]->tablename,
+                                     &packed_sc_data, &packed_sc_data_len,
+                                     &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_ERROR,
                    "%s: failed to discover "
@@ -944,7 +1018,7 @@ int add_schema_change_tables()
             }
 
             iq.sc = s;
-            rc = add_table_for_recovery(&iq);
+            rc = add_table_for_recovery(&iq, s);
 
             free(s);
             return rc;
@@ -957,17 +1031,17 @@ int add_schema_change_tables()
 int sc_timepart_add_table(const char *existingTableName,
                           const char *newTableName, struct errstat *xerr)
 {
-    bdb_state_type *bdb_state = thedb->bdb_env;
     struct schema_change_type sc = {0};
     char *schemabuf = NULL;
     struct dbtable *db;
 
+    init_schemachange_type(&sc);
     /* prepare sc */
     sc.onstack = 1;
     sc.type = DBTYPE_TAGGED_TABLE;
 
-    snprintf(sc.table, sizeof(sc.table), "%s", newTableName);
-    sc.table[sizeof(sc.table) - 1] = '\0';
+    snprintf(sc.tablename, sizeof(sc.tablename), "%s", newTableName);
+    sc.tablename[sizeof(sc.tablename) - 1] = '\0';
 
     sc.scanmode = gbl_default_sc_scanmode;
 
@@ -984,14 +1058,14 @@ int sc_timepart_add_table(const char *existingTableName,
         xerr->errval = SC_VIEW_ERR_BUG;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "table '%s' not found\n",
                  existingTableName);
-        goto error_prelock;
+        goto error;
     }
     if (get_csc2_file(db->tablename, -1 /*highest csc2_version*/, &schemabuf,
                       NULL /*csc2len*/)) {
         xerr->errval = SC_VIEW_ERR_BUG;
         snprintf(xerr->errstr, sizeof(xerr->errstr),
                  "could not get schema for table '%s'\n", existingTableName);
-        goto error_prelock;
+        goto error;
     }
     sc.newcsc2 = schemabuf;
 
@@ -1002,24 +1076,22 @@ int sc_timepart_add_table(const char *existingTableName,
         snprintf(xerr->errstr, sizeof(xerr->errstr),
                  "could not get compression for table '%s'\n",
                  existingTableName);
-        goto error_prelock;
+        goto error;
     }
     if (get_db_compress_blobs(db, &sc.compress_blobs)) {
         xerr->errval = SC_VIEW_ERR_BUG;
         snprintf(xerr->errstr, sizeof(xerr->errstr),
                  "could not get blob compression for table '%s'\n",
                  existingTableName);
-        goto error_prelock;
+        goto error;
     }
     if (get_db_inplace_updates(db, &sc.ip_updates)) {
         xerr->errval = SC_VIEW_ERR_BUG;
         snprintf(xerr->errstr, sizeof(xerr->errstr),
                  "could not get ipu for table '%s'\n", existingTableName);
-        goto error_prelock;
+        goto error;
     }
     if (db->instant_schema_change) sc.instant_sc = 1;
-
-    BDB_READLOCK("view_add_table");
 
     /* still one schema change at a time */
     if (thedb->master != gbl_mynode) {
@@ -1029,8 +1101,8 @@ int sc_timepart_add_table(const char *existingTableName,
         goto error;
     }
 
-    if (sc_set_running(1, get_next_sc_seed(thedb->bdb_env), gbl_mynode,
-                       time(NULL)) != 0) {
+    if (sc_set_running(sc.tablename, 1, bdb_get_a_genid(thedb->bdb_env),
+                       gbl_mynode, time(NULL)) != 0) {
         xerr->errval = SC_VIEW_ERR_EXIST;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "schema change running");
         goto error;
@@ -1038,34 +1110,30 @@ int sc_timepart_add_table(const char *existingTableName,
 
     /* do the dance */
     sc.nothrevent = 1;
-    do_schema_change(&sc);
+    do_schema_change_locked(&sc);
 
     xerr->errval = SC_VIEW_NOERR;
+    return xerr->errval;
 
 error:
-
-    BDB_RELLOCK();
-
-error_prelock:
-
     free_schema_change_type(&sc);
     return xerr->errval;
 }
 
 int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
 {
-    bdb_state_type *bdb_state = thedb->bdb_env;
     struct schema_change_type sc = {0};
     struct dbtable *db;
     char *schemabuf = NULL;
     int rc;
 
+    init_schemachange_type(&sc);
     /* prepare sc */
     sc.onstack = 1;
     sc.type = DBTYPE_TAGGED_TABLE;
 
-    snprintf(sc.table, sizeof(sc.table), "%s", tableName);
-    sc.table[sizeof(sc.table) - 1] = '\0';
+    snprintf(sc.tablename, sizeof(sc.tablename), "%s", tableName);
+    sc.tablename[sizeof(sc.tablename) - 1] = '\0';
 
     sc.scanmode = gbl_default_sc_scanmode;
 
@@ -1083,10 +1151,8 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
         xerr->errval = SC_VIEW_ERR_BUG;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "table '%s' not found\n",
                  tableName);
-        goto error_prelock;
+        goto error;
     }
-
-    BDB_READLOCK("view_drop_table");
 
     /* still one schema change at a time */
     if (thedb->master != gbl_mynode) {
@@ -1096,8 +1162,8 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
         goto error;
     }
 
-    if (sc_set_running(1, get_next_sc_seed(thedb->bdb_env), gbl_mynode,
-                       time(NULL)) != 0) {
+    if (sc_set_running(sc.tablename, 1, bdb_get_a_genid(thedb->bdb_env),
+                       gbl_mynode, time(NULL)) != 0) {
         xerr->errval = SC_VIEW_ERR_EXIST;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "schema change running");
         goto error;
@@ -1125,147 +1191,17 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
         sc.newcsc2 = schemabuf;
     }
 
-    rc = do_schema_change(&sc);
+    rc = do_schema_change_locked(&sc);
     if (rc) {
         xerr->errval = SC_VIEW_ERR_SC;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "failed to drop table");
-        goto error;
-    }
-
-    xerr->errval = SC_VIEW_NOERR;
+    } else
+        xerr->errval = SC_VIEW_NOERR;
+    return xerr->errval;
 
 error:
-
-    BDB_RELLOCK();
-
-error_prelock:
-
     free_schema_change_type(&sc);
     return xerr->errval;
-}
-
-/* wrapper handling transaction */
-static int do_partition(timepart_views_t *views, const char *name,
-                        const char *cmd, struct errstat *err)
-{
-    struct ireq iq;
-    void *tran = NULL;
-    int rc;
-    int irc = 0;
-    int bdberr;
-    /*
-        init_fake_ireq(thedb, &iq);
-        iq.use_handle = thedb->bdb_env;
-
-        rc = trans_start(&iq, NULL, &tran);
-        if (rc)
-        {
-            err->errval = VIEW_ERR_GENERIC;
-            snprintf(err->errstr, sizeof(err->errstr), ">%s -- trans_start
-       rc:%d\n", __func__, rc);
-            return rc;
-        }
-    */
-    rc = views_do_partition(tran, views, name, cmd, err);
-    /*
-        if(rc)
-        {
-            irc = trans_abort(&iq, tran);
-        }
-        else
-        {
-            irc = trans_commit(&iq, tran, gbl_mynode);
-        }
-        if(irc)
-        {
-            err->errval = VIEW_ERR_GENERIC;
-            snprintf(err->errstr, sizeof(err->errstr), ">%s -- trans_%s
-       rc:%d\n",
-                    __func__, (rc)?"abort":"commit", irc);
-        }
-
-        tran = NULL;
-    */
-    if (!rc && !irc) {
-        bdberr = 0;
-        irc = bdb_llog_views(thedb->bdb_env, (char *)name, 1, &bdberr);
-        if (irc) {
-            logmsg(LOGMSG_ERROR, "%s -- bdb_llog_views rc:%d bdberr:%d\n",
-                   __func__, irc, bdberr);
-        }
-    }
-
-    return rc;
-}
-
-void handle_partition(SBUF2 *sb)
-{
-#define CHUNK 512
-    char line[CHUNK];
-    char *viewname;
-    char *cmd;
-    int len;
-    int used;
-    int alloc;
-    struct errstat xerr = {0};
-    int rc;
-
-    if ((rc = sbuf2gets(line, sizeof(line), sb)) < 0) {
-        logmsg(LOGMSG_ERROR, "%s -- sbuf2gets rc: %d\n", __func__, rc);
-        return;
-    }
-    viewname = strdup(line);
-    if (viewname[strlen(viewname) - 1] == '\n') {
-        viewname[strlen(viewname) - 1] = '\0';
-    }
-
-    /* Now, read new schema */
-    used = alloc = 0;
-    cmd = NULL;
-    while ((rc = sbuf2gets(line, sizeof(line), sb)) > 0) {
-        if (strcmp(line, ".\n") == 0) {
-            /* we know we have added a newline to mark end of schema,
-               delete that */
-            if (cmd && used > 0 && cmd[used - 1] == '\n') {
-                cmd[used - 1] = '\0';
-                len--;
-            }
-            break;
-        }
-
-        len = strlen(line) + 1; /* include \0 terminator */
-        if ((alloc - used) < len) {
-            if (len < CHUNK) {
-                alloc = alloc + CHUNK;
-            } else {
-                alloc = alloc + len;
-            }
-            cmd = realloc(cmd, alloc);
-            if (!cmd) {
-                logmsg(LOGMSG_ERROR,
-                       "appsock_schema_change_inner: out of memory buf=%d\n",
-                       alloc);
-                sbuf2printf(sb, "!out of memory reading schema\n");
-                sbuf2printf(sb, "FAILED\n");
-                return;
-            }
-        }
-        memcpy(cmd + used, line, len);
-        used += len - 1; /* don't add \0 terminator */
-    }
-
-    /* do the work */
-    wrlock_schema_lk();
-    rc = do_partition(thedb->timepart_views, viewname, cmd, &xerr);
-    unlock_schema_lk();
-
-    if (rc == 0)
-        sbuf2printf(sb, "SUCCESS\n");
-    else
-    out:
-    sbuf2printf(sb, "FAILED rc %d err \"%s\"\n", xerr.errval, xerr.errstr);
-
-    sbuf2flush(sb);
 }
 
 /* shortcut for running table upgrade in a schemachange shell */
@@ -1289,7 +1225,7 @@ int start_table_upgrade(struct dbenv *dbenv, const char *tbl,
     sc->ip_updates = 1;
     sc->instant_sc = 1;
     sc->nothrevent = sync;
-    strncpy0(sc->table, tbl, sizeof(sc->table));
+    strncpy0(sc->tablename, tbl, sizeof(sc->tablename));
     sc->fulluprecs = full;
     sc->partialuprecs = partial;
     sc->start_genid = genid;
@@ -1300,357 +1236,6 @@ int start_table_upgrade(struct dbenv *dbenv, const char *tbl,
 static const char *delims = " \n\r\t";
 int gbl_commit_sleep;
 int gbl_convert_sleep;
-
-int appsock_schema_change(SBUF2 *sb, int *keepsocket)
-{
-
-#ifdef DEBUG_SC
-    printf("%s: entering\n", __func__);
-#endif
-
-    char line[1024];
-    int rc;
-    char *schemabuf = NULL;
-    int buflen = 0;
-    int bufpos = 0;
-    char *lasts = NULL;
-    char *tok = NULL;
-    int noschema = 0;
-
-    struct schema_change_type sc = {0};
-    sc.type = DBTYPE_TAGGED_TABLE;
-    sc.sb = sb;
-    sc.nothrevent = 0;
-    sc.onstack = 1;
-    sc.live = 0;
-    sc.drop_table = 0;
-    sc.use_plan = 0;
-    /* default values: no change */
-    sc.headers = 1;
-    sc.compress = -1;
-    sc.compress_blobs = -1;
-    sc.ip_updates = -1;
-    sc.instant_sc = -1;
-    sc.commit_sleep = gbl_commit_sleep;
-    sc.convert_sleep = gbl_convert_sleep;
-    sc.dbnum = -1; /* -1 = not changing, anything else = set value */
-    listc_init(&sc.dests, offsetof(struct dest, lnk));
-
-    sc.finalize = 1;
-    /* DRQS 21247361 - don't allow schema change to run if kicked off from
-       a machine from which we don't allow writes (eg dev to alpha) */
-    if (gbl_check_schema_change_permissions && sc_request_disallowed(sb)) {
-        sbuf2printf(sb, "!Schema change not allowed from this machine (writes "
-                        "not allowed on remote)\n");
-        sbuf2printf(sb, "FAILED\n");
-        return -1;
-    }
-    // backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
-    sc.scanmode = gbl_default_sc_scanmode;
-
-    if (gbl_default_livesc) sc.live = 1;
-    if (gbl_default_plannedsc) sc.use_plan = 1;
-
-    /* First, reject if i am not master */
-    if (thedb->master != gbl_mynode) {
-        sbuf2printf(sb, "!I am not master, master is %d\n", thedb->master);
-        sbuf2printf(sb, "FAILED\n");
-        return -1;
-    }
-
-    /* Then, read options */
-    rc = sbuf2gets(line, sizeof(line), sb);
-    if (rc < 0) {
-        fprintf(stderr, "appsock schema change I/O error reading options\n");
-        return -1;
-    }
-
-    tok = strtok_r(line, delims, &lasts);
-    while (tok) {
-
-#ifdef DEBUG_SC
-        printf("%s: parameter '%s'\n", __func__, tok);
-#endif
-
-        if (strcmp(tok, "add") == 0)
-            sc.addonly = 1;
-        else if (strcmp(tok, "upgrade") == 0)
-            sc.fulluprecs = 1;
-        else if (strcmp(tok, "addsp") == 0)
-            sc.addsp = 1;
-        else if (strcmp(tok, "delsp") == 0)
-            sc.delsp = 1;
-        else if (strcmp(tok, "defaultsp") == 0)
-            sc.defaultsp = 1;
-        else if (strcmp(tok, "showsp") == 0)
-            sc.showsp = 1;
-        else if (strcmp(tok, "alter") == 0)
-            sc.alteronly = 1;
-        else if (strcmp(tok, "live") == 0)
-            sc.live = 1;
-        else if (strcmp(tok, "nolive") == 0)
-            sc.live = 0;
-        else if (strcmp(tok, "parallelscan") == 0)
-            sc.scanmode = SCAN_PARALLEL;
-        else if (strcmp(tok, "dumpscan") == 0)
-            sc.scanmode = SCAN_DUMP;
-        else if (strcmp(tok, "indexscan") == 0)
-            sc.scanmode = SCAN_INDEX;
-        else if (strncmp(tok, "table:", 6) == 0)
-            strncpy0(sc.table, tok + 6, sizeof(sc.table));
-        else if (strcmp(tok, "fullrebuild") == 0)
-            sc.force_rebuild = 1;
-        else if (strcmp(tok, "rebuildindex") == 0)
-            sc.rebuild_index = 1;
-        else if (strcmp(tok, "rebuilddata") == 0)
-            sc.force_dta_rebuild = 1;
-        else if (strcmp(tok, "rebuildblobsdata") == 0) {
-            sc.force_dta_rebuild = 1;
-            sc.force_blob_rebuild = 1;
-        } else if (strcmp(tok, "ignoredisk") == 0 || strcmp(tok, "force") == 0)
-            sc.force = 1;
-        else if (strcmp(tok, "add_headers") == 0)
-            sc.headers = 1;
-        else if (strcmp(tok, "remove_headers") == 0)
-            sc.headers = 0;
-        else if (strcmp(tok, "ipu_on") == 0)
-            sc.ip_updates = 1;
-        else if (strcmp(tok, "ipu_off") == 0)
-            sc.ip_updates = 0;
-        else if (strcmp(tok, "instant_sc_on") == 0)
-            sc.instant_sc = 1;
-        else if (strcmp(tok, "instant_sc_off") == 0)
-            sc.instant_sc = 0;
-
-        else if (strcmp(tok, "rec_zlib") == 0)
-            sc.compress = BDB_COMPRESS_ZLIB;
-        else if (strcmp(tok, "rec_rle8") == 0)
-            sc.compress = BDB_COMPRESS_RLE8;
-        else if (strcmp(tok, "rec_crle") == 0)
-            sc.compress = BDB_COMPRESS_CRLE;
-        else if (strcmp(tok, "rec_lz4") == 0)
-            sc.compress = BDB_COMPRESS_LZ4;
-        else if (strcmp(tok, "rec_nocompress") == 0)
-            sc.compress = BDB_COMPRESS_NONE;
-
-        else if (strcmp(tok, "blob_zlib") == 0)
-            sc.compress_blobs = BDB_COMPRESS_ZLIB;
-        else if (strcmp(tok, "blob_rle8") == 0)
-            sc.compress_blobs = BDB_COMPRESS_RLE8;
-        else if (strcmp(tok, "blob_lz4") == 0)
-            sc.compress_blobs = BDB_COMPRESS_LZ4;
-        else if (strcmp(tok, "blob_nocompress") == 0)
-            sc.compress_blobs = BDB_COMPRESS_NONE;
-
-        else if (strcmp(tok, "useplan") == 0)
-            sc.use_plan = 1;
-        else if (strcmp(tok, "noplan") == 0)
-            sc.use_plan = 0;
-        else if (strcmp(tok, "noschema") == 0)
-            noschema = 1;
-        else if (strcmp(tok, "fastinit") == 0)
-            sc.fastinit = 1;
-        else if (strcmp(tok, "drop") == 0) {
-            sc.fastinit = 1;
-            sc.drop_table = 1;
-        } else if (strncmp(tok, "aname:", 6) == 0)
-            strncpy0(sc.aname, tok + 6, sizeof(sc.aname));
-        else if (strncmp(tok, "commitsleep:", 12) == 0)
-            sc.commit_sleep = atoi(tok + 12);
-        else if (strncmp(tok, "convsleep:", 10) == 0)
-            sc.convert_sleep = atoi(tok + 10);
-        else if (strcmp(tok, "dryrun") == 0)
-            sc.dryrun = 1;
-        else if (strcmp(tok, "statistics") == 0)
-            sc.statistics = 1;
-        else if (strncmp(tok, "dbnum:", 6) == 0)
-            sc.dbnum = atoi(tok + 6);
-        else if (strcmp(tok, "trigger") == 0)
-            sc.is_trigger = 1;
-        else if (strncmp(tok, "dest:", 5) == 0) {
-            struct dest *d;
-            d = malloc(sizeof(struct dest));
-            /* TODO: check for dupes here? */
-            if (d == NULL) {
-                fprintf(stderr, "%s: malloc can't allocate %zu bytes\n",
-                        __func__, sizeof(struct dest));
-                return -1;
-            }
-            d->dest = strdup(tok + 5);
-            if (d->dest == NULL) {
-                fprintf(stderr, "%s: malloc can't allocate %zu bytes for "
-                                "destination name\n",
-                        __func__, strlen(tok + 5));
-                free(d);
-                return -1;
-            }
-            listc_abl(&sc.dests, d);
-        } else {
-            sbuf2printf(sb, "!unknown option '%s'\n", tok);
-            sbuf2printf(sb, "FAILED\n");
-            return -1;
-        }
-        tok = strtok_r(NULL, delims, &lasts);
-    }
-
-#ifdef DEBUG_SC
-    printf("%s:  sc.table '%s'\n", __func__, sc.table);
-    printf("%s:  sc.aname '%s'\n", __func__, sc.aname);
-#endif
-
-    if (sc.table[0] == '\0' && !sc.showsp) {
-        sbuf2printf(sb, "!no table name specified\n");
-        sbuf2printf(sb, "FAILED\n");
-        return -1;
-    }
-
-    /* This gets overridden later if it's needed */
-    sc.fname[0] = '\0';
-
-    /* Now, read new schema */
-    while ((rc = sbuf2gets(line, sizeof(line), sb)) > 0) {
-        if (strcmp(line, ".\n") == 0) {
-            rc = 0;
-            break;
-        } else if (!noschema) {
-            void *newp;
-            int len = strlen(line) + 1; /* include \0 terminator */
-            if (buflen - bufpos < len) {
-                int newlen = buflen + sizeof(line) * 16;
-                if (schemabuf)
-                    newp = realloc(schemabuf, newlen);
-                else
-                    newp = malloc(newlen);
-                if (!newp) {
-                    fprintf(stderr, "appsock_schema_change_inner: out of "
-                                    "memory buflen=%d\n",
-                            buflen);
-                    cleanup_strptr(&schemabuf);
-                    sbuf2printf(sb, "!out of memory reading schema\n");
-                    sbuf2printf(sb, "FAILED\n");
-                    return -1;
-                }
-                schemabuf = newp;
-                buflen = newlen;
-            }
-            memcpy(schemabuf + bufpos, line, len);
-            bufpos += len - 1; /* don't add \0 terminator */
-        }
-    }
-    /* we KNOW that comdb2sc adds a new line to be able to use the .<NL> trick;
-       remove it HERE
-     */
-    if (bufpos > 0 && schemabuf[bufpos - 1] == '\n') {
-        schemabuf[bufpos - 1] = '\0';
-    }
-
-    if (rc < 0) {
-        fprintf(stderr, "appsock schema change I/O error reading schema\n");
-        cleanup_strptr(&schemabuf);
-        return -1;
-    }
-
-    if (sc.addsp) {
-        sc.newcsc2 = schemabuf;
-        return do_add_sp(&sc, NULL);
-    } else if (sc.delsp) {
-        sc.newcsc2 = schemabuf;
-        return do_del_sp(&sc, NULL);
-    } else if (sc.defaultsp) {
-        sc.newcsc2 = schemabuf;
-        return do_default_sp(&sc, NULL);
-    } else if (sc.showsp) {
-        sc.newcsc2 = schemabuf;
-        return do_show_sp(&sc);
-    } else if (sc.is_trigger) {
-        sc.newcsc2 = schemabuf;
-        return perform_trigger_update(&sc);
-    }
-
-    if (noschema) {
-        /* Find the existing table and use its current schema */
-        struct dbtable *db;
-        sc.db = db = get_dbtable_by_name(sc.table);
-        if (db == NULL) {
-            sbuf2printf(sb, "!table '%s' not found\n", sc.table);
-            sbuf2printf(sb, "FAILED\n");
-            cleanup_strptr(&schemabuf);
-            return -1;
-        }
-
-        if (get_csc2_file(db->tablename, -1 /*highest csc2_version*/,
-                          &schemabuf, NULL /*csc2len*/)) {
-            fprintf(stderr, "%s: could not get schema for table: %s\n",
-                    __func__, db->tablename);
-            cleanup_strptr(&schemabuf);
-            return -1;
-        }
-
-        if (sc.rebuild_index) {
-            int indx;
-            int rc = getidxnumbyname(sc.table, sc.aname, &indx);
-            if (rc) {
-                sbuf2printf(sb, "!table:index '%s:%s' not found\n", sc.table,
-                            sc.aname);
-                sbuf2printf(sb, "FAILED\n");
-                cleanup_strptr(&schemabuf);
-                return -1;
-            }
-            sc.index_to_rebuild = indx;
-        }
-
-        sc.same_schema = 1;
-    }
-    sc.newcsc2 = schemabuf;
-
-    /* We have our options and a new schema.  Do the schema change.  If we
-     * get called from an appsock pool thread (which has a small stack) then
-     * make a new thread for this so that we have plenty of room to work. */
-    if (sc.dryrun) {
-        int rc;
-        if (sc_set_running(1, get_next_sc_seed(thedb->bdb_env), gbl_mynode,
-                           time(NULL)) == 0) {
-            rc = do_dryrun(&sc);
-            sc_set_running(0, sc_seed, gbl_mynode, time(NULL));
-        } else {
-            sbuf2printf(sb, "!schema change already in progress\n");
-            sbuf2printf(sb, "FAILED\n");
-            rc = -1;
-        }
-        free_schema_change_type(&sc);
-        return rc;
-    }
-    /* Print status of a table */
-    if (sc.statistics) {
-        rc = print_status(&sc);
-        cleanup_strptr(&schemabuf);
-        return rc;
-    } else {
-        struct schema_change_type *s = malloc(sizeof(sc));
-        if (!s) {
-            sbuf2printf(sb, "!out of memory in database\n");
-            sbuf2printf(sb, "FAILED\n");
-            cleanup_strptr(&schemabuf);
-            return -1;
-        }
-        memcpy(s, &sc, sizeof(sc));
-
-        s->onstack = 0;
-        if (sc.fastinit) {
-            s->nothrevent = 1;
-        } else {
-            s->must_close_sb = 1;
-            *keepsocket = 1; /* we now own the socket */
-            s->nothrevent = 0;
-        }
-        rc = start_schema_change(s);
-        if (rc != SC_OK && rc != SC_ASYNC) {
-            return -1;
-        }
-    }
-
-    return 0;
-}
 
 void handle_setcompr(SBUF2 *sb)
 {
@@ -1766,46 +1351,44 @@ void sb_errf(SBUF2 *sb, const char *fmt, ...)
 
 void sc_printf(struct schema_change_type *s, const char *fmt, ...)
 {
-    if (s && s->iq && s->iq->tranddl) {
-        return;
-    }
     va_list args;
     va_start(args, fmt);
 
-    if (s->partialuprecs) {
+    if (s && s->partialuprecs) {
         va_end(args);
         return;
     }
 
-    if (s && s->sb) pthread_mutex_lock(&schema_change_sbuf2_lock);
+    if (s && s->sb)
+        Pthread_mutex_lock(&schema_change_sbuf2_lock);
 
     vsb_printf(LOGMSG_INFO, (s) ? s->sb : NULL, "?", "Schema change info: ",
                fmt, args);
 
-    if (s && s->sb) pthread_mutex_unlock(&schema_change_sbuf2_lock);
+    if (s && s->sb)
+        Pthread_mutex_unlock(&schema_change_sbuf2_lock);
 
     va_end(args);
 }
 
 void sc_errf(struct schema_change_type *s, const char *fmt, ...)
 {
-    if (s && s->iq && s->iq->tranddl) {
-        return;
-    }
     va_list args;
     va_start(args, fmt);
 
-    if (s->partialuprecs) {
+    if (s && s->partialuprecs) {
         va_end(args);
         return;
     }
 
-    if (s && s->sb) pthread_mutex_lock(&schema_change_sbuf2_lock);
+    if (s && s->sb)
+        Pthread_mutex_lock(&schema_change_sbuf2_lock);
 
     vsb_printf(LOGMSG_ERROR, (s) ? s->sb : NULL, "!", "Schema change error: ",
                fmt, args);
 
-    if (s && s->sb) pthread_mutex_unlock(&schema_change_sbuf2_lock);
+    if (s && s->sb)
+        Pthread_mutex_unlock(&schema_change_sbuf2_lock);
 
     va_end(args);
 }

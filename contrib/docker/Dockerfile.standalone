@@ -9,7 +9,7 @@ RUN apt-get update && \
     libz1 \
     liblz4-tool \
     libprotobuf-c1 \
-    libreadline6 \
+    libreadline-dev \
     libsqlite3-0 \
     libuuid1 \
     libssl1.0.0 \

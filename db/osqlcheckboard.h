@@ -33,7 +33,29 @@
 struct errstat;
 struct sqlclntstate;
 
-struct osql_sqlthr;
+struct osql_sqlthr {
+    unsigned long long rqid; /* osql rq id */
+    uuid_t uuid;             /* request id, take 2 */
+    char *master;            /* who was the master I was talking to */
+    int done;            /* result of socksql, recom, snapisol and serial master
+                            transactions*/
+    struct errstat err;  /* valid if done = 1 */
+    int type;            /* type of the request, enum OSQL_REQ_TYPE */
+    pthread_mutex_t mtx; /* mutex and cond for commitrc sync */
+    pthread_cond_t cond;
+    int master_changed; /* set if we detect that node we were waiting for was
+                           disconnected */
+    int nops;
+
+    unsigned long long register_time;
+
+    int status;       /* poking support; status at the last check */
+    int timestamp;    /* poking support: timestamp at the last check */
+    int last_updated; /* poking support: when was the last time I got info, 0 is
+                         never */
+    int last_checked; /* poking support: when was the loast poke sent */
+    struct sqlclntstate *clnt; /* cache clnt */
+};
 typedef struct osql_sqlthr osql_sqlthr_t;
 
 /**
@@ -59,8 +81,8 @@ void osql_checkboard_destroy(void);
  * - <0 if error
  *
  */
-int osql_chkboard_sqlsession_exists(unsigned long long rqid, uuid_t uuid,
-                                    int lock);
+bool osql_chkboard_sqlsession_exists(unsigned long long rqid, uuid_t uuid,
+                                     bool lock);
 
 /**
  * Register an osql thread with the checkboard
@@ -92,23 +114,7 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
  *
  */
 int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
-                                struct errstat *xerr);
-
-/**
- * Wait for the session to complete
- * Upon return, sqlclntstate's errstat is set
- *
- */
-int osql_chkboard_longwait_commitrc(unsigned long long rqid, uuid_t uuid,
-                                    struct errstat *xerr);
-
-/**
- * Wait for the session to complete
- * Upon return, sqlclntstate's errstat is set
- *
- */
-int osql_chkboard_timedwait_commitrc(unsigned long long rqid, uuid_t uuid,
-                                     int max_wait, struct errstat *xerr);
+                                int max_wait, struct errstat *xerr);
 
 /**
 * Update status of the pending sorese transaction, to support poking
@@ -121,7 +127,7 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
  * we're interested in things like master_changed
  *
  */
-int osql_reuse_sqlthr(struct sqlclntstate *clnt);
+int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master);
 
 /**
  * Retrieve the sqlclntstate for a certain rqid

@@ -18,7 +18,6 @@
 #include <assert.h>
 
 #include <rtcpu.h>
-#include <machine.h>
 
 #include "comdb2.h"
 #include "fdb_boots.h"
@@ -198,7 +197,7 @@ char *fdb_select_node(fdb_location_t **ploc, enum fdb_location_op op, char *arg,
             *p_lcl_nodes = 1;
         }
 
-        return machine(); /* local node */
+        return gbl_mynode; /* local node */
     }
 
     assert(loc != NULL);
@@ -356,14 +355,18 @@ static int _discover_remote_db_nodes(const char *dbname, const char *class,
     int rc = FDB_NOERR;
     char *node;
     cdb2_hndl_tp *db;
+    const char *comdb2dbname = "comdb2db";
+    const char *comdb2dbclass = "prod";
 
     /* NOTE: test is dev */
     if (strncasecmp(class, "test", 4) == 0) {
         class = "dev";
+        comdb2dbname = "comdb3db";
+        comdb2dbclass = "dev";
     }
 
-    rc = cdb2_open(&db, "comdb2db", "default", 0);
-    if (!db) {
+    rc = cdb2_open(&db, comdb2dbname, comdb2dbclass, 0);
+    if (rc) {
         logmsg(LOGMSG_ERROR, "%s: can't talk to metadb rc %d %s\n", __func__, rc,
                 cdb2_errstr(db));
         cdb2_close(db);

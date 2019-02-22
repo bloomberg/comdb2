@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 pathbase=${COMDB2_PATHBASE:-/home/ubuntu/comdb2}
 linearizable=$pathbase/linearizable

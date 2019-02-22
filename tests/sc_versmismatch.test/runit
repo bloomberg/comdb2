@@ -73,7 +73,7 @@ function test1
 {
     assertcnt $INITCNT
     #cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('debg 100')"
-    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr DELAY_LOCK_TABLE_RECORD_C 100000')"
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr DELAY_WRITES_IN_RECORD_C 100')"
     echo "Alter table to t1_2 version while inserting records"
     (cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_2.csc2 ` }" &> alter1.scout; touch alter1.done) &
 
@@ -143,7 +143,7 @@ function test1
  
     rm alter2.done have.txt shouldhave.txt
 
-    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr DELAY_LOCK_TABLE_RECORD_C 0')"
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr DELAY_WRITES_IN_RECORD_C 0')"
     echo "Insert few more records from $((cnt+1)) up"
     j=$cnt
     while [ $j -lt 6000 ] ; do 
@@ -156,7 +156,7 @@ function test1
     done
 
     
-    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr DELAY_LOCK_TABLE_RECORD_C 100000')"
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr DELAY_WRITES_IN_RECORD_C 100')"
 
     echo "Alter table to t1_2 version while deleting records from $j down"
     (cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_2.csc2 ` }" &> alter3.scout; touch alter3.done) &
@@ -176,7 +176,7 @@ function test1
         failexit "alter3: see alter3.scout"
     fi
 
-    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr DELAY_LOCK_TABLE_RECORD_C 0')"
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr DELAY_WRITES_IN_RECORD_C 0')"
 
     echo "checking that after delete we have correct content"
     cdb2sql ${CDB2_OPTIONS} $dbnm default "select a,b,c from t1 order by a" > have.txt
@@ -266,7 +266,7 @@ function test3
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t3" > test3.res
 
-    if ! diff test3.out test3.res; then
+    if ! diff test3.exp test3.res; then
         failexit "test3 failed"
     fi
 }

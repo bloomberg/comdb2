@@ -34,7 +34,12 @@ typedef struct temp_table tmptable_t;
    but it allows us opening only one side (real or shadow)
    and be faster since we know what we are doing in sqlglue.c
  */
-enum bdb_open_type { BDB_OPEN_BOTH = 0, BDB_OPEN_REAL = 1, BDB_OPEN_SHAD = 2 };
+enum bdb_open_type {
+    BDB_OPEN_BOTH = 0,
+    BDB_OPEN_BOTH_CREATE = 1,
+    BDB_OPEN_REAL = 2,
+    BDB_OPEN_SHAD = 3,
+};
 
 /**
  * - BDB_SET: try to position to exact row, return IX_NOTFND if not possible
@@ -157,10 +162,10 @@ int bdb_set_check_shadows(tran_type *shadow_tran);
  *  Create/destroy a curtran
  *
  */
-cursor_tran_t *bdb_get_cursortran(bdb_state_type *bdb_state, int lowpri,
+cursor_tran_t *bdb_get_cursortran(bdb_state_type *bdb_state, uint32_t flags,
                                   int *bdberr);
 int bdb_put_cursortran(bdb_state_type *bdb_state, cursor_tran_t *curtran,
-                       int *bdberr);
+                       uint32_t flags, int *bdberr);
 
 /**
  * Return lockerid in use by provided curtran

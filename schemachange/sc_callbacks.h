@@ -21,7 +21,10 @@
 
 int is_genid_right_of_stripe_pointer(bdb_state_type *bdb_state,
                                      unsigned long long genid,
-                                     unsigned long long stripe_ptr);
+                                     unsigned long long *sc_genids);
+
+unsigned long long get_genid_stripe_pointer(unsigned long long genid,
+                                            unsigned long long *sc_genids);
 
 int live_sc_post_del_record(struct ireq *iq, void *trans,
                             unsigned long long genid, const void *old_dta,
@@ -55,7 +58,5 @@ int schema_change_abort_callback(void);
 void sc_del_unused_files(struct dbtable *);
 void sc_del_unused_files_tran(struct dbtable *, tran_type *);
 void sc_del_unused_files_check_progress(void);
-
-void getMachineAndTimeFromFstSeed(const char **mach, time_t *timet);
 
 #endif

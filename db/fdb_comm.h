@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2018, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -22,11 +22,13 @@
 #include "sql.h"
 
 enum {
-    /* NOTE: version 0,1,2 were legacy ping&pong protocol options
-       that were replaced by sql */
-    FDB_MSG_CURSOR_OPEN_SQL = 3,      /* sql query */
-    FDB_MSG_CURSOR_OPEN_SQL_TRAN = 4, /* sql query, possible transactional */
-    FDB_MSG_CURSOR_OPEN_SQL_SID = 5   /* sql query with source id */
+    /* all previous versions 0-4 are legacy and reserved */
+    FDB_MSG_CURSOR_OPEN_SQL_SID = 5 /* latest feature added, SSL */
+    ,
+    FDB_MSG_CURSOR_OPEN_SQL_SSL = 6 /* SSL supported */
+    /* optional fields, powers of 2 */
+    ,
+    FDB_MSG_CURSOR_OPEN_FLG_SSL = 1 << 16 /* SSL required */
 };
 
 /* keep these flags a bitmask so we can OR them */
@@ -45,10 +47,6 @@ enum run_sql_flags {
 
 union fdb_msg;
 typedef union fdb_msg fdb_msg_t;
-
-int handle_remcur(SBUF2 *sb, struct dbenv *dbenv);
-int handle_remsql(SBUF2 *sb, struct dbenv *dbenv);
-int handle_remtran(SBUF2 *sb, struct dbenv *dbenv);
 
 int fdb_send_open(fdb_msg_t *msg, char *cid, fdb_tran_t *trans, int rootp,
                   int flags, int version, int isuuid, SBUF2 *sb);
@@ -72,9 +70,9 @@ unsigned long long fdb_msg_genid(fdb_msg_t *msg);
 int fdb_msg_datalen(fdb_msg_t *msg);
 char *fdb_msg_data(fdb_msg_t *msg);
 
-int fdb_remcur_send_row(SBUF2 *sb, fdb_msg_t *msg, char *cid,
-                        unsigned long long genid, char *data, int datalen,
-                        char *datacopy, int datacopylen, int ret, int isuuid);
+int fdb_bend_send_row(SBUF2 *sb, fdb_msg_t *msg, char *cid,
+                      unsigned long long genid, char *data, int datalen,
+                      char *datacopy, int datacopylen, int ret, int isuuid);
 
 int fdb_send_begin(fdb_msg_t *msg, fdb_tran_t *trans,
                    enum transaction_level lvl, int flags, int isuuid,
@@ -104,9 +102,10 @@ int fdb_send_update(fdb_msg_t *msg, char *cid, int version, int rootpage,
 int fdb_send_index(fdb_msg_t *msg, char *cid, int version, int rootpage,
                    unsigned long long genid, int is_delete, int ixnum,
                    int ixlen, char *ix, int seq, int isuuid, SBUF2 *sb);
-
-void fdb_msg_clean_message(fdb_msg_t *msg);
 int fdb_send_heartbeat(fdb_msg_t *msg, char *tid, int isuuid, SBUF2 *sb);
 
-#endif
+void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix);
+void fdb_msg_print_message_uuid(SBUF2 *sb, fdb_msg_t *msg, char *prefix);
+void fdb_msg_clean_message(fdb_msg_t *msg);
 
+#endif

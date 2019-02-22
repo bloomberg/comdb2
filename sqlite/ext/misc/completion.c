@@ -34,18 +34,16 @@
 **
 */
 #include "sqlite3ext.h"
-//SQLITE_EXTENSION_INIT1
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
+SQLITE_EXTENSION_INIT1
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
 #include <assert.h>
 #include <string.h>
 #include <ctype.h>
 
-#if (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) &&          \
-    !defined(SQLITE_OMIT_VIRTUALTABLE)
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2) && !defined(SQLITE_CORE)
 #define SQLITE_CORE 1
-#endif
-
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) && !defined(SQLITE_CORE) */
 
 #ifndef SQLITE_OMIT_VIRTUALTABLE
 
@@ -70,6 +68,7 @@ struct completion_cursor {
   char *zPrefix;             /* The prefix for the word we want to complete */
   char *zLine;               /* The whole that we want to complete */
   const char *zCurrentRow;   /* Current output row */
+  int szRow;                 /* Length of the zCurrentRow string */
   sqlite3_stmt *pStmt;       /* Current statement */
   sqlite3_int64 iRowid;      /* The rowid */
   int ePhase;                /* Current phase */
@@ -86,7 +85,7 @@ struct completion_cursor {
 #define COMPLETION_INDEXES       5
 #define COMPLETION_TRIGGERS      6
 #define COMPLETION_DATABASES     7
-#define COMPLETION_TABLES        8
+#define COMPLETION_TABLES        8    /* Also VIEWs and TRIGGERs */
 #define COMPLETION_COLUMNS       9
 #define COMPLETION_MODULES       10
 #define COMPLETION_EOF           11
@@ -125,27 +124,13 @@ static int completionConnect(
 #define COMPLETION_COLUMN_WHOLELINE 2  /* Entire line seen so far */
 #define COMPLETION_COLUMN_PHASE     3  /* ePhase - used for debugging only */
 
-  /*
-    rc = sqlite3_declare_vtab(db,
-      "CREATE TABLE comdb2_completion(\"candidate\", \"prefix\", \"wholeline\", \"phase\")");
-    if (rc == SQLITE_OK) {
-        if ((*ppVtab = sqlite3_malloc(sizeof(sqlite3_vtab))) == 0) {
-            return SQLITE_NOMEM;
-        }
-        memset(*ppVtab, 0, sizeof(*ppVtab));
-        *ppVtab->db = db;
-    }
-
-    return 0;
-  */
-
   rc = sqlite3_declare_vtab(db,
-      "CREATE TABLE comdb2_completion("
+      "CREATE TABLE x("
       "  candidate TEXT,"
       "  prefix TEXT HIDDEN,"
       "  wholeline TEXT HIDDEN,"
       "  phase INT HIDDEN"        /* Used for debugging only */
-      ")"); 
+      ")");
   if( rc==SQLITE_OK ){
     pNew = sqlite3_malloc( sizeof(*pNew) );
     *ppVtab = (sqlite3_vtab*)pNew;
@@ -168,7 +153,15 @@ static int completionDisconnect(sqlite3_vtab *pVtab){
 ** Constructor for a new completion_cursor object.
 */
 static int completionOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  /* We do not need to check for OP user for this module as the system
+   * tables that this module accesses (comdb2_tables, comdb2_columns) are
+   * already filtered for current user.
+   */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
   completion_cursor *pCur;
+
   pCur = sqlite3_malloc( sizeof(*pCur) );
   if( pCur==0 ) return SQLITE_NOMEM;
   memset(pCur, 0, sizeof(*pCur));
@@ -197,33 +190,6 @@ static int completionClose(sqlite3_vtab_cursor *cur){
 }
 
 /*
-** All SQL keywords understood by SQLite
-*/
-static const char *completionKwrds[] = {
-  "ABORT", "ACTION", "ADD", "AFTER", "ALL", "ALTER", "ANALYZE", "AND", "AS",
-  "ASC", "ATTACH", "AUTOINCREMENT", "BEFORE", "BEGIN", "BETWEEN", "BY",
-  "CASCADE", "CASE", "CAST", "CHECK", "COLLATE", "COLUMN", "COMMIT",
-  "CONFLICT", "CONSTRAINT", "CREATE", "CROSS", "CURRENT_DATE",
-  "CURRENT_TIME", "CURRENT_TIMESTAMP", "DATABASE", "DEFAULT", "DEFERRABLE",
-  "DEFERRED", "DELETE", "DESC", "DETACH", "DISTINCT", "DROP", "EACH",
-  "ELSE", "END", "ESCAPE", "EXCEPT", "EXCLUSIVE", "EXISTS", "EXPLAIN",
-  "FAIL", "FOR", "FOREIGN", "FROM", "FULL", "GLOB", "GROUP", "HAVING", "IF",
-  "IGNORE", "IMMEDIATE", "IN", "INDEX", "INDEXED", "INITIALLY", "INNER",
-  "INSERT", "INSTEAD", "INTERSECT", "INTO", "IS", "ISNULL", "JOIN", "KEY",
-  "LEFT", "LIKE", "LIMIT", "MATCH", "NATURAL", "NO", "NOT", "NOTNULL",
-  "NULL", "OF", "OFFSET", "ON", "OR", "ORDER", "OUTER", "PLAN", "PUT",
-  "QUERY", "RAISE", "RECURSIVE", "REFERENCES", "REGEXP",
-  "REINDEX", "RELEASE", "RENAME", "REPLACE", "RESTRICT", "RIGHT",
-  "ROLLBACK", "ROW", "SAVEPOINT", "SELECT", "SET", "TABLE", "TEMP",
-  "TEMPORARY", "THEN", "TO", "TRANSACTION", "TRIGGER", "TUNABLE", 
-  "UNION", "UNIQUE",
-  "UPDATE", "USING", "VALUES", "VIEW", "WHEN", "WHERE",
-  "WITH", "WITHOUT",
-};
-#define completionKwCount \
-   (int)(sizeof(completionKwrds)/sizeof(completionKwrds[0]))
-
-/*
 ** Advance a completion_cursor to its next row of output.
 **
 ** The ->ePhase, ->j, and ->pStmt fields of the completion_cursor object
@@ -245,15 +211,13 @@ static int completionNext(sqlite3_vtab_cursor *cur){
   while( pCur->ePhase!=COMPLETION_EOF ){
     switch( pCur->ePhase ){
       case COMPLETION_KEYWORDS: {
-        /*
-        if( pCur->j >= completionKwCount ){
+        if( pCur->j >= sqlite3_keyword_count() ){
           pCur->zCurrentRow = 0;
           pCur->ePhase = COMPLETION_DATABASES;
         }else{
-          pCur->zCurrentRow = completionKwrds[pCur->j++];
+          sqlite3_keyword_name(pCur->j++, &pCur->zCurrentRow, &pCur->szRow);
         }
-        iCol = -1;
-        */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
         if( pCur->pStmt==0 ){
           sqlite3_prepare_v2(pCur->db, 
                   "SELECT name FROM comdb2_keywords ORDER BY 1", 
@@ -261,6 +225,9 @@ static int completionNext(sqlite3_vtab_cursor *cur){
         }
         iCol = 0;
         eNextPhase = COMPLETION_DATABASES;
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+        iCol = -1;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         break;
       }
       case COMPLETION_DATABASES: {
@@ -274,7 +241,13 @@ static int completionNext(sqlite3_vtab_cursor *cur){
       }
       case COMPLETION_TABLES: {
         if( pCur->pStmt==0 ){
-            /*
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+          /* TODO: UNION vtables? */
+          sqlite3_prepare_v2(pCur->db, 
+                  "SELECT tablename FROM comdb2_tables "
+                  "WHERE tablename NOT LIKE 'sqlite_stat%' ORDER BY 1", 
+                  -1, &pCur->pStmt, 0);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           sqlite3_stmt *pS2;
           char *zSql = 0;
           const char *zSep = "";
@@ -283,8 +256,7 @@ static int completionNext(sqlite3_vtab_cursor *cur){
             const char *zDb = (const char*)sqlite3_column_text(pS2, 1);
             zSql = sqlite3_mprintf(
                "%z%s"
-               "SELECT name FROM \"%w\".sqlite_master"
-               " WHERE type='table'",
+               "SELECT name FROM \"%w\".sqlite_master",
                zSql, zSep, zDb
             );
             if( zSql==0 ) return SQLITE_NOMEM;
@@ -293,12 +265,7 @@ static int completionNext(sqlite3_vtab_cursor *cur){
           sqlite3_finalize(pS2);
           sqlite3_prepare_v2(pCur->db, zSql, -1, &pCur->pStmt, 0);
           sqlite3_free(zSql);
-          */
-          sqlite3_prepare_v2(pCur->db, 
-                  "SELECT tablename FROM comdb2_tables "
-                  "WHERE tablename NOT LIKE 'sqlite_stat%' ORDER BY 1", 
-                  -1, &pCur->pStmt, 0);
-          //TODO: UNION vtables? 
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         }
         iCol = 0;
         eNextPhase = COMPLETION_COLUMNS;
@@ -306,7 +273,12 @@ static int completionNext(sqlite3_vtab_cursor *cur){
       }
       case COMPLETION_COLUMNS: {
         if( pCur->pStmt==0 ){
-            /*
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+          sqlite3_prepare_v2(pCur->db, 
+                  "SELECT columnname FROM comdb2_columns " 
+                  "WHERE tablename NOT LIKE 'sqlite_stat%' ORDER BY 1", 
+                  -1, &pCur->pStmt, 0);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           sqlite3_stmt *pS2;
           char *zSql = 0;
           const char *zSep = "";
@@ -326,29 +298,43 @@ static int completionNext(sqlite3_vtab_cursor *cur){
           sqlite3_finalize(pS2);
           sqlite3_prepare_v2(pCur->db, zSql, -1, &pCur->pStmt, 0);
           sqlite3_free(zSql);
-          */
-          sqlite3_prepare_v2(pCur->db, 
-                  "SELECT columnname FROM comdb2_columns " 
-                  "WHERE tablename NOT LIKE 'sqlite_stat%' ORDER BY 1", 
-                  -1, &pCur->pStmt, 0);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         }
         iCol = 0;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
         pCur->j = 0;
         eNextPhase = COMPLETION_FUNCTIONS;
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+        eNextPhase = COMPLETION_EOF;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         break;
       }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
       case COMPLETION_FUNCTIONS: {
-        static char *cfuncs[] = {"comdb2_version()", "table_version()", "partition_info()", "comdb2_host()", "comdb2_port()", "comdb2_dbname()", "comdb2_prevquerycost()", "sys.cmd.send()"};
-        static int j = 0;
+        /* NOTE: Please keep this list of functions sorted. */
+        static char *cfuncs[] = {
+          "comdb2_dbname()",
+          "comdb2_host()",
+          "comdb2_port()",
+          "comdb2_prevquerycost()",
+          "comdb2_starttime()",
+          "comdb2_uptime()",
+          "comdb2_version()",
+          "partition_info()",
+          "sys.cmd.send()",
+          "table_version()",
+        };
         if( pCur->j >= sizeof(cfuncs)/sizeof(char*)) {
           pCur->zCurrentRow = 0;
           pCur->ePhase = COMPLETION_EOF;
         }else{
           pCur->zCurrentRow = cfuncs[pCur->j++];
+          pCur->szRow = strlen(pCur->zCurrentRow);
         }
         iCol = -1;
         break;
       }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
     if( iCol<0 ){
       /* This case is when the phase presets zCurrentRow */
@@ -357,6 +343,7 @@ static int completionNext(sqlite3_vtab_cursor *cur){
       if( sqlite3_step(pCur->pStmt)==SQLITE_ROW ){
         /* Extract the next row of content */
         pCur->zCurrentRow = (const char*)sqlite3_column_text(pCur->pStmt, iCol);
+        pCur->szRow = sqlite3_column_bytes(pCur->pStmt, iCol);
       }else{
         /* When all rows are finished, advance to the next phase */
         sqlite3_finalize(pCur->pStmt);
@@ -366,7 +353,9 @@ static int completionNext(sqlite3_vtab_cursor *cur){
       }
     }
     if( pCur->nPrefix==0 ) break;
-    if( sqlite3_strnicmp(pCur->zPrefix, pCur->zCurrentRow, pCur->nPrefix)==0 ){
+    if( pCur->nPrefix<=pCur->szRow
+     && sqlite3_strnicmp(pCur->zPrefix, pCur->zCurrentRow, pCur->nPrefix)==0
+    ){
       break;
     }
   }
@@ -386,7 +375,7 @@ static int completionColumn(
   completion_cursor *pCur = (completion_cursor*)cur;
   switch( i ){
     case COMPLETION_COLUMN_CANDIDATE: {
-      sqlite3_result_text(ctx, pCur->zCurrentRow, -1, SQLITE_TRANSIENT);
+      sqlite3_result_text(ctx, pCur->zCurrentRow, pCur->szRow,SQLITE_TRANSIENT);
       break;
     }
     case COMPLETION_COLUMN_PREFIX: {
@@ -446,7 +435,7 @@ static int completionFilter(
       pCur->zPrefix = sqlite3_mprintf("%s", sqlite3_value_text(argv[iArg]));
       if( pCur->zPrefix==0 ) return SQLITE_NOMEM;
     }
-    iArg++;
+    iArg = 1;
   }
   if( idxNum & 2 ){
     pCur->nLine = sqlite3_value_bytes(argv[iArg]);
@@ -454,7 +443,6 @@ static int completionFilter(
       pCur->zLine = sqlite3_mprintf("%s", sqlite3_value_text(argv[iArg]));
       if( pCur->zLine==0 ) return SQLITE_NOMEM;
     }
-    iArg++;
   }
   if( pCur->zLine!=0 && pCur->zPrefix==0 ){
     int i = pCur->nLine;
@@ -527,7 +515,7 @@ static int completionBestIndex(
 ** This following structure defines all the methods for the 
 ** completion virtual table.
 */
-const sqlite3_module completionModule = {
+static sqlite3_module completionModule = {
   0,                         /* iVersion */
   0,                         /* xCreate */
   completionConnect,         /* xConnect */
@@ -550,7 +538,8 @@ const sqlite3_module completionModule = {
   0,                         /* xRename */
   0,                         /* xSavepoint */
   0,                         /* xRelease */
-  0                          /* xRollbackTo */
+  0,                         /* xRollbackTo */
+  0                          /* xShadowName */
 };
 
 #endif /* SQLITE_OMIT_VIRTUALTABLE */
@@ -558,7 +547,11 @@ const sqlite3_module completionModule = {
 int sqlite3CompletionVtabInit(sqlite3 *db){
   int rc = SQLITE_OK;
 #ifndef SQLITE_OMIT_VIRTUALTABLE
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  rc = sqlite3_create_module(db, "comdb2_completion", &completionModule, 0);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   rc = sqlite3_create_module(db, "completion", &completionModule, 0);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #endif
   return rc;
 }
@@ -579,5 +572,3 @@ int sqlite3_completion_init(
 #endif
   return rc;
 }
-#endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2))       \
-          && !defined(SQLITE_OMIT_VIRTUALTABLE) */

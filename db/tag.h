@@ -74,6 +74,15 @@ struct schema {
     LINKC_T(struct schema) lnk;
 };
 
+struct dbtag {
+    char *tblname;
+    hash_t *tags;
+    LISTC_T(struct schema) taglist;
+};
+
+void lock_taglock(void);
+void unlock_taglock(void);
+
 /* sql_record.flags */
 enum {
     SCHEMA_TABLE = 1,
@@ -83,7 +92,8 @@ enum {
     SCHEMA_RECNUM = 8 /* recnum flag set */
     ,
     SCHEMA_DYNAMIC = 16,
-    SCHEMA_DATACOPY = 32 /* datacopy flag set on index */
+    SCHEMA_DATACOPY = 32, /* datacopy flag set on index */
+    SCHEMA_UNIQNULLS = 64 /* treat all NULL values as UNIQUE */
 };
 
 /* sql_record_member.flags */
@@ -175,11 +185,11 @@ enum {
     SC_BAD_INDEX_NAME = -5
 };
 
+extern hash_t *gbl_tag_hash;
 extern char gbl_ver_temp_table[];
 extern char gbl_ondisk_ver[];
 extern const int gbl_ondisk_ver_len;
 extern char gbl_ondisk_ver_fmt[];
-
 extern int gbl_use_t2t;
 
 int tag_init(void);
@@ -295,9 +305,9 @@ int resolve_tag_name(struct ireq *iq, const char *tagdescr, size_t taglen,
 void printrecord(char *buf, struct schema *sc, int len);
 
 void *create_blank_record(struct dbtable *db, size_t *length);
-int validate_server_record(const void *record, size_t reclen,
-                           const struct schema *schema,
-                           struct convert_failure *reason);
+int validate_server_record(struct ireq *iq, const void *record, size_t reclen,
+                           const char *tag, const char *ondisktag,
+                           struct schema *schema);
 void init_convert_failure_reason(struct convert_failure *fail_reason);
 
 /* I'm putting these functions in so that javasp.c code can query schema stuff
@@ -430,7 +440,6 @@ int create_key_from_ireq(struct ireq *iq, int ixnum, int isDelete, char **tail,
                          int *taillen, char *mangled_key, const char *inbuf,
                          int inbuflen, char *outbuf);
 
-extern pthread_rwlock_t schema_lk;
 char* typestr(int type, int len);
 
 #endif

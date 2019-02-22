@@ -17,11 +17,10 @@
 #ifndef INCLUDED_SP_H
 #define INCLUDED_SP_H
 
-struct schema;
+struct sqlite3_value;
 struct sqlthdstate;
 struct sqlclntstate;
 struct sqlite3_context;
-struct Mem;
 struct trigger_reg;
 
 struct spversion_t {
@@ -29,14 +28,14 @@ struct spversion_t {
     char *version_str;
 };
 
-int exec_procedure(const char *s, char **err, struct sqlthdstate *, struct schema *, struct sqlclntstate *);
-int exec_thread(struct sqlthdstate *, struct sqlclntstate *);
+int exec_procedure(struct sqlthdstate *, struct sqlclntstate *, char **err);
+void exec_thread(struct sqlthdstate *, struct sqlclntstate *);
 void *exec_trigger(struct trigger_reg *);
 void close_sp(struct sqlclntstate *);
 
 void lua_final(struct sqlite3_context *);
-void lua_step(struct sqlite3_context *, int argc, struct Mem **argv);
-void lua_func(struct sqlite3_context *, int argc, struct Mem **argv);
+void lua_step(struct sqlite3_context *, int argc, struct sqlite3_value **argv);
+void lua_func(struct sqlite3_context *, int argc, struct sqlite3_value **argv);
 int db_verify_table_callback(void *v, const char *buf);
 
 #endif

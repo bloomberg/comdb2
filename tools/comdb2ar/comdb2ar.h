@@ -25,6 +25,7 @@
 #include <list>
 #include <string>
 #include <memory>
+#include <set>
 
 #include "fdostream.h"
 
@@ -93,8 +94,13 @@ void make_dirs(const std::string& dirname);
 
 void remove_all_old_files(std::string& datadir);
 
+bool check_usenames(const std::string& dbname, const std::string& dbdir, bool nonames);
+
+
 void serialise_database(
   std::string lrlpath,
+  std::string db_type,
+  std::string db_name,
   const std::string& comdb2_task,
   bool disable_log_deletion,
   bool strip_cluster_info,
@@ -103,6 +109,7 @@ void serialise_database(
   bool do_direct_io,
   bool incr_create,
   bool incr_gen,
+  bool copy_physical,
   const std::string& incr_path
 );
 // Serialise a database into tape archive format and write it to stdout.
@@ -125,7 +132,8 @@ void deserialise_database(
   bool legacy_mode,
   bool& is_disk_full,
   bool run_with_done_file,
-  bool incr_mode
+  bool incr_mode,
+  bool dryrun
 );
 // Deserialise a database from serialised form received on stdin.
 // If lrldestdir and datadestdir are not NULL then the lrl and data files
@@ -145,5 +153,16 @@ struct iomap {
     int memptrickle_time;
 };
 
+void create_partials(const std::string &lrlpath, bool do_direct_io);
+void restore_partials(const std::string &lrlpath, const std::string& comdb2_task, bool run_full_recovery, bool do_direct_io, bool dryrun);
+
+void parse_lrl_file(const std::string& lrlpath,
+        std::string* p_dbname,
+        std::string* p_dbdir,
+        std::list<std::string>* p_support_files,
+        std::set<std::string>* p_table_names,
+        std::set<std::string>* p_queue_names,
+        bool* p_nonames,
+        bool* has_cluster_info);
 
 #endif

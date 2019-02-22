@@ -1,6 +1,6 @@
 Test suite TODO (priority order?):
 [X] timeout for prepare/copy/test
-[ ] remove all dependencies on comdb2sc -- clustered tests dont work with comdb2sc
+[X] remove all dependencies on comdb2sc -- clustered tests dont work with comdb2sc
 [X] fix any DDL with csc2 keyword
 [X] convert all testcases to use 'default' and ${CDB2_OPTIONS} with cdb2sql
 [X] apply any patches on tests branch back to master
@@ -12,7 +12,7 @@ Test suite TODO (priority order?):
 [X] comdb2 path - copy binary, run with it? uses /opt/bb/bin/comdb2 by default
 [X] have a way to run before make install?  on cluster before make install?
 [ ] database should already have sane defaults.  consider merging default_options
-[ ] fix tools to pass CDB2_CONFIG for cdb2api
+[X] fix tools to pass CDB2_CONFIG for cdb2api
 [X] fix tools/scripts to not rely on mikedb/local (use $DBNAME/default)
 [X] way to clean up test databases on remote cluster: only for successful tests
 [ ] testrunner: error on invalid tests 
@@ -25,7 +25,6 @@ Test suite TODO (priority order?):
 
 
 Unrelated bugs found:
-[ ] master copycomdb2/comdb2ar don't work - fixed in this branch
 [ ] non-llmeta if missing lrl options - should give better error
 
 
@@ -55,113 +54,12 @@ sc_versmistmatch
 sc_resume
 
 
-Table of all tests      single node             clustered
-
-analyze_new.test             +
-autoanalyze.test             +
-biginplace.test              +                       +
-bloballoc.test               +                       +
-blob_sanity.test             +                       +
-bulk_overflow.test           -
-cdb2api.test                 +
-comdb2sys.test               +
-constraints.test             +
-curmoves.test                +
-datacopy.test                +
-datetime.test                +                       +
-datetimeusec.test            +                       +
-deadlock_policy.test         -
-deadlock.test                -                       -
-decimal.test                 +
-decimal_new.test             +
-dropaddtable.test            +
-fldvercache.test             +
-instant_sc.test              +
-intervalds.test              +
-interval.test                +
-keycompr.test                +                         
-leakcheck.test               +                          
-lkmgr.test                   +                      
-limitsortingtbl.test         +
-logdelete.test               +                          
-misstable_remsql.test        +                       +
-newsqlreplay.test            +                             
-occ_selectv.test             +
-oflowaddrem.test             +
-outofrange_queries.test      +                                   
-overflowblobs.test           -
-parenttran_fail.test         +                                
-parserdiagnose.test          +                               
-prefix_foreign_keys_rev.test +
-ptranfail_socksql.test       +                                  
-rawindex.test                +
-read_committed.test          +                               
-recom_replay.test            +
-recovery_pages.test          +                               
-rowlocks_blkseq.test         +                                
-rowlock_update.test          +                               
-sc_addfield.test             +                            
-sc_blob_update.test          +                               
-sc_constraints.test          +
-sc_dups.test                 +                        
-scindex.test                 +                         
-sc_inserts_deletes.test      +                                   
-sc_inserts.test              +                           
-sc_newuniq.test              +                           
-sc_rebuilds.test             +
-sc_remsql.test               +                       +
-sc_repeated_updates.test     +                                    
-sc_tableversion.test         +                                
-sc_timepart.test             +
-scupdates.test               +                          
-selectv_range.test           +
-selectv_recom_range.test     +
-selectv_recom.test           +
-selectv.test                 +
-serial_randtest2.test        +
-serialstep.test              -
-siasof.test                  +                       
-siasofupdate.test            +                             
-sicomplex2.test              +
-sicomplex3.test              +
-sicomplex.test               +                          
-sicountbug2.test             +                            
-sicountbug.test              +                           
-sidupidx3.test               +
-simple_remsql.test           +                       +          
-simple_timepart.test         +
-sirace.test                  (try in biger server)                        
-sirandtest2.test             +
-sirandtest.test              +
-snapblob.test                +                         
-snap_ha_retry.test           +
-snapisol.test                +
-socksql.test                 +                        
-sorese_tran.test             +                        
-sql_func.test                +                         
-sqlitestats_remsql.test      +                       +
-sqlqueries.test              +                        
-sp.test                      -
-str2intv.test                +                          
-superset_foreign_keys.test   +                        
-tablelocks.test              +                            
-tmptbl_starve.test           +                              
-truncstat.test               +                          
-updcolsbug.test              +
-userschema.test              +                           
-verify_error.test            +
-vutf8_rowlocks.test          +                               
-writes_remsql.test           +                       +
-yast_r7.test                 +
-
-
 # The tests listed below will be skipped when ran as part of
 # 'make all'. These tests however can be run individually.
 
 DISABLED TESTS:
-deadlock_policy.test
-deadlock.test             -- in clustered it leaves a bunch of cdb2sql tasks
 overflowblobs.test        -- timesout
+halt_processor_tds.test   -- requires a cluster
 rowlocks_blkseq.test
 jepsen_a6.test            -- jepsen tests require java & root access
 jepsen_a6_nemesis.test
@@ -178,6 +76,9 @@ killcluster.test
 register_linearizable.test
 sigstopcluster.test
 cinsert_linearizable.test
+netloss.test              -- does not pass most of the time; requires kernel 4.x & docker 17.x
+restart_socksql.test      -- dont run this for now since masterbranch fails it
+phys_rep.test
 <END>
 
 # vim: set sw=4 ts=4 et:

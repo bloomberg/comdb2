@@ -59,7 +59,6 @@
 #include <dbinc/btree.h>
 #include "dbinc/db_swap.h"
 #include "dbinc/hmac.h"
-#include <plbitlib.h> /* for bset/btst */
 
 #include <dbinc/crypto.h>
 #include <btree/bt_prefix.h>
@@ -127,17 +126,16 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
     DB_ENV *dbenv = bdb_state->dbenv;
     int is_hmac = CRYPTO_ON(dbenv);
     uint8_t pfxbuf[KEYBUF];
-    char tmpname[255];
-    char tran_tmpname[255];
+    char tmpname[PATH_MAX];
+    char tran_tmpname[PATH_MAX];
     int rc = 0;
     DB dbp_ = {0}, *dbp;
     PAGE *page = NULL;
     unsigned char metabuf[512];
     int pgsz;
     int created_temp_table = 0;
-    int nrecs = 0;
+    unsigned long long nrecs = 0;
     unsigned long long recs_looked_at = 0;
-    int have_checksums = 0;
     unsigned int pgno = 0;
     int fd = -1;
     int last, now;
@@ -207,7 +205,9 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
     }
     pgsz = dbp->pgsize;
     page = malloc(pgsz);
+#ifndef NDEBUG
     uint8_t *max = (uint8_t *)page + pgsz;
+#endif
     rc = lseek(fd, 0, SEEK_SET);
     if (rc) {
         logmsg(LOGMSG_ERROR, "can't rewind to start of file\n");
@@ -222,7 +222,7 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
 #endif
 
     rc = read(fd, page, pgsz);
-    last = time_epoch();
+    last = comdb2_time_epoch();
     while (rc == pgsz) {
         if (ISLEAF(page)) {
             int i, ret;
@@ -232,7 +232,7 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
                If the checksum doesn't match, just skip the page. This should be
                rare
                (only happen for pagesizes larger than default). */
-            size_t sumlen;
+            size_t sumlen = 0;
             if (F_ISSET(dbp, DB_AM_CHKSUM)) {
                 chksum_t algo = IS_CRC32C(page) ? algo_crc32c : algo_hash4;
                 switch (TYPE(page)) {
@@ -296,7 +296,7 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
                     continue;
                 /* select comp_pct / 100 records */
                 if (rand() % 100 < comp_pct) {
-                    now = time_epoch();
+                    now = comdb2_time_epoch();
                     if (now - last >= 10) {
                         last = now;
                         rc = check_free_space(bdb_state->dir);
@@ -350,7 +350,7 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
         rc = -1;
         goto done;
     }
-    logmsg(LOGMSG_INFO, "summarize added %d records, traversed %lld\n", nrecs,
+    logmsg(LOGMSG_INFO, "summarize added %llu records, traversed %llu\n", nrecs,
            recs_looked_at);
 done:
     if (fd != -1)

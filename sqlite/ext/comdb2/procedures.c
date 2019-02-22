@@ -325,7 +325,7 @@ static int systblSPsColumn(
       break;
   }
   return SQLITE_OK;
-};
+}
 
 static int systblSPsRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){
   systbl_sps_cursor *pCur = (systbl_sps_cursor*)cur;
@@ -354,6 +354,11 @@ const sqlite3_module systblSPsModule = {
   0,                         /* xRollback */
   0,                         /* xFindMethod */
   0,                         /* xRename */
+  0,                         /* xSavepoint */
+  0,                         /* xRelease */
+  0,                         /* xRollbackTo */
+  0,                         /* xShadowName */
+  .access_flag = CDB2_ALLOW_USER,
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \

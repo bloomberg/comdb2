@@ -62,42 +62,18 @@ function do_rebuild_track_pid
         cdb2sql ${CDB2_OPTIONS} $loc_dbnm default "rebuild $loc_tbl"
 
         if [[ $? != 0 ]]; then
-            echo "Error schema-changing on iteration $scnt"
-            echo "Testcase failed"
             kill -9 $track_pid
-            exit 1
+            failexit "Error schema-changing on iteration $scnt"
         fi
+        echo "Done with rebuild iteration $scnt"
 
+        echo "Running verify"
         do_verify $loc_dbnm $loc_tbl
+        echo "Done with verify"
         let scnt=scnt+1
     done
 
     echo "Success!  Performed $scnt schema-changes."
-
-    return 0
-}
-
-
-
-
-function do_rebuild
-{
-    typeset max=$1
-    typeset scnt=0
-    while [[ $scnt -lt $max ]]; do 
-
-        echo "Running rebuild iteration $scnt"
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild $tbl"
-
-        if [[ $? != 0 ]]; then
-            echo "Error schema-changing on iteration $scnt"
-            echo "Testcase failed"
-            return 1
-        fi
-        let scnt=scnt+1
-        do_verify
-        assertcnt $nrecs
-    done
 
     return 0
 }
@@ -120,6 +96,7 @@ function insert_records
             sleep 0.1
         fi
     done
+    echo "Done inserting $nrecs records."
 }
 
 
@@ -131,7 +108,6 @@ function run_test
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate $tbl"
 
-    > insert.out
     insert_records 0 &
     typeset ipid=$!
 
@@ -151,20 +127,35 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table $tbl"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table $tbl  { `cat $tbl.csc2 ` }"
 
 
+#putting this here for now -- make sure verify behaves as we expect
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('')" &> verify.out
+echo "Usage: verify(\"<table>\")
+[exec procedure sys.cmd.verify('')] failed with rc -3 [sys.comdb_verify(tbl)...]:2: Verify failed." > verify.exp
+if ! diff verify.exp verify.out ; then
+    failexit "Verify did not fail correctly, see verify.out"
+fi
+
+echo "Table \"nonexistent\" does not exist.
+[exec procedure sys.cmd.verify('nonexistent')] failed with rc -3 [sys.comdb_verify(tbl)...]:2: Verify failed." > verify.exp
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('nonexistent')" &> verify.out
+if ! diff verify.exp verify.out ; then
+    failexit "Verify did not fail correctly, see verify.out"
+fi
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
+if ! grep succeeded verify.out > /dev/null ; then
+    failexit "Verify did not succeed, see verify.out"
+fi
+
+
 master=`cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
 
-function cleanup
-{
-    cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("delfiles t1")'
-    cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("delfiles t2")'
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('flush')"
-}
-
-max=100
+max_iter=40
 t=0
-while [ $t -lt $max ] ; do
+while [ $t -lt ${max_iter} ] ; do
     run_test
-    cleanup
+    mv insert.out insert.out.$t
+
     sleep 2
     let t=t+1
 done

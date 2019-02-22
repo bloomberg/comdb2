@@ -16,13 +16,45 @@ rm $OUT 2>/dev/null
 touch $OUT
 
 
-# check the current partitions 
-echo cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('partitions')" | egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID" >> $OUT
-cdb2sql -tabs ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('partitions')" | egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID" >> $OUT
-if (( $? != 0 )) ; then
-   echo "FAILURE"
-   exit 1
-fi
+function timepart_stats
+{
+    # check the current partitions 
+    echo cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('partitions')" | 
+        egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID" >> $OUT
+    cdb2sql -tabs ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('partitions')" |
+        egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID" >> $OUT
+    if (( $? != 0 )) ; then
+        echo "FAILURE"
+        exit 1
+    fi
+
+    echo cdb2sql ${CDB2_OPTIONS} $dbname default  "select name, period, retention, nshards, version,shard0name from comdb2_timepartitions " >> $OUT
+    cdb2sql ${CDB2_OPTIONS} $dbname default  "select name, period, retention, nshards, version,shard0name from comdb2_timepartitions " >> $OUT
+    if (( $? != 0 )) ; then
+        echo "FAILURE"
+        exit 1
+    fi
+
+    echo cdb2sql ${CDB2_OPTIONS} $dbname default  "select name, shardname from comdb2_timepartshards" >> $OUT
+    cdb2sql ${CDB2_OPTIONS} $dbname default  "select name, shardname from comdb2_timepartshards" >> $OUT
+    if (( $? != 0 )) ; then
+        echo "FAILURE"
+        exit 1
+    fi
+
+    #randomly we catch a drop event here; sleep to skip the deterministically
+    sleep 6
+    echo cdb2sql ${CDB2_OPTIONS} $dbname default  "select name, arg1, arg2, arg3 from comdb2_timepartevents" >> $OUT
+    cdb2sql ${CDB2_OPTIONS} --host ${master} $dbname default  "select name, arg1, arg2, arg3 from comdb2_timepartevents" >> $OUT
+    if (( $? != 0 )) ; then
+        echo "FAILURE"
+        exit 1
+    fi
+}
+
+master=`cdb2sql -tabs ${CDB2_OPTIONS} $dbname default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
+
+timepart_stats
 
 # create the partition
 #echo cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON t as ${VIEW1} PERIOD 'test2min' RETENTION 2 START '`date +\"%Y-%m-%dT%H%M%S America/New_York\" --date \"now 1 minutes\"`'" 
@@ -35,13 +67,7 @@ if (( $? != 0 )) ; then
    exit 1
 fi
 
-# check the current partitions 
-echo cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('partitions')" | egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID" >> $OUT
-cdb2sql -tabs ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('partitions')" | egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID" >> $OUT
-if (( $? != 0 )) ; then
-   echo "FAILURE"
-   exit 1
-fi
+timepart_stats
 
 partition_config[1]="t1;t"
 partition_config[2]="t2;t1"
@@ -90,7 +116,7 @@ for run in 1 2 3 4 5; do
    while (( $row != 100 )) ; do
       let a=row%mod
       echo cdb2sql ${CDB2_OPTIONS} $dbname default "update ${VIEW1} set b=\"${blob_updates[${run}]}\" where a % ${mod} == ${a}" >> $OUT
-      cdb2sql ${CDB2_OPTIONS} $dbname default "update ${VIEW1} set b=\"${blob_updates[${run}]}\" where a % ${mod} == ${a}" >> $OUT
+      cdb2sql ${CDB2_OPTIONS} $dbname default "update ${VIEW1} set b=\"${blob_updates[${run}]}\" where a % ${mod} == ${a} limit 10000" >> $OUT
       #cdb2sql ${CDB2_OPTIONS} $dbname default "update ${VIEW1} set b='Moar rows' where a % ${mod} == ${a}" >> $OUT
       if (( $? != 0 )) ; then
          echo "FAILURE"
@@ -116,7 +142,7 @@ for run in 1 2 3 4 5; do
    while (( $row != 2 )) ; do
       let a=row%mod
       echo cdb2sql ${CDB2_OPTIONS} $dbname default "delete from ${VIEW1} where a % ${mod} == ${a}" >> $OUT
-      cdb2sql ${CDB2_OPTIONS} $dbname default "delete from ${VIEW1} where a % ${mod} == ${a}" >> $OUT
+      cdb2sql ${CDB2_OPTIONS} $dbname default "delete from ${VIEW1} where a % ${mod} == ${a} limit 10000" >> $OUT
       if (( $? != 0 )) ; then
          echo "FAILURE"
          exit 1
@@ -136,13 +162,7 @@ for run in 1 2 3 4 5; do
 
    echo "SELECT 3 HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH" >> $OUT
 
-   # check the current partitions 
-   echo cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('partitions')" | egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID" >> $OUT
-   cdb2sql -tabs ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('partitions')" | egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID" >> $OUT
-   if (( $? != 0 )) ; then
-      echo "FAILURE"
-      exit 1
-   fi
+   timepart_stats
 
    # wait for the next roll
    echo "Waiting for ${partition_config[${run}]}"
@@ -157,14 +177,7 @@ for run in 1 2 3 4 5; do
    echo "Done waiting for ${partition_config[${run}]}"
    echo "Done waiting for ${partition_config[${run}]}" >> $OUT
 
-   # check the current partitions 
-   echo cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('partitions')" | egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID" >> $OUT
-   cdb2sql -tabs ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('partitions')" | egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID" >> $OUT
-   if (( $? != 0 )) ; then
-      echo "FAILURE"
-      exit 1
-   fi
-
+   timepart_stats
 done
 
 # destroy partition
@@ -178,13 +191,8 @@ fi
 #wait for the new trigger to complete
 sleep 180
 
-# check the current partitions 
-echo cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('partitions')" | egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID" >> $OUT
-cdb2sql -tabs ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('partitions')" | egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID" >> $OUT
-if (( $? != 0 )) ; then
-   echo "FAILURE"
-   exit 1
-fi
+timepart_stats
+
 
 # we need to scrub dbname from alpha
 sed "s/dorintdb/$dbname/g; s#\${CDB2_OPTIONS}#${CDB2_OPTIONS}#g" $OUT.alpha > $OUT.alpha.actual

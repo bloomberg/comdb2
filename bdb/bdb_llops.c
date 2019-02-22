@@ -119,7 +119,7 @@ int bdb_llop_add(bdb_state_type *bdb_state, void *trans, int raw, int stripe,
     } else {
         if (ix == -1)
             rc = bdb_put_pack(bdb_state, dtafile > 0 ? 1 : 0, db, txn, &dkey,
-                              &ddata, 0);
+                              &ddata, 0, 0);
         else {
             int bdberr;
 
@@ -143,8 +143,8 @@ int bdb_llop_add(bdb_state_type *bdb_state, void *trans, int raw, int stripe,
             rc = bdb_prim_addkey_genid(bdb_state, t, dkey.data, ix, 2, genid,
                                        dtacopy, dtacopylen, 0, &bdberr);
             if (rc) {
-                *errstr = comdb2_asprintf("bdb_prim_addkey_int rc %d bdberr %d",
-                                          rc, bdberr);
+                *errstr = comdb2_asprintf(
+                    "bdb_prim_addkey_genid rc %d bdberr %d", rc, bdberr);
                 rc = -1;
                 goto done;
             }
@@ -204,7 +204,6 @@ int bdb_llop_del(bdb_state_type *bdb_state, void *trans, int stripe,
     int rc = 0;
     tran_type *t = (tran_type *)trans;
     DB *db;
-    unsigned long long genid;
     int made_trans = 0;
 
     *errstr = NULL;
@@ -295,13 +294,12 @@ done:
         }
     }
     if (made_trans && t) {
-        int crc;
         if (rc == 0) {
             int bdberr;
             rc = bdb_tran_commit(bdb_state, t, &bdberr);
         } else {
             int bdberr;
-            crc = bdb_tran_abort(bdb_state, t, &bdberr);
+            bdb_tran_abort(bdb_state, t, &bdberr);
             /* don't override the original return code */
         }
     }
@@ -317,7 +315,6 @@ void *bdb_llop_find(bdb_state_type *bdb_state, void *trans, int raw, int stripe,
     DBT dkey = {0}, ddata = {0};
     int rc;
     DB *db;
-    unsigned long long genid;
     tran_type *t = (tran_type *)trans;
     DB_TXN *txn;
 

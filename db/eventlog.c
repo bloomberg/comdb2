@@ -23,6 +23,7 @@
 #include <sys/time.h>
 #include <inttypes.h>
 
+#include <comdb2.h>
 #if defined(_IBM_SOURCE)
 #include <openssl/objects.h>
 #include <openssl/ec.h>
@@ -33,15 +34,17 @@
 #include "reqlog_int.h"
 #include "eventlog.h"
 #include "util.h"
+#include "tohex.h"
 #include "plhash.h"
 #include "logmsg.h"
+#include "dbinc/locker_info.h"
 
 #include "cson_amalgamation_core.h"
 
 static char *gbl_eventlog_fname = NULL;
 static char *eventlog_fname(const char *dbname);
-static int eventlog_nkeep = 10;
-static int eventlog_rollat = 1024 * 1024 * 1024;
+static int eventlog_nkeep = 10;                 // keep last 10 event log files
+static int eventlog_rollat = 100 * 1024 * 1024; // 100MB to begin
 static int eventlog_enabled = 1;
 static int eventlog_detailed = 0;
 static int64_t bytes_written = 0;
@@ -58,7 +61,6 @@ static void eventlog_roll(void);
 
 struct sqltrack {
     char fingerprint[FINGERPRINTSZ];
-    char *sql;
     LINKC_T(struct sqltrack) lnk;
 };
 
@@ -82,9 +84,47 @@ static inline void free_gbl_eventlog_fname()
     gbl_eventlog_fname = NULL;
 }
 
+static void eventlog_roll_cleanup()
+{
+    if (eventlog_nkeep == 0)
+        return;
+
+    char cmd[512] = {0};
+    const char postfix[] = ".events.";
+    char *fname = comdb2_location("logs", "%s%s", thedb->envname, postfix);
+
+    if (fname == NULL)
+        abort();
+
+    // fname should look like '/dir/<dbname>.events.' : see eventlog_fname()
+    int len = strlen(fname);
+
+    // SANITY CHECK; last part of fname should match postfix
+    if (len < sizeof(postfix) ||
+        strcmp(&(fname[len - sizeof(postfix) + 1]), postfix) != 0)
+        abort();
+
+    // Delete all except the most recent files
+    // WARNING: MAKE SURE NO SPACE BETWEEN THE TWO CHARACTERS '%s*'
+    // IN THE CALL TO ls IN NEXT LINE
+    snprintf(
+        cmd, sizeof(cmd) - 1,
+        "ls -1t %s* | grep '%s' | grep '.events.' | sed '1,%dd' | xargs rm -f",
+        fname, thedb->envname, eventlog_nkeep);
+    free(fname);
+
+    int rc = system(cmd);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "Failed to rotate log rc = %d\n", rc);
+        exit(1);
+    }
+}
+
 static gzFile eventlog_open()
 {
+    eventlog_roll_cleanup();
     char *fname = eventlog_fname(thedb->envname);
+    gbl_eventlog_fname = fname;
     gzFile f = gzopen(fname, "2w");
     if (f == NULL) {
         eventlog_enabled = 0;
@@ -104,7 +144,6 @@ static void eventlog_close(void)
     struct sqltrack *t = listc_rtl(&sql_statements);
     while (t) {
         hash_del(seen_sql, t);
-        free(t->sql);
         free(t);
         t = listc_rtl(&sql_statements);
     }
@@ -114,7 +153,7 @@ static void eventlog_close(void)
 static char *eventlog_fname(const char *dbname)
 {
     return comdb2_location("logs", "%s.events.%" PRId64 "", dbname,
-                           time_epochus());
+                           comdb2_time_epochus());
 }
 
 static cson_output_opt opt = {.indentation = 0,
@@ -137,133 +176,128 @@ cson_array *get_bind_array(struct reqlogger *logger, int nfields)
     return arr;
 }
 
-void add_to_bind_array(cson_array *arr, char *name, int type, void *val,
-                       int dlen, int isnull)
+inline static cson_object *
+eventlog_append_name(cson_array *arr, const char *name, const char *type)
 {
     if (!arr)
-        return;
-
+        return NULL;
     cson_value *binding = cson_value_new_object();
-    cson_object *bobj = cson_value_get_object(binding);
-
-    /* name of bound parameter */
-    cson_object_set(bobj, "name", cson_value_new_string(name, strlen(name)));
-
-    /* bind binding to array of bindings */
     cson_array_append(arr, binding);
-    const char *strtype = "__NO_TYPE_ASSIGNED__";
+    cson_object *bobj = cson_value_get_object(binding);
+    cson_object_set(bobj, "name", cson_value_new_string(name, strlen(name)));
+    cson_object_set(bobj, "type", cson_value_new_string(type, strlen(type)));
+    return bobj;
+}
 
-    if (isnull) {
-        strtype = "int"; /* log null values as int for simplicity */
-        cson_object_set(bobj, "value", cson_value_null());
-        cson_object_set(bobj, "type",
-                        cson_value_new_string(strtype, strlen(strtype)));
+void eventlog_bind_null(cson_array *arr, const char *name)
+{
+    /* log null values as int for simplicity */
+    cson_object *bobj = eventlog_append_name(arr, name, "int");
+    if (!bobj)
         return;
-    }
+    cson_object_set(bobj, "value", cson_value_null());
+    return;
+}
 
-    switch (type) {
-    case CLIENT_UINT:
-    case CLIENT_INT:
-        switch (dlen) {
-        case 2: strtype = "smallint"; break;
-        case 4: strtype = "int"; break;
-        case 8: strtype = "largeint"; break;
-        }
+void eventlog_bind_int64(cson_array *arr, const char *name, int64_t val,
+                         int dlen)
+{
+    const char *type;
+    switch (dlen) {
+    case 2: type = "smallint"; break;
+    case 4: type = "int"; break;
+    case 8: type = "largeint"; break;
+    default: return;
+    }
+    cson_object *bobj = eventlog_append_name(arr, name, type);
+    if (!bobj)
+        return;
+    cson_object_set(bobj, "value", cson_value_new_integer(val));
+}
 
-        cson_object_set(bobj, "value",
-                        cson_value_new_integer(*(uint64_t *)val));
-        break;
-    case CLIENT_REAL: {
-        switch (dlen) {
-        case 4: strtype = "float"; break;
-        case 8: strtype = "doublefloat"; break;
-        }
+void eventlog_bind_text(cson_array *arr, const char *name, const char *val,
+                        int dlen)
+{
+    cson_object *bobj = eventlog_append_name(arr, name, "char");
+    if (!bobj)
+        return;
+    cson_object_set(bobj, "value", cson_value_new_string(val, dlen));
+}
 
-        cson_object_set(bobj, "value", cson_value_new_double(*(double *)val));
-        break;
+void eventlog_bind_double(cson_array *arr, const char *name, double val,
+                          int dlen)
+{
+    const char *type;
+    switch (dlen) {
+    case 4: type = "float"; break;
+    case 8: type = "doublefloat"; break;
+    default: return;
     }
-    case CLIENT_CSTR:
-    case CLIENT_PSTR:
-    case CLIENT_PSTR2: {
-        strtype = "char";
+    cson_object *bobj = eventlog_append_name(arr, name, type);
+    if (!bobj)
+        return;
+    cson_object_set(bobj, "value", cson_value_new_double(val));
+}
 
-        cson_object_set(bobj, "value",
-                        cson_value_new_string((char *)val, dlen));
-        break;
-    }
-    case CLIENT_BYTEARRAY:
-    case CLIENT_BLOB:
-    case CLIENT_VUTF8: {
-        strtype = "blob";
-        if (type == CLIENT_VUTF8)
-            strtype = "varchar";
+static void eventlog_bind_blob_int(cson_array *arr, const char *name,
+                                   const char *type, const void *val, int dlen)
+{
+    cson_object *bobj = eventlog_append_name(arr, name, type);
+    if (!bobj)
+        return;
+    int datalen = min(dlen, 1024);         /* cap the datalen logged */
+    const int exp_len = (2 * datalen) + 4; /* x' ... '/0  */
+    char *expanded_buf = malloc(exp_len);
+    expanded_buf[0] = 'x';
+    expanded_buf[1] = '\'';
+    util_tohex(&expanded_buf[2], val, datalen);
+    expanded_buf[2 + datalen * 2] = '\'';
+    expanded_buf[3 + datalen * 2] = '\0';
+    cson_object_set(bobj, "value",
+                    cson_value_new_string(expanded_buf, exp_len));
+    free(expanded_buf);
+}
 
-        int datalen = min(dlen, 1024);         /* cap the datalen logged */
-        const int exp_len = (2 * datalen) + 4; /* x' ... '/0  */
-        char *expanded_buf = malloc(exp_len);
-        expanded_buf[0] = 'x';
-        expanded_buf[1] = '\'';
-        util_tohex(&expanded_buf[2], val, datalen);
-        expanded_buf[2 + datalen * 2] = '\'';
-        expanded_buf[3 + datalen * 2] = '\0';
-        cson_object_set(bobj, "value",
-                        cson_value_new_string(expanded_buf, exp_len));
-        free(expanded_buf);
-        break;
-    }
-    case CLIENT_DATETIME: {
-        char strtime[62];
-        strtype = "datetime";
+void eventlog_bind_blob(cson_array *a, const char *n, const void *v, int l)
+{
+    eventlog_bind_blob_int(a, n, "blob", v, l);
+}
 
-        if (structdatetime2string_ISO(val, strtime, sizeof(strtime)) == 0)
-            cson_object_set(bobj, "value", 
-                            cson_value_new_string(strtime, sizeof(strtime)));
-        break;
-    }
-    case CLIENT_DATETIMEUS: {
-        char strtime[65];
-        strtype = "datetimeus";
+void eventlog_bind_varchar(cson_array *a, const char *n, const void *v, int l)
+{
+    eventlog_bind_blob_int(a, n, "varchar", v, l);
+}
 
-        if (structdatetime2string_ISO(val, strtime, sizeof(strtime)) == 0)
-            cson_object_set(bobj, "value", 
-                            cson_value_new_string(strtime, sizeof(strtime)));
-        break;
-    }
-    case CLIENT_INTVYM: {
-        strtype = "interval month";
-        cdb2_client_intv_ym_t *ci = val;
-        char strintv[65];
-        sprintf(strintv, "%s%u-%u", ci->sign < 0 ? "- " : "", 
-                ci->years, ci->months);
-        cson_object_set(bobj, "value", 
-                        cson_value_new_string(strintv, sizeof(strintv)));
-        break;
-    }
-    case CLIENT_INTVDS: {
-        strtype = "interval sec";
-        cdb2_client_intv_ds_t *ci = val;
-        char strintvds[265];
-        sprintf(strintvds, "%s%u %2.2u:%2.2u:%2.2u.%3.3u", 
-                ci->sign < 0 ? "- " : "",
-                ci->days, ci->hours, ci->mins, ci->sec, ci->msec);
-        cson_object_set(bobj, "value", 
-                        cson_value_new_string(strintvds, sizeof(strintvds)));
-        break;
-    }
-    case CLIENT_INTVDSUS:
-        strtype = "interval usec";
-        cdb2_client_intv_dsus_t *ci = val;
-        char strintvds[265];
-        sprintf(strintvds, "%s%d %d:%d:%d.%d", ci->sign ? " " : "- ", 
-                ci->days, ci->hours, ci->mins, ci->sec, ci->usec);
-        cson_object_set(bobj, "value", 
-                        cson_value_new_string(strintvds, sizeof(strintvds)));
-        break;
-    default: assert(false && "Unknown type being bound");
-    }
+void eventlog_bind_datetime(cson_array *arr, const char *name, dttz_t *dt,
+                            const char *tz)
+{
+    const char *type =
+        dt->dttz_prec == DTTZ_PREC_MSEC ? "datetime" : "datetimeus";
+    cson_object *bobj = eventlog_append_name(arr, name, type);
+    if (!bobj)
+        return;
+    char str[256];
+    int used;
+    dttz_to_str(dt, str, sizeof(str), &used, tz);
+    cson_object_set(bobj, "value", cson_value_new_string(str, used));
+}
 
-    cson_object_set(bobj, "type",
-                    cson_value_new_string(strtype, strlen(strtype)));
+void eventlog_bind_interval(cson_array *arr, const char *name, intv_t *tv)
+{
+    const char *type;
+    switch (tv->type) {
+    case INTV_YM_TYPE: type = "interval month"; break;
+    case INTV_DS_TYPE: type = "interval sec"; break;
+    case INTV_DSUS_TYPE: type = "interval usec"; break;
+    default: return;
+    }
+    cson_object *bobj = eventlog_append_name(arr, name, type);
+    if (!bobj)
+        return;
+    char str[256];
+    int n;
+    intv_to_str(tv, str, sizeof(str), &n);
+    cson_object_set(bobj, "value", cson_value_new_string(str, n));
 }
 
 void eventlog_tables(cson_object *obj, const struct reqlogger *logger)
@@ -286,14 +320,13 @@ void eventlog_tables(cson_object *obj, const struct reqlogger *logger)
 void eventlog_perfdata(cson_object *obj, const struct reqlogger *logger)
 {
     const struct bdb_thread_stats *thread_stats = bdb_get_thread_stats();
-    int64_t start, end;
-
-    start = logger->startus;
-    end = time_epochus();
+    int64_t start = logger->startus;
+    int64_t end = comdb2_time_epochus();
 
     cson_value *perfval = cson_value_new_object();
     cson_object *perfobj = cson_value_get_object(perfval);
 
+    // runtime is in microseconds
     cson_object_set(perfobj, "runtime", cson_new_int(end - start));
 
     if (thread_stats->n_lock_waits || thread_stats->n_preads ||
@@ -336,8 +369,8 @@ int write_logmsg(void *state, const void *src, unsigned int n)
 
 static void eventlog_context(cson_object *obj, const struct reqlogger *logger)
 {
-    cson_value *contexts = cson_value_new_array();
     if (logger->ncontext > 0) {
+        cson_value *contexts = cson_value_new_array();
         cson_array *arr = cson_value_get_array(contexts);
         cson_array_reserve(arr, logger->ncontext);
         for (int i = 0; i < logger->ncontext; i++) {
@@ -366,8 +399,9 @@ static void eventlog_path(cson_object *obj, const struct reqlogger *logger)
         cson_object *obj = cson_value_get_object(component);
         struct client_query_path_component *c;
         c = &logger->path->path_stats[i];
-        cson_object_set(obj, "table",
-                        cson_value_new_string(c->table, strlen(c->table)));
+        if (c->table[0])
+            cson_object_set(obj, "table",
+                            cson_value_new_string(c->table, strlen(c->table)));
         if (c->ix != -1) cson_object_set(obj, "index", cson_new_int(c->ix));
         if (c->nfind) cson_object_set(obj, "find", cson_new_int(c->nfind));
         if (c->nnext) cson_object_set(obj, "next", cson_new_int(c->nnext));
@@ -375,6 +409,40 @@ static void eventlog_path(cson_object *obj, const struct reqlogger *logger)
         cson_array_append(arr, component);
     }
     cson_object_set(obj, "path", components);
+}
+
+/* add never seen before "newsql" query, also print it to log */
+static void eventlog_add_newsql(cson_object *obj, const struct reqlogger *logger)
+{
+    struct sqltrack *st;
+    st = malloc(sizeof(struct sqltrack));
+    memcpy(st->fingerprint, logger->fingerprint,
+            sizeof(logger->fingerprint));
+    hash_add(seen_sql, st);
+    listc_abl(&sql_statements, st);
+
+    cson_value *newval;
+    cson_object *newobj;
+    newval = cson_value_new_object();
+    newobj = cson_value_get_object(newval);
+
+    cson_object_set(newobj, "time", cson_new_int(logger->startus));
+    cson_object_set(newobj, "type",
+            cson_value_new_string("newsql", sizeof("newsql")));
+    cson_object_set(newobj, "sql", cson_value_new_string(
+                logger->stmt, strlen(logger->stmt)));
+
+    char expanded_fp[2 * FINGERPRINTSZ + 1];
+    util_tohex(expanded_fp, logger->fingerprint, FINGERPRINTSZ);
+    cson_object_set(newobj, "fingerprint",
+            cson_value_new_string(expanded_fp, FINGERPRINTSZ * 2));
+
+    /* yes, this can spill the file to beyond the configured size - we need
+       this
+       event to be in the same file as the event its being logged for */
+    cson_output(newval, write_json, eventlog, &opt);
+    if (eventlog_verbose) cson_output(newval, write_logmsg, stdout, &opt);
+    cson_value_free(newval);
 }
 
 static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
@@ -385,41 +453,11 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
     bool isSql = logger->event_type && (strcmp(logger->event_type, "sql") == 0);
     bool isSqlErr = logger->error && logger->stmt;
 
-    pthread_mutex_lock(&eventlog_lk);
+    Pthread_mutex_lock(&eventlog_lk);
     if ((isSql || isSqlErr) && !hash_find(seen_sql, logger->fingerprint)) {
-        /* add never seen before "newsql" query, also print it to log */
-        struct sqltrack *st;
-        st = malloc(sizeof(struct sqltrack));
-        memcpy(st->fingerprint, logger->fingerprint,
-               sizeof(logger->fingerprint));
-        st->sql = strdup(logger->stmt);
-        hash_add(seen_sql, st);
-        listc_abl(&sql_statements, st);
-
-        cson_value *newval;
-        cson_object *newobj;
-        newval = cson_value_new_object();
-        newobj = cson_value_get_object(newval);
-
-        cson_object_set(newobj, "time", cson_new_int(logger->startus));
-        cson_object_set(newobj, "type",
-                        cson_value_new_string("newsql", sizeof("newsql")));
-        cson_object_set(newobj, "sql", cson_value_new_string(
-                                           logger->stmt, strlen(logger->stmt)));
-
-        char expanded_fp[2 * FINGERPRINTSZ + 1];
-        util_tohex(expanded_fp, logger->fingerprint, FINGERPRINTSZ);
-        cson_object_set(newobj, "fingerprint",
-                        cson_value_new_string(expanded_fp, FINGERPRINTSZ * 2));
-
-        /* yes, this can spill the file to beyond the configured size - we need
-           this
-           event to be in the same file as the event its being logged for */
-        cson_output(newval, write_json, eventlog, &opt);
-        if (eventlog_verbose) cson_output(newval, write_logmsg, stdout, &opt);
-        cson_value_free(newval);
+        eventlog_add_newsql(obj, logger);
     }
-    pthread_mutex_unlock(&eventlog_lk);
+    Pthread_mutex_unlock(&eventlog_lk);
 
     cson_object_set(obj, "time", cson_new_int(logger->startus));
     if (logger->event_type)
@@ -433,15 +471,13 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
         cson_object_set(obj, "bound_parameters", logger->bound_param_cson);
     }
 
+    snap_uid_t snap, *p = NULL;
     if (logger->iq && logger->iq->have_snap_info) /* for txn type */
-        cson_object_set(obj, "cnonce",
-                        cson_value_new_string(logger->iq->snap_info.key,
-                                              logger->iq->snap_info.keylen));
-    else if (logger->request != NULL &&
-             logger->request->has_cnonce) /* for sql*/
-        cson_object_set(obj, "cnonce",
-                        cson_value_new_string(logger->request->cnonce.data,
-                                              logger->request->cnonce.len));
+        p = &logger->iq->snap_info;
+    else if (logger->clnt && get_cnonce(logger->clnt, &snap) == 0)
+        p = &snap;
+    if (p)
+        cson_object_set(obj, "cnonce", cson_value_new_string(p->key, p->keylen));
 
     if (logger->have_id)
         cson_object_set(obj, "id",
@@ -472,6 +508,17 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
 
     if (logger->queuetimeus)
         cson_object_set(obj, "qtime", cson_new_int(logger->queuetimeus));
+    if (logger->clnt) {
+        uint64_t clientstarttime = get_client_starttime(logger->clnt);
+        if (clientstarttime && logger->startus > clientstarttime)
+            cson_object_set(obj, "startlag", /* in microseconds */
+                            cson_new_int(logger->startus - clientstarttime));
+        int clientretries = get_client_retries(logger->clnt);
+        if (clientretries > 0) {
+            cson_object_set(obj, "clientretries",
+                    cson_new_int(clientretries));
+        }
+    }
 
     eventlog_context(obj, logger);
     eventlog_perfdata(obj, logger);
@@ -484,33 +531,38 @@ void eventlog_add(const struct reqlogger *logger)
     if (eventlog == NULL || !eventlog_enabled)
         return;
 
-    int sz = 0;
-    char *fname;
     cson_value *val;
     cson_object *obj;
 
-    pthread_mutex_lock(&eventlog_lk);
+    Pthread_mutex_lock(&eventlog_lk);
     eventlog_count++;
     if (eventlog_every_n > 1 && eventlog_count % eventlog_every_n != 0) {
-        pthread_mutex_unlock(&eventlog_lk);
+        Pthread_mutex_unlock(&eventlog_lk);
         return;
     }
     if (bytes_written > eventlog_rollat) {
         eventlog_roll();
     }
-    pthread_mutex_unlock(&eventlog_lk);
+    Pthread_mutex_unlock(&eventlog_lk);
 
     val = cson_value_new_object();
     obj = cson_value_get_object(val);
     eventlog_add_int(obj, logger);
 
-    pthread_mutex_lock(&eventlog_lk);
+    Pthread_mutex_lock(&eventlog_lk);
     cson_output(val, write_json, eventlog, &opt);
-    pthread_mutex_unlock(&eventlog_lk);
+    Pthread_mutex_unlock(&eventlog_lk);
 
     if (eventlog_verbose) cson_output(val, write_logmsg, stdout, &opt);
 
     cson_value_free(val);
+}
+
+void cson_snap_info_key(cson_object *obj, snap_uid_t *snap_info)
+{
+    if (obj && snap_info)
+        cson_object_set(obj, "cnonce", cson_value_new_string(
+                                           snap_info->key, snap_info->keylen));
 }
 
 void eventlog_status(void)
@@ -524,6 +576,7 @@ void eventlog_status(void)
 static void eventlog_roll(void)
 {
     eventlog_close();
+
     eventlog = eventlog_open();
 }
 
@@ -607,7 +660,7 @@ static void eventlog_process_message_locked(char *line, int lline, int *toff)
         else {
             logmsg(LOGMSG_USER, "Rolling logs after %zd bytes\n", rollat);
         }
-        eventlog_nkeep = rollat;
+        eventlog_rollat = rollat;
     } else if (tokcmp(tok, ltok, "every") == 0) {
         int every;
         tok = segtok(line, lline, toff, &ltok);
@@ -648,7 +701,53 @@ static void eventlog_process_message_locked(char *line, int lline, int *toff)
 
 void eventlog_process_message(char *line, int lline, int *toff)
 {
-    pthread_mutex_lock(&eventlog_lk);
+    Pthread_mutex_lock(&eventlog_lk);
     eventlog_process_message_locked(line, lline, toff);
-    pthread_mutex_unlock(&eventlog_lk);
+    Pthread_mutex_unlock(&eventlog_lk);
+}
+
+void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
+                        u_int32_t nlockers, u_int32_t victim)
+{
+    if (eventlog == NULL)
+        return;
+    if (!eventlog_enabled)
+        return;
+
+    cson_value *dval = cson_value_new_object();
+    cson_object *obj = cson_value_get_object(dval);
+
+    cson_value *dd_list = cson_value_new_array();
+    int64_t comdb2_time_epochus(void);
+    uint64_t startus = comdb2_time_epochus();
+    cson_object_set(obj, "time", cson_new_int(startus));
+    extern char *gbl_mynode;
+    cson_object_set(obj, "host",
+                    cson_value_new_string(gbl_mynode, strlen(gbl_mynode)));
+    cson_object_set(obj, "deadlock_cycle", dd_list);
+    cson_array *arr = cson_value_get_array(dd_list);
+    cson_array_reserve(arr, nlockers);
+
+    for (int j = 0; j < nlockers; j++) {
+        if (!ISSET_MAP(deadmap, j))
+            continue;
+
+        cson_value *lobj = cson_value_new_object();
+        cson_object *vobj = cson_value_get_object(lobj);
+
+        void cson_snap_info_key(cson_object * obj, snap_uid_t * snap_info);
+        cson_snap_info_key(vobj, idmap[j].snap_info);
+        char hex[11];
+        sprintf(hex, "0x%x", idmap[j].id);
+        cson_object_set(vobj, "lid", cson_value_new_string(hex, strlen(hex)));
+        cson_object_set(vobj, "lcount", cson_value_new_integer(idmap[j].count));
+        if (j == victim)
+            cson_object_set(vobj, "victim", cson_value_new_bool(1));
+        cson_array_append(arr, lobj);
+    }
+    logmsg(LOGMSG_USER, "\n");
+
+    Pthread_mutex_lock(&eventlog_lk);
+    cson_output(dval, write_json, eventlog, &opt);
+    Pthread_mutex_unlock(&eventlog_lk);
 }

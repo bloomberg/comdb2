@@ -1,9 +1,7 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Remote cursor moves testcase for comdb2
 ################################################################################
-
-set -x 
 
 # args
 # <dbname> <dbdir> <testdir> <autodbname> <autodbnum> <cluster>
@@ -32,7 +30,7 @@ CDB2_OPTIONS="--cdb2cfg $CDB2_CONFIG"
 
 
 #setup remote db
-$TESTSROOTDIR/setup
+$TESTSROOTDIR/setup &> $TESTDIR/logs/$DBNAME.setup
 
 
 #run tests
@@ -41,7 +39,12 @@ echo ./writes_remsql_names.sh $dbname $cdb2config $srcdbname $dbdir $testdir
 ./writes_remsql_names.sh $dbname $cdb2config $srcdbname $dbdir $testdir
 result=$?
 
-$TESTSROOTDIR/unsetup
+if (( $result == 0 )) ; then
+   successful=1
+fi
+
+$TESTSROOTDIR/unsetup $successful &> $TESTDIR/logs/$DBNAME.unsetup
+
 
 
 if (( $result != 0 )) ; then

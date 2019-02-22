@@ -62,6 +62,7 @@ static const char revid[] = "$Id: bt_split.c,v 11.60 2003/06/30 17:19:35 bostic 
 #include <btree/bt_cache.h>
 
 #include <logmsg.h>
+#include <locks_wrap.h>
 
 void inspect_page(DB *, PAGE *);
 
@@ -75,6 +76,9 @@ static int __ram_root __P((DBC *, PAGE *, PAGE *, PAGE *));
 int genidcmp(const void *hash_genid, const void *genid);
 void genidcpy(void *dest, const void *src);
 void genidsetzero(void *g);
+
+int bdb_relink_pglogs(void *bdb_state, unsigned char *fileid, db_pgno_t pgno,
+	db_pgno_t prev_pgno, db_pgno_t next_pgno, DB_LSN lsn);
 
 /*
  * __bam_split --
@@ -196,7 +200,7 @@ __bam_root(dbc, cp)
 	DB_LSN log_lsn;
     DB_LOCK lplock, rplock;
 	DB_MPOOLFILE *mpf;
-	PAGE *lp, *rp;
+	PAGE *lp = NULL, *rp = NULL;
 	db_indx_t split;
 	u_int32_t opflags;
 	int ret, got_lplock, got_rplock;
@@ -246,7 +250,7 @@ __bam_root(dbc, cp)
 	if ((ret = __bam_psplit(dbc, cp, lp, rp, &split)) != 0)
 		goto err;
 
-	++GET_BH_GEN(cp);
+	++GET_BH_GEN(cp->page);
 
 	/* Log the change. */
 	if (DBC_LOGGING(dbc)) {
@@ -257,10 +261,16 @@ __bam_root(dbc, cp)
 		opflags = F_ISSET(
 		    (BTREE_CURSOR *)dbc->internal, C_RECNUM) ? SPL_NRECS : 0;
 		if ((ret = __bam_split_log(dbp,
-		    dbc->txn, &LSN(cp->page), 0, PGNO(lp), &LSN(lp), PGNO(rp),
-		    &LSN(rp), (u_int32_t)NUM_ENT(lp), 0, &log_lsn,
-		    dbc->internal->root, &log_dbt, opflags)) != 0)
+			dbc->txn, &LSN(cp->page), 0, PGNO(lp), &LSN(lp), PGNO(rp),
+			&LSN(rp), (u_int32_t)NUM_ENT(lp), 0, &log_lsn,
+			dbc->internal->root, &log_dbt, opflags)) != 0)
 			goto err;
+		if (bdb_relink_pglogs(dbp->dbenv->app_private, mpf->fileid,
+			dbc->internal->root, PGNO(lp), PGNO(rp),
+			LSN(cp->page)) != 0) {
+			logmsg(LOGMSG_FATAL, "%s: failed relink pglogs\n", __func__);
+			abort();
+		}
 	} else
 		LSN_NOT_LOGGED(LSN(cp->page));
 	LSN(lp) = LSN(cp->page);
@@ -293,19 +303,12 @@ err:	if (lp != NULL)
 		(void)__memp_fput(mpf, rp, 0);
 	(void)__memp_fput(mpf, cp->page, 0);
 	(void)__TLPUT(dbc, cp->lock);
-    if (got_lplock)
-        (void)__TLPUT(dbc, lplock);
-    if (got_rplock)
-        (void)__TLPUT(dbc, rplock);
+	if (got_lplock)
+		(void)__TLPUT(dbc, lplock);
+	if (got_rplock)
+		(void)__TLPUT(dbc, rplock);
 	return (ret);
 }
-
-int bdb_relink_txn_pglogs(void *bdb_state, void *relinks_hashtbl,
-	pthread_mutex_t * mutexp, unsigned char *fileid, db_pgno_t pgno,
-	db_pgno_t prev_pgno, db_pgno_t next_pgno, DB_LSN lsn);
-
-int bdb_relink_pglogs(void *bdb_state, unsigned char *fileid, db_pgno_t pgno,
-	db_pgno_t prev_pgno, db_pgno_t next_pgno, DB_LSN lsn);
 
 /*
  * __bam_page --
@@ -330,7 +333,6 @@ __bam_page(dbc, pp, cp)
 
 	DBT split_key;
 	BKEYDATA *tmp_bk;
-	int mutex_rc = 0;
 	unsigned int hh;
 	genid_hash *hash = NULL;
 	__genid_pgno *hashtbl = NULL;
@@ -463,24 +465,13 @@ __bam_page(dbc, pp, cp)
 				if (genidcmp(hashtbl[hh].genid,
 					split_key.data) == 0) {
 					// This key (genid) exists in hash
-					mutex_rc =
-					    pthread_mutex_lock(&(hash->mutex));
-					if (mutex_rc != 0) {
-                        logmsg(LOGMSG_ERROR, 
-                                "__bam_page: Failed to lock (hash->mutex)\n");
-                    }
+                    Pthread_mutex_lock(&(hash->mutex));
 					// update new page
 					genidsetzero(hashtbl[hh].genid);
 					hashtbl[hh].pgno = PGNO(rp);
 					genidcpy(hashtbl[hh].genid,
 					    split_key.data);
-					mutex_rc =
-					    pthread_mutex_unlock(&(hash->
-						mutex));
-					if (mutex_rc != 0) {
-						logmsg(LOGMSG_ERROR, 
-                                "__bam_page: Failed to unlock (hash->mutex)\n");
-					}
+                    Pthread_mutex_unlock(&(hash->mutex));
 				}
 			}
 		}
@@ -496,20 +487,14 @@ __bam_page(dbc, pp, cp)
 			ZERO_LSN(log_lsn);
 		opflags = F_ISSET(bc, C_RECNUM) ? SPL_NRECS : 0;
 		if ((ret = __bam_split_log(dbp, dbc->txn, &LSN(cp->page), 0,
-			    PGNO(cp->page), &LSN(cp->page), PGNO(alloc_rp),
-			    &LSN(alloc_rp), (u_int32_t)NUM_ENT(lp),
-			    tp == NULL ? 0 : PGNO(tp),
-			    tp == NULL ? &log_lsn : &LSN(tp),
-			    PGNO_INVALID, &log_dbt, opflags)) != 0)
+				PGNO(cp->page), &LSN(cp->page), PGNO(alloc_rp),
+				&LSN(alloc_rp), (u_int32_t)NUM_ENT(lp),
+				tp == NULL ? 0 : PGNO(tp),
+				tp == NULL ? &log_lsn : &LSN(tp),
+				PGNO_INVALID, &log_dbt, opflags)) != 0)
 			 goto err;
 
-		if (!dbc->txn->relinks_hashtbl) {
-			DB_ASSERT(F_ISSET(dbc->txn, TXN_COMPENSATE));
-		} else if (bdb_relink_txn_pglogs(dbp->dbenv->app_private,
-			dbc->txn->relinks_hashtbl, &dbc->txn->pglogs_mutex,
-			mpf->fileid, PGNO(cp->page), PGNO_INVALID,
-			PGNO(alloc_rp), LSN(cp->page)) != 0 ||
-		    bdb_relink_pglogs(dbp->dbenv->app_private, mpf->fileid,
+		if (bdb_relink_pglogs(dbp->dbenv->app_private, mpf->fileid,
 			PGNO(cp->page), PGNO_INVALID, PGNO(alloc_rp),
 			LSN(cp->page)) != 0) {
 			logmsg(LOGMSG_FATAL, "%s: failed relink pglogs\n", __func__);
@@ -1278,7 +1263,6 @@ __bam_copy(dbp, pp, cp, nxt, stop)
 	 * Nxt is the offset of the next record to be placed on the target page.
 	 */
 	for (off = 0; nxt < stop; ++nxt, ++NUM_ENT(cp), ++off) {
-		uint8_t expand_pfx = 0;
 		switch (TYPE(pp)) {
 		case P_IBTREE:
 			if (B_TYPE(GET_BINTERNAL(dbp, pp, nxt)) == B_KEYDATA)

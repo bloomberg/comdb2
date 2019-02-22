@@ -45,9 +45,9 @@
 #include <net.h>
 #include "bdb_int.h"
 #include "locks.h"
+#include <locks_wrap.h>
 
 #include <memory_sync.h>
-#include <plbitlib.h> /* for bset/btst */
 #include <autoanalyze.h>
 #include <logmsg.h>
 
@@ -102,8 +102,18 @@ void *memp_trickle_thread(void *arg)
 {
     unsigned int time;
     bdb_state_type *bdb_state;
+    static int have_memp_trickle_thread = 0;
+    static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
     int nwrote;
     int rc;
+
+    Pthread_mutex_lock(&lk);
+    if (have_memp_trickle_thread) {
+        Pthread_mutex_unlock(&lk);
+        return NULL;
+    }
+    have_memp_trickle_thread = 1;
+    Pthread_mutex_unlock(&lk);
 
     bdb_state = (bdb_state_type *)arg;
 
@@ -120,18 +130,8 @@ void *memp_trickle_thread(void *arg)
     while (!bdb_state->passed_dbenv_open)
         sleep(1);
 
-    while (1) {
-        int t1, t2;
-
+    while (!db_is_stopped()) {
         BDB_READLOCK("memp_trickle_thread");
-
-        if (db_is_stopped()) {
-            logmsg(LOGMSG_DEBUG, "memp_trickle_thread: exiting\n");
-
-            BDB_RELLOCK();
-            bdb_thread_event(bdb_state, 0);
-            pthread_exit(NULL);
-        }
 
         /* time is in usecs, memptricklemsecs is in msecs */
         time = bdb_state->attr->memptricklemsecs * 1000;
@@ -152,8 +152,14 @@ void *memp_trickle_thread(void *arg)
 
         BDB_RELLOCK();
 
+        if (db_is_stopped())
+            break;
         usleep(time);
     }
+
+    bdb_thread_event(bdb_state, 0);
+    logmsg(LOGMSG_DEBUG, "memp_trickle_thread: exiting\n");
+    return NULL;
 }
 
 void *deadlockdetect_thread(void *arg)
@@ -175,7 +181,6 @@ void *deadlockdetect_thread(void *arg)
 
     while (1) {
         int rc;
-        int time_now;
         int policy;
 
         BDB_READLOCK("deadlockdetect thread");
@@ -222,14 +227,14 @@ void *master_lease_thread(void *arg)
     bdb_state_type *bdb_state = (bdb_state_type *)arg;
     repinfo_type *repinfo = bdb_state->repinfo;
 
-    pthread_mutex_lock(&lk);
+    Pthread_mutex_lock(&lk);
     if (have_master_lease_thread) {
-        pthread_mutex_unlock(&lk);
+        Pthread_mutex_unlock(&lk);
         return NULL;
     } else {
         have_master_lease_thread = 1;
         bdb_state->master_lease_thread = pthread_self();
-        pthread_mutex_unlock(&lk);
+        Pthread_mutex_unlock(&lk);
     }
 
     assert(!bdb_state->parent);
@@ -237,7 +242,8 @@ void *master_lease_thread(void *arg)
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDWR);
     logmsg(LOGMSG_DEBUG, "%s starting\n", __func__);
 
-    while ((lease_time = bdb_state->attr->master_lease) != 0) {
+    while (!db_is_stopped() &&
+           (lease_time = bdb_state->attr->master_lease) != 0) {
         if (repinfo->master_host != repinfo->myhost) {
             int send_myseqnum_to_master_udp(bdb_state_type * bdb_state);
             send_myseqnum_to_master_udp(bdb_state);
@@ -252,10 +258,10 @@ void *master_lease_thread(void *arg)
 
     logmsg(LOGMSG_DEBUG, "%s exiting\n", __func__);
     bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDWR);
-    pthread_mutex_lock(&lk);
+    Pthread_mutex_lock(&lk);
     have_master_lease_thread = 0;
     bdb_state->master_lease_thread = 0;
-    pthread_mutex_unlock(&lk);
+    Pthread_mutex_unlock(&lk);
     return NULL;
 }
 
@@ -270,14 +276,14 @@ void *coherency_lease_thread(void *arg)
     repinfo_type *repinfo = bdb_state->repinfo;
     pthread_t tid;
 
-    pthread_mutex_lock(&lk);
+    Pthread_mutex_lock(&lk);
     if (have_coherency_thread) {
-        pthread_mutex_unlock(&lk);
+        Pthread_mutex_unlock(&lk);
         return NULL;
     } else {
         have_coherency_thread = 1;
         bdb_state->coherency_lease_thread = pthread_self();
-        pthread_mutex_unlock(&lk);
+        Pthread_mutex_unlock(&lk);
     }
     assert(!bdb_state->parent);
     thread_started("bdb coherency lease");
@@ -324,59 +330,57 @@ void *coherency_lease_thread(void *arg)
                      ? renew
                      : (lease_time / 3);
 
+        if (db_is_stopped())
+            break;
         poll(0, 0, pollms);
     }
 
     logmsg(LOGMSG_DEBUG, "%s exiting\n", __func__);
     bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDWR);
-    pthread_mutex_lock(&lk);
+    Pthread_mutex_lock(&lk);
     have_coherency_thread = 0;
     bdb_state->coherency_lease_thread = 0;
-    pthread_mutex_unlock(&lk);
+    Pthread_mutex_unlock(&lk);
     return NULL;
 }
 
 void *logdelete_thread(void *arg)
 {
-    bdb_state_type *bdb_state;
-
-    bdb_state = (bdb_state_type *)arg;
-
+    bdb_state_type *bdb_state = (bdb_state_type *)arg;
     if (bdb_state->parent) bdb_state = bdb_state->parent;
 
     while (!bdb_state->after_llmeta_init_done)
         sleep(1);
 
-    populate_deleted_files(bdb_state);
-
     thread_started("bdb logdelete");
 
     bdb_thread_event(bdb_state, 1);
+    time_t last_run_time = 0;
 
-    while (1) {
-        int sleeptime;
-        BDB_READLOCK("logdelete_thread");
+    while (!db_is_stopped()) {
+        time_t now = time(NULL);
+        int run_interval = bdb_state->attr->logdelete_run_interval;
+        run_interval = (run_interval <= 0 ? 30 : run_interval);
 
-        if (db_is_stopped()) {
-            logmsg(LOGMSG_DEBUG, "logdelete_thread: exiting\n");
-
-            BDB_RELLOCK();
-            bdb_thread_event(bdb_state, 0);
-            pthread_exit(NULL);
+        if ((now - last_run_time) >= run_interval) {
+            delete_log_files(bdb_state);
+            last_run_time = now;
         }
-
-        delete_log_files(bdb_state);
-
-        BDB_RELLOCK();
-        sleeptime = bdb_state->attr->logdelete_run_interval;
-        sleeptime = (sleeptime <= 0 ? 30 : sleeptime);
-
-        sleep(sleeptime);
+        sleep(1);
     }
+
+    logmsg(LOGMSG_DEBUG, "logdelete_thread: exiting\n");
+    bdb_thread_event(bdb_state, 0);
+    return NULL;
 }
 
 extern int gbl_rowlocks;
 extern unsigned long long osql_log_time(void);
+extern int db_is_stopped();
+
+int64_t gbl_last_checkpoint_ms;
+int64_t gbl_total_checkpoint_ms;
+int gbl_checkpoint_count;
 
 void *checkpoint_thread(void *arg)
 {
@@ -392,13 +396,20 @@ void *checkpoint_thread(void *arg)
     DB_LSN logfile;
     DB_LSN crtlogfile;
     int broken;
+    static int have_checkpoint_thd = 0;
+    static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
+
+    Pthread_mutex_lock(&lk);
+    if (have_checkpoint_thd) {
+        Pthread_mutex_unlock(&lk);
+        return NULL;
+    }
+    have_checkpoint_thd = 1;
+    Pthread_mutex_unlock(&lk);
 
     thread_started("bdb checkpoint");
 
     bdb_state = (bdb_state_type *)arg;
-
-    bdb_state = (bdb_state_type *)arg;
-
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
@@ -407,7 +418,7 @@ void *checkpoint_thread(void *arg)
 
     bdb_thread_event(bdb_state, 1);
 
-    while (1) {
+    while (!db_is_stopped()) {
         BDB_READLOCK("checkpoint_thread");
         checkpointtime = bdb_state->attr->checkpointtime;
         checkpointrand = bdb_state->attr->checkpointrand;
@@ -417,14 +428,6 @@ void *checkpoint_thread(void *arg)
         if (broken) {
             logmsg(LOGMSG_ERROR, "%s failed in log_get_last_lsn rc=%d\n", __func__,
                     broken);
-        }
-
-        if (db_is_stopped()) {
-            logmsg(LOGMSG_DEBUG, "checkpoint_thread: exiting\n");
-
-            BDB_RELLOCK();
-            bdb_thread_event(bdb_state, 0);
-            pthread_exit(NULL);
         }
 
         /* can't call checkpoint until llmeta is open if we are using rowlocks
@@ -438,8 +441,8 @@ void *checkpoint_thread(void *arg)
         /* Record the start time of the checkpoint operation.  If the checkpoint
          * hangs (this has happened) then another thread will use this to raise
          * an alarm. */
-        start = time_epochms();
-        bdb_state->checkpoint_start_time = time_epoch();
+        start = comdb2_time_epochms();
+        bdb_state->checkpoint_start_time = comdb2_time_epoch();
         MEMORY_SYNC;
 
         rc = ll_checkpoint(bdb_state, 0);
@@ -447,10 +450,13 @@ void *checkpoint_thread(void *arg)
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "checkpoint failed rc %d\n", rc);
         }
-        end = time_epochms();
+        end = comdb2_time_epochms();
         bdb_state->checkpoint_start_time = 0;
         MEMORY_SYNC;
         ctrace("checkpoint (scheduled) took %d ms\n", end - start);
+        gbl_last_checkpoint_ms = (end - start);
+        gbl_total_checkpoint_ms += gbl_last_checkpoint_ms;
+        gbl_checkpoint_count++;
 
         BDB_RELLOCK();
 
@@ -487,6 +493,10 @@ void *checkpoint_thread(void *arg)
             } while (crt_time_msec < end_sleep_time_msec);
         }
     }
+
+    logmsg(LOGMSG_DEBUG, "checkpoint_thread: exiting\n");
+    bdb_thread_event(bdb_state, 0);
+    return NULL;
 }
 
 int bdb_get_checkpoint_time(bdb_state_type *bdb_state)
@@ -496,7 +506,7 @@ int bdb_get_checkpoint_time(bdb_state_type *bdb_state)
         bdb_state = bdb_state->parent;
     start = bdb_state->checkpoint_start_time;
     if (start != 0)
-        start = time_epoch() - start;
+        start = comdb2_time_epoch() - start;
     return start;
 }
 

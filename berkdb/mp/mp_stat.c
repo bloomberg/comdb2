@@ -24,6 +24,7 @@ static const char revid[] = "$Id: mp_stat.c,v 11.58 2003/09/13 19:20:41 bostic E
 #include "dbinc/log.h"
 #include "dbinc/mp.h"
 #include "logmsg.h"
+#include "comdb2_atomic.h"
 
 static void __memp_dumpcache __P((DB_ENV *,
 		DB_MPOOL *, REGINFO *, size_t *, FILE *, u_int32_t));
@@ -141,8 +142,7 @@ __memp_stat(dbenv, gspp, fspp, flags)
 			 * st_page_clean	calculated here
 			 */
 			__memp_stat_hash(&dbmp->reginfo[i], c_mp, &dtmp);
-			atomic_init(&sp->st_page_dirty, (atomic_value_t) dtmp +
-			    atomic_read(&sp->st_page_dirty));
+			ATOMIC_ADD(sp->st_page_dirty, dtmp);
 			sp->st_page_clean += c_mp->stat.st_pages - dtmp;
 			sp->st_hash_buckets += c_mp->stat.st_hash_buckets;
 			sp->st_hash_searches += c_mp->stat.st_hash_searches;
@@ -516,10 +516,9 @@ __memp_stat_hash(reginfo, mp, dirtyp)
 	MPOOL *mp;
 	u_int32_t *dirtyp;
 {
-	DB_MPOOL_HASH *hp;
 	u_int32_t dirty;
 
-	dirty = (u_int32_t)atomic_read(&mp->stat.st_page_dirty);
+	dirty = (u_int32_t)mp->stat.st_page_dirty;
 	*dirtyp = dirty;
 }
 

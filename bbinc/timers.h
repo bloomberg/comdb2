@@ -24,9 +24,9 @@ struct timer_parm /*sent from timserv */
     unsigned int epochms;
 };
 
-int cantim(int parm);
-int timer(int ms, int parm);
-int timprm(int ms, int parm);
+int comdb2_cantim(int parm);
+int comdb2_timer(int ms, int parm);
+int comdb2_timprm(int ms, int parm);
 
 void timer_init(void (*func)(struct timer_parm *));
 

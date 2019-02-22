@@ -249,7 +249,9 @@ void make_dirs(const std::string& dirname)
 
         // set default extent size for database directories
         std::clog << ">>>>>> " << xfscmd.str() << std::endl;
-        std::system(xfscmd.str().c_str());
+        int rc = std::system(xfscmd.str().c_str());
+        if (rc == -1)
+            std::cerr << "system() returns rc = " << rc << std::endl;
         files[dirname] = true;
     }
 
@@ -268,7 +270,7 @@ void make_dirs(const std::string& dirname)
     std::string cmd("mkdir -p " + dirname);
 
     int rc = std::system(cmd.c_str());
-    if(rc != 0) {
+    if(rc) {
         std::ostringstream ss;
         ss << "Command " << cmd << " failed with rcode " << rc;
         throw Error(ss);
@@ -354,3 +356,32 @@ void remove_all_old_files(std::string &datadir) {
     }
 }
 
+bool check_usenames(const std::string& dbname, const std::string& dbdir, bool nonames) {
+    int rc;
+    struct stat st;
+    bool found_usenames = false;
+    bool found_nonames = false;
+
+    rc = stat((dbdir + "/" + dbname + ".txn").c_str(), &st);
+    if (rc == 0 && S_ISDIR(st.st_mode)) {
+        rc = stat((dbdir + "/" + dbname + ".txn/checkpoint").c_str(), &st);
+        if (rc == 0 && S_ISREG(st.st_mode))
+            found_usenames = true;
+    }
+
+    rc = stat((dbdir + "/" + "logs").c_str(), &st);
+    if (rc == 0 && S_ISDIR(st.st_mode)) {
+        rc = stat((dbdir + "/" + "logs/checkpoint").c_str(), &st);
+        if (rc == 0 && S_ISREG(st.st_mode))
+            found_nonames = true;
+    }
+
+    /* bias by parse_lrl_file told us, but use the other if we can find it */
+    if (nonames && found_nonames == false && found_usenames == true)
+        nonames = false;
+
+    if (nonames == false && found_usenames == false && found_nonames == true)
+        nonames = true;
+
+    return nonames;
+}

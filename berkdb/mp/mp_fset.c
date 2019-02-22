@@ -20,6 +20,7 @@ static const char revid[] = "$Id: mp_fset.c,v 11.30 2003/09/13 19:26:21 bostic E
 #include "dbinc/log.h"
 #include "dbinc/mp.h"
 #include "dbinc/txn.h"
+#include "comdb2_atomic.h"
 
 /*
  * __memp_fset_pp --
@@ -85,7 +86,6 @@ __memp_fset(dbmfp, pgaddr, flags)
 	DB_MPOOL_HASH *hp;
 	MPOOL *c_mp;
 	u_int32_t n_cache;
-	DB_TXN *thrtxn;
 
 	dbenv = dbmfp->dbenv;
 	dbmp = dbenv->mp_handle;
@@ -102,14 +102,14 @@ __memp_fset(dbmfp, pgaddr, flags)
 	/* Set/clear the page bits. */
 	if (LF_ISSET(DB_MPOOL_CLEAN) &&
 	    F_ISSET(bhp, BH_DIRTY) && !F_ISSET(bhp, BH_DIRTY_CREATE)) {
-		DB_ASSERT(atomic_read(&hp->hash_page_dirty) != 0);
-		atomic_dec(env, &hp->hash_page_dirty);
-		atomic_dec(env, &c_mp->stat.st_page_dirty);
+		DB_ASSERT(hp->hash_page_dirty != 0);
+		ATOMIC_ADD(hp->hash_page_dirty, -1);
+		ATOMIC_ADD(c_mp->stat.st_page_dirty, -1);
 		F_CLR(bhp, BH_DIRTY);
 	}
 	if (LF_ISSET(DB_MPOOL_DIRTY) && !F_ISSET(bhp, BH_DIRTY)) {
-		atomic_inc(env, &hp->hash_page_dirty);
-		atomic_inc(env, &c_mp->stat.st_page_dirty);
+		ATOMIC_ADD(hp->hash_page_dirty, 1);
+		ATOMIC_ADD(c_mp->stat.st_page_dirty, 1);
 		F_SET(bhp, BH_DIRTY);
 		/* Update first_dirty_lsn when flag goes from CLEAN to DIRTY. */
 		if (dbenv->tx_perfect_ckp)

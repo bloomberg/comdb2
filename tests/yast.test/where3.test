@@ -276,26 +276,26 @@ do_test where3-4.0 {
     EXPLAIN QUERY PLAN
     SELECT * FROM t400, t401, t402 WHERE t402.z GLOB 'abc*';
   }
-} {0 0 2 {SCAN TABLE t402 (983040 rows)} 0 1 0 {SCAN TABLE t400 (1048576 rows)} 0 2 1 {SCAN TABLE t401 (1048576 rows)}}
+} {7 0 0 {SCAN TABLE t402 (~983040 rows)} 12 0 0 {SCAN TABLE t400 (~1048576 rows)} 14 0 0 {SCAN TABLE t401 (~1048576 rows)}}
 do_test where3-4.1 {
   execsql {
     EXPLAIN QUERY PLAN
     SELECT * FROM t400, t401, t402 WHERE t401.r GLOB 'abc*';
   }
-} {0 0 1 {SCAN TABLE t401 (983040 rows)} 0 1 0 {SCAN TABLE t400 (1048576 rows)} 0 2 2 {SCAN TABLE t402 (1048576 rows)}}
+} {7 0 0 {SCAN TABLE t401 (~983040 rows)} 12 0 0 {SCAN TABLE t400 (~1048576 rows)} 14 0 0 {SCAN TABLE t402 (~1048576 rows)}}
 do_test where3-4.2 {
   execsql {
     EXPLAIN QUERY PLAN
     SELECT * FROM t400, t401, t402 WHERE t400.c GLOB 'abc*';
   }
-} {0 0 0 {SCAN TABLE t400 (983040 rows)} 0 1 1 {SCAN TABLE t401 (1048576 rows)} 0 2 2 {SCAN TABLE t402 (1048576 rows)}}
+} {7 0 0 {SCAN TABLE t400 (~983040 rows)} 12 0 0 {SCAN TABLE t401 (~1048576 rows)} 14 0 0 {SCAN TABLE t402 (~1048576 rows)}}
 
 # Verify that a performance regression encountered by firefox
 # has been fixed.
 #
 do_execsql_test where3-5.0 {
   CREATE TABLE aaa (id INTEGER PRIMARY KEY, type INTEGER,
-                    fk INTEGER DEFAULT NULL, parent INTEGER,
+                    fk INTEGER, parent INTEGER,
                     position INTEGER, title TEXT,
                     keyword_id INTEGER, folder_type TEXT,
                     dateAdded INTEGER, lastModified INTEGER);
@@ -303,7 +303,7 @@ do_execsql_test where3-5.0 {
   CREATE INDEX aaa_222 ON aaa (parent, position);
   CREATE INDEX aaa_333 ON aaa (fk, lastModified);
   CREATE TABLE bbb (id INTEGER PRIMARY KEY, type INTEGER,
-                    fk INTEGER DEFAULT NULL, parent INTEGER,
+                    fk INTEGER, parent INTEGER,
                     position INTEGER, title TEXT,
                     keyword_id INTEGER, folder_type TEXT,
                     dateAdded INTEGER, lastModified INTEGER);
@@ -318,7 +318,7 @@ do_execsql_test where3-5.0 {
       AND LENGTH(bbb.title) > 0
       AND bbb.parent = 4
     ORDER BY bbb.title COLLATE NOCASE ASC;
-} {0 0 0 {SEARCH TABLE aaa USING INDEX $AAA_333_48C951EC (fk=?) (10 rows)} 0 1 1 {SEARCH TABLE bbb USING INDEX $PRIMARY_14C8659 (id=?) (~1 row)} 0 0 0 {USE TEMP B-TREE FOR ORDER BY}}
+} {10 0 0 {SEARCH TABLE aaa USING INDEX $AAA_333_48C951EC (fk=?) (~10 rows)} 16 0 0 {SEARCH TABLE bbb USING INDEX $PRIMARY_14C8659 (id=?) (~1 row)} 38 0 0 {USE TEMP B-TREE FOR ORDER BY}}
 do_execsql_test where3-5.1 {
   EXPLAIN QUERY PLAN
    SELECT bbb.title AS tag_title 
@@ -327,7 +327,7 @@ do_execsql_test where3-5.1 {
       AND LENGTH(bbb.title) > 0
       AND bbb.parent = 4
     ORDER BY bbb.title COLLATE NOCASE ASC;
-} {0 0 0 {SEARCH TABLE aaa USING INDEX $AAA_333_48C951EC (fk=?) (10 rows)} 0 1 1 {SEARCH TABLE aaa AS bbb USING INDEX $PRIMARY_561FED3E (id=?) (~1 row)} 0 0 0 {USE TEMP B-TREE FOR ORDER BY}}
+} {10 0 0 {SEARCH TABLE aaa USING INDEX $AAA_333_48C951EC (fk=?) (~10 rows)} 16 0 0 {SEARCH TABLE aaa AS bbb USING INDEX $PRIMARY_561FED3E (id=?) (~1 row)} 38 0 0 {USE TEMP B-TREE FOR ORDER BY}}
 do_execsql_test where3-5.2 {
   EXPLAIN QUERY PLAN
    SELECT bbb.title AS tag_title 
@@ -336,7 +336,7 @@ do_execsql_test where3-5.2 {
       AND LENGTH(bbb.title) > 0
       AND bbb.parent = 4
     ORDER BY bbb.title COLLATE NOCASE ASC;
-} {0 0 1 {SEARCH TABLE aaa USING INDEX $AAA_333_48C951EC (fk=?) (10 rows)} 0 1 0 {SEARCH TABLE bbb USING INDEX $PRIMARY_14C8659 (id=?) (~1 row)} 0 0 0 {USE TEMP B-TREE FOR ORDER BY}}
+} {10 0 0 {SEARCH TABLE aaa USING INDEX $AAA_333_48C951EC (fk=?) (~10 rows)} 16 0 0 {SEARCH TABLE bbb USING INDEX $PRIMARY_14C8659 (id=?) (~1 row)} 38 0 0 {USE TEMP B-TREE FOR ORDER BY}}
 do_execsql_test where3-5.3 {
   EXPLAIN QUERY PLAN
    SELECT bbb.title AS tag_title 
@@ -345,7 +345,7 @@ do_execsql_test where3-5.3 {
       AND LENGTH(bbb.title) > 0
       AND bbb.parent = 4
     ORDER BY bbb.title COLLATE NOCASE ASC;
-} {0 0 1 {SEARCH TABLE aaa USING INDEX $AAA_333_48C951EC (fk=?) (10 rows)} 0 1 0 {SEARCH TABLE aaa AS bbb USING INDEX $PRIMARY_561FED3E (id=?) (~1 row)} 0 0 0 {USE TEMP B-TREE FOR ORDER BY}}
+} {10 0 0 {SEARCH TABLE aaa USING INDEX $AAA_333_48C951EC (fk=?) (~10 rows)} 16 0 0 {SEARCH TABLE aaa AS bbb USING INDEX $PRIMARY_561FED3E (id=?) (~1 row)} 38 0 0 {USE TEMP B-TREE FOR ORDER BY}}
 do_test where3-6.setup {
   db eval {
     CREATE TABLE t6w(a, w TEXT);

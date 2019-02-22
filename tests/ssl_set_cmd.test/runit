@@ -1,0 +1,24 @@
+#!/bin/sh
+
+#############################################
+# Test SSL certificate revocation list      #
+#############################################
+
+bash -n "$0" | exit 1
+dbnm=$1
+
+# Quickly test ssl set commands
+cat << EOF | cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm default - >output.actual 2>&1
+SET SSL_MODE VERIFY_HOSTNAME
+SET SSL_CERT_PATH NONEXISTENCE
+SELECT 1
+SET SSL_CERT_PATH $(grep -i ssl_cert_path $DBDIR/comdb2db.cfg | cut -d'=' -f2)
+SELECT 1
+EOF
+
+cat << EOF | cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm default - >>output.actual 2>&1
+SET SSL_MODE VERIFY_DBNAME ST
+SELECT 1
+EOF
+
+diff output.actual output.expected

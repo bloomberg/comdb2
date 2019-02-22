@@ -66,6 +66,11 @@ public class PreparedStatementTest {
 
     @Test
     public void createTable() throws SQLException {
+        try {
+            conn.createStatement().execute("DROP TABLE application");
+        } catch (SQLException sqle) {
+            /* Ignore */
+        }
         PreparedStatement stmt = conn.prepareStatement(
                 "create table application (app_id int primary key, name varchar(100), update_uuid int, update_tms datetime)");
         int shouldbezero = stmt.executeUpdate();

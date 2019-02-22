@@ -45,6 +45,7 @@ enum CDB2_ErrorCode {
 
     NOMASTER                = -101;
     NOTSERIAL               =  230;
+    SCHEMACHANGE            =  240;
     UNTAGGED_DATABASE       = -102;
     CONSTRAINTS             = -103;
     DEADLOCK                =  203;
@@ -54,6 +55,7 @@ enum CDB2_ErrorCode {
 
     TRAN_MODE_UNSUPPORTED   = -107;
     MASTER_TIMEOUT          = -109;
+    APPSOCK_LIMIT           = -110;
     WRONG_DB                = -111;
 
     VERIFY_ERROR            = 2;
@@ -65,20 +67,23 @@ enum CDB2_ErrorCode {
     MALLOC                  = 115;
     NOTSUPPORTED            = 116;
 
-    DUPLICATE               =  299;
-    TZNAME_FAIL             =  401;
-    CHANGENODE              =  402;
-    UNKNOWN                 =  300;
+    TRAN_TOO_BIG            = 202;
+    DUPLICATE               = 299;
+    TZNAME_FAIL             = 401;
+    CHANGENODE              = 402;
+    UNKNOWN                 = 300;
 }
 
 enum ResponseHeader {
-   SQL_RESPONSE    = 1002;
-   DBINFO_RESPONSE = 1005;
-   SQL_EFFECTS     = 1006;
-   SQL_RESPONSE_PING = 1007; // SQL_RESPONSE + requesting ack
-   SQL_RESPONSE_PONG = 1008;
-   SQL_RESPONSE_TRACE = 1009;
-   SQL_RESPONSE_SSL = 1010; // SSL header + empty payload to trigger client SSL
+   SQL_RESPONSE_HEARTBEAT   = 205;  // This is same as FSQL_HEARTBEAT
+   SQL_RESPONSE             = 1002;
+   DBINFO_RESPONSE          = 1005;
+   SQL_EFFECTS              = 1006;
+   SQL_RESPONSE_PING        = 1007; // SQL_RESPONSE + requesting ack
+   SQL_RESPONSE_PONG        = 1008;
+   SQL_RESPONSE_TRACE       = 1009;
+   SQL_RESPONSE_SSL         = 1010; // SSL header + empty payload to trigger
+                                    // client SSL
 }
 
 enum ResponseType {
@@ -91,7 +96,7 @@ enum ResponseType {
 }
 
 enum CDB2ServerFeatures {
-    SKIP_ROWS    = 1;
+    SKIP_INTRANS_RESULTS = 1;
 }
 
 message CDB2_DBINFORESPONSE {
@@ -103,7 +108,7 @@ message CDB2_DBINFORESPONSE {
         optional int32   port = 5;
     }
     required nodeinfo master = 1;
-    repeated nodeinfo nodes  = 2;     // These are slave nodes, we need to parse through these only.
+    repeated nodeinfo nodes  = 2;     // These are replicants, we need to parse through these only.
     optional bool require_ssl = 3;
 }
 

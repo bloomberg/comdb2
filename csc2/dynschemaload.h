@@ -39,6 +39,7 @@ int dyns_is_idx_dup(int index);
 int dyns_is_idx_recnum(int index);
 int dyns_is_idx_primary(int index);
 int dyns_is_idx_datacopy(int index);
+int dyns_is_idx_uniqnulls(int index);
 int dyns_get_idx_count(void);
 int dyns_get_idx_size(int index);
 int dyns_get_idx_piece(int index, int piece, char *sname, int slen, int *type,
@@ -75,14 +76,13 @@ int dyns_get_table_field_option(char *tag, int fidx, int option,
 int dyns_table_field_depth(char *tabletag, int fidx, dpth_t *dpthinfo,
                            int ndpthsinfo, int *ndpthout);
 int dyns_get_table_count(void);
-int dyns_get_table_tags(int loadtables, int *outtables,
-                        char tags[][MAX_TAG_LEN + 1]);
 int dyns_get_table_tag_size(char *tabletag);
 int dyns_get_table_field_count(char *tabletag);
 
 /* constraint accessors */
 int dyns_get_constraint_count(void);
-int dyns_get_constraint_at(int idx, char **keyname, int *rulecnt, int *flags);
+int dyns_get_constraint_at(int idx, char **consname, char **keyname,
+                           int *rulecnt, int *flags);
 int dyns_get_constraint_rule(int cidx, int ridx, char **tblname, char **keynm);
 
 /* misc */

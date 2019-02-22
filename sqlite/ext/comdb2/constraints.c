@@ -52,15 +52,16 @@ static int systblConstraintsConnect(
   int rc;
 
 /* Column numbers */
-#define STCON_TABLE     0
-#define STCON_KEY       1
-#define STCON_FTNAME    2
-#define STCON_FKNAME    3
-#define STCON_CDELETE   4
-#define STCON_CUPDATE   5
+#define STCON_NAME 0
+#define STCON_TABLE 1
+#define STCON_KEY 2
+#define STCON_FTNAME 3
+#define STCON_FKNAME 4
+#define STCON_CDELETE 5
+#define STCON_CUPDATE 6
 
   rc = sqlite3_declare_vtab(db,
-    "CREATE TABLE comdb2_constraints(tablename,keyname,"
+    "CREATE TABLE comdb2_constraints(name,tablename,keyname,"
     "foreigntablename,foreignkeyname,iscascadingdelete,iscascadingupdate)");
   if( rc==SQLITE_OK ){
     pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
@@ -91,6 +92,8 @@ static int systblConstraintsOpen(
   if( pCur==0 ) return SQLITE_NOMEM;
   memset(pCur, 0, sizeof(*pCur));
   *ppCursor = &pCur->base;
+
+  comdb2_next_allowed_table(&pCur->iRowid);
 
   return SQLITE_OK;
 }
@@ -128,6 +131,8 @@ static int systblConstraintsNext(sqlite3_vtab_cursor *cur){
     }
   }
 
+  comdb2_next_allowed_table(&pCur->iRowid);
+
   return SQLITE_OK;
 }
 
@@ -144,6 +149,28 @@ static int systblConstraintsColumn(
   constraint_t *pConstraint = &pDb->constraints[pCur->iConstraintid];
 
   switch( i ){
+    case STCON_NAME: {
+        int rc;
+        char *constraint_name;
+        if (pConstraint->consname) {
+            constraint_name = pConstraint->consname;
+            sqlite3_result_text(ctx, constraint_name, -1, NULL);
+        } else {
+            constraint_name = sqlite3_malloc(MAXGENCONSLEN);
+            if (constraint_name == 0)
+                return SQLITE_NOMEM;
+
+            /* Forward declaration */
+            int gen_constraint_name(constraint_t * pConstraint, int parent_idx,
+                                    char *buf, size_t size);
+            rc = gen_constraint_name(pConstraint, pCur->iRuleid,
+                                     constraint_name, MAXGENCONSLEN);
+            if (rc)
+                return SQLITE_INTERNAL;
+            sqlite3_result_text(ctx, constraint_name, -1, sqlite3_free);
+        }
+        break;
+    }
     case STCON_TABLE: {
       sqlite3_result_text(ctx, pDb->tablename, -1, NULL);
       break;
@@ -172,7 +199,7 @@ static int systblConstraintsColumn(
     }
   }
   return SQLITE_OK; 
-};
+}
 
 /*
 ** Return the rowid for the current rule. We arrive at this number by
@@ -268,6 +295,10 @@ const sqlite3_module systblConstraintsModule = {
   0,                             /* xRollback */
   0,                             /* xFindMethod */
   0,                             /* xRename */
+  0,                             /* xSavepoint */
+  0,                             /* xRelease */
+  0,                             /* xRollbackTo */
+  0,                             /* xShadowName */
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \

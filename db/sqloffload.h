@@ -50,18 +50,18 @@ enum {
     OSQL_SKIPSEQ = 0x7777
 };
 
-/* flags for handle_offloadsql_pool */
+/* flags for osql requests */
 enum {
-    OSQL_FLAGS_RECORD_COST = 0,
-    OSQL_FLAGS_AUTH = 1,
-    OSQL_FLAGS_ANALYZE = 2,
+    OSQL_FLAGS_RECORD_COST = 0x00000001,
+    OSQL_FLAGS_AUTH = 0x00000002,
+    OSQL_FLAGS_ANALYZE = 0x00000004,
     /* sent after a verify to do the <slower> selfdeadlock test */
-    OSQL_FLAGS_CHECK_SELFLOCK = 3,
-    /* sent in local case when a remote tran is retried */
-    OSQL_FLAGS_USE_BLKSEQ = 4,
-    OSQL_FLAGS_ROWLOCKS = 5,
-    OSQL_FLAGS_GENID48 = 6,
-    OSQL_FLAGS_SCDONE = 7
+    OSQL_FLAGS_CHECK_SELFLOCK = 0x00000008,
+    OSQL_FLAGS_ROWLOCKS = 0x00000010,
+    OSQL_FLAGS_GENID48 = 0x00000020,
+    OSQL_FLAGS_SCDONE = 0x00000040,
+    /* indicates if blkseq reordering is turned on */
+    OSQL_FLAGS_REORDER_ON = 0x00000080,
 };
 
 int osql_open(struct dbenv *dbenv);
@@ -72,7 +72,8 @@ int get_osql_maxtransfer(void);
 
 char *osql_breq2a(int op);
 
-int block2_sorese(struct ireq *iq, const char *sql, int sqlen, int block2_type);
+void block2_sorese(struct ireq *iq, const char *sql, int sqlen,
+                   int block2_type);
 
 int req2netreq(int reqtype);
 int req2netrpl(int reqtype);
@@ -93,7 +94,7 @@ int snapisol_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
                     char *tzname);
 int snapisol_abort(struct sqlclntstate *clnt);
 
-void osql_checkboard_for_each(char *host, int (*func)(void *, void *));
+void osql_checkboard_for_each(void *arg, int (*func)(void *, void *));
 int osql_checkboard_master_changed(void *obj, void *arg);
 int osql_repository_cancelall(void);
 

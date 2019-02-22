@@ -27,7 +27,7 @@ You'll need to install a few dependencies first. It's not a big list.  Exact nam
 
 |Distro          | Dependencies |
 |----------------|--------------|
-|  Ubuntu 16.04, 16.10 | `sudo apt-get install -y build-essential bison flex libprotobuf-c-dev libreadline-dev libsqlite3-dev libssl-dev libunwind-dev libz1 libz-dev make gawk protobuf-c-compiler uuid-dev liblz4-tool liblz4-dev libprotobuf-c1 libreadline6 libsqlite3-0 libuuid1 libz1 tzdata ncurses-dev tcl bc`
+|  Ubuntu 16.04, 16.10 | `sudo apt-get install -y build-essential bison flex libprotobuf-c-dev libreadline-dev libsqlite3-dev libssl-dev libunwind-dev libz1 libz-dev make gawk protobuf-c-compiler uuid-dev liblz4-tool liblz4-dev libprotobuf-c1 libsqlite3-0 libuuid1 libz1 tzdata ncurses-dev tcl bc`
 | CentOS 7  | `sudo yum install -y gcc gcc-c++ protobuf-c libunwind libunwind-devel protobuf-c-devel byacc flex openssl openssl-devel openssl-libs readline-devel sqlite sqlite-devel libuuid libuuid-devel zlib-devel zlib lz4-devel gawk tcl epel-release lz4 which`
 
 ### Building
@@ -41,7 +41,7 @@ Just run ```make```.
 To make testing out Comdb2 easier, ```make install``` will use the value of ```$USER``` to set ownership of log/configuration directories.  For a personal/development install ```sudo USER=$(whoami) make install``` is a good option. For database deployments, create a dedicated user.
 
 Comdb2 installs by default rely on a small program called ```pmux``` to deal out port numbers to databases. Port assignments are dynamic.  This is very useful if you run large numbers of databases and don't want to manage port assignment yourself.  You'll need to start this program on system startup.  For systemd-based systems, we provide
-a pmux.service file. If you're going to be running databases as the current user, you're all set.  To user a dedicated user, change the ```User=``` line in ```tools/pmux/pmux.service``` To use it:
+a pmux.service file. If you're going to be running databases as the current user, you're all set.  To use a dedicated user, change the ```User=``` line in ```tools/pmux/pmux.service``` To use it:
 
 ```
 sudo cp tools/pmux/pmux.service /etc/systemd/system
@@ -85,10 +85,9 @@ Installing (from source or a package) creates a directory structure like this:
 │   ├── libcdb2api.a
 │   ├── libcdb2api.so
 └── var
-    └── cdb2
-        ├── databases
-        └── logs
-
+    ├── cdb2
+    └── logs
+        └── cdb2
 ```
 
 A quick overview:
@@ -99,5 +98,5 @@ A quick overview:
 | ```etc/cdb2/config/comdb2.lrl```   | Global database tunables, applies to all databases |
 | ```etc/cdb2/config/comdb2.d```     | Global database config files, settings in all *.lrl files in this directory apply to all databases |
 | ```include/``` and ```lib/```        | headers and libraries |
-| ```var/cdb2/databases/``` | Default location for databases. Every database gets a subdirectory at create time. |
-| ```var/cdb2/logs/``` | Default location for database informational log files |
+| ```var/cdb2/``` | Default location for databases. Every database gets a subdirectory at create time. |
+| ```var/logs/cdb2/``` | Default location for database informational log files |

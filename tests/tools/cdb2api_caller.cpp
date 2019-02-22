@@ -94,8 +94,13 @@ int main(int argc, char *argv[])
     char *conf = getenv("CDB2_CONFIG");
     if (conf)
         cdb2_set_comdb2db_config(conf);
+    char *host = getenv("CDB2_HOST");
 
-    int rc = cdb2_open(&db, argv[1], "default", 0);
+    int rc;
+    if (host)
+        rc = cdb2_open(&db, argv[1], host, CDB2_DIRECT_CPU);
+    else
+        rc = cdb2_open(&db, argv[1], "default", 0);
     if (rc != 0) {
         fprintf(stderr, "cdb2_open failed: %d %s\n", rc, cdb2_errstr(db));
         return rc;
@@ -227,12 +232,14 @@ int main(int argc, char *argv[])
         }
         time_t t = 1386783296; //2013-12-11T123456
         cdb2_client_datetime_t datetime = {0};
-        gmtime_r(&t, (struct tm *)&datetime.tm);
+        gmtime_r(&t, (struct tm *)&datetime.tm); //corrupts memory past the tm member
         datetime.msec = 123; // should not be larger than 999
+        datetime.tzname[0] = '\0';
 
         cdb2_client_datetimeus_t datetimeus = {0};
         gmtime_r(&t, (struct tm *)&datetimeus.tm);
         datetimeus.usec = 123456; // should not be larger than 999999
+        datetimeus.tzname[0] = '\0'; // gmtime_r corrupts past member tm
         cdb2_client_intv_ym_t ym = {1, 5, 2};
 
         cdb2_client_intv_ds_t ci = {1, 12, 23, 34, 45, 456 };

@@ -54,7 +54,6 @@ local function write()
     return 0
 end
 local function main(t)
-    db:exec("set transaction read committed")
     local rc1 = read()
     local rc2 = write()
     if rc1 ~= 0 then

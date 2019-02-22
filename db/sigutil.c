@@ -22,11 +22,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <ctrace.h>
-
+#include "cdb2_constants.h"
+#include "ctrace.h"
 #include "sigutil.h"
-#include <logmsg.h>
-
+#include "logmsg.h"
 
 struct signal_name {
     int signum;
@@ -102,24 +101,27 @@ void sprintsigact(char *buf, size_t buflen, const struct sigaction *act)
     char mstr[1024] = "";
     if (act->sa_handler != NULL)
         snprintf(hstr, sizeof(hstr) - 1, "@%p", act->sa_handler);
+
     pos = 0;
     for (ii = 0; ii < num_unix_signals; ii++) {
         int signo = unix_signals[ii].signum;
         if (sigismember(&act->sa_mask, signo)) {
             if (pos > 0)
                 mstr[pos++] = '|';
-            pos += snprintf(mstr + pos, sizeof(mstr) - pos, "%s",
-                            unix_signals[ii].name);
+            SNPRINTF(mstr, sizeof(mstr), pos, "%s", unix_signals[ii].name);
         }
     }
+
     pos = 0;
     for (ii = 0; ii < sizeof(flags) / sizeof(flags[0]); ii++) {
         if (act->sa_flags & flags[ii]) {
             if (pos > 0)
                 fstr[pos++] = '|';
-            pos += snprintf(fstr + pos, sizeof(fstr) - pos, "%s", flagstrs[ii]);
+            SNPRINTF(fstr, sizeof(fstr), pos, "%s", flagstrs[ii]);
         }
     }
+
+done:
     snprintf(buf, buflen, "<sa_handler=%s, sa_mask=[%s], sa_flags=%s>", hstr,
              mstr, fstr);
 }

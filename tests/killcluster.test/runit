@@ -1,20 +1,20 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Make sure we behave correctly if entire cluster goes down
-#debug=1
+debug=1
 #debug_trace="-D"
 #We use instest to load the database
 
 [[ "$debug" == 1 ]] && set -x
 loadcount=2000000
-instest=${TESTSROOTDIR}/tools/insert
+instest=${TESTSBUILDDIR}/insert
 needcluster=0
 sleeptime=10
 db=$1
 
 if [[ "$needcluster" = "1" && -z "$CLUSTER" ]]; then
     echo "This test is only relevant for a CLUSTERED installation."
-    exit 0
+    exit 1
 fi
 
 if [[ -z "$stage" ]]; then
@@ -61,12 +61,12 @@ function bouncecluster
     [[ "$debug" == 1 ]] && set -x
     for node in $CLUSTER ; do
         PARAMS="$db --no-global-lrl"
-        CMD="sleep $sleeptime ; source ${TESTDIR}/replicant_vars ; $comdb2task ${PARAMS} --lrl $DBDIR/${db}.lrl -pidfile ${TMPDIR}/${db}.pid"
+        CMD="sleep $sleeptime ; source ${TESTDIR}/replicant_vars ; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${db}.lrl -pidfile ${TMPDIR}/${db}.pid"
         if [ $node == $(hostname) ] ; then
             (
                 kill -9 $(cat ${TMPDIR}/${db}.${node}.pid)
                 sleep $sleeptime
-                ${DEBUG_PREFIX} $comdb2task ${PARAMS} --lrl $DBDIR/${db}.lrl -pidfile ${TMPDIR}/${db}.${node}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$TESTDIR/logs/${db}.${node}.db 2>&1
+                ${DEBUG_PREFIX} ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${db}.lrl -pidfile ${TMPDIR}/${db}.${node}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$TESTDIR/logs/${db}.${node}.db 2>&1
             ) &
         else
             kill -9 $(cat ${TMPDIR}/${db}.${node}.pid)
@@ -83,7 +83,7 @@ function bouncelocal
         PARAMS="$db --no-global-lrl"
         kill -9 $(cat ${TMPDIR}/${db}.pid)
         sleep $sleeptime
-        ${DEBUG_PREFIX} $comdb2task $PARAMS -pidfile ${TMPDIR}/${db}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >>$TESTDIR/logs/${DBNAME}.db &
+        ${DEBUG_PREFIX} ${COMDB2_EXE} $PARAMS -pidfile ${TMPDIR}/${db}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >>$TESTDIR/logs/${DBNAME}.db &
     ) &
 }
 

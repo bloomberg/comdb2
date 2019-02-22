@@ -97,8 +97,7 @@ int bdb_temp_hash_destroy(struct bdb_temp_hash *h)
 {
     int rc;
     int outrc = 0;
-    rc = h->db->close(h->db, NULL,
-                      DB_NOSYNC); /* don't care if it ever makes it to
+    rc = h->db->close(h->db, DB_NOSYNC); /* don't care if it ever makes it to
                                      disk since the db is about to be removed */
 
     if (rc) {

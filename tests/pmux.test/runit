@@ -5,6 +5,11 @@ export COMDB2_PMUX_FILE=$(pwd)/pmux.sqlite
 
 set -x
 
+if [[ -z "$PMUX_EXE" ]]; then
+    echo "PMUX_EXE is not set"
+    exit 1
+fi
+
 if [[ -z "$TESTSROOTDIR" ]]; then
     export TESTSROOTDIR=$(pwd)/..
 fi
@@ -13,14 +18,14 @@ port=19500
 while :; do
     export COMDB2_PMUX_PORT=${port}
     RANGE="-r 30000:30100"
-    ${TESTSROOTDIR}/../pmux -l -f -p ${COMDB2_PMUX_PORT} -b /tmp/pmux.${COMDB2_PMUX_PORT} $RANGE &
+    ${PMUX_EXE} -l -f -p ${COMDB2_PMUX_PORT} -b /tmp/pmux.${COMDB2_PMUX_PORT} $RANGE &
     pid=$!
     sleep 2
     #only check if we can send signal
     kill -0 $pid
     [[ $? -eq 0 ]] && break
-    port=$(($port +1))
-    if [[ $port -eq 19600 ]]; then
+    port=$(($port+1)) #try with a different port
+    if [[ $port -eq 19520 ]]; then
         echo "Failed in $(($port-19500)) tries" >&2
         exit 1
     fi
@@ -29,11 +34,13 @@ done
 atstart=$(ls -l /proc/$pid/fd | wc -l)
 echo "have $atstart fds at start"
 
+mkdir -p ${TESTDIR}/var/log/cdb2/
+
 typeset -A createpids
 for i in $(seq 1 10); do 
     TSTDBDIR=$(pwd)/testdb${i}
     mkdir $TSTDBDIR
-    ${TESTSROOTDIR}/../comdb2 testdb${i} --create --dir $TSTDBDIR &
+    ${COMDB2_EXE} testdb${i} --create --dir $TSTDBDIR &
     createpids[$i]=$!
 done
 
@@ -46,15 +53,15 @@ for i in $(seq 1 10); do
     DBLRL=$(pwd)/testdb${i}/testdb${i}.lrl
     echo "portmux_port ${COMDB2_PMUX_PORT=}" >> $DBLRL
     echo "portmux_bind_path /tmp/pmux.${COMDB2_PMUX_PORT} " >> $DBLRL
-	${TESTSROOTDIR}/../comdb2 testdb${i} --lrl $DBLRL &
+	${COMDB2_EXE} testdb${i} --lrl $DBLRL &
     dbpids[$i]=$!
 done
 
 function waitfordb() {
-	sel=$(${TESTSROOTDIR}/../cdb2sql --tabs --cdb2cfg cdb2sql.cfg $1 "select 1" 2>&1)
+	sel=$(${CDB2SQL_EXE} --tabs --cdb2cfg cdb2sql.cfg $1 "select 1" 2>&1)
 	while [[ "$sel" != "1" ]]; do
 		sleep 1
-	    sel=$(${TESTSROOTDIR}/../cdb2sql --tabs --cdb2cfg cdb2sql.cfg $1 "select 1" 2>&1)
+	    sel=$(${CDB2SQL_EXE} --tabs --cdb2cfg cdb2sql.cfg $1 "select 1" 2>&1)
 	done
 }
 
@@ -73,6 +80,7 @@ done
 atend=$(ls -l /proc/$pid/fd | wc -l)
 
 kill -9 ${pid}
+rm /tmp/pmux.${COMDB2_PMUX_PORT}
 
 if [[ $atend -eq $atstart ]]; then
 	echo "At start had $atstart fds, at end have $atend."
@@ -80,5 +88,13 @@ if [[ $atend -eq $atstart ]]; then
 fi
 
 echo "At start had $atstart fds, during run had $atrun fds, gone at end"
+
+#delete testdb{i} dir now that test is successful
+if [ "$CLEANUPDBDIR" != "0" ] ; then
+    for i in $(seq 1 10); do 
+        rm -rf testdb${i}
+        rm -f ${TESTDIR}/var/log/cdb2/testdb${i}.* ${TESTDIR}/tmp/testdb${i}.* ${TMPDIR}/cdb2/testdb${i}.*
+    done
+fi
 
 exit 0

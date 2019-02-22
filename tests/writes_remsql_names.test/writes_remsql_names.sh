@@ -1,4 +1,4 @@
-#!/bin/ksh93
+#!/usr/bin/env bash
 
 # Remote cursor moves testcase for comdb2
 ################################################################################
@@ -63,17 +63,17 @@ run_test()
    sed "s/ t / LOCAL_${a_remdbname}.${tblname} /g" $input > $work_input
 
    # populate table on remote
-   ${CDB2SQL_EXE} ${CDB2_OPTIONS} $a_dbname default - < $work_input | grep -v "${tblname}" >> $output 
-   
+   ${CDB2SQL_EXE} --host $mach $a_dbname - < $work_input | grep -v "${tblname}" >> $output
+
 
    # retrieve data through remote sql
-   ${CDB2SQL_EXE} ${CDB2_OPTIONS} $a_dbname default "select * from LOCAL_${a_remdbname}.${tblname} order by ${column}" >> $output
+   ${CDB2SQL_EXE} --host $mach $a_dbname "select * from LOCAL_${a_remdbname}.${tblname} order by ${column}" >> $output
 
    a_cdb2config=${CDB2_OPTIONS}
    # get the version V2
    #comdb2sc $a_dbname send fdb info db >> $output 2>&1
-   echo ${CDB2SQL_EXE} --tabs $a_cdb2config $a_dbname default "exec procedure sys.cmd.send(\"fdb info db\")" 
-   ${CDB2SQL_EXE} --tabs $a_cdb2config $a_dbname default "exec procedure sys.cmd.send(\"fdb info db\")" >> $output 2>&1
+   echo ${CDB2SQL_EXE} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")"
+   ${CDB2SQL_EXE} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" >> $output 2>&1
 
    work_exp_output=${exp_output}.actual
    sed "s/ t / LOCAL_${a_remdbname}.${tblname} /g" ${exp_output}  > ${work_exp_output}
@@ -82,6 +82,8 @@ run_test()
    checkresult  $work_exp_output $output 
 }
 
+# Make sure we talk to the same host
+mach=`${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} $a_dbname default "SELECT comdb2_host()"`
 
 if [[ -z $opt || "$opt" == "1" ]]; then
    output=./run.out
@@ -120,7 +122,6 @@ if [[ -z $opt || "$opt" == "5" ]]; then
    run_test deletes.req output.5.log $output t1 id
 fi
 
-print "Testcase passed."
+echo "Testcase passed."
 
-return $result
-
+exit $result

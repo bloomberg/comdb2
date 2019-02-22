@@ -5,11 +5,23 @@ permalink: auth.html
 ---
 
 ## Authenticating comdb2 session
+
+### Password-based Authentication
+
 A comdb2 session can be authenticated by setting username and password using [set user](sql.html#set-user) and [set password](sql.html#set-password), just after opening the connection.
 
 ```sql
 set user 'foo_user'
 set password 'foo_password'
+``` 
+
+### Certificate-based Authentication
+
+A comdb2 session can also be authenticated by setting the client certificate/key using [set ssl_cert](sql.html#set-ssl_cert) and [set ssl_key](sql.html#set-ssl_key), just after opening the connection.
+
+```sql
+set ssl_cert /path/to/certificate
+set ssl_key /path/to/key
 ``` 
 
 ## Adding/deleting users to database
@@ -43,7 +55,6 @@ select * from comdb2_users
 
 ```
 select * from comdb2_users
-(username='default', isOP='N')
 (username='foo_user', isOP='N')
 (username='op_user', isOP='Y')
 ```
@@ -63,8 +74,7 @@ put authentication off
 ``` 
 Only users which have OP credentials can turn on/off authentication.
 
-Turning on authentication will add a new user with the name 'default', if it doesn't already exist. This user will be used for every unauthenticated session.
-The newly created 'default' user doesn't have any privileges to any objects, but can be granted any privilege by an OP user.
+As a convenience, if ```create_default_user``` tunable is turned on, turning on authentication would automatically create a new user with name 'default' and empty password if it doesn't already exist. This newly created user doesn't have any privileges to any objects, but can be granted any privilege by an OP user. It will be used for every unauthenticated session.
 
 ## Granting/Revoking table privileges to users
 

@@ -65,7 +65,6 @@ struct fnames {
 void dump_record(DB_ENV *dbenv, __db_addrem_args *args, struct fname *f)
 {
     struct schema *sc;
-    char tag[100];
     /* just do data */
     if (f->index == -1 && args->opcode == DB_ADD_DUP) {
         unsigned long long genid = 0;
@@ -111,12 +110,9 @@ void dump_record(DB_ENV *dbenv, __db_addrem_args *args, struct fname *f)
 int print_addrem(DB_ENV *dbenv, DBT *logdta, DB_LSN *lsn, db_recops op, void *p)
 {
     __db_addrem_args *args;
-    DB_LOG *logp;
     int ret;
     struct fnames *fnp = (struct fnames *)p;
     struct fname *f;
-
-    logp = dbenv->lg_handle;
 
     ret = __db_addrem_read(dbenv, logdta->data, &args);
     if (ret) {
@@ -244,7 +240,7 @@ void set_table_info_from_filename(DB_ENV *dbenv, struct fname *newname,
             stripe = 0;
         else {
             stripe = atoi(type + 5);
-            if (stripe > MAXSTRIPE)
+            if (stripe > MAXDTASTRIPE)
                 return;
         }
 
@@ -318,8 +314,8 @@ int print_register(DB_ENV *dbenv, DBT *logdta, DB_LSN *lsn, db_recops op,
     }
 
     printf("%u:%u register %x %d->%.*s%s\n", lsn->file, lsn->offset,
-           args->txnid->txnid, args->fileid, args->name.size, args->name.data,
-           newname ? " (new/changed)" : "");
+           args->txnid->txnid, args->fileid, args->name.size,
+           (char *)args->name.data, newname ? " (new/changed)" : "");
 
     free(args);
 

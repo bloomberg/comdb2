@@ -7,10 +7,11 @@ set(src
   comdb2uuid.c
   config.c
   constraints.c
+  db_metrics.c
   db_tunables.c
   db_util.c
-  dbglog_support.c
-  dbqueue.c
+  dbglog_iface.c
+  dbqueuedb.c
   debug.c
   endian.c
   envstubs.c
@@ -20,19 +21,17 @@ set(src
   fdb_bend.c
   fdb_bend_sql.c
   fdb_boots.c
-  fdb_comm.c
   fdb_fend.c
   fdb_fend_cache.c
   fdb_util.c
   glue.c
   handle_buf.c
   history.c
-  llops.c
+  indices.c
   localrep.c
   lrucache.c
   marshal.c
   memdebug.c
-  mtrap.c
   osql_srs.c
   osqlblkseq.c
   osqlblockproc.c
@@ -42,8 +41,8 @@ set(src
   osqlsession.c
   osqlshadtbl.c
   osqlsqlthr.c
-  plink_timestamp.c
-  plugin.c
+  phys_rep.c
+  plugin_handler.c
   prefault.c
   prefault_helper.c
   prefault_net.c
@@ -52,7 +51,6 @@ set(src
   printlog.c
   process_message.c
   pushlogs.c
-  quantize.c
   record.c
   repl_wait.c
   reqdebug.c
@@ -72,7 +70,6 @@ set(src
   sqlmaster.c
   sqloffload.c
   sqlstat1.c
-  sqlsupport.c
   tag.c
   testcompr.c
   thrman.c
@@ -82,13 +79,17 @@ set(src
   trans.c
   translistener.c
   trigger.c
-  twophase.c
+  truncate_log.c
   utf8.c
   verify.c
   views.c
-  views_cron.c
+  cron.c
+  logical_cron.c
   views_persist.c
   watchdog.c
+  shard_range.c
+  dohsql.c
+  dohast.c
   ${PROJECT_BINARY_DIR}/protobuf/bpfunc.pb-c.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_dump/cdb2_dump.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_printlog/cdb2_printlog.c
@@ -99,6 +100,59 @@ set(src
 if(WITH_SSL)
   list(APPEND src ssl_bend.c)
 endif()
+
+option(DEBUG_TYPES "Build types.c independent of sqlglue.c" OFF)
+if(DEBUG_TYPES)
+  list(APPEND src types.c)
+  add_definitions(-DDEBUG_TYPES)
+endif()
+
+if(COMDB2_LEGACY_DEFAULTS)
+  add_definitions(-DLEGACY_DEFAULTS)
+endif()
+
+if(NOT DEFINED COMDB2_RELEASE)
+    set(COMDB2_RELEASE "R7")
+endif()
+
+if(NOT DEFINED COMDB2_BUILD)
+    set(COMDB2_BUILD "pre")
+endif()
+
+IF(EXISTS ${PROJECT_SOURCE_DIR}/.git)
+  FIND_PACKAGE(Git)
+  IF(GIT_FOUND)
+    EXECUTE_PROCESS(
+      COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+      WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+      OUTPUT_VARIABLE "COMDB2_GIT_VERSION_SHA_NEW"
+      ERROR_QUIET
+      OUTPUT_STRIP_TRAILING_WHITESPACE)
+    EXECUTE_PROCESS(
+      COMMAND ${GIT_EXECUTABLE} status --untracked-files=no --short --no-column
+      WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+      OUTPUT_VARIABLE "COMDB2_GIT_LOCAL_CHANGES"
+      ERROR_QUIET
+      OUTPUT_STRIP_TRAILING_WHITESPACE)
+    IF(NOT ${COMDB2_GIT_LOCAL_CHANGES} STREQUAL "")
+      SET(COMDB2_GIT_VERSION_SHA_NEW "${COMDB2_GIT_VERSION_SHA_NEW} with local changes")
+    ENDIF()
+
+  ELSE()
+    SET(COMDB2_GIT_VERSION_SHA_NEW 0)
+  ENDIF()
+  IF(NOT DEFINED COMDB2_GIT_VERSION_SHA OR NOT COMDB2_GIT_VERSION_SHA STREQUAL COMDB2_GIT_VERSION_SHA_NEW )
+    SET(COMDB2_GIT_VERSION_SHA "${COMDB2_GIT_VERSION_SHA_NEW}")
+  ENDIF()
+ENDIF()
+
+
+set_property(SOURCE comdb2.c PROPERTY COMPILE_DEFINITIONS
+  COMDB2_RELEASE=${COMDB2_RELEASE}
+  COMDB2_BUILD=${COMDB2_BUILD}
+  COMDB2_GIT_VERSION_SHA=${COMDB2_GIT_VERSION_SHA}
+)
+
 add_executable(comdb2 ${src})
 set(module uncategorized)
 set(MODULE UNCATEGORIZED)
@@ -107,15 +161,12 @@ set_source_files_properties(
   ${PROJECT_BINARY_DIR}/protobuf/bpfunc.pb-c.c
   PROPERTIES GENERATED TRUE
 )
-add_custom_command(
-  OUTPUT plink_timestamp.c
-  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/build_constants > plink_timestamp.c
-)
+
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}
   ${PROJECT_SOURCE_DIR}
-  ${PROJECT_SOURCE_DIR}/bb
+  ${PROJECT_SOURCE_DIR}/util
   ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/bdb
   ${PROJECT_BINARY_DIR}/bdb
@@ -134,11 +185,13 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/mem
   ${PROJECT_BINARY_DIR}/mem
   ${PROJECT_SOURCE_DIR}/net
+  ${PROJECT_BINARY_DIR}/plugins
   ${PROJECT_SOURCE_DIR}/protobuf
   ${PROJECT_BINARY_DIR}/protobuf
   ${PROJECT_SOURCE_DIR}/schemachange
   ${PROJECT_SOURCE_DIR}/sockpool
-  ${PROJECT_SOURCE_DIR}/sqlite
+  ${PROJECT_SOURCE_DIR}/sqlite/ext/expert
+  ${PROJECT_SOURCE_DIR}/sqlite/src
   ${PROJECT_BINARY_DIR}/sqlite
   ${OPENSSL_INCLUDE_DIR}
   ${PROTOBUF_C_INCLUDE_DIR}
@@ -149,10 +202,12 @@ add_definitions(
   ${SQLITE_FLAGS}
 )
 add_dependencies(comdb2 mem protobuf sqlite db bdb)
+
 target_link_libraries(comdb2
+  ${PLUGIN_LIBRARIES}
   schemachange
   bdb
-  bb
+  util
   cdb2api
   comdb2rle
   crc32c
@@ -166,6 +221,7 @@ target_link_libraries(comdb2
   net
   sockpool
   sqlite
+  util
   tz
   m
   ${CMAKE_DL_LIBS}
@@ -175,6 +231,7 @@ target_link_libraries(comdb2
   ${UNWIND_LIBRARY}
   ${UUID_LIBRARY}
   ${ZLIB_LIBRARIES}
+  ${COMDB2_ROBO_LINK_FLAGS}
 )
 configure_file(copycomdb2 copycomdb2 @ONLY)
 add_custom_command(

@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2018, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -21,10 +21,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-
-#include <plbitlib.h>
 #include <alloca.h>
-
 #include "comdb2.h"
 #include "tag.h"
 #include "types.h"
@@ -694,46 +691,6 @@ typedef struct {
     struct javasp_trans_state *javasp_trans_handle;
 } rngdel_info_t;
 
-enum ct_etype { CTE_ADD = 1, CTE_DEL, CTE_UPD };
-
-enum ct_constants {
-    CTC_TEMP_TABLE_CACHE_SIZE = 256 /*kilobytes*/
-};
-
-struct forward_ct {
-    unsigned long long genid;
-    unsigned long long ins_keys;
-    const uint8_t *p_buf_req_start;
-    const uint8_t *p_buf_req_end;
-    struct dbtable *usedb;
-    int blkpos;
-    int ixnum;
-    int rrn;
-    int optype;
-};
-
-struct backward_ct {
-    struct dbtable *srcdb;
-    struct dbtable *dstdb;
-    int blkpos;
-    int optype;
-    char key[MAXKEYLEN];
-    char newkey[MAXKEYLEN];
-    int sixlen;
-    int sixnum;
-    int dixnum;
-    int nonewrefs;
-    int flags;
-};
-
-typedef struct cttbl_entry {
-    int ct_type;
-    union {
-        struct forward_ct fwdct;
-        struct backward_ct bwdct;
-    } ctop;
-} cte;
-
 struct tran_req {
     tranid_t id;
 };
@@ -791,19 +748,14 @@ struct lockset_req {
 
 int has_cascading_reverse_constraints(struct dbtable *tbl);
 
-int insert_add_op(struct ireq *iq, block_state_t *blkstate, struct dbtable *usedb,
-                  const uint8_t *p_buf_req_start, const uint8_t *p_buf_req_end,
-                  int optype, int rrn, int ixnum, unsigned long long genid,
-                  unsigned long long ins_keys, int blkpos);
-
-int insert_del_op(block_state_t *blkstate, struct dbtable *srcdb, struct dbtable *dstdb,
-                  int optype, int blkpos, void *inkey, void *innewkey,
-                  int keylen, int sixnum, int dixnum, int nonewrefs, int flags);
+int insert_add_op(struct ireq *iq, int optype, int rrn, int ixnum,
+                  unsigned long long genid, unsigned long long ins_keys,
+                  int blkpos, int flags);
 
 int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
                      int *blkpos, int *ixout, int *errout);
-void *create_constraint_table(long long *ctid);
-void *create_constraint_index_table(long long *ctid);
+void *create_constraint_table();
+void *create_constraint_index_table();
 int delete_constraint_table(void *table);
 int clear_constraints_tables(void);
 int truncate_constraint_table(void *table);

@@ -1,1 +1,1 @@
-[SELECT t1.* FROM t1,t2,t2 order by t1.k] failed with rc 202 transaction too big
+[SELECT t1.* FROM t1,t2,t2 order by t1.k] failed with rc 202 transaction too big, try increasing the limit using 'SET maxtransize N'

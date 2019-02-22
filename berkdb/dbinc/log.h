@@ -22,7 +22,7 @@
 typedef	struct __db_entry {
 	DB	    *dbp;		/* Open dbp for this file id. */
 	int	    deleted;		/* File was not found during open. */
-	db_atomic_t pfcnt;              /* Number of prefaulted pages, we 
+	int	    pfcnt;  /* Number of prefaulted pages, we 
 					 * can't close until they're flushed.
 					 */
 } DB_ENTRY;
@@ -40,6 +40,7 @@ struct __fname {
 	roff_t	  name_off;		/* Name offset. */
 	db_pgno_t meta_pgno;		/* Page number of the meta page. */
 	u_int8_t  ufid[DB_FILE_ID_LEN];	/* Unique file id. */
+	u_int8_t  ufid_chk[DB_FILE_ID_LEN];	/* Unique file id sanity check. */
 
 	u_int32_t create_txnid;		/*
 					 * Txn ID of the DB create, stored so

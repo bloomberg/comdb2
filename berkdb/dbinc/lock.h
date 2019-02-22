@@ -11,6 +11,7 @@
 #define	_DB_LOCK_H_
 
 #include <assert.h>
+#include <compile_time_assert.h>
 
 extern size_t gbl_lk_parts;
 extern size_t gbl_lkr_parts;
@@ -61,15 +62,6 @@ typedef struct {
 	((t1)->tv_sec > (t2)->tv_sec ||					\
 	((t1)->tv_sec == (t2)->tv_sec && (t1)->tv_usec > (t2)->tv_usec))
 
-#define STATIC_ASSERT(condition, name) 		\
-static void assert_failed_ ## name(void)	\
-{						\
-	switch (0) {				\
-	case 0:					\
-	case condition: ;			\
-	}					\
-}
-
 #ifdef LOCKMGRDBG
 typedef struct
 {
@@ -114,7 +106,7 @@ typedef struct
 #endif // LOCKMGRDBG
 
 #ifdef  __x86_64
-STATIC_ASSERT(sizeof(PthreadMutexWithFluff) == 192, lockfluff_not_192);
+BB_COMPILE_TIME_ASSERT(lockfluff_not_192, sizeof(PthreadMutexWithFluff) == 192);
 #endif
 
 typedef SH_TAILQ_HEAD(LockerTab, __db_locker) LockerTab;
@@ -252,6 +244,9 @@ typedef struct __db_lockerid_latch_list {
 	DB_LOCKERID_LATCH_NODE *head;
 } DB_LOCKERID_LATCH_LIST;
 
+
+typedef struct snap_uid_t snap_uid_t;
+
 /*
  * Locker structures; these live in the locker hash table.
  */
@@ -272,6 +267,7 @@ typedef struct __db_locker {
 	db_timeval_t	lk_expire;	/* When current lock expires. */
 	db_timeval_t	tx_expire;	/* When this txn expires. */
 	db_timeout_t	lk_timeout;	/* How long do we let locks live. */
+	snap_uid_t      *snap_info; /* contains cnonce to print deadlock info */
 	u_int32_t id;			/* Locker id. */
 	u_int32_t dd_id;		/* Deadlock detector id. */
 	u_int32_t nlocks;		/* Number of locks held. */
@@ -291,9 +287,9 @@ typedef struct __db_locker {
 #define DB_LOCKER_LOWPRI    		0x0080
 #define DB_LOCKER_TRACK         	0x0100
 #define DB_LOCKER_READONLY      	0x0200
-#define DB_LOCKER_HAVE_WAITERS  	0x0400
 #define DB_LOCKER_IN_LOGICAL_ABORT 	0x0800
 #define DB_LOCKER_TRACK_WRITELOCKS      0x8000
+	u_int8_t has_waiters;
 	u_int32_t flags;
 	u_int8_t has_pglk_lsn;
 	u_int8_t wstatus;  /* master locker waiting, for deadlock detection */
@@ -406,7 +402,7 @@ do {									\
 #ifdef LOCKMGRDBG
 #define lock_lockers(region) \
 do { \
-	pthread_mutex_lock(&(region)->lockers_mtx.mtx); \
+	Pthread_mutex_lock(&(region)->lockers_mtx.mtx); \
 	(region)->lockers_mtx.lock.file = __FILE__; \
 	(region)->lockers_mtx.lock.func = __func__; \
 	(region)->lockers_mtx.lock.line = __LINE__; \
@@ -416,7 +412,7 @@ do { \
 #define lock_obj_partition(region, partition)\
 do { \
 	assert((partition) < gbl_lk_parts); \
-	pthread_mutex_lock(&(region)->obj_tab_mtx[(partition)].mtx); \
+	Pthread_mutex_lock(&(region)->obj_tab_mtx[(partition)].mtx); \
 	(region)->obj_tab_mtx[(partition)].lock.file = __FILE__; \
 	(region)->obj_tab_mtx[(partition)].lock.func = __func__; \
 	(region)->obj_tab_mtx[(partition)].lock.line = __LINE__; \
@@ -426,7 +422,7 @@ do { \
 #define lock_locker_partition(region, partition) \
 do { \
 	assert((partition) < gbl_lkr_parts); \
-	pthread_mutex_lock(&(region)->locker_tab_mtx[(partition)].mtx); \
+	Pthread_mutex_lock(&(region)->locker_tab_mtx[(partition)].mtx); \
 	(region)->locker_tab_mtx[(partition)].lock.file = __FILE__; \
 	(region)->locker_tab_mtx[(partition)].lock.func = __func__; \
 	(region)->locker_tab_mtx[(partition)].lock.line = __LINE__; \
@@ -435,7 +431,7 @@ do { \
 
 #define lock_detector(region) \
 do { \
-	pthread_mutex_lock(&(region)->dd_mtx.mtx); \
+	Pthread_mutex_lock(&(region)->dd_mtx.mtx); \
 	(region)->dd_mtx.lock.file = __FILE__; \
 	(region)->dd_mtx.lock.func = __func__; \
 	(region)->dd_mtx.lock.line = __LINE__; \
@@ -448,7 +444,7 @@ do { \
 	(region)->lockers_mtx.unlock.func = __func__; \
 	(region)->lockers_mtx.unlock.line = __LINE__; \
 	(region)->lockers_mtx.unlock.thd  = pthread_self(); \
-	pthread_mutex_unlock(&(region)->lockers_mtx.mtx); \
+	Pthread_mutex_unlock(&(region)->lockers_mtx.mtx); \
 } while (0)
 
 #define unlock_obj_partition(region, partition) \
@@ -458,7 +454,7 @@ do { \
 	(region)->obj_tab_mtx[(partition)].unlock.func = __func__; \
 	(region)->obj_tab_mtx[(partition)].unlock.line = __LINE__; \
 	(region)->obj_tab_mtx[(partition)].unlock.thd  = pthread_self(); \
-	pthread_mutex_unlock(&region->obj_tab_mtx[partition].mtx); \
+	Pthread_mutex_unlock(&region->obj_tab_mtx[partition].mtx); \
 } while (0)
 
 #define unlock_locker_partition(region, partition) \
@@ -468,7 +464,7 @@ do { \
 	(region)->locker_tab_mtx[(partition)].unlock.func = __func__; \
 	(region)->locker_tab_mtx[(partition)].unlock.line = __LINE__; \
 	(region)->locker_tab_mtx[(partition)].unlock.thd  = pthread_self(); \
-	pthread_mutex_unlock(&(region)->locker_tab_mtx[(partition)].mtx); \
+	Pthread_mutex_unlock(&(region)->locker_tab_mtx[(partition)].mtx); \
 } while (0)
 
 #define unlock_detector(region) \
@@ -477,19 +473,19 @@ do { \
 	(region)->dd_mtx.unlock.func = __func__; \
 	(region)->dd_mtx.unlock.line = __LINE__; \
 	(region)->dd_mtx.unlock.thd  = pthread_self(); \
-	pthread_mutex_unlock(&(region)->dd_mtx.mtx); \
+	Pthread_mutex_unlock(&(region)->dd_mtx.mtx); \
 } while (0)
 
 #else // no LOCKMGRDBG
 
-#define lock_lockers(region) pthread_mutex_lock(&(region)->lockers_mtx.mtx)
-#define lock_obj_partition(region, partition) pthread_mutex_lock(&(region)->obj_tab_mtx[(partition)].mtx)
-#define lock_locker_partition(region, partition) pthread_mutex_lock(&(region)->locker_tab_mtx[(partition)].mtx)
-#define lock_detector(region) pthread_mutex_lock(&(region)->dd_mtx.mtx)
-#define unlock_lockers(region) pthread_mutex_unlock(&(region)->lockers_mtx.mtx)
-#define unlock_obj_partition(region, partition) pthread_mutex_unlock(&region->obj_tab_mtx[partition].mtx)
-#define unlock_locker_partition(region, partition) pthread_mutex_unlock(&(region)->locker_tab_mtx[(partition)].mtx)
-#define unlock_detector(region) pthread_mutex_unlock(&(region)->dd_mtx.mtx)
+#define lock_lockers(region) Pthread_mutex_lock(&(region)->lockers_mtx.mtx)
+#define lock_obj_partition(region, partition) Pthread_mutex_lock(&(region)->obj_tab_mtx[(partition)].mtx)
+#define lock_locker_partition(region, partition) Pthread_mutex_lock(&(region)->locker_tab_mtx[(partition)].mtx)
+#define lock_detector(region) Pthread_mutex_lock(&(region)->dd_mtx.mtx)
+#define unlock_lockers(region) Pthread_mutex_unlock(&(region)->lockers_mtx.mtx)
+#define unlock_obj_partition(region, partition) Pthread_mutex_unlock(&region->obj_tab_mtx[partition].mtx)
+#define unlock_locker_partition(region, partition) Pthread_mutex_unlock(&(region)->locker_tab_mtx[(partition)].mtx)
+#define unlock_detector(region) Pthread_mutex_unlock(&(region)->dd_mtx.mtx)
 
 #endif // LOCKMGRDBG
 

@@ -17,6 +17,11 @@
 extern int __berkdb_write_alarm_ms;
 extern int __berkdb_read_alarm_ms;
 
+#ifdef __sun
+/* for PTHREAD_STACK_MIN on Solaris */
+#define __EXTENSIONS__
+#endif
+
 #include <pthread.h>
 
 #include "limit_fortify.h"
@@ -31,11 +36,9 @@ extern int __berkdb_read_alarm_ms;
 #include <sys/statvfs.h>
 
 #include <segstr.h>
-#include <plink.h>
 #include <epochlib.h>
 #include <net.h>
 #include <memory_sync.h>
-#include <plink.h>
 
 #include <bdb_api.h>
 #ifdef _LINUX_SOURCE
@@ -57,7 +60,6 @@ extern int __berkdb_read_alarm_ms;
 #include "osqlrepository.h"
 #include "osqlcomm.h"
 #include "osqlblockproc.h"
-#include "comdb2_shm.h"
 #include "thdpool.h"
 #include "bdb_access.h"
 #include "analyze.h"
@@ -69,10 +71,10 @@ extern int __berkdb_read_alarm_ms;
 #include "views.h"
 #include <autoanalyze.h>
 #include "quantize.h"
-#include <machine.h>
 #include "timers.h"
 #include "crc32c.h"
 #include "ssl_bend.h"
+#include "dohsql.h"
 
 #include <trigger.h>
 #include <sc_stripes.h>
@@ -80,7 +82,6 @@ extern int __berkdb_read_alarm_ms;
 #include <logmsg.h>
 
 extern int gbl_exit_alarm_sec;
-extern int gbl_sql_tranlevel_sosql_pref;
 extern int gbl_disable_rowlocks_logging;
 extern int gbl_disable_rowlocks;
 extern int gbl_disable_rowlocks_sleepns;
@@ -92,7 +93,6 @@ extern int gbl_dump_sql_dispatched;
 extern int gbl_dump_fsql_response;
 extern int gbl_time_osql;
 extern int gbl_time_fdb;
-extern int gbl_enable_good_sql_return_codes;
 extern int gbl_enable_cache_internal_nodes;
 extern int gbl_test_badwrite_intvl;
 extern int gbl_skip_ratio_trace;
@@ -135,6 +135,7 @@ void commit_bench(void *, int, int);
 void bdb_detect(void *);
 void enable_ack_trace(void);
 void disable_ack_trace(void);
+void osql_send_test(SBUF2 *sb);
 extern unsigned long long get_genid(bdb_state_type *bdb_state,
                                     unsigned int dtafile);
 int bdb_dump_logical_tranlist(void *state, FILE *f);
@@ -164,7 +165,6 @@ static const char *HELP_MAIN[] = {
     "sync <full|normal|source|none> - sync parameters (sync he for more)",
     "electtime #    - override timeout for elections in seconds,",
     "                 0 for no override",
-    "incoh 1/0      - set incoherency status 1=incoherent, 0=coherent",
     "delay #        - set commit delay in ms; use this to throttle the write "
     "rate",
     "delaymax #     - set maximum commit delay in ms; this is the max delay "
@@ -178,9 +178,7 @@ static const char *HELP_MAIN[] = {
     "sql ...        - sql subsystem commands",
     "help stat      - other general status query commands",
     "help bdb       - database backend commands",
-    "help java      - java stored procedure engine commands",
     "help schema    - schema related commands",
-    "help queue     - ondisk queue commands",
     "help fstblk    - fstblk commands", "help compr     - compression commands",
     "help analyze   - analyze commands", "exit           - exit task", NULL};
 
@@ -189,25 +187,6 @@ static const char *HELP_JAVA[] = {
     "java load <name> <jar> [args...]", "java reload <name> <jar> [args...]",
     "java unload <name>", "java sigjava           - Set JVM signal handlers",
     "java sigorig           - Set pre-JVM signal handlers", NULL};
-static const char *HELP_QUEUES[] = {
-    "Queue commands:-", "queue stat              - status report on all queues",
-    "queue stat name         - status report on named queue",
-    "queue slowstat name     - full status report on named queue",
-    "queue flush <name> <#>  - flush a given queue by consumer number",
-    "queue flush abort       - abort active flush operation",
-    "queue create <name> <sz> - create queue with given avg item sz",
-    "queue consumer <name> <#> <method> - set consumer #",
-    "queue debg <#>          - debug trace for next # events in consumer "
-    "threads ",
-    "queue dump <name> <file>- dump queue to file",
-    "queue goose <name>      - goose the head of the queue",
-    "queue gooserates #1 #2  - set/query goose rates.",
-    "                          #1 is add rate, #2 is consume rate in seconds",
-    "queue poll #            - set poll interval in seconds.  0 is default and "
-    "is",
-    "                          best for cpu.",
-    "queue wake              - immediately wake all consumers on all queues",
-    NULL};
 static const char *HELP_STAT[] = {
     "Database status query commands:-",
     "stat                       - basic status report",
@@ -232,9 +211,11 @@ static const char *HELP_STAT[] = {
     "stat switch                - show switch statuses",
     "stat clnt [#] [rates|totals]- show per client request stats",
     "stat mtrap                 - show mtrap system stats",
+    "stat dohsql                - show distributed sql stats",
     "dmpl                       - dump threads",
     "dmptrn                     - show long transaction stats",
-    "dmpcts                     - show table constraints", NULL,
+    "dmpcts                     - show table constraints",
+    NULL,
 };
 static const char *HELP_SQL[] = {
     "sql ...",
@@ -243,7 +224,6 @@ static const char *HELP_SQL[] = {
     "hist               - show recently run statements",
     "cancel N           - cancel running statement with id N",
     "cancelcnonce N      - cancel running statement with cnonce N",
-    "rdtimeout N        - set read timeout in ms",
     "wrtimeout N        - set write timeout in ms",
     "help               - this information", NULL,
 };
@@ -404,8 +384,6 @@ void replication_stats(struct dbenv *dbenv)
         logmsg(LOGMSG_USER, "   Max rep timeout      %d\n", dbenv->max_timeout_ms);
         logmsg(LOGMSG_USER, "   Max rep time         %d\n", dbenv->max_reptime_ms);
     }
-    logmsg(LOGMSG_USER, "   Minimum        %d ms\n",
-           bdb_attr_get(dbenv->bdb_attr, BDB_ATTR_MINREPTIMEOUT));
 }
 
 int process_sync_command(struct dbenv *dbenv, char *line, int lline, int st)
@@ -460,7 +438,7 @@ int process_sync_command(struct dbenv *dbenv, char *line, int lline, int st)
         } else if (tokcmp(tok, ltok, "log-delete-now") == 0) {
             dbenv->log_delete_age = 0;
         } else if (tokcmp(tok, ltok, "log-delete-before") == 0) {
-            dbenv->log_delete_age = time_epoch();
+            dbenv->log_delete_age = comdb2_time_epoch();
         } else if (tokcmp(tok, ltok, "log-delete-age-set") == 0) {
             int epoch;
             tok = segtok(line, lline, &st, &ltok);
@@ -470,13 +448,13 @@ int process_sync_command(struct dbenv *dbenv, char *line, int lline, int st)
                 break;
             }
             if (dbenv->log_delete_age > 0) {
-                dbenv->log_delete_age = epoch ? epoch : time_epoch();
+                dbenv->log_delete_age = epoch ? epoch : comdb2_time_epoch();
             }
         } else if (tokcmp(tok, ltok, "log-delete") == 0) {
             tok = segtok(line, lline, &st, &ltok);
             if (tokcmp(tok, ltok, "on") == 0) {
                 log_delete_counter_change(dbenv, LOG_DEL_ABS_ON);
-                cantim(TMEV_ENABLE_LOG_DELETE);
+                comdb2_cantim(TMEV_ENABLE_LOG_DELETE);
             } else if (tokcmp(tok, ltok, "off") == 0) {
                 int reenab;
                 log_delete_counter_change(dbenv, LOG_DEL_ABS_OFF);
@@ -484,10 +462,10 @@ int process_sync_command(struct dbenv *dbenv, char *line, int lline, int st)
                 reenab = toknum(tok, ltok);
                 if (reenab > 0) {
                     /* re-enable log in n minutes */
-                    timer(reenab * 1000 * 60, TMEV_ENABLE_LOG_DELETE);
+                    comdb2_timer(reenab * 1000 * 60, TMEV_ENABLE_LOG_DELETE);
                 } else {
                     /* no re-enable requested */
-                    cantim(TMEV_ENABLE_LOG_DELETE);
+                    comdb2_cantim(TMEV_ENABLE_LOG_DELETE);
                 }
             } else {
                 logmsg(LOGMSG_USER, "must specify log-delete on or off\n");
@@ -620,75 +598,33 @@ static void on_off_trap(char *line, int lline, int *st, int *ltok, char *msg,
 extern int gbl_new_snapisol;
 #ifdef NEWSI_STAT
 void bdb_print_logfile_pglogs_stat();
+void bdb_clear_logfile_pglogs_stat();
 #endif
 void bdb_osql_trn_clients_status();
+void bdb_newsi_mempool_stat();
 
-
-void *handle_exit_thd(void *arg) 
+static pthread_mutex_t exiting_lock = PTHREAD_MUTEX_INITIALIZER;
+static void *clean_exit_thd(void *unused)
 {
-    static pthread_mutex_t exiting_lock = PTHREAD_MUTEX_INITIALIZER;
-    pthread_mutex_lock(&exiting_lock);
-    if( gbl_exit ) {
-        pthread_mutex_unlock(&exiting_lock);
+    Pthread_mutex_lock(&exiting_lock);
+    if (gbl_exit) {
+        Pthread_mutex_unlock(&exiting_lock);
         return NULL;
     }
     gbl_exit = 1;
-    pthread_mutex_unlock(&exiting_lock);
+    Pthread_mutex_unlock(&exiting_lock);
 
-    struct dbenv *dbenv = arg;
-    int qid, alarmtime = (gbl_exit_alarm_sec > 0 ? gbl_exit_alarm_sec : 300);
-
-    /* this defaults to 5 minutes */
-    alarm(alarmtime);
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
-
-    if (bdb_is_an_unconnected_master(dbenv->dbs[0]->handle)) {
-        logmsg(LOGMSG_INFO, "This was standalone\n");
-        wait_for_sc_to_stop(); /* single node, need to stop SC */
-    }
-    else {
-        /* hand over masterness to a new candidate if we're the master. */
-        bdb_transfermaster(dbenv->dbs[0]->handle);
-    }
-
-    /* dont let any new requests come in.  we're going to go non-coherent
-       here in a second, so letting new reads in would be bad. */
-    no_new_requests(dbenv);
-
-    /* let the lower level start advertising high lsns to go non-coherent
-       - dont hang the master waiting for sync replication to an exiting
-       node. */
-    bdb_exiting(dbenv->dbs[0]->handle);
-
-    /* XXX this should probably have a timeout */
-    stop_threads(thedb);
-    allow_sc_to_run();
-
-    /* now that we are taking no more requests and have halted all request
-     * threads, take a final snapshot of our queues (this helps things
-     * like the audtqdb problem where we may want to know if the queue was
-     * empty when the db exited - if so the db can be reinited when it
-     * starts up again) */
-    if (thedb->num_qdbs > 0 && gbl_dump_queues_on_exit) {
-        int ii;
-        logmsg(LOGMSG_USER, "Final status of queues:\n");
-        for (ii = 0; ii < thedb->num_qdbs; ii++)
-            dbqueue_stat(thedb->qdbs[ii], 0, 0, 1 /*(blocking call)*/);
-    }
-
-    flush_db();
     clean_exit();
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
-
     return NULL;
 }
 
 int process_command(struct dbenv *dbenv, char *line, int lline, int st)
 {
     char *tok;
-    int ltok, tst, ntok, stsav = st, llinesav = lline;
-    int i = 0;
+    int ltok, stsav = st, llinesav = lline;
     int rc = 0;
+    int start_st = st;
 
     /* prevent this if the threads are stopped; initial intent is
        to prevent a bdb access while the db is closed during schema
@@ -708,21 +644,21 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
     }
 
     if (tokcmp(tok, ltok, "exit") == 0) {
-        logmsg(LOGMSG_WARN, "requested exit...\n");
+        logmsg(LOGMSG_USER, "requested exit...\n");
 
         pthread_t thread_id;
         pthread_attr_t thd_attr;
 
-        pthread_attr_init(&thd_attr);
-        pthread_attr_setstacksize(&thd_attr, 4 * 1024); /* 4K */
+        Pthread_attr_init(&thd_attr);
+        Pthread_attr_setstacksize(&thd_attr, 128 * 1024);
         pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
 
-        int rc = pthread_create(&thread_id, &thd_attr, handle_exit_thd,
-                                (void *)dbenv);
+        int rc = pthread_create(&thread_id, &thd_attr, clean_exit_thd, NULL);
         if (rc != 0) {
             logmsgperror("create exit thread: pthread_create");
             exit(1);
         }
+        Pthread_attr_destroy(&thd_attr);
     } else if(tokcmp(tok,ltok, "partinfo")==0) {
         char opt[128];
 
@@ -747,7 +683,36 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         tokcpy0(tok, ltok, subnet, sizeof(subnet));
         logmsg(LOGMSG_INFO, "Killling subnet %s\n", subnet);
         kill_subnet(subnet);
-    } else if (tokcmp(tok, ltok, "fdbdebg") == 0) {
+    }
+    else if(tokcmp(tok,ltok, "netclipper")==0)
+    {
+        int flag;
+        char *subnet;
+        tok=segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+clipper_usage:
+            logmsg(LOGMSG_USER, "Usage: netclipper disable|enable subnet\n");
+            return -1;
+        }
+        if (tokcmp(tok, ltok, "disable")==0)
+        {
+            flag = 1;   
+        }
+        else if (tokcmp(tok, ltok, "enable")==0)
+        {
+            flag = 0;
+        }
+        else 
+            goto clipper_usage;
+
+        tok=segtok(line, lline, &st, &ltok);
+        if (ltok == 0) 
+            goto clipper_usage;
+        subnet = tokdup(tok, ltok);  
+        net_clipper(subnet, flag);
+        free(subnet);
+    }
+    else if (tokcmp(tok, ltok, "fdbdebg") == 0) {
         extern int gbl_fdb_track;
 
         int dbgflag;
@@ -841,9 +806,9 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
        }
      */
     else if (tokcmp(tok, ltok, "downgrade") == 0) {
-        bdb_transfermaster(dbenv->dbs[0]->handle);
+        bdb_transfermaster(dbenv->static_table.handle);
     } else if (tokcmp(tok, ltok, "losemaster") == 0) {
-        bdb_losemaster(dbenv->dbs[0]->handle);
+        bdb_losemaster(dbenv->static_table.handle);
     } else if (tokcmp(tok, ltok, "upgrade") == 0) {
         char *newmaster = 0;
         tok = segtok(line, lline, &st, &ltok);
@@ -855,7 +820,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         newmaster = intern(tok);
         free(tok);
         logmsg(LOGMSG_USER, "Trying to transfer master to node %s\n", newmaster);
-        bdb_transfermaster_tonode(dbenv->dbs[0]->handle, newmaster);
+        bdb_transfermaster_tonode(dbenv->static_table.handle, newmaster);
     } else if (tokcmp(tok, ltok, "synccluster") == 0) {
 
         int outrc = -1;
@@ -874,28 +839,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         } else {
            logmsg(LOGMSG_USER, "sync cluster done. \n");
         }
-    } else if (tokcmp(tok, ltok, "enableprefersosql") == 0) {
-        if (!gbl_sql_tranlevel_sosql_pref) {
-            gbl_sql_tranlevel_sosql_pref = 1;
-            /* update bits */
-            comdb2_shm_set_flag(thedb->dbnum, CMDB2_SHMFLG_PREFER_SOSQL);
-            for (i = 0; i < thedb->num_dbs; i++) {
-                if (thedb->dbs[i]->dbnum)
-                    comdb2_shm_set_flag(thedb->dbs[i]->dbnum,
-                                        CMDB2_SHMFLG_PREFER_SOSQL);
-            }
-        }
-    } else if (tokcmp(tok, ltok, "disableprefersosql") == 0) {
-        if (gbl_sql_tranlevel_sosql_pref) {
-            gbl_sql_tranlevel_sosql_pref = 0;
-            /* update bits */
-            comdb2_shm_clr_flag(thedb->dbnum, CMDB2_SHMFLG_PREFER_SOSQL);
-            for (i = 0; i < thedb->num_dbs; i++) {
-                if (thedb->dbs[i]->dbnum)
-                    comdb2_shm_clr_flag(thedb->dbs[i]->dbnum,
-                                        CMDB2_SHMFLG_PREFER_SOSQL);
-            }
-        }
     } else if (tokcmp(tok, ltok, "whohas") == 0) {
         int pgno = -1;
 
@@ -906,6 +849,10 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             bdb_check_pageno(thedb->bdb_env, pgno);
         } else
             logmsg(LOGMSG_ERROR, "incorrect page no %d\n", pgno);
+    } else if (tokcmp(tok, ltok, "deletelogs") == 0) {
+        logmsg(LOGMSG_ERROR, "Calling delete logs function\n");
+        extern void delete_log_files(bdb_state_type *bdb_state);
+        delete_log_files(thedb->bdb_env);
     } else if (tokcmp(tok, ltok, "pushnext") == 0) {
         push_next_log();
     }
@@ -928,26 +875,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         logmsg(LOGMSG_USER, "Setting exit alarm to %d seconds\n", alarmsec);
         gbl_exit_alarm_sec = alarmsec;
     }
-
-#if defined ENABLE_COHERENCY_TEST_TRAPS
-    else if (tokcmp(tok, ltok, "incoherent") == 0) {
-        int node;
-        int outrc;
-
-        tok = segtok(line, lline, &st, &ltok);
-        node = toknum(tok, ltok);
-        send_notcoherent_current_lsn(node, 1, &outrc);
-    }
-
-    else if (tokcmp(tok, ltok, "coherent") == 0) {
-        int node;
-        int outrc;
-
-        tok = segtok(line, lline, &st, &ltok);
-        node = toknum(tok, ltok);
-        send_notcoherent_current_lsn(node, 0, &outrc);
-    }
-#endif
 
 #if defined SET_GBLCONTEXT_TEST_TRAPS
     else if (tokcmp(tok, ltok, "setcontext") == 0) {
@@ -991,12 +918,25 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         logmsg(LOGMSG_USER, "Enabled pageorder records per page check\n");
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_DISABLE_PAGEORDER_RECSZ_CHK, 0);
     } else if (tokcmp(tok, ltok, "get_newsi_status") == 0) {
-       logmsg(LOGMSG_USER, "new snapshot is %s; new snapshot logging is %s; new snapshot "
+        extern unsigned long long release_locks_on_si_lockwait_cnt;
+        logmsg(LOGMSG_USER,
+               "new snapshot is %s; new snapshot logging is %s; new snapshot "
                "as-of is %s\n",
                gbl_new_snapisol ? "ENABLED" : "DISABLED",
                gbl_new_snapisol_logging ? "ENABLED" : "DISABLED",
                gbl_new_snapisol_asof ? "ENABLED" : "DISABLED");
         bdb_osql_trn_clients_status();
+        logmsg(LOGMSG_USER, "Release locks on snapisol lockwait count: %llu\n",
+               release_locks_on_si_lockwait_cnt);
+        if (gbl_new_snapisol) {
+            logmsg(LOGMSG_USER, "newsi memory pool stat:\n");
+            bdb_newsi_mempool_stat();
+        }
+#ifdef NEWSI_STAT
+        bdb_print_logfile_pglogs_stat();
+    } else if (tokcmp(tok, ltok, "clear_newsi_status") == 0) {
+        bdb_clear_logfile_pglogs_stat();
+#endif
     } else if (tokcmp(tok, ltok, "stack_warn_threshold") == 0) {
         int thresh;
         tok = segtok(line, lline, &st, &ltok);
@@ -1194,7 +1134,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             return -1;
         }
 
-       logmsg(LOGMSG_USER, "will attempt to delete unused files for %s\n", table);
+        logmsg(LOGMSG_USER, "will attempt to delete unused files for %s\n",
+               table);
 
         rc = bdb_del_unused_files(db->handle, &bdberr);
         if (rc != 0) {
@@ -1210,11 +1151,12 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         SBUF2 *sb = sbuf2open(fileno(stdout), 0);
         cleanup_stats(sb);
     } else if (tokcmp(tok, ltok, "mallocstats") == 0) {
-#ifdef _LINUX_SOURCE
+#if defined(_LINUX_SOURCE) && !defined(__APPLE__)
         /* This is defined in malloc.h, as is struct mallinfo.  Including
          * malloc.h
          * causes a clash between mallinfo there and in dlmalloc.h. */
-        dlmalloc_stats();
+        void malloc_stats();
+        malloc_stats();
 #endif
     } else if (tokcmp(tok, ltok, "deletehints") == 0) {
         reinit_sql_hint_table();
@@ -1223,7 +1165,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
            logmsg(LOGMSG_USER, "request report already on\n");
         } else {
             gbl_report = 1; /* update rate to log */
-            gbl_report_last = time_epochms();
+            gbl_report_last = comdb2_time_epochms();
             gbl_report_last_n = n_qtrap;
             logmsg(LOGMSG_USER, "request report turned on\n");
         }
@@ -1272,292 +1214,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
 
     else if (tokcmp(tok, ltok, "inplace") == 0) {
         logmsg(LOGMSG_USER, "gbl_upd_key: %d\n", gbl_upd_key);
-    }
-
-    else if (tokcmp(tok, ltok, "queue") == 0) {
-        tok = segtok(line, lline, &st, &ltok);
-        if (tokcmp(tok, ltok, "help") == 0) {
-            print_help_page(HELP_QUEUES);
-        } else if (tokcmp(tok, ltok, "gooserates") == 0) {
-            unsigned new_add_rate = gbl_goose_add_rate;
-            unsigned new_consume_rate = gbl_goose_consume_rate;
-            logmsg(LOGMSG_USER, "gbl_goose_add_rate = %u\n", gbl_goose_add_rate);
-            logmsg(LOGMSG_USER, "gbl_goose_consume_rate = %u\n", gbl_goose_consume_rate);
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok) {
-                new_add_rate = toknum(tok, ltok);
-                tok = segtok(line, lline, &st, &ltok);
-                if (ltok) {
-                    new_consume_rate = toknum(tok, ltok);
-                    gbl_goose_add_rate = new_add_rate;
-                    gbl_goose_consume_rate = new_consume_rate;
-                    logmsg(LOGMSG_USER, "new gbl_goose_add_rate = %u\n", gbl_goose_add_rate);
-                    logmsg(LOGMSG_USER, "new gbl_goose_consume_rate = %u\n",
-                           gbl_goose_consume_rate);
-                }
-            }
-        } else if (tokcmp(tok, ltok, "poll") == 0) {
-            tok = segtok(line, lline, &st, &ltok);
-            gbl_queue_sleeptime = toknum(tok, ltok);
-            logmsg(LOGMSG_USER, "setting gbl_queue_sleeptime to %d\n", gbl_queue_sleeptime);
-        } else if (tokcmp(tok, ltok, "wake") == 0) {
-            logmsg(LOGMSG_USER, "Waking all consumers on all queues\n");
-            dbqueue_wake_all_consumers_all_queues(thedb, 1);
-        } else if (tokcmp(tok, ltok, "debg") == 0) {
-            tok = segtok(line, lline, &st, &ltok);
-            gbl_queue_debug = toknum(tok, ltok);
-            logmsg(LOGMSG_USER, "set full consumer debugging to %d\n", gbl_queue_debug);
-        } else if (tokcmp(tok, ltok, "dump") == 0) {
-            tok = segtok(line, lline, &st, &ltok);
-            if (tok == 0) {
-                logmsg(LOGMSG_USER, "expected queue name\n");
-            } else {
-                char *name = tokdup(tok, ltok);
-                struct dbtable *db = getqueuebyname(name);
-                if (!db)
-                    logmsg(LOGMSG_USER, "no queue named '%s'\n", name);
-                else {
-                    tok = segtok(line, lline, &st, &ltok);
-                    if (tok == 0)
-                        logmsg(LOGMSG_USER, "expected file name\n");
-                    else {
-                        char *file = tokdup(tok, ltok);
-                        FILE *fh;
-                        fh = fopen(file, "w");
-                        if (!fh)
-                            logmsg(LOGMSG_ERROR, "cannot open %s for writing: %s\n", file,
-                                   strerror(errno));
-                        else {
-                            logmsg(LOGMSG_USER, "Dumping queue %s to file %s...\n", name,
-                                    file);
-                            dbq_dump(db, fh);
-                            logmsg(LOGMSG_USER, "...finished\n");
-                            fclose(fh);
-                        }
-                        free(file);
-                    }
-                }
-                free(name);
-            }
-        } else if (tokcmp(tok, ltok, "goose") == 0) {
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok == 0) {
-                logmsg(LOGMSG_ERROR, "goose which queue?\n");
-            } else {
-                /* stat on named queue */
-                char *name = tokdup(tok, ltok);
-                struct dbtable *db = getqueuebyname(name);
-                if (!db)
-                    logmsg(LOGMSG_ERROR, "no queue named '%s'\n", name);
-                else {
-                    dbqueue_goose(db, 1);
-                    logmsg(LOGMSG_USER, "goosed queue %s\n", db->tablename);
-                }
-                free(name);
-            }
-        } else if (tokcmp(tok, ltok, "stat") == 0) {
-        queue_stat:
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok == 0) {
-                /* stat on all queues */
-                int ii;
-                logmsg(LOGMSG_USER, "database has %d queues\n", thedb->num_qdbs);
-                for (ii = 0; ii < thedb->num_qdbs; ii++)
-                    dbqueue_stat(thedb->qdbs[ii], 0, 0, 0);
-            } else {
-                /* stat on named queue */
-                char *name = tokdup(tok, ltok);
-                struct dbtable *db = getqueuebyname(name);
-                if (!db)
-                    logmsg(LOGMSG_ERROR, "no queue named '%s'\n", name);
-                else
-                    dbqueue_stat(db, 0, 0, 0);
-                free(name);
-            }
-        } else if (tokcmp(tok, ltok, "slowstat") == 0) {
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok == 0) {
-                /* stat on all queues */
-                int ii;
-                logmsg(LOGMSG_USER, "database has %d queues\n", thedb->num_qdbs);
-                for (ii = 0; ii < thedb->num_qdbs; ii++)
-                    dbqueue_stat(thedb->qdbs[ii], 1, 0, 0);
-            } else {
-                /* stat on named queue */
-                char *name = tokdup(tok, ltok);
-                struct dbtable *db = getqueuebyname(name);
-                if (!db)
-                    logmsg(LOGMSG_ERROR, "no queue named '%s'\n", name);
-                else
-                    dbqueue_stat(db, 1, 0, 0);
-                free(name);
-            }
-        } else if (tokcmp(tok, ltok, "countstat") == 0) {
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok == 0) {
-                /* stat on all queues */
-                int ii;
-                logmsg(LOGMSG_USER, "database has %d queues\n", thedb->num_qdbs);
-                for (ii = 0; ii < thedb->num_qdbs; ii++)
-                    dbqueue_stat(thedb->qdbs[ii], 1, 1, 0);
-            } else {
-                /* stat on named queue */
-                char *name = tokdup(tok, ltok);
-                struct dbtable *db = getqueuebyname(name);
-                if (!db)
-                    logmsg(LOGMSG_ERROR, "no queue named '%s'\n", name);
-                else
-                    dbqueue_stat(db, 1, 1, 0);
-                free(name);
-            }
-        }
-
-        else if (tokcmp(tok, ltok, "flush") == 0) {
-            char *qname;
-            int consumern;
-            struct dbtable *db;
-
-            tok = segtok(line, lline, &st, &ltok);
-            if (tokcmp(tok, ltok, "abort") == 0) {
-                dbqueue_flush_abort();
-            } else {
-                if (ltok == 0) {
-                    logmsg(LOGMSG_ERROR, "expected a queue name\n");
-                    return -1;
-                }
-                qname = tokdup(tok, ltok);
-
-                tok = segtok(line, lline, &st, &ltok);
-                if (ltok == 0) {
-                    logmsg(LOGMSG_ERROR, "expected a consumer number\n");
-                    free(qname);
-                    return -1;
-                }
-                consumern = toknum(tok, ltok);
-
-                db = getqueuebyname(qname);
-                if (!db)
-                    logmsg(LOGMSG_ERROR, "no queue named '%s'\n", qname);
-                else
-                    dbqueue_flush_in_thread(db, consumern);
-                free(qname);
-            }
-        } else if (tokcmp(tok, ltok, "create") == 0) {
-            char qname[64];
-            int avgitem;
-            int pagesize = 0;
-
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok == 0) {
-                logmsg(LOGMSG_ERROR, "expected a queue name\n");
-                return -1;
-            }
-            tokcpy0(tok, ltok, qname, sizeof(qname));
-
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok == 0) {
-                logmsg(LOGMSG_ERROR, "expected average item size in bytes\n");
-                return -1;
-            }
-            avgitem = toknum(tok, ltok);
-            if (avgitem <= 0) {
-                logmsg(LOGMSG_ERROR, "expected average item size illegal\n");
-                return -1;
-            }
-
-            /* This code is dupliated in the lrl parser.. sorry */
-            tok = segtok(line, lline, &st, &ltok);
-            while (ltok) {
-                char ctok[64];
-                tokcpy0(tok, ltok, ctok, sizeof(ctok));
-                if (strncmp(ctok, "pagesize=", 9) == 0) {
-                    pagesize = atoi(ctok + 9);
-                } else {
-                    logmsg(LOGMSG_ERROR, "Bad queue attribute '%s'\n", ctok);
-                    return -1;
-                }
-                tok = segtok(line, lline, &st, &ltok);
-            }
-
-            /* create a new queue by the name. */
-            create_queue(thedb, qname, avgitem, pagesize, 0);
-        } else if (tokcmp(tok, ltok, "setopt") == 0) {
-            char *qname;
-            int consumern;
-            char *opts;
-            struct dbtable *db;
-
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok == 0) {
-                logmsg(LOGMSG_ERROR, "expected a queue name\n");
-                return -1;
-            }
-            qname = tokdup(tok, ltok);
-
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok == 0) {
-                logmsg(LOGMSG_ERROR, "expected a consumer number\n");
-                free(qname);
-                return -1;
-            }
-            consumern = toknum(tok, ltok);
-
-            db = getqueuebyname(qname);
-            if (!db) {
-                logmsg(LOGMSG_ERROR, "no queue called '%s'\n", qname);
-                free(qname);
-                return -1;
-            }
-
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok == 0) {
-                logmsg(LOGMSG_ERROR, "expected queue options\n");
-                free(qname);
-                return -1;
-            }
-            opts = tokdup(tok, ltok);
-
-            /* add/remove a consumer */
-            dbqueue_set_consumern_options(db, consumern, opts);
-
-            free(qname);
-            free(opts);
-        } else if (tokcmp(tok, ltok, "consumer") == 0) {
-            char *qname;
-            int consumern;
-            char *method;
-
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok == 0) {
-                logmsg(LOGMSG_ERROR, "expected a queue name\n");
-                return -1;
-            }
-            qname = tokdup(tok, ltok);
-
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok == 0) {
-                logmsg(LOGMSG_ERROR, "expected a consumer number\n");
-                free(qname);
-                return -1;
-            }
-            consumern = toknum(tok, ltok);
-
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok == 0) {
-                logmsg(LOGMSG_ERROR, "expected a method\n");
-                free(qname);
-                return -1;
-            }
-            method = tokdup(tok, ltok);
-
-            /* add/remove a consumer */
-            consumer_change(qname, consumern, method);
-
-            free(qname);
-            free(method);
-        } else {
-            logmsg(LOGMSG_ERROR, "unknown queue command <%.*s>\n", ltok, tok);
-        }
     }
 
     else if (tokcmp(tok, ltok, "netlock") == 0) {
@@ -1663,7 +1319,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                 return -1;
             }
             if (ltok >= MAXTABLELEN) {
-                logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n", MAXTABLELEN);
+                logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n",
+                       MAXTABLELEN - 1);
                 return -1;
             }
             tokcpy(tok, ltok, table);
@@ -1833,14 +1490,12 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
     }
 
     else if (tokcmp(tok, ltok, "reco") == 0) {
-        bdb_set_recovery(dbenv->dbs[0]->handle);
+        bdb_set_recovery(dbenv->static_table.handle);
     } else if (tokcmp(tok, ltok, "lua_break") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         int thread_id = toknum(tok, ltok);
         gbl_break_lua = thread_id;
     } else if (tokcmp(tok, ltok, "stat") == 0) {
-        /* Sam J - allow us to get much more status from an op1 window by
-         * forwarding commands to the bdb backend. */
         tok = segtok(line, lline, &st, &ltok);
         if (tokcmp(tok, ltok, "bdb") == 0) {
             /* Forward request to backend, which has its own safety checks
@@ -1888,8 +1543,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             compr_print_stats();
         } else if (tokcmp(tok, ltok, "resources") == 0) {
             dumpresources();
-        } else if (tokcmp(tok, ltok, "queue") == 0) {
-            goto queue_stat;
         } else if (tokcmp(tok, ltok, "signals") == 0) {
             dumpsignalsetupf(stdout);
         } else if (tokcmp(tok, ltok, "java") == 0) {
@@ -1948,7 +1601,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         } else if (tokcmp(tok, ltok, "rmtpol") == 0) {
             char *host;
             logmsg(LOGMSG_USER, "I am running on a %s machine\n",
-                   get_mach_class_str(machine()));
+                   get_mach_class_str(gbl_mynode));
             tok = segtok(line, lline, &st, &ltok);
             if (ltok != 0) {
                 char *m = tokdup(tok, ltok);
@@ -1971,8 +1624,10 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             switch_status();
         } else if (tokcmp(tok, ltok, "clnt") == 0) {
             char *host = NULL;
+            tok = segtok(line, lline, &st, &ltok);
             if (ltok > 0) {
                 host = internn(tok, ltok);
+                tok = segtok(line, lline, &st, &ltok);
             }
             if (ltok == 0 || tokcmp(tok, ltok, "totals") == 0) {
                 if (host)
@@ -1996,7 +1651,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             unsigned long long txns_applied;
             int max_retries;
 
-            bdb_get_rep_stats(dbenv->dbs[0]->handle, &msgs_processed,
+            bdb_get_rep_stats(dbenv->static_table.handle, &msgs_processed,
                               &msgs_sent, &txns_applied, &rep_retry,
                               &max_retries);
 
@@ -2006,9 +1661,15 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                    dbenv->txns_committed, dbenv->txns_aborted, txns_applied,
                    n_retries, gbl_verify_tran_replays, rep_retry, max_retries);
 
+            extern int gbl_epoch_time;
+            extern int gbl_starttime;
+            logmsg(LOGMSG_USER, "uptime                  %ds\n",
+                   gbl_epoch_time - gbl_starttime);
             logmsg(LOGMSG_USER, "readonly                %c\n", gbl_readonly ? 'Y' : 'N');
             logmsg(LOGMSG_USER, "num sql queries         %u\n", gbl_nsql);
             logmsg(LOGMSG_USER, "num new sql queries     %u\n", gbl_nnewsql);
+            logmsg(LOGMSG_USER, "num master rejects      %u\n",
+                   gbl_masterrejects);
             logmsg(LOGMSG_USER, "sql ticks               %llu\n", gbl_sqltick);
             logmsg(LOGMSG_USER, "sql deadlocks recover attempts %llu failures %llu\n",
                    gbl_sql_deadlock_reconstructions, gbl_sql_deadlock_failures);
@@ -2024,6 +1685,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             sc_status(dbenv);
             print_dbs(dbenv);
             backend_stat(dbenv);
+            logmsg(LOGMSG_USER, "version: %s.%s\n", gbl_db_release_name, gbl_db_build_name);
             logmsg(LOGMSG_USER, "Codename:      \"%s\"\n", gbl_db_release_name);
         } else if (tokcmp(tok, ltok, "ixstat") == 0) {
             ixstats(dbenv);
@@ -2096,13 +1758,24 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             fdb_stat_alias();
         } else if (tokcmp(tok, ltok, "uprecs") == 0) {
             upgrade_records_stats();
+        } else if (tokcmp(tok, ltok, "dohsql") == 0) {
+            dohsql_stats();
 #if WITH_SSL
         } else if (tokcmp(tok, ltok, "ssl") == 0) {
             ssl_stats();
 #endif
         } else {
-            logmsg(LOGMSG_ERROR, "bad stat command\n");
-            print_help_page(HELP_STAT);
+            int rc = 1;
+            struct message_handler *h;
+            LISTC_FOR_EACH(&dbenv->message_handlers, h, lnk) {
+                if ((rc = h->handle(dbenv, line + start_st)) == 0) {
+                    break;
+                }
+            }
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "bad stat command\n");
+                print_help_page(HELP_STAT);
+            }
         }
     } else if (tokcmp(tok, ltok, "on") == 0) {
         change_switch(1, line, lline, st);
@@ -2199,7 +1872,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             gbl_debug_until = 0;
             logmsg(LOGMSG_USER, "Debugging off.\n");
         } else {
-            gbl_debug_until = time_epoch() + nsecs;
+            gbl_debug_until = comdb2_time_epoch() + nsecs;
             logmsg(LOGMSG_USER, "set full debugging for %d seconds\n", nsecs);
         }
     } else if (tokcmp(tok, ltok, "ndebg") == 0) {
@@ -2247,29 +1920,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         if (rc != 0)
             return -1;
     } else if (tokcmp(tok, ltok, "bdbrem") == 0) {
-        int num;
-        char *host;
-        char *s;
-        const char *realhost;
-
-        tok = segtok(line, lline, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_USER, "Expected host name\n");
-            return -1;
-        }
-        host = tokdup(tok, ltok);
-
-        realhost = bdb_find_net_host(thedb->bdb_env, host);
-        if (realhost == NULL) {
-            logmsg(LOGMSG_ERROR, "WARNING: don't know about %s.\n", host);
-            free(host);
-            return -1;
-        }
-        free(host);
-
-        host = intern(realhost);
-        net_send_decom_all(thedb->handle_sibling, host);
-        osql_process_message_decom(host);
+        backend_cmd(dbenv, line, llinesav, stsav);
     } else if (tokcmp(tok, ltok, "electtime") == 0) {
         int num;
 
@@ -2317,7 +1968,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             return -1;
         }
         if (ltok >= MAXTABLELEN) {
-            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n", MAXTABLELEN);
+            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n",
+                   MAXTABLELEN - 1);
             return -1;
         }
         tokcpy(tok, ltok, table);
@@ -2438,7 +2090,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             return -1;
         }
         if (ltok >= MAXTABLELEN) {
-            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n", MAXTABLELEN);
+            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n",
+                   MAXTABLELEN - 1);
             return -1;
         }
 
@@ -2478,7 +2131,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
 
     } else if (tokcmp(tok, ltok, "delbthash") == 0) {
         char table[MAXTABLELEN];
-        int szkb;
         if (thedb->master != gbl_mynode) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
             return -1;
@@ -2490,7 +2142,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             return -1;
         }
         if (ltok >= MAXTABLELEN) {
-            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n", MAXTABLELEN);
+            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n",
+                   MAXTABLELEN - 1);
             return -1;
         }
 
@@ -2516,15 +2169,14 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
 
     } else if (tokcmp(tok, ltok, "bthashstat") == 0) {
         char table[MAXTABLELEN];
-        int szkb;
-
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR, "Expected db name\n");
             return -1;
         }
         if (ltok >= MAXTABLELEN) {
-            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n", MAXTABLELEN);
+            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n",
+                   MAXTABLELEN - 1);
             return -1;
         }
 
@@ -2533,55 +2185,38 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         stat_bt_hash_table(table);
     } else if (tokcmp(tok, ltok, "clearbthashstat") == 0) {
         char table[MAXTABLELEN];
-        int szkb;
-
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR, "Expected db name\n");
             return -1;
         }
         if (ltok >= MAXTABLELEN) {
-            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n", MAXTABLELEN);
+            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n",
+                   MAXTABLELEN - 1);
             return -1;
         }
 
         tokcpy(tok, ltok, table);
 
         stat_bt_hash_table_reset(table);
-    } else if (tokcmp(tok, ltok, "fastinit") == 0) {
-        char fname[128];
+    } else if (tokcmp(tok, ltok, "fastinit") == 0 ||
+               tokcmp(tok, ltok, "reinit") == 0) {
         char table[MAXTABLELEN];
         if (thedb->master != gbl_mynode) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
             return -1;
         }
-
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR, "Expected db name\n");
             return -1;
         }
         if (ltok >= MAXTABLELEN) {
-            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n", MAXTABLELEN);
+            logmsg(LOGMSG_ERROR, "Invalid table name: too long (max %d)\n",
+                   MAXTABLELEN - 1);
             return -1;
         }
-
         tokcpy(tok, ltok, table);
-
-        /*
-           tok=segtok(line,lline,&st,&ltok);
-           if (ltok == 0) {
-           printf("Expected schema file\n");
-           return -1;
-           }
-           if (ltok >= sizeof(fname) - 1) {
-           printf("Invalid file name: too long (max %d)\n", sizeof(fname) - 1);
-           return -1;
-           }
-           tokcpy(tok, ltok, fname);
-         */
-
-        /* and here we go... */
         rc = fastinit_table(dbenv, table);
         if (rc != 0) {
             if (rc == -99)
@@ -2624,7 +2259,9 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         MEMORY_SYNC;
     } else if (tokcmp(tok, ltok, "scforceabort") == 0) {
         logmsg(LOGMSG_USER, "Forcibly resetting schema change flat\n");
-        sc_set_running(0, 0, NULL, 0);
+        sc_set_running(NULL, 0, 0, NULL, 0);
+    } else if (tokcmp(tok, ltok, "get_db_dir")==0) {
+        logmsg(LOGMSG_USER, "Database Base Directory: %s\n", thedb->basedir);
     } else if (tokcmp(tok, ltok, "debug") == 0) {
         debug_trap(line + st, lline - st);
     }
@@ -2809,9 +2446,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
     }
 
     else if (tokcmp(tok, ltok, "llmeta") == 0) {
-        char table[MAXTABLELEN];
-        char user[17];
-        char password[17];
         int rc;
         int bdberr;
 
@@ -2837,31 +2471,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                tokcmp(tok, ltok, "clrpol") == 0 ||
                tokcmp(tok, ltok, "setclass") == 0) {
         process_allow_command(line + stsav, llinesav - stsav);
-    } else if (tokcmp(tok, ltok, "reinit") == 0) {
-        struct dbtable *db;
-        char dbname[100];
-
-        if (gbl_mynode != thedb->master) {
-            logmsg(LOGMSG_ERROR, "Please run reinit on master\n");
-            return -1;
-        }
-
-        tok = segtok(line, lline, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "usage: reinit tablename\n");
-            return -1;
-        }
-        tokcpy(tok, ltok, dbname);
-        db = get_dbtable_by_name(dbname);
-        if (db == NULL) {
-            logmsg(LOGMSG_ERROR, "No such db %s\n", dbname);
-        } else {
-            rc = reinit_db(db);
-            if (rc)
-                logmsg(LOGMSG_ERROR, "reinit %s failed rc %d\n", dbname, rc);
-            else
-                logmsg(LOGMSG_USER, "reinit %s ok\n", dbname);
-        }
     } else if (tokcmp(tok, ltok, "fastcount") == 0) {
         struct dbtable *db;
         char dbname[100];
@@ -2962,7 +2571,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         }
 
     } else if (tokcmp(tok, ltok, "osqlecho") == 0) {
-        int tonode;
         int stream;
         unsigned long long *sent;
         unsigned long long *replied;
@@ -3152,13 +2760,10 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                 logmsg(LOGMSG_ERROR, "Usage: sql cancelcnonce CNONCE.  You can get cnonce with "
                        "\"sql dump\".\n");
             else {
-                char * cnonce = strdup(tok);
+                char *cnonce = tokdup(tok, ltok);
                 cancel_sql_statement_with_cnonce(cnonce);
+                free(cnonce);
             }
-        } else if (tokcmp(tok, ltok, "rdtimeout") == 0) {
-            tok = segtok(line, lline, &st, &ltok);
-            gbl_sqlrdtimeoutms = toknum(tok, ltok);
-            logmsg(LOGMSG_USER, "SQL read timeout now set to %d ms\n", gbl_sqlrdtimeoutms);
         } else if (tokcmp(tok, ltok, "wrtimeout") == 0) {
             tok = segtok(line, lline, &st, &ltok);
             gbl_sqlwrtimeoutms = toknum(tok, ltok);
@@ -3248,7 +2853,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             headroom = toknum(tok, ltok);
             analyze_set_headroom(headroom);
         } else if (tokcmp(tok, ltok, "backout") == 0) {
-            int maxtd = 0;
             tok = segtok(line, lline, &st, &ltok);
             char * table = NULL;
             if (ltok > 0) 
@@ -3393,12 +2997,9 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
     } else if (tokcmp(tok, ltok, "help") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
-           logmsg(LOGMSG_USER, "%s\n", plink_constant(PLINK_TIME));
             print_help_page(HELP_MAIN);
         } else if (tokcmp(tok, ltok, "java") == 0) {
             print_help_page(HELP_JAVA);
-        } else if (tokcmp(tok, ltok, "queue") == 0) {
-            print_help_page(HELP_QUEUES);
         } else if (tokcmp(tok, ltok, "stat") == 0) {
             print_help_page(HELP_STAT);
         } else if (tokcmp(tok, ltok, "compr") == 0) {
@@ -3418,12 +3019,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         } else if (tokcmp(tok, ltok, "reql") == 0) {
             reqlog_help();
         }
-    } else if (tokcmp(tok, ltok, "use_bbipc_fastseed") == 0) {
-        gbl_use_bbipc_global_fastseed = 1;
-        logmsg(LOGMSG_USER, "Using bbipc_global_fastseed.\n");
-    } else if (tokcmp(tok, ltok, "dont_use_bbipc_fastseed") == 0) {
-        gbl_use_bbipc_global_fastseed = 0;
-        logmsg(LOGMSG_USER, "Disabling bbipc_global_fastseed.\n");
     } else if (tokcmp(tok, ltok, "appsockpool") == 0) {
         thdpool_process_message(gbl_appsock_thdpool, line, lline, st);
     } else if (tokcmp(tok, ltok, "sqlenginepool") == 0) {
@@ -3782,29 +3377,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                     &gbl_berk_track_cursors);
     } else if (tokcmp(tok, ltok, "querylimit") == 0) {
         query_limit_cmd(line, lline, st);
-    } else if (tokcmp(tok, ltok, "enable_good_sql_return_codes") == 0) {
-        if (!gbl_enable_good_sql_return_codes) {
-            gbl_enable_good_sql_return_codes = 1;
-            comdb2_shm_set_flag(thedb->dbnum, CMDB2_SHMFLG_GOODSQLCODES);
-            for (i = 0; i < thedb->num_dbs; i++) {
-                comdb2_shm_set_flag(thedb->dbs[i]->dbnum,
-                                    CMDB2_SHMFLG_GOODSQLCODES);
-            }
-            logmsg(LOGMSG_USER, "Enabled good sql return codes\n");
-
-        } else
-            logmsg(LOGMSG_USER, "Good sql return codes already enabled\n");
-    } else if (tokcmp(tok, ltok, "disable_good_sql_return_codes") == 0) {
-        if (gbl_enable_good_sql_return_codes) {
-            gbl_enable_good_sql_return_codes = 0;
-            comdb2_shm_clr_flag(thedb->dbnum, CMDB2_SHMFLG_GOODSQLCODES);
-            for (i = 0; i < thedb->num_dbs; i++) {
-                comdb2_shm_clr_flag(thedb->dbs[i]->dbnum,
-                                    CMDB2_SHMFLG_GOODSQLCODES);
-            }
-            logmsg(LOGMSG_USER, "Disabled good sql return codes\n");
-        } else
-            logmsg(LOGMSG_USER, "Good sql return codes already disabled\n");
     } else if (tokcmp(tok, ltok, "maxretries") == 0) {
         int n;
         tok = segtok(line, lline, &st, &ltok);
@@ -3975,10 +3547,12 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         char *dbname = tokdup(tok, ltok);
         struct dbtable *db = get_dbtable_by_name(dbname);
         if (db) {
-            logmsg(LOGMSG_USER, "table:%s  odh:%s  instant_schema_change:%s  "
-                                "inplace_updates:%s  version:%d\n",
+            logmsg(LOGMSG_USER,
+                   "table:%s  odh:%s  instant_schema_change:%s  "
+                   "inplace_updates:%s  version:%d\n",
                    db->tablename, YESNO(db->instant_schema_change),
-                   YESNO(db->inplace_updates), YESNO(db->odh), db->version);
+                   YESNO(db->inplace_updates), YESNO(db->odh),
+                   db->schema_version);
         } else {
             logmsg(LOGMSG_ERROR, "no such table: %s\n", dbname);
         }
@@ -4006,8 +3580,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         }
         struct dbtable *db = get_dbtable_by_name(dbname);
         if (db) {
-            db->version = ver;
-            bdb_set_csc2_version(db->handle, db->version);
+            db->schema_version = ver;
+            bdb_set_csc2_version(db->handle, db->schema_version);
         } else {
             logmsg(LOGMSG_ERROR, "no such table: %s\n", dbname);
         }
@@ -4049,31 +3623,9 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
     out:
         free(dbname);
         return 0;
-    } else if (tokcmp(tok, ltok, "testrep") == 0) {
-        int nitems;
-        int size;
-        tok = segtok(line, lline, &st, &ltok);
-        if (ltok == 0)
-            goto testrep_usage;
-        nitems = toknum(tok, ltok);
-        tok = segtok(line, lline, &st, &ltok);
-        if (ltok == 0)
-            goto testrep_usage;
-        size = toknum(tok, ltok);
-
-        testrep(nitems, size);
-        return 0;
-
-    testrep_usage:
-        logmsg(LOGMSG_ERROR, "Usage: testrep num_items item_size\n");
     } else if (tokcmp(tok, ltok, "random_lock_release_interval") == 0) {
         int tmp;
-        tok = segtok(line, sizeof(line), &st, &ltok);
-
-        if (ltok <= 0) {
-            logmsg(LOGMSG_ERROR, "Expected value for random_release_locks_interval\n");
-            return 0;
-        }
+        tok = segtok(line, lline, &st, &ltok);
 
         tmp = toknum(tok, ltok);
         if (tmp >= 0) {
@@ -4349,25 +3901,17 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         int i;
         int start, end;
 
-        pthread_mutex_init(&lk, NULL);
-        start = time_epochms();
+        Pthread_mutex_init(&lk, NULL);
+        start = comdb2_time_epochms();
         for (i = 0; i < 100000000; i++) {
-            pthread_mutex_lock(&lk);
-            pthread_mutex_unlock(&lk);
+            Pthread_mutex_lock(&lk);
+            Pthread_mutex_unlock(&lk);
         }
-        end = time_epochms();
+        end = comdb2_time_epochms();
 
         logmsg(LOGMSG_USER, "pthread took %dms (%d per second)\n", end - start,
                100000000 / (end - start) * 1000);
         bdb_lockspeed(dbenv->bdb_env);
-    } else if (tokcmp(tok, ltok, "blocksql_over_sockets") == 0) {
-        logmsg(LOGMSG_USER, "Enabled blocksql over sockets\n");
-        gbl_upgrade_blocksql_to_socksql = 1;
-        comdb2_shm_set_flag(thedb->dbnum, CMDB2_SHMFLG_SOSQL_DFLT);
-    } else if (tokcmp(tok, ltok, "noblocksql_over_sockets") == 0) {
-        logmsg(LOGMSG_USER, "Disabled blocksql over sockets\n");
-        gbl_upgrade_blocksql_to_socksql = 0;
-        comdb2_shm_clr_flag(thedb->dbnum, CMDB2_SHMFLG_SOSQL_DFLT);
     } else if (tokcmp(tok, ltok, "logevents") == 0) {
         extern void dump_log_event_counts(void);
         dump_log_event_counts();
@@ -4614,17 +4158,14 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         } else {
             logmsg(LOGMSG_USER, "DDLK generator turned off\n");
         }
-    } else if (tokcmp(tok, ltok, "locktest") == 0) {
-        pthread_mutex_lock(&testguard);
-        bdb_locktest(thedb->bdb_env);
-        pthread_mutex_unlock(&testguard);
     } else if (tokcmp(tok, ltok, "berkdelay") == 0) {
         uint32_t commit_delay_ms = 0;
         tok = segtok(line, lline, &st, &ltok);
         if (ltok > 0) {
             commit_delay_ms = toknum(tok, ltok);
-            pthread_mutex_lock(&testguard);
-            pthread_mutex_unlock(&testguard);
+            Pthread_mutex_lock(&testguard);
+            bdb_berktest_commit_delay(commit_delay_ms);
+            Pthread_mutex_unlock(&testguard);
         } else {
             logmsg(LOGMSG_USER, "berkdelay requires commit-delay-ms argument\n");
         }
@@ -4633,12 +4174,12 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         tok = segtok(line, lline, &st, &ltok);
         if (ltok > 0)
             txnsize = toknum(tok, ltok);
-        pthread_mutex_lock(&testguard);
+        Pthread_mutex_lock(&testguard);
         if (txnsize <= 0)
             bdb_berktest_multi(thedb->bdb_env);
         else
             bdb_berktest(thedb->bdb_env, txnsize);
-        pthread_mutex_unlock(&testguard);
+        Pthread_mutex_unlock(&testguard);
     } else if (tokcmp(tok, ltok, "dump_ltran_list") == 0) {
         bdb_dump_logical_tranlist(thedb->bdb_env, stderr);
     } else if (tokcmp(tok, ltok, "clear_rowlocks_stats") == 0) {
@@ -4727,9 +4268,9 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             logmsg(LOGMSG_ERROR, 
                    "commit_bench requires txn-count & iters-per-txn count\n");
         } else {
-            pthread_mutex_lock(&testguard);
+            Pthread_mutex_lock(&testguard);
             commit_bench(thedb->bdb_env, tcnt, cnt);
-            pthread_mutex_unlock(&testguard);
+            Pthread_mutex_unlock(&testguard);
         }
     } else if (tokcmp(tok, ltok, "rowlocks_bench") == 0) {
         int lcnt = 0;
@@ -4748,9 +4289,9 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         } else if (lcnt <= 0 || pcnt <= 0) {
             logmsg(LOGMSG_ERROR, "rowlocks_bench requires ltxn-count & ptxn-count\n");
         } else {
-            pthread_mutex_lock(&testguard);
+            Pthread_mutex_lock(&testguard);
             rowlocks_bench(thedb->bdb_env, lcnt, pcnt);
-            pthread_mutex_unlock(&testguard);
+            Pthread_mutex_unlock(&testguard);
         }
     } else if (tokcmp(tok, ltok, "rowlocks_lock1_bench") == 0) {
         int lcnt = 0;
@@ -4771,9 +4312,9 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         } else if (lcnt <= 0 || pcnt <= 0) {
             logmsg(LOGMSG_ERROR, "rowlocks_lock1_bench requires ltxn-count & ptxn-count\n");
         } else {
-            pthread_mutex_lock(&testguard);
+            Pthread_mutex_lock(&testguard);
             rowlocks_lock1_bench(thedb->bdb_env, lcnt, pcnt);
-            pthread_mutex_unlock(&testguard);
+            Pthread_mutex_unlock(&testguard);
         }
     }
 
@@ -4797,9 +4338,9 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             logmsg(LOGMSG_ERROR, 
                    "rowlocks_lock2_bench requires ltxn-count & ptxn-count\n");
         } else {
-            pthread_mutex_lock(&testguard);
+            Pthread_mutex_lock(&testguard);
             rowlocks_lock2_bench(thedb->bdb_env, lcnt, pcnt);
-            pthread_mutex_unlock(&testguard);
+            Pthread_mutex_unlock(&testguard);
         }
     } else if (tokcmp(tok, ltok, "deadlock_policy_override") == 0) {
         tok = segtok(line, lline, &st, &ltok);
@@ -4823,6 +4364,14 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             logmsg(LOGMSG_ERROR, "11    - DB_LOCK_YOUNGEST_EVER\n");
             logmsg(LOGMSG_ERROR, "12    - DB_LOCK_MINWRITE_EVER\n");
         }
+    } else if (tokcmp(tok, ltok, "dump_mintruncate") == 0) {
+        bdb_dump_mintruncate_list(thedb->bdb_env);
+    } else if (tokcmp(tok, ltok, "clear_mintruncate") == 0) {
+        bdb_clear_mintruncate_list(thedb->bdb_env);
+    } else if (tokcmp(tok, ltok, "build_mintruncate") == 0) {
+        bdb_build_mintruncate_list(thedb->bdb_env);
+    } else if (tokcmp(tok, ltok, "print_mintruncate") == 0) {
+        bdb_print_mintruncate_min(thedb->bdb_env);
     } else if (tokcmp(tok, ltok, "detect") == 0) {
         bdb_detect(thedb->bdb_env);
     } else if (tokcmp(tok, ltok, "lsum") == 0) {
@@ -4952,12 +4501,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         if (ltok == 0)
             return 0;
         if (tokcmp(tok, ltok, "dump") == 0) {
-            int nstripes =
-                bdb_attr_get(thedb->bdb_attr, BDB_ATTR_PRIVATE_BLKSEQ_STRIPES);
-            for (int stripe = 0; stripe < nstripes; stripe++) {
-               logmsg(LOGMSG_USER, "stripe %d\n", stripe);
-                bdb_blkseq_dumpall(thedb->bdb_env, stripe);
-            }
+            bdb_blkseq_dumpall(thedb->bdb_env);
         } else if (tokcmp(tok, ltok, "logdel") == 0) {
             bdb_blkseq_dumplogs(thedb->bdb_env);
         }
@@ -4999,8 +4543,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             tok = segtok(line, lline, &st, &ltok);
             nicerc = comdb2ma_nice((ltok <= 0) ? 1 : toknum(tok, ltok));
             if (nicerc != 0) {
-                fprintf(stderr, "Failed to change mem niceness: rc = %d.\n",
-                        nicerc);
+                logmsg(LOGMSG_ERROR,
+                       "Failed to change mem niceness: rc = %d.\n", nicerc);
                 return 1;
             }
         } else if (tokcmp(tok, ltok, "release") == 0) {
@@ -5010,6 +4554,51 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             if (ltok != 0)
                 gbl_memstat_freq = toknum(tok, ltok);
            logmsg(LOGMSG_USER, "auto report memstat every %d seconds\n", gbl_memstat_freq);
+#ifndef COMDB2MA_OMIT_DEBUG
+        } else if (tokcmp(tok, ltok, "debug") == 0) {
+            tok = segtok(line, lline, &st, &ltok);
+            if (ltok <= 0) {
+                comdb2ma_debug_show_config();
+            } else if (tokcmp(tok, ltok, "dump") == 0) {
+                char *name;
+                int unsafe = 0;
+                tok = segtok(line, lline, &st, &ltok);
+                if (ltok <= 0) {
+                    logmsg(LOGMSG_ERROR, "Requires an argument.\n");
+                    return 1;
+                }
+                name = tokdup(tok, ltok);
+                tok = segtok(line, lline, &st, &ltok);
+                if (ltok > 0)
+                    unsafe = !!toknum(tok, ltok);
+                comdb2ma_debug_dump(name, unsafe);
+                free(name);
+            } else if (tokcmp(tok, ltok, "on") == 0) {
+                char *name;
+                tok = segtok(line, lline, &st, &ltok);
+                if (ltok <= 0) {
+                    logmsg(LOGMSG_ERROR, "Requires an argument.\n");
+                    return 1;
+                }
+                name = tokdup(tok, ltok);
+                comdb2ma_debug_on(name);
+                free(name);
+            } else if (tokcmp(tok, ltok, "off") == 0) {
+                char *name;
+                tok = segtok(line, lline, &st, &ltok);
+                if (ltok <= 0) {
+                    logmsg(LOGMSG_ERROR, "Requires an argument.\n");
+                    return 1;
+                }
+                name = tokdup(tok, ltok);
+                comdb2ma_debug_off(name);
+                free(name);
+            } else if (tokcmp(tok, ltok, "start") == 0) {
+                comdb2ma_debug_start();
+            } else if (tokcmp(tok, ltok, "stop") == 0) {
+                comdb2ma_debug_stop();
+            }
+#endif
         } else {
             while (ltok != 0) {
                 if (tokcmp(tok, ltok, "verbose") == 0)
@@ -5103,9 +4692,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             free(tblname);
         } else {
             char *str = NULL;
-            int lrc;
-
-            lrc = timepart_serialize(thedb->timepart_views, &str, 1);
+            timepart_serialize(thedb->timepart_views, &str, 1);
 
             if (str) {
                 logmsg(LOGMSG_USER, "%s\n", str);
@@ -5141,23 +4728,63 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         }
     } else if (tokcmp(tok, ltok, "logmsg") == 0) {
         logmsg_process_message(line, lline);
-    } else {
-        comdb2_tunable_err rc;
+    } else if (tokcmp(tok, ltok, "test") == 0) { //@send test <keyword>
+        tok = segtok(line, lline, &st, &ltok);
+        if (tokcmp(tok, ltok, "bdb_lock") == 0) { // was locktest
+            Pthread_mutex_lock(&testguard);
+            bdb_locktest(thedb->bdb_env);
+            Pthread_mutex_unlock(&testguard);
+        } else if (tokcmp(tok, ltok, "bad_osql") == 0) {
+            SBUF2 *sb = sbuf2open(fileno(stdout), 0);
+            osql_send_test(sb);
+        } else if (tokcmp(tok, ltok, "rep") == 0) { // was testrep
+            int nitems;
+            int size;
+            tok = segtok(line, lline, &st, &ltok);
+            if (ltok == 0)
+                goto testrep_usage;
+            nitems = toknum(tok, ltok);
+            tok = segtok(line, lline, &st, &ltok);
+            if (ltok == 0)
+                goto testrep_usage;
+            size = toknum(tok, ltok);
 
-        /*
-          As we are here, it could be a dynamic tunable. Let's try looking
-          it up in the global tunables' list and updating it, if found.
-        */
-        rc = handle_lrl_tunable(tok, ltok, line + st, lline - st, DYNAMIC);
-        switch (rc) {
-        case TUNABLE_ERR_OK: break;
-        case TUNABLE_ERR_INVALID_TUNABLE:
-            logmsg(LOGMSG_ERROR, "Unknown command <%.*s>\n", ltok, tok);
-            break;
-        default:
-            logmsg(LOGMSG_ERROR, "%s", tunable_error(rc));
+            testrep(nitems, size);
+            return 0;
+
+        testrep_usage:
+            logmsg(LOGMSG_ERROR, "Usage: testrep num_items item_size\n");
         }
-        return rc;
+    } else {
+        // see if any plugins know how to handle this
+        struct message_handler *h;
+        rc = 1;
+        LISTC_FOR_EACH(&dbenv->message_handlers, h, lnk)
+        {
+            rc = h->handle(dbenv, line + start_st);
+            if (rc == 0)
+                break;
+        }
+
+        if (rc) {
+            /*
+              Finally check if this is one of the dynamic tunables. Let's try
+              looking it up in the global tunables' list and updating it, if
+              found.
+            */
+            rc = handle_lrl_tunable(tok, ltok, line + st, lline - st, DYNAMIC);
+            switch (rc) {
+            case TUNABLE_ERR_OK:
+                return 0;
+            case TUNABLE_ERR_INVALID_TUNABLE:
+                logmsg(LOGMSG_ERROR, "Unknown command <%.*s>\n", ltok, tok);
+                break;
+            default:
+                logmsg(LOGMSG_ERROR, "%s", tunable_error(rc));
+                break;
+            }
+            return -1;
+        }
     }
     return 0;
 }

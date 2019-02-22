@@ -19,6 +19,12 @@ static const char revid[] = "$Id: mp_fget.c,v 11.81 2003/09/25 02:15:16 sue Exp 
 
 #include <string.h>
 #include <pthread.h>
+
+#ifdef __sun
+   /* for PTHREAD_STACK_MIN on Solaris */
+#  define __EXTENSIONS__
+#endif
+
 #endif
 
 #include "db_int.h"
@@ -31,6 +37,8 @@ static const char revid[] = "$Id: mp_fget.c,v 11.81 2003/09/25 02:15:16 sue Exp 
 #include "dbinc/txn.h"
 
 #include "logmsg.h"
+#include <locks_wrap.h>
+#include "comdb2_atomic.h"
 
 
 struct bdb_state_tag;
@@ -223,9 +231,8 @@ __memp_fget_internal(dbmfp, pgnoaddr, flags, addrp, did_io)
 	u_int32_t n_cache, st_hsearch, alloc_flags;
 	int b_incr, extending, first, ret, is_recovery_page;
 	db_pgno_t falloc_off, falloc_len;
-	DB_TXN *thrtxn;
 
-	uint64_t start_time_us;
+	uint64_t start_time_us = 0;
 
 	if (memp_fget_callback)
 		memp_fget_callback();
@@ -653,8 +660,8 @@ alloc:		/*
 
 		/* If we extended the file, make sure the page is never lost. */
 		if (extending) {
-			atomic_inc(env, &hp->hash_page_dirty);
-			atomic_inc(env, &c_mp->stat.st_page_dirty);
+			ATOMIC_ADD(hp->hash_page_dirty, 1);
+			ATOMIC_ADD(c_mp->stat.st_page_dirty, 1);
 			F_SET(bhp, BH_DIRTY | BH_DIRTY_CREATE);
 			if (dbenv->tx_perfect_ckp) {
 				/* Set page first-dirty-LSN to not logged */
@@ -878,7 +885,7 @@ __memp_read_recovery_pages(dbmfp)
 	PAGE *pagep;
 	int ret, free_buf, ftype, i;
 	void *fpage;
-	size_t len, nr, pagesize;
+	size_t nr, pagesize;
 	db_pgno_t inpg;
 
 	dbenv = dbmfp->dbenv;
@@ -922,17 +929,17 @@ __memp_read_recovery_pages(dbmfp)
 	/* Scan in each of the recovery pages. */
 	for (i = 0; i <= dbenv->mp_recovery_pages; i++) {
 		/* Lock out other threads */
-		pthread_mutex_lock(&dbmfp->recp_lk_array[i]);
+		Pthread_mutex_lock(&dbmfp->recp_lk_array[i]);
 
 		/* Read page. */
 		if ((ret = __os_io(dbenv, DB_IO_READ,
 			    dbmfp->recp, i, pagesize,
 			    (u_int8_t *)pagep, &nr)) != 0) {
-			pthread_mutex_unlock(&dbmfp->recp_lk_array[i]);
+			Pthread_mutex_unlock(&dbmfp->recp_lk_array[i]);
 			break;
 		}
 
-		pthread_mutex_unlock(&dbmfp->recp_lk_array[i]);
+		Pthread_mutex_unlock(&dbmfp->recp_lk_array[i]);
 
 		/* Verify length. */
 		if (nr < pagesize)
@@ -1002,7 +1009,6 @@ __memp_send_sparse_page_thread(_)
 {
 	DB_ENV *dbenv;
 	int32_t fileid;
-	DB *file_dbp;
 	DBT dbt;
 	db_pgno_t pgno;
 	bdb_state_type *bdb_state;
@@ -1013,19 +1019,19 @@ __memp_send_sparse_page_thread(_)
 	ii = sizeof(spgs.list) / sizeof(spgs.list[0]) - 1;
 
 	while (1) {
-		if (pthread_mutex_lock(&spgs.lock) == 0) {
+		{
+			Pthread_mutex_lock(&spgs.lock);
 			while (spgs.list[ii].sparseness == 0) {
 				/* no entry, cond wait */
 				spgs.wait = 1;
-				pthread_cond_wait(&spgs.cond, &spgs.lock);
+				Pthread_cond_wait(&spgs.cond, &spgs.lock);
 			}
 
 			spgs.wait = 0;
 			ent = spgs.list[ii];
 			memmove(&spgs.list[1], spgs.list, sizeof(struct spg) * ii);
 			memset(spgs.list, 0, sizeof(struct spg));
-
-			pthread_mutex_unlock(&spgs.lock);
+			Pthread_mutex_unlock(&spgs.lock);
 		}
 
 		dbenv = ent.dbenv;
@@ -1097,9 +1103,9 @@ __memp_add_sparse_page(dbenv, id, ufid, pgno, sparseness)
 	spgs.list[ii] = ent;
 
 	if (spgs.wait)
-		pthread_cond_signal(&spgs.cond);
+		Pthread_cond_signal(&spgs.cond);
 
-	pthread_mutex_unlock(&spgs.lock);
+	Pthread_mutex_unlock(&spgs.lock);
 }
 
 /*
@@ -1112,17 +1118,11 @@ __memp_init_pgcompact_routines(void)
 	if (gbl_pg_compact_thresh <= 0)
 		return;
 
-	if (pthread_attr_init(&spgs.attrs)) {
-		logmsgperror("pthread_attr_init");
-		abort();
-	}
+	Pthread_attr_init(&spgs.attrs);
 
 #ifdef PTHREAD_STACK_MIN
 	/* ~128kB stack size */
-	if (pthread_attr_setstacksize(&spgs.attrs, (PTHREAD_STACK_MIN + 0x20000)) != 0) {
-		logmsgperror("pthread_attr_setstacksize");
-		abort();
-	}
+	Pthread_attr_setstacksize(&spgs.attrs, (PTHREAD_STACK_MIN + 0x20000));
 #endif
 
 	if (pthread_attr_setdetachstate(&spgs.attrs, PTHREAD_CREATE_DETACHED) != 0) {
@@ -1135,10 +1135,8 @@ __memp_init_pgcompact_routines(void)
 		abort();
 	}
 
-	if (pthread_key_create(&no_pgcompact, NULL) != 0) {
-		logmsgperror("pthread_key_create");
-		abort();
-	}
+	Pthread_key_create(&no_pgcompact, NULL);
+        Pthread_attr_destroy(&spgs.attrs);
 }
 /* } page compact runtines END */
 

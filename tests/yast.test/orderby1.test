@@ -77,9 +77,9 @@ do_test 1.2a {
 #
 do_eqp_test 1.2b {
   SELECT name FROM album JOIN track USING (aid) ORDER BY +title, +tn;
-} {0 0 1 {SCAN TABLE track (1048576 rows)}
-   0 1 0 {SEARCH TABLE album USING INDEX $PRIMARY_3FC26355 (aid=?) (~1 row)}
-   0 0 0 {USE TEMP B-TREE FOR ORDER BY}}
+} {8 0 0 {SCAN TABLE track (~1048576 rows)}
+   10 0 0 {SEARCH TABLE album USING INDEX $PRIMARY_3FC26355 (aid=?) (~1 row)}
+   27 0 0 {USE TEMP B-TREE FOR ORDER BY}}
 #{/ORDER BY/}   ;# separate sorting pass due to "+" on ORDER BY terms
 
 # The same query with ORDER BY optimizations turned off via built-in test.
@@ -97,7 +97,7 @@ do_test 1.3b {
     EXPLAIN QUERY PLAN
     SELECT name FROM album JOIN track USING (aid) ORDER BY title, tn
   }
-} {0 0 1 {SCAN TABLE track (1048576 rows)} 0 1 0 {'SEARCH TABLE album USING INDEX $PRIMARY_3FC26355 (aid} 0 0 0 {USE TEMP B-TREE FOR ORDER BY}}
+} {0 0 1 {SCAN TABLE track (~1048576 rows)} 0 1 0 {'SEARCH TABLE album USING INDEX $PRIMARY_3FC26355 (aid} 0 0 0 {USE TEMP B-TREE FOR ORDER BY}}
 #{/ORDER BY/}   ;# separate sorting pass due to disabled optimization
 optimization_control db all 1
 db cache flush
@@ -211,7 +211,7 @@ do_test 2.1b {
     EXPLAIN QUERY PLAN
     SELECT name FROM album JOIN track USING (aid) ORDER BY title, tn
   }
-} {0 0 1 {SCAN TABLE track USING INDEX $SQLITE_AUTOINDEX_TRACK_1_4AAADA26 (1048576 rows)} 0 1 0 {SEARCH TABLE album USING INDEX $PRIMARY_3FC26355 (aid=?) (~1 row)} 0 0 0 {USE TEMP B-TREE FOR ORDER BY}}
+} {10 0 0 {SCAN TABLE track USING INDEX $SQLITE_AUTOINDEX_TRACK_1_4AAADA26 (~1048576 rows)} 13 0 0 {SEARCH TABLE album USING INDEX $PRIMARY_3FC26355 (aid=?) (~1 row)} 31 0 0 {USE TEMP B-TREE FOR ORDER BY}}
 #{/ORDER BY/}  ;# ORDER BY required because of missing aid term in ORDER BY
 
 do_test 2.1c {
@@ -224,7 +224,7 @@ do_test 2.1d {
     EXPLAIN QUERY PLAN
     SELECT name FROM album JOIN track USING (aid) ORDER BY title, aid, tn
   }
-} {0 0 1 {SCAN TABLE track USING INDEX $SQLITE_AUTOINDEX_TRACK_1_4AAADA26 (1048576 rows)} 0 1 0 {SEARCH TABLE album USING INDEX $PRIMARY_3FC26355 (aid=?) (~1 row)} 0 0 0 {USE TEMP B-TREE FOR ORDER BY}}
+} {10 0 0 {SCAN TABLE track USING INDEX $SQLITE_AUTOINDEX_TRACK_1_4AAADA26 (~1048576 rows)} 13 0 0 {SEARCH TABLE album USING INDEX $PRIMARY_3FC26355 (aid=?) (~1 row)} 32 0 0 {USE TEMP B-TREE FOR ORDER BY}}
 #{/ORDER BY/}  ;# ORDER BY required in this case
 
 # The same query with ORDER BY clause optimization disabled via + operators
@@ -243,7 +243,7 @@ do_test 2.2b {
     EXPLAIN QUERY PLAN
     SELECT name FROM album JOIN track USING (aid) ORDER BY +title, +tn
   }
-} {0 0 1 {SCAN TABLE track (1048576 rows)} 0 1 0 {SEARCH TABLE album USING INDEX $PRIMARY_3FC26355 (aid=?) (~1 row)} 0 0 0 {USE TEMP B-TREE FOR ORDER BY}}
+} {8 0 0 {SCAN TABLE track (~1048576 rows)} 10 0 0 {SEARCH TABLE album USING INDEX $PRIMARY_3FC26355 (aid=?) (~1 row)} 27 0 0 {USE TEMP B-TREE FOR ORDER BY}}
 #{/ORDER BY/}   ;# separate sorting pass due to "+" on ORDER BY terms
 
 # The same query with ORDER BY optimizations turned off via built-in test.
@@ -284,7 +284,7 @@ do_test 2.4c {
     EXPLAIN QUERY PLAN
     SELECT name FROM album JOIN track USING (aid) ORDER BY title DESC, tn
   }
-} {0 0 1 {SCAN TABLE track USING INDEX $SQLITE_AUTOINDEX_TRACK_1_4AAADA26 (1048576 rows)} 0 1 0 {SEARCH TABLE album USING INDEX $PRIMARY_3FC26355 (aid=?) (~1 row)} 0 0 0 {USE TEMP B-TREE FOR ORDER BY}}
+} {10 0 0 {SCAN TABLE track USING INDEX $SQLITE_AUTOINDEX_TRACK_1_4AAADA26 (~1048576 rows)} 13 0 0 {SEARCH TABLE album USING INDEX $PRIMARY_3FC26355 (aid=?) (~1 row)} 31 0 0 {USE TEMP B-TREE FOR ORDER BY}}
 #{/ORDER BY/}  ;# separate sorting pass due to mixed DESC/ASC
 
 
@@ -303,7 +303,7 @@ do_test 2.5c {
     EXPLAIN QUERY PLAN
     SELECT name FROM album JOIN track USING (aid) ORDER BY title, tn DESC
   }
-} {0 0 1 {SCAN TABLE track USING INDEX $SQLITE_AUTOINDEX_TRACK_1_4AAADA26 (1048576 rows)} 0 1 0 {SEARCH TABLE album USING INDEX $PRIMARY_3FC26355 (aid=?) (~1 row)} 0 0 0 {USE TEMP B-TREE FOR ORDER BY}}
+} {10 0 0 {SCAN TABLE track USING INDEX $SQLITE_AUTOINDEX_TRACK_1_4AAADA26 (~1048576 rows)} 13 0 0 {SEARCH TABLE album USING INDEX $PRIMARY_3FC26355 (aid=?) (~1 row)} 31 0 0 {USE TEMP B-TREE FOR ORDER BY}}
 #{/ORDER BY/}  ;# separate sorting pass due to mixed ASC/DESC
 
 do_test 2.6a {
@@ -321,7 +321,7 @@ do_test 2.6c {
     EXPLAIN QUERY PLAN
     SELECT name FROM album JOIN track USING (aid) ORDER BY title DESC, tn DESC
   }
-} {0 0 1 {SCAN TABLE track USING INDEX $SQLITE_AUTOINDEX_TRACK_1_4AAADA26 (1048576 rows)} 0 1 0 {SEARCH TABLE album USING INDEX $PRIMARY_3FC26355 (aid=?) (~1 row)} 0 0 0 {USE TEMP B-TREE FOR ORDER BY}}
+} {10 0 0 {SCAN TABLE track USING INDEX $SQLITE_AUTOINDEX_TRACK_1_4AAADA26 (~1048576 rows)} 13 0 0 {SEARCH TABLE album USING INDEX $PRIMARY_3FC26355 (aid=?) (~1 row)} 31 0 0 {USE TEMP B-TREE FOR ORDER BY}}
 #{/ORDER BY/}  ;# ORDER BY required
 
 
@@ -395,7 +395,7 @@ do_test 3.2b {
     EXPLAIN QUERY PLAN
     SELECT name FROM album JOIN track USING (aid) ORDER BY +title, +tn DESC
   }
-} {0 0 1 {SCAN TABLE track (1048576 rows)} 0 1 0 {SEARCH TABLE album USING INDEX $PRIMARY_3FC26355 (aid=?) (~1 row)} 0 0 0 {USE TEMP B-TREE FOR ORDER BY}}
+} {8 0 0 {SCAN TABLE track (~1048576 rows)} 10 0 0 {SEARCH TABLE album USING INDEX $PRIMARY_3FC26355 (aid=?) (~1 row)} 27 0 0 {USE TEMP B-TREE FOR ORDER BY}}
 #{/ORDER BY/}   ;# separate sorting pass due to "+" on ORDER BY terms
 
 # The same query with ORDER BY optimizations turned off via built-in test.
@@ -504,10 +504,10 @@ do_test 4.0 {
 #
 do_execsql_test 5.0 {
   EXPLAIN QUERY PLAN SELECT 5 ORDER BY 1
-} {}
+} {2 0 0 {SCAN CONSTANT ROW}}
 do_execsql_test 5.1 {
   EXPLAIN QUERY PLAN SELECT 5 UNION ALL SELECT 3 ORDER BY 1
-} {0 0 0 {COMPOUND SUBQUERIES 1 AND 2 (UNION ALL)}}
+} {1 0 0 {MERGE (UNION ALL)} 3 1 0 LEFT 5 3 0 {SCAN CONSTANT ROW} 10 1 0 RIGHT 12 10 0 {SCAN CONSTANT ROW}}
 #{~/B-TREE/}
 do_execsql_test 5.2 {
   SELECT 5 UNION ALL SELECT 3 ORDER BY 1
@@ -546,7 +546,7 @@ do_execsql_test 7.0 {
   EXPLAIN QUERY PLAN
   SELECT * FROM t7 WHERE a=1 ORDER BY rowid;
   #SELECT * FROM t7 WHERE a=?1 ORDER BY rowid;
-} {0 0 0 {SEARCH TABLE t7 USING INDEX $T7A_CC7FA549 (a=?) (10 rows)}}
+} {6 0 0 {SEARCH TABLE t7 USING INDEX $T7A_CC7FA549 (a=?) (~10 rows)}}
 #{~/ORDER BY/}
 
 #-------------------------------------------------------------------------
@@ -562,8 +562,8 @@ do_execsql_test 8.0 {
 
 do_eqp_test 8.1 {
   SELECT * FROM t1 ORDER BY a, b;
-} {0 0 0 {SCAN TABLE t1 USING INDEX $I1_433F50E9 (1048576 rows)}
-   0 0 0 {USE TEMP B-TREE FOR RIGHT PART OF ORDER BY}
+} {6 0 0 {SCAN TABLE t1 USING INDEX $I1_433F50E9 (~1048576 rows)}
+   23 0 0 {USE TEMP B-TREE FOR RIGHT PART OF ORDER BY}
 }
 #{
 #  0 0 0 {SCAN TABLE t1 USING INDEX i1} 

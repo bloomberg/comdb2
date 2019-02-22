@@ -1,0 +1,169 @@
+#!/usr/bin/env bash
+
+# Tests max_wr_rows_per_txn tunable
+debug=1
+
+[[ "$debug" == 1 ]] && set -x
+db=$1
+
+if [[ -z "$stage" ]]; then
+    echo "Setting stage to 'default' (set 'stage' var to override)."
+    stage="default"
+fi
+
+if [[ -n "$CLUSTER" ]]; then
+    echo "This test only works in NON-CLUSTERED mode."
+    exit 1
+fi
+
+
+function createtables
+{
+    [[ "$debug" == 1 ]] && set -x
+    cdb2sql ${CDB2_OPTIONS} $db $stage "create table t1 {schema{int id} keys{ \"id\" = id }}" >/dev/null 2>&1
+    cdb2sql ${CDB2_OPTIONS} $db $stage "create table t2 {schema{int id} keys{ dup \"id\" = id } constraints { \"id\" -> \"t1\":\"id\" on delete cascade on update cascade }}" >/dev/null 2>&1
+}
+
+function insert_records
+{
+    [[ "$debug" == 1 ]] && set -x
+    local val=$1
+    local cnt=$2
+    local i=0
+
+    cdb2sql ${CDB2_OPTIONS} $db $stage "insert into t1 (id) values ($val)" >/dev/null 2>&1
+    while [[ $i -lt $cnt ]] ; do
+        cdb2sql ${CDB2_OPTIONS} $db $stage "insert into t2 (id) values ($val)" >/dev/null 2>&1
+        let i=i+1
+    done
+}
+
+function runtest
+{
+    [[ "$debug" == 1 ]] && set -x
+
+    # Load table
+    insert_records 1 50
+    insert_records 2 100
+    insert_records 4 200
+
+    # Base-case: I should be able to update 4 to 5 .. after this i should see 200 5's in t2
+    cdb2sql ${CDB2_OPTIONS} $db $stage "update t1 set id = 5 where id = 4" >/dev/null 2>&1
+    x=$(cdb2sql ${CDB2_OPTIONS} $db $stage "select count(*) from t2 where id = 5" 2>&1)
+
+    if [[ "$x" != "(count(*)=200)" ]]; then 
+        echo "Update of 4 to 5 didn't cascade!"
+        exit 1
+    fi
+
+    # This should fail
+    cdb2sql ${CDB2_OPTIONS} $db $stage "PUT TUNABLE max_wr_rows_per_txn 10"
+    x=$(cdb2sql ${CDB2_OPTIONS} $db $stage "delete from t1 where id = 1" 2>&1)
+    if [[ "$x" != *"cascaded delete exceeds max writes"* ]]; then
+        echo "Tunable of 10 failed to prevent delete cascade for 1!"
+        exit 1
+    fi
+
+    # This should also fail
+    cdb2sql ${CDB2_OPTIONS} $db $stage "PUT TUNABLE max_wr_rows_per_txn 50"
+    x=$(cdb2sql ${CDB2_OPTIONS} $db $stage "delete from t1 where id = 1" 2>&1)
+    if [[ "$x" != *"cascaded delete exceeds max writes"* ]]; then
+        echo "Tunable of 50 failed to prevent delete cascade for 1!"
+        exit 1
+    fi
+
+    # This should succeed
+    cdb2sql ${CDB2_OPTIONS} $db $stage "PUT TUNABLE max_wr_rows_per_txn 51"
+    x=$(cdb2sql ${CDB2_OPTIONS} $db $stage "delete from t1 where id = 1" 2>&1)
+    if [[ "$x" != "(rows deleted=1)" ]]; then
+        echo "Tunable of 51 failed to allow delete cascade for 1!"
+        exit 1
+    fi
+
+    # This should fail
+    cdb2sql ${CDB2_OPTIONS} $db $stage "PUT TUNABLE max_wr_rows_per_txn 100"
+    x=$(cdb2sql ${CDB2_OPTIONS} $db $stage "update t1 set id = 1 where id = 2" 2>&1)
+    if [[ "$x" != *"cascaded update exceeds max writes"* ]]; then
+        echo "Tunable of 100 failed to prevent update cascade from 2 to 1!"
+        exit 1
+    fi
+
+    # This should succeed
+    cdb2sql ${CDB2_OPTIONS} $db $stage "PUT TUNABLE max_wr_rows_per_txn 101"
+    x=$(cdb2sql ${CDB2_OPTIONS} $db $stage "update t1 set id = 1 where id = 2" 2>&1)
+    if [[ "$x" != "(rows updated=1)" ]]; then
+        echo "Tunable of 100 failed to allow update cascade from 2 to 1!"
+        exit 1
+    fi
+
+    # Generate a file that will do 100 inserts of 2 into t2 in a single txn
+    fl=insert_sql.$$.txt
+    echo "BEGIN" > $fl
+    i=0
+    while [[ $i -lt 100 ]] ; do
+        echo "INSERT INTO t2 (id) values (2)" >> $fl
+        let i=i+1
+    done
+    echo "COMMIT" >> $fl
+
+    # Try to run this transaction with only 99 wr_rows_per txn allowed: it should fail
+    cdb2sql ${CDB2_OPTIONS} $db $stage "PUT TUNABLE max_wr_rows_per_txn 99"
+    x=$(cdb2sql ${CDB2_OPTIONS} $db $stage - < $fl 2>&1)
+
+    if [[ "$x" != *"208"* ]]; then
+        rm $fl
+        echo "Tunable of 99 failed to prevent insert of 100 records!"
+        exit 1
+    fi
+
+    # Try the transaction again allowing 100 writes per txn: this should succeed
+    cdb2sql ${CDB2_OPTIONS} $db $stage "PUT TUNABLE max_wr_rows_per_txn 100"
+    x=$(cdb2sql ${CDB2_OPTIONS} $db $stage - < $fl 2>&1)
+    if [[ "$x" != *"rc 0"* ]]; then
+        rm $fl
+        echo "Tunable of 100 failed to allow insert of 100 records!"
+        exit 1
+    fi
+
+    rm $fl
+
+    # Create foreign-key 
+    cdb2sql ${CDB2_OPTIONS} $db $stage "INSERT INTO t1(id) values (100)" >/dev/null 2>&1
+
+    # Try to update these (& fail)
+    cdb2sql ${CDB2_OPTIONS} $db $stage "PUT TUNABLE max_wr_rows_per_txn 99"
+    x=$(cdb2sql ${CDB2_OPTIONS} $db $stage "update t2 set id = 100 where id = 1" 2>&1)
+    if [[ "$x" != *"208"* ]]; then
+        echo "Tunable of 99 failed to prevent update of 100 records!"
+        exit 1
+    fi
+
+    # Reset tunable to 100 & update again
+    cdb2sql ${CDB2_OPTIONS} $db $stage "PUT TUNABLE max_wr_rows_per_txn 100"
+    x=$(cdb2sql ${CDB2_OPTIONS} $db $stage "update t2 set id = 100 where id = 1" 2>&1)
+    if [[ "$x" != "(rows updated=100)" ]]; then
+        echo "Tunable of 100 failed to allow update of 100 records!"
+        exit 1
+    fi
+
+    # Set tunable to 99, attempt to delete (and fail)
+    cdb2sql ${CDB2_OPTIONS} $db $stage "PUT TUNABLE max_wr_rows_per_txn 99"
+    x=$(cdb2sql ${CDB2_OPTIONS} $db $stage "delete from t2 where id = 100" 2>&1)
+    if [[ "$x" != *"208"* ]]; then
+        echo "Tunable of 99 failed to prevent delete of 100 records!"
+        exit 1
+    fi
+
+    cdb2sql ${CDB2_OPTIONS} $db $stage "PUT TUNABLE max_wr_rows_per_txn 100"
+    x=$(cdb2sql ${CDB2_OPTIONS} $db $stage "delete from t2 where id = 100" 2>&1)
+    if [[ "$x" != "(rows deleted=100)" ]]; then
+        echo "Tunable of 100 failed to allow delete of 100 records!"
+        exit 1
+    fi
+}
+
+createtables
+runtest
+
+echo "Success"
+exit 0

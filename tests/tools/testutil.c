@@ -76,7 +76,7 @@ char *master(const char *dbname, const char *cltype)
         if (strstr(s, "MASTER")) {
             while (*s && isspace(*s))
                 s++;
-            char *endptr;
+            char *endptr = NULL;
             f = m = strdup(s);
             m = strtok_r(m, ":", &endptr);
             if (m) {

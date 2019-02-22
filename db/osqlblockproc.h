@@ -73,6 +73,11 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess);
 int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err);
 
 /**
+ * Apply all schema changes
+ */
+int osql_bplog_schemachange(struct ireq *iq);
+
+/**
  * Apply all the bplog updates
  */
 int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,
@@ -84,7 +89,8 @@ int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,
  * process, call this function only after reqlog_end_request is called
  * (sltdbt.c)
  */
-int osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func, const char *callfunc, int line);
+void osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func,
+                     const char *callfunc, int line);
 
 /**
  * Prints summary for the current osql bp transaction
@@ -103,14 +109,7 @@ char *osql_get_tran_summary(struct ireq *iq);
  *
  */
 int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
-                      unsigned long long rqid, uuid_t uuid,
-                      unsigned long long seq, char *host);
-
-/**
- * Wakeup the block processor waiting for a completed session
- *
- */
-int osql_bplog_signal(blocksql_tran_t *tran);
+                      unsigned long long rqid, uuid_t uuid, int type);
 
 /**
  * Construct a blockprocessor transaction buffer containing

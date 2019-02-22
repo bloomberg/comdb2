@@ -24,7 +24,7 @@ fi
 # if build fails we still want to get back to where we were, so don't
 # abort on error
 set +e
-make -j4 deb-current
+make -j$(nproc) deb-current
 set -e
 
 # get back to where we were

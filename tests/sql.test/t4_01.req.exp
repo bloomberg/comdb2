@@ -1,0 +1,1 @@
+[insert into t values (1, NULL)] failed with rc -106 SET READONLY ON for the client

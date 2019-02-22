@@ -22,6 +22,7 @@ static const char revid[] = "$Id: mp_fput.c,v 11.48 2003/09/30 17:12:00 sue Exp 
 #include "dbinc/txn.h"
 
 #include <string.h>
+#include "comdb2_atomic.h"
 
 extern int gbl_enable_cache_internal_nodes;
 
@@ -71,7 +72,6 @@ __memp_fput_internal(dbmfp, pgaddr, flags, pgorder)
 	MPOOL *c_mp;
 	u_int32_t n_cache;
 	int adjust, ret, incr_count = 1;
-	DB_TXN *thrtxn;
 
 	dbenv = dbmfp->dbenv;
 	MPF_ILLEGAL_BEFORE_OPEN(dbmfp, "DB_MPOOLFILE->put");
@@ -138,7 +138,6 @@ __memp_fput_internal(dbmfp, pgaddr, flags, pgorder)
 	    (dbenv->open_flags & DB_INIT_TXN)) {
 		static const char zerobuf[32] = { 0 };
 		u_int8_t *data = bhp->buf;
-		DB_LSN *lsnp = (DB_LSN *)(data + dbmfp->lsn_offset);
 
 		if (memcmp(data, zerobuf, sizeof(zerobuf)) == 0) {
 			__db_err(dbenv, "%s %s: zero LSN for page %u", __func__,
@@ -158,14 +157,14 @@ __memp_fput_internal(dbmfp, pgaddr, flags, pgorder)
 	/* Set/clear the page bits. */
 	if (LF_ISSET(DB_MPOOL_CLEAN) &&
 	    F_ISSET(bhp, BH_DIRTY) && !F_ISSET(bhp, BH_DIRTY_CREATE)) {
-		DB_ASSERT(atomic_read(&hp->hash_page_dirty) != 0);
-		atomic_dec(env, &hp->hash_page_dirty);
-		atomic_dec(env, &c_mp->stat.st_page_dirty);
+		DB_ASSERT(hp->hash_page_dirty != 0);
+		ATOMIC_ADD(hp->hash_page_dirty, -1);
+		ATOMIC_ADD(c_mp->stat.st_page_dirty, -1);
 		F_CLR(bhp, BH_DIRTY);
 	}
 	if (LF_ISSET(DB_MPOOL_DIRTY) && !F_ISSET(bhp, BH_DIRTY)) {
-		atomic_inc(env, &hp->hash_page_dirty);
-		atomic_inc(env, &c_mp->stat.st_page_dirty);
+		ATOMIC_ADD(hp->hash_page_dirty, 1);
+		ATOMIC_ADD(c_mp->stat.st_page_dirty, 1);
 		F_SET(bhp, BH_DIRTY);
 		/* Update first_dirty_lsn when flag goes from CLEAN to DIRTY. */
 		if (dbenv->tx_perfect_ckp)

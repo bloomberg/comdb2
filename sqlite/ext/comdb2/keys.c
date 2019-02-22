@@ -58,6 +58,7 @@ static int systblKeysConnect(
 #define STKEY_DATACOPY  4
 #define STKEY_RECNUM    5
 #define STKEY_CONDITION 6
+#define STKEY_UNIQNULLS 7
 
   rc = sqlite3_declare_vtab(db, "CREATE TABLE comdb2_keys(tablename,"
                                 "keyname,"
@@ -65,7 +66,8 @@ static int systblKeysConnect(
                                 "isunique,"
                                 "isdatacopy,"
                                 "isrecnum,"
-                                "condition)");
+                                "condition,"
+                                "uniqnulls)");
   if( rc==SQLITE_OK ){
     pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
     if( pNew==0 ) return SQLITE_NOMEM;
@@ -92,6 +94,8 @@ static int systblKeysOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   if( pCur==0 ) return SQLITE_NOMEM;
   memset(pCur, 0, sizeof(*pCur));
   *ppCursor = &pCur->base;
+
+  comdb2_next_allowed_table(&pCur->iRowid);
 
   return SQLITE_OK;
 }
@@ -128,6 +132,8 @@ static int systblKeysNext(sqlite3_vtab_cursor *cur){
       }
     } while( pCur->iRowid < thedb->num_dbs );
   }
+
+  comdb2_next_allowed_table(&pCur->iRowid);
 
   return SQLITE_OK;
 }
@@ -172,13 +178,18 @@ static int systblKeysColumn(
         -1, SQLITE_STATIC);
       break;
     }
+    case STKEY_UNIQNULLS: {
+      sqlite3_result_text(ctx, YESNO(pSchema->flags & SCHEMA_UNIQNULLS),
+        -1, SQLITE_STATIC);
+      break;
+    }
     case STKEY_CONDITION: {
       sqlite3_result_text(ctx, pSchema->where, -1, SQLITE_STATIC);
       break;
     }
   }
   return SQLITE_OK; 
-};
+}
 
 /*
 ** Return the rowid for the current key. We arrive at this number by
@@ -265,6 +276,10 @@ const sqlite3_module systblKeysModule = {
   0,                       /* xRollback */
   0,                       /* xFindMethod */
   0,                       /* xRename */
+  0,                       /* xSavepoint */
+  0,                       /* xRelease */
+  0,                       /* xRollbackTo */
+  0,                       /* xShadowName */
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \

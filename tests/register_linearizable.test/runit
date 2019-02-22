@@ -1,15 +1,15 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Runs the register linearizability test
 [[ "$debug" == 1 ]] && set -x
 #debug_trace="-D"
 db=$1
 
-regtest=${TESTSROOTDIR}/tools/register
+regtest=${TESTSBUILDDIR}/register
 
 if [[ -z "$CLUSTER" ]]; then
     echo "This test is only relevant for a CLUSTERED installation."
-    exit 0
+    exit 1
 fi
 
 if [[ -z "$stage" ]]; then

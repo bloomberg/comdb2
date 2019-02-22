@@ -69,6 +69,7 @@ extern "C" {
 char *segline(char *data, int ldata, int *offp, int *lenp);
 char *seglinel(char *data, int ldata, int *offp, int *lenp);
 char *segtok(char *data, int ldata, int *offp, int *lenp);
+char *segtok2(char *data, int ldata, int *offp, int *lenp);
 char *segtokx(char *data, int ldata, int *offp, int *lenp, char *moresep);
 char *segtok_exp(char *data, int ldata, int *offp, int *len, char *left_skip,
                  char *all_separators);

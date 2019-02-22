@@ -10,13 +10,6 @@ fi
 maxrecords=15000
 maxselectfail=20
 
-echo -n "$dbname" > comdb2db.cfg
-
-cdb2sql ${CDB2_OPTIONS} --tabs $dbname default "exec procedure sys.cmd.send('bdb cluster')" | grep lsn | cut -f1 -d":" | tr -d '\n' >> comdb2db.cfg
-echo "" >> comdb2db.cfg
-echo "comdb2_config:allow_pmux_route 1" >> comdb2db.cfg
-echo "comdb2_config:default_type=test" >> comdb2db.cfg
-
 cdb2sql ${CDB2_OPTIONS} $dbname default "truncate jobs"
 cdb2sql ${CDB2_OPTIONS} $dbname default "truncate schedule"
 
@@ -27,7 +20,7 @@ cdb2sql ${CDB2_OPTIONS} $dbname default "WITH RECURSIVE cnt(x) AS (SELECT 1 UNIO
 sleep 10
 
 # Run the executable
-exe=${TESTSROOTDIR}/tools/selectv
+exe=${TESTSBUILDDIR}/selectv
 
 echo "Testing selectv..."
 $exe -d $dbname -o -t 5 > test.log 2>&1 &

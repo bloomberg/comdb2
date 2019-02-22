@@ -33,7 +33,11 @@
 
 /* Define to 1 to use GCC and x86 or x86_64 assemlby language atomic
    operations. */
+#ifdef __GNUC__
+#define HAVE_GNU_ATOMIC
+#else
 #define HAVE_ATOMIC_X86_GCC_ASSEMBLY 1
+#endif
 
 /* Define to 1 if you have the `clock_gettime' function. */
 /* #undef HAVE_CLOCK_GETTIME */

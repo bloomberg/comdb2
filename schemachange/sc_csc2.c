@@ -21,14 +21,13 @@
 #include "schemachange.h"
 #include "sc_csc2.h"
 #include "debug_switches.h"
-#include "machine.h"
 #include "logmsg.h"
 
 int load_db_from_schema(struct schema_change_type *s, struct dbenv *thedb,
                         int *foundix, struct ireq *iq)
 {
     /* load schema from string or file */
-    int rc = dyns_load_schema_string(s->newcsc2, thedb->envname, s->table);
+    int rc = dyns_load_schema_string(s->newcsc2, thedb->envname, s->tablename);
     if (rc != 0) {
         char *err;
         char *syntax_err;
@@ -41,8 +40,8 @@ int load_db_from_schema(struct schema_change_type *s, struct dbenv *thedb,
     }
 
     /* find which db has a matching name */
-    if ((*foundix = getdbidxbyname(s->table)) < 0) {
-        logmsg(LOGMSG_FATAL, "couldnt find table <%s>\n", s->table);
+    if ((*foundix = getdbidxbyname(s->tablename)) < 0) {
+        logmsg(LOGMSG_FATAL, "couldnt find table <%s>\n", s->tablename);
         exit(1);
     }
 
@@ -101,7 +100,7 @@ int check_table_schema(struct dbenv *dbenv, const char *table,
             logmsg(LOGMSG_ERROR, "%s\n", meta_csc2);
             rc = -1;
         }
-    } else if (dbenv->master == machine()) {
+    } else if (dbenv->master == gbl_mynode) {
         /* on master node, store schema if we don't have one already. */
         file_csc2 = load_text_file(csc2file);
         if (!file_csc2) {
@@ -186,10 +185,10 @@ int load_new_table_schema_tran(struct dbenv *dbenv, tran_type *tran,
 
     if (debug_switch_skip_table_schema_check()) return 0;
     if (db && db->sc_to) {
-        version = db->sc_to->version;
+        version = db->sc_to->schema_version;
     } else {
         version = get_csc2_version_tran(table, tran);
-        if (version < 0 || db == NULL) {
+        if (version < 0) {
             logmsg(LOGMSG_ERROR, "%s: error getting schema\n", __func__);
             return -1;
         }
@@ -200,7 +199,7 @@ int load_new_table_schema_tran(struct dbenv *dbenv, tran_type *tran,
          *
          * If we are creating tables, then there
          * is no llmeta version record. */
-        if (gbl_create_mode || !db->instant_schema_change) {
+        if (gbl_create_mode || (db && !db->instant_schema_change)) {
             ++version;
         }
     }

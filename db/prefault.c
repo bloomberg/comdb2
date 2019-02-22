@@ -67,6 +67,7 @@ static void *prefault_io_thread(void *arg);
 int start_prefault_io_threads(struct dbenv *dbenv, int numthreads, int maxq)
 {
     int i = 0, rc = 0;
+    static int started = 0;
     pthread_attr_t attr;
 
     bzero(&(dbenv->prefault_stats), sizeof(prefault_stats_type));
@@ -77,37 +78,20 @@ int start_prefault_io_threads(struct dbenv *dbenv, int numthreads, int maxq)
         return 0;
     if (maxq == 0)
         return 0;
+    if (started != 0)
+        return 0;
 
-    rc = pthread_attr_init(&attr);
-    if (rc != 0) {
-        perror_errnum("start_pfault_main: pthread_attr_init", rc);
-        pthread_attr_destroy(&attr);
-        return -1;
-    }
+    Pthread_attr_init(&attr);
 
-    rc = pthread_attr_setstacksize(&attr, 512 * 1024);
-    if (rc) {
-        perror_errnum("start_pfault_main:pthread_attr_setstacksize", rc);
-        pthread_attr_destroy(&attr);
-        return -1;
-    }
+    Pthread_attr_setstacksize(&attr, 512 * 1024);
 
-    rc = pthread_mutex_init(&dbenv->prefaultiopool.mutex, NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "could not initialize pre-fault data mutex %d\n", i);
-        exit(1);
-    }
-
+    Pthread_mutex_init(&dbenv->prefaultiopool.mutex, NULL);
     dbenv->prefaultiopool.guard = 0xabababab;
     logmsg(LOGMSG_DEBUG, "&(dbenv->prefaultiopool.guard) = %p\n",
            &(dbenv->prefaultiopool.guard));
 
     logmsg(LOGMSG_DEBUG, "prefault cond initialized\n");
-    rc = pthread_cond_init(&dbenv->prefaultiopool.cond, NULL);
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "could not initialize pre-fault data mutex %d\n", i);
-        exit(1);
-    }
+    Pthread_cond_init(&dbenv->prefaultiopool.cond, NULL);
 
     dbenv->prefaultiopool.maxq = maxq;
     dbenv->prefaultiopool.ioq = queue_new();
@@ -125,11 +109,9 @@ int start_prefault_io_threads(struct dbenv *dbenv, int numthreads, int maxq)
         }
         dbenv->prefaultiopool.numthreads++;
     }
+    started = 1;
 
-    rc = pthread_attr_destroy(&attr);
-    if (rc)
-        /* we don't return an error here, what would be the point? */
-        perror_errnum("start_pfault_main:pthread_attr_destroy", rc);
+    Pthread_attr_destroy(&attr);
 
     return 0;
 }
@@ -148,21 +130,13 @@ unsigned int enque_pfault_ll(struct dbenv *dbenv, pfrq_t *qdata)
     if (dbenv->prefaultiopool.numthreads == 0)
         return 1;
 
-    rc = pthread_mutex_lock(&(dbenv->prefaultiopool.mutex));
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "failed to lock prefault mutex\n");
-        exit(1);
-    }
+    Pthread_mutex_lock(&(dbenv->prefaultiopool.mutex));
     /*fprintf(stderr, "about to add item, q now=%d\n",
        queue_count(dbenv->prefaultiopool.ioq));*/
 
     if (queue_count(dbenv->prefaultiopool.ioq) >= dbenv->prefaultiopool.maxq) {
         /* queue over the allowed size..ignore the request! */
-        rc = pthread_mutex_unlock(&(dbenv->prefaultiopool.mutex));
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "failed to lock prefault mutex\n");
-            exit(1);
-        }
+        Pthread_mutex_unlock(&(dbenv->prefaultiopool.mutex));
 
         dbenv->prefault_stats.num_ioq_full++;
 
@@ -178,24 +152,11 @@ unsigned int enque_pfault_ll(struct dbenv *dbenv, pfrq_t *qdata)
     rc = queue_add(dbenv->prefaultiopool.ioq, qdata);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "could not add data to queue!\n");
-        rc = pthread_mutex_unlock(&(dbenv->prefaultiopool.mutex));
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "failed to lock prefault mutex\n");
-            exit(1);
-        }
+        Pthread_mutex_unlock(&(dbenv->prefaultiopool.mutex));
     }
 
-    rc = pthread_cond_signal(&(dbenv->prefaultiopool.cond));
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "failed to signal prefault cond\n");
-        exit(1);
-    }
-
-    rc = pthread_mutex_unlock(&(dbenv->prefaultiopool.mutex));
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "failed to lock prefault mutex\n");
-        exit(1);
-    }
+    Pthread_cond_signal(&(dbenv->prefaultiopool.cond));
+    Pthread_mutex_unlock(&(dbenv->prefaultiopool.mutex));
 
     /*fprintf(stderr, "(%d) queued idx %d\n",pthread_self(), ixnum);*/
     return 0;
@@ -490,11 +451,7 @@ static void *prefault_io_thread(void *arg)
 
     logmsg(LOGMSG_INFO, "io thread started as %lu\n", pthread_self());
 
-    rc = pthread_setspecific(lockmgr_key, &lock_variable);
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "pthread_setspecific lockmgr_key failed\n");
-        exit(1);
-    }
+    Pthread_setspecific(lockmgr_key, &lock_variable);
 
     /* thdinfo is assigned to thread specific variable unique_tag_key which
      * will automatically free it when the thread exits. */
@@ -509,26 +466,18 @@ static void *prefault_io_thread(void *arg)
     thdinfo->ct_add_table = NULL;
     thdinfo->ct_del_table = NULL;
     thdinfo->ct_add_index = NULL;
-    pthread_setspecific(unique_tag_key, thdinfo);
+    Pthread_setspecific(unique_tag_key, thdinfo);
 
     while (1) {
         req = NULL;
 
-        rc = pthread_mutex_lock(&(dbenv->prefaultiopool.mutex));
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "cannot lock prefault mutex\n");
-            exit(1);
-        }
+        Pthread_mutex_lock(&(dbenv->prefaultiopool.mutex));
 
         req = (pfrq_t *)queue_next(dbenv->prefaultiopool.ioq);
 
         while (req == NULL) {
-            rc = pthread_cond_wait(&(dbenv->prefaultiopool.cond),
-                                   &(dbenv->prefaultiopool.mutex));
-            if (rc != 0) {
-                logmsg(LOGMSG_FATAL, "cond wait failed in io thread %d\n", rc);
-                exit(1);
-            }
+            Pthread_cond_wait(&(dbenv->prefaultiopool.cond),
+                              &(dbenv->prefaultiopool.mutex));
 
             req = (pfrq_t *)queue_next(dbenv->prefaultiopool.ioq);
         }
@@ -539,11 +488,7 @@ static void *prefault_io_thread(void *arg)
         /*fprintf(stderr, "consumed item, q now=%d\n",
            queue_count(dbenv->prefaultiopool.ioq));*/
 
-        rc = pthread_mutex_unlock(&(dbenv->prefaultiopool.mutex));
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "count unlock mutex in io thread\n");
-            exit(1);
-        }
+        Pthread_mutex_unlock(&(dbenv->prefaultiopool.mutex));
 
         assert(req != NULL);
 
@@ -570,11 +515,6 @@ static void *prefault_io_thread(void *arg)
                 /* XXX revisit this - bring in the record to malloced mem,
                    just to free it? */
                 od_len = getdatsize(iq.usedb);
-
-                if (fnddta == NULL) {
-                    logmsg(LOGMSG_FATAL, "prefault_thd: malloc %u failed\n", od_len);
-                    exit(1);
-                }
 
                 if (req->helper_thread != -1) {
                     unsigned char *op_bitmap;
@@ -619,15 +559,12 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
 
             /* just fault in 1 key, no dta */
             case PFRQ_OLDKEY: {
-                int maxlen = 0, fndrrn = 0, err = 0;
-                void *fnddta = NULL;
-                int retries = 0;
+                int fndrrn = 0;
                 unsigned long long genid = 0;
                 char fndkey[MAXKEYLEN];
 
 #ifdef PREFAULT_TRACE
                 fprintf(stderr, "consumed PFRQ_KEY(%d)\n", req->index);
-/*hexdump(req->key, req->len);*/
 #endif
 
                 if ((req->index < 0) || (req->index > 49)) {
@@ -678,15 +615,12 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
 
             /* just fault in 1 key, no dta */
             case PFRQ_NEWKEY: {
-                int maxlen = 0, fndrrn = 0, err = 0;
-                void *fnddta = NULL;
-                int retries = 0;
+                int fndrrn = 0;
                 unsigned long long genid = 0;
                 char fndkey[MAXKEYLEN];
 
 #ifdef PREFAULT_TRACE
                 fprintf(stderr, "consumed PFRQ_KEY(%d)\n", req->index);
-/*hexdump(req->key, req->len);*/
 #endif
 
                 if ((req->index < 0) || (req->index > 49)) {
@@ -751,11 +685,8 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
             case PFRQ_OLDDATA_OLDKEYS: {
                 size_t od_len;
                 int od_len_int;
-                int maxlen = 0, fndlen = 0, err = 0;
-                int fndrrn = 0, ixnum = 0;
-                unsigned long long genid = 0;
-                char primkey[MAXKEYLEN];
-                int doprimkey = 0;
+                int fndlen = 0;
+                int ixnum = 0;
                 unsigned char fnddta[32768];
 
 #ifdef PREFAULT_TRACE
@@ -810,7 +741,7 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
 
                 for (ixnum = 0; ixnum < iq.usedb->nix; ixnum++) {
                     char keytag[MAXTAGLEN];
-                    char key[MAXKEYLEN], keyout[MAXKEYLEN];
+                    char key[MAXKEYLEN];
                     int keysz = 0;
                     keysz = getkeysize(iq.usedb, ixnum);
                     if (keysz < 0) {
@@ -847,11 +778,8 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
             case PFRQ_OLDDATA_OLDKEYS_NEWKEYS: {
                 size_t od_len;
                 int od_len_int;
-                int maxlen = 0, fndlen = 0, err = 0;
-                int fndrrn = 0, ixnum = 0;
-                unsigned long long genid = 0;
-                char primkey[MAXKEYLEN];
-                int doprimkey = 0;
+                int fndlen = 0;
+                int ixnum = 0;
                 struct convert_failure reason;
                 struct schema *dynschema = NULL;
                 char tag[MAXTAGLEN];
@@ -935,7 +863,7 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
                 /* enqueue faults for old keys */
                 for (ixnum = 0; ixnum < iq.usedb->nix; ixnum++) {
                     char keytag[MAXTAGLEN];
-                    char key[MAXKEYLEN], keyout[MAXKEYLEN];
+                    char key[MAXKEYLEN];
                     int keysz = 0;
                     keysz = getkeysize(iq.usedb, ixnum);
                     if (keysz < 0) {
@@ -990,7 +918,7 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
                 /* enqueue faults for new keys */
                 for (ixnum = 0; ixnum < iq.usedb->nix; ixnum++) {
                     char keytag[MAXTAGLEN];
-                    char key[MAXKEYLEN], keyout[MAXKEYLEN];
+                    char key[MAXKEYLEN];
                     int keysz = 0;
                     keysz = getkeysize(iq.usedb, ixnum);
                     if (keysz < 0) {

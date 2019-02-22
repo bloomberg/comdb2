@@ -6,14 +6,6 @@ schema
    intervalds dsint null=yes
 }
 
-tag "frecord"
-{
-   int  id
-   cstring date[64]
-   cstring ymint[64]
-   cstring dsint[64]
-}
-
 keys
 {
    "ID"         = id

@@ -39,10 +39,12 @@ add_library(bdb
   odh.c
   os_namemangle.c
   phys.c
+  phys_rep_lsn.c
   queue.c
   queuedb.c
   read.c
   rep.c
+  rep_qstat.c
   rowlocks.c
   rowlocks_util.c
   serializable.c
@@ -72,12 +74,20 @@ add_custom_command(
   COMMAND dist/genrec.sh ${CMAKE_CURRENT_SOURCE_DIR}/llog.src llog_auto.c llog_auto.h rec_llog
   COMMAND dist/geninc.sh llog llog_ext.h llog_auto.c
 )
+
+if (${CMAKE_C_COMPILER_ID} STREQUAL GNU)
+  set_source_files_properties(llog_auto.c count.c PROPERTIES COMPILE_FLAGS "-Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-label")
+elseif(${CMAKE_C_COMPILER_ID} STREQUAL Clang)
+  set_source_files_properties(llog_auto.c count.c PROPERTIES COMPILE_FLAGS "-Wno-unused-variable -Wno-unused-const-variable -Wno-unused-label")
+endif()
+
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}
-  ${PROJECT_SOURCE_DIR}/bb
+  ${PROJECT_SOURCE_DIR}/util
   ${PROJECT_SOURCE_DIR}/bbinc
-  ${PROJECT_SOURCE_DIR}/sqlite
+  ${PROJECT_SOURCE_DIR}/sqlite/src
+  ${PROJECT_SOURCE_DIR}/sqlite/ext/comdb2
   ${PROJECT_SOURCE_DIR}/berkdb
   ${PROJECT_SOURCE_DIR}/berkdb/build
   ${PROJECT_BINARY_DIR}/berkdb
@@ -89,6 +99,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/mem
   ${PROJECT_BINARY_DIR}/mem
   ${PROJECT_SOURCE_DIR}/net
+  ${PROJECT_SOURCE_DIR}/cdb2api
   ${PROJECT_BINARY_DIR}/protobuf
   ${OPENSSL_INCLUDE_DIR}
   ${PROTOBUF_C_INCLUDE_DIR}

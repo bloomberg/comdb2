@@ -31,26 +31,26 @@ PUT TUNABLE latch_max_poll '10';
 SELECT value FROM comdb2_tunables WHERE name = 'latch_max_poll';
 
 # Test dynamic tunable using 'exec procedure' & 'put tunable'.
-SELECT value AS 'debug_rowlocks' FROM comdb2_tunables WHERE name = 'debug_rowlocks';
-PUT TUNABLE debug_rowlocks 0;
-SELECT value AS 'debug_rowlocks' FROM comdb2_tunables WHERE name = 'debug_rowlocks';
-exec procedure sys.cmd.send('debug_rowlocks')
-SELECT value AS 'debug_rowlocks' FROM comdb2_tunables WHERE name = 'debug_rowlocks';
-exec procedure sys.cmd.send('nodebug_rowlocks')
-SELECT value AS 'debug_rowlocks' FROM comdb2_tunables WHERE name = 'debug_rowlocks';
-SELECT value AS 'nodebug_rowlocks' FROM comdb2_tunables WHERE name = 'nodebug_rowlocks';
+SELECT value AS 'lock_conflict_trace' FROM comdb2_tunables WHERE name = 'lock_conflict_trace';
+PUT TUNABLE lock_conflict_trace 1;
+SELECT value AS 'lock_conflict_trace' FROM comdb2_tunables WHERE name = 'lock_conflict_trace';
+exec procedure sys.cmd.send('lock_conflict_trace')
+SELECT value AS 'lock_conflict_trace' FROM comdb2_tunables WHERE name = 'lock_conflict_trace';
+exec procedure sys.cmd.send('no_lock_conflict_trace')
+SELECT value AS 'lock_conflict_trace' FROM comdb2_tunables WHERE name = 'lock_conflict_trace';
+SELECT value AS 'no_lock_conflict_trace' FROM comdb2_tunables WHERE name = 'no_lock_conflict_trace';
 
 # Test composite tunables.
-SELECT name AS 'logmsg tunables' FROM comdb2_tunables WHERE name LIKE 'logmsg%';
+SELECT name AS 'logmsg tunables' FROM comdb2_tunables WHERE name LIKE 'logmsg%' order by name;
 SELECT value AS 'logmsg.level' FROM comdb2_tunables WHERE name = 'logmsg.level';
 PUT TUNABLE 'logmsg.level' 'xxx';
 PUT TUNABLE 'logmsg.level' 'error';
 SELECT value AS 'logmsg.level' FROM comdb2_tunables WHERE name = 'logmsg.level';
 exec procedure sys.cmd.send('logmsg level xxx');
-exec procedure sys.cmd.send('logmsg level debug');
+exec procedure sys.cmd.send('logmsg level info');
 SELECT value AS 'logmsg.level' FROM comdb2_tunables WHERE name = 'logmsg.level';
 
-SELECT name AS 'appsockpool tunables' FROM comdb2_tunables WHERE name LIKE 'appsockpool%';
+SELECT name AS 'appsockpool tunables' FROM comdb2_tunables WHERE name LIKE 'appsockpool%' order by name;
 SELECT value AS 'appsockpool.maxt' FROM comdb2_tunables WHERE name = 'appsockpool.maxt';
 PUT TUNABLE 'appsockpool.maxt' 'xxx';
 PUT TUNABLE 'appsockpool.maxt' 101;

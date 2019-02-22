@@ -1,0 +1,13 @@
+schema
+{
+    int x
+    int y
+    int z
+    int w
+}
+
+keys
+{
+    "key" = x
+}
+

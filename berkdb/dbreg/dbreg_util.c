@@ -27,6 +27,7 @@ static const char revid[] = "$Id: dbreg_util.c,v 11.39 2003/11/10 17:42:34 sue E
 #include "dbinc/txn.h"
 #include "printformats.h"
 #include "logmsg.h"
+#include "comdb2_atomic.h"
 
 static int __dbreg_check_master __P((DB_ENV *, u_int8_t *, char *));
 
@@ -65,7 +66,7 @@ __dbreg_add_dbentry(dbenv, dblp, dbp, ndx)
 		for (i = dblp->dbentry_cnt; i < ndx + DB_GROW_SIZE; i++) {
 			dblp->dbentry[i].dbp = NULL;
 			dblp->dbentry[i].deleted = 0;
-			atomic_init(&dblp->dbentry[i].pfcnt, 0);
+			dblp->dbentry[i].pfcnt = 0;
 		}
 		dblp->dbentry_cnt = i;
 	}
@@ -96,7 +97,7 @@ __dbreg_rem_dbentry(dblp, ndx)
 	if (dblp->dbentry_cnt > ndx) {
 		dblp->dbentry[ndx].dbp = NULL;
 
-		while (atomic_read(&dblp->dbentry[ndx].pfcnt) > 0) {
+		while (dblp->dbentry[ndx].pfcnt > 0) {
 			poll(NULL, 0, 10);
 
 			if (0 == ++count % 100) {
@@ -109,6 +110,25 @@ __dbreg_rem_dbentry(dblp, ndx)
 
 	MUTEX_THREAD_UNLOCK(dblp->dbenv, dblp->mutexp);
 }
+
+/*
+ * __ufid_sanity_check --
+ *	Abort if ufid and ufid_chk dont match
+ *
+ * PUBLIC: void __ufid_sanity_check __P((DB_ENV *, FNAME *));
+ */
+void
+__ufid_sanity_check(dbenv, fnp)
+	DB_ENV *dbenv;
+	FNAME *fnp;
+{
+	if (memcmp(fnp->ufid, fnp->ufid_chk, DB_FILE_ID_LEN)) {
+		logmsg(LOGMSG_FATAL, "%s: critical error: ufid has changed\n",
+                __func__);
+		abort();
+	}
+}
+
 
 /*
  * __dbreg_open_files --
@@ -150,6 +170,9 @@ __dbreg_open_files_int(dbenv, flags)
 			dbtp = &t;
 		}
 		memset(&fid_dbt, 0, sizeof(fid_dbt));
+
+		__ufid_sanity_check(dbenv, fnp);
+
 		fid_dbt.data = fnp->ufid;
 		fid_dbt.size = DB_FILE_ID_LEN;
 
@@ -210,7 +233,6 @@ __dbreg_recovery_pages(dbenv)
 {
 	DB_LOG *dblp;
 	DB *dbp;
-	int ret;
 	int32_t i;
 
 	COMPQUIET(dbp, NULL);
@@ -496,6 +518,9 @@ __dbreg_id_to_db_int_int(dbenv, txn, dbpp, ndx, inc, tryopen, lsnp,
 		 * XXX I am sending a NULL txnlist and 0 txnid which may be
 		 * completely broken ;(
 		 */
+
+		__ufid_sanity_check(dbenv, fname);
+
 		if ((ret = __dbreg_do_open(dbenv, txn, dblp,
 		    fname->ufid, name, fname->s_type,
 		    ndx, fname->meta_pgno, NULL, 0)) != 0)
@@ -522,7 +547,7 @@ __dbreg_id_to_db_int_int(dbenv, txn, dbpp, ndx, inc, tryopen, lsnp,
 
 	/* Increment the prefault refcount for this */
 	if (prefault_refcount) {
-		atomic_inc(dbenv, &dblp->dbentry[ndx].pfcnt);
+		ATOMIC_ADD(dblp->dbentry[ndx].pfcnt, 1);
 	}
 
 err:	MUTEX_THREAD_UNLOCK(dbenv, dblp->mutexp);
@@ -540,9 +565,9 @@ __dbreg_prefault_complete(dbenv, ndx)
 	dblp = dbenv->lg_handle;
 
 	DB_ASSERT(ndx < dblp->dbentry_cnt);
-	DB_ASSERT(atomic_read(&dblp->dbentry[ndx].pfcnt) > 0);
+	DB_ASSERT(dblp->dbentry[ndx].pfcnt > 0);
 
-	atomic_dec(dbenv, &dblp->dbentry[ndx].pfcnt);
+	ATOMIC_ADD(dblp->dbentry[ndx].pfcnt, -1);
 }
 
 // PUBLIC: int __dbreg_id_to_db_prefault __P((DB_ENV *, DB_TXN *, DB **, int32_t, int));
@@ -554,8 +579,6 @@ __dbreg_id_to_db_prefault(dbenv, txn, dbpp, ndx, inc)
 	int32_t ndx;
 	int inc;
 {
-	int rc;
-
 	return __dbreg_id_to_db_int_int(dbenv, txn, dbpp, ndx, inc, 0, NULL, 0,
 	    1);
 }
@@ -656,7 +679,10 @@ __dbreg_fid_to_fname(dblp, fid, have_lock, fnamep)
 	if (!have_lock)
 		MUTEX_LOCK(dbenv, &lp->fq_mutex);
 	for (fnp = SH_TAILQ_FIRST(&lp->fq, __fname);
-	    fnp != NULL; fnp = SH_TAILQ_NEXT(fnp, q, __fname)) {
+		fnp != NULL; fnp = SH_TAILQ_NEXT(fnp, q, __fname)) {
+
+		__ufid_sanity_check(dbenv, fnp);
+
 		if (memcmp(fnp->ufid, fid, DB_FILE_ID_LEN) == 0) {
 			*fnamep = fnp;
 			ret = 0;

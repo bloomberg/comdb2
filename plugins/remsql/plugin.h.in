@@ -1,0 +1,36 @@
+struct comdb2_plugin @PLUGIN_SYM@[] = {
+    {
+        "remsql",              /* Plugin identifier */
+        "remsql plugin",       /* Plugin description */
+        COMDB2_PLUGIN_APPSOCK, /* Plugin type */
+        1,                     /* Plugin version */
+        1,                     /* Plugin interface version */
+        0,                     /* Plugin flags */
+        NULL,                  /* Initialization function */
+        NULL,                  /* Destroy function */
+        &remsql_plugin         /* Plugin-specific data */
+    },
+    {
+
+        "remtran",             /* Plugin identifier */
+        "remtran plugin",      /* Plugin description */
+        COMDB2_PLUGIN_APPSOCK, /* Plugin type */
+        1,                     /* Plugin version */
+        1,                     /* Plugin interface version */
+        0,                     /* Plugin flags */
+        NULL,                  /* Initialization function */
+        NULL,                  /* Destroy function */
+        &remtran_plugin        /* Plugin-specific data */
+    },
+    {
+        "alias",               /* Plugin identifier */
+        "alias plugin",        /* Plugin description */
+        COMDB2_PLUGIN_APPSOCK, /* Plugin type */
+        1,                     /* Plugin version */
+        1,                     /* Plugin interface version */
+        0,                     /* Plugin flags */
+        NULL,                  /* Initialization function */
+        NULL,                  /* Destroy function */
+        &alias_plugin          /* Plugin-specific data */
+    },
+    {0, 0, 0, 0, 0, 0, 0, 0, 0}};

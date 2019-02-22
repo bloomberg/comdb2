@@ -30,7 +30,7 @@ struct pfx_type_t {
 };
 
 
-static void
+void
 print_hex(uint8_t * b, unsigned l, int newline)
 {
 	static char map[] = "0123456789abcdef";
@@ -693,8 +693,8 @@ int pfx_compress_pages(DB *dbp, PAGE *newpage, PAGE *head, pfx_t *pfx, int np, .
 		}
 
 		for (i = NUM_ENT(newpage), ih = 0; i < n; ++i, ++ih) {
-			DBT from;
-			void *to;
+			DBT from = {0};
+			void *to = NULL;
 			int need;
 			BKEYDATA *key;
 			key = GET_BKEYDATA(dbp, h, ih);
@@ -1010,7 +1010,7 @@ prefix_fromcpu(DB *dbp, PAGE *page)
 static int find_common_pfx(DB *dbp, PAGE *p1, PAGE *p2, pfx_t *pfx)
 {
 	int i, rc;
-	pfx_t *rv, *pfx1, *pfx2;
+	pfx_t *pfx1, *pfx2;
 	db_indx_t n, min, i1len, i2len;
 	BKEYDATA *i1, *i2;
 	u_int8_t *i1buf, *i2buf;
@@ -1019,7 +1019,7 @@ static int find_common_pfx(DB *dbp, PAGE *p1, PAGE *p2, pfx_t *pfx)
 	   getting junk data */
 	bzero(pfx, sizeof(pfx_t));
 
-	rv = pfx1 = pfx2 = NULL;
+	pfx1 = pfx2 = NULL;
 	if (PGNO(p2) == NEXT_PGNO(p1)) {
 		n = NUM_ENT(p2);
 		i1 = GET_BKEYDATA(dbp, p1, 0);
@@ -1274,7 +1274,6 @@ inline u_int32_t pfx_bkeydata_size(pfx_t *pfx)
 BKEYDATA *pfx_to_bkeydata(const pfx_t *pfx, BKEYDATA *bk)
 {
 	bzero(bk, sizeof(BKEYDATA));
-	db_indx_t npfx = pfx->npfx + pfx->nsfx;
 	if (pfx->nrle) {
 		COMP_SETRLE(bk);
 		memcpy(bk->data, pfx->rle, pfx->nrle);

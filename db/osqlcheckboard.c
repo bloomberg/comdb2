@@ -50,33 +50,31 @@ typedef struct osql_checkboard {
 
 } osql_checkboard_t;
 
-struct osql_sqlthr {
-    unsigned long long rqid; /* osql rq id */
-    uuid_t uuid;             /* request id, take 2 */
-    char *master;            /* who was the master I was talking to */
-    int done;            /* result of socksql, recom, snapisol and serial master
-                            transactions*/
-    struct errstat err;  /* valid if done = 1 */
-    int type;            /* type of the request, enum OSQL_REQ_TYPE */
-    pthread_mutex_t mtx; /* mutex and cond for commitrc sync */
-    pthread_cond_t cond;
-    int master_changed; /* set if we detect that node we were waiting for was
-                           disconnected */
-    int nops;
-
-    int status;       /* poking support; status at the last check */
-    int timestamp;    /* poking support: timestamp at the last check */
-    int last_updated; /* poking support: when was the last time I got info, 0 is
-                         never */
-    int last_checked; /* poking support: when was the loast poke sent */
-    struct sqlclntstate *clnt; /* cache clnt */
-};
-
 static osql_checkboard_t *checkboard = NULL;
+
+/* will get rdlock on checkboard->rwlock if parameter lock is set
+ * if caller already has rwlock, call this func with lock = false
+ */
+static inline osql_sqlthr_t *osql_chkboard_fetch_entry(unsigned long long rqid,
+                                                       uuid_t uuid, bool lock)
+{
+    osql_sqlthr_t *entry = NULL;
+
+    if (lock)
+        Pthread_rwlock_rdlock(&checkboard->rwlock);
+
+    if (rqid == OSQL_RQID_USE_UUID)
+        entry = hash_find_readonly(checkboard->rqsuuid, uuid);
+    else
+        entry = hash_find_readonly(checkboard->rqs, &rqid);
+
+    if (lock)
+        Pthread_rwlock_unlock(&checkboard->rwlock);
+    return entry;
+}
 
 int osql_checkboard_init(void)
 {
-
     osql_checkboard_t *tmp = NULL;
 
     /* create repository if none */
@@ -93,13 +91,7 @@ int osql_checkboard_init(void)
         tmp->rqsuuid =
             hash_init_o(offsetof(osql_sqlthr_t, uuid), sizeof(uuid_t));
 
-        if (pthread_rwlock_init(&tmp->rwlock, NULL)) {
-            logmsg(LOGMSG_ERROR, "%s: error init pthread_rwlock_t\n", __func__);
-            hash_free(tmp->rqs);
-            free(tmp);
-            return -1;
-        }
-
+        Pthread_rwlock_init(&tmp->rwlock, NULL);
         checkboard = tmp;
     }
 
@@ -122,9 +114,8 @@ void osql_checkboard_destroy(void) { /* TODO*/ }
  */
 int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
 {
-
     osql_sqlthr_t *entry = (osql_sqlthr_t *)calloc(sizeof(osql_sqlthr_t), 1);
-    int rc = 0, rc2 = 0;
+    int rc = 0;
     int retry = 0;
     uuidstr_t us;
 
@@ -139,46 +130,30 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
     entry->master = clnt->osql.host;
     entry->type = type;
     entry->last_checked = entry->last_updated =
-        time_epoch(); /* initialize these to insert time */
+        comdb2_time_epochms(); /* initialize these to insert time */
     entry->clnt = clnt;
+    entry->register_time = osql_log_time();
 
 #ifdef DEBUG
     if (gbl_debug_sql_opcodes) {
-        logmsg(LOGMSG_USER, "Registered %llx %s %d %d\n", entry->rqid,
-                comdb2uuidstr(entry->uuid, us), entry->master, entry->type);
+        logmsg(LOGMSG_USER, "Registered %llx %s %s %d\n", entry->rqid,
+               comdb2uuidstr(entry->uuid, us), entry->master, entry->type);
     }
 #endif
 
-    rc = pthread_mutex_init(&entry->mtx, NULL);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: error init mutex, rc=%d\n", __func__, rc);
-        free(entry);
-        return -1;
-    }
-    rc = pthread_cond_init(&entry->cond, NULL);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: error init cond, rc=%d\n", __func__, rc);
-        pthread_mutex_destroy(&entry->mtx);
-        free(entry);
-        return -1;
-    }
+    Pthread_mutex_init(&entry->mtx, NULL);
+    Pthread_cond_init(&entry->cond, NULL);
 
 retry:
 
     /* insert entry */
-    if ((rc = pthread_rwlock_wrlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_wrlock: error code %d\n", rc);
-        return -1;
-    }
+    Pthread_rwlock_wrlock(&checkboard->rwlock);
 
     /* making sure we're adding the correct master */
     if (entry->master != thedb->master) {
         entry->master = clnt->osql.host = thedb->master;
         if (!entry->master) {
-            if ((rc = pthread_rwlock_unlock(&checkboard->rwlock))) {
-                logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n", rc);
-                return -1;
-            }
+            Pthread_rwlock_unlock(&checkboard->rwlock);
             if (retry < 60) /* 60*500 = 30 seconds */
             {
                 poll(NULL, 0, 500);
@@ -189,26 +164,24 @@ retry:
         }
     }
 
-    if (entry->master == gbl_mynode) {
-        entry->master = clnt->osql.host = NULL; /* myself */
+    if (clnt->osql.host == gbl_mynode) {
+        clnt->osql.host = 0;
     }
-
+    if (entry->master == 0)
+        entry->master = gbl_mynode;
     if (entry->rqid == OSQL_RQID_USE_UUID)
-        rc2 = hash_add(checkboard->rqsuuid, entry);
+        rc = hash_add(checkboard->rqsuuid, entry);
     else
-        rc2 = hash_add(checkboard->rqs, entry);
+        rc = hash_add(checkboard->rqs, entry);
 
-    if (rc2) {
+    if (rc) {
         logmsg(LOGMSG_ERROR, "%s: error adding record %llx %s rc=%d\n", __func__,
                 entry->rqid, comdb2uuidstr(entry->uuid, us), rc);
     }
 
     clnt->osql.sess_blocksock = entry;
 
-    if ((rc = pthread_rwlock_unlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n", rc);
-        return -1;
-    }
+    Pthread_rwlock_unlock(&checkboard->rwlock);
 
     if (gbl_enable_osql_logging && !clnt->osql.logsb) {
         int fd = 0;
@@ -230,7 +203,7 @@ retry:
         }
     }
 
-    return rc2;
+    return rc;
 }
 
 /**
@@ -260,23 +233,15 @@ int osql_register_remtran(struct sqlclntstate *clnt, int type, char *tid)
  */
 int osql_unregister_sqlthr(struct sqlclntstate *clnt)
 {
-    osql_sqlthr_t *entry = NULL;
-    int rc = 0, rc2 = 0;
+    int rc = 0;
 
     if (clnt->osql.rqid == 0)
         return 0;
 
-    if ((rc = pthread_rwlock_wrlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_wrlock: error code %d\n", rc);
-        return -1;
-    }
+    Pthread_rwlock_wrlock(&checkboard->rwlock);
 
-    /* non-thread-safe hash_find() ok because we have the write (exclusive)
-     * lock */
-    if (clnt->osql.rqid == OSQL_RQID_USE_UUID)
-        entry = hash_find(checkboard->rqsuuid, clnt->osql.uuid);
-    else
-        entry = hash_find(checkboard->rqs, &clnt->osql.rqid);
+    osql_sqlthr_t *entry =
+        osql_chkboard_fetch_entry(clnt->osql.rqid, clnt->osql.uuid, 0);
     if (!(entry)) {
         uuidstr_t us;
         logmsg(LOGMSG_ERROR, "%s: error unable to find record %llx %s\n", __func__,
@@ -284,17 +249,18 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
     } else {
 
         if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
-            rc2 = hash_del(checkboard->rqsuuid, entry);
-            if (rc2)
-                logmsg(LOGMSG_ERROR, "%s: unable to delete record %llx, rc=%d\n",
-                        __func__, entry->rqid, rc2);
+            rc = hash_del(checkboard->rqsuuid, entry);
+            if (rc)
+                logmsg(LOGMSG_ERROR,
+                       "%s: unable to delete record %llx, rc=%d\n", __func__,
+                       entry->rqid, rc);
         } else {
-            rc2 = hash_del(checkboard->rqs, entry);
-            if (rc2) {
+            rc = hash_del(checkboard->rqs, entry);
+            if (rc) {
                 uuidstr_t us;
-                logmsg(LOGMSG_ERROR, "%s: unable to delete record %llx %s, rc=%d\n",
-                        __func__, entry->rqid,
-                        comdb2uuidstr(clnt->osql.uuid, us), rc2);
+                logmsg(LOGMSG_ERROR,
+                       "%s: unable to delete record %llx %s, rc=%d\n", __func__,
+                       entry->rqid, comdb2uuidstr(clnt->osql.uuid, us), rc);
             }
         }
 
@@ -308,85 +274,51 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
 #ifdef DEBUG
         if (gbl_debug_sql_opcodes) {
             uuidstr_t us;
-            logmsg(LOGMSG_USER, "UNRegistered %llx %s %d %d\n", entry->rqid,
-                    comdb2uuidstr(clnt->osql.uuid, us), entry->master,
-                    entry->type);
+            logmsg(LOGMSG_USER, "UNRegistered %llx %s %s %d\n", entry->rqid,
+                   comdb2uuidstr(clnt->osql.uuid, us), entry->master,
+                   entry->type);
         }
 #endif
 
         /* free sql thread registration entry */
-        pthread_cond_destroy(&entry->cond);
-        pthread_mutex_destroy(&entry->mtx);
+        Pthread_cond_destroy(&entry->cond);
+        Pthread_mutex_destroy(&entry->mtx);
         free(entry);
 
         /*reset rqid */
         clnt->osql.rqid = 0;
     }
 
-    if ((rc = pthread_rwlock_unlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n", rc);
-        return -1;
-    }
+    Pthread_rwlock_unlock(&checkboard->rwlock);
 
-    return rc2;
+    return rc;
 }
 
-/**
+/*
  * Checks the checkboard for sql session "rqid"
- * Returns:
- * - 1 is the session exists
- * - 0 if no session
- * - <0 if error
- *
+ * Returns true or false depending on whether sesssion exists
  */
-int osql_chkboard_sqlsession_exists(unsigned long long rqid, uuid_t uuid,
-                                    int lock)
+bool osql_chkboard_sqlsession_exists(unsigned long long rqid, uuid_t uuid,
+                                     bool lock)
 {
-
-    osql_sqlthr_t *entry = NULL;
-    int rc = 0, rc2;
-
     if (!checkboard)
         return 0;
 
-    if (lock && (rc = pthread_rwlock_rdlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_wrlock: error code %d\n", rc);
-        return -1;
-    }
-
-    if (rqid == OSQL_RQID_USE_UUID)
-        rc2 = (entry = hash_find_readonly(checkboard->rqsuuid, uuid)) != 0;
-    else
-        rc2 = (entry = hash_find_readonly(checkboard->rqs, &rqid)) != 0;
-
-    if (lock && (rc = pthread_rwlock_unlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n", rc);
-        return -2;
-    }
-
-    return rc2;
+    osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, lock);
+    return entry != NULL;
 }
 
 int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
                                 void *data, struct errstat *errstat)
 {
-
-    osql_sqlthr_t *entry = NULL;
-    int rc = 0, rc2;
-    uuidstr_t us;
+    int rc = 0;
 
     if (!checkboard)
         return 0;
 
-    if ((rc = pthread_rwlock_rdlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_wrlock: error code %d\n", rc);
-        return -1;
-    }
+    Pthread_rwlock_rdlock(&checkboard->rwlock);
 
-    if (rqid == OSQL_RQID_USE_UUID)
-        entry = hash_find_readonly(checkboard->rqsuuid, uuid);
-    else
-        entry = hash_find_readonly(checkboard->rqs, &rqid);
+    osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, 0);
     if (!entry) {
         /* This happens naturally for example
            if the client drops the connection while block processor
@@ -399,7 +331,7 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
         uuidstr_t us;
         ctrace("%s: received result for missing session %llu %s\n", __func__,
                rqid, comdb2uuidstr(uuid, us));
-        rc2 = -1;
+        rc = -1;
 
     } else {
 
@@ -408,10 +340,7 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
         else
             bzero(&entry->err, sizeof(entry->err));
 
-        if ((rc = pthread_mutex_lock(&entry->mtx))) {
-            logmsg(LOGMSG_ERROR, "pthread_mutex_lock: error code %d\n", rc);
-            return rc;
-        }
+        Pthread_mutex_lock(&entry->mtx);
 
         entry->done = 1; /* mem sync? */
         entry->nops = nops;
@@ -428,24 +357,13 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
             }
         }
 
-        if ((rc = pthread_cond_signal(&entry->cond))) {
-            logmsg(LOGMSG_ERROR, "pthread_cond_signal: error code %d\n", rc);
-        }
-
-        if ((rc = pthread_mutex_unlock(&entry->mtx))) {
-            logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
-            return rc;
-        }
-
-        rc2 = 0;
+        Pthread_cond_signal(&entry->cond);
+        Pthread_mutex_unlock(&entry->mtx);
     }
 
-    if ((rc = pthread_rwlock_unlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n", rc);
-        return -2;
-    }
+    Pthread_rwlock_unlock(&checkboard->rwlock);
 
-    return rc2;
+    return rc;
 }
 
 static inline void signal_master_change(osql_sqlthr_t *rq, char *host,
@@ -455,46 +373,42 @@ static inline void signal_master_change(osql_sqlthr_t *rq, char *host,
     if (gbl_master_swing_osql_verbose)
         logmsg(LOGMSG_INFO, "%s signaling rq new master %s %llx %s\n", line,
                host, rq->rqid, comdb2uuidstr(rq->uuid, us));
-    pthread_mutex_lock(&rq->mtx);
     rq->master_changed = 1;
-    pthread_cond_signal(&rq->cond);
-    pthread_mutex_unlock(&rq->mtx);
+    Pthread_cond_signal(&rq->cond);
 }
 
 int osql_checkboard_master_changed(void *obj, void *arg)
 {
-    if (((osql_sqlthr_t *)obj)->master != arg) {
-        signal_master_change(obj, arg, __func__);
+    osql_sqlthr_t *rq = obj;
+    Pthread_mutex_lock(&rq->mtx);
+    if (rq->master != arg && !(rq->master == 0 && gbl_mynode == arg)) {
+        signal_master_change(rq, arg, __func__);
     }
+    Pthread_mutex_unlock(&rq->mtx);
     return 0;
 }
 
-void osql_checkboard_for_each(char *host, int (*func)(void *, void *))
+void osql_checkboard_for_each(void *arg, int (*func)(void *, void *))
 {
-    int rc;
-
     if (!checkboard)
         return;
 
-    if ((rc = pthread_rwlock_rdlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_wrlock: error code %d\n", rc);
-        return;
-    }
+    Pthread_rwlock_rdlock(&checkboard->rwlock);
 
-    hash_for(checkboard->rqs, func, host);
-    hash_for(checkboard->rqsuuid, func, host);
+    hash_for(checkboard->rqs, func, arg);
+    hash_for(checkboard->rqsuuid, func, arg);
 
-    if ((rc = pthread_rwlock_unlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n", rc);
-        return;
-    }
+    Pthread_rwlock_unlock(&checkboard->rwlock);
 }
 
-int osql_checkboard_check_request_down_node(void *obj, void *arg)
+static int osql_checkboard_check_request_down_node(void *obj, void *arg)
 {
-    if (((osql_sqlthr_t *)obj)->master == arg) {
-        signal_master_change(obj, arg, __func__);
+    osql_sqlthr_t *rq = obj;
+    Pthread_mutex_lock(&rq->mtx);
+    if (rq->master == arg) {
+        signal_master_change(rq, arg, __func__);
     }
+    Pthread_mutex_unlock(&rq->mtx);
     return 0;
 }
 
@@ -503,13 +417,126 @@ void osql_checkboard_check_down_nodes(char *host)
     osql_checkboard_for_each(host, osql_checkboard_check_request_down_node);
 }
 
-int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
-                                struct errstat *xerr)
+/* NB: this is a helper function and waits for response from master
+ * until max_wait count is reached.
+ * This function is ment to be called with mutex entry->mtx in locked state
+ * and returns with that same mutex locked if rc is 0
+ * but unlocked if rc is nonzero
+ */
+static int wait_till_max_wait_or_timeout(osql_sqlthr_t *entry, int max_wait,
+                                         struct errstat *xerr, int *cnt)
 {
-    return osql_chkboard_timedwait_commitrc(
-        rqid, uuid,
-        bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SOSQL_MAX_COMMIT_WAIT_SEC),
-        xerr);
+    int rc = 0;
+    uuidstr_t us;
+    /* several conditions cause us to break out */
+    while (entry->done != 1 && !entry->master_changed &&
+           ((max_wait > 0 && (*cnt) < max_wait) || max_wait < 0)) {
+
+        /* prepare to wait for a second */
+        struct timespec tm_s;
+        clock_gettime(CLOCK_REALTIME, &tm_s);
+        tm_s.tv_sec++;
+
+        Pthread_mutex_unlock(&entry->mtx);
+
+        int tm_recov_deadlk = comdb2_time_epochms();
+        /* this call could wait for a bdb read lock; in the meantime,
+           someone might try to signal us */
+        if (osql_comm_check_bdb_lock(__func__, __LINE__)) {
+            logmsg(LOGMSG_ERROR, "sosql: timed-out on bdb_lock_desired\n");
+            rc = ERR_READONLY;
+            break;
+        }
+        tm_recov_deadlk = comdb2_time_epochms() - tm_recov_deadlk;
+
+        Pthread_mutex_lock(&entry->mtx);
+
+        if (entry->done == 1 || entry->master_changed)
+            break;
+
+        int lrc = 0;
+        if ((lrc = pthread_cond_timedwait(&entry->cond, &entry->mtx, &tm_s))) {
+            if (ETIMEDOUT == lrc) {
+                /* normal timeout .. */
+            } else {
+                logmsg(LOGMSG_ERROR, "pthread_cond_timedwait: error code %d\n",
+                       lrc);
+                rc = -7;
+                break;
+            }
+        }
+
+        (*cnt)++;
+
+        /* we got back the mutex, are we there yet ? */
+        if (entry->done == 1 || entry->master_changed ||
+            (max_wait > 0 && (*cnt) >= max_wait))
+            break;
+
+        int poke_timeout =
+            bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SOSQL_POKE_TIMEOUT_SEC) *
+            1000;
+        int poke_freq =
+            bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SOSQL_POKE_FREQ_SEC) * 1000;
+
+        /* is it the time to check the master? have we already done so? */
+        int now = comdb2_time_epochms();
+
+        if ((poke_timeout > 0) &&
+            (entry->last_updated + poke_timeout + tm_recov_deadlk < now)) {
+            /* timeout the request */
+            logmsg(LOGMSG_ERROR,
+                   "Master %s failed to acknowledge session %llu %s\n",
+                   entry->master, entry->rqid, comdb2uuidstr(entry->uuid, us));
+            entry->done = 1;
+            xerr->errval = entry->err.errval = SQLHERR_MASTER_TIMEOUT;
+            snprintf(entry->err.errstr, sizeof(entry->err.errstr),
+                     "master %s lost transaction %llu", entry->master,
+                     entry->rqid);
+            break;
+        }
+
+        if ((poke_freq > 0) && (entry->last_checked + poke_freq <= now)) {
+            entry->last_checked = now;
+
+            /* try poke again */
+            if (entry->master == 0 || entry->master == gbl_mynode) {
+                /* local checkup */
+                bool found =
+                    osql_repository_session_exists(entry->rqid, entry->uuid);
+                if (!found) {
+                    logmsg(LOGMSG_ERROR,
+                           "Local SORESE failed to find local "
+                           "transaction %llu %s\n",
+                           entry->rqid, comdb2uuidstr(entry->uuid, us));
+                    entry->done = 1;
+                    xerr->errval = entry->err.errval = SQLHERR_MASTER_TIMEOUT;
+                    snprintf(entry->err.errstr, sizeof(entry->err.errstr),
+                             "Local transaction failed, unable to locate "
+                             "entry id=%llu",
+                             entry->rqid);
+                    break;
+                }
+                entry->last_updated = now;
+                continue;
+            }
+
+            int lrc = osql_comm_send_poke(entry->master, entry->rqid,
+                                          entry->uuid, NET_OSQL_MASTER_CHECK);
+            if (lrc) {
+                logmsg(LOGMSG_ERROR, "Failed to send master check lrc=%d\n",
+                       lrc);
+                entry->done = 1;
+                xerr->errval = entry->err.errval = SQLHERR_MASTER_TIMEOUT;
+                snprintf(entry->err.errstr, sizeof(entry->err.errstr),
+                         "failed comm with master %s entry id=%llu %s",
+                         entry->master, entry->rqid,
+                         comdb2uuidstr(entry->uuid, us));
+                break;
+            }
+        }
+    }
+    return rc;
 }
 
 /**
@@ -517,228 +544,73 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
  * Upon return, sqlclntstate's errstat is set
  *
  */
-inline int osql_chkboard_timedwait_commitrc(unsigned long long rqid,
-                                            uuid_t uuid, int max_wait,
-                                            struct errstat *xerr)
+int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
+                                int max_wait, struct errstat *xerr)
 {
-    struct timespec tm_s;
-    osql_sqlthr_t *entry = NULL;
-    int rc = 0;
     int done = 0;
     int cnt = 0;
-    int now;
-    int poke_timeout;
-    int poke_freq;
     uuidstr_t us;
 
     if (!checkboard)
         return 0;
 
     while (!done) {
+        osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, true);
 
-        if ((rc = pthread_rwlock_rdlock(&checkboard->rwlock))) {
-            logmsg(LOGMSG_ERROR, "pthread_rwlock_wrlock: error code %d\n", rc);
-            return -1;
-        }
-
-        if (rqid == OSQL_RQID_USE_UUID)
-            entry = hash_find_readonly(checkboard->rqsuuid, uuid);
-        else
-            entry = hash_find_readonly(checkboard->rqs, &rqid);
         if (!entry) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: received result for missing session %llu\n", __func__,
+                   rqid);
+            return -2;
+        }
 
-            logmsg(LOGMSG_ERROR, "%s: received result for missing session %llu\n",
-                    __func__, rqid);
-            rc = -2;
+        /* accessing entry is valid at this point despite releasing rwlock
+         * because delete from hash happens after this function has returned */
 
-            if ((rc = pthread_rwlock_unlock(&checkboard->rwlock))) {
-                logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n", rc);
-                return -3;
-            }
-
+        if (entry->done == 1) { /* we are done */
+            *xerr = entry->err;
+            done = 1;
             break;
-
-        } else {
-
-            if (entry->done == 1) {
-                /* we are done */
-                *xerr = entry->err;
-                done = 1;
-                if ((rc = pthread_rwlock_unlock(&checkboard->rwlock))) {
-                    logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n",
-                            rc);
-                    return -3;
-                }
-                break;
-            }
         }
 
-        if ((rc = pthread_rwlock_unlock(&checkboard->rwlock))) {
-            logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n", rc);
-            return -4;
-        }
+        Pthread_mutex_lock(&entry->mtx);
+        /* reset these time parameters */
+        entry->last_checked = entry->last_updated = comdb2_time_epochms();
 
-        /* maximum wait-time */
-        // max_wait = bdb_attr_get(thedb->bdb_attr,
-        // BDB_ATTR_SOSQL_MAX_COMMIT_WAIT_SEC);
+        // wait_till_max_wait_or_timeout() expects to be called with mtx locked
+        int rc = wait_till_max_wait_or_timeout(entry, max_wait, xerr, &cnt);
+        if (rc) // dont unlock entry->mtx, on nonzero rc it was already unlocked
+            return rc;
 
-        if ((rc = pthread_mutex_lock(&entry->mtx))) {
-            logmsg(LOGMSG_ERROR, "pthread_mutex_lock: error code %d\n", rc);
-            return -5;
-        }
+        int master_changed = entry->master_changed; /* fetch value under lock */
 
-        /* several conditions cause us to break out */
-        while (entry->done != 1 && !entry->master_changed &&
-               ((max_wait > 0 && cnt < max_wait) || max_wait < 0)) {
+        Pthread_mutex_unlock(&entry->mtx);
 
-            /* wait for a second */
-            clock_gettime(CLOCK_REALTIME, &tm_s);
-            tm_s.tv_sec++;
-
-            if ((rc = pthread_mutex_unlock(&entry->mtx))) {
-                logmsg(LOGMSG_ERROR, "pthread_mutex_lock: error code %d\n", rc);
-                return -5;
-            }
-
-            /* this call could wait for a bdb read lock; in the meantime,
-               someone might try to signal us */
-            if (osql_comm_check_bdb_lock()) {
-                rc = pthread_mutex_unlock(&entry->mtx);
-                if (rc)
-                    logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n",
-                            rc);
-                logmsg(LOGMSG_ERROR, "sosql: timed-out on bdb_lock_desired\n");
-
-                return ERR_READONLY;
-            }
-
-            if ((rc = pthread_mutex_lock(&entry->mtx))) {
-                logmsg(LOGMSG_ERROR, "pthread_mutex_lock: error code %d\n", rc);
-                return -5;
-            }
-
-            if (entry->done == 1 || entry->master_changed)
-                break;
-
-            if ((rc = pthread_cond_timedwait(&entry->cond, &entry->mtx,
-                                             &tm_s))) {
-                if (ETIMEDOUT == rc) {
-                    /* normal timeout .. */
-                } else {
-                    logmsg(LOGMSG_ERROR, "pthread_cond_timedwait: error code %d\n",
-                            rc);
-                    return -7;
-                }
-            }
-
-            cnt++;
-            // printf("cnt %d/%d done %d master_changed %d pokebit %d\n", cnt,
-            // max_wait, entry->done, entry->master_changed);
-
-            /* we got back the mutex, are we there yet ? */
-            if (entry->done == 1 || entry->master_changed ||
-                (max_wait > 0 && cnt >= max_wait))
-                break;
-
-            poke_timeout =
-                bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SOSQL_POKE_TIMEOUT_SEC);
-            poke_freq =
-                bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SOSQL_POKE_FREQ_SEC);
-
-            /* is it the time to check the master? have we already done so? */
-            now = time_epoch();
-
-            if ((poke_timeout > 0) &&
-                (entry->last_updated + poke_timeout < now)) {
-                /* timeout the request */
-                logmsg(LOGMSG_ERROR, 
-                        "Master %s failed to acknowledge session %llu %s\n",
-                        entry->master, entry->rqid, comdb2uuidstr(entry->uuid, us));
-                entry->done = 1;
-                xerr->errval = entry->err.errval = SQLHERR_MASTER_TIMEOUT;
-                snprintf(entry->err.errstr, sizeof(entry->err.errstr),
-                         "master %s lost transaction %llu", entry->master,
-                         entry->rqid);
-                rc = 0;
-                break;
-            }
-
-            if ((poke_freq > 0) && (entry->last_checked + poke_freq < now)) {
-                /* try poke again */
-                if (entry->master == 0 || entry->master == gbl_mynode) {
-                    /* local checkup */
-                    rc = osql_repository_session_exists(entry->rqid,
-                                                        entry->uuid);
-                    if (!rc) {
-                        logmsg(LOGMSG_ERROR, "Local SORESE failed to find local "
-                                        "transaction %llu %s\n",
-                                entry->rqid, comdb2uuidstr(entry->uuid, us));
-                        entry->done = 1;
-                        xerr->errval = entry->err.errval =
-                            SQLHERR_MASTER_TIMEOUT;
-                        snprintf(entry->err.errstr, sizeof(entry->err.errstr),
-                                 "Local transaction failed, unable to locate "
-                                 "entry id=%llu",
-                                 entry->rqid);
-                        rc = 0; /* fail normally */
-                        break;
-                    } else {
-                        entry->last_updated = now;
-                    }
-                } else {
-                    rc =
-                        osql_comm_send_poke(entry->master, entry->rqid,
-                                            entry->uuid, NET_OSQL_MASTER_CHECK);
-                    if (rc) {
-                        logmsg(LOGMSG_ERROR, "Failed to send master check rc=%d\n",
-                                rc);
-                        entry->done = 1;
-                        xerr->errval = entry->err.errval =
-                            SQLHERR_MASTER_TIMEOUT;
-                        snprintf(entry->err.errstr, sizeof(entry->err.errstr),
-                                 "failed comm with master %s entry id=%llu %s",
-                                 entry->master, entry->rqid,
-                                 comdb2uuidstr(entry->uuid, us));
-                        rc = 0; /* fail normally */
-                        break;
-                    }
-                }
-
-                entry->last_checked = now;
-            }
-        }
-
-        if ((max_wait > 0 && cnt >= max_wait)) {
-            rc = pthread_mutex_unlock(&entry->mtx);
-            if (rc)
-                logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
-            fprintf(stderr,
-                    "sosql: timed-out waiting for commit from master\n");
+        if (max_wait > 0 && cnt >= max_wait) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: timed-out waiting for master %s "
+                   "to commit id=%llu %s\n",
+                   __func__, entry->master, entry->rqid,
+                   comdb2uuidstr(entry->uuid, us));
             return -6;
         }
 
-        if (entry->master_changed) {
-            rc = pthread_mutex_unlock(&entry->mtx);
-            if (rc)
-                logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
-            rc = 0; /* retry at higher level */
+        if (master_changed) { /* retry at higher level */
             xerr->errval = ERR_NOMASTER;
-            if (gbl_master_swing_osql_verbose)
-                logmsg(LOGMSG_ERROR, "sosql: master changed %lu\n",
-                       pthread_self());
+            if (gbl_master_swing_osql_verbose) {
+                uuidstr_t us;
+                logmsg(LOGMSG_ERROR, "%s: [%llx][%s] master changed\n",
+                       __func__, entry->rqid, comdb2uuidstr(entry->uuid, us));
+            }
             goto done;
         }
-
-        if ((rc = pthread_mutex_unlock(&entry->mtx))) {
-            logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
-            return -6;
-        }
-
     } /* done */
 
 done:
-
-    return rc;
+    if (xerr->errval)
+        logmsg(LOGMSG_DEBUG, "%s: done xerr->errval=%d\n", __func__,
+               xerr->errval);
+    return 0;
 }
 
 /**
@@ -748,52 +620,32 @@ done:
 int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
                                   int status, int timestamp)
 {
-    osql_sqlthr_t *entry = NULL;
-    int rc, rc2;
+    int rc = 0;
     uuidstr_t us;
 
     if (!checkboard)
         return 0;
 
-    if ((rc = pthread_rwlock_rdlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_wrlock: error code %d\n", rc);
-        return -1;
-    }
+    Pthread_rwlock_rdlock(&checkboard->rwlock);
 
-    if (rqid == OSQL_RQID_USE_UUID)
-        entry = hash_find_readonly(checkboard->rqsuuid, uuid);
-    else
-        entry = hash_find_readonly(checkboard->rqs, &rqid);
+    osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, 0);
     if (!entry) {
         ctrace("%s: SORESE received exists for missing session %llu %s\n",
                __func__, rqid, comdb2uuidstr(uuid, us));
-        rc2 = -1;
-
+        rc = -1;
     } else {
-
-        if (rc = pthread_mutex_lock(&entry->mtx)) {
-            logmsg(LOGMSG_ERROR, "pthread_mutex_lock: error code %d\n", rc);
-            return rc;
-        }
+        Pthread_mutex_lock(&entry->mtx);
 
         entry->status = status;
         entry->timestamp = timestamp;
-        entry->last_updated = time_epoch();
+        entry->last_updated = comdb2_time_epochms();
 
-        if (rc = pthread_mutex_unlock(&entry->mtx)) {
-            logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
-            return rc;
-        }
-
-        rc2 = 0;
+        Pthread_mutex_unlock(&entry->mtx);
     }
 
-    if ((rc = pthread_rwlock_unlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n", rc);
-        return -1;
-    }
+    Pthread_rwlock_unlock(&checkboard->rwlock);
 
-    return rc2;
+    return rc;
 }
 
 /**
@@ -801,45 +653,37 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
  * we're interested in things like master_changed
  *
  */
-int osql_reuse_sqlthr(struct sqlclntstate *clnt)
+int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
 {
-    osql_sqlthr_t *entry = NULL;
-    int rc = 0, rc2 = 0;
+    int rc = 0;
 
     if (clnt->osql.rqid == 0)
         return 0;
 
-    if ((rc = pthread_rwlock_wrlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_wrlock_rdlock: error code %d\n", rc);
-        return -1;
-    }
+    Pthread_rwlock_wrlock(&checkboard->rwlock);
 
-    if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
-        entry = hash_find_readonly(checkboard->rqsuuid, clnt->osql.uuid);
-    } else {
-        entry = hash_find_readonly(checkboard->rqs, &clnt->osql.rqid);
-    }
-
+    osql_sqlthr_t *entry =
+        osql_chkboard_fetch_entry(clnt->osql.rqid, clnt->osql.uuid, 0);
     if (!entry) {
         uuidstr_t us;
         logmsg(LOGMSG_ERROR, "%s: error unable to find record %llx %s\n", __func__,
                 clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us));
-        rc2 = -1;
+        rc = -1;
     } else {
-        pthread_mutex_lock(&entry->mtx);
+        Pthread_mutex_lock(&entry->mtx);
+        entry->last_checked = entry->last_updated =
+            comdb2_time_epochms(); /* reset these time */
         entry->done = 0;
         entry->master_changed = 0;
-        entry->master = thedb->master; /* master changed, store it here */
+        entry->master =
+            master ? master : gbl_mynode; /* master changed, store it here */
         bzero(&entry->err, sizeof(entry->err));
-        pthread_mutex_unlock(&entry->mtx);
+        Pthread_mutex_unlock(&entry->mtx);
     }
 
-    if ((rc = pthread_rwlock_unlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n", rc);
-        return -1;
-    }
+    Pthread_rwlock_unlock(&checkboard->rwlock);
 
-    return rc2;
+    return rc;
 }
 
 /**
@@ -852,15 +696,12 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt)
 int osql_chkboard_get_clnt_int(hash_t *h, void *k, struct sqlclntstate **clnt)
 {
     osql_sqlthr_t *entry = NULL;
-    int rc = 0, rc2;
+    int rc = 0;
 
     if (!checkboard)
         return 0;
 
-    if (rc = pthread_rwlock_rdlock(&checkboard->rwlock)) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_wrlock: error code %d\n", rc);
-        return -1;
-    }
+    Pthread_rwlock_rdlock(&checkboard->rwlock);
 
     entry = hash_find_readonly(h, k);
     if (!entry) {
@@ -879,27 +720,19 @@ int osql_chkboard_get_clnt_int(hash_t *h, void *k, struct sqlclntstate **clnt)
          */
 
         *clnt = NULL;
-
-        rc2 = -1;
-
+        rc = -1;
     } else {
-
         *clnt = entry->clnt;
 
         /* Need to lock this guy out
            This prevents them from getting freed upon commit
            before a new cursor is recorded */
-        pthread_mutex_lock(&(*clnt)->dtran_mtx);
-
-        rc2 = 0;
+        Pthread_mutex_lock(&(*clnt)->dtran_mtx);
     }
 
-    if (rc = pthread_rwlock_unlock(&checkboard->rwlock)) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n", rc);
-        return -2;
-    }
+    Pthread_rwlock_unlock(&checkboard->rwlock);
 
-    return rc2;
+    return rc;
 }
 
 int osql_chkboard_get_clnt(unsigned long long rqid, struct sqlclntstate **clnt)

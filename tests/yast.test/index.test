@@ -28,7 +28,7 @@ do_test index-1.1 {
 do_test index-1.1b {
   execsql {SELECT name, sql, tbl_name, type FROM sqlite_master 
            WHERE name='$INDEX1_A067DC8E'}
-} {{$INDEX1_A067DC8E} {create index "$INDEX1_A067DC8E" on "test1" (f1);} test1 index}
+} {{$INDEX1_A067DC8E} {create index "$INDEX1_A067DC8E" on "test1" ("f1");} test1 index}
 #{index1 {CREATE INDEX index1 ON test1(f1)} test1 index}
 #do_test index-1.1c {
 #  db close

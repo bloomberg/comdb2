@@ -34,6 +34,7 @@ static const char revid[] = "$Id: db_iface.c,v 11.106 2003/10/02 02:57:46 margo 
 #include <walkback.h>
 
 #include <debug_switches.h>
+#include <locks_wrap.h>
 
 #ifndef TESTSUITE
 extern pthread_key_t comdb2_open_key;
@@ -229,12 +230,11 @@ __db_associate_arg(dbp, sdbp, callback, flags)
  * __db_close_pp --
  *	DB->close pre/post processing.
  *
- * PUBLIC: int __db_close_pp __P((DB *, DB_TXN *, u_int32_t));
+ * PUBLIC: int __db_close_pp __P((DB *, u_int32_t));
  */
 int
-__db_close_pp(dbp, txn, flags)
+__db_close_pp(dbp, flags)
 	DB *dbp;
-	DB_TXN *txn;
 	u_int32_t flags;
 {
 	DB_ENV *dbenv;
@@ -262,7 +262,7 @@ __db_close_pp(dbp, txn, flags)
 	    (t_ret = __db_rep_enter(dbp, 0, 0)) != 0 && ret == 0)
 		ret = t_ret;
 
-	if ((t_ret = __db_close(dbp, txn, flags)) != 0 && ret == 0)
+	if ((t_ret = __db_close(dbp, NULL, flags)) != 0 && ret == 0)
 		ret = t_ret;
 
 	/* Release replication block. */
@@ -411,7 +411,6 @@ __db_cursor_ser_pp(dbp, txn, dbcs, dbcp, flags)
 	int rc;
 	DBC *d;
 	struct cursor_track *vptr;
-	int nframes;
 	int i;
 
 
@@ -436,8 +435,6 @@ __db_cursor_ser_pp(dbp, txn, dbcs, dbcp, flags)
 			if ((l != 0) && (d->locker != 0)) {
 				if (l != d->locker &&
 				    debug_switch_check_multiple_lockers()) {
-					unsigned int nframes;
-					void *stack[MAXSTACKDEPTH];
 
 					fprintf(stderr,
 					    "ERROR thread %p opened 2 cursors w/ 2 lockerids %d %d\n",
@@ -451,6 +448,8 @@ __db_cursor_ser_pp(dbp, txn, dbcs, dbcp, flags)
 						    vptr->stack[i]);
 
 #ifndef __linux__
+					unsigned int nframes;
+					void *stack[MAXSTACKDEPTH];
 					rc = stack_pc_getlist(NULL, stack,
 					    MAXSTACKDEPTH, &nframes);
 					if (!rc) {
@@ -475,7 +474,7 @@ __db_cursor_ser_pp(dbp, txn, dbcs, dbcp, flags)
 			stack_pc_getlist(NULL, vptr->stack, MAXSTACKDEPTH,
 			    &vptr->nframes);
 #endif
-			pthread_setspecific(comdb2_open_key, vptr);
+			Pthread_setspecific(comdb2_open_key, vptr);
 		}
 #endif
 	}
@@ -712,7 +711,7 @@ __db_cursor_real(dbp, txn, txn_clone, dbcp_old, lid_clone, dbcs, dbcp, flags,
 					    "error allocating __dbg_free_cursor\n");
 				} else {
 					p->counter = 1;
-					pthread_setspecific(DBG_FREE_CURSOR, p);
+					Pthread_setspecific(DBG_FREE_CURSOR, p);
 				}
 			}
 #endif
@@ -942,10 +941,7 @@ __db_get_pp(dbp, txn, key, data, flags)
 	vptr = pthread_getspecific(comdb2_open_key);
 	if (vptr) {
 		u_int32_t lid;
-		unsigned int nframes;
-		void *stack[MAXSTACKDEPTH];
 		int i;
-		int rc;
 
 		lid = vptr->lockerid;
 		if (lid && debug_switch_check_multiple_lockers()) {
@@ -954,18 +950,17 @@ __db_get_pp(dbp, txn, key, data, flags)
 			    "cursor (lockerid %d)\n", (void *)pthread_self(), lid);
 			fprintf(stderr, "First stack:\n");
 			for (i = SKIPFRAMES; i < vptr->nframes; i++)
-				fprintf(stderr, " %d %p", i - SKIPFRAMES,
-				    vptr->stack[i]);
+				fprintf(stderr, " %d %p", i - SKIPFRAMES, vptr->stack[i]);
 			printf("\n");
 
 #ifndef __linux__
-			rc = stack_pc_getlist(NULL, stack, MAXSTACKDEPTH,
-			    &nframes);
+            unsigned int nframes;
+            void *stack[MAXSTACKDEPTH];
+            int rc = stack_pc_getlist(NULL, stack, MAXSTACKDEPTH, &nframes);
 			if (!rc) {
 				fprintf(stderr, "Second stack:\n");
 				for (i = SKIPFRAMES; i < nframes; i++)
-					fprintf(stderr, "%d %p", i - SKIPFRAMES,
-					    stack[i]);
+					fprintf(stderr, "%d %p", i - SKIPFRAMES, stack[i]);
 				printf("\n");
 			}
 #endif
@@ -981,7 +976,7 @@ __db_get_pp(dbp, txn, key, data, flags)
 	if (LF_ISSET(DB_DIRTY_READ))
 		mode = DB_DIRTY_READ;
 	else if ((flags & DB_OPFLAGS_MASK) == DB_CONSUME ||
-	    (flags & DB_OPFLAGS_MASK) == DB_CONSUME_WAIT) {
+		(flags & DB_OPFLAGS_MASK) == DB_CONSUME_WAIT) {
 		mode = DB_WRITELOCK;
 		if (IS_AUTO_COMMIT(dbenv, txn, flags)) {
 			if ((ret = __db_txn_auto_init(dbenv, &txn)) != 0)
@@ -1030,6 +1025,7 @@ __db_get_numpages(dbp, numpages)
 	case DB_UNKNOWN:
 	default:
 		ret = __db_unknown_type(dbp->dbenv, "__db_numpages", dbp->type);
+		abort();
 		goto err;
 	}
 

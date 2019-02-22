@@ -51,7 +51,7 @@ struct temp_table *analyze_get_sampled_temptable(struct sqlclntstate *client,
  * index.
  * This is required for sqlite_stat1
  */
-int analyze_get_nrecs(int iTable);
+int64_t analyze_get_nrecs(int iTable);
 
 /**
  * Retrieve the number of sampled (previously misnamed compressed) records in
@@ -90,6 +90,12 @@ void analyze_enable_sampled_indicies(void);
  * Set the maximum number of concurrent tables analyzed.
  */
 int analyze_set_max_table_threads(void *context, void *maxtd);
+
+/** 
+ * Set maximum analyze compression threads. 
+ */
+int analyze_set_max_comp_threads( int maxthd );
+
 
 /**
  * Set the maximum number of concurrent sampling (compression) threads.

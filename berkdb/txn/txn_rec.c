@@ -57,6 +57,8 @@ static const char revid[] = "$Id: txn_rec.c,v 11.54 2003/10/31 23:26:11 ubell Ex
 
 #define	IS_XA_TXN(R) (R->xid.size != 0)
 
+int set_commit_context(unsigned long long context, uint32_t *generation,
+		void *plsn, void *args, unsigned int rectype);
 /*
  * PUBLIC: int __txn_regop_gen_recover
  * PUBLIC:    __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
@@ -113,6 +115,8 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		rep->committed_gen = argp->generation;
         rep->committed_lsn = *lsnp;
+        if (argp->generation > rep->gen)
+            __rep_set_gen(dbenv, __func__, __LINE__, argp->generation);
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	} else if ((dbenv->tx_timestamp != 0 &&
 		argp->timestamp > (int32_t) dbenv->tx_timestamp) ||
@@ -151,8 +155,12 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
 	}
 
-	if (ret == 0)
+	if (ret == 0) {
+		if (argp->context)
+			set_commit_context(argp->context, &(argp->generation), lsnp, argp,
+				DB___txn_regop_gen);
 		*lsnp = argp->prev_lsn;
+	}
 
 	if (0) {
 err:		__db_err(dbenv,
@@ -184,6 +192,7 @@ __txn_regop_recover(dbenv, dbtp, lsnp, op, info)
 {
 	DB_TXNHEAD *headp;
 	__txn_regop_args *argp;
+	unsigned long long context = 0;
 	int ret;
 
 #ifdef DEBUG_RECOVER
@@ -246,8 +255,11 @@ __txn_regop_recover(dbenv, dbtp, lsnp, op, info)
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
 	}
 
-	if (ret == 0)
+	if (ret == 0) {
+		if ((context = __txn_regop_read_context(argp)) != 0)
+			set_commit_context(context, NULL, lsnp, argp, DB___txn_regop);
 		*lsnp = argp->prev_lsn;
+	}
 
 	if (0) {
 err:		__db_err(dbenv,
@@ -311,7 +323,6 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 	DB_REP *db_rep;
 	REP *rep;
 	DB_TXNHEAD *headp;
-	u_int32_t lockcnt;
 	__txn_regop_rowlocks_args *argp;
 	LTDESC *lt = NULL;
 	int ret;
@@ -390,6 +401,8 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		rep->committed_gen = argp->generation;
         rep->committed_lsn = *lsnp;
+        if (argp->generation > rep->gen)
+            __rep_set_gen(dbenv, __func__, __LINE__, argp->generation);
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	} 
 	else if ((dbenv->tx_timestamp != 0 &&
@@ -486,8 +499,12 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
 	}
 
-	if (ret == 0)
+	if (ret == 0) {
+		if (argp->context)
+			set_commit_context(argp->context, &(argp->generation), lsnp, argp,
+				DB___txn_regop_rowlocks);
 		*lsnp = argp->prev_lsn;
+	}
 
 	if (0) {
 err:		__db_err(dbenv,
@@ -602,8 +619,13 @@ __txn_ckp_recover(dbenv, dbtp, lsnp, op, info)
 {
 	DB_REP *db_rep;
 	REP *rep;
+	DB_TXNREGION *region;
+	DB_TXNMGR *mgr;
 	__txn_ckp_args *argp;
 	int ret;
+
+	mgr = dbenv->tx_handle;
+	region = mgr->reginfo.primary;
 
 #ifdef DEBUG_RECOVER
 	__txn_ckp_print(dbenv, dbtp, lsnp, op, info);
@@ -611,8 +633,30 @@ __txn_ckp_recover(dbenv, dbtp, lsnp, op, info)
 	if ((ret = __txn_ckp_read(dbenv, dbtp->data, &argp)) != 0)
 		return (ret);
 
-	if (op == DB_TXN_BACKWARD_ROLL)
+	if (op == DB_TXN_BACKWARD_ROLL) {
+		DB_LOGC *logc;
+		DB_LSN last_ckp = argp->last_ckp;
+		DBT data_dbt;
 		__db_txnlist_ckp(dbenv, info, lsnp);
+		if ((ret = __log_cursor(dbenv, &logc)) != 0) {
+			logmsg(LOGMSG_FATAL, "%s unable to allocate log_cursor, rc=%d\n",
+					__func__, ret);
+			return (ret);
+		}
+
+		memset(&data_dbt, 0, sizeof(data_dbt));
+		data_dbt.flags = DB_DBT_USERMEM | DB_DBT_PARTIAL;
+		data_dbt.ulen = 0;
+
+		if ((ret = __log_c_get(logc, &last_ckp, &data_dbt, DB_SET)) == 0) {
+			__checkpoint_save(dbenv, &last_ckp, 1);
+			region->last_ckp = argp->last_ckp;
+		} else {
+			logmsg(LOGMSG_DEBUG, "%s not saving lsn %d:%d on backwards roll\n",
+					__func__, last_ckp.file, last_ckp.offset);
+		}
+		__log_c_close(logc);
+	}
 
 	if (op == DB_TXN_FORWARD_ROLL) {
 		/* Record the max generation number that we've seen. */
@@ -622,6 +666,9 @@ __txn_ckp_recover(dbenv, dbtp, lsnp, op, info)
 			if (argp->rep_gen > rep->recover_gen)
 				rep->recover_gen = argp->rep_gen;
 		}
+        __log_flush(dbenv, NULL);
+		__checkpoint_save(dbenv, lsnp, 1);
+		region->last_ckp = *lsnp;
 	}
 
 	*lsnp = argp->last_ckp;

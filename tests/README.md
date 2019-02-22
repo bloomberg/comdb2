@@ -1,26 +1,31 @@
 ## Overview
 
-This is the comdb2 test suite.  To run the full suite, build and install the
-database with `make && sudo user=$USER make install`, make sure `pmux` is running
-(`pmux -l`), then run `make` in the tests directory.  Any failure will stop the
-run.  `make -k` will allow other tests to run.  `make -j5` will let 5 tests to
-run in parallel.  `make -kj5` is a good setting, experiment with the number
-depending on your available hardware.
+This is the comdb2 test suite. To run the test suite you need to:
+
+1) build comdb2 by doing the following from the top level dir:
+  mkdir build
+  cmake ..
+  make -j$(nproc) && make -j$(nproc) test-tools
+
+2) go to the tests/ directory where each test is a directory with a `.test`
+ending.  To run a specific test, run `make testname`. For example `make
+cdb2api` will run the cdb2api test, which is stored in `cdb2api.test`.
+
+To run all tests in the tests/ directory just rn `make` -- any failure will
+stop the run, instead `make -k` will allow other tests to run.  `make -j5` will
+let 5 tests to run in parallel. `make -kj5` is a good setting, experiment with
+the number depending on your available hardware.
+
+By default, tests run on the current machine and the databases are brought up
+locally.  To test against a clustered database, export variable `CLUSTER` with
+the list of machines to use, eg: `CLUSTER="m1 m2 m3"` make cdb2api will
+build a cluster on m1/m2/m3 and run the test there. Make can take argumests so
+the same can be achieved via `make cdb2api CLUSTER="m1 m2 m3"`. The databases
+are torn down after the test is over.
 
 `testrunner` in the tests directory is a wrapper script that shows you status
 of running tests. It requires python 2.7 and the `blessings` module. It implies
 `-k` and takes an optional `-j` setting and a list of tests to run.
-
-Each test is a directory with a `.test` ending.  To run a specific test, run
-`make testname`.  For example `make cdb2api` will run the cdb2api test, which
-is stored in `cdb2api.test`.
-
-Tests run on the current machine.  Databases are brought up locally by default.
-To test against a clustered database, export a CLUSTER variable to contain a
-list of machines to use, eg: `CLUSTER="m1 m2 m3"` make cdb2api will build a
-cluster on m1/m2/m3 and run the test there. Make can take argumests so
-the same can be achieved via `make cdb2api CLUSTER="m1 m2 m3"`. The databases
-are torn down after the test is over.
 
 ## Adding new tests
 
@@ -73,16 +78,16 @@ endif
       make setup
    ```
    
-   if you want to have test directories in a particular location, set TESTDIR:
+   If you want to have test directories in a particular location, set TESTDIR:
    ```sh
       make setup TESTDIR=/tmp/somedirfortest
    ```
 
-
-If you already have the test directory properly populated, and
-you can run `make` to run the test case. 
-If you want to run the commands manually, you can type `make setup`,
-then follow the instructions printed by the above command.
+   If your build directory is in a different location, ex. /tmp/mybuilddir 
+   then you can specify it with the BUILDDIR parameter:
+   ```sh
+      make basic TESTDIR=/tmp/somedirfortest BUILDDIR=/tmp/mybuilddir
+   ``` 
 
 
 ## Details
@@ -118,8 +123,16 @@ Variable | Description
 
 You can export your own `DBDIR`/`DBNAME` when running a single test. 
 
-Export `CLUSTER` to a list of machines you want to use for a clustered test.  The
-test suite will run as the user running the test suite.  It assumes you have
+Export `CLUSTER` to a list of machines you want to use for a clustered test.
+If you want to run multiple tests at the same time and have each one the tests 
+run in a subset of the $CLUSTER nodes, you can export NUMNODESTOUSE and every
+individual test will run in a cluster of $NUMNODESTOUSE as a randomly selected
+subset of $CLUSTER.
+For example, the following command will run all the tests in the tests directory, 
+each test in a randomly selected cluster of three nodes: 
+   make -j 4 -k CLUSTER='node1 node2 node3 node4 node5' NUMNODESTOUSE=3
+
+The test suite will run as the user running the test suite.  It assumes you have
 ssh and all the keys set up to allow password-less authentication between the
 current machine and the machines in the cluster.  comdb2 needs to be installed
 on the cluster machines.  Path to `${DBDIR}` must accessible to the current user.
@@ -132,7 +145,7 @@ File | Description
 `$TESTDIR/logs/$DBNAME.db      `         | If running on local machine (`$CLUSTER` isn't set), the output from the database
 `$TESTDIR/logs/$DBNAME.testcase   `      | Output from the runit script
 `$TESTDIR/logs/$DBNAME.$MACHINE.copy   ` | Output from copying database to `$MACHINE` (when $CLUSTER is set) This is usually empty unless something went wrong.
-`$TESTDIR/logs/$DBNAME.deb1.db   `       | If running clustered (`$CLUSTER` is set), the output from the database on `$MACHINE`
+`$TESTDIR/logs/$DBNAME.$MACHINE.db   `       | If running clustered (`$CLUSTER` is set), the output from the database on `$MACHINE`
 
 Running `make clean` in the 'tests' directory will remove all logs, all
 databases, and all files produced by the running tests. It will NOT remove
@@ -149,6 +162,10 @@ the testcase directory.
 There's a timeout (default 5 minutes) on a runtime of each testcase, and 1
 minute for setup.  If a test needs more time, `export TEST_TIMEOUT` and
 `SETUP_TIMEOUT` in the test `Makefile`.
+
+The test scripts will cleanup the DB directory on a successful test. If you 
+want to keep the test directory, specify as a parameter `make CLEANUPDBDIR=0` 
+and the DB and will remain intact after test exit. 
 
 ## Good ideas/practices
 
@@ -177,12 +194,17 @@ failure--we have allowed for timeout to be a reasonable amount of time for
 a test to complete. 
 
 You can use the same test machine to run multiple tests simultaneously--running 
-any two tests in parallel is easy by doing:
+any two tests in series is easy by doing:
 ```sh
   make test1; make test2
 ```
 
-To run all the tests in the directory simply do:
+Same two tests can run in parallel via:
+```sh
+  make -j 2 test1 test2
+```
+
+To run all the tests [in parallel] in the directory simply do:
 ```sh
   make -k -j 16
 ```
@@ -321,7 +343,7 @@ of comdb2 servers in those containers.
     hostname node1
     ```
 
-4.  At this time you might want to make copies of this container:
+4.  At this time you will want to make copies of this container:
     ```sh
       lxc-copy -n node1 -N node2
       lxc-copy -n node1 -N node3
@@ -339,17 +361,24 @@ of comdb2 servers in those containers.
     (so `node2` and `node3` respectively)
 
     Add `node1`, `node2` and `node3` to `/etc/hosts` all nodes as well as to containers' host.
-    lxc-start all the containers, and make sure you can ssh from any one to the 
-    others.
 
-5.  To run tests in clusters residing in the above containers, launch the tests from the host machine: 
+5.  lxc-start all the containers, and make sure you can ssh into each of them from your host,
+    as well all other containers, ex: 
+    ```sh
+      for n in node1 node2 node3 ; do 
+          lxc-start -n $n
+          ssh $n 'echo $HOSTNAME'
+      done
+    ```
+
+6.  To run tests in clusters residing in the above containers, launch the tests from the host machine: 
     ```sh
       export CLUSTER="node1 node2 node"
       make test1
     ```
     or
     ```sh
-      make -k -j 16
+      make -k -j 16 CLUSTER="node1 node2 node"
     ```
 
 ## Running tests on AWS EC2 clusters

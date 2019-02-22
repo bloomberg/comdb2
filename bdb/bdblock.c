@@ -30,6 +30,7 @@
 
 #include "bdb_int.h"
 #include "locks.h"
+#include "locks_wrap.h"
 #include "logmsg.h"
 
 /* XXX stupid chicken/egg.  this variable cannot live in the bdb_state
@@ -37,6 +38,7 @@
 extern bdb_state_type *gbl_bdb_state;
 extern int gbl_rowlocks;
 extern pthread_t gbl_invalid_tid;
+extern int gbl_exit;
 
 int gbl_bdblock_debug = 0;
 
@@ -52,7 +54,6 @@ static int bdb_bdblock_debug_init_called = 0;
 void bdb_bdblock_debug_init(bdb_state_type *bdb_state)
 {
     char buf[80];
-    int rc;
 
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
@@ -62,7 +63,7 @@ void bdb_bdblock_debug_init(bdb_state_type *bdb_state)
     bdb_state->bdblock_debug_fp = fopen(buf, "w");
     setvbuf(bdb_state->bdblock_debug_fp, 0, _IOLBF, 0);
 
-    rc = pthread_mutex_init(&(bdb_state->bdblock_debug_lock), NULL);
+    Pthread_mutex_init(&(bdb_state->bdblock_debug_lock), NULL);
     logmsg(LOGMSG_USER, "initialized bdblock debug\n");
 
     bdb_bdblock_debug_init_called = 1;
@@ -246,26 +247,30 @@ void bdb_lock_init(bdb_state_type *bdb_state)
 {
     listc_init(&bdb_state->thread_lock_info_list,
                offsetof(thread_lock_info_type, linkv));
-    pthread_mutex_init(&bdb_state->thread_lock_info_list_mutex, NULL);
+    Pthread_mutex_init(&bdb_state->thread_lock_info_list_mutex, NULL);
 }
 
 void bdb_lock_destructor(void *ptr)
 {
     thread_lock_info_type *lk = ptr;
     if (lk) {
+        if (gbl_exit) {
+            /* We don't give up bdblock on exit */
+            goto out;
+        }
         logmsg(LOGMSG_ERROR, 
             "%s: thread has not called bdb_thread_event to destroy locks!\n",
             __func__);
-
         if (lk->lockref != 0) {
             logmsg(LOGMSG_FATAL, "%s: exiting thread holding lock!\n", __func__);
             abort_lk(lk);
         }
-        if (lk->stack && lk->nstack > 0)
+        if (lk->stack && lk->nstack > 0) {
             cheap_stack_trace();
-
-        if (lk->stack)
+        }
+out:    if (lk->stack) {
             free(lk->stack);
+        }
         free(lk);
     }
 }
@@ -343,6 +348,10 @@ static int raise_thd_priority(void)
 
 #endif
 
+extern int __rep_block_on_inflight_transactions(DB_ENV *dbenv);
+
+int gbl_force_serial_on_writelock = 1;
+
 /* Acquire the write lock.  If the current thread already holds the bdb read
  * lock then it is upgraded to a write lock.  If it already holds the write
  * lock then we just increase our reference count. */
@@ -377,12 +386,7 @@ static inline void bdb_get_writelock_int(bdb_state_type *bdb_state,
            */
         lk->readlockref = lk->lockref;
         lk->readident = lk->ident;
-        rc = pthread_rwlock_unlock(lock_handle->bdb_lock);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "%s(%s): pthread_rwlock_unlock error %d %s\n",
-                    funcname, __func__, rc, strerror(rc));
-            abort();
-        }
+        Pthread_rwlock_unlock(lock_handle->bdb_lock);
 
         if (gbl_bdblock_debug)
             rel_lock_log(bdb_state);
@@ -393,9 +397,9 @@ static inline void bdb_get_writelock_int(bdb_state_type *bdb_state,
     }
 
     if (lk->lockref == 0) {
-        pthread_mutex_lock(&lk_desired_lock);
+        Pthread_mutex_lock(&lk_desired_lock);
         lock_handle->bdb_lock_desired++;
-        pthread_mutex_unlock(&lk_desired_lock);
+        Pthread_mutex_unlock(&lk_desired_lock);
 
         if (gbl_bdblock_debug)
             get_write_lock_try_log(bdb_state);
@@ -431,27 +435,26 @@ static inline void bdb_get_writelock_int(bdb_state_type *bdb_state,
                 bdb_abort_logical_waiters(lock_handle);
             }
 
-            rc = pthread_rwlock_wrlock(lock_handle->bdb_lock);
-            if (rc != 0) {
-                logmsg(LOGMSG_FATAL, 
-                        "%s/%s(%s): pthread_rwlock_wrlock error %d %s\n", idstr,
-                        funcname, __func__, rc, strerror(rc));
-                abort();
-            }
+            Pthread_rwlock_wrlock(lock_handle->bdb_lock);
         } else if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "%s/%s(%s): pthread_rwlock_wrlock error %d %s\n",
-                    idstr, funcname, __func__, rc, strerror(rc));
+            logmsg(LOGMSG_FATAL,
+                   "%s/%s(%s): pthread_rwlock_trywrlock error %d %s\n", idstr,
+                   funcname, __func__, rc, strerror(rc));
             abort();
         }
+
+        /* Wait on rep_processor threads while we have the writelock lock */
+        if (gbl_force_serial_on_writelock && lock_handle->passed_dbenv_open)
+            __rep_block_on_inflight_transactions(lock_handle->dbenv);
 
         strcpy(lock_handle->bdb_lock_write_idstr, idstr);
 
         if (gbl_bdblock_debug)
             get_write_lock_log(bdb_state);
 
-        pthread_mutex_lock(&lk_desired_lock);
+        Pthread_mutex_lock(&lk_desired_lock);
         lock_handle->bdb_lock_desired--;
-        pthread_mutex_unlock(&lk_desired_lock);
+        Pthread_mutex_unlock(&lk_desired_lock);
 
         lock_handle->bdb_lock_write_holder = pthread_self();
         lock_handle->bdb_lock_write_holder_ptr = lk;
@@ -502,7 +505,6 @@ void bdb_get_readlock(bdb_state_type *bdb_state, const char *idstr,
     thread_lock_info_type *lk = pthread_getspecific(lock_key);
     bdb_state_type *lock_handle = bdb_state;
     int rc;
-    int cnt;
 
     if (lock_handle->parent)
         lock_handle = lock_handle->parent;
@@ -528,16 +530,11 @@ void bdb_get_readlock(bdb_state_type *bdb_state, const char *idstr,
                    idstr, pthread_self(), lock_handle->bdb_lock_write_idstr,
                    lock_handle->bdb_lock_write_holder);
 
-            rc = pthread_rwlock_rdlock(lock_handle->bdb_lock);
-            if (rc != 0) {
-                logmsg(LOGMSG_FATAL, 
-                        "%s/%s(%s): pthread_rwlock_rdlock error %d %s\n", idstr,
-                        funcname, __func__, rc, strerror(rc));
-                abort();
-            }
+            Pthread_rwlock_rdlock(lock_handle->bdb_lock);
         } else if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "%s/%s(%s): pthread_rwlock_rdlock error %d %s\n",
-                    idstr, funcname, __func__, rc, strerror(rc));
+            logmsg(LOGMSG_FATAL,
+                   "%s/%s(%s): pthread_rwlock_tryrdlock error %d %s\n", idstr,
+                   funcname, __func__, rc, strerror(rc));
             abort();
         }
 
@@ -569,13 +566,17 @@ void bdb_get_readlock(bdb_state_type *bdb_state, const char *idstr,
     lk->lockref++;
 }
 
+void bdb_get_the_readlock(const char *idstr, const char *function, int line)
+{
+    bdb_get_readlock(gbl_bdb_state, idstr, function, line);
+}
+
 /* Release the lock of either type (decrements reference count, releases
  * actual lock if reference count hits zero). */
 void bdb_rellock(bdb_state_type *bdb_state, const char *funcname, int line)
 {
     thread_lock_info_type *lk = pthread_getspecific(lock_key);
     bdb_state_type *lock_handle = bdb_state;
-    int rc;
 
     /*printf("rel [%2d] %*s%s %s %d\n", lk->lockref, (lk->lockref-1)*2, "",
      * funcname, lk->ident, line);*/
@@ -600,17 +601,13 @@ void bdb_rellock(bdb_state_type *bdb_state, const char *funcname, int line)
             lock_handle->bdb_lock_write_holder = 0;
         }
 
-        rc = pthread_rwlock_unlock(lock_handle->bdb_lock);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "%s(%s): pthread_rwlock_unlock error %d %s\n",
-                    funcname, __func__, rc, strerror(rc));
-            abort();
-        }
+        Pthread_rwlock_unlock(lock_handle->bdb_lock);
 
         if (gbl_bdblock_debug)
             rel_lock_log(bdb_state);
 
 #ifdef _SUN_SOURCE
+        int rc;
         if (lk->locktype == WRITELOCK && lk->loweredpri) {
             rc = raise_thd_priority();
             if (0 == rc)
@@ -641,6 +638,11 @@ void bdb_rellock(bdb_state_type *bdb_state, const char *funcname, int line)
     }
 }
 
+void bdb_relthelock(const char *funcname, int line)
+{
+    bdb_rellock(gbl_bdb_state, funcname, line);
+}
+
 /* Check that all the locks are released; this ensures that no
  * bdb lock is lost after a request; thread might be reused and
  * trigger an abort much later
@@ -650,7 +652,6 @@ void bdb_checklock(bdb_state_type *bdb_state)
 {
     thread_lock_info_type *lk = pthread_getspecific(lock_key);
     bdb_state_type *lock_handle = bdb_state;
-    int rc;
 
     if (lock_handle->parent)
         lock_handle = lock_handle->parent;
@@ -665,6 +666,17 @@ void bdb_checklock(bdb_state_type *bdb_state)
            locktype2str(lk->locktype), lk->ident ? lk->ident : "?",
            lk->lockref);
     abort_lk(lk);
+}
+
+int bdb_lockref(void)
+{
+    thread_lock_info_type *lk = pthread_getspecific(lock_key);
+    if (lk == NULL) {
+        logmsg(LOGMSG_FATAL, "%s: bdb lock not inited in this thread\n",
+               __func__);
+        abort();
+    }
+    return lk->lockref;
 }
 
 static int get_threadid(bdb_state_type *bdb_state)
@@ -738,40 +750,39 @@ static void new_thread_lock_info(bdb_state_type *bdb_state)
 
     if (lk) {
         logmsg(LOGMSG_WARN, "%s: redundant thread start!\n", __func__);
-    } else {
-        lk = malloc(sizeof(thread_lock_info_type));
-        if (!lk) {
+        return;
+    }
+
+    lk = calloc(1, sizeof(thread_lock_info_type));
+    if (!lk) {
+        logmsg(LOGMSG_FATAL, "%s: out of memory\n", __func__);
+        exit(1);
+    }
+
+    lk->threadid = pthread_self();
+
+    if (bdb_state->attr && bdb_state->attr->debug_bdb_lock_stack) {
+        lk->stack = (void **)malloc(sizeof(void *) * BDB_DEBUG_STACK);
+        if (!lk->stack) {
             logmsg(LOGMSG_FATAL, "%s: out of memory\n", __func__);
+            free(lk);
             exit(1);
         }
-
-        bzero(lk, sizeof(thread_lock_info_type));
-        lk->threadid = pthread_self();
-
-        if (bdb_state->attr && bdb_state->attr->debug_bdb_lock_stack) {
-            lk->stack = (void **)malloc(sizeof(void *) * BDB_DEBUG_STACK);
-            if (!lk->stack) {
-                logmsg(LOGMSG_FATAL, "%s: out of memory\n", __func__);
-                free(lk);
-                exit(1);
-            }
-            rc =
-                stack_pc_getlist(NULL, lk->stack, BDB_DEBUG_STACK, &lk->nstack);
-            if (rc) {
+        rc = stack_pc_getlist(NULL, lk->stack, BDB_DEBUG_STACK, &lk->nstack);
+        if (rc) {
 #ifndef _LINUX_SOURCE
-                logmsg(LOGMSG_WARN, "%s: failed to get stack %d\n", __func__, rc);
+            logmsg(LOGMSG_WARN, "%s: failed to get stack %d\n", __func__, rc);
 #endif
-                free(lk->stack);
-                lk->stack = NULL;
-            }
+            free(lk->stack);
+            lk->stack = NULL;
         }
-
-        pthread_setspecific(lock_key, lk);
-
-        Pthread_mutex_lock(&bdb_state->thread_lock_info_list_mutex);
-        listc_atl(&bdb_state->thread_lock_info_list, lk);
-        Pthread_mutex_unlock(&bdb_state->thread_lock_info_list_mutex);
     }
+
+    Pthread_setspecific(lock_key, lk);
+
+    Pthread_mutex_lock(&bdb_state->thread_lock_info_list_mutex);
+    listc_atl(&bdb_state->thread_lock_info_list, lk);
+    Pthread_mutex_unlock(&bdb_state->thread_lock_info_list_mutex);
 }
 
 /* Free the current thread's lock info struct. */
@@ -780,29 +791,29 @@ static void delete_thread_lock_info(bdb_state_type *bdb_state)
     thread_lock_info_type *lk = pthread_getspecific(lock_key);
     if (!lk) {
         logmsg(LOGMSG_WARN, "%s: thread stop before init!!\n", __func__);
-    } else {
-        if (lk->lockref != 0) {
-            logmsg(LOGMSG_FATAL, "%s: exiting thread holding lock!\n", __func__);
-            logmsg(LOGMSG_FATAL, "%s: %s %s lockref=%u\n", __func__,
-                    locktype2str(lk->locktype), lk->ident ? lk->ident : "?",
-                    lk->lockref);
-            abort_lk(lk);
-        }
-
-        Pthread_mutex_lock(&bdb_state->thread_lock_info_list_mutex);
-        listc_rfl(&bdb_state->thread_lock_info_list, lk);
-        Pthread_mutex_unlock(&bdb_state->thread_lock_info_list_mutex);
-
-        if (lk->stack)
-            free(lk->stack);
-        free(lk);
-        pthread_setspecific(lock_key, NULL);
+        return;
     }
+
+    if (lk->lockref != 0) {
+        logmsg(LOGMSG_FATAL, "%s: exiting thread holding lock!\n", __func__);
+        logmsg(LOGMSG_FATAL, "%s: %s %s lockref=%u\n", __func__,
+               locktype2str(lk->locktype), lk->ident ? lk->ident : "?",
+               lk->lockref);
+        abort_lk(lk);
+    }
+
+    Pthread_mutex_lock(&bdb_state->thread_lock_info_list_mutex);
+    listc_rfl(&bdb_state->thread_lock_info_list, lk);
+    Pthread_mutex_unlock(&bdb_state->thread_lock_info_list_mutex);
+
+    if (lk->stack)
+        free(lk->stack);
+    free(lk);
+    Pthread_setspecific(lock_key, NULL);
 }
 
 void bdb_stripe_get(bdb_state_type *bdb_state)
 {
-    size_t id;
     bdb_state_type *parent;
 
     if (bdb_state->parent)
@@ -810,14 +821,13 @@ void bdb_stripe_get(bdb_state_type *bdb_state)
     else
         parent = bdb_state;
 
-    id = get_threadid(parent);
+    size_t id = get_threadid(parent);
 
-    pthread_setspecific(parent->tid_key, (void *)id);
+    Pthread_setspecific(parent->tid_key, (void *)id);
 }
 
 void bdb_stripe_done(bdb_state_type *bdb_state)
 {
-    size_t id;
     bdb_state_type *parent;
 
     if (bdb_state->parent)
@@ -825,7 +835,7 @@ void bdb_stripe_done(bdb_state_type *bdb_state)
     else
         parent = bdb_state;
 
-    id = (size_t)pthread_getspecific(parent->tid_key);
+    size_t id = (size_t)pthread_getspecific(parent->tid_key);
 
     return_threadid(parent, id);
 }
@@ -833,15 +843,11 @@ void bdb_stripe_done(bdb_state_type *bdb_state)
 void bdb_thread_event(bdb_state_type *bdb_state, int event)
 {
     bdb_state_type *parent;
-    int *mallocedtid;
-    int tid;
 
     if (bdb_state->parent)
         parent = bdb_state->parent;
     else
         parent = bdb_state;
-
-    tid = (int)pthread_self();
 
     switch (event) {
     case BDBTHR_EVENT_DONE_RDONLY: /* thread done */
@@ -864,6 +870,16 @@ void bdb_thread_event(bdb_state_type *bdb_state, int event)
         logmsg(LOGMSG_ERROR, "bdb_thread_event: event=%d?!\n", event);
         break;
     }
+}
+
+void bdb_thread_done_rw(void)
+{
+    bdb_thread_event(gbl_bdb_state, BDBTHR_EVENT_DONE_RDWR);
+}
+
+void bdb_thread_start_rw(void)
+{
+    bdb_thread_event(gbl_bdb_state, BDBTHR_EVENT_START_RDWR);
 }
 
 static void dump_int(thread_lock_info_type *lk, FILE *out)

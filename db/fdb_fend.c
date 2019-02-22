@@ -25,6 +25,7 @@
 #include <assert.h>
 #include <alloca.h>
 #include <poll.h>
+#include <time.h>
 
 #include <rtcpu.h>
 #include <list.h>
@@ -48,6 +49,10 @@
 #include "osqlsession.h"
 #include "util.h"
 #include "logmsg.h"
+
+#include "ssl_support.h"
+#include "ssl_io.h"
+#include "ssl_bend.h"
 
 extern int gbl_fdb_resolve_local;
 extern int gbl_fdb_allow_cross_classes;
@@ -136,6 +141,9 @@ struct fdb {
     int has_sqlstat4; /* if sqlstat4 was found */
 
     int server_version; /* save the server_version */
+#if WITH_SSL
+    ssl_mode ssl; /* does this server needs ssl */
+#endif
 };
 
 /* cache of foreign dbs */
@@ -157,7 +165,11 @@ typedef struct fcon_tag {
     int blah;
 } fcon_tag_t;
 
-enum fdb_cur_stream_state { FDB_CUR_IDLE = 0, FDB_CUR_STREAMING = 1 };
+enum fdb_cur_stream_state {
+    FDB_CUR_IDLE = 0,
+    FDB_CUR_STREAMING = 1,
+    FDB_CUR_ERROR = 2
+};
 
 struct fdb_cursor {
     char *cid;             /* identity of cursor id */
@@ -185,6 +197,7 @@ struct fdb_cursor {
     uuid_t ciduuid;                      /* UUID/fastseed storage for cursor */
     uuid_t tiduuid; /* UUID/fastseed storage for transaction, if any, or 0 */
     char *node;     /* connected to where? */
+    int need_ssl;   /* uses ssl */
 };
 
 static fdb_cache_t fdbs;
@@ -261,7 +274,8 @@ static int _fdb_set_affinity_node(struct sqlclntstate *clnt, const fdb_t *fdb,
                                   char *host, int status);
 void _fdb_clear_clnt_node_affinities(struct sqlclntstate *clnt);
 
-static int _get_protocol_flags(int version, void *trans);
+static int _get_protocol_flags(struct sqlclntstate *clnt, fdb_t *fdb,
+                               int *flags);
 
 /**************  FDB OPERATIONS ***************/
 
@@ -282,10 +296,10 @@ int fdb_cache_init(int n)
         return -1;
     }
     fdbs.nalloc = n;
-    pthread_rwlock_init(&fdbs.arr_lock, NULL);
+    Pthread_rwlock_init(&fdbs.arr_lock, NULL);
 
     fdbs.h_curs = hash_init_i4(0);
-    pthread_rwlock_init(&fdbs.h_curs_lock, NULL);
+    Pthread_rwlock_init(&fdbs.h_curs_lock, NULL);
 
     return 0;
 }
@@ -378,10 +392,10 @@ void __free_fdb(fdb_t *fdb)
     hash_free(fdb->h_ents_rootp);
     hash_free(fdb->h_ents_name);
     hash_free(fdb->h_tbls_name);
-    pthread_rwlock_destroy(&fdb->h_rwlock);
-    pthread_mutex_destroy(&fdb->sqlstats_mtx);
-    pthread_mutex_destroy(&fdb->dbcon_mtx);
-    pthread_mutex_destroy(&fdb->users_mtx);
+    Pthread_rwlock_destroy(&fdb->h_rwlock);
+    Pthread_mutex_destroy(&fdb->sqlstats_mtx);
+    Pthread_mutex_destroy(&fdb->dbcon_mtx);
+    Pthread_mutex_destroy(&fdb->users_mtx);
     free(fdb);
 }
 
@@ -389,34 +403,34 @@ void __free_fdb(fdb_t *fdb)
  * Add a lockless user
  *
  */
-static void __fdb_add_user(fdb_t *fdb)
+static void __fdb_add_user(fdb_t *fdb, int noTrace)
 {
-    pthread_mutex_lock(&fdb->users_mtx);
+    Pthread_mutex_lock(&fdb->users_mtx);
     fdb->users++;
 
-    if (gbl_fdb_track)
+    if (!noTrace && gbl_fdb_track)
         logmsg(LOGMSG_USER, "%lu %s %s users %d\n", pthread_self(), __func__,
                fdb->dbname, fdb->users);
 
     assert(fdb->users > 0);
-    pthread_mutex_unlock(&fdb->users_mtx);
+    Pthread_mutex_unlock(&fdb->users_mtx);
 }
 
 /**
  * Remove a lockless user
  *
  */
-static void __fdb_rem_user(fdb_t *fdb)
+static void __fdb_rem_user(fdb_t *fdb, int noTrace)
 {
-    pthread_mutex_lock(&fdb->users_mtx);
+    Pthread_mutex_lock(&fdb->users_mtx);
     fdb->users--;
 
-    if (gbl_fdb_track)
+    if (!noTrace && gbl_fdb_track)
         logmsg(LOGMSG_USER, "%lu %s %s users %d\n", pthread_self(), __func__,
                fdb->dbname, fdb->users);
 
     assert(fdb->users >= 0);
-    pthread_mutex_unlock(&fdb->users_mtx);
+    Pthread_mutex_unlock(&fdb->users_mtx);
 }
 
 /**
@@ -429,16 +443,16 @@ fdb_t *get_fdb(const char *dbname)
 {
     fdb_t *fdb = NULL;
 
-    pthread_rwlock_rdlock(&fdbs.arr_lock);
+    Pthread_rwlock_rdlock(&fdbs.arr_lock);
     fdb = __cache_fnd_fdb(dbname, NULL);
 #if 0
    NOTE: we will rely on table locks instead of this! 
    if(fdb)
    {
-      __fdb_add_user(fdb);
+      __fdb_add_user(fdb, 0);
    }
 #endif
-    pthread_rwlock_unlock(&fdbs.arr_lock);
+    Pthread_rwlock_unlock(&fdbs.arr_lock);
     return fdb;
 }
 
@@ -454,11 +468,11 @@ fdb_t *new_fdb(const char *dbname, int *created, enum mach_class class)
     int rc = 0;
     fdb_t *fdb;
 
-    pthread_rwlock_wrlock(&fdbs.arr_lock);
+    Pthread_rwlock_wrlock(&fdbs.arr_lock);
     fdb = __cache_fnd_fdb(dbname, NULL);
     if (fdb) {
         assert(class == fdb->class);
-        __fdb_add_user(fdb);
+        __fdb_add_user(fdb, 0);
 
         *created = 0;
         goto done;
@@ -483,14 +497,14 @@ fdb_t *new_fdb(const char *dbname, int *created, enum mach_class class)
     fdb->h_ents_rootp = hash_init_i4(0);
     fdb->h_ents_name = hash_init_strptr(offsetof(struct fdb_tbl_ent, name));
     fdb->h_tbls_name = hash_init_strptr(0);
-    pthread_rwlock_init(&fdb->h_rwlock, NULL);
-    pthread_mutex_init(&fdb->sqlstats_mtx, NULL);
-    pthread_mutex_init(&fdb->dbcon_mtx, NULL);
-    pthread_mutex_init(&fdb->users_mtx, NULL);
+    Pthread_rwlock_init(&fdb->h_rwlock, NULL);
+    Pthread_mutex_init(&fdb->sqlstats_mtx, NULL);
+    Pthread_mutex_init(&fdb->dbcon_mtx, NULL);
+    Pthread_mutex_init(&fdb->users_mtx, NULL);
 
     /* this should be safe to call even though the fdb is not booked in the fdb
      * array */
-    __fdb_add_user(fdb);
+    __fdb_add_user(fdb, 0);
 
     rc = __cache_link_fdb(fdb);
     if (rc) {
@@ -503,7 +517,7 @@ fdb_t *new_fdb(const char *dbname, int *created, enum mach_class class)
     }
 
 done:
-    pthread_rwlock_unlock(&fdbs.arr_lock);
+    Pthread_rwlock_unlock(&fdbs.arr_lock);
     /* At this point, if we've created a new fdb,
        it is findable by others and users might
        increase/decrease independently */
@@ -532,19 +546,19 @@ static void destroy_fdb(fdb_t *fdb)
     if (!fdb)
         return;
 
-    pthread_rwlock_wrlock(&fdbs.arr_lock);
+    Pthread_rwlock_wrlock(&fdbs.arr_lock);
 
     /* if there are any users, don't touch the db */
-    pthread_mutex_lock(&fdb->users_mtx);
+    Pthread_mutex_lock(&fdb->users_mtx);
     fdb->users--;
     if (fdb->users == 0) {
         __cache_unlink_fdb(fdb);
         __free_fdb(fdb);
     } else {
-        pthread_mutex_unlock(&fdb->users_mtx);
+        Pthread_mutex_unlock(&fdb->users_mtx);
     }
 
-    pthread_rwlock_unlock(&fdbs.arr_lock);
+    Pthread_rwlock_unlock(&fdbs.arr_lock);
 }
 
 /**************  TABLE OPERATIONS ***************/
@@ -557,7 +571,7 @@ static void destroy_fdb(fdb_t *fdb)
 void __fdb_free_table(fdb_t *fdb, fdb_tbl_t *tbl)
 {
     free(tbl->name);
-    pthread_mutex_destroy(&tbl->ents_mtx);
+    Pthread_mutex_destroy(&tbl->ents_mtx);
     free(tbl);
 }
 
@@ -582,12 +596,17 @@ static fdb_tbl_t *_alloc_table_fdb(fdb_t *fdb, const char *tblname)
     tbl->name = strdup(tblname);
     tbl->name_len = strlen(tblname);
     tbl->fdb = fdb;
-    pthread_mutex_init(&tbl->ents_mtx, NULL);
+    Pthread_mutex_init(&tbl->ents_mtx, NULL);
     listc_init(&tbl->ents, offsetof(struct fdb_tbl_ent, lnk));
 
     return tbl;
 }
 
+enum table_status {
+    TABLE_MISSING,
+    TABLE_EXISTS,
+    TABLE_STALE,
+};
 /**
  * Check if the table exists and has the right version
  *
@@ -595,37 +614,49 @@ static fdb_tbl_t *_alloc_table_fdb(fdb_t *fdb, const char *tblname)
  *       of fdb itself
  *
  */
-static int _table_exists(fdb_t *fdb, const char *table_name, int *version)
+static int _table_exists(fdb_t *fdb, const char *table_name,
+                         enum table_status *status, int *version)
 {
+    unsigned long long remote_version;
     fdb_tbl_t *table;
-    int exists = 0;
+    int rc = FDB_NOERR;
+
+    *status = TABLE_MISSING;
 
     table = hash_find_readonly(fdb->h_tbls_name, &table_name);
     if (table) {
+        *status = TABLE_EXISTS;
+
         /* ok, table exists, HURRAY!
            Is the table marked obsolete? */
-        if (table->need_version && table->version != table->need_version) {
-            /* ok, stale; we need to garbage this one out */
-            if (gbl_fdb_track)
-                logmsg(
-                    LOGMSG_USER,
-                    "Detected stale table \"%s.%s\" version %llu required %d\n",
-                    table->fdb->dbname, table->name, table->version,
-                    table->need_version);
-
-            if (__free_fdb_tbl(table, fdb)) {
-                logmsg(LOGMSG_ERROR,
-                       "Error clearing schema for table \"%s\" in db \"%s\"\n",
-                       table_name, fdb->dbname);
-            }
-
-            exists = 0;
+        if (table->need_version &&
+            (table->version != (table->need_version - 1))) {
+            *status = TABLE_STALE;
         } else {
-            exists = 1;
+            if (comdb2_get_verify_remote_schemas()) {
+                /* this is a retry for an already */
+                rc = fdb_get_remote_version(fdb->dbname, table_name, fdb->class,
+                                            fdb->loc == NULL, &remote_version);
+                if (rc == FDB_NOERR) {
+                    if (table->version != remote_version) {
+                        logmsg(LOGMSG_WARN, "Remote table %s.%s new version is "
+                                            "%lld, cached %lld\n",
+                               fdb->dbname, table_name, remote_version,
+                               table->version);
+                        table->need_version = remote_version + 1;
+                        *status = TABLE_STALE;
+                    } else {
+                        /* table version correct, make sure to pass this
+                         * upstream */
+                        *version = table->version;
+                    }
+                } else {
+                    return FDB_ERR_GENERIC;
+                }
+            } else {
+                *version = table->version;
+            }
         }
-
-        /* table version correct, make sure to pass this upstream */
-        *version = table->version;
 
         /* NOTE: we don't prepopulate sql engines at creation
            with schema for already existing fdbs;  therefore, this code
@@ -633,12 +664,14 @@ static int _table_exists(fdb_t *fdb, const char *table_name, int *version)
            would spew in such a case, which we don't want to.
          */
         /*
-        fprintf(stderr, "%s: table \"%s\" in db \"%s\" already exist!\n",
-              __func__, table, fdb->dbname);
+        fprintf(stderr, "%s: table \"%s\" in db \"%s\" already exist %d!\n",
+              __func__, table_name, fdb->dbname, *version);
+        if(!*version)
+            abort();
          */
     }
 
-    return exists;
+    return FDB_NOERR;
 }
 
 /**
@@ -686,8 +719,9 @@ int fix_table_stats(fdb_t *fdb, fdb_tbl_t *tbl, const char *stat_name)
 static int _add_table_and_stats_fdb(fdb_t *fdb, const char *table_name,
                                     int *version, int in_analysis_load)
 {
+    enum table_status status;
     int rc = FDB_NOERR;
-    fdb_tbl_t *tbl, *tbl_stat1, *tbl_stat4;
+    fdb_tbl_t *tbl;
     int initial;
     fdb_tbl_ent_t *found_ent;
     int is_sqlite_master; /* corner case when sqlite_master is the first query
@@ -695,12 +729,15 @@ static int _add_table_and_stats_fdb(fdb_t *fdb, const char *table_name,
                              there is no "sqlite_master" entry for
                              sqlite_master, but
                              that doesn't make the case here to fail */
-retry_find_table:
     /* check if the table exists, and if it does need refreshing
        if it exists and has right version, grab the version and return */
-    if (_table_exists(fdb, table_name, version)) {
+    rc = _table_exists(fdb, table_name, &status, version);
+    if (rc == FDB_NOERR && status == TABLE_EXISTS) {
         /* fdb unlocked, users incremented */
-        rc = FDB_NOERR;
+        goto nop;
+    } else if (rc != FDB_NOERR) {
+        logmsg(LOGMSG_WARN, "failure to connect to remote %s.%s\n", fdb->dbname,
+               table_name);
         goto nop;
     }
 
@@ -724,7 +761,7 @@ retry_find_table:
         char *tmpname = strdup(fdb->dbname);
 
         /* new_fdb bumped this up, we need exclusive lock, get ourselves out */
-        __fdb_rem_user(fdb);
+        __fdb_rem_user(fdb, 0);
 
         rc = __lock_wrlock_exclusive(tmpname);
         free(tmpname);
@@ -738,7 +775,39 @@ retry_find_table:
         }
 
         /* add ourselves back */
-        __fdb_add_user(fdb);
+        __fdb_add_user(fdb, 0);
+
+        /* remove the stale table here */
+        /* ok, stale; we need to garbage this one out */
+        fdb_tbl_t *remtbl = hash_find_readonly(fdb->h_tbls_name, &table_name);
+        /* anything is possible with the table while waiting for exclusive
+         * fdb
+         * lock */
+        if (remtbl) {
+            /* table is still around */
+            if (!remtbl->need_version ||
+                ((remtbl->need_version - 1) == remtbl->version)) {
+                /* table was fixed in the meantime!, drop exclusive lock */
+                rc = FDB_NOERR;
+                *version = remtbl->version;
+                goto done;
+            } else {
+                /* table is still stale, remove */
+                if (gbl_fdb_track)
+                    logmsg(LOGMSG_USER,
+                           "Detected stale table \"%s.%s\" "
+                           "version %llu required %d\n",
+                           remtbl->fdb->dbname, remtbl->name, remtbl->version,
+                           remtbl->need_version - 1);
+
+                if (__free_fdb_tbl(remtbl, fdb)) {
+                    logmsg(LOGMSG_ERROR,
+                           "Error clearing schema for table "
+                           "\"%s\" in db \"%s\"\n",
+                           table_name, fdb->dbname);
+                }
+            }
+        }
     }
 
     /* is this the first table? grab sqlite_stats too */
@@ -814,7 +883,7 @@ done:
 
     /* unlock the mutex only if acquired */
     if (!in_analysis_load) {
-        pthread_rwlock_unlock(&fdb->h_rwlock);
+        Pthread_rwlock_unlock(&fdb->h_rwlock);
     }
 
 nop:
@@ -841,19 +910,19 @@ static int fdb_num_entries(fdb_t *fdb)
  *
  * NOTE:
  */
-int check_table_fdb(fdb_t *fdb, fdb_tbl_t *tbl, int initial,
-                    fdb_tbl_ent_t **found_ent)
+static int check_table_fdb(fdb_t *fdb, fdb_tbl_t *tbl, int initial,
+                           fdb_tbl_ent_t **found_ent)
 {
     BtCursor *cur;
     int rc = FDB_NOERR;
     int irc = FDB_NOERR;
     fdb_cursor_if_t *fdbc_if;
     fdb_cursor_t *fdbc;
-    int node;
     char sql[256];
     char *row;
     int rowlen;
     int versioned;
+    int need_ssl = 0;
 
     /* fake a BtCursor */
     cur = calloc(1, sizeof(BtCursor) + sizeof(Btree));
@@ -865,11 +934,9 @@ int check_table_fdb(fdb_t *fdb, fdb_tbl_t *tbl, int initial,
     init_cursor(cur, NULL, (Btree *)(cur + 1));
     cur->bt->fdb = fdb;
     cur->bt->is_remote = 1;
-    struct sql_thread *thd = cur->thd;
     struct sqlclntstate *clnt = cur->clnt;
 
 run:
-
     /* if we have already learnt that fdb is older, do not try newer versioned
      * queries */
     if (fdb->server_version == FDB_VER_LEGACY)
@@ -877,7 +944,7 @@ run:
     else
         versioned = 1;
 
-    fdbc_if = fdb_cursor_open(clnt, cur, 1, NULL, NULL);
+    fdbc_if = fdb_cursor_open(clnt, cur, 1, NULL, NULL, need_ssl);
     if (!fdbc_if) {
         rc = clnt->fdb_state.xerr.errval;
         logmsg(LOGMSG_ERROR, 
@@ -894,13 +961,14 @@ run:
         if (initial) {
             snprintf(sql, sizeof(sql),
                      "select *, table_version(tbl_name) from sqlite_master"
-                     " where tbl_name='%s' or tbl_name='sqlite_stat1' or "
+                     " where tbl_name='%s' collate nocase or tbl_name="
+                     "'sqlite_stat1' or "
                      "tbl_name='sqlite_stat4'",
                      tbl->name);
         } else {
             snprintf(sql, sizeof(sql),
                      "select *, table_version(tbl_name) from sqlite_master"
-                     " where tbl_name='%s'",
+                     " where tbl_name='%s' collate nocase",
                      tbl->name);
         }
     } else {
@@ -909,11 +977,12 @@ run:
             snprintf(sql, sizeof(sql),
                      "select * from sqlite_master"
                      " where tbl_name='%s' or tbl_name='sqlite_stat1' or "
-                     "tbl_name='sqlite_stat4'",
+                     "tbl_name='sqlite_stat4' collate nocase",
                      tbl->name);
         } else {
-            snprintf(sql, sizeof(sql), "select * from sqlite_master"
-                                       " where tbl_name='%s'",
+            snprintf(sql, sizeof(sql),
+                     "select * from sqlite_master"
+                     " where tbl_name='%s' collate nocase",
                      tbl->name);
         }
     }
@@ -923,13 +992,25 @@ run:
     if (rc != IX_FND && rc != IX_FNDMORE) {
         /* maybe remote is old code, retry in unversioned mode */
         switch (rc) {
-        /* retry new version */
-        case FDB_ERR_FDB_VERSION:
+        case FDB_ERR_SSL:
+#if WITH_SSL
+            /* remote needs sql */
             fdb_cursor_close_on_open(cur, 0);
-            irc = 0;
+            if (gbl_client_ssl_mode >= SSL_ALLOW) {
+                logmsg(LOGMSG_ERROR, "remote required SSl, switching to SSL\n");
+                need_ssl = 1;
+                assert(fdb->server_version >= FDB_VER_SSL);
+                goto run;
+            }
+#endif
+            goto done;
+
+        case FDB_ERR_FDB_VERSION:
+            /* retry new version */
+            fdb_cursor_close_on_open(cur, 0);
+            rc = FDB_NOERR;
             goto run;
 
-        /* errors */
         case IX_EMPTY:
             rc =
                 FDB_NOERR; /* no operational error, but a syntax issue probably
@@ -1005,7 +1086,7 @@ static enum mach_class get_fdb_class(const char **p_dbname, int *local)
 
     *local = 0;
 
-    my_lvl = get_mach_class(gbl_mynode);
+    my_lvl = get_my_mach_class();
 
     /* extract class if any */
     if (strchr(dbname, '_') != NULL) {
@@ -1026,6 +1107,9 @@ static enum mach_class get_fdb_class(const char **p_dbname, int *local)
         } else if (strncasecmp(dbname, "TEST_", 5) == 0) {
             remote_lvl = CLASS_TEST;
             dbname += 5;
+        } else if (strncasecmp(dbname, "UAT_", 4) == 0) {
+            remote_lvl = CLASS_UAT;
+            dbname += 4;
         }
 
         *p_dbname = dbname;
@@ -1139,9 +1223,9 @@ static int _failed_AddAndLockTable(sqlite3 *db, const char *dbname, int errcode,
                                    const char *prefix)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
-    struct sqlclntstate *clnt = thd->sqlclntstate;
+    struct sqlclntstate *clnt = thd->clnt;
 
-    logmsg(LOGMSG_WARN, "%s: %s for db \"%s\"\n", __func__, prefix, dbname);
+    logmsg(LOGMSG_WARN, "Error \"%s\" for db \"%s\"\n", prefix, dbname);
 
     if (clnt->fdb_state.xerr.errval && clnt->fdb_state.preserve_err) {
         logmsg(LOGMSG_ERROR, "Ignored error rc=%d str=\"%s\", got new rc=%d new prefix=\"%s\"\n",
@@ -1204,9 +1288,9 @@ retry_fdb_creation:
     }
 
     if (!local) {
-        pthread_mutex_lock(&fdb->dbcon_mtx);
+        Pthread_mutex_lock(&fdb->dbcon_mtx);
         rc = fdb_locate(fdb->dbname, fdb->class, 0, &fdb->loc);
-        pthread_mutex_unlock(&fdb->dbcon_mtx);
+        Pthread_mutex_unlock(&fdb->dbcon_mtx);
         if (rc != FDB_NOERR) {
             switch (rc) {
             case FDB_ERR_CLASS_UNKNOWN:
@@ -1244,8 +1328,10 @@ retry_fdb_creation:
             goto retry_fdb_creation;
         }
 
-        logmsg(LOGMSG_ERROR, "%s: failed to add foreign table \"%s:%s\" rc=%d\n",
-                __func__, dbname, table, rc);
+        if (rc != FDB_ERR_SSL)
+            logmsg(LOGMSG_ERROR,
+                   "%s: failed to add foreign table \"%s:%s\" rc=%d\n",
+                   __func__, dbname, table, rc);
 
         switch (rc) {
         case FDB_ERR_FDB_TBL_NOTFOUND: {
@@ -1269,6 +1355,10 @@ retry_fdb_creation:
             perrstr = "expressions indexes disabled locally";
             break;
         }
+        case FDB_ERR_SSL: {
+            perrstr = "remote db requires SSL";
+            break;
+        }
 
         default: {
             perrstr = "error adding remote table";
@@ -1277,7 +1367,7 @@ retry_fdb_creation:
 
     error:
         /* decrement the local bump */
-        __fdb_rem_user(fdb);
+        __fdb_rem_user(fdb, 0);
 
         /* if we've created this now, remove it since it could be a mistype */
         if (created) {
@@ -1326,7 +1416,7 @@ int sqlite3UnlockTable(const char *dbname, const char *table)
         abort();
     }
 
-    __fdb_rem_user(fdb); /* matches __fdb_add_user in sqlite3AddAndLockTable */
+    __fdb_rem_user(fdb, 0); /* matches __fdb_add_user in sqlite3AddAndLockTable */
 
     return SQLITE_OK;
 }
@@ -1335,15 +1425,14 @@ static int __lock_wrlock_shared(fdb_t *fdb)
 {
     int rc = FDB_NOERR;
 
-    if (pthread_rwlock_rdlock(&fdb->h_rwlock))
-        rc = FDB_ERR_PTHR_LOCK;
+    Pthread_rwlock_rdlock(&fdb->h_rwlock);
 
     return rc;
 }
 
 static int __lock_wrlock_exclusive(char *dbname)
 {
-    fdb_t *fdb;
+    fdb_t *fdb = NULL;
     struct sql_thread *thd;
     int rc = FDB_NOERR;
     int idx = -1;
@@ -1354,23 +1443,23 @@ static int __lock_wrlock_exclusive(char *dbname)
     }
 
     do {
-        pthread_rwlock_rdlock(&fdbs.arr_lock);
+        Pthread_rwlock_rdlock(&fdbs.arr_lock);
         if (!(idx >= 0 && idx < fdbs.nused && fdbs.arr[idx] == fdb &&
               strncasecmp(dbname, fdbs.arr[idx]->dbname, len) == 0)) {
             fdb = __cache_fnd_fdb(dbname, &idx);
         }
 
         if (!fdb) {
-            pthread_rwlock_unlock(&fdbs.arr_lock);
+            Pthread_rwlock_unlock(&fdbs.arr_lock);
             return FDB_ERR_FDB_NOTFOUND;
         }
 
-        pthread_rwlock_wrlock(&fdb->h_rwlock);
+        Pthread_rwlock_wrlock(&fdb->h_rwlock);
 
         /* we got the lock, are there any lockless users ? */
         if (fdb->users > 1) {
-            pthread_rwlock_unlock(&fdb->h_rwlock);
-            pthread_rwlock_unlock(&fdbs.arr_lock);
+            Pthread_rwlock_unlock(&fdb->h_rwlock);
+            Pthread_rwlock_unlock(&fdbs.arr_lock);
 
             /* if we loop, make sure this is not a live lock
                deadlocking with another sqlite engine that waits
@@ -1380,10 +1469,11 @@ static int __lock_wrlock_exclusive(char *dbname)
                 if (thd) {
                     rc = recover_deadlock(
                         thedb->bdb_env, thd, NULL,
-                        100 * thd->sqlclntstate->deadlock_recovered++);
+                        100 * thd->clnt->deadlock_recovered++);
                     if (rc) {
-                        fprintf(stderr, "%s:%d recover_deadlock returned %d\n",
-                                __func__, __LINE__, rc);
+                        logmsg(LOGMSG_ERROR,
+                               "%s:%d recover_deadlock returned %d\n", __func__,
+                               __LINE__, rc);
                         return FDB_ERR_GENERIC;
                     }
                 }
@@ -1396,8 +1486,7 @@ static int __lock_wrlock_exclusive(char *dbname)
         }
     } while (1); /* 1 is the creator */
 
-done:
-    pthread_rwlock_unlock(&fdbs.arr_lock);
+    Pthread_rwlock_unlock(&fdbs.arr_lock);
 
     return rc;
 }
@@ -1409,7 +1498,7 @@ static fdb_tbl_ent_t *get_fdb_tbl_ent_by_rootpage_from_fdb(fdb_t *fdb,
 
     __lock_wrlock_shared(fdb);
     ent = hash_find_readonly(fdb->h_ents_rootp, &rootpage);
-    pthread_rwlock_unlock(&fdb->h_rwlock);
+    Pthread_rwlock_unlock(&fdb->h_rwlock);
 
     return ent;
 }
@@ -1422,11 +1511,11 @@ static fdb_tbl_ent_t *get_fdb_tbl_ent_by_name_from_fdb(fdb_t *fdb,
 {
     fdb_tbl_ent_t *ent;
     /*
-       pthread_rwlock_rdlock(&fdb->h_rwlock);
+       Pthread_rwlock_rdlock(&fdb->h_rwlock);
      */
     ent = hash_find_readonly(fdb->h_ents_name, &name);
     /*
-       pthread_rwlock_unlock(&fdb->h_rwlock);
+       Pthread_rwlock_unlock(&fdb->h_rwlock);
      */
 
     return ent;
@@ -1442,7 +1531,7 @@ fdb_tbl_ent_t *fdb_table_entry_by_name(fdb_t *fdb, const char *name)
 
     __lock_wrlock_shared(fdb);
     ent = hash_find_readonly(fdb->h_ents_name, &name);
-    pthread_rwlock_unlock(&fdb->h_rwlock);
+    Pthread_rwlock_unlock(&fdb->h_rwlock);
 
     return ent;
 }
@@ -1453,7 +1542,7 @@ static fdb_tbl_ent_t *get_fdb_tbl_ent_by_rootpage(int rootpage)
     fdb_tbl_ent_t *ent = NULL;
     int i;
 
-    pthread_rwlock_rdlock(&fdbs.arr_lock);
+    Pthread_rwlock_rdlock(&fdbs.arr_lock);
     for (i = 0; i < fdbs.nused; i++) {
         fdb = fdbs.arr[i];
 
@@ -1462,7 +1551,7 @@ static fdb_tbl_ent_t *get_fdb_tbl_ent_by_rootpage(int rootpage)
         if (ent)
             break;
     }
-    pthread_rwlock_unlock(&fdbs.arr_lock);
+    Pthread_rwlock_unlock(&fdbs.arr_lock);
 
     return ent;
 }
@@ -1475,7 +1564,6 @@ static fdb_tbl_ent_t *get_fdb_tbl_ent_by_rootpage(int rootpage)
 char *fdb_sqlexplain_get_name(int rootpage)
 {
     fdb_tbl_ent_t *ent;
-    fdb_t *fdb;
     char tmp[1024];
 
     ent = get_fdb_tbl_ent_by_rootpage(rootpage);
@@ -1745,7 +1833,7 @@ static int insert_table_entry_from_packedsqlite(fdb_t *fdb, fdb_tbl_t *tbl,
            This gets fixed later, but we have to make sure we don't override
            the version of the original table with the version of sqlite_stat.
         */
-        if (!is_sqlite_stat(ent->name))
+        if (!(is_sqlite_stat(ent->name)))
             ent->tbl->version = version;
         ent->_version = version; /* sqlite_stats get cached version here */
     }
@@ -1805,7 +1893,6 @@ int fdb_cursor_move_master(BtCursor *pCur, int *pRes, int how)
     const char *zTblName = sqlite->init.zTblName;
     fdb_t *fdb = pCur->bt->fdb;
     fdb_tbl_t *tbl = NULL;
-    fdb_tbl_ent_t *ret;
     int step = 0;
 
     assert(fdb != NULL);
@@ -1842,15 +1929,15 @@ search:
 
     if (!tbl) {
         /* this is possible only for wrong tblname? */
-        pthread_rwlock_unlock(&fdb->h_rwlock);
+        Pthread_rwlock_unlock(&fdb->h_rwlock);
         /* done, the table is gone */
         /* TODO: review drop table case */
         pCur->eof = 1;
         *pRes = 1;
         return SQLITE_OK;
     }
-    pthread_mutex_lock(&tbl->ents_mtx);
-    pthread_rwlock_unlock(&fdb->h_rwlock);
+    Pthread_mutex_lock(&tbl->ents_mtx);
+    Pthread_rwlock_unlock(&fdb->h_rwlock);
 
     assert(how == CNEXT || how == CFIRST); /* NEXT w/out FIRST is FIRST */
 
@@ -1859,7 +1946,7 @@ search:
         assert(pCur->crt_sqlite_master_row);
     } else {
         if (!pCur->crt_sqlite_master_row->lnk.next) {
-            pthread_mutex_unlock(&tbl->ents_mtx);
+            Pthread_mutex_unlock(&tbl->ents_mtx);
 
             switch (step) {
             case 0:
@@ -1882,7 +1969,7 @@ search:
         return SQLITE_OK;
     }
 
-    pthread_mutex_unlock(&tbl->ents_mtx);
+    Pthread_mutex_unlock(&tbl->ents_mtx);
 
     *pRes = 0;
 
@@ -1915,10 +2002,6 @@ char *fdb_sqlexplain_get_field_name(Vdbe *v, int rootpage, int ixnum,
                                     int fieldnum)
 {
     fdb_tbl_ent_t *ent;
-    fdb_t *fdb;
-    int i;
-    char tmp[1024];
-    int iDb;
     Table *pTab;
     Index *pIdx;
     Column *pCol;
@@ -1964,30 +2047,29 @@ char *fdb_sqlexplain_get_field_name(Vdbe *v, int rootpage, int ixnum,
  */
 Schema *fdb_sqlite_get_schema(Btree *pBt, int nbytes)
 {
-    fdb_t *fdb = pBt->fdb;
 
     assert(pBt->is_remote && pBt->fdb != NULL);
 
     /* TODO: switch to sharing schemas for fdbs */
     /*
-    pthread_mutex_lock(&fdb->dbcon_mtx);
+    fdb_t *fdb = pBt->fdb;
+    Pthread_mutex_lock(&fdb->dbcon_mtx);
     if (fdb->schema == NULL)
     {
        fdb->schema = (Schema*)calloc(1, nbytes);
     }
-    pthread_mutex_unlock(&fdb->dbcon_mtx);
+    Pthread_mutex_unlock(&fdb->dbcon_mtx);
 
     return fdb->schema;
     */
     return calloc(1, nbytes);
 }
 
-static int _fdb_remote_reconnect(fdb_t *fdb, SBUF2 **psb, char *host)
+static int _fdb_remote_reconnect(fdb_t *fdb, SBUF2 **psb, char *host, int use_cache)
 {
     SBUF2 *sb = *psb;
-    int rc = FDB_NOERR;
     static uint64_t old = 0ULL;
-    uint64_t now, then;
+    uint64_t now = 0, then;
 
     if (gbl_fdb_track) {
         logmsg(LOGMSG_USER, "Using node %s\n", host);
@@ -2003,7 +2085,7 @@ static int _fdb_remote_reconnect(fdb_t *fdb, SBUF2 **psb, char *host)
         now = gettimeofday_ms();
     }
 
-    *psb = sb = connect_remote_db(fdb->dbname, "remsql", host);
+    *psb = sb = connect_remote_db("icdb2", fdb->dbname, "remsql", host, use_cache);
 
     if (gbl_fdb_track_times) {
         then = gettimeofday_ms();
@@ -2045,7 +2127,7 @@ static int _fdb_remote_reconnect(fdb_t *fdb, SBUF2 **psb, char *host)
 static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
                                   fdb_cursor_t *fdbc, int source_rootpage,
                                   fdb_tran_t *trans, int flags, int version,
-                                  fdb_msg_t *msg)
+                                  fdb_msg_t *msg, int use_ssl)
 {
     enum fdb_location_op op = FDB_LOCATION_REFRESH;
     char *host;
@@ -2098,7 +2180,7 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
             psb = &trans->sb;
         }
 
-        if ((rc = _fdb_remote_reconnect(fdb, psb, host)) == FDB_NOERR) {
+        if ((rc = _fdb_remote_reconnect(fdb, psb, host, (fdbc)?1:0)) == FDB_NOERR) {
             if (fdbc) {
                 fdbc->streaming = FDB_CUR_IDLE;
 
@@ -2110,7 +2192,7 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
                 fdbc->node = host;
             } else {
 
-                if (fdb->server_version == FDB_VER_WR_NAMES)
+                if (fdb->server_version >= FDB_VER_WR_NAMES)
                     tran_flags = FDB_MSG_TRAN_TBLNAME;
                 else
                     tran_flags = 0;
@@ -2126,6 +2208,32 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
 
         if (rc == FDB_NOERR) {
             /* successfull connection */
+#if WITH_SSL
+            if (use_ssl) {
+                rc = sbuf2flush(*psb);
+                if (rc != FDB_NOERR)
+                    goto failed;
+                rc = sbuf2getc(*psb);
+                if (rc != 'Y')
+                    goto failed;
+                rc = FDB_NOERR;
+                /*fprintf(stderr, "READ Y\n");*/
+
+                if (sslio_connect(*psb, gbl_ssl_ctx, fdb->ssl, NULL,
+                                  gbl_nid_dbname, NULL, 0, 1) != 1) {
+                failed:
+                    sbuf2close(*psb);
+                    *psb = NULL;
+                    /* don't retry other nodes if SSL configuration is bad */
+                    clnt->fdb_state.preserve_err = 1;
+                    clnt->fdb_state.xerr.errval = FDB_ERR_CONNECT_CLUSTER;
+                    snprintf(clnt->fdb_state.xerr.errstr,
+                             sizeof(clnt->fdb_state.xerr.errstr),
+                             "SSL config error to %s", host);
+                    return FDB_ERR_SSL;
+                }
+            }
+#endif
             break;
         }
 
@@ -2213,11 +2321,10 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
 static fdb_cursor_if_t *_fdb_cursor_open_remote(struct sqlclntstate *clnt,
                                                 fdb_t *fdb, int source_rootpage,
                                                 fdb_tran_t *trans, int flags,
-                                                int version)
+                                                int version, int use_ssl)
 {
     fdb_cursor_if_t *fdbc_if;
     fdb_cursor_t *fdbc;
-    fdb_tbl_ent_t *ent;
     int rc;
     char *tid;
     int isuuid = gbl_noenv_messages;
@@ -2288,12 +2395,13 @@ static fdb_cursor_if_t *_fdb_cursor_open_remote(struct sqlclntstate *clnt,
     }
     fdbc->flags = flags;
     fdbc->isuuid = isuuid;
+    fdbc->need_ssl = use_ssl;
 
     fdbc->intf = fdbc_if;
 
     /* NOTE: expect x_retries to fill in clnt error fields, if any */
     rc = _fdb_send_open_retries(clnt, fdb, fdbc, source_rootpage, trans, flags,
-                                version, fdbc->msg);
+                                version, fdbc->msg, use_ssl);
     if (rc) {
         free(fdbc_if);
         fdbc_if = NULL;
@@ -2305,9 +2413,9 @@ static fdb_cursor_if_t *_fdb_cursor_open_remote(struct sqlclntstate *clnt,
                          important update */
     }
 
-    pthread_rwlock_wrlock(&fdbs.h_curs_lock);
+    Pthread_rwlock_wrlock(&fdbs.h_curs_lock);
     hash_add(fdbs.h_curs, fdbc);
-    pthread_rwlock_unlock(&fdbs.h_curs_lock);
+    Pthread_rwlock_unlock(&fdbs.h_curs_lock);
 
 done:
     return fdbc_if;
@@ -2320,7 +2428,8 @@ done:
  *
  */
 fdb_cursor_if_t *fdb_cursor_open(struct sqlclntstate *clnt, BtCursor *pCur,
-                                 int rootpage, fdb_tran_t *trans, int *ixnum)
+                                 int rootpage, fdb_tran_t *trans, int *ixnum,
+                                 int use_ssl)
 {
     fdb_cursor_if_t *fdbc_if;
     fdb_cursor_t *fdbc;
@@ -2329,7 +2438,6 @@ fdb_cursor_if_t *fdb_cursor_open(struct sqlclntstate *clnt, BtCursor *pCur,
     int rc;
     int source_rootpage;
     int flags;
-    int errval = FDB_NOERR;
 
     assert(pCur->bt->is_remote);
 
@@ -2370,7 +2478,11 @@ fdb_cursor_if_t *fdb_cursor_open(struct sqlclntstate *clnt, BtCursor *pCur,
         ent = NULL;
     }
 
-    flags = _get_protocol_flags(fdb->server_version, trans);
+    if (_get_protocol_flags(clnt, fdb, &flags)) {
+        goto done;
+    }
+    if (flags & FDB_MSG_CURSOR_OPEN_FLG_SSL)
+        use_ssl = 1;
 
     /* NOTE: R5 used to send source_rootpage for open cursor case;
      *  we will change that in R5 to a magic value that we detect to
@@ -2389,7 +2501,7 @@ fdb_cursor_if_t *fdb_cursor_open(struct sqlclntstate *clnt, BtCursor *pCur,
             clnt->fdb_state.xerr.errval = FDB_ERR_BUG;
             snprintf(clnt->fdb_state.xerr.errstr,
                      sizeof(clnt->fdb_state.xerr.errstr),
-                     "%s: unable to find rootpage %d\n", __func__, rootpage);
+                     "failed to open fdb cursor for stats");
 
             goto done;
         }
@@ -2397,7 +2509,7 @@ fdb_cursor_if_t *fdb_cursor_open(struct sqlclntstate *clnt, BtCursor *pCur,
         /* NOTE: we expect x_remote to fill in the error, if any */
         pCur->fdbc = fdbc_if = _fdb_cursor_open_remote(
             clnt, fdb, source_rootpage, trans, flags,
-            (ent) ? fdb_table_version(ent->tbl->version) : 0);
+            (ent) ? fdb_table_version(ent->tbl->version) : 0, use_ssl);
 
         if (!fdbc_if) {
             logmsg(LOGMSG_ERROR, "%s: failed to open fdb cursor\n", __func__);
@@ -2433,13 +2545,13 @@ static void fdb_cursor_close_on_open(BtCursor *pCur, int cache)
     if (pCur->fdbc) {
         fdb_cursor_t *fdbc = pCur->fdbc->impl;
 
-        pthread_rwlock_wrlock(&fdbs.h_curs_lock);
+        Pthread_rwlock_wrlock(&fdbs.h_curs_lock);
         hash_del(fdbs.h_curs, fdbc);
-        pthread_rwlock_unlock(&fdbs.h_curs_lock);
+        Pthread_rwlock_unlock(&fdbs.h_curs_lock);
 
         if (cache && fdbc->ent && fdbc->ent->tbl &&
             fdbc->streaming == FDB_CUR_IDLE) {
-            disconnect_remote_db(fdbc->ent->tbl->fdb->dbname, "remsql",
+            disconnect_remote_db("icdb2", fdbc->ent->tbl->fdb->dbname, "remsql",
                                  fdbc->node, &fdbc->fcon.sock.sb);
         } else {
             sbuf2close(fdbc->fcon.sock.sb);
@@ -2458,8 +2570,6 @@ static void fdb_cursor_close_on_open(BtCursor *pCur, int cache)
  */
 static int fdb_cursor_close(BtCursor *pCur)
 {
-    int rc = 0;
-
     if (pCur->fdbc) {
         /*TODO: check sqlite_stat cursors and their caching */
 
@@ -2590,15 +2700,15 @@ static char *_build_run_sql_from_hint(BtCursor *pCur, Mem *m, int ncols,
 
 done:
     if (columnsDesc) {
-        sqlite3DbFree(sqlitedb, columnsDesc);
+        sqlite3_free(columnsDesc);
     }
 
     if (whereDesc) {
-        sqlite3DbFree(sqlitedb, whereDesc);
+        sqlite3_free(whereDesc);
     }
 
     if (orderDesc) {
-        sqlite3DbFree(sqlitedb, orderDesc);
+        sqlite3_free(orderDesc);
     }
 
     if (gbl_fdb_track)
@@ -2679,7 +2789,6 @@ static char *fdb_cursor_id(BtCursor *pCur)
 
 static int fdb_serialize_key(BtCursor *pCur, Mem *key, int nfields)
 {
-    int rc = 0;
     int fnum = 0;
     u32 type = 0;
     int sz;
@@ -2814,6 +2923,7 @@ static int fdb_cursor_reopen(BtCursor *pCur)
     struct sqlclntstate *clnt;
     int rc;
     fdb_tran_t *tran;
+    int need_ssl = 0;
 
     thd = pthread_getspecific(query_info_key);
 
@@ -2821,11 +2931,12 @@ static int fdb_cursor_reopen(BtCursor *pCur)
         return FDB_ERR_BUG;
     }
 
-    clnt = thd->sqlclntstate;
+    clnt = thd->clnt;
     tran = pCur->fdbc->impl->trans;
+    need_ssl = pCur->fdbc->impl->need_ssl;
 
     if (tran)
-        pthread_mutex_lock(&clnt->dtran_mtx);
+        Pthread_mutex_lock(&clnt->dtran_mtx);
 
     rc = pCur->fdbc->close(pCur);
     if (rc) {
@@ -2833,8 +2944,8 @@ static int fdb_cursor_reopen(BtCursor *pCur)
         goto done;
     }
 
-    pCur->fdbc =
-        fdb_cursor_open(clnt, pCur, pCur->rootpage, tran, &pCur->ixnum);
+    pCur->fdbc = fdb_cursor_open(clnt, pCur, pCur->rootpage, tran, &pCur->ixnum,
+                                 need_ssl);
     if (!pCur->fdbc) {
         rc = clnt->fdb_state.xerr.errval;
         goto done;
@@ -2842,7 +2953,7 @@ static int fdb_cursor_reopen(BtCursor *pCur)
 
 done:
     if (tran)
-        pthread_mutex_unlock(&clnt->dtran_mtx);
+        Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     return rc;
 }
@@ -2854,7 +2965,6 @@ static int fdb_cursor_move_sql(BtCursor *pCur, int how)
     enum run_sql_flags flags = FDB_RUN_SQL_NORMAL;
     unsigned long long start_rpc;
     unsigned long long end_rpc;
-    int error = 0;
 
     if (fdbc) {
         start_rpc = osql_log_time();
@@ -2935,7 +3045,7 @@ static int fdb_cursor_move_sql(BtCursor *pCur, int how)
                        multiple sql engines, maybe with different
                        values if the remote table is schema changed repeatedly
                        */
-                    fdbc->ent->tbl->need_version = remote_version;
+                    fdbc->ent->tbl->need_version = remote_version + 1;
 
                     rc = SQLITE_SCHEMA_REMOTE;
                 } else if (rc == FDB_ERR_FDB_VERSION) {
@@ -2950,12 +3060,30 @@ static int fdb_cursor_move_sql(BtCursor *pCur, int how)
                             pCur->bt->fdb->server_version);
 
                     pCur->bt->fdb->server_version = protocol_version;
+                } else if (rc == FDB_ERR_SSL) {
+#if WITH_SSL
+                    /* extract ssl config */
+                    unsigned int ssl_cfg;
+
+                    ssl_cfg = atoll(errstr);
+
+                    logmsg(LOGMSG_INFO, "%s: remote db %s needs ssl %d\n",
+                           __func__, pCur->bt->fdb->dbname, ssl_cfg);
+                    pCur->bt->fdb->ssl = ssl_cfg;
+#endif
                 } else {
-                    logmsg(LOGMSG_ERROR, "%s: failed to retrieve streaming row rc=%d \"%s\"\n",
-                        __func__, rc, errstr);
+                    if (rc != FDB_ERR_SSL) {
+                        logmsg(LOGMSG_ERROR, "%s: failed to retrieve streaming "
+                                             "row rc=%d \"%s\"\n",
+                               __func__, rc, errstr);
+                        fdbc->streaming = FDB_CUR_ERROR;
+                    }
                 }
 
                 return rc;
+            } else {
+                fdbc->streaming =
+                    (rc == IX_FNDMORE) ? FDB_CUR_STREAMING : FDB_CUR_IDLE;
             }
         }
 
@@ -3131,16 +3259,22 @@ static int fdb_cursor_find_sql_common(BtCursor *pCur, Mem *key, int nfields,
                        multiple sql engines, maybe with different
                        values if the remote table is schema changed repeatedly
                        */
-                    fdbc->ent->tbl->need_version = remote_version;
+                    fdbc->ent->tbl->need_version = remote_version + 1;
 
                     rc = SQLITE_SCHEMA_REMOTE;
                 } else {
-                    logmsg(LOGMSG_ERROR, 
-                        "%s: failed to retrieve streaming row rc=%d \"%s\"\n",
-                        __func__, rc, errstr);
+                    if (rc != FDB_ERR_SSL) {
+                        logmsg(LOGMSG_ERROR, "%s: failed to retrieve streaming "
+                                             "row rc=%d \"%s\"\n",
+                               __func__, rc, errstr);
+                        fdbc->streaming = FDB_CUR_ERROR;
+                    }
                 }
 
                 return rc;
+            } else {
+                fdbc->streaming =
+                    (rc == IX_FNDMORE) ? FDB_CUR_STREAMING : FDB_CUR_IDLE;
             }
 
             /* if we don't get a row here, it means the concocted sql did not
@@ -3186,20 +3320,19 @@ static int fdb_cursor_find_last_sql(BtCursor *pCur, Mem *key, int nfields,
 fdb_sqlstat_cache_t *fdb_sqlstats_get(fdb_t *fdb)
 {
     int rc = 0;
-    struct timespec ts = {0, 0};
+    struct timespec ts;
     struct sql_thread *thd;
     struct sqlclntstate *clnt;
-
-    ts.tv_nsec = bdb_attr_get(thedb->bdb_attr,
-                              BDB_ATTR_FDB_SQLSTATS_CACHE_LOCK_WAITTIME_NSEC);
-    if (!ts.tv_nsec)
-        ts.tv_nsec = 100;
+    int interval = bdb_attr_get(thedb->bdb_attr,
+                                BDB_ATTR_FDB_SQLSTATS_CACHE_LOCK_WAITTIME_NSEC);
+    if (!interval)
+        interval = 100;
 
     /* this should be an sql thread */
     thd = pthread_getspecific(query_info_key);
     if (!thd) return NULL;
 
-    clnt = thd->sqlclntstate;
+    clnt = thd->clnt;
 
     /* remote sql stats are implemented as a critical region
        I was told that mutex is faster, lul
@@ -3213,6 +3346,12 @@ fdb_sqlstat_cache_t *fdb_sqlstats_get(fdb_t *fdb)
             rc = ETIMEDOUT;
         }
 #       else
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_nsec += interval;
+        if (ts.tv_nsec >= 1000000000) {
+            ++ts.tv_sec;
+            ts.tv_nsec -= 1000000000;
+        }
         rc = pthread_mutex_timedlock(&fdb->sqlstats_mtx, &ts);
 #       endif
         if (rc) {
@@ -3248,13 +3387,17 @@ fdb_sqlstat_cache_t *fdb_sqlstats_get(fdb_t *fdb)
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: failed to create cache rc=%d\n", __func__, rc);
             fdb->sqlstats = NULL;
+            fdb_sqlstats_put(fdb);
         }
     }
 
     return fdb->sqlstats;
 }
 
-void fdb_sqlstats_put(fdb_t *fdb) { pthread_mutex_unlock(&fdb->sqlstats_mtx); }
+void fdb_sqlstats_put(fdb_t *fdb)
+{
+    Pthread_mutex_unlock(&fdb->sqlstats_mtx);
+}
 
 static int fdb_cursor_set_sql(BtCursor *pCur, const char *sql)
 {
@@ -3384,7 +3527,7 @@ static fdb_tran_t *fdb_get_subtran(fdb_distributed_tran_t *dtran, fdb_t *fdb)
 
 static inline char *_get_tblname(fdb_cursor_t *fdbc)
 {
-    return (fdbc->ent->tbl->fdb->server_version == FDB_VER_WR_NAMES)
+    return (fdbc->ent->tbl->fdb->server_version >= FDB_VER_WR_NAMES)
                ? strdup(fdbc->ent->tbl->name)
                : NULL;
 }
@@ -3427,8 +3570,7 @@ static int fdb_cursor_insert(BtCursor *pCur, struct sqlclntstate *clnt,
             rc = fdb_send_index(fdbc->msg, fdbc->cid, fdbc->ent->tbl->version,
                                 fdbc->ent->source_rootpage, genid, 0, ixnum,
                                 *((int *)clnt->idxInsert[ixnum]),
-                                (unsigned char *)clnt->idxInsert[ixnum] +
-                                    sizeof(int),
+                                (char *)clnt->idxInsert[ixnum] + sizeof(int),
                                 trans->seq, trans->isuuid, trans->sb);
             if (rc)
                 return rc;
@@ -3485,8 +3627,7 @@ static int fdb_cursor_delete(BtCursor *pCur, struct sqlclntstate *clnt,
             rc = fdb_send_index(fdbc->msg, fdbc->cid, fdbc->ent->tbl->version,
                                 fdbc->ent->source_rootpage, genid, 1, ixnum,
                                 *((int *)clnt->idxDelete[ixnum]),
-                                (unsigned char *)clnt->idxDelete[ixnum] +
-                                    sizeof(int),
+                                (char *)clnt->idxDelete[ixnum] + sizeof(int),
                                 trans->seq, trans->isuuid, trans->sb);
             if (rc)
                 return rc;
@@ -3543,8 +3684,7 @@ static int fdb_cursor_update(BtCursor *pCur, struct sqlclntstate *clnt,
             rc = fdb_send_index(fdbc->msg, fdbc->cid, fdbc->ent->tbl->version,
                                 fdbc->ent->source_rootpage, oldgenid, 1, ixnum,
                                 *((int *)clnt->idxDelete[ixnum]),
-                                (unsigned char *)clnt->idxDelete[ixnum] +
-                                    sizeof(int),
+                                (char *)clnt->idxDelete[ixnum] + sizeof(int),
                                 trans->seq, trans->isuuid, trans->sb);
             if (rc)
                 return rc;
@@ -3556,8 +3696,7 @@ static int fdb_cursor_update(BtCursor *pCur, struct sqlclntstate *clnt,
             rc = fdb_send_index(fdbc->msg, fdbc->cid, fdbc->ent->tbl->version,
                                 fdbc->ent->source_rootpage, genid, 0, ixnum,
                                 *((int *)clnt->idxInsert[ixnum]),
-                                (unsigned char *)clnt->idxInsert[ixnum] +
-                                    sizeof(int),
+                                (char *)clnt->idxInsert[ixnum] + sizeof(int),
                                 trans->seq, trans->isuuid, trans->sb);
             if (rc)
                 return rc;
@@ -3609,7 +3748,7 @@ static fdb_distributed_tran_t *fdb_trans_create_dtran(struct sqlclntstate *clnt)
 
 static fdb_tran_t *fdb_trans_dtran_get_subtran(struct sqlclntstate *clnt,
                                                fdb_distributed_tran_t *dtran,
-                                               fdb_t *fdb)
+                                               fdb_t *fdb, int use_ssl)
 {
     fdb_tran_t *tran;
     fdb_msg_t *msg;
@@ -3630,11 +3769,11 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(struct sqlclntstate *clnt,
             free(msg);
             return NULL;
         }
-        tran->tid = tran->tiduuid;
+        tran->tid = (char *)tran->tiduuid;
 
         tran->isuuid = clnt->osql.rqid == OSQL_RQID_USE_UUID;
         if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
-            comdb2uuid(tran->tid);
+            comdb2uuid((unsigned char *)tran->tid);
         } else
             *(unsigned long long *)tran->tid = comdb2fastseed();
 
@@ -3643,7 +3782,7 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(struct sqlclntstate *clnt,
         /* NOTE: expect x_retries to fill in clnt error fields, if any */
         rc = _fdb_send_open_retries(clnt, fdb, NULL /* tran_begin */,
                                     -1 /*unused*/, tran, 0 /*flags*/,
-                                    0 /*TODO: version */, msg);
+                                    0 /*TODO: version */, msg, use_ssl);
 
         if (rc != FDB_NOERR || !tran->sb) {
             logmsg(LOGMSG_ERROR, "%s unable to connect to %s %s\n", __func__,
@@ -3684,31 +3823,31 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(struct sqlclntstate *clnt,
 }
 
 fdb_tran_t *fdb_trans_begin_or_join(struct sqlclntstate *clnt, fdb_t *fdb,
-                                    char *ptid)
+                                    char *ptid, int use_ssl)
 {
     fdb_distributed_tran_t *dtran;
     fdb_tran_t *tran;
-    int rc = 0;
 
-    pthread_mutex_lock(&clnt->dtran_mtx);
+    Pthread_mutex_lock(&clnt->dtran_mtx);
 
     dtran = clnt->dbtran.dtran;
     if (!dtran) {
         dtran = fdb_trans_create_dtran(clnt);
         if (!dtran) {
+            Pthread_mutex_unlock(&clnt->dtran_mtx);
             return NULL;
         }
     }
 
-    tran = fdb_trans_dtran_get_subtran(clnt, dtran, fdb);
+    tran = fdb_trans_dtran_get_subtran(clnt, dtran, fdb, use_ssl);
     if (tran) {
         if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
-            comdb2uuidcpy(ptid, tran->tid);
+            comdb2uuidcpy((unsigned char *)ptid, (unsigned char *)tran->tid);
         } else
             *(unsigned long long *)ptid = *(unsigned long long *)tran->tid;
     }
 
-    pthread_mutex_unlock(&clnt->dtran_mtx);
+    Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     return tran;
 }
@@ -3722,7 +3861,8 @@ fdb_tran_t *fdb_trans_join(struct sqlclntstate *clnt, fdb_t *fdb, char *ptid)
         tran = fdb_get_subtran(dtran, fdb);
         if (tran) {
             if (clnt->osql.rqid == OSQL_RQID_USE_UUID)
-                comdb2uuidcpy(ptid, tran->tid);
+                comdb2uuidcpy((unsigned char *)ptid,
+                              (unsigned char *)tran->tid);
             else
                 *(unsigned long long *)ptid = *(unsigned long long *)tran->tid;
         }
@@ -3736,7 +3876,7 @@ int fdb_trans_commit(struct sqlclntstate *clnt)
     fdb_distributed_tran_t *dtran = clnt->dbtran.dtran;
     fdb_tran_t *tran, *tmp;
     fdb_msg_t *msg;
-    int rc;
+    int rc = 0;
 
     if (!dtran)
         return 0;
@@ -3758,7 +3898,7 @@ int fdb_trans_commit(struct sqlclntstate *clnt)
 
     /* TODO: here we replace the trivial 2PC with the actual thing */
 
-    pthread_mutex_lock(&clnt->dtran_mtx);
+    Pthread_mutex_lock(&clnt->dtran_mtx);
 
     LISTC_FOR_EACH(&dtran->fdb_trans, tran, lnk)
     {
@@ -3821,7 +3961,7 @@ int fdb_trans_commit(struct sqlclntstate *clnt)
     free(clnt->dbtran.dtran);
     clnt->dbtran.dtran = NULL;
 
-    pthread_mutex_unlock(&clnt->dtran_mtx);
+    Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     free(msg);
 
@@ -3855,7 +3995,7 @@ int fdb_trans_rollback(struct sqlclntstate *clnt, fdb_tran_t *trans)
 
     /* TODO: here we replace the trivial 2PC with the actual thing */
 
-    pthread_mutex_lock(&clnt->dtran_mtx);
+    Pthread_mutex_lock(&clnt->dtran_mtx);
 
     LISTC_FOR_EACH(&dtran->fdb_trans, tran, lnk)
     {
@@ -3889,7 +4029,7 @@ int fdb_trans_rollback(struct sqlclntstate *clnt, fdb_tran_t *trans)
     free(clnt->dbtran.dtran);
     clnt->dbtran.dtran = NULL;
 
-    pthread_mutex_unlock(&clnt->dtran_mtx);
+    Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     free(msg);
 
@@ -3906,95 +4046,6 @@ int fdb_is_sqlite_stat(fdb_t *fdb, int rootpage)
 
     return strncasecmp(ent->tbl->name, "sqlite_stat", strlen("sqlite_stat")) ==
            0;
-}
-
-static int _is_tablename_unique(const char *name)
-{
-    int i;
-    int llen = strlen(name);
-
-    for (i = 0; i < thedb->num_dbs; i++) {
-        if (llen != strlen(thedb->dbs[i]->tablename))
-            continue;
-        if (strncasecmp(thedb->dbs[i]->tablename, name, llen) == 0)
-            return -1;
-    }
-
-    return 0;
-}
-
-int fdb_alias_command(char *line, char **errstr, SBUF2 *sb)
-{
-    char *tok;
-    int llen = strlen(line);
-    int ltok = 0;
-    int st = 0;
-    int rc = -1;
-
-    char *op = NULL, *aliasname = NULL, *url = NULL;
-
-    tok = segtok(line, llen, &st, &ltok);
-    if (ltok == 0) {
-    usage:
-        *errstr = "Usage: [alias set ALIASNAME URL|alias get ALIASNAME| alias "
-                  "rem ALIASNAME]";
-        if (op)
-            free(op);
-        if (aliasname)
-            free(aliasname);
-        if (url)
-            free(url);
-
-        return FDB_ERR_GENERIC;
-    }
-    op = tokdup(tok, ltok);
-    if (!op) {
-        return FDB_ERR_MALLOC;
-    }
-
-    tok = segtok(line, llen, &st, &ltok);
-    if (ltok == 0)
-        goto usage;
-    aliasname = tokdup(tok, ltok);
-
-    rc = _is_tablename_unique(aliasname);
-    if (rc) {
-        char msg[256];
-        snprintf(msg, sizeof(msg),
-                 "alias \"%s\" exists as table name, must be unique",
-                 aliasname);
-        *errstr = strdup(msg);
-        return FDB_ERR_GENERIC;
-    }
-
-    if (strncasecmp(op, "set", 3) == 0) {
-        tok = segtok(line, llen, &st, &ltok);
-        if (ltok == 0)
-            goto usage;
-        url = tokdup(tok, ltok);
-
-        rc = llmeta_set_tablename_alias(NULL, aliasname, url, errstr);
-    } else if (strncasecmp(op, "get", 3) == 0) {
-        url = llmeta_get_tablename_alias(aliasname, errstr);
-        rc = (url == 0);
-
-        if (rc == 0) {
-            sbuf2printf(sb, ">%s\n", url);
-        }
-    } else if (strncasecmp(op, "rem", 3) == 0) {
-        rc = llmeta_rem_tablename_alias(aliasname, errstr);
-    } else {
-        goto usage;
-    }
-
-    if (op)
-        free(op);
-    if (aliasname)
-        free(aliasname);
-    if (url)
-        free(url);
-
-    return rc;
 }
 
 char *fdb_get_alias(const char **p_tablename)
@@ -4057,7 +4108,7 @@ int fdb_cursor_access(BtCursor *pCur, int how)
     if (!thd)
         return FDB_NOERR;
 
-    clnt = thd->sqlclntstate;
+    clnt = thd->clnt;
     if (!clnt)
         return FDB_NOERR;
 
@@ -4141,7 +4192,7 @@ static int __free_fdb_tbl(void *obj, void *arg)
     /* free table itself */
     hash_del(fdb->h_tbls_name, tbl);
     free(tbl->name);
-    pthread_mutex_destroy(&tbl->ents_mtx);
+    Pthread_mutex_destroy(&tbl->ents_mtx);
     free(tbl);
 
     return FDB_NOERR;
@@ -4183,7 +4234,7 @@ static void fdb_clear_schema(const char *dbname, const char *tblname,
          fprintf(stderr, "Unknown table \"%s\" in db \"%s\"\n", tblname, dbname);
          already_updated = 1;
       }
-      else if (tbl->version == tbl->need_version)
+      else if (tbl->version == tbl->need_version + 1)
       {
          if (gbl_fdb_track)
          {
@@ -4227,7 +4278,7 @@ static void fdb_clear_schema(const char *dbname, const char *tblname,
     }
 
 done:
-    pthread_rwlock_unlock(&fdb->h_rwlock);
+    Pthread_rwlock_unlock(&fdb->h_rwlock);
 }
 
 /**
@@ -4286,7 +4337,7 @@ static void fdb_info_tables(fdb_t *fdb)
 {
     __lock_wrlock_shared(fdb);
     hash_for(fdb->h_ents_name, __fdb_info_ent, NULL);
-    pthread_rwlock_unlock(&fdb->h_rwlock);
+    Pthread_rwlock_unlock(&fdb->h_rwlock);
 }
 
 /**
@@ -4300,20 +4351,20 @@ static void fdb_info_db(const char *dbname)
     int i;
 
     if (!dbname) {
-        pthread_rwlock_rdlock(&fdbs.arr_lock);
+        Pthread_rwlock_rdlock(&fdbs.arr_lock);
         for (i = 0; i < fdbs.nused; i++) {
             fdb = fdbs.arr[i];
 
             if (!fdb)
                 continue;
 
-            __fdb_add_user(fdb);
+            __fdb_add_user(fdb, 1);
 
             fdb_info_tables(fdb);
 
-            __fdb_rem_user(fdb);
+            __fdb_rem_user(fdb, 1);
         }
-        pthread_rwlock_unlock(&fdbs.arr_lock);
+        Pthread_rwlock_unlock(&fdbs.arr_lock);
     } else {
         fdb = get_fdb(dbname);
 
@@ -4322,11 +4373,11 @@ static void fdb_info_db(const char *dbname)
             return;
         }
 
-        __fdb_add_user(fdb);
+        __fdb_add_user(fdb, 1);
 
         fdb_info_tables(fdb);
 
-        __fdb_rem_user(fdb);
+        __fdb_rem_user(fdb, 1);
     }
 }
 
@@ -4339,7 +4390,6 @@ int fdb_process_message(const char *line, int lline)
     int st = 0;
     int ltok = 0;
     char *tok;
-    int rc;
 
     tok = segtok((char *)line, lline, &st, &ltok);
     if (ltok == 0) {
@@ -4514,6 +4564,15 @@ void fdb_clear_sqlite_cache(sqlite3 *sqldb, const char *dbname,
     sqlite3ResetOneSchemaByName(sqldb, "sqlite_stat4", dbname);
 }
 
+int fdb_table_exists(int rootpage)
+{
+    fdb_tbl_ent_t *ent = NULL;
+    ent = get_fdb_tbl_ent_by_rootpage(rootpage);
+    if (ent)
+        return 1;
+    return 0;
+}
+
 /**
  * Lock a remote table schema cache
  *
@@ -4524,7 +4583,6 @@ void fdb_clear_sqlite_cache(sqlite3 *sqldb, const char *dbname,
 int fdb_lock_table(sqlite3_stmt *pStmt, struct sqlclntstate *clnt, Table *tab,
                    fdb_tbl_ent_t **p_ent)
 {
-    int rc;
     fdb_tbl_ent_t *ent;
     int rootpage = tab->tnum;
     int version = tab->version;
@@ -4568,7 +4626,7 @@ int fdb_lock_table(sqlite3_stmt *pStmt, struct sqlclntstate *clnt, Table *tab,
     }
 
     /* Lets try something simple, bumping users for fdb */
-    __fdb_add_user(ent->tbl->fdb);
+    __fdb_add_user(ent->tbl->fdb, 0);
 
     *p_ent = ent;
 
@@ -4594,7 +4652,7 @@ int fdb_unlock_table(fdb_tbl_ent_t *ent)
                ent->tbl->version);
     }
 
-    __fdb_rem_user(ent->tbl->fdb);
+    __fdb_rem_user(ent->tbl->fdb, 0);
 
     return FDB_NOERR;
 }
@@ -4609,6 +4667,7 @@ int fdb_heartbeats(struct sqlclntstate *clnt)
     fdb_msg_t *msg;
     fdb_tran_t *tran;
     int rc = 0;
+    int out_rc = 0;
 
     if (!dtran || dtran->remoted)
         return FDB_NOERR;
@@ -4619,7 +4678,7 @@ int fdb_heartbeats(struct sqlclntstate *clnt)
         return -1;
     }
 
-    pthread_mutex_lock(&clnt->dtran_mtx);
+    Pthread_mutex_lock(&clnt->dtran_mtx);
 
     LISTC_FOR_EACH(&dtran->fdb_trans, tran, lnk)
     {
@@ -4637,13 +4696,15 @@ int fdb_heartbeats(struct sqlclntstate *clnt)
                         __func__, *(unsigned long long *)tran->tid,
                         tran->fdb->dbname, rc);
         }
+        if (!out_rc)
+            out_rc = rc;
     }
 
-    pthread_mutex_unlock(&clnt->dtran_mtx);
+    Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     free(msg);
 
-    return rc;
+    return out_rc;
 }
 
 /* check if the mentioned fdb has a preferred node, and get the status of last
@@ -4759,24 +4820,35 @@ void _fdb_clear_clnt_node_affinities(struct sqlclntstate *clnt)
  * Convert the protocol version in an appropriate cursor open flag
  *
  */
-static int _get_protocol_flags(int version, void *trans)
+static int _get_protocol_flags(struct sqlclntstate *clnt, fdb_t *fdb,
+                               int *flags)
 {
-    switch (version) {
-    case FDB_VER_WR_NAMES:
-    case FDB_VER_SOURCE_ID:
-        return FDB_MSG_CURSOR_OPEN_SQL_SID;
-
-    case FDB_VER_CODE_VERSION:
-        /* untransactional cursors don't have seq */
-        if (trans)
-            return FDB_MSG_CURSOR_OPEN_SQL_TRAN;
-        else
-            return FDB_MSG_CURSOR_OPEN_SQL;
-
-    case FDB_VER_LEGACY:
-    default:
-        return FDB_MSG_CURSOR_OPEN_SQL;
+    if (fdb->server_version < FDB_VER_SSL) {
+        *flags = FDB_MSG_CURSOR_OPEN_SQL_SID;
+#if WITH_SSL
+        if (sslio_has_ssl(clnt->sb)) {
+            /* Client has SSL, but remote doesn't support SSL */
+            clnt->fdb_state.preserve_err = 1;
+            clnt->fdb_state.xerr.errval = FDB_ERR_SSL;
+            snprintf(clnt->fdb_state.xerr.errstr,
+                     sizeof(clnt->fdb_state.xerr.errstr),
+                     "client uses SSL but remote db does not support it");
+            return -1;
+        }
+#endif
+    } else {
+        *flags = FDB_MSG_CURSOR_OPEN_SQL_SSL;
+#if WITH_SSL
+        if (sslio_has_ssl(clnt->sb) || fdb->ssl >= SSL_REQUIRE) {
+            *flags |= FDB_MSG_CURSOR_OPEN_FLG_SSL;
+        }
+#endif
     }
+
+    /*fprintf(stderr, "%s: return flags=%d sb=%p has_ssl=%d\n", __func__,
+     * *flags, clnt->sb, sslio_has_ssl(clnt->sb));*/
+
+    return 0;
 }
 
 /**
@@ -4795,4 +4867,73 @@ void fdb_cursor_use_table(fdb_cursor_t *cur, struct fdb *fdb,
      *
      */
     cur->ent = get_fdb_tbl_ent_by_name_from_fdb(fdb, tblname);
+}
+
+static const char *get_cdb2_class_str(enum mach_class cls)
+{
+    switch (cls) {
+    default:
+        return "default";
+    case CLASS_TEST:
+        return "dev";
+    case CLASS_ALPHA:
+        return "alpha";
+    case CLASS_BETA:
+        return "beta";
+    case CLASS_PROD:
+        return "prod";
+    }
+}
+
+/**
+ * Retrieve the schema of a remote table
+ *
+ */
+int fdb_get_remote_version(const char *dbname, const char *table,
+                           enum mach_class class, int local,
+                           unsigned long long *version)
+{
+    char sql[256];
+    cdb2_hndl_tp *db;
+    int rc;
+    const char *location;
+    int flags;
+
+    if (local) {
+        location = "localhost";
+        flags = CDB2_DIRECT_CPU;
+    } else {
+        location = get_cdb2_class_str(class);
+        flags = 0;
+    }
+
+    snprintf(sql, sizeof(sql), "select table_version(\'%s\')", table);
+
+    rc = cdb2_open(&db, dbname, location, flags);
+    if (rc)
+        return FDB_ERR_GENERIC;
+
+    rc = cdb2_run_statement(db, sql);
+    if (rc) {
+        rc = FDB_ERR_GENERIC;
+        goto done;
+    }
+
+    rc = cdb2_next_record(db);
+    if (rc == CDB2_OK) {
+        switch (cdb2_column_type(db, 0)) {
+        case CDB2_INTEGER:
+            *version = *(unsigned long long *)cdb2_column_value(db, 0);
+            rc = FDB_NOERR;
+            break;
+        default:
+            rc = FDB_ERR_GENERIC;
+            break;
+        }
+    } else
+        rc = FDB_ERR_GENERIC;
+
+done:
+    cdb2_close(db);
+    return rc;
 }

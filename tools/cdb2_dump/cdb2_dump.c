@@ -7,7 +7,7 @@
 
 #include "build/db_config.h"
 
-#ifndef lint
+#if 0
 static const char copyright[] =
     "Copyright (c) 1996-2003\nSleepycat Software Inc.  All rights reserved.\n";
 static const char revid[] =
@@ -30,6 +30,7 @@ static const char revid[] =
 #include <crc32c.h>
 #include <syslog.h>
 #include <logmsg.h>
+#include <locks_wrap.h>
 
 int db_init __P((DB_ENV *, char *, int, u_int32_t, int *));
 int dump __P((DB *, int, int));
@@ -62,7 +63,7 @@ tool_cdb2_dump_main(argc, argv)
 	char *dopt, *home, passwd[1024], *subname;
 	FILE *crypto;
 
-	pthread_key_create(&comdb2_open_key, NULL);
+	Pthread_key_create(&comdb2_open_key, NULL);
 
 	if ((ret = version_check(progname)) != 0)
 		return (ret);
@@ -233,7 +234,7 @@ retry:	if ((ret = db_env_create(&dbenv, 0)) != 0) {
 		if ((ret = __db_util_cache(dbenv, dbp, &cache, &resize)) != 0)
 			goto err;
 		if (resize) {
-			(void)dbp->close(dbp, NULL, 0);
+			(void)dbp->close(dbp, 0);
 			dbp = NULL;
 
 			(void)dbenv->close(dbenv, 0);
@@ -276,7 +277,7 @@ retry:	if ((ret = db_env_create(&dbenv, 0)) != 0) {
 	if (0) {
 err:		exitval = 1;
 	}
-done:	if (dbp != NULL && (ret = dbp->close(dbp, NULL, 0)) != 0) {
+done:	if (dbp != NULL && (ret = dbp->close(dbp, 0)) != 0) {
 		exitval = 1;
 		dbenv->err(dbenv, ret, "close");
 	}
@@ -443,7 +444,7 @@ dump_sub(dbenv, parent_dbp, parent_name, pflag, keyflag)
 		    __db_pr_callback, NULL, 0) ||
 		    dump(dbp, pflag, keyflag)))
 			ret = 1;
-		(void)dbp->close(dbp, NULL, 0);
+		(void)dbp->close(dbp, 0);
 		free(subdb);
 		if (ret != 0)
 			return (1);

@@ -61,6 +61,7 @@ static const char revid[] = "$Id: bt_delete.c,v 11.46 2003/06/30 17:19:29 bostic
 
 #include <btree/bt_prefix.h>
 #include <logmsg.h>
+#include <locks_wrap.h>
 
 int genidcmp(const void *hash_genid, const void *genid);
 void genidcpy(void *dest, const void *src);
@@ -229,10 +230,6 @@ __bam_adjindx(dbc, h, indx, indx_copy, is_insert)
 
 unsigned int hash_fixedwidth(const unsigned char *genid);
 
-int bdb_relink_txn_pglogs(void *bdb_state, void *relinks_hashtbl,
-    pthread_mutex_t * mutexp, unsigned char *fileid, db_pgno_t pgno,
-    db_pgno_t prev_pgno, db_pgno_t next_pgno, DB_LSN lsn);
-
 int bdb_relink_pglogs(void *bdb_state, unsigned char *fileid, db_pgno_t pgno,
     db_pgno_t prev_pgno, db_pgno_t next_pgno, DB_LSN lsn);
 
@@ -263,7 +260,6 @@ __bam_dpages(dbc, stack_epg, norlk)
 
 	DBT split_key;
 	BKEYDATA *tmp_bk;
-	int mutex_rc = 0;
 	int add_to_hash = 0;
 	unsigned int hh;
 	genid_hash *hash = NULL;
@@ -444,13 +440,7 @@ err:		for (; epg <= cp->csp; ++epg) {
 						 * This key (genid)
 						 * exists in hash
 						 */
-						mutex_rc =
-						    pthread_mutex_lock(&(hash->
-							mutex));
-						if (mutex_rc != 0) {
-							logmsg(LOGMSG_ERROR, 
-    "__bam_root: Failed to lock (hash->mutex)\n");
-						}
+                        Pthread_mutex_lock(&(hash->mutex));
 						if (add_to_hash) {
 							// update new page
 							genidsetzero(hashtbl
@@ -466,13 +456,7 @@ err:		for (; epg <= cp->csp; ++epg) {
 							    [hh].genid);
 							hashtbl[hh].pgno = 0;
 						}
-						mutex_rc =
-						    pthread_mutex_unlock(&
-						    (hash->mutex));
-						if (mutex_rc != 0) {
-                            logmsg(LOGMSG_ERROR, 
-      "__bam_root: Failed to unlock (hash->mutex)\n");
-						}
+                        Pthread_mutex_unlock(& (hash->mutex));
 					}
 				}
 			}
@@ -488,22 +472,15 @@ err:		for (; epg <= cp->csp; ++epg) {
 			b.size = TYPE(parent) == P_IRECNO ? RINTERNAL_SIZE :
 			    BINTERNAL_SIZE(((BINTERNAL *)b.data)->len);
 			if ((ret = __bam_rsplit_log(dbp, dbc->txn,
-			    &child->lsn, 0, PGNO(child), &a,
-			    PGNO(parent), RE_NREC(parent), &b,
-			    &parent->lsn)) != 0)
+				&child->lsn, 0, PGNO(child), &a,
+				PGNO(parent), RE_NREC(parent), &b,
+				&parent->lsn)) != 0)
 				goto stop;
-			if (!dbc->txn->relinks_hashtbl) {
-				DB_ASSERT(F_ISSET(dbc->txn, TXN_COMPENSATE));
-			} else if (bdb_relink_txn_pglogs(dbp->dbenv->
-				app_private, dbc->txn->relinks_hashtbl,
-				&dbc->txn->pglogs_mutex, mpf->fileid,
-				PGNO(child), PGNO(parent), PGNO_INVALID,
-				child->lsn) != 0 ||
-			    bdb_relink_pglogs(dbp->dbenv->app_private,
+			if (bdb_relink_pglogs(dbp->dbenv->app_private,
 				mpf->fileid, PGNO(child), PGNO(parent),
 				PGNO_INVALID, child->lsn) != 0) {
-				logmsg(LOGMSG_ERROR, "%s: failed relink pglogs\n",
-				    __func__);
+				logmsg(LOGMSG_FATAL, "%s: failed relink pglogs\n",
+					__func__);
 				abort();
 			}
 		} else

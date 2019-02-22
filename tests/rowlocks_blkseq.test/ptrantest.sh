@@ -11,7 +11,7 @@ log=$3
 # local variables
 isrmt=
 mch=
-ptn=${TESTSROOTDIR}/tools/ptrantest
+ptn=${TESTSBUILDDIR}/ptrantest
 
 master=`cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
 

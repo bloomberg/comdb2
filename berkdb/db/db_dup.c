@@ -31,6 +31,7 @@ static const char revid[] = "$Id: db_dup.c,v 11.36 2003/06/30 17:19:44 bostic Ex
 #include <btree/bt_prefix.h>
 #include <btree/bt_cache.h>
 #include <logmsg.h>
+#include <locks_wrap.h>
 
 extern int gbl_keycompr;
 
@@ -192,7 +193,7 @@ __db_pitem_opcode(dbc, pagep, indx, nbytes, hdr, data, opcode)
 	/* If there is an active Lua trigger/consumer, wake it up. */
 	struct __db_trigger_subscription *t = dbp->trigger_subscription;
 	if (t && t->active && (indx & 1)) {
-		pthread_cond_signal(&t->cond);
+		Pthread_cond_signal(&t->cond);
 	}
 
 	/*
@@ -324,10 +325,6 @@ __db_pitem_opcode(dbc, pagep, indx, nbytes, hdr, data, opcode)
 	return (0);
 }
 
-int bdb_relink_txn_pglogs(void *bdb_state, void *relinks_hashtbl,
-    pthread_mutex_t * mutexp, unsigned char *fileid, db_pgno_t pgno,
-    db_pgno_t prev_pgno, db_pgno_t next_pgno, DB_LSN lsn);
-
 int bdb_relink_pglogs(void *bdb_state, unsigned char *fileid, db_pgno_t pgno,
     db_pgno_t prev_pgno, db_pgno_t next_pgno, DB_LSN lsn);
 
@@ -406,17 +403,11 @@ __db_relink(dbc, add_rem, pagep, new_next, needlock)
 	/* Log the change. */
 	if (DBC_LOGGING(dbc)) {
 		if ((ret = __db_relink_log(dbp, dbc->txn, &ret_lsn, 0, add_rem,
-			    pagep->pgno, &pagep->lsn, pagep->prev_pgno, plsnp,
-			    pagep->next_pgno, nlsnp)) != 0)
+				pagep->pgno, &pagep->lsn, pagep->prev_pgno, plsnp,
+				pagep->next_pgno, nlsnp)) != 0)
 			goto err;
 
-		if (!dbc->txn->relinks_hashtbl) {
-			DB_ASSERT(F_ISSET(dbc->txn, TXN_COMPENSATE));
-		} else if (bdb_relink_txn_pglogs(dbp->dbenv->app_private,
-			dbc->txn->relinks_hashtbl, &dbc->txn->pglogs_mutex,
-			mpf->fileid, pagep->pgno, pagep->prev_pgno,
-			pagep->next_pgno, ret_lsn) != 0 ||
-		    bdb_relink_pglogs(dbp->dbenv->app_private, mpf->fileid,
+		if (bdb_relink_pglogs(dbp->dbenv->app_private, mpf->fileid,
 			pagep->pgno, pagep->prev_pgno, pagep->next_pgno,
 			ret_lsn) != 0) {
 			logmsg(LOGMSG_FATAL, "%s: failed relink pglogs\n", __func__);

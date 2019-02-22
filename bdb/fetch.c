@@ -56,9 +56,6 @@
 #include "bdb_int.h"
 #include "bdb_cursor.h"
 #include "locks.h"
-
-#include <plbitlib.h> /* for bset/btst */
-
 #include "genid.h"
 #include "bdb_fetch.h"
 #include "logmsg.h"
@@ -76,8 +73,9 @@ static DB_TXN *resolve_db_txn(bdb_state_type *bdb_state, tran_type *tran)
     int rc;
     if (tran) {
         if (tran->tranclass == TRANCLASS_LOGICAL && !tran->reptxn) {
-            tran_type ptxn, *pptr;
-            if ((rc = get_physical_transaction(bdb_state, tran, &pptr)) != 0) {
+            tran_type *pptr;
+            if ((rc = get_physical_transaction(bdb_state, tran, &pptr, 0)) !=
+                0) {
                 logmsg(LOGMSG_ERROR, "%s %d: error getting transaction, rc=%d\n",
                         __FILE__, __LINE__, rc);
                 abort();
@@ -159,7 +157,6 @@ static int bdb_fetch_blobs_by_rrn_and_genid_int_int(
         int rc = 0;
 
         int pgno;
-        int tmp_i;
 
         /* Could have changed in get_unpack_blob. */
         genid = ingenid;
@@ -587,16 +584,14 @@ void bdb_cursor_ser_invalidate(bdb_cursor_ser_t *cur_ser)
         *reqdtalen = dbt_data.size - sizeof(unsigned long long);               \
     }
 
-static int
-bdb_fetch_int_ll(int return_dta, int direction, int lookahead,
-                 bdb_state_type *bdb_state, void *ix, int ixnum, int ixlen,
-                 void *lastix, int lastrrn, unsigned long long lastgenid,
-                 void *dta, int dtalen, int *reqdtalen, void *ixfound, int *rrn,
-                 int *recnum, unsigned long long *genid, int numblobs,
-                 int *dtafilenums, size_t *blobsizes, size_t *bloboffs,
-                 void **blobptrs, int dirty, int pgorder, tran_type *tran,
-                 bdb_cursor_ser_int_t *cur_ser, bdb_fetch_args_t *args,
-                 u_int32_t lockerid, int *bdberr)
+static int bdb_fetch_int_ll(
+    int return_dta, int direction, int lookahead, bdb_state_type *bdb_state,
+    void *ix, int ixnum, int ixlen, void *lastix, int lastrrn,
+    unsigned long long lastgenid, void *dta, int dtalen, int *reqdtalen,
+    void *ixfound, int *rrn, int *recnum, unsigned long long *genid,
+    int numblobs, int *dtafilenums, size_t *blobsizes, size_t *bloboffs,
+    void **blobptrs, int dirty, tran_type *tran, bdb_cursor_ser_int_t *cur_ser,
+    bdb_fetch_args_t *args, u_int32_t lockerid, int *bdberr)
 {
     DBT dbt_key, dbt_data;
     int rc;
@@ -604,43 +599,34 @@ bdb_fetch_int_ll(int return_dta, int direction, int lookahead,
     int outrc;
     int past_three_outrc;
     int foundrrn;
-    unsigned long long foungenid;
-    int tmprrn;
-    unsigned long long tmpgenid;
     int found;
-    int search_recnum;
     int flags;
-    int flags_copy;
-    unsigned long long key_genid;
-    unsigned long long dta_genid;
     unsigned long long masked_genid;
     int havedta;
     int ixlen_full;
-    int ixdups;
     int keycontainsgenid;
     int ixrecnum;
     DB *dbp;
     unsigned long long foundgenid;
-    int dtafile;
+    int dtafile = 0;
     int cursor_flags;
     int get_flags;
     DB_TXN *tid;
     struct odh odh;
     int attempt_deserializaion;
     int initial_rc;
+    int page_order = 0;
 
     /* the "data" for an index can be a genid + record for dtastripe */
     char tmp_data[BDB_RECORD_MAX + sizeof(unsigned long long)];
     char tmp_key[BDB_RECORD_MAX + sizeof(unsigned long long)];
     char tmp_last_key[BDB_RECORD_MAX + sizeof(unsigned long long)];
-    char *last_key;
+    char *last_key = NULL;
 
     unsigned long long *llptr;
 
     uint8_t *ver = &args->ver;
 
-    key_genid = 0;
-    dta_genid = 0;
     foundrrn = 0;
     foundgenid = 0;
     *bdberr = BDBERR_NOERROR;
@@ -669,29 +655,24 @@ bdb_fetch_int_ll(int return_dta, int direction, int lookahead,
             return -1;
         }
 
-        if (return_dta)
-            *reqdtalen = 0;
-
         ixlen_full = sizeof(unsigned long long); /* len of a gmonid */
         keycontainsgenid = 0;
-        ixdups = 0;
         ixrecnum = 0;
         lookahead = 0;
         dbp = NULL; /* will be set later */
-    } else          /* we are using an actual index */
-    {
+    } else {
+        /* we are using an actual index */
         if ((bdb_state->ixdta[ixnum]) && (return_dta == 1))
             havedta = 1;
 
-        if (return_dta)
-            *reqdtalen = 0;
-
         ixlen_full = bdb_state->ixlen[ixnum];
         keycontainsgenid = bdb_keycontainsgenid(bdb_state, ixnum);
-        ixdups = bdb_state->ixdups[ixnum];
         ixrecnum = bdb_state->ixrecnum[ixnum];
         dbp = bdb_state->dbp_ix[ixnum];
     }
+
+    if (return_dta)
+        *reqdtalen = 0;
 
     if (ixlen == -1)
         ixlen = ixlen_full;
@@ -872,14 +853,13 @@ before_first_lookup:
     if (dirty)
         cursor_flags |= DB_DIRTY_READ;
 
-    /*
-        if (pgorder)
-            cursor_flags |= DB_PAGE_ORDER;
-        */
+    if (args && args->page_order) {
+        cursor_flags |= DB_PAGE_ORDER;
+        page_order = args->page_order;
+    }
 
     dbcp = NULL;
 
-    flags_copy = flags;
     if (cur_ser) {
         if (CURSOR_SER_ENABLED(bdb_state) && attempt_deserializaion &&
             cur_ser->is_valid) {
@@ -895,10 +875,7 @@ before_first_lookup:
                     *rrn = 0;
                     return -1;
                 }
-            } else
-                /* get the record the cursor was pointing to before
-                 * serializaiton */
-                flags_copy = DB_CURRENT;
+            }
         }
 
         /* we will mark this valid again if we successfully call
@@ -1276,6 +1253,18 @@ before_first_lookup:
                     /* copy the ix we found to the user */
                     if (ixfound)
                         memcpy(ixfound, dbt_key.data, ixlen_full);
+                } else if (rc == DB_NOTFOUND &&
+                           page_order) /* return the last, and a 3 */
+                {
+                    outrc = 3;
+                    if (CURSOR_SER_ENABLED(bdb_state) && cur_ser &&
+                        !lookahead) {
+                        rc = dbcp->c_close_ser(dbcp, &cur_ser->dbcs);
+                        cur_ser->is_valid = !rc;
+                    } else {
+                        rc = dbcp->c_close(dbcp);
+                    }
+                    return outrc;
                 } else if (rc == DB_NOTFOUND) /* return the last, and a 3 */
                 {
                     /* fprintf(stderr, "not found\n"); */
@@ -1969,73 +1958,64 @@ err:
     }
 
     /* if we were told to retrieve the record number, do it now */
-    if (recnum) {
-        switch (direction) {
-        case FETCH_INT_CUR_BY_RECNUM:
-            memcpy(recnum, &search_recnum, sizeof(int));
-            break;
+    if (recnum && direction != FETCH_INT_CUR_BY_RECNUM) {
+        *recnum = -1;
 
-        default:
-            *recnum = -1;
+        if (ixrecnum) {
+            if (ixfound)
+                memcpy(tmp_key, ixfound, ixlen_full);
 
-            if (ixrecnum) {
-                if (ixfound)
-                    memcpy(tmp_key, ixfound, ixlen_full);
+            memset(&dbt_key, 0, sizeof(dbt_key));
+            memset(&dbt_data, 0, sizeof(dbt_data));
 
-                memset(&dbt_key, 0, sizeof(dbt_key));
-                memset(&dbt_data, 0, sizeof(dbt_data));
+            dbt_key.flags = DB_DBT_USERMEM;
+            dbt_key.data = tmp_key;
+            dbt_key.size = ixlen_full;
+            dbt_key.ulen = sizeof(tmp_key);
 
-                dbt_key.flags = DB_DBT_USERMEM;
-                dbt_key.data = tmp_key;
-                dbt_key.size = ixlen_full;
-                dbt_key.ulen = sizeof(tmp_key);
+            dbt_data.flags = DB_DBT_USERMEM;
+            dbt_data.data = tmp_data;
+            dbt_data.size = sizeof(tmp_data);
+            dbt_data.ulen = sizeof(tmp_data);
 
-                dbt_data.flags = DB_DBT_USERMEM;
-                dbt_data.data = tmp_data;
-                dbt_data.size = sizeof(tmp_data);
-                dbt_data.ulen = sizeof(tmp_data);
-
-                if (keycontainsgenid) {
-                    masked_genid = get_search_genid(bdb_state, foundgenid);
-                    memcpy(tmp_key + ixlen_full, &masked_genid,
-                           sizeof(unsigned long long));
-                    dbt_key.size += sizeof(unsigned long long);
-                }
-
-                rc = fetch_cget(bdb_state, ixnum, dbcp, &dbt_key, &dbt_data,
-                                DB_SET);
-
-                if (rc != 0) {
-                    /* return DEADLOCK */
-                    if (CURSOR_SER_ENABLED(bdb_state) && cur_ser &&
-                        !lookahead) {
-                        rc = dbcp->c_close_ser(dbcp, &cur_ser->dbcs);
-                        cur_ser->is_valid = !rc;
-                    } else
-                        rc = dbcp->c_close(dbcp);
-                    *bdberr = BDBERR_DEADLOCK;
-
-                    outrc = -1;
-                    *recnum = -1;
-                    return outrc;
-                }
-
-                memset(&dbt_data, 0, sizeof(dbt_data));
-                dbt_data.data = recnum;
-                dbt_data.ulen = sizeof(int);
-                dbt_data.flags = DB_DBT_USERMEM;
-
-                rc = fetch_cget(bdb_state, ixnum, dbcp, &dbt_key, &dbt_data,
-                                DB_GET_RECNO);
-
-                if ((rc == DB_REP_HANDLE_DEAD) || (rc == DB_LOCK_DEADLOCK)) {
-                    *bdberr = BDBERR_DEADLOCK;
-                }
-
-                if (rc != 0)
-                    *recnum = -1;
+            if (keycontainsgenid) {
+                masked_genid = get_search_genid(bdb_state, foundgenid);
+                memcpy(tmp_key + ixlen_full, &masked_genid,
+                       sizeof(unsigned long long));
+                dbt_key.size += sizeof(unsigned long long);
             }
-            break;
+
+            rc =
+                fetch_cget(bdb_state, ixnum, dbcp, &dbt_key, &dbt_data, DB_SET);
+
+            if (rc != 0) {
+                /* return DEADLOCK */
+                if (CURSOR_SER_ENABLED(bdb_state) && cur_ser && !lookahead) {
+                    rc = dbcp->c_close_ser(dbcp, &cur_ser->dbcs);
+                    cur_ser->is_valid = !rc;
+                } else
+                    rc = dbcp->c_close(dbcp);
+                *bdberr = BDBERR_DEADLOCK;
+
+                outrc = -1;
+                *recnum = -1;
+                return outrc;
+            }
+
+            memset(&dbt_data, 0, sizeof(dbt_data));
+            dbt_data.data = recnum;
+            dbt_data.ulen = sizeof(int);
+            dbt_data.flags = DB_DBT_USERMEM;
+
+            rc = fetch_cget(bdb_state, ixnum, dbcp, &dbt_key, &dbt_data,
+                            DB_GET_RECNO);
+
+            if ((rc == DB_REP_HANDLE_DEAD) || (rc == DB_LOCK_DEADLOCK)) {
+                *bdberr = BDBERR_DEADLOCK;
+            }
+
+            if (rc != 0)
+                *recnum = -1;
         }
     }
     /********************************************************************/
@@ -2233,7 +2213,7 @@ static int bdb_fetch_prefault_int(
                             ixnum, ixlen, lastix, lastrrn, lastgenid, dta,
                             dtalen, reqdtalen, ixfound, rrn, recnum, genid,
                             numblobs, dtafilenums, blobsizes, bloboffs,
-                            blobptrs, 1, 0, NULL, NULL, args, lockerid, bdberr);
+                            blobptrs, 1, NULL, NULL, args, lockerid, bdberr);
 
     memset(&request, 0, sizeof(request));
     request.op = DB_LOCK_PUT_ALL;
@@ -2256,13 +2236,9 @@ static int bdb_fetch_int(int return_dta, int direction, int lookahead,
                          bdb_cursor_ser_int_t *cur_ser, bdb_fetch_args_t *args,
                          int *bdberr)
 {
-    unsigned long long lockgenid;
-    unsigned long long masked_genid;
     int created_temp_tran;
     int rc;
     int llrc;
-    DBT key, data;
-    int dirty_read;
     char tmpixfound[1024];
     int bdberr2;
 
@@ -2293,13 +2269,15 @@ static int bdb_fetch_int(int return_dta, int direction, int lookahead,
                             ixnum, ixlen, lastix, lastrrn, lastgenid, dta,
                             dtalen, reqdtalen, ixfound, rrn, recnum, genid,
                             numblobs, dtafilenums, blobsizes, bloboffs,
-                            blobptrs, dirty, 0, tran, cur_ser, args, 0, bdberr);
+                            blobptrs, dirty, tran, cur_ser, args, 0, bdberr);
 
     if (created_temp_tran) {
         int arc;
         /* don't loose bdberr pls */
         arc = bdb_tran_abort_int(bdb_state, tran, &bdberr2, NULL, 0, NULL, 0,
                                  NULL);
+        if (arc)
+            logmsg(LOGMSG_WARN, "%s:%d arc=%d\n", __FILE__, __LINE__, arc);
     }
     return llrc;
 }
@@ -3377,6 +3355,35 @@ int bdb_fetch_next_nodta_genid(bdb_state_type *bdb_state, void *ix, int ixnum,
     return outrc;
 }
 
+int bdb_fetch_next_nodta_genid_tran(bdb_state_type *bdb_state, void *ix,
+                                    int ixnum, int ixlen, void *lastix,
+                                    int lastrrn, unsigned long long lastgenid,
+                                    void *ixfound, int *rrn,
+                                    unsigned long long *genid, void *tran,
+                                    bdb_fetch_args_t *args, int *bdberr)
+{
+    int outrc;
+
+    *bdberr = BDBERR_NOERROR;
+
+    BDB_READLOCK("bdb_fetch_next_nodta_genid");
+
+    outrc = bdb_fetch_int(0,              /* return no data */
+                          FETCH_INT_NEXT, /* next */
+                          1,              /* lookahead */
+                          bdb_state, ix, ixnum, ixlen, lastix, lastrrn,
+                          lastgenid, NULL, 0, NULL, /* dta, dtalen, reqdtalen */
+                          ixfound, rrn, NULL,       /* recnum */
+                          genid, 0, NULL, NULL, NULL, NULL, /* no blobs */
+                          0, tran,                          /* no txn */
+                          NULL,                             /* no cur_ser */
+                          args, bdberr);
+
+    BDB_RELLOCK();
+
+    return outrc;
+}
+
 int bdb_fetch_next_nodta_genid_nl_ser(bdb_state_type *bdb_state, void *ix,
                                       int ixnum, int ixlen, void *lastix,
                                       int lastrrn, unsigned long long lastgenid,
@@ -3988,7 +3995,6 @@ int bdb_fetch_by_rrn_and_genid(bdb_state_type *bdb_state, int rrn,
                                int *bdberr)
 {
     int rc;
-    unsigned long long outgenid;
     BDB_READLOCK("bdb_fetch_by_rrn_and_genid");
 
     rc = bdb_fetch_by_genid_int(bdb_state, NULL, genid, dta, dtalen, reqdtalen,
@@ -4027,7 +4033,6 @@ int bdb_fetch_by_rrn_and_genid_dirty(bdb_state_type *bdb_state, int rrn,
                                      bdb_fetch_args_t *args, int *bdberr)
 {
     int rc;
-    unsigned long long outgenid;
     BDB_READLOCK("bdb_fetch_by_rrn_and_genid");
 
     rc = bdb_fetch_by_genid_int(bdb_state, NULL, genid, dta, dtalen, reqdtalen,
@@ -4064,7 +4069,6 @@ int bdb_fetch_by_rrn_and_genid_tran(bdb_state_type *bdb_state, tran_type *tran,
                                     bdb_fetch_args_t *args, int *bdberr)
 {
     int rc;
-    unsigned long long outgenid;
     BDB_READLOCK("bdb_fetch_by_rrn_and_genid_tran");
 
     rc = bdb_fetch_by_genid_int(bdb_state, tran, genid, dta, dtalen, reqdtalen,
@@ -4173,7 +4177,8 @@ int bdb_fetch_next_dtastripe_record(bdb_state_type *bdb_state,
 
             /* if the genid we found is less then or equal to the last genid
              * we found in this stripe, there was a problem */
-            if (bdb_cmp_genids(*p_genid, p_genid_vector[cur_stripe]) <= 0) {
+            if ((bdb_cmp_genids(*p_genid, p_genid_vector[cur_stripe]) <= 0) &&
+                (!args || !args->page_order)) {
                 logmsg(LOGMSG_ERROR, "%s: looking for next genid in stripe: %d "
                                 "after: %016llx (%016llx) got: %016llx\n",
                         __func__, cur_stripe, last_genid,

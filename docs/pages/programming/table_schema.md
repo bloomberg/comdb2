@@ -259,6 +259,8 @@ Similarly, here is a typical query that uses index "b":
 [explain query plan select json_extract(json, '$.b') as b from jdemo order by json_extract(json, '$.b')] rc 0
 ```
 
+The syntax to create indexes on expressions using standard DDL can be found in
+an example [here](sql.md#create-table).
 
 
 ### Duplicate Keys.
@@ -282,6 +284,10 @@ If the key definition is preceded by the ```datacopy``` keyword, then the backin
 the data record in the btree used for the index.  This copy is maintained transparently by the database.  
 This allows for large performance gains when reading sequential records from on a key.  The trade-off is the 
 use of more disk space.
+
+### Unique NULL Keys.
+If the key definition is preceded by the ```uniqnulls``` keyword, then the backing index will treat NULL values
+as unique.
 
 ### Ascending and Descending Keys.
 

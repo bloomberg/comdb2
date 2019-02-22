@@ -78,12 +78,14 @@ std::string read_serialised_sha_file() {
 
 // Determine whether the file has changed, ie if the page's current LSN + Checksum
 // is the same as it is in the .incr diff file
-bool assert_cksum_lsn(uint8_t *new_pagep, uint8_t *old_pagep, size_t pagesize) {
+bool assert_cksum_lsn(FileInfo &file, uint8_t *new_pagep, uint8_t *old_pagep, size_t pagesize) {
     uint32_t new_lsn_file = LSN(new_pagep).file;
     uint32_t new_lsn_offs = LSN(new_pagep).offset;
     bool verify_ret;
     uint32_t new_cksum;
-    verify_checksum(new_pagep, pagesize, false, false, &verify_ret, &new_cksum);
+    bool crypto = file.get_crypto();
+    bool swapped = file.get_swapped();
+    verify_checksum(new_pagep, pagesize, crypto, swapped, &verify_ret, &new_cksum);
 
     uint8_t cmp_arr[12];
     for (int i = 0; i < 4; ++i){
@@ -100,7 +102,7 @@ bool assert_cksum_lsn(uint8_t *new_pagep, uint8_t *old_pagep, size_t pagesize) {
 // populate data_size with the total amount of data that needs to be serialised
 // Returns true if any part of the file needs to be serialised
 bool compare_checksum(
-    FileInfo file,
+    FileInfo &file,
     const std::string& incr_path,
     std::vector<uint32_t>& pages,
     ssize_t *data_size,
@@ -108,6 +110,8 @@ bool compare_checksum(
 ) {
     std::string filename = file.get_filename();
     std::string incr_file_name = incr_path + "/" + filename + ".incr";
+
+    std::cerr << filename << " <- " << incr_file_name << std::endl;
 
     // Keep a set of all .incr diff files to determine if there are any remaining at the end
     // Any remaining .incr files indiciate deleted files
@@ -120,9 +124,6 @@ bool compare_checksum(
     bool ret = false;
 
     int flags = O_RDONLY;
-#   ifndef __APPLE__
-    flags |= O_LARGEFILE;
-#   endif
     int new_fd = open(file.get_filepath().c_str(), flags);
     int old_fd = open(incr_file_name.c_str(), O_RDWR);
 
@@ -131,6 +132,18 @@ bool compare_checksum(
         std::ostringstream ss;
         ss << "cannot stat file: " << std::strerror(errno);
         throw SerialiseError(filename, ss.str());
+    }
+
+    // wrong, but a good estimate, and good enough if we truncate BEFORE
+    // writing pages on restore
+    file.set_filesize(new_st.st_size); 
+    {
+        std::ostringstream ss;
+        ss << "ls -l " << file.get_filepath() << " >&2";
+        int rc = system(ss.str().c_str());
+        if (rc)
+            std::cerr << "system() returns rc = " << rc << std::endl;
+        std::cerr << "stat says size " << new_st.st_size << std::endl;
     }
 
     // For a new file, make pages empty (upon returning, an empty pages list
@@ -152,16 +165,22 @@ bool compare_checksum(
         bool file_expanded = false;
 
 #if ! defined  ( _SUN_SOURCE ) && ! defined ( _HP_SOURCE )
-        posix_memalign((void**) &new_pagebuf, 512, pagesize);
+        if(posix_memalign((void**) &new_pagebuf, 512, pagesize))
+            throw Error("Failed to allocate output buffer");
 #else
         new_pagebuf = (uint8_t*) memalign(512, pagesize);
 #endif
 
         size_t original_size = new_st.st_size;
         off_t bytesleft = new_st.st_size;
+        int64_t filesize = 0;
+        int64_t pgno = -1;
 
         while(bytesleft >= pagesize) {
             ssize_t new_bytesread = read(new_fd, &new_pagebuf[0], pagesize);
+
+            filesize += new_bytesread;
+            pgno += 1;
 
             if(new_bytesread <= 0) {
                 std::ostringstream ss;
@@ -171,7 +190,7 @@ bool compare_checksum(
 
             // File has expamded by a reasonable amount, so add all remaining pages
             if(file_expanded) {
-                pages.push_back(PGNO(new_pagebuf));
+                pages.push_back(pgno);
                 *data_size += pagesize;
                 bytesleft -= pagesize;
                 continue;
@@ -192,7 +211,7 @@ bool compare_checksum(
                     return true;
                 // otherwise just add the remaining pages
                 } else {
-                    pages.push_back(PGNO(new_pagebuf));
+                    pages.push_back(pgno);
                     file_expanded = true;
                     *data_size += pagesize;
                     bytesleft -= pagesize;
@@ -202,8 +221,8 @@ bool compare_checksum(
             }
 
             // If a diff has been selected in a page, keep track of that page
-            if (assert_cksum_lsn(new_pagebuf, old_pagebuf, pagesize)) {
-                pages.push_back(PGNO(new_pagebuf));
+            if (assert_cksum_lsn(file, new_pagebuf, old_pagebuf, pagesize)) {
+                pages.push_back(pgno);
                 *data_size += pagesize;
                 ret = true;
             }
@@ -250,7 +269,8 @@ ssize_t serialise_incr_file(
     uint8_t *pagebuf = NULL;
 
 #if ! defined  ( _SUN_SOURCE ) && ! defined ( _HP_SOURCE )
-    posix_memalign((void**) &pagebuf, 512, pagesize);
+    if(posix_memalign((void**) &pagebuf, 512, pagesize))
+        throw Error("Failed to allocate output buffer");
 #else
     pagebuf = (uint8_t*) memalign(512, pagesize);
 #endif
@@ -280,7 +300,9 @@ tryagain:
 
         uint32_t cksum;
         bool cksum_verified = false;
-        verify_checksum(pagebuf, pagesize, false, false,
+        bool crypto = file.get_crypto();
+        bool swapped = file.get_swapped();
+        verify_checksum(pagebuf, pagesize, crypto, swapped,
                             &cksum_verified, &cksum);
         if(!cksum_verified){
             if(--retry == 0) {
@@ -361,7 +383,8 @@ void incr_deserialise_database(
     unsigned percent_full,
     bool force_mode,
     std::vector<std::string>& options,
-    bool& is_disk_full
+    bool& is_disk_full,
+    bool& dryrun
 )
 // Read from STDIN to deserialise an incremental backup
 {
@@ -452,9 +475,7 @@ void incr_deserialise_database(
             if(filename.find_first_of('/') == std::string::npos) {
                 std::string table_name;
 
-                if(recognise_data_file(filename, false, is_data_file,
-                            is_queue_file, is_queuedb_file, table_name) ||
-                   recognise_data_file(filename, true, is_data_file,
+                if(recognize_data_file(filename, is_data_file,
                             is_queue_file, is_queuedb_file, table_name)) {
                     if(table_set.insert(table_name).second) {
                         std::clog << "Discovered table " << table_name
@@ -494,7 +515,7 @@ void incr_deserialise_database(
         // All incremental changes are stored in a single .data file, so unpack that
         // using the file order to keep track of which file is currently being read
         } else if(is_incr_data) {
-            unpack_incr_data(file_order, updated_files, datadestdir);
+            unpack_incr_data(file_order, updated_files, datadestdir, dryrun);
         // Unpack a full file
         } else if (is_data_file || is_queue_file || is_queuedb_file) {
             std::map<std::string, FileInfo>::iterator file_it = new_files.find(filename);

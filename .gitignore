@@ -1,5 +1,6 @@
 # binaries -- still installing these in-source for test suite
 /build*
+/ninja*
 /deps
 /cdb2_dump
 /cdb2_printlog
@@ -19,6 +20,13 @@ cdb2jdbc/maven.m2/**
 cdb2jdbc/.gradle/**
 cdb2jdbc/build/**
 
+# hibernate dialect
+contrib/cdb2hibernatedialect/.gradle/**
+contrib/cdb2hibernatedialect/build/**
+contrib/cdb2hibernatedialect/target/**
+contrib/cdb2hibernatedialect/private/**
+
+
 # generated docs
 _site/
 Comdb2.docset
@@ -35,6 +43,7 @@ tests/sicountbug.test/sicountbug
 tests/simple_ssl.test/simple_ssl
 tests/sirace.test/sirace
 tests/sqlite.test/comdb2_sqltest
+tests/multithd.test/multithd
 tests/tools/bound
 tests/tools/cdb2api_caller
 tests/tools/crle
@@ -50,8 +59,13 @@ tests/tools/utf8
 tests/tools/breakloop
 tests/tools/insert
 tests/tools/register
+tests/tools/verify_atomics_work
+tests/tools/cdb2_open
+tests/tools/cdb2api_unit
+tests/tools/cdb2_close_early
 
 
+tests/*_generated.test
 tests/test_*
 tests/pmux.sqlite
 

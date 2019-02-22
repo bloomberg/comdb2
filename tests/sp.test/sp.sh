@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+
 [[ -n "$3" ]] && exec >$3 2>&1
 cdb2sql $SP_OPTIONS - <<'EOF'
 create table t {
@@ -365,7 +366,7 @@ exec procedure close()
 create procedure bound version 'sptest' {$(cat bound.lua)}\$\$
 put default procedure bound 'sptest'
 EOF
-${TESTSROOTDIR}/tools/bound "$CDB2_CONFIG" $DBNAME
+${TESTSBUILDDIR}/bound "$CDB2_CONFIG" $DBNAME
 
 
 cdb2sql $SP_OPTIONS - <<EOF
@@ -720,20 +721,32 @@ cdb2sql $SP_OPTIONS - <<EOF
 create table foraudit {$(cat foraudit.csc2)}\$\$
 create table audit {$(cat audit.csc2)}\$\$
 create procedure audit version 'sptest' {$(cat audit.lua)}\$\$
-put default procedure audit 'sptest' 
-create procedure cons version 'sptest' {$(cat cons.lua)}\$\$
-put default procedure cons 'sptest'
+create procedure cons0 version 'sptest' {$(cat cons.lua)}\$\$
+create procedure cons1 version 'sptest' {$(cat cons.lua)}\$\$
+create procedure cons_with_tid version 'sptest' {$(cat cons_with_tid.lua)}\$\$
 create lua trigger audit on (table foraudit for insert and update and delete)
-create lua consumer cons on (table foraudit for insert and update and delete)
+create lua consumer cons0 on (table foraudit for insert and update and delete)
+create lua consumer cons1 on (table foraudit for insert and update and delete)
 EOF
 
 for ((i=0;i<500;++i)); do
-    echo "drop lua consumer cons"
-    echo "create lua consumer cons on (table foraudit for insert and update and delete)"
+    echo "drop lua consumer cons0"
+    echo "create lua consumer cons0 on (table foraudit for insert and update and delete)"
 done | cdb2sql $SP_OPTIONS - > /dev/null
 
-sleep 3 # Wait for trigger to start
-cdb2sql $SP_OPTIONS "exec procedure cons()" > /dev/null 2>&1 &
+#START CONSUMERS
+cdb2sql $SP_OPTIONS - <<'EOF'
+set transaction snapisol
+exec procedure cons0(true)
+EOF
+cdb2sql $SP_OPTIONS - <<'EOF' > /dev/null 2>&1 &
+set transaction blocksql
+exec procedure cons0(true)
+EOF
+cdb2sql $SP_OPTIONS - <<'EOF' > /dev/null 2>&1 &
+set transaction blocksql
+exec procedure cons1(false)
+EOF
 #GENERATE DATA
 cdb2sql $SP_OPTIONS "exec procedure gen('foraudit', 500)"
 #DELETE DATA
@@ -742,7 +755,8 @@ sleep 20 # Wait for queues to drain
 cdb2sql $SP_OPTIONS - <<'EOF'
 select * from comdb2_triggers order by name, type, tbl_name, event
 drop lua trigger audit
-drop lua consumer cons
+drop lua consumer cons0
+drop lua consumer cons1
 select * from comdb2_triggers order by name, type, tbl_name, event
 select added_by, type, count(*) from audit group by added_by, type
 EOF
@@ -789,15 +803,19 @@ local function func(tbls)
     end
 end
 local function main()
+    local thds = {}
     local tbl = db:table("tbl", {{"i", "int"}})
     for i = 1, 20 do
         local tbls = {}
         for j = 1, i do
             table.insert(tbls, tbl)
         end
-        db:create_thread(func, tbls)
+        local thd = db:create_thread(func, tbls)
+        table.insert(thds, thd)
     end
-    db:sleep(2) -- enough time for threads to finish
+    for _, thd in ipairs(thds) do
+        thd:join()
+    end
     db:exec("select i, count(*) from tbl group by i"):emit()
 end
 }$$
@@ -996,12 +1014,13 @@ local function main()
     local s1 = db:exec("select i from t order by i")
     local s2 = db:exec("select i from tmp")
     local s3 = db:exec("select i from tmp")
-    local s4 = db:exec("delete from t where 1")
 
     for i = 1, total/2 do
         db:emit(s1:fetch())
         db:emit(s2:fetch())
     end
+
+    local s4 = db:exec("delete from t where 1")
 
     local row = s3:fetch()
     while row do
@@ -1101,7 +1120,7 @@ EOF
 
 cdb2sql $SP_OPTIONS "select name, version, client_versioned, \"default\" from comdb2_procedures order by name, version, client_versioned, \"default\""
 
-${TESTSROOTDIR}/tools/utf8 "$CDB2_CONFIG" $DBNAME
+${TESTSBUILDDIR}/utf8 "$CDB2_CONFIG" $DBNAME
 cdb2sql $SP_OPTIONS - <<'EOF'
 create procedure json_utf8 version 'sptest' {
 local function main(strategy)
@@ -1192,7 +1211,7 @@ local function main()
     local y = db:json_to_table(json, {type_annotate = true})
     local r0 = check(x, y)
     local r1 = check(y, x)
-    if r0 ~= 0 and r1 ~= 0 then
+    if (r0 ~= 0) or (r1 ~= 0) then
         return -1, "failed"
     else
         return 0
@@ -1226,6 +1245,77 @@ local function main()
 end}$$
 put default procedure nested_json 'sptest'
 exec procedure nested_json()
+
+drop table if exists vsc
+create table vsc(i int)$$
+insert into vsc select * from generate_series(1,10)
+create procedure verify_stmt_caching version 'sptest' {
+local function main()
+	local stmt1 = db:prepare("select * from vsc")
+	local stmt2 = db:prepare("select * from vsc")
+
+    for i = 1, 5 do
+        stmt1:fetch()
+    end
+
+    local c = 0
+    local row = stmt2:fetch()
+    while row do
+        row = stmt2:fetch()
+        c = c + 1
+    end
+    db:emit(c)
+end}$$
+put default procedure verify_stmt_caching 'sptest'
+exec procedure verify_stmt_caching()
+exec procedure verify_stmt_caching()
+
+
+create procedure tmp_tbl_and_thread version '1' {
+local function create_tmp_tbl(t)
+    return db:table(t, {{"i", "integer"}})
+end
+local function work(t, i)
+    db:exec("insert into "..t:name().." select * from generate_series limit "..i.." * 100 offset 1")
+    local tmp = create_tmp_tbl("tmp")
+    tmp:copyfrom(t)
+    local min = db:exec("select '"..t:name().."' as thd, min(i) as i from "..t:name())
+    local max = db:exec("select '"..t:name().."' as thd, max(i) as i from "..tmp:name())
+    min:emit()
+    max:emit()
+    return 0
+end
+local function create_tmp_tbl_and_thread(i)
+    if i < 10 then
+        i = '00'..tostring(i)
+    elseif i < 100 then
+        i = '0'..tostring(i)
+    else
+        i = tostring(i)
+    end
+    local t = create_tmp_tbl("tmp"..i)
+    return db:create_thread(work, t, i)
+end
+local function main()
+    db:setmaxinstructions(1000000)
+    local total = 500
+    for i = 1, total do
+        create_tmp_tbl_and_thread(i)
+    end
+    local t = create_tmp_tbl("main")
+    work(t, "1000")
+end}$$
 EOF
 
-wait
+cdb2sql $SP_OPTIONS "exec procedure tmp_tbl_and_thread()" | sort
+
+cdb2sql $SP_OPTIONS - > /dev/null <<'EOF'
+create procedure json_emoji version 'sptest' {
+local function main(emoji)
+    local tbl = {}
+    tbl.emoji = emoji
+    local json = db:table_to_json(tbl)
+    db:emit(json)
+end}$$
+EOF
+cdb2sql $SP_OPTIONS "exec procedure json_emoji('hello world 😁')"

@@ -48,7 +48,7 @@ void net_reset_explicit_flushes(void);
 static void commit_bench_int(bdb_state_type *bdb_state, int op, int tcount,
                              int count)
 {
-    int i, j, rc, start, end = 0, now, elapsed;
+    int i, j, rc, start, end = 0, elapsed;
     tran_type *trans = NULL;
     unsigned long long repcalls, repbytes, flushes, explicit_flushes,
         interval_flushes;
@@ -65,7 +65,7 @@ static void commit_bench_int(bdb_state_type *bdb_state, int op, int tcount,
     net_reset_explicit_flushes();
     net_reset_send_interval_flushes();
 
-    start = time_epoch();
+    start = comdb2_time_epoch();
 
     for (i = 0; i < tcount; i++) {
         /* trans_start changes to logical if gbl_rowlocks is set */
@@ -90,7 +90,7 @@ static void commit_bench_int(bdb_state_type *bdb_state, int op, int tcount,
         }
     }
 
-    end = time_epoch();
+    end = comdb2_time_epoch();
     elapsed = (end - start);
 
     repcalls = rep_get_send_callcount();
@@ -107,9 +107,10 @@ static void commit_bench_int(bdb_state_type *bdb_state, int op, int tcount,
         printf("Committed %d records (0 seconds elapsed)\n", count);
     }
 
+    int denom = tcount * count;
     printf("%llu rep-calls (%d per record), %llu rep-bytes (%d per record)\n",
-           repcalls, (int)(repcalls / (tcount * count)), repbytes,
-           (int)(repbytes / (tcount * count)));
+           repcalls, (int)(denom ? repcalls / denom : 0), repbytes,
+           (int)(denom ? repbytes / denom : 0));
     printf("%llu flushes (%d records/flush), %llu explict-flushes (%d "
            "records/flush), %llu interval-flushes (%d records/flush)\n",
            flushes, flushes ? (int)((tcount * count) / flushes) : 0,
@@ -150,7 +151,7 @@ void rowlocks_print_stats(FILE *f)
 static void rowlocks_bench_int(bdb_state_type *bdb_state, int op, int count,
                                int phys_txns_per_logical)
 {
-    int i, j, rc, start, end = 0, now, elapsed, physcnt;
+    int i, j, rc, start, end = 0, elapsed, physcnt;
     unsigned long long repcalls, repbytes, flushes, explicit_flushes,
         interval_flushes;
     tran_type *trans = NULL;
@@ -168,7 +169,7 @@ static void rowlocks_bench_int(bdb_state_type *bdb_state, int op, int count,
     net_reset_explicit_flushes();
     net_reset_send_interval_flushes();
 
-    start = time_epoch();
+    start = comdb2_time_epoch();
 
     for (i = 0; i < count; i++) {
         if ((rc = trans_start_logical(&iq, &trans)) != 0) {
@@ -205,7 +206,7 @@ static void rowlocks_bench_int(bdb_state_type *bdb_state, int op, int count,
         trans = NULL;
     }
 
-    end = time_epoch();
+    end = comdb2_time_epoch();
     elapsed = (end - start);
 
     repcalls = rep_get_send_callcount();

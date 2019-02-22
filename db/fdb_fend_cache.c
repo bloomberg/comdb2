@@ -127,7 +127,7 @@ static int fdb_sqlstat_populate_table(fdb_t *fdb, fdb_sqlstat_cache_t *cache,
 
     bzero(tbl, sizeof(*tbl));
     tbl->name = strdup(tblname);
-    pthread_mutex_init(&tbl->mtx, NULL);
+    Pthread_mutex_init(&tbl->mtx, NULL);
 
     tbl->tbl = bdb_temp_table_create(thedb->bdb_env, &bdberr);
     if (!tbl->tbl) {
@@ -198,7 +198,6 @@ static int fdb_sqlstat_cache_populate(struct sqlclntstate *clnt, fdb_t *fdb,
     char *sql_stat1 = "select * from sqlite_stat1";
     char *sql_stat4 = "select * from sqlite_stat4 where tbl not like 'cdb2.%'";
     int rc;
-    int flags;
 
     /* fake a BtCursor */
     cur = calloc(1, sizeof(BtCursor) + sizeof(Btree));
@@ -212,8 +211,9 @@ static int fdb_sqlstat_cache_populate(struct sqlclntstate *clnt, fdb_t *fdb,
     cur->bt->is_remote = 1;
     assert(cur->clnt == clnt);
 
-    fdbc_if = fdb_cursor_open(
-        clnt, cur, -1 /*not really used for sqlite_stats*/, NULL, NULL);
+    fdbc_if =
+        fdb_cursor_open(clnt, cur, -1 /*not really used for sqlite_stats*/,
+                        NULL, NULL, 0 /* TODO */);
     if (!fdbc_if) {
         fprintf(stderr, "%s: failed to connect remote to get stats\n",
                 __func__);
@@ -282,7 +282,7 @@ int fdb_sqlstat_cache_create(struct sqlclntstate *clnt, fdb_t *fdb,
         goto done;
     }
 
-    pthread_mutex_init(&cache->arr_lock, NULL);
+    Pthread_mutex_init(&cache->arr_lock, NULL);
 
     rc = fdb_sqlstat_cache_populate(clnt, fdb, cache);
     if (rc) {
@@ -314,7 +314,7 @@ static int fdb_sqlstat_depopulate_table(fdb_sqlstat_table_t *tbl)
     }
 
     free(tbl->name);
-    pthread_mutex_destroy(&tbl->mtx);
+    Pthread_mutex_destroy(&tbl->mtx);
     bzero(tbl, sizeof(*tbl));
 
     return rc;
@@ -347,7 +347,6 @@ static void fdb_sqlstat_cache_depopulate(fdb_sqlstat_cache_t *cache)
 void fdb_sqlstat_cache_destroy(fdb_sqlstat_cache_t **pcache)
 {
     fdb_sqlstat_cache_t *cache;
-    int rc;
 
     cache = *pcache;
 
@@ -357,7 +356,7 @@ void fdb_sqlstat_cache_destroy(fdb_sqlstat_cache_t **pcache)
     fdb_sqlstat_cache_depopulate(cache);
 
     free(cache->arr);
-    pthread_mutex_destroy(&cache->arr_lock);
+    Pthread_mutex_destroy(&cache->arr_lock);
     free(cache);
 
     *pcache = NULL;
@@ -375,7 +374,6 @@ fdb_cursor_if_t *fdb_sqlstat_cache_cursor_open(struct sqlclntstate *clnt,
     fdb_sqlstat_table_t *tbl;
     fdb_sqlstat_cursor_t *fdbc;
     fdb_cursor_if_t *fdbc_if;
-    int rc = 0;
     int bdberr = 0;
 
     cache = fdb_sqlstats_get(fdb);
@@ -393,8 +391,10 @@ fdb_cursor_if_t *fdb_sqlstat_cache_cursor_open(struct sqlclntstate *clnt,
 
     int len = sizeof(fdb_cursor_if_t) + sizeof(fdb_sqlstat_cursor_t);
     fdbc_if = (fdb_cursor_if_t *)calloc(1, len);
-    if (!fdbc_if)
+    if (!fdbc_if) {
+        fdb_sqlstats_put(fdb);
         return NULL;
+    }
 
     fdbc_if->impl = (fdb_cursor_t *)((char *)fdbc_if + sizeof(fdb_cursor_if_t));
     fdbc = (fdb_sqlstat_cursor_t *)fdbc_if->impl;
@@ -406,7 +406,9 @@ fdb_cursor_if_t *fdb_sqlstat_cache_cursor_open(struct sqlclntstate *clnt,
     if (!fdbc->cur) {
         fprintf(stderr, "%s: creating temp table cursor failed bdberr=%d\n",
                 __func__, bdberr);
+        free(fdbc->name);
         free(fdbc_if);
+        fdb_sqlstats_put(fdb);
         return NULL;
     }
 
@@ -473,9 +475,7 @@ static int fdb_sqlstat_cursor_close(BtCursor *cur)
 
 static char *fdb_sqlstat_cursor_id(BtCursor *pCur)
 {
-    static uuid_t fake = {0};
-
-    return fake;
+    return NULL;
 }
 
 static char *fdb_sqlstat_cursor_get_data(BtCursor *pCur)

@@ -1,0 +1,3 @@
+Unit test of pmux executable--basic functionality testing.
+Brings up pmux in a non-default port and issues comdb2 port leases from 
+a non default range given to pmux as a parameter.

@@ -63,22 +63,6 @@ static int __dbreg_open_file __P((DB_ENV *,
 int
 __dbreg_register_print(DB_ENV *dbenv, DBT *dbtp, DB_LSN *lsnp, db_recops notused2, void *notused3);
 
-static char* opstr(db_recops op) {
-    switch (op) {
-        case DB_TXN_ABORT:  return "DB_TXN_ABORT";
-        case DB_TXN_APPLY: return "DB_TXN_APPLY";
-        case DB_TXN_BACKWARD_ALLOC: return "DB_TXN_BACKWARD_ALLOC";
-        case DB_TXN_BACKWARD_ROLL: return "DB_TXN_BACKWARD_ROLL";
-        case DB_TXN_FORWARD_ROLL: return "DB_TXN_FORWARD_ROLL";
-        case DB_TXN_GETPGNOS: return "DB_TXN_GETPGNOS";
-        case DB_TXN_OPENFILES: return "DB_TXN_OPENFILES";
-        case DB_TXN_POPENFILES: return "DB_TXN_POPENFILES";
-        case DB_TXN_PRINT: return "DB_TXN_PRINT";
-        case DB_TXN_SNAPISOL: return "DB_TXN_SNAPISOL";
-        case DB_TXN_LOGICAL_BACKWARD_ROLL: return "DB_TXN_LOGICAL_BACKWARD_ROLL";
-        default: return "???";
-    }
-}
 
 /*
  * PUBLIC: int __dbreg_register_recover
@@ -97,7 +81,6 @@ __dbreg_register_recover(dbenv, dbtp, lsnp, op, info)
 	DB *dbp;
 	__dbreg_register_args *argp;
 	int do_close, do_open, do_rem, ret, t_ret;
-    DB_LSN dbreg_lsn = *lsnp;
     struct lsn_range *r = NULL;
 
 	dblp = dbenv->lg_handle;
@@ -117,13 +100,15 @@ __dbreg_register_recover(dbenv, dbtp, lsnp, op, info)
 		int i;
 		ft = &dbenv->fileid_track;
 		if (argp->fileid >= ft->numids) {
-			__os_realloc(dbenv, (argp->fileid+1) * 
-				     sizeof(lsn_range_list), &ft->ranges);
-			for (i = ft->numids; i < argp->fileid+1; i++) {
+			int dblsize = argp->fileid * 2 + 1;
+			if ((ret = __os_realloc(dbenv,
+					dblsize * sizeof(lsn_range_list), &ft->ranges)) != 0)
+				goto out;
+			for (i = ft->numids; i < dblsize; i++) {
 				listc_init(&ft->ranges[i], 
 					   offsetof(struct lsn_range, lnk));
 			}
-			ft->numids = argp->fileid+1;
+			ft->numids = dblsize;
 		}
 
 		/* Do we already have a record for this range?  Same
@@ -133,7 +118,8 @@ __dbreg_register_recover(dbenv, dbtp, lsnp, op, info)
 		if (prev && dbenv->attr.consolidate_dbreg_ranges &&
 		    strlen(prev->fname)+1 == argp->name.size &&
 		    strcmp(prev->fname, argp->name.data) == 0) {
-			/* do nothing */
+            DB_ASSERT(prev->end.file == 0);
+            DB_ASSERT(log_compare(&prev->start, lsnp) < 0);
 		} else {
 			__os_malloc(dbenv, sizeof(struct lsn_range), &r);
 			/* end is not defined until we get to the
@@ -152,6 +138,7 @@ __dbreg_register_recover(dbenv, dbtp, lsnp, op, info)
 				/* the range ends here */
 				prev->end.file = lsnp->file;
 				prev->end.offset = lsnp->offset;
+                DB_ASSERT(log_compare(&prev->start, lsnp) < 0);
 			}
 			listc_abl(&ft->ranges[argp->fileid], r);
 		}

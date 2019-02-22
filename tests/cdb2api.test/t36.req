@@ -1,0 +1,13 @@
+begin
+insert kjskjhf kjsd
+commit
+
+set intransresults on
+begin
+insert kjskjhf kjsd
+rollback
+
+set intransresults off
+begin
+insert kjskjhf kjsd
+commit

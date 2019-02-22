@@ -7,7 +7,7 @@
 
 #include "build/db_config.h"
 
-#ifndef lint
+#if 0
 static const char copyright[] =
     "Copyright (c) 1996-2003\nSleepycat Software Inc.  All rights reserved.\n";
 static const char revid[] =
@@ -134,27 +134,15 @@ retry:	if ((ret = db_env_create(&dbenv, 0)) != 0) {
 		dbenv->err(dbenv, ret, "set_passwd");
 		goto shutdown;
 	}
+
 	/*
-	 * Attach to an mpool if it exists, but if that fails, attach to a
-	 * private region.  In the latter case, declare a reasonably large
-	 * cache so that we don't fail when verifying large databases.
+	 * Declare a reasonably large cache so that we don't fail when verifying
+	 * large databases.
 	 */
-#if 0
-	private = 0;
-	if ((ret =
-	    dbenv->open(dbenv, home, DB_INIT_MPOOL | DB_USE_ENVIRON, 0)) != 0) {
-		if ((ret = dbenv->set_cachesize(dbenv, 0, cache, 1)) != 0) {
-			dbenv->err(dbenv, ret, "set_cachesize");
-			goto shutdown;
-		}
-		private = 1;
-		if ((ret = dbenv->open(dbenv, home,
-	    DB_CREATE | DB_INIT_MPOOL | DB_PRIVATE | DB_USE_ENVIRON, 0)) != 0) {
-			dbenv->err(dbenv, ret, "open");
-			goto shutdown;
-		}
+	if ((ret = dbenv->set_cachesize(dbenv, 0, cache, 1)) != 0) {
+		dbenv->err(dbenv, ret, "set_cachesize");
+		goto shutdown;
 	}
-#endif
 	private = 1;
 	int flags = DB_CREATE | DB_INIT_MPOOL | DB_PRIVATE | DB_USE_ENVIRON;
 	if ((ret = dbenv->open(dbenv, home, flags, 0)) != 0) {
@@ -182,7 +170,7 @@ retry:	if ((ret = db_env_create(&dbenv, 0)) != 0) {
 			if ((ret = dbp1->open(dbp1, NULL,
 			    argv[0], NULL, DB_UNKNOWN, DB_RDONLY, 0)) != 0) {
 				dbenv->err(dbenv, ret, "DB->open: %s", argv[0]);
-				(void)dbp1->close(dbp1, NULL, 0);
+				(void)dbp1->close(dbp1, 0);
 				goto shutdown;
 			}
 			/*
@@ -194,12 +182,12 @@ retry:	if ((ret = db_env_create(&dbenv, 0)) != 0) {
 			 * get back into the for-loop.
 			 */
 			ret = __db_util_cache(dbenv, dbp1, &cache, &resize);
-			(void)dbp1->close(dbp1, NULL, 0);
+			(void)dbp1->close(dbp1, 0);
 			if (ret != 0)
 				goto shutdown;
 
 			if (resize) {
-				(void)dbp->close(dbp, NULL, 0);
+				(void)dbp->close(dbp, 0);
 				dbp = NULL;
 
 				(void)dbenv->close(dbenv, 0);
@@ -222,7 +210,7 @@ retry:	if ((ret = db_env_create(&dbenv, 0)) != 0) {
 shutdown:	exitval = 1;
 	}
 
-	if (dbp != NULL && (ret = dbp->close(dbp, NULL, 0)) != 0) {
+	if (dbp != NULL && (ret = dbp->close(dbp, 0)) != 0) {
 		exitval = 1;
 		dbenv->err(dbenv, ret, "close");
 	}

@@ -728,31 +728,6 @@ const uint8_t *db_info2_unknown_get(struct db_info2_unknown *p_db_info2_unknown,
     return p_buf;
 }
 
-uint8_t *comdb2_field_type_put(const comdb2_field_type *field, uint8_t *p_buf,
-                               const uint8_t *p_buf_end)
-{
-    if ((p_buf = buf_no_net_put(&field->name, sizeof(field->name), p_buf,
-                                p_buf_end)) == NULL)
-        return NULL;
-    if ((p_buf = buf_put(&field->type, sizeof(field->type), p_buf,
-                         p_buf_end)) == NULL)
-        return NULL;
-    if ((p_buf = buf_put(&field->len, sizeof(field->len), p_buf, p_buf_end)) ==
-        NULL)
-        return NULL;
-    if ((p_buf = buf_put(&field->off, sizeof(field->off), p_buf, p_buf_end)) ==
-        NULL)
-        return NULL;
-    if ((p_buf = buf_put(&field->reserved[0], sizeof(field->reserved[0]), p_buf,
-                         p_buf_end)) == NULL)
-        return NULL;
-    if ((p_buf = buf_no_net_put(&field->reserved[1], 4 * sizeof(int), p_buf,
-                                p_buf_end)) == NULL)
-        return NULL;
-
-    return p_buf;
-}
-
 const uint8_t *server_datetime_get(server_datetime_t *p_server_datetime,
                                    const uint8_t *p_buf,
                                    const uint8_t *p_buf_end)

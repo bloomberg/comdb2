@@ -114,6 +114,8 @@ set all_graphs {
      {line CASE {optx expr} {loop {line WHEN expr THEN expr} {}}
            {optx ELSE expr} END}
      {line raise-function}
+     {line /window-func ( {or {line {toploop expr ,}} {} *} ) 
+           {opt filter} OVER {or {line ( window-defn )} /window-name}}
   }
   literal-value {
     or
@@ -131,10 +133,39 @@ set all_graphs {
            {opt E {or nil + -} {loop /digit nil}}}
      {line \"0x\" {loop /hexdigit nil}}
   }
+
   insert-stmt {
     stack
        {line {opt with-clause}
           INSERT INTO
+       }
+       {line {optx /db-name .} /qualified-table-name
+             {optx ( {loop /column-name ,} )}}
+       {line
+           {or
+             {line VALUES {loop {line ( {loop expr ,} )} ,}}
+             select-stmt
+           }
+           {opt upsert-clause}
+       }
+  }
+
+  upsert-clause {
+      stack
+      {line ON CONFLICT {opt ( index-column-list ) WHERE expr }
+      }
+      {line DO
+          {or
+              {line NOTHING}
+              {line UPDATE SET {loop {line /column-name = expr} ,} {optx WHERE expr}}
+          }
+      }
+  }
+
+  replace-stmt {
+    stack
+       {line {opt with-clause}
+          REPLACE INTO
        }
        {line {optx /db-name .} /qualified-table-name
              {optx ( {loop /column-name ,} )}}
@@ -143,6 +174,7 @@ set all_graphs {
          select-stmt
        }
   }
+
   select-stmt {
    stack
      {opt {line WITH {opt RECURSIVE} {loop common-table-expression ,}}}
@@ -154,6 +186,7 @@ set all_graphs {
               {optx FROM {or {loop table-or-subquery ,} join-clause}}
               {optx WHERE expr}
               {optx GROUP BY {loop expr ,} {optx HAVING expr}}
+              {optx WINDOW {loop {line /window-name AS window-defn} ,}}
           }
           {line VALUES {loop {line ( {toploop expr ,} )} ,}}
        }
@@ -175,6 +208,7 @@ set all_graphs {
             {optx FROM {or {loop table-or-subquery ,} join-clause}}
             {optx WHERE expr}
             {optx GROUP BY {loop expr ,} {optx HAVING expr}}
+            {optx WINDOW {loop {line /window-name AS window-defn} ,}}
         }
         {line VALUES {loop {line ( {toploop expr ,} )} ,}}
   }
@@ -268,6 +302,41 @@ set all_graphs {
       {line /* {loop nil /anything-except-*/}
            {or */ /end-of-input}}
   }
+  filter {
+    line FILTER ( WHERE expr )
+  }
+  window-defn {
+    line {opt PARTITION BY {loop expr ,}}
+         {opt ORDER BY {loop ordering-term ,}}
+         {opt frame-spec}
+  }
+  frame-spec {
+    line {or RANGE ROWS} {or
+       {line BETWEEN {or {line UNBOUNDED PRECEDING}
+                         {line expr PRECEDING}
+                         {line CURRENT ROW}
+                         {line expr FOLLOWING}
+                     }
+             AND {or     {line expr PRECEDING}
+                         {line CURRENT ROW}
+                         {line expr FOLLOWING}
+                         {line UNBOUNDED FOLLOWING}
+                 }
+       }
+       {or   {line UNBOUNDED PRECEDING}
+             {line expr PRECEDING}
+             {line CURRENT ROW}
+             {line expr FOLLOWING}
+       }
+    }
+  }
+  function-invocation {
+     line /function-name ( {or {line {optx DISTINCT} {toploop expr ,}} {} *} )
+  }
+  window-function-invocation {
+    line /window-func ( {or {line {toploop expr ,}} {} *} )
+         {opt filter} OVER {or {line ( window-defn )} /window-name}
+  }
   create-table {stack
     {line CREATE TABLE {opt IF NOT EXISTS}}
     {line /table-name {opt table-options}}
@@ -309,7 +378,7 @@ set all_graphs {
   }
   create-time-part {stack
     {line CREATE TIME PARTITION ON /table-name}
-    {line AS /partition-name PERIOD {or DAILY WEEKLY MONTHLY YEARLY}}
+    {line AS /partition-name PERIOD {or 'DAILY' 'WEEKLY' 'MONTHLY' 'YEARLY'}}
     {line RETENTION /numeric-literal START /datetime-literal}
   }
   drop {
@@ -334,27 +403,62 @@ set all_graphs {
   }
   grant-revoke {stack
     {line {or GRANT REVOKE}}
-    {or
-      {line {or READ WRITE} ON /table-name TO /user-name}
-      {line OP TO /user-name}}
+    {line
+        {or
+            {line {or READ WRITE DDL} ON /table-name }
+            {line OP}
+        } TO /user-name}
   }
   rebuild {
-    line REBUILD {or {} {line INDEX /index-name} DATA DATABLOB } /table-name
-  }
+      stack
+          {line REBUILD
+              {or
+                  {line
+                      {opt
+                          {or
+                              {line DATA }
+                              {line DATABLOB }
+                          }
+                      }
+                      /table-name
+                  }
+                  {line INDEX /table-name /index-name }
+              }
+          }
+          {line
+              {opt
+                  {line OPTIONS
+                      {loop
+                          {or
+                              {line PAGEORDER}
+                              {line READONLY}
+                          }
+                          ,
+                      }
+                  }
+              }
+          }
+      }
   get {
     line GET {or
       {line ALIAS /table-name}
       {line ANALYZE {or COVERAGE THRESHOLD} /table-name}
+      {line {opt {line {opt NOT} RESERVED}} KW}
     }
   }
   put {
     line PUT {or
-      {line ANALYZE {or COVERAGE THRESHOLD} /table-name /numeric-literal}
-      {line DEFAULT PROCEDURE /procedure-name {or /string-literal /numeric-literal}}
       {line ALIAS /local-table-name /remote-table-name}
-      {line PASSWORD {or OFF /string-literal} FOR /user-name}
+      {line ANALYZE {or COVERAGE THRESHOLD} /table-name /numeric-literal}
       {line AUTHENTICATION {or ON OFF}}
+      {line DEFAULT PROCEDURE /procedure-name {or /string-literal /numeric-literal}}
+      {line GENID48 {or ENABLE DISABLE}}
+      {line PASSWORD {or OFF /string-literal} FOR /user-name}
+      {line ROWLOCKS {or ENABLE DISABLE}}
+      {line SCHEMACHANGE {or COMMITSLEEP CONVERTSLEEP} /numeric-literal}
+      {line SKIPSCAN {or ENABLE DISABLE}}
       {line TIME PARTITION /partition-name RETENTION /numeric-literal}
+      {line TUNABLE /string-literal {or /string-literal /numeric-literal}}
     }
   }
   set-stmt {
@@ -443,7 +547,10 @@ set all_graphs {
                   {line /column-name {opt [ size ] }}
               }
           }
-          {line {opt DBSTORE = /literal-value}}
+          {line
+              {opt dbstore = /literal-value}
+              {opt null = {or yes no}}
+          }
       }
   }
 
@@ -451,7 +558,10 @@ set all_graphs {
       loop
       {stack
           {line
-              {opt dup}
+              {or
+                  {opt dup}
+                  {opt uniqnulls}
+              }
               {opt datacopy}
               {line /string-literal = }
           }
@@ -531,18 +641,27 @@ set all_graphs {
 
   create-table-ddl {
       stack
-      {line CREATE TABLE {opt IF NOT EXISTS}}
-      {line {opt db-name .} table-name}
-      {line (
-          {loop
-              {line column-name column-type
-                  {opt {loop { column-constraint } { , } } } }
-              { , }
+      {line CREATE TABLE {opt IF NOT EXISTS} {opt db-name .} table-name}
+      {or
+          {line LIKE {opt db-name .} existing-table-name }
+          {stack
+              {stack
+                  {line ( }
+                  {loop
+                      {line column-name column-type
+                          {opt {loop { column-constraint } { , } } } }
+                      { , }
+                  }
+                  {opt
+                      {loop
+                          {line , table-constraint }
+                      }
+                  }
+                  {line ) }
+              }
+              {line {opt table-options }}
           }
-          {line ) }
       }
-      {loop {line table-constraint } { , } }
-      {line {opt table-options }}
   }
 
   column-constraint {
@@ -552,20 +671,30 @@ set all_graphs {
       {line NOT NULL }
       {line PRIMARY KEY {opt {or {line ASC } {line DESC } } } }
       {line UNIQUE }
-      {line foreign-key-def }
-      {line WITH DBPAD = signed-number }
+      {line INDEX }
+      {line {opt CONSTRAINT constraint-name } foreign-key-def }
+      {line OPTION DBPAD = signed-number }
   }
 
   table-constraint {
       or
-      {line PRIMARY KEY ( column-list ) }
-      {line UNIQUE ( column-list ) }
-      {line FOREIGN KEY ( column-list ) foreign-key-def}
+      {line
+          {stack
+              {line {or {line UNIQUE } {line INDEX } }
+                  {opt index-name } ( index-column-list ) }
+              {line {opt OPTION DATACOPY } {opt WHERE expr } }
+          }
+      }
+      {line PRIMARY KEY ( index-column-list ) }
+      {stack
+          {line {opt CONSTRAINT constraint-name } }
+          {line FOREIGN KEY ( index-column-list ) foreign-key-def}
+      }
   }
 
   foreign-key-def {
       stack
-      {line REFERENCES ref-table-name ( ref-column-name ) }
+      {line REFERENCES table-name ( index-column-list ) }
       {opt
           {loop
               {line ON
@@ -582,7 +711,7 @@ set all_graphs {
       }
   }
 
-  column-list {
+  index-column-list {
       loop
       {line column-name {opt {or {line ASC } {line DESC } } } }
       { , }
@@ -591,28 +720,61 @@ set all_graphs {
   alter-table-ddl {
       stack
       {line ALTER TABLE {opt db-name .} table-name }
-      {opt 
           {or
+              {line RENAME TO new-table-name}
               {loop
                   {or
-                      {line ADD column-name column-type
-                          {opt {loop {line column-constraint } { , } } }
+                      {line ADD
+                          {or
+                              {line {opt COLUMN} column-name column-type
+                                  {opt {loop {line column-constraint } { , } } }
+                              }
+                              {line PRIMARY KEY ( index-column-list ) }
+                              {stack
+                                  {line {opt UNIQUE } INDEX index-name
+                                      ( index-column-list ) }
+                                  {line {opt WITH DATACOPY } {opt WHERE expr } }
+                              }
+                              {stack
+                                  {line {opt CONSTRAINT constraint-name } }
+                                  {line FOREIGN KEY ( index-column-list ) foreign-key-def }
+                              }
+                          }
                       }
-                      {line DROP {opt COLUMN} column-name }
+                      {line ALTER
+                          {line {opt COLUMN} column-name }
+                          {or
+                              {line {opt SET DATA} TYPE column-type }
+                              {line SET DEFAULT expr }
+                              {line DROP DEFAULT }
+                              {line
+                                  {or
+                                      {line SET }
+                                      {line DROP }
+                                  }
+                                  NOT NULL
+                              }
+                          }
+                      }
+                      {line DROP
+                          {or
+                              {line {opt COLUMN} column-name }
+                                   {line DROP INDEX index-name }
+                              {line PRIMARY KEY }
+                              {line FOREIGN KEY constraint-name }
+                          }
+                      }
                   }
-                  { , }
               }
-              {line RENAME TO new-table-name}
-           }
-       }
-  }
+              {line DO NOTHING }
+          }
+      }
 
   create-index {
       stack
       {line CREATE {opt UNIQUE } INDEX {opt IF NOT EXISTS } }
-      {line {opt db-name } index-name ON table-name
-          ( {loop {line column-name } { , } } ) }
-      {line {opt WITH DATACOPY } {opt WHERE expr } }
+      {line {opt db-name } index-name ON table-name ( index-column-list ) }
+      {line {opt OPTION DATACOPY } {opt WHERE expr } }
   }
 
   drop-index {
