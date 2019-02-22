@@ -1840,7 +1840,7 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
     }
 
     /* If negotiation fails, let API retry. */
-    struct newsqlheader hdr = { .type = ntohl(CDB2_REQUEST_TYPE__SSLCONN) };
+    struct newsqlheader hdr = {.type = ntohl(CDB2_REQUEST_TYPE__SSLCONN)};
     rc = sbuf2fwrite((char *)&hdr, sizeof(hdr), 1, sb);
     if (rc != 1)
         return -1;
@@ -2344,8 +2344,9 @@ retry_connect:
 static inline void ack(cdb2_hndl_tp *hndl)
 {
     hndl->ack = 0;
-    struct newsqlheader hdr = { .type = htonl(RESPONSE_HEADER__SQL_RESPONSE_PONG) };
- 
+    struct newsqlheader hdr = {.type =
+                                   htonl(RESPONSE_HEADER__SQL_RESPONSE_PONG)};
+
     sbuf2write((void *)&hdr, sizeof(hdr), hndl->sb);
     sbuf2flush(hndl->sb);
 }
@@ -2446,11 +2447,10 @@ retry:
 
             cdb2__query__pack(&query, locbuf);
 
-            struct newsqlheader hdr = {
-                .type = ntohl(CDB2_REQUEST_TYPE__CDB2QUERY),
-                .compression = ntohl(0),
-                .length = ntohl(len)
-            };
+            struct newsqlheader hdr = {.type =
+                                           ntohl(CDB2_REQUEST_TYPE__CDB2QUERY),
+                                       .compression = ntohl(0),
+                                       .length = ntohl(len)};
 
             sbuf2write((char *)&hdr, sizeof(hdr), hndl->sb);
             sbuf2write((char *)locbuf, len, hndl->sb);
@@ -2527,11 +2527,9 @@ static int cdb2_effects_request(cdb2_hndl_tp *hndl)
 
     cdb2__query__pack(&query, buf);
 
-    struct newsqlheader hdr = {
-        .type = ntohl(CDB2_REQUEST_TYPE__CDB2QUERY),
-        .compression = ntohl(0),
-        .length = ntohl(len)
-    };
+    struct newsqlheader hdr = {.type = ntohl(CDB2_REQUEST_TYPE__CDB2QUERY),
+                               .compression = ntohl(0),
+                               .length = ntohl(len)};
 
     sbuf2write((char *)&hdr, sizeof(hdr), hndl->sb);
     sbuf2write((char *)buf, len, hndl->sb);
@@ -2730,11 +2728,9 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
 
     cdb2__query__pack(&query, buf);
 
-    struct newsqlheader hdr = {
-        .type = ntohl(CDB2_REQUEST_TYPE__CDB2QUERY),
-        .compression = ntohl(0),
-        .length = ntohl(len)
-    };
+    struct newsqlheader hdr = {.type = ntohl(CDB2_REQUEST_TYPE__CDB2QUERY),
+                               .compression = ntohl(0),
+                               .length = ntohl(len)};
 
     // finally send header and query
     rc = sbuf2write((char *)&hdr, sizeof(hdr), sb);
@@ -3474,11 +3470,9 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
         if (run_last == 0 && item->next == NULL)
             break;
 
-        struct newsqlheader hdr = {
-            .type = ntohl(CDB2_REQUEST_TYPE__CDB2QUERY),
-            .compression = ntohl(0),
-            .length = ntohl(item->len)
-        };
+        struct newsqlheader hdr = {.type = ntohl(CDB2_REQUEST_TYPE__CDB2QUERY),
+                                   .compression = ntohl(0),
+                                   .length = ntohl(item->len)};
         debugprint("resending '%s' to %s\n", item->sql, host);
 
         sbuf2write((char *)&hdr, sizeof(hdr), hndl->sb);
@@ -4775,7 +4769,11 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
 {
     *dbnum = 0;
     int n_bindvars = 3;
-    const char* sql_query = "select M.name, D.dbnum, M.room from machines M join databases D where M.cluster IN (select cluster_machs from clusters where name=@dbname and cluster_name=@cluster) and D.name=@dbname order by (room = @room) desc";
+    const char *sql_query = "select M.name, D.dbnum, M.room from machines M "
+                            "join databases D where M.cluster IN (select "
+                            "cluster_machs from clusters where name=@dbname "
+                            "and cluster_name=@cluster) and D.name=@dbname "
+                            "order by (room = @room) desc";
     CDB2SQLQUERY__Bindvalue **bindvars =
         malloc(sizeof(CDB2SQLQUERY__Bindvalue *) * n_bindvars);
     CDB2SQLQUERY__Bindvalue *bind_dbname =
@@ -5061,11 +5059,9 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
     unsigned char *buf = malloc(len + 1);
     cdb2__query__pack(&query, buf);
 
-    struct newsqlheader hdr = {
-        .type = ntohl(CDB2_REQUEST_TYPE__CDB2QUERY),
-        .compression = ntohl(0),
-        .length = ntohl(len)
-    };
+    struct newsqlheader hdr = {.type = ntohl(CDB2_REQUEST_TYPE__CDB2QUERY),
+                               .compression = ntohl(0),
+                               .length = ntohl(len)};
 
     sbuf2write((char *)&hdr, sizeof(hdr), sb);
     sbuf2write((char *)buf, len, sb);
