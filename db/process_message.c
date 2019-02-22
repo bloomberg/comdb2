@@ -4730,14 +4730,14 @@ clipper_usage:
         logmsg_process_message(line, lline);
     } else if (tokcmp(tok, ltok, "test") == 0) { //@send test <keyword>
         tok = segtok(line, lline, &st, &ltok);
-        if (tokcmp(tok, ltok, "locktest") == 0) {
+        if (tokcmp(tok, ltok, "bdb_lock") == 0) { // was locktest
             Pthread_mutex_lock(&testguard);
             bdb_locktest(thedb->bdb_env);
             Pthread_mutex_unlock(&testguard);
-        } else if (tokcmp(tok, ltok, "osql_send_test") == 0) {
+        } else if (tokcmp(tok, ltok, "bad_osql") == 0) {
             SBUF2 *sb = sbuf2open(fileno(stdout), 0);
             osql_send_test(sb);
-        } else if (tokcmp(tok, ltok, "testrep") == 0) {
+        } else if (tokcmp(tok, ltok, "rep") == 0) { // was testrep
             int nitems;
             int size;
             tok = segtok(line, lline, &st, &ltok);
