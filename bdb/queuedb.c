@@ -486,7 +486,8 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, int consumer,
     if (fnddtalen)
         *fnddtalen = dbt_data.size;
     if (fnddtaoff)
-        *fnddtaoff = qfnd.data_offset;  /* This length will be used to check version. */
+        *fnddtaoff =
+            qfnd.data_offset; /* This length will be used to check version. */
     if (fndcursor) {
         memcpy(fndcursor->genid, &fndk.genid, sizeof(fndk.genid));
         fndcursor->recno = 0;
@@ -550,7 +551,8 @@ int bdb_queuedb_consume(bdb_state_type *bdb_state, tran_type *tran,
     k.consumer = consumer;
     k.genid = 0;
     if (gbl_debug_queuedb)
-        logmsg(LOGMSG_USER, "consumer %d genid %016llx\n", consumer, qfnd.genid);
+        logmsg(LOGMSG_USER, "consumer %d genid %016llx\n", consumer,
+               qfnd.genid);
     p_buf = (uint8_t *)key;
     p_buf_end = p_buf + QUEUEDB_KEY_LEN;
     p_buf = queuedb_key_put(&k, p_buf, p_buf_end);
@@ -603,15 +605,16 @@ int bdb_queuedb_consume(bdb_state_type *bdb_state, tran_type *tran,
     p_buf_end = p_buf + dbt_key.size;
     p_buf = queuedb_key_get(&fndk, p_buf, p_buf_end);
 
-    if ((fndk.genid != qfnd.genid) && (fndk.genid != flibc_ntohll(qfnd.genid))) {
+    if ((fndk.genid != qfnd.genid) &&
+        (fndk.genid != flibc_ntohll(qfnd.genid))) {
         logmsg(LOGMSG_ERROR,
-               "%s: Trying to consume non-first item of queue %s genid: %016llx first: %016lx consumer %d\n",
-                __func__, bdb_state->name, qfnd.genid, fndk.genid , consumer);
+               "%s: Trying to consume non-first item of queue %s genid: "
+               "%016llx first: %016lx consumer %d\n",
+               __func__, bdb_state->name, qfnd.genid, fndk.genid, consumer);
         *bdberr = BDBERR_MISC;
         rc = -1;
         goto done;
     }
-
 
     /* we found it, delete */
     rc = dbcp->c_del(dbcp, 0);
