@@ -382,6 +382,8 @@ struct tran_tag {
      */
     unsigned long long startgenid;
 
+    unsigned int trigger_epoch;
+
     /* For logical transactions: a logical transaction may have a (one and
        only one) physical transaction in flight.  Latch it here for debugging
        and sanity checking */
