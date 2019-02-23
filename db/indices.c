@@ -131,10 +131,15 @@ static inline void *get_defered_index_tbl_cursor(int createIfNull)
     return defered_index_tbl_cursor;
 }
 
-static inline void truncate_defered_index_tbl() 
+static inline void close_defered_index_tbl_cursor()
 {
     close_constraint_table_cursor(defered_index_tbl_cursor);
     defered_index_tbl_cursor = NULL;
+}
+
+static inline void truncate_defered_index_tbl() 
+{
+    close_defered_index_tbl_cursor();
 
     if (defered_index_tbl) {
         truncate_constraint_table(defered_index_tbl);
@@ -474,6 +479,8 @@ logmsg(LOGMSG_ERROR, "AZ: direct ix_addk genid=%llx rc %d\n", bdb_genid_to_host_
         }
     }
 done:
+    if (rc)
+        close_defered_index_tbl_cursor();
     return rc;
 }
 
@@ -834,6 +841,8 @@ logmsg(LOGMSG_ERROR, "AZ: direct upd add_key genid=%llx newwgenid=%llx rc %d\n",
     }
 
 done:
+    if (rc)
+        close_defered_index_tbl_cursor();
     return rc;
 }
 
@@ -956,6 +965,8 @@ logmsg(LOGMSG_ERROR, "AZ: orig ix_delk ixnum=%d, rrn=%d, genid=%llx rc %d\n", ix
 
 
 done:
+    if (rc)
+        close_defered_index_tbl_cursor();
     return rc;
 }
 
