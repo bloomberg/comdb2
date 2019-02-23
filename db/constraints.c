@@ -34,7 +34,7 @@
 #include "osqlsqlthr.h"
 
 #define DEBUG_REORDER 0
-__thread void *defered_index_tbl = NULL;
+extern __thread void *defered_index_tbl;
 
 
 static char *get_temp_ct_dbname(long long *);
@@ -1841,6 +1841,9 @@ inline void *get_constraint_table_cursor(void *table)
     int err = 0;
     cur = (struct temp_cursor *)bdb_temp_table_cursor(thedb->bdb_env, table,
                                                       NULL, &err);
+    if (!cur) {
+        logmsg(LOGMSG_ERROR, "Can't create cursor err=%d\n", err);
+    }
     return cur;
 }
 

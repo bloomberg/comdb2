@@ -37,11 +37,6 @@
 int gbl_logical_live_sc = 0;
 
 extern int gbl_partial_indexes;
-extern __thread void *defered_index_tbl;
-extern void *create_defered_index_table(long long *ctid);
-extern int delete_constraint_table(void *table);
-extern int truncate_constraint_table(void *table);
-
 // Increase max threads to do SC -- called when no contention is detected
 // A simple atomic add sufices here since this function is called from one
 // place at any given time, currently from lkcounter_check() once per sec
@@ -1128,9 +1123,6 @@ void *convert_records_thd(struct convert_record_data *data)
         backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
     }
 
-    defered_index_tbl = (void *)create_defered_index_table(NULL);
-    assert(defered_index_tbl);
-
     data->iq.reqlogger = thrman_get_reqlogger(thr_self);
     data->outrc = -1;
     data->curkey = data->key1;
@@ -1178,7 +1170,6 @@ void *convert_records_thd(struct convert_record_data *data)
             data->outrc = SC_MASTER_DOWNGRADE;
             goto cleanup_no_msg;
         }
-        truncate_constraint_table(defered_index_tbl);
     }
 
     if (rc == -2) {
@@ -1234,9 +1225,6 @@ cleanup:
 
 cleanup_no_msg:
     convert_record_data_cleanup(data);
-    delete_constraint_table(defered_index_tbl);
-    defered_index_tbl = NULL;
-
     if (data->isThread) backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
 
     /* restore our  thread type to what it was before */

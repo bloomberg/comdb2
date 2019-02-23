@@ -6854,6 +6854,15 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         p_buf_end = (uint8_t *)p_buf + sizeof(osql_usedb_t);
         const char *tablename;
 
+        /* IDEA: don't store the usedb in the defered_table, rather right before
+         * loading a new usedb, process the curret one, 
+         * this way tmptbl key is 8 bytes smaller
+         *
+        if (gbl_reorder_on) {
+            process_defered_table(iq, ...);
+        }
+        */
+
         tablename =
             (const char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
 

@@ -761,7 +761,7 @@ void *create_constraint_index_table();
 int delete_constraint_table(void *table);
 int clear_constraints_tables(void);
 int truncate_constraint_table(void *table);
-void *create_defered_index_table(long long *ctid);
+void delete_defered_index_tbl();
 void *get_constraint_table_cursor(void *table);
 int close_constraint_table_cursor(void *cursor);
 

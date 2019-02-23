@@ -219,7 +219,7 @@ assertres ()
 
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t6 (i int unique, j int, k int)"
-CNT=8000
+CNT=1000
 echo -n "insert into t6 values(1,1,1)" > gg.in
 for i in `seq 2 $CNT` ; do echo -n ",($i, $i, $i)" ; done >> gg.in
 

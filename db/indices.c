@@ -30,7 +30,8 @@
 
 extern int gbl_partial_indexes;
 extern int gbl_reorder_idx_writes;
-extern __thread void *defered_index_tbl;
+__thread void *defered_index_tbl = NULL;
+__thread void *defered_index_tbl_cursor = NULL;
 
 
 //
@@ -46,7 +47,7 @@ typedef enum { DIT_DEL, DIT_UPD, DIT_ADD, DIT_ADD_CC, DIT_DEL_CC, DIT_UPD_CC} di
 
 //defered index table
 typedef struct {
-    struct dbtable *usedb;
+    struct dbtable *usedb; //consider not storing usedb and processing each usedb separately
     short ixnum;
     char ixkey[MAXKEYLEN];
     //uint64_t counter;
@@ -90,7 +91,7 @@ static int defered_index_key_cmp(void *usermem, int key1len,
 }
 
 
-inline void *create_defered_index_table(long long *ctid)
+static inline void *create_defered_index_table()
 {
     int bdberr = 0;
     struct temp_table *newtbl =
@@ -102,6 +103,57 @@ inline void *create_defered_index_table(long long *ctid)
     //default ordering will not work -- memcmp is not ok
     bdb_temp_table_set_cmp_func(newtbl, defered_index_key_cmp);
     return newtbl;
+}
+
+
+/* If parameter createIfNull is set, this function
+ * will create tbl and cursor and return it.
+ * If parameter createIfNull is not set, we will return
+ * cursor which may be NULL if nothing was inserted.
+ */
+static inline void *get_defered_index_tbl_cursor(int createIfNull) 
+{
+    if (defered_index_tbl == NULL && createIfNull) {
+        defered_index_tbl = (void *)create_defered_index_table(NULL);
+        if (!defered_index_tbl)
+            abort();
+
+        if (defered_index_tbl_cursor)
+            abort();
+    }
+
+    if (!defered_index_tbl_cursor)
+        defered_index_tbl_cursor = get_constraint_table_cursor(defered_index_tbl);
+
+    if (!defered_index_tbl_cursor)
+        abort();
+
+    return defered_index_tbl_cursor;
+}
+
+static inline void truncate_defered_index_tbl() 
+{
+    close_constraint_table_cursor(defered_index_tbl_cursor);
+    defered_index_tbl_cursor = NULL;
+
+    if (defered_index_tbl) {
+        truncate_constraint_table(defered_index_tbl);
+    }
+}
+
+
+/* delete tbl and cursor */
+void delete_defered_index_tbl() 
+{
+    if (!defered_index_tbl)
+        return;
+
+    if (defered_index_tbl_cursor)
+        close_constraint_table_cursor(defered_index_tbl_cursor);
+
+    delete_constraint_table(defered_index_tbl);
+    defered_index_tbl = NULL;
+    defered_index_tbl_cursor = NULL;
 }
 
 
@@ -279,7 +331,7 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
     logmsg(LOGMSG_DEBUG, "%s(): entering, reorder = %d\n", __func__, reorder);
 #endif
     if (reorder) {
-        cur = get_constraint_table_cursor(defered_index_tbl);
+        cur = get_defered_index_tbl_cursor(1);
         if (cur == NULL) {
             logmsg(LOGMSG_ERROR, "%s : no cursor???\n", __func__);
             return -1;
@@ -422,8 +474,6 @@ logmsg(LOGMSG_ERROR, "AZ: direct ix_addk genid=%llx rc %d\n", bdb_genid_to_host_
         }
     }
 done:
-    if (reorder)
-        close_constraint_table_cursor(cur);
     return rc;
 }
 
@@ -505,7 +555,7 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
 #endif
 
     if (reorder) {
-        cur = get_constraint_table_cursor(defered_index_tbl);
+        cur = get_defered_index_tbl_cursor(1);
         if (cur == NULL) {
             logmsg(LOGMSG_ERROR, "%s : no cursor???\n", __func__);
             return -1;
@@ -784,8 +834,6 @@ logmsg(LOGMSG_ERROR, "AZ: direct upd add_key genid=%llx newwgenid=%llx rc %d\n",
     }
 
 done:
-    if (reorder)
-        close_constraint_table_cursor(cur);
     return rc;
 }
 
@@ -806,7 +854,7 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
 #endif
 
     if (reorder) {
-        cur = get_constraint_table_cursor(defered_index_tbl);
+        cur = get_defered_index_tbl_cursor(1);
         if (cur == NULL) {
             logmsg(LOGMSG_ERROR, "%s : no cursor???\n", __func__);
             return -1;
@@ -908,8 +956,6 @@ logmsg(LOGMSG_ERROR, "AZ: orig ix_delk ixnum=%d, rrn=%d, genid=%llx rc %d\n", ix
 
 
 done:
-    if (reorder)
-        close_constraint_table_cursor(cur);
     return rc;
 }
 
@@ -969,7 +1015,7 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
     logmsg(LOGMSG_DEBUG, "%s(): entering, reorder = %d\n", __func__, reorder);
 #endif
     if (reorder) {
-        cur = get_constraint_table_cursor(defered_index_tbl);
+        cur = get_defered_index_tbl_cursor(1);
         if (cur == NULL) {
             logmsg(LOGMSG_ERROR, "%s : no cursor???\n", __func__);
             return -1;
@@ -1108,7 +1154,7 @@ int upd_new_record_indices(
     logmsg(LOGMSG_DEBUG, "%s(): entering, reorder = %d\n", __func__, reorder);
 #endif
     if (reorder) {
-        cur = get_constraint_table_cursor(defered_index_tbl);
+        cur = get_defered_index_tbl_cursor(1);
         if (cur == NULL) {
             logmsg(LOGMSG_ERROR, "%s : no cursor???\n", __func__);
             return -1;
@@ -1297,7 +1343,7 @@ int insert_defered_tbl(struct ireq *iq, void *od_dta, size_t od_len,
                   const char *ondisktag, struct schema *ondisktagsc,
                   unsigned long long genid, int type)
 {
-    void *cur = get_constraint_table_cursor(defered_index_tbl);
+    void *cur = get_defered_index_tbl_cursor(1);
     if (cur == NULL) {
         logmsg(LOGMSG_ERROR, "%s : no cursor???\n", __func__);
         return -1;
@@ -1353,14 +1399,15 @@ int process_defered_table(struct ireq *iq, block_state_t *blkstate, void *trans,
     logmsg(LOGMSG_DEBUG, "%s(): entering\n", __func__);
 #endif
 
-    void *cur = get_constraint_table_cursor(defered_index_tbl);
-    if (cur == NULL) {
-        if (iq->debug)
-            reqprintf(iq, "%p: CANNOT GET ADD LIST CURSOR", trans);
-        reqerrstr(iq, COMDB2_CSTRT_RC_INVL_CURSOR,
-                  "cannot get add list cursor");
-        *errout = OP_FAILED_INTERNAL;
-        return ERR_INTERNAL;
+    void *cur;
+
+    if (defered_index_tbl == NULL || 
+       (cur = get_defered_index_tbl_cursor(1)) == NULL) {
+        // never inserted anything in tmp tbl
+#if DEBUG_REORDER
+        logmsg(LOGMSG_ERROR, "AZ: defered table is empty\n");
+#endif
+        return 0;
     }
 
 
@@ -1377,9 +1424,6 @@ int process_defered_table(struct ireq *iq, block_state_t *blkstate, void *trans,
     if (rc != IX_OK) {
         //free_cached_delayed_indexes(iq);
         if (rc == IX_EMPTY) {
-#if DEBUG_REORDER
-logmsg(LOGMSG_ERROR, "AZ: defered table is empty\n");
-#endif
             if (iq->debug)
                 reqprintf(iq, "%p:VERKYCNSTRT FOUND NO KEYS TO ADD", trans);
             rc = 0;
@@ -1507,9 +1551,8 @@ logmsg(LOGMSG_ERROR, "AZ: pdt ix_upd_key genid=%llx rc %d\n", bdb_genid_to_host_
     if (rc == IX_PASTEOF) rc = IX_OK;
 
 done:
-    close_constraint_table_cursor(cur);
+    truncate_defered_index_tbl();
+    // We can also delete if we are done with the tmptbl
     return rc;
 }
-
-
 
