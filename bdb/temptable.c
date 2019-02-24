@@ -585,7 +585,11 @@ struct temp_cursor *bdb_temp_table_cursor(bdb_state_type *bdb_state,
     struct temp_cursor *cur;
     int rc = 0;
 
-    cur = calloc(1, sizeof(struct temp_cursor));
+    int pagesize = sysconf(_SC_PAGE_SIZE);
+    //cur = calloc(1, sizeof(struct temp_cursor)+pagesize);
+    int size = (sizeof(struct temp_cursor)/pagesize) + pagesize;
+    cur = valloc(size);
+    bzero(cur, size);
     /* set up compare routine and callback */
     cur->tbl = tbl;
     tbl->usermem = usermem;
@@ -1090,7 +1094,7 @@ static int bdb_temp_table_truncate_temp_db(bdb_state_type *bdb_state,
 
     rc = tbl->tmpdb->cursor(tbl->tmpdb, NULL, &dbcur, 0);
     if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "bdb_temp_table_init_temp_db couldnt get cursor\n");
+        logmsg(LOGMSG_FATAL, "bdb_temp_table_truncate_temp_db couldnt get cursor\n");
         exit(1);
     }
 

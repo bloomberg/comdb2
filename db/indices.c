@@ -14,6 +14,10 @@
    limitations under the License.
  */
 
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/mman.h>
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -128,6 +132,8 @@ static inline void *get_defered_index_tbl_cursor(int createIfNull)
     if (!defered_index_tbl_cursor)
         abort();
 
+    int pagesize = sysconf(_SC_PAGE_SIZE);
+    mprotect(defered_index_tbl_cursor, pagesize, PROT_READ);
     return defered_index_tbl_cursor;
 }
 
@@ -154,11 +160,9 @@ void delete_defered_index_tbl()
         return;
 
     if (defered_index_tbl_cursor)
-        close_constraint_table_cursor(defered_index_tbl_cursor);
+        close_defered_index_tbl_cursor();
 
     delete_constraint_table(defered_index_tbl);
-    defered_index_tbl = NULL;
-    defered_index_tbl_cursor = NULL;
 }
 
 
