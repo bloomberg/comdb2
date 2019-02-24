@@ -22,7 +22,7 @@ fi
 nins=0
 
 
-if echo $DBNAME | grep "snapshotgenerated" ; then
+if [[ $DBNAME == *"snapshotgenerated"* ]] ; then
     lvl=$(cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select value from comdb2_tunables where name='sql_tranlevel_default'")
     if [ "$lvl" != "SNAPSHOT ISOLATION" ] ; then
        echo "FAILURE: DB is not running in snapshot isolation mode"
