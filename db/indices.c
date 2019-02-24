@@ -14,10 +14,6 @@
    limitations under the License.
  */
 
-#include <stdlib.h>
-#include <unistd.h>
-#include <sys/mman.h>
-
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -34,8 +30,8 @@
 
 extern int gbl_partial_indexes;
 extern int gbl_reorder_idx_writes;
-__thread void *defered_index_tbl = NULL;
-__thread void *defered_index_tbl_cursor = NULL;
+static __thread void *defered_index_tbl = NULL;
+static __thread void *defered_index_tbl_cursor = NULL;
 
 
 //
@@ -132,18 +128,19 @@ static inline void *get_defered_index_tbl_cursor(int createIfNull)
     if (!defered_index_tbl_cursor)
         abort();
 
-    int pagesize = sysconf(_SC_PAGE_SIZE);
-    mprotect(defered_index_tbl_cursor, pagesize, PROT_READ);
     return defered_index_tbl_cursor;
 }
 
 static inline void close_defered_index_tbl_cursor()
 {
+    if (!defered_index_tbl_cursor)
+        return;
+
     close_constraint_table_cursor(defered_index_tbl_cursor);
     defered_index_tbl_cursor = NULL;
 }
 
-static inline void truncate_defered_index_tbl() 
+void truncate_defered_index_tbl() 
 {
     close_defered_index_tbl_cursor();
 

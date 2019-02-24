@@ -93,8 +93,6 @@ static LISTC_T(struct thd) busy; /*busy thread.*/
 static int write_thd_count = 0;
 
 static int is_req_write(int opcode);
-extern __thread void *defered_index_tbl;
-extern __thread void *defered_index_tbl_cursor;
 
 int handle_buf_main(
     struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, const uint8_t *p_buf,
@@ -652,7 +650,7 @@ static void *thd_req(void *vthd)
         truncate_constraint_table(thdinfo->ct_add_table);
         truncate_constraint_table(thdinfo->ct_del_table);
         truncate_constraint_table(thdinfo->ct_add_index);
-        truncate_constraint_table(defered_index_tbl);
+        truncate_defered_index_tbl();
     } while (1);
 }
 

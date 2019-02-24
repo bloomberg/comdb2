@@ -34,7 +34,6 @@
 #include "osqlsqlthr.h"
 
 #define DEBUG_REORDER 0
-extern __thread void *defered_index_tbl;
 
 
 static char *get_temp_ct_dbname(long long *);
@@ -1731,7 +1730,7 @@ int clear_constraints_tables(void)
     truncate_constraint_table(thdinfo->ct_add_table);
     truncate_constraint_table(thdinfo->ct_del_table);
     truncate_constraint_table(thdinfo->ct_add_index);
-    truncate_constraint_table(defered_index_tbl);
+    truncate_defered_index_tbl();
 
     return 0;
 }

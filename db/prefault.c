@@ -59,7 +59,6 @@
 int gbl_prefault_verbose = 1;
 
 extern pthread_key_t lockmgr_key;
-extern __thread void *defered_index_tbl;
 
 static void *prefault_io_thread(void *arg);
 
@@ -467,7 +466,6 @@ static void *prefault_io_thread(void *arg)
     thdinfo->ct_add_table = NULL;
     thdinfo->ct_del_table = NULL;
     thdinfo->ct_add_index = NULL;
-    defered_index_tbl = NULL;
     Pthread_setspecific(unique_tag_key, thdinfo);
 
     while (1) {

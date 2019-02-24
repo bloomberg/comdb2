@@ -585,11 +585,7 @@ struct temp_cursor *bdb_temp_table_cursor(bdb_state_type *bdb_state,
     struct temp_cursor *cur;
     int rc = 0;
 
-    int pagesize = sysconf(_SC_PAGE_SIZE);
-    //cur = calloc(1, sizeof(struct temp_cursor)+pagesize);
-    int size = (sizeof(struct temp_cursor)/pagesize) + pagesize;
-    cur = valloc(size);
-    bzero(cur, size);
+    cur = calloc(1, sizeof(struct temp_cursor));
     /* set up compare routine and callback */
     cur->tbl = tbl;
     tbl->usermem = usermem;
