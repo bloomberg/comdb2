@@ -199,6 +199,7 @@ limit_where_cleanup:
   **     SELECT rowid FROM table_a WHERE col1=1 ORDER BY col2 LIMIT 1 OFFSET 1
   **   );
   */
+
   pTab = pSrc->a[0].pTab;
   if( HasRowid(pTab) ){
     pLhs = sqlite3PExpr(pParse, TK_ROW, 0, 0);
@@ -325,7 +326,6 @@ void sqlite3DeleteFrom(
 # undef isView
 # define isView 0
 #endif
-    
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   v = sqlite3GetVdbe(pParse);
   if( v==0 ){

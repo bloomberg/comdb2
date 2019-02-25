@@ -1072,7 +1072,6 @@ static void statGet(
       assert( p->current.anEq[i] );
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
     assert( z[0]=='\0' && z>zRet );
 
     sqlite3_result_text(context, zRet, -1, sqlite3_free);
@@ -1571,7 +1570,6 @@ static void analyzeOneTable(
         VdbeCoverage(v);
       }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
       addrNext = sqlite3VdbeCurrentAddr(v);
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
       callStatGet(v, regStat4, STAT_GET_ROWID, regSampleRowid);
@@ -1924,7 +1922,6 @@ static int analysisLoader(void *pData, int argc, char **argv, char **NotUsed){
       pTable->nRowLogEst = pIndex->aiRowLogEst[0];
       pTable->tabFlags |= TF_HasStat1;
     }
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   /*
    * stale entries in sqlite_stat1 will have pIndex null
@@ -2441,7 +2438,6 @@ int sqlite3AnalysisLoad(sqlite3 *db, int iDb){
   void get_disable_skipscan_all();
   get_disable_skipscan_all();
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   /* Clear any prior statistics */
   assert( sqlite3SchemaMutexHeld(db, iDb, 0) );
   for(i=sqliteHashFirst(&pSchema->tblHash); i; i=sqliteHashNext(i)){

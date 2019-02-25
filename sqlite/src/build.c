@@ -405,7 +405,6 @@ retry_after_fdb_creation:
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     zName = TEMP_MASTER_NAME;
   }
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   /*
   ** if we did not find the table and there is a foreign database,
@@ -2584,7 +2583,6 @@ void sqlite3EndTable(
       pParse->regRowid
     );
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
     sqlite3DbFree(db, zStmt);
     sqlite3ChangeCookie(pParse, iDb);
 
