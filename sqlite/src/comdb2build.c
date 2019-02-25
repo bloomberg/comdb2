@@ -375,7 +375,8 @@ static int comdb2CheckOpAccess(void) {
     return SQLITE_OK;
 }
 
-static int comdb2IsPrepareOnly(Parse* pParse) {
+int comdb2IsPrepareOnly(Parse* pParse)
+{
     return pParse==NULL || pParse->prepare_only;
 }
 
