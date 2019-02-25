@@ -773,10 +773,11 @@ int sqlite3_can_get_column_type_and_data(
     /*
     ** When the client is not in 'prepare only' mode, the result set
     ** should always be available (i.e. anytime after sqlite3_step()
-    ** is called).  The column type / data should be available.  An
-    ** assert is used here to verify this invariant.
+    ** is called).  The column type / data should be available -IF-
+    ** this is not a write transaction.  An assert is used here to
+    ** verify this invariant.
     */
-    assert( sqlite3_hasResultSet(stmt) );
+    assert( clnt->writeTransaction || sqlite3_hasResultSet(stmt) );
     return 1;
   }
   if( sqlite3_hasResultSet(stmt) ){
