@@ -287,8 +287,6 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
                                              int od_len)
 {
     struct dbtable *usedb = iq->usedb;
-    blob_status_t oldblobs[MAXBLOBS];
-    blob_buffer_t add_blobs_buf[MAXBLOBS];
     blob_buffer_t *add_idx_blobs = NULL;
     int rc = 0;
 
@@ -320,8 +318,8 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
         return 0;
     }
 
-    bzero(oldblobs, sizeof(oldblobs));
-    bzero(add_blobs_buf, sizeof(add_blobs_buf));
+    blob_status_t oldblobs[MAXBLOBS] = {0};
+    blob_buffer_t add_blobs_buf[MAXBLOBS] = {0};
     if (iq->usedb->sc_to->ix_blob) {
         rc =
             save_old_blobs(iq, trans, ".ONDISK", od_dta, 2, newgenid, oldblobs);

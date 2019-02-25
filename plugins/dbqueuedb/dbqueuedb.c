@@ -196,7 +196,6 @@ static int add_consumer_int(struct dbtable *db, int consumern,
                                     const char *method, int noremove,
                                     int checkonly)
 {
-    struct consumer *consumer;
     const char *opts;
     int rc = 0;
 
@@ -241,13 +240,12 @@ static int add_consumer_int(struct dbtable *db, int consumern,
         }
     }
 
-    consumer = malloc(sizeof(struct consumer));
+    struct consumer *consumer = calloc(1, sizeof(struct consumer));
     if (!consumer) {
         logmsg(LOGMSG_ERROR, "%s: malloc failed for consumer\n", __func__);
         rc = -1;
         goto done;
     }
-    bzero(consumer, sizeof(struct consumer));
     consumer->db = db;
     consumer->consumern = consumern;
     /* Find options and pull them out separately */
@@ -533,7 +531,7 @@ static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
     else {
         int ii;
         struct ireq iq;
-        struct consumer_stat stats[MAXCONSUMERS];
+        struct consumer_stat stats[MAXCONSUMERS] = {0};
         int flags = 0;
         const struct bdb_queue_stats *bdbstats;
 
@@ -542,7 +540,6 @@ static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
         init_fake_ireq(db->dbenv, &iq);
         iq.usedb = db;
 
-        bzero(stats, sizeof(stats));
         logmsg(LOGMSG_USER, "(scanning queue '%s' for stats, please wait...)\n",
                db->tablename);
         if (!walk_queue)
@@ -768,13 +765,12 @@ void flush_in_thread(struct dbtable *db, int consumern)
     Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
     Pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
 
-    args = malloc(sizeof(struct flush_thd_data));
+    args = calloc(1, sizeof(struct flush_thd_data));
     if (!args) {
         Pthread_attr_destroy(&attr);
         logmsg(LOGMSG_ERROR, "%s: out of memory\n", __func__);
         return;
     }
-    bzero(args, sizeof(struct flush_thd_data));
     args->db = db;
     args->consumern = consumern;
 

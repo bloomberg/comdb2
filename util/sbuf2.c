@@ -882,12 +882,9 @@ struct peer_info {
 char *SBUF2_FUNC(get_origin_mach_by_buf)(SBUF2 *sb)
 {
     int fd;
-    struct sockaddr_in peeraddr;
-    socklen_t len = sizeof(peeraddr);
     char *host = NULL;
 #if SBUF2_SERVER
     struct peer_info *info;
-    struct peer_info key;
     char *funcname;
 #else
     void *info = NULL;
@@ -901,7 +898,8 @@ char *SBUF2_FUNC(get_origin_mach_by_buf)(SBUF2 *sb)
     if (fd == -1)
         return "???";
 
-    bzero(&peeraddr, sizeof(peeraddr));
+    struct sockaddr_in peeraddr = {0};
+    socklen_t len = sizeof(peeraddr);
     if (getpeername(fd, (struct sockaddr *)&peeraddr, &len) < 0) {
         loge("%s:getpeername failed fd %d: %d %s\n", __func__, fd, errno,
              strerror(errno));
@@ -909,9 +907,8 @@ char *SBUF2_FUNC(get_origin_mach_by_buf)(SBUF2 *sb)
     }
 
 #if SBUF2_SERVER
-    bzero(&key, offsetof(struct peer_info, host));
+    struct peer_info key = { .family = peeraddr.sin_family };
     memcpy(&key.addr, &peeraddr.sin_addr, sizeof(key.addr));
-    key.family = peeraddr.sin_family;
 #endif
 
     LOCK(&peer_lk)
