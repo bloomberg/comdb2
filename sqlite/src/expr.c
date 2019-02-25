@@ -6281,11 +6281,27 @@ default_prec:
       }
     }
     case TK_COLUMN: {
+      char *name;
+      assert(pExpr->y.pTab &&
+        (pExpr->iColumn >= -3 && pExpr->y.pTab->nCol > pExpr->iColumn));
+      switch(pExpr->iColumn) {
+      case -3:
+        name = "comdb2_rowtimestamp";
+        break;
+      case -2:
+        name = "comdb2_rowid";
+        break;
+      case -1:
+        name = "rowid";
+        break;
+      default:
+        name = pExpr->y.pTab->aCol[pExpr->iColumn].zName;
+        break;
+      }
       if( atRuntime ){
-        assert(pExpr->y.pTab && pExpr->y.pTab->nCol > pExpr->iColumn);
-        return sqlite3_mprintf("\"%q\"",  pExpr->y.pTab->aCol[pExpr->iColumn].zName);
+        return sqlite3_mprintf("\"%q\"", name);
       }else{
-        return sqlite3_mprintf("%q",  pExpr->y.pTab->aCol[pExpr->iColumn].zName);
+        return sqlite3_mprintf("%q", name);
       }
     }
     case TK_AGG_FUNCTION:
