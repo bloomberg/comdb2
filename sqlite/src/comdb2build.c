@@ -1969,6 +1969,8 @@ int resolveTableName(struct SrcList_item *p, const char *zDB, char *tableName,
 
 void comdb2timepartRetention(Parse *pParse, Token *nm, Token *lnm, int retention)
 {
+    BpfuncArg *arg = NULL;
+
     if (comdb2IsPrepareOnly(pParse))
         return;
 
@@ -1976,7 +1978,6 @@ void comdb2timepartRetention(Parse *pParse, Token *nm, Token *lnm, int retention
         goto err;       
 
     Vdbe *v  = sqlite3GetVdbe(pParse);
-    BpfuncArg *arg = NULL;
 
     if (retention < 2)
     {
