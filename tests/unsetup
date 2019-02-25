@@ -20,6 +20,7 @@ kill_by_pidfile() {
         local pid=$(cat $pidfile)
         local pstr=$(ps -p $pid -o args | grep comdb2)
         echo $pstr | grep -q "comdb2 ${DBNAME}"
+        #replace with if [[ $pstr == *"comdb2 ${DBNAME}"* ]]; then
         if [[ $? -eq 0 ]]; then
             echo "${TESTCASE}: killing $pid"
             if [ "`echo $pstr | awk '{ print $1 }' | xargs basename`" = "comdb2" ] ; then
