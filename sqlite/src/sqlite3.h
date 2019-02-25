@@ -3676,7 +3676,7 @@ SQLITE_API int sqlite3_limit(sqlite3*, int id, int newVal);
 #define SQLITE_PREPARE_PERSISTENT              0x01
 #define SQLITE_PREPARE_NORMALIZE               0x02
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-#define SQLITE_PREPARE_ONLY                    0x80
+#define SQLITE_PREPARE_ONLY                    0x40
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
