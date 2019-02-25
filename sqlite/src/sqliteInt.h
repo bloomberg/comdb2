@@ -3305,6 +3305,11 @@ struct Parse {
   u8 write;                 /* Write transaction during sqlite3FinishCoding? */
   Cdb2DDL *comdb2_ddl_ctx;  /* Context for DDL commands */
   ast_t *ast;
+  int prepare_only;         /* Prepare-only mode, skip schema changes that
+                             * originate from DDL, etc.  This is primarily
+                             * of interest to the DDL integration code in
+                             * the "comdb2build.c" and "comdb2lua.c" files.
+                             */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 

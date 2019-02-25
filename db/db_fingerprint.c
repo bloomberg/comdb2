@@ -101,9 +101,10 @@ static void memdup_free(
  */
 static void normalize_query(sqlite3 *db, char *zSql, char **pzNormSql) {
     int rc;
+    int prepFlags = SQLITE_PREPARE_NORMALIZE | SQLITE_PREPARE_ONLY;
     sqlite3_stmt *p = NULL;
 
-    rc = sqlite3_prepare_v3(db, zSql, -1, SQLITE_PREPARE_NORMALIZE, &p, 0);
+    rc = sqlite3_prepare_v3(db, zSql, -1, prepFlags, &p, 0);
     if (rc == SQLITE_OK) {
         const char *zNormSql = sqlite3_normalized_sql(p);
         if (zNormSql != NULL) {

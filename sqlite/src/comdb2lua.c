@@ -145,9 +145,11 @@ Cdb2TrigTables *comdb2AddTriggerTable(Parse *parse, Cdb2TrigTables *tables,
 void comdb2CreateTrigger(Parse *parse, int dynamic, Token *proc,
                          Cdb2TrigTables *tbl)
 {
-    char spname[MAX_SPNAME];
     if (comdb2AuthenticateUserOp(parse))
         return;
+
+    char spname[MAX_SPNAME];
+
     if (comdb2TokenToStr(proc, spname, sizeof(spname))) {
         sqlite3ErrorMsg(parse, "Procedure name is too long");
         return;
@@ -219,9 +221,11 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, Token *proc,
 
 void comdb2DropTrigger(Parse *parse, Token *proc)
 {
-    char spname[MAX_SPNAME];
     if (comdb2AuthenticateUserOp(parse))
         return;
+
+    char spname[MAX_SPNAME];
+
     if (comdb2TokenToStr(proc, spname, sizeof(spname))) {
         sqlite3ErrorMsg(parse, "Procedure name is too long");
         return;
@@ -245,9 +249,9 @@ void comdb2DropTrigger(Parse *parse, Token *proc)
 
 #define comdb2CreateFunc(parse, proc, pfx, type)                               \
     do {                                                                       \
-        char spname[MAX_SPNAME];                                               \
-        if (comdb2AuthenticateUserOp(parse))                                  \
+        if (comdb2AuthenticateUserOp(parse))                                   \
             return;                                                            \
+        char spname[MAX_SPNAME];                                               \
         if (comdb2TokenToStr(proc, spname, sizeof(spname))) {                  \
             sqlite3ErrorMsg(parse, "Procedure name is too long");              \
             return;                                                            \
@@ -281,9 +285,9 @@ void comdb2CreateAggFunc(Parse *parse, Token *proc)
 
 #define comdb2DropFunc(parse, proc, pfx, type)                                 \
     do {                                                                       \
-        char spname[MAX_SPNAME];                                               \
-        if (comdb2AuthenticateUserOp(parse))                                  \
+        if (comdb2AuthenticateUserOp(parse))                                   \
             return;                                                            \
+        char spname[MAX_SPNAME];                                               \
         if (comdb2TokenToStr(proc, spname, sizeof(spname))) {                  \
             sqlite3ErrorMsg(parse, "Procedure name is too long");              \
             return;                                                            \

@@ -3014,12 +3014,18 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     }
     query_stats_setup(thd, clnt);
     get_cached_stmt(thd, clnt, rec);
+    int sqlPrepFlags = 0;
+
+    if (sqlite3_is_prepare_only(clnt))
+        sqlPrepFlags |= SQLITE_PREPARE_ONLY;
+
     const char *tail = NULL;
 
     /* if we did not get a cached stmt, need to prepare it in sql engine */
     while (rec->stmt == NULL) {
         clnt->no_transaction = 1;
-        rc = sqlite3_prepare_v2(thd->sqldb, rec->sql, -1, &rec->stmt, &tail);
+        rc = sqlite3_prepare_v3(thd->sqldb, rec->sql, -1, sqlPrepFlags,
+                                &rec->stmt, &tail);
         clnt->no_transaction = 0;
         if (rc == SQLITE_OK) {
             rc = sqlite3LockStmtTables(rec->stmt);

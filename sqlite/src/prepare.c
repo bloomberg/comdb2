@@ -697,6 +697,9 @@ static int sqlite3Prepare(
   memset(&sParse, 0, PARSE_HDR_SZ);
   memset(PARSE_TAIL(&sParse), 0, PARSE_TAIL_SZ);
   sParse.pReprepare = pReprepare;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  sParse.prepare_only = (prepFlags&SQLITE_PREPARE_ONLY)!=0;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   assert( ppStmt && *ppStmt==0 );
   /* assert( !db->mallocFailed ); // not true with SQLITE_USE_ALLOCA */
   assert( sqlite3_mutex_held(db->mutex) );
