@@ -4280,13 +4280,13 @@ read_record:
             cleanup_query_list(hndl, commit_query_list, __LINE__);
         }
         PRINT_AND_RETURN(-1);
-    } 
-    
+    }
+
     // we have (hndl->first_buf != NULL)
     hndl->firstresponse = cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
     if (err_val) {
         /* we've read the 1st response of commit/rollback.
-           that is all we need so simply return here. 
+           that is all we need so simply return here.
            I dont think we should get here normally */
         debugprint("err_val is %d\n", err_val);
         if (is_rollback) {
@@ -4310,7 +4310,7 @@ read_record:
                        hndl->firstresponse->error_code);
             goto retry_queries;
         }
-    } else if (hndl->firstresponse->error_code == CDB2__ERROR_CODE__WRONG_DB && 
+    } else if (hndl->firstresponse->error_code == CDB2__ERROR_CODE__WRONG_DB &&
                !hndl->in_trans) {
         newsql_disconnect(hndl, hndl->sb, __LINE__);
         hndl->retry_all = 1;
