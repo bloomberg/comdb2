@@ -455,9 +455,25 @@ test_t1() {
 	$CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbnm default "select * from t1" &> select_all.out
 }
 
+
+test_bulk() {
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t6 (i int unique, j int, k int)"
+    CNT=5000
+    echo -n "insert into t6 values(1,1,1)" > gg.in
+    for i in `seq 2 $CNT` ; do echo -n ",($i, $i, $i)" ; done >> gg.in
+
+    for j in `seq 1 2` ; do
+        cdb2sql -s ${CDB2_OPTIONS} $dbnm default -f gg.in
+        assertcnt t6 $CNT
+        cdb2sql -s ${CDB2_OPTIONS} $dbnm default "delete from t6 where 1"
+    done
+}
+
 test_t1
+test_bulk
 
 $CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("sql hist")'
+
 
 res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 1"`
 assertres $res 1
