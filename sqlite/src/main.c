@@ -44,7 +44,9 @@ int sqlite3StmtVtabInit(sqlite3*);
 #ifdef SQLITE_ENABLE_FTS5
 int sqlite3Fts5Init(sqlite3*);
 #endif
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
 int sqlite3RegexpInit(sqlite3*);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 #ifndef SQLITE_AMALGAMATION
 /* IMPLEMENTATION-OF: R-46656-45156 The sqlite3_version[] string constant
