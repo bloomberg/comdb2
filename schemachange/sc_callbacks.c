@@ -318,8 +318,8 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
         return 0;
     }
 
-    blob_status_t oldblobs[MAXBLOBS] = {0};
-    blob_buffer_t add_blobs_buf[MAXBLOBS] = {0};
+    blob_status_t oldblobs[MAXBLOBS] = {{0}};
+    blob_buffer_t add_blobs_buf[MAXBLOBS] = {{0}};
     if (iq->usedb->sc_to->ix_blob) {
         rc =
             save_old_blobs(iq, trans, ".ONDISK", od_dta, 2, newgenid, oldblobs);

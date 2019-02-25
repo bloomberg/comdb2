@@ -531,7 +531,7 @@ static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
     else {
         int ii;
         struct ireq iq;
-        struct consumer_stat stats[MAXCONSUMERS] = {0};
+        struct consumer_stat stats[MAXCONSUMERS] = {{0}};
         int flags = 0;
         const struct bdb_queue_stats *bdbstats;
 
