@@ -421,8 +421,8 @@ int next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 {
     if (clnt && clnt->plugin.next_row)
         return clnt->plugin.next_row(clnt, stmt);
-
-    return sqlite3_maybe_step(clnt, stmt);
+    clnt->step_rc = sqlite3_maybe_step(clnt, stmt);
+    return clnt->step_rc;
 }
 
 int has_cnonce(struct sqlclntstate *clnt)
@@ -777,7 +777,7 @@ int sqlite3_can_get_column_type_and_data(
     ** this is not a write transaction.  An assert is used here to
     ** verify this invariant.
     */
-    assert( clnt->writeTransaction || sqlite3_hasResultSet(stmt) );
+    assert( clnt->step_rc!=SQLITE_ROW || sqlite3_hasResultSet(stmt) );
     return 1;
   }
   if( sqlite3_hasResultSet(stmt) ){
@@ -4278,7 +4278,7 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
     }
     bind_verify_indexes_query(stmt, clnt->schema_mems);
     run_stmt_setup(clnt, stmt);
-    if ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+    if ((clnt->step_rc = rc = sqlite3_step(stmt)) == SQLITE_ROW) {
         clnt->has_sqliterow = 1;
         rc = verify_indexes_column_value(stmt, clnt->schema_mems);
         sqlite3_finalize(stmt);

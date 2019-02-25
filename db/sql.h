@@ -618,6 +618,7 @@ struct sqlclntstate {
     char *saved_errstr;  /* if had_errors, save the error string */
     int saved_rc;        /* if had_errors, save the return code */
 
+    int step_rc;    /* last value returned from sqlite3_step() */
     int isselect;   /* track if the query is a select query.*/
     int isUnlocked;
     int writeTransaction;
