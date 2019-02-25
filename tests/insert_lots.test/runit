@@ -85,11 +85,12 @@ assertres ()
 }
 
 echo $CDB2_CONFIG
-THRDS=20
-CNT=100
-ITERATIONS=500
+THRDS=2
+CNT=10000
+ITERATIONS=1
+TRANSIZE=2800
 
-${TESTSBUILDDIR}/insert_lots_mt $dbnm $THRDS $CNT $ITERATIONS> ins.out
+${TESTSBUILDDIR}/insert_lots_mt $dbnm $THRDS $CNT $ITERATIONS $TRANSIZE> ins.out
 
 assertcnt $((THRDS * CNT * ITERATIONS))
 
