@@ -48,6 +48,7 @@
 #define SOCKPOOL_SOCKET_NAME "/tmp/sockpool.socket"
 #define COMDB2DB "comdb2db"
 #define COMDB2DB_NUM 32432
+#define MAX_BUFSIZE_ONSTACK 8192
 
 #define CDB2DBCONFIG_NOBBENV_DEFAULT "/opt/bb/etc/cdb2/config/comdb2db.cfg"
 static char CDB2DBCONFIG_NOBBENV[512] = CDB2DBCONFIG_NOBBENV_DEFAULT;
@@ -2718,13 +2719,22 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
         hndl->context_msgs.has_changed = 0;
     }
 
+    uint8_t trans_append = hndl && hndl->in_trans && do_append;
     CDB2SQLQUERY__Reqinfo req_info = CDB2__SQLQUERY__REQINFO__INIT;
     req_info.timestampus = (hndl ? hndl->timestampus : 0);
     req_info.num_retries = retries_done;
     sqlquery.req_info = &req_info;
 
     int len = cdb2__query__get_packed_size(&query);
-    unsigned char *buf = malloc(len + 1);
+
+    unsigned char *buf;
+    int on_heap = 1;
+    if (trans_append || len > MAX_BUFSIZE_ONSTACK) {
+        buf = malloc(len + 1);
+    } else {
+        buf = alloca(len + 1);
+        on_heap = 0;
+    }
 
     cdb2__query__pack(&query, buf);
 
@@ -2744,12 +2754,13 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
     rc = sbuf2flush(sb);
     if (rc < 0) {
         debugprint("sbuf2flush rc = %d\n", rc);
-        free(buf);
+        if (on_heap)
+            free(buf);
         rc = -1;
         goto after_callback;
     }
 
-    if (do_append && hndl->in_trans) {
+    if (trans_append) {
         /* Retry number of transaction is different from that of query.*/
         cdb2_query_list *item = malloc(sizeof(cdb2_query_list));
         item->buf = buf;
@@ -2765,7 +2776,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
                 last = last->next;
             last->next = item;
         }
-    } else {
+    } else if (on_heap) {
         free(buf);
     }
 
@@ -2800,7 +2811,7 @@ static int is_retryable(cdb2_hndl_tp *hndl, int err_val)
 static int retry_queries_and_skip(cdb2_hndl_tp *hndl, int num_retry,
                                   int skip_nrows);
 
-#define PRINT_RETURN(rcode)                                                    \
+#define PRINT_AND_RETURN(rcode)                                                \
     do {                                                                       \
         debugprint("%s: cnonce '%s' [%d][%d] "                                 \
                    "returning %d\n",                                           \
@@ -2809,7 +2820,7 @@ static int retry_queries_and_skip(cdb2_hndl_tp *hndl, int num_retry,
         return (rcode);                                                        \
     } while (0)
 
-#define PRINT_RETURN_OK(rcode)                                                 \
+#define PRINT_AND_RETURN_OK(rcode)                                             \
     do {                                                                       \
         debugprint("cnonce '%s' [%d][%d] "                                     \
                    "returning %d\n",                                           \
@@ -2829,14 +2840,14 @@ static int cdb2_next_record_int(cdb2_hndl_tp *hndl, int shouldretry)
 
 retry_next_record:
     if (hndl->first_buf == NULL || hndl->sb == NULL)
-        PRINT_RETURN_OK(CDB2_OK_DONE);
+        PRINT_AND_RETURN_OK(CDB2_OK_DONE);
 
     if (hndl->firstresponse->error_code)
-        PRINT_RETURN_OK(hndl->firstresponse->error_code);
+        PRINT_AND_RETURN_OK(hndl->firstresponse->error_code);
 
     if (hndl->lastresponse) {
         if (hndl->lastresponse->response_type == RESPONSE_TYPE__LAST_ROW) {
-            PRINT_RETURN_OK(CDB2_OK_DONE);
+            PRINT_AND_RETURN_OK(CDB2_OK_DONE);
         }
 
         if (hndl->lastresponse->response_type == RESPONSE_TYPE__COLUMN_VALUES &&
@@ -2846,7 +2857,7 @@ retry_next_record:
                 /* Give the same error for every query until commit/rollback */
                 hndl->error_in_trans = rc;
             }
-            PRINT_RETURN_OK(rc);
+            PRINT_AND_RETURN_OK(rc);
         }
     }
 
@@ -2871,7 +2882,7 @@ retry_next_record:
             if (hndl->sb == NULL) {
 #if WITH_SSL
                 if (hndl->sslerr != 0)
-                    PRINT_RETURN_OK(-1);
+                    PRINT_AND_RETURN_OK(-1);
 #endif
                 goto retry;
             }
@@ -2882,13 +2893,13 @@ retry_next_record:
             }
             goto retry_next_record;
         }
-        PRINT_RETURN_OK(-1);
+        PRINT_AND_RETURN_OK(-1);
     }
 
     if (hndl->last_buf == NULL) {
         newsql_disconnect(hndl, hndl->sb, __LINE__);
         sprintf(hndl->errstr, "%s: No response from server", __func__);
-        PRINT_RETURN_OK(-1);
+        PRINT_AND_RETURN_OK(-1);
     }
 
     /* free previous response */
@@ -2924,7 +2935,7 @@ retry_next_record:
 
         debugprint("error_string=%s\n", hndl->lastresponse->error_string);
         rc = cdb2_convert_error_code(hndl->lastresponse->error_code);
-        PRINT_RETURN_OK(rc);
+        PRINT_AND_RETURN_OK(rc);
     }
 
     if (hndl->lastresponse->response_type == RESPONSE_TYPE__LAST_ROW) {
@@ -2947,10 +2958,10 @@ retry_next_record:
                 hndl->read_intrans_results = 0;
         }
 
-        PRINT_RETURN_OK(CDB2_OK_DONE);
+        PRINT_AND_RETURN_OK(CDB2_OK_DONE);
     }
 
-    PRINT_RETURN_OK(-1);
+    PRINT_AND_RETURN_OK(-1);
 }
 
 int cdb2_next_record(cdb2_hndl_tp *hndl)
@@ -3539,7 +3550,7 @@ static int retry_queries_and_skip(cdb2_hndl_tp *hndl, int num_retry,
     if (hndl->in_trans) {
         rc = retry_query_list(hndl, num_retry, 0);
         if (rc) {
-            PRINT_RETURN_OK(rc);
+            PRINT_AND_RETURN_OK(rc);
         }
     }
     hndl->is_retry = num_retry;
@@ -3550,13 +3561,13 @@ static int retry_queries_and_skip(cdb2_hndl_tp *hndl, int num_retry,
                          hndl->ntypes, hndl->types, 0, skip_nrows, num_retry, 0,
                          __LINE__);
     if (rc) {
-        PRINT_RETURN_OK(rc);
+        PRINT_AND_RETURN_OK(rc);
     }
 
     rc = cdb2_read_record(hndl, &hndl->first_buf, &len, NULL);
 
     if (rc) {
-        PRINT_RETURN_OK(rc);
+        PRINT_AND_RETURN_OK(rc);
     }
 
     if (hndl->first_buf != NULL) {
@@ -3564,7 +3575,7 @@ static int retry_queries_and_skip(cdb2_hndl_tp *hndl, int num_retry,
             cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
     }
 
-    PRINT_RETURN_OK(rc);
+    PRINT_AND_RETURN_OK(rc);
 }
 
 static void process_set_local(cdb2_hndl_tp *hndl, const char *set_command)
@@ -3857,7 +3868,7 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
                                ? "I am committing but not 'in-trans'"
                                : "I am beginning but 'in-trans'");
         sprintf(hndl->errstr, "Wrong sql handle state");
-        PRINT_RETURN(CDB2ERR_BADSTATE);
+        PRINT_AND_RETURN(CDB2ERR_BADSTATE);
     }
 
     hndl->is_read = is_sql_read(sql);
@@ -3892,7 +3903,7 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
                 strcpy(hndl->query, sql);
 
                 if ((rc = next_cnonce(hndl)) != 0)
-                    PRINT_RETURN(rc);
+                    PRINT_AND_RETURN(rc);
                 cdb2_query_with_hint(hndl, sql, hndl->cnonce.str, &hndl->hint,
                                      &hndl->query_hint);
 
@@ -3904,7 +3915,7 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
     if (!hndl->in_trans) { /* only one cnonce for a transaction. */
         clear_snapshot_info(hndl, __LINE__);
         if ((rc = next_cnonce(hndl)) != 0)
-            PRINT_RETURN(rc);
+            PRINT_AND_RETURN(rc);
     }
     hndl->retry_all = 1;
     int run_last = 1;
@@ -3920,7 +3931,7 @@ retry_queries:
 
 #if WITH_SSL
     if (hndl->sslerr != 0)
-        PRINT_RETURN(CDB2ERR_CONNECT_ERROR);
+        PRINT_AND_RETURN(CDB2ERR_CONNECT_ERROR);
 #endif
 
     if (retries_done > hndl->max_retries) {
@@ -3931,14 +3942,14 @@ retry_queries:
         if (is_begin) {
             hndl->in_trans = 0;
         }
-        PRINT_RETURN(CDB2ERR_TRAN_IO_ERROR);
+        PRINT_AND_RETURN(CDB2ERR_TRAN_IO_ERROR);
     }
 
     if (!hndl->sb) {
         if (is_rollback) {
             cleanup_query_list(hndl, NULL, __LINE__);
             debugprint("returning 0 on unconnected rollback\n");
-            PRINT_RETURN(0);
+            PRINT_AND_RETURN(0);
         }
 
         if (retries_done > hndl->num_hosts) {
@@ -3947,7 +3958,7 @@ retry_queries:
                            "retries_done=%d, num_hosts=%d\n",
                            retries_done, hndl->num_hosts);
                 sprintf(hndl->errstr, "%s: Cannot connect to db", __func__);
-                PRINT_RETURN(CDB2ERR_CONNECT_ERROR);
+                PRINT_AND_RETURN(CDB2ERR_CONNECT_ERROR);
             }
 
             int tmsec = (retries_done - hndl->num_hosts) * 100;
@@ -3975,7 +3986,7 @@ retry_queries:
             }
             else if (rc < 0) {
                 sprintf(hndl->errstr, "Can't retry query to db");
-                PRINT_RETURN(rc);
+                PRINT_AND_RETURN(rc);
             }
         }
     }
@@ -4049,9 +4060,9 @@ retry_queries:
         if (!read_intrans_results && !hndl->client_side_error) {
             if (err_val) {
                 if (is_rollback) {
-                    PRINT_RETURN(0);
+                    PRINT_AND_RETURN(0);
                 } else {
-                    PRINT_RETURN(err_val);
+                    PRINT_AND_RETURN(err_val);
                 }
             }
         } else if (err_val) {
@@ -4063,7 +4074,7 @@ retry_queries:
     }
 
     if (err_val) {
-        PRINT_RETURN(err_val);
+        PRINT_AND_RETURN(err_val);
     }
 
     if (!hndl->read_intrans_results && !hndl->is_read && hndl->in_trans) {
@@ -4096,7 +4107,7 @@ read_record:
 #else
         sprintf(hndl->errstr, "%s: The database requires SSL connections.",
                 __func__);
-        PRINT_RETURN(-1);
+        PRINT_AND_RETURN(-1);
 #endif
     }
 
@@ -4145,7 +4156,7 @@ read_record:
                fail anyway. Also if the sql is rollback,
                suppress any error. */
             if (is_rollback) {
-                PRINT_RETURN(0);
+                PRINT_AND_RETURN(0);
             } else if (is_retryable(hndl, err_val) &&
                        (hndl->snapshot_file ||
                         (!hndl->in_trans && !is_commit) || commit_file)) {
@@ -4172,7 +4183,7 @@ read_record:
                 }
                 sprintf(hndl->errstr,
                         "%s: Timeout while reading response from server", __func__);
-                PRINT_RETURN(err_val);
+                PRINT_AND_RETURN(err_val);
             }
         }
 
@@ -4209,32 +4220,15 @@ read_record:
         sprintf(hndl->errstr,
                 "%s: Timeout while reading response from server", __func__);
         debugprint("returning, clear_snap_line is %d\n", hndl->clear_snap_line);
-        PRINT_RETURN(-1);
+        PRINT_AND_RETURN(-1);
     }
 
-    if (hndl->first_buf != NULL) {
-        hndl->firstresponse =
-            cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
-        if (err_val) {
-            /* we've read the 1st response of commit/rollback.
-               that is all we need so simply return here. 
-               I dont think we should get here normally */
-            debugprint("err_val is %d\n", err_val);
-            if (is_rollback) {
-                PRINT_RETURN(0);
-            } else {
-                if (is_hasql_commit) {
-                    cleanup_query_list(hndl, commit_query_list, __LINE__);
-                }
-                PRINT_RETURN(err_val);
-            }
-        }
-    } else {
+    if (hndl->first_buf == NULL) {
         if (err_val) {
             debugprint("err_val is %d on null first_buf\n", err_val);
 
             if (is_rollback) {
-                PRINT_RETURN(0);
+                PRINT_AND_RETURN(0);
             } else if (is_retryable(hndl, err_val) &&
                        (hndl->snapshot_file ||
                         (!hndl->in_trans && !is_commit) || commit_file)) {
@@ -4259,7 +4253,7 @@ read_record:
                 if (is_hasql_commit) {
                     cleanup_query_list(hndl, commit_query_list, __LINE__);
                 }
-                PRINT_RETURN(err_val);
+                PRINT_AND_RETURN(err_val);
             }
         }
         if (!is_commit || hndl->snapshot_file) {
@@ -4275,7 +4269,24 @@ read_record:
         if (is_hasql_commit) {
             cleanup_query_list(hndl, commit_query_list, __LINE__);
         }
-        PRINT_RETURN(-1);
+        PRINT_AND_RETURN(-1);
+    }
+
+    // we have (hndl->first_buf != NULL)
+    hndl->firstresponse = cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
+    if (err_val) {
+        /* we've read the 1st response of commit/rollback.
+           that is all we need so simply return here.
+           I dont think we should get here normally */
+        debugprint("err_val is %d\n", err_val);
+        if (is_rollback) {
+            PRINT_AND_RETURN(0);
+        } else {
+            if (is_hasql_commit) {
+                cleanup_query_list(hndl, commit_query_list, __LINE__);
+            }
+            PRINT_AND_RETURN(err_val);
+        }
     }
 
     if (using_hint) {
@@ -4289,7 +4300,8 @@ read_record:
                        hndl->firstresponse->error_code);
             goto retry_queries;
         }
-    } else if (hndl->firstresponse->error_code == CDB2__ERROR_CODE__WRONG_DB && !hndl->in_trans) {
+    } else if (hndl->firstresponse->error_code == CDB2__ERROR_CODE__WRONG_DB &&
+               !hndl->in_trans) {
         newsql_disconnect(hndl, hndl->sb, __LINE__);
         hndl->retry_all = 1;
         for (int i = 0; i < hndl->num_hosts; i++) {
@@ -4369,7 +4381,7 @@ read_record:
                 cdb2_convert_error_code(hndl->firstresponse->error_code);
             if (is_hasql_commit)
                 cleanup_query_list(hndl, commit_query_list, __LINE__);
-            PRINT_RETURN(return_value);
+            PRINT_AND_RETURN(return_value);
         }
         int rc = cdb2_next_record_int(hndl, 1);
         if (rc == CDB2_OK_DONE || rc == CDB2_OK) {
@@ -4377,7 +4389,7 @@ read_record:
                 cdb2_convert_error_code(hndl->firstresponse->error_code);
             if (is_hasql_commit)
                 cleanup_query_list(hndl, commit_query_list, __LINE__);
-            PRINT_RETURN(return_value);
+            PRINT_AND_RETURN(return_value);
         }
 
         if (hndl->is_hasql && (((is_retryable(hndl, rc) && hndl->snapshot_file) ||
@@ -4413,14 +4425,14 @@ read_record:
         if (is_hasql_commit)
             cleanup_query_list(hndl, commit_query_list, __LINE__);
 
-        PRINT_RETURN(return_value);
+        PRINT_AND_RETURN(return_value);
     }
 
     sprintf(hndl->errstr, "%s: Unknown response type %d", __func__,
             hndl->firstresponse->response_type);
     if (is_hasql_commit)
         cleanup_query_list(hndl, commit_query_list, __LINE__);
-    PRINT_RETURN(-1);
+    PRINT_AND_RETURN(-1);
 }
 
 static char *cdb2_type_str(int type)
@@ -4898,8 +4910,7 @@ free_vars:
         return -1;
     }
     if ((p != NULL) && (len != 0)) {
-        sqlresponse =
-            cdb2__sqlresponse__unpack(NULL, len, (const unsigned char *)p);
+        sqlresponse = cdb2__sqlresponse__unpack(NULL, len, p);
     }
     if ((len == 0) || (sqlresponse == NULL) || (sqlresponse->error_code != 0) ||
         (sqlresponse->response_type != RESPONSE_TYPE__COLUMN_NAMES &&
@@ -4924,8 +4935,7 @@ free_vars:
             return -1;
         }
         if (p != NULL) {
-            sqlresponse =
-                cdb2__sqlresponse__unpack(NULL, len, (const unsigned char *)p);
+            sqlresponse = cdb2__sqlresponse__unpack(NULL, len, p);
         }
         if (sqlresponse->error_code)
             break;
