@@ -3607,6 +3607,9 @@ void comdb2AlterTableStart(
     int dryrun     /* Whether its a dryrun? */
 )
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     struct comdb2_ddl_context *ctx;
 
     assert(pParse->comdb2_ddl_ctx == 0);
@@ -3649,6 +3652,9 @@ cleanup:
 */
 void comdb2AlterTableEnd(Parse *pParse)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     Vdbe *v;
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
 
@@ -3709,6 +3715,9 @@ void comdb2CreateTableStart(
     int noErr      /* Do nothing if table already exists */
 )
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     int table_exists = 0;
 
     if (isTemp || isView || isVirtual || pParse->db->init.busy ||
@@ -3757,6 +3766,9 @@ void comdb2CreateTableEnd(
     int comdb2Opts /* Comdb2 specific table options. */
 )
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     struct schema_change_type *sc = 0;
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     Vdbe *v;
