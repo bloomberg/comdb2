@@ -88,10 +88,15 @@ echo $CDB2_CONFIG
 THRDS=2
 CNT=10000
 ITERATIONS=1
+TRANSIZE=0
+
+${TESTSBUILDDIR}/insert_lots_mt $dbnm $THRDS $CNT $ITERATIONS $TRANSIZE> ins1.out
+assertcnt $((THRDS * CNT * ITERATIONS))
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "truncate t1"
+
 TRANSIZE=2800
-
-${TESTSBUILDDIR}/insert_lots_mt $dbnm $THRDS $CNT $ITERATIONS $TRANSIZE> ins.out
-
+${TESTSBUILDDIR}/insert_lots_mt $dbnm $THRDS $CNT $ITERATIONS $TRANSIZE> ins2.out
 assertcnt $((THRDS * CNT * ITERATIONS))
 
 echo "Success"
