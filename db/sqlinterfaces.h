@@ -81,5 +81,7 @@ void query_stats_setup(struct sqlthdstate *thd, struct sqlclntstate *clnt);
 int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt);
 int lock_client_write_lock(struct sqlclntstate *clnt);
 void unlock_client_write_lock(struct sqlclntstate *clnt);
+struct param_data *clnt_find_param(struct sqlclntstate *clnt, const char *name,
+                                   int index);
 
 #endif

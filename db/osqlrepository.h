@@ -119,7 +119,7 @@ int osql_repository_cancelall(void);
  * used by socksql poking
  *
  */
-int osql_repository_session_exists(unsigned long long rqid, uuid_t uuid);
+bool osql_repository_session_exists(unsigned long long rqid, uuid_t uuid);
 
 void osql_repository_for_each(void *arg, int (*func)(void *, void *));
 

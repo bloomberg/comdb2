@@ -867,6 +867,7 @@ These options are toggle-able at runtime.
 |location | | Sets up default file locations - see [file locations](#lrl-files)
 |include | | Include file given as argument.  Named file will be processed before continuing processing the current file.
 |temptable_limit | 8192 | Set the maximum number of temporary tables the database can create
+|forbid_remote_admin | set | Disallow admin SQL sessions unless it is on the same machine as the database
 |disable_temptable_pool | | Disables the pool of temp tables set by `temptable_limit`, temp tables are created as needed.
 |enable_upgrade_ahead | not set | Occasionally update read records to the newest schema version (saves some processing when reading them later)
 |disable_upgrade_ahead | | Disables `enable_upgrade_ahead`

@@ -61,6 +61,8 @@ struct dohsql_connector {
     int nrows;              /* current total queued rows */
     enum doh_status status; /* caller is done */
     long long queue_size;   /* size of queue in bytes */
+    int nparams;            /* parameters for the child */
+    struct param_data *params;
     dohsql_connector_stats_t stats;
 };
 typedef struct dohsql_connector dohsql_connector_t;
@@ -105,8 +107,10 @@ struct dohsql {
     int top_idx;
     int order_size;
     int *order_dir;
+    int nparams;
     /* stats */
     dohsql_req_stats_t stats;
+    struct plugin_callbacks backup;
 };
 typedef struct dohsql dohsql_t;
 
@@ -132,6 +136,9 @@ static void sqlengine_work_shard(struct thdpool *pool, void *work,
 static int order_init(dohsql_t *conns, dohsql_node_t *node);
 static int dohsql_dist_next_row_ordered(struct sqlclntstate *clnt,
                                         sqlite3_stmt *stmt);
+static int _param_index(dohsql_connector_t *conn, const char *b, int64_t *c);
+static int _param_value(dohsql_connector_t *conn, struct param_data *b, int c,
+                        const char *src);
 
 static void sqlengine_work_shard_pp(struct thdpool *pool, void *work,
                                     void *thddata, int op)
@@ -403,8 +410,7 @@ static int inner_row_last(struct sqlclntstate *clnt)
 }
 
 /* override sqlite engine */
-static int dohsql_dist_column_count(struct sqlclntstate *clnt,
-                                    sqlite3_stmt *stmt)
+static int dohsql_dist_column_count(struct sqlclntstate *clnt, sqlite3_stmt *_)
 {
     return clnt->conns->ncols;
 }
@@ -473,6 +479,25 @@ static int dohsql_dist_sqlite_error(struct sqlclntstate *clnt,
     Q_UNLOCK(src);
 
     return errcode;
+}
+
+static int dohsql_dist_param_count(struct sqlclntstate *clnt)
+{
+    return clnt->conns->conns[0].nparams;
+}
+
+static int dohsql_dist_param_index(struct sqlclntstate *clnt, const char *name,
+                                   int64_t *index)
+{
+    /* coordinator param subset */
+    return _param_index(&clnt->conns->conns[0], name, index);
+}
+
+static int dohsql_dist_param_value(struct sqlclntstate *clnt,
+                                   struct param_data *param, int n)
+{
+    /* coordinator param subset */
+    return _param_value(&clnt->conns->conns[0], param, n, __func__);
 }
 
 static void add_row(dohsql_t *conns, int i, row_t *row)
@@ -810,37 +835,78 @@ static void *dohsql_print_stmt(struct sqlclntstate *clnt, void *arg)
         logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
     return arg;
 }
-static int dohsql_param_count(struct sqlclntstate *a)
+
+static int dohsql_param_count(struct sqlclntstate *c)
 {
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s TODO\n", pthread_self(), __func__);
-    return 0;
-}
-static int dohsql_param_index(struct sqlclntstate *a, const char *b, int64_t *c)
-{
+    dohsql_connector_t *conn = (dohsql_connector_t *)c->plugin.state;
+
     if (gbl_plugin_api_debug)
         logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+
+    return conn->nparams;
+}
+
+static int _param_index(dohsql_connector_t *conn, const char *b, int64_t *c)
+{
+    int i;
+    for (i = 0; i < conn->nparams; i++) {
+        if (!strcasecmp(b, conn->params[i].name)) {
+            *c = conn->params[i].pos;
+            return 0;
+        }
+    }
     return -1;
 }
+
+static int dohsql_param_index(struct sqlclntstate *a, const char *b, int64_t *c)
+{
+    dohsql_connector_t *conn = (dohsql_connector_t *)a->plugin.state;
+
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+
+    return _param_index(conn, b, c);
+}
+
+static int _param_value(dohsql_connector_t *conn, struct param_data *b, int c,
+                        const char *src)
+{
+    if (c < 0 || c >= conn->nparams)
+        return -1;
+    *b = conn->params[c];
+    if (b->name[0] == '\0') {
+        /* these are index based that are renamed; use their index position as
+        their identity, matching the sql query generated */
+        b->pos = c + 1;
+    }
+    return 0;
+}
+
 static int dohsql_param_value(struct sqlclntstate *a, struct param_data *b,
                               int c)
 {
     if (gbl_plugin_api_debug)
         logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
-    return -1;
+
+    return _param_value((dohsql_connector_t *)a->plugin.state, b, c, __func__);
 }
+
 static int dohsql_override_count(struct sqlclntstate *a)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s TODO\n", pthread_self(), __func__);
+        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+
+    /* children don't have overrides, they are only available in distributor */
     return 0;
 }
+
 static int dohsql_override_type(struct sqlclntstate *a, int b)
 {
     if (gbl_plugin_api_debug)
         logmsg(LOGMSG_WARN, "%lx %s TODO\n", pthread_self(), __func__);
     return 0;
 }
+
 static int dohsql_clr_cnonce(struct sqlclntstate *a)
 {
     if (gbl_plugin_api_debug)
@@ -962,7 +1028,8 @@ static int dohsql_send_intrans_response(struct sqlclntstate *a)
 }
 
 static int _shard_connect(struct sqlclntstate *clnt, dohsql_connector_t *conn,
-                          const char *sql)
+                          const char *sql, int nparams,
+                          struct param_data *params)
 {
     const char *where = NULL;
 
@@ -995,6 +1062,16 @@ static int _shard_connect(struct sqlclntstate *clnt, dohsql_connector_t *conn,
     conn->clnt->plugin.state = conn;
     where = thrman_get_where(thrman_self());
     conn->thr_where = strdup(where ? where : "");
+    conn->nparams = nparams;
+    conn->params = params;
+    logmsg(LOGMSG_DEBUG, "%lx %p saved nparams %d\n", pthread_self(), __func__,
+           conn->nparams);
+    for (int i = 0; i < conn->nparams; i++) {
+        logmsg(LOGMSG_DEBUG, "%lx %p saved params %d name \"%s\" pos %d\n",
+               pthread_self(), __func__, i, conn->params[i].name,
+               conn->params[i].pos);
+    }
+
     conn->rc = SQLITE_ROW;
 
     return SHARD_NOERR;
@@ -1022,6 +1099,10 @@ static void _shard_disconnect(dohsql_connector_t *conn)
 
 static void _master_clnt_set(struct sqlclntstate *clnt)
 {
+    assert(clnt->conns);
+
+    clnt->conns->backup = clnt->plugin;
+
     clnt->plugin.column_count = dohsql_dist_column_count;
     clnt->plugin.next_row = (clnt->conns->order) ? dohsql_dist_next_row_ordered
                                                  : dohsql_dist_next_row;
@@ -1034,21 +1115,42 @@ static void _master_clnt_set(struct sqlclntstate *clnt)
     clnt->plugin.column_datetime = dohsql_dist_column_datetime;
     clnt->plugin.column_interval = dohsql_dist_column_interval;
     clnt->plugin.sqlite_error = dohsql_dist_sqlite_error;
+    clnt->plugin.param_count = dohsql_dist_param_count;
+    clnt->plugin.param_value = dohsql_dist_param_value;
+    clnt->plugin.param_index = dohsql_dist_param_index;
 }
 
 static void _master_clnt_reset(struct sqlclntstate *clnt)
 {
-    clnt->plugin.column_count = NULL;
-    clnt->plugin.next_row = NULL;
-    clnt->plugin.column_type = NULL;
-    clnt->plugin.column_int64 = NULL;
-    clnt->plugin.column_double = NULL;
-    clnt->plugin.column_text = NULL;
-    clnt->plugin.column_bytes = NULL;
-    clnt->plugin.column_blob = NULL;
-    clnt->plugin.column_datetime = NULL;
-    clnt->plugin.column_interval = NULL;
-    clnt->plugin.sqlite_error = NULL;
+    assert(clnt->conns);
+    struct plugin_callbacks *backup = &clnt->conns->backup;
+
+    clnt->plugin.column_count = backup->column_count;
+    clnt->plugin.next_row = backup->next_row;
+    clnt->plugin.column_type = backup->column_type;
+    clnt->plugin.column_int64 = backup->column_int64;
+    clnt->plugin.column_double = backup->column_double;
+    clnt->plugin.column_text = backup->column_text;
+    clnt->plugin.column_bytes = backup->column_bytes;
+    clnt->plugin.column_blob = backup->column_blob;
+    clnt->plugin.column_datetime = backup->column_datetime;
+    clnt->plugin.column_interval = backup->column_interval;
+    clnt->plugin.sqlite_error = backup->sqlite_error;
+    clnt->plugin.param_count = backup->param_count;
+    clnt->plugin.param_value = backup->param_value;
+    clnt->plugin.param_index = backup->param_index;
+}
+
+static void _save_params(dohsql_node_t *node, struct param_data **p, int *np)
+{
+    *p = NULL;
+    *np = 0;
+    if (node->params) {
+        *np = node->params->nparams;
+        *p = node->params->params;
+        free(node->params);
+        node->params = NULL;
+    }
 }
 
 int dohsql_distribute(dohsql_node_t *node)
@@ -1057,6 +1159,12 @@ int dohsql_distribute(dohsql_node_t *node)
     dohsql_t *conns;
     char *sqlcpy;
     int i, rc;
+    int clnt_nparams;
+
+    clnt_nparams = param_count(clnt);
+    if (clnt_nparams != node->nparams) {
+        return SHARD_ERR_PARAMS;
+    }
 
     /* setup communication queue */
     conns = (dohsql_t *)calloc(
@@ -1066,6 +1174,8 @@ int dohsql_distribute(dohsql_node_t *node)
     conns->conns = (dohsql_connector_t *)(conns + 1);
     conns->nconns = node->nnodes;
     conns->ncols = node->ncols;
+    conns->nparams = node->nparams;
+
     if (node->order_size) {
         if (order_init(conns, node)) {
             free(conns);
@@ -1078,8 +1188,11 @@ int dohsql_distribute(dohsql_node_t *node)
 
     /* start peers */
     for (i = 0; i < conns->nconns; i++) {
-        if ((rc = _shard_connect(clnt, &conns->conns[i],
-                                 node->nodes[i]->sql)) != 0)
+        struct param_data *params;
+        int nparams;
+        _save_params(node->nodes[i], &params, &nparams);
+        if ((rc = _shard_connect(clnt, &conns->conns[i], node->nodes[i]->sql,
+                                 nparams, params)) != 0)
             return rc;
 
         if (i > 0) {
@@ -1179,13 +1292,13 @@ int dohsql_end_distribute(struct sqlclntstate *clnt, struct reqlogger *logger)
             conns->stats.max_free_queue_len, conns->stats.max_queue_bytes);
     }
 
-    if (clnt->conns->order) {
-        free(clnt->conns->order);
-        free(clnt->conns->order_dir);
+    if (conns->order) {
+        free(conns->order);
+        free(conns->order_dir);
     }
-    free(clnt->conns);
     _master_clnt_reset(clnt);
     clnt->conns = NULL;
+    free(conns);
 
     return SHARD_NOERR;
 }
@@ -1720,4 +1833,66 @@ void explain_distribution(dohsql_node_t *node)
     }
 
     write_response(clnt, RESPONSE_ROW_LAST, NULL, 0);
+}
+
+void dohsql_signal_done(struct sqlclntstate *clnt)
+{
+    _signal_children_master_is_done(clnt->conns);
+}
+
+/**
+ * Note: this is called during prepare of the coordinator; the load
+ * is not distributed yet, and the coordinator callbacks are not in place
+ * Calling param_count/param_value will use the original plugin callbacks
+ *
+ */
+struct params_info *dohsql_params_append(struct params_info **pparams,
+                                         const char *name, int index)
+{
+    struct params_info *params;
+    struct param_data *newparam, *temparr;
+    int i = 0;
+
+    /* alloc params, if not ready yet */
+    if (!(params = *pparams)) {
+        struct sql_thread *thd = pthread_getspecific(query_info_key);
+        if (!thd || !thd->clnt)
+            return NULL;
+        params = *pparams = calloc(1, sizeof(struct params_info));
+        if (!params)
+            return NULL;
+        params->clnt = thd->clnt;
+    } else {
+        /* if already allocated, check to see if name is already in */
+        for (i = 0; i < params->nparams; i++) {
+            if (!strcasecmp(name, params->params[i].name)) {
+                /* done here */
+                return params;
+            }
+        }
+    }
+
+    /* if name is not already in, retrieve value from client plugin
+       NOTE: it is important here that the clnt plugin callbacks are not
+       changed yet
+    */
+    newparam = clnt_find_param(params->clnt, name + 1, index);
+    if (!newparam) {
+        /* clnt parameters are incorrect, fallback to single thread to err */
+        free(params->params);
+        free(params);
+        return NULL;
+    }
+    /* found, add it to the node->params array */
+    temparr = realloc(params->params,
+                      sizeof(struct param_data) * (params->nparams + 1));
+    if (!temparr) {
+        if (params->params)
+            free(params->params);
+        free(params);
+        return NULL;
+    }
+    params->params = temparr;
+    params->params[params->nparams++] = *newparam;
+    return *pparams = params;
 }

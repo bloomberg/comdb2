@@ -44,6 +44,7 @@ int sqlite3StmtVtabInit(sqlite3*);
 #ifdef SQLITE_ENABLE_FTS5
 int sqlite3Fts5Init(sqlite3*);
 #endif
+int sqlite3RegexpInit(sqlite3*);
 
 #ifndef SQLITE_AMALGAMATION
 /* IMPLEMENTATION-OF: R-46656-45156 The sqlite3_version[] string constant
@@ -3325,6 +3326,9 @@ static int openDatabase(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( !db->mallocFailed && rc==SQLITE_OK ){
     rc = comdb2SystblInit(db);
+  }
+  if( !db->mallocFailed && rc==SQLITE_OK){
+    rc = sqlite3RegexpInit(db);
   }
 #ifdef SQLITE_ENABLE_SERIES
   if( !db->mallocFailed && rc==SQLITE_OK ){

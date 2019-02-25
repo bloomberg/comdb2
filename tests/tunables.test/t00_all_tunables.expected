@@ -305,6 +305,7 @@
 (name='fix_pinref', description='fix_pinref', type='BOOLEAN', value='ON', read_only='N')
 (name='flush_check_active_peer', description='Check if still have active connection when trying to flush', type='BOOLEAN', value='ON', read_only='N')
 (name='flush_scan_dbs_first', description='Don't hold bufpool mutex while opening files for flush', type='BOOLEAN', value='OFF', read_only='N')
+(name='forbid_remote_admin', description='Forbid non-local admin requests.  (Default: on)', type='BOOLEAN', value='OFF', read_only='N')
 (name='forbid_ulonglong', description='Disallow u_longlong. (Default: on)', type='BOOLEAN', value='ON', read_only='Y')
 (name='force_highslot', description='', type='BOOLEAN', value='OFF', read_only='Y')
 (name='force_old_cursors', description='Replicant will use old cursors', type='BOOLEAN', value='OFF', read_only='N')
