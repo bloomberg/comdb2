@@ -145,6 +145,9 @@ Cdb2TrigTables *comdb2AddTriggerTable(Parse *parse, Cdb2TrigTables *tables,
 void comdb2CreateTrigger(Parse *parse, int dynamic, Token *proc,
                          Cdb2TrigTables *tbl)
 {
+    if (comdb2IsPrepareOnly(parse))
+        return;
+
     if (comdb2AuthenticateUserOp(parse))
         return;
 
@@ -221,6 +224,9 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, Token *proc,
 
 void comdb2DropTrigger(Parse *parse, Token *proc)
 {
+    if (comdb2IsPrepareOnly(parse))
+        return;
+
     if (comdb2AuthenticateUserOp(parse))
         return;
 
@@ -249,6 +255,8 @@ void comdb2DropTrigger(Parse *parse, Token *proc)
 
 #define comdb2CreateFunc(parse, proc, pfx, type)                               \
     do {                                                                       \
+        if (comdb2IsPrepareOnly(parse))                                        \
+            return;                                                            \
         if (comdb2AuthenticateUserOp(parse))                                   \
             return;                                                            \
         char spname[MAX_SPNAME];                                               \
@@ -285,6 +293,8 @@ void comdb2CreateAggFunc(Parse *parse, Token *proc)
 
 #define comdb2DropFunc(parse, proc, pfx, type)                                 \
     do {                                                                       \
+        if (comdb2IsPrepareOnly(parse))                                        \
+            return;                                                            \
         if (comdb2AuthenticateUserOp(parse))                                   \
             return;                                                            \
         char spname[MAX_SPNAME];                                               \

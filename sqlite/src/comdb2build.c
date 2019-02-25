@@ -381,9 +381,6 @@ static int comdb2IsPrepareOnly(Parse* pParse) {
 
 int comdb2AuthenticateUserOp(Parse* pParse)
 {
-    if (comdb2IsPrepareOnly(pParse))
-        return 1;
-
     int rc;
     rc = comdb2CheckOpAccess();
     if (rc != SQLITE_OK) {
@@ -906,6 +903,9 @@ out:
 
 void comdb2CreateProcedure(Parse* pParse, Token* nm, Token* ver, Token* proc)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -945,6 +945,9 @@ cleanup:
 
 void comdb2DefaultProcedure(Parse *pParse, Token *nm, Token *ver, int str)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -985,6 +988,9 @@ cleanup:
 
 void comdb2DropProcedure(Parse *pParse, Token *nm, Token *ver, int str)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -1201,6 +1207,9 @@ int comdb2vdbeAnalyze(OpFunc *f)
 
 void comdb2analyze(Parse* pParse, int opt, Token* nm, Token* lnm, int pc)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -1238,6 +1247,9 @@ err:
 
 void comdb2analyzeCoverage(Parse* pParse, Token* nm, Token* lnm, int newscale)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -1278,6 +1290,9 @@ clean_arg:
 
 void comdb2setSkipscan(Parse* pParse, Token* nm, Token* lnm, int enable)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -1318,6 +1333,9 @@ clean_arg:
 
 void comdb2enableGenid48(Parse* pParse, int enable)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -1351,6 +1369,9 @@ err:
 
 void comdb2enableRowlocks(Parse* pParse, int enable)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -1384,6 +1405,9 @@ err:
 
 void comdb2analyzeThreshold(Parse* pParse, Token* nm, Token* lnm, int newthreshold)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -1427,6 +1451,9 @@ err:
 
 void comdb2setAlias(Parse* pParse, Token* name, Token* url)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -1478,6 +1505,9 @@ clean_arg:
 
 void comdb2getAlias(Parse* pParse, Token* t1)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -1515,6 +1545,9 @@ static int is_system_table(Parse *pParse, Token *nm, char *dst)
 void comdb2grant(Parse *pParse, int revoke, int permission, Token *nm,
                  Token *lnm, Token *u)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -1704,6 +1737,9 @@ clean_arg:
 
 void comdb2deletePassword(Parse* pParse, Token* nm)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     if (comdb2AuthenticateUserOp(pParse))
     {
         setError(pParse, SQLITE_AUTH, "User does not have OP credentials");
@@ -1914,6 +1950,9 @@ int resolveTableName(struct SrcList_item *p, const char *zDB, char *tableName,
 
 void comdb2timepartRetention(Parse *pParse, Token *nm, Token *lnm, int retention)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     if (comdb2AuthenticateUserOp(pParse))
         goto err;       
 
@@ -2014,6 +2053,9 @@ out:
 
 void comdb2schemachangeCommitsleep(Parse* pParse, int num)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -2022,6 +2064,9 @@ void comdb2schemachangeCommitsleep(Parse* pParse, int num)
 
 void comdb2schemachangeConvertsleep(Parse* pParse, int num)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -4478,6 +4523,9 @@ void comdb2CreateIndex(
     int withOpts,       /* WITH options (DATACOPY) */
     int temp)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     Vdbe *v;
     struct schema_change_type *sc;
     struct comdb2_ddl_context *ctx;
@@ -5104,6 +5152,9 @@ cleanup:
 */
 void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     Vdbe *v;
     struct dbtable *table = NULL;
     struct schema_change_type *sc;
@@ -5255,6 +5306,12 @@ cleanup:
 */
 void comdb2AlterDropIndex(Parse *pParse, Token *pName)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
+    if (comdb2AuthenticateUserOp(pParse))
+        return;
+
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     char *keyname;
 
@@ -5291,6 +5348,9 @@ cleanup:
 
 void comdb2putTunable(Parse *pParse, Token *name, Token *value)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
@@ -5353,6 +5413,12 @@ done:
 void comdb2AlterColumnStart(Parse *pParse /* Parser context */,
                             Token *pName /* Column name */)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
+    if (comdb2AuthenticateUserOp(pParse))
+        return;
+
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     struct comdb2_column *current;
     char *column_name;
@@ -5413,6 +5479,9 @@ void comdb2AlterColumnEnd(Parse *pParse /* Parser context */)
 void comdb2AlterColumnType(Parse *pParse, /* Parser context */
                            Token *pType /* New type of the column */)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     char type[pType->n + 1];
     int rc;
@@ -5455,6 +5524,9 @@ void comdb2AlterColumnSetDefault(
     const char *zStart, /* Start of the default value text */
     const char *zEnd /* First character past end of defaut value text */)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
 
     if (ctx == 0) {
@@ -5474,6 +5546,9 @@ void comdb2AlterColumnSetDefault(
 
 void comdb2AlterColumnDropDefault(Parse *pParse /* Parser context */)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
 
     if (ctx == 0) {
@@ -5493,6 +5568,9 @@ void comdb2AlterColumnDropDefault(Parse *pParse /* Parser context */)
 
 void comdb2AlterColumnSetNotNull(Parse *pParse /* Parser context */)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
 
     if (ctx == 0) {
@@ -5511,6 +5589,9 @@ void comdb2AlterColumnSetNotNull(Parse *pParse /* Parser context */)
 
 void comdb2AlterColumnDropNotNull(Parse *pParse /* Parser context */)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
 
     if (ctx == 0) {
