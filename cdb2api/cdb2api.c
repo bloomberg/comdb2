@@ -48,7 +48,7 @@
 #define SOCKPOOL_SOCKET_NAME "/tmp/sockpool.socket"
 #define COMDB2DB "comdb2db"
 #define COMDB2DB_NUM 32432
-#define MAX_STATIC_BUFSIZE_KEEP 8192
+#define MAX_BUFSIZE_ONSTACK 8192
 
 #define CDB2DBCONFIG_NOBBENV_DEFAULT "/opt/bb/etc/cdb2/config/comdb2db.cfg"
 static char CDB2DBCONFIG_NOBBENV[512] = CDB2DBCONFIG_NOBBENV_DEFAULT;
@@ -2617,9 +2617,6 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
                 __func__, __LINE__);
     }
 
-    static __thread unsigned char *staticbuf = NULL;
-    static __thread size_t staticbuf_size = 0;
-
     int n_features = 0;
     int features[10]; // Max 10 client features??
     CDB2QUERY query = CDB2__QUERY__INIT;
@@ -2739,19 +2736,12 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
     int len = cdb2__query__get_packed_size(&query);
 
     unsigned char *buf;
-    if (trans_append) {
+    int on_heap = 1;
+    if (trans_append || len > MAX_BUFSIZE_ONSTACK) {
         buf = malloc(len + 1);
     } else {
-        /* make staticbuf bigger if necessary */
-        if (staticbuf_size <= len) {
-            size_t newsz = len;
-            buf = realloc(staticbuf, newsz);
-            if (!buf)
-                return -1;
-            staticbuf_size = newsz;
-            staticbuf = buf;
-        } else
-            buf = staticbuf;
+        buf = alloca(len + 1);
+        on_heap = 0;
     }
 
     cdb2__query__pack(&query, buf);
@@ -2773,7 +2763,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
     rc = sbuf2flush(sb);
     if (rc < 0) {
         debugprint("sbuf2flush rc = %d\n", rc);
-        free(buf);
+        if (on_heap)
+            free(buf);
         rc = -1;
         goto after_callback;
     }
@@ -2794,9 +2785,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
                 last = last->next;
             last->next = item;
         }
-    } else if (staticbuf_size > MAX_STATIC_BUFSIZE_KEEP) {
-        staticbuf_size = MAX_STATIC_BUFSIZE_KEEP;
-        staticbuf = realloc(staticbuf, staticbuf_size);
+    } else if (on_heap) {
+        free(buf);
     }
 
     rc = 0;
