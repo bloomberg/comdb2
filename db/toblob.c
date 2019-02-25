@@ -989,14 +989,15 @@ static int check_one_blob(struct ireq *iq, int isondisk, const char *tag,
             b->bloboffs[cblob] = 0;
             if (repair_mode)
                 outrc = -2;
-        } else if (blob->notnull && blob->length == 0 && b->bloblens[cblob] == 1) {
-            /* There was a bug where a 0-len blob, after compressed using LZ4,
+        } else if (blob->notnull && blob->length == 0 &&
+                   b->bloblens[cblob] == 1) {
+            /* There was a bug where a 0-len blob, after LZ4 compression,
                would become 1 byte. Repair this too. */
             free(b->blobptrs[cblob]);
             b->blobptrs[cblob] = NULL;
             b->bloblens[cblob] = 0;
             b->bloboffs[cblob] = 0;
-            if(repair_mode)
+            if (repair_mode)
                 outrc = -2;
         } else
             return -1;
