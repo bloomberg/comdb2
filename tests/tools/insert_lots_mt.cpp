@@ -12,6 +12,9 @@ static std::string quote("");
 static std::string comma(",");
 static std::string space(" ");
 static std::string at("@");
+static std::string begin("begin");
+static std::string commit("commit");
+unsigned int transize;
 
 int runsql(cdb2_hndl_tp *h, std::string &sql)
 {
@@ -106,6 +109,9 @@ void *thr(void *arg)
     ss << "insert into " << table << "(i, j) values (@i, @j)" ;
     std::string s = ss.str();
 
+    if (transize > 0)
+        runsql(db, begin);
+
     // insert records with bind params
     int count = 0;
     for (unsigned int j = tinfo->start; j < tinfo->start + tinfo->count; j++) {
@@ -123,7 +129,13 @@ void *thr(void *arg)
         //runtag(db, s, types);
         cdb2_clearbindings(db);
         if((++count & 0xff) == 0) std::cout << "Thr " << i << " Items " << count << std::endl;
+        if (count >= transize) {
+            runsql(db, commit);
+            runsql(db, begin);
+        }
     }
+    if (transize > 0)
+        runsql(db, commit);
 
     cdb2_close(db);
     std::cout << "Done thr " << i << std::endl;
@@ -133,7 +145,7 @@ void *thr(void *arg)
 int main(int argc, char *argv[])
 {
     if(argc < 5) {
-        fprintf(stderr, "Usage %s DBNAME NUMTHREADS CNTPERTHREAD ITERATIONS\n", argv[0]);
+        fprintf(stderr, "Usage %s DBNAME NUMTHREADS CNTPERTHREAD ITERATIONS TRANSIZE\n", argv[0]);
         return 1;
     }
 
@@ -141,6 +153,8 @@ int main(int argc, char *argv[])
     unsigned int numthreads = atoi(argv[2]);
     unsigned int cntperthread = atoi(argv[3]);
     unsigned int iterations = atoi(argv[4]);
+    if (argv[5])
+        transize = atoi(argv[5]);
 
     char *conf = getenv("CDB2_CONFIG");
     if (conf)
