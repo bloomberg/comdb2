@@ -1621,6 +1621,9 @@ clean_arg:
 
 void comdb2enableAuth(Parse* pParse, int on)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
     if (comdb2AuthenticateOpPassword(pParse))
@@ -1671,6 +1674,9 @@ clean_arg:
 
 void comdb2setPassword(Parse* pParse, Token* pwd, Token* nm)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     char username[MAX_USERNAME_LEN];
     char passwd[MAX_PASSWORD_LEN];
 
@@ -1814,6 +1820,9 @@ int producekw(OpFunc *f)
 
 void comdb2getkw(Parse* pParse, int arg)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     Vdbe *v  = sqlite3GetVdbe(pParse);
     const char* colname[] = {"Keyword"};
     const int coltype = OPFUNC_STRING_TYPE;
@@ -1845,6 +1854,9 @@ static int produceAnalyzeCoverage(OpFunc *f)
 
 void comdb2getAnalyzeCoverage(Parse* pParse, Token *nm, Token *lnm)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     Vdbe *v  = sqlite3GetVdbe(pParse);
     const char* colname[] = {"Coverage"};
     const int coltype = OPFUNC_INT_TYPE;
@@ -1861,6 +1873,9 @@ void comdb2getAnalyzeCoverage(Parse* pParse, Token *nm, Token *lnm)
 void comdb2CreateRangePartition(Parse *pParse, Token *nm, Token *col,
         ExprList* limits)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     char tblname[MAXTABLELEN];
 
     if (chkAndCopyTableTokens(pParse, tblname, nm, NULL, 1, 0, 0))
@@ -1892,6 +1907,9 @@ static int produceAnalyzeThreshold(OpFunc *f)
 
 void comdb2getAnalyzeThreshold(Parse* pParse, Token *nm, Token *lnm)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     Vdbe *v  = sqlite3GetVdbe(pParse);
     const char* colname[] = {"Threshold"};
     const int coltype = OPFUNC_INT_TYPE;
@@ -2008,6 +2026,9 @@ clean_arg:
 void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName,
         int dryrun)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     char table[MAXTABLELEN];
     char newTable[MAXTABLELEN];
     struct schema_change_type *sc;
@@ -3828,6 +3849,9 @@ void comdb2CreateTableLikeEnd(
     Token *pName2  /* Second part of the name of the table */
 )
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     char *newTab;
     char *otherTab;
 
@@ -3868,6 +3892,9 @@ void comdb2AddColumn(Parse *pParse, /* Parser context */
                      Token *pType   /* Type of the column */
 )
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     struct comdb2_column *column;
     struct comdb2_column *current;
     char type[pType->n + 1];
@@ -4003,6 +4030,9 @@ void comdb2AddDefaultValue(
     const char *zEnd    /* First character past end of defaut value text */
 )
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     struct comdb2_column *column;
 
@@ -4040,6 +4070,9 @@ static void comdb2ColumnSetNull(Parse *pParse, struct comdb2_column *column)
 */
 void comdb2AddNull(Parse *pParse)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     struct comdb2_column *column;
 
@@ -4076,6 +4109,9 @@ static void comdb2ColumnSetNotNull(Parse *pParse, struct comdb2_column *column)
 */
 void comdb2AddNotNull(Parse *pParse, int onError)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     struct comdb2_column *column;
 
@@ -4102,6 +4138,9 @@ void comdb2AddNotNull(Parse *pParse, int onError)
 
 void comdb2AddDbpad(Parse *pParse, int dbpad)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     struct comdb2_column *column;
 
@@ -4413,6 +4452,9 @@ void comdb2AddPrimaryKey(
     int sortOrder    /* SQLITE_SO_ASC or SQLITE_SO_DESC */
 )
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     char *keyname;
 
@@ -4453,6 +4495,9 @@ cleanup:
 
 void comdb2DropPrimaryKey(Parse *pParse /* Parsing context */)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     Token t = {COMDB2_PK, sizeof(COMDB2_PK) - 1};
     comdb2AlterDropIndex(pParse, &t);
     return;
@@ -4472,6 +4517,9 @@ void comdb2AddIndex(
     int withOpts        /* WITH options (DATACOPY) */
 )
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     char *keyname;
 
@@ -4714,6 +4762,9 @@ void comdb2CreateForeignKey(
     int flags           /* Conflict resolution algorithms. */
 )
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     struct comdb2_constraint *constraint;
     struct comdb2_index_column *idx_column;
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
@@ -4947,6 +4998,9 @@ cleanup:
 
 void comdb2DeferForeignKey(Parse *pParse, int isDeferred)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     if (use_sqlite_impl(pParse)) {
         assert(pParse->comdb2_ddl_ctx == 0);
         sqlite3DeferForeignKey(pParse, isDeferred);
@@ -4959,6 +5013,9 @@ void comdb2DropForeignKey(Parse *pParse, /* Parser context */
                           Token *pName   /* Foreign key name */
 )
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     char *name;
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     struct comdb2_constraint *cons;
@@ -5067,6 +5124,9 @@ void comdb2DropColumn(Parse *pParse, /* Parser context */
                       Token *pName   /* Name of the column */
 )
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     struct comdb2_column *column;
     char *name;
@@ -5322,9 +5382,6 @@ void comdb2AlterDropIndex(Parse *pParse, Token *pName)
     if (comdb2IsPrepareOnly(pParse))
         return;
 
-    if (comdb2AuthenticateUserOp(pParse))
-        return;
-
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     char *keyname;
 
@@ -5429,9 +5486,6 @@ void comdb2AlterColumnStart(Parse *pParse /* Parser context */,
     if (comdb2IsPrepareOnly(pParse))
         return;
 
-    if (comdb2AuthenticateUserOp(pParse))
-        return;
-
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     struct comdb2_column *current;
     char *column_name;
@@ -5482,6 +5536,9 @@ cleanup:
 
 void comdb2AlterColumnEnd(Parse *pParse /* Parser context */)
 {
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
     if (pParse->comdb2_ddl_ctx) {
         assert(pParse->comdb2_ddl_ctx->alter_column);
         pParse->comdb2_ddl_ctx->alter_column = 0;
