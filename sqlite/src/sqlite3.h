@@ -123,9 +123,9 @@ extern "C" {
 ** [sqlite3_libversion_number()], [sqlite3_sourceid()],
 ** [sqlite_version()] and [sqlite_source_id()].
 */
-#define SQLITE_VERSION        "3.27.1"
-#define SQLITE_VERSION_NUMBER 3027001
-#define SQLITE_SOURCE_ID      "2019-02-19 20:34:34 f8cb5e58032fa8ca6a5efccd5272c3b7d514cff70ecf13d0b0487928f0be3c40"
+#define SQLITE_VERSION        "3.27.2"
+#define SQLITE_VERSION_NUMBER 3027002
+#define SQLITE_SOURCE_ID      "2019-02-25 16:41:15 478cf9baac03868fefa1118c28aeb343408310c59340574c1db11f997f067110"
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <types.h>
@@ -2397,7 +2397,7 @@ SQLITE_API int sqlite3_changes(sqlite3*);
 ** not. ^Changes to a view that are intercepted by INSTEAD OF triggers 
 ** are not counted.
 **
-** This the [sqlite3_total_changes(D)] interface only reports the number
+** The [sqlite3_total_changes(D)] interface only reports the number
 ** of rows that changed due to SQL statement run against database
 ** connection D.  Any changes by other database connections are ignored.
 ** To detect changes against a database file from other database
