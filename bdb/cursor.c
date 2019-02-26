@@ -1594,7 +1594,6 @@ done:
     return 0;
 }
 
-extern int gbl_rowlocks;
 static int bdb_clean_pglog_queue(bdb_state_type *bdb_state,
                                  struct fileid_pglogs_queue *queue,
                                  DB_LSN minlsn, struct asof_cursor *cur)
@@ -1615,7 +1614,7 @@ static int bdb_clean_pglog_queue(bdb_state_type *bdb_state,
             (log_compare(&qe->commit_lsn, &minlsn) <= 0)) {
             del_qe = qe;
             break;
-        } else if (!gbl_rowlocks && qe->type == PGLOGS_QUEUE_RELINK &&
+        } else if (qe->type == PGLOGS_QUEUE_RELINK &&
                    (log_compare(&qe->lsn, &minlsn) <= 0)) {
             del_qe = qe;
             break;
