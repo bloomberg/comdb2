@@ -193,13 +193,20 @@ static int refresh_gbl_events_on_hndl(cdb2_hndl_tp *);
 
 typedef void (*cdb2_init_t)(void);
 
-/* Undocumented compile-time initialization routine. */
-#ifndef CDB2_INIT
-#define CDB2_INIT NULL
+/* Undocumented compile-time library installation/uninstallation routine. */
+#ifndef CDB2_INSTALL_LIBS
+#define CDB2_INSTALL_LIBS NULL
 #else
-extern void CDB2_INIT(void);
+extern void CDB2_INSTALL_LIBS(void);
 #endif
-cdb2_init_t cdb2_init = CDB2_INIT;
+void (*cdb2_install)(void) = CDB2_INSTALL_LIBS;
+
+#ifndef CDB2_UNINSTALL_LIBS
+#define CDB2_UNINSTALL_LIBS NULL
+#else
+extern void CDB2_UNINSTALL_LIBS(void);
+#endif
+void (*cdb2_uninstall)(void) = CDB2_UNINSTALL_LIBS;
 
 #ifndef WITH_DL_LIBS
 #define WITH_DL_LIBS 0
@@ -354,7 +361,7 @@ static inline const char *cdb2_skipws(const char *str)
     return str;
 }
 
-static char *getargv0(void)
+char *cdb2_getargv0(void)
 {
 #if defined(__APPLE__)
     return apple_getargv0();
@@ -380,10 +387,10 @@ static void do_init_once(void)
     }
     _PID = getpid();
     _MACHINE_ID = gethostid();
-    _ARGV0 = getargv0();
+    _ARGV0 = cdb2_getargv0();
 
-    if (cdb2_init != NULL)
-        (*cdb2_init)();
+    if (cdb2_install != NULL)
+        (*cdb2_install)();
 }
 
 /* if sqlstr is a read stmt will return 1 otherwise return 0
@@ -1011,7 +1018,7 @@ after_callback:
     while ((e = cdb2_next_callback(hndl, CDB2_AFTER_CONNECT, e)) != NULL) {
         callbackrc =
             cdb2_invoke_callback(hndl, e, 3, CDB2_HOSTNAME, host, CDB2_PORT,
-                                 port, CDB2_RETURN_VALUE, rc);
+                                 port, CDB2_RETURN_VALUE, (intptr_t)rc);
         PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
     }
     return rc;
@@ -1311,6 +1318,11 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp,
                         cdb2_allow_pmux_route = 0;
                     }
                 }
+            } else if (strcasecmp("uninstall_static_libs", tok) == 0) {
+                /* Provide a way to disable statically installed (via
+                 * CDB2_INSTALL_LIBS) libraries. */
+                if (cdb2_uninstall != NULL)
+                    (*cdb2_uninstall)();
 #if WITH_DL_LIBS
             } else if (strcasecmp("lib", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
@@ -2180,7 +2192,7 @@ after_callback:
     while ((e = cdb2_next_callback(hndl, CDB2_AFTER_PMUX, e)) != NULL) {
         callbackrc = cdb2_invoke_callback(
             hndl, e, 3, CDB2_HOSTNAME, remote_host, CDB2_PORT, CDB2_PORTMUXPORT,
-            CDB2_RETURN_VALUE, port);
+            CDB2_RETURN_VALUE, (intptr_t)port);
         PROCESS_EVENT_CTRL_AFTER(hndl, e, port, callbackrc);
     }
     return port;
@@ -2470,7 +2482,8 @@ retry:
     rc = 0;
 after_callback:
     while ((e = cdb2_next_callback(hndl, CDB2_AFTER_READ_RECORD, e)) != NULL) {
-        callbackrc = cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE, rc);
+        callbackrc =
+            cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE, (intptr_t)rc);
         PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
     }
     return rc;
@@ -2786,7 +2799,7 @@ after_callback:
     while ((e = cdb2_next_callback(event_hndl, CDB2_AFTER_SEND_QUERY, e)) !=
            NULL) {
         callbackrc = cdb2_invoke_callback(event_hndl, e, 2, CDB2_SQL, sql,
-                                          CDB2_RETURN_VALUE, rc);
+                                          CDB2_RETURN_VALUE, (intptr_t)rc);
         PROCESS_EVENT_CTRL_AFTER(event_hndl, e, rc, callbackrc);
     }
     return rc;
@@ -3007,7 +3020,8 @@ int cdb2_next_record(cdb2_hndl_tp *hndl)
 after_callback:
     while ((e = cdb2_next_callback(hndl, CDB2_AT_EXIT_NEXT_RECORD, e)) !=
            NULL) {
-        callbackrc = cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE, rc);
+        callbackrc =
+            cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE, (intptr_t)rc);
         PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
     }
 
@@ -3147,8 +3161,8 @@ int cdb2_close(cdb2_hndl_tp *hndl)
 
     curre = NULL;
     while ((curre = cdb2_next_callback(hndl, CDB2_AT_CLOSE, curre)) != NULL) {
-        callbackrc =
-            cdb2_invoke_callback(hndl, curre, 1, CDB2_RETURN_VALUE, rc);
+        callbackrc = cdb2_invoke_callback(hndl, curre, 1, CDB2_RETURN_VALUE,
+                                          (intptr_t)rc);
         PROCESS_EVENT_CTRL_AFTER(hndl, curre, rc, callbackrc);
     }
 
@@ -4535,7 +4549,7 @@ after_callback:
     while ((e = cdb2_next_callback(hndl, CDB2_AT_EXIT_RUN_STATEMENT, e)) !=
            NULL) {
         callbackrc = cdb2_invoke_callback(hndl, e, 2, CDB2_SQL, sql,
-                                          CDB2_RETURN_VALUE, rc);
+                                          CDB2_RETURN_VALUE, (intptr_t)rc);
         PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
     }
 
@@ -4986,7 +5000,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
 
     while ((e = cdb2_next_callback(hndl, CDB2_BEFORE_DBINFO, e)) != NULL) {
         callbackrc = cdb2_invoke_callback(hndl, e, 2, CDB2_HOSTNAME, host,
-                                          CDB2_PORT, -1);
+                                          CDB2_PORT, port);
         PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, callbackrc, overwrite_rc);
     }
 
@@ -5146,7 +5160,7 @@ after_callback:
     while ((e = cdb2_next_callback(hndl, CDB2_AFTER_DBINFO, e)) != NULL) {
         callbackrc =
             cdb2_invoke_callback(hndl, e, 3, CDB2_HOSTNAME, host, CDB2_PORT,
-                                 port, CDB2_RETURN_VALUE, rc);
+                                 port, CDB2_RETURN_VALUE, (intptr_t)rc);
         PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
     }
     return rc;
@@ -5783,7 +5797,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
 
     while ((e = cdb2_next_callback(hndl, CDB2_AT_OPEN, e)) != NULL) {
         callbackrc =
-            cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE, rc);
+            cdb2_invoke_callback(hndl, e, 1, CDB2_RETURN_VALUE, (intptr_t)rc);
         PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, callbackrc, overwrite_rc);
     }
 
@@ -5980,6 +5994,9 @@ int cdb2_unregister_event(cdb2_hndl_tp *hndl, cdb2_event *event)
 {
     cdb2_event *curr, *prev;
 
+    if (event == NULL)
+        return 0;
+
     if (hndl == NULL) {
         pthread_mutex_lock(&cdb2_event_mutex);
         for (prev = &cdb2_gbl_events, curr = prev->next;
@@ -6082,7 +6099,7 @@ static void *cdb2_invoke_callback(cdb2_hndl_tp *hndl, cdb2_event *e, int argc,
             argv[i] = (void *)sql;
             break;
         case CDB2_RETURN_VALUE:
-            argv[i] = (void *)rc;
+            argv[i] = (void *)(intptr_t)rc;
             break;
         default:
             break;
