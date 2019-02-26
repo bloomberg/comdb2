@@ -223,6 +223,17 @@ int srs_tran_empty(struct sqlclntstate *clnt)
 
 long long gbl_verify_tran_replays = 0;
 
+void osql_print_history(struct sqlclntstate *clnt, osqlstate_t *osql)
+{
+    if (!osql->history)
+        return;
+
+    srs_tran_query_t *item = NULL;
+    LISTC_FOR_EACH(&osql->history->lst, item, lnk)
+    {
+        logmsg(LOGMSG_DEBUG, "\"%s\"\n", print_stmt(clnt, item));
+    }
+}
 /**
  * Replay transaction using the current history
  *
@@ -297,12 +308,7 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
                                 "abort, nq=%d tnq=%d\n",
                         clnt, nq, tnq);
                 if (debug_switch_osql_verbose_history_replay()) {
-                    if (osql->history) {
-                        LISTC_FOR_EACH(&osql->history->lst, item, lnk)
-                        {
-                            logmsg(LOGMSG_DEBUG, "\"%s\"\n", print_stmt(clnt, item));
-                        }
-                    }
+                    osql_print_history(clnt, osql);
                 }
                 /* we should only repeat socksql and read committed */
                 assert(clnt->dbtran.mode == TRANLEVEL_SOSQL ||

@@ -652,7 +652,7 @@ int osql_serial_send_readset(struct sqlclntstate *clnt, int nettype)
  * and it can start processing bloplog
  *
  */
-int osql_block_commit(struct sql_thread *thd)
+inline int osql_block_commit(struct sql_thread *thd)
 {
     return osql_send_commit_logic(thd->clnt, 0, NET_OSQL_BLOCK_RPL);
 }
@@ -1007,11 +1007,6 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type)
         }
     }
 
-    if (0 == osql->replicant_numops) { // transaction is empty
-        goto err;
-    }
-
-
     osql->timings.commit_start = osql_log_time();
 
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL && !osql->sock_started) {
@@ -1019,6 +1014,15 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type)
     }
 
     assert(osql->sock_started);
+
+    if (0 == osql->replicant_numops) { // transaction is empty
+        logmsg(LOGMSG_USER, "AZ: transaction is empt sql:\n");
+        void osql_print_history(struct sqlclntstate *clnt, osqlstate_t *osql);
+        osql_print_history(clnt, osql);
+        abort();
+        goto err;                      // don't send to master
+    }
+
 
     /* send results of sql processing to block master */
     /* if (thd->clnt->query_stats)*/
