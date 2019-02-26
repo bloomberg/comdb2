@@ -3078,9 +3078,39 @@ int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects)
     return rc;
 }
 
-int cdb2_close(cdb2_hndl_tp *hndl)
+static void free_events(cdb2_hndl_tp *hndl)
 {
     cdb2_event *curre, *preve;
+    curre = hndl->events.next;
+    while (curre != NULL) {
+        preve = curre;
+        curre = curre->next;
+        free(preve);
+    }
+}
+
+static void free_query_list(cdb2_query_list *head)
+{
+    cdb2_query_list *ditem;
+    while (head != NULL) {
+        ditem = head;
+        head = head->next;
+        free(ditem->sql);
+        free(ditem->buf);
+        free(ditem);
+    }
+}
+
+/* Free query list and reset the pointer. */
+static inline void free_query_list_on_handle(cdb2_hndl_tp *hndl)
+{
+    free_query_list(hndl->query_list);
+    hndl->query_list = NULL;
+}
+
+int cdb2_close(cdb2_hndl_tp *hndl)
+{
+    cdb2_event *curre;
     void *callbackrc;
     int rc = 0;
 
@@ -3166,12 +3196,8 @@ int cdb2_close(cdb2_hndl_tp *hndl)
         PROCESS_EVENT_CTRL_AFTER(hndl, curre, rc, callbackrc);
     }
 
-    curre = hndl->events.next;
-    while (curre != NULL) {
-        preve = curre;
-        curre = curre->next;
-        free(preve);
-    }
+    free_events(hndl);
+    free_query_list(hndl->query_list);
 
     free(hndl);
     return rc;
@@ -3710,25 +3736,8 @@ static inline void cleanup_query_list(cdb2_hndl_tp *hndl,
     hndl->in_trans = 0;
     debugprint("setting in_trans to 0\n");
 
-    cdb2_query_list *item = hndl->query_list;
-    while (item != NULL) {
-        cdb2_query_list *ditem = item;
-        item = item->next;
-        free(ditem->sql);
-        free(ditem->buf);
-        free(ditem);
-    }
-
-    item = commit_query_list;
-    while (item != NULL) {
-        cdb2_query_list *ditem = item;
-        item = item->next;
-        free(ditem->sql);
-        free(ditem->buf);
-        free(ditem);
-    }
-
-    hndl->query_list = NULL;
+    free_query_list_on_handle(hndl);
+    free_query_list(commit_query_list);
 }
 
 static inline void clear_snapshot_info(cdb2_hndl_tp *hndl, int line)
@@ -4061,15 +4070,7 @@ retry_queries:
 
         hndl->in_trans = 0;
 
-        cdb2_query_list *item = hndl->query_list;
-        while (item != NULL) {
-            cdb2_query_list *ditem = item;
-            item = item->next;
-            free(ditem->sql);
-            free(ditem->buf);
-            free(ditem);
-        }
-        hndl->query_list = NULL;
+        free_query_list_on_handle(hndl);
 
         if (!read_intrans_results && !hndl->client_side_error) {
             if (err_val) {
@@ -4921,6 +4922,7 @@ free_vars:
         snprintf(hndl->errstr, sizeof(hndl->errstr),
                  "%s:%d  Invalid sql response from db %s \n", __func__,
                  __LINE__, comdb2db_name);
+        free_events(&tmp);
         return -1;
     }
     if ((p != NULL) && (len != 0)) {
@@ -4934,6 +4936,7 @@ free_vars:
                  "%s: Got bad response for %s query. Reply len: %d\n", __func__,
                  comdb2db_name, len);
         sbuf2close(ss);
+        free_events(&tmp);
         return -1;
     }
 
@@ -4946,6 +4949,7 @@ free_vars:
                      "%s: Can't read dbinfo response from %s \n", __func__,
                      comdb2db_name);
             sbuf2close(ss);
+            free_events(&tmp);
             return -1;
         }
         if (p != NULL) {
@@ -4976,6 +4980,7 @@ free_vars:
                                 comdb2db_num, 5, NULL, NULL);
 
     sbuf2free(ss);
+    free_events(&tmp);
     return 0;
 }
 
