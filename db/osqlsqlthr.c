@@ -1016,11 +1016,13 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type)
     assert(osql->sock_started);
 
     if (0 == osql->replicant_numops) { // transaction is empty
-        logmsg(LOGMSG_USER, "AZ: transaction is empt sql:\n");
+        logmsg(LOGMSG_ERROR, 
+               "%s: Empty transaction with following sql(s):\n", __func__);
         void osql_print_history(struct sqlclntstate *clnt, osqlstate_t *osql);
         osql_print_history(clnt, osql);
-        abort();
-        goto err;                      // don't send to master
+        abort(); // TODO: intention here is to catch if/when this happens.
+                 // In future it will suffice to simply do:
+                 // goto err; -- don't send to master
     }
 
 
