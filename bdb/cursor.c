@@ -1601,31 +1601,43 @@ static int bdb_clean_pglog_queue(bdb_state_type *bdb_state,
     struct pglogs_queue_key *qe, *del_qe = NULL;
     struct pglogs_queue_key *curqe = NULL;
 
+#ifdef ASOF_TRACE
+    char *buf;
+    unsigned count = 0;
+#endif
+
     // Grab this in write mode
     // Consumers will grab in read-mode until they anchor against the list by
     // finding an LSN that is greater than their start LSN.
     Pthread_rwlock_wrlock(&queue->queue_lk);
     if (cur)
         curqe = cur->cur;
-    qe = LISTC_BOT(&queue->queue_keys);
+    /* Any orphan relinks at the front can be deleted */
+    qe = LISTC_TOP(&queue->queue_keys);
+    while (qe && qe->type == PGLOGS_QUEUE_RELINK) {
+        qe = listc_rtl(&queue->queue_keys);
+        return_pglogs_queue_key(qe);
+#ifdef ASOF_TRACE
+        count++;
+#endif
+        /* adjust asof queue cursor */
+        if (curqe == qe) {
+            cur->cur = NULL;
+            goto done;
+        }
+        qe = LISTC_TOP(&queue->queue_keys);
+    }
 
+    /* Find the last entry we can delete */
+    qe = LISTC_BOT(&queue->queue_keys);
     while (qe) {
         if (qe->type == PGLOGS_QUEUE_PAGE &&
             (log_compare(&qe->commit_lsn, &minlsn) <= 0)) {
             del_qe = qe;
             break;
-        } else if (qe->type == PGLOGS_QUEUE_RELINK &&
-                   (log_compare(&qe->lsn, &minlsn) <= 0)) {
-            del_qe = qe;
-            break;
         }
         qe = qe->lnk.prev;
     }
-
-#ifdef ASOF_TRACE
-    char *buf;
-    unsigned count = 0;
-#endif
 
     if (!del_qe) {
         goto done;
@@ -1634,14 +1646,16 @@ static int bdb_clean_pglog_queue(bdb_state_type *bdb_state,
     /* Remove from the TOP of the list and return */
     do {
         qe = listc_rtl(&queue->queue_keys);
-        /* adjust asof queue cursor */
-        if (curqe == qe)
-            cur->cur = NULL;
         return_pglogs_queue_key(qe);
 #ifdef ASOF_TRACE
         count++;
 #endif
-    } while (qe != del_qe && qe != curqe);
+        /* adjust asof queue cursor */
+        if (curqe == qe) {
+            cur->cur = NULL;
+            goto done;
+        }
+    } while (qe != del_qe);
 
 done:
 #ifdef ASOF_TRACE
