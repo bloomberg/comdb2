@@ -4300,10 +4300,6 @@ void sqlengine_work_appsock(void *thddata, void *work)
 
     if (clnt->fdb_state.remote_sql_sb) {
         clnt->query_rc = execute_sql_query_offload(thd, clnt);
-        /* execute sql query might have generated an overriding fdb error;
-           reset it here before returning */
-        bzero(&clnt->fdb_state.xerr, sizeof(clnt->fdb_state.xerr));
-        clnt->fdb_state.preserve_err = 0;
     } else if (clnt->verify_indexes) {
         clnt->query_rc = execute_verify_indexes(thd, clnt);
     } else {
