@@ -237,7 +237,7 @@ typedef struct cttbl_entry {
 
 int insert_add_op(struct ireq *iq, int optype, int rrn, int ixnum,
                   unsigned long long genid, unsigned long long ins_keys,
-                  int blkpos, int flags)
+                  int blkpos, int rec_flags)
 {
     block_state_t *blkstate = iq->blkstate;
     int type = CTE_ADD, rc = 0;
@@ -268,7 +268,7 @@ int insert_add_op(struct ireq *iq, int optype, int rrn, int ixnum,
     fwdct->ixnum = ixnum;
     fwdct->rrn = rrn;
     fwdct->optype = optype;
-    fwdct->flags = flags;
+    fwdct->flags = rec_flags;
 
     rc = bdb_temp_table_insert(thedb->bdb_env, cur, key,
                                sizeof(int) + sizeof(long long), &cte_record,

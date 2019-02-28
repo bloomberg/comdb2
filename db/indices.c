@@ -327,13 +327,14 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
 
     void *cur = NULL;
     dtikey_t ditk = {0};
-    bool reorder = gbl_reorder_idx_writes && !is_event_from_sc(flags) &&
+    bool reorder = gbl_reorder_idx_writes &&
+        !is_event_from_sc(flags) &&
         (flags & RECFLAGS_NO_CONSTRAINTS) &&
         (flags & RECFLAGS_NO_REORDER_IDX) == 0 &&
         rec_flags == 0 &&
         iq->usedb->sc_from != iq->usedb &&
         strcasecmp(iq->usedb->tablename, "comdb2_oplog") != 0  &&
-        strcasecmp(iq->usedb->tablename, "comdb2_commit_log") != 0 &
+        strcasecmp(iq->usedb->tablename, "comdb2_commit_log") != 0 &&
         strncasecmp(iq->usedb->tablename, "sqlite_stat", 11) != 0;
 
 #if DEBUG_REORDER
@@ -498,8 +499,7 @@ static int add_key(struct ireq *iq, void *trans, int ixnum,
                    unsigned long long ins_keys, int rrn,
                    unsigned long long genid, void *od_dta, size_t od_len,
                    int opcode, int blkpos, int *opfailcode, char *newkey,
-                   char *od_dta_tail, int od_tail_len, int do_inline,
-                   int rec_flags)
+                   char *od_dta_tail, int od_tail_len, int do_inline)
 {
     int rc;
 
@@ -826,7 +826,7 @@ logmsg(LOGMSG_ERROR, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", _
                 } else { //TODO: will also need add here for constraint checking purpose
                     rc = add_key(iq, trans, ixnum, ins_keys, rrn, *newgenid, od_dta,
                             od_len, opcode, blkpos, opfailcode, newkey,
-                            od_dta_tail, od_tail_len, do_inline, 0);
+                            od_dta_tail, od_tail_len, do_inline);
 
 #if DEBUG_REORDER
 logmsg(LOGMSG_ERROR, "AZ: direct upd add_key genid=%llx newwgenid=%llx rc %d\n", bdb_genid_to_host_order(vgenid), 

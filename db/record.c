@@ -467,8 +467,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     }
 
     if (iq->usedb->nix > 0) {
-        /*
-         * Form and add all the keys.
+        /* Form and add all the keys.
          * If there are constraints, do the add to indices deferred.
          *
          * For records from INSERT ... ON CONFLICT DO NOTHING, we need
@@ -476,8 +475,8 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
          * data. The keys, however, are also added to the deferred
          * temporary table to enable cascading updates, if needed.
          */
-        if (has_constraint(flags)) /* if NOT no constraints */
-        {
+
+        if (has_constraint(flags)) { /* if NOT no constraints */
             if (!is_event_from_sc(flags)) {
                 /* enqueue the add of the key for constaint checking purposes */
                 rc = insert_add_op(iq, opcode, *rrn, -1, *genid, ins_keys,
