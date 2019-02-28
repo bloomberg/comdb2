@@ -2222,7 +2222,8 @@ static void add_tz(const char *name, struct db_state *ptr)
 static int db_tzset(name) register const char *name;
 {
     int rc;
-    struct db_state *state;
+    struct db_state *sp;
+    struct db_state state;
 
     if (lcl_is_set > 0 && strcmp(lcl_TZname, name) == 0) return 0;
 
@@ -2244,14 +2245,15 @@ static int db_tzset(name) register const char *name;
         /* hit hash table by name, get db_lclptr from there if found,
            else add it to hash table */
 
-        state = find_tz(name);
-        if (state != NULL)
-            db_lclptr = state;
+        sp = find_tz(name);
+        if (sp != NULL)
+            db_lclptr = sp;
         else {
-            rc = db_tzload(name, &db_lclmem, TRUE);
+            rc = db_tzload(name, &state, TRUE);
             if (rc != 0)
                 return -1;
 
+            memcpy(&db_lclmem, &state, sizeof(struct db_state));
             add_tz(name, &db_lclmem);
             db_lclptr = &db_lclmem;
         }
