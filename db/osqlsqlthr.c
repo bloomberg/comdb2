@@ -735,7 +735,7 @@ retry:
     osql->host = thedb->master;
 
     /* protect against no master */
-    if (osql->host == NULL) {
+    if (osql->host == NULL || osql->host == db_eid_invalid) {
         /* wait up to 50 seconds for a new master */
         if (retries < 100) {
             retries++;
