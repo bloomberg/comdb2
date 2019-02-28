@@ -466,50 +466,45 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         }
     }
 
-    /*
-     * Form and add all the keys.
-     * If there are constraints, do the add to indices deferred.
-     *
-     * For records from INSERT ... ON CONFLICT DO NOTHING, we need
-     * to update the indices inplace to avoid inserting duplicate
-     * data. The keys, however, are also added to the deferred
-     * temporary table to enable cascading updates, if needed.
-     */
-    if (has_constraint(flags)) /* if NOT no constraints */
-    {
-        if (!is_event_from_sc(flags)) {
-            /* enqueue the add of the key for constaint checking purposes */
-            rc = insert_add_op(iq, opcode, *rrn, -1, *genid, ins_keys, blkpos,
-                               rec_flags);
-            if (rc != 0) {
-                if (iq->debug)
-                    reqprintf(iq, "FAILED TO PUSH KEYOP");
-                *opfailcode = OP_FAILED_INTERNAL;
-                retrc = ERR_INTERNAL;
-                ERR;
+    if (iq->usedb->nix > 0) {
+        /*
+         * Form and add all the keys.
+         * If there are constraints, do the add to indices deferred.
+         *
+         * For records from INSERT ... ON CONFLICT DO NOTHING, we need
+         * to update the indices inplace to avoid inserting duplicate
+         * data. The keys, however, are also added to the deferred
+         * temporary table to enable cascading updates, if needed.
+         */
+        if (has_constraint(flags)) /* if NOT no constraints */
+        {
+            if (!is_event_from_sc(flags)) {
+                /* enqueue the add of the key for constaint checking purposes */
+                rc = insert_add_op(iq, opcode, *rrn, -1, *genid, ins_keys,
+                                   blkpos, rec_flags);
+                if (rc != 0) {
+                    if (iq->debug)
+                        reqprintf(iq, "FAILED TO PUSH KEYOP");
+                    *opfailcode = OP_FAILED_INTERNAL;
+                    retrc = ERR_INTERNAL;
+                    ERR;
+                }
+            } else {
+                /* if rec adding to NEW SCHEMA and this has constraints,
+                 * handle idx in live_sc_*
+                 */
             }
-        } else {
-            /* if rec adding to NEW SCHEMA and this has constraints,
-             * handle idx in live_sc_*
-             */
+        }
+
+        if (!has_constraint(flags) || (rec_flags & OSQL_IGNORE_FAILURE)) {
+            retrc = add_record_indices(iq, trans, blobs, maxblobs, opfailcode,
+                    ixfailnum, rrn, genid, vgenid, ins_keys, opcode,
+                    blkpos, od_dta, od_len, ondisktag, ondisktagsc,
+                    flags, rec_flags);
+            if (retrc)
+                ERR;
         }
     }
-
-    if ( (strcasecmp(iq->usedb->tablename, "comdb2_oplog") == 0 ||
-         (strcasecmp(iq->usedb->tablename, "comdb2_commit_log")) == 0 ||
-         strncasecmp(iq->usedb->tablename, "sqlite_stat", 11) == 0) )
-        flags |= RECFLAGS_NO_REORDER_IDX;
-
-    if (!has_constraint(flags) || (rec_flags & OSQL_IGNORE_FAILURE)) {
-        retrc =
-            add_record_indices(iq, trans, blobs, maxblobs, opfailcode,
-                               ixfailnum, rrn, genid, vgenid, ins_keys, opcode,
-                               blkpos, od_dta, od_len, ondisktag, ondisktagsc,
-                               flags, rec_flags);
-        if (retrc)
-            ERR;
-    }
-
 
     /*
      * Trigger stored procedures (JAVASP_TRANS_LISTEN_AFTER_ADD)

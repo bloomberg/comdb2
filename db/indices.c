@@ -331,7 +331,10 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
         (flags & RECFLAGS_NO_CONSTRAINTS) &&
         (flags & RECFLAGS_NO_REORDER_IDX) == 0 &&
         rec_flags == 0 &&
-        iq->usedb->sc_from != iq->usedb;
+        iq->usedb->sc_from != iq->usedb &&
+        strcasecmp(iq->usedb->tablename, "comdb2_oplog") != 0  &&
+        strcasecmp(iq->usedb->tablename, "comdb2_commit_log") != 0 &
+        strncasecmp(iq->usedb->tablename, "sqlite_stat", 11) != 0;
 
 #if DEBUG_REORDER
     logmsg(LOGMSG_DEBUG, "%s(): entering, reorder = %d\n", __func__, reorder);
