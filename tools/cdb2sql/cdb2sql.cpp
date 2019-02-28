@@ -161,7 +161,8 @@ void cdb2sql_usage(int exit_val)
 }
 
 
-const char *words[] = {
+const char *level_one_words[] = {
+  "@desc", "@ls", "@send",
   "ALTER", "ANALYZE",
   "BEGIN",
   "COMMIT",
@@ -175,8 +176,31 @@ const char *words[] = {
   "SELECT", "SELECTV", "SET",
   "TRUNCATE",
   "UPDATE",
-  "WITH", NULL, }; // must be terminated by NULL
+  "WITH", NULL,  // must be terminated by NULL
+};
 
+
+const char *char_alpha_words[] = {
+    "desc", "ls", "send", NULL, // must be terminated by NULL
+};
+
+
+char *char_alpha_generator (const char *text, int state)
+{
+    static int list_index, len;
+    const char *name;
+    if (!state) { //if state is 0 get the length of text
+        list_index = 0;
+        len = strlen (text);
+    }
+    while ((name = char_alpha_words[list_index]) != NULL) {
+        list_index++;
+        if (len == 0 || strncasecmp (name, text, len) == 0) {
+            return strdup (name);
+        }
+    }
+    return ((char *) NULL); // If no names matched, then return NULL.
+}
 
 
 // Generator function for word completion.
@@ -188,7 +212,7 @@ char *level_one_generator (const char *text, int state)
         list_index = 0;
         len = strlen (text);
     }
-    while ((name = words[list_index]) != NULL) {
+    while ((name = level_one_words[list_index]) != NULL) {
         list_index++;
         if (len == 0 || strncasecmp (name, text, len) == 0) {
             return strdup (name);
@@ -297,8 +321,7 @@ char *generic_generator(const char *text, int state)
     char sql[256];
     //TODO: escape text
     snprintf(sql, sizeof(sql), 
-            "SELECT DISTINCT candidate "
-            "FROM comdb2_completion('%s')", text);
+             "SELECT DISTINCT candidate FROM comdb2_completion('%s')", text);
 
     return db_generator(state, sql);
 }
@@ -306,41 +329,64 @@ char *generic_generator(const char *text, int state)
 
 
 // Custom completion function
+//
+// text is the last word entered or space, 
+// start and end are the offsets of that last word in the rl_line_buffer
+// So if we are trying to complete in the middle of a word
+// text is the [partial] word, example: 
+//  > abra kadabr
+//   rl_line_buffer='abra kadabr' text='kadabr' start=5 end=11
+//
+// If we are completing after a space, word will be '' and start and end
+// will be the position of the [last] space in rl_line_buffer:
+// > abra kadabra  ^I
+// 'abra kadabra  ' text='' start=14 end=14
+//
 static char **my_completion (const char *text, int start, int end)
 {
     rl_attempted_completion_over = 1; // skip directory listing
+
+    if (start == 0) // input is blank
+        return rl_completion_matches(text, &level_one_generator);
+
     char *bgn = rl_line_buffer;
-    while(*bgn && *bgn == ' ') bgn++; // skip beginning spaces
+    while (*bgn && *bgn == ' ') bgn++; // skip beginning spaces
+    //bgn now points to \0 or to the beginning of first word
 
     char *endptr = bgn;
-    while(*endptr) endptr++; //go to end
 
-    if(endptr == bgn)
-        return rl_completion_matches ((char *) text, &level_one_generator);
+    if (*bgn) { //we definitely have a word, find the end of the line
+        while(*endptr) endptr++; //go to end, will point to \0
+        endptr--; //now point to the last character (can be space) in the line
 
-    endptr--;
-    // find last space (or will hit bgn)
-    while(endptr != bgn && *endptr != ' ') 
-        endptr--; 
+        // find last space (or will hit bgn)
+        while(endptr != bgn && *endptr != ' ') 
+            endptr--; 
+    }
 
-    if(endptr == bgn)
-        return rl_completion_matches ((char *) text, &level_one_generator);
+    if (endptr == bgn) { // we were in the middle of the first word
+        if (*bgn == '@')
+            return rl_completion_matches(text, &char_alpha_generator);
+        else
+            return rl_completion_matches(text, &level_one_generator);
+    }
+    if (bgn < endptr);
 
-    // find end of previous word
-    while(endptr != bgn && *endptr == ' ') 
+    // endptr points to a space, find end of previous word
+    while (*endptr == ' ') 
         endptr--;
 
     char *lastw = endptr;
     // find begining of previous word
-    while(lastw != bgn && *lastw != ' ') 
+    while (lastw != bgn && *lastw != ' ') 
         lastw--;
     lastw++;
 
-    int l = sizeof("TUNABLE") - 1;
-    if(endptr - lastw + 1 == l && strncasecmp(lastw, "TUNABLE", l) == 0)
-        return rl_completion_matches ((char *) text, &tunables_generator);
+    const int l = sizeof("TUNABLE") - 1;
+    if (endptr - lastw + 1 == l && strncasecmp(lastw, "TUNABLE", l) == 0)
+        return rl_completion_matches(text, &tunables_generator);
     else
-        return rl_completion_matches ((char *) text, &generic_generator);
+        return rl_completion_matches(text, &generic_generator);
 }
 
 

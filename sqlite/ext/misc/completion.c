@@ -242,10 +242,11 @@ static int completionNext(sqlite3_vtab_cursor *cur){
       case COMPLETION_TABLES: {
         if( pCur->pStmt==0 ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-          /* TODO: UNION vtables? */
           sqlite3_prepare_v2(pCur->db, 
                   "SELECT tablename FROM comdb2_tables "
-                  "WHERE tablename NOT LIKE 'sqlite_stat%' ORDER BY 1", 
+                  "WHERE tablename NOT LIKE 'sqlite_stat%' UNION "
+                  "SELECT name FROM comdb2_systables UNION "
+                  "SELECT comdb2_systables ORDER BY 1", 
                   -1, &pCur->pStmt, 0);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           sqlite3_stmt *pS2;
