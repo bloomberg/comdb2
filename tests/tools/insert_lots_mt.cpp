@@ -129,7 +129,7 @@ void *thr(void *arg)
         //runtag(db, s, types);
         cdb2_clearbindings(db);
         if((++count & 0xff) == 0) std::cout << "Thr " << i << " Items " << count << std::endl;
-        if (count >= transize) {
+        if (transize > 0 && (count % transize) == 0) {
             runsql(db, commit);
             runsql(db, begin);
         }
