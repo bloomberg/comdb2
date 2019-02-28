@@ -1613,8 +1613,8 @@ static int bdb_clean_pglog_queue(bdb_state_type *bdb_state,
     if (cur)
         curqe = cur->cur;
     /* Any orphan relinks at the front can be deleted */
-    qe = LISTC_TOP(&queue->queue_keys);
-    while (qe && qe->type == PGLOGS_QUEUE_RELINK) {
+    while ((qe = LISTC_TOP(&queue->queue_keys)) != NULL &&
+           qe->type == PGLOGS_QUEUE_RELINK) {
         qe = listc_rtl(&queue->queue_keys);
         return_pglogs_queue_key(qe);
 #ifdef ASOF_TRACE
@@ -1625,7 +1625,6 @@ static int bdb_clean_pglog_queue(bdb_state_type *bdb_state,
             cur->cur = NULL;
             goto done;
         }
-        qe = LISTC_TOP(&queue->queue_keys);
     }
 
     /* Find the last entry we can delete */
