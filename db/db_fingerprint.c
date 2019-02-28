@@ -20,10 +20,6 @@
 #include <errno.h>
 #include <string.h>
 #include <stddef.h>
-#if !defined(NDEBUG) && defined(_LINUX_SOURCE)
-#include <sys/mman.h>
-#include <unistd.h>
-#endif
 
 #include "logmsg.h"
 #include "md5.h"
@@ -51,49 +47,6 @@ extern int gbl_fingerprint_queries;
 extern int gbl_verbose_normalized_queries;
 int gbl_fingerprint_max_queries = 1000; /* TODO: Tunable? */
 
-#if !defined(NDEBUG) && defined(_LINUX_SOURCE)
-#define STRDUP_PAGE_SIZE 4096
-
-static size_t memdup_sizeof(
-  size_t nStr
-){
-  size_t nPage = nStr / STRDUP_PAGE_SIZE;
-  if( nStr%STRDUP_PAGE_SIZE!=0 ) nPage++;
-  return nPage * STRDUP_PAGE_SIZE;
-}
-
-static char *memdup_readonly(
-  const char *zStr,
-  size_t nStr
-){
-  void *p;
-  size_t nSize = memdup_sizeof(nStr);
-  if( zStr==0 ) return 0;
-  p = mmap(0, nSize, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
-  if( p==MAP_FAILED ) return 0;
-  memset(p, 0, nSize);
-  memcpy(p, zStr, nStr);
-  if( mprotect(p, nSize, PROT_READ)!=0 ){
-    memset(p, 0, nSize);
-    munmap(p, nSize);
-    return 0;
-  }
-  return p;
-}
-
-static void memdup_free(
-  char *zStr,
-  size_t nStr
-){
-  void *p = zStr;
-  size_t nSize = memdup_sizeof(nStr);
-  if( p==0 ) return;
-  if( mprotect(p, nSize, PROT_READ|PROT_WRITE)!=0 ) return;
-  memset(p, 0, nSize);
-  munmap(p, nSize);
-}
-#endif /* !defined(NDEBUG) && defined(_LINUX_SOURCE) */
-
 /* Normalize a query - replace literals with ?.  Assumes dest is allocated to be
  * at least as large as source.  This code has been heavily revised to use the
  * upstream SQL normalization API provided by upstream SQLite.  Any subsequent
@@ -108,12 +61,7 @@ static void normalize_query(sqlite3 *db, char *zSql, char **pzNormSql) {
     if (rc == SQLITE_OK) {
         const char *zNormSql = sqlite3_normalized_sql(p);
         if (zNormSql != NULL) {
-#if !defined(NDEBUG) && defined(_LINUX_SOURCE)
-            size_t nNormSql = strlen(zNormSql);
-            *pzNormSql = memdup_readonly(zNormSql, nNormSql + 1);
-#else
             *pzNormSql = strdup(zNormSql);
-#endif
         }
     } else if (gbl_verbose_normalized_queries) {
         logmsg(LOGMSG_ERROR,
@@ -123,7 +71,7 @@ static void normalize_query(sqlite3 *db, char *zSql, char **pzNormSql) {
     sqlite3_finalize(p); /* p may be NULL and that is OK */
 }
 
-int debug_fingerprints() {
+int dump_fingerprints() {
     int result = 0;
 
     Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
@@ -197,11 +145,7 @@ void add_fingerprint(sqlite3 *sqldb, int64_t cost, int64_t time, int64_t nrows,
                     complain_once = 0;
                 }
                 Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
-#if !defined(NDEBUG) && defined(_LINUX_SOURCE)
-                memdup_free(zNormSql, nNormSql + 1);
-#else
                 free(zNormSql);
-#endif
                 goto done;
             }
             t = calloc(1, sizeof(struct fingerprint_track));
@@ -217,7 +161,7 @@ void add_fingerprint(sqlite3 *sqldb, int64_t cost, int64_t time, int64_t nrows,
             if (gbl_verbose_normalized_queries) {
                 char fp[FINGERPRINTSZ*2+1]; /* 16 ==> 33 */
                 util_tohex(fp, t->fingerprint, FINGERPRINTSZ);
-                logmsg(LOGMSG_USER, "NORMALIZED [%s] %s -> %s\n",
+                logmsg(LOGMSG_USER, "NORMALIZED [%s] {%s} ==> {%s}\n",
                        fp, sql, t->zNormSql);
             }
         } else {
@@ -228,12 +172,9 @@ void add_fingerprint(sqlite3 *sqldb, int64_t cost, int64_t time, int64_t nrows,
             assert( verify_fingerprints()==0 );
             assert( memcmp(t->fingerprint,fingerprint,FINGERPRINTSZ)==0 );
             assert( t->zNormSql!=zNormSql );
-            assert( strcmp(t->zNormSql,zNormSql)==0 );
-#if !defined(NDEBUG) && defined(_LINUX_SOURCE)
-            memdup_free(zNormSql, nNormSql + 1);
-#else
+            assert( t->nNormSql==nNormSql );
+            assert( strncmp(t->zNormSql,zNormSql,t->nNormSql)==0 );
             free(zNormSql);
-#endif
         }
         Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
     }

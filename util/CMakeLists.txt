@@ -21,6 +21,7 @@ set(src
   list.c
   lockassert.c
   logmsg.c
+  memdup.c
   misc.c
   nodemap.c
   object_pool.c
