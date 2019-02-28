@@ -681,3 +681,17 @@ constraints
 		"$KEY_A44A20B" -> <"t1":"$KEY_4DE4D8DB"> 
 	}
 ')
+(csc2='schema
+	{
+		vutf8 json[128] null = yes 
+		cstring v[10] null = yes 
+	}
+keys
+	{
+		uniqnulls "$KEY_4084D7CF" = (int)" json_extract ( json, '$.a' ) " 
+		uniqnulls "$KEY_E1DFD69F" = (cstring[10])" json_extract ( json, '$.b' ) " 
+		uniqnulls "IDX1" = (cstring[10])"( v || 'aaa' )" 
+		dup "IDX2" = (cstring[10])"( v || 'aaa' )" 
+		dup "idx3" = (cstring[10])"( v || '\"aaa\"' )" 
+	}
+')

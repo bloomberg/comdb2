@@ -2610,6 +2610,7 @@ static char *format_csc2(struct comdb2_ddl_context *ctx)
                 strbuf_append(csc2, "+ ");
             }
 
+            /* Expression index parts do not have column reference. */
             assert(((idx_part->flags & INDEX_IS_EXPR) != 0) ||
                    ((idx_part->column->flags & COLUMN_DELETED) == 0));
 
@@ -3304,23 +3305,74 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
             if (idx_part == 0)
                 goto oom;
 
-            idx = schema->ix[i]->member[j].idx;
-            /* Retrieve the column at the given position. */
-            LISTC_FOR_EACH(&ctx->schema->column_list, column, lnk)
-            {
-                if (idx == 0)
-                    break;
-                idx--;
+            if (schema->ix[i]->member[j].isExpr) {
+                struct strbuf *csc2_expr;
+                struct comdb2_column expr_col;
+                char *c;
+
+                /* field.idx is the index of column in the table. It's -1
+                 * for index on expression. */
+                assert(schema->ix[i]->member[j].idx == -1);
+                idx_part->flags |= INDEX_IS_EXPR;
+
+                csc2_expr = strbuf_new();
+
+                /* Type */
+                expr_col.type = schema->ix[i]->member[j].type;
+                expr_col.len =schema->ix[i]->member[j].len;
+
+                /* Convert type and length */
+                prepare_column_for_csc2(&expr_col);
+                strbuf_appendf(csc2_expr, "(%s", type_comdb2_str[expr_col.type]);
+                if (expr_col.len > 0) {
+                    strbuf_appendf(csc2_expr, "[%d]", expr_col.len);
+                }
+                strbuf_append(csc2_expr, ")\"");
+
+                /* Expression */
+                c = schema->ix[i]->member[j].name;
+                while(*c) {
+                    if (*c == '"') {
+                        strbuf_append(csc2_expr, "\\\"");
+                    } else {
+                        strbuf_appendf(csc2_expr, "%c", *c);
+                    }
+                    ++c;
+                }
+                strbuf_append(csc2_expr, "\"");
+
+                idx_part->name =
+                    comdb2_strdup(ctx->mem, (char *) strbuf_buf(csc2_expr));
+
+                strbuf_free(csc2_expr);
+
+                /* No need to refer to the column as we have got all required
+                 * information */
+                idx_part->column = 0;
+            } else {
+                /* Column name */
+                idx_part->name = schema->ix[i]->member[j].name;
+
+                idx = schema->ix[i]->member[j].idx;
+                /* Retrieve the column at the given position. */
+                LISTC_FOR_EACH(&ctx->schema->column_list, column, lnk)
+                {
+                    if (idx == 0)
+                        break;
+                    idx--;
+                }
+
+                /* Column name */
+                idx_part->name = column->name;
+
+                /* Column reference */
+                idx_part->column = column;
             }
 
-            /* Column name */
-            idx_part->name = column->name;
             /* Column flags */
             if (schema->ix[i]->member[j].flags & INDEX_DESCEND) {
                 idx_part->flags |= INDEX_ORDER_DESC;
             }
-            /* Column reference */
-            idx_part->column = column;
 
             listc_abl(&key->idx_col_list, idx_part);
         }
@@ -4201,7 +4253,7 @@ static void comdb2AddIndexInt(
                 char *type;
                 char *ptr;
                 char *expr;
-                size_t expr_sz;
+                struct strbuf *csc2_expr;
 
                 v = sqlite3GetVdbe(pParse);
                 expr = sqlite3ExprDescribe(v, pListItem->pExpr->pLeft);
@@ -4211,14 +4263,12 @@ static void comdb2AddIndexInt(
                     goto cleanup;
                 }
 
-                expr_sz = strlen(expr) + 50;
-                idx_part->name = comdb2_malloc(ctx->mem, expr_sz);
-                if (idx_part->name == 0) {
-                    goto oom;
-                }
+                csc2_expr = strbuf_new();
 
+                /* Type */
                 type = comdb2_strndup(ctx->mem, pListItem->pExpr->u.zToken,
                                       strlen(pListItem->pExpr->u.zToken) + 1);
+                /* Fix the type: convert '()' (sql-land) to '[]' (csc2-land) */
                 ptr = type;
                 while (*ptr) {
                     switch (*ptr) {
@@ -4232,9 +4282,30 @@ static void comdb2AddIndexInt(
                     *ptr = tolower(*ptr);
                     ++ptr;
                 }
-                snprintf(idx_part->name, expr_sz, "(%s)\"%s\"", type, expr);
-                idx_part->flags |= INDEX_IS_EXPR;
+                strbuf_appendf(csc2_expr, "(%s)", type);
+
+                /* Expression */
+                strbuf_append(csc2_expr, "\"");
+                ptr = expr;
+                while(*ptr) {
+                    if (*ptr == '"') {
+                        strbuf_append(csc2_expr, "\\\"");
+                    } else {
+                        strbuf_appendf(csc2_expr, "%c", *ptr);
+                    }
+                    ++ptr;
+                }
+                strbuf_append(csc2_expr, "\"");
+
+                idx_part->name =
+                    comdb2_strdup(ctx->mem, (char *) strbuf_buf(csc2_expr));
+
+                strbuf_free(csc2_expr);
+
+                /* No need to refer to the column as we have got all required
+                 * information */
                 idx_part->column = 0;
+                idx_part->flags |= INDEX_IS_EXPR;
                 break;
             }
             default:
