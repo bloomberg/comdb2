@@ -1139,3 +1139,17 @@ keys
 [INSERT INTO t1 VALUES ('{"a":0,"b":"zero"}'), ('{"a":1,"b":"one"}')] failed with rc 299 add key constraint duplicate key '$KEY_4084D7CF' on table 't1' index 0
 (json='{"a":0,"b":"zero"}')
 (json='{"a":1,"b":"one"}')
+(part='---------------------------------- PART #60 ----------------------------------')
+(csc2='schema
+	{
+		int i null = yes 
+	}
+keys
+	{
+		dup "$KEY_A44A20B" = i 
+	}
+constraints
+	{
+		"mycons1" = "$KEY_A44A20B" -> <"t1":"COMDB2_PK"> on update cascade on delete cascade 
+	}
+')

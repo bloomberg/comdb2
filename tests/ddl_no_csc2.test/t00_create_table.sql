@@ -456,3 +456,10 @@ INSERT INTO t1 VALUES ('{"a":0,"b":"zero"}'), ('{"a":1,"b":"one"}');
 INSERT INTO t1 VALUES ('{"a":0,"b":"zero"}'), ('{"a":1,"b":"one"}');
 SELECT * FROM t1;
 DROP TABLE t1;
+
+SELECT '---------------------------------- PART #60 ----------------------------------' AS part;
+CREATE TABLE t1(i INT PRIMARY KEY)$$
+CREATE TABLE t2(i INT CONSTRAINT mycons1 REFERENCES t1(i) ON UPDATE CASCADE ON DELETE CASCADE)$$
+SELECT csc2 FROM sqlite_master WHERE tbl_name = 't2' AND type = 'table';
+DROP TABLE t2;
+DROP TABLE t1;
