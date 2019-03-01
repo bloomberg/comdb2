@@ -491,12 +491,14 @@ static int bdb_verify_ll(
                             locprint(sb, lua_callback, lua_params,
                                 "!%016llx blob %d null but found blob\n",
                                 genid_flipped, blobno);
+                            had_errors = 1;
                         } else if (blobsizes[blobno] == -2) {
                             ret = 1;
                             locprint(sb, lua_callback, lua_params, "!%016llx blob %d size %d expected "
                                             "none (inline vutf8)\n",
                                         genid_flipped, blobno,
                                         realblobsz[blobno]);
+                            had_errors = 1;
                         } else if (blobsizes[blobno] != -1 &&
                                    dbt_blob_data.size != blobsizes[blobno]) {
                             ret = 1;

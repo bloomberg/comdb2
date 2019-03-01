@@ -39,8 +39,8 @@ static void register_once(void)
 
 static int TEST_init_once_registration(const char *db, const char *tier)
 {
-    extern void (*cdb2_init)(void);
-    cdb2_init = register_once;
+    extern void (*cdb2_install)(void);
+    cdb2_install = register_once;
     return 0;
 }
 

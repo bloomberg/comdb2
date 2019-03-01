@@ -821,14 +821,12 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                 } else {
                     reqerrstr(iq, COMDB2_CSTRT_RC_CASCADE,
                               "verify key constraint cannot cascade delete "
-                              "table '%s' rrn %d",
-                              bct->srcdb->tablename, rrn);
+                              "table '%s' rc %d",
+                              bct->srcdb->tablename, rc);
                     *errout = OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT;
                 }
                 close_constraint_table_cursor(cur);
-                if (rc == RC_INTERNAL_RETRY)
-                    return rc; /* bubble up internal retry */
-                return ERR_BADREQ;
+                return rc;
             }
             /* here, we need to retry to verify the constraint */
             /* sub 1 to go to current constraint again */
@@ -883,14 +881,12 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                 } else {
                     reqerrstr(iq, COMDB2_CSTRT_RC_CASCADE,
                               "verify key constraint cannot cascade update "
-                              "table '%s' rrn %d",
-                              bct->srcdb->tablename, rrn);
+                              "table '%s' rc %d",
+                              bct->srcdb->tablename, rc);
                     *errout = OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT;
                 }
                 close_constraint_table_cursor(cur);
-                if (rc == RC_INTERNAL_RETRY)
-                    return rc; /* bubble up internal retry */
-                return ERR_BADREQ;
+                return rc;
             }
             /* here, we need to retry to verify the constraint */
             continue;

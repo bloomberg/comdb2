@@ -735,7 +735,7 @@ retry:
     osql->host = thedb->master;
 
     /* protect against no master */
-    if (osql->host == NULL) {
+    if (osql->host == NULL || osql->host == db_eid_invalid) {
         /* wait up to 50 seconds for a new master */
         if (retries < 100) {
             retries++;
@@ -1133,37 +1133,32 @@ retry:
                     } else if (osql->xerr.errval == ERR_NOT_DURABLE ||
                                rc == SQLITE_CLIENT_CHANGENODE) {
                         /* Ask the client to change nodes */
-                        sql_debug_logf(
-                            clnt, __func__, __LINE__,
-                            "got %d and "
-                            "setting rcout to CHANGENODE, errval is %d\n",
-                            rc, osql->xerr.errval);
+                        sql_debug_logf(clnt, __func__, __LINE__,
+                                       "got %d and setting rcout to "
+                                       "CHANGENODE, errval is %d\n",
+                                       rc, osql->xerr.errval);
                         rcout = SQLITE_CLIENT_CHANGENODE;
                     } else if (rc == SQLITE_COMDB2SCHEMA) {
                         /* Schema has changed */
                         sql_debug_logf(clnt, __func__, __LINE__,
-                                       "got %d and "
-                                       "setting rcout to SQLITE_COMDB2SCHEMA, "
-                                       "errval is %d\n",
+                                       "got %d and setting rcout to "
+                                       "SQLITE_COMDB2SCHEMA, errval is %d\n",
                                        rc, osql->xerr.errval);
                         rcout = SQLITE_COMDB2SCHEMA;
                     } else {
-                        sql_debug_logf(
-                            clnt, __func__, __LINE__,
-                            "got %d and "
-                            "setting rcout to SQLITE_ABORT, errval is "
-                            "%d\n",
-                            rc, osql->xerr.errval);
+                        sql_debug_logf(clnt, __func__, __LINE__,
+                                       "got %d and setting rcout to "
+                                       "SQLITE_ABORT, errval is %d\n",
+                                       rc, osql->xerr.errval);
                         // SQLITE_ABORT comes out as a "4" in the client,
                         // which is translated to 4 'null key constraint'.
                         rcout = SQLITE_ABORT;
                     }
                 } else {
-                    sql_debug_logf(
-                        clnt, __func__, __LINE__,
-                        "got %d and "
-                        "setting rcout to SQLITE_TOOBIG, errval is %d\n",
-                        rc, osql->xerr.errval);
+                    sql_debug_logf(clnt, __func__, __LINE__,
+                                   "got %d and setting rcout to SQLITE_TOOBIG, "
+                                   "errval is %d\n",
+                                   rc, osql->xerr.errval);
                     rcout = SQLITE_TOOBIG;
                 }
             } else {

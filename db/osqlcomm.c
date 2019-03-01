@@ -5476,10 +5476,8 @@ static void net_osql_heartbeat(void *hndl, void *uptr, char *fromnode,
 static void net_osql_poked(void *hndl, void *uptr, char *fromhost, int usertype,
                            void *dtap, int dtalen, uint8_t is_tcp)
 {
-    uint8_t *p_buf = dtap;
-    uint8_t *p_buf_end = p_buf + dtalen;
     osql_poke_t poke;
-    int found = 0;
+    bool found = false;
     int rc = 0;
     uuid_t uuid;
 
@@ -5490,6 +5488,8 @@ static void net_osql_poked(void *hndl, void *uptr, char *fromhost, int usertype,
         return;
     }
 
+    uint8_t *p_buf = dtap;
+    uint8_t *p_buf_end = p_buf + dtalen;
     if (!(osqlcomm_poke_type_get(&poke, p_buf, p_buf_end))) {
         logmsg(LOGMSG_ERROR, "%s: invalid data length\n", __func__);
         return;
@@ -5497,34 +5497,33 @@ static void net_osql_poked(void *hndl, void *uptr, char *fromhost, int usertype,
 
     found = osql_chkboard_sqlsession_exists(poke.rqid, uuid, 1);
 
-    if (!found) {
+    /* TODO: we could send something back... but in tough times this will
+     * not make it nevertheless */
+    if (found)
+        return;
 
-        /* send a done with an error, lost request */
-        uint8_t buf[OSQLCOMM_DONE_XERR_RPL_LEN];
-        uint8_t *p_buf = buf, *p_buf_end = buf + OSQLCOMM_DONE_XERR_RPL_LEN;
-        osql_done_xerr_t rpl;
+    /* not found so send a done with an error, lost request */
+    uint8_t buf[OSQLCOMM_DONE_XERR_RPL_LEN];
+    p_buf = buf;
+    p_buf_end = buf + OSQLCOMM_DONE_XERR_RPL_LEN;
+    osql_done_xerr_t rpl;
 
-        rpl.hd.type = OSQL_XERR;
-        rpl.hd.sid = poke.rqid;
-        rpl.dt.errval = OSQL_NOOSQLTHR;
-        uuidstr_t us;
-        /* TODO:NOENV:uuid - should come from new msg type */
-        snprintf((char *)&rpl.dt.errstr, sizeof(rpl.dt.errstr),
-                 "Missing sql session %llx %s on %s\n", poke.rqid,
-                 comdb2uuidstr(uuid, us), gbl_mynode);
+    rpl.hd.type = OSQL_XERR;
+    rpl.hd.sid = poke.rqid;
+    rpl.dt.errval = OSQL_NOOSQLTHR;
+    uuidstr_t us;
+    /* TODO:NOENV:uuid - should come from new msg type */
+    snprintf((char *)&rpl.dt.errstr, sizeof(rpl.dt.errstr),
+             "Missing sql session %llx %s on %s\n", poke.rqid,
+             comdb2uuidstr(uuid, us), gbl_mynode);
 
-        osqlcomm_done_xerr_type_put(&rpl, p_buf, p_buf_end);
+    osqlcomm_done_xerr_type_put(&rpl, p_buf, p_buf_end);
 
-        if ((rc = offload_net_send(fromhost, NET_OSQL_BLOCK_RPL, buf,
-                                   sizeof(buf), 1))) {
-            logmsg(LOGMSG_ERROR, 
-                    "%s: error writting record to master in offload mode rc=%d!\n",
-                    __func__, rc);
-        }
-
-    } else {
-        /* TODO: we could send something back... but in tough times this will
-         * not make it nevertheless */
+    if ((rc = offload_net_send(fromhost, NET_OSQL_BLOCK_RPL, buf, sizeof(buf),
+                               1))) {
+        logmsg(LOGMSG_ERROR,
+               "%s: error writting record to master in offload mode rc=%d!\n",
+               __func__, rc);
     }
 }
 
@@ -5535,7 +5534,7 @@ static void net_osql_poked_uuid(void *hndl, void *uptr, char *fromhost,
     uint8_t *p_buf = dtap;
     uint8_t *p_buf_end = p_buf + dtalen;
     osql_poke_uuid_t poke;
-    int found = 0;
+    bool found = false;
     int rc = 0;
 
     if (thedb->exiting || thedb->stopped) {
@@ -5550,35 +5549,33 @@ static void net_osql_poked_uuid(void *hndl, void *uptr, char *fromhost,
 
     found = osql_chkboard_sqlsession_exists(OSQL_RQID_USE_UUID, poke.uuid, 1);
 
-    if (!found) {
+    /* TODO: we could send something back... but in tough times this will
+     * not make it nevertheless */
+    if (found)
+        return;
 
-        /* send a done with an error, lost request */
-        uint8_t buf[OSQLCOMM_DONE_XERR_UUID_RPL_LEN];
-        uint8_t *p_buf = buf,
-                *p_buf_end = buf + OSQLCOMM_DONE_XERR_UUID_RPL_LEN;
-        osql_done_xerr_uuid_t rpl;
+    /* not found so send a done with an error, lost request */
+    uint8_t buf[OSQLCOMM_DONE_XERR_UUID_RPL_LEN];
+    p_buf = buf;
+    p_buf_end = buf + OSQLCOMM_DONE_XERR_UUID_RPL_LEN;
+    osql_done_xerr_uuid_t rpl;
 
-        rpl.hd.type = OSQL_XERR;
-        comdb2uuidcpy(rpl.hd.uuid, poke.uuid);
-        rpl.dt.errval = OSQL_NOOSQLTHR;
-        uuidstr_t us;
+    rpl.hd.type = OSQL_XERR;
+    comdb2uuidcpy(rpl.hd.uuid, poke.uuid);
+    rpl.dt.errval = OSQL_NOOSQLTHR;
+    uuidstr_t us;
 
-        snprintf((char *)&rpl.dt.errstr, sizeof(rpl.dt.errstr),
-                 "Missing sql session %s on %s\n", comdb2uuidstr(poke.uuid, us),
-                 gbl_mynode);
+    snprintf((char *)&rpl.dt.errstr, sizeof(rpl.dt.errstr),
+             "Missing sql session %s on %s\n", comdb2uuidstr(poke.uuid, us),
+             gbl_mynode);
 
-        osqlcomm_done_xerr_uuid_type_put(&rpl, p_buf, p_buf_end);
+    osqlcomm_done_xerr_uuid_type_put(&rpl, p_buf, p_buf_end);
 
-        if ((rc = offload_net_send(fromhost, NET_OSQL_BLOCK_RPL_UUID, buf,
-                                   sizeof(buf), 1))) {
-            logmsg(LOGMSG_ERROR, 
-                   "%s: error writting record to master in offload mode rc=%d!\n",
-                   __func__, rc);
-        }
-
-    } else {
-        /* TODO: we could send something back... but in tough times this will
-         * not make it nevertheless */
+    if ((rc = offload_net_send(fromhost, NET_OSQL_BLOCK_RPL_UUID, buf,
+                               sizeof(buf), 1))) {
+        logmsg(LOGMSG_ERROR,
+               "%s: error writting record to master in offload mode rc=%d!\n",
+               __func__, rc);
     }
 }
 
@@ -9610,5 +9607,21 @@ freemem:
     if (p_buf)
         free(p_buf);
 
+    return rc;
+}
+
+/* test osql stream sending a dummy uuid OSQL_DONE request */
+int osql_send_test(SBUF2 *sb)
+{
+    struct errstat xerr = {0};
+    int nettype = NET_OSQL_SOCK_RPL_UUID;
+    snap_uid_t snap_info = {{0}};
+    snap_info.replicant_can_retry = 0;
+    snap_info.uuid[0] = 1; // just assign dummy cnonce here
+    int rc;
+
+    rc = osql_send_commit_by_uuid(thedb->master, snap_info.uuid, 1 /*numops*/,
+                                  &xerr, nettype, sb /*logsb*/,
+                                  NULL /*clnt->query_stats*/, &snap_info);
     return rc;
 }
