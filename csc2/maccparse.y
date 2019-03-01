@@ -63,6 +63,7 @@
 %token T_ASCEND T_DESCEND T_DUP					/*MODIFIERS*/
 
 %token T_LT T_GT 
+%token T_EQ
 
 %type <number> validctype validstrtype valididxstrtype
 %type <numstr>      number
@@ -139,7 +140,7 @@ cnstrtstart:    string '-' T_GT { end_constraint_list(); start_constraint_list($
                 ;
 
 /* Named constraint (introduced in r7) */
-cnstrtnamedstart: string '=' string '-' T_GT {
+cnstrtnamedstart: string T_EQ string '-' T_GT {
                       end_constraint_list();
                       start_constraint_list($3);
                       set_constraint_name($1);
