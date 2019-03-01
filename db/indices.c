@@ -317,7 +317,7 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
                        unsigned long long vgenid, unsigned long long ins_keys,
                        int opcode, int blkpos, void *od_dta, size_t od_len,
                        const char *ondisktag, struct schema *ondisktagsc,
-                       int flags, int rec_flags)
+                       int flags, bool reorder)
 {
     int rc = 0;
     char *od_dta_tail = NULL;
@@ -327,15 +327,6 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
 
     void *cur = NULL;
     dtikey_t ditk = {0};
-    bool reorder = gbl_reorder_idx_writes &&
-        !is_event_from_sc(flags) &&
-        (flags & RECFLAGS_NO_CONSTRAINTS) &&
-        (flags & RECFLAGS_NO_REORDER_IDX) == 0 &&
-        rec_flags == 0 &&
-        iq->usedb->sc_from != iq->usedb &&
-        strcasecmp(iq->usedb->tablename, "comdb2_oplog") != 0  &&
-        strcasecmp(iq->usedb->tablename, "comdb2_commit_log") != 0 &&
-        strncasecmp(iq->usedb->tablename, "sqlite_stat", 11) != 0;
 
 #if DEBUG_REORDER
     logmsg(LOGMSG_DEBUG, "%s(): entering, reorder = %d\n", __func__, reorder);
