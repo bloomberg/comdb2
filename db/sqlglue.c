@@ -12558,7 +12558,7 @@ int comdb2_check_vtab_access(sqlite3 *db, sqlite3_module *module)
                 snprintf(msg, sizeof(msg),
                          "Read access denied to %s for user %s bdberr=%d",
                          mod->zName, thd->clnt->user, bdberr);
-                logmsg(LOGMSG_WARN, "%s\n", msg);
+                logmsg(LOGMSG_INFO, "%s\n", msg);
                 errstat_set_rc(&thd->clnt->osql.xerr, SQLITE_ACCESS);
                 errstat_set_str(&thd->clnt->osql.xerr, msg);
                 return SQLITE_AUTH;
