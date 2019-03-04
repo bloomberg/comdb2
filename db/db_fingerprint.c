@@ -115,7 +115,7 @@ void add_fingerprint(sqlite3 *sqldb, int64_t cost, int64_t time, int64_t nrows,
             assert( strncmp(t->zNormSql,zNormSql,t->nNormSql)==0 );
             free(zNormSql);
         }
-        reqlog_set_fingerprint(logger, fingerprint);
+        reqlog_set_fingerprint(logger,(const char*)fingerprint,FINGERPRINTSZ);
         Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
     }
 done:
