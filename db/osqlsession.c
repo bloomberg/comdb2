@@ -31,9 +31,6 @@
 
 #include <uuid/uuid.h>
 
-int gbl_osql_sess_max_retries =
-    10; /* set how many times we are willing to retry a session */
-
 static int osql_poke_replicant(osql_sess_t *sess);
 static void _destroy_session(osql_sess_t **prq, int phase);
 static int clear_messages(osql_sess_t *sess);
