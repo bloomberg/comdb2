@@ -1122,6 +1122,6 @@ struct query_stats {
     int64_t npwrites;
 };
 int get_query_stats(struct query_stats *stats);
-void add_fingerprint(sqlite3 *, int64_t, int64_t, int64_t, char *);
+void add_fingerprint(sqlite3 *, int64_t, int64_t, int64_t, char *, struct reqlogger *);
 
 #endif
