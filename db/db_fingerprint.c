@@ -58,7 +58,7 @@ static void normalize_query(sqlite3 *db, char *zSql, char **pzNormSql) {
 }
 
 void add_fingerprint(sqlite3 *sqldb, int64_t cost, int64_t time, int64_t nrows,
-                     char *sql) {
+                     char *sql, struct reqlogger *logger) {
     char *zNormSql = NULL;
 
     normalize_query(sqldb, sql, &zNormSql);
@@ -115,6 +115,7 @@ void add_fingerprint(sqlite3 *sqldb, int64_t cost, int64_t time, int64_t nrows,
             assert( strncmp(t->zNormSql,zNormSql,t->nNormSql)==0 );
             free(zNormSql);
         }
+        reqlog_set_fingerprint(logger, fingerprint);
         Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
     }
 done:

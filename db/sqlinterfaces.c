@@ -971,7 +971,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     }
 
     if (gbl_fingerprint_queries && (clnt->thd != NULL)) {
-        add_fingerprint(clnt->thd->sqldb, h->cost, h->time, clnt->nrows, h->sql);
+        add_fingerprint(clnt->thd->sqldb, h->cost, h->time, clnt->nrows, h->sql, logger);
     }
 
     if (clnt->query_stats == NULL) {
@@ -2055,14 +2055,6 @@ static int add_stmt_table(struct sqlthdstate *thd, const char *sql,
     strcpy(entry->sql, sql); /* sql is at most MAX_HASH_SQL_LENGTH - 1 */
     entry->stmt = stmt;
 
-    if (gbl_fingerprint_queries) {
-        size_t fsz = sqlite3_fingerprint_size(thd->sqldb);
-        size_t min_fsz = (sizeof(entry->fingerprint) < fsz)
-                             ? sizeof(entry->fingerprint)
-                             : fsz;
-        memcpy(entry->fingerprint, sqlite3_fingerprint(thd->sqldb), min_fsz);
-    }
-
     if (actual_sql && gbl_debug_temptables)
         entry->query = strdup(actual_sql);
     else
@@ -2696,14 +2688,6 @@ void query_stats_setup(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
     /* reqlog */
     setup_reqlog(thd, clnt);
-
-    if (thd->sqldb != NULL) {
-        /* fingerprint info */
-        if (gbl_fingerprint_queries)
-            sqlite3_fingerprint_enable(thd->sqldb);
-        else
-            sqlite3_fingerprint_disable(thd->sqldb);
-    }
 
     /* using case sensitive like? enable */
     if (clnt->using_case_insensitive_like)
@@ -3727,14 +3711,6 @@ static inline void post_run_reqlog(struct sqlthdstate *thd,
     log_queue_time(thd->logger, clnt);
     if (rec->sql)
         reqlog_set_sql(thd->logger, rec->sql);
-    if (gbl_fingerprint_queries) {
-        if (rec->stmt_entry)
-            reqlog_set_fingerprint(thd->logger, rec->stmt_entry->fingerprint,
-                                   sizeof(rec->stmt_entry->fingerprint));
-        else
-            reqlog_set_fingerprint(thd->logger, sqlite3_fingerprint(thd->sqldb),
-                                   sqlite3_fingerprint_size(thd->sqldb));
-    }
 }
 
 int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
