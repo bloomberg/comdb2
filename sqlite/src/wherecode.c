@@ -892,7 +892,8 @@ static int codeCursorHintFixExpr(Walker *pWalker, Expr *pExpr){
       pExpr->iTable = pHint->iIdxCur;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
       /* NOTE: this breaks remote sql; discussion in progress to push this upstream */
-      /*pExpr->iColumn = sqlite3ColumnOfIndex(pHint->pIdx, pExpr->iColumn);*/
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+      pExpr->iColumn = sqlite3ColumnOfIndex(pHint->pIdx, pExpr->iColumn);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       assert( pExpr->iColumn>=0 );
     }
