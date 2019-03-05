@@ -7526,7 +7526,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     case OSQL_BPFUNC: {
         uint8_t *p_buf_end = (uint8_t *)msg + sizeof(osql_bpfunc_t) + msglen;
         osql_bpfunc_t *rpl = NULL;
-        char err[MSGERR_MAXLEN]; // TODO TO BE REMOVED
 
         const uint8_t *n_p_buf =
             osqlcomm_bpfunc_type_get(&rpl, p_buf, p_buf_end);
@@ -7539,7 +7538,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             info.iq = iq;
             int rst = bpfunc_prepare(&func, rpl->data_len, rpl->data, &info);
             if (!rst)
-                rc = func->exec(trans, func, err);
+                rc = func->exec(trans, func, &iq->errstat);
 
             if (rst || rc) {
                 free_bpfunc(func);

@@ -35,6 +35,22 @@ void logical_cron_set(sched_if_t *impl, unsigned long long val);
  * Restart a logical scheduler 
  *
  */
-int logical_partition_init(const char *name, struct errstat *err);
+int logical_cron_init(const char *name, struct errstat *err);
+
+/**
+ * Set a persistent logical counter 
+ * If the counter "name" doesn't exist, it is created first
+ *
+ */
+int logical_cron_bend_set(tran_type *tran, const char *name,
+        unsigned long long value, struct errstat *err);
+
+/**
+ * Increment a persistent logical counter;
+ * If the counter doesn't exists, it is created and set to 0
+ *
+ */
+int logical_cron_bend_incr(tran_type *tran, const char *name,
+        struct errstat *err);
 
 #endif

@@ -1921,10 +1921,16 @@ int getdefaultdatsize(const struct dbtable *db);
 int getondiskclientdatsize(const struct dbtable *db);
 int getclientdatsize(const struct dbtable *db, char *sname);
 
-struct dbtable *getdbbynum(int num);           /*look up managed db's by number*/
-struct dbtable *get_dbtable_by_name(const char *name); /*look up managed db's by name*/
-struct dbtable *
-getqueuebyname(const char *name); /*look up managed queue db's by name*/
+/*look up managed db's by number*/
+struct dbtable *getdbbynum(int num);
+/*look up managed db's by name*/
+struct dbtable *get_dbtable_by_name(const char *name);
+/* lookup a table by name; if it exists, lock table readonly
+   if there is no table, lock table in write mode
+   NOTE: if there is no tran object, this behaves like get_dbtable_by_name */
+struct dbtable *get_dbtable_by_name_locked(tran_type *tran, const char *name);
+/*look up managed queue db's by name*/
+struct dbtable * getqueuebyname(const char *name);
 struct dbtable *getfdbbyrmtnameenv(struct dbenv *dbenv, const char *tblname);
 
 int get_elect_time_microsecs(void); /* get election time in seconds */

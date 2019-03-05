@@ -278,7 +278,7 @@ int timepart_add_view(void *tran, timepart_views_t *views,
     int tm;
 
     if (view->period == VIEW_PARTITION_MANUAL) {
-        if ((rc = logical_partition_init(view->name, err))!=0) {
+        if ((rc = logical_cron_init(view->name, err))!=0) {
             errstat_set_strf(err, "Failed to create logical scheduler for %s", view->name);
             errstat_set_rc(err, rc = VIEW_ERR_GENERIC);
             goto done;
@@ -1787,7 +1787,7 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
     int i;
 
     if (view->period == VIEW_PARTITION_MANUAL) {
-        logical_partition_init(view->name, err);
+        logical_cron_init(view->name, err);
     }
 
     if (unlikely(view->period == VIEW_PARTITION_TEST2MIN)) {

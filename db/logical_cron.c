@@ -14,6 +14,7 @@
    limitations under the License.
  */
 
+#include "sql.h"
 #include "views.h"
 #include "logical_cron.h"
 
@@ -82,17 +83,17 @@ logical_cron_create(sched_if_t *intf, char *(*describe)(sched_if_t *),
     return (!intf->state) ? -1 : 0;
 }
 
-static char* logical_partition_describe(sched_if_t *impl)
+static char* logical_cron_describe(sched_if_t *impl)
 {
     char msg[256];
-    snprintf(msg, sizeof(msg), "Logical partition %s", impl->name);
+    snprintf(msg, sizeof(msg), "Logical cron %s", impl->name);
     return strdup(msg);
 }
 
-static void *logical_partition_cron_kickoff(uuid_t source_id, void *arg1, void *arg2, 
+static void *logical_cron_kickoff(uuid_t source_id, void *arg1, void *arg2, 
                                    void *arg3, struct errstat *err)
 {
-    logmsg(LOGMSG_INFO, "Starting logical partition %s\n", (char*)arg1);
+    logmsg(LOGMSG_INFO, "Starting logical cron %s\n", (char*)arg1);
     return NULL;
 }
 
@@ -100,7 +101,7 @@ static void *logical_partition_cron_kickoff(uuid_t source_id, void *arg1, void *
  * Restart a logical scheduler 
  *
  */
-int logical_partition_init(const char *sched_name, struct errstat *err)
+int logical_cron_init(const char *sched_name, struct errstat *err)
 {
     cron_sched_t *sched;
     char *name;
@@ -112,7 +113,7 @@ int logical_partition_init(const char *sched_name, struct errstat *err)
         return VIEW_NOERR;
     }
 
-    if (logical_cron_create(&intf, logical_partition_describe,
+    if (logical_cron_create(&intf, logical_cron_describe,
                 timepart_event_describe /*reusing old event sequence */)) {
         logmsg(LOGMSG_ERROR, "%s Malloc error!\n", __func__);
         return VIEW_ERR_GENERIC;
@@ -123,7 +124,7 @@ int logical_partition_init(const char *sched_name, struct errstat *err)
 
     /* create a logical schedule */
     name = strdup(sched_name);
-    sched = cron_add_event(NULL, sched_name, 0, logical_partition_cron_kickoff, 
+    sched = cron_add_event(NULL, sched_name, 0, logical_cron_kickoff, 
                 name, NULL,  NULL, &source_id, err, &intf);
     if (!sched) {
         logmsg(LOGMSG_USER, "failed to create logical scheduler %s!\n", sched_name);
@@ -133,4 +134,93 @@ int logical_partition_init(const char *sched_name, struct errstat *err)
     }
 
     return VIEW_NOERR;
+}
+
+#define LOGICAL_CRON_SYSTABLE "comdb2_logical_cron"
+#define LOGICAL_CRON_SYSTABLE_SCHEMA  \
+    "create table comdb2_logical_cron (name cstring(128) primary key, value int, pad cstring(376) null) "
+
+static int _check_systable(tran_type *tran, struct errstat *err)
+{
+    struct dbtable *db = get_dbtable_by_name_locked(tran, LOGICAL_CRON_SYSTABLE);
+    if (!db) { 
+        errstat_set_rcstrf(err, VIEW_ERR_GENERIC, "Table missing \"%s\"",
+                LOGICAL_CRON_SYSTABLE);
+        logmsg(LOGMSG_ERROR, "Table missing \"%s\"\n", LOGICAL_CRON_SYSTABLE);
+        logmsg(LOGMSG_ERROR, "Create it using \"%s\"\n", LOGICAL_CRON_SYSTABLE_SCHEMA);
+        return VIEW_ERR_GENERIC;
+    }
+
+    return VIEW_NOERR;
+}
+
+
+/**
+ * Set a persistent logical counter 
+ * If the counter "name" doesn't exist, it is created first
+ *
+ */
+int logical_cron_bend_set(tran_type *tran, const char *name, 
+        unsigned long long value, struct errstat *err)
+{
+
+    int rc = VIEW_NOERR;
+
+    if((rc = _check_systable(tran, err)))
+        return rc;
+
+    return 0;
+}
+
+/**
+ * Increment a persistent logical counter;
+ * If the counter doesn't exists, it is created and set to 0
+ *
+ */
+int logical_cron_bend_incr(tran_type *tran, const char *name,
+        struct errstat *err)
+{
+    int rc = VIEW_NOERR;
+
+    if((rc = _check_systable(tran, err)))
+        return rc;
+
+    return 0;
+}
+
+int _logical_cron_sql(struct sqlclntstate *clnt, const char *name,
+        struct errstat *err, long long value, bool increment)
+{
+    int rc;
+    char *query;
+
+    if (increment)
+        query = sqlite3_mprintf("UPDATE %s SET vAlUE = vAlUE+1 where name = %s",
+                LOGICAL_CRON_SYSTABLE, name);
+    else
+        query = sqlite3_mprintf("UPDATE %s SET vAlUE = %lld  where name = %s",
+                LOGICAL_CRON_SYSTABLE, value, name);
+
+    clnt->dbtran.mode = TRANLEVEL_SERIAL;
+
+    rc = run_internal_sql_clnt(clnt, query);
+    if (rc) {
+        errstat_set_rcstrf(err, rc, "failed to update the counter");
+        rc = VIEW_ERR_GENERIC;
+    } else {
+        rc = VIEW_NOERR;
+    }
+    return rc;
+}
+
+int logical_cron_sql_incr(struct sqlclntstate *clnt, const char *name,
+        struct errstat *err)
+{
+    return _logical_cron_sql(clnt, name, err, 0, 1);
+}
+
+int logical_cron_sql_set(struct sqlclntstate *clnt, const char *name,
+    long long value, struct errstat *err)
+{
+    return _logical_cron_sql(clnt, name, err, value, 0);
 }
