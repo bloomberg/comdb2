@@ -109,21 +109,23 @@ static inline void *create_defered_index_table()
 /* If parameter createIfNull is set, this function
  * will create tbl and cursor and return it.
  * If parameter createIfNull is not set, we will return
- * cursor which may be NULL if nothing was inserted.
+ * cursor or NULL when tbl is null
  */
 static inline void *get_defered_index_tbl_cursor(int createIfNull) 
 {
-    if (defered_index_tbl == NULL && createIfNull) {
-        defered_index_tbl = (void *)create_defered_index_table(NULL);
-        if (!defered_index_tbl)
-            abort();
-
-        if (defered_index_tbl_cursor)
-            abort();
+    if (defered_index_tbl_cursor) {
+        assert(defered_index_tbl != NULL);
+        return defered_index_tbl_cursor;
     }
 
-    if (!defered_index_tbl_cursor)
-        defered_index_tbl_cursor = get_constraint_table_cursor(defered_index_tbl);
+    if (!defered_index_tbl) {
+        if (!createIfNull)
+            return NULL;
+
+        defered_index_tbl = (void *)create_defered_index_table(NULL);
+    }
+
+    defered_index_tbl_cursor = get_constraint_table_cursor(defered_index_tbl);
 
     if (!defered_index_tbl_cursor)
         abort();
@@ -1353,6 +1355,7 @@ int del_new_record_indices(struct ireq *iq, void *trans,
 }
 
 
+#if 0
 //type: DEL = 0, ADD = 2
 int insert_defered_tbl(struct ireq *iq, void *od_dta, size_t od_len,
                   const char *ondisktag, struct schema *ondisktagsc,
@@ -1406,6 +1409,7 @@ logmsg(LOGMSG_ERROR, "AZ: inserting for tbl %s index %d\n", iq->usedb->tablename
     }
     return 0;
 }
+#endif
 
 int process_defered_table(struct ireq *iq, block_state_t *blkstate, void *trans,
                      int *blkpos, int *ixout, int *errout)
@@ -1414,10 +1418,9 @@ int process_defered_table(struct ireq *iq, block_state_t *blkstate, void *trans,
     logmsg(LOGMSG_DEBUG, "%s(): entering\n", __func__);
 #endif
 
-    void *cur;
+    void *cur = get_defered_index_tbl_cursor(0);
 
-    if (defered_index_tbl == NULL || 
-       (cur = get_defered_index_tbl_cursor(1)) == NULL) {
+    if (!cur) {
         // never inserted anything in tmp tbl
 #if DEBUG_REORDER
         logmsg(LOGMSG_ERROR, "AZ: defered table is empty\n");
