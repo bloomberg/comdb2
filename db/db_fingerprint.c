@@ -33,28 +33,24 @@ extern int gbl_fingerprint_queries;
 extern int gbl_verbose_normalized_queries;
 int gbl_fingerprint_max_queries = 1000; /* TODO: Tunable? */
 
-/* Normalize a query - replace literals with ?.  Assumes dest is allocated to be
- * at least as large as source.  This code has been heavily revised to use the
- * upstream SQL normalization API provided by upstream SQLite.  Any subsequent
- * issues with it will be addressed upstream.
+/* Normalize a query - replace literals with ?.  This code has been heavily
+ * revised to use the upstream SQL normalization API provided by upstream
+ * SQLite.  Any subsequent issues with it will be addressed upstream.
  */
 static void normalize_query(sqlite3 *db, char *zSql, char **pzNormSql) {
-    int rc;
-    int prepFlags = SQLITE_PREPARE_NORMALIZE | SQLITE_PREPARE_ONLY;
-    sqlite3_stmt *p = NULL;
+    Vdbe sVdbe;
+    char *zNormSql;
 
-    rc = sqlite3_prepare_v3(db, zSql, -1, prepFlags, &p, 0);
-    if (rc == SQLITE_OK) {
-        const char *zNormSql = sqlite3_normalized_sql(p);
-        if (zNormSql != NULL) {
-            *pzNormSql = strdup(zNormSql);
-        }
-    } else if (gbl_verbose_normalized_queries) {
-        logmsg(LOGMSG_ERROR,
-               "FAILED sqlite3_prepare_v2(%p, {%s}) for normalization, rc=%d, msg=%s\n",
-               db, zSql, rc, sqlite3_errmsg(db));
+    sqlite3_mutex_enter(sqlite3_db_mutex(db));
+    memset(&sVdbe, 0, sizeof(Vdbe));
+    sVdbe.db = db;
+    sqlite3Normalize(&sVdbe, zSql, -1, 0);
+    zNormSql = sVdbe.zNormSql;
+    if (zNormSql != NULL) {
+      *pzNormSql = strdup(zNormSql);
+      sqlite3DbFree(db, zNormSql);
     }
-    sqlite3_finalize(p); /* p may be NULL and that is OK */
+    sqlite3_mutex_leave(sqlite3_db_mutex(db));
 }
 
 void add_fingerprint(sqlite3 *sqldb, int64_t cost, int64_t time, int64_t nrows,
