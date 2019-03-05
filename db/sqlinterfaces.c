@@ -974,8 +974,13 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         reqlog_logf(logger, REQL_INFO, "rqid=%llx", rqid);
     }
 
-    if (gbl_fingerprint_queries && (clnt->thd != NULL) && sqlite3_is_success(clnt->prep_rc)) {
-        add_fingerprint(clnt->thd->sqldb, h->cost, h->time, clnt->nrows, h->sql, logger);
+    if (gbl_fingerprint_queries && (clnt->thd != NULL)) {
+        if (sqlite3_is_success(clnt->prep_rc)) {
+            add_fingerprint(clnt->thd->sqldb, h->cost, h->time, clnt->nrows,
+                            h->sql, logger);
+        } else {
+            reqlog_reset_fingerprint(logger, FINGERPRINTSZ);
+        }
     }
 
     if (clnt->query_stats == NULL) {
