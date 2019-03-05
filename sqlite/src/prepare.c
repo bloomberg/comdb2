@@ -689,7 +689,8 @@ static int sqlite3Prepare(
   Parse sParse;             /* Parsing context */
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  db->flags |= SQLITE_PrepareOnly;
+  int prepareOnly = (prepFlags&SQLITE_PREPARE_ONLY)!=0;
+  if( prepareOnly ) db->flags |= SQLITE_PrepareOnly;
   if (db->should_fingerprint && !db->init.busy) {
       memset(db->fingerprint, 0, sizeof(db->fingerprint));
   }
@@ -699,7 +700,7 @@ static int sqlite3Prepare(
   memset(PARSE_TAIL(&sParse), 0, PARSE_TAIL_SZ);
   sParse.pReprepare = pReprepare;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  sParse.prepare_only = (prepFlags&SQLITE_PREPARE_ONLY)!=0;
+  sParse.prepare_only = prepareOnly;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   assert( ppStmt && *ppStmt==0 );
   /* assert( !db->mallocFailed ); // not true with SQLITE_USE_ALLOCA */
@@ -840,7 +841,7 @@ end_prepare:
   sqlite3ParserReset(&sParse);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( sParse.ast ) ast_destroy(&sParse.ast, db);
-  db->flags &= ~SQLITE_PrepareOnly;
+  if( prepareOnly ) db->flags &= ~SQLITE_PrepareOnly;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   return rc;
 }
