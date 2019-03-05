@@ -739,6 +739,10 @@ void sql_dlmalloc_init(void)
     sqlite3_config(SQLITE_CONFIG_MALLOC, &m);
 }
 
+int sqlite3_is_success(int rc){
+  return (rc==SQLITE_OK) || (rc==SQLITE_ROW) || (rc==SQLITE_DONE);
+}
+
 int sqlite3_is_prepare_only(
   struct sqlclntstate *clnt
 ){
@@ -970,7 +974,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         reqlog_logf(logger, REQL_INFO, "rqid=%llx", rqid);
     }
 
-    if (gbl_fingerprint_queries && (clnt->thd != NULL)) {
+    if (gbl_fingerprint_queries && (clnt->thd != NULL) && sqlite3_is_success(clnt->step_rc)) {
         add_fingerprint(clnt->thd->sqldb, h->cost, h->time, clnt->nrows, h->sql, logger);
     }
 

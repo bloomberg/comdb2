@@ -44,7 +44,7 @@ static void normalize_query(sqlite3 *db, char *zSql, char **pzNormSql) {
     sqlite3_mutex_enter(sqlite3_db_mutex(db));
     memset(&sVdbe, 0, sizeof(Vdbe));
     sVdbe.db = db;
-    sqlite3Normalize(&sVdbe, zSql, -1, 0);
+    sqlite3Normalize(&sVdbe, zSql, strlen(zSql), 0);
     zNormSql = sVdbe.zNormSql;
     if (zNormSql != NULL) {
       *pzNormSql = strdup(zNormSql);
