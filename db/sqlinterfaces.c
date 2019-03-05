@@ -4342,10 +4342,6 @@ void sqlengine_work_appsock(void *thddata, void *work)
 
     if (clnt->fdb_state.remote_sql_sb) {
         clnt->query_rc = execute_sql_query_offload(thd, clnt);
-        /* execute sql query might have generated an overriding fdb error;
-           reset it here before returning */
-        bzero(&clnt->fdb_state.xerr, sizeof(clnt->fdb_state.xerr));
-        clnt->fdb_state.preserve_err = 0;
     } else if (clnt->verify_indexes) {
         clnt->query_rc = execute_verify_indexes(thd, clnt);
     } else {
@@ -5475,10 +5471,16 @@ static int execute_sql_query_offload(struct sqlthdstate *poolthd,
 {
     int ret = 0;
     struct sql_thread *thd = poolthd->sqlthd;
+    char *cid;
     if (!thd) {
         logmsg(LOGMSG_ERROR, "%s: no sql_thread\n", __func__);
         return SQLITE_INTERNAL;
     }
+    if (clnt->osql.rqid == OSQL_RQID_USE_UUID)
+        cid = (char *)&clnt->osql.uuid;
+    else
+        cid = (char *)&clnt->osql.rqid;
+
     reqlog_new_sql_request(poolthd->logger, clnt->sql);
     log_queue_time(poolthd->logger, clnt);
     bzero(&clnt->fail_reason, sizeof(clnt->fail_reason));
@@ -5532,6 +5534,20 @@ done:
             logmsg(LOGMSG_ERROR, 
                     "%s: sqloff_block_send_done failed to write reply\n",
                     __func__);
+    } else {
+        if (ret) {
+            const char *tmp = errstat_get_str(&clnt->osql.xerr);
+            tmp = tmp ? tmp : "error string not set";
+            rc = fdb_svc_sql_row(clnt->fdb_state.remote_sql_sb, cid,
+                                 (char *)tmp, strlen(tmp) + 1,
+                                 errstat_get_rc(&clnt->osql.xerr),
+                                 clnt->osql.rqid == OSQL_RQID_USE_UUID);
+            if (rc) {
+                logmsg(LOGMSG_ERROR,
+                       "%s failed to send back error rc=%d errstr=%s\n",
+                       __func__, errstat_get_rc(&clnt->osql.xerr), tmp);
+            }
+        }
     }
 
     sqlite_done(poolthd, clnt, &rec, ret);
@@ -5577,8 +5593,16 @@ void sql_reset_sqlthread(struct sql_thread *thd)
 int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
                      sqlite3_stmt *stmt, const char **errstr)
 {
-    int rc = sqlite3_reset(stmt);
+    int rc, fdb_rc;
 
+    rc = sqlite3_reset(stmt);
+
+    if (clnt->fdb_state.preserve_err &&
+        (fdb_rc = errstat_get_rc(&clnt->fdb_state.xerr))) {
+        rc = fdb_rc;
+        *errstr = errstat_get_str(&clnt->fdb_state.xerr);
+        goto done;
+    }
     switch (rc) {
     case 0:
         rc = sqlite3_errcode(sqldb);
@@ -5672,6 +5696,7 @@ int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
         break;
     }
 
+done:
     if (rc == 0 && unlikely(clnt->conns)) {
         return dohsql_error(clnt, errstr);
     }
