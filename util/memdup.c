@@ -17,17 +17,18 @@
 #if !defined(NDEBUG) && defined(_LINUX_SOURCE)
 #include <stddef.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
 
-#define STRDUP_PAGE_SIZE 4096
+#define MEMDUP_PAGE_SIZE 4096
 
 static size_t memdup_sizeof(
   size_t nStr
 ){
-  size_t nPage = nStr / STRDUP_PAGE_SIZE;
-  if( nStr%STRDUP_PAGE_SIZE!=0 ) nPage++;
-  return nPage * STRDUP_PAGE_SIZE;
+  size_t nPage = nStr / MEMDUP_PAGE_SIZE;
+  if( nStr%MEMDUP_PAGE_SIZE!=0 ) nPage++;
+  return nPage * MEMDUP_PAGE_SIZE;
 }
 
 char *memdup_readonly(
