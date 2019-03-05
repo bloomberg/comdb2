@@ -689,6 +689,7 @@ static int sqlite3Prepare(
   Parse sParse;             /* Parsing context */
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+  db->flags |= SQLITE_PrepareOnly;
   if (db->should_fingerprint && !db->init.busy) {
       memset(db->fingerprint, 0, sizeof(db->fingerprint));
   }
@@ -839,6 +840,7 @@ end_prepare:
   sqlite3ParserReset(&sParse);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( sParse.ast ) ast_destroy(&sParse.ast, db);
+  db->flags &= ~SQLITE_PrepareOnly;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   return rc;
 }

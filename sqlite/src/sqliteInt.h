@@ -1626,6 +1626,10 @@ struct sqlite3 {
 #define SQLITE_VdbeEQP        HI(0x0010)  /* Debug EXPLAIN QUERY PLAN */
 #endif
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#define SQLITE_PrepareOnly    HI(0x1000)  /* Pending flag for prepare_v3() */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 /*
 ** Allowed values for sqlite3.mDbFlags
 */
