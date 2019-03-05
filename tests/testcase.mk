@@ -9,7 +9,7 @@ ifeq ($(TESTSROOTDIR),)
   # (will check assumption few lines later)
   # needs to expand to a full path, otherwise it propagates as '../'
   export TESTSROOTDIR=$(shell readlink -f $(PWD)/..)
-#  export SKIPSSL=1   #force SKIPSSL for local test -- easier to debug
+  export SKIPSSL=1   #force SKIPSSL for local test -- easier to debug
   export INSETUP=yes
 else
   export INSETUP=

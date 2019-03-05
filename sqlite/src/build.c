@@ -5235,7 +5235,7 @@ char *getIndexCond(sqlite3 *db, const char *colName, const char *op, Mem *m)
   }else if( flgs == MEM_Real ){
     value = sqlite3_mprintf("%lf", m->u.r);
   }else if( flgs & MEM_Str ){
-    value = sqlite3_mprintf("\'%.*s\'", m->n, m->z);
+    value = sqlite3_mprintf("\'%.*q\'", m->n, m->z);
   }else if( flgs & MEM_Blob ){
     char * key = alloca(2*m->n+1);
     int  i;

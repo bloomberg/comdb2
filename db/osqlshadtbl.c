@@ -434,8 +434,6 @@ static shad_tbl_t *create_shadtbl(struct BtCursor *pCur,
     int rc = 0;
     int bdberr = 0;
 
-    /*pBt->vdbe = pthread_getspecific(sqlite3VDBEkey);*/
-
     tbl = calloc(1, sizeof(shad_tbl_t));
     if (!tbl)
         return NULL;
