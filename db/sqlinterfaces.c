@@ -974,7 +974,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         reqlog_logf(logger, REQL_INFO, "rqid=%llx", rqid);
     }
 
-    if (gbl_fingerprint_queries && (clnt->thd != NULL) && sqlite3_is_success(clnt->step_rc)) {
+    if (gbl_fingerprint_queries && (clnt->thd != NULL) && sqlite3_is_success(clnt->prep_rc)) {
         add_fingerprint(clnt->thd->sqldb, h->cost, h->time, clnt->nrows, h->sql, logger);
     }
 
@@ -3012,8 +3012,8 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     /* if we did not get a cached stmt, need to prepare it in sql engine */
     while (rec->stmt == NULL) {
         clnt->no_transaction = 1;
-        rc = sqlite3_prepare_v3(thd->sqldb, rec->sql, -1, sqlPrepFlags,
-                                &rec->stmt, &tail);
+        clnt->prep_rc = rc = sqlite3_prepare_v3(thd->sqldb, rec->sql, -1,
+                                                sqlPrepFlags, &rec->stmt, &tail);
         clnt->no_transaction = 0;
         if (rc == SQLITE_OK) {
             rc = sqlite3LockStmtTables(rec->stmt);
