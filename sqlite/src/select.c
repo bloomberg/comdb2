@@ -2129,7 +2129,7 @@ static void generateColumnNames(
       /* An AS clause always takes first priority */
       char *zName = pEList->a[i].zName;
       sqlite3VdbeSetColName(v, i, COLNAME_NAME, zName, SQLITE_TRANSIENT);
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#if 0 && defined(SQLITE_BUILDING_FOR_COMDB2)
     }else if( pEList->a[i].zSpan ){
       sqlite3VdbeSetColName(v, i, COLNAME_NAME, pEList->a[i].zSpan,
                             SQLITE_TRANSIENT);
