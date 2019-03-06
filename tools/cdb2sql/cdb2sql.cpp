@@ -162,7 +162,7 @@ void cdb2sql_usage(int exit_val)
 
 
 const char *level_one_words[] = {
-  "@desc", "@ls", "@send",
+  "@",
   "ALTER", "ANALYZE",
   "BEGIN",
   "COMMIT",
@@ -180,12 +180,12 @@ const char *level_one_words[] = {
 };
 
 
-const char *char_alpha_words[] = {
+const char *char_atglyph_words[] = {
     "desc", "ls", "send", NULL, // must be terminated by NULL
 };
 
 
-char *char_alpha_generator (const char *text, int state)
+char *char_atglyph_generator (const char *text, int state)
 {
     static int list_index, len;
     const char *name;
@@ -193,7 +193,7 @@ char *char_alpha_generator (const char *text, int state)
         list_index = 0;
         len = strlen (text);
     }
-    while ((name = char_alpha_words[list_index]) != NULL) {
+    while ((name = char_atglyph_words[list_index]) != NULL) {
         list_index++;
         if (len == 0 || strncasecmp (name, text, len) == 0) {
             return strdup (name);
@@ -334,13 +334,13 @@ char *generic_generator(const char *text, int state)
 // start and end are the offsets of that last word in the rl_line_buffer
 // So if we are trying to complete in the middle of a word
 // text is the [partial] word, example: 
-//  > abra kadabr
-//   rl_line_buffer='abra kadabr' text='kadabr' start=5 end=11
+//  > select intcol^I
+//   rl_line_buffer='select intcol' text='intcol' start=8 end=13
 //
 // If we are completing after a space, word will be '' and start and end
 // will be the position of the [last] space in rl_line_buffer:
-// > abra kadabra  ^I
-// 'abra kadabra  ' text='' start=14 end=14
+// > select intcol  ^I
+// 'select intcol  ' text='' start=15 end=15
 //
 static char **my_completion (const char *text, int start, int end)
 {
@@ -366,7 +366,7 @@ static char **my_completion (const char *text, int start, int end)
 
     if (endptr == bgn) { // we were in the middle of the first word
         if (*bgn == '@')
-            return rl_completion_matches(text, &char_alpha_generator);
+            return rl_completion_matches(text, &char_atglyph_generator);
         else
             return rl_completion_matches(text, &level_one_generator);
     }
