@@ -467,6 +467,17 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     }
 
     if (iq->usedb->nix > 0) {
+        bool reorder = gbl_reorder_idx_writes &&
+            !is_event_from_sc(flags) &&
+            rec_flags == 0 &&
+            iq->usedb->sc_from != iq->usedb &&
+            strcasecmp(iq->usedb->tablename, "comdb2_oplog") != 0  &&
+            strcasecmp(iq->usedb->tablename, "comdb2_commit_log") != 0 &&
+            strncasecmp(iq->usedb->tablename, "sqlite_stat", 11) != 0;
+
+        if (reorder)
+            rec_flags |= OSQL_ITEM_REORDERED;
+
         /* Form and add all the keys.
          * If there are constraints, do the add to indices deferred.
          *
@@ -495,11 +506,11 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             }
         }
 
-        if (!has_constraint(flags) || (rec_flags & OSQL_IGNORE_FAILURE)) {
+        if (!has_constraint(flags) || (rec_flags & OSQL_IGNORE_FAILURE) || reorder) {
             retrc = add_record_indices(iq, trans, blobs, maxblobs, opfailcode,
                     ixfailnum, rrn, genid, vgenid, ins_keys, opcode,
                     blkpos, od_dta, od_len, ondisktag, ondisktagsc,
-                    flags, rec_flags);
+                    flags, reorder);
             if (retrc)
                 ERR;
         }

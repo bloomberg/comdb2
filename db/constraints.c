@@ -1006,7 +1006,6 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
     unsigned long long genid = 0LL;
     unsigned long long cached_index_genid = genid;
     unsigned long long ins_keys = 0ULL;
-    int flags = 0;
     rc = bdb_temp_table_first(thedb->bdb_env, cur, &err);
     if (rc != 0) {
         close_constraint_table_cursor(cur);
@@ -1041,6 +1040,22 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
             return ERR_INTERNAL;
         }
         struct forward_ct *curop = &ctrq->ctop.fwdct;
+#if DEBUG_REORDER
+logmsg(LOGMSG_DEBUG, "%s(): procesing genid=%lld\n", __func__, curop->genid);
+#endif
+
+        int flags = curop->flags;
+        /* Keys for records from INSERT .. ON CONFLICT DO NOTHING have
+         * already been added to the indexes in add_record() to ensure
+         * we don't add duplicates in the data files. We still push them
+         * to ct_add_table to be able to perform cascade updates to the
+         * child tables.
+         */
+        if (flags & OSQL_IGNORE_FAILURE || flags & OSQL_ITEM_REORDERED) {
+logmsg(LOGMSG_ERROR, "%s(): OSQL_ITEM_REORDERED skipping genid=%lld\n", __func__, curop->genid);
+            goto next_record;
+        }
+
 
         /* only do once per genid *after* processing all idxs from tmptbl 
          * (which are in sequence for the same genid): 
@@ -1053,25 +1068,11 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
             LIVE_SC_DELAYED_KEY_ADDS(0 /* not last */);
         }
 
-#if DEBUG_REORDER
-logmsg(LOGMSG_DEBUG, "%s(): procesing genid=%lld\n", __func__, curop->genid);
-#endif
         iq->usedb = curop->usedb;
         int addrrn = curop->rrn;
         int ixnum = curop->ixnum;
         genid = curop->genid;
         ins_keys = curop->ins_keys;
-        flags = curop->flags;
-
-        /* Keys for records from INSERT .. ON CONFLICT DO NOTHING have
-         * already been added to the indexes in add_record() to ensure
-         * we don't add duplicates in the data files. We still push them
-         * to ct_add_table to be able to perform cascade updates to the
-         * child tables.
-         */
-        if ((flags & OSQL_IGNORE_FAILURE) != 0) {
-            goto next_record;
-        }
 
         if (addrrn == -1) {
             if (iq->debug)
