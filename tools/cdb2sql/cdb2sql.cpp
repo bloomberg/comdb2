@@ -185,7 +185,7 @@ const char *char_atglyph_words[] = {
 };
 
 
-char *char_atglyph_generator (const char *text, int state)
+static char *char_atglyph_generator (const char *text, int state)
 {
     static int list_index, len;
     const char *name;
@@ -199,12 +199,12 @@ char *char_atglyph_generator (const char *text, int state)
             return strdup (name);
         }
     }
-    return ((char *) NULL); // If no names matched, then return NULL.
+    return (NULL); // If no names matched, then return NULL.
 }
 
 
 // Generator function for word completion.
-char *level_one_generator (const char *text, int state)
+static char *level_one_generator (const char *text, int state)
 {
     static int list_index, len;
     const char *name;
@@ -218,10 +218,10 @@ char *level_one_generator (const char *text, int state)
             return strdup (name);
         }
     }
-    return ((char *) NULL); // If no names matched, then return NULL.
+    return (NULL); // If no names matched, then return NULL.
 }
 
-char *db_generator (int state, const char *sql)
+static char *db_generator (int state, const char *sql)
 {
     static char **db_words;
     static int list_index, len;
@@ -299,11 +299,11 @@ char *db_generator (int state, const char *sql)
         list_index++;
         return strdup(name);
     }
-    return ((char *) NULL); // If no names matched, then return NULL.
+    return (NULL); // If no names matched, then return NULL.
 }
 
 
-char *tunables_generator (const char *text, int state)
+static char *tunables_generator (const char *text, int state)
 {
     char sql[256];
     if (*text)
@@ -316,7 +316,7 @@ char *tunables_generator (const char *text, int state)
     return db_generator(state, sql);
 }
 
-char *generic_generator(const char *text, int state)
+static char *generic_generator(const char *text, int state)
 {
     char sql[256];
     //TODO: escape text
