@@ -37,20 +37,11 @@ void logical_cron_set(sched_if_t *impl, unsigned long long val);
  */
 int logical_cron_init(const char *name, struct errstat *err);
 
-/**
- * Set a persistent logical counter 
- * If the counter "name" doesn't exist, it is created first
+/** 
+ * Return a statement to update a cron 
  *
  */
-int logical_cron_bend_set(tran_type *tran, const char *name,
-        unsigned long long value, struct errstat *err);
-
-/**
- * Increment a persistent logical counter;
- * If the counter doesn't exists, it is created and set to 0
- *
- */
-int logical_cron_bend_incr(tran_type *tran, const char *name,
-        struct errstat *err);
+char* logical_cron_update_sql(const char *name,
+        long long value, bool increment);
 
 #endif

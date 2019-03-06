@@ -318,6 +318,18 @@ void sqlite3NestedParse(Parse *pParse, const char *zFormat, ...){
   pParse->nested--;
 }
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+void sqlite3NestedParsePreserveFlags(Parse *pParse, const char *zFormat, ...){
+  va_list ap;
+  
+  pParse->preserve_update = 1;
+
+  va_start(ap, zFormat);
+  sqlite3NestedParse(pParse, zFormat, ap);
+  va_end(ap);
+}
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 #if SQLITE_USER_AUTHENTICATION
 /*
 ** Return TRUE if zTable is the name of the system table that stores the

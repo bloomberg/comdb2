@@ -29,7 +29,6 @@ static int exec_analyze_threshold(void *tran, bpfunc_t *func, struct errstat *er
 static int exec_analyze_coverage(void *tran, bpfunc_t *func, struct errstat *err);
 static int exec_rowlocks_enable(void *tran, bpfunc_t *func, struct errstat *err);
 static int exec_genid48_enable(void *tran, bpfunc_t *func, struct errstat *err);
-static int exec_counter(void *tran, bpfunc_t *func, struct errstat *err);
 static int exec_set_skipscan(void *tran, bpfunc_t *func, struct errstat *err);
 /********************      UTILITIES     ***********************/
 
@@ -104,10 +103,6 @@ static int prepare_methods(bpfunc_t *func, bpfunc_info *info)
 
     case BPFUNC_GENID48_ENABLE:
         func->exec = exec_genid48_enable;
-        break;
-
-    case BPFUNC_COUNTER_SET:
-        func->exec = exec_counter;
         break;
 
     case BPFUNC_SET_SKIPSCAN:
@@ -485,14 +480,6 @@ static int exec_genid48_enable(void *tran, bpfunc_t *func, struct errstat *err)
     iq->osql_genid48_enable = gn->enable;
     iq->osql_flags |= OSQL_FLAGS_GENID48;
     return 0;
-}
-
-static int exec_counter(void *tran, bpfunc_t *func, struct errstat *err)
-{
-    BpfuncCounterSet *cntr = func->arg->cntr_set;
-    if (cntr->has_newvalue)
-        return logical_cron_bend_set(tran, cntr->name, cntr->newvalue, err);
-    return logical_cron_bend_incr(tran, cntr->name, err);
 }
 
 static int exec_rowlocks_enable(void *tran, bpfunc_t *func, struct errstat *err)

@@ -3266,6 +3266,10 @@ struct Parse {
   ** first field in the recursive region.
   ************************************************************************/
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  int preserve_update;      /* statement replacement, preserve flags */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
   Token sLastToken;       /* The last token parsed */
   ynVar nVar;               /* Number of '?' variables seen in the SQL so far */
   u8 iPkSortOrder;          /* ASC or DESC for INTEGER PRIMARY KEY */
@@ -4504,6 +4508,9 @@ int sqlite3GetToken(const unsigned char *, int *);
 int sqlite3GetTokenNormalized(const unsigned char *, int *, int *);
 #endif
 void sqlite3NestedParse(Parse*, const char*, ...);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+void sqlite3NestedParsePreserveFlags(Parse*, const char*, ...);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 void sqlite3ExpirePreparedStatements(sqlite3*, int);
 int sqlite3CodeSubselect(Parse*, Expr *, int, int);
 void sqlite3SelectPrep(Parse*, Select*, NameContext*);

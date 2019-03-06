@@ -155,72 +155,15 @@ static int _check_systable(tran_type *tran, struct errstat *err)
 }
 
 
-/**
- * Set a persistent logical counter 
- * If the counter "name" doesn't exist, it is created first
- *
- */
-int logical_cron_bend_set(tran_type *tran, const char *name, 
-        unsigned long long value, struct errstat *err)
+char* logical_cron_update_sql(const char *name, long long value, bool increment)
 {
-
-    int rc = VIEW_NOERR;
-
-    if((rc = _check_systable(tran, err)))
-        return rc;
-
-    return 0;
-}
-
-/**
- * Increment a persistent logical counter;
- * If the counter doesn't exists, it is created and set to 0
- *
- */
-int logical_cron_bend_incr(tran_type *tran, const char *name,
-        struct errstat *err)
-{
-    int rc = VIEW_NOERR;
-
-    if((rc = _check_systable(tran, err)))
-        return rc;
-
-    return 0;
-}
-
-int _logical_cron_sql(struct sqlclntstate *clnt, const char *name,
-        struct errstat *err, long long value, bool increment)
-{
-    int rc;
     char *query;
 
     if (increment)
-        query = sqlite3_mprintf("UPDATE %s SET vAlUE = vAlUE+1 where name = %s",
+        query = sqlite3_mprintf("UPDATE %s SET vAlUE = vAlUE+1 where name = '%s'",
                 LOGICAL_CRON_SYSTABLE, name);
     else
-        query = sqlite3_mprintf("UPDATE %s SET vAlUE = %lld  where name = %s",
+        query = sqlite3_mprintf("UPDATE %s SET vAlUE = %lld  where name = '%s'",
                 LOGICAL_CRON_SYSTABLE, value, name);
-
-    clnt->dbtran.mode = TRANLEVEL_SERIAL;
-
-    rc = run_internal_sql_clnt(clnt, query);
-    if (rc) {
-        errstat_set_rcstrf(err, rc, "failed to update the counter");
-        rc = VIEW_ERR_GENERIC;
-    } else {
-        rc = VIEW_NOERR;
-    }
-    return rc;
-}
-
-int logical_cron_sql_incr(struct sqlclntstate *clnt, const char *name,
-        struct errstat *err)
-{
-    return _logical_cron_sql(clnt, name, err, 0, 1);
-}
-
-int logical_cron_sql_set(struct sqlclntstate *clnt, const char *name,
-    long long value, struct errstat *err)
-{
-    return _logical_cron_sql(clnt, name, err, value, 0);
+    return query;
 }

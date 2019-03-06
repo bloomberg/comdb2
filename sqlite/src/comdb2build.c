@@ -23,6 +23,7 @@
 #include <str0.h>
 #include <zlib.h>
 #include <shard_range.h>
+#include <logical_cron.h>
 #include "cdb2_constants.h"
 
 extern pthread_key_t query_info_key;
@@ -2052,52 +2053,25 @@ clean_arg:
 }
 
 static void comdb2CounterInt(Parse *pParse, Token *nm, Token *lnm,
-        int isset, int value)
+        int isset, long long value)
 {
-    Vdbe *v  = sqlite3GetVdbe(pParse);
-    BpfuncArg *arg = NULL;
+    char name[MAXTABLELEN];
+    char *query;
 
     if (comdb2AuthenticateUserOp(pParse))
         goto err;       
 
-    arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
-    
-    if (arg)
-        bpfunc_arg__init(arg);
-    else
-        goto err;
-    BpfuncCounterSet *cntr_set = (BpfuncCounterSet*) 
-        malloc(sizeof(BpfuncCounterSet));
-
-    if (cntr_set)
-        bpfunc_counter_set__init(cntr_set);
-    else
+    if (chkAndCopyPartitionTokens(pParse, name, nm, lnm))
         goto err;
 
-    arg->cntr_set = cntr_set;
-    arg->type = BPFUNC_COUNTER_SET;
-    cntr_set->name = (char*) malloc(MAXTABLELEN);
+    query = logical_cron_update_sql(name, value, isset==0);
 
-    if (!cntr_set->name)
-        goto err;
+    sqlite3NestedParsePreserveFlags(pParse, query);
 
-    if (chkAndCopyPartitionTokens(pParse, cntr_set->name, nm, lnm))
-        goto clean_arg;
-
-    if (isset) {
-        cntr_set->newvalue = value;
-        cntr_set->has_newvalue = 1;
-    }
-
-    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
-                        (vdbeFuncArgFree)&free_bpfunc_arg);
-
+    sqlite3_free(query);
     return;
 err:
-    setError(pParse, SQLITE_INTERNAL, "Internal Error");
-clean_arg:
-    if (arg)
-        free_bpfunc_arg(arg);
+    logmsg(LOGMSG_ERROR, "%s: failed to parse generated query!\n", __func__);
 }
 
 void comdb2CounterIncr(Parse *pParse, Token *nm, Token *lnm)
@@ -2105,7 +2079,7 @@ void comdb2CounterIncr(Parse *pParse, Token *nm, Token *lnm)
     comdb2CounterInt(pParse, nm, lnm, 0, 0);
 }
 
-void comdb2CounterSet(Parse *pParse, Token *nm, Token *lnm, int value)
+void comdb2CounterSet(Parse *pParse, Token *nm, Token *lnm, long long value)
 {
     comdb2CounterInt(pParse, nm, lnm, 1, value);
 }
