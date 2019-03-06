@@ -15,15 +15,10 @@
  */
 
 #include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <inttypes.h>
 #include <assert.h>
-#include "comdb2.h"
 #include "schemachange.h"
 #include "block_internal.h"
 #include "logmsg.h"
-#include "osqlsqlthr.h"
 #include "indices.h"
 
 #define DEBUG_REORDER 0
@@ -148,7 +143,8 @@ void truncate_defered_index_tbl()
 }
 
 
-/* delete tbl and cursor */
+/* delete tbl and cursor
+ * called from handle_buf.c to cleanup defered tbl */
 void delete_defered_index_tbl() 
 {
     if (!defered_index_tbl)
@@ -160,11 +156,6 @@ void delete_defered_index_tbl()
     delete_constraint_table(defered_index_tbl);
 }
 
-
-static inline bool is_event_from_sc(int flags)
-{
-    return flags & RECFLAGS_NEW_SCHEMA;
-}
 
 /* Check whether the key for the specified record is already present in
  * the index.
