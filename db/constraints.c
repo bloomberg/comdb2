@@ -41,7 +41,6 @@ static int is_update_op(int op);
 static int is_delete_op(int op);
 
 extern int gbl_partial_indexes;
-extern int gbl_reorder_idx_writes;
 
 /**
  * Checks to see if there are any cascading deleletes/updates pointing to this

@@ -1016,27 +1016,11 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
     unsigned long long vgenid = 0ULL;
     if (verify)
         vgenid = newgenid;
-    void *cur = NULL;
-    dtikey_t ditk= {0};
-    bool reorder = 0; //gbl_reorder_idx_writes && iq->usedb->sc_to != iq->usedb;
-#if DEBUG_REORDER
-    logmsg(LOGMSG_DEBUG, "%s(): entering, reorder = %d\n", __func__, reorder);
-#endif
-    if (reorder) {
-        cur = get_defered_index_tbl_cursor(1);
-        if (cur == NULL) {
-            logmsg(LOGMSG_ERROR, "%s : no cursor???\n", __func__);
-            return -1;
-        }
-        ditk.usedb = iq->usedb;
-        ditk.type = DIT_ADD;
-        ditk.genid = newgenid;
-    }
 
     /* Add all keys */
     for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
         char keytag[MAXTAGLEN];
-        char *key = ditk.ixkey; // key points to chararray regardless reordering
+        char key[MAXKEYLEN];
         char mangled_key[MAXKEYLEN];
         char *od_dta_tail = NULL;
         int od_tail_len = 0;
@@ -1096,51 +1080,27 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
             vgenid = 0; // no need to verify again
         }
 
-        if (reorder) {
-            //if not datacopy, no need to save od_dta_tail
-            void *data = NULL;
-            int datalen = 0;
-            if (iq->usedb->ix_datacopy[ixnum] != 0) { //is datacopy
-                data = od_dta_tail;
-                datalen = od_tail_len;
-            }
-            ditk.ixnum = ixnum;
-            int err = 0;
-#if DEBUG_REORDER
-logmsg(LOGMSG_ERROR, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", __func__, iq->usedb->tablename, ditk.type, ditk.ixnum, bdb_genid_to_host_order(ditk.genid));
-#endif
-            rc = bdb_temp_table_insert(thedb->bdb_env, cur, &ditk, sizeof(ditk),
-                    data, datalen, &err);
-            if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_insert rc = %d\n", __func__,
-                        rc);
-                return rc;
-            }
-            int ixkeylen = getkeysize(iq->usedb, ixnum);
-            memset(ditk.ixkey, 0, ixkeylen);
-        } else {
-            rc = ix_addk(iq, trans, key, ixnum, newgenid, 2, (void *)od_dta_tail,
-                    od_tail_len, ix_isnullk(iq->usedb, key, ixnum));
+        rc = ix_addk(iq, trans, key, ixnum, newgenid, 2, (void *)od_dta_tail,
+                     od_tail_len, ix_isnullk(iq->usedb, key, ixnum));
 
-            if (vgenid && rc == IX_DUP) {
-                if (iq->usedb->ix_dupes[ixnum] || isnullk) {
-                    return ERR_VERIFY;
-                }
+        if (vgenid && rc == IX_DUP) {
+            if (iq->usedb->ix_dupes[ixnum] || isnullk) {
+                return ERR_VERIFY;
             }
+        }
 
-            if (iq->debug) {
-                reqprintf(iq, "ix_addk IX %d KEY ", ixnum);
-                reqdumphex(iq, key, getkeysize(iq->usedb, ixnum));
-                reqmoref(iq, " RC %d", rc);
-            }
-            if (rc) {
-                logmsg(LOGMSG_ERROR,
-                        "upd_new_record_add2indices: ix_addk "
-                        "newgenid 0x%llx ix_addk  ix%d rc=%d\n",
-                        newgenid, ixnum, rc);
-                fsnapf(stderr, key, getkeysize(iq->usedb, ixnum));
-                break;
-            }
+        if (iq->debug) {
+            reqprintf(iq, "ix_addk IX %d KEY ", ixnum);
+            reqdumphex(iq, key, getkeysize(iq->usedb, ixnum));
+            reqmoref(iq, " RC %d", rc);
+        }
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "upd_new_record_add2indices: ix_addk "
+                   "newgenid 0x%llx ix_addk  ix%d rc=%d\n",
+                   newgenid, ixnum, rc);
+            fsnapf(stderr, key, getkeysize(iq->usedb, ixnum));
+            break;
         }
     }
 
@@ -1155,27 +1115,11 @@ int upd_new_record_indices(
     blob_buffer_t *del_idx_blobs, unsigned long long oldgenid, int verify_retry,
     int deferredAdd)
 {
-    void *cur = NULL;
-    dtikey_t delditk = {0};
-    bool reorder = 0; //gbl_reorder_idx_writes && iq->usedb->sc_from != iq->usedb;
-#if DEBUG_REORDER
-    logmsg(LOGMSG_DEBUG, "%s(): entering, reorder = %d\n", __func__, reorder);
-#endif
-    if (reorder) {
-        cur = get_defered_index_tbl_cursor(1);
-        if (cur == NULL) {
-            logmsg(LOGMSG_ERROR, "%s : no cursor???\n", __func__);
-            return -1;
-        }
-        delditk.type = DIT_DEL;
-        delditk.usedb = iq->usedb;
-    }
-
     int rc = 0;
     /* First delete all keys */
     for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
         char keytag[MAXTAGLEN];
-        char *oldkey = delditk.ixkey;
+        char key[MAXKEYLEN];
 
         if (gbl_use_plan && iq->usedb->plan &&
             iq->usedb->plan->ix_plan[ixnum] != -1)
@@ -1190,14 +1134,14 @@ int upd_new_record_indices(
 
         int keysize = iq->usedb->ix_keylen[ixnum];
         if (iq->idxDelete) {
-            memcpy(oldkey, iq->idxDelete[ixnum], keysize);
+            memcpy(key, iq->idxDelete[ixnum], keysize);
             rc = 0;
         } else
             rc = create_key_from_ondisk_blobs(
                 iq->usedb, ixnum, NULL, NULL, NULL,
                 use_new_tag ? ".NEW..ONDISK" : ".ONDISK",
                 use_new_tag ? (char *)sc_old : (char *)old_dta,
-                0 /*not needed*/, keytag, oldkey, NULL, del_idx_blobs,
+                0 /*not needed*/, keytag, key, NULL, del_idx_blobs,
                 del_idx_blobs ? MAXBLOBS : 0, NULL);
         if (rc == -1) {
             logmsg(LOGMSG_ERROR,
@@ -1212,50 +1156,29 @@ int upd_new_record_indices(
             return rc;
         }
 
-        if (reorder) {
-            //if not datacopy, no need to save od_dta_tail
-            void *data = NULL;
-            int datalen = 0;
-            delditk.genid = oldgenid;
-            delditk.ixnum = ixnum;
-            int err = 0;
-#if DEBUG_REORDER
-logmsg(LOGMSG_ERROR, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", __func__, iq->usedb->tablename, delditk.type, delditk.ixnum, bdb_genid_to_host_order(delditk.genid));
-#endif
-            rc = bdb_temp_table_insert(thedb->bdb_env, cur, &delditk, sizeof(delditk),
-                    data, datalen, &err);
-            if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_insert rc = %d\n", __func__,
-                        rc);
-                return rc;
-            }
-            memset(delditk.ixkey, 0, keysize);
+        rc = ix_delk(iq, trans, key, ixnum, 2 /*rrn*/, oldgenid,
+                     ix_isnullk(iq->usedb, key, ixnum));
+        if (iq->debug) {
+            reqprintf(iq, "ix_delk IX %d KEY ", ixnum);
+            reqdumphex(iq, key, getkeysize(iq->usedb, ixnum));
+            reqmoref(iq, " RC %d", rc);
         }
-        else {
-            rc = ix_delk(iq, trans, oldkey, ixnum, 2 /*rrn*/, oldgenid,
-                    ix_isnullk(iq->usedb, oldkey, ixnum));
-            if (iq->debug) {
-                reqprintf(iq, "ix_delk IX %d KEY ", ixnum);
-                reqdumphex(iq, oldkey, getkeysize(iq->usedb, ixnum));
-                reqmoref(iq, " RC %d", rc);
-            }
 
-            /* remap delete not found to retry */
-            if (rc == IX_NOTFND) {
-                if (verify_retry)
-                    rc = RC_INTERNAL_RETRY;
-                else
-                    rc = ERR_VERIFY;
-            }
+        /* remap delete not found to retry */
+        if (rc == IX_NOTFND) {
+            if (verify_retry)
+                rc = RC_INTERNAL_RETRY;
+            else
+                rc = ERR_VERIFY;
+        }
 
-            if (rc != 0) {
-                if (rc != ERR_VERIFY)
-                    logmsg(LOGMSG_ERROR,
-                            "upd_new_record oldgenid 0x%llx ix_delk -> "
-                            "ix%d, rc=%d failed\n",
-                            oldgenid, ixnum, rc);
-                return rc;
-            }
+        if (rc != 0) {
+            if (rc != ERR_VERIFY)
+                logmsg(LOGMSG_ERROR,
+                       "upd_new_record oldgenid 0x%llx ix_delk -> "
+                       "ix%d, rc=%d failed\n",
+                       oldgenid, ixnum, rc);
+            return rc;
         }
     }
 
