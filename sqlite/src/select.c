@@ -13,9 +13,6 @@
 ** to handle SELECT statements in SQLite.
 */
 #include "sqliteInt.h"
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-#include "md5.h"
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** Trace output macros
