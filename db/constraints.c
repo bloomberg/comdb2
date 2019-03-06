@@ -592,8 +592,7 @@ int check_update_constraints(struct ireq *iq, void *trans,
 
 /* FOR UPDATES/DELETES, MUST VERIFY AGAINST DELETED RECORD'S TABLE TO SEE IF
  * THERE'RE ANY  KEYS WITH SAME VALUE.  IT IS OK TO DELETE IF THATS THE CASE */
-int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
-                           struct ireq *iq, block_state_t *blkstate,
+int verify_del_constraints(struct ireq *iq, block_state_t *blkstate,
                            void *trans, blob_buffer_t *blobs, int *errout)
 {
     int rc = 0, fndrrn = 0, err = 0;
@@ -1280,9 +1279,8 @@ logmsg(LOGMSG_ERROR, "%s(): OSQL_ITEM_REORDERED skipping genid=%lld\n", __func__
 }
 
 /* go through all entries in ct_add_table and verify that 
- * the key exists in the paret table if there are constraints */
-int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
-                           struct ireq *iq, block_state_t *blkstate,
+ * the key exists in the parent table if there are constraints */
+int verify_add_constraints(struct ireq *iq, block_state_t *blkstate,
                            void *trans, int *errout)
 {
     int rc = 0, fndrrn = 0, opcode = 0, err = 0;

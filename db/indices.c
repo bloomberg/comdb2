@@ -1557,7 +1557,8 @@ logmsg(LOGMSG_ERROR, "AZ: pdt ix_upd_key genid=%llx rc %d\n", bdb_genid_to_host_
         /* get next record from table */
         rc = bdb_temp_table_next(thedb->bdb_env, cur, &err);
     }
-    if (rc == IX_PASTEOF) rc = IX_OK;
+    if (rc == IX_PASTEOF)
+        rc = IX_OK;
 
 done:
     truncate_defered_index_tbl();

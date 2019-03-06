@@ -4808,8 +4808,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
         if (iq->debug)
             reqpushprefixf(iq, "verify_del_constraints: %p", trans);
-        rc = verify_del_constraints(javasp_trans_handle, iq, p_blkstate, trans,
-                                    blobs, &verror);
+        rc = verify_del_constraints(iq, p_blkstate, trans, blobs, &verror);
         if (iq->debug)
             reqpopprefixes(iq, 1);
 
@@ -4826,8 +4825,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         if (iq->debug)
             reqpushprefixf(iq, "verify_add_constraints: %p", trans);
 
-        rc = verify_add_constraints(javasp_trans_handle, iq, p_blkstate, trans,
-                                    &verror);
+        rc = verify_add_constraints(iq, p_blkstate, trans, &verror);
         if (iq->debug)
             reqpopprefixes(iq, 1);
 

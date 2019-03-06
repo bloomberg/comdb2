@@ -767,11 +767,9 @@ int close_constraint_table_cursor(void *cursor);
 void delete_defered_index_tbl();
 void truncate_defered_index_tbl();
 
-int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
-                           struct ireq *iq, block_state_t *blkstate,
+int verify_add_constraints(struct ireq *iq, block_state_t *blkstate,
                            void *trans, int *errout);
-int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
-                           struct ireq *iq, block_state_t *blkstate,
+int verify_del_constraints(struct ireq *iq, block_state_t *blkstate,
                            void *trans, blob_buffer_t *blobs, int *errout);
 int check_delete_constraints(struct ireq *iq, void *trans,
                              block_state_t *blkstate, int op, void *rec_dta,
