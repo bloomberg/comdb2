@@ -2122,6 +2122,10 @@ static void generateColumnNames(
   for(i=0; i<pEList->nExpr; i++){
     Expr *p = pEList->a[i].pExpr;
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    const char *z2;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
     assert( p!=0 );
     assert( p->op!=TK_AGG_COLUMN );  /* Agg processing has not run yet */
     assert( p->op!=TK_COLUMN || p->y.pTab!=0 ); /* Covering idx not yet coded */
@@ -2129,10 +2133,20 @@ static void generateColumnNames(
       /* An AS clause always takes first priority */
       char *zName = pEList->a[i].zName;
       sqlite3VdbeSetColName(v, i, COLNAME_NAME, zName, SQLITE_TRANSIENT);
-#if 0 && defined(SQLITE_BUILDING_FOR_COMDB2)
-    }else if( pEList->a[i].zSpan ){
-      sqlite3VdbeSetColName(v, i, COLNAME_NAME, pEList->a[i].zSpan,
-                            SQLITE_TRANSIENT);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    }else if( z2=pEList->a[i].zSpan ){
+      char *zDup = sqlite3DbStrDup(db, z2); /* Maybe need to mutate this. */
+      if( zDup ){
+        int nDup = sqlite3Strlen30(zDup);
+        if( sqlite3MaybeDequote(zDup, nDup) ){ /* MUTATOR */
+          sqlite3VdbeSetColName(v, i, COLNAME_NAME, zDup, SQLITE_DYNAMIC);
+        }else{
+          sqlite3DbFree(db, zDup); /* Free dup, use default col name. */
+          sqlite3VdbeSetColName(v, i, COLNAME_NAME, z2, SQLITE_TRANSIENT);
+        }
+      }else{
+        sqlite3VdbeSetColName(v, i, COLNAME_NAME, z2, SQLITE_TRANSIENT);
+      }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }else if( srcName && p->op==TK_COLUMN ){
       char *zCol;
@@ -2166,25 +2180,8 @@ static void generateColumnNames(
       }
     }else{
       const char *z = pEList->a[i].zSpan;
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-      if( z ){
-        char *zDup = sqlite3DbStrDup(db, z); /* Maybe need to mutate this. */
-        if( zDup ){
-          int nDup = sqlite3Strlen30(zDup);
-          if( sqlite3MaybeDequote(zDup, nDup) ){ /* MUTATOR */
-            sqlite3VdbeSetColName(v, i, COLNAME_NAME, zDup, SQLITE_DYNAMIC);
-            goto col_name_done; /* Skip default col name handling. */
-          }
-          sqlite3DbFree(db, zDup); /* Free dup, use default col name. */
-        }
-      }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       z = z==0 ? sqlite3MPrintf(db, "column%d", i+1) : sqlite3DbStrDup(db, z);
       sqlite3VdbeSetColName(v, i, COLNAME_NAME, z, SQLITE_DYNAMIC);
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-col_name_done:
-      ; /* NOTE: Do nothing, silence compiler error/warning. */
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
   }
   generateColumnTypes(pParse, pTabList, pEList);
