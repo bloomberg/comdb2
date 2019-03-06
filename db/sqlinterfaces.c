@@ -3537,7 +3537,8 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         }
 
         /* return row, if needed */
-        if (clnt->isselect && clnt->osql.replay != OSQL_RETRY_DO) {
+        if ((clnt->isselect && clnt->osql.replay != OSQL_RETRY_DO) ||
+            ((Vdbe *)stmt)->explain) {
             postponed_write = 0;
             ++row_id;
             rc = send_row(clnt, stmt, row_id, 0, err);
