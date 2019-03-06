@@ -36,9 +36,6 @@ static __thread void *defered_index_tbl_cursor = NULL;
 
 //
 //del needs to sort before adds because dels used to happen online
-//NO--this is wrong--if we sort that way then we will allow insert a; begin insert a; delete a; commit; to go through
-//but we should not allow that -- we should simply order operations with a counter
-//
 
 // defered index table types
 // the _CC types signify that we need to check constraints
@@ -50,7 +47,6 @@ typedef struct {
     struct dbtable *usedb; //consider not storing usedb and processing each usedb separately
     short ixnum;
     char ixkey[MAXKEYLEN];
-    //uint64_t counter;
     dit_t type;
     unsigned long long genid;
     unsigned long long newgenid; // new genid used for update
