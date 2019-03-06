@@ -1934,7 +1934,7 @@ static void generateColumnNames(
       char *zName = pEList->a[i].zName;
       sqlite3VdbeSetColName(v, i, COLNAME_NAME, zName, SQLITE_TRANSIENT);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    }else if( z2=pEList->a[i].zSpan ){
+    }else if( (z2=pEList->a[i].zSpan) ){
       char *zDup = sqlite3DbStrDup(db, z2); /* Maybe need to mutate this. */
       if( zDup ){
         int nDup = sqlite3Strlen30(zDup);
