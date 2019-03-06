@@ -696,7 +696,6 @@ struct sqlclntstate {
     uint8_t queue_me;
     uint8_t fail_dispatch;
 
-    char fingerprint[FINGERPRINTSZ];
     int ncontext;
     char **context;
 

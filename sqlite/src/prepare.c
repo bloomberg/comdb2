@@ -691,9 +691,6 @@ static int sqlite3Prepare(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   int prepareOnly = (prepFlags&SQLITE_PREPARE_ONLY)!=0;
   if( prepareOnly ) db->flags |= SQLITE_PrepareOnly;
-  if (db->should_fingerprint && !db->init.busy) {
-      memset(db->fingerprint, 0, sizeof(db->fingerprint));
-  }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   memset(&sParse, 0, PARSE_HDR_SZ);
@@ -1276,25 +1273,6 @@ int sqlite3_prepare_v3(
   return rc;
 }
 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-int sqlite3_fingerprint_size(sqlite3 *db) {
-    return sizeof(db->fingerprint);
-}
-
-const char *sqlite3_fingerprint(sqlite3 *db) {
-    return db->fingerprint;
-}
-
-int sqlite3_fingerprint_enable(sqlite3 *db) {
-    db->should_fingerprint = 1;
-    return 0;
-}
-
-int sqlite3_fingerprint_disable(sqlite3 *db) {
-    db->should_fingerprint = 0;
-    return 0;
-}
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 #ifndef SQLITE_OMIT_UTF16
 /*

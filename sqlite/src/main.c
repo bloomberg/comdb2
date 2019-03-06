@@ -3393,7 +3393,6 @@ opendb_out:
   register_lua_sfuncs(db, thd);
   register_lua_afuncs(db, thd);
   register_date_functions(db); 
-  db->should_fingerprint = 0;
   pthread_mutex_unlock(&mutex);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 

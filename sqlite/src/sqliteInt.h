@@ -1564,8 +1564,6 @@ struct sqlite3 {
 #endif
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   u8 isExpert;                          /* Analyze using SQLite expert */
-  u8 should_fingerprint;                /* Non-zero fingerprinting enabled */
-  char fingerprint[16];                 /* Figerprint of the last query prep  */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
@@ -2622,9 +2620,6 @@ struct Expr {
                            ** for a column of an index on an expression */
     Window *pWin;          /* TK_FUNCTION: Window definition for the func */
   } y;
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  u8 visited;            /* Set if visited by fingerprinter. */
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
 /*
@@ -4969,10 +4964,6 @@ void comdb2DropScalarFunc(Parse *, Token *);
 void comdb2CreateAggFunc(Parse *, Token *);
 void comdb2DropAggFunc(Parse *, Token *);
 
-void sqlite3FingerprintSelect(sqlite3 *db, Select *p);
-void sqlite3FingerprintDelete(sqlite3 *db, SrcList *pTabList, Expr *pWhere);
-void sqlite3FingerprintInsert(sqlite3 *db, SrcList *, Select *, IdList *, With *);
-void sqlite3FingerprintUpdate(sqlite3 *db, SrcList *pTabList, ExprList *pChanges, Expr *pWhere, int onError);
 void comdb2WriteTransaction(Parse*);
 
 int sqlite3RecordCompareExprList(UnpackedRecord *rec, Mem *mems);

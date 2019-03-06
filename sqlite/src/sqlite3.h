@@ -6336,11 +6336,6 @@ SQLITE_API void sqlite3_reset_auto_extension(void);
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 SQLITE_API int sqlite3_stmt_has_remotes(sqlite3_stmt *stmt);
-
-SQLITE_API const char *sqlite3_fingerprint(sqlite3*);
-SQLITE_API int sqlite3_fingerprint_size(sqlite3*);
-SQLITE_API int sqlite3_fingerprint_enable(sqlite3*);
-SQLITE_API int sqlite3_fingerprint_disable(sqlite3*);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
