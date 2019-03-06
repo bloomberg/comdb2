@@ -975,7 +975,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     }
 
     if (gbl_fingerprint_queries && (clnt->thd != NULL)) {
-        if (sqlite3_is_success(clnt->prep_rc)) {
+        if ((clnt->thd->sqldb != NULL) && sqlite3_is_success(clnt->prep_rc)) {
             add_fingerprint(clnt->thd->sqldb, h->cost, h->time, clnt->nrows,
                             h->sql, logger);
         } else {
