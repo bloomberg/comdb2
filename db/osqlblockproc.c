@@ -1294,14 +1294,14 @@ static int process_this_session(
     reqlog_set_event(iq->reqlogger, "txn");
 
 #if DEBUG_REORDER
-    logmsg(LOGMSG_USER, "OSQL ");
+    logmsg(LOGMSG_DEBUG, "OSQL ");
     // if needed to check content of socksql temp table, dump with:
     void bdb_temp_table_debug_dump(bdb_state_type * bdb_state,
-                                   tmpcursor_t * cur);
-    bdb_temp_table_debug_dump(thedb->bdb_env, dbc);
+                                   tmpcursor_t * cur, int);
+    bdb_temp_table_debug_dump(thedb->bdb_env, dbc, LOGMSG_DEBUG);
     if (dbc_ins) {
-        logmsg(LOGMSG_USER, "INS ");
-        bdb_temp_table_debug_dump(thedb->bdb_env, dbc_ins);
+        logmsg(LOGMSG_DEBUG, "INS ");
+        bdb_temp_table_debug_dump(thedb->bdb_env, dbc_ins, LOGMSG_DEBUG);
     }
 #endif
 

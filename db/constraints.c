@@ -274,7 +274,7 @@ int insert_add_op(struct ireq *iq, int optype, int rrn, int ixnum,
                                sizeof(cte), &err);
 
 #if DEBUG_REORDER
-logmsg(LOGMSG_ERROR, "AZ: insert_add_op here genid=%llx, rc=%d\n", bdb_genid_to_host_order(genid), rc);
+logmsg(LOGMSG_DEBUG, "AZ: insert_add_op here genid=%llx, rc=%d\n", bdb_genid_to_host_order(genid), rc);
 #endif
     close_constraint_table_cursor(cur);
     if (rc != 0) {
