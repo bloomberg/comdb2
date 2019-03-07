@@ -316,6 +316,15 @@ static char *tunables_generator (const char *text, int state)
     return db_generator(state, sql);
 }
 
+static char *generic_generator_no_systables(const char *text, int state)
+{
+    char sql[256];
+    snprintf(sql, sizeof(sql), 
+             "SELECT DISTINCT candidate as c FROM comdb2_completion('%s') where c not in (select name from comdb2_systables)", text);
+
+    return db_generator(state, sql);
+}
+
 static char *generic_generator(const char *text, int state)
 {
     char sql[256];
@@ -364,13 +373,13 @@ static char **my_completion (const char *text, int start, int end)
             endptr--; 
     }
 
+    //TODO: Detect if we are in multiline
     if (endptr == bgn) { // we were in the middle of the first word
         if (*bgn == '@')
             return rl_completion_matches(text, &char_atglyph_generator);
         else
             return rl_completion_matches(text, &level_one_generator);
     }
-    if (bgn < endptr);
 
     // endptr points to a space, find end of previous word
     while (*endptr == ' ') 
@@ -382,11 +391,12 @@ static char **my_completion (const char *text, int start, int end)
         lastw--;
     lastw++;
 
-    const int l = sizeof("TUNABLE") - 1;
-    if (endptr - lastw + 1 == l && strncasecmp(lastw, "TUNABLE", l) == 0)
+    if (strncasecmp(lastw, "TUNABLE", sizeof("TUNABLE") - 1) == 0)
         return rl_completion_matches(text, &tunables_generator);
-    else
+    else if (strncasecmp(lastw, "FROM", sizeof("FROM") - 1) == 0)
         return rl_completion_matches(text, &generic_generator);
+    else
+        return rl_completion_matches(text, &generic_generator_no_systables);
 }
 
 
