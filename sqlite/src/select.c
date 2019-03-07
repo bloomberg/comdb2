@@ -93,6 +93,26 @@ static void _set_src_recording(
     SET_CURSOR_RECORDING(pParse, pSub->pSrc->a[tbl].iCursor);
   }
 }
+
+static char *comdb2_get_special_column_name(
+  Expr *p
+){
+  if( p && p->op==TK_COLUMN ){
+    Table *pTab = p->y.pTab;
+    int iCol = p->iColumn;
+    assert( pTab!=0 );
+    if( iCol<0 ) iCol = pTab->iPKey;
+    assert( (iCol>=-3 && iCol<=-1) || (iCol>=0 && iCol<pTab->nCol) );
+    if( iCol<0 ){
+      switch( iCol ){
+        default:
+          return "rowid";
+        case -3:
+          return "comdb2_rowtimestamp";
+      }
+  }
+  return 0;
+}
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -1932,17 +1952,26 @@ static void generateColumnNames(
       sqlite3VdbeSetColName(v, i, COLNAME_NAME, zName, SQLITE_TRANSIENT);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     }else if( (z2=pEList->a[i].zSpan) ){
-      char *zDup = sqlite3DbStrDup(db, z2); /* Maybe need to mutate this. */
-      if( zDup ){
-        int nDup = sqlite3Strlen30(zDup);
-        if( sqlite3MaybeDequote(zDup, nDup) ){ /* MUTATOR */
-          sqlite3VdbeSetColName(v, i, COLNAME_NAME, zDup, SQLITE_DYNAMIC);
+      char *zSpecial = comdb2_get_special_column_name(p);
+      if( zSpecial ){
+        /* the name needed to be comdb2_rowid, comdb2_timestamp, etc. */
+        sqlite3VdbeSetColName(v, i, COLNAME_NAME, zSpecial, SQLITE_TRANSIENT);
+      }else{
+        char *zDup = sqlite3DbStrDup(db, z2); /* Maybe need to mutate this. */
+        if( zDup ){
+          int nDup = sqlite3Strlen30(zDup);
+          if( sqlite3MaybeDequote(zDup, nDup) ){ /* MUTATOR */
+            /* it was necessary to dequote the name, use mutated copy. */
+            sqlite3VdbeSetColName(v, i, COLNAME_NAME, zDup, SQLITE_DYNAMIC);
+          }else{
+            /* it was not necessary to dequote the name, just use it. */
+            sqlite3DbFree(db, zDup);
+            sqlite3VdbeSetColName(v, i, COLNAME_NAME, z2, SQLITE_TRANSIENT);
+          }
         }else{
-          sqlite3DbFree(db, zDup); /* Free dup, use default col name. */
+          /* out of memory? */
           sqlite3VdbeSetColName(v, i, COLNAME_NAME, z2, SQLITE_TRANSIENT);
         }
-      }else{
-        sqlite3VdbeSetColName(v, i, COLNAME_NAME, z2, SQLITE_TRANSIENT);
       }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }else if( srcName && p->op==TK_COLUMN ){
@@ -1954,14 +1983,7 @@ static void generateColumnNames(
       assert( iCol==-1 || (iCol>=0 && iCol<pTab->nCol) );
       if( iCol<0 ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-        switch( iCol ){
-          default:
-            zCol = "rowid";
-            break;
-          case -3:
-            zCol = "comdb2_rowtimestamp";
-            break;
-        }
+        zCol = comdb2_get_special_column_name(p);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         zCol = "rowid";
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
