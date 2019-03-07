@@ -27,7 +27,7 @@ static size_t memdup_sizeof(
   size_t nStr
 ){
   size_t nPage = nStr / MEMDUP_PAGE_SIZE;
-  if( nStr%MEMDUP_PAGE_SIZE!=0 ) nPage++;
+  if( (nStr%MEMDUP_PAGE_SIZE)!=0 ) nPage++;
   return nPage * MEMDUP_PAGE_SIZE;
 }
 
@@ -36,8 +36,9 @@ char *memdup_readonly(
   size_t nStr
 ){
   void *p;
-  size_t nSize = memdup_sizeof(nStr);
+  size_t nSize;
   if( zStr==0 ) return 0;
+  nSize = memdup_sizeof(nStr);
   p = mmap(0, nSize, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
   if( p==MAP_FAILED ) return 0;
   memset(p, 0, nSize);
@@ -55,8 +56,9 @@ void memdup_free(
   size_t nStr
 ){
   void *p = zStr;
-  size_t nSize = memdup_sizeof(nStr);
+  size_t nSize;
   if( p==0 ) return;
+  nSize = memdup_sizeof(nStr);
   if( mprotect(p, nSize, PROT_READ|PROT_WRITE)!=0 ) return;
   memset(p, 0, nSize);
   munmap(p, nSize);
