@@ -160,7 +160,6 @@ void cdb2sql_usage(int exit_val)
     exit(exit_val);
 }
 
-
 const char *level_one_words[] = {
   "@",
   "ALTER", "ANALYZE",
@@ -179,32 +178,29 @@ const char *level_one_words[] = {
   "WITH", NULL,  // must be terminated by NULL
 };
 
-
 const char *char_atglyph_words[] = {
     "desc", "ls", "send", NULL, // must be terminated by NULL
 };
 
-
-static char *char_atglyph_generator (const char *text, int state)
+static char *char_atglyph_generator(const char *text, int state)
 {
     static int list_index, len;
     const char *name;
-    if (!state) { //if state is 0 get the length of text
+    if (!state) { // if state is 0 get the length of text
         list_index = 0;
-        len = strlen (text);
+        len = strlen(text);
     }
     while ((name = char_atglyph_words[list_index]) != NULL) {
         list_index++;
-        if (len == 0 || strncasecmp (name, text, len) == 0) {
-            return strdup (name);
+        if (len == 0 || strncasecmp(name, text, len) == 0) {
+            return strdup(name);
         }
     }
     return (NULL); // If no names matched, then return NULL.
 }
 
-
 // Generator function for word completion.
-static char *level_one_generator (const char *text, int state)
+static char *level_one_generator(const char *text, int state)
 {
     static int list_index, len;
     const char *name;
@@ -221,7 +217,7 @@ static char *level_one_generator (const char *text, int state)
     return (NULL); // If no names matched, then return NULL.
 }
 
-static char *db_generator (int state, const char *sql)
+static char *db_generator(int state, const char *sql)
 {
     static char **db_words;
     static int list_index, len;
@@ -302,14 +298,15 @@ static char *db_generator (int state, const char *sql)
     return (NULL); // If no names matched, then return NULL.
 }
 
-
-static char *tunables_generator (const char *text, int state)
+static char *tunables_generator(const char *text, int state)
 {
     char sql[256];
     if (*text)
         //TODO: escape text
         snprintf(sql, sizeof(sql), 
-                "SELECT DISTINCT name FROM comdb2_tunables WHERE name LIKE '%s%%'", text);
+                "SELECT DISTINCT name FROM comdb2_tunables "
+                "WHERE name LIKE '%s%%'",
+                text);
     else
         snprintf(sql, sizeof(sql), 
                 "SELECT DISTINCT name FROM comdb2_tunables");
@@ -319,8 +316,10 @@ static char *tunables_generator (const char *text, int state)
 static char *generic_generator_no_systables(const char *text, int state)
 {
     char sql[256];
-    snprintf(sql, sizeof(sql), 
-             "SELECT DISTINCT candidate as c FROM comdb2_completion('%s') where c not in (select name from comdb2_systables)", text);
+    snprintf(sql, sizeof(sql),
+             "SELECT DISTINCT candidate as c FROM comdb2_completion('%s') "
+             "where c not in (select name from comdb2_systables)",
+             text);
 
     return db_generator(state, sql);
 }
@@ -329,20 +328,18 @@ static char *generic_generator(const char *text, int state)
 {
     char sql[256];
     //TODO: escape text
-    snprintf(sql, sizeof(sql), 
+    snprintf(sql, sizeof(sql),
              "SELECT DISTINCT candidate FROM comdb2_completion('%s')", text);
 
     return db_generator(state, sql);
 }
 
-
-
 // Custom completion function
 //
-// text is the last word entered or space, 
+// text is the last word entered or space,
 // start and end are the offsets of that last word in the rl_line_buffer
 // So if we are trying to complete in the middle of a word
-// text is the [partial] word, example: 
+// text is the [partial] word, example:
 //  > select intcol^I
 //   rl_line_buffer='select intcol' text='intcol' start=8 end=13
 //
@@ -359,21 +356,23 @@ static char **my_completion (const char *text, int start, int end)
         return rl_completion_matches(text, &level_one_generator);
 
     char *bgn = rl_line_buffer;
-    while (*bgn && *bgn == ' ') bgn++; // skip beginning spaces
-    //bgn now points to \0 or to the beginning of first word
+    while (*bgn && *bgn == ' ')
+        bgn++; // skip beginning spaces
+    // bgn now points to \0 or to the beginning of first word
 
     char *endptr = bgn;
 
-    if (*bgn) { //we definitely have a word, find the end of the line
-        while(*endptr) endptr++; //go to end, will point to \0
-        endptr--; //now point to the last character (can be space) in the line
+    if (*bgn) { // we definitely have a word, find the end of the line
+        while (*endptr)
+            endptr++; // go to end, will point to \0
+        endptr--; // now point to the last character (can be space) in the line
 
         // find last space (or will hit bgn)
-        while(endptr != bgn && *endptr != ' ') 
-            endptr--; 
+        while (endptr != bgn && *endptr != ' ')
+            endptr--;
     }
 
-    //TODO: Detect if we are in multiline
+    // TODO: Detect if we are in multiline
     if (endptr == bgn) { // we were in the middle of the first word
         if (*bgn == '@')
             return rl_completion_matches(text, &char_atglyph_generator);
@@ -382,12 +381,12 @@ static char **my_completion (const char *text, int start, int end)
     }
 
     // endptr points to a space, find end of previous word
-    while (*endptr == ' ') 
+    while (*endptr == ' ')
         endptr--;
 
     char *lastw = endptr;
     // find begining of previous word
-    while (lastw != bgn && *lastw != ' ') 
+    while (lastw != bgn && *lastw != ' ')
         lastw--;
     lastw++;
 
