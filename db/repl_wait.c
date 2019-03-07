@@ -26,8 +26,7 @@
 
 #include <plhash.h>
 #include <pool.h>
-#include <lockmacro.h>
-
+#include "lockmacros.h"
 #include "repl_wait.h"
 #include "switches.h"
 #include "logmsg.h"

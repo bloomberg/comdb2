@@ -15,7 +15,6 @@
  */
 
 #include <segstr.h>
-#include <lockmacro.h>
 #include <list.h>
 #include <plhash.h>
 #include <fsnap.h>

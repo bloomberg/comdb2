@@ -35,9 +35,9 @@
 #include <unistd.h>
 
 #include <epochlib.h>
-#include <lockmacro.h>
 #include <segstring.h>
 
+#include "lockmacros.h"
 #include "list.h"
 #include "pool.h"
 #include "mem_util.h"
