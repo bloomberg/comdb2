@@ -24,25 +24,25 @@
 #define MEMDUP_PAGE_SIZE 4096
 
 static size_t memdup_sizeof(
-  size_t nStr
+  size_t nMem
 ){
-  size_t nPage = nStr / MEMDUP_PAGE_SIZE;
-  if( (nStr%MEMDUP_PAGE_SIZE)!=0 ) nPage++;
+  size_t nPage = nMem / MEMDUP_PAGE_SIZE;
+  if( (nMem%MEMDUP_PAGE_SIZE)!=0 ) nPage++;
   return nPage * MEMDUP_PAGE_SIZE;
 }
 
-char *memdup_readonly(
-  const char *zStr,
-  size_t nStr
+void *memdup_readonly(
+  const void *pMem,
+  size_t nMem
 ){
   void *p;
   size_t nSize;
-  if( zStr==0 ) return 0;
-  nSize = memdup_sizeof(nStr);
+  if( pMem==0 ) return 0;
+  nSize = memdup_sizeof(nMem);
   p = mmap(0, nSize, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
   if( p==MAP_FAILED ) return 0;
   memset(p, 0, nSize);
-  memcpy(p, zStr, nStr);
+  memcpy(p, pMem, nMem);
   if( mprotect(p, nSize, PROT_READ)!=0 ){
     memset(p, 0, nSize);
     munmap(p, nSize);
@@ -52,13 +52,13 @@ char *memdup_readonly(
 }
 
 void memdup_free(
-  char *zStr,
-  size_t nStr
+  void *pMem,
+  size_t nMem
 ){
-  void *p = zStr;
+  void *p = pMem;
   size_t nSize;
   if( p==0 ) return;
-  nSize = memdup_sizeof(nStr);
+  nSize = memdup_sizeof(nMem);
   if( mprotect(p, nSize, PROT_READ|PROT_WRITE)!=0 ) return;
   memset(p, 0, nSize);
   munmap(p, nSize);
