@@ -735,6 +735,7 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
     else
         sc->live = 1;
 
+    sc->alteronly = 1;
     sc->commit_sleep = gbl_commit_sleep;
     sc->convert_sleep = gbl_convert_sleep;
 
