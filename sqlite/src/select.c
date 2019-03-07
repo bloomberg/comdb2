@@ -94,7 +94,7 @@ static void _set_src_recording(
   }
 }
 
-static char *comdb2_get_special_column_name(
+static const char *comdb2_get_special_column_name(
   Expr *p
 ){
   if( p && p->op==TK_COLUMN ){
@@ -110,6 +110,7 @@ static char *comdb2_get_special_column_name(
         case -3:
           return "comdb2_rowtimestamp";
       }
+    }
   }
   return 0;
 }
