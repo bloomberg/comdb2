@@ -74,7 +74,6 @@ typedef struct stmt_hash_entry {
     char sql[MAX_HASH_SQL_LENGTH];
     sqlite3_stmt *stmt;
     char *query;
-    char fingerprint[FINGERPRINTSZ];
     //struct schema *params_to_bind;
     LINKC_T(struct stmt_hash_entry) stmtlist_linkv;
 } stmt_hash_entry_type;
