@@ -1953,7 +1953,7 @@ static void generateColumnNames(
       sqlite3VdbeSetColName(v, i, COLNAME_NAME, zName, SQLITE_TRANSIENT);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     }else if( (z2=pEList->a[i].zSpan) ){
-      char *zSpecial = comdb2_get_special_column_name(p);
+      const char *zSpecial = comdb2_get_special_column_name(p);
       if( zSpecial ){
         /* the name needed to be comdb2_rowid, comdb2_timestamp, etc. */
         sqlite3VdbeSetColName(v, i, COLNAME_NAME, zSpecial, SQLITE_TRANSIENT);
@@ -1984,7 +1984,7 @@ static void generateColumnNames(
       assert( iCol==-1 || (iCol>=0 && iCol<pTab->nCol) );
       if( iCol<0 ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-        zCol = comdb2_get_special_column_name(p);
+        zCol = (char *)comdb2_get_special_column_name(p);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         zCol = "rowid";
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
