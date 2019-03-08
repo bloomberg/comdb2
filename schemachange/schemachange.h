@@ -256,9 +256,13 @@ enum schema_change_views_rc {
 
 enum schema_change_resume {
     SC_NOT_RESUME = 0,
+    /* Non-transactional resume */
     SC_RESUME = 1,
+    /* New master resuming transactional sc (without finalizing) */
     SC_NEW_MASTER_RESUME = 2,
+    /* OSQL (block processor) picking up sc resumed by the new master */
     SC_OSQL_RESUME = 3,
+    /* Resume a paused sc */
     SC_PREEMPT_RESUME = 4
 };
 
