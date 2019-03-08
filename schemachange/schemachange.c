@@ -51,9 +51,9 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         return SC_NOT_MASTER;
     }
 
-    /* not implemented: skipping for now */
     if (!s->resume && s->preempted) {
         sc_errf(s, "Preempt table %s option %d\n", s->tablename, s->preempted);
+        int nwait = 0;
         struct schema_change_type *alter =
             preempt_ongoing_alter(s->tablename, s->preempted);
         if (!alter) {
@@ -70,6 +70,14 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                 break;
             Pthread_mutex_unlock(&s->mtx);
             sleep(1);
+            nwait++;
+            if (nwait > 30) {
+                /* BUG */
+                logmsg(LOGMSG_FATAL,
+                       "%s:%d failed to wait for schemachange thread to exit\n",
+                       __func__, __LINE__);
+                abort();
+            }
         }
         s->sc_rc = 0;
         s->resume = SC_PREEMPT_RESUME;

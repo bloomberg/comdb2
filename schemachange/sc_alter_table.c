@@ -534,7 +534,6 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         return -1;
     }
 
-convert_records:
     Pthread_rwlock_wrlock(&db->sc_live_lk);
     db->sc_from = s->db = db;
     db->sc_to = s->newdb = newdb;
@@ -542,6 +541,11 @@ convert_records:
     db->sc_downgrading = 0;
     db->doing_conversion = 1; /* live_sc_off will unset it */
     Pthread_rwlock_unlock(&db->sc_live_lk);
+
+convert_records:
+    assert(db->sc_from == db && s->db == db);
+    assert(db->sc_to == newdb && s->newdb == newdb);
+    assert(db->doing_conversion == 1);
     if (s->resume && s->alteronly && !s->finalize_only) {
         if (gbl_test_sc_resume_race && !stopsc) {
             logmsg(LOGMSG_INFO, "%s:%d sleeping 5s for sc_resume test\n",
@@ -566,19 +570,19 @@ convert_records:
         return SC_MASTER_DOWNGRADE;
     }
 
-    add_ongoing_alter(s);
+    int prev_preempted = s->preempted;
 
     if (s->preempted == SC_ACTION_PAUSE) {
         sc_errf(s, "SCHEMACHANGE PAUSED\n");
+        add_ongoing_alter(s);
         return SC_PAUSED;
     } else if (s->preempted == SC_ACTION_ABORT) {
         sc_errf(s, "SCHEMACHANGE ABORTED\n");
         rc = SC_ABORTED;
-        remove_ongoing_alter(s);
         goto errout;
     }
 
-    int prev_preempted = s->preempted;
+    add_ongoing_alter(s);
 
     /* skip converting records for fastinit and planned schema change
      * that doesn't require rebuilding anything. */

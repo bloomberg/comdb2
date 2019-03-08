@@ -510,6 +510,7 @@ struct schema_change_type *preempt_ongoing_alter(char *table, int action)
             case SC_ACTION_RESUME:
                 if (s->preempted == SC_ACTION_PAUSE)
                     ok = 1;
+                break;
             case SC_ACTION_COMMIT:
                 if (s->preempted == SC_ACTION_PAUSE ||
                     s->preempted == SC_ACTION_RESUME)
