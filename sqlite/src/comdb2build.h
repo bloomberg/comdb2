@@ -76,6 +76,7 @@ void comdb2DropForeignKey(Parse *, Token *);
 void comdb2DropColumn(Parse *, Token *);
 void comdb2DropIndex(Parse *, Token *, Token *, int);
 void comdb2AlterDropIndex(Parse *, Token *);
+void comdb2AlterCommitPending(Parse *);
 
 void comdb2enableGenid48(Parse*, int);
 void comdb2enableRowlocks(Parse*, int);
@@ -95,6 +96,8 @@ void comdb2RebuildIndex(Parse*, Token*, Token*, Token*,int opt);
 void comdb2RebuildData(Parse*, Token*, Token*,int opt);
 void comdb2RebuildDataBlob(Parse*,Token*, Token*,int opt);
 void comdb2Truncate(Parse*, Token*, Token*);
+
+void comdb2SchemachangeControl(Parse*, int, Token*, Token *);
 
 void comdb2bulkimport(Parse*, Token*, Token*, Token*, Token*);
 
