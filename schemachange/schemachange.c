@@ -212,7 +212,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         logmsg(LOGMSG_INFO, "Starting schema change: "
                             "transactionally reuse seed 0x%llx\n",
                seed);
-    } else if (s->resume && !s->preempted) {
+    } else if (s->resume) {
         unsigned int host = 0;
         logmsg(LOGMSG_INFO, "Resuming schema change: fetching seed\n");
         if ((rc = fetch_schema_change_seed(s, thedb, &seed, &host))) {
