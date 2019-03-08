@@ -1522,6 +1522,7 @@ cmd ::= createkw(S) uniqueflag(U) INDEX ifnotexists(NE) nm(X) dbnm(D)
 uniqueflag(A) ::= UNIQUE.  {A = OE_Abort;}
 uniqueflag(A) ::= .        {A = OE_None;}
 
+
 // The eidlist non-terminal (Expression Id List) generates an ExprList
 // from a list of identifiers.  The identifier names are in ExprList.a[].zName.
 // This list is stored in an ExprList rather than an IdList so that it
@@ -1758,6 +1759,7 @@ raisetype(A) ::= ABORT.     {A = OE_Abort;}
 %ifndef SQLITE_BUILDING_FOR_COMDB2
 raisetype(A) ::= FAIL.      {A = OE_Fail;}
 %endif !SQLITE_BUILDING_FOR_COMDB2
+
 
 ////////////////////////  DROP TRIGGER statement //////////////////////////////
 %ifndef SQLITE_OMIT_TRIGGER

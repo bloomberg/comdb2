@@ -5881,7 +5881,6 @@ int sqlite3Select(
   if( !pParse->ast ) pParse->ast = ast_init();
   ast_push(pParse->ast, AST_TYPE_SELECT, v, p);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 #ifndef SQLITE_OMIT_COMPOUND_SELECT
   /* Handle compound SELECT statements using the separate multiSelect()
   ** procedure.
@@ -6117,7 +6116,6 @@ int sqlite3Select(
   }
 #endif
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   /* If the query is DISTINCT with an ORDER BY but is not an aggregate, and 
   ** if the select-list is the same as the ORDER BY list, then this query
   ** can be rewritten as a GROUP BY. In other words, this:
@@ -6637,7 +6635,6 @@ int sqlite3Select(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
         sqlite3VdbeAddTable(v, pTab);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
         sqlite3TableLock(pParse, iDb, pTab->tnum, 0, pTab->zName);
 
         /* Search for the index that has the lowest scan cost.

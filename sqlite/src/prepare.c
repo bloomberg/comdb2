@@ -692,7 +692,6 @@ static int sqlite3Prepare(
   int prepareOnly = (prepFlags&SQLITE_PREPARE_ONLY)!=0;
   if( prepareOnly ) db->flags |= SQLITE_PrepareOnly;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   memset(&sParse, 0, PARSE_HDR_SZ);
   memset(PARSE_TAIL(&sParse), 0, PARSE_TAIL_SZ);
   sParse.pReprepare = pReprepare;

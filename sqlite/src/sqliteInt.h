@@ -362,7 +362,6 @@
 ** it.
 */
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
-/* Not compiling on sun with the following */
 #if !defined(_XOPEN_SOURCE) && !defined(__DARWIN__) && !defined(__APPLE__)
 #  define _XOPEN_SOURCE 600
 #endif

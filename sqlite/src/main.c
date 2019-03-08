@@ -44,7 +44,9 @@ int sqlite3StmtVtabInit(sqlite3*);
 #ifdef SQLITE_ENABLE_FTS5
 int sqlite3Fts5Init(sqlite3*);
 #endif
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
 int sqlite3RegexpInit(sqlite3*);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 #ifndef SQLITE_AMALGAMATION
 /* IMPLEMENTATION-OF: R-46656-45156 The sqlite3_version[] string constant
@@ -3186,7 +3188,6 @@ static int openDatabase(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   createCollation(db, "DATACOPY", SQLITE_UTF8, 0, datacopyCollatingFunc, 0);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
   /* Parse the filename/URI argument
   **
   ** Only allow sensible combinations of bits in the flags argument.  
@@ -3332,7 +3333,6 @@ static int openDatabase(
   }
 #endif
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 #ifdef SQLITE_ENABLE_JSON1
   if( !db->mallocFailed && rc==SQLITE_OK){
     rc = sqlite3Json1Init(db);
@@ -3395,7 +3395,6 @@ opendb_out:
   register_date_functions(db); 
   pthread_mutex_unlock(&mutex);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 #if defined(SQLITE_HAS_CODEC)
   if( rc==SQLITE_OK ){
     const char *zKey;
