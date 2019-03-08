@@ -38,6 +38,7 @@ extern int gbl_time_fdb;
 extern int gbl_notimeouts;
 extern int gbl_expressions_indexes;
 extern int gbl_fdb_track_times;
+extern char gbl_dbname[MAX_DBNAME_LENGTH];
 
 /* matches fdb_svc_callback_t callbacks */
 enum {
@@ -228,6 +229,8 @@ typedef struct {
     int srcpid;     /* pid of the source */
     int srcnamelen; /* hostname of the source */
     char *srcname;
+    int srcdbnamelen; /* database name of the source request */
+    char *srcdbname;
     int ssl;
 } fdb_msg_cursor_open_t;
 
@@ -396,6 +399,8 @@ int fdb_send_open(fdb_msg_t *msg, char *cid, fdb_tran_t *trans, int rootp,
     msg->co.srcpid = gbl_mypid;
     msg->co.srcnamelen = strlen(gbl_myhostname) + 1;
     msg->co.srcname = gbl_myhostname;
+    msg->co.srcdbnamelen = strlen(gbl_dbname) + 1;
+    msg->co.srcdbname = gbl_dbname;
     msg->co.ssl = 0; /*TODO: do I need this? */
 
     sbuf2printf(sb, "remsql\n");
@@ -1005,18 +1010,38 @@ int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags)
         msg->co.srcnamelen = ntohl(msg->co.srcnamelen);
 
         if (msg->co.srcnamelen > 0) {
-            msg->co.srcname = (char *)malloc(msg->co.srcnamelen + 1);
+            msg->co.srcname = (char *)malloc(msg->co.srcnamelen);
             if (!msg->co.srcname)
                 return -1;
 
             rc = sbuf2fread(msg->co.srcname, 1, msg->co.srcnamelen, sb);
             if (rc != msg->co.srcnamelen)
                 return -1;
-            msg->co.srcname[msg->co.srcnamelen] = '\0';
         } else {
             msg->co.srcname = NULL;
         }
-        if (!fdb_is_dbname_in_whitelist(msg->co.srcname))
+
+        rc = sbuf2fread((char *)&msg->co.srcdbnamelen, 1,
+                        sizeof(msg->co.srcdbnamelen), sb);
+        if (rc != sizeof(msg->co.srcdbnamelen))
+            return -1;
+        msg->co.srcdbnamelen = ntohl(msg->co.srcdbnamelen);
+
+
+        if (msg->co.srcdbnamelen > 0) {
+            msg->co.srcdbname = (char *)malloc(msg->co.srcdbnamelen);
+            if (!msg->co.srcdbname)
+                return -1;
+
+            rc = sbuf2fread(msg->co.srcdbname, 1, msg->co.srcdbnamelen, sb);
+            if (rc != msg->co.srcdbnamelen)
+                return -1;
+            msg->co.srcdbname[msg->co.srcdbnamelen] = '\0';
+        } else {
+            msg->co.srcdbname = NULL;
+        }        
+        
+        if (!fdb_is_dbname_in_whitelist(msg->co.srcdbname))
             return -1;
 #if WITH_SSL
         if (msg->co.flags & FDB_MSG_CURSOR_OPEN_FLG_SSL) {

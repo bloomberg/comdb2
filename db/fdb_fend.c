@@ -2181,6 +2181,15 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
         }
 
         if ((rc = _fdb_remote_reconnect(fdb, psb, host, (fdbc)?1:0)) == FDB_NOERR) {
+
+            /*
+            if (fdb_send_allowed_to_connect() != FDB_NOERR) {
+                snprintf(clnt->fdb_state.xerr.errstr,
+                         sizeof(clnt->fdb_state.xerr.errstr),
+                         "Not allowed to connect do DB %s (not in whitelist)", host);
+                return FDB_ERR_NOTALLOWED;
+            } */
+
             if (fdbc) {
                 fdbc->streaming = FDB_CUR_IDLE;
 
