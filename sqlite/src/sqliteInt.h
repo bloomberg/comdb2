@@ -4012,7 +4012,6 @@ void sqlite3SetString(char **, sqlite3*, const char*);
 void sqlite3ErrorMsg(Parse*, const char*, ...);
 void sqlite3Dequote(char*);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-int sqlite3MaybeDequote(char*,int);
 int sqlite3IsCorrectlyQuoted(char *);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 void sqlite3TokenInit(Token*,char*);

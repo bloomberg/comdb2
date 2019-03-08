@@ -93,27 +93,6 @@ static void _set_src_recording(
     SET_CURSOR_RECORDING(pParse, pSub->pSrc->a[tbl].iCursor);
   }
 }
-
-static const char *comdb2_get_special_column_name(
-  Expr *p
-){
-  if( p && p->op==TK_COLUMN ){
-    Table *pTab = p->y.pTab;
-    int iCol = p->iColumn;
-    assert( pTab!=0 );
-    if( iCol<0 ) iCol = pTab->iPKey;
-    assert( (iCol>=-3 && iCol<=-1) || (iCol>=0 && iCol<pTab->nCol) );
-    if( iCol<0 ){
-      switch( iCol ){
-        default:
-          return "rowid";
-        case -3:
-          return "comdb2_rowtimestamp";
-      }
-    }
-  }
-  return 0;
-}
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -1940,10 +1919,6 @@ static void generateColumnNames(
   for(i=0; i<pEList->nExpr; i++){
     Expr *p = pEList->a[i].pExpr;
 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    const char *z2;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
     assert( p!=0 );
     assert( p->op!=TK_AGG_COLUMN );  /* Agg processing has not run yet */
     assert( p->op!=TK_COLUMN || p->y.pTab!=0 ); /* Covering idx not yet coded */
@@ -1951,30 +1926,6 @@ static void generateColumnNames(
       /* An AS clause always takes first priority */
       char *zName = pEList->a[i].zName;
       sqlite3VdbeSetColName(v, i, COLNAME_NAME, zName, SQLITE_TRANSIENT);
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    }else if( (z2=pEList->a[i].zSpan) ){
-      const char *zSpecial = comdb2_get_special_column_name(p);
-      if( zSpecial ){
-        /* the name needed to be comdb2_rowid, comdb2_timestamp, etc. */
-        sqlite3VdbeSetColName(v, i, COLNAME_NAME, zSpecial, SQLITE_TRANSIENT);
-      }else{
-        char *zDup = sqlite3DbStrDup(db, z2); /* Maybe need to mutate this. */
-        if( zDup ){
-          int nDup = sqlite3Strlen30(zDup);
-          if( sqlite3MaybeDequote(zDup, nDup) ){ /* MUTATOR */
-            /* it was necessary to dequote the name, use mutated copy. */
-            sqlite3VdbeSetColName(v, i, COLNAME_NAME, zDup, SQLITE_DYNAMIC);
-          }else{
-            /* it was not necessary to dequote the name, just use it. */
-            sqlite3DbFree(db, zDup);
-            sqlite3VdbeSetColName(v, i, COLNAME_NAME, z2, SQLITE_TRANSIENT);
-          }
-        }else{
-          /* out of memory? */
-          sqlite3VdbeSetColName(v, i, COLNAME_NAME, z2, SQLITE_TRANSIENT);
-        }
-      }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }else if( srcName && p->op==TK_COLUMN ){
       char *zCol;
       int iCol = p->iColumn;
@@ -1984,7 +1935,14 @@ static void generateColumnNames(
       assert( iCol==-1 || (iCol>=0 && iCol<pTab->nCol) );
       if( iCol<0 ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-        zCol = (char *)comdb2_get_special_column_name(p);
+        switch( iCol ){
+          default:
+            zCol = "rowid";
+            break;
+          case -3:
+            zCol = "comdb2_rowtimestamp";
+            break;
+        }
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         zCol = "rowid";
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
